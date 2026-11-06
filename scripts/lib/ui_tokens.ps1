@@ -34,6 +34,23 @@ function Get-UiSurfaces {
             Colors = @('ink', 'gray', 'hairline', 'accent', 'ok', 'warn', 'alert', 'bg', 'bg-soft')
             Shape  = @('radius', 'font')
         }
+        # Wizard im Fenster der Start-App: hell/dunkel nach der System-Einstellung. Der QR-Code steht immer auf der hellen
+        # Flaeche (.qr = helle Gruppe): nicht jede Kamera-App liest einen invertierten Code.
+        [pscustomobject]@{
+            Name   = 'wizard'
+            File   = 'provisioning/wizard/ui/app.css'
+            Rules  = @(
+                [pscustomobject]@{ Selector = ':root'; Group = 'light' }
+                [pscustomobject]@{ Media = '@media (prefers-color-scheme: dark)'; Selector = ':root'; Group = 'dark' }
+                # QR-Code und Nachzeichnungen fremder Oberflächen (di9: FritzBox u. a., die echte Oberfläche ist immer hell).
+                [pscustomobject]@{ Selector = '.qr, .art-light'; Group = 'light' }
+                # Handy-Bilder (ui/art/, di9): Rahmen immer dunkel, Bildschirm immer hell wie ein Telegram-Chat am Tag.
+                [pscustomobject]@{ Selector = '.phone'; Group = 'dark' }
+                [pscustomobject]@{ Selector = '.phone .screen'; Group = 'light' }
+            )
+            Colors = @('ink', 'gray', 'hairline', 'accent', 'accent-hover', 'accent-mid', 'accent-pale', 'accent-wash', 'ok', 'warn', 'warn-wash', 'alert', 'alert-wash', 'bg', 'bg-soft')
+            Shape  = @('radius-sm', 'radius', 'radius-pill', 'font')
+        }
         # Start-App (Tauri): folgt dem System; data-theme nur fuer die Vorschau (scripts/dev/serve_desktop_preview.ps1).
         [pscustomobject]@{
             Name   = 'desktop'
@@ -54,11 +71,11 @@ function Get-UiSurfaces {
 # zur Laufzeit, der Fragebogen ist eine fremde Seite ohne Zugriff auf die Dateien der App). Neuer Verbraucher = Pfad in Files.
 function Get-UiCopies {
     @(
-        [pscustomobject]@{ Source = 'config/ui.steps.js'; Files = @('provisioning/desktop/ui/app.js') }
-        [pscustomobject]@{ Source = 'config/ui.steps.css'; Files = @('provisioning/desktop/ui/app.css') }
+        [pscustomobject]@{ Source = 'config/ui.steps.js'; Files = @('provisioning/desktop/ui/app.js', 'provisioning/wizard/ui/app.js') }
+        [pscustomobject]@{ Source = 'config/ui.steps.css'; Files = @('provisioning/desktop/ui/app.css', 'provisioning/wizard/ui/app.css') }
         # Lese-Hinweis am Hauptknopf (Werte der Leitung, Referenz im Fragebogen).
-        [pscustomobject]@{ Source = 'config/ui.nudge.js'; Files = @('provisioning/desktop/ui/app.js') }
-        [pscustomobject]@{ Source = 'config/ui.nudge.css'; Files = @('provisioning/desktop/ui/app.css') }
+        [pscustomobject]@{ Source = 'config/ui.nudge.js'; Files = @('provisioning/desktop/ui/app.js', 'provisioning/wizard/ui/app.js') }
+        [pscustomobject]@{ Source = 'config/ui.nudge.css'; Files = @('provisioning/desktop/ui/app.css', 'provisioning/wizard/ui/app.css') }
     )
 }
 function Get-UiCopyRegex([string]$Name) {
@@ -113,7 +130,7 @@ function Get-UiLocaleText([string]$RepoRoot, $Block) {
 # Wurzeln, unter denen der Lint Farb-Literale sucht. Eine UI-Datei ausserhalb dieser Wurzeln (und ausserhalb von
 # Get-UiExcludedPrefixes) ist ein Fehler: so rutscht eine neue Oberflaeche nicht unbemerkt durch.
 function Get-UiScanRoots {
-    @('docs/site/static/', 'docs/site/layouts/', 'packages/core/build/app/', 'packages/core/build/stickers/', 'provisioning/desktop/ui/', 'provisioning/desktop/preview/', 'config/ui.')
+    @('docs/site/static/', 'docs/site/layouts/', 'packages/core/build/app/', 'packages/core/build/stickers/', 'provisioning/desktop/ui/', 'provisioning/desktop/preview/', 'provisioning/wizard/ui/', 'config/ui.')
 }
 # public/ = Hugo-Output der Quellen oben; mods = Erweiterung des Entwickler-Werkzeugs, keine Projekt-Oberflaeche.
 function Get-UiExcludedPrefixes { @('docs/site/public/', '.claude/mods/') }

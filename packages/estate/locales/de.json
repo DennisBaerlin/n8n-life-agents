@@ -340,5 +340,7 @@
   "estate.cron.review_register.off_toast": "Nachlass-Prüfung aus",
   "estate.cron.review_register.on_message": "Nachlass-Prüfung an: Fehlt etwas Wichtiges oder ist das Register lange nicht geprüft, sage ich Bescheid.",
   "estate.cron.review_register.off_message": "Nachlass-Prüfung aus: Ich weise nicht mehr von selbst auf Lücken im Notfall-Register hin.",
-  "estate.cron.remind_case_tasks.label": "Fristen im Todes- oder Vorsorgefall"
+  "estate.cron.remind_case_tasks.label": "Fristen im Todes- oder Vorsorgefall",
+  "estate.wizard.cfg_general_bundesland.title": "In welchem Bundesland lebt ihr?",
+  "estate.wizard.cfg_general_bundesland.help": "Fristen im Ereignisfall (zum Beispiel die Ausschlagung einer Erbschaft) rechnen mit Werktagen. Welche Tage Feiertage sind, hängt vom Bundesland ab."
 }

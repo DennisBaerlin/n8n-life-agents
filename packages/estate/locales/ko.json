@@ -340,5 +340,7 @@
   "estate.cron.review_register.off_toast": "유산 점검 꺼짐",
   "estate.cron.review_register.on_message": "유산 점검 켜짐: 중요한 것이 빠졌거나 등록부를 오래 확인하지 않으면 알려 드릴게요.",
   "estate.cron.review_register.off_message": "유산 점검 꺼짐: 비상 등록부의 빈 곳을 더 이상 먼저 알려 드리지 않을게요.",
-  "estate.cron.remind_case_tasks.label": "사망 또는 후견 상황의 기한"
+  "estate.cron.remind_case_tasks.label": "사망 또는 후견 상황의 기한",
+  "estate.wizard.cfg_general_bundesland.title": "독일의 어느 주에 살고 있나요?",
+  "estate.wizard.cfg_general_bundesland.help": "사건이 생겼을 때의 기한(예: 상속 포기)은 영업일로 계산해요. 어떤 날이 공휴일인지는 주마다 달라요."
 }

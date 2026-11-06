@@ -95,3 +95,17 @@ jobs:
           curl -fsSL "$url" -o /tmp/gitleaks.tar.gz
           tar -xzf /tmp/gitleaks.tar.gz -C /tmp gitleaks
           /tmp/gitleaks git . --redact --no-banner --config config/.gitleaks.toml
+
+  # Gratis-Tests des Einrichtungs-Wizards (provisioning/wizard): Sicherheit des Servers, Antwort-Datei, Durchlauf gegen
+  # Attrappen, Bruecke zur CLI-Quelle. Nur Node-Core + bash/jq/curl des Runners, kein Netz-Dienst, kein Substrat.
+  # Lokal dasselbe im Container: scripts/dev/wizard_test.ps1.
+  wizard:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false   # tests only read the tree
+
+      - name: Wizard tests (node --test)
+        run: node --test --test-concurrency=1 tests/wizard/*.test.js

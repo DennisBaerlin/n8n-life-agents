@@ -382,8 +382,12 @@ const UiNudge = {
         box.innerHTML = p.qr;   // eigener Code (qr.js), keine Nutzer- oder Fremddaten
         kids.push(h('div', { class: 'pair' }, box, h('div', null, helpNodes(p.help))));
       }
-      if (p.link) kids.push(h('p', null, h('a', { class: p.link.primary ? 'button primary' : null, href: p.link.href, target: '_blank', rel: 'noopener noreferrer', text: p.link.label })));
-      if (p.wait) kids.push(h('ul', { class: 'steps' }, h('li', { class: 'run' }, h('i', { 'aria-hidden': 'true' }), p.wait)));
+      // Knopf und Warte-Zeile in einer Reihe (umbrechend), damit ein Bild darunter Platz hat.
+      const wait = p.wait ? h('ul', { class: 'steps' }, h('li', { class: 'run' }, h('i', { 'aria-hidden': 'true' }), p.wait)) : null;
+      if (p.link) {
+        kids.push(h('div', { class: 'link-wait' },
+          h('a', { class: p.link.primary ? 'button primary' : null, href: p.link.href, target: '_blank', rel: 'noopener noreferrer', text: p.link.label }), wait));
+      } else if (wait) kids.push(wait);
     } else if (p.link && !takes.includes('link')) {
       kids.push(h('p', null, h('a', { href: p.link.href, target: '_blank', rel: 'noopener noreferrer', text: p.link.label })));
     }
@@ -405,6 +409,7 @@ const UiNudge = {
     if (p.kind === 'install' && p.failed) right.appendChild(h('button', { type: 'button', class: 'primary', id: 'nx', on: { click: () => post('/api/action', { name: 'retry' }) } }, T.retry));
     else if (p.next) right.appendChild(h('button', { type: 'button', class: 'primary', id: 'nx', on: { click: next } }, p.next));
     actions.appendChild(right);
+    if (!p.canBack && !right.children.length) actions.hidden = true;   // z. B. „Verbinden“: nichts zu tippen, Platz fürs Bild
     kids.push(actions);
     main.replaceChildren(...kids);
     const f = document.getElementById('in');

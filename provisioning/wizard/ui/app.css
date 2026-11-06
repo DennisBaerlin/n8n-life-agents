@@ -155,6 +155,10 @@ dl { margin: 0; }
 .rv button { grid-column: 2; grid-row: 1 / 3; align-self: center; }
 .group-title { font-weight: 600; margin: 14px 0 6px; }
 .pair { display: flex; gap: 22px; align-items: center; flex-wrap: wrap; margin: 8px 0 14px; }
+/* Verbinden: Knopf und „Warte auf …“ in einer Reihe; eine Knopfleiste ohne Knopf entfällt (app.js setzt hidden). */
+.link-wait { display: flex; flex-wrap: wrap; gap: 8px 18px; align-items: center; margin: 0 0 14px; }
+.link-wait .steps { margin: 0; }
+.actions[hidden] { display: none; }
 .qr { width: 196px; height: 196px; background: var(--bg); border: 1px solid var(--hairline); border-radius: var(--radius-sm); padding: 0; flex: none; }
 .qr svg { width: 100%; height: 100%; display: block; }
 .qr .qr-bg { fill: var(--bg); }

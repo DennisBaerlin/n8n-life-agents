@@ -278,9 +278,6 @@ function uiTexts() {
   }
   o.step_short = T('core.wizard.step.short');
   o.step_aria = T('core.wizard.step.aria');
-  // Beschriftungen der Bilder (ui/art/art.js): alle Schlüssel core.wizard.art.*, ohne Präfix, in der Sprache der Seiten.
-  o.art = {};
-  for (const k of Object.keys(CAT.de || {})) { const m = /^core\.wizard\.art\.(.+)$/.exec(k); if (m) o.art[m[1]] = T(k); }
   return o;
 }
 
@@ -470,7 +467,7 @@ function domainView(v) {
   // Name in der FritzBox steht; die Live-Prüfung unter dem Feld sagt je Eingabe, was sie weiß. Ein Satz statt des
   // CLI-Hilfetexts, damit Bild, Feld und Prüf-Zeile ins Fenster passen.
   const prefix = v && v.endsWith('.' + zone) ? v.slice(0, -zone.length - 1) : (v || '');
-  return { value: prefix, suffix: '.' + zone, placeholder: 'meinrechner', art: 'myfritz_name',
+  return { value: prefix, suffix: '.' + zone, placeholder: 'mein-rechner', art: 'myfritz_name', title: T('core.wizard.domain.name_title'),
     live: { recheck: T('core.wizard.domain.recheck') }, help: [{ p: T('core.wizard.domain.suffix') }] };
 }
 // liveCheck — Prüfung beim Tippen (nur MyFRITZ mit Zone): ändert nichts am Stand, meldet nur, ob die Adresse schon stimmt.

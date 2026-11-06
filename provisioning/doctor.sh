@@ -377,6 +377,13 @@ main() {
   # erwartet, Release): ohne Domain gibt es keinen oeffentlichen Eingang (dev/Substrat — die Tiers
   # feuern ueber die Harness-Webhooks, nicht ueber Telegram), also waere ein inaktiver Orchestrator
   # dort kein Fehler, sondern der Normalfall -> SKIP statt eines Fehl-ROT.
+  # CLI-Tunnel (lib/reach_cli.sh): steht der Tailscale-Weg selbst? Auch ohne Domain (die kommt erst mit der Anmeldung).
+  if ! rt_is_compose && [ "$(reach_cli_mode)" = tunnel ]; then
+    local _lvl _txt
+    while IFS=$'\t' read -r _lvl _txt; do
+      case "$_lvl" in pass) _pass "$_txt" ;; warn) _warn "$_txt" ;; red) _red "$_txt" ;; esac
+    done <<<"$(reach_cli_doctor "$N8N_PORT")"
+  fi
   if [ -n "$DOMAIN" ]; then
     # (1) Der EHRLICHE Kern-Check: ist der Orchestrator-Trigger aktiv? Nur dann hat n8n den Telegram-
     # Webhook registriert -> nur dann erreicht Telegram den Bot. `_apikey` wurde oben gelesen

@@ -237,7 +237,7 @@ parse_args() {
   esac
   # if-Form (NICHT &&-Kette): eine &&-Kette als letzte Zeile gibt bei falschem ersten Test
   # Exit 1 zurueck -> das wuerde der Rueckgabewert von parse_args -> set -e killt main still.
-  if [ "$PROFILE" = "release" ] && [ -z "$DOMAIN" ] && [ "$UNATTENDED" -eq 1 ]; then
+  if [ "$PROFILE" = "release" ] && [ -z "$DOMAIN" ] && [ "$UNATTENDED" -eq 1 ] && [ "${REACH_MODE:-}" != tunnel ]; then
     warn "--profile release ohne --domain: kein oeffentlicher Ingress (kein Reverse-Proxy-Caddyfile ausgegeben)."
   fi
 }
@@ -436,6 +436,13 @@ main() {
       exit 1
     fi
   fi
+  # Weg ins Internet der CLI: der Tunnel steht vor dem langen Teil, seine Adresse braucht prepare_n8n_env (WEBHOOK_URL);
+  # ein Wechsel weg vom Tunnel nimmt nur unsere Funnel-Eintraege zurueck (lib/reach_cli.sh).
+  if [ "$PROFILE" = "release" ] && ! rt_is_compose; then
+    ensure_jq_quiet || true
+    reach_tunnel_connect
+    reach_cli_leave_tunnel
+  fi
   # Erst NACH der Uebersicht: DOMAIN kann sich dort noch aendern (die abgeleiteten Werte liest erst prepare_n8n_env).
   derive_network_config
   # Pruefliste Nr. 10: hoert der Bot schon woanders zu? Nach den Fragen, VOR der ersten Aenderung (fragt bzw. bricht ab).
@@ -590,7 +597,7 @@ main() {
     owner_connect_guided
     # Nicht verbunden + Domain gesetzt -> Proxy-Anleitung mindestens einmal ausgeben (non-TTY wie bisher).
     if [ "$OWNER_CONNECT_RESULT" != "connected" ] && [ "$_INGRESS_HELP_SHOWN" -eq 0 ] && [ -n "$DOMAIN" ]; then
-      if rt_is_compose; then ui_section 'Erreichbarkeit'; else ui_section 'Ingress (Reverse Proxy — bring your own)'; fi
+      if rt_is_compose || [ "$(reach_cli_mode)" = tunnel ]; then ui_section 'Erreichbarkeit'; else ui_section 'Ingress (Reverse Proxy — bring your own)'; fi
       emit_ingress_help "$TEMPLATE_DIR" "$DOMAIN" "$N8N_PORT" "$WEBHOOK_URL"
     fi
   fi
@@ -705,7 +712,11 @@ display_install_recap() {
      ${OWNER_CONNECT_FIX:-danach verbinden mit: lifeagents household pair-owner}
 "; _n=$((_n + 1)) ;;
     *)
-      if [ -n "$DOMAIN" ]; then
+      if [ "$(reach_cli_mode)" = tunnel ] && ! rt_is_compose; then
+        _todo="${_todo}  ${_n}. Tunnel fertig einrichten: lifeagents reconfigure core → 'Unverändert neu anwenden'
+     (zeigt den Tailscale-Link; Stand: lifeagents proxy show).
+"; _n=$((_n + 1))
+      elif [ -n "$DOMAIN" ]; then
         _todo="${_todo}  ${_n}. Reverse Proxy einrichten (Vorlage oben bzw. ${LIFEAGENTS_DIR:-/etc/lifeagents}/reverse-proxy.caddyfile)
      und im Router Port 443 auf diesen Server weiterleiten.
 "; _n=$((_n + 1))
@@ -770,6 +781,7 @@ ${_off}}"
   # den Env-Dateien; ein Ausdruck landete nur in Scrollback/Screenshots (Secret nie unnoetig anzeigen).
   ui_box 'Installation abgeschlossen' <<EOF
 Installiert
+  Weg ins Internet: $(reach_cli_mode_label "$(reach_cli_mode)")
   Internet-Adresse: ${DOMAIN:-— (nur Heimnetz, kein Zugang von außen)}
   Funktionen      : Grundsystem${INSTALLED_PACKAGES:+, ${INSTALLED_PACKAGES}}
   Telegram        : $( [ "${OWNER_CONNECT_RESULT:-}" = "connected" ] && printf 'verbunden' || printf 'noch nicht verbunden (siehe „Noch zu tun")')

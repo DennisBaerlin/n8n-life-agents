@@ -52,11 +52,27 @@ _proxy_reach_state_text() {
   esac
 }
 
+# _proxy_tunnel_show — CLI mit Tunnel: kein eigener Proxy, Tailscale ist die Tuer (lib/reach_cli.sh). Nur lesen.
+_proxy_tunnel_show() {
+  local lvl txt lines=''
+  while IFS=$'\t' read -r lvl txt; do
+    [ -n "$txt" ] && lines="${lines}  $(case "$lvl" in pass) printf '✓' ;; warn) printf '!' ;; *) printf '✗' ;; esac) ${txt}
+"
+  done <<<"$(reach_cli_doctor "$N8N_PORT")"
+  ui_box 'Weg nach außen: Tunnel (Tailscale)' <<EOF
+${lines}Internet-Adresse: ${DOMAIN:-— (kommt mit der Tailscale-Anmeldung)}
+n8n-Editor:       nur auf diesem Rechner, http://127.0.0.1:${N8N_PORT}
+
+Weg ändern oder Anmeldung fertig machen: lifeagents reconfigure core
+EOF
+}
+
 proxy_cmd_show() {
   # root noetig: core.env ist 640 root:n8n — ohne Leserecht saehe show "kein Proxy" und laege falsch.
   [ "$(id -u)" -eq 0 ] || die "lifeagents proxy show braucht root (liest /etc/lifeagents/core.env)."
   if rt_is_compose; then _proxy_compose_show; return 0; fi
   _proxy_load
+  if [ "$(reach_cli_mode)" = tunnel ]; then _proxy_tunnel_show; return 0; fi
   local list nonloop bind fw
   list="$(normalize_trusted_proxies "${TRUSTED_PROXIES:-}" 2>/dev/null || printf 'UNGÜLTIG: %s' "$TRUSTED_PROXIES")"
   nonloop="$(_proxy_nonloop "$list")"
@@ -87,6 +103,7 @@ proxy_cmd_set() {
   local raw="${1:-}" list ip confirm
   [ "$(id -u)" -eq 0 ] || die "lifeagents proxy set braucht root (ändert Firewall + n8n-Einstellungen)."
   rt_is_compose && die "Im Docker-Verbund gibt es keinen eigenen Proxy: der Rand bringt Tunnel bzw. FritzBox-Weg mit (lifeagents proxy show)."
+  [ "$(reach_cli_mode)" = tunnel ] && die "Beim Tunnel (Tailscale) gibt es keinen eigenen Proxy — den Weg ändern: lifeagents reconfigure core."
   if [ -z "$raw" ] && ui_interactive; then
     raw="$(ui_input "IP-Adresse des Proxy-Rechners (127.0.0.1 = Proxy auf diesem Rechner): " 0)"
   fi

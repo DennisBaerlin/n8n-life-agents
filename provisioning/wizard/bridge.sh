@@ -42,9 +42,9 @@ PROFILE=release
 # runtime.sh (Docker-Wrapper) und reach.sh (Weg nach außen) lädt common.sh mit.
 
 # Host-Fragen, die der Wizard stellt (Reihenfolge = _INSTALL_ENV_KEYS). Nicht dabei: die n8n-Anmeldung (die Installation
-# erzeugt sie) und der Proxy-Ort (ergibt sich im Docker-Betrieb aus dem Rand, Paket 1/3). DOMAIN fragt der Wizard nur
-# beim FritzBox-Weg.
-_BR_SKIP_KEYS=" N8N_OWNER_EMAIL N8N_OWNER_PASSWORD TRUSTED_PROXIES "
+# erzeugt sie), der Proxy-Ort (ergibt sich im Docker-Betrieb aus dem Rand, Paket 1/3) und der Weg (REACH_MODE: eigene Seite
+# des Wizards, Werte tunnel|fritzbox). DOMAIN fragt der Wizard nur beim FritzBox-Weg.
+_BR_SKIP_KEYS=" REACH_MODE N8N_OWNER_EMAIL N8N_OWNER_PASSWORD TRUSTED_PROXIES "
 
 _br_bool() { if [ "${1:-0}" = 1 ]; then printf true; else printf false; fi; }
 

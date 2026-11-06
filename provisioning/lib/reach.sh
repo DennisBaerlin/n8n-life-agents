@@ -1,7 +1,8 @@
 # shellcheck disable=SC1111,SC2034  # SC1111: deutsche Anfuehrungszeichen in Nutzertexten gewollt; SC2034: REACH_* lesen die Aufrufer
 # reach.sh — Weg nach aussen im Docker-Verbund (LIFEAGENTS_RUNTIME=compose; Plan docker-installer-freunde *Der Rand*).
 # GESOURCT (kein Shebang, kein set -e). Docker nur ueber lib/runtime.sh (rt_edge_*, rt_stack_up,
-# rt_host_port_free). Die CLI-Installation (systemd) beruehrt diese Datei nicht.
+# rt_host_port_free). Die CLI-Installation (systemd) nutzt nur die reinen Funktionen reach_ts_eval, reach_public_ipv4 und
+# reach_dslite (lib/reach_cli.sh) — deren Verhalten bleibt fuer beide Betriebsarten gleich.
 #
 # Der Rand (`edge`, Caddy, compose.yml LA_CADDYFILE) hat drei Eingaenge: :8080 Editor und :8081 Wizard nur ueber
 # 127.0.0.1 des Rechners, :8088 = die EINE Liste oeffentlicher Pfade (common.sh LA_PUBLIC_PATHS, reach_edge_public_write,

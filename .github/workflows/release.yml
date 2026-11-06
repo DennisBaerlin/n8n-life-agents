@@ -33,6 +33,14 @@ jobs:
         with:
           persist-credentials: false   # git archive needs no git creds; gh uses GH_TOKEN env
 
+      # Docker-Verbund: compose.yml muss am Tag den Release-Pin des master tragen (scripts/build_master_image.ps1 vor dem Tag,
+      # Form in scripts/lib/release_images.ps1). Ohne Pin startete die App nicht, und ein Update im Verbund braeche ab.
+      - name: master-Image-Pin vorhanden
+        run: |
+          set -euo pipefail
+          grep -Eq '^  master:[[:space:]]+&img_master[[:space:]]+\$\{LA_MASTER_IMAGE:-[a-z0-9.:/_-]+@sha256:[0-9a-f]{64}\}[[:space:]]*$' provisioning/compose/compose.yml \
+            || { echo "::error::provisioning/compose/compose.yml traegt keinen Release-Pin des master-Images — vor dem Tag: .\\scripts\\build_master_image.ps1 -Version <tag>, Pin committen."; exit 1; }
+
       - name: Build tar.gz + SHA256-Sidecar
         env:
           TAG: ${{ github.ref_name }}
@@ -54,11 +62,11 @@ jobs:
           fi
 
           sha256sum "${TARBALL}" > "${TARBALL}.sha256"
-          # Pruefsummenliste fuer die Release-Signatur (Debian-SecureApt-Muster): Tarball + Bootstrap-Launcher, je
-          # "<sha256>  <asset-name>". Unterschrieben wird sie NICHT hier (ein Schluessel als Actions-Secret schuetzte nicht
-          # gegen ein gekapertes Konto), sondern lokal mit dem Offline-Schluessel: scripts/sign_release.ps1 <tag>.
+          # Bootstrap-Launcher und Compose-Datei des Docker-Verbunds als eigene Assets (byte-gleich mit dem Tag; die
+          # Start-App traegt dieselbe compose.yml eingebaut). SHA256SUMS entsteht erst im Job desktop-assets, wenn auch
+          # DMG und EXE vorliegen.
           cp provisioning/install.sh install.sh
-          sha256sum "${TARBALL}" install.sh > SHA256SUMS
+          cp provisioning/compose/compose.yml compose.yml
           echo "TARBALL=${TARBALL}" >> "$GITHUB_ENV"
           echo "--- Asset-Inhalt (Top-Ebene) ---"
           tar tzf "${TARBALL}" | sed "s|^n8n-life-agents-${TAG}/||" | cut -d/ -f1 | sort -u
@@ -112,11 +120,15 @@ jobs:
             exit 1
           fi
           # .sha256-Sidecar bleibt fuer Installationen ohne Schluesselbund (und aeltere CLIs); SHA256SUMS ist die signierte Liste.
-          gh release upload "${TAG}" "${TARBALL}" "${TARBALL}.sha256" install.sh SHA256SUMS --clobber
+          gh release upload "${TAG}" "${TARBALL}" "${TARBALL}.sha256" install.sh compose.yml --clobber
 
-  # Start-App (Plan docker-installer-freunde, Paket 6): DMG (macOS arm64, Ad-hoc-Signatur) und Windows-Setup. Gebaut im
-  # selben Lauf aus dem Tag-Commit, angehaengt an den Entwurf mit .sha256-Sidecar. Nicht in SHA256SUMS: deren Unterschrift
-  # (sign_release.ps1) deckt nur, was der Installer laedt; die eigene Pruefkette der App-Dateien ist offen (Paket 5).
+  # Start-App (Plan docker-installer-freunde, Paket 6): DMG (macOS arm64, Ad-hoc-Signatur) und Windows-Setup, gebaut im selben
+  # Lauf aus dem Tag-Commit (die eingebaute compose.yml prueft desktop-build.yml gegen die Datei des Tags). Eigene Pruefkette:
+  # DMG/EXE sind nicht reproduzierbar, darum bekommen sie einen Herkunftsnachweis von GitHub (attest-build-provenance:
+  # Workflow release.yml, dieses Tag), den sign_release.ps1 per `gh attestation verify` prueft, bevor die Liste
+  # unterschrieben wird. SHA256SUMS (Debian-SecureApt-Muster, je "<sha256>  <asset>") entsteht hier erst, wenn alle fuenf
+  # Dateien da sind; unterschrieben wird sie NICHT hier (ein Schluessel als Actions-Secret schuetzte nicht gegen ein
+  # gekapertes Konto), sondern lokal mit dem Offline-Schluessel: scripts/sign_release.ps1 <tag>.
   desktop:
     uses: ./.github/workflows/desktop-build.yml # zizmor: ignore[self-repository] actionlint 1.7.12 kennt "$/" noch nicht
 
@@ -124,7 +136,9 @@ jobs:
     needs: [build-release, desktop]
     runs-on: ubuntu-latest
     permissions:
-      contents: write   # gh release upload
+      contents: write       # gh release download/upload
+      id-token: write       # Herkunftsnachweis (Sigstore-Zertifikat)
+      attestations: write   # Herkunftsnachweis speichern
     steps:
       - name: App-Dateien holen
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
@@ -133,7 +147,14 @@ jobs:
           path: desktop
           merge-multiple: true
 
-      - name: An den Release haengen (idempotent, nie an ein unterschriebenes)
+      - name: Herkunftsnachweis fuer DMG und EXE
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: |
+            desktop/lifeagents.dmg
+            desktop/lifeagents-setup.exe
+
+      - name: An den Release haengen + SHA256SUMS (idempotent, nie an ein unterschriebenes)
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ github.ref_name }}
@@ -144,6 +165,14 @@ jobs:
             exit 1
           fi
           ls -l desktop
+          TARBALL="n8n-life-agents-${TAG}.tar.gz"
+          mkdir -p sums
+          gh release download "${TAG}" --repo "${GITHUB_REPOSITORY}" -D sums -p "${TARBALL}" -p install.sh -p compose.yml
+          cp desktop/lifeagents.dmg desktop/lifeagents-setup.exe sums/
+          # Reihenfolge = Erwartung in scripts/sign_release.ps1
+          ( cd sums && sha256sum "${TARBALL}" install.sh compose.yml lifeagents.dmg lifeagents-setup.exe ) > SHA256SUMS
+          cat SHA256SUMS
           gh release upload "${TAG}" --repo "${GITHUB_REPOSITORY}" --clobber \
             desktop/lifeagents.dmg desktop/lifeagents.dmg.sha256 \
-            desktop/lifeagents-setup.exe desktop/lifeagents-setup.exe.sha256
+            desktop/lifeagents-setup.exe desktop/lifeagents-setup.exe.sha256 \
+            SHA256SUMS

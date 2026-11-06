@@ -1,0 +1,84 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 360 520" width="360" height="520" role="img" data-scenes="4" data-scene-s="2.5">
+  <!-- Wege ins Internet: Quelle für die Wizard-Seite reach (hochkant neben den Antwortkarten, Bild wechselt mit der Auswahl) und
+       die Weg-Seiten der Anleitung. Varianten tunnel / fritzbox / proxy (data-variant), Generator scripts/build_ui_tokens.ps1,
+       Format scripts/lib/ui_art.ps1. Szenen: 1 Handy, 2 Telegram, 3 der gewählte Weg, 4 dein Rechner.
+       Kein Telegram- oder Hersteller-Logo: Internet = Wolke. Hochkant, weil der Wizard das Bild neben die Karten stellt. -->
+  <style>
+    text { font-family: var(--font); fill: var(--ink); }
+    .cap { font-size: 15px; text-anchor: middle; }
+    .lbl { font-size: 15px; }
+    .note { font-size: 13px; }
+    .ring { fill: none; stroke: var(--accent); stroke-width: 2.5; }
+    .dot { opacity: 0; }
+    @keyframes dot {
+      0% { opacity: 0; transform: translateY(0); }
+      2% { opacity: 1; transform: translateY(0); }
+      22%, 27% { opacity: 1; transform: translateY(68px); }
+      47%, 52% { opacity: 1; transform: translateY(188px); }
+      72%, 74% { opacity: 1; transform: translateY(294px); }
+      76%, 100% { opacity: 0; transform: translateY(294px); }
+    }
+    @media (prefers-reduced-motion: no-preference) { .dot { animation: dot 10s linear infinite; } }
+  </style>
+
+  <path d="M70 82 V346" stroke="var(--gray)" stroke-width="2" stroke-dasharray="6 6" fill="none"/>
+
+  <!-- Handy -->
+  <rect x="50" y="18" width="40" height="64" rx="8" fill="var(--bg)" stroke="var(--ink)" stroke-width="2.5"/>
+  <rect x="57" y="28" width="22" height="8" rx="4" fill="var(--accent-pale)"/>
+  <path d="M63 74 H77" stroke="var(--hairline)" stroke-width="3" stroke-linecap="round"/>
+  <text class="lbl" x="130" y="55" data-t="reach.phone" data-wrap="22" data-lh="18" data-max="2" data-valign="middle"/>
+
+  <!-- Telegram (Internet) -->
+  <path d="M47 170 a17 17 0 0 1 2 -34 a24 24 0 0 1 44 -8 a20 20 0 0 1 16 42 Z" fill="var(--bg-soft)" stroke="var(--ink)" stroke-width="2.5" stroke-linejoin="round" transform="translate(-8 0)"/>
+  <text class="lbl" x="130" y="155" data-t="reach.telegram" data-wrap="22" data-lh="18" data-max="2" data-valign="middle"/>
+
+  <!-- Weg: Tunnel durch den unveränderten Router -->
+  <g data-variant="tunnel">
+    <rect x="22" y="232" width="96" height="78" rx="10" fill="var(--bg)" stroke="var(--gray)" stroke-width="2" stroke-dasharray="5 4"/>
+    <rect x="58" y="222" width="24" height="98" rx="12" fill="var(--accent-pale)" stroke="var(--accent)" stroke-width="2.5"/>
+    <text class="lbl" x="130" y="264" data-t="reach.tunnel.label" data-wrap="22"/>
+    <text class="note" x="130" y="290" data-t="reach.router" data-wrap="26" data-lh="16" data-max="2"/>
+  </g>
+  <!-- Weg: Freigabe in der FritzBox, eine offene Tür nur für diesen Weg -->
+  <g data-variant="fritzbox">
+    <path d="M48 240 V226 M92 240 V226" stroke="var(--ink)" stroke-width="2.5" stroke-linecap="round"/>
+    <rect x="28" y="240" width="84" height="62" rx="10" fill="var(--bg-soft)" stroke="var(--ink)" stroke-width="2.5"/>
+    <rect x="58" y="252" width="24" height="50" rx="3" fill="var(--accent-pale)" stroke="var(--accent)" stroke-width="2.5"/>
+    <circle cx="40" cy="290" r="4" fill="var(--gray)"/>
+    <text class="lbl" x="130" y="275" data-t="reach.fritzbox.label" data-wrap="22" data-lh="18" data-max="2" data-valign="middle"/>
+  </g>
+  <!-- Weg: eigener Proxy (vorhandener Webserver) -->
+  <g data-variant="proxy">
+    <rect x="36" y="228" width="68" height="88" rx="8" fill="var(--bg-soft)" stroke="var(--ink)" stroke-width="2.5"/>
+    <path d="M46 250 H80 M46 272 H80 M46 294 H80" stroke="var(--gray)" stroke-width="3" stroke-linecap="round"/>
+    <circle cx="92" cy="250" r="3.5" fill="var(--gray)"/>
+    <circle cx="92" cy="272" r="3.5" fill="var(--gray)"/>
+    <circle cx="92" cy="294" r="3.5" fill="var(--gray)"/>
+    <text class="lbl" x="130" y="275" data-t="reach.proxy.label" data-wrap="22" data-lh="18" data-max="2" data-valign="middle"/>
+  </g>
+
+  <!-- Dein Rechner zu Hause -->
+  <path d="M26 384 L70 348 L114 384" fill="none" stroke="var(--ink)" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
+  <rect x="34" y="380" width="72" height="58" fill="var(--bg-soft)" stroke="var(--ink)" stroke-width="2.5"/>
+  <rect x="50" y="390" width="40" height="28" rx="4" fill="var(--bg)" stroke="var(--ink)" stroke-width="2"/>
+  <g data-mark="" transform="translate(60 394) scale(0.77)"/>
+  <path d="M70 418 V426 M61 428 H79" stroke="var(--ink)" stroke-width="2" stroke-linecap="round"/>
+  <text class="lbl" x="130" y="395" data-t="reach.home" data-wrap="22" data-lh="18" data-max="2" data-valign="middle"/>
+
+  <circle class="dot" cx="70" cy="82" r="7" fill="var(--accent)"/>
+
+  <!-- Hervorhebung der aktiven Station -->
+  <rect class="ring on1" x="8" y="8" width="344" height="84" rx="14"/>
+  <rect class="ring on2" x="8" y="112" width="344" height="80" rx="14"/>
+  <rect class="ring on3" x="8" y="212" width="344" height="130" rx="14"/>
+  <rect class="ring on4" x="8" y="340" width="344" height="104" rx="14"/>
+
+  <!-- Bildunterschrift je Szene (bis drei Zeilen) -->
+  <text class="cap on1" x="180" y="482" data-t="reach.s1" data-wrap="40" data-lh="19" data-max="3" data-valign="middle"/>
+  <text class="cap on2" x="180" y="482" data-t="reach.s2" data-wrap="40" data-lh="19" data-max="3" data-valign="middle"/>
+  <text class="cap on3" x="180" y="482" data-variant="tunnel" data-t="reach.tunnel.s3" data-wrap="40" data-lh="19" data-max="3" data-valign="middle"/>
+  <text class="cap on3" x="180" y="482" data-variant="fritzbox" data-t="reach.fritzbox.s3" data-wrap="40" data-lh="19" data-max="3" data-valign="middle"/>
+  <text class="cap on3" x="180" y="482" data-variant="proxy" data-t="reach.proxy.s3" data-wrap="40" data-lh="19" data-max="3" data-valign="middle"/>
+  <text class="cap on4" x="180" y="482" data-t="reach.s4" data-wrap="40" data-lh="19" data-max="3" data-valign="middle"/>
+</svg>

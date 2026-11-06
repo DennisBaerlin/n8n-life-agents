@@ -10,6 +10,7 @@
 #   C  Rand-Konfiguration: die oeffentlichen Pfade in compose.yml = die der CLI (templates/Caddyfile.tpl), Editor/Wizard
 #      aus dem eigenen Namensraum gesperrt, wan reicht nur an edge:8088.
 #   D  DS-Lite automatisch (reach_dslite): UPnP der FritzBox zuerst, dann MyFRITZ!; kein Wert in der Ausgabe.
+#   N  Tailscale-Rechnername: Wortliste, Pruefwerte der Zieh-Regel (auch fuer die Start-App), einmal ziehen, Bestand bleibt.
 # Die Attrappen ersetzen nur die Docker-/Telegram-Wrapper (rt_edge_*, rt_stack_up, rt_host_port_free, tg_api_curl);
 # alles andere ist der echte Lib-Code des Checkouts.
 #
@@ -120,7 +121,7 @@ unset REACH_MODE
 cfg TELEGRAM_BOT_TOKEN=123:fantasy
 out="$(js)"
 eq S_no_mode "none|unavailable|no_mode" "$(field "$out" mode)|$(field "$out" state)|$(field "$out" reason)"
-eq S_keys "dns_name,ipv4,ipv4_reason,key_days_left,key_expiry,mode,reason,state,url,webhook,webhook_error,webhook_error_at,webhook_pending" "$(printf '%s' "$out" | jq -r 'keys | join(",")')"
+eq S_keys "dns_name,ipv4,ipv4_reason,key_days_left,key_expiry,mode,reason,state,ts_hostname,url,webhook,webhook_error,webhook_error_at,webhook_pending" "$(printf '%s' "$out" | jq -r 'keys | join(",")')"
 
 cfg REACH_MODE=tunnel TELEGRAM_BOT_TOKEN=123:fantasy
 A_TS_UP=0; out="$(js)"
@@ -348,6 +349,42 @@ A_TG="$(tg_url 'https://meinproxy.deine-domain.myfritz.net/webhook/a/webhook')";
 eq W_no_error "0||null" "$(field "$out" webhook_pending)|$(field "$out" webhook_error)|$(field "$out" webhook_error_at)"
 A_TG=''; out="$(js)"
 eq W_unknown "unknown|null" "$(field "$out" webhook)|$(field "$out" webhook_pending)"
+
+# --- N: Tailscale-Rechnername aus zwei Woertern (lib/ts_name.sh, eine Liste lib/ts_names.json) ---------------------
+L="$ROOT/provisioning/lib/ts_names.json"
+jq -e '[.adjectives, .nouns] | all(length >= 40 and (unique | length) == length and all(test("^[a-z]+$")))' "$L" >/dev/null \
+  && pass N_list_shape || fail N_list_shape "Woerter nicht a-z, doppelt oder zu wenige"
+bad=0
+while IFS=$'\t' read -r s n; do [ "$(ts_name_from_seed "$s")" = "$n" ] || bad=$((bad + 1)); done \
+  < <(jq -r '.vectors[] | "\(.seed)\t\(.name)"' "$L")
+eq N_vectors 0 "$bad"
+words=" $(jq -r '[.adjectives[] as $a | .nouns[] | $a + "-" + .] | join(" ")' "$L") "
+bad=0; seen=''
+for _ in $(seq 1 60); do
+  n="$(ts_name_new)"
+  printf '%s' "$n" | grep -qE '^[a-z]+-[a-z]+$' && [ "${#n}" -le 63 ] && case "$words" in *" $n "*) true ;; *) false ;; esac \
+    || bad=$((bad + 1))
+  seen="$seen$n"$'\n'
+done
+eq N_random_valid 0 "$bad"
+[ "$(printf '%s' "$seen" | sort -u | wc -l)" -gt 5 ] && pass N_random_varies || fail N_random_varies "immer derselbe Name"
+E="$W/ts.env"; rm -f "$E"
+n1="$(ts_name_ensure "$E" LA_TS_HOSTNAME)"; n2="$(ts_name_ensure "$E" LA_TS_HOSTNAME)"
+eq N_ensure_stored "$n1" "$(read_env_value "$E" LA_TS_HOSTNAME)"
+eq N_ensure_stable "$n1" "$n2"
+printf 'LA_TS_HOSTNAME=calm-otter\n' > "$E"; eq N_keeps_existing calm-otter "$(ts_name_ensure "$E" LA_TS_HOSTNAME)"
+printf 'LA_TS_HOSTNAME=bot\n' > "$E";        eq N_keeps_bot      bot        "$(ts_name_ensure "$E" LA_TS_HOSTNAME)"
+printf 'LA_TS_HOSTNAME=Bad;name\n' > "$E"; ts_name_ensure "$E" LA_TS_HOSTNAME >/dev/null; rc=$?
+eq N_invalid_kept "1|LA_TS_HOSTNAME=Bad;name" "$rc|$(cat "$E")"
+eq N_valid_label_long 1 "$(ts_name_valid "$(head -c 64 /dev/zero | tr '\0' a)"; echo $?)"
+eq N_seed_garbage "1|" "$(ts_name_from_seed 'abc'; echo "$?|")"
+rm -f "$E"; out="$(TS_NAMES_FILE="$W/missing.json" ts_name_ensure "$E" LA_TS_HOSTNAME)"; rc=$?
+eq N_no_list "1||absent" "$rc|$out|$([ -e "$E" ] && echo present || echo absent)"
+# Der Wizard zeigt den Namen schon vor der Anmeldung: Feld ts_hostname aus der Umgebung des master, nur gueltig.
+cfg TELEGRAM_BOT_TOKEN=123:fantasy
+eq N_status_hostname calm-otter "$(LA_TS_HOSTNAME=calm-otter reach_status_json | jq -r .ts_hostname)"
+eq N_status_hostname_bad ''     "$(LA_TS_HOSTNAME='x;rm -rf /' reach_status_json | jq -r .ts_hostname)"
+eq N_status_hostname_unset ''   "$(unset LA_TS_HOSTNAME; reach_status_json | jq -r .ts_hostname)"
 
 printf 'compose_cases: %s Fehler\n' "$fails"
 exit "$fails"

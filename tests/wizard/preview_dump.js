@@ -13,6 +13,13 @@ async function shot(w, name, extra) {
   out.push(Object.assign({ name, page: p }, extra || {}));
   return p;
 }
+// Seite mit Bild (ui/art) zusätzlich in Englisch und Koreanisch festhalten (<name>-en, <name>-ko), danach wieder Deutsch.
+async function langShots(w, name, edit) {
+  for (const l of ['en', 'ko', 'de']) {
+    await post(w, '/api/lang', { lang: l });
+    if (l !== 'de') { const p = await shot(w, `${name}-${l}`); if (edit) edit(p); }
+  }
+}
 async function step(w, id, value, opt) {
   await shot(w, id.replace(/[^A-Za-z0-9_.-]/g, '_'));
   const r = await answer(w, id, value, opt);
@@ -41,7 +48,14 @@ async function step(w, id, value, opt) {
     await step(w, 'h:OWNER_LAST_NAME', 'Muster');
     await shot(w, 'h_OWNER_BIRTH_DATE-fehler', { error: (await answer(w, 'h:OWNER_BIRTH_DATE', '2999-01-01')).json.error, value: '2999-01-01' });
     await step(w, 'h:OWNER_BIRTH_DATE', '1980-01-01');
+    // Charakter-Seite auch in Englisch und Koreanisch, dort mit Butler gewählt (Standard hat keinen Rahmensatz).
+    await langShots(w, 'h_OWNER_PERSONA', (p) => { p.value = 'butler'; });
     await step(w, 'h:OWNER_PERSONA', 'neutral');
+    // Token-Seite mit aufgeklapptem „Noch kein Telegram?“ in allen drei Sprachen (die zugeklappte Fassung nimmt step() auf).
+    for (const l of ['en', 'ko', 'de']) {
+      await post(w, '/api/lang', { lang: l });
+      await shot(w, `h_TELEGRAM_BOT_TOKEN-offen${l === 'de' ? '' : '-' + l}`, { open: true });
+    }
     fs.writeFileSync(path.join(w.fake, 'tg_conflict'), 'beispiel.example');
     await step(w, 'h:TELEGRAM_BOT_TOKEN', '123456789:ABC-beispiel');
     await shot(w, 'tg_busy');
@@ -59,7 +73,9 @@ async function step(w, id, value, opt) {
     await step(w, 's:paperless:general.paperless_url', plUrl);
     await step(w, 'c:paperless:PAPERLESS_API_TOKEN', 'beispieltoken0123');
     await step(w, 'reach', 'fritzbox');
+    await langShots(w, 'fb_dslite');
     await step(w, 'fb_dslite', 'no');
+    await langShots(w, 'fb_guide');
     await step(w, 'fb_guide', null);
     await waitFor(async () => !(await state(w)).json.page.poll);   // MyFRITZ: nichts geprüft -> Endung fest, Name als Vorschlag
     await shot(w, 'h_DOMAIN-tippen', { value: 'meinrechner', live: (await post(w, '/api/check', { id: 'h:DOMAIN', value: 'meinrechner' })).json.live });
@@ -106,24 +122,31 @@ async function step(w, id, value, opt) {
     await waitFor(async () => !(await state(d)).json.page.poll);
     await shot(d, 'h_DOMAIN-gefunden');
   } finally { await d.stop(); }
-  // Tunnel-Anmeldung und belegte Ports als eigene Läufe (anderer Weg).
-  const t = await startWizard();
-  try {
-    await login(t);
-    for (const [id, v] of [['h:OWNER_LANGUAGE', 'de'], ['h:OWNER_FIRST_NAME', 'Erika'], ['h:OWNER_LAST_NAME', 'Muster'], ['h:OWNER_BIRTH_DATE', '1980-01-01'],
-      ['h:OWNER_PERSONA', 'neutral'], ['h:TELEGRAM_BOT_TOKEN', '1:beispiel'], ['h:ANTHROPIC_API_KEY', 'sk-ant-beispiel'], ['voice', 'no'], ['packages', []]]) await answer(t, id, v);
-    fs.writeFileSync(path.join(t.fake, 'ports'), 'busy');
-    await answer(t, 'reach', 'fritzbox');
-    await answer(t, 'fb_dslite', 'no');
-    await shot(t, 'fb_ports_busy');
-    await answer(t, 'fb_ports_busy', null);
-    await shot(t, 'review-tunnel');
-    await answer(t, 'review', null);
-    fs.writeFileSync(path.join(t.fake, 'reach'), 'needs_login');
-    await answer(t, 'confirm', null);
-    const p = await waitFor(async () => { const x = (await state(t)).json.page; return x.link ? x : null; });
-    out.push({ name: 'connect-tailscale', page: p });
-  } finally { await t.stop(); }
+  // Tunnel-Anmeldung, Freigabe-Seite und belegte Ports als eigene Läufe (anderer Weg); Tailscale-Seiten in allen drei
+  // Sprachen (Bilder mit Texten aus core.wizard.art.*), die Sprache der Einrichtung lässt sich nur bei den Fragen umstellen.
+  for (const lang of ['de', 'en', 'ko']) {
+    const sfx = lang === 'de' ? '' : `-${lang}`;
+    const t = await startWizard();
+    try {
+      await login(t);
+      for (const [id, v] of [['h:OWNER_LANGUAGE', lang], ['h:OWNER_FIRST_NAME', 'Erika'], ['h:OWNER_LAST_NAME', 'Muster'], ['h:OWNER_BIRTH_DATE', '1980-01-01'],
+        ['h:OWNER_PERSONA', 'neutral'], ['h:TELEGRAM_BOT_TOKEN', '1:beispiel'], ['h:ANTHROPIC_API_KEY', 'sk-ant-beispiel'], ['voice', 'no'], ['packages', []]]) await answer(t, id, v);
+      fs.writeFileSync(path.join(t.fake, 'ports'), 'busy');
+      await answer(t, 'reach', 'fritzbox');
+      await answer(t, 'fb_dslite', 'no');
+      if (!sfx) await shot(t, 'fb_ports_busy');
+      await answer(t, 'fb_ports_busy', null);
+      if (!sfx) await shot(t, 'review-tunnel');
+      await answer(t, 'review', null);
+      fs.writeFileSync(path.join(t.fake, 'reach'), 'needs_login');
+      await answer(t, 'confirm', null);
+      const p = await waitFor(async () => { const x = (await state(t)).json.page; return x.link ? x : null; });
+      out.push({ name: 'connect-tailscale' + sfx, page: p });
+      fs.writeFileSync(path.join(t.fake, 'reach'), JSON.stringify({ mode: 'tunnel', state: 'needs_funnel', url: 'https://login.tailscale.com/f/funnel?node=nBeispiel%3A1' }));
+      const f = await waitFor(async () => { const x = (await state(t)).json.page; return x.link && x.link.href.includes('/f/funnel') ? x : null; });
+      out.push({ name: 'connect-tailscale-funnel' + sfx, page: f });
+    } finally { await t.stop(); }
+  }
   // Paperless im Heimnetz: Suche läuft, mehrere gefunden (Auswahl), keiner gefunden. Attrappen auf den echten Suchports.
   const LOGIN = '<html><head><meta name="author" content="Paperless-ngx project and contributors"></head></html>';
   const mock = (port) => new Promise((r) => { const s = http.createServer((q, res) => { res.writeHead(200); res.end(LOGIN); }); s.listen(port, '0.0.0.0', () => r(s)); });

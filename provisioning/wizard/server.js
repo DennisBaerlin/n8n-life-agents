@@ -47,6 +47,11 @@ const PROVISION = process.env.LA_PROVISION || path.join(__dirname, '..', 'provis
 const LA_CLI = process.env.LA_CLI || 'lifeagents';
 // Ausführliche FritzBox-Anleitung für den Docker-Weg (docs/site fritzbox.md, Abschnitt start-app, Paket 8).
 const GUIDE_URL = process.env.WIZARD_GUIDE_URL || 'https://dennisbaerlin.github.io/n8n-life-agents/docs/fritzbox/#start-app';
+// Telegram-App für Leute ohne Telegram (Token-Seite). Offizielle Links von telegram.org/apps: /dl leitet je Gerät weiter
+// (iPhone → App Store, Android → Google-Play-Seite), daher ein QR-Code für beide Handys; für den Rechner die Seiten für Mac
+// und Windows. Der QR-Code entsteht lokal mit qr.js, zur Laufzeit wird nichts nachgeladen.
+const TG_APP = { phone: 'https://telegram.org/dl', mac: 'https://macos.telegram.org/', windows: 'https://desktop.telegram.org/' };
+const TG_APP_QR = qr.toSvg(qr.encode(TG_APP.phone));
 const POLL_MS = Math.max(50, parseInt(process.env.WIZARD_POLL_MS || '1000', 10));
 const TOKEN_TTL_MS = 10 * 60 * 1000;
 const UI_DIR = path.join(__dirname, 'ui');
@@ -191,6 +196,11 @@ function cursor() {
 // Platzhalter): <pkg>.wizard.* (eigene Texte für das Fenster der App, „Rechner“ statt „Server“, ohne Terminal-Befehle),
 // <pkg>.package.name/summary, core.persona.name.*. Fehlt ein Key, gilt Deutsch, dann der CLI-Text der Frage.
 const PKG_DIR = process.env.WIZARD_PKG_DIR || path.join(__dirname, '..', '..', 'packages');
+// Sticker des Charakters fürs Handy-Bild: genau die Datei, die der Bot in Telegram schickt (install_llm_gateway kopiert sie
+// aus demselben Ordner), ohne Kopie im Wizard. Abgesichert von tests/wizard/durchlauf.test.js (Auslieferung byte-gleich).
+function stickerFile(code) {
+  return /^[a-z_]{1,32}$/.test(String(code)) ? path.join(PKG_DIR, 'core', 'build', 'stickers', `${code}_hallo.webp`) : null;
+}
 const CAT = {};
 function loadCatalog() {
   let pkgs = [];
@@ -238,18 +248,17 @@ function pkgName(p) { return has(`${p.id}.package.name`) ? T(`${p.id}.package.na
 function pkgSummary(p) { return has(`${p.id}.package.summary`) ? T(`${p.id}.package.summary`) : p.summary; }
 // Auswahl einer Frage in der Sprache der Seite: Sprachen bleiben in Eigenschreibweise (Deutsch / English / 한국어), damit
 //   man nach einem Verklicken zurückfindet; Charaktere aus core.persona.name.<code>. Für das Handy-Bild (di9, Owner-Wunsch)
-//   je Charakter sein Zeichen (erstes Wort des Namens) und eine echte Sprechweise aus dem Katalog: frame = {sprache: Satz}
-//   aus core.persona.frame.<code>.1, nur wo es den Satz in genau dieser Sprache gibt (Standard hat keinen).
+//   je Charakter eine echte Sprechweise aus dem Katalog: frame = {sprache: Satz} aus core.persona.frame.<code>.1, nur wo es
+//   den Satz in genau dieser Sprache gibt (Standard hat keinen), und den Telegram-Sticker (sticker = Adresse, s. stickerFile).
 function choicesOf(q) {
   if (!q.choices) return null;
   if (q.key === 'OWNER_PERSONA') {
     return q.choices.map((c) => {
       const name = has(`core.persona.name.${c.value}`) ? T(`core.persona.name.${c.value}`) : c.label;
-      const de = (CAT.de || {})[`core.persona.name.${c.value}`] || '';
       const frame = {};
       for (const l of Object.keys(CAT)) { const s = CAT[l][`core.persona.frame.${c.value}.1`]; if (s) frame[l] = s; }
-      const tok = de.split(' ')[0] || '';
-      return { value: c.value, label: name, emoji: /\p{L}/u.test(tok) ? '' : tok, frame };
+      const f = stickerFile(c.value);
+      return { value: c.value, label: name, frame, sticker: f && fs.existsSync(f) ? `/sticker/${c.value}.webp` : '' };
     });
   }
   return q.choices;
@@ -273,6 +282,9 @@ function uiTexts() {
   }
   o.step_short = T('core.wizard.step.short');
   o.step_aria = T('core.wizard.step.aria');
+  // Texte der Bilder und geführten Animationen (ui/art/art.js liest t.art[<Name>]): alle core.wizard.art.*
+  o.art = {};
+  for (const k of Object.keys(CAT.de || {})) { const m = /^core\.wizard\.art\.(.+)$/.exec(k); if (m) o.art[m[1]] = T(k); }
   return o;
 }
 
@@ -324,6 +336,12 @@ function pageFor(id) {
     }
     if (q.setting === 'general.paperless_url' && v === undefined) Object.assign(page, paperlessSearchView());
     if (key === 'OWNER_PERSONA' && !v) page.value = 'neutral';
+    // Schritt 1 der Anleitung setzt Telegram voraus: zugeklappter Block mit QR-Code fürs Handy und Links für den Rechner.
+    if (key === 'TELEGRAM_BOT_TOKEN') {
+      page.getApp = { summary: T('core.wizard.page.get_tg_summary'), scan: T('core.wizard.page.get_tg_scan'), qr: TG_APP_QR,
+        computer: T('core.wizard.page.get_tg_computer'),
+        links: [{ href: TG_APP.mac, label: T('core.wizard.page.get_tg_mac') }, { href: TG_APP.windows, label: T('core.wizard.page.get_tg_windows') }] };
+    }
     // Google: „Nein“ auf der Seite davor ist das Überspringen; Sprache und Charakter haben eine Vorauswahl.
     if (NO_SKIP.includes(key)) page.optional = false;
     if (q.kind === 'date') page.placeholder = T('core.wizard.ui.date_placeholder');
@@ -888,7 +906,8 @@ function headers(extra) {
   }, extra || {});
 }
 function send(res, code, body, type, extra) {
-  const b = Buffer.from(typeof body === 'string' ? body : JSON.stringify(body));
+  // Datei-Inhalt (Buffer) unverändert; JSON.stringify machte daraus {"type":"Buffer","data":[…]}
+  const b = Buffer.isBuffer(body) ? body : Buffer.from(typeof body === 'string' ? body : JSON.stringify(body));
   res.writeHead(code, headers(Object.assign({ 'Content-Type': type || 'application/json; charset=utf-8', 'Content-Length': b.length }, extra)));
   res.end(b);
 }
@@ -950,6 +969,12 @@ async function handle(req, res) {
     let body;
     try { body = fs.readFileSync(path.join(UI_DIR, f)); } catch (_) { return deny(res, 404); }   // z. B. noch keine Bilder (art/)
     return send(res, 200, body, type);
+  }
+  const stk = req.method === 'GET' && /^\/sticker\/([a-z_]{1,32})\.webp$/.exec(url.pathname);
+  if (stk) {
+    let body;
+    try { body = fs.readFileSync(stickerFile(stk[1])); } catch (_) { return deny(res, 404); }
+    return send(res, 200, body, 'image/webp');
   }
   if (req.method === 'GET' && url.pathname === '/') {
     if (!hasSession(req)) return send(res, 403, page403(), 'text/html; charset=utf-8');

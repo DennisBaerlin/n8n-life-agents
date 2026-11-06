@@ -159,6 +159,17 @@ dl { margin: 0; }
 .qr svg { width: 100%; height: 100%; display: block; }
 .qr .qr-bg { fill: var(--bg); }
 .qr .qr-fg { fill: var(--ink); }
+/* „Noch kein Telegram?“ (Token-Seite): eine Zeile, aufgeklappt QR-Code fürs Handy + Links für den Rechner. */
+.get-app { margin: -4px 0 14px; }
+.get-app summary { cursor: pointer; color: var(--accent); font-weight: 500; width: fit-content; }
+.get-app summary:hover { color: var(--accent-hover); }
+.get-app summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 2px; }
+.get-app .pair { gap: 14px 18px; margin: 10px 0 0; }
+@media (min-width: 601px) { .get-app .pair { flex-wrap: nowrap; } }   /* schmal (wie die Schritt-Leiste): Text unter den Code */
+.get-app .pair > div { min-width: 0; }
+.get-app .pair p:last-child { margin-bottom: 0; }
+.get-app .pair a { white-space: nowrap; }
+.qr.qr-small { width: 128px; height: 128px; }
 .report { font: 13px/1.5 ui-monospace, Consolas, monospace; background: var(--bg-soft); border-radius: var(--radius-sm); padding: 10px 12px; white-space: pre-wrap; overflow-wrap: anywhere; }
 .small { font-size: 14px; color: var(--gray); }
 @media (max-width: 520px) { .layout { padding: 24px 20px 32px; } }

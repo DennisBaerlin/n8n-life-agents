@@ -113,7 +113,7 @@ test('Durchlauf FritzBox mit drei Modulen: Antwort-Datei, Installation, Pairing,
     // Kennung der FritzBox von der App, kein Gerätename löst auf: .<zone> steht fest, nur der Name vorne fehlt.
     const dom = await waitFor(async () => { const x = await page(w); return x.poll ? null : x; });
     assert.equal(dom.suffix, '.deine-domain.myfritz.net');
-    assert.match(dom.help[0].p, /Gerätenamen/, 'ein Satz statt des langen Hilfetexts, Platz fürs Bild');
+    assert.match(dom.help[0].p, /Namen vorne/, 'ein Satz statt des langen Hilfetexts, Platz fürs Bild');
     assert.ok(!dom.note);
     const box = await answer(w, 'h:DOMAIN', 'deine-domain.myfritz.net');
     assert.equal(box.status, 422);
@@ -251,6 +251,7 @@ test('Durchlauf Tunnel: belegter Bot, Fehlschlag + neuer Versuch, Neustart, Tail
     assert.equal(lg.title, 'Melde dich bei Tailscale an');
     assert.equal(lg.link.href, 'https://login.tailscale.com/a/beispiel123');
     assert.equal(lg.art, 'ts_login', 'Bild zum Zustand (ui/art/art.js)');
+    assert.deepEqual(lg.ts, { host: 'brave-otter' }, 'nur der gewürfelte Tailscale-Name fürs Bild');
     fs.writeFileSync(path.join(w.fake, 'reach'), 'needs_funnel');
     const fu = await waitFor(async () => { const p = await page(w); return p.title === 'Erlaube deinem Rechner den Empfang' ? p : null; });
     assert.equal(fu.link, null, 'fremde Adresse wird nie als Knopf gezeigt');
@@ -260,9 +261,11 @@ test('Durchlauf Tunnel: belegter Bot, Fehlschlag + neuer Versuch, Neustart, Tail
     const ma = await waitFor(async () => { const p = await page(w); return p.title === 'Gib diesen Rechner in Tailscale frei' ? p : null; });
     assert.equal(ma.link.href, 'https://login.tailscale.com/admin/machines');
     assert.equal(ma.art, 'ts_machine');
-    fs.writeFileSync(path.join(w.fake, 'reach'), JSON.stringify({ mode: 'tunnel', state: 'needs_funnel', url: 'https://login.tailscale.com/f/funnel?node=nBeispiel%3A1' }));
+    assert.equal(ma.ts, null, 'ohne geprüften Namen kein Wert im Bild');
+    fs.writeFileSync(path.join(w.fake, 'reach'), JSON.stringify({ mode: 'tunnel', state: 'needs_funnel', url: 'https://login.tailscale.com/f/funnel?node=nBeispiel%3A1', ts_hostname: 'Kims-MacBook.local' }));
     const fn = await waitFor(async () => { const p = await page(w); return p.link && p.link.href.includes('/f/funnel') ? p : null; });
     assert.equal(fn.link.label, 'Freigabe-Seite öffnen');
+    assert.equal(fn.ts, null, 'ein Wert, der kein gewürfelter Name sein kann, kommt nie ins Bild');
     // Tunnel steht, Telegram zeigt noch nicht darauf: der Wizard fährt einmal reach_ctl.sh activate, danach Pairing.
     fs.writeFileSync(path.join(w.fake, 'reach'), JSON.stringify({ mode: 'tunnel', state: 'pending_activation', url: '' }));
     await waitFor(async () => !!(await page(w)).qr);
@@ -329,6 +332,7 @@ test('DS-Lite automatisch: „keine eigene IPv4“ = Bestätigung, „eigene“ 
     assert.equal(q.id, 'fb_dslite');
     assert.equal(q.kind, 'choice');
     assert.equal(q.art, 'dslite');
+    assert.equal(q.row, true, 'zwei Antworten nebeneinander');
     assert.deepEqual(q.options.map((o) => [o.value, !!o.desc]), [['no', false], ['yes', true]]);
     assert.equal(q.value, '', 'keine Vorauswahl aus der früheren Erkennung');
   } finally { await w.stop(); }
@@ -356,6 +360,7 @@ test('MyFRITZ: falsche IP, umbenannt oder Freigabe fehlt -> nichts eingetragen, 
     assert.equal(dom.suffix, `.${Z}`);
     assert.ok(!dom.suggestions, 'ein ungeprüfter Name wird nie vorgeschlagen');
     assert.equal(dom.art, 'myfritz_name', 'stattdessen das Bild zum Nachsehen in der FritzBox');
+    assert.equal(dom.fbHost, 'kims-pc', 'Name aus der Geräteliste der FritzBox, nur fürs Bild');
     assert.ok(dom.live && dom.live.recheck);
     const wrong = await live(w, 'kims-pc');
     assert.equal(wrong.state, 'wrong_ip');

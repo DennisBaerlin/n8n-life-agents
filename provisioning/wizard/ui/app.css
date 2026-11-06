@@ -137,6 +137,9 @@ button.choice.sel { border-color: var(--accent-mid); background: var(--accent-pa
 .choice.sel small { color: var(--ink); }
 .tag { display: inline-block; font-size: 12.5px; font-weight: 600; background: var(--accent-pale); border: 1px solid var(--accent-mid); border-radius: var(--radius-pill); padding: 0 9px; margin-left: 6px; }
 .choices.long { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 0 10px; }
+/* Zwei kurze Antworten nebeneinander (page.row, z. B. DS-Lite), damit das Bild darüber Platz hat; schmal untereinander. */
+.choices.row { display: grid; grid-template-columns: 1fr 1fr; gap: 0 10px; align-items: stretch; }
+@media (max-width: 600px) { .choices.row { grid-template-columns: 1fr; } }
 .steps { list-style: none; padding: 0; margin: 6px 0; }
 main .steps li { display: flex; gap: 12px; align-items: center; padding: 6px 0; margin: 0; color: var(--gray); }
 .steps li i { font-style: normal; width: 22px; height: 22px; border-radius: 50%; border: 2px solid var(--hairline); display: inline-block; flex: none; text-align: center; line-height: 18px; font-size: 13px; }
@@ -186,9 +189,11 @@ dl { margin: 0; }
 .suggest { margin-top: 10px; }
 .suggest .choice { padding: 10px 14px; }
 /* MyFRITZ: Prüf-Zeile direkt unter dem Feld mit „Erneut prüfen“. */
-.live-row { display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: center; margin-top: 8px; }
+.live-row { display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: flex-start; margin-top: 8px; }
+.live-row .live { flex: 1 1 260px; }
+.live-row .link { margin-left: auto; }
 .live:empty { display: none; }
-.live.note { margin: 8px 0 0; }
+.live.note, .live.check { margin: 0; }
 
 /* Knopfleiste immer sichtbar (App-Fenster 760 × 640): unten angeheftet wie in der Start-App. */
 .actions { position: sticky; bottom: 0; background: var(--bg); padding: 12px 0 14px; margin-bottom: -14px; border-top: 1px solid var(--hairline); z-index: 2; }

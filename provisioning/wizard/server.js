@@ -286,7 +286,7 @@ const NO_SKIP = ['DOMAIN', 'GOOGLE_API_KEY', 'OWNER_LANGUAGE', 'OWNER_PERSONA'];
 const PAPERLESS_REASONS = ['localhost', 'invalid', 'unreachable', 'not_paperless', 'token_rejected', 'too_old'];
 
 function optionsFor(id) {
-  // Beschreibung nur, wenn der Katalog eine hat (z. B. „Nein, dort steht kein DS-Lite“ braucht keine).
+  // Beschreibung nur, wenn der Katalog eine hat (z. B. das DS-Lite-„Nein“ braucht keine).
   const o = (value, key, tag) => ({ value, label: T(`core.wizard.opt.${key}`), desc: has(`core.wizard.opt.${key}_desc`) ? T(`core.wizard.opt.${key}_desc`) : null,
     tag: tag ? T('core.wizard.ui.recommended') : null });
   switch (id) {
@@ -364,13 +364,13 @@ function pageFor(id) {
       }
       return Object.assign(base, { kind: 'choice', title: T('core.wizard.page.dslite_title'), help: P1('core.wizard.page.dslite_help'), art: 'dslite',
       link: { href: GUIDE_URL, label: T('core.wizard.page.guide_pictures') },
-      options: optionsFor(id), value: P.A.__dslite || '', next });
+      options: optionsFor(id), value: P.A.__dslite || '', row: true, next });
     case 'fb_ports_busy': return Object.assign(base, { kind: 'info', title: T('core.wizard.page.ports_busy_title'),
       help: [{ p: T('core.wizard.page.ports_busy_help') }, { p: T('core.wizard.page.ports_busy_help2') }],
       next: T('core.wizard.page.ports_busy_next') });
     case 'fb_guide': return Object.assign(base, { kind: 'info', title: T('core.wizard.page.fb_guide_title'), help: P1('core.wizard.page.fb_guide_help'),
       note: { kind: 'warn', text: T('core.wizard.page.fb_guide_note') },
-      link: { href: GUIDE_URL, label: T('core.wizard.page.fb_guide_link') }, next: T('core.wizard.page.fb_guide_next') });
+      link: { href: GUIDE_URL, label: T('core.wizard.page.fb_guide_link') }, fbHost: fbHostName(), next: T('core.wizard.page.fb_guide_next') });
     case 'review': return Object.assign(base, { kind: 'review', title: T('core.wizard.page.review_title'), rows: reviewRows(),
       next: T('core.wizard.page.review_next') });
     case 'confirm': return Object.assign(base, { kind: 'confirm', title: T('core.wizard.page.confirm_title'), help: P1('core.wizard.page.confirm_help'),
@@ -450,6 +450,10 @@ async function publicIp() {
 // MyFRITZ-Adresse (Seite h:DOMAIN, flow.domainCheck): vorgeschlagen wird nur eine GEPRÜFTE volle Adresse (löst öffentlich auf
 //   und zeigt auf diesen Anschluss), mit Hinweis. Sonst steht .<zone> fest hinter dem Feld, der Name der FritzBox ist ein
 //   anklickbarer Vorschlag (nicht eingetragen) und die Seite prüft beim Tippen live (POST /api/check). Ohne Zone wie bisher.
+// fbHostName — Name dieses Rechners in der Geräteliste der FritzBox (LA_HOST_NAME_FRITZ, von der Start-App aus der Antwort
+//   der Box selbst), streng als Gerätename geprüft, sonst null. Nur fürs Bild (Geräteliste), nie als MyFRITZ-Adresse: die ist
+//   damit nicht geprüft.
+function fbHostName() { return flow.myfritzCandidates(hints().LA_HOST_NAME_FRITZ, '')[0] || null; }
 function domainView(v) {
   const zone = myfritzZone();
   if (!zone) return {};
@@ -470,7 +474,7 @@ function domainView(v) {
   // Name in der FritzBox steht; die Live-Prüfung unter dem Feld sagt je Eingabe, was sie weiß. Ein Satz statt des
   // CLI-Hilfetexts, damit Bild, Feld und Prüf-Zeile ins Fenster passen.
   const prefix = v && v.endsWith('.' + zone) ? v.slice(0, -zone.length - 1) : (v || '');
-  return { value: prefix, suffix: '.' + zone, placeholder: 'mein-rechner', art: 'myfritz_name', title: T('core.wizard.domain.name_title'),
+  return { value: prefix, suffix: '.' + zone, placeholder: 'mein-rechner', art: 'myfritz_name', title: T('core.wizard.domain.name_title'), fbHost: fbHostName(),
     live: { recheck: T('core.wizard.domain.recheck') }, help: [{ p: T('core.wizard.domain.suffix') }] };
 }
 // liveCheck — Prüfung beim Tippen (nur MyFRITZ mit Zone): ändert nichts am Stand, meldet nur, ob die Adresse schon stimmt.
@@ -590,7 +594,7 @@ function connectView() {
     // Geräte-Freigabe: Paket 3 liefert keinen Link, die Geräteliste im Konto hat eine feste Adresse.
     const href = c.tunnel.url || (c.tunnel.state === 'needs_machine_auth' ? 'https://login.tailscale.com/admin/machines' : '');
     return Object.assign(v, { title: t('title'), help: [{ p: t('help') }], note: R.note ? { kind: 'warn', text: t('note') } : null,
-      link: href ? { href, label: t('link'), primary: true } : null, art: R.art || null,
+      link: href ? { href, label: t('link'), primary: true } : null, art: R.art || null, ts: R.art && c.tunnel.host ? { host: c.tunnel.host } : null,
       wait: R.wait ? (href || !R.link ? t('wait') : T('core.wizard.reach.starting_wait')) : null,
       poll: !R.retry, action: R.retry ? 'connect_retry' : null, next: R.retry ? C('check_again') : null });
   }
@@ -847,7 +851,9 @@ async function connectTick(force) {
       const r = await bridge(['reach-status'], { timeoutMs: 20000 });
       const state = r && REACH_STATES.includes(r.state) ? r.state : 'unavailable';
       c.tunnel = { state, url: r && TS_URL.test(r.url || '') ? r.url : '',
-        days: r && Number.isInteger(r.key_days_left) ? r.key_days_left : null };
+        days: r && Number.isInteger(r.key_days_left) ? r.key_days_left : null,
+        // Gewürfelter Tailscale-Name (Paket 3 ts_hostname, nie der Rechnername) nur fürs Bild auf „Verbinden“, streng geprüft.
+        host: r && /^[a-z0-9-]{1,63}$/.test(r.ts_hostname || '') ? r.ts_hostname : '' };
       // Tunnel steht, Telegram zeigt noch nicht darauf: einmal den Installer nachfahren lassen (reach_ctl.sh activate).
       if (state === 'pending_activation' && !c.activated) { startActivation(c); save(); return; }
       if (state !== 'ready' && state !== 'unavailable') { save(); return; }

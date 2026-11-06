@@ -239,7 +239,22 @@ A_DNS4=''; A_DNS6=''; A_ECHO=''
 _reach_dns4() { printf 'dns4 %s\n' "$1" >> "$LOG"; printf '%s' "$A_DNS4"; }
 _reach_dns6() { printf 'dns6 %s\n' "$1" >> "$LOG"; printf '%s' "$A_DNS6"; }
 _reach_echo4() { printf 'echo\n' >> "$LOG"; printf '%s' "$A_ECHO"; }
-v4() { reach_ipv4_eval; printf '%s|%s' "$REACH_IPV4" "$REACH_IPV4_REASON"; }
+v4() { rm -f "$REACH_RUN_DIR/public-ipv4"; reach_ipv4_eval; printf '%s|%s' "$REACH_IPV4" "$REACH_IPV4_REASON"; }
+# reach_public_ipv4: eine Stelle fuer den Echo-Dienst (DS-Lite-Pruefung + Adress-Vorschlag im Wizard).
+pub() { rm -f "$REACH_RUN_DIR/public-ipv4"; A_ECHO="$1"; reach_public_ipv4; }
+eq U_valid       203.0.113.7 "$(pub 203.0.113.7)"
+eq U_trailing_nl 203.0.113.7 "$(pub "$(printf '203.0.113.7\n')")"
+eq U_empty       ''          "$(pub '')"
+eq U_garbage     ''          "$(pub '<html>')"
+eq U_bad_octet   ''          "$(pub 999.1.1.1)"
+eq U_shared      ''          "$(pub 100.72.1.2)"
+eq U_private     ''          "$(pub 192.168.178.20)"
+rm -f "$REACH_RUN_DIR/public-ipv4"; A_ECHO=203.0.113.7; reach_public_ipv4 >/dev/null; A_ECHO=198.51.100.9; : > "$LOG"
+eq U_cached 203.0.113.7 "$(reach_public_ipv4)"
+grep -q '^echo$' "$LOG" && fail U_cached_no_echo "Echo trotz Zwischenspeicher" || pass U_cached_no_echo
+rm -f "$REACH_RUN_DIR/public-ipv4"; A_ECHO=''; reach_public_ipv4 >/dev/null; A_ECHO=203.0.113.7
+eq U_failure_not_cached 203.0.113.7 "$(reach_public_ipv4)"
+rm -f "$REACH_RUN_DIR/public-ipv4"; A_ECHO=''
 # Zone nur aus der fluechtigen Hinweis-Datei der Start-App, nie aus der Umgebung (docker inspect) oder aus DOMAIN.
 export REACH_HINTS_FILE="$W/hints.env"
 hint() { rm -f "$REACH_HINTS_FILE"; [ -n "$1" ] && printf '%s\n' "$@" > "$REACH_HINTS_FILE"; return 0; }
@@ -269,7 +284,7 @@ eq I_hint_symlink_ignored "unknown|no_zone" "$(v4)"
 hint 'LA_MYFRITZ_ZONE=deine-domain.myfritz.net' "X=$(head -c 5000 /dev/zero | tr '\0' a)"
 eq I_hint_too_big_ignored "unknown|no_zone" "$(v4)"
 # Status: vor der Wahl und beim FritzBox-Weg mit Ergebnis, zwischengespeichert (kein Echo je Abfrage).
-hint 'LA_MYFRITZ_ZONE=deine-domain.myfritz.net'; rm -f "$REACH_RUN_DIR/ipv4"
+hint 'LA_MYFRITZ_ZONE=deine-domain.myfritz.net'; rm -f "$REACH_RUN_DIR/ipv4" "$REACH_RUN_DIR/public-ipv4"
 cfg TELEGRAM_BOT_TOKEN=123:fantasy; A_DNS4='203.0.113.7'; A_ECHO='203.0.113.7'; : > "$LOG"
 out="$(js)"; eq I_status_none_mode "own|matches" "$(field "$out" ipv4)|$(field "$out" ipv4_reason)"
 : > "$LOG"; js >/dev/null

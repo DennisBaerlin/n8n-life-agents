@@ -183,6 +183,22 @@ reach_myfritz_zone() {
 _reach_dns4() { dns_first_addr "$1" 4; }
 _reach_dns6() { dns_first_addr "$1" 6; }
 _reach_echo4() { curl -4 -fsS --max-time 4 "$REACH_IPV4_ECHO" 2>/dev/null | head -c 64 || true; }
+
+# reach_public_ipv4 -> die oeffentliche IPv4, unter der dieser Rechner nach aussen sichtbar ist, oder leer (nicht
+#   pruefbar, kein gueltiger Wert, oder die Adresse ist selbst geteilt/privat). rc 0. DIE eine Stelle fuer den Echo-Dienst
+#   (DS-Lite-Pruefung hier, Adress-Vorschlag im Wizard): ein Erfolg gilt 10 Min (Zwischenspeicher), ein Fehlschlag nicht.
+reach_public_ipv4() {
+  local f="$REACH_RUN_DIR/public-ipv4" ip a b c d
+  if [ -s "$f" ] && [ $(( $(date +%s) - $(stat -c %Y "$f" 2>/dev/null || echo 0) )) -lt 600 ]; then cat "$f"; return 0; fi
+  ip="$(_reach_echo4 | tr -d '[:space:]')"
+  printf '%s' "$ip" | grep -qE '^([0-9]{1,3}\.){3}[0-9]{1,3}$' || return 0
+  IFS=. read -r a b c d <<<"$ip"
+  [ "$a" -le 255 ] && [ "$b" -le 255 ] && [ "$c" -le 255 ] && [ "$d" -le 255 ] || return 0
+  _reach_ipv4_shared "$ip" && return 0
+  ( umask 077; mkdir -p "$REACH_RUN_DIR" && printf '%s' "$ip" > "$f" ) 2>/dev/null || true
+  printf '%s' "$ip"
+}
+
 reach_ipv4_eval() {
   local z a6 a4 me
   REACH_IPV4=unknown; REACH_IPV4_REASON=''
@@ -196,8 +212,8 @@ reach_ipv4_eval() {
   fi
   printf '%s' "$a4" | grep -qE '^([0-9]{1,3}\.){3}[0-9]{1,3}$' || { REACH_IPV4_REASON=dns_failed; return 0; }
   if _reach_ipv4_shared "$a4"; then REACH_IPV4=none; REACH_IPV4_REASON=shared_address; return 0; fi
-  me="$(_reach_echo4)"
-  printf '%s' "$me" | grep -qE '^([0-9]{1,3}\.){3}[0-9]{1,3}$' || { REACH_IPV4_REASON=echo_failed; return 0; }
+  me="$(reach_public_ipv4)"
+  [ -n "$me" ] || { REACH_IPV4_REASON=echo_failed; return 0; }
   if [ "$me" = "$a4" ]; then REACH_IPV4=own; REACH_IPV4_REASON=matches; else REACH_IPV4_REASON=differs; fi
   return 0
 }

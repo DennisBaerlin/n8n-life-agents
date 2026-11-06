@@ -231,6 +231,22 @@ $$;
 CREATE FUNCTION pg_temp.rl_has(p_prep jsonb, p_key text) RETURNS boolean LANGUAGE sql IMMUTABLE AS $$
     SELECT EXISTS (SELECT 1 FROM jsonb_array_elements(p_prep->'card_lines') c WHERE c->>'value' = p_key);
 $$;
+-- "darin"-Zeilen des Rests (Laien-Pruefung 2026-11-06): Betrag je Teil, Anzahl, und ob sie zusammen genau den Rest ergeben
+CREATE FUNCTION pg_temp.rl_part(p_prep jsonb, p_label text) RETURNS numeric LANGUAGE sql IMMUTABLE AS $$
+    SELECT (c->>'value')::numeric FROM jsonb_array_elements(p_prep->'card_lines') c WHERE c->>'label' = p_label;
+$$;
+CREATE FUNCTION pg_temp.rl_nparts(p_prep jsonb) RETURNS int LANGUAGE sql IMMUTABLE AS $$
+    SELECT count(*)::int FROM jsonb_array_elements(p_prep->'card_lines') c WHERE c->>'label' LIKE 'finance.label.statement_rest\_%'
+      AND c->>'label' <> 'finance.label.statement_rest_net';
+$$;
+CREATE FUNCTION pg_temp.rl_parts_sum_ok(p_prep jsonb) RETURNS boolean LANGUAGE sql IMMUTABLE AS $$
+    SELECT abs(COALESCE((SELECT sum((c->>'value')::numeric) FROM jsonb_array_elements(p_prep->'card_lines') c
+                          WHERE c->>'label' IN ('finance.label.statement_rest_in', 'finance.label.statement_rest_out',
+                                                'finance.label.statement_rest_pending', 'finance.label.statement_rest_other')), 0)
+               - (SELECT (c->>'value')::numeric FROM jsonb_array_elements(p_prep->'card_lines') c
+                  WHERE c->>'label' IN ('finance.label.statement_everyday', 'finance.label.statement_rest_net', 'finance.label.statement_unexplained_in',
+                                        'finance.label.statement_unexplained_out', 'finance.label.statement_other_diff'))) < 0.005;
+$$;
 DO $$
 DECLARE
     T DATE := core.fn_today();
@@ -243,7 +259,7 @@ BEGIN
     IF (v_prep->>'ok')::boolean IS DISTINCT FROM true OR (v_prep->>'lump')::numeric <> -100 THEN RAISE EXCEPTION 'FAIL [R1 prepare]: %', v_prep; END IF;
     IF pg_temp.rl_label(v_prep) IS DISTINCT FROM 'finance.label.statement_unexplained_out'
        OR NOT pg_temp.rl_has(v_prep, 'finance.note.statement_export_gap_unexplained')
-       OR pg_temp.rl_has(v_prep, 'finance.note.statement_export_gap') THEN
+       OR pg_temp.rl_part(v_prep, 'finance.label.statement_rest_pending') IS NOT NULL THEN
         RAISE EXCEPTION 'FAIL [R1 Ungeklaerter Abgang + Hinweis]: %', v_prep->'card_lines';
     END IF;
     v_note := (SELECT c FROM jsonb_array_elements(v_prep->'card_lines') c WHERE c->>'value' = 'finance.note.statement_export_gap_unexplained');
@@ -257,7 +273,7 @@ BEGIN
     v_prep := finance.fn_statement_prepare(pg_temp.rl_file('__t_rl2__', 995, jsonb_build_array(v_old,
         pg_temp.tr_row(T - 5, 'CASH', 'TAX', '', '', '', '', '', '-5.000000', '', '', 'rl2-1', 'Steuer'))));
     IF pg_temp.rl_label(v_prep) IS DISTINCT FROM 'finance.label.statement_rest_net' OR (v_prep->>'lump')::numeric <> -5
-       OR pg_temp.rl_has(v_prep, 'finance.note.statement_rest_mixed') THEN
+       OR pg_temp.rl_nparts(v_prep) <> 0 THEN   -- ein einziger Teil: keine "darin"-Zeilen
         RAISE EXCEPTION 'FAIL [R2 nur Steuerzeile]: %', v_prep;
     END IF;
     RAISE NOTICE 'PASS [R2 nur Steuerzeile]';
@@ -271,18 +287,18 @@ BEGIN
         'opening_balance', 1000, 'closing_balance', 950, 'lines', jsonb_build_array(
             jsonb_build_object('date', T - 5, 'amount', -50, 'counterparty', 'Depot', 'counterparty_iban', 'RL3-DEPOT'))));
     IF pg_temp.rl_label(v_prep) IS DISTINCT FROM 'finance.label.statement_rest_net' OR jsonb_array_length(v_prep->'blocked') <> 1
-       OR pg_temp.rl_has(v_prep, 'finance.note.statement_rest_mixed') THEN
+       OR pg_temp.rl_nparts(v_prep) <> 0 THEN
         RAISE EXCEPTION 'FAIL [R3 nur blockierte Zeile]: %', v_prep;
     END IF;
-    -- R3b: Abgaenge + gesperrte Zeile -> Rest, Notiz nennt offene Abgaenge und den uebrigen Teil
+    -- R3b: Abgaenge + gesperrte Zeile -> Rest, "darin"-Zeilen nennen offene Abgaenge und den uebrigen Teil (zusammen = Rest)
     v_prep := finance.fn_statement_prepare(jsonb_build_object('account_name', '__t_rl3__', 'currency', 'EUR', 'period_start', T - 19, 'period_end', T - 1,
         'opening_balance', 1000, 'closing_balance', 920, 'lines', jsonb_build_array(
             jsonb_build_object('date', T - 5, 'amount', -50, 'counterparty', 'Depot', 'counterparty_iban', 'RL3-DEPOT'),
             jsonb_build_object('date', T - 4, 'amount', -30, 'counterparty', 'Laden'))));
-    v_note := (SELECT c FROM jsonb_array_elements(v_prep->'card_lines') c WHERE c->>'value' = 'finance.note.statement_rest_mixed');
-    IF pg_temp.rl_label(v_prep) IS DISTINCT FROM 'finance.label.statement_rest_net' OR v_note IS NULL
-       OR (v_note->'params'->'open'->>'value')::numeric IS DISTINCT FROM -30
-       OR (v_note->'params'->'other'->>'value')::numeric IS DISTINCT FROM -50 THEN
+    IF pg_temp.rl_label(v_prep) IS DISTINCT FROM 'finance.label.statement_rest_net' OR pg_temp.rl_nparts(v_prep) <> 2
+       OR pg_temp.rl_part(v_prep, 'finance.label.statement_rest_out') IS DISTINCT FROM -30
+       OR pg_temp.rl_part(v_prep, 'finance.label.statement_rest_other') IS DISTINCT FROM -50
+       OR NOT pg_temp.rl_parts_sum_ok(v_prep) THEN
         RAISE EXCEPTION 'FAIL [R3b Abgaenge + gesperrte Zeile]: %', v_prep->'card_lines';
     END IF;
     RAISE NOTICE 'PASS [R3 gesperrte Zeile]';
@@ -302,17 +318,19 @@ BEGIN
     v_prep := finance.fn_statement_prepare(pg_temp.rl_file('__t_rl5__', 970, jsonb_build_array(v_old,
         pg_temp.tr_row(T - 5, 'CASH', 'CARD_TRANSACTION', '', '', '', '', '', '-30.000000', '', '', 'rl5-1', 'Laden'))));
     IF pg_temp.rl_label(v_prep) IS DISTINCT FROM 'finance.label.statement_everyday'
-       OR pg_temp.rl_has(v_prep, 'finance.note.statement_rest_mixed') THEN
+       OR pg_temp.rl_nparts(v_prep) <> 0 THEN
         RAISE EXCEPTION 'FAIL [R5 Abgaenge allein]: %', v_prep->'card_lines';
     END IF;
     RAISE NOTICE 'PASS [R5 Abgaenge allein]';
 
-    -- R6: Abgaenge plus Export-Luecke -> Alltagsausgaben, bisheriger Hinweis (vorgemerkte Kartenzahlungen)
+    -- R6: Abgaenge plus Export-Luecke -> Alltagsausgaben, "darin noch vorgemerkt" als Zeile (vorher Hinweis), Summe = Rest
     v_id := pg_temp.rl_acct('__t_rl6__');
     v_prep := finance.fn_statement_prepare(pg_temp.rl_file('__t_rl6__', 950, jsonb_build_array(v_old,
         pg_temp.tr_row(T - 5, 'CASH', 'CARD_TRANSACTION', '', '', '', '', '', '-30.000000', '', '', 'rl6-1', 'Laden'))));
     IF pg_temp.rl_label(v_prep) IS DISTINCT FROM 'finance.label.statement_everyday'
-       OR NOT pg_temp.rl_has(v_prep, 'finance.note.statement_export_gap')
+       OR pg_temp.rl_part(v_prep, 'finance.label.statement_rest_pending') IS DISTINCT FROM -20
+       OR pg_temp.rl_part(v_prep, 'finance.label.statement_rest_out') IS DISTINCT FROM -30
+       OR NOT pg_temp.rl_parts_sum_ok(v_prep)
        OR pg_temp.rl_has(v_prep, 'finance.note.statement_export_gap_unexplained') THEN
         RAISE EXCEPTION 'FAIL [R6 Abgaenge + Luecke]: %', v_prep->'card_lines';
     END IF;

@@ -412,7 +412,11 @@ BEGIN
     v_sa := pg_temp.stmt(na, ps, pe, 1000, jsonb_build_array(pg_temp.line(ps + 2, 900), pg_temp.line(ps + 3, -800), pg_temp.line(ps + 4, -40, ib)));
     v_prep := finance.fn_statement_prepare(v_sa);
     IF NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v_prep->'card_lines') c WHERE c->>'label' = 'finance.label.statement_rest_net' AND (c->>'value')::numeric = 60)
-       OR NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v_prep->'card_lines') c WHERE c->>'value' = 'finance.note.statement_rest_split')
+       -- Laien-Pruefung 2026-11-06: "darin"-Zeilen statt Hinweis, zusammen auf den Cent der Rest (900 - 800 - 40 = 60)
+       OR (SELECT jsonb_object_agg(c->>'label', (c->>'value')::numeric) FROM jsonb_array_elements(v_prep->'card_lines') c
+           WHERE c->>'label' IN ('finance.label.statement_rest_in', 'finance.label.statement_rest_out', 'finance.label.statement_rest_pending',
+                                 'finance.label.statement_rest_other'))
+          IS DISTINCT FROM '{"finance.label.statement_rest_in": 900, "finance.label.statement_rest_out": -800, "finance.label.statement_rest_other": -40}'::jsonb
        OR EXISTS (SELECT 1 FROM jsonb_array_elements(v_prep->'card_lines') c WHERE c->>'label' IN ('finance.label.statement_unexplained_in', 'finance.label.statement_everyday')) THEN
         RAISE EXCEPTION 'FAIL [S13a Karte: Saldo statt Eingang]: %', v_prep->'card_lines';
     END IF;

@@ -8,7 +8,8 @@
 --   Rueckgabe:
 --     - bei 0/>1 Treffer ODER leerer Liste: { ok:false, reason, candidates? }  (Tool -> Build-ToolError)
 --     - sonst: { ok:true, n, rows:[{account_id, name, currency, db_balance, confirmed, diff, reconciliation_date
---       (aufgeloester Stichtag; relativ wie "yesterday" erlaubt, core.fn_resolve_input_dates), skip_count}] }
+--       (aufgeloester Stichtag; relativ wie "yesterday" erlaubt, core.fn_resolve_input_dates), skip_count, skip_until}] }
+--       skip_until = spaeteste Faelligkeit der Termine, die der Abgleich als erledigt markiert (null ohne)
 --   Read-only -> baut die EINE Approval-Summary, BEVOR geschrieben wird (CQRS-Read-Seite).
 --   Phase B: Form-Guards (accounts Array NULL-sicher, confirmed_balance schlichte Zahl) als {ok:false} statt
 --     Cast-RAISE — die Eingabe kommt vom Modell (Spiegel der Guards in fn_reconcile_accounts).
@@ -84,7 +85,10 @@ BEGIN
             'diff',       v_conf - v_bal,
             'reconciliation_date', to_char(v_date, 'YYYY-MM-DD'),
             -- 2026-10-23: offene Vorkommen, die der Abgleich als erledigt markiert (dieselbe Menge wie fn_reconcile_account)
-            'skip_count', (SELECT count(*) FROM finance.fn_reconcile_open_due(v_id, v_date))::int));
+            'skip_count', (SELECT count(*) FROM finance.fn_reconcile_open_due(v_id, v_date))::int,
+            -- Laien-Pruefung 2026-11-06: spaeteste Faelligkeit dieser Menge -> die Karte nennt ein Datum statt "10 Tage vor"
+            'skip_until', (SELECT to_char(max(COALESCE(o.due_date, o.interest_period_end)), 'YYYY-MM-DD')
+                           FROM finance.fn_reconcile_open_due(v_id, v_date) o)));
     END LOOP;
 
     RETURN jsonb_build_object('ok', true, 'n', jsonb_array_length(v_rows), 'rows', v_rows);

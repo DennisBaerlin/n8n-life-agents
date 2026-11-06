@@ -204,6 +204,8 @@ DECLARE
     v_plump    JSONB;                   -- fn_statement_partner_lump je Transfer-Zeile
     v_lump_used JSONB := '{}'::jsonb;   -- in dieser Vorschau schon Verrechnetes je Gegen-Auszug und Quelle
     v_rest_other NUMERIC;               -- Rest ohne offene Ein-/Ausgaenge (Fund KW 45, Rueckgabe)
+    v_rest_pend  NUMERIC := 0;          -- Rest-Teil "noch vorgemerkt" (Export-Luecke mit offenen Abgaengen, nur Karte)
+    v_rest_parts JSONB := '[]'::jsonb;  -- "darin …"-Zeilen: Teile, die zusammen genau v_rest ergeben (Laien-Pruefung 2026-11-06)
     v_unexplained NUMERIC;              -- Teil davon, den weder eine Zeile noch die Karte erklaert (Rueckgabe + Kandidaten)
     v_candidates JSONB;                 -- Buchungen mit gleichem Betrag wie eine Abweichung
     v_in_opening BOOLEAN;               -- Zeile liegt im Startbetrag des Gegenkontos (Stufe T/P/L)
@@ -1055,22 +1057,21 @@ BEGIN
             || jsonb_build_object('label', 'finance.label.statement_period'))
         || CASE WHEN v_file AND NOT v_printed_file THEN jsonb_build_array(
                core.fn_ui_money(v_owner, v_acct.currency) || jsonb_build_object('label', 'finance.label.statement_owner_balance'))
-               || CASE WHEN v_after <> 0 THEN jsonb_build_array(jsonb_build_object('kind', 'note',
-                      'value', 'finance.note.statement_after_period',
-                      'params', jsonb_build_object('amount', core.fn_ui_money(v_after, v_acct.currency, true),
-                                                   'date', core.fn_ui_date(v_pe)))) ELSE '[]'::jsonb END
+               -- Buchungen nach dem Zeitraum gehoeren zum App-Stand, nicht zum Rest -> Zeile direkt darunter
+               || CASE WHEN v_after <> 0 THEN jsonb_build_array(
+                      core.fn_ui_money(v_after, v_acct.currency) || jsonb_build_object('label', 'finance.label.statement_after_period'))
+                  ELSE '[]'::jsonb END
                -- Luecke App-Stand/Export: beginnt der Export nach Schnitt+1 -> evtl. fehlende Zeilen (Warnung, keine
-               -- Vermutung); < 0 -> noch nicht im Export (Vormerkung); > 0 nach einem vorigen Export-Abgleich -> steckt
-               -- schon im letzten Rest; > 0 ohne Vor-Export -> nur das Rest-Label "Ungeklaerter Eingang". < 0 ohne offene Abgaenge:
-               -- keine Kartenzahlung in Sicht -> eigener Hinweis
+               -- Vermutung); < 0 mit offenen Abgaengen -> noch nicht im Export (Vormerkung) = eigene "darin"-Zeile am Rest
+               -- (kein Hinweis); > 0 nach einem vorigen Export-Abgleich -> steckt schon im letzten Rest; > 0 ohne Vor-Export
+               -- -> nur das Rest-Label "Ungeklaerter Eingang". < 0 ohne offene Abgaenge: keine Kartenzahlung in Sicht -> eigener Hinweis
                || CASE WHEN v_starts_late
                        THEN jsonb_build_array(jsonb_build_object('kind', 'note', 'value', 'finance.note.statement_export_starts_late',
                             'params', jsonb_build_object('amount', core.fn_ui_money(abs(v_export_gap), v_acct.currency),
                                                          'date', core.fn_ui_date(v_cut))))
-                       WHEN v_export_gap < 0 OR v_gap_settles
+                       WHEN (v_export_gap < 0 AND v_out = 0) OR (v_export_gap >= 0 AND v_gap_settles)
                        THEN jsonb_build_array(jsonb_build_object('kind', 'note',
-                            'value', CASE WHEN v_export_gap < 0 AND v_out = 0 THEN 'finance.note.statement_export_gap_unexplained'
-                                          WHEN v_export_gap < 0 THEN 'finance.note.statement_export_gap'
+                            'value', CASE WHEN v_export_gap < 0 THEN 'finance.note.statement_export_gap_unexplained'
                                           ELSE 'finance.note.statement_export_gap_settled' END,
                             'params', jsonb_build_object('amount', core.fn_ui_money(
                                 CASE WHEN v_export_gap < 0 THEN -v_export_gap
@@ -1095,7 +1096,8 @@ BEGIN
                          WHEN m->>'kind' = 'savings_plan'
                          THEN core.fn_ui_tpl('finance.tpl.statement_savings_plan_row', jsonb_build_object('name', m->>'name',
                                   'amount', core.fn_ui_money((m->>'amount')::numeric, v_acct.currency),
-                                  'shares', core.fn_ui_num((m->>'shares')::numeric, 4),
+                                  -- geschaetzte Stueckzahl: Wert genau, Anzeige 2 Stellen (Owner 2026-11-06 F1; gerundet nur im Renderer)
+                                  'shares', core.fn_ui_num((m->>'shares')::numeric, 8) || '{"digits": 2}'::jsonb,
                                   'date', core.fn_ui_date((m->>'line_date')::date)))
                          WHEN m ? 'partner_fee'   -- Pool-Eingang: die Gebuehr bucht das Gegenkonto (Karte = Buchung)
                          THEN core.fn_ui_tpl('finance.tpl.statement_partner_fee_row', jsonb_build_object('name', m->>'name',
@@ -1276,23 +1278,28 @@ BEGIN
              AND o.l->>'sub_kind' IN ('deposit', 'withdrawal')) THEN
         v_card := v_card || jsonb_build_array(jsonb_build_object('kind', 'note', 'value', 'finance.note.statement_no_settlement'));
     END IF;
+    -- Teile des Rests: offene Eingaenge, offene Ausgaenge, noch vorgemerkt (Export-Luecke < 0 bei offenen Abgaengen; frueher
+    -- Hinweis statement_export_gap), Uebriges = Rest minus diese (nicht gebucht oder nicht erklaerbar). Nur Teile <> 0 und
+    -- nur bei mindestens zwei Teilen (sonst ist die Rest-Zeile selbst der eine Teil).
+    IF v_file AND NOT v_printed_file AND NOT v_starts_late AND v_export_gap < 0 AND v_out < 0 THEN
+        v_rest_pend := v_export_gap;
+    END IF;
+    SELECT CASE WHEN count(*) >= 2 THEN jsonb_agg(core.fn_ui_money(x.amt, v_acct.currency) || jsonb_build_object('label', x.lbl) ORDER BY x.ord)
+                ELSE '[]'::jsonb END
+      INTO v_rest_parts
+      FROM (VALUES (1, 'finance.label.statement_rest_in', v_in), (2, 'finance.label.statement_rest_out', v_out),
+                   (3, 'finance.label.statement_rest_pending', v_rest_pend),
+                   (4, 'finance.label.statement_rest_other', v_rest - v_in - v_out - v_rest_pend)) AS x(ord, lbl, amt)
+     WHERE abs(x.amt) >= 0.005;
     -- Rest = EINE Buchung; die Karte zeigt den Ausgleich vorgemerkter Zahlungen (v_settled) getrennt vom echten Rest
     v_card := v_card
         || CASE WHEN v_settled > 0 THEN jsonb_build_array(core.fn_ui_money(v_settled, v_acct.currency)
                || jsonb_build_object('label', 'finance.label.statement_pending_settled')) ELSE '[]'::jsonb END
-        -- Bezeichnung s. v_rest_label; mit offenen Ein- UND Ausgaengen ist er ein Saldo (Befund KW 45), die Notiz nennt
-        -- beide Summen; sonst nennt sie die offenen Zeilen und den uebrigen Teil
+        -- Bezeichnung s. v_rest_label (Alltagsausgaben, Ungeklaerter Eingang ...); aus mehreren Teilen (Befund KW 45) folgen
+        -- flache "darin"-Zeilen, die zusammen GENAU v_rest ergeben (Laien-Pruefung 2026-11-06: Zeilen statt Hinweis-Absatz)
         || CASE WHEN v_settled = 0 OR v_rest <> 0 THEN jsonb_build_array(
-               core.fn_ui_money(v_rest, v_acct.currency) || jsonb_build_object('label', v_rest_label)) ELSE '[]'::jsonb END
-        || CASE WHEN (v_settled = 0 OR v_rest <> 0) AND v_rest_label = 'finance.label.statement_rest_net' AND NOT (v_in > 0 AND v_out < 0)
-                     AND v_in + v_out <> 0 AND v_rest_other <> 0
-                THEN jsonb_build_array(jsonb_build_object('kind', 'note', 'value', 'finance.note.statement_rest_mixed',
-                         'params', jsonb_build_object('open', core.fn_ui_money(v_in + v_out, v_acct.currency, true),
-                                                      'other', core.fn_ui_money(v_rest_other, v_acct.currency, true)))) ELSE '[]'::jsonb END
-        || CASE WHEN (v_settled = 0 OR v_rest <> 0) AND v_acct.account_type::text = 'cash' AND v_in > 0 AND v_out < 0 THEN jsonb_build_array(jsonb_build_object(
-               'kind', 'note', 'value', 'finance.note.statement_rest_split',
-               'params', jsonb_build_object('in', core.fn_ui_money(v_in, v_acct.currency),
-                                            'out', core.fn_ui_money(abs(v_out), v_acct.currency)))) ELSE '[]'::jsonb END
+               core.fn_ui_money(v_rest, v_acct.currency) || jsonb_build_object('label', v_rest_label)) || v_rest_parts
+           ELSE '[]'::jsonb END
         || jsonb_build_array(jsonb_build_object('kind', 'note', 'value', 'finance.note.statement_lump'));
     -- S7: die IBAN, die dieser Auszug dem Konto beibringt, steht sichtbar auf der Karte (Kontrolle durch den Nutzer)
     IF v_learn_no IS NOT NULL THEN

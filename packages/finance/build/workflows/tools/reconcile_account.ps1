@@ -23,7 +23,7 @@ function Build-ReconcileAccount {
     # Waehrungseinheit gerundet, Differenz von der DB gerechnet. Fehlendes Datum = heute (wie die fn); relative Angabe ("yesterday")
     # rechnet core.fn_resolve_date, eine unlesbare lehnt der Probelauf (fn_reconcile_account) danach mit ok:false ab.
     $readBal = Build-Pg 'Read DB Balance' @(660, 0) `
-        "=WITH x AS (SELECT a.id, a.currency, c.minor_unit, COALESCE(core.fn_resolve_date(NULLIF((`$1::jsonb)->>'reconciliation_date', '')), core.fn_today()) AS d FROM finance.accounts a JOIN finance.currencies c ON c.code = a.currency WHERE a.id = ((`$1::jsonb)->>'account_id')::int) SELECT finance.fn_get_balance_as_of(x.id, x.d) AS db_balance, x.currency, x.d::text AS reconciliation_date, finance.fn_reconcile_blocker(x.id, x.d) AS blocker, ROUND(((`$1::jsonb)->>'confirmed_balance')::numeric, x.minor_unit) AS confirmed, ROUND(((`$1::jsonb)->>'confirmed_balance')::numeric, x.minor_unit) - finance.fn_get_balance_as_of(x.id, x.d) AS diff, (SELECT count(*) FROM finance.fn_reconcile_open_due(x.id, x.d))::int AS skip_count FROM x;" `
+        "=WITH x AS (SELECT a.id, a.currency, c.minor_unit, COALESCE(core.fn_resolve_date(NULLIF((`$1::jsonb)->>'reconciliation_date', '')), core.fn_today()) AS d FROM finance.accounts a JOIN finance.currencies c ON c.code = a.currency WHERE a.id = ((`$1::jsonb)->>'account_id')::int) SELECT finance.fn_get_balance_as_of(x.id, x.d) AS db_balance, x.currency, x.d::text AS reconciliation_date, finance.fn_reconcile_blocker(x.id, x.d) AS blocker, ROUND(((`$1::jsonb)->>'confirmed_balance')::numeric, x.minor_unit) AS confirmed, ROUND(((`$1::jsonb)->>'confirmed_balance')::numeric, x.minor_unit) - finance.fn_get_balance_as_of(x.id, x.d) AS diff, (SELECT count(*) FROM finance.fn_reconcile_open_due(x.id, x.d))::int AS skip_count, (SELECT to_char(max(COALESCE(o.due_date, o.interest_period_end)), 'YYYY-MM-DD') FROM finance.fn_reconcile_open_due(x.id, x.d) o) AS skip_until FROM x;" `
         ([ordered]@{
             account_id          = '$(''Resolve Account'').item.json.id'
             confirmed_balance   = '$(''Start'').item.json.confirmed_balance'
@@ -62,8 +62,10 @@ function Build-ReconcileAccount {
         (New-HitlLine 'core.label.date'                 "$B.reconciliation_date" -Kind date)
         (New-HitlLine 'core.label.note'                 "$S.notes")
         # 2026-10-23: der Abgleich markiert offene Dauerauftrags-/Sparplan-/Zins-Vorkommen bis Stichtag-10 als erledigt
-        # (fn_reconcile_open_due, dieselbe Menge wie der Write) -> vorher sichtbar machen
-        (New-HitlNote -Key 'finance.note.reconcile_closes_due' -If "Number($B.skip_count) > 0" -Params @{ n = "$B.skip_count" })
+        # (fn_reconcile_open_due, dieselbe Menge wie der Write) -> vorher sichtbar machen; das Datum (spaeteste Faelligkeit
+        # der Menge) rechnet die DB im Read-Knoten (Laien-Pruefung 2026-11-06: Datum statt "10 Tage vor")
+        (New-HitlNote -Key 'finance.note.reconcile_closes_due' -If "Number($B.skip_count) > 0" -Params @{
+            n = "$B.skip_count"; date = (New-HitlValue -Kind date -Value "$B.skip_until") })
     )
 
     $gateId = $GateId

@@ -31,7 +31,7 @@ function Build-ReconcileAccountsBatch {
         # Wie die Einzel-Karte (tool_reconcile_account): je Konto ein Hinweis, wenn der Abgleich offene regelmaessige
         # Vorkommen <= Stichtag-10 als erledigt markiert (skip_count aus fn_reconcile_open_due, dieselbe Menge wie der Write).
         ".concat(`$('Preview reconcile').item.json.rows.filter(r => Number(r.skip_count) > 0).map(r => ({ kind: 'note', " +
-        "value: 'finance.note.reconcile_closes_due_account', params: { name: r.name, n: r.skip_count } })))"
+        "value: 'finance.note.reconcile_closes_due_account', params: { name: r.name, n: r.skip_count, date: { kind: 'date', value: r.skip_until } } })))"
     # "DB ist das Gesetz": fn_reconcile_accounts laeuft als Probelauf VOR der Karte (nach der Read-only-Vorschau);
     # derselbe Param-Satz geht nach dem Gate in den echten Write.
     # Atomarer Batch-Write ($wg.Write): re-resolved jeden Namen, loopt fn_reconcile_account in EINER Transaktion.

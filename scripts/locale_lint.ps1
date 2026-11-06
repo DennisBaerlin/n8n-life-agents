@@ -287,8 +287,6 @@ $CardDeniedWords = [ordered]@{
 $cardExcept = [ordered]@{     # Key = Grund; neue Zeile = Owner-Freigabe (Termin 3 der Sprint-Probe)
     'finance.note.goal_derisk_window'           = 'Text gehoert dem Paket "Sparziel unter 5 Jahren" (neuer Text kommt mit dessen Merge)'
     'finance.note.until_free_money'             = 'Text gehoert dem Paket "Bank-Hinweis nur, wo er passt" (neuer Text kommt mit dessen Merge)'
-    'finance.note.reconcile_closes_due'         = 'Stufe 2 dieses Pakets: die fn liefert den Stichtag, dann Datum statt Zeitspanne'
-    'finance.note.reconcile_closes_due_account' = 'Stufe 2 dieses Pakets: die fn liefert den Stichtag, dann Datum statt Zeitspanne'
 }
 function Get-CardTextFindings([string]$Text, [string]$Lang) {
     $out = @()

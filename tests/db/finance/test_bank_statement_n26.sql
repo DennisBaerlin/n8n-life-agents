@@ -155,9 +155,9 @@ BEGIN
     END IF;
     IF EXISTS (SELECT 1 FROM jsonb_array_elements(v_prep->'card_lines') c WHERE c->>'label' = 'finance.label.statement_drift')
        OR NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v_prep->'card_lines') c
-                      WHERE c->>'value' = 'finance.note.statement_export_gap'
-                        AND (c->'params'->'amount'->>'value')::numeric = 25) THEN
-        RAISE EXCEPTION 'FAIL [B11 Karte: Hinweis "nicht im Export" 25 statt drift]: %', v_prep->'card_lines';
+                      WHERE c->>'label' = 'finance.label.statement_rest_pending'
+                        AND (c->>'value')::numeric = -25) THEN
+        RAISE EXCEPTION 'FAIL [B11 Karte: Rest-Zeile "noch vorgemerkt" -25 statt drift]: %', v_prep->'card_lines';
     END IF;
     -- Export beginnt erst nach dem Schnitt (z. B. "dieses Jahr" im Januar) -> Warnung statt Vormerkungs-Vermutung
     v_prep := finance.fn_statement_prepare(v_p || jsonb_build_object('table', jsonb_build_object('rows',
@@ -165,7 +165,7 @@ BEGIN
     IF NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v_prep->'card_lines') c
                    WHERE c->>'value' = 'finance.note.statement_export_starts_late'
                      AND (c->'params'->'date'->>'value')::date = T - 20)
-       OR EXISTS (SELECT 1 FROM jsonb_array_elements(v_prep->'card_lines') c WHERE c->>'value' = 'finance.note.statement_export_gap') THEN
+       OR EXISTS (SELECT 1 FROM jsonb_array_elements(v_prep->'card_lines') c WHERE c->>'label' = 'finance.label.statement_rest_pending') THEN
         RAISE EXCEPTION 'FAIL [B11b Export beginnt nach dem Schnitt -> Warnung]: %', v_prep->'card_lines';
     END IF;
     -- App-Stand hoeher als erklaert, ohne vorigen Export-Abgleich -> kein "steckt im letzten Rest" (es gibt keinen)

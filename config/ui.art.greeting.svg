@@ -1,0 +1,85 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 300" width="720" height="300" role="img" data-scenes="6" data-scene-s="3">
+  <!-- Begrüßung „Was ist lifeagents?": Quelle für README, Doku-Startseite und Start-App. Erzeugt wird von scripts/build_ui_tokens.ps1
+       (Format: scripts/lib/ui_art.ps1). Szenen: 1 Assistent meldet sich von selbst (Sticker hallo + Hinweis), 2 Rückfrage mit Ja/Nein,
+       3 Weg nach Hause, 4 Daten bleiben (Schloss), 5 Familie mit Bereichen, 6 Schlussbild. Beträge erfunden. -->
+  <style>
+    text { font-family: var(--font); fill: var(--ink); }
+    .cap { font-size: 17px; text-anchor: middle; }
+    .msg { font-size: 13px; }
+    .btn { fill: var(--accent-pale); }
+    .tap { fill: none; stroke: var(--accent); stroke-width: 3; }
+    .dot { opacity: 0; }
+    @keyframes dot {
+      0%, 34% { opacity: 0; transform: translateX(0); }
+      35% { opacity: 1; transform: translateX(0); }
+      48% { opacity: 1; transform: translateX(104px); }
+      49%, 100% { opacity: 0; transform: translateX(104px); }
+    }
+    @media (prefers-reduced-motion: no-preference) { .dot { animation: dot 18s linear infinite; } }
+  </style>
+
+  <!-- Handy -->
+  <rect x="20" y="8" width="190" height="236" rx="22" fill="var(--bg)" stroke="var(--ink)" stroke-width="3"/>
+  <g data-mark="" transform="translate(34 20) scale(0.77)"/>
+  <text x="60" y="36" font-size="13" font-weight="600">lifeagents</text>
+  <path d="M22 48 H208" stroke="var(--hairline)" stroke-width="1.5"/>
+  <g class="in1">
+    <image data-sticker="neutral_hallo" x="30" y="54" width="62" height="62"/>
+    <rect x="30" y="120" width="170" height="68" rx="12" fill="var(--bg-soft)" stroke="var(--hairline)" stroke-width="1.5"/>
+    <text class="msg" x="40" y="140" data-t="greeting.msg" data-wrap="24" data-lh="17" data-max="3"/>
+  </g>
+  <g class="in2">
+    <rect class="btn" x="30" y="196" width="82" height="28" rx="8"/>
+    <text class="msg" x="71" y="215" text-anchor="middle" data-t="greeting.yes" data-wrap="11"/>
+    <rect class="btn" x="118" y="196" width="82" height="28" rx="8"/>
+    <text class="msg" x="159" y="215" text-anchor="middle" data-t="greeting.no" data-wrap="11"/>
+  </g>
+  <rect class="tap on2" x="25" y="191" width="92" height="38" rx="11"/>
+
+  <!-- Weg zwischen Handy und Zuhause -->
+  <path d="M216 130 H322" stroke="var(--gray)" stroke-width="2" stroke-dasharray="6 6" fill="none"/>
+  <circle class="dot" cx="218" cy="130" r="7" fill="var(--accent)"/>
+
+  <!-- Zuhause mit Rechner -->
+  <path d="M338 122 L425 52 L512 122" fill="none" stroke="var(--ink)" stroke-width="3" stroke-linejoin="round" stroke-linecap="round"/>
+  <rect x="352" y="116" width="146" height="118" fill="var(--bg-soft)" stroke="var(--ink)" stroke-width="3"/>
+  <rect x="385" y="146" width="80" height="54" rx="5" fill="var(--bg)" stroke="var(--ink)" stroke-width="2.5"/>
+  <g data-mark="" transform="translate(412 160)"/>
+  <path d="M425 200 V212 M405 214 H445" stroke="var(--ink)" stroke-width="2.5" stroke-linecap="round"/>
+  <!-- Daten bleiben: Rahmen mit Schloss (kein Häkchen, damit nichts dem Projekt-Zeichen ähnelt) -->
+  <g class="in4">
+    <rect x="326" y="36" width="198" height="212" rx="18" fill="none" stroke="var(--ok)" stroke-width="2.5"/>
+    <circle cx="522" cy="40" r="16" fill="var(--ok)"/>
+    <rect x="514" y="38" width="16" height="12" rx="2" fill="var(--bg)"/>
+    <path d="M517 38 V34 a5 5 0 0 1 10 0 V38" fill="none" stroke="var(--bg)" stroke-width="2.5"/>
+  </g>
+
+  <!-- Familie: zwei Erwachsene, zwei Kinder, namenlos -->
+  <g class="in5">
+    <circle cx="585" cy="58" r="14" fill="var(--accent)"/>
+    <path d="M565 124 V100 a20 20 0 0 1 40 0 V124 Z" fill="var(--accent)"/>
+    <circle cx="675" cy="58" r="14" fill="var(--accent)"/>
+    <path d="M655 124 V100 a20 20 0 0 1 40 0 V124 Z" fill="var(--accent)"/>
+    <circle cx="615" cy="88" r="10" fill="var(--accent-mid)" stroke="var(--bg)" stroke-width="2"/>
+    <path d="M601 124 V112 a14 14 0 0 1 28 0 V124 Z" fill="var(--accent-mid)" stroke="var(--bg)" stroke-width="2"/>
+    <circle cx="645" cy="88" r="10" fill="var(--accent-mid)" stroke="var(--bg)" stroke-width="2"/>
+    <path d="M631 124 V112 a14 14 0 0 1 28 0 V124 Z" fill="var(--accent-mid)" stroke="var(--bg)" stroke-width="2"/>
+    <path d="M556 125 H704" stroke="var(--hairline)" stroke-width="2"/>
+    <rect x="546" y="140" width="80" height="28" rx="14" fill="var(--accent-pale)"/>
+    <text x="586" y="159" font-size="13" text-anchor="middle" data-t="greeting.area.finance" data-wrap="11"/>
+    <rect x="632" y="140" width="80" height="28" rx="14" fill="var(--accent-pale)"/>
+    <text x="672" y="159" font-size="13" text-anchor="middle" data-t="greeting.area.career" data-wrap="11"/>
+    <rect x="546" y="176" width="80" height="28" rx="14" fill="var(--accent-pale)"/>
+    <text x="586" y="195" font-size="13" text-anchor="middle" data-t="greeting.area.estate" data-wrap="11"/>
+    <rect x="632" y="176" width="80" height="28" rx="14" fill="var(--accent-pale)"/>
+    <text x="672" y="195" font-size="13" text-anchor="middle" data-t="greeting.area.documents" data-wrap="11"/>
+  </g>
+
+  <!-- Bildunterschrift je Szene (höchstens zwei Zeilen) -->
+  <text class="cap on1" x="360" y="278" data-t="greeting.s1" data-wrap="76" data-lh="19" data-max="2" data-valign="middle"/>
+  <text class="cap on2" x="360" y="278" data-t="greeting.s2" data-wrap="76" data-lh="19" data-max="2" data-valign="middle"/>
+  <text class="cap on3" x="360" y="278" data-t="greeting.s3" data-wrap="76" data-lh="19" data-max="2" data-valign="middle"/>
+  <text class="cap on4" x="360" y="278" data-t="greeting.s4" data-wrap="76" data-lh="19" data-max="2" data-valign="middle"/>
+  <text class="cap on5" x="360" y="278" data-t="greeting.s5" data-wrap="76" data-lh="19" data-max="2" data-valign="middle"/>
+  <text class="cap on6" x="360" y="278" font-weight="600" data-t="greeting.s6" data-wrap="76" data-lh="19" data-max="2" data-valign="middle"/>
+</svg>

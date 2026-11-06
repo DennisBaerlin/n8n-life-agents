@@ -1,0 +1,75 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 340" width="720" height="340" role="img" data-scenes="5" data-scene-s="3.4">
+  <!-- „Warum Telegram?": Quelle für die Wizard-Seite vor dem Bot-Token. Generator scripts/build_ui_tokens.ps1, Format scripts/lib/ui_art.ps1.
+       Szenen: 1 Frage unterwegs, 2 Sticker hmm + Tippen, 3 Antwort mit Sticker yay, 4 Danke mit Herz-Reaktion des Bots,
+       5 Übersicht (Mini-App, nur als Wireframe) deckt den Chat ganz ab. Höchstens zwei Sticker, echte Dateien der Standard-Persona.
+       Beträge erfunden, keine Bank- oder Firmennamen, eigene Zeichnung im Telegram-Stil ohne Telegram-Logo. -->
+  <style>
+    text { font-family: var(--font); fill: var(--ink); }
+    .cap { font-size: 21px; }
+    .msg { font-size: 14px; }
+    .sub { font-size: 12px; fill: var(--gray); }
+    .val { font-size: 15px; font-weight: 600; }
+    .bubble { fill: var(--bg-soft); stroke: var(--hairline); stroke-width: 1.5; }
+    .mine { fill: var(--accent-pale); }
+    .tdot { fill: var(--gray); }
+    @keyframes sheet { 0%, 80% { transform: translateY(270px); } 84%, 100% { transform: translateY(0); } }
+    @media (prefers-reduced-motion: no-preference) { .sheet { animation: sheet 17s ease-out infinite; } }
+  </style>
+
+  <!-- Handy mit Chat -->
+  <rect x="40" y="8" width="220" height="324" rx="26" fill="var(--bg)" stroke="var(--ink)" stroke-width="3"/>
+  <g data-mark="" transform="translate(56 22) scale(0.85)"/>
+  <text x="84" y="36" font-size="14" font-weight="600">lifeagents</text>
+  <text class="sub" x="84" y="51" data-t="telegram.bot"/>
+  <path d="M42 62 H258" stroke="var(--hairline)" stroke-width="1.5"/>
+
+  <g class="in1">
+    <rect class="mine" x="74" y="70" width="176" height="70" rx="12"/>
+    <text class="msg" x="84" y="90" data-t="telegram.ask" data-wrap="21" data-lh="18" data-max="3"/>
+  </g>
+  <g class="on2">
+    <image data-sticker="neutral_hmm" x="50" y="148" width="64" height="64"/>
+    <rect class="bubble" x="120" y="166" width="56" height="28" rx="14"/>
+    <circle class="tdot" cx="136" cy="180" r="3"/>
+    <circle class="tdot" cx="148" cy="180" r="3"/>
+    <circle class="tdot" cx="160" cy="180" r="3"/>
+  </g>
+  <g class="in3">
+    <rect class="bubble" x="50" y="148" width="200" height="88" rx="12"/>
+    <text class="msg" x="60" y="168" data-t="telegram.answer" data-wrap="24" data-lh="18" data-max="4"/>
+    <image data-sticker="neutral_yay" x="52" y="242" width="62" height="62"/>
+  </g>
+  <g class="in4">
+    <rect class="mine" x="160" y="262" width="90" height="32" rx="12"/>
+    <text class="msg" x="205" y="283" text-anchor="middle" data-t="telegram.thanks" data-wrap="11"/>
+    <circle cx="166" cy="296" r="12" fill="var(--bg)" stroke="var(--hairline)" stroke-width="1.5"/>
+    <text x="166" y="301" font-size="13" text-anchor="middle">❤️</text>
+  </g>
+
+  <!-- Übersicht (Mini-App) als Wireframe, deckt den Chat unter dem Kopf ganz ab -->
+  <clipPath id="screen"><rect x="42" y="63" width="216" height="267" rx="0"/></clipPath>
+  <g class="in5" clip-path="url(#screen)">
+    <g class="sheet">
+      <rect x="42" y="63" width="216" height="267" fill="var(--bg)"/>
+      <path d="M136 72 H164" stroke="var(--hairline)" stroke-width="4" stroke-linecap="round"/>
+      <text x="56" y="98" font-size="16" font-weight="600" data-t="telegram.overview" data-wrap="22"/>
+      <rect x="52" y="108" width="196" height="52" rx="10" fill="var(--bg-soft)"/>
+      <text class="sub" x="62" y="127" data-t="telegram.free" data-wrap="28"/>
+      <text class="val" x="62" y="148" data-t="telegram.free_value" data-wrap="22"/>
+      <rect x="52" y="168" width="196" height="62" rx="10" fill="var(--bg-soft)"/>
+      <text class="sub" x="62" y="187" data-t="telegram.goal" data-wrap="28"/>
+      <text class="val" x="62" y="208" data-t="telegram.goal_value" data-wrap="22"/>
+      <rect x="62" y="217" width="176" height="6" rx="3" fill="var(--ok)"/>
+      <rect x="52" y="238" width="196" height="52" rx="10" fill="var(--bg-soft)"/>
+      <text class="sub" x="62" y="257" data-t="telegram.next" data-wrap="28"/>
+      <text class="val" x="62" y="278" data-t="telegram.next_value" data-wrap="22"/>
+    </g>
+  </g>
+
+  <!-- Erklärtext je Szene -->
+  <text class="cap on1" x="300" y="170" data-t="telegram.s1" data-wrap="32" data-lh="28" data-max="4" data-valign="middle"/>
+  <text class="cap on2" x="300" y="170" data-t="telegram.s2" data-wrap="32" data-lh="28" data-max="4" data-valign="middle"/>
+  <text class="cap on3" x="300" y="170" data-t="telegram.s3" data-wrap="32" data-lh="28" data-max="4" data-valign="middle"/>
+  <text class="cap on4" x="300" y="170" data-t="telegram.s4" data-wrap="32" data-lh="28" data-max="4" data-valign="middle"/>
+  <text class="cap on5" x="300" y="170" font-weight="600" data-t="telegram.s5" data-wrap="32" data-lh="28" data-max="4" data-valign="middle"/>
+</svg>

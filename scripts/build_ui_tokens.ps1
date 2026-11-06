@@ -1,7 +1,7 @@
 ﻿#Requires -Version 5.1
 # build_ui_tokens.ps1 -- schreibt die Farben aus config/ui.tokens.json als markierten Block in die Datei jeder Oberflaeche
 # (Liste und Begruendung: scripts/lib/ui_tokens.ps1). Nur der Block aendert sich, die Marker muessen schon in der Datei stehen.
-# Erzeugt ausserdem das Zeichen-Partial der Site (docs/site/layouts/partials/mark.html) aus config/ui.mark.svg.
+# Erzeugt ausserdem die Erklaer-Bilder aus config/ui.art.*.svg (scripts/lib/ui_art.ps1) und das Zeichen-Partial der Site (docs/site/layouts/partials/mark.html) aus config/ui.mark.svg.
 # Danach bei der Doku-Seite: .\scripts\build_site.ps1 (der Hugo-Output ist getrackt). Die Pruefung im Commit macht
 # scripts/ui_token_lint.ps1.
 #   .\scripts\build_ui_tokens.ps1            Bloecke schreiben
@@ -11,6 +11,7 @@ param([switch]$Verify)
 $ErrorActionPreference = 'Stop'
 $RepoRoot = git -C $PSScriptRoot rev-parse --show-toplevel
 . (Join-Path (Join-Path $PSScriptRoot 'lib') 'ui_tokens.ps1')
+. (Join-Path (Join-Path $PSScriptRoot 'lib') 'ui_art.ps1')
 $u8 = [System.Text.UTF8Encoding]::new($false)
 $tokens = Read-UiTokens $RepoRoot
 $fails = 0
@@ -68,4 +69,24 @@ $markHave = if (Test-Path $markAbs) { [System.IO.File]::ReadAllText($markAbs, $u
 if ($markHave -ceq $markWant) { Write-Host '  [OK] mark: aktuell' -ForegroundColor Green }
 elseif ($Verify) { Write-Host "  [FAIL] mark: $(Get-UiMarkPartialPath) ist veraltet" -ForegroundColor Red; $fails++ }
 else { [System.IO.File]::WriteAllText($markAbs, $markWant, $u8); Write-Host "  [neu] mark: $(Get-UiMarkPartialPath)" -ForegroundColor Cyan }
+# Erklaer-Bilder (ganze Dateien erzeugt; fremde Dateien in den Ziel-Ordnern werden entfernt)
+$artOut = @(Get-UiArtOutputs $RepoRoot $tokens)
+$artWant = @{}; foreach ($o in $artOut) { $artWant[$o.Path] = $o.Text }
+foreach ($dir in (Get-UiArtDirs).Values) {
+    $absDir = Join-Path $RepoRoot $dir
+    if (-not (Test-Path $absDir)) { if ($Verify) { Write-Host "  [FAIL] Bilder: $dir fehlt" -ForegroundColor Red; $fails++; continue }; [void](New-Item -ItemType Directory $absDir) }
+    foreach ($f in (Get-ChildItem $absDir -File)) {
+        if ($artWant.ContainsKey("$dir/$($f.Name)")) { continue }
+        if ($Verify) { Write-Host "  [FAIL] Bilder: $dir/$($f.Name) ist nicht erzeugt" -ForegroundColor Red; $fails++ } else { Remove-Item $f.FullName; Write-Host "  [weg] $dir/$($f.Name)" -ForegroundColor Cyan }
+    }
+}
+$artNew = 0
+foreach ($o in $artOut) {
+    $abs = Join-Path $RepoRoot $o.Path
+    $have = if (Test-Path $abs) { [System.IO.File]::ReadAllText($abs, $u8) } else { '' }
+    if ($have -ceq $o.Text) { continue }
+    if ($Verify) { Write-Host "  [FAIL] Bilder: $($o.Path) ist veraltet" -ForegroundColor Red; $fails++; continue }
+    [System.IO.File]::WriteAllText($abs, $o.Text, $u8); $artNew++
+}
+Write-Host "  [OK] Bilder: $($artOut.Count) Dateien, $artNew neu geschrieben" -ForegroundColor Green
 exit $fails

@@ -105,16 +105,20 @@ fn pmset_line(values: &[(String, String)]) -> Result<String, PowerError> {
     Ok(line)
 }
 
-fn apply_mac(host: &dyn Host) -> Result<PowerResult, PowerError> {
+fn prepare_mac(host: &dyn Host) -> Result<PowerBackup, PowerError> {
     let before = read_mac(host)?;
-    let supported: Vec<(&str, &str)> = MAC_TARGET.iter().copied().filter(|(k, _)| before.contains_key(*k)).collect();
-    let unsupported = MAC_TARGET.iter().filter(|(k, _)| !before.contains_key(*k)).map(|(k, _)| k.to_string()).collect();
-    let backup: BTreeMap<String, String> = supported.iter().map(|(k, _)| (k.to_string(), before[*k].clone())).collect();
+    let ac = MAC_TARGET.iter().filter_map(|(k, _)| before.get(*k).map(|v| (k.to_string(), v.clone()))).collect();
+    Ok(PowerBackup::Mac { ac })
+}
+
+fn apply_mac(host: &dyn Host, backup: &BTreeMap<String, String>) -> Result<PowerResult, PowerError> {
+    let supported: Vec<(&str, &str)> = MAC_TARGET.iter().copied().filter(|(k, _)| backup.contains_key(*k)).collect();
+    let unsupported = MAC_TARGET.iter().filter(|(k, _)| !backup.contains_key(*k)).map(|(k, _)| k.to_string()).collect();
     let set: Vec<(String, String)> = supported.iter().map(|(k, v)| (k.to_string(), v.to_string())).collect();
     run_mac_admin(host, &pmset_line(&set)?)?;
     let after = read_mac(host)?;
     let holds = supported.iter().map(|(k, v)| (k.to_string(), after.get(*k).map(String::as_str) == Some(*v))).collect();
-    Ok(PowerResult { backup: PowerBackup::Mac { ac: backup }, holds, unsupported })
+    Ok(PowerResult { backup: PowerBackup::Mac { ac: backup.clone() }, holds, unsupported })
 }
 
 fn restore_mac(host: &dyn Host, ac: &BTreeMap<String, String>) -> Result<(), PowerError> {
@@ -202,8 +206,13 @@ fn pc(host: &dyn Host, a: &[&str]) -> Result<String, PowerError> {
     }
 }
 
-fn apply_windows(host: &dyn Host) -> Result<PowerResult, PowerError> {
+fn prepare_windows(host: &dyn Host) -> Result<PowerBackup, PowerError> {
     let previous = parse_guid(&pc(host, &["/getactivescheme"])?).ok_or_else(|| PowerError::Unreadable("aktives Schema".into()))?;
+    Ok(PowerBackup::Windows { previous, ours: String::new() })
+}
+
+fn apply_windows(host: &dyn Host, previous: &str) -> Result<PowerResult, PowerError> {
+    let previous = previous.to_string();
     let ours = parse_guid(&pc(host, &["/duplicatescheme", &previous])?).ok_or_else(|| PowerError::Failed("Kopie ohne GUID".into()))?;
     let backup = PowerBackup::Windows { previous: previous.clone(), ours: ours.clone() };
     // Ab hier gibt es eine Kopie: bei jedem Fehler wieder entfernen, das alte Schema bleibt aktiv.
@@ -233,11 +242,15 @@ fn apply_windows(host: &dyn Host) -> Result<PowerResult, PowerError> {
 }
 
 fn restore_windows(host: &dyn Host, previous: &str, ours: &str) -> Result<(), PowerError> {
-    if parse_guid(previous).as_deref() != Some(previous) || parse_guid(ours).as_deref() != Some(ours) {
+    let ours_ok = ours.is_empty() || parse_guid(ours).as_deref() == Some(ours);
+    if parse_guid(previous).as_deref() != Some(previous) || !ours_ok {
         return Err(PowerError::Failed("ungültige GUID im Journal".into()));
     }
     pc(host, &["/setactive", previous])?;
-    pc(host, &["/delete", ours])?;
+    // Leer = Abbruch vor der Kopie (Journal stand noch auf „begonnen“): nur das alte Schema aktivieren.
+    if !ours.is_empty() {
+        pc(host, &["/delete", ours])?;
+    }
     Ok(())
 }
 
@@ -257,11 +270,20 @@ pub fn snapshot(host: &dyn Host) -> BTreeMap<String, String> {
     }
 }
 
-/// Erst nach dem Ja des Nutzers aufrufen. Das Ergebnis gehört sofort ins Journal (`backup`).
-pub fn apply(host: &dyn Host) -> Result<PowerResult, PowerError> {
+/// Schritt 1, nur lesen: die Sicherung, die **vor** der Änderung ins Journal kommt (`Step::PowerChanged`, begonnen).
+pub fn prepare(host: &dyn Host) -> Result<PowerBackup, PowerError> {
     match host.os() {
-        Os::Mac => apply_mac(host),
-        Os::Windows => apply_windows(host),
+        Os::Mac => prepare_mac(host),
+        Os::Windows => prepare_windows(host),
+    }
+}
+
+/// Schritt 2, erst nach dem Ja: setzen und nachlesen. `result.backup` ersetzt danach den Journal-Eintrag
+/// (Windows kennt erst jetzt sein neues Schema).
+pub fn apply(host: &dyn Host, prepared: &PowerBackup) -> Result<PowerResult, PowerError> {
+    match prepared {
+        PowerBackup::Mac { ac } => apply_mac(host, ac),
+        PowerBackup::Windows { previous, .. } => apply_windows(host, previous),
     }
 }
 
@@ -300,7 +322,7 @@ mod tests {
         let h = FakeHost::mac()
             .on_seq("/usr/bin/pmset -g custom", vec![CmdOut::ok(MINI_BEFORE), CmdOut::ok(MINI_AFTER)])
             .on(&admin("/usr/bin/pmset -c sleep 0 displaysleep 10 autorestart 1 womp 1"), CmdOut::ok(""));
-        let r = apply(&h).expect("gesetzt");
+        let r = apply(&h, &prepare(&h).unwrap()).expect("gesetzt");
         assert!(r.all_hold(), "{:?}", r.holds);
         assert_eq!(r.backup, PowerBackup::Mac { ac: map(&[("autorestart", "0"), ("displaysleep", "10"), ("sleep", "1"), ("womp", "1")]) });
         assert!(r.unsupported.is_empty());
@@ -319,7 +341,7 @@ mod tests {
         let h = FakeHost::mac()
             .on_seq("/usr/bin/pmset -g custom", vec![CmdOut::ok(BOOK_BEFORE), CmdOut::ok(&after)])
             .on(&admin("/usr/bin/pmset -c sleep 0 displaysleep 10 autorestart 1"), CmdOut::ok(""));
-        let r = apply(&h).expect("gesetzt");
+        let r = apply(&h, &prepare(&h).unwrap()).expect("gesetzt");
         assert_eq!(r.unsupported, vec!["womp".to_string()]);
         assert!(r.all_hold(), "{:?}", r.holds);
         let calls = h.calls_starting("/usr/bin/osascript");
@@ -333,7 +355,7 @@ mod tests {
         let h = FakeHost::mac()
             .on("/usr/bin/pmset -g custom", CmdOut::ok(MINI_BEFORE))
             .on(&admin("/usr/bin/pmset -c sleep 0 displaysleep 10 autorestart 1 womp 1"), CmdOut::ok(""));
-        let r = apply(&h).expect("Befehl lief");
+        let r = apply(&h, &prepare(&h).unwrap()).expect("Befehl lief");
         assert!(!r.all_hold());
         assert_eq!(r.holds.get("sleep"), Some(&false));
         assert_eq!(r.holds.get("displaysleep"), Some(&true));
@@ -344,7 +366,7 @@ mod tests {
         let h = FakeHost::mac()
             .on("/usr/bin/pmset -g custom", CmdOut::ok(MINI_BEFORE))
             .on(&admin("/usr/bin/pmset -c sleep 0 displaysleep 10 autorestart 1 womp 1"), CmdOut::fail(1, "User canceled. (-128)"));
-        assert_eq!(apply(&h), Err(PowerError::Cancelled));
+        assert_eq!(apply(&h, &prepare(&h).unwrap()), Err(PowerError::Cancelled));
     }
 
     #[test]
@@ -430,7 +452,7 @@ mod tests {
     #[test]
     fn windows_own_scheme_leaves_the_old_one_alone() {
         let h = win_ok();
-        let r = apply(&h).expect("gesetzt");
+        let r = apply(&h, &prepare(&h).unwrap()).expect("gesetzt");
         assert!(r.all_hold(), "{:?}", r.holds);
         assert_eq!(r.backup, PowerBackup::Windows { previous: "381b4222-f694-41f0-9685-ff5bb260df2e".into(), ours: OURS.into() });
         for c in h.calls.borrow().iter() {
@@ -444,7 +466,7 @@ mod tests {
         h.set(&format!("powercfg.exe /setactive {OURS}"), CmdOut::fail(1, "Zugriff verweigert"));
         h.set("powercfg.exe /setactive 381b4222-f694-41f0-9685-ff5bb260df2e", CmdOut::ok(""));
         h.set(&format!("powercfg.exe /delete {OURS}"), CmdOut::ok(""));
-        assert!(apply(&h).is_err());
+        assert!(apply(&h, &prepare(&h).unwrap()).is_err());
         assert!(h.called(&format!("powercfg.exe /delete {OURS}")));
     }
 
@@ -457,6 +479,22 @@ mod tests {
         assert_eq!(restore(&h, &b), Ok(()));
         let bad = PowerBackup::Windows { previous: "x & del".into(), ours: OURS.into() };
         assert!(restore(&h, &bad).is_err());
+    }
+
+    #[test]
+    fn windows_restore_after_abort_before_the_copy() {
+        let h = FakeHost::windows().on("powercfg.exe /setactive 381b4222-f694-41f0-9685-ff5bb260df2e", CmdOut::ok(""));
+        let b = PowerBackup::Windows { previous: "381b4222-f694-41f0-9685-ff5bb260df2e".into(), ours: String::new() };
+        assert_eq!(restore(&h, &b), Ok(()));
+        assert!(h.calls_starting("powercfg.exe /delete").is_empty());
+    }
+
+    #[test]
+    fn prepare_only_reads() {
+        let h = FakeHost::mac().on("/usr/bin/pmset -g custom", CmdOut::ok(MINI_BEFORE));
+        let b = prepare(&h).unwrap();
+        assert_eq!(b, PowerBackup::Mac { ac: map(&[("autorestart", "0"), ("displaysleep", "10"), ("sleep", "1"), ("womp", "1")]) });
+        assert!(h.calls_starting("/usr/bin/osascript").is_empty());
     }
 
     #[test]

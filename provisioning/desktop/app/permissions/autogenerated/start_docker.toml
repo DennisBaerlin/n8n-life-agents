@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-start-docker"
+description = "Enables the start_docker command without any pre-configured scope."
+commands.allow = ["start_docker"]
+
+[[permission]]
+identifier = "deny-start-docker"
+description = "Denies the start_docker command without any pre-configured scope."
+commands.deny = ["start_docker"]

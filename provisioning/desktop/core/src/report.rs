@@ -100,7 +100,7 @@ impl ErrorReport {
     /// Text zum Kopieren in eine Nachricht.
     pub fn to_text(&self) -> String {
         format!(
-            "lifeagents Fehlerbericht\napp: {}\nsystem: {} {} {}\nspeicher: {} GB, frei: {} GB\npruefungen: {}\ndocker: {} {} {} (API {})\njournal: {}\nfilevault: {}\nletzter fehler: {}\n",
+            "lifeagents Fehlerbericht\napp: {}\nsystem: {} {} {}\narbeitsspeicher: {} GB, freier platz: {} GB\npruefungen: {}\ndocker: {} {} {} (API {})\njournal: {}\nfilevault: {}\nletzter fehler: {}\n",
             self.app_version,
             self.os,
             self.os_version,
@@ -114,7 +114,7 @@ impl ErrorReport {
             self.docker_api,
             self.journal.join(", "),
             self.filevault,
-            self.last_error
+            if self.last_error.is_empty() { "keiner" } else { &self.last_error }
         )
     }
 }

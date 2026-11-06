@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-power-info"
+description = "Enables the power_info command without any pre-configured scope."
+commands.allow = ["power_info"]
+
+[[permission]]
+identifier = "deny-power-info"
+description = "Denies the power_info command without any pre-configured scope."
+commands.deny = ["power_info"]

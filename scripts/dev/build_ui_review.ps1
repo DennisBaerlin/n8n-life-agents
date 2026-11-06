@@ -8,12 +8,13 @@
 #   .\scripts\dev\build_ui_review.ps1 -Name kurzer-hinweis -Capture nachher     nach der Aenderung
 #   .\scripts\dev\build_ui_review.ps1 -Name kurzer-hinweis -Page                baut .local/ui_review/<Name>/index.html
 #   -Capture ... -Surface site -Pages index.html,docs/erste-schritte.html       Doku-Seite (vorher .\scripts\build_site.ps1), nur hell
+#   -Capture ... -Surface desktop                                               Start-App: alle Faelle aus preview/mock.js, 600 px
 #   -Screens overview,accounts                                                  nur diese Reiter (Standard: alle aus dem Datenmodell)
 #   -Title 'Hinweis kuerzer'                                                    Ueberschrift der Seite
 # Der Pruef-Agent (.claude/agents/ui-review.md) liest den Ordner nachher/. Kein Netz, keine DB, kein Container.
 param(
     [Parameter(Mandatory)][ValidatePattern('^[a-z0-9-]+$')][string]$Name,
-    [ValidateSet('mini-app', 'site')][string]$Surface = 'mini-app',
+    [ValidateSet('mini-app', 'site', 'desktop')][string]$Surface = 'mini-app',
     [ValidateSet('vorher', 'nachher')][string]$Capture = '',
     [string[]]$Screens = @(),
     [string[]]$Pages = @('index.html'),
@@ -59,6 +60,35 @@ if ($Capture) {
             [System.IO.File]::WriteAllText((Join-Path $dir "$s.txt"), (Get-HeadlessText -File $tmp), $Utf8NoBom)
             Remove-Item $tmp -Force
             Write-Host "  [OK] $Capture/$s" -ForegroundColor Green
+        }
+    } elseif ($Surface -eq 'desktop') {
+        # Start-App: echte ui/-Dateien mit der Vorschau-Attrappe, je Fall ein Bildschirm (Name:Fall:Bildschirm[:win]).
+        $ui = Join-Path $RepoRoot 'provisioning\desktop\ui'
+        $mock = Join-Path $RepoRoot 'provisioning\desktop\preview\mock.js'
+        $url = { param($p) 'file:///' + $p.Replace('\', '/') }
+        $cases = @('welcome:missing:welcome', 'need:missing:need', 'sys-hint:hints:sys', 'sys-stop:blocked:sys', 'move:dmg:move', 'resume:interrupted:resume',
+            'dk-missing:missing:docker', 'dk-stopped:stopped:docker', 'dk-ready:ready:docker', 'dk-orbstack:ready-orbstack:docker', 'dk-old:old:docker',
+            'dk-memory:memory:docker', 'dk-other:other:docker', 'dk-help:colima:docker', 'dk-remote:remote:docker', 'wizard-missing:missing:wizardMissing',
+            'power-laptop:laptop:power', 'power-result:missing:powerApply', 'done:missing:finish', 'home:complete:home', 'report:missing:report',
+            'uninstall:missing:uninstall', 'power-restore:missing:powerRestore', 'win-sys:hints:sys:win', 'win-power:missing:power:win')
+        if ($Screens.Count) { $cases = @($cases | Where-Object { $Screens -contains ($_ -split ':')[0] }) }
+        foreach ($c in $cases) {
+            $n, $fall, $screen, $os = $c -split ':'
+            $params = "state=$fall&screen=$screen" + $(if ($os) { "&os=$os" } else { '' })
+            $html = [System.IO.File]::ReadAllText((Join-Path $ui 'index.html'), $Utf8NoBom)
+            $html = $html.Replace('href="app.css"', "href=`"$(& $url (Join-Path $ui 'app.css'))`"")
+            $html = $html.Replace('<script src="app.js"></script>', "<script>window.__previewParams = '$params';</script><script src=`"$(& $url $mock)`"></script><script src=`"$(& $url (Join-Path $ui 'app.js'))`"></script>")
+            # Fensterhoehe der App ist fest, die Aufnahme zeigt den ganzen Inhalt samt Knopfleiste darunter; Hell/Dunkel
+            # ueber data-theme, weil Headless-Chrome sonst der Einstellung von Windows folgt.
+            $html = $html.Replace('</head>', '<style>html,body{height:auto}main{overflow:visible;flex:none}.nav{border-bottom:1px solid var(--hairline)}</style></head>')
+            foreach ($scheme in 'light', 'dark') {
+                $tmp = Join-Path $dir "$n.$scheme.tmp.html"
+                [System.IO.File]::WriteAllText($tmp, $html.Replace('<html lang="de">', "<html lang=`"de`" data-theme=`"$scheme`">"), $Utf8NoBom)
+                Invoke-HeadlessShot -File $tmp -Out (Join-Path $dir "$n-$scheme.png") -WidthPx 600 -HeightPx 900 -Scale 1.25 -Dark:($scheme -eq 'dark') -TrimBottom -AllowCut
+                if ($scheme -eq 'light') { [System.IO.File]::WriteAllText((Join-Path $dir "$n.txt"), (Get-HeadlessText -File $tmp), $Utf8NoBom) }
+                Remove-Item $tmp -Force
+            }
+            Write-Host "  [OK] $Capture/$n" -ForegroundColor Green
         }
     } else {
         foreach ($p in $Pages) {

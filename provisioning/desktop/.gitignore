@@ -1,0 +1,5 @@
+# Bau-Ergebnisse; Symbole erzeugt CI aus dem Zeichen (desktop-build.yml), Schemas erzeugt tauri-build.
+target/
+app/icons/
+app/icon-source.svg
+app/gen/

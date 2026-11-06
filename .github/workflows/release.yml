@@ -18,12 +18,15 @@ on:
     tags:
       - 'v*.*.*'
 
+# Schreibrecht nur in den Jobs, die den Release anlegen bzw. Dateien anhaengen (zizmor excessive-permissions).
 permissions:
-  contents: write   # gh release create/upload braucht Schreibrecht auf Releases
+  contents: read
 
 jobs:
   build-release:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write   # gh release create/upload braucht Schreibrecht auf Releases
     steps:
       - name: Checkout (Tag-Commit)
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -110,3 +113,37 @@ jobs:
           fi
           # .sha256-Sidecar bleibt fuer Installationen ohne Schluesselbund (und aeltere CLIs); SHA256SUMS ist die signierte Liste.
           gh release upload "${TAG}" "${TARBALL}" "${TARBALL}.sha256" install.sh SHA256SUMS --clobber
+
+  # Start-App (Plan docker-installer-freunde, Paket 6): DMG (macOS arm64, Ad-hoc-Signatur) und Windows-Setup. Gebaut im
+  # selben Lauf aus dem Tag-Commit, angehaengt an den Entwurf mit .sha256-Sidecar. Nicht in SHA256SUMS: deren Unterschrift
+  # (sign_release.ps1) deckt nur, was der Installer laedt; die eigene Pruefkette der App-Dateien ist offen (Paket 5).
+  desktop:
+    uses: ./.github/workflows/desktop-build.yml # zizmor: ignore[self-repository] actionlint 1.7.12 kennt "$/" noch nicht
+
+  desktop-assets:
+    needs: [build-release, desktop]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write   # gh release upload
+    steps:
+      - name: App-Dateien holen
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: desktop-*
+          path: desktop
+          merge-multiple: true
+
+      - name: An den Release haengen (idempotent, nie an ein unterschriebenes)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          if gh release view "${TAG}" --repo "${GITHUB_REPOSITORY}" --json assets --jq '.assets[].name' | grep -qx 'SHA256SUMS.sig'; then
+            echo "::error::Release ${TAG} ist bereits unterschrieben — App-Dateien bleiben unveraendert."
+            exit 1
+          fi
+          ls -l desktop
+          gh release upload "${TAG}" --repo "${GITHUB_REPOSITORY}" --clobber \
+            desktop/lifeagents.dmg desktop/lifeagents.dmg.sha256 \
+            desktop/lifeagents-setup.exe desktop/lifeagents-setup.exe.sha256

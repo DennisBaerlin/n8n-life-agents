@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-power-restore"
+description = "Enables the power_restore command without any pre-configured scope."
+commands.allow = ["power_restore"]
+
+[[permission]]
+identifier = "deny-power-restore"
+description = "Denies the power_restore command without any pre-configured scope."
+commands.deny = ["power_restore"]

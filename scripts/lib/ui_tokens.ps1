@@ -34,13 +34,25 @@ function Get-UiSurfaces {
             Colors = @('ink', 'gray', 'hairline', 'accent', 'ok', 'warn', 'alert', 'bg', 'bg-soft')
             Shape  = @('radius', 'font')
         }
+        # Start-App (Tauri): folgt dem System; data-theme nur fuer die Vorschau (scripts/dev/serve_desktop_preview.ps1).
+        [pscustomobject]@{
+            Name   = 'desktop'
+            File   = 'provisioning/desktop/ui/app.css'
+            Rules  = @(
+                [pscustomobject]@{ Selector = ':root'; Group = 'light' }
+                [pscustomobject]@{ Media = '@media (prefers-color-scheme: dark)'; Selector = ':root:not([data-theme="light"])'; Group = 'dark' }
+                [pscustomobject]@{ Selector = ':root[data-theme="dark"]'; Group = 'dark' }
+            )
+            Colors = @('ink', 'gray', 'hairline', 'accent', 'accent-hover', 'accent-mid', 'accent-pale', 'accent-wash', 'warn', 'warn-wash', 'alert', 'alert-wash', 'bg', 'bg-soft')
+            Shape  = @('radius', 'radius-sm', 'radius-pill', 'font', 'font-mono')
+        }
     )
 }
 
 # Wurzeln, unter denen der Lint Farb-Literale sucht. Eine UI-Datei ausserhalb dieser Wurzeln (und ausserhalb von
 # Get-UiExcludedPrefixes) ist ein Fehler: so rutscht eine neue Oberflaeche nicht unbemerkt durch.
 function Get-UiScanRoots {
-    @('docs/site/static/', 'docs/site/layouts/', 'packages/core/build/app/', 'packages/core/build/stickers/')
+    @('docs/site/static/', 'docs/site/layouts/', 'packages/core/build/app/', 'packages/core/build/stickers/', 'provisioning/desktop/ui/', 'provisioning/desktop/preview/')
 }
 # public/ = Hugo-Output der Quellen oben; mods = Erweiterung des Entwickler-Werkzeugs, keine Projekt-Oberflaeche.
 function Get-UiExcludedPrefixes { @('docs/site/public/', '.claude/mods/') }

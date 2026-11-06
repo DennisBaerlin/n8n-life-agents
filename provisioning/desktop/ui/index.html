@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>lifeagents</title>
+  <link rel="stylesheet" href="app.css">
+</head>
+<body>
+  <header class="top">
+    <!-- Zeichen des Projekts (eine Quelle: docs/site/layouts/partials/mark.html) -->
+    <svg width="26" height="26" viewBox="0 0 26 26" aria-hidden="true">
+      <path d="M13 2.5 L22 10 V19.5 H11.5 L7 23.5 V19.5 H4 V10 Z" fill="var(--accent)" stroke="var(--accent)" stroke-width="2" stroke-linejoin="round"/>
+      <path d="M8.6 12.8 L11.7 15.8 L17.4 10" fill="none" stroke="var(--bg)" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>
+    </svg>
+    <span>lifeagents</span>
+  </header>
+  <main id="screen" aria-live="polite"></main>
+  <footer class="nav" id="nav">
+    <button type="button" class="link" id="back">Zurück</button>
+    <button type="button" class="link" id="alt" hidden></button>
+    <button type="button" class="primary" id="next"></button>
+  </footer>
+  <script src="app.js"></script>
+</body>
+</html>

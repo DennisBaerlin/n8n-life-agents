@@ -19,6 +19,7 @@ pub mod journal;
 pub mod network;
 pub mod power;
 pub mod report;
+pub mod suggest;
 pub mod system;
 pub mod uninstall;
 
@@ -42,6 +43,7 @@ pub(crate) fn all_sources() -> Vec<(&'static str, &'static str)> {
         ("network.rs", include_str!("network.rs")),
         ("power.rs", include_str!("power.rs")),
         ("report.rs", include_str!("report.rs")),
+        ("suggest.rs", include_str!("suggest.rs")),
         ("system.rs", include_str!("system.rs")),
         ("uninstall.rs", include_str!("uninstall.rs")),
     ]

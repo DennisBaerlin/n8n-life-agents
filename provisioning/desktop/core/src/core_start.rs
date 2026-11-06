@@ -2,7 +2,10 @@
 //! `up -d anchor postgres master edge`), danach bei jeder Anmeldung nur `start`; Schnittstelle zum Wizard (Paket 4).
 //! Namen und Befehle kommen aus `contract`.
 
-use crate::contract::{self, MasterCmd, HOST_IP_VAR, PG_PASSWORD_VAR, PORT_VAR, PROBE_VOLUME, PROJECT, WIZARD_PORT_VAR};
+use crate::contract::{
+    self, MasterCmd, HOST_IP_VAR, HOST_NAMES_VAR, MYFRITZ_VAR, PG_PASSWORD_VAR, PORT_VAR, PROBE_VOLUME, PROJECT, USER_FULLNAME_VAR,
+    USER_LANG_VAR, WIZARD_PORT_VAR,
+};
 use crate::docker::{Docker, DockerCall};
 use crate::host::{join, Host};
 use crate::journal::{self, Journal, Step};
@@ -33,12 +36,42 @@ pub fn write_env(host: &dyn Host, p: &CorePaths, ports: Ports) -> Result<(), Str
         None => host.random_hex(32)?,
     };
     let Ports { edge, wizard } = ports;
-    let mut text = format!("{PORT_VAR}={edge}\n{WIZARD_PORT_VAR}={wizard}\n{PG_PASSWORD_VAR}={pw}\n");
-    // Heimnetz-Adresse für den master (Paperless vorausfüllen); bei jedem Start neu, sie kann wechseln.
-    if let Some(ip) = crate::network::lan_ip(host) {
-        text.push_str(&format!("{HOST_IP_VAR}={ip}\n"));
-    }
+    let text = format!("{PORT_VAR}={edge}\n{WIZARD_PORT_VAR}={wizard}\n{PG_PASSWORD_VAR}={pw}\n");
     host.write_file(&p.env_file, &text)
+}
+
+/// Inhalt der Hinweis-Datei (`contract::HINTS_DIR`): je gefundenem Wert eine Zeile `KEY=wert`, nur harmlose Zeichen
+/// (die Quellen in `network.rs`/`suggest.rs` filtern schon; hier noch einmal gegen Zeilenumbrüche und Steuerzeichen).
+pub fn hints_text(host: &dyn Host) -> String {
+    let mut lines: Vec<(&str, String)> = Vec::new();
+    if let Some(ip) = crate::network::lan_ip(host) {
+        lines.push((HOST_IP_VAR, ip));
+    }
+    if let Some(zone) = crate::suggest::myfritz_zone(host) {
+        lines.push((MYFRITZ_VAR, zone));
+    }
+    let names = crate::suggest::hostname_candidates(host);
+    if !names.is_empty() {
+        lines.push((HOST_NAMES_VAR, names.join(",")));
+    }
+    if let Some(name) = crate::suggest::user_fullname(host) {
+        lines.push((USER_FULLNAME_VAR, name));
+    }
+    if let Some(lang) = crate::suggest::user_lang(host) {
+        lines.push((USER_LANG_VAR, lang));
+    }
+    lines.into_iter().map(|(k, v)| format!("{k}={}\n", v.chars().filter(|c| !c.is_control()).collect::<String>())).collect()
+}
+
+/// Hinweise an den `master` geben, unmittelbar bevor der Fragebogen öffnet (/run übersteht keinen Neustart). Inhalt
+/// über stdin, nie im argv; ohne Funde eine leere Datei, damit keine alten Werte stehen bleiben.
+pub fn send_hints(host: &dyn Host, d: &Docker) -> Result<(), String> {
+    let out = d.call_stdin(host, DockerCall::MasterHints, &hints_text(host))?;
+    if out.success() {
+        Ok(())
+    } else {
+        Err(format!("Hinweise nicht übergeben ({})", out.code))
+    }
 }
 
 /// Zwei Ports auf 127.0.0.1: n8n (`edge`, den der Tunnel nach außen bringt) und, getrennt davon, der Wizard.
@@ -339,16 +372,58 @@ mod tests {
         assert!(pos("create --label io.lifeagents.install=lifeagents lifeagents_pgdata") < pos(" up --detach"));
     }
 
+    /// Rechner mit Netz, FritzBox (MyFRITZ), Gerätenamen, Nutzername und Sprache (alles erfunden).
+    fn home_mac() -> FakeHost {
+        let h = FakeHost::mac()
+            .on("/sbin/route -n get default", CmdOut::ok("  interface: en0\n"))
+            .on("/usr/sbin/ipconfig getifaddr en0", CmdOut::ok("192.168.178.20\n"))
+            .on("/usr/sbin/scutil --get LocalHostName", CmdOut::ok("Erikas-Mac-mini\n"))
+            .on("/usr/sbin/scutil --get ComputerName", CmdOut::ok("Erikas Mac mini\n"))
+            .on("/usr/bin/id -F", CmdOut::ok("Erika Beispiel\n"))
+            .on("/usr/bin/defaults read -g AppleLanguages", CmdOut::ok("(\n    \"de-DE\"\n)\n"));
+        *h.peer_cert.borrow_mut() = Some(
+            rcgen::generate_simple_self_signed(vec!["fritz.box".into(), "deine-domain.myfritz.net".into()]).unwrap().cert.der().to_vec(),
+        );
+        h
+    }
+
     #[test]
-    fn host_ip_only_when_a_private_address_is_known() {
+    fn hints_go_to_the_master_over_stdin_only() {
+        let h = home_mac();
+        h.set(&cmd(DockerCall::MasterHints), CmdOut::ok(""));
+        send_hints(&h, &d()).unwrap();
+        let log = h.stdin_log.borrow().clone();
+        assert_eq!(log.len(), 1);
+        let (line, input) = &log[0];
+        assert!(line.contains("exec --interactive lifeagents-master sh -c umask 077;"), "{line}");
+        assert!(line.ends_with("cat > /run/lifeagents-wizard/hints.env"), "{line}");
+        assert_eq!(
+            input,
+            "LA_HOST_IP=192.168.178.20\nLA_MYFRITZ_ZONE=deine-domain.myfritz.net\nLA_HOST_NAME_CANDIDATES=erikas-mac-mini,erikasmacmini\nLA_USER_FULLNAME=Erika Beispiel\nLA_USER_LANG=de\n"
+        );
+        // Kein privater Wert im argv (für jeden Prozess lesbar).
+        for v in ["192.168", "myfritz", "Erika", "erikas"] {
+            assert!(!line.contains(v), "{v} im argv: {line}");
+        }
+    }
+
+    #[test]
+    fn without_findings_the_hints_file_is_emptied() {
         let h = FakeHost::mac();
+        h.set(&cmd(DockerCall::MasterHints), CmdOut::ok(""));
+        send_hints(&h, &d()).unwrap();
+        assert_eq!(h.stdin_log.borrow()[0].1, "", "leere Datei überschreibt alte Werte");
+    }
+
+    #[test]
+    fn env_file_never_carries_private_values() {
+        // Die Env-Datei landet über Compose in der Container-Konfiguration (docker inspect): nur Ports und Passwort.
+        let h = home_mac();
         let p = paths(&h, "/x/compose.yml");
         write_env(&h, &p, ports(5880)).unwrap();
-        assert_eq!(env_value(&h.read_file(&p.env_file).unwrap(), "LA_HOST_IP"), None, "ohne Netz keine Zeile");
-        h.set("/sbin/route -n get default", CmdOut::ok("  interface: en0\n"));
-        h.set("/usr/sbin/ipconfig getifaddr en0", CmdOut::ok("192.168.178.20\n"));
-        write_env(&h, &p, ports(5880)).unwrap();
-        assert_eq!(env_value(&h.read_file(&p.env_file).unwrap(), "LA_HOST_IP").as_deref(), Some("192.168.178.20"));
+        let env = h.read_file(&p.env_file).unwrap();
+        let keys: Vec<&str> = env.lines().filter_map(|l| l.split('=').next()).collect();
+        assert_eq!(keys, vec!["LA_EDGE_PORT", "LA_WIZARD_PORT", "LA_PG_SUPERPW"]);
     }
 
     #[test]

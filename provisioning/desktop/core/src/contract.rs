@@ -24,8 +24,19 @@ pub const COMPOSE_FILE: &str = "compose.yml";
 /// Pflicht-Variablen jedes Compose-Aufrufs (Datei `--env-file` der App, nie im argv).
 pub const PORT_VAR: &str = "LA_EDGE_PORT";
 pub const PG_PASSWORD_VAR: &str = "LA_PG_SUPERPW";
-/// Heimnetz-Adresse des Rechners für den `master` (Paperless vorausfüllen). Fehlt sie, fehlt die Zeile ganz.
+/// Hinweise für den Fragebogen: flüchtige Datei `<HINTS_DIR>/hints.env` im `master` (0600, `KEY=wert`), neu
+/// geschrieben vor jedem Öffnen des Fragebogens. Bewusst keine Umgebungsvariablen (Leitung 2026-11-06): Die stünden
+/// dauerhaft in `docker inspect`. Jeder Schlüssel nur, wenn gefunden; alle Werte privat.
+pub const HINTS_DIR: &str = "/run/lifeagents-wizard";
+/// Heimnetz-Adresse des Rechners (Paperless vorausfüllen),
 pub const HOST_IP_VAR: &str = "LA_HOST_IP";
+/// MyFRITZ-Name der FritzBox (`<kennung>.myfritz.net`, `suggest.rs`),
+pub const MYFRITZ_VAR: &str = "LA_MYFRITZ_ZONE";
+/// 2–4 Kandidaten für den Gerätenamen in der FritzBox, durch Komma getrennt, wahrscheinlichster zuerst,
+pub const HOST_NAMES_VAR: &str = "LA_HOST_NAME_CANDIDATES";
+/// vollständiger Name des angemeldeten Nutzers und Sprache des Systems (zwei Buchstaben).
+pub const USER_FULLNAME_VAR: &str = "LA_USER_FULLNAME";
+pub const USER_LANG_VAR: &str = "LA_USER_LANG";
 /// Zweiter freier Port auf 127.0.0.1, nur für den Wizard (veröffentlicht vom Dienst `edge`).
 pub const WIZARD_PORT_VAR: &str = "LA_WIZARD_PORT";
 /// Suchbereich für den freien Port (wie im Testpaket).

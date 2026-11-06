@@ -319,6 +319,8 @@ pub fn open_wizard(app: AppHandle) -> Result<bool, String> {
     let d = ready_docker(&app)?;
     let paths = core_paths(&app).ok_or_else(|| fail(&app, "compose-missing"))?;
     let ports = core_start::saved_ports(&RealHost, &paths).ok_or_else(|| fail(&app, "start-failed"))?;
+    // Vorschläge (Heimnetz, FritzBox, Name, Sprache) als flüchtige Datei im master; ohne sie bleiben Felder leer.
+    let _ = core_start::send_hints(&RealHost, &d);
     let Ok(url) = core_start::wizard_url(&RealHost, &d, ports.wizard) else {
         fail(&app, "wizard-unavailable");
         return Ok(false);
@@ -581,6 +583,11 @@ pub fn self_test() -> serde_json::Value {
         "download_found": cleanup::find_download(&h).is_some(),
         "free_port": inventory::free_port(&h),
         "lan_ip_found": lifeagents_desktop_core::network::lan_ip(&h).is_some(),
+        // Vorschläge sind privat: nur ob etwas gefunden wurde, nie der Wert (CI-Protokolle sind öffentlich).
+        "myfritz_found": lifeagents_desktop_core::suggest::myfritz_zone(&h).is_some(),
+        "host_name_candidates": lifeagents_desktop_core::suggest::hostname_candidates(&h).len(),
+        "user_fullname_found": lifeagents_desktop_core::suggest::user_fullname(&h).is_some(),
+        "user_lang_found": lifeagents_desktop_core::suggest::user_lang(&h).is_some(),
     })
 }
 

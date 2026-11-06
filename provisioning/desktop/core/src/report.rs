@@ -136,6 +136,21 @@ mod tests {
     use crate::journal::Step;
     use crate::system::{Check, Level};
 
+    /// Die privaten Vorschläge (suggest.rs: MyFRITZ-Name, Gerätename, Nutzername) kommen nie in den Bericht.
+    #[test]
+    fn report_never_reads_the_private_suggestions() {
+        let src = include_str!("report.rs");
+        for k in [
+            ["sugg", "est::"].concat(),
+            ["LA_MY", "FRITZ"].concat(),
+            ["LA_US", "ER_"].concat(),
+            ["HOST_NA", "MES"].concat(),
+            ["app", ".env"].concat(),
+        ] {
+            assert!(!src.contains(&k), "Fehlerbericht berührt {k}");
+        }
+    }
+
     #[test]
     fn report_carries_no_paths_names_or_log_text() {
         let h = FakeHost::mac();

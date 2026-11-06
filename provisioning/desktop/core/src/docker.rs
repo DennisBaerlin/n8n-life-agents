@@ -3,7 +3,7 @@
 //! etwas ändert, mit festem Projektnamen. Breite Befehle (Aufräumen über alles, „alle“-Schalter beim Löschen,
 //! Listen nur aus IDs für Massen-Löschungen) gibt es hier nicht; der Test `no_broad_commands` hält das fest.
 
-use crate::contract::{MasterCmd, FIRST_SERVICES, LABEL, MASTER_CONTAINER, PROBE_VOLUME, PROJECT};
+use crate::contract::{MasterCmd, FIRST_SERVICES, HINTS_DIR, LABEL, MASTER_CONTAINER, PROBE_VOLUME, PROJECT};
 use crate::host::{CmdOut, Host};
 
 /// Gefundenes Docker: Pfad zum Befehl und der festgehaltene Kontext.
@@ -73,6 +73,8 @@ pub enum DockerCall<'a> {
     ImageRemove(&'a str),
     /// Befehl im `master` (Schnittstelle zu Paket 4).
     Master(MasterCmd),
+    /// Hinweise für den Fragebogen als flüchtige Datei im `master` (0600, nur root); Inhalt über stdin (`call_stdin`).
+    MasterHints,
 }
 
 /// Alle Zustände einzeln als Filter: listet auch gestoppte Container, ohne den „alle“-Schalter, den der
@@ -173,6 +175,10 @@ impl Docker {
                 p(&mut a, &["image", "rm"]);
                 a.push(reference.to_string());
             }
+            DockerCall::MasterHints => {
+                p(&mut a, &["exec", "--interactive", MASTER_CONTAINER, "sh", "-c"]);
+                a.push(format!("umask 077; mkdir -p {HINTS_DIR}; cat > {HINTS_DIR}/hints.env"));
+            }
             DockerCall::Master(cmd) => {
                 p(&mut a, &["exec", MASTER_CONTAINER]);
                 a.extend(cmd.args());
@@ -183,6 +189,11 @@ impl Docker {
 
     pub fn call(&self, host: &dyn Host, call: DockerCall) -> Result<CmdOut, String> {
         host.run(&self.bin, &self.args(&call))
+    }
+
+    /// Wie `call`, Eingabe über stdin (private Werte nie im argv).
+    pub fn call_stdin(&self, host: &dyn Host, call: DockerCall, input: &str) -> Result<CmdOut, String> {
+        host.run_stdin(&self.bin, &self.args(&call), input)
     }
 }
 
@@ -250,6 +261,7 @@ mod tests {
             DockerCall::ProbeRead { image: "busybox:1.37" },
             DockerCall::ProbeSocket { image: "busybox:1.37" },
             DockerCall::Master(MasterCmd::ReleaseWebhook),
+            DockerCall::MasterHints,
         ]
     }
 

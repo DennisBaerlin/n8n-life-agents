@@ -83,7 +83,8 @@ function Build-SetInsurance {
         (New-HitlLine 'finance.label.rate_per_debit'      "'finance.tpl.change'" -Kind tpl -If $hasPrem -Params @{
             from = (New-HitlValue -Kind money -Value "$R.premium_amount" -EurByModel)
             to   = (New-HitlValue -Kind money -Value "$D.premium_amount" -EurByModel) })
-        (Get-FinanceRhythmLine -Label 'finance.label.payment_mode' -Interval "$S.schedule_interval" -Unit "$S.schedule_unit" -If "$S.schedule_unit")
+        # Intervall ohne neue Angabe = das gespeicherte (wie Preview und fn_set_insurance), sonst stuende "monatlich" fuer alle 3 Monate
+        (Get-FinanceRhythmLine -Label 'finance.label.payment_mode' -Interval "($S.schedule_interval || $R.schedule_interval)" -Unit "$S.schedule_unit" -If "$S.schedule_unit")
         (New-HitlLine 'finance.label.annual_contribution' "'finance.tpl.change'" -Kind tpl -If $hasPrem -Params @{
             from = (New-HitlValue -Kind money -Value "$R.annual_premium" -EurByModel)
             to   = (New-HitlValue -Kind money -Value "$D.annual_premium" -EurByModel) })

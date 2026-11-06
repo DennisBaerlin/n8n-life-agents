@@ -48,7 +48,7 @@
 --   period_end = closing_balance - Summe der Zeilen danach; Anfang = bestaetigter Stand am Schnitt (last_reconciled_balance,
 --   sonst Systemstand am Anlagetag; keine Saldo-Probe; drift = nur Systemaenderungen vor dem Schnitt seit der
 --   Bestaetigung). Was App-Stand und Export nicht gemeinsam erklaeren (meist vorgemerkte Kartenzahlungen), steckt im Rest
---   am period_end, nie am Schnitt (export_gap, apply speichert ihn); Karten-Hinweis statement_export_gap (< 0) bzw.
+--   am period_end, nie am Schnitt (export_gap, apply speichert ihn); Karte: Rest-Zeile "darin noch vorgemerkt" (< 0) bzw. Hinweis
 --   _settled (> 0 direkt nach einem Abgleich mit Vormerkung), statement_export_starts_late (Export beginnt nach
 --   Schnitt+1: evtl. fehlen Zeilen). pending_settled (>= 0) = Teil des Rests, der eine damals vorgemerkte und jetzt
 --   gebuchte Zahlung ausgleicht (hoechstens damalige Vormerkung, Luecke, gebuchte Abgaenge): eigene Kartenzeile, die
@@ -70,10 +70,10 @@
 --   moved_legs[] = Transfer-Beine dieses Kontos, die der Auszug eines ANDEREN Kontos in den letzten 5 Tagen gebucht
 --   hat und die hier keine Zeile haben (unterwegs) -> zaehlen nicht zum Stand am period_end, apply setzt period_end+1.
 --   Beides steht auf der Karte (Abschnitt "Unterwegs"). Rest-Label (Befund 2026-11-03): nicht cash "Sonstige Abweichung"; mit offenen
---   Ein- UND Ausgaengen "Rest" (Notiz statement_rest_split); Rest > 0 "Ungeklaerter Eingang"; Rest < 0 ohne Zeile und gesperrten Posten
+--   Ein- UND Ausgaengen "Rest"; Rest > 0 "Ungeklaerter Eingang"; Rest < 0 ohne Zeile und gesperrten Posten
 --   "Ungeklaerter Abgang"; Rest < 0 ohne offene Abgaenge, aber mit erklaertem Teil oder Eingang "Rest"; offene Abgaenge plus Teil neben
---   der Export-Luecke "Rest" (Notiz statement_rest_mixed); sonst "Alltagsausgaben". Luecke < 0 ohne offene Abgaenge: Hinweis
---   statement_export_gap_unexplained statt statement_export_gap (statement_export_starts_late hat Vorrang).
+--   der Export-Luecke "Rest"; sonst "Alltagsausgaben". Laien-Pruefung 2026-11-06: unter der Rest-Zeile flache "darin"-Zeilen (offene Eingaenge, offene Ausgaenge, noch vorgemerkt, Uebriges), die zusammen genau den Rest ergeben (ab zwei Teilen); after_period als Zeile unter dem App-Stand. Luecke < 0 ohne offene Abgaenge: Hinweis
+--   statement_export_gap_unexplained (statement_export_starts_late hat Vorrang).
 --   STARTBETRAG DES GEGENKONTOS (fn_opening_balance_reason, Befund 2026-11-03): Stufe T/P/L mit Zeile im Startbetrag des Gegenkontos ->
 --   matched.other_in_opening (kein partner_lump, kein partner_fee, im fingerprint), apply bucht nur das Bein dieses Kontos, Gebuehr
 --   auf diesem Konto bleibt in der Gruppe; Karte statement_transfer_in_opening. Dauerauftrag -> blocked.reason partner_in_opening
@@ -1059,7 +1059,7 @@ BEGIN
                core.fn_ui_money(v_owner, v_acct.currency) || jsonb_build_object('label', 'finance.label.statement_owner_balance'))
                -- Buchungen nach dem Zeitraum gehoeren zum App-Stand, nicht zum Rest -> Zeile direkt darunter
                || CASE WHEN v_after <> 0 THEN jsonb_build_array(
-                      core.fn_ui_money(v_after, v_acct.currency) || jsonb_build_object('label', 'finance.label.statement_after_period'))
+                      core.fn_ui_money(v_after, v_acct.currency, true) || jsonb_build_object('label', 'finance.label.statement_after_period'))
                   ELSE '[]'::jsonb END
                -- Luecke App-Stand/Export: beginnt der Export nach Schnitt+1 -> evtl. fehlende Zeilen (Warnung, keine
                -- Vermutung); < 0 mit offenen Abgaengen -> noch nicht im Export (Vormerkung) = eigene "darin"-Zeile am Rest
@@ -1097,7 +1097,7 @@ BEGIN
                          THEN core.fn_ui_tpl('finance.tpl.statement_savings_plan_row', jsonb_build_object('name', m->>'name',
                                   'amount', core.fn_ui_money((m->>'amount')::numeric, v_acct.currency),
                                   -- geschaetzte Stueckzahl: Wert genau, Anzeige 2 Stellen (Owner 2026-11-06 F1; gerundet nur im Renderer)
-                                  'shares', core.fn_ui_num((m->>'shares')::numeric, 8) || '{"digits": 2}'::jsonb,
+                                  'shares', jsonb_build_object('kind', 'number', 'value', (m->>'shares')::numeric, 'digits', 2, 'sign', false),
                                   'date', core.fn_ui_date((m->>'line_date')::date)))
                          WHEN m ? 'partner_fee'   -- Pool-Eingang: die Gebuehr bucht das Gegenkonto (Karte = Buchung)
                          THEN core.fn_ui_tpl('finance.tpl.statement_partner_fee_row', jsonb_build_object('name', m->>'name',

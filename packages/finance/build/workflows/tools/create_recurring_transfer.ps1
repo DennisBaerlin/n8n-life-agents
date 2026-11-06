@@ -70,7 +70,7 @@ function Build-CreateRecurringTransfer {
         (Get-FinanceRhythmLine -Label 'finance.label.cycle' -Interval "$S.schedule_interval" -Unit "$S.schedule_unit")
         (New-HitlLine 'finance.label.debit_day'    $dom -Kind tpl -Params @{ day = "$S.schedule_day_of_month" })
         (New-HitlLine 'finance.label.first_transfer' (Get-DryEffectiveExpr 'first_payment_date') -Kind date)
-        (New-HitlLine 'finance.label.valid_from'   ("(" + (Get-DryEffectiveExpr 'valid_from') + " || " + (Get-DryEffectiveExpr 'first_payment_date') + ")") -Kind date -IsDefault "!$S.valid_from")
+        (New-HitlLine 'finance.label.valid_from'   ("(" + (Get-DryEffectiveExpr 'valid_from') + " || " + (Get-DryEffectiveExpr 'first_payment_date') + ")") -Kind date)   # ohne "(Standard)" wie hitl_lines (Laien-Pruefung 2026-11-06)
         (New-HitlLine 'finance.label.valid_to'     "($S.valid_to ? 'finance.tpl.plain' : 'finance.value.unlimited')" -Kind tpl -If "!$free" -Params @{
             value = (New-HitlValue -Kind date -Value (Get-DryEffectiveExpr 'valid_to')) })
         (New-HitlLine 'finance.label.last_transfer' (Get-DryEffectiveExpr 'last_execution') -Kind date -If $free)

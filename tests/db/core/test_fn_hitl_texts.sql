@@ -57,7 +57,9 @@ BEGIN
   IF r->'owner'->'t'->>'core.test_enum_dir.out_flow' IS DISTINCT FROM 'Ausgabe' THEN
     RAISE EXCEPTION 'FAIL hitl_texts [Enum-Key nicht normalisiert: %]', r->'owner'->'t'; END IF;
   IF NOT (r->'owner'->'t' ? 'core.test_note') OR NOT (r->'owner'->'t' ? 'core.test_amount')
-     OR NOT (r->'owner'->'t' ? 'core.hitl.hint') OR NOT (r->'owner'->'t' ? 'core.hitl.part') THEN
+     OR NOT (r->'owner'->'t' ? 'core.hitl.hint') OR NOT (r->'owner'->'t' ? 'core.hitl.part')
+     -- Schlusszeile der Zweitfreigabe (Laien-Pruefung 2026-11-06): fehlt sie, zeigt die Owner-Karte den rohen Key
+     OR NOT (r->'owner'->'t' ? 'core.hitl.hint_member_request') THEN
     RAISE EXCEPTION 'FAIL hitl_texts [Note/Label/Hint/Teil-Key fehlt im Buendel: %]', r->'owner'->'t'; END IF;
   IF r->'languages'->>'ko' IS DISTINCT FROM '한국어' THEN
     RAISE EXCEPTION 'FAIL hitl_texts [languages-Map: %]', r->'languages'; END IF;

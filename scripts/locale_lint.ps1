@@ -292,7 +292,8 @@ function Get-CardTextFindings([string]$Text, [string]$Lang) {
     $out = @()
     $t = [regex]::Replace($Text, '\s+', ' ').Trim()
     # Satzenden zaehlen: Abkuerzungen, Zahl-/Datumspunkte und Auslassung maskieren
-    $m = [regex]::Replace($t, '\b(z|d|u|bzw|ca|Nr|ggf|inkl|evtl|bspw|e\.g|i\.e|etc)\.', 'X')
+    $m = [regex]::Replace($t, '\b(z\.\s?B|d\.\s?h|u\.\s?a|e\.\s?g|i\.\s?e)\.', 'X')   # zweiteilige Abkuerzungen zuerst (sonst zaehlt "B." als Satzende)
+    $m = [regex]::Replace($m, '\b(bzw|ca|Nr|ggf|inkl|evtl|bspw|etc)\.', 'X')
     $m = [regex]::Replace($m, '(?<=\d)\.(?=\s?\d)|(?<=\{\w+\})\.(?=\d)', '')
     $m = $m.Replace('…', '')
     $sentences = @([regex]::Split($m, '(?<=[.!?])\s+') | Where-Object { $_.Trim() -ne '' })
@@ -317,7 +318,7 @@ Check 'Karten-Laien-Test: kurze Kartentexte ohne interne Begriffe (Ratchet je Ke
     # Selbsttest der Regel (Positiv-/Negativfall), damit ein kaputter Regex nicht still alles durchwinkt
     $neg = @(Get-CardTextFindings 'ACHTUNG: Der Export wird gelöscht. Eins. Zwei. Drei. Fällig 10 Tage vor dem Stichtag.' 'de')
     if ($neg.Count -lt 4) { "Selbsttest: Negativfall meldet nur $($neg.Count) Funde (erwartet Vorsilbe, Sätze, Wort, Zeitspanne)" }
-    $pos = @(Get-CardTextFindings '⚠️ Der Eintrag wird z. B. am 01.10.2026 endgültig gelöscht. Falls falsch, abbrechen.' 'de')
+    $pos = @(Get-CardTextFindings '⚠️ Der Eintrag wird z. B. am 01.10.2026 endgültig gelöscht. Das gilt auch für Kopien. Falls falsch, abbrechen.' 'de')
     if ($pos.Count) { "Selbsttest: Positivfall meldet Funde: $($pos -join '; ')" }
     $keys = @{}
     # Wildcard-Pfad + -Recurse liefert unter PS 5.1 nicht rekursiv -> je Paket-Ordner (wie der Corpus unten)

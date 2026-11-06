@@ -19,6 +19,8 @@ RETURNS jsonb LANGUAGE plpgsql STABLE AS $$
 DECLARE
     v_acct  JSONB;
     v_id    INT;
+    v_skip_n     INT;
+    v_skip_until TEXT;
     v_hit   INT;
     v_cand  JSONB;
     v_bal   NUMERIC;
@@ -76,6 +78,9 @@ BEGIN
         v_bal  := finance.fn_get_balance_as_of(v_id, v_date);
         v_conf := ROUND((v_acct->>'confirmed_balance')::numeric, COALESCE(v_minor, 2));
 
+        -- offene Vorkommen, die der Abgleich als erledigt markiert (dieselbe Menge wie fn_reconcile_account), ein Durchlauf
+        SELECT count(*)::int, to_char(max(COALESCE(o.due_date, o.interest_period_end)), 'YYYY-MM-DD')
+          INTO v_skip_n, v_skip_until FROM finance.fn_reconcile_open_due(v_id, v_date) o;
         v_rows := v_rows || jsonb_build_array(jsonb_build_object(
             'account_id', v_id,
             'name',       v_acct->>'account_name',
@@ -85,10 +90,9 @@ BEGIN
             'diff',       v_conf - v_bal,
             'reconciliation_date', to_char(v_date, 'YYYY-MM-DD'),
             -- 2026-10-23: offene Vorkommen, die der Abgleich als erledigt markiert (dieselbe Menge wie fn_reconcile_account)
-            'skip_count', (SELECT count(*) FROM finance.fn_reconcile_open_due(v_id, v_date))::int,
-            -- Laien-Pruefung 2026-11-06: spaeteste Faelligkeit dieser Menge -> die Karte nennt ein Datum statt "10 Tage vor"
-            'skip_until', (SELECT to_char(max(COALESCE(o.due_date, o.interest_period_end)), 'YYYY-MM-DD')
-                           FROM finance.fn_reconcile_open_due(v_id, v_date) o)));
+            'skip_count', v_skip_n,
+            -- Laien-Pruefung 2026-11-06: spaetester Termin dieser Menge -> die Karte nennt ein Datum statt "10 Tage vor"
+            'skip_until', v_skip_until));
     END LOOP;
 
     RETURN jsonb_build_object('ok', true, 'n', jsonb_array_length(v_rows), 'rows', v_rows);

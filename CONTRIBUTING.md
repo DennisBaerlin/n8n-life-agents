@@ -266,9 +266,9 @@ db functions).
    before any code — Scope → Plan (assumptions, touched surfaces, blast-radius gates, sources, the
    reference analog named; for `fn_*`/schema/trigger/new agent/tool/auth one Opus plan-reviewer, recorded
    as a `Plan-Reviewer:` line) → **Established-Pattern Check** (skill `/arch-challenge`: one evidence-backed
-   research pass vs. established OSS patterns) for any new architecture/mechanism. A continuation session
-   that only runs a plan phase: launch with `claude --permission-mode plan` (alias `claude-plan`) and read
-   the handoff plan file first.
+   research pass vs. established OSS patterns) for any new architecture/mechanism. Every plan also names
+   its effort in a `Denkstufe: medium` or `Denkstufe: high – <reason>` line; the ExitPlanMode hook checks
+   both lines.
 3. Make surgical changes against the approved plan.
 4. TDD for any `fn_*` / schema change: write `tests/db/<pkg>/test_*.sql` first; iterate with
    `db_test.ps1 -Filter '*<subject>*'`.
@@ -276,7 +276,7 @@ db functions).
    `scripts/dev/bootstrap_test_n8n.ps1 -Reset` (no live prod sync — prod is a deploy-only target via
    `provisioning/provision.sh`); verify against the substrate's real n8n run.
 6. Before pushing a phase or a blast-radius change, run the built-in `/code-review high` on the diff
-   (step 8 in the dev cycle) and fold in the findings; a new package surface additionally gets the
+   and fold in the findings; a new package surface additionally gets the
    parity checklist from `docs/package-contract.md` §8 against its reference analog.
 7. Commit (Conventional Commits) and open a PR using the template — the **Real behavior proof**
    section is required, and all chat ids must be redacted to `__OWNER_CHAT_ID__`.

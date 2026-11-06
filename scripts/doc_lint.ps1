@@ -516,7 +516,8 @@ foreach ($doc in $anchorDocs) {
 
 # ---------------------------------------------------------------
 # 9) Laengen-Gate fuer JEDE CLAUDE.md (Anthropic-Guidance: "target under 200 lines per CLAUDE.md;
-#    longer files reduce adherence"). Hart > 200 Zeilen ODER > 16 KB (Root > 12 KB), Hinweis Root > 150 Zeilen.
+#    longer files reduce adherence"). Hart > 200 Zeilen ODER > 14 KB (Root > 10 KB), Hinweis Root > 150 Zeilen.
+#    Ratchet: die Grenzen liegen knapp ueber dem Stand nach dem Straffen 2026-11; eine neue Regel ersetzt eine alte.
 #    Bytes sind der ehrliche Massstab fuer geladenen Kontext (Harness-Rightsizing 2026-10-20: 199 absatz-lange
 #    Zeilen waren 45 KB); eine Sub-CLAUDE.md laedt komplett, sobald irgendeine Datei ihres Ordners geoeffnet wird
 #    (Phase 3: 470 KB in zehn Sub-Dateien). Zweck + Regeln + Zeiger bleiben; Mechanik/Historie -> docs/reference/,
@@ -526,7 +527,7 @@ foreach ($cf in ($docFiles | Where-Object { $_.Name -eq 'CLAUDE.md' })) {
     $cfRel  = $cf.FullName.Substring($RepoRoot.Length + 1) -replace '\\', '/'
     $isRoot = ($cfRel -eq 'CLAUDE.md')
     $cfLines = (Get-Content $cf.FullName).Count
-    $cfMaxKb = if ($isRoot) { 12 } else { 16 }
+    $cfMaxKb = if ($isRoot) { 10 } else { 14 }
     if ($cfLines -gt 200) {
         Fail "${cfRel}:$cfLines" "> 200 Zeilen (Anthropic: 'target under 200; longer reduces adherence') -- Mechanik/Historie nach docs/reference/, Prozeduren in Skills, kurze Regelzeilen."
     } elseif ($isRoot -and $cfLines -gt 150) {
@@ -538,6 +539,21 @@ foreach ($cf in ($docFiles | Where-Object { $_.Name -eq 'CLAUDE.md' })) {
     if ($cfSize -gt ($cfMaxKb * 1KB)) {
         Fail $cfRel ("{0:N1} KB (> {1} KB): Zweck + Regeln + Zeiger bleiben, Mechanik/Fallgeschichten nach docs/reference/<bereich>.md -- kurze Zeilen." -f ($cfSize / 1KB), $cfMaxKb)
     }
+}
+
+# ---------------------------------------------------------------
+# 9b) Skills: SKILL.md hart > 10 KB; die description (steht in jeder Session im Kontext) hart > 300 Zeichen.
+#     Kein SKILL.md gefunden oder keine description-Zeile = Fail (Extraktion tot).
+# ---------------------------------------------------------------
+$skillFiles = @(Get-ChildItem (Join-Path $RepoRoot '.claude\skills') -Recurse -Filter 'SKILL.md' -ErrorAction SilentlyContinue)
+if ($skillFiles.Count -eq 0) { Fail '.claude/skills' 'Check 9b: kein SKILL.md gefunden -- Pfad geaendert?' }
+foreach ($sf in $skillFiles) {
+    $sfRel  = $sf.FullName.Substring($RepoRoot.Length + 1) -replace '\\', '/'
+    $sfText = [System.IO.File]::ReadAllText($sf.FullName, (New-Object System.Text.UTF8Encoding($false))) -replace "`r", ''
+    if ([System.Text.Encoding]::UTF8.GetByteCount($sfText) -gt 10KB) { Fail $sfRel 'Check 9b: > 10 KB -- Mechanik nach docs/reference/, Wiederholungen durch Verweise ersetzen.' }
+    $dm = [regex]::Match($sfText, '(?m)^description: (.*)$')
+    if (-not $dm.Success) { Fail $sfRel 'Check 9b: keine description-Zeile im Frontmatter.' }
+    elseif ($dm.Groups[1].Value.Length -gt 300) { Fail $sfRel ("Check 9b: description {0} Zeichen (> 300) -- sie steht in jeder Session im Kontext." -f $dm.Groups[1].Value.Length) }
 }
 
 # Get-Pin <text> <regex> <was> -> erste Gruppe des Treffers; kein Treffer = Fail (Extraktion tot). Geteilt von Check 11 + 11b.

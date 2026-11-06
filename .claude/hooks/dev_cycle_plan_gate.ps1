@@ -5,6 +5,7 @@
 # den Grund als Tool-Fehler, ergaenzt die Zeile ehrlich und legt erneut vor.
 # deny statt ask: ein Hook-'ask' wird in der VS-Code-Erweiterung unter bypassPermissions still
 # durchgewinkt (GH #77212, hier 2026-10-20 reproduziert); 'deny' gilt laut Doku in jedem Modus.
+# Zusaetzlich eine Zeile "Denkstufe: medium|high - <Grund>" (high nur mit Grund).
 # Plan-Quelle: Claude Code speist den Plan-Text vor dem Hook-Aufruf als tool_input.plan ein (+ planFilePath).
 # Fehlt plan, liest der Hook planFilePath; fehlt beides -> deny (Waechter stirbt nie still - Muster doc_lint
 # Selbst-Asserts). Marker-Formen: "Plan-Reviewer: x", "**Plan-Reviewer:** x", "**Plan-Reviewer**: x",
@@ -28,5 +29,15 @@ if (-not $plan) {
   Block-PlanExit 'PLAN-GATE: Plan-Text nicht lesbar (weder tool_input.plan noch planFilePath nutzbar) - Hook-Eingabe hat sich geaendert; .claude/hooks/dev_cycle_plan_gate.ps1 an die aktuelle ExitPlanMode-Eingabe anpassen statt das Gate zu umgehen.'
 }
 if ($plan.Length -lt 400) { exit 0 }                                                        # trivialer Plan: kein Gate
-if ($plan -match '(?im)^[\s\-\*>#|]*Plan-Reviewer\**\s*[:|]\**\s*\S') { exit 0 }            # Marker da (fett/Bullet/Heading/Tabelle)
-Block-PlanExit 'PLAN OHNE REVIEW-ZEILE: ein substanzieller Plan traegt eine Zeile "Plan-Reviewer: <Verdikt>" - das Verdikt eines unabhaengigen Plan-Reviews (Pflicht ab Blast-Radius fn_*/Schema/Trigger/Auth/neuer Agent, Skill /feature) oder "Plan-Reviewer: nicht noetig - <Grund>". Zeile ehrlich ergaenzen und erneut vorlegen.'
+if ($plan -notmatch '(?im)^[\s\-\*>#|]*Plan-Reviewer\**\s*[:|]\**\s*\S') {                  # Marker (fett/Bullet/Heading/Tabelle)
+  Block-PlanExit 'PLAN OHNE REVIEW-ZEILE: ein substanzieller Plan traegt eine Zeile "Plan-Reviewer: <Verdikt>" - das Verdikt eines unabhaengigen Plan-Reviews (Pflicht ab Blast-Radius fn_*/Schema/Trigger/Auth/neuer Agent, Skill /feature) oder "Plan-Reviewer: nicht noetig - <Grund>". Zeile ehrlich ergaenzen und erneut vorlegen.'
+}
+# Denkstufe: die Leitung stellt die bauende Session bei der Plan-Abnahme danach ein (Skill /feature, /leitung).
+$dk = [regex]::Match($plan, '(?im)^[\s\-\*>#|]*Denkstufe\**\s*[:|]\**\s*(medium|high)\b(.*)$')
+if (-not $dk.Success) {
+  Block-PlanExit 'PLAN OHNE DENKSTUFE: ein substanzieller Plan traegt eine Zeile "Denkstufe: medium" oder "Denkstufe: high - <Grund>" (Skill /feature). Zeile ergaenzen und erneut vorlegen.'
+}
+if ($dk.Groups[1].Value -ieq 'high' -and $dk.Groups[2].Value -notmatch '[A-Za-z]{3}') {
+  Block-PlanExit 'DENKSTUFE HIGH OHNE GRUND: "Denkstufe: high - <Grund>" nennt den Grund, den der Plan belegt (Skill /feature). Grund ergaenzen oder medium waehlen.'
+}
+exit 0

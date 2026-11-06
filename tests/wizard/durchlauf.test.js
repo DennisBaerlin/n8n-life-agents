@@ -7,7 +7,7 @@ const assert = require('node:assert/strict');
 const fs = require('fs');
 const http = require('http');
 const path = require('path');
-const { REPO, startWizard, req, ctl, login, state, post, answer, waitFor, lanIp, WIZ } = require('./helpers');
+const { REPO, WIZ, startWizard, req, ctl, login, state, post, answer, waitFor, lanIp } = require('./helpers');
 const qr = require(path.join(WIZ, 'qr.js'));
 
 // Erfundenes Paperless: /api/ antwortet mit X-Version, prüft den Token.

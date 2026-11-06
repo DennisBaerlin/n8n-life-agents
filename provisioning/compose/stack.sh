@@ -50,13 +50,13 @@ case "${1:-}" in
     # Kein noch laufender master-Wechsel: der Helfer legte den master sonst gleich wieder an.
     if rt_swap_helper_running; then die "Gerade läuft ein Update (master-Wechsel) — danach erneut entfernen. Nichts geändert."; fi
     rt_stack_down || die "Container ließen sich nicht entfernen — Daten unberührt."
-    # Abgeleitete Volumes (jeder Installer-Lauf schreibt sie neu, keine Nutzerdaten) gehen immer; Compose nennt sie
-    # <projekt>_<name> und versieht sie mit unserem Label (compose.yml).
-    for v in shared gw_code n8n_patches; do rt_volume_rm_own "${LA_PROJECT}_${v}" || true; done
+    # Abgeleitete Volumes (keine Nutzerdaten) gehen immer; Compose nennt sie <projekt>_<name> und versieht sie mit unserem Label.
+    # Bleibt eines stehen, nennt rt_volume_rm_own den Grund; die Daten sind davon nie betroffen.
+    for v in $LA_DERIVED_VOLUMES; do rt_volume_rm_own "${LA_PROJECT}_${v}" || true; done
     if [ "$del" -eq 1 ]; then
       rc=0
       for v in $LA_STATE_VOLUMES; do rt_volume_rm_own "${LA_PROJECT}_${v}" || rc=1; done
-      [ "$rc" -eq 0 ] || die "Mindestens ein Volume trug nicht unser Label und blieb stehen (siehe oben)."
+      [ "$rc" -eq 0 ] || die "Mindestens ein Daten-Volume blieb stehen (Grund je Volume oben)."
       ok "Verbund ${LA_PROJECT} entfernt, Daten gelöscht."
     else
       ok "Verbund ${LA_PROJECT} entfernt; die Daten bleiben (Volumes ${LA_PROJECT}_*) — eine neue Installation findet sie wieder."

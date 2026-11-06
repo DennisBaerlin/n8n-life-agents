@@ -2083,7 +2083,7 @@ $rtTargets = @('runuser', 'systemctl', 'docker', '_rt_compose')
 # Label an genau diesem Namen) und `compose down` nur in der festen Form ohne -v/--rmi (rt_stack_down) — beide eng gefasst,
 # damit kein zweiter, breiterer Aufruf durchrutscht. `ps` nur mit festem JSON-Objekt als Format (rt_published_ports_json,
 # Paperless-Vorschlag im Wizard): liefert keine Kennungen, die ein zweiter Befehl (rm, stop) weiterverarbeiten koennte.
-$dockerAllow = '^\s+(exec|inspect|version|restart|logs)\b|^\s+ps\s+--format\s+''\{"image":|^\s+(image|volume)\s+(inspect|create)\b|^\s+volume\s+rm\s+"\$1"\s*(>|$)|^\s+run\s+--rm\b|^\s+compose\s+-p\s+"\$LA_PROJECT"\s+-f\s+"\$LA_COMPOSE_FILE"'
+$dockerAllow = '^\s+(exec|inspect|version|restart|logs)\b|^\s+ps\s+--format\s+''\{"image":|^\s+(image|volume)\s+(inspect|create)\b|^\s+volume\s+rm\s+"\$1"\s*(2>&1\s+)?(>|\)|$)|^\s+run\s+--rm\b|^\s+compose\s+-p\s+"\$LA_PROJECT"\s+-f\s+"\$LA_COMPOSE_FILE"'
 $composeAllow = '^\s+(up|start|stop|restart|ps|config|pull|version)\b|^\s+down\s+--remove-orphans\s*(;|\}|$)'
 $dockerBanned = '(^|\s)(prune|-a|--all|-q|--quiet|-aq|-qa|-v|--volumes|--rmi)(\s|=|$)'
 function Get-RuntimeWrapperIssues([string]$Rel, [string]$Text) {
@@ -2128,7 +2128,9 @@ foreach ($sa in @(
     @{ n = 'runtime: down fest ok';  r = $rtRel; t = "rt_stack_down() { _rt_compose down --remove-orphans; }`n";   want = 0 },
     @{ n = 'runtime: down -v';       r = $rtRel; t = "  _rt_compose down --remove-orphans -v`n";                   want = 2 },
     @{ n = 'runtime: volume rm ok';  r = $rtRel; t = "  docker volume rm `"`$1`" >/dev/null`n";                    want = 0 },
-    @{ n = 'runtime: volume rm frei'; r = $rtRel; t = "  docker volume rm `"`$name`"`n";                           want = 1 },
+    @{ n = 'runtime: volume rm Grund'; r = $rtRel; t = "  err=`"`$(docker volume rm `"`$1`" 2>&1 >/dev/null)`"`n"; want = 0 },
+    @{ n = 'runtime: down Profile';  r = $rtRel; t = "  COMPOSE_PROFILES=`"`$p`" _rt_compose down --remove-orphans`n"; want = 0 },
+    @{ n = 'runtime: volume rm frei';r = $rtRel; t = "  docker volume rm `"`$name`"`n";                           want = 1 },
     @{ n = 'runtime: volume prune';  r = $rtRel; t = "  docker volume prune -f`n";                                 want = 2 },
     @{ n = 'runtime: compose up ok'; r = $rtRel; t = "  _rt_compose up -d --no-deps n8n`n";                        want = 0 },
     @{ n = 'runtime: run ohne --rm'; r = $rtRel; t = "  docker run busybox true`n";                                want = 1 })) {
@@ -2237,6 +2239,21 @@ if (-not (Test-Path $composePath)) { $errors.Add("COMPOSE-PINS: provisioning/com
 elseif ($cPin.Count -eq 3) {
     foreach ($m in (Get-ComposePinIssues ([System.IO.File]::ReadAllText($composePath, $Utf8NoBom)) $cPin $cState $cPatches)) { $errors.Add("COMPOSE-PINS: $m") }
 }
+# Abgeleitete Volumes (von Compose verwaltet, nicht external) = LA_DERIVED_VOLUMES: sonst liesse der Deinstaller ein neues
+# Volume stehen, und `--delete-data` fiele spaeter ueber den Rest.
+function Get-ComposeDerivedVolumes([string]$Cy) {
+    $blk = [regex]::Match($Cy, '(?ms)^volumes:[ \t]*\r?\n(.*?)(?=^\S|\z)').Groups[1].Value
+    return @([regex]::Matches($blk, '(?ms)^  ([a-z_0-9]+):[^\n]*\n((?:(?!  [a-z_0-9]+:)[^\n]*\n?)*)') |
+        Where-Object { $_.Groups[2].Value -notmatch '(?m)^\s+external:\s*true' } | ForEach-Object { $_.Groups[1].Value } | Sort-Object)
+}
+$cDerived = @(([regex]::Match($rtTxt, '(?m)^LA_DERIVED_VOLUMES="([^"]+)"').Groups[1].Value -split '\s+') | Where-Object { $_ } | Sort-Object)
+if (-not $cDerived.Count) { $errors.Add("COMPOSE-PINS: LA_DERIVED_VOLUMES in lib/runtime.sh nicht lesbar -- Check 33 ist defekt.") }
+elseif (Test-Path $composePath) {
+    $cyDerived = Get-ComposeDerivedVolumes ([System.IO.File]::ReadAllText($composePath, $Utf8NoBom))
+    if (($cyDerived -join ' ') -ne ($cDerived -join ' ')) { $errors.Add("COMPOSE-PINS: abgeleitete Volumes in compose.yml ($($cyDerived -join ', ')) != LA_DERIVED_VOLUMES in lib/runtime.sh ($($cDerived -join ', ')) -- der Deinstaller liesse sie stehen.") }
+}
+$saCy = "volumes:`n  a:`n    external: true`n    name: x`n  b:`n    labels: *labels`n  c:     # Kommentar`n    labels: *labels`nx-end: 1`n"
+if (((Get-ComposeDerivedVolumes $saCy) -join ' ') -ne 'b c') { $errors.Add("COMPOSE-PINS SELBST-ASSERT 'abgeleitete Volumes': erwartet 'b c', gefunden '$((Get-ComposeDerivedVolumes $saCy) -join ' ')' -- Check 33 ist defekt.") }
 if (Test-Path $masterDf) {
     foreach ($m in [regex]::Matches([System.IO.File]::ReadAllText($masterDf, $Utf8NoBom), '(?m)^FROM\s+(\S+)')) {
         $img = $m.Groups[1].Value

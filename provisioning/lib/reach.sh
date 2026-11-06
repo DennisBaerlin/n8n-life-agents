@@ -152,8 +152,9 @@ reach_webhook_eval() {
 #      Dienst, 4 s, nur IPv4: api.ipify.org, quelloffen, keine Anmeldung). Gleich -> own; anders (veralteter Eintrag,
 #      Carrier-NAT mit oeffentlichem Bereich) oder nicht pruefbar -> unknown. Nie eine falsche Sicherheit: unknown
 #      fuehrt zum Weg von Hand (Online-Monitor der FritzBox), wie bisher.
-REACH_IPV4_ECHO='https://api.ipify.org'
-REACH_UPNP_URL='http://fritz.box:49000/igdupnp/control/WANIPConn1'
+# Beide Adressen per Umgebung uebersteuerbar: Tests duerfen nie die echte Box oder den Echo-Dienst des Rechners treffen.
+REACH_IPV4_ECHO="${REACH_IPV4_ECHO:-https://api.ipify.org}"
+REACH_UPNP_URL="${REACH_UPNP_URL:-http://fritz.box:49000/igdupnp/control/WANIPConn1}"
 
 # _reach_ipv4_shared <ipv4> -> 0, wenn die Adresse nicht oeffentlich ist (privat, Carrier-NAT, Loopback, Link-Local).
 _reach_ipv4_shared() {

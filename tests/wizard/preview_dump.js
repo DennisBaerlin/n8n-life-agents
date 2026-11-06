@@ -77,7 +77,7 @@ async function step(w, id, value, opt) {
     await step(w, 'fb_dslite', 'no');
     await langShots(w, 'fb_guide');
     await step(w, 'fb_guide', null);
-    await waitFor(async () => !(await state(w)).json.page.poll);   // MyFRITZ: nichts geprüft -> Endung fest, Name als Vorschlag
+    await waitFor(async () => !(await state(w)).json.page.poll);   // MyFRITZ: nichts geprüft -> Endung fest, Bild statt Vorschlag
     await shot(w, 'h_DOMAIN-tippen', { value: 'meinrechner', live: (await post(w, '/api/check', { id: 'h:DOMAIN', value: 'meinrechner' })).json.live });
     await step(w, 'h:DOMAIN', 'meinrechner');
     await step(w, 'review', null);
@@ -131,6 +131,13 @@ async function step(w, id, value, opt) {
       await login(t);
       for (const [id, v] of [['h:OWNER_LANGUAGE', lang], ['h:OWNER_FIRST_NAME', 'Erika'], ['h:OWNER_LAST_NAME', 'Muster'], ['h:OWNER_BIRTH_DATE', '1980-01-01'],
         ['h:OWNER_PERSONA', 'neutral'], ['h:TELEGRAM_BOT_TOKEN', '1:beispiel'], ['h:ANTHROPIC_API_KEY', 'sk-ant-beispiel'], ['voice', 'no'], ['packages', []]]) await answer(t, id, v);
+      if (!sfx) {   // DS-Lite sicher erkannt: Bestätigung statt Frage; danach zurück, Erkennung unsicher
+        fs.writeFileSync(path.join(t.fake, 'dslite'), 'yes');
+        await answer(t, 'reach', 'fritzbox');
+        await shot(t, 'fb_dslite-geprueft');
+        await post(t, '/api/back', {});
+        fs.rmSync(path.join(t.fake, 'dslite'));
+      }
       fs.writeFileSync(path.join(t.fake, 'ports'), 'busy');
       await answer(t, 'reach', 'fritzbox');
       await answer(t, 'fb_dslite', 'no');

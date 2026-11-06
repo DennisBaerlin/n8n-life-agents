@@ -14,6 +14,7 @@ Die eine Adresse für Gestaltungsregeln. Gilt für Doku-Seite, Mini-App, Wizard 
 8. **Lange Listen kurz halten** (aufklappbare Zeilen), Betrag rechts, Balken nur mit Zielbetrag.
 9. **Im Zustand mit Daten prüfen**, alle Zustände aus dem erfundenen Datenmodell, nicht nur den Leerzustand.
 10. **Eine Frage je Wizard-Seite**, ein Hauptknopf, Zurück als Link.
+11. **Helfen, wo es geht: konkret und vorausgefüllt.** Was die Oberfläche selbst wissen oder prüfen kann, füllt sie vor oder zeigt es (echter Gerätename, echte Adresse, echte Konto-Angabe in Anleitungsbildern statt Platzhalter); vorgeschlagen wird nur, was geprüft ist. Echte Werte nur lokal anzeigen, nie loggen.
 
 ## Sprache
 

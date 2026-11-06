@@ -103,7 +103,8 @@ function Test-L4Skip([string]$rel) {
 $L6Sites = @(
     @{ file = '.github/workflows/release.yml';      rx = '^\s*HEAD\s+(.+)$';                 split = 'ws' },
     @{ file = 'provisioning/provision.sh';          rx = 'for\s+d\s+in\s+(.+?);\s*do';       split = 'ws' },
-    @{ file = 'scripts/dev/bootstrap_test_n8n.ps1'; rx = 'foreach\s*\(\s*\$d\s+in\s+(.+?)\)'; split = 'psarray' }
+    @{ file = 'scripts/dev/bootstrap_test_n8n.ps1'; rx = 'foreach\s*\(\s*\$d\s+in\s+(.+?)\)'; split = 'psarray' },
+    @{ file = 'scripts/lib/release_images.ps1';     rx = '^\$ReleasePathspec\s*=\s*@\((.+?)\)'; split = 'psarray' }
 )
 function Get-L6Tokens([string]$group, [string]$split) {
     if ($split -eq 'psarray') { return @([regex]::Matches($group, "'([^']+)'") | ForEach-Object { $_.Groups[1].Value }) }
@@ -320,6 +321,13 @@ foreach ($site in $L6Sites) {
     }
     if (-not $matched) { Fail "L6: $($site.file): Pathspec-Liste nicht gefunden (Zeile verschoben/reformatiert = totes Gate)." }
 }
+# Release-Asset (release.yml) und Bau-Kontext des master-Images / sign_release.ps1 ($ReleasePathspec) muessen dieselbe Liste sein,
+# sonst enthielte das Image einen anderen Baum als der Tarball.
+$L6Same = foreach ($s in $L6Sites | Where-Object { $_.file -in '.github/workflows/release.yml', 'scripts/lib/release_images.ps1' }) {
+    $hit = [System.IO.File]::ReadAllLines((Join-Path $RepoRoot ($s.file -replace '/', '\')), $u8) | ForEach-Object { ([regex]$s.rx).Match($_) } | Where-Object { $_.Success } | Select-Object -First 1
+    if ($hit) { ((Get-L6Tokens $hit.Groups[1].Value $s.split) | Sort-Object) -join ' ' } else { '' }
+}
+if (@($L6Same).Count -ne 2 -or $L6Same[0] -ne $L6Same[1]) { Fail "L6: Pathspec in release.yml ('$($L6Same[0])') != `$ReleasePathspec in scripts/lib/release_images.ps1 ('$($L6Same[1])')." }
 
 # =====================================================================================================
 # L7 (SOLLTE) -- SQL-Selbst-/Tests-Header: Pfad-Tokens im fuehrenden Kommentar-Block existieren

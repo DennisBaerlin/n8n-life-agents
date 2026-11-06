@@ -110,6 +110,8 @@ if ($Capture) {
             param([string]$Params, [bool]$Full)
             $h = [System.IO.File]::ReadAllText((Join-Path $ui 'index.html'), $Utf8NoBom)
             $h = $h.Replace('href="app.css"', "href=`"$(& $url (Join-Path $ui 'app.css'))`"")
+            # Relative Pfade der App (Bilder unter art/) gegen ui/ aufloesen, nicht gegen den Aufnahme-Ordner
+            $h = $h.Replace('<head>', "<head><base href=`"$(& $url $ui)/`">")
             $h = $h.Replace('<script src="app.js"></script>', "<script>window.__previewParams = '$Params';</script><script src=`"$(& $url $mock)`"></script><script src=`"$(& $url (Join-Path $ui 'app.js'))`"></script>")
             # Ganzer Inhalt: Hoehe frei, Knopfleiste mit Linie darunter (sonst schneidet -TrimBottom sie ab)
             if ($Full) { $h = $h.Replace('</head>', '<style>html,body{height:auto}main{overflow:visible;flex:none;-webkit-mask-image:none;mask-image:none}.nav{border-bottom:1px solid var(--hairline)}</style></head>') }

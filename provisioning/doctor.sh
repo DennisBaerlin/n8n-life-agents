@@ -167,7 +167,7 @@ main() {
   svc_active lifeagents-llm-gateway "LLM-Gateway"
   if curl -fsS --max-time 3 -o /dev/null "http://127.0.0.1:8090/__health" 2>/dev/null; then   # Port fest (install_llm_gateway.sh)
     _pass "LLM-Gateway Health OK (Prompt-Caching aktiv)"
-  else _red "LLM-Gateway antwortet nicht — kein Agent erreicht Claude. Diagnose: $(svc_logs_hint lifeagents-llm-gateway)"; fi
+  else _red "LLM-Gateway antwortet nicht — kein Agent erreicht Claude. Diagnose: $(svc_logs_hint lifeagents-llm-gateway 50)"; fi
   # fallback = Anthropic lehnte die Cache-Haltepunkte ab, Anfrage lief ohne Caching (teurer, aber funktionsfaehig).
   if [ "$(id -u)" -eq 0 ]; then
     local _fb

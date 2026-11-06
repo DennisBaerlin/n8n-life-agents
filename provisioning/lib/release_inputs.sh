@@ -1021,7 +1021,8 @@ _review_edit() {
 # nennen Zeile und Schluessel, nie den Wert (Passwoerter, Schluessel). Kein Ausfuehren, keine Erweiterung, kein eval.
 #
 # Schluessel: Grossbuchstaben/Ziffern/_ (Positivliste der FORM). Gesperrt sind Variablen, die Shell, Lader oder diesen
-# Installer selbst steuern (Pfade, Laufzeit, Download-Quelle, Telegram-/Docker-Ziel). Eine feste Liste ERLAUBTER
+# Installer selbst steuern (Pfade, Laufzeit, Download-Quelle, Telegram-/Docker-Ziel); sie werden mit Warnung uebersprungen,
+# nie gesetzt (eine fruehere, gesourcte Datei durfte etwa TZ tragen, ohne dass die Installation abbrach). Eine feste Liste ERLAUBTER
 # Schluessel gibt es bewusst nicht: die Fragen leben in _INSTALL_ENV_KEYS + den Manifest-`credentials` + den Dev-Schaltern
 # (ein Fakt, eine Adresse); der Wizard schreibt ohnehin nur Schluessel aus dem maschinenlesbaren Auszug.
 _ANSWER_DENY_EXACT=" PATH IFS HOME SHELL ENV CDPATH GLOBIGNORE SHELLOPTS BASHOPTS PS1 PS2 PS3 PS4 PROMPT_COMMAND TMPDIR TERM
@@ -1046,7 +1047,7 @@ install_answers_load() {
   # damit kein Wert still ein unsichtbares Zeichen traegt. Regex-Anker: ^ = Anfang des Rests, $ = Dateiende.
   rest="$(cat "$file"; printf x)"; rest="${rest%x}"
   local nl=$'\n' bl=$' \t'
-  local re_skip="^[${bl}]*(#[^${nl}]*)?${nl}" re_end="^[[:space:]]*\$"
+  local re_skip="^[${bl}]*(#[^${nl}]*)?(${nl}|\$)" re_end="^[[:space:]]*\$"
   local re_key="^[${bl}]*(export[${bl}]+)?([A-Za-z_][A-Za-z0-9_]*)="
   # In [...] ist \ ein gewoehnliches Zeichen (POSIX): re_dq schliesst also auch \ aus; re_esc = \ + ein Zeichen (kein Umbruch).
   local re_sq="^'([^']*)'" re_dq='^"([^"$`\]*)"' re_esc='^[\]([^'"${nl}"'])' re_bare='^([A-Za-z0-9_./:@%+,=^-]+)'
@@ -1058,7 +1059,6 @@ install_answers_load() {
     [[ $rest =~ $re_key ]] || die "Antwort-Datei Zeile ${kline}: erwartet SCHLÜSSEL=Wert."
     key="${BASH_REMATCH[2]}"; rest="${rest:${#BASH_REMATCH[0]}}"
     [[ $key =~ ^[A-Z][A-Z0-9_]*$ ]] || die "Antwort-Datei Zeile ${kline}: Schlüssel ${key} ist nicht erlaubt (nur Großbuchstaben, Ziffern, _)."
-    _answer_key_denied "$key" && die "Antwort-Datei Zeile ${kline}: Schlüssel ${key} steuert die Installation selbst und ist dort nicht erlaubt."
     val=''
     while :; do
       if   [[ $rest =~ $re_sq ]];   then tok="${BASH_REMATCH[1]}"
@@ -1072,6 +1072,10 @@ install_answers_load() {
     [[ $rest =~ $re_tail ]] \
       || die "Antwort-Datei Zeile ${line}: Wert von ${key} hat eine nicht erlaubte Form (erlaubt: 'Text', \"Text\" ohne \$ und \`, Wörter ohne Sonderzeichen; ausgeführt wird nichts)."
     rest="${rest:${#BASH_REMATCH[0]}}"; line=$((line + 1))
+    # Gesperrt: ueberspringen statt abbrechen (eine aeltere, gesourcte Datei durfte z. B. TZ setzen); gesetzt wird er nie.
+    if _answer_key_denied "$key"; then
+      warn "Antwort-Datei Zeile ${kline}: ${key} steuert die Installation selbst — ignoriert."; continue
+    fi
     declare -gx "${key}=${val}" 2>/dev/null || die "Antwort-Datei Zeile ${kline}: Schlüssel ${key} lässt sich nicht setzen."
   done
   return 0
@@ -1095,8 +1099,11 @@ _tg_webhook_probe() {
   out="$(tg_api_curl "$token" getWebhookInfo -sS --max-time 10 -w '\n%{http_code}' 2>/dev/null)" || return 0
   code="${out##*$'\n'}"; body="${out%$'\n'*}"
   [ "$code" = 200 ] || return 0
-  url="$(printf '%s' "$body" | jq -r '.result.url // ""' 2>/dev/null)" || return 0
-  TG_WEBHOOK_PENDING="$(printf '%s' "$body" | jq -r '.result.pending_update_count // 0' 2>/dev/null || echo 0)"
+  # Ohne jq (die Pruefung laeuft vor der Paket-Installation, frische Rechner haben noch keins): die flache Bot-API-Antwort
+  # traegt url (nie mit Anfuehrungszeichen darin, Telegram verlangt eine HTTPS-URL) und pending_update_count.
+  [[ $body =~ \"url\":\"([^\"]*)\" ]] || return 0
+  url="${BASH_REMATCH[1]//\\\//\/}"
+  [[ $body =~ \"pending_update_count\":([0-9]+) ]] && TG_WEBHOOK_PENDING="${BASH_REMATCH[1]}"
   if [ -n "$url" ]; then
     TG_WEBHOOK_URL="$url"
     TG_WEBHOOK_HOST="$(printf '%s' "$url" | sed -E 's#^[a-zA-Z]+://([^/:]+).*#\1#')"
@@ -1118,7 +1125,6 @@ _tg_webhook_probe() {
 telegram_webhook_preflight() {
   [ -n "${TELEGRAM_BOT_TOKEN:-}" ] || return 0
   need_cmd curl || return 0
-  if ! ensure_jq_quiet; then warn "Telegram-Prüfung übersprungen (jq fehlt)."; return 0; fi
   local ours pick
   ours="$(read_env_value "${N8N_ENV_FILE:-/etc/n8n/n8n.env}" WEBHOOK_URL 2>/dev/null || true)"
   _tg_webhook_probe "$TELEGRAM_BOT_TOKEN" "$ours"

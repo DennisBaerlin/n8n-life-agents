@@ -98,7 +98,7 @@ install_llm_gateway() {
   [ "${UPGRADE_ACTIVE:-0}" -eq 1 ] && changed=0
   enable_start_unit "$LLM_GATEWAY_UNIT_NAME" "$changed"
   _wait_llm_gateway_health \
-    || die "LLM-Gateway antwortet nicht (${LLM_GATEWAY_URL}/__health) — Abbruch, bevor die Anthropic-Credential umgestellt wird. Diagnose: $(svc_logs_hint "$LLM_GATEWAY_UNIT_NAME")"
+    || die "LLM-Gateway antwortet nicht (${LLM_GATEWAY_URL}/__health) — Abbruch, bevor die Anthropic-Credential umgestellt wird. Diagnose: $(svc_logs_hint "$LLM_GATEWAY_UNIT_NAME" 50)"
 }
 
 # uninstall_llm_gateway — Dienst stoppen + Unit + Code + Mitschrift (StateDirectory, usage.jsonl) entfernen

@@ -75,14 +75,18 @@ n8n_patch_file() {
 # n8n_patch_status <id> -> original | patched | changed | unknown | missing   (read-only; compose: die Datei, wie der
 #   laufende n8n-Container sie sieht, also inkl. Patch-Mount)
 n8n_patch_status() {
-  local f sha
+  local f sha tmp st
   f="$(n8n_patch_file "$1" 2>/dev/null || true)"
-  if [ -z "$f" ] || ! n8n_live_cat "$f" >/dev/null 2>&1; then printf 'missing'; return 0; fi
-  sha="$(n8n_live_cat "$f" | sha256sum | cut -d' ' -f1)"
-  if [ "$sha" = "$(_n8n_patch_field "$1" 3)" ]; then printf 'original'
-  elif [ "$sha" = "$(_n8n_patch_field "$1" 4)" ]; then printf 'patched'
-  elif n8n_live_cat "$f" | grep -qF -- "$(_n8n_patch_anchor "$1")"; then printf 'unknown'
-  else printf 'changed'; fi
+  [ -n "$f" ] || { printf 'missing'; return 0; }
+  # EIN Lesezugriff (compose: ein docker exec), dann Hash und Anker lokal.
+  tmp="$(mktemp)"
+  if ! n8n_live_cat "$f" > "$tmp" 2>/dev/null; then rm -f "$tmp"; printf 'missing'; return 0; fi
+  sha="$(sha256sum < "$tmp" | cut -d' ' -f1)"
+  if [ "$sha" = "$(_n8n_patch_field "$1" 3)" ]; then st=original
+  elif [ "$sha" = "$(_n8n_patch_field "$1" 4)" ]; then st=patched
+  elif grep -qF -- "$(_n8n_patch_anchor "$1")" "$tmp"; then st=unknown
+  else st=changed; fi
+  rm -f "$tmp"; printf '%s' "$st"
 }
 
 # _n8n_patch_render <id> <quelle> <ziel> — woertlicher Ersatz je Paar, jeder Anker genau EINMAL (node ist da: n8n laeuft

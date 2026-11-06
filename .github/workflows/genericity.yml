@@ -20,6 +20,7 @@
 name: genericity
 
 on:
+  workflow_dispatch:   # Handstart fuer einen Branch ohne PR (gh workflow run genericity.yml --ref <branch>)
   push:
     branches: [main]
     paths:
@@ -340,7 +341,8 @@ jobs:
         if: always()
         run: |
           docker compose -p "$LA_PROJECT" -f provisioning/compose/compose.yml down --remove-orphans || true
-          for v in pgdata n8n_home etc_n8n etc_la var_la rt_tree gw_state ts_state; do docker volume rm "${LA_PROJECT}_$v" >/dev/null 2>&1 || true; done
+          # Liste aus der einen Adresse (lib/runtime.sh LA_STATE_VOLUMES), nie hier gespiegelt.
+          for v in $(sed -n 's/^LA_STATE_VOLUMES="\(.*\)"$/\1/p' provisioning/lib/runtime.sh); do docker volume rm "${LA_PROJECT}_$v" >/dev/null 2>&1 || true; done
           docker rm -f ci-neighbour >/dev/null 2>&1 || true
           docker volume rm ci-neighbour-data >/dev/null 2>&1 || true
           docker network rm ci-neighbour-net >/dev/null 2>&1 || true

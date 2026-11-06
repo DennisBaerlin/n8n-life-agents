@@ -73,10 +73,14 @@ printf '%s\n' 'A="$HOME"' > "$W/a";                     no_ans A.doppelt-mit-dol
 printf '%s\n' "A=x touch $P" > "$W/a";                  no_ans A.leerzeichen-befehl
 printf '%s\n' "A=x;touch $P" > "$W/a";                  no_ans A.semikolon
 printf '%s\n' "A='offen" > "$W/a";                      no_ans A.offenes-quote
-printf '%s\n' 'PATH=/x' > "$W/a";                       no_ans A.gesperrt-PATH
-printf '%s\n' 'LD_PRELOAD=/x' > "$W/a";                 no_ans A.gesperrt-LD
-printf '%s\n' 'LIFEAGENTS_RUNTIME=compose' > "$W/a";    no_ans A.gesperrt-runtime
-printf '%s\n' 'LIFEAGENTS_TELEGRAM_API=http://x' > "$W/a"; no_ans A.gesperrt-telegram-ziel
+# Gesperrte Schluessel: uebersprungen (Warnung), nie gesetzt, die uebrigen Zeilen gelten weiter.
+printf '%s\n' 'PATH=/x' 'A=1' > "$W/a";                 ok_ans A.gesperrt-PATH '[ "$PATH" != /x ] && [ "$A" = 1 ]'
+printf '%s\n' 'LD_PRELOAD=/x' > "$W/a";                 ok_ans A.gesperrt-LD '[ "${LD_PRELOAD:-}" != /x ]'
+printf '%s\n' 'LIFEAGENTS_RUNTIME=ausdatei' > "$W/a";   ok_ans A.gesperrt-runtime '[ "${LIFEAGENTS_RUNTIME:-}" != ausdatei ]'
+printf '%s\n' 'LIFEAGENTS_TELEGRAM_API=http://x.invalid' > "$W/a"; ok_ans A.gesperrt-telegram-ziel '[ "${LIFEAGENTS_TELEGRAM_API:-}" != http://x.invalid ]'
+printf '%s\n' "TZ='Europe/Vienna'" 'B=2' > "$W/a";      ok_ans A.gesperrt-alte-datei-laeuft-weiter '[ "${TZ:-}" != Europe/Vienna ] && [ "$B" = 2 ]'
+printf 'A=1\n# Ende' > "$W/a";                          ok_ans A.kommentar-am-ende-ohne-umbruch '[ "$A" = 1 ]'
+printf "PATH='\$(touch %s)'\n" "$P" > "$W/a";           ok_ans A.gesperrt-wert-nie-ausgefuehrt "[ ! -e '$P' ]"
 printf '%s\n' 'a=1' > "$W/a";                           no_ans A.kleinbuchstaben
 printf 'A=1\r\n' > "$W/a";                              no_ans A.crlf
 printf '%s\n' "touch $P" > "$W/a";                      no_ans A.nackter-befehl
@@ -138,6 +142,10 @@ TG_WH='{"ok":true,"result":{"url":"","pending_update_count":0}}'; TG_UP=200; eq 
 TG_UP=409;                                                                eq T.long-polling-409 foreign "$(probe '')"
 TG_WH='{"ok":true,"result":{"url":"https://bot.example.com/webhook/abc/webhook","pending_update_count":2}}'
 eq T.unser-webhook ours "$(probe 'https://bot.example.com/')"
+# JSON darf / als \/ schreiben; die Pruefung laeuft ohne jq.
+TG_WH='{"ok":true,"result":{"url":"https:\/\/bot.example.com\/webhook\/abc\/webhook","has_custom_certificate":false,"pending_update_count":0}}'
+eq T.unser-webhook-escaped ours "$(probe 'https://bot.example.com/')"
+_tg_webhook_probe tok ''; eq T.nur-rechnername bot.example.com "$TG_WEBHOOK_HOST"
 eq T.fremder-webhook foreign "$(probe 'https://other.example.org/')"
 eq T.erstinstallation-fremd foreign "$(probe '')"
 TG_WH_CODE=401;                                                           eq T.token-abgelehnt unknown "$(probe '')"
@@ -147,7 +155,6 @@ if grep -qiE 'offset|drop_pending' "$W/tg_calls"; then fail T.nie-offset "$(grep
 # Entscheidung: unattended (kein TTY), Erstinstallation, fremder Webhook.
 export TELEGRAM_BOT_TOKEN=tok N8N_ENV_FILE="$W/n8n.env" LIFEAGENTS_DIR="$W/etc" UNATTENDED=1
 lifeagents_version_marker() { printf '%s' "$W/VERSION"; }
-ensure_jq_quiet() { command -v jq >/dev/null 2>&1; }
 if ( telegram_webhook_preflight ) >/dev/null 2>&1; then fail T.unattended-erst-bricht-ab "kein Abbruch"; else pass T.unattended-erst-bricht-ab; fi
 if ( TELEGRAM_WEBHOOK_TAKEOVER=1 telegram_webhook_preflight ) >/dev/null 2>&1; then pass T.uebernahme-ausdruecklich; else fail T.uebernahme-ausdruecklich "Abbruch trotz Schalter"; fi
 if [ -s "$W/etc/telegram-webhook-before" ] && [ "$(stat -c %a "$W/etc/telegram-webhook-before")" = 600 ]; then pass T.alte-adresse-gemerkt; else fail T.alte-adresse-gemerkt "Datei fehlt oder nicht 0600"; fi

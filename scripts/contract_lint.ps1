@@ -1990,8 +1990,10 @@ function Get-ShellCommandWords([string]$Text, [string[]]$Targets) {
     # Kleiner Shell-Lexer: Zustaende c (Code), p ($( ) / ( )), b (Backticks), d ("..."), s ('...'); Heredoc-Koerper werden
     # uebersprungen. Liefert je Ziel-Wort in Befehls-Stellung @{ Word; Line; Rest } (Rest = Rest der physischen Zeile).
     $out = New-Object System.Collections.Generic.List[object]
-    $kw = @('if', 'then', 'else', 'elif', 'do', 'while', 'until', '!', 'time', 'exec', 'command', 'nohup', 'builtin', '{', '}', 'function')
+    $kw = @('if', 'then', 'else', 'elif', 'do', 'while', 'until', '!', '{', '}', 'function')
     $noCmdAfter = @('for', 'case', 'in', 'select')
+    $prefixCmds = @('env', 'sudo', 'timeout', 'xargs', 'nice', 'ionice', 'stdbuf', 'setsid', 'nohup', 'exec', 'command', 'builtin', 'time')
+    $prefix = ''
     $stack = New-Object System.Collections.Generic.Stack[string]; $stack.Push('c')
     $cmdPos = $true; $line = 1; $i = 0; $n = $Text.Length
     $pending = New-Object System.Collections.Generic.List[object]
@@ -2011,7 +2013,7 @@ function Get-ShellCommandWords([string]$Text, [string[]]$Targets) {
                 }
                 $pending.Clear()
             }
-            if ($top -ne 's' -and $top -ne 'd') { $cmdPos = $true }
+            if ($top -ne 's' -and $top -ne 'd') { $cmdPos = $true; $prefix = '' }
             continue
         }
         if ($top -eq 's') { if ($ch -eq "'") { [void]$stack.Pop() }; $i++; continue }
@@ -2022,6 +2024,15 @@ function Get-ShellCommandWords([string]$Text, [string[]]$Targets) {
             if ($ch -eq '`') { $stack.Push('b'); $cmdPos = $true; $i++; continue }
             $i++; continue
         }
+        if ($top -eq 'e') {   # ${...}: Text, aber ein $(...) im Standardwert (${X:-$(cmd)}) ist ein Befehl
+            if ($ch -eq '\') { $i += 2; continue }
+            if ($ch -eq '}') { [void]$stack.Pop(); $i++; continue }
+            if ($ch -eq "'") { $stack.Push('s'); $i++; continue }
+            if ($ch -eq '"') { $stack.Push('d'); $i++; continue }
+            if ($ch -eq '$' -and $next -eq '(') { $stack.Push('p'); $cmdPos = $true; $i += 2; continue }
+            if ($ch -eq '$' -and $next -eq '{') { $stack.Push('e'); $i += 2; continue }
+            $i++; continue
+        }
         # Code-Zustaende c / p / b
         $prev = if ($i -gt 0) { $Text[$i - 1] } else { "`n" }
         if ($ch -eq '#' -and ($prev -match '[\s;&|(]')) { $e = $Text.IndexOf("`n", $i); $i = if ($e -lt 0) { $n } else { $e }; continue }
@@ -2029,11 +2040,7 @@ function Get-ShellCommandWords([string]$Text, [string[]]$Targets) {
         if ($ch -eq '"') { $stack.Push('d'); $cmdPos = $false; $i++; continue }
         if ($ch -eq '\') { if ($next -eq "`n") { $line++ }; $i += 2; continue }
         if ($ch -eq '$' -and $next -eq '(') { $stack.Push('p'); $cmdPos = $true; $i += 2; continue }
-        if ($ch -eq '$' -and $next -eq '{') {
-            $d = 0
-            while ($i -lt $n) { if ($Text[$i] -eq '{') { $d++ } elseif ($Text[$i] -eq '}') { $d--; if ($d -eq 0) { break } }; $i++ }
-            $i++; $cmdPos = $false; continue
-        }
+        if ($ch -eq '$' -and $next -eq '{') { $stack.Push('e'); $cmdPos = $false; $i += 2; continue }
         if ($ch -eq '`') { if ($top -eq 'b') { [void]$stack.Pop(); $cmdPos = $false } else { $stack.Push('b'); $cmdPos = $true }; $i++; continue }
         if ($ch -eq '(') { $stack.Push('p'); $cmdPos = $true; $i++; continue }
         if ($ch -eq ')') { if ($top -eq 'p') { [void]$stack.Pop(); $cmdPos = $false } else { $cmdPos = $true }; $i++; continue }
@@ -2051,6 +2058,12 @@ function Get-ShellCommandWords([string]$Text, [string[]]$Targets) {
         if ($i + 1 -lt $n -and $Text[$i] -eq '(' -and $Text[$i + 1] -eq ')') { $i += 2; $cmdPos = $true; continue }   # Funktions-Definition
         if ($cmdPos) {
             if ($w -match '^[A-Za-z_][A-Za-z0-9_]*=') { continue }      # Zuweisung vor dem Befehl
+            if ($prefix) {   # Vorsatz-Befehl (env/sudo/timeout/xargs ...): seine Schalter und Zahlen ueberspringen
+                if ($prefix -eq 'command' -and $w -match '^-[vV]$') { $prefix = ''; $cmdPos = $false; continue }   # command -v X = Abfrage
+                if ($w -match '^-|^[0-9][0-9.]*[smhd]?$') { continue }
+            }
+            if ($prefixCmds -contains $w) { $prefix = $w; continue }
+            $prefix = ''
             if ($kw -contains $w) { continue }
             if ($noCmdAfter -contains $w) { $cmdPos = $false; continue }
             if ($Targets -contains $w) {
@@ -2094,6 +2107,11 @@ foreach ($sa in @(
     @{ n = 'Kommentar';              r = 'x.sh'; t = "  # danach: systemctl reload caddy`n";                       want = 0 },
     @{ n = 'Argument (need_cmd)';    r = 'x.sh'; t = "  need_cmd docker || die x`n";                               want = 0 },
     @{ n = 'docker ausserhalb';      r = 'x.sh'; t = "  docker ps`n";                                              want = 1 },
+    @{ n = 'in ${X:-$()}';           r = 'x.sh'; t = "  v=`${A:-`$(runuser -u postgres -- psql)}`n";             want = 1 },
+    @{ n = 'Vorsatz timeout/env';    r = 'x.sh'; t = "  timeout 5 docker ps`n  env -i FOO=1 systemctl stop x`n";  want = 2 },
+    @{ n = 'xargs/sudo';             r = 'x.sh'; t = "  printf x | xargs -r docker rm`n  sudo runuser -u x -- id`n"; want = 2 },
+    @{ n = 'command -v ist Abfrage'; r = 'x.sh'; t = "  command -v docker >/dev/null`n";                         want = 0 },
+    @{ n = 'Parameter ohne Befehl';  r = 'x.sh'; t = "  v=`${A:-docker}; w=`${#B[@]}`n";                         want = 0 },
     @{ n = 'runtime: exec ok';       r = $rtRel; t = "  docker exec -u postgres `"`$c`" psql`n";                  want = 0 },
     @{ n = 'runtime: prune';         r = $rtRel; t = "  docker system prune -f`n";                                 want = 2 },
     @{ n = 'runtime: ps -q';         r = $rtRel; t = "  docker ps -q`n";                                           want = 2 },

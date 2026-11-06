@@ -166,14 +166,15 @@ svc_reload_or_restart() {
 svc_enable()        { rt_is_compose && return 0; systemctl enable "$1" >/dev/null 2>&1 || true; }
 svc_disable()       { rt_is_compose && return 0; systemctl disable "$1" >/dev/null 2>&1 || true; }
 svc_daemon_reload() { rt_is_compose && return 0; systemctl daemon-reload; }
-# svc_logs_hint <unit> -> der Diagnose-Befehl fuer Meldungen (Text, wird nicht ausgefuehrt).
+# svc_logs_hint <unit> [zeilen] -> der Diagnose-Befehl fuer Meldungen (Text, wird nicht ausgefuehrt; Standard 100 Zeilen).
 svc_logs_hint() {
-  if rt_is_compose; then printf 'docker logs --tail 100 %s' "$(_svc_container "$1" || printf '%s' "$1")"
-  else printf 'journalctl -u %s -n 100' "$1"; fi
+  if rt_is_compose; then printf 'docker logs --tail %s %s' "${2:-100}" "$(_svc_container "$1" || printf '%s' "$1")"
+  else printf 'journalctl -u %s -n %s' "$1" "${2:-100}"; fi
 }
-# svc_journal_since <unit> <seit> — Log-Zeilen eines Dienstes (doctor: Gateway-Fallback-Zaehler). compose: docker logs.
+# svc_journal_since <unit> <seit> — Log-Zeilen eines Dienstes seit <seit> (journalctl-Form '-24h'; doctor:
+# Gateway-Fallback-Zaehler). compose: docker logs mit derselben Dauer ('-24h' -> '24h').
 svc_journal_since() {
-  if rt_is_compose; then docker logs --since 24h "$(_svc_container "$1")" 2>&1
+  if rt_is_compose; then docker logs --since "${2#-}" "$(_svc_container "$1")" 2>&1
   else need_cmd journalctl && journalctl -u "$1" --since "$2" -o cat 2>/dev/null; fi
 }
 # systemd_present — laeuft systemd als PID 1? (Preflight; compose: nie)

@@ -21,7 +21,8 @@ try {
     if (-not $gitDir -or $gitDir -eq $common) { exit 0 }
     if (-not (Get-Command docker -ErrorAction SilentlyContinue)) { exit 0 }
     $ids = @(docker ps -a -q --filter 'label=lifeagents.substrate=n8n' --filter "label=lifeagents.worktree=$repo" 2>$null)
-    foreach ($id in ($ids | Where-Object { $_ })) { docker rm -f $id 2>$null | Out-Null }
+    # -v: das Image deklariert VOLUME; ohne -v bliebe je Container ein namenloses Volume verwaist liegen.
+    foreach ($id in ($ids | Where-Object { $_ })) { docker rm -fv $id 2>$null | Out-Null }
     if ($ids.Count -gt 0) {
         # Zustandsdateien je Container (.local/n8ntest_state.<container>.json) + die alte gemeinsame Datei
         Get-ChildItem (Join-Path $repo '.local') -Filter 'n8ntest_state*.json' -ErrorAction SilentlyContinue |

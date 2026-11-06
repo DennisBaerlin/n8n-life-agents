@@ -93,7 +93,9 @@ function Get-ContainerId {
 if ($Down) {
     Assert-Docker
     if (Get-ContainerId) {
-        Invoke-Native docker @('rm','-f',$Container) | Out-Null
+        # -v: das Image deklariert VOLUME, Docker legt dafuer ein namenloses Volume an; `rm -f` liesse es verwaist liegen (Test:
+        # scripts/dev/docker_volume_cleanup_test.ps1). Benannte Volumes bleiben unberuehrt.
+        Invoke-Native docker @('rm','-fv',$Container) | Out-Null
         Write-Host "Container $Container entfernt."
     } else {
         Write-Host "Kein Container $Container vorhanden."
@@ -107,7 +109,7 @@ Assert-Docker
 
 if ($Reset -and (Get-ContainerId)) {
     Write-Host "Verwerfe Container $Container (-Reset) ..."
-    Invoke-Native docker @('rm','-f',$Container) | Out-Null
+    Invoke-Native docker @('rm','-fv',$Container) | Out-Null   # -v: namenloses Image-Volume mit entfernen (siehe -Down)
     if (Test-Path $StateFile) { Remove-Item $StateFile -Force }
 }
 

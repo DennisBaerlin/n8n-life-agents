@@ -266,7 +266,7 @@ function pageFor(id) {
     case 'connect': return Object.assign(base, connectView());
     case 'handoff': return Object.assign(base, { kind: 'handoff', title: 'Dein Bot ist eingerichtet',
       help: [{ p: P.notes.welcome_sent ? 'Er hat dir in Telegram geschrieben. Tippe dort auf „Haushalt einrichten“.' : 'Schreib ihm in Telegram einfach /start, er zeigt dir den nächsten Schritt.' },
-        { p: 'Zum Schluss fragt dich dieses Fenster noch, ob der Rechner wach bleiben soll, damit dein Bot jederzeit antwortet.' }],
+        { p: 'Zum Schluss fragt dich das Fenster der App lifeagents noch, ob der Rechner wach bleiben soll, damit dein Bot jederzeit antwortet. Dieses Fenster kannst du danach schließen.' }],
       next: P.phase === 'handoff' ? null : 'Weiter', action: 'handoff', done: P.phase === 'handoff' });
     default: return Object.assign(base, { kind: 'info', title: '…' });
   }

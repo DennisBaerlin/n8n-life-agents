@@ -60,7 +60,8 @@ async function startWizard(opts = {}) {
   process.once('exit', () => { try { proc.kill('SIGKILL'); } catch (_) { /* schon weg */ } });
   const w = { dir, fake, port, proc, env, origin: `http://127.0.0.1:${port}`, cookie: '', csrf: '' };
   w.exited = new Promise((resolve) => proc.on('exit', (c) => resolve(c)));
-  w.stop = async () => { if (proc.exitCode === null) { proc.kill('SIGTERM'); await w.exited; } };
+  // Beim Warten aufs Ende den Prozess wieder festhalten, sonst endet node vorher still (nichts anderes hält die Schleife).
+  w.stop = async () => { if (proc.exitCode === null) { proc.ref(); proc.kill('SIGTERM'); await w.exited; } };
   return w;
 }
 

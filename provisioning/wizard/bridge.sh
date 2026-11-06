@@ -16,6 +16,7 @@
 #   bash bridge.sh tg-check                      -> Token in Env TELEGRAM_BOT_TOKEN; Prüfliste Nr. 10 (s. tg_check_json)
 #   bash bridge.sh reach-status                  -> Zustand des Tunnels (Schnittstelle zu Paket 3, s. reach_status_json)
 #   bash bridge.sh public-ip                     -> öffentliche IPv4 des Anschlusses (Paket 3, reach_public_ipv4)
+#   bash bridge.sh dslite                        -> eigene öffentliche IPv4? {"dslite":"yes|no|unknown"} (Paket 3, reach_dslite_json)
 #
 # Geheimnisse nur über stdin/Env, nie im argv (die Prozessliste ist für jeden lesbar). Ausgabe immer genau eine JSON-Zeile
 # auf stdout; Meldungen der Bibliotheken gehen nach stderr, die der Wizard verwirft. Exit 0, ausser bei falschem Aufruf (64).
@@ -260,8 +261,19 @@ br_public_ip() {
   jq -nc --arg ip "$ip" '{ip:$ip}'
 }
 
+# dslite — hat der Anschluss eine eigene öffentliche IPv4? Paket 3 reach_dslite_json -> {"dslite":"yes|no|unknown",
+#   "source":…}; yes = keine eigene (DS-Lite, Carrier-NAT) -> Tunnel, no = FritzBox-Weg ohne Handfrage. Fehler, fremde
+#   Ausgabe oder fehlende Funktion = unknown (der Wizard fragt von Hand).
+br_dslite() {
+  local d
+  d="$(reach_dslite_json 2>/dev/null)" || d=''
+  d="$(jq -c 'if type == "object" and (.dslite == "yes" or .dslite == "no") then {dslite, source:(.source // "none")} else empty end' <<<"$d" 2>/dev/null | head -n1)" || d=''
+  if [ -n "$d" ]; then printf '%s\n' "$d"; else jq -nc '{dslite:"unknown", source:"none"}'; fi
+}
+
 case "${1:-}" in
   questions)       br_questions ;;
+  dslite)          br_dslite ;;
   paperless-ports) br_paperless_ports ;;
   reach-ports)     br_reach_ports ;;
   validate)        [ -n "${2:-}" ] || exit 64; br_validate "$2" ;;
@@ -269,5 +281,5 @@ case "${1:-}" in
   tg-check)        br_tg_check ;;
   reach-status)    br_reach_status ;;
   public-ip)       br_public_ip ;;
-  *) printf 'Aufruf: bridge.sh questions|validate <ref>|paperless-check|tg-check|reach-status|public-ip\n' >&2; exit 64 ;;
+  *) printf 'Aufruf: bridge.sh questions|validate <ref>|paperless-check|tg-check|reach-status|reach-ports|paperless-ports|public-ip|dslite\n' >&2; exit 64 ;;
 esac

@@ -181,10 +181,8 @@ dl { margin: 0; }
 /* Gefundene Adressen (z. B. mehrere Paperless-Instanzen im Heimnetz): Antippen trägt sie ins Feld ein. */
 .suggest { margin-top: 10px; }
 .suggest .choice { padding: 10px 14px; }
-/* MyFRITZ: Prüf-Zeile direkt unter dem Feld, Name aus der FritzBox als kleiner Knopf, „Erneut prüfen“ rechts daneben. */
-.live-row { display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: center; justify-content: space-between; margin-top: 8px; }
-.chip { font: inherit; font-size: 14px; font-weight: 600; color: var(--ink); background: var(--bg-soft); border: 1px solid var(--hairline); border-radius: var(--radius-pill); padding: 2px 10px; margin-left: 4px; cursor: pointer; }
-.chip:hover { border-color: var(--accent); }
+/* MyFRITZ: Prüf-Zeile direkt unter dem Feld mit „Erneut prüfen“. */
+.live-row { display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: center; margin-top: 8px; }
 .live:empty { display: none; }
 .live.note { margin: 8px 0 0; }
 

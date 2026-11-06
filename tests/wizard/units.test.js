@@ -81,6 +81,8 @@ test('Ablauf: Folgefragen nur gewählter Module, „beide oder keine“, FritzBo
   assert.ok(!s.some((x) => x.startsWith('c:') || x.startsWith('s:')));
   assert.ok(flow.steps(Q, { __reach: 'fritzbox', __dslite: 'no' }).includes('h:DOMAIN'));
   assert.ok(!flow.steps(Q, { __reach: 'fritzbox', __dslite: 'yes' }).includes('h:DOMAIN'));
+  assert.ok(!flow.steps(Q, { __reach: 'fritzbox', __dslite: 'no', __dslite_auto: 'no' }).includes('fb_dslite'), 'sicher erkannt: keine Seite');
+  assert.ok(flow.steps(Q, { __reach: 'fritzbox', __dslite_auto: 'yes' }).includes('fb_dslite'), 'keine eigene IPv4: Bestätigung');
   assert.equal(flow.reachMode({ __reach: 'fritzbox', __dslite: 'yes' }), 'tunnel');
   assert.equal(flow.reachMode({ __reach: 'fritzbox', __dslite: 'no', __ports: 'busy' }), 'tunnel');
   assert.equal(flow.reachMode({ __reach: 'fritzbox', __dslite: 'no' }), 'fritzbox');
@@ -191,7 +193,9 @@ test('Texte der Einrichtung: jeder feste Katalog-Key im Code steht in allen Spra
   // Zusammengesetzte Keys: Präfix + bekannte Endungen.
   for (const k of ['next', 'back', 'skip', 'retry', 'change', 'change_label', 'secret_kept', 'found_addresses', 'one_moment', 'report_show',
     'report_note', 'report_copied', 'offline', 'open_via_app', 'session_expired', 'doc_title']) keys.add(`core.wizard.ui.${k}`);
-  for (const k of ['voice_no', 'voice_yes', 'tg_new', 'tg_take', 'reach_tunnel', 'reach_fritzbox', 'dslite_no', 'dslite_yes']) { keys.add(`core.wizard.opt.${k}`); keys.add(`core.wizard.opt.${k}_desc`); }
+  for (const k of ['voice_no', 'voice_yes', 'tg_new', 'tg_take', 'reach_tunnel', 'reach_fritzbox', 'dslite_no', 'dslite_yes']) keys.add(`core.wizard.opt.${k}`);
+  // Beschreibung je Antwort (optionsFor); „Nein, dort steht kein DS-Lite“ hat bewusst keine.
+  for (const k of ['voice_no', 'voice_yes', 'tg_new', 'tg_take', 'reach_tunnel', 'reach_fritzbox', 'dslite_yes']) keys.add(`core.wizard.opt.${k}_desc`);
   for (const k of ['check', 'programs', 'database', 'access', 'bot', 'final']) keys.add(`core.wizard.stage.${k}`);
   for (const k of ['localhost', 'invalid', 'unreachable', 'not_paperless', 'token_rejected', 'too_old']) keys.add(`core.wizard.paperless.${k}`);
   for (const k of ['title', 'activating', 'activating_wait', 'not_reaching', 'check_again', 'expired', 'new_code', 'open_link', 'scan', 'tap_start',

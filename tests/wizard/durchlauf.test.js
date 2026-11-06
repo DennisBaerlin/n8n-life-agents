@@ -100,6 +100,7 @@ test('Durchlauf FritzBox mit drei Modulen: Antwort-Datei, Installation, Pairing,
     assert.equal(reach.options[0].value, 'tunnel');
     assert.equal(reach.options[0].tag, 'empfohlen');
     await expectOk(await answer(w, 'reach', 'fritzbox'));
+    assert.equal((await page(w)).art, 'dslite', 'Erkennung unsicher: Handfrage mit Bild des Wegs');
     await expectOk(await answer(w, 'fb_dslite', 'no'));
     const guide = await page(w);
     assert.equal(guide.id, 'fb_guide');
@@ -108,7 +109,8 @@ test('Durchlauf FritzBox mit drei Modulen: Antwort-Datei, Installation, Pairing,
     // Kennung der FritzBox von der App, kein Gerätename löst auf: .<zone> steht fest, nur der Name vorne fehlt.
     const dom = await waitFor(async () => { const x = await page(w); return x.poll ? null : x; });
     assert.equal(dom.suffix, '.deine-domain.myfritz.net');
-    assert.match(dom.note.text, /Gerätenamen/);
+    assert.match(dom.help[0].p, /Gerätenamen/, 'ein Satz statt des langen Hilfetexts, Platz fürs Bild');
+    assert.ok(!dom.note);
     const box = await answer(w, 'h:DOMAIN', 'deine-domain.myfritz.net');
     assert.equal(box.status, 422);
     assert.match(box.json.error, /FritzBox selbst/);
@@ -213,7 +215,7 @@ test('Durchlauf Tunnel: belegter Bot, Fehlschlag + neuer Versuch, Neustart, Tail
     await post(w, '/api/back', {});
     await expectOk(await answer(w, 'fb_dslite', 'yes'));   // DS-Lite führt zum Tunnel
     assert.equal((await page(w)).id, 'review');
-    assert.equal((await page(w)).rows.find((r) => r.label === 'Erreichbarkeit').value, 'Tunnel');
+    assert.equal((await page(w)).rows.find((r) => r.label === 'Erreichbarkeit').value, 'Tunnel (Anmeldung bei Tailscale nach der Installation)');
     await expectOk(await answer(w, 'review', null));
 
     // Fehlschlag in einer Stufe: Antworten bleiben, „Noch einmal versuchen“ führt über die Bestätigung erneut.
@@ -243,13 +245,16 @@ test('Durchlauf Tunnel: belegter Bot, Fehlschlag + neuer Versuch, Neustart, Tail
     const lg = await waitFor(async () => { const p = await page(w); return p.link && p.link.href ? p : null; });
     assert.equal(lg.title, 'Melde dich bei Tailscale an');
     assert.equal(lg.link.href, 'https://login.tailscale.com/a/beispiel123');
+    assert.equal(lg.art, 'ts_login', 'Bild zum Zustand (ui/art/art.js)');
     fs.writeFileSync(path.join(w.fake, 'reach'), 'needs_funnel');
     const fu = await waitFor(async () => { const p = await page(w); return p.title === 'Erlaube deinem Rechner den Empfang' ? p : null; });
     assert.equal(fu.link, null, 'fremde Adresse wird nie als Knopf gezeigt');
+    assert.equal(fu.art, 'ts_funnel');
     // Paket-3-Zustände (reach_status_json): Geräte-Freigabe ohne Link -> feste Geräteliste; Funnel-Seite von Tailscale.
     fs.writeFileSync(path.join(w.fake, 'reach'), JSON.stringify({ mode: 'tunnel', state: 'needs_machine_auth', url: '' }));
     const ma = await waitFor(async () => { const p = await page(w); return p.title === 'Gib diesen Rechner in Tailscale frei' ? p : null; });
     assert.equal(ma.link.href, 'https://login.tailscale.com/admin/machines');
+    assert.equal(ma.art, 'ts_machine');
     fs.writeFileSync(path.join(w.fake, 'reach'), JSON.stringify({ mode: 'tunnel', state: 'needs_funnel', url: 'https://login.tailscale.com/f/funnel?node=nBeispiel%3A1' }));
     const fn = await waitFor(async () => { const p = await page(w); return p.link && p.link.href.includes('/f/funnel') ? p : null; });
     assert.equal(fn.link.label, 'Freigabe-Seite öffnen');
@@ -267,8 +272,8 @@ test('Durchlauf Tunnel: belegter Bot, Fehlschlag + neuer Versuch, Neustart, Tail
   } finally { await w.stop(); }
 });
 
-// MyFRITZ (Owner, 2. Runde): nur eine GEPRÜFTE Adresse wird eingetragen; sonst feste Endung, Name der FritzBox als Vorschlag
-// zum Antippen und Live-Prüfung beim Tippen. Attrappen: WIZARD_FAKE_DNS „name=ipv4,…“, public_ip = öffentliche IPv4 (Paket 3).
+// MyFRITZ (Owner, 2. und 3. Runde): nur eine GEPRÜFTE Adresse wird eingetragen oder vorgeschlagen; sonst feste Endung, Bild
+// zum Nachsehen in der FritzBox und Live-Prüfung beim Tippen. Attrappen: WIZARD_FAKE_DNS „name=ipv4,…“, public_ip = öffentliche IPv4 (Paket 3).
 const Z = 'deine-domain.myfritz.net';
 const PUB = '203.0.113.7';
 async function toDomain(hints, dnsSpec, ip) {
@@ -284,6 +289,46 @@ async function toDomain(hints, dnsSpec, ip) {
 }
 const live = async (w, value) => (await post(w, '/api/check', { id: 'h:DOMAIN', value })).json.live;
 
+// DS-Lite (Paket 3 reach_dslite, Attrappe: Datei dslite = yes|no|unknown): sicher erkannt ersetzt die Handfrage.
+test('DS-Lite automatisch: „keine eigene IPv4“ = Bestätigung, „eigene“ = keine Seite, unsicher = Handfrage mit Bild', async () => {
+  const w = await startWizard({ hints: {} });
+  try {
+    await login(w);
+    for (const [id, v] of [['h:OWNER_LANGUAGE', 'de'], ['h:OWNER_FIRST_NAME', 'Erika'], ['h:OWNER_LAST_NAME', 'Muster'],
+      ['h:OWNER_BIRTH_DATE', '1980-01-01'], ['h:OWNER_PERSONA', 'neutral'], ['h:TELEGRAM_BOT_TOKEN', '1:beispiel'],
+      ['h:ANTHROPIC_API_KEY', 'sk-ant-beispiel'], ['voice', 'no'], ['packages', []]]) await expectOk(await answer(w, id, v));
+    fs.writeFileSync(path.join(w.fake, 'dslite'), 'yes');
+    await expectOk(await answer(w, 'reach', 'fritzbox'));
+    const yes = await page(w);
+    assert.equal(yes.id, 'fb_dslite');
+    assert.equal(yes.kind, 'info', 'keine Frage, nur die Bestätigung');
+    assert.match(yes.title, /^Geprüft/);
+    assert.ok(!yes.art, 'Bild nur bei der Handfrage');
+    await expectOk(await answer(w, 'fb_dslite', null));
+    const rv = await page(w);
+    assert.equal(rv.id, 'review');
+    assert.match(rv.rows.find((r) => r.label === 'Erreichbarkeit').value, /^Tunnel/);
+
+    fs.writeFileSync(path.join(w.fake, 'dslite'), 'no');
+    await expectOk(await post(w, '/api/goto', { id: 'reach' }));
+    assert.match((await expectOk(await answer(w, 'reach', 'fritzbox'))).check, /eigene IPv4-Adresse/);
+    assert.equal((await page(w)).id, 'fb_guide', 'eigene IPv4 erkannt: keine DS-Lite-Seite');
+    await post(w, '/api/back', {});
+    assert.equal((await page(w)).id, 'reach', 'auch nicht beim Zurückgehen');
+
+    // Jetzt unsicher: die früher erkannte Antwort gilt nicht mehr, es wird von Hand gefragt (kompakt, mit Bild).
+    fs.writeFileSync(path.join(w.fake, 'dslite'), 'unknown');
+    const r = await expectOk(await answer(w, 'reach', 'fritzbox'));
+    assert.ok(!r.check);
+    const q = await page(w);
+    assert.equal(q.id, 'fb_dslite');
+    assert.equal(q.kind, 'choice');
+    assert.equal(q.art, 'dslite');
+    assert.deepEqual(q.options.map((o) => [o.value, !!o.desc]), [['no', false], ['yes', true]]);
+    assert.equal(q.value, '', 'keine Vorauswahl aus der früheren Erkennung');
+  } finally { await w.stop(); }
+});
+
 test('MyFRITZ: Name der FritzBox zeigt auf diesen Anschluss -> geprüft eingetragen', async () => {
   // hints.env roh mit CRLF (Windows-Schreiber): ein CR am Zeilenende wird geduldet.
   const { w, dom } = await toDomain(`LA_MYFRITZ_ZONE=${Z}\r\nLA_HOST_NAME_FRITZ=Kims-PC\r\nLA_HOST_NAME_CANDIDATES=mac-mini\r\n`,
@@ -297,18 +342,21 @@ test('MyFRITZ: Name der FritzBox zeigt auf diesen Anschluss -> geprüft eingetra
   } finally { await w.stop(); }
 });
 
-test('MyFRITZ: falsche IP, umbenannt oder Freigabe fehlt -> nichts eingetragen, Vorschlag zum Antippen, Live-Prüfung', async () => {
+test('MyFRITZ: falsche IP, umbenannt oder Freigabe fehlt -> nichts eingetragen, kein Vorschlag, Bild, Live-Prüfung', async () => {
   // falsche IP: der FritzBox-Name löst auf, zeigt aber woandershin; „meinrechner“ = in der FritzBox umbenannt, noch nicht da.
   const { w, dom } = await toDomain({ LA_MYFRITZ_ZONE: Z, LA_HOST_NAME_FRITZ: 'kims-pc', LA_HOST_NAME_CANDIDATES: 'mac-mini' },
     `kims-pc.${Z}=198.51.100.9`, PUB);
   try {
     assert.equal(dom.value, '', 'nichts eingetragen');
     assert.equal(dom.suffix, `.${Z}`);
-    assert.deepEqual(dom.suggestions, ['kims-pc'], 'Name der FritzBox nur als Vorschlag');
+    assert.ok(!dom.suggestions, 'ein ungeprüfter Name wird nie vorgeschlagen');
+    assert.equal(dom.art, 'myfritz_name', 'stattdessen das Bild zum Nachsehen in der FritzBox');
     assert.ok(dom.live && dom.live.recheck);
-    assert.equal((await live(w, 'kims-pc')).state, 'wrong_ip');
+    const wrong = await live(w, 'kims-pc');
+    assert.equal(wrong.state, 'wrong_ip');
+    assert.match(wrong.text, /gehört nicht zu deinem Anschluss/);
     assert.equal((await live(w, 'meinrechner')).state, 'pending');
-    assert.match((await live(w, 'meinrechner')).text, /etwa eine Minute/);
+    assert.match((await live(w, 'meinrechner')).text, /gerade erst angelegt.*etwa eine Minute.*Sonst stimmt der Name nicht/);
     assert.equal((await live(w, 'nicht gültig!')), null, 'nur gültige Gerätenamen');
     assert.equal((await page(w)).id, 'h:DOMAIN', 'Prüfen ändert nichts am Stand');
   } finally { await w.stop(); }

@@ -46,7 +46,8 @@ function steps(Q, A) {
   }
   s.push('reach');
   if (A.__reach === 'fritzbox') {
-    s.push('fb_dslite');
+    // Sicher erkannt „eigene IPv4“ (__dslite_auto, Paket 3 reach_dslite): keine Seite; „keine eigene“ bleibt als Bestätigung.
+    if (A.__dslite_auto !== 'no') s.push('fb_dslite');
     if (A.__dslite === 'no') {
       if (A.__ports === 'busy') s.push('fb_ports_busy');
       else s.push('fb_guide', 'h:DOMAIN');

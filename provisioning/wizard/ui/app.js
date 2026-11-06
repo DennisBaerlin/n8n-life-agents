@@ -309,6 +309,8 @@ const UiNudge = {
     // Bild dieser Seite (di9, ui/art/): art.js entscheidet nach page.id, null = kein Bild; side = neben die Auswahl.
     const art = window.WizardArt && typeof window.WizardArt.mount === 'function' ? window.WizardArt.mount(p) : null;
     const takes = (art && art.takes) || [];   // was das Bild selbst zeigt (Hinweis, Anleitungs-Link), lässt die Seite weg
+    // place 'before': Bild vor Feld bzw. Antworten (erst im Bild nachsehen, dann antworten), sonst ans Ende bzw. daneben (side).
+    const artBefore = !!(art && art.el && !art.side && art.place === 'before');
     const kids = [
       h('h1', { id: 'title', text: p.title })];
     const help = p.kind === 'connect' && p.qr ? [] : helpNodes(p.help);
@@ -318,6 +320,7 @@ const UiNudge = {
     kids.push(...help);
     if (p.note && p.note.busy) kids.push(h('ul', { class: 'steps' }, h('li', { class: 'run' }, h('i', { 'aria-hidden': 'true' }), p.note.text)));
     else if (p.note && !takes.includes('note')) kids.push(h('div', { class: 'note ' + (p.note.kind || ''), text: p.note.text }));   // takes: das Bild zeigt den Hinweis selbst
+    if (artBefore) kids.push(art.el);
 
     if (['text', 'date', 'secret'].includes(p.kind)) {
       const type = p.kind === 'secret' ? 'password' : p.kind === 'date' ? 'date' : 'text';
@@ -328,19 +331,15 @@ const UiNudge = {
       // Fester Teil hinter dem Feld (z. B. .<kennung>.myfritz.net): nur der Gerätename vorne wird getippt.
       kids.push(h('label', { class: 'sr', for: 'in', text: p.title }),
         p.suffix ? h('div', { class: 'with-suffix' }, inp, h('span', { class: 'suffix', text: p.suffix })) : inp);
-      // Live-Prüfung (MyFRITZ): Stand der Adresse direkt unter dem Feld, daneben „Erneut prüfen“ (die FritzBox braucht etwa
-      // eine Minute) und der Name aus der FritzBox als kleiner Knopf zum Antippen (kompakt, passt ins App-Fenster 760 × 640).
+      // Live-Prüfung (MyFRITZ): Stand der Adresse direkt unter dem Feld, dazu „Erneut prüfen“ (die FritzBox braucht etwa
+      // eine Minute, bis eine neue Freigabe eingetragen ist).
       if (p.live) {
-        const tap = (s) => h('button', { type: 'button', class: 'chip', on: { click: () => {
-          const i = document.getElementById('in'); i.value = s; i.focus(); liveSoon(p.id, 0);
-        } } }, s);
         kids.push(h('div', { class: 'live-row' },
-          (p.suggestions || []).length ? h('span', { class: 'small' }, p.suggestLabel + ': ', ...p.suggestions.map(tap)) : null,
           h('button', { type: 'button', class: 'link', id: 'rc', on: { click: () => liveSoon(p.id, 0) } }, p.live.recheck)),
         h('div', { class: 'live', id: 'live', role: 'status' }));
       } else if ((p.suggestions || []).length) {
         // Vorschläge (z. B. mehrere gefundene Paperless-Adressen): Antippen trägt die Adresse ins Feld ein.
-        kids.push(h('div', { class: 'suggest', role: 'group', 'aria-label': p.suggestLabel || T.found_addresses }, p.suggestions.map((s) => h('button', {
+        kids.push(h('div', { class: 'suggest', role: 'group', 'aria-label': T.found_addresses }, p.suggestions.map((s) => h('button', {
           type: 'button', class: 'choice', on: { click: (e) => {
             const i = document.getElementById('in'); i.value = s; i.focus();
             main.querySelectorAll('.suggest .choice').forEach((b) => b.classList.toggle('sel', b === e.currentTarget));
@@ -394,7 +393,7 @@ const UiNudge = {
     kids.push(h('div', { class: 'err', id: 'er', role: 'alert' }), h('div', { id: 'ck' }));
     // Einbaustelle für Bilder und Animationen (di9, ui/art/): art.js entscheidet nach page.id, null = kein Bild.
     // Platz und Verhalten im schmalen Fenster regelt art.css; die CSP gilt auch dort (kein style=, kein Inline-Skript).
-    if (art && art.el && !art.side) kids.push(art.el);
+    if (art && art.el && !art.side && !artBefore) kids.push(art.el);
     if (p.kind === 'install' && p.failed) {
       kids.push(h('p', null, h('button', { type: 'button', id: 'rp', on: { click: showReport } }, T.report_show)), h('div', { id: 'rpt' }));
     }

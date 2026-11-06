@@ -51,6 +51,11 @@ async function step(w, id, value, opt) {
     // Charakter-Seite auch in Englisch und Koreanisch, dort mit Butler gewählt (Standard hat keinen Rahmensatz).
     await langShots(w, 'h_OWNER_PERSONA', (p) => { p.value = 'butler'; });
     await step(w, 'h:OWNER_PERSONA', 'neutral');
+    // Token-Seite mit aufgeklapptem „Noch kein Telegram?“ in allen drei Sprachen (die zugeklappte Fassung nimmt step() auf).
+    for (const l of ['en', 'ko', 'de']) {
+      await post(w, '/api/lang', { lang: l });
+      await shot(w, `h_TELEGRAM_BOT_TOKEN-offen${l === 'de' ? '' : '-' + l}`, { open: true });
+    }
     fs.writeFileSync(path.join(w.fake, 'tg_conflict'), 'beispiel.example');
     await step(w, 'h:TELEGRAM_BOT_TOKEN', '123456789:ABC-beispiel');
     await shot(w, 'tg_busy');
@@ -72,7 +77,7 @@ async function step(w, id, value, opt) {
     await step(w, 'fb_dslite', 'no');
     await langShots(w, 'fb_guide');
     await step(w, 'fb_guide', null);
-    await waitFor(async () => !(await state(w)).json.page.poll);   // MyFRITZ: nichts geprüft -> Endung fest, Name als Vorschlag
+    await waitFor(async () => !(await state(w)).json.page.poll);   // MyFRITZ: nichts geprüft -> Endung fest, Bild statt Vorschlag
     await shot(w, 'h_DOMAIN-tippen', { value: 'meinrechner', live: (await post(w, '/api/check', { id: 'h:DOMAIN', value: 'meinrechner' })).json.live });
     await step(w, 'h:DOMAIN', 'meinrechner');
     await step(w, 'review', null);
@@ -123,6 +128,12 @@ async function step(w, id, value, opt) {
     await login(t);
     for (const [id, v] of [['h:OWNER_LANGUAGE', 'de'], ['h:OWNER_FIRST_NAME', 'Erika'], ['h:OWNER_LAST_NAME', 'Muster'], ['h:OWNER_BIRTH_DATE', '1980-01-01'],
       ['h:OWNER_PERSONA', 'neutral'], ['h:TELEGRAM_BOT_TOKEN', '1:beispiel'], ['h:ANTHROPIC_API_KEY', 'sk-ant-beispiel'], ['voice', 'no'], ['packages', []]]) await answer(t, id, v);
+    // DS-Lite sicher erkannt: Bestätigung statt Frage; danach zurück und (Erkennung unsicher) über belegte Ports zum Tunnel.
+    fs.writeFileSync(path.join(t.fake, 'dslite'), 'yes');
+    await answer(t, 'reach', 'fritzbox');
+    await shot(t, 'fb_dslite-geprueft');
+    await post(t, '/api/back', {});
+    fs.rmSync(path.join(t.fake, 'dslite'));
     fs.writeFileSync(path.join(t.fake, 'ports'), 'busy');
     await answer(t, 'reach', 'fritzbox');
     await answer(t, 'fb_dslite', 'no');
@@ -134,6 +145,9 @@ async function step(w, id, value, opt) {
     await answer(t, 'confirm', null);
     const p = await waitFor(async () => { const x = (await state(t)).json.page; return x.link ? x : null; });
     out.push({ name: 'connect-tailscale', page: p });
+    fs.writeFileSync(path.join(t.fake, 'reach'), JSON.stringify({ mode: 'tunnel', state: 'needs_funnel', url: 'https://login.tailscale.com/f/funnel?node=nBeispiel' }));
+    const fu = await waitFor(async () => { const x = (await state(t)).json.page; return x.art === 'ts_funnel' ? x : null; });
+    out.push({ name: 'connect-tailscale-freigabe', page: fu });
   } finally { await t.stop(); }
   // Paperless im Heimnetz: Suche läuft, mehrere gefunden (Auswahl), keiner gefunden. Attrappen auf den echten Suchports.
   const LOGIN = '<html><head><meta name="author" content="Paperless-ngx project and contributors"></head></html>';

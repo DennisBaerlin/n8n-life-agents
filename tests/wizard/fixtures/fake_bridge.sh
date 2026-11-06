@@ -31,6 +31,8 @@ case "${1:-}" in
     jq -nc --argjson p "$(cat "$D/paperless_ports" 2>/dev/null || echo "[]")" '{ports:$p}' ;;
   public-ip)
     jq -nc --arg ip "$(cat "$D/public_ip" 2>/dev/null || true)" '{ip:$ip}' ;;
+  dslite)
+    jq -nc --arg d "$(cat "$D/dslite" 2>/dev/null || echo unknown)" '{dslite:$d, source:"none"}' ;;
   reach-ports)
     jq -nc --arg s "$(cat "$D/ports" 2>/dev/null || echo unknown)" '{state:$s}' ;;
   *) exec bash "$REAL" "$@" ;;

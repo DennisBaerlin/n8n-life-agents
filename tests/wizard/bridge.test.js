@@ -93,5 +93,6 @@ test('Schnittstellen zu Paket 1/3: frischer Rechner ohne Weg = nicht verfügbar,
   assert.deepEqual(run(['reach-ports']), { state: 'unknown' }, 'nicht messbar ist nicht belegt');
   assert.deepEqual(run(['reach-ports'], '', { LA_PROBE_IMAGE: '' }), { state: 'unknown' }, 'ohne Probe-Image nicht messbar');
   assert.deepEqual(run(['paperless-ports']), { ports: [] }, 'ohne Docker keine Suche');
+  assert.equal(run(['dslite']).dslite, 'unknown', 'ohne FritzBox und MyFRITZ-Zone: von Hand fragen');
   assert.deepEqual(run(['tg-check'], '', { TELEGRAM_BOT_TOKEN: '' }), { ok: false, reason: 'unauthorized' });
 });

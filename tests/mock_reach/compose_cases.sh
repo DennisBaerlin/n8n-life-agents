@@ -121,7 +121,7 @@ unset REACH_MODE
 cfg TELEGRAM_BOT_TOKEN=123:fantasy
 out="$(js)"
 eq S_no_mode "none|unavailable|no_mode" "$(field "$out" mode)|$(field "$out" state)|$(field "$out" reason)"
-eq S_keys "dns_name,ipv4,ipv4_reason,key_days_left,key_expiry,mode,reason,state,url,webhook,webhook_error,webhook_error_at,webhook_pending" "$(printf '%s' "$out" | jq -r 'keys | join(",")')"
+eq S_keys "dns_name,ipv4,ipv4_reason,key_days_left,key_expiry,mode,reason,state,ts_hostname,url,webhook,webhook_error,webhook_error_at,webhook_pending" "$(printf '%s' "$out" | jq -r 'keys | join(",")')"
 
 cfg REACH_MODE=tunnel TELEGRAM_BOT_TOKEN=123:fantasy
 A_TS_UP=0; out="$(js)"
@@ -380,6 +380,11 @@ eq N_valid_label_long 1 "$(ts_name_valid "$(head -c 64 /dev/zero | tr '\0' a)"; 
 eq N_seed_garbage "1|" "$(ts_name_from_seed 'abc'; echo "$?|")"
 rm -f "$E"; out="$(TS_NAMES_FILE="$W/missing.json" ts_name_ensure "$E" LA_TS_HOSTNAME)"; rc=$?
 eq N_no_list "1||absent" "$rc|$out|$([ -e "$E" ] && echo present || echo absent)"
+# Der Wizard zeigt den Namen schon vor der Anmeldung: Feld ts_hostname aus der Umgebung des master, nur gueltig.
+cfg TELEGRAM_BOT_TOKEN=123:fantasy
+eq N_status_hostname calm-otter "$(LA_TS_HOSTNAME=calm-otter reach_status_json | jq -r .ts_hostname)"
+eq N_status_hostname_bad ''     "$(LA_TS_HOSTNAME='x;rm -rf /' reach_status_json | jq -r .ts_hostname)"
+eq N_status_hostname_unset ''   "$(unset LA_TS_HOSTNAME; reach_status_json | jq -r .ts_hostname)"
 
 printf 'compose_cases: %s Fehler\n' "$fails"
 exit "$fails"

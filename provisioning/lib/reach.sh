@@ -338,7 +338,8 @@ reach_wan_write_domain() {
 # --- Status fuer Wizard und Start-App -------------------------------------------------------------------------------
 # reach_status_json — EINE JSON-Zeile (Format: docs/reference/provisioning.md *Docker-Verbund: Erreichbarkeit*):
 #   {mode, state, url, dns_name, key_expiry, key_days_left, webhook, webhook_pending, webhook_error, webhook_error_at,
-#   ipv4, ipv4_reason, reason}. ipv4 (own|none|unknown) nur beim FritzBox-Weg und vor der Wahl. Aendert nichts, ausser beim Tunnel
+#   ipv4, ipv4_reason, ts_hostname, reason}. ts_hostname = LA_TS_HOSTNAME des master (compose.yml), leer wenn ungueltig.
+#   ipv4 (own|none|unknown) nur beim FritzBox-Weg und vor der Wahl. Aendert nichts, ausser beim Tunnel
 #   den Funnel einzuschalten, sobald das Konto ihn erlaubt (die Zustimmung kam mit der 2. Bestaetigung). Prueft keine
 #   Ports: ports_busy ist das Ergebnis der letzten Pruefung in reach_converge (Marke ports-busy in reach_conf) — eine
 #   Probe je Abfrage kostete zwei Container und stiesse bei gleichzeitigen Abfragen (Wizard + App) auf den festen Namen.
@@ -409,10 +410,11 @@ reach_status_json() {
   jq -nc --arg mode "$mode" --arg state "$state" --arg url "$url" --arg dns "$dns" --arg kexp "$kexp" \
     --arg kdays "$kdays" --arg wh "$REACH_WH_STATE" --arg whp "$REACH_WH_PENDING" --arg whe "$REACH_WH_ERROR" \
     --arg whd "$REACH_WH_ERROR_AT" --arg v4 "$REACH_IPV4" --arg v4r "$REACH_IPV4_REASON" --arg reason "$reason" \
+    --arg tsh "$(ts_name_valid "${LA_TS_HOSTNAME:-}" && printf '%s' "$LA_TS_HOSTNAME")" \
     'def num: if . == "" then null else (try tonumber catch null) end;
      {mode:$mode, state:$state, url:$url, dns_name:$dns, key_expiry:$kexp, key_days_left:($kdays | num),
       webhook:$wh, webhook_pending:($whp | num), webhook_error:$whe, webhook_error_at:($whd | num),
-      ipv4:$v4, ipv4_reason:$v4r, reason:$reason}'
+      ipv4:$v4, ipv4_reason:$v4r, ts_hostname:$tsh, reason:$reason}'
 }
 
 # --- Installer-Haken (provision.sh, nur im Verbund) -----------------------------------------------------------------

@@ -4,7 +4,7 @@
 # Test: scripts/dev/substrate_reservation_test.ps1.
 #
 # WARUM: Wait-SubstrateSlot zaehlt nur LAUFENDE Substrate. Hat die Leitung einen Platz schon an eine wartende Session
-# zugesagt, der Container laeuft aber noch nicht, nimmt ihn eine andere Session in der Luecke weg (2026-11-06). Die Leitung
+# zugesagt, der Container laeuft aber noch nicht, nimmt ihn eine andere Session in der Luecke weg. Die Leitung
 # traegt die Zusage deshalb als Reservierung ein; bis zu ihrem Verfall zaehlt sie wie ein laufendes Substrat -- fuer alle
 # ausser den reservierten Container selbst.
 #

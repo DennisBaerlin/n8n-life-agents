@@ -36,9 +36,9 @@ Assert-That 'zweiter Container: zwei Zeilen' (@(Read-SlotReservations -File $fil
 Assert-That 'Frist: ein Minute vor Ablauf gueltig' (@(Read-SlotReservations -File $file -Now $t0.AddMinutes(10 + $SlotReservationTtlMin - 1)).Count -eq 2)
 Assert-That 'Frist: nach Ablauf verfallen' (@(Read-SlotReservations -File $file -Now $t0.AddMinutes(10 + $SlotReservationTtlMin + 1)).Count -eq 0)
 Assert-That 'Frist ist 60 Min' ($SlotReservationTtlMin -eq 60)
-Assert-That 'freigeben: Treffer' (Remove-SlotReservation -File $file -Container 'sub-a')
+Assert-That 'freigeben: Treffer' (Remove-SlotReservation -File $file -Container 'sub-a' -Now $t0.AddMinutes(10))
 Assert-That 'freigeben: nur der eine weg' ((@(Read-SlotReservations -File $file -Now $t0.AddMinutes(10)) | ForEach-Object Container) -join ',' -eq 'sub-b')
-Assert-That 'freigeben: unbekannter Container = kein Treffer' (-not (Remove-SlotReservation -File $file -Container 'gibt-es-nicht'))
+Assert-That 'freigeben: unbekannter Container = kein Treffer' (-not (Remove-SlotReservation -File $file -Container 'gibt-es-nicht' -Now $t0.AddMinutes(10)))
 [System.IO.File]::AppendAllText($file, "kaputte zeile`r`n")
 Assert-That 'kaputte Zeile wird uebergangen' (@(Read-SlotReservations -File $file -Now $t0.AddMinutes(10)).Count -eq 1)
 

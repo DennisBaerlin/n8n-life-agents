@@ -65,9 +65,9 @@ text { font-family: var(--font); fill: var(--ink); }
   <path d="M425 200 V212 M405 214 H445" stroke="var(--ink)" stroke-width="2.5" stroke-linecap="round" />
   <g class="in4">
     <rect x="326" y="36" width="198" height="212" rx="18" fill="none" stroke="var(--ok)" stroke-width="2.5" />
-    <circle cx="522" cy="40" r="16" fill="var(--ok)" />
-    <rect x="514" y="38" width="16" height="12" rx="2" fill="var(--bg)" />
-    <path d="M517 38 V34 a5 5 0 0 1 10 0 V38" fill="none" stroke="var(--bg)" stroke-width="2.5" />
+    <circle cx="522" cy="40" r="16" fill="var(--bg)" stroke="var(--ok)" stroke-width="2.5" />
+    <rect x="514" y="38" width="16" height="12" rx="2" fill="var(--ok)" />
+    <path d="M517 38 V34 a5 5 0 0 1 10 0 V38" fill="none" stroke="var(--ok)" stroke-width="2.5" />
   </g>
   <g class="in5">
     <circle cx="585" cy="58" r="14" fill="var(--accent)" />

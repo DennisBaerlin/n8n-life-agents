@@ -14,7 +14,7 @@
 #   <style>                                 eigene Bewegung, Farben nur var(--token); der Generator setzt Takt- und Farb-Regeln davor.
 #   <text data-t="greeting.s1" data-wrap="40" data-lh="20" data-max="2" data-valign="middle">
 #                                           Text aus dem Katalog core.art.greeting.s1; Umbruch nach geschätzter Breite (Zeichen,
-#                                           Hangul/CJK zählt 1.6), mehr als data-max Zeilen = Fehler (nichts läuft über).
+#                                           Hangul/CJK zählt 2), mehr als data-max Zeilen = Fehler (nichts läuft über).
 #   <g data-mark="">                        bekommt die <path>-Zeilen aus config/ui.mark.svg (Zeichen nie von Hand kopieren).
 #   <image data-sticker="neutral_yay">      echter Persona-Sticker packages/core/build/stickers/<name>.webp als data:-URI (ein <img>-SVG
 #                                           darf nichts von außen laden; data: ist erlaubt). Nie nachzeichnen.
@@ -74,7 +74,7 @@ function Get-UiArtOutputs([string]$RepoRoot, $Tokens) {
 # Geschätzte Breite in „Zeichen": Hangul/CJK breiter als lateinische Buchstaben.
 function Get-UiArtTextWidth([string]$s) {
     $w = 0.0
-    foreach ($c in $s.ToCharArray()) { $n = [int]$c; if (($n -ge 0x1100 -and $n -le 0x11FF) -or ($n -ge 0x2E80 -and $n -le 0x9FFF) -or ($n -ge 0xAC00 -and $n -le 0xD7AF)) { $w += 1.6 } else { $w += 1 } }
+    foreach ($c in $s.ToCharArray()) { $n = [int]$c; if (($n -ge 0x1100 -and $n -le 0x11FF) -or ($n -ge 0x2E80 -and $n -le 0x9FFF) -or ($n -ge 0xAC00 -and $n -le 0xD7AF)) { $w += 2 } else { $w += 1 } }
     $w
 }
 function Split-UiArtLines([string]$s, [double]$Wrap) {

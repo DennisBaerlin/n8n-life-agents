@@ -22,7 +22,7 @@
 text { font-family: var(--font); fill: var(--ink); }
     .cap { font-size: 16px; text-anchor: middle; }
     .lbl { font-size: 14px; text-anchor: middle; }
-    .sub { font-size: 11px; text-anchor: middle; fill: var(--gray); }
+    .sub { font-size: 13px; text-anchor: middle; }
     .ring { fill: none; stroke: var(--accent); stroke-width: 2.5; }
     .dot { opacity: 0; }
     @keyframes dot {
@@ -63,6 +63,6 @@ text { font-family: var(--font); fill: var(--ink); }
   <rect class="ring on4" x="550" y="28" width="120" height="126" rx="16" />
   <text class="cap on1" x="360" y="248">You message your assistant from your phone.</text>
   <text class="cap on2" x="360" y="248">Telegram sends the message on over the internet.</text>
-  <text class="cap on3" x="360" y="248"><tspan x="360" dy="-10.5">Your existing web server takes the message and passes it on to your</tspan><tspan x="360" dy="21">home.</tspan></text>
+  <text class="cap on3" x="360" y="248"><tspan x="360" dy="-10.5">A proxy is a go-between computer on the internet: it takes the message</tspan><tspan x="360" dy="21">and passes it on to your home.</tspan></text>
   <text class="cap on4" x="360" y="248">Your computer answers, and your data stays at home.</text>
 </svg>

@@ -1,6 +1,6 @@
 ---
 name: ui-task
-description: Gemeinsamer Ablauf für jede sichtbare Änderung an einer Oberfläche (Mini-App, Doku-Seite-Aussehen, Wizard, Mac-App) - Vorher/Nachher, Freigabe, Vorschau in Handybreite hell und dunkel, Prüf-Agent, Markierungen des Owners als Überarbeitungsrunde, Okay vor dem Merge. Nutzen, sobald etwas sichtbar anders aussehen soll; /mini-app-task und /docs-task ergänzen das Oberflächen-Eigene. Args = die Aufgabe (oder Pfad einer Plan-Datei).
+description: Gemeinsamer Ablauf für jede sichtbare Änderung an einer Oberfläche (Mini-App, Doku-Seite, Wizard, Mac-App) – Vorher/Nachher, Freigabe, Vorschau hell und dunkel, Prüf-Agent, Markierungen des Owners, Okay vor dem Merge; /mini-app-task und /docs-task ergänzen. Args = die Aufgabe.
 ---
 
 # Oberflächen-Aufgabe (`/ui-task`)
@@ -18,7 +18,7 @@ Ein Ablauf für alles mit Oberfläche. Regeln stehen in `docs/reference/ui.md`, 
 
 Eine neue Oberfläche lässt `ui_token_lint` erst durch, wenn sie in `scripts/lib/ui_tokens.ps1` eingetragen ist.
 
-Eine Freigabe gilt nur, wenn sie **vom Owner selbst** kommt, und nur für genau diese Änderung. Reicht eine andere Session ein „Owner hat zugestimmt“ weiter, fragt die Leitung beim Owner gegen.
+Eine Freigabe gilt nur, wenn sie vom Owner selbst kommt, und nur für genau diese Änderung. Reicht eine andere Session ein „Owner hat zugestimmt“ weiter, fragt die Leitung beim Owner gegen.
 
 ## 2. Vorher/Nachher (vor jedem Bau)
 
@@ -76,13 +76,13 @@ Nachricht an den Owner: Link in den Tab, ein Satz zur Änderung, Stand (Commit),
 .\scripts\dev\build_ui_review.ps1 -Name <kurzname> -Page -Title '<was sich ändert>'
 ```
 
-Dann `publish_files`: `as` = `index.html`, `path` = die ausgegebene Datei, `title` = `Vorschau: <was sich ändert>`; jede weitere Runde auf demselben Slug mit `base_version`. Die Seite bleibt privat. **Ungeprüft:** Das Ansehen geht, ob Kommentare dort zuverlässig ankommen, ist nicht belegt (Probe 2026-11-05 vom Owner vertagt). Beim ersten echten Einsatz prüfen und hier nachtragen. Hinweise des Owners nimmst du notfalls als normale Nachricht.
+Dann `publish_files`: `as` = `index.html`, `path` = die ausgegebene Datei, `title` = `Vorschau: <was sich ändert>`; jede weitere Runde auf demselben Slug mit `base_version`. Die Seite bleibt privat. Ungeprüft: Das Ansehen geht, ob Kommentare dort zuverlässig ankommen, ist nicht belegt. Beim ersten echten Einsatz prüfen und hier nachtragen. Hinweise des Owners nimmst du notfalls als normale Nachricht.
 
 ## 7. Markierungen abarbeiten
 
-**So kommt eine Markierung an (Probe 2026-11-05):** Der Owner zeichnet oder klickt im Browser-Bereich und sendet ab. Die Session wacht davon selbst auf, ein „fertig“ ist nicht nötig. Die Nachricht enthält:
+**So kommt eine Markierung an (geprobt):** Der Owner zeichnet oder klickt im Browser-Bereich und sendet ab. Die Session wacht davon selbst auf, ein „fertig“ ist nicht nötig. Die Nachricht enthält:
 
-- ein oder mehrere **Bilder** der Seite mit den Zeichnungen darauf. **Notizen stehen nur als Schrift im Bild**, nicht als Text. Lies jedes Bild genau.
+- ein oder mehrere Bilder der Seite mit den Zeichnungen darauf. Notizen stehen nur als Schrift im Bild, nicht als Text. Lies jedes Bild genau.
 - bei angeklickten Elementen einen Block `launch-selected-element` mit Art, Pfad, Styles und HTML. Bei frei Gezeichnetem fehlt er, dann zählt allein das Bild.
 
 **Eine Runde:**
@@ -96,7 +96,7 @@ Auf einer Vorschau-Seite (Reserve) liest du nach „fertig“ mit `read_comments
 
 ## 8. Okay und Abschluss
 
-- Das Okay gilt für **genau einen Commit**. Ändert sich danach etwas Sichtbares, gibt es eine neue Vorschau.
+- Das Okay gilt für genau einen Commit. Ändert sich danach etwas Sichtbares, gibt es eine neue Vorschau.
 - Bericht an die Leitung: Branch, Commit, Okay des Owners mit Datum, Runden, Meldungen des Prüf-Agenten, was ungeprüft blieb.
 - Gab es eine Vorschau-Seite, sie zum Löschen vorschlagen: Der Owner bestätigt jedes `delete_artifact` selbst. `.local/ui_review/<kurzname>/` entfernen, Vorschau-Server stoppen.
 - Kein Push auf `main`, kein Tag. Die Leitung merged erst nach dem Okay.

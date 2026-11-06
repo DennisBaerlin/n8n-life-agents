@@ -1,16 +1,16 @@
 ---
 name: arch-challenge
-description: Established-Pattern-Check einer neuen Architektur-/Mechanik-Entscheidung gegen etablierte Open-Source-/State-of-the-Art-Muster — ein belegpflichtiger Research-Pass mit Verdikt ADOPT / REJECT-„bei uns anders" / DEFER. Nutzen vor dem Bau bei neuer Mechanik oder neuem Sonderweg (nicht bei jeder Namenswahl) und als gelegentlicher Sonderlocken-Sweep. Args = die Entscheidung oder Oberfläche.
+description: Prüft eine neue Architektur- oder Mechanik-Entscheidung gegen etablierte Open-Source-Muster – ein belegpflichtiger Research-Pass mit Verdikt ADOPT, REJECT-„bei uns anders“ oder DEFER. Nutzen vor dem Bau bei neuer Mechanik oder neuem Sonderweg. Args = die Entscheidung.
 ---
 
 # Established-Pattern-Check
 
-Owner-Direktive: Benennung und Mechanik folgen dem etablierten Standard. Default ist der etablierte Weg; eine Abweichung braucht einen **belegten** Grund. Keine Angst vorm Umbau.
+Benennung und Mechanik folgen dem etablierten Standard; eine Abweichung braucht einen belegten Grund. Keine Angst vorm Umbau.
 
 ## Ablauf
 
 1. **Scope:** die Entscheidung (oder Oberfläche), Ist-Stand und Problem in 2–3 Sätzen.
-2. **Research-Pass (ein Sonnet-Subagent mit Web):** „Wie lösen etablierte OSS-Projekte / der State of the Art dieses Problem?" Je Einwand: **ein konkreter externer Beleg** (Projekt, offizielle Doku, RFC), die benannte Sonderlocke und eine Umbau-Skizze. Ohne Beleg zählt ein Einwand nicht.
+2. **Research-Pass (ein Sonnet-Subagent mit Web):** „Wie lösen etablierte OSS-Projekte / der State of the Art dieses Problem?" Je Einwand: ein konkreter externer Beleg (Projekt, offizielle Doku, RFC), die benannte Sonderlocke und eine Umbau-Skizze. Ohne Beleg zählt ein Einwand nicht.
 3. **Verdikt im Haupt-Loop** je Einwand, gegen unsere dokumentierten Constraints (CLAUDE.md-Familie, n8n-Quirks, DB-Gesetz, Single-User, Kosten/Privacy):
    - **ADOPT** → konkreter Schritt im Plan dieser Phase (nicht ins private Backlog, wenn er hierher gehört).
    - **REJECT-„bei uns anders"** → Ein-Satz-Notiz in die passende CLAUDE.md, damit der Punkt nicht wiederkommt.

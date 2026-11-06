@@ -21,7 +21,8 @@
 #
 # PFLICHT-VARIABLEN (setzt die Start-App bzw. CI; der master bekommt dieselben, damit sein `docker compose` die Container
 # nicht als geaendert ansieht): LA_PROJECT, LA_EDGE_PORT und LA_WIZARD_PORT (zwei freie Ports auf 127.0.0.1), LA_PG_SUPERPW (nur fuer den
-# Datenbank-Container, nie ausgeben: `config --quiet`), LA_MASTER_IMAGE (Digest folgt mit Paket 5).
+# Datenbank-Container, nie ausgeben: `config --quiet`), LA_MASTER_IMAGE (Digest folgt mit Paket 5). Optional: LA_HOST_IP,
+# LA_TS_HOSTNAME.
 # Keine Bind-Mounts ausser dem Docker-Socket: der master ruft compose aus seinem Container heraus auf, Host-Pfade gaebe es
 # dort nicht.
 name: lifeagents
@@ -167,6 +168,9 @@ services:
       LA_PROJECT: ${LA_PROJECT:-lifeagents}
       LA_EDGE_PORT: ${LA_EDGE_PORT:?LA_EDGE_PORT fehlt}
       LA_WIZARD_PORT: ${LA_WIZARD_PORT:?LA_WIZARD_PORT fehlt}
+      # Optional: Heimnetz-Adresse des Rechners (setzt die Start-App, wenn sie eine findet); der Wizard schlaegt damit die
+      # Paperless-Adresse vor. Leer = kein Vorschlag. Nie aus der Antwort-Datei (LA_* ist dort gesperrt).
+      LA_HOST_IP: ${LA_HOST_IP:-}
       LA_PG_SUPERPW: ${LA_PG_SUPERPW:?LA_PG_SUPERPW fehlt}
       LA_MASTER_IMAGE: ${LA_MASTER_IMAGE:?LA_MASTER_IMAGE fehlt}
       LA_COMPOSE_FILE: /opt/lifeagents/provisioning/compose/compose.yml

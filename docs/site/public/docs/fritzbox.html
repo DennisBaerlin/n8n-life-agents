@@ -100,6 +100,10 @@
       
         <li><a href="../docs/installation.html">Installation &amp; Betrieb</a></li>
       
+        <li><a href="../docs/start-app.html">Installation mit der Start-App</a></li>
+      
+        <li><a href="../docs/tunnel.html">Tunnel einrichten</a></li>
+      
         <li><a href="../docs/fritzbox.html" class="active">FritzBox einrichten</a></li>
       
         <li><a href="../docs/update-hilfe.html">Wenn ein Update fehlschlägt</a></li>
@@ -190,6 +194,10 @@
       
         <li><a href="../docs/installation.html">Installation &amp; Betrieb</a></li>
       
+        <li><a href="../docs/start-app.html">Installation mit der Start-App</a></li>
+      
+        <li><a href="../docs/tunnel.html">Tunnel einrichten</a></li>
+      
         <li><a href="../docs/fritzbox.html" class="active">FritzBox einrichten</a></li>
       
         <li><a href="../docs/update-hilfe.html">Wenn ein Update fehlschlägt</a></li>
@@ -214,6 +222,7 @@
     <h1>FritzBox einrichten</h1>
     <p>Diese Seite führt dich Schritt für Schritt durch die FritzBox, damit dein Bot von außen erreichbar ist: für Telegram <strong>und</strong> für Handy und Laptop (zum Beispiel die <a href="uebersicht-app.html">Übersicht</a>). Du brauchst dafür kein Technikwissen. Die Menünamen stehen hier genau so, wie die FritzBox sie zeigt (gemessen mit FRITZ!OS 8.25; ältere Versionen können leicht abweichen).</p>
 <p>Es gibt <strong>einen</strong> richtigen Weg: eine <strong>MyFRITZ!-Freigabe</strong> für den Rechner, auf dem dein Reverse Proxy läuft. Eine normale „Portfreigabe&quot; reicht nicht, warum, steht <a href="#warum-nicht-die-adresse-der-fritzbox">weiter unten</a>.</p>
+<p><strong>Du nutzt die <a href="start-app.html">Start-App</a> auf einem Mac oder PC?</strong> Dann ist dieser Rechner selbst der Proxy-Rechner, und für dich gilt der eigene Abschnitt <a href="#start-app">Mit der Start-App</a>. Er beginnt mit zwei Prüfungen, ob der FritzBox-Weg bei dir überhaupt geht. Die folgenden Abschnitte bis dahin sind für einen eigenen Server.</p>
 <h2 id="vorher-wissen">Vorher wissen</h2>
 <ul>
 <li><strong>Welcher Rechner ist gemeint?</strong> Immer der Rechner mit deinem <strong>Reverse Proxy</strong> (zum Beispiel Caddy). Läuft der Proxy auf demselben Rechner wie der Bot, ist es dieser Rechner. Läuft er in einem eigenen Container, ist es dieser Container. Im Folgenden heißt er „Proxy-Rechner&quot;.</li>
@@ -300,6 +309,157 @@
 <h2 id="warum-nicht-die-adresse-der-fritzbox">Warum nicht die Adresse der FritzBox?</h2>
 <p>Die MyFRITZ!-Adresse der FritzBox (<code>deine-domain.myfritz.net</code>) zeigt über IPv6 auf die <strong>FritzBox selbst</strong>. Telegram stellt Nachrichten nur über IPv4 zu, dort fällt das nie auf. Handy und Laptop nehmen aber oft IPv6. Dann erscheint zufällig eine FritzBox-Seite statt deines Servers: im Heimnetz „Die angegebene URL ist nicht verfügbar&quot;, unterwegs die Anmeldung zum Fernzugang der FritzBox. Auch die Zertifikats-Erneuerung kann daran scheitern, denn Let&rsquo;s Encrypt fragt zuerst über IPv6 an (<a href="https://letsencrypt.org/docs/ipv6-support/">Let&rsquo;s Encrypt zu IPv6</a>).</p>
 <p>Erst die <strong>MyFRITZ!-Freigabe</strong> legt für den Proxy-Rechner einen eigenen Namen an, der über IPv4 auf deinen Anschluss und über IPv6 direkt auf den Proxy-Rechner zeigt. Eine normale Portfreigabe öffnet zwar Ports, legt aber keinen solchen Namen an. Eine andere Port-Nummer für den Fernzugang der FritzBox hilft auch nicht: Im Heimnetz antwortet die Box auf ihrer eigenen Adresse immer selbst. Dein Fernzugang zur FritzBox bleibt mit dem neuen Weg, wie er ist.</p>
+<h2 id="start-app">Mit der Start-App (Mac oder PC)</h2>
+<p>Dieser Abschnitt ist für dich, wenn du den Bot mit der <a href="start-app.html">Start-App</a> auf einem Mac oder PC betreibst und in der App den Weg <strong>FritzBox</strong> wählst. Der Rechner mit der App ist dann zugleich der Proxy-Rechner: Die App bringt ihren Türsteher (Reverse Proxy) selbst mit und holt auch das Zertifikat selbst. Du richtest nur die FritzBox ein. Im Folgenden steht „Mac“; für einen Windows-PC gilt dasselbe.</p>
+
+<figure class="schema">
+
+<svg viewBox="0 0 340 404" aria-hidden="true" focusable="false">
+  <g font-size="15" text-anchor="middle">
+    <rect x="20" y="10" width="300" height="56" rx="12" fill="var(--bg-soft)" stroke="var(--hairline)" stroke-width="1.5"/>
+    <text x="170" y="34" fill="var(--ink)" font-weight="600">Telegram</text>
+    <text x="170" y="54" fill="var(--gray)" font-size="13">schickt deine Nachricht an den Bot</text>
+
+    <path d="M170 66 V98" stroke="var(--gray)" stroke-width="1.5" fill="none"/>
+    <path d="M164 96 L170 106 L176 96 Z" fill="var(--gray)"/>
+    <text x="182" y="90" fill="var(--gray)" font-size="13" text-anchor="start">über das Internet</text>
+
+    <rect x="20" y="106" width="300" height="76" rx="12" fill="var(--bg)" stroke="var(--accent)" stroke-width="1.5"/>
+    <text x="170" y="130" fill="var(--ink)" font-weight="600">Deine FritzBox</text>
+    <text x="170" y="150" fill="var(--gray)" font-size="13">zwei MyFRITZ!-Freigaben:</text>
+    <text x="170" y="168" fill="var(--gray)" font-size="13">Port 80 und Port 443 zum Mac</text>
+
+    <path d="M170 182 V214" stroke="var(--accent)" stroke-width="2.5" fill="none"/>
+    <path d="M164 212 L170 222 L176 212 Z" fill="var(--accent)"/>
+    <text x="182" y="206" fill="var(--gray)" font-size="13" text-anchor="start">im Heimnetz</text>
+
+    <rect x="20" y="222" width="300" height="172" rx="16" fill="var(--accent-pale)" stroke="var(--accent)" stroke-width="1.5"/>
+    <text x="170" y="248" fill="var(--ink)" font-weight="600">Dein Mac mit der Start-App</text>
+    <rect x="44" y="262" width="252" height="40" rx="10" fill="var(--bg)" stroke="var(--hairline)" stroke-width="1.5"/>
+    <text x="170" y="287" fill="var(--ink)" font-size="14">feste Adresse im Heimnetz</text>
+    <path d="M170 302 V314" stroke="var(--gray)" stroke-width="1.5" fill="none"/>
+    <path d="M165 312 L170 320 L175 312 Z" fill="var(--gray)"/>
+    <rect x="44" y="320" width="252" height="40" rx="10" fill="var(--bg)" stroke="var(--hairline)" stroke-width="1.5"/>
+    <text x="170" y="345" fill="var(--ink)" font-size="14">Türsteher: nur Telegram-Wege</text>
+    <text x="170" y="380" fill="var(--gray)" font-size="13">dahinter: dein Bot</text>
+  </g>
+</svg>
+
+<figcaption>Eigene Schema-Zeichnung: Telegram schickt über das Internet an deine FritzBox, zwei MyFRITZ!-Freigaben für Port 80 und 443 leiten weiter zum Mac mit fester Adresse im Heimnetz. Dort lässt ein Türsteher nur die Telegram-Wege zum Bot durch.</figcaption>
+</figure>
+
+<p><strong>Die Regel für diesen Weg: Du löschst nichts.</strong> Ist in der FritzBox schon etwas für Port 80 oder 443 eingerichtet, gehört das zu einem anderen Gerät oder Programm, zum Beispiel Home Assistant. Löschst du es, ist dieses offline. Nimm in diesem Fall den <a href="tunnel.html">Tunnel</a>, er braucht keine Freigabe.</p>
+<h3 id="zuerst-prüfen-geht-der-fritzbox-weg-bei-dir">Zuerst prüfen: Geht der FritzBox-Weg bei dir?</h3>
+
+<figure class="schema">
+
+<svg viewBox="0 0 340 274" aria-hidden="true" focusable="false">
+  <g font-size="14" text-anchor="middle">
+    <rect x="10" y="10" width="214" height="64" rx="12" fill="var(--bg-soft)" stroke="var(--hairline)" stroke-width="1.5"/>
+    <text x="117" y="36" fill="var(--ink)" font-weight="600">1. Online-Monitor:</text>
+    <text x="117" y="58" fill="var(--ink)">steht dort „DS-Lite“?</text>
+    <path d="M224 42 H240" stroke="var(--gray)" stroke-width="1.5" fill="none"/>
+    <path d="M238 36 L248 42 L238 48 Z" fill="var(--gray)"/>
+    <text x="236" y="30" fill="var(--gray)" font-size="13">ja</text>
+    <rect x="250" y="18" width="80" height="48" rx="12" fill="var(--accent-pale)" stroke="var(--accent)" stroke-width="1.5"/>
+    <text x="290" y="47" fill="var(--ink)" font-weight="600">Tunnel</text>
+
+    <path d="M117 74 V100" stroke="var(--gray)" stroke-width="1.5" fill="none"/>
+    <path d="M111 98 L117 108 L123 98 Z" fill="var(--gray)"/>
+    <text x="129" y="94" fill="var(--gray)" font-size="13" text-anchor="start">nein</text>
+
+    <rect x="10" y="108" width="214" height="64" rx="12" fill="var(--bg-soft)" stroke="var(--hairline)" stroke-width="1.5"/>
+    <text x="117" y="134" fill="var(--ink)" font-weight="600">2. Port 80 oder 443</text>
+    <text x="117" y="156" fill="var(--ink)">schon vergeben?</text>
+    <path d="M224 140 H240" stroke="var(--gray)" stroke-width="1.5" fill="none"/>
+    <path d="M238 134 L248 140 L238 146 Z" fill="var(--gray)"/>
+    <text x="236" y="128" fill="var(--gray)" font-size="13">ja</text>
+    <rect x="250" y="116" width="80" height="48" rx="12" fill="var(--accent-pale)" stroke="var(--accent)" stroke-width="1.5"/>
+    <text x="290" y="145" fill="var(--ink)" font-weight="600">Tunnel</text>
+
+    <path d="M117 172 V198" stroke="var(--gray)" stroke-width="1.5" fill="none"/>
+    <path d="M111 196 L117 206 L123 196 Z" fill="var(--gray)"/>
+    <text x="129" y="192" fill="var(--gray)" font-size="13" text-anchor="start">nein</text>
+
+    <rect x="10" y="206" width="320" height="58" rx="12" fill="var(--bg)" stroke="var(--accent)" stroke-width="1.5"/>
+    <text x="170" y="232" fill="var(--ink)" font-weight="600">FritzBox-Freigaben einrichten</text>
+    <text x="170" y="252" fill="var(--gray)" font-size="13">Abschnitt „Einrichten“ unten</text>
+  </g>
+</svg>
+
+<figcaption>Eigene Schema-Zeichnung: Steht im Online-Monitor „DS-Lite“, nimm den Tunnel. Sind Port 80 oder 443 schon vergeben, nimm ebenfalls den Tunnel. Nur wenn beides nein ist, richtest du die FritzBox-Freigaben ein.</figcaption>
+</figure>
+
+<p>Öffne die Oberfläche deiner FritzBox im Browser (meist <code>http://fritz.box</code>) und melde dich an.</p>
+<ol>
+<li>
+<p><strong>Hat dein Anschluss eine eigene IPv4-Adresse?</strong> <em>Internet → Online-Monitor</em>.</p>
+<p><em>Erwartet:</em> Bei IPv4 steht eine Adresse, und nirgends steht „DS-Lite“.</p>
+<ul>
+<li>Steht dort „DS-Lite“, erreicht Telegram deinen Mac über die FritzBox nicht, denn Telegram stellt nur über IPv4 zu. Nimm den <a href="tunnel.html">Tunnel</a>.</li>
+<li>Dasselbe gilt, wenn die IPv4-Adresse mit <code>100.</code> beginnt und die zweite Zahl zwischen 64 und 127 liegt: Dann teilst du dir die Adresse mit anderen Kunden deines Anbieters.</li>
+</ul>
+</li>
+<li>
+<p><strong>Sind Port 80 und 443 noch frei?</strong> <em>Internet → Freigaben → Reiter „Portfreigaben“</em>.</p>
+<p><em>Erwartet:</em> Bei keinem Gerät in der Liste steht eine Freigabe „HTTP-Server“, „HTTPS-Server“, Port 80 oder Port 443.</p>
+<ul>
+<li>Steht dort schon eine, ist der Port vergeben. <strong>Nicht löschen</strong>, nimm den <a href="tunnel.html">Tunnel</a>.</li>
+<li>Auch auf dem Mac selbst müssen die beiden Ports frei sein. Das prüft die App; sind sie dort belegt, sagt sie es dir und empfiehlt den Tunnel.</li>
+</ul>
+</li>
+</ol>
+<h3 id="einrichten">Einrichten</h3>
+<ol>
+<li>
+<p><strong>Den Mac im Heimnetz festmachen:</strong> <em>Heimnetz → Netzwerk → Stift beim Mac</em>. Deinen Mac erkennst du am Namen, den er unter <em>Systemeinstellungen → Allgemein → Info</em> zeigt.</p>
+<ul>
+<li>Trag bei „<strong>Name</strong>“ einen neutralen Namen ein, zum Beispiel <code>heimserver</code>. Er wird Teil der Internet-Adresse, und die ist öffentlich sichtbar (warum, steht beim <a href="tunnel.html#neutraler-name">Tunnel</a>). Ein Name wie „MacBook von …“ verrät sonst deinen Vornamen.</li>
+<li>Setz den Haken bei „<strong>Diesem Netzwerkgerät immer die gleiche IPv4-Adresse zuweisen</strong>“ und klick „<strong>Übernehmen</strong>“.</li>
+<li><em>Erwartet:</em> In der Liste steht der Mac unter dem neuen Namen, mit derselben Adresse wie vorher.</li>
+<li>Am zuverlässigsten hängt der Mac per <strong>Netzwerkkabel</strong> an der FritzBox. Im WLAN wechselt ein Mac sonst unter Umständen seine Geräte-Kennung und erscheint der FritzBox als neues Gerät. <strong>Wird geprüft:</strong> welche WLAN-Einstellung des Macs das verhindert.</li>
+</ul>
+</li>
+<li>
+<p><strong>MyFRITZ! einschalten:</strong> <em>Internet → MyFRITZ!-Konto</em>. Ist dort schon ein Konto angemeldet, ist nichts zu tun. Sonst die Anmeldung durchklicken, wie die FritzBox sie vorschlägt.</p>
+<p><em>Erwartet:</em> Die Seite zeigt ein angemeldetes MyFRITZ!-Konto.</p>
+</li>
+<li>
+<p><strong>Den Mac für Freigaben öffnen:</strong> <em>Internet → Freigaben → Reiter „Portfreigaben“</em>. Unten „<strong>Gerät für Freigaben hinzufügen</strong>“ klicken und den Mac auswählen. Steht der Mac schon in der Liste, klick stattdessen rechts in seiner Zeile auf den <strong>Stift</strong>.</p>
+<p><em>Erwartet:</em> Eine Seite mit dem Namen des Macs oben und dem Knopf „Neue Freigabe“ unten.</p>
+</li>
+<li>
+<p><strong>Freigabe für Port 80:</strong> „<strong>Neue Freigabe</strong>“ klicken, ganz oben „<strong>MyFRITZ!-Freigabe</strong>“ wählen (<strong>nicht</strong> „Portfreigabe“), als Anwendung „<strong>HTTP-Server</strong>“, Haken bei „<strong>Freigabe aktivieren</strong>“, „<strong>OK</strong>“. Über Port 80 holt die App ihr Zertifikat.</p>
+<p><em>Erwartet:</em> Die Freigabe „HTTP-Server“ steht in der Liste des Macs.</p>
+<ul>
+<li>Meldet die FritzBox, dass die Freigabe schon existiert oder der Port vergeben ist: „Abbrechen“, nichts löschen, und den <a href="tunnel.html">Tunnel</a> nehmen.</li>
+</ul>
+</li>
+<li>
+<p><strong>Freigabe für Port 443:</strong> noch einmal „<strong>Neue Freigabe</strong>“ → „<strong>MyFRITZ!-Freigabe</strong>“ → Anwendung „<strong>HTTPS-Server</strong>“, „<strong>Freigabe aktivieren</strong>“ angehakt, „<strong>OK</strong>“. Über Port 443 kommen die Nachrichten von Telegram.</p>
+<p><em>Erwartet:</em> Jetzt stehen „HTTP-Server“ und „HTTPS-Server“ in der Liste. Bei einer Meldung wie in Schritt 4 gilt dasselbe: abbrechen, Tunnel.</p>
+</li>
+<li>
+<p><strong>Die drei IPv6-Haken leer lassen und speichern:</strong> Unter „<strong>IPv6-Einstellungen</strong>“ bleiben <strong>PING6</strong>, <strong>delegierte Präfixe</strong> und <strong>Exposed Host</strong> ohne Haken. Dann unten „<strong>Übernehmen</strong>“. Die FritzBox fragt eventuell eine Bestätigung am Gerät oder per Telefon ab.</p>
+<p><em>Erwartet:</em> In der Liste der Portfreigaben steht der Mac mit zwei MyFRITZ!-Freigaben.</p>
+</li>
+<li>
+<p><strong>Die Adresse ablesen und in die App eintragen:</strong> Die Adresse steht in der Freigabe im Feld „<strong>MyFRITZ!-Adresse</strong>“, zum Beispiel <code>heimserver.deine-domain.myfritz.net</code>. Vorne steht der Name aus Schritt 1. Warte eine Minute, denn den IPv6-Teil trägt MyFRITZ! etwas später nach. Dann trag die Adresse in der App ein.</p>
+<p><em>Erwartet:</em> Die App nimmt die Adresse an und prüft die Verbindung. Ein Caddyfile oder einen anderen Eintrag brauchst du auf diesem Weg nicht.</p>
+</li>
+</ol>
+<h3 id="prüfen-ob-es-klappt">Prüfen, ob es klappt</h3>
+<ul>
+<li>Die App prüft, ob Telegram deinen Mac erreicht und ob Handy und Laptop über IPv4 und IPv6 bei ihm ankommen. Das sind dieselben Punkte wie unter <a href="#was-der-installer-pr%C3%BCft">Was der Installer prüft</a>. Zeigt sie ein Problem, nennt sie den Handgriff; danach „Erneut prüfen“. Die genauen Texte der App folgen mit ihrer ersten Version.</li>
+<li>Nach dem Verbinden mit Telegram: Schalt am Handy das WLAN aus und schreib dem Bot über mobile Daten. Er antwortet. Auch die <a href="uebersicht-app.html">Übersicht</a> öffnet sich dann im WLAN und unterwegs, nie eine FritzBox-Seite.</li>
+</ul>
+<h3 id="rückgängig-machen">Rückgängig machen</h3>
+<ol>
+<li><em>Internet → Freigaben → Reiter „Portfreigaben“ → Stift beim Mac</em>.</li>
+<li>Bei den beiden Freigaben „<strong>HTTP-Server</strong>“ und „<strong>HTTPS-Server</strong>“, die du in Schritt 4 und 5 angelegt hast, auf den <strong>Mülleimer</strong> klicken. Andere Freigaben nicht anfassen. Dann „<strong>Übernehmen</strong>“.</li>
+<li><em>Erwartet:</em> Beim Mac stehen keine Freigaben mehr. Die feste Adresse und der Name aus Schritt 1 schaden nicht und dürfen bleiben.</li>
+<li>In der App auf den Tunnel umstellen oder die App über <strong>Deinstallieren</strong> entfernen (siehe <a href="start-app.html#entfernen">Start-App → Entfernen</a>). Ohne diesen Schritt erreicht Telegram deinen Bot nicht mehr.</li>
+</ol>
 <h2 id="andere-router">Andere Router</h2>
 <p>Für jeden anderen Router gilt dieselbe Regel, nur mit anderen Menüs:</p>
 <ul>

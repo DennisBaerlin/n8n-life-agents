@@ -100,6 +100,10 @@
       
         <li><a href="../docs/installation.html" class="active">Installation &amp; Betrieb</a></li>
       
+        <li><a href="../docs/start-app.html">Installation mit der Start-App</a></li>
+      
+        <li><a href="../docs/tunnel.html">Tunnel einrichten</a></li>
+      
         <li><a href="../docs/fritzbox.html">FritzBox einrichten</a></li>
       
         <li><a href="../docs/update-hilfe.html">Wenn ein Update fehlschlägt</a></li>
@@ -190,6 +194,10 @@
       
         <li><a href="../docs/installation.html" class="active">Installation &amp; Betrieb</a></li>
       
+        <li><a href="../docs/start-app.html">Installation mit der Start-App</a></li>
+      
+        <li><a href="../docs/tunnel.html">Tunnel einrichten</a></li>
+      
         <li><a href="../docs/fritzbox.html">FritzBox einrichten</a></li>
       
         <li><a href="../docs/update-hilfe.html">Wenn ein Update fehlschlägt</a></li>
@@ -212,7 +220,13 @@
   </details>
   <article class="docs-content">
     <h1>Installation, Update &amp; Betrieb</h1>
-    <p>Der Bot läuft auf einer eigenen Debian-12-Maschine (als Container/LXC oder als virtuelle Maschine, VM) — es gibt genau <strong>einen</strong> Installationsweg, keine Variantenauswahl. Ein einziger Befehl richtet PostgreSQL, n8n und das <strong>Grundsystem</strong> ein (Telegram-Bot, Hilfe, Einrichtungs-Assistent, Erinnerungen). Die Fach-Funktionen — Finanzen, Karriere, Nachlass, Dokumente — wählst du danach <strong>einzeln</strong> dazu (siehe <a href="#funktionen-hinzuf%C3%BCgen">„Funktionen hinzufügen&quot;</a>). Den verschlüsselten Zugang von außen (HTTPS) stellst du über einen <strong>Reverse Proxy</strong> bereit — den bringst du selbst mit (die meisten Heim-Server haben ohnehin schon einen); der Installer gibt dir am Ende eine <strong>fertige, direkt eintragbare Konfiguration</strong> dafür aus.</p>
+    <h2 id="weg">Welcher Weg passt zu dir?</h2>
+<p>Es gibt zwei gleichwertige Wege. Der Bot kann danach in beiden dasselbe. Die Frage ist: <strong>Hast du einen eigenen Server?</strong></p>
+<ul>
+<li><strong>Ja, ich habe einen eigenen Server</strong> (auch als Container/LXC oder virtuelle Maschine) und etwas Technik-Wissen: <strong>Installation per Befehl.</strong> Ein Befehl im Terminal, die Fragen kommen im Terminal. Den Weg ins Internet stellst du mit deinem eigenen Reverse Proxy und einer Port-Weiterleitung her. Anleitung: diese Seite, ab <a href="#bevor-du-startest">Bevor du startest</a>.</li>
+<li><strong>Nein, ich habe einen Mac oder Windows-PC</strong>, der durchlaufen kann, und kein Technik-Wissen: <strong>Start-App.</strong> Datei laden, App öffnen, die Fragen kommen im Fenster. Ins Internet kommt der Bot per Tunnel (empfohlen) oder FritzBox-Freigabe. Anleitung: <a href="start-app.html">Installation mit der Start-App</a>.</li>
+</ul>
+<p>Der Rest dieser Seite beschreibt die <strong>Installation per Befehl</strong>. Der Bot läuft dabei auf einer eigenen Debian-12-Maschine (als Container/LXC oder als virtuelle Maschine, VM). Ein einziger Befehl richtet PostgreSQL, n8n und das <strong>Grundsystem</strong> ein (Telegram-Bot, Hilfe, Einrichtungs-Assistent, Erinnerungen). Die Fach-Funktionen — Finanzen, Karriere, Nachlass, Dokumente — wählst du danach <strong>einzeln</strong> dazu (siehe <a href="#funktionen-hinzuf%C3%BCgen">„Funktionen hinzufügen&quot;</a>). Den verschlüsselten Zugang von außen (HTTPS) stellst du über einen <strong>Reverse Proxy</strong> bereit — den bringst du selbst mit (die meisten Heim-Server haben ohnehin schon einen); der Installer gibt dir am Ende eine <strong>fertige, direkt eintragbare Konfiguration</strong> dafür aus.</p>
 <h2 id="bevor-du-startest">Bevor du startest</h2>
 <p>Diese Dinge brauchst du vorher:</p>
 <ul>

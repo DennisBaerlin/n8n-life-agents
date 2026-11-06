@@ -1,0 +1,363 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tunnel einrichten (empfohlen) · n8n-life-agents</title>
+<link rel="stylesheet" href="../css/site.css">
+
+</head>
+<body>
+
+<nav class="nav">
+  <div class="nav-inner">
+    <a class="wordmark" href="../index.html">
+      
+<svg width="26" height="26" viewBox="0 0 26 26" aria-hidden="true">
+  <path d="M13 2.5 L22 10 V19.5 H11.5 L7 23.5 V19.5 H4 V10 Z" fill="var(--mark, var(--accent))" stroke="var(--mark, var(--accent))" stroke-width="2" stroke-linejoin="round"/>
+  <path d="M8.6 12.8 L11.7 15.8 L17.4 10" fill="none" stroke="var(--mark-check, var(--bg))" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>
+
+      n8n-life-agents
+    </a>
+    <span class="nav-links">
+      <a class="ghost" href="../index.html#agenten">Agenten</a>
+      <a class="ghost" href="../index.html#sicherheit">Sicherheit</a>
+      <a class="ghost" href="../index.html#faq">FAQ</a>
+      <a class="btn btn-soft" href="../docs/ueberblick.html">Docs</a>
+    </span>
+  </div>
+</nav>
+
+
+<div class="docs-wrap">
+  <aside class="docs-sidebar">
+    
+
+
+
+  <div class="group">
+    <div class="group-title">Start</div>
+    <ul>
+      
+        <li><a href="../docs/ueberblick.html">Überblick</a></li>
+      
+        <li><a href="../docs/beispiele.html">Beispiele</a></li>
+      
+    </ul>
+  </div>
+
+  <div class="group">
+    <div class="group-title">Loslegen &amp; Alltag</div>
+    <ul>
+      
+        <li><a href="../docs/erste-schritte.html">Erste Schritte</a></li>
+      
+        <li><a href="../docs/chatten-bestaetigen.html">Chatten &amp; Bestätigen</a></li>
+      
+        <li><a href="../docs/monats-check.html">Monats-Check</a></li>
+      
+        <li><a href="../docs/uebersicht-app.html">Übersicht (Mini-App)</a></li>
+      
+        <li><a href="../docs/befehle.html">Befehle</a></li>
+      
+    </ul>
+  </div>
+
+  <div class="group">
+    <div class="group-title">Die Agenten</div>
+    <ul>
+      
+        <li><a href="../docs/buchhalter.html">Buchhalter</a></li>
+      
+        <li><a href="../docs/finanzberater.html">Finanzberater</a></li>
+      
+        <li><a href="../docs/karriere-coach.html">Karriere-Coach</a></li>
+      
+        <li><a href="../docs/nachlass-berater.html">Nachlass &amp; Vorsorge</a></li>
+      
+        <li><a href="../docs/dokumente.html">Dokumente</a></li>
+      
+        <li><a href="../docs/monitor-guide.html">Monitor &amp; Guide</a></li>
+      
+    </ul>
+  </div>
+
+  <div class="group">
+    <div class="group-title">Technik &amp; Vertrauen</div>
+    <ul>
+      
+        <li><a href="../docs/so-funktionierts.html">So funktioniert&#39;s</a></li>
+      
+        <li><a href="../docs/datenschutz.html">Datenschutz &amp; Sicherheit</a></li>
+      
+    </ul>
+  </div>
+
+  <div class="group">
+    <div class="group-title">Betrieb &amp; Erweitern</div>
+    <ul>
+      
+        <li><a href="../docs/installation.html">Installation &amp; Betrieb</a></li>
+      
+        <li><a href="../docs/start-app.html">Installation mit der Start-App</a></li>
+      
+        <li><a href="../docs/tunnel.html" class="active">Tunnel einrichten</a></li>
+      
+        <li><a href="../docs/fritzbox.html">FritzBox einrichten</a></li>
+      
+        <li><a href="../docs/update-hilfe.html">Wenn ein Update fehlschlägt</a></li>
+      
+        <li><a href="../docs/pakete.html">Pakete &amp; Erweiterbarkeit</a></li>
+      
+    </ul>
+  </div>
+
+  <div class="group">
+    <div class="group-title">Mitwirken</div>
+    <ul>
+      
+        <li><a href="../docs/mitwirken.html">Mitwirken</a></li>
+      
+    </ul>
+  </div>
+
+
+  </aside>
+  <details class="docs-mobile-nav">
+    <summary>📚 Docs-Navigation</summary>
+    
+
+
+
+  <div class="group">
+    <div class="group-title">Start</div>
+    <ul>
+      
+        <li><a href="../docs/ueberblick.html">Überblick</a></li>
+      
+        <li><a href="../docs/beispiele.html">Beispiele</a></li>
+      
+    </ul>
+  </div>
+
+  <div class="group">
+    <div class="group-title">Loslegen &amp; Alltag</div>
+    <ul>
+      
+        <li><a href="../docs/erste-schritte.html">Erste Schritte</a></li>
+      
+        <li><a href="../docs/chatten-bestaetigen.html">Chatten &amp; Bestätigen</a></li>
+      
+        <li><a href="../docs/monats-check.html">Monats-Check</a></li>
+      
+        <li><a href="../docs/uebersicht-app.html">Übersicht (Mini-App)</a></li>
+      
+        <li><a href="../docs/befehle.html">Befehle</a></li>
+      
+    </ul>
+  </div>
+
+  <div class="group">
+    <div class="group-title">Die Agenten</div>
+    <ul>
+      
+        <li><a href="../docs/buchhalter.html">Buchhalter</a></li>
+      
+        <li><a href="../docs/finanzberater.html">Finanzberater</a></li>
+      
+        <li><a href="../docs/karriere-coach.html">Karriere-Coach</a></li>
+      
+        <li><a href="../docs/nachlass-berater.html">Nachlass &amp; Vorsorge</a></li>
+      
+        <li><a href="../docs/dokumente.html">Dokumente</a></li>
+      
+        <li><a href="../docs/monitor-guide.html">Monitor &amp; Guide</a></li>
+      
+    </ul>
+  </div>
+
+  <div class="group">
+    <div class="group-title">Technik &amp; Vertrauen</div>
+    <ul>
+      
+        <li><a href="../docs/so-funktionierts.html">So funktioniert&#39;s</a></li>
+      
+        <li><a href="../docs/datenschutz.html">Datenschutz &amp; Sicherheit</a></li>
+      
+    </ul>
+  </div>
+
+  <div class="group">
+    <div class="group-title">Betrieb &amp; Erweitern</div>
+    <ul>
+      
+        <li><a href="../docs/installation.html">Installation &amp; Betrieb</a></li>
+      
+        <li><a href="../docs/start-app.html">Installation mit der Start-App</a></li>
+      
+        <li><a href="../docs/tunnel.html" class="active">Tunnel einrichten</a></li>
+      
+        <li><a href="../docs/fritzbox.html">FritzBox einrichten</a></li>
+      
+        <li><a href="../docs/update-hilfe.html">Wenn ein Update fehlschlägt</a></li>
+      
+        <li><a href="../docs/pakete.html">Pakete &amp; Erweiterbarkeit</a></li>
+      
+    </ul>
+  </div>
+
+  <div class="group">
+    <div class="group-title">Mitwirken</div>
+    <ul>
+      
+        <li><a href="../docs/mitwirken.html">Mitwirken</a></li>
+      
+    </ul>
+  </div>
+
+
+  </details>
+  <article class="docs-content">
+    <h1>Tunnel einrichten (empfohlen)</h1>
+    <p>Mit der <a href="start-app.html">Start-App</a> erreicht Telegram deinen Rechner am einfachsten über einen <strong>Tunnel</strong>. Dein Rechner baut dabei selbst eine verschlüsselte Verbindung nach außen zu einem Dienst namens <strong>Tailscale</strong> auf (genauer: Tailscale Funnel). Telegram schickt deine Nachrichten an eine öffentliche Adresse bei Tailscale, und Tailscale reicht sie durch diese Verbindung an deinen Rechner weiter. An deiner FritzBox oder deinem Router änderst du nichts, und es klappt auch bei Anschlüssen ohne eigene IPv4-Adresse (DS-Lite).</p>
+
+<figure class="schema">
+
+<svg viewBox="0 0 340 516" aria-hidden="true" focusable="false">
+  <g font-size="15" text-anchor="middle">
+    <rect x="20" y="10" width="300" height="56" rx="12" fill="var(--bg-soft)" stroke="var(--hairline)" stroke-width="1.5"/>
+    <text x="170" y="34" fill="var(--ink)" font-weight="600">Telegram</text>
+    <text x="170" y="54" fill="var(--gray)" font-size="13">schickt deine Nachricht an den Bot</text>
+
+    <path d="M170 66 V98" stroke="var(--gray)" stroke-width="1.5" fill="none"/>
+    <path d="M164 96 L170 106 L176 96 Z" fill="var(--gray)"/>
+    <text x="182" y="90" fill="var(--gray)" font-size="13" text-anchor="start">über das Internet</text>
+
+    <rect x="20" y="106" width="300" height="56" rx="12" fill="var(--bg-soft)" stroke="var(--hairline)" stroke-width="1.5"/>
+    <text x="170" y="130" fill="var(--ink)" font-weight="600">Tailscale</text>
+    <text x="170" y="150" fill="var(--gray)" font-size="13">öffentliche Adresse, endet auf .ts.net</text>
+
+    <path d="M170 162 V194" stroke="var(--accent)" stroke-width="2.5" fill="none"/>
+    <path d="M164 192 L170 202 L176 192 Z" fill="var(--accent)"/>
+    <text x="182" y="186" fill="var(--gray)" font-size="13" text-anchor="start">durch den Tunnel</text>
+
+    <rect x="20" y="202" width="300" height="56" rx="12" fill="var(--bg)" stroke="var(--gray)" stroke-width="1.5" stroke-dasharray="5 4"/>
+    <text x="170" y="226" fill="var(--ink)" font-weight="600">Deine FritzBox oder dein Router</text>
+    <text x="170" y="246" fill="var(--gray)" font-size="13">bleibt, wie sie ist: keine Freigabe</text>
+
+    <path d="M170 258 V290" stroke="var(--accent)" stroke-width="2.5" fill="none"/>
+    <path d="M164 288 L170 298 L176 288 Z" fill="var(--accent)"/>
+
+    <rect x="20" y="298" width="300" height="208" rx="16" fill="var(--accent-pale)" stroke="var(--accent)" stroke-width="1.5"/>
+    <text x="170" y="324" fill="var(--ink)" font-weight="600">Dein Mac mit der Start-App</text>
+    <rect x="44" y="338" width="252" height="40" rx="10" fill="var(--bg)" stroke="var(--hairline)" stroke-width="1.5"/>
+    <text x="170" y="363" fill="var(--ink)" font-size="14">Tunnel-Teil: baut ihn nach außen auf</text>
+    <path d="M170 378 V390" stroke="var(--gray)" stroke-width="1.5" fill="none"/>
+    <path d="M165 388 L170 396 L175 388 Z" fill="var(--gray)"/>
+    <rect x="44" y="396" width="252" height="40" rx="10" fill="var(--bg)" stroke="var(--hairline)" stroke-width="1.5"/>
+    <text x="170" y="421" fill="var(--ink)" font-size="14">Türsteher: nur Telegram-Wege</text>
+    <path d="M170 436 V448" stroke="var(--gray)" stroke-width="1.5" fill="none"/>
+    <path d="M165 446 L170 454 L175 446 Z" fill="var(--gray)"/>
+    <rect x="44" y="454" width="252" height="40" rx="10" fill="var(--bg)" stroke="var(--hairline)" stroke-width="1.5"/>
+    <text x="170" y="479" fill="var(--ink)" font-size="14">Dein Bot</text>
+  </g>
+</svg>
+
+<figcaption>Eigene Schema-Zeichnung: Telegram schickt an die öffentliche Tailscale-Adresse, von dort geht es durch den Tunnel und durch den unveränderten Router zum Mac. Dort lässt ein Türsteher nur die Telegram-Wege zum Bot durch.</figcaption>
+</figure>
+
+<p><strong>Stand:</strong> Der Tunnel-Weg ist noch im Bau. Bevor die App ihn anbietet, prüfen wir ihn mit einem Test-Bot. Wo hier „wird geprüft“ steht, ist das Ergebnis noch offen.</p>
+<h2 id="was-du-brauchst">Was du brauchst</h2>
+<ul>
+<li>Die <a href="start-app.html">Start-App</a>, die bis zur Frage nach dem Weg ins Internet gekommen ist.</li>
+<li>Ein <strong>Tailscale-Konto</strong>. Tailscale hat keine eigenen Passwörter: Du meldest dich mit einem Konto an, das du schon hast, zum Beispiel bei Google, Microsoft oder Apple. Das legst du im nächsten Schritt an, falls du noch keins hast.</li>
+</ul>
+<h2 id="schritt-für-schritt">Schritt für Schritt</h2>
+<ol>
+<li>
+<p><strong>Tunnel wählen:</strong> In der App bei der Frage nach dem Weg ins Internet <strong>Tunnel (empfohlen)</strong> wählen.</p>
+<p><em>Erwartet:</em> Nach wenigen Sekunden zeigt die App einen Knopf zum Anmelden bei Tailscale.</p>
+</li>
+<li>
+<p><strong>Anmelden:</strong> Auf den Knopf klicken. Dein Browser öffnet die Anmeldeseite von Tailscale. Melde dich an oder leg dort ein Konto an.</p>
+<p><em>Erwartet:</em> Tailscale fragt, ob du das neue Gerät mit deinem Konto verbinden willst. Bestätige das.</p>
+</li>
+<li>
+<p><strong>Öffentliche Adresse erlauben:</strong> Tailscale verlangt, dass du öffentliche Adressen (Funnel) und Zertifikate (HTTPS) für dein Konto erlaubst. Dabei weist Tailscale darauf hin, dass Rechnernamen öffentlich sichtbar werden. Das ist normal; warum dich das nicht stört, steht <a href="#neutraler-name">unten</a>.
+<strong>Wird geprüft:</strong> ob die App dich dafür direkt auf die richtige Seite bei Tailscale führt oder ob es von selbst klappt. Hier steht danach der genaue Weg.</p>
+</li>
+<li>
+<p><strong>Zurück zur App:</strong> Die App vergibt deinem Rechner bei Tailscale einen neutralen Namen und zeigt dir die neue Adresse. Sie endet auf <code>.ts.net</code>.</p>
+<p><em>Erwartet:</em> Die App prüft, ob Telegram deinen Bot über diese Adresse erreicht. Bei einem neuen Konto kann es laut <a href="https://tailscale.com/kb/1223/funnel">Tailscale</a> bis zu 10 Minuten dauern, bis die Adresse im Internet bekannt ist. Prüf in diesem Fall nach ein paar Minuten noch einmal.</p>
+</li>
+</ol>
+<p>Danach geht es in der App mit der Übersicht weiter. Die Adresse brauchst du dir nicht zu merken.</p>
+<h2 id="neutraler-name">Ein neutraler Name</h2>
+<p>Für die verschlüsselte Verbindung bekommt jede Adresse ein Zertifikat. Zertifikate werden in öffentliche Protokolle eingetragen, die jeder durchsuchen kann. Tailscale schreibt dazu selbst, dass Rechnernamen und der Name deines Tailscale-Netzes öffentlich werden (<a href="https://tailscale.com/kb/1153/enabling-https">Tailscale zu HTTPS</a>).</p>
+<p>Darum gibt die App deinem Rechner bei Tailscale einen neutralen Namen, in dem weder dein Name noch dein Wohnort steht. Den Namen deines Tailscale-Netzes (der zweite Teil der Adresse) vergibt Tailscale zufällig. Änderst du ihn in deinem Tailscale-Konto, wähl nichts Persönliches. Dasselbe gilt für den <a href="fritzbox.html#start-app">FritzBox-Weg</a>.</p>
+<h2 id="was-der-tunnel-kostet">Was der Tunnel kostet</h2>
+<ul>
+<li>Das Paket <strong>Personal</strong> von Tailscale kostet nichts, für bis zu 6 Nutzer und beliebig viele Geräte (<a href="https://tailscale.com/pricing">Tailscale-Preise</a>).</li>
+<li>Funnel, also die öffentliche Adresse, gibt es laut Tailscale in allen Paketen (<a href="https://tailscale.com/kb/1223/funnel">Tailscale Funnel</a>).</li>
+<li>Tailscale begrenzt die Datenmenge über Funnel, nennt aber keine Zahl. Durch den Tunnel laufen nur Telegrams kurze Benachrichtigungen und die <a href="uebersicht-app.html">Übersicht</a>; Fotos und Dateien holt der Bot selbst bei Telegram ab.</li>
+</ul>
+<p><strong>Wird geprüft:</strong> ob das kostenlose Paket den Dauerbetrieb ohne Einschränkung abdeckt. Bis dahin ist das eine Annahme.</p>
+<h2 id="grenzen">Grenzen</h2>
+<ul>
+<li><strong>Du brauchst ein Konto bei Tailscale</strong>, und Tailscale sieht, dass Verbindungen zu deinem Rechner laufen. Die Verschlüsselung endet erst auf deinem Rechner.</li>
+<li><strong>Fällt Tailscale aus</strong>, erreicht Telegram deinen Bot so lange nicht. Telegram stellt verpasste Nachrichten danach eine Zeit lang nach.</li>
+<li><strong>Dein Rechner muss laufen</strong>, sonst antwortet niemand (siehe <a href="start-app.html#dauerbetrieb">Dauerbetrieb</a>).</li>
+<li><strong>Nur die Telegram-Wege gehen durch.</strong> Die Verwaltungsoberfläche bleibt zu. <strong>Wird geprüft:</strong> dass sie auch aus deinem Tailscale-Netz heraus gesperrt ist.</li>
+<li><strong>Wird geprüft:</strong> Tailscale lässt die Anmeldung eines Geräts nach einiger Zeit ablaufen. Ob die App das für deinen Rechner abschaltet oder dich rechtzeitig erinnert, steht nach dem Test hier.</li>
+<li><strong>Läuft Tailscale schon auf deinem Rechner</strong>, bringt die App trotzdem ihren eigenen Tunnel-Teil mit; dein vorhandenes Tailscale bleibt, wie es ist. <strong>Wird geprüft:</strong> dass sich beide nicht stören.</li>
+</ul>
+<h2 id="rückgängig-machen">Rückgängig machen</h2>
+<ul>
+<li><strong>Ganz entfernen:</strong> In der App <strong>Deinstallieren</strong> wählen (siehe <a href="start-app.html#entfernen">Entfernen</a>). Danach in deinem Tailscale-Konto in der Geräteliste den Rechner entfernen. Dein Tailscale-Konto selbst bleibt, bis du es dort löschst.</li>
+<li><strong>Zur FritzBox wechseln:</strong> Den Weg ins Internet stellst du in der App um. <strong>Wird geprüft:</strong> wo die App diesen Punkt anbietet.</li>
+</ul>
+
+  </article>
+</div>
+
+
+<footer class="footer">
+  <div class="footer-inner">
+    <div>
+      <span class="wordmark">
+        
+<svg width="26" height="26" viewBox="0 0 26 26" aria-hidden="true">
+  <path d="M13 2.5 L22 10 V19.5 H11.5 L7 23.5 V19.5 H4 V10 Z" fill="var(--mark, var(--accent))" stroke="var(--mark, var(--accent))" stroke-width="2" stroke-linejoin="round"/>
+  <path d="M8.6 12.8 L11.7 15.8 L17.4 10" fill="none" stroke="var(--mark-check, var(--bg))" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>
+
+        n8n-life-agents
+      </span>
+      <p class="tagline">Persönlicher Multi-Agent-Assistent auf eigener Infrastruktur — ein Telegram-Bot, dahinter die passenden Spezialisten.</p>
+    </div>
+    <div>
+      <h4>Erkunden</h4>
+      <ul>
+        <li><a href="../docs/ueberblick.html">Docs</a></li>
+        <li><a href="../docs/beispiele.html">Beispiele</a></li>
+        <li><a href="../docs/installation.html">Installation</a></li>
+      </ul>
+    </div>
+    <div>
+      <h4>Projekt</h4>
+      <ul>
+        <li><a href="https://github.com/DennisBaerlin/n8n-life-agents">GitHub</a></li>
+        <li><a href="../docs/datenschutz.html">Datenschutz &amp; Sicherheit</a></li>
+        <li><a href="../docs/mitwirken.html">Mitwirken</a></li>
+      </ul>
+    </div>
+  </div>
+  <div class="legal">
+    <span>Persönliches Open-Source-Projekt · MIT-Lizenz · kein offizielles n8n-Projekt · keine Finanz-, Steuer- oder Rechtsberatung.</span>
+    <span>n8n 2.45.4 · PostgreSQL 17 · Reverse Proxy (Caddy empfohlen)</span>
+  </div>
+</footer>
+
+</body>
+</html>

@@ -2,7 +2,14 @@
 title: "Installation, Update & Betrieb"
 ---
 
-Der Bot läuft auf einer eigenen Debian-12-Maschine (als Container/LXC oder als virtuelle Maschine, VM) — es gibt genau **einen** Installationsweg, keine Variantenauswahl. Ein einziger Befehl richtet PostgreSQL, n8n und das **Grundsystem** ein (Telegram-Bot, Hilfe, Einrichtungs-Assistent, Erinnerungen). Die Fach-Funktionen — Finanzen, Karriere, Nachlass, Dokumente — wählst du danach **einzeln** dazu (siehe [„Funktionen hinzufügen"](#funktionen-hinzufügen)). Den verschlüsselten Zugang von außen (HTTPS) stellst du über einen **Reverse Proxy** bereit — den bringst du selbst mit (die meisten Heim-Server haben ohnehin schon einen); der Installer gibt dir am Ende eine **fertige, direkt eintragbare Konfiguration** dafür aus.
+## Welcher Weg passt zu dir? {#weg}
+
+Es gibt zwei gleichwertige Wege. Der Bot kann danach in beiden dasselbe. Die Frage ist: **Hast du einen eigenen Server?**
+
+- **Ja, ich habe einen eigenen Server** (auch als Container/LXC oder virtuelle Maschine) und etwas Technik-Wissen: **Installation per Befehl.** Ein Befehl im Terminal, die Fragen kommen im Terminal. Den Weg ins Internet stellst du mit deinem eigenen Reverse Proxy und einer Port-Weiterleitung her. Anleitung: diese Seite, ab [Bevor du startest](#bevor-du-startest).
+- **Nein, ich habe einen Mac oder Windows-PC**, der durchlaufen kann, und kein Technik-Wissen: **Start-App.** Datei laden, App öffnen, die Fragen kommen im Fenster. Ins Internet kommt der Bot per Tunnel (empfohlen) oder FritzBox-Freigabe. Anleitung: [Installation mit der Start-App](start-app.html).
+
+Der Rest dieser Seite beschreibt die **Installation per Befehl**. Der Bot läuft dabei auf einer eigenen Debian-12-Maschine (als Container/LXC oder als virtuelle Maschine, VM). Ein einziger Befehl richtet PostgreSQL, n8n und das **Grundsystem** ein (Telegram-Bot, Hilfe, Einrichtungs-Assistent, Erinnerungen). Die Fach-Funktionen — Finanzen, Karriere, Nachlass, Dokumente — wählst du danach **einzeln** dazu (siehe [„Funktionen hinzufügen"](#funktionen-hinzufügen)). Den verschlüsselten Zugang von außen (HTTPS) stellst du über einen **Reverse Proxy** bereit — den bringst du selbst mit (die meisten Heim-Server haben ohnehin schon einen); der Installer gibt dir am Ende eine **fertige, direkt eintragbare Konfiguration** dafür aus.
 
 ## Bevor du startest
 

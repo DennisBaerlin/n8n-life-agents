@@ -42,6 +42,10 @@
   pages:
     - slug: installation
       title: Installation & Betrieb
+    - slug: start-app
+      title: Installation mit der Start-App
+    - slug: tunnel
+      title: Tunnel einrichten
     - slug: fritzbox
       title: FritzBox einrichten
     - slug: update-hilfe

@@ -289,6 +289,12 @@ section[id], footer[id] { scroll-margin-top: 84px; }
   margin: 4px 12px 8px 0; border-radius: 18px; border: 1px solid var(--hairline);
   box-shadow: 0 6px 20px rgba(23,33,43,.08);
 }
+/* Schema-Zeichnungen (Shortcode schema, eigene SVGs unter layouts/partials/schema/): eine je Absatz, volle Spaltenbreite
+   bis 440px, Farben nur ueber die Tokens. Kein Rahmen und kein Schatten, die Zeichnung bringt ihre Kaesten selbst mit. */
+.docs-content figure.schema { margin: 20px 0 24px; max-width: 440px; }
+.docs-content figure.schema svg { display: block; width: 100%; height: auto; }
+.docs-content figure.schema text { font-family: var(--font); }
+.docs-content figure.schema figcaption { margin-top: 8px; font-size: 14px; line-height: 1.5; color: var(--gray); }
 
 /* ============ Motion (ruhig, CSS-only) ============ */
 @media (prefers-reduced-motion: no-preference) {

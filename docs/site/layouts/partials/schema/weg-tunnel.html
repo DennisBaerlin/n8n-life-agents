@@ -1,0 +1,40 @@
+{{/* Schema Tunnel-Weg (Seite tunnel): Telegram -> Tailscale -> durch den unveraenderten Router -> Mac mit Start-App. */}}
+<svg viewBox="0 0 340 516" aria-hidden="true" focusable="false">
+  <g font-size="15" text-anchor="middle">
+    <rect x="20" y="10" width="300" height="56" rx="12" fill="var(--bg-soft)" stroke="var(--hairline)" stroke-width="1.5"/>
+    <text x="170" y="34" fill="var(--ink)" font-weight="600">Telegram</text>
+    <text x="170" y="54" fill="var(--gray)" font-size="13">schickt deine Nachricht an den Bot</text>
+
+    <path d="M170 66 V98" stroke="var(--gray)" stroke-width="1.5" fill="none"/>
+    <path d="M164 96 L170 106 L176 96 Z" fill="var(--gray)"/>
+    <text x="182" y="90" fill="var(--gray)" font-size="13" text-anchor="start">über das Internet</text>
+
+    <rect x="20" y="106" width="300" height="56" rx="12" fill="var(--bg-soft)" stroke="var(--hairline)" stroke-width="1.5"/>
+    <text x="170" y="130" fill="var(--ink)" font-weight="600">Tailscale</text>
+    <text x="170" y="150" fill="var(--gray)" font-size="13">öffentliche Adresse, endet auf .ts.net</text>
+
+    <path d="M170 162 V194" stroke="var(--accent)" stroke-width="2.5" fill="none"/>
+    <path d="M164 192 L170 202 L176 192 Z" fill="var(--accent)"/>
+    <text x="182" y="186" fill="var(--gray)" font-size="13" text-anchor="start">durch den Tunnel</text>
+
+    <rect x="20" y="202" width="300" height="56" rx="12" fill="var(--bg)" stroke="var(--gray)" stroke-width="1.5" stroke-dasharray="5 4"/>
+    <text x="170" y="226" fill="var(--ink)" font-weight="600">Deine FritzBox oder dein Router</text>
+    <text x="170" y="246" fill="var(--gray)" font-size="13">bleibt, wie sie ist: keine Freigabe</text>
+
+    <path d="M170 258 V290" stroke="var(--accent)" stroke-width="2.5" fill="none"/>
+    <path d="M164 288 L170 298 L176 288 Z" fill="var(--accent)"/>
+
+    <rect x="20" y="298" width="300" height="208" rx="16" fill="var(--accent-pale)" stroke="var(--accent)" stroke-width="1.5"/>
+    <text x="170" y="324" fill="var(--ink)" font-weight="600">Dein Mac mit der Start-App</text>
+    <rect x="44" y="338" width="252" height="40" rx="10" fill="var(--bg)" stroke="var(--hairline)" stroke-width="1.5"/>
+    <text x="170" y="363" fill="var(--ink)" font-size="14">Tunnel-Teil: baut ihn nach außen auf</text>
+    <path d="M170 378 V390" stroke="var(--gray)" stroke-width="1.5" fill="none"/>
+    <path d="M165 388 L170 396 L175 388 Z" fill="var(--gray)"/>
+    <rect x="44" y="396" width="252" height="40" rx="10" fill="var(--bg)" stroke="var(--hairline)" stroke-width="1.5"/>
+    <text x="170" y="421" fill="var(--ink)" font-size="14">Türsteher: nur Telegram-Wege</text>
+    <path d="M170 436 V448" stroke="var(--gray)" stroke-width="1.5" fill="none"/>
+    <path d="M165 446 L170 454 L175 446 Z" fill="var(--gray)"/>
+    <rect x="44" y="454" width="252" height="40" rx="10" fill="var(--bg)" stroke="var(--hairline)" stroke-width="1.5"/>
+    <text x="170" y="479" fill="var(--ink)" font-size="14">Dein Bot</text>
+  </g>
+</svg>

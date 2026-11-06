@@ -37,7 +37,7 @@ _bkp_resolve_db() { lifeagents_db_name >/dev/null; }
 # _bkp_psql_scalar <sql> -> einzelner Wert auf stdout (leer bei NULL/keine Zeile).
 _bkp_psql_scalar() {
   _bkp_resolve_db
-  runuser -u "$DB_SUPERUSER" -- psql -v ON_ERROR_STOP=1 -X -tA -d "$N8N_DB_NAME" -c "$1"
+  pg_su_psql -v ON_ERROR_STOP=1 -X -tA -d "$N8N_DB_NAME" -c "$1"
 }
 
 # _bkp_qual_ok <schema.table> -> 0 wenn beide Teile ^[a-z][a-z0-9_]*$ (Injection-Schutz vor Interpolation).
@@ -210,7 +210,7 @@ backup_cmd_export() {
   done <<< "$bulk"
   # pg_dump laeuft als postgres (runuser/Peer-Auth) und darf das root-eigene 0700-tmpfs NICHT beschreiben
   # -> Ausgabe auf stdout, die root-Shell leitet in die Datei um (postgres fasst das Verzeichnis nie an).
-  if ! runuser -u "$DB_SUPERUSER" -- pg_dump -d "$N8N_DB_NAME" -a --disable-triggers -Fc "${dump_args[@]}" > "$tmp/data.dump"; then
+  if ! pg_su_exec pg_dump -d "$N8N_DB_NAME" -a --disable-triggers -Fc "${dump_args[@]}" > "$tmp/data.dump"; then
     die "pg_dump fehlgeschlagen."
   fi
 
@@ -407,7 +407,7 @@ backup_cmd_restore() {
   # (b) pg_restore -> SQL-TEXT (KEIN eigener DB-Connect; laeuft so in unserer einen TX).
   # pg_restore (postgres via runuser) liest die Archiv-Datei NICHT direkt (root-eigenes 0700-tmpfs) -> die
   # root-Shell oeffnet sie per stdin-Redirect; pg_restore -f - schreibt das SQL auf stdout (in unsere EINE TX).
-  if ! runuser -u "$DB_SUPERUSER" -- pg_restore -a --disable-triggers -f - < "$tmp/data.dump" >> "$restore_sql"; then
+  if ! pg_su_stdin pg_restore -a --disable-triggers -f - < "$tmp/data.dump" >> "$restore_sql"; then
     die "pg_restore (SQL-Generierung) fehlgeschlagen. Nichts geaendert."
   fi
   # (c) gefilterte Tabellen regel-bewusst (shared.json als base64 -> kein Quoting-Risiko).
@@ -438,7 +438,7 @@ backup_cmd_restore() {
 
   # psql (postgres via runuser) liest das Skript per stdin-Redirect (root oeffnet die Datei) — nicht -f
   # (das root-eigene 0700-tmpfs ist fuer postgres nicht traversierbar). -1 = eine TX ueber den ganzen Strom.
-  if runuser -u "$DB_SUPERUSER" -- psql -v ON_ERROR_STOP=1 -1 -X -q -d "$N8N_DB_NAME" < "$restore_sql"; then
+  if pg_su_psql -v ON_ERROR_STOP=1 -1 -X -q -d "$N8N_DB_NAME" < "$restore_sql"; then
     ok "Restore abgeschlossen (atomar, Count-Verify gruen): $(printf '%s' "$bulk" | grep -c .) bulk-Tabelle(n) + gefilterte Zeilen wiederhergestellt."
   else
     die "Restore fehlgeschlagen — Transaktion zurueckgerollt, die alte Welt ist intakt."

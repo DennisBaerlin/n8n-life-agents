@@ -26,7 +26,7 @@ _hh_resolve_db() { lifeagents_db_name >/dev/null; }
 # _hh_psql <psql-args...>  -> psql als postgres-Superuser am lokalen Socket (ON_ERROR_STOP, quiet).
 _hh_psql() {
   _hh_resolve_db
-  runuser -u "$DB_SUPERUSER" -- psql -v ON_ERROR_STOP=1 -X -q -d "$N8N_DB_NAME" "$@"
+  pg_su_psql -v ON_ERROR_STOP=1 -X -q -d "$N8N_DB_NAME" "$@"
 }
 
 # _hh_sql_lit <s>  -> SQL-String-Literal-Inhalt (Single-Quotes verdoppelt; Injection-Schutz).

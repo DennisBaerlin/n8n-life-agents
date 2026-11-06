@@ -52,6 +52,7 @@ if ($missing -and -not $ListSuites) { throw "Eigene Test-Container setzen, fehlt
 $Gates = [ordered]@{
     release_fetch = @{ Script = 'scripts\dev\release_fetch_test.ps1' }   # Release-Download gegen Mock-GitHub (nur Container)
     reachability  = @{ Script = 'scripts\dev\reachability_test.ps1' }   # Geraete-Erreichbarkeit IPv4/IPv6 gegen Mock (nur Container)
+    runtime       = @{ Script = 'scripts\dev\runtime_test.ps1' }   # Betriebsart-Naht systemd/compose, Antwort-Datei, Telegram-Pruefung (nur Container)
     infra         = @{ Script = 'scripts\infra_test.ps1' }
     hitl_gate     = @{ Script = 'scripts\dev\hitl_gate_test.ps1' }
     cron_text     = @{ Script = 'scripts\dev\cron_text_test.ps1' }
@@ -75,7 +76,7 @@ $Gates = [ordered]@{
 # nach B; Richtwerte mr_orch ~3,6, real_ingress ~3,7, cron_text ~3,2, mr_finance ~3,0).
 $GroupA = @('infra', 'cron_text', 'bot_menu', 'update_chat', 'llm_gateway', 'mr_finance', 'mr_advisor', 'mr_guide',
             'mr_monitor', 'mr_career', 'mr_paperless')
-$GroupB = @('release_fetch', 'reachability', 'bot_profile_photo', 'hitl_gate', 'mr_estate', 'mr_orch', 'real_ingress', 'app_endpoint')
+$GroupB = @('release_fetch', 'reachability', 'runtime', 'bot_profile_photo', 'hitl_gate', 'mr_estate', 'mr_orch', 'real_ingress', 'app_endpoint')
 $unknown = @($GroupA + $GroupB + $Suites | Where-Object { -not $Gates.Contains($_) })
 if ($unknown) { throw "Unbekannte Suite(n): $($unknown -join ', ')" }
 if (@($GroupA + $GroupB).Count -ne $Gates.Count) { throw 'run_free_gates: jede Suite muss in genau einer Gruppe stehen ($GroupA/$GroupB).' }

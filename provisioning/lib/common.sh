@@ -75,9 +75,13 @@ require_cmd()  { need_cmd "$1" || die "Pflicht-Kommando fehlt: $1"; }
 # nicht existiert. Als postgres-Superuser (Peer-Auth) -> nur als root. EINE Abfrage fuer Installer-Guard + doctor
 # (UTF-8 ist Gesetz, provisioning/CLAUDE.md). Der DB-Name kommt aus der eigenen Config, nie vom Nutzer.
 pg_db_encoding() {
-  need_cmd psql && need_cmd runuser || return 0
-  runuser -u postgres -- psql -X -tA -c "SELECT pg_encoding_to_char(encoding) FROM pg_database WHERE datname='$1'" 2>/dev/null || true
+  need_su_tools || return 0
+  pg_su_psql -X -tA -c "SELECT pg_encoding_to_char(encoding) FROM pg_database WHERE datname='$1'" 2>/dev/null || true
 }
+
+# --- Betriebsart (systemd | compose): alle runuser/systemctl/docker-Aufrufe leben in lib/runtime.sh ------------------
+# shellcheck source=runtime.sh
+. "$(dirname "${BASH_SOURCE[0]}")/runtime.sh"
 
 # --- random secrets (hex → safe in env files, sed, and shell, no escaping) ----
 rand_hex()    { openssl rand -hex "${1:-24}"; }
@@ -223,7 +227,7 @@ psql_superuser_driver() {
   local su="${DB_SUPERUSER:-postgres}" drv; drv="$(mktemp /tmp/la_drv.XXXXXX.sql)"
   cat > "$drv"; chmod 600 "$drv"; chown "$su" "$drv" 2>/dev/null || true
   local rc=0
-  runuser -u "$su" -- psql -v ON_ERROR_STOP=1 -X -d "$N8N_DB_NAME" "$@" -f "$drv" || rc=$?
+  pg_su_psql -v ON_ERROR_STOP=1 -X -d "$N8N_DB_NAME" "$@" -f "$drv" || rc=$?
   rm -f "$drv"; return $rc
 }
 
@@ -273,19 +277,7 @@ render_template() {
   printf '%s\n' "$content"
 }
 
-# --- systemd helpers ---------------------------------------------------------
-# install_unit <name> <changed?>  — daemon-reload only if the unit changed, then
-# enable + (re)start. <changed?> is the exit status of the write (0=changed).
-enable_start_unit() {
-  local unit="$1" changed="${2:-1}"
-  if [ "$changed" -eq 0 ]; then
-    systemctl daemon-reload
-  fi
-  systemctl enable "$unit" >/dev/null 2>&1 || true
-  if [ "$changed" -eq 0 ] || ! systemctl is-active --quiet "$unit"; then
-    systemctl restart "$unit"
-  fi
-}
+# enable_start_unit (systemd-Unit bzw. Compose-Dienst anwerfen) -> lib/runtime.sh.
 
 # --- apt: idempotent repo + key registration ---------------------------------
 # add_apt_key <url> <keyring-path>  — dearmor the key only if the keyring is missing.
@@ -818,7 +810,7 @@ BACKUP_KEY_NAME="backup_encryption_key"
 backup_key_read() {
   local tab="${1:-core.backup_key}"
   case "$tab" in core.backup_key|core.secret) ;; *) return 1 ;; esac   # fester Satz -> kein SQL-Einschleusen
-  runuser -u "${DB_SUPERUSER:-postgres}" -- psql -v ON_ERROR_STOP=1 -X -tA -d "${N8N_DB_NAME:-n8n}" \
+  pg_su_psql -v ON_ERROR_STOP=1 -X -tA -d "${N8N_DB_NAME:-n8n}" \
     -c "SELECT value FROM ${tab} WHERE key = '${BACKUP_KEY_NAME}'"
 }
 # gpg_sym_encrypt <key> <out> [in] — <in> fehlt oder '-' = stdin.

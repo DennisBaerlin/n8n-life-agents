@@ -10,6 +10,7 @@ N8N_UNIT="/etc/systemd/system/n8n.service"
 
 # --- dedicated unprivileged service user -------------------------------------
 ensure_n8n_user() {
+  if rt_is_compose; then return 0; fi   # Verbund: Nutzer "node" und Ordner kommen aus dem n8n-Image (Volume n8n_home)
   if ! id -u "$N8N_USER" >/dev/null 2>&1; then
     log "System-User '$N8N_USER' anlegen ..."
     useradd --system -m -d "$N8N_HOME" -s /usr/sbin/nologin "$N8N_USER"
@@ -173,7 +174,7 @@ _n8n_install_failed() {
     # npm kann den Programm-Link waehrend des Tauschs entfernt haben
     need_cmd n8n || ln -sf "$root/n8n/bin/n8n" "$(npm prefix -g 2>/dev/null || echo /usr)/bin/n8n" 2>/dev/null || true
     hash -r 2>/dev/null || true
-    systemctl start n8n >/dev/null 2>&1 || true
+    svc_start n8n >/dev/null 2>&1 || true
     if wait_n8n_health 90; then
       rm -f "${UPGRADE_MARKER:-}" 2>/dev/null || true
       msg="${msg} — n8n ${cur} läuft weiter, an deinen Daten wurde nichts geändert"
@@ -189,18 +190,19 @@ _n8n_install_failed() {
 
 # --- systemd unit + boot/health ----------------------------------------------
 install_n8n_unit() {
-  local bin; bin="$(command -v n8n || true)"
-  [ -n "$bin" ] || die "n8n-Binary nicht im PATH gefunden."
-
   local changed=1
-  if render_template "$TEMPLATE_DIR/n8n.service.tpl" \
-        N8N_USER="$N8N_USER" \
-        N8N_ENV_FILE="$N8N_ENV_FILE" \
-        N8N_OWNER_ENV_FILE="${N8N_OWNER_ENV_FILE:-/etc/lifeagents/core.env}" \
-        N8N_BIN="$bin" \
-        N8N_HOME="$N8N_HOME" \
-      | write_if_changed "$N8N_UNIT" 0644; then
-    changed=0
+  if ! rt_is_compose; then   # Verbund: keine Unit — der Container liest n8n.env/core.env bei jedem Start (compose.yml)
+    local bin; bin="$(command -v n8n || true)"
+    [ -n "$bin" ] || die "n8n-Binary nicht im PATH gefunden."
+    if render_template "$TEMPLATE_DIR/n8n.service.tpl" \
+          N8N_USER="$N8N_USER" \
+          N8N_ENV_FILE="$N8N_ENV_FILE" \
+          N8N_OWNER_ENV_FILE="${N8N_OWNER_ENV_FILE:-/etc/lifeagents/core.env}" \
+          N8N_BIN="$bin" \
+          N8N_HOME="$N8N_HOME" \
+        | write_if_changed "$N8N_UNIT" 0644; then
+      changed=0
+    fi
   fi
   # A changed env file also warrants a restart so n8n picks up new config.
   [ "${N8N_ENV_CHANGED:-1}" -eq 0 ] && changed=0
@@ -221,7 +223,7 @@ install_n8n_unit() {
       ok "n8n ${N8N_VERSION} bereit (Datenbank umgestellt)."
     else
       upgrade_rollback_hint
-      die "n8n wurde nach dem Update nicht bereit (/healthz/readiness) — Diagnose: journalctl -u n8n -n 100"
+      die "n8n wurde nach dem Update nicht bereit (/healthz/readiness) — Diagnose: $(svc_logs_hint n8n)"
     fi
   elif wait_n8n_health; then
     ok "n8n bereit (http://127.0.0.1:${N8N_PORT}/healthz/readiness)."
@@ -232,8 +234,10 @@ install_n8n_unit() {
 
 # Orchestration entrypoint for provision.sh (env was prepared earlier so install_pg had the pw).
 install_n8n() {
-  ensure_node
-  ensure_n8n_package
+  if ! rt_is_compose; then   # Verbund: Node + n8n stecken im Image n8nio/n8n:<Pin> (compose.yml, per Digest)
+    ensure_node
+    ensure_n8n_package
+  fi
   apply_n8n_patches   # lib/n8n_patches.sh: bekannte n8n-Fehler korrigieren, bis n8n sie selbst liefert (bei JEDEM Lauf)
   install_n8n_unit
 }

@@ -10,7 +10,7 @@ PG_KEY_URL="https://www.postgresql.org/media/keys/ACCC4CF8.asc"
 
 # Run a command as the postgres superuser. runuser (util-linux) is always present; avoids
 # a hard dependency on sudo on a minimal image.
-_pg_super() { runuser -u postgres -- "$@"; }
+_pg_super() { pg_su_exec "$@"; }
 
 # require_utf8_db — UTF-8 ist Gesetz (provisioning/CLAUDE.md): eine bestehende Nicht-UTF8-App-DB (angelegt von <= v0.4.0
 # auf einem System mit LANG="C", Proxmox-Vorlage) speichert Umlaute nur als Bytes. Nie still weiter, nie automatisch
@@ -103,8 +103,16 @@ install_pg_packages() {
 }
 
 install_postgres() {
-  install_pg_packages
-  systemctl enable --now postgresql >/dev/null 2>&1 || systemctl enable --now postgresql
+  if rt_is_compose; then
+    # Verbund: der offizielle postgres:17-Container (UTF-8/C.UTF-8 per initdb-Args in compose.yml). Auf frischem Volume
+    # laeuft erst ein Init-Server nur am Socket, dann der echte Start -> auf den TCP-Healthcheck warten, sonst greift der
+    # Installer in den Neustart hinein (Probelauf-Fund).
+    svc_up postgresql
+    rt_wait_healthy "$LA_PG_CONTAINER" 180 || die "PostgreSQL-Container wurde nicht gesund ($(svc_logs_hint postgresql))."
+  else
+    install_pg_packages
+    svc_up postgresql
+  fi
 
   # Wait until the cluster accepts connections (fresh install can lag a beat).
   for _ in $(seq 1 30); do

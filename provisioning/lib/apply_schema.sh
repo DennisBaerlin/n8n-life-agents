@@ -25,7 +25,7 @@ DB_SUPERUSER="postgres"
 # _schema_psql … — psql als postgres-Superuser gegen die n8n-DB. Peer-Auth am Socket,
 # kein Passwort. ON_ERROR_STOP=1 + -X (ignoriert ~/.psqlrc des postgres-Users).
 _schema_psql() {
-  runuser -u "$DB_SUPERUSER" -- psql -v ON_ERROR_STOP=1 -X -d "$N8N_DB_NAME" "$@"
+  pg_su_psql -v ON_ERROR_STOP=1 -X -d "$N8N_DB_NAME" "$@"
 }
 
 # _emit_sql_file <path>  — Datei-Inhalt INLINE in den Treiber-Stream (statt psql \i,
@@ -172,7 +172,7 @@ apply_schema() {
     N8N_DB_USER="$(read_env_value "${N8N_ENV_FILE:-/etc/n8n/n8n.env}" DB_POSTGRESDB_USER || true)"
     [ -n "${N8N_DB_USER:-}" ] || die "N8N_DB_USER nicht gesetzt + nicht in n8n.env ableitbar."
   fi
-  require_cmd runuser
+  require_su_tools
   require_cmd md5sum
 
   local is_core=0 db_dir f

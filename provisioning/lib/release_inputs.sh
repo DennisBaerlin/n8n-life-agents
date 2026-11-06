@@ -1012,3 +1012,189 @@ _review_edit() {
   esac
   return 0
 }
+
+# --- Antwort-Datei (--unattended) lesen, OHNE sie auszufuehren ----------------------------------------------------------
+# Frueher wurde die Datei gesourct (`set -a; . datei`) — jede Zeile war damit ein Befehl als root. Der Wizard (Docker-Weg)
+# schreibt Antworten eines Nutzers hinein; ein Wert mit `'`, `$( )` oder Zeilenumbruch darf nie Code werden (Plan-Pruefung
+# Fund 3). install_answers_load liest dieselbe Form wie bisher (`KEY='wert'`, auch `KEY=wert`, `KEY="wert"` ohne `$`,
+# `export KEY=…`, Kommentare, `'\''`), setzt die Werte als exportierte Variablen und bricht bei allem anderen ab. Fehler
+# nennen Zeile und Schluessel, nie den Wert (Passwoerter, Schluessel). Kein Ausfuehren, keine Erweiterung, kein eval.
+#
+# Schluessel: Grossbuchstaben/Ziffern/_ (Positivliste der FORM). Gesperrt sind Variablen, die Shell, Lader oder diesen
+# Installer selbst steuern (Pfade, Laufzeit, Download-Quelle, Telegram-/Docker-Ziel); sie werden mit Warnung uebersprungen,
+# nie gesetzt (eine fruehere, gesourcte Datei durfte etwa TZ tragen, ohne dass die Installation abbrach). Eine feste Liste ERLAUBTER
+# Schluessel gibt es bewusst nicht: die Fragen leben in _INSTALL_ENV_KEYS + den Manifest-`credentials` + den Dev-Schaltern
+# (ein Fakt, eine Adresse); der Wizard schreibt ohnehin nur Schluessel aus dem maschinenlesbaren Auszug.
+_ANSWER_DENY_EXACT=" PATH IFS HOME SHELL ENV CDPATH GLOBIGNORE SHELLOPTS BASHOPTS PS1 PS2 PS3 PS4 PROMPT_COMMAND TMPDIR TERM
+ LANG LANGUAGE TZ HOSTNAME USER LOGNAME PWD OLDPWD UID EUID PPID SCRIPT_DIR LIB_DIR REPO_ROOT TEMPLATE_DIR UNATTENDED
+ UNATTENDED_ENV_FILE PROFILE LIFEAGENTS_RUNTIME LIFEAGENTS_DIR LIFEAGENTS_TELEGRAM_API LIFEAGENTS_RESULT_FILE
+ LIFEAGENTS_UPDATE_LOCK LIFEAGENTS_UPDATE_LOCK_HELD PROVISION_GH_API PROVISION_REPO_SLUG N8N_USER N8N_HOME N8N_USER_FOLDER
+ DB_SUPERUSER STATE_DIRECTORY "
+_answer_key_denied() {
+  case "$_ANSWER_DENY_EXACT" in *[[:space:]]"$1"[[:space:]]*) return 0 ;; esac
+  case "$1" in
+    BASH_*|LD_*|LC_*|DOCKER_*|COMPOSE_*|LA_*|NODE_*|NPM_*|GIT_*|SSL_*|CURL_*|GNUPG*|GPG_*|PYTHON*|PERL*|RUBY*|GUM_*) return 0 ;;
+    *_DIR|*_FILE|*_SRC|*_PATH|*_BIN|*_IMAGE|*_CONTAINER) return 0 ;;
+  esac
+  return 1
+}
+
+# WIZARD-FORM (erste Zeile genau `# lifeagents-answers v1`, Schreiber = Wizard im master, Paket 4): danach nur
+# `KEY=wert`-Zeilen wie in core.env (env_upsert) — Wert = alles nach dem ersten `=`, roh, ohne Quotes/Escapes. Strenger als
+# die .env-Form: jeder Schluessel hoechstens einmal, keine Leer-/Kommentarzeilen, kein Steuerzeichen (auch kein CR), Wert
+# hoechstens 4096 Byte, ein gesperrter Schluessel ist ein Fehler des Schreibers (Abbruch statt Warnung).
+ANSWERS_WIZARD_HEADER='# lifeagents-answers v1'
+_answers_load_wizard() {
+  local file="$1" l key val line=0 seen=' '
+  while IFS= read -r l || [ -n "$l" ]; do
+    line=$((line + 1))
+    [ "$line" -eq 1 ] && continue   # Kopfzeile (geprueft vom Aufrufer)
+    [[ $l =~ ^([A-Z][A-Z0-9_]{0,63})=(.*)$ ]] || die "Antwort-Datei Zeile ${line}: erwartet SCHLÜSSEL=Wert (Wizard-Form)."
+    key="${BASH_REMATCH[1]}"; val="${BASH_REMATCH[2]}"
+    case "$seen" in *" $key "*) die "Antwort-Datei Zeile ${line}: ${key} steht doppelt." ;; esac
+    seen+="$key "
+    _answer_key_denied "$key" && die "Antwort-Datei Zeile ${line}: ${key} steuert die Installation selbst und gehört nicht in die Antworten."
+    [[ $val == *[[:cntrl:]]* ]] && die "Antwort-Datei Zeile ${line}: Wert von ${key} enthält ein Steuerzeichen."
+    [ "$(printf '%s' "$val" | LC_ALL=C wc -c)" -le 4096 ] || die "Antwort-Datei Zeile ${line}: Wert von ${key} ist länger als 4096 Byte."
+    printf -v "$key" '%s' "$val" 2>/dev/null || die "Antwort-Datei Zeile ${line}: ${key} lässt sich nicht setzen."
+    export "${key?}"
+  done < "$file"
+  [ "$line" -ge 1 ] || die "Antwort-Datei ist leer."
+}
+
+# install_answers_load <datei> — liest und exportiert; rc 0 = gelesen. Abbruch (die) bei Formfehlern.
+install_answers_load() {
+  local file="$1" rest key val tok line=1 kline n first=''
+  [ -r "$file" ] || die "Antwort-Datei nicht lesbar: ${file} (--unattended)."
+  IFS= read -r first < "$file" || true
+  if [ "$first" = "$ANSWERS_WIZARD_HEADER" ]; then _answers_load_wizard "$file"; return 0; fi
+  # Ganze Datei als Text (auch ohne Zeilenumbruch am Ende). Ein CR am Zeilenende (Windows-Editor) ist ein Formfehler,
+  # damit kein Wert still ein unsichtbares Zeichen traegt. Regex-Anker: ^ = Anfang des Rests, $ = Dateiende.
+  rest="$(cat "$file"; printf x)"; rest="${rest%x}"
+  local nl=$'\n' bl=$' \t'
+  local re_skip="^[${bl}]*(#[^${nl}]*)?(${nl}|\$)" re_end="^[[:space:]]*\$"
+  local re_key="^[${bl}]*(export[${bl}]+)?([A-Za-z_][A-Za-z0-9_]*)="
+  # In [...] ist \ ein gewoehnliches Zeichen (POSIX): re_dq schliesst also auch \ aus; re_esc = \ + ein Zeichen (kein Umbruch).
+  local re_sq="^'([^']*)'" re_dq='^"([^"$`\]*)"' re_esc='^[\]([^'"${nl}"'])' re_bare='^([A-Za-z0-9_./:@%+,=^-]+)'
+  local re_tail="^[${bl}]*(#[^${nl}]*)?(${nl}|\$)"
+  while [ -n "$rest" ]; do
+    if [[ $rest =~ $re_skip ]]; then rest="${rest:${#BASH_REMATCH[0]}}"; line=$((line + 1)); continue; fi
+    [[ $rest =~ $re_end ]] && break
+    kline="$line"
+    [[ $rest =~ $re_key ]] || die "Antwort-Datei Zeile ${kline}: erwartet SCHLÜSSEL=Wert."
+    key="${BASH_REMATCH[2]}"; rest="${rest:${#BASH_REMATCH[0]}}"
+    [[ $key =~ ^[A-Z][A-Z0-9_]*$ ]] || die "Antwort-Datei Zeile ${kline}: Schlüssel ${key} ist nicht erlaubt (nur Großbuchstaben, Ziffern, _)."
+    val=''
+    while :; do
+      if   [[ $rest =~ $re_sq ]];   then tok="${BASH_REMATCH[1]}"
+      elif [[ $rest =~ $re_dq ]];   then tok="${BASH_REMATCH[1]}"
+      elif [[ $rest =~ $re_esc ]];  then tok="${BASH_REMATCH[1]}"
+      elif [[ $rest =~ $re_bare ]]; then tok="${BASH_REMATCH[1]}"
+      else break; fi
+      val+="$tok"; n="${BASH_REMATCH[0]//[!$'\n']/}"; line=$((line + ${#n}))
+      rest="${rest:${#BASH_REMATCH[0]}}"
+    done
+    [[ $rest =~ $re_tail ]] \
+      || die "Antwort-Datei Zeile ${line}: Wert von ${key} hat eine nicht erlaubte Form (erlaubt: 'Text', \"Text\" ohne \$ und \`, Wörter ohne Sonderzeichen; ausgeführt wird nichts)."
+    rest="${rest:${#BASH_REMATCH[0]}}"; line=$((line + 1))
+    # Gesperrt: ueberspringen statt abbrechen (eine aeltere, gesourcte Datei durfte z. B. TZ setzen); gesetzt wird er nie.
+    if _answer_key_denied "$key"; then
+      warn "Antwort-Datei Zeile ${kline}: ${key} steuert die Installation selbst — ignoriert."; continue
+    fi
+    declare -gx "${key}=${val}" 2>/dev/null || die "Antwort-Datei Zeile ${kline}: Schlüssel ${key} lässt sich nicht setzen."
+  done
+  return 0
+}
+
+# --- Telegram: hoert der Bot schon woanders zu? (Pruefliste Nr. 10, beide Wege) ------------------------------------------
+# Den produktiven Webhook setzt n8n beim Aktivieren des Telegram-Triggers selbst (bootstrap_owner.sh) und ueberschreibt
+# damit still einen fremden Abnehmer (anderes System, Bastel-Skript). Darum VOR jeder Aenderung: getWebhookInfo; ohne
+# Webhook zusaetzlich getUpdates (409 = ein anderes Programm holt Nachrichten per Long-Polling ab). Nie ein Offset, nie
+# drop_pending_updates: wartende Nachrichten bleiben unangetastet. Ergebnis in TG_WEBHOOK_STATE (free | ours | foreign |
+# unknown) + TG_WEBHOOK_HOST (nur der Rechnername, der Pfad kann ein Geheimnis tragen).
+#   ours    = der Webhook zeigt auf unsere bisherige WEBHOOK_URL (n8n.env, Bestand) -> nichts zu tun.
+#   foreign = Erstinstallation oder andere Adresse -> interaktiv fragen; unattended nur mit TELEGRAM_WEBHOOK_TAKEOVER=1
+#             (der Wizard fragt vorher), sonst Abbruch vor jeder Aenderung. Bestand ohne Terminal (Update im Chat): der Bot
+#             gehoerte schon dieser Installation -> Warnung, weiter (sonst bliebe der Bot nach einem Update taub).
+#   unknown = Telegram nicht erreichbar oder Token abgelehnt -> Warnung, weiter (die Token-Pruefung sitzt woanders).
+# _tg_webhook_probe <token> <unsere-webhook-url|""> — setzt TG_WEBHOOK_STATE/_HOST/_URL/_PENDING/_REASON (unknown:
+#   unauthorized | unreachable). Nie fatal.
+_tg_webhook_probe() {
+  local token="$1" ours="$2" out code body url
+  TG_WEBHOOK_STATE=unknown; TG_WEBHOOK_HOST=''; TG_WEBHOOK_URL=''; TG_WEBHOOK_PENDING=0; TG_WEBHOOK_REASON=unreachable
+  out="$(tg_api_curl "$token" getWebhookInfo -sS --max-time 10 -w '\n%{http_code}' 2>/dev/null)" || return 0
+  code="${out##*$'\n'}"; body="${out%$'\n'*}"
+  case "$code" in 200) ;; 401|403|404) TG_WEBHOOK_REASON=unauthorized; return 0 ;; *) return 0 ;; esac
+  # Ohne jq (die Pruefung laeuft vor der Paket-Installation, frische Rechner haben noch keins): die flache Bot-API-Antwort
+  # traegt url (nie mit Anfuehrungszeichen darin, Telegram verlangt eine HTTPS-URL) und pending_update_count.
+  [[ $body =~ \"url\":\"([^\"]*)\" ]] || return 0
+  url="${BASH_REMATCH[1]//\\\//\/}"
+  [[ $body =~ \"pending_update_count\":([0-9]+) ]] && TG_WEBHOOK_PENDING="${BASH_REMATCH[1]}"
+  if [ -n "$url" ]; then
+    TG_WEBHOOK_URL="$url"
+    TG_WEBHOOK_HOST="$(printf '%s' "$url" | sed -E 's#^[a-zA-Z]+://([^/:]+).*#\1#')"
+    if [ -n "$ours" ] && case "$url" in "${ours%/}/webhook/"*) true ;; *) false ;; esac; then TG_WEBHOOK_STATE=ours
+    else TG_WEBHOOK_STATE=foreign; fi
+    return 0
+  fi
+  # Kein Webhook: holt jemand per Long-Polling ab? limit=1, timeout=0, OHNE offset (bestaetigt nichts, loescht nichts).
+  code="$(tg_api_curl "$token" 'getUpdates?limit=1&timeout=0' -sS --max-time 10 -o /dev/null -w '%{http_code}' 2>/dev/null)" || code=000
+  case "$code" in
+    200) TG_WEBHOOK_STATE=free ;;
+    409) TG_WEBHOOK_STATE=foreign; TG_WEBHOOK_HOST='(anderes Programm per Long-Polling)' ;;
+    *)   TG_WEBHOOK_STATE=unknown ;;
+  esac
+}
+
+# telegram_webhook_preflight — die Pruefung samt Entscheidung (siehe Kopf). Laeuft in provision.sh nach den Fragen und
+# VOR der ersten Systemaenderung. Bei Uebernahme: alte Adresse nach $LIFEAGENTS_DIR/telegram-webhook-before (0600).
+telegram_webhook_preflight() {
+  [ -n "${TELEGRAM_BOT_TOKEN:-}" ] || return 0
+  need_cmd curl || return 0
+  local ours pick
+  ours="$(read_env_value "${N8N_ENV_FILE:-/etc/n8n/n8n.env}" WEBHOOK_URL 2>/dev/null || true)"
+  _tg_webhook_probe "$TELEGRAM_BOT_TOKEN" "$ours"
+  case "$TG_WEBHOOK_STATE" in
+    free) ok "Telegram: der Bot ist frei (kein anderer Abnehmer)."; return 0 ;;
+    ours) ok "Telegram: der Bot ist schon mit dieser Installation verbunden."; return 0 ;;
+    unknown) warn "Telegram: konnte nicht prüfen, ob der Bot schon woanders verbunden ist (Telegram nicht erreichbar oder Token abgelehnt)."; return 0 ;;
+  esac
+  warn "Telegram: dieser Bot ist schon mit einem anderen System verbunden (${TG_WEBHOOK_HOST:-unbekannt}). Wird er hier eingerichtet, bekommt das andere System keine Nachrichten mehr."
+  [ "${TG_WEBHOOK_PENDING:-0}" = 0 ] || log "Telegram: ${TG_WEBHOOK_PENDING} wartende Nachricht(en) bleiben unangetastet."
+  if ui_interactive; then
+    pick="$(printf '%s\t%s\n' 'Abbrechen (empfohlen: für dieses System einen eigenen Bot bei @BotFather anlegen)' abort \
+                              'Trotzdem hier verbinden (das andere System verliert den Bot)' takeover \
+            | ui_choose 'Der Bot ist schon woanders verbunden. Was soll passieren?' 0)"
+    [ "$pick" = takeover ] || die "Abgebrochen — nichts geändert. Lege bei @BotFather einen neuen Bot an und starte die Installation erneut."
+  elif [ "${TELEGRAM_WEBHOOK_TAKEOVER:-0}" = 1 ]; then
+    log "Telegram: Übernahme ausdrücklich gewählt (TELEGRAM_WEBHOOK_TAKEOVER=1)."
+  elif _is_first_install; then
+    die "Der Telegram-Bot ist schon mit einem anderen System verbunden — nichts geändert. Eigenen Bot anlegen oder die Übernahme ausdrücklich wählen (TELEGRAM_WEBHOOK_TAKEOVER=1 in der Antwort-Datei)."
+  else
+    warn "Telegram: ohne Terminal keine Rückfrage — der Bot gehört schon zu dieser Installation und wird wieder verbunden."
+  fi
+  if [ -n "$TG_WEBHOOK_URL" ]; then
+    mkdir -p "${LIFEAGENTS_DIR:-/etc/lifeagents}"
+    ( umask 077; printf '%s %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$TG_WEBHOOK_URL" >> "${LIFEAGENTS_DIR:-/etc/lifeagents}/telegram-webhook-before" ) || true
+  fi
+}
+
+# telegram_webhook_json — dieselbe Pruefung maschinenlesbar fuer den Wizard (Paket 4): Token aus der Umgebung
+# (TELEGRAM_BOT_TOKEN, nie argv), unsere bisherige Adresse aus n8n.env, EINE JSON-Zeile auf stdout:
+#   {"ok":true,"state":"free|ours|foreign","webhook_host":"<rechner>|","pending":N,"polling_conflict":true|false}
+#   {"ok":false,"reason":"no_token|unauthorized|unreachable"}
+# Entscheidet nichts und aendert nichts (kein Offset, kein drop_pending_updates); der Wizard fragt selbst und setzt bei
+# Uebernahme TELEGRAM_WEBHOOK_TAKEOVER=1 in die Antworten.
+telegram_webhook_json() {
+  if [ -z "${TELEGRAM_BOT_TOKEN:-}" ]; then printf '{"ok":false,"reason":"no_token"}\n'; return 0; fi
+  local ours host pc=false
+  ours="$(read_env_value "${N8N_ENV_FILE:-/etc/n8n/n8n.env}" WEBHOOK_URL 2>/dev/null || true)"
+  _tg_webhook_probe "$TELEGRAM_BOT_TOKEN" "$ours"
+  if [ "$TG_WEBHOOK_STATE" = unknown ]; then printf '{"ok":false,"reason":"%s"}\n' "$TG_WEBHOOK_REASON"; return 0; fi
+  host="$TG_WEBHOOK_URL"; [ -n "$host" ] && host="$TG_WEBHOOK_HOST"
+  [ "$TG_WEBHOOK_STATE" = foreign ] && [ -z "$TG_WEBHOOK_URL" ] && pc=true
+  # Rechnername nur aus [A-Za-z0-9.-] (JSON-sicher ohne Escaping; alles andere faellt weg).
+  host="${host//[!A-Za-z0-9.-]/}"
+  printf '{"ok":true,"state":"%s","webhook_host":"%s","pending":%s,"polling_conflict":%s}\n' \
+    "$TG_WEBHOOK_STATE" "$host" "${TG_WEBHOOK_PENDING:-0}" "$pc"
+}

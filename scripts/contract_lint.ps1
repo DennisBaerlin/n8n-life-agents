@@ -94,6 +94,10 @@
 #   (31) SPALTEN-SPICKZETTEL: packages/finance/build/workflows/view_hints.ps1 (die Liste in der postgres_select-
 #       Description) == die Kopie zwischen view-hints:begin/end in tests/db/finance/test_view_column_hints.sql
 #       (Mengengleichheit; der DB-Test prueft die Spalten gegen information_schema).
+#   (32) BETRIEBSART-WRAPPER: rohe runuser/systemctl und jedes docker nur in provisioning/lib/runtime.sh, dort Docker nur
+#       laut Positivliste (fester Projektname, nie prune/--all/ps -q ...). Lexer erkennt die Befehls-Stellung. Selbst-Asserts.
+#   (33) COMPOSE-PINS: compose.yml/master.Dockerfile per Digest, n8n, Postgres und Node = Pins aus provision.sh, mem_limit +
+#       Label + Namens-Vorsatz je Dienst, externe Volumes = LA_STATE_VOLUMES, Patch-Mount je n8n-Korrektur. Selbst-Asserts.
 #
 # Gerichtete Checks (Payload SUBSET-OF fn-Reads), bewusst KEINE Gleichheit: fns lesen auch
 # berechnete/aufgeloeste Keys, die kein Tool sendet. Umgekehrte Luecken (deklarierter
@@ -1970,6 +1974,262 @@ if ((Test-Path $hintsPs1) -and (Test-Path $hintsSql)) {
         foreach ($x in @($hintPs | Where-Object { $_ -notin $hintDb })) { $errors.Add("SPICKZETTEL: '$x' steht in view_hints.ps1, aber nicht im DB-Test (Kopie zwischen view-hints:begin/end nachziehen).") }
         foreach ($x in @($hintDb | Where-Object { $_ -notin $hintPs })) { $errors.Add("SPICKZETTEL: '$x' steht im DB-Test, aber nicht in view_hints.ps1 (Liste und Kopie muessen gleich sein).") }
     }
+}
+
+# ---------------------------------------------------------------
+# (32) BETRIEBSART-WRAPPER (Docker-Installer, Plan-Einwand 16 + Pruefung Fund 11): rohe `runuser`, `systemctl` und JEDES
+#     `docker` stehen in provisioning/ nur in lib/runtime.sh (eine Datei, Positivliste). Sonst driften CLI (systemd) und
+#     Docker-Verbund still auseinander, und ein breiter Docker-Befehl traefe fremde Container (Paperless & Co.).
+#     Erkannt wird die BEFEHLS-Stellung (Zeilenanfang, nach ; & | ( $( `, nach if/then/do/! ...), nicht Text in Strings,
+#     Heredocs oder Kommentaren (gedruckte Anleitungen wie der Rueckweg in upgrade_guard.sh bleiben erlaubt).
+#     In runtime.sh: jeder docker-Aufruf startet mit einem Unterbefehl der Positivliste; `docker compose` nur mit festem
+#     Projekt (-p "$LA_PROJECT" -f "$LA_COMPOSE_FILE"); _rt_compose nur mit up|start|stop|restart|ps|config|pull|version;
+#     nie prune/--all/-a/-q/--quiet/-v/--volumes/--rmi. Die Start-App (provisioning/desktop) uebernimmt dieselbe Liste.
+# ---------------------------------------------------------------
+function Get-ShellCommandWords([string]$Text, [string[]]$Targets) {
+    # Kleiner Shell-Lexer: Zustaende c (Code), p ($( ) / ( )), b (Backticks), d ("..."), s ('...'); Heredoc-Koerper werden
+    # uebersprungen. Liefert je Ziel-Wort in Befehls-Stellung @{ Word; Line; Rest } (Rest = Rest der physischen Zeile).
+    $out = New-Object System.Collections.Generic.List[object]
+    $kw = @('if', 'then', 'else', 'elif', 'do', 'while', 'until', '!', '{', '}', 'function')
+    $noCmdAfter = @('for', 'case', 'in', 'select')
+    $prefixCmds = @('env', 'sudo', 'timeout', 'xargs', 'nice', 'ionice', 'stdbuf', 'setsid', 'nohup', 'exec', 'command', 'builtin', 'time')
+    $prefix = ''
+    $stack = New-Object System.Collections.Generic.Stack[string]; $stack.Push('c')
+    $cmdPos = $true; $line = 1; $i = 0; $n = $Text.Length
+    $pending = New-Object System.Collections.Generic.List[object]
+    while ($i -lt $n) {
+        $ch = $Text[$i]; $top = $stack.Peek()
+        $next = if ($i + 1 -lt $n) { $Text[$i + 1] } else { [char]0 }
+        if ($ch -eq "`n") {
+            $line++; $i++
+            if ($pending.Count -and $top -ne 's' -and $top -ne 'd') {
+                foreach ($h in $pending.ToArray()) {
+                    while ($i -lt $n) {
+                        $e = $Text.IndexOf("`n", $i); if ($e -lt 0) { $e = $n }
+                        $l = $Text.Substring($i, $e - $i); $i = [Math]::Min($e + 1, $n); $line++
+                        $cmp = if ($h.Dash) { $l.TrimStart("`t") } else { $l }
+                        if ($cmp -ceq $h.Delim) { break }
+                    }
+                }
+                $pending.Clear()
+            }
+            if ($top -ne 's' -and $top -ne 'd') { $cmdPos = $true; $prefix = '' }
+            continue
+        }
+        if ($top -eq 's') { if ($ch -eq "'") { [void]$stack.Pop() }; $i++; continue }
+        if ($top -eq 'd') {
+            if ($ch -eq '\') { if ($next -eq "`n") { $line++ }; $i += 2; continue }
+            if ($ch -eq '"') { [void]$stack.Pop(); $i++; continue }
+            if ($ch -eq '$' -and $next -eq '(') { $stack.Push('p'); $cmdPos = $true; $i += 2; continue }
+            if ($ch -eq '`') { $stack.Push('b'); $cmdPos = $true; $i++; continue }
+            $i++; continue
+        }
+        if ($top -eq 'e') {   # ${...}: Text, aber ein $(...) im Standardwert (${X:-$(cmd)}) ist ein Befehl
+            if ($ch -eq '\') { $i += 2; continue }
+            if ($ch -eq '}') { [void]$stack.Pop(); $i++; continue }
+            if ($ch -eq "'") { $stack.Push('s'); $i++; continue }
+            if ($ch -eq '"') { $stack.Push('d'); $i++; continue }
+            if ($ch -eq '$' -and $next -eq '(') { $stack.Push('p'); $cmdPos = $true; $i += 2; continue }
+            if ($ch -eq '$' -and $next -eq '{') { $stack.Push('e'); $i += 2; continue }
+            $i++; continue
+        }
+        # Code-Zustaende c / p / b
+        $prev = if ($i -gt 0) { $Text[$i - 1] } else { "`n" }
+        if ($ch -eq '#' -and ($prev -match '[\s;&|(]')) { $e = $Text.IndexOf("`n", $i); $i = if ($e -lt 0) { $n } else { $e }; continue }
+        if ($ch -eq "'") { $stack.Push('s'); $cmdPos = $false; $i++; continue }
+        if ($ch -eq '"') { $stack.Push('d'); $cmdPos = $false; $i++; continue }
+        if ($ch -eq '\') { if ($next -eq "`n") { $line++ }; $i += 2; continue }
+        if ($ch -eq '$' -and $next -eq '(') { $stack.Push('p'); $cmdPos = $true; $i += 2; continue }
+        if ($ch -eq '$' -and $next -eq '{') { $stack.Push('e'); $cmdPos = $false; $i += 2; continue }
+        if ($ch -eq '`') { if ($top -eq 'b') { [void]$stack.Pop(); $cmdPos = $false } else { $stack.Push('b'); $cmdPos = $true }; $i++; continue }
+        if ($ch -eq '(') { $stack.Push('p'); $cmdPos = $true; $i++; continue }
+        if ($ch -eq ')') { if ($top -eq 'p') { [void]$stack.Pop(); $cmdPos = $false } else { $cmdPos = $true }; $i++; continue }
+        if ($ch -eq ';' -or $ch -eq '&' -or $ch -eq '|') { $cmdPos = $true; $i++; continue }
+        if ($ch -eq '<' -and $next -eq '<') {
+            $m = [regex]::Match($Text.Substring($i, [Math]::Min(80, $n - $i)), '^<<(-?)\s*([''"]?)([A-Za-z_][A-Za-z0-9_]*)\2')
+            if ($m.Success) { $pending.Add(@{ Dash = ($m.Groups[1].Value -eq '-'); Delim = $m.Groups[3].Value }); $i += $m.Length; continue }
+            $i += 2; continue
+        }
+        if ($ch -match '[\s<>]') { $i++; continue }
+        $m = [regex]::Match($Text.Substring($i, [Math]::Min(400, $n - $i)), '^[^\s;&|()<>''"`]+')
+        $w = $m.Value
+        if (-not $w) { $i++; continue }
+        $i += $m.Length
+        if ($i + 1 -lt $n -and $Text[$i] -eq '(' -and $Text[$i + 1] -eq ')') { $i += 2; $cmdPos = $true; continue }   # Funktions-Definition
+        if ($cmdPos) {
+            if ($w -match '^[A-Za-z_][A-Za-z0-9_]*=') { continue }      # Zuweisung vor dem Befehl
+            if ($prefix) {   # Vorsatz-Befehl (env/sudo/timeout/xargs ...): seine Schalter und Zahlen ueberspringen
+                if ($prefix -eq 'command' -and $w -match '^-[vV]$') { $prefix = ''; $cmdPos = $false; continue }   # command -v X = Abfrage
+                if ($w -match '^-|^[0-9][0-9.]*[smhd]?$') { continue }
+            }
+            if ($prefixCmds -contains $w) { $prefix = $w; continue }
+            $prefix = ''
+            if ($kw -contains $w) { continue }
+            if ($noCmdAfter -contains $w) { $cmdPos = $false; continue }
+            if ($Targets -contains $w) {
+                $e = $Text.IndexOf("`n", $i); $rest = if ($e -lt 0) { $Text.Substring($i) } else { $Text.Substring($i, $e - $i) }
+                $out.Add(@{ Word = $w; Line = $line; Rest = $rest })
+            }
+            $cmdPos = $false
+        }
+    }
+    return , $out
+}
+$rtRel = 'provisioning/lib/runtime.sh'
+$rtTargets = @('runuser', 'systemctl', 'docker', '_rt_compose')
+$dockerAllow = '^\s+(exec|inspect|version|restart|logs)\b|^\s+(image|volume)\s+(inspect|create)\b|^\s+run\s+--rm\b|^\s+compose\s+-p\s+"\$LA_PROJECT"\s+-f\s+"\$LA_COMPOSE_FILE"'
+$composeAllow = '^\s+(up|start|stop|restart|ps|config|pull|version)\b'
+$dockerBanned = '(^|\s)(prune|-a|--all|-q|--quiet|-aq|-qa|-v|--volumes|--rmi)(\s|=|$)'
+function Get-RuntimeWrapperIssues([string]$Rel, [string]$Text) {
+    $iss = New-Object System.Collections.Generic.List[string]
+    foreach ($c in (Get-ShellCommandWords $Text $rtTargets)) {
+        $at = "${Rel}:$($c.Line)"
+        if ($Rel -ne $rtRel) {
+            if ($c.Word -eq '_rt_compose') { $iss.Add("$at -- _rt_compose ist intern in lib/runtime.sh (dort eine rt_*-Funktion anlegen).") }
+            else { $iss.Add("$at -- '$($c.Word)' ausserhalb von lib/runtime.sh: Wrapper nutzen (pg_su_psql/pg_su_exec, svc_*, n8n_cli_env, rt_*).") }
+            continue
+        }
+        if ($c.Word -eq 'docker' -and $c.Rest -notmatch $dockerAllow) { $iss.Add("$at -- docker-Aufruf ausserhalb der Positivliste: 'docker$($c.Rest.TrimEnd())'.") }
+        if ($c.Word -eq '_rt_compose' -and $c.Rest -notmatch $composeAllow) { $iss.Add("$at -- Compose-Unterbefehl ausserhalb der Positivliste: '_rt_compose$($c.Rest.TrimEnd())'.") }
+        if (($c.Word -eq 'docker' -or $c.Word -eq '_rt_compose') -and $c.Rest -match $dockerBanned) { $iss.Add("$at -- breiter Docker-Schalter '$($Matches[2])' (traefe fremde Objekte).") }
+    }
+    return , $iss
+}
+foreach ($f in @(git -C $RepoRoot ls-files -- 'provisioning' | Where-Object { $_ -match '\.sh$|templates/lifeagents\.tpl$' })) {
+    foreach ($m in (Get-RuntimeWrapperIssues $f ([System.IO.File]::ReadAllText((Join-Path $RepoRoot $f), $Utf8NoBom)))) { $errors.Add("BETRIEBSART-WRAPPER: $m") }
+}
+foreach ($sa in @(
+    @{ n = 'roher runuser';          r = 'x.sh'; t = "  runuser -u postgres -- psql -c 1`n";                       want = 1 },
+    @{ n = 'in $() im String';       r = 'x.sh'; t = "  v=`"`$(runuser -u postgres -- psql)`"`n";                 want = 1 },
+    @{ n = 'nach if/!';              r = 'x.sh'; t = "if ! systemctl is-active n8n; then :; fi`n";                want = 1 },
+    @{ n = 'Text im String';         r = 'x.sh'; t = "  t=`"`n    systemctl stop n8n`n    K=\`"\`$(runuser -u postgres)\`"`n`"`n"; want = 0 },
+    @{ n = 'Heredoc';                r = 'x.sh'; t = "cat <<'TXT'`nsystemctl stop n8n`nTXT`necho`n";              want = 0 },
+    @{ n = 'Kommentar';              r = 'x.sh'; t = "  # danach: systemctl reload caddy`n";                       want = 0 },
+    @{ n = 'Argument (need_cmd)';    r = 'x.sh'; t = "  need_cmd docker || die x`n";                               want = 0 },
+    @{ n = 'docker ausserhalb';      r = 'x.sh'; t = "  docker ps`n";                                              want = 1 },
+    @{ n = 'in ${X:-$()}';           r = 'x.sh'; t = "  v=`${A:-`$(runuser -u postgres -- psql)}`n";             want = 1 },
+    @{ n = 'Vorsatz timeout/env';    r = 'x.sh'; t = "  timeout 5 docker ps`n  env -i FOO=1 systemctl stop x`n";  want = 2 },
+    @{ n = 'xargs/sudo';             r = 'x.sh'; t = "  printf x | xargs -r docker rm`n  sudo runuser -u x -- id`n"; want = 2 },
+    @{ n = 'command -v ist Abfrage'; r = 'x.sh'; t = "  command -v docker >/dev/null`n";                         want = 0 },
+    @{ n = 'Parameter ohne Befehl';  r = 'x.sh'; t = "  v=`${A:-docker}; w=`${#B[@]}`n";                         want = 0 },
+    @{ n = 'runtime: exec ok';       r = $rtRel; t = "  docker exec -u postgres `"`$c`" psql`n";                  want = 0 },
+    @{ n = 'runtime: prune';         r = $rtRel; t = "  docker system prune -f`n";                                 want = 2 },
+    @{ n = 'runtime: ps -q';         r = $rtRel; t = "  docker ps -q`n";                                           want = 2 },
+    @{ n = 'runtime: compose frei';  r = $rtRel; t = "  docker compose down -v`n";                                 want = 2 },
+    @{ n = 'runtime: compose down';  r = $rtRel; t = "  _rt_compose down`n";                                       want = 1 },
+    @{ n = 'runtime: compose up ok'; r = $rtRel; t = "  _rt_compose up -d --no-deps n8n`n";                        want = 0 },
+    @{ n = 'runtime: run ohne --rm'; r = $rtRel; t = "  docker run busybox true`n";                                want = 1 })) {
+    $got = (Get-RuntimeWrapperIssues $sa.r $sa.t).Count
+    if ($got -ne $sa.want) { $errors.Add("BETRIEBSART-WRAPPER SELBST-ASSERT '$($sa.n)': erwartet $($sa.want) Treffer, gefunden $got -- Check 32 ist defekt.") }
+}
+
+# ---------------------------------------------------------------
+# (33) COMPOSE-PINS: provisioning/compose/compose.yml + master.Dockerfile gegen die EINE Adresse der Versions-Pins
+#     (provision.sh N8N_VERSION/PG_VERSION/NODE_MAJOR) und gegen die Schutzregeln des Verbunds: jedes Image per Digest
+#     (ein Pull verschiebt nie ein Tag des Nachbarn), jeder Dienst mit mem_limit, Label und Namens-Vorsatz, keine
+#     Bind-Mounts ausser dem Docker-Socket, die externen Volumes = LA_STATE_VOLUMES (lib/runtime.sh), je n8n-Korrektur
+#     (lib/n8n_patches.sh) genau ein Patch-Mount auf das Verzeichnis der Datei. Sonst liefe der Docker-Weg still mit einer
+#     anderen n8n-/Postgres-Fassung als die CLI.
+# ---------------------------------------------------------------
+function Get-ComposePinIssues([string]$Cy, [hashtable]$Pin, [string[]]$StateVols, [object[]]$Patches) {
+    $iss = New-Object System.Collections.Generic.List[string]
+    $imgs = @{}
+    foreach ($m in [regex]::Matches($Cy, '(?m)^\s+(\w+):\s*&img_\w+\s+(\S+)\s*$')) { $imgs[$m.Groups[1].Value] = $m.Groups[2].Value }
+    if ($imgs.Count -lt 4) { $iss.Add("x-images-Block nicht lesbar ($($imgs.Count) Images) -- Check 33 ist defekt."); return , $iss }
+    foreach ($k in $imgs.Keys) { if ($imgs[$k] -notmatch '@sha256:[0-9a-f]{64}$') { $iss.Add("Image '$k' ($($imgs[$k])) ohne Digest -- nur per @sha256 (Einwand 30).") } }
+    if ($imgs['n8n'] -notmatch "^n8nio/n8n:$([regex]::Escape($Pin.N8N_VERSION))@") { $iss.Add("n8n-Image '$($imgs['n8n'])' passt nicht zu N8N_VERSION=$($Pin.N8N_VERSION) (provision.sh).") }
+    if ($imgs['postgres'] -notmatch "^postgres:$([regex]::Escape($Pin.PG_VERSION))[.@]") { $iss.Add("Postgres-Image '$($imgs['postgres'])' passt nicht zu PG_VERSION=$($Pin.PG_VERSION).") }
+    if ($imgs['node'] -notmatch "^node:$([regex]::Escape($Pin.NODE_MAJOR))[-.@]") { $iss.Add("Gateway-Image '$($imgs['node'])' passt nicht zu NODE_MAJOR=$($Pin.NODE_MAJOR).") }
+    foreach ($m in [regex]::Matches($Cy, '(?m)^\s+image:\s*(\S+)')) {
+        if ($m.Groups[1].Value -notmatch '^\*img_\w+$|^\$\{LA_MASTER_IMAGE:\?') { $iss.Add("image '$($m.Groups[1].Value)' -- nur ueber einen &img_-Anker aus x-images (Digest) oder LA_MASTER_IMAGE.") }
+    }
+    $svcBlock = [regex]::Match($Cy, '(?ms)^services:[ \t]*\r?\n(.*?)(?=^\S|\z)').Groups[1].Value
+    $svcs = [regex]::Matches($svcBlock, '(?ms)^  ([a-z0-9_]+):[ \t]*\r?\n(.*?)(?=^  [a-z0-9_]+:[ \t]*\r?$|\z)')
+    if ($svcs.Count -lt 6) { $iss.Add("services-Block nicht lesbar ($($svcs.Count) Dienste) -- Check 33 ist defekt.") }
+    foreach ($s in $svcs) {
+        $nm = $s.Groups[1].Value; $b = $s.Groups[2].Value
+        if ($b -notmatch '(?m)^\s+mem_limit:') { $iss.Add("Dienst '$nm' ohne mem_limit (Docker teilt den Speicher mit fremden Programmen).") }
+        if ($b -notmatch '(?m)^\s+labels:\s*\*labels|<<:\s*\*pod') { $iss.Add("Dienst '$nm' ohne Label io.lifeagents.install (labels: *labels).") }
+        if ($b -notmatch ('(?m)^\s+container_name:\s*\$\{LA_PROJECT:-lifeagents\}-' + [regex]::Escape($nm) + '\s*$')) { $iss.Add("Dienst '$nm' ohne container_name `${LA_PROJECT:-lifeagents}-$nm.") }
+        foreach ($bm in [regex]::Matches($b, '(?m)^\s+-\s+"?([/.~][^:"]*):')) {
+            if ($bm.Groups[1].Value -ne '/var/run/docker.sock') { $iss.Add("Dienst '$nm' mit Bind-Mount '$($bm.Groups[1].Value)' -- der master ruft compose aus dem Container auf, Host-Pfade gibt es dort nicht.") }
+        }
+    }
+    $ext = @([regex]::Matches($Cy, '(?m)^  ([a-z_0-9]+):[ \t]*\r?\n\s+external:\s*true') | ForEach-Object { $_.Groups[1].Value } | Sort-Object)
+    if ((@($ext) -join ' ') -ne (@($StateVols | Sort-Object) -join ' ')) { $iss.Add("externe Volumes in compose.yml ($($ext -join ', ')) != LA_STATE_VOLUMES in lib/runtime.sh ($($StateVols -join ', ')).") }
+    foreach ($v in $ext) {
+        if ($Cy -notmatch ("(?m)^  ${v}:[ \t]*\r?\n\s+external:\s*true[ \t]*\r?\n\s+name:\s*\`$\{LA_PROJECT:-lifeagents\}_${v}\s*$")) { $iss.Add("externes Volume '$v' ohne name `${LA_PROJECT:-lifeagents}_$v (rt_volumes_ensure legt genau diesen Namen an).") }
+    }
+    foreach ($p in $Patches) {
+        $tail = (($p.Path -split 'node_modules/')[-1]) -replace '/[^/]+$', ''   # Verzeichnis der Datei (Mount = Verzeichnis)
+        $mm = [regex]::Matches($Cy, ('(?m)^\s+target:\s*(\S+)[^\n]*\n(?:\s+\S.*\r?\n){0,3}?\s+subpath:\s*' + [regex]::Escape("$($p.Id)") + '\s*$'))
+        if ($mm.Count -ne 1) { $iss.Add("n8n-Korrektur '$($p.Id)' hat $($mm.Count) Patch-Mount(s) (subpath $($p.Id), erwartet genau 1).") }
+        elseif (-not $mm[0].Groups[1].Value.EndsWith("/$tail")) { $iss.Add("Patch-Mount '$($p.Id)' zielt auf '$($mm[0].Groups[1].Value)', passt nicht zu '$tail' (lib/n8n_patches.sh).") }
+    }
+    return , $iss
+}
+$composePath = Join-Path $provDir 'compose\compose.yml'
+$masterDf    = Join-Path $provDir 'compose\master.Dockerfile'
+$provTxt = [System.IO.File]::ReadAllText((Join-Path $provDir 'provision.sh'), $Utf8NoBom)
+$cPin = @{}
+foreach ($k in 'N8N_VERSION', 'PG_VERSION', 'NODE_MAJOR') {
+    $m = [regex]::Match($provTxt, "(?m)^$k=`"\`$\{${k}:-([^}]+)\}`"")
+    if ($m.Success) { $cPin[$k] = $m.Groups[1].Value } else { $errors.Add("COMPOSE-PINS: $k-Pin in provision.sh nicht lesbar -- Check 33 ist defekt.") }
+}
+$rtTxt = [System.IO.File]::ReadAllText((Join-Path $provDir 'lib\runtime.sh'), $Utf8NoBom)
+$cState = @(([regex]::Match($rtTxt, '(?m)^LA_STATE_VOLUMES="([^"]+)"').Groups[1].Value -split '\s+') | Where-Object { $_ })
+if (-not $cState.Count) { $errors.Add("COMPOSE-PINS: LA_STATE_VOLUMES in lib/runtime.sh nicht lesbar -- Check 33 ist defekt.") }
+# Spiegel der Start-App (Paket 6): provisioning/desktop/core/src/contract.rs STATE_VOLUMES muss dieselbe Menge sein (die App
+# legt die Volumes vor dem ersten Start an). Datei fehlt (Branch ohne App) = nichts zu pruefen.
+function Get-AppStateVolumes([string]$Rs) {
+    $m = [regex]::Match($Rs, '(?s)STATE_VOLUMES\s*:\s*\[\s*&(?:''static\s+)?str\s*;\s*\d+\s*\]\s*=\s*\[(.*?)\]')
+    if (-not $m.Success) { return $null }
+    return , @([regex]::Matches($m.Groups[1].Value, '"([a-z0-9_]+)"') | ForEach-Object { $_.Groups[1].Value })
+}
+$appContract = Join-Path $provDir 'desktop\core\src\contract.rs'
+if ((Test-Path $appContract) -and $cState.Count) {
+    $appVols = Get-AppStateVolumes ([System.IO.File]::ReadAllText($appContract, $Utf8NoBom))
+    if ($null -eq $appVols) { $errors.Add("COMPOSE-PINS: STATE_VOLUMES in provisioning/desktop/core/src/contract.rs nicht lesbar -- Check 33 ist defekt oder die Form hat sich geaendert.") }
+    elseif ((@($appVols | Sort-Object) -join ' ') -ne (@($cState | Sort-Object) -join ' ')) {
+        $errors.Add("COMPOSE-PINS: STATE_VOLUMES der Start-App ($($appVols -join ', ')) != LA_STATE_VOLUMES in lib/runtime.sh ($($cState -join ', ')) -- beide Listen gleich halten.")
+    }
+}
+foreach ($sa in @(
+    @{ n = 'App-Liste lesbar'; t = 'pub const STATE_VOLUMES: [&str; 2] = ["pgdata", "etc_la"];'; want = 'etc_la pgdata' },
+    @{ n = 'static-Form';      t = "pub const STATE_VOLUMES: [&'static str; 1] = [`n  `"pgdata`",`n];"; want = 'pgdata' })) {
+    $got = ((Get-AppStateVolumes $sa.t) | Sort-Object) -join ' '
+    if ($got -ne $sa.want) { $errors.Add("COMPOSE-PINS SELBST-ASSERT '$($sa.n)': erwartet '$($sa.want)', gefunden '$got' -- Check 33 ist defekt.") }
+}
+$cPatches = @([regex]::Matches([System.IO.File]::ReadAllText((Join-Path $provDir 'lib\n8n_patches.sh'), $Utf8NoBom), '(?m)^\s+"([a-z0-9-]+)\|([^|]+)\|') |
+    ForEach-Object { @{ Id = $_.Groups[1].Value; Path = $_.Groups[2].Value } })
+if (-not (Test-Path $composePath)) { $errors.Add("COMPOSE-PINS: provisioning/compose/compose.yml fehlt.") }
+elseif ($cPin.Count -eq 3) {
+    foreach ($m in (Get-ComposePinIssues ([System.IO.File]::ReadAllText($composePath, $Utf8NoBom)) $cPin $cState $cPatches)) { $errors.Add("COMPOSE-PINS: $m") }
+}
+if (Test-Path $masterDf) {
+    foreach ($m in [regex]::Matches([System.IO.File]::ReadAllText($masterDf, $Utf8NoBom), '(?m)^FROM\s+(\S+)')) {
+        $img = $m.Groups[1].Value
+        if ($img -notmatch '@sha256:[0-9a-f]{64}$') { $errors.Add("COMPOSE-PINS: master.Dockerfile FROM '$img' ohne Digest.") }
+        if ($img -match '^node:(\d+)' -and $cPin.NODE_MAJOR -and $Matches[1] -ne $cPin.NODE_MAJOR) { $errors.Add("COMPOSE-PINS: master.Dockerfile Node $($Matches[1]) != NODE_MAJOR=$($cPin.NODE_MAJOR).") }
+    }
+}
+$saPin = @{ N8N_VERSION = '2.45.4'; PG_VERSION = '17'; NODE_MAJOR = '24' }
+$saD = '@sha256:' + ('a' * 64)
+$saOk = "x-images:`n  busybox: &img_busybox busybox:1$saD`n  postgres: &img_postgres postgres:17$saD`n  n8n: &img_n8n n8nio/n8n:2.45.4$saD`n  node: &img_node node:24-alpine$saD`n" +
+        "services:`n" + ((@('sa', 'sb', 'sc', 'sd', 'se') | ForEach-Object { "  ${_}:`n    image: *img_busybox`n    container_name: `${LA_PROJECT:-lifeagents}-$_`n    labels: *labels`n    mem_limit: 8m`n" }) -join '') +
+        "  n8n:`n    image: *img_n8n`n    container_name: `${LA_PROJECT:-lifeagents}-n8n`n    labels: *labels`n    mem_limit: 1g`n    volumes:`n      - type: volume`n        target: /x/node_modules/@n8n/p`n        read_only: true`n        volume:`n          subpath: fix-a`n" +
+        "volumes:`n  pgdata:`n    external: true`n    name: `${LA_PROJECT:-lifeagents}_pgdata`n"
+$saP = @(@{ Id = 'fix-a'; Path = 'pkg/node_modules/@n8n/p/f.js' })
+foreach ($sa in @(
+    @{ n = 'gueltig';          t = $saOk;                                              want = 0 },
+    @{ n = 'ohne Digest';      t = $saOk -replace 'busybox:1@sha256:a+', 'busybox:1';  want = 1 },
+    @{ n = 'n8n-Pin';          t = $saOk -replace 'n8n:2\.45\.4', 'n8n:2.44.4';        want = 1 },
+    @{ n = 'ohne mem_limit';   t = $saOk -replace '    mem_limit: 1g\n', '';           want = 1 },
+    @{ n = 'Bind-Mount';       t = $saOk -replace '      - type: volume', "      - /srv/x:/y`n      - type: volume"; want = 1 },
+    @{ n = 'Volume-Liste';     t = $saOk -replace 'pgdata', 'pgdatax';                 want = 1 },
+    @{ n = 'Patch-Mount fehlt'; t = $saOk -replace 'subpath: fix-a', 'subpath: fix-b';  want = 1 })) {
+    $got = (Get-ComposePinIssues $sa.t $saPin @('pgdata') $saP).Count
+    if ($got -ne $sa.want) { $errors.Add("COMPOSE-PINS SELBST-ASSERT '$($sa.n)': erwartet $($sa.want), gefunden $got ($((Get-ComposePinIssues $sa.t $saPin @('pgdata') $saP) -join '; ')) -- Check 33 ist defekt.") }
 }
 
 # ---------------------------------------------------------------

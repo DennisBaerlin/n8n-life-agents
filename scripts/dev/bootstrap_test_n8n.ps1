@@ -209,7 +209,7 @@ function Get-SubstrateBaseSpec {
         'Dockerfile'    = Join-Path $RepoRoot 'scripts\dev\substrate-image\Dockerfile'
         'build_base.sh' = Join-Path $RepoRoot 'scripts\dev\substrate-image\build_base.sh'
     }
-    foreach ($f in 'common.sh', 'packages.sh', 'install_pg.sh', 'install_n8n.sh') {
+    foreach ($f in 'common.sh', 'runtime.sh', 'packages.sh', 'install_pg.sh', 'install_n8n.sh') {   # runtime.sh: common.sh sourct es (Betriebsart-Wrapper)
         $files["lib/$f"] = Join-Path $RepoRoot "provisioning\lib\$f"
     }
     $buf = New-Object System.IO.MemoryStream
@@ -357,7 +357,7 @@ function Remove-StaleSubstrateBaseImages {
 # Show-InstallCoreHint — der Schnellpfad faehrt die frischen Install-Zweige (PG-/Node-/n8n-Erstinstallation, Preflight
 # eines nackten Hosts) nicht. Aendert der Branch den Install-Kern, vor dem Push einmal kalt pruefen. Nie fatal.
 function Show-InstallCoreHint {
-    $core = '^provisioning/(provision\.sh|lib/(common|preflight|packages|install_pg|install_n8n|upgrade_guard|firewall)\.sh)$'
+    $core = '^provisioning/(provision\.sh|lib/(common|runtime|preflight|packages|install_pg|install_n8n|upgrade_guard|firewall)\.sh)$'
     # Gegen origin/main (das lokale main eines Worktree-Hosts hinkt oft hinterher -> fremde Commits als Fehlalarm).
     $base = if ((Invoke-Native git @('-C', $RepoRoot, 'rev-parse', '--verify', '-q', 'origin/main')).Code -eq 0) { 'origin/main' } else { 'main' }
     $names = @()
@@ -523,6 +523,9 @@ $envLines.Add('LLM_GATEWAY_KEEPALIVE_HOURS=0')
 # Bot-Profilbild AUS: das Substrat installiert mit dem echten TEST_TELEGRAM_BOT_TOKEN, ein -Reset wuerde dem Test-Bot sonst
 # ein Bild setzen. Die Mechanik prueft bot_profile_photo_test gegen den Mock.
 $envLines.Add('BOT_PROFILE_PHOTO=0')
+# Webhook-Uebernahme ausdruecklich: der Test-Bot ist vom vorigen Substrat (oder einem parallelen) noch verbunden; ohne den
+# Schalter bricht die Erstinstallation vor jeder Aenderung ab (telegram_webhook_preflight, Pruefliste Nr. 10).
+$envLines.Add('TELEGRAM_WEBHOOK_TAKEOVER=1')
 
 # Release-Pin (-Version): install.sh --version laedt anonym aus dem oeffentlichen Repo (kein Token).
 if ($Version) {

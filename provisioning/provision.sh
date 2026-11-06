@@ -87,7 +87,7 @@ export PSQL_PAGER=cat PAGER=cat
 PROFILE="dev"
 PROFILE_EXPLICIT=0       # --profile gesetzt? Sonst gewinnt das persistierte INSTALL_PROFILE (Befund 3)
 UNATTENDED=0
-UNATTENDED_ENV_FILE=""   # --unattended <pfad>: die einzige Eingabe-Quelle (wird in die Env gesourct)
+UNATTENDED_ENV_FILE=""   # --unattended <pfad>: die einzige Eingabe-Quelle (gelesen, nie ausgefuehrt: install_answers_load)
 ASSUME_YES=0             # --yes: ueberspringt die Uninstall-Sicherheits-Rueckfrage (nur Abbau-Pfad)
 UNINSTALL=0
 PURGE_DATA=0
@@ -107,6 +107,7 @@ NODE_MAJOR="${NODE_MAJOR:-24}"
 # Fixed paths / identities.
 N8N_USER="n8n"
 N8N_HOME="/var/lib/n8n"
+if rt_is_compose; then N8N_HOME="/home/node"; fi   # Verbund: Home des Image-Nutzers "node" (Volume n8n_home)
 N8N_USER_FOLDER="${N8N_HOME}/.n8n"
 N8N_ENV_FILE="/etc/n8n/n8n.env"           # n8n-EIGENE Config (n8n liest sie) — bleibt /etc/n8n
 # Secret-Modell §3.0a: Installer-Namespace /etc/lifeagents/. core.env = Host/Core-Secrets (API-Key,
@@ -134,15 +135,17 @@ Usage: provision.sh [--profile dev|release] [--unattended <env-file>] [--domain 
   --profile dev          LAN dev/test instance (default). No public ingress.
   --profile release      public instance; --domain (or DOMAIN env) recommended; without it no public ingress (warning, asked interactively). The HTTPS reverse
                          proxy is NOT installed — bring your own; the installer emits a Caddyfile.
-  --unattended <file>    non-interactive: load ALL inputs from the given shell-sourceable env file
-                         (KEY='value' lines) instead of prompting. The path is REQUIRED — pick any
+  --unattended <file>    non-interactive: load ALL inputs from the given env file
+                         (KEY='value' lines, read and never executed) instead of prompting. The path is REQUIRED — pick any
                          directory. Both profiles. (Uninstall confirmation uses --yes, not this.)
                          Release profile: a FIRST install stops before changing anything if a
                          mandatory input is missing (OWNER_FIRST_NAME, OWNER_LAST_NAME, OWNER_BIRTH_DATE,
                          TELEGRAM_BOT_TOKEN, ANTHROPIC_API_KEY) and lists all of them; an existing
                          instance holds the update (changes nothing, tells the owner once via
                          Telegram; 'lifeagents reconfigure' fills them in, the next update proceeds).
-  --domain <fqdn>        external hostname (n8n WEBHOOK_URL + the emitted reverse-proxy config).
+                         A first install also stops if the Telegram bot is already connected elsewhere
+                         (webhook or another poller), unless TELEGRAM_WEBHOOK_TAKEOVER=1 is set.
+  --domain <fqdn>       external hostname (n8n WEBHOOK_URL + the emitted reverse-proxy config).
   --trusted-proxies <ip>[,…]   (alias: --trusted-proxy)
                          your reverse proxy runs on ANOTHER host (e.g. a central Caddy/NPM/Traefik
                          container): its IPv4 address (or a CIDR). n8n then listens on the LAN, and a
@@ -322,25 +325,22 @@ main() {
   parse_args "$@"
 
   # Abbau-Pfad: Dienste/Schema (+ optional Daten) entfernen und RAUS — kein Install-Schritt. Liest
-  # KEINE Env-Datei (die Sicherheits-Rueckfrage haengt an --yes/ASSUME_YES) -> VOR dem Sourcen unten.
+  # KEINE Env-Datei (die Sicherheits-Rueckfrage haengt an --yes/ASSUME_YES) -> VOR dem Einlesen unten.
   if [ "$UNINSTALL" -eq 1 ]; then
     log "Abbau-Modus (--uninstall${PURGE_DATA:+ --purge-data})."
     uninstall
     exit 0
   fi
 
-  # --unattended <env-file>: die Datei FRUEH in die Umgebung sourcen — sie ist die EINZIGE Eingabe-
+  # --unattended <env-file>: die Datei FRUEH in die Umgebung laden — sie ist die EINZIGE Eingabe-
   # Quelle (Owner-Identitaet, Domain, LLM-/Telegram-Keys UND die First-Init-Secret-Overrides). Muss vor
   # der OPT_-Erfassung + load_install_env laufen, damit jeder spaetere `${VAR:-}`-Read die Werte sieht.
-  # Erwartet ein SHELL-SOURCEFAEHIGES .env (KEY='value'); deshalb `. file`, nicht der grep-Reader.
+  # Form wie ein .env (KEY='value'), aber GELESEN, nie ausgefuehrt (install_answers_load, release_inputs.sh): die Datei
+  # kann Antworten eines Nutzers aus dem Wizard tragen.
   if [ "$UNATTENDED" -eq 1 ]; then
-    [ -r "$UNATTENDED_ENV_FILE" ] || die "Env-Datei nicht lesbar: $UNATTENDED_ENV_FILE (--unattended)."
-    set -a
-    # shellcheck disable=SC1090  # Pfad ist Laufzeit-Input (der vom Aufrufer gewaehlte Env-Datei-Pfad)
-    . "$UNATTENDED_ENV_FILE"
-    set +a
+    install_answers_load "$UNATTENDED_ENV_FILE"
   fi
-  # Secret-Overrides (nur First-Init; bestehende n8n.env gewinnt immer) NACH dem Sourcen erfassen.
+  # Secret-Overrides (nur First-Init; bestehende n8n.env gewinnt immer) NACH dem Einlesen erfassen.
   OPT_ENCRYPTION_KEY="${N8N_ENCRYPTION_KEY:-}"
   OPT_DB_PASSWORD="${N8N_DB_PASSWORD:-}"
 
@@ -433,6 +433,8 @@ main() {
   fi
   # Erst NACH der Uebersicht: DOMAIN kann sich dort noch aendern (die abgeleiteten Werte liest erst prepare_n8n_env).
   derive_network_config
+  # Pruefliste Nr. 10: hoert der Bot schon woanders zu? Nach den Fragen, VOR der ersten Aenderung (fragt bzw. bricht ab).
+  telegram_webhook_preflight
   # Domain gewechselt (egal ob per reconfigure, Uebersicht, --domain oder Hand-Edit): der abgeleitete Ist-Zustand
   # WEBHOOK_URL in n8n.env (vor prepare_n8n_env) ist die eine Quelle -> das gefuehrte Ende prueft Handy/Laptop dann
   # mit „Erneut prüfen" (owner_connect.sh _oc_device_check ask).
@@ -467,7 +469,7 @@ main() {
   ui_step_done "$(_preflight_summary)"
   ui_step 'Basis-Pakete installieren' base
   result_set changed true   # ab hier aendert der Lauf das System (Fehler-Hilfe: nicht mehr "nichts geaendert")
-  install_base_packages
+  if rt_is_compose; then log "Compose-Betrieb: die Basis-Pakete stecken im master-Image."; else install_base_packages; fi
   # Reihenfolge (fail-closed, Install-UX-Phase 5): ERST die Firewall angleichen, DANN den Bind daraus ableiten —
   # n8n lauscht nur dann im Heimnetz (0.0.0.0), wenn die Freigabe-Tabelle nachweislich geladen ist.
   firewall_converge      # setzt N8N_LISTEN_ADDRESS_EFF (127.0.0.1 | 0.0.0.0)
@@ -565,7 +567,7 @@ main() {
 
   ui_step 'Verwaltungsbefehl lifeagents einrichten' cli
   install_cli            # lifeagents-Admin-CLI nach /usr/local/bin + Provisioning-Baum spiegeln
-  install_update_timers  # braucht die CLI (ExecStart=/usr/local/bin/lifeagents update --check|--run-requested)
+  rt_is_compose || install_update_timers  # Verbund: kein systemd-Timer, Ersatz im master (Paket 2). Braucht die CLI (ExecStart=/usr/local/bin/lifeagents update --check|--run-requested)
   install_release_keyring  # einmalig: ab jetzt nur noch unterschriebene Updates (nie ueberschrieben)
   ui_step_done
   # Public-Repo: ein GH_TOKEN aus der privaten Zeit braucht die NEUE CLI nicht mehr -> aus core.env + Alt-Bootstrap-Env

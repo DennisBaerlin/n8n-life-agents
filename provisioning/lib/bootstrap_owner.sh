@@ -51,7 +51,7 @@ DB_SUPERUSER="${DB_SUPERUSER:-postgres}"
 
 # psql als postgres-Superuser gegen die n8n-DB (Peer-Auth, identisch zu apply_schema).
 _owner_psql() {
-  runuser -u "$DB_SUPERUSER" -- psql -v ON_ERROR_STOP=1 -X -d "$N8N_DB_NAME" "$@"
+  pg_su_psql -v ON_ERROR_STOP=1 -X -d "$N8N_DB_NAME" "$@"
 }
 
 # _psql_setvar <name> <value> -> eine psql-`\set name 'value'`-Zeile fuer einen 600/postgres-eigenen
@@ -430,7 +430,7 @@ _ensure_ingress_id_key() {
 bootstrap_owner() {
   [ -n "${N8N_DB_NAME:-}" ] || die "N8N_DB_NAME nicht gesetzt."
   [ -n "${N8N_URL:-}" ]     || die "N8N_URL nicht gesetzt."
-  require_cmd runuser
+  require_su_tools
 
   log "Owner-Bootstrap (Owner-Setup + API-Key + RO-Rollen + Backup-Key + Telegram-Basis + Pairing) ..."
   _load_owner_env_state    # Reuse bestehender Secrets (API-Key + RO-Passwoerter) aus core.env

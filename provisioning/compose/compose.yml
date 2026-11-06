@@ -1,0 +1,288 @@
+# compose.yml — Betriebsart "Docker-Verbund" (LIFEAGENTS_RUNTIME=compose), gleichwertig zur CLI-Installation (systemd).
+#
+# POD-MUSTER (wie Kubernetes): `anchor` haelt den Netz-Namensraum, postgres, n8n, gateway und master haengen per
+# network_mode: service:anchor daran. Dadurch gelten 127.0.0.1:5432 (Postgres), :5678 (n8n) und :8090 (Gateway) wie
+# auf dem LXC, und der Installer bleibt derselbe (lib/runtime.sh). Postgres und Gateway lauschen nur auf 127.0.0.1.
+#
+# DER RAND (`edge`, Caddy; beim Tunnel-Weg zusaetzlich `tailscale` in DESSEN Namensraum) liegt AUSSERHALB des Pods:
+# nur er veroeffentlicht Ports (Port-Wechsel ohne neuen anchor) und erreicht den Pod nur ueber das interne Netz
+# `internal` (Docker veroeffentlicht an einem internal-Netz keine Ports, darum zusaetzlich `edge_public`). n8n lauscht im
+# Pod auf 0.0.0.0 und ist so fuer den Rand erreichbar, Postgres/Gateway nicht (Probe edge-probe). Pfad-Liste und
+# Zertifikat des Rands: Paket 3; hier nur die Weiterleitung auf n8n.
+#
+# SCHUTZ FUER NACHBARN (Paperless & Co., Plan *Wenn Docker schon da ist*): fester Projektname, alle Namen mit Vorsatz
+# ${LA_PROJECT}, alles traegt das Label io.lifeagents.install, alle Images per Digest (ein Pull verschiebt nie ein Tag des
+# Nachbarn), mem_limit je Dienst. Alle zustandsfuehrenden Volumes sind `external` (lib/runtime.sh LA_STATE_VOLUMES,
+# angelegt von rt_volumes_ensure): `compose down` loescht sie nie, auch nicht den Schluessel in etc_n8n.
+#
+# ANLAUF: zuerst `up -d anchor postgres master edge` (master wartet auf die gesunde Datenbank), dann richtet der master
+# per provision.sh den Rest ein und startet n8n und gateway selbst (`up -d --no-deps`): n8n braucht die erzeugte
+# Patch-Datei, gateway seine Env-Datei — beide gibt es vor dem ersten Lauf nicht.
+#
+# PFLICHT-VARIABLEN (setzt die Start-App bzw. CI; der master bekommt dieselben, damit sein `docker compose` die Container
+# nicht als geaendert ansieht): LA_PROJECT, LA_EDGE_PORT und LA_WIZARD_PORT (zwei freie Ports auf 127.0.0.1), LA_PG_SUPERPW (nur fuer den
+# Datenbank-Container, nie ausgeben: `config --quiet`), LA_MASTER_IMAGE (Digest folgt mit Paket 5). Optional: LA_TS_HOSTNAME.
+# Keine Bind-Mounts ausser dem Docker-Socket: der master ruft compose aus seinem Container heraus auf, Host-Pfade gaebe es
+# dort nicht.
+name: lifeagents
+
+x-images:
+  busybox: &img_busybox busybox:1.37@sha256:a7dbc319b1438115a207e11930dc4bb3e643dcb3ec0bdd694bb36cd8fad289ec
+  postgres: &img_postgres postgres:17@sha256:3b0cda93be7c8dba2ed484d19393d93845dc3dafb88973e248ba8e6d99d784e1
+  n8n: &img_n8n n8nio/n8n:2.45.4@sha256:80e23ced901f0e22597d4f3464e3aaf9d835372262ea6f08ef760d8ca35df25c
+  node: &img_node node:24-alpine@sha256:8a32c8cf649a49915a66e81e7a609223c708d0adabf288ee3f4077d765542f85
+  caddy: &img_caddy caddy:2.10-alpine@sha256:4c6e91c6ed0e2fa03efd5b44747b625fec79bc9cd06ac5235a779726618e530d
+  tailscale: &img_tailscale tailscale/tailscale:stable@sha256:ed6480b33c6eb67c9cbd203ed42b9fb57e361986725b6856def71b7a3d9e276c
+
+x-labels: &labels
+  io.lifeagents.install: ${LA_PROJECT:-lifeagents}
+
+x-pod: &pod
+  network_mode: "service:anchor"
+  restart: unless-stopped
+  labels: *labels
+  depends_on:
+    anchor:
+      condition: service_started
+      restart: true   # wirkt nur bei `docker compose restart anchor`, nicht bei `docker restart` (Einwand 17, doctor prueft)
+
+services:
+  anchor:
+    image: *img_busybox
+    container_name: ${LA_PROJECT:-lifeagents}-anchor
+    restart: unless-stopped
+    labels: *labels
+    mem_limit: 16m
+    # Schleife statt nacktem sleep: busybox-sleep als PID 1 ignoriert SIGTERM, der Stopp dauerte sonst 10 s.
+    command: ["sh", "-c", "trap 'exit 0' TERM INT; while :; do sleep 3600 & wait $$!; done"]
+    networks: [internal, egress]
+
+  postgres:
+    <<: *pod
+    image: *img_postgres
+    container_name: ${LA_PROJECT:-lifeagents}-postgres
+    mem_limit: 1g
+    environment:
+      # Nur fuer TCP; der Installer spricht ueber den Socket im Container (docker exec, Peer-/Trust-Auth wie auf dem LXC).
+      POSTGRES_PASSWORD: ${LA_PG_SUPERPW:?LA_PG_SUPERPW fehlt}
+      # UTF-8 ist Gesetz (provisioning/CLAUDE.md): Cluster immer UTF8 + C.UTF-8, egal was der Rechner sagt.
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=C.UTF-8"
+    command: ["postgres", "-c", "listen_addresses=127.0.0.1"]
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    # TCP statt Socket: der Init-Server eines frischen Volumes lauscht nur am Socket und startet danach neu.
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -q -h 127.0.0.1 -U postgres"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
+  n8n:
+    <<: *pod
+    image: *img_n8n
+    container_name: ${LA_PROJECT:-lifeagents}-n8n
+    mem_limit: 2g
+    depends_on:
+      anchor:
+        condition: service_started
+        restart: true
+      postgres:
+        condition: service_healthy
+    # Wie die beiden EnvironmentFile-Zeilen von n8n.service.tpl: n8n.env + core.env bei JEDEM Start frisch lesen (KEY=wert
+    # roh), nicht `env_file:` (das friert beim Anlegen ein) -> nach einer Aenderung genuegt `docker restart`.
+    entrypoint:
+      - tini
+      - --
+      - sh
+      - -c
+      - |
+        for f in /etc/n8n/n8n.env /etc/lifeagents/core.env; do
+          [ -r "$$f" ] || continue
+          while IFS= read -r l || [ -n "$$l" ]; do case "$$l" in ''|'#'*) ;; *=*) export "$$l" ;; esac; done < "$$f"
+        done
+        exec /docker-entrypoint.sh start
+    environment:
+      NODE_OPTIONS: "--dns-result-order=ipv4first"
+    volumes:
+      - n8n_home:/home/node/.n8n
+      - etc_n8n:/etc/n8n:ro
+      - etc_la:/etc/lifeagents:ro
+      - shared:/shared:ro
+      # n8n-Korrektur 'memory-all-tool-rounds' (lib/n8n_patches.sh): der master legt eine Kopie des Original-Verzeichnisses samt
+      # korrigierter Datei ins Volume n8n_patches (<id>/); hier liegt sie per Unterpfad schreibgeschuetzt ueber dem Original.
+      # Verzeichnis statt Datei: einen Datei-Unterpfad lehnt Docker Engine unter Linux ab. Kein eigenes Image (Einwand 5).
+      # Ziel = echter pnpm-Pfad im Image (der npm-Pfad aus n8n_patches.sh ist dort ein Symlink); contract_lint 33.
+      - type: volume
+        source: n8n_patches
+        target: /usr/local/lib/node_modules/n8n/node_modules/.pnpm/@n8n+n8n-nodes-langchain@file++++home+runner+_work+n8n+n8n+packages+@n8n+nodes-langchain/node_modules/@n8n/n8n-nodes-langchain/dist/utils/agent-execution   # lint-ignore: Pfad im n8n-Image, kein Repo-Ordner
+        read_only: true
+        volume:
+          subpath: memory-all-tool-rounds
+
+  gateway:
+    <<: *pod
+    image: *img_node
+    container_name: ${LA_PROJECT:-lifeagents}-gateway
+    mem_limit: 256m
+    user: "1000:1000"
+    # Ersatz fuer lifeagents-llm-gateway.service: Env aus gateway.env (vom Installer geschrieben), Code aus gw_code.
+    entrypoint:
+      - sh
+      - -c
+      - |
+        while IFS= read -r l || [ -n "$$l" ]; do case "$$l" in ''|'#'*) ;; *=*) export "$$l" ;; esac; done < /gw/gateway.env
+        exec node /gw/server.js
+    environment:
+      NODE_OPTIONS: "--dns-result-order=ipv4first"
+      STATE_DIRECTORY: /var/lib/lifeagents-llm-gateway
+    volumes:
+      - gw_code:/gw:ro
+      - gw_state:/var/lib/lifeagents-llm-gateway
+
+  master:
+    <<: *pod
+    image: ${LA_MASTER_IMAGE:?LA_MASTER_IMAGE fehlt}
+    container_name: ${LA_PROJECT:-lifeagents}-master
+    mem_limit: 512m
+    init: true   # raeumt die Kindprozesse der docker-exec-Aufrufe ab (tini)
+    # Fluechtige Uebergabe an den Wizard, nur im Arbeitsspeicher (nie auf einer Platte, weg bei jedem Neustart/Neuanlage):
+    # Antwort-Datei und die privaten Hinweise der Start-App (hints.env, per `docker exec -i … cat >`), nie als Umgebung —
+    # die stuende dauerhaft in `docker inspect`. 0700 root: n8n (uid 1000, eigener Container) sieht sie ohnehin nicht.
+    tmpfs: ["/run/lifeagents-wizard:mode=0700,uid=0,gid=0,size=1m"]
+    # Wizard (Paket 4) laeuft, bis er sich nach "Fertig" selbst beendet (er erkennt den Zustand im Volume wizard_state und
+    # endet dann auch nach einem Neustart sofort); danach bleibt der master als Ruhe-Prozess fuer docker exec stehen.
+    # Fehlt die Datei (Baum ohne Wizard), startet nur der Ruhe-Prozess. SIGTERM geht an den Wizard weiter.
+    command:
+      - sh
+      - -c
+      - |
+        w=/opt/lifeagents/provisioning/wizard/server.js
+        trap 'kill -TERM "$$pid" 2>/dev/null; exit 0' TERM INT
+        if [ -f "$$w" ]; then node "$$w" & pid=$$!; wait "$$pid" || echo "Wizard endete mit Fehler" >&2; fi
+        while :; do sleep 3600 & pid=$$!; wait "$$pid"; done
+    depends_on:
+      anchor:
+        condition: service_started
+        restart: true
+      postgres:
+        condition: service_healthy   # nie gegen eine halb initialisierte Datenbank installieren (Probelauf-Fund)
+    environment:
+      LIFEAGENTS_RUNTIME: compose
+      LA_PROJECT: ${LA_PROJECT:-lifeagents}
+      LA_EDGE_PORT: ${LA_EDGE_PORT:?LA_EDGE_PORT fehlt}
+      LA_WIZARD_PORT: ${LA_WIZARD_PORT:?LA_WIZARD_PORT fehlt}
+      LA_PG_SUPERPW: ${LA_PG_SUPERPW:?LA_PG_SUPERPW fehlt}
+      LA_MASTER_IMAGE: ${LA_MASTER_IMAGE:?LA_MASTER_IMAGE fehlt}
+      LA_COMPOSE_FILE: /opt/lifeagents/provisioning/compose/compose.yml
+      LA_N8N_IMAGE: *img_n8n
+      LA_PROBE_IMAGE: *img_busybox
+      TMPDIR: /shared                  # Dateien fuer `n8n import:*` muessen der n8n-Container unter demselben Pfad sehen
+      LLM_GATEWAY_DIR: /gw
+      N8N_PATCH_DIR: /opt/n8n-patches
+      LANG: C.UTF-8
+      LC_ALL: C.UTF-8
+    volumes:
+      # Voller Docker-Zugang: der master ist voll vertrauenswuerdig und darf darum wenig (lib/runtime.sh Positivliste).
+      - /var/run/docker.sock:/var/run/docker.sock
+      - etc_n8n:/etc/n8n
+      - etc_la:/etc/lifeagents
+      - var_la:/var/lib/lifeagents
+      - rt_tree:/usr/local/lib/lifeagents
+      - shared:/shared
+      - gw_code:/gw
+      - gw_state:/var/lib/lifeagents-llm-gateway
+      - n8n_patches:/opt/n8n-patches
+      - wizard_state:/var/lib/lifeagents-wizard   # Fortschritt des Wizards; nur der master sieht ihn
+
+  edge:
+    image: *img_caddy
+    container_name: ${LA_PROJECT:-lifeagents}-edge
+    restart: unless-stopped
+    labels: *labels
+    mem_limit: 128m
+    depends_on: [anchor]
+    networks: [internal, edge_public]
+    ports:
+      - "127.0.0.1:${LA_EDGE_PORT:?LA_EDGE_PORT fehlt}:8080"
+      # Wizard (Paket 4, Dienst im master, lauscht im Pod auf 0.0.0.0:8091): nur auf 127.0.0.1 des Rechners. Laeuft er nicht,
+      # antwortet der Rand mit 502. Host und Origin bleiben unveraendert (der Wizard prueft sie gegen 127.0.0.1:<port>).
+      - "127.0.0.1:${LA_WIZARD_PORT:?LA_WIZARD_PORT fehlt}:8081"
+    # Konfiguration aus der Umgebung statt aus einer Datei (keine Bind-Mounts, s. Kopf). `admin off`: keine
+    # Verwaltungs-Schnittstelle, die ein Prozess im Netz umkonfigurieren koennte. Die Liste der oeffentlichen Pfade und
+    # das Zertifikat beim FritzBox-Weg kommen mit Paket 3.
+    environment:
+      LA_CADDYFILE: |
+        {
+          admin off
+          auto_https off
+        }
+        :8080 {
+          reverse_proxy anchor:5678
+        }
+        :8081 {
+          reverse_proxy anchor:8091
+        }
+    command: ["sh", "-c", "printf '%s' \"$$LA_CADDYFILE\" > /tmp/Caddyfile && exec caddy run --config /tmp/Caddyfile --adapter caddyfile"]
+
+  tailscale:
+    # Nur beim Tunnel-Weg (`--profile tunnel`); teilt den Namensraum des Rands, nie den des Pods (Plan *Der Rand*).
+    profiles: [tunnel]
+    image: *img_tailscale
+    container_name: ${LA_PROJECT:-lifeagents}-tailscale
+    restart: unless-stopped
+    labels: *labels
+    mem_limit: 128m
+    network_mode: "service:edge"
+    depends_on: [edge]
+    environment:
+      TS_STATE_DIR: /var/lib/tailscale
+      TS_USERSPACE: "true"
+      TS_HOSTNAME: ${LA_TS_HOSTNAME:-lifeagents}
+    volumes:
+      - ts_state:/var/lib/tailscale
+
+networks:
+  internal:
+    internal: true
+    labels: *labels
+  egress:
+    labels: *labels
+  edge_public:
+    labels: *labels
+
+volumes:
+  # Zustandsfuehrend -> external (rt_volumes_ensure legt sie mit Label an; Name = <projekt>_<volume>).
+  pgdata:
+    external: true
+    name: ${LA_PROJECT:-lifeagents}_pgdata
+  n8n_home:
+    external: true
+    name: ${LA_PROJECT:-lifeagents}_n8n_home
+  etc_n8n:
+    external: true
+    name: ${LA_PROJECT:-lifeagents}_etc_n8n
+  etc_la:
+    external: true
+    name: ${LA_PROJECT:-lifeagents}_etc_la
+  var_la:
+    external: true
+    name: ${LA_PROJECT:-lifeagents}_var_la
+  rt_tree:
+    external: true
+    name: ${LA_PROJECT:-lifeagents}_rt_tree
+  gw_state:
+    external: true
+    name: ${LA_PROJECT:-lifeagents}_gw_state
+  ts_state:
+    external: true
+    name: ${LA_PROJECT:-lifeagents}_ts_state
+  wizard_state:
+    external: true
+    name: ${LA_PROJECT:-lifeagents}_wizard_state
+  # Abgeleitet (jeder Installer-Lauf schreibt sie neu) -> von Compose verwaltet.
+  shared:
+    labels: *labels
+  gw_code:
+    labels: *labels
+  n8n_patches:
+    labels: *labels

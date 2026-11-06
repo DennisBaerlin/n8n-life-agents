@@ -153,13 +153,9 @@ _cred_stage() {
 _cred_import_and_test() {
   local n; n="$(jq 'length' <<<"$_CRED_ITEMS" 2>/dev/null || echo 0)"
   if [ "$n" -le 0 ]; then warn "Keine Credentials zu importieren (alle Secrets fehlten)."; return 0; fi
-  local f; f="$(mktemp /tmp/n8n_creds.XXXXXX.json)"
+  local f; f="$(mktemp "${TMPDIR:-/tmp}/n8n_creds.XXXXXX.json")"
   printf '%s' "$_CRED_ITEMS" > "$f"; chmod 600 "$f"; chown "$N8N_USER" "$f" 2>/dev/null || true
-  # shellcheck disable=SC2016
-  if ! runuser -u "$N8N_USER" -- bash -c '
-        set -a; . "$1"; set +a
-        exec "$2" import:credentials --input="$3"
-      ' _ "$N8N_ENV_FILE" "$_N8N_BIN" "$f"; then
+  if ! n8n_cli_env "$N8N_ENV_FILE" import:credentials --input="$f"; then
     rm -f "$f"; die "n8n import:credentials fehlgeschlagen ($n Credential(s))."
   fi
   rm -f "$f"
@@ -185,8 +181,8 @@ _inject_preflight() {
   [ -n "${N8N_DB_NAME:-}" ] || die "N8N_DB_NAME nicht gesetzt (Postgres-Credential 'database'-Feld)."
   [ -n "${N8N_USER:-}" ] || die "N8N_USER nicht gesetzt (CLI-Import als n8n-User)."
   [ -n "${N8N_ENV_FILE:-}" ] || die "N8N_ENV_FILE nicht gesetzt (n8n.env fuer den CLI-Import / N8N_ENCRYPTION_KEY)."
-  require_cmd jq; require_cmd curl; require_cmd runuser
-  _N8N_BIN="$(command -v n8n || true)"
+  require_cmd jq; require_cmd curl; require_su_tools
+  _N8N_BIN="$(n8n_bin_path)"
   [ -n "$_N8N_BIN" ] || die "n8n-Binary nicht im PATH (install_n8n muss vorher laufen)."
   # FAIL-CLOSED: eine fehlgeschlagene Discovery darf NICHT als Erstinstall durchgehen (sonst id-Regen fuer
   # existierende Creds → Dublette + Geister-Cron). Erfolg-mit-leer = echter Erstinstall (rc 0, leeres Array).
@@ -220,7 +216,7 @@ inject_credentials() {
   # 4) Telegram Bot.
   if [ -n "${TELEGRAM_BOT_TOKEN:-}" ]; then
     _cred_stage 'Telegram account' 'telegramApi' \
-         "$(jq -n --arg t "$TELEGRAM_BOT_TOKEN" --arg b 'https://api.telegram.org' '{accessToken:$t, baseUrl:$b}')"
+         "$(jq -n --arg t "$TELEGRAM_BOT_TOKEN" --arg b "${LIFEAGENTS_TELEGRAM_API:-https://api.telegram.org}" '{accessToken:$t, baseUrl:$b}')"
     # 4b) Dasselbe Token als Header fuer den Telegram-Relay des LLM-Gateways (Reaktion + Sticker, Kopf von
     #     llm_gateway/server.js): der telegramApi-Typ hat kein authenticate, ein HTTP-Knoten kaeme sonst nicht an
     #     das Token. Jeder Lauf setzt beide aus TELEGRAM_BOT_TOKEN -> ein Token-Wechsel (reconfigure/update) zieht mit.

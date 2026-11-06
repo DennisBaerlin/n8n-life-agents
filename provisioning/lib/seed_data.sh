@@ -32,7 +32,7 @@ DB_SUPERUSER="${DB_SUPERUSER:-postgres}"
 
 # _seed_psql … — psql als postgres-Superuser gegen die n8n-DB (peer-Auth, ON_ERROR_STOP, -X).
 _seed_psql() {
-  runuser -u "$DB_SUPERUSER" -- psql -v ON_ERROR_STOP=1 -X -d "$N8N_DB_NAME" "$@"
+  pg_su_psql -v ON_ERROR_STOP=1 -X -d "$N8N_DB_NAME" "$@"
 }
 
 # _sql_str <value>  → in SQL-Single-Quotes gewrappter, escapeter String ('' fuer eingebettete ').
@@ -926,7 +926,7 @@ _seed_services() {
 seed_data() {
   [ -n "${REPO_ROOT:-}" ]   || die "REPO_ROOT nicht gesetzt."
   [ -n "${N8N_DB_NAME:-}" ] || die "N8N_DB_NAME nicht gesetzt."
-  require_cmd runuser
+  require_su_tools
   require_cmd jq
 
   log "Daten-Seeds laden (ai_models -> config -> capabilities + instruction contexts -> Manifest-Registries [validators/scopes/renderers/advisors/cron_labels/callbacks/monitor-methods] + protected + onboarding + services) ..."

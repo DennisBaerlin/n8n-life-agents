@@ -31,7 +31,7 @@ _cfg_resolve_db() { lifeagents_db_name >/dev/null; }
 # technische CONTEXT-Zeile der PL/pgSQL-Funktion.
 _cfg_psql() {
   _cfg_resolve_db
-  runuser -u "$DB_SUPERUSER" -- psql -v ON_ERROR_STOP=1 -v VERBOSITY=terse -X -q -d "$N8N_DB_NAME" "$@"
+  pg_su_psql -v ON_ERROR_STOP=1 -v VERBOSITY=terse -X -q -d "$N8N_DB_NAME" "$@"
 }
 
 # _cfg_ident_ok <s>  -> 0 wenn ^[a-z][a-z0-9_]*$ (category/key-Vertrag; Injection-Schutz VOR Interpolation).

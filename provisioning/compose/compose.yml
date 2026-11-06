@@ -22,7 +22,7 @@
 #
 # PFLICHT-VARIABLEN (setzt die Start-App bzw. CI; der master bekommt dieselben, damit sein `docker compose` die Container
 # nicht als geaendert ansieht): LA_PROJECT, LA_EDGE_PORT und LA_WIZARD_PORT (zwei freie Ports auf 127.0.0.1), LA_PG_SUPERPW (nur fuer den
-# Datenbank-Container, nie ausgeben: `config --quiet`), LA_MASTER_IMAGE (Digest folgt mit Paket 5). Optional:
+# Datenbank-Container, nie ausgeben: `config --quiet`), LA_MASTER_IMAGE (nur ohne Release-Pin, x-images.master). Optional:
 # LA_TS_HOSTNAME (neutraler Tailscale-Name, Standard `bot`; Zertifikats-Protokolle sind oeffentlich).
 # Keine Bind-Mounts ausser dem Docker-Socket: der master ruft compose aus seinem Container heraus auf, Host-Pfade gaebe es
 # dort nicht.
@@ -35,6 +35,10 @@ x-images:
   node: &img_node node:24-alpine@sha256:8a32c8cf649a49915a66e81e7a609223c708d0adabf288ee3f4077d765542f85
   caddy: &img_caddy caddy:2.10-alpine@sha256:4c6e91c6ed0e2fa03efd5b44747b625fec79bc9cd06ac5235a779726618e530d
   tailscale: &img_tailscale tailscale/tailscale:stable@sha256:ed6480b33c6eb67c9cbd203ed42b9fb57e361986725b6856def71b7a3d9e276c
+  # Das eigene Image. Zwei erlaubte Formen (scripts/lib/master_pin.ps1, contract_lint 33): neutral im Bau-Kontext und auf
+  # Branches, `${LA_MASTER_IMAGE:-<register>/master@sha256:…}` als Release-Pin (scripts/build_master_image.ps1 traegt ihn ein).
+  # Das Image selbst enthaelt immer die neutrale Form, sonst aenderte das Eintragen seinen eigenen Digest.
+  master: &img_master ${LA_MASTER_IMAGE:?LA_MASTER_IMAGE fehlt (kein Release-Pin)}
 
 x-labels: &labels
   io.lifeagents.install: ${LA_PROJECT:-lifeagents}
@@ -143,7 +147,7 @@ services:
 
   master:
     <<: *pod
-    image: ${LA_MASTER_IMAGE:?LA_MASTER_IMAGE fehlt}
+    image: *img_master
     container_name: ${LA_PROJECT:-lifeagents}-master
     mem_limit: 512m
     init: true   # raeumt die Kindprozesse der docker-exec-Aufrufe ab (tini)
@@ -181,7 +185,7 @@ services:
       # Gleicher Tailscale-Name wie beim Start durch die App (der master startet den Dienst tailscale, lib/reach.sh).
       LA_TS_HOSTNAME: ${LA_TS_HOSTNAME:-bot}
       LA_PG_SUPERPW: ${LA_PG_SUPERPW:?LA_PG_SUPERPW fehlt}
-      LA_MASTER_IMAGE: ${LA_MASTER_IMAGE:?LA_MASTER_IMAGE fehlt}
+      LA_MASTER_IMAGE: *img_master
       LA_COMPOSE_FILE: /opt/lifeagents/provisioning/compose/compose.yml
       LA_N8N_IMAGE: *img_n8n
       LA_PG_IMAGE: *img_postgres       # upgrade_guard: laufendes Postgres-Image != Pin -> erst sichern, dann tauschen

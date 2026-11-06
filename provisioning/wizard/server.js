@@ -293,7 +293,8 @@ const NO_SKIP = ['DOMAIN', 'GOOGLE_API_KEY', 'OWNER_LANGUAGE', 'OWNER_PERSONA'];
 const PAPERLESS_REASONS = ['localhost', 'invalid', 'unreachable', 'not_paperless', 'token_rejected', 'too_old'];
 
 function optionsFor(id) {
-  const o = (value, key, tag) => ({ value, label: T(`core.wizard.opt.${key}`), desc: T(`core.wizard.opt.${key}_desc`),
+  // Beschreibung nur, wenn der Katalog eine hat (z. B. „Nein, dort steht kein DS-Lite“ braucht keine).
+  const o = (value, key, tag) => ({ value, label: T(`core.wizard.opt.${key}`), desc: has(`core.wizard.opt.${key}_desc`) ? T(`core.wizard.opt.${key}_desc`) : null,
     tag: tag ? T('core.wizard.ui.recommended') : null });
   switch (id) {
     case 'voice': return [o('no', 'voice_no'), o('yes', 'voice_yes')];
@@ -359,7 +360,13 @@ function pageFor(id) {
       options: optionsFor(id), value: P.A.__packages || [], next });
     case 'reach': return Object.assign(base, { kind: 'choice', title: T('core.wizard.page.reach_title'), help: P1('core.wizard.page.reach_help'),
       options: optionsFor(id), value: P.A.__reach || 'tunnel', next });
-    case 'fb_dslite': return Object.assign(base, { kind: 'choice', title: T('core.wizard.page.dslite_title'), help: P1('core.wizard.page.dslite_help'),
+    // DS-Lite sicher erkannt (__dslite_auto = yes): Bestätigung statt Frage. Unsicher: Handfrage mit Bild des Wegs dorthin.
+    case 'fb_dslite':
+      if (P.A.__dslite_auto === 'yes') {
+        return Object.assign(base, { kind: 'info', title: T('core.wizard.page.dslite_found_title'), help: P1('core.wizard.page.dslite_found_help'),
+          next: T('core.wizard.page.dslite_found_next') });
+      }
+      return Object.assign(base, { kind: 'choice', title: T('core.wizard.page.dslite_title'), help: P1('core.wizard.page.dslite_help'), art: 'dslite',
       link: { href: GUIDE_URL, label: T('core.wizard.page.guide_pictures') },
       options: optionsFor(id), value: P.A.__dslite || '', next });
     case 'fb_ports_busy': return Object.assign(base, { kind: 'info', title: T('core.wizard.page.ports_busy_title'),
@@ -463,10 +470,12 @@ function domainView(v) {
   const s = P.notes.domain_guess || { state: 'running' };
   if (s.state === 'running') return { poll: true, note: { kind: '', text: T('core.wizard.domain.searching'), busy: true } };
   if (s.name) return { value: v || s.name, note: { kind: '', text: T('core.wizard.domain.verified') } };
+  // Kein Name des Rechners bestand die Prüfung: keiner wird vorgeschlagen (Owner: nur Geprüftes). Das Bild zeigt, wo der
+  // Name in der FritzBox steht; die Live-Prüfung unter dem Feld sagt je Eingabe, was sie weiß. Ein Satz statt des
+  // CLI-Hilfetexts, damit Bild, Feld und Prüf-Zeile ins Fenster passen.
   const prefix = v && v.endsWith('.' + zone) ? v.slice(0, -zone.length - 1) : (v || '');
-  return { value: prefix, suffix: '.' + zone, placeholder: 'meinrechner', suggestions: cands.slice(0, 1),
-    suggestLabel: T('core.wizard.domain.suggest_label'), live: { recheck: T('core.wizard.domain.recheck') },
-    note: { kind: '', text: T('core.wizard.domain.suffix') } };
+  return { value: prefix, suffix: '.' + zone, placeholder: 'mein-rechner', art: 'myfritz_name', title: T('core.wizard.domain.name_title'),
+    live: { recheck: T('core.wizard.domain.recheck') }, help: [{ p: T('core.wizard.domain.suffix') }] };
 }
 // liveCheck — Prüfung beim Tippen (nur MyFRITZ mit Zone): ändert nichts am Stand, meldet nur, ob die Adresse schon stimmt.
 async function liveCheck(id, raw) {
@@ -548,12 +557,13 @@ function installView() {
 
 // Verbinden: beim Tunnel erst die Anmeldung bei Tailscale (Paket 3 meldet den Zustand), dann das Pairing per QR-Code.
 // Texte je Zustand des Tunnels (Paket 3, Katalog core.wizard.reach.*). Knöpfe zeigen nur Adressen von login.tailscale.com (TS_URL).
+// art = Bild zum Zustand (page.art, ui/art/art.js); Zustände ohne art zeigen kein Bild.
 const REACH_TEXT = {
   starting: { title: 'starting_title', help: 'starting_help', wait: 'starting_wait' },
-  needs_login: { title: 'needs_login_title', help: 'needs_login_help', link: 'login_link', wait: 'login_wait' },
-  needs_machine_auth: { title: 'needs_machine_auth_title', help: 'needs_machine_auth_help', link: 'needs_machine_auth_link', wait: 'needs_machine_auth_wait' },
-  needs_funnel: { title: 'needs_funnel_title', help: 'needs_funnel_help', link: 'needs_funnel_link', wait: 'needs_funnel_wait' },
-  key_expired: { title: 'key_expired_title', help: 'key_expired_help', link: 'login_link', wait: 'login_wait' },
+  needs_login: { title: 'needs_login_title', help: 'needs_login_help', link: 'login_link', wait: 'login_wait', art: 'ts_login' },
+  needs_machine_auth: { title: 'needs_machine_auth_title', help: 'needs_machine_auth_help', link: 'needs_machine_auth_link', wait: 'needs_machine_auth_wait', art: 'ts_machine' },
+  needs_funnel: { title: 'needs_funnel_title', help: 'needs_funnel_help', link: 'needs_funnel_link', wait: 'needs_funnel_wait', art: 'ts_funnel' },
+  key_expired: { title: 'key_expired_title', help: 'key_expired_help', link: 'login_link', wait: 'login_wait', art: 'ts_login' },
   ports_busy: { title: 'ports_busy_title', help: 'ports_busy_help', note: 'ports_busy_note', retry: true },
 };
 // keyExpiryNote — Tunnel: Tailscale meldet Geräte nach einer Frist ab (Standard 180 Tage), dann schweigt der Bot. Unter 30
@@ -584,7 +594,7 @@ function connectView() {
     // Geräte-Freigabe: Paket 3 liefert keinen Link, die Geräteliste im Konto hat eine feste Adresse.
     const href = c.tunnel.url || (c.tunnel.state === 'needs_machine_auth' ? 'https://login.tailscale.com/admin/machines' : '');
     return Object.assign(v, { title: t('title'), help: [{ p: t('help') }], note: R.note ? { kind: 'warn', text: t('note') } : null,
-      link: href ? { href, label: t('link'), primary: true } : null,
+      link: href ? { href, label: t('link'), primary: true } : null, art: R.art || null,
       wait: R.wait ? (href || !R.link ? t('wait') : T('core.wizard.reach.starting_wait')) : null,
       poll: !R.retry, action: R.retry ? 'connect_retry' : null, next: R.retry ? C('check_again') : null });
   }
@@ -672,6 +682,7 @@ async function answer(id, raw, skip) {
     save();
     return { ok: true, check, note };
   }
+  let swCheck = null;
   switch (id) {
     case 'tg_busy':
       if (!['new', 'take'].includes(raw)) return { error: T('core.wizard.msg.choose') };
@@ -701,11 +712,20 @@ async function answer(id, raw, skip) {
       delete P.A.__ports;   // bei jeder Wahl neu messen: ein inzwischen beendetes Programm gibt den Weg wieder frei
       if (raw === 'fritzbox') {
         // Prüfliste Nr. 13: Ports 80/443 belegt? Gemessen über die Brücke (rt_host_port_free); unbekannt = weiter.
-        const r = await bridge(['reach-ports'], { timeoutMs: 20000 });
+        // Zugleich DS-Lite (Paket 3 reach_dslite, beim ersten Mal bis ~6 s): sicher erkannt ersetzt die Handfrage.
+        const [r, d] = await Promise.all([bridge(['reach-ports'], { timeoutMs: 20000 }), bridge(['dslite'], { timeoutMs: 15000 })]);
         if (r && r.state === 'busy') P.A.__ports = 'busy';
+        const ds = d && ['yes', 'no'].includes(d.dslite) ? d.dslite : '';
+        if (ds) {
+          P.A.__dslite_auto = ds;
+          if (ds === 'no') { P.A.__dslite = 'no'; swCheck = T('core.wizard.check.dslite_no'); } else delete P.A.__dslite;   // yes: Bestätigungsseite
+        } else if (P.A.__dslite_auto) {
+          delete P.A.__dslite_auto; delete P.A.__dslite;   // früher erkannt, jetzt unsicher: von Hand fragen
+        }
       }
       break;
     case 'fb_dslite':
+      if (P.A.__dslite_auto === 'yes') { P.A.__dslite = 'yes'; break; }
       if (!['yes', 'no'].includes(raw)) return { error: T('core.wizard.msg.choose') };
       P.A.__dslite = raw;
       break;
@@ -717,7 +737,7 @@ async function answer(id, raw, skip) {
   }
   P.cursor = firstOpen();
   save();
-  return { ok: true };
+  return { ok: true, check: swCheck };
 }
 
 function back() {

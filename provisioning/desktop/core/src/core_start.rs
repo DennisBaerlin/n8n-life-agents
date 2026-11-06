@@ -132,13 +132,30 @@ pub fn capability_probe(host: &dyn Host, d: &Docker, image: &str) -> Result<(), 
     result
 }
 
-/// Images aus der Compose-Datei (`image: …`-Zeilen), ohne YAML-Bibliothek: Die Datei schreibt Paket 1 mit
-/// Digest-Pins, eine Zeile je Image.
+/// Images aus der Compose-Datei (`image: …`-Zeilen), ohne YAML-Bibliothek. Paket 1 schreibt jedes Image einmal als
+/// Anker in `x-images` (`busybox: &img_busybox busybox:…@sha256:…`) und verweist mit `image: *img_busybox`; der
+/// master trägt ab Paket 5 `${LA_MASTER_IMAGE:-<pin>}` (zählt die Vorgabe), ohne Release-Pin `${…:?…}` (übersprungen).
+/// Test `images_of_the_real_compose_file` liest die echte Datei.
 pub fn compose_images(compose_text: &str) -> Vec<String> {
+    let unquote = |v: &str| v.trim().trim_matches(['"', '\'']).to_string();
+    let anchors: std::collections::HashMap<String, String> = compose_text
+        .lines()
+        .filter_map(|l| l.split_once(": &"))
+        .filter_map(|(_, rest)| rest.split_once(char::is_whitespace))
+        .map(|(name, value)| (name.to_string(), unquote(value)))
+        .collect();
     let mut out: Vec<String> = compose_text
         .lines()
         .filter_map(|l| l.trim().strip_prefix("image:"))
-        .map(|v| v.trim().trim_matches(['"', '\'']).to_string())
+        .map(unquote)
+        .filter_map(|v| match v.strip_prefix('*') {
+            Some(name) => anchors.get(name).cloned(),
+            None => Some(v),
+        })
+        .filter_map(|v| match v.strip_prefix("${").and_then(|r| r.strip_suffix('}')) {
+            Some(inner) => inner.split_once(":-").map(|(_, pin)| pin.to_string()),
+            None => Some(v),
+        })
         .filter(|v| !v.is_empty() && !v.contains("${"))
         .collect();
     out.sort();
@@ -329,7 +346,8 @@ mod tests {
         Ports { edge, wizard: edge + 10 }
     }
 
-    const COMPOSE: &str = "name: lifeagents\nservices:\n  anchor:\n    image: busybox:1.37@sha256:aaaa\n  master:\n    image: ${LA_MASTER_IMAGE:?}\n  postgres:\n    image: \"postgres:17@sha256:bbbb\"\n";
+    // Wie provisioning/compose/compose.yml: Images nur über Anker aus x-images, master ohne Release-Pin (neutrale Form).
+    const COMPOSE: &str = "name: lifeagents\nx-images:\n  busybox: &img_busybox busybox:1.37@sha256:aaaa\n  postgres: &img_postgres \"postgres:17@sha256:bbbb\"\nservices:\n  anchor:\n    image: *img_busybox\n  master:\n    image: ${LA_MASTER_IMAGE:?LA_MASTER_IMAGE fehlt}\n  postgres:\n    image: *img_postgres\n";
 
     /// Docker antwortet wie bei einem frischen Rechner: Konfig gültig, keine Volumes, Images teils da.
     fn fresh(h: &FakeHost, p: &CorePaths) {
@@ -365,6 +383,22 @@ mod tests {
     #[test]
     fn images_from_compose_skip_variables() {
         assert_eq!(compose_images(COMPOSE), vec!["busybox:1.37@sha256:aaaa", "postgres:17@sha256:bbbb"]);
+    }
+
+    #[test]
+    fn images_follow_anchors_and_the_release_pin() {
+        let text = "x-images:\n  master: &img_master ${LA_MASTER_IMAGE:-ghcr.io/example/master@sha256:cccc}\nservices:\n  master:\n    image: *img_master\n  edge:\n    image: 'caddy:2@sha256:dddd'\n  other:\n    image: ${OTHER_IMAGE}\n";
+        assert_eq!(compose_images(text), vec!["caddy:2@sha256:dddd", "ghcr.io/example/master@sha256:cccc"]);
+    }
+
+    #[test]
+    fn images_of_the_real_compose_file() {
+        let text = include_str!("../../../compose/compose.yml");
+        let images = compose_images(text);
+        assert!(probe_image(&images).is_some(), "kein busybox-Image: {images:?}");
+        assert!(images.iter().all(|i| i.contains("@sha256:") && !i.contains('*') && !i.contains("${")), "{images:?}");
+        let pinned = text.lines().filter(|l| l.contains(": &img_") && l.contains("@sha256:")).count();
+        assert_eq!(images.len(), pinned, "jedes Image aus x-images genau einmal: {images:?}");
     }
 
     #[test]

@@ -1,15 +1,17 @@
 // wizard/ctl.js — Steuerkanal des Wizards für die Start-App (Paket 6), aufgerufen per `docker exec <master> node ctl.js …`.
-//   issue   -> {"url":"http://127.0.0.1:<port>/start?t=…"}: neuer Einmal-Wert (10 Min, ersetzt jeden älteren)
-//   status  -> {"phase":"questions|installing|failed|pairing|connected|handoff","step":"<seite>"}
-//   finish  -> {"ok":true}: Wizard löscht Fortschritt + Schlüssel und beendet sich (nach Dauerbetrieb/Fertig der App)
+//   issue | url        -> {"url":"http://127.0.0.1:<port>/start?t=…"}: neuer Einmal-Wert (10 Min, ersetzt jeden älteren)
+//   status            -> {"phase":"questions|installing|failed|pairing|connected|handoff","step":"<seite>"}
+//   finish | power-done -> {"ok":true}: Wizard löscht Fortschritt + Schlüssel und beendet sich (nach Dauerbetrieb/Fertig der App)
 // Der Kanal ist ein Unix-Socket (0600 root) unter WIZARD_RUN_DIR — n8n im selben Netz-Namensraum erreicht ihn nicht.
 'use strict';
 const net = require('net');
 const path = require('path');
 
-const cmd = process.argv[2] || '';
+// url und power-done = die Namen, mit denen die Start-App (Paket 6) ruft.
+const ALIAS = { url: 'issue', 'power-done': 'finish' };
+const cmd = ALIAS[process.argv[2]] || process.argv[2] || '';
 if (!['issue', 'status', 'finish'].includes(cmd)) {
-  process.stderr.write('Aufruf: node ctl.js issue|status|finish\n');
+  process.stderr.write('Aufruf: node ctl.js url|status|power-done\n');
   process.exit(64);
 }
 const sock = path.join(process.env.WIZARD_RUN_DIR || '/run/lifeagents-wizard', 'ctl.sock');

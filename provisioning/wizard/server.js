@@ -180,6 +180,8 @@ const MSG = {
   choose: 'Wähle eine Antwort aus.',
   offline: 'Konnte gerade nicht online prüfen. Die Angabe ist übernommen und wird bei der Einrichtung noch einmal geprüft.',
 };
+// Optionale CLI-Fragen, die der Wizard trotzdem nicht überspringen lässt (Grund an der Stelle in pageFor).
+const NO_SKIP = ['DOMAIN', 'GOOGLE_API_KEY', 'OWNER_LANGUAGE', 'OWNER_PERSONA'];
 const PAPERLESS_MSG = {
   localhost: '„localhost“ meint für den Assistenten ihn selbst, nicht deinen Rechner. Nimm die Adresse des Rechners im Netzwerk, zum Beispiel http://192.168.1.50:8000.',
   invalid: 'Das sieht nicht nach einer Adresse aus. Sie beginnt mit http:// oder https://.',
@@ -226,7 +228,8 @@ function pageFor(id) {
     }
     if (key === 'OWNER_LANGUAGE' && !v) page.value = 'de';
     if (key === 'OWNER_PERSONA' && !v) page.value = 'neutral';
-    if (key === 'GOOGLE_API_KEY') page.optional = false;   // „Nein“ auf der Seite davor ist das Überspringen
+    // Google: „Nein“ auf der Seite davor ist das Überspringen; Sprache und Charakter haben eine Vorauswahl.
+    if (NO_SKIP.includes(key)) page.optional = false;
     if (q.kind === 'date') page.placeholder = 'JJJJ-MM-TT';
     return page;
   }
@@ -345,8 +348,8 @@ function connectView() {
       poll: false, action: 'connect_retry', next: 'Noch einmal prüfen' });
   }
   if (c.expired) return Object.assign(v, { help: [{ p: 'Der Code ist abgelaufen.' }], poll: false, action: 'pair_new', next: 'Neuen Code anzeigen' });
-  if (c.link) {
-    return Object.assign(v, { qr: c.qr, link: { href: c.link, label: 'Link öffnen, wenn du Telegram auf diesem Rechner hast' },
+  if (PAIR) {
+    return Object.assign(v, { qr: PAIR.qr, link: { href: PAIR.link, label: 'Link öffnen, wenn du Telegram auf diesem Rechner hast' },
       help: [{ p: 'Scanne den Code mit dem Handy. Telegram öffnet deinen Bot.' }, { p: 'Tippe dort auf „Starten“.' },
         { p: 'Der Code gilt 10 Minuten und zeigt nur dir, dass du der Besitzer bist.' }],
       wait: c.connected ? 'Verbunden. Der Bot wird auf dich eingestellt …' : 'Warte auf deine Nachricht an den Bot …' });
@@ -374,7 +377,7 @@ async function answer(id, raw, skip) {
     if (flow.valueProblem(value) === 'length') return { error: MSG.invalid };
     // Schon eingetragenes Geheimnis + leeres Feld = behalten (die Seite zeigt Geheimnisse nie wieder an).
     if (value === '' && !skip && q.secret && P.A[q.key] === null) { P.cursor = firstOpen(); save(); return { ok: true }; }
-    if (value === '' && (q.required || q.key === 'DOMAIN' || q.key === 'GOOGLE_API_KEY')) return { error: q.choices ? MSG.choose : MSG.empty };
+    if (value === '' && (q.required || NO_SKIP.includes(q.key))) return { error: q.choices ? MSG.choose : MSG.empty };
     if (value !== '' && skip) return { error: MSG.invalid };
     let check = null;
     let note = null;
@@ -388,7 +391,7 @@ async function answer(id, raw, skip) {
       // Paperless (Plan *Die Module wie in der CLI*): Adresse, Version und Zugang live prüfen.
       if (q.pkg === 'paperless') {
         const url = q.setting === 'general.paperless_url' ? v : (P.A.CONFIG_GENERAL_PAPERLESS_URL || '');
-        const token = q.cred ? v : '';
+        const token = q.cred ? v : (SECRETS.PAPERLESS_API_TOKEN || '');   // neue Adresse: vorhandenen Zugang gleich mitprüfen
         if (url) {
           const pc = await bridge(['paperless-check'], { input: `${url}\n${token}\n`, timeoutMs: 20000 });
           if (pc && !pc.ok) return { error: PAPERLESS_MSG[pc.reason] || MSG.invalid };
@@ -438,7 +441,8 @@ async function answer(id, raw, skip) {
     case 'reach':
       if (!['tunnel', 'fritzbox'].includes(raw)) return { error: MSG.choose };
       P.A.__reach = raw;
-      if (raw === 'fritzbox' && !P.A.__ports) {
+      delete P.A.__ports;   // bei jeder Wahl neu messen: ein inzwischen beendetes Programm gibt den Weg wieder frei
+      if (raw === 'fritzbox') {
         // Prüfliste Nr. 13: Ports 80/443 belegt? Die Messung gehört Paket 1/3 (reach_ports_json); unbekannt = weiter.
         const r = await bridge(['reach-ports'], { timeoutMs: 20000 });
         if (r && r.state === 'busy') P.A.__ports = 'busy';
@@ -531,6 +535,9 @@ function retry() {
 
 // --- Verbinden (Tunnel-Zustand + Pairing über `lifeagents household pair-owner --machine`) -----------------------
 let connectBusy = false;
+// Pairing-Link mit Einmal-Code + QR nur im Arbeitsspeicher, nie im Fortschritt (der Code verbindet ein Telegram-Konto als
+// Owner). Nach einem Neustart wird einfach ein neuer Code erzeugt.
+let PAIR = null;
 let lastConnect = 0;
 const TS_URL = /^https:\/\/login\.tailscale\.com\/[A-Za-z0-9/_?=&.-]{1,200}$/;
 async function connectTick(force) {
@@ -546,17 +553,17 @@ async function connectTick(force) {
       c.tunnel = { state, url: r && TS_URL.test(r.url || '') ? r.url : '' };
       if (state !== 'ready' && state !== 'unavailable') { save(); return; }
     }
-    if (!c.link && !c.problem && !c.expired) {
+    if (!PAIR && !c.connected && !c.problem && !c.expired) {
       const reach = await laCli('reach');
       if (reach && reach.ok === false) { c.problem = String(reach.problem || 'Telegram erreicht deinen Rechner noch nicht.').slice(0, 400); save(); return; }
       const a = await laCli('arm');
       if (a && a.ok && a.connected) { c.connected = true; }
       else if (a && a.ok && /^https:\/\/t\.me\/[A-Za-z0-9_]{1,64}\?start=[A-Za-z0-9_-]{1,64}$/.test(a.link || '')) {
-        c.link = a.link; c.qr = qr.toSvg(qr.encode(a.link)); c.armed = Date.now();
+        PAIR = { link: a.link, qr: qr.toSvg(qr.encode(a.link)), armed: Date.now() };
       } else { c.problem = 'Der Code für die Verbindung ließ sich nicht erzeugen. Versuch es gleich noch einmal.'; save(); return; }
     }
-    if (c.link && !c.connected) {
-      if (Date.now() - c.armed > TOKEN_TTL_MS) { c.expired = true; delete c.link; delete c.qr; save(); return; }
+    if (PAIR && !c.connected) {
+      if (Date.now() - PAIR.armed > TOKEN_TTL_MS) { c.expired = true; PAIR = null; save(); return; }
       const st = await laCli('status');
       if (st && st.ok && st.connected) c.connected = true;
     }
@@ -564,7 +571,7 @@ async function connectTick(force) {
       const f = await laCli('finalize');
       c.finalized = true;
       P.notes.welcome_sent = !!(f && f.ok && f.welcome_sent);
-      delete c.link; delete c.qr;
+      PAIR = null;
       P.phase = 'connected';
       P.cursor = 'handoff';
     }
@@ -593,7 +600,7 @@ function report() {
     wizard: VERSION, phase: P.phase, step: cursor(), packages: (P.A.__packages || []).join(','), reach: flow.reachMode(P.A),
     install_status: ins.status || '', install_stage: ins.stage || '', install_reason: ins.reason || '',
     install_exit: ins.exit === undefined ? '' : String(ins.exit), tunnel: (c.tunnel && c.tunnel.state) || '',
-    pairing: c.connected ? 'connected' : c.link ? 'waiting' : c.problem ? 'unreachable' : c.expired ? 'expired' : '',
+    pairing: c.connected ? 'connected' : PAIR ? 'waiting' : c.problem ? 'unreachable' : c.expired ? 'expired' : '',
     time: new Date().toISOString(),
   };
   return ['lifeagents-wizard-report v1', ...Object.entries(f).map(([k, v]) => `${k}: ${SAFE.test(String(v)) ? v : '?'}`)].join('\n');
@@ -672,8 +679,9 @@ async function handle(req, res) {
   if (sfs && sfs !== 'same-origin') return deny(res, 403);
   if (req.method === 'GET') {
     if (url.pathname === '/api/state') {
+      if (!Q) await loadQuestions();
       if (!Q) return send(res, 503, { error: 'Der Wizard konnte die Fragen nicht laden.' });
-      await connectTick(false);
+      connectTick(false).catch(() => {});   // im Hintergrund: finalize dauert Minuten, die Seite zeigt bis dahin „Warte …“
       return send(res, 200, { csrf: session.csrf, page: view() });
     }
     if (url.pathname === '/api/report') return send(res, 200, { text: report() });
@@ -686,15 +694,24 @@ async function handle(req, res) {
   if (!safeEq(req.headers['x-csrf-token'] || '', session.csrf)) return deny(res, 403);
   const body = await readBody(req);
   if (!body || typeof body !== 'object') return send(res, 400, { error: 'bad request' });
-  let r = { ok: true };
-  switch (url.pathname) {
-    case '/api/answer': r = await answer(String(body.id || ''), body.value, body.skip === true); break;
-    case '/api/back': back(); break;
-    case '/api/goto': r = gotoStep(String(body.id || '')); break;
-    case '/api/action': r = await action(String(body.name || '')); break;
-    default: return deny(res, 404);
-  }
+  if (!['/api/answer', '/api/back', '/api/goto', '/api/action'].includes(url.pathname)) return deny(res, 404);
+  const r = await serial(async () => {
+    switch (url.pathname) {
+      case '/api/answer': return answer(String(body.id || ''), body.value, body.skip === true);
+      case '/api/back': back(); return { ok: true };
+      case '/api/goto': return gotoStep(String(body.id || ''));
+      default: return action(String(body.name || ''));
+    }
+  });
   return send(res, r.error ? 422 : 200, Object.assign({}, r, { csrf: session.csrf, page: view() }));
+}
+
+// Änderungen strikt nacheinander: bei einem Doppelklick dürfen zwei Prüfungen den Stand nicht verschränkt überschreiben.
+let chain = Promise.resolve();
+function serial(fn) {
+  const p = chain.then(fn, fn);
+  chain = p.catch(() => {});
+  return p;
 }
 
 function page403() {
@@ -706,7 +723,7 @@ function page403() {
 let httpServer = null;
 let ctlServer = null;
 function finishAll() {
-  rmQuiet(PROGRESS); rmQuiet(KEY_FILE); rmQuiet(ANSWERS); rmQuiet(RESULT);
+  rmQuiet(PROGRESS); rmQuiet(KEY_FILE); rmQuiet(ANSWERS); rmQuiet(RESULT); rmQuiet(LOG_FILE);
   for (const k of Object.keys(SECRETS)) delete SECRETS[k];
   session = null; pending = null;
   const bye = () => process.exit(0);
@@ -735,12 +752,22 @@ function startCtl() {
   ctlServer.listen(CTL_SOCK, () => { process.umask(old); fs.chmodSync(CTL_SOCK, 0o600); });
 }
 
+// Fragen-Auszug laden; scheitert es (z. B. Baum noch nicht ganz da), versucht es die nächste Seitenabfrage erneut.
+let questionsLoading = null;
+function loadQuestions() {
+  if (!questionsLoading) {
+    questionsLoading = bridge(['questions'], { timeoutMs: 60000 }).then((q) => {
+      if (q && q.v === 1 && Array.isArray(q.host) && Array.isArray(q.packages)) Q = q;
+      if (Q && P.cursor === null) P.cursor = firstOpen();
+    }).finally(() => { questionsLoading = null; });
+  }
+  return questionsLoading;
+}
+
 async function main() {
   KEY = loadKey();
   P = loadProgress();
-  const q = await bridge(['questions'], { timeoutMs: 60000 });
-  if (q && q.v === 1 && Array.isArray(q.host) && Array.isArray(q.packages)) Q = q;
-  if (Q && P.cursor === null) P.cursor = firstOpen();
+  await loadQuestions();
   startCtl();
   httpServer = http.createServer((req, res) => {
     handle(req, res).catch(() => { try { send(res, 500, { error: 'internal' }); } catch (_) { /* weg */ } });

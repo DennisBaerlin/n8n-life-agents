@@ -50,11 +50,27 @@ test('Antwort-Datei: Verstöße werfen, nie still reparieren', () => {
   assert.equal(flow.valueProblem('😀'.repeat(1025)), 'length');
 });
 
-test('Leser-Referenz: falscher Kopf, Zeile ohne =, doppelter Schlüssel', () => {
-  assert.throws(() => flow.parseAnswers('KEY=1\n'), /header/);
+test('Leser-Referenz: falscher Kopf, Zeile ohne =, ohne Quotes, offenes Quote, doppelter Schlüssel', () => {
+  assert.throws(() => flow.parseAnswers("KEY='1'\n"), /header/);
   assert.throws(() => flow.parseAnswers('# lifeagents-answers v1\nKEY\n'), /line 2/);
-  assert.throws(() => flow.parseAnswers('# lifeagents-answers v1\nKEY=1\nKEY=2\n'), /line 3/);
-  assert.equal(flow.parseAnswers('# lifeagents-answers v1\nK=a=b\n').get('K'), 'a=b');
+  assert.throws(() => flow.parseAnswers('# lifeagents-answers v1\nKEY=1\n'), /line 2/);
+  assert.throws(() => flow.parseAnswers("# lifeagents-answers v1\nKEY='a'b'\n"), /line 2/);
+  assert.throws(() => flow.parseAnswers("# lifeagents-answers v1\nKEY='1'\nKEY='2'\n"), /line 3/);
+  assert.equal(flow.parseAnswers("# lifeagents-answers v1\nK='a=b'\n").get('K'), 'a=b');
+});
+
+test('Antwort-Datei: Form KEY=\'…\' wie install_answers_load (Paket 1), auch eine POSIX-Shell liest denselben Wert', () => {
+  const A = { OWNER_FIRST_NAME: "O'Neil $(touch /tmp/wizard-quote-pwned) `id` \\ \"x\" ''", __tg_conflict: 'beispiel.example', __tg_choice: 'take', __reach: 'tunnel' };
+  const txt = flow.renderAnswers(Q, flow.answerLines(Q, A, {}));
+  assert.ok(txt.includes("OWNER_FIRST_NAME='O'\\''Neil $(touch /tmp/wizard-quote-pwned) `id` \\ \"x\" '\\'''\\'''\n"), txt);
+  assert.equal(flow.parseAnswers(txt).get('TELEGRAM_WEBHOOK_TAKEOVER'), '1', 'Übernahme des belegten Bots steht in der Datei');
+  // Gegenprobe der Quote-Regel (nur hier im Test, der Installer führt die Datei nie aus): bash liest denselben Wert.
+  const f = require('path').join(require('os').tmpdir(), `answers-${process.pid}.env`);
+  require('fs').writeFileSync(f, txt);
+  const out = require('child_process').execFileSync('bash', ['-c', 'set -a; . "$1"; printf %s "$OWNER_FIRST_NAME"', 'x', f]).toString();
+  require('fs').rmSync(f);
+  assert.equal(out, A.OWNER_FIRST_NAME);
+  assert.ok(!require('fs').existsSync('/tmp/wizard-quote-pwned'));
 });
 
 test('Ablauf: Folgefragen nur gewählter Module, „beide oder keine“, FritzBox-Weg', () => {

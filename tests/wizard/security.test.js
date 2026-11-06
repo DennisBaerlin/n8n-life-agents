@@ -62,6 +62,16 @@ test('neue Anmeldung beendet die alte Sitzung', async () => {
   assert.equal((await state(w)).status, 200);
 });
 
+test('ctl.js (Aufruf der App per docker exec): url, status, unbekannter Befehl', () => {
+  const { execFileSync, spawnSync } = require('child_process');
+  const env = Object.assign({}, process.env, { WIZARD_RUN_DIR: path.join(w.dir, 'run') });
+  const ctlJs = path.join(require('./helpers').WIZ, 'ctl.js');
+  const u = JSON.parse(execFileSync(process.execPath, [ctlJs, 'url'], { env }).toString());
+  assert.match(u.url, new RegExp(`^http://127\\.0\\.0\\.1:${w.port}/start\\?t=[A-Za-z0-9_-]{43}$`));
+  assert.equal(JSON.parse(execFileSync(process.execPath, [ctlJs, 'status'], { env }).toString()).phase, 'questions');
+  for (const bad of ['constructor', 'prune', '']) assert.equal(spawnSync(process.execPath, [ctlJs, bad], { env }).status, 64, bad);
+});
+
 test('POST: Origin, CSRF, Content-Type und Sec-Fetch-Site sind Pflicht', async () => {
   await login(w);
   const body = { id: 'x', value: 'y' };
@@ -86,6 +96,7 @@ test('POST: Origin, CSRF, Content-Type und Sec-Fetch-Site sind Pflicht', async (
 
 test('Eingaben: Zeilenumbruch und Steuerzeichen abgelehnt, Sonderzeichen wörtlich gespeichert', async () => {
   await login(w);
+  assert.equal((await answer(w, 'h:OWNER_LANGUAGE', '', { skip: true })).status, 422, 'Sprache hat eine Vorauswahl, kein Überspringen');
   await answer(w, 'h:OWNER_LANGUAGE', 'de');
   for (const bad of ['Erika\nOWNER_LAST_NAME=x', 'Erika\r', 'Er\u0007ika', 'Er\u0000ika']) {
     const r = await answer(w, 'h:OWNER_FIRST_NAME', bad);
@@ -102,6 +113,17 @@ test('Eingaben: Zeilenumbruch und Steuerzeichen abgelehnt, Sonderzeichen wörtli
   // Zurück: der Wert steht unverändert wieder im Feld.
   await post(w, '/api/back', {});
   assert.equal((await state(w)).json.page.value, special);
+});
+
+test('Doppelklick: zwei gleichzeitige Antworten laufen nacheinander, die zweite trifft keine offene Seite mehr', async () => {
+  await login(w);
+  const id = (await state(w)).json.page.id;
+  assert.equal(id, 'h:OWNER_FIRST_NAME');
+  const [a, b] = await Promise.all([post(w, '/api/answer', { id, value: 'Erika' }), post(w, '/api/answer', { id, value: 'Lisa' })]);
+  assert.deepEqual([a.status, b.status].sort(), [200, 422]);
+  const prog = JSON.parse(fs.readFileSync(path.join(w.dir, 'state', 'progress.json'), 'utf8'));
+  assert.equal(prog.A.OWNER_FIRST_NAME, a.status === 200 ? 'Erika' : 'Lisa');
+  assert.equal((await state(w)).json.page.id, 'h:OWNER_LAST_NAME');
 });
 
 test('Geheimnisse liegen nie im Klartext auf der Platte; Dateirechte 0600', async () => {

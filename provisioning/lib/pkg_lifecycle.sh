@@ -244,6 +244,18 @@ _pkg_secret_ask() {
   return 0
 }
 
+# Die EINE Auswahl der erfragbaren Paket-Angaben (jq-Filter ueber manifest.json), gelesen von _pkg_secrets_wizard /
+#   _pkg_settings_wizard (CLI) UND provisioning/wizard/bridge.sh (Wizard im Docker-Betrieb) — beide Wege fragen dieselben
+#   Angaben in derselben Reihenfolge. Je Zeile ein JSON-Objekt; der Zugangs-Filter braucht --arg only ("" = alle Zugaenge).
+# shellcheck disable=SC2016  # $-Ausdrücke sind jq-Variablen, keine Shell-Variablen
+_PKG_CRED_ROWS_JQ='(.credentials // {}) | to_entries[] | select(.key != "_comment") | select($only == "" or .key == $only)
+      | .key as $cred | .value as $c | [$c.env | to_entries[]] as $ks
+      | ($ks | length) as $n | $ks | to_entries[]
+      | {cred:$cred, i:.key, n:$n, k:.value.key, prompt:.value.value.prompt, help:.value.value.help,
+         secret:(.value.value.secret // false), validator:(.value.value.validator // "none"), required:($c.required // false)}'
+# shellcheck disable=SC2016  # s. o.
+_PKG_SETTING_ROWS_JQ='(.config // {}) | to_entries[] | select(.key != "_comment") | .key as $c | .value | to_entries[] | select(.value | type == "object" and has("prompt")) | {cat:$c, key:.key, prompt:.value.prompt, help:.value.help, validator:.value.validator, choices:.value.choices}'
+
 # _pkg_secrets_wizard <pkg> <envf> [reask] [credential]  — die manifest-deklarierten env-Keys erfragen.
 #   env-override-first -> SEEN-Gate (KEY=-Zeile in <pkg>.env, debconf) -> interaktiv (ui_interactive:
 #   TTY ∧ ¬UNATTENDED — kein Prompt erreicht je den unattended-Pfad). Optional + Enter = skip mit
@@ -331,11 +343,7 @@ _pkg_secrets_wizard() {
       fi
       break
     done
-  done <<<"$(jq -c --arg only "$only" '(.credentials // {}) | to_entries[] | select(.key != "_comment") | select($only == "" or .key == $only)
-      | .key as $cred | .value as $c | [$c.env | to_entries[]] as $ks
-      | ($ks | length) as $n | $ks | to_entries[]
-      | {cred:$cred, i:.key, n:$n, k:.value.key, prompt:.value.value.prompt, help:.value.value.help,
-         secret:(.value.value.secret // false), validator:(.value.value.validator // "none"), required:($c.required // false)}' "$mf")"
+  done <<<"$(jq -c --arg only "$only" "$_PKG_CRED_ROWS_JQ" "$mf")"
   # Persistenz: jeden deklarierten Key nach <pkg>.env — Wert oder leere Seen-Zeile (interaktiv
   # angeboten + uebersprungen = seen -> Zweitlauf fragt nie erneut; E2.1).
   # NIE leer ueber einen gespeicherten Wert schreiben (Install-UX-Phase 4, Datenverlust-Bug): das Seen-Gate
@@ -509,7 +517,7 @@ _pkg_settings_wizard() {
       note "Übersprungen — später: lifeagents config set ${cat} ${key} <wert>"
       _store_answer "$envf" "$seenkey" ""
     fi
-  done <<<"$(jq -c '(.config // {}) | to_entries[] | select(.key != "_comment") | .key as $c | .value | to_entries[] | select(.value | type == "object" and has("prompt")) | {cat:$c, key:.key, prompt:.value.prompt, help:.value.help, validator:.value.validator, choices:.value.choices}' "$mf" 2>/dev/null)"
+  done <<<"$(jq -c "$_PKG_SETTING_ROWS_JQ" "$mf" 2>/dev/null)"
   return 0
 }
 

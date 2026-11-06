@@ -27,6 +27,9 @@ test('Fragen-Auszug = Host-Fragen der CLI (ohne n8n-Anmeldung und Proxy-Ort) + a
     const envKeys = Object.entries(m.credentials || {}).filter(([k]) => k !== '_comment').flatMap(([, c]) => Object.keys(c.env));
     assert.deepEqual(p.credentials.flatMap((c) => c.keys.map((k) => k.env)), envKeys, p.id);
     for (const s of p.settings) assert.match(s.env, /^CONFIG_[A-Z0-9_]+$/);
+    const cfg = Object.entries(m.config || {}).filter(([c]) => c !== '_comment')
+      .flatMap(([c, v]) => Object.entries(v).filter(([, e]) => e && typeof e === 'object' && e.prompt).map(([k]) => c + '.' + k));
+    assert.deepEqual(p.settings.map((s) => s.id), cfg, p.id + ': Einstellungen mit prompt');
   }
   assert.ok(q.languages.some((l) => l.code === 'de') && q.personas.some((p) => p.code === 'neutral'));
   assert.ok(q.host.find((h) => h.key === 'TELEGRAM_BOT_TOKEN').live && q.host.find((h) => h.key === 'TELEGRAM_BOT_TOKEN').secret);
@@ -74,7 +77,7 @@ test('Paperless-Prüfung: Version, Zugang, localhost, nicht erreichbar', async (
     assert.deepEqual(await pc(url, 'alt'), { ok: false, reason: 'too_old', version: '2.17.1' });
     assert.deepEqual(await pc(url, 'falsch'), { ok: false, reason: 'token_rejected' });
     assert.deepEqual(await pc(url, 'keinpaperless'), { ok: false, reason: 'not_paperless' });
-    for (const u of ['http://localhost:8000', 'http://LOCALHOST:8000', 'http://127.0.0.2', 'http://[::1]:8000', 'http://0.0.0.0:1']) {
+    for (const u of ['http://localhost:8000', 'http://LOCALHOST:8000', 'http://127.0.0.2', 'http://[::1]:8000', 'http://0.0.0.0:1', 'http://admin@localhost:8000', 'http://a:b@127.0.0.1/', 'http://127.1:8000', 'http://[::ffff:127.0.0.1]:8000'])  {
       assert.equal((await pc(u, '')).reason, 'localhost', u);
     }
     assert.equal((await pc('192.0.2.1:8000', '')).reason, 'invalid');

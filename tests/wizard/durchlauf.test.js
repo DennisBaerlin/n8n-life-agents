@@ -132,6 +132,7 @@ test('Durchlauf FritzBox mit drei Modulen: Antwort-Datei, Installation, Pairing,
     const cn = await waitFor(async () => { const p = await page(w); return p.qr ? p : null; });
     assert.match(cn.qr, /^<svg /);
     assert.equal(cn.link.href, 'https://t.me/beispiel_bot?start=0123456789abcdef');
+    assert.ok(!fs.readFileSync(path.join(w.dir, 'state', 'progress.json'), 'utf8').includes('0123456789abcdef'), 'Pairing-Code nie auf der Platte');
     assert.equal(cn.canBack, false);
     assert.deepEqual(await ctl(w, 'status'), { phase: 'pairing', step: 'connect' });
     fs.writeFileSync(path.join(w.fake, 'paired'), '');
@@ -174,7 +175,16 @@ test('Durchlauf Tunnel: belegter Bot, Fehlschlag + neuer Versuch, Neustart, Tail
     await expectOk(await answer(w, 'voice', 'no'));
     assert.equal((await page(w)).id, 'packages');
     await expectOk(await answer(w, 'packages', []));
+    // Belegte Ports führen zum Tunnel; nach dem Freigeben misst eine neue Wahl erneut (nie ein alter Befund).
+    fs.writeFileSync(path.join(w.fake, 'ports'), 'busy');
     await expectOk(await answer(w, 'reach', 'fritzbox'));
+    await expectOk(await answer(w, 'fb_dslite', 'no'));
+    assert.equal((await page(w)).id, 'fb_ports_busy');
+    await post(w, '/api/back', {}); await post(w, '/api/back', {});
+    fs.writeFileSync(path.join(w.fake, 'ports'), 'free');
+    await expectOk(await answer(w, 'reach', 'fritzbox'));
+    assert.equal((await page(w)).id, 'fb_guide', 'frei gemessen, DS-Lite-Antwort bleibt');
+    await post(w, '/api/back', {});
     await expectOk(await answer(w, 'fb_dslite', 'yes'));   // DS-Lite führt zum Tunnel
     assert.equal((await page(w)).id, 'review');
     assert.equal((await page(w)).rows.find((r) => r.label === 'Erreichbarkeit').value, 'Tunnel');

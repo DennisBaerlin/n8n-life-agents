@@ -38,6 +38,11 @@ PROFILE=release
 . "$_BR_PROV/lib/release_inputs.sh"
 # shellcheck source=/dev/null
 . "$_BR_PROV/lib/bootstrap_owner.sh"
+# Docker-Betrieb (Paket 1): die eine Datei mit den Docker-Wrappern, falls vorhanden (reach-ports).
+if [ -f "$_BR_PROV/lib/runtime.sh" ]; then
+  # shellcheck source=/dev/null
+  . "$_BR_PROV/lib/runtime.sh"
+fi
 
 # Host-Fragen, die der Wizard stellt (Reihenfolge = _INSTALL_ENV_KEYS). Nicht dabei: die n8n-Anmeldung (die Installation
 # erzeugt sie) und der Proxy-Ort (ergibt sich im Docker-Betrieb aus dem Rand, Paket 1/3). DOMAIN fragt der Wizard nur
@@ -72,18 +77,18 @@ br_questions() {
   while IFS= read -r p; do
     [ -n "$p" ] || continue
     mf="$(_pkg_dir)/$p/manifest.json"
-    # Dieselben jq-Filter wie _pkg_settings_wizard (config mit prompt) und _pkg_secrets_wizard (credentials.env) —
-    # Reihenfolge und Felder wie dort; Beschriftungen danach über _prompt_label.
-    one="$(jq -c --arg id "$p" --arg name "$(pkg_display_name "$p")" --arg summary "$(pkg_text "$p" package.summary)" '
+    # Dieselben Zeilen wie die CLI-Fragen (_PKG_SETTING_ROWS_JQ / _PKG_CRED_ROWS_JQ aus pkg_lifecycle.sh), hier nur in die
+    # Form des Wizards gebracht (Zugänge mit ihren Schlüsseln gruppiert, Reihenfolge bleibt); Beschriftungen danach.
+    one="$(jq -c --arg id "$p" --arg name "$(pkg_display_name "$p")" --arg summary "$(pkg_text "$p" package.summary)" \
+      --argjson settings "$(jq -c "[ $_PKG_SETTING_ROWS_JQ ]" "$mf")" \
+      --argjson creds "$(jq -c --arg only '' "[ $_PKG_CRED_ROWS_JQ ]" "$mf")" '
       {id:$id, name:$name, summary:$summary, requires:(.requires // []),
-       settings:[(.config // {}) | to_entries[] | select(.key != "_comment") | .key as $c | .value | to_entries[]
-                 | select(.value | type == "object" and has("prompt"))
-                 | {id:($c + "." + .key), env:("CONFIG_" + ($c + "_" + .key | ascii_upcase)), prompt:.value.prompt,
-                    help:(.value.help // ""), validator:(.value.validator // "none"), choices:(.value.choices // [])}],
-       credentials:[(.credentials // {}) | to_entries[] | select(.key != "_comment")
-                 | {id:.key, required:(.value.required // false),
-                    keys:[.value.env | to_entries[] | {env:.key, prompt:(.value.prompt // (.key + ": ")), help:(.value.help // ""),
-                          secret:(.value.secret // false), validator:(.value.validator // "none")}]}]}' "$mf")"
+       settings:[$settings[] | {id:(.cat + "." + .key), env:("CONFIG_" + (.cat + "_" + .key | ascii_upcase)), prompt,
+                 help:(.help // ""), validator:(.validator // "none"), choices:(.choices // [])}],
+       credentials:(reduce $creds[] as $r ([];
+                 {env:$r.k, prompt:($r.prompt // ($r.k + ": ")), help:($r.help // ""), secret:$r.secret, validator:$r.validator} as $k
+                 | if length > 0 and .[-1].id == $r.cred then .[-1].keys += [$k]
+                   else . + [{id:$r.cred, required:$r.required, keys:[$k]}] end))}' "$mf")"
     pkgs="$(jq -c --argjson one "$one" '. + [$one]' <<<"$pkgs")"
   done <<<"$(_bundled_packages)"
   prompts="$(jq -c '[.[] | (.settings[].prompt, .credentials[].keys[].prompt)]' <<<"$pkgs")"
@@ -172,10 +177,11 @@ br_paperless_check() {
   IFS= read -r tok || true
   url="${url%/}"
   _validate_url "$url" || { jq -nc '{ok:false, reason:"invalid"}'; return 0; }
-  host="${url#*://}"; host="${host%%/*}"; host="${host%%\?*}"
+  host="${url#*://}"; host="${host%%/*}"; host="${host%%\?*}"; host="${host%%#*}"; host="${host##*@}"   # ohne Nutzer:Passwort@
   case "$host" in \[*) host="${host%%]*}]" ;; *) host="${host%%:*}" ;; esac
   case "${host,,}" in
-    localhost|localhost.*|127.*|0.0.0.0|\[::1\]|\[::\]) jq -nc '{ok:false, reason:"localhost"}'; return 0 ;;
+    localhost|localhost.*|127.*|0|0.0.0.0|\[::1\]|\[::\]|\[0:0:0:0:0:0:0:1\]|\[::ffff:127.*|\[::ffff:7f*)
+      jq -nc '{ok:false, reason:"localhost"}'; return 0 ;;
   esac
   hf="$(mktemp)"
   code="$(_br_http "$hf" "${url}/api/" "$tok")"
@@ -199,13 +205,15 @@ br_paperless_check() {
   jq -nc --arg v "$ver" '{ok:true, reason:"ok", version:$v}'
 }
 
-# tg-check — Prüfliste Nr. 10. Die Prüf-Logik gehört dem Installer (Paket 1): ist dort tg_preflight_json definiert, gilt
-#   sie. Bis dahin die schmale Fassung hier (nur lesen, nie setWebhook/deleteWebhook, nie drop_pending_updates):
+# tg-check — Prüfliste Nr. 10, VOR der Installation: ist der Bot schon woanders verbunden? Dieselben Abfragen wie die
+#   Sperre des Installers (telegram_webhook_preflight, Paket 1, bricht eine unbeaufsichtigte Erstinstallation ohne
+#   TELEGRAM_WEBHOOK_TAKEOVER=1 ab): getWebhookInfo, bei leerer Adresse getUpdates?timeout=0&limit=1 (409 = anderer
+#   Abnehmer). Nur lesen, nie setWebhook/deleteWebhook, nie offset, nie drop_pending_updates. Der Wizard fragt so vorher
+#   selbst und schreibt die Übernahme nur nach ausdrücklicher Wahl.
 #   {"ok":true,"bot":"…","webhook_host":"…"|"","polling_conflict":bool} bzw. {"ok":false,"reason":"unauthorized|unreachable"}.
 br_tg_check() {
   local me info upd bot host conflict=false code
   [ -n "${TELEGRAM_BOT_TOKEN:-}" ] || { jq -nc '{ok:false, reason:"unauthorized"}'; return 0; }
-  if declare -F tg_preflight_json >/dev/null; then tg_preflight_json; return 0; fi
   me="$(tg_api_curl "$TELEGRAM_BOT_TOKEN" getMe -sS --max-time 10 2>/dev/null || true)"
   if [ -z "$me" ]; then jq -nc '{ok:false, reason:"unreachable"}'; return 0; fi
   [ "$(jq -r '.ok // false' <<<"$me" 2>/dev/null || echo false)" = true ] || { jq -nc '{ok:false, reason:"unauthorized"}'; return 0; }
@@ -236,6 +244,11 @@ br_reach_status() {
 #   empfiehlt bei „busy“ den Tunnel und löscht nie etwas.
 br_reach_ports() {
   if declare -F reach_ports_json >/dev/null; then reach_ports_json; return 0; fi
+  # Wrapper des Docker-Betriebs (lib/runtime.sh, Paket 1): rt_host_port_free <port> misst den Port auf dem Rechner.
+  if declare -F rt_host_port_free >/dev/null; then
+    if rt_host_port_free 80 && rt_host_port_free 443; then jq -nc '{state:"free"}'; else jq -nc '{state:"busy"}'; fi
+    return 0
+  fi
   jq -nc '{state:"unknown"}'
 }
 

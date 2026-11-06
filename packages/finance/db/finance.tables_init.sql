@@ -1805,6 +1805,34 @@ CREATE INDEX IF NOT EXISTS finance_savings_goal_reserve_entries_account_idx
     ON finance.savings_goal_reserve_entries (account_id);
 
 -- ============================================================
+-- SAVINGS GOAL RISK DECISIONS (bewusste Ausnahme "Sparziel unter 5 Jahren im Depot", 2026-11-06)
+-- Append-only Protokoll (Muster savings_goal_reserve_entries; Arch-Challenge: DefectDojo Risk Acceptance, Fowler
+-- Audit Log): 'accept' = der Nutzer hat auf der Karte "Risiko eingehen" getippt, 'revoke' = "erinnere mich wieder"
+-- bzw. Schliessen des Ziels. Gilt-Regel, Ablauf und Grenze leitet allein finance.fn_savings_goal_derisk_status ab
+-- (kein gespeichertes expires_at). Schreiber: finance.fn_goal_depot_risk_fold (accept), fn_set_savings_goal und
+-- fn_close_savings_goal (revoke); nie UPDATE/DELETE einer Zeile (ausser Ziel-CASCADE).
+-- ON DELETE CASCADE: ohne Ziel keine Entscheidung (Hard-DELETE einer Fehlanlage).
+-- ============================================================
+CREATE TABLE IF NOT EXISTS finance.savings_goal_risk_decisions (
+    id              serial PRIMARY KEY,
+    savings_goal_id int           NOT NULL REFERENCES finance.savings_goals(id) ON DELETE CASCADE,
+    event           text          NOT NULL CHECK (event IN ('accept', 'revoke')),   -- text + CHECK wie savings_goal_reserve_entries.kind
+    decided_at      timestamptz   NOT NULL DEFAULT now(),
+    target_date     date,           -- Ausnahme (c) Snapshot: Zieldatum, das die Karte zeigte
+    limit_eur       numeric(14,2),  -- Ausnahme (c) Snapshot: bestaetigte Freigabe-Grenze (EUR-Anteil im Depot, nie Marktwert)
+    allowed_eur     numeric(14,2),  -- Ausnahme (c) Snapshot: was der Pfad beim Tipp erlaubte
+    CONSTRAINT finance_goal_risk_decisions_shape CHECK (
+        (event = 'accept' AND target_date IS NOT NULL AND limit_eur IS NOT NULL AND allowed_eur IS NOT NULL
+                          AND limit_eur >= 0 AND allowed_eur >= 0)
+     OR (event = 'revoke' AND target_date IS NULL AND limit_eur IS NULL AND allowed_eur IS NULL))
+);
+CREATE INDEX IF NOT EXISTS finance_goal_risk_decisions_goal_idx
+    ON finance.savings_goal_risk_decisions (savings_goal_id, decided_at DESC, id DESC);
+COMMENT ON COLUMN finance.savings_goal_risk_decisions.target_date IS 'Ausnahme (c) Snapshot: Zieldatum, das die Bestaetigungskarte zeigte';
+COMMENT ON COLUMN finance.savings_goal_risk_decisions.limit_eur IS 'Ausnahme (c) Snapshot: bestaetigte Freigabe-Grenze in eingezahlten EUR (nie Marktwert)';
+COMMENT ON COLUMN finance.savings_goal_risk_decisions.allowed_eur IS 'Ausnahme (c) Snapshot: erlaubter Depot-Anteil laut Pfad beim Tipp';
+
+-- ============================================================
 -- SAVINGS PLANS (Sparpläne)
 -- Recurring automated investment plans (stocks/ETF/crypto).
 -- Each plan owns one recurring_payment (settlement-account cash debit, monthly equivalent

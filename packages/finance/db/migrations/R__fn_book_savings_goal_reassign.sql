@@ -6,7 +6,9 @@
 --   Freier-Saldo-Guard): erst das Ziel-Konto erhoehen (geguardet, darf {ok:false} liefern, noch kein Write), dann die
 --   Quelle senken (Senken ist immer erlaubt). Netto-EUR 0 -> Fortschritt und Spartempo unveraendert.
 --   Ziel-Konto Depot: Zuordnung in EUR, Deckung = Marktwert (kein harter Block, shortfall im Post-State, wie die
---   Reservierung); ohne Kurs -> no_price; Ziel im Derisk-Fenster (fn_goal_in_derisk_window) -> goal_too_short_term.
+--   Reservierung); ohne Kurs -> no_price. Ziel kurz vor dem Termin (2026-11-06): kein Verbot, sondern die Warnkarte aus
+--   fn_goal_depot_risk_fold (card_lines, card_approve_key, effective.depot_risk_shown; nach dem Tipp der Stempel
+--   + depot_risk.reminder_month).
 --   Betrag in der Waehrung der Quelle (Depot-Quelle: EUR); leer = ganzer Anteil der Quelle. Umrechnung
 --   Quelle -> EUR -> Ziel-Konto zum heutigen Kurs (fn_to_eur / fn_to_eur_unrounded), fehlender Kurs -> fx_missing.
 --   Rueckgaengig = reassign zurueck (das Journal ist append-only, kein Void).
@@ -17,7 +19,7 @@
 --     from_free_balance | (Depot-Quelle) -, to_free_balance (saldo-basiert) | market_value + shortfall (Depot),
 --     effective {from/to id, Name, Waehrung, rate_pot_name (Topf, in den die Monatsrate weiter fliesst, falls = Quelle)}}.
 --   Korrigierbar {ok:false, code?, reason}: amount <= 0, Ziel nicht gefunden, Konto nicht gefunden/mehrdeutig,
---     missing_from/missing_to, from==to, not_reserve, insufficient_share, goal_too_short_term, no_price, fx_missing,
+--     missing_from/missing_to, from==to, not_reserve, insufficient_share, no_price, fx_missing,
 --     sowie jede Ablehnung der Reservierung (z. B. insufficient_free_balance, Ruecklagen-Konto-Regeln).
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_book_savings_goal_reassign(p jsonb)
@@ -43,6 +45,7 @@ DECLARE
     v_out    JSONB;
     v_n      INT;
     v_cands  JSONB;
+    v_fold   JSONB := '{}'::jsonb;
 BEGIN
     IF v_amount IS NOT NULL AND v_amount <= 0 THEN
         RETURN jsonb_build_object('ok', false,
@@ -117,10 +120,6 @@ BEGIN
     END IF;
 
     IF v_tdepot THEN
-        IF finance.fn_goal_in_derisk_window(v_goal) THEN
-            RETURN jsonb_build_object('ok', false, 'code', 'goal_too_short_term',
-                'reason', 'Savings goal "' || v_gname || '" is needed within the de-risk window - its money should not go into a depot (price risk shortly before the date). Keep it on a cash/Tagesgeld account, or change the target date first.');
-        END IF;
         SELECT market_value INTO v_mv FROM finance.depot_reserve_status WHERE account_id = v_to;
         IF v_mv IS NULL THEN
             RETURN jsonb_build_object('ok', false, 'code', 'no_price',
@@ -147,7 +146,7 @@ BEGIN
     SELECT CASE WHEN v_tdepot THEN s.share_eur ELSE s.share_native END INTO v_tshare
       FROM finance.savings_goal_account_share s WHERE s.goal_id = v_goal AND s.account_id = v_to;
     v_r := finance.fn_book_savings_reservation(jsonb_build_object(
-        'savings_goal_id', v_goal, 'account_id', v_to, 'amount', COALESCE(v_tshare, 0) + v_tamt));
+        'savings_goal_id', v_goal, 'account_id', v_to, 'amount', COALESCE(v_tshare, 0) + v_tamt, 'suppress_depot_risk', true));   -- faltet unten selbst
     IF (v_r->>'ok')::boolean IS DISTINCT FROM true THEN
         RETURN v_r;
     END IF;
@@ -164,6 +163,13 @@ BEGIN
         RAISE EXCEPTION 'fn_book_savings_goal_reassign: releasing the source share failed: %', v_r;   -- Rollback (echte Ausnahme)
     END IF;
 
+    -- Sparziel kurz vor dem Termin ins Depot (2026-11-06): kein Verbot mehr, sondern Karte mit Warnung + Stempel
+    -- (fn_goal_depot_risk_fold, nach beiden Journal-Zeilen = Post-State). Die zwei inneren Reservierungen tragen nie
+    -- depot_risk_shown und stempeln nie.
+    IF v_tdepot THEN
+        v_fold := finance.fn_goal_depot_risk_fold(v_goal, p->'depot_risk_shown');
+    END IF;
+
     -- Post-State in derselben Transaktion: freie Salden saldo-basierter Konten, Ziel-Stand.
     SELECT a.name INTO v_pot
       FROM finance.savings_goals g
@@ -176,7 +182,9 @@ BEGIN
         'effective', jsonb_build_object(
             'from_account_id', v_from, 'from_account_name', v_fname, 'from_currency', CASE WHEN v_fdepot THEN 'EUR' ELSE v_fccy END,
             'to_account_id', v_to, 'to_account_name', v_tname, 'to_currency', CASE WHEN v_tdepot THEN 'EUR' ELSE v_tccy END,
-            'rate_pot_name', v_pot))
+            'rate_pot_name', v_pot) || COALESCE(v_fold->'effective', '{}'::jsonb),
+        'card_lines', COALESCE(v_fold->'card_lines', '[]'::jsonb))
+        || (v_fold - 'card_lines' - 'effective')
         || CASE WHEN v_fdepot THEN '{}'::jsonb
                 ELSE jsonb_build_object('from_free_balance', round(finance.fn_account_free_balance(v_from), 2)) END
         || CASE WHEN v_tdepot THEN '{}'::jsonb

@@ -48,6 +48,12 @@ BEGIN
   IF r->'owner'->'t'->>'core.hitl.approve' IS DISTINCT FROM 'Bestaetigen-DE'
      OR r->'member'->'t'->>'core.hitl.approve' IS DISTINCT FROM 'Confirm-EN' THEN
     RAISE EXCEPTION 'FAIL hitl_texts [Chrome-Key fehlt: %]', r; END IF;
+  -- eigener Knopf-Text (2026-11-06, New-HitlSummary -ApproveKeyExpr): summary.approve_key kommt ins Buendel
+  INSERT INTO core.ui_texts (key, lang, text, package) VALUES ('core.test_approve', 'de', 'Risiko-DE', 'core')
+  ON CONFLICT (key, lang) DO UPDATE SET text = EXCLUDED.text;
+  IF core.fn_hitl_texts(jsonb_build_object('summary', s || '{"approve_key":"core.test_approve"}'::jsonb, 'chat_id', '111'))
+       ->'owner'->'t'->>'core.test_approve' IS DISTINCT FROM 'Risiko-DE' THEN
+    RAISE EXCEPTION 'FAIL hitl_texts [approve_key fehlt im Buendel]'; END IF;
   IF r->'owner'->'t'->>'core.test_enum_dir.out_flow' IS DISTINCT FROM 'Ausgabe' THEN
     RAISE EXCEPTION 'FAIL hitl_texts [Enum-Key nicht normalisiert: %]', r->'owner'->'t'; END IF;
   IF NOT (r->'owner'->'t' ? 'core.test_note') OR NOT (r->'owner'->'t' ? 'core.test_amount')

@@ -1402,6 +1402,30 @@
     "final": "Das Sparziel Altersvorsorge 2050 habe ich nicht gefunden."
   },
   {
+    "_comment": "oc50 Antwort auf die Umschicht-Erinnerung (das bleibt so) -> Call_agent_finance_ (der Berater bucht nie; das Abwaegen prueft der bezahlte orch_test).",
+    "match": "Zur Erinnerung wegen der Hausanzahlung",
+    "calls": [
+      { "tool": "Call_agent_finance_", "args": { "task": "Zur Erinnerung wegen der Hausanzahlung: Das Geld soll im Depot bleiben, das bleibt so." } }
+    ],
+    "final": "Der Buchhalter kuemmert sich darum."
+  },
+  {
+    "_comment": "tc118 Sparziel kurz vor dem Termin im Depot: das bleibt so -> set depot_risk_accepted=true (2026-11-06).",
+    "match": "Das Geld soll bewusst im Depot bleiben, das bleibt so",
+    "calls": [
+      { "tool": "tool_set_savings_goal", "args": { "goal_name": "__E2E__ Hausanzahlung", "depot_risk_accepted": "true" } }
+    ],
+    "final": "Alles klar, ich habe nichts geändert."
+  },
+  {
+    "_comment": "tc119 Erinnerung zum Umschichten wieder einschalten -> set depot_risk_accepted=false (2026-11-06).",
+    "match": "Erinnere mich wieder an das Umschichten",
+    "calls": [
+      { "tool": "tool_set_savings_goal", "args": { "goal_name": "__E2E__ Hausanzahlung", "depot_risk_accepted": "false" } }
+    ],
+    "final": "Alles klar, ich habe nichts geändert."
+  },
+  {
     "_comment": "Mehrfach-Leser (infra_cases ic43*): Vision-Antwort mit source_file. Datei 1 = X, X, B; Datei 2 = B, C; Datei 3 leer. Zeilen ohne bekanntes Depot -> ungueltig -> keine Karte.",
     "match": "Leser-Test Ueberlappung",
     "driver": "tests/agent/core/infra_cases.json",

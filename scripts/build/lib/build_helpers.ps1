@@ -286,6 +286,8 @@ function Get-WritePayloadExpr {
 #   r.effective = Werte, die die fn selbst gesetzt hat (Default-Datum, Gebuehr 0, abgeleitete Konten): sie gehen FEST
 #   in den echten Write, damit Karte und Buchung dasselbe zeigen (auch bei einem Tipp nach Mitternacht).
 #   CardLinesExpr = r.card_lines (Hinweis-Zeilen {kind:'note'} der fn) fuer New-HitlSummary -LinesExpr.
+#   ApproveKeyExpr = r.card_approve_key (eigener Knopf-Text-Key der fn, z. B. finance.hitl.accept_depot_risk; leer =
+#   Standard) fuer New-HitlSummary -ApproveKeyExpr.
 #   Eine echte Exception der fn bricht schon den Probelauf ab (errorWorkflow alarmiert), wie vorher den Write.
 #   Der echte Write prueft erneut (Bestand kann sich zwischen Karte und Tipp aendern) -> 'Write ok?' bleibt im Tool.
 function New-FnWriteGate {
@@ -321,6 +323,7 @@ function New-FnWriteGate {
         Dry = $dry; DryOk = $dryOk; Reject = $reject; Write = $write
         DryName = $DryName; DryOkName = $DryOkName; RejectName = $RejectName; WriteName = $WriteName
         CardLinesExpr = "($D.card_lines || [])"
+        ApproveKeyExpr = "($D.card_approve_key || '')"
         Nodes = @($dry, $dryOk, $reject, $write)
     }
 }
@@ -692,10 +695,12 @@ function Resolve-TgTextExpr([string]$TextExpr, [bool]$NoEscape) {
 #     Aufruf ohne Locale bricht den Build ab (sonst formatierte ein Send still deutsch fuer jeden Empfaenger).
 #     Fmt-DateJs rendert per Intl (de 31.12.2026, en-GB 31/12/2026, ko 2026. 12. 31.), ein Nicht-ISO-Wert kommt roh
 #     zurueck (nie werfen: ein LLM-Tippfehler darf das Gate nicht lahmlegen).
-function Fmt-MoneyJs([string]$AmountExpr, [string]$CurrencyExpr, [string]$LocaleExpr) {
+function Fmt-MoneyJs([string]$AmountExpr, [string]$CurrencyExpr, [string]$LocaleExpr, [switch]$WholeUnits) {
     if ([string]::IsNullOrWhiteSpace($LocaleExpr)) { throw "Fmt-MoneyJs: -LocaleExpr fehlt (Locale des Empfaengers, z. B. aus core.fn_ui_texts_for)" }
+    # -WholeUnits (2026-11-06, core.fn_ui_money p_whole -> digits:0): ganze Einheiten; ohne den Schalter byte-gleich
+    $whole = if ($WholeUnits) { ",minimumFractionDigits:0,maximumFractionDigits:0" } else { '' }
     'Number(' + $AmountExpr + ").toLocaleString(" + $LocaleExpr + ",{style:'currency',currency:(/^[A-Za-z]{3}$/.test(" +
-        $CurrencyExpr + ')?' + $CurrencyExpr + ":'EUR'),currencyDisplay:'narrowSymbol'})"
+        $CurrencyExpr + ')?' + $CurrencyExpr + ":'EUR'),currencyDisplay:'narrowSymbol'" + $whole + "})"
 }
 function Fmt-DateJs([string]$DateExpr, [string]$LocaleExpr) {
     if ([string]::IsNullOrWhiteSpace($LocaleExpr)) { throw "Fmt-DateJs: -LocaleExpr fehlt (Locale des Empfaengers, z. B. aus core.fn_ui_texts_for)" }
@@ -915,14 +920,16 @@ function New-HitlNote {
 #   formuliert (sonst gilt der Hash des ganzen Summary); gleicher Schluessel = dieselbe Karte, auch bei anderem Text.
 function New-HitlSummary {
     param([string]$Name = 'Build Approval Summary', [int[]]$Pos, [Parameter(Mandatory)][string]$Title,
-          [hashtable]$TitleParams, [string[]]$Lines = @(), [string]$LinesExpr, [string]$RepeatKey)
+          [hashtable]$TitleParams, [string[]]$Lines = @(), [string]$LinesExpr, [string]$RepeatKey, [string]$ApproveKeyExpr)
     Assert-HitlKey $Title "New-HitlSummary '$Title'"
     Assert-HitlTplParams "'$Title'" $TitleParams "New-HitlSummary '$Title'"
     $tp =if ($TitleParams -and $TitleParams.Count) { ', title_params: { ' + ((($TitleParams.Keys | Sort-Object) | ForEach-Object { "${_}: (" + $TitleParams[$_] + ')' }) -join ', ') + ' }' } else { '' }
     $arr = '[ ' + ($Lines -join ', ') + ' ]'
     if ($LinesExpr) { Assert-HitlExprKeys $LinesExpr "New-HitlSummary '$Title'"; $arr = "$arr.concat($LinesExpr)" }
     $rk = if ($RepeatKey) { ", repeat_key: ($RepeatKey)" } else { '' }
-    $inner = "{ title: '$Title'$tp$rk, lines: $arr.filter(Boolean) }"
+    # eigener Knopf-Text (2026-11-06): Key-Ausdruck aus dem Probelauf (New-FnWriteGate ApproveKeyExpr); leer = Standard
+    $ak = if ($ApproveKeyExpr) { Assert-HitlExprKeys $ApproveKeyExpr "New-HitlSummary '$Title'"; ", approve_key: ($ApproveKeyExpr)" } else { '' }
+    $inner = "{ title: '$Title'$tp$rk$ak, lines: $arr.filter(Boolean) }"
     if ($inner -match '\}\}') { throw "New-HitlSummary '$Title': '}}' im Ausdruck (n8n beendet die Expression) — Leerzeichen setzen" }
     Build-Set $Name $Pos @( ,@('summary', "={{ ($inner) }}", 'object') )
 }
@@ -948,6 +955,7 @@ function New-HitlSummary {
 $script:UiRenderKeys = @('core.fmt.empty', 'core.fmt.default_suffix', 'core.fmt.yes', 'core.fmt.no', 'core.fmt.removed')
 function Get-UiRenderLibJs {
     $money = Fmt-MoneyJs 'n' 'cur' -LocaleExpr 'loc'
+    $money0 = Fmt-MoneyJs 'n' 'cur' -LocaleExpr 'loc' -WholeUnits
     $date  = Fmt-DateJs 'v' -LocaleExpr 'loc'
     $js = @'
 function uiRender(B, LANGS) {
@@ -974,15 +982,17 @@ function uiRender(B, LANGS) {
     });
   }
   // sign = true (core.fn_ui_money p_sign): '+' vor positive Betraege (Gewinn seit Kauf); negative tragen ihr Minus ohnehin.
-  function money(v, c, sign) {
+  // digits = 0 (core.fn_ui_money p_whole): ganze Einheiten fuer Schaetzwerte; der Wert selbst bleibt genau (gerundet nur hier).
+  function money(v, c, sign, digits) {
     if (isEmpty(v)) return empty;
     const n = Number(v);
     if (!isFinite(n)) return String(v);
     const plus = (sign === true && n > 0) ? '+' : '';
     // Ohne gueltigen Waehrungscode KEIN stilles EUR (ein USD-Betrag sahe sonst wie Euro aus): Zahl + Rohcode.
-    if (!(typeof c === 'string' && /^[A-Za-z]{3}$/.test(c))) return plus + num(v, 2) + (isEmpty(c) ? '' : ' ' + String(c));
+    const whole = (digits === 0);
+    if (!(typeof c === 'string' && /^[A-Za-z]{3}$/.test(c))) return plus + num(v, whole ? 0 : 2) + (isEmpty(c) ? '' : ' ' + String(c));
     const cur = c.toUpperCase();
-    try { return plus + __MONEY__; } catch (e) { return plus + String(v) + ' ' + cur; }
+    try { return plus + (whole ? __MONEY0__ : __MONEY__); } catch (e) { return plus + String(v) + ' ' + cur; }
   }
   // B.date_short = {from, to} (nur die Mini-App, core.fn_app_screen): ein ISO-Datum im Fenster [from, to) ohne Jahr
   // (String-Vergleich, die App rechnet kein Datum); Chat/HITL/Cron setzen es nie -> dort immer mit Jahr.
@@ -1042,7 +1052,7 @@ function uiRender(B, LANGS) {
     if (Array.isArray(x)) return x.length ? x.map(val).join(', ') : empty;
     const v = x.value;
     switch (x.kind) {
-      case 'money': return money(v, x.currency, x.sign);
+      case 'money': return money(v, x.currency, x.sign, x.digits);
       case 'date': return date(v);
       case 'month': return month(v, x.style);
       case 'number': return num(v, x.digits, x.sign);
@@ -1071,7 +1081,7 @@ function uiRender(B, LANGS) {
   return { T, loc, has, t, empty, isEmpty, fill, money, date, num, val, msg, lines };
 }
 '@
-    $js.Replace('__MONEY__', $money).Replace('__DATE__', $date)
+    $js.Replace('__MONEY0__', $money0).Replace('__MONEY__', $money).Replace('__DATE__', $date)
 }
 
 function Get-HitlComposeJs {
@@ -1186,7 +1196,8 @@ function make(B) {
 const O = make(R.owner) || make({ lang: 'en', locale: 'en-GB', t: {} });
 const M = make(R.member) || O;
 const mname = (R.member && R.member.name) || '';
-const chrome = (X) => ({ approve: X.t('core.hitl.approve'), cancel: X.t('core.hitl.cancel'),
+// approve_key (New-HitlSummary -ApproveKeyExpr): eigener Knopf-Text einer Karte (z. B. "Risiko eingehen"), sonst der Standard
+const chrome = (X) => ({ approve: X.t((S && typeof S === 'object' && S.approve_key) ? S.approve_key : 'core.hitl.approve'), cancel: X.t('core.hitl.cancel'),
   unauthorized: X.t('core.hitl.unauthorized') });
 const oText = O.msg('', O.t('core.hitl.hint'));
 const oStage2 = O.msg(O.fill(O.t('core.hitl.member_requests'), { name: mname }), O.t('core.hitl.hint'));

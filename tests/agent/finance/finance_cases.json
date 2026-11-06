@@ -1310,5 +1310,33 @@
                                },
         "expected_behavior":  "Ruft tool_create_recurring_transfer mit executed_by=bank auf, weil die Nutzerin sagt, dass der Uebertrag als Dauerauftrag bei ihrer Bank laeuft.",
         "notes":  "Bank-Hinweis nur, wo er passt (2026-11-06). Gepaart mit tc116 (manual)."
+    },
+    {
+        "id":  "tc118",
+        "name":  "Depot-Geld eines nahen Sparziels soll bewusst bleiben -> depot_risk_accepted=true",
+        "task":  "Zum Sparziel __E2E__ Hausanzahlung: Das Geld soll bewusst im Depot bleiben, das bleibt so.",
+        "chat_id":  "test_tc118",
+        "setup_sql":  "SELECT pg_temp.ok('__E2E__ DR Cash', finance.fn_create_account(jsonb_build_object('name','__E2E__ DR Cash','account_type','cash','currency','EUR'))); SELECT pg_temp.ok('__E2E__ DR Depot', finance.fn_create_account(jsonb_build_object('name','__E2E__ DR Depot','account_type','stocks_depot','currency','EUR','settlement_id',(SELECT id FROM finance.accounts WHERE name='__E2E__ DR Cash')))); SELECT pg_temp.ok('__E2E__ Hausanzahlung', finance.fn_create_savings_goal(jsonb_build_object('name','__E2E__ Hausanzahlung','target_amount',14000,'target_date',(date_trunc('month', core.fn_today()) + interval '28 months' + interval '10 days')::date::text,'reserve_account_id',(SELECT id FROM finance.accounts WHERE name='__E2E__ DR Depot'),'already_saved',14000)));",
+        "expected_tool":  "tool_set_savings_goal",
+        "expected_tool_args":  {
+                                   "goal_name":  "__E2E__ Hausanzahlung",
+                                   "depot_risk_accepted":  "true"
+                               },
+        "expected_behavior":  "Ruft tool_set_savings_goal mit depot_risk_accepted=true fuer das genannte Ziel auf, ohne vorher lange gegen das Risiko zu argumentieren (die Karte zeigt es). Rechnet keinen Betrag selbst aus. Nach einer Ablehnung der Karte sagt er, dass nichts geaendert wurde.",
+        "notes":  "Sparziel unter 5 Jahren im Depot als bewusste Ausnahme (2026-11-06). Ziel per setup_sql (die Fixtures haben kein aktives Ziel im Depot). Mock-Tier: Szenario 'das bleibt so'."
+    },
+    {
+        "id":  "tc119",
+        "name":  "Erinnerung zum Umschichten wieder einschalten -> depot_risk_accepted=false",
+        "task":  "Erinnere mich wieder an das Umschichten beim Sparziel __E2E__ Hausanzahlung.",
+        "chat_id":  "test_tc119",
+        "setup_sql":  "SELECT pg_temp.ok('__E2E__ DR Cash', finance.fn_create_account(jsonb_build_object('name','__E2E__ DR Cash','account_type','cash','currency','EUR'))); SELECT pg_temp.ok('__E2E__ DR Depot', finance.fn_create_account(jsonb_build_object('name','__E2E__ DR Depot','account_type','stocks_depot','currency','EUR','settlement_id',(SELECT id FROM finance.accounts WHERE name='__E2E__ DR Cash')))); SELECT pg_temp.ok('__E2E__ Hausanzahlung', finance.fn_create_savings_goal(jsonb_build_object('name','__E2E__ Hausanzahlung','target_amount',14000,'target_date',(date_trunc('month', core.fn_today()) + interval '28 months' + interval '10 days')::date::text,'reserve_account_id',(SELECT id FROM finance.accounts WHERE name='__E2E__ DR Depot'),'already_saved',14000))); SELECT pg_temp.ok('__E2E__ DR Entscheidung', finance.fn_goal_depot_risk_fold((SELECT id FROM finance.savings_goals WHERE name='__E2E__ Hausanzahlung'), finance.fn_goal_depot_risk_fold((SELECT id FROM finance.savings_goals WHERE name='__E2E__ Hausanzahlung'), NULL)->'effective'->'depot_risk_shown'));",
+        "expected_tool":  "tool_set_savings_goal",
+        "expected_tool_args":  {
+                                   "goal_name":  "__E2E__ Hausanzahlung",
+                                   "depot_risk_accepted":  "false"
+                               },
+        "expected_behavior":  "Ruft tool_set_savings_goal mit depot_risk_accepted=false fuer das genannte Ziel auf, ohne vorher nachzufragen. Nach einer Ablehnung der Karte sagt er, dass nichts geaendert wurde; nach einer Bestaetigung erklaert er in einfachen Worten, dass der Berater sich wieder meldet, sobald zu viel Geld des Ziels im Depot liegt.",
+        "notes":  "Sparziel unter 5 Jahren im Depot als bewusste Ausnahme (2026-11-06). Ziel und Entscheidung per setup_sql. Mock-Tier: Szenario 'Erinnere mich wieder an das Umschichten'."
     }
 ]

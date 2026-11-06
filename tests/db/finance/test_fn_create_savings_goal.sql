@@ -324,7 +324,7 @@ ROLLBACK TO SAVEPOINT sg_fold;
 --  (C2) teilweise gedeckt: Rate auf dem Rest, rp in den Topf, Startbestand im Journal
 --  (C3) keine Quelle (kein Startbestand, keine Rate/kein Abbuchungskonto, kein Sparplan) -> ok:false, kein Write
 --  (C4) Startbestand groesser als der freie Saldo -> ok:false insufficient_free_balance, kein Write
---  (C5) Depot als Topf, voll gedeckt durch Depot-Zuordnung (EUR) -> ok, keine rp
+--  (C5) Depot als Topf, voll gedeckt durch Depot-Zuordnung (EUR) -> ok, keine rp, Warnkarte (Ziel kurz vor dem Termin)
 --  (C6) Depot als Topf, nicht gedeckt, ohne Sparplan -> ok:false
 --  (C7) Sparplan bei Anlage verknuepfen: keine eigene rp, required_monthly_rate + plan_monthly_amount, Plan gebunden
 --  (C8) Sparplan, der schon an ein anderes Ziel gebunden ist -> ok:false
@@ -384,8 +384,13 @@ BEGIN
            'target_date',(core.fn_today() + 900)::text,'reserve_account_id',v_depot,'already_saved',5000));
   IF (v_r->>'ok')::boolean IS DISTINCT FROM true OR v_r->>'recurring_payment_id' IS NOT NULL
      OR (SELECT currency FROM finance.savings_goal_reserve_entries WHERE savings_goal_id = (v_r->>'goal_id')::int) IS DISTINCT FROM 'EUR'
-     OR NOT (v_r->'card_lines' @> '[{"value":"finance.note.goal_derisk_window"}]'::jsonb) THEN
-    RAISE EXCEPTION 'FAIL create [C5 Depot gedeckt + Umschicht-Hinweis im Fenster]: %', v_r; END IF;
+     -- 2026-11-06: Startbestand 5000 im Depot liegt ueber dem Pfad (Ziel 4000 in ~30 Monaten) -> Warnkarte mit Knopf
+     -- "Risiko eingehen" statt des weichen Hinweises; ohne gezeigte Lage kein Stempel
+     OR NOT (v_r->'card_lines' @> '[{"value":"finance.note.goal_depot_risk"}]'::jsonb)
+     OR v_r->>'card_approve_key' IS DISTINCT FROM 'finance.hitl.accept_depot_risk'
+     OR (v_r->'effective'->'depot_risk_shown'->>'limit_eur')::numeric IS DISTINCT FROM 5000
+     OR EXISTS (SELECT 1 FROM finance.savings_goal_risk_decisions WHERE savings_goal_id = (v_r->>'goal_id')::int) THEN
+    RAISE EXCEPTION 'FAIL create [C5 Depot gedeckt + Warnkarte im Fenster]: %', v_r; END IF;
   v_r := finance.fn_create_savings_goal(jsonb_build_object('name','__sgc Haus__','target_amount',40000,
            'target_date',(core.fn_today() + 900)::text,'account_id',v_giro,'reserve_account_id',v_depot,'already_saved',1000));
   IF (v_r->>'ok')::boolean IS DISTINCT FROM false THEN RAISE EXCEPTION 'FAIL create [C6 Depot ohne Sparplan]: %', v_r; END IF;

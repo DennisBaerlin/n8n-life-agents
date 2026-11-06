@@ -1149,6 +1149,8 @@ ROLLBACK TO SAVEPOINT fxgap;
 --   (D2) Ziel in 7 Jahren -> ausserhalb des Fensters, kein Alert
 --   (D3) nur knapp ueber erlaubt (unter Toleranz) -> kein Alert
 --   (D4) Fenster per Config 12 Monate -> erlaubt = Ziel, kein Alert fuer D1
+--   (D5) bewusst bestaetigt -> kein Alert; (D6) Entscheidung abgelaufen -> Alert mit goal_derisk_expired + _final
+--   (D7) Zielmonat: latch_keys bleibt y1 (vorher y0 = zweite Meldung im letzten Jahr)
 -- ============================================================
 SAVEPOINT derisk;
 DO $$
@@ -1180,7 +1182,7 @@ BEGIN
      OR (a->>'value')::numeric IS DISTINCT FROM 10000 OR (a->>'target')::numeric IS DISTINCT FROM v_allowed
      OR a->'latch_keys' IS DISTINCT FROM jsonb_build_array('y' || ceil(v_months / 12.0)::int)
      OR (a->'msg')::text NOT LIKE '%finance.advisor.goal_derisk"%' OR (a->'msg')::text NOT LIKE '%finance.advisor.goal_derisk_plan%'
-     OR (a->'msg')::text NOT LIKE '%finance.advisor.goal_derisk_tax%' THEN
+     OR (a->'msg')::text NOT LIKE '%finance.advisor.goal_derisk_keep%' THEN
     RAISE EXCEPTION 'FAIL [D1 derisk-Alert]: %', a; END IF;
   -- (D2)/(D3)
   IF EXISTS (SELECT 1 FROM jsonb_array_elements(r->'alerts') x WHERE x->>'metric_key' IN ('savings_goal_derisk:' || v_g2, 'savings_goal_derisk:' || v_g3)) THEN
@@ -1192,7 +1194,34 @@ BEGIN
   -- 12-Monats-Fenster: bei 12 Restmonaten darf alles im Depot liegen, bei 13 liegt das Ziel ausserhalb -> kein Alert
   IF EXISTS (SELECT 1 FROM jsonb_array_elements(r->'alerts') x WHERE x->>'metric_key' = 'savings_goal_derisk:' || v_g1) THEN
     RAISE EXCEPTION 'FAIL [D4 Config-Fenster]: %', r->'alerts'; END IF;
-  RAISE NOTICE 'PASS [D1-D4: Umschicht-Alert im Fenster mit Vorschlag + Plan-Satz; ausserhalb/unter Toleranz still; Fenster per Config]';
+  DELETE FROM core.config WHERE category = 'advisor' AND key = 'derisk_window_months';
+
+  -- (D5) bewusste Ausnahme 2026-11-06: gueltige Entscheidung -> still; (D6) abgelaufen (Entscheidung vor dem Stichtag
+  -- 12 Monate vor dem Termin, heute danach) -> genau die Meldung "du wolltest es bewusst so"; Latch im Zielmonat y1.
+  INSERT INTO finance.savings_goal_risk_decisions (savings_goal_id, event, decided_at, target_date, limit_eur, allowed_eur)
+    VALUES (v_g1, 'accept', now(), current_date + 365, 10000, v_allowed);
+  r := finance.fn_advisor_review('finance');
+  IF EXISTS (SELECT 1 FROM jsonb_array_elements(r->'alerts') x WHERE x->>'metric_key' = 'savings_goal_derisk:' || v_g1) THEN
+    RAISE EXCEPTION 'FAIL [D5 bestaetigt -> still]: %', r->'alerts'; END IF;
+  -- Entscheidung von vor zwei Jahren: der Stichtag (Termin - 12 Monate) liegt heute schon hinter uns
+  INSERT INTO finance.savings_goal_risk_decisions (savings_goal_id, event, decided_at, target_date, limit_eur, allowed_eur)
+    VALUES (v_g1, 'accept', now() + interval '1 second', current_date + 365, 10000, v_allowed);
+  UPDATE finance.savings_goal_risk_decisions SET decided_at = now() - interval '2 years' WHERE savings_goal_id = v_g1;
+  r := finance.fn_advisor_review('finance');
+  SELECT x INTO a FROM jsonb_array_elements(r->'alerts') x WHERE x->>'metric_key' = 'savings_goal_derisk:' || v_g1;
+  IF a IS NULL OR (a->'msg')::text NOT LIKE '%finance.advisor.goal_derisk_expired%'
+     OR (a->'msg')::text NOT LIKE '%finance.advisor.goal_derisk_final%' THEN
+    RAISE EXCEPTION 'FAIL [D6 abgelaufen -> letzte Erinnerung]: %', a; END IF;
+  -- (D7) Bestandsfehler y0: im Zielmonat (Restmonate 0) bleibt der Latch-Schluessel y1
+  UPDATE finance.savings_goals SET target_date = (date_trunc('month', current_date) + interval '1 month' - interval '1 day')::date WHERE id = v_g1;
+  DELETE FROM finance.savings_goal_risk_decisions WHERE savings_goal_id = v_g1;
+  r := finance.fn_advisor_review('finance');
+  SELECT x INTO a FROM jsonb_array_elements(r->'alerts') x WHERE x->>'metric_key' = 'savings_goal_derisk:' || v_g1;
+  -- am Monatsletzten ist der Termin heute (nicht mehr im Fenster) -> dann nichts pruefen
+  IF (date_trunc('month', current_date) + interval '1 month' - interval '1 day')::date > current_date
+     AND (a IS NULL OR a->'latch_keys' IS DISTINCT FROM '["y1"]'::jsonb) THEN
+    RAISE EXCEPTION 'FAIL [D7 Latch im Zielmonat y1]: %', a; END IF;
+  RAISE NOTICE 'PASS [D1-D7: Umschicht-Alert im Fenster mit Vorschlag + Plan-Satz; ausserhalb/unter Toleranz still; Fenster per Config; bestaetigt still, abgelaufen einmal; Latch y1 im Zielmonat]';
 END $$;
 ROLLBACK TO SAVEPOINT derisk;
 

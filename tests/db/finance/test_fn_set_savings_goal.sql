@@ -291,3 +291,82 @@ BEGIN
 END $$;
 
 ROLLBACK;
+
+-- Sparziel kurz vor dem Termin im Depot (2026-11-06): depot_risk_accepted true ("das bleibt so") / false ("erinnere mich
+-- wieder"), Ablehnungen no_depot_risk / already_accepted / no_depot_risk_decision, Datum vorziehen faltet, Umbenennen nicht.
+BEGIN;
+DO $$
+DECLARE
+  v_settle int; v_depot int; v_g int; v_far int; v_r jsonb; s record; v_cnt int;
+BEGIN
+  v_settle := (finance.fn_create_account('{"name":"__sgdr_settle__","account_type":"cash"}'::jsonb)->>'account_id')::int;
+  v_depot  := (finance.fn_create_account(jsonb_build_object('name','__sgdr_depot__','account_type','stocks_depot','settlement_id',v_settle))->>'account_id')::int;
+  -- Ziel 10000 in 48 Monaten, 7000 im Depot: erlaubt 8000 -> im Pfad, nur weicher Hinweis
+  INSERT INTO finance.savings_goals (name, target_amount, target_date, status)
+    VALUES ('__sgdr Auto__', 10000, (date_trunc('month', current_date) + interval '48 months' + interval '10 days')::date, 'active')
+    RETURNING id INTO v_g;
+  INSERT INTO finance.savings_goal_reserve_entries (savings_goal_id, account_id, delta_native, currency, kind)
+    VALUES (v_g, v_depot, 7000, 'EUR', 'manual');
+  INSERT INTO finance.savings_goals (name, target_amount, target_date, status)
+    VALUES ('__sgdr Rente__', 10000, (current_date + interval '9 years')::date, 'active') RETURNING id INTO v_far;
+  INSERT INTO finance.savings_goal_reserve_entries (savings_goal_id, account_id, delta_native, currency, kind)
+    VALUES (v_far, v_depot, 7000, 'EUR', 'manual');
+
+  -- (R1) "das bleibt so" auch im Pfad -> Warnkarte (p_force), Stempel erst mit der gezeigten Lage
+  v_r := finance.fn_set_savings_goal(jsonb_build_object('goal_id', v_g, 'depot_risk_accepted', 'true'));
+  IF (v_r->>'ok')::boolean IS DISTINCT FROM true OR NOT (v_r->'card_lines' @> '[{"value":"finance.note.goal_depot_risk"}]'::jsonb)
+     OR v_r->>'card_approve_key' IS DISTINCT FROM 'finance.hitl.accept_depot_risk'
+     OR (v_r->'effective'->'depot_risk_shown'->>'limit_eur')::numeric IS DISTINCT FROM 7000
+     OR EXISTS (SELECT 1 FROM finance.savings_goal_risk_decisions WHERE savings_goal_id = v_g) THEN
+    RAISE EXCEPTION 'FAIL set [R1 das bleibt so: Karte]: %', v_r; END IF;
+  v_r := finance.fn_set_savings_goal(jsonb_build_object('goal_id', v_g, 'depot_risk_accepted', 'true',
+           'depot_risk_shown', v_r->'effective'->'depot_risk_shown'));
+  IF (v_r->>'ok')::boolean IS DISTINCT FROM true OR NOT (v_r->'depot_risk' ? 'reminder_month')
+     OR NOT (SELECT accepted FROM finance.fn_savings_goal_derisk_status(v_g)) THEN
+    RAISE EXCEPTION 'FAIL set [R1 das bleibt so: Stempel]: %', v_r; END IF;
+  RAISE NOTICE 'PASS set [R1 das bleibt so: Karte, dann Stempel]';
+
+  -- (R2) schon bestaetigt -> already_accepted; (R3) ausserhalb des Fensters -> no_depot_risk
+  v_r := finance.fn_set_savings_goal(jsonb_build_object('goal_id', v_g, 'depot_risk_accepted', 'true'));
+  IF v_r->>'code' IS DISTINCT FROM 'already_accepted' THEN RAISE EXCEPTION 'FAIL set [R2 already_accepted]: %', v_r; END IF;
+  v_r := finance.fn_set_savings_goal(jsonb_build_object('goal_id', v_far, 'depot_risk_accepted', 'true'));
+  IF v_r->>'code' IS DISTINCT FROM 'no_depot_risk' THEN RAISE EXCEPTION 'FAIL set [R3 no_depot_risk]: %', v_r; END IF;
+  v_r := finance.fn_set_savings_goal(jsonb_build_object('goal_id', v_g, 'depot_risk_accepted', 'vielleicht'));
+  IF (v_r->>'ok')::boolean IS DISTINCT FROM false THEN RAISE EXCEPTION 'FAIL set [R3 ungueltiger Wert]: %', v_r; END IF;
+  RAISE NOTICE 'PASS set [R2 already_accepted, R3 no_depot_risk + ungueltiger Wert]';
+
+  -- (R4) Umbenennen faltet nicht; Datum nach hinten -> Stichtag wandert mit, Entscheidung bleibt
+  v_r := finance.fn_set_savings_goal(jsonb_build_object('goal_id', v_g, 'name', '__sgdr Auto neu__'));
+  IF v_r->'card_lines' @> '[{"value":"finance.note.goal_depot_risk"}]'::jsonb OR v_r ? 'card_approve_key' THEN
+    RAISE EXCEPTION 'FAIL set [R4 Umbenennen ohne Fold]: %', v_r; END IF;
+  PERFORM finance.fn_set_savings_goal(jsonb_build_object('goal_id', v_g,
+            'target_date', to_char((date_trunc('month', current_date) + interval '50 months' + interval '10 days')::date, 'YYYY-MM-DD')));
+  SELECT * INTO s FROM finance.fn_savings_goal_derisk_status(v_g);
+  IF NOT s.accepted OR s.final_check_date IS DISTINCT FROM (date_trunc('month', current_date) + interval '38 months' + interval '10 days')::date THEN
+    RAISE EXCEPTION 'FAIL set [R4 Datum nach hinten]: %', row_to_json(s); END IF;
+  RAISE NOTICE 'PASS set [R4 Umbenennen ohne Fold, spaeteres Datum laesst die Entscheidung gelten]';
+
+  -- (R5) "erinnere mich wieder" -> revoke + Hinweis; ohne gueltige Entscheidung -> no_depot_risk_decision
+  v_r := finance.fn_set_savings_goal(jsonb_build_object('goal_id', v_g, 'depot_risk_accepted', 'false'));
+  SELECT count(*) INTO v_cnt FROM finance.savings_goal_risk_decisions WHERE savings_goal_id = v_g AND event = 'revoke';
+  IF (v_r->>'ok')::boolean IS DISTINCT FROM true OR v_cnt <> 1
+     OR NOT (v_r->'card_lines' @> '[{"value":"finance.note.goal_depot_risk_revoked"}]'::jsonb)
+     OR (SELECT accepted FROM finance.fn_savings_goal_derisk_status(v_g)) THEN
+    RAISE EXCEPTION 'FAIL set [R5 revoke]: %', v_r; END IF;
+  v_r := finance.fn_set_savings_goal(jsonb_build_object('goal_id', v_g, 'depot_risk_accepted', 'false'));
+  IF v_r->>'code' IS DISTINCT FROM 'no_depot_risk_decision' THEN RAISE EXCEPTION 'FAIL set [R5 no_depot_risk_decision]: %', v_r; END IF;
+  -- Aufheben zusammen mit einer Datumsaenderung -> depot_risk_alone, ohne Write (Code-Review 2026-11-06)
+  v_r := finance.fn_set_savings_goal(jsonb_build_object('goal_id', v_g, 'depot_risk_accepted', 'false',
+           'target_date', to_char((date_trunc('month', current_date) + interval '30 months')::date, 'YYYY-MM-DD')));
+  IF v_r->>'code' IS DISTINCT FROM 'depot_risk_alone' THEN RAISE EXCEPTION 'FAIL set [R5 depot_risk_alone]: %', v_r; END IF;
+  RAISE NOTICE 'PASS set [R5 erinnere mich wieder: revoke als neuer Eintrag; ohne Entscheidung abgelehnt]';
+
+  -- (R6) Datum vorziehen in den Bereich ueber dem Pfad -> Warnkarte (Ziel in 20 Monaten, erlaubt 3333,33, 7000 im Depot)
+  v_r := finance.fn_set_savings_goal(jsonb_build_object('goal_id', v_g,
+           'target_date', to_char((date_trunc('month', current_date) + interval '20 months' + interval '10 days')::date, 'YYYY-MM-DD')));
+  IF NOT (v_r->'card_lines' @> '[{"value":"finance.note.goal_depot_risk"}]'::jsonb)
+     OR (v_r->'effective'->'depot_risk_shown'->>'allowed_eur')::numeric IS DISTINCT FROM 3333.33 THEN
+    RAISE EXCEPTION 'FAIL set [R6 Datum vorgezogen]: %', v_r; END IF;
+  RAISE NOTICE 'PASS set [R6 vorgezogenes Datum zeigt die Warnkarte]';
+END $$;
+ROLLBACK;

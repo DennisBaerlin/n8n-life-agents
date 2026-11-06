@@ -158,6 +158,10 @@ $cases = @(
         sends=@(@{t='member'; ok=$true}, @{t='owner'; ok=$true}); expected=$true; long=$true; parts=@('member', 'owner'); ownerPart1='Lena' }
     [pscustomobject]@{ id='hitl14'; name='Lange Karte owner_info: Teile an Mitglied, Owner-Info geteilt'; chat_id=$MemberChatId; tier='owner_info'
         sends=@(@{t='member'; ok=$true}); expected=$true; long=$true; parts=@('member', 'owner'); assertOwnerInfo=$true }
+    # Eigener Knopf-Text (2026-11-06): summary.approve_key (New-HitlSummary -ApproveKeyExpr) ersetzt den Bestaetigen-Text,
+    # je Empfaenger-Sprache aus dem Katalog; Abbrechen bleibt.
+    [pscustomobject]@{ id='hitl16'; name='Eigener Knopf-Text: approve_key ersetzt Bestaetigen'; chat_id='999000111'; tier=''; sends=@(@{t='owner'; ok=$true}); expected=$true
+        approveKey='finance.hitl.accept_depot_risk'; approveText=@{ owner = '⚠️ Risiko eingehen'; member = '⚠️ Take the risk' } }
 )
 # Teil-Praefix je Empfaenger-Sprache (core.hitl.part): Owner de "Teil n/N", Mitglied Lena en "Part n/N".
 $PartRx = @{ owner = '^Teil (\d+)/(\d+)\n'; member = '^Part (\d+)/(\d+)\n' }
@@ -214,6 +218,10 @@ foreach ($tc in $cases) {
         # chat_id je Case: 999000111 = ungepairt -> Owner-Pfad; 880055200 = gepairte Partnerin -> Member-Pfad.
         $sum = "HITL probe $($tc.id): bitte bestaetigen."
         if ($tc.long) { $sum = New-LongSummary $tc.id }
+        if ($tc.approveKey) {
+            $sum = [ordered]@{ title = 'core.hitl.publish_plan'; approve_key = $tc.approveKey; lines = @(
+                [ordered]@{ label = 'core.label.note'; kind = 'text'; value = "marker $($tc.id)" }) }
+        }
         if ($tc.structured) {
             $sum = [ordered]@{ title = 'core.hitl.publish_plan'; lines = @(
                 [ordered]@{ label = 'core.label.amount'; kind = 'money'; value = 1234.5; currency = 'EUR' }
@@ -279,7 +287,9 @@ foreach ($tc in $cases) {
             # Textkatalog: Knoepfe + Hinweis in der Sprache DIESES Empfaengers; bei hitl08 zusaetzlich Titel/Betrag/Datum.
             $le = $LangExpect[$snd.t]; $btn = Get-ButtonTexts $msg; $txt = [string]$msg.body.text
             $langBad = @()
-            if ($btn -notcontains $le.approve -or $btn -notcontains $le.cancel) { $langBad += "Knoepfe [$($btn -join ' | ')]" }
+            # hitl16: eigener Knopf-Text aus summary.approve_key statt des Standard-Bestaetigen
+            $wantApprove = if ($tc.approveText) { $tc.approveText[$snd.t] } else { $le.approve }
+            if ($btn -notcontains $wantApprove -or $btn -notcontains $le.cancel) { $langBad += "Knoepfe [$($btn -join ' | ')]" }
             if (-not $txt.Contains($le.hint)) { $langBad += "Hinweis fehlt ('$($le.hint)')" }
             $want = if ($snd.t -eq 'member') { $tc.expectMember } else { $tc.expectOwner }
             foreach ($w in @($want)) { if ($w -and -not $txt.Contains($w)) { $langBad += "Text ohne '$w'" } }

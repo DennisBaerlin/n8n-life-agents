@@ -29,7 +29,7 @@ DECLARE
     'depot_reserve_status',            -- Deckungs-Alarm-Detail je Depot
     'maintenance_reserve_status'];     -- Instandhaltungs-Detail
   v_lists text[] := ARRAY['persons', 'recurring', 'planned_recurring', 'accounts', 'networth', 'savings_plans', 'standing_orders', 'loans', 'insurances',
-    'pensions', 'pension_outlook', 'real_estate', 'goals', 'depot_holdings', 'depot_performance'];
+    'pensions', 'pension_outlook', 'real_estate', 'goals', 'depot_risk', 'depot_holdings', 'depot_performance'];
   v_objects text[] := ARRAY['cashflow_summary', 'parent_cashflow_summary', 'loan_summary', 'emergency_reserve'];
   v_giro INT; v_tg INT; v_closed INT; v_depot INT; v_kind INT;
   v_loan_open INT; v_loan_paid INT; v_pen INT; v_g_ok INT; v_g_done INT;
@@ -193,6 +193,10 @@ BEGIN
      OR (SELECT count(*) FROM jsonb_array_elements(v->'insurances')) <> (SELECT count(*) FROM finance.active_insurances)
      OR (SELECT count(*) FROM jsonb_array_elements(v->'persons')) <> (SELECT count(*) FROM core.fn_household_persons()) THEN
     RAISE EXCEPTION 'FAIL [2l] ungefilterte Listen vollstaendig'; END IF;
+  -- depot_risk (2026-11-06): genau die Ziele im Fenster aus fn_savings_goal_derisk_status, mit der Entscheidung
+  IF (SELECT count(*) FROM jsonb_array_elements(v->'depot_risk')) <> (SELECT count(*) FROM finance.fn_savings_goal_derisk_status() WHERE in_window)
+     OR EXISTS (SELECT 1 FROM jsonb_array_elements(v->'depot_risk') e WHERE NOT (e ? 'accepted' AND e ? 'acceptance_expired' AND e ? 'final_check_date')) THEN
+    RAISE EXCEPTION 'FAIL [2r] depot_risk: %', v->'depot_risk'; END IF;
 
   -- Befund 2026-11-02: Erfasstes ist nie unsichtbar. Startet es bald, steht es mit starts_on in recurring (zaehlt);
   -- startet es spaeter, steht es in planned_recurring (zaehlt noch nicht), Vertragsdaten bleiben draussen

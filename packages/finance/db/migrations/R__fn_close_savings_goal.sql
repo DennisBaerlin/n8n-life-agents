@@ -25,6 +25,8 @@
 --     bleiben Tags/Sparplaene als Erfuellungs-Historie ("dahin ging das Geld"). Das append-only Reserve-Journal
 --     wird bei Soft-Close NICHT mutiert (append-only-Invariante); der status<>'active'-Filter der Deckungs-Views
 --     schliesst die Reserve eines geschlossenen Ziels ohnehin aus.
+--     Soft-Close haengt an eine offene Risiko-Entscheidung (letzter Eintrag accept in savings_goal_risk_decisions) einen
+--     revoke an (2026-11-06); Hard-DELETE nimmt die Eintraege per CASCADE mit.
 --   Eingabe jsonb: savings_goal_name, outcome (opt, Default 'cancelled'), force (opt bool, Default false).
 --   RUECKGABE: {ok:true, action:'deleted'|'closed', status, tx_count} ODER {ok:false, reason, current_amount}.
 --   RAISE fuer echte Ausnahmen (nicht gefunden / mehrdeutig).
@@ -109,6 +111,13 @@ BEGIN
         IF NOT v_completed THEN
             UPDATE finance.transactions SET savings_goal_id = NULL WHERE savings_goal_id = v_goal.id;
             UPDATE finance.savings_plans SET savings_goal_id = NULL WHERE savings_goal_id = v_goal.id;
+        END IF;
+
+        -- Bewusste Risiko-Entscheidung (2026-11-06) endet mit dem Ziel: ein offener accept bekommt einen revoke, damit ein
+        -- wieder geoeffnetes Ziel neu fragt (append-only, nie loeschen).
+        IF (SELECT d.event FROM finance.savings_goal_risk_decisions d WHERE d.savings_goal_id = v_goal.id
+             ORDER BY d.decided_at DESC, d.id DESC LIMIT 1) = 'accept' THEN
+            INSERT INTO finance.savings_goal_risk_decisions (savings_goal_id, event) VALUES (v_goal.id, 'revoke');
         END IF;
 
         RETURN jsonb_build_object('ok', true, 'action', 'closed', 'status', v_status::text, 'tx_count', v_tx_count);

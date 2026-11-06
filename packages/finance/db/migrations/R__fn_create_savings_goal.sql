@@ -23,7 +23,8 @@
 --   geloescht); Quellen + Rate/Datum aus fn_savings_goal_funding (eine Ableitung mit der Import-Karte);
 --   nicht monatlich -> code transfer_not_monthly; replace_transfer=false -> zusaetzliche Rate.
 --   Karten-Hinweise (card_lines): aehnliches Ziel, "gedeckt, Rate 0", Sparplan-Betrag vs. noetige Rate, und bei
---   Depot-Topf/Sparplan ein Ziel im Umschicht-Fenster (advisor.derisk_window_months) -> Kursrisiko-Hinweis.
+--   Depot-Topf/Sparplan die Regel fn_goal_depot_risk_fold (Ziel kurz vor dem Termin: Warnkarte mit Knopf "Risiko
+--   eingehen" + Stempel nach dem Tipp, card_approve_key, effective.depot_risk_shown, depot_risk; sonst weicher Hinweis).
 --   Eingabe jsonb: name, goal_type, target_amount, target_date (opt), monthly_savings_rate (opt), already_saved (opt),
 --   savings_plan (opt), replace_transfer (opt, true|false), account_id (Abbuchungskonto, in n8n aufgeloest; nur fuer
 --   eine Rate), reserve_account_id
@@ -87,6 +88,7 @@ DECLARE
     v_dates   JSONB;
     v_cur     NUMERIC;
     v_lines   JSONB;
+    v_fold    JSONB := '{}'::jsonb;   -- fn_goal_depot_risk_fold
     v_plan_ids   INT[];     -- 2026-10-27: ein oder mehrere Sparplaene (fn_savings_goal_funding)
     v_plan_names TEXT;
     v_old        JSONB;     -- fortgefuehrter Dauerauftrag
@@ -300,7 +302,7 @@ BEGIN
     -- 2. Startbestand zuordnen (dieselbe fn wie die spaetere Zuordnung; der Guard oben hat ihn schon geprueft).
     IF v_saved > 0 THEN
         v_ear := finance.fn_book_savings_reservation(jsonb_build_object(
-            'savings_goal_id', v_goal_id, 'account_id', v_reserve, 'amount', v_saved));
+            'savings_goal_id', v_goal_id, 'account_id', v_reserve, 'amount', v_saved, 'suppress_depot_risk', true));   -- faltet unten selbst
         IF (v_ear->>'ok')::boolean IS DISTINCT FROM true THEN
             RAISE EXCEPTION 'Earmarking the starting amount of savings goal % failed: %', v_goal_id, v_ear->>'reason';
         END IF;
@@ -361,15 +363,14 @@ BEGIN
                     'kind', 'note', 'value', 'finance.note.goal_transfer_rate',
                     'params', jsonb_build_object('name', v_old->>'name', 'monthly', core.fn_ui_money(v_rate),
                                                  'needed', core.fn_ui_money(v_need))))
-                ELSE '[]'::jsonb END
-        -- Umschicht-Fenster (2026-10-27): Depot-Geld oder Sparplan fuer ein Ziel, das schon im Glide-Path-Fenster liegt
-        -- (Config advisor.derisk_window_months, wie fn_savings_goal_derisk_status) -> Hinweis auf das Kursrisiko.
-        || CASE WHEN (v_depot OR v_plan_id IS NOT NULL)
-                     AND v_date <= (current_date + make_interval(months =>
-                         GREATEST(COALESCE(NULLIF(core.fn_config_get('core', 'advisor', 'derisk_window_months'), '')::int, 60), 1)))::date
-                THEN jsonb_build_array(jsonb_build_object('kind', 'note', 'value', 'finance.note.goal_derisk_window',
-                         'params', jsonb_build_object('date', core.fn_ui_date(v_date))))
                 ELSE '[]'::jsonb END;
+    -- Sparziel kurz vor dem Termin im Depot (2026-11-06; ersetzt den Inline-Hinweis mit eigener, taggenauer
+    -- Fenster-Formel): Depot-Topf oder Sparplan -> die eine Regel fn_goal_depot_risk_fold (Warnkarte + Stempel bzw.
+    -- weicher Hinweis). Die innere Reservierung des Startbestands stempelt nie (eigener Payload ohne depot_risk_shown).
+    IF v_depot OR v_plan_ids IS NOT NULL THEN
+        v_fold := finance.fn_goal_depot_risk_fold(v_goal_id, p->'depot_risk_shown');
+        v_lines := v_lines || COALESCE(v_fold->'card_lines', '[]'::jsonb);
+    END IF;
 
     -- Phase L WS-4: Ueber-Spar-Sofort-Hinweis (Event-Fold, geteilter Helfer fn_savings_squeeze_fold). ERST HIER —
     -- nach dem target_account_id-UPDATE ist die Rate als Sparen in monthly_cashflow_summary. Auch bei schon
@@ -400,7 +401,8 @@ BEGIN
                          -- fest in den Write; goal_name fuer die Karte (Feldname des Einzel-Tools)
                          'name', CASE WHEN v_re_id IS NOT NULL OR v_emerg THEN v_name END,
                          'goal_name', CASE WHEN v_re_id IS NOT NULL OR v_emerg THEN v_name END,
-                         'monthly_savings_rate', CASE WHEN v_re_id IS NOT NULL THEN v_rate::text END)))
+                         'monthly_savings_rate', CASE WHEN v_re_id IS NOT NULL THEN v_rate::text END))
+                     || COALESCE(v_fold->'effective', '{}'::jsonb))
         || CASE WHEN v_re_id IS NOT NULL
                 THEN jsonb_build_object('real_estate_id', v_re_id,
                          'recommended_monthly', (v_rec->>'monthly_eur')::numeric,
@@ -411,6 +413,7 @@ BEGIN
         || CASE WHEN v_plan_id IS NOT NULL
                 THEN jsonb_build_object('required_monthly_rate', v_rate, 'plan_monthly_amount', v_plan_monthly)
                 ELSE '{}'::jsonb END
+        || (v_fold - 'card_lines' - 'effective')   -- card_approve_key (Probelauf) bzw. depot_risk (nach dem Stempel)
         || finance.fn_savings_squeeze_fold();
 END;
 $$;

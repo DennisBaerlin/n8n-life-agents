@@ -230,5 +230,16 @@
     "expected_tool": null,
     "expected_behavior": "Part of the goal __E2E__ Reisekasse sits on the account __E2E__ Reise Ausland, whose currency has no exchange rate, and the goal status is unknown. The advisor says that whether the goal is on plan cannot be judged right now, names the missing exchange rate or the account __E2E__ Reise Ausland as the reason, and says the saved amount shown is at least the counted part. It must NOT say the goal is behind plan or recommend a catch-up rate because of being behind. No write tool call.",
     "notes": "Befund 2026-11-06 (Eigenschaft): ein Ziel mit Anteil auf einem Konto ohne Kurs galt als hinter Plan. DB-Seite: test_fn_savings_goal_pace [4c-4e], test_fn_advisor_review (G3). XTS = ISO-4217-Testwaehrung, keine Kursquelle liefert sie; created_at per UPDATE (Test-Zeitreise, keine fn kann das) -> gemessen 10 % gegen erwartet etwa 27 %. Die XTS-Zeile in finance.currencies bleibt nach dem Aufraeumen stehen (Referenztabelle). NULL-Case -> kein Mock-Szenario (mock_lint C1), die Antwort prueft nur der bezahlte Lauf (Judge)."
+  },
+  {
+    "id": "ac21",
+    "name": "Bewusst eingegangenes Depot-Risiko: Berater nennt die Entscheidung, draengt nicht",
+    "task": "Sollte ich beim Sparziel __E2E__ ACR Hausanzahlung etwas umschichten?",
+    "setup_sql": "SELECT pg_temp.ok('__E2E__ ACR Cash', finance.fn_create_account(jsonb_build_object('name','__E2E__ ACR Cash','account_type','cash','currency','EUR'))); SELECT pg_temp.ok('__E2E__ ACR Depot', finance.fn_create_account(jsonb_build_object('name','__E2E__ ACR Depot','account_type','stocks_depot','currency','EUR','settlement_id',(SELECT id FROM finance.accounts WHERE name='__E2E__ ACR Cash')))); SELECT pg_temp.ok('__E2E__ ACR Hausanzahlung', finance.fn_create_savings_goal(jsonb_build_object('name','__E2E__ ACR Hausanzahlung','target_amount',14000,'target_date',(date_trunc('month', core.fn_today()) + interval '28 months' + interval '10 days')::date::text,'reserve_account_id',(SELECT id FROM finance.accounts WHERE name='__E2E__ ACR Depot'),'already_saved',14000))); SELECT pg_temp.ok('__E2E__ ACR Entscheidung', finance.fn_goal_depot_risk_fold((SELECT id FROM finance.savings_goals WHERE name='__E2E__ ACR Hausanzahlung'), finance.fn_goal_depot_risk_fold((SELECT id FROM finance.savings_goals WHERE name='__E2E__ ACR Hausanzahlung'), NULL)->'effective'->'depot_risk_shown'));",
+    "chat_id": "test_ac21",
+    "timeout_s": 240,
+    "expected_tool": null,
+    "expected_behavior": "The user asks whether to shift money of a savings goal whose depot risk they accepted on purpose (the snapshot list depot_risk marks it accepted). The advisor first names this as the user's own decision and lets them decide: it may give the figures from the database neutrally (advised maximum, amount above it, example loss, date of the last check) and list the options, but gives no own recommendation to sell (no I would sell). It books nothing. Recommending or urging to sell as if nothing had been decided is a FAIL.",
+    "notes": "Sparziel unter 5 Jahren im Depot als bewusste Ausnahme (2026-11-06). Ziel + Entscheidung per setup_sql. Mock-Tier: kein Szenario noetig (kein Tool); geprueft wird nur im bezahlten Lauf (Judge)."
   }
 ]

@@ -68,7 +68,7 @@ function Build-CreateSavingsGoal {
     # derselbe Param-Satz geht nach dem Gate in den echten Write.
     $wg = New-FnWriteGate -Fn 'finance.fn_create_savings_goal' -DryPos @(1100, 0) -WritePos @(2420, 0) `
         -WriteName 'Create savings goal (atomic)' `
-        -WriteSelect "(r->>'ok')::boolean AS ok, r->>'reason' AS reason, (r->>'goal_id')::int AS goal_id, (r->>'recurring_payment_id')::int AS recurring_payment_id, (r->>'monthly_rate')::numeric AS monthly_rate, (r->>'target_date')::date AS target_date, (r->>'current_amount')::numeric AS current_amount, (r->>'savings_plan_id')::int AS savings_plan_id, (r->>'required_monthly_rate')::numeric AS required_monthly_rate, (r->>'plan_monthly_amount')::numeric AS plan_monthly_amount, (r->>'replaced_transfer_id')::int AS replaced_transfer_id, COALESCE(r->'savings_squeeze'->>'note', '') AS savings_squeeze, (r->>'recommended_monthly')::numeric AS recommended_monthly" `
+        -WriteSelect "(r->>'ok')::boolean AS ok, r->>'reason' AS reason, r->'depot_risk' AS depot_risk, (r->>'goal_id')::int AS goal_id, (r->>'recurring_payment_id')::int AS recurring_payment_id, (r->>'monthly_rate')::numeric AS monthly_rate, (r->>'target_date')::date AS target_date, (r->>'current_amount')::numeric AS current_amount, (r->>'savings_plan_id')::int AS savings_plan_id, (r->>'required_monthly_rate')::numeric AS required_monthly_rate, (r->>'plan_monthly_amount')::numeric AS plan_monthly_amount, (r->>'replaced_transfer_id')::int AS replaced_transfer_id, COALESCE(r->'savings_squeeze'->>'note', '') AS savings_squeeze, (r->>'recommended_monthly')::numeric AS recommended_monthly" `
         -Params ([ordered]@{
             name                  = '$(''Start'').item.json.goal_name'
             goal_type             = '$(''Start'').item.json.goal_type'
@@ -96,7 +96,7 @@ function Build-CreateSavingsGoal {
     # Probelauf: Begünstigte(r) (genannt, sonst Inhaber des Spartopfs), Rate, Datum, Monate, erste Rate -> Karte = Write.
     $Y  = "`$('Dry run').item.json.r"
     # Zeilen aus der geteilten Felddefinition (../hitl_lines.ps1, dieselbe wie die Import-Karte).
-    $summary = New-HitlSummary -Pos @(1760, 0) -Title 'finance.hitl.create_savings_goal' -LinesExpr $wg.CardLinesExpr -Lines (Get-FinanceHitlLines -Entity savings_goal -S (Get-WritePayloadExpr) -D @{
+    $summary = New-HitlSummary -Pos @(1760, 0) -Title 'finance.hitl.create_savings_goal' -LinesExpr $wg.CardLinesExpr -ApproveKeyExpr $wg.ApproveKeyExpr -Lines (Get-FinanceHitlLines -Entity savings_goal -S (Get-WritePayloadExpr) -D @{
         Person = "$Y.beneficiary_name"; TargetDate = "$Y.target_date"; MonthlyRate = "$Y.monthly_rate"; Months = "$Y.months"; FirstPayment = "$Y.first_payment_date" })
 
     $gateId = $GateId
@@ -123,6 +123,9 @@ function Build-CreateSavingsGoal {
     # Post-State: monthly_rate (eigene Rate, 0 ohne) + target_date, Stand nach dem Startbestand, Sparplan-Vergleich.
     $ret = Build-Return @(2860, 0) @(
         ,@('ok','true','boolean')
+        # Sparziel kurz vor dem Termin im Depot (2026-11-06): nach "Risiko eingehen" festgehalten + Monat des letzten Checks
+        ,@('depot_risk_recorded', "={{ !!`$('Create savings goal (atomic)').item.json.depot_risk }}", 'boolean')
+        ,@('depot_risk_reminder_month', "={{ (`$('Create savings goal (atomic)').item.json.depot_risk || {}).reminder_month || '' }}", 'string')
         ,@('goal_id', "={{ `$('Create savings goal (atomic)').item.json.goal_id }}", 'number')
         ,@('recurring_payment_id', "={{ `$('Create savings goal (atomic)').item.json.recurring_payment_id }}", 'number')
         ,@('monthly_rate', "={{ `$('Create savings goal (atomic)').item.json.monthly_rate }}", 'number')

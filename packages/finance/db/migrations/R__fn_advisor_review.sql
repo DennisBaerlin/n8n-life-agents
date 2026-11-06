@@ -386,9 +386,13 @@ BEGIN
     -- Vorschlagsbetrag (drift = Ueberschuss) zum Umschichten aufs Konto, bei aktivem Sparplan zusaetzlich "pausieren oder
     -- umleiten" (sonst kauft er weiter ins Depot), dazu der Steuer-Hinweis. Die Rechnung lebt allein in
     -- finance.fn_savings_goal_derisk_status (das LLM rechnet nicht). latch_keys = Restjahr: der Edge-Latch meldet
-    -- einmal je verbleibendem Jahr erneut, solange ein Ueberschuss besteht (der Vorschlag bleibt aktuell).
+    -- einmal je verbleibendem Jahr erneut, solange ein Ueberschuss besteht (der Vorschlag bleibt aktuell); im Zielmonat
+    -- bleibt es y1 (GREATEST: sonst meldete y0 im letzten Jahr ein zweites Mal, Plan-Reviewer 2026-11-05).
+    -- Bewusste Ausnahme (2026-11-06): eine gueltige Entscheidung (accepted) schweigt; nach ihrem Ablauf (12 Monate vor
+    -- dem Termin) meldet sich die Erinnerung genau einmal mit dem Text "du wolltest es bewusst so". Texte nach Regel E:
+    -- Kopf + zwei Zahlen-Zeilen, Schluss-Satz; "Mein Rat" abgerundet, ganze Euro erst im Renderer (p_whole).
     FOR r IN
-        SELECT * FROM finance.fn_savings_goal_derisk_status() s WHERE s.breach
+        SELECT * FROM finance.fn_savings_goal_derisk_status() s WHERE s.breach AND NOT s.accepted
     LOOP
         v_alerts := v_alerts || jsonb_build_object(
             'metric_key', 'savings_goal_derisk:' || r.goal_id,
@@ -397,18 +401,18 @@ BEGIN
             'value',      r.depot_share_eur,
             'target',     r.allowed_depot_eur,
             'drift',      r.excess_eur,
-            'latch_keys', jsonb_build_array('y' || ceil(r.months_left / 12.0)::int),
+            'latch_keys', jsonb_build_array('y' || GREATEST(ceil(r.months_left / 12.0)::int, 1)),
             'msg',        jsonb_build_array(
-                              core.fn_ui_tpl('finance.advisor.goal_derisk', jsonb_build_object(
-                                  'name', r.name, 'date', core.fn_ui_date(r.target_date),
-                                  'depot', core.fn_ui_money(r.depot_share_eur),
-                                  'allowed', core.fn_ui_money(r.allowed_depot_eur),
-                                  'excess', core.fn_ui_money(r.excess_eur))),
+                              core.fn_ui_tpl(CASE WHEN r.acceptance_expired THEN 'finance.advisor.goal_derisk_expired'
+                                                  ELSE 'finance.advisor.goal_derisk' END, jsonb_build_object(
+                                  'name', r.name, 'month', core.fn_ui_month(r.target_date, true),
+                                  'months', core.fn_ui_num(r.months_left),
+                                  'depot', core.fn_ui_money(r.depot_share_eur, 'EUR', false, true),
+                                  'allowed', core.fn_ui_money(floor(r.allowed_depot_eur), 'EUR', false, true),
+                                  'excess', core.fn_ui_money(r.excess_eur, 'EUR', false, true))),
                               CASE WHEN r.active_plan THEN core.fn_ui_tpl('finance.advisor.goal_derisk_plan') END,
-                              core.fn_ui_tpl('finance.advisor.goal_derisk_tax'),
-                              -- Transparenz 2026-10-30: die Regel hinter „hoechstens {allowed}“ benennen
-                              core.fn_ui_tpl('finance.advisor.goal_derisk_basis', jsonb_build_object(
-                                  'window', core.fn_ui_num(r.window_months)))));
+                              core.fn_ui_tpl(CASE WHEN r.acceptance_expired THEN 'finance.advisor.goal_derisk_final'
+                                                  ELSE 'finance.advisor.goal_derisk_keep' END)));
     END LOOP;
 
     -- ---------- (2c) Monats-Check: Konto-Deckung bis zum naechsten Geldeingang ----------

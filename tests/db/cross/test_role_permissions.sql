@@ -182,6 +182,9 @@ BEGIN
     PERFORM finance.fn_create_loan(jsonb_build_object('name', '__rp_adv_kredit__', 'lender', 'Bank', 'original_amount', 10000, 'current_balance', 8000,
               'interest_rate', 3.5, 'monthly_annuity', 300, 'first_payment_date', (CURRENT_DATE + 5)::text, 'debit_account_id', v_src));
     INSERT INTO finance.savings_goals (name, target_amount, target_date) VALUES ('__rp_adv_ziel__', 2000, CURRENT_DATE + 300);
+    -- Sparziel kurz vor dem Termin im Depot (2026-11-06): depot_risk-Liste + Status-fn unter finance_ro
+    INSERT INTO finance.savings_goal_reserve_entries (savings_goal_id, account_id, delta_native, currency, kind)
+      SELECT id, v_depot, 1500, 'EUR', 'manual' FROM finance.savings_goals WHERE name = '__rp_adv_ziel__';
     INSERT INTO finance.pension (name, pension_type) VALUES ('__rp_adv_rente__', 'statutory') RETURNING id INTO v_pen;
     INSERT INTO finance.pension_statements (pension_id, statement_date, reached_claim) VALUES (v_pen, CURRENT_DATE - 30, 1000);
     PERFORM finance.fn_create_real_estate('{"name":"__rp_adv_haus__"}'::jsonb);
@@ -197,6 +200,7 @@ BEGIN
       PERFORM finance.fn_emergency_reserve_status();
       PERFORM * FROM finance.fn_household_everyday_month();
       PERFORM finance.fn_liquidity_snapshot();
+      PERFORM * FROM finance.fn_savings_goal_derisk_status();
       v_res2 := finance.fn_advisor_snapshot();
       RESET ROLE;
     EXCEPTION WHEN OTHERS THEN
@@ -211,8 +215,21 @@ BEGIN
        OR NOT v_res2->'pension_outlook' @? '$[*] ? (@.name == "__rp_adv_rente__" && @.never == false)'
        OR NOT v_res2->'depot_holdings' @? '$[*] ? (@.symbol == "RPADVETF")'
        OR NOT v_res2->'depot_performance' @? '$[*] ? (@.depot_name == "__rp_adv_depot__")'
+       OR NOT v_res2->'depot_risk' @? '$[*] ? (@.name == "__rp_adv_ziel__" && @.needs_acceptance == true)'
        OR NOT v_res2->'real_estate' @? '$[*] ? (@.name == "__rp_adv_haus__")' THEN
       RAISE EXCEPTION 'FAIL [finance_ro -> fn_advisor_snapshot]: Fixture fehlt im Ergebnis: %', v_res2; END IF;
+    -- Write-Pfad der Sparziel-Tools (finance_rw): Fold zeigt die Warnung und stempelt mit der gezeigten Lage
+    BEGIN
+      SET LOCAL ROLE finance_rw;
+      v_res2 := finance.fn_goal_depot_risk_fold((SELECT id FROM finance.savings_goals WHERE name = '__rp_adv_ziel__'), NULL);
+      v_res2 := finance.fn_goal_depot_risk_fold((SELECT id FROM finance.savings_goals WHERE name = '__rp_adv_ziel__'),
+                                                v_res2->'effective'->'depot_risk_shown');
+      RESET ROLE;
+    EXCEPTION WHEN OTHERS THEN
+      RESET ROLE;
+      RAISE EXCEPTION 'FAIL [finance_rw -> fn_goal_depot_risk_fold]: %', SQLERRM;
+    END;
+    IF NOT v_res2 ? 'depot_risk' THEN RAISE EXCEPTION 'FAIL [finance_rw -> fn_goal_depot_risk_fold]: kein Stempel: %', v_res2; END IF;
     IF v_cnt <> 1 THEN RAISE EXCEPTION 'FAIL [finance_ro -> account_funding_overview]: % Zeilen statt 1', v_cnt; END IF;
     IF jsonb_typeof(v_res->'suggestion') IS DISTINCT FROM 'object' THEN
       RAISE EXCEPTION 'FAIL [finance_ro -> fn_account_outlook]: Vorschlags-Zweig nicht erreicht: %', v_res; END IF;

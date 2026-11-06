@@ -37,7 +37,7 @@ function Build-BookSavingsReservation {
     # echten Write.
     $wg = New-FnWriteGate -Fn 'finance.fn_book_savings_reservation' -DryPos @(1100, 0) -WritePos @(2420, 0) `
         -WriteName 'Book earmark (atomic)' `
-        -WriteSelect "(r->>'ok')::boolean AS ok, r->>'reason' AS reason, (r->>'entry_id')::int AS entry_id, (r->>'delta')::numeric AS delta, (r->>'reserved')::numeric AS reserved, (r->>'current_amount')::numeric AS current_amount, (r->>'free_balance')::numeric AS free_balance, (r->>'market_value')::numeric AS market_value, (r->>'shortfall')::numeric AS shortfall, COALESCE(r->'savings_goal_reached'->>'note', '') AS savings_goal_reached" `
+        -WriteSelect "(r->>'ok')::boolean AS ok, r->>'reason' AS reason, r->'depot_risk' AS depot_risk, (r->>'entry_id')::int AS entry_id, (r->>'delta')::numeric AS delta, (r->>'reserved')::numeric AS reserved, (r->>'current_amount')::numeric AS current_amount, (r->>'free_balance')::numeric AS free_balance, (r->>'market_value')::numeric AS market_value, (r->>'shortfall')::numeric AS shortfall, COALESCE(r->'savings_goal_reached'->>'note', '') AS savings_goal_reached" `
         -Params ([ordered]@{
             savings_goal_id = '$(''Resolve Goal'').item.json.id'
             account_id      = '$(''Resolve Account'').item.json.id'
@@ -46,7 +46,7 @@ function Build-BookSavingsReservation {
 
     $S = "`$('Start').item.json"
     $A = "`$('Resolve Account').item.json"
-    $summary = New-HitlSummary -Pos @(1760, 0) -Title 'finance.hitl.book_savings_reservation' -LinesExpr $wg.CardLinesExpr -Lines @(
+    $summary = New-HitlSummary -Pos @(1760, 0) -Title 'finance.hitl.book_savings_reservation' -LinesExpr $wg.CardLinesExpr -ApproveKeyExpr $wg.ApproveKeyExpr -Lines @(
         (New-HitlLine 'finance.label.savings_goal'    "$S.savings_goal_name")
         (New-HitlLine 'finance.label.account'         "$S.account_name")
         (New-HitlLine 'finance.label.reserved_amount' "$S.amount" -Kind money -Currency "($A.is_depot ? 'EUR' : $A.currency)")
@@ -71,6 +71,9 @@ function Build-BookSavingsReservation {
     # freier Saldo (Saldo-Konto) bzw. Deckung (Depot) und der Erreicht-Hinweis (leer = keiner).
     $ret = Build-Return @(2860, 0) @(
         ,@('ok','true','boolean')
+        # Sparziel kurz vor dem Termin im Depot (2026-11-06): nach "Risiko eingehen" festgehalten + Monat des letzten Checks
+        ,@('depot_risk_recorded', "={{ !!`$('Book earmark (atomic)').item.json.depot_risk }}", 'boolean')
+        ,@('depot_risk_reminder_month', "={{ (`$('Book earmark (atomic)').item.json.depot_risk || {}).reminder_month || '' }}", 'string')
         ,@('entry_id', "={{ `$('Book earmark (atomic)').item.json.entry_id }}", 'number')
         ,@('delta', "={{ `$('Book earmark (atomic)').item.json.delta }}", 'number')
         ,@('reserved', "={{ `$('Book earmark (atomic)').item.json.reserved }}", 'number')

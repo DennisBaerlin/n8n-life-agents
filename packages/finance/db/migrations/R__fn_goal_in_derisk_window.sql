@@ -4,8 +4,8 @@
 --   advisor.derisk_window_months): Kalendermonate von heute bis zum Zieldatum <= Fenster -> true, auch ein schon
 --   verstrichenes Datum (Restmonate 0, das Geld wird jetzt gebraucht). Ohne Zieldatum (Ruecklagen) oder unbekanntes
 --   Ziel -> NULL; der Aufrufer entscheidet (die Ruecklagen-Arten haben eigene Konto-Regeln).
---   Konsumenten: fn_book_savings_goal_transfer (reassign ins Depot -> goal_too_short_term),
---   fn_savings_goal_derisk_status (in_window = Zieldatum in der Zukunft UND diese Regel).
+--   Konsumenten: fn_savings_goal_derisk_status (in_window = Zieldatum in der Zukunft UND diese Regel; daraus die bewusste
+--   Ausnahme fn_goal_depot_risk_fold, 2026-11-06), Alert standing_order_ending.
 --   plpgsql (late-bound): core.fn_config_get gehoert einem anderen Paket.
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_goal_in_derisk_window(p_goal int)

@@ -429,5 +429,13 @@
     "followup_agent": "agent.finance_advisor",
     "expected_route": "finance",
     "notes": "Gegenprobe zu oc47: Regel 2a laesst einen klar neuen Auftrag weiter zum zustaendigen Spezialisten."
+  },
+  {
+    "id": "oc50",
+    "name": "Antwort auf die Umschicht-Erinnerung: das bleibt so -> agent.finance",
+    "task": "Zur Erinnerung wegen der Hausanzahlung: Das Geld soll im Depot bleiben, das bleibt so.",
+    "chat_id": "test_orc50",
+    "expected_route": "finance",
+    "notes": "Sparziel unter 5 Jahren im Depot als bewusste Ausnahme (2026-11-06): die Berater-Erinnerung endet mit 'schreib mir das bleibt so'; festhalten kann nur der Buchhalter (tool_set_savings_goal depot_risk_accepted), der Berater bucht nie."
   }
 ]

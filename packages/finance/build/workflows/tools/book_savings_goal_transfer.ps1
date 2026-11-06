@@ -28,7 +28,7 @@ function Build-BookSavingsGoalTransfer {
     # Param-Satz geht nach dem Gate in den echten Write.
     $wg = New-FnWriteGate -Fn 'finance.fn_book_savings_goal_transfer' -DryPos @(660, 0) -WritePos @(1980, 0) `
         -WriteName 'Book savings movement (atomic)' `
-        -WriteSelect "(r->>'ok')::boolean AS ok, r->>'reason' AS reason, (r->>'debit_tx_id')::int AS debit_tx_id, (r->>'credit_tx_id')::int AS credit_tx_id, (r->>'current_amount')::numeric AS current_amount, (r->>'from_balance')::numeric AS from_balance, (r->>'to_balance')::numeric AS to_balance, (r->>'from_share')::numeric AS from_share, (r->>'to_share')::numeric AS to_share, (r->>'shortfall')::numeric AS shortfall, COALESCE(r->'savings_goal_reached'->>'note', '') AS savings_goal_reached" `
+        -WriteSelect "(r->>'ok')::boolean AS ok, r->>'reason' AS reason, r->'depot_risk' AS depot_risk, (r->>'debit_tx_id')::int AS debit_tx_id, (r->>'credit_tx_id')::int AS credit_tx_id, (r->>'current_amount')::numeric AS current_amount, (r->>'from_balance')::numeric AS from_balance, (r->>'to_balance')::numeric AS to_balance, (r->>'from_share')::numeric AS from_share, (r->>'to_share')::numeric AS to_share, (r->>'shortfall')::numeric AS shortfall, COALESCE(r->'savings_goal_reached'->>'note', '') AS savings_goal_reached" `
         -Params ([ordered]@{
             savings_goal_id  = '$(''Resolve Goal'').item.json.id'
             from_account_name = '$(''Start'').item.json.from_account_name'
@@ -46,7 +46,7 @@ function Build-BookSavingsGoalTransfer {
     $E = "`$('Dry run').item.json.r.effective"
     $D = "`$('Dry run').item.json.r"
     $re = "($S.direction === 'reassign')"
-    $summary = New-HitlSummary -Pos @(1320, 0) -Title 'finance.hitl.book_savings_goal_transfer' -LinesExpr $wg.CardLinesExpr -Lines @(
+    $summary = New-HitlSummary -Pos @(1320, 0) -Title 'finance.hitl.book_savings_goal_transfer' -LinesExpr $wg.CardLinesExpr -ApproveKeyExpr $wg.ApproveKeyExpr -Lines @(
         (New-HitlLine 'finance.label.savings_goal'          "$S.savings_goal_name")
         (New-HitlLine 'finance.label.kind'                  "$S.direction" -Kind enum -Enum 'finance.enum.savings_move')
         (New-HitlLine 'core.label.amount'                   "($D.amount || $S.amount)" -Kind money -Currency "$E.from_currency")
@@ -77,6 +77,9 @@ function Build-BookSavingsGoalTransfer {
     # Post-State: neuer Ziel-Stand + Salden beider Konten (von der fn berechnet).
     $ret = Build-Return @(2420, 0) @(
         ,@('ok','true','boolean')
+        # Sparziel kurz vor dem Termin im Depot (2026-11-06): nach "Risiko eingehen" festgehalten + Monat des letzten Checks
+        ,@('depot_risk_recorded', "={{ !!`$('Book savings movement (atomic)').item.json.depot_risk }}", 'boolean')
+        ,@('depot_risk_reminder_month', "={{ (`$('Book savings movement (atomic)').item.json.depot_risk || {}).reminder_month || '' }}", 'string')
         ,@('debit_tx_id', "={{ `$('Book savings movement (atomic)').item.json.debit_tx_id }}", 'number')
         ,@('credit_tx_id', "={{ `$('Book savings movement (atomic)').item.json.credit_tx_id }}", 'number')
         ,@('current_amount', "={{ `$('Book savings movement (atomic)').item.json.current_amount }}", 'number')
@@ -94,7 +97,7 @@ function Build-BookSavingsGoalTransfer {
 
     $stickyFn = Build-Sticky 'fn_book_savings_goal_transfer: Reuse + Tag + Erreicht-Fold' @(2860, -260) `
         'fn_book_savings_goal_transfer (atomar)' `
-        'reassign (Sparziel umziehen, 2026-11-01) ist KEINE Geldbewegung: fn_book_savings_goal_reassign verschiebt die Zuordnung per zwei Journal-Zeilen (fn_book_savings_reservation, eine Regel für Kontoarten und Freier-Saldo-Guard; Ziel darf ein Depot sein, Deckung = Marktwert, shortfall auf der Karte; kurzfristiges Ziel -> goal_too_short_term, Depot ohne Kurs -> no_price). Rückgängig = reassign zurück. Sonst gilt: Jede Sparziel-Bewegung ist physisch ein Transfer: die fn ruft INTERN finance.fn_book_transfer (zwei Beine, group_id, Multi-Währung, Saldo-Trigger) und stempelt dann je direction den savings_goal_id-Tag: deposit -> Haben-(to-)Bein (+); withdrawal -> Soll-(from-)Bein (-); relocate -> BEIDE Beine (Netto-0, nur Umzug). savings_goal_progress.current_amount = signed SUM der getaggten Tx -> bewegt sich entsprechend. Scheitert der interne Transfer ({ok:false}, z. B. Cross-Currency ohne to_amount), wird NICHT gestempelt (Guard vor dem UPDATE) -> kein stiller no-op-Tag. Phase L WS-5: NUR bei direction=deposit + current>=target faltet die fn eine Glückwunsch-Note in savings_goal_reached (withdrawal/relocate nie; sonst leer). Bookkeeper relayed (erreicht != ausgegeben).' 250 580
+        'reassign (Sparziel umziehen, 2026-11-01) ist KEINE Geldbewegung: fn_book_savings_goal_reassign verschiebt die Zuordnung per zwei Journal-Zeilen (fn_book_savings_reservation, eine Regel für Kontoarten und Freier-Saldo-Guard; Ziel darf ein Depot sein, Deckung = Marktwert, shortfall auf der Karte; kurzfristiges Ziel im Depot -> Warnkarte mit Knopf Risiko eingehen + Eintrag in savings_goal_risk_decisions nach dem Tipp (fn_goal_depot_risk_fold), Depot ohne Kurs -> no_price). Rückgängig = reassign zurück. Sonst gilt: Jede Sparziel-Bewegung ist physisch ein Transfer: die fn ruft INTERN finance.fn_book_transfer (zwei Beine, group_id, Multi-Währung, Saldo-Trigger) und stempelt dann je direction den savings_goal_id-Tag: deposit -> Haben-(to-)Bein (+); withdrawal -> Soll-(from-)Bein (-); relocate -> BEIDE Beine (Netto-0, nur Umzug). savings_goal_progress.current_amount = signed SUM der getaggten Tx -> bewegt sich entsprechend. Scheitert der interne Transfer ({ok:false}, z. B. Cross-Currency ohne to_amount), wird NICHT gestempelt (Guard vor dem UPDATE) -> kein stiller no-op-Tag. Phase L WS-5: NUR bei direction=deposit + current>=target faltet die fn eine Glückwunsch-Note in savings_goal_reached (withdrawal/relocate nie; sonst leer). Bookkeeper relayed (erreicht != ausgegeben).' 250 580
 
     $stickyOk = Build-Sticky 'Write ok? (korrigierbare Ablehnung)' @(3300, -260) `
         'fn-Rückgabe {ok:false, reason}' `

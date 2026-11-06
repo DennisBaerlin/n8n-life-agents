@@ -44,6 +44,11 @@
 --   (goal) macht es zur Notreserve (Datum entfaellt, Betrag bleibt, sofern nicht target_months genannt; Rate laeuft weiter);
 --   nur ohne andere aktive Notreserve (code reserve_exists), ohne verknuepften Sparplan und ohne Geld ausserhalb von
 --   Geld-Konten. Andere Art-Wechsel -> {ok:false} (Trigger trg_savings_goal_kind_fixed = Backstop).
+--   SPARZIEL IM DEPOT KURZ VOR DEM TERMIN (2026-11-06): depot_risk_accepted (opt) true = "das bleibt so" (Warnkarte +
+--   Stempel nach dem Tipp; nichts zu bestaetigen -> code no_depot_risk, schon bestaetigt -> code already_accepted),
+--   false = "erinnere mich wieder" (Eintrag revoke, Hinweis goal_depot_risk_revoked; ohne gueltige Entscheidung -> code
+--   no_depot_risk_decision); zusammen mit Datum, Sparplan-Link oder Status -> code depot_risk_alone. Datum vorgezogen, Sparplan verknuepft oder wieder geoeffnet -> ebenfalls
+--   fn_goal_depot_risk_fold (card_lines, card_approve_key, effective.depot_risk_shown, depot_risk.reminder_month).
 --   RUECKGABE: {ok:true, goal_id, recurring_payment_id, new_monthly_rate (nur wenn eine Rate gesetzt/angelegt wurde),
 --   covered?, required_monthly_rate?, code?, linked_savings_plan_id, paused_cash_rate, paused_plan_count} + optional
 --   savings_squeeze (fn_savings_squeeze_fold, nur bei Raten-Aenderung: neu gerechnet, angelegt, reaktiviert, Topf
@@ -100,6 +105,11 @@ DECLARE
     v_kind        finance.savings_goal_kind;   -- wirksame Art (nach einer Umwidmung goal -> emergency_reserve)
     v_tmonths     NUMERIC := NULLIF(p->>'target_months', '')::numeric;   -- nur Notreserve
     v_convert     BOOLEAN := false;
+    v_risk_flag   TEXT    := lower(btrim(COALESCE(p->>'depot_risk_accepted', '')));   -- 2026-11-06: das bleibt so | erinnere mich wieder
+    v_risk        RECORD;
+    v_fold        JSONB;
+    v_revoke      BOOLEAN := false;
+    v_ret         JSONB;
 BEGIN
     -- relative Datumsangabe ("in 2 years") -> ISO; nicht aufloesbar -> {ok:false, code:'invalid_date'}
     v_dates := core.fn_resolve_input_dates(p, ARRAY['target_date']);
@@ -120,6 +130,37 @@ BEGIN
         RETURN jsonb_build_object('ok', false,
             'reason', 'A savings goal is completed or cancelled with close_savings_goal (it checks the remaining '
                    || 'reserve first), not by changing its status.');
+    END IF;
+
+    -- Bewusste Risiko-Entscheidung (2026-11-06, write-frei geprueft): true = "das bleibt so" (Karte mit Warnung, Stempel nach
+    -- dem Tipp ueber fn_goal_depot_risk_fold p_force), false = "erinnere mich wieder" (Eintrag revoke, nie loeschen).
+    IF v_risk_flag NOT IN ('', 'true', 'false') THEN
+        RETURN jsonb_build_object('ok', false, 'reason', 'depot_risk_accepted must be true or false.');
+    END IF;
+    IF v_risk_flag <> '' THEN
+        SELECT * INTO v_risk FROM finance.fn_savings_goal_derisk_status(v_id) x WHERE x.goal_id = v_id;
+        IF v_risk_flag = 'true' THEN
+            IF NOT FOUND OR NOT v_risk.in_window THEN
+                RETURN jsonb_build_object('ok', false, 'code', 'no_depot_risk',
+                    'reason', 'Savings goal "' || v_row.name || '" has no depot money or savings plan close to its target date - there is no risk to accept.');
+            END IF;
+            IF v_risk.accepted THEN
+                RETURN jsonb_build_object('ok', false, 'code', 'already_accepted',
+                    'reason', 'The user already decided to keep the depot money of savings goal "' || v_row.name || '" - nothing to confirm again.');
+            END IF;
+        ELSE
+            -- Aufheben allein: zusammen mit einer Aenderung, die selbst eine Warnkarte ausloest, zeigte die Karte sonst
+            -- entweder die Warnung samt Risiko-Knopf oder nur den Aufheben-Hinweis (Code-Review 2026-11-06).
+            IF v_tdate IS NOT NULL OR NULLIF(p->>'link_savings_plan_name', '') IS NOT NULL OR NULLIF(p->>'status', '') IS NOT NULL THEN
+                RETURN jsonb_build_object('ok', false, 'code', 'depot_risk_alone',
+                    'reason', 'Turning the reminders back on must be its own change - call once with only depot_risk_accepted=false, then make the other change.');
+            END IF;
+            IF NOT FOUND OR NOT v_risk.accepted THEN
+                RETURN jsonb_build_object('ok', false, 'code', 'no_depot_risk_decision',
+                    'reason', 'There is no valid decision to keep the depot money of savings goal "' || v_row.name || '" - the advisor already reminds as usual.');
+            END IF;
+            v_revoke := true;
+        END IF;
     END IF;
 
     -- Art + Umwidmung (2026-10-30): nur goal -> emergency_reserve, nur unter den Notreserve-Regeln (write-frei geprueft)
@@ -450,7 +491,21 @@ BEGIN
         v_stop_res := finance.fn_stop_savings_goal_funders(jsonb_build_object('goal_id', v_id));
     END IF;
 
-    RETURN jsonb_build_object('ok', true, 'goal_id', v_id,
+    -- Sparziel kurz vor dem Termin im Depot (2026-11-06): Datum vorgezogen, Sparplan verknuepft, wieder geoeffnet oder
+    -- "das bleibt so" -> die eine Regel fn_goal_depot_risk_fold (Warnkarte, Stempel nur mit der gezeigten Lage).
+    IF v_risk_flag = 'true'
+       OR (v_tdate IS NOT NULL AND (v_row.target_date IS NULL OR v_tdate < v_row.target_date))
+       OR v_link_plan IS NOT NULL
+       OR (v_status = 'active' AND v_row.status IS DISTINCT FROM 'active') THEN
+        v_fold := finance.fn_goal_depot_risk_fold(v_id, p->'depot_risk_shown', v_risk_flag = 'true');
+    END IF;
+    IF v_revoke THEN
+        INSERT INTO finance.savings_goal_risk_decisions (savings_goal_id, event) VALUES (v_id, 'revoke');
+        v_fold := jsonb_build_object('card_lines', jsonb_build_array(jsonb_build_object(
+            'kind', 'note', 'value', 'finance.note.goal_depot_risk_revoked')));
+    END IF;
+
+    v_ret := jsonb_build_object('ok', true, 'goal_id', v_id,
         -- Instandhaltungsruecklage: eine aus der Empfehlung angelegte Rate fest in den Write (Karte = Write)
         'effective', (v_dates->'resolved') || CASE WHEN v_kind <> 'goal' AND v_rate IS NOT NULL
                          THEN jsonb_build_object('monthly_savings_rate', v_rate::text) ELSE '{}'::jsonb END,
@@ -493,5 +548,12 @@ BEGIN
         -- reine Stammdaten-/Notiz-/Sparplan-Link-Edits falten nichts
         || CASE WHEN v_rate IS NOT NULL OR v_rate_change IS NOT NULL OR v_status = 'active' OR v_reserve IS NOT NULL OR v_stop_funders
                 THEN finance.fn_savings_squeeze_fold() ELSE '{}'::jsonb END;
+    IF v_fold IS NOT NULL THEN
+        v_ret := v_ret || jsonb_build_object(
+                'card_lines', COALESCE(v_ret->'card_lines', '[]'::jsonb) || COALESCE(v_fold->'card_lines', '[]'::jsonb),
+                'effective', COALESCE(v_ret->'effective', '{}'::jsonb) || COALESCE(v_fold->'effective', '{}'::jsonb))
+            || (v_fold - 'card_lines' - 'effective');
+    END IF;
+    RETURN v_ret;
 END;
 $$;

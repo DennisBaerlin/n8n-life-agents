@@ -6,7 +6,7 @@ function Build-SetSavingsGoal {
     # WS-B0: enge Paket-Schreibrolle (finance_rw, Least-Privilege D10) statt Owner-Cred.
     # Dynamic-Scope: Build-Pg liest dieses $CRED_POSTGRES. Core-Tools nutzen die Owner-Cred.
     $CRED_POSTGRES = $CRED_FINANCE_RW
-    $trig = Build-Trigger @('goal_name','new_name','target_amount','target_date','status','notes','beneficiary_person','reserve_account_name','priority','link_savings_plan_name','unlink_savings_plan_name','stop_funders','account_name','replace_transfer','monthly_savings_rate','kind','target_months')
+    $trig = Build-Trigger @('goal_name','new_name','target_amount','target_date','status','notes','beneficiary_person','reserve_account_name','priority','link_savings_plan_name','unlink_savings_plan_name','stop_funders','account_name','replace_transfer','monthly_savings_rate','kind','target_months','depot_risk_accepted')
 
     $resGoal = Build-Pg 'Resolve Goal' @(220, 0) `
         "=SELECT id, hit_count, candidates FROM finance.fn_resolve_savings_goal((`$1::jsonb)->>'goal_name', TRUE);" `
@@ -60,7 +60,7 @@ function Build-SetSavingsGoal {
     # den echten Write (Rate aus Rest-Betrag/Rest-Zeit + Recurring-Sync + Status-Kaskade).
     $wg = New-FnWriteGate -Fn 'finance.fn_set_savings_goal' -DryPos @(1760, 0) -WritePos @(3080, 0) `
         -WriteName 'Set goal (atomic)' `
-        -WriteSelect "(r->>'ok')::boolean AS ok, r->>'reason' AS reason, (r->>'goal_id')::int AS goal_id, (r->>'recurring_payment_id')::int AS recurring_payment_id, (r->>'new_monthly_rate')::numeric AS new_monthly_rate, COALESCE((r->>'covered')::boolean, false) AS covered, (r->>'required_monthly_rate')::numeric AS required_monthly_rate, COALESCE(r->>'note', '') AS rate_note, (r->>'linked_savings_plan_id')::int AS linked_savings_plan_id, (r->>'paused_cash_rate')::boolean AS paused_cash_rate, (r->>'paused_plan_count')::int AS paused_plan_count, (r->>'replaced_transfer_id')::int AS replaced_transfer_id, COALESCE(r->'savings_squeeze'->>'note', '') AS savings_squeeze" `
+        -WriteSelect "(r->>'ok')::boolean AS ok, r->>'reason' AS reason, r->'depot_risk' AS depot_risk, (r->>'goal_id')::int AS goal_id, (r->>'recurring_payment_id')::int AS recurring_payment_id, (r->>'new_monthly_rate')::numeric AS new_monthly_rate, COALESCE((r->>'covered')::boolean, false) AS covered, (r->>'required_monthly_rate')::numeric AS required_monthly_rate, COALESCE(r->>'note', '') AS rate_note, (r->>'linked_savings_plan_id')::int AS linked_savings_plan_id, (r->>'paused_cash_rate')::boolean AS paused_cash_rate, (r->>'paused_plan_count')::int AS paused_plan_count, (r->>'replaced_transfer_id')::int AS replaced_transfer_id, COALESCE(r->'savings_squeeze'->>'note', '') AS savings_squeeze" `
         -Params ([ordered]@{
             goal_id       = '$(''Resolve Goal'').item.json.id'
             name          = '$(''Start'').item.json.new_name'
@@ -79,6 +79,7 @@ function Build-SetSavingsGoal {
             monthly_savings_rate     = '$(''Start'').item.json.monthly_savings_rate'
             kind                     = '$(''Start'').item.json.kind'                  # Notreserve: Umwidmung goal -> emergency_reserve
             target_months            = '$(''Start'').item.json.target_months'
+            depot_risk_accepted      = '$(''Start'').item.json.depot_risk_accepted'   # 2026-11-06: das bleibt so (true) | erinnere mich wieder (false)
         })
 
     # Strukturiertes Summary (Textkatalog): nur gelieferte Felder (-If je Zeile). Zielbetrag alt/neu in EUR-Konvention,
@@ -88,7 +89,7 @@ function Build-SetSavingsGoal {
     $P = "`$('Resolve Person').item.json"
     $RS = "`$('Resolve Reserve').item.json"
     $Y  = "`$('Dry run').item.json.r"
-    $summary = New-HitlSummary -Pos @(2420, 0) -Title 'finance.hitl.set_savings_goal' -LinesExpr $wg.CardLinesExpr -Lines @(
+    $summary = New-HitlSummary -Pos @(2420, 0) -Title 'finance.hitl.set_savings_goal' -LinesExpr $wg.CardLinesExpr -ApproveKeyExpr $wg.ApproveKeyExpr -Lines @(
         (New-HitlLine 'finance.label.goal'               "$S.goal_name")
         (New-HitlLine 'finance.label.new_name'           "$S.new_name" -If "$S.new_name")
         (New-HitlLine 'finance.label.beneficiary_person' "($P.full_name || $S.beneficiary_person)" -If "$S.beneficiary_person")
@@ -132,6 +133,9 @@ function Build-SetSavingsGoal {
 
     $ret = Build-Return @(3520, 0) @(
         ,@('ok','true','boolean')
+        # Sparziel kurz vor dem Termin im Depot (2026-11-06): nach "Risiko eingehen" festgehalten + Monat des letzten Checks
+        ,@('depot_risk_recorded', "={{ !!`$('Set goal (atomic)').item.json.depot_risk }}", 'boolean')
+        ,@('depot_risk_reminder_month', "={{ (`$('Set goal (atomic)').item.json.depot_risk || {}).reminder_month || '' }}", 'string')
         ,@('goal_id', "={{ `$('Set goal (atomic)').item.json.goal_id }}", 'number')
         ,@('recurring_payment_id', "={{ `$('Set goal (atomic)').item.json.recurring_payment_id }}", 'number')
         ,@('new_monthly_rate', "={{ `$('Set goal (atomic)').item.json.new_monthly_rate }}", 'number')

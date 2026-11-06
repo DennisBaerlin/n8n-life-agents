@@ -23,6 +23,8 @@
 --     + saldo-basiert: free_balance (Saldo - aktive Anteile auf dem Konto, nach dem Append)
 --     + Depot: market_value (Depot-Marktwert EUR, NULL ohne Kurs), shortfall (Depot-Deckungsluecke, depot_reserve_status)
 --     + savings_goal_reached {current_amount, target_amount, note}, wenn eine Erhoehung das Ziel deckt (Event-Fold).
+--     + Depot-Erhoehung: card_lines (+ card_approve_key, effective.depot_risk_shown im Probelauf; depot_risk.reminder_month
+--       nach dem Stempel) aus fn_goal_depot_risk_fold (Sparziel kurz vor dem Termin im Depot = bewusste Entscheidung).
 --   Korrigierbar (kein RAISE -> kein Owner-Alert): amount NULL/<0 / Ziel nicht gefunden oder nicht aktiv / Konto nicht gefunden ODER
 --     nicht zuordenbar (Kredit) / Depot fuer eine Instandhaltungsruecklage / kein Geld-Konto fuer die Notreserve
 --     (fn_emergency_reserve_account_ok: aktives Geld-Konto, kein Kinderkonto) / delta=0 (no-op) / insufficient_free_balance
@@ -148,6 +150,14 @@ BEGIN
             'current_amount', round(v_cur, 2), 'target_amount', round(v_target, 2),
             'note', 'Savings goal "' || v_gname || '" is now fully covered (' || round(v_cur, 2) || ' of ' || round(v_target, 2)
                     || ' EUR). The money stays earmarked until it is used - no further savings rate is needed.'));
+    END IF;
+
+    -- Sparziel im Depot kurz vor dem Termin (2026-11-06): nur eine Erhoehung auf einem Depot faltet (Senken bleibt frei).
+    -- Karte + Stempel aus der einen Regel fn_goal_depot_risk_fold; interne Aufrufe (Anlage, Umzug) tragen nie
+    -- depot_risk_shown und stempeln deshalb nie; sie setzen suppress_depot_risk (internes Merkmal wie suppress_breach,
+    -- kein Tool-Input), weil ihr Aufrufer nach allen Writes selbst faltet und das Ergebnis hier verworfen waere.
+    IF v_depot AND v_delta > 0 AND NOT COALESCE((p->>'suppress_depot_risk')::boolean, false) THEN
+        v_out := v_out || finance.fn_goal_depot_risk_fold(v_goal, p->'depot_risk_shown');
     END IF;
     RETURN v_out;
 END;

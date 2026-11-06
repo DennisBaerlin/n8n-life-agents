@@ -20,7 +20,8 @@
 --   Rhythmus aussteht (starts_on, sie zaehlen), planned_recurring die, die spaeter starten (zaehlen noch nicht).
 --   RUECKGABE jsonb, Listen (leer = []): persons, recurring, planned_recurring, accounts (+ has_history, everyday_per_day, everyday_per_month,
 --   everyday_provisional nur an Geld-Konten), networth, savings_plans, standing_orders, loans, insurances, pensions,
---   pension_outlook, real_estate, goals (+ goal_status), depot_holdings, depot_performance; Objekte: cashflow_summary,
+--   pension_outlook, real_estate, goals (+ goal_status), depot_risk (fn_savings_goal_derisk_status je Ziel im Fenster:
+--   Rat, Entscheidung accepted/acceptance_expired, letzter Check), depot_holdings, depot_performance; Objekte: cashflow_summary,
 --   parent_cashflow_summary, loan_summary, emergency_reserve
 --   Tests: tests/db/finance/test_fn_advisor_snapshot.sql, tests/db/cross/test_role_permissions.sql (2-adv)
 -- ============================================================
@@ -79,6 +80,10 @@ BEGIN
                     FROM finance.savings_goal_progress v
                    WHERE v.status = 'active'),
         'emergency_reserve', finance.fn_emergency_reserve_status(),
+        -- Sparziel kurz vor dem Termin im Depot (2026-11-06): Glide Path + bewusste Entscheidung je Ziel im Fenster
+        -- (accepted = der Nutzer hat das Risiko bewusst angenommen -> hoechstens ein Satz, kein Vorschlag)
+        'depot_risk', (SELECT COALESCE(jsonb_agg(to_jsonb(d) ORDER BY d.goal_id), '[]'::jsonb)
+                         FROM finance.fn_savings_goal_derisk_status() d WHERE d.in_window),
         'depot_holdings', (SELECT COALESCE(jsonb_agg(to_jsonb(v) - v_drop ORDER BY v.account_id, v.id), '[]'::jsonb)
                              FROM finance.depot_holdings_overview v),
         'depot_performance', (SELECT COALESCE(jsonb_agg(to_jsonb(v) - v_drop ORDER BY v.is_total, v.account_id), '[]'::jsonb)

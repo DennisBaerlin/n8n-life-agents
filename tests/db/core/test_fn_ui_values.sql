@@ -26,6 +26,11 @@ BEGIN
   IF core.fn_ui_money(12.345, 'EUR', true) <> '{"kind":"money","value":12.35,"currency":"EUR","sign":true}'::jsonb
      OR core.fn_ui_money(-3, 'EUR', false) ? 'sign' OR core.fn_ui_money(1, 'USD') ? 'sign' THEN
     RAISE EXCEPTION 'FAIL ui_money [sign: %]', core.fn_ui_money(12.345, 'EUR', true); END IF;
+  -- p_whole (2026-11-06): Wert bleibt genau, nur digits:0 (der Renderer zeigt ganze Euro); ohne p_whole byte-gleich
+  IF core.fn_ui_money(9333.99, 'EUR', false, true) <> '{"kind":"money","value":9333.99,"currency":"EUR","digits":0}'::jsonb
+     OR core.fn_ui_money(-6000.50, 'EUR', true, true) <> '{"kind":"money","value":-6000.50,"currency":"EUR","sign":true,"digits":0}'::jsonb
+     OR core.fn_ui_money(9333.99, 'EUR') <> '{"kind":"money","value":9333.99,"currency":"EUR"}'::jsonb THEN
+    RAISE EXCEPTION 'FAIL ui_money [p_whole: %]', core.fn_ui_money(9333.99, 'EUR', false, true); END IF;
   IF (SELECT count(*) FROM pg_proc WHERE proname = 'fn_ui_money' AND pronamespace = 'core'::regnamespace) <> 1 THEN
     RAISE EXCEPTION 'FAIL ui_money [genau eine Signatur, sonst mehrdeutig]'; END IF;
   IF core.fn_ui_num(7)->>'digits' <> '0' OR (core.fn_ui_num(7)->>'sign')::boolean THEN

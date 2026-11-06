@@ -5,7 +5,9 @@
 -- saldo-basierte Ziele behalten den Freier-Saldo-Guard (eine Regel mit fn_book_savings_reservation).
 --   (1) P2P -> Depot, amount leer = ganzer Anteil: Anteile, Netto 0, Post-State (free/market_value/shortfall)
 --   (2) Teil-Umzug zurueck Depot -> P2P (Rueckgaengig-Weg)
---   (3) kurzfristiges Ziel -> Depot: goal_too_short_term, kein Write
+--   (3) kurzfristiges Ziel -> Depot (2026-11-06: bewusste Ausnahme statt goal_too_short_term): ok + Warnkarte,
+--       ohne gezeigte Lage kein Stempel; (3b) mit depot_risk_shown aus dem Probelauf -> Eintrag accept mit genau den
+--       gezeigten Werten + reminder_month
 --   (4) Depot ohne Kurs: no_price
 --   (5) Geld -> Geld ohne freies Geld: insufficient_free_balance (Guard der Reservierung)
 --   (6) Notreserve -> Depot abgelehnt; Instandhaltung -> Depot abgelehnt
@@ -81,11 +83,37 @@ BEGIN
   -- (3) kurzfristig -> Depot
   SELECT finance.fn_book_savings_goal_transfer(jsonb_build_object(
     'savings_goal_id', v_short, 'from_account_id', v_p2p, 'to_account_id', v_depot, 'direction', 'reassign')) INTO v_res;
-  IF (v_res->>'ok')::boolean IS DISTINCT FROM false OR v_res->>'code' IS DISTINCT FROM 'goal_too_short_term' THEN
-    RAISE EXCEPTION 'FAIL [3 short]: %', v_res; END IF;
+  -- Ziel 3000 in 14 Monaten: erlaubt 3000 * 14 / 60 = 700, 3000 im Depot liegt ueber erlaubt + 10 pp -> Warnkarte
+  IF (v_res->>'ok')::boolean IS DISTINCT FROM true
+     OR NOT (v_res->'card_lines' @> '[{"value":"finance.note.goal_depot_risk"}]'::jsonb)
+     OR v_res->>'card_approve_key' IS DISTINCT FROM 'finance.hitl.accept_depot_risk'
+     OR (v_res->'effective'->'depot_risk_shown'->>'limit_eur')::numeric IS DISTINCT FROM 3000
+     OR (v_res->'effective'->'depot_risk_shown'->>'allowed_eur')::numeric IS DISTINCT FROM 700
+     OR v_res->'effective'->'depot_risk_shown'->>'target_date' IS DISTINCT FROM to_char(current_date + interval '14 months', 'YYYY-MM-DD')
+     OR v_res ? 'depot_risk' THEN
+    RAISE EXCEPTION 'FAIL [3 short: Warnkarte]: %', v_res; END IF;
+  IF EXISTS (SELECT 1 FROM finance.savings_goal_risk_decisions WHERE savings_goal_id = v_short) THEN
+    RAISE EXCEPTION 'FAIL [3 kein Stempel ohne gezeigte Lage]'; END IF;
+  RAISE NOTICE 'PASS [3 kurzfristiges Ziel -> Depot: Warnkarte statt Verbot, kein Stempel]';
+  -- (3b) zurueck aufs P2P, dann derselbe Umzug wie nach dem Tipp (Probelauf-effective im Payload)
+  PERFORM finance.fn_book_savings_goal_transfer(jsonb_build_object(
+    'savings_goal_id', v_short, 'from_account_id', v_depot, 'to_account_id', v_p2p, 'direction', 'reassign'));
+  SELECT finance.fn_book_savings_goal_transfer(jsonb_build_object(
+    'savings_goal_id', v_short, 'from_account_id', v_p2p, 'to_account_id', v_depot, 'direction', 'reassign',
+    'depot_risk_shown', v_res->'effective'->'depot_risk_shown')) INTO v_res;
+  IF (v_res->>'ok')::boolean IS DISTINCT FROM true OR v_res->'depot_risk'->>'reminder_month' IS DISTINCT FROM to_char(current_date + interval '2 months', 'YYYY-MM')
+     OR v_res->'card_lines' IS DISTINCT FROM '[]'::jsonb THEN
+    RAISE EXCEPTION 'FAIL [3b Stempel-Return]: %', v_res; END IF;
+  IF (SELECT count(*) FROM finance.savings_goal_risk_decisions WHERE savings_goal_id = v_short AND event = 'accept'
+        AND limit_eur = 3000 AND allowed_eur = 700 AND target_date = (current_date + interval '14 months')::date) <> 1 THEN
+    RAISE EXCEPTION 'FAIL [3b Eintrag mit den gezeigten Werten]'; END IF;
+  IF NOT (SELECT accepted FROM finance.fn_savings_goal_derisk_status(v_short)) THEN RAISE EXCEPTION 'FAIL [3b accepted]'; END IF;
+  -- zurueck, damit die Folgefaelle den Ausgangsstand sehen
+  PERFORM finance.fn_book_savings_goal_transfer(jsonb_build_object(
+    'savings_goal_id', v_short, 'from_account_id', v_depot, 'to_account_id', v_p2p, 'direction', 'reassign'));
   SELECT share_native INTO v_sh FROM finance.savings_goal_account_share WHERE goal_id = v_short AND account_id = v_p2p;
-  IF v_sh IS DISTINCT FROM 3000 THEN RAISE EXCEPTION 'FAIL [3 kein Write]: %', v_sh; END IF;
-  RAISE NOTICE 'PASS [3 kurzfristiges Ziel -> Depot abgelehnt]';
+  IF v_sh IS DISTINCT FROM 3000 THEN RAISE EXCEPTION 'FAIL [3b zurueck]: %', v_sh; END IF;
+  RAISE NOTICE 'PASS [3b Umzug nach dem Tipp: Eintrag accept mit Grenze 3000, erlaubt 700, letzter Check in 2 Monaten]';
 
   -- (4) Depot ohne Kurs
   SELECT finance.fn_book_savings_goal_transfer(jsonb_build_object(

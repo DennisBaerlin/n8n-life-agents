@@ -53,5 +53,26 @@ BEGIN
   PERFORM finance.fn_set_savings_goal(jsonb_build_object('goal_id', v_g1, 'link_savings_plan_name', '__gds_plan__'));
   IF NOT (SELECT active_plan FROM finance.fn_savings_goal_derisk_status() WHERE goal_id = v_g1) THEN RAISE EXCEPTION 'FAIL derisk [6 active_plan]'; END IF;
   RAISE NOTICE 'PASS fn_savings_goal_derisk_status [Fenster, erlaubt/Ueberschuss, Restmonate 0, vergangen, abgebrochen, Sparplan]';
+
+  -- (7) bewusste Ausnahme 2026-11-06: p_goal liefert genau eine Zeile; Ruecklagen (kind) fehlen; ein Ziel nur mit
+  --     Sparplan (Anteil 0) erscheint ohne breach; Zahlen fuer Rat, Spielraum und Beispiel-Verlust
+  IF (SELECT count(*) FROM finance.fn_savings_goal_derisk_status(v_g1)) <> 1 THEN RAISE EXCEPTION 'FAIL derisk [7 p_goal]'; END IF;
+  SELECT * INTO r FROM finance.fn_savings_goal_derisk_status(v_g1);
+  IF r.needs_acceptance IS DISTINCT FROM true OR r.accepted OR r.headroom_eur IS DISTINCT FROM 0.00 OR r.headroom_eur_whole IS DISTINCT FROM 0
+     OR r.stress_loss_eur IS DISTINCT FROM 1800.00 OR r.stress_pct IS DISTINCT FROM 30 OR r.fx_gap
+     OR r.final_check_date IS DISTINCT FROM (r.target_date - interval '12 months')::date THEN
+    RAISE EXCEPTION 'FAIL derisk [7 Zahlen]: %', row_to_json(r); END IF;
+  UPDATE finance.savings_goals SET kind = 'emergency_reserve', target_date = NULL WHERE id = v_g2;
+  IF EXISTS (SELECT 1 FROM finance.fn_savings_goal_derisk_status() WHERE goal_id = v_g2) THEN RAISE EXCEPTION 'FAIL derisk [7 Ruecklage]'; END IF;
+  INSERT INTO finance.savings_goals (name, target_amount, target_date, status)
+    VALUES ('__gds Plan__', 6000, (date_trunc('month', current_date) + interval '30 months')::date, 'active') RETURNING id INTO v_g5;
+  PERFORM finance.fn_create_savings_plan(jsonb_build_object('name','__gds_plan2__','depot_name','__gds_depot__','isin','IE00B4L5Y983',
+            'symbol','IUSQ','security_name','iShares MSCI World','amount',100,'schedule_interval',1,'schedule_unit','month',
+            'first_payment_date',CURRENT_DATE::text));
+  PERFORM finance.fn_set_savings_goal(jsonb_build_object('goal_id', v_g5, 'link_savings_plan_name', '__gds_plan2__'));
+  SELECT * INTO r FROM finance.fn_savings_goal_derisk_status(v_g5);
+  IF r.goal_id IS NULL OR r.depot_share_eur IS DISTINCT FROM 0.00 OR r.breach OR r.needs_acceptance OR NOT r.active_plan OR NOT r.in_window THEN
+    RAISE EXCEPTION 'FAIL derisk [7 nur Sparplan]: %', row_to_json(r); END IF;
+  RAISE NOTICE 'PASS fn_savings_goal_derisk_status [7: p_goal, Ruecklagen ausgeschlossen, Ziel nur mit Sparplan, Zahlen]';
 END $$;
 ROLLBACK;

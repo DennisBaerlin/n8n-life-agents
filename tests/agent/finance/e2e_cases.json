@@ -593,5 +593,29 @@
         "expect":  1,
         "is_negative":  false,
         "notes":  "Bank-Hinweis nur, wo er passt (2026-11-06), Schema-Fidelity executed_by auf dem Set-Pfad (set_recurring_payment hat keinen Routing-Golden, die Fixture-Luecke steht in finance_cases.json): die Angabe der Nutzerin landet als bank an der Zeile, Betrag und Rest bleiben. Die Regel deckt test_fn_transfer_executed_by (db_test). Cleanup via fn_clear_e2e_data (Konto-Scope)."
+    },
+    {
+        "id":  "e2e56",
+        "name":  "Sparziel kurz vor dem Termin ins Depot: Karte mit Risiko eingehen, nach dem Tipp festgehalten",
+        "task":  "Zieh mein Sparziel __E2E__ DRE Ziel komplett vom __E2E__ DRE P2P ins __E2E__ DRE Depot um.",
+        "setup_sql":  "SELECT pg_temp.ok('__E2E__ DRE Cash', finance.fn_create_account(jsonb_build_object('name','__E2E__ DRE Cash','account_type','cash','account_holder','Erika','currency','EUR')));SELECT pg_temp.ok('__E2E__ DRE P2P', finance.fn_create_account(jsonb_build_object('name','__E2E__ DRE P2P','account_type','p2p','account_holder','Erika','currency','EUR','opening_balance',10000)));SELECT pg_temp.ok('__E2E__ DRE Depot', finance.fn_create_account(jsonb_build_object('name','__E2E__ DRE Depot','account_type','stocks_depot','account_holder','Erika','currency','EUR','settlement_id',(SELECT id FROM finance.accounts WHERE name='__E2E__ DRE Cash'))));SELECT pg_temp.ok('__E2E__ DRE Position', finance.fn_book_stock_buy(jsonb_build_object('depot_id',(SELECT id FROM finance.accounts WHERE name='__E2E__ DRE Depot'),'settlement_id',(SELECT id FROM finance.accounts WHERE name='__E2E__ DRE Cash'),'isin','IE00BK5BQT80','symbol','VWCE','name','Vanguard FTSE All-World','shares',30,'price_per_share',100,'existing_position',true)));INSERT INTO finance.savings_goals (name, target_amount, target_date, status) VALUES ('__E2E__ DRE Ziel', 3000, (current_date + interval '14 months')::date, 'active');SELECT pg_temp.ok('Reservierung __E2E__ DRE Ziel', finance.fn_book_savings_reservation(jsonb_build_object('savings_goal_id',(SELECT id FROM finance.savings_goals WHERE name='__E2E__ DRE Ziel'),'account_id',(SELECT id FROM finance.accounts WHERE name='__E2E__ DRE P2P'),'amount',3000)));",
+        "chat_id":  "test_e2e_e2e56",
+        "sentinel_accounts":  3,
+        "verify_sql":  "SELECT count(*) FROM finance.savings_goal_risk_decisions d JOIN finance.savings_goals g ON g.id = d.savings_goal_id WHERE g.name = '__E2E__ DRE Ziel' AND d.event = 'accept' AND d.limit_eur = 3000 AND EXISTS (SELECT 1 FROM finance.savings_goal_account_share s JOIN finance.accounts a ON a.id = s.account_id WHERE s.goal_id = g.id AND a.name = '__E2E__ DRE Depot' AND s.share_eur = 3000);",
+        "expect":  1,
+        "is_negative":  false,
+        "notes":  "Sparziel unter 5 Jahren im Depot als bewusste Ausnahme (2026-11-06), Schema-Fidelity: die gezeigte Lage (effective.depot_risk_shown) geht nach dem echten Tipp in den Write und wird festgehalten. Ziel 3000 in 14 Monaten, erlaubt 700 -> Warnkarte. Korrektheit deckt test_fn_goal_depot_risk_fold + test_fn_book_savings_goal_transfer_reassign (db_test) ab. Cleanup via fn_clear_e2e_data (Ziel-CASCADE)."
+    },
+    {
+        "id":  "e2e55",
+        "name":  "Erinnere mich wieder: Entscheidung wird als revoke angehaengt, nicht geloescht",
+        "task":  "Erinnere mich wieder an das Umschichten beim Sparziel __E2E__ DRR Ziel.",
+        "setup_sql":  "SELECT pg_temp.ok('__E2E__ DRR Cash', finance.fn_create_account(jsonb_build_object('name','__E2E__ DRR Cash','account_type','cash','account_holder','Erika','currency','EUR')));SELECT pg_temp.ok('__E2E__ DRR Depot', finance.fn_create_account(jsonb_build_object('name','__E2E__ DRR Depot','account_type','stocks_depot','account_holder','Erika','currency','EUR','settlement_id',(SELECT id FROM finance.accounts WHERE name='__E2E__ DRR Cash'))));SELECT pg_temp.ok('__E2E__ DRR Ziel', finance.fn_create_savings_goal(jsonb_build_object('name','__E2E__ DRR Ziel','target_amount',14000,'target_date',(date_trunc('month', core.fn_today()) + interval '28 months' + interval '10 days')::date::text,'reserve_account_id',(SELECT id FROM finance.accounts WHERE name='__E2E__ DRR Depot'),'already_saved',14000)));SELECT pg_temp.ok('__E2E__ DRR Entscheidung', finance.fn_goal_depot_risk_fold((SELECT id FROM finance.savings_goals WHERE name='__E2E__ DRR Ziel'), finance.fn_goal_depot_risk_fold((SELECT id FROM finance.savings_goals WHERE name='__E2E__ DRR Ziel'), NULL)->'effective'->'depot_risk_shown'));",
+        "chat_id":  "test_e2e_e2e55",
+        "sentinel_accounts":  2,
+        "verify_sql":  "SELECT count(*) FROM finance.savings_goal_risk_decisions d JOIN finance.savings_goals g ON g.id = d.savings_goal_id WHERE g.name = '__E2E__ DRR Ziel' AND (SELECT count(*) FROM finance.savings_goal_risk_decisions x WHERE x.savings_goal_id = g.id) = 2 AND d.event = 'revoke';",
+        "expect":  1,
+        "is_negative":  false,
+        "notes":  "Sparziel unter 5 Jahren im Depot als bewusste Ausnahme (2026-11-06), Schema-Fidelity des neuen Felds depot_risk_accepted=false (tc119 prueft das Routing): der accept bleibt, ein revoke kommt dazu. Cleanup via fn_clear_e2e_data (Ziel-CASCADE)."
     }
 ]

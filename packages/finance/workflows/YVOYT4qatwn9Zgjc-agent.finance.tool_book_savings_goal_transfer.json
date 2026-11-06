@@ -242,7 +242,7 @@
                   {
                       "parameters":  {
                                          "operation":  "executeQuery",
-                                         "query":  "=SELECT (r-\u003e\u003e\u0027ok\u0027)::boolean AS ok, r-\u003e\u003e\u0027reason\u0027 AS reason, (r-\u003e\u003e\u0027debit_tx_id\u0027)::int AS debit_tx_id, (r-\u003e\u003e\u0027credit_tx_id\u0027)::int AS credit_tx_id, (r-\u003e\u003e\u0027current_amount\u0027)::numeric AS current_amount, (r-\u003e\u003e\u0027from_balance\u0027)::numeric AS from_balance, (r-\u003e\u003e\u0027to_balance\u0027)::numeric AS to_balance, (r-\u003e\u003e\u0027from_share\u0027)::numeric AS from_share, (r-\u003e\u003e\u0027to_share\u0027)::numeric AS to_share, (r-\u003e\u003e\u0027shortfall\u0027)::numeric AS shortfall, COALESCE(r-\u003e\u0027savings_goal_reached\u0027-\u003e\u003e\u0027note\u0027, \u0027\u0027) AS savings_goal_reached FROM finance.fn_book_savings_goal_transfer(($1::jsonb - \u0027_effective\u0027) || COALESCE(NULLIF(($1::jsonb)-\u003e\u0027_effective\u0027, \u0027null\u0027::jsonb), \u0027{}\u0027::jsonb)) AS r;",
+                                         "query":  "=SELECT (r-\u003e\u003e\u0027ok\u0027)::boolean AS ok, r-\u003e\u003e\u0027reason\u0027 AS reason, r-\u003e\u0027depot_risk\u0027 AS depot_risk, (r-\u003e\u003e\u0027debit_tx_id\u0027)::int AS debit_tx_id, (r-\u003e\u003e\u0027credit_tx_id\u0027)::int AS credit_tx_id, (r-\u003e\u003e\u0027current_amount\u0027)::numeric AS current_amount, (r-\u003e\u003e\u0027from_balance\u0027)::numeric AS from_balance, (r-\u003e\u003e\u0027to_balance\u0027)::numeric AS to_balance, (r-\u003e\u003e\u0027from_share\u0027)::numeric AS from_share, (r-\u003e\u003e\u0027to_share\u0027)::numeric AS to_share, (r-\u003e\u003e\u0027shortfall\u0027)::numeric AS shortfall, COALESCE(r-\u003e\u0027savings_goal_reached\u0027-\u003e\u003e\u0027note\u0027, \u0027\u0027) AS savings_goal_reached FROM finance.fn_book_savings_goal_transfer(($1::jsonb - \u0027_effective\u0027) || COALESCE(NULLIF(($1::jsonb)-\u003e\u0027_effective\u0027, \u0027null\u0027::jsonb), \u0027{}\u0027::jsonb)) AS r;",
                                          "options":  {
                                                          "queryReplacement":  "={{ JSON.stringify({ savings_goal_id: $(\u0027Resolve Goal\u0027).item.json.id, from_account_name: $(\u0027Start\u0027).item.json.from_account_name, to_account_name: $(\u0027Start\u0027).item.json.to_account_name, amount: $(\u0027Start\u0027).item.json.amount, direction: $(\u0027Start\u0027).item.json.direction, transaction_date: $(\u0027Start\u0027).item.json.transaction_date, purpose: $(\u0027Start\u0027).item.json.purpose, to_amount: $(\u0027Start\u0027).item.json.to_amount, _effective: ($(\u0027Dry run\u0027).item.json.r.effective || null) }) }}"
                                                      }
@@ -269,7 +269,7 @@
                                                                                  {
                                                                                      "id":  "eca17986-3221-5a9f-9f6c-b49fb39f14d5",
                                                                                      "name":  "summary",
-                                                                                     "value":  "={{ ({ title: \u0027finance.hitl.book_savings_goal_transfer\u0027, lines: [ { label: \u0027finance.label.savings_goal\u0027, kind: \u0027text\u0027, value: ($(\u0027Start\u0027).item.json.savings_goal_name) }, { label: \u0027finance.label.kind\u0027, kind: \u0027enum\u0027, value: ($(\u0027Start\u0027).item.json.direction), enum: \u0027finance.enum.savings_move\u0027 }, { label: \u0027core.label.amount\u0027, kind: \u0027money\u0027, value: (($(\u0027Dry run\u0027).item.json.r.amount || $(\u0027Start\u0027).item.json.amount)), currency: ($(\u0027Dry run\u0027).item.json.r.effective.from_currency) }, (($(\u0027Start\u0027).item.json.to_amount \u0026\u0026 !($(\u0027Start\u0027).item.json.direction === \u0027reassign\u0027)) ? { label: \u0027finance.label.target_amount_after\u0027, kind: \u0027money\u0027, value: ($(\u0027Start\u0027).item.json.to_amount), currency: ($(\u0027Dry run\u0027).item.json.r.effective.to_currency) } : null), { label: \u0027finance.label.from\u0027, kind: \u0027text\u0027, value: ($(\u0027Dry run\u0027).item.json.r.effective.from_account_name) }, { label: \u0027finance.label.to\u0027, kind: \u0027text\u0027, value: ($(\u0027Dry run\u0027).item.json.r.effective.to_account_name) }, ((!($(\u0027Start\u0027).item.json.direction === \u0027reassign\u0027)) ? { label: \u0027core.label.date\u0027, kind: \u0027date\u0027, value: ($(\u0027Dry run\u0027).item.json.r.effective.transaction_date) } : null), (($(\u0027Start\u0027).item.json.purpose) ? { label: \u0027finance.label.purpose\u0027, kind: \u0027text\u0027, value: ($(\u0027Start\u0027).item.json.purpose) } : null), ((($(\u0027Dry run\u0027).item.json.r.shortfall \u003e 0)) ? { label: \u0027finance.label.depot_shortfall\u0027, kind: \u0027money\u0027, value: ($(\u0027Dry run\u0027).item.json.r.shortfall), currency: (\u0027EUR\u0027) } : null), ((($(\u0027Start\u0027).item.json.direction === \u0027reassign\u0027)) ? { kind: \u0027note\u0027, value: \u0027finance.note.reassign_no_money\u0027 } : null), (($(\u0027Dry run\u0027).item.json.r.effective.rate_pot_name) ? { kind: \u0027note\u0027, value: \u0027finance.note.rate_continues\u0027, params: { pot: ($(\u0027Dry run\u0027).item.json.r.effective.rate_pot_name) } } : null) ].concat(($(\u0027Dry run\u0027).item.json.r.card_lines || [])).filter(Boolean) }) }}",
+                                                                                     "value":  "={{ ({ title: \u0027finance.hitl.book_savings_goal_transfer\u0027, approve_key: (($(\u0027Dry run\u0027).item.json.r.card_approve_key || \u0027\u0027)), lines: [ { label: \u0027finance.label.savings_goal\u0027, kind: \u0027text\u0027, value: ($(\u0027Start\u0027).item.json.savings_goal_name) }, { label: \u0027finance.label.kind\u0027, kind: \u0027enum\u0027, value: ($(\u0027Start\u0027).item.json.direction), enum: \u0027finance.enum.savings_move\u0027 }, { label: \u0027core.label.amount\u0027, kind: \u0027money\u0027, value: (($(\u0027Dry run\u0027).item.json.r.amount || $(\u0027Start\u0027).item.json.amount)), currency: ($(\u0027Dry run\u0027).item.json.r.effective.from_currency) }, (($(\u0027Start\u0027).item.json.to_amount \u0026\u0026 !($(\u0027Start\u0027).item.json.direction === \u0027reassign\u0027)) ? { label: \u0027finance.label.target_amount_after\u0027, kind: \u0027money\u0027, value: ($(\u0027Start\u0027).item.json.to_amount), currency: ($(\u0027Dry run\u0027).item.json.r.effective.to_currency) } : null), { label: \u0027finance.label.from\u0027, kind: \u0027text\u0027, value: ($(\u0027Dry run\u0027).item.json.r.effective.from_account_name) }, { label: \u0027finance.label.to\u0027, kind: \u0027text\u0027, value: ($(\u0027Dry run\u0027).item.json.r.effective.to_account_name) }, ((!($(\u0027Start\u0027).item.json.direction === \u0027reassign\u0027)) ? { label: \u0027core.label.date\u0027, kind: \u0027date\u0027, value: ($(\u0027Dry run\u0027).item.json.r.effective.transaction_date) } : null), (($(\u0027Start\u0027).item.json.purpose) ? { label: \u0027finance.label.purpose\u0027, kind: \u0027text\u0027, value: ($(\u0027Start\u0027).item.json.purpose) } : null), ((($(\u0027Dry run\u0027).item.json.r.shortfall \u003e 0)) ? { label: \u0027finance.label.depot_shortfall\u0027, kind: \u0027money\u0027, value: ($(\u0027Dry run\u0027).item.json.r.shortfall), currency: (\u0027EUR\u0027) } : null), ((($(\u0027Start\u0027).item.json.direction === \u0027reassign\u0027)) ? { kind: \u0027note\u0027, value: \u0027finance.note.reassign_no_money\u0027 } : null), (($(\u0027Dry run\u0027).item.json.r.effective.rate_pot_name) ? { kind: \u0027note\u0027, value: \u0027finance.note.rate_continues\u0027, params: { pot: ($(\u0027Dry run\u0027).item.json.r.effective.rate_pot_name) } } : null) ].concat(($(\u0027Dry run\u0027).item.json.r.card_lines || [])).filter(Boolean) }) }}",
                                                                                      "type":  "object"
                                                                                  }
                                                                              ]
@@ -473,54 +473,66 @@
                                                                                  },
                                                                                  {
                                                                                      "id":  "91ef3a40-be38-5d2d-9b21-688245fb9e14",
+                                                                                     "name":  "depot_risk_recorded",
+                                                                                     "value":  "={{ !!$(\u0027Book savings movement (atomic)\u0027).item.json.depot_risk }}",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "2a84d736-ebcd-5400-8874-a0ac21c2eb32",
+                                                                                     "name":  "depot_risk_reminder_month",
+                                                                                     "value":  "={{ ($(\u0027Book savings movement (atomic)\u0027).item.json.depot_risk || {}).reminder_month || \u0027\u0027 }}",
+                                                                                     "type":  "string"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "1100eb18-7368-5fab-a5cc-f6d35f401770",
                                                                                      "name":  "debit_tx_id",
                                                                                      "value":  "={{ $(\u0027Book savings movement (atomic)\u0027).item.json.debit_tx_id }}",
                                                                                      "type":  "number"
                                                                                  },
                                                                                  {
-                                                                                     "id":  "2a84d736-ebcd-5400-8874-a0ac21c2eb32",
+                                                                                     "id":  "770519b8-8007-55ec-82b0-a2f3787fedbe",
                                                                                      "name":  "credit_tx_id",
                                                                                      "value":  "={{ $(\u0027Book savings movement (atomic)\u0027).item.json.credit_tx_id }}",
                                                                                      "type":  "number"
                                                                                  },
                                                                                  {
-                                                                                     "id":  "1100eb18-7368-5fab-a5cc-f6d35f401770",
+                                                                                     "id":  "903d88c4-4a18-55b8-a92f-3747a3044c4f",
                                                                                      "name":  "current_amount",
                                                                                      "value":  "={{ $(\u0027Book savings movement (atomic)\u0027).item.json.current_amount }}",
                                                                                      "type":  "number"
                                                                                  },
                                                                                  {
-                                                                                     "id":  "770519b8-8007-55ec-82b0-a2f3787fedbe",
+                                                                                     "id":  "6caf9289-b573-5130-92bd-fdde8060d29e",
                                                                                      "name":  "from_balance",
                                                                                      "value":  "={{ $(\u0027Book savings movement (atomic)\u0027).item.json.from_balance }}",
                                                                                      "type":  "number"
                                                                                  },
                                                                                  {
-                                                                                     "id":  "903d88c4-4a18-55b8-a92f-3747a3044c4f",
+                                                                                     "id":  "47fe6f91-0883-5773-a0bd-cd658254c3d8",
                                                                                      "name":  "to_balance",
                                                                                      "value":  "={{ $(\u0027Book savings movement (atomic)\u0027).item.json.to_balance }}",
                                                                                      "type":  "number"
                                                                                  },
                                                                                  {
-                                                                                     "id":  "6caf9289-b573-5130-92bd-fdde8060d29e",
+                                                                                     "id":  "f76fb58b-2fc1-59e2-ab6d-5ef7f073f02a",
                                                                                      "name":  "from_share",
                                                                                      "value":  "={{ $(\u0027Book savings movement (atomic)\u0027).item.json.from_share }}",
                                                                                      "type":  "number"
                                                                                  },
                                                                                  {
-                                                                                     "id":  "47fe6f91-0883-5773-a0bd-cd658254c3d8",
+                                                                                     "id":  "a9838ca6-023f-5330-90bc-e0ad8a5420b6",
                                                                                      "name":  "to_share",
                                                                                      "value":  "={{ $(\u0027Book savings movement (atomic)\u0027).item.json.to_share }}",
                                                                                      "type":  "number"
                                                                                  },
                                                                                  {
-                                                                                     "id":  "f76fb58b-2fc1-59e2-ab6d-5ef7f073f02a",
+                                                                                     "id":  "90de696e-32f6-59e7-b02a-569cc4fa6e2f",
                                                                                      "name":  "shortfall",
                                                                                      "value":  "={{ $(\u0027Book savings movement (atomic)\u0027).item.json.shortfall }}",
                                                                                      "type":  "number"
                                                                                  },
                                                                                  {
-                                                                                     "id":  "a9838ca6-023f-5330-90bc-e0ad8a5420b6",
+                                                                                     "id":  "00e1d0fb-be67-5607-a082-de6d7fead1c4",
                                                                                      "name":  "savings_goal_reached",
                                                                                      "value":  "={{ $(\u0027Book savings movement (atomic)\u0027).item.json.savings_goal_reached }}",
                                                                                      "type":  "string"
@@ -574,7 +586,7 @@
                   },
                   {
                       "parameters":  {
-                                         "content":  "## DB-Automatik\n**fn_book_savings_goal_transfer (atomar)**\n\nreassign (Sparziel umziehen, 2026-11-01) ist KEINE Geldbewegung: fn_book_savings_goal_reassign verschiebt die Zuordnung per zwei Journal-Zeilen (fn_book_savings_reservation, eine Regel für Kontoarten und Freier-Saldo-Guard; Ziel darf ein Depot sein, Deckung = Marktwert, shortfall auf der Karte; kurzfristiges Ziel -\u003e goal_too_short_term, Depot ohne Kurs -\u003e no_price). Rückgängig = reassign zurück. Sonst gilt: Jede Sparziel-Bewegung ist physisch ein Transfer: die fn ruft INTERN finance.fn_book_transfer (zwei Beine, group_id, Multi-Währung, Saldo-Trigger) und stempelt dann je direction den savings_goal_id-Tag: deposit -\u003e Haben-(to-)Bein (+); withdrawal -\u003e Soll-(from-)Bein (-); relocate -\u003e BEIDE Beine (Netto-0, nur Umzug). savings_goal_progress.current_amount = signed SUM der getaggten Tx -\u003e bewegt sich entsprechend. Scheitert der interne Transfer ({ok:false}, z. B. Cross-Currency ohne to_amount), wird NICHT gestempelt (Guard vor dem UPDATE) -\u003e kein stiller no-op-Tag. Phase L WS-5: NUR bei direction=deposit + current\u003e=target faltet die fn eine Glückwunsch-Note in savings_goal_reached (withdrawal/relocate nie; sonst leer). Bookkeeper relayed (erreicht != ausgegeben).",
+                                         "content":  "## DB-Automatik\n**fn_book_savings_goal_transfer (atomar)**\n\nreassign (Sparziel umziehen, 2026-11-01) ist KEINE Geldbewegung: fn_book_savings_goal_reassign verschiebt die Zuordnung per zwei Journal-Zeilen (fn_book_savings_reservation, eine Regel für Kontoarten und Freier-Saldo-Guard; Ziel darf ein Depot sein, Deckung = Marktwert, shortfall auf der Karte; kurzfristiges Ziel im Depot -\u003e Warnkarte mit Knopf Risiko eingehen + Eintrag in savings_goal_risk_decisions nach dem Tipp (fn_goal_depot_risk_fold), Depot ohne Kurs -\u003e no_price). Rückgängig = reassign zurück. Sonst gilt: Jede Sparziel-Bewegung ist physisch ein Transfer: die fn ruft INTERN finance.fn_book_transfer (zwei Beine, group_id, Multi-Währung, Saldo-Trigger) und stempelt dann je direction den savings_goal_id-Tag: deposit -\u003e Haben-(to-)Bein (+); withdrawal -\u003e Soll-(from-)Bein (-); relocate -\u003e BEIDE Beine (Netto-0, nur Umzug). savings_goal_progress.current_amount = signed SUM der getaggten Tx -\u003e bewegt sich entsprechend. Scheitert der interne Transfer ({ok:false}, z. B. Cross-Currency ohne to_amount), wird NICHT gestempelt (Guard vor dem UPDATE) -\u003e kein stiller no-op-Tag. Phase L WS-5: NUR bei direction=deposit + current\u003e=target faltet die fn eine Glückwunsch-Note in savings_goal_reached (withdrawal/relocate nie; sonst leer). Bookkeeper relayed (erreicht != ausgegeben).",
                                          "height":  250,
                                          "width":  580,
                                          "color":  4

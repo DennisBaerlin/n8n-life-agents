@@ -226,3 +226,29 @@ BEGIN
 END $$;
 
 ROLLBACK;
+
+-- Sparziel kurz vor dem Termin im Depot (2026-11-06): Soft-Close haengt an eine offene Entscheidung einen revoke an,
+-- damit ein wieder geoeffnetes Ziel neu fragt.
+BEGIN;
+DO $$
+DECLARE v_settle int; v_depot int; v_g int; v_r jsonb;
+BEGIN
+  v_settle := (finance.fn_create_account('{"name":"__csdr_settle__","account_type":"cash"}'::jsonb)->>'account_id')::int;
+  v_depot  := (finance.fn_create_account(jsonb_build_object('name','__csdr_depot__','account_type','stocks_depot','settlement_id',v_settle))->>'account_id')::int;
+  INSERT INTO finance.savings_goals (name, target_amount, target_date, status)
+    VALUES ('__csdr Reise__', 6000, (date_trunc('month', current_date) + interval '24 months' + interval '10 days')::date, 'active')
+    RETURNING id INTO v_g;
+  -- echte Geldbewegung im Journal -> Soft-Close (nicht Hard-DELETE)
+  INSERT INTO finance.savings_goal_reserve_entries (savings_goal_id, account_id, delta_native, currency, kind)
+    VALUES (v_g, v_depot, 6000, 'EUR', 'sparplan_buy');
+  INSERT INTO finance.savings_goal_risk_decisions (savings_goal_id, event, target_date, limit_eur, allowed_eur)
+    SELECT v_g, 'accept', target_date, 6000, 2400 FROM finance.savings_goals WHERE id = v_g;
+  v_r := finance.fn_close_savings_goal(jsonb_build_object('savings_goal_name', '__csdr Reise__', 'outcome', 'cancelled'));
+  IF v_r->>'action' IS DISTINCT FROM 'closed'
+     OR (SELECT event FROM finance.savings_goal_risk_decisions WHERE savings_goal_id = v_g ORDER BY decided_at DESC, id DESC LIMIT 1) IS DISTINCT FROM 'revoke' THEN
+    RAISE EXCEPTION 'FAIL close [9 revoke beim Schliessen]: %', v_r; END IF;
+  UPDATE finance.savings_goals SET status = 'active' WHERE id = v_g;
+  IF (SELECT accepted FROM finance.fn_savings_goal_derisk_status(v_g)) THEN RAISE EXCEPTION 'FAIL close [9 wieder geoeffnet fragt neu]'; END IF;
+  RAISE NOTICE 'PASS close [9: Soft-Close haengt revoke an, wieder geoeffnet gilt nichts mehr]';
+END $$;
+ROLLBACK;

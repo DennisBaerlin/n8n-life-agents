@@ -20,6 +20,26 @@
   },
   {
     "kind": "cron_text",
+    "id": "ctk20",
+    "name": "Umschicht-Erinnerung an den Owner (ko): Sparziel kurz vor dem Termin mit zu viel Depot-Geld -> Kopf + Zahlen-Zeilen + Schluss-Satz (Regel E, 2026-11-06) + Sprache ans Modell",
+    "workflow": "agent.advisor.cron_drift_check",
+    "schedule_key": "drift_check",
+    "cron_enable": "drift_check",
+    "recipient": "owner",
+    "reset_sql": [
+      "DELETE FROM core.notification_state WHERE source LIKE 'advisor:%';",
+      "DELETE FROM finance.savings_goals WHERE name = 'CRONTEXT DR';"
+    ],
+    "seed_sql": [
+      "INSERT INTO finance.savings_goals (name, target_amount, target_date, status) VALUES ('CRONTEXT DR', 10000, CURRENT_DATE + 400, 'active');",
+      "INSERT INTO finance.savings_goal_reserve_entries (savings_goal_id, account_id, delta_native, currency, kind) SELECT g.id, a.id, 9000, 'EUR', 'manual' FROM finance.savings_goals g, finance.accounts a WHERE g.name = 'CRONTEXT DR' AND a.name = 'Testbroker Depot';"
+    ],
+    "expect_keys": ["core.advisor.footer_off"],
+    "expect_buttons": ["core.advisor.btn_off"],
+    "llm_expect": { "keys": ["finance.advisor.goal_derisk", "finance.advisor.goal_derisk_keep"], "language": true }
+  },
+  {
+    "kind": "cron_text",
     "id": "ctk02",
     "name": "Quartals-Bericht an den Owner (ko): Fußzeile + Knopf; Digest-Zeilen + Sprache ans Modell",
     "workflow": "agent.advisor.cron_review",

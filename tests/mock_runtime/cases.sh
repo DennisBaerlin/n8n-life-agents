@@ -163,4 +163,26 @@ if ( telegram_webhook_preflight ) >/dev/null 2>&1; then pass T.bestand-ohne-term
 printf 'WEBHOOK_URL=https://bot.example.com/\n' > "$W/n8n.env"; rm -f "$W/VERSION"
 if ( telegram_webhook_preflight ) >/dev/null 2>&1; then pass T.eigener-webhook-ohne-frage; else fail T.eigener-webhook-ohne-frage "brach ab"; fi
 
+# Maschinenlesbar fuer den Wizard (eine JSON-Zeile, Token nur aus der Umgebung).
+TG_WH='{"ok":true,"result":{"url":"https://other.example.org/hook","pending_update_count":3}}'
+eq T.json-fremd '{"ok":true,"state":"foreign","webhook_host":"other.example.org","pending":3,"polling_conflict":false}' "$(telegram_webhook_json)"
+TG_WH='{"ok":true,"result":{"url":"","pending_update_count":0}}'; TG_UP=409
+eq T.json-polling '{"ok":true,"state":"foreign","webhook_host":"","pending":0,"polling_conflict":true}' "$(telegram_webhook_json)"
+TG_WH_CODE=401; eq T.json-token-abgelehnt '{"ok":false,"reason":"unauthorized"}' "$(telegram_webhook_json)"; unset TG_WH_CODE
+eq T.json-ohne-token '{"ok":false,"reason":"no_token"}' "$(TELEGRAM_BOT_TOKEN='' telegram_webhook_json)"
+
+# ---------------------------------------------------------------------------- Z: Wizard-Form der Antwort-Datei
+H='# lifeagents-answers v1'
+printf '%s\n' "$H" "OWNER_LAST_NAME=O'Muster \$(touch $P) \`x\`" 'GOOGLE_API_KEY=' 'A=b=c' > "$W/a"
+ok_ans Z.roh-wortgetreu "[ \"\$OWNER_LAST_NAME\" = \"O'Muster \\\$(touch $P) \\\`x\\\`\" ] && [ -z \"\$GOOGLE_API_KEY\" ] && [ \"\$A\" = b=c ] && [ ! -e '$P' ]"
+printf '%s\n' "$H" 'A=1' 'A=2' > "$W/a";                no_ans Z.doppelt
+printf '%s\n' "$H" '' 'A=1' > "$W/a";                   no_ans Z.leerzeile
+printf '%s\n' "$H" '# k' > "$W/a";                      no_ans Z.kommentar
+printf '%s\n' "$H" 'PATH=/x' > "$W/a";                  no_ans Z.gesperrt-bricht-ab
+printf '%s\r\n' "$H" 'A=1' > "$W/a";                    no_ans Z.crlf-kopf-ist-env-form-fehler
+printf '%s\n' "$H" > "$W/a"; printf 'A=1\r\n' >> "$W/a"; no_ans Z.cr-im-wert
+printf '%s\n' "$H" "A=$(head -c 4097 /dev/zero | tr '\0' x)" > "$W/a"; no_ans Z.zu-lang
+printf '%s\n' "$H" 'a=1' > "$W/a";                      no_ans Z.kleinbuchstaben
+printf '%s\n' "$H" 'B=2' > "$W/a"; printf 'C=3' >> "$W/a"; ok_ans Z.ohne-umbruch-am-ende '[ "$B" = 2 ] && [ "$C" = 3 ]'
+
 exit "$fails"

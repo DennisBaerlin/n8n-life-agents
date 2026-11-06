@@ -66,7 +66,7 @@ jobs:
       - name: Cache-Schluessel
         id: key
         env:
-          INPUTS_HASH: ${{ hashFiles('scripts/dev/substrate-image/**', 'provisioning/provision.sh', 'provisioning/lib/common.sh', 'provisioning/lib/packages.sh', 'provisioning/lib/install_pg.sh', 'provisioning/lib/install_n8n.sh') }}
+          INPUTS_HASH: ${{ hashFiles('scripts/dev/substrate-image/**', 'provisioning/provision.sh', 'provisioning/lib/common.sh', 'provisioning/lib/runtime.sh', 'provisioning/lib/packages.sh', 'provisioning/lib/install_pg.sh', 'provisioning/lib/install_n8n.sh') }}
         run: echo "value=substrate-base-$INPUTS_HASH" >> "$GITHUB_OUTPUT"
 
       - name: Basis-Image aus dem Cache

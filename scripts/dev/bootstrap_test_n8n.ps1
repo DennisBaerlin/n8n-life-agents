@@ -209,7 +209,7 @@ function Get-SubstrateBaseSpec {
         'Dockerfile'    = Join-Path $RepoRoot 'scripts\dev\substrate-image\Dockerfile'
         'build_base.sh' = Join-Path $RepoRoot 'scripts\dev\substrate-image\build_base.sh'
     }
-    foreach ($f in 'common.sh', 'packages.sh', 'install_pg.sh', 'install_n8n.sh') {
+    foreach ($f in 'common.sh', 'runtime.sh', 'packages.sh', 'install_pg.sh', 'install_n8n.sh') {   # runtime.sh: common.sh sourct es (Betriebsart-Wrapper)
         $files["lib/$f"] = Join-Path $RepoRoot "provisioning\lib\$f"
     }
     $buf = New-Object System.IO.MemoryStream
@@ -357,7 +357,7 @@ function Remove-StaleSubstrateBaseImages {
 # Show-InstallCoreHint — der Schnellpfad faehrt die frischen Install-Zweige (PG-/Node-/n8n-Erstinstallation, Preflight
 # eines nackten Hosts) nicht. Aendert der Branch den Install-Kern, vor dem Push einmal kalt pruefen. Nie fatal.
 function Show-InstallCoreHint {
-    $core = '^provisioning/(provision\.sh|lib/(common|preflight|packages|install_pg|install_n8n|upgrade_guard|firewall)\.sh)$'
+    $core = '^provisioning/(provision\.sh|lib/(common|runtime|preflight|packages|install_pg|install_n8n|upgrade_guard|firewall)\.sh)$'
     # Gegen origin/main (das lokale main eines Worktree-Hosts hinkt oft hinterher -> fremde Commits als Fehlalarm).
     $base = if ((Invoke-Native git @('-C', $RepoRoot, 'rev-parse', '--verify', '-q', 'origin/main')).Code -eq 0) { 'origin/main' } else { 'main' }
     $names = @()

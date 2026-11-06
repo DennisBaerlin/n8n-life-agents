@@ -272,6 +272,11 @@
 <p><strong>Jedes Update sichert vorher:</strong> Wechselt ein Update die Version (eine neue Version des Projekts oder von n8n, Node.js bzw. PostgreSQL), wartet der Installer kurz laufende Agenten-Schritte ab, hält n8n an und legt eine <strong>verschlüsselte Sicherung der ganzen Datenbank</strong> unter <code>/var/backups/lifeagents/</code> an (die letzten zwei bleiben liegen). Erst danach wird getauscht; bei einer neuen n8n-Version stellt n8n seine Tabellen um, das kann einige Minuten dauern. Offene Bestätigungen bleiben erhalten. Bricht das Update ab, setzt ein erneutes <code>lifeagents update</code> mit derselben Sicherung fort, und <code>lifeagents doctor</code> weist darauf hin. Willst du zurück zur vorherigen Version, holt <code>lifeagents rollback</code> die Daten von vor dem Update zurück und spielt den vorherigen Stand ein (fragt vorher nach, weil alles seit der Sicherung verloren geht). Erneut dieselbe Version einspielen (z. B. <code>lifeagents reconfigure</code>) sichert nicht.</p>
 <h2 id="erreichbarkeit">Erreichbarkeit</h2>
 <p>Damit Telegram deinem Bot Nachrichten schicken kann, muss dein Server <strong>von außen über HTTPS erreichbar</strong> sein. Der Weg einer Nachricht:</p>
+
+<figure class="explain">
+  <img src="../explain/reach-proxy.de.light.svg" width="720" height="280" alt="Deine Nachricht geht vom Handy über Telegram und deinen eigenen Proxy zu deinem Rechner zu Hause.">
+</figure>
+
 <p><strong>Telegram → deine Domain (öffentliches DNS/DynDNS) → Port-Weiterleitung am Router → HTTPS-Terminierung (Reverse Proxy) → n8n.</strong></p>
 <p>Konkret sind das drei Bausteine:</p>
 <ul>

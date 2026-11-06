@@ -297,6 +297,10 @@ section[id], footer[id] { scroll-margin-top: 84px; }
 .docs-content figure.schema svg { display: block; width: 100%; height: auto; }
 .docs-content figure.schema text { font-family: var(--font); }
 .docs-content figure.schema figcaption { margin-top: 8px; font-size: 14px; line-height: 1.5; color: var(--gray); }
+/* Erklaer-Bilder (Shortcode explain, fertige SVGs unter static/explain/): volle Spaltenbreite bis 560px, ohne den Rahmen der
+   Bildschirmfotos. */
+.docs-content figure.explain { margin: 20px 0 24px; max-width: 560px; }
+.docs-content figure.explain img { display: block; width: 100%; height: auto; margin: 0; border: 0; border-radius: 0; box-shadow: none; }
 
 /* ============ Motion (ruhig, CSS-only) ============ */
 @media (prefers-reduced-motion: no-preference) {

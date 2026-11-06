@@ -82,6 +82,8 @@ Es öffnet sich eine Auswahl-Liste (Leertaste markiert, Enter startet). Danach l
 
 Damit Telegram deinem Bot Nachrichten schicken kann, muss dein Server **von außen über HTTPS erreichbar** sein. Der Weg einer Nachricht:
 
+{{< explain name="reach-proxy" height="280" alt="Deine Nachricht geht vom Handy über Telegram und deinen eigenen Proxy zu deinem Rechner zu Hause." >}}
+
 **Telegram → deine Domain (öffentliches DNS/DynDNS) → Port-Weiterleitung am Router → HTTPS-Terminierung (Reverse Proxy) → n8n.**
 
 Konkret sind das drei Bausteine:

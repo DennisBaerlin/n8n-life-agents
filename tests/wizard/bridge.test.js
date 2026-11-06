@@ -10,7 +10,11 @@ const { execFileSync } = require('child_process');
 const { REPO, WIZ, lanIp } = require('./helpers');
 
 const BRIDGE = path.join(WIZ, 'bridge.sh');
-const run = (args, input = '', env = {}) => JSON.parse(execFileSync('bash', [BRIDGE, ...args], { input, env: Object.assign({}, process.env, env) }).toString().trim());
+// Kein Aufruf darf eine echte FritzBox oder den Echo-Dienst erreichen (der Container hat Netz, siehe durchlauf.test.js),
+// und keiner liest den Zwischenspeicher eines früheren Aufrufs: reach-status prüft vor der Wahl dieselbe IPv4 wie dslite.
+const NO_BOX = { REACH_UPNP_URL: 'http://127.0.0.1:9/', REACH_IPV4_ECHO: 'http://127.0.0.1:9/', REACH_HINTS_FILE: '/nonexistent/hints.env',
+  REACH_RUN_DIR: fs.mkdtempSync(path.join(require('os').tmpdir(), 'reach-')) };
+const run = (args, input = '', env = {}) => JSON.parse(execFileSync('bash', [BRIDGE, ...args], { input, env: Object.assign({}, process.env, NO_BOX, env) }).toString().trim());
 const sh = (script) => execFileSync('bash', ['-c', script], { env: Object.assign({}, process.env, { P: path.join(REPO, 'provisioning') }) }).toString().trim();
 
 test('Fragen-Auszug = Host-Fragen der CLI (ohne n8n-Anmeldung und Proxy-Ort) + alle gebündelten Pakete', () => {

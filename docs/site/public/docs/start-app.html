@@ -224,9 +224,9 @@
 <p><strong>Stand:</strong> Die Start-App ist noch im Bau. Der Mac ist der erste Weg; Windows folgt aus derselben App und wird erst geprüft, wenn der Mac läuft. Wo hier „wird geprüft“ steht, bestätigt das erst der Test auf einem echten Mac.</p>
 <h2 id="bevor-du-startest">Bevor du startest</h2>
 <ul>
-<li><strong>Ein Rechner, der an bleiben darf</strong>, am Netzteil. Docker (die Technik, in der der Bot auf deinem Rechner läuft) verlangt mindestens 4 GB Arbeitsspeicher beim Mac und 8 GB bei Windows. Die App prüft das selbst und sagt dir, wenn etwas fehlt.</li>
+<li><strong>Ein Rechner, der an bleiben darf</strong>, am Netzteil: ein Mac mit Apple-Chip (M1 oder neuer; ältere Macs mit Intel-Chip gehen nicht) oder ein Windows-PC mit 64-Bit-Windows. Docker (die Technik, in der der Bot auf deinem Rechner läuft) verlangt mindestens 4 GB Arbeitsspeicher beim Mac und 8 GB bei Windows. Die App prüft das selbst und sagt dir, wenn etwas fehlt.</li>
 <li><strong>Die Zugänge für den Bot:</strong> ein Telegram-Bot-Token und ein Anthropic-Schlüssel (Pflicht), ein Google-Schlüssel nur für Sprachnachrichten (freiwillig). Was das ist und wo du es bekommst, steht unter <a href="installation.html#bevor-du-startest">Bevor du startest</a> und <a href="installation.html#telegram-bot-anlegen">Telegram-Bot anlegen</a>. Eine eigene Domain und einen Reverse Proxy brauchst du auf diesem Weg <strong>nicht</strong>.</li>
-<li><strong>Für den Weg ins Internet</strong> (siehe <a href="#tunnel-oder-fritzbox">unten</a>): ein kostenloses Tailscale-Konto, das du im Wizard anlegst, oder Zugang zur Oberfläche deiner FritzBox.</li>
+<li><strong>Für den Weg ins Internet</strong> (siehe <a href="#tunnel-oder-fritzbox">unten</a>): ein kostenloses Tailscale-Konto, das du unterwegs in der App anlegst, oder Zugang zur Oberfläche deiner FritzBox.</li>
 </ul>
 <p>Docker musst du nicht vorher installieren, das erledigt die App. <strong>Ist Docker schon da</strong>, zum Beispiel weil dort Paperless läuft, nutzt die App es mit. Sie installiert es nie ein zweites Mal, ändert nie seine Version, und deine anderen Programme darin bleiben, wie sie sind.</p>
 <p>Docker Desktop ist für private Nutzung kostenlos. Wer es beruflich in einer größeren Firma nutzt, braucht laut Docker ein Abo (<a href="https://www.docker.com/pricing/faq/">Docker-Preise</a>, keine Rechtsberatung).</p>
@@ -238,8 +238,8 @@
 <p>Beide Dateien kommen direkt aus der Release-Seite des Projekts auf GitHub. Ein Konto brauchst du dafür nicht.</p>
 <h2 id="schritt-2-in-den-programme-ordner-ziehen">Schritt 2: In den Programme-Ordner ziehen</h2>
 <p><strong>Mac:</strong> Doppelklick auf die geladene Datei. Es öffnet sich ein Fenster mit dem Symbol der App, dem Programme-Ordner und einem Pfeil dazwischen. Zieh das Symbol auf den Ordner. Danach das Fenster schließen.</p>
-<p><em>Erwartet:</em> Im Finder unter <strong>Programme</strong> liegt jetzt die App. Öffne sie immer von dort. Startest du sie aus dem Fenster der Datei, bittet sie dich zuerst, sie in den Ordner zu ziehen.</p>
-<p><strong>Windows:</strong> Doppelklick auf die Setup-Datei. Der nächste Schritt erklärt die Warnung, die dabei erscheint.</p>
+<p><em>Erwartet:</em> Im Finder unter <strong>Programme</strong> liegt jetzt die App <strong>lifeagents</strong>. Öffne sie immer von dort. Startest du sie aus dem Fenster der Datei, zeigt sie „Zieh die App zuerst in den Programme-Ordner“.</p>
+<p><strong>Windows:</strong> Doppelklick auf die Setup-Datei. Der nächste Schritt erklärt die Warnung, die dabei erscheint. Die App wird nur für dein Windows-Benutzerkonto installiert und steht danach im Startmenü als <strong>lifeagents</strong>.</p>
 <h2 id="schritt-3-die-sperre-beim-ersten-öffnen-lösen">Schritt 3: Die Sperre beim ersten Öffnen lösen</h2>
 <p>Der Mac und Windows warnen beim ersten Öffnen, weil die App nicht über ein kostenpflichtiges Entwicklerkonto bei Apple bzw. Microsoft registriert ist. Der Quelltext ist öffentlich, und du lädst die Datei nur von der Release-Seite oben. Das Lösen ist <strong>einmal</strong> nötig.</p>
 <p><strong>Mac</strong> (so beschreibt es <a href="https://support.apple.com/de-de/102445">Apple</a>):</p>
@@ -258,7 +258,7 @@
 <li><strong>Rechner prüfen</strong>, ohne Frage: Bauart, System-Version, Arbeitsspeicher, freier Platz.</li>
 <li><strong>Docker:</strong> Fehlt es, erklärt die App in zwei Sätzen, was das ist, zeigt die Bedingungen von Docker und fragt dich. Erst nach deinem <strong>Einverstanden</strong> lädt sie Docker direkt beim Hersteller (gut ein halbes Gigabyte) und prüft dessen Unterschrift. Dein Rechner fragt dabei einmal nach seinem Passwort.</li>
 <li><strong>„Das wird geändert“:</strong> Bevor irgendetwas passiert, zeigt die App eine Liste, was sie auf deinem Rechner einrichtet. Ohne dein Ja ändert sie nichts.</li>
-<li><strong>Deine Angaben</strong>, eine Frage je Seite: Sprache, Name, Geburtsdatum, Charakter des Bots, Telegram-Bot, Anthropic, Google (freiwillig), welche Funktionen du willst, und der Weg ins Internet (Tunnel oder FritzBox).</li>
+<li><strong>Deine Angaben</strong>, eine Frage je Seite: Sprache, Name, Geburtsdatum, Charakter des Bots, Telegram-Bot, Anthropic, Google (freiwillig), welche Funktionen du willst, und „Wie soll Telegram deinen Rechner erreichen?“ (Tunnel oder FritzBox).</li>
 <li><strong>Übersicht:</strong> alle Antworten noch einmal zum Prüfen, bevor installiert wird.</li>
 <li><strong>Installation</strong> mit Fortschrittsanzeige. Die App lädt dabei die Bausteine des Bots, gut ein halbes Gigabyte.</li>
 <li><strong>Mit Telegram verbinden</strong> per QR-Code: mit dem Handy scannen, Telegram öffnet den Chat mit deinem Bot.</li>
@@ -286,7 +286,7 @@
 <p>Auf <strong>Windows</strong> legt die App ein eigenes Energieschema an (kein Standby, Bildschirm nach 10 Minuten aus); dein bisheriges Schema bleibt unberührt. Ob der PC nach einem Stromausfall von selbst startet, stellst du dort im BIOS ein, das macht die App nicht.</p>
 <p><strong>Wird geprüft:</strong> wie viel Strom der Rechner mit dem laufenden Bot braucht und ob ein Mac mini mit diesen Einstellungen wirklich wach bleibt.</p>
 <h2 id="im-alltag">Im Alltag</h2>
-<p>Nach der Einrichtung sitzt ein kleines Symbol in der Menüleiste (Mac) bzw. neben der Uhr (Windows). Es zeigt, ob alles läuft oder Docker aus ist, und bietet: Telegram öffnen, Dauerbetrieb zurückstellen, Fehlerbericht und Deinstallieren. Die App startet bei jeder Anmeldung von selbst und bringt Docker und den Bot hoch.</p>
+<p>Nach der Einrichtung sitzt ein kleines Symbol in der Menüleiste (Mac) bzw. neben der Uhr (Windows). Ganz oben in seinem Menü steht <strong>Läuft</strong> oder <strong>Docker ist aus</strong>. Darunter: <strong>Fenster öffnen</strong>, <strong>Telegram öffnen</strong>, <strong>Dauerbetrieb zurückstellen</strong>, <strong>Fehlerbericht</strong>, <strong>Deinstallieren</strong> und <strong>Beenden</strong>. Die App startet bei jeder Anmeldung von selbst und bringt Docker und den Bot hoch.</p>
 <p>Updates kommen wie bei jeder Installation als Karte im Chat; ein Tipp auf <strong>Jetzt aktualisieren</strong> sichert vorher deine Daten (<a href="installation.html#funktionen-hinzuf%C3%BCgen">mehr zu Updates</a>). Eine neue Fassung der Start-App selbst meldet der Bot im Chat, sie lädst du dann wie in Schritt 1.</p>
 <h2 id="wenn-etwas-nicht-klappt">Wenn etwas nicht klappt</h2>
 <p>Der Knopf <strong>Fehlerbericht</strong> im Symbol erstellt einen Bericht aus festen Angaben (zum Beispiel Version und welcher Schritt hakt). Chat-Inhalte und Schlüssel stehen nie darin. Schick ihn an die Person, die dir beim Einrichten hilft.</p>

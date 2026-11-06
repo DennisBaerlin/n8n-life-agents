@@ -8,9 +8,9 @@ Dieser Weg ist für dich, wenn du **keinen eigenen Server** hast, aber einen Mac
 
 ## Bevor du startest
 
-- **Ein Rechner, der an bleiben darf**, am Netzteil. Docker (die Technik, in der der Bot auf deinem Rechner läuft) verlangt mindestens 4 GB Arbeitsspeicher beim Mac und 8 GB bei Windows. Die App prüft das selbst und sagt dir, wenn etwas fehlt.
+- **Ein Rechner, der an bleiben darf**, am Netzteil: ein Mac mit Apple-Chip (M1 oder neuer; ältere Macs mit Intel-Chip gehen nicht) oder ein Windows-PC mit 64-Bit-Windows. Docker (die Technik, in der der Bot auf deinem Rechner läuft) verlangt mindestens 4 GB Arbeitsspeicher beim Mac und 8 GB bei Windows. Die App prüft das selbst und sagt dir, wenn etwas fehlt.
 - **Die Zugänge für den Bot:** ein Telegram-Bot-Token und ein Anthropic-Schlüssel (Pflicht), ein Google-Schlüssel nur für Sprachnachrichten (freiwillig). Was das ist und wo du es bekommst, steht unter [Bevor du startest](installation.html#bevor-du-startest) und [Telegram-Bot anlegen](installation.html#telegram-bot-anlegen). Eine eigene Domain und einen Reverse Proxy brauchst du auf diesem Weg **nicht**.
-- **Für den Weg ins Internet** (siehe [unten](#tunnel-oder-fritzbox)): ein kostenloses Tailscale-Konto, das du im Wizard anlegst, oder Zugang zur Oberfläche deiner FritzBox.
+- **Für den Weg ins Internet** (siehe [unten](#tunnel-oder-fritzbox)): ein kostenloses Tailscale-Konto, das du unterwegs in der App anlegst, oder Zugang zur Oberfläche deiner FritzBox.
 
 Docker musst du nicht vorher installieren, das erledigt die App. **Ist Docker schon da**, zum Beispiel weil dort Paperless läuft, nutzt die App es mit. Sie installiert es nie ein zweites Mal, ändert nie seine Version, und deine anderen Programme darin bleiben, wie sie sind.
 
@@ -27,9 +27,9 @@ Beide Dateien kommen direkt aus der Release-Seite des Projekts auf GitHub. Ein K
 
 **Mac:** Doppelklick auf die geladene Datei. Es öffnet sich ein Fenster mit dem Symbol der App, dem Programme-Ordner und einem Pfeil dazwischen. Zieh das Symbol auf den Ordner. Danach das Fenster schließen.
 
-*Erwartet:* Im Finder unter **Programme** liegt jetzt die App. Öffne sie immer von dort. Startest du sie aus dem Fenster der Datei, bittet sie dich zuerst, sie in den Ordner zu ziehen.
+*Erwartet:* Im Finder unter **Programme** liegt jetzt die App **lifeagents**. Öffne sie immer von dort. Startest du sie aus dem Fenster der Datei, zeigt sie „Zieh die App zuerst in den Programme-Ordner“.
 
-**Windows:** Doppelklick auf die Setup-Datei. Der nächste Schritt erklärt die Warnung, die dabei erscheint.
+**Windows:** Doppelklick auf die Setup-Datei. Der nächste Schritt erklärt die Warnung, die dabei erscheint. Die App wird nur für dein Windows-Benutzerkonto installiert und steht danach im Startmenü als **lifeagents**.
 
 ## Schritt 3: Die Sperre beim ersten Öffnen lösen
 
@@ -55,7 +55,7 @@ Ab hier fragt die App, und du antwortest. Jede Antwort wird sofort gespeichert; 
 1. **Rechner prüfen**, ohne Frage: Bauart, System-Version, Arbeitsspeicher, freier Platz.
 2. **Docker:** Fehlt es, erklärt die App in zwei Sätzen, was das ist, zeigt die Bedingungen von Docker und fragt dich. Erst nach deinem **Einverstanden** lädt sie Docker direkt beim Hersteller (gut ein halbes Gigabyte) und prüft dessen Unterschrift. Dein Rechner fragt dabei einmal nach seinem Passwort.
 3. **„Das wird geändert“:** Bevor irgendetwas passiert, zeigt die App eine Liste, was sie auf deinem Rechner einrichtet. Ohne dein Ja ändert sie nichts.
-4. **Deine Angaben**, eine Frage je Seite: Sprache, Name, Geburtsdatum, Charakter des Bots, Telegram-Bot, Anthropic, Google (freiwillig), welche Funktionen du willst, und der Weg ins Internet (Tunnel oder FritzBox).
+4. **Deine Angaben**, eine Frage je Seite: Sprache, Name, Geburtsdatum, Charakter des Bots, Telegram-Bot, Anthropic, Google (freiwillig), welche Funktionen du willst, und „Wie soll Telegram deinen Rechner erreichen?“ (Tunnel oder FritzBox).
 5. **Übersicht:** alle Antworten noch einmal zum Prüfen, bevor installiert wird.
 6. **Installation** mit Fortschrittsanzeige. Die App lädt dabei die Bausteine des Bots, gut ein halbes Gigabyte.
 7. **Mit Telegram verbinden** per QR-Code: mit dem Handy scannen, Telegram öffnet den Chat mit deinem Bot.
@@ -93,7 +93,7 @@ Auf **Windows** legt die App ein eigenes Energieschema an (kein Standby, Bildsch
 
 ## Im Alltag
 
-Nach der Einrichtung sitzt ein kleines Symbol in der Menüleiste (Mac) bzw. neben der Uhr (Windows). Es zeigt, ob alles läuft oder Docker aus ist, und bietet: Telegram öffnen, Dauerbetrieb zurückstellen, Fehlerbericht und Deinstallieren. Die App startet bei jeder Anmeldung von selbst und bringt Docker und den Bot hoch.
+Nach der Einrichtung sitzt ein kleines Symbol in der Menüleiste (Mac) bzw. neben der Uhr (Windows). Ganz oben in seinem Menü steht **Läuft** oder **Docker ist aus**. Darunter: **Fenster öffnen**, **Telegram öffnen**, **Dauerbetrieb zurückstellen**, **Fehlerbericht**, **Deinstallieren** und **Beenden**. Die App startet bei jeder Anmeldung von selbst und bringt Docker und den Bot hoch.
 
 Updates kommen wie bei jeder Installation als Karte im Chat; ein Tipp auf **Jetzt aktualisieren** sichert vorher deine Daten ([mehr zu Updates](installation.html#funktionen-hinzufügen)). Eine neue Fassung der Start-App selbst meldet der Bot im Chat, sie lädst du dann wie in Schritt 1.
 

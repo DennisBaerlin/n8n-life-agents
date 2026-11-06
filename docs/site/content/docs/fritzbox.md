@@ -80,7 +80,7 @@ Erst die **MyFRITZ!-Freigabe** legt für den Proxy-Rechner einen eigenen Namen a
 
 ## Mit der Start-App (Mac oder PC) {#start-app}
 
-Dieser Abschnitt ist für dich, wenn du den Bot mit der [Start-App](start-app.html) auf einem Mac oder PC betreibst und in der App den Weg **FritzBox** wählst. Der Rechner mit der App ist dann zugleich der Proxy-Rechner: Die App bringt ihren Türsteher (Reverse Proxy) selbst mit und holt auch das Zertifikat selbst. Du richtest nur die FritzBox ein. Im Folgenden steht „Mac“; für einen Windows-PC gilt dasselbe.
+Dieser Abschnitt ist für dich, wenn du den Bot mit der [Start-App](start-app.html) auf einem Mac oder PC betreibst und in der App bei der Frage „Wie soll Telegram deinen Rechner erreichen?“ die **FritzBox** wählst. Der Rechner mit der App ist dann zugleich der Proxy-Rechner: Die App bringt ihren Türsteher (Reverse Proxy) selbst mit und holt auch das Zertifikat selbst. Du richtest nur die FritzBox ein. Im Folgenden steht „Mac“; für einen Windows-PC gilt dasselbe.
 
 {{< schema name="weg-fritzbox" caption="Eigene Schema-Zeichnung: Telegram schickt über das Internet an deine FritzBox, zwei MyFRITZ!-Freigaben für Port 80 und 443 leiten weiter zum Mac mit fester Adresse im Heimnetz. Dort lässt ein Türsteher nur die Telegram-Wege zum Bot durch." >}}
 

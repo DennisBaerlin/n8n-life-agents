@@ -8,12 +8,12 @@ Mit der [Start-App](start-app.html) erreicht Telegram deinen Rechner am einfachs
 
 ## Was du brauchst
 
-- Die [Start-App](start-app.html), die bis zur Frage nach dem Weg ins Internet gekommen ist.
+- Die [Start-App](start-app.html), die bis zur Frage „Wie soll Telegram deinen Rechner erreichen?“ gekommen ist.
 - Ein **Tailscale-Konto**. Tailscale hat keine eigenen Passwörter: Du meldest dich mit einem Konto an, das du schon hast, zum Beispiel bei Google, Microsoft oder Apple. Das legst du im nächsten Schritt an, falls du noch keins hast.
 
 ## Schritt für Schritt
 
-1. **Tunnel wählen:** In der App bei der Frage nach dem Weg ins Internet den Tunnel wählen.
+1. **Tunnel wählen:** In der App bei der Frage „Wie soll Telegram deinen Rechner erreichen?“ **Über einen sicheren Tunnel** wählen.
 
    *Erwartet:* Nach wenigen Sekunden zeigt die App einen Knopf zum Anmelden bei Tailscale.
 2. **Anmelden:** Auf den Knopf klicken. Dein Browser öffnet die Anmeldeseite von Tailscale. Melde dich an oder leg dort ein Konto an.

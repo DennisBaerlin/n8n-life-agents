@@ -101,7 +101,7 @@
 .fb .radio { fill: var(--bg); stroke: var(--gray); stroke-width: 1.3; }
 .fb .radio-on { fill: var(--accent); opacity: 0; transition: opacity .2s ease; }
 .fb[data-radio="1"] .r1 { opacity: 1; }
-.fb .okdot { fill: var(--ok, var(--accent)); }   /* ok fehlt noch im Wizard-Block (bei di4 angefragt) */
+.fb .okdot { fill: var(--ok); }
 .fb .veil { fill: var(--ink); opacity: .55; }
 .fb .s { opacity: 0; visibility: hidden; transition: opacity .3s ease, visibility .3s; }
 .fb[data-scene="home"] .s-home, .fb[data-scene="list"] .s-list, .fb[data-scene="dev"] .s-dev,
@@ -118,6 +118,10 @@
 .with-art { display: flex; gap: 24px; align-items: flex-start; }
 .with-art > .choices { flex: 1 1 auto; min-width: 0; }
 .with-art > .art { flex: 0 0 264px; height: 362px; margin: 0; max-height: none; }
+/* Neben der Auswahl zählt die Antwort: Statusleiste weg, Handy füllt die Höhe über dem Satz */
+.with-art .art-phone .statusbar, .with-art .art-phone .island { display: none; }
+.with-art .art-phone .ph-screen { padding-top: 6px; }
+.with-art .art-phone .ph-frame { flex: 1 1 auto; }
 @media (max-width: 600px) { .with-art { display: block; } .with-art > .art { height: 330px; margin: 14px 0 0; } }
 .art-phone .art-box { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; align-items: center; }
 .art-phone .ph-frame { width: 300px; max-width: 100%; flex: 0 1 300px; min-height: 0; overflow: hidden; border-radius: 46px 46px 0 0;
@@ -144,13 +148,16 @@
 .art-phone .typing i:nth-child(2) { animation-delay: .15s; }
 .art-phone .typing i:nth-child(3) { animation-delay: .3s; }
 @keyframes art-typing { 50% { opacity: .3; transform: translateY(-2px); } }
-.art-phone.busy .msg-in:not(.typing) { display: none; }
+.art-phone .frame { display: block; margin-bottom: 3px; }
+.art-phone [hidden] { display: none; }
+.art-phone .sticker { align-self: flex-start; font-size: 40px; line-height: 1; padding: 0 4px; }
+.art-phone.busy .msg-in:not(.typing), .art-phone.busy .sticker { display: none; }
 .art-phone.busy .typing { display: flex; }
 .art-note { margin: 8px 0 0; text-align: center; max-width: 34rem; flex: none; }
 
 /* Weniger Höhe: erst Statusleiste, dann Frage und Satz weglassen, zuletzt ganz */
 @container art (max-height: 300px) { .art-phone .statusbar, .art-phone .island { display: none; } .art-phone .ph-screen { padding-top: 6px; } }
-@container art (max-height: 230px) { .art-phone .msg-out { display: none; } }
+@container art (max-height: 230px) { .art-phone .msg-out, .art-phone .sticker { display: none; } }
 @container art (max-height: 185px) { .art-phone .art-note { display: none; } }
 @container art (max-height: 110px) { .art-phone .art-box { display: none; } }
 

@@ -368,42 +368,57 @@
   }
 
   // ---------- A2: Charakter des Bots (Seite h:OWNER_PERSONA) ----------
-  // Handy-Ausschnitt nach dem Analog der Site (phone-frame-*.html, .tg-*), Farben aus den Tokens. Beispiel-Begrüßung je
-  // Charakter im Ton von packages/core/contexts/persona_styles.md (Butler siezt). Unbekannter Code → Standard.
-  const PERSONA_Q = 'Hallo! Wer bist du?';
-  const PERSONA_A = {
-    neutral: 'Hallo! Ich bin dein Bot für den Haushalt. Frag mich einfach, was du brauchst.',
-    butler: 'Guten Tag. Ich stehe Ihnen für alles rund um den Haushalt zu Diensten. Womit darf ich behilflich sein?',
-    sportscaster: 'Und da ist der Anpfiff! Ich bin dein Bot für den Haushalt. Was steht heute auf dem Spielplan?',
-    sage: 'Willkommen, mein Freund. Ich begleite dich durch den Haushalt. Wer fragt, findet den Weg.',
+  // Handy-Ausschnitt nach dem Analog der Site (phone-frame-*.html, .tg-*), Farben aus den Tokens. Zeigt, was der Bot wirklich
+  // tut: Rahmensatz des Charakters (fester Katalogtext core.persona.frame.<code>.1, mit Emoji) vor einer neutralen Antwort, in der
+  // im Setup gewählten Sprache; darunter groß das Emoji des Charakters. Emoji und Rahmensätze liefert der Server je Option
+  // (o.emoji, o.frame[lang], aus dem Core-Katalog), page.lang die gewählte Sprache. Fehlt etwas, bleibt nur die neutrale Antwort.
+  // Hier stehen nur die Beispiel-Frage und die neutrale Antwort selbst (Bildtext, keine Bot-Sprechweise).
+  const CHAT = {
+    de: { bot: 'Dein Bot', q: 'Was steht heute an?', a: 'Für heute ist nichts eingetragen.' },
+    en: { bot: 'Your bot', q: "What's on today?", a: 'Nothing is scheduled for today.' },
+    ko: { bot: '나의 봇', q: '오늘 일정 있어?', a: '오늘은 예정된 일이 없어요.' },
   };
 
-  function phone(label, chat) {
+  function phone(label, title, chat) {
     return h('div', { class: 'ph-frame', role: 'img', 'aria-label': label },
       h('div', { class: 'ph-screen' },
         h('div', { class: 'island' }),
         h('div', { class: 'statusbar' }, h('span', { text: '9:41' }), fromMarkup('<svg class="icons" viewBox="0 0 46 11" aria-hidden="true">'
           + '<rect x="0" y="7" width="3" height="4" rx="1"/><rect x="4.5" y="5" width="3" height="6" rx="1"/><rect x="9" y="2.5" width="3" height="8.5" rx="1"/>'
           + '<rect x="13.5" y="0" width="3" height="11" rx="1"/><rect class="batt" x="22.5" y="0.5" width="21" height="10" rx="3"/><rect x="24.5" y="2.5" width="15" height="6" rx="1.5"/></svg>')),
-        h('div', { class: 'tg-header' }, h('span', { class: 'tg-avatar' }, mark()), h('span', { class: 'tg-title', text: 'Dein Bot' })),
+        h('div', { class: 'tg-header' }, h('span', { class: 'tg-avatar' }, mark()), title),
         h('div', { class: 'tg-chat' }, chat)));
   }
 
   function persona(page) {
-    const reply = h('div', { class: 'msg msg-in' });
+    const lang = CHAT[page.lang] ? page.lang : 'de';
+    const t = CHAT[lang];
+    const opts = {};
+    for (const o of page.options || []) opts[o.value] = o;
+    const frame = h('span', { class: 'frame' });
+    const reply = h('div', { class: 'msg msg-in', lang }, frame, h('span', { text: t.a }));
+    const emoji = h('div', { class: 'sticker', 'aria-hidden': 'true' });
     const typing = h('div', { class: 'msg msg-in typing', 'aria-hidden': 'true' }, h('i'), h('i'), h('i'));
     const fig = h('figure', { class: 'art art-phone', 'data-art': 'persona' },
       h('div', { class: 'art-box' },
-        phone('Beispiel-Chat mit deinem Bot', [h('div', { class: 'msg msg-out', text: PERSONA_Q }), reply, typing]),
-        h('figcaption', { class: 'art-cap art-note', text: 'So begrüßt dich dein Bot (Beispiel). Nur der Ton ändert sich, nicht die Inhalte.' })));
-    let t = null;
-    const show = (code) => { reply.textContent = PERSONA_A[code] || PERSONA_A.neutral; };
+        phone('Beispiel-Chat mit deinem Bot', h('span', { class: 'tg-title', text: t.bot, lang }),
+          [h('div', { class: 'msg msg-out', text: t.q, lang }), reply, emoji, typing]),
+        h('figcaption', { class: 'art-cap art-note', text: 'So klingt dein Bot (Beispiel). Nur der Ton ändert sich, nicht die Inhalte.' })));
+    let timer = null;
+    const show = (code) => {
+      const o = opts[code] || {};
+      const f = o.frame && (o.frame[lang] || o.frame.de);
+      frame.textContent = f || '';
+      frame.hidden = !f;
+      emoji.textContent = o.emoji || '';
+      emoji.hidden = !o.emoji;
+    };
     show(page.value);
     function select(code) {
-      clearTimeout(t);
+      clearTimeout(timer);
       if (reduced()) { show(code); return; }
       fig.classList.add('busy');
-      t = setTimeout(() => { if (!fig.isConnected) return; show(code); fig.classList.remove('busy'); }, 650);
+      timer = setTimeout(() => { if (!fig.isConnected) return; show(code); fig.classList.remove('busy'); }, 650);
     }
     return { el: fig, select, side: true };   // neben die Auswahl (app.js .with-art), unter der Auswahl wäre bei 640 px kein Platz
   }

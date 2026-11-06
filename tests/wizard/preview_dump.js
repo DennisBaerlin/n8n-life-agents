@@ -51,11 +51,12 @@ async function step(w, id, value, opt) {
     // Charakter-Seite auch in Englisch und Koreanisch, dort mit Butler gewählt (Standard hat keinen Rahmensatz).
     await langShots(w, 'h_OWNER_PERSONA', (p) => { p.value = 'butler'; });
     await step(w, 'h:OWNER_PERSONA', 'neutral');
-    // Token-Seite mit aufgeklapptem „Noch kein Telegram?“ in allen drei Sprachen (die zugeklappte Fassung nimmt step() auf).
+    // „Warum Telegram?“ mit aufgeklapptem „Noch kein Telegram?“ in allen drei Sprachen (die zugeklappte Fassung nimmt step() auf).
     for (const l of ['en', 'ko', 'de']) {
       await post(w, '/api/lang', { lang: l });
-      await shot(w, `h_TELEGRAM_BOT_TOKEN-offen${l === 'de' ? '' : '-' + l}`, { open: true });
+      await shot(w, `tg_why-offen${l === 'de' ? '' : '-' + l}`, { open: true });
     }
+    await step(w, 'tg_why', null);
     fs.writeFileSync(path.join(w.fake, 'tg_conflict'), 'beispiel.example');
     await step(w, 'h:TELEGRAM_BOT_TOKEN', '123456789:ABC-beispiel');
     await shot(w, 'tg_busy');
@@ -84,7 +85,7 @@ async function step(w, id, value, opt) {
     await shot(w, 'confirm');
     fs.writeFileSync(path.join(w.fake, 'hold_stage'), 'workflows');
     await answer(w, 'confirm', null);
-    await waitFor(async () => ((await state(w)).json.page.items || []).some((i) => i.state === 'run' && i.text.startsWith('Bot')));
+    await waitFor(async () => (((await state(w)).json.page.items || [])[4] || {}).state === 'run');   // 5. Stufe (workflows) läuft
     await shot(w, 'install');
     fs.writeFileSync(path.join(w.fake, 'fail_stage'), 'workflows');
     fs.rmSync(path.join(w.fake, 'hold_stage'));
@@ -117,7 +118,7 @@ async function step(w, id, value, opt) {
   try {
     await login(d);
     for (const [id, v] of [['h:OWNER_LANGUAGE', 'de'], ['h:OWNER_FIRST_NAME', 'Erika'], ['h:OWNER_LAST_NAME', 'Muster'], ['h:OWNER_BIRTH_DATE', '1980-01-01'],
-      ['h:OWNER_PERSONA', 'neutral'], ['h:TELEGRAM_BOT_TOKEN', '1:beispiel'], ['h:ANTHROPIC_API_KEY', 'sk-ant-beispiel'], ['voice', 'no'], ['packages', []],
+      ['h:OWNER_PERSONA', 'neutral'], ['tg_why', null], ['h:TELEGRAM_BOT_TOKEN', '1:beispiel'], ['h:ANTHROPIC_API_KEY', 'sk-ant-beispiel'], ['voice', 'no'], ['packages', []],
       ['reach', 'fritzbox'], ['fb_dslite', 'no'], ['fb_guide', null]]) await answer(d, id, v);
     await waitFor(async () => !(await state(d)).json.page.poll);
     await shot(d, 'h_DOMAIN-gefunden');
@@ -130,7 +131,7 @@ async function step(w, id, value, opt) {
     try {
       await login(t);
       for (const [id, v] of [['h:OWNER_LANGUAGE', lang], ['h:OWNER_FIRST_NAME', 'Erika'], ['h:OWNER_LAST_NAME', 'Muster'], ['h:OWNER_BIRTH_DATE', '1980-01-01'],
-        ['h:OWNER_PERSONA', 'neutral'], ['h:TELEGRAM_BOT_TOKEN', '1:beispiel'], ['h:ANTHROPIC_API_KEY', 'sk-ant-beispiel'], ['voice', 'no'], ['packages', []]]) await answer(t, id, v);
+        ['h:OWNER_PERSONA', 'neutral'], ['tg_why', null], ['h:TELEGRAM_BOT_TOKEN', '1:beispiel'], ['h:ANTHROPIC_API_KEY', 'sk-ant-beispiel'], ['voice', 'no'], ['packages', []]]) await answer(t, id, v);
       if (!sfx) {   // DS-Lite sicher erkannt: Bestätigung statt Frage; danach zurück, Erkennung unsicher
         fs.writeFileSync(path.join(t.fake, 'dslite'), 'yes');
         await answer(t, 'reach', 'fritzbox');
@@ -160,7 +161,7 @@ async function step(w, id, value, opt) {
   const toPaperless = async (x) => {
     await login(x);
     for (const [id, v] of [['h:OWNER_LANGUAGE', 'de'], ['h:OWNER_FIRST_NAME', 'Erika'], ['h:OWNER_LAST_NAME', 'Muster'], ['h:OWNER_BIRTH_DATE', '1980-01-01'],
-      ['h:OWNER_PERSONA', 'neutral'], ['h:TELEGRAM_BOT_TOKEN', '1:beispiel'], ['h:ANTHROPIC_API_KEY', 'sk-ant-beispiel'], ['voice', 'no'], ['packages', ['paperless']]]) await answer(x, id, v);
+      ['h:OWNER_PERSONA', 'neutral'], ['tg_why', null], ['h:TELEGRAM_BOT_TOKEN', '1:beispiel'], ['h:ANTHROPIC_API_KEY', 'sk-ant-beispiel'], ['voice', 'no'], ['packages', ['paperless']]]) await answer(x, id, v);
   };
   const m1 = await mock(8000); const m2 = await mock(8010);
   const s1 = await startWizard({ hints: { LA_HOST_IP: lanIp() }, env: { WIZARD_SCAN_TIMEOUT_MS: '200' } });

@@ -66,10 +66,14 @@ test('Durchlauf FritzBox mit drei Modulen: Antwort-Datei, Installation, Pairing,
     assert.equal((await answer(w, 'h:OWNER_PERSONA', 'pirat')).status, 422, 'nur angebotene Charaktere');
     await expectOk(await answer(w, 'h:OWNER_PERSONA', 'butler'));
     // „Noch kein Telegram?“: QR-Code (lokal erzeugt) und Links nur zu offiziellen Telegram-Adressen, Texte aus dem Katalog.
-    const ga = (await page(w)).getApp;
+    const why = await page(w);
+    assert.equal(why.id, 'tg_why', '„Warum Telegram?“ vor dem Token');
+    assert.equal(why.art, 'tg_why');
+    const ga = why.getApp;
     assert.equal(ga.qr, qr.toSvg(qr.encode('https://telegram.org/dl')), 'QR-Code = Telegram-Link, der je Handy in den passenden Store führt');
     assert.ok(ga.summary.startsWith('Noch kein Telegram?') && ga.scan && ga.computer);
     assert.deepEqual(ga.links.map((l) => new URL(l.href).origin), ['https://macos.telegram.org', 'https://desktop.telegram.org']);
+    await expectOk(await answer(w, 'tg_why', null));
     assert.equal((await answer(w, 'h:TELEGRAM_BOT_TOKEN', '')).status, 422, 'Pflicht');
     assert.equal((await answer(w, 'h:TELEGRAM_BOT_TOKEN', 'bad-token')).status, 422);
     const tg = await expectOk(await answer(w, 'h:TELEGRAM_BOT_TOKEN', '123456789:ABC-beispiel-token'));
@@ -118,7 +122,7 @@ test('Durchlauf FritzBox mit drei Modulen: Antwort-Datei, Installation, Pairing,
     // Kennung der FritzBox von der App, kein Gerätename löst auf: .<zone> steht fest, nur der Name vorne fehlt.
     const dom = await waitFor(async () => { const x = await page(w); return x.poll ? null : x; });
     assert.equal(dom.suffix, '.deine-domain.myfritz.net');
-    assert.match(dom.help[0].p, /Gerätenamen/, 'ein Satz statt des langen Hilfetexts, Platz fürs Bild');
+    assert.match(dom.help[0].p, /Namen vorne/, 'ein Satz statt des langen Hilfetexts, Platz fürs Bild');
     assert.ok(!dom.note);
     const box = await answer(w, 'h:DOMAIN', 'deine-domain.myfritz.net');
     assert.equal(box.status, 422);
@@ -191,6 +195,7 @@ test('Durchlauf Tunnel: belegter Bot, Fehlschlag + neuer Versuch, Neustart, Tail
     await expectOk(await post(w, '/api/lang', { lang: 'de' }));
     // Prüfliste Nr. 10: der Bot hat schon eine fremde Webhook-Adresse.
     fs.writeFileSync(path.join(w.fake, 'tg_conflict'), 'beispiel.example');
+    await expectOk(await answer(w, 'tg_why', null));
     await expectOk(await answer(w, 'h:TELEGRAM_BOT_TOKEN', '111:alt-beispiel'));
     const busy = await page(w);
     assert.equal(busy.id, 'tg_busy');
@@ -255,6 +260,7 @@ test('Durchlauf Tunnel: belegter Bot, Fehlschlag + neuer Versuch, Neustart, Tail
     assert.equal(lg.title, 'Melde dich bei Tailscale an');
     assert.equal(lg.link.href, 'https://login.tailscale.com/a/beispiel123');
     assert.equal(lg.art, 'ts_login', 'Bild zum Zustand (ui/art/art.js)');
+    assert.deepEqual(lg.ts, { host: 'brave-otter' }, 'nur der gewürfelte Tailscale-Name fürs Bild');
     fs.writeFileSync(path.join(w.fake, 'reach'), 'needs_funnel');
     const fu = await waitFor(async () => { const p = await page(w); return p.title === 'Erlaube deinem Rechner den Empfang' ? p : null; });
     assert.equal(fu.link, null, 'fremde Adresse wird nie als Knopf gezeigt');
@@ -264,9 +270,11 @@ test('Durchlauf Tunnel: belegter Bot, Fehlschlag + neuer Versuch, Neustart, Tail
     const ma = await waitFor(async () => { const p = await page(w); return p.title === 'Gib diesen Rechner in Tailscale frei' ? p : null; });
     assert.equal(ma.link.href, 'https://login.tailscale.com/admin/machines');
     assert.equal(ma.art, 'ts_machine');
-    fs.writeFileSync(path.join(w.fake, 'reach'), JSON.stringify({ mode: 'tunnel', state: 'needs_funnel', url: 'https://login.tailscale.com/f/funnel?node=nBeispiel%3A1' }));
+    assert.equal(ma.ts, null, 'ohne geprüften Namen kein Wert im Bild');
+    fs.writeFileSync(path.join(w.fake, 'reach'), JSON.stringify({ mode: 'tunnel', state: 'needs_funnel', url: 'https://login.tailscale.com/f/funnel?node=nBeispiel%3A1', ts_hostname: 'Kims-MacBook.local' }));
     const fn = await waitFor(async () => { const p = await page(w); return p.link && p.link.href.includes('/f/funnel') ? p : null; });
     assert.equal(fn.link.label, 'Freigabe-Seite öffnen');
+    assert.equal(fn.ts, null, 'ein Wert, der kein gewürfelter Name sein kann, kommt nie ins Bild');
     // Tunnel steht, Telegram zeigt noch nicht darauf: der Wizard fährt einmal reach_ctl.sh activate, danach Pairing.
     fs.writeFileSync(path.join(w.fake, 'reach'), JSON.stringify({ mode: 'tunnel', state: 'pending_activation', url: '' }));
     await waitFor(async () => !!(await page(w)).qr);
@@ -290,7 +298,7 @@ async function toDomain(hints, dnsSpec, ip) {
   if (ip !== undefined) fs.writeFileSync(path.join(w.fake, 'public_ip'), ip);
   await login(w);
   for (const [id, v] of [['h:OWNER_LANGUAGE', 'de'], ['h:OWNER_FIRST_NAME', 'Erika'], ['h:OWNER_LAST_NAME', 'Muster'],
-    ['h:OWNER_BIRTH_DATE', '1980-01-01'], ['h:OWNER_PERSONA', 'neutral'], ['h:TELEGRAM_BOT_TOKEN', '1:beispiel'],
+    ['h:OWNER_BIRTH_DATE', '1980-01-01'], ['h:OWNER_PERSONA', 'neutral'], ['tg_why', null], ['h:TELEGRAM_BOT_TOKEN', '1:beispiel'],
     ['h:ANTHROPIC_API_KEY', 'sk-ant-beispiel'], ['voice', 'no'], ['packages', []], ['reach', 'fritzbox'], ['fb_dslite', 'no'],
     ['fb_guide', null]]) await expectOk(await answer(w, id, v));
   const dom = await waitFor(async () => { const x = await page(w); return x.id === 'h:DOMAIN' && !x.poll ? x : null; });
@@ -304,7 +312,7 @@ test('DS-Lite automatisch: „keine eigene IPv4“ = Bestätigung, „eigene“ 
   try {
     await login(w);
     for (const [id, v] of [['h:OWNER_LANGUAGE', 'de'], ['h:OWNER_FIRST_NAME', 'Erika'], ['h:OWNER_LAST_NAME', 'Muster'],
-      ['h:OWNER_BIRTH_DATE', '1980-01-01'], ['h:OWNER_PERSONA', 'neutral'], ['h:TELEGRAM_BOT_TOKEN', '1:beispiel'],
+      ['h:OWNER_BIRTH_DATE', '1980-01-01'], ['h:OWNER_PERSONA', 'neutral'], ['tg_why', null], ['h:TELEGRAM_BOT_TOKEN', '1:beispiel'],
       ['h:ANTHROPIC_API_KEY', 'sk-ant-beispiel'], ['voice', 'no'], ['packages', []]]) await expectOk(await answer(w, id, v));
     fs.writeFileSync(path.join(w.fake, 'dslite'), 'yes');
     await expectOk(await answer(w, 'reach', 'fritzbox'));
@@ -333,6 +341,7 @@ test('DS-Lite automatisch: „keine eigene IPv4“ = Bestätigung, „eigene“ 
     assert.equal(q.id, 'fb_dslite');
     assert.equal(q.kind, 'choice');
     assert.equal(q.art, 'dslite');
+    assert.equal(q.row, true, 'zwei Antworten nebeneinander');
     assert.deepEqual(q.options.map((o) => [o.value, !!o.desc]), [['no', false], ['yes', true]]);
     assert.equal(q.value, '', 'keine Vorauswahl aus der früheren Erkennung');
   } finally { await w.stop(); }
@@ -360,6 +369,7 @@ test('MyFRITZ: falsche IP, umbenannt oder Freigabe fehlt -> nichts eingetragen, 
     assert.equal(dom.suffix, `.${Z}`);
     assert.ok(!dom.suggestions, 'ein ungeprüfter Name wird nie vorgeschlagen');
     assert.equal(dom.art, 'myfritz_name', 'stattdessen das Bild zum Nachsehen in der FritzBox');
+    assert.equal(dom.fbHost, 'kims-pc', 'Name aus der Geräteliste der FritzBox, nur fürs Bild');
     assert.ok(dom.live && dom.live.recheck);
     const wrong = await live(w, 'kims-pc');
     assert.equal(wrong.state, 'wrong_ip');

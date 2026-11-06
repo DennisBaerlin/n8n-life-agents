@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Tunnel einrichten (empfohlen) · n8n-life-agents</title>
+<title>Tunnel einrichten (empfohlen) · lifeagents</title>
 <link rel="stylesheet" href="../css/site.css">
 
 </head>
@@ -18,7 +18,7 @@
   <path d="M8.6 12.8 L11.7 15.8 L17.4 10" fill="none" stroke="var(--mark-check, var(--bg))" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>
 </svg>
 
-      n8n-life-agents
+      lifeagents
     </a>
     <span class="nav-links">
       <a class="ghost" href="../index.html#agenten">Agenten</a>
@@ -222,49 +222,8 @@
     <h1>Tunnel einrichten (empfohlen)</h1>
     <p>Mit der <a href="start-app.html">Start-App</a> erreicht Telegram deinen Rechner am einfachsten über einen <strong>Tunnel</strong>. Dein Rechner baut dabei selbst eine verschlüsselte Verbindung nach außen zu einem Dienst namens <strong>Tailscale</strong> auf (genauer: Tailscale Funnel). Telegram schickt deine Nachrichten an eine öffentliche Adresse bei Tailscale, und Tailscale reicht sie durch diese Verbindung an deinen Rechner weiter. An deiner FritzBox oder deinem Router änderst du nichts, und der Weg ist auch bei Anschlüssen ohne eigene IPv4-Adresse (DS-Lite) möglich.</p>
 
-<figure class="schema">
-
-<svg viewBox="0 0 340 516" aria-hidden="true" focusable="false">
-  <g font-size="15" text-anchor="middle">
-    <rect x="20" y="10" width="300" height="56" rx="12" fill="var(--bg-soft)" stroke="var(--hairline)" stroke-width="1.5"/>
-    <text x="170" y="34" fill="var(--ink)" font-weight="600">Telegram</text>
-    <text x="170" y="54" fill="var(--gray)" font-size="13">schickt deine Nachricht an den Bot</text>
-
-    <path d="M170 66 V98" stroke="var(--gray)" stroke-width="1.5" fill="none"/>
-    <path d="M164 96 L170 106 L176 96 Z" fill="var(--gray)"/>
-    <text x="182" y="90" fill="var(--gray)" font-size="13" text-anchor="start">über das Internet</text>
-
-    <rect x="20" y="106" width="300" height="56" rx="12" fill="var(--bg-soft)" stroke="var(--hairline)" stroke-width="1.5"/>
-    <text x="170" y="130" fill="var(--ink)" font-weight="600">Tailscale</text>
-    <text x="170" y="150" fill="var(--gray)" font-size="13">öffentliche Adresse, endet auf .ts.net</text>
-
-    <path d="M170 162 V194" stroke="var(--accent)" stroke-width="2.5" fill="none"/>
-    <path d="M164 192 L170 202 L176 192 Z" fill="var(--accent)"/>
-    <text x="182" y="186" fill="var(--gray)" font-size="13" text-anchor="start">durch den Tunnel</text>
-
-    <rect x="20" y="202" width="300" height="56" rx="12" fill="var(--bg)" stroke="var(--gray)" stroke-width="1.5" stroke-dasharray="5 4"/>
-    <text x="170" y="226" fill="var(--ink)" font-weight="600">Deine FritzBox oder dein Router</text>
-    <text x="170" y="246" fill="var(--gray)" font-size="13">bleibt, wie sie ist: keine Freigabe</text>
-
-    <path d="M170 258 V290" stroke="var(--accent)" stroke-width="2.5" fill="none"/>
-    <path d="M164 288 L170 298 L176 288 Z" fill="var(--accent)"/>
-
-    <rect x="20" y="298" width="300" height="208" rx="16" fill="var(--accent-pale)" stroke="var(--accent)" stroke-width="1.5"/>
-    <text x="170" y="324" fill="var(--ink)" font-weight="600">Dein Mac mit der Start-App</text>
-    <rect x="44" y="338" width="252" height="40" rx="10" fill="var(--bg)" stroke="var(--hairline)" stroke-width="1.5"/>
-    <text x="170" y="363" fill="var(--ink)" font-size="14">Tunnel-Teil: baut ihn nach außen auf</text>
-    <path d="M170 378 V390" stroke="var(--gray)" stroke-width="1.5" fill="none"/>
-    <path d="M165 388 L170 396 L175 388 Z" fill="var(--gray)"/>
-    <rect x="44" y="396" width="252" height="40" rx="10" fill="var(--bg)" stroke="var(--hairline)" stroke-width="1.5"/>
-    <text x="170" y="421" fill="var(--ink)" font-size="14">Türsteher: nur Telegram-Wege</text>
-    <path d="M170 436 V448" stroke="var(--gray)" stroke-width="1.5" fill="none"/>
-    <path d="M165 446 L170 454 L175 446 Z" fill="var(--gray)"/>
-    <rect x="44" y="454" width="252" height="40" rx="10" fill="var(--bg)" stroke="var(--hairline)" stroke-width="1.5"/>
-    <text x="170" y="479" fill="var(--ink)" font-size="14">Dein Bot</text>
-  </g>
-</svg>
-
-<figcaption>Eigene Schema-Zeichnung: Telegram schickt an die öffentliche Tailscale-Adresse, von dort geht es durch den Tunnel und durch den unveränderten Router zum Mac. Dort lässt ein Türsteher nur die Telegram-Wege zum Bot durch.</figcaption>
+<figure class="explain">
+  <img src="../explain/reach-tunnel.de.light.svg" width="720" height="280" alt="Deine Nachricht geht vom Handy über Telegram und einen Tunnel durch deinen Router zu deinem Rechner zu Hause.">
 </figure>
 
 <h2 id="was-du-brauchst">Was du brauchst</h2>
@@ -325,9 +284,9 @@
   <path d="M8.6 12.8 L11.7 15.8 L17.4 10" fill="none" stroke="var(--mark-check, var(--bg))" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>
 </svg>
 
-        n8n-life-agents
+        lifeagents
       </span>
-      <p class="tagline">Persönlicher Multi-Agent-Assistent auf eigener Infrastruktur — ein Telegram-Bot, dahinter die passenden Spezialisten.</p>
+      <p class="tagline">Hilfe für die ganze Familie: dein Assistent in Telegram, dahinter die passenden Spezialisten, auf eurem eigenen Rechner.</p>
     </div>
     <div>
       <h4>Erkunden</h4>

@@ -1,5 +1,5 @@
 /* ============================================================================
-   n8n-life-agents Showcase-Site — geteiltes Stylesheet (Landing + Docs).
+   lifeagents Showcase-Site — geteiltes Stylesheet (Landing + Docs).
    file://-Disziplin: keine Webfonts/CDN (System-Font-Stack), kein JS noetig.
    ========================================================================== */
 /* ui-tokens:begin site (erzeugt von scripts/build_ui_tokens.ps1, nicht von Hand aendern) */
@@ -79,6 +79,8 @@ section[id], footer[id] { scroll-margin-top: 84px; }
   max-width: 620px; margin: 0 auto 36px;
 }
 .hero-ctas { display: flex; gap: 14px; justify-content: center; flex-wrap: wrap; }
+.hero .greeting { margin: 40px auto 0; max-width: 480px; }
+.hero .greeting img { display: block; width: 100%; height: auto; }
 
 /* ============ Feature-Sektionen (Landing) ============ */
 .section { max-width: 1120px; margin: 0 auto; padding: 110px 24px; }
@@ -295,6 +297,10 @@ section[id], footer[id] { scroll-margin-top: 84px; }
 .docs-content figure.schema svg { display: block; width: 100%; height: auto; }
 .docs-content figure.schema text { font-family: var(--font); }
 .docs-content figure.schema figcaption { margin-top: 8px; font-size: 14px; line-height: 1.5; color: var(--gray); }
+/* Erklaer-Bilder (Shortcode explain, fertige SVGs unter static/explain/): volle Spaltenbreite bis 560px, ohne den Rahmen der
+   Bildschirmfotos. */
+.docs-content figure.explain { margin: 20px 0 24px; max-width: 560px; }
+.docs-content figure.explain img { display: block; width: 100%; height: auto; margin: 0; border: 0; border-radius: 0; box-shadow: none; }
 
 /* ============ Motion (ruhig, CSS-only) ============ */
 @media (prefers-reduced-motion: no-preference) {

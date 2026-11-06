@@ -3,7 +3,7 @@
 # + relativeURLs (alle Links relativ, kein Server-Root noetig) — die Seite laeuft per Doppelklick und
 # unveraendert unter dem GitHub-Pages-Unterpfad /n8n-life-agents/ (.github/workflows/pages.yml).
 baseURL = "https://example.org/"   # nie ausgegeben (relativeURLs schreibt alle Links relativ um)
-title = "n8n-life-agents"
+title = "lifeagents"
 
 uglyURLs = true
 relativeURLs = true

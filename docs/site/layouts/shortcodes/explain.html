@@ -1,0 +1,7 @@
+{{/* Erklaer-Bild (bewegt): fertige SVG aus static/explain/, erzeugt von scripts/build_ui_tokens.ps1 aus config/ui.art.<bild>.svg,
+     nie von Hand aendern. Die Site ist immer hell, darum die Fassung .de.light. Als <img> eingebunden: Farben und Bewegung
+     stecken im Bild. Aufruf im Markdown als Shortcode "explain" mit den Parametern name (z. B. reach-tunnel), alt
+     (Text aus dem Katalog core.art.*) und height (Hoehe der viewBox bei 720 Breite). */}}
+<figure class="explain">
+  <img src="{{ printf "explain/%s.de.light.svg" (.Get "name") | relURL }}" width="720" height="{{ .Get "height" }}" alt="{{ .Get "alt" }}">
+</figure>

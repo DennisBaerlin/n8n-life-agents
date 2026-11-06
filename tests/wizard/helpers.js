@@ -83,10 +83,11 @@ function req(w, method, p, o = {}) {
       const parts = [];
       res.on('data', (d) => parts.push(d));
       res.on('end', () => {
-        const text = Buffer.concat(parts).toString('utf8');
+        const buf = Buffer.concat(parts);
+        const text = buf.toString('utf8');
         let json = null;
         try { json = JSON.parse(text); } catch (_) { /* kein JSON */ }
-        resolve({ status: res.statusCode, headers: res.headers, body: text, json });
+        resolve({ status: res.statusCode, headers: res.headers, body: text, buf, json });
       });
     });
     r.on('error', reject);

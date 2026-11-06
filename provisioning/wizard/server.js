@@ -191,6 +191,11 @@ function cursor() {
 // Platzhalter): <pkg>.wizard.* (eigene Texte für das Fenster der App, „Rechner“ statt „Server“, ohne Terminal-Befehle),
 // <pkg>.package.name/summary, core.persona.name.*. Fehlt ein Key, gilt Deutsch, dann der CLI-Text der Frage.
 const PKG_DIR = process.env.WIZARD_PKG_DIR || path.join(__dirname, '..', '..', 'packages');
+// Sticker des Charakters fürs Handy-Bild: genau die Datei, die der Bot in Telegram schickt (install_llm_gateway kopiert sie
+// aus demselben Ordner), ohne Kopie im Wizard. Abgesichert von tests/wizard/durchlauf.test.js (Auslieferung byte-gleich).
+function stickerFile(code) {
+  return /^[a-z_]{1,32}$/.test(String(code)) ? path.join(PKG_DIR, 'core', 'build', 'stickers', `${code}_hallo.webp`) : null;
+}
 const CAT = {};
 function loadCatalog() {
   let pkgs = [];
@@ -238,18 +243,17 @@ function pkgName(p) { return has(`${p.id}.package.name`) ? T(`${p.id}.package.na
 function pkgSummary(p) { return has(`${p.id}.package.summary`) ? T(`${p.id}.package.summary`) : p.summary; }
 // Auswahl einer Frage in der Sprache der Seite: Sprachen bleiben in Eigenschreibweise (Deutsch / English / 한국어), damit
 //   man nach einem Verklicken zurückfindet; Charaktere aus core.persona.name.<code>. Für das Handy-Bild (di9, Owner-Wunsch)
-//   je Charakter sein Zeichen (erstes Wort des Namens) und eine echte Sprechweise aus dem Katalog: frame = {sprache: Satz}
-//   aus core.persona.frame.<code>.1, nur wo es den Satz in genau dieser Sprache gibt (Standard hat keinen).
+//   je Charakter eine echte Sprechweise aus dem Katalog: frame = {sprache: Satz} aus core.persona.frame.<code>.1, nur wo es
+//   den Satz in genau dieser Sprache gibt (Standard hat keinen), und den Telegram-Sticker (sticker = Adresse, s. stickerFile).
 function choicesOf(q) {
   if (!q.choices) return null;
   if (q.key === 'OWNER_PERSONA') {
     return q.choices.map((c) => {
       const name = has(`core.persona.name.${c.value}`) ? T(`core.persona.name.${c.value}`) : c.label;
-      const de = (CAT.de || {})[`core.persona.name.${c.value}`] || '';
       const frame = {};
       for (const l of Object.keys(CAT)) { const s = CAT[l][`core.persona.frame.${c.value}.1`]; if (s) frame[l] = s; }
-      const tok = de.split(' ')[0] || '';
-      return { value: c.value, label: name, emoji: /\p{L}/u.test(tok) ? '' : tok, frame };
+      const f = stickerFile(c.value);
+      return { value: c.value, label: name, frame, sticker: f && fs.existsSync(f) ? `/sticker/${c.value}.webp` : '' };
     });
   }
   return q.choices;
@@ -888,7 +892,8 @@ function headers(extra) {
   }, extra || {});
 }
 function send(res, code, body, type, extra) {
-  const b = Buffer.from(typeof body === 'string' ? body : JSON.stringify(body));
+  // Datei-Inhalt (Buffer) unverändert; JSON.stringify machte daraus {"type":"Buffer","data":[…]}
+  const b = Buffer.isBuffer(body) ? body : Buffer.from(typeof body === 'string' ? body : JSON.stringify(body));
   res.writeHead(code, headers(Object.assign({ 'Content-Type': type || 'application/json; charset=utf-8', 'Content-Length': b.length }, extra)));
   res.end(b);
 }
@@ -950,6 +955,12 @@ async function handle(req, res) {
     let body;
     try { body = fs.readFileSync(path.join(UI_DIR, f)); } catch (_) { return deny(res, 404); }   // z. B. noch keine Bilder (art/)
     return send(res, 200, body, type);
+  }
+  const stk = req.method === 'GET' && /^\/sticker\/([a-z_]{1,32})\.webp$/.exec(url.pathname);
+  if (stk) {
+    let body;
+    try { body = fs.readFileSync(stickerFile(stk[1])); } catch (_) { return deny(res, 404); }
+    return send(res, 200, body, 'image/webp');
   }
   if (req.method === 'GET' && url.pathname === '/') {
     if (!hasSession(req)) return send(res, 403, page403(), 'text/html; charset=utf-8');

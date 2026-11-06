@@ -56,7 +56,7 @@ fn core_paths(app: &AppHandle) -> Option<CorePaths> {
     compose_path(app).map(|c| core_start::paths(&RealHost, &c))
 }
 
-/// Port aus der `--env-file` der App (einmal gewählt, danach fest).
+/// n8n-Port aus der `--env-file` der App (einmal gewählt, danach fest), für die Seite „Das wird geändert“.
 fn saved_port() -> Option<u16> {
     let p = join(RealHost.os(), &[&journal::dir(&RealHost), "app.env"]);
     core_start::env_value(&RealHost.read_file(&p)?, PORT_VAR).and_then(|v| v.parse().ok())
@@ -291,23 +291,35 @@ pub fn start_core(app: AppHandle) -> Result<u16, String> {
         let seq = j.begin(&h, Step::Inventory { file }).map_err(|_| fail(&app, "journal-unreadable"))?;
         j.done(&h, seq, None).map_err(|_| fail(&app, "journal-unreadable"))?;
     }
-    // Den gemerkten Port nur behalten, wenn unser Verbund schon lief (dann hält er ihn selbst) oder er noch frei ist.
+    // Gemerkte Ports nur behalten, wenn unser Verbund schon lief (dann hält er sie selbst) oder sie noch frei sind.
     let started = j.has_done(|s| matches!(s, Step::CoreStarted { .. }));
-    let port = saved_port()
-        .filter(|p| started || h.port_free(*p))
-        .or_else(|| inventory::free_port(&h))
+    let ports = core_start::saved_ports(&h, &paths)
+        .filter(|p| started || (h.port_free(p.edge) && h.port_free(p.wizard)))
+        .or_else(|| match inventory::free_ports(&h, 2).as_slice() {
+            [edge, wizard] => Some(core_start::Ports { edge: *edge, wizard: *wizard }),
+            _ => None,
+        })
         .ok_or_else(|| fail(&app, "no-free-port"))?;
-    core_start::start_first(&h, &mut j, &d, &paths, port)
-        .map_err(|e| fail(&app, if e.starts_with("foreign-volume:") { "foreign-objects" } else { "start-failed" }))?;
-    Ok(port)
+    core_start::start_first(&h, &mut j, &d, &paths, ports).map_err(|e| {
+        let code = if e.starts_with("foreign-volume:") {
+            "foreign-objects"
+        } else if e.starts_with("probe-") {
+            "docker-capability"
+        } else {
+            "start-failed"
+        };
+        fail(&app, code)
+    })?;
+    Ok(ports.edge)
 }
 
-/// Öffnet den Fragebogen in einem eigenen Fenster ohne App-Rechte. `false` = noch nicht verfügbar (Paket 4).
+/// Lädt den Fragebogen im App-Fenster (fremde Adresse ohne App-Rechte). `false` = noch nicht verfügbar.
 #[tauri::command(async)]
 pub fn open_wizard(app: AppHandle) -> Result<bool, String> {
     let d = ready_docker(&app)?;
-    let port = saved_port().ok_or_else(|| fail(&app, "start-failed"))?;
-    let Ok(url) = core_start::wizard_url(&RealHost, &d, port) else {
+    let paths = core_paths(&app).ok_or_else(|| fail(&app, "compose-missing"))?;
+    let ports = core_start::saved_ports(&RealHost, &paths).ok_or_else(|| fail(&app, "start-failed"))?;
+    let Ok(url) = core_start::wizard_url(&RealHost, &d, ports.wizard) else {
         fail(&app, "wizard-unavailable");
         return Ok(false);
     };

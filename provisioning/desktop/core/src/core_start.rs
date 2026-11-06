@@ -2,7 +2,7 @@
 //! `up -d anchor postgres master edge`), danach bei jeder Anmeldung nur `start`; Schnittstelle zum Wizard (Paket 4).
 //! Namen und Befehle kommen aus `contract`.
 
-use crate::contract::{self, MasterCmd, PG_PASSWORD_VAR, PORT_VAR, PROJECT, WIZARD_ORIGIN_VAR};
+use crate::contract::{self, MasterCmd, PG_PASSWORD_VAR, PORT_VAR, PROBE_VOLUME, PROJECT, WIZARD_ORIGIN_VAR, WIZARD_PORT_VAR};
 use crate::docker::{Docker, DockerCall};
 use crate::host::{join, Host};
 use crate::journal::{self, Journal, Step};
@@ -26,14 +26,66 @@ pub fn env_value(text: &str, key: &str) -> Option<String> {
 
 /// Env-Datei schreiben. Das Datenbank-Passwort entsteht einmal und bleibt danach gleich: Compose muss bei jedem
 /// Aufruf dieselben Werte sehen, sonst legt es Container neu an.
-pub fn write_env(host: &dyn Host, p: &CorePaths, port: u16) -> Result<(), String> {
+pub fn write_env(host: &dyn Host, p: &CorePaths, ports: Ports) -> Result<(), String> {
     let old = host.read_file(&p.env_file).unwrap_or_default();
     let pw = match env_value(&old, PG_PASSWORD_VAR) {
         Some(pw) => pw,
         None => host.random_hex(32)?,
     };
-    let text = format!("{PORT_VAR}={port}\n{PG_PASSWORD_VAR}={pw}\n{WIZARD_ORIGIN_VAR}=http://127.0.0.1:{port}\n");
+    let Ports { edge, wizard } = ports;
+    let text =
+        format!("{PORT_VAR}={edge}\n{WIZARD_PORT_VAR}={wizard}\n{PG_PASSWORD_VAR}={pw}\n{WIZARD_ORIGIN_VAR}=http://127.0.0.1:{wizard}\n");
     host.write_file(&p.env_file, &text)
+}
+
+/// Zwei Ports auf 127.0.0.1: n8n (`edge`, den der Tunnel nach außen bringt) und, getrennt davon, der Wizard.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Ports {
+    pub edge: u16,
+    pub wizard: u16,
+}
+
+/// Gemerkte Ports aus der Env-Datei.
+pub fn saved_ports(host: &dyn Host, p: &CorePaths) -> Option<Ports> {
+    let text = host.read_file(&p.env_file)?;
+    let edge = env_value(&text, PORT_VAR)?.parse().ok()?;
+    let wizard = env_value(&text, WIZARD_PORT_VAR)?.parse().ok()?;
+    Some(Ports { edge, wizard })
+}
+
+/// Busybox-Image des `anchor` aus der Compose-Datei; damit läuft die Fähigkeits-Prüfung ohne weiteres Image.
+pub fn probe_image(images: &[String]) -> Option<String> {
+    images.iter().find(|i| i.starts_with("busybox")).cloned()
+}
+
+/// Fähigkeits-Prüfung (Plan Nr. 9, etwa 3 s): Verzeichnis-Unterpfad aus einem Volume einhängen und Docker-Zugang im
+/// Container. Läuft im eigenen Probe-Volume mit unserem Label, das danach immer wieder entfernt wird.
+pub fn capability_probe(host: &dyn Host, d: &Docker, image: &str) -> Result<(), String> {
+    let o = d.call(host, DockerCall::VolumeLabel(PROBE_VOLUME))?;
+    if o.success() {
+        if o.stdout.trim() != PROJECT {
+            return Err(format!("foreign-volume:{PROBE_VOLUME}"));
+        }
+        let _ = d.call(host, DockerCall::VolumeRemove(PROBE_VOLUME));
+    }
+    if !d.call(host, DockerCall::VolumeCreate(PROBE_VOLUME))?.success() {
+        return Err("probe-volume".into());
+    }
+    let result = (|| {
+        if !d.call(host, DockerCall::ProbeWrite { image })?.success() {
+            return Err("probe-write".to_string());
+        }
+        let read = d.call(host, DockerCall::ProbeRead { image })?;
+        if !read.success() || read.stdout.trim() != "ok" {
+            return Err("probe-subpath".to_string());
+        }
+        if !d.call(host, DockerCall::ProbeSocket { image })?.success() {
+            return Err("probe-socket".to_string());
+        }
+        Ok(())
+    })();
+    let _ = d.call(host, DockerCall::VolumeRemove(PROBE_VOLUME));
+    result
 }
 
 /// Images aus der Compose-Datei (`image: …`-Zeilen), ohne YAML-Bibliothek: Die Datei schreibt Paket 1 mit
@@ -89,16 +141,21 @@ pub fn volumes_to_create(host: &dyn Host, d: &Docker) -> Result<Vec<String>, Str
 }
 
 /// Erste Zustimmung (Nr. 8 bestätigt). Reihenfolge: Env-Datei, Konfig prüfen (nichts angelegt), fehlende Volumes
-/// und Images ins Journal, dann anlegen und starten.
-pub fn start_first(host: &dyn Host, j: &mut Journal, d: &Docker, p: &CorePaths, port: u16) -> Result<(), String> {
-    write_env(host, p, port)?;
+/// und Images feststellen, Images ins Journal, Fähigkeits-Prüfung (lädt evtl. das busybox-Image), dann Volumes
+/// anlegen und starten.
+pub fn start_first(host: &dyn Host, j: &mut Journal, d: &Docker, p: &CorePaths, ports: Ports) -> Result<(), String> {
+    write_env(host, p, ports)?;
     let cfg = d.call(host, DockerCall::ComposeConfig { file: &p.compose_file, env_file: &p.env_file })?;
     if !cfg.success() {
         return Err(format!("Compose-Datei ungültig ({})", cfg.code));
     }
     let text = host.read_file(&p.compose_file).ok_or("Compose-Datei fehlt")?;
+    let images = compose_images(&text);
+    let probe = probe_image(&images).ok_or("probe-image")?;
     let new_volumes = volumes_to_create(host, d)?;
-    let missing = missing_images(host, d, &compose_images(&text))?;
+    let missing = missing_images(host, d, &images)?;
+    let seq_img = if missing.is_empty() { None } else { Some(j.begin(host, Step::ImagesPulled { refs: missing })?) };
+    capability_probe(host, d, &probe)?;
     if !new_volumes.is_empty() {
         let seq = j.begin(host, Step::VolumesCreated { names: new_volumes.clone() })?;
         for v in &new_volumes {
@@ -109,7 +166,6 @@ pub fn start_first(host: &dyn Host, j: &mut Journal, d: &Docker, p: &CorePaths, 
         }
         j.done(host, seq, None)?;
     }
-    let seq_img = if missing.is_empty() { None } else { Some(j.begin(host, Step::ImagesPulled { refs: missing })?) };
     let seq = j.begin(host, Step::CoreStarted { compose_file: p.compose_file.clone(), env_file: p.env_file.clone() })?;
     let out = d.call(host, DockerCall::ComposeUpFirst { file: &p.compose_file, env_file: &p.env_file })?;
     if !out.success() {
@@ -211,6 +267,10 @@ mod tests {
         format!("docker {}", d().args(&call).join(" "))
     }
 
+    fn ports(edge: u16) -> Ports {
+        Ports { edge, wizard: edge + 10 }
+    }
+
     const COMPOSE: &str = "name: lifeagents\nservices:\n  anchor:\n    image: busybox:1.37@sha256:aaaa\n  master:\n    image: ${LA_MASTER_IMAGE:?}\n  postgres:\n    image: \"postgres:17@sha256:bbbb\"\n";
 
     /// Docker antwortet wie bei einem frischen Rechner: Konfig gültig, keine Volumes, Images teils da.
@@ -224,6 +284,24 @@ mod tests {
         h.set(&cmd(DockerCall::ImageInspect("busybox:1.37@sha256:aaaa")), CmdOut::ok("sha256:aaaa\n"));
         h.set(&cmd(DockerCall::ImageInspect("postgres:17@sha256:bbbb")), CmdOut::fail(1, "Error: No such image: postgres:17@sha256:bbbb"));
         h.set(&cmd(DockerCall::ComposeUpFirst { file: &p.compose_file, env_file: &p.env_file }), CmdOut::ok(""));
+        probe_ok(h);
+    }
+
+    const BB: &str = "busybox:1.37@sha256:aaaa";
+
+    fn probe_ok(h: &FakeHost) {
+        h.set(&cmd(DockerCall::VolumeLabel(PROBE_VOLUME)), CmdOut::fail(1, "Error: no such volume"));
+        h.set(&cmd(DockerCall::VolumeCreate(PROBE_VOLUME)), CmdOut::ok(PROBE_VOLUME));
+        h.set(&cmd(DockerCall::ProbeWrite { image: BB }), CmdOut::ok(""));
+        h.set(
+            &cmd(DockerCall::ProbeRead { image: BB }),
+            CmdOut::ok(
+                "ok
+",
+            ),
+        );
+        h.set(&cmd(DockerCall::ProbeSocket { image: BB }), CmdOut::ok(""));
+        h.set(&cmd(DockerCall::VolumeRemove(PROBE_VOLUME)), CmdOut::ok(PROBE_VOLUME));
     }
 
     #[test]
@@ -237,21 +315,24 @@ mod tests {
         let p = paths(&h, "/x/compose.yml");
         fresh(&h, &p);
         let mut j = Journal::default();
-        start_first(&h, &mut j, &d(), &p, 5881).unwrap();
+        start_first(&h, &mut j, &d(), &p, ports(5881)).unwrap();
         let env = h.read_file(&p.env_file).unwrap();
         assert_eq!(env_value(&env, "LA_EDGE_PORT").as_deref(), Some("5881"));
-        assert_eq!(env_value(&env, "WIZARD_PUBLIC_ORIGIN").as_deref(), Some("http://127.0.0.1:5881"));
+        assert_eq!(env_value(&env, "LA_WIZARD_PORT").as_deref(), Some("5891"));
+        assert_eq!(env_value(&env, "WIZARD_PUBLIC_ORIGIN").as_deref(), Some("http://127.0.0.1:5891"));
         assert_eq!(env_value(&env, "LA_PG_SUPERPW").map(|v| v.len()), Some(64));
         let steps: Vec<Step> = j.entries.iter().map(|e| e.step.clone()).collect();
-        assert_eq!(steps[0], Step::VolumesCreated { names: contract::state_volume_names() });
-        assert_eq!(steps[1], Step::ImagesPulled { refs: vec!["postgres:17@sha256:bbbb".into()] });
+        // Images stehen vor der Fähigkeits-Prüfung im Journal, weil die Prüfung das busybox-Image laden kann.
+        assert_eq!(steps[0], Step::ImagesPulled { refs: vec!["postgres:17@sha256:bbbb".into()] });
+        assert_eq!(steps[1], Step::VolumesCreated { names: contract::state_volume_names() });
         assert!(matches!(steps[2], Step::CoreStarted { .. }));
         assert!(j.entries.iter().all(|e| e.state == journal::State::Done));
-        // Reihenfolge: Konfig vor jeder Änderung, Volumes vor dem Start.
+        // Reihenfolge: Konfig vor jeder Änderung, Prüfung vor den Daten-Volumes, Volumes vor dem Start.
         let calls = h.calls.borrow().clone();
         let pos = |s: &str| calls.iter().position(|c| c.contains(s)).unwrap();
         assert!(pos("config --quiet") < pos("volume create"));
-        assert!(pos("volume create") < pos(" up --detach"));
+        assert!(pos("volume-subpath=sub") < pos("create --label io.lifeagents.install=lifeagents lifeagents_pgdata"));
+        assert!(pos("create --label io.lifeagents.install=lifeagents lifeagents_pgdata") < pos(" up --detach"));
     }
 
     #[test]
@@ -259,7 +340,7 @@ mod tests {
         let h = FakeHost::mac();
         let p = paths(&h, "/x/compose.yml");
         h.write_file(&p.env_file, "LA_EDGE_PORT=5880\nLA_PG_SUPERPW=ab12\n").unwrap();
-        write_env(&h, &p, 5882).unwrap();
+        write_env(&h, &p, ports(5882)).unwrap();
         let env = h.read_file(&p.env_file).unwrap();
         assert_eq!(env_value(&env, "LA_PG_SUPERPW").as_deref(), Some("ab12"));
         assert_eq!(env_value(&env, "LA_EDGE_PORT").as_deref(), Some("5882"));
@@ -272,7 +353,7 @@ mod tests {
         fresh(&h, &p);
         h.set(&cmd(DockerCall::VolumeLabel("lifeagents_pgdata")), CmdOut::ok("\n"));
         let mut j = Journal::default();
-        let e = start_first(&h, &mut j, &d(), &p, 5881).unwrap_err();
+        let e = start_first(&h, &mut j, &d(), &p, ports(5881)).unwrap_err();
         assert!(e.starts_with("foreign-volume:"), "{e}");
         assert!(j.entries.is_empty());
         assert!(h.calls_starting("docker --context desktop-linux volume create").is_empty());
@@ -288,8 +369,10 @@ mod tests {
             h.set(&cmd(DockerCall::VolumeLabel(&v)), CmdOut::ok("lifeagents\n"));
         }
         let mut j = Journal::default();
-        start_first(&h, &mut j, &d(), &p, 5881).unwrap();
-        assert!(h.calls_starting("docker --context desktop-linux volume create").is_empty());
+        start_first(&h, &mut j, &d(), &p, ports(5881)).unwrap();
+        // Angelegt wird nur das Probe-Volume der Fähigkeits-Prüfung, kein Daten-Volume.
+        let created = h.calls_starting("docker --context desktop-linux volume create");
+        assert!(created.iter().all(|c| c.ends_with(PROBE_VOLUME)), "{created:?}");
         assert!(!j.entries.iter().any(|e| matches!(e.step, Step::VolumesCreated { .. })));
     }
 
@@ -303,7 +386,7 @@ mod tests {
             CmdOut::fail(15, "required variable LA_MASTER_IMAGE is missing"),
         );
         let mut j = Journal::default();
-        assert!(start_first(&h, &mut j, &d(), &p, 5881).is_err());
+        assert!(start_first(&h, &mut j, &d(), &p, ports(5881)).is_err());
         assert!(j.entries.is_empty());
     }
 
@@ -314,7 +397,7 @@ mod tests {
         fresh(&h, &p);
         h.set(&cmd(DockerCall::ImageInspect("busybox:1.37@sha256:aaaa")), CmdOut::fail(1, "Cannot connect to the Docker daemon"));
         let mut j = Journal::default();
-        assert!(start_first(&h, &mut j, &d(), &p, 5880).is_err());
+        assert!(start_first(&h, &mut j, &d(), &p, ports(5880)).is_err());
         assert!(j.entries.is_empty(), "nichts notiert, nichts angelegt");
         assert!(h.calls_starting("docker --context desktop-linux volume create").is_empty());
     }
@@ -329,8 +412,42 @@ mod tests {
             CmdOut::fail(1, "Bind for 127.0.0.1:5880 failed: port is already allocated"),
         );
         let mut j = Journal::default();
-        assert!(start_first(&h, &mut j, &d(), &p, 5880).is_err());
+        assert!(start_first(&h, &mut j, &d(), &p, ports(5880)).is_err());
         assert!(matches!(j.status(), journal::Status::Interrupted { .. }));
+    }
+
+    #[test]
+    fn capability_probe_failure_cleans_up_and_aborts() {
+        let h = FakeHost::mac();
+        let p = paths(&h, "/x/compose.yml");
+        fresh(&h, &p);
+        // Engine kann keinen Volume-Unterpfad (z. B. zu alt oder Datei statt Verzeichnis): nichts starten.
+        h.set(&cmd(DockerCall::ProbeRead { image: BB }), CmdOut::fail(125, "invalid mount config"));
+        let mut j = Journal::default();
+        assert_eq!(start_first(&h, &mut j, &d(), &p, ports(5881)).unwrap_err(), "probe-subpath");
+        assert!(h.called(&cmd(DockerCall::VolumeRemove(PROBE_VOLUME))), "Probe-Volume wird immer entfernt");
+        assert!(h.calls_starting("docker --context desktop-linux compose").iter().all(|c| c.ends_with("config --quiet")));
+        assert!(!h.calls.borrow().iter().any(|c| c.contains("volume create") && c.ends_with("lifeagents_pgdata")));
+        // Ein evtl. geladenes Image steht als begonnen im Journal und fällt beim Rückweg wieder weg.
+        assert!(matches!(j.status(), journal::Status::Interrupted { step: Step::ImagesPulled { .. } }));
+    }
+
+    #[test]
+    fn capability_probe_runs_read_only_mounts_without_network() {
+        let a = d().args(&DockerCall::ProbeRead { image: BB }).join(" ");
+        assert!(a.contains("--rm --network none --label io.lifeagents.install=lifeagents"));
+        assert!(a.contains("volume-subpath=sub,readonly"));
+        let h = FakeHost::mac();
+        probe_ok(&h);
+        h.set(
+            &cmd(DockerCall::VolumeLabel(PROBE_VOLUME)),
+            CmdOut::ok(
+                "
+",
+            ),
+        );
+        assert!(capability_probe(&h, &d(), BB).unwrap_err().starts_with("foreign-volume:"));
+        assert!(!h.called(&cmd(DockerCall::VolumeRemove(PROBE_VOLUME))), "fremdes Volume nie löschen");
     }
 
     #[test]

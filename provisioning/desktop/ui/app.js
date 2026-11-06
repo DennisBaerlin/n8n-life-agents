@@ -46,6 +46,7 @@ const ERRORS = {
   'signature-failed': 'Die geladene Datei stammt nicht nachweislich von Docker. Die App hat sie gelöscht und nichts installiert.',
   'install-failed': 'Docker ließ sich nicht einrichten.',
   'install-cancelled': 'Du hast die Passwort-Abfrage abgebrochen. Es wurde nichts installiert.',
+  'docker-capability': 'Deinem Docker fehlt etwas, das der Assistent braucht. Die App hat nichts gestartet. Bring Docker Desktop auf den neuesten Stand und versuche es noch einmal.',
   'docker-start-timeout': 'Docker antwortet nicht. Öffne Docker Desktop einmal selbst und warte, bis es läuft.',
   'foreign-objects': 'In Docker gibt es schon etwas mit dem Namen lifeagents, das nicht von dieser App stammt. Die App ändert daran nichts.',
   'no-free-port': 'Auf diesem Rechner ist kein passender Anschluss frei (5880 bis 5899).',

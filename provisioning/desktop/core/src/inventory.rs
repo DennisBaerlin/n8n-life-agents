@@ -229,6 +229,11 @@ pub fn free_port(host: &dyn Host) -> Option<u16> {
     (PORT_RANGE.0..=PORT_RANGE.1).find(|p| host.port_free(*p))
 }
 
+/// Die ersten `n` freien Ports im festen Bereich (n8n und Wizard bekommen je einen eigenen).
+pub fn free_ports(host: &dyn Host, n: usize) -> Vec<u16> {
+    (PORT_RANGE.0..=PORT_RANGE.1).filter(|p| host.port_free(*p)).take(n).collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -347,6 +352,7 @@ mod tests {
         let mut h = FakeHost::mac();
         h.busy_ports = [5880u16, 5881].into_iter().collect();
         assert_eq!(free_port(&h), Some(5882));
+        assert_eq!(free_ports(&h, 2), vec![5882, 5883]);
         h.busy_ports = (5880u16..=5899).collect();
         assert_eq!(free_port(&h), None);
     }

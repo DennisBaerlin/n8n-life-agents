@@ -22,10 +22,14 @@ pub const COMPOSE_FILE: &str = "compose.yml";
 /// Pflicht-Variablen jedes Compose-Aufrufs (Datei `--env-file` der App, nie im argv).
 pub const PORT_VAR: &str = "LA_EDGE_PORT";
 pub const PG_PASSWORD_VAR: &str = "LA_PG_SUPERPW";
+/// Zweiter freier Port auf 127.0.0.1, nur für den Wizard (veröffentlicht vom Dienst `edge`).
+pub const WIZARD_PORT_VAR: &str = "LA_WIZARD_PORT";
 /// Adresse, unter der der Wizard sich selbst sieht (Host-/Origin-Prüfung im Wizard, Paket 4).
 pub const WIZARD_ORIGIN_VAR: &str = "WIZARD_PUBLIC_ORIGIN";
 /// Suchbereich für den freien Port (wie im Testpaket).
 pub const PORT_RANGE: (u16, u16) = (5880, 5899);
+/// Volume der Fähigkeits-Prüfung (Plan Nr. 9): mit unserem Label, nach der Prüfung immer wieder entfernt.
+pub const PROBE_VOLUME: &str = "lifeagents_probe";
 
 /// Steuerung des Wizards im `master` (Paket 4): `docker exec lifeagents-master node <CTL> <befehl>`, je eine
 /// JSON-Zeile auf stdout. Die `lifeagents`-CLI gibt es im `master` erst nach der Installation.

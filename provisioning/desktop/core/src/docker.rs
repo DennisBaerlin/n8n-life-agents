@@ -3,7 +3,7 @@
 //! etwas ändert, mit festem Projektnamen. Breite Befehle (Aufräumen über alles, „alle“-Schalter beim Löschen,
 //! Listen nur aus IDs für Massen-Löschungen) gibt es hier nicht; der Test `no_broad_commands` hält das fest.
 
-use crate::contract::{MasterCmd, FIRST_SERVICES, LABEL, MASTER_CONTAINER, PROJECT};
+use crate::contract::{MasterCmd, FIRST_SERVICES, LABEL, MASTER_CONTAINER, PROBE_VOLUME, PROJECT};
 use crate::host::{CmdOut, Host};
 
 /// Gefundenes Docker: Pfad zum Befehl und der festgehaltene Kontext.
@@ -52,6 +52,20 @@ pub enum DockerCall<'a> {
     ComposeDown {
         file: &'a str,
         env_file: &'a str,
+    },
+    /// Fähigkeits-Prüfung (Plan Nr. 9), Wegwerf-Container mit unserem Label im eigenen Probe-Volume:
+    /// 1. Verzeichnis mit Datei ins Volume schreiben.
+    ProbeWrite {
+        image: &'a str,
+    },
+    /// 2. Dasselbe Verzeichnis als Volume-Unterpfad einhängen und lesen (Engine ab 26; Linux-Engine kann nur
+    ///    Verzeichnisse, keine Datei als Unterpfad, darum genau das prüfen).
+    ProbeRead {
+        image: &'a str,
+    },
+    /// 3. Docker-Zugang im Container (der `master` braucht den Socket).
+    ProbeSocket {
+        image: &'a str,
     },
     /// Volume löschen, nur nach Rückfrage und nur mit unserem Label (Aufrufer prüft).
     VolumeRemove(&'a str),
@@ -139,6 +153,18 @@ impl Docker {
                 compose(&mut a, file, env_file);
                 p(&mut a, &["down"]);
             }
+            DockerCall::ProbeWrite { image } => {
+                probe_run(&mut a, &format!("type=volume,src={PROBE_VOLUME},dst=/v"));
+                a.extend([image.to_string(), "sh".into(), "-c".into(), "mkdir -p /v/sub && echo ok > /v/sub/f".into()]);
+            }
+            DockerCall::ProbeRead { image } => {
+                probe_run(&mut a, &format!("type=volume,src={PROBE_VOLUME},dst=/m,volume-subpath=sub,readonly"));
+                a.extend([image.to_string(), "cat".into(), "/m/f".into()]);
+            }
+            DockerCall::ProbeSocket { image } => {
+                probe_run(&mut a, "type=bind,src=/var/run/docker.sock,dst=/var/run/docker.sock");
+                a.extend([image.to_string(), "test".into(), "-S".into(), "/var/run/docker.sock".into()]);
+            }
             DockerCall::VolumeRemove(name) => {
                 p(&mut a, &["volume", "rm"]);
                 a.push(name.to_string());
@@ -173,6 +199,16 @@ pub fn context_endpoint(host: &dyn Host, bin: &str, name: &str) -> Option<String
     let out = host.run(bin, &a).ok()?;
     let ep = out.stdout.trim().to_string();
     (out.success() && !ep.is_empty()).then_some(ep)
+}
+
+/// `run --rm` mit unserem Label und genau einem Mount; kein Netz, nichts bleibt zurück.
+fn probe_run(a: &mut Vec<String>, mount: &str) {
+    for s in ["run", "--rm", "--network", "none", "--label"] {
+        a.push(s.to_string());
+    }
+    a.push(format!("{LABEL}={PROJECT}"));
+    a.push("--mount".into());
+    a.push(mount.to_string());
 }
 
 fn compose(a: &mut Vec<String>, file: &str, env_file: &str) {
@@ -210,6 +246,9 @@ mod tests {
             DockerCall::VolumeLabel("lifeagents_pgdata"),
             DockerCall::ComposeConfig { file: "c.yml", env_file: "e.env" },
             DockerCall::VolumeCreate("lifeagents_pgdata"),
+            DockerCall::ProbeWrite { image: "busybox:1.37" },
+            DockerCall::ProbeRead { image: "busybox:1.37" },
+            DockerCall::ProbeSocket { image: "busybox:1.37" },
             DockerCall::Master(MasterCmd::ReleaseWebhook),
         ]
     }

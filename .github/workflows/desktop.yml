@@ -1,0 +1,31 @@
+# Start-App auf Branch und PR: baut DMG (macOS arm64) und Setup (Windows) als Artefakte (desktop-build.yml). Die
+# Herstellerkennung von Docker prueft desktop-vendor-ids.yml. Von Hand: gh workflow run desktop.yml --ref <branch>
+name: desktop
+
+on:
+  push:
+    branches-ignore: [main]
+    paths:
+      - 'provisioning/desktop/**'
+      - 'scripts/lib/ui_tokens.ps1'
+      - 'packages/core/locales/**'
+      - '.github/workflows/desktop.yml'
+      - '.github/workflows/desktop-build.yml'
+  pull_request:
+    paths:
+      - 'provisioning/desktop/**'
+      - 'packages/core/locales/**'
+      - '.github/workflows/desktop.yml'
+      - '.github/workflows/desktop-build.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: desktop-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    uses: ./.github/workflows/desktop-build.yml # zizmor: ignore[self-repository] actionlint 1.7.12 kennt "$/" noch nicht

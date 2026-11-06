@@ -25,7 +25,7 @@ function Invoke-HeadlessShot {
     $raw = "$Out.raw.png"
     $profileDir = Join-Path $env:TEMP ('lifeagents_shot_' + [guid]::NewGuid().ToString('N'))
     $scaleText = $Scale.ToString([Globalization.CultureInfo]::InvariantCulture)
-    $chromeArgs = @(Get-HeadlessBaseArg $profileDir) + @("--force-device-scale-factor=$scaleText", "--window-size=600,$HeightPx", "--screenshot=$raw")
+    $chromeArgs = @(Get-HeadlessBaseArg $profileDir) + @("--force-device-scale-factor=$scaleText", "--window-size=$([Math]::Max(600, $WidthPx)),$HeightPx", "--screenshot=$raw")
     if ($Dark) { $chromeArgs += '--force-dark-mode' }
     $chromeArgs += ('file:///' + $File.Replace('\', '/'))
     $p = Start-Process -FilePath (Get-HeadlessBrowser) -ArgumentList $chromeArgs -Wait -PassThru -WindowStyle Hidden

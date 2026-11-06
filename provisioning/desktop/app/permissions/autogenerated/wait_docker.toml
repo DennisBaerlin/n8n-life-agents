@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-wait-docker"
+description = "Enables the wait_docker command without any pre-configured scope."
+commands.allow = ["wait_docker"]
+
+[[permission]]
+identifier = "deny-wait-docker"
+description = "Denies the wait_docker command without any pre-configured scope."
+commands.deny = ["wait_docker"]

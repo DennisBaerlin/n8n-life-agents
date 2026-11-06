@@ -27,4 +27,35 @@ foreach ($s in (Get-UiSurfaces)) {
     [System.IO.File]::WriteAllText($abs, $text, $u8)
     Write-Host "  [neu] $($s.Name): $($s.File)" -ForegroundColor Cyan
 }
+# Geteilte Bausteine (Get-UiCopies): Quelle wortgleich in jeden Verbraucher
+foreach ($c in (Get-UiCopies)) {
+    $name = Split-Path $c.Source -Leaf
+    $want = Get-UiCopyText $RepoRoot $c
+    foreach ($f in $c.Files) {
+        $abs = Join-Path $RepoRoot $f
+        $text = [System.IO.File]::ReadAllText($abs, $u8)
+        $rx = Get-UiCopyRegex $name
+        $m = $rx.Match($text)
+        if (-not $m.Success) { throw "Keine Marker fuer '$name' in ${f}: Zeile '/* ui-copy:begin $name */' und '/* ui-copy:end */' von Hand einsetzen." }
+        if ($m.Value -ceq $want) { Write-Host "  [OK] ${name}: $f aktuell" -ForegroundColor Green; continue }
+        if ($Verify) { Write-Host "  [FAIL] ${name}: Kopie in $f ist veraltet" -ForegroundColor Red; $fails++; continue }
+        $text = $rx.Replace($text, [System.Text.RegularExpressions.MatchEvaluator] { param($x) $want }, 1)
+        [System.IO.File]::WriteAllText($abs, $text, $u8)
+        Write-Host "  [neu] ${name}: $f" -ForegroundColor Cyan
+    }
+}
+# Texte aus dem Katalog (Get-UiLocaleBlocks)
+foreach ($b in (Get-UiLocaleBlocks)) {
+    $abs = Join-Path $RepoRoot $b.File
+    $text = [System.IO.File]::ReadAllText($abs, $u8)
+    $rx = Get-UiLocaleRegex $b.Name
+    $m = $rx.Match($text)
+    if (-not $m.Success) { throw "Keine Marker fuer Texte '$($b.Name)' in $($b.File): '/* ui-locale:begin $($b.Name) */' und '/* ui-locale:end */' von Hand einsetzen." }
+    $want = Get-UiLocaleText $RepoRoot $b
+    if ($m.Value -ceq $want) { Write-Host "  [OK] Texte $($b.Name): aktuell" -ForegroundColor Green; continue }
+    if ($Verify) { Write-Host "  [FAIL] Texte $($b.Name): Block in $($b.File) ist veraltet" -ForegroundColor Red; $fails++; continue }
+    $text = $rx.Replace($text, [System.Text.RegularExpressions.MatchEvaluator] { param($x) $want }, 1)
+    [System.IO.File]::WriteAllText($abs, $text, $u8)
+    Write-Host "  [neu] Texte $($b.Name): $($b.File)" -ForegroundColor Cyan
+}
 exit $fails

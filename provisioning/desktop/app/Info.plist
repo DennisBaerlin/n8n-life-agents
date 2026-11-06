@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- Tauri fuegt diese Datei in die Info.plist der App ein. Der Fragebogen laeuft ueber http auf 127.0.0.1 (nur dieser
+     Rechner); App Transport Security erlaubt das nur mit NSAllowsLocalNetworking. Fremde Adressen bleiben https-pflichtig. -->
+<plist version="1.0">
+<dict>
+  <key>NSAppTransportSecurity</key>
+  <dict>
+    <key>NSAllowsLocalNetworking</key>
+    <true/>
+  </dict>
+</dict>
+</plist>

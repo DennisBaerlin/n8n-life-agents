@@ -1,0 +1,153 @@
+# Start-App bauen (Plan docker-installer-freunde, Paket 6). Wiederverwendbar: desktop.yml (Branch/PR, Artefakte zum
+# Herunterladen) und release.yml (Tag, Assets am Release-Entwurf) rufen ihn auf.
+#   core  -> Pruef-Logik (provisioning/desktop/core): fmt, clippy, alle Tests gegen die Befehls-Attrappe
+#   app   -> Tauri 2 (provisioning/desktop/app): macOS arm64 als DMG mit Ad-hoc-Signatur ("-", kein Apple-Konto, keine
+#            Geheimnisse) und Windows x64 als NSIS-Setup (unsigniert, bis SignPath zusagt). Symbole entstehen hier aus dem
+#            einen Zeichen (docs/site/layouts/partials/mark.html) und der Farbdatei, sie liegen nicht im Repo.
+# Was nur auf echter Hardware pruefbar ist (Gatekeeper "Dennoch oeffnen", LaunchAgent, pmset, Docker-Start): Handliste
+# in provisioning/desktop/CLAUDE.md.
+name: desktop-build
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  core:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Pruef-Logik testen
+        working-directory: provisioning/desktop/core
+        run: |
+          set -euo pipefail
+          rustup component add rustfmt clippy
+          cargo fmt --check
+          cargo clippy --locked --all-targets -- -D warnings
+          cargo test --locked
+
+  app:
+    needs: core
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-15
+            bundle: dmg
+            asset: lifeagents.dmg
+          - os: windows-latest
+            bundle: nsis
+            asset: lifeagents-setup.exe
+    runs-on: ${{ matrix.os }}
+    env:
+      BUNDLE: ${{ matrix.bundle }}
+      ASSET: ${{ matrix.asset }}
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Cargo-Cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            provisioning/desktop/app/target
+          key: desktop-${{ runner.os }}-${{ hashFiles('provisioning/desktop/app/Cargo.lock') }}
+          restore-keys: desktop-${{ runner.os }}-
+
+      - name: Symbole aus dem Zeichen erzeugen
+        run: |
+          . ./scripts/lib/ui_tokens.ps1
+          $svg = Get-UiBotProfileSvg 'docs/site/layouts/partials/mark.html' (Read-UiTokens (Get-Location).Path)
+          [System.IO.File]::WriteAllText("$PWD/provisioning/desktop/app/icon-source.svg", $svg, [System.Text.UTF8Encoding]::new($false))
+          npx --yes @tauri-apps/cli@2 icon provisioning/desktop/app/icon-source.svg -o provisioning/desktop/app/icons
+          if ($LASTEXITCODE -ne 0) { throw 'tauri icon scheiterte' }
+
+      - name: App bauen
+        working-directory: provisioning/desktop/app
+        run: |
+          # Mac: app ausdruecklich mitbauen, sonst liegt die .app nicht unter bundle/macos (Pruefung, Selbsttest, Start)
+          $bundles = if ($env:BUNDLE -eq 'dmg') { 'app,dmg' } else { $env:BUNDLE }
+          npx --yes @tauri-apps/cli@2 build --bundles $bundles
+          if ($LASTEXITCODE -ne 0) { throw 'tauri build scheiterte' }
+
+      # bash statt pwsh: codesign schreibt auf stderr, das in pwsh hier leer ankam (Lauf 2026-11-06)
+      - name: Ad-hoc-Signatur pruefen (Mac)
+        if: runner.os == 'macOS'
+        working-directory: provisioning/desktop/app
+        shell: bash
+        run: |
+          set -euo pipefail
+          app=target/release/bundle/macos/lifeagents.app
+          ls -la "$app/Contents/MacOS"
+          codesign -dv --verbose=2 "$app" > "$RUNNER_TEMP/codesign.txt" 2>&1 || true
+          cat "$RUNNER_TEMP/codesign.txt"
+          grep -q 'Signature=adhoc' "$RUNNER_TEMP/codesign.txt" || { echo "::error::App ist nicht ad-hoc signiert"; exit 1; }
+          codesign --verify --deep --strict "$app"
+          lipo -archs "$app/Contents/MacOS/lifeagents" | grep -q arm64 || { echo "::error::kein arm64"; exit 1; }
+
+      # Owner 2026-11-06: kein Mac-Test vor dem Release, darum hier so viel wie moeglich am echten System pruefen.
+      - name: Selbsttest gegen das echte System (nur lesen)
+        run: |
+          $exe = if ($IsMacOS) { 'provisioning/desktop/app/target/release/bundle/macos/lifeagents.app/Contents/MacOS/lifeagents' } else { 'provisioning/desktop/app/target/release/lifeagents.exe' }
+          $out = Join-Path $env:RUNNER_TEMP 'selftest.json'
+          $p = Start-Process -FilePath $exe -ArgumentList '--self-test', $out -Wait -PassThru
+          if ($p.ExitCode -ne 0) { throw "Selbsttest endete mit $($p.ExitCode)" }
+          Get-Content $out
+          $r = [System.IO.File]::ReadAllText($out) | ConvertFrom-Json
+          if ($r.system.ram_gb -le 0 -or -not $r.system.os_version -or @($r.system.checks).Count -lt 4) { throw 'Rechner-Pruefung ohne Werte' }
+          if (-not $r.docker.verdict.kind) { throw 'Docker-Erkennung ohne Ergebnis' }
+          if ($r.location -ne 'installed') { throw "Ort der App: $($r.location)" }
+          if ($IsMacOS) {
+            if (@($r.power.PSObject.Properties).Count -lt 2) { throw 'pmset -g custom nicht gelesen' }
+            if ($r.system.arch -ne 'arm64') { throw "Bauart: $($r.system.arch)" }
+            if ($r.filevault -eq 'unknown') { Write-Host '::warning::fdesetup status nicht lesbar' }
+          } elseif (-not $r.power.'active-scheme') { throw 'powercfg /getactivescheme nicht gelesen' }
+
+      - name: App startet (Fenster, ohne Docker)
+        run: |
+          if ($IsMacOS) {
+            open 'provisioning/desktop/app/target/release/bundle/macos/lifeagents.app'
+            Start-Sleep -Seconds 12
+            $alive = pgrep -x lifeagents
+            pkill -x lifeagents
+            if (-not $alive) { throw 'App lief nach 12 s nicht mehr' }
+          } else {
+            $p = Start-Process 'provisioning/desktop/app/target/release/lifeagents.exe' -PassThru
+            Start-Sleep -Seconds 12
+            if ($p.HasExited) { throw "App endete mit $($p.ExitCode)" }
+            Stop-Process -Id $p.Id
+          }
+
+      - name: Datei benennen
+        working-directory: provisioning/desktop/app
+        run: |
+          $dir = if ($env:BUNDLE -eq 'dmg') { 'target/release/bundle/dmg' } else { 'target/release/bundle/nsis' }
+          $ext = if ($env:BUNDLE -eq 'dmg') { '*.dmg' } else { '*-setup.exe' }
+          $f = @(Get-ChildItem $dir -Filter $ext)
+          if ($f.Count -ne 1) { throw "Erwartet genau eine Datei in $dir, gefunden $($f.Count)" }
+          New-Item -ItemType Directory -Force -Path "$env:RUNNER_TEMP/out" | Out-Null
+          Copy-Item $f[0].FullName "$env:RUNNER_TEMP/out/$env:ASSET"
+          $hash = (Get-FileHash "$env:RUNNER_TEMP/out/$env:ASSET" -Algorithm SHA256).Hash.ToLowerInvariant()
+          [System.IO.File]::WriteAllText("$env:RUNNER_TEMP/out/$env:ASSET.sha256", "$hash  $env:ASSET`n")
+          Get-ChildItem "$env:RUNNER_TEMP/out" | Format-Table Name, Length
+
+      - name: Hochladen
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: desktop-${{ matrix.bundle }}
+          path: ${{ runner.temp }}/out/
+          if-no-files-found: error
+          retention-days: 14

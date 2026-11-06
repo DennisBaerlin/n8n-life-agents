@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-check-docker"
+description = "Enables the check_docker command without any pre-configured scope."
+commands.allow = ["check_docker"]
+
+[[permission]]
+identifier = "deny-check-docker"
+description = "Denies the check_docker command without any pre-configured scope."
+commands.deny = ["check_docker"]

@@ -1,0 +1,66 @@
+# Herstellerkennung von Docker Desktop am Original ablesen (Plan docker-installer-freunde, Paket 6): Die Start-App
+# prueft vor dem Installieren Team-ID (Mac) und Herausgeber (Windows) gegen Konstanten in
+# provisioning/desktop/core/src/docker_desktop.rs. Aendert Docker sie, wird dieser Lauf rot, bevor eine App mit falscher
+# Pruefung ausgeliefert wird. Laeuft bei Aenderung der Konstanten, woechentlich und von Hand, nicht bei jedem App-Push
+# (laedt rund 1,2 GB). Von Hand: gh workflow run desktop-vendor-ids.yml --ref <branch>
+name: desktop-vendor-ids
+
+on:
+  push:
+    paths:
+      - 'provisioning/desktop/core/src/docker_desktop.rs'
+      - '.github/workflows/desktop-vendor-ids.yml'
+  schedule:
+    - cron: '17 5 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  vendor-ids:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-15, windows-latest]
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Docker-Kennung am Original ablesen
+        run: |
+          $src = [System.IO.File]::ReadAllText("$PWD/provisioning/desktop/core/src/docker_desktop.rs")
+          $const = { param($n) ([regex]::Match($src, "pub const $n`: &str = `"([^`"]+)`"")).Groups[1].Value }
+          if ($IsMacOS) {
+            $url = & $const 'URL_MAC_ARM64'
+            $team = & $const 'MAC_TEAM_ID'
+            curl --fail --location --proto '=https' --silent --show-error --output "$env:RUNNER_TEMP/Docker.dmg" $url
+            if ($LASTEXITCODE -ne 0) { throw 'Download scheiterte' }
+            $mnt = "$env:RUNNER_TEMP/dmg"
+            hdiutil attach -nobrowse -readonly -noautoopen -mountpoint $mnt "$env:RUNNER_TEMP/Docker.dmg" | Out-Null
+            $app = "$mnt/Docker.app"
+            $info = (codesign -dv --verbose=2 $app 2>&1) -join "`n"
+            $gk = (spctl --assess --type execute -vv $app 2>&1) -join "`n"
+            hdiutil detach $mnt | Out-Null
+            Write-Host $info; Write-Host $gk
+            $seen = ([regex]::Match($info, 'TeamIdentifier=(\S+)')).Groups[1].Value
+            if ($seen -ne $team) { throw "Team-ID am Original: '$seen', in docker_desktop.rs: '$team'" }
+            if ($gk -notmatch 'Notarized Developer ID') { throw 'Original ist nicht notarisiert' }
+            Write-Host "OK: Team-ID $seen"
+          } else {
+            $url = & $const 'URL_WIN_AMD64'
+            $org = & $const 'WIN_PUBLISHER_ORG'
+            Invoke-WebRequest -Uri $url -OutFile "$env:RUNNER_TEMP\docker-setup.exe"
+            $s = Get-AuthenticodeSignature -LiteralPath "$env:RUNNER_TEMP\docker-setup.exe"
+            Write-Host "Status: $($s.Status)"; Write-Host "Subject: $($s.SignerCertificate.Subject)"
+            if ($s.Status -ne 'Valid') { throw "Signatur des Originals: $($s.Status)" }
+            $fields = $s.SignerCertificate.Subject -split ',' | ForEach-Object { $_.Trim() }
+            if ($fields -notcontains "O=$org" -and $fields -notcontains "O=`"$org`"") { throw "Herausgeber am Original passt nicht zu WIN_PUBLISHER_ORG '$org'" }
+            Write-Host "OK: O=$org"
+          }

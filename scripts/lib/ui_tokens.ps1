@@ -34,13 +34,86 @@ function Get-UiSurfaces {
             Colors = @('ink', 'gray', 'hairline', 'accent', 'ok', 'warn', 'alert', 'bg', 'bg-soft')
             Shape  = @('radius', 'font')
         }
+        # Start-App (Tauri): folgt dem System; data-theme nur fuer die Vorschau (scripts/dev/serve_desktop_preview.ps1).
+        [pscustomobject]@{
+            Name   = 'desktop'
+            File   = 'provisioning/desktop/ui/app.css'
+            Rules  = @(
+                [pscustomobject]@{ Selector = ':root'; Group = 'light' }
+                [pscustomobject]@{ Media = '@media (prefers-color-scheme: dark)'; Selector = ':root:not([data-theme="light"])'; Group = 'dark' }
+                [pscustomobject]@{ Selector = ':root[data-theme="dark"]'; Group = 'dark' }
+            )
+            Colors = @('ink', 'gray', 'hairline', 'accent', 'accent-hover', 'accent-mid', 'accent-pale', 'accent-wash', 'warn', 'warn-wash', 'alert', 'alert-wash', 'bg', 'bg-soft')
+            Shape  = @('radius', 'radius-sm', 'radius-pill', 'font', 'font-mono')
+        }
     )
+}
+
+# Geteilte Bausteine, die mehrere Oberflaechen gleich zeigen (Schritt-Leiste von Start-App und Fragebogen im selben Fenster):
+# Quelle unter config/, wortgleich als markierter Block in jede Datei kopiert (gleicher Grund wie bei den Farben: kein Nachladen
+# zur Laufzeit, der Fragebogen ist eine fremde Seite ohne Zugriff auf die Dateien der App). Neuer Verbraucher = Pfad in Files.
+function Get-UiCopies {
+    @(
+        [pscustomobject]@{ Source = 'config/ui.steps.js'; Files = @('provisioning/desktop/ui/app.js') }
+        [pscustomobject]@{ Source = 'config/ui.steps.css'; Files = @('provisioning/desktop/ui/app.css') }
+        # Lese-Hinweis am Hauptknopf (Werte der Leitung, Referenz im Fragebogen).
+        [pscustomobject]@{ Source = 'config/ui.nudge.js'; Files = @('provisioning/desktop/ui/app.js') }
+        [pscustomobject]@{ Source = 'config/ui.nudge.css'; Files = @('provisioning/desktop/ui/app.css') }
+    )
+}
+function Get-UiCopyRegex([string]$Name) {
+    [regex]::new('/\* ui-copy:begin ' + [regex]::Escape($Name) + '\b[^\n]*\*/\n[\s\S]*?/\* ui-copy:end \*/')
+}
+function Get-UiCopyText([string]$RepoRoot, $Copy) {
+    $name = Split-Path $Copy.Source -Leaf
+    $body = [System.IO.File]::ReadAllText((Join-Path $RepoRoot $Copy.Source), $script:UiTokensUtf8).Replace("`r`n", "`n").TrimEnd("`n")
+    "/* ui-copy:begin $name (kopiert von scripts/build_ui_tokens.ps1 aus $($Copy.Source), nicht von Hand aendern) */`n$body`n/* ui-copy:end */"
+}
+
+# Texte aus dem Katalog packages/core/locales/<code>.json als Block in eine Oberflaeche ohne Bau-Schritt (Start-App,
+# Leitung 2026-11-06: eine Uebersetzungs-Quelle mit Bot und Fragebogen). Je Sprache die Schluessel mit den genannten
+# Praefixen, sortiert. Eigenes Serialisieren statt ConvertTo-Json: gleiche Ausgabe unter PowerShell 5.1 und 7.
+function Get-UiLocaleBlocks {
+    @([pscustomobject]@{ Name = 'desktop'; File = 'provisioning/desktop/ui/app.js'; Prefixes = @('core.desktop.', 'core.wizard.step.') })
+}
+function Get-UiLocaleRegex([string]$Name) {
+    [regex]::new('/\* ui-locale:begin ' + [regex]::Escape($Name) + '\b[^\n]*\*/\n[\s\S]*?/\* ui-locale:end \*/')
+}
+function ConvertTo-UiJsString([string]$Text) {
+    $sb = [System.Text.StringBuilder]::new('"')
+    foreach ($c in $Text.ToCharArray()) {
+        $n = [int]$c
+        if ($c -eq '"') { [void]$sb.Append('\"') }
+        elseif ($c -eq '\') { [void]$sb.Append('\\') }
+        elseif ($n -eq 10) { [void]$sb.Append('\n') }
+        elseif ($n -lt 32 -or $n -eq 0x2028 -or $n -eq 0x2029) { [void]$sb.Append(('\u{0:x4}' -f $n)) }
+        else { [void]$sb.Append($c) }
+    }
+    [void]$sb.Append('"')
+    $sb.ToString()
+}
+function Get-UiLocaleText([string]$RepoRoot, $Block) {
+    $dir = Join-Path (Join-Path (Join-Path $RepoRoot 'packages') 'core') 'locales'
+    $lines = [System.Collections.Generic.List[string]]::new()
+    $lines.Add("/* ui-locale:begin $($Block.Name) (erzeugt von scripts/build_ui_tokens.ps1 aus packages/core/locales, nicht von Hand aendern) */")
+    $lines.Add('const UI_TEXT = {')
+    foreach ($f in (Get-ChildItem $dir -Filter '*.json' | Sort-Object Name)) {
+        $obj = [System.IO.File]::ReadAllText($f.FullName, $script:UiTokensUtf8) | ConvertFrom-Json
+        $keys = [string[]]@($obj.PSObject.Properties.Name | Where-Object { $k = $_; @($Block.Prefixes | Where-Object { $k.StartsWith($_, [StringComparison]::Ordinal) }).Count -gt 0 })
+        [Array]::Sort($keys, [StringComparer]::Ordinal)
+        $lines.Add("  $($f.BaseName): {")
+        foreach ($k in $keys) { $lines.Add("    $(ConvertTo-UiJsString $k): $(ConvertTo-UiJsString ([string]$obj.$k)),") }
+        $lines.Add('  },')
+    }
+    $lines.Add('};')
+    $lines.Add('/* ui-locale:end */')
+    $lines -join "`n"
 }
 
 # Wurzeln, unter denen der Lint Farb-Literale sucht. Eine UI-Datei ausserhalb dieser Wurzeln (und ausserhalb von
 # Get-UiExcludedPrefixes) ist ein Fehler: so rutscht eine neue Oberflaeche nicht unbemerkt durch.
 function Get-UiScanRoots {
-    @('docs/site/static/', 'docs/site/layouts/', 'packages/core/build/app/', 'packages/core/build/stickers/')
+    @('docs/site/static/', 'docs/site/layouts/', 'packages/core/build/app/', 'packages/core/build/stickers/', 'provisioning/desktop/ui/', 'provisioning/desktop/preview/', 'config/ui.')
 }
 # public/ = Hugo-Output der Quellen oben; mods = Erweiterung des Entwickler-Werkzeugs, keine Projekt-Oberflaeche.
 function Get-UiExcludedPrefixes { @('docs/site/public/', '.claude/mods/') }

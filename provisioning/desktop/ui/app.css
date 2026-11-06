@@ -1,0 +1,301 @@
+/* Start-App: Fenster 760 x 640 (mindestens 420 breit). Farben nur als var(--token), Werte aus config/ui.tokens.json.
+   Hell/Dunkel folgt dem System; die Vorschau setzt data-theme. Regeln: docs/reference/ui.md. */
+/* ui-tokens:begin desktop (erzeugt von scripts/build_ui_tokens.ps1, nicht von Hand aendern) */
+:root {
+  --ink: #17212B;
+  --gray: #55636E;
+  --hairline: #E2E7EC;
+  --accent: #12638A;
+  --accent-hover: #0D4D6C;
+  --accent-mid: #A8D3E6;
+  --accent-pale: #DCF0F8;
+  --accent-wash: #F1F8FB;
+  --warn: #CC8600;
+  --warn-wash: #FDF3D8;
+  --alert: #D23F44;
+  --alert-wash: #FDE8E8;
+  --bg: #FFFFFF;
+  --bg-soft: #F1F8FB;
+  --radius: 16px;
+  --radius-sm: 10px;
+  --radius-pill: 999px;
+  --font: -apple-system, "Segoe UI", system-ui, "Helvetica Neue", Arial, sans-serif;
+  --font-mono: ui-monospace, "Cascadia Code", Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --ink: #EEF3F6;
+    --gray: #A2B1BC;
+    --hairline: #2A343C;
+    --accent: #5DB7DD;
+    --accent-hover: #A8D3E6;
+    --accent-mid: #2A5A70;
+    --accent-pale: #183A4A;
+    --accent-wash: #1B2329;
+    --warn: #E0A030;
+    --warn-wash: #3A2E10;
+    --alert: #E5605F;
+    --alert-wash: #3D1F20;
+    --bg: #12181D;
+    --bg-soft: #1B2329;
+  }
+}
+:root[data-theme="dark"] {
+  --ink: #EEF3F6;
+  --gray: #A2B1BC;
+  --hairline: #2A343C;
+  --accent: #5DB7DD;
+  --accent-hover: #A8D3E6;
+  --accent-mid: #2A5A70;
+  --accent-pale: #183A4A;
+  --accent-wash: #1B2329;
+  --warn: #E0A030;
+  --warn-wash: #3A2E10;
+  --alert: #E5605F;
+  --alert-wash: #3D1F20;
+  --bg: #12181D;
+  --bg-soft: #1B2329;
+}
+/* ui-tokens:end */
+
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+body {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+  color: var(--ink);
+  font: 400 16px/1.55 var(--font);
+  -webkit-font-smoothing: antialiased;
+}
+/* Koreanisch bricht an Wortgrenzen um, nicht mitten im Wort (übliche Regel für Hangul-Oberflächen). */
+html:lang(ko) body { word-break: keep-all; overflow-wrap: break-word; }
+a { color: var(--accent); }
+a:hover { color: var(--accent-hover); }
+
+.top {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 28px;
+  border-bottom: 1px solid var(--hairline);
+  font-weight: 600;
+}
+.top svg { flex: none; }
+
+/* Leiste links, rechts Inhalt und Knöpfe; schmal (unter 600 px) steht die Leiste als Zeile oben. */
+.frame { flex: 1; display: flex; min-height: 0; }
+.col { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+@media (max-width: 600px) { .frame { flex-direction: column; } }
+
+/* ui-copy:begin ui.steps.css (kopiert von scripts/build_ui_tokens.ps1 aus config/ui.steps.css, nicht von Hand aendern) */
+/* Schritt-Leiste (config/ui.steps.js): links neben dem Inhalt, unter 600 px eine Zeile über dem Titel. Nur Tokens, die in jeder
+   Oberfläche mit Leiste stehen: ink, gray, hairline, accent, accent-mid, bg-soft, font. */
+.la-rail {
+  flex: none;
+  width: 176px;
+  padding: 24px 14px 16px 22px;
+  background: var(--bg-soft);
+  border-right: 1px solid var(--hairline);
+  overflow-y: auto;
+  font-family: var(--font);
+}
+.la-rail[hidden] { display: none; }
+.la-rail-list { list-style: none; margin: 0; padding: 0; }
+.la-rail-step { margin: 0 0 12px; color: var(--gray); font-size: 14.5px; line-height: 1.3; }
+.la-rail-step > i {
+  display: inline-block;
+  vertical-align: -3px;
+  width: 16px;
+  height: 16px;
+  margin-right: 9px;
+  border-radius: 50%;
+  border: 2px solid var(--gray);
+  font: normal 10px/12px var(--font);
+  text-align: center;
+}
+.la-rail-step.done { color: var(--ink); }
+.la-rail-step.done > i { background: var(--accent-mid); border-color: var(--accent-mid); color: var(--ink); }
+.la-rail-step.now { color: var(--ink); font-weight: 600; }
+.la-rail-step.now > i { border-color: var(--accent); background: radial-gradient(circle, var(--accent) 0 3px, transparent 3.5px); }
+.la-rail-sub { list-style: none; margin: 8px 0 0 7px; padding: 0 0 0 16px; border-left: 2px solid var(--hairline); }
+.la-rail-sub li { margin: 0 0 6px; font-size: 13.5px; font-weight: 400; color: var(--gray); }
+.la-rail-sub li.done { color: var(--ink); }
+.la-rail-sub li.now { color: var(--ink); font-weight: 600; }
+.la-rail-short { display: none; margin: 0; font-size: 14px; color: var(--gray); }
+@media (max-width: 600px) {
+  .la-rail { width: auto; padding: 10px 18px; border-right: 0; border-bottom: 1px solid var(--hairline); }
+  .la-rail-list { display: none; }
+  .la-rail-short { display: block; }
+}
+/* ui-copy:end */
+
+/* ui-copy:begin ui.nudge.css (kopiert von scripts/build_ui_tokens.ps1 aus config/ui.nudge.css, nicht von Hand aendern) */
+/* Lese-Hinweis am Hauptknopf (config/ui.nudge.js): genau 2 Pulse von je 1,5 s, ein Ring in accent, der nach außen ausläuft.
+   Ohne Bewegung (prefers-reduced-motion) nur ein farbiger Rahmen für dieselbe Zeit. Nur das Token accent. */
+.la-nudge { animation: la-nudge-pulse 1.5s ease-out 2; }
+@keyframes la-nudge-pulse {
+  0% { box-shadow: 0 0 0 0 var(--accent); }
+  70% { box-shadow: 0 0 0 10px transparent; }
+  100% { box-shadow: 0 0 0 0 transparent; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .la-nudge { animation: none; outline: 3px solid var(--accent); outline-offset: 3px; }
+}
+/* ui-copy:end */
+
+/* Langer Inhalt scrollt; der Verlauf am unteren Rand zeigt, dass es weitergeht (macOS blendet Rollbalken aus). Der untere
+   Innenabstand ist so groß wie der Verlauf, damit am Ende nichts blass bleibt. Maske: schwarz = sichtbar, keine Farbe. */
+main {
+  flex: 1;
+  overflow-y: auto;
+  -webkit-mask-image: linear-gradient(to bottom, black calc(100% - 28px), transparent);
+  mask-image: linear-gradient(to bottom, black calc(100% - 28px), transparent);
+  padding: 28px 28px 28px;
+  max-width: 46rem;
+  width: 100%;
+  margin: 0 auto;
+}
+h1 { font-size: 28px; line-height: 1.15; letter-spacing: -0.02em; margin: 0 0 16px; font-weight: 700; }
+p { margin: 0 0 12px; }
+ul, ol { margin: 0 0 12px 22px; padding: 0; }
+li { margin-bottom: 5px; }
+li::marker { color: var(--accent); }
+.lead { color: var(--gray); }
+h2 { font-size: 16px; margin: 18px 0 6px; }
+
+.nav {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 28px 18px;
+  border-top: 1px solid var(--hairline);
+}
+.nav[hidden] { display: none; }
+
+button {
+  font: 600 15px/1 var(--font);
+  cursor: pointer;
+  border: 0;
+  border-radius: var(--radius-pill);
+  padding: 11px 20px;
+  background: var(--accent-pale);
+  color: var(--ink);
+  transition: background 0.18s ease;
+}
+button:hover { background: var(--accent-mid); }
+button.primary { background: var(--ink); color: var(--bg); margin-left: auto; }
+button.primary:hover { background: var(--ink); }
+button.link { background: none; padding: 11px 2px; color: var(--gray); text-decoration: underline; font-weight: 500; }
+button.link:hover { background: none; color: var(--ink); }
+button:disabled { cursor: default; opacity: 0.55; }
+button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.note { background: var(--accent-wash); border-radius: var(--radius); padding: 12px 16px; font-size: 15px; margin: 12px 0; }
+.note.warn { background: var(--warn-wash); border-left: 4px solid var(--warn); }
+.note.bad { background: var(--alert-wash); border-left: 4px solid var(--alert); }
+.note.tidy { margin-top: 18px; }
+.note.tidy h2 { margin-top: 0; }
+.note.tidy p { margin-bottom: 10px; }
+
+.steps { list-style: none; padding: 0; margin: 6px 0 12px; }
+.steps li { display: flex; gap: 12px; align-items: flex-start; padding: 5px 0; margin: 0; color: var(--gray); }
+.steps li i {
+  font-style: normal;
+  flex: none;
+  width: 22px;
+  height: 22px;
+  margin-top: 1px;
+  border-radius: 50%;
+  border: 2px solid var(--hairline);
+  text-align: center;
+  line-height: 18px;
+  font-size: 13px;
+}
+.steps li.run { color: var(--ink); font-weight: 500; }
+.steps li.run i { border-color: var(--accent); border-right-color: var(--hairline); animation: spin 1s linear infinite; }
+.steps li.ok { color: var(--ink); }
+.steps li.ok i { background: var(--accent-pale); border-color: var(--accent-pale); color: var(--ink); }
+.steps li.warn { color: var(--ink); }
+.steps li.warn i { border-color: var(--warn); }
+.steps li.bad { color: var(--ink); }
+.steps li.bad i { border-color: var(--alert); }
+.steps small { display: block; color: var(--gray); font-size: 14px; font-weight: 400; }
+@keyframes spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .steps li.run i { animation: none; } }
+
+.choice {
+  display: block;
+  width: 100%;
+  text-align: left;
+  font: 400 16px/1.5 var(--font);
+  padding: 14px 18px;
+  margin: 0 0 10px;
+  border-radius: var(--radius);
+  background: var(--bg);
+  border: 1px solid var(--hairline);
+  color: var(--ink);
+}
+.choice:hover { background: var(--bg); border-color: var(--accent-mid); }
+.choice.sel { border-color: var(--accent-mid); background: var(--accent-pale); }
+.choice b { display: block; font-weight: 600; }
+.choice small { display: block; color: var(--gray); font-size: 14.5px; line-height: 1.45; }
+.choice.sel small { color: var(--ink); }
+.tag {
+  display: inline-block;
+  font-size: 12.5px;
+  font-weight: 600;
+  background: var(--accent-pale);
+  border: 1px solid var(--accent-mid);
+  border-radius: var(--radius-pill);
+  padding: 0 9px;
+  margin-left: 6px;
+}
+
+label.opt { display: flex; gap: 10px; align-items: flex-start; padding: 10px 0; border-bottom: 1px solid var(--hairline); }
+label.opt input { margin-top: 5px; accent-color: var(--accent); }
+label.opt small { display: block; color: var(--gray); font-size: 14px; }
+
+.dmg {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 34px;
+  background: var(--bg-soft);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius);
+  padding: 22px 12px;
+  margin: 8px 0 14px;
+}
+.ico { display: flex; flex-direction: column; align-items: center; gap: 6px; font-size: 13.5px; }
+.app-ico {
+  width: 58px;
+  height: 58px;
+  border-radius: var(--radius);
+  background: var(--accent-wash);
+  border: 1px solid var(--hairline);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.folder { width: 62px; height: 48px; margin: 5px 0; border-radius: var(--radius-sm); background: var(--accent-pale); border: 1px solid var(--accent-mid); }
+.arrow { font-size: 30px; color: var(--accent); font-weight: 600; }
+
+pre.report {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  background: var(--bg-soft);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius);
+  padding: 12px 14px;
+  font: 13.5px/1.5 var(--font-mono);
+}
+.bar { height: 6px; border-radius: var(--radius-pill); background: var(--hairline); overflow: hidden; margin: 4px 0 2px; }
+.bar span { display: block; height: 100%; background: var(--accent); width: 0; }
+
+@media (max-width: 520px) {
+  main, .top, .nav { padding-left: 18px; padding-right: 18px; }
+  h1 { font-size: 24px; }
+}

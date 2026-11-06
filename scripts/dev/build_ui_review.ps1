@@ -8,12 +8,13 @@
 #   .\scripts\dev\build_ui_review.ps1 -Name kurzer-hinweis -Capture nachher     nach der Aenderung
 #   .\scripts\dev\build_ui_review.ps1 -Name kurzer-hinweis -Page                baut .local/ui_review/<Name>/index.html
 #   -Capture ... -Surface site -Pages index.html,docs/erste-schritte.html       Doku-Seite (vorher .\scripts\build_site.ps1), nur hell
+#   -Capture ... -Surface desktop                                               Start-App: alle Faelle aus preview/mock.js, 600 px
 #   -Screens overview,accounts                                                  nur diese Reiter (Standard: alle aus dem Datenmodell)
 #   -Title 'Hinweis kuerzer'                                                    Ueberschrift der Seite
 # Der Pruef-Agent (.claude/agents/ui-review.md) liest den Ordner nachher/. Kein Netz, keine DB, kein Container.
 param(
     [Parameter(Mandatory)][ValidatePattern('^[a-z0-9-]+$')][string]$Name,
-    [ValidateSet('mini-app', 'site')][string]$Surface = 'mini-app',
+    [ValidateSet('mini-app', 'site', 'desktop')][string]$Surface = 'mini-app',
     [ValidateSet('vorher', 'nachher')][string]$Capture = '',
     [string[]]$Screens = @(),
     [string[]]$Pages = @('index.html'),
@@ -59,6 +60,67 @@ if ($Capture) {
             [System.IO.File]::WriteAllText((Join-Path $dir "$s.txt"), (Get-HeadlessText -File $tmp), $Utf8NoBom)
             Remove-Item $tmp -Force
             Write-Host "  [OK] $Capture/$s" -ForegroundColor Green
+        }
+    } elseif ($Surface -eq 'desktop') {
+        # Start-App: echte ui/-Dateien mit der Vorschau-Attrappe, je Fall ein Bildschirm. Fall = Name:Zustand:Bildschirm[:Zusatz],
+        # Zusatz = weitere Parameter der Attrappe (os=win, hold=1, fail=<code>, click=next; Kopf von preview/mock.js).
+        # Je Fall zwei Bilder: <name>-<hell|dunkel> mit dem ganzen Inhalt (600 px, fuer den Pruef-Agenten) und
+        # <name>-fenster-<...> in echter Fenstergroesse 760 x 640, so wie der Nutzer es sieht (langer Inhalt scrollt).
+        $ui = Join-Path $RepoRoot 'provisioning\desktop\ui'
+        $mock = Join-Path $RepoRoot 'provisioning\desktop\preview\mock.js'
+        $url = { param($p) 'file:///' + $p.Replace('\', '/') }
+        $cases = @('welcome:missing:welcome','need:missing:need', 'move:dmg:move', 'resume:interrupted:resume',
+            'rolled-back:interrupted:rollback', 'sys-hint:hints:sys', 'sys-stop:blocked:sys', 'dk-missing:missing:docker', 'dk-fetch:missing:dkFetch:hold=1',
+            'dk-fetch-fail:missing:dkFetch:fail=signature-failed', 'dk-stopped:stopped:docker', 'dk-ready:ready:docker', 'dk-orbstack:ready-orbstack:docker',
+            'dk-old:old:docker', 'dk-memory:memory:docker', 'dk-other:other:docker', 'dk-help:colima:docker', 'dk-remote:remote:docker',
+            'dk-foreign:foreign:docker', 'core-start:wizard:coreStart:hold=1', 'wizard-missing:missing:wizardMissing', 'power:missing:power',
+            'power-laptop:laptop:power', 'power-result:missing:powerApply', 'done:missing:finish', 'done-trashed:missing:finish:click=trash', 'done-no-download:ready:finish','home:complete:home', 'report:missing:report',
+            'uninstall:missing:uninstall', 'uninstalled:missing:uninstall:click=next', 'power-restore:missing:powerRestore',
+            'power-restored:missing:powerRestore:click=next', 'win-sys:hints:sys:os=win', 'win-power:missing:power:os=win', 'win-dk-missing:missing:docker:os=win',
+            # Sprachen (Systemsprache bzw. Wahl im Fragebogen): je Sprache die Seiten mit dem meisten Text
+            'en-welcome:missing:welcome:lang=en', 'en-dk-missing:missing:docker:lang=en', 'en-power:laptop:power:lang=en', 'en-power-result:missing:powerApply:lang=en',
+            'en-done:missing:finish:lang=en', 'en-uninstall:missing:uninstall:lang=en', 'ko-welcome:missing:welcome:lang=ko', 'ko-need:missing:need:lang=ko',
+            'ko-sys-hint:hints:sys:lang=ko', 'ko-dk-ready:ready:docker:lang=ko', 'ko-dk-memory:memory:docker:lang=ko', 'ko-power:laptop:power:lang=ko',
+            'ko-power-result:missing:powerApply:lang=ko', 'ko-done:missing:finish:lang=ko', 'ko-uninstalled:missing:uninstall:click=next&lang=ko', 'ko-win-power:missing:power:os=win&lang=ko')
+        if ($Screens.Count) { $cases = @($cases | Where-Object { $Screens -contains ($_ -split ':')[0] }) }
+        $deskHtml = {
+            param([string]$Params, [bool]$Full)
+            $h = [System.IO.File]::ReadAllText((Join-Path $ui 'index.html'), $Utf8NoBom)
+            $h = $h.Replace('href="app.css"', "href=`"$(& $url (Join-Path $ui 'app.css'))`"")
+            $h = $h.Replace('<script src="app.js"></script>', "<script>window.__previewParams = '$Params';</script><script src=`"$(& $url $mock)`"></script><script src=`"$(& $url (Join-Path $ui 'app.js'))`"></script>")
+            # Ganzer Inhalt: Hoehe frei, Knopfleiste mit Linie darunter (sonst schneidet -TrimBottom sie ab)
+            if ($Full) { $h = $h.Replace('</head>', '<style>html,body{height:auto}main{overflow:visible;flex:none;-webkit-mask-image:none;mask-image:none}.nav{border-bottom:1px solid var(--hairline)}</style></head>') }
+            $h
+        }
+        foreach ($c in $cases) {
+            $n, $fall, $screen, $extra = $c -split ':', 4
+            $params = "state=$fall&screen=$screen" + $(if ($extra) { "&$extra" } else { '' })
+            foreach ($scheme in 'light', 'dark') {
+                # Hell/Dunkel ueber data-theme, weil Headless-Chrome sonst der Einstellung von Windows folgt
+                $theme = { param($h) $h.Replace('<html lang="de">', "<html lang=`"de`" data-theme=`"$scheme`">") }
+                $tmp = Join-Path $dir "$n.$scheme.tmp.html"
+                [System.IO.File]::WriteAllText($tmp, (& $theme (& $deskHtml $params $true)), $Utf8NoBom)
+                Invoke-HeadlessShot -File $tmp -Out (Join-Path $dir "$n-$scheme.png") -WidthPx 600 -HeightPx 900 -Scale 1.25 -Dark:($scheme -eq 'dark') -TrimBottom -AllowCut
+                if ($scheme -eq 'light') { [System.IO.File]::WriteAllText((Join-Path $dir "$n.txt"), (Get-HeadlessText -File $tmp), $Utf8NoBom) }
+                [System.IO.File]::WriteAllText($tmp, (& $theme (& $deskHtml $params $false)), $Utf8NoBom)
+                Invoke-HeadlessShot -File $tmp -Out (Join-Path $dir "$n-fenster-$scheme.png") -WidthPx 760 -HeightPx 640 -Scale 1 -Dark:($scheme -eq 'dark')
+                Remove-Item $tmp -Force
+            }
+            Write-Host "  [OK] $Capture/$n" -ForegroundColor Green
+        }
+        # Schema des Menues am Symbol (zeichnet macOS bzw. Windows selbst; Eintraege wie in app/src/main.rs)
+        if (-not $Screens.Count -or $Screens -contains 'tray') {
+            $items = '<div class="t-dis">Assistent läuft</div><hr><div>Fenster öffnen</div><div>Telegram öffnen</div><div>Dauerbetrieb zurückstellen</div><div>Fehlerbericht</div><hr><div>Deinstallieren</div><div>App beenden</div>'
+            $css = '<style>body{padding:24px}.cap{font-size:13px;color:var(--gray);margin-bottom:10px}.t-menu{width:260px;border:1px solid var(--hairline);border-radius:var(--radius-sm);background:var(--bg-soft);padding:6px 0;font-size:14px}.t-menu div{padding:5px 16px}.t-menu .t-dis{color:var(--gray)}.t-menu hr{border:0;border-top:1px solid var(--hairline);margin:5px 0}</style>'
+            foreach ($scheme in 'light', 'dark') {
+                $h = "<!doctype html><html lang=`"de`" data-theme=`"$scheme`"><head><meta charset=`"utf-8`"><link rel=`"stylesheet`" href=`"$(& $url (Join-Path $ui 'app.css'))`">$css</head><body><div class=`"cap`">Schema: Menü am Symbol der App in der Menüleiste bzw. neben der Uhr. Das System zeichnet es in seinem eigenen Stil; ist Docker aus, zeigt die erste Zeile: Assistent ist aus: Docker läuft nicht.</div><div class=`"t-menu`">$items</div></body></html>"
+                $tmp = Join-Path $dir "tray.$scheme.tmp.html"
+                [System.IO.File]::WriteAllText($tmp, $h, $Utf8NoBom)
+                Invoke-HeadlessShot -File $tmp -Out (Join-Path $dir "tray-$scheme.png") -WidthPx 600 -HeightPx 500 -Scale 1.25 -Dark:($scheme -eq 'dark') -TrimBottom -AllowCut
+                if ($scheme -eq 'light') { [System.IO.File]::WriteAllText((Join-Path $dir 'tray.txt'), (Get-HeadlessText -File $tmp), $Utf8NoBom) }
+                Remove-Item $tmp -Force
+            }
+            Write-Host "  [OK] $Capture/tray" -ForegroundColor Green
         }
     } else {
         foreach ($p in $Pages) {

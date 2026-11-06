@@ -1,0 +1,11 @@
+/* Lese-Hinweis am Hauptknopf (config/ui.nudge.js): genau 2 Pulse von je 1,5 s, ein Ring in accent, der nach außen ausläuft.
+   Ohne Bewegung (prefers-reduced-motion) nur ein farbiger Rahmen für dieselbe Zeit. Nur das Token accent. */
+.la-nudge { animation: la-nudge-pulse 1.5s ease-out 2; }
+@keyframes la-nudge-pulse {
+  0% { box-shadow: 0 0 0 0 var(--accent); }
+  70% { box-shadow: 0 0 0 10px transparent; }
+  100% { box-shadow: 0 0 0 0 transparent; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .la-nudge { animation: none; outline: 3px solid var(--accent); outline-offset: 3px; }
+}

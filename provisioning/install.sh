@@ -8,8 +8,8 @@
 # Bootstrap auf frischem Debian (install.sh ist Release-Asset; mit && verkettet, damit ein fehlgeschlagener
 # Download kein STALE install.sh aus dem CWD ausfuehrt; nie `| bash` — ein abgebrochener Download liefe halb):
 #   curl -fsSL https://github.com/<slug>/releases/latest/download/install.sh -o install.sh \
-#     && bash install.sh --domain n8n.example.com
-#   bash install.sh --version v0.1.0 --domain n8n.example.com   # eine bestimmte Version pinnen
+#     && bash install.sh
+#   bash install.sh --version v0.1.0   # eine bestimmte Version pinnen
 #
 # Default (ohne --version) = neuestes STABLES Release (GitHubs /releases/latest); `--version <tag>`
 # pinnt ein Tag (oder 'latest'). --profile defaultet auf `release` (Endnutzer-Fall), wenn der Nutzer

@@ -244,7 +244,7 @@ grep -q 'reverse_proxy edge:8088' "$CY" && ! grep -qE 'reverse_proxy edge:(8080|
 grep -q "REACH_PUBLIC_TARGET='http://127.0.0.1:8088'" "$ROOT/provisioning/lib/reach.sh" && pass C_funnel_target || fail C_funnel_target "Funnel-Ziel nicht :8088"
 
 # Nur lib/ ohne templates/ (Basis-Image des Test-Substrats) unter set -euo pipefail: das Einlesen darf nicht abbrechen.
-mkdir -p "$W/libonly/lib" && cp "$ROOT/provisioning/lib/"{common,runtime,reach}.sh "$W/libonly/lib/"
+mkdir -p "$W/libonly/lib" && cp "$ROOT/provisioning/lib/"{common,runtime,reach,reach_cli}.sh "$W/libonly/lib/"
 bash -c "set -euo pipefail; . '$W/libonly/lib/common.sh'; echo geladen" 2>/dev/null | grep -qx geladen \
   && pass C_source_without_templates || fail C_source_without_templates "common.sh/reach.sh brechen ohne templates/ ab"
 

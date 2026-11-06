@@ -6,6 +6,8 @@ Mit der [Start-App](start-app.html) erreicht Telegram deinen Rechner am einfachs
 
 {{< explain name="reach-tunnel" height="280" alt="Deine Nachricht geht vom Handy über Telegram und einen Tunnel durch deinen Router zu deinem Rechner zu Hause." >}}
 
+**Du installierst per Befehl auf einem eigenen Server (Debian, LXC)?** Dann bietet dir der Installer denselben Tunnel als ersten Weg an; der Ablauf steht unter [Installation → Weg 1: Tunnel](installation.html#tunnel). Kosten, der neutrale Name und die Grenzen unten gelten genauso.
+
 ## Was du brauchst
 
 - Die [Start-App](start-app.html), die bis zur Frage „Wie soll Telegram deinen Rechner erreichen?“ gekommen ist.

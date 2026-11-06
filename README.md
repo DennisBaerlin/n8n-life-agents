@@ -49,7 +49,7 @@ The system has a fixed core (router, approval logic, memory, onboarding) plus on
 ## Requirements and running costs
 
 - A fresh **Debian 12** LXC container or VM.
-- A **domain** pointing to it and **public reachability**: port forwarding (443) plus an HTTPS **reverse proxy** you bring yourself (NPM, Traefik, nginx, Caddy — on the host or elsewhere in your network). The installer asks where it runs and prints a ready-made configuration.
+- **A way in from the internet**, chosen by the installer's first question: a free **Tailscale** account for a Funnel tunnel (recommended, works with any connection, nothing to set up on the router), or a **FritzBox** share, or your **own domain** with port forwarding (443) and an HTTPS **reverse proxy** (NPM, Traefik, nginx, Caddy — on the host or elsewhere in your network). For the last two the installer prints a ready-made configuration.
 - A **Telegram bot token** from @BotFather.
 - An **Anthropic API key** (required — every agent runs on Claude).
 - Optional: a **Google Gemini API key on the paid tier**, only for voice messages. Without it the bot asks you to type instead.
@@ -61,12 +61,12 @@ The system has a fixed core (router, approval logic, memory, onboarding) plus on
 On the fresh Debian machine, as root, this one command downloads and starts the installer:
 
 ```bash
-curl -fsSL https://github.com/DennisBaerlin/n8n-life-agents/releases/latest/download/install.sh -o install.sh && bash install.sh --domain n8n.example.com
+curl -fsSL https://github.com/DennisBaerlin/n8n-life-agents/releases/latest/download/install.sh -o install.sh && bash install.sh
 ```
 
-The installer then guides you **step by step**, and **all questions come first**: internet address, n8n login, details about you (including the language for the bot's fixed messages), Telegram token, Anthropic and (optionally) Google keys, and which packages to install. A short box before each question explains what it is for and where to get it. Keys are checked online right away, every answer is saved immediately (Ctrl+C and a re-run only asks for the rest), and a final **summary** lets you confirm, change a single answer or cancel. After that everything runs without further questions: one line per step, technical details in `/var/log/lifeagents/install.log` (`--verbose` shows everything).
+The installer then guides you **step by step**, and **all questions come first**: how Telegram reaches your server (tunnel, FritzBox or own reverse proxy, with the internet address where needed), n8n login, details about you (including the language for the bot's fixed messages), Telegram token, Anthropic and (optionally) Google keys, and which packages to install. A short box before each question explains what it is for and where to get it. Keys are checked online right away, every answer is saved immediately (Ctrl+C and a re-run only asks for the rest), and a final **summary** lets you confirm, change a single answer or cancel. After that everything runs without further questions: one line per step, technical details in `/var/log/lifeagents/install.log` (`--verbose` shows everything).
 
-At the end the installer checks whether Telegram can reach your server — if not, you get a **ready-made Caddyfile** for your reverse proxy and can re-check after setting it up. It also checks whether phones and laptops reach your proxy over IPv4 **and** IPv6 (a FritzBox MyFRITZ! address often points to the router itself over IPv6) and names the one fix if not, without ever blocking the install. It then shows a **pairing link** (`t.me/<your-bot>?start=…`), waits until you open it in Telegram and finishes configuring the bot for you.
+With the tunnel, the installer sets up Tailscale right after the summary and shows the sign-in link plus a QR code in the terminal. At the end it checks whether Telegram can reach your server — if not, you get what is still missing (for a reverse proxy a **ready-made Caddyfile**) and can re-check after setting it up. It also checks whether phones and laptops reach your proxy over IPv4 **and** IPv6 (a FritzBox MyFRITZ! address often points to the router itself over IPv6) and names the one fix if not, without ever blocking the install. It then shows a **pairing link** (`t.me/<your-bot>?start=…`), waits until you open it in Telegram and finishes configuring the bot for you.
 
 Step-by-step guide including reverse proxy, router and Telegram bot setup: **[Installation page](https://dennisbaerlin.github.io/n8n-life-agents/docs/installation.html)** (German); FritzBox users: **[FritzBox setup](https://dennisbaerlin.github.io/n8n-life-agents/docs/fritzbox.html)** (German, a MyFRITZ! share for the proxy machine, not a plain port forward).
 

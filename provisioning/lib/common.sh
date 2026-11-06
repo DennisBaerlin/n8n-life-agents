@@ -85,6 +85,9 @@ pg_db_encoding() {
 # Weg nach aussen im Verbund (Tunnel/FritzBox, reach_status_json); im systemd-Betrieb ungenutzt.
 # shellcheck source=reach.sh
 . "$(dirname "${BASH_SOURCE[0]}")/reach.sh"
+# Weg nach aussen der CLI-Installation (Tunnel/FritzBox/eigener Proxy); nutzt die reinen Funktionen aus reach.sh.
+# shellcheck source=reach_cli.sh
+. "$(dirname "${BASH_SOURCE[0]}")/reach_cli.sh"
 
 # --- random secrets (hex → safe in env files, sed, and shell, no escaping) ----
 rand_hex()    { openssl rand -hex "${1:-24}"; }

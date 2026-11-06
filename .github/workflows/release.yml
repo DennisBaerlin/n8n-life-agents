@@ -97,7 +97,7 @@ jobs:
             echo "::error::Einleitungsabsatz der Tag-Nachricht ist ${#intro} Zeichen lang (max. 300)."
             exit 1
           fi
-          printf '\n---\nInstall (as root, via the bootstrap launcher asset `install.sh`): `curl -fsSL https://github.com/%s/releases/download/%s/install.sh -o install.sh && bash install.sh --version %s --domain <fqdn>` (without `--version` = latest stable release). Update an existing instance: `lifeagents update`.\n' "${GITHUB_REPOSITORY}" "${TAG}" "${TAG}" >> notes.md
+          printf '\n---\nInstall (as root, via the bootstrap launcher asset `install.sh`): `curl -fsSL https://github.com/%s/releases/download/%s/install.sh -o install.sh && bash install.sh --version %s` (without `--version` = latest stable release). Update an existing instance: `lifeagents update`.\n' "${GITHUB_REPOSITORY}" "${TAG}" "${TAG}" >> notes.md
           # Release ggf. anlegen (existiert bereits -> ueberspringen); Assets mit --clobber neu hoch
           # -> ein erneuter Lauf desselben Tags ist idempotent.
           # Signierendes Projekt (provisioning/keys/release-signing.gpg im Tag): nur als ENTWURF anlegen — Installationen mit

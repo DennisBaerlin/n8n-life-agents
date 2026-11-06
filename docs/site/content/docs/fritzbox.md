@@ -38,12 +38,12 @@ Den alten Namen (die Adresse der FritzBox) darfst du im Caddyfile behalten, zum 
 
 ## Neu installieren
 
-Gib dem Installer bei der Frage nach der **Internet-Adresse** den neuen Namen aus Schritt 9 an. Du kannst ihn auch als ganze Adresse einfügen (`https://meinproxy.deine-domain.myfritz.net/`), der Installer macht daraus selbst den Namen.
+Wähl im Installer bei der ersten Frage **Über meine FritzBox**. Er prüft dann zuerst selbst, ob dein Anschluss eine eigene IPv4-Adresse hat (bei DS-Lite bietet er den [Tunnel](tunnel.html) an), zeigt dir die Schritte oben in Kurzform und fragt nach der MyFRITZ!-Adresse. Die Endung (`deine-domain.myfritz.net`) liest er aus deiner FritzBox, du tippst nur noch den Gerätenamen aus Schritt 9 ein. Übernommen wird die Adresse, sobald sie auf deinen Anschluss zeigt; ist sie noch nicht eingetragen, wartest du die Minute aus Schritt 10 und wählst „Erneut prüfen“. Läuft dein Reverse Proxy auf einem anderen Rechner, gibst du die volle Adresse ein (`https://meinproxy.deine-domain.myfritz.net/` geht auch, der Installer macht daraus selbst den Namen).
 
 ## Schon installiert? So stellst du um
 
 1. Die Schritte oben durchgehen, bis du den neuen Namen hast und er im Reverse Proxy steht (Schritt 1 bis 11).
-2. Auf dem Server `sudo lifeagents reconfigure core` ausführen, „Angaben ändern …" wählen, dann „**Internet-Adresse**", den neuen Namen eintragen und „**Fertig — speichern und anwenden**". Die anderen Angaben fragt der Befehl dabei nicht ab.
+2. Auf dem Server `sudo lifeagents reconfigure core` ausführen, „Angaben ändern …" wählen, dann „**Internet-Adresse**", den neuen Namen eintragen und „**Fertig — speichern und anwenden**" (kommst du vom Tunnel, wählst du stattdessen „**Weg ins Internet**“ → FritzBox, dann fragt er die Adresse mit). Die anderen Angaben fragt der Befehl dabei nicht ab.
 3. Der Befehl richtet alles neu ein. Der Chat und der Knopf „📊 Übersicht" ziehen automatisch mit um. Am Ende prüft er, ob Handy und Laptop unter dem neuen Namen ankommen (siehe unten).
 
 ## So sieht es richtig aus

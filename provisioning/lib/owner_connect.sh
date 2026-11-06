@@ -45,6 +45,8 @@ emit_ingress_help() {
   paths="$(printf '%s' "$LA_PUBLIC_PATHS" | sed 's/ /   /g')"   # Lesefassung der einen Liste (common.sh)
   # Docker-Verbund: der Rand bringt seinen Proxy mit (Tunnel oder FritzBox) — statt Caddyfile die Hilfe zum Weg.
   if rt_is_compose; then DOMAIN="$domain" reach_ingress_help; return 0; fi
+  # CLI-Tunnel: Tailscale ist die Tuer, es gibt keinen Proxy einzurichten (lib/reach_cli.sh).
+  if [ "$(reach_cli_mode)" = tunnel ]; then DOMAIN="$domain" N8N_PORT="$port" reach_cli_tunnel_help; return 0; fi
   list="$(normalize_trusted_proxies "${TRUSTED_PROXIES:-}" 2>/dev/null || printf '127.0.0.1')"
   nonloop="$(_proxy_nonloop "$list")"
   if [ -z "$nonloop" ]; then
@@ -208,8 +210,12 @@ _oc_wait_reachable() {
     if [ "$_INGRESS_HELP_SHOWN" -eq 0 ]; then
       emit_ingress_help "${OC_TEMPLATE_DIR:-$REPO_ROOT/provisioning/templates}" "$DOMAIN" "$N8N_PORT" "https://${DOMAIN}/"
     fi
-    choice="$(printf '%s\n' "Erneut prüfen (Reverse Proxy ist eingerichtet)	retry" "Später einrichten	later" \
-                | ui_choose 'Damit Telegram deinen Bot erreicht, muss der Reverse Proxy stehen:' 0)"
+    if [ "$(reach_cli_mode)" = tunnel ] && ! rt_is_compose; then
+      choice="$(printf '%s\n' "Erneut prüfen	retry" "Später einrichten	later" | ui_choose 'Telegram kommt noch nicht durch den Tunnel:' 0)"
+    else
+      choice="$(printf '%s\n' "Erneut prüfen (Reverse Proxy ist eingerichtet)	retry" "Später einrichten	later" \
+                  | ui_choose 'Damit Telegram deinen Bot erreicht, muss der Reverse Proxy stehen:' 0)"
+    fi
     [ "$choice" = "retry" ] || return 1
   done
 }

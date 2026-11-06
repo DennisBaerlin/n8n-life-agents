@@ -41,7 +41,7 @@
 # Vorauswahl Deutsch; leer/unattended -> bootstrap_owner nimmt 'de').
 # OWNER_PERSONA = Bot-Charakter des Owners (Core-Manifest personas.list; eigener Auswahl-Dialog _ask_owner_persona,
 # Vorauswahl Neutral; leer/unattended/ungueltig -> util_seed_owner_skeleton laesst den Key weg = neutral).
-_INSTALL_ENV_KEYS="DOMAIN TRUSTED_PROXIES N8N_OWNER_EMAIL N8N_OWNER_PASSWORD OWNER_FIRST_NAME OWNER_LAST_NAME OWNER_BIRTH_DATE OWNER_LANGUAGE OWNER_PERSONA TELEGRAM_BOT_TOKEN ANTHROPIC_API_KEY GOOGLE_API_KEY"
+_INSTALL_ENV_KEYS="REACH_MODE DOMAIN TRUSTED_PROXIES N8N_OWNER_EMAIL N8N_OWNER_PASSWORD OWNER_FIRST_NAME OWNER_LAST_NAME OWNER_BIRTH_DATE OWNER_LANGUAGE OWNER_PERSONA TELEGRAM_BOT_TOKEN ANTHROPIC_API_KEY GOOGLE_API_KEY"
 
 # Pflicht-Host-Keys (Install-UX-Phase 7): ohne sie ist die Instanz unbenutzbar — kein Chat (Telegram), kein Agent denkt
 # (seit Modell-Phase 2 laufen ALLE Agenten auf Claude -> Anthropic Pflicht; Google ist optional und traegt nur noch die
@@ -80,6 +80,10 @@ load_install_env() {
   # eingefuegte URL (https://name:443/) wird zum Namen, bevor ein Aufrufer (provision.sh, reconfigure, household
   # pair-owner) damit rechnet; die Fragen nutzen dieselbe Regel (_input_normalize).
   if [ -n "${DOMAIN:-}" ]; then DOMAIN="$(normalize_domain "$DOMAIN")"; export DOMAIN; fi
+  # Bestand mit Adresse, aber ohne Weg = eigener Proxy (vor jeder Frage, sonst saehe die Intro REACH_MODE als offen).
+  if [ -z "${REACH_MODE:-}" ] && [ -n "${DOMAIN:-}" ] && ! rt_is_compose && ! env_has_key "${INSTALL_ENV_FILE:-}" REACH_MODE; then
+    REACH_MODE=proxy; export REACH_MODE
+  fi
   # Explizit 0: endet die Schleife mit einem LEEREN letzten Key, waere der Funktions-Status sonst 1
   # (&&-Liste) -> set -e killt provision.sh STILL (die &&-Exemption unterdrueckt sogar den ERR-Trap).
   # Latenter Zweitlauf-Crash seit die optionalen Keys am Listen-Ende stehen koennen (Install-UX-Phase).
@@ -359,13 +363,14 @@ _HK_PROMPT=''; _HK_VFN='_validate_any'; _HK_SECRET=0; _HK_CONFIRM=0; _HK_HELP=''
 _host_key_def() {
   _HK_PROMPT="$1: "; _HK_VFN='_validate_any'; _HK_SECRET=0; _HK_CONFIRM=0; _HK_HELP=''
   case "$1" in
+    REACH_MODE)
+      _HK_PROMPT="Weg ins Internet: " ;;
     DOMAIN)
       _HK_PROMPT="Internet-Adresse (z. B. bot.example.com; Enter = nur im Heimnetz): "; _HK_VFN=_validate_domain
-      _HK_HELP="Damit Telegram deinen Bot erreicht, muss dein Server unter einer eigenen Adresse aus dem
-Internet per HTTPS erreichbar sein (eigene Domain oder DynDNS, Weiterleitung von Port 443
-im Router, ein Reverse Proxy wie Caddy, Nginx Proxy Manager oder Traefik).
-Den Proxy richtest du selbst ein — am Ende bekommst du eine fertige Vorlage und die genauen
-Anforderungen. Ohne Adresse (Enter) läuft alles nur im Heimnetz; Telegram funktioniert dann nicht.
+      _HK_HELP="Deine eigene Domain (oder ein DynDNS-Name), unter der dein Reverse Proxy aus dem Internet per
+HTTPS erreichbar ist (Weiterleitung von Port 443 im Router). Den Proxy (Caddy, Nginx Proxy
+Manager, Traefik) richtest du selbst ein — am Ende bekommst du eine fertige Vorlage und die
+genauen Anforderungen. Ohne Adresse (Enter) läuft alles nur im Heimnetz.
 Nachtragen geht später jederzeit: lifeagents reconfigure" ;;
     TRUSTED_PROXIES)
       _HK_PROMPT="Reverse Proxy: " ;;
@@ -439,12 +444,14 @@ _host_key_ask() {
 }
 
 # _host_editable_keys -> die NACH der Erstinstallation sinnvoll aenderbaren Host-Keys, eins je Zeile (Uebersicht auf
-#   einer Bestandsinstanz + `lifeagents reconfigure`): Internet-Adresse + die drei Schluessel; Name/Geburtsdatum nur,
+#   einer Bestandsinstanz + `lifeagents reconfigure`): Weg ins Internet (+ Adresse, wo der Weg eine eigene hat) + die drei Schluessel; Name/Geburtsdatum nur,
 #   solange noch kein Owner-Skelett existiert (danach sind es Haushalts-Daten, die der Bot im Chat pflegt). Die
 #   n8n-Anmeldung bleibt draussen (lebt in n8n; die core.env-Werte nutzt nur die Ersteinrichtung), der Proxy-Ort auch
 #   (`lifeagents proxy set`). Gibt immer 0 zurueck.
 _host_editable_keys() {
-  printf '%s\n' DOMAIN TELEGRAM_BOT_TOKEN ANTHROPIC_API_KEY GOOGLE_API_KEY
+  rt_is_compose || printf '%s\n' REACH_MODE   # im Verbund waehlt die Start-App den Weg (nur tunnel|fritzbox)
+  case "$(reach_cli_mode)" in fritzbox|proxy) printf '%s\n' DOMAIN ;; esac
+  printf '%s\n' TELEGRAM_BOT_TOKEN ANTHROPIC_API_KEY GOOGLE_API_KEY
   if ! declare -F _oc_owner_person_exists >/dev/null || ! _oc_owner_person_exists; then
     printf '%s\n' OWNER_FIRST_NAME OWNER_LAST_NAME OWNER_BIRTH_DATE OWNER_LANGUAGE OWNER_PERSONA
   fi
@@ -529,7 +536,7 @@ collect_release_inputs() {
     ensure_gum
     ui_box 'Installation — was gleich gefragt wird' >&2 <<'INTRO'
 Der Reihe nach:
-  1. Erreichbarkeit   deine Internet-Adresse (optional) + wo dein Reverse Proxy läuft
+  1. Erreichbarkeit   wie Telegram deinen Server erreicht: Tunnel, FritzBox oder eigener Proxy
   2. n8n-Anmeldung    E-Mail + Passwort für die Verwaltungsoberfläche
   3. Über dich        Vor- und Nachname, Geburtsdatum (Pflicht)
   4. Schlüssel        Telegram-Bot + Anthropic (Pflicht), Google (optional, Sprachnachrichten)
@@ -552,6 +559,8 @@ INTRO
   local _k
   for _k in $_INSTALL_ENV_KEYS; do
     case "$_k" in
+      REACH_MODE)      _ask_reach_mode ;;
+      DOMAIN)          _reach_ask_domain ;;
       TRUSTED_PROXIES) _ask_trusted_proxies ;;
       OWNER_LANGUAGE)  _ask_owner_language ;;
       OWNER_PERSONA)   _ask_owner_persona ;;
@@ -660,6 +669,9 @@ _all_host_keys_answered() {
 _TP_SKIPPED=0   # Proxy-Frage in diesem Lauf abgebrochen/ohne gueltige Antwort -> nicht als gesehen markieren
 _key_not_offered() {
   [ "$1" = "TRUSTED_PROXIES" ] && { [ -z "${DOMAIN:-}" ] || [ "$_TP_SKIPPED" = 1 ]; } && return 0
+  # Tunnel: kein Proxy-Ort (Tailscale reicht an 127.0.0.1), keine eigene Adresse (sie kommt mit der Anmeldung);
+  # nur Heimnetz: keine Adresse.
+  case "$1:$(reach_cli_mode)" in TRUSTED_PROXIES:tunnel|DOMAIN:tunnel|DOMAIN:none) return 0 ;; esac
   # OWNER_PERSONA wirkt nur beim ERSTEN Anlegen des Owner-Skeletts: steht der Owner schon (Bestands-Installation, die
   # den Key noch nie hatte), waere die Frage wirkungslos -> nicht anbieten (dort waehlt man im Chat mit /persona).
   [ "$1" = "OWNER_PERSONA" ] && declare -F _oc_owner_person_exists >/dev/null && _oc_owner_person_exists
@@ -746,6 +758,7 @@ _ask_owner_persona() {
 _ask_trusted_proxies() {
   local reask="${1:-0}" where val ip i=0 list confirm
   [ -n "${DOMAIN:-}" ] || return 0
+  [ "$(reach_cli_mode)" = tunnel ] && return 0
   if [ "$reask" != "1" ]; then
     [ -n "${TRUSTED_PROXIES:-}" ] && return 0
     env_has_key "${INSTALL_ENV_FILE:-}" TRUSTED_PROXIES && return 0
@@ -819,6 +832,298 @@ BOX
   return 0
 }
 
+# --- Weg ins Internet (REACH_MODE, lib/reach_cli.sh) -----------------------------------------------------------------
+# Die Texte, die der Wizard schon hat, kommen aus demselben Katalog (core.wizard.*, Sprache des Installers = de); nur
+# Terminal-Eigenes steht hier. Texte, die „App" oder „klicken" sagen, werden nicht benutzt.
+_rt() { pkg_text core "wizard.$1"; }
+_reach_label() {
+  case "$1" in
+    tunnel)   printf '%s (empfohlen)' "$(_rt opt.reach_tunnel)" ;;
+    fritzbox) _rt opt.reach_fritzbox ;;
+    proxy)    printf 'Über meine eigene Domain und meinen Reverse Proxy' ;;
+    none)     printf 'Erst einmal nur im Heimnetz' ;;
+  esac
+}
+
+# _ask_reach_mode [reask] — erste Frage: wie erreicht Telegram den Server? Bestand mit Adresse, aber ohne REACH_MODE =
+#   eigener Proxy (still, nie neu gefragt). Esc bei der Erstfrage = nur Heimnetz (gesehen, leere Zeile). Beim
+#   FritzBox-Weg vorher die Pruefungen (_reach_fritz_checks), die zum Tunnel oder zurueck zur Auswahl fuehren koennen.
+#   reask=1: setzt nur Variablen (REACH_MODE und, wo der Weg es verlangt, DOMAIN/TRUSTED_PROXIES), Esc = unveraendert.
+# shellcheck disable=SC2034  # UI_ASKED liest provision.sh
+_REACH_PICK=''
+_ask_reach_mode() {
+  local reask="${1:-0}" pick
+  if [ "$reask" != "1" ]; then
+    [ -n "${REACH_MODE:-}" ] && return 0
+    env_has_key "${INSTALL_ENV_FILE:-}" REACH_MODE && return 0
+    if [ -n "${DOMAIN:-}" ]; then REACH_MODE=proxy; export REACH_MODE; return 0; fi
+  fi
+  ui_interactive || return 0
+  UI_ASKED=1
+  case " $UI_ASKED_KEYS " in *" REACH_MODE "*) : ;; *) UI_ASKED_KEYS="${UI_ASKED_KEYS:+$UI_ASKED_KEYS }REACH_MODE" ;; esac
+  while :; do
+    ui_box "$(_rt page.reach_title)" >&2 <<EOF
+$(_rt page.reach_help)
+
+• $(_reach_label tunnel)
+  Geht mit jedem Anschluss, am Router ist nichts einzustellen, kein Reverse Proxy nötig. Du brauchst
+  ein kostenloses Konto bei Tailscale; die Anmeldung kommt gleich nach den Fragen (Link und QR-Code).
+• $(_reach_label fritzbox)
+  $(_rt opt.reach_fritzbox_desc)
+  Dazu brauchst du einen Reverse Proxy wie Caddy — die fertige Vorlage bekommst du am Ende.
+• $(_reach_label proxy)
+  Für Fortgeschrittene: eigene Domain oder DynDNS, Weiterleitung von Port 443 im Router und ein
+  Reverse Proxy (Caddy, Nginx Proxy Manager, Traefik), auf diesem oder einem anderen Rechner.
+• $(_reach_label none)
+  Ohne Weg nach außen erreicht Telegram den Bot nicht.
+
+Später ändern: lifeagents reconfigure core
+EOF
+    pick="$(printf '%s\t%s\n' "$(_reach_label tunnel)" tunnel "$(_reach_label fritzbox)" fritzbox \
+              "$(_reach_label proxy)" proxy "$(_reach_label none)" none \
+            | ui_choose "$(_rt page.reach_title)" 0 "$(_reach_label tunnel)")"
+    if [ -z "$pick" ]; then
+      if [ "$reask" = "1" ]; then log "  Weg unverändert."; return 0; fi
+      pick=none
+    fi
+    if [ "$pick" = fritzbox ]; then
+      _reach_fritz_checks
+      [ "$_REACH_PICK" = back ] && continue
+      pick="$_REACH_PICK"
+    fi
+    break
+  done
+  [ "$pick" = none ] && pick=''
+  REACH_MODE="$pick"; export REACH_MODE
+  if [ "$pick" = tunnel ] || [ -z "$pick" ]; then
+    # Tunnel/Heimnetz: eine alte eigene Adresse gilt nicht mehr (der Tunnel bringt seine eigene mit).
+    if [ "$reask" = "1" ]; then DOMAIN=''; export DOMAIN; fi
+    [ "$pick" = tunnel ] && { TRUSTED_PROXIES=127.0.0.1; export TRUSTED_PROXIES; }
+  fi
+  [ "$reask" = "1" ] || _store_answer "${INSTALL_ENV_FILE:-}" REACH_MODE "$pick"
+  ok "  übernommen: $(reach_cli_mode_label "${pick:-none}")."
+  return 0
+}
+
+# _reach_fritz_checks — vor dem FritzBox-Weg: DS-Lite selbst pruefen (reach_cli_dslite; unknown = von Hand wie im Wizard),
+#   dann die Schritte in der FritzBox. Ergebnis in _REACH_PICK: fritzbox | tunnel | back (zurueck zur Auswahl).
+_reach_fritz_checks() {
+  local d a
+  _REACH_PICK=back
+  ui_step 'Prüfe deinen Anschluss (eigene IPv4-Adresse oder DS-Lite)'
+  d="$(reach_cli_dslite)"
+  case "$d" in
+    no)  ui_step_done 'eigene IPv4-Adresse — der FritzBox-Weg geht' ;;
+    yes) ui_step_bad 'DS-Lite' ;;
+    *)   ui_step_bad 'nicht automatisch prüfbar' ;;
+  esac
+  if [ "$d" != no ] && [ "$d" != yes ]; then
+    _rt page.dslite_help | ui_box "$(_rt page.dslite_title)" >&2
+    a="$(printf '%s\t%s\n' "$(_rt opt.dslite_no) — $(_rt opt.dslite_no_desc)" no "$(_rt opt.dslite_yes)" yes \
+           | ui_choose "$(_rt page.dslite_title)" 0)"
+    [ -n "$a" ] || return 0
+    d="$a"
+  fi
+  if [ "$d" = yes ]; then
+    printf '%s\n' "Dein Anschluss hat keine eigene IPv4-Adresse (DS-Lite). $(_rt opt.dslite_yes_desc)" \
+      | ui_box 'FritzBox-Weg geht bei diesem Anschluss nicht' >&2
+    a="$(printf '%s\t%s\n' "$(_reach_label tunnel)" tunnel "Zurück zur Auswahl" back | ui_choose 'Wie weiter?' 0)"
+    _REACH_PICK="${a:-back}"
+    return 0
+  fi
+  ui_box "$(_rt page.fb_guide_title)" >&2 <<EOF
+$(_rt page.fb_guide_help)
+  1. fritz.box öffnen → Internet → MyFRITZ!-Konto: MyFRITZ! muss angemeldet sein.
+  2. Internet → Freigaben → Portfreigaben → beim Rechner mit deinem Reverse Proxy auf den Stift
+     (steht er noch nicht in der Liste: „Gerät für Freigaben hinzufügen“).
+  3. „Neue Freigabe“ → „MyFRITZ!-Freigabe“ → Anwendung „HTTP-Server“, „Freigabe aktivieren“, OK.
+  4. Noch einmal „Neue Freigabe“ → „MyFRITZ!-Freigabe“ → „HTTPS-Server“, „Freigabe aktivieren“, OK.
+  5. Die drei IPv6-Haken (PING6, delegierte Präfixe, Exposed Host) leer lassen → „Übernehmen“.
+  6. In der Freigabe steht jetzt die „MyFRITZ!-Adresse“ des Rechners — nach ihr fragt die nächste Frage.
+
+$(_rt page.fb_guide_note)
+Mit Bildern: Doku-Seite „FritzBox einrichten“ (https://dennisbaerlin.github.io/n8n-life-agents/docs/fritzbox/)
+EOF
+  a="$(printf '%s\t%s\n' "$(_rt page.fb_guide_next)" created "Zurück zur Auswahl" back | ui_choose "$(_rt page.fb_guide_title)" 0)"
+  [ "$a" = created ] && _REACH_PICK=fritzbox
+  return 0
+}
+
+# _reach_ask_domain [reask] — die Adresse je Weg: FritzBox = MyFRITZ!-Adresse mit Pruefung, eigener Proxy = die
+#   Host-Frage, Tunnel/Heimnetz = keine.
+_reach_ask_domain() {
+  case "$(reach_cli_mode)" in
+    fritzbox) _ask_fritz_domain "${1:-0}" ;;
+    proxy)    _host_key_ask DOMAIN "${1:-0}" ;;
+    *)        : ;;
+  esac
+}
+
+# _ask_fritz_domain [reask] — MyFRITZ!-Adresse: Endung <kennung>.myfritz.net aus dem Zertifikat der Box, einzutippen ist
+#   nur der Geraetename. Uebernommen wird ohne Rueckfrage nur, was nachweislich auf den eigenen Anschluss zeigt
+#   (reach_cli_domain_check); sonst Erneut pruefen / andere Adresse / ausdruecklich trotzdem. Keine Pruefung moeglich
+#   (unknown) = uebernommen, das gefuehrte Ende prueft ohnehin noch einmal.
+# shellcheck disable=SC2034  # UI_ASKED liest provision.sh
+_ask_fritz_domain() {
+  local reask="${1:-0}" zone raw val prob st a i=0 hint=''
+  if [ "$reask" != "1" ]; then
+    [ -n "${DOMAIN:-}" ] && return 0
+    env_has_key "${INSTALL_ENV_FILE:-}" DOMAIN && return 0
+  fi
+  ui_interactive || return 0
+  UI_ASKED=1
+  case " $UI_ASKED_KEYS " in *" DOMAIN "*) : ;; *) UI_ASKED_KEYS="${UI_ASKED_KEYS:+$UI_ASKED_KEYS }DOMAIN" ;; esac
+  zone="$(reach_cli_myfritz_zone)"
+  if [ -n "$zone" ]; then
+    printf '%s\nEndung deiner FritzBox: .%s\n' "$(_rt domain.suffix)" "$zone" | ui_box "$(_rt q.domain.title)" >&2
+  else
+    _rt q.domain.help | ui_box "$(_rt q.domain.title)" >&2
+  fi
+  [ "$reask" = "1" ] && [ -n "${DOMAIN:-}" ] && hint="[${DOMAIN} — Enter = behalten] "
+  while [ "$i" -lt 3 ]; do
+    if [ -n "$zone" ]; then raw="$(ui_input "Gerätename (vor .${zone}): ${hint}" 0)"
+    else raw="$(ui_input "$(_rt q.domain.label): ${hint}" 0)"; fi
+    raw="$(printf '%s' "$raw" | tr -d ' \r\n\t')"
+    if [ -z "$raw" ]; then
+      [ "$reask" = "1" ] && return 0
+      note "  übersprungen — ohne Adresse erreicht Telegram den Bot nicht (später: lifeagents reconfigure core)."
+      _store_answer "${INSTALL_ENV_FILE:-}" DOMAIN ""
+      return 0
+    fi
+    val="$(normalize_domain "$raw")"
+    [ -n "$zone" ] && [ "${val%".$zone"}" = "$val" ] && [ "${val#*.}" = "$val" ] && val="${val}.${zone}"
+    prob="$(domain_problem "$val")"
+    if [ -n "$prob" ]; then warn "  ${prob}"; i=$((i+1)); continue; fi
+    while :; do
+      { printf '  prüfe …' > /dev/tty; } 2>/dev/null || true
+      st="$(reach_cli_domain_check "$val")"
+      { printf '\r\033[2K' > /dev/tty; } 2>/dev/null || true
+      case "$st" in
+        ok)      ok "  $(_rt domain.live_ok)"; break ;;
+        unknown) warn "  Konnte gerade nicht prüfen — übernommen; am Ende prüft die Installation die Verbindung."; break ;;
+        pending) warn "  $(_rt domain.live_pending)" ;;
+        *)       warn "  $(_rt domain.live_wrong_ip)" ;;
+      esac
+      a="$(printf '%s\t%s\n' "$(_rt domain.recheck)" retry "Andere Adresse eingeben" other \
+             "Trotzdem übernehmen (ich bin sicher)" anyway | ui_choose "${val}:" 0)"
+      case "$a" in
+        retry)  continue ;;
+        anyway) break ;;
+        *)      val=''; break ;;
+      esac
+    done
+    [ -n "$val" ] || { i=$((i+1)); continue; }
+    DOMAIN="$val"; export DOMAIN
+    [ "$reask" = "1" ] || _store_answer "${INSTALL_ENV_FILE:-}" DOMAIN "$val"
+    ok "  übernommen: ${val}."
+    return 0
+  done
+  [ "$reask" = "1" ] && { warn "  Dreimal keine passende Adresse — unverändert."; return 0; }
+  warn "  Dreimal keine passende Adresse — übersprungen (später: lifeagents reconfigure core)."
+  _store_answer "${INSTALL_ENV_FILE:-}" DOMAIN ""
+  return 0
+}
+
+# _host_key_reask <KEY> — EINE Angabe erneut fragen (Uebersicht, reconfigure), speichert nie. Der Weg zieht seine
+#   Folgefragen nach: auf FritzBox/eigenen Proxy gewechselt -> Adresse (+ Proxy-Ort, falls noch auf diesem Rechner
+#   ungefragt); auf Tunnel/Heimnetz -> keine eigene Adresse mehr.
+_host_key_reask() {
+  local old
+  case "$1" in
+    REACH_MODE)
+      old="$(reach_cli_mode)"
+      _ask_reach_mode 1
+      case "$(reach_cli_mode)" in
+        fritzbox|proxy)
+          if [ "$old" != "$(reach_cli_mode)" ]; then
+            [ "$old" = tunnel ] && { DOMAIN=''; export DOMAIN; }
+            _reach_ask_domain 1
+            [ -n "${DOMAIN:-}" ] && _ask_trusted_proxies 1
+          fi ;;
+      esac ;;
+    DOMAIN)          _reach_ask_domain 1 ;;
+    TRUSTED_PROXIES) _ask_trusted_proxies 1 ;;
+    OWNER_LANGUAGE)  _ask_owner_language 1 ;;
+    OWNER_PERSONA)   _ask_owner_persona 1 ;;
+    *)               _host_key_ask "$1" 1 ;;
+  esac
+  return 0
+}
+
+# reach_tunnel_connect — Tunnel einrichten, direkt nach der Uebersicht und vor dem langen Teil (dann steht die
+#   Internet-Adresse fest, bevor n8n eingerichtet wird). Nur CLI (systemd) und nur beim Tunnel. Interaktiv: Anmelde-
+#   bzw. Freigabe-Link + QR-Code, „Erneut pruefen / Spaeter“ (Muster gefuehrtes Ende). Nicht interaktiv: nur feststellen
+#   und fertigstellen, was ohne Anmeldung geht (Update). Fertig = DOMAIN + TRUSTED_PROXIES in core.env.
+reach_tunnel_connect() {
+  local choice url started=0
+  rt_is_compose && return 0
+  [ "$(reach_cli_mode)" = tunnel ] || return 0
+  ui_step 'Tunnel: Tailscale einrichten'
+  if ! reach_cli_ts_install; then ui_step_bad 'Tailscale ließ sich nicht einrichten (Hinweis oben)'; return 0; fi
+  ui_step_done
+  reach_cli_tunnel_settle "${N8N_PORT:-5678}"
+  while [ "$REACH_CLI_STATE" != ready ]; do
+    if ! ui_interactive; then
+      note "Tunnel noch nicht fertig: $(reach_cli_state_text "$REACH_CLI_STATE")."
+      return 0
+    fi
+    url=''
+    case "$REACH_CLI_STATE" in
+      missing) return 0 ;;
+      starting|needs_login|key_expired)
+        # Einmal je Lauf anstossen: ein zweites `tailscale up` liefe nur parallel zum ersten.
+        if [ -z "$REACH_TS_URL" ] && [ "$started" = 0 ]; then reach_cli_ts_login_start; started=1; fi
+        [ -n "$REACH_TS_URL" ] || reach_cli_ts_wait_url 15
+        url="$REACH_TS_URL"
+        { if [ "$REACH_CLI_STATE" = key_expired ]; then _rt reach.key_expired_help; fi
+          if [ -n "$url" ]; then
+            printf 'Öffne diesen Link im Browser (oder scanne den QR-Code mit dem Handy) und melde dich an\n'
+            printf 'bzw. leg ein kostenloses Konto an — mit Google, Apple, Microsoft oder GitHub:\n\n  %s\n\n' "$url"
+            reach_cli_qr "$url"
+          else
+            printf 'Tailscale stellt den Anmelde-Link noch aus — gleich erneut prüfen.\n'
+          fi
+        } | ui_box "$(_rt reach.needs_login_title)" >&2 ;;
+      needs_machine_auth)
+        printf '%s\n\n  https://login.tailscale.com/admin/machines\n' "$(_rt reach.needs_machine_auth_help)" \
+          | ui_box "$(_rt reach.needs_machine_auth_title)" >&2 ;;
+      needs_funnel)
+        url="$REACH_CLI_FUNNEL_URL"
+        { _rt reach.needs_funnel_help; printf '\n'
+          if [ -n "$url" ]; then printf '\n  %s\n\n' "$url"; reach_cli_qr "$url"
+          else printf '\nIm Tailscale-Konto: Access controls → Funnel und HTTPS für dieses Gerät erlauben.\n'; fi
+        } | ui_box "$(_rt reach.needs_funnel_title)" >&2 ;;
+      busy)
+        ui_box 'Tailscale ist hier schon anders eingerichtet' >&2 <<'EOF'
+Auf diesem Rechner leitet Tailscale die Adresse auf Port 443 schon an etwas anderes weiter. Das
+bleibt unangetastet, sonst fällt es aus. Wähle einen anderen Weg (lifeagents reconfigure core)
+oder gib Port 443 in deiner Tailscale-Konfiguration frei und prüfe dann erneut.
+EOF
+        ;;
+    esac
+    choice="$(printf '%s\t%s\n' "Erledigt — erneut prüfen" retry "Später einrichten" later | ui_choose 'Tunnel:' 0)"
+    if [ "$choice" != retry ]; then
+      note "Tunnel später fertig machen: lifeagents reconfigure core → „Unverändert neu anwenden“."
+      return 0
+    fi
+    reach_cli_tunnel_settle "${N8N_PORT:-5678}"
+  done
+  if [ "$(read_env_value "${INSTALL_ENV_FILE:-}" DOMAIN 2>/dev/null || true)" != "$DOMAIN" ]; then
+    _store_answer "${INSTALL_ENV_FILE:-}" DOMAIN "$DOMAIN"
+  fi
+  if [ "$(read_env_value "${INSTALL_ENV_FILE:-}" TRUSTED_PROXIES 2>/dev/null || true)" != 127.0.0.1 ]; then
+    _store_answer "${INSTALL_ENV_FILE:-}" TRUSTED_PROXIES 127.0.0.1
+  fi
+  ok "Tunnel steht: https://${DOMAIN}/ (Tailscale Funnel)."
+  # Ein schon vorhandener Knoten behaelt seinen Namen, und der wird ueber die Zertifikats-Protokolle oeffentlich: einmal
+  # darauf hinweisen und den Namen als TS_HOSTNAME merken (danach gilt er als bekannt, kein Hinweis bei jedem Update).
+  if [ "${DOMAIN%%.*}" != "$(reach_cli_ts_host)" ]; then
+    warn "Dein Tailscale-Gerät heißt „${DOMAIN%%.*}“ — dieser Name ist ab jetzt öffentlich sichtbar. Steht darin etwas Persönliches, im Tailscale-Konto unter Machines umbenennen, dann: lifeagents reconfigure core → „Unverändert neu anwenden“."
+    _store_answer "${INSTALL_ENV_FILE:-}" TS_HOSTNAME "${DOMAIN%%.*}"
+  fi
+  return 0
+}
+
 # _ensure_install_env_file — core.env mit Kopf anlegen, bevor die erste Antwort sofort gespeichert wird.
 _ensure_install_env_file() {
   local f="${INSTALL_ENV_FILE:-}"
@@ -875,6 +1180,7 @@ _review_items() {
     if _is_first_install; then
       for k in $_INSTALL_ENV_KEYS; do
         if [ "$k" = "TRUSTED_PROXIES" ] && [ -z "${DOMAIN:-}" ]; then continue; fi
+        if _review_key_hidden "$k"; then continue; fi
         keys="${keys:+$keys }$k"
       done
     else
@@ -883,7 +1189,7 @@ _review_items() {
         case " $_INSTALL_ENV_KEYS " in *" $k "*) case " $keys " in *" $k "*) : ;; *) keys="$keys $k" ;; esac ;; esac
       done
     fi
-    for k in $keys; do printf 'host\t-\t%s\t%s\n' "$k" "$(_host_key_label "$k")"; done
+    for k in $keys; do _review_key_hidden "$k" || printf 'host\t-\t%s\t%s\n' "$k" "$(_host_key_label "$k")"; done
     if _is_first_install && env_has_key "${INSTALL_ENV_FILE:-}" PACKAGES_SELECTED; then
       printf 'packages\t-\tPACKAGES\tFunktionen\n'
     fi
@@ -896,6 +1202,13 @@ _review_items() {
     _pkg_review_items "$p"
   done <<<"$pkgs"
   return 0
+}
+
+# _review_key_hidden <key> -> 0, wenn der Punkt beim gewaehlten Weg nichts bedeutet (Tunnel: Adresse und Proxy-Ort
+#   ergeben sich; Heimnetz: keine Adresse).
+_review_key_hidden() {
+  case "$1:$(reach_cli_mode)" in DOMAIN:tunnel|DOMAIN:none|TRUSTED_PROXIES:tunnel|TRUSTED_PROXIES:none) return 0 ;; esac
+  return 1
 }
 
 # _review_render <items> -> die Zeilen des Uebersichts-Kastens ("Beschriftung: Stand").
@@ -916,6 +1229,7 @@ _review_status() {
       eval "v=\${$id:-}"
       _host_key_def "$id"
       case "$id" in
+        REACH_MODE)         reach_cli_mode_label "$(reach_cli_mode)" ;;
         N8N_OWNER_PASSWORD) if [ -n "$v" ]; then printf 'selbst gewählt'; else printf 'wird erzeugt (am Ende einmal angezeigt)'; fi ;;
         DOMAIN)             printf '%s' "${v:-— nur Heimnetz (Telegram erreicht den Bot dann nicht)}" ;;
         TRUSTED_PROXIES)    if [ -z "$v" ] || [ "$v" = "127.0.0.1" ]; then printf 'auf diesem Rechner'; else printf 'auf %s' "$v"; fi ;;
@@ -985,6 +1299,19 @@ _review_edit() {
       if [ "$id" = "TRUSTED_PROXIES" ]; then
         _ask_trusted_proxies 1
         if [ -n "${TRUSTED_PROXIES:-}" ]; then _store_answer "${INSTALL_ENV_FILE:-}" TRUSTED_PROXIES "$TRUSTED_PROXIES"; fi
+      elif [ "$id" = "REACH_MODE" ]; then
+        # Der Weg zieht Adresse/Proxy-Ort nach (_host_key_reask) -> alle drei speichern, was sich geaendert hat.
+        local k old
+        _host_key_reask REACH_MODE
+        for k in REACH_MODE DOMAIN TRUSTED_PROXIES; do
+          eval "v=\${$k:-}"
+          old="$(read_env_value "${INSTALL_ENV_FILE:-}" "$k" 2>/dev/null || true)"
+          [ "$v" = "$old" ] && env_has_key "${INSTALL_ENV_FILE:-}" "$k" && continue
+          _store_answer "${INSTALL_ENV_FILE:-}" "$k" "$v"
+        done
+      elif [ "$id" = "DOMAIN" ] && [ "$(reach_cli_mode)" = fritzbox ]; then
+        _ask_fritz_domain 1
+        _store_answer "${INSTALL_ENV_FILE:-}" DOMAIN "${DOMAIN:-}"
       elif [ "$id" = "OWNER_LANGUAGE" ]; then
         _ask_owner_language 1
         if [ -n "${OWNER_LANGUAGE:-}" ]; then _store_answer "${INSTALL_ENV_FILE:-}" OWNER_LANGUAGE "$OWNER_LANGUAGE"; fi

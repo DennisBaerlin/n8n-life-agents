@@ -8,7 +8,9 @@
 #   - Einstufung fuer den Installer (Hairpin neutral, IPv6-Zertifikatsfehler = IPv6 woanders, Server ohne IPv6);
 #   - Hinweis-Text (MyFRITZ!-Freigabe statt des alten Portfreigabe-Wegs), /etc/hosts-Pin aufraeumen, Check ohne TTY;
 #   - zweiter Runner tests/mock_reach/compose_cases.sh: Weg nach aussen im Docker-Verbund (lib/reach.sh: Tailscale-Status,
-#     Funnel, reach_status_json, Installer-Haken, Rand-Konfiguration) gegen Attrappen.
+#     Funnel, reach_status_json, Installer-Haken, Rand-Konfiguration) gegen Attrappen;
+#   - dritter Runner tests/mock_reach/cli_cases.sh: Weg nach aussen der CLI-Installation (lib/reach_cli.sh: Wahl des Wegs,
+#     Tailscale im Userspace-Modus, Funnel nur fuer die oeffentlichen Pfade, DS-Lite/MyFRITZ!-Pruefung, Dialoge, doctor).
 # Braucht kein n8n, kein Netz und keine enable_mock_*: nur den laufenden Container (bash, curl, node, openssl).
 # Usage:  .\scripts\dev\reachability_test.ps1 [-Port 8084] [-Verbose]   (belegt Port und Port+1; 8086/8087 = update_chat)
 # Exit-Code = Anzahl Fehler.
@@ -49,6 +51,12 @@ $r2 = Invoke-Native docker @('exec', $Container, 'bash', "$root/mock_reach/compo
 $lines += @($r2.Output)
 if ($r2.Code -ne 0 -and @($r2.Output | Where-Object { $_ -match '^FAIL ' }).Count -eq 0) {
     $lines += "FAIL compose_cases.sh brach ab (exit $($r2.Code)): $($r2.Output -join ' | ')"
+}
+# Dritter Teil: Weg nach aussen der CLI-Installation (lib/reach_cli.sh + Dialoge) gegen eine Attrappe `tailscale`.
+$r3 = Invoke-Native docker @('exec', $Container, 'bash', "$root/mock_reach/cli_cases.sh", $root)
+$lines += @($r3.Output)
+if ($r3.Code -ne 0 -and @($r3.Output | Where-Object { $_ -match '^FAIL ' }).Count -eq 0) {
+    $lines += "FAIL cli_cases.sh brach ab (exit $($r3.Code)): $($r3.Output -join ' | ')"
 }
 foreach ($l in $lines) {
     if ($l -match '^PASS ') { if ($Verbose) { Write-Host "    [OK]   $($l.Substring(5))" -ForegroundColor DarkGray } }

@@ -21,8 +21,7 @@
 #
 # PFLICHT-VARIABLEN (setzt die Start-App bzw. CI; der master bekommt dieselben, damit sein `docker compose` die Container
 # nicht als geaendert ansieht): LA_PROJECT, LA_EDGE_PORT und LA_WIZARD_PORT (zwei freie Ports auf 127.0.0.1), LA_PG_SUPERPW (nur fuer den
-# Datenbank-Container, nie ausgeben: `config --quiet`), LA_MASTER_IMAGE (Digest folgt mit Paket 5). Optional: LA_HOST_IP,
-# LA_TS_HOSTNAME.
+# Datenbank-Container, nie ausgeben: `config --quiet`), LA_MASTER_IMAGE (Digest folgt mit Paket 5). Optional: LA_TS_HOSTNAME.
 # Keine Bind-Mounts ausser dem Docker-Socket: der master ruft compose aus seinem Container heraus auf, Host-Pfade gaebe es
 # dort nicht.
 name: lifeagents
@@ -146,6 +145,10 @@ services:
     container_name: ${LA_PROJECT:-lifeagents}-master
     mem_limit: 512m
     init: true   # raeumt die Kindprozesse der docker-exec-Aufrufe ab (tini)
+    # Fluechtige Uebergabe an den Wizard, nur im Arbeitsspeicher (nie auf einer Platte, weg bei jedem Neustart/Neuanlage):
+    # Antwort-Datei und die privaten Hinweise der Start-App (hints.env, per `docker exec -i … cat >`), nie als Umgebung —
+    # die stuende dauerhaft in `docker inspect`. 0700 root: n8n (uid 1000, eigener Container) sieht sie ohnehin nicht.
+    tmpfs: ["/run/lifeagents-wizard:mode=0700,uid=0,gid=0,size=1m"]
     # Wizard (Paket 4) laeuft, bis er sich nach "Fertig" selbst beendet (er erkennt den Zustand im Volume wizard_state und
     # endet dann auch nach einem Neustart sofort); danach bleibt der master als Ruhe-Prozess fuer docker exec stehen.
     # Fehlt die Datei (Baum ohne Wizard), startet nur der Ruhe-Prozess. SIGTERM geht an den Wizard weiter.
@@ -168,9 +171,6 @@ services:
       LA_PROJECT: ${LA_PROJECT:-lifeagents}
       LA_EDGE_PORT: ${LA_EDGE_PORT:?LA_EDGE_PORT fehlt}
       LA_WIZARD_PORT: ${LA_WIZARD_PORT:?LA_WIZARD_PORT fehlt}
-      # Optional: Heimnetz-Adresse des Rechners (setzt die Start-App, wenn sie eine findet); der Wizard schlaegt damit die
-      # Paperless-Adresse vor. Leer = kein Vorschlag. Nie aus der Antwort-Datei (LA_* ist dort gesperrt).
-      LA_HOST_IP: ${LA_HOST_IP:-}
       LA_PG_SUPERPW: ${LA_PG_SUPERPW:?LA_PG_SUPERPW fehlt}
       LA_MASTER_IMAGE: ${LA_MASTER_IMAGE:?LA_MASTER_IMAGE fehlt}
       LA_COMPOSE_FILE: /opt/lifeagents/provisioning/compose/compose.yml

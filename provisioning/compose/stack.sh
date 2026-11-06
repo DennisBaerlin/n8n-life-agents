@@ -18,7 +18,7 @@ LA_COMPOSE_FILE="$HERE/compose.yml"
 # Git Bash unter Windows (Entwickler-Rechner): docker.exe versteht nur Windows-Pfade.
 if command -v cygpath >/dev/null 2>&1; then LA_COMPOSE_FILE="$(cygpath -m "$LA_COMPOSE_FILE")"; export MSYS_NO_PATHCONV=1; fi
 
-_answers_in_master=/root/lifeagents-answers.env
+_answers_in_master=/run/lifeagents-wizard/answers.env   # tmpfs im master (compose.yml): nie auf einer Platte
 
 case "${1:-}" in
   up)

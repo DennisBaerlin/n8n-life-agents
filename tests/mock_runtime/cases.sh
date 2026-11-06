@@ -185,4 +185,38 @@ printf '%s\n' "$H" "A=$(head -c 4097 /dev/zero | tr '\0' x)" > "$W/a"; no_ans Z.
 printf '%s\n' "$H" 'a=1' > "$W/a";                      no_ans Z.kleinbuchstaben
 printf '%s\n' "$H" 'B=2' > "$W/a"; printf 'C=3' >> "$W/a"; ok_ans Z.ohne-umbruch-am-ende '[ "$B" = 2 ] && [ "$C" = 3 ]'
 
+# ---------------------------------------------------------------------------- P: Paket-Antworten ohne Terminal
+# Erfundenes Paket "demo": eine Auswahl-Einstellung, eine Freitext-Einstellung mit URL-Validator, ein Zugang mit 2 Keys.
+if command -v jq >/dev/null 2>&1; then
+  # shellcheck source=/dev/null
+  . "$ROOT/provisioning/lib/pkg_lifecycle.sh"
+  mkdir -p "$W/pk/demo" "$W/la"
+  cat > "$W/pk/demo/manifest.json" <<'JSON'
+{ "config": { "general": {
+    "region": { "prompt": "Region", "choices": [ {"value": "nord", "label": "Nord"}, {"value": "sued", "label": "Süd"} ] },
+    "base_url": { "prompt": "Adresse", "validator": "url" },
+    "plain": { "value": "x" } } },
+  "credentials": { "demo_api": { "type": "httpHeaderAuth", "env": { "DEMO_ID": {"field": "a"}, "DEMO_KEY": {"field": "b", "secret": true} } } } }
+JSON
+  _pkg_dir() { printf '%s' "$W/pk"; }
+  export LIFEAGENTS_DIR="$W/la"
+  _pkg_setting_current() { [ "$1.$2" = "${DEMO_ALREADY_SET:-}" ] && printf 'gesetzt'; return 0; }
+  pset() { PKG_SETTINGS_ANSWERS=''; rm -f "$W/la/demo.env"; ( _pkg_settings_from_env demo; printf '%s' "$PKG_SETTINGS_ANSWERS" ) 2>/dev/null; }
+  r="$(CONFIG_GENERAL_REGION=sued pset)";                          eq P.auswahl-gepuffert $'demo\tgeneral\tregion\tsued' "$r"
+  r="$(CONFIG_GENERAL_REGION=west pset)";                     eq P.auswahl-unbekannt-uebersprungen '' "$r"
+  r="$(CONFIG_GENERAL_BASE_URL='http://192.0.2.10:8000' pset)"; eq P.freitext-validiert $'demo\tgeneral\tbase_url\thttp://192.0.2.10:8000' "$r"
+  r="$(CONFIG_GENERAL_BASE_URL='kein url' pset)";              eq P.freitext-ungueltig-uebersprungen '' "$r"
+  r="$(CONFIG_GENERAL_REGION=nord DEMO_ALREADY_SET=general.region pset)"; eq P.schon-gesetzt-nie-ueberschreiben '' "$r"
+  r="$(CONFIG_GENERAL_PLAIN=y pset)";                          eq P.ohne-prompt-ignoriert '' "$r"
+  PKG_SETTINGS_ANSWERS=''; rm -f "$W/la/demo.env"; ( CONFIG_GENERAL_REGION='' _pkg_settings_from_env demo ) 2>/dev/null
+  if grep -qx 'CONFIG_GENERAL_REGION=' "$W/la/demo.env" 2>/dev/null; then pass P.leer-ist-uebersprungen; else fail P.leer-ist-uebersprungen "keine Seen-Zeile"; fi
+  # Zugaenge aus der Umgebung landen ohne Terminal in demo.env; ein leerer Env-Wert loescht nie einen gespeicherten.
+  rm -f "$W/la/demo.env"; printf 'DEMO_KEY=alt\n' > "$W/la/demo.env"
+  ( DEMO_ID=id-1 DEMO_KEY='' _pkg_secrets_wizard demo "$W/la/demo.env" 0 ) >/dev/null 2>&1
+  eq P.zugang-gespeichert id-1 "$(read_env_value "$W/la/demo.env" DEMO_ID)"
+  eq P.leer-loescht-nie alt "$(read_env_value "$W/la/demo.env" DEMO_KEY)"
+else
+  fail P.jq "jq fehlt im Container (Pflicht fuer die Paket-Faelle)"
+fi
+
 exit "$fails"

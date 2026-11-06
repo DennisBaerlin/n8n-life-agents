@@ -232,6 +232,7 @@ jobs:
     env:
       LA_PROJECT: ci-lifeagents
       LA_EDGE_PORT: '5880'
+      LA_WIZARD_PORT: '5881'
       LA_MASTER_IMAGE: ci-lifeagents-master:ci
     steps:
       - name: Checkout
@@ -299,11 +300,18 @@ jobs:
           docker exec "$LA_PROJECT-edge" nc -z -w 2 anchor 5678   # Gegenprobe: nc funktioniert, n8n ist erreichbar
           if docker exec "$LA_PROJECT-edge" nc -z -w 2 anchor 8090; then echo "FAIL edge reaches the gateway"; exit 1; fi
           if docker exec "$LA_PROJECT-edge" nc -z -w 2 anchor 5432; then echo "FAIL edge reaches postgres"; exit 1; fi
+          # Wizard-Port: veroeffentlicht, ohne laufenden Wizard 502; jeder veroeffentlichte Port nur auf 127.0.0.1.
+          test "$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:${LA_WIZARD_PORT}/")" = 502
+          docker port "$LA_PROJECT-edge" | tee "$RUNNER_TEMP/ports"
+          if grep -v ' -> 127\.0\.0\.1:' "$RUNNER_TEMP/ports"; then echo "FAIL edge publishes beyond 127.0.0.1"; exit 1; fi
 
       - name: Second run is a no-op (no container recreated) and n8n survives a restart
         run: |
           set -euo pipefail
-          bash provisioning/compose/stack.sh install "$RUNNER_TEMP/answers.env" --profile dev --packages all
+          # Wie `lifeagents update`: ohne --packages -> Grundsystem + die INSTALLIERTEN Pakete (aus der Registry, also ueber
+          # den Datenbank-Wrapper des master); keines darf verloren gehen.
+          bash provisioning/compose/stack.sh install "$RUNNER_TEMP/answers.env" --profile dev
+          test "$(docker exec "$LA_PROJECT-postgres" psql -U postgres -d n8n -tAc "SELECT count(*) FROM core.package_registry WHERE status='active'" | tr -d '[:space:]')" -ge 5
           docker ps --filter "label=io.lifeagents.install=$LA_PROJECT" --format '{{.Names}} {{.ID}}' | sort > "$RUNNER_TEMP/ids.2"
           grep -v -e '-n8n ' -e '-gateway ' "$RUNNER_TEMP/ids.1" > "$RUNNER_TEMP/ids.1.base"   # n8n und gateway entstehen erst im Erstlauf
           grep -v -e '-n8n ' -e '-gateway ' "$RUNNER_TEMP/ids.2" > "$RUNNER_TEMP/ids.2.base"

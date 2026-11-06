@@ -3,7 +3,7 @@
 # Fuehrt nur die Schritte aus, die VOR dem master liegen; alles Weitere erledigt provision.sh IM master. Jeder
 # Docker-Aufruf laeuft ueber lib/runtime.sh (eine Datei, Positivliste) mit festem Projekt.
 #
-# Usage (Variablen wie in compose.yml: LA_PROJECT, LA_EDGE_PORT, LA_PG_SUPERPW, LA_MASTER_IMAGE):
+# Usage (Variablen wie in compose.yml: LA_PROJECT, LA_EDGE_PORT, LA_WIZARD_PORT, LA_PG_SUPERPW, LA_MASTER_IMAGE):
 #   bash provisioning/compose/stack.sh up                       Volumes anlegen, Datei pruefen, anchor/postgres/master/edge
 #   bash provisioning/compose/stack.sh install <antwort-datei> [provision.sh-Flags…]
 #                                                               Antwort-Datei in den master legen, provision.sh dort fahren
@@ -23,7 +23,7 @@ _answers_in_master=/root/lifeagents-answers.env
 case "${1:-}" in
   up)
     rt_docker_ok || die "Docker antwortet nicht."
-    rt_stack_config_check || die "compose.yml ungültig oder Pflicht-Variable fehlt (LA_EDGE_PORT, LA_PG_SUPERPW, LA_MASTER_IMAGE)."
+    rt_stack_config_check || die "compose.yml ungültig oder Pflicht-Variable fehlt (LA_EDGE_PORT, LA_WIZARD_PORT, LA_PG_SUPERPW, LA_MASTER_IMAGE)."
     rt_volumes_ensure
     rt_stack_up anchor postgres master edge
     rt_wait_healthy "$LA_PG_CONTAINER" 180 || die "Datenbank wurde nicht gesund ($(svc_logs_hint postgresql))."

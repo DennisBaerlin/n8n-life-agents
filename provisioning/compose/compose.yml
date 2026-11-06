@@ -20,7 +20,7 @@
 # Patch-Datei, gateway seine Env-Datei — beide gibt es vor dem ersten Lauf nicht.
 #
 # PFLICHT-VARIABLEN (setzt die Start-App bzw. CI; der master bekommt dieselben, damit sein `docker compose` die Container
-# nicht als geaendert ansieht): LA_PROJECT, LA_EDGE_PORT (freier Port auf 127.0.0.1), LA_PG_SUPERPW (nur fuer den
+# nicht als geaendert ansieht): LA_PROJECT, LA_EDGE_PORT und LA_WIZARD_PORT (zwei freie Ports auf 127.0.0.1), LA_PG_SUPERPW (nur fuer den
 # Datenbank-Container, nie ausgeben: `config --quiet`), LA_MASTER_IMAGE (Digest folgt mit Paket 5).
 # Keine Bind-Mounts ausser dem Docker-Socket: der master ruft compose aus seinem Container heraus auf, Host-Pfade gaebe es
 # dort nicht.
@@ -154,6 +154,7 @@ services:
       LIFEAGENTS_RUNTIME: compose
       LA_PROJECT: ${LA_PROJECT:-lifeagents}
       LA_EDGE_PORT: ${LA_EDGE_PORT:?LA_EDGE_PORT fehlt}
+      LA_WIZARD_PORT: ${LA_WIZARD_PORT:?LA_WIZARD_PORT fehlt}
       LA_PG_SUPERPW: ${LA_PG_SUPERPW:?LA_PG_SUPERPW fehlt}
       LA_MASTER_IMAGE: ${LA_MASTER_IMAGE:?LA_MASTER_IMAGE fehlt}
       LA_COMPOSE_FILE: /opt/lifeagents/provisioning/compose/compose.yml
@@ -186,6 +187,9 @@ services:
     networks: [internal, edge_public]
     ports:
       - "127.0.0.1:${LA_EDGE_PORT:?LA_EDGE_PORT fehlt}:8080"
+      # Wizard (Paket 4, Dienst im master, lauscht im Pod auf 0.0.0.0:8091): nur auf 127.0.0.1 des Rechners. Laeuft er nicht,
+      # antwortet der Rand mit 502. Host und Origin bleiben unveraendert (der Wizard prueft sie gegen 127.0.0.1:<port>).
+      - "127.0.0.1:${LA_WIZARD_PORT:?LA_WIZARD_PORT fehlt}:8081"
     # Konfiguration aus der Umgebung statt aus einer Datei (keine Bind-Mounts, s. Kopf). `admin off`: keine
     # Verwaltungs-Schnittstelle, die ein Prozess im Netz umkonfigurieren koennte. Die Liste der oeffentlichen Pfade und
     # das Zertifikat beim FritzBox-Weg kommen mit Paket 3.
@@ -197,6 +201,9 @@ services:
         }
         :8080 {
           reverse_proxy anchor:5678
+        }
+        :8081 {
+          reverse_proxy anchor:8091
         }
     command: ["sh", "-c", "printf '%s' \"$$LA_CADDYFILE\" > /tmp/Caddyfile && exec caddy run --config /tmp/Caddyfile --adapter caddyfile"]
 

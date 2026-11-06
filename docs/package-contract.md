@@ -417,7 +417,9 @@ trigger references `agent.ai_models`).
 **Askable entries (Install-UX-Phase 4).** An entry may carry `prompt` (+ optional `help`, `validator`,
 `choices[{value,label}]`) — then `lifeagents package install` asks it in its question phase (debconf-template
 pattern, same vocabulary as §3.8 `credentials.env`; `choices` = a pick list instead of free text, debconf
-`Choices`). Only interactive; Enter/„Später festlegen" keeps the default; an already non-empty value is never
+`Choices`). Interactively Enter/„Später festlegen" keeps the default; without a terminal (`--unattended`, the Docker
+wizard) the answer comes from the env key `CONFIG_<CAT>_<KEY>` (same name as the seen line; empty = skipped, a value
+outside `choices` or failing the validator = warning + skipped). An already non-empty value is never
 re-asked, and a skipped question leaves a seen line `CONFIG_<CAT>_<KEY>=` in `<pkg>.env` (same debconf seen model
 as §3.8) so updates never re-ask it. Answers are buffered and written **after** stage 5 (the row exists only after the seed) as a plain
 `UPDATE` (= owner-set, survives updates). `contract_lint` check 12e types the fields (prompt/help non-empty

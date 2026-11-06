@@ -260,6 +260,20 @@ _pkg_secrets_wizard() {
   _pkg_migrate_legacy_env "$pkg" "$envf"
   if ! ui_interactive; then
     log "Paket-Secrets ($pkg): keine interaktive Eingabe (unattended/kein TTY) — Env-/Store-Werte werden genutzt, Fehlendes skippt graceful."
+    # Werte aus der Prozess-Umgebung (Antwort-Datei des Wizards, Test-Substrat) wie eine Antwort speichern — sonst fehlten
+    # sie beim naechsten Update ohne diese Umgebung. Nur nicht-leere Werte: nie leer ueber einen gespeicherten Wert.
+    local _k _v _n=0
+    while IFS= read -r _k; do
+      [ -n "$_k" ] || continue
+      _v="${!_k:-}"
+      [ -n "$_v" ] || continue
+      [ "$(read_env_value "$envf" "$_k" 2>/dev/null || true)" = "$_v" ] && continue
+      ( umask 077; env_upsert "$envf" "$_k" "$_v" ); _n=$((_n + 1))   # wie _store_answer: nie kurz lesbar fuer andere
+    done <<<"$(jq -r '(.credentials // {}) | to_entries[] | select(.key != "_comment") | .value.env | keys[]' "$mf")"
+    if [ "$_n" -gt 0 ]; then
+      chmod 0640 "$envf" 2>/dev/null || true; chown "root:${N8N_USER:-n8n}" "$envf" 2>/dev/null || true
+      log "Paket-Secrets ($pkg): ${_n} Wert(e) aus der Antwort-Datei/Umgebung gespeichert."
+    fi
     return 0
   fi
   # Kein Sektions-Banner im Install-Pfad (Install-UX-Phase 4, Runde 2): jede WIRKLICH gestellte Frage bringt
@@ -375,7 +389,7 @@ ensure_jq_quiet() {
 # _installed_packages -> die installierten Nicht-Core-Pakete (jede Registry-Zeile, egal welcher Status), eins je
 #   Zeile. Leer, solange es noch keine Datenbank gibt (frische Installation) — `|| true`, nie fatal.
 _installed_packages() {
-  need_cmd psql || return 0
+  need_su_tools || return 0
   _pkg_psql_scalar "SELECT package FROM core.package_registry WHERE package <> 'core' ORDER BY package" 2>/dev/null || true
 }
 
@@ -407,7 +421,7 @@ _packages_to_process() {
 # --- Paket-EINSTELLUNGEN erfragen (Install-UX-Phase 4; docs/package-contract.md §3.6) -----------------------
 # Ein Manifest-`.config`-Eintrag MIT `prompt` wird bei der Installation erfragt (debconf-Template-Muster; gleiches
 # Vokabular wie §3.8 credentials.env: prompt/validator/help — plus optional `choices` [{value,label}] = Auswahl-
-# liste statt Freitext, debconf `Choices`). Nur interaktiv; Enter/„Später" = ueberspringen (Manifest-Default
+# liste statt Freitext, debconf `Choices`). Interaktiv; ohne Terminal liest _pkg_settings_from_env CONFIG_<CAT>_<KEY>. Enter/„Später" = ueberspringen (Manifest-Default
 # bleibt; Nachtrag `lifeagents config set`). Schon gesetzte Werte (core.config non-empty) fragt er nie erneut.
 # Antworten werden GEPUFFERT (PKG_SETTINGS_ANSWERS: pkg<TAB>category<TAB>key<TAB>value je Zeile) und erst NACH
 # dem Seed geschrieben (pkg_install_one Stufe 5b) — die core.config-Zeile entsteht erst dort.
@@ -415,7 +429,7 @@ PKG_SETTINGS_ANSWERS=''
 
 # _pkg_setting_current <category> <key> -> aktueller core.config-Wert (leer: keine DB/Zeile/leer). Nie fatal.
 _pkg_setting_current() {
-  need_cmd psql || return 0
+  need_su_tools || return 0
   _pkg_psql_scalar "SELECT value FROM core.config WHERE category = '$1' AND key = '$2'" 2>/dev/null || true
 }
 
@@ -510,6 +524,46 @@ _pkg_settings_wizard() {
       _store_answer "$envf" "$seenkey" ""
     fi
   done <<<"$(jq -c '(.config // {}) | to_entries[] | select(.key != "_comment") | .key as $c | .value | to_entries[] | select(.value | type == "object" and has("prompt")) | {cat:$c, key:.key, prompt:.value.prompt, help:.value.help, validator:.value.validator, choices:.value.choices}' "$mf" 2>/dev/null)"
+  return 0
+}
+
+# _pkg_settings_from_env <pkg> — dieselben Einstellungen ohne Terminal (unattended, Wizard des Docker-Wegs): die Antwort
+#   steht in CONFIG_<CAT>_<KEY> (derselbe Name wie die Seen-Zeile in <pkg>.env). Regeln wie die Erstfrage: schon gesetzt
+#   (core.config) oder schon uebersprungen (Seen-Zeile) = nie ueberschreiben; leer = uebersprungen (Seen-Zeile); Auswahl
+#   muss ein `choices`-Wert sein, Freitext besteht den Manifest-Validator (Online-Pruefung nicht erreichbar = uebernommen),
+#   sonst Warnung und uebersprungen. Ohne Variable: nichts. Muss VOR dem Seed laufen (danach steht der Standardwert in
+#   core.config); gepuffert wie die Fragen, geschrieben in pkg_install_one Stufe 5b.
+_pkg_settings_from_env() {
+  local pkg="$1" mf entry cat key seenkey envf val vfn rc
+  mf="$(_pkg_dir)/$pkg/manifest.json"
+  [ -r "$mf" ] || return 0
+  envf="$(lifeagents_env_file "$pkg")"
+  while IFS= read -r entry; do
+    [ -n "$entry" ] || continue
+    cat="$(jq -r '.cat' <<<"$entry")"; key="$(jq -r '.key' <<<"$entry")"
+    printf '%s\n%s\n' "$cat" "$key" | grep -qvE '^[a-z][a-z0-9_]*$' && continue   # SQL-Identifier-Schutz
+    seenkey="CONFIG_$(printf "%s_%s" "$cat" "$key" | tr "[:lower:]" "[:upper:]")"
+    [ -n "${!seenkey+x}" ] || continue                                            # keine Antwort fuer diese Einstellung
+    [ -n "$(_pkg_setting_current "$cat" "$key")" ] && continue
+    env_has_key "$envf" "$seenkey" && continue
+    val="${!seenkey}"
+    if [ -z "$val" ]; then _store_answer "$envf" "$seenkey" ""; continue; fi
+    if [ "$(jq -r '(.choices // []) | length' <<<"$entry")" -gt 0 ]; then
+      if ! jq -e --arg v "$val" 'any((.choices // [])[]; .value == $v)' <<<"$entry" >/dev/null; then
+        warn "Einstellung ${cat}.${key}: '${seenkey}' ist keine der erlaubten Auswahlen — übersprungen (später: lifeagents config set ${cat} ${key} <wert>)."
+        continue
+      fi
+    else
+      vfn="$(_pkg_validator_fn "$(jq -r '.validator // "none"' <<<"$entry")")" || vfn='_validate_any'
+      rc=0; "$vfn" "$val" || rc=$?
+      if [ "$rc" -eq 1 ]; then
+        warn "Einstellung ${cat}.${key}: Wert aus '${seenkey}' ist ungültig — übersprungen (später: lifeagents config set ${cat} ${key} <wert>)."
+        continue
+      fi
+    fi
+    _pkg_setting_unbuffer "$pkg" "$cat" "$key"
+    PKG_SETTINGS_ANSWERS="${PKG_SETTINGS_ANSWERS}${pkg}"$'\t'"${cat}"$'\t'"${key}"$'\t'"${val}"$'\n'
+  done <<<"$(jq -c '(.config // {}) | to_entries[] | select(.key != "_comment") | .key as $c | .value | to_entries[] | select(.value | type == "object" and has("prompt")) | {cat:$c, key:.key, validator:.value.validator, choices:.value.choices}' "$mf" 2>/dev/null)"
   return 0
 }
 
@@ -808,6 +862,7 @@ pkg_install_one() {
   provision_role_password "${pkg}_rw" "$envf" "${up}_RW_PASSWORD" || warn "Passwort fuer ${pkg}_rw fehlgeschlagen -> Schreib-Credential wird uebersprungen."
   provision_role_password "${pkg}_ro" "$envf" "${up}_RO_PASSWORD" || warn "Passwort fuer ${pkg}_ro fehlgeschlagen -> Lese-Credential wird uebersprungen."
   _pkg_secrets_wizard "$pkg" "$envf" 0
+  ui_interactive || _pkg_settings_from_env "$pkg"   # ohne Terminal: Einstellungen aus CONFIG_* (vor dem Seed, s. Funktion)
   inject_package_credentials "$pkg"
 
   # Stufe 5: Seed paket-skopiert (config/contexts/validators/protected/onboarding/services NUR fuer <pkg>).

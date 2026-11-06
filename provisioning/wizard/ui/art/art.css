@@ -25,19 +25,19 @@
 .art-ctl { display: flex; gap: 6px; align-items: center; }
 .art-dots { display: flex; align-items: center; margin-right: auto; }
 /* Schritt-Knöpfe: klein, umrandet, im Rahmen – bewusst anders als Zurück/Weiter des Wizards (unten, Pille, dunkel) */
-.art button.art-btn { font: 600 14px/1 var(--font); padding: 7px 12px; border-radius: var(--radius-sm); background: var(--bg); color: var(--ink);
+.art button.art-btn { font: 600 13.5px/1 var(--font); padding: 7px 10px; border-radius: var(--radius-sm); background: var(--bg); color: var(--ink);
   border: 1px solid var(--accent-mid); transform: none; box-shadow: none; }
 .art button.art-btn:hover { background: var(--accent-wash); transform: none; box-shadow: none; }
 .art button.art-btn:disabled { opacity: .45; }
-.art button.art-next { background: var(--accent-pale); border-color: var(--accent); }
+.art button.art-next { background: var(--accent-pale); }
+.art button.art-btn[hidden] { display: none; }
 .art button.art-next:hover { background: var(--accent-mid); }
-.art button.art-dot { width: 16px; height: 26px; padding: 0; margin: 0; background: none; border: 0; position: relative; transform: none; box-shadow: none; }
-.art button.art-dot::after { content: ""; position: absolute; left: 5px; top: 10px; width: 7px; height: 7px; border-radius: 50%; background: var(--gray); transition: background .18s ease, width .18s ease, left .18s ease; }
-.art button.art-dot.on::after { left: 1px; width: 14px; border-radius: var(--radius-pill); background: var(--accent); }
+.art button.art-dot { width: 14px; height: 30px; padding: 0; margin: 0; background: none; border: 0; position: relative; transform: none; box-shadow: none; }
+.art button.art-dot::after { content: ""; position: absolute; left: 4px; top: 12px; width: 7px; height: 7px; border-radius: 50%; background: var(--gray); transition: background .18s ease, width .18s ease, left .18s ease; }
+.art button.art-dot.on::after { left: 0; width: 14px; border-radius: var(--radius-pill); background: var(--accent); }
 .art button.art-dot:hover { background: none; transform: none; }
 .art button.art-dot:hover::after { background: var(--accent-mid); }
 .art button.art-dot.on:hover::after { background: var(--accent); }
-.art button.art-back { padding: 7px 11px; font-size: 16px; }
 .art-guide-link { position: absolute; top: 8px; right: 8px; padding: 3px 10px; border-radius: var(--radius-pill); background: var(--bg); border: 1px solid var(--hairline); font-size: 13px; white-space: nowrap; }
 
 /* Takt: Lupe, Zeiger, Klick, Leuchtrahmen */

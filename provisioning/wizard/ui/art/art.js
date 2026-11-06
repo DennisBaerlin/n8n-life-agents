@@ -68,10 +68,10 @@
     const hintBox = o.hint ? h('p', { class: 'art-hint', role: 'note', text: o.hint }) : null;   // Server-Text: nur textContent
     const line = h('p', { class: 'art-line', 'aria-live': 'polite' });
     const btn = (cls, text, fn, label) => h('button', { type: 'button', class: 'art-btn ' + cls, 'aria-label': label || null, on: { click: fn } }, text);
-    const back = btn('art-back', '‹', () => go(i - 1), 'Vorheriger Schritt');
+    const back = btn('art-back', '‹ Schritt zurück', () => go(i - 1));
     const again = btn('art-again', '↻ Nochmal zeigen', () => go(i));
-    const next = btn('art-next', 'Nächster Schritt ›', () => go(i + 1 < N ? i + 1 : 0));
-    const dots = o.steps.map((s, k) => h('button', { type: 'button', class: 'art-dot', 'aria-label': `Schritt ${k + 1} von ${N}: ${s.cap}`, on: { click: () => go(k) } }));
+    const next = btn('art-next', 'Nächster Schritt ›', () => go(i + 1));
+    const dots = o.steps.map((s, k) => h('button', { type: 'button', class: 'art-dot', 'aria-label': `Schritt ${k + 1} von ${N}: ${s.cap}`, title: `Schritt ${k + 1}`, on: { click: () => go(k) } }));
     // Anleitungs-Link (Ziel vom Server) als kleine Marke oben rechts im Bild, damit die Zeichnung Platz behält
     const guide = o.link ? h('a', { class: 'art-guide-link', href: o.link.href, target: '_blank', rel: 'noopener noreferrer', title: o.link.label, text: 'Ausführliche Anleitung ↗' }) : null;
     const bar = h('figcaption', { class: 'art-bar' }, line,
@@ -144,7 +144,7 @@
       line.replaceChildren(h('b', { text: `Schritt ${n + 1} von ${N}: ` }), o.steps[n].cap);
       dots.forEach((d, k) => { d.classList.toggle('on', k === n); d.setAttribute('aria-current', k === n ? 'step' : 'false'); });
       back.disabled = n === 0;
-      next.textContent = n + 1 < N ? 'Nächster Schritt ›' : '↺ Von vorn';
+      next.hidden = n + 1 >= N;   // letzter Schritt: kein Neustart-Knopf neben dem Hauptknopf des Wizards
       if (hintBox) hintBox.hidden = !o.steps[n].hint;
     }
     function instant(fn) {   // ohne Übergänge springen
@@ -159,7 +159,7 @@
     function ready(on) {
       fig.classList.toggle('done', on);
       next.classList.remove('la-nudge');
-      if (on) { void next.offsetWidth; next.classList.add('la-nudge'); later(3200, () => next.classList.remove('la-nudge')); }
+      if (on && !next.hidden) { void next.offsetWidth; next.classList.add('la-nudge'); later(3200, () => next.classList.remove('la-nudge')); }
     }
     function go(n, still) {   // Schritt n zeigen; still = gleich das Endbild ohne Bewegung
       if (n < 0 || n >= N) return;
@@ -362,7 +362,7 @@
     { cap: '„OK“, die Freigabe steht jetzt in der Liste', hint: true,
       acts: [{ to: [552, 516], click: true, ring: [472, 488, 102, 38], wait: 500 },
         { set: { scene: 'dev', rows: '1', radio: '0', chk: '0' }, cam: { x: 490, y: 520, s: 1 }, ring: [224, 513, 532, 26] }] },
-    { cap: 'Dasselbe noch einmal mit „HTTPS-Server“', hint: true,
+    { cap: 'Dasselbe noch einmal mit „HTTPS-Server“',
       acts: [{ to: [752, 602], click: true, set: { scene: 'dlg', app: 'https', radio: '1', chk: '1' }, cam: DLG, ring: [426, 252, 236, 36], wait: 1300 },
         { to: [552, 516], click: true, set: { scene: 'dev', rows: '2', radio: '0', chk: '0' }, cam: { x: 490, y: 545, s: 1 }, ring: [224, 541, 532, 26] },
         { to: [700, 562], cam: { x: 490, y: 545, s: 1 }, wait: 400 }] },
@@ -370,7 +370,7 @@
       acts: [{ to: [754, 656], click: true, cam: { x: 490, y: 600, s: 1 }, ring: [664, 630, 98, 36] }] },
   ];
 
-  // Seiten-Hinweis „Freigabe existiert bereits“ gehört zum Speichern mit „OK“ (Schritte 6 und 7) und steht dort im Bild.
+  // Seiten-Hinweis „Freigabe existiert bereits“ gehört zum Speichern mit „OK“ (Schritt 6) und steht dort im Bild.
   function fbShare(page) {
     const note = page.note && page.note.text ? page.note.text : null;
     const link = page.link && page.link.href ? page.link : null;

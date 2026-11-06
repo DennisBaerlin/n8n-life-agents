@@ -26,8 +26,8 @@ async function step(w, id, value, opt) {
   });
   await new Promise((r) => pl.listen(0, '0.0.0.0', r));
   const plUrl = `http://${lanIp()}:${pl.address().port}`;
-  const w = await startWizard({ env: { LA_HOST_IP: '192.0.2.10', LA_USER_LANG: 'de-DE', LA_USER_FULLNAME: 'Erika Mustermann',
-    LA_MYFRITZ_ZONE: 'deine-domain.myfritz.net', LA_HOST_NAME_CANDIDATES: 'mac-mini', WIZARD_FAKE_DNS: '' } });
+  const w = await startWizard({ hints: { LA_HOST_IP: '192.0.2.10', LA_USER_LANG: 'de-DE', LA_USER_FULLNAME: 'Erika Mustermann',
+    LA_MYFRITZ_ZONE: 'deine-domain.myfritz.net', LA_HOST_NAME_CANDIDATES: 'mac-mini' }, env: { WIZARD_FAKE_DNS: '' } });
   try {
     await login(w);
     await step(w, 'h:OWNER_LANGUAGE', 'de');
@@ -88,7 +88,8 @@ async function step(w, id, value, opt) {
     await w.stop();
   }
   // MyFRITZ: Gerätename löst auf -> Adresse vorausgefüllt.
-  const d = await startWizard({ env: { LA_MYFRITZ_ZONE: 'deine-domain.myfritz.net', LA_HOST_NAME_CANDIDATES: 'mac-mini', WIZARD_FAKE_DNS: 'mac-mini.deine-domain.myfritz.net' } });
+  const d = await startWizard({ hints: { LA_MYFRITZ_ZONE: 'deine-domain.myfritz.net', LA_HOST_NAME_CANDIDATES: 'mac-mini' },
+    env: { WIZARD_FAKE_DNS: 'mac-mini.deine-domain.myfritz.net' } });
   try {
     await login(d);
     for (const [id, v] of [['h:OWNER_LANGUAGE', 'de'], ['h:OWNER_FIRST_NAME', 'Erika'], ['h:OWNER_LAST_NAME', 'Muster'], ['h:OWNER_BIRTH_DATE', '1980-01-01'],
@@ -124,13 +125,13 @@ async function step(w, id, value, opt) {
       ['h:OWNER_PERSONA', 'neutral'], ['h:TELEGRAM_BOT_TOKEN', '1:beispiel'], ['h:ANTHROPIC_API_KEY', 'sk-ant-beispiel'], ['voice', 'no'], ['packages', ['paperless']]]) await answer(x, id, v);
   };
   const m1 = await mock(8000); const m2 = await mock(8010);
-  const s1 = await startWizard({ env: { LA_HOST_IP: lanIp(), WIZARD_SCAN_TIMEOUT_MS: '200' } });
+  const s1 = await startWizard({ hints: { LA_HOST_IP: lanIp() }, env: { WIZARD_SCAN_TIMEOUT_MS: '200' } });
   try {
     await toPaperless(s1);
     await waitFor(async () => !(await state(s1)).json.page.poll, 60000);
     await shot(s1, 'paperless-auswahl');
   } finally { await s1.stop(); m1.close(); m2.close(); }
-  const s2 = await startWizard({ env: { LA_HOST_IP: lanIp() } });
+  const s2 = await startWizard({ hints: { LA_HOST_IP: lanIp() } });
   try {
     await toPaperless(s2);
     await shot(s2, 'paperless-suche');

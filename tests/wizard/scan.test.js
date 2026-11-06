@@ -51,10 +51,11 @@ async function toPaperlessPage(w) {
 
 test('Wizard-Seite: Suche im Heimnetz, mehrere Treffer = Auswahl, keiner = leeres Feld', async () => {
   const ip = lanIp();
-  const env = { LA_HOST_IP: ip, WIZARD_SCAN_TIMEOUT_MS: '150' };
+  const env = { WIZARD_SCAN_TIMEOUT_MS: '150' };
+  const hints = { LA_HOST_IP: ip };
   const a = await server(8000, true);
   const b = await server(8010, true);
-  let w = await startWizard({ env });
+  let w = await startWizard({ env, hints });
   try {
     await login(w);
     const p = await toPaperlessPage(w);
@@ -62,7 +63,7 @@ test('Wizard-Seite: Suche im Heimnetz, mehrere Treffer = Auswahl, keiner = leere
     assert.equal(p.value, '', 'bei mehreren nichts vorausgefüllt');
     assert.match(p.note.text, /mehrmals/);
   } finally { await w.stop(); await close(a, b); }
-  w = await startWizard({ env });
+  w = await startWizard({ env, hints });
   try {
     const p = await toPaperlessPage(w);
     assert.equal(p.value, '');
@@ -70,7 +71,7 @@ test('Wizard-Seite: Suche im Heimnetz, mehrere Treffer = Auswahl, keiner = leere
     assert.match(p.note.text, /kein Paperless gefunden/);
   } finally { await w.stop(); }
   // Ohne Modul Dokumente wird nie gesucht: die Seite gibt es dann nicht, also auch keinen Suchlauf.
-  w = await startWizard({ env });
+  w = await startWizard({ env, hints });
   try {
     await login(w);
     const prog = path.join(w.dir, 'state', 'progress.json');

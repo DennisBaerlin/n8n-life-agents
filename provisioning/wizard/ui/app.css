@@ -39,7 +39,7 @@
     --bg-soft: #1B2329;
   }
 }
-.qr {
+.qr, .art-light {
   --ink: #17212B;
   --gray: #55636E;
   --hairline: #E2E7EC;

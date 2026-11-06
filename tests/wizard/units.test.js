@@ -150,3 +150,24 @@ test('QR-Code: feste Fassung (gegen einen unabhängigen Decoder geprüft) und Gr
   assert.throws(() => qr.encode('x'.repeat(300)), /too long/);
 });
 const GOLDEN_QR = 'fd6f2b9619bde53cb828f90e06585aca1c8dc80dfb838c90ebbc8960aa84aa23';   // jsQR 1.4.0 las diesen Code am 2026-11-06 als den Link
+
+test('hints.env: streng gelesen, nie ausgeführt, eine verletzte Regel = keine Vorschläge', () => {
+  const p = flow.parseHints;
+  assert.deepEqual(p('LA_USER_LANG=de\nLA_USER_FULLNAME=Erika $(id) `x`\nLA_HOST_IP=\nANDERES=x\n'),
+    { LA_USER_LANG: 'de', LA_USER_FULLNAME: 'Erika $(id) `x`' }, 'roh, leere und unbekannte Schlüssel zählen nicht');
+  assert.deepEqual(p('LA_MYFRITZ_ZONE=deine-domain.myfritz.net\r\nLA_USER_LANG=en\r\n'), { LA_MYFRITZ_ZONE: 'deine-domain.myfritz.net', LA_USER_LANG: 'en' }, 'CRLF');
+  for (const bad of ['LA_USER_LANG=de\nLA_USER_LANG=en\n', '# kommentar\nLA_USER_LANG=de\n', 'LA_USER_LANG=de\n\nLA_HOST_IP=192.0.2.10\n',
+    'LA_USER_LANG=d\u0007e\n', 'export LA_USER_LANG=de\n', '=de\n', 'LA_USER_LANG=de\r\r\n', 'x'.repeat(9000), null]) {
+    assert.deepEqual(p(bad), {}, JSON.stringify(bad));
+  }
+});
+
+test('Zustellfehler: nur frisch und mit wartenden Nachrichten (Format Paket 3)', () => {
+  const f = flow.webhookFailing; const now = 1800000000;
+  assert.equal(f({ webhook_error: 'Connection timed out', webhook_error_at: now - 60, webhook_pending: 2 }, now), true);
+  assert.equal(f({ webhook_error: 'Connection timed out' }, now), true, 'ohne Zeit und Zähler zählt der Text');
+  assert.equal(f({ webhook_error: 'Connection timed out', webhook_error_at: now - 3600, webhook_pending: 2 }, now), false, 'alt');
+  assert.equal(f({ webhook_error: 'Connection timed out', webhook_error_at: now - 60, webhook_pending: 0 }, now), false, 'nichts wartet');
+  assert.equal(f({ webhook_error: '' }, now), false);
+  assert.equal(f(null, now), false);
+});

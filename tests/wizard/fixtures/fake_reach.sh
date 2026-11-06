@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Attrappe von provisioning/compose/reach.sh (Paket 3): nur `activate` — der Installer-Nachlauf nach der Tunnel-Anmeldung.
+# Attrappe von provisioning/compose/reach_ctl.sh (Paket 3): nur `activate` — der Installer-Nachlauf nach der Tunnel-Anmeldung.
 # Danach meldet die Attrappe der Brücke den Zustand ready. Fehlschlag auf Wunsch: Datei $WIZARD_FAKE_DIR/activate_fail.
 set -euo pipefail
 D="${WIZARD_FAKE_DIR:?}"

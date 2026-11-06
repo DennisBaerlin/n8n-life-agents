@@ -1,0 +1,8 @@
+{{/* Begruessungs-Animation auf der Startseite. Quelle: config/ui.greeting.svg (eine Datei fuer Site und README, Mount in
+     hugo.toml). Als <img> eingebunden: Die Animation steckt als CSS in der SVG, Farben stehen dort fest. Fehlt die Datei,
+     bleibt der Platz leer. */}}
+{{ with resources.Get "img/greeting.svg" }}
+<figure class="greeting">
+  <img src="{{ .RelPermalink }}" alt="Begrüßung: dein Assistent stellt sich vor.">
+</figure>
+{{ end }}

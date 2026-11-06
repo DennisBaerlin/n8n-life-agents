@@ -1,11 +1,11 @@
-# n8n-life-agents
+# lifeagents
 
 [![ci](https://github.com/DennisBaerlin/n8n-life-agents/actions/workflows/ci.yml/badge.svg)](https://github.com/DennisBaerlin/n8n-life-agents/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-**Your household's bookkeeping, deadline reminders and advice on money, career and estate planning — all through one Telegram bot. Self-hosted on your own hardware, and nothing is ever saved before you approve it with a tap.**
+**A big help for the whole family: whenever someone in your family needs a hand — with money, deadlines, a job change or planning ahead — your assistant is there, right in Telegram. It runs on your own hardware, and nothing is ever saved before you approve it with a tap.**
 
-Write to the bot in any language — it answers in yours. Behind the scenes a router picks the right specialist; you never notice and just start typing.
+Write to your assistant in any language — it answers in yours. Behind the scenes a router picks the right specialist; you never notice and just start typing.
 
 → **[Documentation site](https://dennisbaerlin.github.io/n8n-life-agents/)** (German) · [Installation](#installation) · [Contributing](CONTRIBUTING.md) · [Security](SECURITY.md)
 
@@ -20,7 +20,7 @@ You: (taps ✅)
 Bot: Booked. New balance Checking: €1,234.56
 ```
 
-Personal project · self-hosted · specialist agents on n8n 2.45.4 + PostgreSQL 17.
+Personal project · self-hosted · open source (MIT).
 
 ## What it is — and who it is for
 
@@ -30,7 +30,7 @@ When you write, a router (the "orchestrator") reads the message and hands it to 
 
 The system has a fixed core (router, approval logic, memory, onboarding) plus one pluggable **package** per area of life — today finance, career, estate planning and documents. A new area plugs in without touching the core.
 
-**Who it is for:** people who already run (or want to run) a small home server, are comfortable with a terminal and a reverse proxy, and want an AI assistant for their household whose data stays at home. Household members you invite need nothing but Telegram.
+**Who it is for:** families who want an AI assistant for everyday life whose data stays at home. Everyone you invite needs nothing but Telegram. The one person who sets it up today needs a small home server and should be comfortable with a terminal and a reverse proxy (a start app for a Mac or Windows PC is in the works, see [Installation](#installation)).
 
 **Good to know before you start:** this is built for a household in **Germany**. Several features assume German conditions — German tax and estate-planning terms, deadlines computed with the public holidays of your federal state (*Bundesland*), and the job scan via the German Federal Employment Agency (*Bundesagentur für Arbeit*). The bot talks in any language, but the documentation site is German.
 
@@ -187,3 +187,5 @@ This is a personal project, built for and used in one household, and shared so y
 - **Not an official n8n project.** n8n is a trademark of n8n GmbH; this project is not affiliated with or endorsed by n8n.
 - **n8n itself is not part of this repository.** It is licensed under n8n's [Sustainable Use License](https://docs.n8n.io/sustainable-use-license/), which is not an OSI open-source license; the installer installs n8n from its official npm package on your machine and does not redistribute it.
 - **No financial, tax or legal advice.** The agents give information and suggestions; decisions and their consequences remain yours. The software comes without any warranty (see the license).
+
+<!-- Greeting animation (single source shared with the site landing page): add <p align="center"><img src="config/ui.greeting.svg" alt="..." width="480"></p> here once that file exists. -->

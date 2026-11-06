@@ -3,7 +3,7 @@
 # + relativeURLs (alle Links relativ, kein Server-Root noetig) — die Seite laeuft per Doppelklick und
 # unveraendert unter dem GitHub-Pages-Unterpfad /n8n-life-agents/ (.github/workflows/pages.yml).
 baseURL = "https://example.org/"   # nie ausgegeben (relativeURLs schreibt alle Links relativ um)
-title = "n8n-life-agents"
+title = "lifeagents"
 
 uglyURLs = true
 relativeURLs = true
@@ -18,3 +18,13 @@ disableKinds = ["taxonomy", "term", "RSS", "sitemap", "robotsTXT", "404"]
 
 [markup.goldmark.renderer]
   unsafe = false
+
+# Begruessungs-Animation: eine Quelle fuer Site und README (config/ui.greeting.svg). Ein eigener Mount ersetzt den
+# Standard-Mount von assets/, darum steht er hier mit. Fehlt die Datei, uebergeht Hugo den Mount und die Startseite
+# laesst den Platz leer (partials/greeting.html).
+[[module.mounts]]
+  source = "assets"
+  target = "assets"
+[[module.mounts]]
+  source = "../../config/ui.greeting.svg"
+  target = "assets/img/greeting.svg"

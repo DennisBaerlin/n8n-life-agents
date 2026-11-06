@@ -1,5 +1,5 @@
 /* ============================================================================
-   n8n-life-agents Showcase-Site — geteiltes Stylesheet (Landing + Docs).
+   lifeagents Showcase-Site — geteiltes Stylesheet (Landing + Docs).
    file://-Disziplin: keine Webfonts/CDN (System-Font-Stack), kein JS noetig.
    ========================================================================== */
 /* ui-tokens:begin site (erzeugt von scripts/build_ui_tokens.ps1, nicht von Hand aendern) */
@@ -79,6 +79,8 @@ section[id], footer[id] { scroll-margin-top: 84px; }
   max-width: 620px; margin: 0 auto 36px;
 }
 .hero-ctas { display: flex; gap: 14px; justify-content: center; flex-wrap: wrap; }
+.hero .greeting { margin: 40px auto 0; max-width: 480px; }
+.hero .greeting img { display: block; width: 100%; height: auto; }
 
 /* ============ Feature-Sektionen (Landing) ============ */
 .section { max-width: 1120px; margin: 0 auto; padding: 110px 24px; }

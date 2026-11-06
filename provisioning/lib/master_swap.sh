@@ -57,9 +57,11 @@ master_swap_begin() {
   install -m 0600 "$cf" "$SWAP_DIR/compose.new.yml"
   install -m 0600 "$LA_COMPOSE_FILE" "$SWAP_DIR/compose.old.yml"
   _swap_write_stack_env "$SWAP_DIR/stack.env" "$target"
-  printf 'PHASE=handoff\nMODE=%s\nTAG=%s\nFROM=%s\nTO=%s\nREQUEST_ID=%s\nALLOW_DOWNGRADE=%s\nSTARTED=%s\n' \
+  # SWAP_DROP_DB_AFTER/SWAP_NOTIFY (nur der Rueckweg) stehen VOR dem Helfer-Start in der Datei: danach schreibt der Helfer
+  # sie, ein zweiter Schreiber koennte eine Zeile verlieren.
+  printf 'PHASE=handoff\nMODE=%s\nTAG=%s\nFROM=%s\nTO=%s\nREQUEST_ID=%s\nALLOW_DOWNGRADE=%s\nDROP_DB_AFTER=%s\nNOTIFY=%s\nSTARTED=%s\n' \
     "$mode" "$tag" "$from" "$target" "${LIFEAGENTS_UPDATE_REQUEST_ID:-}" "${LIFEAGENTS_ALLOW_DOWNGRADE:-0}" \
-    "$(date -u +%Y-%m-%dT%H:%M:%SZ)" | write_file "$SWAP_STATE" 0600
+    "${SWAP_DROP_DB_AFTER:-}" "${SWAP_NOTIFY:-}" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" | write_file "$SWAP_STATE" 0600
   if ! rt_swap_helper_start "$from" "$SWAP_DIR"; then
     rm -f "$SWAP_STATE" "$SWAP_DIR/stack.env"
     die "Der Helfer für den master-Wechsel ließ sich nicht starten — Update abgebrochen, es wurde nichts geändert."

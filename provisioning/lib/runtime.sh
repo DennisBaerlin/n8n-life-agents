@@ -313,38 +313,30 @@ rt_probe_internal() {
   docker run --rm --label "${LA_LABEL}=${LA_PROJECT}" --network "${LA_PROJECT}_internal" \
     "${LA_PROBE_IMAGE:?LA_PROBE_IMAGE nicht gesetzt}" nc -z -w 2 anchor "$1" >/dev/null 2>&1
 }
-# rt_host_put <rechner-ordner> <dateiname> — stdin als Datei in einen Ordner AUF DEM RECHNER schreiben (Sicherung, Fund 7:
-#   nicht auf der Docker-Platte). Kurzlauf-Container mit genau diesem einen Ordner, ohne Netz; erst .part, dann umbenennen.
-#   Fehlt der Ordner, scheitert der Mount (Docker legt ihn mit --mount nie still an).
-rt_host_put() {
-  # shellcheck disable=SC2016  # $1 wird erst in der Container-Shell ausgewertet
-  docker run --rm -i --label "${LA_LABEL}=${LA_PROJECT}" --network none --mount "type=bind,src=$1,dst=/out" \
-    "${LA_PROBE_IMAGE:?LA_PROBE_IMAGE nicht gesetzt}" sh -c 'umask 077; cat > "/out/.$1.part" && mv -f "/out/.$1.part" "/out/$1"' _ "$2"
+# _rt_host_run [-i] <mount-angabe> <befehl…> — EIN Kurzlauf-Container fuer einen Ordner AUF DEM RECHNER (Sicherung, Fund 7:
+#   nicht auf der Docker-Platte): busybox, ohne Netz, genau dieser eine Bind-Mount, unser Label. Fehlt der Ordner, scheitert
+#   der Mount (Docker legt ihn mit --mount nie still an). -i = stdin durchreichen.
+_rt_host_run() {
+  local i=()
+  if [ "$1" = -i ]; then i=(-i); shift; fi
+  docker run --rm "${i[@]}" --label "${LA_LABEL}=${LA_PROJECT}" --network none --mount "$1" \
+    "${LA_PROBE_IMAGE:?LA_PROBE_IMAGE nicht gesetzt}" "${@:2}"
 }
-# rt_host_get <rechner-ordner> <dateiname> — eine Datei aus einem Ordner auf dem Rechner nach stdout (nur lesend gemountet).
-rt_host_get() {
-  docker run --rm --label "${LA_LABEL}=${LA_PROJECT}" --network none --mount "type=bind,src=$1,dst=/in,readonly" \
-    "${LA_PROBE_IMAGE:?LA_PROBE_IMAGE nicht gesetzt}" cat "/in/$2"
-}
+# rt_host_put <rechner-ordner> <dateiname> — stdin als Datei dorthin schreiben; erst .part, dann umbenennen.
+# shellcheck disable=SC2016  # $1 wird erst in der Container-Shell ausgewertet
+rt_host_put() { _rt_host_run -i "type=bind,src=$1,dst=/out" sh -c 'umask 077; cat > "/out/.$1.part" && mv -f "/out/.$1.part" "/out/$1"' _ "$2"; }
+# rt_host_get <rechner-ordner> <dateiname> — eine Datei von dort nach stdout (nur lesend gemountet).
+rt_host_get() { _rt_host_run "type=bind,src=$1,dst=/in,readonly" cat "/in/$2"; }
 # rt_host_ls <rechner-ordner> -> Dateinamen der Sicherungen (*.nla.enc) im Ordner, eine je Zeile.
-rt_host_ls() {
-  # shellcheck disable=SC2016
-  docker run --rm --label "${LA_LABEL}=${LA_PROJECT}" --network none --mount "type=bind,src=$1,dst=/in,readonly" \
-    "${LA_PROBE_IMAGE:?LA_PROBE_IMAGE nicht gesetzt}" sh -c 'cd /in && for f in *.nla.enc; do [ -f "$f" ] && echo "$f"; done; true'
-}
-# rt_host_check <rechner-ordner> — gibt es den Ordner auf dem Rechner und ist er beschreibbar? (Probe anlegen + loeschen)
-rt_host_check() {
-  # shellcheck disable=SC2016  # $$/$p werden erst in der Container-Shell ausgewertet
-  docker run --rm --label "${LA_LABEL}=${LA_PROJECT}" --network none --mount "type=bind,src=$1,dst=/out" \
-    "${LA_PROBE_IMAGE:?LA_PROBE_IMAGE nicht gesetzt}" sh -c 'p=/out/.lifeagents-probe.$$; : > "$p" && rm -f "$p"' >/dev/null 2>&1
-}
+# shellcheck disable=SC2016
+rt_host_ls() { _rt_host_run "type=bind,src=$1,dst=/in,readonly" sh -c 'cd /in && for f in *.nla.enc; do [ -f "$f" ] && echo "$f"; done; true'; }
+# rt_host_check <rechner-ordner> — gibt es den Ordner und ist er beschreibbar? (Probe anlegen + loeschen)
+# shellcheck disable=SC2016  # $$/$p werden erst in der Container-Shell ausgewertet
+rt_host_check() { _rt_host_run "type=bind,src=$1,dst=/out" sh -c 'p=/out/.lifeagents-probe.$$; : > "$p" && rm -f "$p"' >/dev/null 2>&1; }
 # rt_host_rotate <rechner-ordner> <behalten> — NUR unsere Sicherungen (lifeagents-backup-*.nla.enc, Zeitstempel im Namen)
 #   jenseits der neuesten <behalten> loeschen; andere Dateien im Ordner fasst das Muster nie an.
-rt_host_rotate() {
-  # shellcheck disable=SC2016  # $1 wird erst in der Container-Shell ausgewertet
-  docker run --rm --label "${LA_LABEL}=${LA_PROJECT}" --network none --mount "type=bind,src=$1,dst=/out" \
-    "${LA_PROBE_IMAGE:?LA_PROBE_IMAGE nicht gesetzt}" sh -c 'cd /out && ls -1 lifeagents-backup-*.nla.enc 2>/dev/null | sort -r | tail -n +$(($1 + 1)) | while IFS= read -r f; do rm -f -- "$f"; done' _ "$2"
-}
+# shellcheck disable=SC2016  # $1 wird erst in der Container-Shell ausgewertet
+rt_host_rotate() { _rt_host_run "type=bind,src=$1,dst=/out" sh -c 'cd /out && ls -1 lifeagents-backup-*.nla.enc 2>/dev/null | sort -r | tail -n +$(($1 + 1)) | while IFS= read -r f; do rm -f -- "$f"; done' _ "$2"; }
 # rt_stack_down — Container + Netze DIESES Projekts entfernen (Deinstaller, Rechner-Seite). Ohne -v/--rmi: die externen
 #   Volumes (Daten) und alle Images bleiben. --remove-orphans erfasst nur Container mit unserem Compose-Projekt (z. B.
 #   tailscale aus einem Profil), nie fremde.

@@ -532,9 +532,9 @@ upgrade_rollback() {
 _rb_compose_switch() {
   local rel="$1" img="$2" cf="$3" keep="$4" when="$5" rc=0
   if [ "$img" != "${LA_MASTER_IMAGE:-}" ]; then
-    LIFEAGENTS_ALLOW_DOWNGRADE=1 LIFEAGENTS_UPDATE_REQUEST_ID='' master_swap_begin "$rel" "$cf" "$img" rollback
-    _swap_set DROP_DB_AFTER "$keep"
-    _swap_set NOTIFY "Rückweg fertig: dein System läuft wieder auf ${rel}, mit den Daten vom ${when}."
+    LIFEAGENTS_ALLOW_DOWNGRADE=1 LIFEAGENTS_UPDATE_REQUEST_ID='' SWAP_DROP_DB_AFTER="$keep" \
+      SWAP_NOTIFY="Rückweg fertig: dein System läuft wieder auf ${rel}, mit den Daten vom ${when}." \
+      master_swap_begin "$rel" "$cf" "$img" rollback
     ok "Daten zurück; der vorherige Stand ${rel} wird gerade eingespielt (docker logs $(rt_master_container))."
     return 0
   fi

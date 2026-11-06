@@ -291,6 +291,10 @@ if ( STUB_IMAGE_PRESENT=0 STUB_FAIL='|pull|' master_swap_begin v9.1.0 "$W/compos
 if [ -e "$SWAP_STATE" ]; then fail S.pull-fehler-kein-zustand "state angelegt"; else pass S.pull-fehler-kein-zustand; fi
 if ( STUB_FAIL='|run|--rm|-d|' master_swap_begin v9.1.0 "$W/compose.new.src" "$NEW" ) >/dev/null 2>&1; then fail S.helfer-startfehler "kein Abbruch"; else pass S.helfer-startfehler; fi
 if [ -e "$SWAP_STATE" ] || [ -e "$SWAP_DIR/stack.env" ]; then fail S.helfer-startfehler-raeumt "Reste"; else pass S.helfer-startfehler-raeumt; fi
+# Rueckweg: Zusatz-Angaben stehen schon VOR dem Helfer-Start in der Datei (kein zweiter Schreiber neben dem Helfer).
+( SWAP_DROP_DB_AFTER=n8n_before_rollback SWAP_NOTIFY='Fertig, mit Komma' master_swap_begin v9.0.0 "$W/compose.old.src" "$NEW" rollback ) >/dev/null 2>&1
+eq S.rueckweg-angaben-vor-helfer 'n8n_before_rollback|Fertig, mit Komma|rollback' "$(sget DROP_DB_AFTER)|$(sget NOTIFY)|$(sget MODE)"
+rm -rf "$SWAP_DIR"
 # Ziel-Image steht in der Release-compose.yml, NIE aus der Umgebung des laufenden master (sonst waere jedes Ziel = Ist).
 : > "${STUB_LOG}.env"
 eq S.ziel-aus-datei "$NEW" "$(STUB_CONFIG_JSON="{\"services\":{\"master\":{\"image\":\"$NEW\"}}}" rt_master_image_of "$W/compose.new.src")"

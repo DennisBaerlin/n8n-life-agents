@@ -189,12 +189,13 @@ main() {
     svc_active lifeagents-update-run.timer "Update-Aufträge aus dem Chat"
   fi
   if [ "$(id -u)" -eq 0 ] && need_su_tools; then
-    local _stuck _lastfail _help
+    local _stuck _lastfail _help _runner_log="journalctl -u lifeagents-update-run -n 50"
+    if rt_is_compose; then _runner_log="docker logs ${LA_PROJECT}-master"; fi
     # Haengender Auftrag: offen seit > 60 min UND die Update-Sperre ist frei (sonst laeuft er gerade wirklich).
     _stuck="$(pg_su_psql -X -tA -d "$N8N_DB_NAME" -c \
       "SELECT id FROM core.update_requests WHERE finished_at IS NULL AND requested_at < now() - interval '60 minutes' LIMIT 1" 2>/dev/null || true)"
     if [ -n "$_stuck" ] && update_lock_free; then
-      _red "Update-Auftrag ${_stuck} hängt seit über einer Stunde — der Runner läuft nicht (journalctl -u lifeagents-update-run -n 50)"
+      _red "Update-Auftrag ${_stuck} hängt seit über einer Stunde — der Runner läuft nicht (${_runner_log})"
     fi
     # Das letzte Update der letzten 7 Tage ist gescheitert -> dieselbe Hilfe wie im Chat (core.fn_update_report).
     _lastfail="$(pg_su_psql -X -tA -d "$N8N_DB_NAME" -c \
@@ -212,7 +213,7 @@ main() {
     if [ -n "$(pg_su_psql -X -tA -d "$N8N_DB_NAME" -c \
           "SELECT 1 FROM core.menu_refresh WHERE (requested_gen > done_gen AND requested_at < now() - interval '30 minutes')
               OR gave_up_at > now() - interval '7 days'" 2>/dev/null || true)" ]; then
-      _warn "Übersicht-Knöpfe nicht vollständig nachgezogen (Kopplung/Sprache geändert, Telegram lehnte ab) — journalctl -u lifeagents-update-run -n 50"
+      _warn "Übersicht-Knöpfe nicht vollständig nachgezogen (Kopplung/Sprache geändert, Telegram lehnte ab) — ${_runner_log}"
     fi
   fi
 

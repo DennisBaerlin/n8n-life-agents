@@ -383,6 +383,12 @@ _ur_swap_continue() {
     rolled_back|interrupted)
       master_swap_close
       _ur_alert "master-Wechsel auf ${tag:-?} nicht abgeschlossen (${what}) — es läuft der vorherige Stand."
+      # Rueckweg (lifeagents rollback): die Daten sind schon zurueck, n8n wurde dafuer angehalten -> wieder an, sonst bliebe
+      # der Bot aus. Die beiseitegelegte DB bleibt als Sicherheitsnetz liegen.
+      if [ "$mode" = rollback ]; then
+        svc_start n8n 2>/dev/null || true
+        _ur_alert "Rückweg: die Daten sind zurückgesetzt, der vorherige Stand ${tag:-?} startete aber nicht — n8n wurde wieder gestartet. Diagnose: lifeagents doctor"
+      fi
       if [ -n "$id" ]; then
         if _ur_bot_up nowait; then bot=true; else bot=false; fi
         # Schritt "base": im Verbund stecken die Basis-Programme im master-Image (core.fn_update_report kennt den Code).

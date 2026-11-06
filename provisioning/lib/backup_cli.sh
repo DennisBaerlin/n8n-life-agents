@@ -226,7 +226,11 @@ backup_cmd_export() {
   # ohne --to-host nimmt der Verbund den gemerkten Ordner (BACKUP_HOST_DIR), nie die Docker-Platte.
   local out="" notify=0 a host="" want_host=0 prev=""
   for a in "$@"; do
-    if [ "$prev" = --to-host ]; then host="$a"; prev=""; continue; fi
+    # --to-host [<ordner>]: ein folgender ABSOLUTER Pfad ist der Ordner; sonst gilt der gemerkte (backup auto).
+    if [ "$prev" = --to-host ]; then
+      prev=""
+      case "$a" in /*) host="$a"; continue ;; esac
+    fi
     case "$a" in
       --notify-telegram) notify=1 ;;
       --to-host)         want_host=1; prev="$a" ;;
@@ -234,7 +238,7 @@ backup_cmd_export() {
       *)                 out="$a" ;;
     esac
   done
-  [ -z "$prev" ] || die "--to-host braucht einen Ordner."
+  if [ "$want_host" -eq 1 ] && [ -n "$out" ]; then die "Entweder ein Pfad im System oder --to-host — nicht beides."; fi
   if rt_is_compose && [ -z "$out" ]; then want_host=1; fi
   if [ "$want_host" -eq 1 ]; then
     rt_is_compose || die "--to-host gibt es nur im Docker-Verbund."

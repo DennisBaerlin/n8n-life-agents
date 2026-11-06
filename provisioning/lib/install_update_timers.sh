@@ -21,7 +21,7 @@ install_update_timers() {
       svc_changed=0
     fi
   done
-  [ "$svc_changed" -eq 0 ] && systemctl daemon-reload
+  [ "$svc_changed" -eq 0 ] && svc_daemon_reload
   for u in "${UPDATE_TIMER_UNITS[@]}"; do
     tchanged=1
     if render_template "$TEMPLATE_DIR/${u}.timer.tpl" TIMEZONE="${TIMEZONE:-Europe/Berlin}" \

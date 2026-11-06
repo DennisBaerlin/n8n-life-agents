@@ -51,7 +51,7 @@ _ur_notice() { log "$*";  if [ -n "${JOURNAL_STREAM:-}" ]; then printf '<5>%s\n'
 #   Die Daten gehen als psql-Variable (sauber gequotet), das SQL ueber stdin (-v wird bei -c nicht ersetzt).
 _ur_sql() {
   local json="$1" sql="$2"
-  printf '%s\n' "$sql" | runuser -u "$DB_SUPERUSER" -- psql -X -tA -q -v ON_ERROR_STOP=1 -d "$N8N_DB_NAME" -v p="$json" -f -
+  printf '%s\n' "$sql" | pg_su_psql -X -tA -q -v ON_ERROR_STOP=1 -d "$N8N_DB_NAME" -v p="$json" -f -
 }
 
 # _ur_installed -> Inhalt der VERSION-Datei (Tag oder 'dev'; leer = keine installierte Release-Version).

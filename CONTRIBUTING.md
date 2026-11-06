@@ -230,7 +230,9 @@ The **free substrate suites** (`scripts/dev/hitl_gate_test.ps1`, `real_ingress_t
 recipient's language, ~2 min per case) run against the mock Telegram/LLM in your own Docker substrate;
 `release_fetch_test.ps1` tests the anonymous release download against a mock GitHub in a container (no n8n
 needed), `reachability_test.ps1` the installer/doctor reachability check (IPv4/IPv6, FritzBox trap) against mock
-endpoints in a container, `bot_profile_photo_test.ps1` the installer step for the bot's profile photo against the mock
+endpoints in a container, `runtime_test.ps1` the installer's runtime seam (systemd vs. Docker stack wrappers, the
+`--unattended` answer reader that never executes, the Telegram webhook check) against stubs in a container,
+`bot_profile_photo_test.ps1` the installer step for the bot's profile photo against the mock
 Telegram in a container. They are not
 gates either (they need the substrate); run the one matching the surface you touched, or all of them at once with `scripts/dev/run_free_gates.ps1` (merge/release state; `-Parallel` splits them across two substrates).
 

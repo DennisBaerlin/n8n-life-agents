@@ -23,7 +23,7 @@ LLM_GATEWAY_URL="http://127.0.0.1:${LLM_GATEWAY_PORT}"
 
 # _llm_gateway_port_foreign — 0, wenn der Port von einem FREMDEN Prozess belegt ist (unser Dienst laeuft nicht).
 _llm_gateway_port_foreign() {
-  systemctl is-active --quiet "$LLM_GATEWAY_UNIT_NAME" && return 1
+  svc_is_active "$LLM_GATEWAY_UNIT_NAME" && return 1
   need_cmd ss || return 1
   [ -n "$(ss -Hltn "sport = :${LLM_GATEWAY_PORT}" 2>/dev/null)" ]
 }
@@ -75,7 +75,16 @@ install_llm_gateway() {
   else
     warn "Sticker-Ordner fehlt ($sticker_src) — der Bot schickt keine Sticker (Antworten laufen normal)."
   fi
-  if render_template "$TEMPLATE_DIR/lifeagents-llm-gateway.service.tpl" \
+  if rt_is_compose; then
+    # Verbund: statt Unit eine Env-Datei im Code-Volume (gw_code, im Gateway-Container /gw); der node:24-alpine-Container
+    # laedt sie bei jedem Start (compose.yml). StateDirectory-Ersatz: Volume gw_state, dem Container-Nutzer (uid 1000).
+    install -d -m 0700 -o 1000 -g 1000 "${STATE_DIRECTORY:-/var/lib/${LLM_GATEWAY_UNIT_NAME}}"
+    if printf '%s\n' "LLM_GATEWAY_PORT=${LLM_GATEWAY_PORT}" "LLM_GATEWAY_KEEPALIVE_HOURS=${ka_hours}" \
+         "LLM_GATEWAY_STICKER_DIR=${sticker_dir}" ${LIFEAGENTS_TELEGRAM_API:+"LLM_GATEWAY_TELEGRAM_API=${LIFEAGENTS_TELEGRAM_API}"} \
+       | write_if_changed "$LLM_GATEWAY_DIR/gateway.env" 0644; then
+      changed=0
+    fi
+  elif render_template "$TEMPLATE_DIR/lifeagents-llm-gateway.service.tpl" \
         GATEWAY_PORT="$LLM_GATEWAY_PORT" \
         KEEPALIVE_HOURS="$ka_hours" \
         NODE_BIN="$node_bin" \
@@ -89,7 +98,7 @@ install_llm_gateway() {
   [ "${UPGRADE_ACTIVE:-0}" -eq 1 ] && changed=0
   enable_start_unit "$LLM_GATEWAY_UNIT_NAME" "$changed"
   _wait_llm_gateway_health \
-    || die "LLM-Gateway antwortet nicht (${LLM_GATEWAY_URL}/__health) — Abbruch, bevor die Anthropic-Credential umgestellt wird. Diagnose: journalctl -u ${LLM_GATEWAY_UNIT_NAME} -n 50"
+    || die "LLM-Gateway antwortet nicht (${LLM_GATEWAY_URL}/__health) — Abbruch, bevor die Anthropic-Credential umgestellt wird. Diagnose: $(svc_logs_hint "$LLM_GATEWAY_UNIT_NAME")"
 }
 
 # uninstall_llm_gateway — Dienst stoppen + Unit + Code + Mitschrift (StateDirectory, usage.jsonl) entfernen

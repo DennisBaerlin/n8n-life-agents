@@ -21,13 +21,13 @@ _pkg_resolve_db() { lifeagents_db_name >/dev/null; }
 # _pkg_psql_scalar <sql>  -> einzelner Skalar auf stdout (leer wenn NULL/keine Zeile).
 _pkg_psql_scalar() {
   _pkg_resolve_db
-  runuser -u "$DB_SUPERUSER" -- psql -v ON_ERROR_STOP=1 -X -tA -d "$N8N_DB_NAME" -c "$1"
+  pg_su_psql -v ON_ERROR_STOP=1 -X -tA -d "$N8N_DB_NAME" -c "$1"
 }
 
 # _pkg_psql_exec <sql>  -> SQL ausfuehren (Rueckgabe verworfen; Fehler -> nonzero via ON_ERROR_STOP).
 _pkg_psql_exec() {
   _pkg_resolve_db
-  runuser -u "$DB_SUPERUSER" -- psql -v ON_ERROR_STOP=1 -X -q -d "$N8N_DB_NAME" -c "$1"
+  pg_su_psql -v ON_ERROR_STOP=1 -X -q -d "$N8N_DB_NAME" -c "$1"
 }
 
 # _pkg_name_ok <name>  -> 0 wenn ^[a-z][a-z0-9_]*$ (= Schema-/Rollen-Praefix-Vertrag, docs/package-contract.md §2).

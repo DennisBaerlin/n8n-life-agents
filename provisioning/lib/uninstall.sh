@@ -20,7 +20,7 @@ DB_SUPERUSER="${DB_SUPERUSER:-postgres}"
 
 # _u_psql … — als postgres-Superuser gegen eine DB (Default die wartungs-sichere 'postgres'-DB, damit
 # DROP DATABASE n8n keine offene Verbindung auf das Ziel haelt).
-_u_psql() { runuser -u "$DB_SUPERUSER" -- psql -v ON_ERROR_STOP=1 -X "$@"; }
+_u_psql() { pg_su_psql -v ON_ERROR_STOP=1 -X "$@"; }
 
 _u_db_exists()   { _u_psql -d postgres -tAc "SELECT 1 FROM pg_database WHERE datname = '$1';" 2>/dev/null | grep -q 1; }
 _u_role_exists() { _u_psql -d postgres -tAc "SELECT 1 FROM pg_roles    WHERE rolname = '$1';" 2>/dev/null | grep -q 1; }
@@ -38,18 +38,18 @@ _u_confirm() {
 # _u_stop_unit <unit> [remove-unit-file?]  — stop+disable; optional die Unit-Datei entfernen.
 _u_stop_unit() {
   local unit="$1" remove="${2:-0}"
-  systemctl stop "$unit" 2>/dev/null || true
-  systemctl disable "$unit" >/dev/null 2>&1 || true
+  svc_stop "$unit" 2>/dev/null || true
+  svc_disable "$unit"
   if [ "$remove" = "1" ]; then
     rm -f "/etc/systemd/system/${unit}" "/lib/systemd/system/${unit}" 2>/dev/null || true
-    systemctl daemon-reload 2>/dev/null || true
+    svc_daemon_reload 2>/dev/null || true
   fi
   ok "Dienst gestoppt/deaktiviert: $unit"
 }
 
 uninstall() {
   require_root
-  require_cmd runuser
+  require_su_tools
 
   if [ "$PURGE_DATA" -eq 1 ]; then
     warn "DESTRUKTIV: --purge-data loescht die n8n-Datenbank '${N8N_DB_NAME}', die Rollen und /var/lib/n8n + /etc/n8n."

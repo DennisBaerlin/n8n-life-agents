@@ -166,7 +166,7 @@ _fw_install_units() {
   render_template "$TEMPLATE_DIR/n8n-firewall.conf.tpl" FW_UNIT="$LA_FW_UNIT_NAME" FW_TABLE="$LA_FW_TABLE" \
     > "$LA_FW_DROPIN"
   chmod 0644 "$LA_FW_DROPIN"
-  systemctl daemon-reload
+  svc_daemon_reload
 }
 
 # firewall_present -> 0, wenn Unit/Drop-in/Tabelle (irgendein Rest) existieren.
@@ -180,17 +180,17 @@ firewall_present() {
 # 127.0.0.1 und startet n8n (provision.sh: prepare_n8n_env + install_n8n). Idempotent, nie fatal.
 firewall_remove() {
   firewall_present || return 0
-  if systemctl is-active --quiet n8n 2>/dev/null \
+  if svc_is_active n8n 2>/dev/null \
      && [ "$(read_env_value "${N8N_ENV_FILE:-/etc/n8n/n8n.env}" N8N_LISTEN_ADDRESS 2>/dev/null || true)" != "127.0.0.1" ]; then
     log "n8n stoppen, bevor die Freigabe entfernt wird (n8n darf nie offen ohne Firewall laufen) ..."
-    systemctl stop n8n 2>/dev/null || true
+    svc_stop n8n 2>/dev/null || true
   fi
   rm -f "$LA_FW_DROPIN" 2>/dev/null || true
   rmdir "$LA_FW_DROPIN_DIR" 2>/dev/null || true
-  systemctl stop "$LA_FW_UNIT_NAME" 2>/dev/null || true
-  systemctl disable "$LA_FW_UNIT_NAME" >/dev/null 2>&1 || true
+  svc_stop "$LA_FW_UNIT_NAME" 2>/dev/null || true
+  svc_disable "$LA_FW_UNIT_NAME"
   rm -f "$LA_FW_UNIT" 2>/dev/null || true
-  systemctl daemon-reload 2>/dev/null || true
+  svc_daemon_reload 2>/dev/null || true
   if need_cmd nft; then nft delete table inet "$LA_FW_TABLE" >/dev/null 2>&1 || true; fi
   rm -f "$LA_FW_FILE" 2>/dev/null || true
   ok "n8n-Freigabe für einen Proxy auf einem anderen Rechner entfernt (n8n wieder nur lokal)."
@@ -202,6 +202,14 @@ firewall_remove() {
 firewall_converge() {
   local list nonloop
   N8N_LISTEN_ADDRESS_EFF="127.0.0.1"
+  if rt_is_compose; then
+    # Verbund: n8n lauscht auf 0.0.0.0 IM Namensraum des anchor. Erreichbar ist das nur ueber das interne Netz zum Rand
+    # (caddy, compose.yml); Postgres und Gateway bleiben auf 127.0.0.1. Keine nft-Tabelle: die Grenze sind Namensraum +
+    # internes Netz, veroeffentlichte Ports hat nur der Rand. doctor misst das von aussen (Paket 2).
+    N8N_LISTEN_ADDRESS_EFF="0.0.0.0"
+    log "Compose-Betrieb: keine Firewall-Tabelle; n8n ist nur über den Rand des Verbunds erreichbar."
+    return 0
+  fi
   if ! list="$(normalize_trusted_proxies "${TRUSTED_PROXIES:-}")"; then
     warn "TRUSTED_PROXIES ungültig — n8n bleibt nur lokal erreichbar (ändern: lifeagents proxy set <adresse>)."
     firewall_remove
@@ -228,12 +236,12 @@ firewall_converge() {
     return 0
   fi
   _fw_install_units
-  systemctl enable "$LA_FW_UNIT_NAME" >/dev/null 2>&1 || true
+  svc_enable "$LA_FW_UNIT_NAME"
   # Aktiv -> reload (atomarer nft -f, n8n bleibt laufen); sonst start.
-  if systemctl is-active --quiet "$LA_FW_UNIT_NAME"; then
-    systemctl reload "$LA_FW_UNIT_NAME" || systemctl restart "$LA_FW_UNIT_NAME" || true
+  if svc_is_active "$LA_FW_UNIT_NAME"; then
+    svc_reload_or_restart "$LA_FW_UNIT_NAME" || true
   else
-    systemctl start "$LA_FW_UNIT_NAME" || true
+    svc_start "$LA_FW_UNIT_NAME" || true
   fi
   if firewall_set_matches "$list"; then   # nachweislich GENAU die gewuenschte Liste geladen (nicht nur irgendeine Tabelle)
     N8N_LISTEN_ADDRESS_EFF="0.0.0.0"

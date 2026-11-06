@@ -93,7 +93,7 @@ _upg_installed_release() {
 
 # _upg_db_exists — 0, wenn PG laeuft und die App-DB existiert (sonst: Erstinstallation, nichts zu schuetzen).
 _upg_db_exists() {
-  [ "$(runuser -u postgres -- psql -X -tAc "SELECT 1 FROM pg_database WHERE datname='${N8N_DB_NAME}'" 2>/dev/null)" = 1 ]
+  [ "$(pg_su_psql -X -tAc "SELECT 1 FROM pg_database WHERE datname='${N8N_DB_NAME}'" 2>/dev/null)" = 1 ]
 }
 
 # _upg_load_backup_key — Sicherungsschluessel nach _UPG_KEY, seine Tabelle nach _UPG_KEY_TABLE (direkt rufen, NICHT in
@@ -106,7 +106,7 @@ _UPG_KEY_TABLE=''
 _upg_load_backup_key() {
   local tables t
   _UPG_KEY=''; _UPG_KEY_TABLE=''
-  tables="$(runuser -u postgres -- psql -v ON_ERROR_STOP=1 -X -tA -d "$N8N_DB_NAME" -c \
+  tables="$(pg_su_psql -v ON_ERROR_STOP=1 -X -tA -d "$N8N_DB_NAME" -c \
     "SELECT concat_ws(' ', CASE WHEN to_regclass('core.backup_key') IS NOT NULL THEN 'core.backup_key' END,
                            CASE WHEN to_regclass('core.secret') IS NOT NULL THEN 'core.secret' END)" 2>/dev/null)" || return 1
   # Erste Tabelle MIT Schluessel gewinnt (zwischen Init und V006 koennen beide existieren, der Wert steht in core.secret).
@@ -121,7 +121,7 @@ _upg_load_backup_key() {
 # Owner-Bootstrap legt den Schluessel im selben Lauf direkt danach an). Fehlt dann der Schluessel, ist das ein Defekt,
 # keine "nie abgeschlossene Erstinstallation" -> nie still ohne Sicherung weiter.
 _upg_has_user_data() {
-  [ "$(runuser -u postgres -- psql -X -tA -d "$N8N_DB_NAME" -c "SELECT to_regnamespace('core') IS NOT NULL" 2>/dev/null)" = t ]
+  [ "$(pg_su_psql -X -tA -d "$N8N_DB_NAME" -c "SELECT to_regnamespace('core') IS NOT NULL" 2>/dev/null)" = t ]
 }
 
 # _upg_new_backup_path -> Zieldatei einer neuen Sicherung (Versionsname: welches n8n die DB beschrieb).
@@ -138,7 +138,7 @@ _upg_new_backup_path() {
 _upg_drain() {
   local key n f skip='' left="$UPGRADE_DRAIN_SECS"
   key="$(read_env_value "$N8N_OWNER_ENV_FILE" N8N_API_KEY 2>/dev/null || true)"
-  if [ -z "$key" ] || ! systemctl is-active --quiet n8n; then return 0; fi
+  if [ -z "$key" ] || ! svc_is_active n8n; then return 0; fi
   for f in "$(_pkg_dir)"/core/workflows/*-core.sub_show_thinking.json; do
     [ -e "$f" ] && skip="$(basename "$f" '-core.sub_show_thinking.json')"
   done
@@ -160,7 +160,7 @@ _upg_snapshot() {
   mkdir -p "$UPGRADE_BACKUP_DIR"; chmod 0700 "$UPGRADE_BACKUP_DIR"
   log "Datenbank verschlüsselt sichern -> ${out} ..."
   rm -f "$part"
-  if ( umask 077; cd /; runuser -u postgres -- pg_dump -Fc -d "$N8N_DB_NAME" | gpg_sym_encrypt "$key" "$part" ) \
+  if ( umask 077; cd /; pg_su_exec pg_dump -Fc -d "$N8N_DB_NAME" | gpg_sym_encrypt "$key" "$part" ) \
      && [ -s "$part" ]; then
     mv -f "$part" "$out"; chmod 0600 "$out"
     ok "Sicherung geschrieben: ${out} ($(du -h "$out" | cut -f1))"
@@ -172,9 +172,9 @@ _upg_snapshot() {
 
 # _upg_stop_n8n — n8n anhalten (idempotent).
 _upg_stop_n8n() {
-  if systemctl is-active --quiet n8n; then
+  if svc_is_active n8n; then
     log "n8n für das Update anhalten ..."
-    systemctl stop n8n
+    svc_stop n8n
   fi
 }
 
@@ -198,8 +198,8 @@ upgrade_prepare() {
   # PostgreSQL sicher an (ein frueher Lauf kann mitten im PG-Tausch abgebrochen sein; install_postgres startet es sonst
   # erst NACH dieser Stelle) -> dann den Schluessel ZUERST: ist er nicht lesbar, bricht der Lauf ab, bevor etwas
   # (weiter) getauscht wird.
-  systemctl start postgresql >/dev/null 2>&1 || true
-  for _ in $(seq 1 30); do runuser -u postgres -- pg_isready -q 2>/dev/null && break; sleep 1; done
+  svc_start postgresql >/dev/null 2>&1 || true
+  pg_wait_ready 30 || true
   _upg_load_backup_key \
     || die "Sicherungsschlüssel nicht lesbar (Datenbank-Fehler) — Update angehalten, es wird nichts getauscht. Diagnose: lifeagents doctor"
   # Kein Schluessel, aber echte Daten -> Defekt, nicht still ohne Sicherung weiter (Notschalter fuer den bewussten Fall).
@@ -251,7 +251,7 @@ upgrade_prepare() {
     _upg_backup_recorded "$backup"
   else
     rm -f "$UPGRADE_MARKER"
-    systemctl start n8n || true
+    svc_start n8n || true
     die_because backup "Sicherung fehlgeschlagen — Update abgebrochen, es wurde nichts getauscht (n8n läuft weiter in Version ${from}). Platz prüfen: df -h ${UPGRADE_BACKUP_DIR}"
   fi
 }
@@ -359,7 +359,7 @@ ${reinstall}
 #   erfolgreichen Einspielen wird sie geloescht.
 # _rb_resume — nach einem Abbruch des Rueckwegs n8n UND die Update-Timer wieder an (sonst kaeme keine Release-Karte mehr
 #   und Chat-Auftraege blieben liegen, bis zum naechsten vollen Provision).
-_rb_resume() { systemctl start n8n lifeagents-update-run.timer lifeagents-update-check.timer 2>/dev/null || true; }
+_rb_resume() { svc_start n8n lifeagents-update-run.timer lifeagents-update-check.timer 2>/dev/null || true; }
 
 #   Braucht: common.sh, fetch_release.sh (_gh_release_json/_gh_fetch), deploy_workflows.sh (Owner-chat_id fuer die Meldung).
 upgrade_rollback() {
@@ -411,14 +411,14 @@ upgrade_rollback() {
   _release_fetch_verify "$work/rel.json" "$work" install.sh "$from_rel" "$kr"
 
   log "Dienste anhalten und die Datenbank aus der Sicherung herstellen ..."
-  systemctl stop lifeagents-update-run.timer lifeagents-update-check.timer n8n 2>/dev/null || true
-  runuser -u postgres -- dropdb --if-exists --force "$keep" >/dev/null 2>&1 || true
-  runuser -u postgres -- psql -X -q -v ON_ERROR_STOP=1 -d postgres \
+  svc_stop lifeagents-update-run.timer lifeagents-update-check.timer n8n 2>/dev/null || true
+  pg_su_exec dropdb --if-exists --force "$keep" >/dev/null 2>&1 || true
+  pg_su_psql -X -q -v ON_ERROR_STOP=1 -d postgres \
       -c "ALTER DATABASE \"${N8N_DB_NAME}\" RENAME TO \"${keep}\"" \
     || { _rb_resume; die "Datenbank ließ sich nicht beiseitelegen (noch Verbindungen?) — Rückweg abgebrochen, es wurde nichts geändert."; }
-  if ! gpg_sym_decrypt "$key" "$backup" | runuser -u postgres -- pg_restore --create -d postgres; then
-    runuser -u postgres -- dropdb --if-exists --force "$N8N_DB_NAME" >/dev/null 2>&1 || true
-    runuser -u postgres -- psql -X -q -d postgres -c "ALTER DATABASE \"${keep}\" RENAME TO \"${N8N_DB_NAME}\"" || true
+  if ! gpg_sym_decrypt "$key" "$backup" | pg_su_stdin pg_restore --create -d postgres; then
+    pg_su_exec dropdb --if-exists --force "$N8N_DB_NAME" >/dev/null 2>&1 || true
+    pg_su_psql -X -q -d postgres -c "ALTER DATABASE \"${keep}\" RENAME TO \"${N8N_DB_NAME}\"" || true
     _rb_resume
     die "Herstellen der Sicherung fehlgeschlagen — die bisherige Datenbank ist unverändert zurück. Diagnose: journalctl -u postgresql -n 50"
   fi
@@ -434,7 +434,7 @@ upgrade_rollback() {
     warn "Die Daten sind zurückgesetzt, das Einspielen von ${from_rel} ist aber gescheitert (Exit ${rc}). Die vorige Datenbank liegt noch als ${keep}. Nur das Einspielen erneut starten (die Daten NICHT noch einmal zurücksetzen): curl -fsSL '${url}' -o /root/install.sh && bash /root/install.sh --version ${from_rel}"
     return 1
   fi
-  runuser -u postgres -- dropdb --if-exists --force "$keep" >/dev/null 2>&1 || true
+  pg_su_exec dropdb --if-exists --force "$keep" >/dev/null 2>&1 || true
   notify_owner_telegram "Rückweg fertig: dein System läuft wieder auf ${from_rel}, mit den Daten vom ${when}." || true
   ok "Rückweg fertig: ${from_rel} mit den Daten vom ${when}."
 }

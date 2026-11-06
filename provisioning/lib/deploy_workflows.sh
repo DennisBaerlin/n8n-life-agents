@@ -50,8 +50,8 @@ DB_SUPERUSER="${DB_SUPERUSER:-postgres}"
 #   OWNER_CHAT_ID-Env-Fallback — ein gesetzter Env-Wert (Substrat/Dev) taeuschte sonst sofort Erfolg vor.
 _owner_chat_id_db() {
   local v=''
-  if need_cmd runuser && [ -n "${N8N_DB_NAME:-}" ]; then
-    v="$(runuser -u "$DB_SUPERUSER" -- psql -tA -X -v ON_ERROR_STOP=1 -d "$N8N_DB_NAME" -c \
+  if need_su_tools && [ -n "${N8N_DB_NAME:-}" ]; then
+    v="$(pg_su_psql -tA -X -v ON_ERROR_STOP=1 -d "$N8N_DB_NAME" -c \
       "SELECT pp->>'telegram_user_id' FROM agent.core_contexts c, jsonb_array_elements(COALESCE(c.metadata->'facts'->'persons','[]'::jsonb)) pp WHERE c.name='family' AND pp->>'role'='owner' AND jsonb_typeof(pp->'telegram_user_id') <> 'null' LIMIT 1;" \
       2>/dev/null | head -n1 || true)"
   fi
@@ -131,7 +131,7 @@ _WF_OWN_TRIGGER_JQ='def own_trigger: [.nodes[]?.type | select((test("Trigger$") 
 #   in deploy_workflows bricht dann mit Klartext ab.
 _schedule_placeholder_map() {
   [ -n "${N8N_DB_NAME:-}" ] || return 0
-  runuser -u "$DB_SUPERUSER" -- psql -tA -X -v ON_ERROR_STOP=1 -d "$N8N_DB_NAME" -c \
+  pg_su_psql -tA -X -v ON_ERROR_STOP=1 -d "$N8N_DB_NAME" -c \
     "SELECT COALESCE(jsonb_object_agg('__CFG_SCHEDULE_' || upper(key) || '__', value), '{}'::jsonb) FROM core.config WHERE category = 'schedule';" \
     2>/dev/null | head -n1 || true
 }
@@ -447,8 +447,8 @@ deploy_workflows() {
   local scope="${1:-core}"
   _DEPLOY_DEACTIVATED=(); _DEPLOY_DEACT_FAILED=0; _DEPLOY_HARNESS_RETIRE=''   # kein Rest eines frueheren Aufrufs (retire_stale liest es)
   [ -n "${N8N_API_KEY:-}" ] || die "N8N_API_KEY nicht gesetzt (Owner-Bootstrap)."
-  require_cmd jq; require_cmd curl; require_cmd runuser
-  local n8n_bin; n8n_bin="$(command -v n8n || true)"
+  require_cmd jq; require_cmd curl; require_su_tools
+  local n8n_bin; n8n_bin="$(n8n_bin_path)"
   [ -n "$n8n_bin" ] || die "n8n-Binary nicht im PATH (install_n8n muss vorher laufen)."
 
   # Scope-Praedikat aufbauen: package -> dessen agents; core -> alles NICHT-Nicht-Core.
@@ -504,7 +504,7 @@ deploy_workflows() {
   local hitl_chat; _hitl_chat_approval "$scope" >/dev/null; hitl_chat="$_HITL_CHAT_APPROVAL_VAL"   # Cache im Eltern-Prozess setzen
   local app_path; app_path="$(_app_path)"
 
-  local staging; staging="$(mktemp -d /tmp/n8n_wf_deploy.XXXXXX)"; chmod 0755 "$staging"
+  local staging; staging="$(mktemp -d "${TMPDIR:-/tmp}/n8n_wf_deploy.XXXXXX")"; chmod 0755 "$staging"
   log "Workflows patchen (Scope '$scope': Credential-Remap + Zeitplaene + Owner-chat_id) -> $staging ..."
   local f base name count=0
   for d in "${wf_dirs[@]}"; do
@@ -621,11 +621,7 @@ deploy_workflows() {
   local n_import; n_import="$(find "$staging/import" -maxdepth 1 -name '*.json' | wc -l)"
   if [ "$n_import" -gt 0 ]; then
     log "n8n import:workflow --separate (id-erhaltend, Scope '$scope': $n_import neu/geaendert, $n_skip unveraendert) ..."
-    # shellcheck disable=SC2016
-    if ! runuser -u "$N8N_USER" -- bash -c '
-          set -a; . "$1"; set +a
-          exec "$2" import:workflow --separate --input="$3"
-        ' _ "$N8N_ENV_FILE" "$n8n_bin" "$staging/import"; then
+    if ! n8n_cli_env "$N8N_ENV_FILE" import:workflow --separate --input="$staging/import"; then
       warn "Staging zur Fehlersuche behalten: $staging"
       [ "${#_DEPLOY_DEACTIVATED[@]}" -eq 0 ] || _reactivate_ids "${_DEPLOY_DEACTIVATED[@]}"
       die "n8n import:workflow fehlgeschlagen."
@@ -748,7 +744,7 @@ _push_bot_commands() {
 _bot_command_manifests() {
   local p
   printf '%s\n' "$REPO_ROOT/packages/core/manifest.json"
-  runuser -u "$DB_SUPERUSER" -- psql -X -tA -d "$N8N_DB_NAME" \
+  pg_su_psql -X -tA -d "$N8N_DB_NAME" \
       -c "SELECT package FROM core.package_registry WHERE status = 'active' AND package <> 'core' ORDER BY package" 2>/dev/null |
   while IFS= read -r p; do
     printf '%s' "$p" | grep -qE '^[a-z][a-z0-9_]*$' || continue
@@ -797,7 +793,7 @@ _set_bot_command_menus() {
   # (kein jq-Re-Parse -> keine Double-Precision auf grossen IDs).
   owner_chat="$(_resolve_owner_chat_id)"
   if printf '%s' "$owner_chat" | grep -qE '^[0-9]+$' && [ "$owner_chat" != "0" ]; then owner_ok=1; fi
-  owner_lang="$(runuser -u "$DB_SUPERUSER" -- psql -X -tA -d "$N8N_DB_NAME" \
+  owner_lang="$(pg_su_psql -X -tA -d "$N8N_DB_NAME" \
       -c "SELECT agent.fn_person_lang(agent.fn_owner_person_id())->>'lang'" 2>/dev/null || true)"
   printf '%s' "$owner_lang" | grep -qE '^[a-z]{2}$' || owner_lang=de
 
@@ -832,7 +828,7 @@ _ensure_app_secret() {
   if printf "INSERT INTO core.app_secret (id, webapp_key) VALUES (TRUE, decode('%s', 'hex'))
 ON CONFLICT (id) DO UPDATE SET webapp_key = EXCLUDED.webapp_key, updated_at = now()
 WHERE core.app_secret.webapp_key IS DISTINCT FROM EXCLUDED.webapp_key;\n" "$key" |
-     runuser -u "$DB_SUPERUSER" -- psql -X -q -v ON_ERROR_STOP=1 -d "$N8N_DB_NAME" >/dev/null 2>&1; then
+     pg_su_psql -X -q -v ON_ERROR_STOP=1 -d "$N8N_DB_NAME" >/dev/null 2>&1; then
     ok "Schlüssel der Übersicht (Mini-App) gesetzt."
   else
     warn "Schlüssel der Übersicht nicht gespeichert (DB) — die Übersicht lehnt bis zum nächsten Update ab."
@@ -875,14 +871,14 @@ _set_bot_menu_buttons_run() {
   local state="${LIFEAGENTS_DIR:-/etc/lifeagents}/app-menu-chats" core_loc keep=' ' seen=' ' gen fails=0
   need_cmd jq || return 0
   # Generation VOR dem Lesen uebernehmen: was danach markiert wird, bleibt fuer den naechsten Lauf offen.
-  gen="$(runuser -u "$DB_SUPERUSER" -- psql -X -tA -d "$N8N_DB_NAME" -c "SELECT core.fn_menu_refresh_claim()->>'gen'" 2>/dev/null || true)"
+  gen="$(pg_su_psql -X -tA -d "$N8N_DB_NAME" -c "SELECT core.fn_menu_refresh_claim()->>'gen'" 2>/dev/null || true)"
   case "$gen" in ''|*[!0-9]*) gen='' ;; esac
   wh="$(read_env_value "${N8N_ENV_FILE:-/etc/n8n/n8n.env}" WEBHOOK_URL 2>/dev/null || true)"
   path="$(_app_path)"
   url=''
   case "$wh" in https://*) [ -n "$path" ] && url="${wh%/}/webhook/${path}" ;; esac
   # Ein psql-Aufruf liefert Schalter + Personen (tid|role|lang); DB nicht lesbar -> nichts aendern.
-  rows="$(runuser -u "$DB_SUPERUSER" -- psql -X -tA -F '|' -d "$N8N_DB_NAME" -c "
+  rows="$(pg_su_psql -X -tA -F '|' -d "$N8N_DB_NAME" -c "
     SELECT 'cfg', COALESCE(core.fn_config_get('core','app','enabled'), ''), COALESCE(core.fn_config_get('core','app','audience'), ''),
            (SELECT count(*) FROM core.app_screens s WHERE core.fn_package_active(s.package))::text
     UNION ALL
@@ -943,7 +939,7 @@ EOF
     { printf '%s\n' $seen $keep > "$state" && chmod 0600 "$state"; } 2>/dev/null || true
   fi
   if [ -n "$gen" ]; then
-    runuser -u "$DB_SUPERUSER" -- psql -X -tA -q -d "$N8N_DB_NAME" \
+    pg_su_psql -X -tA -q -d "$N8N_DB_NAME" \
       -c "SELECT core.fn_menu_refresh_finish(${gen}, $([ "$fails" -eq 0 ] && echo true || echo false))" >/dev/null 2>&1 || true
   fi
   ok "Übersicht-Knopf: ${ok_n} Chat(s) mit Knopf, ${reset_n} mit Befehlsmenü."

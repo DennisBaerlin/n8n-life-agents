@@ -30,7 +30,7 @@ proxy_cmd_show() {
     fw="keine (nicht nötig)"
   elif [ "$(id -u)" -ne 0 ]; then
     fw="(Prüfung braucht root)"   # unerreichbar seit dem root-Gate oben; bleibt als Absicherung
-  elif systemctl is-active --quiet lifeagents-firewall.service && firewall_set_matches "$list"; then
+  elif svc_is_active lifeagents-firewall.service && firewall_set_matches "$list"; then
     fw="aktiv — n8n nur für $(printf '%s' "$nonloop" | paste -sd, - | sed 's/,/, /g')"
   else
     fw="FEHLT/weicht ab — erneut anwenden: lifeagents proxy set ${list}"

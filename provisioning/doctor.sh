@@ -36,7 +36,7 @@ _warn() { printf '  [WARN] %s\n' "$*"; }   # Hinweis, zaehlt NICHT als Fehler (o
 
 svc_active() {
   local unit="$1" label="$2"
-  if systemctl is-active --quiet "$unit"; then _pass "$label aktiv ($unit)"; else _red "$label NICHT aktiv ($unit)"; fi
+  if svc_is_active "$unit"; then _pass "$label aktiv ($unit)"; else _red "$label NICHT aktiv ($unit)"; fi
 }
 
 # _doctor_app_check <webhook-base> <app-path> [telegram_ok] — die Seite je Adressfamilie ueber die Domain abrufen und
@@ -80,7 +80,7 @@ main() {
 
   # --- PostgreSQL ---
   svc_active postgresql "PostgreSQL"
-  if need_cmd pg_isready && pg_isready -q 2>/dev/null; then _pass "PostgreSQL nimmt Verbindungen an"
+  if pg_ready 2>/dev/null; then _pass "PostgreSQL nimmt Verbindungen an"
   else _red "PostgreSQL pg_isready negativ"; fi
   # UTF-8 ist Gesetz (provisioning/CLAUDE.md): in einer SQL_ASCII-DB sind Umlaute nur Bytes (Proxmox-Vorlage LANG="C"
   # + Installer <= v0.4.0). Lesen braucht root (Peer-Auth als postgres) -> sonst SKIP statt Fehl-ROT.
@@ -97,20 +97,20 @@ main() {
   # readiness = DB verbunden UND migriert (nach einem Versionssprung erst nach den Migrationen gruen).
   if curl -fsS --max-time 5 -o /dev/null "http://127.0.0.1:${N8N_PORT}/healthz/readiness" 2>/dev/null; then
     _pass "n8n bereit (http://127.0.0.1:${N8N_PORT}/healthz/readiness)"
-  else _red "n8n meldet sich nicht bereit (Port ${N8N_PORT}) — journalctl -u n8n -n 100"; fi
+  else _red "n8n meldet sich nicht bereit (Port ${N8N_PORT}) — $(svc_logs_hint n8n)"; fi
   # Installierte Version gegen den Pin des installierten Baums (EINE Adresse: provision.sh) + Node.
   local _pin _have
   # shellcheck disable=SC2016  # $ ist hier ein Literal im sed-Muster (die Default-Zeile von provision.sh)
   _pin="$(sed -n 's/^N8N_VERSION="\${N8N_VERSION:-\(.*\)}"$/\1/p' "$SCRIPT_DIR/provision.sh" 2>/dev/null || true)"
-  _have="$(n8n --version 2>/dev/null || true)"
+  _have="$(n8n_exec n8n --version 2>/dev/null || true)"
   if [ -n "$_pin" ] && [ -n "$_have" ] && [ "$_pin" != "$_have" ]; then
     _red "n8n ${_have} installiert, erwartet ${_pin} — 'lifeagents update' erneut starten"
   elif [ -n "$_have" ]; then
-    _pass "n8n ${_have} · Node.js $(node -v 2>/dev/null || printf '?')"
+    _pass "n8n ${_have} · Node.js $(n8n_exec node -v 2>/dev/null || printf '?')"
   fi
   # n8n-Korrekturen (lib/n8n_patches.sh): aktiv = gruen; Zeile von n8n geaendert = Hinweis (vermutlich behoben,
   # Patch pruefen); Original noch da oder unbekannte Fassung = ROT (der Fehler wirkt im Betrieb).
-  if need_cmd n8n; then
+  if n8n_present; then
     local _pid _pst
     while IFS= read -r _pid; do
       [ -n "$_pid" ] || continue
@@ -129,30 +129,34 @@ main() {
   fi
 
   # --- Update im Chat (lib/install_update_timers.sh + lib/update_runner.sh) ---
-  svc_active lifeagents-update-check.timer "Täglicher Release-Check"
-  svc_active lifeagents-update-run.timer "Update-Aufträge aus dem Chat"
-  if [ "$(id -u)" -eq 0 ] && need_cmd psql && need_cmd runuser; then
+  if rt_is_compose; then
+    _skip "Update im Chat: im Docker-Verbund noch ohne Runner (folgt mit dem master-Dienst)"
+  else
+    svc_active lifeagents-update-check.timer "Täglicher Release-Check"
+    svc_active lifeagents-update-run.timer "Update-Aufträge aus dem Chat"
+  fi
+  if [ "$(id -u)" -eq 0 ] && need_su_tools; then
     local _stuck _lastfail _help
     # Haengender Auftrag: offen seit > 60 min UND die Update-Sperre ist frei (sonst laeuft er gerade wirklich).
-    _stuck="$(runuser -u postgres -- psql -X -tA -d "$N8N_DB_NAME" -c \
+    _stuck="$(pg_su_psql -X -tA -d "$N8N_DB_NAME" -c \
       "SELECT id FROM core.update_requests WHERE finished_at IS NULL AND requested_at < now() - interval '60 minutes' LIMIT 1" 2>/dev/null || true)"
     if [ -n "$_stuck" ] && update_lock_free; then
       _red "Update-Auftrag ${_stuck} hängt seit über einer Stunde — der Runner läuft nicht (journalctl -u lifeagents-update-run -n 50)"
     fi
     # Das letzte Update der letzten 7 Tage ist gescheitert -> dieselbe Hilfe wie im Chat (core.fn_update_report).
-    _lastfail="$(runuser -u postgres -- psql -X -tA -d "$N8N_DB_NAME" -c \
+    _lastfail="$(pg_su_psql -X -tA -d "$N8N_DB_NAME" -c \
       "SELECT id FROM (SELECT id, outcome FROM core.update_requests WHERE finished_at > now() - interval '7 days'
                         ORDER BY finished_at DESC, id DESC LIMIT 1) l
         WHERE outcome IN ('partial','held','failed','interrupted')" 2>/dev/null || true)"
     if [ -n "$_lastfail" ]; then
-      _help="$(runuser -u postgres -- psql -X -tA -d "$N8N_DB_NAME" -c \
+      _help="$(pg_su_psql -X -tA -d "$N8N_DB_NAME" -c \
         "SELECT core.fn_update_report(jsonb_build_object('request_id', ${_lastfail}::bigint, 'phase', 'result', 'bot_up', true))->>'text'" 2>/dev/null || true)"
       _warn "Das letzte Update hat nicht vollständig geklappt:"
       printf '%s\n' "$_help" | sed 's/^/         /'
     fi
     # Menue-Auftrag der Uebersicht (core.menu_refresh): derselbe Runner setzt die Knoepfe nach Kopplung/Sprachwechsel;
     # offen seit > 30 min = der Runner laeuft nicht; aufgegeben (3 Fehlschlaege in Folge) = Telegram lehnt einen Chat ab.
-    if [ -n "$(runuser -u postgres -- psql -X -tA -d "$N8N_DB_NAME" -c \
+    if [ -n "$(pg_su_psql -X -tA -d "$N8N_DB_NAME" -c \
           "SELECT 1 FROM core.menu_refresh WHERE (requested_gen > done_gen AND requested_at < now() - interval '30 minutes')
               OR gave_up_at > now() - interval '7 days'" 2>/dev/null || true)" ]; then
       _warn "Übersicht-Knöpfe nicht vollständig nachgezogen (Kopplung/Sprache geändert, Telegram lehnte ab) — journalctl -u lifeagents-update-run -n 50"
@@ -163,11 +167,11 @@ main() {
   svc_active lifeagents-llm-gateway "LLM-Gateway"
   if curl -fsS --max-time 3 -o /dev/null "http://127.0.0.1:8090/__health" 2>/dev/null; then   # Port fest (install_llm_gateway.sh)
     _pass "LLM-Gateway Health OK (Prompt-Caching aktiv)"
-  else _red "LLM-Gateway antwortet nicht — kein Agent erreicht Claude. Diagnose: journalctl -u lifeagents-llm-gateway -n 50"; fi
+  else _red "LLM-Gateway antwortet nicht — kein Agent erreicht Claude. Diagnose: $(svc_logs_hint lifeagents-llm-gateway)"; fi
   # fallback = Anthropic lehnte die Cache-Haltepunkte ab, Anfrage lief ohne Caching (teurer, aber funktionsfaehig).
-  if [ "$(id -u)" -eq 0 ] && need_cmd journalctl; then
+  if [ "$(id -u)" -eq 0 ]; then
     local _fb
-    _fb="$(journalctl -u lifeagents-llm-gateway --since '-24h' -o cat 2>/dev/null | grep -c '"fallback":true' || true)"
+    _fb="$(svc_journal_since lifeagents-llm-gateway '-24h' | grep -c '"fallback":true' || true)"
     if [ "${_fb:-0}" -gt 0 ]; then
       _warn "LLM-Gateway: ${_fb} Anfrage(n) in 24 h ohne Caching wiederholt (Anthropic lehnte die Haltepunkte ab) — journalctl -u lifeagents-llm-gateway"
     fi
@@ -180,7 +184,11 @@ main() {
   local _tp _tp_list _tp_nonloop _bind _tp_show
   _tp="${TRUSTED_PROXIES:-$(read_env_value /etc/lifeagents/core.env TRUSTED_PROXIES 2>/dev/null || true)}"
   _bind="$(read_env_value "$N8N_ENV_FILE" N8N_LISTEN_ADDRESS 2>/dev/null || true)"
-  if ! _tp_list="$(normalize_trusted_proxies "$_tp" 2>/dev/null)"; then
+  if rt_is_compose; then
+    # Verbund: n8n lauscht im Namensraum des anchor auf 0.0.0.0, erreichbar nur ueber das interne Netz zum Rand (compose.yml).
+    # Die Messung von aussen (Editor gesperrt, nur die oeffentlichen Pfade offen) kommt mit dem doctor-Ausbau (Paket 2).
+    _skip "Netz-Grenze im Docker-Verbund: n8n bindet ${_bind:-0.0.0.0} im Verbund, Messung von außen folgt"
+  elif ! _tp_list="$(normalize_trusted_proxies "$_tp" 2>/dev/null)"; then
     _red "TRUSTED_PROXIES ungültig ('${_tp}') — korrigieren: lifeagents proxy set <IP des Proxy-Rechners>"
   else
     _tp_nonloop="$(_proxy_nonloop "$_tp_list")"
@@ -193,7 +201,7 @@ main() {
         _red "Proxy auf anderem Rechner (${_tp_show}) eingetragen, aber n8n lauscht nur lokal — der Proxy bekommt 502 (Firewall ließ sich nicht einrichten?). Erneut: lifeagents proxy set ${_tp_list}"
       elif [ "$(id -u)" -ne 0 ]; then
         _skip "Firewall-Prüfung (braucht root: sudo lifeagents doctor)"
-      elif systemctl is-active --quiet "$LA_FW_UNIT_NAME" && firewall_set_matches "$_tp_list"; then
+      elif svc_is_active "$LA_FW_UNIT_NAME" && firewall_set_matches "$_tp_list"; then
         _pass "Firewall aktiv: n8n (Port ${N8N_PORT}) nur für ${_tp_show}"
       else
         _red "Firewall fehlt oder weicht ab — n8n lauscht im Heimnetz ohne passende Freigabe. Sofort: lifeagents proxy set ${_tp_list}"
@@ -228,8 +236,8 @@ main() {
   # Install-UX-Phase 4 — die fruehere Datei-Heuristik meldete nach `uninstall --keep-data` ROT fuer ein nicht
   # installiertes Paket). Ohne root (kein DB-Zugriff) faellt der Check auf die Datei-Heuristik zurueck.
   local _installed=''
-  if [ "$(id -u)" -eq 0 ] && need_cmd psql && need_cmd runuser; then
-    _installed=" $(runuser -u postgres -- psql -X -tA -d "$N8N_DB_NAME" -c "SELECT package FROM core.package_registry" 2>/dev/null | tr '\n' ' ' || true)"
+  if [ "$(id -u)" -eq 0 ] && need_su_tools; then
+    _installed=" $(pg_su_psql -X -tA -d "$N8N_DB_NAME" -c "SELECT package FROM core.package_registry" 2>/dev/null | tr '\n' ' ' || true)"
   fi
   if need_cmd jq && [ -d "$_pkgroot" ]; then
     local _mf _pkg _envf _entry _cname _req _keys _k _v _miss _ncred _nok

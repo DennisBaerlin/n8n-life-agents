@@ -219,3 +219,128 @@ jobs:
       - name: Teardown
         if: always()
         run: docker rm -f la la-proxy la-stranger || true
+
+  # Docker-Verbund (LIFEAGENTS_RUNTIME=compose, provisioning/compose/): dieselbe provision.sh im master-Container, kalt,
+  # mit allen Paketen. Beweist: Wrapper-Naht (lib/runtime.sh) traegt die ganze Installation, das master-Image aus dem
+  # Release-Weg (`git archive`, LF laut .gitattributes) laeuft, Zweitlauf legt keinen Container neu an, n8n uebersteht
+  # einen Neustart, der Rand erreicht n8n, aber weder Postgres noch Gateway, und ein fremder Nachbar-Container samt Volume
+  # und Netz bleibt unveraendert (Plan *Wenn Docker schon da ist*).
+  compose-stack-cold:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      LA_PROJECT: ci-lifeagents
+      LA_EDGE_PORT: '5880'
+      LA_MASTER_IMAGE: ci-lifeagents-master:ci
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Build the master image from the release tree (git archive, like release.yml)
+        run: |
+          set -euo pipefail
+          git archive --format=tar HEAD provisioning packages .gitattributes \
+            | docker build -q -f provisioning/compose/master.Dockerfile -t "$LA_MASTER_IMAGE" -
+          # CRLF-Fund aus dem Probelauf: ein CR in einem Installer-Skript bricht bash mit pipefail ab.
+          crlf="$(docker run --rm --entrypoint sh "$LA_MASTER_IMAGE" -c "grep -rlI \"\$(printf '\r')\" /opt/lifeagents/provisioning || true")"
+          [ -z "$crlf" ] || { echo "FAIL CRLF im master-Image:"; echo "$crlf"; exit 1; }
+
+      - name: Neighbour before (foreign container + volume + network, no label of ours)
+        run: |
+          set -euo pipefail
+          docker network create ci-neighbour-net >/dev/null
+          docker volume create ci-neighbour-data >/dev/null
+          docker run -d --name ci-neighbour --network ci-neighbour-net -v ci-neighbour-data:/data alpine:3.20 \
+            sh -c 'echo keep > /data/marker; sleep 3600' >/dev/null
+          state() {
+            docker inspect -f '{{.Id}} {{.State.StartedAt}} {{.RestartCount}} {{.State.Status}}' ci-neighbour
+            docker volume inspect -f '{{.Name}} {{.CreatedAt}}' ci-neighbour-data
+            docker network inspect -f '{{.Id}}' ci-neighbour-net
+            docker exec ci-neighbour cat /data/marker
+          }
+          state > "$RUNNER_TEMP/neighbour.before"; cat "$RUNNER_TEMP/neighbour.before"
+
+      - name: Start the stack (volumes, anchor, postgres, master, edge)
+        run: |
+          set -euo pipefail
+          pw="$(openssl rand -hex 16)"; echo "::add-mask::$pw"
+          echo "LA_PG_SUPERPW=$pw" >> "$GITHUB_ENV"
+          LA_PG_SUPERPW="$pw" bash provisioning/compose/stack.sh up
+
+      - name: Install everything inside the master (provision.sh, all packages, invented values)
+        run: |
+          set -euo pipefail
+          printf "%s\n" \
+            "N8N_OWNER_EMAIL='ci@example.com'" \
+            "N8N_OWNER_PASSWORD='CiRunner1'" \
+            "OWNER_FIRST_NAME='CI'" \
+            "OWNER_LAST_NAME='Runner'" \
+            "OWNER_BIRTH_DATE='1990-01-01'" \
+            "OWNER_LANGUAGE='de'" \
+            "LLM_GATEWAY_KEEPALIVE_HOURS=0" > "$RUNNER_TEMP/answers.env"
+          docker ps --filter "label=io.lifeagents.install=$LA_PROJECT" --format '{{.Names}} {{.ID}}' | sort > "$RUNNER_TEMP/ids.1"
+          bash provisioning/compose/stack.sh install "$RUNNER_TEMP/answers.env" --profile dev --packages all
+
+      - name: Assert the stack (doctor, UTF-8, every workflow published, edge reaches only n8n)
+        run: |
+          set -euo pipefail
+          docker exec "$LA_PROJECT-master" bash /opt/lifeagents/provisioning/doctor.sh
+          q() { docker exec "$LA_PROJECT-postgres" psql -U postgres -d n8n -tAc "$1" | tr -d '[:space:]'; }
+          test "$(q "SELECT pg_encoding_to_char(encoding) FROM pg_database WHERE datname='n8n'")" = UTF8
+          total="$(q 'SELECT count(*) FROM public.workflow_entity')"
+          unpub="$(q 'SELECT count(*) FROM public.workflow_entity WHERE "activeVersionId" IS NULL')"
+          echo "workflows: $total, unpublished: $unpub"
+          [ "$total" -ge 100 ] && [ "$unpub" = 0 ]
+          test "$(q "SELECT count(*) FROM core.package_registry WHERE status='active'")" -ge 5
+          test "$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:${LA_EDGE_PORT}/healthz")" = 200
+          docker exec "$LA_PROJECT-edge" nc -z -w 2 anchor 5678   # Gegenprobe: nc funktioniert, n8n ist erreichbar
+          if docker exec "$LA_PROJECT-edge" nc -z -w 2 anchor 8090; then echo "FAIL edge reaches the gateway"; exit 1; fi
+          if docker exec "$LA_PROJECT-edge" nc -z -w 2 anchor 5432; then echo "FAIL edge reaches postgres"; exit 1; fi
+
+      - name: Second run is a no-op (no container recreated) and n8n survives a restart
+        run: |
+          set -euo pipefail
+          bash provisioning/compose/stack.sh install "$RUNNER_TEMP/answers.env" --profile dev --packages all
+          docker ps --filter "label=io.lifeagents.install=$LA_PROJECT" --format '{{.Names}} {{.ID}}' | sort > "$RUNNER_TEMP/ids.2"
+          grep -v -e '-n8n ' -e '-gateway ' "$RUNNER_TEMP/ids.1" > "$RUNNER_TEMP/ids.1.base"   # n8n und gateway entstehen erst im Erstlauf
+          grep -v -e '-n8n ' -e '-gateway ' "$RUNNER_TEMP/ids.2" > "$RUNNER_TEMP/ids.2.base"
+          diff "$RUNNER_TEMP/ids.1.base" "$RUNNER_TEMP/ids.2.base"
+          docker restart "$LA_PROJECT-n8n" >/dev/null
+          ready=""
+          for _ in $(seq 1 90); do
+            if curl -fsS --max-time 2 -o /dev/null "http://127.0.0.1:${LA_EDGE_PORT}/healthz/readiness"; then ready=1; break; fi
+            sleep 2
+          done
+          [ -n "$ready" ] || { docker logs --tail 80 "$LA_PROJECT-n8n"; exit 1; }
+          # Ohne Telegram-Token darf nach dem Neustart kein Auth-Fehler auftauchen (AxiosError 401 = Telegram-Trigger
+          # mit erfundenem Token, Probelauf-Fund).
+          if docker logs --since 5m "$LA_PROJECT-n8n" 2>&1 | grep -q 'AxiosError'; then docker logs --since 5m "$LA_PROJECT-n8n" 2>&1 | tail -40; exit 1; fi
+          docker exec "$LA_PROJECT-master" bash /opt/lifeagents/provisioning/doctor.sh
+
+      - name: Neighbour after (unchanged)
+        run: |
+          set -euo pipefail
+          state() {
+            docker inspect -f '{{.Id}} {{.State.StartedAt}} {{.RestartCount}} {{.State.Status}}' ci-neighbour
+            docker volume inspect -f '{{.Name}} {{.CreatedAt}}' ci-neighbour-data
+            docker network inspect -f '{{.Id}}' ci-neighbour-net
+            docker exec ci-neighbour cat /data/marker
+          }
+          state > "$RUNNER_TEMP/neighbour.after"
+          diff "$RUNNER_TEMP/neighbour.before" "$RUNNER_TEMP/neighbour.after"
+
+      - name: Logs on failure
+        if: failure()
+        run: |
+          for c in master n8n postgres gateway edge; do echo "=== $c"; docker logs --tail 60 "$LA_PROJECT-$c" 2>&1 || true; done
+
+      - name: Teardown (only our project + the neighbour)
+        if: always()
+        run: |
+          docker compose -p "$LA_PROJECT" -f provisioning/compose/compose.yml down --remove-orphans || true
+          for v in pgdata n8n_home etc_n8n etc_la var_la rt_tree gw_state ts_state; do docker volume rm "${LA_PROJECT}_$v" >/dev/null 2>&1 || true; done
+          docker rm -f ci-neighbour >/dev/null 2>&1 || true
+          docker volume rm ci-neighbour-data >/dev/null 2>&1 || true
+          docker network rm ci-neighbour-net >/dev/null 2>&1 || true

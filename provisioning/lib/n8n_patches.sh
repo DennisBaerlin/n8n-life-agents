@@ -62,23 +62,75 @@ _n8n_patch_field() {
 # n8n_patch_ids -> alle Patch-ids, je Zeile eine
 n8n_patch_ids() { local row; for row in "${N8N_PATCHES[@]}"; do printf '%s\n' "${row%%|*}"; done; }
 
-# n8n_patch_file <id> -> absoluter Pfad (Fehler, wenn npm fehlt)
+# n8n_patch_file <id> -> absoluter Pfad (Fehler, wenn npm fehlt). compose: Pfad IM n8n-Image (dessen globales npm-root;
+#   compose.yml legt die gepatchte Datei genau dort ueber das Original, contract_lint 33 haelt beide gleich).
+N8N_IMAGE_NPM_ROOT="${N8N_IMAGE_NPM_ROOT:-/usr/local/lib/node_modules}"
 n8n_patch_file() {
-  local root; root="$(npm root -g 2>/dev/null || true)"
+  local root
+  if rt_is_compose; then root="$N8N_IMAGE_NPM_ROOT"; else root="$(npm root -g 2>/dev/null || true)"; fi
   [ -n "$root" ] || return 1
   printf '%s/%s' "$root" "$(_n8n_patch_field "$1" 2)"
 }
 
-# n8n_patch_status <id> -> original | patched | changed | unknown | missing   (read-only)
+# n8n_patch_status <id> -> original | patched | changed | unknown | missing   (read-only; compose: die Datei, wie der
+#   laufende n8n-Container sie sieht, also inkl. Patch-Mount)
 n8n_patch_status() {
   local f sha
   f="$(n8n_patch_file "$1" 2>/dev/null || true)"
-  if [ -z "$f" ] || [ ! -f "$f" ]; then printf 'missing'; return 0; fi
-  sha="$(sha256sum "$f" | cut -d' ' -f1)"
+  if [ -z "$f" ] || ! n8n_live_cat "$f" >/dev/null 2>&1; then printf 'missing'; return 0; fi
+  sha="$(n8n_live_cat "$f" | sha256sum | cut -d' ' -f1)"
   if [ "$sha" = "$(_n8n_patch_field "$1" 3)" ]; then printf 'original'
   elif [ "$sha" = "$(_n8n_patch_field "$1" 4)" ]; then printf 'patched'
-  elif grep -qF -- "$(_n8n_patch_anchor "$1")" "$f"; then printf 'unknown'
+  elif n8n_live_cat "$f" | grep -qF -- "$(_n8n_patch_anchor "$1")"; then printf 'unknown'
   else printf 'changed'; fi
+}
+
+# _n8n_patch_render <id> <quelle> <ziel> — woertlicher Ersatz je Paar, jeder Anker genau EINMAL (node ist da: n8n laeuft
+#   darauf; compose: node im master). Paare ueber Env. rc 0 = geschrieben.
+_n8n_patch_render() {
+  PATCH_SRC="$2" PATCH_DST="$3" PATCH_PAIRS="$(_n8n_patch_pairs "$1")" node -e '
+      const fs = require("fs"); let s = fs.readFileSync(process.env.PATCH_SRC, "utf8");
+      for (const [a, b] of JSON.parse(process.env.PATCH_PAIRS)) {
+        const parts = s.split(a);
+        if (parts.length !== 2) process.exit(3);
+        s = parts.join(b);
+      }
+      fs.writeFileSync(process.env.PATCH_DST, s);'
+}
+
+# _apply_n8n_patches_compose — Verbund: n8n liegt im UNVERAENDERLICHEN Image (kein eigenes Image, Einwand 5). Das Original
+#   wird aus dem Image gelesen (n8n_image_cat, nie aus dem laufenden Container mit dem Mount), geprueft, gepatcht und in
+#   das Volume N8N_PATCH_DIR (`n8n_patches`) geschrieben; compose.yml legt `<id>.js` per Volume-Unterpfad schreibgeschuetzt
+#   ueber die Original-Datei. In place ueberschrieben (gleiche Inode: ein laufender Mount sieht die neue Fassung).
+_apply_n8n_patches_compose() {
+  local id f src tmp out="${N8N_PATCH_DIR:-/opt/n8n-patches}" sha
+  install -d -m 0755 "$out"
+  while IFS= read -r id; do
+    [ -n "$id" ] || continue
+    f="$(n8n_patch_file "$id")"
+    src="$(mktemp)"; tmp="$(mktemp)"
+    if ! n8n_image_cat "$f" > "$src" 2>/dev/null; then
+      warn "n8n-Korrektur '${id}': Datei im Image nicht gefunden ($f) — n8n-Aufbau geändert? Patch prüfen ($(_n8n_patch_field "$id" 5))."
+      rm -f "$src" "$tmp"; continue
+    fi
+    sha="$(sha256sum "$src" | cut -d' ' -f1)"
+    if [ "$sha" != "$(_n8n_patch_field "$id" 3)" ]; then
+      warn "n8n-Korrektur '${id}': Image-Fassung ist nicht die erwartete Original-Datei — NICHT gepatcht ($(_n8n_patch_field "$id" 5))."
+      rm -f "$src" "$tmp"; continue
+    fi
+    if _n8n_patch_render "$id" "$src" "$tmp" && [ "$(sha256sum "$tmp" | cut -d' ' -f1)" = "$(_n8n_patch_field "$id" 4)" ]; then
+      if [ -f "$out/$id.js" ] && cmp -s "$tmp" "$out/$id.js"; then
+        ok "n8n-Korrektur '${id}' ist aktiv."
+      else
+        cat "$tmp" > "$out/$id.js"; chmod 0644 "$out/$id.js"
+        N8N_PATCH_CHANGED=1
+        ok "n8n-Korrektur '${id}' erzeugt (${out}/${id}.js)."
+      fi
+    else
+      warn "n8n-Korrektur '${id}': Ersatz ergab nicht die erwartete Fassung — nicht angelegt."
+    fi
+    rm -f "$src" "$tmp"
+  done < <(n8n_patch_ids)
 }
 
 # apply_n8n_patches — alle Patches anwenden (root, nach ensure_n8n_package). Setzt N8N_PATCH_CHANGED=1, wenn eine
@@ -86,6 +138,7 @@ n8n_patch_status() {
 apply_n8n_patches() {
   local id f tmp
   N8N_PATCH_CHANGED=0
+  if rt_is_compose; then _apply_n8n_patches_compose; return 0; fi
   while IFS= read -r id; do
     [ -n "$id" ] || continue
     case "$(n8n_patch_status "$id")" in
@@ -97,14 +150,7 @@ apply_n8n_patches() {
         f="$(n8n_patch_file "$id")"
         tmp="${f}.lifeagents-tmp"
         # Woertlicher Ersatz je Paar, jeder Anker genau EINMAL (node ist da: n8n laeuft darauf); Paare ueber Env
-        if PATCH_SRC="$f" PATCH_DST="$tmp" PATCH_PAIRS="$(_n8n_patch_pairs "$id")" node -e '
-            const fs = require("fs"); let s = fs.readFileSync(process.env.PATCH_SRC, "utf8");
-            for (const [a, b] of JSON.parse(process.env.PATCH_PAIRS)) {
-              const parts = s.split(a);
-              if (parts.length !== 2) process.exit(3);
-              s = parts.join(b);
-            }
-            fs.writeFileSync(process.env.PATCH_DST, s);' \
+        if _n8n_patch_render "$id" "$f" "$tmp" \
            && [ "$(sha256sum "$tmp" | cut -d' ' -f1)" = "$(_n8n_patch_field "$id" 4)" ]; then
           cp -p "$f" "${f}.orig"
           chmod --reference="$f" "$tmp" && chown --reference="$f" "$tmp"

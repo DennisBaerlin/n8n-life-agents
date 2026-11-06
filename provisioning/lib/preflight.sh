@@ -33,6 +33,8 @@ _preflight_n8n_mb() {
 # _preflight_disk_need -> benoetigte MB auf STDOUT (siehe oben).
 _preflight_disk_need() {
   if [ -n "$PREFLIGHT_MIN_DISK_MB" ]; then printf '%s' "$PREFLIGHT_MIN_DISK_MB"; return 0; fi
+  # Verbund: die Images (n8n, Postgres, Gateway) laedt Docker, nicht dieser Lauf -> nur die Reserve im master.
+  if rt_is_compose; then printf '%s' "$PREFLIGHT_RESERVE_MB"; return 0; fi
   local need="$PREFLIGHT_RESERVE_MB"
   if ! { need_cmd n8n && [ "$(_upg_n8n_version)" = "${N8N_VERSION:-}" ]; }; then
     need=$((need + $(_preflight_n8n_mb) + PREFLIGHT_NPM_CACHE_MB))
@@ -51,7 +53,7 @@ _preflight_disk_need() {
 _preflight_db_mb() {
   local mb=''
   if need_cmd psql && dpkg -s "postgresql-${PG_VERSION:-17}" >/dev/null 2>&1; then
-    mb="$(runuser -u postgres -- psql -X -tAc \
+    mb="$(pg_su_psql -X -tAc \
             "SELECT pg_database_size(datname) / 1048576 FROM pg_database WHERE datname = '${N8N_DB_NAME:-n8n}'" 2>/dev/null || true)"
   fi
   case "$mb" in ''|*[!0-9]*) printf '0' ;; *) printf '%s' "$mb" ;; esac
@@ -75,9 +77,14 @@ preflight() {
   [ -n "${VERSION_CODENAME:-}" ] || die "VERSION_CODENAME fehlt in /etc/os-release (für PGDG-Repo nötig)."
   ok "OS: ${PRETTY_NAME:-$ID} (codename: $VERSION_CODENAME)"
 
-  # systemd is the service manager we target (n8n.service / postgresql).
-  need_cmd systemctl || die "systemctl fehlt — dieses Provisioning setzt systemd voraus."
-  [ -d /run/systemd/system ] || die "systemd läuft nicht als PID 1 (kein /run/systemd/system) — LXC braucht systemd-Init."
+  # Dienst-Verwaltung: systemd (n8n.service / postgresql) bzw. im Verbund der Docker-Socket des master.
+  if rt_is_compose; then
+    need_cmd docker || die "docker fehlt im master-Container (Compose-Betrieb)."
+    rt_docker_ok || die "Docker-Socket nicht erreichbar (/var/run/docker.sock im master einhängen)."
+  else
+    need_cmd systemctl || die "systemctl fehlt — dieses Provisioning setzt systemd voraus."
+    systemd_present || die "systemd läuft nicht als PID 1 (kein /run/systemd/system) — LXC braucht systemd-Init."
+  fi
 
   # Bootstrap tools that must exist on a near-bare image (packages.sh installs the rest).
   local missing=()

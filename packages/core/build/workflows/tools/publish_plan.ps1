@@ -126,6 +126,12 @@ LEFT JOIN agent.advisor_plans a ON a.domain = p.dom AND a.person_id IS NOT DISTI
               Data = "={{ 'plan:share:' + String(`$('Start').item.json.domain || '') + ':' + String(`$('Publish plan (atomic)').item.json.version || '') }}" } )
     $offerShare['onError'] = 'continueRegularOutput'
 
+    # Uebergabe Berater -> Buchhalter: nach den beiden Angeboten die Uebersicht der im Gespraech vereinbarten Eintraege
+    # (agent.tool_send_handoff_overview sendet nur, wenn etwas offen ist). Reihenfolge fest: Waechter, Teilen, Uebersicht.
+    $nHandoff = Build-CallWorkflow 'Send handoff overview' @(3300, 260) (Get-RequiredWorkflowId 'agent.tool_send_handoff_overview' 'Build-PublishPlan') 'agent.tool_send_handoff_overview' `
+        ([ordered]@{ domain = "={{ `$('Start').item.json.domain }}"; chat_id = "={{ `$('Start').item.json.chat_id }}" })
+    $nHandoff['onError'] = 'continueRegularOutput'   # Komfort nach einem bereits committeten Publish
+
     # Return liest die Post-State-Felder EXPLIZIT aus dem Publish-Node (zwischen Publish und Return liegt jetzt
     # das Monitor-Angebot-Gate -> $json traegt hier nicht mehr den Publish-Output).
     $ret = Build-Return @(3520, 0) @(
@@ -147,10 +153,10 @@ LEFT JOIN agent.advisor_plans a ON a.domain = p.dom AND a.person_id IS NOT DISTI
 
     $stickyShare = Build-Sticky 'Doc Erwachsene informieren (Plan teilen)' @(2840, -360) `
         'Owner-Karte nach dem Publish (Plan teilen, 2026-10-28)' `
-        'Nach dem Monitor-Angebot (beide Ausgänge von Monitor off?) liest Read share offer core.fn_plan_share_preview(domain, neue Version, chat_id): shareable nur für den Owner, für die aktive Version eines Haushalts-Plans (persönliche Pläne nie) und wenn es mindestens einen Empfänger gibt (Rolle partner, mit Chat, plan_news nicht abgemeldet; Regel core.fn_plan_adult_recipients). Share offer? -> Offer share: Karte in der Sprache des Owners mit den Vornamen und dem Knopf Erwachsene informieren = plan:share:<domain>:<version> (Orchestrator: core.fn_handle_plan_cb -> core.sub_share_plan, einmal je Person und Version). change_summary geht in den Publish (fn speichert sie mit der Owner-Sprache als Provenienz). Alle drei Knoten und Offer monitoring laufen mit onError continue: das Publish ist zu diesem Zeitpunkt schon committet.' 360 560
+        'Nach dem Monitor-Angebot (beide Ausgänge von Monitor off?) liest Read share offer core.fn_plan_share_preview(domain, neue Version, chat_id): shareable nur für den Owner, für die aktive Version eines Haushalts-Plans (persönliche Pläne nie) und wenn es mindestens einen Empfänger gibt (Rolle partner, mit Chat, plan_news nicht abgemeldet; Regel core.fn_plan_adult_recipients). Share offer? -> Offer share: Karte in der Sprache des Owners mit den Vornamen und dem Knopf Erwachsene informieren = plan:share:<domain>:<version> (Orchestrator: core.fn_handle_plan_cb -> core.sub_share_plan, einmal je Person und Version). change_summary geht in den Publish (fn speichert sie mit der Owner-Sprache als Provenienz). Danach (beide Ausgänge) Send handoff overview = agent.tool_send_handoff_overview: Übersicht der im Gespräch vereinbarten, noch offenen Einträge mit Knopf Durchgehen (sendet nur, wenn etwas offen ist). Alle diese Knoten und Offer monitoring laufen mit onError continue: das Publish ist zu diesem Zeitpunkt schon committet.' 360 660
 
     $nodes = @($trig, $readState, $ifDraft, $errNoDraft) + $wg.Nodes + @($summary, $reqApproval, $ifApproved, $retCancelled, $ifOk, $errWrite,
-               $readCron, $ifMonitorOff, $offerMonitor, $readShare, $ifShare, $offerShare, $ret, $sticky, $stickyOffer, $stickyShare)
+               $readCron, $ifMonitorOff, $offerMonitor, $readShare, $ifShare, $offerShare, $nHandoff, $ret, $sticky, $stickyOffer, $stickyShare)
     $conns = [ordered]@{
         'Start'                  = @{ main = @( ,@( E 'Read plan state' ) ) }
         'Read plan state'        = @{ main = @( ,@( E 'Draft exists?' ) ) }
@@ -182,10 +188,11 @@ LEFT JOIN agent.advisor_plans a ON a.domain = p.dom AND a.person_id IS NOT DISTI
         'Offer monitoring'       = @{ main = @( ,@( E 'Read share offer' ) ) }
         'Read share offer'       = @{ main = @( ,@( E 'Share offer?' ) ) }
         'Share offer?'           = @{ main = @(
-            @( E 'Offer share' ),          # [true] Haushalts-Plan mit Empfaengern -> Owner-Karte -> Return
-            @( E 'Return' )                # [false] persoenlicher Plan / niemand zu informieren -> Return
+            @( E 'Offer share' ),          # [true] Haushalts-Plan mit Empfaengern -> Owner-Karte -> Uebersicht
+            @( E 'Send handoff overview' ) # [false] persoenlicher Plan / niemand zu informieren -> Uebersicht
         ) }
-        'Offer share'            = @{ main = @( ,@( E 'Return' ) ) }
+        'Offer share'            = @{ main = @( ,@( E 'Send handoff overview' ) ) }
+        'Send handoff overview'  = @{ main = @( ,@( E 'Return' ) ) }
     }
     return Build-Workflow 'agent.tool_publish_plan' $nodes $conns @{ Internal = $true }   # intern (Infra/Agent): keine Nutzer-Capability -> kein Katalog-Eintrag
 }

@@ -1022,5 +1022,11 @@
   "core.wizard.domain.live_ok": "Found ✓ The address points to your internet connection.",
   "core.wizard.domain.live_found": "Found ✓",
   "core.wizard.domain.live_wrong_ip": "This name does not belong to your internet connection. The picture shows where to find the right one.",
-  "core.wizard.domain.live_pending": "Nothing is registered under this name yet. If you just created the permit, wait about a minute and check again. Otherwise the name is wrong: the picture shows where to find the right one."
+  "core.wizard.domain.live_pending": "Nothing is registered under this name yet. If you just created the permit, wait about a minute and check again. Otherwise the name is wrong: the picture shows where to find the right one.",
+  "core.hitl.handoff_planned": "To enter afterwards: {text}",
+  "core.hitl.handoff_note": "From the plan conversation: {text}",
+  "core.toast.handoff_nothing_open": "Already done or in progress.",
+  "core.orch.toast_handoff": "The first item is on its way …",
+  "core.handoff.overview": "Still to enter from the plan conversation:\n{list}\n\nTap “Go through” and each item comes to you on its own to confirm. You can also do this later.",
+  "core.handoff.btn_go": "Go through"
 }

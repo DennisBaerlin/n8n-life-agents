@@ -10,7 +10,7 @@ function Build-CreateRecurringPayment {
     # Dynamic-Scope: Build-Pg liest dieses $CRED_POSTGRES. Core-Tools nutzen die Owner-Cred.
     $CRED_POSTGRES = $CRED_FINANCE_RW
     $trig = Build-Trigger @('name','account_name','direction','amount','schedule_interval','schedule_unit',
-                           'schedule_day_of_month','first_payment_date','valid_from','valid_to','notes','counterparty_iban')
+                           'schedule_day_of_month','first_payment_date','valid_from','valid_to','notes','counterparty_iban','handoff_task_id')
 
     $resAcct = Build-Pg 'Resolve Account' @(220, 0) `
         "=SELECT id, hit_count, candidates, currency FROM finance.fn_resolve_account((`$1::jsonb)->>'account_name');" `
@@ -27,6 +27,8 @@ function Build-CreateRecurringPayment {
         -WriteName 'Create recurring payment (atomic)' `
         -WriteSelect "(r->>'ok')::boolean AS ok, r->>'reason' AS reason, (r->>'recurring_payment_id')::int AS recurring_payment_id, (r->>'monthly_equivalent')::numeric AS monthly_equivalent, COALESCE(r->'cashflow_coverage'->>'note', '') AS cashflow_coverage, COALESCE(r->'savings_funding'->>'note', '') AS savings_funding" `
         -Params ([ordered]@{
+            handoff_task_id       = '$(''Start'').item.json.handoff_task_id'   # vereinbarte Plan-Aufgabe: finance.fn_with_handoff prueft + schliesst sie im selben Write
+            chat_id               = '$(''Start'').item.json.chat_id'           # Person der Plan-Aufgabe (nie LLM)
             name                  = '$(''Start'').item.json.name'
             account_id            = '$(''Resolve Account'').item.json.id'
             direction             = '$(''Start'').item.json.direction'

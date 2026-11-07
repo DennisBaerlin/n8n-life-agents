@@ -42,6 +42,8 @@
 --   Nutzer-Rhythmus week/1 bzw. week/2) -> kein Split; ohne weitere Felder {ok:false, code:'no_change', rhythm,
 --   amount_per_execution, monthly_amount} (geprueft VOR den Split-Vorbedingungen).
 --   Korrigierbar (nicht gefunden, new_amount<=0, Stichtag<=aktueller valid_from, asset_class-Format) -> {ok:false}.
+--   handoff_task_id (optional): Eintrag einer vereinbarten Plan-Aufgabe -> finance.fn_with_handoff (Pruefung, Abschluss
+--   im selben Write, Kartenzeile core.hitl.handoff_note).
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_set_savings_plan(p jsonb)
 RETURNS jsonb LANGUAGE plpgsql AS $$
@@ -70,6 +72,10 @@ DECLARE
     v_user_int  SMALLINT;
     v_label     TEXT;
 BEGIN
+    -- Vereinbarte Plan-Aufgabe (Uebergabe Berater -> Buchhalter): pruefen, schreiben, abschliessen in einer Transaktion
+    IF NULLIF(btrim(COALESCE(p->>'handoff_task_id', '')), '') IS NOT NULL THEN
+        RETURN finance.fn_with_handoff('finance.fn_set_savings_plan(jsonb)'::regprocedure, p);
+    END IF;
     -- relative Datumsangabe ("in 1 month") -> ISO; nicht aufloesbar -> {ok:false, code:'invalid_date'}
     v_dates := core.fn_resolve_input_dates(p, ARRAY['valid_from']);
     IF NOT (v_dates->>'ok')::boolean THEN RETURN v_dates; END IF;

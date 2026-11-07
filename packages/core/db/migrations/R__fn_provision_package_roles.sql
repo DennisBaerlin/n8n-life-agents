@@ -182,6 +182,20 @@ BEGIN
     IF to_regprocedure('core.fn_advisor_read_plan(text, text)') IS NOT NULL THEN
         EXECUTE format('GRANT EXECUTE ON FUNCTION core.fn_advisor_read_plan(text, text) TO %I, %I', v_rw, v_ro);
     END IF;
+    -- Uebergabe Berater -> Buchhalter: der Paket-Agent liest die Aufgaben seines Auftrags (beide Rollen); die Write-fns
+    -- des Pakets pruefen und schliessen sie in derselben Transaktion ab (nur _rw, finance.fn_with_handoff).
+    IF to_regprocedure('core.fn_handoff_tasks_read(integer[])') IS NOT NULL THEN
+        EXECUTE format('GRANT EXECUTE ON FUNCTION core.fn_handoff_tasks_read(integer[]) TO %I, %I', v_rw, v_ro);
+    END IF;
+    IF to_regprocedure('core.fn_handoff_task_check(jsonb)') IS NOT NULL THEN
+        EXECUTE format('GRANT EXECUTE ON FUNCTION core.fn_handoff_task_check(jsonb) TO %I', v_rw);
+    END IF;
+    IF to_regprocedure('core.fn_complete_handoff_task(jsonb)') IS NOT NULL THEN
+        EXECUTE format('GRANT EXECUTE ON FUNCTION core.fn_complete_handoff_task(jsonb) TO %I', v_rw);
+    END IF;
+    IF to_regprocedure('core.fn_cancel_handoff_task(jsonb)') IS NOT NULL THEN
+        EXECUTE format('GRANT EXECUTE ON FUNCTION core.fn_cancel_handoff_task(jsonb) TO %I', v_rw);
+    END IF;
     -- WS-B3: DRY-Onboarding-Schnittstelle. Read (kombiniert core+package) an beide Rollen; der
     -- INVOKER-Write nur an _rw (das _ro-Profil ist default_transaction_read_only -> kann ohnehin nicht schreiben).
     IF to_regprocedure('core.fn_onboarding_status(text, text)') IS NOT NULL THEN

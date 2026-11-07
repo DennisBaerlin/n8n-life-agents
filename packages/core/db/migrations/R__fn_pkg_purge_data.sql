@@ -24,6 +24,7 @@
 --     3b. agent.monitor_triggers WHERE package=<pkg> AND origin='user' — paket-erzeugte Monitor-Trigger
 --        (z. B. advisor-Plan-Trigger). Host-Tabelle, von DROP SCHEMA <pkg> nicht erreicht. `origin='user'`-
 --        Guard: ein origin='core'-Trigger blockt sonst den Protect-Trigger -> Abbruch der Purge-Transaktion.
+--     3b'. agent.handoff_tasks WHERE package=<pkg> — vereinbarte Plan-Aufgaben (Uebergabe Berater -> Buchhalter).
 --     3c. (Phase B) Trigger, die eine MONITOR-METHODE des Pakets benutzen (acquisition_method in
 --        core.monitor_acquisition_methods WHERE package=<pkg>, origin='user') — auch die vom Core-Monitor-
 --        Agenten angelegten (package='core', daher von 3b NICHT erfasst) — explizit + gezaehlt; DANACH die
@@ -121,6 +122,9 @@ BEGIN
     --     und wuerde die GESAMTE atomare Purge-Transaktion abbrechen. Paket-Trigger sind immer 'user'.
     DELETE FROM agent.monitor_triggers WHERE package = v_pkg AND origin = 'user';
     GET DIAGNOSTICS v_triggers = ROW_COUNT;
+    -- 3b'. Vereinbarte Plan-Aufgaben des Pakets (Uebergabe Berater -> Buchhalter, Host-Tabelle agent.handoff_tasks,
+    --      package = Purge-Owner). Der Endzustand-Trigger sperrt nur UPDATE, DELETE geht durch.
+    DELETE FROM agent.handoff_tasks WHERE package = v_pkg;
 
     -- 3c. Trigger auf den Monitor-Methoden des Pakets (auch package='core'), dann die Methoden (FK NO ACTION).
     DELETE FROM agent.monitor_triggers t

@@ -663,6 +663,44 @@
                   },
                   {
                       "parameters":  {
+                                         "workflowId":  {
+                                                            "__rl":  true,
+                                                            "value":  "0B1E3C3H5DyWhJtt",
+                                                            "mode":  "list",
+                                                            "cachedResultUrl":  "/workflow/0B1E3C3H5DyWhJtt",
+                                                            "cachedResultName":  "agent.tool_send_handoff_overview"
+                                                        },
+                                         "workflowInputs":  {
+                                                                "mappingMode":  "defineBelow",
+                                                                "value":  {
+                                                                              "domain":  "={{ $(\u0027Start\u0027).item.json.domain }}",
+                                                                              "chat_id":  "={{ $(\u0027Start\u0027).item.json.chat_id }}"
+                                                                          },
+                                                                "matchingColumns":  [
+
+                                                                                    ],
+                                                                "schema":  [
+
+                                                                           ],
+                                                                "attemptToConvertTypes":  false,
+                                                                "convertFieldsToString":  true
+                                                            },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.executeWorkflow",
+                      "typeVersion":  1.2,
+                      "position":  [
+                                       3300,
+                                       260
+                                   ],
+                      "id":  "176a9842-ed26-5282-a93d-226d5899424b",
+                      "name":  "Send handoff overview",
+                      "onError":  "continueRegularOutput"
+                  },
+                  {
+                      "parameters":  {
                                          "assignments":  {
                                                              "assignments":  [
                                                                                  {
@@ -750,9 +788,9 @@
                   },
                   {
                       "parameters":  {
-                                         "content":  "## DB-Automatik\n**Owner-Karte nach dem Publish (Plan teilen, 2026-10-28)**\n\nNach dem Monitor-Angebot (beide Ausgänge von Monitor off?) liest Read share offer core.fn_plan_share_preview(domain, neue Version, chat_id): shareable nur für den Owner, für die aktive Version eines Haushalts-Plans (persönliche Pläne nie) und wenn es mindestens einen Empfänger gibt (Rolle partner, mit Chat, plan_news nicht abgemeldet; Regel core.fn_plan_adult_recipients). Share offer? -\u003e Offer share: Karte in der Sprache des Owners mit den Vornamen und dem Knopf Erwachsene informieren = plan:share:\u003cdomain\u003e:\u003cversion\u003e (Orchestrator: core.fn_handle_plan_cb -\u003e core.sub_share_plan, einmal je Person und Version). change_summary geht in den Publish (fn speichert sie mit der Owner-Sprache als Provenienz). Alle drei Knoten und Offer monitoring laufen mit onError continue: das Publish ist zu diesem Zeitpunkt schon committet.",
+                                         "content":  "## DB-Automatik\n**Owner-Karte nach dem Publish (Plan teilen, 2026-10-28)**\n\nNach dem Monitor-Angebot (beide Ausgänge von Monitor off?) liest Read share offer core.fn_plan_share_preview(domain, neue Version, chat_id): shareable nur für den Owner, für die aktive Version eines Haushalts-Plans (persönliche Pläne nie) und wenn es mindestens einen Empfänger gibt (Rolle partner, mit Chat, plan_news nicht abgemeldet; Regel core.fn_plan_adult_recipients). Share offer? -\u003e Offer share: Karte in der Sprache des Owners mit den Vornamen und dem Knopf Erwachsene informieren = plan:share:\u003cdomain\u003e:\u003cversion\u003e (Orchestrator: core.fn_handle_plan_cb -\u003e core.sub_share_plan, einmal je Person und Version). change_summary geht in den Publish (fn speichert sie mit der Owner-Sprache als Provenienz). Danach (beide Ausgänge) Send handoff overview = agent.tool_send_handoff_overview: Übersicht der im Gespräch vereinbarten, noch offenen Einträge mit Knopf Durchgehen (sendet nur, wenn etwas offen ist). Alle diese Knoten und Offer monitoring laufen mit onError continue: das Publish ist zu diesem Zeitpunkt schon committet.",
                                          "height":  360,
-                                         "width":  560,
+                                         "width":  660,
                                          "color":  4
                                      },
                       "type":  "n8n-nodes-base.stickyNote",
@@ -967,7 +1005,7 @@
                                                           [
                                                               {
                                                                   "index":  0,
-                                                                  "node":  "Return",
+                                                                  "node":  "Send handoff overview",
                                                                   "type":  "main"
                                                               }
                                                           ]
@@ -978,12 +1016,23 @@
                                                          [
                                                              {
                                                                  "index":  0,
-                                                                 "node":  "Return",
+                                                                 "node":  "Send handoff overview",
                                                                  "type":  "main"
                                                              }
                                                          ]
                                                      ]
-                                        }
+                                        },
+                        "Send handoff overview":  {
+                                                      "main":  [
+                                                                   [
+                                                                       {
+                                                                           "index":  0,
+                                                                           "node":  "Return",
+                                                                           "type":  "main"
+                                                                       }
+                                                                   ]
+                                                               ]
+                                                  }
                     },
     "settings":  {
                      "executionOrder":  "v1",

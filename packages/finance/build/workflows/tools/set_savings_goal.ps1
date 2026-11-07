@@ -6,7 +6,7 @@ function Build-SetSavingsGoal {
     # WS-B0: enge Paket-Schreibrolle (finance_rw, Least-Privilege D10) statt Owner-Cred.
     # Dynamic-Scope: Build-Pg liest dieses $CRED_POSTGRES. Core-Tools nutzen die Owner-Cred.
     $CRED_POSTGRES = $CRED_FINANCE_RW
-    $trig = Build-Trigger @('goal_name','new_name','target_amount','target_date','status','notes','beneficiary_person','reserve_account_name','priority','link_savings_plan_name','unlink_savings_plan_name','stop_funders','account_name','replace_transfer','monthly_savings_rate','kind','target_months','depot_risk_accepted')
+    $trig = Build-Trigger @('goal_name','new_name','target_amount','target_date','status','notes','beneficiary_person','reserve_account_name','priority','link_savings_plan_name','unlink_savings_plan_name','stop_funders','account_name','replace_transfer','monthly_savings_rate','kind','target_months','depot_risk_accepted','handoff_task_id')
 
     $resGoal = Build-Pg 'Resolve Goal' @(220, 0) `
         "=SELECT id, hit_count, candidates FROM finance.fn_resolve_savings_goal((`$1::jsonb)->>'goal_name', TRUE);" `
@@ -62,6 +62,8 @@ function Build-SetSavingsGoal {
         -WriteName 'Set goal (atomic)' `
         -WriteSelect "(r->>'ok')::boolean AS ok, r->>'reason' AS reason, r->'depot_risk' AS depot_risk, (r->>'goal_id')::int AS goal_id, (r->>'recurring_payment_id')::int AS recurring_payment_id, (r->>'new_monthly_rate')::numeric AS new_monthly_rate, COALESCE((r->>'covered')::boolean, false) AS covered, (r->>'required_monthly_rate')::numeric AS required_monthly_rate, COALESCE(r->>'note', '') AS rate_note, (r->>'linked_savings_plan_id')::int AS linked_savings_plan_id, (r->>'paused_cash_rate')::boolean AS paused_cash_rate, (r->>'paused_plan_count')::int AS paused_plan_count, (r->>'replaced_transfer_id')::int AS replaced_transfer_id, COALESCE(r->'savings_squeeze'->>'note', '') AS savings_squeeze" `
         -Params ([ordered]@{
+            handoff_task_id       = '$(''Start'').item.json.handoff_task_id'   # vereinbarte Plan-Aufgabe: finance.fn_with_handoff prueft + schliesst sie im selben Write
+            chat_id               = '$(''Start'').item.json.chat_id'           # Person der Plan-Aufgabe (nie LLM)
             goal_id       = '$(''Resolve Goal'').item.json.id'
             name          = '$(''Start'').item.json.new_name'
             target_amount = '$(''Start'').item.json.target_amount'

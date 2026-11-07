@@ -24,6 +24,8 @@
 --   Korrigierbar (Depot nicht gefunden, Typ-Mismatch, Duplikat, amount<=0, asset_class-Format, Rhythmus passt nicht
 --   zum Depot-Kalender (+ next_possible_date), Kalender unbekannt (needs_calendar)) -> {ok:false, reason} OHNE Write
 --   (kein RAISE -> kein Owner-Alert).
+--   handoff_task_id (optional): Eintrag einer vereinbarten Plan-Aufgabe -> finance.fn_with_handoff (Pruefung, Abschluss
+--   im selben Write, Kartenzeile core.hitl.handoff_note).
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_create_savings_plan(p jsonb)
 RETURNS jsonb LANGUAGE plpgsql AS $$
@@ -51,6 +53,10 @@ DECLARE
     v_monthly     NUMERIC;
     v_dates       JSONB;
 BEGIN
+    -- Vereinbarte Plan-Aufgabe (Uebergabe Berater -> Buchhalter): pruefen, schreiben, abschliessen in einer Transaktion
+    IF NULLIF(btrim(COALESCE(p->>'handoff_task_id', '')), '') IS NOT NULL THEN
+        RETURN finance.fn_with_handoff('finance.fn_create_savings_plan(jsonb)'::regprocedure, p);
+    END IF;
     -- relative Datumsangabe ("next monday") -> ISO; nicht aufloesbar -> {ok:false, code:'invalid_date'}
     v_dates := core.fn_resolve_input_dates(p, ARRAY['first_payment_date']);
     IF NOT (v_dates->>'ok')::boolean THEN RETURN v_dates; END IF;

@@ -1,0 +1,276 @@
+{
+    "id":  "0B1E3C3H5DyWhJtt",
+    "name":  "agent.tool_send_handoff_overview",
+    "nodes":  [
+                  {
+                      "parameters":  {
+                                         "workflowInputs":  {
+                                                                "values":  [
+                                                                               {
+                                                                                   "name":  "domain"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "chat_id"
+                                                                               }
+                                                                           ]
+                                                            }
+                                     },
+                      "type":  "n8n-nodes-base.executeWorkflowTrigger",
+                      "typeVersion":  1.1,
+                      "position":  [
+                                       0,
+                                       0
+                                   ],
+                      "id":  "9f03a13b-78e3-55f9-9634-c79822691b90",
+                      "name":  "Start"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "=SELECT core.fn_handoff_overview(jsonb_build_object(\u0027domain\u0027, ($1::jsonb)-\u003e\u003e\u0027domain\u0027, \u0027chat_id\u0027, ($1::jsonb)-\u003e\u003e\u0027chat_id\u0027))::text AS ov, core.fn_ui_texts_for(jsonb_build_object(\u0027chat_id\u0027, ($1::jsonb)-\u003e\u003e\u0027chat_id\u0027, \u0027keys\u0027, to_jsonb(ARRAY[\u0027core.handoff.overview\u0027,\u0027core.handoff.btn_go\u0027]::text[])))-\u003e\u0027t\u0027 AS t;",
+                                         "options":  {
+                                                         "queryReplacement":  "={{ JSON.stringify({ domain: String($(\u0027Start\u0027).item.json.domain || \u0027\u0027), chat_id: String($(\u0027Start\u0027).item.json.chat_id || \u0027\u0027) }) }}"
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       220,
+                                       0
+                                   ],
+                      "id":  "a215d34e-18fc-5b8c-8e5b-4eac33d610e9",
+                      "name":  "Read overview",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_WRITE__",
+                                                           "name":  "Postgres account"
+                                                       }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "c41e26ea-c8bf-5c7e-9e65-caecc4f119c6",
+                                                                                   "leftValue":  "={{ Number(JSON.parse($(\u0027Read overview\u0027).item.json.ov || \u0027{}\u0027).count || 0) \u003e 0 }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       440,
+                                       0
+                                   ],
+                      "id":  "065f2829-fb61-50c8-a460-edcf94f5a65f",
+                      "name":  "Anything open?"
+                  },
+                  {
+                      "parameters":  {
+                                         "additionalFields":  {
+                                                                  "appendAttribution":  false
+                                                              },
+                                         "chatId":  "={{ String($(\u0027Start\u0027).item.json.chat_id || \u0027\u0027) }}",
+                                         "text":  "={{ (String((($(\u0027Read overview\u0027).item.json.t) || {})[\u0027core.handoff.overview\u0027] || \u0027core.handoff.overview\u0027).replace(/\\{(\\w+)\\}/g, (m, k) =\u003e { const P = { \u0027list\u0027: ((JSON.parse($(\u0027Read overview\u0027).item.json.ov || \u0027{}\u0027).items || []).map((x, i) =\u003e (i + 1) + \u0027. \u0027 + x).join(\u0027\\n\u0027)) }; return Object.keys(P).includes(k) ? String(P[k]) : m; })).replace(/[_*`[]/g, \u0027\\\\$\u0026\u0027) }}",
+                                         "replyMarkup":  "inlineKeyboard",
+                                         "inlineKeyboard":  {
+                                                                "rows":  [
+                                                                             {
+                                                                                 "row":  {
+                                                                                             "buttons":  [
+                                                                                                             {
+                                                                                                                 "text":  "={{ String((($(\u0027Read overview\u0027).item.json.t) || {})[\u0027core.handoff.btn_go\u0027] || \u0027core.handoff.btn_go\u0027) }}",
+                                                                                                                 "additionalFields":  {
+                                                                                                                                          "callback_data":  "={{ \u0027handoff:\u0027 + String($(\u0027Start\u0027).item.json.domain || \u0027\u0027) + \u0027:\u0027 + String(JSON.parse($(\u0027Read overview\u0027).item.json.ov || \u0027{}\u0027).max_task_id || \u0027\u0027) }}"
+                                                                                                                                      }
+                                                                                                             }
+                                                                                                         ]
+                                                                                         }
+                                                                             }
+                                                                         ]
+                                                            }
+                                     },
+                      "type":  "n8n-nodes-base.telegram",
+                      "typeVersion":  1.2,
+                      "position":  [
+                                       660,
+                                       -100
+                                   ],
+                      "id":  "97a0716c-db92-5b20-9f5e-4f5adecb3613",
+                      "name":  "Send overview",
+                      "retryOnFail":  true,
+                      "maxTries":  3,
+                      "waitBetweenTries":  2000,
+                      "credentials":  {
+                                          "telegramApi":  {
+                                                              "id":  "__CRED_TELEGRAM__",
+                                                              "name":  "Telegram account"
+                                                          }
+                                      },
+                      "onError":  "continueRegularOutput"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "5f8758c2-3b96-54ae-8b82-27f0c2ff334b",
+                                                                                     "name":  "ok",
+                                                                                     "value":  "true",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "15ee8177-9303-5956-8c30-cdce6e1c7b5f",
+                                                                                     "name":  "sent",
+                                                                                     "value":  "={{ !$json.error }}",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "cc4acec9-9081-5c21-bac6-58c882276b53",
+                                                                                     "name":  "open_count",
+                                                                                     "value":  "={{ Number(JSON.parse($(\u0027Read overview\u0027).item.json.ov || \u0027{}\u0027).count || 0) }}",
+                                                                                     "type":  "number"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       880,
+                                       -100
+                                   ],
+                      "id":  "fec6102d-b8ae-5ecf-9b6a-155008b88004",
+                      "name":  "Return sent"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "0442fb0f-4a30-5607-a58c-f96d45f23ce4",
+                                                                                     "name":  "ok",
+                                                                                     "value":  "true",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "00ead7ef-b7a3-5919-9f7f-9077b6c1f4e2",
+                                                                                     "name":  "sent",
+                                                                                     "value":  "false",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "09da5ad6-538c-52e5-a3b4-5158f2bbd98d",
+                                                                                     "name":  "open_count",
+                                                                                     "value":  "0",
+                                                                                     "type":  "number"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       660,
+                                       120
+                                   ],
+                      "id":  "1a76f28d-430c-5054-ab87-8d22e78e919f",
+                      "name":  "Return nothing open"
+                  },
+                  {
+                      "parameters":  {
+                                         "content":  "## DB-Automatik\n**Übersicht vereinbarter Einträge (Seitenkanal-Versand ohne Write)**\n\nRead overview liest core.fn_handoff_overview (offene Aufgaben dieser Person und Domain, Person aus chat_id, nie LLM) und die zwei Texte in der Sprache des Empfängers. Nichts offen -\u003e Return nothing open (sent false). Sonst Send overview: nummerierte Liste der Sätze und der Knopf Durchgehen = handoff:\u003cdomain\u003e:\u003cmax_task_id\u003e (Orchestrator: core.fn_handle_handoff_cb beansprucht nur bis max_task_id, danach startet der Buchhalter; jede Buchung kommt mit eigener Karte). Kein [Später]-Knopf: Nicht-Tippen ist später, die Aufgaben verfallen nicht. Bewusste enge Ausnahme zu tool = keine Seitenkanal-I/O (wie das Wächter-Angebot in agent.tool_publish_plan): reiner Hinweis, kein Domänen-Write, darum kein HITL-Gate. Send mit onError continue (Aufrufer Publish ist schon committet).",
+                                         "height":  340,
+                                         "width":  600,
+                                         "color":  4
+                                     },
+                      "type":  "n8n-nodes-base.stickyNote",
+                      "typeVersion":  1,
+                      "position":  [
+                                       120,
+                                       -360
+                                   ],
+                      "id":  "95fe4017-51fd-537a-8e22-49407c13d98f",
+                      "name":  "Doc Handoff-Uebersicht"
+                  }
+              ],
+    "connections":  {
+                        "Start":  {
+                                      "main":  [
+                                                   [
+                                                       {
+                                                           "index":  0,
+                                                           "node":  "Read overview",
+                                                           "type":  "main"
+                                                       }
+                                                   ]
+                                               ]
+                                  },
+                        "Read overview":  {
+                                              "main":  [
+                                                           [
+                                                               {
+                                                                   "index":  0,
+                                                                   "node":  "Anything open?",
+                                                                   "type":  "main"
+                                                               }
+                                                           ]
+                                                       ]
+                                          },
+                        "Anything open?":  {
+                                               "main":  [
+                                                            [
+                                                                {
+                                                                    "index":  0,
+                                                                    "node":  "Send overview",
+                                                                    "type":  "main"
+                                                                }
+                                                            ],
+                                                            [
+                                                                {
+                                                                    "index":  0,
+                                                                    "node":  "Return nothing open",
+                                                                    "type":  "main"
+                                                                }
+                                                            ]
+                                                        ]
+                                           },
+                        "Send overview":  {
+                                              "main":  [
+                                                           [
+                                                               {
+                                                                   "index":  0,
+                                                                   "node":  "Return sent",
+                                                                   "type":  "main"
+                                                               }
+                                                           ]
+                                                       ]
+                                          }
+                    },
+    "settings":  {
+                     "executionOrder":  "v1",
+                     "errorWorkflow":  "Nd3UVmUTzTLOBeba"
+                 }
+}

@@ -11,7 +11,7 @@ function Build-CreateRecurringTransfer {
     $CRED_POSTGRES = $CRED_FINANCE_RW
     $trig = Build-Trigger @('name','from_account_name','to_account_name','amount','schedule_interval',
                            'schedule_unit','schedule_day_of_month','first_payment_date','valid_from','valid_to','notes',
-                           'until_free_money','executed_by')
+                           'until_free_money','executed_by','handoff_task_id')
 
     $resFrom = Build-Pg 'Resolve From' @(220, 0) `
         "=SELECT id, hit_count, candidates, currency FROM finance.fn_resolve_account((`$1::jsonb)->>'from_account_name');" `
@@ -37,6 +37,8 @@ function Build-CreateRecurringTransfer {
         -WriteName 'Create recurring transfer (atomic)' `
         -WriteSelect "(r->>'ok')::boolean AS ok, r->>'reason' AS reason, (r->>'recurring_payment_id')::int AS recurring_payment_id, (r->>'monthly_equivalent')::numeric AS monthly_equivalent, COALESCE(r->'savings_funding'->>'note', '') AS savings_funding" `
         -Params ([ordered]@{
+            handoff_task_id       = '$(''Start'').item.json.handoff_task_id'   # vereinbarte Plan-Aufgabe: finance.fn_with_handoff prueft + schliesst sie im selben Write
+            chat_id               = '$(''Start'').item.json.chat_id'           # Person der Plan-Aufgabe (nie LLM)
             name                  = '$(''Start'').item.json.name'
             from_account_id       = '$(''Resolve From'').item.json.id'
             to_account_id         = '$(''Resolve To'').item.json.id'

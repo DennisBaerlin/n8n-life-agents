@@ -985,5 +985,9 @@
   "finance.plan_section.crossborder": "Grenzüberschreitende Themen",
   "finance.plan_section.goals_triggers": "Ziele und Auslöser",
   "finance.note.funding_gap_date": "Danach fehlt Geld auf {account} ab {date}.",
-  "finance.note.recurring_iban_key": "Die Zahlung wird künftig an der IBAN {iban} erkannt, auch wenn der Betrag schwankt. Falls falsch, abbrechen."
+  "finance.note.recurring_iban_key": "Die Zahlung wird künftig an der IBAN {iban} erkannt, auch wenn der Betrag schwankt. Falls falsch, abbrechen.",
+  "finance.hitl.cancel_handoff_task": "Punkt aus dem Plan-Gespräch abschließen – bitte prüfen:",
+  "finance.label.handoff_outcome": "Ergebnis",
+  "finance.value.handoff_skipped": "überspringen, nicht eintragen",
+  "finance.value.handoff_done_elsewhere": "schon erledigt"
 }

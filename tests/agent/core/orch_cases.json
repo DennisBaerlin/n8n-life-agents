@@ -437,5 +437,6 @@
     "chat_id": "test_orc50",
     "expected_route": "finance",
     "notes": "Sparziel unter 5 Jahren im Depot als bewusste Ausnahme (2026-11-06): die Berater-Erinnerung endet mit 'schreib mir das bleibt so'; festhalten kann nur der Buchhalter (tool_set_savings_goal depot_risk_accepted), der Berater bucht nie."
-  }
+  },
+  {"id": "oc51", "name": "Folgenachricht nach dem Durchgehen-Lauf -> agent.finance", "task": "Ja, die Miete geht vom __E2E__ HO Giro ab, trag sie so ein.", "chat_id": "test_orc51", "expected_route": "finance", "notes": "Uebergabe Berater -> Buchhalter: nach dem Knopf Durchgehen bindet Add-FollowupSet die naechste Nachricht an den Buchhalter; der Fall prueft die Routing-Basis (Eintragen = Buchhalter, nie der Berater)."}
 ]

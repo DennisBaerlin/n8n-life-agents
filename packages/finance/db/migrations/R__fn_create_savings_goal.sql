@@ -59,6 +59,8 @@
 --   Korrigierbar (Topf fehlt/ungeeignet, Zielbetrag<=0, Startbestand<0 oder mehr als frei, weder Datum noch Rate,
 --   Datum vor first_payment, Rate ohne Abbuchungskonto, Rate in ein Depot, Sparplan nicht gefunden/mehrdeutig/schon
 --   gebunden) -> {ok:false, reason} OHNE Write (kein RAISE -> kein Owner-Alert).
+--   handoff_task_id (optional): Eintrag einer vereinbarten Plan-Aufgabe -> finance.fn_with_handoff (Pruefung, Abschluss
+--   im selben Write, Kartenzeile core.hitl.handoff_note).
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_create_savings_goal(p jsonb)
 RETURNS jsonb LANGUAGE plpgsql AS $$
@@ -104,6 +106,10 @@ DECLARE
     v_tmonths    NUMERIC  := NULLIF(p->>'target_months', '')::numeric;
     v_es         JSONB;     -- fn_emergency_reserve_status (Karte)
 BEGIN
+    -- Vereinbarte Plan-Aufgabe (Uebergabe Berater -> Buchhalter): pruefen, schreiben, abschliessen in einer Transaktion
+    IF NULLIF(btrim(COALESCE(p->>'handoff_task_id', '')), '') IS NOT NULL THEN
+        RETURN finance.fn_with_handoff('finance.fn_create_savings_goal(jsonb)'::regprocedure, p);
+    END IF;
     -- relative Datumsangaben ("in 2 years") -> ISO, damit effective sie fest in den Write nach der Karte traegt
     -- (fn_savings_rate_schedule loest dieselben Keys fuer die Karte auf); nicht aufloesbar -> {ok:false, code:'invalid_date'}
     v_dates := core.fn_resolve_input_dates(p, ARRAY['target_date', 'first_payment_date']);

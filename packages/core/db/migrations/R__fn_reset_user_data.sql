@@ -98,6 +98,7 @@ BEGIN
     -- (3) Host-Daten.
     DELETE FROM agent.advisor_plan_wishes;                   -- Plan teilen: Mitglieder-Wuensche (haengen an Plan + Person)
     DELETE FROM agent.dispatch_followup;                     -- Knopf-Folge-Bindung (fluechtig)
+    DELETE FROM agent.handoff_tasks;                         -- Uebergabe Berater -> Buchhalter (haengt an Plan-Gespraech + Person)
     DELETE FROM agent.advisor_plans;                         GET DIAGNOSTICS v_ap = ROW_COUNT;
     DELETE FROM agent.monitor_triggers WHERE origin = 'user'; GET DIAGNOSTICS v_mt = ROW_COUNT;   -- Observations per CASCADE
     DELETE FROM agent.guide_learn_candidates;

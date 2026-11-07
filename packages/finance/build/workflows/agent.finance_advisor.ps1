@@ -188,14 +188,21 @@ function Build-AgentFinanceAdvisor {
             ,@('personas', 'JSON array string of 2-6 personas, each {role, focus}', 'string')
         ) $null @(320, 208) -StartNode $START_NODE
 
-    $nToolSaveSection = New-AdvisorToolNode 'tool_save_plan_section' (Resolve-CoreServiceAlias 'core:save_plan_section' $CoreServiceMap) `
-        'Save ONE confirmed interview section into the draft plan (creates the draft automatically on first save; the DB assigns the version). CALL ONLY AFTER the user verbally confirmed your full playback of the section in chat - the tool then shows the full text with a button confirmation. section_key must be one of the catalog keys from your instructions. section_content is that same text word for word, never translated or shortened; plain sentences, no markdown. section_data is OPTIONAL and only for the three block-carrying sections (goals_triggers->goal; risk_profile->risk_profile; wealth_building->target_allocation+glidepath) - every OTHER section omits it (prose only; the emergency reserve is a reserve goal the bookkeeper keeps, not a block). Each facts block must come from exactly ONE section: publish rejects a duplicate block. See the section_data contract in your instructions. ok:false with a reason means the input was rejected (invalid JSON or a block collision) - fix and retry once, or ask the user.' `
-        @(
+    # Uebergabe Berater -> Buchhalter: der Parameter handoff_tasks (und das Uebersichts-Tool) nur, wenn das Manifest der Domain
+    # einen handoff_agent nennt (Build-Datum aus Get-AdvisorPlanStepList; sonst gaebe es niemanden, der eintraegt).
+    $hasHandoff = [bool](@($AdvisorPlanStepList | Where-Object { $_.Domain -eq 'finance' -and $_.HandoffAgent }).Count)
+    $saveInputs = @(
             ,@('section_key', 'Catalog section key from your instructions, e.g. household_basics, wealth_building, goals_triggers', 'string')
             ,@('section_content', 'The confirmed section text, word for word as you played it back', 'string')
             ,@('section_data', 'Optional JSON object string - ONLY for the four block-carrying sections; omit for prose-only sections. e.g. risk_profile: {"risk_profile": {"risk_tolerance":"medium","risk_capacity":"high"} }; wealth_building: {"target_allocation": {"rebalance_drift_pp":5,"blocks":[{"key":"sp500","name":"S&P 500 ETF","target_pct":85,"corridor":[80,90]} ]} }. Block key is mandatory, lowercase_snake, unique. Store raw figures only - no derived years/ages/nominal values, no risk_need, no as_of (the system stamps it).', 'string', '')
             ,@('plan_name', 'Optional plan display name - only used when this save creates a new draft', 'string', '')
-        ) ([ordered]@{ domain = $DOMAIN_EXPR }) @(480, 208) -StartNode $START_NODE
+    )
+    if ($hasHandoff) {
+        $saveInputs += ,@('handoff_tasks', 'Optional JSON array string of entries the user AGREED to in this section that need a booking or master data (a savings goal, savings plan, standing order, recurring payment), e.g. [{"kind":"savings_goal","payload":{"name":"Emergency fund","target_amount":6000,"target_date":"2027-12-31"},"text":"Savings goal emergency fund, 6000 EUR by end of 2027"} ]. kind = savings_goal | savings_plan | recurring_payment | recurring_transfer | other. payload = the raw figures the user named (no derived values). text = one plain sentence for the user, max 300 characters, in the conversation language. Omit when nothing was agreed - an idea the user did not accept is no entry. When you send handoff_tasks, send the full list of the section (it replaces the open entries of the section, [] clears them); omit it to keep them unchanged.', 'string', '')
+    }
+    $nToolSaveSection = New-AdvisorToolNode 'tool_save_plan_section' (Resolve-CoreServiceAlias 'core:save_plan_section' $CoreServiceMap) `
+        'Save ONE confirmed interview section into the draft plan (creates the draft automatically on first save; the DB assigns the version). CALL ONLY AFTER the user verbally confirmed your full playback of the section in chat - the tool then shows the full text with a button confirmation. section_key must be one of the catalog keys from your instructions. section_content is that same text word for word, never translated or shortened; plain sentences, no markdown. section_data is OPTIONAL and only for the three block-carrying sections (goals_triggers->goal; risk_profile->risk_profile; wealth_building->target_allocation+glidepath) - every OTHER section omits it (prose only; the emergency reserve is a reserve goal the bookkeeper keeps, not a block). Each facts block must come from exactly ONE section: publish rejects a duplicate block. See the section_data contract in your instructions. ok:false with a reason means the input was rejected (invalid JSON or a block collision) - fix and retry once, or ask the user.' `
+        $saveInputs ([ordered]@{ domain = $DOMAIN_EXPR }) @(480, 208) -StartNode $START_NODE
 
     $nToolPublish = New-AdvisorToolNode 'tool_publish_plan' (Resolve-CoreServiceAlias 'core:publish_plan' $CoreServiceMap) `
         'Publish the draft plan: the previous active plan version is superseded, the draft becomes active, and the context document financial_planning (your single living finance plan) is updated for all agents - one atomic transaction behind a button confirmation that shows versions, section count and your change_summary. CALL ONLY when all sections are confirmed and you have composed the FULL plan markdown. plan_md must contain all catalog sections plus a trigger list with dates. change_summary states concretely what changed versus the previous version (or: first version). Requires an existing draft - otherwise save sections first. The section "## Gelernt" (owner-confirmed learned notes) is system-managed: never reproduce it in plan_md - the stored section is kept automatically.' `
@@ -208,6 +215,15 @@ function Build-AgentFinanceAdvisor {
 
     # Plan teilen (2026-10-28): ein erwachsenes Mitglied schickt dem Owner einen Wunsch zum Haushalts-Plan (owner_info:
     # Mitglied bestaetigt, Owner bekommt den Wortlaut). domain fix wie die Plan-Tools.
+    # Uebersicht der vereinbarten Eintraege mit Knopf [Durchgehen] (vor dem Publish oder wenn das Gespraech ohne Publish endet;
+    # nach dem Publish sendet tool_publish_plan sie selbst). domain fix wie die Plan-Tools.
+    $nToolHandoffOverview = $null
+    if ($hasHandoff) {
+        $nToolHandoffOverview = New-AdvisorToolNode 'tool_send_handoff_overview' (Resolve-CoreServiceAlias 'core:send_handoff_overview' $CoreServiceMap) `
+            'Send the user the list of entries agreed in this plan conversation that still need to be entered, with a [Go through] button; each entry then comes on its own confirmation card. Call it when the user wants to enter agreed items now (before publishing), or when the conversation ends without publishing while entries are open. Do NOT call it right after tool_publish_plan - publishing sends the list itself. Returns sent=false when nothing is open. Sends a message only, changes nothing.' `
+            @() ([ordered]@{ domain = $DOMAIN_EXPR }) @(1120, 208) -StartNode $START_NODE
+    }
+
     $nToolPlanWish = New-AdvisorToolNode 'tool_record_plan_wish' (Resolve-CoreServiceAlias 'core:record_plan_wish' $CoreServiceMap) `
         'Send the owner a household member wish about the published household plan (wish mode). Only an adult household member (partner) can use it, and only while a published household plan exists - the tool checks this first and returns ok:false with a reason otherwise (then explain it in plain words). wish_text = the member own words, verbatim and in their language (no translation, no rewording beyond fixing an obvious typo they confirm). A button confirmation follows for the member; after the tap the owner receives the wish. The wish does NOT change the plan - the owner decides. Do not call it for the owner.' `
         @(
@@ -265,7 +281,7 @@ function Build-AgentFinanceAdvisor {
     # --- Doku-Stickies ---
     $stickyOverview = Build-Sticky 'Doc: Überblick' @(-1640, -380) `
         'agent.finance_advisor — Finanzberater (Sub-Workflow)' `
-        'Eingang: task, chat_id, call_depth (vom Orchestrator als Tool gerufen). Pipeline: Depth gate (Anti-Loop) -> Package-Gate (R4/WS-B8: nur wenn finance aktiv, sonst package_inactive) -> Load Config (core.sub_load_config) -> System-Prompt+Manifest (agent.tool_load_context, agent_name=finance_advisor) -> Advisor Agent. BUCHT NIE: keine Buchungs-/Stammdaten-Tools — Reads via postgres_select (finance_ro) + load_context (das Gesamtbild in einer Abfrage: finance.fn_advisor_snapshot, weil jede Abfrage eine Iteration kostet); Writes NUR tool_save_plan_section/tool_publish_plan (Plan-Persistenz) + tool_record_plan_wish (Wunsch eines erwachsenen Mitglieds an den Owner, owner_info, ändert den Plan nicht) + tool_create_monitor_trigger (Plan-Trigger in-flow anlegen, domain+package fix finance; Edits/Repair -> Monitor-Agent) + tool_set_asset_classes (einzige Daten-Ausnahme, Owner 2026-10-23: nur die Anlageklassen der Depot-Positionen im Planungs-Flow, eine Karte), je HITL-Gate. tool_list_monitor_triggers = READ-ONLY Dedup-Fenster (bestehende Trigger lesen vor dem Vorschlagen). Beratung/Interview/Plan = hier; Buchen = agent.finance; Trigger-Mechanik = agent.monitor.' 300 600
+        'Eingang: task, chat_id, call_depth (vom Orchestrator als Tool gerufen). Pipeline: Depth gate (Anti-Loop) -> Package-Gate (R4/WS-B8: nur wenn finance aktiv, sonst package_inactive) -> Load Config (core.sub_load_config) -> System-Prompt+Manifest (agent.tool_load_context, agent_name=finance_advisor) -> Advisor Agent. BUCHT NIE: keine Buchungs-/Stammdaten-Tools — Reads via postgres_select (finance_ro) + load_context (das Gesamtbild in einer Abfrage: finance.fn_advisor_snapshot, weil jede Abfrage eine Iteration kostet); Writes NUR tool_save_plan_section/tool_publish_plan (Plan-Persistenz) + tool_record_plan_wish (Wunsch eines erwachsenen Mitglieds an den Owner, owner_info, ändert den Plan nicht) + tool_create_monitor_trigger (Plan-Trigger in-flow anlegen, domain+package fix finance; Edits/Repair -> Monitor-Agent) + tool_set_asset_classes (einzige Daten-Ausnahme, Owner 2026-10-23: nur die Anlageklassen der Depot-Positionen im Planungs-Flow, eine Karte), je HITL-Gate. tool_list_monitor_triggers = READ-ONLY Dedup-Fenster (bestehende Trigger lesen vor dem Vorschlagen). Beratung/Interview/Plan = hier; Buchen = agent.finance; Trigger-Mechanik = agent.monitor. ÜBERGABE an den Buchhalter (kein Agent->Agent): Vereinbartes gibt der Berater als handoff_tasks an tool_save_plan_section (auf der Abschnitts-Karte sichtbar); tool_send_handoff_overview schickt die Übersicht mit Knopf Durchgehen, der Orchestrator startet danach agent.finance über einen festen Knopf-Arm.' 300 700
 
     $stickyDomain = Build-Sticky 'Doc: Domain-Switch' @(400, -200) `
         'domain = fixer Binding-Input (+ e2e-Sentinel)' `
@@ -294,6 +310,7 @@ function Build-AgentFinanceAdvisor {
         $nToolCreateTrigger, $nToolListTriggers, $nToolSetAssetClasses,
         $stickyOverview, $stickyDomain, $stickyModel, $stickyMemory, $stickyPkg, $stickyCore
     ) + $mb.Nodes
+    if ($nToolHandoffOverview) { $nodes += $nToolHandoffOverview }
     # Paket-Werkzeuge aus consumes.services (paperless:* — Dokumente lesen) ueber den Core-Vermittler; optional.
     $svc = Add-ServiceTools -Package 'finance' -AgentNode 'Advisor Agent' -StartNode $START_NODE -Position @(-336, 840) -ExistingNodes $nodes
     $nodes += $svc.Nodes
@@ -321,6 +338,7 @@ function Build-AgentFinanceAdvisor {
     $conns['web_search']         = @{ ai_tool = @( ,@( E 'Advisor Agent' 'ai_tool' ) ) }
     $conns['expert_panel']       = @{ ai_tool = @( ,@( E 'Advisor Agent' 'ai_tool' ) ) }
     $conns['tool_save_plan_section']  = @{ ai_tool = @( ,@( E 'Advisor Agent' 'ai_tool' ) ) }
+    if ($nToolHandoffOverview) { $conns['tool_send_handoff_overview'] = @{ ai_tool = @( ,@( E 'Advisor Agent' 'ai_tool' ) ) } }
     $conns['tool_record_plan_wish']   = @{ ai_tool = @( ,@( E 'Advisor Agent' 'ai_tool' ) ) }
     $conns['tool_publish_plan']       = @{ ai_tool = @( ,@( E 'Advisor Agent' 'ai_tool' ) ) }
     $conns['tool_create_monitor_trigger'] = @{ ai_tool = @( ,@( E 'Advisor Agent' 'ai_tool' ) ) }

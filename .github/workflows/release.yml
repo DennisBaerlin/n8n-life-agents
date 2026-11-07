@@ -85,18 +85,13 @@ jobs:
           if [ "${obj%% *}" = tag ]; then
             gh api "repos/${GITHUB_REPOSITORY}/git/tags/${obj#* }" --jq '.message' > notes.md
           fi
-          # Kurzfassung fuer die Update-Karte im Chat (core.fn_release_intro, Muster Home Assistant release_summary): der
-          # Einleitungsabsatz der Tag-Nachricht — bis zur ersten Leerzeile, '#'-Ueberschrift oder '---'. Pflicht, <= 300
-          # Zeichen (sonst kuerzt die Karte mitten im Satz). Gleiche Grenzen wie die DB-fn.
-          intro="$(awk '/^[[:space:]]*$/ { if (s) exit; next } /^#/ || /^-{3,}[[:space:]]*$/ { exit } { s = 1; printf "%s ", $0 }' notes.md | sed 's/[[:space:]]*$//')"
-          if [ -z "$intro" ]; then
-            echo "::error::Die Tag-Nachricht braucht einen Einleitungsabsatz (1-3 Saetze vor der ersten Ueberschrift: was sich fuer Nutzer aendert) — die Update-Karte im Chat zeigt ihn. Annotiert taggen: git tag -a ${TAG} --cleanup=whitespace -F <datei>."
+          # Kurzfassungen fuer die Update-Karte im Chat (core.fn_release_intro): Einleitungsabsatz (englisch) plus ein
+          # summary:<lang>-Marker je Systemsprache. Dieselbe Regel wie vor dem Taggen (scripts/release_notes_check.ps1, die
+          # EINE Fassung); laeuft VOR dem Anhaengen des Installations-Hinweises, sonst sahe sie ihn hinter '---'.
+          pwsh -NoProfile -File scripts/release_notes_check.ps1 -File notes.md || {
+            echo "::error::Die Tag-Nachricht erfuellt die Regel der Update-Karte nicht (Meldung oben). Annotiert taggen: git tag -a ${TAG} --cleanup=whitespace -F <datei>."
             exit 1
-          fi
-          if [ "${#intro}" -gt 300 ]; then
-            echo "::error::Einleitungsabsatz der Tag-Nachricht ist ${#intro} Zeichen lang (max. 300)."
-            exit 1
-          fi
+          }
           printf '\n---\nInstall (as root, via the bootstrap launcher asset `install.sh`): `curl -fsSL https://github.com/%s/releases/download/%s/install.sh -o install.sh && bash install.sh --version %s` (without `--version` = latest stable release). Update an existing instance: `lifeagents update`.\n' "${GITHUB_REPOSITORY}" "${TAG}" "${TAG}" >> notes.md
           # Release ggf. anlegen (existiert bereits -> ueberspringen); Assets mit --clobber neu hoch
           # -> ein erneuter Lauf desselben Tags ist idempotent.

@@ -1,6 +1,6 @@
 # install_update_timers.sh — systemd-Timer fuer das Update im Chat (Update-Hinweis 2026-10-24).
 #
-#   lifeagents-update-check.{service,timer}  taeglich 10:20 (Haushalts-Zeitzone): `lifeagents update --check`
+#   lifeagents-update-check.{service,timer}  alle 2 h (gerade Stunden :20, Haushalts-Zeitzone): `lifeagents update --check --scheduled`
 #   lifeagents-update-run.{service,timer}    minuetlich: `lifeagents update --run-requested`
 # Logik der Laeufe -> lib/update_runner.sh. Hier nur Rendern/Installieren/Entfernen (idempotent, Zweitlauf = no-op).
 #
@@ -30,7 +30,7 @@ install_update_timers() {
     fi
     enable_start_unit "${u}.timer" "$tchanged"
   done
-  ok "Update-Timer aktiv (täglicher Release-Check, Update-Aufträge aus dem Chat)."
+  ok "Update-Timer aktiv (Release-Check alle 2 Stunden, Update-Aufträge aus dem Chat)."
 }
 
 # uninstall_update_timers — Timer + Services stoppen, deaktivieren, Unit-Dateien loeschen (idempotent; uninstall.sh).

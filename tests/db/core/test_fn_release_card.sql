@@ -7,6 +7,7 @@
 --   core.fn_release_card_sent(t) = Latch erst nach erfolgreichem Senden (core.fn_should_notify).
 -- db_test hat KEIN seed_data -> family + Config self-seeden; Texte fallen auf den Key zurueck (Assertions auf Keys).
 BEGIN;
+SET LOCAL TimeZone = 'Europe/Berlin';
 
 INSERT INTO agent.core_contexts (name, description, agent_name, load_strategy, content, metadata)
 VALUES ('family', 'release_card fixture', NULL, 'lazy', E'## fam',
@@ -24,6 +25,9 @@ DECLARE
   v_rel jsonb;
   v_txt text;
   v_long text := repeat('Wort ', 100);
+  v_body text;
+  v_night text;
+  v_noon  text;
 BEGIN
   -- ---------- 1) SemVer ----------
   IF core.fn_semver_cmp('v0.10.0', 'v0.9.2') IS DISTINCT FROM 1 THEN RAISE EXCEPTION 'FAIL [1a 0.10 > 0.9]'; END IF;
@@ -108,6 +112,94 @@ BEGIN
   DELETE FROM core.config WHERE package = 'core' AND category = 'feature' AND key = 'update_check';
   r := core.fn_release_card(jsonb_build_object('installed', 'v1.0.0', 'releases', '[{"tag":"v1.0.9","draft":false,"prerelease":false,"body":"x","html_url":"u","assets":[]}]'::jsonb));
   IF (r->>'due')::boolean IS NOT FALSE OR r->>'reason' IS DISTINCT FROM 'disabled' THEN RAISE EXCEPTION 'FAIL [8b ohne Zeile]: %', r; END IF;
+
+  -- ---------- 9) Sprache: summary:<lang>-Marker (HTML-Kommentar nach dem Einleitungsabsatz) ----------
+  -- Dieselben Faelle liegen als Dateien in tests/fixtures/release_notes/ (Pruefskript-Test); db_test kann keine
+  -- Repo-Dateien lesen -> hier inline. Aenderungen an beiden Stellen.
+  v_body := E'English intro.\n\n<!-- summary:de\nDeutsche **Kurzfassung**,\nzweite Zeile mit [Link](https://example.org/x).\n-->\n\n'
+         || E'<!-- summary:ko\n한국어 요약입니다.\n-->\n\n## Changes\n- x';
+  IF core.fn_release_intro(v_body, 'de') IS DISTINCT FROM 'Deutsche Kurzfassung, zweite Zeile mit Link.' THEN
+    RAISE EXCEPTION 'FAIL [9a de-Marker, Markdown raus, Zeilen verbunden]: %', core.fn_release_intro(v_body, 'de'); END IF;
+  IF core.fn_release_intro(v_body, 'ko') IS DISTINCT FROM '한국어 요약입니다.' THEN
+    RAISE EXCEPTION 'FAIL [9b zwei Marker: lazy, jeder fuer sich]: %', core.fn_release_intro(v_body, 'ko'); END IF;
+  IF core.fn_release_intro(v_body, 'en') IS DISTINCT FROM 'English intro.' THEN
+    RAISE EXCEPTION 'FAIL [9c en = Einleitungsabsatz, Marker nicht im Intro]: %', core.fn_release_intro(v_body, 'en'); END IF;
+  IF core.fn_release_intro(v_body) IS DISTINCT FROM 'English intro.' THEN
+    RAISE EXCEPTION 'FAIL [9d 1-Argument-Aufruf = Intro]'; END IF;
+  IF core.fn_release_intro(E'English only.\n\n## Changes', 'ko') IS DISTINCT FROM 'English only.' THEN
+    RAISE EXCEPTION 'FAIL [9e Marker fehlt -> englischer Absatz]'; END IF;
+  IF core.fn_release_intro(E'English intro.\n\n<!-- summary:de\n   \n-->\n\n## Changes', 'de') IS DISTINCT FROM 'English intro.' THEN
+    RAISE EXCEPTION 'FAIL [9f leerer Marker -> Fallback]'; END IF;
+  IF core.fn_release_intro(E'English intro.
+
+<!-- summary:de
+**
+-->
+
+## Changes', 'de') IS DISTINCT FROM 'English intro.' THEN
+    RAISE EXCEPTION 'FAIL [9f2 Marker nach Bereinigung leer -> Rueckfall]'; END IF;
+  IF core.fn_release_intro(v_body, NULL) IS DISTINCT FROM 'English intro.'
+     OR core.fn_release_intro(v_body, 'de|.*') IS DISTINCT FROM 'English intro.'
+     OR core.fn_release_intro(v_body, '') IS DISTINCT FROM 'English intro.' THEN
+    RAISE EXCEPTION 'FAIL [9g lang NULL/Muell -> Fallback, keine Regex-Injektion]'; END IF;
+  v_txt := core.fn_release_intro(E'Intro.\n\n<!-- summary:de\n' || v_long || E'\n-->', 'de');
+  IF length(v_txt) > 300 OR right(v_txt, 1) <> '…' THEN RAISE EXCEPTION 'FAIL [9h Marker auf 300 gekuerzt]: %', length(v_txt); END IF;
+  IF core.fn_release_intro(E'Intro.\r\n\r\n<!--  summary:de\r\nMit CRLF.\r\n-->\r\n', 'de') IS DISTINCT FROM 'Mit CRLF.' THEN
+    RAISE EXCEPTION 'FAIL [9i CRLF + doppeltes Leerzeichen]'; END IF;
+
+  -- Karte in Owner-Sprache (Fixture: Owner de)
+  INSERT INTO core.config (package, category, key, value) VALUES ('core', 'feature', 'update_check', 'true')
+    ON CONFLICT (category, key) DO UPDATE SET value = excluded.value;
+  v_rel := jsonb_build_array(jsonb_build_object('tag', 'v2.0.1', 'draft', false, 'prerelease', false,
+             'body', E'English card text.\n\n<!-- summary:de\nDeutscher Kartentext.\n-->\n\n## Changes',
+             'html_url', 'https://example.org/r/v2.0.1', 'assets', jsonb_build_array()));
+  r := core.fn_release_card(jsonb_build_object('installed', 'v2.0.0', 'releases', v_rel));
+  IF position('Deutscher Kartentext.' IN r->>'text') = 0 OR position('English card text.' IN r->>'text') > 0 THEN
+    RAISE EXCEPTION 'FAIL [9j Karte zeigt deutschen Text]: %', r->>'text'; END IF;
+  UPDATE agent.core_contexts
+     SET metadata = jsonb_set(metadata, '{facts,persons,0,language}', '"en"')
+   WHERE name = 'family';
+  r := core.fn_release_card(jsonb_build_object('installed', 'v2.0.0', 'releases', v_rel));
+  IF position('English card text.' IN r->>'text') = 0 OR position('Deutscher Kartentext.' IN r->>'text') > 0 THEN
+    RAISE EXCEPTION 'FAIL [9k Owner en -> englisch]: %', r->>'text'; END IF;
+  UPDATE agent.core_contexts
+     SET metadata = jsonb_set(metadata, '{facts,persons,0,language}', '"ko"')
+   WHERE name = 'family';
+  r := core.fn_release_card(jsonb_build_object('installed', 'v2.0.0', 'releases', v_rel));
+  IF position('English card text.' IN r->>'text') = 0 THEN
+    RAISE EXCEPTION 'FAIL [9l Owner ko ohne ko-Marker -> englischer Fallback]: %', r->>'text'; END IF;
+  UPDATE agent.core_contexts
+     SET metadata = jsonb_set(metadata, '{facts,persons,0,language}', '"de"')
+   WHERE name = 'family';
+
+  -- ---------- 10) Fenster: scheduled-Check nur im Erinnerungs-Fenster ----------
+  DELETE FROM core.config WHERE category = 'general' AND key IN ('reminders_from', 'reminders_until');
+  v_night := ((timestamp '2026-11-07 03:00') AT TIME ZONE current_setting('TimeZone'))::text;
+  v_noon  := ((timestamp '2026-11-07 12:00') AT TIME ZONE current_setting('TimeZone'))::text;
+  r := core.fn_release_card(jsonb_build_object('installed', 'v2.0.0', 'releases', v_rel, 'scheduled', true, 'at', v_night));
+  IF (r->>'due')::boolean IS NOT FALSE OR r->>'reason' IS DISTINCT FROM 'outside_window' THEN
+    RAISE EXCEPTION 'FAIL [10a nachts + scheduled -> outside_window]: %', r; END IF;
+  IF EXISTS (SELECT 1 FROM core.notification_state n WHERE n.source = 'release_update' AND n.key = 'v2.0.1') THEN
+    RAISE EXCEPTION 'FAIL [10b outside_window latcht nicht]'; END IF;
+  r := core.fn_release_card(jsonb_build_object('installed', 'v2.0.0', 'releases', v_rel, 'scheduled', true, 'at', v_noon));
+  IF (r->>'due')::boolean IS NOT TRUE THEN RAISE EXCEPTION 'FAIL [10c mittags + scheduled -> faellig]: %', r; END IF;
+  r := core.fn_release_card(jsonb_build_object('installed', 'v2.0.0', 'releases', v_rel, 'at', v_night));
+  IF (r->>'due')::boolean IS NOT TRUE THEN RAISE EXCEPTION 'FAIL [10d nachts ohne scheduled (Handaufruf) -> faellig]: %', r; END IF;
+  r := core.fn_release_card(jsonb_build_object('installed', 'v2.0.0', 'releases', v_rel, 'scheduled', false, 'at', v_night));
+  IF (r->>'due')::boolean IS NOT TRUE THEN RAISE EXCEPTION 'FAIL [10e scheduled=false -> faellig]: %', r; END IF;
+  INSERT INTO core.config (package, category, key, value) VALUES
+    ('core', 'general', 'reminders_from', '2'), ('core', 'general', 'reminders_until', '22');
+  r := core.fn_release_card(jsonb_build_object('installed', 'v2.0.0', 'releases', v_rel, 'scheduled', true, 'at', v_night));
+  IF (r->>'due')::boolean IS NOT TRUE THEN RAISE EXCEPTION 'FAIL [10f Fenster 2-22 per Config folgt]: %', r; END IF;
+  DELETE FROM core.config WHERE category = 'general' AND key IN ('reminders_from', 'reminders_until');
+  r := core.fn_release_card(jsonb_build_object('installed', 'v2.0.0', 'releases', v_rel, 'scheduled', true, 'at', 'kein-datum'));
+  IF r->>'due' IS NULL THEN RAISE EXCEPTION 'FAIL [10g at Muell -> kein RAISE, Antwort]: %', r; END IF;
+  r := core.fn_release_card(jsonb_build_object('installed', 'v2.0.0', 'releases', v_rel, 'scheduled', true, 'at', v_night));
+  PERFORM core.fn_release_card_sent('v2.0.1');
+  r := core.fn_release_card(jsonb_build_object('installed', 'v2.0.1', 'releases', v_rel, 'scheduled', true, 'at', v_night));
+  IF r->>'reason' IS DISTINCT FROM 'up_to_date' THEN RAISE EXCEPTION 'FAIL [10h nachts + nichts Neues -> up_to_date]: %', r; END IF;
+  r := core.fn_release_card(jsonb_build_object('installed', 'v2.0.0', 'releases', v_rel, 'scheduled', true, 'at', v_night));
+  IF r->>'reason' IS DISTINCT FROM 'notified' THEN RAISE EXCEPTION 'FAIL [10i nachts + gemerkt -> notified vor outside_window]: %', r; END IF;
 
   RAISE NOTICE 'test_fn_release_card: alle Faelle gruen';
 END $$;

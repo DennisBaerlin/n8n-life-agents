@@ -194,7 +194,7 @@ main() {
     # Verbund: statt der Timer laeuft die Tick-Schleife im master (compose.yml, update_runner.sh update_tick).
     _doctor_compose_tick
   else
-    svc_active lifeagents-update-check.timer "Täglicher Release-Check"
+    svc_active lifeagents-update-check.timer "Release-Check alle 2 Stunden"
     svc_active lifeagents-update-run.timer "Update-Aufträge aus dem Chat"
   fi
   if [ "$(id -u)" -eq 0 ] && need_su_tools; then

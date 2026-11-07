@@ -259,7 +259,17 @@ function Get-HitlTelegramSecret {
 function Invoke-HitlResume {
     param([Parameter(Mandatory)][string]$Url, [string]$FromId, [string]$Container, [string]$BotToken, [string]$Secret)
     if ($Url -notmatch '/webhook-waiting-telegram\?') {
-        return Invoke-WebRequest -Uri $Url -Method Get -UseBasicParsing -TimeoutSec 20
+        # 409 „is running already“: die Karte ist abgefangen, bevor n8n den Lauf in den Wartezustand gelegt hat (zweite Stufe
+        # der Vier-Augen-Karte, CI-Läufer langsam) -> kurz erneut versuchen statt den Fall rot zu werten.
+        $until = (Get-Date).AddSeconds(15)
+        while ($true) {
+            try { return Invoke-WebRequest -Uri $Url -Method Get -UseBasicParsing -TimeoutSec 20 }
+            catch {
+                $code = if ($_.Exception.Response) { [int]$_.Exception.Response.StatusCode } else { 0 }
+                if ($code -ne 409 -or (Get-Date) -gt $until) { throw }
+                Start-Sleep -Milliseconds 500
+            }
+        }
     }
     $q = @{}
     foreach ($pair in (([uri]$Url).Query.TrimStart('?') -split '&')) { $kv = $pair -split '=', 2; $q[$kv[0]] = [uri]::UnescapeDataString($kv[1]) }

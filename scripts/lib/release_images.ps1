@@ -95,6 +95,13 @@ function Get-BytesSha256([byte[]]$Bytes) {
     try { return 'sha256:' + (($sha.ComputeHash($Bytes) | ForEach-Object { $_.ToString('x2') }) -join '') } finally { $sha.Dispose() }
 }
 
+# Get-FileSha256: hex ohne Praefix. Bewusst nicht Get-FileHash: Ruft prek in der CI (Windows-Runner, Shell pwsh) powershell.exe
+# auf, erbt 5.1 den PSModulePath von pwsh 7 und findet Get-FileHash nicht (CommandNotFoundException).
+function Get-FileSha256([string]$Path) {
+    $sha = [System.Security.Cryptography.SHA256]::Create(); $fs = [System.IO.File]::OpenRead($Path)
+    try { return (($sha.ComputeHash($fs) | ForEach-Object { $_.ToString('x2') }) -join '') } finally { $fs.Dispose(); $sha.Dispose() }
+}
+
 # Get-RegistryObject: Manifest oder Blob per Digest; prueft, dass der Inhalt wirklich diesen Digest hat (Inhalts-Adressierung).
 function Get-RegistryObject($Client, $R, [string]$Token, [string]$Kind, [string]$Digest) {
     $accept = if ($Kind -eq 'manifests') { $script:ManifestAccept } else { $null }
@@ -179,7 +186,7 @@ function Test-ReleaseSums([string]$Dir, [string]$Tarball) {
     $want = foreach ($n in $names) {
         $p = Join-Path $Dir $n
         if (-not (Test-Path -LiteralPath $p)) { $iss.Add("Asset $n fehlt."); continue }
-        "$((Get-FileHash -Algorithm SHA256 -LiteralPath $p).Hash.ToLowerInvariant())  $n"
+        "$(Get-FileSha256 $p)  $n"
     }
     if ($iss.Count) { return , $iss }
     $have = @([System.IO.File]::ReadAllLines((Join-Path $Dir 'SHA256SUMS')) | Where-Object { $_ })

@@ -75,7 +75,7 @@ New-Item -ItemType Directory -Force $sd | Out-Null
 try {
     $tb = 'n8n-life-agents-v9.9.9.tar.gz'
     foreach ($n in @($tb) + $ReleaseSumAssets) { [System.IO.File]::WriteAllText((Join-Path $sd $n), "inhalt $n`n", $u8) }
-    $lines = foreach ($n in @($tb) + $ReleaseSumAssets) { "$((Get-FileHash -Algorithm SHA256 (Join-Path $sd $n)).Hash.ToLowerInvariant())  $n" }
+    $lines = foreach ($n in @($tb) + $ReleaseSumAssets) { "$(Get-FileSha256 (Join-Path $sd $n))  $n" }
     [System.IO.File]::WriteAllText((Join-Path $sd 'SHA256SUMS'), ($lines -join "`n") + "`n", $u8)
     Check 'passende Liste = gruen' ((Test-ReleaseSums $sd $tb).Count -eq 0)
     [System.IO.File]::WriteAllText((Join-Path $sd 'SHA256SUMS'), (($lines | Select-Object -First 2) -join "`n") + "`n", $u8)

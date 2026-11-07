@@ -117,6 +117,54 @@ CREATE TABLE IF NOT EXISTS agent.dispatch_followup (
     set_at  timestamptz NOT NULL DEFAULT now()
 );
 
+-- Uebergabe Berater -> Buchhalter (Task-Lebenszyklus nach A2A; Uebergabe ueber einen
+-- deterministischen Orchestrator-Callback-Arm statt Agent->Agent). Was der Nutzer in einem Plan-Abschnitt vereinbart hat
+-- und gebucht werden muss (Sparziel, Sparplan, Dauerauftrag ...), legt agent.fn_advisor_save_section mit dem Abschnitt
+-- an (hinter der Abschnitts-Karte); der Knopf [Durchgehen] (core.fn_handle_handoff_cb) beansprucht die Aufgaben,
+-- der Buchhalter fuehrt sie einzeln hinter seinen normalen Karten aus.
+-- Lebenszyklus: open -> working (Claim, claimed_at; nach der TTL advisor.handoff_claim_ttl_minutes neu beanspruchbar,
+-- Fehler -> zurueck auf open) -> done | cancelled. Endzustaende sind unveraenderlich (Trigger). open verfaellt nie.
+-- package = Lifecycle-/Purge-Owner (fn_pkg_purge_data), domain = fachliche Plan-Domain; das Ziel-Agent loest der Build
+-- aus dem Manifest (advisors.<domain>.handoff_agent), keine Agenten-Spalte. person_id = die Person, die zugestimmt hat
+-- (aus der chat_id, nie LLM); Personen-FK in core:V035 (dieses Init laeuft vor persons_init, Muster V034).
+-- kind = grobe Art fuer den Buchhalter (Validierung der Werte bleibt allein der Probelauf der Ziel-fn), payload = die
+-- rohen Nutzerwerte, text = der Alltags-Satz fuer Karte und Uebersicht (Gespraechssprache, nie uebersetzt).
+-- Schreiber: agent.fn_advisor_save_section (anlegen/ersetzen), core.fn_handle_handoff_cb + core.fn_release_handoff_tasks
+-- (Claim), core.fn_complete_handoff_task / core.fn_cancel_handoff_task (Endzustand). Frei-SQL (core_ro) gesperrt:
+-- Deny-Liste util_create_core_ro.
+CREATE TABLE IF NOT EXISTS agent.handoff_tasks (
+    id          serial PRIMARY KEY,
+    domain      text NOT NULL CHECK (btrim(domain) <> ''),
+    package     text NOT NULL CHECK (package ~ '^[a-z][a-z0-9_]*$'),
+    person_id   text NOT NULL,
+    section_key text NOT NULL CHECK (btrim(section_key) <> ''),
+    kind        text NOT NULL CHECK (kind IN ('savings_goal', 'savings_plan', 'recurring_payment', 'recurring_transfer', 'other')),
+    payload     jsonb NOT NULL DEFAULT '{}'::jsonb CHECK (jsonb_typeof(payload) = 'object'),
+    text        text NOT NULL CHECK (btrim(text) <> '' AND length(text) <= 300),
+    status      text NOT NULL DEFAULT 'open' CHECK (status IN ('open', 'working', 'done', 'cancelled')),
+    claimed_at  timestamptz,                -- Provenienz des Claims (Ausnahme (c)): wann [Durchgehen] die Aufgabe beanspruchte
+    created_at  timestamptz NOT NULL DEFAULT now(),
+    closed_at   timestamptz,                -- Provenienz des Endzustands (Ausnahme (c))
+    CONSTRAINT handoff_tasks_claim_check  CHECK (status <> 'working' OR claimed_at IS NOT NULL),
+    CONSTRAINT handoff_tasks_closed_check CHECK ((status IN ('done', 'cancelled')) = (closed_at IS NOT NULL))
+);
+CREATE INDEX IF NOT EXISTS handoff_tasks_open_idx ON agent.handoff_tasks (domain, person_id, status);
+
+-- Endzustand-Gesetz: done/cancelled aendert niemand mehr (auch kein Re-Open). DELETE bleibt erlaubt (Purge, E2E-Cleanup).
+CREATE OR REPLACE FUNCTION agent.fn_handoff_tasks_final_guard()
+RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+    IF OLD.status IN ('done', 'cancelled') THEN
+        RAISE EXCEPTION 'agent.handoff_tasks: task % is % and can no longer change', OLD.id, OLD.status;
+    END IF;
+    RETURN NEW;
+END;
+$$;
+DROP TRIGGER IF EXISTS trg_handoff_tasks_final ON agent.handoff_tasks;
+CREATE TRIGGER trg_handoff_tasks_final
+    BEFORE UPDATE ON agent.handoff_tasks
+    FOR EACH ROW EXECUTE FUNCTION agent.fn_handoff_tasks_final_guard();
+
 -- ============================================================
 -- LESE-ZUGRIFF auf advisor_plans (Paket-Isolation, O1): advisor_plans bleibt in `agent`
 -- (Shared-Infra fuer einen kuenftigen Career-Advisor). Der Advisor-Agent laeuft unter der

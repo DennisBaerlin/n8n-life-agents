@@ -14,12 +14,17 @@
 --     section_content (Pflicht, Klartext der Sektion in der Sprache der Antwort des Beraters; die Karte zeigt ihn ganz),
 --     section_data (optional, leerer String = nicht angegeben; jsonb-Objekt ODER JSON-String — String wird geparst; relative Zeitangaben in
 --       *_date/since loest core.fn_resolve_fact_dates auf, jedes Top-Level-Objekt bekommt as_of = heute von der fn),
---     plan_name (optional, nur bei Draft-Neuanlage).
+--     plan_name (optional, nur bei Draft-Neuanlage),
+--     handoff_tasks (optional, Array ODER JSON-String, leerer String = keine): im Abschnitt vereinbarte Eintraege fuer den
+--       Buchhalter, je {kind: savings_goal|savings_plan|recurring_payment|recurring_transfer|other, payload (Objekt, rohe
+--       Nutzerwerte, optional), text (Alltags-Satz, 1..300 Zeichen)}. Angegeben (auch '[]') ersetzt es die OFFENEN Aufgaben
+--       des Abschnitts; weggelassen bleiben sie unveraendert; working/done/cancelled bleiben immer. Person = Sender
+--       (core.fn_handoff_person), package = Paket der Plan-Domain (core.advisors, E2E-Domain -> echte Domain).
 --   RUECKGABE-VERTRAG: Erfolg -> {ok:true, plan_id, version, status:'draft',
---     draft_created, sections, section_count} (Post-State: welche Sektionen der Draft
---     JETZT hat; draft_created = DB-entschieden).
---   Korrigierbar (fehlendes domain, leerer section_key/-content, invalides section_data-JSON)
---     -> {ok:false, reason} OHNE Write (kein RAISE -> kein Owner-Alert).
+--     draft_created, sections, section_count, handoff_task_count, card_lines} (Post-State: welche Sektionen der Draft
+--     JETZT hat; draft_created = DB-entschieden; card_lines = je Aufgabe eine Kartenzeile core.hitl.handoff_planned {text}).
+--   Korrigierbar (fehlendes domain, leerer section_key/-content, invalides section_data-JSON, ungueltige handoff_tasks,
+--     Person nicht aufloesbar) -> {ok:false, reason} OHNE Write (kein RAISE -> kein Owner-Alert).
 -- ============================================================
 CREATE OR REPLACE FUNCTION agent.fn_advisor_save_section(p jsonb)
 RETURNS jsonb LANGUAGE plpgsql AS $$
@@ -40,6 +45,11 @@ DECLARE
     v_perm    TEXT;
     v_pid     TEXT;
     v_err     TEXT;
+    v_tasks   JSONB := '[]'::jsonb;
+    v_given   BOOLEAN := false;   -- handoff_tasks angegeben (auch leer '[]') -> ersetzt; weggelassen -> offene bleiben
+    v_hpid    TEXT;
+    v_pkg     TEXT;
+    v_bad     TEXT;
 BEGIN
     IF v_domain IS NULL THEN
         RETURN jsonb_build_object('ok', false,
@@ -93,6 +103,45 @@ BEGIN
         END IF;
     END IF;
 
+    -- handoff_tasks: Array oder JSON-String (Tool-Binding liefert Strings); jede Zeile pruefen, bevor irgendetwas schreibt
+    -- (die Tabellen-CHECKs sind der Backstop, ihr RAISE kaeme als Owner-Alert statt als Rueckfrage).
+    IF p ? 'handoff_tasks' AND jsonb_typeof(p->'handoff_tasks') IS DISTINCT FROM 'null'
+       AND btrim(COALESCE(p->>'handoff_tasks', '')) <> '' THEN
+        v_given := true;
+        IF jsonb_typeof(p->'handoff_tasks') = 'string' THEN
+            BEGIN
+                v_tasks := (p->>'handoff_tasks')::jsonb;
+            EXCEPTION WHEN OTHERS THEN
+                RETURN jsonb_build_object('ok', false, 'reason', 'handoff_tasks is not valid JSON: ' || left(p->>'handoff_tasks', 120));
+            END;
+        ELSE
+            v_tasks := p->'handoff_tasks';
+        END IF;
+        IF jsonb_typeof(v_tasks) IS DISTINCT FROM 'array' THEN
+            RETURN jsonb_build_object('ok', false, 'reason', 'handoff_tasks must be a JSON array of {kind, payload, text}');
+        END IF;
+        SELECT string_agg(format('#%s: %s', i, why), '; ') INTO v_bad
+        FROM (
+            SELECT i, CASE
+                WHEN jsonb_typeof(t) IS DISTINCT FROM 'object' THEN 'not an object'
+                WHEN COALESCE(t->>'kind', '') NOT IN ('savings_goal', 'savings_plan', 'recurring_payment', 'recurring_transfer', 'other')
+                    THEN 'kind must be savings_goal|savings_plan|recurring_payment|recurring_transfer|other'
+                WHEN btrim(COALESCE(t->>'text', '')) = '' THEN 'text is empty'
+                WHEN length(t->>'text') > 300 THEN 'text is longer than 300 characters'
+                WHEN t ? 'payload' AND jsonb_typeof(t->'payload') NOT IN ('object', 'null') THEN 'payload must be a JSON object'
+            END AS why
+            FROM jsonb_array_elements(v_tasks) WITH ORDINALITY AS x(t, i)
+        ) c WHERE why IS NOT NULL;
+        IF v_bad IS NOT NULL THEN
+            RETURN jsonb_build_object('ok', false, 'reason', 'handoff_tasks rejected: ' || v_bad);
+        END IF;
+    END IF;
+    v_hpid := core.fn_handoff_person(p->>'chat_id');
+    IF jsonb_array_length(v_tasks) > 0 AND v_hpid IS NULL THEN
+        RETURN jsonb_build_object('ok', false, 'reason', 'cannot resolve the person for the handoff tasks');
+    END IF;
+    v_pkg := COALESCE((SELECT a.package FROM core.advisors a WHERE a.domain = regexp_replace(v_domain, '^__e2e_(.+)__$', '\1')), 'core');
+
     -- WP3: relative Zeitangaben (*_date / since) rechnet die DB; as_of jedes Top-Level-OBJEKT-Blocks stempelt die fn
     -- (Provenienz-Stempel: "Stand der Erhebung" = Tag des Sektions-Saves; ein vom LLM mitgeschicktes as_of zaehlt nicht).
     IF jsonb_typeof(v_data) = 'object' THEN
@@ -139,6 +188,16 @@ BEGIN
 
     UPDATE agent.advisor_plans SET interview_state = v_state WHERE id = v_plan_id;
 
+    -- Vereinbarte Aufgaben des Abschnitts: nur wenn angegeben die offenen ersetzen (beanspruchte und geschlossene bleiben).
+    -- Weggelassen = unveraendert: eine Prosa-Korrektur ohne den optionalen Parameter darf nichts Vereinbartes loeschen.
+    IF v_given THEN
+        DELETE FROM agent.handoff_tasks
+         WHERE domain = v_domain AND section_key = v_key AND status = 'open' AND person_id IS NOT DISTINCT FROM v_hpid;
+    END IF;
+    INSERT INTO agent.handoff_tasks (domain, package, person_id, section_key, kind, payload, text)
+    SELECT v_domain, v_pkg, v_hpid, v_key, t->>'kind', COALESCE(NULLIF(t->'payload', 'null'::jsonb), '{}'::jsonb), btrim(t->>'text')
+    FROM jsonb_array_elements(v_tasks) WITH ORDINALITY AS x(t, i) ORDER BY i;
+
     SELECT COALESCE(jsonb_agg(k ORDER BY k), '[]'::jsonb) INTO v_keys
     FROM jsonb_object_keys(v_state) AS k;
 
@@ -149,7 +208,11 @@ BEGIN
         'status', 'draft',
         'draft_created', v_created,
         'sections', v_keys,
-        'section_count', jsonb_array_length(v_keys)
+        'section_count', jsonb_array_length(v_keys),
+        'handoff_task_count', jsonb_array_length(v_tasks),
+        'card_lines', COALESCE((SELECT jsonb_agg(jsonb_build_object('kind', 'note', 'value', 'core.hitl.handoff_planned',
+                                    'params', jsonb_build_object('text', btrim(t->>'text'))) ORDER BY i)
+                                FROM jsonb_array_elements(v_tasks) WITH ORDINALITY AS x(t, i)), '[]'::jsonb)
     );
 END;
 $$;

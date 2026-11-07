@@ -26,7 +26,7 @@
       "create_pension", "set_pension", "close_pension",
       "create_real_estate", "set_real_estate", "sell_real_estate", "delete_real_estate",
       "create_recurring_payment", "set_recurring_payment", "delete_recurring_payment",
-      "create_recurring_transfer", "get_recurring_suggestions",
+      "create_recurring_transfer", "get_recurring_suggestions", "cancel_handoff_task",
       "create_savings_goal", "set_savings_goal", "close_savings_goal",
       "create_savings_plan", "set_savings_plan", "close_savings_plan", "book_savings_plan_execution",
       "book_recurring_occurrence", "book_interest",
@@ -44,7 +44,7 @@
   "consumes": {
     "services": [
       "core:human_approval", "core:load_context", "core:load_config", "core:web_search", "core:expert_panel",
-      "core:transcribe_telegram_voice", "core:fetch_telegram_file", "core:error_notify", "core:save_plan_section", "core:publish_plan", "core:record_plan_wish", "core:create_monitor_trigger",
+      "core:transcribe_telegram_voice", "core:fetch_telegram_file", "core:error_notify", "core:save_plan_section", "core:publish_plan", "core:send_handoff_overview", "core:record_plan_wish", "core:create_monitor_trigger",
       "core:list_monitor_triggers", "core:onboarding_progress",
       "paperless:search_documents", "paperless:get_document", "paperless:ask_documents"
     ],
@@ -135,7 +135,7 @@
     "depot": { "handler_fn": "finance.fn_app_screen_depot", "ord": 50, "icon": "📈" }
   },
   "advisors": {
-    "_comment": "Generische Advisor-Registry (WS2, Core-Advisor-Engine, docs/package-contract.md §3.3): bindet eine Advisor-DOMAIN dieses Pakets an ihren Soll-Plan-Context + die paket-besessene Review-fn, die Soll-Ist-Drift/Staleness/Digest rechnet. DEKLARATION (Paket) vs. AUSFÜHRUNG (Host seed_data._seed_advisors): der Host upsertet die Zeile own-schema-scoped in core.advisors; der generische Core-Wrapper core.fn_advisor_review_evaluate(domain) dispatcht über die Tabelle (kein hartkodierter finance-Name im Core). VERSCHACHTELT (3 Werte je domain + optional learn_notes): {domain:{plan_context,review_fn,advisor_agent,learn_notes?}}; learn_notes=true = das Plan-Dokument darf owner-bestätigte Lern-Notizen ('## Gelernt') tragen (core.fn_note_context_allowed, Default false; nur household-Plan-Kontexte); plan_step=true = die Domain bietet im Onboarding den empfohlenen Plan-Schritt an (Knopf plan:<domain>), gaps_fn/readiness_fn = optionale eigene fns (text,text) für offene Plan-Punkte bzw. die Daten-Reife (core.fn_advisor_plan_status); review_fn MUSS ins eigene Schema (finance.*) zeigen; advisor_agent = das Orchestrator-Router-Ziel der Domäne (Phase 0 WS-0c #1 — der Interview-Pin pinnt dorthin). package='finance' -> fn_pkg_purge_data räumt die Zeile beim Uninstall (sonst Orphan-review_fn).",
+    "_comment": "Generische Advisor-Registry (WS2, Core-Advisor-Engine, docs/package-contract.md §3.3): bindet eine Advisor-DOMAIN dieses Pakets an ihren Soll-Plan-Context + die paket-besessene Review-fn, die Soll-Ist-Drift/Staleness/Digest rechnet. DEKLARATION (Paket) vs. AUSFÜHRUNG (Host seed_data._seed_advisors): der Host upsertet die Zeile own-schema-scoped in core.advisors; der generische Core-Wrapper core.fn_advisor_review_evaluate(domain) dispatcht über die Tabelle (kein hartkodierter finance-Name im Core). VERSCHACHTELT (3 Werte je domain + optional learn_notes): {domain:{plan_context,review_fn,advisor_agent,learn_notes?}}; learn_notes=true = das Plan-Dokument darf owner-bestätigte Lern-Notizen ('## Gelernt') tragen (core.fn_note_context_allowed, Default false; nur household-Plan-Kontexte); plan_step=true = die Domain bietet im Onboarding den empfohlenen Plan-Schritt an (Knopf plan:<domain>), handoff_agent = der Agent dieses Pakets, der im Plan-Gespräch Vereinbartes einträgt (Übergabe Berater -> Buchhalter, Knopf [Durchgehen]; BUILD-Datum, nicht in core.advisors; contract_lint: Ziel in provides.agents des eigenen Pakets); gaps_fn/readiness_fn = optionale eigene fns (text,text) für offene Plan-Punkte bzw. die Daten-Reife (core.fn_advisor_plan_status); review_fn MUSS ins eigene Schema (finance.*) zeigen; advisor_agent = das Orchestrator-Router-Ziel der Domäne (Phase 0 WS-0c #1 — der Interview-Pin pinnt dorthin). package='finance' -> fn_pkg_purge_data räumt die Zeile beim Uninstall (sonst Orphan-review_fn).",
     "finance": {
       "plan_context": "financial_planning",
       "review_fn": "finance.fn_advisor_review",
@@ -143,7 +143,8 @@
       "learn_notes": true,
       "plan_step": true,
       "gaps_fn": "finance.fn_plan_gap_count",
-      "readiness_fn": "finance.fn_plan_readiness"
+      "readiness_fn": "finance.fn_plan_readiness",
+      "handoff_agent": "agent.finance"
     }
   },
   "protected_contexts": [
@@ -236,6 +237,7 @@
     "agent.finance.tool_create_loan": { "tier": "owner_info", "reason": "create_: Kredit anlegen." },
     "agent.finance.tool_create_real_estate": { "tier": "owner_info", "reason": "create_: Immobilie anlegen." },
     "agent.finance.tool_create_savings_goal": { "tier": "owner_info", "reason": "create_: Sparziel anlegen." },
+    "agent.finance.tool_cancel_handoff_task": { "tier": "owner_info", "reason": "cancel_: einen im Plan-Gespräch vereinbarten Punkt überspringen oder als anderweitig erledigt schließen (keine Buchung; nur die Person, die zugestimmt hat, DB-Backstop in core.fn_cancel_handoff_task; Stufe self ist der Eigen-Fakten-fn vorbehalten)." },
     "agent.finance.tool_create_recurring_payment": { "tier": "owner_info", "reason": "create_: Dauerauftrag anlegen." },
     "agent.finance.tool_create_recurring_transfer": { "tier": "owner_info", "reason": "create_: Wiederkehrenden Transfer anlegen." },
     "agent.finance.tool_create_pension": { "tier": "owner_info", "reason": "create_: Altersvorsorge anlegen." },

@@ -6,7 +6,7 @@ function Build-CreateSavingsGoal {
     # WS-B0: enge Paket-Schreibrolle (finance_rw, Least-Privilege D10) statt Owner-Cred.
     # Dynamic-Scope: Build-Pg liest dieses $CRED_POSTGRES. Core-Tools nutzen die Owner-Cred.
     $CRED_POSTGRES = $CRED_FINANCE_RW
-    $trig = Build-Trigger @('goal_name','goal_type','target_amount','target_date','monthly_savings_rate','account_name','schedule_day_of_month','first_payment_date','notes','beneficiary_person','reserve_account_name','priority','already_saved','savings_plan_name','replace_transfer','real_estate_name','kind','target_months')
+    $trig = Build-Trigger @('goal_name','goal_type','target_amount','target_date','monthly_savings_rate','account_name','schedule_day_of_month','first_payment_date','notes','beneficiary_person','reserve_account_name','priority','already_saved','savings_plan_name','replace_transfer','real_estate_name','kind','target_months','handoff_task_id')
 
     # Duplicate-name guard (Backstop wie bei den anderen create_*-Tools): ein create_* darf kein
     # zweites Sparziel gleichen Namens still anlegen (name hat keine UNIQUE-Constraint). Existiert ein
@@ -70,6 +70,8 @@ function Build-CreateSavingsGoal {
         -WriteName 'Create savings goal (atomic)' `
         -WriteSelect "(r->>'ok')::boolean AS ok, r->>'reason' AS reason, r->'depot_risk' AS depot_risk, (r->>'goal_id')::int AS goal_id, (r->>'recurring_payment_id')::int AS recurring_payment_id, (r->>'monthly_rate')::numeric AS monthly_rate, (r->>'target_date')::date AS target_date, (r->>'current_amount')::numeric AS current_amount, (r->>'savings_plan_id')::int AS savings_plan_id, (r->>'required_monthly_rate')::numeric AS required_monthly_rate, (r->>'plan_monthly_amount')::numeric AS plan_monthly_amount, (r->>'replaced_transfer_id')::int AS replaced_transfer_id, COALESCE(r->'savings_squeeze'->>'note', '') AS savings_squeeze, (r->>'recommended_monthly')::numeric AS recommended_monthly" `
         -Params ([ordered]@{
+            handoff_task_id       = '$(''Start'').item.json.handoff_task_id'   # vereinbarte Plan-Aufgabe: finance.fn_with_handoff prueft + schliesst sie im selben Write
+            chat_id               = '$(''Start'').item.json.chat_id'           # Person der Plan-Aufgabe (nie LLM)
             name                  = '$(''Start'').item.json.goal_name'
             goal_type             = '$(''Start'').item.json.goal_type'
             target_amount         = '$(''Start'').item.json.target_amount'

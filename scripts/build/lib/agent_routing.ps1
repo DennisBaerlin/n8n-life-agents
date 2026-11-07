@@ -126,7 +126,8 @@ function Get-OnboardingOrderFromManifests([array]$Manifests) {
 
 # Onboarding-Plan-Schritt (2026-10-28): die Berater-Domaenen mit "plan_step": true im Manifest-Block advisors, in
 # Onboarding-Reihenfolge ihres Pakets (der Plan-Schritt steht im Menue hinter den Abschnitten seines Pakets).
-# Rueckgabe: @( [pscustomobject]@{ Domain; Package; Agent (voll, agent.<x>); ReadyKeys (Katalog-Keys
+# Rueckgabe: @( [pscustomobject]@{ Domain; Package; Agent (voll, agent.<x>); HandoffAgent (advisors.<domain>.handoff_agent,
+# voll oder ''; Ziel von [Durchgehen] und Schalter fuer den Parameter handoff_tasks am Plan-Tool); ReadyKeys (Katalog-Keys
 # <pkg>.plan_ready.<key> aus packages/<pkg>/locales/de.json = die Texte der fehlenden Mindestdaten) } ).
 # Konsumenten: core.sub_send_onboarding_menu (Plan-Zeile + Knopf plan:<domain>) und agent.orchestrator (je Domain ein
 # Dispatch-Arm 'Run plan <domain>' -> advisor_agent). Ein Paket ohne Onboarding-Abschnitte bekommt keinen Plan-Schritt.
@@ -149,10 +150,12 @@ function Get-AdvisorPlanStepList([string]$RepoRoot) {
                 $readyKeys = @(([System.IO.File]::ReadAllText($loc, $enc) | ConvertFrom-Json).PSObject.Properties.Name |
                     Where-Object { $_ -like "$pkg.plan_ready.*" } | Sort-Object)
             }
-            $out += [pscustomobject]@{ Domain = $p.Name; Package = $pkg; Agent = $agent; ReadyKeys = $readyKeys; Ord = $order.IndexOf($pkg) }
+            $handoff = [string]$p.Value.handoff_agent
+            if ($handoff -and $handoff -cnotmatch '^agent\.[a-z][a-z0-9_]*$') { throw "Get-AdvisorPlanStepList: advisors '$($p.Name)' ($pkg) mit ungueltigem handoff_agent '$handoff'" }
+            $out += [pscustomobject]@{ Domain = $p.Name; Package = $pkg; Agent = $agent; HandoffAgent = $handoff; ReadyKeys = $readyKeys; Ord = $order.IndexOf($pkg) }
         }
     }
-    return @($out | Sort-Object Ord, Domain | Select-Object Domain, Package, Agent, ReadyKeys)
+    return @($out | Sort-Object Ord, Domain | Select-Object Domain, Package, Agent, HandoffAgent, ReadyKeys)
 }
 
 # Name des Route-Tool-Nodes, den der Orchestrator-Build je Agent erzeugt (n8n zeigt ihn im runData unter

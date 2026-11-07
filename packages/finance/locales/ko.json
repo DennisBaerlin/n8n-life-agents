@@ -985,5 +985,9 @@
   "finance.plan_section.crossborder": "해외 관련 사항",
   "finance.plan_section.goals_triggers": "목표와 점검 시점",
   "finance.note.funding_gap_date": "이후 {account} 잔액이 {date}부터 부족.",
-  "finance.note.recurring_iban_key": "앞으로 이 결제는 금액이 달라져도 IBAN {iban}으로 알아봐요. 틀렸다면 취소해 주세요."
+  "finance.note.recurring_iban_key": "앞으로 이 결제는 금액이 달라져도 IBAN {iban}으로 알아봐요. 틀렸다면 취소해 주세요.",
+  "finance.hitl.cancel_handoff_task": "계획 상담 항목 마무리 – 확인해 주세요:",
+  "finance.label.handoff_outcome": "결과",
+  "finance.value.handoff_skipped": "건너뛰기, 입력 안 함",
+  "finance.value.handoff_done_elsewhere": "이미 완료"
 }

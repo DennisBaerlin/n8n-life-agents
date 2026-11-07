@@ -6,7 +6,7 @@ function Build-SetSavingsPlan {
     # WS-B0: enge Paket-Schreibrolle (finance_rw, Least-Privilege D10) statt Owner-Cred.
     # Dynamic-Scope: Build-Pg liest dieses $CRED_POSTGRES. Core-Tools nutzen die Owner-Cred.
     $CRED_POSTGRES = $CRED_FINANCE_RW
-    $trig = Build-Trigger @('savings_plan_name','new_amount','schedule_unit','schedule_interval','status','valid_from','notes','beneficiary_person','asset_class','depot_execution_days')
+    $trig = Build-Trigger @('savings_plan_name','new_amount','schedule_unit','schedule_interval','status','valid_from','notes','beneficiary_person','asset_class','depot_execution_days','handoff_task_id')
 
     # Aktuelle Werte fuer informativen HITL-Summary
     $readCur = Build-Pg 'Read Current' @(220, 0) `
@@ -36,6 +36,8 @@ function Build-SetSavingsPlan {
         -WriteName 'Set plan (atomic)' `
         -WriteSelect "(r->>'ok')::boolean AS ok, r->>'reason' AS reason, (r->>'savings_plan_id')::int AS savings_plan_id, (r->>'recurring_payment_id')::int AS recurring_payment_id, (r->>'split')::boolean AS split, COALESCE(r->'savings_squeeze'->>'note', '') AS savings_squeeze, COALESCE(r->'savings_funding'->>'note', '') AS savings_funding" `
         -Params ([ordered]@{
+            handoff_task_id       = '$(''Start'').item.json.handoff_task_id'   # vereinbarte Plan-Aufgabe: finance.fn_with_handoff prueft + schliesst sie im selben Write
+            chat_id               = '$(''Start'').item.json.chat_id'           # Person der Plan-Aufgabe (nie LLM)
             savings_plan_name = '$(''Start'').item.json.savings_plan_name'
             new_amount        = '$(''Start'').item.json.new_amount'
             schedule_unit     = '$(''Start'').item.json.schedule_unit'

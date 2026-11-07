@@ -985,5 +985,9 @@
   "finance.plan_section.crossborder": "Cross-border topics",
   "finance.plan_section.goals_triggers": "Goals and triggers",
   "finance.note.funding_gap_date": "Afterwards {account} runs short from {date}.",
-  "finance.note.recurring_iban_key": "From now on this payment is recognised by the IBAN {iban}, even when the amount varies. If wrong, cancel."
+  "finance.note.recurring_iban_key": "From now on this payment is recognised by the IBAN {iban}, even when the amount varies. If wrong, cancel.",
+  "finance.hitl.cancel_handoff_task": "Close an item from the plan conversation – please check:",
+  "finance.label.handoff_outcome": "Outcome",
+  "finance.value.handoff_skipped": "skip, do not enter",
+  "finance.value.handoff_done_elsewhere": "already done"
 }

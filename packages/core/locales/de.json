@@ -1022,5 +1022,11 @@
   "core.wizard.domain.live_ok": "Gefunden ✓ Die Adresse zeigt auf deinen Anschluss.",
   "core.wizard.domain.live_found": "Gefunden ✓",
   "core.wizard.domain.live_wrong_ip": "Dieser Name gehört nicht zu deinem Anschluss. Das Bild zeigt, wo der richtige steht.",
-  "core.wizard.domain.live_pending": "Unter diesem Namen ist noch nichts eingetragen. Hast du die Freigabe gerade erst angelegt, warte etwa eine Minute und prüf erneut. Sonst stimmt der Name nicht: Das Bild zeigt, wo der richtige steht."
+  "core.wizard.domain.live_pending": "Unter diesem Namen ist noch nichts eingetragen. Hast du die Freigabe gerade erst angelegt, warte etwa eine Minute und prüf erneut. Sonst stimmt der Name nicht: Das Bild zeigt, wo der richtige steht.",
+  "core.hitl.handoff_planned": "Danach einzutragen: {text}",
+  "core.hitl.handoff_note": "Aus dem Plan-Gespräch: {text}",
+  "core.toast.handoff_nothing_open": "Schon erledigt oder läuft gerade.",
+  "core.orch.toast_handoff": "Der erste Punkt kommt gleich …",
+  "core.handoff.overview": "Aus dem Plan-Gespräch noch einzutragen:\n{list}\n\nMit „Durchgehen“ kommt jeder Punkt einzeln zum Bestätigen. Das geht auch später noch.",
+  "core.handoff.btn_go": "Durchgehen"
 }

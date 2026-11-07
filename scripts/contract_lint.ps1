@@ -1390,7 +1390,8 @@ foreach ($pdir in (Get-ChildItem $pkgDir -Directory -ErrorAction SilentlyContinu
 #         Pakets (<pkg>.facts.<ctx>.title/.<feld>; locale_lint prueft den Titel je context_validators-Kontext).
 #     (c) advisors.<domain>.learn_notes=true nur fuer einen household-Plan-Kontext (per_user-Plan-Dokumente
 #         sind suffigiert, core.fn_note_context_allowed vergleicht exakt -> ein Opt-in waere tot);
-#         plan_step boolean, gaps_fn/readiness_fn im eigenen Schema und nur mit plan_step=true.
+#         plan_step boolean, gaps_fn/readiness_fn im eigenen Schema und nur mit plan_step=true;
+#         handoff_agent nur mit plan_step und nur ein Agent aus provides.agents des eigenen Pakets.
 #     (d) keine Workflow-id in zwei Dateien (Rename ohne git mv -> import:workflow nimmt eine der beiden still).
 #     (e) retired_workflows: eine stillgelegte id liegt nicht mehr im Baum und kein getrackter Workflow verweist
 #         auf sie (sonst loeschte retire_workflows einen lebenden Pfad).
@@ -1448,6 +1449,19 @@ foreach ($pdir in (Get-ChildItem $pkgDir -Directory -ErrorAction SilentlyContinu
                 }
                 if (-not (Test-Path (Join-Path $pdir.FullName 'onboarding\sections.json'))) {
                     $errors.Add("PLAN-STEP: packages/$pkg/manifest.json advisors '$($p.Name)' hat plan_step=true, aber packages/$pkg/onboarding/sections.json fehlt -- der Plan-Schritt steht hinter den Onboarding-Abschnitten des Pakets.")
+                }
+            }
+            # Uebergabe Berater -> Buchhalter: handoff_agent ist Build-Datum (Orchestrator-Arm 'Handoff route?',
+            # Parameter handoff_tasks am Plan-Tool) und muss ein Agent DIESES Pakets sein (provides.agents) -- sonst startete
+            # [Durchgehen] einen fremden oder nicht existierenden Agenten. Nur mit plan_step (der Arm haengt am Plan-Weg).
+            if ($p.Value.PSObject.Properties.Name -contains 'handoff_agent') {
+                $ha = [string]$p.Value.handoff_agent
+                $own = @(@($mf.provides.agents) | Where-Object { $null -ne $_ } | ForEach-Object { 'agent.' + $(if ($_ -is [string]) { $_ } else { [string]$_.name }) })
+                if ($ha -cnotmatch '^agent\.[a-z][a-z0-9_]*$' -or $own -cnotcontains $ha) {
+                    $errors.Add("HANDOFF-AGENT: packages/$pkg/manifest.json advisors '$($p.Name)'.handoff_agent '$ha' muss ein Agent aus provides.agents dieses Pakets sein (agent.<name>) -- [Durchgehen] haette sonst kein gueltiges Ziel.")
+                }
+                if ($p.Value.plan_step -ne $true) {
+                    $errors.Add("HANDOFF-AGENT: packages/$pkg/manifest.json advisors '$($p.Name)'.handoff_agent ohne plan_step=true -- der Uebergabe-Arm haengt am Plan-Weg und wuerde nie gebaut.")
                 }
             }
             foreach ($fk in @('gaps_fn', 'readiness_fn')) {

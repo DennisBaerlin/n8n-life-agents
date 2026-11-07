@@ -1654,9 +1654,10 @@ DECLARE
   v_published text[] := ARRAY['fn_core_api_version', 'fn_advisor_read_plan', 'fn_onboarding_status', 'fn_package_active',
                               'fn_config_get', 'fn_monitor_trigger_summary', 'fn_list_monitor_triggers',
                               'fn_household_persons', 'fn_resolve_person', 'fn_ui_texts_for', 'fn_today',
-                              'fn_resolve_date', 'fn_resolve_input_dates'];
+                              'fn_resolve_date', 'fn_resolve_input_dates', 'fn_handoff_tasks_read'];
   v_published_rw text[] := ARRAY['fn_set_onboarding_section', 'fn_check_write_permission', 'fn_person_chat_id',
-                                 'fn_should_notify', 'fn_notify_resolve', 'fn_dry_run'];
+                                 'fn_should_notify', 'fn_notify_resolve', 'fn_dry_run',
+                                 'fn_handoff_task_check', 'fn_complete_handoff_task', 'fn_cancel_handoff_task'];
   v_n int := 0;
 BEGIN
   FOR v_pkg IN
@@ -1784,6 +1785,47 @@ BEGIN
   IF v_out NOT LIKE '%Plan gaps: never confirmed in an interview: household_basics%' THEN
     RAISE EXCEPTION 'FAIL [context_ro -> financial_planning Plan-Luecken]: Zeile fehlt: %', v_out; END IF;
   RAISE NOTICE 'PASS [context_ro -> fn_fetch_context(financial_planning) -> fn_plan_gaps]';
+END $$;
+
+-- ===== Uebergabe Berater -> Buchhalter: der Buchhalter liest seine Aufgaben unter finance_ro, die finance-Write-fns
+-- pruefen/schliessen sie unter finance_rw (DEFINER-Fenster; agent.handoff_tasks bleibt beiden Rollen verschlossen). =====
+DO $$
+DECLARE v jsonb; v_id int;
+BEGIN
+  -- Person aus dem family-Fixture am Dateianfang (__rp_owner__, chat 777); family hier nicht neu setzen (FK-Referenzen)
+  INSERT INTO agent.handoff_tasks (domain, package, person_id, section_key, kind, text, status, claimed_at)
+  VALUES ('finance', 'finance', '__rp_owner__', 'goals_triggers', 'other', 'rp handoff', 'working', now()) RETURNING id INTO v_id;
+  BEGIN
+    SET LOCAL ROLE finance_ro;
+    v := core.fn_handoff_tasks_read(ARRAY[v_id]);
+    RESET ROLE;
+  EXCEPTION WHEN OTHERS THEN
+    RESET ROLE;
+    RAISE EXCEPTION 'FAIL [finance_ro -> core.fn_handoff_tasks_read]: %', SQLERRM;
+  END;
+  IF v->0->>'text' IS DISTINCT FROM 'rp handoff' THEN RAISE EXCEPTION 'FAIL [finance_ro -> fn_handoff_tasks_read leer]: %', v; END IF;
+  BEGIN
+    SET LOCAL ROLE finance_rw;
+    v := core.fn_handoff_task_check(jsonb_build_object('handoff_task_id', v_id, 'chat_id', '777'));
+    IF (v->>'ok')::boolean IS NOT TRUE THEN RAISE EXCEPTION 'check %', v; END IF;
+    v := core.fn_complete_handoff_task(jsonb_build_object('handoff_task_id', v_id, 'chat_id', '777'));
+    IF (v->>'ok')::boolean IS NOT TRUE THEN RAISE EXCEPTION 'complete %', v; END IF;
+    v := core.fn_cancel_handoff_task(jsonb_build_object('handoff_task_id', v_id, 'chat_id', '777'));
+    IF v->>'code' IS DISTINCT FROM 'handoff_task_closed' THEN RAISE EXCEPTION 'cancel %', v; END IF;
+    RESET ROLE;
+  EXCEPTION WHEN OTHERS THEN
+    RESET ROLE;
+    RAISE EXCEPTION 'FAIL [finance_rw -> core.fn_handoff_task_check/complete/cancel]: %', SQLERRM;
+  END;
+  BEGIN
+    SET LOCAL ROLE finance_rw;
+    PERFORM 1 FROM agent.handoff_tasks LIMIT 1;
+    RESET ROLE;
+    RAISE EXCEPTION 'FAIL [finance_rw NEGATIV]: agent.handoff_tasks direkt lesbar';
+  EXCEPTION
+    WHEN insufficient_privilege THEN RESET ROLE;
+  END;
+  RAISE NOTICE 'PASS [finance_ro/_rw -> Handoff-Fenster]';
 END $$;
 
 ROLLBACK;

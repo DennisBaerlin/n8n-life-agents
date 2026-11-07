@@ -2117,6 +2117,7 @@
                                          "workflowInputs":  {
                                                                 "mappingMode":  "defineBelow",
                                                                 "value":  {
+                                                                              "handoff_task_id":  "={{ $fromAI(\u0027handoff_task_id\u0027, \u0027ONLY in handoff mode: the id of the agreed plan entry this booking fulfils (from the entry list of your task); the card then shows where it comes from and the entry is marked done with the booking. Empty otherwise.\u0027, \u0027string\u0027, \u0027\u0027) }}",
                                                                               "goal_name":  "={{ $fromAI(\u0027goal_name\u0027, \u0027Savings goal display name (e.g. \"Urlaub 2027\"); may stay empty only for a maintenance reserve (the tool names it)\u0027, \u0027string\u0027, \u0027\u0027) }}",
                                                                               "goal_type":  "={{ $fromAI(\u0027goal_type\u0027, \u0027Goal type label (optional, free text e.g. vacation, emergency, car)\u0027, \u0027string\u0027, \u0027\u0027) }}",
                                                                               "target_amount":  "={{ $fromAI(\u0027target_amount\u0027, \u0027Target savings amount in EUR (positive); leave 0 for a maintenance reserve\u0027, \u0027number\u0027, 0) }}",
@@ -2141,6 +2142,16 @@
 
                                                                                     ],
                                                                 "schema":  [
+                                                                               {
+                                                                                   "id":  "handoff_task_id",
+                                                                                   "displayName":  "handoff_task_id",
+                                                                                   "required":  false,
+                                                                                   "defaultMatch":  false,
+                                                                                   "display":  true,
+                                                                                   "canBeUsedToMatch":  true,
+                                                                                   "type":  "string",
+                                                                                   "removed":  false
+                                                                               },
                                                                                {
                                                                                    "id":  "goal_name",
                                                                                    "displayName":  "goal_name",
@@ -2788,6 +2799,7 @@
                                          "workflowInputs":  {
                                                                 "mappingMode":  "defineBelow",
                                                                 "value":  {
+                                                                              "handoff_task_id":  "={{ $fromAI(\u0027handoff_task_id\u0027, \u0027ONLY in handoff mode: the id of the agreed plan entry this booking fulfils (from the entry list of your task); the card then shows where it comes from and the entry is marked done with the booking. Empty otherwise.\u0027, \u0027string\u0027, \u0027\u0027) }}",
                                                                               "name":  "={{ $fromAI(\u0027name\u0027, \u0027Display name (e.g. Gehalt, Miete Wohnung, Netflix)\u0027, \u0027string\u0027) }}",
                                                                               "account_name":  "={{ $fromAI(\u0027account_name\u0027, \u0027Exact name of the account the payment goes to (income) or from (expense)\u0027, \u0027string\u0027) }}",
                                                                               "direction":  "={{ $fromAI(\u0027direction\u0027, \u0027income (money in, e.g. salary) or expense (money out, e.g. rent)\u0027, \u0027string\u0027) }}",
@@ -2806,6 +2818,16 @@
 
                                                                                     ],
                                                                 "schema":  [
+                                                                               {
+                                                                                   "id":  "handoff_task_id",
+                                                                                   "displayName":  "handoff_task_id",
+                                                                                   "required":  false,
+                                                                                   "defaultMatch":  false,
+                                                                                   "display":  true,
+                                                                                   "canBeUsedToMatch":  true,
+                                                                                   "type":  "string",
+                                                                                   "removed":  false
+                                                                               },
                                                                                {
                                                                                    "id":  "name",
                                                                                    "displayName":  "name",
@@ -2964,6 +2986,7 @@
                                          "workflowInputs":  {
                                                                 "mappingMode":  "defineBelow",
                                                                 "value":  {
+                                                                              "handoff_task_id":  "={{ $fromAI(\u0027handoff_task_id\u0027, \u0027ONLY in handoff mode: the id of the agreed plan entry this booking fulfils (from the entry list of your task); the card then shows where it comes from and the entry is marked done with the booking. Empty otherwise.\u0027, \u0027string\u0027, \u0027\u0027) }}",
                                                                               "name":  "={{ $fromAI(\u0027name\u0027, \u0027Display name (e.g. Sparübertrag Kinderdepot)\u0027, \u0027string\u0027) }}",
                                                                               "from_account_name":  "={{ $fromAI(\u0027from_account_name\u0027, \u0027Exact name of the SOURCE account (money leaves here)\u0027, \u0027string\u0027) }}",
                                                                               "to_account_name":  "={{ $fromAI(\u0027to_account_name\u0027, \u0027Exact name of the DESTINATION account (money arrives here)\u0027, \u0027string\u0027) }}",
@@ -2983,6 +3006,16 @@
 
                                                                                     ],
                                                                 "schema":  [
+                                                                               {
+                                                                                   "id":  "handoff_task_id",
+                                                                                   "displayName":  "handoff_task_id",
+                                                                                   "required":  false,
+                                                                                   "defaultMatch":  false,
+                                                                                   "display":  true,
+                                                                                   "canBeUsedToMatch":  true,
+                                                                                   "type":  "string",
+                                                                                   "removed":  false
+                                                                               },
                                                                                {
                                                                                    "id":  "name",
                                                                                    "displayName":  "name",
@@ -3202,6 +3235,72 @@
                                    ],
                       "id":  "3388d451-da5d-58c5-aebb-06071f8e3c8e",
                       "name":  "tool_get_recurring_suggestions"
+                  },
+                  {
+                      "parameters":  {
+                                         "name":  "tool_cancel_handoff_task",
+                                         "description":  "HANDOFF MODE ONLY: close an agreed plan entry without booking it. reason skipped = the user does not want to enter it (now or at all); reason done_elsewhere = it is already done or needed no booking here (e.g. an entry of kind other the user handled outside). One confirmation card shows the entry sentence. Never use it for an entry you just booked with handoff_task_id - that booking already closed it. ok:false with a reason (unknown or already closed entry) -\u003e tell the user in plain words and go on with the next entry.",
+                                         "workflowId":  {
+                                                            "__rl":  true,
+                                                            "value":  "UjbM07yXlDjc1LlQ",
+                                                            "mode":  "list",
+                                                            "cachedResultUrl":  "/workflow/UjbM07yXlDjc1LlQ",
+                                                            "cachedResultName":  "agent.finance.tool_cancel_handoff_task"
+                                                        },
+                                         "workflowInputs":  {
+                                                                "mappingMode":  "defineBelow",
+                                                                "value":  {
+                                                                              "handoff_task_id":  "={{ $fromAI(\u0027handoff_task_id\u0027, \u0027The id of the agreed plan entry (from the entry list of your task)\u0027, \u0027string\u0027) }}",
+                                                                              "reason":  "={{ $fromAI(\u0027reason\u0027, \u0027skipped or done_elsewhere\u0027, \u0027string\u0027, \u0027skipped\u0027) }}",
+                                                                              "chat_id":  "={{ $(\u0027Start agent.finance\u0027).item.json.chat_id }}"
+                                                                          },
+                                                                "matchingColumns":  [
+
+                                                                                    ],
+                                                                "schema":  [
+                                                                               {
+                                                                                   "id":  "handoff_task_id",
+                                                                                   "displayName":  "handoff_task_id",
+                                                                                   "required":  false,
+                                                                                   "defaultMatch":  false,
+                                                                                   "display":  true,
+                                                                                   "canBeUsedToMatch":  true,
+                                                                                   "type":  "string",
+                                                                                   "removed":  false
+                                                                               },
+                                                                               {
+                                                                                   "id":  "reason",
+                                                                                   "displayName":  "reason",
+                                                                                   "required":  false,
+                                                                                   "defaultMatch":  false,
+                                                                                   "display":  true,
+                                                                                   "canBeUsedToMatch":  true,
+                                                                                   "type":  "string",
+                                                                                   "removed":  false
+                                                                               },
+                                                                               {
+                                                                                   "id":  "chat_id",
+                                                                                   "displayName":  "chat_id",
+                                                                                   "required":  false,
+                                                                                   "defaultMatch":  false,
+                                                                                   "display":  true,
+                                                                                   "canBeUsedToMatch":  true,
+                                                                                   "type":  "string",
+                                                                                   "removed":  false
+                                                                               }
+                                                                           ],
+                                                                "attemptToConvertTypes":  false,
+                                                                "convertFieldsToString":  false
+                                                            }
+                                     },
+                      "type":  "@n8n/n8n-nodes-langchain.toolWorkflow",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       3440,
+                                       520
+                                   ],
+                      "id":  "d7d14820-597c-5e53-b120-9c89ffc524ae",
+                      "name":  "tool_cancel_handoff_task"
                   },
                   {
                       "parameters":  {
@@ -4680,6 +4779,7 @@
                                          "workflowInputs":  {
                                                                 "mappingMode":  "defineBelow",
                                                                 "value":  {
+                                                                              "handoff_task_id":  "={{ $fromAI(\u0027handoff_task_id\u0027, \u0027ONLY in handoff mode: the id of the agreed plan entry this booking fulfils (from the entry list of your task); the card then shows where it comes from and the entry is marked done with the booking. Empty otherwise.\u0027, \u0027string\u0027, \u0027\u0027) }}",
                                                                               "goal_name":  "={{ $fromAI(\u0027goal_name\u0027, \u0027Exact name of the savings goal to update\u0027, \u0027string\u0027) }}",
                                                                               "new_name":  "={{ $fromAI(\u0027new_name\u0027, \u0027New display name (only if renaming)\u0027, \u0027string\u0027, \u0027\u0027) }}",
                                                                               "target_amount":  "={{ $fromAI(\u0027target_amount\u0027, \u0027New target amount in EUR\u0027, \u0027string\u0027, \u0027\u0027) }}",
@@ -4704,6 +4804,16 @@
 
                                                                                     ],
                                                                 "schema":  [
+                                                                               {
+                                                                                   "id":  "handoff_task_id",
+                                                                                   "displayName":  "handoff_task_id",
+                                                                                   "required":  false,
+                                                                                   "defaultMatch":  false,
+                                                                                   "display":  true,
+                                                                                   "canBeUsedToMatch":  true,
+                                                                                   "type":  "string",
+                                                                                   "removed":  false
+                                                                               },
                                                                                {
                                                                                    "id":  "goal_name",
                                                                                    "displayName":  "goal_name",
@@ -5329,6 +5439,7 @@
                                          "workflowInputs":  {
                                                                 "mappingMode":  "defineBelow",
                                                                 "value":  {
+                                                                              "handoff_task_id":  "={{ $fromAI(\u0027handoff_task_id\u0027, \u0027ONLY in handoff mode: the id of the agreed plan entry this booking fulfils (from the entry list of your task); the card then shows where it comes from and the entry is marked done with the booking. Empty otherwise.\u0027, \u0027string\u0027, \u0027\u0027) }}",
                                                                               "plan_name":  "={{ $fromAI(\u0027plan_name\u0027, \u0027Unique display name for the savings plan (e.g. \"VWCE Monatsplan\")\u0027, \u0027string\u0027) }}",
                                                                               "depot_name":  "={{ $fromAI(\u0027depot_name\u0027, \u0027Exact name of the depot account (stocks_depot or crypto_depot)\u0027, \u0027string\u0027) }}",
                                                                               "isin":  "={{ $fromAI(\u0027isin\u0027, \u0027ISIN of the security (required for stocks/ETFs; leave empty for crypto)\u0027, \u0027string\u0027, \u0027\u0027) }}",
@@ -5349,6 +5460,16 @@
 
                                                                                     ],
                                                                 "schema":  [
+                                                                               {
+                                                                                   "id":  "handoff_task_id",
+                                                                                   "displayName":  "handoff_task_id",
+                                                                                   "required":  false,
+                                                                                   "defaultMatch":  false,
+                                                                                   "display":  true,
+                                                                                   "canBeUsedToMatch":  true,
+                                                                                   "type":  "string",
+                                                                                   "removed":  false
+                                                                               },
                                                                                {
                                                                                    "id":  "plan_name",
                                                                                    "displayName":  "plan_name",
@@ -5747,6 +5868,7 @@
                                          "workflowInputs":  {
                                                                 "mappingMode":  "defineBelow",
                                                                 "value":  {
+                                                                              "handoff_task_id":  "={{ $fromAI(\u0027handoff_task_id\u0027, \u0027ONLY in handoff mode: the id of the agreed plan entry this booking fulfils (from the entry list of your task); the card then shows where it comes from and the entry is marked done with the booking. Empty otherwise.\u0027, \u0027string\u0027, \u0027\u0027) }}",
                                                                               "savings_plan_name":  "={{ $fromAI(\u0027savings_plan_name\u0027, \u0027Exact name of the savings plan to update\u0027, \u0027string\u0027) }}",
                                                                               "new_amount":  "={{ $fromAI(\u0027new_amount\u0027, \u0027New plan amount per interval in the settlement account currency (positive; applies from valid_from on). Leave empty for pause/resume/notes/cadence-only change.\u0027, \u0027string\u0027, \u0027\u0027) }}",
                                                                               "schedule_unit":  "={{ $fromAI(\u0027schedule_unit\u0027, \u0027New cadence unit: day, week, month or year (triggers a validity-split; the amount is kept if you do not also pass new_amount). Leave empty to keep the cadence.\u0027, \u0027string\u0027, \u0027\u0027) }}",
@@ -5763,6 +5885,16 @@
 
                                                                                     ],
                                                                 "schema":  [
+                                                                               {
+                                                                                   "id":  "handoff_task_id",
+                                                                                   "displayName":  "handoff_task_id",
+                                                                                   "required":  false,
+                                                                                   "defaultMatch":  false,
+                                                                                   "display":  true,
+                                                                                   "canBeUsedToMatch":  true,
+                                                                                   "type":  "string",
+                                                                                   "removed":  false
+                                                                               },
                                                                                {
                                                                                    "id":  "savings_plan_name",
                                                                                    "displayName":  "savings_plan_name",
@@ -8117,6 +8249,17 @@
                                                                                ]
                                                                            ]
                                                            },
+                        "tool_cancel_handoff_task":  {
+                                                         "ai_tool":  [
+                                                                         [
+                                                                             {
+                                                                                 "index":  0,
+                                                                                 "node":  "Finance Agent",
+                                                                                 "type":  "ai_tool"
+                                                                             }
+                                                                         ]
+                                                                     ]
+                                                     },
                         "tool_create_pension":  {
                                                     "ai_tool":  [
                                                                     [

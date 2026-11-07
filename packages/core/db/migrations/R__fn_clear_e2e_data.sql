@@ -8,7 +8,7 @@
 --   Dispatcher iteriert core.package_registry ∪ core.schema_version (faengt auch --keep-data-Deinstallierte),
 --   ruft je Paket mit eigenem Schema den Hook und merged die Zaehler FLACH. Paket mit Schema OHNE Hook -> RAISE
 --   (Vertragsbruch laut statt still uebersprungen; contract_lint Check 17 faengt es schon beim Commit).
---   Selbst raeumt er nur die host-eigenen agent.*-Zeilen (Advisor-Plaene/-Docs, Monitor-Trigger, Lern-Loop-State,
+--   Selbst raeumt er nur die host-eigenen agent.*-Zeilen (Advisor-Plaene/-Docs, Plan-Aufgaben, Monitor-Trigger, Lern-Loop-State,
 --   Test-Chat-Memory ALLER Agenten).
 --
 --   GUARD 2 (Post-Assertion, agent-Teil): keine Sentinel-Zeile darf zurueckbleiben (die Paket-Hooks pruefen ihren
@@ -16,7 +16,7 @@
 --
 --   RUN-SCOPING (A5): optionaler p_runid (alphanumerisch). NULL/'' -> GENERISCHER Sweep (fix '__E2E__ ...' UND
 --   run-scoped '__E2E_<runid>__ ...'); p_runid gesetzt -> nur der eigene Lauf.
---   RUECKGABE: flache Zaehler {chat_memory, advisor_plans, contexts, monitor_triggers, guide_learn_candidates,
+--   RUECKGABE: flache Zaehler {chat_memory, advisor_plans, handoff_tasks, contexts, monitor_triggers, guide_learn_candidates,
 --     guide_learn_watermark, gelernt_notes_stripped} || die Zaehler aller Paket-Hooks
 --   Tests: tests/db/core/test_fn_clear_e2e_data.sql
 -- ============================================================
@@ -36,7 +36,7 @@ DECLARE
     v_pkg  text;
     v_tbl  text;
     v_n    int;
-    v_mem int := 0; v_ap int; v_ctx int; v_mt int;
+    v_mem int := 0; v_ap int; v_ctx int; v_mt int; v_ht int;
     v_glc int := 0; v_glw int := 0; v_gln int := 0;
 BEGIN
     -- Run-ID-Format-Guard: nur [a-z0-9] (verhindert LIKE-Injection ueber p_runid).
@@ -67,6 +67,11 @@ BEGIN
         GET DIAGNOSTICS v_n = ROW_COUNT;
         v_mem := v_mem + v_n;
     END LOOP;
+
+    -- 2b. Vereinbarte Plan-Aufgaben: Sentinel-Domain (der E2E-Advisor speichert unter '__e2e_<domain>__') ODER Sentinel
+    --     im Satz (Testfaelle legen Aufgaben der echten Domain per setup_sql an). Der Endzustand-Trigger sperrt nur UPDATE.
+    DELETE FROM agent.handoff_tasks WHERE domain ILIKE v_pat OR text LIKE v_pat_any;
+    GET DIAGNOSTICS v_ht = ROW_COUNT;
 
     -- 3. Advisor-Plaene: Sentinel via plan_name (Prefix) ODER domain (der E2E-Pfad des Advisors schreibt unter
     --    sentinel-DOMAIN '__e2e_<domain>__'). ILIKE: der Domain-Sentinel ist lowercase.
@@ -100,6 +105,7 @@ BEGIN
 
     -- GUARD 2 (agent-Teil): keine Sentinel-Zeile darf zurueckbleiben.
     IF EXISTS (SELECT 1 FROM agent.advisor_plans          WHERE plan_name LIKE v_pat OR domain ILIKE v_pat)
+    OR EXISTS (SELECT 1 FROM agent.handoff_tasks          WHERE domain ILIKE v_pat OR text LIKE v_pat_any)
     OR EXISTS (SELECT 1 FROM agent.core_contexts          WHERE name ILIKE v_pat AND managed_by = 'agent')
     OR EXISTS (SELECT 1 FROM agent.monitor_triggers       WHERE domain ILIKE v_pat OR label LIKE v_pat_any)
     OR EXISTS (SELECT 1 FROM agent.guide_learn_candidates  WHERE proposed_value LIKE v_pat_any OR COALESCE(rationale,'') LIKE v_pat_any OR context_name LIKE v_pat_any)
@@ -108,7 +114,7 @@ BEGIN
     END IF;
 
     RETURN v_out || jsonb_build_object(
-        'chat_memory', v_mem, 'advisor_plans', v_ap, 'contexts', v_ctx, 'monitor_triggers', v_mt,
+        'chat_memory', v_mem, 'advisor_plans', v_ap, 'handoff_tasks', v_ht, 'contexts', v_ctx, 'monitor_triggers', v_mt,
         'guide_learn_candidates', v_glc, 'guide_learn_watermark', v_glw, 'gelernt_notes_stripped', v_gln
     );
 END;

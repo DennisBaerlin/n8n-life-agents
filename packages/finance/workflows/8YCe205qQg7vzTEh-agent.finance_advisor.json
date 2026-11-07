@@ -710,6 +710,7 @@
                                                                               "section_content":  "={{ $fromAI(\u0027section_content\u0027, \u0027The confirmed section text, word for word as you played it back\u0027, \u0027string\u0027) }}",
                                                                               "section_data":  "={{ $fromAI(\u0027section_data\u0027, \u0027Optional JSON object string - ONLY for the four block-carrying sections; omit for prose-only sections. e.g. risk_profile: {\"risk_profile\": {\"risk_tolerance\":\"medium\",\"risk_capacity\":\"high\"} }; wealth_building: {\"target_allocation\": {\"rebalance_drift_pp\":5,\"blocks\":[{\"key\":\"sp500\",\"name\":\"S\u0026P 500 ETF\",\"target_pct\":85,\"corridor\":[80,90]} ]} }. Block key is mandatory, lowercase_snake, unique. Store raw figures only - no derived years/ages/nominal values, no risk_need, no as_of (the system stamps it).\u0027, \u0027string\u0027, \u0027\u0027) }}",
                                                                               "plan_name":  "={{ $fromAI(\u0027plan_name\u0027, \u0027Optional plan display name - only used when this save creates a new draft\u0027, \u0027string\u0027, \u0027\u0027) }}",
+                                                                              "handoff_tasks":  "={{ $fromAI(\u0027handoff_tasks\u0027, \u0027Optional JSON array string of entries the user AGREED to in this section that need a booking or master data (a savings goal, savings plan, standing order, recurring payment), e.g. [{\"kind\":\"savings_goal\",\"payload\":{\"name\":\"Emergency fund\",\"target_amount\":6000,\"target_date\":\"2027-12-31\"},\"text\":\"Savings goal emergency fund, 6000 EUR by end of 2027\"} ]. kind = savings_goal | savings_plan | recurring_payment | recurring_transfer | other. payload = the raw figures the user named (no derived values). text = one plain sentence for the user, max 300 characters, in the conversation language. Omit when nothing was agreed - an idea the user did not accept is no entry. When you send handoff_tasks, send the full list of the section (it replaces the open entries of the section, [] clears them); omit it to keep them unchanged.\u0027, \u0027string\u0027, \u0027\u0027) }}",
                                                                               "domain":  "={{ String($(\u0027Start agent.finance_advisor\u0027).item.json.chat_id || \u0027\u0027).startsWith(\u0027test_e2e\u0027) ? \u0027__e2e_finance__\u0027 : \u0027finance\u0027 }}",
                                                                               "chat_id":  "={{ $(\u0027Start agent.finance_advisor\u0027).item.json.chat_id }}"
                                                                           },
@@ -750,6 +751,16 @@
                                                                                {
                                                                                    "id":  "plan_name",
                                                                                    "displayName":  "plan_name",
+                                                                                   "required":  false,
+                                                                                   "defaultMatch":  false,
+                                                                                   "display":  true,
+                                                                                   "canBeUsedToMatch":  true,
+                                                                                   "type":  "string",
+                                                                                   "removed":  false
+                                                                               },
+                                                                               {
+                                                                                   "id":  "handoff_tasks",
+                                                                                   "displayName":  "handoff_tasks",
                                                                                    "required":  false,
                                                                                    "defaultMatch":  false,
                                                                                    "display":  true,
@@ -1321,9 +1332,9 @@
                   },
                   {
                       "parameters":  {
-                                         "content":  "## DB-Automatik\n**agent.finance_advisor — Finanzberater (Sub-Workflow)**\n\nEingang: task, chat_id, call_depth (vom Orchestrator als Tool gerufen). Pipeline: Depth gate (Anti-Loop) -\u003e Package-Gate (R4/WS-B8: nur wenn finance aktiv, sonst package_inactive) -\u003e Load Config (core.sub_load_config) -\u003e System-Prompt+Manifest (agent.tool_load_context, agent_name=finance_advisor) -\u003e Advisor Agent. BUCHT NIE: keine Buchungs-/Stammdaten-Tools — Reads via postgres_select (finance_ro) + load_context (das Gesamtbild in einer Abfrage: finance.fn_advisor_snapshot, weil jede Abfrage eine Iteration kostet); Writes NUR tool_save_plan_section/tool_publish_plan (Plan-Persistenz) + tool_record_plan_wish (Wunsch eines erwachsenen Mitglieds an den Owner, owner_info, ändert den Plan nicht) + tool_create_monitor_trigger (Plan-Trigger in-flow anlegen, domain+package fix finance; Edits/Repair -\u003e Monitor-Agent) + tool_set_asset_classes (einzige Daten-Ausnahme, Owner 2026-10-23: nur die Anlageklassen der Depot-Positionen im Planungs-Flow, eine Karte), je HITL-Gate. tool_list_monitor_triggers = READ-ONLY Dedup-Fenster (bestehende Trigger lesen vor dem Vorschlagen). Beratung/Interview/Plan = hier; Buchen = agent.finance; Trigger-Mechanik = agent.monitor.",
+                                         "content":  "## DB-Automatik\n**agent.finance_advisor — Finanzberater (Sub-Workflow)**\n\nEingang: task, chat_id, call_depth (vom Orchestrator als Tool gerufen). Pipeline: Depth gate (Anti-Loop) -\u003e Package-Gate (R4/WS-B8: nur wenn finance aktiv, sonst package_inactive) -\u003e Load Config (core.sub_load_config) -\u003e System-Prompt+Manifest (agent.tool_load_context, agent_name=finance_advisor) -\u003e Advisor Agent. BUCHT NIE: keine Buchungs-/Stammdaten-Tools — Reads via postgres_select (finance_ro) + load_context (das Gesamtbild in einer Abfrage: finance.fn_advisor_snapshot, weil jede Abfrage eine Iteration kostet); Writes NUR tool_save_plan_section/tool_publish_plan (Plan-Persistenz) + tool_record_plan_wish (Wunsch eines erwachsenen Mitglieds an den Owner, owner_info, ändert den Plan nicht) + tool_create_monitor_trigger (Plan-Trigger in-flow anlegen, domain+package fix finance; Edits/Repair -\u003e Monitor-Agent) + tool_set_asset_classes (einzige Daten-Ausnahme, Owner 2026-10-23: nur die Anlageklassen der Depot-Positionen im Planungs-Flow, eine Karte), je HITL-Gate. tool_list_monitor_triggers = READ-ONLY Dedup-Fenster (bestehende Trigger lesen vor dem Vorschlagen). Beratung/Interview/Plan = hier; Buchen = agent.finance; Trigger-Mechanik = agent.monitor. ÜBERGABE an den Buchhalter (kein Agent-\u003eAgent): Vereinbartes gibt der Berater als handoff_tasks an tool_save_plan_section (auf der Abschnitts-Karte sichtbar); tool_send_handoff_overview schickt die Übersicht mit Knopf Durchgehen, der Orchestrator startet danach agent.finance über einen festen Knopf-Arm.",
                                          "height":  300,
-                                         "width":  600,
+                                         "width":  700,
                                          "color":  4
                                      },
                       "type":  "n8n-nodes-base.stickyNote",
@@ -1590,6 +1601,61 @@
                                    ],
                       "id":  "1422e042-ced2-5d6a-9fd2-18ecf68220aa",
                       "name":  "Model Selector"
+                  },
+                  {
+                      "parameters":  {
+                                         "name":  "tool_send_handoff_overview",
+                                         "description":  "Send the user the list of entries agreed in this plan conversation that still need to be entered, with a [Go through] button; each entry then comes on its own confirmation card. Call it when the user wants to enter agreed items now (before publishing), or when the conversation ends without publishing while entries are open. Do NOT call it right after tool_publish_plan - publishing sends the list itself. Returns sent=false when nothing is open. Sends a message only, changes nothing.",
+                                         "workflowId":  {
+                                                            "__rl":  true,
+                                                            "value":  "0B1E3C3H5DyWhJtt",
+                                                            "mode":  "list",
+                                                            "cachedResultUrl":  "/workflow/0B1E3C3H5DyWhJtt",
+                                                            "cachedResultName":  "agent.tool_send_handoff_overview"
+                                                        },
+                                         "workflowInputs":  {
+                                                                "mappingMode":  "defineBelow",
+                                                                "value":  {
+                                                                              "domain":  "={{ String($(\u0027Start agent.finance_advisor\u0027).item.json.chat_id || \u0027\u0027).startsWith(\u0027test_e2e\u0027) ? \u0027__e2e_finance__\u0027 : \u0027finance\u0027 }}",
+                                                                              "chat_id":  "={{ $(\u0027Start agent.finance_advisor\u0027).item.json.chat_id }}"
+                                                                          },
+                                                                "matchingColumns":  [
+
+                                                                                    ],
+                                                                "schema":  [
+                                                                               {
+                                                                                   "id":  "domain",
+                                                                                   "displayName":  "domain",
+                                                                                   "required":  false,
+                                                                                   "defaultMatch":  false,
+                                                                                   "display":  true,
+                                                                                   "canBeUsedToMatch":  true,
+                                                                                   "type":  "string",
+                                                                                   "removed":  false
+                                                                               },
+                                                                               {
+                                                                                   "id":  "chat_id",
+                                                                                   "displayName":  "chat_id",
+                                                                                   "required":  false,
+                                                                                   "defaultMatch":  false,
+                                                                                   "display":  true,
+                                                                                   "canBeUsedToMatch":  true,
+                                                                                   "type":  "string",
+                                                                                   "removed":  false
+                                                                               }
+                                                                           ],
+                                                                "attemptToConvertTypes":  false,
+                                                                "convertFieldsToString":  false
+                                                            }
+                                     },
+                      "type":  "@n8n/n8n-nodes-langchain.toolWorkflow",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       1120,
+                                       208
+                                   ],
+                      "id":  "cf8b9f12-c734-525f-b423-333682ce6ddf",
+                      "name":  "tool_send_handoff_overview"
                   },
                   {
                       "parameters":  {
@@ -2022,6 +2088,17 @@
                                                                        ]
                                                                    ]
                                                    },
+                        "tool_send_handoff_overview":  {
+                                                           "ai_tool":  [
+                                                                           [
+                                                                               {
+                                                                                   "index":  0,
+                                                                                   "node":  "Advisor Agent",
+                                                                                   "type":  "ai_tool"
+                                                                               }
+                                                                           ]
+                                                                       ]
+                                                       },
                         "tool_record_plan_wish":  {
                                                       "ai_tool":  [
                                                                       [

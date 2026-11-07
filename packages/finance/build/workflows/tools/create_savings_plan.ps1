@@ -6,7 +6,7 @@ function Build-CreateSavingsPlan {
     # WS-B0: enge Paket-Schreibrolle (finance_rw, Least-Privilege D10) statt Owner-Cred.
     # Dynamic-Scope: Build-Pg liest dieses $CRED_POSTGRES. Core-Tools nutzen die Owner-Cred.
     $CRED_POSTGRES = $CRED_FINANCE_RW
-    $trig = Build-Trigger @('plan_name','depot_name','isin','symbol','security_name','amount','schedule_interval','schedule_unit','schedule_day_of_month','first_payment_date','notes','beneficiary_person','asset_class','depot_execution_days')
+    $trig = Build-Trigger @('plan_name','depot_name','isin','symbol','security_name','amount','schedule_interval','schedule_unit','schedule_day_of_month','first_payment_date','notes','beneficiary_person','asset_class','depot_execution_days','handoff_task_id')
 
     # WS-4: beguenstigte Person aufloesen (Name -> Slug via core.fn_resolve_person; leer=Haushalt).
     $resPerson = Build-ResolvePerson 'Resolve Person' @(-220, 0) 'beneficiary_person'
@@ -30,6 +30,8 @@ function Build-CreateSavingsPlan {
         -WriteName 'Create savings plan (atomic)' `
         -WriteSelect "(r->>'ok')::boolean AS ok, r->>'reason' AS reason, (r->>'savings_plan_id')::int AS savings_plan_id, (r->>'recurring_payment_id')::int AS recurring_payment_id, COALESCE(r->'savings_squeeze'->>'note', '') AS savings_squeeze, COALESCE(r->'savings_funding'->>'note', '') AS savings_funding" `
         -Params ([ordered]@{
+            handoff_task_id       = '$(''Start'').item.json.handoff_task_id'   # vereinbarte Plan-Aufgabe: finance.fn_with_handoff prueft + schliesst sie im selben Write
+            chat_id               = '$(''Start'').item.json.chat_id'           # Person der Plan-Aufgabe (nie LLM)
             name                  = '$(''Start'').item.json.plan_name'
             depot_name            = '$(''Start'').item.json.depot_name'
             isin                  = '$(''Start'').item.json.isin'

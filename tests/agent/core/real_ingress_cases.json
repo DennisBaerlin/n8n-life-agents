@@ -269,6 +269,20 @@
     "notes": "Plan teilen: der Owner kennt den Plan (Toast core.toast.plan_explain_members) bzw. ohne aktiven Plan core.toast.plan_not_current - beides OHNE Berater-Lauf. Rollen-Matrix der Verben: test_fn_handle_plan_cb.sql."
   },
   {
+    "id": "ri07h",
+    "expect_texts": [
+      "Schon erledigt oder läuft gerade"
+    ],
+    "name": "Owner tippt [Durchgehen] ohne offene Plan-Eintraege (handoff:finance:999999) -> core.fn_handle_handoff_cb lehnt mit Toast ab, kein Buchhalter-Lauf",
+    "kind": "node_ran",
+    "update": "callback",
+    "chat_id": 880055071,
+    "from_uid": 880055071,
+    "callback_data": "handoff:finance:999999",
+    "expected_node": "Answer dispatched cb",
+    "notes": "Uebergabe Berater -> Buchhalter: Owner-Tap faellt ueber Dispatch callback -> core.fn_handle_handoff_cb (nichts offen) -> {ok:false, toast core.toast.handoff_nothing_open} -> Plan route? false -> Handoff route? false -> Answer dispatched cb. Der Erfolgs-Pfad braucht einen LLM-Lauf (Owner-Fenster); Claim-Regeln deckt test_fn_handoff_tasks.sql."
+  },
+  {
     "id": "ri13f",
     "name": "onboarding:finance:accounts-Callback -> nach dem Relay setzt der Arm die Folge-Bindung (Set followup onboarding finance)",
     "kind": "node_ran",

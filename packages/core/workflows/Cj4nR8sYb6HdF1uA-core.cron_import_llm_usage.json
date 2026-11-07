@@ -1,0 +1,213 @@
+{
+    "id":  "Cj4nR8sYb6HdF1uA",
+    "name":  "core.cron_import_llm_usage",
+    "nodes":  [
+                  {
+                      "parameters":  {
+                                         "rule":  {
+                                                      "interval":  [
+                                                                       {
+                                                                           "field":  "cronExpression",
+                                                                           "expression":  "__CFG_SCHEDULE_LLM_USAGE_IMPORT__"
+                                                                       }
+                                                                   ]
+                                                  }
+                                     },
+                      "type":  "n8n-nodes-base.scheduleTrigger",
+                      "typeVersion":  1.3,
+                      "position":  [
+                                       -620,
+                                       0
+                                   ],
+                      "id":  "7d8b2b02-647e-50c0-829e-3bf7d490a776",
+                      "name":  "Schedule (cron from config)"
+                  },
+                  {
+                      "parameters":  {
+                                         "workflowId":  {
+                                                            "__rl":  true,
+                                                            "value":  "Ci7mQ3vXp9LkT2wZ",
+                                                            "mode":  "list",
+                                                            "cachedResultUrl":  "/workflow/Ci7mQ3vXp9LkT2wZ",
+                                                            "cachedResultName":  "core.sub_import_llm_usage"
+                                                        },
+                                         "workflowInputs":  {
+                                                                "mappingMode":  "defineBelow",
+                                                                "value":  {
+                                                                              "chat_id":  ""
+                                                                          },
+                                                                "matchingColumns":  [
+
+                                                                                    ],
+                                                                "schema":  [
+
+                                                                           ],
+                                                                "attemptToConvertTypes":  false,
+                                                                "convertFieldsToString":  true
+                                                            },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.executeWorkflow",
+                      "typeVersion":  1.2,
+                      "position":  [
+                                       -400,
+                                       0
+                                   ],
+                      "id":  "d00f8bbb-3f96-51bc-800d-2747e1b33b4c",
+                      "name":  "Import LLM usage"
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "3d749ddb-ed8a-566f-bf61-066d5b91004a",
+                                                                                   "leftValue":  "={{ $json.ok === true }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       -180,
+                                       0
+                                   ],
+                      "id":  "c0568304-b157-58f1-a66b-aabbde2163b2",
+                      "name":  "Import ok?"
+                  },
+                  {
+                      "parameters":  {
+                                         "errorMessage":  "LLM usage import failed: gateway unreachable (127.0.0.1:8090/__usage)"
+                                     },
+                      "type":  "n8n-nodes-base.stopAndError",
+                      "typeVersion":  1,
+                      "position":  [
+                                       40,
+                                       160
+                                   ],
+                      "id":  "a8aea697-a396-5479-b381-2c316d995f68",
+                      "name":  "Gateway unreachable"
+                  },
+                  {
+                      "parameters":  {
+                                         "content":  "## Ablauf\n**core.cron_import_llm_usage — nächtlicher Import der KI-Kosten**\n\nSchedule (schedule.llm_usage_import aus core.config, Standard täglich 03:40 in der Haushalts-Zeitzone) -\u003e Import LLM usage (ruft core.sub_import_llm_usage: holt die neuen Zeilen vom lokalen LLM-Gateway und spielt sie idempotent in core.llm_usage ein, derselbe Weg wie /costs) -\u003e Import ok? (der Sub scheitert nie selbst, sondern meldet ok:false; sonst gäbe es zwei Alarme) -\u003e false: Gateway unreachable (Stop and Error, der Lauf scheitert und core.sub_error_notify meldet es genau einmal; kein eigener Telegram-Versand). Ungegatet, weil Core-Crons keinen cron_enable-Schalter haben; abschalten nur über den Zeitplan.",
+                                         "height":  380,
+                                         "width":  400,
+                                         "color":  4
+                                     },
+                      "type":  "n8n-nodes-base.stickyNote",
+                      "typeVersion":  1,
+                      "position":  [
+                                       -640,
+                                       -320
+                                   ],
+                      "id":  "2276a07a-28ab-5fbb-ac42-e6ad5ef264b2",
+                      "name":  "Überblick"
+                  },
+                  {
+                      "parameters":  {
+                                         "workflowInputs":  {
+                                                                "values":  [
+                                                                               {
+                                                                                   "name":  "chat_id"
+                                                                               }
+                                                                           ]
+                                                            }
+                                     },
+                      "type":  "n8n-nodes-base.executeWorkflowTrigger",
+                      "typeVersion":  1.1,
+                      "position":  [
+                                       -620,
+                                       180
+                                   ],
+                      "id":  "86d910bb-488f-5522-8253-9429e1cdb683",
+                      "name":  "Test run"
+                  },
+                  {
+                      "parameters":  {
+                                         "content":  "## Test\n**Test-Startpunkt (nur Tests)**\n\nZweiter Einstieg mit denselben Kanten wie der Zeitplan: der Test-Eingang core.cron_run.test_harness (nur auf Test-Instanzen) startet diesen Cron damit sofort (cron_text_test). Im Betrieb ungenutzt; nur aus n8n selbst erreichbar. Gebaut von Build-Workflow (build_helpers.ps1).",
+                                         "height":  220,
+                                         "width":  300,
+                                         "color":  4
+                                     },
+                      "type":  "n8n-nodes-base.stickyNote",
+                      "typeVersion":  1,
+                      "position":  [
+                                       -660,
+                                       300
+                                   ],
+                      "id":  "d44c20bb-5bad-56e4-b967-314b0d2796a9",
+                      "name":  "Test run (Doc)"
+                  }
+              ],
+    "connections":  {
+                        "Schedule (cron from config)":  {
+                                                            "main":  [
+                                                                         [
+                                                                             {
+                                                                                 "index":  0,
+                                                                                 "node":  "Import LLM usage",
+                                                                                 "type":  "main"
+                                                                             }
+                                                                         ]
+                                                                     ]
+                                                        },
+                        "Import LLM usage":  {
+                                                 "main":  [
+                                                              [
+                                                                  {
+                                                                      "index":  0,
+                                                                      "node":  "Import ok?",
+                                                                      "type":  "main"
+                                                                  }
+                                                              ]
+                                                          ]
+                                             },
+                        "Import ok?":  {
+                                           "main":  [
+                                                        [
+
+                                                        ],
+                                                        [
+                                                            {
+                                                                "index":  0,
+                                                                "node":  "Gateway unreachable",
+                                                                "type":  "main"
+                                                            }
+                                                        ]
+                                                    ]
+                                       },
+                        "Test run":  {
+                                         "main":  [
+                                                      [
+                                                          {
+                                                              "index":  0,
+                                                              "node":  "Import LLM usage",
+                                                              "type":  "main"
+                                                          }
+                                                      ]
+                                                  ]
+                                     }
+                    },
+    "settings":  {
+                     "executionOrder":  "v1",
+                     "errorWorkflow":  "Nd3UVmUTzTLOBeba"
+                 }
+}

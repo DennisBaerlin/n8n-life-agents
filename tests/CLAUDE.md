@@ -41,5 +41,5 @@ DB-Gesetze und Rollen-Perspektiv-Pflicht → `.claude/rules/sql.md`.
 ## Golden-Cases
 
 - Self-contained, reale Entitätsnamen; `create_*` mit neuen Namen (Dedup-Treffer → Agent fragt nach → FAIL).
-- `set_*`/`close_*`/`delete_*`: Routing-Golden nur mit dauerhafter Fixture-Entität, sonst DB-Test + E2E statt eines erzwungenen Goldens (der FAIL wäre ein Fixture-Defekt).
+- `set_*`/`close_*`/`delete_*`: Routing-Golden nur mit dauerhafter Fixture-Entität, sonst DB-Test + E2E statt eines erzwungenen Goldens (der FAIL wäre ein Fixture-Defekt). Eine neue Fixture-Entität braucht beides: den Payload in `tests/fixtures/util_seed_test_fixtures.sql` und den Namen in `tests/fixtures/fixtures.json`.
 - Onboarding-Vorzustand per `"onboarding": "unknown"` (Haushalt) bzw. `"package_onboarding": {"<pkg>.<section_key>": "unknown"}` (offener Paket-Bereich; vor jedem Case wird alles auf completed zurückgesetzt), Default nach Seed: completed. Eine Voraussetzung, die nicht in die Fixtures darf (Einnahme: `real_ingress` braucht den Haushalt ohne), per `setup_sql` wie im E2E-Tier (`__E2E__`-Entitäten, aufgeräumt vor dem nächsten Case). Mock-Tier: jeder Golden braucht ein Szenario in `tests/mock_llm/scenarios.json` (`mock_lint`).

@@ -1028,7 +1028,7 @@
                   },
                   {
                       "parameters":  {
-                                         "content":  "## Ablauf\n**Zwei sequentielle Send-and-Wait (owner_approval)**\n\nDer Vier-Augen-Pfad sendet ZWEI sendAndWait nacheinander (Member -\u003e Owner) in EINER Execution -\u003e das bekannte ~3-5min Telegram-Socket-Hang-Fenster (Memory telegram-socket-fix-watch, GH #24007) verdoppelt sich. Mitigation: limitWaitTime=10min an JEDEM sendAndWait -\u003e Timeout resumed OHNE Approval -\u003e data.approved leer -\u003e approved=FALSE (fail-closed, kein Write), outcome=expired bzw. owner_expired. Kein Datenverlust (Write erst nach beiden Freigaben). Ein Tipp NACH dem Timeout bewirkt nichts mehr (n8n antwortet 409, der Knopf dreht kurz). Freitext statt Knopf / Karte per Text ersetzen: vertagt.",
+                                         "content":  "## Ablauf\n**Zwei sequentielle Send-and-Wait (owner_approval)**\n\nDer Vier-Augen-Pfad sendet ZWEI sendAndWait nacheinander (Member -\u003e Owner) in EINER Execution -\u003e das bekannte ~3-5min Telegram-Socket-Hang-Fenster (GH #24007) verdoppelt sich. Mitigation: limitWaitTime=10min an JEDEM sendAndWait -\u003e Timeout resumed OHNE Approval -\u003e data.approved leer -\u003e approved=FALSE (fail-closed, kein Write), outcome=expired bzw. owner_expired. Kein Datenverlust (Write erst nach beiden Freigaben). Ein Tipp NACH dem Timeout bewirkt nichts mehr (n8n antwortet 409, der Knopf dreht kurz). Freitext statt Knopf / Karte per Text ersetzen: vertagt.",
                                          "height":  360,
                                          "width":  460,
                                          "color":  4

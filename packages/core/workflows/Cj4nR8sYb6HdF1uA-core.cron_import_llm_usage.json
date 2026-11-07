@@ -60,7 +60,54 @@
                   },
                   {
                       "parameters":  {
-                                         "content":  "## Ablauf\n**core.cron_import_llm_usage — nächtlicher Import der KI-Kosten**\n\nSchedule (schedule.llm_usage_import aus core.config, Standard täglich 03:40 in der Haushalts-Zeitzone) -\u003e Import LLM usage (ruft core.sub_import_llm_usage: holt die neuen Zeilen vom lokalen LLM-Gateway und spielt sie idempotent in core.llm_usage ein, derselbe Weg wie /costs). Bewusst ohne onError: ist der Gateway nicht erreichbar, scheitert der Lauf und core.sub_error_notify meldet es; es gibt keinen eigenen Telegram-Versand. Ungegatet, weil Core-Crons keinen cron_enable-Schalter haben; abschalten nur über den Zeitplan.",
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "3d749ddb-ed8a-566f-bf61-066d5b91004a",
+                                                                                   "leftValue":  "={{ $json.ok === true }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       -180,
+                                       0
+                                   ],
+                      "id":  "c0568304-b157-58f1-a66b-aabbde2163b2",
+                      "name":  "Import ok?"
+                  },
+                  {
+                      "parameters":  {
+                                         "errorMessage":  "LLM usage import failed: gateway unreachable (127.0.0.1:8090/__usage)"
+                                     },
+                      "type":  "n8n-nodes-base.stopAndError",
+                      "typeVersion":  1,
+                      "position":  [
+                                       40,
+                                       160
+                                   ],
+                      "id":  "a8aea697-a396-5479-b381-2c316d995f68",
+                      "name":  "Gateway unreachable"
+                  },
+                  {
+                      "parameters":  {
+                                         "content":  "## Ablauf\n**core.cron_import_llm_usage — nächtlicher Import der KI-Kosten**\n\nSchedule (schedule.llm_usage_import aus core.config, Standard täglich 03:40 in der Haushalts-Zeitzone) -\u003e Import LLM usage (ruft core.sub_import_llm_usage: holt die neuen Zeilen vom lokalen LLM-Gateway und spielt sie idempotent in core.llm_usage ein, derselbe Weg wie /costs) -\u003e Import ok? (der Sub scheitert nie selbst, sondern meldet ok:false; sonst gäbe es zwei Alarme) -\u003e false: Gateway unreachable (Stop and Error, der Lauf scheitert und core.sub_error_notify meldet es genau einmal; kein eigener Telegram-Versand). Ungegatet, weil Core-Crons keinen cron_enable-Schalter haben; abschalten nur über den Zeitplan.",
                                          "height":  380,
                                          "width":  400,
                                          "color":  4
@@ -122,6 +169,31 @@
                                                                          ]
                                                                      ]
                                                         },
+                        "Import LLM usage":  {
+                                                 "main":  [
+                                                              [
+                                                                  {
+                                                                      "index":  0,
+                                                                      "node":  "Import ok?",
+                                                                      "type":  "main"
+                                                                  }
+                                                              ]
+                                                          ]
+                                             },
+                        "Import ok?":  {
+                                           "main":  [
+                                                        [
+
+                                                        ],
+                                                        [
+                                                            {
+                                                                "index":  0,
+                                                                "node":  "Gateway unreachable",
+                                                                "type":  "main"
+                                                            }
+                                                        ]
+                                                    ]
+                                       },
                         "Test run":  {
                                          "main":  [
                                                       [

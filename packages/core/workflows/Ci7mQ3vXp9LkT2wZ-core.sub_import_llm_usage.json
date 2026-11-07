@@ -92,7 +92,8 @@
                       "name":  "Fetch usage",
                       "retryOnFail":  true,
                       "maxTries":  3,
-                      "waitBetweenTries":  2000
+                      "waitBetweenTries":  2000,
+                      "onError":  "continueRegularOutput"
                   },
                   {
                       "parameters":  {
@@ -119,7 +120,7 @@
                   },
                   {
                       "parameters":  {
-                                         "jsCode":  "const parse = (v) =\u003e { if (typeof v === \u0027string\u0027) { try { return JSON.parse(v); } catch (e) { return {}; } } return v || {}; };\nconst items = $input.all();\nlet imported = 0, skipped = 0;\nfor (const it of items) { const r = parse(it.json.r); imported += Number(r.imported || 0); skipped += Number(r.skipped || 0); }\nreturn [{ json: { ok: true, pages: items.length, imported, skipped } }];",
+                                         "jsCode":  "const parse = (v) =\u003e { if (typeof v === \u0027string\u0027) { try { return JSON.parse(v); } catch (e) { return {}; } } return v || {}; };\nconst items = $input.all();\nconst failed = $(\u0027Fetch usage\u0027).all().some((i) =\u003e i.json \u0026\u0026 i.json.error);\nlet imported = 0, skipped = 0;\nfor (const it of items) { const r = parse(it.json.r); imported += Number(r.imported || 0); skipped += Number(r.skipped || 0); }\nif (failed) { return [{ json: { ok: false, reason: \u0027gateway_unreachable\u0027, imported, skipped } }]; }\nreturn [{ json: { ok: true, pages: items.length, imported, skipped } }];",
                                          "mode":  "runOnceForAllItems"
                                      },
                       "type":  "n8n-nodes-base.code",
@@ -133,7 +134,7 @@
                   },
                   {
                       "parameters":  {
-                                         "content":  "## Ablauf\n**core.sub_import_llm_usage — Gateway-Mitschrift nach core.llm_usage übernehmen**\n\nStart -\u003e Read cursor (core.fn_import_llm_usage mit rows:[] importiert nichts und liefert nur den Cursor after = jüngste Zeile minus 10 Min, Überlappung gegen Uhr-Sprünge) -\u003e Fetch usage (GET 127.0.0.1:8090/__usage?after=..\u0026limit=5000 am lokalen LLM-Gateway, Pagination über next_after bis has_more=false, höchstens 40 Seiten, 3 Versuche) -\u003e Import usage (je Seite core.fn_import_llm_usage: idempotent über id, ungültige Zeilen übersprungen, Retention 13 Monate) -\u003e Summarize ({ok, pages, imported, skipped}). Aufrufer: core.cron_import_llm_usage (nachts, ein Fehler hier scheitert den Lauf und löst den Fehler-Alarm aus) und core.sub_send_cost_report (/costs, onError=continueRegularOutput: bei Gateway-Ausfall zeigt der Bericht den DB-Stand). Die Mitschrift hebt der Gateway nur 62 Tage auf; deshalb der nächtliche Lauf.",
+                                         "content":  "## Ablauf\n**core.sub_import_llm_usage — Gateway-Mitschrift nach core.llm_usage übernehmen**\n\nStart -\u003e Read cursor (core.fn_import_llm_usage mit rows:[] importiert nichts und liefert nur den Cursor after = jüngste Zeile minus 10 Min, Überlappung gegen Uhr-Sprünge) -\u003e Fetch usage (GET 127.0.0.1:8090/__usage?after=..\u0026limit=5000 am lokalen LLM-Gateway, Pagination über next_after bis has_more=false, höchstens 40 Seiten, 3 Versuche; Gateway nicht erreichbar -\u003e onError=continue, der Fehler-Eintrag wandert durch und Summarize meldet ok:false) -\u003e Import usage (je Seite core.fn_import_llm_usage: idempotent über id, ungültige Zeilen übersprungen, Retention 13 Monate) -\u003e Summarize ({ok, pages, imported, skipped} bzw. {ok:false, reason:gateway_unreachable}). Der Sub scheitert bewusst nie selbst: ein Sub-Fehler löste über seinen eigenen Fehler-Workflow einen zweiten Alarm aus, auch bei /costs. Aufrufer: core.cron_import_llm_usage (macht aus ok:false einen Fehler und damit genau einen Alarm) und core.sub_send_cost_report (/costs ignoriert ok:false: bei Gateway-Ausfall zeigt der Bericht den DB-Stand). Die Mitschrift hebt der Gateway nur 62 Tage auf; deshalb der nächtliche Lauf.",
                                          "height":  420,
                                          "width":  640,
                                          "color":  4

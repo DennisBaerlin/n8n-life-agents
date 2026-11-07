@@ -39,6 +39,7 @@ BEGIN
      OR r->>'person_id' IS DISTINCT FROM 'powner'
      OR r->>'role'      IS DISTINCT FROM 'owner'
      OR r->>'full_name' IS DISTINCT FROM 'Owner Person'
+     OR r->>'first_name' IS DISTINCT FROM 'Owner'
      OR r->>'language'  IS DISTINCT FROM 'de'
      OR (r->>'chat_id')::bigint IS DISTINCT FROM 111 THEN   -- WP-5c: kanonische chat_id = telegram_user_id
     RAISE EXCEPTION 'FAIL resolve_sender [gepairte ID falsch aufgeloest: %]', r; END IF;

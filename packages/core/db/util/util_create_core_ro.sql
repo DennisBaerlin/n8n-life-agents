@@ -187,6 +187,14 @@ DO $$ BEGIN
     END IF;
 END $$;
 
+-- Router-Flag user_style: 'Resolve sender' (core_ro) ruft das DEFINER-Fenster agent.fn_chat_style(bigint); *_chat_memory steht auf
+-- der Deny-Liste oben, nur die Stil-Stufe verlaesst die fn. Die fn REVOKEt PUBLIC -> Grant HIER am Rollen-Ort.
+DO $$ BEGIN
+    IF to_regprocedure('agent.fn_chat_style(bigint)') IS NOT NULL THEN
+        GRANT EXECUTE ON FUNCTION agent.fn_chat_style(bigint) TO core_ro;
+    END IF;
+END $$;
+
 -- /kosten: der Sub core.sub_send_cost_report liest den Kosten-Report unter __CRED_POSTGRES_CORE_RO__ ueber das
 -- DEFINER-Fenster core.fn_get_llm_cost_report(jsonb) (Owner-Gate in der fn). Grant am Rollen-Ort (Muster oben).
 DO $$ BEGIN

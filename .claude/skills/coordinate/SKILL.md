@@ -5,7 +5,7 @@ description: Koordination paralleler Claude-Sessions – beim Start prüfen, wer
 
 # Parallele Sessions koordinieren (`/coordinate`)
 
-Es gibt immer genau eine leitende Session mit Merge-Hoheit, die alle anderen zentral koordiniert. Sessions warten nicht untätig aufeinander und verlassen sich nicht darauf, dass die Leitung Infos weiterreicht.
+Je Thema gibt es genau eine leitende Session mit Merge-Hoheit, die die Sessions ihres Themas zentral koordiniert; ein großes, eigenständiges Thema darf eine eigene Leitung haben (§3 *Mehrere Leitungen*). Sessions warten nicht untätig aufeinander und verlassen sich nicht darauf, dass die Leitung Infos weiterreicht.
 
 ## 1. Beim Start: Lage prüfen
 
@@ -17,13 +17,16 @@ Es gibt immer genau eine leitende Session mit Merge-Hoheit, die alle anderen zen
 ## 2. Leitung bestimmen
 
 - Ernennt der Owner eine Session („du bist die Leitung“), gilt das vor allem Folgenden: Sie folgt `/leitung`, eine bisherige Leitung übergibt an sie.
-- Gibt es schon eine Leitung, bleibt sie es. Die neue Session meldet sich bei ihr an: Aufgabe, berührte Dateien, Worktree und Branch.
+- Gibt es schon eine Leitung, bleibt sie es. Die neue Session meldet sich bei ihr an: Aufgabe, berührte Dateien, Worktree und Branch. Bei mehreren Leitungen: bei der ihres Themas.
+- Zwei Leitungen, gleiches Thema → Übergabe; anderes Thema → beide bleiben und melden sich gegenseitig an.
 - Gibt es keine, übernimmt die am längsten laufende Session (`ListAgents` → „started … ago“) und teilt das allen mit.
 - Wird die Leitung beendet, übergibt sie vorher ausdrücklich an eine andere Session, samt Stand: Integrations-Branch, offene Merges, laufende Tests.
 
 ## 3. Pflichten der Leitung
 
 - **Merge-Hoheit:** Nur die Leitung merged auf den Integrations-Branch, fährt die Schluss-Gates, pusht `main` und taggt. Niemand sonst pusht oder taggt. Liegen ungepushte Commits eines Sprints auf `main`, merged eine andere Session erst nach Absprache mit dessen Leitung nach `main`.
+- **Mehrere Leitungen:** Sie legen die Release-Reihenfolge fest (wer zuerst fertig ist; bei mehr als zwei eine Liste). Nur die Leitung an der Reihe pusht und taggt, die nächste zieht danach `origin/main` nach und prüft erneut. Unaufgefordert weitergeben, was die andere braucht: gemeinsame Dateien, `V__`-Nummern, Testplätze, rote CI, Owner-Entscheide.
+- **Vor jedem Merge `git fetch origin`:** `main` hinter `origin/main` → erst nachziehen; Branch-Inhalt gegen `origin/main` zählen, sonst wirken veröffentlichte Commits fremd.
 - **Geschützte `main` und `v*`-Tags** (Rulesets → `CONTRIBUTING.md` *Branch protection*): Die Leitung pusht direkt per Admin-Bypass der CI-Pflicht. Ein fehlerhafter Tag wird nicht verschoben → neue Patch-Version. Nach jedem Push die CI-Ampel prüfen (`scripts/check_ci_status.ps1`). Ein gepushter Text lässt sich nicht still zurückholen; meldet `privacy_lint -Outgoing` rot, wird der Text korrigiert.
 - **Fremd-PRs:** Nie auschecken, bevor der Diff gelesen ist (Hooks sehen `.env`). Die Leitung schreibt `gh pr diff <nr>` in eine Datei, fährt darauf `privacy_lint -TextFile <datei>` und die Modell-Prüfung (die Denylist fehlt in der CI, Fork-Läufe sehen sie nie). Erst danach gibt sie den Lauf frei. Merge nur per Squash mit eigenem, geprüftem Text, nach Bestätigung des Owners. Antworten im PR sind öffentlich: keine Live-Werte, auch nicht zur Begründung.
 - **Statusrunde alle 15 Minuten** per `CronCreate` (Off-Minuten, z. B. `7,22,37,52 * * * *`, `recurring: true`):

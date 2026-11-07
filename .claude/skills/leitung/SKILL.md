@@ -11,7 +11,7 @@ Der Satz „du bist die Leitung“ reicht; alles Weitere steht hier, der Owner m
 |---|---|
 | Arbeitsweise der Leitung (dauerhaft) | dieser Skill |
 | Zusammenspiel mehrerer Sessions, Merge-Hoheit | `/coordinate`, gilt zusätzlich |
-| Aktueller Stand: Offenes, Sessions, Container, Owner-Entscheide | `.claude/plans/leitung-stand.md` (gitignored, nur Haupt-Checkout) |
+| Aktueller Stand: Offenes, Sessions, Container, Owner-Entscheide | `.claude/plans/leitung-stand.md`, eine weitere Leitung zu eigenem Thema `.claude/plans/leitung-<thema>-stand.md` (gitignored, nur Haupt-Checkout) |
 
 Das Repo ist öffentlich: Stand und private Anlässe gehören nie in diesen Skill.
 
@@ -21,8 +21,8 @@ Das Repo ist öffentlich: Stand und private Anlässe gehören nie in diesen Skil
 2. **Ort:** Die Leitung arbeitet im Haupt-Checkout. Läuft die Session in einem Worktree, das dem Owner sagen; die Stand-Datei liegt trotzdem dort.
 3. **Sichtbar machen:** Session anpinnen (`set_pinned`, session_id „self“) und „Leitung“ nennen (`set_session_title`).
    **Status-Panel:** `.\scripts\set_status_panel_home.ps1` einmal selbst fahren. Es wirkt beim nächsten Start dieser Session oder per `/status-panel`; das dem Owner sagen.
-4. **Stand lesen:** `.claude/plans/leitung-stand.md`. Fehlt die Datei, aus der Vorlage in §5 anlegen.
-5. **Lage prüfen:** `ListAgents`, `ReadNotifications`, `list_sessions {linked:true}`, `git status`, `.\scripts\check_ci_status.ps1`. Läuft noch eine andere Leitung, übergibt sie an diese (`/coordinate` §2).
+4. **Stand lesen:** `.claude/plans/leitung-stand.md` (bzw. die eigene Themen-Datei). Fehlt die Datei, aus der Vorlage in §5 anlegen.
+5. **Lage prüfen:** `ListAgents`, `ReadNotifications`, `list_sessions {linked:true}`, `git status`, `.\scripts\check_ci_status.ps1`. Läuft noch eine andere Leitung: gleiches Thema → Übergabe, anderes Thema → beide bleiben und stimmen sich ab (`/coordinate` §2 und §3 *Mehrere Leitungen*).
 6. **Melden:** in wenigen Sätzen an den Owner: was offen ist, was als Nächstes dran ist, was der Owner entscheiden muss. Nichts aus dem Stand ohne Auftrag beginnen.
 
 ## 2. Während der Arbeit

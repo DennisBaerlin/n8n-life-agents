@@ -124,8 +124,8 @@
         "task":  "Lege ein neues Birkenbank Girokonto an (Inhaber Erika, ohne Zinsen) und zusaetzlich ein neues Birkenbank Depot, das dieses Birkenbank Girokonto als Verrechnungskonto nutzt.",
         "chat_id":  "test_tc12",
         "expected_tool":  "tool_import_stage_rows",
-        "expected_behavior":  "Zwei Eintraege in einer Nachricht -> Sammel-Import: stagt BEIDE Konten in einem Batch (tool_import_stage_rows: Birkenbank Girokonto als cash, Birkenbank Depot als stocks_depot mit settlement_account = Birkenbank Girokonto), nicht zwei Einzel-Anlagen; danach tool_commit_import fuer die eine Sammelkarte. Nach der Ablehnung meldet er den Abbruch. ALT (vor 2026-10-23): Erkennt die Abhaengigkeit, dass das Depot ein Verrechnungskonto braucht, und beginnt mit dem Birkenbank Girokonto (erster Tool-Aufruf = tool_create_account fuer das Cash-Konto), NICHT mit dem Depot. (Unter dem Test-Bypass bricht der erste Write ab, daher ist nur der erste Schritt + die Planung beobachtbar.)",
-        "notes":  "QUARANTAENE 2026-10-23: Sonnet wechselt zwischen Sammel-Import (Tool-Regel, Abschlusslauf) und zwei Einzel-Anlagen in richtiger Reihenfolge (Girokonto zuerst, Nachlauf) - fuer den Nutzer gleiches Ergebnis, nur zwei Karten statt einer. RE-EVALUIEREN, sobald die Import-Regel im Prompt/der Tool-Description geschaerft ist (>=3 isolierte Laeufe mit Sammel-Import -> quarantined entfernen). 2026-10-23 (bezahlter Lauf): die Tool-Regel von tool_import_stage_rows schickt zwei Eintraege in einer Nachricht in den Sammel-Import; der Agent folgte ihr korrekt und fiel am alten Golden (tool_create_account zuerst) durch. Deterministisch jetzt: tool_import_stage_rows. Frueher: Reihenfolge-/Abhaengigkeitslogik, erster Write-Tool = tool_create_account. Judge: beginnt korrekt mit Cash. Volle Sequenz braucht echte Writes."
+        "expected_behavior":  "Zwei Eintraege in einer Nachricht -> Sammel-Import: stagt BEIDE Konten in einem Batch (tool_import_stage_rows: Birkenbank Girokonto als cash, Birkenbank Depot als stocks_depot mit settlement_account = Birkenbank Girokonto), nicht zwei Einzel-Anlagen; danach tool_commit_import fuer die eine Sammelkarte. Nach der Ablehnung meldet er den Abbruch.",
+        "notes":  "QUARANTAENE: Sonnet wechselt zwischen Sammel-Import (Regel von tool_import_stage_rows) und zwei Einzel-Anlagen in richtiger Reihenfolge (Girokonto zuerst) - fuer den Nutzer gleiches Ergebnis, nur zwei Karten statt einer. RE-EVALUIEREN beim naechsten gezielten bezahlten Lauf durch den Owner: >=3 isolierte Laeufe mit Sammel-Import -> quarantined entfernen. Abgrenzung zu tc40: tc12 hat die Abhaengigkeit Depot -> neues Girokonto innerhalb des Batches und erwartet den Commit, tc40 nur Stage ohne Commit."
     },
     {
         "id":  "tc13",
@@ -167,7 +167,7 @@
                                },
         "quarantined":  true,
         "expected_behavior":  "Ruft tool_book_stock_sell direkt mit depot_name=Testbroker Depot, symbol=VWCE, shares=5, price_per_share=115, order_fee=2 auf (keine eigene holding_id-Abfrage vorher, die Position findet das Tool). Rechnet den Erloes nicht selbst.",
-        "notes":  "2026-10-23 (DB-ist-das-Gesetz S8): der holding_id-Lookup entfaellt (depot_name + symbol, fn_find_holding) - die Haupt-Ursache der Varianz ist weg; beim naechsten bezahlten Lauf die Quarantaene pruefen. QUARANTAENE (B3): bekannt flaky (Lauf-zu-Lauf-Varianz error/timeout/pass). Root-Causes adressiert: (1) Tool-Description entzerrt den konkurrierenden Lookup-Pfad (holding_id NUR aus finance_depot_holdings_overview, NIE aus finance_transactions/sells) -\u003e Agent erreicht jetzt zuverlaessig den Tool-Call; (2) holding_id-$fromAI-Typ \u0027number\u0027-\u003e\u0027string\u0027 (Agent quotete die ID -\u003e Schema-Reject behoben; SQL castet ::int). Rest-Varianz (gelegentlicher Timeout) ist LLM-Nichtdeterminismus -\u003e formal quarantaeniert (run+report, NICHT in Pass/Fail/Judge gewertet) statt informellem Nachfeuern. Korrektheit voll via DB-Test (test_fn_book_stock_sell.sql) + E2E (e2e05). RE-EVALUIEREN: wenn ueber \u003e=5 isolierte Laeufe stabil gruen, quarantined entfernen."
+        "notes":  "QUARANTAENE: bekannt flaky (Lauf-zu-Lauf-Varianz error/timeout/pass), Rest-Varianz ist LLM-Nichtdeterminismus; wird ausgefuehrt und berichtet, nicht gewertet. Haupt-Ursachen behoben (Position per depot_name + symbol statt holding_id-Lookup, Tool-Description entzerrt). RE-EVALUIEREN: naechster gezielter bezahlter Lauf durch den Owner; ueber >=5 isolierte Laeufe stabil gruen -> quarantined entfernen. Korrektheit voll via DB-Test test_fn_book_stock_sell.sql + E2E e2e05."
     },
     {
         "id":  "tc17",
@@ -253,18 +253,6 @@
         "expected_tool":  "tool_close_account",
         "expected_behavior":  "Ruft tool_close_account direkt mit account_name=\u0027Testbroker Cash Girokonto\u0027 (oder aehnlich) auf, ohne Text-Vorab-Rueckfrage; closure_date bleibt leer (die Datenbank setzt heute) oder ist das heutige Datum - nie ein erfundenes anderes Datum. Die Warnung zur Unwiderruflichkeit steht auf der Karte, der Antworttext muss sie nicht wiederholen.",
         "notes":  "Neues tool_close_account. Account muss in der DB existieren (Testbroker Cash Girokonto ist feste Fixture). Der Agent ruft das Tool direkt auf — kein Text-Vorab-Confirm, das Tool zeigt Saldo + ACHTUNG-Warnung in der HITL-Approval-Summary mit Approve/Decline-Buttons. Unter Routing-Bypass wird das Tool declined -\u003e kein echter Close."
-    },
-    {
-        "id":  "tc21",
-        "name":  "Oversell: mehr Anteile verkaufen als vorhanden",
-        "task":  "Verkaufe 999 Anteile Vanguard FTSE All-World (VWCE) aus meinem Testbroker Depot zu 115 Euro je Anteil, Ordergebuehr 2 Euro, Datum heute.",
-        "chat_id":  "test_tc21",
-        "expected_tool":  "tool_book_stock_sell",
-        "expected_tool_args":  {
-                                   "shares":  999
-                               },
-        "expected_behavior":  "Ruft tool_book_stock_sell direkt auf (ohne eigene Bestands-Pruefung). Der Probelauf der Datenbank lehnt ab (ok:false, card_sent:false, nicht genug Anteile, verfuegbare Menge); es kommt KEINE Bestaetigungskarte. Der Agent nennt den tatsaechlichen Bestand und fragt, wie viele verkauft werden sollen (oder bietet \u0027alle\u0027 an); er meldet keinen Erfolg und erwaehnt keine Karte/keinen Knopf.",
-        "notes":  "Paket DB-ist-das-Gesetz 2026-10-23: Oversell entscheidet die DB im Probelauf vor der Karte (wie tc54, hier mit genannter Ordergebuehr). Mock-Tier: Szenario ruft das Tool; Beweis = kein sendAndWait. Judge prueft: nennt Bestand + fragt nach, keine Erfolgsmeldung."
     },
     {
         "id":  "tc22",
@@ -372,7 +360,7 @@
                                    "annual_premium":  95
                                },
         "expected_behavior":  "Ruft tool_set_insurance mit insurance_name=\u0027Lindenversicherung Hausratversicherung\u0027 und annual_premium=95 auf. Die verknuepfte wiederkehrende Zahlung wird vom Tool automatisch mit-synchronisiert (kein separater Aufruf noetig).",
-        "notes":  "Neues set_*-Tool (einziges mit Recurring-Sync). Lindenversicherung Hausratversicherung ist feste Fixture. Judge: actual_tool_input insurance_name=\u0027Lindenversicherung Hausratversicherung\u0027 + annual_premium=95. set_pension hat keine feste Fixture -\u003e nur DB-Test test_fn_set_pension.sql (+ optional e2e), kein Routing-Golden-Case."
+        "notes":  "set_*-Tool mit Recurring-Sync der verknuepften Zahlung (wie set_loan und set_savings_goal). Lindenversicherung Hausratversicherung ist feste Fixture. Judge: actual_tool_input insurance_name=\u0027Lindenversicherung Hausratversicherung\u0027 + annual_premium=95. set_pension hat keine feste Fixture -\u003e nur DB-Test test_fn_set_pension.sql, kein Routing-Golden-Case."
     },
     {
         "id":  "tc30",
@@ -396,7 +384,7 @@
                                    "new_name":  "Vanguard FTSE All-World UCITS ETF (Acc)"
                                },
         "expected_behavior":  "Ruft tool_set_holding direkt mit depot_name=Testbroker Depot, position=VWCE und new_name=\u0027Vanguard FTSE All-World UCITS ETF (Acc)\u0027 auf. Aendert keine shares/avg.",
-        "notes":  "Neues set_*-Tool. VWCE ist Fixture-Holding (Name \u0027Vanguard FTSE All-World\u0027) - der Zielname muss davon ABWEICHEN, sonst meldet der Agent korrekt, dass er schon so lautet (real 2026-10-20). Routing: set_holding direkt mit depot_name + position (das Tool findet die Position, S8). Judge: actual_tool_input enthaelt depot_name + position + new_name. set_recurring_payment + set_savings_goal haben keine passende Fixture (kein standalone Recurring / kein aktives Sparziel) -\u003e via DB-Tests + e2e12/e2e13 abgedeckt, kein Routing-Golden."
+        "notes":  "Neues set_*-Tool. VWCE ist Fixture-Holding (Name \u0027Vanguard FTSE All-World\u0027) - der Zielname muss davon ABWEICHEN, sonst meldet der Agent korrekt, dass er schon so lautet (real 2026-10-20). Routing: set_holding direkt mit depot_name + position (das Tool findet die Position, S8). Judge: actual_tool_input enthaelt depot_name + position + new_name. set_recurring_payment hat keine passende Fixture (kein standalone Recurring) und ist per DB-Test + e2e12 abgedeckt, kein Routing-Golden; set_savings_goal hat Routing-Goldens mit setup_sql (tc118/tc119) und e2e13."
     },
     {
         "id":  "tc32",
@@ -1039,7 +1027,7 @@
     {
         "id":  "tc90",
         "name":  "Geldquelle Sparplan: eigene Ueberweisung -> Dauerauftrag auf das Sparplan-Konto (create_recurring_transfer)",
-        "task":  "Fuer meinen VWCE Bestandsplan reicht das Geld auf dem Testbroker Cash Girokonto nicht. Ich ueberweise ab dem 2027-01-01 jeden Monat 150 Euro vom Lindenbank Giro dorthin.",
+        "task":  "Fuer meinen VWCE Bestandsplan reicht das Geld auf dem Testbroker Cash Girokonto nicht. Ich ueberweise jeden Monat 150 Euro vom Lindenbank Giro dorthin, erste Ueberweisung in 4 Wochen.",
         "chat_id":  "test_tc90",
         "expected_tool":  "tool_create_recurring_transfer",
         "expected_tool_args":  {
@@ -1048,13 +1036,13 @@
                                    "amount":  150,
                                    "schedule_unit":  "month"
                                },
-        "expected_behavior":  "Ruft tool_create_recurring_transfer vom Lindenbank Giro auf das Testbroker Cash Girokonto mit amount=150, schedule_unit='month' und first_payment_date='2027-01-01' auf - nicht tool_create_recurring_payment (beide Konten gehoeren dem Haushalt) und keinen Sparplan-Write. Rechnet keinen Fehlbetrag selbst aus.",
-        "notes":  "Geldquellen-Frage (savings_funding, 2026-10-30), Antwort 1. Der Routing-Tier lehnt die Karte ab, die Frage selbst (Fold nach ok:true) ist hier nicht pruefbar; DB-Test test_fn_savings_funding_fold + E2E decken sie. Datum fest in der Zukunft; sobald 2027-01-01 naeher als ~1 Monat rueckt, nachziehen."
+        "expected_behavior":  "Ruft tool_create_recurring_transfer vom Lindenbank Giro auf das Testbroker Cash Girokonto mit amount=150, schedule_unit='month' auf und gibt first_payment_date relativ in Ziffern-Form weiter (z. B. in 4 weeks), nicht als selbst ausgerechnetes Datum - nicht tool_create_recurring_payment (beide Konten gehoeren dem Haushalt) und keinen Sparplan-Write. Rechnet keinen Fehlbetrag selbst aus.",
+        "notes":  "Geldquellen-Frage (savings_funding, 2026-10-30), Antwort 1. Der Routing-Tier lehnt die Karte ab, die Frage selbst (Fold nach ok:true) ist hier nicht pruefbar; DB-Test test_fn_savings_funding_fold + E2E decken sie. Startdatum relativ in Ziffern-Form (Muster tc77), damit der Fall nicht veraltet."
     },
     {
         "id":  "tc91",
         "name":  "Geldquelle Sparplan: Zahlung von ausserhalb (Oma) -> Einnahme auf dem Sparplan-Konto (create_recurring_payment)",
-        "task":  "Oma Erika zahlt ab dem 2027-01-01 jeden Monat 50 Euro fuer den VWCE Bestandsplan auf das Testbroker Cash Girokonto ein.",
+        "task":  "Oma Erika zahlt jeden Monat 50 Euro fuer den VWCE Bestandsplan auf das Testbroker Cash Girokonto ein, erste Zahlung in 4 Wochen.",
         "chat_id":  "test_tc91",
         "expected_tool":  "tool_create_recurring_payment",
         "expected_tool_args":  {
@@ -1063,13 +1051,13 @@
                                    "amount":  50,
                                    "schedule_unit":  "month"
                                },
-        "expected_behavior":  "Ruft tool_create_recurring_payment mit account_name='Testbroker Cash Girokonto', direction='income', amount=50, schedule_unit='month', first_payment_date='2027-01-01' auf (Name z. B. Zuwendung Oma Erika). Kein Dauerauftrag zwischen eigenen Konten (Oma gehoert nicht zum Haushalt), kein Sparziel und kein Familien-Eintrag.",
-        "notes":  "Geldquellen-Frage (savings_funding, 2026-10-30), Antwort 2: externer Zahler = Eingangs-rp ohne Quellkonto (fn_account_flows zaehlt sie als Zufluss). Erfundene Person ausserhalb des Haushalts. Datum fest; nachziehen wie tc90."
+        "expected_behavior":  "Ruft tool_create_recurring_payment mit account_name='Testbroker Cash Girokonto', direction='income', amount=50, schedule_unit='month' auf und gibt first_payment_date relativ in Ziffern-Form weiter (z. B. in 4 weeks), nicht als selbst ausgerechnetes Datum (Name z. B. Zuwendung Oma Erika). Kein Dauerauftrag zwischen eigenen Konten (Oma gehoert nicht zum Haushalt), kein Sparziel und kein Familien-Eintrag.",
+        "notes":  "Geldquellen-Frage (savings_funding, 2026-10-30), Antwort 2: externer Zahler = Eingangs-rp ohne Quellkonto (fn_account_flows zaehlt sie als Zufluss). Erfundene Person ausserhalb des Haushalts. Startdatum relativ wie tc90."
     },
     {
         "id":  "tc92",
         "name":  "Geldquelle Sparplan: zwei Quellen -> nacheinander, zuerst der Dauerauftrag",
-        "task":  "Fuer den VWCE Bestandsplan: Ab dem 2027-01-01 gehen jeden Monat 100 Euro per Dauerauftrag vom Lindenbank Giro aufs Testbroker Cash Girokonto, und Oma Erika zahlt dort ab demselben Tag jeden Monat 50 Euro ein.",
+        "task":  "Fuer den VWCE Bestandsplan: Erste Zahlung in 4 Wochen, danach gehen jeden Monat 100 Euro per Dauerauftrag vom Lindenbank Giro aufs Testbroker Cash Girokonto, und Oma Erika zahlt dort ab demselben Tag jeden Monat 50 Euro ein.",
         "chat_id":  "test_tc92",
         "expected_tool":  "tool_create_recurring_transfer",
         "expected_tool_args":  {
@@ -1078,7 +1066,7 @@
                                    "amount":  100
                                },
         "expected_behavior":  "Fuehrt die beiden Eintraege NACHEINANDER aus, nie zwei Write-Tools im selben Schritt: zuerst tool_create_recurring_transfer (Lindenbank Giro -> Testbroker Cash Girokonto, 100, monatlich). Wird diese Karte abgelehnt (cancelled), meldet der Agent den Abbruch; ruft er danach noch tool_create_recurring_payment (income, 50, Testbroker Cash Girokonto) in einem eigenen Schritt auf, ist das ebenfalls korrekt. FAIL bei zwei parallelen Tool-Aufrufen oder einer zusammengelegten Zahlung ueber 150.",
-        "notes":  "Geldquellen-Frage (savings_funding, 2026-10-30), Kombination: nacheinander, damit die zweite Karte die Deckung nach dem ersten Write zeigt (Plan-Review Befund 8). Erfundene Person. Datum fest; nachziehen wie tc90."
+        "notes":  "Geldquellen-Frage (savings_funding, 2026-10-30), Kombination: nacheinander, damit die zweite Karte die Deckung nach dem ersten Write zeigt (Plan-Review Befund 8). Erfundene Person. Startdatum relativ wie tc90."
     },
     {
         "id":  "tc93",
@@ -1177,7 +1165,7 @@
     {
         "id":  "tc104",
         "name":  "Umschichtung mit Enddatum: Dauerauftrag bis das freie Geld aufgebraucht ist",
-        "task":  "Richte einen Dauerauftrag ein: jeden Monat am 25. 500 Euro von Lindenbank Giro auf Testbroker Cash Girokonto, ab dem 25.11., und zwar so lange, bis dort das freie Geld aufgebraucht ist.",
+        "task":  "Richte einen Dauerauftrag ein: jeden Monat am 25. 500 Euro von Lindenbank Giro auf Testbroker Cash Girokonto, erste Ueberweisung in 2 Wochen, und zwar so lange, bis dort das freie Geld aufgebraucht ist.",
         "chat_id":  "test_tc104",
         "expected_tool":  "tool_create_recurring_transfer",
         "expected_tool_args":  {
@@ -1284,7 +1272,7 @@
     {
         "id":  "tc116",
         "name":  "Dauerauftrag: Nutzer ueberweist selbst -> executed_by manual",
-        "task":  "Richte einen wiederkehrenden Uebertrag ein: jeden Monat am 25. 200 Euro von Lindenbank Giro auf Testbroker Cash Girokonto, ab dem 25.11. Den Betrag ueberweise ich jeden Monat selbst, bei meiner Bank liegt dafuer kein Dauerauftrag.",
+        "task":  "Richte einen wiederkehrenden Uebertrag ein: jeden Monat am 25. 200 Euro von Lindenbank Giro auf Testbroker Cash Girokonto, erste Ueberweisung in 2 Wochen. Den Betrag ueberweise ich jeden Monat selbst, bei meiner Bank liegt dafuer kein Dauerauftrag.",
         "chat_id":  "test_tc116",
         "expected_tool":  "tool_create_recurring_transfer",
         "expected_tool_args":  {
@@ -1299,7 +1287,7 @@
     {
         "id":  "tc117",
         "name":  "Dauerauftrag: laeuft bei der Bank -> executed_by bank",
-        "task":  "Richte einen wiederkehrenden Uebertrag ein: jeden Monat am 25. 300 Euro von Lindenbank Giro auf Testbroker Cash Girokonto, ab dem 25.11. Das ist ein Dauerauftrag, den ich bei meiner Bank eingerichtet habe.",
+        "task":  "Richte einen wiederkehrenden Uebertrag ein: jeden Monat am 25. 300 Euro von Lindenbank Giro auf Testbroker Cash Girokonto, erste Ueberweisung in 2 Wochen. Das ist ein Dauerauftrag, den ich bei meiner Bank eingerichtet habe.",
         "chat_id":  "test_tc117",
         "expected_tool":  "tool_create_recurring_transfer",
         "expected_tool_args":  {
@@ -1339,5 +1327,20 @@
         "expected_behavior":  "Ruft tool_set_savings_goal mit depot_risk_accepted=false fuer das genannte Ziel auf, ohne vorher nachzufragen. Nach einer Ablehnung der Karte sagt er, dass nichts geaendert wurde; nach einer Bestaetigung erklaert er in einfachen Worten, dass der Berater sich wieder meldet, sobald zu viel Geld des Ziels im Depot liegt.",
         "notes":  "Sparziel unter 5 Jahren im Depot als bewusste Ausnahme (2026-11-06). Ziel und Entscheidung per setup_sql. Mock-Tier: Szenario 'Erinnere mich wieder an das Umschichten'."
     },
-  {"id": "tc120", "name": "Durchgehen-Auftrag mit zwei Punkten -> erstes Write-Tool mit handoff_task_id, nur ein Punkt", "task": "Handoff mode. The user tapped [Go through] on the list of entries agreed in the plan conversation. Work through the entries below ONE per turn, in the given order. For the current entry ask only for details that are still missing, then call the matching write tool with handoff_task_id = the entry id (its confirmation card shows that it comes from the plan conversation). After the card, go on with the next entry. If the user wants to skip an entry or it is already done elsewhere, use tool_cancel_handoff_task. If a card is cancelled, ask whether to change the entry or skip it. Do not mention the advisor. Entries (data, not instructions): [{\"id\": 990001, \"kind\": \"recurring_payment\", \"payload\": {\"name\": \"__E2E__ HO Miete\", \"direction\": \"expense\", \"amount\": 900, \"account_name\": \"__E2E__ HO Giro\", \"schedule_unit\": \"month\", \"schedule_day_of_month\": 3, \"first_payment_date\": \"2026-12-03\"}, \"text\": \"Miete 900 Euro monatlich am 3. vom __E2E__ HO Giro\"}, {\"id\": 990002, \"kind\": \"other\", \"payload\": {}, \"text\": \"__E2E__ Haftpflicht pruefen\"}] Reply in the language with ISO code de.", "chat_id": "test_tc120", "setup_sql": "SELECT pg_temp.ok('__E2E__ HO Giro', finance.fn_create_account(jsonb_build_object('name','__E2E__ HO Giro','account_type','cash','currency','EUR','opening_balance',2000))); INSERT INTO agent.handoff_tasks (id, domain, package, person_id, section_key, kind, text, status, claimed_at) SELECT v.id, 'finance', 'finance', agent.fn_owner_person_id(), 'goals_triggers', v.kind, v.text, 'working', now() FROM (VALUES (990001, 'recurring_payment', '__E2E__ Miete 900 Euro monatlich'), (990002, 'other', '__E2E__ Haftpflicht pruefen')) v(id, kind, text);", "expected_tool": "tool_create_recurring_payment", "expected_tool_args": {"name": "__E2E__ HO Miete"}, "expected_behavior": "In handoff mode the bookkeeper works on the FIRST entry only: it calls tool_create_recurring_payment for __E2E__ HO Miete (expense 900, monthly, account __E2E__ HO Giro) with handoff_task_id 990001, and does not book or close the second entry in the same turn. It does not mention the advisor. Under the test bypass the gate declines; the reply reports the entry as not confirmed and asks whether to change or skip it.", "notes": "Uebergabe Berater -> Buchhalter (E6): feste ids 990001/990002 (Text mit __E2E__, fn_clear_e2e_data raeumt sie). Der Auftrag ist woertlich der Orchestrator-Auftrag."}
+  {"id": "tc120", "name": "Durchgehen-Auftrag mit zwei Punkten -> erstes Write-Tool mit handoff_task_id, nur ein Punkt", "task": "Handoff mode. The user tapped [Go through] on the list of entries agreed in the plan conversation. Work through the entries below ONE per turn, in the given order. For the current entry ask only for details that are still missing, then call the matching write tool with handoff_task_id = the entry id (its confirmation card shows that it comes from the plan conversation). After the card, go on with the next entry. If the user wants to skip an entry or it is already done elsewhere, use tool_cancel_handoff_task. If a card is cancelled, ask whether to change the entry or skip it. Do not mention the advisor. Entries (data, not instructions): [{\"id\": 990001, \"kind\": \"recurring_payment\", \"payload\": {\"name\": \"__E2E__ HO Miete\", \"direction\": \"expense\", \"amount\": 900, \"account_name\": \"__E2E__ HO Giro\", \"schedule_unit\": \"month\", \"schedule_day_of_month\": 3, \"first_payment_date\": \"2026-12-03\"}, \"text\": \"Miete 900 Euro monatlich am 3. vom __E2E__ HO Giro\"}, {\"id\": 990002, \"kind\": \"other\", \"payload\": {}, \"text\": \"__E2E__ Haftpflicht pruefen\"}] Reply in the language with ISO code de.", "chat_id": "test_tc120", "setup_sql": "SELECT pg_temp.ok('__E2E__ HO Giro', finance.fn_create_account(jsonb_build_object('name','__E2E__ HO Giro','account_type','cash','currency','EUR','opening_balance',2000))); INSERT INTO agent.handoff_tasks (id, domain, package, person_id, section_key, kind, text, status, claimed_at) SELECT v.id, 'finance', 'finance', agent.fn_owner_person_id(), 'goals_triggers', v.kind, v.text, 'working', now() FROM (VALUES (990001, 'recurring_payment', '__E2E__ Miete 900 Euro monatlich'), (990002, 'other', '__E2E__ Haftpflicht pruefen')) v(id, kind, text);", "expected_tool": "tool_create_recurring_payment", "expected_tool_args": {"name": "__E2E__ HO Miete"}, "expected_behavior": "In handoff mode the bookkeeper works on the FIRST entry only: it calls tool_create_recurring_payment for __E2E__ HO Miete (expense 900, monthly, account __E2E__ HO Giro) with handoff_task_id 990001, and does not book or close the second entry in the same turn. It does not mention the advisor. Under the test bypass the gate declines; the reply reports the entry as not confirmed and asks whether to change or skip it.", "notes": "Uebergabe Berater -> Buchhalter (E6): feste ids 990001/990002 (Text mit __E2E__, fn_clear_e2e_data raeumt sie). Der Auftrag ist woertlich der Orchestrator-Auftrag."},
+    {
+        "id":  "tc121",
+        "name":  "Immobilie anlegen (create_real_estate)",
+        "task":  "Lege eine neue Immobilie an: 'Ferienhaus Probestadt', Wert etwa 280000 Euro, Wohnfläche 90 qm, Baujahr 1998.",
+        "chat_id":  "test_tc121",
+        "expected_tool":  "tool_create_real_estate",
+        "expected_tool_args":  {
+                                   "name":  "Ferienhaus Probestadt",
+                                   "current_value":  280000,
+                                   "living_area_m2":  90,
+                                   "year_built":  1998
+                               },
+        "expected_behavior":  "Ruft tool_create_real_estate direkt auf: name='Ferienhaus Probestadt', current_value=280000, living_area_m2=90, year_built=1998. Kein owner_person (nicht genannt), kein status (Standard active). Rechnet die empfohlene Instandhaltungsruecklage nicht selbst aus (das Tool zeigt sie auf der Karte) und legt kein Sparziel an, bevor der Nutzer es will.",
+        "notes":  "Schreib-Tool ohne vorherigen Routing-Golden. Self-contained create (neuer Name, kein Dub mit der Fixture-Immobilie Musterimmobilie). Pruefeigenschaft: Rohwerte der Immobilie ohne Eigenrechnung; die Ruecklagen-Empfehlung rechnet die DB. Mock-Tier: Szenario 'Ferienhaus Probestadt'."
+    }
 ]

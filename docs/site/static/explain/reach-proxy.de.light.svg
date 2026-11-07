@@ -2,22 +2,22 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 280 560" width="280" height="560" role="img" lang="de">
   <style>
 :root { --ink: #17212B; --gray: #55636E; --hairline: #E2E7EC; --accent: #12638A; --accent-hover: #0D4D6C; --accent-mid: #A8D3E6; --accent-pale: #DCF0F8; --accent-wash: #F1F8FB; --code-wash: #F1F8FB; --ok: #1E9E6A; --warn: #CC8600; --warn-wash: #FDF3D8; --alert: #D23F44; --alert-wash: #FDE8E8; --bg: #FFFFFF; --bg-soft: #F1F8FB; --font: -apple-system, "Segoe UI", system-ui, "Helvetica Neue", Arial, sans-serif; }
-@keyframes in1 { 0% { opacity: 0 } 4%, 97% { opacity: 1 } 100% { opacity: 0 } }
-@keyframes on1 { 0% { opacity: 0 } 4%, 21% { opacity: 1 } 25%, 100% { opacity: 0 } }
+@keyframes in1 { 0% { opacity: 0 } 2.86%, 97% { opacity: 1 } 100% { opacity: 0 } }
+@keyframes on1 { 0% { opacity: 0 } 2.86%, 22.14% { opacity: 1 } 25%, 100% { opacity: 0 } }
 .on1 { opacity: 0 }
-@media (prefers-reduced-motion: no-preference) { .in1 { animation: in1 10s linear infinite } .on1 { animation: on1 10s linear infinite } }
-@keyframes in2 { 0%, 25% { opacity: 0 } 29%, 97% { opacity: 1 } 100% { opacity: 0 } }
-@keyframes on2 { 0%, 25% { opacity: 0 } 29%, 46% { opacity: 1 } 50%, 100% { opacity: 0 } }
+@media (prefers-reduced-motion: no-preference) { .in1 { animation: in1 14s linear infinite } .on1 { animation: on1 14s linear infinite } }
+@keyframes in2 { 0%, 25% { opacity: 0 } 27.86%, 97% { opacity: 1 } 100% { opacity: 0 } }
+@keyframes on2 { 0%, 25% { opacity: 0 } 27.86%, 47.14% { opacity: 1 } 50%, 100% { opacity: 0 } }
 .on2 { opacity: 0 }
-@media (prefers-reduced-motion: no-preference) { .in2 { animation: in2 10s linear infinite } .on2 { animation: on2 10s linear infinite } }
-@keyframes in3 { 0%, 50% { opacity: 0 } 54%, 97% { opacity: 1 } 100% { opacity: 0 } }
-@keyframes on3 { 0%, 50% { opacity: 0 } 54%, 71% { opacity: 1 } 75%, 100% { opacity: 0 } }
+@media (prefers-reduced-motion: no-preference) { .in2 { animation: in2 14s linear infinite } .on2 { animation: on2 14s linear infinite } }
+@keyframes in3 { 0%, 50% { opacity: 0 } 52.86%, 97% { opacity: 1 } 100% { opacity: 0 } }
+@keyframes on3 { 0%, 50% { opacity: 0 } 52.86%, 72.14% { opacity: 1 } 75%, 100% { opacity: 0 } }
 .on3 { opacity: 0 }
-@media (prefers-reduced-motion: no-preference) { .in3 { animation: in3 10s linear infinite } .on3 { animation: on3 10s linear infinite } }
-@keyframes in4 { 0%, 75% { opacity: 0 } 79%, 97% { opacity: 1 } 100% { opacity: 0 } }
-@keyframes on4 { 0%, 75% { opacity: 0 } 79%, 97% { opacity: 1 } 100% { opacity: 0 } }
+@media (prefers-reduced-motion: no-preference) { .in3 { animation: in3 14s linear infinite } .on3 { animation: on3 14s linear infinite } }
+@keyframes in4 { 0%, 75% { opacity: 0 } 77.86%, 97% { opacity: 1 } 100% { opacity: 0 } }
+@keyframes on4 { 0%, 75% { opacity: 0 } 77.86%, 97% { opacity: 1 } 100% { opacity: 0 } }
 .on4 { opacity: 1 }
-@media (prefers-reduced-motion: no-preference) { .in4 { animation: in4 10s linear infinite } .on4 { animation: on4 10s linear infinite } }
+@media (prefers-reduced-motion: no-preference) { .in4 { animation: in4 14s linear infinite } .on4 { animation: on4 14s linear infinite } }
 text { font-family: var(--font); fill: var(--ink); }
     .cap { font-size: 17px; text-anchor: middle; }
     .lbl { font-size: 19px; }

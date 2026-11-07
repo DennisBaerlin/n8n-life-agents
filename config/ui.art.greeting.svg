@@ -1,4 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 392" width="720" height="392" role="img" data-scenes="6" data-scene-s="3">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 392" width="720" height="392" role="img" data-scenes="6" data-scene-s="4.5">
   <!-- Begrüßung „Was ist lifeagents?": Quelle für README, Doku-Startseite und Start-App. Erzeugt wird von scripts/build_ui_tokens.ps1
        (Format: scripts/lib/ui_art.ps1). Szenen: 1 Assistent meldet sich von selbst (Sticker hallo + Hinweis), 2 Rückfrage mit Ja/Nein,
        3 Weg nach Hause, 4 Daten bleiben (Schloss), 5 Familie mit Bereichen, 6 Schlussbild. Beträge erfunden.

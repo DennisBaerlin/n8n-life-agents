@@ -1,4 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 280 560" width="280" height="560" role="img" data-compact-height="452" data-scenes="4" data-scene-s="2.5">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 280 560" width="280" height="560" role="img" data-compact-height="452" data-scenes="4" data-scene-s="3.5">
   <!-- Wege ins Internet: Quelle für die Wizard-Seite reach (hochkant neben den Antwortkarten, Bild wechselt mit der Auswahl) und
        die Weg-Seiten der Anleitung. Varianten tunnel / fritzbox / proxy (data-variant), Generator scripts/build_ui_tokens.ps1,
        Format scripts/lib/ui_art.ps1. Szenen: 1 Handy, 2 Telegram, 3 der gewählte Weg, 4 dein Rechner.

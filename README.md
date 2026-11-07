@@ -154,11 +154,13 @@ flowchart TD
     ORCH --> GUI["🚪 agent.guide"]
     ORCH --> CAR["💼 agent.career_advisor"]
     ORCH --> EST["🗂️ agent.estate_advisor"]
+    ORCH --> DOC["📄 agent.paperless_assistant"]
     FIN --> GATE["agent.tool_human_approval – HITL gate"]
     CAR --> GATE
     EST --> GATE
-    GATE --> PG[("PostgreSQL 17 – schemas core · agent · finance · career · estate")]
+    GATE --> PG[("PostgreSQL 17 – schemas core · agent · finance · career · estate · paperless")]
     ADV -. read only .-> PG
+    DOC -. read only .-> PPL["your Paperless instance"]
     MON -. triggers as data rows .-> PG
     GUI --> GATE
 ```

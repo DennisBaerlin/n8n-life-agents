@@ -38,12 +38,12 @@ Den alten Namen (die Adresse der FritzBox) darfst du im Caddyfile behalten, zum 
 
 ## Neu installieren
 
-Gib dem Installer bei der Frage nach der **Internet-Adresse** den neuen Namen aus Schritt 9 an. Du kannst ihn auch als ganze Adresse einfügen (`https://meinproxy.deine-domain.myfritz.net/`), der Installer macht daraus selbst den Namen.
+Wähl im Installer bei der ersten Frage **Über meine FritzBox**. Er prüft dann zuerst selbst, ob dein Anschluss eine eigene IPv4-Adresse hat (bei DS-Lite bietet er den [Tunnel](tunnel.html) an), zeigt dir die Schritte oben in Kurzform und fragt nach der MyFRITZ!-Adresse. Die Endung (`deine-domain.myfritz.net`) liest er aus deiner FritzBox, du tippst nur noch den Gerätenamen aus Schritt 9 ein. Übernommen wird die Adresse, sobald sie auf deinen Anschluss zeigt; ist sie noch nicht eingetragen, wartest du die Minute aus Schritt 10 und wählst „Erneut prüfen“. Läuft dein Reverse Proxy auf einem anderen Rechner, gibst du die volle Adresse ein (`https://meinproxy.deine-domain.myfritz.net/` geht auch, der Installer macht daraus selbst den Namen).
 
 ## Schon installiert? So stellst du um
 
 1. Die Schritte oben durchgehen, bis du den neuen Namen hast und er im Reverse Proxy steht (Schritt 1 bis 11).
-2. Auf dem Server `sudo lifeagents reconfigure core` ausführen, „Angaben ändern …" wählen, dann „**Internet-Adresse**", den neuen Namen eintragen und „**Fertig — speichern und anwenden**". Die anderen Angaben fragt der Befehl dabei nicht ab.
+2. Auf dem Server `sudo lifeagents reconfigure core` ausführen, „Angaben ändern …" wählen, dann „**Internet-Adresse**", den neuen Namen eintragen und „**Fertig — speichern und anwenden**" (kommst du vom Tunnel, wählst du stattdessen „**Weg ins Internet**“ → FritzBox, dann fragt er die Adresse mit). Die anderen Angaben fragt der Befehl dabei nicht ab.
 3. Der Befehl richtet alles neu ein. Der Chat und der Knopf „📊 Übersicht" ziehen automatisch mit um. Am Ende prüft er, ob Handy und Laptop unter dem neuen Namen ankommen (siehe unten).
 
 ## So sieht es richtig aus
@@ -82,7 +82,7 @@ Erst die **MyFRITZ!-Freigabe** legt für den Proxy-Rechner einen eigenen Namen a
 
 Dieser Abschnitt ist für dich, wenn du den Bot mit der [Start-App](start-app.html) auf einem Mac oder PC betreibst und in der App bei der Frage „Wie soll Telegram deinen Rechner erreichen?“ **Über meine FritzBox** wählst. Die App führt dich mit dem Link „Anleitung für die FritzBox öffnen“ hierher. Der Rechner mit der App ist dann zugleich der Proxy-Rechner: Die App bringt ihren Türsteher (Reverse Proxy) selbst mit und holt auch das Zertifikat selbst. Du richtest nur die FritzBox ein. Im Folgenden steht „Mac“; für einen Windows-PC gilt dasselbe.
 
-{{< schema name="weg-fritzbox" caption="Eigene Schema-Zeichnung: Telegram schickt über das Internet an deine FritzBox, zwei MyFRITZ!-Freigaben für Port 80 und 443 leiten weiter zum Mac mit fester Adresse im Heimnetz. Dort lässt ein Türsteher nur die Telegram-Wege zum Bot durch." >}}
+{{< explain name="reach-fritzbox" height="280" alt="Deine Nachricht geht vom Handy über Telegram und eine Freigabe in deiner FritzBox zu deinem Rechner zu Hause." >}}
 
 **Die Regel für diesen Weg: Du löschst nichts.** Ist in der FritzBox schon etwas für Port 80 oder 443 eingerichtet, gehört das zu einem anderen Gerät oder Programm, zum Beispiel Home Assistant. Löschst du es, ist dieses offline. Nimm in diesem Fall den [Tunnel](tunnel.html), er braucht keine Freigabe.
 

@@ -4,7 +4,7 @@
 
 use crate::contract::{
     self, MasterCmd, HOST_IP_VAR, HOST_NAMES_VAR, HOST_NAME_FRITZ_VAR, MYFRITZ_VAR, PG_PASSWORD_VAR, PORT_VAR, PROBE_VOLUME, PROJECT,
-    USER_FULLNAME_VAR, USER_LANG_VAR, WIZARD_PORT_VAR,
+    TS_HOSTNAME_VAR, TS_STATE_VOLUME, USER_FULLNAME_VAR, USER_LANG_VAR, WIZARD_PORT_VAR,
 };
 use crate::docker::{Docker, DockerCall};
 use crate::host::{join, Host};
@@ -27,16 +27,18 @@ pub fn env_value(text: &str, key: &str) -> Option<String> {
     text.lines().find_map(|l| l.strip_prefix(&format!("{key}="))).map(|v| v.trim().to_string()).filter(|v| !v.is_empty())
 }
 
-/// Env-Datei schreiben. Das Datenbank-Passwort entsteht einmal und bleibt danach gleich: Compose muss bei jedem
-/// Aufruf dieselben Werte sehen, sonst legt es Container neu an.
-pub fn write_env(host: &dyn Host, p: &CorePaths, ports: Ports) -> Result<(), String> {
+/// Env-Datei schreiben. Datenbank-Passwort und Tailscale-Name entstehen einmal und bleiben danach gleich: Compose
+/// muss bei jedem Aufruf dieselben Werte sehen, sonst legt es Container neu an (der Name: sonst neue Internet-Adresse).
+/// `ts_existing`: Das Tailscale-Volume gibt es schon (Installation von vor der Wortliste, `ts_name::keep_or_draw`).
+pub fn write_env(host: &dyn Host, p: &CorePaths, ports: Ports, ts_existing: bool) -> Result<(), String> {
     let old = host.read_file(&p.env_file).unwrap_or_default();
     let pw = match env_value(&old, PG_PASSWORD_VAR) {
         Some(pw) => pw,
         None => host.random_hex(32)?,
     };
+    let ts = crate::ts_name::keep_or_draw(host, env_value(&old, TS_HOSTNAME_VAR).as_deref(), ts_existing)?;
     let Ports { edge, wizard } = ports;
-    let text = format!("{PORT_VAR}={edge}\n{WIZARD_PORT_VAR}={wizard}\n{PG_PASSWORD_VAR}={pw}\n");
+    let text = format!("{PORT_VAR}={edge}\n{WIZARD_PORT_VAR}={wizard}\n{PG_PASSWORD_VAR}={pw}\n{TS_HOSTNAME_VAR}={ts}\n");
     host.write_file(&p.env_file, &text)
 }
 
@@ -201,11 +203,13 @@ pub fn volumes_to_create(host: &dyn Host, d: &Docker) -> Result<Vec<String>, Str
     Ok(out)
 }
 
-/// Erste Zustimmung (Nr. 8 bestätigt). Reihenfolge: Env-Datei, Konfig prüfen (nichts angelegt), fehlende Volumes
-/// und Images feststellen, Images ins Journal, Fähigkeits-Prüfung (lädt evtl. das busybox-Image), dann Volumes
-/// anlegen und starten.
+/// Erste Zustimmung (Nr. 8 bestätigt). Reihenfolge: fehlende Volumes feststellen (nur lesen; das Tailscale-Volume
+/// entscheidet über den Namen), Env-Datei, Konfig prüfen (nichts angelegt), fehlende Images feststellen, Images ins
+/// Journal, Fähigkeits-Prüfung (lädt evtl. das busybox-Image), dann Volumes anlegen und starten.
 pub fn start_first(host: &dyn Host, j: &mut Journal, d: &Docker, p: &CorePaths, ports: Ports) -> Result<(), String> {
-    write_env(host, p, ports)?;
+    let new_volumes = volumes_to_create(host, d)?;
+    let ts_volume = format!("{PROJECT}_{TS_STATE_VOLUME}");
+    write_env(host, p, ports, !new_volumes.contains(&ts_volume))?;
     let cfg = d.call(host, DockerCall::ComposeConfig { file: &p.compose_file, env_file: &p.env_file })?;
     if !cfg.success() {
         return Err(format!("Compose-Datei ungültig ({})", cfg.code));
@@ -213,7 +217,6 @@ pub fn start_first(host: &dyn Host, j: &mut Journal, d: &Docker, p: &CorePaths, 
     let text = host.read_file(&p.compose_file).ok_or("Compose-Datei fehlt")?;
     let images = compose_images(&text);
     let probe = probe_image(&images).ok_or("probe-image")?;
-    let new_volumes = volumes_to_create(host, d)?;
     let missing = missing_images(host, d, &images)?;
     let seq_img = if missing.is_empty() { None } else { Some(j.begin(host, Step::ImagesPulled { refs: missing })?) };
     capability_probe(host, d, &probe)?;
@@ -491,24 +494,43 @@ mod tests {
 
     #[test]
     fn env_file_never_carries_private_values() {
-        // Die Env-Datei landet über Compose in der Container-Konfiguration (docker inspect): nur Ports und Passwort.
+        // Die Env-Datei landet über Compose in der Container-Konfiguration (docker inspect): nur Ports, Passwort und
+        // der Tailscale-Name (der ohnehin öffentlich in den Zertifikats-Protokollen steht).
         let h = home_mac();
         let p = paths(&h, "/x/compose.yml");
-        write_env(&h, &p, ports(5880)).unwrap();
+        write_env(&h, &p, ports(5880), false).unwrap();
         let env = h.read_file(&p.env_file).unwrap();
         let keys: Vec<&str> = env.lines().filter_map(|l| l.split('=').next()).collect();
-        assert_eq!(keys, vec!["LA_EDGE_PORT", "LA_WIZARD_PORT", "LA_PG_SUPERPW"]);
+        assert_eq!(keys, vec!["LA_EDGE_PORT", "LA_WIZARD_PORT", "LA_PG_SUPERPW", "LA_TS_HOSTNAME"]);
     }
 
     #[test]
-    fn password_stays_the_same_on_a_second_start() {
+    fn password_and_name_stay_the_same_on_a_second_start() {
         let h = FakeHost::mac();
         let p = paths(&h, "/x/compose.yml");
-        h.write_file(&p.env_file, "LA_EDGE_PORT=5880\nLA_PG_SUPERPW=ab12\n").unwrap();
-        write_env(&h, &p, ports(5882)).unwrap();
+        h.write_file(&p.env_file, "LA_EDGE_PORT=5880\nLA_PG_SUPERPW=ab12\nLA_TS_HOSTNAME=calm-otter\n").unwrap();
+        write_env(&h, &p, ports(5882), true).unwrap();
         let env = h.read_file(&p.env_file).unwrap();
         assert_eq!(env_value(&env, "LA_PG_SUPERPW").as_deref(), Some("ab12"));
+        assert_eq!(env_value(&env, "LA_TS_HOSTNAME").as_deref(), Some("calm-otter"));
         assert_eq!(env_value(&env, "LA_EDGE_PORT").as_deref(), Some("5882"));
+    }
+
+    #[test]
+    fn tailscale_name_is_drawn_only_for_a_new_install() {
+        let h = FakeHost::mac();
+        let p = paths(&h, "/x/compose.yml");
+        fresh(&h, &p);
+        start_first(&h, &mut Journal::default(), &d(), &p, ports(5880)).unwrap();
+        let drawn = env_value(&h.read_file(&p.env_file).unwrap(), "LA_TS_HOSTNAME").unwrap();
+        assert_eq!(drawn, crate::ts_name::from_seed(0xabab_abab));
+        // Tailscale-Volume von früher, Env-Datei ohne Namen: Das Gerät heißt im Tailnet schon `bot` und bleibt so.
+        let h = FakeHost::mac();
+        fresh(&h, &p);
+        h.set(&cmd(DockerCall::VolumeLabel("lifeagents_ts_state")), CmdOut::ok("lifeagents\n"));
+        start_first(&h, &mut Journal::default(), &d(), &p, ports(5880)).unwrap();
+        assert_eq!(env_value(&h.read_file(&p.env_file).unwrap(), "LA_TS_HOSTNAME").as_deref(), Some("bot"));
+        assert!(contract::STATE_VOLUMES.contains(&TS_STATE_VOLUME));
     }
 
     #[test]

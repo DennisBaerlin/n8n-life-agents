@@ -1,0 +1,24 @@
+{
+  "adjectives": [
+    "bouncy", "brave", "breezy", "bubbly", "calm", "cheerful", "chirpy", "clever", "cozy", "cuddly",
+    "curious", "dapper", "dreamy", "eager", "fluffy", "friendly", "fuzzy", "gentle", "giddy", "glad",
+    "happy", "jolly", "kind", "lively", "lucky", "mellow", "merry", "nimble", "peppy", "perky",
+    "playful", "plucky", "polite", "proud", "quick", "quiet", "quirky", "shiny", "silly", "sleepy",
+    "snug", "sparkly", "spry", "sunny", "tidy", "toasty", "upbeat", "wiggly", "witty", "zesty"
+  ],
+  "nouns": [
+    "acorn", "alpaca", "badger", "beaver", "biscuit", "bumblebee", "bunny", "chipmunk", "dolphin", "duckling",
+    "dumpling", "ferret", "finch", "firefly", "frog", "gosling", "hamster", "hedgehog", "heron", "koala",
+    "ladybug", "lamb", "lemur", "llama", "marmot", "meerkat", "mitten", "muffin", "newt", "noodle",
+    "otter", "owl", "pancake", "penguin", "piglet", "pinecone", "pony", "puffin", "quokka", "raccoon",
+    "seal", "snail", "sparrow", "squirrel", "teacup", "toucan", "turtle", "waffle", "walrus", "wombat"
+  ],
+  "vectors": [
+    { "seed": 0, "name": "bouncy-acorn" },
+    { "seed": 49, "name": "zesty-acorn" },
+    { "seed": 50, "name": "bouncy-alpaca" },
+    { "seed": 1234, "name": "quick-marmot" },
+    { "seed": 2500, "name": "bouncy-acorn" },
+    { "seed": 4294967295, "name": "toasty-toucan" }
+  ]
+}

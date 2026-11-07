@@ -109,7 +109,7 @@ EOF
   # _review_edit (das speichert sofort; hier gilt: erst nach „Fertig" speichern, Strg-C/Abbrechen = nichts geaendert).
   local -A before=()
   local pick missing proxy_asked=0
-  for k in $keys TRUSTED_PROXIES; do eval "before[$k]=\${$k:-}"; done
+  for k in $keys REACH_MODE DOMAIN TRUSTED_PROXIES; do eval "before[$k]=\${$k:-}"; done
   while :; do
     # shellcheck disable=SC2086  # Key-Namen sind [A-Z_] (kein Globbing/Leerzeichen)
     pick="$( { for k in $keys; do printf '%s: %s\t%s\n' "$(_host_key_label "$k")" "$(_review_status host - "$k")" "$k"; done
@@ -127,7 +127,7 @@ EOF
         break ;;
       ''|abort) log "Abgebrochen — nichts geändert."; return 0 ;;
       *)
-        _host_key_ask "$pick" 1
+        _host_key_reask "$pick"
         # Neu eine Adresse -> einmal im Lauf auch: wo laeuft der Reverse Proxy? (gibt es nur mit Adresse; setzt nur die Variable)
         if [ "$pick" = "DOMAIN" ] && [ -z "${before[DOMAIN]}" ] && [ -n "${DOMAIN:-}" ] && [ "$proxy_asked" = 0 ]; then
           _ask_trusted_proxies 1; proxy_asked=1

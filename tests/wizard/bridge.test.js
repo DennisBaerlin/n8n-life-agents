@@ -20,7 +20,7 @@ const sh = (script) => execFileSync('bash', ['-c', script], { env: Object.assign
 test('Fragen-Auszug = Host-Fragen der CLI (ohne n8n-Anmeldung und Proxy-Ort) + alle gebündelten Pakete', () => {
   const q = run(['questions']);
   const cli = sh('. "$P/lib/common.sh"; . "$P/lib/release_inputs.sh"; printf %s "$_INSTALL_ENV_KEYS"').split(' ');
-  assert.deepEqual(q.host.map((h) => h.key), cli.filter((k) => !['N8N_OWNER_EMAIL', 'N8N_OWNER_PASSWORD', 'TRUSTED_PROXIES'].includes(k)));
+  assert.deepEqual(q.host.map((h) => h.key), cli.filter((k) => !['REACH_MODE', 'N8N_OWNER_EMAIL', 'N8N_OWNER_PASSWORD', 'TRUSTED_PROXIES'].includes(k)));
   const req = sh('. "$P/lib/common.sh"; . "$P/lib/release_inputs.sh"; printf %s "$_REQUIRED_HOST_KEYS"').split(' ');
   for (const h of q.host) assert.equal(h.required, req.includes(h.key), h.key);
   const pk = fs.readdirSync(path.join(REPO, 'packages')).filter((p) => p !== 'core' && fs.existsSync(path.join(REPO, 'packages', p, 'manifest.json')));

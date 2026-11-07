@@ -1,11 +1,11 @@
-# n8n-life-agents
+# lifeagents
 
 [![ci](https://github.com/DennisBaerlin/n8n-life-agents/actions/workflows/ci.yml/badge.svg)](https://github.com/DennisBaerlin/n8n-life-agents/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-**Your household's bookkeeping, deadline reminders and advice on money, career and estate planning — all through one Telegram bot. Self-hosted on your own hardware, and nothing is ever saved before you approve it with a tap.**
+**A big help for the whole family: whenever someone in your family needs a hand — with money, deadlines, a job change or planning ahead — your assistant is there, right in Telegram. It runs on your own hardware, and nothing is ever saved before you approve it with a tap.**
 
-Write to the bot in any language — it answers in yours. Behind the scenes a router picks the right specialist; you never notice and just start typing.
+Write to your assistant in any language — it answers in yours. Behind the scenes a router picks the right specialist; you never notice and just start typing.
 
 → **[Documentation site](https://dennisbaerlin.github.io/n8n-life-agents/)** (German) · [Installation](#installation) · [Contributing](CONTRIBUTING.md) · [Security](SECURITY.md)
 
@@ -20,7 +20,7 @@ You: (taps ✅)
 Bot: Booked. New balance Checking: €1,234.56
 ```
 
-Personal project · self-hosted · specialist agents on n8n 2.45.4 + PostgreSQL 17.
+Personal project · self-hosted · open source (MIT).
 
 ## What it is — and who it is for
 
@@ -30,7 +30,7 @@ When you write, a router (the "orchestrator") reads the message and hands it to 
 
 The system has a fixed core (router, approval logic, memory, onboarding) plus one pluggable **package** per area of life — today finance, career, estate planning and documents. A new area plugs in without touching the core.
 
-**Who it is for:** people who already run (or want to run) a small home server, are comfortable with a terminal and a reverse proxy, and want an AI assistant for their household whose data stays at home. Household members you invite need nothing but Telegram.
+**Who it is for:** families who want an AI assistant for everyday life whose data stays at home. Everyone you invite needs nothing but Telegram. The one person who sets it up today needs a small home server and should be comfortable with a terminal and a reverse proxy (a start app for a Mac or Windows PC is in the works, see [Installation](#installation)).
 
 **Good to know before you start:** this is built for a household in **Germany**. Several features assume German conditions — German tax and estate-planning terms, deadlines computed with the public holidays of your federal state (*Bundesland*), and the job scan via the German Federal Employment Agency (*Bundesagentur für Arbeit*). The bot talks in any language, but the documentation site is German.
 
@@ -49,7 +49,7 @@ The system has a fixed core (router, approval logic, memory, onboarding) plus on
 ## Requirements and running costs
 
 - A fresh **Debian 12** LXC container or VM.
-- A **domain** pointing to it and **public reachability**: port forwarding (443) plus an HTTPS **reverse proxy** you bring yourself (NPM, Traefik, nginx, Caddy — on the host or elsewhere in your network). The installer asks where it runs and prints a ready-made configuration.
+- **A way in from the internet**, chosen by the installer's first question: a free **Tailscale** account for a Funnel tunnel (recommended, works with any connection, nothing to set up on the router), or a **FritzBox** share, or your **own domain** with port forwarding (443) and an HTTPS **reverse proxy** (NPM, Traefik, nginx, Caddy — on the host or elsewhere in your network). For the last two the installer prints a ready-made configuration.
 - A **Telegram bot token** from @BotFather.
 - An **Anthropic API key** (required — every agent runs on Claude).
 - Optional: a **Google Gemini API key on the paid tier**, only for voice messages. Without it the bot asks you to type instead.
@@ -61,12 +61,12 @@ The system has a fixed core (router, approval logic, memory, onboarding) plus on
 On the fresh Debian machine, as root, this one command downloads and starts the installer:
 
 ```bash
-curl -fsSL https://github.com/DennisBaerlin/n8n-life-agents/releases/latest/download/install.sh -o install.sh && bash install.sh --domain n8n.example.com
+curl -fsSL https://github.com/DennisBaerlin/n8n-life-agents/releases/latest/download/install.sh -o install.sh && bash install.sh
 ```
 
-The installer then guides you **step by step**, and **all questions come first**: internet address, n8n login, details about you (including the language for the bot's fixed messages), Telegram token, Anthropic and (optionally) Google keys, and which packages to install. A short box before each question explains what it is for and where to get it. Keys are checked online right away, every answer is saved immediately (Ctrl+C and a re-run only asks for the rest), and a final **summary** lets you confirm, change a single answer or cancel. After that everything runs without further questions: one line per step, technical details in `/var/log/lifeagents/install.log` (`--verbose` shows everything).
+The installer then guides you **step by step**, and **all questions come first**: how Telegram reaches your server (tunnel, FritzBox or own reverse proxy, with the internet address where needed), n8n login, details about you (including the language for the bot's fixed messages), Telegram token, Anthropic and (optionally) Google keys, and which packages to install. A short box before each question explains what it is for and where to get it. Keys are checked online right away, every answer is saved immediately (Ctrl+C and a re-run only asks for the rest), and a final **summary** lets you confirm, change a single answer or cancel. After that everything runs without further questions: one line per step, technical details in `/var/log/lifeagents/install.log` (`--verbose` shows everything).
 
-At the end the installer checks whether Telegram can reach your server — if not, you get a **ready-made Caddyfile** for your reverse proxy and can re-check after setting it up. It also checks whether phones and laptops reach your proxy over IPv4 **and** IPv6 (a FritzBox MyFRITZ! address often points to the router itself over IPv6) and names the one fix if not, without ever blocking the install. It then shows a **pairing link** (`t.me/<your-bot>?start=…`), waits until you open it in Telegram and finishes configuring the bot for you.
+With the tunnel, the installer sets up Tailscale right after the summary and shows the sign-in link plus a QR code in the terminal. At the end it checks whether Telegram can reach your server — if not, you get what is still missing (for a reverse proxy a **ready-made Caddyfile**) and can re-check after setting it up. It also checks whether phones and laptops reach your proxy over IPv4 **and** IPv6 (a FritzBox MyFRITZ! address often points to the router itself over IPv6) and names the one fix if not, without ever blocking the install. It then shows a **pairing link** (`t.me/<your-bot>?start=…`), waits until you open it in Telegram and finishes configuring the bot for you.
 
 Step-by-step guide including reverse proxy, router and Telegram bot setup: **[Installation page](https://dennisbaerlin.github.io/n8n-life-agents/docs/installation.html)** (German); FritzBox users: **[FritzBox setup](https://dennisbaerlin.github.io/n8n-life-agents/docs/fritzbox.html)** (German, a MyFRITZ! share for the proxy machine, not a plain port forward).
 
@@ -187,3 +187,10 @@ This is a personal project, built for and used in one household, and shared so y
 - **Not an official n8n project.** n8n is a trademark of n8n GmbH; this project is not affiliated with or endorsed by n8n.
 - **n8n itself is not part of this repository.** It is licensed under n8n's [Sustainable Use License](https://docs.n8n.io/sustainable-use-license/), which is not an OSI open-source license; the installer installs n8n from its official npm package on your machine and does not redistribute it.
 - **No financial, tax or legal advice.** The agents give information and suggestions; decisions and their consequences remain yours. The software comes without any warranty (see the license).
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/site/static/explain/greeting.en.dark.svg">
+    <img src="docs/site/static/explain/greeting.en.light.svg" width="720" alt="Your assistant gets in touch on your phone by itself and asks before it saves anything. It runs on your own computer at home, your data stays with you, and it helps the whole family with finances, career, inheritance and documents.">
+  </picture>
+</p>

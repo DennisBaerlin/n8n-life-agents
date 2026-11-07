@@ -24,6 +24,10 @@ pub const COMPOSE_FILE: &str = "compose.yml";
 /// Pflicht-Variablen jedes Compose-Aufrufs (Datei `--env-file` der App, nie im argv).
 pub const PORT_VAR: &str = "LA_EDGE_PORT";
 pub const PG_PASSWORD_VAR: &str = "LA_PG_SUPERPW";
+/// Tailscale-Rechnername (`ts_name`); nicht geheim, steht ohnehin in öffentlichen Zertifikats-Protokollen.
+pub const TS_HOSTNAME_VAR: &str = "LA_TS_HOSTNAME";
+/// Volume mit dem Tailscale-Zustand: Gibt es es schon, lief das Gerät bisher unter `ts_name::FALLBACK`.
+pub const TS_STATE_VOLUME: &str = "ts_state";
 /// Hinweise für den Fragebogen: flüchtige Datei `<HINTS_DIR>/hints.env` im `master` (0600, `KEY=wert`), neu
 /// geschrieben vor jedem Öffnen des Fragebogens. Bewusst keine Umgebungsvariablen (Leitung 2026-11-06): Die stünden
 /// dauerhaft in `docker inspect`. Jeder Schlüssel nur, wenn gefunden; alle Werte privat.

@@ -44,8 +44,8 @@ try {
             } elseif ($files.ContainsKey($p)) {
                 $bytes = [System.IO.File]::ReadAllBytes($files[$p].Path)
                 $type = $files[$p].Type
-            } elseif ($p -match '^/art/([a-z0-9][a-z0-9.-]*\.svg)$' -and (Test-Path -LiteralPath ($art = Join-Path (Join-Path (Join-Path $Desktop 'ui') 'art') $Matches[1]))) {
-                # Bilder der App (ui/art); der Name ohne Schraegstrich haelt die Anfrage in diesem Ordner
+            } elseif ($p -match '^/explain/([a-z0-9][a-z0-9.-]*\.svg)$' -and (Test-Path -LiteralPath ($art = Join-Path (Join-Path (Join-Path $Desktop 'ui') 'explain') $Matches[1]))) {
+                # Bilder der App (ui/explain); der Name ohne Schraegstrich haelt die Anfrage in diesem Ordner
                 $bytes = [System.IO.File]::ReadAllBytes($art)
                 $type = 'image/svg+xml'
             } else {

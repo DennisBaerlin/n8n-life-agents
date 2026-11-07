@@ -66,6 +66,14 @@ test('Startseite: Projekt-Zeichen eingesetzt, Bild-Bausteine nur als eigene Date
   assert.ok(!r.body.includes('-->'), 'kein Rest des Datei-Kommentars in der Seite');
   assert.ok(!/<script>/.test(r.body), 'kein Inline-Skript');
   assert.ok([200, 404].includes((await req(w, 'GET', '/art.js')).status), 'Bilder (art/) kommen von di9; fehlen sie, 404 statt Absturz');
+  // Erklär-Bilder: nur Dateien aus ui/explain/ mit festem Namensaufbau, als SVG.
+  const svg = await req(w, 'GET', '/explain/telegram.de.svg');
+  assert.equal(svg.status, 200);
+  assert.match(svg.headers['content-type'], /^image\/svg\+xml/);
+  assert.ok(svg.body.includes('<svg'));
+  for (const p of ['/explain/fehlt.de.svg', '/explain/..%2Fserver.js', '/explain/telegram.de.svg.bak', '/explain/Telegram.de.svg']) {
+    assert.equal((await req(w, 'GET', p)).status, 404, p);
+  }
 });
 
 test('neue Anmeldung beendet die alte Sitzung', async () => {

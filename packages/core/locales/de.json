@@ -61,7 +61,7 @@
   "core.art.reach.alt.fritzbox": "Deine Nachricht geht vom Handy über Telegram und eine Freigabe in deiner FritzBox zu deinem Rechner zu Hause.",
   "core.art.reach.alt.proxy": "Deine Nachricht geht vom Handy über Telegram und deinen eigenen Proxy zu deinem Rechner zu Hause.",
   "core.art.reach.alt.tunnel": "Deine Nachricht geht vom Handy über Telegram und einen Tunnel durch deinen Router zu deinem Rechner zu Hause.",
-  "core.art.reach.fritzbox.label": "FritzBox-Freigabe",
+  "core.art.reach.fritzbox.label": "Freigabe in der FritzBox",
   "core.art.reach.fritzbox.s3": "Deine FritzBox öffnet genau einen Eingang, nur für diesen Weg.",
   "core.art.reach.home": "Dein Rechner zu Hause",
   "core.art.reach.phone": "Dein Handy",

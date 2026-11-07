@@ -1,11 +1,16 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 340" width="720" height="340" role="img" data-scenes="5" data-scene-s="3.4">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 446" width="720" height="446" role="img" data-scenes="5" data-scene-s="3.4">
   <!-- „Warum Telegram?": Quelle für die Wizard-Seite vor dem Bot-Token. Generator scripts/build_ui_tokens.ps1, Format scripts/lib/ui_art.ps1.
        Szenen: 1 Frage unterwegs, 2 Sticker hmm + Tippen, 3 Antwort mit Sticker yay, 4 Danke mit Herz-Reaktion des Bots,
        5 Übersicht (Mini-App, nur als Wireframe) deckt den Chat ganz ab. Höchstens zwei Sticker, echte Dateien der Standard-Persona.
-       Beträge erfunden, keine Bank- oder Firmennamen, eigene Zeichnung im Telegram-Stil ohne Telegram-Logo. -->
+       Beträge erfunden, keine Bank- oder Firmennamen, eigene Zeichnung im Telegram-Stil ohne Telegram-Logo.
+       Das Handy behält seine Zeichen-Koordinaten und wird als Gruppe auf 1,3 skaliert (Chat-Schrift nahe Fließtext bei voller
+       Wizard-Spaltenbreite); Handy und Erklärtext stehen zusammen waagerecht mittig. -->
   <style>
     text { font-family: var(--font); fill: var(--ink); }
-    .cap { font-size: 21px; }
+    .cap { font-size: 22px; }
+    .nar { display: none; font-size: 32px; }
+    /* Schmal angezeigt (Wizard im kleinen Fenster): größere Erklärtext-Fassung, sonst wäre sie unter 12 px. */
+    @media (max-width: 520px) { .wide { display: none; } .nar { display: inline; } }
     .msg { font-size: 14px; }
     .sub { font-size: 12px; fill: var(--gray); }
     .val { font-size: 15px; font-weight: 600; }
@@ -17,6 +22,7 @@
   </style>
 
   <!-- Handy mit Chat -->
+  <g transform="translate(-4 1.6) scale(1.3)">
   <rect x="40" y="8" width="220" height="324" rx="26" fill="var(--bg)" stroke="var(--ink)" stroke-width="3"/>
   <g data-mark="" transform="translate(56 22) scale(0.85)"/>
   <text x="84" y="36" font-size="14" font-weight="600">lifeagents</text>
@@ -65,11 +71,17 @@
       <text class="val" x="62" y="278" data-t="telegram.next_value" data-wrap="22"/>
     </g>
   </g>
+  </g>
 
   <!-- Erklärtext je Szene -->
-  <text class="cap on1" x="300" y="170" data-t="telegram.s1" data-wrap="32" data-lh="28" data-max="4" data-valign="middle"/>
-  <text class="cap on2" x="300" y="170" data-t="telegram.s2" data-wrap="32" data-lh="28" data-max="4" data-valign="middle"/>
-  <text class="cap on3" x="300" y="170" data-t="telegram.s3" data-wrap="32" data-lh="28" data-max="4" data-valign="middle"/>
-  <text class="cap on4" x="300" y="170" data-t="telegram.s4" data-wrap="32" data-lh="28" data-max="4" data-valign="middle"/>
-  <text class="cap on5" x="300" y="170" font-weight="600" data-t="telegram.s5" data-wrap="32" data-lh="28" data-max="4" data-valign="middle"/>
+  <text class="cap wide on1" x="372" y="224" data-t="telegram.s1" data-wrap="29" data-lh="30" data-max="5" data-valign="middle"/>
+  <text class="cap wide on2" x="372" y="224" data-t="telegram.s2" data-wrap="29" data-lh="30" data-max="5" data-valign="middle"/>
+  <text class="cap wide on3" x="372" y="224" data-t="telegram.s3" data-wrap="29" data-lh="30" data-max="5" data-valign="middle"/>
+  <text class="cap wide on4" x="372" y="224" data-t="telegram.s4" data-wrap="29" data-lh="30" data-max="5" data-valign="middle"/>
+  <text class="cap wide on5" x="372" y="224" font-weight="600" data-t="telegram.s5" data-wrap="29" data-lh="30" data-max="5" data-valign="middle"/>
+  <text class="cap nar on1" x="372" y="224" data-t="telegram.s1" data-wrap="20" data-lh="40" data-max="7" data-valign="middle"/>
+  <text class="cap nar on2" x="372" y="224" data-t="telegram.s2" data-wrap="20" data-lh="40" data-max="7" data-valign="middle"/>
+  <text class="cap nar on3" x="372" y="224" data-t="telegram.s3" data-wrap="20" data-lh="40" data-max="7" data-valign="middle"/>
+  <text class="cap nar on4" x="372" y="224" data-t="telegram.s4" data-wrap="20" data-lh="40" data-max="7" data-valign="middle"/>
+  <text class="cap nar on5" x="372" y="224" font-weight="600" data-t="telegram.s5" data-wrap="20" data-lh="40" data-max="7" data-valign="middle"/>
 </svg>

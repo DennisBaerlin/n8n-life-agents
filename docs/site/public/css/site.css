@@ -79,7 +79,7 @@ section[id], footer[id] { scroll-margin-top: 84px; }
   max-width: 620px; margin: 0 auto 36px;
 }
 .hero-ctas { display: flex; gap: 14px; justify-content: center; flex-wrap: wrap; }
-.hero .greeting { margin: 40px auto 0; max-width: 480px; }
+.hero .greeting { margin: 48px auto 0; max-width: 720px; }
 .hero .greeting img { display: block; width: 100%; height: auto; }
 
 /* ============ Feature-Sektionen (Landing) ============ */
@@ -297,9 +297,10 @@ section[id], footer[id] { scroll-margin-top: 84px; }
 .docs-content figure.schema svg { display: block; width: 100%; height: auto; }
 .docs-content figure.schema text { font-family: var(--font); }
 .docs-content figure.schema figcaption { margin-top: 8px; font-size: 14px; line-height: 1.5; color: var(--gray); }
-/* Erklaer-Bilder (Shortcode explain, fertige SVGs unter static/explain/): volle Spaltenbreite bis 560px, ohne den Rahmen der
-   Bildschirmfotos. */
+/* Erklaer-Bilder (Shortcode explain, fertige SVGs unter static/explain/): volle Spaltenbreite bis 560px, hochkant bis 300px,
+   ohne den Rahmen der Bildschirmfotos. */
 .docs-content figure.explain { margin: 20px 0 24px; max-width: 560px; }
+.docs-content figure.explain.portrait { max-width: 300px; }
 .docs-content figure.explain img { display: block; width: 100%; height: auto; margin: 0; border: 0; border-radius: 0; box-shadow: none; }
 
 /* ============ Motion (ruhig, CSS-only) ============ */

@@ -82,7 +82,7 @@ Erst die **MyFRITZ!-Freigabe** legt für den Proxy-Rechner einen eigenen Namen a
 
 Dieser Abschnitt ist für dich, wenn du den Bot mit der [Start-App](start-app.html) auf einem Mac oder PC betreibst und in der App bei der Frage „Wie soll Telegram deinen Rechner erreichen?“ **Über meine FritzBox** wählst. Die App führt dich mit dem Link „Anleitung für die FritzBox öffnen“ hierher. Der Rechner mit der App ist dann zugleich der Proxy-Rechner: Die App bringt ihren Türsteher (Reverse Proxy) selbst mit und holt auch das Zertifikat selbst. Du richtest nur die FritzBox ein. Im Folgenden steht „Mac“; für einen Windows-PC gilt dasselbe.
 
-{{< explain name="reach-fritzbox" height="280" alt="Deine Nachricht geht vom Handy über Telegram und eine Freigabe in deiner FritzBox zu deinem Rechner zu Hause." >}}
+{{< explain name="reach-fritzbox" width="280" height="560" alt="Deine Nachricht geht vom Handy über Telegram und eine Freigabe in deiner FritzBox zu deinem Rechner zu Hause." >}}
 
 **Die Regel für diesen Weg: Du löschst nichts.** Ist in der FritzBox schon etwas für Port 80 oder 443 eingerichtet, gehört das zu einem anderen Gerät oder Programm, zum Beispiel Home Assistant. Löschst du es, ist dieses offline. Nimm in diesem Fall den [Tunnel](tunnel.html), er braucht keine Freigabe.
 

@@ -116,7 +116,7 @@ Wählst du **Über meine FritzBox**, prüft der Installer zuerst selbst, ob dein
 
 Bei beiden Wegen nimmt dein eigener Reverse Proxy die Verbindungen an. Der Weg einer Nachricht:
 
-{{< explain name="reach-proxy" height="280" alt="Deine Nachricht geht vom Handy über Telegram und deinen eigenen Proxy zu deinem Rechner zu Hause." >}}
+{{< explain name="reach-proxy" width="280" height="560" alt="Deine Nachricht geht vom Handy über Telegram und deinen eigenen Proxy zu deinem Rechner zu Hause." >}}
 
 **Telegram → deine Domain (öffentliches DNS/DynDNS) → Port-Weiterleitung am Router → HTTPS-Terminierung (Reverse Proxy) → n8n.**
 

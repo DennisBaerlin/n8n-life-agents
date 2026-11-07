@@ -4,7 +4,7 @@ title: "Tunnel einrichten (empfohlen)"
 
 Mit der [Start-App](start-app.html) erreicht Telegram deinen Rechner am einfachsten über einen **Tunnel**. Dein Rechner baut dabei selbst eine verschlüsselte Verbindung nach außen zu einem Dienst namens **Tailscale** auf (genauer: Tailscale Funnel). Telegram schickt deine Nachrichten an eine öffentliche Adresse bei Tailscale, und Tailscale reicht sie durch diese Verbindung an deinen Rechner weiter. An deiner FritzBox oder deinem Router änderst du nichts, und der Weg ist auch bei Anschlüssen ohne eigene IPv4-Adresse (DS-Lite) möglich.
 
-{{< explain name="reach-tunnel" height="280" alt="Deine Nachricht geht vom Handy über Telegram und einen Tunnel durch deinen Router zu deinem Rechner zu Hause." >}}
+{{< explain name="reach-tunnel" width="280" height="560" alt="Deine Nachricht geht vom Handy über Telegram und einen Tunnel durch deinen Router zu deinem Rechner zu Hause." >}}
 
 **Du installierst per Befehl auf einem eigenen Server (Debian, LXC)?** Dann bietet dir der Installer denselben Tunnel als ersten Weg an; der Ablauf steht unter [Installation → Weg 1: Tunnel](installation.html#tunnel). Kosten, der neutrale Name und die Grenzen unten gelten genauso.
 

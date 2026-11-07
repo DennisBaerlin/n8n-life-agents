@@ -165,7 +165,7 @@ li::marker { color: var(--accent); }
 .lead { color: var(--gray); }
 /* Begrüßungsbild 720 × 300 (viewBox): höchstens 576 × 240; im Fenster 760 × 640 ist die Spalte 528 px breit (Bild 220 px hoch),
    dann passen Titel, Bild und beide Absätze ohne Rollen. */
-.la-intro { display: block; width: 100%; max-width: 576px; height: auto; aspect-ratio: 720 / 300; margin: 0 0 10px; }
+.la-intro { display: block; width: 100%; max-width: 576px; height: auto; aspect-ratio: 720 / 392; margin: 0 auto 10px; }
 h2 { font-size: 16px; margin: 18px 0 6px; }
 
 .nav {

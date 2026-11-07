@@ -1,5 +1,5 @@
 <!-- Erzeugt von scripts/build_ui_tokens.ps1 aus config/ui.art.telegram.svg, nicht von Hand ändern. -->
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 340" width="720" height="340" role="img" lang="en">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 446" width="720" height="446" role="img" lang="en">
   <style>
 :root { --ink: #17212B; --gray: #55636E; --hairline: #E2E7EC; --accent: #12638A; --accent-hover: #0D4D6C; --accent-mid: #A8D3E6; --accent-pale: #DCF0F8; --accent-wash: #F1F8FB; --code-wash: #F1F8FB; --ok: #1E9E6A; --warn: #CC8600; --warn-wash: #FDF3D8; --alert: #D23F44; --alert-wash: #FDE8E8; --bg: #FFFFFF; --bg-soft: #F1F8FB; --font: -apple-system, "Segoe UI", system-ui, "Helvetica Neue", Arial, sans-serif; }
 @media (prefers-color-scheme: dark) { :root { --ink: #EEF3F6; --gray: #A2B1BC; --hairline: #2A343C; --accent: #5DB7DD; --accent-hover: #A8D3E6; --accent-mid: #2A5A70; --accent-pale: #183A4A; --accent-wash: #1B2329; --code-wash: #2A343C; --ok: #3CC08C; --warn: #E0A030; --warn-wash: #3A2E10; --alert: #E5605F; --alert-wash: #3D1F20; --bg: #12181D; --bg-soft: #1B2329; } }
@@ -24,7 +24,10 @@
 .on5 { opacity: 1 }
 @media (prefers-reduced-motion: no-preference) { .in5 { animation: in5 17s linear infinite } .on5 { animation: on5 17s linear infinite } }
 text { font-family: var(--font); fill: var(--ink); }
-    .cap { font-size: 21px; }
+    .cap { font-size: 22px; }
+    .nar { display: none; font-size: 32px; }
+    /* Schmal angezeigt (Wizard im kleinen Fenster): größere Erklärtext-Fassung, sonst wäre sie unter 12 px. */
+    @media (max-width: 520px) { .wide { display: none; } .nar { display: inline; } }
     .msg { font-size: 14px; }
     .sub { font-size: 12px; fill: var(--gray); }
     .val { font-size: 15px; font-weight: 600; }
@@ -34,6 +37,7 @@ text { font-family: var(--font); fill: var(--ink); }
     @keyframes sheet { 0%, 80% { transform: translateY(270px); } 84%, 100% { transform: translateY(0); } }
     @media (prefers-reduced-motion: no-preference) { .sheet { animation: sheet 17s ease-out infinite; } }
 </style>
+  <g transform="translate(-4 1.6) scale(1.3)">
   <rect x="40" y="8" width="220" height="324" rx="26" fill="var(--bg)" stroke="var(--ink)" stroke-width="3" />
   <g transform="translate(56 22) scale(0.85)"><path xmlns="http://www.w3.org/2000/svg" d="M13 2.5 L22 10 V19.5 H11.5 L7 23.5 V19.5 H4 V10 Z" fill="var(--mark, var(--accent))" stroke="var(--mark, var(--accent))" stroke-width="2" stroke-linejoin="round" /><path xmlns="http://www.w3.org/2000/svg" d="M8.6 12.8 L11.7 15.8 L17.4 10" fill="none" stroke="var(--mark-check, var(--bg))" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" /></g>
   <text x="84" y="36" font-size="14" font-weight="600">lifeagents</text>
@@ -79,9 +83,15 @@ text { font-family: var(--font); fill: var(--ink); }
       <text class="val" x="62" y="278">15 Nov: €49</text>
     </g>
   </g>
-  <text class="cap on1" x="300" y="170"><tspan x="300" dy="-42">On the go you quickly ask your</tspan><tspan x="300" dy="28">assistant: your phone is always</tspan><tspan x="300" dy="28">with you, and Telegram is</tspan><tspan x="300" dy="28">usually already on it.</tspan></text>
-  <text class="cap on2" x="300" y="170"><tspan x="300" dy="-42">It checks your savings goals and</tspan><tspan x="300" dy="28">upcoming payments. On Telegram,</tspan><tspan x="300" dy="28">an assistant like this is called</tspan><tspan x="300" dy="28">a bot.</tspan></text>
-  <text class="cap on3" x="300" y="170"><tspan x="300" dy="-14">It also thinks of everything</tspan><tspan x="300" dy="28">coming up.</tspan></text>
-  <text class="cap on4" x="300" y="170">It's happy for you.</text>
-  <text class="cap on5" x="300" y="170" font-weight="600"><tspan x="300" dy="-28">Everything at a glance, right</tspan><tspan x="300" dy="28">inside Telegram. There your</tspan><tspan x="300" dy="28">assistant is called a bot.</tspan></text>
+  </g>
+  <text class="cap wide on1" x="372" y="224"><tspan x="372" dy="-45">On the go you quickly ask</tspan><tspan x="372" dy="30">your assistant: your phone is</tspan><tspan x="372" dy="30">always with you, and Telegram</tspan><tspan x="372" dy="30">is usually already on it.</tspan></text>
+  <text class="cap wide on2" x="372" y="224"><tspan x="372" dy="-45">It checks your savings goals</tspan><tspan x="372" dy="30">and upcoming payments. On</tspan><tspan x="372" dy="30">Telegram, an assistant like</tspan><tspan x="372" dy="30">this is called a bot.</tspan></text>
+  <text class="cap wide on3" x="372" y="224"><tspan x="372" dy="-15">It also thinks of everything</tspan><tspan x="372" dy="30">coming up.</tspan></text>
+  <text class="cap wide on4" x="372" y="224">It's happy for you.</text>
+  <text class="cap wide on5" x="372" y="224" font-weight="600"><tspan x="372" dy="-30">Everything at a glance, right</tspan><tspan x="372" dy="30">inside Telegram. There your</tspan><tspan x="372" dy="30">assistant is called a bot.</tspan></text>
+  <text class="cap nar on1" x="372" y="224"><tspan x="372" dy="-120">On the go you</tspan><tspan x="372" dy="40">quickly ask your</tspan><tspan x="372" dy="40">assistant: your</tspan><tspan x="372" dy="40">phone is always with</tspan><tspan x="372" dy="40">you, and Telegram is</tspan><tspan x="372" dy="40">usually already on</tspan><tspan x="372" dy="40">it.</tspan></text>
+  <text class="cap nar on2" x="372" y="224"><tspan x="372" dy="-100">It checks your</tspan><tspan x="372" dy="40">savings goals and</tspan><tspan x="372" dy="40">upcoming payments.</tspan><tspan x="372" dy="40">On Telegram, an</tspan><tspan x="372" dy="40">assistant like this</tspan><tspan x="372" dy="40">is called a bot.</tspan></text>
+  <text class="cap nar on3" x="372" y="224"><tspan x="372" dy="-40">It also thinks of</tspan><tspan x="372" dy="40">everything coming</tspan><tspan x="372" dy="40">up.</tspan></text>
+  <text class="cap nar on4" x="372" y="224">It's happy for you.</text>
+  <text class="cap nar on5" x="372" y="224" font-weight="600"><tspan x="372" dy="-80">Everything at a</tspan><tspan x="372" dy="40">glance, right inside</tspan><tspan x="372" dy="40">Telegram. There your</tspan><tspan x="372" dy="40">assistant is called</tspan><tspan x="372" dy="40">a bot.</tspan></text>
 </svg>

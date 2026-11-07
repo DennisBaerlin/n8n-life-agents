@@ -156,18 +156,20 @@ services:
     # Antwort-Datei und die privaten Hinweise der Start-App (hints.env, per `docker exec -i … cat >`), nie als Umgebung —
     # die stuende dauerhaft in `docker inspect`. 0700 root: n8n (uid 1000, eigener Container) sieht sie ohnehin nicht.
     tmpfs: ["/run/lifeagents-wizard:mode=0700,uid=0,gid=0,size=1m"]
-    # Wizard (Paket 4) laeuft, bis er sich nach "Fertig" selbst beendet (er erkennt den Zustand im Volume wizard_state und
-    # endet dann auch nach einem Neustart sofort). Danach die Tick-Schleife (Ersatz der systemd-Timer des Updates im Chat,
-    # lib/update_runner.sh update_tick): jede Minute ein FRISCHER Prozess (nach einem Update laeuft sofort der neue Code);
-    # vor der ersten Installation fehlt die CLI (Link ins Volume rt_tree) und die Schleife wartet still. SIGTERM geht an
-    # den gerade laufenden Kindprozess weiter.
+    # Wizard (Paket 4) laeuft im Hintergrund, bis er sich nach "Fertig" selbst beendet (er erkennt den Zustand im Volume
+    # wizard_state und endet dann auch nach einem Neustart sofort). Daneben, nicht danach, die Tick-Schleife (Ersatz der
+    # systemd-Timer des Updates im Chat, lib/update_runner.sh update_tick): sonst stuende sie nach jeder Installation ohne
+    # "Fertig" (CLI, stack.sh, App geschlossen) still. Jede Minute ein FRISCHER Prozess (nach einem Update laeuft sofort
+    # der neue Code); vor der ersten Installation fehlt die CLI bzw. der VERSION-Merker und der Tick tut nichts, ein
+    # Wizard-Lauf und ein Update laufen also nie zugleich. SIGTERM geht an Wizard und laufenden Kindprozess.
     command:
       - sh
       - -c
       - |
         w=/opt/lifeagents/provisioning/wizard/server.js
-        trap 'kill -TERM "$$pid" 2>/dev/null; exit 0' TERM INT
-        if [ -f "$$w" ]; then node "$$w" & pid=$$!; wait "$$pid" || echo "Wizard endete mit Fehler" >&2; fi
+        wpid=; pid=
+        trap 'kill -TERM $$wpid $$pid 2>/dev/null; exit 0' TERM INT
+        if [ -f "$$w" ]; then node "$$w" & wpid=$$!; fi
         while :; do
           if [ -x /usr/local/bin/lifeagents ]; then lifeagents update --tick & pid=$$!; wait "$$pid" || true; fi
           sleep 60 & pid=$$!; wait "$$pid"

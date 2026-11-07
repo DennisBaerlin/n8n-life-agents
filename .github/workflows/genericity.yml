@@ -319,14 +319,19 @@ jobs:
           total="$(q 'SELECT count(*) FROM public.workflow_entity')"
           unpub="$(q 'SELECT count(*) FROM public.workflow_entity WHERE "activeVersionId" IS NULL')"
           echo "workflows: $total, unpublished: $unpub"
-          [ "$total" -ge 100 ] && [ "$unpub" = 0 ]
-          test "$(q "SELECT count(*) FROM core.package_registry WHERE status='active'")" -ge 5
-          test "$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:${LA_EDGE_PORT}/healthz")" = 200
-          docker exec "$LA_PROJECT-edge" nc -z -w 2 anchor 5678   # Gegenprobe: nc funktioniert, n8n ist erreichbar
+          [ "$total" -ge 100 ] && [ "$unpub" = 0 ] || { echo "FAIL workflows: $total (>= 100), unpublished: $unpub (0)"; exit 1; }
+          active="$(q "SELECT count(*) FROM core.package_registry WHERE status='active'")"
+          [ "$active" -ge 5 ] || { echo "FAIL active packages: $active (>= 5)"; q "SELECT string_agg(package||'='||status, ',') FROM core.package_registry"; exit 1; }
+          code="$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:${LA_EDGE_PORT}/healthz" || true)"
+          [ "$code" = 200 ] || { echo "FAIL edge /healthz: $code (200)"; exit 1; }
+          # Gegenprobe: nc funktioniert, n8n ist erreichbar.
+          docker exec "$LA_PROJECT-edge" nc -z -w 2 anchor 5678 || { echo "FAIL edge does not reach n8n (anchor:5678)"; exit 1; }
           if docker exec "$LA_PROJECT-edge" nc -z -w 2 anchor 8090; then echo "FAIL edge reaches the gateway"; exit 1; fi
           if docker exec "$LA_PROJECT-edge" nc -z -w 2 anchor 5432; then echo "FAIL edge reaches postgres"; exit 1; fi
-          # Wizard-Port: veroeffentlicht, ohne laufenden Wizard 502; jeder veroeffentlichte Port nur auf 127.0.0.1.
-          test "$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:${LA_WIZARD_PORT}/")" = 502
+          # Wizard-Port: der Wizard laeuft im master, bis die App "Fertig" meldet; ohne Einmal-Wert verweigert er /start (403,
+          # seine eigene Antwort, nicht die 502 des Rands). Jeder veroeffentlichte Port nur auf 127.0.0.1.
+          code="$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:${LA_WIZARD_PORT}/start" || true)"
+          [ "$code" = 403 ] || { echo "FAIL wizard port /start: $code (403 from the wizard)"; exit 1; }
           docker port "$LA_PROJECT-edge" | tee "$RUNNER_TEMP/ports"
           if grep -v ' -> 127\.0\.0\.1:' "$RUNNER_TEMP/ports"; then echo "FAIL edge publishes beyond 127.0.0.1"; exit 1; fi
 
@@ -379,11 +384,12 @@ jobs:
           # Tailnet simuliert: Tailscale (Userspace) reicht Tailnet-Zugriffe auf 127.0.0.1 im Namensraum des Rands weiter.
           # Editor :8080 und Wizard :8081 muessen von dort scheitern, :8088 (die Liste) muss gehen.
           if docker exec "$LA_PROJECT-edge" wget -q -O /dev/null -T 3 http://127.0.0.1:8080/healthz; then echo "FAIL Editor aus dem Namensraum erreichbar"; exit 1; fi
-          # Wizard laeuft hier nicht (sonst 502): gesperrt heisst, es kommt gar keine HTTP-Antwort (abort), auch keine 502.
+          # Gesperrt heisst: es kommt gar keine HTTP-Antwort (abort), weder vom Wizard noch eine 502 des Rands.
           wz="$(docker exec "$LA_PROJECT-edge" wget -q -O /dev/null -T 3 http://127.0.0.1:8081/ 2>&1 || true)"
           if printf '%s' "$wz" | grep -q 'HTTP/'; then echo "FAIL Wizard-Eingang antwortet aus dem Namensraum: $wz"; exit 1; fi
-          wz="$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:${LA_WIZARD_PORT}/" || true)"
-          test "$wz" = 502   # Gegenprobe: ueber den veroeffentlichten Port antwortet der Rand
+          # Gegenprobe: ueber den veroeffentlichten Port antwortet der Wizard (403 ohne Einmal-Wert).
+          wz="$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:${LA_WIZARD_PORT}/start" || true)"
+          [ "$wz" = 403 ] || { echo "FAIL wizard port /start from the host: $wz (403)"; exit 1; }
           # Ueber den veroeffentlichten Port (Rechner) bleibt der Editor erreichbar.
           test "$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:${LA_EDGE_PORT}/healthz")" = 200
           docker exec "$LA_PROJECT-master" grep -qx 'N8N_PROXY_HOPS=2' /etc/n8n/n8n.env
@@ -541,8 +547,10 @@ jobs:
             bash /opt/lifeagents/provisioning/provision.sh --unattended /root/answers.env --profile dev --packages none
           test "$(docker exec "$LA_PROJECT-master" lifeagents version)" = v9.0.0
           docker exec "$LA_PROJECT-master" test -L /usr/local/bin/lifeagents
+          # Die Tick-Schleife laeuft neben dem Wizard (der hier nie "Fertig" bekommt) und schreibt binnen einer Minute.
           for _ in $(seq 1 30); do docker exec "$LA_PROJECT-master" grep -q '^LAST_TICK=' /var/lib/lifeagents/update-tick.state 2>/dev/null && break; sleep 5; done
-          docker exec "$LA_PROJECT-master" cat /var/lib/lifeagents/update-tick.state
+          docker exec "$LA_PROJECT-master" cat /var/lib/lifeagents/update-tick.state \
+            || { echo "FAIL tick loop wrote no update-tick.state within 150 s"; docker top "$LA_PROJECT-master"; exit 1; }
           docker exec "$LA_PROJECT-master" bash /opt/lifeagents/provisioning/doctor.sh
 
       - name: Backup to a folder on the host + restore (Fund 7)

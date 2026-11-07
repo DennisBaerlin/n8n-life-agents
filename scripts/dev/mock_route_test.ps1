@@ -222,20 +222,18 @@ foreach ($tc in $cases) {
 
         $caseTimeout = if ($tc.PSObject.Properties['timeout_s'] -and $tc.timeout_s) { [int]$tc.timeout_s } else { $Timeout }
         [long]$chatId = $PairedUid
-        if (-not $KeepMemory) { Clear-ChatSessionMemory -Container $Container -SessionId "$chatId" }
-        # Wiederhol-Sperre: ohne Orchestrator-Abschluss bliebe die Karte des Vorfalls gesperrt, ein Fall mit gleicher Karte bekaeme keine.
-        Clear-HitlPending -Container $Container
         try {
+            # Gedaechtnis + Wiederhol-Sperre (ohne Orchestrator-Abschluss bliebe die Karte des Vorfalls gesperrt) + Onboarding.
+            Reset-TestCaseState -Container $Container -SessionId $(if ($KeepMemory) { '' } else { "$chatId" }) `
+                -Onboarding $(if ($tc.onboarding) { "$($tc.onboarding)" } else { 'completed' })
             if (-not $KeepMemory -and $tc.PSObject.Properties['chat_history'] -and $tc.chat_history) { Set-TestChatHistory -Container $Container -SessionId "$chatId" -ChatHistory $tc.chat_history }
-            Set-TestHouseholdOnboarding -Container $Container -Status $(if ($tc.onboarding) { "$($tc.onboarding)" } else { 'completed' })
             if ($tc.package_onboarding -or $pkgOnbDirty) {
                 Set-TestPackageOnboarding -Container $Container -Sections $tc.package_onboarding
                 $pkgOnbDirty = [bool]$tc.package_onboarding
             }
         }
         catch { Write-Host "    [FAIL] $($_.Exception.Message)" -ForegroundColor Red; $failed++; continue }
-        Clear-MockTelegramRequests -Container $Container
-        Clear-MockLlmRequests -Container $Container
+        Clear-MockRequestLogs -Container $Container
         $base = Get-MaxExecId -WfId $TargetWfId -BridgeUrl $N8N_URL -ApiKey $N8N_API_KEY
 
         # Feuern: Orchestrator -> echter Telegram-Webhook; Agent -> Harness.

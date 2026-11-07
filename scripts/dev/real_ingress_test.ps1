@@ -71,6 +71,8 @@ function Get-MaxExecId([string]$WfId) {
     } catch { }
     return 0
 }
+# Takt der Wait-*Exec*-Schleifen: reiner HTTP-Abruf (ms) -> kurz; Polls ueber docker exec (~0,2 s) bleiben langsamer.
+$ApiPollMs = 300
 # Auf die NEUE Execution (id > $AfterId) warten und dann auf einen Terminalstatus (success/error).
 # Nur fuer Faelle mit GENAU EINER neuen Execution des Workflows: die Listen-API blendet laufende Executions aus
 # (n8n executions.public.controller: excludeRunning, solange kein status=running gefiltert wird) -> "kleinste
@@ -89,7 +91,7 @@ function Wait-NewExecTerminal([string]$WfId, [int]$AfterId, [int]$TimeoutSec) {
         if (((Get-Date) - $start).TotalSeconds -ge $TimeoutSec) {
             if ($cand) { return Get-ExecDetail $cand.id } else { return $null }
         }
-        Start-Sleep -Milliseconds 1200
+        Start-Sleep -Milliseconds $ApiPollMs
     }
 }
 # Auf eine BEKANNTE Execution warten (Einzel-GET sieht auch laufende); liefert das Detail (bei Timeout den letzten Stand).
@@ -99,7 +101,7 @@ function Wait-ExecTerminal([string]$ExecId, [int]$TimeoutSec) {
         $e = $null; try { $e = Invoke-N8nGet "executions/$ExecId" } catch { }
         $done = $e -and $e.status -notin @('running', 'new', 'waiting', 'unknown')
         if ($done -or ((Get-Date) - $start).TotalSeconds -ge $TimeoutSec) { return $(try { Get-ExecDetail $ExecId } catch { $null }) }
-        Start-Sleep -Milliseconds 1200
+        Start-Sleep -Milliseconds $ApiPollMs
     }
 }
 # Wurzel-Execution einer Sub-Execution: der parentExecution-Kette nach oben folgen (Gate -> Tool -> Agent -> Vermittler
@@ -358,7 +360,7 @@ function Wait-NewExecsTerminal([string]$WfId, [int]$AfterId, [int]$Count, [int]$
         if (($list.Count -ge $Count -and $busy.Count -eq 0) -or ((Get-Date) - $start).TotalSeconds -ge $TimeoutSec) {
             return @($list | Sort-Object { [int]$_.id } | ForEach-Object { Get-ExecDetail $_.id })
         }
-        Start-Sleep -Milliseconds 1200
+        Start-Sleep -Milliseconds $ApiPollMs
     }
 }
 # fail-open-Probe: die DIREKTEN EXECUTE-Grants der claim-fn (ACL, nicht has_function_privilege: geerbte Rechte liessen

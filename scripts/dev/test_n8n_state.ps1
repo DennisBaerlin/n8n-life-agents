@@ -90,12 +90,13 @@ function Invoke-TestN8nPsql {
 
 # Clear-HitlPending — Karte-offen-Sperre (agent.hitl_pending) im Substrat leeren. Ein per Stop-Exec beendeter
 # Gate-Lauf erreicht nie 'Close pending' -> seine Zeile sperrte den Owner-Chat bis zur TTL (16 Min) und jeder
-# Folgefall liefe in 'Reply card open'. Aufrufer: Initialize-AgentTestState, hitl_gate_test, real_ingress_test.
+# Folgefall liefe in 'Reply card open'. Aufrufer: Initialize-AgentTestState, hitl_gate_test, real_ingress_test;
+# das SQL nutzt zusaetzlich Reset-TestCaseState (mock_route_test).
 # Tabelle fehlt (altes Substrat) -> to_regclass-Guard, kein Fehler.
+$script:ClearHitlPendingSql = "DO `$`$ BEGIN IF to_regclass('agent.hitl_pending') IS NOT NULL THEN DELETE FROM agent.hitl_pending; END IF; END `$`$;"
 function Clear-HitlPending {
     param([Parameter(Mandatory)][string]$Container)
-    $res = Invoke-TestN8nPsql -Container $Container -PsqlArgs @('-tAc',
-        "DO `$`$ BEGIN IF to_regclass('agent.hitl_pending') IS NOT NULL THEN DELETE FROM agent.hitl_pending; END IF; END `$`$;")
+    $res = Invoke-TestN8nPsql -Container $Container -PsqlArgs @('-tAc', $script:ClearHitlPendingSql)
     if ($res.Code -ne 0) { throw "Clear-HitlPending fehlgeschlagen: $($res.Output -join "`n")" }
 }
 
@@ -163,15 +164,22 @@ function Get-MockTelegramRequests {
     return $reqs
 }
 
+# Clear-ContainerLogFiles — Logdateien im Container truncaten, alle in EINEM docker exec (jedes kostet auf
+# Docker Desktop/Windows ~0,2 s Anlauf). Gemeinsamer Kern der Clear-Mock*-Helfer.
+function Clear-ContainerLogFiles {
+    param([Parameter(Mandatory)][string]$Container, [Parameter(Mandatory)][string[]]$Paths)
+    $prev = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
+    & docker exec $Container sh -c (($Paths | ForEach-Object { ": > '$_'" }) -join '; ') 2>$null | Out-Null
+    $ErrorActionPreference = $prev
+}
+
 # Clear-MockTelegramRequests — Logdatei truncaten (Test-Isolation vor dem naechsten Fall).
 function Clear-MockTelegramRequests {
     param(
         [Parameter(Mandatory)][string]$Container,
         [string]$LogFile = $script:MockTelegramLog
     )
-    $prev = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
-    & docker exec $Container sh -c ": > '$LogFile'" 2>$null | Out-Null
-    $ErrorActionPreference = $prev
+    Clear-ContainerLogFiles -Container $Container -Paths $LogFile
 }
 
 # Get-HitlResumeUrl — aus einer abgefangenen sendMessage-Aufzeichnung die signierte Resume-URL des
@@ -337,9 +345,13 @@ function Clear-MockLlmRequests {
         [Parameter(Mandatory)][string]$Container,
         [string]$LogFile = $script:MockLlmLog
     )
-    $prev = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
-    & docker exec $Container sh -c ": > '$LogFile'" 2>$null | Out-Null
-    $ErrorActionPreference = $prev
+    Clear-ContainerLogFiles -Container $Container -Paths $LogFile
+}
+
+# Clear-MockRequestLogs — Telegram- und LLM-Mock-Log zusammen leeren (ein docker exec statt zwei).
+function Clear-MockRequestLogs {
+    param([Parameter(Mandatory)][string]$Container)
+    Clear-ContainerLogFiles -Container $Container -Paths @($script:MockTelegramLog, $script:MockLlmLog)
 }
 
 # --- LLM-Gateway (provisioning/llm_gateway): Upstream-Waechter + Kosten-Report ---------------------
@@ -663,10 +675,9 @@ function Write-JudgeBundle {
 # fasst ein LLM alte Antworten zusammen). Die <agent>_chat_memory-Tabellen legt der n8n-Memory-Node LAZY
 # beim ersten Agent-Turn an -> per pg_tables FINDEN statt aufzaehlen: ein neuer Agent ist ohne Treiber-Edit
 # dabei, und nur existierende Tabellen werden angefasst. SessionId = numerische chat_id ODER test_e2e…-String.
-function Clear-ChatSessionMemory {
-    param([Parameter(Mandatory)][string]$Container, [Parameter(Mandatory)][string]$SessionId)
+function Get-ClearChatSessionMemorySql([string]$SessionId) {
     if ($SessionId -match "'") { throw "Clear-ChatSessionMemory: SessionId darf kein Hochkomma enthalten." }
-    $sql = @"
+    @"
 DO `$clr`$
 DECLARE t text;
 BEGIN
@@ -677,7 +688,10 @@ BEGIN
   END LOOP;
 END `$clr`$;
 "@
-    $r = Invoke-TestN8nPsql -Container $Container -PsqlArgs @('-q', '-c', $sql)
+}
+function Clear-ChatSessionMemory {
+    param([Parameter(Mandatory)][string]$Container, [Parameter(Mandatory)][string]$SessionId)
+    $r = Invoke-TestN8nPsql -Container $Container -PsqlArgs @('-q', '-c', (Get-ClearChatSessionMemorySql $SessionId))
     if ($r.Code -ne 0) { throw "Session-Memory-Clear fehlgeschlagen: $($r.Output -join "`n")" }
 }
 
@@ -708,11 +722,27 @@ function Set-TestChatHistory {
 # Self-contained je Case: der Fixture-Seed setzt alle Sektionen auf completed; Faelle, die einen NEUEN Nutzer
 # brauchen (Guide: "wo fangen wir an", "Haushalt ueberspringen"), setzen unknown. EINE Stelle fuer real_ingress_test,
 # n8n_test und mock_route_test. Ungueltiger Wert -> throw (der Treiber wertet den Case als FAIL).
+function Get-HouseholdOnboardingSql([string]$Status) {
+    if ($Status -notin @('completed', 'unknown', 'skipped')) { throw "Unbekannter onboarding-Wert '$Status' (erwartet completed|unknown|skipped)." }
+    "UPDATE agent.guide_onboarding_state SET status = '$Status', status_changed_at = now();"
+}
 function Set-TestHouseholdOnboarding {
     param([Parameter(Mandatory)][string]$Container, [Parameter(Mandatory)][string]$Status)
-    if ($Status -notin @('completed', 'unknown', 'skipped')) { throw "Unbekannter onboarding-Wert '$Status' (erwartet completed|unknown|skipped)." }
-    $r = Invoke-TestN8nPsql -Container $Container -PsqlArgs @('-q', '-c', "UPDATE agent.guide_onboarding_state SET status = '$Status', status_changed_at = now();")
+    $r = Invoke-TestN8nPsql -Container $Container -PsqlArgs @('-q', '-c', (Get-HouseholdOnboardingSql $Status))
     if ($r.Code -ne 0) { throw "Onboarding-Vorbereitung fehlgeschlagen: $($r.Output -join "`n")" }
+}
+
+# Reset-TestCaseState — Vorbereitung je Fall in EINEM psql-Aufruf statt drei: jedes docker exec kostet auf
+# Docker Desktop (Windows) ~0,2 s Anlauf, bei ~250 Faellen je Komplettlauf Minuten. Inhalt = Clear-ChatSessionMemory
+# (ohne -SessionId uebersprungen) + Clear-HitlPending + Set-TestHouseholdOnboarding; dieselben SQL-Bausteine.
+function Reset-TestCaseState {
+    param([Parameter(Mandatory)][string]$Container, [string]$SessionId, [Parameter(Mandatory)][string]$Onboarding)
+    $parts = @()
+    if ($SessionId) { $parts += Get-ClearChatSessionMemorySql $SessionId }
+    $parts += $script:ClearHitlPendingSql
+    $parts += Get-HouseholdOnboardingSql $Onboarding
+    $r = Invoke-TestN8nPsql -Container $Container -PsqlArgs @('-q', '-c', ($parts -join "`n"))
+    if ($r.Code -ne 0) { throw "Fall-Vorbereitung fehlgeschlagen: $($r.Output -join "`n")" }
 }
 
 # Optionaler Paket-Onboarding-Vorzustand eines Cases (Case-Feld "package_onboarding": {"<pkg>.<section_key>":
@@ -827,7 +857,7 @@ function Test-ExpectedRoute {
 #   $Approve=$false  -> decline (Routing-Tiers: Tool nimmt 'cancelled', kein Write)
 #   $Approve=$true   -> approve (E2E-Tier: der Write laeuft echt durch; mehrere Gates pro Lauf moeglich)
 # Korrelation race-frei: globale monotone Exec-id (Gate-id > $AfterId) + vor dem Feuern geleertes
-# Mock-Log (Clear-MockTelegramRequests). Resolvte Gates werden getrackt (kein Doppel-Resume).
+# Mock-Log (Clear-MockTelegramRequests bzw. Clear-MockRequestLogs). Resolvte Gates werden getrackt (kein Doppel-Resume).
 # Liefert das Terminal-Execution-Detail (mit .data) oder $null (Timeout ohne Execution).
 function Wait-ExecResolvingGates {
     param(
@@ -843,6 +873,7 @@ function Wait-ExecResolvingGates {
     $resumed = @{}
     $start = Get-Date
     $cand = $null
+    $gateCheckedAt = [datetime]::MinValue
     while ($true) {
         try {
             $list = (Invoke-RestMethod -Uri "$BridgeUrl/api/v1/executions?workflowId=$WfId&limit=20" -Headers $headers -Method Get).data
@@ -850,8 +881,11 @@ function Wait-ExecResolvingGates {
         } catch { $cand = $null }
 
         # Jedes neu aufgetauchte Gate aufloesen (Schutz vor False-PASS: Gate-id MUSS > $AfterId sein,
-        # sonst gehoert die Nachricht zu einem aelteren Lauf).
-        foreach ($m in (Get-MockTelegramRequests -Container $Container)) {
+        # sonst gehoert die Nachricht zu einem aelteren Lauf). Das Mock-Log kostet ein docker exec (~0,2 s) ->
+        # hoechstens einmal je Sekunde; der Status-Abruf (HTTP, ms) laeuft im kurzen Takt unten.
+        $gateDue = ((Get-Date) - $gateCheckedAt).TotalMilliseconds -ge 1000
+        if ($gateDue) { $gateCheckedAt = Get-Date }
+        foreach ($m in $(if ($gateDue) { Get-MockTelegramRequests -Container $Container } else { @() })) {
             if ($m.method -ne 'sendMessage' -or -not $m.body.reply_markup) { continue }
             $url = $null
             try { $url = Get-HitlResumeUrl -Request $m -Approved $Approve -BridgeUrl $BridgeUrl } catch { continue }
@@ -867,7 +901,7 @@ function Wait-ExecResolvingGates {
             if ($cand) { return Invoke-RestMethod -Uri "$BridgeUrl/api/v1/executions/$($cand.id)?includeData=true" -Headers $headers -Method Get }
             return $null
         }
-        Start-Sleep -Milliseconds 1000
+        Start-Sleep -Milliseconds 250
     }
 }
 

@@ -91,6 +91,21 @@ function Get-Sends([string]$ChatId) {
     @(Get-MockTelegramRequests -Container $Container | Where-Object {
         $_.method -in @('sendMessage', 'sendDocument') -and [string]$_.body.chat_id -eq $ChatId })
 }
+# Statt fester Pause: warten, bis mindestens $Min Sends (ab Index $Skip) da sind und 3 s lang keiner dazukommt.
+# Die Ruhezeit faengt Nachzuegler ab (Sub-Workflows laufen ohne Warten weiter, ein doppelter Send soll auffallen;
+# 3 s = die fruehere feste Nachlaufzeit, kuerzer liesse einen spaeten Doppel-Send durchrutschen);
+# nach $TimeoutSec ohne Ruhe kommt der letzte Stand zurueck, die Asserts melden dann den Fehler.
+function Wait-Sends([string]$ChatId, [int]$Skip = 0, [int]$Min = 1, [int]$TimeoutSec = 30) {
+    $start = Get-Date; $last = -1; $stableSince = Get-Date
+    while ($true) {
+        $all = @(Get-Sends $ChatId)
+        $n = $all.Count - $Skip
+        if ($n -ne $last) { $last = $n; $stableSince = Get-Date }
+        $quietMs = ((Get-Date) - $stableSince).TotalMilliseconds
+        if (($n -ge $Min -and $quietMs -ge 3000) -or ((Get-Date) - $start).TotalSeconds -ge $TimeoutSec) { return $all }
+        Start-Sleep -Milliseconds 250
+    }
+}
 # Prueft Keys/Knoepfe in einer Menge Requests; liefert Fehlertexte.
 function Test-Sends($Reqs, [string[]]$Keys, [string[]]$Buttons, [string]$Lang) {
     $errs = @()
@@ -209,8 +224,7 @@ try {
             foreach ($s in (Resolve-Sql $c.seed_sql))  { Invoke-Sql $s | Out-Null }
             if ($c.mock_llm_scenario) { $scnBackup = Add-MockScenario $c.mock_llm_scenario }
             if ($c.cron_enable) { Invoke-LifeagentsConfig @('set', 'cron_enable', [string]$c.cron_enable, 'true') }
-            Clear-MockTelegramRequests -Container $Container
-            Clear-MockLlmRequests -Container $Container
+            Clear-MockRequestLogs -Container $Container
 
             if ($c.harness) {
                 $body = @{}; foreach ($p in $c.harness_body.PSObject.Properties) { $body[$p.Name] = $p.Value }
@@ -219,7 +233,6 @@ try {
                 $body['chat_id'] = if ($c.harness_actor) { $Recipient[[string]$c.harness_actor] } else { $chat }
                 Invoke-RestMethod -Uri "$N8nUrl/webhook/$($c.harness)" -Method Post -Headers @{ 'X-Test-Auth' = $TEST_HARNESS_SECRET } `
                     -ContentType 'application/json; charset=utf-8' -Body ([System.Text.Encoding]::UTF8.GetBytes(($body | ConvertTo-Json -Depth 5))) | Out-Null
-                Start-Sleep -Seconds 2
             } else {
                 $wfId = ($wfList.data | Where-Object { $_.name -eq $c.workflow } | Select-Object -First 1).id
                 if (-not $wfId) { throw "Workflow '$($c.workflow)' nicht gefunden." }
@@ -245,10 +258,9 @@ try {
                 } finally { if (-not $viaHarness) { Invoke-LifeagentsConfig @('reset', 'schedule', [string]$c.schedule_key) } }
                 if (-not $ex -or $ex.Count -eq 0) { throw "keine neue Execution von $($c.workflow) binnen $Timeout s" }
                 if ($ex[0].status -in @('error', 'crashed')) { $errs += "Execution $($ex[0].id) endete mit $($ex[0].status)" }
-                Start-Sleep -Seconds 3
             }
 
-            $sends = @(Get-Sends $chat)
+            $sends = @(Wait-Sends $chat)
             if ($sends.Count -eq 0) { $errs += "kein Send an $($c.recipient) ($chat)" }
             $errs += @(Test-Sends $sends @($c.expect_keys) @($c.expect_buttons) $recLang)
             if ($c.llm_expect) {
@@ -266,13 +278,8 @@ try {
                 if (-not $ask) { $errs += 'Tipp: keine Bestaetigungs-Frage zum Antippen'; break }
                 $before = $sends.Count
                 Invoke-HitlResume -Url (Get-HitlResumeUrl -Request $ask -Approved ([bool]$tap.approved) -BridgeUrl $N8nUrl) | Out-Null
-                $t0 = Get-Date; $new = @()
-                while (((Get-Date) - $t0).TotalSeconds -lt 30) {
-                    $all = @(Get-Sends $chat)
-                    $new = @($all | Select-Object -Skip $before)
-                    if ($new.Count -ge @($tap.expect_keys).Count) { Start-Sleep -Seconds 2; $all = @(Get-Sends $chat); $new = @($all | Select-Object -Skip $before); break }
-                    Start-Sleep -Seconds 1
-                }
+                $all = @(Wait-Sends $chat -Skip $before -Min ([math]::Max(1, @($tap.expect_keys | Where-Object { $_ }).Count)))
+                $new = @($all | Select-Object -Skip $before)
                 if ($new.Count -eq 0) { $errs += "Tipp (approved=$($tap.approved)): keine Folge-Nachricht"; break }
                 $errs += @(Test-Sends $new @($tap.expect_keys) @($tap.expect_buttons) $recLang | ForEach-Object { "Tipp: $_" })
                 $sends = $all

@@ -227,4 +227,22 @@ BEGIN
   RAISE NOTICE 'PASS [before_opening: Sparziel-Bewegung ohne Write und Tag]';
 END $$;
 
+-- Eine Einzahlung, die das Ziel genau erreicht, heisst "reached", nicht "exceeded".
+DO $$
+DECLARE v_res JSONB; v_giro INT; v_topf INT; v_goal INT;
+BEGIN
+  v_giro := (finance.fn_create_account('{"name":"__sgt2_giro__","account_type":"cash","account_holder":"Test"}'::jsonb)->>'account_id')::int;
+  v_topf := (finance.fn_create_account('{"name":"__sgt2_topf__","account_type":"cash","account_holder":"Test"}'::jsonb)->>'account_id')::int;
+  v_goal := (finance.fn_create_savings_goal(jsonb_build_object(
+    'name','__sgt2_goal__','target_amount',500,'target_date',(current_date + 365)::text,
+    'monthly_savings_rate',50,'account_id',v_giro,'reserve_account_id',v_topf,
+    'schedule_day_of_month',1,'first_payment_date',current_date::text))->>'goal_id')::int;
+
+  v_res := finance.fn_book_savings_goal_transfer(jsonb_build_object('savings_goal_id',v_goal,'from_account_id',v_giro,
+    'to_account_id',v_topf,'amount',500,'direction','deposit'));
+  IF v_res->'savings_goal_reached'->>'note' NOT LIKE '%" reached (%' THEN
+    RAISE EXCEPTION 'FAIL [genau erreicht]: erwartet "reached" ohne "exceeded", got %', v_res; END IF;
+  RAISE NOTICE 'PASS [genau erreicht = reached]';
+END $$;
+
 ROLLBACK;

@@ -372,7 +372,7 @@ BEGIN
   v_r := finance.fn_create_savings_goal(jsonb_build_object('name','__sgc Zuviel__','target_amount',1500,
            'target_date',(core.fn_today() + 200)::text,'reserve_account_id',v_p2p,'already_saved',1500));
   IF (v_r->>'ok')::boolean IS DISTINCT FROM false OR v_r->>'code' IS DISTINCT FROM 'insufficient_free_balance'
-     OR (v_r->>'free')::numeric IS DISTINCT FROM 1000 THEN
+     OR (v_r->>'free')::numeric IS DISTINCT FROM 1000 OR v_r->>'reason' NOT LIKE 'Only 1000.00 %' THEN
     RAISE EXCEPTION 'FAIL create [C4 freier Saldo]: %', v_r; END IF;
   IF (SELECT count(*) FROM finance.savings_goals) <> v_cnt0 THEN RAISE EXCEPTION 'FAIL create [C3/C4 kein Write]'; END IF;
   RAISE NOTICE 'PASS create [C3 keine Quelle, C4 mehr als frei -> ok:false ohne Write]';

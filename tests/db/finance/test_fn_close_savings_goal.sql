@@ -251,4 +251,31 @@ BEGIN
   IF (SELECT accepted FROM finance.fn_savings_goal_derisk_status(v_g)) THEN RAISE EXCEPTION 'FAIL close [9 wieder geoeffnet fragt neu]'; END IF;
   RAISE NOTICE 'PASS close [9: Soft-Close haengt revoke an, wieder geoeffnet gilt nichts mehr]';
 END $$;
+
+-- (10) Historie zaehlt Buchungen UND Zuordnungen zusammen: eine getaggte Buchung + eine Zuordnung schliessen weich
+--      (nie Hard-DELETE der Erfuellungs-Historie); (11) Rest genau 1 Cent liegt in der Toleranz.
+DO $$
+DECLARE v_res JSONB; v_pot INT; v_other INT; v_g INT;
+BEGIN
+  INSERT INTO finance.accounts (name, account_type, currency, status) VALUES ('__csg10_pot__','cash','EUR','active') RETURNING id INTO v_pot;
+  INSERT INTO finance.accounts (name, account_type, currency, status) VALUES ('__csg10_other__','cash','EUR','active') RETURNING id INTO v_other;
+  INSERT INTO finance.transactions (account_id, amount, transaction_date, category) VALUES (v_other, 500, current_date - 2, 'other');
+
+  INSERT INTO finance.savings_goals (name, target_amount, target_date) VALUES ('__csg10 hist__', 1000, current_date + 200) RETURNING id INTO v_g;
+  INSERT INTO finance.transactions (account_id, amount, transaction_date, category, savings_goal_id, group_id)
+    VALUES (v_pot, 100, current_date - 1, 'transfer', v_g, gen_random_uuid());
+  INSERT INTO finance.savings_goal_reserve_entries (savings_goal_id, account_id, delta_native, kind) VALUES (v_g, v_other, 50, 'manual');
+  v_res := finance.fn_close_savings_goal(jsonb_build_object('savings_goal_name', '__csg10 hist__', 'outcome', 'completed', 'force', true));
+  IF v_res->>'action' IS DISTINCT FROM 'closed' OR (v_res->>'tx_count')::int IS DISTINCT FROM 2
+     OR NOT EXISTS (SELECT 1 FROM finance.savings_goals WHERE id = v_g AND status = 'completed') THEN
+    RAISE EXCEPTION 'FAIL close [10 Buchung + Zuordnung -> weich, tx_count 2]: %', v_res; END IF;
+
+  INSERT INTO finance.savings_goals (name, target_amount, target_date) VALUES ('__csg11 cent__', 1000, current_date + 200) RETURNING id INTO v_g;
+  INSERT INTO finance.transactions (account_id, amount, transaction_date, category, savings_goal_id, group_id)
+    VALUES (v_pot, 0.01, current_date - 1, 'transfer', v_g, gen_random_uuid());
+  v_res := finance.fn_close_savings_goal(jsonb_build_object('savings_goal_name', '__csg11 cent__', 'outcome', 'completed'));
+  IF (v_res->>'ok')::boolean IS DISTINCT FROM true THEN
+    RAISE EXCEPTION 'FAIL close [11 Rest 0.01 in der Toleranz]: %', v_res; END IF;
+  RAISE NOTICE 'PASS close [10 Historie = Buchungen + Zuordnungen, 11 Cent-Toleranz]';
+END $$;
 ROLLBACK;

@@ -171,9 +171,9 @@ CREATE TRIGGER trg_handoff_tasks_final
 -- ENGEN Paket-Leserolle finance_ro (schema-scoped auf finance) → er erreicht agent.advisor_plans
 -- NICHT mehr direkt, sondern NUR ueber die publizierte SECURITY-DEFINER-Read-fn
 -- core.fn_advisor_read_plan(text) (EXECUTE-GRANT in core.fn_provision_package_roles). Darum hier
--- KEIN direkter GRANT SELECT … TO finance_ro mehr (das war die Vor-Isolations-Form). Der Core-Host
--- (core_ro) liest advisor_plans ueber seinen breiten agent-Grant (util_create_core_ro), aber NUR die
--- Haushalts-Plaene (RLS unten); den Schreibpfad faehrt der Owner (fn_advisor_save_section/publish_plan);
+-- KEIN direkter GRANT SELECT … TO finance_ro mehr (das war die Vor-Isolations-Form). core_ro liest
+-- advisor_plans nicht (nicht auf der Erlaubnisliste in util_create_core_ro); die RLS unten bleibt als zweiter
+-- Riegel fuer die Personen-Plaene stehen; den Schreibpfad faehrt der Owner (fn_advisor_save_section/publish_plan);
 -- die Core-Advisor-Engine (core.cron_review via core.fn_advisor_review_evaluate) liest den Plan ueber das
 -- DEFINER-Fenster.
 -- ============================================================

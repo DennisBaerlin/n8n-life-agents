@@ -48,9 +48,8 @@ CREATE TRIGGER trg_guide_onboarding_touch BEFORE UPDATE ON agent.guide_onboardin
     FOR EACH ROW EXECUTE FUNCTION agent.touch_updated_at();
 
 -- Lesepfad: der Guide ist ein CORE-Agent → sein Frei-SQL laeuft unter der Core-Host-Leserolle
--- core_ro (nicht finance_ro, das nach der Paket-Isolation eng auf `finance` skopiert ist). core_ro
--- bekommt seinen breiten agent-SELECT in util_create_core_ro; der explizite GRANT hier ist
--- FMEA-Backstop. No-op falls core_ro (noch) fehlt (Phase 1 < util_create_core_ro = Phase 4).
+-- core_ro (nicht finance_ro, das nach der Paket-Isolation eng auf `finance` skopiert ist). Massgeblich ist
+-- die Erlaubnisliste in util_create_core_ro (fuehrt diese Tabelle); der GRANT hier ist Backstop. No-op falls core_ro (noch) fehlt (Phase 1 < util_create_core_ro = Phase 4).
 DO $$ BEGIN
     IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'core_ro') THEN
         GRANT SELECT ON agent.guide_onboarding_state TO core_ro;

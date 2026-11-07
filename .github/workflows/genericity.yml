@@ -264,7 +264,9 @@ jobs:
           [ -z "$crlf" ] || { echo "FAIL CRLF im master-Image:"; echo "$crlf"; exit 1; }
           docker push -q "$img:ci" >/dev/null
           pin="$(docker inspect -f '{{range .RepoDigests}}{{println .}}{{end}}' "$img:ci" | grep -m1 "^$img@sha256:")"
-          grep -q '^  master: &img_master ${LA_MASTER_IMAGE:?' provisioning/compose/compose.yml || { echo "FAIL compose.yml ohne neutrale Pin-Zeile"; exit 1; }
+          # Beide erlaubten Formen (contract_lint 33): neutral auf Branches, Release-Pin auf main nach dem Pin-Commit.
+          grep -Eq '^  master: &img_master \$\{LA_MASTER_IMAGE(:\?|:-[^}]+/master@sha256:[0-9a-f]{64}\})' provisioning/compose/compose.yml \
+            || { echo "FAIL compose.yml ohne erlaubte Pin-Zeile (neutral oder Release-Pin)"; exit 1; }
           sed -i "s|^  master: &img_master .*|  master: \&img_master \${LA_MASTER_IMAGE:-$pin}|" provisioning/compose/compose.yml
           grep -n 'img_master' provisioning/compose/compose.yml
           docker image rm "$img:ci" >/dev/null   # der Stack muss es per Digest aus dem Register ziehen

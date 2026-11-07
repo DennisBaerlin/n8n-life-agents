@@ -5,6 +5,13 @@
 
 **A big help for the whole family: whenever someone in your family needs a hand — with money, deadlines, a job change or planning ahead — your assistant is there, right in Telegram. It runs on your own hardware, and nothing is ever saved before you approve it with a tap.**
 
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/site/static/explain/greeting.en.dark.svg">
+    <img src="docs/site/static/explain/greeting.en.light.svg" width="720" alt="Your assistant gets in touch on your phone by itself and asks before it saves anything. It runs on your own computer at home, your data stays with you, and it helps the whole family with finances, career, inheritance and documents.">
+  </picture>
+</p>
+
 Write to your assistant in any language — it answers in yours. Behind the scenes a router picks the right specialist; you never notice and just start typing.
 
 → **[Documentation site](https://dennisbaerlin.github.io/n8n-life-agents/)** (German) · [Installation](#installation) · [Contributing](CONTRIBUTING.md) · [Security](SECURITY.md)
@@ -187,10 +194,3 @@ This is a personal project, built for and used in one household, and shared so y
 - **Not an official n8n project.** n8n is a trademark of n8n GmbH; this project is not affiliated with or endorsed by n8n.
 - **n8n itself is not part of this repository.** It is licensed under n8n's [Sustainable Use License](https://docs.n8n.io/sustainable-use-license/), which is not an OSI open-source license; the installer installs n8n from its official npm package on your machine and does not redistribute it.
 - **No financial, tax or legal advice.** The agents give information and suggestions; decisions and their consequences remain yours. The software comes without any warranty (see the license).
-
-<p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="docs/site/static/explain/greeting.en.dark.svg">
-    <img src="docs/site/static/explain/greeting.en.light.svg" width="720" alt="Your assistant gets in touch on your phone by itself and asks before it saves anything. It runs on your own computer at home, your data stays with you, and it helps the whole family with finances, career, inheritance and documents.">
-  </picture>
-</p>

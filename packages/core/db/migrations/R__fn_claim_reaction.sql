@@ -8,7 +8,7 @@
 --   Auswahl (hoechstens eine, Prioritaet):
 --     seen   👀  event 'seen' (Lebenszeichen, ohne Obergrenze)
 --     done   👌  Karte dieses Laufs endgueltig bestaetigt (agent.hitl_pending.approved, opened_at >= run_started_at)
---                + reply_ok + Signal FRAME (ohne Obergrenze)
+--                + reply_ok + Signal FRAME + kein Sticker in diesem Lauf (sonst bleibt 👀; ohne Obergrenze)
 --     answer     Stimmung statt Text: kein Werkzeug, react_only (Router-Zeile genau 'REACT <MOOD>'), ohne Obergrenze
 --     mood       Stimmung neben einer Antwort: nach einem Werkzeug nur bei Signal FRAME, ohne Werkzeug nur mit Text;
 --                kein Sticker in diesem Lauf; Tages-Obergrenze nicht erreicht
@@ -74,7 +74,7 @@ BEGIN
         v_kind := 'seen';  v_emoji := '👀';
     ELSIF p->>'event' IS DISTINCT FROM 'reply' THEN
         RETURN v_none;
-    ELSIF v_signal = 'FRAME' AND v_ok AND v_since IS NOT NULL AND EXISTS (
+    ELSIF v_signal = 'FRAME' AND v_ok AND v_since IS NOT NULL AND COALESCE(p->>'sticker', '') = '' AND EXISTS (
             SELECT 1 FROM agent.hitl_pending h
              WHERE h.chat_id = v_chat AND h.approved IS TRUE AND h.opened_at >= v_since) THEN
         v_kind := 'done';  v_emoji := '👌';

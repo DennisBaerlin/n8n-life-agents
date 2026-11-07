@@ -58,6 +58,9 @@ BEGIN
   IF r->>'emoji' IS NOT NULL THEN RAISE EXCEPTION 'FAIL claim_reaction [done trotz NOFRAME: %]', r; END IF;
   r := pg_temp.rx(111, 10, '{"tool_called":true,"signal":"FRAME","reply_ok":false}');
   IF r->>'emoji' IS NOT NULL THEN RAISE EXCEPTION 'FAIL claim_reaction [done vor Fehler-Hinweis: %]', r; END IF;
+  -- Daumen-Sticker im selben Lauf -> kein 👌 (Owner-Entscheid: ein Bestaetigungs-Signal genuegt, 👀 bleibt)
+  r := pg_temp.rx(111, 10, '{"tool_called":true,"signal":"FRAME","sticker":"butler_top"}');
+  IF r->>'emoji' IS NOT NULL THEN RAISE EXCEPTION 'FAIL claim_reaction [done trotz Sticker: %]', r; END IF;
   r := pg_temp.rx(111, 10, '{"tool_called":true,"signal":"FRAME","mood":"CHEER"}');
   IF r->>'emoji' IS DISTINCT FROM '👌' OR r->>'kind' IS DISTINCT FROM 'done' THEN
     RAISE EXCEPTION 'FAIL claim_reaction [done vor Stimmung, ersetzt 👀: %]', r; END IF;

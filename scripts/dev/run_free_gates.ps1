@@ -88,14 +88,14 @@ if ($ListSuites) { ConvertTo-Json -InputObject @($Gates.Keys) -Compress; exit 0 
 $lock = Join-Path $RepoRoot '.local\run_free_gates.lock'
 if (-not $Child) {
     if (Test-Path $lock) {
-        $held = Get-Content $lock -Raw | ConvertFrom-Json
+        $held = [System.IO.File]::ReadAllText($lock, (New-Object System.Text.UTF8Encoding($false))) | ConvertFrom-Json
         if (Get-Process -Id $held.pid -ErrorAction SilentlyContinue) {
             throw "run_free_gates laeuft bereits (PID $($held.pid), Container $($held.n8n)/$($held.db)) -- abwarten statt parallel starten."
         }
     }
     New-Item -ItemType Directory -Force (Split-Path $lock) | Out-Null
-    @{ pid = $PID; n8n = $env:N8NTEST_CONTAINER; db = $env:DBTEST_CONTAINER } | ConvertTo-Json -Compress |
-        Set-Content -Path $lock -Encoding UTF8
+    $lockJson = @{ pid = $PID; n8n = $env:N8NTEST_CONTAINER; db = $env:DBTEST_CONTAINER } | ConvertTo-Json -Compress
+    [System.IO.File]::WriteAllText($lock, $lockJson, (New-Object System.Text.UTF8Encoding($false)))
 }
 
 $results = New-Object System.Collections.Generic.List[object]

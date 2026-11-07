@@ -2,11 +2,12 @@
 #
 #   lifeagents-update-check.{service,timer}  taeglich 10:20 (Haushalts-Zeitzone): `lifeagents update --check`
 #   lifeagents-update-run.{service,timer}    minuetlich: `lifeagents update --run-requested`
-# Logik der Laeufe -> lib/update_runner.sh. Hier nur Rendern/Installieren/Entfernen (idempotent, Zweitlauf = no-op).
+# Logik der Laeufe -> lib/update_runner.sh. Hier nur Rendern/Installieren/Entfernen der Units (idempotent, Zweitlauf =
+# no-op) und der Release-Signierschluessel (install_release_keyring).
 #
-# WICHTIG: der Runner-Service fuehrt genau das Update aus, das diese Funktion (im neuen provision.sh) aufruft ->
-#   NIE einen Service (neu) starten, nur die Timer. Eine geaenderte Service-Unit greift per daemon-reload beim
-#   naechsten Timer-Lauf; der laufende oneshot-Prozess bleibt unberuehrt.
+# Der Runner-Service fuehrt genau das Update aus, das diese Funktion (im neuen provision.sh) aufruft -> nie einen
+#   Service (neu) starten, nur die Timer. Eine geaenderte Service-Unit greift per daemon-reload beim naechsten
+#   Timer-Lauf; der laufende oneshot-Prozess bleibt unberuehrt.
 #
 # Reads globals: TEMPLATE_DIR, TIMEZONE (provision.sh resolve_timezone), PROVISION_REPO_SLUG (common.sh).
 

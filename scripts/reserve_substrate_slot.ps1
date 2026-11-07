@@ -27,6 +27,7 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 . "$PSScriptRoot\lib\substrate_reservations.ps1"
 if (-not $ListFile) { $ListFile = Get-SlotReservationFile }
 $namePattern = '^[A-Za-z0-9][A-Za-z0-9_.-]*$'

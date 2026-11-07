@@ -4,6 +4,7 @@
 # Usage:  .\scripts\dev\lead_guard_hook_test.ps1
 # Exit-Code = Anzahl Fehler.
 $ErrorActionPreference = 'Stop'
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $repo = git -C $PSScriptRoot rev-parse --show-toplevel
 $sandbox = Join-Path $env:TEMP ("lead_guard_hook_" + [guid]::NewGuid().ToString('N'))
 $hookDir = Join-Path $sandbox '.claude\hooks'

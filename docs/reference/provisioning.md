@@ -6,6 +6,8 @@ On-demand lesen; **keine Regeln** (die stehen in `provisioning/CLAUDE.md`). Jede
 
 Drei Schichten: der Wegwerf-Bootstrap-Launcher `install.sh` (resolve/fetch/verify/delegate, self-contained) startet den internen Applier `provision.sh`; Updates laufen über die Runtime-CLI `lifeagents update` (lädt selbst + startet den neuen `provision.sh`). `main()` ist der Erweiterungspunkt. Bundle = Metapackage: `main()` installiert erst den Core bare (`apply_schema core` + `SEED_PKG=core seed_data` + `register_package core active`), dann jedes gebündelte Nicht-Core-Paket über denselben per-Paket-Install-Pfad (`pkg_install_one <pkg>`). Kein Reverse Proxy wird installiert (bring-your-own; der Installer gibt die Proxy-Konfiguration aus).
 
+**`n8n.env` ist abgeleitet, keine Hand-Datei:** `prepare_n8n_env` rendert `/etc/n8n/n8n.env` bei jedem Lauf aus `templates/n8n.env.tpl`; nur die einmal erzeugten Secrets (Verschlüsselungs-Key, DB-Passwort) bleiben erhalten, Handänderungen gehen verloren. Eigene Overrides gehören nach `/etc/lifeagents/core.env`: die n8n-Unit liest sie als zweite `EnvironmentFile` nach `n8n.env`, der spätere Eintrag gewinnt, und `env_upsert` lässt fremde Zeilen unberührt.
+
 **Haushalts-Zeitzone (ein Fakt `HOUSEHOLD_TIMEZONE`, core.env):** `resolve_household_timezone` (in `derive_network_config`) löst Env/`--unattended`-Datei > core.env > `Europe/Berlin` auf. Die Container-Zeitzone zählt nie, weil LXC-Vorlagen auf UTC stehen. Der Wert wird gegen `/usr/share/zoneinfo` geprüft und persistiert. Abgeleitet sind n8n `GENERIC_TIMEZONE` (Zeitpläne) und die Sitzungs-Zeitzone der App-DB (`install_pg.sh apply_db_timezone`: `ALTER DATABASE n8n SET timezone`, nur bei Abweichung laut `pg_db_role_setting`, dann n8n-Neustart über `PG_TZ_CHANGED`). Daran hängen `CURRENT_DATE`, `::date` und `core.fn_today()`. ALTER DATABASE statt ALTER ROLE, weil die Werkzeug-Credential dieselbe Rolle nutzt wie n8n; n8n verträgt es (seine Zeitspalten sind `timestamptz`). Ein Bestand ohne Eintrag stellt beim Update auf Berlin um (Owner-Entscheid 2026-10-23).
 
 ## Owner-Bootstrap (`bootstrap_owner.sh`)
@@ -95,6 +97,7 @@ Standard-Werkzeug `pg_dump`/`pg_restore`, CLI-only (postgres-Superuser via runus
 
 ## Versionswechsel (`lib/upgrade_guard.sh`)
 
+- **Docker-Verbund: Images vor dem Stopp laden:** `provision.sh` ruft `rt_stack_pull postgres n8n gateway` vor `upgrade_prepare`; nur fehlende Images werden geladen (per Digest festgelegt, ein lokaler Treffer genügt). Scheitert der Pull, bricht das Update ab, bevor n8n angehalten wird. Der Platz für die Sicherung wird im Verbund auf dem Volume `var_la` gemessen (`_preflight_backup_need_mb`, `preflight.sh`), nicht auf `/` des master.
 - **Workflow löschen:** Seit n8n 2.4x lehnt `DELETE /workflows/{id}` einen veröffentlichten Workflow ab → `n8n_delete_workflow` unpublisht vorher; 2.44.4 meldet `unpublish` 200, bevor die Abmeldung fertig ist (DELETE = 409 „still being unpublished") → 409 wird wiederholt.
 
 Muster GitLab Omnibus (Auto-Backup vor jedem Paket-Upgrade, <https://docs.gitlab.com/update/package/>): n8n migriert seine Tabellen beim ersten Start einer neuen Version, zurück nur per `n8n db:revert` je Migration (<https://docs.n8n.io/hosting/installation/npm/>); n8n und alle lifeagents-Schemas liegen in **einer** DB.

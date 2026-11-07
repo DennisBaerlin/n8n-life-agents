@@ -90,23 +90,6 @@ load_install_env() {
   return 0
 }
 
-# _read_tty <prompt> <secret?>  → eingegebener Wert auf STDOUT (leer, wenn kein TTY/unattended).
-# Seit der Install-UX-Phase ein duenner Delegat auf ui_input (common.sh): gum-Zweig + plain-Fallback,
-# /dev/tty (curl|bash-sicher), UND das gehaertete Interaktivitaets-Gate ui_interactive
-# (TTY ∧ ¬UNATTENDED — Befund 1: vorher gate nur die TTY-Praesenz). secret=1 -> maskiert.
-_read_tty() { ui_input "$1" "${2:-0}"; }
-
-# _prompt_if_empty <varname> <prompt> <secret?>  — fragt nur, wenn die Variable leer ist UND ein
-# TTY da ist. Setzt + exportiert die Variable. Ohne TTY (unattended) bleibt sie leer (der jeweilige
-# Schritt skippt dann sauber — gleiche Degradierung wie bei fehlendem .env-Wert in Dev/Test).
-_prompt_if_empty() {
-  local name="$1" prompt="$2" secret="${3:-0}" cur val
-  eval "cur=\${$name:-}"
-  [ -n "$cur" ] && return 0
-  val="$(_read_tty "$prompt" "$secret")"
-  [ -n "$val" ] && eval "$name=\$val; export $name"
-}
-
 # _persist_install_env — die gemanagten Werte in core.env (INSTALL_ENV_FILE) mergen (Coolify-Muster),
 # einmal vorher ein Backup. 640 root:n8n (Owner-Identitaet = PII, API-Keys = Secret -> nie ins Repo,
 # konsistent mit n8n.env). Beim allerersten Schreiben Datei + Header anlegen.
@@ -160,25 +143,23 @@ _validate_birthdate() {
 # --- Prompt-Zeit-Validierung der eingegebenen Secrets gegen den echten Dienst ----------------------
 # Schon BEIM EINTIPPEN gegen den echten Dienst pruefen -> der Owner korrigiert sofort im Terminal,
 # nicht erst spaet (die zweite Schranke ist _cred_test in inject_credentials, beide Profile). Der
-# Key/Token geht ueber eine 600-`curl -K`-Config (nie ins argv/Prozessliste — Projekt-Hard-Rule).
+# Key/Token geht ueber die curl-Config auf STDIN (`curl_cfg` + `curl_secret`, nie ins argv/Prozessliste — Projekt-Hard-Rule).
 # Grenze: das prueft GUELTIGKEIT (authentifiziert), NICHT Free-vs-Paid-Tier (das zeigt sich erst an
 # der Tagesquote unter Last) — fuer den Paid-Key bleibt die AI-Studio-Plan-Pruefung Owner-Sache.
-_http_status_secret() {
-  local cfg; cfg="$(mktemp)"; chmod 600 "$cfg"
-  printf '%s\n' "$@" > "$cfg"
+_http_status_secret() {   # liest die curl_cfg-Zeilen von STDIN
   # curl schreibt bei Verbindungsfehler SELBST '000' (-w) UND endet != 0 -> `|| echo 000` ergaebe '000000'.
-  local code; code="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 12 -K "$cfg" 2>/dev/null)" || true
+  local code; code="$(curl_secret -sS -o /dev/null -w '%{http_code}' --max-time 12 2>/dev/null)" || true
   code="${code:-000}"
-  rm -f "$cfg"; printf '%s' "$code"
+  printf '%s' "$code"
 }
 
 # Live-Pruefer: 0 = gueltig, 1 = vom Dienst abgelehnt, 2 = Dienst nicht erreichbar (kein Netz/Timeout, HTTP 000).
 # 2 ist KEIN Tippfehler -> _prompt_validated uebernimmt den Wert mit Hinweis (die zweite Schranke _cred_test
 # prueft beim Credential-Inject erneut), statt den Owner bei einem Netz-Wackler festzuhalten.
 _live_rc() { case "$1" in 200) return 0 ;; 000) return 2 ;; *) return 1 ;; esac; }
-_validate_telegram()  { _live_rc "$(_http_status_secret "url = \"https://api.telegram.org/bot$1/getMe\"")"; }
-_validate_google()    { _live_rc "$(_http_status_secret "url = \"https://generativelanguage.googleapis.com/v1beta/models\"" "header = \"x-goog-api-key: $1\"")"; }
-_validate_anthropic() { _live_rc "$(_http_status_secret "url = \"https://api.anthropic.com/v1/models\"" "header = \"x-api-key: $1\"" "header = \"anthropic-version: 2023-06-01\"")"; }
+_validate_telegram()  { _live_rc "$(curl_cfg url "https://api.telegram.org/bot$1/getMe" | _http_status_secret)"; }
+_validate_google()    { _live_rc "$({ curl_cfg url "https://generativelanguage.googleapis.com/v1beta/models"; curl_cfg header "x-goog-api-key: $1"; } | _http_status_secret)"; }
+_validate_anthropic() { _live_rc "$({ curl_cfg url "https://api.anthropic.com/v1/models"; curl_cfg header "x-api-key: $1"; curl_cfg header "anthropic-version: 2023-06-01"; } | _http_status_secret)"; }
 
 # _is_live_validator <fn> — Live-Dienst-Checks (echte API-Calls) vs. lokale Regex-Checks (gratis).
 # F2c (Opus-Review): VORHANDENE Werte (Env/Store — z. B. bei jedem Prod-Update via INSTALL_PROFILE)

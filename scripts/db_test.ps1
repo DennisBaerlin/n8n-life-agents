@@ -46,7 +46,7 @@ $RepoRoot = git -C $PSScriptRoot rev-parse --show-toplevel
 # git push mit Pre-Push-db_test waehrenddessen, 2026-10-23), wuerden sich beide die DB gegenseitig neu bauen.
 $freeGatesLock = Join-Path $RepoRoot '.local\run_free_gates.lock'
 if (Test-Path $freeGatesLock) {
-    $held = Get-Content $freeGatesLock -Raw | ConvertFrom-Json
+    $held = [System.IO.File]::ReadAllText($freeGatesLock, (New-Object System.Text.UTF8Encoding($false))) | ConvertFrom-Json
     $myDb = if ($env:DBTEST_CONTAINER) { $env:DBTEST_CONTAINER } else { 'lifeagents-dbtest' }
     if ($held.pid -ne $PID -and $held.db -eq $myDb -and (Get-Process -Id $held.pid -ErrorAction SilentlyContinue)) {
         throw "run_free_gates.ps1 (PID $($held.pid)) nutzt gerade die Test-DB $myDb -- erst abwarten (oder eigene DBTEST_CONTAINER/DBTEST_PG_PORT)."

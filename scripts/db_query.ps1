@@ -1,4 +1,4 @@
-#Requires -Version 5.1
+﻿#Requires -Version 5.1
 # Read-only ad-hoc SELECT gegen die Docker-Test-Substrat-DB (Verifikation/Debug; raus aus Prod).
 # Die Session wird READ ONLY erzwungen (SET default_transaction_read_only=on) -> versehentliche
 # Writes brechen ab. Verbindung NICHT mehr ueber TCP/PG_*, sondern container-intern per Peer-Auth

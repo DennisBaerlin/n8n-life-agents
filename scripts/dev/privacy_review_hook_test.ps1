@@ -5,6 +5,7 @@
 # Usage:  .\scripts\dev\privacy_review_hook_test.ps1
 # Exit-Code = Anzahl Fehler.
 $ErrorActionPreference = 'Stop'
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $u8 = New-Object System.Text.UTF8Encoding($false)
 . (Join-Path $PSScriptRoot '..\lib\git_sandbox.ps1')
 Clear-GitEnvironment

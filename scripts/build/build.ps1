@@ -29,7 +29,8 @@ $Utf8NoBom    = New-Object System.Text.UTF8Encoding($false)
 # paket-bewusst: Such-Liste packages/*/workflows.
 
 # --- env ---
-Get-Content "$RepoRoot\.env" | ForEach-Object {
+. "$PSScriptRoot\..\lib\dotenv.ps1"
+Read-DotEnvLines "$RepoRoot\.env" | ForEach-Object {
     if ($_ -match '^\s*([^#\s][^=]*)=(.*)$') { Set-Variable -Name $Matches[1].Trim() -Value $Matches[2].Trim() -Scope Script }
 }
 if ([string]::IsNullOrEmpty($OWNER_CHAT_ID))      { throw "OWNER_CHAT_ID nicht in .env" }

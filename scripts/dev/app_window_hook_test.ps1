@@ -1,10 +1,11 @@
-#Requires -Version 5.1
+﻿#Requires -Version 5.1
 # Test des Hooks .claude/hooks/enforce_app_window.ps1 (Mini-App nur mit Zustimmung des Owners): fuettert ihn mit Tool-Aufrufen
 # wie Claude Code (JSON auf stdin) und prueft deny/allow. Kein Substrat, keine Kosten, schreibt nur app_grant.txt in einen
 # eigenen Temp-Klon des Hook-Ordners (nie ins echte .claude/).
 # Usage:  .\scripts\dev\app_window_hook_test.ps1
 # Exit-Code = Anzahl Fehler.
 $ErrorActionPreference = 'Stop'
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 . (Join-Path $PSScriptRoot '..\lib\git_sandbox.ps1')
 Clear-GitEnvironment
 $repo = git -C $PSScriptRoot rev-parse --show-toplevel

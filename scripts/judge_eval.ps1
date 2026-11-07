@@ -1,4 +1,4 @@
-#Requires -Version 5.1
+﻿#Requires -Version 5.1
 # Auto-Judge -- automatisierte Bewertung der Verhaltens-Rubrics (Layer 2, Judge-Schritt).
 # Liest tests\agent\judge_bundle.json (von n8n_test.ps1 erzeugt) und bewertet jede Rubric
 # per LLM. Der finale Verdikt ist KOMBINIERT:
@@ -41,7 +41,8 @@ $Utf8NoBom = New-Object System.Text.UTF8Encoding($false)
 $RepoRoot  = git -C $PSScriptRoot rev-parse --show-toplevel
 
 # .env laden (gleicher Mechanismus wie die uebrigen Skripte)
-Get-Content "$RepoRoot\.env" | ForEach-Object {
+. "$PSScriptRoot\lib\dotenv.ps1"
+Read-DotEnvLines "$RepoRoot\.env" | ForEach-Object {
     if ($_ -match '^\s*([^#\s][^=]*)=(.*)$') {
         Set-Variable -Name $Matches[1].Trim() -Value $Matches[2].Trim() -Scope Script
     }

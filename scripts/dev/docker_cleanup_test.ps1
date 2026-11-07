@@ -4,6 +4,7 @@
 # Usage:  .\scripts\dev\docker_cleanup_test.ps1
 # Exit-Code = Anzahl Fehler.
 $ErrorActionPreference = 'Stop'
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $repo = git -C $PSScriptRoot rev-parse --show-toplevel
 . (Join-Path $repo 'scripts\lib\docker_cleanup_select.ps1')
 $failed = 0

@@ -905,7 +905,7 @@
   "core.wizard.opt.reach_tunnel": "Über einen sicheren Tunnel",
   "core.wizard.opt.reach_tunnel_desc": "Passt für alle: ein geschützter Weg über den kostenlosen Dienst Tailscale. Nach der Installation meldest du dich dort einmal an, mit deinem Google-, Microsoft- oder Apple-Konto.",
   "core.wizard.opt.reach_fritzbox": "Über meine FritzBox",
-  "core.wizard.opt.reach_fritzbox_desc": "Passt, wenn du eine FritzBox hast und kein weiteres Konto möchtest: ein paar Schritte im Router.",
+  "core.wizard.opt.reach_fritzbox_desc": "Passt, wenn du eine FritzBox hast und kein weiteres Konto möchtest: ein paar Schritte in deiner FritzBox.",
   "core.wizard.opt.dslite_no": "Nein, steht nicht da",
   "core.wizard.opt.dslite_yes": "Ja, steht da",
   "core.wizard.opt.dslite_yes_desc": "Dann nehmen wir den Tunnel.",

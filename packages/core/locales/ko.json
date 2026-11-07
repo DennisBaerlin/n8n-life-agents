@@ -905,7 +905,7 @@
   "core.wizard.opt.reach_tunnel": "안전한 터널로",
   "core.wizard.opt.reach_tunnel_desc": "누구에게나 맞아요. 무료 서비스 Tailscale을 거치는 보호된 길이에요. 설치가 끝나면 Google, Microsoft 또는 Apple 계정으로 한 번 로그인해요.",
   "core.wizard.opt.reach_fritzbox": "내 FritzBox로",
-  "core.wizard.opt.reach_fritzbox_desc": "FritzBox가 있고 다른 계정을 원하지 않는다면 맞아요. 공유기에서 몇 단계만 하면 돼요.",
+  "core.wizard.opt.reach_fritzbox_desc": "FritzBox가 있고 다른 계정을 원하지 않는다면 맞아요. FritzBox에서 몇 단계만 하면 돼요.",
   "core.wizard.opt.dslite_no": "아니요, 없어요",
   "core.wizard.opt.dslite_yes": "네, 있어요",
   "core.wizard.opt.dslite_yes_desc": "그러면 터널을 쓸게요.",

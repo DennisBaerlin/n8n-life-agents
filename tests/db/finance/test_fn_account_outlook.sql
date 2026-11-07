@@ -248,4 +248,44 @@ BEGIN
   RAISE NOTICE 'PASS outlook Bruecke: exakt bis zum Tief inkl. rueckdatierter Buchung; Puffer je Konto';
 END $$;
 
+-- Veralteter Kontoauszug: Alter > finance.statement_stale_days (Default 45) -> statt account_coverage der Hinweis
+-- statement_stale:<konto> (die Vorschau zieht den Alltag ab dem Abgleich ohne Obergrenze ab -> sonst Fehlalarm je Woche).
+DO $$
+DECLARE
+  t DATE := CURRENT_DATE;
+  v_old INT; v_new INT; v_res JSONB; v_alerts JSONB;
+BEGIN
+  v_old := (finance.fn_create_account('{"name":"__t_ol_alt__","account_type":"cash","currency":"EUR"}'::jsonb)->>'account_id')::int;
+  v_new := (finance.fn_create_account('{"name":"__t_ol_frisch__","account_type":"cash","currency":"EUR"}'::jsonb)->>'account_id')::int;
+  INSERT INTO finance.transactions (account_id, amount, transaction_date, category) VALUES (v_old, 500, t - 120, 'other'),
+                                                                                         (v_new, 100, t - 120, 'other');
+  PERFORM finance.fn_reconcile_account(jsonb_build_object('account_id', v_old, 'confirmed_balance', 500, 'reconciliation_date', (t - 60)::text));
+  PERFORM finance.fn_reconcile_account(jsonb_build_object('account_id', v_new, 'confirmed_balance', 100, 'reconciliation_date', (t - 5)::text));
+  -- je ein Auszug mit 10 Alltag je Tag: beide Konten unterschreiten den Puffer (alt: 500 - 60 x 10 - ..., frisch: 100)
+  INSERT INTO finance.bank_statements (account_id, period_start, period_end, opening_balance, closing_balance, currency,
+                                       line_count, matched_count, unmatched_out, unmatched_in, prev_last_reconciled_at)
+  VALUES (v_old, t - 89, t - 60, 800, 500, 'EUR', 5, 0, -300, 0, NULL),
+         (v_new, t - 34, t - 5, 400, 100, 'EUR', 5, 0, -300, 0, NULL);
+
+  v_res := finance.fn_account_outlook(v_old);
+  IF (v_res->>'statement_age_days')::int IS DISTINCT FROM 60 OR (v_res->>'shortfall')::numeric <= 0 THEN
+    RAISE EXCEPTION 'FAIL outlook statement_age_days alt: erwartet 60 + Fehlbetrag, got %', v_res; END IF;
+  IF (finance.fn_account_outlook(v_new)->>'statement_age_days')::int IS DISTINCT FROM 5 THEN
+    RAISE EXCEPTION 'FAIL outlook statement_age_days frisch: %', finance.fn_account_outlook(v_new); END IF;
+
+  v_alerts := finance.fn_advisor_review('finance')->'alerts';
+  IF EXISTS (SELECT 1 FROM jsonb_array_elements(v_alerts) a WHERE a->>'metric_key' = 'account_coverage:' || v_old) THEN
+    RAISE EXCEPTION 'FAIL advisor: veralteter Auszug darf keine Deckungs-Warnung ausloesen: %', v_alerts; END IF;
+  IF NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v_alerts) a
+                 WHERE a->>'metric_key' = 'statement_stale:' || v_old AND a->>'kind' = 'staleness'
+                   AND (a->>'value')::numeric = 60 AND (a->>'target')::numeric = 45
+                   AND a->'msg'->0->>'value' = 'finance.advisor.statement_stale'
+                   AND a->'msg'->0->'params'->>'account' = '__t_ol_alt__') THEN
+    RAISE EXCEPTION 'FAIL advisor statement_stale fehlt: %', v_alerts; END IF;
+  IF NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v_alerts) a WHERE a->>'metric_key' = 'account_coverage:' || v_new)
+     OR EXISTS (SELECT 1 FROM jsonb_array_elements(v_alerts) a WHERE a->>'metric_key' = 'statement_stale:' || v_new) THEN
+    RAISE EXCEPTION 'FAIL advisor: frischer Auszug warnt weiter mit account_coverage, ohne statement_stale: %', v_alerts; END IF;
+  RAISE NOTICE 'PASS outlook/advisor: Auszug 60 Tage alt -> statement_stale statt account_coverage; frischer Auszug warnt normal';
+END $$;
+
 ROLLBACK;

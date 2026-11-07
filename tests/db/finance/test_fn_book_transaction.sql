@@ -193,4 +193,25 @@ BEGIN
 
 END $$;
 
+-- Strafzins/Verwahrentgelt ist category='fee' -> interest + outflow ueber das Tool -> {ok:false}.
+-- Die interne Zinskorrektur des Kontoauszug-Abgleichs (Flag interest_correction, nicht im Tool-Payload) bleibt erlaubt.
+DO $$
+DECLARE v_res JSONB; v_a INT;
+BEGIN
+  SELECT (finance.fn_create_account('{"name":"__test_bt_negint__","account_type":"cash","currency":"EUR"}'::jsonb)->>'account_id')::int INTO v_a;
+  v_res := finance.fn_book_transaction(jsonb_build_object('account_id',v_a,'amount','4.20','direction','outflow','category','interest'));
+  IF (v_res->>'ok')::boolean IS DISTINCT FROM false OR v_res->>'reason' NOT LIKE '%fee%' THEN
+    RAISE EXCEPTION 'FAIL book_transaction [interest+outflow]: erwartet ok=false mit Hinweis auf fee, got %', v_res; END IF;
+  IF EXISTS (SELECT 1 FROM finance.transactions WHERE account_id = v_a) THEN
+    RAISE EXCEPTION 'FAIL book_transaction [interest+outflow]: trotzdem gebucht'; END IF;
+  v_res := finance.fn_book_transaction(jsonb_build_object('account_id',v_a,'amount','4.20','direction','inflow','category','interest'));
+  IF (v_res->>'ok')::boolean IS DISTINCT FROM true THEN
+    RAISE EXCEPTION 'FAIL book_transaction [interest+inflow]: erwartet ok=true, got %', v_res; END IF;
+  v_res := finance.fn_book_transaction(jsonb_build_object('account_id',v_a,'amount','1.10','direction','outflow',
+    'category','interest','interest_correction',true));
+  IF (v_res->>'ok')::boolean IS DISTINCT FROM true OR (v_res->>'amount')::numeric IS DISTINCT FROM -1.10 THEN
+    RAISE EXCEPTION 'FAIL book_transaction [Zinskorrektur negativ]: erwartet ok=true -1.10, got %', v_res; END IF;
+  RAISE NOTICE 'PASS book_transaction [interest+outflow -> ok:false (fee); inflow + interne Zinskorrektur ok]';
+END $$;
+
 ROLLBACK;

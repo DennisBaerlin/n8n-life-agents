@@ -255,7 +255,7 @@ BEGIN
             v_r := finance.fn_book_transaction(jsonb_build_object('account_id', v_acct,
                        'amount', abs((v_prep->>'interest_correction')::numeric),
                        'direction', CASE WHEN (v_prep->>'interest_correction')::numeric < 0 THEN 'outflow' ELSE 'inflow' END,
-                       'category', 'interest', 'transaction_date', v_prep->>'period_end',
+                       'category', 'interest', 'interest_correction', true, 'transaction_date', v_prep->>'period_end',
                        'description', 'Zinskorrektur laut Auszug'));
             IF (v_r->>'ok')::boolean IS DISTINCT FROM true THEN
                 RAISE EXCEPTION USING ERRCODE = 'FN001', MESSAGE = 'interest correction: ' || COALESCE(v_r->>'reason', 'booking refused');

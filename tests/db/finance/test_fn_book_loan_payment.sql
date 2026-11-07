@@ -308,4 +308,23 @@ BEGIN
     RAISE EXCEPTION 'FAIL loan [ohne Betrag, alter Termin]: got %', v_res; END IF;
   RAISE NOTICE 'PASS loan [ohne Betrag + expliziter alter Termin -> dessen Rate 600]';
 END $$;
+-- debit_account_id kommt aus dem Payload -> ein Konto in fremder Waehrung wuerde die
+-- Rate in Kreditwaehrung still als USD abbuchen. Erwartet {ok:false}, nichts gebucht.
+DO $$
+DECLARE v_res JSONB; v_eur INT; v_usd INT; v_loan INT; v_lacc INT;
+BEGIN
+  SELECT (finance.fn_create_account('{"name":"__test_blp_cur_eur__","account_type":"cash","currency":"EUR"}'::jsonb)->>'account_id')::int INTO v_eur;
+  SELECT (finance.fn_create_account('{"name":"__test_blp_cur_usd__","account_type":"cash","currency":"USD"}'::jsonb)->>'account_id')::int INTO v_usd;
+  v_res := finance.fn_create_loan(jsonb_build_object('name','__test_blp_cur__','lender','TB','original_amount','5000',
+    'current_balance','5000','disbursement_date',CURRENT_DATE::text,'interest_rate','3','monthly_annuity','300',
+    'schedule_day_of_month','1','first_payment_date',CURRENT_DATE::text,'debit_account_id',v_eur));
+  v_loan := (v_res->>'loan_id')::int; v_lacc := (v_res->>'loan_account_id')::int;
+  v_res := finance.fn_book_loan_payment(jsonb_build_object('loan_id',v_loan,'loan_account_id',v_lacc,
+    'debit_account_id',v_usd,'payment_amount','300','payment_date',CURRENT_DATE::text));
+  IF (v_res->>'ok')::boolean IS DISTINCT FROM false OR v_res->>'reason' NOT LIKE '%currency%' THEN
+    RAISE EXCEPTION 'FAIL loan [USD-Belastungskonto]: erwartet ok=false mit currency-Grund, got %', v_res; END IF;
+  IF EXISTS (SELECT 1 FROM finance.transactions WHERE loan_id = v_loan AND category IN ('loan_payment','principal')) THEN
+    RAISE EXCEPTION 'FAIL loan [USD-Belastungskonto]: trotzdem gebucht'; END IF;
+  RAISE NOTICE 'PASS loan [Belastungskonto in fremder Waehrung -> ok:false, nichts gebucht]';
+END $$;
 ROLLBACK;

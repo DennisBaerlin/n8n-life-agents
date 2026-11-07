@@ -1216,6 +1216,8 @@ wird unten als „bei uns anders"-Notiz festgehalten (damit sie nicht je Paket r
   `career.fn_advisor_review` UND (WS-4) `estate.fn_advisor_review` (1. `fn_config_get`-Arg = Provenienz
   `core|finance|career|estate`, **Kategorie geteilt** — wie die `cron_enable`-Keys `drift_check`/`plan_review`). Der Key
   ist je Paket eigen (`plan_stale_days`/`career_plan_stale_days`/`estate_review_days`; `UNIQUE(category,key)` global).
+  Plan-Themen und Gesamtcheck schaltet finance mit `topic_max_chars`/`final_check_required` (ohne Präfix wie
+  `plan_stale_days`, Lookup Domain → Paket über `core.advisors`); ein zweites Paket bekommt eigene, präfixierte Keys.
   **Kein** per-Domäne-Rename der Kategorie — das wäre *weniger* einheitlich.
 - **estate als 2. `advisors`-Konsument mit household-`plan_context` OHNE Publish (WS-4, arch-challenge P5 REJECT-mit-Notiz):**
   estate registriert sich in `core.advisors` wie finance/career, aber (a) sein `plan_context` `estate_overview` ist ein

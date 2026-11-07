@@ -117,7 +117,7 @@ function Get-FinanceHitlLines {
                 (New-HitlLine 'finance.label.bank'               "$S.bank" -OmitEmpty)
                 (New-HitlLine 'finance.label.iban_number'        "$S.account_number" -OmitEmpty)
                 (& $own 'finance.label.owner_person' (& $need 'Person'))
-                (New-HitlLine 'finance.label.balance'            "($S.opening_balance || 0)" -Kind money -Currency (& $need 'Ccy') -If "!$isDepot")
+                (New-HitlLine 'finance.label.balance'            "($S.opening_balance || 0)" -Kind money -Currency (& $need 'Ccy') -EurByModel -If "!$isDepot")  # Ccy: genannte Kontowaehrung, sonst DB-Default EUR (create_account)
                 # Stichtag des Saldos (Konto aus Kontoauszug): Wert aus dem Probelauf der fn, nur im Einzel-Tool (-D.BalanceDate)
                 if ($D.ContainsKey('BalanceDate')) { New-HitlLine 'finance.label.statement_date' $D['BalanceDate'] -Kind date -If "!!$S.opening_balance_date" }
                 (& $settle "$S.settlement_account_name" "($isDepot || !!$S.settlement_account_name)")
@@ -296,7 +296,7 @@ function Get-FinanceHitlLines {
                 (New-HitlLine 'finance.label.target_amount'        "$S.target_amount" -Kind money -EurByModel -If "!$isRes && !($isEm && !Number($S.target_amount))")
                 (New-HitlLine 'finance.label.target_months'        "$S.target_months" -Kind number -Digits 1 -If "$isEm && !!$S.target_months")
                 (New-HitlLine 'finance.label.target_date'          (& $need 'TargetDate') -Kind date -If "!$isRes && !$isEm")
-                (New-HitlLine 'finance.label.already_saved'        "($S.already_saved || null)" -Kind money -Currency "($S.reserve_currency || 'EUR')" -OmitEmpty)
+                (New-HitlLine 'finance.label.already_saved'        "($S.already_saved || null)" -Kind money -Currency "($S.reserve_currency || 'EUR')" -EurByModel -OmitEmpty)  # reserve_currency kommt aus effective; Fallback EUR = Zuordnung auf Depot (EUR-Modell)
                 (New-HitlLine 'finance.label.monthly_savings_rate' "'finance.tpl.rate_computed'" -Kind tpl -If "$hasRate && !$isRes && !$isEm" -Params @{
                     value  = (New-HitlValue -Kind money -Value $rate -EurByModel)
                     months = (& $need 'Months') })

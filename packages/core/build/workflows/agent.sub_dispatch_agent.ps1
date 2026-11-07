@@ -7,7 +7,7 @@
 # referenzierte Execute-Workflow-Ziel existiert + published ist (workflow-validation.service.ts) -> ohne
 # installierte Pakete blieb der Bot taub, und `package uninstall` + Neustart brach ihn. Der Verteiler ruft
 # Paket-Agenten jetzt NUR noch ueber diesen Core-Sub: Ziel-ID und Paket bekommt er vom Aufrufer
-# als FESTE Build-Zeit-Eingaben (Get-WorkflowIdByName wie bisher), der eigentliche Aufruf nutzt eine
+# als FESTE Build-Zeit-Eingaben (Get-RequiredWorkflowId, name-aufgeloest), der eigentliche Aufruf nutzt eine
 # AUSDRUCKS-ID (n8n ueberspringt sie bei der Aktivierungspruefung; zur Laufzeit muss das Ziel published sein —
 # genau dann, wenn das Paket installiert ist).
 # Ablauf: Start -> Package status (core.fn_package_status) -> nutzbar?

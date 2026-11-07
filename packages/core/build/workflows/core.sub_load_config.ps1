@@ -44,29 +44,13 @@ return [{ json: out }];
         name        = 'Build Config Object'
     }
 
-    $sticky = [ordered]@{
-        parameters  = [ordered]@{
-            content = @'
-## core.sub_load_config
-
-Zentraler Config-Loader fuer alle Agenten (Sub-Workflow, passthrough; als erster Schritt aufgerufen). Loest die alte ENV-Var-Injection ab.
-
-**Ablauf:** Load core.config (SELECT category,key,value) -> Build Config Object (pivotet die Zeilen zu einem verschachtelten Objekt).
-
-**Rueckgabe:** ein Item, json = { model: { orchestrator, finance }, transcription: { provider }, ... }. Aufrufer lesen z. B. $('Load Config').item.json.model.finance.
-
-**Quelle:** core.config (Schema core) = generischer Config-Store; Zeilen kommen paket-skopiert aus den .config-Bloecken aller packages/*/manifest.json via seed_data.sh (_seed_package_config). model.*-Werte sind per Trigger gegen agent.ai_models (Enum) abgesichert. Neue Config = neuer Manifest-Eintrag, kein Workflow-Edit.
-'@
-            height  = 320
-            width   = 480
-            color   = 4
-        }
-        type        = 'n8n-nodes-base.stickyNote'
-        typeVersion = 1
-        position    = @(-832, -20)
-        id          = (New-Id)
-        name        = 'Doc: Überblick'
-    }
+    $sticky = Build-Sticky 'Doc: Überblick' @(-832, -20) -Header 'Ablauf' `
+        'core.sub_load_config' `
+        ('Zentraler Config-Loader für alle Agenten (Sub-Workflow, passthrough; als erster Schritt aufgerufen).' + "`n`n" +
+         'Ablauf: Load core.config (SELECT category,key,value) -> Build Config Object (pivotet die Zeilen zu einem verschachtelten Objekt).' + "`n`n" +
+         'Rückgabe: ein Item, json = { model: { orchestrator, finance }, transcription: { provider }, ... }. Aufrufer lesen z. B. $(''Load Config'').item.json.model.finance.' + "`n`n" +
+         'Quelle: core.config (Schema core) = generischer Config-Store; die Zeilen kommen paket-skopiert aus den .config-Blöcken aller packages/*/manifest.json via seed_data.sh (_seed_package_config). model.*-Werte zeigen per FK auf agent.ai_models. Neue Config = neuer Manifest-Eintrag, kein Workflow-Edit.') `
+        -Height 320 -Width 480
 
     $nodes = @($start, $load, $build, $sticky)
     $conns = [ordered]@{

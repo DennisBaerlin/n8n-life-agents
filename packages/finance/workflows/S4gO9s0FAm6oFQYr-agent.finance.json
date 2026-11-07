@@ -1,7 +1,6 @@
 {
     "id":  "S4gO9s0FAm6oFQYr",
     "name":  "agent.finance",
-    "active":  false,
     "nodes":  [
                   {
                       "parameters":  {
@@ -314,7 +313,7 @@
                                                             "value":  "UpUCUpPLqNnosD5B",
                                                             "mode":  "list",
                                                             "cachedResultUrl":  "/workflow/UpUCUpPLqNnosD5B",
-                                                            "cachedResultName":  "core.load_agent_context"
+                                                            "cachedResultName":  "agent.tool_load_context"
                                                         },
                                          "workflowInputs":  {
                                                                 "mappingMode":  "defineBelow",
@@ -7352,7 +7351,7 @@
                   },
                   {
                       "parameters":  {
-                                         "content":  "## agent.finance — Finance-Agent (Sub-Workflow)\nEingang: task, chat_id, call_depth (vom Orchestrator als Tool aufgerufen).\nPipeline (y=0): **Depth gate** (Anti-Loop) -\u003e **Package-Gate** (R4/WS-B8: nur wenn finance aktiv, sonst package_inactive) -\u003e Config laden (core.sub_load_config) -\u003e System-Prompt + Lazy-Manifest laden (agent.tool_load_context, static-concat global+finance) -\u003e Agent-Input bauen -\u003e **Finance Agent** (AI).\n**CQRS:** Reads frei via postgres_select / load_context (+ web_search fuer oeffentliche Produkt-Konditionen); Writes NUR ueber die tool_*-Sub-Workflows (jeweils HITL-Gate + atomar via agent.fn_*). Antwort geht zurueck an den Orchestrator.",
+                                         "content":  "## Ablauf\n**agent.finance — Buchhalter (Sub-Workflow)**\n\nEingang: task, chat_id, call_depth (vom Orchestrator als Tool aufgerufen).\nPipeline (y=0): Depth gate (Anti-Loop) -\u003e Package-Gate (nur wenn finance aktiv, sonst package_inactive) -\u003e Core-first-Gate (Haushalts-Onboarding offen -\u003e Hinweis statt Agent) -\u003e Load Config -\u003e Load Agent Context (System-Prompt + Lazy-Manifest) -\u003e Onboarding status read -\u003e Build Agent Input -\u003e Finance Agent.\nCQRS: Reads frei via postgres_select / load_context (+ web_search für öffentliche Produkt-Konditionen); Writes NUR über die tool_*-Sub-Workflows (jeweils HITL-Gate + atomar via agent.fn_*). Antwort geht zurück an den Orchestrator.",
                                          "height":  250,
                                          "width":  560,
                                          "color":  4
@@ -7368,7 +7367,7 @@
                   },
                   {
                       "parameters":  {
-                                         "content":  "## Anti-Loop-Backstop (Depth gate)\ncall_depth \u003e= 2 -\u003e strukturierte Ablehnung `{ok:false, error:\u0027max_call_depth\u0027}` VOR jedem LLM-Call (kein Cost, kein Owner-Alert). call_depth = Tiefe dieses Workflows (Orchestrator=0, Finance=1). Einziger noetiger Gate-Punkt: Tools koennen keinen Agenten aufrufen (n8n Bound-Tool-Closure) -\u003e Rekursion strukturell ausgeschlossen; der Gate ist Backstop fuer kuenftige Agent-\u003eAgent-Pfade. Details: Root-CLAUDE.md *Anti-Loop-Konvention*.",
+                                         "content":  "## Ablauf\n**Anti-Loop-Backstop (Depth gate)**\n\ncall_depth \u003e= 2 -\u003e strukturierte Ablehnung {ok:false, error:\u0027max_call_depth\u0027} VOR jedem LLM-Call (kein Cost, kein Owner-Alert). call_depth = Tiefe dieses Workflows (Orchestrator 0, Finance 1). Tools können keinen Agenten aufrufen (n8n Bound-Tool-Closure), die Rekursion ist strukturell ausgeschlossen; das Gate ist Backstop für künftige Agent-\u003eAgent-Pfade. Gesetz: packages/CLAUDE.md *Agent-Eingang*.",
                                          "height":  200,
                                          "width":  420,
                                          "color":  4
@@ -7384,7 +7383,7 @@
                   },
                   {
                       "parameters":  {
-                                         "content":  "## Routing-Status-Gate (WS-B8)\nBricht VOR dem LLM ab, wenn das finance-Paket nicht `status=\u0027active\u0027` ist: **Package active read** liest `core.fn_package_active(\u0027finance\u0027)` unter **finance_ro** (publiziertes SECURITY-DEFINER-Read-Window, D10 — kein direktes SELECT auf core.package_registry). **Package active gate** (`active === false`) -\u003e **Package inactive** `{ok:false, error:\u0027package_inactive\u0027}` (kein LLM-Cost), sonst weiter zu Load Config. Status kippt per CLI active\u003c-\u003einactive OHNE Redeploy -\u003e Laufzeit-Gate kappt den deaktivierten Pfad **strukturell** (kein Prompt-Vertrauen). onError=continue + `=== false` =\u003e DB-Lesefehler faellt **fail-open** durch (Normalfall finance aktiv); nur expliziter Nicht-active-Status (installing/installed/inactive) sperrt. Per-Paket generisch (Paketname im SQL); Crons sind hier NICHT gegatet (Lifecycle Phase 4/5, vertagt).",
+                                         "content":  "## Ablauf\n**Routing-Status-Gate**\n\nBricht VOR dem LLM ab, wenn das finance-Paket nicht status=active ist: Package active read liest core.fn_package_active(\u0027finance\u0027) unter finance_ro (publiziertes SECURITY-DEFINER-Lesefenster, kein direktes SELECT auf core.package_registry). Package active gate (active === false) -\u003e Package inactive {ok:false, error:\u0027package_inactive\u0027}, sonst weiter zum Core-first-Gate. Der Status kippt per CLI active\u003c-\u003einactive ohne Redeploy; das Laufzeit-Gate kappt den Pfad strukturell (kein Prompt-Vertrauen). onError=continue + \u0027=== false\u0027: ein DB-Lesefehler fällt fail-open durch, nur ein expliziter Nicht-active-Status sperrt. Die Paket-Crons gaten separat und fail-closed (fn_package_active UND cron_enable).",
                                          "height":  340,
                                          "width":  660,
                                          "color":  4
@@ -7400,7 +7399,7 @@
                   },
                   {
                       "parameters":  {
-                                         "content":  "## Core-first Hard-Gate (WS-3, immer-an Onboarding-Invariante)\n**Core onboarding read** liest `core.fn_onboarding_status(\u0027core\u0027)-\u003e\u003e\u0027complete\u0027` unter **finance_ro** (publiziertes SECURITY-DEFINER-Window; EXECUTE via fn_provision_package_roles). **Core onboarding gate** (`core_complete === false`) -\u003e **Core onboarding required** `{ok:false, output:\u0027... /onboarding ...\u0027}` (relaybarer DE-Hinweis, KEIN LLM-Cost), sonst weiter zu Load Config. **Invariante:** kein Paket vor dem Core-Onboarding (Haushalt). Sitzt NACH dem Package-active-Gate, VOR Load Config. onError=continue + `=== false` =\u003e DB-Lesefehler faellt **fail-open** durch (null !== false). Abgrenzung: nur Core-Haushalt; der weiche Finance-Self-Onboard (Onboarding status read, weiter rechts) nudged die Finanz-Sektionen erst NACH diesem Gate -\u003e mid-CORE blockt hart, mid-PAKET laeuft. Muster generisch (jeder Paket-Agent erbt es).",
+                                         "content":  "## Ablauf\n**Core-first-Gate (immer an)**\n\nCore onboarding read liest core.fn_onboarding_status(\u0027core\u0027) unter finance_ro (DEFINER-Lesefenster) und im selben Read den Hinweistext in der Sprache des Absenders (Textkatalog core.gate.*). Core onboarding gate (core_complete === false) -\u003e Core onboarding required {ok:false, output} (relaybar, kein LLM-Cost; ein Mitglied bekommt den Warte-Hinweis statt /onboarding), sonst weiter zu Load Config. Invariante: kein Paket vor dem Core-Onboarding (Haushalt). onError=continue + \u0027=== false\u0027: Lesefehler fällt fail-open durch. Der weiche Finance-Self-Onboard (Onboarding status read, weiter rechts) reicht die offenen Finanz-Sektionen erst NACH diesem Gate in den Prompt: mid-CORE blockt hart, mid-PAKET läuft. Gebaut vom geteilten Helfer New-AdvisorGateChain.",
                                          "height":  240,
                                          "width":  540,
                                          "color":  4
@@ -7416,7 +7415,7 @@
                   },
                   {
                       "parameters":  {
-                                         "content":  "## Modellwahl (Config-gesteuert)\nJe Claude-Modell des Registers ein Modell-Node (Haiku/Sonnet/Opus, Name = model_key) + Model Selector — generiert vom gemeinsamen Builder New-ModelSelectorBundle (lib/build_helpers.ps1), UEBERALL identisch (finance/advisor/orchestrator). Der Selector liest **core.config** ueber Load Config (core.sub_load_config): model.finance = model_key; eine Regel je Modell (model_key -\u003e selector_index) aus packages/core/seed/ai_models.json. Standard claude-sonnet-latest (zuverlaessiges Function-Calling, Denk-Tiefe medium). Adaptives Thinking an, KEINE Sampling-Parameter (5.5-Generation -\u003e 400). Modell wechseln = model.*-Wert im .config-Block eines packages/*/manifest.json + re-seed (provision.sh / Substrat -Reset), kein Workflow-Edit.",
+                                         "content":  "## Ablauf\n**Modellwahl (Config-gesteuert)**\n\nDer geteilte Builder New-ModelSelectorBundle (lib/build_helpers.ps1) erzeugt je Chat-Modell des Registers einen Modell-Node (Name = model_key) plus Model Selector. Der Selector liest core.config über Load Config: model.finance = model_key, eine Regel je Modell (model_key -\u003e selector_index) aus packages/core/seed/ai_models.json; Denk-Tiefe medium. Keine Sampling-Parameter (die 5.5-Generation lehnt sie mit 400 ab). Modell wechseln = lifeagents config set model finance \u003cwert\u003e oder der model.*-Wert im .config-Block des Manifests, kein Workflow-Edit.",
                                          "height":  200,
                                          "width":  480,
                                          "color":  4
@@ -7432,7 +7431,7 @@
                   },
                   {
                       "parameters":  {
-                                         "content":  "## Chat-Memory\nEigene Tabelle agent.finance_chat_memory (sessionKey = chat_id, Fenster 15, zaehlt inkl. Tool-Nachrichten) fuer Multi-Turn-Dialoge. Getrennt von agent.orchestrator_chat_memory.",
+                                         "content":  "## Ablauf\n**Chat-Memory**\n\nEigene Tabelle agent.finance_chat_memory (sessionKey = chat_id, Fenster 15; das Fenster zählt Tool-Nachrichten mit) für Multi-Turn-Dialoge. Getrennt von agent.orchestrator_chat_memory.",
                                          "height":  150,
                                          "width":  340,
                                          "color":  4
@@ -7448,7 +7447,7 @@
                   },
                   {
                       "parameters":  {
-                                         "content":  "## Write-Tools (CQRS) — je HITL-Gate + atomar\nBooking: book_dividend/transfer/transaction/stock_buy/stock_sell/loan_payment\nCreate: create_account/insurance/loan/real_estate/savings_goal/recurring_payment/pension\nSet (Update bestehender Entitaeten): set_account/set_account_interest/set_real_estate/set_pension/set_insurance/set_loan/set_recurring_payment/set_savings_goal/set_holding/set_asset_classes (Anlageklassen mehrerer Positionen, eine Karte; auch beim Berater gebunden)\nReconcile: reconcile_account (ein Konto) / reconcile_accounts_batch (mehrere Staende auf einmal -\u003e Monats-Reminder, ein Sammel-Approval). Close: close_account\nVoid: void_transaction (Hard-DELETE einer Fehlbuchung; Kredit-Paar zusammen; Holding-Zeile bleibt)\nSparplan: create_savings_plan/book_savings_plan_execution/set_savings_plan/close_savings_plan (Depot + monatlicher Cash-Debit + Broker-Ausfuehrung; Cron fn_recurring_due_open erkennt Ausfuehrung via rp_id+due_date auf buy-Tx automatisch)\nDatumsfelder: das Modell gibt relative Angaben roh weiter (\"yesterday\", \"in 2 weeks\"; Text = Get-DateParamHint), die Write-fn rechnet sie (core.fn_resolve_input_dates), unlesbar -\u003e ok:false invalid_date, keine Karte. Die Karte zeigt das aufgeloeste Datum aus dem Probelauf (effective).\nWrite-Logik in agent.fn_*. transfer = nur zwischen EIGENEN Konten; book_transaction = externe Ausgabe/Einnahme (1 Bein). set_* aendert NUR Bestehendes (partielles UPDATE, Resolve per Name); set_insurance synct den verknuepften Beitrag, set_pension kaskadiert Status auf den Beitrag, set_account_interest schliesst die offene Zinszeile. Reads: postgres_select (Views bevorzugt) + load_context (lazy) + web_search (nur oeffentliche Produkt-Konditionen nachschlagen, z. B. Kontozins; eintragen erst nach Chat-Ja via set_account_interest).\n\npostgres_select (geteilter Builder New-PostgresSelectToolNode): onError=continueRegularOutput -\u003e fehlerhafte SELECT gibt DB-Fehler an Agent zurueck (selbst korrigieren); fehlt das query-Argument, liefert der Guard {ok:false, error} statt eines n8n-Absturzes. Views sind stabiles Schema-Interface.",
+                                         "content":  "## Ablauf\n**Tools: Writes nur über tool_*, Reads frei**\n\nJedes tool_* ist ein toolWorkflow-Node (Name = Tool-Name, Bau über New-ToolWorkflowNode); die Liste ist der Canvas, die Verben stehen in packages/CLAUDE.md *Verb-Taxonomie*. Jedes Write-Tool hat ein HITL-Gate und schreibt atomar über eine agent.fn_*-Function.\n\nDatumsfelder: das Modell gibt relative Angaben roh weiter (Text = Get-DateParamHint), die Write-fn löst sie auf (core.fn_resolve_input_dates); unlesbar -\u003e ok:false invalid_date, keine Karte. Die Karte zeigt das aufgelöste Datum aus dem Probelauf.\ntransfer = nur zwischen EIGENEN Konten; book_transaction = externe Ausgabe/Einnahme (ein Bein). set_* ändert nur Bestehendes (partielles UPDATE, Auflösung per Name).\nReads: postgres_select (Views bevorzugt; geteilter Builder New-PostgresSelectToolNode: onError=continueRegularOutput gibt den DB-Fehler an den Agenten zurück, fehlt das query-Argument, liefert der Guard {ok:false, error}) + load_context (lazy) + web_search (nur öffentliche Produkt-Konditionen nachschlagen, z. B. Kontozins; eingetragen wird erst nach dem Chat-Ja über set_account_interest).",
                                          "height":  230,
                                          "width":  760,
                                          "color":  4
@@ -8670,9 +8669,10 @@
                     },
     "settings":  {
                      "executionOrder":  "v1",
-                     "binaryMode":  "separate",
-                     "errorWorkflow":  "Nd3UVmUTzTLOBeba"
+                     "errorWorkflow":  "Nd3UVmUTzTLOBeba",
+                     "binaryMode":  "separate"
                  },
+    "active":  false,
     "staticData":  null,
     "pinData":  {
 

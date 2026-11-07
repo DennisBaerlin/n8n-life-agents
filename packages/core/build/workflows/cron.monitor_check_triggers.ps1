@@ -80,8 +80,7 @@ return [{ json: {
 
     $ifReport = Build-If 'Anything to report?' @(720, 0) `
         '={{ ($json.fired_count || 0) + ($json.info_count || 0) + ($json.problem_count || 0) }}' '0' 'larger' 'number'
-    $quiet = [ordered]@{ parameters = @{}; type = 'n8n-nodes-base.noOp'; typeVersion = 1
-        position = @(900, 200); id = (New-Id); name = 'Quiet run' }
+    $quiet = Build-NoOp 'Quiet run' @(900, 200)
 
     # Deterministische Message in Owner-Sprache (geteilter Renderer; Zahlen/Daten per Intl); Domain->Paket-Map
     # BUILD-TIME aus den Manifest-advisors-Bloecken ($AdvisorDomainList — Wert-Fragen -> Fach-Advisor des Pakets,

@@ -41,7 +41,7 @@ Usage: lifeagents <befehl> [optionen]
               aus dem oeffentlichen Repo). Sichert vor jedem Versionswechsel die ganze DB.
               --version <tag> = genau dieses Release; aelter als installiert nur mit
               --allow-downgrade (besser: lifeagents rollback). Die Timer des Updates im Chat
-              rufen intern --check (taeglicher Release-Check) und --run-requested auf; im Docker-Verbund
+              rufen intern --check --scheduled (Release-Check alle 2 Stunden) und --run-requested auf; im Docker-Verbund
               ersetzt die Schleife im master beide durch --tick (jede Minute).
   rollback    Nach einem gescheiterten Update zurück zur vorherigen Version: stellt die Daten
               der Sicherung von vor dem Update her und spielt den vorherigen Stand ein. Daten

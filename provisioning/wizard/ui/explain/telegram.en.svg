@@ -37,7 +37,7 @@ text { font-family: var(--font); fill: var(--ink); }
   <rect x="40" y="8" width="220" height="324" rx="26" fill="var(--bg)" stroke="var(--ink)" stroke-width="3" />
   <g transform="translate(56 22) scale(0.85)"><path xmlns="http://www.w3.org/2000/svg" d="M13 2.5 L22 10 V19.5 H11.5 L7 23.5 V19.5 H4 V10 Z" fill="var(--mark, var(--accent))" stroke="var(--mark, var(--accent))" stroke-width="2" stroke-linejoin="round" /><path xmlns="http://www.w3.org/2000/svg" d="M8.6 12.8 L11.7 15.8 L17.4 10" fill="none" stroke="var(--mark-check, var(--bg))" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" /></g>
   <text x="84" y="36" font-size="14" font-weight="600">lifeagents</text>
-  <text class="sub" x="84" y="51">bot</text>
+  <text class="sub" x="84" y="51">assistant</text>
   <path d="M42 62 H258" stroke="var(--hairline)" stroke-width="1.5" />
   <g class="in1">
     <rect class="mine" x="74" y="70" width="176" height="70" rx="12" />
@@ -83,5 +83,5 @@ text { font-family: var(--font); fill: var(--ink); }
   <text class="cap on2" x="300" y="170"><tspan x="300" dy="-42">It checks your savings goals and</tspan><tspan x="300" dy="28">upcoming payments. On Telegram,</tspan><tspan x="300" dy="28">an assistant like this is called</tspan><tspan x="300" dy="28">a bot.</tspan></text>
   <text class="cap on3" x="300" y="170"><tspan x="300" dy="-14">It also thinks of everything</tspan><tspan x="300" dy="28">coming up.</tspan></text>
   <text class="cap on4" x="300" y="170">It's happy for you.</text>
-  <text class="cap on5" x="300" y="170" font-weight="600"><tspan x="300" dy="-14">Everything at a glance, right</tspan><tspan x="300" dy="28">inside Telegram.</tspan></text>
+  <text class="cap on5" x="300" y="170" font-weight="600"><tspan x="300" dy="-28">Everything at a glance, right</tspan><tspan x="300" dy="28">inside Telegram. There your</tspan><tspan x="300" dy="28">assistant is called a bot.</tspan></text>
 </svg>

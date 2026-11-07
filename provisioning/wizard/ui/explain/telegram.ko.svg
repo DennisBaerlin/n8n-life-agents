@@ -37,7 +37,7 @@ text { font-family: var(--font); fill: var(--ink); }
   <rect x="40" y="8" width="220" height="324" rx="26" fill="var(--bg)" stroke="var(--ink)" stroke-width="3" />
   <g transform="translate(56 22) scale(0.85)"><path xmlns="http://www.w3.org/2000/svg" d="M13 2.5 L22 10 V19.5 H11.5 L7 23.5 V19.5 H4 V10 Z" fill="var(--mark, var(--accent))" stroke="var(--mark, var(--accent))" stroke-width="2" stroke-linejoin="round" /><path xmlns="http://www.w3.org/2000/svg" d="M8.6 12.8 L11.7 15.8 L17.4 10" fill="none" stroke="var(--mark-check, var(--bg))" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" /></g>
   <text x="84" y="36" font-size="14" font-weight="600">lifeagents</text>
-  <text class="sub" x="84" y="51">봇</text>
+  <text class="sub" x="84" y="51">어시스턴트</text>
   <path d="M42 62 H258" stroke="var(--hairline)" stroke-width="1.5" />
   <g class="in1">
     <rect class="mine" x="74" y="70" width="176" height="70" rx="12" />
@@ -79,9 +79,9 @@ text { font-family: var(--font); fill: var(--ink); }
       <text class="val" x="62" y="278">11월 15일: 49 €</text>
     </g>
   </g>
-  <text class="cap on1" x="300" y="170"><tspan x="300" dy="-42">밖에서 어시스턴트에게 바로</tspan><tspan x="300" dy="28">물어보세요. 휴대폰은 늘 곁에</tspan><tspan x="300" dy="28">있고, Telegram도 대개 이미</tspan><tspan x="300" dy="28">있어요.</tspan></text>
-  <text class="cap on2" x="300" y="170"><tspan x="300" dy="-28">저축 목표와 예정된 결제를</tspan><tspan x="300" dy="28">살펴봐요. Telegram에서는 이런</tspan><tspan x="300" dy="28">어시스턴트를 봇이라고 불러요.</tspan></text>
+  <text class="cap on1" x="300" y="170"><tspan x="300" dy="-42">밖에서 어시스턴트에게 바로</tspan><tspan x="300" dy="28">물어보세요. 휴대폰은 늘 곁에</tspan><tspan x="300" dy="28">있고, 텔레그램도 대개 이미</tspan><tspan x="300" dy="28">있어요.</tspan></text>
+  <text class="cap on2" x="300" y="170"><tspan x="300" dy="-28">저축 목표와 예정된 결제를</tspan><tspan x="300" dy="28">살펴봐요. 텔레그램에서는 이런</tspan><tspan x="300" dy="28">어시스턴트를 봇이라고 불러요.</tspan></text>
   <text class="cap on3" x="300" y="170"><tspan x="300" dy="-14">앞으로 있을 일까지 모두</tspan><tspan x="300" dy="28">고려해요.</tspan></text>
   <text class="cap on4" x="300" y="170">함께 기뻐해요.</text>
-  <text class="cap on5" x="300" y="170" font-weight="600"><tspan x="300" dy="-14">모든 것을 한눈에, Telegram</tspan><tspan x="300" dy="28">안에서 바로.</tspan></text>
+  <text class="cap on5" x="300" y="170" font-weight="600"><tspan x="300" dy="-28">모든 것을 한눈에, 텔레그램</tspan><tspan x="300" dy="28">안에서 바로. 텔레그램에서는</tspan><tspan x="300" dy="28">어시스턴트를 봇이라고 불러요.</tspan></text>
 </svg>

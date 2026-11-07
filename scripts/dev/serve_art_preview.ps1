@@ -1,7 +1,8 @@
 ﻿#Requires -Version 5.1
 # serve_art_preview.ps1 -- Vorschau der Erklär-Bilder (Quellen config/ui.art.*.svg, Generator scripts/lib/ui_art.ps1) im Browser
 # der Claude-Desktop-App (Vorschau-Eintrag "explain-art" in .claude/launch.json). Erzeugt bei jeder Anfrage neu aus den Quellen,
-# in ALLEN Sprachen und hell/dunkel (auch Kombinationen, die kein Verbraucher bekommt), schreibt nichts ins Repo.
+# in ALLEN Sprachen und hell/dunkel (auch Kombinationen, die kein Verbraucher bekommt), schmale Wizard-Fassungen als *.compact.svg;
+# schreibt nichts ins Repo.
 #   .\scripts\dev\serve_art_preview.ps1 [-Port 8790]
 #   http://localhost:8790/?lang=de&theme=dark          Galerie (lang: de|en|ko|all, theme: light|dark)
 #   http://localhost:8790/?lang=de&t=4.5               alle Bilder bei Sekunde 4.5 angehalten (Aufnahmen je Szene)
@@ -29,6 +30,7 @@ function Get-PreviewSvgs {
         $src = [System.IO.File]::ReadAllText((Join-Path $RepoRoot $srcPath), $Utf8NoBom).Replace("`r`n", "`n")
         foreach ($lang in 'de', 'en', 'ko') { foreach ($theme in 'light', 'dark') { foreach ($v in $a.Variants) {
                     $map[(Get-UiArtFileName $a.Name $v $lang $theme)] = ConvertTo-UiArtSvg $src $v $cat[$lang] $lang $theme $tokens $markPaths $srcPath
+                    if (@($a.Targets | Where-Object { $_.Compact }).Count -gt 0) { $map[(Get-UiArtFileName $a.Name $v $lang $theme) -replace '\.svg$', '.compact.svg'] = ConvertTo-UiArtSvg $src $v $cat[$lang] $lang $theme $tokens $markPaths $srcPath $true }
                 } } }
     }
     $map
@@ -38,7 +40,7 @@ function Get-PreviewSvgs {
 function Get-Gallery([string]$Lang, [string]$Theme, [string]$T) {
     $bg = if ($Theme -eq 'dark') { '#12181D' } else { '#FFFFFF' }
     $fg = if ($Theme -eq 'dark') { '#A2B1BC' } else { '#55636E' }
-    $names = @((Get-PreviewSvgs).Keys | Where-Object { $_ -like "*.$Theme.svg" -and ($Lang -eq 'all' -or $_ -like "*.$Lang.$Theme.svg") })
+    $names = @((Get-PreviewSvgs).Keys | Where-Object { $_ -like "*.$Theme*.svg" -and ($Lang -eq 'all' -or $_ -like "*.$Lang.$Theme*.svg") })
     $items = ($names | ForEach-Object { "<p>$_</p><object type=`"image/svg+xml`" data=`"/svg/$_`"></object>" }) -join "`n"
     $freeze = if ($T) { "<script>const t=$([double]::Parse($T, [Globalization.CultureInfo]::InvariantCulture))*1000;document.querySelectorAll('object').forEach(o=>o.addEventListener('load',()=>{o.contentDocument.getAnimations().forEach(a=>{a.pause();a.currentTime=t;});}));</script>" } else { '' }
     "<!doctype html><html><head><meta charset=`"utf-8`"><title>Erklär-Bilder</title><style>body{margin:0;padding:16px;background:$bg;color:$fg;font:13px system-ui,sans-serif} object{display:block;width:720px;margin:4px 0 18px} p{margin:0}</style></head><body>$items$freeze</body></html>"

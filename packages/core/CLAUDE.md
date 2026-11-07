@@ -7,7 +7,6 @@ Host-Paket: Agent-Plattform (Schemas `agent` + `core`) — Orchestrator, Guide, 
 - Genau ein `draft` und ein `active` je `(domain, person_id)` — die Partial-UNIQUEs brauchen **`NULLS NOT DISTINCT`**, sonst kollidieren zwei household-NULL-Zeilen nicht und die Invariante gilt still nicht.
 - `person_id` kommt nur aus `agent.fn_resolve_sender(chat_id)` (Registry-Scope), nie vom LLM; Owner-Anker `agent.fn_owner_person_id()`.
 - Publish prüft vor dem Write, dass jeder Plan-Top-Block aus genau einer Sektion stammt (`jsonb_each`-Merge ist storage-order → Doppelung verlöre still eine Hälfte) → `{ok:false, reason}`.
-
 ## Trigger-Monitoring (`agent.monitor_*`)
 
 - **Cron-vs-Trigger-Gesetz:** schreibt es in Domänen-Tabellen oder führt es einen Dialog → n8n-Cron (Entwickler baut ihn); beobachtet es nur einen Wert → Trigger-Zeile (Agent per HITL). Kein dritter Mechanismus, kein Workflow-Bau zur Laufzeit; `cron_check_triggers` ist der einzige Heartbeat.

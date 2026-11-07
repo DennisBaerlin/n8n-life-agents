@@ -17,6 +17,8 @@
 --       die chat_id LLM-gesteuert. Der career_advisor liest seinen Plan ueber das gebundene read_plan-Werkzeug unter
 --       der Haupt-Credential (Security-Audit 2026-10, "strikt privat").
 --
+--   interview_state kommt gerendert: ein Abschnitt mit Themen traegt content = seine Themen als "<Thema>: <Text>" in
+--   Reihenfolge (gespeichert ist dort kein content), dazu topics und legacy_content (Alt-Gesamttext, nur Quelle).
 --   Liefert die OPERATIV relevanten Zeilen (draft + active) — KEINE superseded-Historie. p_domain deckt auch
 --   den E2E-Sentinel '__e2e_finance__' ab (household, kein scope-Eintrag -> person_id NULL, m4-verifiziert).
 --
@@ -63,8 +65,20 @@ BEGIN
         END IF;
     END IF;
 
+    -- Themen-Abschnitte (fn_advisor_save_section mit topic) speichern keinen Abschnitts-content: content wird hier aus den
+    -- Themen in Reihenfolge gerendert ("<Thema>: <Text>"); topics und legacy_content bleiben fuer den Berater drin.
     RETURN QUERY
-    SELECT ap.domain, ap.plan_name, ap.status, ap.version, ap.interview_state, ap.plan_md, ap.updated_at
+    SELECT ap.domain, ap.plan_name, ap.status, ap.version,
+           CASE WHEN jsonb_typeof(ap.interview_state) = 'object' THEN
+               COALESCE((SELECT jsonb_object_agg(s.key, CASE
+                           WHEN jsonb_typeof(s.value->'topics') = 'array' AND jsonb_array_length(s.value->'topics') > 0
+                           THEN s.value || jsonb_build_object('content',
+                                  (SELECT string_agg((t->>'topic') || ': ' || (t->>'content'), E'\n\n' ORDER BY i)
+                                     FROM jsonb_array_elements(s.value->'topics') WITH ORDINALITY AS x(t, i)))
+                           ELSE s.value END)
+                         FROM jsonb_each(ap.interview_state) AS s), '{}'::jsonb)
+           ELSE ap.interview_state END,
+           ap.plan_md, ap.updated_at
     FROM agent.advisor_plans ap
     WHERE ap.domain = p_domain
       AND ap.person_id IS NOT DISTINCT FROM v_pid

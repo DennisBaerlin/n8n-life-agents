@@ -984,11 +984,21 @@ function Set-OwnerLanguage([string]$Code) {
     $r = Invoke-TestN8nPsql -Container $Container -PsqlArgs @('-q', '-c', $sql)
     if ($r.Code -ne 0) { throw "Owner-Sprache setzen fehlgeschlagen: $($r.Output -join ' ')" }
 }
-function Send-PlanSection([string]$Domain, [string]$Key, [string]$Content, [string]$ChatId = $OwnerUnpaired) {
-    Send-HarnessPost 'plan-section-test' @{ domain = $Domain; section_key = $Key; section_content = $Content; section_data = ''; plan_name = ''; chat_id = $ChatId }
+# finance verlangt ein Thema je Save (advisor.topic_max_chars) -> Default-Thema; '' prueft die Ablehnung ohne Thema.
+function Send-PlanSection([string]$Domain, [string]$Key, [string]$Content, [string]$ChatId = $OwnerUnpaired, [string]$Topic = 'Probe-Thema') {
+    Send-HarnessPost 'plan-section-test' @{ domain = $Domain; section_key = $Key; topic = $Topic; section_content = $Content; section_data = ''; plan_name = ''; chat_id = $ChatId }
 }
-function Send-PlanPublish([string]$Domain, [string]$Change, [string]$ChatId = $OwnerUnpaired) {
-    Send-HarnessPost 'plan-publish-test' @{ domain = $Domain; plan_md = 'Probe-Plan'; plan_name = ''; change_summary = $Change; context_description = ''; chat_id = $ChatId }
+# finance verlangt den Gesamtcheck (advisor.final_check_required) -> ein bewusst offener Probe-Fund, damit die Karte ihn zeigt.
+function Send-PlanPublish([string]$Domain, [string]$Change, [string]$ChatId = $OwnerUnpaired,
+                          [string]$Findings = '[{"text":"Probe-Fund offen","outcome":"deferred"},{"text":"Probe-Fund geklaert","outcome":"resolved"}]') {
+    Send-HarnessPost 'plan-publish-test' @{ domain = $Domain; plan_md = 'Probe-Plan'; plan_name = ''; change_summary = $Change; context_description = ''; check_findings = $Findings; check_passes = '2'; chat_id = $ChatId }
+}
+# Endete der letzte Lauf des Tools im Probelauf-Abbruch (keine Karte)? Liefert die Probleme (leer = ja).
+function Get-DryRunRejectProblem($Exec, [string]$Code) {
+    $rej = $null; try { $rej = $Exec.data.resultData.runData.'Dry run rejected'[0].data.main[0][0].json } catch { }
+    if (-not $rej) { return @('kein Probelauf-Abbruch (Dry run rejected) im Lauf') }
+    if ($Code -and ([string]$rej.code) -ne $Code) { return @("Probelauf-Abbruch mit code '$($rej.code)' statt '$Code'") }
+    @()
 }
 function Get-CardTextProblems([string]$Text, [string[]]$Must, [string[]]$Forbid) {
     $bad = @()
@@ -1018,6 +1028,7 @@ try {
                 $probs += Get-CardTextProblems ([string]$m.body.text) @(
                     (Get-LocaleText 'finance' $lang 'finance.plan.name'),
                     (Get-LocaleText 'finance' $lang 'finance.plan_section.household_basics'),
+                    ((Get-LocaleText 'core' $lang 'core.label.topic') + ': Probe-Thema'),
                     'Zwei Erwachsene', '{bleibt}') $InternalNames
                 $probs += Complete-CardTaps $id @($false)
             }
@@ -1036,17 +1047,18 @@ try {
     Write-RepeatCase 'hitlP2' 'Abschnitt ohne Katalogeintrag: lesbarer Rueckfall' $probs
 } catch { Register-Abort $_ 'hitlP2' }
 
-# hitlP3: Text ohne Leerzeichen ueber dem Telegram-Limit geht vollstaendig durch, nichts gekuerzt.
+# hitlP3: Text ohne Leerzeichen ueber dem Telegram-Limit geht vollstaendig durch, nichts gekuerzt. Auf career: finance begrenzt
+# den Thementext (advisor.topic_max_chars, hitlP9), career hat keine Grenze.
 try {
     Test-ForceAbort 'hitlP3' $ForceAbortId
     Clear-MockTelegramRequests -Container $Container
-    Send-PlanSection 'finance' 'risk_profile' (('Q' * 6000) + ' hitlP3')
+    Send-PlanSection 'career' 'situation' (('Q' * 6000) + ' hitlP3') ([string]$PairedUidOwner) 'Langtext'
     $m = Wait-ButtonSend 'hitlP3' ''
     $probs = @()
     if (-not $m) { $probs += 'Karte nicht abgefangen' }
     else {
         $sent = @(Get-MockTelegramRequests -Container $Container | Where-Object { $_.method -eq 'sendMessage' })
-        $probs += Get-BodyProblems $sent 0 6000 @((Get-LocaleText 'finance' 'de' 'finance.plan_section.risk_profile'))
+        $probs += Get-BodyProblems $sent 0 6000 @((Get-LocaleText 'career' 'de' 'career.plan_section.situation'))
         $probs += Complete-CardTaps 'hitlP3' @($false)
     }
     Write-RepeatCase 'hitlP3' 'Plan-Text ohne Leerzeichen ueber dem Limit: vollstaendig' $probs
@@ -1117,7 +1129,9 @@ try {
     $m = Wait-ButtonSend 'hitlP7a' ''
     if (-not $m) { $probs += 'Veroeffentlichen-Karte nicht abgefangen' }
     else {
-        $probs += Get-CardTextProblems ([string]$m.body.text) @((Get-LocaleText 'finance' 'de' 'finance.plan.name')) $InternalNames
+        # Gesamtcheck-Zeile mit den Zahlen der DB, darunter nur der nicht geklaerte Fund.
+        $fc = (Get-LocaleText 'core' 'de' 'core.tpl.final_check_counts').Replace('{n}', '2').Replace('{resolved}', '1').Replace('{open}', '1').Replace('{passes}', '2')
+        $probs += Get-CardTextProblems ([string]$m.body.text) @((Get-LocaleText 'finance' 'de' 'finance.plan.name'), $fc, 'Probe-Fund offen') ($InternalNames + @('Probe-Fund geklaert'))
         $probs += Complete-CardTaps 'hitlP7a' @($false)
         Clear-MockTelegramRequests -Container $Container
         $gateBase = Get-MaxExecId -WfId $gateWfId -BridgeUrl $N8nUrl -ApiKey $ApiKey
@@ -1128,6 +1142,48 @@ try {
     Write-RepeatCase 'hitlP7' 'Veroeffentlichen-Karte: Planname, Sperre je Domain' $probs
 } catch {
     Register-Abort $_ 'hitlP7' -Extra {
+        Invoke-TestN8nPsql -Container $Container -PsqlArgs @('-q', '-c', 'SELECT agent.fn_clear_e2e_data();') | Out-Null
+    }
+}
+
+# hitlP9: Laengen-Gesetz finance (advisor.topic_max_chars): ohne Thema und mit zu langem Thementext lehnt der Probelauf ab, keine Karte.
+try {
+    Test-ForceAbort 'hitlP9' $ForceAbortId
+    $probs = @()
+    Clear-MockTelegramRequests -Container $Container
+    $toolBase = Get-MaxExecId -WfId $saveWfId -BridgeUrl $N8nUrl -ApiKey $ApiKey
+    Send-PlanSection 'finance' 'debts_loans' 'Probe hitlP9a' $OwnerUnpaired ''
+    $probs += Get-DryRunRejectProblem (Wait-NewExec $saveWfId $toolBase -Finished) 'topic_required'
+    $toolBase = Get-MaxExecId -WfId $saveWfId -BridgeUrl $N8nUrl -ApiKey $ApiKey
+    Send-PlanSection 'finance' 'debts_loans' (('W ' * 2000) + 'hitlP9b') $OwnerUnpaired 'Zu lang'
+    $probs += Get-DryRunRejectProblem (Wait-NewExec $saveWfId $toolBase -Finished) 'topic_too_long'
+    if (@(Get-MockTelegramRequests -Container $Container | Where-Object { $_.method -eq 'sendMessage' -and ([string]$_.body.text) -match 'hitlP9' }).Count) {
+        $probs += 'trotz Ablehnung eine Karte gesendet'
+    }
+    Write-RepeatCase 'hitlP9' 'Plan-Thema: ohne Thema oder zu lang -> keine Karte, Grund ans Modell' $probs
+} catch { Register-Abort $_ 'hitlP9' }
+
+# hitlP10: erstes Thema auf einem Abschnitt mit Alt-Gesamttext -> Notiz auf der Karte (laufende Entwuerfe vor den Themen).
+try {
+    Test-ForceAbort 'hitlP10' $ForceAbortId
+    $probs = @()
+    # Ohne doppelte Anfuehrungszeichen: PS 5.1 verstuemmelt sie in Argumenten nativer Programme.
+    $seed = "SELECT agent.fn_advisor_save_section(jsonb_build_object('domain', '__e2e_finance__', 'chat_id', 'test_e2e_hitl', 'section_key', 'household_basics', 'topic', 'Haushalt', 'section_content', 'Probe')); " +
+            "UPDATE agent.advisor_plans SET interview_state = interview_state || jsonb_build_object('debts_loans', jsonb_build_object('content', 'Alter Gesamttext hitlP10')) WHERE domain = '__e2e_finance__' AND status = 'draft';"
+    $r = Invoke-TestN8nPsql -Container $Container -PsqlArgs @('-q', '-c', $seed)
+    if ($r.Code -ne 0) { throw "Alt-Abschnitt anlegen fehlgeschlagen: $($r.Output -join ' ')" }
+    Clear-MockTelegramRequests -Container $Container
+    Send-PlanSection '__e2e_finance__' 'debts_loans' 'Neues Thema hitlP10' $OwnerUnpaired 'Kredit'
+    $m = Wait-ButtonSend 'hitlP10' ''
+    if (-not $m) { $probs += 'Karte nicht abgefangen' }
+    else {
+        $probs += Get-CardTextProblems ([string]$m.body.text) @((Get-LocaleText 'core' 'de' 'core.hitl.plan_legacy_replaced')) @('Alter Gesamttext')
+        $probs += Complete-CardTaps 'hitlP10' @($false)
+    }
+    Invoke-TestN8nPsql -Container $Container -PsqlArgs @('-q', '-c', 'SELECT agent.fn_clear_e2e_data();') | Out-Null
+    Write-RepeatCase 'hitlP10' 'Plan-Thema auf Alt-Abschnitt: Notiz Ersetzt den bisherigen Gesamttext' $probs
+} catch {
+    Register-Abort $_ 'hitlP10' -Extra {
         Invoke-TestN8nPsql -Container $Container -PsqlArgs @('-q', '-c', 'SELECT agent.fn_clear_e2e_data();') | Out-Null
     }
 }

@@ -9,7 +9,8 @@
 --   gemeinsamen Helfer fn_mark_loan_paid_off. Der Zustand davor (Kredit-Status, Raten-rp/-Status/-Ende) landet in
 --   loans.settled_from -> fn_void_transaction stellt ihn exakt her.
 --   KORRIGIERBAR (kein RAISE): keine Restschuld (already settled) bzw. settlement_amount < Restschuld
---     (Teilzahlung -> book_loan_payment) -> {ok:false, reason, remaining_debt}.
+--     (Teilzahlung -> book_loan_payment) -> {ok:false, reason, remaining_debt}; Belastungskonto in anderer Waehrung als
+--     das Kreditkonto (fn_loan_debit_currency_reason) -> {ok:false, reason}.
 --   Eingabe jsonb: loan_name, debit_account_id (n8n-resolved), settlement_date,
 --     settlement_amount (optional; default = Restschuld).
 --   RUECKGABE: {ok:true, settlement_tx_id, principal_tx_id, remaining_debt, interest}.
@@ -53,7 +54,9 @@ BEGIN
     SELECT * INTO v_loan FROM finance.loans WHERE id = v_resolve.loan_id;
 
     -- Korrigierbar (Audit Paket 2, Kontotyp): die Abloesung zahlt ein Geld-Konto, nie ein Depot oder Kreditkonto.
-    v_reason := finance.fn_bookable_account_reason(v_debit);
+    v_reason := COALESCE(finance.fn_bookable_account_reason(v_debit),
+                         -- die Abloesesumme ist in Kreditwaehrung
+                         finance.fn_loan_debit_currency_reason(v_debit, v_loan.loan_account_id));
     IF v_reason IS NOT NULL THEN
         RETURN jsonb_build_object('ok', false, 'reason', v_reason);
     END IF;

@@ -5,6 +5,7 @@
 --   Gegenkonto). Verwendung: Versicherungs-Abbuchung, Miete, Gehalt, Erstattung, externe Gebuehr.
 --   Eingabe jsonb: account_id (im n8n aufgeloest), amount (IMMER positiv), direction
 --   ('inflow'|'outflow'), category (optional, Default 'other'; sinnvoll: 'fee'/'interest'/'other'),
+--   interest_correction (optional, nur intern: erlaubt interest als outflow fuer die Zinskorrektur des Kontoauszugs),
 --   description (optional -> sonst Auto), transaction_date (ISO oder relativ, core.fn_resolve_input_dates;
 --   leer = heute). Die Richtung bestimmt das VORZEICHEN
 --   (outflow = -, inflow = +); der Saldo wird danach per trg_finance_balance_update gepflegt.
@@ -15,7 +16,7 @@
 --   (finance.fn_bookable_account_reason; Backstop trg_finance_reject_account_type_txn).
 --   RUECKGABE-VERTRAG: Erfolg -> {ok:true, tx_id, amount, account_balance} (amount = signiert
 --   aus direction berechnet, gerundet wie gespeichert; account_balance = neuer Saldo, in derselben Transaktion gelesen).
---   Korrigierbar (direction/amount/Kategorie/fee-needs-outflow/Kontotyp) -> {ok:false, reason} OHNE Write
+--   Korrigierbar (direction/amount/Kategorie/fee-needs-outflow/interest-needs-inflow/Kontotyp) -> {ok:false, reason} OHNE Write
 --   (kein RAISE -> kein Owner-Alert).
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_book_transaction(p jsonb)
@@ -78,6 +79,12 @@ BEGIN
     IF v_cat = 'fee' AND v_signed > 0 THEN
         RETURN jsonb_build_object('ok', false,
             'reason', 'Category fee requires an outflow (an expense), but the direction is inflow.');
+    END IF;
+    -- Strafzins/Verwahrentgelt ist fee (Zins-Pfad bleibt habensaldo-only). Ausnahme: die negative Zinskorrektur des
+    -- Kontoauszug-Abgleichs (fn_apply_bank_statement setzt interest_correction; das Tool reicht den Key nicht durch).
+    IF v_cat = 'interest' AND v_signed < 0 AND NOT COALESCE((p->>'interest_correction')::boolean, false) THEN
+        RETURN jsonb_build_object('ok', false,
+            'reason', 'Interest can only be booked as an inflow. Negative interest or a custody charge is a fee: book it with category fee.');
     END IF;
 
     v_desc := COALESCE(v_desc, CASE v_dir WHEN 'outflow' THEN 'Ausgabe' ELSE 'Einnahme' END);

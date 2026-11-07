@@ -2584,6 +2584,9 @@ CREATE TRIGGER trg_finance_reject_interest_rate_ineligible
 -- Source of truth = SUM(finance_transactions.shares WHERE holding_id = X).
 -- The agent never writes finance_depot_holdings.shares directly.
 -- Fires on INSERT/UPDATE/DELETE; handles holding_id changes on UPDATE.
+-- Sperren-dann-Rechnen wie update_finance_balance: das UPDATE rechnete sonst mit dem Snapshot vor dem Warten auf die
+-- Zeilensperre (zwei parallele Buchungen derselben Position -> Lost Update). PERFORM ... FOR UPDATE zuerst, das folgende
+-- UPDATE nimmt in READ COMMITTED einen neuen Snapshot (test_holding_trigger_lock.sql).
 -- ============================================================
 
 CREATE OR REPLACE FUNCTION finance.update_holding_shares()
@@ -2594,6 +2597,7 @@ BEGIN
     v_holding_id := CASE WHEN TG_OP = 'DELETE' THEN OLD.holding_id ELSE NEW.holding_id END;
 
     IF v_holding_id IS NOT NULL THEN
+        PERFORM 1 FROM finance.depot_holdings WHERE id = v_holding_id FOR UPDATE;
         UPDATE finance.depot_holdings
         SET shares = (
                 SELECT COALESCE(SUM(shares), 0)
@@ -2607,6 +2611,7 @@ BEGIN
 
     -- If holding_id changed on UPDATE, recompute the old holding as well
     IF TG_OP = 'UPDATE' AND OLD.holding_id IS DISTINCT FROM NEW.holding_id AND OLD.holding_id IS NOT NULL THEN
+        PERFORM 1 FROM finance.depot_holdings WHERE id = OLD.holding_id FOR UPDATE;
         UPDATE finance.depot_holdings
         SET shares = (
                 SELECT COALESCE(SUM(shares), 0)
@@ -2683,7 +2688,8 @@ $$;
 -- ============================================================
 -- TRIGGER: Keep finance_depot_holdings.average_purchase_price in sync
 -- Gleitender Durchschnitt via finance.fn_holding_avg_cost (s. dort). Der Agent schreibt
--- average_purchase_price nie direkt. Mirrors the shares trigger (INSERT/UPDATE/DELETE + holding_id changes).
+-- average_purchase_price nie direkt. Mirrors the shares trigger (INSERT/UPDATE/DELETE + holding_id changes),
+-- inkl. Sperren-dann-Rechnen.
 -- ============================================================
 
 CREATE OR REPLACE FUNCTION finance.update_holding_avg_price()
@@ -2694,6 +2700,7 @@ BEGIN
     v_holding_id := CASE WHEN TG_OP = 'DELETE' THEN OLD.holding_id ELSE NEW.holding_id END;
 
     IF v_holding_id IS NOT NULL THEN
+        PERFORM 1 FROM finance.depot_holdings WHERE id = v_holding_id FOR UPDATE;
         UPDATE finance.depot_holdings
         SET average_purchase_price = finance.fn_holding_avg_cost(v_holding_id),
             updated_at = NOW()
@@ -2702,6 +2709,7 @@ BEGIN
 
     -- If holding_id changed on UPDATE, recompute the old holding as well
     IF TG_OP = 'UPDATE' AND OLD.holding_id IS DISTINCT FROM NEW.holding_id AND OLD.holding_id IS NOT NULL THEN
+        PERFORM 1 FROM finance.depot_holdings WHERE id = OLD.holding_id FOR UPDATE;
         UPDATE finance.depot_holdings
         SET average_purchase_price = finance.fn_holding_avg_cost(OLD.holding_id),
             updated_at = NOW()

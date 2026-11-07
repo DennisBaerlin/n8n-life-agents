@@ -44,7 +44,7 @@ function Build-SetAccount {
     # in den echten Write (partielles UPDATE der Stammdaten).
     $wg = New-FnWriteGate -Fn 'finance.fn_set_account' -DryPos @(880, 0) -WritePos @(2200, 0) `
         -WriteName 'Set account (atomic)' `
-        -WriteSelect "(r->>'ok')::boolean AS ok, (r->>'account_id')::int AS account_id" `
+        -WriteSelect "(r->>'ok')::boolean AS ok, r->>'reason' AS reason, (r->>'account_id')::int AS account_id" `
         -Params ([ordered]@{
             account_id                  = '$(''Resolve Account'').item.json.id'
             name                        = '$(''Start'').item.json.new_name'
@@ -93,22 +93,26 @@ function Build-SetAccount {
     $retCancelled = Build-ToolCancelled 'Return cancelled' @(2200, 240) 'the set_account action'
 
     # Atomarer Write via fn_set_account ($wg.Write, 'Set account (atomic)'): partielles UPDATE der Stammdaten.
+    # Korrigierbare Ablehnung nach dem Tipp (z. B. Kontonummer inzwischen vergeben) -> reason an den Agenten.
+    $ifWriteOk = Build-If 'Write ok?' @(2420, 0) "={{ `$json.ok }}" 'true' 'equals' 'boolean'
+    $errWrite = Build-ToolError 'Account not changed' @(2640, 200) `
+        "={{ `$('Set account (atomic)').item.json.reason }}"
 
-    $ret = Build-Return @(2420, 0) @(
+    $ret = Build-Return @(2640, 0) @(
         ,@('ok','true','boolean')
         ,@('account_id', "={{ `$('Set account (atomic)').item.json.account_id }}", 'number')
     )
 
     $stickyDry = Build-Sticky 'Probelauf vor der Karte' @(880, -220) `
         'core.fn_dry_run (DB ist das Gesetz)' `
-        'Dry run = fn_set_account mit denselben Werten, immer zurückgerollt. ok:false -> Dry run rejected: KEINE Karte, card_sent:false + Grund an den Agenten. Die fn kennt kaum freundliche Ablehnungen; ein Verstoß gegen den ownership-CHECK ist eine Exception -> Abbruch + errorWorkflow-Alarm, aber VOR der Karte statt nach dem Tipp. ok:true -> Karte. Der echte Write nach dem Tipp prüft erneut.' 200 400
+        'Dry run = fn_set_account mit denselben Werten, immer zurückgerollt. ok:false -> Dry run rejected: KEINE Karte, card_sent:false + Grund an den Agenten. Die fn kennt kaum freundliche Ablehnungen; ein Verstoß gegen den ownership-CHECK ist eine Exception -> Abbruch + errorWorkflow-Alarm, aber VOR der Karte statt nach dem Tipp. ok:true -> Karte. Der echte Write nach dem Tipp prüft erneut (Write ok? -> false: Account not changed mit reason).' 200 400
 
     $stickyOv = Build-Sticky 'Doc set_account' @(2200, -220) `
         'fn_set_account: partielles Stammdaten-UPDATE' `
         'Ändert NUR Stammdaten (Name/Bank/Nr./Inhaber/Verrechnungskonto (nur Depot/P2P, Resolve Settlement -> settlement_id; die DB prüft die Kontoart)/Notiz/Festgeld-Felder + WS-0b estate: ownership [single/joint_or/joint_and], transmortale Bankvollmacht). BEWUSST NICHT: account_type, currency (-> Korruption), status (-> close_account), Saldo (Trigger). Nur gelieferte Felder werden gesetzt (COALESCE); remove_account_number=true entfernt die Kontonummer (Korrektur einer falsch zugeordneten bzw. gelernten IBAN, Karten-Hinweis). Puffer je Konto (min_balance, Kontowährung, nur Geld-Konten; min_balance_default=true = zurück auf den Haushalts-Standard core.config coverage_buffer_eur) speist die Kontovorschau fn_account_outlook; CHECK finance_accounts_min_balance_chk ist der Backstop. Freundliche {ok:false}-Fälle (Probelauf vor der Karte): Puffer negativ / kein Geld-Konto / Puffer setzen und zurücksetzen zugleich, Kontonummer schon vergeben, Nummer setzen und entfernen zugleich, Verrechnungskonto unzulässig (fn_settlement_account_reason: falsche Kontoart, kein Girokonto bei P2P, andere Währung, das Konto selbst). Der ownership-CHECK (geschlossene Liste) ist der strukturelle Backstop, die Tool-Description führt den Agenten.' 220 440
 
     $nodes = @($trig, $resAcct, $ifAcct, $errAcct, $resPerson, $ifPersonBad, $errPerson, $resSettle, $ifSettleBad, $errSettle) + $wg.Nodes + @($summary, $reqApproval,
-               $ifApproved, $retCancelled, $ret, $stickyDry, $stickyOv)
+               $ifApproved, $retCancelled, $ifWriteOk, $errWrite, $ret, $stickyDry, $stickyOv)
 
     $conns = [ordered]@{
         'Start'                    = @{ main = @( ,@( E 'Resolve Account' ) ) }
@@ -138,7 +142,11 @@ function Build-SetAccount {
             @( E 'Set account (atomic)' ),
             @( E 'Return cancelled' )
         ) }
-        'Set account (atomic)'     = @{ main = @( ,@( E 'Return' ) ) }
+        'Set account (atomic)'     = @{ main = @( ,@( E 'Write ok?' ) ) }
+        'Write ok?'                = @{ main = @(
+            @( E 'Return' ),
+            @( E 'Account not changed' )
+        ) }
     }
 
     return Build-Workflow 'agent.finance.tool_set_account' $nodes $conns `

@@ -501,6 +501,28 @@ BEGIN
     RAISE EXCEPTION 'FAIL [core_ro -> agent.fn_resolve_sender]: erwartet found=true fuer gepairte uid 777, got %', COALESCE(v_out,'<null>'); END IF;
   RAISE NOTICE 'PASS [core_ro -> agent.fn_resolve_sender (Gate-Resolve-Pfad, found=true)]';
 
+  -- ===== (3b1) Router-Flags user_style + daypart: core_ro -> agent.fn_chat_style / core.fn_daypart =====
+  -- 'Resolve sender' laeuft unter core_ro; *_chat_memory steht auf der core_ro-Deny-Liste -> fn_chat_style ist ein
+  -- DEFINER-Fenster (Grant am Rollen-Ort util_create_core_ro). Der REVOKE hier bildet die Deny-Liste fuer die vom Test
+  -- angelegte Tabelle nach; expressive beweist, dass die fn die Zeilen wirklich liest (kein stiller neutral-Rueckfall).
+  IF to_regclass('agent.orchestrator_chat_memory') IS NULL THEN
+    CREATE TABLE agent.orchestrator_chat_memory (id SERIAL PRIMARY KEY, session_id VARCHAR(255) NOT NULL, message JSONB NOT NULL);
+  END IF;
+  REVOKE ALL ON agent.orchestrator_chat_memory FROM core_ro;
+  INSERT INTO agent.orchestrator_chat_memory (session_id, message)
+  SELECT '900198', jsonb_build_object('type', 'human', 'content', 'Prima 😀') FROM generate_series(1, 5);
+  BEGIN
+    SET LOCAL ROLE core_ro;
+    SELECT agent.fn_chat_style(900198) || '/' || core.fn_daypart() INTO v_out;
+    RESET ROLE;
+  EXCEPTION WHEN OTHERS THEN
+    RESET ROLE;
+    RAISE EXCEPTION 'FAIL [core_ro -> agent.fn_chat_style/core.fn_daypart]: bricht unter core_ro -- %', SQLERRM;
+  END;
+  IF split_part(v_out, '/', 1) IS DISTINCT FROM 'expressive' OR split_part(v_out, '/', 2) = '' THEN
+    RAISE EXCEPTION 'FAIL [core_ro -> agent.fn_chat_style]: erwartet expressive/<daypart>, got %', COALESCE(v_out, '<null>'); END IF;
+  RAISE NOTICE 'PASS [core_ro -> agent.fn_chat_style (DEFINER-Fenster) + core.fn_daypart]';
+
   -- ===== (3b2) Textkatalog: core_ro -> core.fn_hitl_texts / core.fn_ui_texts =====
   -- Das HITL-Gate holt seine Texte ('Render texts') unter core_ro; ein fehlender Grant blockte JEDEN Write
   -- (fail-closed). Plain-INVOKER-fns -> role_test_lint sieht sie nicht, daher hier ausdruecklich verankert.

@@ -13,7 +13,8 @@
 #   (7) Pflicht-Keys aus Manifesten: je context_validators-Kontext <pkg>.facts.<ctx>.title (Titel der Fakten-Karte),
 #       je monitor_acquisition_methods-Methode <pkg>.monitor_method.<m>; Core-Builtins core.monitor_method.{web_search,sql,none}.
 #   (7b) Persona-Liste: Core-Manifest personas.list — Code ^[a-z_]+$, eindeutig, neutral enthalten, ord gesetzt; je Persona
-#       core.persona.name.<code>; die in core:V031 vorab angelegten Codes sind Teil der Liste (V-Liste ⊆ Manifest).
+#       core.persona.name.<code>, ausser neutral Rahmensaetze (.1 ohne {name}) und die vier Tagesgruesse
+#       core.persona.greet.<code>.<morning|day|evening|night> mit {name}; die in core:V031 vorab angelegten Codes sind Teil der Liste (V-Liste ⊆ Manifest).
 #   (8) SQL-Text-Verweise: jedes Katalog-Key-Literal in packages/*/db/migrations/R__*.sql existiert im Katalog
 #       (ebenso jeder Key im View-Modell-Beispiel tests/fixtures/app_view_model_v1.json).
 #   (9) Mini-App-Laien-Test: keine Fachwoerter ($AppDeniedWords) in App-Texten; Ratchet-Ausnahmen je Key,
@@ -21,7 +22,7 @@
 #   (10) Mini-App-Texte: ein *.app.*-Key ohne Literal-Verwendung ist verwaist (Fehler; Tab-Titel ausgenommen).
 #   (11) Karten-Laien-Test: Texte der Bestaetigungskarten kurz, ohne interne Begriffe, Datum statt Zeitspanne (Ratchet je Key).
 # Warnung (kein Fehler): Keys, deren Literal nirgends in Build-Defs/Workflows/SQL vorkommt (dynamisch zusammengesetzte
-#   Keys — .enum.*, .facts.*, .monitor_method.*, core.persona.name.* — sind ausgenommen).
+#   Keys — .enum.*, .facts.*, .monitor_method.*, core.persona.{name,frame,greet}.* — sind ausgenommen).
 # Usage: .\scripts\locale_lint.ps1 [-Verbose]
 param([switch]$Verbose)
 
@@ -181,7 +182,19 @@ Check 'Persona-Liste: Core-Manifest personas.list (Code/ord, eindeutig, V031 ⊆
         if (-not ($cat['core'] -and $cat['core']['de'] -and $cat['core']['de'].Contains("core.persona.name.$($p.code)"))) { "Datei packages/core/locales: core.persona.name.$($p.code) fehlt (Knopf-Name im Persona-Picker)" }
         if ($p.code -ne 'neutral' -and $cat['core'] -and $cat['core']['de'] -and
             @($cat['core']['de'].Keys | Where-Object { $_ -like "core.persona.frame.$($p.code).*" }).Count -eq 0) {
-            "Datei packages/core/locales: kein core.persona.frame.$($p.code).<n> (fester Rahmensatz im Relay, agent.orchestrator; mindestens einer)"
+            "Datei packages/core/locales: kein core.persona.frame.$($p.code).<n> (fester Rahmensatz, agent.fn_claim_persona_frame; mindestens einer)"
+        }
+        if ($p.code -ne 'neutral' -and $cat['core'] -and $cat['core']['de']) {
+            $de = $cat['core']['de']
+            # .1 ist das Muster im Installer (provisioning/wizard/server.js, ui/art/art.js) und kennt dort keinen Namen
+            $f1 = "core.persona.frame.$($p.code).1"
+            if ($de.Contains($f1) -and ([string]$de[$f1]).Contains('{name}')) { "Datei packages/core/locales: '$f1' darf kein {name} tragen (Installer-Muster)" }
+            # Tagesgruss je Tageszeit (core.fn_daypart); ohne {name} faellt agent.fn_claim_persona_frame nie auf den Gruss
+            foreach ($dp in 'morning', 'day', 'evening', 'night') {
+                $gk = "core.persona.greet.$($p.code).$dp"
+                if (-not $de.Contains($gk)) { "Datei packages/core/locales: $gk fehlt (Tagesgruss, agent.fn_claim_persona_frame)" }
+                elseif (-not ([string]$de[$gk]).Contains('{name}')) { "Datei packages/core/locales: '$gk' braucht den Platzhalter {name}" }
+            }
         }
         # Sticker-Set je Persona (Bot mit Gesicht): die vier Ausdruecke, die agent.fn_claim_persona_sticker waehlt und der Gateway sendet
         foreach ($ex in 'hallo', 'top', 'hmm', 'yay') {
@@ -377,7 +390,7 @@ $unused = @()
 foreach ($pkg in $cat.Keys) {
     $de = $cat[$pkg]['de']; if ($null -eq $de) { continue }
     foreach ($k in $de.Keys) {
-        if ($k -match '\.(enum|facts|monitor_method|plan_section)\.' -or $k -match '\.plan\.name$' -or $k -match '^core\.persona\.(name|frame)\.') { continue }
+        if ($k -match '\.(enum|facts|monitor_method|plan_section)\.' -or $k -match '\.plan\.name$' -or $k -match '^core\.persona\.(name|frame|greet)\.') { continue }
         # Start-App: zusammengesetzt aus Codes (Fehler, Docker-Art, Schritt der Leiste, Ergebnis-Zeilen, Haken beim Entfernen)
         if ($k -match '^core\.desktop\.(error|engine|result|uninstall|uninstalled|check)\.' -or $k -match '^core\.wizard\.step\.') { continue }
         if (-not $corpusText.Contains("'$k'") -and -not $corpusText.Contains("""$k""")) { $unused += $k }

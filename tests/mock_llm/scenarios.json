@@ -9,6 +9,59 @@
     "final_router": "FRAME"
   },
   {
+    "_comment": "Reaktionen (ri80): der Router antwortet ohne Werkzeug nur 'REACT LOVE' -> Relay compose schneidet die Zeile ab, Body leer; agent.fn_claim_reaction sagt ❤ zu (answer, ohne Obergrenze), kein sendMessage.",
+    "match": "Reaktions-Test: danke dir",
+    "final": "REACT LOVE"
+  },
+  {
+    "_comment": "Reaktionen (ri81): 'REACT FUN' + eigener Text -> 😁 an die Nachricht (mood, zaehlt zur Obergrenze) und der Text ohne die REACT-Zeile.",
+    "match": "Reaktions-Test Witz",
+    "final": "REACT FUN\nHaha, danke! Mein Tag läuft prima."
+  },
+  {
+    "_comment": "Reaktionen (ri82): nach dem Spezialisten 'FRAME CHEER' -> 🎉 an die Nachricht, Spezialisten-Text woertlich, kein Signal im Chat.",
+    "match": "Reaktions-Test Gehalt",
+    "calls": [
+      { "tool": "Call_agent_finance_", "args": { "task": "Reaktions-Test Gehalt" } }
+    ],
+    "final": "Dein Sparkonto steht bei 640,00 EUR.",
+    "final_router": "FRAME CHEER"
+  },
+  {
+    "_comment": "Reaktionen (ri83): 'NOFRAME CHEER' -> die Stimmung wird verworfen (ernst), keine Reaktion.",
+    "match": "Reaktions-Test ernst",
+    "calls": [
+      { "tool": "Call_agent_finance_", "args": { "task": "Reaktions-Test ernst" } }
+    ],
+    "final": "Dein Tagesgeld steht bei 820,00 EUR.",
+    "final_router": "NOFRAME CHEER"
+  },
+  {
+    "_comment": "Bot mit Gesicht (oc52): Notgroschen-Frage -> Call_agent_finance_advisor_ (Signal FRAME prueft der bezahlte Tier).",
+    "match": "Wie viel Notgroschen sollte ich",
+    "calls": [
+      { "tool": "Call_agent_finance_advisor_", "args": { "task": "Wie viel Notgroschen sollte ich zur Seite legen?" } }
+    ],
+    "final": "Ueblich sind drei bis sechs Monatsausgaben."
+  },
+  {
+    "_comment": "Bot mit Gesicht (oc55): Erkrankung + Finanzfrage -> Call_agent_finance_advisor_ (ernst: NOFRAME, keine Stimmung prueft der bezahlte Tier).",
+    "match": "schwer krank geworden",
+    "calls": [
+      { "tool": "Call_agent_finance_advisor_", "args": { "task": "Erkrankung, wie lange reicht das Geld?" } }
+    ],
+    "final": "Lass uns gemeinsam ansehen, wie lange deine Reserven reichen."
+  },
+  {
+    "_comment": "Bot mit Gesicht (oc56): gute Nachricht + Kontostand -> Call_agent_finance_ (FRAME CHEER prueft der bezahlte Tier).",
+    "match": "Juhu, das Gehalt ist da",
+    "calls": [
+      { "tool": "Call_agent_finance_", "args": { "task": "Wie steht mein Lindenbank Girokonto?" } }
+    ],
+    "final": "Dein Lindenbank Girokonto steht bei 2.345,67 EUR.",
+    "final_router": "FRAME CHEER"
+  },
+  {
     "_comment": "Router memory signal (ri66, Befund 2026-10-26): der Router schreibt nach dem Spezialisten eine EIGENE Fassung statt des Signals -> gesendet wird trotzdem der Spezialisten-Text woertlich, im Router-Gedaechtnis steht danach NOFRAME.",
     "match": "Relay-Test Umformulierung",
     "calls": [

@@ -106,4 +106,64 @@ BEGIN
   RAISE NOTICE 'PASS split [Unterzahlung -> ok:false]';
 END $$;
 
+-- Rate 0 bei einem zinslosen Kredit: ohne die Positiv-Pruefung waere Zins 0 = Tilgung 0 ein gueltiger Split.
+DO $$
+DECLARE
+  v_res  JSONB;
+  v_giro INT;
+  v_loan INT;
+BEGIN
+  SELECT (finance.fn_create_account(jsonb_build_object('name','__test_lps0_giro__','account_type','cash',
+    'currency','EUR'))->>'account_id')::int INTO v_giro;
+  SELECT (finance.fn_create_loan(jsonb_build_object('name','__test_lps0_kredit__','lender','B','borrower','T',
+    'original_amount',1200,'current_balance',1200,'disbursement_date',(CURRENT_DATE - 30)::text,'interest_rate',0,
+    'monthly_annuity',100,'first_payment_date',(CURRENT_DATE + 20)::text,'debit_account_id',v_giro))->>'loan_id')::int
+    INTO v_loan;
+  v_res := finance.fn_get_loan_payment_split(jsonb_build_object('loan_id',v_loan,'payment_amount',0,
+    'principal_amount',0));
+  IF (v_res->>'ok')::boolean IS DISTINCT FROM false THEN
+    RAISE EXCEPTION 'FAIL split [Rate 0, 0 %%]: erwartet ok=false, got %', v_res; END IF;
+  RAISE NOTICE 'PASS split [Rate 0 bei 0 %% -> ok:false]';
+END $$;
+
+-- Raten-Abgleich auf Cent: eine Zahlung mit Bruchteil-Cent trifft die faellige Rate trotzdem.
+DO $$
+DECLARE
+  v_res  JSONB;
+  v_giro INT;
+  v_loan INT;
+  v_due  DATE := CURRENT_DATE - 3;
+BEGIN
+  SELECT (finance.fn_create_account(jsonb_build_object('name','__test_lpsc_giro__','account_type','cash',
+    'currency','EUR'))->>'account_id')::int INTO v_giro;
+  SELECT (finance.fn_create_loan(jsonb_build_object('name','__test_lpsc_kredit__','lender','B','borrower','T',
+    'original_amount',6000,'current_balance',6000,'disbursement_date',(v_due - 30)::text,'interest_rate',2,
+    'monthly_annuity',300,'first_payment_date',v_due::text,'debit_account_id',v_giro))->>'loan_id')::int INTO v_loan;
+  v_res := finance.fn_get_loan_payment_split(jsonb_build_object('loan_id',v_loan,'payment_amount',300.004,
+    'payment_date',CURRENT_DATE::text));
+  IF (v_res->>'matched_due_date')::date IS DISTINCT FROM v_due THEN
+    RAISE EXCEPTION 'FAIL split [Bruchteil-Cent]: erwartet faellig %, got %', v_due, v_res; END IF;
+  RAISE NOTICE 'PASS split [Rate 300.004 trifft die Rate 300]';
+END $$;
+
+-- Zwei offene Raten im Fenster: die zeitlich naechste gewinnt, nicht die aelteste.
+DO $$
+DECLARE
+  v_res   JSONB;
+  v_giro  INT;
+  v_loan  INT;
+  v_first DATE := CURRENT_DATE - 25;
+BEGIN
+  SELECT (finance.fn_create_account(jsonb_build_object('name','__test_lpsn_giro__','account_type','cash',
+    'currency','EUR'))->>'account_id')::int INTO v_giro;
+  SELECT (finance.fn_create_loan(jsonb_build_object('name','__test_lpsn_kredit__','lender','B','borrower','T',
+    'original_amount',6000,'current_balance',6000,'disbursement_date',(v_first - 15)::text,'interest_rate',2,
+    'monthly_annuity',300,'first_payment_date',v_first::text,'debit_account_id',v_giro))->>'loan_id')::int INTO v_loan;
+  v_res := finance.fn_get_loan_payment_split(jsonb_build_object('loan_id',v_loan,'payment_amount',300,
+    'payment_date',CURRENT_DATE::text));
+  IF (v_res->>'matched_due_date')::date IS DISTINCT FROM (v_first + interval '1 month')::date THEN
+    RAISE EXCEPTION 'FAIL split [naechste Rate]: erwartet %, got %', (v_first + interval '1 month')::date, v_res; END IF;
+  RAISE NOTICE 'PASS split [naechste offene Rate gewinnt]';
+END $$;
+
 ROLLBACK;

@@ -185,4 +185,28 @@ BEGIN
   RAISE NOTICE 'PASS set_loan [gleiche Werte -> no_change ohne Write, ein neues Feld -> Write]';
 END $$;
 
+-- Grenzen der Guards: Zins 0, Auszahlung am Erfassungstag und Kreditbetrag = erfasste Restschuld sind gueltig.
+DO $$
+DECLARE
+  v_res  JSONB;
+  v_giro INT;
+  v_loan INT;
+BEGIN
+  SELECT (finance.fn_create_account(jsonb_build_object('name','__test_slg_giro__','account_type','cash',
+    'currency','EUR'))->>'account_id')::int INTO v_giro;
+  SELECT (finance.fn_create_loan(jsonb_build_object('name','__test_slg_kredit__','lender','B','borrower','T',
+    'current_balance',2400,'interest_rate',2,'monthly_annuity',100,
+    'first_payment_date',(CURRENT_DATE + 15)::text,'debit_account_id',v_giro))->>'loan_id')::int INTO v_loan;
+
+  v_res := finance.fn_set_loan(jsonb_build_object('loan_id',v_loan,'interest_rate',0));
+  IF (v_res->>'ok')::boolean IS DISTINCT FROM true THEN
+    RAISE EXCEPTION 'FAIL set_loan [Zins 0]: erwartet ok=true, got %', v_res; END IF;
+
+  v_res := finance.fn_set_loan(jsonb_build_object('loan_id',v_loan,'original_amount',2400,
+    'disbursement_date',core.fn_today()::text));
+  IF (v_res->>'ok')::boolean IS DISTINCT FROM true THEN
+    RAISE EXCEPTION 'FAIL set_loan [Betrag = Restschuld, Auszahlung heute]: erwartet ok=true, got %', v_res; END IF;
+  RAISE NOTICE 'PASS set_loan [Zins 0, Betrag = Restschuld, Auszahlung am Erfassungstag gueltig]';
+END $$;
+
 ROLLBACK;

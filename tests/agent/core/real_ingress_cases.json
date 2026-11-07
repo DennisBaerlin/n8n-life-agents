@@ -991,7 +991,7 @@
     "expected_node": "Send cost report",
     "expect_texts": ["KI-Kosten (Claude)"],
     "forbid_texts": ["core.cost.", "Nur der Haushalts-Owner", "konnte gerade nicht geladen werden"],
-    "notes": "Command router [costs] -> core.sub_send_cost_report: Read cursor -> Owner? -> Fetch usage (GET 127.0.0.1:8090/__usage) -> Import usage -> Read report (core.fn_get_llm_cost_report unter core_ro) -> Send cost report (HTML). Die Mock-Laeufe der Faelle davor erzeugen Gateway-Zeilen; ohne Zeilen kaeme core.cost.empty (enthaelt den Titel ebenfalls)."
+    "notes": "Command router [costs] -> core.sub_send_cost_report: Read role -> Owner? -> Import LLM usage (Sub core.sub_import_llm_usage: Abruf am Gateway 127.0.0.1:8090/__usage + Import) -> Read report (core.fn_get_llm_cost_report unter core_ro) -> Send cost report (HTML). Die Mock-Laeufe der Faelle davor erzeugen Gateway-Zeilen; ohne Zeilen kaeme core.cost.empty (enthaelt den Titel ebenfalls)."
   },
   {
     "id": "ri65",

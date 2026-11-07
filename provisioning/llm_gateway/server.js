@@ -27,7 +27,7 @@
 // MESSUNG (12-Factor): je Anfrage EINE JSON-Zeile {"ev":"usage",...} auf stdout → systemd-Journal. Bewusst die
 //   Anthropic-Feldnamen (input_tokens = UNGECACHTER Rest; Gesamt-Eingabe = input + cache_creation + cache_read),
 //   nicht OTel-GenAI (dort noch "Development"). Zusaetzlich haengt sie (mit id + Workflow) an
-//   $STATE_DIRECTORY/usage.jsonl (systemd StateDirectory, 62 Tage, atomar gekuerzt); der /kosten-Sub holt sie per
+//   $STATE_DIRECTORY/usage.jsonl (systemd StateDirectory, 62 Tage, atomar gekuerzt); der Sub core.sub_import_llm_usage (nachts per Cron, dazu /kosten) holt sie per
 //   GET /__usage (nur 127.0.0.1) nach core.llm_usage (core.fn_import_llm_usage), die DB rechnet die Kosten.
 // WORKFLOW-KENNUNG (Kosten je Workflow): HTTP-Knoten senden Header x-lifeagents-workflow; lmChatAnthropic kann keinen
 //   Header je Knoten setzen (n8n-Quirk) -> der Build setzt eine KONSTANTE Kennzeile `<<la-wf:NAME>>` an den Anfang der

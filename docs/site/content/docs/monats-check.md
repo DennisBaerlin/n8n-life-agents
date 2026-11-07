@@ -11,7 +11,7 @@ Der Monats-Check hält deine Kontostände und regelmäßigen Zahlungen aktuell, 
 3. **Eine Karte prüfen.** Der Bot zeigt dir alles auf einer Karte:
    - welche geplanten Zahlungen gekommen sind (Miete, Gehalt, Kreditrate, Sparrate …), mit dem tatsächlichen Betrag;
    - was sich geändert hat (z. B. Strom 92 € statt 85 €; beim zweiten gleichen Betrag passt er den Plan an);
-   - was **nicht** im Auszug stand (das wird für diesen Monat übersprungen);
+   - was **nicht** im Auszug stand (das wird für diesen Monat übersprungen); fehlt ein neuer Dauerauftrag oder Sparplan, der noch nie gelaufen ist, fragt die Karte einmal, ob er schon bei deiner Bank eingerichtet ist;
    - Lastschriften, die er noch nicht kennt;
    - den Rest als **eine** Summe „Alltagsausgaben" (Supermarkt, Tanken, Kleinkram). Gibt es nur nicht zugeordnete Eingänge, heißt er „Ungeklärter Eingang". Gibt es beides, nennt die Karte beide Summen: Der Rest ist dann ihr Saldo, keine einzelne Zahlung. Erklärt der Auszug den Betrag gar nicht, heißt er „Ungeklärter Abgang"; steckt darin auch eine nicht gebuchte Zahlung, heißt er „Rest" und die Karte nennt die Teile.
 
@@ -52,7 +52,7 @@ Steht als Gegenkonto die IBAN eines deiner eigenen Konten, bucht der Bot einen *
 
 - **Konto knapp:** Fällt ein Konto voraussichtlich unter deinen Puffer, warnt er dich und nennt die Umbuchung. Die Warnung sagt, mit wie viel Alltagsausgaben pro Tag gerechnet wurde und ob der Puffer der Standard ist. Den Puffer stellst du je Konto im Chat ein („Auf dem Girokonto sollen immer mindestens 400 € bleiben“); der Standard für alle anderen Konten ist 250 € (`lifeagents config set finance coverage_buffer_eur 400`). Beim ersten Monats-Check fragt der Buchhalter danach.
 - **Alltagsausgaben:** geschätzt aus deinen letzten Kontoauszügen. Der allererste Auszug eines Kontos zählt nicht mehr, sobald ein zweiter da ist, weil er meist entstanden ist, bevor deine Daueraufträge erfasst waren. Einzelne Ausgaben ab 250 € zählen als einmalig nicht mit, Überweisungen auf eigene Konten nie. Die Schätzung je Tag siehst du in der [Übersicht](uebersicht-app.html) unter Konten beim tiefsten Stand.
-- **Zahlung fehlt:** Kam ein Dauerauftrag zweimal in Folge nicht vom Konto, fragt er, ob du ihn gekündigt hast.
+- **Zahlung fehlt:** Kam ein Dauerauftrag zweimal in Folge nicht vom Konto, fragt er, ob du ihn gekündigt hast. Lief ein eigener Dauerauftrag oder Sparplan noch nie, sagt er stattdessen, dass du ihn bei deiner Bank einrichten oder beenden lassen kannst.
 
 ## CSV-Export statt Kontoauszug (Trade Republic, N26)
 

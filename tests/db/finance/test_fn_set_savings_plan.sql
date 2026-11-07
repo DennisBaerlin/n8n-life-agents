@@ -526,7 +526,10 @@ BEGIN
     IF NOT (v_result->'savings_funding'->'accounts'->0->>'asked')::boolean THEN
       RAISE EXCEPTION 'FAIL fn_set_savings_plan [Geldquelle Setup]: %', v_result; END IF;
     v_result := finance.fn_set_savings_plan('{"savings_plan_name":"__test_ssp_fund__","status":"paused"}'::jsonb);
-    IF (v_result->>'ok')::boolean IS DISTINCT FROM true OR v_result ? 'savings_funding' OR v_result ? 'card_lines' THEN
+    -- einzige Kartenzeile beim Pausieren: der Bank-Hinweis (fn_bank_setup_note), keine Deckungs-Zeile
+    IF (v_result->>'ok')::boolean IS DISTINCT FROM true OR v_result ? 'savings_funding'
+       OR jsonb_array_length(v_result->'card_lines') <> 1
+       OR v_result->'card_lines'->0->>'value' <> 'finance.note.bank_stop_savings_plan_generic' THEN
       RAISE EXCEPTION 'FAIL fn_set_savings_plan [Geldquelle pausiert]: %', v_result; END IF;
     v_result := finance.fn_set_savings_plan('{"savings_plan_name":"__test_ssp_fund__","status":"active"}'::jsonb);
     IF (v_result->>'ok')::boolean IS DISTINCT FROM true OR v_result ? 'savings_funding'

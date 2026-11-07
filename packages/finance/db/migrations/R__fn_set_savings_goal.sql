@@ -50,7 +50,9 @@
 --   no_depot_risk_decision); zusammen mit Datum, Sparplan-Link oder Status -> code depot_risk_alone. Datum vorgezogen, Sparplan verknuepft oder wieder geoeffnet -> ebenfalls
 --   fn_goal_depot_risk_fold (card_lines, card_approve_key, effective.depot_risk_shown, depot_risk.reminder_month).
 --   RUECKGABE: {ok:true, goal_id, recurring_payment_id, new_monthly_rate (nur wenn eine Rate gesetzt/angelegt wurde),
---   covered?, required_monthly_rate?, code?, linked_savings_plan_id, paused_cash_rate, paused_plan_count} + optional
+--   covered?, required_monthly_rate?, code?, linked_savings_plan_id, paused_cash_rate, paused_plan_count, card_lines?}
+--   (card_lines u. a. Bank-Hinweis fn_bank_setup_note: neue Rate bank_setup, stop_funders bank_stop auch fuer
+--   verknuepfte Sparplaene, Rate/Topf/Fortsetzen bank_change) + optional
 --   savings_squeeze (fn_savings_squeeze_fold, nur bei Raten-Aenderung: neu gerechnet, angelegt, reaktiviert, Topf
 --   gewechselt, Beitraege gestoppt) (Post-State-Vertrag: kein Echo der Eingabe reserve_account_id). Korrigierbar
 --   (target<=0, Zieldatum nicht in der Zukunft, reserve==funding, Reserve-Konto kein aktives saldo-basiertes Konto,
@@ -91,6 +93,8 @@ DECLARE
     v_need        NUMERIC;   -- noetige Rate auf dem Rest (auch ohne laufende Rate)
     v_new_pot     INT;       -- Topf einer neu angelegten Rate
     v_new_rp      INT;
+    v_bank        jsonb := '[]'::jsonb;   -- Bank-Hinweise (fn_bank_setup_note) fuer die Karte
+    v_pot_before  INT;       -- Topf der Rate vor dem Write (Bank-Hinweis nur bei echtem Topfwechsel)
     v_first       DATE;
     v_code        TEXT;
     v_has_plan    BOOLEAN;
@@ -432,6 +436,7 @@ BEGIN
     -- Namenskopie 'Sparrate <Name>' an der Raten-Kette mitfuehren (WP2, fn_rename_owned_recurring).
     PERFORM finance.fn_rename_owned_recurring(v_row.recurring_payment_id, 'Sparrate', v_row.name, NULLIF(p->>'name', ''));
 
+    SELECT r.target_account_id INTO v_pot_before FROM finance.recurring_payments r WHERE r.id = v_row.recurring_payment_id;
     IF v_row.recurring_payment_id IS NOT NULL THEN
         IF v_reserve IS NOT NULL THEN
             -- Rate wird Umbuchung in den Reserve-Topf (fn_book_recurring_occurrence delegiert dann an den Transfer-Pfad);
@@ -554,11 +559,29 @@ BEGIN
         -- reine Stammdaten-/Notiz-/Sparplan-Link-Edits falten nichts
         || CASE WHEN v_rate IS NOT NULL OR v_rate_change IS NOT NULL OR v_status = 'active' OR v_reserve IS NOT NULL OR v_stop_funders
                 THEN finance.fn_savings_squeeze_fold() ELSE '{}'::jsonb END;
+    -- Bank-Hinweis: neue Rate in den Topf (nicht fortgefuehrt) -> einrichten; Beitraege gestoppt ->
+    -- aussetzen (Rate + verknuepfte Sparplaene); Rate, Topf oder Fortsetzen geaendert -> mitaendern
+    IF v_new_rp IS NOT NULL THEN
+        v_bank := CASE WHEN v_old IS NULL THEN finance.fn_bank_setup_note(v_new_rp, 'bank_setup') ELSE '[]'::jsonb END;
+    ELSIF v_stop_funders THEN
+        v_bank := COALESCE(finance.fn_bank_setup_note(v_row.recurring_payment_id, 'bank_stop'), '[]'::jsonb)
+               || COALESCE((
+                      SELECT jsonb_agg(n ORDER BY sp.id)
+                        FROM finance.savings_plans sp,
+                             jsonb_array_elements(finance.fn_bank_setup_note(sp.recurring_payment_id, 'bank_stop')) n
+                       WHERE sp.savings_goal_id = v_id), '[]'::jsonb);
+    ELSIF v_rate IS NOT NULL OR v_rate_change IS NOT NULL OR (v_reserve IS NOT NULL AND v_reserve IS DISTINCT FROM v_pot_before)
+          OR (v_status = 'active' AND v_row.status IS DISTINCT FROM 'active') THEN
+        v_bank := COALESCE(finance.fn_bank_setup_note(v_row.recurring_payment_id, 'bank_change'), '[]'::jsonb);
+    END IF;
     IF v_fold IS NOT NULL THEN
         v_ret := v_ret || jsonb_build_object(
                 'card_lines', COALESCE(v_ret->'card_lines', '[]'::jsonb) || COALESCE(v_fold->'card_lines', '[]'::jsonb),
                 'effective', COALESCE(v_ret->'effective', '{}'::jsonb) || COALESCE(v_fold->'effective', '{}'::jsonb))
             || (v_fold - 'card_lines' - 'effective');
+    END IF;
+    IF jsonb_array_length(v_bank) > 0 THEN   -- letzte Kartenzeile
+        v_ret := v_ret || jsonb_build_object('card_lines', COALESCE(v_ret->'card_lines', '[]'::jsonb) || v_bank);
     END IF;
     RETURN v_ret;
 END;

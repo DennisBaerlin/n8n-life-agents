@@ -311,7 +311,7 @@
                                    "amount":  200,
                                    "schedule_unit":  "month"
                                },
-        "expected_behavior":  "Ruft tool_create_recurring_transfer (NICHT tool_book_transfer = einmalig, NICHT tool_create_recurring_payment = externe Ein-/Ausgabe) mit from_account_name=Lindenbank Giro, to_account_name=Testbroker Cash Girokonto, amount=200 (positiv), schedule_unit=month, schedule_day_of_month=1, first_payment_date=2026-07-01 auf. Beide Konten existieren, interne Bewegung zwischen eigenen Konten.",
+        "expected_behavior":  "Ruft tool_create_recurring_transfer (NICHT tool_book_transfer = einmalig, NICHT tool_create_recurring_payment = externe Ein-/Ausgabe) mit from_account_name=Lindenbank Giro, to_account_name=Testbroker Cash Girokonto, amount=200 (positiv), schedule_unit=month, schedule_day_of_month=1, first_payment_date=2026-07-01 auf. Beide Konten existieren, interne Bewegung zwischen eigenen Konten. Die Antwort nennt den Dauerauftrag nie eingerichtet oder bei der Bank angelegt (das System notiert ihn nur).",
         "notes":  "Neues tool_create_recurring_transfer. Interner wiederkehrender Transfer (target_account_id) -> cashflow-neutral. Judge: actual_tool_input enthaelt from/to + amount=200 + schedule_unit=month."
     },
     {

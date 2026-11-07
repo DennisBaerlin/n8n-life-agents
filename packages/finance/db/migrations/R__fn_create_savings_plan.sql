@@ -21,6 +21,7 @@
 --   effective {beneficiary_person_id}} + optional savings_squeeze (fn_savings_squeeze_fold; erster Abbuchungstag
 --   ausserhalb fn_recurring_starts_within_cycle -> erst der Cron) + optional savings_funding (fn_savings_funding_fold: Deckung des Abbuchungskontos
 --   NACH dem Write, Frage nach der Geldquelle bei einer Luecke); card_lines um die Zeile „Danach ..." ergaenzt.
+--   card_lines: aehnlicher Sparplan, Bank-Hinweis (fn_bank_setup_note 'bank_setup': beim Broker selbst einrichten).
 --   Korrigierbar (Depot nicht gefunden, Typ-Mismatch, Duplikat, amount<=0, asset_class-Format, Rhythmus passt nicht
 --   zum Depot-Kalender (+ next_possible_date), Kalender unbekannt (needs_calendar)) -> {ok:false, reason} OHNE Write
 --   (kein RAISE -> kein Owner-Alert).
@@ -207,6 +208,7 @@ BEGIN
                      (SELECT string_agg(e, ', ') FROM jsonb_array_elements_text(v_sched->'calendar') e))
             ELSE '{}'::jsonb END
     || finance.fn_savings_squeeze_fold(),  -- neuer Sparplan kann das Girokonto leeren (gelatchter Sofort-Hinweis)
-    v_fold);                               -- savings_funding; Kartenzeilen hinter die eigenen (fn_merge_fold)
+    -- savings_funding (Kartenzeilen hinter die eigenen), dann der Bank-Hinweis als letzte Zeile
+    finance.fn_merge_fold(v_fold, jsonb_build_object('card_lines', finance.fn_bank_setup_note(v_rp_id, 'bank_setup'))));
 END;
 $$;

@@ -20,7 +20,9 @@
 --   nur an Uebertraegen (Zeile mit Ziel-Konto), sonst {ok:false}. Steuert nur Hinweise, nie die Buchung.
 --   RUECKGABE: {ok:true, recurring_payment_id, split}; bei split=true zusaetzlich previous_id; bei einem Uebertrag zusaetzlich
 --   execution (aufgeloest bank|manual|unknown, fn_transfer_executed_by; EIGENES Feld, nicht unter effective: das Gate mischt
---   effective in den echten Write). Korrigierbar (entitaets-besessen, amount<=0, ungueltiger executed_by oder an einem
+--   effective in den echten Write); card_lines = Bank-Hinweis (fn_bank_setup_note: pausieren/valid_to -> bank_stop,
+--   amount/schedule_day_of_month/Fortsetzen -> bank_change; nicht bei until_free_money, Name/Notiz, executed_by manual).
+--   Korrigierbar (entitaets-besessen, amount<=0, ungueltiger executed_by oder an einem
 --   Nicht-Uebertrag, Split-Guards des Helfers inkl. last_booked) -> {ok:false}.
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_set_recurring_payment(p jsonb)
@@ -158,6 +160,16 @@ BEGIN
         v_core := v_core || jsonb_build_object('execution',
             finance.fn_transfer_executed_by((v_core->>'recurring_payment_id')::int));
     END IF;
+    -- Bank-Hinweis: Aussetzen/Beenden -> bank_stop, Betrag/Tag/Fortsetzen -> bank_change; until_free_money hat seinen
+    -- eigenen Schlusssatz im Workflow, Name/Notiz und unveraenderte Werte (gleicher Status/Tag) aendern bei der Bank nichts
+    v_core := v_core || jsonb_build_object('card_lines', CASE
+        WHEN v_free THEN '[]'::jsonb
+        WHEN (v_status = 'paused' AND v_row.status <> 'paused') OR v_to IS NOT NULL
+            THEN finance.fn_bank_setup_note((v_core->>'recurring_payment_id')::int, 'bank_stop')
+        WHEN v_amount IS NOT NULL OR (v_dom IS NOT NULL AND v_dom IS DISTINCT FROM v_row.schedule_day_of_month)
+             OR (v_status = 'active' AND v_row.status <> 'active')
+            THEN finance.fn_bank_setup_note((v_core->>'recurring_payment_id')::int, 'bank_change')
+        ELSE '[]'::jsonb END);
     RETURN v_core || jsonb_build_object('effective', COALESCE(v_dates->'resolved', '{}'::jsonb) || v_end)
                   || finance.fn_cashflow_coverage_fold();
 END;

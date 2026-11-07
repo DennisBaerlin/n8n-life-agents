@@ -7,10 +7,13 @@
 --   fn_transfer_executed_by als 'unknown' fuehrt: weder als bestehender Bank-Dauerauftrag noch als Handueberweisung
 --   angegeben, Quelle ein Geld-Konto) | NULL (Lastschrift, Eingang, Kredit-Rate, Handueberweisung, schon bei der Bank,
 --   unbekannte id). Kredit-Raten tragen kein Ziel-Konto, eine Kredit-Quelle ergibt 'manual'.
+--   p_existing (default false): true = es geht um einen bestehenden Auftrag (aendern, aussetzen, beenden); dann zaehlt
+--   auch 'bank' (laeuft bei der Bank, muss dort mitgeaendert werden), nur 'manual' bleibt NULL.
 --   plpgsql statt sql: fn_transfer_executed_by sortiert als R__ spaeter (late binding).
 --   Tests: tests/db/finance/test_fn_bank_setup_kind.sql
 -- ============================================================
-CREATE OR REPLACE FUNCTION finance.fn_bank_setup_kind(p_rp_id int)
+DROP FUNCTION IF EXISTS finance.fn_bank_setup_kind(int);
+CREATE OR REPLACE FUNCTION finance.fn_bank_setup_kind(p_rp_id int, p_existing boolean DEFAULT FALSE)
 RETURNS text LANGUAGE plpgsql STABLE AS $$
 DECLARE
     v_head int := finance.fn_recurring_lineage_head(p_rp_id);
@@ -20,7 +23,8 @@ BEGIN
         RETURN 'savings_plan';
     END IF;
     IF EXISTS (SELECT 1 FROM finance.recurring_payments r WHERE r.id = v_head AND r.target_account_id IS NOT NULL)
-       AND finance.fn_transfer_executed_by(v_head) = 'unknown' THEN
+       AND finance.fn_transfer_executed_by(v_head) = ANY (CASE WHEN p_existing THEN ARRAY['unknown', 'bank']
+                                                                ELSE ARRAY['unknown'] END) THEN
         RETURN 'standing_order';
     END IF;
     RETURN NULL;
@@ -28,8 +32,9 @@ END $$;
 
 -- ============================================================
 -- fn_bank_setup_note (READ HELPER) -- die Karten-Notiz zum Bank-Hinweis einer Kette, Institut beim Namen
---   Eingabe: p_rp_id (beliebiges Glied), p_event (Anlass: 'statement_never_seen' | 'recurring_never_started'),
---   p_params (weitere tpl-Parameter, optional).
+--   Eingabe: p_rp_id (beliebiges Glied), p_event (Anlass: 'bank_setup' neu angelegt | 'bank_change' Betrag/Tag/Topf
+--   geaendert oder fortgesetzt | 'bank_stop' ausgesetzt/beendet | 'statement_never_seen' | 'recurring_never_started'),
+--   p_params (weitere tpl-Parameter, optional). bank_change/bank_stop fragen fn_bank_setup_kind mit p_existing.
 --   Rueckgabe: [] wenn fn_bank_setup_kind NULL ist, sonst [{kind:'note', value:<key>, params}]; der Key je Anlass, Art
 --   und Namens-Lage steht woertlich in der Tabelle unten (locale_lint prueft nur Literale), bei leerem Institutsnamen
 --   die _generic-Variante (Text sagt "deine Bank"/"dein Broker", params ohne bank). Unbekannter Anlass -> RAISE
@@ -41,7 +46,7 @@ END $$;
 CREATE OR REPLACE FUNCTION finance.fn_bank_setup_note(p_rp_id int, p_event text, p_params jsonb DEFAULT '{}'::jsonb)
 RETURNS jsonb LANGUAGE plpgsql STABLE AS $$
 DECLARE
-    v_kind text := finance.fn_bank_setup_kind(p_rp_id);
+    v_kind text := finance.fn_bank_setup_kind(p_rp_id, p_event IN ('bank_change', 'bank_stop'));
     v_head int;
     v_bank text;
     v_key  text;
@@ -59,6 +64,18 @@ BEGIN
     END IF;
     v_bank := NULLIF(btrim(v_bank), '');
     SELECT m.k INTO v_key FROM (VALUES
+        ('bank_setup',              'standing_order', false, 'finance.note.bank_setup_standing_order'),
+        ('bank_setup',              'standing_order', true,  'finance.note.bank_setup_standing_order_generic'),
+        ('bank_setup',              'savings_plan',   false, 'finance.note.bank_setup_savings_plan'),
+        ('bank_setup',              'savings_plan',   true,  'finance.note.bank_setup_savings_plan_generic'),
+        ('bank_change',             'standing_order', false, 'finance.note.bank_change_standing_order'),
+        ('bank_change',             'standing_order', true,  'finance.note.bank_change_standing_order_generic'),
+        ('bank_change',             'savings_plan',   false, 'finance.note.bank_change_savings_plan'),
+        ('bank_change',             'savings_plan',   true,  'finance.note.bank_change_savings_plan_generic'),
+        ('bank_stop',               'standing_order', false, 'finance.note.bank_stop_standing_order'),
+        ('bank_stop',               'standing_order', true,  'finance.note.bank_stop_standing_order_generic'),
+        ('bank_stop',               'savings_plan',   false, 'finance.note.bank_stop_savings_plan'),
+        ('bank_stop',               'savings_plan',   true,  'finance.note.bank_stop_savings_plan_generic'),
         ('statement_never_seen',    'standing_order', false, 'finance.note.statement_never_seen_standing_order'),
         ('statement_never_seen',    'standing_order', true,  'finance.note.statement_never_seen_standing_order_generic'),
         ('statement_never_seen',    'savings_plan',   false, 'finance.note.statement_never_seen_savings_plan'),

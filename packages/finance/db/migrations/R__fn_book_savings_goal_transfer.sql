@@ -24,7 +24,8 @@
 --     leert, verlegt den Topf (fn_apply_goal_reserve).
 --   RUECKGABE: Erfolg -> {ok:true, debit_tx_id, credit_tx_id, savings_goal_id, direction, current_amount
 --     (neuer Ziel-Stand, Post-State), from_balance, to_balance, effective (Konten id/Name/Waehrung + Datum fuer die
---     Karte), card_lines (Hinweise aus fn_book_transfer, z. B. moegliche Doppelbuchung), savings_goal_reached?}.
+--     Karte), card_lines (Hinweise aus fn_book_transfer, z. B. moegliche Doppelbuchung; zieht der Topf um, der Bank-Hinweis
+--     fn_bank_setup_note 'bank_change' fuer die Sparrate), savings_goal_reached?}.
 --   Korrigierbar -> {ok:false, code?, reason, candidates?} OHNE Write (kein RAISE): amount<=0, direction nicht im Enum,
 --     Ziel nicht gefunden, not_found/ambiguous/depot_not_allowed (Kontoname), no_reserve, not_reserve,
 --     insufficient_share, missing_from/missing_to, use_relocate, invalid_reserve, from==to, interner Transfer {ok:false}
@@ -35,6 +36,7 @@
 CREATE OR REPLACE FUNCTION finance.fn_book_savings_goal_transfer(p jsonb)
 RETURNS jsonb LANGUAGE plpgsql AS $$
 DECLARE
+    v_bank   jsonb;
     v_goal    INT  := NULLIF(p->>'savings_goal_id', '')::int;
     v_from    INT  := NULLIF(p->>'from_account_id', '')::int;
     v_to      INT  := NULLIF(p->>'to_account_id', '')::int;
@@ -200,6 +202,9 @@ BEGIN
         -- alle laufenden Zeilen der Raten-Kette). Ein Teil-Umschichten laesst den Topf, der Rest bleibt Teil der Reserve.
         IF v_from = v_pot AND COALESCE((SELECT r.share FROM finance.fn_goal_reserve_accounts(v_goal) r WHERE r.account_id = v_from), 0) = 0 THEN
             PERFORM finance.fn_apply_goal_reserve(v_goal, v_to);
+            -- die Sparrate geht jetzt auf ein anderes Konto: auch bei der Bank aendern
+            v_bank := finance.fn_bank_setup_note(
+                (SELECT g.recurring_payment_id FROM finance.savings_goals g WHERE g.id = v_goal), 'bank_change');
         END IF;
     END IF;
 
@@ -218,7 +223,8 @@ BEGIN
         'current_amount', v_cur,
         'from_balance', (v_r->>'from_balance')::numeric,
         'to_balance',   (v_r->>'to_balance')::numeric,
-        'card_lines',   COALESCE(v_r->'card_lines', '[]'::jsonb),   -- z. B. moegliche Doppelbuchung (fn_book_transfer)
+        'card_lines',   COALESCE(v_r->'card_lines', '[]'::jsonb)    -- z. B. moegliche Doppelbuchung (fn_book_transfer)
+                        || COALESCE(v_bank, '[]'::jsonb),
         'effective',    COALESCE(v_r->'effective', '{}'::jsonb) || jsonb_build_object(
                             'from_account_id', v_from, 'from_account_name', v_fname, 'from_currency', v_fccy,
                             'to_account_id', v_to, 'to_account_name', v_tname, 'to_currency', v_tccy))

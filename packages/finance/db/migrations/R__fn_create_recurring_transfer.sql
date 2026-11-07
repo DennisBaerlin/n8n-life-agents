@@ -22,6 +22,8 @@
 --   RUECKGABE: Erfolg -> {ok:true, recurring_payment_id, monthly_equivalent, card_lines, effective (+ last_execution,
 --   free_after bei until_free_money), execution} + optional savings_funding (fn_savings_funding_fold, Bericht ohne Frage:
 --   Spar-Deckung von Quelle UND Ziel nach dem Write, je Deckungs-Konto eine Kartenzeile „Danach ...").
+--   card_lines tragen den Bank-Hinweis (fn_bank_setup_note 'bank_setup': selbst bei der Bank einrichten), ausser bei
+--   executed_by bank/manual und bei until_free_money (dort sagt der Schlusssatz des Workflows es schon).
 --   execution = aufgeloeste Ausfuehrung (bank|manual|unknown, fn_transfer_executed_by) als EIGENES Feld, bewusst NICHT unter
 --   effective: New-FnWriteGate mischt effective in die Eingabe des echten Writes, ein abgeleitetes manual/unknown wuerde
 --   sonst fest gespeichert.
@@ -120,6 +122,8 @@ BEGIN
         jsonb_build_object('ok', true, 'recurring_payment_id', v_rp_id, 'monthly_equivalent', v_me,
                            'card_lines', v_nc->'card_lines', 'effective', COALESCE(v_dates->'resolved', '{}'::jsonb) || v_end,
                            'execution', finance.fn_transfer_executed_by(v_rp_id)),
-        v_fold);
+        -- Bank-Hinweis als letzte Kartenzeile; until_free_money hat seinen eigenen Bank-Satz im Workflow
+        finance.fn_merge_fold(v_fold, jsonb_build_object('card_lines',
+            CASE WHEN v_free THEN '[]'::jsonb ELSE finance.fn_bank_setup_note(v_rp_id, 'bank_setup') END)));
 END;
 $$;

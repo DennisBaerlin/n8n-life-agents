@@ -25,6 +25,7 @@
 --   Karten-Hinweise (card_lines): aehnliches Ziel, "gedeckt, Rate 0", Sparplan-Betrag vs. noetige Rate, und bei
 --   Depot-Topf/Sparplan die Regel fn_goal_depot_risk_fold (Ziel kurz vor dem Termin: Warnkarte mit Knopf "Risiko
 --   eingehen" + Stempel nach dem Tipp, card_approve_key, effective.depot_risk_shown, depot_risk; sonst weicher Hinweis).
+--   Eine neue Rate in den Topf (nicht fortgefuehrt) bekommt den Bank-Hinweis (fn_bank_setup_note 'bank_setup').
 --   Eingabe jsonb: name, goal_type, target_amount, target_date (opt), monthly_savings_rate (opt), already_saved (opt),
 --   savings_plan (opt), replace_transfer (opt, true|false), account_id (Abbuchungskonto, in n8n aufgeloest; nur fuer
 --   eine Rate), reserve_account_id
@@ -376,6 +377,10 @@ BEGIN
     IF v_depot OR v_plan_ids IS NOT NULL THEN
         v_fold := finance.fn_goal_depot_risk_fold(v_goal_id, p->'depot_risk_shown');
         v_lines := v_lines || COALESCE(v_fold->'card_lines', '[]'::jsonb);
+    END IF;
+    -- Neue Rate in den Topf: selbst bei der Bank einrichten (letzte Zeile); ein fortgefuehrter Dauerauftrag laeuft dort schon
+    IF v_rp_id IS NOT NULL AND v_old IS NULL THEN
+        v_lines := v_lines || finance.fn_bank_setup_note(v_rp_id, 'bank_setup');
     END IF;
 
     -- Phase L WS-4: Ueber-Spar-Sofort-Hinweis (Event-Fold, geteilter Helfer fn_savings_squeeze_fold). ERST HIER —

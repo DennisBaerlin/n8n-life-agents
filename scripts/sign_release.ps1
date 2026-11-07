@@ -112,6 +112,15 @@ try {
         foreach ($l in (& git -C $RepoRoot ls-tree -r $Tag -- @ReleasePathspec)) {
             $parts = $l -split "`t", 2; $want[$parts[1]] = ($parts[0] -split ' ')[2]
         }
+        # export-ignore (.gitattributes, z. B. provisioning/desktop/**) laesst git archive weg -> hier auch nicht erwarten.
+        # Attribute aus dem Tag, nicht aus dem Arbeitsbaum; in Bloecken, damit die Befehlszeile kurz bleibt.
+        $keys = @($want.Keys)
+        for ($i = 0; $i -lt $keys.Count; $i += 200) {
+            $chunk = $keys[$i..([Math]::Min($i + 199, $keys.Count - 1))]
+            foreach ($a in (& git -C $RepoRoot check-attr "--source=$Tag" export-ignore -- @chunk)) {
+                if ($a -match '^(.*): export-ignore: set$') { $want.Remove($Matches[1]) }
+            }
+        }
         $have = @{}
         foreach ($f in (Get-ChildItem -LiteralPath $root -Recurse -File)) {
             $rel = $f.FullName.Substring($root.Length + 1) -replace '\\', '/'

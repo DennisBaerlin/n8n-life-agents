@@ -19,7 +19,8 @@
 #   <image data-sticker="neutral_yay">      echter Persona-Sticker packages/core/build/stickers/<name>.webp als data:-URI (ein <img>-SVG
 #                                           darf nichts von außen laden; data: ist erlaubt). Nie nachzeichnen.
 #   data-variant="tunnel"                   Element nur in der Variante tunnel (Dateiname <name>-<variante>.<sprache>...).
-#   data-font=""                            (nur am Wurzel-Element) nicht nötig: die Schrift kommt als --font aus den Tokens.
+#   data-full=""                            Element nur in der vollen Fassung; Ziele mit Compact (schmaler Platz im Wizard) lassen es weg
+#                                           und nehmen die Höhe aus data-compact-height am Wurzel-Element.
 
 # Ziel-Ordner sind komplett erzeugt (der Lint meldet fremde Dateien darin). Thema auto = folgt dem System per Media-Query.
 function Get-UiArtDirs { @{ Site = 'docs/site/static/explain'; Wizard = 'provisioning/wizard/ui/explain'; Desktop = 'provisioning/desktop/ui/explain' } }
@@ -36,7 +37,8 @@ function Get-UiArts {
                 @{ Dir = $d.Wizard; Langs = @('de', 'en', 'ko'); Themes = @('auto') }) }
         # Wege ins Internet: Wizard-Seite reach (Bild wechselt mit der Auswahl) und die Weg-Seiten der Anleitung.
         [pscustomobject]@{ Name = 'reach'; Variants = @('tunnel', 'fritzbox', 'proxy'); Targets = @(
-                @{ Dir = $d.Wizard; Langs = @('de', 'en', 'ko'); Themes = @('auto') }
+                # Wizard: 200 px breit neben den Antwortkarten, dort ohne Bildunterschrift (die Karten erklären den Weg).
+                @{ Dir = $d.Wizard; Langs = @('de', 'en', 'ko'); Themes = @('auto'); Compact = $true }
                 @{ Dir = $d.Site; Langs = @('de'); Themes = @('light') }) }
     )
 }
@@ -62,7 +64,7 @@ function Get-UiArtOutputs([string]$RepoRoot, $Tokens) {
             foreach ($lang in $t.Langs) {
                 foreach ($theme in $t.Themes) {
                     foreach ($v in $a.Variants) {
-                        $text = ConvertTo-UiArtSvg $src $v $cat[$lang] $lang $theme $Tokens $markPaths "$(Get-UiArtSourcePath $a.Name)"
+                        $text = ConvertTo-UiArtSvg $src $v $cat[$lang] $lang $theme $Tokens $markPaths "$(Get-UiArtSourcePath $a.Name)" ([bool]$t.Compact)
                         [pscustomobject]@{ Path = "$($t.Dir)/$(Get-UiArtFileName $a.Name $v $lang $theme)"; Text = $text }
                     }
                 }
@@ -119,7 +121,7 @@ function Get-UiArtTokenCss($Tokens, [string]$Theme) {
     }
 }
 
-function ConvertTo-UiArtSvg([string]$Src, [string]$Variant, $Catalog, [string]$Lang, [string]$Theme, $Tokens, [string[]]$MarkPaths, [string]$SrcName) {
+function ConvertTo-UiArtSvg([string]$Src, [string]$Variant, $Catalog, [string]$Lang, [string]$Theme, $Tokens, [string[]]$MarkPaths, [string]$SrcName, [bool]$Compact = $false) {
     $doc = [xml]::new()
     $doc.PreserveWhitespace = $true
     $doc.LoadXml($Src)
@@ -131,6 +133,18 @@ function ConvertTo-UiArtSvg([string]$Src, [string]$Variant, $Catalog, [string]$L
     foreach ($e in @($doc.SelectNodes('//*[@data-variant]'))) {
         if ($e.GetAttribute('data-variant') -ne $Variant) { [void]$e.ParentNode.RemoveChild($e) } else { $e.RemoveAttribute('data-variant') }
     }
+    # Volle oder schmale Fassung
+    foreach ($e in @($doc.SelectNodes('//*[@data-full]'))) {
+        if ($Compact) { [void]$e.ParentNode.RemoveChild($e) } else { $e.RemoveAttribute('data-full') }
+    }
+    if ($Compact) {
+        $h = $root.GetAttribute('data-compact-height')
+        if (-not $h) { throw "${SrcName}: Compact-Ziel ohne data-compact-height" }
+        $vb = $root.GetAttribute('viewBox') -split ' '
+        $root.SetAttribute('viewBox', "$($vb[0]) $($vb[1]) $($vb[2]) $h")
+        $root.SetAttribute('height', $h)
+    }
+    $root.RemoveAttribute('data-compact-height')
     # Zeichen
     $markXml = ($MarkPaths | ForEach-Object { $_ -replace '<path ', "<path xmlns=`"$ns`" " })
     foreach ($g in @($doc.SelectNodes('//*[@data-mark]'))) {

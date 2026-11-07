@@ -20,7 +20,7 @@
   <rect x="40" y="8" width="220" height="324" rx="26" fill="var(--bg)" stroke="var(--ink)" stroke-width="3"/>
   <g data-mark="" transform="translate(56 22) scale(0.85)"/>
   <text x="84" y="36" font-size="14" font-weight="600">lifeagents</text>
-  <text class="sub" x="84" y="51" data-t="telegram.bot"/>
+  <text class="sub" x="84" y="51" data-t="telegram.subtitle"/>
   <path d="M42 62 H258" stroke="var(--hairline)" stroke-width="1.5"/>
 
   <g class="in1">

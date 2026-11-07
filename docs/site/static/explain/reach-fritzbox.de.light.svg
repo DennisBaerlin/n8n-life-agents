@@ -21,7 +21,6 @@
 text { font-family: var(--font); fill: var(--ink); }
     .cap { font-size: 15px; text-anchor: middle; }
     .lbl { font-size: 15px; }
-    .note { font-size: 13px; }
     .ring { fill: none; stroke: var(--accent); stroke-width: 2.5; }
     .dot { opacity: 0; }
     @keyframes dot {

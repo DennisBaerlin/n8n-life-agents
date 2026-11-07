@@ -158,6 +158,9 @@ function Set-TestRouterHistory {
 # --- Setup: echten Ingress aufloesen + Owner pairen ---
 $ingress = Resolve-OrchestratorIngress -BridgeUrl $N8N_URL -ApiKey $N8N_API_KEY
 $OrchWfId = $ingress.OrchWfId
+# Dieselbe Vorbereitung wie n8n_test/mock_route_test/e2e_test (Fixtures + abgeschlossenes Onboarding): auf einem frischen
+# Substrat leitete der Spezialist sonst auf die Einrichtung um und der Router-Pin onboarding_in_progress zog Gruesse zum Guide.
+Initialize-AgentTestState -Container $Container -RepoRoot $RepoRoot
 $PairedUid = $TestOwnerTelegramUid
 Set-OwnerTelegramPairing -Container $Container -Uid $PairedUid
 Write-Host "  Orchestrator: id=$OrchWfId   Ingress: $($ingress.Url)"

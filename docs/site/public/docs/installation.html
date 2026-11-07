@@ -224,7 +224,7 @@
 <p>Es gibt zwei gleichwertige Wege. Der Bot kann danach in beiden dasselbe. Die Frage ist: <strong>Hast du einen eigenen Server?</strong></p>
 <ul>
 <li><strong>Ja, ich habe einen eigenen Server</strong> (auch als Container/LXC oder virtuelle Maschine) und etwas Technik-Wissen: <strong>Installation per Befehl.</strong> Ein Befehl im Terminal, die Fragen kommen im Terminal. Ins Internet kommt der Bot per Tunnel (empfohlen), FritzBox-Freigabe oder deinem eigenen Reverse Proxy. Anleitung: diese Seite, ab <a href="#bevor-du-startest">Bevor du startest</a>.</li>
-<li><strong>Nein, ich habe einen Mac oder Windows-PC</strong>, der durchlaufen kann, und kein Technik-Wissen: <strong>Start-App.</strong> Datei laden, App öffnen, die Fragen kommen im Fenster. Ins Internet kommt der Bot per Tunnel (empfohlen) oder FritzBox-Freigabe. Anleitung: <a href="start-app.html">Installation mit der Start-App</a>.</li>
+<li><strong>Nein, ich habe einen Mac oder Windows-PC</strong> (Windows folgt), der durchlaufen kann, und kein Technik-Wissen: <strong>Start-App.</strong> Datei laden, App öffnen, die Fragen kommen im Fenster. Ins Internet kommt der Bot per Tunnel (empfohlen) oder FritzBox-Freigabe. Anleitung: <a href="start-app.html">Installation mit der Start-App</a>.</li>
 </ul>
 <p>Der Rest dieser Seite beschreibt die <strong>Installation per Befehl</strong>. Der Bot läuft dabei auf einer eigenen Debian-12-Maschine (als Container/LXC oder als virtuelle Maschine, VM). Ein einziger Befehl richtet PostgreSQL, n8n und das <strong>Grundsystem</strong> ein (Telegram-Bot, Hilfe, Einrichtungs-Assistent, Erinnerungen). Die Fach-Funktionen — Finanzen, Karriere, Nachlass, Dokumente — wählst du danach <strong>einzeln</strong> dazu (siehe <a href="#funktionen-hinzuf%C3%BCgen">„Funktionen hinzufügen&quot;</a>). Wie Telegram deinen Server erreicht, ist die erste Frage des Installers (siehe <a href="#erreichbarkeit">„Erreichbarkeit&quot;</a>): am einfachsten über einen <strong>Tunnel</strong>, den der Installer selbst einrichtet. Hast du schon einen <strong>Reverse Proxy</strong> (die meisten Heim-Server haben einen), nimmst du ihn; der Installer gibt dir dafür eine <strong>fertige, direkt eintragbare Konfiguration</strong> aus.</p>
 <h2 id="bevor-du-startest">Bevor du startest</h2>
@@ -399,7 +399,7 @@
 <li>BotFather antwortet mit dem <strong>Token</strong> (Form <code>123456:ABC-DEF…</code>) — den kopierst du und gibst ihn beim Installer ein. Der Installer prüft ihn sofort gegen Telegram.</li>
 </ol>
 <h2 id="mit-telegram-verbinden">Mit Telegram verbinden</h2>
-<p>Am Ende der Installation verbindet der Installer dich als Owner (Besitzer) mit deinem Bot — in drei Schritten, ohne dass du etwas abtippen musst:</p>
+<p>Am Ende der Installation verbindet der Installer dich als Owner (Besitzer) mit deinem Bot — in vier Schritten, ohne dass du etwas abtippen musst:</p>
 <ol>
 <li><strong>Erreichbarkeit prüfen.</strong> Der Installer fragt Telegram direkt, ob dein Server von außen erreichbar ist. Wenn nicht, zeigt er dir beim FritzBox-Weg und beim eigenen Proxy das fertige Caddyfile, die Anforderungen an deinen Reverse Proxy und Telegrams eigene Fehlermeldung (beim Tunnel stattdessen, was Tailscale noch braucht). Richte das ein und wähle „Erneut prüfen&quot; — oder „Später einrichten&quot;. Danach prüft er, ob auch Handy und Laptop bei deinem Proxy ankommen (über IPv4 und IPv6, Details unter <a href="fritzbox.html#was-der-installer-pr%C3%BCft">FritzBox einrichten → Was der Installer prüft</a>). Ein offener Punkt hält die Installation nicht an.</li>
 <li><strong>Verbindungs-Link öffnen.</strong> Du bekommst einen Link der Form <code>https://t.me/&lt;dein-bot&gt;?start=&lt;code&gt;</code>. Öffne ihn auf dem Handy, Telegram startet den Chat mit deinem Bot und schickt den Code mit. (Alternativ tippst du <code>/start &lt;code&gt;</code> von Hand.) Der Code steht <strong>nur im Terminal</strong>, nie im Chat — so kann sich niemand, der zufällig Zugriff auf den Chat hätte, selbst als Besitzer eintragen. Er gilt 10 Minuten; danach bietet der Installer dir einen neuen an.</li>
@@ -460,7 +460,7 @@
 			</tr>
 			<tr>
 					<td><code>lifeagents backup export|restore</code></td>
-					<td>Ein verschlüsseltes Voll-Backup deiner Daten erstellen oder zurückspielen, optional als Datei an deinen eigenen Telegram-Chat.</td>
+					<td>Ein verschlüsseltes Backup deiner Nutzerdaten erstellen oder zurückspielen (Programm, Abläufe und Zugangsdaten stellt der Installer wieder her), optional als Datei an deinen eigenen Telegram-Chat.</td>
 			</tr>
 			<tr>
 					<td><code>lifeagents doctor</code></td>

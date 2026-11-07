@@ -49,10 +49,5 @@ ALTER TABLE agent.hitl_pending ADD COLUMN IF NOT EXISTS decline_key text;
 
 CREATE INDEX IF NOT EXISTS hitl_pending_execution_idx ON agent.hitl_pending (execution_id);
 
--- Lesepfad: Orchestrator-Pre-Router unter core_ro (Lese-Konsistenz, falls die Init standalone ohne die
--- util-Blanket-Grants laeuft; Muster agent.access_blocks).
-DO $$ BEGIN
-    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'core_ro') THEN
-        GRANT SELECT ON agent.hitl_pending TO core_ro;
-    END IF;
-END $$;
+-- Kein Grant an core_ro: der Pre-Router liest ueber das DEFINER-Fenster agent.fn_get_hitl_pending_state
+-- (Erlaubnisliste in util_create_core_ro.sql).

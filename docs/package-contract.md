@@ -874,9 +874,11 @@ path (`postgres_select`) needs to browse **both** their own `agent`/`core` table
 before saving it as a trigger). The narrow package role `<pkg>_ro` cannot serve this (it is scoped to
 `<pkg>` only). Therefore:
 
-- **`core_ro`** — a Core-host read-only login role (read-only on `agent` + `core`; **not** a package
-  isolation role, distinct from the "Core gets no core_rw/_ro" rule in §2 which is about isolation roles).
-  `packages/core/db/util/util_create_core_ro.sql`; `core.backup_key` is REVOKEd from it (backup key). The core-agent n8n
+- **`core_ro`** — a Core-host read-only login role (**not** a package isolation role, distinct from the
+  "Core gets no core_rw/_ro" rule in §2 which is about isolation roles). In `agent` + `core` it reads **only an
+  allowlist** (Owner decision 2026-11-07): the list and the reason per entry live in
+  `packages/core/db/util/util_create_core_ro.sql`; a new table stays invisible until it is listed there
+  (`tests/db/core/test_core_ro_allowlist.sql`); `core.backup_key` is REVOKEd from it (backup key). The core-agent n8n
   read credentials (`__CRED_POSTGRES_CORE_RO__`) connect as `core_ro`. Write-safety for LLM-authored SQL is
   preserved (read-only role) — the reason a read role exists at all.
 - **Package opens a read window (declaration vs. execution):** when a domain package is provisioned,
@@ -1304,8 +1306,8 @@ wird unten als „bei uns anders"-Notiz festgehalten (damit sie nicht je Paket r
   deterministische Quelle (read_plan-Fallback/Review/refresh_market_signals/Migration). `fn_advisor_read_plan` ist
   jetzt `(text, text)` (chat_id-Person-Scope; `core:V014` droppt 1-Arg, Muster fn_fetch_context/V013). Multi-Person-
   Faecherung (Cron-Schleife, per-Person-Notify, `job_matches.person_id`) = P2.
-- **#10 finance_ro/core_ro-Grant-Split = Design, kein Bug:** Agent-Layer-Reads laufen unter `core_ro` (hat `SELECT
-  agent.*`), Paket-Tabellen unter `<pkg>_ro` — bewusst getrennt (D10/D12).
+- **#10 finance_ro/core_ro-Grant-Split = Design, kein Bug:** Agent-Layer-Reads laufen unter `core_ro` (Erlaubnisliste in
+  `agent`/`core`, §4), Paket-Tabellen unter `<pkg>_ro` — bewusst getrennt (D10/D12).
 - **career P2a — Multi-Person-Fundament (4 Entscheidungen, arch-challenge 5× ADOPT):**
   - **`career.job_matches.person_id` ist `text NOT NULL` + FK `ON DELETE RESTRICT`** (Backfill Owner via
     `career:V003`) — **wholly-per-person** Tabelle (kein Haushalts-Job-Match), darum NOT NULL, **anders** als die

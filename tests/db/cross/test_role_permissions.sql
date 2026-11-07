@@ -471,9 +471,9 @@ BEGIN
   END;
   RAISE NOTICE 'PASS [finance_ro NEGATIV: kein direkter agent.monitor_triggers-Read (D10 dicht)]';
 
-  -- ===== (3) core_ro: BREITE Leserolle der Core-Agenten (monitor/guide, freies postgres_select) =====
-  -- core_ro liest agent+core DIREKT (kein DEFINER-Fenster nötig) -> die Bug-Klasse (enge, ausgesperrte Rolle)
-  -- greift hier nicht; der Test bestätigt nur, dass der breite Read-Pfad funktioniert.
+  -- ===== (3) core_ro: Leserolle der Core-Agenten (monitor/guide, freies postgres_select) =====
+  -- core_ro liest die Erlaubnisliste in agent+core DIREKT (util_create_core_ro; Vollstaendigkeit: test_core_ro_allowlist).
+  -- Der Test bestaetigt, dass der Read-Pfad auf zwei Listen-Tabellen funktioniert.
   BEGIN
     SET LOCAL ROLE core_ro;
     PERFORM 1 FROM agent.core_contexts LIMIT 1;
@@ -483,7 +483,7 @@ BEGIN
     RESET ROLE;
     RAISE EXCEPTION 'FAIL [core_ro -> direkter agent+core-Read]: %', SQLERRM;
   END;
-  RAISE NOTICE 'PASS [core_ro -> direkter agent.core_contexts + core.config-Read (breite Leserolle)]';
+  RAISE NOTICE 'PASS [core_ro -> direkter agent.core_contexts + core.config-Read (Erlaubnisliste)]';
 
   -- ===== (3b) WS-5b (M2): core_ro -> agent.fn_resolve_sender =====
   -- Das HITL-Gate (agent.tool_human_approval) loest den Sender unter core_ro auf (Resolve-Node). Bisher nur
@@ -865,17 +865,17 @@ BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'finance_rw') THEN
     RAISE EXCEPTION 'FAIL [role_perms]: Rolle finance_rw nicht provisioniert'; END IF;
 
-  -- (4a) core_ro liest die projizierte agent.persons (util_create_core_ro grantet agent.* SELECT)
+  -- (4a) NEGATIV: core_ro liest agent.persons nicht (Erlaubnisliste util_create_core_ro; Inhalt steht im family-Kontext)
   BEGIN
     SET LOCAL ROLE core_ro;
-    SELECT count(*) INTO v_cnt FROM agent.persons;
+    PERFORM 1 FROM agent.persons LIMIT 1;
     RESET ROLE;
-  EXCEPTION WHEN OTHERS THEN
-    RESET ROLE;
-    RAISE EXCEPTION 'FAIL [core_ro -> agent.persons]: %', SQLERRM;
+    RAISE EXCEPTION 'FAIL [core_ro NEGATIV]: core_ro konnte agent.persons direkt lesen -> nicht auf der Erlaubnisliste!';
+  EXCEPTION
+    WHEN insufficient_privilege THEN
+      RESET ROLE;
+      RAISE NOTICE 'PASS [core_ro NEGATIV: kein direkter agent.persons-Read (Erlaubnisliste)]';
   END;
-  IF v_cnt < 1 THEN RAISE EXCEPTION 'FAIL [core_ro -> agent.persons]: 0 Zeilen trotz Fixture'; END IF;
-  RAISE NOTICE 'PASS [core_ro -> agent.persons-Read (% Zeilen)]', v_cnt;
 
   -- (4b) finance_rw bucht ein Konto mit GUELTIGEM owner_person_id -> der Cross-Schema-FK greift
   --      OHNE dass finance_rw SELECT auf agent.persons hat (RI-Check ist intern).
@@ -1345,17 +1345,17 @@ BEGIN
   END;
 
   -- ===== (5) WS-5d: agent.access_blocks-Lesepfad unter den engen Rollen =====
-  -- (5a) core_ro liest die Sperrliste (breite Core-Leserolle; agent.* SELECT-Grant + expliziter Init-Grant).
+  -- (5a) NEGATIV: core_ro liest die Sperrliste nicht (Erlaubnisliste util_create_core_ro; kein Lesepfad unter core_ro)
   BEGIN
     SET LOCAL ROLE core_ro;
-    SELECT count(*) INTO v_cnt FROM agent.access_blocks;
+    PERFORM 1 FROM agent.access_blocks LIMIT 1;
     RESET ROLE;
-  EXCEPTION WHEN OTHERS THEN
-    RESET ROLE;
-    RAISE EXCEPTION 'FAIL [core_ro -> agent.access_blocks]: %', SQLERRM;
+    RAISE EXCEPTION 'FAIL [core_ro NEGATIV]: core_ro konnte agent.access_blocks direkt lesen -> nicht auf der Erlaubnisliste!';
+  EXCEPTION
+    WHEN insufficient_privilege THEN
+      RESET ROLE;
+      RAISE NOTICE 'PASS [core_ro NEGATIV: kein direkter agent.access_blocks-Read (Erlaubnisliste)]';
   END;
-  IF v_cnt < 1 THEN RAISE EXCEPTION 'FAIL [core_ro -> agent.access_blocks]: 0 Zeilen trotz Fixture'; END IF;
-  RAISE NOTICE 'PASS [core_ro -> agent.access_blocks-Read (% Zeilen)]', v_cnt;
 
   -- (5b) NEGATIV: finance_ro darf agent.access_blocks NICHT direkt lesen (D10 dicht, wie agent.persons)
   BEGIN

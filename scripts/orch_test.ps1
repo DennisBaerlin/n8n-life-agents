@@ -18,7 +18,9 @@
 #   followup_agent = 'agent.<x>' -> vor dem Fall die Knopf-Folge-Bindung dieses Chats setzen (Router-Regel 2a);
 #   router_history = {human, agent, output} oder Liste davon -> fruehere Spezialisten-Turns im Router-Gedaechtnis, Form wie im Betrieb;
 #     mit button = true (ohne human) traegt agent.fn_set_router_button_turn den Turn ein wie der Knopf-Arm;
-#   expected_signal = FRAME|NOFRAME -> Router-Signal nach dem Spezialisten (Relay compose.signal, Regel 6 fuer alle).
+#   expected_signal = FRAME|NOFRAME -> Router-Signal nach dem Spezialisten (Relay compose.signal, Regel 6 fuer alle);
+#   expected_mood = LOVE|CHEER|RELIEF|FUN|'' -> Stimmung der Router-Zeile (Relay compose.mood; '' = keine);
+#   expect_body_empty = true -> der Router antwortet nur mit einer Reaktion (Relay compose.body leer, kein Text).
 #
 # Usage:  .\scripts\orch_test.ps1 [-Id oc01] [-Timeout 90] [-Verbose]
 # Exit-Code = Anzahl Fehler. KOSTET LLM-Credits (owner-gegatet).
@@ -72,10 +74,15 @@ function Get-ToolCall([object]$RunData) {
 }
 function Get-AgentOutput([object]$RunData) {
     $txt = ''
-    # Woertliches Weiterreichen: die GESENDETE Nachricht baut 'Relay compose' (Teile, HTML-escapt); der Agent selbst
-    # liefert nach einem Spezialisten nur FRAME/NOFRAME. Fuer Judge und verbatim_relay zaehlt der gesendete Text.
+    # Woertliches Weiterreichen: die GESENDETE Nachricht = Rahmensatz aus 'Claim expression' (frame_r.text, falls da)
+    # + Leerzeile + 'Relay compose'.body; der Agent selbst liefert nach einem Spezialisten nur FRAME/NOFRAME. Fuer Judge
+    # und verbatim_relay zaehlt der gesendete Text.
     if ($RunData.PSObject.Properties.Name.Contains('Relay compose')) {
-        try { return [string]$RunData.'Relay compose'[0].data.main[0][0].json.body } catch { return '' }
+        $body = ''; $frame = ''
+        try { $body = [string]$RunData.'Relay compose'[0].data.main[0][0].json.body } catch { }
+        try { $frame = [string]$RunData.'Claim expression'[0].data.main[0][0].json.frame_r.text } catch { }
+        if ($frame) { return "$frame`n`n$body" }
+        return $body
     }
     if (-not $RunData.PSObject.Properties.Name.Contains($AgentNode)) { return $txt }
     foreach ($run in $RunData.$AgentNode) { try { if ($run.data.main[0][0].json.output) { $txt = $run.data.main[0][0].json.output } } catch { } }
@@ -151,6 +158,9 @@ function Set-TestRouterHistory {
 # --- Setup: echten Ingress aufloesen + Owner pairen ---
 $ingress = Resolve-OrchestratorIngress -BridgeUrl $N8N_URL -ApiKey $N8N_API_KEY
 $OrchWfId = $ingress.OrchWfId
+# Dieselbe Vorbereitung wie n8n_test/mock_route_test/e2e_test (Fixtures + abgeschlossenes Onboarding): auf einem frischen
+# Substrat leitete der Spezialist sonst auf die Einrichtung um und der Router-Pin onboarding_in_progress zog Gruesse zum Guide.
+Initialize-AgentTestState -Container $Container -RepoRoot $RepoRoot
 $PairedUid = $TestOwnerTelegramUid
 Set-OwnerTelegramPairing -Container $Container -Uid $PairedUid
 Write-Host "  Orchestrator: id=$OrchWfId   Ingress: $($ingress.Url)"
@@ -230,6 +240,22 @@ foreach ($tc in $cases) {
         if ($runData.PSObject.Properties.Name.Contains('Relay compose')) { try { $sig = [string]$runData.'Relay compose'[0].data.main[0][0].json.signal } catch { } }
         Write-Host "    signal: '$sig' (erwartet $($tc.expected_signal))"
         if ($sig -ne "$($tc.expected_signal)") { $pass = $false }
+    }
+    # expected_mood / expect_body_empty: Stimmung bzw. reine Reaktion aus 'Relay compose' (Grammatik N1: FRAME <MOOD>,
+    # REACT <MOOD> [+ Text]); die Entscheidung ueber die Reaktion faellt danach in agent.fn_claim_reaction.
+    if ($null -ne $tc.expected_mood -or $tc.expect_body_empty) {
+        $rc = $null
+        if ($runData.PSObject.Properties.Name.Contains('Relay compose')) { try { $rc = $runData.'Relay compose'[0].data.main[0][0].json } catch { } }
+        if ($null -ne $tc.expected_mood) {
+            $mood = if ($rc) { [string]$rc.mood } else { '' }
+            Write-Host "    mood: '$mood' (erwartet '$($tc.expected_mood)')"
+            if ($mood -ne "$($tc.expected_mood)") { $pass = $false }
+        }
+        if ($tc.expect_body_empty) {
+            $bodyEmpty = $rc -and -not [string]$rc.body
+            Write-Host "    body leer: $bodyEmpty"
+            if (-not $bodyEmpty) { $pass = $false }
+        }
     }
     if ($tc.expected_behavior) {
         $judgeBundle += [ordered]@{

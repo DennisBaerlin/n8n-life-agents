@@ -89,12 +89,12 @@ function Build-AgentOrchestrator {
         'core.orch.card_open', 'core.orch.card_waiting', 'core.orch.relay_empty',
         'core.welcome.member', 'core.welcome.btn_household', 'core.welcome.btn_help'
     )
-    # Persona-Rahmensaetze (Relay compose): ALLE Katalog-Keys core.persona.frame.* in der Sprache des Absenders — die
-    # Varianten-Zahl je Persona steht nur im Katalog (Relay compose filtert per Praefix; locale_lint 7b verlangt je
-    # Persona mindestens einen Satz, die Sprach-Paritaet Check 4).
-    $personaFrameKeys = @(([System.IO.File]::ReadAllText((Join-Path $RepoRoot 'packages\core\locales\de.json'), (New-Object System.Text.UTF8Encoding($false))) | ConvertFrom-Json).PSObject.Properties.Name |
-        Where-Object { $_ -like 'core.persona.frame.*' } | Sort-Object)
-    $senderKeys += $personaFrameKeys
+    # Ersatztext, wenn der Router nur 'REACT <MOOD>' sagt, die Reaktion aber ausbleibt (Aus-Schalter, fn-Fehler): nie
+    # Stille. Der Key kommt mit den Router-Regeln, die REACT erst einfuehren; Get-UiKeysSql prueft jeden Key gegen den
+    # Katalog -> nur aufnehmen, wenn er dort steht (ohne ihn sagt der Router nie REACT, der Weg ist unerreichbar).
+    $catalogDe = ([System.IO.File]::ReadAllText((Join-Path $RepoRoot 'packages\core\locales\de.json'), (New-Object System.Text.UTF8Encoding($false))) | ConvertFrom-Json)
+    $reactFallbackKey = if ($catalogDe.PSObject.Properties.Name -contains 'core.orch.react_fallback') { 'core.orch.react_fallback' } else { '' }
+    if ($reactFallbackKey) { $senderKeys += $reactFallbackKey }
     $ownerKeys = @(
         'core.orch.invite_request', 'core.orch.invite_request_unnamed', 'core.orch.btn_confirm', 'core.orch.btn_reject',
         'core.orch.unknown_user', 'core.orch.btn_block', 'core.orch.voice_owner_note', 'core.orch.reason_unknown', 'core.orch.reason_provider_missing',
@@ -111,12 +111,14 @@ function Build-AgentOrchestrator {
     # Sender-Aufloesung + t-Maps in EINER Abfrage (immer genau eine Zeile; sender bleibt die bisherige Form).
     # -SmalltalkExpr: zusaetzlich core.fn_smalltalk_kind(<text>) AS smalltalk (reiner Dank/Gruss, Herz-Kurzschluss) —
     # in derselben Abfrage, kein eigener Knoten.
-    function Get-SenderSql([string]$UidExpr, [string[]]$Keys, [switch]$WithOwner, [string]$SmalltalkExpr = '') {
+    function Get-SenderSql([string]$UidExpr, [string[]]$Keys, [switch]$WithOwner, [string]$SmalltalkExpr = '', [switch]$WithStyle) {
         $owner = if ($WithOwner) { ", core.fn_ui_texts(agent.fn_person_lang(agent.fn_owner_person_id())->>'lang', $(Get-UiKeysSql $ownerKeys)) AS t_owner" } else { '' }
-        # + run_at = Laufbeginn in DB-Zeit (clock_timestamp) fuer agent.fn_claim_persona_sticker ("dieser Lauf", derselbe
-        #   Zeitgeber wie hitl_pending.opened_at; nie die Telegram-Uhr message.date)
+        # + run_at = Laufbeginn in DB-Zeit (clock_timestamp) fuer agent.fn_claim_persona_sticker/fn_claim_reaction ("dieser
+        #   Lauf", derselbe Zeitgeber wie hitl_pending.opened_at; nie die Telegram-Uhr message.date)
         $small = if ($SmalltalkExpr) { ", core.fn_smalltalk_kind($SmalltalkExpr) AS smalltalk, clock_timestamp() AS run_at" } else { '' }
-        "SELECT x.s AS sender, y.l->>'lang' AS lang, core.fn_ui_texts(y.l->>'lang', $(Get-UiKeysSql $Keys)) AS t$owner$small FROM (SELECT agent.fn_resolve_sender($UidExpr) AS s) x CROSS JOIN LATERAL (SELECT agent.fn_person_lang(x.s->>'person_id') AS l) y;"
+        # -WithStyle: Router-Flags user_style + daypart (nur Einzelchats: chat_id = from.id = Schluessel des Router-Gedaechtnisses)
+        $style = if ($WithStyle) { ", agent.fn_chat_style($UidExpr) AS user_style, core.fn_daypart() AS daypart" } else { '' }
+        "SELECT x.s AS sender, y.l->>'lang' AS lang, core.fn_ui_texts(y.l->>'lang', $(Get-UiKeysSql $Keys)) AS t$owner$small$style FROM (SELECT agent.fn_resolve_sender($UidExpr) AS s) x CROSS JOIN LATERAL (SELECT agent.fn_person_lang(x.s->>'person_id') AS l) y;"
     }
     # Pairing-Ergebnis + Texte in der Sprache der eingeladenen Person (fn liefert person_id; Kette unveraendert).
     function Get-PairingSql([string]$FnCall, [string[]]$Keys) {
@@ -224,7 +226,7 @@ function Build-AgentOrchestrator {
 
     # === SENDER-GATE (message-Pipeline, deterministisch, vor dem LLM) ============================
     $nResolveSender = New-OrchPg 'Resolve sender' @(-1392, 48) `
-        (Get-SenderSql "((`$1::jsonb)->>'uid')::bigint" $senderKeys -WithOwner -SmalltalkExpr "(`$1::jsonb)->>'text'") `
+        (Get-SenderSql "((`$1::jsonb)->>'uid')::bigint" $senderKeys -WithOwner -SmalltalkExpr "(`$1::jsonb)->>'text'" -WithStyle) `
         $CRED_PG_RO ([ordered]@{ uid = "((`$('Trigger normalize').item.json.message.from || {}).id)"
                                  text = "String(`$('Trigger normalize').item.json.message.text || '')" })
     $nSenderKnown = Build-If 'Sender known?' @(-1168, 48) `
@@ -886,6 +888,20 @@ return msgs.map((m, i) => ({ json: { chunk: '(' + (i + 1) + '/' + N + ')\n' + m 
         $CRED_PG_RO
 
     # === MESSAGE-TYP-SWITCH (audio/voice gefixt auf verschachtelte Pfade) =======================
+    # === Lebenszeichen 👀 an Foto/Dokument (agent.fn_claim_reaction event 'seen', kein LLM) =====================
+    # Liegt hoeher als 'Open thinking lease' und die Normalisierung -> laeuft in der v1-Reihenfolge zuerst (Kette bis
+    # 'React seen' ist synchron: ein Gateway-Haenger verzoegert "Denkt nach" um hoechstens das 4-s-Limit). Primaere
+    # Nachricht = die des Laufs (bei Buendelung die frueheste Datei). Write-Cred (Protokoll), onError continue; Ende.
+    $nClaimSeen = New-OrchPg 'Claim seen reaction' @(-272, -1120) `
+        "SELECT agent.fn_claim_reaction(`$1::jsonb) AS r;" `
+        $CRED_POSTGRES ([ordered]@{
+            chat_id    = "String(`$('Trigger normalize').first().json.message.chat.id)"
+            message_id = "`$('Trigger normalize').first().json.message.message_id"
+            event      = "'seen'" })
+    $nSeenDue = Build-If 'Seen due?' @(-60, -1120) "={{ !!((`$json.r || {}).emoji) }}" 'true' 'equals' 'boolean'
+    $nReactSeen = New-TelegramRelayNode 'React seen' @(160, -1120) -Method 'setMessageReaction' `
+        -BodyExpr "{ chat_id: String(`$('Trigger normalize').first().json.message.chat.id), message_id: `$('Trigger normalize').first().json.message.message_id, emoji: `$('Claim seen reaction').first().json.r.emoji }"
+
     $nTypeSwitch = Build-Switch 'Which type of message' @(-496, -160) @(
         @{ Left = "={{ `$('Trigger normalize').item.json.message.audio.file_id }}";    Type = 'string'; Op = 'exists'; OutputKey = 'audio' }
         @{ Left = "={{ `$('Trigger normalize').item.json.message.voice.file_id }}";    Type = 'string'; Op = 'exists'; OutputKey = 'voice' }
@@ -1132,7 +1148,7 @@ return msgs.map((m, i) => ({ json: { chunk: '(' + (i + 1) + '/' + N + ')\n' + m 
             text = "={{ `$('Agent input').item.json.chat_message }}"
             options = [ordered]@{
                 returnIntermediateSteps = $true
-                systemMessage = "={{ `$('Load Agent Context').item.json.system_prompt + '\n\n## Runtime flags\nfollowup_agent: ' + ((`$('Followup pin').item.json.followup_agent) || 'none') + '\ninterview_advisor: ' + ((`$('Interview pin').item.json.interview_advisor) || 'none') + '\nonboarding_in_progress: ' + (`$('Onboarding pin').item.json.onboarding_in_progress === true ? 'true' : 'false') + '\nCurrent user: ' + ((`$('Resolve sender').item.json.sender || {}).full_name || 'unknown') + ' (' + ((`$('Resolve sender').item.json.sender || {}).role || 'unknown') + ')' + '\npersona: ' + ((`$('Resolve sender').item.json.sender || {}).persona || 'neutral') }}"
+                systemMessage = "={{ `$('Load Agent Context').item.json.system_prompt + '\n\n## Runtime flags\nfollowup_agent: ' + ((`$('Followup pin').item.json.followup_agent) || 'none') + '\ninterview_advisor: ' + ((`$('Interview pin').item.json.interview_advisor) || 'none') + '\nonboarding_in_progress: ' + (`$('Onboarding pin').item.json.onboarding_in_progress === true ? 'true' : 'false') + '\nCurrent user: ' + ((`$('Resolve sender').item.json.sender || {}).full_name || 'unknown') + ' (' + ((`$('Resolve sender').item.json.sender || {}).role || 'unknown') + ')' + '\npersona: ' + ((`$('Resolve sender').item.json.sender || {}).persona || 'neutral') + '\nuser_style: ' + (`$('Resolve sender').item.json.user_style || 'neutral') + '\ndaypart: ' + (`$('Resolve sender').item.json.daypart || 'day') }}"
             }
         }
         type = '@n8n/n8n-nodes-langchain.agent'; typeVersion = 3.1
@@ -1176,21 +1192,32 @@ return msgs.map((m, i) => ({ json: { chunk: '(' + (i + 1) + '/' + N + ')\n' + m 
     # (Spike n8n 2.44.4: intermediateSteps[].action.tool + observation = JSON-String '[{"output":"..."}]', auch nach
     # einer HITL-Fortsetzung; das Chat-Memory speichert die tool-Zeile mit der vollen Antwort -> Sticky-Routing bleibt).
     # Relay compose: Spezialisten-Texte WOERTLICH (Aufruf-Reihenfolge, je Tool der letzte Aufruf); nach einem Tool gibt
-    # der Router nur das Signal FRAME/NOFRAME aus -> bei FRAME + Persona != neutral ein FESTER Katalog-Rahmensatz
-    # (core.persona.frame.<code>.<n>, rotiert per message_id) davor; nie Modelltext neben Spezialisten-Text. Ohne Tool:
-    # die Router-Antwort. Nichts Brauchbares -> core.orch.relay_empty. HTML-escapt (alle Agenten schreiben Plain-Text,
-    # global_instructions) und in Teile <= 3500 Zeichen (vor dem Escapen; Telegram-Limit 4096) an Absatzgrenzen.
+    # der Router nur eine Signal-Zeile aus (FRAME | NOFRAME | FRAME <MOOD>); nie Modelltext neben Spezialisten-Text.
+    # Ohne Tool: die Router-Antwort, eine erste Zeile 'REACT <MOOD>' wird immer abgeschnitten (nur Reaktion bzw.
+    # Reaktion + Text). Nichts Brauchbares -> core.orch.relay_empty. Rahmensatz und Reaktion waehlt danach die DB
+    # (Claim expression); der Body hier ist ohne Rahmensatz. Grammatik = Router-Instruktion Regel 6/7.
     $relayJs = @'
 const a = $('Orchestrator agent').first().json || {};
 const steps = Array.isArray(a.intermediateSteps) ? a.intermediateSteps : [];
 const rs = $('Resolve sender').first().json || {};
 const T = rs.t || {};
-const persona = String((rs.sender || {}).persona || 'neutral');
 const raw = String(a.output || '').trim();
+const nl = raw.indexOf('\n');
+const firstLine = (nl < 0 ? raw : raw.slice(0, nl)).trim();
+const afterFirst = (nl < 0 ? '' : raw.slice(nl + 1)).trim();
 // Signal = fuehrendes Wort (auch "FRAME - und dann Prosa" zaehlt; Review 2026-10-26).
 const sm = raw.match(/^\W*(NOFRAME|FRAME)\b/i);
 const signal = sm ? sm[1].toUpperCase() : '';
-const isSignal = signal !== '' && raw.replace(/[^A-Za-z]/g, '').toUpperCase() === signal;
+// Reine Signal-Zeile: das Signal, hoechstens gefolgt von einer Stimmung, sonst nur Satzzeichen/Markdown.
+const MOOD_RE = /^(LOVE|CHEER|RELIEF|FUN)$/i;
+const words = firstLine.replace(/[^A-Za-z]+/g, ' ').trim().split(' ').filter(Boolean);
+const signalLine = signal !== '' && words.length >= 1 && words[0].toUpperCase() === signal &&
+  (words.length === 1 || (words.length === 2 && MOOD_RE.test(words[1])));
+const isSignal = signalLine && afterFirst === '';
+const isReact = !steps.length && /^\W*REACT\b/i.test(firstLine);
+// Stimmung nur aus der ersten Zeile und nur aus einer Signal-/REACT-Zeile; NOFRAME verwirft sie.
+const mm = firstLine.match(/\b(LOVE|CHEER|RELIEF|FUN)\b/i);
+const mood = (mm && (isReact || (signalLine && signal === 'FRAME'))) ? mm[1].toUpperCase() : '';
 const textOf = (obs) => {
   if (obs === null || obs === undefined) return '';
   let v = obs;
@@ -1223,28 +1250,30 @@ for (const st of steps) {
 }
 const parts = Array.from(byTool.values());
 let body;
+let reply_ok;
 if (parts.length) {
   body = parts.join('\n\n');
-  if (signal === 'FRAME' && persona !== 'neutral') {
-    const msg = ($('Trigger normalize').first().json || {}).message || {};
-    const prefix = 'core.persona.frame.' + persona + '.';
-    const keys = Object.keys(T).filter(k => k.indexOf(prefix) === 0 && T[k]).sort();
-    if (keys.length) body = T[keys[Number(msg.message_id || 0) % keys.length]] + '\n\n' + body;
-  }
+  reply_ok = true;
+} else if (isReact) {
+  // 'REACT <MOOD>' allein -> leerer Body (die Reaktion ist die Antwort); mit Text -> nur der Text.
+  body = afterFirst;
+  reply_ok = body !== '' || mood !== '';
 } else if (!steps.length && raw && !isSignal) {
   body = raw;
+  reply_ok = true;
 } else {
   // Werkzeug lief, lieferte aber nichts Brauchbares (Fehler/leer) -> nie Router-Text (der koennte Daten erfinden);
   // ohne Werkzeug nur ein Signal -> ebenfalls der feste Hinweis.
   body = T['core.orch.relay_empty'] || 'core.orch.relay_empty';
+  reply_ok = false;
 }
 // Router memory signal: lief ein Werkzeug, gehoert ins Router-Gedaechtnis nur das Signal (nie eine eigene Fassung, die
-// der Nutzer nicht sah -- auch nicht beim festen Leer-Hinweis); ohne Werkzeug bleibt die Router-Antwort stehen.
+// der Nutzer nicht sah -- auch nicht beim festen Leer-Hinweis); ohne Werkzeug bleibt die Router-Antwort stehen (auch
+// 'REACT ...': so lernt der Router, dass reine Wertschaetzung eine Reaktion bekommt).
 const memory_signal = steps.length ? (signal === 'FRAME' ? 'FRAME' : 'NOFRAME') : '';
-// signal + tool_called + reply_ok fuer die Sticker-Wahl (agent.fn_claim_persona_sticker: NOFRAME = ernst -> nie ein
-// Sticker; reply_ok=false = fester Leer-/Fehler-Hinweis -> nie ein Daumen hoch davor).
-const reply_ok = parts.length > 0 || (!steps.length && !!raw && !isSignal);
-return [{ json: { body, memory_signal, raw_output: String(a.output ?? ''), signal, tool_called: steps.length > 0, reply_ok } }];
+// Eingaben fuer Claim expression: reply_ok=false = fester Leer-/Fehler-Hinweis -> nie Sticker/Reaktion davor.
+return [{ json: { body, memory_signal, raw_output: String(a.output ?? ''), signal, mood, tool_called: steps.length > 0,
+  reply_ok, react_only: isReact && body === '' && mood !== '', has_text: body !== '', has_parts: parts.length > 0 } }];
 '@
     $nRelay = [ordered]@{
         parameters = [ordered]@{ jsCode = $relayJs }
@@ -1263,29 +1292,45 @@ return [{ json: { body, memory_signal, raw_output: String(a.output ?? ''), signa
             signal  = "`$('Relay compose').first().json.memory_signal" })
     $nMemSignal['executeOnce'] = $true
     # Auslieferung ueber den gemeinsamen Relay-Weg (Teile, HTML-Plain, je Teil eine Runde -> Retry ohne Duplikate).
-    $relayChain = New-TelegramRelayChain 'Send a text message' @(1660, -160) "`$('Relay compose').first().json.body" `
+    # Text = Rahmensatz (Claim expression, falls gewaehlt) + Leerzeile + Body; leer (reine Reaktion zugesagt, kam aber
+    # nicht an 'Has text?' vorbei) nur, wenn die Reaktion fehlt -> Ersatztext statt Stille.
+    $frameJs = "((`$('Claim expression').first().json.frame_r || {}).text || '')"
+    $relayTextJs = "(($frameJs ? $frameJs + '\n\n' : '') + (`$('Relay compose').first().json.body || ''))"
+    $relayFallbackJs = if ($reactFallbackKey) { "(`$('Resolve sender').first().json.t || {})['$reactFallbackKey']" } else { "(`$('Resolve sender').first().json.t || {})['core.orch.relay_empty']" }
+    $relayChain = New-TelegramRelayChain 'Send a text message' @(1660, -160) $relayTextJs -FallbackJs $relayFallbackJs `
         -ChatIdExpr "={{ `$('Trigger normalize').first().json.message.chat.id }}" -DoneTo 'Router memory signal'
 
-    # === STICKER VOR DER ANTWORT (Bot mit Gesicht 2026-10-30, deterministisch, KEIN LLM) =========================
-    # Claim sticker: die EINE Entscheidung in agent.fn_claim_persona_sticker (Set = Persona des Absenders, neutral =
-    # Roboter; yay/top/hmm/hallo aus Onboarding-Latch, endgueltig bestaetigter Karte dieses Laufs, Datei, reinem Gruss;
-    # nie bei NOFRAME; Bremse je Person). Write-Cred (setzt die Bremse), onError continue -> Fehler = kein Sticker.
-    # Send sticker ueber den Telegram-Relay des LLM-Gateways (3-s-Limit statt des Node-Haengers); beide Zweige laufen
-    # in dieselbe Relay-Kette, die den Text per Name aus 'Relay compose' liest -> die Antwort kommt immer.
-    $nClaimSticker = New-OrchPg 'Claim sticker' @(1480, -400) `
-        "SELECT agent.fn_claim_persona_sticker(`$1::jsonb) AS r;" `
+    # === Sticker, Reaktion, Rahmensatz (deterministisch, kein LLM) ===============================================
+    # Claim expression: eine Abfrage, drei DB-Entscheidungen in fester Reihenfolge — erst agent.fn_claim_persona_sticker
+    # (Set = Persona, neutral = Roboter; yay/top/hmm/hallo; nie bei NOFRAME; Bremse je Person), dann
+    # agent.fn_claim_reaction mit dem Sticker-Ergebnis (👌 nach bestaetigter Karte, Stimmung aus der Router-Zeile; kein
+    # Gefuehl neben einem Sticker; Tages-Obergrenze nach Stil), dann agent.fn_claim_persona_frame (Tagesgruss bzw.
+    # Rahmensatz). Write-Cred (Bremse, Protokoll, Latch), onError continue -> Fehler = nichts davon, Text kommt trotzdem.
+    # Sticker und Reaktion gehen ueber den Telegram-Relay des LLM-Gateways (3-s-Limit statt des Node-Haengers); beide
+    # False-Ausgaenge sind verdrahtet. Reine Reaktion (Body leer, Reaktion zugesagt) -> kein Text, direkt zum Abschluss.
+    $nClaimExpr = New-OrchPg 'Claim expression' @(1480, -400) `
+        "WITH s AS (SELECT agent.fn_claim_persona_sticker(`$1::jsonb) AS r) SELECT s.r AS sticker_r, agent.fn_claim_reaction(`$1::jsonb || jsonb_build_object('event', 'reply', 'sticker', COALESCE(s.r->>'sticker', ''))) AS reaction_r, agent.fn_claim_persona_frame(`$1::jsonb) AS frame_r FROM s;" `
         $CRED_POSTGRES ([ordered]@{
             chat_id      = "String(`$('Trigger normalize').first().json.message.chat.id)"
+            message_id   = "`$('Trigger normalize').first().json.message.message_id"
             text         = "String(`$('Trigger normalize').first().json.message.text || '')"
             tool_called  = "`$('Relay compose').first().json.tool_called === true"
             has_file     = "!!(`$('Trigger normalize').first().json.message.photo || `$('Trigger normalize').first().json.message.document)"
             signal       = "String(`$('Relay compose').first().json.signal || '')"
+            mood         = "String(`$('Relay compose').first().json.mood || '')"
+            react_only   = "`$('Relay compose').first().json.react_only === true"
+            has_text     = "`$('Relay compose').first().json.has_text === true"
+            has_parts    = "`$('Relay compose').first().json.has_parts === true"
             reply_ok     = "`$('Relay compose').first().json.reply_ok === true"
             run_started_at = "String(`$('Resolve sender').first().json.run_at || '')" })
-    $nClaimSticker['alwaysOutputData'] = $true
-    $nStickerDue = Build-If 'Sticker due?' @(1660, -400) "={{ !!((`$json.r || {}).sticker) }}" 'true' 'equals' 'boolean'
+    $nClaimExpr['alwaysOutputData'] = $true
+    $nStickerDue = Build-If 'Sticker due?' @(1660, -400) "={{ !!((`$('Claim expression').first().json.sticker_r || {}).sticker) }}" 'true' 'equals' 'boolean'
     $nSendSticker = New-TelegramRelayNode 'Send sticker' @(1840, -480) -Method 'sendSticker' `
-        -BodyExpr "{ chat_id: String(`$('Trigger normalize').first().json.message.chat.id), sticker: `$('Claim sticker').first().json.r.sticker }"
+        -BodyExpr "{ chat_id: String(`$('Trigger normalize').first().json.message.chat.id), sticker: `$('Claim expression').first().json.sticker_r.sticker }"
+    $nReactionDue = Build-If 'Reaction due?' @(2020, -400) "={{ !!((`$('Claim expression').first().json.reaction_r || {}).emoji) }}" 'true' 'equals' 'boolean'
+    $nSendReaction = New-TelegramRelayNode 'Send reaction' @(2200, -480) -Method 'setMessageReaction' `
+        -BodyExpr "{ chat_id: String(`$('Trigger normalize').first().json.message.chat.id), message_id: `$('Trigger normalize').first().json.message.message_id, emoji: `$('Claim expression').first().json.reaction_r.emoji }"
+    $nHasText = Build-If 'Has text?' @(2380, -400) "={{ !!`$('Relay compose').first().json.body || !((`$('Claim expression').first().json.reaction_r || {}).emoji) }}" 'true' 'equals' 'boolean'
 
     # === ZWEITER TRIGGER (deaktiviert, 1:1 erhalten) ============================================
     $nSchedule = [ordered]@{
@@ -1308,7 +1353,7 @@ return [{ json: { body, memory_signal, raw_output: String(a.output ?? ''), signa
     $routeAgentList = (@($AgentRoutingList | ForEach-Object { $_.Name }) -join ', ')
     $stOverview = Build-Sticky 'Doc: Überblick' @(-1880, -260) -Header 'Ablauf' `
         'agent.orchestrator.main_route -- zentraler Telegram-Eingang (einziger Webhook)' `
-        ('New Telegram message -> Private chat? (nur Einzelchats; Gruppe/Kanal endet vor jedem DB-Zugriff — in Gruppen ist chat.id negativ und Antworten gingen an alle; ein Knopf-Tipp aus einer Gruppe bekommt per Group button tap? -> Answer group tap nur eine leere Quittung) -> Eingangs-Bündelung (Doc: Eingangs-Bündelung; nur message, Button-Taps direkt) -> Trigger normalize (zusammengeführtes bzw. Roh-Update) -> Update type (message vs Button-Tap callback_query) -> Sender-Gate (fn_resolve_sender; unbekannt -> Pairing/Knock) -> Card open check (Karte-offen-Sperre, agent.fn_get_hitl_pending_state: offene Bestätigungskarte für diesen Chat -> Reply card open, fester Hinweis "tippe dort" bzw. "wartet auf Freigabe", KEIN Agent; DB-Fehler -> weiter; nach der Relay-Antwort löscht Finish card lock die freigegebenen Sperren des Chats) -> Load core.config -> Load Agent Context (include_manifest=false: der Router callt nie load_context) -> Interview pin -> Onboarding pin -> Which type of message. Button-Taps (callback_query) laufen am LLM vorbei in den deterministischen Callback-Handler (Owner bestätigt/lehnt Member-Einladungen). Der Orchestrator agent routet via je ein Call-Tool pro provides.agents-Eintrag (' + $routeAgentList + ') und relayed die Antwort; der task ist die Nachricht aus Agent input WÖRTLICH (kein $fromAI: der Router wählt nur, er formuliert nicht um). PAKET-NEUTRAL (Phase C): WANN welcher Agent (inkl. Grenzen zwischen Paketen + angenommene Anhang-Dokumentarten) steht NUR in der router_description des besitzenden Pakets = die Tool-Beschreibung; der Prompt orchestrator_agent_instructions trägt nur Mechanik (Pins, Sticky, Anhang-Reihenfolge, Backup-Hinweis). Interview pin (Haupt-Credential, onError continue) injiziert interview_advisor (GENERISCH WS-0c #1: der advisor_agent der Domäne mit aktivem Draft via JOIN core.advisors; nur der EIGENE Personen-Draft bzw. — für den Owner — ein Haushalts-Draft, nie der Draft eines anderen Mitglieds) in den Router-Prompt -> kurze/ambige Folgeturns während eines Advisor-Interviews gehen an genau diesen Advisor (jede Advisor-Domäne). Onboarding pin (RO) injiziert onboarding_in_progress (Haushalt offen, nur für den Owner relevant; Regel 3b) als 2. Flag -> bevorzugt agent.guide; das Interview hat Vorrang. persona (Bot-Persona aus Resolve sender, agent.fn_resolve_sender; fehlt -> neutral) ist das 3. Flag am Ende des System-Prompts = nur Rahmen: eigene Sätze im Persona-Stil; nach einem Spezialisten antwortet der Router nur FRAME/NOFRAME, Relay compose setzt dann einen festen Katalog-Rahmensatz vor die WÖRTLICHE Spezialisten-Antwort, ernste Themen ohne Rahmen (Regeln im statischen Kontext persona_styles.md, gecacht). Die Spezialisten sehen die Persona nie. Jeder Workflow ist build-generiert (löst die 6 alten sync_orchestrator_*.ps1 ab).') 320 720
+        ('New Telegram message -> Private chat? (nur Einzelchats; Gruppe/Kanal endet vor jedem DB-Zugriff — in Gruppen ist chat.id negativ und Antworten gingen an alle; ein Knopf-Tipp aus einer Gruppe bekommt per Group button tap? -> Answer group tap nur eine leere Quittung) -> Eingangs-Bündelung (Doc: Eingangs-Bündelung; nur message, Button-Taps direkt) -> Trigger normalize (zusammengeführtes bzw. Roh-Update) -> Update type (message vs Button-Tap callback_query) -> Sender-Gate (fn_resolve_sender; unbekannt -> Pairing/Knock) -> Card open check (Karte-offen-Sperre, agent.fn_get_hitl_pending_state: offene Bestätigungskarte für diesen Chat -> Reply card open, fester Hinweis "tippe dort" bzw. "wartet auf Freigabe", KEIN Agent; DB-Fehler -> weiter; nach der Relay-Antwort löscht Finish card lock die freigegebenen Sperren des Chats) -> Load core.config -> Load Agent Context (include_manifest=false: der Router callt nie load_context) -> Interview pin -> Onboarding pin -> Which type of message. Button-Taps (callback_query) laufen am LLM vorbei in den deterministischen Callback-Handler (Owner bestätigt/lehnt Member-Einladungen). Der Orchestrator agent routet via je ein Call-Tool pro provides.agents-Eintrag (' + $routeAgentList + ') und relayed die Antwort; der task ist die Nachricht aus Agent input WÖRTLICH (kein $fromAI: der Router wählt nur, er formuliert nicht um). PAKET-NEUTRAL (Phase C): WANN welcher Agent (inkl. Grenzen zwischen Paketen + angenommene Anhang-Dokumentarten) steht NUR in der router_description des besitzenden Pakets = die Tool-Beschreibung; der Prompt orchestrator_agent_instructions trägt nur Mechanik (Pins, Sticky, Anhang-Reihenfolge, Backup-Hinweis). Interview pin (Haupt-Credential, onError continue) injiziert interview_advisor (GENERISCH WS-0c #1: der advisor_agent der Domäne mit aktivem Draft via JOIN core.advisors; nur der EIGENE Personen-Draft bzw. — für den Owner — ein Haushalts-Draft, nie der Draft eines anderen Mitglieds) in den Router-Prompt -> kurze/ambige Folgeturns während eines Advisor-Interviews gehen an genau diesen Advisor (jede Advisor-Domäne). Onboarding pin (RO) injiziert onboarding_in_progress (Haushalt offen, nur für den Owner relevant; Regel 3b) als 2. Flag -> bevorzugt agent.guide; das Interview hat Vorrang. persona (Bot-Persona aus Resolve sender, agent.fn_resolve_sender; fehlt -> neutral) ist das 3. Flag am Ende des System-Prompts = nur Rahmen: eigene Sätze im Persona-Stil; nach einem Spezialisten antwortet der Router nur mit der Signal-Zeile, Claim expression wählt dann einen festen Katalog-Rahmensatz bzw. Tagesgruß vor die WÖRTLICHE Spezialisten-Antwort, ernste Themen ohne Rahmen; danach user_style + daypart (Doc: Agent + Modell + Send) (Regeln im statischen Kontext persona_styles.md, gecacht). Die Spezialisten sehen die Persona nie. Jeder Workflow ist build-generiert (löst die 6 alten sync_orchestrator_*.ps1 ab).') 320 720
     $stSender = Build-Sticky 'Doc: Sender-Gate' @(-1392, 460) -Header 'Ablauf' `
         'Multi-User-Sender-Gate (deterministisch, KEIN LLM)' `
         'Update type trennt zuerst message vs callback_query (Tastendruck -> callback-Handler unten). Auf dem message-Pfad löst Resolve sender message.from.id über agent.fn_resolve_sender gegen die family-Facts auf (DB = Allowlist; Trigger auf * -> kein userIds-Filter). Sender known? found=true -> Thanks only? (HERZ-KURZSCHLUSS, Bot mit Gesicht: Resolve sender liefert zusätzlich core.fn_smalltalk_kind(message.text); ist die Nachricht NUR ein Dank — exakter Abgleich, nie eine Caption, nie eine Antwort (reply_to) auf eine Bot-Nachricht — setzt React heart über den Telegram-Relay des LLM-Gateways ein ❤ an die Nachricht und der Lauf endet: kein Agent, keine Thinking-Lease, kein Text, kein Gedächtnis-Eintrag; gilt auch bei offener Karte) -> sonst Card open check (Karte-offen-Sperre: hat der Chat eine offene Bestätigungskarte des HITL-Gates, parkt n8n die Kette dahinter und ein neuer Agent-Lauf sähe die Kartenrunde nicht -> Reply card open = fester Katalogtext core.orch.card_open bzw. core.orch.card_waiting [Freigabe durch jemand anderen], kein Agent, keine Transkription; Zeilen legt das Gate an und gibt sie nach dem Tipp frei, Finish card lock löscht sie nach der Antwort, Ablauf expires_at ist die Wahrheit; fail-open) -> normale Pipeline; sonst -> Pairing router. /start <code> -> Run claim pairing (fn_claim_pairing_challenge: versucht es als MEMBER-Einladung, STAGT nur). Claim staged? true -> Notify owner invite (Inline-Buttons Bestätigen/Ablehnen, callback_data confirm:<id>/reject:<id>) + Reply member waiting (Text in der Sprache der eingeladenen Person: t_person aus dem Pairing-Node; die Telegram-App-Sprache language_code geht roh an fn_claim und wird nur als Vorschlag gemerkt). false (Owner-Bootstrap-Code/pending/ungültig) -> Resolve pairing target (unverknüpftes Owner-Skelett) -> Run consume pairing (sofort-bindend) -> Send pairing result (Install-UX-Phase 6: nur kurz „Verbunden! Einen Moment …" — die eigentliche Begrüßung mit Knöpfen schickt der Installer NACH dem Neu-Einstellen [owner_connect._oc_send_welcome, Text aus core.fn_render_welcome], sonst liefe ein früher Knopf-Tipp gegen die alten Workflows mit Owner-chat_id 0). Fremder ohne Code: STUMM (kein Ack-Send mehr) -> Knock throttle (fn_register_knock, 1h-Cooldown) -> Notify owner? -> Notify owner unknown. Diese Owner-Notiz trägt jetzt einen „Sperren"-Button (callback_data block:<uid>, WS-5d) -> tappt ihn der Owner, geht es in den callback-Handler (fn_block_knocker). Eine in agent.access_blocks gesperrte uid bekommt KEINE Knock-Notiz mehr (fn_register_knock Guard) UND pairt nicht (fn_claim/fn_consume Guard). DB-Fehler: onError continue.' 360 640
@@ -1320,10 +1365,10 @@ return [{ json: { body, memory_signal, raw_output: String(a.output ?? ''), signa
         'TEXT -> Command router. Core-Zweige (Host-bespoke, hardkodiert): /help|/hilfe -> Load capabilities (core.help_catalog in der Sprache des Absenders, sonst en; Rahmen-Texte als t-Map) -> Split help (WS-5 Code-Node: splittet an `## `-Kategorie-Grenzen, baut Index-Karte zuerst + (n/N)-Praefix, greedy-Chunks < 4096) -> Send help laeuft PER-ITEM (N sequenzielle Plain-Text-Nachrichten, ## -> >, memory-los). /onboarding (WS-2) -> Send onboarding menu (ruft core.sub_send_onboarding_menu INLINE: Uebersicht in Onboarding-Reihenfolge: Bereiche mit Fortschritt + Weiter-Knopf auf den naechsten offenen Abschnitt, der Sub sendet selbst -> KEIN Relay, KEIN LLM, gratis; nur hier am Eintritt -> kein Spam). bare /start -> Start owner? (Rolle aus Resolve sender): Owner -> Start onboarding read (core.fn_render_welcome = EINE Textquelle mit der Installer-Begruessung: Vorname + installierte Funktionen + naechster Schritt; kind back = Haushalt fertig; Lesefehler -> statischer Ersatztext) -> Welcome-zurueck (Core fertig) bzw. Send welcome new + Buttons [Haushalt einrichten=onboarding:core:household / Was kannst du?=help:overview] (Core offen); Mitglied -> Send welcome member (kein Haushalts-Onboarding). /language|/sprache -> Send language picker (core.sub_send_language_picker Modus self: die Person waehlt ihre EIGENE Sprache, Tipp -> lang:-Callback). /persona -> Send persona picker (core.sub_send_persona_picker: die Person waehlt ihren EIGENEN Bot-Charakter, Tipp -> persona:-Callback; wirkt nur als Runtime-Flag persona im Orchestrator-Prompt = Rahmen, s. persona_styles.md). /costs|/kosten -> Send cost report (core.sub_send_cost_report: KI-Kosten 7/30 Tage je Assistent/Modell/Kostenart aus der Gateway-Mitschrift, Rechnung in der DB, sendet selbst; das Owner-Gate sitzt in core.fn_get_llm_cost_report, ein Mitglied bekommt den Owner-only-Hinweis). FESTE TEXTE (Textkatalog Phase B): Resolve sender laedt die t-Maps (t = Absender-Sprache, t_owner = Owner-Sprache), jede feste Antwort liest daraus; die Begruessung kommt aus core.fn_render_welcome(lang) inkl. Knopf-Texte. PAKET-COMMANDS (WS-5 Command-Router-Generalisierung, build-time aus $CommandDispatchList je Manifest-commands.dispatch): je Befehl /<cmd> -> Run command <cmd> (der dispatch.agent des Pakets INLINE ueber agent.sub_dispatch_agent, synthetischer Task, call_depth=1) -> Relay command <cmd> (Markdown->Plain-Fallback). Der Switch-Fallback (Nicht-Command-Text) steht ZULETZT (fallbackOutput=extra, dynamisch verdrahtet) -> ein neues Paket-Command verschiebt ihn NICHT. Sonst -> normale Agent-Pipeline. DOCUMENT/PHOTO -> Attachment-Marker (das Ziel waehlt der Router nach Dokumentart, s. Doc: Voice/Vision). Backup/Restore CLI-only (lifeagents backup).' 360 520
     $stVoice = Build-Sticky 'Doc: Voice/Vision' @(-272, -600) -Header 'Ablauf' `
         'Voice/Audio -> Tool; Foto/Dokument -> Marker' `
-        'Which type of message verzweigt auf die VERSCHACHTELTEN Telegram-Felder (gefixt): audio=message.audio.file_id, voice=message.voice.file_id, text=message.text, photo=message.photo, document=message.document.file_id. Voice UND Audio rufen INLINE agent.tool_transcribe_telegram_voice (Download + Transkription via core.config transcription.provider) -> Transcription ok? -> true: Chat message normalization branch 2 (chat_message = text) -> Agent input -> Agent (alle vier Normalisierungen münden in Agent input; dessen chat_message ist der wörtliche task der Agent-Call-Tools); false -> Close thinking lease (voice) (Schalter der "Bot denkt nach"-Schleife weg, Draft-Fenster abwarten) -> Reply voice unavailable (feste Antwort an den Absender, kein Agent-Lauf; Text je Fehlercode) -> Voice outage? -> nur bei voice_unavailable (kein Google-Schlüssel, Download-/API-Fehler, unbekannter Anbieter), NICHT bei voice_empty (leeres Transkript = stille Aufnahme -> nur Bitte um Wiederholung) -> Voice notify gate (core.fn_should_notify voice/transcription, 24 h) -> Notify owner voice (Grund + Abhilfe, höchstens 1x/Tag). Kein errorWorkflow-Alarm. Foto/Dokument: Set baut chat_message = (Caption || neutraler Hinweis „… ohne Bildunterschrift gesendet." — bewusst OHNE Vermutung zur Dokumentart, Phase C) + [attachment file_id=... type=... (Dokument: + ext=<Endung des Dateinamens>, nie der Name selbst)], bei mehreren Dateien des Bündels (message.extra_files) je Datei ein Marker + neutraler Hinweis „N Dateien … gesendet"; der Marker reicht unverändert durch an den Agenten, den der Router nach Dokumentart wählt (angenommene Arten stehen in den router_descriptions der Pakete; Art unklar -> der Agent mit fallback_for attachment, dessen Tool-Beschreibung den Satz dazu trägt). Dessen eigenes Extraktions-Tool lädt via Core-Baustein fetch_telegram_file (paid Key). Kein Download und keine Inhalts-Vorklassifikation im Orchestrator (Privacy-Hard-Rule).' 300 560
+        'Which type of message verzweigt auf die VERSCHACHTELTEN Telegram-Felder (gefixt): audio=message.audio.file_id, voice=message.voice.file_id, text=message.text, photo=message.photo, document=message.document.file_id. Voice UND Audio rufen INLINE agent.tool_transcribe_telegram_voice (Download + Transkription via core.config transcription.provider) -> Transcription ok? -> true: Chat message normalization branch 2 (chat_message = text) -> Agent input -> Agent (alle vier Normalisierungen münden in Agent input; dessen chat_message ist der wörtliche task der Agent-Call-Tools); false -> Close thinking lease (voice) (Schalter der "Bot denkt nach"-Schleife weg, Draft-Fenster abwarten) -> Reply voice unavailable (feste Antwort an den Absender, kein Agent-Lauf; Text je Fehlercode) -> Voice outage? -> nur bei voice_unavailable (kein Google-Schlüssel, Download-/API-Fehler, unbekannter Anbieter), NICHT bei voice_empty (leeres Transkript = stille Aufnahme -> nur Bitte um Wiederholung) -> Voice notify gate (core.fn_should_notify voice/transcription, 24 h) -> Notify owner voice (Grund + Abhilfe, höchstens 1x/Tag). Kein errorWorkflow-Alarm. Foto/Dokument: LEBENSZEICHEN zuerst (liegt am höchsten -> läuft in der v1-Reihenfolge vor "Denkt nach" und Normalisierung): Claim seen reaction (agent.fn_claim_reaction event seen, Write-Cred, onError continue) -> Seen due? -> React seen = 👀 an die Nachricht (Gateway-Relay, 4-s-Limit; Sprachnachrichten bekommen keins; 👌 bzw. eine Stimmung nach der Antwort ersetzt es). Dann: Set baut chat_message = (Caption || neutraler Hinweis „… ohne Bildunterschrift gesendet." — bewusst OHNE Vermutung zur Dokumentart, Phase C) + [attachment file_id=... type=... (Dokument: + ext=<Endung des Dateinamens>, nie der Name selbst)], bei mehreren Dateien des Bündels (message.extra_files) je Datei ein Marker + neutraler Hinweis „N Dateien … gesendet"; der Marker reicht unverändert durch an den Agenten, den der Router nach Dokumentart wählt (angenommene Arten stehen in den router_descriptions der Pakete; Art unklar -> der Agent mit fallback_for attachment, dessen Tool-Beschreibung den Satz dazu trägt). Dessen eigenes Extraktions-Tool lädt via Core-Baustein fetch_telegram_file (paid Key). Kein Download und keine Inhalts-Vorklassifikation im Orchestrator (Privacy-Hard-Rule).' 300 560
     $stAgent = Build-Sticky 'Doc: Agent + Modell + Send' @(1072, -360) -Header 'Ablauf' `
         'Orchestrator agent + Auslieferung' `
-        ('Modell via Model Selector aus core.config (model.orchestrator, default claude-haiku-latest, Denk-Tiefe low; je Chat-Modell eine Regel model_key->selector_index aus packages/core/seed/ai_models.json, gemeinsamer Builder New-ModelSelectorBundle). Eigenes Chat-Memory agent.orchestrator_chat_memory (sessionKey=chat_id), getrennt von den Agenten. Call-Tools (generiert): ' + $routeAgentList + '. task = $(''Agent input'').first().json.chat_message WÖRTLICH (Fix C: kein $fromAI, der Router wählt nur das Tool; enthält eine Nachricht mehrere Anliegen, bekommt jeder gewählte Agent die ganze Nachricht). Paket-Agenten (alle Nicht-Core-Agenten) sowie die Paket-Onboarding- und Paket-Befehls-Arme laufen über den Core-Verteiler agent.sub_dispatch_agent (feste Eingaben workflow_id/package; Anzeigename + Hinweise holt er zur Laufzeit aus dem Textkatalog in der Sprache des Absenders): er prüft core.fn_package_status und ruft den Agenten per Ausdrucks-ID - ein nicht installiertes/ausgeschaltetes Paket bekommt eine freundliche Antwort statt eines Absturzes; der Orchestrator selbst verweist nie literal auf einen Paket-Workflow (sonst verweigert n8n seine Aktivierung). WÖRTLICHES WEITERREICHEN (Befund 2026-10-25: der Router formulierte Spezialisten-Antworten um und verfälschte eine Aussage): der Agent gibt per returnIntermediateSteps die Tool-Ergebnisse mit; Relay compose sendet die Spezialisten-Texte WÖRTLICH (Aufruf-Reihenfolge, je Tool der letzte Aufruf). Nach einem Tool antwortet der Router nur mit dem Signal FRAME/NOFRAME; bei FRAME und Persona != neutral steht ein FESTER Rahmensatz aus dem Textkatalog davor (core.persona.frame.<code>.<n>, rotiert) - nie Modelltext neben Zahlen. Ohne Tool geht die Router-Antwort raus; nichts Brauchbares -> core.orch.relay_empty. STICKER (Bot mit Gesicht): Relay compose -> Claim sticker (agent.fn_claim_persona_sticker, Write-Cred, onError continue: Set = Persona, neutral = Roboter; yay = Einrichtung in diesem Lauf fertig, top = Karte dieses Laufs endgültig bestätigt + FRAME, hmm = Datei + FRAME, hallo = reiner Gruß ohne Werkzeug; nie bei NOFRAME; Bremse je Person aus core.config persona.*) -> Sticker due? -> Send sticker (Telegram-Relay des LLM-Gateways, 3-s-Limit, onError continue) -> Text; ohne Sticker direkt zum Text. Kein LLM, die Antwort kommt immer. Router memory signal (nach dem Senden, vor Finish card lock, executeOnce, onError continue): hat der Router nach einem Werkzeug doch eine eigene Fassung geschrieben (der Nutzer sieht sie nie), ersetzt agent.fn_set_router_memory_signal sie im Router-Gedächtnis durch das Signal - die gesendete Antwort steht direkt davor wörtlich als tool-Zeile; sonst ahmen die Folge-Turns die Umformulierung nach (Befund 2026-10-26). Teile <= 3500 Zeichen an Absatzgrenzen; Send a text message läuft je Teil in Reihenfolge mit parse_mode=HTML und escaptem Text (= echtes Plain; alle Agenten schreiben Plain-Text; leeres parse_mode macht n8n still zu Markdown) -> kein Parse-Fehler, kein Fallback-Zweig; ein echter Zustellausfall bleibt UNGEFANGEN -> errorWorkflow. Finish card lock executeOnce (mehrere Teile). appendAttribution=false (Mehrbyte-Entity-Bug). KNOWN ISSUE: Send hängt sporadisch ~3-5 Min (Node-keepAlive-Socket) -> CLAUDE.md, kein Code-Bug. BOT DENKT NACH: Sprache/Audio/Foto/Dokument direkt an Which type of message, Text nach dem Command-router-Fallback -> Open thinking lease (Schalter agent.thinking_lease, synchron) -> Show thinking (core.sub_show_thinking fire-and-forget mit execution_id; liegt höher -> v1 führt es vor Transkription/Agent aus, wartet nicht, onError continue) = Telegram-Platzhalter "Thinking..." (am Client nur ~8 s je Draft), den der Sub alle 5 s erneuert, solange der Schalter lebt; bei offener Bestätigungskarte pausiert er. Close thinking lease liegt SERIELL vor Relay compose (und damit vor dem Senden) bzw. Reply voice unavailable: löscht den Schalter und wartet ein evtl. laufendes Draft-Fenster ab (<= 1 s) -> kein "Thinking..." unter der Antwort; Finish card lock löscht die Schalter des Chats ein zweites Mal (Netz), core.sub_error_notify beim Absturz; je Chat ein Schalter (eine neue Nachricht verdrängt einen liegengebliebenen). Paket-Befehle und Paket-Onboarding-Tipps (thinking=loop an agent.sub_dispatch_agent) führen ihre Schleife im Vermittler; der KI-Weg lässt thinking leer.') 320 800
+        ('Modell via Model Selector aus core.config (model.orchestrator, default claude-haiku-latest, Denk-Tiefe low; je Chat-Modell eine Regel model_key->selector_index aus packages/core/seed/ai_models.json, gemeinsamer Builder New-ModelSelectorBundle). Eigenes Chat-Memory agent.orchestrator_chat_memory (sessionKey=chat_id), getrennt von den Agenten. Call-Tools (generiert): ' + $routeAgentList + '. task = $(''Agent input'').first().json.chat_message WÖRTLICH (Fix C: kein $fromAI, der Router wählt nur das Tool; enthält eine Nachricht mehrere Anliegen, bekommt jeder gewählte Agent die ganze Nachricht). Paket-Agenten (alle Nicht-Core-Agenten) sowie die Paket-Onboarding- und Paket-Befehls-Arme laufen über den Core-Verteiler agent.sub_dispatch_agent (feste Eingaben workflow_id/package; Anzeigename + Hinweise holt er zur Laufzeit aus dem Textkatalog in der Sprache des Absenders): er prüft core.fn_package_status und ruft den Agenten per Ausdrucks-ID - ein nicht installiertes/ausgeschaltetes Paket bekommt eine freundliche Antwort statt eines Absturzes; der Orchestrator selbst verweist nie literal auf einen Paket-Workflow (sonst verweigert n8n seine Aktivierung). WÖRTLICHES WEITERREICHEN (Befund 2026-10-25: der Router formulierte Spezialisten-Antworten um und verfälschte eine Aussage): der Agent gibt per returnIntermediateSteps die Tool-Ergebnisse mit; Relay compose sendet die Spezialisten-Texte WÖRTLICH (Aufruf-Reihenfolge, je Tool der letzte Aufruf). Nach einem Tool antwortet der Router nur mit einer Signal-Zeile FRAME, NOFRAME oder FRAME <MOOD> (LOVE/CHEER/RELIEF/FUN) - nie Modelltext neben Zahlen. Ohne Tool geht die Router-Antwort raus; eine erste Zeile REACT <MOOD> schneidet Relay compose immer ab (allein = nur Reaktion, kein Text; mit Text = Reaktion + Text). Nichts Brauchbares -> core.orch.relay_empty. Router-Flags am Ende des System-Prompts: persona, user_style (agent.fn_chat_style: expressive/neutral/terse aus den letzten 20 Nachrichten, Emoji-Spiegeln) und daypart (core.fn_daypart, passende Begrüßung). STICKER, REAKTION, RAHMENSATZ (KEIN LLM): Relay compose -> Claim expression (EINE Abfrage, Write-Cred, onError continue): agent.fn_claim_persona_sticker (Set = Persona, neutral = Roboter; yay/top/hmm/hallo; nie bei NOFRAME; Bremse je Person), dann agent.fn_claim_reaction mit dem Sticker-Ergebnis (👌 nach endgültig bestätigter Karte dieses Laufs + FRAME, ersetzt ein 👀; Stimmung ❤/🎉/🙏/😁 aus der Router-Zeile, nie neben einem Sticker, nie bei NOFRAME oder Fehler-Hinweis; Tages-Obergrenze je Person nach Stil aus core.config persona.mood_reactions_per_day, die reine Reaktion zählt nicht; Aus-Schalter persona.reactions_enabled), dann agent.fn_claim_persona_frame (Persona != neutral + FRAME + Spezialisten-Text: erste solche Antwort des Tages = Tagesgruß mit Vornamen, sonst fester Katalog-Rahmensatz core.persona.frame.<code>.<n>, gewählt per message_id). -> Sticker due? -> Send sticker -> Reaction due? -> Send reaction (beide über den Telegram-Relay des LLM-Gateways, 3-s-Limit, onError continue; beide False-Ausgänge verdrahtet) -> Has text? -> Relay-Kette (Text = Rahmensatz + Leerzeile + Body; fehlt die zugesagte Reaktion bei leerem Body, ein kurzer Ersatztext statt Stille) bzw. bei reiner Reaktion direkt Router memory signal -> Finish card lock. Die Antwort kommt immer. Router memory signal (nach dem Senden, vor Finish card lock, executeOnce, onError continue): hat der Router nach einem Werkzeug doch eine eigene Fassung geschrieben (der Nutzer sieht sie nie), ersetzt agent.fn_set_router_memory_signal sie im Router-Gedächtnis durch das Signal - die gesendete Antwort steht direkt davor wörtlich als tool-Zeile; sonst ahmen die Folge-Turns die Umformulierung nach (Befund 2026-10-26). Teile <= 3500 Zeichen an Absatzgrenzen; Send a text message läuft je Teil in Reihenfolge mit parse_mode=HTML und escaptem Text (= echtes Plain; alle Agenten schreiben Plain-Text; leeres parse_mode macht n8n still zu Markdown) -> kein Parse-Fehler, kein Fallback-Zweig; ein echter Zustellausfall bleibt UNGEFANGEN -> errorWorkflow. Finish card lock executeOnce (mehrere Teile). appendAttribution=false (Mehrbyte-Entity-Bug). KNOWN ISSUE: Send hängt sporadisch ~3-5 Min (Node-keepAlive-Socket) -> CLAUDE.md, kein Code-Bug. BOT DENKT NACH: Sprache/Audio/Foto/Dokument direkt an Which type of message, Text nach dem Command-router-Fallback -> Open thinking lease (Schalter agent.thinking_lease, synchron) -> Show thinking (core.sub_show_thinking fire-and-forget mit execution_id; liegt höher -> v1 führt es vor Transkription/Agent aus, wartet nicht, onError continue) = Telegram-Platzhalter "Thinking..." (am Client nur ~8 s je Draft), den der Sub alle 5 s erneuert, solange der Schalter lebt; bei offener Bestätigungskarte pausiert er. Close thinking lease liegt SERIELL vor Relay compose (und damit vor dem Senden) bzw. Reply voice unavailable: löscht den Schalter und wartet ein evtl. laufendes Draft-Fenster ab (<= 1 s) -> kein "Thinking..." unter der Antwort; Finish card lock löscht die Schalter des Chats ein zweites Mal (Netz), core.sub_error_notify beim Absturz; je Chat ein Schalter (eine neue Nachricht verdrängt einen liegengebliebenen). Paket-Befehle und Paket-Onboarding-Tipps (thinking=loop an agent.sub_dispatch_agent) führen ihre Schleife im Vermittler; der KI-Weg lässt thinking leer.') 320 800
     $stIngress = Build-Sticky 'Doc: Eingangs-Bündelung' @(-2980, -300) -Header 'Ablauf' `
         'Zusammengehörige Telegram-Nachrichten -> EIN Lauf (agent.ingress_buffer)' `
         'WARUM: Telegram liefert "Weiterleiten mit Kommentar" als ZWEI Updates (Datei + Text, ~0,4 s Abstand, Reihenfolge nicht garantiert, kein verknüpfendes Feld). Früher startete jedes einen eigenen Lauf -> zwei Agenten -> zwei Karten (live msg 284/285). n8n hat kein Debounce und keine Per-Chat-Concurrency. ABLAUF: Message update? (Button-Tap -> direkt Trigger normalize, ohne Warten) -> Ingress record (agent.fn_record_ingress_message: Zeile je update_id = Dedupe bei Webhook-Retry; kind text = Text ohne /, file = Foto/Dokument, solo = alles andere) -> Ingress action: wait (text/file) -> Ingress wait (1,5 s im Prozess) -> Ingress claim (agent.fn_claim_ingress_burst unter Advisory-Lock je Chat: Bündel = alle Texte + Dateien desselben Absenders, 2 s vor bis 10 s nach der eigenen Ankunft; früheste Datei primär, weitere als message.extra_files -> je Datei ein Anhang-Marker) -> wieder Ingress action: wait (jüngste Nachricht < 1 s alt; DB-Obergrenze 5 s, die 4. Claim-Runde ist final und greift immer zu; Graph-Bremse $runIndex < 4) -> zurück zu Ingress wait; drop (Duplikat bzw. Teil eines fremden Bündels) -> still enden; extra (solo = Befehl/Sprache sofort, verarbeitetes Bündel, DB-Fehler) -> Trigger normalize (nimmt r.update = Datei mit allen Texten als caption bzw. verbundene Texte, sonst das Roh-Update). FAIL-OPEN: jeder DB-Fehler -> die Nachricht läuft einzeln wie früher (lieber doppelt als verloren). PREIS: jede Text-/Datei-Antwort kommt ~1,5 s später. BEKANNT: ein manueller Retry dieser Execution in der n8n-Oberfläche trägt dieselbe update_id und endet als Duplikat (drop); ein n8n-Neustart in den 1,5–5 s verliert die Nachricht wie jeden laufenden Lauf.' 300 1000
@@ -1355,7 +1400,8 @@ return [{ json: { body, memory_signal, raw_output: String(a.output ?? ''), signa
         $nSendMenu,
         $nStartOwner, $nStartStatus, $nStartCoreDone, $nWelcomeNew, $nWelcomeBack, $nWelcomeMember, $nSendLangPicker, $nSendPersonaPicker, $nSendReminders, $nRemRoute, $nSendRemindersCb, $nSendCost,
         $nNormPhoto, $nNormDoc, $nNorm1, $nAgentInput, $nFollowupPin,
-        $nAgent, $nMemory, $nRelay, $nClaimSticker, $nStickerDue, $nSendSticker, $nMemSignal, $nThinking,
+        $nAgent, $nMemory, $nRelay, $nClaimExpr, $nStickerDue, $nSendSticker, $nReactionDue, $nSendReaction, $nHasText, $nMemSignal, $nThinking,
+        $nClaimSeen, $nSeenDue, $nReactSeen,
         $nOpenThinking, $nCloseThinking, $nCloseThinkingVoice,
         $nSchedule, $nInjectCfg, $nExec,
         $stOverview, $stIngress, $stSender, $stCallback, $stCommand, $stVoice, $stAgent, $stSchedule
@@ -1520,9 +1566,11 @@ return [{ json: { body, memory_signal, raw_output: String(a.output ?? ''), signa
             @( (E 'Open thinking lease'), (E 'Transcribe audio') ),                    # [0] audio
             @( (E 'Open thinking lease'), (E 'Transcribe voice') ),                    # [1] voice
             @( E 'Command router' ),                                                   # [2] text
-            @( (E 'Open thinking lease'), (E 'Chat message normalization photo') ),    # [3] photo
-            @( (E 'Open thinking lease'), (E 'Chat message normalization document') )  # [4] document
+            @( (E 'Claim seen reaction'), (E 'Open thinking lease'), (E 'Chat message normalization photo') ),    # [3] photo (+ 👀)
+            @( (E 'Claim seen reaction'), (E 'Open thinking lease'), (E 'Chat message normalization document') )  # [4] document (+ 👀)
         ) }
+        'Claim seen reaction' = @{ main = @( ,@( E 'Seen due?' ) ) }
+        'Seen due?'           = @{ main = @( @( E 'React seen' ), @() ) }   # [1] keine Reaktion -> Ende
         'Open thinking lease' = @{ main = @( ,@( E 'Show thinking' ) ) }
         # Voice/Audio
         'Transcribe audio' = @{ main = @( ,@( E 'Transcription ok?' ) ) }
@@ -1563,13 +1611,22 @@ return [{ json: { body, memory_signal, raw_output: String(a.output ?? ''), signa
         'Followup pin'                         = @{ main = @( ,@( E 'Orchestrator agent' ) ) }
         'Orchestrator agent'   = @{ main = @( ,@( E 'Close thinking lease' ) ) }
         'Close thinking lease' = @{ main = @( ,@( E 'Relay compose' ) ) }
-        'Relay compose'        = @{ main = @( ,@( E 'Claim sticker' ) ) }
-        'Claim sticker'        = @{ main = @( ,@( E 'Sticker due?' ) ) }
+        'Relay compose'        = @{ main = @( ,@( E 'Claim expression' ) ) }
+        'Claim expression'     = @{ main = @( ,@( E 'Sticker due?' ) ) }
         'Sticker due?'         = @{ main = @(
-            @( E 'Send sticker' ),       # [0] Sticker faellig -> erst Sticker (Gateway, 3-s-Limit), dann Text
-            @( E $relayChain.Entry )     # [1] keiner -> direkt der Text
+            @( E 'Send sticker' ),       # [0] Sticker faellig -> erst Sticker (Gateway, 3-s-Limit)
+            @( E 'Reaction due?' )       # [1] keiner -> Reaktion pruefen
         ) }
-        'Send sticker'         = @{ main = @( ,@( E $relayChain.Entry ) ) }
+        'Send sticker'         = @{ main = @( ,@( E 'Reaction due?' ) ) }
+        'Reaction due?'        = @{ main = @(
+            @( E 'Send reaction' ),      # [0] Reaktion zugesagt -> an die Nachricht (Gateway, 3-s-Limit)
+            @( E 'Has text?' )           # [1] keine
+        ) }
+        'Send reaction'        = @{ main = @( ,@( E 'Has text?' ) ) }
+        'Has text?'            = @{ main = @(
+            @( E $relayChain.Entry ),    # [0] Text (oder Reaktion fehlt -> Ersatztext)
+            @( E 'Router memory signal' ) # [1] reine Reaktion -> kein Text, Abschluss (Finish card lock laeuft immer)
+        ) }
         'Router memory signal' = @{ main = @( ,@( E 'Finish card lock' ) ) }
         # WP-2: Primaer main[0]=Erfolg; main[1]=Fehler-Ausgang (onError=continueErrorOutput) -> Plain-Nachsenden.
         # Fix C: beide Erfolgswege -> Finish card lock (freigegebene Karte-offen-Sperren des Chats loeschen).

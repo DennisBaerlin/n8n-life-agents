@@ -963,9 +963,10 @@
     "persona_person": "owner",
     "persona_before": "butler",
     "expected_node": "Relay compose",
-    "expect_texts": ["Sehr wohl", "Dein Sparkonto steht bei 500,00 EUR."],
+    "expect_texts": ["🎩", "Dein Sparkonto steht bei 500,00 EUR."],
     "forbid_texts": ["FRAME"],
-    "notes": "Plan lively-cooking-map WP1: der Router antwortet nach dem Tool nur FRAME (Mock final_router); Relay compose haengt die Spezialisten-Antwort aus intermediateSteps woertlich an und setzt bei butler einen core.persona.frame.butler.<n>-Satz (alle de-Varianten enthalten 'Sehr wohl', vorn das Persona-Emoji) davor."
+    "pre_sql": "DELETE FROM core.notification_state WHERE source = 'persona_greet';",
+    "notes": "Woertliches Weiterreichen: der Router antwortet nach dem Tool nur FRAME (Mock final_router); Relay compose reicht die Spezialisten-Antwort woertlich weiter, Claim expression (agent.fn_claim_persona_frame) waehlt den Rahmensatz. Tagesgruss-Latch vorher geleert -> erste Antwort des Tages = Gruss core.persona.greet.butler.<daypart> (fehlt der Key, der Rahmensatz); beide beginnen mit dem Persona-Emoji."
   },
   {
     "id": "ri63",
@@ -1084,7 +1085,7 @@
     "pre_sql": "DELETE FROM core.notification_state WHERE source = 'persona_sticker';",
     "expected_node": "Send sticker",
     "expect_texts": ["neutral_hallo"],
-    "notes": "Claim sticker (agent.fn_claim_persona_sticker): Gruss ohne Werkzeug, Persona neutral = Roboter-Set; Bremse vorher geleert. Der Mock loggt den Upload als sticker_file bzw. die file_id mock_fid_\u003cdatei\u003e."
+    "notes": "Claim expression (agent.fn_claim_persona_sticker): Gruss ohne Werkzeug, Persona neutral = Roboter-Set; Bremse vorher geleert. Der Mock loggt den Upload als sticker_file bzw. die file_id mock_fid_\u003cdatei\u003e."
   },
   {
     "id": "ri72",
@@ -1108,11 +1109,11 @@
     "text": "Relay-Test Sparkonto: wie ist der Stand?",
     "persona_person": "owner",
     "persona_before": "butler",
-    "pre_sql": "DELETE FROM core.notification_state WHERE source = 'persona_sticker';",
+    "pre_sql": "DELETE FROM core.notification_state WHERE source = 'persona_sticker'; INSERT INTO core.notification_state (source, key, state, last_fired_at) VALUES ('persona_greet', agent.fn_owner_person_id() || ':' || core.fn_today(), 'fired', now()) ON CONFLICT (source, key) DO UPDATE SET state = 'fired', last_fired_at = now();",
     "expected_node": "Relay compose",
     "expected_not_node": "Send sticker",
-    "expect_texts": ["🎩 Sehr wohl","Dein Sparkonto steht bei 500,00 EUR."],
-    "notes": "Der Daumen-hoch-Fall (endgueltig bestaetigte Karte dieses Laufs) ist hier nicht nachstellbar: eine vorab angelegte hitl_pending-Zeile loest die Karte-offen-Sperre aus. Abgedeckt in test_fn_claim_persona_sticker.sql + Mark result im Gate; hier: FRAME allein waehlt keinen Sticker, der Rahmensatz traegt das Persona-Emoji vorn."
+    "expect_texts": ["🎩","Dein Sparkonto steht bei 500,00 EUR."],
+    "notes": "Der Daumen-hoch-Fall (endgueltig bestaetigte Karte dieses Laufs) ist hier nicht nachstellbar: eine vorab angelegte hitl_pending-Zeile loest die Karte-offen-Sperre aus. Abgedeckt in test_fn_claim_persona_sticker.sql + Mark result im Gate; hier: FRAME allein waehlt keinen Sticker, der Rahmensatz traegt das Persona-Emoji vorn. Tagesgruss-Latch fuer heute gesetzt -> Rahmensatz statt Gruss."
   },
   {
     "id": "ri75",
@@ -1169,5 +1170,77 @@
     "gate_decision": "decline",
     "expect_repeat_block": true,
     "notes": "Wiederhol-Sperre: das Szenario ruft tool_book_transaction zweimal mit gleichen Eingaben. Der zweite Gate-Lauf endet in Return repeat ohne Send, das Tool meldet es dem Modell. Finish card lock loescht die Zeile, die zweite Nachricht bekommt deshalb wieder eine Karte."
+  },
+  {
+    "id": "ri79",
+    "name": "Lebenszeichen: Dokument -> 👀 an der Nachricht, bevor der Agent laeuft",
+    "kind": "burst",
+    "chat_id": 880055071,
+    "from_uid": 880055071,
+    "updates": [
+      { "type": "doc", "file_id": "burst_doc_79", "file_name": "rechnung.pdf" }
+    ],
+    "expect_processed": 1,
+    "together_node": "Claim seen reaction",
+    "expect_together": ["\"kind\":\"seen\""],
+    "notes": "Which type of message [4] document -> Claim seen reaction (agent.fn_claim_reaction event seen) -> Seen due? -> React seen (Gateway-Relay setMessageReaction an die Attrappe). Der Zweig liegt hoeher als Open thinking lease und laeuft darum zuerst."
+  },
+  {
+    "id": "ri80",
+    "name": "Reaktion ohne Text: Router sagt nur REACT LOVE -> ❤ an der Nachricht, kein sendMessage",
+    "kind": "node_ran",
+    "update": "message",
+    "chat_id": 880055071,
+    "from_uid": 880055071,
+    "text": "Reaktions-Test: danke dir, super, das hat geholfen!",
+    "pre_sql": "DELETE FROM agent.reaction_log;",
+    "expected_node": "Send reaction",
+    "expected_not_node": "Send a text message split",
+    "expect_texts": ["❤"],
+    "forbid_texts": ["REACT", "LOVE"],
+    "notes": "Grammatik N1: 'REACT <MOOD>' allein -> Relay compose Body leer; Claim expression sagt ❤ zu (kind answer, ohne Obergrenze) -> Has text? false -> Router memory signal -> Finish card lock. Kein exakter Dank, darum nicht der Herz-Kurzschluss."
+  },
+  {
+    "id": "ri81",
+    "name": "Reaktion mit Text: REACT FUN + Antwort -> 😁 an der Nachricht und der Text ohne die REACT-Zeile",
+    "kind": "node_ran",
+    "update": "message",
+    "chat_id": 880055071,
+    "from_uid": 880055071,
+    "text": "Reaktions-Test Witz: Haha, der war gut! Und wie war dein Tag so?",
+    "pre_sql": "DELETE FROM agent.reaction_log;",
+    "expected_node": "Send reaction",
+    "expect_texts": ["😁", "Mein Tag läuft prima."],
+    "forbid_texts": ["REACT"],
+    "notes": "kind mood: zaehlt zur Tages-Obergrenze (Protokoll vorher geleert, jeder Stil erlaubt mindestens eine)."
+  },
+  {
+    "id": "ri82",
+    "name": "Stimmung nach dem Spezialisten: FRAME CHEER -> 🎉 an der Nachricht + Spezialisten-Text woertlich",
+    "kind": "node_ran",
+    "update": "message",
+    "chat_id": 880055071,
+    "from_uid": 880055071,
+    "text": "Reaktions-Test Gehalt: Juhu, wie steht mein Sparkonto?",
+    "pre_sql": "DELETE FROM agent.reaction_log; DELETE FROM core.notification_state WHERE source = 'persona_sticker';",
+    "expected_node": "Send reaction",
+    "expect_texts": ["🎉", "Dein Sparkonto steht bei 640,00 EUR."],
+    "forbid_texts": ["CHEER", "FRAME"],
+    "notes": "Mock final_router 'FRAME CHEER': Signal FRAME + Stimmung CHEER, kein Sticker-Anlass -> agent.fn_claim_reaction kind mood."
+  },
+  {
+    "id": "ri83",
+    "name": "Ernst: NOFRAME CHEER -> Stimmung verworfen, keine Reaktion, Text woertlich",
+    "kind": "node_ran",
+    "update": "message",
+    "chat_id": 880055071,
+    "from_uid": 880055071,
+    "text": "Reaktions-Test ernst: wie steht mein Tagesgeld?",
+    "pre_sql": "DELETE FROM agent.reaction_log;",
+    "expected_node": "Relay compose",
+    "expected_not_node": "Send reaction",
+    "expect_texts": ["Dein Tagesgeld steht bei 820,00 EUR."],
+    "forbid_texts": ["🎉", "CHEER", "NOFRAME"],
+    "notes": "Grammatik N1: NOFRAME verwirft die Stimmung schon in Relay compose; agent.fn_claim_reaction sperrt sie zusaetzlich (R6)."
   }
 ]

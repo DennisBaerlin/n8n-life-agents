@@ -24,7 +24,7 @@ Checkliste — was nicht zutrifft, kurz als „n/a" nennen:
 - **Denkstufe:** `Denkstufe: medium` (Standard) oder `Denkstufe: high – <Grund>`. high nur mit einem Grund, den der Plan belegt: neue Mechanik mit `/arch-challenge`, Migration mit Daten-Umbau, Auth- oder Sicherheits-Änderung, Fehlersuche ohne Reproduktion. Beide Zeilen verlangt der ExitPlanMode-Hook (`.claude/hooks/dev_cycle_plan_gate.ps1`).
 - **Bezahlte Fälle:** Jeder Fall im Plan nennt die genaue Fall-ID und die Fall-Datei (`-CasesFile`), dazu den Kostenrahmen.
 - Code-Suche fürs Verständnis → `Explore`-Subagent.
-- ExitPlanMode → Owner-Freigabe. Erst danach Code.
+- ExitPlanMode → Owner-Freigabe. Erst danach Code. **Ausnahme Unter-Session einer Leitung:** kein ExitPlanMode. Die Plan-Datei fertigstellen und am Zug-Ende Pfad, „Kurz gesagt“ und offene Fragen an die Leitung melden. Die Freigabe holt die Leitung in ihrem eigenen Chat (`/leitung` §2 *Plan-Freigabe*). Hintergrund: Die weitergeleitete Plan-Karte stellt die Session unzuverlässig von Auto auf manuell und erscheint nicht in der Handy-App.
 - **Nach der Freigabe baut eine neue Session** (sauberer Kontext, schriftliches Ziel): zuerst alles im Chat Entschiedene in die Plan-Datei nachtragen, dann `start_session` mit frischem Kontext, `effort` laut Plan-Zeile *Denkstufe* und `/feature <Plan-Datei>` starten; ohne dieses Werkzeug oder über Remote Control (dort verweigert die App den Start) dem Owner genau diesen Prompt für die Desktop-App geben. Hier nichts bauen. Ausnahme: Der Owner sagt „hier weitermachen“, oder die Planung war sehr kurz.
 
 ## 3. Umsetzung

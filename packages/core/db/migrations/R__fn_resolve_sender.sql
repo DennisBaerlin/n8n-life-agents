@@ -5,7 +5,8 @@
 --   Turn (Pre-Fill, Personen-Aufloesung "mein Konto", Antwortsprache).
 --   Eindeutigkeit der telegram_user_id ueber Personen erzwingt der Validierungs-Trigger
 --   (agent.core_init.sql) — hier genuegt LIMIT 1.
---   RUECKGABE: {found:true, person_id, full_name, role, language, persona, chat_id} | {found:false}
+--   RUECKGABE: {found:true, person_id, full_name, first_name, role, language, persona, chat_id} | {found:false}
+--   first_name = Anrede in festen Texten (Tagesgruss agent.fn_claim_persona_frame).
 --   persona = Bot-Persona der Person (Orchestrator-Runtime-Flag); fehlt der Key -> 'neutral' (der Validator
 --     erzwingt den Wertevorrat beim Write, darum hier kein Lookup in core.ui_personas).
 --   WP-5c: chat_id = die KANONISCHE telegram_user_id der aufgeloesten Person (= der Match-Schluessel). Der
@@ -20,6 +21,7 @@ BEGIN
         'found',     true,
         'person_id', pp->>'person_id',
         'full_name', (pp->>'first_name') || ' ' || (pp->>'last_name'),
+        'first_name', pp->>'first_name',
         'role',      pp->>'role',
         'language',  pp->>'language',
         'persona',   COALESCE(pp->>'persona', 'neutral'),

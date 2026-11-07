@@ -301,7 +301,7 @@
     },
     {
         "id":  "tc24b",
-        "name":  "Wiederkehrenden internen Transfer einrichten",
+        "name":  "Wiederkehrenden internen Transfer notieren",
         "task":  "Notiere meinen monatlichen Dauerauftrag: 200 Euro vom Lindenbank Giro auf das Testbroker Cash Girokonto, ab dem 01.07.2026, am 1. des Monats.",
         "chat_id":  "test_tc24b",
         "expected_tool":  "tool_create_recurring_transfer",

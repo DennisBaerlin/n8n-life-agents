@@ -68,7 +68,9 @@ test('Durchlauf FritzBox mit drei Modulen: Antwort-Datei, Installation, Pairing,
     // „Noch kein Telegram?“: QR-Code (lokal erzeugt) und Links nur zu offiziellen Telegram-Adressen, Texte aus dem Katalog.
     const why = await page(w);
     assert.equal(why.id, 'tg_why', '„Warum Telegram?“ vor dem Token');
-    assert.equal(why.art, 'tg_why');
+    assert.equal(why.explain.src, '/explain/telegram.de.svg', 'Erklär-Bild in der Sprache der Seiten');
+    assert.ok(why.explain.alt.length > 20, 'Alt-Text aus dem Katalog');
+    assert.ok(!why.help, 'das Bild ersetzt die Absätze');
     const ga = why.getApp;
     assert.equal(ga.qr, qr.toSvg(qr.encode('https://telegram.org/dl')), 'QR-Code = Telegram-Link, der je Handy in den passenden Store führt');
     assert.ok(ga.summary.startsWith('Noch kein Telegram?') && ga.scan && ga.computer);
@@ -112,6 +114,9 @@ test('Durchlauf FritzBox mit drei Modulen: Antwort-Datei, Installation, Pairing,
     const reach = await page(w);
     assert.equal(reach.options[0].value, 'tunnel');
     assert.equal(reach.options[0].tag, 'empfohlen');
+    assert.equal(reach.explain.side, true, 'hochkant neben den Antworten');
+    assert.deepEqual(Object.keys(reach.explain.variants), ['tunnel', 'fritzbox']);
+    assert.equal(reach.explain.variants.fritzbox.src, '/explain/reach-fritzbox.de.svg');
     await expectOk(await answer(w, 'reach', 'fritzbox'));
     assert.equal((await page(w)).art, 'dslite', 'Erkennung unsicher: Handfrage mit Bild des Wegs');
     await expectOk(await answer(w, 'fb_dslite', 'no'));

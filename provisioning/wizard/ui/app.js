@@ -250,6 +250,17 @@ const UiNudge = {
     return (blocks || []).map((b) => (b.ol ? h('ol', null, b.ol.map((t) => h('li', { text: t }))) : h('p', { text: b.p })));
   }
 
+  // explainNode(x, value) -> {el, select}: Erklär-Bild als <img> (die SVG-Datei bringt Farben, Texte und Bewegung selbst mit;
+  // ein <img> unterliegt nicht der CSP der Seite). x = {src, alt} oder {side, variants: {<antwort>: {src, alt}}}; select tauscht
+  // bei einer Auswahl Bild und Alt-Text.
+  function explainNode(x, value) {
+    const pick = (v) => (x.variants ? x.variants[v] || Object.values(x.variants)[0] : x);
+    const first = pick(value);
+    const img = h('img', { src: first.src, alt: first.alt, decoding: 'async' });
+    return { el: h('figure', { class: 'explain' }, img),
+      select: (v) => { const o = x.variants && x.variants[v]; if (o) { img.src = o.src; img.alt = o.alt; } } };
+  }
+
   function getAppNode(g) {
     const box = h('div', { class: 'qr qr-small' });
     box.innerHTML = g.qr;   // eigener Code (qr.js), fester Link, keine Nutzer- oder Fremddaten
@@ -315,9 +326,12 @@ const UiNudge = {
       h('h1', { id: 'title', text: p.title })];
     const help = p.kind === 'connect' && p.qr ? [] : helpNodes(p.help);
     if (help[0] && help[0].tagName === 'P') help[0].className = 'lead';
-    // „Noch kein Telegram?“ (Seite „Warum Telegram?“): zugeklappt unter dem Text, damit Bild und Knöpfe im Fenster bleiben.
-    if (p.getApp) help.push(getAppNode(p.getApp));
     kids.push(...help);
+    // Erklär-Bild (fertige SVG-Datei, page.explain vom Server): unter dem Text, bei side neben den Antworten (unten).
+    const ex = p.explain ? explainNode(p.explain, p.value) : null;
+    if (ex && !p.explain.side) kids.push(ex.el);
+    // „Noch kein Telegram?“ (Seite „Warum Telegram?“): zugeklappt unter dem Bild, damit Bild und Knöpfe im Fenster bleiben.
+    if (p.getApp) kids.push(getAppNode(p.getApp));
     if (p.note && p.note.busy) kids.push(h('ul', { class: 'steps' }, h('li', { class: 'run' }, h('i', { 'aria-hidden': 'true' }), p.note.text)));
     else if (p.note && !takes.includes('note')) kids.push(h('div', { class: 'note ' + (p.note.kind || ''), text: p.note.text }));   // takes: das Bild zeigt den Hinweis selbst
     if (artBefore) kids.push(art.el);
@@ -358,12 +372,15 @@ const UiNudge = {
           wrap.querySelectorAll('[data-c]').forEach((x) => { x.classList.toggle('sel', x === b); x.setAttribute('aria-checked', String(x === b)); });
           setErr('');
           if (art && art.select) art.select(o.value);   // Bild folgt der Auswahl (z. B. Charakter des Bots)
+          if (ex) ex.select(o.value);
           // Sprach-Seite: die ganze Einrichtung wechselt sofort; die Auswahl selbst bleibt in Eigenschreibweise.
           if (p.langSwitch) post('/api/lang', { lang: o.value });
         });
         wrap.appendChild(b);
       }
-      kids.push(art && art.side ? h('div', { class: 'with-art' }, wrap, art.el) : wrap);
+      if (art && art.side) kids.push(h('div', { class: 'with-art' }, wrap, art.el));
+      else if (ex && p.explain.side) kids.push(h('div', { class: 'with-explain' }, wrap, ex.el));
+      else kids.push(wrap);
     }
     if (p.kind === 'review') {
       kids.push(h('dl', null, (p.rows || []).map((r) => h('div', { class: 'rv' }, h('dt', { text: r.label }), h('dd', { text: String(r.value).replace(/\.(?=\S)/g, '.​') }),

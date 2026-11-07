@@ -73,6 +73,8 @@ async function step(w, id, value, opt) {
     await waitFor(async () => !(await state(w)).json.page.poll);   // Paperless-Suche fertig (hier: Container auf diesem Rechner)
     await step(w, 's:paperless:general.paperless_url', plUrl);
     await step(w, 'c:paperless:PAPERLESS_API_TOKEN', 'beispieltoken0123');
+    // Wahl des Wegs zusätzlich mit gewählter FritzBox (das Bild daneben wechselt mit der Auswahl).
+    out.push({ name: 'reach-fritzbox', page: Object.assign({}, (await state(w)).json.page, { value: 'fritzbox' }) });
     await step(w, 'reach', 'fritzbox');
     await langShots(w, 'fb_dslite');
     await step(w, 'fb_dslite', 'no');

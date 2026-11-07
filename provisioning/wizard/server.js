@@ -215,7 +215,8 @@ function loadCatalog() {
       try { o = JSON.parse(fs.readFileSync(path.join(PKG_DIR, p, 'locales', f), 'utf8')); } catch (_) { continue; }
       const t = CAT[m[1]] || (CAT[m[1]] = {});
       for (const [k, v] of Object.entries(o || {})) {
-        if (typeof v === 'string' && (k.includes('.wizard.') || /\.package\.(name|summary)$/.test(k) || /^core\.persona\.(name\.[a-z_]+|frame\.[a-z_]+\.1)$/.test(k))) t[k] = v;
+        if (typeof v === 'string' && (k.includes('.wizard.') || /\.package\.(name|summary)$/.test(k) || /^core\.persona\.(name\.[a-z_]+|frame\.[a-z_]+\.1)$/.test(k)
+          || /^core\.art\.[a-z_]+\.alt(\.[a-z_]+)?$/.test(k))) t[k] = v;   // core.art.*.alt: Alt-Text der Erklär-Bilder (explainOf)
       }
     }
   }
@@ -345,10 +346,9 @@ function pageFor(id) {
   const next = T('core.wizard.ui.next');
   const P1 = (k) => [{ p: T(k) }];
   switch (id) {
-    // „Warum Telegram?“: Nutzen in zwei Absätzen, Bild (di12), zugeklappt „Noch kein Telegram?“ mit QR-Code fürs Handy und
-    // Links für den Rechner (die Token-Anleitung danach setzt Telegram voraus).
-    case 'tg_why': return Object.assign(base, { kind: 'info', title: T('core.wizard.page.tg_why_title'), art: 'tg_why',
-      help: [{ p: T('core.wizard.page.tg_why_help') }, { p: T('core.wizard.page.tg_why_app') }],
+    // „Warum Telegram?“: Erklär-Bild (unterwegs fragen, Bot, Übersicht; ersetzt die Absätze, Platz im Fenster), zugeklappt
+    // „Noch kein Telegram?“ mit QR-Code fürs Handy und Links für den Rechner (die Token-Anleitung danach setzt Telegram voraus).
+    case 'tg_why': return Object.assign(base, { kind: 'info', title: T('core.wizard.page.tg_why_title'), explain: explainOf('telegram', 'telegram.alt'),
       getApp: { summary: T('core.wizard.page.get_tg_summary'), scan: T('core.wizard.page.get_tg_scan'), qr: TG_APP_QR,
         computer: T('core.wizard.page.get_tg_computer'),
         links: [{ href: TG_APP.mac, label: T('core.wizard.page.get_tg_mac') }, { href: TG_APP.windows, label: T('core.wizard.page.get_tg_windows') }] },
@@ -360,8 +360,9 @@ function pageFor(id) {
       options: optionsFor(id), value: P.A.__voice || '', next });
     case 'packages': return Object.assign(base, { kind: 'multi', title: T('core.wizard.page.packages_title'), help: P1('core.wizard.page.packages_help'),
       options: optionsFor(id), value: P.A.__packages || [], next });
-    // Schema der zwei Wege (di12) wechselt mit der Auswahl (art.select), Beschreibung je Weg: was es ist, für wen es passt.
-    case 'reach': return Object.assign(base, { kind: 'choice', title: T('core.wizard.page.reach_title'), help: P1('core.wizard.page.reach_help'), art: 'reach',
+    // Hochkant-Bild des gewählten Wegs neben den Antworten (wechselt mit der Auswahl), je Weg: was es ist, für wen es passt.
+    case 'reach': return Object.assign(base, { kind: 'choice', title: T('core.wizard.page.reach_title'),
+      explain: { side: true, variants: { tunnel: explainOf('reach-tunnel', 'reach.alt.tunnel'), fritzbox: explainOf('reach-fritzbox', 'reach.alt.fritzbox') } },
       options: optionsFor(id), value: P.A.__reach || 'tunnel', next });
     // DS-Lite sicher erkannt (__dslite_auto = yes): Bestätigung statt Frage. Unsicher: Handfrage mit Bild des Wegs dorthin.
     case 'fb_dslite':
@@ -460,6 +461,11 @@ async function publicIp() {
 // fbHostName — Name dieses Rechners in der Geräteliste der FritzBox (LA_HOST_NAME_FRITZ, von der Start-App aus der Antwort
 //   der Box selbst), streng als Gerätename geprüft, sonst null. Nur fürs Bild (Geräteliste), nie als MyFRITZ-Adresse: die ist
 //   damit nicht geprüft.
+// explainOf(name, altKey) -> {src, alt}: Erklär-Bild in der Sprache der Seiten, sonst Deutsch (ui/explain/, Route /explain/).
+function explainOf(name, altKey) {
+  const l = fs.existsSync(path.join(UI_DIR, 'explain', `${name}.${uiLang()}.svg`)) ? uiLang() : 'de';
+  return { src: `/explain/${name}.${l}.svg`, alt: T(`core.art.${altKey}`) };
+}
 function fbHostName() { return flow.myfritzCandidates(hints().LA_HOST_NAME_FRITZ, '')[0] || null; }
 function domainView(v) {
   const zone = myfritzZone();
@@ -999,6 +1005,13 @@ async function handle(req, res) {
     let body;
     try { body = fs.readFileSync(path.join(UI_DIR, f)); } catch (_) { return deny(res, 404); }   // z. B. noch keine Bilder (art/)
     return send(res, 200, body, type);
+  }
+  // Erklär-Bilder (ui/explain/<name>.<sprache>.svg, erzeugt von scripts/build_ui_tokens.ps1): fester Namensaufbau, nur dieser Ordner.
+  const exp = req.method === 'GET' && /^\/explain\/([a-z-]{1,40}\.[a-z]{2}\.svg)$/.exec(url.pathname);
+  if (exp) {
+    let body;
+    try { body = fs.readFileSync(path.join(UI_DIR, 'explain', exp[1])); } catch (_) { return deny(res, 404); }
+    return send(res, 200, body, 'image/svg+xml');
   }
   const stk = req.method === 'GET' && /^\/sticker\/([a-z_]{1,32})\.webp$/.exec(url.pathname);
   if (stk) {

@@ -81,6 +81,12 @@ function Get-WizardPreviewHtml([string]$RepoRoot, $Entry, [int]$PhoneWidth = 0, 
         $f = Join-Path $stk "$($m.Groups[1].Value)_hallo.webp"
         if (Test-Path $f) { '"data:image/webp;base64,' + [Convert]::ToBase64String([System.IO.File]::ReadAllBytes($f)) + '"' } else { '""' }
     })
+    # Erklaer-Bilder (server.js /explain/<name>.<sprache>.svg) ebenso als data:-Bild aus ui/explain/
+    $model = [regex]::Replace($model, '"/explain/([a-z-]{1,40}\.[a-z]{2}\.svg)"', {
+        param($m)
+        $f = Join-Path $ui "explain\$($m.Groups[1].Value)"
+        if (Test-Path $f) { '"data:image/svg+xml;base64,' + [Convert]::ToBase64String([System.IO.File]::ReadAllBytes($f)) + '"' } else { '""' }
+    })
     $stub = "window.WIZARD_PREVIEW = (function () { var m = $model; return { error: m.error, value: m.value, open: m.open, api: function (method, path) { return Promise.resolve(method === 'GET' && path === '/api/state' ? { csrf: 'vorschau', page: m.page } : path === '/api/check' && m.live ? { live: m.live } : { error: 'Vorschau: nichts wird gesendet.' }); } }; })();"
     $width = if ($PhoneWidth -gt 0) { "html { width: ${PhoneWidth}px; }" } else { '' }
     # Bilder (di9, ui/art/): eingebettet wie app.*, fehlen sie, bleibt die Stelle leer

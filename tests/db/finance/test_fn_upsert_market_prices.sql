@@ -171,4 +171,22 @@ BEGIN
 
 END $$;
 
+-- Die Preis-Pruefungen greifen auch fuer GEHALTENE Symbole: Text und 0 werden nie geschrieben (oben fielen BAD/ZER schon
+-- am Halte-Filter heraus).
+DO $$
+DECLARE v_acct INT; v_depot INT; v_result JSONB;
+BEGIN
+  INSERT INTO finance.accounts (name, account_type, currency, status) VALUES ('__test_settle_mp2__', 'cash', 'EUR', 'active') RETURNING id INTO v_acct;
+  INSERT INTO finance.accounts (name, account_type, currency, status, settlement_account_id)
+    VALUES ('__test_depot_mp2__', 'stocks_depot', 'EUR', 'active', v_acct) RETURNING id INTO v_depot;
+  INSERT INTO finance.depot_holdings (account_id, isin, symbol, name, shares, currency) VALUES
+    (v_depot, 'IE00BMPBAD01', 'MPBAD', 'Text-Kurs', 3, 'EUR'),
+    (v_depot, 'IE00BMPZER01', 'MPZER', 'Null-Kurs', 3, 'EUR');
+  v_result := finance.fn_upsert_market_prices(jsonb_build_object('as_of', '2026-06-21',
+                'prices', jsonb_build_object('MPBAD', 'n/a', 'MPZER', 0)));
+  IF EXISTS (SELECT 1 FROM finance.market_prices WHERE symbol IN ('MPBAD', 'MPZER')) THEN
+    RAISE EXCEPTION 'FAIL [4]: Text- oder 0-Kurs eines gehaltenen Symbols geschrieben: %', v_result; END IF;
+  RAISE NOTICE 'PASS fn_upsert_market_prices [gehalten: Text/0 nie geschrieben]';
+END $$;
+
 ROLLBACK;

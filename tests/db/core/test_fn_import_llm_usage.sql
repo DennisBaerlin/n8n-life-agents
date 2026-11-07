@@ -75,6 +75,33 @@ BEGIN
     jsonb_build_object('id', lpad(ms0::text, 13, '0') || '-0a1b2c-000001', 't', to_char(t0 AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'), 'wf','agent.finance'))));
   IF (r->>'imported')::int <> 0 OR (r->>'skipped')::int <> 0 THEN RAISE EXCEPTION 'FAIL [idempotent, vorhandene id ist kein Fehler]: %', r; END IF;
 
+  -- Ablauf des naechtlichen Imports (core.sub_import_llm_usage): Cursor lesen, Seite ab Cursor einspielen. Der Abruf ab
+  -- Cursor (jüngste Zeile - 10 Min) ueberlappt die schon vorhandenen Zeilen; Wiederholung darf nichts aendern.
+  DELETE FROM core.llm_usage;
+  r := core.fn_import_llm_usage(jsonb_build_object('rows', jsonb_build_array(
+    jsonb_build_object('id', lpad(ms0::text, 13, '0') || '-0c1d2e-000001', 't', to_char(t0 AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'), 'wf','agent.finance','output_tokens',4),
+    jsonb_build_object('id', lpad((ms0 + 60000)::text, 13, '0') || '-0c1d2e-000002', 't', to_char((t0 + interval '1 minute') AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'), 'wf','agent.finance','output_tokens',5))));
+  IF (r->>'imported')::int <> 2 THEN RAISE EXCEPTION 'FAIL [Cron 1. Lauf: 2 neu]: %', r; END IF;
+  DECLARE v_after text; v_cnt1 int; v_hash1 text; v_cnt2 int; v_hash2 text;
+  BEGIN
+    v_after := core.fn_import_llm_usage('{"rows":[]}')->>'after';
+    SELECT count(*), md5(string_agg(id || ts::text || coalesce(output_tokens, 0)::text, ',' ORDER BY id)) INTO v_cnt1, v_hash1 FROM core.llm_usage;
+    -- 2. Lauf: derselbe Abruf ab Cursor (beide Zeilen liegen im Ueberlappungsfenster)
+    r := core.fn_import_llm_usage(jsonb_build_object('rows', jsonb_build_array(
+      jsonb_build_object('id', lpad(ms0::text, 13, '0') || '-0c1d2e-000001', 't', to_char(t0 AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'), 'wf','agent.finance','output_tokens',4),
+      jsonb_build_object('id', lpad((ms0 + 60000)::text, 13, '0') || '-0c1d2e-000002', 't', to_char((t0 + interval '1 minute') AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'), 'wf','agent.finance','output_tokens',5))));
+    SELECT count(*), md5(string_agg(id || ts::text || coalesce(output_tokens, 0)::text, ',' ORDER BY id)) INTO v_cnt2, v_hash2 FROM core.llm_usage;
+    IF (r->>'imported')::int <> 0 OR v_cnt2 <> v_cnt1 OR v_hash2 <> v_hash1 THEN RAISE EXCEPTION 'FAIL [Cron 2. Lauf aendert nichts]: % % %', r, v_cnt1, v_cnt2; END IF;
+    IF r->>'after' <> v_after THEN RAISE EXCEPTION 'FAIL [Cron 2. Lauf: Cursor unveraendert]: % <> %', r->>'after', v_after; END IF;
+    -- danach eine neue Zeile: genau 1 neu
+    r := core.fn_import_llm_usage(jsonb_build_object('rows', jsonb_build_array(
+      jsonb_build_object('id', lpad(ms0::text, 13, '0') || '-0c1d2e-000001', 't', to_char(t0 AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'), 'wf','agent.finance','output_tokens',4),
+      jsonb_build_object('id', lpad((ms0 + 120000)::text, 13, '0') || '-0c1d2e-000003', 't', to_char((t0 + interval '2 minutes') AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'), 'wf','agent.finance','output_tokens',6))));
+    IF (r->>'imported')::int <> 1 THEN RAISE EXCEPTION 'FAIL [Cron 3. Lauf: genau 1 neu]: %', r; END IF;
+    SELECT count(*) INTO v_cnt2 FROM core.llm_usage;
+    IF v_cnt2 <> v_cnt1 + 1 THEN RAISE EXCEPTION 'FAIL [Cron 3. Lauf: Zeilenzahl +1]: % -> %', v_cnt1, v_cnt2; END IF;
+  END;
+
   -- rows kein Array -> RAISE
   BEGIN
     PERFORM core.fn_import_llm_usage('{"rows":{}}');

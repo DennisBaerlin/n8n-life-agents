@@ -35,13 +35,23 @@ Initialize-GitSandbox $sandbox
 Invoke-SandboxGit @('init', '-q', '--bare', '-b', 'main', $bare)
 New-Item -ItemType Directory -Force (Join-Path $sandbox '.claude\hooks'), (Join-Path $sandbox 'scripts') | Out-Null
 Copy-Item (Join-Path $repo '.claude\hooks\dev_cycle_guard.ps1') (Join-Path $sandbox '.claude\hooks\')
-foreach ($name in 'privacy_lint.ps1', 'owner_fact_lint.ps1', 'privacy_outgoing.ps1', 'privacy_review_stamp.ps1') { Copy-Item (Join-Path $repo "scripts\$name") (Join-Path $sandbox 'scripts\') }
+foreach ($name in 'privacy_lint.ps1', 'owner_fact_lint.ps1', 'privacy_outgoing.ps1', 'privacy_review_stamp.ps1', 'release_pin_guard.ps1', 'lib\owner_machine.ps1', 'lib\release_images.ps1') {
+    $dst = Join-Path $sandbox "scripts\$name"
+    New-Item -ItemType Directory -Force (Split-Path $dst) | Out-Null
+    Copy-Item (Join-Path $repo "scripts\$name") $dst
+}
 Write-SandboxFile '.gitignore' ".local/`n.env`n.claude/owner_grant.txt`n"
 Write-SandboxFile '.env' "OWNER_CHAT_ID=12345678`n"
 Write-SandboxFile '.local\privacy_denylist.txt' "Zauberwort`n"
 Write-SandboxFile 'doc.txt' "eins`n"
 Invoke-SandboxGit @('add', '-A')
 Invoke-SandboxGit @('commit', '-q', '-m', 'eins')
+# Release-Tags (v*) prueft der Hook auch auf den master-Image-Pin (eigener Test release_pin_guard_test.ps1): hier passt er immer.
+$composeRel = 'provisioning\compose\compose.yml'
+Write-SandboxFile $composeRel "x-images:`n  master: &img_master `${LA_MASTER_IMAGE:?LA_MASTER_IMAGE fehlt (kein Release-Pin)}`n"
+Invoke-SandboxGit @('add', '-A'); Invoke-SandboxGit @('commit', '-q', '-m', 'compose')
+Write-SandboxFile $composeRel "x-images:`n  master: &img_master `${LA_MASTER_IMAGE:-ghcr.io/beispiel/repo/master@sha256:$('ab' * 32)}`n"
+Invoke-SandboxGit @('commit', '-q', '-am', 'pin')
 Invoke-SandboxGit @('remote', 'add', 'origin', $bare)
 $hook = Join-Path $sandbox '.claude\hooks\dev_cycle_guard.ps1'
 $outgoing = Join-Path $sandbox 'scripts\privacy_outgoing.ps1'

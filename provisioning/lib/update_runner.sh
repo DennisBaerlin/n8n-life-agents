@@ -1,6 +1,6 @@
-# update_runner.sh — Update im Chat (Update-Hinweis 2026-10-24): taeglicher Release-Check + Runner fuer Update-Auftraege.
+# update_runner.sh — Update im Chat (Update-Hinweis 2026-10-24): Release-Check alle 2 Stunden + Runner fuer Update-Auftraege.
 #
-# Gesourct von der lifeagents-CLI fuer die Arme `update --check` (systemd-Timer lifeagents-update-check, taeglich) und
+# Gesourct von der lifeagents-CLI fuer die Arme `update --check` (systemd-Timer lifeagents-update-check, alle 2 h) und
 # `update --run-requested` (Timer lifeagents-update-run, minuetlich) — zusammen mit common.sh, deploy_workflows.sh
 # (Owner-chat_id aus der DB) und fetch_release.sh (_gh_http). Laeuft als root; n8n bleibt ohne Rechte.
 #
@@ -26,7 +26,7 @@ UPDATE_LOG_DIR="${UPDATE_LOG_DIR:-/var/log/lifeagents}"
 #   Update (optional --version <tag>, --allow-downgrade; Rest geht an provision.sh) — fetch_and_run_release kehrt nie zurueck.
 update_cli() {
   case "${1:-}" in
-    --check)         update_check; return 0 ;;
+    --check)         update_check "$([ "${2:-}" = --scheduled ] && printf scheduled)"; return 0 ;;
     --run-requested) update_run_requested; return 0 ;;
     --tick)          update_tick; return 0 ;;
   esac
@@ -141,33 +141,36 @@ _ur_code_reason() {
   esac
 }
 
-# update_check — der taegliche Release-Check (`lifeagents update --check`). Immer rc 0 (ein Timer-Fehlschlag
-#   ist kein Alarm wert; der naechste Lauf versucht es erneut).
+# update_check [scheduled] — der Release-Check (`lifeagents update --check`). Immer rc 0 (ein Timer-Fehlschlag
+#   ist kein Alarm wert; der naechste Lauf versucht es erneut). `scheduled` (Timer/Tick, alle 2 h) laesst die DB die
+#   Karte auf das Erinnerungs-Fenster beschraenken; Handaufruf und Folge-Check nach einem Update schicken sofort.
 update_check() {
   require_root
   lifeagents_db_name >/dev/null
-  local installed work
+  local installed work scheduled=false
+  [ "${1:-}" = scheduled ] && scheduled=true
   installed="$(_ur_installed)"
   if ! _ur_is_tag "$installed"; then
     log "Release-Check: installiert ist keine Release-Version ('${installed:-keine}') — nichts zu tun."
     return 0
   fi
   work="$(mktemp -d)"
-  _ur_check_in "$work" "$installed" || true
+  _ur_check_in "$work" "$installed" "$scheduled" || true
   rm -rf -- "$work"
   return 0
 }
 
-# _ur_check_in <workdir> <installed> — Rumpf von update_check (Aufraeumen des workdir macht der Aufrufer).
+# _ur_check_in <workdir> <installed> <scheduled:true|false> — Rumpf von update_check (Aufraeumen des workdir macht der Aufrufer).
 _ur_check_in() {
-  local work="$1" installed="$2" code json card tag
+  local work="$1" installed="$2" scheduled="${3:-false}" code json card tag
   code="$(_gh_http 'application/vnd.github+json' "${PROVISION_GH_API}/repos/${PROVISION_REPO_SLUG}/releases?per_page=20" "$work/rel.json" 30)"
   case "$code" in
     2??) ;;
     *) _ur_notice "Release-Check: GitHub antwortet ${code} ($(_ur_code_reason "$code" "$work/rel.json.hdr")) — nächster Versuch beim nächsten Lauf."; return 0 ;;
   esac
   json="$(jq -c --arg inst "$installed" --argjson sig "$(_ur_require_signature && echo true || echo false)" \
-    '{installed:$inst, require_signature:$sig,
+    --argjson sched "$scheduled" \
+    '{installed:$inst, require_signature:$sig, scheduled:$sched,
       releases:[.[]? | {tag:.tag_name, draft, prerelease, body:((.body // "")[0:4000]), html_url,
                         assets:[.assets[]?.name]}]}' "$work/rel.json")" \
     || { log "Release-Check: Antwort nicht lesbar."; return 0; }
@@ -405,11 +408,11 @@ _ur_swap_continue() {
 }
 
 # update_tick — Ersatz der beiden systemd-Timer im Docker-Verbund (`lifeagents update --tick`, die Schleife im master ruft es
-#   jede Minute als frischen Prozess): Auftraege wie lifeagents-update-run, einmal am Tag ab UPDATE_CHECK_AT (Haushalts-
-#   Zeitzone) der Release-Check wie lifeagents-update-check. Vor der ersten Installation (keine VERSION) still. Zustand in
-#   UPDATE_TICK_STATE (doctor prueft, ob die Schleife lebt). Immer rc 0.
+#   jede Minute als frischen Prozess): Auftraege wie lifeagents-update-run, alle UPDATE_CHECK_EVERY_S
+#   Sekunden (2 h) der Release-Check wie lifeagents-update-check (`update_check scheduled`: Karte nur im Erinnerungs-Fenster).
+#   Vor der ersten Installation (keine VERSION) still. Zustand in UPDATE_TICK_STATE (doctor prueft, ob die Schleife lebt). Immer rc 0.
 UPDATE_TICK_STATE="${UPDATE_TICK_STATE:-/var/lib/lifeagents/update-tick.state}"
-UPDATE_CHECK_AT="${UPDATE_CHECK_AT:-1020}"   # HHMM, wie lifeagents-update-check.timer
+UPDATE_CHECK_EVERY_S="${UPDATE_CHECK_EVERY_S:-7200}"   # wie OnCalendar von lifeagents-update-check.timer
 BACKUP_AUTO_AT="${BACKUP_AUTO_AT:-0330}"     # HHMM, taegliche Sicherung in den Rechner-Ordner (nur Verbund)
 update_tick() {
   require_root
@@ -417,13 +420,17 @@ update_tick() {
   mkdir -p "$(dirname "$UPDATE_TICK_STATE")"
   env_upsert "$UPDATE_TICK_STATE" LAST_TICK "$(date -u +%s)"
   ( update_run_requested ) || true   # Teilschale: die Update-Sperre (fd 9) endet mit ihr
-  local tz today now last
+  local tz today now last nowe
   tz="$(read_env_value "$(lifeagents_env_file core)" HOUSEHOLD_TIMEZONE 2>/dev/null || true)"
   today="$(TZ="${tz:-Europe/Berlin}" date +%Y-%m-%d)"; now="$(TZ="${tz:-Europe/Berlin}" date +%H%M)"
   last="$(read_env_value "$UPDATE_TICK_STATE" LAST_CHECK 2>/dev/null || true)"
-  if [ "$last" != "$today" ] && [ "$((10#$now))" -ge "$((10#$UPDATE_CHECK_AT))" ]; then
-    env_upsert "$UPDATE_TICK_STATE" LAST_CHECK "$today"
-    ( update_check ) || true
+  # LAST_CHECK = Epoch-Sekunden; ein Datum ("2026-11-08", Zustand aelterer Versionen) zaehlt als "lange her" (sonst bricht die Rechnung unter set -e ab)
+  [[ $last =~ ^[0-9]+$ ]] || last=0
+  nowe="$(date -u +%s)"
+  [ "$last" -le "$nowe" ] || last=0   # Uhr zurueckgestellt: LAST_CHECK in der Zukunft zaehlt als "lange her"
+  if [ "$((nowe - last))" -ge "$UPDATE_CHECK_EVERY_S" ]; then
+    env_upsert "$UPDATE_TICK_STATE" LAST_CHECK "$nowe"
+    ( update_check scheduled ) || true
   fi
   # Taegliche Sicherung in den Ordner auf dem Rechner (Verbund, Fund 7; ohne gewaehlten Ordner still) als eigener Prozess —
   # die backup-Arm-Bibliotheken laedt nur die CLI.

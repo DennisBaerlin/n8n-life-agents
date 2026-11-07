@@ -257,7 +257,14 @@ repos:
         language: system
         entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dev/privacy_review_hook_test.ps1
         pass_filenames: false
-        files: ^(\.claude/hooks/dev_cycle_guard|scripts/dev/privacy_review_hook_test|scripts/privacy_review_stamp|scripts/privacy_outgoing|scripts/lib/git_sandbox)\.ps1$
+        files: ^(\.claude/hooks/dev_cycle_guard|scripts/dev/privacy_review_hook_test|scripts/privacy_review_stamp|scripts/privacy_outgoing|scripts/lib/(git_sandbox|owner_machine))\.ps1$
+
+      - id: release-pin-guard-test
+        name: release_pin_guard_test (release tag blocked without a fresh master image pin; throwaway repo + remote)
+        language: system
+        entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dev/release_pin_guard_test.ps1
+        pass_filenames: false
+        files: ^(\.claude/hooks/dev_cycle_guard|scripts/dev/release_pin_guard_test|scripts/release_pin_guard|scripts/lib/(release_images|owner_machine|git_sandbox))\.ps1$
 
       - id: owner-window-hook-test
         name: owner_window_hook_test (paid suites only inside the owner window; tested in a throwaway repo with worktrees)
@@ -422,6 +429,16 @@ repos:
         name: privacy_outgoing -Check (model review stamp for exactly this push; owner machine only)
         language: system
         entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/privacy_outgoing.ps1 -Check
+        pass_filenames: false
+        always_run: true
+        stages: [pre-push]
+
+      # Release-Tag (v*.*.*) nur mit passendem master-Image-Pin. prek sieht nur Pushes mit neuen Commits; den reinen
+      # Tag-Push und das Anlegen sperrt .claude/hooks/dev_cycle_guard.ps1. Branch-Pushes laufen durch, nur Owner-Maschine.
+      - id: release-pin
+        name: release_pin_guard (release tag needs a fresh master image pin; owner machine only)
+        language: system
+        entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/release_pin_guard.ps1
         pass_filenames: false
         always_run: true
         stages: [pre-push]

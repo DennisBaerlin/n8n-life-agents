@@ -48,7 +48,7 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 # shellcheck source=lib/install_llm_gateway.sh
 . "$LIB_DIR/install_llm_gateway.sh"   # lokaler LLM-Gateway: Prompt-Caching + Nutzungs-Messung (vor inject_credentials)
 # shellcheck source=lib/install_update_timers.sh
-. "$LIB_DIR/install_update_timers.sh"   # Update im Chat: taeglicher Release-Check + Runner fuer Update-Auftraege
+. "$LIB_DIR/install_update_timers.sh"   # Update im Chat: Release-Check alle 2 Stunden + Runner fuer Update-Auftraege
 # shellcheck source=lib/upgrade_guard.sh
 . "$LIB_DIR/upgrade_guard.sh"   # Versionswechsel auf Bestands-Instanzen: erst sichern, dann tauschen
 # shellcheck source=lib/master_swap.sh

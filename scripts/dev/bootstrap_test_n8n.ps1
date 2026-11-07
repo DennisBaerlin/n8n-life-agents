@@ -204,9 +204,9 @@ function Get-SubstrateBaseSpec {
     foreach ($f in 'common.sh', 'runtime.sh', 'packages.sh', 'install_pg.sh', 'install_n8n.sh') {   # runtime.sh: common.sh sourct es (Betriebsart-Wrapper)
         $files["lib/$f"] = Join-Path $RepoRoot "provisioning\lib\$f"
     }
-    # reach.sh (Weg nach aussen im Docker-Verbund) sourct common.sh ebenfalls; der Bau ruft keine ihrer Funktionen ->
+    # reach.sh/reach_cli.sh (Weg nach aussen) sourct common.sh ebenfalls; der Bau ruft keine ihrer Funktionen ->
     # nur mitkopieren, NICHT in den Tag (sonst loeste jede Aenderung am Rand einen ~10-Min-Neubau aus).
-    Copy-Item (Join-Path $RepoRoot 'provisioning\lib\reach.sh') (Join-Path $dir 'lib\reach.sh')
+    foreach ($f in 'reach.sh', 'reach_cli.sh') { Copy-Item (Join-Path $RepoRoot "provisioning\lib\$f") (Join-Path $dir "lib\$f") }
     $buf = New-Object System.IO.MemoryStream
     foreach ($rel in ($files.Keys | Sort-Object)) {
         Copy-Item $files[$rel] (Join-Path $dir $rel)

@@ -12,7 +12,7 @@ Je Thema gibt es genau eine leitende Session mit Merge-Hoheit, die die Sessions 
 - **Bypass-Modus:** Eine Session mit „Bypass permissions“ kann sich mit den übrigen nicht austauschen; Nachrichten an sie bleiben zur Freigabe hängen, bis sie verfallen. Claude kann den Modus nicht selbst umstellen → anhalten und den Owner bitten, auf „Auto“ zu wechseln, danach die Anmeldung wiederholen (`.claude/hooks/coordination_mode_guard.ps1` sperrt `ListAgents`/`SendMessage` im Bypass-Modus).
 - `ListAgents` (deferred → per `ToolSearch` laden) + `ReadNotifications`.
 - **Keine anderen Sessions** → du bist Leitung, sobald eine dazukommt. Weiter mit deiner Aufgabe.
-- **Andere Sessions laufen** → per `SendMessage` an alle: „Wer leitet? Woran arbeitest du, welche Dateien/Pakete fasst du an?“ — mit der ausdrücklichen Bitte um Antwort.
+- **Andere Sessions laufen** → per `SendMessage` an alle: „Wer leitet? Woran arbeitest du, welche Dateien/Pakete fasst du an?“ (Antwortpflicht §4).
 
 ## 2. Leitung bestimmen
 
@@ -35,7 +35,6 @@ Je Thema gibt es genau eine leitende Session mit Merge-Hoheit, die die Sessions 
   - Pflicht-Fragen:
     - Was ist dein Stand?
     - Wartest du auf etwas — ja oder nein? Wenn ja: worauf, von wem?
-  - ausdrücklich verlangen, in jedem Fall zu antworten, auch mit „unverändert“
   - dem Owner danach kurz den Stand melden
   - nach dem Tag mit `CronDelete` beenden
 - **Release-Umfang:** Vor dem Zusammenführen fragt die Leitung den Owner (`AskUserQuestion`), welche fertigen Arbeiten in das gemeinsame Release kommen. Nicht selbst festlegen.
@@ -48,7 +47,7 @@ Je Thema gibt es genau eine leitende Session mit Merge-Hoheit, die die Sessions 
 
 - **Direkt untereinander absprechen**, nicht über die Leitung: wer welche Datei bzw. welchen Testfall anfasst, wer auf wessen Commit aufsetzt, wer welchen Substrat-Platz nutzt.
 - **Die Leitung immer informieren**, was abgesprochen wurde: kurze Kopie mit Ergebnis, Hashes, wer was macht.
-- Jede Statusfrage der Leitung beantworten, auch mit „unverändert“. Commit-Hashes an die Leitung und an betroffene Sessions schicken.
+- Jede Nachricht einer anderen Session beantworten, auch als Leitung: mindestens „angekommen“ und was daraus folgt, eine Statusfrage auch mit „unverändert“; sonst wartet die andere Seite. Hashes an die Leitung und betroffene Sessions.
 - Fertig heißt: committet, Gates grün, Hash an die Leitung. Danach nichts mehr ohne Absprache committen. Eigene Container abräumen; den eigenen Worktree erst nach dem Tag.
 
 ## 5. Von der Leitung gestartete Sessions

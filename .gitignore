@@ -20,8 +20,6 @@ node_modules/
 !.claude/rules/
 !.claude/settings.json
 !.claude/launch.json
-!.claude/mods/
-.claude/mods/*/.claude-plugin/types/
 
 # Transientes AI-Judge-Bundle (letzter n8n_test.ps1-Lauf)
 tests/agent/judge_bundle.json

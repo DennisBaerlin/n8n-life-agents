@@ -20,7 +20,6 @@ Das Repo ist öffentlich: Stand und private Anlässe gehören nie in diesen Skil
 1. **Modus:** Läuft die Session im Bypass-Modus, anhalten und den Owner um „Auto“ bitten (`/coordinate` §1).
 2. **Ort:** Die Leitung arbeitet im Haupt-Checkout. Läuft die Session in einem Worktree, das dem Owner sagen; die Stand-Datei liegt trotzdem dort.
 3. **Sichtbar machen:** Session anpinnen (`set_pinned`, session_id „self“) und „Leitung“ nennen (`set_session_title`).
-   **Status-Panel:** `.\scripts\set_status_panel_home.ps1` einmal selbst fahren. Es wirkt beim nächsten Start dieser Session oder per `/status-panel`; das dem Owner sagen.
 4. **Stand lesen:** `.claude/plans/leitung-stand.md` (bzw. die eigene Themen-Datei). Fehlt die Datei, aus der Vorlage in §5 anlegen.
 5. **Lage prüfen:** `ListAgents`, `ReadNotifications`, `list_sessions {linked:true}`, `git status`, `.\scripts\check_ci_status.ps1`. Läuft noch eine andere Leitung: gleiches Thema → Übergabe, anderes Thema → beide bleiben und stimmen sich ab (`/coordinate` §2 und §3 *Mehrere Leitungen*).
 6. **Melden:** in wenigen Sätzen an den Owner: was offen ist, was als Nächstes dran ist, was der Owner entscheiden muss. Nichts aus dem Stand ohne Auftrag beginnen.

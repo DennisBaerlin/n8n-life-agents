@@ -131,8 +131,8 @@ function Get-UiLocaleText([string]$RepoRoot, $Block) {
 function Get-UiScanRoots {
     @('docs/site/static/', 'docs/site/layouts/', 'packages/core/build/app/', 'packages/core/build/stickers/', 'provisioning/desktop/ui/', 'provisioning/desktop/preview/', 'provisioning/wizard/ui/', 'config/ui.')
 }
-# public/ = Hugo-Output der Quellen oben; mods = Erweiterung des Entwickler-Werkzeugs, keine Projekt-Oberflaeche.
-function Get-UiExcludedPrefixes { @('docs/site/public/', '.claude/mods/') }
+# public/ = Hugo-Output der Quellen oben.
+function Get-UiExcludedPrefixes { @('docs/site/public/') }
 function Get-UiFileExtensions { @('.css', '.html', '.htm', '.vue', '.svelte', '.tsx', '.jsx') }
 function Get-UiScanExtensions { @('.css', '.html', '.htm', '.js', '.svg', '.vue', '.svelte', '.tsx', '.jsx') }
 

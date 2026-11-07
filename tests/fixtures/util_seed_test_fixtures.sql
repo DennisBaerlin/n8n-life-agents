@@ -103,7 +103,7 @@ BEGIN
         v_created := array_append(v_created, 'Testbroker Depot');
     END IF;
 
-    -- ---------- VWCE-Holding (30 Stueck: > 5 fuer tc16-Sell, << 999 fuer tc21-Oversell) ----------
+    -- ---------- VWCE-Holding (30 Stueck: > 5 fuer tc16-Sell, << 5000 fuer tc54-Oversell) ----------
     IF NOT EXISTS (SELECT 1 FROM finance.depot_holdings
                    WHERE account_id = v_depot AND isin = 'IE00BK5BQT80') THEN
         v_r := finance.fn_book_stock_buy(jsonb_build_object(

@@ -321,7 +321,7 @@ if ($prek) {
     if (-not $Verify) {
         Push-Location $RepoRoot
         try {
-            $r = Invoke-Native $prek @('install', '--overwrite', '--hook-type', 'pre-commit', '--hook-type', 'pre-push', '--hook-type', 'commit-msg')
+            $r = Invoke-Native $prek @('install', '--overwrite', '--hook-type', 'pre-commit', '--hook-type', 'pre-push', '--hook-type', 'commit-msg', '--hook-type', 'post-merge')
             if ($r.Code -eq 0) { Write-Ok "Git-Hooks verdrahtet (pre-commit + pre-push + commit-msg)" }
             else { Write-SoftWarn "prek install ergab Exit $($r.Code) -- scripts/install_git_hooks.ps1 pruefen." }
         } finally { Pop-Location }

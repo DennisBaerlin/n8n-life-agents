@@ -97,6 +97,8 @@ if ($Down) {
         # scripts/dev/docker_volume_cleanup_test.ps1). Benannte Volumes bleiben unberuehrt.
         Invoke-Native docker @('rm','-fv',$Container) | Out-Null
         Write-Host "Container $Container entfernt."
+        . (Join-Path $PSScriptRoot 'lib\substrate_reservations.ps1')
+        [void](Remove-SlotReservation -Container (Get-DbPortEntryName ([int]$DbPort)))
     } else {
         Write-Host "Kein Container $Container vorhanden."
     }
@@ -114,6 +116,12 @@ if ($Reset -and (Get-ContainerId)) {
 }
 
 if (-not (Get-ContainerId)) {
+    # Port-Reservierung (scripts/lib/substrate_reservations.ps1): ein anderer Halter mit demselben Port scheitert sonst erst im docker run
+    . (Join-Path $PSScriptRoot 'lib\substrate_reservations.ps1')
+    if (-not (Test-DbPortFree -Port ([int]$DbPort) -Reservations @(Read-SlotReservations) -InUse @(Get-DockerHostPorts) -Own $Container)) {
+        throw "DB-Port $DbPort ist belegt oder reserviert -> freien Port holen: .\scripts\reserve_substrate_slot.ps1 -FreeDbPort -By $Container (setzt danach `$env:DBTEST_PG_PORT)."
+    }
+    Add-SlotReservation -Container (Get-DbPortEntryName ([int]$DbPort)) -By $Container
     Write-Host "Starte $Image als $Container (127.0.0.1:$DbPort, trust-Auth) ..."
     $r = Invoke-Native docker @('run','-d','--name',$Container,
         '-e','POSTGRES_HOST_AUTH_METHOD=trust',

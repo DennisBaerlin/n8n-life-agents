@@ -23,7 +23,7 @@ if (-not $prek) {
 Push-Location $RepoRoot
 try {
     # --overwrite entfernt Alt-/Legacy-Hooks (sonst laeuft prek den alten pre-push ZUSAETZLICH mit).
-    & $prek install --overwrite --hook-type pre-commit --hook-type pre-push --hook-type commit-msg
+    & $prek install --overwrite --hook-type pre-commit --hook-type pre-push --hook-type commit-msg --hook-type post-merge
     if ($LASTEXITCODE -ne 0) { throw "prek install fehlgeschlagen (Exit $LASTEXITCODE)." }
 } finally {
     Pop-Location

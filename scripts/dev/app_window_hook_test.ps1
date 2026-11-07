@@ -113,6 +113,23 @@ $emptyRepo = Join-Path $sandbox 'emptyrepo'
 New-Item -ItemType Directory -Force $emptyRepo | Out-Null
 Initialize-GitSandbox $emptyRepo
 Assert-Case 'Commit mit App, GIT_DIR umgelenkt' $true 'Bash' @{ command = 'git commit -m x' } $git @{ GIT_DIR = (Join-Path $emptyRepo '.git') }
+# Merge-Commit: nur Dateien, die sich gegenueber beiden Eltern unterscheiden, zaehlen.
+$mrg = Join-Path $sandbox 'mergerepo'
+New-Item -ItemType Directory -Force (Join-Path $mrg 'packages\core\build\app') | Out-Null
+Initialize-GitSandbox $mrg
+git -C $mrg config user.email t@example.invalid; git -C $mrg config user.name t; git -C $mrg config core.autocrlf false
+Set-Content (Join-Path $mrg 'other.txt') 'a'
+git -C $mrg add -A; git -C $mrg commit -qm init --no-verify 2>$null
+$base = (git -C $mrg rev-parse --abbrev-ref HEAD).Trim()
+git -C $mrg checkout -q -b theirs
+Set-Content (Join-Path $mrg 'packages\core\build\app\index.html') 'von main'
+git -C $mrg add -A; git -C $mrg commit -qm app --no-verify 2>$null
+git -C $mrg checkout -q $base
+Set-Content (Join-Path $mrg 'other.txt') 'b'; git -C $mrg add -A; git -C $mrg commit -qm other --no-verify 2>$null
+git -C $mrg merge --no-ff --no-commit theirs 2>$null | Out-Null
+Assert-Case 'Merge bringt App-Datei unveraendert mit' $false 'Bash' @{ command = 'git commit -m merge' } $mrg
+Set-Content (Join-Path $mrg 'packages\core\build\app\index.html') 'im Merge geaendert'; git -C $mrg add -A
+Assert-Case 'Merge veraendert App-Datei selbst'       $true  'Bash' @{ command = 'git commit -m merge' } $mrg
 $ErrorActionPreference = $prev
 
 Write-Host 'Mit offenem Fenster:'

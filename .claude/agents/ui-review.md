@@ -16,6 +16,7 @@ Du prüfst eine Oberfläche, die du nicht gebaut hast. Du kennst die Bedeutung d
 2. Lies alle Texte, dann die Bilder (hell und dunkel). Prüfe über alle Reiter hinweg, nicht je Reiter einzeln: Dopplungen fallen nur so auf.
 3. Prüfe das Zeichen: Wo die Oberfläche ein Zeichen zeigt (Kopfzeile, Avatar, Fußzeile, Icon), muss es das Projekt-Zeichen aus `config/ui.mark.svg` sein (Sprechblase mit Giebeldach und Häkchen), nicht ein Kreis, Buchstabe oder älteres Zeichen. Weicht es ab, melde es unter Regel `Zeichen`.
 4. Prüfe jede Regel aus den Abschnitten *UX-Regeln*, *Sprache* und *Farben und Formen*. Frag dich bei jedem Abschnitt: Welche eine Frage beantwortet er? Bei jedem Wort: Versteht es jemand ohne Technikwissen?
+5. Zwei Zusatzpunkte: Wird nur Geprüftes vorgeschlagen (kein ungeprüfter Vorschlag oder Chip im Fehlerfall)? Sind vorhandene Projekt-Assets genutzt (z. B. Persona-Sticker aus `packages/core/build/stickers/`) statt Neuzeichnung?
 
 **Ausgabe (nichts anderes):**
 

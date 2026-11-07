@@ -23,6 +23,7 @@
 #       (cat, grep, sed -n, git diff) laeuft durch. Text-Abgleich, deshalb bewusst breit; im Zweifel den Befehl trennen.
 #   (3) 'git commit', dessen Stand die App-Flaeche beruehrt, ohne Fenster -> deny. Backstop fuer alles, was (2) nicht sieht
 #       (Skript, Variable). Ohne lesbares git-Ergebnis laeuft der Befehl durch; prek ist davon unberuehrt.
+#       Bei MERGE_HEAD zaehlen nur Dateien, die sich gegenueber BEIDEN Eltern unterscheiden (im Merge veraendert/aufgeloest).
 #   (4) immer deny: grant_app_window.ps1 ausfuehren oder app_grant.txt schreiben (Maker-Checker). Edit/Write/NotebookEdit
 #       auf owner_grant.txt sperrt dieser Hook mit, weil er auf diesen Tools ohnehin laeuft (Rest: enforce_owner_window.ps1).
 # Kein lesbares JSON: der rohe Text wird wie ein Shell-Befehl geprueft.
@@ -101,12 +102,20 @@ if ($cmd -match '\bgit\b[^|;&\n]*\scommit\b') {
   if (-not $dir) { $dir = (Get-Location).Path }
   try {
     $range = if ($cmd -match '(?:\s-[a-zA-Z]*a[a-zA-Z]*\b|\s--all\b)') { 'HEAD' } else { '--cached' }
-    $names = @(& git -C $dir diff $range --name-only 2>$null)
-    $hit = @($names | Where-Object { $_ -match $AppPath }).Count -gt 0
-    if (-not $hit) {
-      $lines = @(& git -C $dir diff $range -U0 -- 'packages/*/locales/*.json' 'packages/*/manifest.json' 2>$null)
-      $hit = @($lines | Where-Object { $_ -match "^[+-]\s.*(`"$LocaleText|$ManifestText)" }).Count -gt 0
+    # Merge-Commit (MERGE_HEAD vorhanden): nur zaehlen, was sich gegenueber BEIDEN Eltern unterscheidet, also in diesem Merge
+    # wirklich veraendert oder aufgeloest wurde. Unveraendert aus dem anderen Elternteil mitgebrachte Dateien sind kein App-Eingriff.
+    & git -C $dir rev-parse -q --verify MERGE_HEAD 2>$null | Out-Null
+    $isMerge = ($LASTEXITCODE -eq 0)
+    $bases = if ($isMerge) { @('HEAD', 'MERGE_HEAD') } else { @('') }
+    $nameSets = @(); $lineHits = @()
+    foreach ($b in $bases) {
+      $a = @(if (-not $isMerge) { $range } elseif ($range -eq '--cached') { '--cached'; $b } else { $b })   # @(): ein Einzelwert wuerde sonst als String gesplattet
+      $nameSets += , @(& git -C $dir diff @a --name-only 2>$null | Where-Object { $_ -match $AppPath })
+      $lines = @(& git -C $dir diff @a -U0 -- 'packages/*/locales/*.json' 'packages/*/manifest.json' 2>$null)
+      $lineHits += (@($lines | Where-Object { $_ -match "^[+-]\s.*(`"$LocaleText|$ManifestText)" }).Count -gt 0)
     }
+    $common = @($nameSets[0] | Where-Object { $nameSets.Count -eq 1 -or $nameSets[1] -contains $_ })
+    $hit = ($common.Count -gt 0) -or (@($lineHits | Where-Object { -not $_ }).Count -eq 0)
   } catch { $hit = $false }
   if ($hit -and -not (Test-WindowOpen)) { Block-App }
 }

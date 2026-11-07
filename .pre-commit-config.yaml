@@ -1,6 +1,6 @@
 # Single source of enforcement — run by `prek` (Rust binary, no Python needed).
 #   Install runner:  winget install --id j178.Prek
-#   Install hooks:   prek install --hook-type pre-commit --hook-type pre-push --hook-type commit-msg
+#   Install hooks:   prek install --hook-type pre-commit --hook-type pre-push --hook-type commit-msg --hook-type post-merge
 #   Run manually:    prek run --all-files
 # Our domain linters live as `local` system hooks below (same commands as CI). The remote
 # hooks are the recognizable OSS-standard layer. EOL is governed by .gitattributes, so no
@@ -292,7 +292,31 @@ repos:
         language: system
         entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dev/substrate_reservation_test.ps1
         pass_filenames: false
-        files: ^scripts/(lib/substrate_reservations|reserve_substrate_slot|dev/substrate_reservation_test)\.ps1$
+        files: ^scripts/(lib/substrate_reservations|reserve_substrate_slot|bootstrap_test_db|dev/substrate_reservation_test)\.ps1$
+
+      - id: docker-cleanup-test
+        name: docker_cleanup_test (docker_cleanup selects only own stopped containers, anonymous volumes, own dangling images; WhatIf deletes nothing)
+        language: system
+        entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dev/docker_cleanup_test.ps1
+        pass_filenames: false
+        files: ^scripts/(lib/docker_cleanup_select|dev/docker_cleanup|dev/docker_cleanup_test)\.ps1$
+
+      - id: post-merge-regenerate-test
+        name: post_merge_regenerate_test (which changed sources trigger build_ui_tokens / build_site after a merge)
+        language: system
+        entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dev/post_merge_regenerate_test.ps1
+        pass_filenames: false
+        files: ^scripts/(post_merge_regenerate|dev/post_merge_regenerate_test)\.ps1$
+
+      # Nach Merge/Pull: erzeugte UI-Tokens und Site neu bauen, wenn deren Quellen im Merge geaendert wurden. Ergebnis bleibt
+      # unkommittet im Arbeitsbaum (kein Auto-Commit). Braucht `prek install --hook-type post-merge` (install_git_hooks.ps1).
+      - id: post-merge-regenerate
+        name: post_merge_regenerate (rebuild generated UI token blocks and site when their sources changed in the merge)
+        language: system
+        entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/post_merge_regenerate.ps1
+        pass_filenames: false
+        always_run: true
+        stages: [post-merge]
 
       - id: release-images-test
         name: release_images_test (master image pin forms, image provenance in git, SHA256SUMS check; no Docker, no network)

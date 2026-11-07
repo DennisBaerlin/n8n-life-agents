@@ -97,6 +97,7 @@ function Remove-SlotReservation {
 # die schon laufenden, sie zaehlen nur einmal) die Plaetze.
 function Get-SlotAvailability {
     param([string[]]$Running = @(), $Reservations = @(), [Parameter(Mandatory)][string]$Own, [int]$Max = 2)
+    $Reservations = @($Reservations | Where-Object { $_.Container -notlike 'dbport-*' })   # DB-Port-Eintraege belegen keinen Substrat-Platz
     $running = @($Running | Where-Object { $_ -and $_ -ne $Own })
     $forOthers = @($Reservations | Where-Object { $_.Container -ne $Own -and $running -notcontains $_.Container })
     $ownReserved = [bool]@($Reservations | Where-Object { $_.Container -eq $Own }).Count
@@ -150,4 +151,34 @@ function Get-RunningSubstrates([string]$Image) {
         }
     }
     return @($seen.Values | Sort-Object Name)
+}
+# --- DB-Test-Ports (DBTEST_PG_PORT) ---
+# Gleiche Liste, Eintragsname `dbport-<port>`, `By` = DB-Container des Halters. Zwei Sessions mit demselben Port scheiterten
+# sonst erst beim `docker run`. Bei der Port-Wahl zaehlen belegte (InUse, aus `docker ps`) und fremd reservierte Ports.
+function Get-DbPortEntryName([int]$Port) { return "dbport-$Port" }
+
+# Rein (ohne Docker): $true, wenn $Own den Port nehmen darf. Eigene Reservierung (By = Own) blockiert nicht.
+function Test-DbPortFree {
+    param([Parameter(Mandatory)][int]$Port, $Reservations = @(), [int[]]$InUse = @(), [Parameter(Mandatory)][string]$Own)
+    if ($InUse -contains $Port) { return $false }
+    $name = Get-DbPortEntryName $Port
+    return -not @($Reservations | Where-Object { $_.Container -eq $name -and $_.By -ne $Own }).Count
+}
+
+# Erster freier Port ab $Start (Default 55432 = Standard-Port der Test-DB).
+function Find-FreeDbPort {
+    param($Reservations = @(), [int[]]$InUse = @(), [Parameter(Mandatory)][string]$Own, [int]$Start = 55432, [int]$Count = 40)
+    foreach ($p in $Start..($Start + $Count - 1)) {
+        if (Test-DbPortFree -Port $p -Reservations $Reservations -InUse $InUse -Own $Own) { return $p }
+    }
+    return $null
+}
+
+# Host-Ports laufender Container (`docker ps`, nur lesend); Docker aus = leere Liste.
+function Get-DockerHostPorts {
+    $eap = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
+    try { $out = & docker ps --format '{{.Ports}}' 2>$null } finally { $ErrorActionPreference = $eap }
+    if ($LASTEXITCODE -ne 0) { return @() }
+    $ports = foreach ($m in [regex]::Matches(("$($out -join ' ')"), ':(\d+)->')) { [int]$m.Groups[1].Value }
+    return @($ports | Sort-Object -Unique)
 }

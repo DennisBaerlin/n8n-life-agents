@@ -12,10 +12,15 @@
 #
 # Usage:  .\scripts\reserve_substrate_slot.ps1 -Container n8ntest-xx [-By "Sprint-Leitung"]   # reservieren (erneut = Frist neu)
 #         .\scripts\reserve_substrate_slot.ps1 -Release n8ntest-xx                              # Zusage zurueckziehen
+#         .\scripts\reserve_substrate_slot.ps1 -DbPort 55433 -By lifeagents-dbtest-xx          # DB-Test-Port reservieren (Eintrag dbport-55433)
+#         .\scripts\reserve_substrate_slot.ps1 -FreeDbPort -By lifeagents-dbtest-xx             # naechsten freien DB-Port nennen und reservieren
 #         .\scripts\reserve_substrate_slot.ps1 -List                                            # gueltige Reservierungen
+# DB-Ports (DBTEST_PG_PORT) laufen ueber dieselbe Liste; bootstrap_test_db.ps1 prueft und traegt den Port beim Start selbst ein.
 param(
     [string]$Container,
     [string]$Release,
+    [int]$DbPort,
+    [switch]$FreeDbPort,
     [switch]$List,
     [string]$By,
     [string]$ListFile
@@ -26,6 +31,20 @@ $ErrorActionPreference = 'Stop'
 if (-not $ListFile) { $ListFile = Get-SlotReservationFile }
 $namePattern = '^[A-Za-z0-9][A-Za-z0-9_.-]*$'
 
+if ($FreeDbPort -or $DbPort) {
+    if (-not $By) { $By = if ($env:DBTEST_CONTAINER) { $env:DBTEST_CONTAINER } else { $env:USERNAME } }
+    $res = @(Read-SlotReservations -File $ListFile)
+    $used = @(Get-DockerHostPorts)
+    if ($FreeDbPort) {
+        $DbPort = Find-FreeDbPort -Reservations $res -InUse $used -Own $By
+        if (-not $DbPort) { throw 'Kein freier DB-Port in 55432..55471.' }
+    } elseif (-not (Test-DbPortFree -Port $DbPort -Reservations $res -InUse $used -Own $By)) {
+        throw "DB-Port $DbPort ist belegt oder von einer anderen Session reserviert (-FreeDbPort nennt einen freien)."
+    }
+    Add-SlotReservation -File $ListFile -Container (Get-DbPortEntryName $DbPort) -By $By
+    Write-Host ("DB-Port {0} reserviert (von {1}): `$env:DBTEST_PG_PORT='{0}'; verfaellt nach {2} Min." -f $DbPort, $By, $SlotReservationTtlMin) -ForegroundColor Green
+    exit 0
+}
 if ($Container) {
     if ($Container -notmatch $namePattern) { throw "Unerwarteter Container-Name '$Container' (erlaubt: Buchstaben, Ziffern, _ . -)." }
     if (-not $By) { $By = if ($env:CLAUDE_CODE_HOST_SESSION_ID) { $env:CLAUDE_CODE_HOST_SESSION_ID } else { $env:USERNAME } }

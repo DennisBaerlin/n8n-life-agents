@@ -72,6 +72,18 @@ Assert-That 'Zeile: Name, Status, Worktree' ($p.Name -eq 'sub-a' -and $p.Status 
 $p = ConvertFrom-SubstrateLine 'alt|Up 2 hours|'
 Assert-That 'Zeile ohne Worktree-Label: leerer Worktree' ($p.Name -eq 'alt' -and $p.Worktree -eq '')
 
+Write-Host 'DB-Ports:'
+Reset-File
+function PortRes($port, $by) { [pscustomobject]@{ Container = (Get-DbPortEntryName $port); Since = $t0; By = $by } }
+Assert-That 'Port frei ohne Reservierung' (Test-DbPortFree -Port 55432 -Own 'db-a')
+Assert-That 'Port belegt (docker ps): nicht frei' (-not (Test-DbPortFree -Port 55432 -InUse @(55432) -Own 'db-a'))
+Assert-That 'Port von anderem reserviert: nicht frei' (-not (Test-DbPortFree -Port 55432 -Reservations @((PortRes 55432 'db-b')) -Own 'db-a'))
+Assert-That 'eigene Port-Reservierung blockiert nicht' (Test-DbPortFree -Port 55432 -Reservations @((PortRes 55432 'db-a')) -Own 'db-a')
+Assert-That 'freier Port: ueberspringt belegte und reservierte' ((Find-FreeDbPort -Reservations @((PortRes 55433 'db-b')) -InUse @(55432) -Own 'db-a') -eq 55434)
+Assert-That 'Port-Eintraege belegen keinen Substrat-Platz' (Slot @('x') @((PortRes 55432 'db-b'))).Free
+$s2 = Slot @() @((PortRes 55432 'db-b'), (PortRes 55433 'db-c'))
+Assert-That 'Port-Eintraege tauchen nicht als Fremd-Reservierung auf' ($s2.ReservedForOthers.Count -eq 0)
+
 Write-Host 'Bedienung (reserve_substrate_slot.ps1):'
 Reset-File
 function Invoke-Cli([string[]]$a) {
@@ -89,6 +101,16 @@ $o = Invoke-Cli @('-Release', 'cli-a')
 Assert-That '-Release ohne Treffer: kein Fehler' ($o.Code -eq 0)
 $o = Invoke-Cli @('-Container', 'bad name!')
 Assert-That 'ungueltiger Container-Name: Fehler' ($o.Code -ne 0)
+$o = Invoke-Cli @('-DbPort', '59001', '-By', 'db-cli-a')
+Assert-That '-DbPort: reserviert dbport-59001' ($o.Code -eq 0 -and (Get-Content $file -Raw) -match 'dbport-59001\|')
+$o = Invoke-Cli @('-DbPort', '59001', '-By', 'db-cli-b')
+Assert-That '-DbPort von anderem Halter: Fehler' ($o.Code -ne 0)
+$o = Invoke-Cli @('-DbPort', '59001', '-By', 'db-cli-a')
+Assert-That '-DbPort durch denselben Halter erneut: ok' ($o.Code -eq 0)
+$o = Invoke-Cli @('-FreeDbPort', '-By', 'db-cli-b')
+Assert-That '-FreeDbPort: reserviert einen anderen Port als den belegten' ($o.Code -eq 0 -and $o.Out -match 'DB-Port \d+ reserviert' -and $o.Out -notmatch 'DB-Port 59001')
+$o = Invoke-Cli @('-Release', 'dbport-59001')
+Assert-That '-Release dbport-<port> gibt frei' ($o.Code -eq 0)
 $o = Invoke-Cli @()
 Assert-That 'ohne Parameter: Fehler mit Usage' ($o.Code -ne 0)
 

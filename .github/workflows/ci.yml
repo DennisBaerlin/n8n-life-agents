@@ -8,6 +8,7 @@ on:
   push:
     branches: [main]
   pull_request:
+  workflow_dispatch:   # Handstart fuer einen Branch ohne PR (gh workflow run ci.yml --ref <branch>)
 
 # Least privilege: linting only needs to read the tree.
 permissions:

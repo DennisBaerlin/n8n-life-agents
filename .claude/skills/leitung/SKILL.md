@@ -27,6 +27,7 @@ Das Repo ist öffentlich: Stand und private Anlässe gehören nie in diesen Skil
 
 ## 2. Während der Arbeit
 
+- **Hauptüberlegung bei jedem Arbeitspaket (neue Aufgabe, Fix-Welle, Sprint-Nachbereitung, Retro-Punkte), an jeder Stelle:** zuerst die Aufgabe klären, dann ausdrücklich prüfen, wie sie sich auf mehrere Unter-Sessions verteilen lässt, um schneller zu werden. Der Schnitt folgt den Dateigruppen, damit keine zwei Sessions dieselben Dateien anfassen. Eine einzige Session braucht eine Begründung (z. B. alles liegt in denselben Dateien). Beispiel: Acht unabhängige Retro-Punkte gingen an eine Session statt an drei (Regeln und Texte, Skripte, Hooks).
 - **Verteilen:** Was wenige Tool-Aufrufe braucht, macht die Leitung selbst. Eigenständige Aufgaben bekommen je eine Unter-Session (`start_session`, „fresh“, eigener Worktree). Sessions ohne gemeinsame Dateien dürfen parallel laufen.
 - **Direkt nach jedem `start_session`:** `.\scripts\register_sub_session.ps1 -Id <local_…>`. Dann lehnt der Hook direkte Fragen dieser Session an den Owner ab (`.claude/hooks/enforce_sub_session_questions.ps1`). Das wirkt nur in Sessions, die den Hook beim Start schon in ihrem Checkout hatten.
 - **Jeder Brief enthält:**
@@ -38,7 +39,12 @@ Das Repo ist öffentlich: Stand und private Anlässe gehören nie in diesen Skil
   - Testfälle nie ändern, nur damit sie grün werden; Streichen erst nach Owner-Freigabe
   - bezahlte Suiten und Mini-App nur im jeweiligen Owner-Fenster
   - Bericht am Zug-Ende: Branch, Hash, Gates, offene Punkte
+  - Berechtigungs-Karten gebündelt: Die Unter-Session legt Auslöser für Karten ans Blockende und meldet den Befehl, statt einzeln zu blockieren.
+  - Notizordner als Rückfall: Sperrt die App Nachrichten nach 10 Sitzungs-Nachrichten ohne Owner-Eingabe, schreibt die Session ihren Bericht als Datei dorthin.
   - passender Skill als Rahmen: `/feature`, `/test-task`, `/docs-task`, `/mini-app-task`, `/ui-task`
+- **Wartende Sessions nennen:** Die Leitung führt in jeder Antwort an den Owner alle Sessions auf, die auf ihn warten (Karte, Plan-Freigabe, Entscheidung), gebündelt statt verstreut.
+- **Modell sparsam:** Mechanische Pakete (Doku, Tests, Werkzeug) laufen als Unter-Session auf Sonnet (`model` im `start_session`), Opus nur für Design und Architektur; die Zahl paralleler Opus-Sessions bleibt klein. **Beobachtungs-Auftrag** (Owner-Wunsch: beobachten, ob die Qualität abnimmt oder die Geschwindigkeit zunimmt): Die Leitung notiert je Sprint Qualität (Nacharbeit, rote Gates) und Tempo der Sonnet-Pakete in der Stand-Datei; die Auswertung erfolgt zusammen mit dem Memory `effort-medium-probe`.
+- **Prüfläufe vor dem Merge:** `ci` und `genericity` laufen sonst nur auf main/PR und melden Fehler erst nach dem Merge. Vor dem Bewegen von `main` fährt die Leitung auf dem Integrations-Branch `gh workflow run genericity.yml --ref <branch>` und `gh workflow run ci.yml --ref <branch>` und wartet per `gh run watch` (`/coordinate` §3).
 - **Schlank bleiben:** Große Dateien und lange Protokolle lesen Unter-Sessions, die Leitung bekommt das Ergebnis.
 - **Stand sofort festhalten:** Session-ID, Branch, Container und jede Owner-Entscheidung im Wortlaut kommen gleich in die Stand-Datei, nicht erst am Ende. Erledigtes fliegt raus; die Datei beschreibt nur das Jetzt.
 - **Entscheidungen als Karte:** Offene Punkte und Entscheidungen für den Owner stellt die Leitung immer als Karte, mit kurzer Erläuterung der Folgen und Empfehlung.

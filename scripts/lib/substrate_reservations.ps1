@@ -139,7 +139,10 @@ function Get-RunningSubstrates([string]$Image) {
     if ($Image) { $filters += "ancestor=$Image" }
     $seen = @{}
     foreach ($f in $filters) {
-        $out = & docker ps --filter $f --format '{{.Names}}|{{.Status}}|{{.Labels}}' 2>$null
+        # PS 5.1 mit ErrorActionPreference=Stop beim Aufrufer: jede stderr-Zeile von docker (Daemon aus, Windows-Runner)
+        # waere trotz 2>$null ein Abbruch -> nur hier auf Continue, ein Fehler heisst „kein Substrat“.
+        $eap = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
+        try { $out = & docker ps --filter $f --format '{{.Names}}|{{.Status}}|{{.Labels}}' 2>$null } finally { $ErrorActionPreference = $eap }
         if ($LASTEXITCODE -ne 0) { continue }
         foreach ($line in @($out | Where-Object { $_ })) {
             $s = ConvertFrom-SubstrateLine "$line"

@@ -117,7 +117,7 @@ function Get-FinanceHitlLines {
                 (New-HitlLine 'finance.label.bank'               "$S.bank" -OmitEmpty)
                 (New-HitlLine 'finance.label.iban_number'        "$S.account_number" -OmitEmpty)
                 (& $own 'finance.label.owner_person' (& $need 'Person'))
-                (New-HitlLine 'finance.label.balance'            "($S.opening_balance || 0)" -Kind money -Currency (& $need 'Ccy') -EurByModel -If "!$isDepot")  # Ccy: genannte Kontowaehrung, sonst DB-Default EUR (create_account)
+                (New-HitlLine 'finance.label.balance'            "($S.opening_balance || 0)" -Kind money -Currency (& $need 'Ccy') -If "!$isDepot")
                 # Stichtag des Saldos (Konto aus Kontoauszug): Wert aus dem Probelauf der fn, nur im Einzel-Tool (-D.BalanceDate)
                 if ($D.ContainsKey('BalanceDate')) { New-HitlLine 'finance.label.statement_date' $D['BalanceDate'] -Kind date -If "!!$S.opening_balance_date" }
                 (& $settle "$S.settlement_account_name" "($isDepot || !!$S.settlement_account_name)")

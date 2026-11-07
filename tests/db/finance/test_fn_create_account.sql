@@ -374,6 +374,23 @@ BEGIN
   END;
   RAISE NOTICE 'PASS fn_create_account [12 Verrechnungskonto nur Depot/P2P]';
 
+  -- 13 Rueckgabe traegt die abgeleitete Kontowaehrung (die Karte liest sie aus dem Probelauf, kein Vorgabewert EUR):
+  -- genannt (normalisiert), nicht genannt = EUR, Depot ohne Waehrung erbt die des Verrechnungskontos.
+  DECLARE v_s INT; v_r JSONB; BEGIN
+    v_r := finance.fn_create_account('{"name":"__test_ccy_usd__","account_type":"cash","currency":"usd"}'::jsonb);
+    IF v_r->>'currency' IS DISTINCT FROM 'USD' THEN
+      RAISE EXCEPTION 'FAIL fn_create_account [13a genannte Waehrung normalisiert]: %', v_r; END IF;
+    v_s := (v_r->>'account_id')::int;
+    v_r := finance.fn_create_account('{"name":"__test_ccy_default__","account_type":"cash"}'::jsonb);
+    IF v_r->>'currency' IS DISTINCT FROM 'EUR' THEN
+      RAISE EXCEPTION 'FAIL fn_create_account [13b ohne Waehrung = EUR]: %', v_r; END IF;
+    v_r := finance.fn_create_account(jsonb_build_object('name', '__test_ccy_depot__', 'account_type', 'stocks_depot', 'settlement_id', v_s));
+    IF (v_r->>'ok')::boolean IS DISTINCT FROM true OR v_r->>'currency' IS DISTINCT FROM 'USD'
+       OR (SELECT currency FROM finance.accounts WHERE id = (v_r->>'account_id')::int) IS DISTINCT FROM 'USD' THEN
+      RAISE EXCEPTION 'FAIL fn_create_account [13c Depot erbt USD vom Verrechnungskonto]: %', v_r; END IF;
+  END;
+  RAISE NOTICE 'PASS fn_create_account [13 Rueckgabe traegt die abgeleitete Kontowaehrung]';
+
 END $$;
 
 ROLLBACK;

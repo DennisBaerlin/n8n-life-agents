@@ -992,19 +992,9 @@ foreach ($k in $svc.Connections.Keys) { $connections[$k] = $svc.Connections[$k] 
 # Bundle-Connections (Model Selector -> Finance Agent + Modell-Nodes -> Model Selector) mergen.
 foreach ($k in $mb.Connections.Keys) { $connections[$k] = $mb.Connections[$k] }
 
-# Alle Tools werden in New-ToolWorkflowNode hart aufgeloest (throw bei fehlender ID) -> keine
-# null-Nodes, keine zu entfernenden Connections mehr (die alte $ToolIds-Skip-Schleife entfaellt).
-
-    # Workflow-Objekt OHNE id zurueckgeben — Save-WorkflowFile (build.ps1) backt die State-ID ein.
-    return [ordered]@{
-        name        = 'agent.finance'
-        active      = $false
-        nodes       = $allNodes
-        connections = $connections
-        settings    = [ordered]@{ executionOrder = 'v1'; binaryMode = 'separate'; errorWorkflow = $ErrorNotifyId }
-        staticData  = $null
-        pinData     = @{}
-        triggerCount = 0
-        tags        = @()
-    }
+    $wf = Build-Workflow 'agent.finance' $allNodes $connections
+    $wf.settings['binaryMode'] = 'separate'
+    # Leere Standardfelder bleiben im Export stehen (Datei bleibt gleichwertig zum bisherigen Stand).
+    $wf['active'] = $false; $wf['staticData'] = $null; $wf['pinData'] = @{}; $wf['triggerCount'] = 0; $wf['tags'] = @()
+    return $wf
 }

@@ -1,7 +1,6 @@
 {
     "id":  "S4gO9s0FAm6oFQYr",
     "name":  "agent.finance",
-    "active":  false,
     "nodes":  [
                   {
                       "parameters":  {
@@ -8670,9 +8669,10 @@
                     },
     "settings":  {
                      "executionOrder":  "v1",
-                     "binaryMode":  "separate",
-                     "errorWorkflow":  "Nd3UVmUTzTLOBeba"
+                     "errorWorkflow":  "Nd3UVmUTzTLOBeba",
+                     "binaryMode":  "separate"
                  },
+    "active":  false,
     "staticData":  null,
     "pinData":  {
 

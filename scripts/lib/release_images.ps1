@@ -1,6 +1,6 @@
 ﻿# release_images.ps1 — eine Adresse fuer die Auslieferung des master-Images (Docker-Verbund): Release-Pathspec, die zwei Formen
 # der Pin-Zeile in provisioning/compose/compose.yml und der Blick ins Container-Register per HTTP (ohne Docker, ohne Anmeldung).
-# Dot-Sourcing: scripts/build_master_image.ps1, scripts/sign_release.ps1, scripts/contract_lint.ps1 (33),
+# Dot-Sourcing: scripts/build_master_image.ps1, scripts/sign_release.ps1, scripts/release_pin_guard.ps1, scripts/contract_lint.ps1 (33),
 # scripts/layout_lint.ps1 (L6), scripts/dev/release_images_test.ps1.
 #
 # Pin-Zeile (x-images.master, Anker &img_master):
@@ -175,7 +175,28 @@ function Test-MasterRevision([string]$RepoRoot, [string]$Revision, [string]$Tag)
     return , $iss
 }
 
-# --- Release-Pruefung (sign_release.ps1) --------------------------------------------------------------------------------------
+# Test-MasterPinOffline -RepoRoot -Rev <commit/tag> -> Abweichungen (leer = Pin passt), ohne Register: die Revision ist dann
+#   nicht das Label, sondern der Elternteil des Commits, der den Digest der Pin-Zeile eingetragen hat (build_master_image.ps1
+#   baut aus HEAD, der Pin-Commit folgt direkt). Faengt einen Tag ohne Pin und einen veralteten Pin (Image aelter als der
+#   Release-Baum); dass das Image im Register liegt und das Label stimmt, prueft erst sign_release.ps1 (Test-ReleaseCompose).
+#   Nutzer: scripts/release_pin_guard.ps1 (Sperre beim Taggen und beim Tag-Push).
+function Test-MasterPinOffline([string]$RepoRoot, [string]$Rev) {
+    $iss = New-Object System.Collections.Generic.List[string]
+    $ErrorActionPreference = 'Continue'
+    $tip = [string](& git -C $RepoRoot rev-parse -q --verify "$Rev^{commit}" 2>$null)
+    if (-not $tip) { $iss.Add("Stand $Rev nicht aufloesbar."); return , $iss }
+    $text = (& git -C $RepoRoot show "${tip}:$MasterComposeRel" 2>$null) -join "`n"
+    if ($LASTEXITCODE -ne 0) { $iss.Add("$MasterComposeRel fehlt in $Rev."); return , $iss }
+    try { $pin = Get-MasterPin $text } catch { $iss.Add($_.Exception.Message); return , $iss }
+    if ($pin.Form -ne 'pinned') { $iss.Add('compose.yml traegt keinen Release-Pin des master-Images.'); return , $iss }
+    $pinCommit = [string](& git -C $RepoRoot log -1 --format=%H "-S$($pin.Digest)" $tip -- $MasterComposeRel 2>$null)
+    $built = if ($pinCommit) { [string](& git -C $RepoRoot rev-parse -q --verify "$pinCommit^" 2>$null) } else { '' }
+    if (-not $built) { $iss.Add("Pin-Commit fuer $($pin.Digest.Substring(0, 19)) nicht gefunden."); return , $iss }
+    foreach ($p in (Test-MasterRevision $RepoRoot $built $tip)) { $iss.Add($p) }
+    return , $iss
+}
+
+# --- Release-Pruefung (sign_release.ps1)--------------------------------------------------------------------------------------
 $ReleaseSumAssets = @('install.sh', 'compose.yml', 'lifeagents.dmg', 'lifeagents-setup.exe')   # nach dem Tarball, Reihenfolge = release.yml
 
 # Test-ReleaseSums -Dir -Tarball -> Abweichungen: SHA256SUMS muss genau Tarball + $ReleaseSumAssets in dieser Reihenfolge nennen,

@@ -21,7 +21,9 @@
 --        Plan-Anpassung hoechstens einmal je Kette (spaeteste Faelligkeit; Vorgaenger auch aus diesem Auszug).
 --     4. missing = ALLE offenen Vorkommen mit Faelligkeit <= period_end-10 ohne Zeile = exakt das, was der Abgleich
 --        ueberspringt (auch vor dem Zeitraum oder aus einer Luecke; juengere bleiben offen — eine Abbuchung am 30. kann
---        am 2. kommen). Teil des fingerprint.
+--        am 2. kommen). Teil des fingerprint. never_seen:true (nur dann gesetzt) = erstes Fehlen eines Auftrags, den der
+--        Nutzer selbst einrichten muss (fn_bank_setup_kind), der nie lief (fn_recurring_never_ran) und den noch kein
+--        Auszug uebersprungen hat; die Karte fragt je solcher Kette einmal, ob er bei der Bank eingerichtet ist.
 --     5. lump = Endsaldo - (Systemstand am period_end + drift + Summe der neuen Buchungen auf diesem Konto + schon
 --        gebuchte Stufe-0-Treffer mit Buchungsdatum nach period_end, die apply aufs Zeilendatum verschiebt) = die EINE
 --        Abgleichsbuchung (DB-Differenz, nicht Summe der Restzeilen: deckt auch Fremdbuchungen ab; Name s. Rest-Label).
@@ -990,7 +992,12 @@ BEGIN
                'due_date', o.due_date,
                'amount', CASE WHEN r.account_id = v_acct.id
                               THEN COALESCE(finance.fn_recurring_occurrence_amount(r.id, o.due_date), r.amount)
-                              ELSE abs(r.amount) END) ORDER BY o.due_date, r.name), '[]'::jsonb)
+                              ELSE abs(r.amount) END)
+               || CASE WHEN finance.fn_bank_setup_kind(r.id) IS NOT NULL AND finance.fn_recurring_never_ran(r.id)
+                        AND NOT EXISTS (SELECT 1 FROM finance.bank_statements b, jsonb_array_elements(b.skipped) s
+                                        WHERE (s->>'recurring_payment_id')::int IN (SELECT finance.fn_recurring_lineage(r.id)))
+                       THEN '{"never_seen": true}'::jsonb ELSE '{}'::jsonb END
+               ORDER BY o.due_date, r.name), '[]'::jsonb)
     INTO v_missing
     FROM finance.fn_reconcile_open_due(v_acct.id, v_pe) o   -- dieselbe Menge, die der Abgleich ueberspringt (eine Adresse)
     JOIN finance.recurring_payments r ON r.id = o.recurring_payment_id
@@ -1170,7 +1177,15 @@ BEGIN
                     core.fn_ui_tpl('finance.tpl.statement_missing_row', jsonb_build_object('name', x->>'name',
                         'amount', core.fn_ui_money(abs((x->>'amount')::numeric), v_acct.currency),
                         'date', core.fn_ui_date((x->>'due_date')::date)))) ORDER BY (x->>'due_date')::date)
-                FROM jsonb_array_elements(v_missing) x);
+                FROM jsonb_array_elements(v_missing) x)
+            -- je nie gesehener Kette eine Frage (mehrere Termine derselben Kette: einmal)
+            || COALESCE((SELECT jsonb_agg(n ORDER BY h.first_due, h.head)
+                         FROM (SELECT finance.fn_recurring_lineage_head((x->>'recurring_payment_id')::int) AS head,
+                                      min((x->>'due_date')::date) AS first_due, min(x->>'name') AS name
+                                 FROM jsonb_array_elements(v_missing) x WHERE (x->>'never_seen')::boolean
+                                GROUP BY 1) h
+                         CROSS JOIN LATERAL jsonb_array_elements(finance.fn_bank_setup_note(h.head,
+                             'statement_never_seen', jsonb_build_object('name', h.name))) n), '[]'::jsonb);
     END IF;
     IF jsonb_array_length(v_blocked || v_pending) > 0 THEN
         v_card := v_card || jsonb_build_array(jsonb_build_object('kind', 'heading', 'label', 'finance.label.statement_not_booked'))

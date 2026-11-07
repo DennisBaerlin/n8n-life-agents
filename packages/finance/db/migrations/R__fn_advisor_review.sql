@@ -36,7 +36,8 @@
 --     {accounts}, Wahl nach Anzahl in der DB); Digest digest_goal_line_fx_gap und goal_reached_fx_gap sagen „mindestens“.
 --   Monats-Check (WP-E): account_coverage:<konto> = Deckungs-Vorschau (finance.fn_account_outlook) unterschreitet
 --     den Puffer finance.coverage_buffer_eur, nur Konten mit Kontoauszug; recurring_missing:<ketten-kopf> = die
---     juengsten zwei Termine einer laufenden Dauerauftrags-Kette hat ein Kontoauszug als fehlend festgestellt.
+--     juengsten zwei Termine einer laufenden Dauerauftrags-Kette hat ein Kontoauszug als fehlend festgestellt; lief ein
+--     selbst einzurichtender Auftrag (fn_bank_setup_kind) nie, lautet der Satz recurring_never_started_<art>[_generic].
 --   Umschichtung mit Enddatum (2026-11-01): standing_order_ending:<ketten-kopf> = ein freistehender Uebertrag, der ein
 --     Sparplan-Verrechnungskonto oder Ziel-Geld-Konto speist, ueberweist in <= 42 Tagen zum letzten Mal (latch = Termin).
 --   Instandhaltungsruecklage (2026-10-27, aus finance.maintenance_reserve_status): maintenance_reserve_low:<immobilie>
@@ -128,6 +129,7 @@ DECLARE
     v_outside      numeric;   -- handelbarer Wert OHNE Plan-Block (nicht im Drift-Nenner)
     v_re_missing   boolean := false;   -- Immobilie mit Kredit, aber ohne Wert (net_worth unvollstaendig)
     v_nw_fx_gap    boolean := false;   -- ein Wert der Zielportfolio-Basis ohne Wechselkurs (Summe unvollstaendig)
+    v_never        jsonb;     -- (2d) Bank-Notiz fuer einen nie gelaufenen eigenen Auftrag, sonst NULL
     v_free_after   numeric;   -- (2e) freies Geld der Quelle am tiefsten Punkt nach dem letzten Termin
 BEGIN
     -- Soll: financial_planning-Fakten-Sidecar (fehlt -> v_facts NULL -> Plan-Metriken entfallen still)
@@ -527,15 +529,23 @@ BEGIN
         GROUP BY k.head, rp.name, rp.amount, a.currency
         HAVING count(*) = 2 AND bool_and(k.skipped)
     LOOP
+        -- Satzwahl: ein Auftrag, den der Nutzer selbst einrichten muss und der nie lief, ist nicht "gekuendigt",
+        -- sondern vermutlich nie bei der Bank angelegt (fn_bank_setup_note: Institut beim Namen, sonst _generic).
+        -- Key, Schwelle und Latch bleiben gleich.
+        v_never := CASE WHEN finance.fn_recurring_never_ran(r.head)
+                        THEN finance.fn_bank_setup_note(r.head, 'recurring_never_started',
+                                                        jsonb_build_object('name', r.name))->0 END;
         v_alerts := v_alerts || jsonb_build_object(
             'metric_key', 'recurring_missing:' || r.head,
             'kind',       'recurring_missing',
             'label',      'recurring_missing',
             'value',      2,
-            'msg',        jsonb_build_array(core.fn_ui_tpl('finance.advisor.recurring_missing', jsonb_build_object(
-                              'name',   r.name,
-                              'amount', core.fn_ui_money(abs(r.amount), r.currency),
-                              'date',   core.fn_ui_date(r.last_due)))));
+            'msg',        jsonb_build_array(CASE WHEN v_never IS NOT NULL
+                              THEN core.fn_ui_tpl(v_never->>'value', v_never->'params')
+                              ELSE core.fn_ui_tpl('finance.advisor.recurring_missing', jsonb_build_object(
+                                  'name',   r.name,
+                                  'amount', core.fn_ui_money(abs(r.amount), r.currency),
+                                  'date',   core.fn_ui_date(r.last_due))) END));
     END LOOP;
 
     -- ---------- (2e) Umschichtung mit Enddatum: ein Dauerauftrag ueberweist bald zum letzten Mal ----------

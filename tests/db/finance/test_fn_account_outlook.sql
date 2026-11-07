@@ -68,6 +68,32 @@ BEGIN
   IF NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v_alerts) a WHERE a->>'metric_key' = 'recurring_missing:' || v_handy) THEN
     RAISE EXCEPTION 'FAIL advisor recurring_missing fehlt: %', v_alerts; END IF;
   RAISE NOTICE 'PASS advisor: account_coverage nur fuer Auszug-Konto, recurring_missing nur nach 2 vom Auszug festgestellten Skips';
+
+  -- ein neuer Dauerauftrag, der nie lief und zweimal fehlte -> derselbe Key, aber der Satz "wurde noch nie ausgefuehrt"
+  -- (Institut beim Namen, sonst _generic); die Lastschrift behaelt recurring_missing
+  v_rp := finance.fn_add_recurring_payment(v_giro, -150, 'Tagesgeld-Sparen', 1::smallint, 'month'::finance.schedule_unit, NULL,
+            (t - interval '2 months')::date, (t - interval '2 months')::date, NULL, NULL, NULL);
+  UPDATE finance.recurring_payments SET target_account_id = v_tg WHERE id = v_rp;
+  INSERT INTO finance.recurring_payment_skips (recurring_payment_id, due_date)
+  VALUES (v_rp, (t - interval '2 months')::date), (v_rp, (t - interval '1 month')::date);
+  UPDATE finance.bank_statements SET skipped = skipped || jsonb_build_array(jsonb_build_object('recurring_payment_id', v_rp,
+           'due_date', CASE WHEN period_end = t - 35 THEN (t - interval '2 months')::date ELSE (t - interval '1 month')::date END))
+  WHERE account_id = v_giro;
+  v_alerts := finance.fn_advisor_review('finance')->'alerts';
+  IF NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v_alerts) a WHERE a->>'metric_key' = 'recurring_missing:' || v_rp
+                   AND a->'msg'->0->>'value' = 'finance.advisor.recurring_never_started_standing_order_generic'
+                   AND a->'msg'->0->'params'->>'name' = 'Tagesgeld-Sparen') THEN
+    RAISE EXCEPTION 'FAIL advisor never_started (generic): %', v_alerts; END IF;
+  IF NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v_alerts) a WHERE a->>'metric_key' = 'recurring_missing:' || v_handy
+                   AND a->'msg'->0->>'value' = 'finance.advisor.recurring_missing') THEN
+    RAISE EXCEPTION 'FAIL advisor Lastschrift behaelt recurring_missing: %', v_alerts; END IF;
+  UPDATE finance.accounts SET bank = 'Lindenbank' WHERE id = v_giro;
+  v_alerts := finance.fn_advisor_review('finance')->'alerts';
+  IF NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v_alerts) a WHERE a->>'metric_key' = 'recurring_missing:' || v_rp
+                   AND a->'msg'->0->>'value' = 'finance.advisor.recurring_never_started_standing_order'
+                   AND a->'msg'->0->'params'->>'bank' = 'Lindenbank') THEN
+    RAISE EXCEPTION 'FAIL advisor never_started mit Bank: %', v_alerts; END IF;
+  RAISE NOTICE 'PASS advisor: nie gelaufener Dauerauftrag -> never_started mit Bank/_generic, Lastschrift recurring_missing';
 END $$;
 
 -- Rundungs-Paket 2026-10-23: Puffer (250 EUR) in Kontowaehrung ungerundet umgerechnet. Vorher: fn_to_eur(1, 'CLP') =

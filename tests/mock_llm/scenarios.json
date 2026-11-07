@@ -429,7 +429,7 @@
     "final": "Dauerauftrag angelegt."
   },
   {
-    "match": "monatlichen Dauerauftrag ein: 200 Euro vom Lindenbank Giro",
+    "match": "monatlichen Dauerauftrag: 200 Euro vom Lindenbank Giro",
     "calls": [
       { "tool": "tool_create_recurring_transfer", "args": { "name": "Sparuebertrag", "from_account_name": "Lindenbank Giro", "to_account_name": "Testbroker Cash Girokonto", "amount": 200, "schedule_unit": "month", "first_payment_date": "2026-07-01" } }
     ],

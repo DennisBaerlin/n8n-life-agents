@@ -982,9 +982,9 @@ _set_bot_menu_buttons_run() {
     if _tg_set_menu_button "$token" "$body"; then
       if [ "$kind" = web_app ]; then
         ok_n=$((ok_n + 1))
-        got="${got}${tid} "
         case "$prev" in *" $tid "*) listed=1 ;; *) listed=0 ;; esac
-        _app_intro_announce "$token" "$tid" "$lang" "$core_loc" "$listed" || fails=$((fails + 1))
+        # Erst nach gelungener Ankuendigung auf die Merkliste: sonst gaelte der Chat beim Nachholen als Bestand
+        if _app_intro_announce "$token" "$tid" "$lang" "$core_loc" "$listed"; then got="${got}${tid} "; else fails=$((fails + 1)); fi
       else
         reset_n=$((reset_n + 1))
       fi

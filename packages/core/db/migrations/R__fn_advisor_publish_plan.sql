@@ -153,7 +153,7 @@ BEGIN
             RETURN jsonb_build_object('ok', false, 'code', 'final_check_invalid',
                 'reason', 'check_findings text must be 1-300 characters: ' || v_bad);
         END IF;
-        v_passes := NULLIF(substring(COALESCE(p->>'check_passes', '') FROM '^\s*(\d+)\s*$'), '')::int;
+        v_passes := NULLIF(substring(COALESCE(p->>'check_passes', '') FROM '^\s*(\d{1,9})\s*$'), '')::int;
         IF v_passes IS NULL OR v_passes < 1 THEN
             RETURN jsonb_build_object('ok', false, 'code', 'final_check_invalid',
                 'reason', 'check_passes (number of review passes, at least 1) is required with check_findings');

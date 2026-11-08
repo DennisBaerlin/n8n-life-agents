@@ -181,6 +181,8 @@ BEGIN
   r := agent.fn_advisor_publish_plan(jsonb_build_object('domain','__tp_fin__','plan_md','# Plan','check_passes',0,
          'check_findings', '[]'));
   IF (r->>'ok')::boolean IS NOT FALSE THEN RAISE EXCEPTION 'FAIL [7 check_passes 0]: %', r; END IF;
+  r := agent.fn_advisor_publish_plan(jsonb_build_object('domain','__tp_fin__','plan_md','# Plan','check_passes','99999999999','check_findings','[]'));
+  IF r->>'code' IS DISTINCT FROM 'final_check_invalid' THEN RAISE EXCEPTION 'FAIL [7 check_passes zu gross]: %', r; END IF;
   r := agent.fn_advisor_publish_plan(jsonb_build_object('domain','__tp_fin__','plan_md','# Plan','check_passes','1',
          'check_findings', jsonb_build_array(jsonb_build_object('text','','outcome','resolved'))));
   IF (r->>'ok')::boolean IS NOT FALSE THEN RAISE EXCEPTION 'FAIL [7 leerer Text]: %', r; END IF;

@@ -79,6 +79,8 @@ section[id], footer[id] { scroll-margin-top: 84px; }
   max-width: 620px; margin: 0 auto 36px;
 }
 .hero-ctas { display: flex; gap: 14px; justify-content: center; flex-wrap: wrap; }
+.hero-note { margin: 18px auto 0; font-size: 15px; color: var(--gray); }
+.hero-note a { color: var(--accent); text-decoration: underline; }
 .hero .greeting { margin: 48px auto 0; max-width: 720px; }
 .hero .greeting img { display: block; width: 100%; height: auto; }
 
@@ -335,8 +337,14 @@ section[id], footer[id] { scroll-margin-top: 84px; }
   .docs-mobile-nav a.active { background: var(--accent-pale); color: var(--accent); font-weight: 600; }
 }
 @media (max-width: 640px) {
-  .nav-links a.ghost { display: none; }   /* Mobil: nur Wortmarke + Docs-Pill (Min-Content-Overflow) */
-  .nav-links { gap: 12px; }
+  .nav-links a.ghost { display: none; }   /* Mobil: nur Wortmarke + Docs-Pill + Installieren (Min-Content-Overflow) */
+  .nav-links { gap: 8px; }
+  .nav-links .btn { padding: 9px 14px; font-size: 14px; white-space: nowrap; }
+  .nav-inner { padding: 0 16px; }
+  .wordmark { font-size: 16px; gap: 8px; }
+}
+@media (max-width: 360px) {
+  .nav-links .btn-soft { display: none; }   /* sehr schmal: nur der Installieren-Knopf, Docs liegt im Footer */
 }
 @media (max-width: 420px) {
   .phone { width: 300px; }

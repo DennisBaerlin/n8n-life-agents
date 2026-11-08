@@ -249,4 +249,57 @@ BEGIN
   RAISE NOTICE 'PASS save_section [as_of je Objekt-Block von der fn, LLM-Wert ueberschrieben, +2 years -> YYYY]';
 END $$;
 
+-- TEST 12 (S2.11): unbekannter section_key -> {ok:false, code, valid_keys} OHNE Write, sobald der Textkatalog des
+-- Pakets Abschnitts-Keys fuehrt; ohne Katalog-Keys (Test-DB, Paket ohne Plan) bleibt der Key frei.
+DO $$
+DECLARE
+  v_result JSONB;
+  v_n      INT;
+BEGIN
+  DELETE FROM core.advisors WHERE domain IN ('__ssk_dom__', '__ssk_free__');
+  INSERT INTO core.advisors (domain, plan_context, review_fn, package) VALUES
+    ('__ssk_dom__',  '__ssk_dom___planning',  'finance.fn_advisor_review', 'ssk'),
+    ('__ssk_free__', '__ssk_free___planning', 'finance.fn_advisor_review', 'sskfree');
+  INSERT INTO core.ui_texts (key, lang, text, package) VALUES
+    ('ssk.plan_section.risk_profile', 'en', 'Risk profile', 'ssk'),
+    ('ssk.plan_section.goals',        'en', 'Goals',        'ssk'),
+    ('ssk.plan_section.phase2',       'en', 'Phase 2',      'ssk'),
+    ('ssk.plan_section.goals.hint',   'en', 'not a section', 'ssk')
+  ON CONFLICT (key, lang) DO UPDATE SET text = EXCLUDED.text;
+
+  -- Tippfehler -> abgelehnt, mit den gueltigen Keys (Unter-Key ist kein Abschnitt), kein Draft
+  v_result := agent.fn_advisor_save_section(jsonb_build_object('domain', '__ssk_dom__', 'plan_name', '__ssk_plan__',
+      'section_key', 'risk_profil', 'section_content', 'Mittlere Risikobereitschaft.'));
+  IF (v_result->>'ok')::boolean IS DISTINCT FROM false OR v_result->>'code' IS DISTINCT FROM 'unknown_section_key'
+     OR v_result->'valid_keys' IS DISTINCT FROM '["goals","phase2","risk_profile"]'::jsonb THEN
+    RAISE EXCEPTION 'FAIL save_section [S2.11 Tippfehler]: erwartet ok:false/unknown_section_key/valid_keys goals+phase2+risk_profile, got %', v_result;
+  END IF;
+  SELECT count(*) INTO v_n FROM agent.advisor_plans WHERE domain = '__ssk_dom__';
+  IF v_n <> 0 THEN RAISE EXCEPTION 'FAIL save_section [S2.11]: abgelehnter Key hat einen Draft angelegt'; END IF;
+
+  v_result := agent.fn_advisor_save_section(jsonb_build_object('domain', '__ssk_dom__', 'section_key', 'goals.hint',
+      'section_content', 'x'));
+  IF (v_result->>'ok')::boolean IS DISTINCT FROM false THEN
+    RAISE EXCEPTION 'FAIL save_section [S2.11 Unter-Key]: erwartet ok:false, got %', v_result; END IF;
+
+  -- E2E-Domain erbt die Regel der echten Domain
+  v_result := agent.fn_advisor_save_section(jsonb_build_object('domain', '__e2e___ssk_dom____', 'section_key', 'risk_profil',
+      'section_content', 'x'));
+  IF (v_result->>'ok')::boolean IS DISTINCT FROM false OR v_result->>'code' IS DISTINCT FROM 'unknown_section_key' THEN
+    RAISE EXCEPTION 'FAIL save_section [S2.11 E2E-Domain]: erwartet unknown_section_key, got %', v_result; END IF;
+
+  -- gueltiger Key -> gespeichert
+  v_result := agent.fn_advisor_save_section(jsonb_build_object('domain', '__ssk_dom__', 'section_key', 'risk_profile',
+      'section_content', 'Mittlere Risikobereitschaft.'));
+  IF (v_result->>'ok')::boolean IS DISTINCT FROM true THEN
+    RAISE EXCEPTION 'FAIL save_section [S2.11 gueltig]: erwartet ok, got %', v_result; END IF;
+
+  -- Paket ohne Katalog-Keys: Key bleibt frei
+  v_result := agent.fn_advisor_save_section(jsonb_build_object('domain', '__ssk_free__', 'section_key', 'anything_goes',
+      'section_content', 'x'));
+  IF (v_result->>'ok')::boolean IS DISTINCT FROM true THEN
+    RAISE EXCEPTION 'FAIL save_section [S2.11 frei]: Paket ohne plan_section-Keys darf jeden Key, got %', v_result; END IF;
+  RAISE NOTICE 'PASS save_section [S2.11 unbekannter section_key abgelehnt, gueltig/frei erlaubt]';
+END $$;
+
 ROLLBACK;

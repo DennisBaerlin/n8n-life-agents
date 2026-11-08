@@ -581,6 +581,7 @@
   "core.orch.card_open": "Da wartet noch eine Bestätigung von mir. Tippe dort erst auf Abbrechen oder Bestätigen, warte meine Antwort ab und schick mir deine Nachricht dann noch einmal. Ohne Tipp läuft die Bestätigung nach einigen Minuten von selbst ab.",
   "core.orch.card_waiting": "Deine letzte Anfrage wartet noch auf die Freigabe durch den Haushalts-Owner. Sobald sie erledigt ist und ich geantwortet habe, schick mir deine Nachricht bitte noch einmal. Ohne Freigabe läuft sie nach einigen Minuten von selbst ab.",
   "core.orch.relay_empty": "Dazu habe ich gerade keine Antwort bekommen. Bitte versuch es noch einmal.",
+  "core.orch.step_limit": "Das waren zu viele Schritte auf einmal, ich habe es nicht ganz geschafft. Schau bitte kurz nach, was schon gespeichert ist, und schick mir den Rest einzeln.",
   "core.orch.react_fallback": "Freut mich!",
   "core.toast.unresolved_sender": "Absender nicht erkannt",
   "core.toast.owner_only": "Nur der Haushalts-Owner darf das",

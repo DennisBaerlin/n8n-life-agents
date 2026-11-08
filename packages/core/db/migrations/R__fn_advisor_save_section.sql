@@ -10,7 +10,7 @@
 --   (NIE LLM); unaufgeloester Sender bei per_user -> {ok:false}. Permission via fn_check_write_permission
 --   (owner_only delegiert byte-gleich an fn_sender_is_member -> finance unveraendert).
 --   Eingabe jsonb: domain (Pflicht — Phase B: kein 'finance'-Default mehr; ein leeres domain landete vorher
---     still im Finanzplan), chat_id (Identitaet), section_key (Pflicht, freier Text),
+--     still im Finanzplan), chat_id (Identitaet), section_key (Pflicht; gegen den Textkatalog des Pakets geprueft, s. u.),
 --     section_content (Pflicht, Klartext der Sektion bzw. des Themas in der Sprache der Antwort des Beraters; die Karte zeigt ihn ganz),
 --     topic (optional, 1..60 Zeichen nach btrim): Thema innerhalb des Abschnitts. Gesetzt -> Upsert in
 --       interview_state[key].topics[] als {topic, content, data, saved_at} (Reihenfolge der ersten Speicherung; gleiche
@@ -34,7 +34,10 @@
 --     Sektionen der Draft JETZT hat; topics = Themen-Bezeichnungen des Abschnitts in Reihenfolge; topic_replaced und
 --     draft_created = DB-entschieden; card_lines = Notiz core.hitl.plan_legacy_replaced beim Abloesen eines Alt-Texts und je
 --     Aufgabe eine Kartenzeile core.hitl.handoff_planned {text}).
---   Korrigierbar (fehlendes domain, leerer section_key/-content, topic ueber 60 Zeichen, topic_required, topic_too_long,
+--     section_key gegen den Textkatalog: fuehrt das Paket der Domain Abschnitts-Keys (core.ui_texts <paket>.plan_section.<key>),
+--       ist nur einer davon erlaubt, sonst code unknown_section_key + valid_keys (Tippfehler legte sonst einen Phantom-Abschnitt
+--       an). Fuehrt der Katalog keine (Test-DB ohne Seed, Paket ohne Plan), bleibt der Key frei.
+--   Korrigierbar (fehlendes domain, leerer section_key/-content, unknown_section_key, topic ueber 60 Zeichen, topic_required, topic_too_long,
 --     block_in_two_topics, invalides section_data-JSON, ungueltige handoff_tasks, Person nicht aufloesbar) -> {ok:false, reason
 --     [, code]} OHNE Write (kein RAISE -> kein Owner-Alert).
 -- ============================================================
@@ -62,7 +65,8 @@ DECLARE
     v_hpid    TEXT;
     v_pkg     TEXT;
     v_bad     TEXT;
-    v_topic   TEXT := NULLIF(btrim(COALESCE(p->>'topic', '')), '');
+    v_valid   JSONB;               -- gueltige Abschnitts-Keys der Domaene aus dem Textkatalog, NULL = Katalog fuehrt keine
+    v_topic  TEXT := NULLIF(btrim(COALESCE(p->>'topic', '')), '');
     v_max     INT;
     v_sec     JSONB;               -- bisheriges Abschnitts-Objekt
     v_topics  JSONB;
@@ -111,6 +115,15 @@ BEGIN
 
     -- Paket der Plan-Domain (E2E-Domain -> echte Domain): Lifecycle-Owner der Aufgaben und Quelle des Laengen-Gesetzes.
     v_pkg := COALESCE((SELECT a.package FROM core.advisors a WHERE a.domain = regexp_replace(v_domain, '^__e2e_(.+)__$', '\1')), 'core');
+    -- Abschnitts-Keys der Domaene = Katalog-Keys <paket>.plan_section.<key> (dieselben, die die Karte beschriftet).
+    -- Fuehrt das Paket keine (Test-/E2E-Domain ohne Katalog, Paket ohne Plan), bleibt der Key frei.
+    SELECT jsonb_agg(sk ORDER BY sk) INTO v_valid FROM (
+        SELECT DISTINCT substr(t.key, length(v_pkg) + 15) AS sk FROM core.ui_texts t
+         WHERE t.package = v_pkg AND t.key ~ ('^' || v_pkg || '\.plan_section\.[a-z0-9_]+$')) k;
+    IF v_valid IS NOT NULL AND NOT (v_valid ? v_key) THEN
+        RETURN jsonb_build_object('ok', false, 'code', 'unknown_section_key', 'valid_keys', v_valid,
+            'reason', format('unknown section_key "%s": use exactly one of the plan section keys of this plan', v_key));
+    END IF;
     v_max := NULLIF(substring(core.fn_config_get(v_pkg, 'advisor', 'topic_max_chars') FROM '^\s*(\d+)\s*$'), '')::int;
     IF v_max IS NOT NULL AND v_topic IS NULL THEN
         RETURN jsonb_build_object('ok', false, 'code', 'topic_required',

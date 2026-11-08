@@ -1015,11 +1015,12 @@ try {
     }
 } finally { Set-OwnerLanguage -Container $Container -Code $ownerLangBefore }
 
-# hitlP2: Abschnitt ohne Katalogeintrag -> lesbarer Rueckfall.
+# hitlP2: Abschnitt ohne Katalogeintrag -> lesbarer Rueckfall. Domain ohne Katalog-Abschnitte (general): in finance und career
+# lehnt die DB unbekannte Abschnitts-Keys ab (hitlP11); der Rueckfall der Karte gilt nur noch fuer Domains ohne <pkg>.plan_section.*.
 try {
     Test-ForceAbort 'hitlP2' $ForceAbortId
     Clear-MockTelegramRequests -Container $Container
-    Send-PlanSection 'finance' 'sonder_abschnitt_neu' 'Probe hitlP2'
+    Send-PlanSection 'general' 'sonder_abschnitt_neu' 'Probe hitlP2'
     $m = Wait-ButtonSend 'hitlP2' ''
     $probs = if ($m) { @(Get-CardTextProblems ([string]$m.body.text) @('sonder abschnitt neu') @('sonder.{0,2}_abschnitt')) + @(Complete-CardTaps 'hitlP2' @($false)) } else { @('Karte nicht abgefangen') }
     Write-RepeatCase 'hitlP2' 'Abschnitt ohne Katalogeintrag: lesbarer Rueckfall' $probs
@@ -1166,6 +1167,20 @@ try {
     }
 }
 
+# hitlP11: unbekannter Abschnitts-Key (Tippfehler) auf finance -> der Probelauf lehnt ab, keine Karte, die gueltigen Keys gehen ans Modell.
+try {
+    Test-ForceAbort 'hitlP11' $ForceAbortId
+    $probs = @()
+    Clear-MockTelegramRequests -Container $Container
+    $toolBase = Get-MaxExecId -WfId $saveWfId -BridgeUrl $N8nUrl -ApiKey $ApiKey
+    Send-PlanSection 'finance' 'risk_profil' 'Probe hitlP11' $OwnerUnpaired 'Risiko'
+    $probs += Get-DryRunRejectProblem (Wait-NewExec $saveWfId $toolBase -Finished) 'unknown_section_key'
+    if (@(Get-MockTelegramRequests -Container $Container | Where-Object { $_.method -eq 'sendMessage' -and ([string]$_.body.text) -match 'hitlP11' }).Count) {
+        $probs += 'trotz Ablehnung eine Karte gesendet'
+    }
+    Write-RepeatCase 'hitlP11' 'Plan-Abschnitt mit Tippfehler im Key: keine Karte, gueltige Keys ans Modell' $probs
+} catch { Register-Abort $_ 'hitlP11' }
+
 # --- Text ans Modell je Ausgang, ueber die echten Tools (Return cancelled). hitlT1/T2/T4/T5: tool_delete_monitor_trigger, einmal als
 # Owner, einmal als Mitglied im Vier-Augen-Weg. hitlT3: owner_only ohne Karte; das Fakten-Tool hat keinen Probelauf, der den Block vorher abfaengt.
 function Get-CancelledMessageProblem($Exec, [string]$MustRx, [string]$NotRx) {
@@ -1226,6 +1241,22 @@ try {
         Remove-ProbeTrigger 'hitlT2 Probe'
     }
 }
+
+# hitlT6: Core-Systemtrigger loeschen -> der Probelauf lehnt vor der Karte ab (nur deaktivierbar), keine Karte, Grund ans Modell.
+try {
+    Test-ForceAbort 'hitlT6' $ForceAbortId
+    Clear-MockTelegramRequests -Container $Container
+    $toolBase = Get-MaxExecId -WfId $delTrigWfId -BridgeUrl $N8nUrl -ApiKey $ApiKey
+    Send-HarnessPost 'monitor-delete-test' @{ chat_id = $OwnerUnpaired; domain = 'general'; label = 'household_facts_freshness' }
+    $ex = Wait-NewExec $delTrigWfId $toolBase -Finished
+    $probs = @(Get-DryRunRejectProblem $ex '')
+    $rej = $null; try { $rej = $ex.data.resultData.runData.'Dry run rejected'[0].data.main[0][0].json } catch { }
+    if ($rej -and ([string]$rej.error) -notmatch 'core system trigger') { $probs += "Grund ohne 'core system trigger': $($rej.error)" }
+    if (@(Get-MockTelegramRequests -Container $Container | Where-Object { $_.method -eq 'sendMessage' -and $_.body.reply_markup }).Count) {
+        $probs += 'trotz Ablehnung eine Karte gesendet'
+    }
+    Write-RepeatCase 'hitlT6' 'Core-Trigger loeschen: Probelauf lehnt vor der Karte ab' $probs
+} catch { Register-Abort $_ 'hitlT6' }
 
 try {
     Test-ForceAbort 'hitlT3' $ForceAbortId

@@ -399,6 +399,135 @@
                   },
                   {
                       "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "=SELECT core.fn_dry_run(\u0027agent.fn_create_monitor_trigger(jsonb)\u0027::regprocedure, $1::jsonb) AS r;",
+                                         "options":  {
+                                                         "queryReplacement":  "={{ JSON.stringify({ domain: $(\u0027Resolve domain\u0027).item.json.domain, package: $(\u0027Start\u0027).item.json.package, label: $(\u0027Start\u0027).item.json.label, trigger_type: $(\u0027Start\u0027).item.json.trigger_type, acquisition_method: $(\u0027Start\u0027).item.json.acquisition_method, acquisition_prompt: $(\u0027Start\u0027).item.json.acquisition_prompt, acquisition_sql: $(\u0027Start\u0027).item.json.acquisition_sql, acquisition_params: (() =\u003e { try { return $(\u0027Start\u0027).item.json.acquisition_params ? JSON.parse($(\u0027Start\u0027).item.json.acquisition_params) : null; } catch (e) { return \u0027__invalid_json__\u0027; } })(), comparator: $(\u0027Start\u0027).item.json.comparator, threshold_value: $(\u0027Start\u0027).item.json.threshold_value, drawdown_pct: $(\u0027Start\u0027).item.json.drawdown_pct, due_date: ($(\u0027Probe (validate)\u0027).item.json.due_resolved || $(\u0027Start\u0027).item.json.due_date), warn_days_before: $(\u0027Start\u0027).item.json.warn_days_before, expected_unit: $(\u0027Start\u0027).item.json.expected_unit, min_plausible: $(\u0027Start\u0027).item.json.min_plausible, max_plausible: $(\u0027Start\u0027).item.json.max_plausible, max_jump_pct: $(\u0027Start\u0027).item.json.max_jump_pct, check_interval: $(\u0027Start\u0027).item.json.check_interval, action_note: $(\u0027Start\u0027).item.json.action_note, first_check: ($(\u0027Probe (validate)\u0027).item.json.first_resolved || $(\u0027Start\u0027).item.json.first_check), probe_observation: JSON.parse($(\u0027Probe (validate)\u0027).item.json.probe_json || \u0027null\u0027) }) }}"
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       1620,
+                                       0
+                                   ],
+                      "id":  "4b5a9762-b98b-508d-ac8b-906fc8f6dc78",
+                      "name":  "Dry run",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_WRITE__",
+                                                           "name":  "Postgres account"
+                                                       }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "73b78580-3f10-5772-81a7-a9bd8c23a234",
+                                                                                   "leftValue":  "={{ $(\u0027Dry run\u0027).item.json.r.ok }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       1840,
+                                       0
+                                   ],
+                      "id":  "e8e0b60e-8021-5d15-9b12-d4c70ce5cbbe",
+                      "name":  "Dry run ok?"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "3da15981-cc13-5975-9d3b-b2a20afff6dc",
+                                                                                     "name":  "ok",
+                                                                                     "value":  "false",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "f5c5326d-5e83-5863-a912-813ce083dfdc",
+                                                                                     "name":  "card_sent",
+                                                                                     "value":  "false",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "d41ea8be-ae64-55f9-bf93-4be3638e76e6",
+                                                                                     "name":  "error",
+                                                                                     "value":  "={{ $(\u0027Dry run\u0027).item.json.r.reason || $(\u0027Dry run\u0027).item.json.r.error || \u0027The database rejected this entry.\u0027 }}",
+                                                                                     "type":  "string"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "a24665c3-2650-5213-ba75-abe121d07897",
+                                                                                     "name":  "code",
+                                                                                     "value":  "={{ $(\u0027Dry run\u0027).item.json.r.code || \u0027\u0027 }}",
+                                                                                     "type":  "string"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "dbb769ef-e2af-502f-b747-bcf3ea489743",
+                                                                                     "name":  "candidates",
+                                                                                     "value":  "={{ $(\u0027Dry run\u0027).item.json.r.candidates || [] }}",
+                                                                                     "type":  "array"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       2060,
+                                       200
+                                   ],
+                      "id":  "8bc8e3b6-2dcd-5707-9997-cffd5d6057ec",
+                      "name":  "Dry run rejected"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "=SELECT (r-\u003e\u003e\u0027ok\u0027)::boolean AS ok, r-\u003e\u003e\u0027reason\u0027 AS reason, (r-\u003e\u003e\u0027trigger_id\u0027)::int AS trigger_id, r-\u003e\u003e\u0027status\u0027 AS status, r-\u003e\u003e\u0027next_check_at\u0027 AS next_check_at, r-\u003e\u003e\u0027check_interval\u0027 AS check_interval, (r-\u003e\u003e\u0027armed_count\u0027)::int AS armed_count FROM agent.fn_create_monitor_trigger(($1::jsonb - \u0027_effective\u0027) || COALESCE(NULLIF(($1::jsonb)-\u003e\u0027_effective\u0027, \u0027null\u0027::jsonb), \u0027{}\u0027::jsonb)) AS r;",
+                                         "options":  {
+                                                         "queryReplacement":  "={{ JSON.stringify({ domain: $(\u0027Resolve domain\u0027).item.json.domain, package: $(\u0027Start\u0027).item.json.package, label: $(\u0027Start\u0027).item.json.label, trigger_type: $(\u0027Start\u0027).item.json.trigger_type, acquisition_method: $(\u0027Start\u0027).item.json.acquisition_method, acquisition_prompt: $(\u0027Start\u0027).item.json.acquisition_prompt, acquisition_sql: $(\u0027Start\u0027).item.json.acquisition_sql, acquisition_params: (() =\u003e { try { return $(\u0027Start\u0027).item.json.acquisition_params ? JSON.parse($(\u0027Start\u0027).item.json.acquisition_params) : null; } catch (e) { return \u0027__invalid_json__\u0027; } })(), comparator: $(\u0027Start\u0027).item.json.comparator, threshold_value: $(\u0027Start\u0027).item.json.threshold_value, drawdown_pct: $(\u0027Start\u0027).item.json.drawdown_pct, due_date: ($(\u0027Probe (validate)\u0027).item.json.due_resolved || $(\u0027Start\u0027).item.json.due_date), warn_days_before: $(\u0027Start\u0027).item.json.warn_days_before, expected_unit: $(\u0027Start\u0027).item.json.expected_unit, min_plausible: $(\u0027Start\u0027).item.json.min_plausible, max_plausible: $(\u0027Start\u0027).item.json.max_plausible, max_jump_pct: $(\u0027Start\u0027).item.json.max_jump_pct, check_interval: $(\u0027Start\u0027).item.json.check_interval, action_note: $(\u0027Start\u0027).item.json.action_note, first_check: ($(\u0027Probe (validate)\u0027).item.json.first_resolved || $(\u0027Start\u0027).item.json.first_check), probe_observation: JSON.parse($(\u0027Probe (validate)\u0027).item.json.probe_json || \u0027null\u0027), _effective: ($(\u0027Dry run\u0027).item.json.r.effective || null) }) }}"
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       2600,
+                                       0
+                                   ],
+                      "id":  "ab8d347a-4d95-5804-8c5d-af184d4d864d",
+                      "name":  "Create trigger (atomic)",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_WRITE__",
+                                                           "name":  "Postgres account"
+                                                       }
+                                      }
+                  },
+                  {
+                      "parameters":  {
                                          "assignments":  {
                                                              "assignments":  [
                                                                                  {
@@ -416,7 +545,7 @@
                       "type":  "n8n-nodes-base.set",
                       "typeVersion":  3.4,
                       "position":  [
-                                       1620,
+                                       2060,
                                        0
                                    ],
                       "id":  "884fa4d0-d3a3-599d-ad8d-2a05a6b81e42",
@@ -454,7 +583,7 @@
                       "type":  "n8n-nodes-base.executeWorkflow",
                       "typeVersion":  1.2,
                       "position":  [
-                                       1800,
+                                       2240,
                                        0
                                    ],
                       "id":  "2552a300-c681-5e0c-80a5-0ce987cc7775",
@@ -488,7 +617,7 @@
                       "type":  "n8n-nodes-base.if",
                       "typeVersion":  2.2,
                       "position":  [
-                                       1980,
+                                       2420,
                                        0
                                    ],
                       "id":  "ddd32912-f038-5f28-b017-242d53e83b55",
@@ -525,34 +654,11 @@
                       "type":  "n8n-nodes-base.set",
                       "typeVersion":  3.4,
                       "position":  [
-                                       2160,
+                                       2600,
                                        200
                                    ],
                       "id":  "1152f7d1-31e4-587c-bfb5-a7aa4f3f9031",
                       "name":  "Return cancelled"
-                  },
-                  {
-                      "parameters":  {
-                                         "operation":  "executeQuery",
-                                         "query":  "=SELECT (r-\u003e\u003e\u0027ok\u0027)::boolean AS ok, r-\u003e\u003e\u0027reason\u0027 AS reason, (r-\u003e\u003e\u0027trigger_id\u0027)::int AS trigger_id, r-\u003e\u003e\u0027status\u0027 AS status, r-\u003e\u003e\u0027next_check_at\u0027 AS next_check_at, r-\u003e\u003e\u0027check_interval\u0027 AS check_interval, (r-\u003e\u003e\u0027armed_count\u0027)::int AS armed_count FROM agent.fn_create_monitor_trigger($1::jsonb) AS r;",
-                                         "options":  {
-                                                         "queryReplacement":  "={{ JSON.stringify({ domain: $(\u0027Resolve domain\u0027).item.json.domain, package: $(\u0027Start\u0027).item.json.package, label: $(\u0027Start\u0027).item.json.label, trigger_type: $(\u0027Start\u0027).item.json.trigger_type, acquisition_method: $(\u0027Start\u0027).item.json.acquisition_method, acquisition_prompt: $(\u0027Start\u0027).item.json.acquisition_prompt, acquisition_sql: $(\u0027Start\u0027).item.json.acquisition_sql, acquisition_params: (() =\u003e { try { return $(\u0027Start\u0027).item.json.acquisition_params ? JSON.parse($(\u0027Start\u0027).item.json.acquisition_params) : null; } catch (e) { return \u0027__invalid_json__\u0027; } })(), comparator: $(\u0027Start\u0027).item.json.comparator, threshold_value: $(\u0027Start\u0027).item.json.threshold_value, drawdown_pct: $(\u0027Start\u0027).item.json.drawdown_pct, due_date: ($(\u0027Probe (validate)\u0027).item.json.due_resolved || $(\u0027Start\u0027).item.json.due_date), warn_days_before: $(\u0027Start\u0027).item.json.warn_days_before, expected_unit: $(\u0027Start\u0027).item.json.expected_unit, min_plausible: $(\u0027Start\u0027).item.json.min_plausible, max_plausible: $(\u0027Start\u0027).item.json.max_plausible, max_jump_pct: $(\u0027Start\u0027).item.json.max_jump_pct, check_interval: $(\u0027Start\u0027).item.json.check_interval, action_note: $(\u0027Start\u0027).item.json.action_note, first_check: ($(\u0027Probe (validate)\u0027).item.json.first_resolved || $(\u0027Start\u0027).item.json.first_check), probe_observation: JSON.parse($(\u0027Probe (validate)\u0027).item.json.probe_json || \u0027null\u0027) }) }}"
-                                                     }
-                                     },
-                      "type":  "n8n-nodes-base.postgres",
-                      "typeVersion":  2.6,
-                      "position":  [
-                                       2160,
-                                       0
-                                   ],
-                      "id":  "ab8d347a-4d95-5804-8c5d-af184d4d864d",
-                      "name":  "Create trigger (atomic)",
-                      "credentials":  {
-                                          "postgres":  {
-                                                           "id":  "__CRED_POSTGRES_WRITE__",
-                                                           "name":  "Postgres account"
-                                                       }
-                                      }
                   },
                   {
                       "parameters":  {
@@ -582,7 +688,7 @@
                       "type":  "n8n-nodes-base.if",
                       "typeVersion":  2.2,
                       "position":  [
-                                       2340,
+                                       2780,
                                        0
                                    ],
                       "id":  "f932dcf7-e866-52b3-8162-46e9be8055b2",
@@ -613,7 +719,7 @@
                       "type":  "n8n-nodes-base.set",
                       "typeVersion":  3.4,
                       "position":  [
-                                       2520,
+                                       2960,
                                        200
                                    ],
                       "id":  "a17efaa8-e352-59d3-b2b5-577b7717d767",
@@ -668,7 +774,7 @@
                       "type":  "n8n-nodes-base.set",
                       "typeVersion":  3.4,
                       "position":  [
-                                       2520,
+                                       2960,
                                        0
                                    ],
                       "id":  "033f504a-b69e-5585-9254-2fee9aeb53f5",
@@ -676,7 +782,7 @@
                   },
                   {
                       "parameters":  {
-                                         "content":  "## DB-Automatik\n**Probe vor Gate + agent.fn_create_monitor_trigger (atomar)**\n\nFälligkeit (date-Trigger): Probe (validate) prüft due_date per agent.fn_resolve_monitor_due (dieselbe Regel wie der Write) EINMAL (YYYY-MM-DD oder relativ wie +6 months); ungültig oder vergangen -\u003e ToolError vor dem Gate; Karte und Write nutzen genau dieses Datum. Optionales first_check (erster Lauf und Anker des Rhythmus, z. B. jeden Montag ab dem nächsten) läuft durch dieselbe Regel, steht als Datum auf der Karte und geht aufgelöst in den Write. Cross-agent (Monitor-Agent: domain via LLM, package fix core; Fach-Advisor: domain+package fix = sein Paket). package = Lifecycle-Owner (Purge-Schlüssel, fn_pkg_purge_data räumt WHERE package=\u003cpkg\u003e AND origin=user) — fix per Binding, NIE $fromAI. E2E-Switch IM Tool: chat_id test_e2e -\u003e Sentinel-Domain __e2e_monitor__ (package erbt den Binding-Wert; fn_clear_e2e_data räumt per domain). Ablauf: Dubletten-Backstop (UNIQUE(domain,lower(label)) ist DB-Gesetz) -\u003e PROBE (web: Claude-web_search-HTTP + deterministischer Parse, gleicher Vertrag wie der Cron; sql/Paket-Methoden: fn_monitor_probe beschafft selbst, sql unter SET LOCAL ROLE core_ro, Paket-Methode über ihre Registry-fns aus core.monitor_acquisition_methods — acquisition_params geschützt geparst, die validate_fn des Pakets liefert die Bestätigungszeile) + Validierungs-Kaskade (numerisch/Unit-Echo/Bounds) -\u003e Probe-Fail = ToolError VOR dem Gate -\u003e HITL-Summary MIT Test-Abruf-Wert -\u003e fn_create_monitor_trigger (alle CHECKs als {ok:false} gespiegelt; Probe wird erste Observation + Drawdown-Ratchet-Seed). Web-Cadence \u003e= 12h ist DB-CHECK (Free-Tier-Schutz).",
+                                         "content":  "## DB-Automatik\n**Probe vor Gate + agent.fn_create_monitor_trigger (atomar)**\n\nFälligkeit (date-Trigger): Probe (validate) prüft due_date per agent.fn_resolve_monitor_due (dieselbe Regel wie der Write) EINMAL (YYYY-MM-DD oder relativ wie +6 months); ungültig oder vergangen -\u003e ToolError vor dem Gate; Karte und Write nutzen genau dieses Datum. Optionales first_check (erster Lauf und Anker des Rhythmus, z. B. jeden Montag ab dem nächsten) läuft durch dieselbe Regel, steht als Datum auf der Karte und geht aufgelöst in den Write. Cross-agent (Monitor-Agent: domain via LLM, package fix core; Fach-Advisor: domain+package fix = sein Paket). package = Lifecycle-Owner (Purge-Schlüssel, fn_pkg_purge_data räumt WHERE package=\u003cpkg\u003e AND origin=user) — fix per Binding, NIE $fromAI. E2E-Switch IM Tool: chat_id test_e2e -\u003e Sentinel-Domain __e2e_monitor__ (package erbt den Binding-Wert; fn_clear_e2e_data räumt per domain). Ablauf: Dubletten-Backstop (UNIQUE(domain,lower(label)) ist DB-Gesetz) -\u003e PROBE (web: Claude-web_search-HTTP + deterministischer Parse, gleicher Vertrag wie der Cron; sql/Paket-Methoden: fn_monitor_probe beschafft selbst, sql unter SET LOCAL ROLE core_ro, Paket-Methode über ihre Registry-fns aus core.monitor_acquisition_methods — acquisition_params geschützt geparst, die validate_fn des Pakets liefert die Bestätigungszeile) + Validierungs-Kaskade (numerisch/Unit-Echo/Bounds) -\u003e Probe-Fail = ToolError VOR dem Gate -\u003e PROBELAUF (Dry run = agent.fn_create_monitor_trigger mit denselben Werten, immer zurückgerollt via core.fn_dry_run; ok:false -\u003e Dry run rejected, KEINE Karte) -\u003e HITL-Summary MIT Test-Abruf-Wert -\u003e fn_create_monitor_trigger (alle CHECKs als {ok:false} gespiegelt; Probe wird erste Observation + Drawdown-Ratchet-Seed; prüft nach dem Tipp erneut). Web-Cadence \u003e= 12h ist DB-CHECK (Free-Tier-Schutz).",
                                          "height":  320,
                                          "width":  560,
                                          "color":  4
@@ -826,7 +932,7 @@
                                                        [
                                                            {
                                                                "index":  0,
-                                                               "node":  "Build Approval Summary",
+                                                               "node":  "Dry run",
                                                                "type":  "main"
                                                            }
                                                        ],
@@ -839,6 +945,35 @@
                                                        ]
                                                    ]
                                       },
+                        "Dry run":  {
+                                        "main":  [
+                                                     [
+                                                         {
+                                                             "index":  0,
+                                                             "node":  "Dry run ok?",
+                                                             "type":  "main"
+                                                         }
+                                                     ]
+                                                 ]
+                                    },
+                        "Dry run ok?":  {
+                                            "main":  [
+                                                         [
+                                                             {
+                                                                 "index":  0,
+                                                                 "node":  "Build Approval Summary",
+                                                                 "type":  "main"
+                                                             }
+                                                         ],
+                                                         [
+                                                             {
+                                                                 "index":  0,
+                                                                 "node":  "Dry run rejected",
+                                                                 "type":  "main"
+                                                             }
+                                                         ]
+                                                     ]
+                                        },
                         "Build Approval Summary":  {
                                                        "main":  [
                                                                     [

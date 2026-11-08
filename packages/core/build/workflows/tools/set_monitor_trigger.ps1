@@ -130,16 +130,19 @@ function Build-SetMonitorTrigger {
   return L;
 })()
 '@
-    $summary = New-HitlSummary -Pos @(1800, 0) -Title 'core.hitl.set_monitor_trigger' -LinesExpr $linesExpr.Trim()
+    $summary = New-HitlSummary -Pos @(2300, 0) -Title 'core.hitl.set_monitor_trigger' -LinesExpr $linesExpr.Trim()
 
-    $reqApproval = Build-CallWorkflow 'Request Approval' @(1980, 0) $GateId 'agent.tool_human_approval' `
+    $reqApproval = Build-CallWorkflow 'Request Approval' @(2480, 0) $GateId 'agent.tool_human_approval' `
         ([ordered]@{ summary = "={{ `$('Build Approval Summary').item.json.summary }}"; chat_id = "={{ `$('Start').item.json.chat_id }}" })
-    $ifApproved = Build-If 'Approved?' @(2160, 0) '={{ $json.approved }}' 'true' 'equals' 'boolean'
-    $retCancelled = Build-ToolCancelled 'Return cancelled' @(2340, 200) 'the set_monitor_trigger action'
+    $ifApproved = Build-If 'Approved?' @(2660, 0) '={{ $json.approved }}' 'true' 'equals' 'boolean'
+    $retCancelled = Build-ToolCancelled 'Return cancelled' @(2840, 200) 'the set_monitor_trigger action'
 
-    $set = Build-Pg 'Set trigger (atomic)' @(2340, 0) `
-        "=SELECT (r->>'ok')::boolean AS ok, r->>'reason' AS reason, (r->>'trigger_id')::int AS trigger_id, r->>'status' AS status, r->>'next_check_at' AS next_check_at, r->>'check_interval' AS check_interval, (r->>'reference_value')::numeric AS reference_value FROM agent.fn_set_monitor_trigger(`$1::jsonb) AS r;" `
-        ([ordered]@{
+    # Probelauf vor der Karte: erreicht ihn auf zwei exklusiven Wegen (Spec unveraendert / Re-Probe ok), laeuft also je
+    # Aufruf genau einmal. Die Write-Parameter enthalten keine Probe-Werte, der Knoten loest auch ohne Re-Probe auf.
+    $wg = New-FnWriteGate -Fn 'agent.fn_set_monitor_trigger' -DryPos @(1860, 0) -WritePos @(2840, 0) `
+        -WriteName 'Set trigger (atomic)' `
+        -WriteSelect "(r->>'ok')::boolean AS ok, r->>'reason' AS reason, (r->>'trigger_id')::int AS trigger_id, r->>'status' AS status, r->>'next_check_at' AS next_check_at, r->>'check_interval' AS check_interval, (r->>'reference_value')::numeric AS reference_value" `
+        -Params ([ordered]@{
             domain             = '$(''Resolve domain'').item.json.domain'
             label              = '$(''Start'').item.json.label'
             new_label          = '$(''Start'').item.json.new_label'
@@ -161,10 +164,10 @@ function Build-SetMonitorTrigger {
             reset_peak         = '$(''Start'').item.json.reset_peak'
         })
 
-    $ifOk = Build-If 'Write ok?' @(2520, 0) '={{ $json.ok }}' 'true' 'equals' 'boolean'
-    $errWrite = Build-ToolError 'Set rejected' @(2700, 200) "={{ `$('Set trigger (atomic)').item.json.reason }}"
+    $ifOk = Build-If 'Write ok?' @(3020, 0) '={{ $json.ok }}' 'true' 'equals' 'boolean'
+    $errWrite = Build-ToolError 'Set rejected' @(3200, 200) "={{ `$('Set trigger (atomic)').item.json.reason }}"
 
-    $ret = Build-Return @(2700, 0) @(
+    $ret = Build-Return @(3200, 0) @(
         ,@('ok','true','boolean')
         ,@('trigger_id', '={{ $json.trigger_id }}', 'number')
         ,@('status', '={{ $json.status }}', 'string')
@@ -175,11 +178,11 @@ function Build-SetMonitorTrigger {
 
     $sticky = Build-Sticky 'Doc Set Trigger' @(120, -460) `
         'Re-Probe bei Spec-Änderung + agent.fn_set_monitor_trigger (atomar)' `
-        'Neues due_date: Resolve trigger prüft es per agent.fn_resolve_monitor_due (dieselbe Regel wie der Write; relativ wie +6 months erlaubt) — ungültig oder vergangen -> Due date rejected VOR der Karte; Karte und Write nutzen genau dieses Datum. Nur agent.monitor bindet dieses Tool (Advisor verweist Edits/Repair hierher). Partielles UPDATE (COALESCE/NULLIF in der fn: nicht gesendet = unverändert). Lifecycle: status=armed auf fired = RE-ARM (fired_at/fail_streak weg, next_check_at frisch); disabled = parken; reset_peak nullt den Drawdown-Ratchet (neue Epoche). REPAIR-FLOW: neuer Prompt/SQL/Methoden-Parameter (acquisition_params einer Paket-Methode, über die gespeicherte Spec gemergt) -> Re-Probe VOR dem Gate (exakt der Cron-Pfad inkl. Load model config = model.monitor_acquisition zur Laufzeit; Jump-Guard prüft die neue Quelle gegen den letzten sauberen Wert — fängt Skalen-/Quellenwechsel). Typ-Wechsel lehnt die fn ab (delete + create). Web-Cadence >= 12h DB-CHECK.' 320 560
+        'Neues due_date: Resolve trigger prüft es per agent.fn_resolve_monitor_due (dieselbe Regel wie der Write; relativ wie +6 months erlaubt) — ungültig oder vergangen -> Due date rejected VOR der Karte; Karte und Write nutzen genau dieses Datum. Nur agent.monitor bindet dieses Tool (Advisor verweist Edits/Repair hierher). Partielles UPDATE (COALESCE/NULLIF in der fn: nicht gesendet = unverändert). Lifecycle: status=armed auf fired = RE-ARM (fired_at/fail_streak weg, next_check_at frisch); disabled = parken; reset_peak nullt den Drawdown-Ratchet (neue Epoche). REPAIR-FLOW: neuer Prompt/SQL/Methoden-Parameter (acquisition_params einer Paket-Methode, über die gespeicherte Spec gemergt) -> Re-Probe VOR dem Gate (exakt der Cron-Pfad inkl. Load model config = model.monitor_acquisition zur Laufzeit; Jump-Guard prüft die neue Quelle gegen den letzten sauberen Wert — fängt Skalen-/Quellenwechsel). Typ-Wechsel lehnt die fn ab (delete + create). PROBELAUF VOR DER KARTE: Dry run = agent.fn_set_monitor_trigger mit denselben Werten, immer zurückgerollt (core.fn_dry_run); beide Wege (Spec unverändert / Re-Probe ok) münden dort, ok:false -> Dry run rejected, KEINE Karte (die fn prüft nach dem Tipp erneut). Web-Cadence >= 12h DB-CHECK.' 320 560
 
     $nodes = @($trig, $resolveDomain, $resolve, $ifFound, $errFound, $ifDueBad, $errDue, $ifSpec, $ifWeb, $loadModel, $acquire,
-               $shape, $probe, $ifProbeOk, $errProbe, $summary, $reqApproval, $ifApproved,
-               $retCancelled, $set, $ifOk, $errWrite, $ret, $sticky)
+               $shape, $probe, $ifProbeOk, $errProbe) + $wg.Nodes + @($summary, $reqApproval, $ifApproved,
+               $retCancelled, $ifOk, $errWrite, $ret, $sticky)
     $conns = [ordered]@{
         'Start'                   = @{ main = @( ,@( E 'Resolve domain' ) ) }
         'Resolve domain'          = @{ main = @( ,@( E 'Resolve trigger' ) ) }
@@ -194,7 +197,7 @@ function Build-SetMonitorTrigger {
         ) }
         'Spec changed?'           = @{ main = @(
             @( E 'Web probe?' ),
-            @( E 'Build Approval Summary' )
+            @( E 'Dry run' )
         ) }
         'Web probe?'              = @{ main = @(
             @( E 'Load model config' ),
@@ -205,8 +208,13 @@ function Build-SetMonitorTrigger {
         'Shape probe observation' = @{ main = @( ,@( E 'Probe (validate)' ) ) }
         'Probe (validate)'        = @{ main = @( ,@( E 'Probe ok?' ) ) }
         'Probe ok?'               = @{ main = @(
-            @( E 'Build Approval Summary' ),
+            @( E 'Dry run' ),
             @( E 'Probe failed' )
+        ) }
+        'Dry run'                 = @{ main = @( ,@( E 'Dry run ok?' ) ) }
+        'Dry run ok?'             = @{ main = @(
+            @( E 'Build Approval Summary' ),
+            @( E 'Dry run rejected' )
         ) }
         'Build Approval Summary'  = @{ main = @( ,@( E 'Request Approval' ) ) }
         'Request Approval'        = @{ main = @( ,@( E 'Approved?' ) ) }

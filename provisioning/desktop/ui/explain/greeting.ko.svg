@@ -44,8 +44,8 @@ text { font-family: var(--font); fill: var(--ink); }
     }
     @keyframes shift { 0%, 63% { transform: translateX(94px); } 66.5%, 100% { transform: translateX(0); } }
     @media (prefers-reduced-motion: no-preference) {
-      .dot { animation: dot 18s linear infinite; }
-      .shift { animation: shift 18s ease-in-out infinite; }
+      .dot { animation: dot 27s linear infinite; }
+      .shift { animation: shift 27s ease-in-out infinite; }
     }
 </style>
   <g class="shift">
@@ -105,13 +105,13 @@ text { font-family: var(--font); fill: var(--ink); }
   <text class="cap wide on1" x="360" y="350"><tspan x="360" dy="-14">어시스턴트는 가족의 재정을 알고, 챙길 일이 생기면 먼저 알려</tspan><tspan x="360" dy="28">줘요.</tspan></text>
   <text class="cap wide on2" x="360" y="350">무언가를 저장하기 전에 먼저 물어봐요.</text>
   <text class="cap wide on3" x="360" y="350">어시스턴트는 집에 있는 내 컴퓨터에서 지내요.</text>
-  <text class="cap wide on4" x="360" y="350">데이터는 내 컴퓨터에 남아요.</text>
+  <text class="cap wide on4" x="360" y="350">데이터는 내 컴퓨터에 보관돼요.</text>
   <text class="cap wide on5" x="360" y="350">누구든 도움이 필요할 때 온 가족을 도와요.</text>
   <text class="cap wide on6" x="360" y="350" font-weight="600">lifeagents: 온 가족을 위한 도움</text>
   <text class="cap nar on1" x="360" y="350"><tspan x="360" dy="-15.5">어시스턴트는 가족의 재정을 알고, 챙길 일이</tspan><tspan x="360" dy="31">생기면 먼저 알려 줘요.</tspan></text>
   <text class="cap nar on2" x="360" y="350">무언가를 저장하기 전에 먼저 물어봐요.</text>
   <text class="cap nar on3" x="360" y="350">어시스턴트는 집에 있는 내 컴퓨터에서 지내요.</text>
-  <text class="cap nar on4" x="360" y="350">데이터는 내 컴퓨터에 남아요.</text>
+  <text class="cap nar on4" x="360" y="350">데이터는 내 컴퓨터에 보관돼요.</text>
   <text class="cap nar on5" x="360" y="350">누구든 도움이 필요할 때 온 가족을 도와요.</text>
   <text class="cap nar on6" x="360" y="350" font-weight="600">lifeagents: 온 가족을 위한 도움</text>
 </svg>

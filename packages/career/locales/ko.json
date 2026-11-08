@@ -90,6 +90,7 @@
   "career.plan_section.path": "목표까지의 경로",
   "career.wizard.adzuna_app_id.title": "Adzuna App ID",
   "career.wizard.adzuna_app_id.help": "채용 공고를 더 찾을 수 있는 추가 출처예요(Adzuna, StepStone 공고도 포함). 없으면 커리어 어시스턴트는 독일 연방고용청에서만 찾아요.\n\n무료: developer.adzuna.com → 가입 → „App ID“와 „App Key“를 복사해요. 둘은 한 쌍이에요. 키는 바로 다음에 물어봐요. App ID를 비워 두면 키도 건너뛰어요.",
+  "career.wizard.adzuna_app_id.placeholder": "여기에 앱 ID를 붙여 넣어요",
   "career.wizard.adzuna_app_key.title": "Adzuna App Key",
   "career.wizard.jsearch_api_key.title": "JSearch 키",
   "career.wizard.jsearch_api_key.help": "채용 공고를 더 찾을 수 있는 또 다른 출처예요(JSearch, LinkedIn 공고도 포함).\n\n무료 요금제: rapidapi.com → „JSearch“ 검색 → „Subscribe“(Basic, 무료) → „X-RapidAPI-Key“를 복사해요."

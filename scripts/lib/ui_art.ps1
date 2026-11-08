@@ -35,6 +35,9 @@ function Get-UiArts {
         # Warum Telegram: Wizard-Seite vor dem Bot-Token.
         [pscustomobject]@{ Name = 'telegram'; Variants = @(''); Targets = @(
                 @{ Dir = $d.Wizard; Langs = @('de', 'en', 'ko'); Themes = @('auto') }) }
+        # Wohin die Daten gehen: Wizard-Seite des Anthropic-Schlüssels.
+        [pscustomobject]@{ Name = 'privacy'; Variants = @(''); Targets = @(
+                @{ Dir = $d.Wizard; Langs = @('de', 'en', 'ko'); Themes = @('auto') }) }
         # Wege ins Internet: Wizard-Seite reach (Bild wechselt mit der Auswahl) und die Weg-Seiten der Anleitung.
         [pscustomobject]@{ Name = 'reach'; Variants = @('tunnel', 'fritzbox', 'proxy'); Targets = @(
                 # Wizard: 200 px breit neben den Antwortkarten, dort ohne Bildunterschrift (die Karten erklären den Weg).
@@ -193,6 +196,11 @@ function ConvertTo-UiArtSvg([string]$Src, [string]$Variant, $Catalog, [string]$L
     $n = [int]$root.GetAttribute('data-scenes'); $s = [double]::Parse($root.GetAttribute('data-scene-s'), [Globalization.CultureInfo]::InvariantCulture)
     if ($n -lt 1 -or $s -le 0) { throw "${SrcName}: data-scenes/data-scene-s fehlen" }
     $own = $style.InnerText.Trim("`n", ' ')
+    # Eigene Bewegung muss so lang sein wie der Szenen-Lauf, sonst driftet sie gegen die Szenen (Bild schiebt zur falschen Zeit).
+    foreach ($m in [regex]::Matches($own, 'animation:\s*[\w-]+\s+([\d.]+)s')) {
+        $d = [double]::Parse($m.Groups[1].Value, [Globalization.CultureInfo]::InvariantCulture)
+        if ([math]::Abs($d - $n * $s) -gt 0.001) { throw "${SrcName}: animation $d s passt nicht zu data-scenes x data-scene-s = $($n * $s) s" }
+    }
     $style.InnerText = "`n" + (Get-UiArtTokenCss $Tokens $Theme) + "`n" + (Get-UiArtSceneCss $n $s) + "`n" + $own + "`n"
     $root.RemoveAttribute('data-scenes'); $root.RemoveAttribute('data-scene-s')
     $root.SetAttribute('lang', $Lang)

@@ -8,7 +8,7 @@
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="docs/site/static/explain/greeting.en.dark.svg">
-    <img src="docs/site/static/explain/greeting.en.light.svg" width="720" alt="Your assistant gets in touch on your phone by itself and asks before it saves anything. It runs on your own computer at home, your data stays with you, and it helps the whole family with finances, career, inheritance and documents.">
+    <img src="docs/site/static/explain/greeting.en.light.svg" width="720" alt="Your assistant gets in touch on your phone by itself and asks before it saves anything. It runs on your own computer at home, your data lives with you, and it helps the whole family with finances, career, inheritance and documents.">
   </picture>
 </p>
 

@@ -319,6 +319,7 @@ function pageFor(id) {
       value: q.secret ? '' : (typeof v === 'string' ? v : ''), hasSecret: q.secret && v === null,
       options: choicesOf(q), next,
     });
+    if (key === 'ANTHROPIC_API_KEY') page.explain = Object.assign(explainOf('privacy', 'privacy.alt'), { below: true, after: flow.helpBlocks(T('core.wizard.q.anthropic_api_key.why')) });
     if (key === 'DOMAIN') {
       page.optional = false;
       Object.assign(page, domainView(v));
@@ -341,6 +342,8 @@ function pageFor(id) {
     // Google: „Nein“ auf der Seite davor ist das Überspringen; Sprache und Charakter haben eine Vorauswahl.
     if (NO_SKIP.includes(key)) page.optional = false;
     if (q.kind === 'date') page.placeholder = T('core.wizard.ui.date_placeholder');
+    // Grauer Hilfstext sagt, was ins leere Feld gehört; ein vorbelegter Wert verdeckt ihn von selbst.
+    if (!page.placeholder) page.placeholder = has(qKey(q) + '.placeholder') ? T(qKey(q) + '.placeholder') : (q.secret ? T('core.wizard.ui.paste_key') : undefined);
     return page;
   }
   const next = T('core.wizard.ui.next');

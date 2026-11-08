@@ -35,7 +35,7 @@ text { font-family: var(--font); fill: var(--ink); }
     .mine { fill: var(--accent-pale); }
     .tdot { fill: var(--gray); }
     @keyframes sheet { 0%, 80% { transform: translateY(270px); } 84%, 100% { transform: translateY(0); } }
-    @media (prefers-reduced-motion: no-preference) { .sheet { animation: sheet 17s ease-out infinite; } }
+    @media (prefers-reduced-motion: no-preference) { .sheet { animation: sheet 27.5s ease-out infinite; } }
 </style>
   <g transform="translate(-4 1.6) scale(1.3)">
   <rect x="40" y="8" width="220" height="324" rx="26" fill="var(--bg)" stroke="var(--ink)" stroke-width="3" />

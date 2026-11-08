@@ -43,8 +43,8 @@ text { font-family: var(--font); fill: var(--ink); }
     }
     @keyframes shift { 0%, 63% { transform: translateX(94px); } 66.5%, 100% { transform: translateX(0); } }
     @media (prefers-reduced-motion: no-preference) {
-      .dot { animation: dot 18s linear infinite; }
-      .shift { animation: shift 18s ease-in-out infinite; }
+      .dot { animation: dot 27s linear infinite; }
+      .shift { animation: shift 27s ease-in-out infinite; }
     }
 </style>
   <g class="shift">
@@ -104,13 +104,13 @@ text { font-family: var(--font); fill: var(--ink); }
   <text class="cap wide on1" x="360" y="350"><tspan x="360" dy="-14">Dein Assistent kennt eure Finanzen und meldet sich von</tspan><tspan x="360" dy="28">selbst, wenn etwas ansteht.</tspan></text>
   <text class="cap wide on2" x="360" y="350">Bevor er etwas speichert, fragt er dich.</text>
   <text class="cap wide on3" x="360" y="350">Er wohnt auf deinem eigenen Rechner zu Hause.</text>
-  <text class="cap wide on4" x="360" y="350">Deine Daten bleiben bei dir.</text>
+  <text class="cap wide on4" x="360" y="350">Deine Daten liegen bei dir.</text>
   <text class="cap wide on5" x="360" y="350"><tspan x="360" dy="-14">Er hilft der ganzen Familie, immer wenn jemand Hilfe</tspan><tspan x="360" dy="28">braucht.</tspan></text>
   <text class="cap wide on6" x="360" y="350" font-weight="600">lifeagents: Hilfe für die ganze Familie</text>
   <text class="cap nar on1" x="360" y="350"><tspan x="360" dy="-15.5">Dein Assistent kennt eure Finanzen und meldet</tspan><tspan x="360" dy="31">sich von selbst, wenn etwas ansteht.</tspan></text>
   <text class="cap nar on2" x="360" y="350">Bevor er etwas speichert, fragt er dich.</text>
   <text class="cap nar on3" x="360" y="350">Er wohnt auf deinem eigenen Rechner zu Hause.</text>
-  <text class="cap nar on4" x="360" y="350">Deine Daten bleiben bei dir.</text>
+  <text class="cap nar on4" x="360" y="350">Deine Daten liegen bei dir.</text>
   <text class="cap nar on5" x="360" y="350"><tspan x="360" dy="-15.5">Er hilft der ganzen Familie, immer wenn jemand</tspan><tspan x="360" dy="31">Hilfe braucht.</tspan></text>
   <text class="cap nar on6" x="360" y="350" font-weight="600">lifeagents: Hilfe für die ganze Familie</text>
 </svg>

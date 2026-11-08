@@ -165,7 +165,7 @@ BEGIN
     v_core := v_core || jsonb_build_object('card_lines', CASE
         WHEN v_free THEN '[]'::jsonb
         WHEN (v_status = 'paused' AND v_row.status <> 'paused') OR v_to IS NOT NULL
-            THEN finance.fn_bank_setup_note((v_core->>'recurring_payment_id')::int, 'bank_stop')
+            THEN finance.fn_bank_stop_note_told((v_core->>'recurring_payment_id')::int)
         WHEN v_amount IS NOT NULL OR (v_dom IS NOT NULL AND v_dom IS DISTINCT FROM v_row.schedule_day_of_month)
              OR (v_status = 'active' AND v_row.status <> 'active')
             THEN finance.fn_bank_setup_note((v_core->>'recurring_payment_id')::int, 'bank_change')

@@ -1,6 +1,6 @@
 -- tests/db/finance/test_fn_price_gaps.sql
 -- Kurs-Luecken-Erinnerung (2026-10-27): fn_price_gaps (Lueckenliste + Feed-Ausfall + Re-Arm behobener Luecken)
--- und fn_price_gap_claim (Latch je Position, TTL 7 Tage, source 'finance_prices'). Prueft:
+-- und fn_price_gap_claim (Latch je Position, TTL 7 Tage, source 'finance:prices'). Prueft:
 --   (1) Lueckenliste enthaelt missing + stale, nicht ok; Referenzkurs = letzter Kurs, sonst Einstand;
 --   (2) claim: erste Meldung true, im TTL false, nach TTL-Ablauf wieder true;
 --   (3) behobene Luecke -> fn_price_gaps setzt den Latch zurueck (naechste Luecke meldet sofort);
@@ -58,11 +58,11 @@ BEGIN
   v_b1 := finance.fn_price_gap_claim(v_c::text);
   v_b2 := finance.fn_price_gap_claim(v_c::text);
   UPDATE core.notification_state SET expires_at = now() - interval '1 minute'
-   WHERE source = 'finance_prices' AND key = v_c::text;
+   WHERE source = 'finance:prices' AND key = v_c::text;
   v_b3 := finance.fn_price_gap_claim(v_c::text);
   IF NOT v_b1 OR v_b2 OR NOT v_b3 THEN
     RAISE EXCEPTION 'FAIL [2 claim]: erwartet true/false/true, got %/%/%', v_b1, v_b2, v_b3; END IF;
-  IF NOT EXISTS (SELECT 1 FROM core.notification_state WHERE source = 'finance_prices' AND key = v_c::text
+  IF NOT EXISTS (SELECT 1 FROM core.notification_state WHERE source = 'finance:prices' AND key = v_c::text
                   AND expires_at BETWEEN now() + interval '6 days 23 hours' AND now() + interval '7 days 1 minute') THEN
     RAISE EXCEPTION 'FAIL [2 ttl]: Latch muss 7 Tage gelten'; END IF;
   RAISE NOTICE 'PASS fn_price_gap_claim [erste Meldung, still im TTL, erneut nach 7 Tagen]';
@@ -72,7 +72,7 @@ BEGIN
   ON CONFLICT (source, key) DO UPDATE SET state = 'fired';
   INSERT INTO finance.market_prices (symbol, price, currency, as_of) VALUES ('PGC', 31, 'EUR', current_date);
   r := finance.fn_price_gaps();
-  SELECT state INTO v_state FROM core.notification_state WHERE source = 'finance_prices' AND key = v_c::text;
+  SELECT state INTO v_state FROM core.notification_state WHERE source = 'finance:prices' AND key = v_c::text;
   IF v_state IS DISTINCT FROM 'ok' THEN
     RAISE EXCEPTION 'FAIL [3 re-arm]: Latch nach Behebung muss ok sein, got %', v_state; END IF;
   SELECT state INTO v_state FROM core.notification_state WHERE source = 'finance' AND key = 'reserve_breach:999999';
@@ -99,7 +99,7 @@ BEGIN
   v_b1 := finance.fn_price_gap_claim('feed_down');
   INSERT INTO finance.market_prices (symbol, price, currency, as_of) VALUES ('PGA', 51, 'EUR', current_date);
   r := finance.fn_price_gaps();
-  SELECT state INTO v_state FROM core.notification_state WHERE source = 'finance_prices' AND key = 'feed_down';
+  SELECT state INTO v_state FROM core.notification_state WHERE source = 'finance:prices' AND key = 'feed_down';
   IF (r->>'feed_down')::boolean OR v_state IS DISTINCT FROM 'ok' THEN
     RAISE EXCEPTION 'FAIL [5 feed zurueck]: feed_down=% latch=%', r->>'feed_down', v_state; END IF;
   RAISE NOTICE 'PASS fn_price_gaps [Feed-Ausfall erkannt + nach erstem frischen Kurs re-armt]';

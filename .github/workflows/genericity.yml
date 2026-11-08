@@ -219,7 +219,7 @@ jobs:
 
       - name: Teardown
         if: always()
-        run: docker rm -f la la-proxy la-stranger || true
+        run: docker rm -fv la la-proxy la-stranger || true
 
   # Docker-Verbund (LIFEAGENTS_RUNTIME=compose, provisioning/compose/): dieselbe provision.sh im master-Container, kalt,
   # mit allen Paketen. Beweist: Wrapper-Naht (lib/runtime.sh) traegt die ganze Installation, das master-Image aus dem
@@ -439,7 +439,7 @@ jobs:
           if docker ps --format '{{.Names}}' | grep -qx "$LA_PROJECT-wan"; then echo "FAIL wan trotz belegtem Port 80"; exit 1; fi
           test "$(st | jq -r .state)" = ports_busy
           test "$(docker inspect -f '{{.Id}} {{.State.StartedAt}}' ci-port80)" = "$before"
-          docker rm -f ci-port80 >/dev/null
+          docker rm -fv ci-port80 >/dev/null
           # Frei: wan startet, Zertifikat intern (*.localhost), alles geht an die Pfad-Liste des Rands.
           docker exec "$LA_PROJECT-master" bash -c "$lib; DOMAIN=ci-edge.localhost reach_converge"
           ok=''
@@ -480,10 +480,10 @@ jobs:
         if: always()
         run: |
           docker compose -p "$LA_PROJECT" -f provisioning/compose/compose.yml --profile tunnel --profile fritzbox down --remove-orphans || true
-          docker rm -f ci-port80 >/dev/null 2>&1 || true
+          docker rm -fv ci-port80 >/dev/null 2>&1 || true
           # Liste aus der einen Adresse (lib/runtime.sh LA_STATE_VOLUMES), nie hier gespiegelt.
           for v in $(sed -n 's/^LA_STATE_VOLUMES="\(.*\)"$/\1/p' provisioning/lib/runtime.sh); do docker volume rm "${LA_PROJECT}_$v" >/dev/null 2>&1 || true; done
-          docker rm -f ci-neighbour >/dev/null 2>&1 || true
+          docker rm -fv ci-neighbour >/dev/null 2>&1 || true
           docker volume rm ci-neighbour-data >/dev/null 2>&1 || true
           docker network rm ci-neighbour-net >/dev/null 2>&1 || true
 
@@ -681,10 +681,10 @@ jobs:
         if: always()
         run: |
           docker compose -p "$LA_PROJECT" -f provisioning/compose/compose.yml down --remove-orphans || true
-          docker rm -f "$LA_PROJECT-swap" >/dev/null 2>&1 || true
+          docker rm -fv "$LA_PROJECT-swap" >/dev/null 2>&1 || true
           docker volume rm "${LA_PROJECT}_fremd" "${LA_PROJECT}_shared" "${LA_PROJECT}_gw_code" "${LA_PROJECT}_n8n_patches" >/dev/null 2>&1 || true
           # Liste aus der einen Adresse (lib/runtime.sh LA_STATE_VOLUMES), nie hier gespiegelt.
           for v in $(sed -n 's/^LA_STATE_VOLUMES="\(.*\)"$/\1/p' provisioning/lib/runtime.sh); do docker volume rm "${LA_PROJECT}_$v" >/dev/null 2>&1 || true; done
-          docker rm -f ci-neighbour >/dev/null 2>&1 || true
+          docker rm -fv ci-neighbour >/dev/null 2>&1 || true
           docker volume rm ci-neighbour-data >/dev/null 2>&1 || true
           docker network rm ci-neighbour-net >/dev/null 2>&1 || true

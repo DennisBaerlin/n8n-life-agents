@@ -85,25 +85,6 @@ if (-not $state.mock_telegram) { throw "Mock-Telegram nicht aktiv (Gate-Aufloesu
 # Gateway-Upstream pruefen: zeigte er auf die echte API, kostete dieser Gratis-Tier Credits.
 Assert-LlmGatewayUpstream -Container $Container -Expect mock
 
-function Invoke-N8nGet([string]$Path) { Invoke-RestMethod -Uri "$N8N_URL/api/v1/$Path" -Headers $Headers -Method Get }
-function Stop-Exec([string]$ExecId) {
-    try { Invoke-RestMethod -Uri "$N8N_URL/api/v1/executions/$ExecId/stop" -Headers $Headers -Method Post -ContentType 'application/json' -Body '{}' | Out-Null } catch { }
-}
-# Alle vom Agent aufgerufenen Tools (Read+Write) aus dem runData (Node-Namen, wie orch_test/n8n_test).
-function Get-ToolCall([object]$RunData, [string]$NodeName) {
-    $out = @()
-    if (-not $RunData.PSObject.Properties.Name.Contains($NodeName)) { return $out }
-    foreach ($run in $RunData.$NodeName) {
-        $actions = $null
-        try { $actions = $run.metadata.subNodeExecutionData.actions } catch { }
-        if (-not $actions) { continue }
-        foreach ($a in $actions) {
-            $nn = $null; try { $nn = $a.action.nodeName } catch { }; if (-not $nn) { try { $nn = $a.nodeName } catch { } }
-            if ($nn) { $out += $nn }
-        }
-    }
-    return $out
-}
 
 # --- "Bot denkt nach" (Schleife core.sub_show_thinking bis zur Antwort, Schalter agent.thinking_lease) ------------
 # Zeiten als Epoch-Sekunden: Mock-Telegram-Log (t, ISO) und DB (clock_timestamp) laufen im selben Container.
@@ -266,7 +247,7 @@ foreach ($tc in $cases) {
         }
 
         $runData = $ex.data.resultData.runData
-        $tools = Get-ToolCall $runData $AgentNode
+        $tools = @(Get-ToolCall $runData $AgentNode | ForEach-Object { $_.tool })
         Write-Host "    Execution: id=$($ex.id)  status=$($ex.status)  tools=[$($tools -join ', ')]"
 
         if ($Discover) {
@@ -324,7 +305,7 @@ foreach ($tc in $cases) {
         # n8n-Fix #41241 ab 2.45, Regressionswache). Fehlen sie, wiederholt das echte Modell den "leeren" Aufruf.
         if ($pass) {
             $lost = @(Get-MockLlmRequests -Container $Container | ForEach-Object { @($_.replay_lost) } | Where-Object { $_ })
-            if ($lost.Count -gt 0) { $pass = $false; Write-Host "    FEHLER: Aufruf ohne Angaben zurueckgespielt: $($lost -join ', ')" -ForegroundColor Red }
+            if ($lost.Count -gt 0) { $pass = $false; Write-Host "    FEHLER: Aufruf ohne Angaben oder unvollstaendig zurueckgespielt (dropped = Block fehlt, unpaired = ohne tool_result): $($lost -join ', ')" -ForegroundColor Red }
         }
 
         if ($pass) { $passed++; Write-Host "    [PASS]" -ForegroundColor Green }

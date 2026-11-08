@@ -67,7 +67,7 @@
       "DELETE FROM finance.accounts WHERE name = '__ctf06 Krypto';",
       "DELETE FROM finance.accounts WHERE name = '__ctf06 Cash';",
       "DELETE FROM finance.market_prices WHERE source = 'ctf06';",
-      "DELETE FROM core.notification_state WHERE source = 'finance_prices';"
+      "DELETE FROM core.notification_state WHERE source = 'finance:prices';"
     ],
     "seed_sql": [
       "INSERT INTO finance.market_prices (symbol, price, currency, as_of, source) SELECT DISTINCT h.symbol, 1, 'EUR', current_date, 'ctf06' FROM finance.depot_holdings h WHERE h.shares > 0 ON CONFLICT (symbol, as_of) DO NOTHING;",
@@ -76,5 +76,45 @@
       "INSERT INTO finance.depot_holdings (account_id, symbol, name, shares, average_purchase_price, currency) SELECT id, 'ZZQ', '__ctf06 Testcoin', 2, 10, 'EUR' FROM finance.accounts WHERE name = '__ctf06 Krypto';"
     ],
     "expect_keys": ["finance.dialog.price_gap_missing", "finance.dialog.price_gap_none"]
+  },
+  {
+    "kind": "cron_text",
+    "id": "ctf07",
+    "name": "Bank-Erinnerung an den Owner (ko): beendeter Dauerauftrag -> Kopf, Zeile mit Bank, Anleitung, Abschalt-Knopf",
+    "workflow": "agent.finance.cron_remind_bank_end",
+    "schedule_key": "remind_bank_end",
+    "recipient": "owner",
+    "reset_sql": [
+      "DELETE FROM core.notification_state WHERE source = 'finance:bank_end';",
+      "DELETE FROM finance.recurring_payments WHERE name = '__ctf07 Sparrate';",
+      "DELETE FROM finance.account_balances WHERE account_id IN (SELECT id FROM finance.accounts WHERE name IN ('__ctf07 Giro', '__ctf07 Ziel'));",
+      "DELETE FROM finance.accounts WHERE name IN ('__ctf07 Giro', '__ctf07 Ziel');"
+    ],
+    "seed_sql": [
+      "INSERT INTO finance.accounts (name, account_type, currency, status, bank) VALUES ('__ctf07 Giro', 'cash', 'EUR', 'active', 'Musterbank'), ('__ctf07 Ziel', 'cash', 'EUR', 'active', NULL);",
+      "INSERT INTO finance.recurring_payments (name, account_id, target_account_id, amount, schedule_unit, first_payment_date, valid_from, valid_to, executed_by) SELECT '__ctf07 Sparrate', g.id, z.id, -50, 'month', current_date - 3, current_date - 3, current_date - 2, 'bank' FROM finance.accounts g, finance.accounts z WHERE g.name = '__ctf07 Giro' AND z.name = '__ctf07 Ziel';"
+    ],
+    "expect_keys": ["finance.dialog.bank_end_intro", "finance.dialog.bank_end_line_standing_order", "finance.dialog.bank_end_howto"],
+    "expect_buttons": ["core.reminders.btn_off"]
+  },
+  {
+    "kind": "cron_text",
+    "id": "ctf08",
+    "name": "Bank-Erinnerung an das Mitglied (Sprache des Mitglieds): Auftrag auf dessen Konto, eigener Abschalt-Knopf",
+    "workflow": "agent.finance.cron_remind_bank_end",
+    "schedule_key": "remind_bank_end",
+    "recipient": "person:lena",
+    "reset_sql": [
+      "DELETE FROM core.notification_state WHERE source = 'finance:bank_end';",
+      "DELETE FROM finance.recurring_payments WHERE name = '__ctf08 Sparrate';",
+      "DELETE FROM finance.account_balances WHERE account_id IN (SELECT id FROM finance.accounts WHERE name IN ('__ctf08 Giro', '__ctf08 Ziel'));",
+      "DELETE FROM finance.accounts WHERE name IN ('__ctf08 Giro', '__ctf08 Ziel');"
+    ],
+    "seed_sql": [
+      "INSERT INTO finance.accounts (name, account_type, currency, status, bank, owner_person_id) VALUES ('__ctf08 Giro', 'cash', 'EUR', 'active', 'Musterbank', 'lena'), ('__ctf08 Ziel', 'cash', 'EUR', 'active', NULL, NULL);",
+      "INSERT INTO finance.recurring_payments (name, account_id, target_account_id, amount, schedule_unit, first_payment_date, valid_from, valid_to, executed_by) SELECT '__ctf08 Sparrate', g.id, z.id, -50, 'month', current_date - 3, current_date - 3, current_date - 2, 'bank' FROM finance.accounts g, finance.accounts z WHERE g.name = '__ctf08 Giro' AND z.name = '__ctf08 Ziel';"
+    ],
+    "expect_keys": ["finance.dialog.bank_end_intro", "finance.dialog.bank_end_line_standing_order", "finance.dialog.bank_end_howto"],
+    "expect_buttons": ["core.reminders.btn_off"]
   }
 ]

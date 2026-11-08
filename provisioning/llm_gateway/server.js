@@ -22,6 +22,7 @@
 //   Lesepreis statt erneutem 2x-Schreiben). Gemerkt NUR im Arbeitsspeicher, ohne Gespraech (Details am Abschnitt).
 // EIN WERKZEUG JE ANTWORT: Agenten-Anfragen bekommen tool_choice.disable_parallel_tool_use (applySerialTools) —
 //   parallele tool_use-Bloecke kamen im n8n-Agenten mit leeren Argumenten an (Begruendung an der Funktion).
+//   Schalter LLM_GATEWAY_SERIAL_TOOLS (Standard an, 0 = aus).
 // AUSFALLSICHER: Body nicht lesbar → Original-Bytes weiter. Anthropic-400 mit "cache_control"/"tool_choice" →
 //   EINMAL ohne Einfuegen wiederholen (400er werden nicht berechnet), Zeile fallback:true.
 // MESSUNG (12-Factor): je Anfrage EINE JSON-Zeile {"ev":"usage",...} auf stdout → systemd-Journal. Bewusst die
@@ -61,7 +62,9 @@ const KA_HOURS = (() => { const v = parseFloat(process.env.LLM_GATEWAY_KEEPALIVE
 const KA_ON = STATIC_TTL === '1h' && KA_HOURS > 0;
 const KA_EVERY_MS = Math.max(1000, parseInt(process.env.LLM_GATEWAY_KEEPALIVE_EVERY_MS || String(55 * 60 * 1000), 10) || 55 * 60 * 1000);
 const KA_TICK_MS = Math.max(200, Math.min(60 * 1000, Math.floor(KA_EVERY_MS / 10)));
-const KA_MAX = 16;                            // Obergrenze gemerkter Anfaenge (aelteste Nutzung faellt raus)
+// Ein Werkzeug je Antwort (Abschnitt "Ein Werkzeug je Antwort"): nur der Wert '0' schaltet es ab, alles andere bleibt an.
+const SERIAL_TOOLS = process.env.LLM_GATEWAY_SERIAL_TOOLS !== '0';
+const KA_MAX = 16;                           // Obergrenze gemerkter Anfaenge (aelteste Nutzung faellt raus)
 const KA_HEADERS = ['x-api-key', 'authorization', 'anthropic-version', 'anthropic-beta'];
 const MAX_BODY = 32 * 1024 * 1024;           // Anfrage-Deckel (PDF-Belege als base64)
 const MAX_USAGE_SCAN = 16 * 1024 * 1024;     // JSON-Antworten nur bis hierhin fuer usage puffern
@@ -243,12 +246,14 @@ function applyCaching(body) {
 // n8n-Agenten (Tools-Agent, lmChatAnthropic v1.5 auf 2.44.4) mit LEEREN Argumenten beim Werkzeug an ->
 // "Received tool input did not match expected schema" -> Wiederholungen bis maxIterations -> Fehler statt Antwort
 // (bezahlter Lauf 2026-10-23, e2e29: Modell schickte {account_name, amount:100, ...}, das Werkzeug bekam {}).
-// Belegt auf 2.44.4; ob n8n 2.45 (#41241) die Ursache mitbehebt, ist offen, vertagt.
+// Belegt auf 2.44.4; ob n8n 2.45 (#41241) die Ursache mitbehebt, ist offen: LLM_GATEWAY_SERIAL_TOOLS=0 schaltet
+// das Erzwingen fuer den Probelauf ab (zwei Buchungen in einer Nachricht; danach gilt der Wert, der sich bewaehrt).
 // Anthropic-Option tool_choice.disable_parallel_tool_use: hoechstens ein Werkzeug je Antwort, das Modell
 // arbeitet die Schritte nacheinander ab. Nur Agenten-Anfragen (eigenes Werkzeug), nur bei tool_choice auto/
 // fehlend; ein eigener Wert der Anfrage (none/any/tool oder schon gesetzt) bleibt unangetastet.
 // Veraendert body in-place; true = gesetzt.
 function applySerialTools(body) {
+  if (!SERIAL_TOOLS) return false;
   const tools = Array.isArray(body.tools) ? body.tools : [];
   if (!tools.some(isCustomTool)) return false;
   const tc = body.tool_choice;

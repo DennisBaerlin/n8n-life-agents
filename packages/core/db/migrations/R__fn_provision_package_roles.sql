@@ -279,6 +279,13 @@ BEGIN
     IF to_regprocedure('core.fn_notify_resolve(text,text)') IS NOT NULL THEN
         EXECUTE format('GRANT EXECUTE ON FUNCTION core.fn_notify_resolve(text,text) TO %I', v_rw);
     END IF;
+    -- Crons mit Einmal-Latch ohne TTL raeumen ihre eigenen alten Merker; Person-Erinnerungen fragen die eine Pruef-Adresse.
+    IF to_regprocedure('core.fn_notify_forget_before(text,timestamptz)') IS NOT NULL THEN
+        EXECUTE format('GRANT EXECUTE ON FUNCTION core.fn_notify_forget_before(text,timestamptz) TO %I', v_rw);
+    END IF;
+    IF to_regprocedure('core.fn_reminder_allowed(text,text)') IS NOT NULL THEN
+        EXECUTE format('GRANT EXECUTE ON FUNCTION core.fn_reminder_allowed(text,text) TO %I', v_rw);
+    END IF;
     -- "DB ist das Gesetz": Probelauf der Write-fn VOR der HITL-Karte (Build-Helper New-FnWriteGate). INVOKER, fuehrt
     -- nur die eigene Paket-fn aus und rollt immer zurueck -> nur an _rw. "Heute" (Haushalts-Zeitzone) an beide Rollen.
     IF to_regprocedure('core.fn_dry_run(regprocedure, jsonb)') IS NOT NULL THEN

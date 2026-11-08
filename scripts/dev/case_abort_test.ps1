@@ -111,6 +111,75 @@ try {
 
     $r = Invoke-Driver 'none' 'gibtesnicht'
     Assert-That '-ForceAbortId nie erreicht: Lauf wird rot' ($r.Exit -eq 1 -and $r.Out -match 'gibtesnicht wurde in diesem Lauf nie erreicht' -and $r.Out -notmatch 'Abbruch:') $r
+
+    # --- Send-HarnessRequest: ein Ausfall des Test-Eingangs ist ein roter Fall, nur der Client-Timeout ist der Normalfall ---
+    # Kleiner HTTP-Server als eigener Prozess (/ok 200, /err 500, /slow antwortet nach 8 s); vor seinem Start ist der Port zu.
+    # Der Server bedient Anfragen nacheinander: /slow haelt ihn 8 s, darum laeuft /slow als letzter Fall.
+    $serverText = @'
+param([int]$Port)
+$l = New-Object System.Net.HttpListener
+$l.Prefixes.Add("http://127.0.0.1:$Port/")
+$l.Start()
+while ($true) {
+    $c = $l.GetContext()
+    $path = $c.Request.Url.AbsolutePath
+    if ($path -eq '/slow') { Start-Sleep -Seconds 8 }   # laenger als das Client-Timeout des Treibers (5 s)
+    $c.Response.StatusCode = if ($path -eq '/err') { 500 } else { 200 }
+    $buf = [System.Text.Encoding]::UTF8.GetBytes('{"message":"Eingang kaputt"}')
+    try { $c.Response.OutputStream.Write($buf, 0, $buf.Length); $c.Response.Close() } catch { }
+}
+'@
+    $serverPs1 = Join-Path $sandbox 'server.ps1'
+    [System.IO.File]::WriteAllText($serverPs1, $serverText, (New-Object System.Text.UTF8Encoding($true)))
+    $harnessDriver = Join-Path $sandbox 'harness_driver.ps1'
+    [System.IO.File]::WriteAllText($harnessDriver, @'
+param([string]$Lib, [string]$Uri)
+$ErrorActionPreference = 'Stop'
+. $Lib
+$failed = 0
+try {
+    Send-HarnessRequest -Uri $Uri -Headers @{ 'X-Test-Auth' = 'erfunden' } -Body @{ chat_id = '1'; summary = 'Probe' } -TimeoutSec 5
+    Write-Host 'WEITER'
+} catch {
+    $failed++
+    Write-CaseAbort -ErrorRecord $_ -CaseId 'h1'
+}
+Write-Host "$failed fehlgeschlagen."
+exit $failed
+'@, (New-Object System.Text.UTF8Encoding($true)))
+    function Invoke-HarnessDriver([string]$Uri) {
+        $psi = New-Object System.Diagnostics.ProcessStartInfo
+        $psi.FileName = (Get-Process -Id $PID).Path
+        $psi.Arguments = "-NoProfile -ExecutionPolicy Bypass -File `"$harnessDriver`" -Lib `"$lib`" -Uri `"$Uri`""
+        $psi.WorkingDirectory = $repo
+        $psi.RedirectStandardOutput = $true; $psi.RedirectStandardError = $true; $psi.UseShellExecute = $false
+        $psi.StandardOutputEncoding = [System.Text.Encoding]::UTF8
+        $p = [System.Diagnostics.Process]::Start($psi)
+        $errTask = $p.StandardError.ReadToEndAsync()
+        $out = $p.StandardOutput.ReadToEnd(); $p.WaitForExit()
+        [pscustomobject]@{ Exit = $p.ExitCode; Out = $out; Err = $errTask.Result }
+    }
+    $tcp = New-Object System.Net.Sockets.TcpListener ([System.Net.IPAddress]::Loopback), 0
+    $tcp.Start(); $port = $tcp.LocalEndpoint.Port; $tcp.Stop()
+    $closed = Invoke-HarnessDriver "http://127.0.0.1:$port/ok"
+    Assert-That 'Eingang nicht erreichbar (Port zu): Fall rot, Ursache genannt' ($closed.Exit -eq 1 -and $closed.Out -match 'Test-Eingang http://127\.0\.0\.1:\d+/ok') $closed
+    $srv = Start-Process -FilePath (Get-Process -Id $PID).Path -ArgumentList @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', "`"$serverPs1`"", '-Port', $port) -PassThru -WindowStyle Hidden
+    try {
+        $up = $false
+        for ($i = 0; $i -lt 40 -and -not $up; $i++) {
+            Start-Sleep -Milliseconds 250
+            try { Invoke-RestMethod -Uri "http://127.0.0.1:$port/ok" -TimeoutSec 2 | Out-Null; $up = $true } catch { }
+        }
+        Assert-That 'Testserver fuer die Eingangs-Faelle gestartet' $up $null
+        $ok = Invoke-HarnessDriver "http://127.0.0.1:$port/ok"
+        Assert-That 'Eingang antwortet 200: gruen' ($ok.Exit -eq 0 -and $ok.Out -match 'WEITER') $ok
+        $err = Invoke-HarnessDriver "http://127.0.0.1:$port/err"
+        Assert-That 'Eingang antwortet HTTP 500: Fall rot, Grund aus dem Antwort-Text' ($err.Exit -eq 1 -and $err.Out -notmatch 'WEITER' -and $err.Out -match 'Eingang kaputt') $err
+        $slow = Invoke-HarnessDriver "http://127.0.0.1:$port/slow"
+        Assert-That 'Eingang antwortet nicht in der Frist (Karte offen): kein Fehler, Lauf geht weiter' ($slow.Exit -eq 0 -and $slow.Out -match 'WEITER') $slow
+    } finally {
+        if ($srv -and -not $srv.HasExited) { Stop-Process -Id $srv.Id -Force -ErrorAction SilentlyContinue }
+    }
 } finally {
     Remove-Item -Recurse -Force $sandbox -ErrorAction SilentlyContinue
 }

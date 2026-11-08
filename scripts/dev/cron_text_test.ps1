@@ -49,10 +49,6 @@ $OwnerUid  = [string]$script:TestOwnerTelegramUid
 $LenaUid   = '880055200'
 $Recipient = @{ 'owner' = $OwnerUid; 'person:lena' = $LenaUid }
 
-function Invoke-N8nGet([string]$Path) { Invoke-RestMethod -Uri "$N8nUrl/api/v1/$Path" -Headers $Headers -Method Get }
-function Stop-Exec([string]$ExecId) {
-    try { Invoke-RestMethod -Uri "$N8nUrl/api/v1/executions/$ExecId/stop" -Headers $Headers -Method Post -ContentType 'application/json' -Body '{}' | Out-Null } catch { }
-}
 # SQL ueber eine Datei, nicht per -c: PS 5.1 verstuemmelt eingebettete Anfuehrungszeichen (JSON-Literale) beim
 # Uebergeben an docker. Leere Fall-Felder (kein reset_sql) sind ein No-op.
 function Invoke-Sql([string]$Sql) {
@@ -72,14 +68,6 @@ function Invoke-LifeagentsConfig([string[]]$CmdArgs) {
     $code = $LASTEXITCODE
     $ErrorActionPreference = $prev
     if ($code -ne 0) { throw "lifeagents config $($CmdArgs -join ' ') fehlgeschlagen: $($out -join "`n")" }
-}
-function Set-OwnerLanguage([string]$Lang) {
-    Invoke-Sql @"
-UPDATE agent.core_contexts SET metadata = jsonb_set(metadata, '{facts,persons}',
-  (SELECT jsonb_agg(CASE WHEN p->>'person_id' = 'owner' THEN p || jsonb_build_object('language', '$Lang') ELSE p END)
-   FROM jsonb_array_elements(metadata->'facts'->'persons') p))
-WHERE name = 'family';
-"@ | Out-Null
 }
 # Text eines Mock-Telegram-Requests (Text/Caption + alle Knopf-Texte), Legacy-Markdown-Escape zurueckgenommen.
 function Get-RequestText($Req) {
@@ -220,7 +208,7 @@ try {
         $recLang = if ([string]$c.recipient -eq 'owner') { $lang } else { 'en' }
         $errs = @(); $wfId = $null; $scnBackup = $null
         try {
-            Set-OwnerLanguage $lang
+            Set-OwnerLanguage -Container $Container -Code $lang
             foreach ($s in (Resolve-Sql $c.reset_sql)) { Invoke-Sql $s | Out-Null }
             foreach ($s in (Resolve-Sql $c.seed_sql))  { Invoke-Sql $s | Out-Null }
             if ($c.mock_llm_scenario) { $scnBackup = Add-MockScenario $c.mock_llm_scenario }
@@ -298,7 +286,7 @@ try {
         else { $failed++; Write-Host '    [FAIL]' -ForegroundColor Red; $errs | ForEach-Object { Write-Host "      $_" -ForegroundColor Yellow } }
     }
 } finally {
-    try { Set-OwnerLanguage $ownerLangBefore } catch { }
+    try { Set-OwnerLanguage -Container $Container -Code $ownerLangBefore } catch { }
 }
 
 Write-Host ''

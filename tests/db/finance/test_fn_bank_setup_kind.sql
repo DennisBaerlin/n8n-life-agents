@@ -94,5 +94,28 @@ BEGIN
   IF finance.fn_recurring_never_ran(v_rp_so) IS NOT FALSE THEN RAISE EXCEPTION 'FAIL [5] gebuchte Strecke zaehlt nicht'; END IF;
   IF finance.fn_recurring_never_ran(v_rp_nob) IS NOT TRUE THEN RAISE EXCEPTION 'FAIL [5b] andere Quelle zaehlt mit'; END IF;
   RAISE NOTICE 'PASS [5] gebuchte Strecke gilt als gelaufen';
+
+  -- [6] Mit Ende nennt die Notiz die letzte Ausfuehrung (_until + typisiertes Datum); bank_stop nur, solange sie kommt
+  UPDATE finance.recurring_payments SET valid_to = current_date + 40 WHERE id IN (v_rp_so, v_rp_nob, v_rp_plan);
+  UPDATE finance.recurring_payments SET valid_to = current_date + 80 WHERE id = v_rp_split;
+  v_n := finance.fn_bank_setup_note(v_rp_so, 'bank_setup');
+  IF v_n->0->>'value' <> 'finance.note.bank_setup_standing_order_until' OR v_n->0->'params'->>'bank' <> 'Lindenbank'
+     OR v_n->0->'params'->'date'->>'kind' <> 'date'
+     OR (v_n->0->'params'->'date'->>'value')::date <> finance.fn_recurring_last_due(v_rp_so) THEN
+    RAISE EXCEPTION 'FAIL [6] bank_setup mit Ende: %', v_n; END IF;
+  v_n := finance.fn_bank_setup_note(v_rp_nob, 'bank_stop');
+  IF v_n->0->>'value' <> 'finance.note.bank_stop_standing_order_until_generic' THEN RAISE EXCEPTION 'FAIL [6] bank_stop kuenftig: %', v_n; END IF;
+  v_n := finance.fn_bank_setup_note(v_rp_plan, 'bank_setup');
+  IF v_n->0->>'value' <> 'finance.note.bank_setup_savings_plan_until' THEN RAISE EXCEPTION 'FAIL [6] Sparplan: %', v_n; END IF;
+  UPDATE finance.recurring_payments SET valid_from = current_date - 40, first_payment_date = current_date - 40, valid_to = current_date WHERE id = v_rp_nob;
+  v_n := finance.fn_bank_setup_note(v_rp_nob, 'bank_stop');
+  IF v_n->0->>'value' <> 'finance.note.bank_stop_standing_order_generic' OR v_n->0->'params' ? 'date' THEN
+    RAISE EXCEPTION 'FAIL [6] bank_stop vergangen: %', v_n; END IF;
+  -- Pausieren mit kuenftigem Ende: Der Auftrag soll jetzt stoppen, nicht bis zum alten Ende laufen -> kein _until
+  UPDATE finance.recurring_payments SET status = 'paused' WHERE id = v_rp_so;
+  v_n := finance.fn_bank_setup_note(v_rp_so, 'bank_stop');
+  IF v_n->0->>'value' <> 'finance.note.bank_stop_standing_order' OR v_n->0->'params' ? 'date' THEN
+    RAISE EXCEPTION 'FAIL [6] bank_stop pausiert: %', v_n; END IF;
+  RAISE NOTICE 'PASS [6] letzte Ausfuehrung in der Notiz';
 END $$;
 ROLLBACK;

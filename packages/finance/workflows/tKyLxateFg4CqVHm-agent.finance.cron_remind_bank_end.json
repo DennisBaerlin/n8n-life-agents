@@ -1,0 +1,508 @@
+{
+    "id":  "tKyLxateFg4CqVHm",
+    "name":  "agent.finance.cron_remind_bank_end",
+    "nodes":  [
+                  {
+                      "parameters":  {
+                                         "rule":  {
+                                                      "interval":  [
+                                                                       {
+                                                                           "field":  "cronExpression",
+                                                                           "expression":  "__CFG_SCHEDULE_REMIND_BANK_END__"
+                                                                       }
+                                                                   ]
+                                                  }
+                                     },
+                      "type":  "n8n-nodes-base.scheduleTrigger",
+                      "typeVersion":  1.3,
+                      "position":  [
+                                       -900,
+                                       0
+                                   ],
+                      "id":  "83786a42-faf6-5c9c-bcc4-ac04c1776fcc",
+                      "name":  "Schedule (cron from config)"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "SELECT core.fn_package_active(\u0027finance\u0027) AND (COALESCE(core.fn_config_get(\u0027finance\u0027,\u0027cron_enable\u0027,\u0027remind_bank_end\u0027) = \u0027true\u0027, false) OR COALESCE(core.fn_config_get(\u0027finance\u0027,\u0027cron_enable\u0027,\u0027remind_bank_end_person\u0027) = \u0027true\u0027, false)) AS enabled",
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       -720,
+                                       0
+                                   ],
+                      "id":  "1b121c8a-fce3-5b85-a505-940129cb1ac5",
+                      "name":  "Cron enabled?",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_FINANCE_RW__",
+                                                           "name":  "Postgres finance_rw (read-write)"
+                                                       }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "54230bfb-2f62-58ea-a8b5-0dd75ef87d8d",
+                                                                                   "leftValue":  "={{ $json.enabled }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       -540,
+                                       0
+                                   ],
+                      "id":  "723fded1-ff41-5054-867b-19c7f30d4158",
+                      "name":  "Cron on?"
+                  },
+                  {
+                      "parameters":  {
+
+                                     },
+                      "type":  "n8n-nodes-base.noOp",
+                      "typeVersion":  1,
+                      "position":  [
+                                       -540,
+                                       200
+                                   ],
+                      "id":  "64c96da3-ced1-58dc-a61e-2cf735941637",
+                      "name":  "Disabled"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "WITH c AS MATERIALIZED (SELECT finance.fn_bank_end_claim() AS r) SELECT c.r::text AS r FROM c;",
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       -360,
+                                       0
+                                   ],
+                      "id":  "f6cfd1f1-ddab-5233-87d6-ee00e135b8e3",
+                      "name":  "Claim due",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_FINANCE_RW__",
+                                                           "name":  "Postgres finance_rw (read-write)"
+                                                       }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "jsCode":  "let list = [];\ntry { list = JSON.parse($input.first().json.r || \u0027[]\u0027); } catch (e) { list = []; }\nreturn (Array.isArray(list) ? list : []).map(m =\u003e ({ json: m }));"
+                                     },
+                      "type":  "n8n-nodes-base.code",
+                      "typeVersion":  2,
+                      "position":  [
+                                       -180,
+                                       0
+                                   ],
+                      "id":  "469c887d-9874-554e-bf79-ca743c234fd9",
+                      "name":  "Split messages"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "=SELECT core.fn_ui_texts_for(jsonb_strip_nulls(jsonb_build_object(\u0027chat_id\u0027, NULLIF(($1::jsonb)-\u003e\u003e\u0027chat_id\u0027, \u0027\u0027), \u0027keys\u0027, to_jsonb(ARRAY[\u0027finance.dialog.bank_end_intro\u0027,\u0027finance.dialog.bank_end_howto\u0027,\u0027finance.dialog.bank_end_goal\u0027,\u0027finance.dialog.bank_end_line_standing_order\u0027,\u0027finance.dialog.bank_end_line_standing_order_generic\u0027,\u0027finance.dialog.bank_end_line_standing_order_unsure\u0027,\u0027finance.dialog.bank_end_line_standing_order_unsure_generic\u0027,\u0027finance.dialog.bank_end_line_savings_plan\u0027,\u0027finance.dialog.bank_end_line_savings_plan_generic\u0027,\u0027core.reminders.btn_off\u0027,\u0027core.fmt.empty\u0027,\u0027core.fmt.default_suffix\u0027,\u0027core.fmt.yes\u0027,\u0027core.fmt.no\u0027,\u0027core.fmt.removed\u0027]::text[])))) AS ui, ($1::jsonb)-\u003e\u0027msg\u0027 AS msg;",
+                                         "options":  {
+                                                         "queryReplacement":  "={{ JSON.stringify({ chat_id: (($json.chat_id === null || $json.chat_id === undefined) ? \u0027\u0027 : String($json.chat_id)), msg: $json }) }}"
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       0,
+                                       0
+                                   ],
+                      "id":  "11c460ec-14bf-56fa-881c-49646e86e742",
+                      "name":  "Load texts",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_FINANCE_RW__",
+                                                           "name":  "Postgres finance_rw (read-write)"
+                                                       }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "jsCode":  "function uiRender(B, LANGS) {\n  B = B || {};\n  LANGS = LANGS || {};\n  const T = B.t || {};\n  const loc = B.locale || \u0027en-GB\u0027;\n  // fn_ui_texts liefert fuer einen fehlenden Key den Key selbst -\u003e das zaehlt hier als \"nicht vorhanden\".\n  const has = (k) =\u003e Object.prototype.hasOwnProperty.call(T, k) \u0026\u0026 T[k] !== k;\n  const t = (k) =\u003e (has(k) ? T[k] : String(k));\n  const empty = has(\u0027core.fmt.empty\u0027) ? T[\u0027core.fmt.empty\u0027] : \u0027—\u0027;\n  const isEmpty = (v) =\u003e v === null || v === undefined || v === \u0027\u0027;\n  // Platzhalter in EINEM Durchlauf: einfache Werte unveraendert (auch \u0027\u0027 fuer optionale Zusaetze wie die Einheit),\n  // nur typisierte Werte ({kind: money|date|enum|...}) laufen durch val(); null/undefined -\u003e \u0027\u0027. Ein FEHLENDER\n  // Parameter zaehlt wie undefined: n8n verwirft undefined-Felder beim Speichern des Summary-Objekts, sonst stuende\n  // Rohtext wie \"{isin}\" auf der Karte (Owner 2026-10-22). Vertippte Parameter-Namen faengt der Build\n  // (Assert-HitlTplParams in New-HitlLine/New-HitlNote/New-HitlSummary).\n  function fill(txt, params) {\n    return String(txt).replace(/\\{(\\w+)\\}/g, (m, n) =\u003e {\n      if (!params || !Object.prototype.hasOwnProperty.call(params, n)) return \u0027\u0027;\n      const p = params[n];\n      if (p === null || p === undefined) return \u0027\u0027;\n      return (typeof p === \u0027object\u0027) ? val(p) : String(p);\n    });\n  }\n  // sign = true (core.fn_ui_money p_sign): \u0027+\u0027 vor positive Betraege (Gewinn seit Kauf); negative tragen ihr Minus ohnehin.\n  // digits = 0 (core.fn_ui_money p_whole): ganze Einheiten fuer Schaetzwerte; der Wert selbst bleibt genau (gerundet nur hier).\n  function money(v, c, sign, digits) {\n    if (isEmpty(v)) return empty;\n    const n = Number(v);\n    if (!isFinite(n)) return String(v);\n    const plus = (sign === true \u0026\u0026 n \u003e 0) ? \u0027+\u0027 : \u0027\u0027;\n    // Ohne gueltigen Waehrungscode KEIN stilles EUR (ein USD-Betrag sahe sonst wie Euro aus): Zahl + Rohcode.\n    const whole = (digits === 0);\n    if (!(typeof c === \u0027string\u0027 \u0026\u0026 /^[A-Za-z]{3}$/.test(c))) return plus + num(v, whole ? 0 : 2) + (isEmpty(c) ? \u0027\u0027 : \u0027 \u0027 + String(c));\n    const cur = c.toUpperCase();\n    try { return plus + (whole ? Number(n).toLocaleString(loc,{style:\u0027currency\u0027,currency:(/^[A-Za-z]{3}$/.test(cur)?cur:\u0027EUR\u0027),currencyDisplay:\u0027narrowSymbol\u0027,minimumFractionDigits:0,maximumFractionDigits:0}) : Number(n).toLocaleString(loc,{style:\u0027currency\u0027,currency:(/^[A-Za-z]{3}$/.test(cur)?cur:\u0027EUR\u0027),currencyDisplay:\u0027narrowSymbol\u0027})); } catch (e) { return plus + String(v) + \u0027 \u0027 + cur; }\n  }\n  // B.date_short = {from, to} (nur die Mini-App, core.fn_app_screen): ein ISO-Datum im Fenster [from, to) ohne Jahr\n  // (String-Vergleich, die App rechnet kein Datum); Chat/HITL/Cron setzen es nie -\u003e dort immer mit Jahr.\n  const DS = (B.date_short \u0026\u0026 typeof B.date_short.from === \u0027string\u0027 \u0026\u0026 typeof B.date_short.to === \u0027string\u0027) ? B.date_short : null;\n  function date(v) {\n    if (isEmpty(v)) return empty;\n    const m = DS ? /^(\\d{4})-(\\d{2})-(\\d{2})$/.exec(String(v)) : null;\n    if (m \u0026\u0026 String(v) \u003e= DS.from \u0026\u0026 String(v) \u003c DS.to) {\n      try { return new Date(Date.UTC(+m[1], +m[2] - 1, +m[3])).toLocaleDateString(loc, { timeZone: \u0027UTC\u0027, month: \u00272-digit\u0027, day: \u00272-digit\u0027 }); }\n      catch (e) { /* weiter mit Jahr */ }\n    }\n    try { return ((m) =\u003e m ? new Date(Date.UTC(+m[1], +m[2] - 1, +m[3])).toLocaleDateString(loc, {timeZone:\u0027UTC\u0027, year:\u0027numeric\u0027, month:\u00272-digit\u0027, day:\u00272-digit\u0027}) : String(v))(/^(\\d{4})-(\\d{2})-(\\d{2})/.exec(String(v))); } catch (e) { return String(v); }\n  }\n  // {kind:\u0027month\u0027, value:\u0027YYYY-MM\u0027} (core.fn_ui_month): 2-stelliger Monat + Jahr im Locale (de „04.2027“), immer mit Jahr.\n  // Aus dem vollen Datum des Locales ohne den Tag gebaut: Intl liefert fuer {month, year} allein in de „04/2027“\n  // (Abnahme 2026-10-31); so folgt der Trenner dem gewohnten Datum (de „04.2027“, en-GB „04/2027“, ko „2027. 04.“).\n  // style \u0027long\u0027 (core.fn_ui_month(d, true)): Monatsname, das Jahr nur ausserhalb des Kurz-Fensters wie bei date()\n  // („Gehen ab im November“ / „… im November 2027“).\n  function month(v, style) {\n    if (isEmpty(v)) return empty;\n    const m = /^(\\d{4})-(\\d{2})$/.exec(String(v));\n    if (!m) return String(v);\n    if (style === \u0027long\u0027) {\n      const short = DS \u0026\u0026 String(v) \u003e= DS.from.slice(0, 7) \u0026\u0026 String(v) \u003c DS.to.slice(0, 7);\n      try { return new Date(Date.UTC(+m[1], +m[2] - 1, 1)).toLocaleDateString(loc, short ? { timeZone: \u0027UTC\u0027, month: \u0027long\u0027 } : { timeZone: \u0027UTC\u0027, month: \u0027long\u0027, year: \u0027numeric\u0027 }); }\n      catch (e) { return String(v); }\n    }\n    try {\n      const parts = new Intl.DateTimeFormat(loc, { timeZone: \u0027UTC\u0027, day: \u00272-digit\u0027, month: \u00272-digit\u0027, year: \u0027numeric\u0027 })\n        .formatToParts(new Date(Date.UTC(+m[1], +m[2] - 1, 1)));\n      const d = parts.findIndex((p) =\u003e p.type === \u0027day\u0027);\n      if (d \u003c 0) return String(v);\n      if (d === 0) parts.splice(0, 2); else parts.splice(d - 1, 2);\n      return parts.map((p) =\u003e p.value).join(\u0027\u0027);\n    } catch (e) { return String(v); }\n  }\n  // Nachkommastellen, die der Wert selbst traegt (ohne Null-Schwanz der DB, z. B. numeric(18,8) \"10.00000000\" -\u003e 0).\n  function decimals(v) {\n    const s = String(v).trim();\n    const e = s.match(/^-?\\d+(?:\\.(\\d+))?e-(\\d+)$/i);\n    if (e) return Math.min(20, (e[1] || \u0027\u0027).length + Number(e[2]));\n    const m = s.match(/\\.(\\d+)$/);\n    return m ? Math.min(20, m[1].replace(/0+$/, \u0027\u0027).length) : 0;\n  }\n  // digits \u003c 0 = so viele Stellen wie der Wert hat (Stueckzahlen: Krypto bis 8 Stellen, nie gerundet).\n  function num(v, digits, sign) {\n    if (isEmpty(v)) return empty;\n    const n = Number(v);\n    if (!isFinite(n)) return String(v);\n    const d = (Number(digits) \u003c 0) ? decimals(v) : Math.max(0, Math.min(6, Number(digits) || 0));\n    try { return n.toLocaleString(loc, { minimumFractionDigits: d, maximumFractionDigits: d, signDisplay: sign ? \u0027exceptZero\u0027 : \u0027auto\u0027 }); }\n    catch (e) { return String(v); }\n  }\n  function val(x) {\n    if (isEmpty(x)) return empty;\n    if (typeof x !== \u0027object\u0027) return String(x);\n    if (Array.isArray(x)) return x.length ? x.map(val).join(\u0027, \u0027) : empty;\n    const v = x.value;\n    switch (x.kind) {\n      case \u0027money\u0027: return money(v, x.currency, x.sign, x.digits);\n      case \u0027date\u0027: return date(v);\n      case \u0027month\u0027: return month(v, x.style);\n      case \u0027number\u0027: return num(v, x.digits, x.sign);\n      case \u0027enum\u0027: {\n        if (isEmpty(v)) return empty;\n        const k = String(x.enum) + \u0027.\u0027 + String(v).toLowerCase().replace(/[^a-z0-9_]+/g, \u0027_\u0027);\n        return has(k) ? T[k] : String(v);\n      }\n      case \u0027bool\u0027: return (v === true || v === \u0027true\u0027) ? t(\u0027core.fmt.yes\u0027)\n        : ((v === false || v === \u0027false\u0027) ? t(\u0027core.fmt.no\u0027) : empty);\n      case \u0027language\u0027: return isEmpty(v) ? empty : (LANGS[v] || String(v));\n      case \u0027key\u0027: return isEmpty(v) ? empty : (has(v) ? T[v] : (x.fallback || String(v)));\n      case \u0027tpl\u0027: return isEmpty(v) ? empty : fill(t(v), x.params);\n      case \u0027removed\u0027: return t(\u0027core.fmt.removed\u0027);\n      case \u0027list\u0027: return (Array.isArray(v) \u0026\u0026 v.length) ? v.map(val).join(\u0027, \u0027) : empty;\n      default: return isEmpty(v) ? empty : (Array.isArray(v) ? v.join(\u0027, \u0027) : String(v));\n    }\n  }\n  function msg(parts) {\n    return (Array.isArray(parts) ? parts : [parts]).filter((p) =\u003e !isEmpty(p)).map(val).join(\u0027 \u0027);\n  }\n  function lines(ls) {\n    return (Array.isArray(ls) ? ls : []).map((l) =\u003e (l === null || l === undefined) ? \u0027\u0027\n      : (Array.isArray(l) ? msg(l) : val(l))).join(\u0027\\n\u0027);\n  }\n  return { T, loc, has, t, empty, isEmpty, fill, money, date, num, val, msg, lines };\n}const LINE = {\n  standing_order: { bank: \u0027finance.dialog.bank_end_line_standing_order\u0027, generic: \u0027finance.dialog.bank_end_line_standing_order_generic\u0027 },\n  unsure: { bank: \u0027finance.dialog.bank_end_line_standing_order_unsure\u0027, generic: \u0027finance.dialog.bank_end_line_standing_order_unsure_generic\u0027 },\n  savings_plan: { bank: \u0027finance.dialog.bank_end_line_savings_plan\u0027, generic: \u0027finance.dialog.bank_end_line_savings_plan_generic\u0027 },\n};\nreturn $input.all().map(({ json: row }) =\u003e {\n  const U = uiRender(row.ui || {});\n  const msg = row.msg || {};\n  const isOwner = msg.recipient === \u0027owner\u0027;\n  const lines = (Array.isArray(msg.items) ? msg.items : []).map((r) =\u003e {\n    const group = r.kind === \u0027savings_plan\u0027 ? \u0027savings_plan\u0027 : (r.execution === \u0027unknown\u0027 ? \u0027unsure\u0027 : \u0027standing_order\u0027);\n    const parts = [];\n    if (isOwner \u0026\u0026 r.holder_name) parts.push(r.holder_name);\n    if (r.goal) parts.push(U.fill(U.t(\u0027finance.dialog.bank_end_goal\u0027), { goal: r.goal }));\n    return U.fill(U.t(LINE[group][r.bank ? \u0027bank\u0027 : \u0027generic\u0027]), {\n      name: r.name, extra: parts.length ? \u0027 (\u0027 + parts.join(\u0027, \u0027) + \u0027)\u0027 : \u0027\u0027, to: r.to_name, bank: r.bank,\n      amount: { kind: \u0027money\u0027, value: r.amount, currency: r.currency }, date: { kind: \u0027date\u0027, value: r.last_due } });\n  });\n  return { json: { is_owner: isOwner, chat_id: msg.chat_id,\n    message: U.t(\u0027finance.dialog.bank_end_intro\u0027) + \u0027\\n\\n\u0027 + lines.join(\u0027\\n\u0027) + \u0027\\n\\n\u0027 + U.t(\u0027finance.dialog.bank_end_howto\u0027),\n    btn_off: U.t(\u0027core.reminders.btn_off\u0027) } };\n});"
+                                     },
+                      "type":  "n8n-nodes-base.code",
+                      "typeVersion":  2,
+                      "position":  [
+                                       200,
+                                       0
+                                   ],
+                      "id":  "3672bc0a-c138-5651-ab84-64508781d604",
+                      "name":  "Build message"
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "e7374745-a864-5e8a-80ba-aaf9237d861b",
+                                                                                   "leftValue":  "={{ $json.is_owner }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       400,
+                                       0
+                                   ],
+                      "id":  "d849e440-7ae4-5532-a30f-7bacccc862cd",
+                      "name":  "Owner message?"
+                  },
+                  {
+                      "parameters":  {
+                                         "additionalFields":  {
+                                                                  "appendAttribution":  false
+                                                              },
+                                         "chatId":  "__OWNER_CHAT_ID__",
+                                         "text":  "={{ ($json.message).replace(/[_*`[]/g, \u0027\\\\$\u0026\u0027) }}",
+                                         "replyMarkup":  "inlineKeyboard",
+                                         "inlineKeyboard":  {
+                                                                "rows":  [
+                                                                             {
+                                                                                 "row":  {
+                                                                                             "buttons":  [
+                                                                                                             {
+                                                                                                                 "text":  "={{ $json.btn_off }}",
+                                                                                                                 "additionalFields":  {
+                                                                                                                                          "callback_data":  "cron_off:remind_bank_end"
+                                                                                                                                      }
+                                                                                                             }
+                                                                                                         ]
+                                                                                         }
+                                                                             }
+                                                                         ]
+                                                            }
+                                     },
+                      "type":  "n8n-nodes-base.telegram",
+                      "typeVersion":  1.2,
+                      "position":  [
+                                       620,
+                                       -120
+                                   ],
+                      "id":  "b5e05b71-43e7-5605-8a2c-554c7c42f45d",
+                      "name":  "Send owner",
+                      "retryOnFail":  true,
+                      "maxTries":  3,
+                      "waitBetweenTries":  2000,
+                      "credentials":  {
+                                          "telegramApi":  {
+                                                              "id":  "__CRED_TELEGRAM__",
+                                                              "name":  "Telegram account"
+                                                          }
+                                      },
+                      "onError":  "continueRegularOutput"
+                  },
+                  {
+                      "parameters":  {
+                                         "additionalFields":  {
+                                                                  "appendAttribution":  false
+                                                              },
+                                         "chatId":  "={{ String($json.chat_id) }}",
+                                         "text":  "={{ ($json.message).replace(/[_*`[]/g, \u0027\\\\$\u0026\u0027) }}",
+                                         "replyMarkup":  "inlineKeyboard",
+                                         "inlineKeyboard":  {
+                                                                "rows":  [
+                                                                             {
+                                                                                 "row":  {
+                                                                                             "buttons":  [
+                                                                                                             {
+                                                                                                                 "text":  "={{ $json.btn_off }}",
+                                                                                                                 "additionalFields":  {
+                                                                                                                                          "callback_data":  "rem:off:remind_bank_end_person"
+                                                                                                                                      }
+                                                                                                             }
+                                                                                                         ]
+                                                                                         }
+                                                                             }
+                                                                         ]
+                                                            }
+                                     },
+                      "type":  "n8n-nodes-base.telegram",
+                      "typeVersion":  1.2,
+                      "position":  [
+                                       620,
+                                       120
+                                   ],
+                      "id":  "d010283f-c0d4-55f0-8cbc-3468d7b39b79",
+                      "name":  "Send person",
+                      "retryOnFail":  true,
+                      "maxTries":  3,
+                      "waitBetweenTries":  2000,
+                      "credentials":  {
+                                          "telegramApi":  {
+                                                              "id":  "__CRED_TELEGRAM__",
+                                                              "name":  "Telegram account"
+                                                          }
+                                      },
+                      "onError":  "continueRegularOutput"
+                  },
+                  {
+                      "parameters":  {
+                                         "content":  "## Ablauf\n**Erinnerung: Auftrag bei der Bank beenden (täglich, kein LLM)**\n\nTäglich 10:35 (schedule.remind_bank_end, im Erinnerungs-Fenster). Der Bot notiert Daueraufträge und Sparpläne nur; ohne eingetragenes Ende bucht die Bank weiter. finance.fn_bank_end_claim liefert je Empfänger eine Nachricht: fällig 3 bis 60 Tage nach der letzten Ausführung, nur aktive Aufträge bei Bank oder Broker (nie Handüberweisung, Lastschrift, Kredit-Rate). Fällig beim ersten Lauf nach dem Update: alles, was in den letzten 60 Tagen endete. Split messages -\u003e Load texts (Sprache des Empfängers) -\u003e Build message -\u003e Owner oder Person -\u003e Send.",
+                                         "height":  340,
+                                         "width":  620,
+                                         "color":  4
+                                     },
+                      "type":  "n8n-nodes-base.stickyNote",
+                      "typeVersion":  1,
+                      "position":  [
+                                       -920,
+                                       -420
+                                   ],
+                      "id":  "abc7dbf0-7dfc-5679-8179-3adc2a2e1c66",
+                      "name":  "Überblick"
+                  },
+                  {
+                      "parameters":  {
+                                         "content":  "## DB-Automatik\n**Paket aktiv UND mindestens ein Schalter an**\n\nLäuft, solange cron_enable.remind_bank_end (Owner) oder cron_enable.remind_bank_end_person (Mitglieder) an ist; beide aus -\u003e No-op. Wer konkret eine Nachricht bekommt, entscheidet fn_bank_end_claim über core.fn_reminder_allowed je Empfänger: aus heißt für ihn weder Nachricht noch Merker. Ein UND hier würde die Mitglieder mit abschalten, wenn nur der Owner seine Sammel-Nachricht abstellt.",
+                                         "height":  300,
+                                         "width":  460,
+                                         "color":  4
+                                     },
+                      "type":  "n8n-nodes-base.stickyNote",
+                      "typeVersion":  1,
+                      "position":  [
+                                       -560,
+                                       -420
+                                   ],
+                      "id":  "c9968f40-bf75-5b5f-bb5f-164a1f089c05",
+                      "name":  "Gate"
+                  },
+                  {
+                      "parameters":  {
+                                         "content":  "## DB-Automatik\n**Owner sammelt, Mitglied bekommt seine eigenen**\n\nOwner: Sammel-Nachricht mit allen fälligen Aufträgen, Inhaber in Klammern, Knopf cron_off:remind_bank_end (Default-Chat, auch ohne Eintrag in der Personenliste). Erwachsenes, gekoppeltes Mitglied: eigene Nachricht in seiner Sprache, Knopf rem:off:remind_bank_end_person. Kinder nie, der Owner als Inhaber nur einmal. Merker je Auftrag, Termin und Empfänger, gesetzt VOR dem Senden: Ein Telegram-Fehler verliert diese eine Nachricht (lieber einmal zu wenig als täglich doppelt); Send onError=continue, damit die anderen trotzdem rausgehen. Beendet jemand im Bot mit Termin in der Vergangenheit, hat die Karte es dem Owner schon gesagt: sein Merker steht, der Inhaber bekommt seine Erinnerung trotzdem.",
+                                         "height":  340,
+                                         "width":  700,
+                                         "color":  4
+                                     },
+                      "type":  "n8n-nodes-base.stickyNote",
+                      "typeVersion":  1,
+                      "position":  [
+                                       -220,
+                                       -420
+                                   ],
+                      "id":  "5899bd8b-4c22-5730-a906-73009ff2c95c",
+                      "name":  "Empfänger und Merker"
+                  },
+                  {
+                      "parameters":  {
+                                         "content":  "## DB-Automatik\n**Im Bot ist nichts zu tun**\n\nDer Nutzer beendet den Auftrag bei der Bank; im Bot ändert sich nichts. Soll er weiterlaufen, sagt er dem Bot das neue Ende: Der neue letzte Termin ist ein neuer Merker, die Erinnerung kommt nach dem neuen Ende wieder.",
+                                         "height":  280,
+                                         "width":  420,
+                                         "color":  4
+                                     },
+                      "type":  "n8n-nodes-base.stickyNote",
+                      "typeVersion":  1,
+                      "position":  [
+                                       380,
+                                       -420
+                                   ],
+                      "id":  "9dbfff3a-a1c6-546f-85a8-a25a9ee7977b",
+                      "name":  "Danach"
+                  },
+                  {
+                      "parameters":  {
+                                         "workflowInputs":  {
+                                                                "values":  [
+                                                                               {
+                                                                                   "name":  "chat_id"
+                                                                               }
+                                                                           ]
+                                                            }
+                                     },
+                      "type":  "n8n-nodes-base.executeWorkflowTrigger",
+                      "typeVersion":  1.1,
+                      "position":  [
+                                       -900,
+                                       180
+                                   ],
+                      "id":  "bc159918-b4b4-5d53-964d-687d889b85db",
+                      "name":  "Test run"
+                  },
+                  {
+                      "parameters":  {
+                                         "content":  "## Test\n**Test-Startpunkt (nur Tests)**\n\nZweiter Einstieg mit denselben Kanten wie der Zeitplan: der Test-Eingang core.cron_run.test_harness (nur auf Test-Instanzen) startet diesen Cron damit sofort (cron_text_test). Im Betrieb ungenutzt; nur aus n8n selbst erreichbar. Gebaut von Build-Workflow (build_helpers.ps1).",
+                                         "height":  220,
+                                         "width":  300,
+                                         "color":  4
+                                     },
+                      "type":  "n8n-nodes-base.stickyNote",
+                      "typeVersion":  1,
+                      "position":  [
+                                       -940,
+                                       300
+                                   ],
+                      "id":  "210cd01f-0a06-577d-ba43-214f7ea86fba",
+                      "name":  "Test run (Doc)"
+                  }
+              ],
+    "connections":  {
+                        "Schedule (cron from config)":  {
+                                                            "main":  [
+                                                                         [
+                                                                             {
+                                                                                 "index":  0,
+                                                                                 "node":  "Cron enabled?",
+                                                                                 "type":  "main"
+                                                                             }
+                                                                         ]
+                                                                     ]
+                                                        },
+                        "Cron enabled?":  {
+                                              "main":  [
+                                                           [
+                                                               {
+                                                                   "index":  0,
+                                                                   "node":  "Cron on?",
+                                                                   "type":  "main"
+                                                               }
+                                                           ]
+                                                       ]
+                                          },
+                        "Cron on?":  {
+                                         "main":  [
+                                                      [
+                                                          {
+                                                              "index":  0,
+                                                              "node":  "Claim due",
+                                                              "type":  "main"
+                                                          }
+                                                      ],
+                                                      [
+                                                          {
+                                                              "index":  0,
+                                                              "node":  "Disabled",
+                                                              "type":  "main"
+                                                          }
+                                                      ]
+                                                  ]
+                                     },
+                        "Claim due":  {
+                                          "main":  [
+                                                       [
+                                                           {
+                                                               "index":  0,
+                                                               "node":  "Split messages",
+                                                               "type":  "main"
+                                                           }
+                                                       ]
+                                                   ]
+                                      },
+                        "Split messages":  {
+                                               "main":  [
+                                                            [
+                                                                {
+                                                                    "index":  0,
+                                                                    "node":  "Load texts",
+                                                                    "type":  "main"
+                                                                }
+                                                            ]
+                                                        ]
+                                           },
+                        "Load texts":  {
+                                           "main":  [
+                                                        [
+                                                            {
+                                                                "index":  0,
+                                                                "node":  "Build message",
+                                                                "type":  "main"
+                                                            }
+                                                        ]
+                                                    ]
+                                       },
+                        "Build message":  {
+                                              "main":  [
+                                                           [
+                                                               {
+                                                                   "index":  0,
+                                                                   "node":  "Owner message?",
+                                                                   "type":  "main"
+                                                               }
+                                                           ]
+                                                       ]
+                                          },
+                        "Owner message?":  {
+                                               "main":  [
+                                                            [
+                                                                {
+                                                                    "index":  0,
+                                                                    "node":  "Send owner",
+                                                                    "type":  "main"
+                                                                }
+                                                            ],
+                                                            [
+                                                                {
+                                                                    "index":  0,
+                                                                    "node":  "Send person",
+                                                                    "type":  "main"
+                                                                }
+                                                            ]
+                                                        ]
+                                           },
+                        "Test run":  {
+                                         "main":  [
+                                                      [
+                                                          {
+                                                              "index":  0,
+                                                              "node":  "Cron enabled?",
+                                                              "type":  "main"
+                                                          }
+                                                      ]
+                                                  ]
+                                     }
+                    },
+    "settings":  {
+                     "executionOrder":  "v1",
+                     "errorWorkflow":  "Nd3UVmUTzTLOBeba"
+                 }
+}

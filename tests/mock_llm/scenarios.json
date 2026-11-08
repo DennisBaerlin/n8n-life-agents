@@ -676,6 +676,16 @@
     "final": "Ausgabe von 85 EUR auf Lindenbank Giro gebucht."
   },
   {
+    "_comment": "PARALLELE AUFRUFE (tc122): zwei Buchungen in einer Nachricht = zwei tool_use-Bloecke unter EINEM Denkblock (parallel:true). mock_route_test meldet, wenn n8n einen Block oder seine Angaben beim Zurueckspielen verliert (replay_lost: dropped/unpaired).",
+    "match": "18 Euro für Parkgebühren und 32 Euro für Blumen",
+    "parallel": true,
+    "calls": [
+      { "tool": "tool_book_transaction", "args": { "account_name": "Lindenbank Giro", "amount": 18, "direction": "outflow", "transaction_date": "2026-06-16", "category": "other", "description": "Parkgebuehren" } },
+      { "tool": "tool_book_transaction", "args": { "account_name": "Lindenbank Giro", "amount": 32, "direction": "outflow", "transaction_date": "2026-06-16", "category": "other", "description": "Blumen" } }
+    ],
+    "final": "Zwei Ausgaben (18 EUR und 32 EUR) auf Lindenbank Giro vorgemerkt, noch nicht bestaetigt."
+  },
+  {
     "_comment": "WS-4 owner_person (tc40): person name resolves to lena in the family fixture -> Resolve Person passes, tool reaches the gate.",
     "match": "Junior Depot",
     "calls": [

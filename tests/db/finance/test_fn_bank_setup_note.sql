@@ -100,7 +100,7 @@ BEGIN
   IF (v_r->>'ok')::boolean IS DISTINCT FROM true OR pg_temp.bank_notes(v_r) <> '' THEN
     RAISE EXCEPTION 'FAIL [3e2] unveraenderte Werte: %', v_r; END IF;
   v_r := finance.fn_set_recurring_payment(jsonb_build_object('recurring_payment_id', v_rp, 'valid_to', (v_next + 400)::text));
-  IF pg_temp.bank_notes(v_r) <> 'finance.note.bank_stop_standing_order|Lindenbank' THEN
+  IF pg_temp.bank_notes(v_r) <> 'finance.note.bank_stop_standing_order_until|Lindenbank' THEN
     RAISE EXCEPTION 'FAIL [3f] Ende: %', v_r; END IF;
   -- schon bei der Bank: Aenderung muss dort mit (generisch, Quelle ohne Bankname); manual: nie
   v_r := finance.fn_set_recurring_payment(jsonb_build_object('recurring_payment_id', v_rp_bank, 'schedule_day_of_month', 4));

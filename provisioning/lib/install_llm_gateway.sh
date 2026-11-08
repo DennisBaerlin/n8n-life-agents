@@ -60,6 +60,15 @@ install_llm_gateway() {
     ka_hours=24
   fi
 
+  # Ein Werkzeug je Antwort (Kopf von server.js): 1 = an (Standard), 0 = aus; gleiche Quellen wie der Keep-Alive.
+  local serial_tools="${LLM_GATEWAY_SERIAL_TOOLS:-}"
+  [ -n "$serial_tools" ] || serial_tools="$(read_env_value "$INSTALL_ENV_FILE" LLM_GATEWAY_SERIAL_TOOLS 2>/dev/null || true)"
+  [ -n "$serial_tools" ] || serial_tools=1
+  if [ "$serial_tools" != 0 ] && [ "$serial_tools" != 1 ]; then
+    warn "LLM_GATEWAY_SERIAL_TOOLS='$serial_tools' ungueltig (0 oder 1) — nehme 1."
+    serial_tools=1
+  fi
+
   local changed=1
   if write_if_changed "$LLM_GATEWAY_DIR/server.js" 0644 < "$src"; then changed=0; fi
   # Persona-Sticker fuer den Telegram-Relay (Kopf von server.js): wie der Code SELBST kopiert (REPO_ROOT ist beim
@@ -80,13 +89,14 @@ install_llm_gateway() {
     # laedt sie bei jedem Start (compose.yml). StateDirectory-Ersatz: Volume gw_state, dem Container-Nutzer (uid 1000).
     install -d -m 0700 -o 1000 -g 1000 "${STATE_DIRECTORY:-/var/lib/${LLM_GATEWAY_UNIT_NAME}}"
     if printf '%s\n' "LLM_GATEWAY_PORT=${LLM_GATEWAY_PORT}" "LLM_GATEWAY_KEEPALIVE_HOURS=${ka_hours}" \
-         "LLM_GATEWAY_STICKER_DIR=${sticker_dir}" ${LIFEAGENTS_TELEGRAM_API:+"LLM_GATEWAY_TELEGRAM_API=${LIFEAGENTS_TELEGRAM_API}"} \
+         "LLM_GATEWAY_SERIAL_TOOLS=${serial_tools}" "LLM_GATEWAY_STICKER_DIR=${sticker_dir}" ${LIFEAGENTS_TELEGRAM_API:+"LLM_GATEWAY_TELEGRAM_API=${LIFEAGENTS_TELEGRAM_API}"} \
        | write_if_changed "$LLM_GATEWAY_DIR/gateway.env" 0644; then
       changed=0
     fi
   elif render_template "$TEMPLATE_DIR/lifeagents-llm-gateway.service.tpl" \
         GATEWAY_PORT="$LLM_GATEWAY_PORT" \
         KEEPALIVE_HOURS="$ka_hours" \
+        SERIAL_TOOLS="$serial_tools" \
         NODE_BIN="$node_bin" \
         GATEWAY_JS="$LLM_GATEWAY_DIR/server.js" \
         STICKER_DIR="$sticker_dir" \

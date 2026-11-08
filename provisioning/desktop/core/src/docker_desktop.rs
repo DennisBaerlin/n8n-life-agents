@@ -134,11 +134,13 @@ pub fn verify_mac(host: &dyn Host, dmg: &str) -> Result<String, FetchError> {
         if team != MAC_TEAM_ID {
             return Err(FetchError::Signature(format!("Team-ID {team} statt {MAC_TEAM_ID}")));
         }
-        // Gatekeeper-Bewertung: von Apple notarisiert, Developer ID.
+        // Gatekeeper muss annehmen (sonst scheitert `ok`). spctl nennt dieselbe Datei mal „Notarized Developer ID“, mal nur
+        // „Developer ID“; die Herkunft sichern Signatur und Team-ID oben. Darum zählt die Quell-Zeile genau, nicht ein Teilwort.
         let gk = ok(host, "/usr/sbin/spctl", &["--assess", "--type", "execute", "-vv", &app]).map_err(FetchError::Signature)?;
         let text = format!("{}{}", gk.stdout, gk.stderr);
-        if !text.contains("Notarized Developer ID") || !text.contains(&format!("({MAC_TEAM_ID})")) {
-            return Err(FetchError::Signature("Gatekeeper-Bewertung ohne Notarisierung von Docker".into()));
+        let source_ok = text.lines().any(|l| matches!(l.trim(), "source=Notarized Developer ID" | "source=Developer ID"));
+        if !source_ok || !text.contains(&format!("({MAC_TEAM_ID})")) {
+            return Err(FetchError::Signature("Gatekeeper-Bewertung ohne Developer ID von Docker".into()));
         }
         Ok(app.clone())
     })();
@@ -322,6 +324,21 @@ mod tests {
         let h = mac_verify("ABCDE12345", gk);
         assert!(matches!(verify_mac(&h, DMG), Err(FetchError::Signature(_))));
         assert!(h.called(&format!("/usr/bin/hdiutil detach {MNT}")));
+    }
+
+    /// CI-Fund: spctl nennt dieselbe Docker-Datei von Lauf zu Lauf „Notarized Developer ID“ oder nur „Developer ID“.
+    #[test]
+    fn mac_developer_id_without_online_answer_passes() {
+        let gk = format!("{MNT}/Docker.app: accepted\nsource=Developer ID\norigin=Developer ID Application: Docker Inc ({MAC_TEAM_ID})\n");
+        let h = mac_verify(MAC_TEAM_ID, &gk);
+        assert_eq!(verify_mac(&h, DMG), Ok(format!("{MNT}/Docker.app")));
+    }
+
+    #[test]
+    fn mac_origin_line_alone_is_no_source() {
+        let gk = format!("{MNT}/Docker.app: accepted\nsource=Apple\norigin=Developer ID Application: Docker Inc ({MAC_TEAM_ID})\n");
+        let h = mac_verify(MAC_TEAM_ID, &gk);
+        assert!(matches!(verify_mac(&h, DMG), Err(FetchError::Signature(_))));
     }
 
     #[test]

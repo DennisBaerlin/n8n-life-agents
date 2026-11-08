@@ -51,7 +51,7 @@ jobs:
             Write-Host $info; Write-Host $gk
             $seen = ([regex]::Match($info, 'TeamIdentifier=(\S+)')).Groups[1].Value
             if ($seen -ne $team) { throw "Team-ID am Original: '$seen', in docker_desktop.rs: '$team'" }
-            if ($gk -notmatch 'Notarized Developer ID') { throw 'Original ist nicht notarisiert' }
+            if ($gk -notmatch '(?m)^source=(Notarized )?Developer ID\s*$') { throw 'Gatekeeper nennt keine Developer ID' }
             Write-Host "OK: Team-ID $seen"
           } else {
             $url = & $const 'URL_WIN_AMD64'

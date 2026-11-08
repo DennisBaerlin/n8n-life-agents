@@ -22,7 +22,7 @@ BEGIN
     'settlement_id', v_cash))->>'account_id')::int INTO v_depot;
 
   -- [R1a] Uebernahme 0.05123456 BTC @ 30000 -> Einstand exakt 30000, unit_price gespeichert
-  SELECT finance.fn_book_stock_buy(jsonb_build_object('depot_id', v_depot, 'settlement_id', v_cash, 'symbol','BTC',
+  SELECT finance.fn_book_stock_buy(jsonb_build_object('price_currency_confirmed',true,'depot_id', v_depot, 'settlement_id', v_cash, 'symbol','BTC',
     'shares', 0.05123456, 'price_per_share', 30000, 'transaction_date', CURRENT_DATE::text, 'existing_position', true)) INTO v_res;
   IF (v_res->>'ok')::boolean IS DISTINCT FROM true OR (v_res->>'avg_purchase_price')::numeric IS DISTINCT FROM 30000 THEN
     RAISE EXCEPTION 'FAIL [R1a]: Uebernahme muss Einstand 30000 liefern, got %', v_res;
@@ -33,7 +33,7 @@ BEGIN
   RAISE NOTICE 'PASS [R1a Uebernahme -> Einstand 30000 exakt]';
 
   -- [R1b] normaler Kauf: Einstand = Cent-Betrag inkl. Gebuehr / Stueck (Broker-Konvention), kein unit_price
-  SELECT finance.fn_book_stock_buy(jsonb_build_object('depot_id', v_depot, 'settlement_id', v_cash, 'symbol','ETH',
+  SELECT finance.fn_book_stock_buy(jsonb_build_object('price_currency_confirmed',true,'depot_id', v_depot, 'settlement_id', v_cash, 'symbol','ETH',
     'shares', 3, 'price_per_share', 33.333333, 'order_fee', 1, 'transaction_date', CURRENT_DATE::text)) INTO v_res;
   IF (v_res->>'avg_purchase_price')::numeric IS DISTINCT FROM round(101.00 / 3, 8)
      OR (SELECT unit_price FROM finance.transactions WHERE id = (v_res->>'buy_tx_id')::int) IS NOT NULL THEN
@@ -42,25 +42,25 @@ BEGIN
   RAISE NOTICE 'PASS [R1b normaler Kauf -> Cent-Betrag/Stueck]';
 
   -- [R1c] Uebernahme mit Gebuehr > 2 Nachkommastellen (Krypto-Prozentgebuehr): Gebuehr auf Cent, kein CHECK-RAISE
-  SELECT finance.fn_book_stock_buy(jsonb_build_object('depot_id', v_depot, 'settlement_id', v_cash, 'symbol','ADA',
+  SELECT finance.fn_book_stock_buy(jsonb_build_object('price_currency_confirmed',true,'depot_id', v_depot, 'settlement_id', v_cash, 'symbol','ADA',
     'shares', 2, 'price_per_share', 5.002, 'order_fee', 0.004, 'transaction_date', CURRENT_DATE::text, 'existing_position', true)) INTO v_res;
   IF (v_res->>'ok')::boolean IS DISTINCT FROM true
      OR (SELECT order_fee::text || '|' || amount::text FROM finance.transactions WHERE id = (v_res->>'buy_tx_id')::int) IS DISTINCT FROM '0.00|-10.00' THEN
     RAISE EXCEPTION 'FAIL [R1c]: Gebuehr 0.004 -> 0.00, Betrag -10.00 erwartet, got %', v_res;
   END IF;
   -- Kurs < 5e-9 rundet auf 0 -> ok:false (nicht still ein 0-Kurs)
-  SELECT finance.fn_book_stock_buy(jsonb_build_object('depot_id', v_depot, 'settlement_id', v_cash, 'symbol','SHIB',
+  SELECT finance.fn_book_stock_buy(jsonb_build_object('price_currency_confirmed',true,'depot_id', v_depot, 'settlement_id', v_cash, 'symbol','SHIB',
     'shares', 1, 'price_per_share', 0.000000004, 'order_fee', 1, 'transaction_date', CURRENT_DATE::text)) INTO v_res;
   IF (v_res->>'ok')::boolean IS DISTINCT FROM false THEN RAISE EXCEPTION 'FAIL [R1c tiny]: Kurs 4e-9 -> ok:false, got %', v_res; END IF;
   RAISE NOTICE 'PASS [R1c Gebuehr auf Cent, Mini-Kurs abgelehnt]';
 
   -- [R2] Mini-Kauf, > 8 Stueck-Nachkommastellen, Verkauf mit Gebuehr >= Erloes -> ok:false ohne Write
-  SELECT finance.fn_book_stock_buy(jsonb_build_object('depot_id', v_depot, 'settlement_id', v_cash, 'symbol','DOGE',
+  SELECT finance.fn_book_stock_buy(jsonb_build_object('price_currency_confirmed',true,'depot_id', v_depot, 'settlement_id', v_cash, 'symbol','DOGE',
     'shares', 0.00000001, 'price_per_share', 100, 'transaction_date', CURRENT_DATE::text)) INTO v_res;
   IF (v_res->>'ok')::boolean IS DISTINCT FROM false OR EXISTS (SELECT 1 FROM finance.depot_holdings WHERE symbol = 'DOGE') THEN
     RAISE EXCEPTION 'FAIL [R2 mini]: ok:false ohne Write erwartet, got %', v_res;
   END IF;
-  SELECT finance.fn_book_stock_buy(jsonb_build_object('depot_id', v_depot, 'settlement_id', v_cash, 'symbol','SOL',
+  SELECT finance.fn_book_stock_buy(jsonb_build_object('price_currency_confirmed',true,'depot_id', v_depot, 'settlement_id', v_cash, 'symbol','SOL',
     'shares', 0.123456789, 'price_per_share', 100, 'transaction_date', CURRENT_DATE::text)) INTO v_res;
   IF (v_res->>'ok')::boolean IS DISTINCT FROM false THEN RAISE EXCEPTION 'FAIL [R2 stueck]: >8 Nachkommastellen -> ok:false, got %', v_res; END IF;
   SELECT id INTO v_hold FROM finance.depot_holdings WHERE account_id = v_depot AND symbol = 'ETH';

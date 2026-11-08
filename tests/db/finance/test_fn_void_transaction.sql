@@ -158,7 +158,7 @@ BEGIN
   VALUES (v_settle, 200, CURRENT_DATE, 'other', v_goal);
 
   -- ===== TEST 6: Void eines goal-verknuepften Sparplan-Kaufs -> Sparziel bleibt 200 (vorher 250) =====
-  SELECT finance.fn_book_stock_buy(jsonb_build_object('depot_id',v_depot,'settlement_id',v_settle,
+  SELECT finance.fn_book_stock_buy(jsonb_build_object('price_currency_confirmed',true,'depot_id',v_depot,'settlement_id',v_settle,
     'isin','IE00B4L5Y983','symbol','IUSQ','name','iShares MSCI World','shares',0.5,'price_per_share',100,
     'order_fee',0,'transaction_date',CURRENT_DATE::text,'recurring_payment_id',v_plan_rp)) INTO v_res;
   v_buy := (v_res->>'buy_tx_id')::int;
@@ -176,7 +176,7 @@ BEGIN
   RAISE NOTICE 'PASS void [goal-buy: Sparziel 200, Journal-Gegenzeilen fuer Depot und Verrechnungskonto]';
 
   -- ===== TEST 6b: Reserve schon freigegeben -> Void wuerde Ziel-Reserve negativ machen -> ok:false =====
-  SELECT finance.fn_book_stock_buy(jsonb_build_object('depot_id',v_depot,'settlement_id',v_settle,
+  SELECT finance.fn_book_stock_buy(jsonb_build_object('price_currency_confirmed',true,'depot_id',v_depot,'settlement_id',v_settle,
     'isin','IE00B4L5Y983','symbol','IUSQ','name','iShares MSCI World','shares',0.5,'price_per_share',100,
     'order_fee',0,'transaction_date',(CURRENT_DATE + 1)::text,'recurring_payment_id',v_plan_rp)) INTO v_res;
   v_buy := (v_res->>'buy_tx_id')::int;
@@ -276,10 +276,10 @@ BEGIN
            'schedule_unit','month','first_payment_date',CURRENT_DATE::text));
   v_rp := (v_r->>'recurring_payment_id')::int;
   PERFORM finance.fn_set_savings_goal(jsonb_build_object('goal_id', v_goal, 'link_savings_plan_name', '__vd2_plan__'));
-  v_b1 := (finance.fn_book_stock_buy(jsonb_build_object('depot_id',v_depot,'settlement_id',v_settle,'isin','IE00B4L5Y983','symbol','IUSQ',
+  v_b1 := (finance.fn_book_stock_buy(jsonb_build_object('price_currency_confirmed',true,'depot_id',v_depot,'settlement_id',v_settle,'isin','IE00B4L5Y983','symbol','IUSQ',
            'name','iShares MSCI World','shares',1,'price_per_share',100,'order_fee',0,'transaction_date',(CURRENT_DATE - 1)::text,
            'recurring_payment_id',v_rp))->>'buy_tx_id')::int;
-  v_b2 := (finance.fn_book_stock_buy(jsonb_build_object('depot_id',v_depot,'settlement_id',v_settle,'isin','IE00B4L5Y983','symbol','IUSQ',
+  v_b2 := (finance.fn_book_stock_buy(jsonb_build_object('price_currency_confirmed',true,'depot_id',v_depot,'settlement_id',v_settle,'isin','IE00B4L5Y983','symbol','IUSQ',
            'name','iShares MSCI World','shares',1,'price_per_share',100,'order_fee',0,'transaction_date',CURRENT_DATE::text,
            'recurring_payment_id',v_rp))->>'buy_tx_id')::int;
   -- (V1)
@@ -325,7 +325,7 @@ BEGIN
   -- (b) Bestandsuebernahme (Kauf + position_takeover, eine group_id): Verrechnungskonto netto 0, Position 0 Stueck
   v_settle := (finance.fn_create_account('{"name":"__vps_settle__","account_type":"cash","opening_balance":5000.50}'::jsonb)->>'account_id')::int;
   v_depot  := (finance.fn_create_account(jsonb_build_object('name','__vps_depot__','account_type','stocks_depot','settlement_id',v_settle))->>'account_id')::int;
-  v_res := finance.fn_book_stock_buy(jsonb_build_object('depot_id',v_depot,'settlement_id',v_settle,'isin','IE00B5BMR087',
+  v_res := finance.fn_book_stock_buy(jsonb_build_object('price_currency_confirmed',true,'depot_id',v_depot,'settlement_id',v_settle,'isin','IE00B5BMR087',
            'symbol','SXR8','shares',100,'price_per_share',13.31,'existing_position',true));
   v_txid := (v_res->>'buy_tx_id')::int; v_hid := (v_res->>'holding_id')::int;
   v_res := finance.fn_void_transaction(jsonb_build_object('transaction_id', v_txid));
@@ -345,9 +345,9 @@ BEGIN
   RAISE NOTICE 'PASS void [10b Uebernahme-Paar: Verrechnungskonto change 0, balance unveraendert, Position 0, Karte]';
 
   -- (c) echter Kauf: Verrechnungskonto +Kaufbetrag zurueck, Position Stueck/Einstand nach dem Void
-  v_res := finance.fn_book_stock_buy(jsonb_build_object('depot_id',v_depot,'settlement_id',v_settle,'isin','IE00B5BMR087',
+  v_res := finance.fn_book_stock_buy(jsonb_build_object('price_currency_confirmed',true,'depot_id',v_depot,'settlement_id',v_settle,'isin','IE00B5BMR087',
            'symbol','SXR8','shares',10,'price_per_share',14,'order_fee',1));
-  PERFORM finance.fn_book_stock_buy(jsonb_build_object('depot_id',v_depot,'settlement_id',v_settle,'isin','IE00B5BMR087',
+  PERFORM finance.fn_book_stock_buy(jsonb_build_object('price_currency_confirmed',true,'depot_id',v_depot,'settlement_id',v_settle,'isin','IE00B5BMR087',
            'symbol','SXR8','shares',10,'price_per_share',16,'order_fee',1));
   v_res := finance.fn_void_transaction(jsonb_build_object('transaction_id', (v_res->>'buy_tx_id')::int));
   v_acc := v_res->'accounts'->0; v_hold := v_res->'holdings'->0;

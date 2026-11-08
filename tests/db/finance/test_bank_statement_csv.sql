@@ -37,7 +37,7 @@ BEGIN
     v_tr := (v_res->>'account_id')::int;
     v_depot := (finance.fn_create_account(jsonb_build_object('name', '__t_bc_depot__', 'account_type', 'stocks_depot',
                    'currency', 'EUR', 'settlement_id', v_tr))->>'account_id')::int;
-    v_res := finance.fn_book_stock_buy(jsonb_build_object('depot_id', v_depot, 'settlement_id', v_tr, 'isin', 'IE00TESTOLD1',
+    v_res := finance.fn_book_stock_buy(jsonb_build_object('price_currency_confirmed',true,'depot_id', v_depot, 'settlement_id', v_tr, 'isin', 'IE00TESTOLD1',
                  'symbol', 'ALT', 'name', 'Alt ETF', 'shares', 10, 'price_per_share', 25, 'order_fee', 0,
                  'transaction_date', (T - 12)::text, 'existing_position', true));
     IF (v_res->>'ok')::boolean IS DISTINCT FROM true THEN RAISE EXCEPTION 'SETUP takeover: %', v_res; END IF;

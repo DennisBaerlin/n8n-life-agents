@@ -356,11 +356,11 @@ BEGIN
   v_r := finance.fn_create_savings_goal(jsonb_build_object('name','__sgc Rad__','target_amount',2000,
            'target_date','2027-11-30','first_payment_date','2026-12-01','account_id',v_giro,
            'reserve_account_id',v_p2p2,'already_saved',500));
-  IF (v_r->>'ok')::boolean IS DISTINCT FROM true OR (v_r->>'monthly_rate')::numeric IS DISTINCT FROM 136.37
+  IF (v_r->>'ok')::boolean IS DISTINCT FROM true OR (v_r->>'monthly_rate')::numeric IS DISTINCT FROM 125
      OR (SELECT target_account_id FROM finance.recurring_payments WHERE id = (v_r->>'recurring_payment_id')::int) IS DISTINCT FROM v_p2p2
-     OR (v_r->>'current_amount')::numeric IS DISTINCT FROM 500 OR (v_r->>'months')::int IS DISTINCT FROM 11
+     OR (v_r->>'current_amount')::numeric IS DISTINCT FROM 500 OR (v_r->>'months')::int IS DISTINCT FROM 12
      OR v_r->'effective'->>'reserve_currency' IS DISTINCT FROM 'EUR' THEN
-    RAISE EXCEPTION 'FAIL create [C2 teilweise]: % (Rate erwartet 1500/11 = 136.37)', v_r; END IF;
+    RAISE EXCEPTION 'FAIL create [C2 teilweise]: % (12 Termine Dez 2026 .. Nov 2027: 1500/12 = 125)', v_r; END IF;
   RAISE NOTICE 'PASS create [C2: Rate auf dem Rest 1500/11, rp in den Topf]';
 
   SELECT count(*) INTO v_cnt0 FROM finance.savings_goals;
@@ -403,7 +403,7 @@ BEGIN
   v_plan := (v_r->>'savings_plan_id')::int;
   v_r := finance.fn_create_savings_goal(jsonb_build_object('name','__sgc Rente__','target_amount',12000,
            'target_date','2036-12-31','first_payment_date','2026-12-01','reserve_account_id',v_depot,'savings_plan','__sgc_plan__'));
-  v_exp := CEIL(12000.0 / 120 * 100) / 100;   -- 2026-12 .. 2036-12 = 120 Monate
+  v_exp := CEIL(12000.0 / 121 * 100) / 100;   -- 01.12.2026 .. 01.12.2036 = 121 Termine
   IF (v_r->>'ok')::boolean IS DISTINCT FROM true OR v_r->>'recurring_payment_id' IS NOT NULL
      OR (v_r->>'required_monthly_rate')::numeric IS DISTINCT FROM v_exp OR (v_r->>'plan_monthly_amount')::numeric IS DISTINCT FROM 50
      OR (v_r->>'savings_plan_id')::int IS DISTINCT FROM v_plan

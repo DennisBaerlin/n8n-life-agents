@@ -247,6 +247,14 @@
     "final": "Kauf gebucht."
   },
   {
+    "_comment": "tc123 Fremdwaehrungs-Kauf mit abgebuchtem Betrag: Rohwert, den Stueckpreis rechnet die DB.",
+    "match": "abgebucht wurden 1254,30 Euro",
+    "calls": [
+      { "tool": "tool_book_stock_buy", "args": { "isin": "US0378331005", "symbol": "AAPL", "shares": 5, "price_per_share": 0, "cost_basis_total": "1254.30", "order_fee": "0", "depot_name": "Testbroker Depot", "transaction_date": "2026-06-16" } }
+    ],
+    "final": "Kauf gebucht."
+  },
+  {
     "_comment": "tc48 Bestandsuebernahme: bestehende Position, Verrechnungskonto bleibt unberuehrt (existing_position).",
     "match": "liegen schon 10 Anteile iShares Core MSCI EM IMI",
     "calls": [

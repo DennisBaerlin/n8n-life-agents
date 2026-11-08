@@ -339,7 +339,7 @@ BEGIN
     DECLARE v_dep INT; v_lots JSONB; BEGIN
       v_dep := (finance.fn_create_account(jsonb_build_object('name', '__t_role_hl_depot__', 'account_type', 'stocks_depot',
                   'currency', 'EUR', 'settlement_id', v_a))->>'account_id')::int;
-      PERFORM finance.fn_book_stock_buy(jsonb_build_object('depot_id', v_dep, 'settlement_id', v_a, 'isin', 'IE00ROLEHL01',
+      PERFORM finance.fn_book_stock_buy(jsonb_build_object('price_currency_confirmed',true,'depot_id', v_dep, 'settlement_id', v_a, 'isin', 'IE00ROLEHL01',
                   'symbol', 'RHL', 'shares', 4, 'price_per_share', 10, 'order_fee', 0,
                   'transaction_date', (CURRENT_DATE - 5)::text, 'existing_position', true));
       v_lots := jsonb_build_array(jsonb_build_object('date', (CURRENT_DATE - 9)::text, 'shares', 4, 'price_per_share', 11));

@@ -9,7 +9,7 @@ function Build-ClosePension {
     $trig = Build-Trigger @('pension_name')
 
     $readPen = Build-Pg 'Read Pension' @(220, 0) `
-        "=SELECT p.pension_type::text AS pension_type, p.provider, p.status::text AS pen_status, (SELECT COUNT(*)::int FROM finance.transactions t WHERE t.recurring_payment_id = p.recurring_payment_id) AS tx_count FROM finance.pension p WHERE p.name ILIKE ((`$1::jsonb)->>'pension_name') LIMIT 1;" `
+        "=SELECT p.pension_type::text AS pension_type, p.provider, p.status::text AS pen_status, (SELECT COUNT(*)::int FROM finance.transactions t WHERE t.recurring_payment_id = p.recurring_payment_id) AS tx_count, (SELECT COUNT(*)::int FROM finance.pension_statements s WHERE s.pension_id = p.id) AS statement_count FROM finance.pension p WHERE p.name ILIKE ((`$1::jsonb)->>'pension_name') LIMIT 1;" `
         ([ordered]@{ pension_name = '$(''Start'').item.json.pension_name' })
     # Unbekannter Name -> Tool-Fehler statt stillem Ende (New-RequiredRowGate, 2026-10-24).
     $found = New-RequiredRowGate -Read $readPen -KeyField 'tx_count' -IfName 'Pension found?' -ErrName 'Pension not found' `
@@ -26,14 +26,15 @@ function Build-ClosePension {
     # Strukturiertes Summary (Textkatalog): Titel + Hinweis haengen an tx_count (Soft-Close vs. Hard-DELETE).
     $S = "`$('Start').item.json"
     $P = "`$('Read Pension').item.json"
-    $titleVal = New-HitlValue -Kind key -Value "($P.tx_count > 0 ? 'finance.hitl.close_pension_close' : 'finance.hitl.close_pension_delete')"
+    $titleVal = New-HitlValue -Kind key -Value "(($P.tx_count + $P.statement_count) > 0 ? 'finance.hitl.close_pension_close' : 'finance.hitl.close_pension_delete')"
     $summary = New-HitlSummary -Pos @(1100, 0) -Title 'finance.hitl.close_pension' -LinesExpr $wg.CardLinesExpr -TitleParams @{ title = $titleVal } -Lines @(
         (New-HitlLine 'finance.label.provision'           "$S.pension_name")
         (New-HitlLine 'core.label.type'                   "$P.pension_type" -Kind enum -Enum 'finance.enum.pension_type')
         (New-HitlLine 'finance.label.provider'            "$P.provider")
         (New-HitlLine 'core.label.status'                 "$P.pen_status" -Kind enum -Enum 'finance.enum.status')
         (New-HitlLine 'finance.label.booked_contributions' "$P.tx_count")
-        (New-HitlNote -KeyExpr "($P.tx_count > 0 ? 'finance.note.close_pension_soft' : 'finance.note.close_pension_hard')")
+        (New-HitlLine 'finance.label.pension_statements' "$P.statement_count" -If "$P.statement_count > 0")
+        (New-HitlNote -KeyExpr "(($P.tx_count + $P.statement_count) > 0 ? 'finance.note.close_pension_soft' : 'finance.note.close_pension_hard')")
     )
 
     $gateId = $GateId
@@ -57,8 +58,8 @@ function Build-ClosePension {
     )
 
     $stickyFn = Build-Sticky 'fn_close_pension: Hard-DELETE vs. Soft-Close' @(1760, -260) `
-        'Smart-Close-Guard: tx_count entscheidet' `
-        'fn zählt Transaktionen (recurring_payment_id = pension.rp_id; rp optional). tx_count=0: Hard-DELETE finance.pension dann ggf. finance.recurring_payments (FK-Reihenfolge!); action=deleted. tx_count>0: Soft-Close — pension.status=paused; RP.status=paused + valid_to=heute; action=closed. RAISE bei nicht gefunden/mehrdeutig.' 240 480
+        'Smart-Close-Guard: Historie entscheidet' `
+        'fn zählt Transaktionen (recurring_payment_id = pension.rp_id; rp optional) und Standmitteilungen. Keine Historie: Hard-DELETE finance.pension dann ggf. finance.recurring_payments (FK-Reihenfolge!); action=deleted. Historie vorhanden: Soft-Close — pension.status=paused; RP.status=paused + valid_to=heute; action=closed. RAISE bei nicht gefunden/mehrdeutig.' 240 480
 
     $stickyDry = Build-Sticky 'Probelauf vor der Karte' @(440, -220) `
         'core.fn_dry_run (DB ist das Gesetz)' `

@@ -32,7 +32,7 @@ BEGIN
 
   -- Holding über Kauf anlegen (fn_book_stock_buy legt Holding an falls nicht vorhanden)
   SELECT finance.fn_book_stock_buy(
-    jsonb_build_object(
+    jsonb_build_object('price_currency_confirmed',true,
       'depot_id',        v_depot_id,
       'settlement_id',   v_settle_id,
       'isin',            'US1234567890',

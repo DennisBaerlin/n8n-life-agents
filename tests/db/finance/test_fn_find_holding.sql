@@ -12,7 +12,7 @@ DECLARE v_r jsonb; v_settle int; v_depot int; v_hold int;
 BEGIN
   v_settle := (finance.fn_create_account('{"name":"__fh_settle__","account_type":"cash","opening_balance":5000}'::jsonb)->>'account_id')::int;
   v_depot  := (finance.fn_create_account(jsonb_build_object('name','__fh Depot__','account_type','stocks_depot','settlement_id',v_settle))->>'account_id')::int;
-  v_hold := (finance.fn_book_stock_buy(jsonb_build_object('depot_id', v_depot, 'settlement_id', v_settle,
+  v_hold := (finance.fn_book_stock_buy(jsonb_build_object('price_currency_confirmed',true,'depot_id', v_depot, 'settlement_id', v_settle,
               'isin', 'IE00B4L5Y983', 'symbol', 'IWDA', 'name', 'iShares MSCI World', 'shares', 3, 'price_per_share', 100,
               'order_fee', 0, 'transaction_date', '2026-10-01'))->>'holding_id')::int;
 

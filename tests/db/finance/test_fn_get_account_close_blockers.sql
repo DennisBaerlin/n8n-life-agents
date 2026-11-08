@@ -53,7 +53,7 @@ BEGIN
   RAISE NOTICE 'PASS blockers [pausierter/kuenftiger Dauerauftrag -> blockiert]';
 
   -- TEST 4: Depot mit Bestand -> blockiert (Depot-Saldo ist immer 0, der Bestand zaehlt)
-  PERFORM finance.fn_book_stock_buy(jsonb_build_object('depot_id',v_depot,'settlement_id',v_settle,'isin','IE00B4L5Y983',
+  PERFORM finance.fn_book_stock_buy(jsonb_build_object('price_currency_confirmed',true,'depot_id',v_depot,'settlement_id',v_settle,'isin','IE00B4L5Y983',
     'symbol','IUSQ','name','W','shares',2,'price_per_share',100,'order_fee',0,'transaction_date',CURRENT_DATE::text));
   v_b := finance.fn_get_account_close_blockers(v_depot);
   IF NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v_b->'blockers') e WHERE e->>'kind' = 'depot_holdings') THEN

@@ -1,10 +1,9 @@
 -- ============================================================
 -- fn_close_pension (ATOMIC WRITE) -- Smart-Close (analog fn_close_savings_plan)
---   Zaehlt Transaktionen mit recurring_payment_id = pension.recurring_payment_id
---   (rp ist optional -> ohne rp immer 0 -> Hard-DELETE).
---   v_tx_count = 0 -> Hard-DELETE: Pension + ggf. verknuepfte RP (Karteileiche).
+--   Historie = Transaktionen mit recurring_payment_id = pension.recurring_payment_id (rp ist optional) oder Standmitteilungen.
+--   Keine Historie -> Hard-DELETE: Pension + ggf. verknuepfte RP (Karteileiche).
 --     FK-Reihenfolge: Pension zuerst (FK pension->rp), dann RP.
---   v_tx_count > 0 -> Soft-Close: pension.status='paused'; RP.status='paused' +
+--   Historie vorhanden -> Soft-Close: pension.status='paused'; RP.status='paused' +
 --     valid_to=CURRENT_DATE (Beitrag endet im Cashflow, Historie bleibt).
 --   Eingabe jsonb: pension_name.
 --   RUECKGABE: {ok:true, action:'deleted'|'closed', tx_count}. RAISE fuer echte
@@ -36,7 +35,7 @@ BEGIN
     FROM finance.transactions
     WHERE recurring_payment_id = v_pension.recurring_payment_id;
 
-    IF v_tx_count = 0 THEN
+    IF v_tx_count = 0 AND NOT EXISTS (SELECT 1 FROM finance.pension_statements s WHERE s.pension_id = v_pension.id) THEN
         -- Hard-DELETE: erst Pension (FK pension->rp), dann RP (falls vorhanden)
         DELETE FROM finance.pension WHERE id = v_pension.id;
         IF v_pension.recurring_payment_id IS NOT NULL THEN

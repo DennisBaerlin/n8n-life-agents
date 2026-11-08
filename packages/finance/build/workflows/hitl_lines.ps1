@@ -150,7 +150,7 @@ function Get-FinanceHitlLines {
                 (New-HitlLine 'finance.label.order_fee'          "($S.order_fee || 0)" -Kind money -Currency $ccy)
             )
             if (-not $Import) {
-                $lines += (New-HitlLine 'finance.label.total_cost' "(Number($S.shares) * Number($S.price_per_share) + Number($S.order_fee || 0))" -Kind money -Currency $ccy)
+                $lines += (New-HitlLine 'finance.label.total_cost' "($S.total_debited != null ? Number($S.total_debited) : Number($S.shares) * Number($S.price_per_share) + Number($S.order_fee || 0))" -Kind money -Currency $ccy)
             }
             if ($Import) {
                 # Import (Monats-Check WP-G): Anlageklasse nur zeigen, wenn der Auszug sie liefert (Owner las "Anlageklasse: —"

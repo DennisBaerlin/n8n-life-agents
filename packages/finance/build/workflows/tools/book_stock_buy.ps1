@@ -22,8 +22,8 @@ function Build-BookStockBuy {
         "=Depot '{{ `$('Start').item.json.depot_name }}' resolves to {{ `$('Resolve Depot').item.json.hit_count }} matches. Candidates: {{ JSON.stringify(`$('Resolve Depot').item.json.candidates) }}. Ask the user which exact depot."
 
     $getSettle = Build-Pg 'Get Settlement Account' @(660, 0) `
-        "=SELECT d.settlement_account_id, d.currency, s.name AS settlement_name, finance.fn_unit_price_from_total(finance.fn_parse_numeric_or_null((`$1::jsonb)->>'cost_basis_total', true), finance.fn_parse_numeric_or_null((`$1::jsonb)->>'shares', false)) AS derived_price FROM finance.accounts d LEFT JOIN finance.accounts s ON s.id = d.settlement_account_id WHERE d.id = ((`$1::jsonb)->>'depot_id')::int;" `
-        ([ordered]@{ depot_id = '$(''Resolve Depot'').item.json.id'; cost_basis_total = '$(''Start'').item.json.cost_basis_total'; shares = '$(''Start'').item.json.shares' })
+        "=SELECT d.settlement_account_id, d.currency, s.name AS settlement_name, finance.fn_unit_price_from_total(finance.fn_parse_numeric_or_null((`$1::jsonb)->>'cost_basis_total', true) - CASE WHEN NULLIF((`$1::jsonb)->>'existing_position', '')::boolean IS TRUE THEN 0 ELSE COALESCE(finance.fn_parse_numeric_or_null((`$1::jsonb)->>'order_fee', false), 0) END, finance.fn_parse_numeric_or_null((`$1::jsonb)->>'shares', false)) AS derived_price FROM finance.accounts d LEFT JOIN finance.accounts s ON s.id = d.settlement_account_id WHERE d.id = ((`$1::jsonb)->>'depot_id')::int;" `
+        ([ordered]@{ depot_id = '$(''Resolve Depot'').item.json.id'; cost_basis_total = '$(''Start'').item.json.cost_basis_total'; shares = '$(''Start'').item.json.shares'; order_fee = '$(''Start'').item.json.order_fee'; existing_position = '$(''Start'').item.json.existing_position' })
 
     # Kauf-Zeit-Symbol-Validierung (WS-2): Yahoo-Symbol fuer die ISIN ermitteln, gegen die genannte Preis-
     # Waehrung (quote_currency, Default Depot-Waehrung) + Kaufkurs gegenchecken. Deterministisch, non-blocking
@@ -33,7 +33,7 @@ function Build-BookStockBuy {
         ([ordered]@{
             isin            = "={{ `$('Start').item.json.isin }}"
             raw_symbol      = "={{ `$('Start').item.json.symbol }}"
-            price_currency  = "={{ `$('Start').item.json.quote_currency || `$('Get Settlement Account').item.json.currency }}"
+            price_currency  = "={{ (`$('Start').item.json.cost_basis_total && String(`$('Start').item.json.existing_position) !== 'true') ? `$('Get Settlement Account').item.json.currency : (`$('Start').item.json.quote_currency || `$('Get Settlement Account').item.json.currency) }}"
             price_per_share = "={{ `$('Start').item.json.price_per_share || `$('Get Settlement Account').item.json.derived_price || '' }}"
             provider_symbol = "={{ `$('Start').item.json.provider_symbol }}"
             ref_price       = "={{ '' }}"
@@ -65,6 +65,7 @@ function Build-BookStockBuy {
             # Kurs-Groessenordnung) oder eine plausible Fremdwaehrungs-Notierung ist; sonst nur ein vom Nutzer genanntes.
             provider_symbol  = '$(''Resolve Yahoo symbol'').item.json.adoptable === true ? $(''Resolve Yahoo symbol'').item.json.provider_symbol : ($(''Start'').item.json.provider_symbol || "")'
             quote_currency   = '$(''Start'').item.json.quote_currency'
+            listing_currency = '($(''Resolve Yahoo symbol'').item.json.foreign_listing === true ? $(''Resolve Yahoo symbol'').item.json.currency : null)'
             existing_position = '$(''Start'').item.json.existing_position'
             cost_basis_total  = '$(''Start'').item.json.cost_basis_total'
         })
@@ -78,7 +79,7 @@ function Build-BookStockBuy {
     $G = "`$('Get Settlement Account').item.json"
     # Zeilen aus der geteilten Felddefinition (../hitl_lines.ps1, dieselbe wie die Import-Karte).
     $summary = New-HitlSummary -Pos @(1540, 0) -Title 'finance.hitl.book_stock_buy' -LinesExpr $wg.CardLinesExpr -Lines (Get-FinanceHitlLines -Entity stock_buy -S (Get-WritePayloadExpr) -D @{
-        Ccy = "($S.quote_currency || $G.currency)"; Settlement = "$G.settlement_name"; Quote = $Y; Date = "`$('Dry run').item.json.r.effective.transaction_date" })
+        Ccy = "(($S.cost_basis_total && String($S.existing_position) !== 'true') ? $G.currency : ($S.quote_currency || $G.currency))"; Settlement = "$G.settlement_name"; Quote = $Y; Date = "`$('Dry run').item.json.r.effective.transaction_date" })
 
     $gateId = $GateId
     $reqApproval = Build-CallWorkflow 'Request Approval' @(1760, 0) $gateId 'agent.tool_human_approval' `
@@ -133,7 +134,7 @@ function Build-BookStockBuy {
 
     $stickyDry = Build-Sticky 'Probelauf vor der Karte' @(1440, -340) `
         'core.fn_dry_run (DB ist das Gesetz)' `
-        'Dry run = fn_book_stock_buy mit denselben Werten (inkl. aufgelöstem provider_symbol), immer zurückgerollt. ok:false (Depot-Typ-Mismatch, Stückzahl/Kurs nicht positiv) -> Dry run rejected: KEINE Karte, card_sent:false + reason an den Agenten. ok:true -> Karte; Hinweis-Zeilen der fn (card_lines) hängen unten an. Echte Exception -> Abbruch + errorWorkflow-Alarm. Der echte Write nach dem Tipp prüft erneut (Write ok?); die Kurs-Sub-Aufrufe danach laufen nur nach echter Buchung.' 240 460
+        'Dry run = fn_book_stock_buy mit denselben Werten (inkl. aufgelöstem provider_symbol), immer zurückgerollt. ok:false (Depot-Typ-Mismatch, Stückzahl/Kurs nicht positiv, Kurs in anderer Währung als das Verrechnungskonto: price_currency_mismatch, Agent fragt nach dem abgebuchten Betrag; Währung weder genannt noch bekannt: price_currency_missing; listing_currency = die Notierung aus der Kurs-Prüfung) -> Dry run rejected: KEINE Karte, card_sent:false + reason an den Agenten. ok:true -> Karte; Hinweis-Zeilen der fn (card_lines) hängen unten an. Echte Exception -> Abbruch + errorWorkflow-Alarm. Der echte Write nach dem Tipp prüft erneut (Write ok?); die Kurs-Sub-Aufrufe danach laufen nur nach echter Buchung.' 240 460
 
     $stickyTriggers = Build-Sticky 'DB-Automatik holding+balance + Anlageklasse-Fold' @(2200, -260) `
         'trg_finance_update_holding_shares + trg_finance_update_holding_avg_price + trg_finance_balance_update' `

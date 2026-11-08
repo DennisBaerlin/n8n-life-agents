@@ -192,15 +192,15 @@ $nToolStockBuy = New-ToolWorkflowNode 'tool_book_stock_buy' `
         ,@('symbol', 'Ticker or crypto symbol (e.g. VWCE, BTC). Crypto: always provide. Stock/ETF: leave empty if no ticker is known (the ISIN identifies the position) - never guess one.', 'string', '')
         ,@('name', 'Display name of the security. Only needed if this is the first buy (new holding).', 'string', '')
         ,@('shares', 'Number of shares or units purchased (positive)', 'number')
-        ,@('price_per_share', 'Price per share or unit, in the depot/quote currency (the same currency you give as quote_currency; e.g. EUR for a EUR position, USD for a USD-listed one). NOT converted to EUR. Only for an existing position given with cost_basis_total leave it at 0 (= not given).', 'number', 0)
-        ,@('order_fee', 'Order fee in the same currency as price_per_share, only if the user mentions one (empty = 0; the card shows it)', 'string', '')
+        ,@('price_per_share', 'Price per share or unit as the user states it, with its currency in quote_currency. Never convert or estimate. A price in another currency than the settlement account is rejected by the database: then ask how much was actually debited and call again with cost_basis_total. With cost_basis_total leave it at 0 (= not given).', 'number', 0)
+        ,@('order_fee', 'Order fee in the same currency as price_per_share (with cost_basis_total: in the currency of the settlement account), only if the user mentions one (empty = 0; the card shows it)', 'string', '')
         ,@('depot_name', 'Exact name of the depot account (must match the correct type for the asset)', 'string')
         ,@('transaction_date', ('Booking date (' + (Get-DateParamHint) + '), only if the user names a date (empty = today)'), 'string', '')
         ,@('asset_class', 'Optional allocation block key for rebalancing (lowercase letters/digits/underscore, e.g. sp500). Match a target_allocation block key from the financial plan; leave empty if unsure.', 'string', '')
         ,@('provider_symbol', 'Optional Yahoo Finance feed symbol override. Stocks/ETFs: ticker with exchange suffix (VWCE.DE for Xetra / AAPL for US / VWRL.L for London). Crypto: Yahoo TICKER-FIAT (e.g. BTC-EUR; for an ambiguous ticker give the exact one, e.g. UNI7083-USD for Uniswap). Only if the raw ticker is not found by the price feed; leave empty otherwise.', 'string', '')
-        ,@('quote_currency', 'Currency of the purchase price (ISO 4217, uppercase). Take it from the currency the user states with the price (e.g. EUR for "165 EUR", USD for "293 dollars"). It picks the right Yahoo listing for the live price and is stored as the position quote currency; defaults to the depot currency if not stated.', 'string', '')
+        ,@('quote_currency', 'Currency of the purchase price (ISO 4217, uppercase). Take it from the currency the user states with the price (e.g. EUR for "165 EUR", USD for "293 dollars"). It picks the right Yahoo listing for the live price and is stored as the position quote currency. Required for a real purchase with price_per_share: if the user named no currency, ask. Leave it empty on a real purchase given with cost_basis_total.', 'string', '')
         ,@('existing_position', 'true when the user already holds these units (taking over an existing position, settlement account NOT debited); leave empty for a real new purchase', 'string', '')
-        ,@('cost_basis_total', 'Only with existing_position: the total amount the user paid for these units, when no price per unit is known. Leave price_per_share empty then; the database derives it.', 'string', '')
+        ,@('cost_basis_total', 'Total amount in the currency of the settlement account; the database derives the price per unit. Real purchase: the amount actually debited, including the order fee, needed when the price is in another currency (leave price_per_share and quote_currency empty). With existing_position: the total paid for these units, when no price per unit is known.', 'string', '')
     ) @(480, 208)
 
 $nToolCreateAccount = New-ToolWorkflowNode 'tool_create_account' `
@@ -715,7 +715,7 @@ $nToolBookSavingsPlanExecution = New-ToolWorkflowNode 'tool_book_savings_plan_ex
         ,@('savings_plan_name', 'Exact name of the savings plan to execute', 'string')
         ,@('shares', 'Number of shares or units purchased (fractional OK, positive)', 'number')
         ,@('price_per_share', 'Execution price per share or unit in the depot currency', 'number')
-        ,@('order_fee', 'Order fee in the same currency as price_per_share, only if the user mentions one (empty = 0; the card shows it)', 'string', '')
+        ,@('order_fee', 'Order fee in the same currency as price_per_share (with cost_basis_total: in the currency of the settlement account), only if the user mentions one (empty = 0; the card shows it)', 'string', '')
     ) @(4320, 208)
 
 $nToolBookRecurringOccurrence = New-ToolWorkflowNode 'tool_book_recurring_occurrence' `
@@ -763,7 +763,7 @@ $nToolCloseInsurance = New-ToolWorkflowNode 'tool_close_insurance' `
     ) @(4800, 208)
 
 $nToolClosePension = New-ToolWorkflowNode 'tool_close_pension' `
-    'Close/remove a retirement provision (Altersvorsorge). Smart-close guard: NO contributions booked -> Hard-DELETE (provision + any linked recurring contribution removed completely); contributions exist -> Soft-Close (status=paused, the linked monthly contribution ended, history preserved). Use to remove a wrongly-created provision OR wind down a real one. To only change its value/status/details WITHOUT removing it, use tool_set_pension. Call this tool directly - it shows an approve/decline summary first. Input: pension_name.' `
+    'Close/remove a retirement provision (Altersvorsorge). Smart-close guard: NO contributions booked and no statements stored -> Hard-DELETE (provision + any linked recurring contribution removed completely); contributions or statements exist -> Soft-Close (status=paused, the linked monthly contribution ended, history preserved). Use to remove a wrongly-created provision OR wind down a real one. To only change its value/status/details WITHOUT removing it, use tool_set_pension. Call this tool directly - it shows an approve/decline summary first. Input: pension_name.' `
     @(
         ,@('pension_name', 'Exact name of the pension/provision to close/remove', 'string')
     ) @(4960, 208)

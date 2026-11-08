@@ -717,8 +717,8 @@ BEGIN
                     'drift', round(v_cf_buf * v_cf.monthly_income - v_free, 2),
                     'msg', jsonb_build_array(core.fn_ui_tpl('finance.advisor.cashflow_buffer', jsonb_build_object(
                                'free', core.fn_ui_money(v_free),
-                               'pct', core.fn_ui_num(v_free / v_cf.monthly_income * 100, 1),
-                               'target', core.fn_ui_num(v_cf_buf * 100))), v_basis_tpl, v_fx_tpl));
+                               'pct', core.fn_ui_num(trunc(v_free / v_cf.monthly_income * 100, 1), 1),   -- abgerundet: unter dem Ziel nie >= Ziel anzeigen
+                               'target', core.fn_ui_num(v_cf_buf * 100, CASE WHEN v_cf_buf * 100 = trunc(v_cf_buf * 100) THEN 0 ELSE 1 END))), v_basis_tpl, v_fx_tpl));
             END IF;
         END IF;
     END;

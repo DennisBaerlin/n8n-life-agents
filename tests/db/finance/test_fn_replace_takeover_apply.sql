@@ -26,7 +26,7 @@ BEGIN
     v_depot := (finance.fn_create_account(jsonb_build_object('name', '__t_tka_depot__', 'account_type', 'stocks_depot',
                     'currency', 'EUR', 'settlement_id', v_cash))->>'account_id')::int;
 
-    v_res := finance.fn_book_stock_buy(jsonb_build_object('depot_id', v_depot, 'settlement_id', v_cash, 'isin', 'IE00TKAAPP01',
+    v_res := finance.fn_book_stock_buy(jsonb_build_object('price_currency_confirmed',true,'depot_id', v_depot, 'settlement_id', v_cash, 'isin', 'IE00TKAAPP01',
                  'symbol', 'TKA', 'name', 'TKA ETF', 'shares', 10, 'price_per_share', 25, 'order_fee', 0,
                  'transaction_date', (T - 5)::text, 'existing_position', true));
     IF (v_res->>'ok')::boolean IS DISTINCT FROM true THEN RAISE EXCEPTION 'SETUP A: %', v_res; END IF;
@@ -64,7 +64,7 @@ BEGIN
     RAISE NOTICE 'PASS [A Ersetzen]: group_id %, 2 Paare, alte Gruppe weg, Saldo unveraendert, Audit gestempelt', v_grp;
 
     -- ---------- B: cash-Lot = echter Kauf ohne Gegenbuchung ----------
-    v_res := finance.fn_book_stock_buy(jsonb_build_object('depot_id', v_depot, 'settlement_id', v_cash, 'isin', 'IE00TKABPP01',
+    v_res := finance.fn_book_stock_buy(jsonb_build_object('price_currency_confirmed',true,'depot_id', v_depot, 'settlement_id', v_cash, 'isin', 'IE00TKABPP01',
                  'symbol', 'TKB', 'name', 'TKB ETF', 'shares', 1, 'price_per_share', 10, 'order_fee', 0,
                  'transaction_date', (T - 5)::text, 'existing_position', true));
     v_b := (v_res->>'holding_id')::int;
@@ -87,7 +87,7 @@ BEGIN
     RAISE NOTICE 'PASS [B cash-Lot]: cash_lots_count 1, Saldo -20, Stueckzahl 3';
 
     -- ---------- C: abgelehntes Lot -> echte Ausnahme ----------
-    v_res := finance.fn_book_stock_buy(jsonb_build_object('depot_id', v_depot, 'settlement_id', v_cash, 'isin', 'IE00TKACPP01',
+    v_res := finance.fn_book_stock_buy(jsonb_build_object('price_currency_confirmed',true,'depot_id', v_depot, 'settlement_id', v_cash, 'isin', 'IE00TKACPP01',
                  'symbol', 'TKC', 'name', 'TKC ETF', 'shares', 5, 'price_per_share', 10, 'order_fee', 0,
                  'transaction_date', (T - 5)::text, 'existing_position', true));
     v_c := (v_res->>'holding_id')::int;

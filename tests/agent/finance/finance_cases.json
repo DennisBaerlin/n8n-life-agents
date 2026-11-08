@@ -567,7 +567,7 @@
     },
     {
         "id":  "tc46",
-        "name":  "Aktienkauf mit Fremdwaehrungs-Kurs (book_stock_buy quote_currency aus Preis)",
+        "name":  "Aktienkauf mit Fremdwaehrungs-Kurs: DB lehnt ab, Agent fragt nach dem abgebuchten Euro-Betrag",
         "task":  "Kauf im Testbroker Depot 5 Anteile Apple (ISIN US0378331005, Symbol AAPL) zu 293 US-Dollar je Anteil, Ordergebuehr 0 Euro, Kaufdatum heute.",
         "chat_id":  "test_tc46",
         "expected_tool":  "tool_book_stock_buy",
@@ -577,8 +577,8 @@
                                    "price_per_share":  293,
                                    "quote_currency":  "USD"
                                },
-        "expected_behavior":  "Ruft tool_book_stock_buy mit symbol=AAPL, shares=5, price_per_share=293 und quote_currency=USD auf (die mit dem Kaufkurs genannte Waehrung 'US-Dollar' wird als quote_currency uebernommen). Unter Bypass declined.",
-        "notes":  "Yahoo-Robustheit WS-2: prueft, dass der Agent die Preis-Waehrung aus '293 US-Dollar' als quote_currency=USD extrahiert (steuert die Yahoo-Listing-Auswahl + wird gespeichert). Testbroker Depot ist feste Fixture (Routing, kein echter Write). Judge: actual_tool_input enthaelt quote_currency=USD."
+        "expected_behavior":  "Ruft tool_book_stock_buy mit symbol=AAPL, shares=5, price_per_share=293 und quote_currency=USD auf. Die Datenbank lehnt ab (price_currency_mismatch, keine Karte, keine Buchung). Der Agent rechnet nicht um, schaetzt keinen Kurs und fragt, wie viel Euro abgebucht wurden.",
+        "notes":  "Der Agent gibt die genannte Waehrung als quote_currency weiter; die DB lehnt ab, weil sie vom Verrechnungskonto abweicht (price_currency_mismatch, keine Karte). Testbroker Depot ist feste Fixture. Judge: actual_tool_input enthaelt quote_currency=USD, die Antwort fragt nach dem abgebuchten Euro-Betrag und rechnet nicht um."
     },
     {
         "id":  "tc47",
@@ -623,7 +623,7 @@
         "id":  "tc50",
         "name":  "Position ohne Kurs: Boersen-Kandidaten nachschlagen",
         "task":  "Mein ETF mit der ISIN IE00B5BMR087 zeigt keinen aktuellen Kurs. Welche Boerse soll ich nehmen?",
-        "setup_sql":  "SELECT pg_temp.ok('__E2E__ Kurs Cash', finance.fn_create_account(jsonb_build_object('name','__E2E__ Kurs Cash','account_type','cash','currency','EUR'))); SELECT pg_temp.ok('__E2E__ Kurs Depot', finance.fn_create_account(jsonb_build_object('name','__E2E__ Kurs Depot','account_type','stocks_depot','currency','EUR','settlement_id',(SELECT id FROM finance.accounts WHERE name='__E2E__ Kurs Cash')))); SELECT pg_temp.ok('__E2E__ Kurs Position', finance.fn_book_stock_buy(jsonb_build_object('depot_id',(SELECT id FROM finance.accounts WHERE name='__E2E__ Kurs Depot'),'settlement_id',(SELECT id FROM finance.accounts WHERE name='__E2E__ Kurs Cash'),'isin','IE00B5BMR087','name','iShares Core S&P 500','shares',2,'price_per_share',700,'existing_position',true)));",
+        "setup_sql":  "SELECT pg_temp.ok('__E2E__ Kurs Cash', finance.fn_create_account(jsonb_build_object('name','__E2E__ Kurs Cash','account_type','cash','currency','EUR'))); SELECT pg_temp.ok('__E2E__ Kurs Depot', finance.fn_create_account(jsonb_build_object('name','__E2E__ Kurs Depot','account_type','stocks_depot','currency','EUR','settlement_id',(SELECT id FROM finance.accounts WHERE name='__E2E__ Kurs Cash')))); SELECT pg_temp.ok('__E2E__ Kurs Position', finance.fn_book_stock_buy(jsonb_build_object('price_currency_confirmed',true,'depot_id',(SELECT id FROM finance.accounts WHERE name='__E2E__ Kurs Depot'),'settlement_id',(SELECT id FROM finance.accounts WHERE name='__E2E__ Kurs Cash'),'isin','IE00B5BMR087','name','iShares Core S&P 500','shares',2,'price_per_share',700,'existing_position',true)));",
         "chat_id":  "test_tc50",
         "expected_tool":  "tool_verify_price_symbol",
         "expected_tool_args":  {
@@ -1344,4 +1344,5 @@
         "notes":  "Schreib-Tool ohne vorherigen Routing-Golden. Self-contained create (neuer Name, kein Dub mit der Fixture-Immobilie Musterimmobilie). Pruefeigenschaft: Rohwerte der Immobilie ohne Eigenrechnung; die Ruecklagen-Empfehlung rechnet die DB. Mock-Tier: Szenario 'Ferienhaus Probestadt'."
     },
   {"id": "tc122", "name": "Zwei Ausgaben in einer Nachricht", "task": "Ich habe heute 18 Euro für Parkgebühren und 32 Euro für Blumen mit dem Lindenbank Giro bezahlt. Bitte beide als Ausgaben buchen.", "chat_id": "test_tc122", "expected_tool": "tool_book_transaction", "expected_tool_args": {"account_name": "Lindenbank Giro"}, "expected_behavior": "Books BOTH expenses as two separate tool_book_transaction calls: actual_tool_input shows one call with amount 18 (parking) and one with amount 32 (flowers), each with account Lindenbank Giro, direction outflow and no empty or missing fields. Under the test bypass the gate declines each card; the reply reports the bookings as not confirmed and does not claim either was saved.", "notes": "Parallele Werkzeug-Aufrufe: zwei Buchungen in EINER Nachricht (Probe fuer LLM_GATEWAY_SERIAL_TOOLS=0; mit dem Schalter an laufen sie nacheinander). Mock-Szenario parallel:true = zwei tool_use unter einem Denkblock. Bezahlter Probelauf steht aus."}
+  ,{"id": "tc123", "name": "Aktienkauf in Fremdwaehrung mit genanntem abgebuchten Euro-Betrag (cost_basis_total)", "task": "Kauf im Testbroker Depot 5 Anteile Apple (ISIN US0378331005, Symbol AAPL) zu 293 US-Dollar je Anteil, abgebucht wurden 1254,30 Euro inklusive Ordergebuehr, Kaufdatum heute.", "chat_id": "test_tc123", "expected_tool": "tool_book_stock_buy", "expected_tool_args": {"symbol": "AAPL", "shares": 5}, "expected_behavior": "Ruft tool_book_stock_buy mit shares=5 und cost_basis_total=1254.30 auf, price_per_share leer oder 0, quote_currency leer. Rechnet keinen Stueckpreis selbst. Unter Bypass declined.", "notes": "Zweiter Schritt zu tc46: Rohwert Abbuchung, den Stueckpreis rechnet die DB. Judge: actual_tool_input ohne selbst gerechneten Kurs."}
 ]

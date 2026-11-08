@@ -104,12 +104,12 @@ BEGIN
   RAISE NOTICE 'PASS [7 Sparziel: unbekannter Status -> ok:false]';
 
   -- [8] Order-Gebuehr negativ: Kauf + Verkauf -> ok:false; CHECK-Backstop (V018)
-  SELECT finance.fn_book_stock_buy(jsonb_build_object('depot_id', v_depot,'settlement_id', v_cash,'isin','IE00B4L5Y983',
+  SELECT finance.fn_book_stock_buy(jsonb_build_object('price_currency_confirmed',true,'depot_id', v_depot,'settlement_id', v_cash,'isin','IE00B4L5Y983',
     'symbol','IWDA','name','World','shares',1,'price_per_share',100,'order_fee',-5,'transaction_date',CURRENT_DATE::text)) INTO v_res;
   IF (v_res->>'ok')::boolean IS DISTINCT FROM false OR EXISTS (SELECT 1 FROM finance.depot_holdings WHERE account_id = v_depot) THEN
     RAISE EXCEPTION 'FAIL [8 buy] %', v_res;
   END IF;
-  SELECT finance.fn_book_stock_buy(jsonb_build_object('depot_id', v_depot,'settlement_id', v_cash,'isin','IE00B4L5Y983',
+  SELECT finance.fn_book_stock_buy(jsonb_build_object('price_currency_confirmed',true,'depot_id', v_depot,'settlement_id', v_cash,'isin','IE00B4L5Y983',
     'symbol','IWDA','name','World','shares',1,'price_per_share',100,'order_fee',1,'transaction_date',CURRENT_DATE::text)) INTO v_res;
   SELECT finance.fn_book_stock_sell(jsonb_build_object('settlement_id', v_cash,'holding_id',(v_res->>'holding_id')::int,
     'shares',1,'price_per_share',100,'order_fee',-1,'transaction_date',CURRENT_DATE::text)) INTO v_res;

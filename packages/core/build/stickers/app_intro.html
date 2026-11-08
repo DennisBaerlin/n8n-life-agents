@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<title>Übersicht-Animation rendern</title>
+<!-- Nur fuer scripts/dev/render_app_intro.ps1 (Headless-Chrome, -dump-dom): zeichnet die kurze Erklaer-Animation fuer die
+     Ankuendigung der Uebersicht auf ein Canvas und kodiert sie als GIF (Telegram sendAnimation). Eingabe im URL-Fragment:
+     {scheme, texts: {<sprache>: {btn, title}}}. Nur Knopf und Titel sind Text, der Rest Platzhalter-Balken ohne Betraege.
+     Kein ffmpeg auf dem Entwicklerrechner, darum der kleine GIF-Kodierer hier. Farben aus config/ui.tokens.json. Kein Netz. -->
+</head>
+<body>
+<pre id="out">pending</pre>
+<script>
+(function () {
+  var W = 360, H = 560, DELAY_CS = 8, T = 5.2;
+  var SCHEMES = {
+    dunkel: { chat: '#0E1317', bubble: '#1B2329', bar: '#1B2329', page: '#1B2329', card: '#12181D', sk: '#3A4650', skSoft: '#2A343C', accent: '#5DB7DD', line: '#2A343C', finger: '#EEF3F6', ring: '#12181D' }
+  };
+  function ease(x) { x = Math.max(0, Math.min(1, x)); return x * x * (3 - 2 * x); }
+  function span(t, a, b) { return ease((t - a) / (b - a)); }
+  function rr(c, x, y, w, h, r, col) { c.fillStyle = col; c.beginPath(); c.roundRect(x, y, w, h, r); c.fill(); }
+
+  // Knopf unten links im Chat: Saeulen statt Text, damit keine Sprache im Bild steht.
+  var FONT = '"Segoe UI","Malgun Gothic",sans-serif';
+  var BTN = { x: 16, y: H - 54, w: 56, h: 38 };
+  var TELEGRAM_BLUE = '#2AABEE', TEXT = { btn: '', title: '' };
+  function fitButton(c) { c.font = '600 15px ' + FONT; BTN.w = Math.ceil(c.measureText(TEXT.btn).width) + 24; }
+  // Reihen des Bildschirms „Vermoegen“: Zeile 1 klappt auf.
+  var ROW_H = 58, ROW_GAP = 8, ROW_TOP = 168, EXPAND = 74, TAP_ROW = 1;
+
+  function drawChat(c, s) {
+    rr(c, 0, 0, W, H, 0, s.chat);
+    rr(c, 16, H - 250, 210, 58, 14, s.bubble); rr(c, 30, H - 234, 150, 10, 5, s.sk); rr(c, 30, H - 214, 100, 10, 5, s.skSoft);
+    rr(c, 16, H - 180, 250, 76, 14, s.bubble); rr(c, 30, H - 164, 190, 10, 5, s.sk); rr(c, 30, H - 144, 210, 10, 5, s.skSoft); rr(c, 30, H - 124, 120, 10, 5, s.skSoft);
+    rr(c, 8, H - 62, W - 16, 54, 16, s.bar);
+    rr(c, BTN.x, BTN.y, BTN.w, BTN.h, 10, TELEGRAM_BLUE);
+    c.font = '600 15px ' + FONT; c.textBaseline = 'middle'; c.fillStyle = '#FFFFFF';
+    c.fillText(TEXT.btn, BTN.x + 12, BTN.y + BTN.h / 2 + 1);
+    var inputX = BTN.x + BTN.w + 12;
+    rr(c, inputX, H - 42, Math.max(40, W - inputX - 28), 12, 6, s.skSoft);
+  }
+  function drawRow(c, s, y, h, open, labelW) {
+    rr(c, 16, y, W - 32, h, 14, s.card);
+    rr(c, 32, y + 16, labelW, 11, 5, s.sk);
+    rr(c, 32, y + 34, labelW * 0.55, 8, 4, s.skSoft);
+    rr(c, W - 110, y + 20, 60, 12, 6, s.sk);
+    var cx = W - 38, cy = y + 26, d = open * Math.PI;
+    c.save(); c.translate(cx, cy); c.rotate(d); c.strokeStyle = s.sk; c.lineWidth = 3; c.lineCap = 'round';
+    c.beginPath(); c.moveTo(-5, -3); c.lineTo(0, 3); c.lineTo(5, -3); c.stroke(); c.restore();
+    if (h > ROW_H + 4) {
+      c.save(); c.beginPath(); c.rect(16, y + ROW_H - 4, W - 32, h - ROW_H + 4); c.clip();
+      c.fillStyle = s.line; c.fillRect(32, y + ROW_H, W - 64, 1);
+      [0, 1].forEach(function (i) {
+        var ry = y + ROW_H + 13 + i * 26;
+        rr(c, 40, ry, [120, 90][i], 9, 4, s.skSoft);
+        rr(c, W - 100, ry, 50, 9, 4, s.skSoft);
+      });
+      c.restore();
+    }
+  }
+  function drawApp(c, s, top, open) {
+    c.save(); c.translate(0, top);
+    rr(c, 0, 0, W, H + 30, [18, 18, 0, 0], s.page);
+    rr(c, W / 2 - 18, 8, 36, 4, 2, s.sk);
+    c.font = '700 21px ' + FONT; c.textBaseline = 'middle'; c.fillStyle = s.finger;
+    c.fillText(TEXT.title, 20, 35);
+    rr(c, 16, 56, W - 32, 96, 16, s.card);
+    c.save(); c.beginPath(); c.roundRect(16, 56, W - 32, 96, 16); c.clip(); c.fillStyle = s.accent; c.fillRect(16, 56, W - 32, 4); c.restore();
+    rr(c, 32, 76, 90, 9, 4, s.skSoft);
+    rr(c, 32, 96, 190, 24, 10, s.sk);
+    rr(c, 32, 130, 150, 8, 4, s.skSoft);
+    var y = ROW_TOP, lab = [120, 150, 100, 130];
+    for (var i = 0; i < 4; i++) {
+      var h = ROW_H + (i === TAP_ROW ? open * EXPAND : 0);
+      drawRow(c, s, y, h, i === TAP_ROW ? open : 0, lab[i]);
+      y += h + ROW_GAP;
+    }
+    c.restore();
+  }
+  function drawFinger(c, s, x, y, press, alpha) {
+    if (alpha <= 0) return;
+    c.save(); c.globalAlpha = alpha;
+    if (press > 0) { c.strokeStyle = s.accent; c.lineWidth = 4; c.beginPath(); c.arc(x, y, 18 + press * 26, 0, 7); c.stroke(); }
+    c.fillStyle = s.ring; c.beginPath(); c.arc(x, y, 18 - press * 3, 0, 7); c.fill();
+    c.fillStyle = s.finger; c.beginPath(); c.arc(x, y, 14 - press * 3, 0, 7); c.fill();
+    c.restore();
+  }
+  function frame(c, s, t) {
+    var up = span(t, 1.25, 1.7) - span(t, 4.65, 5.05);
+    var open = span(t, 2.8, 3.2);
+    drawChat(c, s);
+    if (up > 0) drawApp(c, s, 30 + (1 - up) * (H - 30), open);
+    var tapY = 30 + ROW_TOP + ROW_GAP + ROW_H + ROW_H / 2;
+    var bx = BTN.x + BTN.w / 2, by = BTN.y + BTN.h / 2, mx = W * 0.72, my = H * 0.42;
+    var x, y, press = 0, a = 1;
+    if (t < 1.25) {
+      var k = span(t, 0.15, 0.9); x = mx + (bx - mx) * k; y = my + (by - my) * k;
+      press = t > 0.95 ? Math.sin(((t - 0.95) / 0.3) * Math.PI) : 0;
+      a = span(t, 0, 0.2);
+    } else if (t < 1.8) {
+      x = bx; y = by; a = 1 - span(t, 1.3, 1.65);
+    } else if (t < 2.8) {
+      var q = span(t, 1.9, 2.5); x = W * 0.6; y = H - 60 + (tapY - (H - 60)) * q;
+      press = t > 2.5 ? Math.sin(((t - 2.5) / 0.3) * Math.PI) : 0;
+      a = span(t, 1.8, 2.05);
+    } else { x = W * 0.6; y = tapY; a = 1 - span(t, 2.85, 3.2); }
+    drawFinger(c, s, x, y, press, a);
+  }
+
+  // GIF: 32 Stufen je Kanal halten die Tokenfarben treu (16 faerbte sie sichtbar) und die gemeinsame Palette unter 256.
+  function snap(v) { return (v & 0xF8) | (v >> 5); }
+  function nearest(pal, k) {
+    var best = 0, bd = Infinity;
+    for (var i = 0; i < pal.length; i++) {
+      var dr = ((pal[i] >> 16) & 255) - ((k >> 16) & 255), dg = ((pal[i] >> 8) & 255) - ((k >> 8) & 255), db = (pal[i] & 255) - (k & 255);
+      var d = dr * dr + dg * dg + db * db;
+      if (d < bd) { bd = d; best = i; }
+    }
+    return best;
+  }
+  function encode(frames) {
+    var map = new Map(), pal = [];
+    var indexed = frames.map(function (d) {
+      var ix = new Uint8Array(W * H);
+      for (var i = 0, p = 0; i < d.length; i += 4, p++) {
+        var k = (snap(d[i]) << 16) | (snap(d[i + 1]) << 8) | snap(d[i + 2]);
+        var n = map.get(k);
+        if (n === undefined) {
+          // Schrift und Emoji bringen viele Mischfarben: Ist die Palette voll, nimmt die Kantenfarbe die naechste vorhandene.
+          if (pal.length < 256) { n = pal.length; pal.push(k); } else { n = nearest(pal, k); }
+          map.set(k, n);
+        }
+        ix[p] = n;
+      }
+      return ix;
+    });
+    var bits = 1; while ((1 << bits) < pal.length) bits++;
+    var o = [];
+    function u16(v) { o.push(v & 255, (v >> 8) & 255); }
+    function str(s) { for (var i = 0; i < s.length; i++) o.push(s.charCodeAt(i)); }
+    str('GIF89a'); u16(W); u16(H); o.push(0x80 | ((bits - 1) << 4) | (bits - 1), 0, 0);
+    for (var i = 0; i < (1 << bits); i++) { var c = pal[i] || 0; o.push((c >> 16) & 255, (c >> 8) & 255, c & 255); }
+    o.push(0x21, 0xFF, 11); str('NETSCAPE2.0'); o.push(3, 1, 0, 0, 0);
+    indexed.forEach(function (ix) {
+      o.push(0x21, 0xF9, 4, 0); u16(DELAY_CS); o.push(0, 0);
+      o.push(0x2C); u16(0); u16(0); u16(W); u16(H); o.push(0);
+      var min = Math.max(2, bits); o.push(min);
+      var clear = 1 << min, eoi = clear + 1, next = eoi + 1, size = min + 1, dict = new Map();
+      var cur = 0, nb = 0, sub = [];
+      function flush() { if (sub.length) { o.push(sub.length); for (var j = 0; j < sub.length; j++) o.push(sub[j]); sub = []; } }
+      function emit(code) {
+        cur |= code << nb; nb += size;
+        while (nb >= 8) { sub.push(cur & 255); cur >>>= 8; nb -= 8; if (sub.length === 255) flush(); }
+      }
+      emit(clear);
+      var pre = ix[0];
+      for (var p = 1; p < ix.length; p++) {
+        var k = ix[p], key = pre * 256 + k, got = dict.get(key);
+        if (got !== undefined) { pre = got; continue; }
+        emit(pre);
+        if (next === 4096) { emit(clear); next = eoi + 1; size = min + 1; dict = new Map(); }
+        else { if (next >= (1 << size)) size++; dict.set(key, next++); }
+        pre = k;
+      }
+      emit(pre); emit(eoi);
+      if (nb > 0) sub.push(cur & 255);
+      flush(); o.push(0);
+    });
+    o.push(0x3B);
+    return new Uint8Array(o);
+  }
+  function b64(u) { var s = ''; for (var i = 0; i < u.length; i += 8190) s += btoa(String.fromCharCode.apply(null, u.subarray(i, i + 8190))); return s; }
+
+  try {
+    var res = {}, input = JSON.parse(decodeURIComponent(location.hash.slice(1)));
+    Object.keys(input.texts).forEach(function (lang) {
+      TEXT = input.texts[lang];
+      var cv = document.createElement('canvas'); cv.width = W; cv.height = H;
+      var c = cv.getContext('2d', { willReadFrequently: true });
+      fitButton(c);
+      var frames = [], n = Math.round(T * 100 / DELAY_CS);
+      for (var i = 0; i < n; i++) { c.clearRect(0, 0, W, H); frame(c, SCHEMES[input.scheme], i * DELAY_CS / 100); frames.push(c.getImageData(0, 0, W, H).data); }
+      res[lang] = 'data:image/gif;base64,' + b64(encode(frames));
+    });
+    document.getElementById('out').textContent = JSON.stringify(res);
+  } catch (e) { document.getElementById('out').textContent = 'ERROR ' + e.message; }
+})();
+</script>
+</body>
+</html>

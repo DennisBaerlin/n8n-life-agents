@@ -203,6 +203,9 @@ BEGIN
     END IF;
     IF to_regprocedure('core.fn_set_onboarding_section(jsonb)') IS NOT NULL THEN
         EXECUTE format('GRANT EXECUTE ON FUNCTION core.fn_set_onboarding_section(jsonb) TO %I', v_rw);
+        IF to_regprocedure('core.fn_menu_refresh_request()') IS NOT NULL THEN
+            EXECUTE format('GRANT EXECUTE ON FUNCTION core.fn_menu_refresh_request() TO %I', v_rw);
+        END IF;
     END IF;
     -- P2b-1-Nachzug (gefunden estate WS-1, latent seit P2b-1 auch fuer finance): fn_set_onboarding_section
     -- ist SECURITY INVOKER und leitet den per_user-Scope seit P2b-1 aus der Registry core.context_scopes ab

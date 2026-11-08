@@ -6,7 +6,8 @@
 #   - ohne Bild genau ein gueltiger Upload (static, attach://, JPEG), einmal je Bot; ein selbst geloeschtes Bild bleibt weg;
 #   - Aus-Schalter BOT_PROFILE_PHOTO=0, kein Bot-Schluessel in Ausgabe oder Protokoll;
 #   - das committete Bild (JPEG, 640 x 640) und, im Substrat, die mitgelieferte Datei im installierten Baum.
-# Faehrt zusaetzlich tests/mock_telegram/bot_username_cases.sh (_sync_bot_username, Bot-Name aus getMe).
+# Faehrt zusaetzlich tests/mock_telegram/bot_username_cases.sh (_sync_bot_username, Bot-Name aus getMe) und
+# app_intro_cases.sh (_app_intro_announce, einmalige Ankuendigung der Uebersicht).
 # Belegt NICHT das Verhalten des echten Telegram (Bot API: setMyProfilePhoto, getUserProfilePhotos mit eigener Kennung).
 # Dazu prueft es, dass das Test-Substrat den Schritt abschaltet: es installiert mit einem echten Test-Bot-Schluessel.
 # Braucht kein n8n, kein Netz und keine enable_mock_*: nur einen laufenden Container mit bash, curl, jq und node.
@@ -54,7 +55,7 @@ foreach ($pair in $pairs) {
 }
 
 $passed = 0
-foreach ($cases in 'profile_photo_cases.sh', 'bot_username_cases.sh') {
+foreach ($cases in 'profile_photo_cases.sh', 'bot_username_cases.sh', 'app_intro_cases.sh') {
     $r = Invoke-Native docker @('exec', $Container, 'bash', "$root/mock_telegram/$cases", $root, "$Port")
     $lines = @($r.Output)
     foreach ($l in $lines) {

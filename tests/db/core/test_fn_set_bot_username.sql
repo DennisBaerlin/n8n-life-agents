@@ -52,3 +52,17 @@ BEGIN
 END $$;
 
 ROLLBACK;
+
+-- Die Mini-App bekommt den Bot-Namen nur, wenn er echt ist (nicht der Platzhalter)
+BEGIN;
+DO $$
+DECLARE v jsonb;
+BEGIN
+  UPDATE core.config SET value = 'your_bot', default_value = 'your_bot' WHERE category = 'telegram' AND key = 'bot_username';
+  IF core.fn_app_bot_username() IS NOT NULL THEN RAISE EXCEPTION 'FAIL: Platzhalter gilt als Name'; END IF;
+  UPDATE core.config SET value = 'muster_haushalt_bot' WHERE category = 'telegram' AND key = 'bot_username';
+  IF core.fn_app_bot_username() IS DISTINCT FROM 'muster_haushalt_bot' THEN RAISE EXCEPTION 'FAIL: Name fehlt'; END IF;
+  UPDATE core.config SET value = 'kaputt name' WHERE category = 'telegram' AND key = 'bot_username';
+  IF core.fn_app_bot_username() IS NOT NULL THEN RAISE EXCEPTION 'FAIL: ungueltiger Name'; END IF;
+END $$;
+ROLLBACK;

@@ -245,7 +245,7 @@ BEGIN
   IF EXISTS (SELECT 1 FROM jsonb_array_elements(v->'sections') s CROSS JOIN LATERAL jsonb_array_elements(s->'items') i
               WHERE s->'title' IN (core.fn_ui_tpl('finance.app.overview.section_liquid'), core.fn_ui_tpl('finance.app.overview.section_bound'))
                 AND (jsonb_array_length(i->'details') = 0
-                     OR abs((SELECT sum((d->'value'->>'value')::numeric) FROM jsonb_array_elements(i->'details') d)
+                     OR abs((SELECT sum((d->'value'->>'value')::numeric) FROM jsonb_array_elements(i->'details') d WHERE d->'value'->>'kind' = 'money')
                             - (i->'value'->>'value')::numeric) > 0.01 * jsonb_array_length(i->'details')))
      OR NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v->'sections') s CROSS JOIN LATERAL jsonb_array_elements(s->'items') i
                      CROSS JOIN LATERAL jsonb_array_elements(i->'details') d
@@ -257,7 +257,8 @@ BEGIN
                  CROSS JOIN LATERAL jsonb_array_elements(i->'details') WITH ORDINALITY d(e, o)
                  JOIN LATERAL jsonb_array_elements(i->'details') WITH ORDINALITY d2(e, o) ON d2.o = d.o + 1
                  WHERE s->'title' = core.fn_ui_tpl('finance.app.overview.section_liquid')
-                   AND (d.e->'value'->>'value')::numeric < (d2.e->'value'->>'value')::numeric
+                   AND d.e->'value'->>'kind' = 'money' AND d2.e->'value'->>'kind' = 'money'
+                   AND d.e->'value'->'value' < d2.e->'value'->'value'
                    AND d2.e->'label'->>'kind' IS NULL) THEN
     RAISE EXCEPTION 'FAIL [8c] Fixture: Anlageart aufklappbar in ihre Konten (Summe = Zeile, keine Kinder, groesste zuerst), got %', v; END IF;
   -- die View-Ebenen sind EINE Rechnung: networth_by_asset_class = Summe networth_items

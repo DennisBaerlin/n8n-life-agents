@@ -142,7 +142,8 @@ BEGIN
                 jsonb_build_object('label', core.fn_ui_tpl('finance.app.accounts.i_overcommitted',
                                        jsonb_build_object('amount', core.fn_ui_money(v_res - v_acc.balance, v_cur))),
                                    'value', NULL, 'kind', 'info'),
-                jsonb_build_object('label', core.fn_ui_tpl('finance.app.accounts.todo_overcommitted'), 'value', NULL, 'kind', 'todo'));
+                jsonb_build_object('label', core.fn_ui_tpl('finance.app.accounts.todo_overcommitted'), 'value', NULL, 'kind', 'todo',
+                                   'ask', core.fn_ui_tpl('finance.app.accounts.ask_overcommitted', jsonb_build_object('account', v_acc.name))));
         END IF;
         -- jede Karte gleich gebaut: „Zurueckgelegt fuer Ziele“ steht immer, auch mit 0
         v_det := v_det || jsonb_build_object('label', core.fn_ui_tpl('finance.app.accounts.d_reserved'),
@@ -182,13 +183,13 @@ BEGIN
                     'label', core.fn_ui_tpl('finance.app.accounts.low'), 'sub', NULL,
                     'value', core.fn_ui_tpl('finance.app.accounts.low_unknown'),
                     'gap', false, 'pill', v_pill, 'progress', NULL, 'target', NULL,
-                    'details', finance.fn_app_low_state_explain(v_ls)
+                    'details', finance.fn_app_low_state_explain(v_ls, NULL, false, v_acc.name)
                                || jsonb_build_object('label', core.fn_ui_tpl('finance.app.accounts.d_statement_last'),
                                                      'value', core.fn_ui_date((v_ls->>'statement_date')::date)));
             ELSIF v_ls->>'source' = 'outlook' THEN
                 v_o := finance.fn_account_outlook(v_acc.id);
                 v_b := v_o->'bridge';
-                v_det := finance.fn_app_low_state_explain(v_ls);
+                v_det := finance.fn_app_low_state_explain(v_ls, NULL, false, v_acc.name);
                 IF jsonb_typeof(v_b) = 'object' THEN
                     -- Stand = der bestaetigte (Kontoauszug); eine spaeter erfasste, rueckdatierte Buchung zaehlt mit zu
                     -- „Gebucht seit“ — die Posten summieren weiter exakt auf den tiefsten Stand
@@ -267,7 +268,7 @@ BEGIN
                                   THEN core.fn_ui_tpl('finance.app.accounts.until_beyond', jsonb_build_object(
                                            'month', core.fn_ui_month((v_ls->>'horizon_end')::date))) END,
                     'gap', (v_ls->>'gap')::boolean, 'pill', v_pill, 'progress', NULL, 'target', NULL,
-                    'details', finance.fn_app_low_state_explain(v_ls, NULL, true));
+                    'details', finance.fn_app_low_state_explain(v_ls, NULL, true, v_acc.name));
             END IF;
         ELSIF v_ls->>'source' = 'none' AND (v_acc.account_type = 'cash' OR v_out) THEN
             -- ohne Vorschau (kein Auszug, Alltag unbekannt): die Zeile bleibt, „—“, aufgeklappt was fehlt und wer es behebt

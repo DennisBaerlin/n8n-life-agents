@@ -4,7 +4,7 @@
 --   {person_id, params} NACH der initData-Pruefung. Liefert Struktur + typisierte Werte (core.fn_ui_tpl/_money/_date),
 --   nie Text; die Seite rendert per Get-UiRenderLibJs und rechnet nichts (Summen, Anteile, gap kommen von hier).
 --   Frage der Seite (UX-Gesamtkonzept 2026-10-31, 5.1): Was haben wir, was schulden wir? (Die Hinweise oben setzt der
---   Dispatcher.) Quelle: networth_by_asset_class (je bucket summiert, has_fx_gap). Kontostaende stehen nicht als
+--   Dispatcher.) Quelle: networth_items (je Anlageart einmal gerundet, Wechselkurs-Luecke); networth_by_asset_class nur fuer die probe. Kontostaende stehen nicht als
 --   Zeilen hier (Heimat: Tab Konten, P2); im Aufklappen einer Anlageart stehen ihre Konten, Depots und Objekte mit Wert
 --   (finance.networth_items, dieselbe Rechnung, die Teile ergeben die Zeile; groesste zuerst, ohne leere Konten, mehr
 --   als acht -> sieben + „weitere n“; Owner-Abnahme 2026-10-31: im Aufklappen ist die Doppelung gewollt).
@@ -72,13 +72,14 @@ BEGIN
     -- Anlagearten ohne Kinder: je bucket (feste Reihenfolge). Schulden = Kredite (immer, auch bei 0 oder ohne Kurs) und
     -- jede negative Anlageart (ueberzogenes Konto); Besitz = der Rest.
     WITH b AS (
-        SELECT n.bucket, sum(n.value_eur) AS val, bool_or(n.has_fx_gap) AS gap,
-               (n.bucket = 'loan' OR COALESCE(sum(n.value_eur), 0) < 0) AS is_debt,
-               n.bucket IN ('cash', 'p2p', 'depot') AS liquid
-          FROM finance.networth_by_asset_class n
-          LEFT JOIN core.fn_household_persons() hp ON hp.person_id = n.owner_person_id
-         WHERE (v_hh AND hp.role IS DISTINCT FROM 'child') OR (NOT v_hh AND n.owner_person_id = v_pid)
-         GROUP BY n.bucket
+        -- je Anlageart einmal gerundet, aus den ungerundeten Teilen (dieselben wie im Aufklappen); gerundete Klassen zu addieren ergaebe Cent-Abstaende
+        SELECT i.bucket, round(sum(i.value_eur), 2) AS val, COALESCE(bool_or(i.value_native <> 0 AND i.value_eur IS NULL), false) AS gap,
+               (i.bucket = 'loan' OR COALESCE(round(sum(i.value_eur), 2), 0) < 0) AS is_debt,
+               i.bucket IN ('cash', 'p2p', 'depot') AS liquid
+          FROM finance.networth_items i
+          LEFT JOIN core.fn_household_persons() hp ON hp.person_id = i.owner_person_id
+         WHERE (v_hh AND hp.role IS DISTINCT FROM 'child') OR (NOT v_hh AND i.owner_person_id = v_pid)
+         GROUP BY i.bucket
     ), g AS (
         SELECT COALESCE(sum(val) FILTER (WHERE NOT is_debt), 0) AS assets,
                COALESCE(sum(val) FILTER (WHERE NOT is_debt AND liquid), 0) AS liquid,
@@ -100,13 +101,16 @@ BEGIN
         -- ein leeres Konto (Verrechnungskonto 0) sagt nichts; ohne Kurs bleibt es (gap)
         HAVING COALESCE(sum(i.value_eur), 0) <> 0 OR bool_or(i.value_native <> 0 AND i.value_eur IS NULL)
     ), d1 AS (
-        SELECT d0.*, row_number() OVER (PARTITION BY d0.bucket ORDER BY d0.val DESC NULLS LAST, d0.item_name, d0.item_id) AS rn,
+        -- ein Konto ohne Wechselkurs steht vorn: es darf nicht in „weitere n“ verschwinden
+        SELECT d0.*, row_number() OVER (PARTITION BY d0.bucket ORDER BY (d0.val IS NULL) DESC, d0.val DESC NULLS LAST, d0.item_name, d0.item_id) AS rn,
                count(*) OVER (PARTITION BY d0.bucket) AS cnt
           FROM d0
     ), dd AS (
         -- groesste zuerst; mehr als acht -> sieben + „weitere n“ mit dem Rest (L5)
         SELECT d1.bucket,
-               COALESCE(jsonb_agg(jsonb_build_object('label', d1.item_name, 'value', core.fn_ui_money(round(d1.val, 2), 'EUR'))
+               COALESCE(jsonb_agg(jsonb_build_object('label', d1.item_name,
+                                  'value', CASE WHEN d1.val IS NULL THEN core.fn_ui_tpl('finance.app.overview.d_fx_missing')
+                                                ELSE core.fn_ui_money(round(d1.val, 2), 'EUR') END)
                                   ORDER BY d1.rn) FILTER (WHERE d1.cnt <= 8 OR d1.rn <= 7), '[]'::jsonb)
                || CASE WHEN max(d1.cnt) > 8 THEN jsonb_build_array(jsonb_build_object(
                       'label', core.fn_ui_tpl('finance.app.overview.d_more', jsonb_build_object('n', core.fn_ui_num(max(d1.cnt) - 7))),
@@ -164,10 +168,11 @@ BEGIN
     -- Kinder (nur Haushalts-Betrachter): je Kind Netto + aufklappbar je Anlageart
     IF v_hh THEN
         WITH k AS (
-            SELECT hp.person_id, hp.full_name, n.bucket, sum(n.value_eur) AS val, bool_or(n.has_fx_gap) AS gap
-              FROM finance.networth_by_asset_class n
-              JOIN core.fn_household_persons() hp ON hp.person_id = n.owner_person_id AND hp.role = 'child'
-             GROUP BY hp.person_id, hp.full_name, n.bucket
+            SELECT hp.person_id, hp.full_name, i.bucket, round(sum(i.value_eur), 2) AS val,
+                   COALESCE(bool_or(i.value_native <> 0 AND i.value_eur IS NULL), false) AS gap
+              FROM finance.networth_items i
+              JOIN core.fn_household_persons() hp ON hp.person_id = i.owner_person_id AND hp.role = 'child'
+             GROUP BY hp.person_id, hp.full_name, i.bucket
         ), kp AS (
             -- je Person (nicht je Name: zwei Kinder mit gleichem Namen bleiben zwei Zeilen)
             SELECT k.person_id, k.full_name, sum(k.val) AS val, bool_or(k.gap) AS gap,

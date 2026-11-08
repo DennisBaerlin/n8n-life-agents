@@ -33,6 +33,10 @@ BEGIN
         v_pkgs := v_pkgs || jsonb_build_object(v_pkg, v_n);
     END LOOP;
 
+    -- Der Knopf „Uebersicht“ verschwindet mit: „einmal bereit“ endet nur hier
+    PERFORM core.fn_notify_resolve('app_button', 'ready');
+    PERFORM core.fn_menu_refresh_request();
+
     RETURN jsonb_build_object('ok', true, 'core', v_core, 'packages', v_pkgs);
 END;
 $$;

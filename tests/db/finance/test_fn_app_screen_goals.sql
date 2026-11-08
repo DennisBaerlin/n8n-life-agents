@@ -376,7 +376,7 @@ BEGIN
   IF (SELECT count(*) FROM jsonb_array_elements(v->'sections'->1->'items') i
        WHERE i->>'label' IN ('__apgl_dep_a__', '__apgl_dep_b__', 'Alpha Roller')
          AND i->'pill' = jsonb_build_object('state', 'alert', 'icon', 'alert', 'text', core.fn_ui_tpl(
-                           'finance.app.goals.cover_short', jsonb_build_object('depot', '__apgl_hh_depot__', 'gap', core.fn_ui_money(70, 'EUR'))))
+                           'finance.app.goals.cover_short'))
          AND i->'progress'->>'state' = 'alert') <> 3
      OR v->'sections'->1->'items'->0->'pill'->>'state' <> 'alert' THEN
     RAISE EXCEPTION 'FAIL [1db] Einbruch ab Schwelle: alert „<Depot>: Kurswert 70 unter dem Zurueckgelegten" an allen drei Zielen, zuerst, got %', v->'sections'->1; END IF;
@@ -585,8 +585,10 @@ BEGIN
                        'rate', core.fn_ui_money(200, 'EUR'), 'plans', 'ETF World Lea, Einzelaktie Lea'))) THEN
     RAISE EXCEPTION 'FAIL [6c] Depot Lea: Delle ohne Pille, „Rate: 200 im Monat aus Sparplaenen ETF World Lea, Einzelaktie Lea", got %', v_it; END IF;
   SELECT i INTO v_it FROM jsonb_array_elements(v->'sections'->1->'items') i WHERE i->>'label' = 'Depot Tom';
-  IF v_it->'pill'->>'state' <> 'alert' OR v_it->'pill'->'text'->>'value' <> 'finance.app.goals.cover_short'
-     OR v_it->'pill'->'text'->'params'->>'depot' <> 'Depot Tom'
+  -- Ziel erst in acht Jahren: Kursverlust ist gelb, kein Betrag in der Pille, Depot und Betrag in der Erklaerung
+  IF v_it->'pill'->>'state' <> 'warn' OR v_it->'progress'->>'state' <> 'warn'
+     OR v_it->'pill'->'text' <> core.fn_ui_tpl('finance.app.goals.cover_short')
+     OR v_it->'details'->0->'label'->'params'->>'depot' <> 'Depot Tom'
      OR (SELECT i->>'label' FROM jsonb_array_elements(v->'sections'->1->'items') WITH ORDINALITY t(i, o)
           WHERE (i->>'marked')::boolean ORDER BY o LIMIT 1) <> 'Depot Tom' THEN
     RAISE EXCEPTION 'FAIL [6d] Depot Tom: Einbruch ab Schwelle alert mit Depot-Name, zuerst, got %', v->'sections'->1; END IF;

@@ -259,11 +259,10 @@ BEGIN
            AND (v_hh OR sg.beneficiary_person_id = v_pid)
     ), gp AS (
         SELECT g.*,
+               -- rot nur, wenn das Ziel so nah ist, dass sich der Kurs kaum noch erholen kann
                CASE WHEN g.dep_short IS NOT NULL
-                    THEN jsonb_build_object('state', 'alert', 'icon', 'alert',
-                             'text', core.fn_ui_tpl('finance.app.goals.cover_short', jsonb_build_object(
-                                         'depot', g.dep_short ->> 'name',
-                                         'gap', core.fn_ui_money((g.dep_short ->> 'gap')::numeric, 'EUR'))))
+                    THEN jsonb_build_object('state', CASE WHEN finance.fn_goal_in_derisk_window(g.id) THEN 'alert' ELSE 'warn' END, 'icon', 'alert',
+                             'text', core.fn_ui_tpl('finance.app.goals.cover_short'))
                     WHEN g.pace = 'behind' AND g.behind_amount > 0
                     THEN jsonb_build_object('state', 'warn', 'icon', 'alert',
                              'text', core.fn_ui_tpl('finance.app.goals.pace.behind_gap'))

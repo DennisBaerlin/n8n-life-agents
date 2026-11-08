@@ -293,7 +293,7 @@
   "finance.app.goals.banner_behind": "{name} is behind plan",
   "finance.app.goals.goal_sub": "{target} by {date}",
   "finance.app.goals.goal_sub_reached": "{target} reached · planned for {date}",
-  "finance.app.goals.cover_short": "{gap} missing",
+  "finance.app.goals.cover_short": "below paid-in",
   "finance.app.goals.emergency_sub_reached": "Target {target} reached",
   "finance.app.goals.d_rate_plan": "{rate} per month from savings plan {plans}",
   "finance.app.goals.d_rate_plans": "{rate} per month from savings plans {plans}",

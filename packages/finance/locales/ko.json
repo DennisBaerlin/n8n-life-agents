@@ -293,7 +293,7 @@
   "finance.app.goals.banner_behind": "{name}: 계획보다 늦음",
   "finance.app.goals.goal_sub": "{date}까지 {target}",
   "finance.app.goals.goal_sub_reached": "{target} 달성 · {date} 예정",
-  "finance.app.goals.cover_short": "{gap} 부족",
+  "finance.app.goals.cover_short": "납입액 미만",
   "finance.app.goals.emergency_sub_reached": "목표 {target} 달성",
   "finance.app.goals.d_rate_plan": "적립식 {plans}에서 월 {rate}",
   "finance.app.goals.d_rate_plans": "적립식 {plans}에서 월 {rate}",

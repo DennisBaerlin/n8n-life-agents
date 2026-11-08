@@ -930,7 +930,7 @@ $(_rt page.fb_guide_help)
   6. In der Freigabe steht jetzt die „MyFRITZ!-Adresse“ des Rechners — nach ihr fragt die nächste Frage.
 
 $(_rt page.fb_guide_note)
-Mit Bildern: Doku-Seite „FritzBox einrichten“ (https://dennisbaerlin.github.io/n8n-life-agents/docs/fritzbox/)
+Mit Bildern: Doku-Seite „FritzBox einrichten“ (https://dennisbaerlin.github.io/n8n-life-agents/docs/fritzbox.html)
 EOF
   a="$(printf '%s\t%s\n' "$(_rt page.fb_guide_next)" created "Zurück zur Auswahl" back | ui_choose "$(_rt page.fb_guide_title)" 0)"
   [ "$a" = created ] && _REACH_PICK=fritzbox

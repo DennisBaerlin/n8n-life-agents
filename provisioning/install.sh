@@ -9,7 +9,7 @@
 # Download kein STALE install.sh aus dem CWD ausfuehrt; nie `| bash` — ein abgebrochener Download liefe halb):
 #   curl -fsSL https://github.com/<slug>/releases/latest/download/install.sh -o install.sh \
 #     && bash install.sh
-#   bash install.sh --version v0.1.0   # eine bestimmte Version pinnen
+#   bash install.sh --version vX.Y.Z   # eine bestimmte Version pinnen
 #
 # Default (ohne --version) = neuestes STABLES Release (GitHubs /releases/latest); `--version <tag>`
 # pinnt ein Tag (oder 'latest'). --profile defaultet auf `release` (Endnutzer-Fall), wenn der Nutzer
@@ -67,7 +67,7 @@ Usage: install.sh [--version <tag>] [--profile dev|release] [--domain <fqdn>] [w
   Bootstrap-Launcher (Erstinstallation). Laedt das Release-Asset SHA256-verifiziert, entpackt
   es und startet provision.sh. Updates einer installierten Instanz: 'lifeagents update'.
 
-  --version <tag>      dieses Tag laden (z.B. v0.1.0) statt des neuesten stabilen Release.
+  --version <tag>      dieses Tag laden (z.B. vX.Y.Z) statt des neuesten stabilen Release.
                        <tag> darf 'latest' sein (= Default ohne Flag).
   --profile dev|release   an provision.sh durchgereicht (Netzwerk/Ingress). Default: release.
   --domain <fqdn>      an provision.sh durchgereicht (n8n WEBHOOK_URL + ausgegebenes Reverse-Proxy-Caddyfile).

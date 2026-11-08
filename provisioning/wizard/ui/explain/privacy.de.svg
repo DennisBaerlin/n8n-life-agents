@@ -1,0 +1,100 @@
+<!-- Erzeugt von scripts/build_ui_tokens.ps1 aus config/ui.art.privacy.svg, nicht von Hand ändern. -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 392" width="720" height="392" role="img" lang="de">
+  <style>
+:root { --ink: #17212B; --gray: #55636E; --hairline: #E2E7EC; --accent: #12638A; --accent-hover: #0D4D6C; --accent-mid: #A8D3E6; --accent-pale: #DCF0F8; --accent-wash: #F1F8FB; --code-wash: #F1F8FB; --ok: #1E9E6A; --warn: #CC8600; --warn-wash: #FDF3D8; --alert: #D23F44; --alert-wash: #FDE8E8; --bg: #FFFFFF; --bg-soft: #F1F8FB; --font: -apple-system, "Segoe UI", system-ui, "Helvetica Neue", Arial, sans-serif; }
+@media (prefers-color-scheme: dark) { :root { --ink: #EEF3F6; --gray: #A2B1BC; --hairline: #2A343C; --accent: #5DB7DD; --accent-hover: #A8D3E6; --accent-mid: #2A5A70; --accent-pale: #183A4A; --accent-wash: #1B2329; --code-wash: #2A343C; --ok: #3CC08C; --warn: #E0A030; --warn-wash: #3A2E10; --alert: #E5605F; --alert-wash: #3D1F20; --bg: #12181D; --bg-soft: #1B2329; } }
+@keyframes in1 { 0% { opacity: 0 } 1.67%, 97% { opacity: 1 } 100% { opacity: 0 } }
+@keyframes on1 { 0% { opacity: 0 } 1.67%, 23.33% { opacity: 1 } 25%, 100% { opacity: 0 } }
+.on1 { opacity: 0 }
+@media (prefers-reduced-motion: no-preference) { .in1 { animation: in1 24s linear infinite } .on1 { animation: on1 24s linear infinite } }
+@keyframes in2 { 0%, 25% { opacity: 0 } 26.67%, 97% { opacity: 1 } 100% { opacity: 0 } }
+@keyframes on2 { 0%, 25% { opacity: 0 } 26.67%, 48.33% { opacity: 1 } 50%, 100% { opacity: 0 } }
+.on2 { opacity: 0 }
+@media (prefers-reduced-motion: no-preference) { .in2 { animation: in2 24s linear infinite } .on2 { animation: on2 24s linear infinite } }
+@keyframes in3 { 0%, 50% { opacity: 0 } 51.67%, 97% { opacity: 1 } 100% { opacity: 0 } }
+@keyframes on3 { 0%, 50% { opacity: 0 } 51.67%, 73.33% { opacity: 1 } 75%, 100% { opacity: 0 } }
+.on3 { opacity: 0 }
+@media (prefers-reduced-motion: no-preference) { .in3 { animation: in3 24s linear infinite } .on3 { animation: on3 24s linear infinite } }
+@keyframes in4 { 0%, 75% { opacity: 0 } 76.67%, 97% { opacity: 1 } 100% { opacity: 0 } }
+@keyframes on4 { 0%, 75% { opacity: 0 } 76.67%, 97% { opacity: 1 } 100% { opacity: 0 } }
+.on4 { opacity: 1 }
+@media (prefers-reduced-motion: no-preference) { .in4 { animation: in4 24s linear infinite } .on4 { animation: on4 24s linear infinite } }
+text { font-family: var(--font); fill: var(--ink); }
+    .cap { font-size: 22px; text-anchor: middle; }
+    .nar { display: none; font-size: 28px; }
+    .label { font-size: 16px; font-weight: 600; text-anchor: middle; }
+    .name { font-size: 28px; font-weight: 600; text-anchor: middle; }
+    .ilab { font-size: 15px; font-weight: 600; text-anchor: middle; }
+    .msg { font-size: 15px; text-anchor: middle; }
+    .msgn { font-size: 28px; text-anchor: middle; }
+    .bn { display: none; }
+    .mine { fill: var(--accent-pale); }
+    .ic { fill: none; stroke: var(--ink); stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
+    .off { stroke: var(--gray); stroke-width: 4; stroke-linecap: round; }
+    .g3, .g4 { opacity: 0.45; }
+    /* Schmal angezeigt (Handy-Breite): größere Fassung, sonst wäre die Schrift unter 12 px. */
+    @media (max-width: 520px) { .wide, .bw, .ilab { display: none; } .nar { display: inline; } .bn { display: inline; } .label { font-size: 32px; } .name { font-size: 36px; } }
+    @keyframes fly { 0%, 28% { transform: translateX(0); } 44%, 100% { transform: translateX(120px); } }
+    @keyframes g3 { 0%, 58% { opacity: 1; } 68%, 100% { opacity: 0.45; } }
+    @keyframes g4 { 0%, 83% { opacity: 1; } 93%, 100% { opacity: 0.45; } }
+    @media (prefers-reduced-motion: no-preference) {
+      .fly { animation: fly 24s ease-in-out infinite; }
+      .g3 { animation: g3 24s linear infinite; }
+      .g4 { animation: g4 24s linear infinite; }
+    }
+</style>
+  <g transform="translate(-277 -10)">
+    <path d="M338 122 L425 52 L512 122" fill="none" stroke="var(--ink)" stroke-width="3" stroke-linejoin="round" stroke-linecap="round" />
+    <rect x="352" y="116" width="146" height="118" fill="var(--bg-soft)" stroke="var(--ink)" stroke-width="3" />
+    <rect x="385" y="146" width="80" height="54" rx="5" fill="var(--bg)" stroke="var(--ink)" stroke-width="2.5" />
+    <g transform="translate(412 160)"><path xmlns="http://www.w3.org/2000/svg" d="M13 2.5 L22 10 V19.5 H11.5 L7 23.5 V19.5 H4 V10 Z" fill="var(--mark, var(--accent))" stroke="var(--mark, var(--accent))" stroke-width="2" stroke-linejoin="round" /><path xmlns="http://www.w3.org/2000/svg" d="M8.6 12.8 L11.7 15.8 L17.4 10" fill="none" stroke="var(--mark-check, var(--bg))" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" /></g>
+    <path d="M425 200 V212 M405 214 H445" stroke="var(--ink)" stroke-width="2.5" stroke-linecap="round" />
+    <g class="on1">
+      <rect x="326" y="36" width="198" height="212" rx="18" fill="none" stroke="var(--ok)" stroke-width="2.5" />
+      <circle cx="522" cy="40" r="16" fill="var(--bg)" stroke="var(--ok)" stroke-width="2.5" />
+      <rect x="514" y="38" width="16" height="12" rx="2" fill="var(--ok)" />
+      <path d="M517 38 V34 a5 5 0 0 1 10 0 V38" fill="none" stroke="var(--ok)" stroke-width="2.5" />
+    </g>
+  </g>
+  <text class="label" x="148" y="272">Bei dir zu Hause</text>
+  <path d="M250 130 H462" stroke="var(--gray)" stroke-width="2.5" stroke-dasharray="6 6" fill="none" />
+  <path d="M492 170 a40.8 40.8 0 0 1 4.8 -81.6 a57.6 57.6 0 0 1 105.6 -19.2 a48 48 0 0 1 38.4 100.8 Z" fill="var(--bg-soft)" stroke="var(--ink)" stroke-width="3" stroke-linejoin="round" />
+  <text class="name" x="562" y="134">Claude</text>
+  <g class="in3">
+    <g class="g3" transform="translate(505 222)">
+      <path class="ic" d="M-30 -8 L0 -22 L30 -8 L0 6 Z" />
+      <path class="ic" d="M-16 0 V14 q16 10 32 0 V0" />
+      <path class="ic" d="M30 -8 V10" />
+    </g>
+    <path class="off" d="M471 252 L539 192" />
+    <text class="ilab" x="505" y="278">Kein Training</text>
+  </g>
+  <g class="in4">
+    <g class="g4" transform="translate(630 222)">
+      <rect class="ic" x="-30" y="-24" width="60" height="48" rx="6" />
+      <circle class="ic" cx="0" cy="-3" r="13" />
+      <circle cx="0" cy="-3" r="3" fill="var(--ink)" />
+      <path class="ic" d="M-20 16 H-10" />
+    </g>
+    <path class="off" d="M596 252 L664 192" />
+    <text class="ilab" x="630" y="278">max. 30 Tage</text>
+  </g>
+  <g class="on2"><g class="fly">
+    <g class="bw">
+      <rect class="mine" x="190" y="110" width="160" height="40" rx="12" />
+      <text class="msg" x="270" y="135">Deine Nachricht</text>
+    </g>
+    <g class="bn">
+      <rect class="mine" x="130" y="100" width="270" height="60" rx="14" />
+      <text class="msgn" x="265" y="140">Deine Nachricht</text>
+    </g>
+  </g></g>
+  <text class="cap wide on1" x="360" y="350">Deine Daten bleiben bei dir zu Hause gespeichert.</text>
+  <text class="cap wide on2" x="360" y="350"><tspan x="360" dy="-14">Schreibst du eine Frage, geht sie zu Claude, zusammen mit</tspan><tspan x="360" dy="28">dem, was für die Antwort gebraucht wird.</tspan></text>
+  <text class="cap wide on3" x="360" y="350"><tspan x="360" dy="-14">Vertraglich ausgeschlossen: Die KI trainiert nicht mit</tspan><tspan x="360" dy="28">deinen Inhalten.</tspan></text>
+  <text class="cap wide on4" x="360" y="350"><tspan x="360" dy="-14">Nicht für immer gespeichert: Laut Anthropic in der Regel</tspan><tspan x="360" dy="28">nach spätestens 30 Tagen gelöscht.</tspan></text>
+  <text class="cap nar on1" x="360" y="350" text-anchor="middle"><tspan x="360" dy="-15.5">Deine Daten bleiben bei dir zu Hause</tspan><tspan x="360" dy="31">gespeichert.</tspan></text>
+  <text class="cap nar on2" x="360" y="350" text-anchor="middle"><tspan x="360" dy="-31">Schreibst du eine Frage, geht sie zu Claude,</tspan><tspan x="360" dy="31">zusammen mit dem, was für die Antwort gebraucht</tspan><tspan x="360" dy="31">wird.</tspan></text>
+  <text class="cap nar on3" x="360" y="350" text-anchor="middle"><tspan x="360" dy="-15.5">Vertraglich ausgeschlossen: Die KI trainiert</tspan><tspan x="360" dy="31">nicht mit deinen Inhalten.</tspan></text>
+  <text class="cap nar on4" x="360" y="350" text-anchor="middle"><tspan x="360" dy="-15.5">Nicht für immer gespeichert: Laut Anthropic in</tspan><tspan x="360" dy="31">der Regel nach spätestens 30 Tagen gelöscht.</tspan></text>
+</svg>

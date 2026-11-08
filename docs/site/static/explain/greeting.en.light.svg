@@ -104,13 +104,13 @@ text { font-family: var(--font); fill: var(--ink); }
   <text class="cap wide on1" x="360" y="350"><tspan x="360" dy="-14">Your assistant knows your family's finances and speaks up by</tspan><tspan x="360" dy="28">itself when something is due.</tspan></text>
   <text class="cap wide on2" x="360" y="350">Before it saves anything, it asks you.</text>
   <text class="cap wide on3" x="360" y="350">It lives on your own computer at home.</text>
-  <text class="cap wide on4" x="360" y="350">Your data stays with you.</text>
+  <text class="cap wide on4" x="360" y="350">Your data lives with you.</text>
   <text class="cap wide on5" x="360" y="350">It helps the whole family, whenever someone needs a hand.</text>
   <text class="cap wide on6" x="360" y="350" font-weight="600">lifeagents: help for the whole family</text>
   <text class="cap nar on1" x="360" y="350"><tspan x="360" dy="-15.5">Your assistant knows your family's finances and</tspan><tspan x="360" dy="31">speaks up by itself when something is due.</tspan></text>
   <text class="cap nar on2" x="360" y="350">Before it saves anything, it asks you.</text>
   <text class="cap nar on3" x="360" y="350">It lives on your own computer at home.</text>
-  <text class="cap nar on4" x="360" y="350">Your data stays with you.</text>
+  <text class="cap nar on4" x="360" y="350">Your data lives with you.</text>
   <text class="cap nar on5" x="360" y="350"><tspan x="360" dy="-15.5">It helps the whole family, whenever someone</tspan><tspan x="360" dy="31">needs a hand.</tspan></text>
   <text class="cap nar on6" x="360" y="350" font-weight="600">lifeagents: help for the whole family</text>
 </svg>

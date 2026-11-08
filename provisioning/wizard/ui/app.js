@@ -329,7 +329,7 @@ const UiNudge = {
     kids.push(...help);
     // Erklär-Bild (fertige SVG-Datei, page.explain vom Server): unter dem Text, bei side neben den Antworten (unten).
     const ex = p.explain ? explainNode(p.explain, p.value) : null;
-    if (ex && !p.explain.side) kids.push(ex.el);
+    if (ex && !p.explain.side && !p.explain.below) kids.push(ex.el);
     // „Noch kein Telegram?“ (Seite „Warum Telegram?“): zugeklappt unter dem Bild, damit Bild und Knöpfe im Fenster bleiben.
     if (p.getApp) kids.push(getAppNode(p.getApp));
     if (p.note && p.note.busy) kids.push(h('ul', { class: 'steps' }, h('li', { class: 'run' }, h('i', { 'aria-hidden': 'true' }), p.note.text)));
@@ -358,6 +358,8 @@ const UiNudge = {
             main.querySelectorAll('.suggest .choice').forEach((b) => b.classList.toggle('sel', b === e.currentTarget));
           } } }, h('b', { text: s })))));
       }
+      // below: Das Feld muss ohne Scrollen im Fenster bleiben, das Bild ist Zusatz-Erklärung.
+      if (ex && p.explain.below) kids.push(ex.el, ...helpNodes(p.explain.after));
     }
     if (p.kind === 'choice' || p.kind === 'multi') {
       const multi = p.kind === 'multi';

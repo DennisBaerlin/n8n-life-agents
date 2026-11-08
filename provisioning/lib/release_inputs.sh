@@ -371,7 +371,7 @@ Enter = die Installation erzeugt ein sicheres Passwort und zeigt es am Ende einm
 deines Haushalts an. Vorname, Nachname und Geburtsdatum sind Pflicht — ohne sie kann sich
 der Bot nicht mit dir verbinden. Weitere Personen (Partner, Kinder) fügst du später im Chat
 hinzu. Das Geburtsdatum nutzen die Berater für altersabhängige Themen (z. B. Rente,
-Versicherungen). Alles bleibt auf deinem Server." ;;
+Versicherungen). Gespeichert wird das auf deinem Server." ;;
     OWNER_LAST_NAME)
       _HK_PROMPT="Dein Nachname: "; _HK_VFN=_validate_name ;;
     OWNER_BIRTH_DATE)
@@ -395,7 +395,11 @@ Das Token wird sofort bei Telegram geprüft." ;;
 Belege lesen, Websuche, Beratung). Ohne diesen Schlüssel antwortet der Bot nicht.
   1. console.anthropic.com öffnen und anmelden.
   2. Guthaben aufladen („Billing“), dann „API Keys“ → „Create Key“ → Schlüssel kopieren.
-Anthropic nutzt Daten aus der API nicht zum Training. Abgerechnet wird nach Nutzung.
+Deine Daten bleiben bei dir zu Hause gespeichert. Schreibst du eine Frage, wird sie zu Claude
+geschickt, zusammen mit dem, was für die Antwort gebraucht wird. Dafür bezahlen wir: Mit dem
+bezahlten Zugang ist vertraglich ausgeschlossen, dass die KI mit deinen Inhalten trainiert wird
+und sie so woanders wieder auftauchen. Laut Anthropic wird nach spätestens 30 Tagen gelöscht;
+länger nur bei Verdacht auf Missbrauch oder wenn ein Gesetz es verlangt. Abgerechnet wird nach Nutzung.
 Der Schlüssel wird sofort bei Anthropic geprüft." ;;
     GOOGLE_API_KEY)
       _HK_PROMPT="Google-API-Schlüssel (optional, Enter = überspringen): "; _HK_VFN=_validate_google; _HK_SECRET=1

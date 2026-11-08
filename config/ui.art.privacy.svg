@@ -1,0 +1,99 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 392" width="720" height="392" role="img" data-scenes="4" data-scene-s="6">
+  <!-- Wohin die Daten gehen: Quelle für die Wizard-Seite des Anthropic-Schlüssels. Generator scripts/build_ui_tokens.ps1, Format scripts/lib/ui_art.ps1.
+       Szenen: 1 Daten zu Hause (Schloss wie Begrüßung), 2 Nachricht geht zu Claude, 3 kein Training, 4 Löschfrist. Haus und Wolke aus greeting/reach übernommen.
+       Aussagen belegt: Training = Commercial Terms (Vertrag), 30 Tage = Hilfeseite von Anthropic, deshalb „laut Anthropic“; Ausnahmen im Text unter dem Bild.
+       Schlussbild (Bewegung reduziert): beide Symbole grau. Handybreite: eigene große Nachricht, Symbol-Beschriftungen entfallen (Erklärtext sagt dasselbe). -->
+  <style>
+    text { font-family: var(--font); fill: var(--ink); }
+    .cap { font-size: 22px; text-anchor: middle; }
+    .nar { display: none; font-size: 28px; }
+    .label { font-size: 16px; font-weight: 600; text-anchor: middle; }
+    .name { font-size: 28px; font-weight: 600; text-anchor: middle; }
+    .ilab { font-size: 15px; font-weight: 600; text-anchor: middle; }
+    .msg { font-size: 15px; text-anchor: middle; }
+    .msgn { font-size: 28px; text-anchor: middle; }
+    .bn { display: none; }
+    .mine { fill: var(--accent-pale); }
+    .ic { fill: none; stroke: var(--ink); stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
+    .off { stroke: var(--gray); stroke-width: 4; stroke-linecap: round; }
+    .g3, .g4 { opacity: 0.45; }
+    /* Schmal angezeigt (Handy-Breite): größere Fassung, sonst wäre die Schrift unter 12 px. */
+    @media (max-width: 520px) { .wide, .bw, .ilab { display: none; } .nar { display: inline; } .bn { display: inline; } .label { font-size: 32px; } .name { font-size: 36px; } }
+    @keyframes fly { 0%, 28% { transform: translateX(0); } 44%, 100% { transform: translateX(120px); } }
+    @keyframes g3 { 0%, 58% { opacity: 1; } 68%, 100% { opacity: 0.45; } }
+    @keyframes g4 { 0%, 83% { opacity: 1; } 93%, 100% { opacity: 0.45; } }
+    @media (prefers-reduced-motion: no-preference) {
+      .fly { animation: fly 24s ease-in-out infinite; }
+      .g3 { animation: g3 24s linear infinite; }
+      .g4 { animation: g4 24s linear infinite; }
+    }
+  </style>
+
+  <!-- Zuhause mit Rechner -->
+  <g transform="translate(-277 -10)">
+    <path d="M338 122 L425 52 L512 122" fill="none" stroke="var(--ink)" stroke-width="3" stroke-linejoin="round" stroke-linecap="round"/>
+    <rect x="352" y="116" width="146" height="118" fill="var(--bg-soft)" stroke="var(--ink)" stroke-width="3"/>
+    <rect x="385" y="146" width="80" height="54" rx="5" fill="var(--bg)" stroke="var(--ink)" stroke-width="2.5"/>
+    <g data-mark="" transform="translate(412 160)"/>
+    <path d="M425 200 V212 M405 214 H445" stroke="var(--ink)" stroke-width="2.5" stroke-linecap="round"/>
+    <g class="on1">
+      <rect x="326" y="36" width="198" height="212" rx="18" fill="none" stroke="var(--ok)" stroke-width="2.5"/>
+      <circle cx="522" cy="40" r="16" fill="var(--bg)" stroke="var(--ok)" stroke-width="2.5"/>
+      <rect x="514" y="38" width="16" height="12" rx="2" fill="var(--ok)"/>
+      <path d="M517 38 V34 a5 5 0 0 1 10 0 V38" fill="none" stroke="var(--ok)" stroke-width="2.5"/>
+    </g>
+  </g>
+  <text class="label" x="148" y="272" data-t="privacy.home" data-wrap="22"/>
+
+  <!-- Weg -->
+  <path d="M250 130 H462" stroke="var(--gray)" stroke-width="2.5" stroke-dasharray="6 6" fill="none"/>
+
+  <!-- Claude als Wolke wie das Internet in reach -->
+  <path d="M492 170 a40.8 40.8 0 0 1 4.8 -81.6 a57.6 57.6 0 0 1 105.6 -19.2 a48 48 0 0 1 38.4 100.8 Z" fill="var(--bg-soft)" stroke="var(--ink)" stroke-width="3" stroke-linejoin="round"/>
+  <text class="name" x="562" y="134">Claude</text>
+
+  <!-- Kein Training: Doktorhut, ausgegraut und durchgestrichen -->
+  <g class="in3">
+    <g class="g3" transform="translate(505 222)">
+      <path class="ic" d="M-30 -8 L0 -22 L30 -8 L0 6 Z"/>
+      <path class="ic" d="M-16 0 V14 q16 10 32 0 V0"/>
+      <path class="ic" d="M30 -8 V10"/>
+    </g>
+    <path class="off" d="M471 252 L539 192"/>
+    <text class="ilab" x="505" y="278" data-t="privacy.no_train" data-wrap="16"/>
+  </g>
+
+  <!-- Keine Dauerspeicherung: Festplatte, ausgegraut und durchgestrichen -->
+  <g class="in4">
+    <g class="g4" transform="translate(630 222)">
+      <rect class="ic" x="-30" y="-24" width="60" height="48" rx="6"/>
+      <circle class="ic" cx="0" cy="-3" r="13"/>
+      <circle cx="0" cy="-3" r="3" fill="var(--ink)"/>
+      <path class="ic" d="M-20 16 H-10"/>
+    </g>
+    <path class="off" d="M596 252 L664 192"/>
+    <text class="ilab" x="630" y="278" data-t="privacy.days" data-wrap="16"/>
+  </g>
+
+  <!-- Nachricht wandert zu Claude -->
+  <g class="on2"><g class="fly">
+    <g class="bw">
+      <rect class="mine" x="190" y="110" width="160" height="40" rx="12"/>
+      <text class="msg" x="270" y="135" data-t="privacy.card" data-wrap="20"/>
+    </g>
+    <g class="bn">
+      <rect class="mine" x="130" y="100" width="270" height="60" rx="14"/>
+      <text class="msgn" x="265" y="140" data-t="privacy.card" data-wrap="20"/>
+    </g>
+  </g></g>
+
+  <!-- Erklärtext je Szene -->
+  <text class="cap wide on1" x="360" y="350" data-t="privacy.s1" data-wrap="60" data-lh="28" data-max="2" data-valign="middle"/>
+  <text class="cap wide on2" x="360" y="350" data-t="privacy.s2" data-wrap="60" data-lh="28" data-max="2" data-valign="middle"/>
+  <text class="cap wide on3" x="360" y="350" data-t="privacy.s3" data-wrap="60" data-lh="28" data-max="2" data-valign="middle"/>
+  <text class="cap wide on4" x="360" y="350" data-t="privacy.s4" data-wrap="60" data-lh="28" data-max="2" data-valign="middle"/>
+  <text class="cap nar on1" x="360" y="350" text-anchor="middle" data-t="privacy.s1" data-wrap="48" data-lh="31" data-max="3" data-valign="middle"/>
+  <text class="cap nar on2" x="360" y="350" text-anchor="middle" data-t="privacy.s2" data-wrap="48" data-lh="31" data-max="3" data-valign="middle"/>
+  <text class="cap nar on3" x="360" y="350" text-anchor="middle" data-t="privacy.s3" data-wrap="48" data-lh="31" data-max="3" data-valign="middle"/>
+  <text class="cap nar on4" x="360" y="350" text-anchor="middle" data-t="privacy.s4" data-wrap="48" data-lh="31" data-max="3" data-valign="middle"/>
+</svg>

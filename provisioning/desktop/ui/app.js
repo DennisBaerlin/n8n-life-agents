@@ -32,7 +32,7 @@ function h(tag, attrs, ...kids) {
 /* ui-locale:begin desktop (erzeugt von scripts/build_ui_tokens.ps1 aus packages/core/locales, nicht von Hand aendern) */
 const UI_TEXT = {
   de: {
-    "core.art.greeting.alt": "Dein Assistent meldet sich auf dem Handy von selbst mit einem Hinweis und fragt, bevor er etwas speichert. Er läuft auf deinem eigenen Rechner zu Hause, deine Daten bleiben bei dir, und er hilft der ganzen Familie bei Finanzen, Karriere, Nachlass und Dokumenten.",
+    "core.art.greeting.alt": "Dein Assistent meldet sich auf dem Handy von selbst mit einem Hinweis und fragt, bevor er etwas speichert. Er läuft auf deinem eigenen Rechner zu Hause, deine Daten liegen bei dir, und er hilft der ganzen Familie bei Finanzen, Karriere, Nachlass und Dokumenten.",
     "core.desktop.apply.busy_text": "Dein {machine} fragt dich gleich, ob die App die Energie-Einstellungen ändern darf.",
     "core.desktop.apply.busy_title": "Bestätige die Änderung",
     "core.desktop.changes.install_docker": "Docker kommt dazu (rund {size} MB, direkt vom Hersteller)",
@@ -73,7 +73,7 @@ const UI_TEXT = {
     "core.desktop.core.busy_title": "Der Fragebogen wird vorbereitet",
     "core.desktop.docker.busy_text": "Ist Docker auf diesem {machine} schon da, und läuft es?",
     "core.desktop.docker.busy_title": "Docker wird geprüft",
-    "core.desktop.done.backup": "Deine Daten liegen nur auf diesem Rechner. Mach ab und zu eine Sicherung, dein Assistent erklärt dir, wie.",
+    "core.desktop.done.backup": "Deine Datenbank liegt nur auf diesem Rechner. Mach ab und zu eine Sicherung, dein Assistent erklärt dir, wie.",
     "core.desktop.done.deviations": "Bei anderen Programmen in Docker hat sich während der Einrichtung etwas verändert ({n} Stellen). Schick bitte den Fehlerbericht.",
     "core.desktop.done.lead": "Dein Assistent läuft jetzt auf diesem Rechner.",
     "core.desktop.done.title": "Fertig. Schreib deinem Assistenten in Telegram",
@@ -291,7 +291,7 @@ const UI_TEXT = {
     "core.wizard.step.short": "Schritt {n} von {total} · {name}",
   },
   en: {
-    "core.art.greeting.alt": "Your assistant gets in touch on your phone by itself and asks before it saves anything. It runs on your own computer at home, your data stays with you, and it helps the whole family with finances, career, inheritance and documents.",
+    "core.art.greeting.alt": "Your assistant gets in touch on your phone by itself and asks before it saves anything. It runs on your own computer at home, your data lives with you, and it helps the whole family with finances, career, inheritance and documents.",
     "core.desktop.apply.busy_text": "Your {machine} will ask you in a moment whether the app may change the energy settings.",
     "core.desktop.apply.busy_title": "Confirm the change",
     "core.desktop.changes.install_docker": "Docker is added (about {size} MB, directly from the maker)",
@@ -332,7 +332,7 @@ const UI_TEXT = {
     "core.desktop.core.busy_title": "Preparing the questionnaire",
     "core.desktop.docker.busy_text": "Is Docker already on this {machine}, and is it running?",
     "core.desktop.docker.busy_title": "Checking Docker",
-    "core.desktop.done.backup": "Your data is only on this computer. Make a backup now and then, your assistant explains how.",
+    "core.desktop.done.backup": "Your database is only on this computer. Make a backup now and then, your assistant explains how.",
     "core.desktop.done.deviations": "Something changed in other programs in Docker during the setup ({n} places). Please send the error report.",
     "core.desktop.done.lead": "Your assistant is now running on this computer.",
     "core.desktop.done.title": "All done. Message your assistant in Telegram",
@@ -550,7 +550,7 @@ const UI_TEXT = {
     "core.wizard.step.short": "Step {n} of {total} · {name}",
   },
   ko: {
-    "core.art.greeting.alt": "어시스턴트가 휴대폰으로 먼저 알려 주고, 저장하기 전에 물어봐요. 집에 있는 내 컴퓨터에서 실행되고 데이터는 내 컴퓨터에 남으며, 재무·커리어·상속·문서 분야에서 온 가족을 도와요.",
+    "core.art.greeting.alt": "어시스턴트가 휴대폰으로 먼저 알려 주고, 저장하기 전에 물어봐요. 집에 있는 내 컴퓨터에서 실행되고 데이터는 내 컴퓨터에 보관되며, 재무·커리어·상속·문서 분야에서 온 가족을 도와요.",
     "core.desktop.apply.busy_text": "곧 {machine}에서 앱이 에너지 설정을 바꿔도 되는지 물어볼 거예요.",
     "core.desktop.apply.busy_title": "변경을 확인해 주세요",
     "core.desktop.changes.install_docker": "Docker 추가 (약 {size} MB, 제조사에서 직접)",
@@ -591,7 +591,7 @@ const UI_TEXT = {
     "core.desktop.core.busy_title": "설정 질문을 준비하는 중",
     "core.desktop.docker.busy_text": "이 {machine}에 Docker가 이미 있고 실행 중인지 확인해요",
     "core.desktop.docker.busy_title": "Docker 확인 중",
-    "core.desktop.done.backup": "내 데이터는 이 컴퓨터에만 있어요. 가끔 백업해 주세요. 방법은 어시스턴트가 알려 줘요.",
+    "core.desktop.done.backup": "데이터베이스는 이 컴퓨터에만 있어요. 가끔 백업해 주세요. 방법은 어시스턴트가 알려 줘요.",
     "core.desktop.done.deviations": "설정하는 동안 Docker 안의 다른 프로그램에서 바뀐 것이 있어요({n}곳). 오류 보고서를 보내 주세요.",
     "core.desktop.done.lead": "이제 어시스턴트가 이 컴퓨터에서 실행되고 있어요.",
     "core.desktop.done.title": "끝났어요. 텔레그램에서 어시스턴트에게 말을 걸어 보세요",

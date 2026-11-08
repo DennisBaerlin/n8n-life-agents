@@ -14,7 +14,10 @@ Die eine Adresse für Gestaltungsregeln. Gilt für Doku-Seite, Mini-App, Wizard 
 8. **Lange Listen kurz halten** (aufklappbare Zeilen), Betrag rechts, Balken nur mit Zielbetrag.
 9. **Im Zustand mit Daten prüfen**, alle Zustände aus dem erfundenen Datenmodell, nicht nur den Leerzustand.
 10. **Eine Frage je Wizard-Seite**, ein Hauptknopf, Zurück als Link.
-11. **Helfen, wo es geht: konkret und vorausgefüllt.** Was die Oberfläche selbst wissen oder prüfen kann, füllt sie vor oder zeigt es (echter Gerätename, echte Adresse, echte Konto-Angabe in Anleitungsbildern statt Platzhalter); vorgeschlagen wird nur, was geprüft ist. Echte Werte nur lokal anzeigen, nie loggen.
+11. **Helfen, wo es geht: konkret und vorausgefüllt.** Was die Oberfläche selbst wissen oder prüfen kann, füllt sie vor oder zeigt es (echter Gerätename, echte Adresse, echte Konto-Angabe in Anleitungsbildern statt Platzhalter); vorgeschlagen wird nur, was geprüft ist. Echte Werte nur lokal anzeigen, nie loggen. Bleibt ein Feld leer, sagt ein grauer Hilfstext, was hineingehört; ein ausgelesener Wert hat Vorrang.
+12. **Feld zuerst.** Das Eingabefeld steht direkt nach der Anleitung, was nur zusätzlich erklärt (Bild, Begründung), darunter.
+13. **Bilder zeigen Dinge.** Eine Animation zeigt Gegenstände und Symbole statt abstrakter Wörter und nutzt die vorhandenen Figuren (Haus, Wolke, Handy).
+14. **Nur versprechen, was stimmt.** Ein Werbesatz verspricht nie mehr als das Kleingedruckte. Vertraglich Zugesagtes heißt „vertraglich“, Angaben des Anbieters „laut Anbieter“.
 
 ## Sprache
 

@@ -94,6 +94,9 @@ BEGIN
   IF EXISTS (SELECT 1 FROM jsonb_array_elements(v_res->'alerts') a WHERE a->>'metric_key' = 'skill_gaps') THEN
     RAISE EXCEPTION 'FAIL [5] erfuellte Skills dürfen keinen Skill-Gap-Alert erzeugen, got %', v_res->'alerts';
   END IF;
+  IF (v_res->'digest'->'lines')::text LIKE '%career.advisor.digest_gaps%' THEN
+    RAISE EXCEPTION 'FAIL [5b] ohne Luecke keine Digest-Luecken-Zeile: %', (v_res->'digest'->'lines')::text;
+  END IF;
   RAISE NOTICE 'PASS [5] alle Skills erfuellt -> kein skill_gaps Alert';
 
   -- ---------- TEST 6 (A1: primaere Rolle OHNE required_skills, Gap nur in sekundaerer Rolle) ----------
@@ -117,6 +120,35 @@ BEGIN
       (SELECT (a->'msg')::text FROM jsonb_array_elements(v_res->'alerts') a WHERE a->>'metric_key' = 'skill_gaps');
   END IF;
   RAISE NOTICE 'PASS [6] A1: primäre Rolle ohne required_skills -> kein "weitere Ziele"-Doppelzählen';
+
+  -- Digest ohne Ueberskill (Profil leer) -> keine Ueberskill-Zeile; Luecke ohne Pflicht-Skill -> Zeile ohne Blocker-Variante
+  IF (v_res->'digest'->'lines')::text LIKE '%career.advisor.digest_gaps_blockers%' THEN
+    RAISE EXCEPTION 'FAIL [6b] ohne Pflicht-Skill keine Blocker-Zeile: %', (v_res->'digest'->'lines')::text;
+  END IF;
+  IF (v_res->'digest'->'lines')::text LIKE '%career.advisor.digest_overskill%' THEN
+    RAISE EXCEPTION 'FAIL [6b] ohne Ueberskill keine Digest-Zeile: %', (v_res->'digest'->'lines')::text;
+  END IF;
+
+  -- ---------- TEST 6c (Zaehlung im Alert: primaere Rolle 5 Luecken, 3 gezeigt -> "+2 weitere"; zweite Rolle 2 Luecken
+  --            -> "weitere Ziele: 2") ----------
+  UPDATE agent.core_contexts SET metadata = jsonb_set(metadata, '{facts,target_roles}', jsonb_build_array(
+      jsonb_build_object('title','Analyst','required_skills', jsonb_build_array(
+        jsonb_build_object('name','Statistik','min_level','advanced'), jsonb_build_object('name','Python','min_level','advanced'),
+        jsonb_build_object('name','SQL','min_level','advanced'), jsonb_build_object('name','Tableau','min_level','advanced'),
+        jsonb_build_object('name','Excel','min_level','advanced'))),
+      jsonb_build_object('title','Engineer','required_skills', jsonb_build_array(
+        jsonb_build_object('name','Docker','min_level','advanced'), jsonb_build_object('name','Kotlin','min_level','advanced')))))
+    WHERE name = 'career_planning';
+  v_res := career.fn_advisor_review('career');
+  IF NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v_res->'alerts') a, jsonb_array_elements(a->'msg') m
+                 WHERE a->>'metric_key' = 'skill_gaps' AND m->>'value' = 'career.advisor.skill_gaps_primary_more'
+                   AND (m->'params'->'more'->>'value')::int = 2)
+     OR NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v_res->'alerts') a, jsonb_array_elements(a->'msg') m
+                 WHERE a->>'metric_key' = 'skill_gaps' AND m->>'value' = 'career.advisor.skill_gaps_other'
+                   AND (m->'params'->'n'->>'value')::int = 2) THEN
+    RAISE EXCEPTION 'FAIL [6c] Zaehlung "+2 weitere" / "weitere Ziele 2": %', v_res->'alerts';
+  END IF;
+  RAISE NOTICE 'PASS [6c] Zaehlung im Skill-Gap-Alert';
 
   -- ---------- TEST 7 (P0c per-Person): career_planning + career_profile per_user am OWNER-Suffix ----------
   -- P0c entfernt den P0b-Suspend-Guard: die Review liest jetzt den OWNER-Plan am Suffix (agent.fn_owner_person_id),

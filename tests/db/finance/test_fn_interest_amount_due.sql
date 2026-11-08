@@ -259,4 +259,28 @@ BEGIN
 
 END $$;
 
+-- Regime-Grenzen (valid_to exklusiv): ein Satz, der genau am period_end endet, verzinst die ganze Periode; ein Satz,
+-- der erst am period_end beginnt, hat in der Periode keinen Tag.
+DO $$
+DECLARE
+  v_acct INT;
+  v_amt  NUMERIC;
+BEGIN
+  v_acct := (finance.fn_create_account(
+    '{"name":"__test_int_bnd__","account_type":"cash","currency":"EUR","interest_rate":4,"interest_credit_unit":"year","interest_valid_from":"2026-01-01"}'::jsonb
+  )->>'account_id')::int;
+  INSERT INTO finance.transactions (account_id, amount, transaction_date, category)
+  VALUES (v_acct, 10000, '2026-01-01', 'other');
+  UPDATE finance.account_interest_rates SET valid_to = '2027-01-01' WHERE account_id = v_acct;
+  v_amt := finance.fn_interest_amount_due(v_acct, '2027-01-01');
+  IF v_amt IS DISTINCT FROM 400.00 THEN
+    RAISE EXCEPTION 'FAIL [Satz endet am period_end]: erwartet 400.00, got %', v_amt; END IF;
+
+  UPDATE finance.account_interest_rates SET valid_from = '2027-01-01', valid_to = NULL WHERE account_id = v_acct;
+  v_amt := finance.fn_interest_amount_due(v_acct, '2027-01-01');
+  IF v_amt IS DISTINCT FROM 0 THEN
+    RAISE EXCEPTION 'FAIL [Satz beginnt am period_end]: erwartet 0, got %', v_amt; END IF;
+  RAISE NOTICE 'PASS [Regime-Grenzen: Ende am period_end verzinst voll, Beginn am period_end -> 0]';
+END $$;
+
 ROLLBACK;

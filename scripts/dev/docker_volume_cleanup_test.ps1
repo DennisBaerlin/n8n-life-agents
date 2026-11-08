@@ -14,6 +14,7 @@
 # Usage:  .\scripts\dev\docker_volume_cleanup_test.ps1
 # Exit-Code = Anzahl Fehler.
 $ErrorActionPreference = 'Stop'
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 . (Join-Path $PSScriptRoot '..\lib\git_sandbox.ps1')
 Clear-GitEnvironment
 $repo = (git -C $PSScriptRoot rev-parse --show-toplevel).Trim()

@@ -164,7 +164,12 @@ BEGIN
     v_res := finance.fn_void_bank_statement(jsonb_build_object('account_id', v_gg));
     IF v_res->>'code' IS DISTINCT FROM 'partner_reconciled' THEN RAISE EXCEPTION 'FAIL [V1 Void-Schutz]: %', v_res; END IF;
     PERFORM finance.fn_void_bank_statement(jsonb_build_object('account_id', v_tr));
+    -- ein Zins-Skip eines ANDEREN Kontos mit derselben Periode bleibt stehen
+    INSERT INTO finance.interest_skips (account_id, period_end)
+    SELECT v_tr, max(period_end) FROM finance.interest_skips WHERE account_id = v_gg;
     v_res := finance.fn_void_bank_statement(jsonb_build_object('account_id', v_gg));
+    IF NOT EXISTS (SELECT 1 FROM finance.interest_skips WHERE account_id = v_tr) THEN
+        RAISE EXCEPTION 'FAIL [V2b fremder Zins-Skip geloescht]'; END IF;
     IF (v_res->>'ok')::boolean IS DISTINCT FROM true
        OR (SELECT balance FROM finance.account_balances WHERE account_id = v_gg) <> 108.03
        OR (SELECT balance FROM finance.account_balances WHERE account_id = v_tr) <> 1000

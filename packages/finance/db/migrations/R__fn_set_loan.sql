@@ -21,7 +21,7 @@
 --   original_amount, disbursement_date, status, notes.
 --   RUECKGABE: {ok:true, loan_id, recurring_payment_id (Kopf), split, previous_id (nur bei Split), effective_from (nur
 --   bei Raten-/Tagesaenderung), balance_at_fixed_until, balance_at_term_end (voraussichtliche Restschuld, loan_overview)}.
---   Korrigierbar (neg. Zins, Rate<=0, aktiv ohne Rate, Rate ohne ersten Termin, unbekannter status, wirksame Rate unter
+--   Korrigierbar (neg. Zins, Rate<=0, aktiv ohne Rate, Rate ohne ersten Termin, unbekannter status, paid_off mit Restschuld -> code use_settle_tool (tool_settle_loan bucht die Abloese), wirksame Rate unter
 --   dem Monatszins der Restschuld -> {interest, payment}, Ursprungswerte bei frischem Kredit / Datum in der Zukunft /
 --   Betrag unter der Eroeffnungs-Restschuld, Laufzeit-Widerspruch, Split-Guards, kein Wert weicht vom Bestand ab ->
 --   {no_change:true}) -> {ok:false} OHNE Write.
@@ -80,6 +80,13 @@ BEGIN
      WHERE id = finance.fn_recurring_current(v_rp, v_today);
 
     -- Korrigierbare Guards
+    -- "abbezahlt" mit offener Restschuld nur ueber fn_settle_loan: nur dort entsteht die Abloese-Buchung, die die
+    -- Restschuld auf 0 bringt (sonst bliebe sie am Kreditkonto stehen, waehrend der Kredit als erledigt gilt)
+    IF v_status = 'paid_off' AND v_loan.status <> 'paid_off'
+       AND COALESCE((SELECT b.balance FROM finance.account_balances b WHERE b.account_id = v_loan.loan_account_id), 0) < 0 THEN
+        RETURN jsonb_build_object('ok', false, 'code', 'use_settle_tool',
+            'reason', 'The loan still has a remaining debt - record the payoff with tool_settle_loan (it books the final payment and marks the loan paid off).');
+    END IF;
     IF v_irate IS NOT NULL AND v_irate < 0 THEN
         RETURN jsonb_build_object('ok', false, 'reason', 'Interest rate must not be negative, got ' || v_irate || '.');
     END IF;

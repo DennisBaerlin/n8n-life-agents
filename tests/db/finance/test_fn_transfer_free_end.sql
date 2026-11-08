@@ -163,4 +163,30 @@ BEGIN
     RAISE EXCEPTION 'FAIL [12 neutral ohne drawdown]: %', v_f; END IF;
   RAISE NOTICE 'PASS [12 neutral ohne drawdown]';
 END $$;
+
+-- (13) direkt: nur ein laufender, freistehender Uebertrag zwischen eigenen Konten taugt -> eine normale Abbuchung und
+--      eine Sparziel-Rate sind not_transfer; ein Uebertrag mit valid_to = heute (exklusiv) laeuft schon nicht mehr.
+DO $$
+DECLARE v_a INT; v_b INT; v_rp INT; v_res JSONB;
+BEGIN
+  INSERT INTO finance.accounts (name, account_type, currency, status) VALUES ('__tfe13_a__','cash','EUR','active') RETURNING id INTO v_a;
+  INSERT INTO finance.accounts (name, account_type, currency, status) VALUES ('__tfe13_b__','p2p','EUR','active') RETURNING id INTO v_b;
+  INSERT INTO finance.recurring_payments (name, account_id, amount, schedule_unit, first_payment_date, valid_from)
+    VALUES ('__tfe13 abo__', v_a, -10, 'month', current_date + 5, current_date) RETURNING id INTO v_rp;
+  v_res := finance.fn_transfer_free_end(v_rp);
+  IF v_res->>'code' IS DISTINCT FROM 'not_transfer' THEN RAISE EXCEPTION 'FAIL [13a Abbuchung]: %', v_res; END IF;
+
+  INSERT INTO finance.recurring_payments (name, account_id, target_account_id, amount, schedule_unit, first_payment_date, valid_from)
+    VALUES ('__tfe13 zielrate__', v_a, v_b, -50, 'month', current_date + 5, current_date) RETURNING id INTO v_rp;
+  INSERT INTO finance.savings_goals (name, target_amount, target_date, recurring_payment_id)
+    VALUES ('__tfe13 Ziel__', 1000, current_date + 300, v_rp);
+  v_res := finance.fn_transfer_free_end(v_rp);
+  IF v_res->>'code' IS DISTINCT FROM 'not_transfer' THEN RAISE EXCEPTION 'FAIL [13b Sparziel-Rate]: %', v_res; END IF;
+
+  INSERT INTO finance.recurring_payments (name, account_id, target_account_id, amount, schedule_unit, first_payment_date, valid_from, valid_to)
+    VALUES ('__tfe13 endet heute__', v_b, v_a, -20, 'month', current_date - 20, current_date - 20, current_date) RETURNING id INTO v_rp;
+  v_res := finance.fn_transfer_free_end(v_rp);
+  IF v_res->>'code' IS DISTINCT FROM 'not_running' THEN RAISE EXCEPTION 'FAIL [13c endet heute]: %', v_res; END IF;
+  RAISE NOTICE 'PASS [13 nur laufender freistehender Uebertrag]';
+END $$;
 ROLLBACK;

@@ -128,4 +128,48 @@ BEGIN
   RAISE NOTICE 'PASS manuelle Abloese-Rate [zugeordnet, abbezahlt, keine Erinnerung]';
 END $$;
 
+-- Kettenende direkt: ein frueheres Vertragsende bleibt, eine pausierte Rate mit spaeterem Ende endet am Abzahlungstag,
+-- fremde wiederkehrende Zahlungen bleiben unberuehrt.
+DO $$
+DECLARE
+  v_giro  INT;
+  v_loan1 INT;
+  v_loan2 INT;
+  v_rp1   INT;
+  v_rp2   INT;
+  v_other INT;
+  v_end   DATE := CURRENT_DATE + 30;
+BEGIN
+  SELECT (finance.fn_create_account(jsonb_build_object('name','__test_mlp3_giro__','account_type','cash',
+    'currency','EUR'))->>'account_id')::int INTO v_giro;
+  SELECT (finance.fn_create_loan(jsonb_build_object('name','__test_mlp3_k1__','lender','B','borrower','T',
+    'current_balance',900,'interest_rate',2,'monthly_annuity',100,
+    'first_payment_date',(CURRENT_DATE + 5)::text,'debit_account_id',v_giro))->>'loan_id')::int INTO v_loan1;
+  SELECT (finance.fn_create_loan(jsonb_build_object('name','__test_mlp3_k2__','lender','B','borrower','T',
+    'current_balance',700,'interest_rate',2,'monthly_annuity',100,
+    'first_payment_date',(CURRENT_DATE + 5)::text,'debit_account_id',v_giro))->>'loan_id')::int INTO v_loan2;
+  SELECT recurring_payment_id INTO v_rp1 FROM finance.loans WHERE id = v_loan1;
+  SELECT recurring_payment_id INTO v_rp2 FROM finance.loans WHERE id = v_loan2;
+  v_other := (finance.fn_create_loan(jsonb_build_object('name','__test_mlp3_fremd__','lender','C','borrower','T',
+    'current_balance',500,'interest_rate',2,'monthly_annuity',100,'first_payment_date',(CURRENT_DATE + 5)::text,
+    'debit_account_id',v_giro))->>'recurring_payment_id')::int;
+  IF v_other IS NULL THEN RAISE EXCEPTION 'SETUP FAIL Kettenende [fremder Kredit]'; END IF;
+
+  UPDATE finance.recurring_payments SET valid_to = CURRENT_DATE + 10 WHERE id = v_rp1;
+  UPDATE finance.recurring_payments SET status = 'paused', valid_to = CURRENT_DATE + 90 WHERE id = v_rp2;
+  PERFORM finance.fn_mark_loan_paid_off(v_loan1, v_end);
+  PERFORM finance.fn_mark_loan_paid_off(v_loan2, v_end);
+
+  IF (SELECT valid_to FROM finance.recurring_payments WHERE id = v_rp1) IS DISTINCT FROM CURRENT_DATE + 10 THEN
+    RAISE EXCEPTION 'FAIL Kettenende [frueheres Vertragsende]: got %',
+      (SELECT to_jsonb(r) FROM finance.recurring_payments r WHERE id = v_rp1); END IF;
+  IF (SELECT valid_to FROM finance.recurring_payments WHERE id = v_rp2) IS DISTINCT FROM v_end THEN
+    RAISE EXCEPTION 'FAIL Kettenende [pausiert, spaeteres Ende]: erwartet %, got %', v_end,
+      (SELECT to_jsonb(r) FROM finance.recurring_payments r WHERE id = v_rp2); END IF;
+  IF NOT EXISTS (SELECT 1 FROM finance.recurring_payments WHERE id = v_other AND status = 'active' AND valid_to IS NULL) THEN
+    RAISE EXCEPTION 'FAIL Kettenende [fremde Rate veraendert]: got %',
+      (SELECT to_jsonb(r) FROM finance.recurring_payments r WHERE id = v_other); END IF;
+  RAISE NOTICE 'PASS Kettenende [frueheres Ende bleibt, pausierte endet am Abzahlungstag, fremde Rate unberuehrt]';
+END $$;
+
 ROLLBACK;

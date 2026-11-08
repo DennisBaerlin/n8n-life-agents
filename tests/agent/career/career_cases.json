@@ -7,7 +7,7 @@
     "timeout_s": 240,
     "expected_tool": "tool_set_profile_facts",
     "expected_behavior": "The career advisor must, after a brief confirmation, call tool_set_profile_facts with the RAW profile fields the user stated (current_title 'Senior Vertriebsleiter', industry 'Logistik', career_start_date as the relative value the user said, e.g. -12 years). It must NOT compute a start year, years of experience, a target year/age or any other derived value, and must NOT call save/publish for a profile fact.",
-    "notes": "WS-1 career: das CV-Profil (career_profile) wird vom Career-Advisor per tool_set_profile_facts (Bindung des geteilten agent.tool_set_context_facts) gepflegt (weiches/selbst-berichtetes Ist). Korrektheit der facts-Struktur deckt test_fn_set_context_facts (DB) + e2e (WS-1b)."
+    "notes": "Das CV-Profil (career_profile) pflegt jede Person selbst per tool_set_profile_facts (Bindung von agent.tool_set_own_context_facts, Stufe self; weiches/selbst-berichtetes Ist). Korrektheit der facts-Struktur deckt test_fn_set_own_context_facts + test_fn_validate_career_profile (DB); es gibt keinen career-E2E-Fall, dieser Golden prueft nur Routing und Rohwerte."
   },
   {
     "id": "cc02",
@@ -48,7 +48,7 @@
     "timeout_s": 240,
     "expected_tool": "tool_extract_cv",
     "expected_behavior": "When the message carries an [attachment file_id=... type=photo] marker and is a CV/Lebenslauf, the career advisor must call tool_extract_cv with the file_id taken VERBATIM from the marker (cv_test_001). It must NOT invent profile fields and must NOT call a write tool (tool_set_profile_facts) before it has the extracted fields and a user confirmation - the extraction is read-only.",
-    "notes": "WS-1b CV-Vision: ein weitergeleiteter Lebenslauf kommt intent-basiert hierher (oc14), der Advisor extrahiert die Rohfelder read-only via tool_extract_cv und persistiert sie erst nach Playback via tool_set_profile_facts (Per-Eintrag-HITL). tool_extract_cv ist E2E-untauglich (read-only Vision ueber die bezahlte Anthropic-API + echtes Telegram-Bild) -> dieser Mock-Case + db_test_fn_set_profile_facts (Write-Pfad) sind die deterministische Abdeckung; semantisch deckt der owner-gegatete n8n_test career."
+    "notes": "WS-1b CV-Vision: ein weitergeleiteter Lebenslauf kommt intent-basiert hierher (oc14), der Advisor extrahiert die Rohfelder read-only via tool_extract_cv und persistiert sie erst nach Playback via tool_set_profile_facts (Per-Eintrag-HITL). tool_extract_cv ist E2E-untauglich (read-only Vision ueber die bezahlte Anthropic-API + echtes Telegram-Bild) -> dieser Mock-Case und die DB-Tests test_fn_set_own_context_facts + test_fn_validate_career_profile (Write-Pfad) sind die deterministische Abdeckung; semantisch deckt der Routing-Lauf im Owner-Fenster (bezahlt)."
   },
   {
     "id": "cc06",
@@ -59,7 +59,7 @@
     "expected_tool": "tool_record_job_match",
     "expected_tool_args": { "title": "Data Analyst", "employer": "Beispiel GmbH", "location": "Leipzig" },
     "expected_behavior": "When the user forwards/names a concrete job opening to remember, the career advisor must call tool_record_job_match with the fields extracted from the message (title 'Data Analyst', employer 'Beispiel GmbH', location 'Leipzig'). source is fixed by the tool (forwarded), never asked from the model. It must NOT invent a refnr/url and must NOT call a finance tool.",
-    "notes": "WS-2 Job-Vormerken: eine weitergeleitete Stelle wird via tool_record_job_match (record_ verb, owner_info) als source=forwarded getrackt. Korrektheit deckt test_fn_record_job_match (DB) + e2e (career_e2e_cases). Catalog-Example (Jobsuche & Matching) = genau dieser task (build.ps1 -VerifyCatalog)."
+    "notes": "WS-2 Job-Vormerken: eine weitergeleitete Stelle wird via tool_record_job_match (record_ verb, owner_info) als source=forwarded getrackt. Korrektheit deckt test_fn_record_job_match (DB); es gibt keinen career-E2E-Fall. Catalog-Example (Jobsuche & Matching) = genau dieser task (build.ps1 -VerifyCatalog)."
   },
   {
     "id": "cc07",

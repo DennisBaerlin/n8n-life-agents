@@ -229,4 +229,36 @@ BEGIN
   IF NOT s.accepted OR s.needs_acceptance THEN RAISE EXCEPTION 'FAIL [F13 nach dem Stichtag gilt bis zum Termin]: %', row_to_json(s); END IF;
   RAISE NOTICE 'PASS [F13 Ablauf am Stichtag, Entscheidung im letzten Jahr gilt bis zum Termin]';
 END $$;
+
+-- (F14) Stichtag heute (Termin genau in 12 Monaten) -> schon Schluss-Fassung; (F15) mit aktivem Sparplan ist die
+-- Freigabe-Grenze das Ziel, nicht der kleinere Anteil
+DO $$
+DECLARE
+  v_settle int; v_depot int; v_rp int; v_a int; v_c int; v_r jsonb;
+BEGIN
+  v_settle := (finance.fn_create_account('{"name":"__drf2_settle__","account_type":"cash"}'::jsonb)->>'account_id')::int;
+  v_depot  := (finance.fn_create_account(jsonb_build_object('name','__drf2_depot__','account_type','stocks_depot','settlement_id',v_settle))->>'account_id')::int;
+  INSERT INTO finance.depot_holdings (account_id, symbol, name, shares, average_purchase_price, currency)
+    VALUES (v_depot, 'DRFTWO', 'Testfonds', 1000, 100, 'EUR');
+  INSERT INTO finance.market_prices (symbol, price, currency, as_of) VALUES ('DRFTWO', 100, 'EUR', current_date);
+
+  INSERT INTO finance.savings_goals (name, target_amount, target_date, status)
+    VALUES ('__drf2 a__', 6000, (current_date + interval '12 months')::date, 'active') RETURNING id INTO v_a;
+  v_r := finance.fn_book_savings_reservation(jsonb_build_object('savings_goal_id', v_a, 'account_id', v_depot, 'amount', 6000));
+  IF v_r->'card_lines'->0->>'value' IS DISTINCT FROM 'finance.note.goal_depot_risk_final' THEN
+    RAISE EXCEPTION 'FAIL [F14 Stichtag heute -> Schluss-Fassung]: %', v_r; END IF;
+
+
+  INSERT INTO finance.savings_goals (name, target_amount, target_date, status)
+    VALUES ('__drf2 c__', 6000, (current_date + interval '24 months')::date, 'active') RETURNING id INTO v_c;
+  INSERT INTO finance.recurring_payments (name, account_id, amount, schedule_unit, first_payment_date, valid_from)
+    VALUES ('__drf2 plan__', v_settle, -100, 'month', current_date - 25, current_date - 25) RETURNING id INTO v_rp;
+  INSERT INTO finance.savings_plans (name, depot_id, symbol, security_name, recurring_payment_id, savings_goal_id, status)
+    VALUES ('__drf2 plan__', v_depot, 'DRFTWO', 'Testfonds', v_rp, v_c, 'active');
+  PERFORM finance.fn_book_savings_reservation(jsonb_build_object('savings_goal_id', v_c, 'account_id', v_depot, 'amount', 3000));
+  v_r := finance.fn_goal_depot_risk_fold(v_c, NULL, true);
+  IF (v_r->'effective'->'depot_risk_shown'->>'limit_eur')::numeric IS DISTINCT FROM 6000 THEN
+    RAISE EXCEPTION 'FAIL [F15 Sparplan -> Grenze = Ziel 6000]: %', v_r; END IF;
+  RAISE NOTICE 'PASS [F14/F15 Stichtag heute, Sparplan-Grenze = Ziel]';
+END $$;
 ROLLBACK;

@@ -1,4 +1,4 @@
-#Requires -Version 5.1
+﻿#Requires -Version 5.1
 # Oeffnet das APP-FENSTER (Default 60 Min): solange darf Claude die Mini-App aendern, die der PreToolUse-Hook
 # .claude/hooks/enforce_app_window.ps1 sonst hart sperrt (Owner-Regel 2026-11-01: die Darstellung ist immer ein eigener Plan).
 # Getrennt vom Owner-Fenster der LLM-Suiten (grant_owner_window.ps1): Testkosten freizugeben ist keine Zustimmung zu einer

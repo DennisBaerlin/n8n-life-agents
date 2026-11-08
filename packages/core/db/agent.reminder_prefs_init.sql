@@ -27,9 +27,5 @@ CREATE TABLE IF NOT EXISTS agent.reminder_prefs (
     PRIMARY KEY (person_id, cron_key)
 );
 
--- Lesepfad der Core-Agenten (Guide/Monitor-Frei-SQL) wie die anderen agent-Tabellen; No-op ohne core_ro.
-DO $$ BEGIN
-    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'core_ro') THEN
-        GRANT SELECT ON agent.reminder_prefs TO core_ro;
-    END IF;
-END $$;
+-- Kein Grant an core_ro: das /reminders-Menue liest ueber das DEFINER-Fenster core.fn_reminders_overview
+-- (Erlaubnisliste in util_create_core_ro.sql).

@@ -1142,7 +1142,7 @@ foreach ($f in (Get-ChildItem $provDir -Recurse -Include '*.sh','*.tpl' -File -E
 # (12d) PROMPT-GATE-GUARD: Eingabe-Primitive nur an sanktionierten Stellen + Gate-Assert.
 $promptAllow = @{  # Datei -> erlaubte Primitive (Definition/Delegat/sanktionierte Wrapper)
     'provisioning/lib/common.sh'         = @('ui_input-def', 'ui_choose-def', 'ui_wait_key-def')
-    'provisioning/lib/release_inputs.sh' = @('_read_tty-def', 'ui_input', '_read_tty', 'ui_choose')  # + Proxy-Ort-Frage (Install-UX-Phase 5)
+    'provisioning/lib/release_inputs.sh' = @('ui_input', 'ui_choose')  # + Proxy-Ort-Frage (Install-UX-Phase 5)
     'provisioning/lib/proxy_cli.sh'      = @('ui_input', 'ui_choose')  # `lifeagents proxy set`: Adresse + Netz-Bestaetigung
     'provisioning/lib/pkg_lifecycle.sh'  = @('ui_input', 'ui_choose', 'rawtty')  # Wizard-reask + _pkg_confirm (--yes-Achse) + Verb-/Missing-Arg-Picker
     'provisioning/lib/fetch_release.sh'  = @()                       # Download immer anonym: keine Frage (Public-Repo)

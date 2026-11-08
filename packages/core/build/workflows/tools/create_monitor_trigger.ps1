@@ -20,7 +20,7 @@ function Build-CreateMonitorTrigger {
         'comparator', 'threshold_value', 'drawdown_pct',
         'due_date', 'warn_days_before',
         'expected_unit', 'min_plausible', 'max_plausible', 'max_jump_pct',
-        'check_interval', 'action_note'
+        'check_interval', 'action_note', 'first_check'
     )
 
     # E2E-Sentinel-Switch (ein Switch fuer alle Binder; fn_clear_e2e_data raeumt die Domain)
@@ -56,10 +56,11 @@ function Build-CreateMonitorTrigger {
     }
 
     $probe = Build-Pg 'Probe (validate)' @(1260, 0) `
-        "=SELECT (r->>'ok')::boolean AND d.err IS NULL AS probe_ok, (r->>'value')::numeric AS probe_value, r->>'unit' AS probe_unit, r->>'as_of' AS probe_as_of, r->>'source_url' AS probe_source, COALESCE(d.err, r->>'reason') AS probe_reason, r->'display' AS probe_display, r::text AS probe_json, d.chk->>'due_date' AS due_resolved FROM agent.fn_monitor_probe(`$1::jsonb) AS r, LATERAL (SELECT x.chk, CASE WHEN NOT (x.chk->>'ok')::boolean THEN x.chk->>'reason' END AS err FROM (SELECT CASE WHEN (`$1::jsonb)->>'trigger_type' = 'date' THEN agent.fn_resolve_monitor_due((`$1::jsonb)->>'due_date') ELSE jsonb_build_object('ok', true) END AS chk) x) d;" `
+        "=SELECT (r->>'ok')::boolean AND d.err IS NULL AS probe_ok, (r->>'value')::numeric AS probe_value, r->>'unit' AS probe_unit, r->>'as_of' AS probe_as_of, r->>'source_url' AS probe_source, COALESCE(d.err, r->>'reason') AS probe_reason, r->'display' AS probe_display, r::text AS probe_json, d.chk->>'due_date' AS due_resolved, d.fchk->>'due_date' AS first_resolved FROM agent.fn_monitor_probe(`$1::jsonb) AS r, LATERAL (SELECT x.chk, x.fchk, COALESCE(CASE WHEN NOT (x.chk->>'ok')::boolean THEN x.chk->>'reason' END, CASE WHEN NOT (x.fchk->>'ok')::boolean THEN 'first_check: ' || replace(x.fchk->>'reason', 'due_date', 'the start date') END) AS err FROM (SELECT CASE WHEN (`$1::jsonb)->>'trigger_type' = 'date' THEN agent.fn_resolve_monitor_due((`$1::jsonb)->>'due_date') ELSE jsonb_build_object('ok', true) END AS chk, CASE WHEN NULLIF(btrim(COALESCE((`$1::jsonb)->>'first_check', '')), '') IS NOT NULL THEN agent.fn_resolve_monitor_due((`$1::jsonb)->>'first_check') ELSE jsonb_build_object('ok', true) END AS fchk) x) d;" `
         ([ordered]@{
             trigger_type       = '$(''Start'').item.json.trigger_type'
             due_date           = '$(''Start'').item.json.due_date'
+            first_check        = '$(''Start'').item.json.first_check'
             acquisition_method = '$(''Start'').item.json.acquisition_method'
             acquisition_sql    = '$(''Start'').item.json.acquisition_sql'
             acquisition_params = $paramsExpr
@@ -98,6 +99,7 @@ function Build-CreateMonitorTrigger {
         params: { date: { kind: 'date', value: p.due_resolved }, days: s.warn_days_before } }
     : { label: 'core.label.due', kind: 'date', value: p.due_resolved });
   L.push({ label: 'core.label.check_interval', kind: 'tpl', value: 'core.tpl.monitor_every', params: { interval: s.check_interval } });
+  if (p.first_resolved) L.push({ label: 'core.label.first_check', kind: 'date', value: p.first_resolved });
   L.push({ label: 'core.label.source', kind: 'key', value: methodKey, fallback: m });
   if (m === 'web_search') L.push({ label: 'core.label.prompt_start', kind: 'text', value: '"' + cut(s.acquisition_prompt) + '"' });
   if (m === 'sql') L.push({ label: 'core.label.sql_start', kind: 'text', value: cut(s.acquisition_sql) });
@@ -150,6 +152,7 @@ function Build-CreateMonitorTrigger {
             max_jump_pct       = '$(''Start'').item.json.max_jump_pct'
             check_interval     = '$(''Start'').item.json.check_interval'
             action_note        = '$(''Start'').item.json.action_note'
+            first_check        = '($(''Probe (validate)'').item.json.first_resolved || $(''Start'').item.json.first_check)'
             probe_observation  = 'JSON.parse($(''Probe (validate)'').item.json.probe_json || ''null'')'
         })
 
@@ -167,7 +170,7 @@ function Build-CreateMonitorTrigger {
 
     $stickyOverview = Build-Sticky 'Doc Create Trigger' @(120, -460) `
         'Probe vor Gate + agent.fn_create_monitor_trigger (atomar)' `
-        'Fälligkeit (date-Trigger): Probe (validate) prüft due_date per agent.fn_resolve_monitor_due (dieselbe Regel wie der Write) EINMAL (YYYY-MM-DD oder relativ wie +6 months); ungültig oder vergangen -> ToolError vor dem Gate; Karte und Write nutzen genau dieses Datum. Cross-agent (Monitor-Agent: domain via LLM, package fix core; Fach-Advisor: domain+package fix = sein Paket). package = Lifecycle-Owner (Purge-Schlüssel, fn_pkg_purge_data räumt WHERE package=<pkg> AND origin=user) — fix per Binding, NIE $fromAI. E2E-Switch IM Tool: chat_id test_e2e -> Sentinel-Domain __e2e_monitor__ (package erbt den Binding-Wert; fn_clear_e2e_data räumt per domain). Ablauf: Dubletten-Backstop (UNIQUE(domain,lower(label)) ist DB-Gesetz) -> PROBE (web: Claude-web_search-HTTP + deterministischer Parse, gleicher Vertrag wie der Cron; sql/Paket-Methoden: fn_monitor_probe beschafft selbst, sql unter SET LOCAL ROLE core_ro, Paket-Methode über ihre Registry-fns aus core.monitor_acquisition_methods — acquisition_params geschützt geparst, die validate_fn des Pakets liefert die Bestätigungszeile) + Validierungs-Kaskade (numerisch/Unit-Echo/Bounds) -> Probe-Fail = ToolError VOR dem Gate -> HITL-Summary MIT Test-Abruf-Wert -> fn_create_monitor_trigger (alle CHECKs als {ok:false} gespiegelt; Probe wird erste Observation + Drawdown-Ratchet-Seed). Web-Cadence >= 12h ist DB-CHECK (Free-Tier-Schutz).' 320 560
+        'Fälligkeit (date-Trigger): Probe (validate) prüft due_date per agent.fn_resolve_monitor_due (dieselbe Regel wie der Write) EINMAL (YYYY-MM-DD oder relativ wie +6 months); ungültig oder vergangen -> ToolError vor dem Gate; Karte und Write nutzen genau dieses Datum. Optionales first_check (erster Lauf und Anker des Rhythmus, z. B. jeden Montag ab dem nächsten) läuft durch dieselbe Regel, steht als Datum auf der Karte und geht aufgelöst in den Write. Cross-agent (Monitor-Agent: domain via LLM, package fix core; Fach-Advisor: domain+package fix = sein Paket). package = Lifecycle-Owner (Purge-Schlüssel, fn_pkg_purge_data räumt WHERE package=<pkg> AND origin=user) — fix per Binding, NIE $fromAI. E2E-Switch IM Tool: chat_id test_e2e -> Sentinel-Domain __e2e_monitor__ (package erbt den Binding-Wert; fn_clear_e2e_data räumt per domain). Ablauf: Dubletten-Backstop (UNIQUE(domain,lower(label)) ist DB-Gesetz) -> PROBE (web: Claude-web_search-HTTP + deterministischer Parse, gleicher Vertrag wie der Cron; sql/Paket-Methoden: fn_monitor_probe beschafft selbst, sql unter SET LOCAL ROLE core_ro, Paket-Methode über ihre Registry-fns aus core.monitor_acquisition_methods — acquisition_params geschützt geparst, die validate_fn des Pakets liefert die Bestätigungszeile) + Validierungs-Kaskade (numerisch/Unit-Echo/Bounds) -> Probe-Fail = ToolError VOR dem Gate -> HITL-Summary MIT Test-Abruf-Wert -> fn_create_monitor_trigger (alle CHECKs als {ok:false} gespiegelt; Probe wird erste Observation + Drawdown-Ratchet-Seed). Web-Cadence >= 12h ist DB-CHECK (Free-Tier-Schutz).' 320 560
 
     $stickyBranch = Build-Sticky 'Doc Probe-Branch' @(880, -340) `
         'Exklusive Branches statt Merge' `

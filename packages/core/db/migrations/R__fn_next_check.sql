@@ -26,6 +26,11 @@ BEGIN
 
     v_k := GREATEST(1::bigint,
         FLOOR(EXTRACT(EPOCH FROM (p_now - p_prev)) / EXTRACT(EPOCH FROM p_interval))::bigint + 1);
+    -- Die Naeherung (Monat = 30 Tage) schiesst bei Monats-Intervallen nach langer Pause auch UEBER das minimale k
+    -- hinaus (prev 01.01., now 31.12. -> k 13 statt 12): erst zurueck, solange der vorige Slot noch > now liegt.
+    WHILE v_k > 1 AND p_prev + p_interval * (v_k - 1) > p_now LOOP
+        v_k := v_k - 1;
+    END LOOP;
     v_next := p_prev + p_interval * v_k;
 
     -- Harte Garantie "strikt > p_now" (Kalender-Intervall-Naeherung korrigieren; max wenige Schritte)

@@ -396,6 +396,7 @@
   "core.label.condition": "조건",
   "core.label.due": "기한",
   "core.label.check_interval": "확인 주기",
+  "core.label.first_check": "첫 확인",
   "core.label.source": "출처",
   "core.label.prompt_start": "조회 지시문 (앞부분)",
   "core.label.sql_start": "조회 쿼리 (앞부분)",

@@ -14,6 +14,8 @@
 --   recurring_payment_id (das Glied, dessen Vorkommen gebucht wird; Default = Kopf), "schon gebucht" gilt ueber
 --   die ganze Vorgaenger-Kette (Audit Paket 2 A0) und unabhaengig vom Belastungskonto. Aeltere offene Raten werden
 --   nie still rueckdatiert; abweichende Betraege (Sondertilgung) bleiben ungestempelt.
+--   SONDERTILGUNG: ohne principal_amount und ohne passendes offenes Vorkommen, waehrend die Rate der laufenden Periode
+--   (Faelligkeit in payment_date - Periode .. payment_date + 14) schon gebucht ist -> Zins 0, Tilgung = Zahlung.
 --   OHNE BETRAG (WP2 "Finanzen schlank", weniger Rueckfragen): payment_amount leer = die faellige Rate -- der Betrag
 --   des naechstgelegenen offenen Vorkommens der Raten-Kette im selben Fenster (bzw. am expliziten due_date), bei der
 --   letzten Rate der Abloesebetrag (Restschuld + Zins), wenn die volle Rate ueberzahlen wuerde. Ohne Raten-Kette oder
@@ -40,6 +42,7 @@ DECLARE
     v_interest   NUMERIC;
     v_def_rp     INT;
     v_dates      JSONB;
+    v_extra      BOOLEAN := false;
 BEGIN
     -- relative Datumsangaben ("yesterday", "-3 days") -> ISO; nicht aufloesbar -> {ok:false, code:'invalid_date'}
     v_dates := core.fn_resolve_input_dates(p, ARRAY['payment_date', 'due_date']);
@@ -106,7 +109,33 @@ BEGIN
     SELECT GREATEST(-balance, 0) INTO v_restschuld
     FROM finance.account_balances WHERE account_id = v_loan.loan_account_id;
 
-    IF v_principal IS NULL THEN
+    -- Sondertilgung nach gebuchter Rate: ist die Rate der laufenden Periode schon gebucht und passt die Zahlung zu
+    -- keinem offenen Vorkommen, hat die Rate den Periodenzins bezahlt -> die Zusatzzahlung ist reine Tilgung (sonst
+    -- zaehlte der Zins doppelt und eine kleine Sondertilgung galte als Unterzahlung).
+    IF v_principal IS NULL AND v_due IS NULL AND v_loan.recurring_payment_id IS NOT NULL THEN
+        v_extra := EXISTS (
+                SELECT 1 FROM finance.transactions t
+                WHERE t.recurring_payment_id IN (SELECT finance.fn_recurring_lineage(v_loan.recurring_payment_id))
+                  AND t.recurring_due_date > (v_date - v_months * interval '1 month')::date
+                  AND t.recurring_due_date <= v_date + 14)
+            AND NOT EXISTS (
+                SELECT 1 FROM finance.fn_recurring_due_open(v_date + 14) o
+                JOIN finance.recurring_payments r ON r.id = o.recurring_payment_id
+                WHERE o.recurring_payment_id IN (SELECT finance.fn_recurring_lineage(v_loan.recurring_payment_id))
+                  AND ROUND(v_payment, 2) = ROUND(abs(r.amount), 2)
+                  AND o.due_date > (v_date - interval '1 month')::date)
+            -- die Abloese-Zahlung (Restschuld + Periodenzins) bleibt die letzte Rate mit Zins
+            AND v_payment < COALESCE(v_restschuld, 0)
+                            + finance.fn_loan_monthly_interest(v_restschuld, v_loan.interest_rate, v_months);
+        IF v_extra THEN
+            v_principal := v_payment;
+            v_interest  := 0;
+        END IF;
+    END IF;
+
+    IF v_extra THEN
+        NULL;
+    ELSIF v_principal IS NULL THEN
         -- Audit Paket 3: die EINE Zinsformel (fn_loan_monthly_interest) mit dem Perioden-Faktor der Rate.
         v_interest  := finance.fn_loan_monthly_interest(v_restschuld, v_loan.interest_rate, v_months);
         v_principal := v_payment - v_interest;
@@ -146,7 +175,7 @@ BEGIN
             RETURN jsonb_build_object('ok', false, 'code', 'already_booked',
                 'reason', 'The loan installment due on ' || v_due || ' is already booked.');
         END IF;
-    ELSIF v_loan.recurring_payment_id IS NOT NULL THEN
+    ELSIF v_loan.recurring_payment_id IS NOT NULL AND NOT v_extra THEN
         -- naechstgelegenes offenes Vorkommen eines Ketten-Glieds mit genau dieser Rate:
         -- bis 1 Monat zurueck ODER bis 14 Tage voraus (frueh bezahlt)
         SELECT o.due_date, o.recurring_payment_id INTO v_due, v_stamp_rp

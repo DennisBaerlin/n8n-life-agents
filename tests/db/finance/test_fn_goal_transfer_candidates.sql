@@ -70,6 +70,22 @@ BEGIN
   IF (v_r->0->>'day')::int IS DISTINCT FROM -1 THEN
     RAISE EXCEPTION 'FAIL fn_goal_transfer_candidates [Anker 31.]: %', v_r; END IF;
   RAISE NOTICE 'PASS fn_goal_transfer_candidates [Anker 31. ohne festen Tag -> Monatsletzter]';
+
+  -- Grenzen: Anker am 28. bleibt Tag 28 (gibt es in jedem Monat); ein Dauerauftrag mit valid_to = heute (exklusiv)
+  -- laeuft nicht mehr und ist kein Kandidat
+  INSERT INTO finance.accounts (name, account_type, currency, status) VALUES ('__test_gtc_pot28__', 'cash', 'EUR', 'active');
+  INSERT INTO finance.recurring_payments (name, account_id, target_account_id, amount, schedule_interval, schedule_unit,
+         first_payment_date, valid_from, status)
+  VALUES ('__test_gtc_28__', v_from, (SELECT id FROM finance.accounts WHERE name = '__test_gtc_pot28__'), -60, 1, 'month',
+          DATE '2027-02-28', DATE '2027-02-28', 'active');
+  INSERT INTO finance.recurring_payments (name, account_id, target_account_id, amount, schedule_interval, schedule_unit,
+         schedule_day_of_month, first_payment_date, valid_from, valid_to, status)
+  VALUES ('__test_gtc_endstoday__', v_from, (SELECT id FROM finance.accounts WHERE name = '__test_gtc_pot28__'), -70, 1, 'month', 3,
+          current_date - 90, current_date - 90, current_date, 'active');
+  v_r := finance.fn_goal_transfer_candidates((SELECT id FROM finance.accounts WHERE name = '__test_gtc_pot28__'), NULL);
+  IF jsonb_array_length(v_r) <> 1 OR (v_r->0->>'day')::int IS DISTINCT FROM 28 THEN
+    RAISE EXCEPTION 'FAIL fn_goal_transfer_candidates [Anker 28. / endet heute]: %', v_r; END IF;
+  RAISE NOTICE 'PASS fn_goal_transfer_candidates [Anker 28. bleibt 28, endet heute -> kein Kandidat]';
 END $$;
 
 ROLLBACK;

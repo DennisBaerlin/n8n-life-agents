@@ -102,7 +102,8 @@ $ContainerRoot = '/opt/n8n-life-agents'   # provisioning/ + packages/ als Geschw
 $EnvFileInC = '/root/.n8ntest_install.env'
 
 # --- .env laden (gleiche Mechanik wie die uebrigen scripts/-Treiber) ---------
-Get-Content "$RepoRoot\.env" | ForEach-Object {
+. "$PSScriptRoot\..\lib\dotenv.ps1"
+Read-DotEnvLines "$RepoRoot\.env" | ForEach-Object {
     if ($_ -match '^\s*([^#\s][^=]*)=(.*)$') {
         Set-Variable -Name $Matches[1].Trim() -Value $Matches[2].Trim() -Scope Script
     }
@@ -541,26 +542,30 @@ if (-not (Get-EnvValue 'TEST_TELEGRAM_BOT_TOKEN')) {
 }
 
 $tmpEnv = Join-Path ([System.IO.Path]::GetTempPath()) "n8ntest_install_env.$PID.tmp"
-[System.IO.File]::WriteAllText($tmpEnv, (($envLines -join "`n") + "`n"), $Utf8NoBom)   # LF, no BOM (in bash gesourct)
+try {   # finally: die lokale Secret-Kopie verschwindet auch, wenn ein Schritt dazwischen wirft
+    [System.IO.File]::WriteAllText($tmpEnv, (($envLines -join "`n") + "`n"), $Utf8NoBom)   # LF, no BOM (in bash gesourct)
 
-# --- Provisioning-Baum + Env in den Container kopieren -----------------------
-Write-Host "Stage Provisioning-Baum (provisioning/ packages/) -> ${Container}:$ContainerRoot ..."
-$r = Invoke-Native docker @('exec',$Container,'mkdir','-p',$ContainerRoot)
-if ($r.Code -ne 0) { throw "mkdir im Container fehlgeschlagen: $($r.Output -join "`n")" }
-foreach ($d in 'provisioning','packages') {
-    if (-not (Test-Path (Join-Path $RepoRoot $d))) { continue }   # tolerant, Muster install_cli
-    # Vorher LEEREN: `docker cp` MERGT in ein bestehendes Verzeichnis -> ohne -Reset blieben aus dem Baum
-    # geloeschte/umbenannte Dateien (z. B. eine stillgelegte Workflow-JSON) im Staging liegen, wuerden mit-
-    # importiert und verfaelschten jeden Update-Test (Prod: lifeagents update entpackt jede Version in einen
-    # FRISCHEN Ordner). Real getroffen Phase A: eine alte + eine umbenannte JSON mit derselben id.
-    $r = Invoke-Native docker @('exec',$Container,'rm','-rf',"$ContainerRoot/$d")
-    if ($r.Code -ne 0) { throw "Leeren von $ContainerRoot/$d im Container fehlgeschlagen: $($r.Output -join "`n")" }
-    $r = Invoke-Native docker @('cp',(Join-Path $RepoRoot $d),"${Container}:$ContainerRoot/")
-    if ($r.Code -ne 0) { throw "docker cp $d fehlgeschlagen: $($r.Output -join "`n")" }
+    # --- Provisioning-Baum + Env in den Container kopieren -----------------------
+    Write-Host "Stage Provisioning-Baum (provisioning/ packages/) -> ${Container}:$ContainerRoot ..."
+    $r = Invoke-Native docker @('exec',$Container,'mkdir','-p',$ContainerRoot)
+    if ($r.Code -ne 0) { throw "mkdir im Container fehlgeschlagen: $($r.Output -join "`n")" }
+    foreach ($d in 'provisioning','packages') {
+        if (-not (Test-Path (Join-Path $RepoRoot $d))) { continue }   # tolerant, Muster install_cli
+        # Vorher LEEREN: `docker cp` MERGT in ein bestehendes Verzeichnis -> ohne -Reset blieben aus dem Baum
+        # geloeschte/umbenannte Dateien (z. B. eine stillgelegte Workflow-JSON) im Staging liegen, wuerden mit-
+        # importiert und verfaelschten jeden Update-Test (Prod: lifeagents update entpackt jede Version in einen
+        # FRISCHEN Ordner). Real getroffen Phase A: eine alte + eine umbenannte JSON mit derselben id.
+        $r = Invoke-Native docker @('exec',$Container,'rm','-rf',"$ContainerRoot/$d")
+        if ($r.Code -ne 0) { throw "Leeren von $ContainerRoot/$d im Container fehlgeschlagen: $($r.Output -join "`n")" }
+        $r = Invoke-Native docker @('cp',(Join-Path $RepoRoot $d),"${Container}:$ContainerRoot/")
+        if ($r.Code -ne 0) { throw "docker cp $d fehlgeschlagen: $($r.Output -join "`n")" }
+    }
+    $r = Invoke-Native docker @('cp',$tmpEnv,"${Container}:$EnvFileInC")
+    if ($r.Code -ne 0) { throw "docker cp install-env fehlgeschlagen: $($r.Output -join "`n")" }
 }
-$r = Invoke-Native docker @('cp',$tmpEnv,"${Container}:$EnvFileInC")
-Remove-Item $tmpEnv -Force -ErrorAction SilentlyContinue   # lokale Secret-Kopie sofort weg
-if ($r.Code -ne 0) { throw "docker cp install-env fehlgeschlagen: $($r.Output -join "`n")" }
+finally {
+    Remove-Item $tmpEnv -Force -ErrorAction SilentlyContinue
+}
 
 # --- Applier/Launcher im Container fahren (byte-identisch zu Prod) -----------
 # Ohne -Version: der Applier provision.sh DIREKT auf dem cp'ten lokalen Baum (kein Fetch/Token) — der

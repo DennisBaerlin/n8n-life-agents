@@ -246,4 +246,25 @@ BEGIN
   RAISE NOTICE 'PASS [18: abgebrochenes Ziel -> ok:false]';
 END $$;
 
+-- Grenzen auf einem Geld-Topf: genau das freie Geld ist zuordenbar (und deckt das Ziel genau -> erreicht); mehr wird
+-- mit dem positiven freien Betrag abgelehnt.
+DO $$
+DECLARE v_res JSONB; v_pot INT; v_goal INT;
+BEGIN
+  INSERT INTO finance.accounts (name, account_type, currency, status) VALUES ('__rsv2_topf__','cash','EUR','active') RETURNING id INTO v_pot;
+  INSERT INTO finance.transactions (account_id, amount, transaction_date, category) VALUES (v_pot, 500, current_date - 1, 'other');
+  INSERT INTO finance.savings_goals (name, target_amount, target_date, status)
+    VALUES ('__rsv2_goal__', 500, current_date + 365, 'active') RETURNING id INTO v_goal;
+
+  v_res := finance.fn_book_savings_reservation(jsonb_build_object('savings_goal_id', v_goal, 'account_id', v_pot, 'amount', 600));
+  IF (v_res->>'ok')::boolean IS DISTINCT FROM false OR v_res->>'code' IS DISTINCT FROM 'insufficient_free_balance'
+     OR (v_res->>'free')::numeric IS DISTINCT FROM 500 OR v_res->>'reason' NOT LIKE 'Only 500.00 EUR %' THEN
+    RAISE EXCEPTION 'FAIL [Grenze mehr als frei]: erwartet ok=false mit free 500, got %', v_res; END IF;
+
+  v_res := finance.fn_book_savings_reservation(jsonb_build_object('savings_goal_id', v_goal, 'account_id', v_pot, 'amount', 500));
+  IF (v_res->>'ok')::boolean IS DISTINCT FROM true OR NOT (v_res ? 'savings_goal_reached') THEN
+    RAISE EXCEPTION 'FAIL [Grenze genau frei = Ziel]: erwartet ok + savings_goal_reached, got %', v_res; END IF;
+  RAISE NOTICE 'PASS [Grenzen: genau das freie Geld zuordenbar und Ziel genau erreicht; mehr -> free 500]';
+END $$;
+
 ROLLBACK;

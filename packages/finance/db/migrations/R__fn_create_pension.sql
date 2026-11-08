@@ -9,10 +9,10 @@
 --   retirement_start_date (opt), contribution_amount (opt, positiv, je Abbuchung), schedule_interval/schedule_unit (opt),
 --   debit_account_id (opt, n8n-
 --   resolved; Pflicht wenn contribution gesetzt), schedule_day_of_month (opt), first_payment_date
---   (opt), notes.
+--   (opt bei monatlichem Beitrag, sonst Pflicht), notes.
 --   RUECKGABE: Erfolg -> {ok:true, pension_id, recurring_payment_id}. Korrigierbar
 --   (unbekannter pension_type/Rhythmus, current_value<0, contribution<0, contribution ohne bzw. auf nicht buchbares
---   debit_account [Depot/Kredit], gesetzliche Rente mit Monatsrente/Wert oder als zweite aktive der Person)
+--   debit_account [Depot/Kredit], nicht-monatlicher Beitrag ohne first_payment_date [code missing_required], gesetzliche Rente mit Monatsrente/Wert oder als zweite aktive der Person)
 --   -> {ok:false, reason}.
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_create_pension(p jsonb)
@@ -84,6 +84,11 @@ BEGIN
         RETURN jsonb_build_object('ok', false,
             'reason', 'A monthly contribution was given but no debit account to book it from. Provide the debit account or omit the contribution.');
     END IF;
+    -- Ohne Startdatum ankerte die Kette an heute: ein Jahres-/Quartalsbeitrag waere dann jedes Jahr am Anlegetag faellig.
+    IF v_contrib IS NOT NULL AND v_contrib > 0 AND v_first IS NULL AND NOT (v_unit = 'month' AND v_interval = 1) THEN
+        RETURN jsonb_build_object('ok', false, 'code', 'missing_required',
+            'reason', 'A contribution that is not paid monthly needs the date of its first (or next) payment (first_payment_date) - ask the user for it.');
+    END IF;
     -- Beitrag nur von einem buchbaren Konto (Depot/Kredit tragen kein Geld; die Faelligkeit bliebe sonst ewig offen).
     IF v_contrib IS NOT NULL AND v_contrib > 0 THEN
         v_reason := finance.fn_bookable_account_reason(v_debit);
@@ -97,8 +102,8 @@ BEGIN
         v_rp_id := finance.fn_add_recurring_payment(
             v_debit, -v_contrib, left('AV-Beitrag ' || (p->>'name'), 100),
             v_interval, v_unit, v_dom,
-            COALESCE(v_first, CURRENT_DATE),
-            finance.fn_recurring_valid_from(v_debit, COALESCE(v_first, CURRENT_DATE)), NULL, NULL, NULL);
+            COALESCE(v_first, core.fn_today()),
+            finance.fn_recurring_valid_from(v_debit, COALESCE(v_first, core.fn_today())), NULL, NULL, NULL);
     END IF;
 
     INSERT INTO finance.pension

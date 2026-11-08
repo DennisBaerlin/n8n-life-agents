@@ -396,6 +396,7 @@
   "core.label.condition": "Condition",
   "core.label.due": "Due date",
   "core.label.check_interval": "Check interval",
+  "core.label.first_check": "First check",
   "core.label.source": "Source",
   "core.label.prompt_start": "Lookup instruction (beginning)",
   "core.label.sql_start": "Query (beginning)",

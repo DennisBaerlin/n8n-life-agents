@@ -56,4 +56,45 @@ BEGIN
   RAISE NOTICE 'PASS [preview Nullsaldo -> 0]';
 END $$;
 
+-- Satzwahl am as_of (valid_to exklusiv): neuer Satz ab as_of gilt, ein kuenftiger noch nicht, ein beendeter ohne
+-- Nachfolger gar nicht; Zins-Gutschriften fremder Konten verschieben den Aufzins-Start nicht.
+DO $$
+DECLARE
+  v_a   INT;
+  v_b   INT;
+  v_c   INT;
+  v_d   INT;
+  v_amt NUMERIC;
+BEGIN
+  v_a := (finance.fn_create_account('{"name":"__test_iap_a__","account_type":"cash","currency":"EUR","interest_rate":3.65,"interest_credit_unit":"year","interest_valid_from":"2026-01-01"}'::jsonb)->>'account_id')::int;
+  v_b := (finance.fn_create_account('{"name":"__test_iap_b__","account_type":"cash","currency":"EUR","interest_rate":3.65,"interest_credit_unit":"year","interest_valid_from":"2026-01-01"}'::jsonb)->>'account_id')::int;
+  v_c := (finance.fn_create_account('{"name":"__test_iap_c__","account_type":"cash","currency":"EUR","interest_rate":3.65,"interest_credit_unit":"year","interest_valid_from":"2026-01-01"}'::jsonb)->>'account_id')::int;
+  v_d := (finance.fn_create_account('{"name":"__test_iap_d__","account_type":"cash","currency":"EUR","interest_rate":3.65,"interest_credit_unit":"year","interest_valid_from":"2026-01-01"}'::jsonb)->>'account_id')::int;
+  INSERT INTO finance.transactions (account_id, amount, transaction_date, category)
+  SELECT x, 10000, '2026-01-01', 'other' FROM unnest(ARRAY[v_a, v_b, v_c, v_d]) x;
+
+  -- A: 3.65 % bis 2026-01-11, danach 7.3 %
+  UPDATE finance.account_interest_rates SET valid_to = '2026-01-11' WHERE account_id = v_a;
+  INSERT INTO finance.account_interest_rates (account_id, annual_rate, schedule_interval, schedule_unit,
+    schedule_day_of_month, day_count_convention, valid_from)
+  SELECT account_id, 7.3, schedule_interval, schedule_unit, schedule_day_of_month, day_count_convention, '2026-01-11'
+    FROM finance.account_interest_rates WHERE account_id = v_a;
+  v_amt := finance.fn_interest_accrued_preview(v_a, '2026-01-11');
+  IF v_amt IS DISTINCT FROM 20.00 THEN RAISE EXCEPTION 'FAIL [neuer Satz ab as_of]: erwartet 20.00, got %', v_amt; END IF;
+  v_amt := finance.fn_interest_accrued_preview(v_a, '2026-01-06');
+  IF v_amt IS DISTINCT FROM 5.00 THEN RAISE EXCEPTION 'FAIL [kuenftiger Satz]: erwartet 5.00, got %', v_amt; END IF;
+
+  -- B: Satz endet 2026-01-11 ohne Nachfolger
+  UPDATE finance.account_interest_rates SET valid_to = '2026-01-11' WHERE account_id = v_b;
+  v_amt := finance.fn_interest_accrued_preview(v_b, '2026-01-11');
+  IF v_amt IS DISTINCT FROM 0 THEN RAISE EXCEPTION 'FAIL [beendeter Satz]: erwartet 0, got %', v_amt; END IF;
+
+  -- D bekommt eine Gutschrift bis 2026-01-06; C bleibt davon unberuehrt
+  INSERT INTO finance.transactions (account_id, amount, transaction_date, category, interest_period_end)
+  VALUES (v_d, 5, '2026-01-06', 'interest', '2026-01-06');
+  v_amt := finance.fn_interest_accrued_preview(v_c, '2026-01-11');
+  IF v_amt IS DISTINCT FROM 10.00 THEN RAISE EXCEPTION 'FAIL [fremde Gutschrift]: erwartet 10.00, got %', v_amt; END IF;
+  RAISE NOTICE 'PASS [Satzwahl am as_of + fremde Gutschrift ohne Wirkung]';
+END $$;
+
 ROLLBACK;

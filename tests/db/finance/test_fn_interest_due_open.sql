@@ -219,4 +219,18 @@ BEGIN
 
 END $$;
 
+-- Rueckfenster inklusiv: ein Vorkommen mit value_date genau p_until - 90 wird noch angeboten.
+DO $$
+DECLARE
+  v_acct INT;
+BEGIN
+  v_acct := (finance.fn_create_account('{"name":"__test_int_due90__","account_type":"cash","currency":"EUR"}'::jsonb)->>'account_id')::int;
+  INSERT INTO finance.account_interest_rates (account_id, annual_rate, schedule_interval, schedule_unit, day_count_convention, valid_from)
+  VALUES (v_acct, 4, 1, 'month', 'ACT/365', '2026-01-01');
+  IF NOT EXISTS (SELECT 1 FROM finance.fn_interest_due_open(DATE '2026-02-01' + 90)
+                 WHERE account_id = v_acct AND period_end = '2026-02-01') THEN
+    RAISE EXCEPTION 'FAIL [90-Tage-Grenze]: value_date = p_until - 90 fehlt'; END IF;
+  RAISE NOTICE 'PASS [90-Tage-Rueckfenster inklusiv]';
+END $$;
+
 ROLLBACK;

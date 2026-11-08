@@ -75,7 +75,7 @@
                   },
                   {
                       "parameters":  {
-                                         "content":  "## include_manifest\n\n**Aufbau des system_prompt (Inputs: agent_name, include_manifest):**\n- `false` -\u003e nur Static-Docs (global + agent_instructions), KEIN Lazy-Manifest. Fuer Agenten OHNE load_context-Tool (Orchestrator/Router).\n- sonst / `true` -\u003e Static-Docs + Lazy-Manifest (z. B. finance).\n\nDie Assembly-SQL lebt hier im Workflow, nicht in der DB (siehe Verweis in core_init.sql).",
+                                         "content":  "## Ablauf\n**include_manifest**\n\nfalse -\u003e nur die Static-Docs, KEIN Lazy-Manifest (Agenten ohne load_context-Tool, z. B. der Orchestrator).\nsonst / true -\u003e Static-Docs + Lazy-Manifest.\n\nDie Assembly-SQL lebt hier im Workflow, nicht in der DB (Zeiger in packages/core/db/agent.core_init.sql).",
                                          "height":  240,
                                          "width":  380,
                                          "color":  4
@@ -91,7 +91,7 @@
                   },
                   {
                       "parameters":  {
-                                         "content":  "## agent.tool_load_context\n\nGemeinsamer Sub-Workflow: baut den System-Prompt eines Agenten. Inputs: agent_name, include_manifest.\nEINE Postgres-Query: static-concat der static-Docs aus agent.core_contexts (global zuerst, dann agent-spezifisch) + optional das Lazy-Manifest (Name+Description der lazy-Contexts; OHNE die physischen per_user-Zeilen \u0027\u003cbase\u003e__\u003cperson_id\u003e\u0027 anderer Personen — agent.fn_is_per_user_row; gelesen wird per Basisname + eigener chat_id). Rueckgabe: system_prompt.\nWird von jedem Agent-Workflow VOR dem AI-Node aufgerufen. Sichtbarkeit = (load_strategy x agent_name) -\u003e siehe CLAUDE.md Vier-Schichten-Memory.",
+                                         "content":  "## Ablauf\n**agent.tool_load_context**\n\nGemeinsamer Sub-Workflow, KEIN LLM: baut den System-Prompt eines Agenten. Inputs: agent_name, include_manifest. Aufruf durch jeden Agent-Workflow VOR dem AI-Node.\nEINE Postgres-Query: Static-Docs aus agent.core_contexts, sortiert global_instructions, dann die Docs dieses Agenten, dann die übrigen agentlosen Docs (je nach Name); danach optional das Lazy-Manifest (Name + Description der lazy-Contexts; ohne die physischen per_user-Zeilen \u0027\u003cbase\u003e__\u003cperson_id\u003e\u0027 anderer Personen, agent.fn_is_per_user_row — gelesen wird per Basisname + eigener chat_id). Rückgabe: system_prompt.\nSichtbarkeit = load_strategy x agent_name (Frontmatter-Schema: docs/package-contract.md §3.1).",
                                          "height":  240,
                                          "width":  420,
                                          "color":  4

@@ -19,7 +19,7 @@ Das Update ist abgebrochen, **bevor** es etwas am System geändert hat. Dein Sys
 |---|---|
 | GitHub war nicht erreichbar | Internet-Verbindung des Servers prüfen, dann **Erneut versuchen** tippen. |
 | GitHub hat zu viele Anfragen gemeldet | Etwa eine Stunde warten, dann **Erneut versuchen**. |
-| Nicht genug Speicherplatz | Platz schaffen (`df -h` zeigt, wie voll der Server ist; alte Dateien in `/tmp` oder Container-Abbilder sind typische Platzfresser), dann **Erneut versuchen**. Das Update braucht etwa 2 GB frei. |
+| Nicht genug Speicherplatz | Platz schaffen (`df -h` zeigt, wie voll der Server ist; alte Dateien in `/tmp` oder Container-Abbilder sind typische Platzfresser), dann **Erneut versuchen**. Das Update braucht mindestens 2 GB frei, bei einer neuen n8n-Version deutlich mehr (rund 5 GB). |
 | Ein anderes Update läuft schon | Warten, bis es fertig ist, dann **Erneut versuchen**. |
 | Die Datenbank war nicht erreichbar | `lifeagents doctor` zeigt, was mit der Datenbank los ist. |
 | Die Sicherung ist fehlgeschlagen | Meist fehlt Speicherplatz unter `/var/backups/lifeagents/`. Ohne Sicherung wird bewusst nicht aktualisiert. |

@@ -8,7 +8,7 @@
 # READ-ONLY BY CONSTRUCTION: KEIN DB-Write, KEIN HITL-Gate,
 # KEIN Staging — die Extraktion liefert die Rohfelder nur ZURUECK; der Advisor spielt jede Zeile im Chat
 # zurueck und schreibt das bestaetigte Feld getrennt via tool_set_profile_facts (Per-Eintrag-HITL,
-# owner_only). Strukturell analog finance.tool_extract_finance_document, aber ohne den Staging-/Commit-
+# Stufe self). Strukturell analog finance.tool_extract_finance_document, aber ohne den Staging-/Commit-
 # Pfad (Finanz-Vision schreibt; CV-Vision schlaegt nur vor). Modell via config model.cv_extract (career,
 # bei JEDEM Lauf gelesen, Muster vision_extract) — eigener Config-Key (finance besitzt model.vision_extract,
 # UNIQUE(category,key)). Das Plumbing (Download/Validierung/base64) lebt im Core-Baustein; die CV-Vision
@@ -70,7 +70,7 @@ return [{ json: { ok: true, profile: JSON.stringify(prof), field_count: keys.len
     $errShape = Build-ToolError 'Extraction failed' @(1740, 240) "={{ `$('Shape profile').item.json.error }}"
 
     # READ-ONLY: nur die Rohfelder zurueckgeben (KEIN Write). Der Advisor spielt jedes Feld im Chat zurueck
-    # und schreibt das bestaetigte Feld getrennt via tool_set_profile_facts (Per-Eintrag-HITL, owner_only).
+    # und schreibt das bestaetigte Feld getrennt via tool_set_profile_facts (Per-Eintrag-HITL, Stufe self).
     $ret = Build-Return @(1740, 60) @(
         ,@('ok', 'true', 'boolean')
         ,@('profile', "={{ `$('Shape profile').item.json.profile }}", 'string')
@@ -80,7 +80,7 @@ return [{ json: { ok: true, profile: JSON.stringify(prof), field_count: keys.len
 
     $sticky = Build-Sticky 'CV-Vision (paid-key Pflicht, read-only)' @(420, -420) `
         'List files -> Fetch telegram file je Datei (Core-Baustein: Download/base64) -> Collect files -> Load model config -> Claude-Vision auf alle Bilder/PDFs gemeinsam (fremde Dateien: ignored_files) (model.cv_extract, Denk-Tiefe niedrig) -> Rohfelder zurück' `
-        'PRIVACY: ein Lebenslauf ist sensible PII -> geht NUR über die bezahlte Anthropic-API (anthropicApi-Credential; trainiert laut Commercial Terms nicht auf Kundeninhalten) — nie über einen Free-Tier-Zugang. Der Download/die base64-Wandlung kommt aus dem generischen Baustein agent.tool_fetch_telegram_file (kein Key dort; Allow-List jpeg/png/gif/webp/pdf, Bild <= 5 MB); die CV-Vision bleibt HIER, der Aufruf über den geteilten Baustein New-AnthropicMessagesNode (Bild = image-Block, PDF = document-Block; abgeschnittene Antwort/Ablehnung -> ok:false). READ-ONLY BY CONSTRUCTION: KEIN DB-Write, KEIN HITL-Gate, KEIN Staging — die Extraktion liefert NUR die rohen career_profile-Felder (current_title/industry/experience_years/skills/last_job_change_date) als JSON-Objekt zurück (Prompt-Vertrag, Parse toleriert Zäune). Der Advisor spielt jede Zeile im Chat zurück und schreibt das bestätigte Feld getrennt via tool_set_profile_facts (Per-Eintrag-HITL, owner_only). "LLM rechnet NICHT": experience_years nur wenn explizit gedruckt — NIE aus Job-Datumsangaben summiert (die DB leitet "Jahre seit Wechsel" aus last_job_change_date ab). Modell: Load model config liest bei JEDEM Lauf core.config model.cv_extract (Wechsel: lifeagents config set model cv_extract <key>, wirkt sofort).' 320 560
+        'PRIVACY: ein Lebenslauf ist sensible PII -> geht NUR über die bezahlte Anthropic-API (anthropicApi-Credential; trainiert laut Commercial Terms nicht auf Kundeninhalten) — nie über einen Free-Tier-Zugang. Der Download/die base64-Wandlung kommt aus dem generischen Baustein agent.tool_fetch_telegram_file (kein Key dort; Allow-List jpeg/png/gif/webp/pdf, Bild <= 5 MB); die CV-Vision bleibt HIER, der Aufruf über den geteilten Baustein New-AnthropicMessagesNode (Bild = image-Block, PDF = document-Block; abgeschnittene Antwort/Ablehnung -> ok:false). READ-ONLY BY CONSTRUCTION: KEIN DB-Write, KEIN HITL-Gate, KEIN Staging — die Extraktion liefert NUR die rohen career_profile-Felder (current_title/industry/career_start_date/skills/last_job_change_date) als JSON-Objekt zurück (Prompt-Vertrag, Parse toleriert Zäune). Der Advisor spielt jede Zeile im Chat zurück und schreibt das bestätigte Feld getrennt via tool_set_profile_facts (Per-Eintrag-HITL, Stufe self). "LLM rechnet NICHT": career_start_date wie gedruckt (Beginn der frühesten Tätigkeit) — NIE aus Job-Dauern summiert (die DB leitet "Jahre seit Wechsel" aus last_job_change_date ab). Modell: Load model config liest bei JEDEM Lauf core.config model.cv_extract (Wechsel: lifeagents config set model cv_extract <key>, wirkt sofort).' 320 560
 
     $nodes = @($trig) + $reader.Nodes + @($errB64,
                $loadModel, $http, $shape, $ifShaped, $errShape, $ret, $sticky)

@@ -2,7 +2,7 @@
 
 Fast onboarding surface for contributors — human or coding agent. The conventions live in the
 `CLAUDE.md` family (root + `packages/`, `packages/<pkg>/`, `scripts/`, `scripts/build/`, `tests/`,
-`provisioning/`), path-scoped rules in `.claude/rules/` (SQL, PowerShell) and per-area reference material in `docs/reference/`; when this file and a `CLAUDE.md` disagree, `CLAUDE.md` wins.
+`provisioning/`), path-scoped rules in `.claude/rules/` (SQL, PowerShell, code comments) and per-area reference material in `docs/reference/`; when this file and a `CLAUDE.md` disagree, `CLAUDE.md` wins.
 
 ## What this project is
 
@@ -22,7 +22,7 @@ The dev tooling is **Windows-only** (PowerShell + Docker Desktop); the deploy ta
    minus the local-only hooks listed in [CONTRIBUTING.md](CONTRIBUTING.md) *The enforcement gates*).
 3. `scripts/db_test.ps1` — the deterministic DB suite against a throwaway Docker database.
 
-No API credits are needed for any of this. The paid LLM suites need your own `ANTHROPIC_API_KEY` in `.env`.
+No API credits are needed for any of this. The paid LLM suites need your own Anthropic key in `.env` (`TEST_ANTHROPIC_API_KEY` for the agent suites, `ANTHROPIC_API_KEY` for `judge_eval`).
 
 ## Hard rules (the rest is in CLAUDE.md)
 

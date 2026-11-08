@@ -8,7 +8,8 @@
 --   Eingabe jsonb: account_id, confirmed_balance, reconciliation_date (opt -> heute), notes.
 --   Betraege NATIV in der Kontowaehrung (currency im Return fuer Tool/Approval).
 --   KORRIGIERBAR (kein Write) -> {ok:false, reason} ueber finance.fn_reconcile_blocker (eine Adresse mit Batch +
---   Vorschau): Depot-/Kreditkonto; Stichtag in der Zukunft; Stichtag VOR dem letzten Abgleich.
+--   Vorschau): Depot-/Kreditkonto; Stichtag in der Zukunft; Stichtag VOR dem letzten Abgleich; vorher (ohne Sperre)
+--   fehlender/leerer confirmed_balance.
 --   OFFENE VORKOMMEN (Monats-Check WP-A): der bestaetigte Saldo enthaelt alle Bewegungen bis zum Stichtag. Offene
 --   Dauerauftrags-Vorkommen dieses Kontos (Quelle oder Transfer-Ziel) mit Faelligkeit <= Stichtag - 10 Tage und offene
 --   Zins-Vorkommen mit value_date <= Stichtag - 10 sind damit erledigt (passiert oder ausgefallen, der Saldo sagt es)
@@ -23,7 +24,7 @@ CREATE OR REPLACE FUNCTION finance.fn_reconcile_account(p jsonb)
 RETURNS jsonb LANGUAGE plpgsql AS $$
 DECLARE
     v_account   INT     := (p->>'account_id')::int;
-    v_confirmed NUMERIC := (p->>'confirmed_balance')::numeric;
+    v_confirmed NUMERIC := NULLIF(p->>'confirmed_balance', '')::numeric;
     v_date      DATE;
     v_db_bal    NUMERIC;
     v_diff      NUMERIC;
@@ -42,6 +43,11 @@ BEGIN
     IF NOT (v_dates->>'ok')::boolean THEN RETURN v_dates; END IF;
     p := v_dates->'p';
     v_date := COALESCE(NULLIF(p->>'reconciliation_date', '')::date, core.fn_today());
+    -- Korrigierbar vor jedem Write: ohne bestaetigten Saldo staende NULL als Abgleichsstand (und ok:true).
+    IF v_confirmed IS NULL THEN
+        RETURN jsonb_build_object('ok', false,
+            'reason', 'The confirmed balance (confirmed_balance) is missing - ask the user for the balance shown by the bank.');
+    END IF;
     -- FOR UPDATE: Saldo-Zeile sperren (Cron parallel Chat) -> Differenz/Korrekturbuchung auf konsistentem Stand.
     PERFORM 1 FROM finance.account_balances WHERE account_id = v_account FOR UPDATE;
     IF NOT FOUND THEN

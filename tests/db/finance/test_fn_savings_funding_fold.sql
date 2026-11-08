@@ -52,7 +52,9 @@ BEGIN
      OR (v->'card_lines'->0->'params'->'date'->>'value')::date <> t + 2
      OR (a->>'account_id')::int <> v_kid OR a->>'state' <> 'alert' OR (a->>'monthly_gap')::numeric <> 200
      OR (a->>'runs_out_on')::date <> t + 2 OR NOT (a->>'asked')::boolean
-     OR v->'savings_funding'->>'note' NOT LIKE '%ASK the user%' OR v->'savings_funding'->>'note' NOT LIKE '%200.00 EUR%' THEN
+     OR v->'savings_funding'->>'note' NOT LIKE '%ASK the user%' OR v->'savings_funding'->>'note' NOT LIKE '%200.00 EUR%'
+     -- nichts fuer Ziele reserviert -> kein "after 0.00 reserved"-Zusatz
+     OR v->'savings_funding'->>'note' LIKE '%reserved for goals%' THEN
     RAISE EXCEPTION 'FAIL [a] Luecke -> Karte + Frage, got %', v; END IF;
   RAISE NOTICE 'PASS [a] Luecke: Kartenzeile + Frage mit Fehlbetrag';
 

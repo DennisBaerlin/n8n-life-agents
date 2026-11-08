@@ -37,8 +37,7 @@ DO $$ BEGIN
     IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'context_ro') THEN
         REVOKE ALL ON core.backup_key FROM context_ro;
     END IF;
-    -- core_ro (Core-Host-Leserolle agent+core+finance) liest breit core.* — der Backup-Key
-    -- bleibt auch ihr verwehrt (util_create_core_ro REVOKEt ebenfalls; hier Backstop).
+    -- core_ro: der Backup-Key steht nie auf der Erlaubnisliste (util_create_core_ro REVOKEt ebenfalls; hier Backstop).
     IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'core_ro') THEN
         REVOKE ALL ON core.backup_key FROM core_ro;
     END IF;

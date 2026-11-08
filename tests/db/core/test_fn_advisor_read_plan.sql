@@ -4,7 +4,8 @@
 --   person_id -> dessen Plan. KEIN/nicht-numerischer/unaufgeloester chat_id -> leere Menge (fail-closed, kein
 --   Owner-Fallback mehr). Aufruf aus einer Frei-SQL-Sitzung (Login-Rolle *_ro) -> leere Menge (chat_id dort
 --   LLM-gesteuert). Die zentrale Isolations-Aussage: Person B (222 -> lena) bekommt B's Plan, NIE A's (erika).
---   RLS: core_ro (Frei-SQL guide/monitor) sieht in agent.advisor_plans nur Haushalts-Plaene (person_id NULL).
+--   core_ro (Frei-SQL guide/monitor) liest agent.advisor_plans nicht; die RLS dahinter laesst nur Haushalts-Plaene
+--   (person_id NULL) durch.
 --   (Das gebundene read_plan-Tool des career_advisor ruft GENAU diese fn mit der build-fixen chat_id.)
 -- db_test seedet KEIN context_scopes -> die per_user-Zeile career_planning wird hier selbst geseedet (sonst
 --   COALESCE -> household -> person_id NULL -> kein Person-Scope). core.advisors leer -> plan_context-Fallback
@@ -60,7 +61,16 @@ BEGIN
   IF v_cnt <> 0 THEN RAISE EXCEPTION 'FAIL [4b] unaufgeloester chat_id erwartet leere Menge, got %', v_cnt; END IF;
   RAISE NOTICE 'PASS [4] nicht-numerischer/unaufgeloester chat_id -> leere Menge (kein RAISE)';
 
-  -- TEST 6: RLS — core_ro sieht nur Haushalts-Plaene
+  -- TEST 6: core_ro liest advisor_plans gar nicht (Erlaubnisliste util_create_core_ro); die RLS bleibt zweiter Riegel
+  -- und wird mit einem testlokalen Grant (ROLLBACK am Ende) weiter geprueft.
+  BEGIN
+    SET LOCAL ROLE core_ro;
+    PERFORM 1 FROM agent.advisor_plans LIMIT 1;
+    RESET ROLE;
+    RAISE EXCEPTION 'FAIL [6] core_ro liest agent.advisor_plans (nicht auf der Erlaubnisliste)';
+  EXCEPTION WHEN insufficient_privilege THEN RESET ROLE;
+  END;
+  GRANT SELECT ON agent.advisor_plans TO core_ro;
   SET LOCAL ROLE core_ro;
   SELECT count(*) INTO v_cnt FROM agent.advisor_plans WHERE domain = 'career';
   RESET ROLE;
@@ -69,7 +79,8 @@ BEGIN
   SELECT count(*) INTO v_cnt FROM agent.advisor_plans WHERE domain = '__rp_household__';
   RESET ROLE;
   IF v_cnt <> 1 THEN RAISE EXCEPTION 'FAIL [6b] core_ro sieht den Haushalts-Plan nicht (got %)', v_cnt; END IF;
-  RAISE NOTICE 'PASS [6] RLS: core_ro sieht Haushalts-, keine Personen-Plaene';
+  REVOKE SELECT ON agent.advisor_plans FROM core_ro;
+  RAISE NOTICE 'PASS [6] core_ro ohne Lesezugriff; RLS (zweiter Riegel) laesst nur Haushalts-Plaene durch';
 END $$;
 
 -- TEST 5: Frei-SQL-Sitzung (Login-Rolle career_ro, wie postgres_select) -> leere Menge, auch mit "fremder" chat_id.

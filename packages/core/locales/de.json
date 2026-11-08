@@ -396,6 +396,7 @@
   "core.label.condition": "Bedingung",
   "core.label.due": "Termin",
   "core.label.check_interval": "Prüfrhythmus",
+  "core.label.first_check": "Erste Prüfung",
   "core.label.source": "Quelle",
   "core.label.prompt_start": "Abruf-Anweisung (Anfang)",
   "core.label.sql_start": "Abfrage (Anfang)",

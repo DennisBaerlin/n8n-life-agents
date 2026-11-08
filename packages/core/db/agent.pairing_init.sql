@@ -113,5 +113,5 @@ CREATE UNIQUE INDEX IF NOT EXISTS pairing_state_one_open_per_person
 -- droppt einmalig V012__consolidate_notification_state.sql.
 
 -- Lesepfad: NUR die Haupt-Credential (Pre-Router) und die Pairing-fns. KEIN Grant an core_ro (Security-Audit 2026-10):
--- die offenen Einmal-Codes stehen im Klartext, der Frei-SQL-Pfad darf sie nie sehen. Den Sammel-Grant ueber agent.*
--- nimmt util_create_core_ro.sql (Deny-Liste) wieder zurueck.
+-- die offenen Einmal-Codes stehen im Klartext, der Frei-SQL-Pfad darf sie nie sehen (nicht auf der
+-- Erlaubnisliste in util_create_core_ro.sql, zusaetzlich auf deren Deny-Liste).

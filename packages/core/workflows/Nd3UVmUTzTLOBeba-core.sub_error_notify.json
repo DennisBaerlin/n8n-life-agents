@@ -131,7 +131,7 @@
                   },
                   {
                       "parameters":  {
-                                         "content":  "## core.sub_error_notify\n\nGlobaler Fehler-Notifier. Wird von n8n automatisch aufgerufen wenn ein verlinkter Workflow faellt (settings.errorWorkflow in den Workflow-Einstellungen).\n\n**Ablauf:** On Error (Error Trigger) -\u003e Load alert texts (Owner-Sprache, core.fn_ui_texts_for; onError continue, kein Retry) -\u003e Format Message (Texte aus dem Katalog, Zeit im Owner-Locale; DB weg -\u003e englische Ersatztexte, der Alarm geht immer raus) -\u003e Send Telegram Alert (an Owner-Chat). Zweiter Ast: Clear card lock (Karte-offen-Sperre eines gescheiterten Gate-Laufs loeschen). Erster Ast (liegt hoeher, laeuft vor dem Alarm): Clear thinking lease (Schalter der \"Bot denkt nach\"-Schleife eines gescheiterten Orchestrator-Laufs loeschen, agent.fn_delete_thinking_lease).\n\n**Empfangene Daten (n8n Error Trigger):**\n- execution.error.message - Fehlermeldung\n- execution.lastNodeExecuted - letzter Node vor dem Fehler\n- execution.url - Execution-Link (optional)\n- workflow.name - Name des fehlgeschlagenen Workflows\n\n**Einschraenkung:** Feuert nur bei automatischen Executions - nicht bei manuellen Tests im n8n-Editor.",
+                                         "content":  "## Ablauf\n**core.sub_error_notify**\n\nGlobaler Fehler-Notifier: n8n ruft ihn automatisch, wenn ein Workflow mit settings.errorWorkflow auf ihn fällt (nur automatische Executions, nicht manuelle Tests im Editor).\n\nOn Error (Error Trigger) -\u003e Load alert texts (Owner-Sprache, core.fn_ui_texts_for; onError continue, kein Retry) -\u003e Format Message (Texte aus dem Katalog, Zeit im Owner-Locale; DB weg -\u003e englische Ersatztexte, der Alarm geht immer raus) -\u003e Send Telegram Alert (an den Owner-Chat). Zweiter Ast: Clear card lock (Karte-offen-Sperre eines gescheiterten Gate-Laufs löschen). Erster Ast (liegt höher, läuft vor dem Alarm): Clear thinking lease (Schalter der \u0027Bot denkt nach\u0027-Schleife eines gescheiterten Orchestrator-Laufs löschen, agent.fn_delete_thinking_lease).\n\nGenutzte Felder des Error Triggers: execution.error.message, execution.lastNodeExecuted, execution.url (optional), workflow.name.",
                                          "height":  360,
                                          "width":  500,
                                          "color":  4
@@ -147,7 +147,7 @@
                   },
                   {
                       "parameters":  {
-                                         "content":  "## Format Message\n\nBaut plain-text Telegram-Nachricht aus den Error-Trigger-Daten.\nKein Markdown (Telegram rendert sonst inkonsistent bei Sonderzeichen).\n\nBeispiel-Output:\n⚠️ n8n Fehler\n\nWorkflow: agent.monitor\nNode: Monitor Agent\nFehler: connection refused\nZeit: 05.06.2026, 14:23:01\nhttps://n8n.example.com/...",
+                                         "content":  "## Ablauf\n**Format Message**\n\nBaut den Alarm-Text aus den Error-Trigger-Daten (Zeilen: Titel, Workflow, Node, Fehler, Zeit, optional Link; Beschriftungen aus dem Katalog in der Owner-Sprache).\nDer Send hat kein parse_mode, Telegram liest also Legacy-Markdown: Format Message escapt darum die vier Entities (Unterstrich, Stern, Backtick, eckige Klammer auf) per Backslash (der Send escapt nicht selbst). Harness-getriggerte Läufe (Root-Trigger \u0027Test Webhook\u0027) alerten nie.",
                                          "height":  240,
                                          "width":  400,
                                          "color":  4
@@ -163,7 +163,7 @@
                   },
                   {
                       "parameters":  {
-                                         "content":  "## Clear card lock\n\nScheitert ein Lauf des HITL-Gates (agent.tool_human_approval), bleibt seine Zeile in agent.hitl_pending (Karte-offen-Sperre) liegen, weil \u0027Close pending\u0027 nie laeuft. Dieser Ast gibt sie per execution.id sofort frei (agent.fn_set_hitl_pending_released, Gnadenfrist 0). Laeuft NACH dem Alarm, onError continue; fremde Workflows = no-op. Backstop bleibt die TTL (expires_at).",
+                                         "content":  "## Ablauf\n**Clear card lock**\n\nScheitert ein Lauf des HITL-Gates (agent.tool_human_approval), bleibt seine Zeile in agent.hitl_pending (Karte-offen-Sperre) liegen, weil \u0027Close pending\u0027 nie läuft. Dieser Ast gibt sie per execution.id sofort frei (agent.fn_set_hitl_pending_released, Gnadenfrist 0). Läuft NACH dem Alarm, onError continue; fremde Workflows = no-op. Backstop bleibt die TTL (expires_at).",
                                          "height":  200,
                                          "width":  400,
                                          "color":  4

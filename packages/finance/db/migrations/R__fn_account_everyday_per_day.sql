@@ -10,14 +10,15 @@
 --                 zaehlen hier bewusst MIT (ueber 24 Monate kommen sie wieder -> vorsichtig)
 --   provisional = nur EIN Auszug vorhanden (der frueheste zaehlt mangels spaeterer) -> Schaetzung vorlaeufig, eher zu hoch.
 --   Konsumenten: fn_account_outlook (per_day), fn_account_funding (per_day_net), View account_everyday_spending.
---   RUECKGABE: (per_day <= 0, per_day_net <= 0, has_history, provisional)
+--   per_day_raw = per_day ungerundet: Basis jeder Hochrechnung (Monatswert der View), sonst rundete sie doppelt.
+--   RUECKGABE: (per_day <= 0, per_day_net <= 0, has_history, provisional, per_day_raw <= 0)
 --   Rueckgabetyp geaendert 2026-10-30: das einmalige DROP (reisst die View account_everyday_spending mit) macht
---   finance:V034 — NIE hier (jede spaetere Aenderung nur dieser Datei verloere sonst die View still). Eine weitere
+--   finance:V034 bzw. V040 (per_day_raw) — NIE hier (jede spaetere Aenderung nur dieser Datei verloere sonst die View still). Eine weitere
 --   Signatur-Aenderung braucht wieder eine V-Migration + Aenderung der View-Datei.
 --   Tests: tests/db/finance/test_fn_account_everyday_per_day.sql
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_account_everyday_per_day(p_account_id int)
-RETURNS TABLE(per_day numeric, per_day_net numeric, has_history boolean, provisional boolean)
+RETURNS TABLE(per_day numeric, per_day_net numeric, has_history boolean, provisional boolean, per_day_raw numeric)
 LANGUAGE plpgsql STABLE AS $$
 DECLARE
     v_out  NUMERIC;
@@ -30,7 +31,8 @@ BEGIN
            sum(b.oneoff_out) FILTER (WHERE b.counted), sum(b.days) FILTER (WHERE b.counted), count(*)
     INTO v_out, v_in, v_oo, v_days, v_n
     FROM finance.fn_account_everyday_basis(p_account_id) b;
-    per_day     := round(COALESCE((v_out - v_oo) / NULLIF(v_days, 0), 0), 2);
+    per_day_raw := COALESCE((v_out - v_oo) / NULLIF(v_days, 0), 0);
+    per_day     := round(per_day_raw, 2);
     per_day_net := LEAST(round(COALESCE((COALESCE(v_out, 0) + COALESCE(v_in, 0)) / NULLIF(v_days, 0), 0), 2), 0);
     has_history := v_n > 0;
     provisional := v_n = 1;

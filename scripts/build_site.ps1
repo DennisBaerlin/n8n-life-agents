@@ -21,6 +21,7 @@ param(
     [int]$Port = 1313
 )
 $ErrorActionPreference = 'Stop'
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 Set-StrictMode -Version Latest
 
 $PinnedHugoVersion = '0.168.0'

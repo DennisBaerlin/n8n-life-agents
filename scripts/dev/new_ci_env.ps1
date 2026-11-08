@@ -6,6 +6,7 @@
 # TEST_ANTHROPIC_API_KEY=ci-dummy-key: ohne Wert legt inject_credentials die Credential nicht an; llm_gateway_test
 # ueberspringt bei genau diesem Wert seinen Fall gegen die echte API.
 $ErrorActionPreference = 'Stop'
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 if (-not $env:CI) { throw 'new_ci_env.ps1 laeuft nur in CI ($env:CI fehlt).' }
 $RepoRoot = git -C $PSScriptRoot rev-parse --show-toplevel
 $target = Join-Path $RepoRoot '.env'

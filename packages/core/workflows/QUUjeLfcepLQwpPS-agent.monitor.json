@@ -380,6 +380,7 @@
                                                                               "max_plausible":  "={{ $fromAI(\u0027max_plausible\u0027, \u0027Upper plausibility bound\u0027, \u0027string\u0027, \u0027\u0027) }}",
                                                                               "max_jump_pct":  "={{ $fromAI(\u0027max_jump_pct\u0027, \u0027Optional continuity guard: max percent deviation from the last clean value\u0027, \u0027string\u0027, \u0027\u0027) }}",
                                                                               "check_interval":  "={{ $fromAI(\u0027check_interval\u0027, \u0027How often to check, e.g. 12 hours / 1 day / 1 week / 1 month\u0027, \u0027string\u0027) }}",
+                                                                              "first_check":  "={{ $fromAI(\u0027first_check\u0027, \u0027Optional day of the FIRST check, which also anchors the rhythm (every Monday = next monday), YYYY-MM-DD or relative to today exactly as: today, yesterday, tomorrow, in 2 weeks, -3 days, 2 months ago, next friday, last monday (counts as digits: in 1 week, not in a week) - never compute a date yourself; empty = first check right away\u0027, \u0027string\u0027, \u0027\u0027) }}",
                                                                               "action_note":  "={{ $fromAI(\u0027action_note\u0027, \u0027German note sent verbatim in the alert: what to do when it fires\u0027, \u0027string\u0027, \u0027\u0027) }}",
                                                                               "package":  "core",
                                                                               "chat_id":  "={{ $(\u0027Start agent.monitor\u0027).item.json.chat_id }}"
@@ -559,6 +560,16 @@
                                                                                    "removed":  false
                                                                                },
                                                                                {
+                                                                                   "id":  "first_check",
+                                                                                   "displayName":  "first_check",
+                                                                                   "required":  false,
+                                                                                   "defaultMatch":  false,
+                                                                                   "display":  true,
+                                                                                   "canBeUsedToMatch":  true,
+                                                                                   "type":  "string",
+                                                                                   "removed":  false
+                                                                               },
+                                                                               {
                                                                                    "id":  "action_note",
                                                                                    "displayName":  "action_note",
                                                                                    "required":  false,
@@ -605,7 +616,7 @@
                   {
                       "parameters":  {
                                          "name":  "tool_set_monitor_trigger",
-                                         "description":  "Change ONE existing monitoring trigger by label (partial update - only fields you send change). Also the LIFECYCLE tool: status=armed RE-ARMS a fired trigger (new epoch; add reset_peak=true to also reset the drawdown peak), status=disabled parks it without deleting. REPAIR a broken acquisition by sending a new acquisition_prompt / acquisition_sql / acquisition_params (package method: only the keys to change) - the tool test-fetches the NEW spec before the button confirmation (diagnose first: read agent.monitor_observations via postgres_select for the failure reasons, then load trigger_design and re-engineer the source). The trigger type cannot be changed - delete and create instead. Web cadence stays at least 12 hours.",
+                                         "description":  "Change ONE existing monitoring trigger by label (partial update - only fields you send change). Also the LIFECYCLE tool: status=armed RE-ARMS a fired trigger (new epoch; add reset_peak=true to also reset the drawdown peak) - a date reminder whose date has passed re-arms only together with its new due_date (ask for it), status=disabled parks it without deleting. REPAIR a broken acquisition by sending a new acquisition_prompt / acquisition_sql / acquisition_params (package method: only the keys to change) - the tool test-fetches the NEW spec before the button confirmation (diagnose first: read agent.monitor_observations via postgres_select for the failure reasons, then load trigger_design and re-engineer the source). The trigger type cannot be changed - delete and create instead. Web cadence stays at least 12 hours.",
                                          "workflowId":  {
                                                             "__rl":  true,
                                                             "value":  "X2rYlxTEgSOGfkAK",

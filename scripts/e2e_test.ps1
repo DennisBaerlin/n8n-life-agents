@@ -60,7 +60,8 @@ $RepoRoot  = git -C $PSScriptRoot rev-parse --show-toplevel
 # .env laden (TEST_HARNESS_SECRET); N8N + Container-DB-Zugriff kommen aus dem Docker-Test-Substrat
 # (raus aus Prod). Die ECHTEN Writes UND die Verifikation/Cleanup treffen dieselbe ephemere Instanz-DB
 # ('n8n') — Zugriff ueber docker exec runuser-psql (kein Prod-PG_* mehr).
-Get-Content "$RepoRoot\.env" | ForEach-Object {
+. "$PSScriptRoot\lib\dotenv.ps1"
+Read-DotEnvLines "$RepoRoot\.env" | ForEach-Object {
     if ($_ -match '^\s*([^#\s][^=]*)=(.*)$') {
         Set-Variable -Name $Matches[1].Trim() -Value $Matches[2].Trim() -Scope Script
     }
@@ -89,7 +90,7 @@ Assert-LlmGatewayUpstream -Container $Container -Expect real
 $llmCursor = Get-LlmUsageCursor -Container $Container
 
 # -------------------------------------------------------
-# DB-Helfer (psql direkt -- e2e_test ist selbst ein offizielles Skript, wie db_test/db_query)
+# DB-Helfer (Invoke-TestN8nPsql gegen die Container-DB des Substrats)
 # -------------------------------------------------------
 # Cleanup: NUR ueber die geguardete Function (in der Container-DB). Wirft bei Guard-Verletzung.
 function Invoke-Clean {

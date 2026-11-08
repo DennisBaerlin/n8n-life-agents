@@ -357,4 +357,31 @@ BEGIN
   RAISE NOTICE 'PASS void [10c echter Kauf: change +141, Position 10 Stueck zu 16.10]';
 END $$;
 
+-- Ein Storno einer fremden Buchung laesst einen abgeloesten Altbestand-Kredit (ohne settled_from) unberuehrt:
+-- nur die Abloese-Buchung DIESES Kredits stellt ihn wieder her.
+DO $$
+DECLARE v_giro INT; v_res JSONB; v_loan INT; v_lacc INT; v_rp INT; v_tx INT;
+BEGIN
+  v_giro := (finance.fn_create_account('{"name":"__test_void_alt_giro__","account_type":"cash"}'::jsonb)->>'account_id')::int;
+  v_res := finance.fn_create_loan(jsonb_build_object('name','__test_void_alt_kredit__','lender','B','borrower','T',
+             'current_balance',500,'interest_rate',2,'monthly_annuity',100,
+             'first_payment_date',(CURRENT_DATE + 10)::text,'debit_account_id',v_giro));
+  v_loan := (v_res->>'loan_id')::int; v_lacc := (v_res->>'loan_account_id')::int; v_rp := (v_res->>'recurring_payment_id')::int;
+  -- Altbestand-Abloesung nachstellen: Kredit paid_off ohne settled_from, Rate pausiert bis zum Abloesetag
+  INSERT INTO finance.transactions (account_id, amount, transaction_date, category, loan_id)
+    VALUES (v_lacc, 500, CURRENT_DATE - 2, 'settlement', v_loan);
+  UPDATE finance.recurring_payments SET status = 'paused', valid_to = CURRENT_DATE - 2 WHERE id = v_rp;
+  UPDATE finance.loans SET status = 'paid_off', settled_from = NULL WHERE id = v_loan;
+
+  INSERT INTO finance.transactions (account_id, amount, transaction_date, category)
+    VALUES (v_giro, -12, CURRENT_DATE - 1, 'other') RETURNING id INTO v_tx;
+  v_res := finance.fn_void_transaction(jsonb_build_object('transaction_id', v_tx));
+  IF (v_res->>'ok')::boolean IS DISTINCT FROM true THEN RAISE EXCEPTION 'SETUP void: %', v_res; END IF;
+  IF (SELECT status::text FROM finance.loans WHERE id = v_loan) IS DISTINCT FROM 'paid_off'
+     OR NOT EXISTS (SELECT 1 FROM finance.recurring_payments WHERE id = v_rp AND status = 'paused') THEN
+    RAISE EXCEPTION 'FAIL [fremder Storno reaktiviert Altbestand-Kredit]: loan %, rp %',
+      (SELECT status FROM finance.loans WHERE id = v_loan), (SELECT to_jsonb(r) FROM finance.recurring_payments r WHERE id = v_rp); END IF;
+  RAISE NOTICE 'PASS void [fremder Storno laesst abgeloesten Altbestand-Kredit stehen]';
+END $$;
+
 ROLLBACK;

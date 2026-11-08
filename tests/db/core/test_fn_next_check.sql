@@ -61,6 +61,9 @@ BEGIN
   END IF;
   RAISE NOTICE 'PASS fn_next_check [12h-Intervall]';
 
+  -- Monats-Arithmetik haengt an der Sitzungs-Zeitzone (Sommerzeit) -> fuer die Monats-Faelle fest UTC
+  PERFORM set_config('TimeZone', 'UTC', true);
+
   -- TEST 7: Monats-Intervall nach langer Pause â€” die Epoch-Naeherung (Monat = 30 Tage) darf nicht ueberschiessen:
   -- prev 01.01., now 31.12. -> der naechste Slot ist der 01.01. des Folgejahres (k = 12), nicht der 01.02. (k = 13)
   v_next := agent.fn_next_check('2026-01-01 12:00+01'::timestamptz, INTERVAL '1 month',
@@ -69,6 +72,15 @@ BEGIN
     RAISE EXCEPTION 'FAIL fn_next_check [Monat, minimales k]: erwartet 01.01.2027 12:00, got %', v_next;
   END IF;
   RAISE NOTICE 'PASS fn_next_check [Monats-Intervall: minimales k nach langer Pause]';
+
+  -- TEST 7b: Gegenrichtung - die Naeherung schiesst zu KURZ (Februar hat 28 Tage): prev 01.02., now genau 01.03.
+  -- -> der Slot 01.03. ist nicht strikt > now, also 01.04.
+  v_next := agent.fn_next_check('2026-02-01 11:00+00'::timestamptz, INTERVAL '1 month',
+                                '2026-03-01 11:00+00'::timestamptz);
+  IF v_next IS DISTINCT FROM '2026-04-01 11:00+00'::timestamptz THEN
+    RAISE EXCEPTION 'FAIL fn_next_check [Monat, Februar]: erwartet 01.04.2026 12:00, got %', v_next;
+  END IF;
+  RAISE NOTICE 'PASS fn_next_check [Monats-Intervall: Korrektur nach oben]';
 
   -- TEST 8: Intervall 0 oder NULL -> Ausnahme statt Endlosschleife bzw. NULL
   BEGIN

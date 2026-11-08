@@ -25,7 +25,10 @@ BEGIN
      OR (v_r->>'stale')::boolean IS DISTINCT FROM false OR (v_r->>'never')::boolean IS DISTINCT FROM false
      OR NOT ((v_r->>'scenario_2pct_real')::numeric BETWEEN 1950 AND 2050)
      OR NOT ((v_r->>'scenario_1pct_real')::numeric BETWEEN 1400 AND 1500)
-     OR (v_r->>'basis') NOT LIKE '%gross%' THEN
+     OR (v_r->>'basis') NOT LIKE '%gross%'
+     -- Realwerte auf Cent (die Karte zeigt sie als Betrag)
+     OR (v_r->>'scenario_1pct_real')::numeric <> round((v_r->>'scenario_1pct_real')::numeric, 2)
+     OR (v_r->>'scenario_2pct_real')::numeric <> round((v_r->>'scenario_2pct_real')::numeric, 2) THEN
     RAISE EXCEPTION 'FAIL pension_outlook [Realwerte]: %', v_r; END IF;
   RAISE NOTICE 'PASS pension_outlook [juengste Info, Realwerte zum Stand, brutto-Hinweis]';
 
@@ -63,6 +66,21 @@ BEGIN
   IF EXISTS (SELECT 1 FROM jsonb_array_elements(v_due) e WHERE e->>'name' = '__t_po bAV') THEN
     RAISE EXCEPTION 'FAIL pension_due [pausiert]: %', v_due; END IF;
   RAISE NOTICE 'PASS pension_due [never + stale faellig, frisch/pausiert nicht]';
+END $$;
+
+-- Grenze stale: genau 13 Monate alt ist noch aktuell, einen Tag aelter veraltet.
+DO $$
+DECLARE v_p INT; v_r JSONB;
+BEGIN
+  INSERT INTO finance.pension (name, pension_type) VALUES ('__t_po Grenze', 'occupational') RETURNING id INTO v_p;
+  INSERT INTO finance.pension_statements (pension_id, statement_date, reached_claim)
+    VALUES (v_p, (core.fn_today() - interval '13 months')::date, 100);
+  SELECT e INTO v_r FROM jsonb_array_elements(finance.fn_pension_outlook('{}'::jsonb)->'pensions') e WHERE e->>'name' = '__t_po Grenze';
+  IF (v_r->>'stale')::boolean IS DISTINCT FROM false THEN RAISE EXCEPTION 'FAIL [stale genau 13 Monate]: %', v_r; END IF;
+  UPDATE finance.pension_statements SET statement_date = statement_date - 1 WHERE pension_id = v_p;
+  SELECT e INTO v_r FROM jsonb_array_elements(finance.fn_pension_outlook('{}'::jsonb)->'pensions') e WHERE e->>'name' = '__t_po Grenze';
+  IF (v_r->>'stale')::boolean IS DISTINCT FROM true THEN RAISE EXCEPTION 'FAIL [stale 13 Monate + 1 Tag]: %', v_r; END IF;
+  RAISE NOTICE 'PASS pension_outlook [stale-Grenze 13 Monate]';
 END $$;
 
 ROLLBACK;

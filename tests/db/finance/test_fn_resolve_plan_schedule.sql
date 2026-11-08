@@ -127,4 +127,23 @@ BEGIN
   RAISE NOTICE 'PASS [Nutzer-Kalender: none / Liste normalisiert / Muell -> ok:false]';
 END $$;
 
+-- Kalender mit 8 Tagen: zweiwoechentlich ab dem ersten Tag -> jeder vierte Tag ab dem Starttag ({1,17}); ein Kalender
+-- mit 6 Tagen passt zu woechentlich (4 je Monat) nicht -> rhythm_not_offered.
+DO $$
+DECLARE v_cash INT; v_d8 INT; v_d6 INT; r JSONB;
+BEGIN
+  INSERT INTO finance.accounts (name, account_type, currency, status) VALUES ('__rps2_cash__', 'cash', 'EUR', 'active') RETURNING id INTO v_cash;
+  INSERT INTO finance.accounts (name, account_type, bank, currency, status, settlement_account_id, plan_execution_days)
+    VALUES ('__rps2_d8__', 'stocks_depot', 'Beispielbank', 'EUR', 'active', v_cash, '{1,5,9,13,17,21,25,28}') RETURNING id INTO v_d8;
+  INSERT INTO finance.accounts (name, account_type, bank, currency, status, settlement_account_id, plan_execution_days)
+    VALUES ('__rps2_d6__', 'stocks_depot', 'Beispielbank', 'EUR', 'active', v_cash, '{1,6,11,16,21,26}') RETURNING id INTO v_d6;
+  r := finance.fn_resolve_plan_schedule(v_d8, 'week', 2::smallint, NULL, DATE '2026-12-01', NULL);
+  IF (r->>'ok')::boolean IS DISTINCT FROM true OR r->'schedule_days_of_month' IS DISTINCT FROM '[1,17]'::jsonb THEN
+    RAISE EXCEPTION 'FAIL [8 Tage, zweiwoechentlich ab 1.]: %', r; END IF;
+  r := finance.fn_resolve_plan_schedule(v_d6, 'week', 1::smallint, NULL, DATE '2026-12-01', NULL);
+  IF r->>'code' IS DISTINCT FROM 'rhythm_not_offered' THEN
+    RAISE EXCEPTION 'FAIL [6 Tage, woechentlich]: %', r; END IF;
+  RAISE NOTICE 'PASS [Schrittweite ab Starttag, unpassender Kalender abgelehnt]';
+END $$;
+
 ROLLBACK;

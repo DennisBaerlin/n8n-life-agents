@@ -926,7 +926,7 @@
   "core.wizard.q.telegram_bot_token.placeholder": "여기에 토큰을 붙여 넣어요",
   "core.wizard.q.anthropic_api_key.title": "Claude용 키",
   "core.wizard.q.anthropic_api_key.label": "Anthropic 키",
-  "core.wizard.q.anthropic_api_key.help": "어시스턴트는 Anthropic의 Claude로 생각해요. 이 키가 없으면 어시스턴트가 답하지 않아요.\n\n1. console.anthropic.com을 열고 로그인해요.\n2. 크레딧을 충전하고(“Billing“), “API Keys“ → “Create Key“ → 키를 복사해요.\n3. 자동 충전을 켜요. 크레딧이 떨어지면 어시스턴트가 답하지 않아요: “Billing“ → “Set up auto-reload“ → “When credit balance reaches“에 예를 들어 5, “Bring credit balance back up to“에 예를 들어 15를 입력 → “Turn on“.",
+  "core.wizard.q.anthropic_api_key.help": "어시스턴트는 Anthropic의 Claude로 생각해요. 이 키가 없으면 어시스턴트가 답하지 않아요.\n\n1. platform.claude.com을 열고 로그인해요. 계정이 없다면 거기서 만들어요. Claude 구독만으로는 안 되고, 여기서 쓰는 만큼 따로 청구돼요.\n2. 크레딧을 충전해요(“Billing”).\n3. “API keys” → “Create key”: 이름(예: lifeagents)을 입력하고 만료 기간(“Expiration”)에서 “Never”를 골라요. 그러지 않으면 키가 만료되는 순간 어시스턴트가 답하지 않아요. 그다음 키를 복사해요. 키는 한 번만 보여요.\n4. 자동 충전을 켜요. 크레딧이 떨어지면 어시스턴트가 답하지 않아요: “Billing” → “Set up auto-reload” → “When credit balance reaches”에 예를 들어 5, “Bring credit balance back up to”에 예를 들어 15를 입력 → “Turn on”.",
   "core.wizard.q.anthropic_api_key.why": "데이터는 집에 저장된 채로 있어요. 질문을 쓰면 답변에 필요한 내용과 함께 Claude로 보내요.\n\n그래서 비용을 내요. 유료 이용은 계약상 AI가 내 내용으로 학습할 수 없어서, 내용이 다른 곳에 나타나지 않아요. 그곳에 영원히 저장되지도 않아요. Anthropic에 따르면 최대 30일 안에 삭제돼요. 오용이 의심되거나 법적 의무가 있을 때만 더 오래 보관돼요.\n\n사용한 만큼 요금을 내요. 키는 Anthropic에서 바로 확인해요.",
   "core.wizard.q.google_api_key.title": "Google 키",
   "core.wizard.q.google_api_key.label": "Google 키",

@@ -165,7 +165,7 @@
   "core.desktop.welcome.start": "Get started",
   "core.desktop.need.title": "What you need",
   "core.desktop.need.intro": "Have these three things ready:",
-  "core.desktop.need.phone": "**Your phone with Telegram.** That is where you will talk to your assistant later.",
+  "core.desktop.need.phone": "**Your phone.** That is where you will talk to your assistant later. If Telegram is not on it yet, we set it up together along the way.",
   "core.desktop.need.card": "**A credit card.** Anthropic's AI bills you directly for what you use. The project itself is free.",
   "core.desktop.need.machine": "**This computer, and it stays on.** Your assistant runs here. At the end we ask whether the computer should keep running for it.",
   "core.desktop.need.hint": "A Mac mini or another computer that is always plugged in works best.",

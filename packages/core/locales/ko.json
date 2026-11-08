@@ -165,7 +165,7 @@
   "core.desktop.welcome.start": "시작하기",
   "core.desktop.need.title": "이런 게 필요해요",
   "core.desktop.need.intro": "다음 세 가지를 준비해 주세요.",
-  "core.desktop.need.phone": "**텔레그램이 있는 내 휴대폰.** 나중에 여기서 어시스턴트와 대화해요.",
+  "core.desktop.need.phone": "**내 휴대폰.** 나중에 여기서 어시스턴트와 대화해요. 텔레그램이 아직 없다면 진행하면서 함께 설치해요.",
   "core.desktop.need.card": "**신용카드.** AI 사용료는 쓴 만큼 Anthropic이 직접 청구해요. 이 프로젝트 자체는 무료예요.",
   "core.desktop.need.machine": "**계속 켜 둘 이 컴퓨터.** 어시스턴트는 여기서 실행돼요. 마지막에 이 컴퓨터를 계속 켜 둘지 물어볼게요.",
   "core.desktop.need.hint": "Mac mini처럼 늘 전원에 연결된 컴퓨터가 가장 좋아요.",

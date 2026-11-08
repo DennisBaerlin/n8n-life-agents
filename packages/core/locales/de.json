@@ -165,7 +165,7 @@
   "core.desktop.welcome.start": "Loslegen",
   "core.desktop.need.title": "Das brauchst du dafür",
   "core.desktop.need.intro": "Lege dir kurz diese drei Dinge bereit:",
-  "core.desktop.need.phone": "**Dein Handy mit Telegram.** Darüber sprichst du später mit deinem Assistenten.",
+  "core.desktop.need.phone": "**Dein Handy.** Darüber sprichst du später mit deinem Assistenten. Falls Telegram noch fehlt, richten wir es unterwegs gemeinsam ein.",
   "core.desktop.need.card": "**Eine Kreditkarte.** Die KI von Anthropic rechnet nach Verbrauch direkt mit dir ab. Das Projekt selbst ist kostenlos.",
   "core.desktop.need.machine": "**Diesen Rechner, und er bleibt an.** Dein Assistent läuft hier. Am Ende fragen wir dich, ob der Rechner dafür durchlaufen soll.",
   "core.desktop.need.hint": "Ein Mac mini oder ein anderer Rechner, der immer am Strom hängt, passt am besten.",

@@ -371,7 +371,7 @@ Enter = die Installation erzeugt ein sicheres Passwort und zeigt es am Ende einm
 deines Haushalts an. Vorname, Nachname und Geburtsdatum sind Pflicht — ohne sie kann sich
 der Bot nicht mit dir verbinden. Weitere Personen (Partner, Kinder) fügst du später im Chat
 hinzu. Das Geburtsdatum nutzen die Berater für altersabhängige Themen (z. B. Rente,
-Versicherungen). Gespeichert wird das auf deinem Server." ;;
+Versicherungen). Name und Geburtsdatum werden auf deinem Server gespeichert." ;;
     OWNER_LAST_NAME)
       _HK_PROMPT="Dein Nachname: "; _HK_VFN=_validate_name ;;
     OWNER_BIRTH_DATE)

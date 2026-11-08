@@ -905,7 +905,7 @@
   "core.wizard.q.owner_language.help": "Your assistant writes to you in this language. The setup switches along as soon as you tap.",
   "core.wizard.q.owner_first_name.title": "Your first name",
   "core.wizard.q.owner_first_name.label": "First name",
-  "core.wizard.q.owner_first_name.help": "So that your assistant recognises you at first contact, the setup creates you as the owner of your household. First name, last name and date of birth are required. You add other people (partner, children) later in the chat. It is stored on your computer.",
+  "core.wizard.q.owner_first_name.help": "So that your assistant recognises you at first contact, the setup creates you as the owner of your household. First name, last name and date of birth are required. You add other people (partner, children) later in the chat. Your name and date of birth are stored on your computer.",
   "core.wizard.q.owner_first_name.placeholder": "Your first name",
   "core.wizard.q.owner_last_name.title": "Your last name",
   "core.wizard.q.owner_last_name.placeholder": "Your last name",

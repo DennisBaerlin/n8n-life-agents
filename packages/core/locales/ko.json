@@ -905,7 +905,7 @@
   "core.wizard.q.owner_language.help": "어시스턴트가 이 언어로 메시지를 보내요. 누르면 설정 화면도 바로 이 언어로 바뀌어요.",
   "core.wizard.q.owner_first_name.title": "이름",
   "core.wizard.q.owner_first_name.label": "이름",
-  "core.wizard.q.owner_first_name.help": "어시스턴트가 처음 대화할 때 나를 알아볼 수 있도록, 설정에서 나를 가구의 주인으로 등록해요. 이름, 성, 생년월일은 꼭 필요해요. 다른 사람(배우자, 자녀)은 나중에 채팅에서 추가해요. 이 정보는 내 컴퓨터에 저장돼요.",
+  "core.wizard.q.owner_first_name.help": "어시스턴트가 처음 대화할 때 나를 알아볼 수 있도록, 설정에서 나를 가구의 주인으로 등록해요. 이름, 성, 생년월일은 꼭 필요해요. 다른 사람(배우자, 자녀)은 나중에 채팅에서 추가해요. 이름과 생년월일은 내 컴퓨터에 저장돼요.",
   "core.wizard.q.owner_first_name.placeholder": "이름",
   "core.wizard.q.owner_last_name.title": "성",
   "core.wizard.q.owner_last_name.placeholder": "성",

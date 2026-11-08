@@ -905,7 +905,7 @@
   "core.wizard.q.owner_language.help": "In dieser Sprache schreibt dir dein Assistent. Die Einrichtung wechselt beim Antippen gleich mit.",
   "core.wizard.q.owner_first_name.title": "Dein Vorname",
   "core.wizard.q.owner_first_name.label": "Vorname",
-  "core.wizard.q.owner_first_name.help": "Damit dein Assistent dich beim ersten Kontakt erkennt, legt die Einrichtung dich als Inhaber deines Haushalts an. Vorname, Nachname und Geburtsdatum sind Pflicht. Weitere Personen (Partner, Kinder) fügst du später im Chat hinzu. Gespeichert wird das auf deinem Rechner.",
+  "core.wizard.q.owner_first_name.help": "Damit dein Assistent dich beim ersten Kontakt erkennt, legt die Einrichtung dich als Inhaber deines Haushalts an. Vorname, Nachname und Geburtsdatum sind Pflicht. Weitere Personen (Partner, Kinder) fügst du später im Chat hinzu. Name und Geburtsdatum werden auf deinem Rechner gespeichert.",
   "core.wizard.q.owner_first_name.placeholder": "Dein Vorname",
   "core.wizard.q.owner_last_name.title": "Dein Nachname",
   "core.wizard.q.owner_last_name.placeholder": "Dein Nachname",

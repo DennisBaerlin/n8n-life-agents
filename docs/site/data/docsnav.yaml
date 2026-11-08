@@ -2,6 +2,8 @@
 # Neue Seite = content/docs/<slug>.md anlegen + hier eintragen.
 - group: Start
   pages:
+    - slug: installation
+      title: Installation
     - slug: ueberblick
       title: Überblick
     - slug: beispiele
@@ -40,8 +42,6 @@
       title: Datenschutz & Sicherheit
 - group: Betrieb & Erweitern
   pages:
-    - slug: installation
-      title: Installation & Betrieb
     - slug: start-app
       title: Installation mit der Start-App
     - slug: tunnel

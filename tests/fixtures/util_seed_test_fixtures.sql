@@ -108,7 +108,7 @@ BEGIN
                    WHERE account_id = v_depot AND isin = 'IE00BK5BQT80') THEN
         v_r := finance.fn_book_stock_buy(jsonb_build_object(
             'depot_id', v_depot, 'settlement_id', v_trc,
-            'isin','IE00BK5BQT80', 'symbol','VWCE', 'name','Vanguard FTSE All-World',
+            'price_currency_confirmed', true, 'isin','IE00BK5BQT80', 'symbol','VWCE', 'name','Vanguard FTSE All-World',
             'shares', 30, 'price_per_share', 100, 'order_fee', 1,
             'transaction_date', (CURRENT_DATE - 60)::text));
         PERFORM pg_temp.assert_ok('VWCE-Kauf', v_r);

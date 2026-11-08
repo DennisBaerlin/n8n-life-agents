@@ -46,7 +46,7 @@ BEGIN
 
   -- TEST 1a: Erster Crypto-Kauf (isin leer = kein ISIN für Crypto)
   SELECT finance.fn_book_stock_buy(
-    jsonb_build_object(
+    jsonb_build_object('price_currency_confirmed',true,
       'depot_id',        v_depot_id,
       'settlement_id',   v_settle_id,
       'isin',            '',
@@ -67,7 +67,7 @@ BEGIN
 
   -- TEST 1b: Zweiter Crypto-Kauf gleicher Asset → SELBE Holding-Zeile, akkumulierte Shares
   SELECT finance.fn_book_stock_buy(
-    jsonb_build_object(
+    jsonb_build_object('price_currency_confirmed',true,
       'depot_id',        v_depot_id,
       'settlement_id',   v_settle_id,
       'isin',            '',
@@ -124,7 +124,7 @@ BEGIN
 
   -- TEST 2: Zweite Crypto-Asset im selben Depot → ANDERE Holding-Zeile (Symbol ETH ≠ BTC)
   SELECT finance.fn_book_stock_buy(
-    jsonb_build_object(
+    jsonb_build_object('price_currency_confirmed',true,
       'depot_id',        v_depot_id,
       'settlement_id',   v_settle_id,
       'isin',            '',
@@ -151,7 +151,7 @@ BEGIN
   RAISE NOTICE 'PASS fn_crypto [2]: ETH korrekt als separate Holding angelegt';
 
   -- TEST 3: Reverse-Mismatch (ISIN-Aktie auf crypto_depot) -> {ok:false} (korrigierbar)
-  SELECT finance.fn_book_stock_buy(jsonb_build_object(
+  SELECT finance.fn_book_stock_buy(jsonb_build_object('price_currency_confirmed',true,
     'depot_id',        v_depot_id,
     'settlement_id',   v_settle_id,
     'isin',            'IE00B4L5Y983',

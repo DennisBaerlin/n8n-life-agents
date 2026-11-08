@@ -10,9 +10,9 @@ DECLARE v_cash INT; v_depot INT; v_r JSONB; v_h1 INT; v_h2 INT; v_avg NUMERIC;
 BEGIN
   v_cash  := (finance.fn_create_account('{"name":"__t_sac_cash__","account_type":"cash","currency":"EUR"}'::jsonb)->>'account_id')::int;
   v_depot := (finance.fn_create_account(jsonb_build_object('name','__t_sac_depot__','account_type','stocks_depot','settlement_id', v_cash))->>'account_id')::int;
-  v_h1 := (finance.fn_book_stock_buy(jsonb_build_object('depot_id', v_depot, 'settlement_id', v_cash, 'isin','IE00B5BMR087',
+  v_h1 := (finance.fn_book_stock_buy(jsonb_build_object('price_currency_confirmed',true,'depot_id', v_depot, 'settlement_id', v_cash, 'isin','IE00B5BMR087',
             'name','S&P 500 (Acc)', 'shares', 2, 'price_per_share', 50, 'existing_position', true))->>'holding_id')::int;
-  v_h2 := (finance.fn_book_stock_buy(jsonb_build_object('depot_id', v_depot, 'settlement_id', v_cash, 'isin','DE0007164600',
+  v_h2 := (finance.fn_book_stock_buy(jsonb_build_object('price_currency_confirmed',true,'depot_id', v_depot, 'settlement_id', v_cash, 'isin','DE0007164600',
             'symbol','SAP', 'name','Testaktie', 'shares', 1, 'price_per_share', 120, 'existing_position', true))->>'holding_id')::int;
   SELECT average_purchase_price INTO v_avg FROM finance.depot_holdings WHERE id = v_h1;
 

@@ -150,8 +150,8 @@ BEGIN
 END $$;
 
 -- (H) Hand-Zuordnung ist kein Spartempo (Sparziel-Zweckbindung 2026-10-27): Ziel 6000 seit 2 Monaten, 2000 als
---     Startbestand zugeordnet + 400 gespart (getaggt) -> current 2400, observed_monthly_rate = 400/2 = 200 (nicht 1200),
---     projected aus dem Tempo 200. Nur Zuordnung -> observed NULL (kein Tempo).
+--     Startbestand zugeordnet + 400 gespart (getaggt) -> current 2400, observed_monthly_rate = 400 / (60 / 30,4375) = 202,92 (nicht 1200),
+--     projected aus dem Tempo: 3600 / 400 x 60 Tage = 540 Tage. Nur Zuordnung -> observed NULL (kein Tempo).
 DO $$
 DECLARE v_p2p int; v_g int; v_g2 int; v_cur numeric; v_obs numeric; v_proj date;
 BEGIN
@@ -163,8 +163,8 @@ BEGIN
     VALUES (v_p2p, 400, current_date - 5, 'transfer', v_g, gen_random_uuid());
   SELECT current_amount, observed_monthly_rate, projected_completion_date INTO v_cur, v_obs, v_proj
     FROM finance.savings_goal_progress WHERE id = v_g;
-  IF v_cur IS DISTINCT FROM 2400 OR v_obs IS DISTINCT FROM 200.00
-     OR v_proj IS DISTINCT FROM (current_date + (round(3600 / 200.0 * finance.fn_days_per_month())::int))::date THEN
+  IF v_cur IS DISTINCT FROM 2400 OR v_obs IS DISTINCT FROM 202.92
+     OR v_proj IS DISTINCT FROM (current_date + 540)::date THEN
     RAISE EXCEPTION 'FAIL [H Tempo ohne Zuordnung]: cur % obs % proj %', v_cur, v_obs, v_proj; END IF;
   INSERT INTO finance.savings_goals (name, target_amount, target_date, status, created_at)
     VALUES ('__sgp_h2__', 6000, current_date + 600, 'active', now() - interval '60 days') RETURNING id INTO v_g2;
@@ -177,7 +177,7 @@ BEGIN
     VALUES (v_p2p, 1200, current_date - 5, 'transfer', v_g2, gen_random_uuid());
   PERFORM finance.fn_book_savings_reservation(jsonb_build_object('savings_goal_id', v_g2, 'account_id', v_p2p, 'amount', 1000));
   IF (SELECT current_amount FROM finance.savings_goal_progress WHERE id = v_g2) IS DISTINCT FROM 1000
-     OR (SELECT observed_monthly_rate FROM finance.savings_goal_progress WHERE id = v_g2) IS DISTINCT FROM 500.00
+     OR (SELECT observed_monthly_rate FROM finance.savings_goal_progress WHERE id = v_g2) IS DISTINCT FROM 507.29
      OR (SELECT earmarked_amount FROM finance.savings_goal_progress WHERE id = v_g2) IS DISTINCT FROM 0 THEN
     RAISE EXCEPTION 'FAIL [H3 negative Zuordnung]: %', (SELECT row_to_json(p) FROM finance.savings_goal_progress p WHERE id = v_g2); END IF;
   RAISE NOTICE 'PASS [H: Hand-Zuordnung zaehlt zum Stand, nicht zum Spartempo; negative Zuordnung kein Tempo]';
@@ -217,4 +217,26 @@ BEGIN
   RAISE NOTICE 'PASS [I: behind_amount 400 / 0 / NULL bei fx-Luecke]';
 END $$;
 
+ROLLBACK;
+
+-- Spartempo in genauen Monaten: 73 Tage, 1.500 gespart -> 1500 / (73 / 30,4375) = 625,43; unter einem Monat zaehlt 1 Monat.
+BEGIN;
+DO $$
+DECLARE v_a int; v_g int; v_g2 int; v numeric;
+BEGIN
+  v_a := (finance.fn_create_account('{"name":"__sgp_t_p2p__","account_type":"p2p","opening_balance":8000}'::jsonb)->>'account_id')::int;
+  INSERT INTO finance.savings_goals (name, target_amount, target_date, status, created_at)
+    VALUES ('__sgp_t__', 6000, current_date + 600, 'active', now() - interval '73 days') RETURNING id INTO v_g;
+  INSERT INTO finance.transactions (account_id, amount, transaction_date, category, savings_goal_id, group_id)
+    VALUES (v_a, 1500, current_date - 5, 'transfer', v_g, gen_random_uuid());
+  SELECT observed_monthly_rate INTO v FROM finance.savings_goal_progress WHERE id = v_g;
+  IF v IS DISTINCT FROM 625.43 THEN RAISE EXCEPTION 'FAIL [Tempo 73 Tage]: %', v; END IF;
+  INSERT INTO finance.savings_goals (name, target_amount, target_date, status, created_at)
+    VALUES ('__sgp_t2__', 6000, current_date + 600, 'active', now() - interval '10 days') RETURNING id INTO v_g2;
+  INSERT INTO finance.transactions (account_id, amount, transaction_date, category, savings_goal_id, group_id)
+    VALUES (v_a, 300, current_date - 1, 'transfer', v_g2, gen_random_uuid());
+  SELECT observed_monthly_rate INTO v FROM finance.savings_goal_progress WHERE id = v_g2;
+  IF v IS DISTINCT FROM 300.00 THEN RAISE EXCEPTION 'FAIL [Tempo mind. 1 Monat]: %', v; END IF;
+  RAISE NOTICE 'PASS [Spartempo genaue Monate]';
+END $$;
 ROLLBACK;

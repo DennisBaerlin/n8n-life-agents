@@ -95,3 +95,25 @@ BEGIN
 END $$;
 
 ROLLBACK;
+
+-- Sparrate zaehlt echte Abbuchungstermine bis einschliesslich Zieldatum: 15.02.2027 .. 15.08.2028 = 19 Raten.
+BEGIN;
+DO $$
+DECLARE v jsonb;
+BEGIN
+  v := finance.fn_savings_rate_schedule('{"target_amount":12000,"already_saved":2000,"first_payment_date":"2027-02-15","target_date":"2028-08-31"}');
+  IF (v->>'months')::int IS DISTINCT FROM 19 OR (v->>'monthly_rate')::numeric IS DISTINCT FROM 526.32 THEN
+    RAISE EXCEPTION 'FAIL [P2 19 Raten]: %', v; END IF;
+  -- Zieltag vor dem Abbuchungstag: Rate im Zielmonat faellt nicht mehr an (15.02.2027 .. 15.07.2028 = 18)
+  v := finance.fn_savings_rate_schedule('{"target_amount":12000,"already_saved":2000,"first_payment_date":"2027-02-15","target_date":"2028-08-10"}');
+  IF (v->>'months')::int IS DISTINCT FROM 18 THEN RAISE EXCEPTION 'FAIL [P2 18 Raten]: %', v; END IF;
+  -- Monatsende: 31.01., 28.02., 31.03.2027 = 3 Termine
+  v := finance.fn_savings_rate_schedule('{"target_amount":300,"first_payment_date":"2027-01-31","schedule_day_of_month":-1,"target_date":"2027-03-31"}');
+  IF (v->>'months')::int IS DISTINCT FROM 3 OR (v->>'monthly_rate')::numeric IS DISTINCT FROM 100 THEN
+    RAISE EXCEPTION 'FAIL [P2 Monatsende]: %', v; END IF;
+  -- kein Termin bis zum Ziel (erste Rate 10.01., Tag 15, Ziel 12.01.): ablehnen statt einer Rate, die nie abgeht
+  v := finance.fn_savings_rate_schedule('{"target_amount":300,"first_payment_date":"2027-01-10","schedule_day_of_month":15,"target_date":"2027-01-12"}');
+  IF (v->>'ok')::boolean IS NOT FALSE THEN RAISE EXCEPTION 'FAIL [P2 kein Termin]: %', v; END IF;
+  RAISE NOTICE 'PASS [P2 echte Termine, Monatsende, kein Termin -> ok:false]';
+END $$;
+ROLLBACK;

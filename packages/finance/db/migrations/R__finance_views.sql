@@ -460,14 +460,14 @@ SELECT
     -- 2000/Monat) / vergangene Monate (GREATEST(1,..)-Guard). NULL bei paced<=0 (kein negatives "Spartempo").
     CASE WHEN b.paced > 0 AND b.measurable
          THEN round(b.paced
-              / GREATEST(1, ceil((current_date - b.created_at::date)::numeric / finance.fn_days_per_month())), 2)
+              / GREATEST(1, (current_date - b.created_at::date)::numeric / finance.fn_days_per_month()), 2)
          ELSE NULL END                                  AS observed_monthly_rate,
     -- voraussichtliches Erreichungs-Datum beim beobachteten Tempo; NULL wenn Tempo 0 ODER bereits gedeckt
     CASE WHEN b.paced > 0 AND b.target_amount - b.saved > 0 AND b.measurable
          THEN (current_date + (round(
                  (b.target_amount - b.saved)
                  / (b.paced
-                    / GREATEST(1, ceil((current_date - b.created_at::date)::numeric / finance.fn_days_per_month())))
+                    / GREATEST(1, (current_date - b.created_at::date)::numeric / finance.fn_days_per_month()))
                  * finance.fn_days_per_month())::int) * interval '1 day')::date
          ELSE NULL END                                  AS projected_completion_date,
     -- noetige Nachhol-Rate, um das Zieldatum zu halten; NULL wenn Zieldatum nicht in der Zukunft ODER gedeckt

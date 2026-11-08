@@ -12,7 +12,7 @@ BEGIN
     'name','__vh_depot__','account_type','stocks_depot','account_holder','T','currency','EUR','settlement_id',v_settle
   ))->>'account_id')::int INTO v_depot;
 
-  SELECT (finance.fn_book_stock_buy(jsonb_build_object(
+  SELECT (finance.fn_book_stock_buy(jsonb_build_object('price_currency_confirmed',true,
     'depot_id',v_depot,'settlement_id',v_settle,'isin','VHISIN','symbol','VH','name','VH ETF',
     'shares','10','price_per_share','50','order_fee','0','transaction_date',CURRENT_DATE::text
   ))->>'holding_id')::int INTO v_hid;

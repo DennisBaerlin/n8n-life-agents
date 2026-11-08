@@ -2,7 +2,8 @@
 -- fn_savings_rate_schedule (READ-ONLY HELPER, STABLE)
 --   Berechnet die fehlende Groesse eines Sparplans DETERMINISTISCH -- damit das LLM
 --   NICHT rechnet (Root-CLAUDE.md *Das LLM rechnet NICHT*). Zwei Richtungen:
---     - Ziel-getrieben: target_amount + target_date gegeben -> monthly_rate = Ziel / Monate.
+--     - Ziel-getrieben: target_amount + target_date gegeben -> monthly_rate = Ziel / Anzahl Abbuchungstermine bis einschliesslich
+--       Zieldatum (kein Termin -> {ok:false}); months = diese Anzahl.
 --     - Raten-getrieben: target_amount + monthly_savings_rate gegeben -> target_date = first + ceil(Ziel/Rate) Monate.
 --   Die Rate wird auf den Cent AUFGERUNDET (Audit Paket 2, Punkt 15): 1000 / 3 = 333.34, damit die Raten das Ziel
 --   erreichen (gerundet 333.33 -> 999.99, "erreicht" feuerte nie). Sparziele sind EUR -> Cent.
@@ -65,14 +66,17 @@ BEGIN
     END IF;
 
     IF v_date IS NOT NULL THEN
-        -- Ziel-getrieben: Rate aus Rest / Monate (Monatsgranularitaet, Anker first_payment_date).
+        -- Ziel-getrieben: Rate aus Rest / echte Abbuchungstermine bis einschliesslich Zieldatum (Raster des Schedulers).
         IF v_date <= v_first THEN
             RETURN jsonb_build_object('ok', false,
                 'reason', 'Target date must be after the first payment date (' || v_first || ').');
         END IF;
-        v_months := ( (EXTRACT(YEAR FROM v_date)::int * 12 + EXTRACT(MONTH FROM v_date)::int)
-                    - (EXTRACT(YEAR FROM v_first)::int * 12 + EXTRACT(MONTH FROM v_first)::int) );
-        v_months := GREATEST(v_months, 1);
+        SELECT count(*) INTO v_months
+        FROM finance.fn_schedule_occurrences(v_first, 1, 'month', NULLIF(p->>'schedule_day_of_month', '')::smallint, NULL, v_first, v_date) d;
+        IF v_months = 0 THEN
+            RETURN jsonb_build_object('ok', false,
+                'reason', 'No payment falls between the first payment date (' || v_first || ') and the target date (' || v_date || ') - ask the user for a later target date.');
+        END IF;
         RETURN jsonb_build_object('ok', true,
             'monthly_rate', CEIL(v_rest / v_months * 100) / 100, 'target_date', v_date, 'months', v_months,
             'first_payment_date', v_first);

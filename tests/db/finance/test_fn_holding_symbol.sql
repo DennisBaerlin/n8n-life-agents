@@ -22,7 +22,7 @@ BEGIN
                 'settlement_id', v_settle))->>'account_id')::int;
 
   -- ISIN ohne Ticker und ohne Name -> Holding mit symbol = name = ISIN, Buchungstext ohne NULL
-  v_r := finance.fn_book_stock_buy(jsonb_build_object('depot_id', v_depot, 'settlement_id', v_settle,
+  v_r := finance.fn_book_stock_buy(jsonb_build_object('price_currency_confirmed',true,'depot_id', v_depot, 'settlement_id', v_settle,
            'isin', 'IE00B5BMR087', 'shares', 2, 'price_per_share', 50, 'existing_position', true));
   IF (v_r->>'ok')::boolean IS DISTINCT FROM true THEN RAISE EXCEPTION 'FAIL book ISIN-only: %', v_r; END IF;
   SELECT symbol, name INTO v_h FROM finance.depot_holdings WHERE id = (v_r->>'holding_id')::int;
@@ -33,7 +33,7 @@ BEGIN
   RAISE NOTICE 'PASS fn_book_stock_buy [ISIN ohne Ticker -> Kennung ISIN]';
 
   -- weder Ticker noch ISIN (Krypto ohne Symbol) -> korrigierbar {ok:false}, kein RAISE
-  v_r := finance.fn_book_stock_buy(jsonb_build_object('depot_id', v_crypto, 'settlement_id', v_settle,
+  v_r := finance.fn_book_stock_buy(jsonb_build_object('price_currency_confirmed',true,'depot_id', v_crypto, 'settlement_id', v_settle,
            'shares', 1, 'price_per_share', 10));
   IF (v_r->>'ok')::boolean IS DISTINCT FROM false OR v_r->>'reason' NOT LIKE '%ticker symbol or an ISIN%' THEN
     RAISE EXCEPTION 'FAIL book ohne Kennung: %', v_r; END IF;

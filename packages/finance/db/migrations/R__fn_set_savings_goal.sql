@@ -304,9 +304,25 @@ BEGIN
         IF v_eff_target - v_saved <= 0 THEN
             v_covered := true;   -- gedeckt: Datum/Betrag aendern ist ok, eine Rate gibt es nicht neu zu rechnen
         ELSE
-            -- Rest-Betrag / Rest-Monate (Best Practice: NICHT Gesamt/Gesamt).
-            v_months := GREATEST(1, CEIL((v_eff_tdate - CURRENT_DATE) / finance.fn_days_per_month())::int);
-            v_need   := CEIL((v_eff_target - v_saved) / v_months * 100) / 100;
+            -- Rest / offene Termine bis einschliesslich Zieldatum: Raster der laufenden Rate ab ihrem Start, gebuchte zaehlen nicht.
+            IF v_row.recurring_payment_id IS NOT NULL THEN
+                SELECT count(*) INTO v_months
+                FROM finance.recurring_payments r
+                CROSS JOIN LATERAL finance.fn_schedule_occurrences(r.first_payment_date, r.schedule_interval, r.schedule_unit,
+                         r.schedule_day_of_month, r.schedule_days_of_month, GREATEST(core.fn_today(), r.valid_from), v_eff_tdate) d
+                WHERE r.id = v_row.recurring_payment_id
+                  AND NOT EXISTS (SELECT 1 FROM finance.transactions t WHERE t.recurring_due_date = d
+                                    AND t.recurring_payment_id IN (SELECT finance.fn_recurring_lineage(r.id)));
+            ELSE
+                SELECT count(*) INTO v_months
+                FROM finance.fn_schedule_occurrences(core.fn_today(), 1, 'month', NULLIF(p->>'schedule_day_of_month', '')::smallint,
+                         NULL, core.fn_today(), v_eff_tdate) d;
+            END IF;
+            IF v_months = 0 THEN
+                RETURN jsonb_build_object('ok', false,
+                    'reason', 'No payment of this savings rate falls on or before the target date (' || v_eff_tdate || ') - ask the user for a later target date.');
+            END IF;
+            v_need := CEIL((v_eff_target - v_saved) / v_months * 100) / 100;
         END IF;
     END IF;
 

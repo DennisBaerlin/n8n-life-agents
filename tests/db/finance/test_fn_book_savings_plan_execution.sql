@@ -217,7 +217,7 @@ BEGIN
 
     -- (5b, m1) Eine zuerst MANUELL untagged angelegte Position bleibt untagged, auch wenn spaeter ein getaggter
     --   Sparplan einzahlt (fn_book_stock_buy taggt nur beim ANLEGEN -> Re-Buy ist no-op, kein Ueberschreiben).
-    SELECT finance.fn_book_stock_buy(jsonb_build_object(
+    SELECT finance.fn_book_stock_buy(jsonb_build_object('price_currency_confirmed',true,
       'depot_id', v_depot_id, 'settlement_id', v_settle_id,
       'isin','IE00M1000001','symbol','M1ID','name','M1 ETF',
       'shares',1,'price_per_share',100,'order_fee',0,'transaction_date', CURRENT_DATE::text)) INTO v_result;   -- KEIN asset_class -> untagged

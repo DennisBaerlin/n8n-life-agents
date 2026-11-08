@@ -80,13 +80,13 @@ BEGIN
   -- ===== (d) fn_book_stock_buy Sparplan-Pfad: Doppel-Ausfuehrung -> 2. {ok:false}, kein Orphan/Doppel =====
   INSERT INTO finance.accounts (name, account_type, currency, status, settlement_account_id)
     VALUES ('__dedup_depot__', 'stocks_depot', 'EUR', 'active', v_acct) RETURNING id INTO v_depot;
-  v_res := finance.fn_book_stock_buy(jsonb_build_object(
+  v_res := finance.fn_book_stock_buy(jsonb_build_object('price_currency_confirmed',true,
     'depot_id', v_depot, 'settlement_id', v_acct, 'isin', 'DE000DEDUP1', 'symbol', 'DED',
     'name', 'Dedup AG', 'shares', 1, 'price_per_share', 100, 'order_fee', 0,
     'transaction_date', '2026-05-15', 'recurring_payment_id', v_rp));
   IF (v_res->>'ok')::boolean IS DISTINCT FROM true THEN
     RAISE EXCEPTION 'FAIL [(d)]: 1. Sparplan-Kauf nicht ok:true, got %', v_res; END IF;
-  v_res2 := finance.fn_book_stock_buy(jsonb_build_object(
+  v_res2 := finance.fn_book_stock_buy(jsonb_build_object('price_currency_confirmed',true,
     'depot_id', v_depot, 'settlement_id', v_acct, 'isin', 'DE000DEDUP1', 'symbol', 'DED',
     'name', 'Dedup AG', 'shares', 1, 'price_per_share', 100, 'order_fee', 0,
     'transaction_date', '2026-05-15', 'recurring_payment_id', v_rp));

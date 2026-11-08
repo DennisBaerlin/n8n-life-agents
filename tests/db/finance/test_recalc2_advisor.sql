@@ -148,3 +148,29 @@ BEGIN
 END $$;
 
 ROLLBACK;
+
+-- Puffer-Hinweis knapp unter dem Ziel: abgerundet, nie "10,0 %" bei Ziel 10 %. Einnahmen 3.000, frei 299,99 -> 9,9.
+BEGIN;
+UPDATE finance.recurring_payments SET status = 'paused';
+UPDATE finance.account_balances SET balance = 0;
+DO $$
+DECLARE v_giro int; r jsonb; a jsonb;
+BEGIN
+  INSERT INTO finance.accounts (name, account_type, currency, status) VALUES ('__r2f2_giro__', 'cash', 'EUR', 'active') RETURNING id INTO v_giro;
+  INSERT INTO finance.recurring_payments (name, account_id, amount, schedule_unit, first_payment_date, valid_from) VALUES
+    ('__r2f2_gehalt__', v_giro, 3000, 'month', current_date, current_date),
+    ('__r2f2_miete__', v_giro, -2700.01, 'month', current_date, current_date);
+  r := finance.fn_advisor_review('finance');
+  SELECT x INTO a FROM jsonb_array_elements(r->'alerts') x WHERE x->>'kind' = 'cashflow_coverage';
+  IF (a->'msg'->0->'params'->'pct'->>'value')::numeric IS DISTINCT FROM 9.9 THEN
+    RAISE EXCEPTION 'FAIL [F2 abgerundet]: %', a->'msg'->0; END IF;
+  -- gebrochenes Ziel wird nicht gerundet angezeigt
+  INSERT INTO core.config (package, category, key, value) VALUES ('core','advisor','cashflow_buffer_pct','0.125')
+    ON CONFLICT (category, key) DO UPDATE SET value = '0.125', package = 'core';
+  r := finance.fn_advisor_review('finance');
+  SELECT x INTO a FROM jsonb_array_elements(r->'alerts') x WHERE x->>'kind' = 'cashflow_coverage';
+  IF (a->'msg'->0->'params'->'target'->>'value')::numeric IS DISTINCT FROM 12.5 THEN
+    RAISE EXCEPTION 'FAIL [F2 Ziel 12,5]: %', a->'msg'->0; END IF;
+  RAISE NOTICE 'PASS [F2 Puffer abgerundet, Ziel mit Nachkommastelle]';
+END $$;
+ROLLBACK;

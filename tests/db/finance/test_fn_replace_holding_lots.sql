@@ -27,29 +27,29 @@ BEGIN
                     'currency', 'EUR', 'settlement_id', v_cash))->>'account_id')::int;
 
     -- Positionen anlegen (Bestandsuebernahme = ein Paar je Position)
-    v_res := finance.fn_book_stock_buy(jsonb_build_object('depot_id', v_depot, 'settlement_id', v_cash, 'isin', 'IE00HLOTA001',
+    v_res := finance.fn_book_stock_buy(jsonb_build_object('price_currency_confirmed',true,'depot_id', v_depot, 'settlement_id', v_cash, 'isin', 'IE00HLOTA001',
                  'symbol', 'HLA', 'name', 'HL A ETF', 'shares', 10, 'price_per_share', 25, 'order_fee', 0,
                  'transaction_date', (T - 5)::text, 'existing_position', true));
     IF (v_res->>'ok')::boolean IS DISTINCT FROM true THEN RAISE EXCEPTION 'SETUP A: %', v_res; END IF;
     v_a := (v_res->>'holding_id')::int;
-    v_res := finance.fn_book_stock_buy(jsonb_build_object('depot_id', v_depot, 'settlement_id', v_cash, 'isin', 'IE00HLOTB001',
+    v_res := finance.fn_book_stock_buy(jsonb_build_object('price_currency_confirmed',true,'depot_id', v_depot, 'settlement_id', v_cash, 'isin', 'IE00HLOTB001',
                  'symbol', 'HLB', 'name', 'HL B ETF', 'shares', 5, 'price_per_share', 10, 'order_fee', 0,
                  'transaction_date', (T - 5)::text, 'existing_position', true));
     v_b := (v_res->>'holding_id')::int;
     -- C: normaler Kauf ohne Uebernahme
-    v_res := finance.fn_book_stock_buy(jsonb_build_object('depot_id', v_depot, 'settlement_id', v_cash, 'isin', 'IE00HLOTC001',
+    v_res := finance.fn_book_stock_buy(jsonb_build_object('price_currency_confirmed',true,'depot_id', v_depot, 'settlement_id', v_cash, 'isin', 'IE00HLOTC001',
                  'symbol', 'HLC', 'name', 'HL C ETF', 'shares', 2, 'price_per_share', 10, 'order_fee', 0,
                  'transaction_date', (T - 3)::text));
     v_c := (v_res->>'holding_id')::int;
     -- D: Uebernahme-Gruppe mit einem ECHTEN Kauf ohne Gegenbuchung (so sieht eine per Export ersetzte Position mit Kauf nach dem Stichtag aus)
-    v_res := finance.fn_book_stock_buy(jsonb_build_object('depot_id', v_depot, 'settlement_id', v_cash, 'isin', 'IE00HLOTD001',
+    v_res := finance.fn_book_stock_buy(jsonb_build_object('price_currency_confirmed',true,'depot_id', v_depot, 'settlement_id', v_cash, 'isin', 'IE00HLOTD001',
                  'symbol', 'HLD', 'name', 'HL D ETF', 'shares', 2, 'price_per_share', 10, 'order_fee', 0,
                  'transaction_date', (T - 5)::text, 'existing_position', true));
     v_d := (v_res->>'holding_id')::int;
     SELECT group_id INTO v_old FROM finance.transactions WHERE holding_id = v_d AND category::text = 'buy';
     PERFORM finance.fn_book_takeover_pair(v_d, v_cash, 1, 10, 0, T - 2, v_old, 'HLD', false);
     -- E: Uebernahme 10 + ein spaeterer echter Verkauf von 8
-    v_res := finance.fn_book_stock_buy(jsonb_build_object('depot_id', v_depot, 'settlement_id', v_cash, 'isin', 'IE00HLOTE001',
+    v_res := finance.fn_book_stock_buy(jsonb_build_object('price_currency_confirmed',true,'depot_id', v_depot, 'settlement_id', v_cash, 'isin', 'IE00HLOTE001',
                  'symbol', 'HLE', 'name', 'HL E ETF', 'shares', 10, 'price_per_share', 10, 'order_fee', 0,
                  'transaction_date', (T - 5)::text, 'existing_position', true));
     v_e := (v_res->>'holding_id')::int;
@@ -57,15 +57,15 @@ BEGIN
                   'price_per_share', 11, 'order_fee', 0, 'transaction_date', (T - 1)::text, 'symbol', 'HLE'));
     IF (v_sell->>'ok')::boolean IS DISTINCT FROM true THEN RAISE EXCEPTION 'SETUP E sell: %', v_sell; END IF;
     -- F: Uebernahme 10 + ein spaeterer echter Kauf von 2
-    v_res := finance.fn_book_stock_buy(jsonb_build_object('depot_id', v_depot, 'settlement_id', v_cash, 'isin', 'IE00HLOTF001',
+    v_res := finance.fn_book_stock_buy(jsonb_build_object('price_currency_confirmed',true,'depot_id', v_depot, 'settlement_id', v_cash, 'isin', 'IE00HLOTF001',
                  'symbol', 'HLF', 'name', 'HL F ETF', 'shares', 10, 'price_per_share', 10, 'order_fee', 0,
                  'transaction_date', (T - 5)::text, 'existing_position', true));
     v_f := (v_res->>'holding_id')::int;
-    v_res := finance.fn_book_stock_buy(jsonb_build_object('depot_id', v_depot, 'settlement_id', v_cash, 'isin', 'IE00HLOTF001',
+    v_res := finance.fn_book_stock_buy(jsonb_build_object('price_currency_confirmed',true,'depot_id', v_depot, 'settlement_id', v_cash, 'isin', 'IE00HLOTF001',
                  'symbol', 'HLF', 'shares', 2, 'price_per_share', 12, 'order_fee', 0, 'transaction_date', (T - 1)::text));
     IF (v_res->>'ok')::boolean IS DISTINCT FROM true THEN RAISE EXCEPTION 'SETUP F buy: %', v_res; END IF;
     -- G: Import-Tranchen = EINE Gruppe mit zwei Paaren
-    v_res := finance.fn_book_stock_buy(jsonb_build_object('depot_id', v_depot, 'settlement_id', v_cash, 'isin', 'IE00HLOTG001',
+    v_res := finance.fn_book_stock_buy(jsonb_build_object('price_currency_confirmed',true,'depot_id', v_depot, 'settlement_id', v_cash, 'isin', 'IE00HLOTG001',
                  'symbol', 'HLG', 'name', 'HL G ETF', 'shares', 2, 'price_per_share', 10, 'order_fee', 0,
                  'transaction_date', (T - 30)::text, 'existing_position', true));
     v_g := (v_res->>'holding_id')::int;
@@ -254,7 +254,7 @@ BEGIN
                     'currency', 'EUR', 'settlement_id', v_cash))->>'account_id')::int;
 
     -- W1
-    v_h := (finance.fn_book_stock_buy(jsonb_build_object('depot_id', v_depot, 'settlement_id', v_cash, 'isin', 'IE00HLOTW001',
+    v_h := (finance.fn_book_stock_buy(jsonb_build_object('price_currency_confirmed',true,'depot_id', v_depot, 'settlement_id', v_cash, 'isin', 'IE00HLOTW001',
               'symbol', 'HLW1', 'name', 'HL W1 ETF', 'shares', 10, 'price_per_share', 10, 'order_fee', 0,
               'transaction_date', (T - 5)::text, 'existing_position', true))->>'holding_id')::int;
     PERFORM finance.fn_book_stock_sell(jsonb_build_object('settlement_id', v_cash, 'holding_id', v_h, 'shares', 10,
@@ -266,7 +266,7 @@ BEGIN
         RAISE EXCEPTION 'FAIL [W1 Lot am Uebernahme-Tag, Bestand danach 0]: %', v_res; END IF;
 
     -- W2
-    v_h := (finance.fn_book_stock_buy(jsonb_build_object('depot_id', v_depot, 'settlement_id', v_cash, 'isin', 'IE00HLOTW002',
+    v_h := (finance.fn_book_stock_buy(jsonb_build_object('price_currency_confirmed',true,'depot_id', v_depot, 'settlement_id', v_cash, 'isin', 'IE00HLOTW002',
               'symbol', 'HLW2', 'name', 'HL W2 ETF', 'shares', 10, 'price_per_share', 10, 'order_fee', 0,
               'transaction_date', (T - 5)::text, 'existing_position', true))->>'holding_id')::int;
     v_res := finance.fn_replace_holding_lots(jsonb_build_object('depot_name', '__t_hlw_depot__', 'position', 'IE00HLOTW002',
@@ -274,7 +274,7 @@ BEGIN
     IF v_res->>'code' IS DISTINCT FROM 'lot_invalid' THEN RAISE EXCEPTION 'FAIL [W2 Kurswert unter 1 Cent]: %', v_res; END IF;
 
     -- W3
-    v_h := (finance.fn_book_stock_buy(jsonb_build_object('depot_id', v_depot, 'settlement_id', v_cash, 'isin', 'IE00HLOTW003',
+    v_h := (finance.fn_book_stock_buy(jsonb_build_object('price_currency_confirmed',true,'depot_id', v_depot, 'settlement_id', v_cash, 'isin', 'IE00HLOTW003',
               'symbol', 'HLW3', 'name', 'HL W3 ETF', 'shares', 5, 'price_per_share', 10, 'order_fee', 0,
               'transaction_date', (T - 5)::text, 'existing_position', true))->>'holding_id')::int;
     SELECT group_id INTO v_old FROM finance.transactions WHERE holding_id = v_h AND category::text = 'buy';

@@ -39,20 +39,20 @@ BEGIN
     v_tr := (v_res->>'account_id')::int;
     v_depot := (finance.fn_create_account(jsonb_build_object('name', '__t_lots_depot__', 'account_type', 'stocks_depot',
                    'currency', 'EUR', 'settlement_id', v_tr))->>'account_id')::int;
-    v_res := finance.fn_book_stock_buy(jsonb_build_object('depot_id', v_depot, 'settlement_id', v_tr, 'isin', 'IE00LOTSALT1',
+    v_res := finance.fn_book_stock_buy(jsonb_build_object('price_currency_confirmed',true,'depot_id', v_depot, 'settlement_id', v_tr, 'isin', 'IE00LOTSALT1',
                  'symbol', 'ALT', 'name', 'Alt ETF', 'shares', 10, 'price_per_share', 25, 'order_fee', 0,
                  'transaction_date', (T - 5)::text, 'existing_position', true));
     IF (v_res->>'ok')::boolean IS DISTINCT FROM true THEN RAISE EXCEPTION 'SETUP alt: %', v_res; END IF;
     v_alt := (v_res->>'holding_id')::int;
-    v_res := finance.fn_book_stock_buy(jsonb_build_object('depot_id', v_depot, 'settlement_id', v_tr, 'isin', 'IE00LOTSMIS1',
+    v_res := finance.fn_book_stock_buy(jsonb_build_object('price_currency_confirmed',true,'depot_id', v_depot, 'settlement_id', v_tr, 'isin', 'IE00LOTSMIS1',
                  'symbol', 'MIS', 'name', 'Mis ETF', 'shares', 5, 'price_per_share', 10, 'order_fee', 0,
                  'transaction_date', (T - 5)::text, 'existing_position', true));
     v_mis := (v_res->>'holding_id')::int;
-    v_res := finance.fn_book_stock_buy(jsonb_build_object('depot_id', v_depot, 'settlement_id', v_tr, 'isin', 'IE00LOTSONE1',
+    v_res := finance.fn_book_stock_buy(jsonb_build_object('price_currency_confirmed',true,'depot_id', v_depot, 'settlement_id', v_tr, 'isin', 'IE00LOTSONE1',
                  'symbol', 'ONE', 'name', 'One ETF', 'shares', 2, 'price_per_share', 10, 'order_fee', 0,
                  'transaction_date', (T - 5)::text, 'existing_position', true));
     v_one := (v_res->>'holding_id')::int;
-    v_res := finance.fn_book_stock_buy(jsonb_build_object('depot_id', v_depot, 'settlement_id', v_tr, 'isin', 'IE00LOTSDST1',
+    v_res := finance.fn_book_stock_buy(jsonb_build_object('price_currency_confirmed',true,'depot_id', v_depot, 'settlement_id', v_tr, 'isin', 'IE00LOTSDST1',
                  'symbol', 'DST', 'name', 'Dust ETF', 'shares', 0.00006, 'price_per_share', 200, 'order_fee', 0,
                  'transaction_date', (T - 5)::text, 'existing_position', true));
     IF (v_res->>'ok')::boolean IS DISTINCT FROM true THEN RAISE EXCEPTION 'SETUP dust: %', v_res; END IF;
@@ -172,7 +172,7 @@ BEGIN
                  'bank', 'Trade Republic', 'opening_balance', 1000, 'opening_balance_date', (T - 20)::text))->>'account_id')::int;
     v_dep := (finance.fn_create_account(jsonb_build_object('name', '__t_lots_fifo_dep__', 'account_type', 'stocks_depot',
                  'currency', 'EUR', 'settlement_id', v_acc))->>'account_id')::int;
-    PERFORM finance.fn_book_stock_buy(jsonb_build_object('depot_id', v_dep, 'settlement_id', v_acc, 'isin', 'IE00LOTSFIF1',
+    PERFORM finance.fn_book_stock_buy(jsonb_build_object('price_currency_confirmed',true,'depot_id', v_dep, 'settlement_id', v_acc, 'isin', 'IE00LOTSFIF1',
                  'symbol', 'FIF', 'name', 'Fif ETF', 'shares', 2, 'price_per_share', 25, 'order_fee', 0,
                  'transaction_date', (T - 5)::text, 'existing_position', true));
     v_res := core.fn_dry_run('finance.fn_replace_takeover_with_lots(jsonb)'::regprocedure, jsonb_build_object(
@@ -190,7 +190,7 @@ BEGIN
                  'bank', 'Trade Republic', 'opening_balance', 1000, 'opening_balance_date', (T - 20)::text))->>'account_id')::int;
     v_dep := (finance.fn_create_account(jsonb_build_object('name', '__t_lots_zero_dep__', 'account_type', 'stocks_depot',
                  'currency', 'EUR', 'settlement_id', v_acc))->>'account_id')::int;
-    PERFORM finance.fn_book_stock_buy(jsonb_build_object('depot_id', v_dep, 'settlement_id', v_acc, 'isin', 'IE00LOTSZER1',
+    PERFORM finance.fn_book_stock_buy(jsonb_build_object('price_currency_confirmed',true,'depot_id', v_dep, 'settlement_id', v_acc, 'isin', 'IE00LOTSZER1',
                  'symbol', 'ZER', 'name', 'Zer ETF', 'shares', 2, 'price_per_share', 25, 'order_fee', 0,
                  'transaction_date', (T - 5)::text, 'existing_position', true));
     v_res := core.fn_dry_run('finance.fn_replace_takeover_with_lots(jsonb)'::regprocedure, jsonb_build_object(
@@ -206,7 +206,7 @@ BEGIN
     UPDATE finance.accounts SET last_reconciled_at = T - 10 WHERE id = v_acc;
     v_dep := (finance.fn_create_account(jsonb_build_object('name', '__t_lots_cut_dep__', 'account_type', 'stocks_depot',
                  'currency', 'EUR', 'settlement_id', v_acc))->>'account_id')::int;
-    PERFORM finance.fn_book_stock_buy(jsonb_build_object('depot_id', v_dep, 'settlement_id', v_acc, 'isin', 'IE00LOTSCUT1',
+    PERFORM finance.fn_book_stock_buy(jsonb_build_object('price_currency_confirmed',true,'depot_id', v_dep, 'settlement_id', v_acc, 'isin', 'IE00LOTSCUT1',
                  'symbol', 'CUT', 'name', 'Cut ETF', 'shares', 1, 'price_per_share', 10, 'order_fee', 0,
                  'transaction_date', (T - 5)::text, 'existing_position', true));
     v_res := core.fn_dry_run('finance.fn_replace_takeover_with_lots(jsonb)'::regprocedure, jsonb_build_object(

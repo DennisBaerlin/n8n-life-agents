@@ -15,7 +15,8 @@
 --     A = Schluessel: SEPA-Mandat (Glaeubiger-ID|Mandatsreferenz) oder Gegen-IBAN eines Glieds der Vorgaenger-Kette,
 --         bzw. Gegen-IBAN = Kontonummer des Transfer-Gegenkontos; Betrag 50-150 % des Solls; Faelligkeit +-10 Tage.
 --     B = Betrag + Datum: Zeile 5 Tage vor bis 10 Tage nach der Faelligkeit; Betrag exakt (+-0,005) ODER, wenn ein
---         Namens-Token des Dauerauftrags (>= 4 Zeichen) im Zeilentext steht, +-5 % (mind. 2,00).
+--         Namens-Token des Dauerauftrags (>= 4 Zeichen) im Zeilentext steht, +-5 % (mind. 2,00). Verspaetete Abbuchung: 11-14 Tage
+--         nur mit exaktem Betrag UND Namens-Token, nur Rhythmus month/year ohne feste Monatstage (kuerzere Rhythmen schloessen sonst ein altes Vorkommen).
 --   Zuordnung gierig in fester Ordnung (Stufe -> |Betragsabweichung| -> |Tage| -> Zeile -> Kandidat): jede Zeile und
 --   jeder Kandidat hoechstens einmal (Muster YNAB/Actual: gleiche Betraege am selben Tag werden so stabil verteilt).
 --   Bank-Export-Datei: Zeilen mit kind (fn_bank_export_normalize) treffen nur passende Kandidaten: buy nur einen
@@ -77,7 +78,8 @@ BEGIN
                     ELSE abs(r.amount) END AS expected,
                CASE WHEN r.account_id = p_account_id THEN r.target_account_id ELSE r.account_id END AS other_acct,
                r.target_account_id,
-               sp.id IS NOT NULL AS is_plan, upper(sp.isin) AS sp_isin, upper(sp.symbol) AS sp_symbol
+               sp.id IS NOT NULL AS is_plan, upper(sp.isin) AS sp_isin, upper(sp.symbol) AS sp_symbol,
+               r.schedule_unit IN ('month', 'year') AND r.schedule_days_of_month IS NULL AS long_cycle
         FROM finance.fn_recurring_due_open(p_cut - 10, p_period_end + 5) o
         JOIN finance.recurring_payments r ON r.id = o.recurring_payment_id
         LEFT JOIN finance.savings_plans sp ON sp.recurring_payment_id = finance.fn_recurring_lineage_head(r.id)
@@ -122,6 +124,9 @@ BEGIN
                NULL::date, NULL::uuid, NULL::int
         FROM lines l
         CROSS JOIN occ o
+        CROSS JOIN LATERAL (SELECT (l.d - o.due) BETWEEN -5 AND 14 AND EXISTS (
+                                SELECT 1 FROM regexp_split_to_table(lower(o.name), '[\s,.;:/()_+&-]+') tok
+                                WHERE length(tok) >= 4 AND position(tok IN l.txt) > 0) AS hit) nm
         CROSS JOIN LATERAL (
             SELECT CASE
                 WHEN abs(l.d - o.due) <= 10
@@ -139,9 +144,9 @@ BEGIN
                 THEN 'A'
                 WHEN (l.d - o.due) BETWEEN -5 AND 10
                      AND ( abs(l.amt - o.expected) <= 0.005
-                        OR ( abs(l.amt - o.expected) <= GREATEST(abs(o.expected) * 0.05, 2)
-                             AND EXISTS (SELECT 1 FROM regexp_split_to_table(lower(o.name), '[\s,.;:/()_+&-]+') tok
-                                         WHERE length(tok) >= 4 AND position(tok IN l.txt) > 0) ) )
+                        OR ( abs(l.amt - o.expected) <= GREATEST(abs(o.expected) * 0.05, 2) AND nm.hit ) )
+                THEN 'B'
+                WHEN (l.d - o.due) BETWEEN 11 AND 14 AND o.long_cycle AND abs(l.amt - o.expected) <= 0.005 AND nm.hit
                 THEN 'B'
             END AS stage
         ) x

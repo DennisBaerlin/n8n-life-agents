@@ -64,7 +64,7 @@ BEGIN
   -- TEST 6 (2026-10-23): Kurs-Waehrung aus market_prices einer GEHALTENEN Position ohne quote_currency (Feed liefert
   -- CHF) -> CHF in der Menge; eine nicht mehr gehaltene Position (shares=0) und ein aelterer Kurs in anderer Waehrung zaehlen nicht.
   INSERT INTO finance.currencies (code, minor_unit) VALUES ('CHF', 2), ('JPY', 0) ON CONFLICT (code) DO NOTHING;
-  PERFORM finance.fn_book_stock_buy(jsonb_build_object('depot_id', v_depot_id, 'settlement_id', v_settle_id,
+  PERFORM finance.fn_book_stock_buy(jsonb_build_object('price_currency_confirmed',true,'depot_id', v_depot_id, 'settlement_id', v_settle_id,
     'isin', 'CH0000000099', 'symbol', 'TSTC', 'shares', 2, 'price_per_share', 10, 'existing_position', true));
   INSERT INTO finance.market_prices (symbol, as_of, price, currency) VALUES ('TSTC', CURRENT_DATE, 11, 'CHF');
   INSERT INTO finance.market_prices (symbol, as_of, price, currency) VALUES ('TSTU', CURRENT_DATE, 5, 'JPY');   -- TSTU: 0 Stueck

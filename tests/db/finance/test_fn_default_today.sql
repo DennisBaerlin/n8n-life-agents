@@ -34,7 +34,7 @@ BEGIN
 
   v_depot := (finance.fn_create_account(jsonb_build_object('name', '__dt_depot__', 'account_type', 'stocks_depot',
                 'settlement_id', v_a))->>'account_id')::int;
-  v_r := finance.fn_book_stock_buy(jsonb_build_object('depot_id', v_depot, 'settlement_id', v_a,
+  v_r := finance.fn_book_stock_buy(jsonb_build_object('price_currency_confirmed',true,'depot_id', v_depot, 'settlement_id', v_a,
            'isin', 'IE00B4L5Y983', 'symbol', 'IWDA', 'name', 'iShares MSCI World',
            'shares', 2, 'price_per_share', 100, 'order_fee', ''));
   v_hold := (v_r->>'holding_id')::int;

@@ -69,3 +69,20 @@ BEGIN
 END $$;
 
 ROLLBACK;
+
+-- Standmitteilungen zaehlen wie Buchungen: nur schliessen, Historie bleibt (auch ohne Beitrag, gesetzliche Rente).
+BEGIN;
+DO $$
+DECLARE r jsonb; v_p int; v_cnt int;
+BEGIN
+  v_p := (finance.fn_create_pension('{"name":"__cp_drv__","pension_type":"statutory"}'::jsonb)->>'pension_id')::int;
+  INSERT INTO finance.pension_statements (pension_id, statement_date, reached_claim, projection)
+  VALUES (v_p, core.fn_today() - 400, 900, 1800), (v_p, core.fn_today() - 30, 950, 1850);
+  r := finance.fn_close_pension('{"pension_name":"__cp_drv__"}'::jsonb);
+  SELECT count(*) INTO v_cnt FROM finance.pension_statements WHERE pension_id = v_p;
+  IF (r->>'ok')::boolean IS NOT TRUE OR r->>'action' IS DISTINCT FROM 'closed' OR v_cnt <> 2
+     OR (SELECT status::text FROM finance.pension WHERE id = v_p) IS DISTINCT FROM 'paused' THEN
+    RAISE EXCEPTION 'FAIL close_pension [Standmitteilungen bleiben]: % (Zeilen %)', r, v_cnt; END IF;
+  RAISE NOTICE 'PASS close_pension [Standmitteilungen -> Soft-Close]';
+END $$;
+ROLLBACK;

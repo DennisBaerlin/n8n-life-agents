@@ -37,7 +37,7 @@ BEGIN
   v_depot_id := (v_result->>'account_id')::int;
 
   -- Kauf: 10 Anteile @ 80 + 5 Gebuehr -> avg = 80.5
-  SELECT finance.fn_book_stock_buy(jsonb_build_object(
+  SELECT finance.fn_book_stock_buy(jsonb_build_object('price_currency_confirmed',true,
     'depot_id',        v_depot_id,
     'settlement_id',   v_settle_id,
     'isin',            'IE00B4L5Y983',
@@ -175,13 +175,13 @@ BEGIN
   v_depot := (v_result->>'account_id')::int;
 
   -- TEST 5: 10 @ 100, Verkauf 5, Nachkauf 5 @ 200 -> (5*100 + 5*200) / 10 = 150
-  v_result := finance.fn_book_stock_buy(jsonb_build_object('depot_id',v_depot,'settlement_id',v_settle,
+  v_result := finance.fn_book_stock_buy(jsonb_build_object('price_currency_confirmed',true,'depot_id',v_depot,'settlement_id',v_settle,
     'isin','IE00B4L5Y983','symbol','AVGA','name','A','shares',10,'price_per_share',100,'order_fee',0,
     'transaction_date',CURRENT_DATE::text));
   v_h := (v_result->>'holding_id')::int;
   PERFORM finance.fn_book_stock_sell(jsonb_build_object('settlement_id',v_settle,'holding_id',v_h,'shares',5,
     'price_per_share',150,'order_fee',0,'transaction_date',CURRENT_DATE::text,'symbol','AVGA'));
-  v_result := finance.fn_book_stock_buy(jsonb_build_object('depot_id',v_depot,'settlement_id',v_settle,
+  v_result := finance.fn_book_stock_buy(jsonb_build_object('price_currency_confirmed',true,'depot_id',v_depot,'settlement_id',v_settle,
     'isin','IE00B4L5Y983','symbol','AVGA','name','A','shares',5,'price_per_share',200,'order_fee',0,
     'transaction_date',CURRENT_DATE::text));
   IF (v_result->>'avg_purchase_price')::numeric IS DISTINCT FROM 150 THEN
@@ -190,7 +190,7 @@ BEGIN
   RAISE NOTICE 'PASS avg [Teilverkauf+Nachkauf -> 150]';
 
   -- TEST 6: 10 @ 100, Vollverkauf, Nachkauf 10 @ 200 -> neue Position startet neu = 200
-  v_result := finance.fn_book_stock_buy(jsonb_build_object('depot_id',v_depot,'settlement_id',v_settle,
+  v_result := finance.fn_book_stock_buy(jsonb_build_object('price_currency_confirmed',true,'depot_id',v_depot,'settlement_id',v_settle,
     'isin','IE00B3RBWM25','symbol','AVGB','name','B','shares',10,'price_per_share',100,'order_fee',0,
     'transaction_date',CURRENT_DATE::text));
   v_h := (v_result->>'holding_id')::int;
@@ -200,7 +200,7 @@ BEGIN
   IF v_avg IS DISTINCT FROM 100 THEN
     RAISE EXCEPTION 'FAIL avg [Vollverkauf: letzter Durchschnitt sichtbar]: erwartet 100, got %', v_avg;
   END IF;
-  v_result := finance.fn_book_stock_buy(jsonb_build_object('depot_id',v_depot,'settlement_id',v_settle,
+  v_result := finance.fn_book_stock_buy(jsonb_build_object('price_currency_confirmed',true,'depot_id',v_depot,'settlement_id',v_settle,
     'isin','IE00B3RBWM25','symbol','AVGB','name','B','shares',10,'price_per_share',200,'order_fee',0,
     'transaction_date',CURRENT_DATE::text));
   IF (v_result->>'avg_purchase_price')::numeric IS DISTINCT FROM 200 THEN
@@ -210,7 +210,7 @@ BEGIN
 
   -- TEST 7: rueckdatierter Verkauf VOR dem Kauf (Bestand chronologisch negativ) -> kein Division-durch-0,
   --   der Kauf startet die Kostenbasis neu: avg = 100
-  v_result := finance.fn_book_stock_buy(jsonb_build_object('depot_id',v_depot,'settlement_id',v_settle,
+  v_result := finance.fn_book_stock_buy(jsonb_build_object('price_currency_confirmed',true,'depot_id',v_depot,'settlement_id',v_settle,
     'isin','DE0005190003','symbol','AVGC','name','C','shares',10,'price_per_share',100,'order_fee',0,
     'transaction_date',CURRENT_DATE::text));
   v_h := (v_result->>'holding_id')::int;
@@ -236,7 +236,7 @@ DECLARE v_settle int; v_depot int; v_hold int; v_goal int; v_goal2 int; v_r json
 BEGIN
   v_settle := (finance.fn_create_account('{"name":"__sg_sell_settle__","account_type":"cash","opening_balance":5000}'::jsonb)->>'account_id')::int;
   v_depot  := (finance.fn_create_account(jsonb_build_object('name','__sg_sell_depot__','account_type','stocks_depot','settlement_id',v_settle))->>'account_id')::int;
-  v_r := finance.fn_book_stock_buy(jsonb_build_object('depot_id',v_depot,'settlement_id',v_settle,'isin','IE00B4L5Y983','symbol','IUSQ',
+  v_r := finance.fn_book_stock_buy(jsonb_build_object('price_currency_confirmed',true,'depot_id',v_depot,'settlement_id',v_settle,'isin','IE00B4L5Y983','symbol','IUSQ',
            'name','iShares MSCI World','shares',20,'price_per_share',100,'order_fee',0,'transaction_date',(CURRENT_DATE - 10)::text));
   v_hold := (v_r->>'holding_id')::int;
   INSERT INTO finance.savings_goals (name, target_amount, target_date, status) VALUES ('__sg_sell Auto__', 5000, current_date + 400, 'active') RETURNING id INTO v_goal;
@@ -296,7 +296,7 @@ BEGIN
   v_settle := (finance.fn_create_account('{"name":"__test_sell2_settle__","account_type":"cash","currency":"EUR"}'::jsonb)->>'account_id')::int;
   v_depot  := (finance.fn_create_account(jsonb_build_object('name','__test_sell2_depot__','account_type','stocks_depot',
                 'currency','EUR','settlement_id',v_settle))->>'account_id')::int;
-  v_hold := (finance.fn_book_stock_buy(jsonb_build_object('depot_id', v_depot, 'settlement_id', v_settle,
+  v_hold := (finance.fn_book_stock_buy(jsonb_build_object('price_currency_confirmed',true,'depot_id', v_depot, 'settlement_id', v_settle,
               'isin', 'IE00B4L5Y983', 'symbol', 'SELLTWO', 'name', 'Welt ETF', 'shares', 10, 'price_per_share', 100,
               'transaction_date', (CURRENT_DATE - 30)::text))->>'holding_id')::int;
   INSERT INTO finance.market_prices (symbol, price, currency, as_of) VALUES ('SELLTWO', 100, 'EUR', CURRENT_DATE);

@@ -23,7 +23,9 @@ BEGIN
 
   -- TEST 1: Zielbetrag 5000 -> 6000 -> Rate neu = (6000 - 0 gespart) / Rest-Monate; recurring.amount = -Rate
   SELECT finance.fn_set_savings_goal(jsonb_build_object('goal_id', v_goal, 'target_amount', 6000)) INTO v_res;
-  v_months   := GREATEST(1, CEIL((DATE '2027-12-31' - CURRENT_DATE) / 30.4375)::int);
+  -- echte Termine: 1. des Monats ab dem naechsten 1. bis einschliesslich 31.12.2027
+  SELECT count(*) INTO v_months FROM generate_series(0, 60) k
+   WHERE (date_trunc('month', core.fn_today() - 1) + interval '1 month' + make_interval(months => k))::date <= DATE '2027-12-31';
   -- Audit Paket 2 (Punkt 15): auf den Cent AUFGERUNDET, damit die Raten das Ziel erreichen (vorher ROUND).
   v_expected := CEIL(6000.0 / v_months * 100) / 100;
   IF (v_res->>'new_monthly_rate')::numeric IS DISTINCT FROM v_expected THEN
@@ -197,7 +199,7 @@ BEGIN
 
   -- (N1)
   v_res := finance.fn_set_savings_goal(jsonb_build_object('goal_id', v_goal, 'target_amount', 4200));
-  v_months := GREATEST(1, CEIL(((CURRENT_DATE + 400) - CURRENT_DATE) / 30.4375)::int);
+  SELECT count(*) INTO v_months FROM generate_series(0, 20) k WHERE (core.fn_today() + make_interval(months => k))::date <= CURRENT_DATE + 400;
   v_exp := CEIL(1200.0 / v_months * 100) / 100;
   IF (v_res->>'ok')::boolean IS DISTINCT FROM true OR v_res->>'code' IS DISTINCT FROM 'no_rate_running'
      OR (v_res->>'required_monthly_rate')::numeric IS DISTINCT FROM v_exp OR v_res->>'new_monthly_rate' IS NOT NULL THEN
@@ -389,5 +391,53 @@ BEGIN
      OR (v_r->>'paused_plan_count')::int IS DISTINCT FROM 0 OR (v_r->>'paused_cash_rate')::boolean IS DISTINCT FROM false THEN
     RAISE EXCEPTION 'FAIL set [R7 Ruecklage wieder oeffnen]: %', v_r; END IF;
   RAISE NOTICE 'PASS set [R7 Ruecklage oeffnen trotz anderem Ziel, Return 0/false]';
+END $$;
+ROLLBACK;
+
+-- Neuberechnung ohne festen Tag: das Raster ist der Tag der ersten Rate (20.), nicht der heutige Tag.
+BEGIN;
+DO $$
+DECLARE v_acct int; v_pot int; v_goal int; v_res jsonb; v_n int;
+BEGIN
+  v_acct := (finance.fn_create_account('{"name":"__ssg3_giro__","account_type":"cash"}'::jsonb)->>'account_id')::int;
+  v_pot  := (finance.fn_create_account('{"name":"__ssg3_p2p__","account_type":"p2p"}'::jsonb)->>'account_id')::int;
+  v_goal := (finance.fn_create_savings_goal(jsonb_build_object('name','__ssg3_goal__','target_amount',5000,'target_date','2030-12-15',
+              'monthly_savings_rate',200,'account_id',v_acct,'reserve_account_id',v_pot,'first_payment_date','2026-07-20'))->>'goal_id')::int;
+  v_res := finance.fn_set_savings_goal(jsonb_build_object('goal_id', v_goal, 'target_amount', 6000));
+  SELECT count(*) INTO v_n FROM generate_series(0, 80) k,
+       LATERAL (SELECT (date_trunc('month', core.fn_today()) + make_interval(months => k, days => 19))::date AS d) x
+   WHERE x.d >= core.fn_today() AND x.d <= DATE '2030-12-15';
+  IF (v_res->>'new_monthly_rate')::numeric IS DISTINCT FROM CEIL(6000.0 / v_n * 100) / 100 THEN
+    RAISE EXCEPTION 'FAIL set_savings_goal [Raster ohne Tag]: % (erwartet % Termine)', v_res, v_n; END IF;
+  RAISE NOTICE 'PASS set_savings_goal [Raster ohne festen Tag]';
+
+  -- Rate startet erst in 8 Monaten: nur die 5 Termine ab dem Start zaehlen
+  DECLARE v_first date := (date_trunc('month', core.fn_today()) + interval '8 months')::date + 19; v_g int; BEGIN
+    v_g := (finance.fn_create_savings_goal(jsonb_build_object('name','__ssg3_future__','target_amount',5000,'target_date',(v_first + interval '4 months' + interval '5 days')::date::text,
+              'monthly_savings_rate',200,'account_id',v_acct,'reserve_account_id',v_pot,'first_payment_date',v_first::text))->>'goal_id')::int;
+    v_res := finance.fn_set_savings_goal(jsonb_build_object('goal_id', v_g, 'target_amount', 6000));
+    IF (v_res->>'new_monthly_rate')::numeric IS DISTINCT FROM 1200 THEN RAISE EXCEPTION 'FAIL set_savings_goal [Start in der Zukunft]: %', v_res; END IF;
+  END;
+
+  -- Ziel genau am naechsten Abbuchungstag: Rate zaehlt mit, keine Ablehnung
+  DECLARE v_next date := (date_trunc('month', core.fn_today() - 1) + interval '1 month')::date; v_g int; v_cnt int; BEGIN
+    v_g := (finance.fn_create_savings_goal(jsonb_build_object('name','__ssg3_next__','target_amount',500,'target_date',(core.fn_today() + 200)::text,
+              'monthly_savings_rate',50,'account_id',v_acct,'reserve_account_id',v_pot,'schedule_day_of_month',1,'first_payment_date','2026-07-01'))->>'goal_id')::int;
+    v_res := finance.fn_set_savings_goal(jsonb_build_object('goal_id', v_g, 'target_date', v_next::text));
+    IF (v_res->>'ok')::boolean IS NOT TRUE OR (v_res->>'new_monthly_rate')::numeric IS DISTINCT FROM 500 THEN
+      RAISE EXCEPTION 'FAIL set_savings_goal [Ziel am naechsten Termin]: %', v_res; END IF;
+  END;
+
+  -- heute schon gebuchte Rate zaehlt nicht noch einmal: heute (gebucht), +1, +2, +3 Monate -> 3 offene Termine
+  DECLARE v_t date := core.fn_today(); v_g int; v_rp int; BEGIN
+    v_res := finance.fn_create_savings_goal(jsonb_build_object('name','__ssg3_booked__','target_amount',3000,'target_date',(v_t + interval '3 months' + interval '5 days')::date::text,
+              'monthly_savings_rate',100,'account_id',v_acct,'reserve_account_id',v_pot,'first_payment_date',v_t::text));
+    v_g := (v_res->>'goal_id')::int; v_rp := (v_res->>'recurring_payment_id')::int;
+    INSERT INTO finance.transactions (account_id, amount, transaction_date, category, recurring_payment_id, recurring_due_date, group_id)
+      VALUES (v_acct, -100, v_t, 'transfer', v_rp, v_t, gen_random_uuid());
+    v_res := finance.fn_set_savings_goal(jsonb_build_object('goal_id', v_g, 'target_amount', 6000));
+    IF (v_res->>'new_monthly_rate')::numeric IS DISTINCT FROM 2000 THEN RAISE EXCEPTION 'FAIL set_savings_goal [gebuchte Rate]: %', v_res; END IF;
+  END;
+  RAISE NOTICE 'PASS set_savings_goal [Start in der Zukunft, Ziel am Termin, gebuchte Rate]';
 END $$;
 ROLLBACK;

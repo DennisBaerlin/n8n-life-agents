@@ -9,6 +9,8 @@
 --   nur beim ANLEGEN der Holding gesetzt, Format-Verstoss -> {ok:false}),
 --   provider_symbol (opt -- Phase M: Markt-Daten-Feed-Symbol-Override, z. B. VWCE.DE; nur beim ANLEGEN),
 --   quote_currency (opt -- Phase M: native Quote-Waehrung; via fn_ensure_currency validiert -> {ok:false}; nur beim ANLEGEN),
+--   listing_currency (opt -- Notierung des Papiers aus der Kurs-Pruefung, wenn es keine in Depot-Waehrung gibt; beim ANLEGEN die Markt-Waehrung),
+--   price_currency_confirmed (opt bool -- Kurs belegt in Kontowaehrung: Kontoauszug/Broker-Datei),
 --   recurring_payment_id (opt -- verknuepft den Kauf mit einem Sparplan), due_date (opt, nur mit
 --   recurring_payment_id -- Monats-Check WP-A: die Faelligkeit, die der Kauf erledigt = recurring_due_date;
 --   Default transaction_date; Abgleich-Sperre auf dem Verrechnungskonto -> {ok:false, code:'reconciled'}),
@@ -20,8 +22,12 @@
 --   recurring_payment_id (Sparplan-Ausfuehrung ist echter Geldfluss); Holding hat bereits Stueck > 0 (ein
 --   erneuter Depotauszug wuerde die Position verdoppeln -> Korrektur ueber fn_replace_holding_lots / tool_replace_holding_lots).
 --   CHECK finance_transactions_position_takeover_shape ist der Backstop der Gegenbuchungs-Form. Das Paar schreibt allein
---   fn_book_takeover_pair (eine Adresse mit den Import-Tranchen). cost_basis_total (opt, NUR mit existing_position und ohne
---   price_per_share): Gesamt-Einstand -> Stueckpreis rechnet fn_unit_price_from_total (das LLM teilt nie selbst).
+--   fn_book_takeover_pair (eine Adresse mit den Import-Tranchen). cost_basis_total (opt, ohne price_per_share): bei Uebernahme
+--   der Gesamt-Einstand, beim echten Kauf der abgebuchte Betrag inkl. Gebuehr (= Buchungsbetrag) -> Stueckpreis rechnet
+--   fn_unit_price_from_total (das LLM teilt nie selbst).
+--   Kurswaehrung (genannt, sonst gespeicherte Notierung der Position, sonst listing_currency) != Verrechnungskonto bei echtem Kauf
+--   ohne Betrag -> {ok:false, code:'price_currency_mismatch', price_currency, settlement_currency}; keine davon bekannt ->
+--   {ok:false, code:'price_currency_missing'}. effective.total_debited = abgebuchter Betrag (Karte).
 --   WS-B Stufe 2 (Phase S) — AUTO-JOURNAL: ist dieser Kauf die Ausfuehrung eines GOAL-VERKNUEPFTEN Sparplans
 --   (recurring_payment_id -> savings_plans.savings_goal_id IS NOT NULL), dann ATOMAR in derselben Tx append-only
 --   savings_goal_reserve_entries-Zeilen kind='sparplan_buy', value_date = transaction_date, source_tx_id = Kauf-Tx:
@@ -84,6 +90,10 @@ DECLARE
     v_held       NUMERIC;
     v_dates      JSONB;
     v_bal_before NUMERIC;
+    v_derived    NUMERIC;          -- aus cost_basis_total abgeleiteter Stueckpreis
+    v_listing_ccy TEXT             := finance.fn_normalize_currency(NULLIF(p->>'listing_currency', ''));  -- Notierung des Papiers, wenn es keine in Depot-Waehrung gibt (Kurs-Pruefung des Tools)
+    v_confirmed  BOOLEAN           := COALESCE(NULLIF(p->>'price_currency_confirmed', '')::boolean, false);  -- Kurs ist belegt in Kontowaehrung (Kontoauszug/Broker-Datei)
+    v_price_ccy  TEXT;
     v_pair       JSONB;
     v_total      NUMERIC;          -- cost_basis_total (Gesamt-Einstand einer Uebernahme), geparst
     v_group      UUID;             -- Handle der Uebernahme-Gruppe (Import haengt weitere Tranchen an)
@@ -114,13 +124,17 @@ BEGIN
             RETURN jsonb_build_object('ok', false,
                 'reason', 'cost_basis_total (total amount paid) must be a positive number, got ' || (p->>'cost_basis_total') || '.');
         END IF;
-        IF NOT v_existing
-           OR (v_price IS NOT NULL AND round(v_price, 8) IS DISTINCT FROM finance.fn_unit_price_from_total(v_total, v_shares)) THEN
+        -- Echter Kauf: Betrag = abgebucht inkl. Gebuehr. Uebernahme: Einstand ohne Gebuehr.
+        IF NOT v_existing AND v_total <= round(v_fee, 2) THEN
             RETURN jsonb_build_object('ok', false,
-                'reason', 'cost_basis_total is only for taking over an existing position without a price per share - '
-                       || 'give either price_per_share or cost_basis_total.');
+                'reason', 'cost_basis_total (the amount debited, including the order fee) must be larger than the order fee.');
         END IF;
-        v_price := finance.fn_unit_price_from_total(v_total, v_shares);
+        v_derived := finance.fn_unit_price_from_total(CASE WHEN v_existing THEN v_total ELSE v_total - round(v_fee, 2) END, v_shares);
+        IF v_price IS NOT NULL AND round(v_price, 8) IS DISTINCT FROM v_derived THEN
+            RETURN jsonb_build_object('ok', false,
+                'reason', 'Give either price_per_share or cost_basis_total, they do not match.');
+        END IF;
+        v_price := v_derived;
     END IF;
     -- Rundungs-Paket 2026-10-23: Kurs auf die Spaltenpraezision (8 Stellen), Gebuehr auf Cent (order_fee numeric(12,2)) —
     -- VOR den Pruefungen, damit Betrag, order_fee und unit_price aus denselben Werten entstehen (CHECK
@@ -163,6 +177,13 @@ BEGIN
         END IF;
     END IF;
 
+    IF v_listing_ccy IS NOT NULL THEN
+        v_ccy_result := finance.fn_ensure_currency(v_listing_ccy);
+        IF NOT (v_ccy_result->>'ok')::boolean THEN
+            RETURN v_ccy_result;
+        END IF;
+    END IF;
+
     -- Korrigierbar: Depot-Typ muss zur ISIN-Praesenz passen -> {ok:false} (kein RAISE).
     SELECT account_type, currency INTO v_depot_type, v_depot_ccy
     FROM finance.accounts WHERE id = v_depot;
@@ -177,6 +198,31 @@ BEGIN
             'reason', 'Depot type mismatch: a crypto buy (no ISIN) requires a crypto_depot, but this depot is '
                    || v_depot_type || '. Ask the user for a crypto depot (or to create one).',
             'depot_type', v_depot_type);
+    END IF;
+
+    -- Kurs in anderer Waehrung als das belastete Konto: nie still 1:1 abbuchen, nie mit einem geschaetzten Kurs umrechnen.
+    -- Uebernahme bewegt kein Geld (quote_currency ist dort die Markt-Notierung, fn_import_bundle), Sparplan-Ausfuehrung
+    -- bucht den Planbetrag, cost_basis_total ist schon in Kontowaehrung.
+    IF NOT v_existing AND v_rp_id IS NULL AND v_total IS NULL AND NOT v_confirmed THEN
+        SELECT currency INTO v_settle_ccy FROM finance.accounts WHERE id = v_settle;
+        v_price_ccy := COALESCE(v_quote_ccy,
+            (SELECT h.quote_currency FROM finance.depot_holdings h
+              WHERE h.account_id = v_depot AND ((v_isin IS NOT NULL AND h.isin = v_isin) OR (v_isin IS NULL AND h.isin IS NULL AND h.symbol = v_symbol))
+              LIMIT 1),
+            v_listing_ccy);
+        -- Die Kurs-Pruefung kennt die Waehrung des genannten Preises nicht sicher (Euro-Notierung vorhanden, Yahoo-Ausfall): nie raten.
+        IF v_price_ccy IS NULL THEN
+            RETURN jsonb_build_object('ok', false, 'code', 'price_currency_missing',
+                'reason', 'The currency of the price of ' || v_symbol || ' is unknown. Pass the currency the user named as quote_currency; '
+                       || 'if the user named none, ask which currency the price is in, or how much ' || v_settle_ccy || ' was actually debited including fees (then call again with cost_basis_total).');
+        END IF;
+        IF v_price_ccy IS DISTINCT FROM v_settle_ccy THEN
+            RETURN jsonb_build_object('ok', false, 'code', 'price_currency_mismatch',
+                'reason', 'The price of ' || v_symbol || ' is in ' || v_price_ccy || ' but the settlement account is in ' || v_settle_ccy
+                       || '. Do not convert or estimate. Ask the user how much ' || v_settle_ccy || ' was actually debited, including fees, '
+                       || 'and call again with that amount as cost_basis_total, price_per_share empty and quote_currency empty.',
+                'price_currency', v_price_ccy, 'settlement_currency', v_settle_ccy);
+        END IF;
     END IF;
 
     -- WS-B Stufe 2: Ableitungs-Kette — ist dieser Kauf die Ausfuehrung eines GOAL-verknuepften Sparplans?
@@ -255,7 +301,9 @@ BEGIN
             (account_id, isin, symbol, name, shares, average_purchase_price, currency, asset_class,
              provider_symbol, quote_currency)
         VALUES (v_depot, v_isin, v_symbol, v_name, 0, NULL, COALESCE(v_depot_ccy, 'EUR'), v_asset_cls,
-                v_provider_sym, v_quote_ccy)
+                v_provider_sym,
+                -- echter Kauf mit Abbuchungsbetrag: genannte Waehrung ist die des Kurses, die Kurs-Pruefung lief in Kontowaehrung
+                CASE WHEN NOT v_existing AND v_total IS NOT NULL THEN v_listing_ccy ELSE COALESCE(v_listing_ccy, v_quote_ccy) END)
         RETURNING id INTO v_holding;
     END IF;
 
@@ -278,9 +326,9 @@ BEGIN
         (account_id, amount, transaction_date, category, holding_id, shares, order_fee, unit_price,
          recurring_payment_id, recurring_due_date, savings_goal_id, description, group_id)
     -- unit_price bleibt NULL: ein normaler Kauf rechnet aus |amount| (abgebuchter Cent-Betrag, Broker-Konvention).
-    VALUES (v_settle, -(v_shares * v_price + v_fee), v_date, 'buy', v_holding, v_shares, v_fee, NULL,
+    VALUES (v_settle, -COALESCE(v_total, v_shares * v_price + v_fee), v_date, 'buy', v_holding, v_shares, v_fee, NULL,
             v_rp_id, CASE WHEN v_rp_id IS NOT NULL THEN v_due END, NULL,
-            'Kauf ' || (p->>'shares') || ' ' || v_symbol || ' @ ' || (p->>'price_per_share')
+            'Kauf ' || (p->>'shares') || ' ' || v_symbol || ' @ ' || CASE WHEN v_total IS NOT NULL THEN trim_scale(v_price)::text ELSE p->>'price_per_share' END
                    || ' (Gebühr ' || COALESCE(p->>'order_fee', '0') || ')',
             NULL)
     ON CONFLICT (recurring_payment_id, recurring_due_date, account_id) WHERE recurring_payment_id IS NOT NULL
@@ -329,7 +377,9 @@ BEGIN
         'total_shares', v_shares_tot, 'avg_purchase_price', v_avg,
         'effective', (v_dates->'resolved') || jsonb_build_object('transaction_date', v_date, 'order_fee', v_fee)
                       || CASE WHEN NULLIF(p->>'cost_basis_total', '') IS NOT NULL
-                              THEN jsonb_build_object('price_per_share', v_price) ELSE '{}'::jsonb END)
+                              THEN jsonb_build_object('price_per_share', v_price)
+                                   || CASE WHEN NOT v_existing THEN jsonb_build_object('total_debited', v_total) ELSE '{}'::jsonb END
+                              ELSE '{}'::jsonb END)
         || CASE WHEN v_holding_cls IS NULL
                 THEN jsonb_build_object('null_tag', jsonb_build_object(
                     'symbol', v_symbol,

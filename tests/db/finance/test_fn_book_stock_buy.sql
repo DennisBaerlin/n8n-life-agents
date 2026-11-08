@@ -39,7 +39,7 @@ BEGIN
 
   -- Aktien kaufen
   SELECT finance.fn_book_stock_buy(
-    jsonb_build_object(
+    jsonb_build_object('price_currency_confirmed',true,
       'depot_id',        v_depot_id,
       'settlement_id',   v_settle_id,
       'isin',            'IE00B4L5Y983',
@@ -105,7 +105,7 @@ BEGIN
 
   -- TEST 2: Zweiter Kauf → avg muss korrekt nachjustiert werden
   SELECT finance.fn_book_stock_buy(
-    jsonb_build_object(
+    jsonb_build_object('price_currency_confirmed',true,
       'depot_id',        v_depot_id,
       'settlement_id',   v_settle_id,
       'isin',            'IE00B4L5Y983',
@@ -142,7 +142,7 @@ BEGIN
   RAISE NOTICE 'PASS fn_book_stock_buy [2. Kauf]: shares=%, avg=%', v_got_shares, round(v_got_avg, 2);
 
   -- TEST 3: Depot-Typ-Mismatch (Crypto ohne ISIN auf stocks_depot) -> {ok:false} (korrigierbar)
-  SELECT finance.fn_book_stock_buy(jsonb_build_object(
+  SELECT finance.fn_book_stock_buy(jsonb_build_object('price_currency_confirmed',true,
     'depot_id',        v_depot_id,
     'settlement_id',   v_settle_id,
     'isin',            '',
@@ -162,7 +162,7 @@ BEGIN
   RAISE NOTICE 'PASS fn_book_stock_buy [depot_type_mismatch -> ok:false]: %', v_result->>'reason';
 
   -- TEST 4: shares <= 0 -> {ok:false} (korrigierbar, analog sell)
-  SELECT finance.fn_book_stock_buy(jsonb_build_object(
+  SELECT finance.fn_book_stock_buy(jsonb_build_object('price_currency_confirmed',true,
     'depot_id', v_depot_id, 'settlement_id', v_settle_id,
     'isin', 'IE00B4L5Y983', 'symbol', 'IUSQ', 'name', 'iShares MSCI World',
     'shares', 0, 'price_per_share', 100, 'order_fee', 0, 'transaction_date', CURRENT_DATE::text
@@ -173,7 +173,7 @@ BEGIN
   RAISE NOTICE 'PASS fn_book_stock_buy [shares<=0 -> ok:false]';
 
   -- TEST 5: price <= 0 -> {ok:false}
-  SELECT finance.fn_book_stock_buy(jsonb_build_object(
+  SELECT finance.fn_book_stock_buy(jsonb_build_object('price_currency_confirmed',true,
     'depot_id', v_depot_id, 'settlement_id', v_settle_id,
     'isin', 'IE00B4L5Y983', 'symbol', 'IUSQ', 'name', 'iShares MSCI World',
     'shares', 5, 'price_per_share', 0, 'order_fee', 0, 'transaction_date', CURRENT_DATE::text
@@ -185,7 +185,7 @@ BEGIN
 
   -- TEST 6 (WS2b): asset_class-Auto-Tag wird beim ANLEGEN der Holding gesetzt
   DECLARE v_tag TEXT; v_h6 INT; BEGIN
-    SELECT finance.fn_book_stock_buy(jsonb_build_object(
+    SELECT finance.fn_book_stock_buy(jsonb_build_object('price_currency_confirmed',true,
       'depot_id', v_depot_id, 'settlement_id', v_settle_id,
       'isin', 'IE00BK5BQT80', 'symbol', 'VWCE', 'name', 'Vanguard FTSE All-World',
       'shares', 3, 'price_per_share', 100, 'order_fee', 0, 'transaction_date', CURRENT_DATE::text,
@@ -200,7 +200,7 @@ BEGIN
     RAISE NOTICE 'PASS fn_book_stock_buy [asset_class Auto-Tag beim Anlegen gesetzt]';
 
     -- 6b: ein zweiter Kauf derselben Position ueberschreibt den Tag NICHT (Korrektur nur via set_holding)
-    SELECT finance.fn_book_stock_buy(jsonb_build_object(
+    SELECT finance.fn_book_stock_buy(jsonb_build_object('price_currency_confirmed',true,
       'depot_id', v_depot_id, 'settlement_id', v_settle_id,
       'isin', 'IE00BK5BQT80', 'symbol', 'VWCE', 'name', 'Vanguard FTSE All-World',
       'shares', 2, 'price_per_share', 110, 'order_fee', 0, 'transaction_date', CURRENT_DATE::text,
@@ -213,7 +213,7 @@ BEGIN
   END;
 
   -- TEST 7 (WS2b): ungueltiges asset_class-Format -> {ok:false}, kein Write
-  SELECT finance.fn_book_stock_buy(jsonb_build_object(
+  SELECT finance.fn_book_stock_buy(jsonb_build_object('price_currency_confirmed',true,
     'depot_id', v_depot_id, 'settlement_id', v_settle_id,
     'isin', 'IE00B0M62Q58', 'symbol', 'VWRL2', 'name', 'Test',
     'shares', 1, 'price_per_share', 50, 'order_fee', 0, 'transaction_date', CURRENT_DATE::text,
@@ -229,11 +229,11 @@ BEGIN
 
   -- TEST 8 (Phase M): provider_symbol + quote_currency beim ANLEGEN gesetzt; Wiederkauf ueberschreibt nicht.
   DECLARE v_ps TEXT; v_qc CHAR(3); v_h8 INT; BEGIN
-    SELECT finance.fn_book_stock_buy(jsonb_build_object(
+    SELECT finance.fn_book_stock_buy(jsonb_build_object('price_currency_confirmed',true,
       'depot_id', v_depot_id, 'settlement_id', v_settle_id,
       'isin', 'IE00BFMXXD54', 'symbol', 'VUSA', 'name', 'Vanguard S&P 500',
-      'shares', 4, 'price_per_share', 80, 'order_fee', 0, 'transaction_date', CURRENT_DATE::text,
-      'provider_symbol', 'VUSA.UK', 'quote_currency', 'USD'
+      'shares', 4, 'cost_basis_total', 320, 'order_fee', 0, 'transaction_date', CURRENT_DATE::text,
+      'provider_symbol', 'VUSA.UK', 'listing_currency', 'USD'
     )) INTO v_result;
     IF (v_result->>'ok')::boolean IS DISTINCT FROM true THEN
       RAISE EXCEPTION 'FAIL fn_book_stock_buy [provider/quote ok]: %', v_result; END IF;
@@ -244,7 +244,7 @@ BEGIN
     RAISE NOTICE 'PASS fn_book_stock_buy [provider_symbol + quote_currency beim Anlegen gesetzt]';
 
     -- 8b: Wiederkauf mit anderen Werten ueberschreibt provider_symbol/quote_currency NICHT (wie asset_class)
-    SELECT finance.fn_book_stock_buy(jsonb_build_object(
+    SELECT finance.fn_book_stock_buy(jsonb_build_object('price_currency_confirmed',true,
       'depot_id', v_depot_id, 'settlement_id', v_settle_id,
       'isin', 'IE00BFMXXD54', 'symbol', 'VUSA', 'name', 'Vanguard S&P 500',
       'shares', 2, 'price_per_share', 90, 'order_fee', 0, 'transaction_date', CURRENT_DATE::text,
@@ -259,10 +259,10 @@ BEGIN
   -- TEST 9 (WP-1 Crash-Schutz): quote_currency in KLEINSCHREIBUNG ('usd') -> normalisiert 'USD', Holding
   -- angelegt mit quote_currency='USD' (VOR dem Fix: {ok:false} = Ablehnung statt Normalisierung).
   DECLARE v_qc9 CHAR(3); v_h9 INT; BEGIN
-    SELECT finance.fn_book_stock_buy(jsonb_build_object(
+    SELECT finance.fn_book_stock_buy(jsonb_build_object('price_currency_confirmed',true,
       'depot_id', v_depot_id, 'settlement_id', v_settle_id,
       'isin', 'IE00BADQC999', 'symbol', 'LCUSD', 'name', 'Lowercase Quote Ccy',
-      'shares', 1, 'price_per_share', 50, 'order_fee', 0, 'transaction_date', CURRENT_DATE::text,
+      'shares', 1, 'price_per_share', 50, 'existing_position', true, 'order_fee', 0, 'transaction_date', CURRENT_DATE::text,
       'quote_currency', 'usd'
     )) INTO v_result;
     IF (v_result->>'ok')::boolean IS DISTINCT FROM true THEN
@@ -275,7 +275,7 @@ BEGIN
   END;
 
   -- TEST 9b (WP-1): echt-ungueltiger quote_currency-Code ('DOLLAR') -> {ok:false}, kein Write.
-  SELECT finance.fn_book_stock_buy(jsonb_build_object(
+  SELECT finance.fn_book_stock_buy(jsonb_build_object('price_currency_confirmed',true,
     'depot_id', v_depot_id, 'settlement_id', v_settle_id,
     'isin', 'IE00BADQC998', 'symbol', 'BADQC', 'name', 'Bad Quote Ccy',
     'shares', 1, 'price_per_share', 50, 'order_fee', 0, 'transaction_date', CURRENT_DATE::text,
@@ -358,7 +358,7 @@ BEGIN
       RAISE EXCEPTION 'SETUP FAIL [baseline current_amount]: erwartet 200, got %', v_curr; END IF;
 
     -- TEST 10: goal-verknuepfter Kauf -> Cash-Tag + Journal-Zeile + Konservierung.
-    SELECT finance.fn_book_stock_buy(jsonb_build_object(
+    SELECT finance.fn_book_stock_buy(jsonb_build_object('price_currency_confirmed',true,
       'depot_id',        v_depot_id, 'settlement_id', v_settle_id,
       'isin',            'IE00B4L5Y983', 'symbol', 'IUSQ', 'name', 'iShares MSCI World',
       'shares',          0.5, 'price_per_share', 100, 'order_fee', 0,
@@ -394,7 +394,7 @@ BEGIN
 
     -- TEST 11: manueller Kauf (kein recurring_payment_id) -> KEINE Wirkung (kein Tag, kein Journal).
     SELECT count(*) INTO v_cnt_before FROM finance.savings_goal_reserve_entries WHERE savings_goal_id = v_goal_id;
-    SELECT finance.fn_book_stock_buy(jsonb_build_object(
+    SELECT finance.fn_book_stock_buy(jsonb_build_object('price_currency_confirmed',true,
       'depot_id',        v_depot_id, 'settlement_id', v_settle_id,
       'isin',            'IE00B4L5Y983', 'symbol', 'IUSQ', 'name', 'iShares MSCI World',
       'shares',          1, 'price_per_share', 100, 'order_fee', 0,
@@ -414,7 +414,7 @@ BEGIN
     RAISE NOTICE 'PASS fn_book_stock_buy [WS-B2 manueller Kauf -> keine Reserve-Wirkung]';
 
     -- TEST 12: Gebuehr im Cost-Basis -> delta_native = shares*price + fee (volle Cash-Abfluss-Magnitude).
-    SELECT finance.fn_book_stock_buy(jsonb_build_object(
+    SELECT finance.fn_book_stock_buy(jsonb_build_object('price_currency_confirmed',true,
       'depot_id',        v_depot_id, 'settlement_id', v_settle_id,
       'isin',            'IE00B4L5Y983', 'symbol', 'IUSQ', 'name', 'iShares MSCI World',
       'shares',          1, 'price_per_share', 100, 'order_fee', 5,
@@ -453,7 +453,7 @@ BEGIN
     IF (v_result->>'ok')::boolean IS DISTINCT FROM true THEN
       RAISE EXCEPTION 'SETUP FAIL link crypto plan: %', v_result; END IF;
 
-    SELECT finance.fn_book_stock_buy(jsonb_build_object(
+    SELECT finance.fn_book_stock_buy(jsonb_build_object('price_currency_confirmed',true,
       'depot_id',        v_crypto_dep, 'settlement_id', v_settle_id,
       'isin',            '', 'symbol', 'BTC', 'name', 'Bitcoin',
       'shares',          0.01, 'price_per_share', 50000, 'order_fee', 0,
@@ -486,7 +486,7 @@ BEGIN
   -- ============================================================
   DECLARE v_h14 INT; BEGIN
     -- (14a) Neuer manueller Kauf OHNE asset_class -> Holding untagged -> null_tag-Note im {ok:true}
-    SELECT finance.fn_book_stock_buy(jsonb_build_object(
+    SELECT finance.fn_book_stock_buy(jsonb_build_object('price_currency_confirmed',true,
       'depot_id', v_depot_id, 'settlement_id', v_settle_id,
       'isin','IE00NT000001','symbol','NTAG','name','Untagged ETF',
       'shares',1,'price_per_share',100,'order_fee',0,'transaction_date', CURRENT_DATE::text)) INTO v_result;
@@ -495,7 +495,7 @@ BEGIN
     RAISE NOTICE 'PASS [14a WS-6: neue untagged Position -> null_tag-Fallback-Note]';
 
     -- (14b) Neuer manueller Kauf MIT asset_class -> Holding getaggt -> KEINE Note
-    SELECT finance.fn_book_stock_buy(jsonb_build_object(
+    SELECT finance.fn_book_stock_buy(jsonb_build_object('price_currency_confirmed',true,
       'depot_id', v_depot_id, 'settlement_id', v_settle_id,
       'isin','IE00TG000001','symbol','TG14','name','Tagged ETF',
       'shares',1,'price_per_share',100,'order_fee',0,'transaction_date', CURRENT_DATE::text,
@@ -507,7 +507,7 @@ BEGIN
 
     -- (14c) Re-Buy DERSELBEN getaggten Position OHNE asset_class -> Holding bleibt getaggt -> KEINE Note
     --   (Note haengt am END-Zustand, nicht am Input -> kein falsches Nagen beim Nachkauf).
-    SELECT finance.fn_book_stock_buy(jsonb_build_object(
+    SELECT finance.fn_book_stock_buy(jsonb_build_object('price_currency_confirmed',true,
       'depot_id', v_depot_id, 'settlement_id', v_settle_id,
       'isin','IE00TG000001','symbol','TG14','name','Tagged ETF',
       'shares',1,'price_per_share',110,'order_fee',0,'transaction_date', CURRENT_DATE::text)) INTO v_result;
@@ -547,7 +547,7 @@ BEGIN
     IF (v_result->>'ok')::boolean IS DISTINCT FROM true THEN RAISE EXCEPTION 'SETUP FAIL clp link: %', v_result; END IF;
 
     -- goal-verknuepfter CLP-Kauf: 1 BTC @ 1450000 CLP (CLP-Settlement == CLP-Depot -> Guard ok).
-    SELECT finance.fn_book_stock_buy(jsonb_build_object(
+    SELECT finance.fn_book_stock_buy(jsonb_build_object('price_currency_confirmed',true,
       'depot_id', v_clp_depot, 'settlement_id', v_clp_settle,
       'isin','', 'symbol','BTC','name','Bitcoin',
       'shares',1,'price_per_share',1450000,'order_fee',0,'transaction_date', CURRENT_DATE::text,
@@ -574,7 +574,7 @@ BEGIN
 
     -- (d) value_date FOLGT dem transaction_date (nicht hardcoded CURRENT_DATE) — RUECKDATIERTER Kauf.
     DECLARE v_bkbuy INT; v_bkvd DATE; BEGIN
-      SELECT finance.fn_book_stock_buy(jsonb_build_object(
+      SELECT finance.fn_book_stock_buy(jsonb_build_object('price_currency_confirmed',true,
         'depot_id', v_clp_depot, 'settlement_id', v_clp_settle,
         'isin','', 'symbol','BTC','name','Bitcoin',
         'shares',1,'price_per_share',1450000,'order_fee',0,
@@ -608,7 +608,7 @@ BEGIN
     v_x_rp := (v_result->>'recurring_payment_id')::int;
     SELECT finance.fn_set_savings_goal(jsonb_build_object('goal_id', v_x_goal, 'link_savings_plan_name','__xccy_plan__')) INTO v_result;
 
-    SELECT finance.fn_book_stock_buy(jsonb_build_object(
+    SELECT finance.fn_book_stock_buy(jsonb_build_object('price_currency_confirmed',true,
       'depot_id', v_x_depot, 'settlement_id', v_settle_id,   -- EUR-Settlement != CLP-Depot
       'isin','', 'symbol','ETH','name','Ether',
       'shares',1,'price_per_share',100,'order_fee',0,'transaction_date', CURRENT_DATE::text,
@@ -647,7 +647,7 @@ BEGIN
   SELECT (finance.fn_create_account(jsonb_build_object('name','__test_take_depot__','account_type','stocks_depot',
     'settlement_id', v_settle))->>'account_id')::int INTO v_depot;
 
-  SELECT finance.fn_book_stock_buy(jsonb_build_object('depot_id', v_depot, 'settlement_id', v_settle,
+  SELECT finance.fn_book_stock_buy(jsonb_build_object('price_currency_confirmed',true,'depot_id', v_depot, 'settlement_id', v_settle,
     'isin','IE00BK5BQT80','symbol','VWCE','name','Vanguard FTSE All-World','shares',10,'price_per_share',100,
     'order_fee',0,'transaction_date',CURRENT_DATE::text,'existing_position',true)) INTO v_res;
   IF (v_res->>'ok')::boolean IS DISTINCT FROM true THEN
@@ -670,7 +670,7 @@ BEGIN
   RAISE NOTICE 'PASS takeover [1 Saldo unveraendert 2500, 10 Stueck, Einstand 100, Gegenbuchung in group_id]';
 
   -- TEST 2: erneute Uebernahme derselben Position -> ok:false (sonst Verdopplung), kein Write
-  SELECT finance.fn_book_stock_buy(jsonb_build_object('depot_id', v_depot, 'settlement_id', v_settle,
+  SELECT finance.fn_book_stock_buy(jsonb_build_object('price_currency_confirmed',true,'depot_id', v_depot, 'settlement_id', v_settle,
     'isin','IE00BK5BQT80','symbol','VWCE','shares',12,'price_per_share',100,
     'transaction_date',CURRENT_DATE::text,'existing_position',true)) INTO v_res;
   IF (v_res->>'ok')::boolean IS DISTINCT FROM false OR (v_res->>'held_shares')::numeric IS DISTINCT FROM 10 THEN
@@ -682,7 +682,7 @@ BEGIN
   RAISE NOTICE 'PASS takeover [2 Doppel-Uebernahme -> ok:false, Bestand bleibt 10]';
 
   -- TEST 3: Bestandsuebernahme als Sparplan-Ausfuehrung -> ok:false
-  SELECT finance.fn_book_stock_buy(jsonb_build_object('depot_id', v_depot, 'settlement_id', v_settle,
+  SELECT finance.fn_book_stock_buy(jsonb_build_object('price_currency_confirmed',true,'depot_id', v_depot, 'settlement_id', v_settle,
     'isin','IE00B4L5Y983','symbol','IWDA','shares',1,'price_per_share',80,'transaction_date',CURRENT_DATE::text,
     'existing_position',true,'recurring_payment_id',999999)) INTO v_res;
   IF (v_res->>'ok')::boolean IS DISTINCT FROM false THEN
@@ -691,7 +691,7 @@ BEGIN
   RAISE NOTICE 'PASS takeover [3 mit Sparplan-Bezug -> ok:false]';
 
   -- TEST 4: normaler Kauf bleibt unveraendert (Geld fliesst ab, keine Gegenbuchung, keine group_id)
-  SELECT finance.fn_book_stock_buy(jsonb_build_object('depot_id', v_depot, 'settlement_id', v_settle,
+  SELECT finance.fn_book_stock_buy(jsonb_build_object('price_currency_confirmed',true,'depot_id', v_depot, 'settlement_id', v_settle,
     'isin','IE00BK5BQT80','symbol','VWCE','shares',2,'price_per_share',110,'order_fee',1,
     'transaction_date',CURRENT_DATE::text)) INTO v_res;
   IF (v_res->>'settlement_balance')::numeric IS DISTINCT FROM 2279.00
@@ -726,7 +726,7 @@ BEGIN
   -- Vorher schrieb die fn NULL in depot_holdings.name (NOT NULL) -> RAISE -> ganzer Import zurueckgerollt.
   SELECT (finance.fn_create_account(jsonb_build_object('name','__test_take_crypto__','account_type','crypto_depot',
     'settlement_id', v_settle))->>'account_id')::int INTO v_depot;
-  SELECT finance.fn_book_stock_buy(jsonb_build_object('depot_id', v_depot, 'settlement_id', v_settle,
+  SELECT finance.fn_book_stock_buy(jsonb_build_object('price_currency_confirmed',true,'depot_id', v_depot, 'settlement_id', v_settle,
     'isin','','symbol','ETH','shares',0.31234567,'price_per_share',2000.50,
     'transaction_date',CURRENT_DATE::text,'existing_position',true)) INTO v_res;
   IF (v_res->>'ok')::boolean IS DISTINCT FROM true
@@ -752,7 +752,7 @@ BEGIN
                'settlement_id', v_settle))->>'account_id')::int;
 
   -- TEST 8: Uebernahme mit Gesamtbetrag 1.000 fuer 75.12345 Stueck -> Stueckpreis = round(1000/75.12345, 8), Saldo unveraendert
-  v_res := finance.fn_book_stock_buy(jsonb_build_object('depot_id',v_depot,'settlement_id',v_settle,'isin','IE00B3XXRP09',
+  v_res := finance.fn_book_stock_buy(jsonb_build_object('price_currency_confirmed',true,'depot_id',v_depot,'settlement_id',v_settle,'isin','IE00B3XXRP09',
            'symbol','VUSA','shares',75.12345,'cost_basis_total',1000,'existing_position',true));
   IF (v_res->>'ok')::boolean IS DISTINCT FROM true
      OR (v_res->>'avg_purchase_price')::numeric IS DISTINCT FROM round(1000 / 75.12345, 8)
@@ -763,7 +763,7 @@ BEGIN
   IF (v_res->'effective'->>'price_per_share')::numeric IS DISTINCT FROM round(1000 / 75.12345, 8) THEN
     RAISE EXCEPTION 'FAIL takeover [8b effective]: Probelauf muss den Stueckpreis fuer Karte + Write liefern, got %', v_res; END IF;
   -- Gate-Write = Start-Felder || effective -> beide Felder, gleicher Wert = ok (Probelauf zurueckgerollt simuliert)
-  v_res := core.fn_dry_run('finance.fn_book_stock_buy(jsonb)'::regprocedure, jsonb_build_object('depot_id',v_depot,
+  v_res := core.fn_dry_run('finance.fn_book_stock_buy(jsonb)'::regprocedure, jsonb_build_object('price_currency_confirmed',true,'depot_id',v_depot,
            'settlement_id',v_settle,'isin','IE00B3XXRP10','symbol','VUSB','shares',3,'cost_basis_total',100,
            'price_per_share',round(100 / 3.0, 8),'existing_position',true));
   IF (v_res->>'ok')::boolean IS DISTINCT FROM true THEN
@@ -771,7 +771,7 @@ BEGIN
   RAISE NOTICE 'PASS takeover [8b/8c Stueckpreis in effective, Write mit beiden Feldern ok]';
 
   -- TEST 9: Doppel-Uebernahme -> ok:false, Meldung empfiehlt set_holding, nie einen normalen Kauf
-  v_res := finance.fn_book_stock_buy(jsonb_build_object('depot_id',v_depot,'settlement_id',v_settle,'isin','IE00B3XXRP09',
+  v_res := finance.fn_book_stock_buy(jsonb_build_object('price_currency_confirmed',true,'depot_id',v_depot,'settlement_id',v_settle,'isin','IE00B3XXRP09',
            'symbol','VUSA','shares',1,'price_per_share',13,'existing_position',true));
   IF (v_res->>'ok')::boolean IS DISTINCT FROM false OR (v_res->>'held_shares')::numeric IS DISTINCT FROM 75.12345
      OR v_res->>'reason' NOT LIKE '%set_holding%' OR v_res->>'reason' ILIKE '%normal buy%' THEN
@@ -779,25 +779,25 @@ BEGIN
   RAISE NOTICE 'PASS takeover [9 Doppel-Uebernahme -> set_holding, kein normaler Kauf empfohlen]';
 
   -- TEST 10: normaler Kauf -> settlement_change = -(Stueck*Kurs+Gebuehr)
-  v_res := finance.fn_book_stock_buy(jsonb_build_object('depot_id',v_depot,'settlement_id',v_settle,'isin','IE00B3XXRP09',
+  v_res := finance.fn_book_stock_buy(jsonb_build_object('price_currency_confirmed',true,'depot_id',v_depot,'settlement_id',v_settle,'isin','IE00B3XXRP09',
            'symbol','VUSA','shares',2,'price_per_share',14.5,'order_fee',1));
   IF (v_res->>'settlement_change')::numeric IS DISTINCT FROM -30 OR (v_res->>'settlement_balance')::numeric IS DISTINCT FROM 4970 THEN
     RAISE EXCEPTION 'FAIL buy [10 settlement_change]: %', v_res; END IF;
   RAISE NOTICE 'PASS buy [10 normaler Kauf: settlement_change -30]';
 
-  -- TEST 11: cost_basis_total ohne existing_position bzw. zusammen mit price_per_share -> ok:false
-  v_res := finance.fn_book_stock_buy(jsonb_build_object('depot_id',v_depot,'settlement_id',v_settle,'isin','IE00B3XXRP09',
-           'symbol','VUSA','shares',2,'cost_basis_total',30));
+  -- TEST 11: cost_basis_total zusammen mit einem abweichenden price_per_share -> ok:false (Fremdwaehrung: test_fn_book_stock_buy_currency)
+  v_res := finance.fn_book_stock_buy(jsonb_build_object('price_currency_confirmed',true,'depot_id',v_depot,'settlement_id',v_settle,'isin','IE00B3XXRP09',
+           'symbol','VUSA','shares',2,'cost_basis_total',30,'price_per_share',20));
   IF (v_res->>'ok')::boolean IS DISTINCT FROM false THEN
-    RAISE EXCEPTION 'FAIL buy [11 cost_basis_total ohne Uebernahme]: %', v_res; END IF;
-  RAISE NOTICE 'PASS buy [11 cost_basis_total nur fuer Uebernahme]';
+    RAISE EXCEPTION 'FAIL buy [11 cost_basis_total widerspricht Kurs]: %', v_res; END IF;
+  RAISE NOTICE 'PASS buy [11 Betrag und Kurs muessen zusammenpassen]';
   -- TEST 12: freie Tool-Eingaben als Text: Gesamtbetrag "1.234,50" + leerer Kurs -> geparst; unlesbar -> ok:false (kein RAISE)
-  v_res := core.fn_dry_run('finance.fn_book_stock_buy(jsonb)'::regprocedure, jsonb_build_object('depot_id',v_depot,
+  v_res := core.fn_dry_run('finance.fn_book_stock_buy(jsonb)'::regprocedure, jsonb_build_object('price_currency_confirmed',true,'depot_id',v_depot,
            'settlement_id',v_settle,'isin','IE00B3XXRP11','symbol','VUSC','shares','10','price_per_share',0,
            'cost_basis_total','1.234,50','existing_position',true));
   IF (v_res->>'ok')::boolean IS DISTINCT FROM true OR (v_res->>'avg_purchase_price')::numeric IS DISTINCT FROM 123.45 THEN
     RAISE EXCEPTION 'FAIL takeover [12a Text-Gesamtbetrag]: %', v_res; END IF;
-  v_res := finance.fn_book_stock_buy(jsonb_build_object('depot_id',v_depot,'settlement_id',v_settle,'isin','IE00B3XXRP12',
+  v_res := finance.fn_book_stock_buy(jsonb_build_object('price_currency_confirmed',true,'depot_id',v_depot,'settlement_id',v_settle,'isin','IE00B3XXRP12',
            'symbol','VUSD','shares',10,'cost_basis_total','etwa tausend','existing_position',true));
   IF (v_res->>'ok')::boolean IS DISTINCT FROM false OR v_res->>'reason' NOT LIKE '%cost_basis_total%' THEN
     RAISE EXCEPTION 'FAIL takeover [12b unlesbar]: %', v_res; END IF;

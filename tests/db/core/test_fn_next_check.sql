@@ -61,6 +61,24 @@ BEGIN
   END IF;
   RAISE NOTICE 'PASS fn_next_check [12h-Intervall]';
 
+  -- TEST 7: Monats-Intervall nach langer Pause â€” die Epoch-Naeherung (Monat = 30 Tage) darf nicht ueberschiessen:
+  -- prev 01.01., now 31.12. -> der naechste Slot ist der 01.01. des Folgejahres (k = 12), nicht der 01.02. (k = 13)
+  v_next := agent.fn_next_check('2026-01-01 12:00+01'::timestamptz, INTERVAL '1 month',
+                                '2026-12-31 12:00+01'::timestamptz);
+  IF v_next IS DISTINCT FROM '2027-01-01 12:00+01'::timestamptz THEN
+    RAISE EXCEPTION 'FAIL fn_next_check [Monat, minimales k]: erwartet 01.01.2027 12:00, got %', v_next;
+  END IF;
+  RAISE NOTICE 'PASS fn_next_check [Monats-Intervall: minimales k nach langer Pause]';
+
+  -- TEST 8: Intervall 0 oder NULL -> Ausnahme statt Endlosschleife bzw. NULL
+  BEGIN
+    PERFORM agent.fn_next_check(now(), NULL, now());
+    RAISE EXCEPTION 'FAIL fn_next_check [NULL-Intervall angenommen]';
+  EXCEPTION WHEN raise_exception THEN
+    IF SQLERRM NOT LIKE 'fn_next_check: interval must be positive%' THEN RAISE; END IF;
+  END;
+  RAISE NOTICE 'PASS fn_next_check [NULL-Intervall -> Ausnahme]';
+
 END $$;
 
 ROLLBACK;

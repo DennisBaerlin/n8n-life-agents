@@ -1055,6 +1055,8 @@
   "core.wizard.connect.waiting": "Warte auf deine Nachricht an deinen Assistenten …",
   "core.wizard.connect.preparing": "Einen Moment, der Code wird vorbereitet.",
   "core.wizard.connect.preparing_wait": "Bereite die Verbindung vor …",
+  "core.wizard.connect.reach_wait": "Dein Rechner ist eingerichtet. Jetzt holt er sich sein Sicherheitszertifikat, und seine Adresse muss sich im Internet herumsprechen. Das dauert meist ein paar Minuten. Du musst nichts tun, es geht von allein weiter.",
+  "core.wizard.connect.reach_wait_left": "Noch höchstens {min} Min. …",
   "core.wizard.connect.code_failed": "Der Code für die Verbindung ließ sich nicht erzeugen. Versuch es gleich noch einmal.",
   "core.wizard.connect.activation_failed": "Die Verbindung zu Telegram ließ sich gerade nicht einrichten. Versuch es noch einmal; klappt es wieder nicht, schick den Bericht an die Person, die dir hilft.",
   "core.wizard.connect.key_expiry": "Tailscale meldet diesen Rechner in {days} Tagen ab, dann erreicht Telegram deinen Assistenten nicht mehr. Schalte das ab: in Tailscale unter „Machines“ beim Rechner „Disable key expiry“.",

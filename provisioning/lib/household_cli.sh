@@ -210,7 +210,7 @@ household_cmd_blocked() {
 #   QR-Code und fragt den Stand selbst ab. Bausteine sind die Funktionen oben (_oc_reachable, _arm_owner_challenge,
 #   _oc_finalize, _oc_send_welcome) — kein zweiter Pfad. Der Code steht nur in dieser Ausgabe (wie im Terminal nur im
 #   Kasten), nie im Log und nie über Telegram.
-#     reach    -> {"ok":true} | {"ok":false,"problem":"<Klartext>"}       (Erreichbarkeit + Webhook, setzt ihn ggf. neu)
+#     reach    -> {"ok":true} | {"ok":false,"problem":"<Klartext>","wait":true?}       (Erreichbarkeit + Webhook, setzt ihn ggf. neu)
 #     arm      -> {"ok":true,"connected":false,"bot":"…","link":"https://t.me/<bot>?start=<code>","expires_at":"…"}
 #                 | {"ok":true,"connected":true} | {"ok":false,"reason":"<code>"}
 #     status   -> {"ok":true,"connected":bool}
@@ -223,7 +223,7 @@ owner_connect_machine() {
   if [ "$verb" = reach ]; then
     [ -n "${TELEGRAM_BOT_TOKEN:-}" ] && [ -n "${DOMAIN:-}" ] && [ -n "${N8N_API_KEY:-}" ] \
       || { jq -nc '{ok:false, problem:"Für die Verbindung fehlt noch eine Angabe (Bot, Adresse oder n8n-Zugang)."}'; return 0; }
-    if _oc_reachable; then jq -nc '{ok:true}'; else jq -nc --arg p "$_OC_PROBLEM" '{ok:false, problem:$p}'; fi
+    if _oc_reachable; then jq -nc '{ok:true}'; else jq -nc --arg p "$_OC_PROBLEM" --argjson w "${_OC_WAIT:-0}" '{ok:false, problem:$p} + (if $w == 1 then {wait:true} else {} end)'; fi
   elif [ "$verb" = arm ]; then
     if _oc_is_chat_id "$chat"; then jq -nc '{ok:true, connected:true}'; return 0; fi
     [ -n "${TELEGRAM_BOT_TOKEN:-}" ] || { jq -nc '{ok:false, reason:"no_token"}'; return 0; }

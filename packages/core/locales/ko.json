@@ -1055,6 +1055,8 @@
   "core.wizard.connect.waiting": "어시스턴트에게 보낼 메시지를 기다리는 중 …",
   "core.wizard.connect.preparing": "잠시만요, 코드를 준비하는 중이에요.",
   "core.wizard.connect.preparing_wait": "연결을 준비하는 중 …",
+  "core.wizard.connect.reach_wait": "컴퓨터 설정이 끝났어요. 지금 보안 인증서를 받고 있고, 주소가 인터넷에 퍼지는 중이에요. 보통 몇 분 걸려요. 따로 할 일은 없고, 끝나면 자동으로 넘어가요.",
+  "core.wizard.connect.reach_wait_left": "최대 {min}분 남았어요 …",
   "core.wizard.connect.code_failed": "연결용 코드를 만들지 못했어요. 잠시 후 다시 시도해 주세요.",
   "core.wizard.connect.activation_failed": "지금은 텔레그램 연결을 설정하지 못했어요. 다시 시도해 보고, 또 안 되면 도와주는 사람에게 보고서를 보내 주세요.",
   "core.wizard.connect.key_expiry": "Tailscale이 {days}일 뒤에 이 컴퓨터를 로그아웃시켜요. 그러면 텔레그램이 어시스턴트에 닿지 않아요. Tailscale의 “Machines”에서 이 컴퓨터의 “Disable key expiry”로 꺼 주세요.",

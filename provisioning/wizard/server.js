@@ -53,8 +53,8 @@ const GUIDE_URL = process.env.WIZARD_GUIDE_URL || 'https://dennisbaerlin.github.
 const TG_APP = { phone: 'https://telegram.org/dl', mac: 'https://macos.telegram.org/', windows: 'https://desktop.telegram.org/' };
 const TG_APP_QR = qr.toSvg(qr.encode(TG_APP.phone));
 const POLL_MS = Math.max(50, parseInt(process.env.WIZARD_POLL_MS || '1000', 10));
-// Zertifikat, DNS und FritzBox-Freigaben brauchen nach dem Einrichten oft einige Minuten: so lange still weiter prüfen.
-const REACH_GRACE_MS = Math.max(0, parseInt(process.env.WIZARD_REACH_GRACE_MS || String(10 * 60 * 1000), 10));
+// Zertifikat und DNS brauchen nach dem Einrichten oft einige Minuten: so lange sichtbar warten (nur bei reach.wait, was Zeit nicht heilt, kommt sofort).
+const REACH_GRACE_MS = Math.max(0, parseInt(process.env.WIZARD_REACH_GRACE_MS || String(5 * 60 * 1000), 10));
 const TOKEN_TTL_MS = 10 * 60 * 1000;
 const UI_DIR = path.join(__dirname, 'ui');
 const PROGRESS = path.join(STATE_DIR, 'progress.json');
@@ -627,6 +627,10 @@ function connectView() {
       note: webhookNote(c),
       wait: C(c.connected ? 'connected_wait' : 'waiting') });
   }
+  if (c.reachSince) {
+    const min = Math.max(1, Math.ceil((REACH_GRACE_MS - (Date.now() - c.reachSince)) / 60000));
+    return Object.assign(v, { help: [{ p: C('reach_wait') }], wait: T('core.wizard.connect.reach_wait_left', { min }) });
+  }
   return Object.assign(v, { help: [{ p: C('preparing') }], wait: C('preparing_wait') });
 }
 // problemText — Grund beim Verbinden: eigene Codes aus dem Katalog; ein Text der CLI (deutsch) nur auf Deutsch, sonst allgemein.
@@ -880,8 +884,10 @@ async function connectTick(force) {
     if (!PAIR && !c.connected && !c.problem && !c.expired) {
       const reach = await laCli('reach');
       if (reach && reach.ok === false) {
-        c.reachSince = c.reachSince || Date.now();
-        if (Date.now() - c.reachSince < REACH_GRACE_MS) { save(); return; }
+        if (reach.wait === true) {
+          c.reachSince = c.reachSince || Date.now();
+          if (Date.now() - c.reachSince < REACH_GRACE_MS) { save(); return; }
+        }
         delete c.reachSince;   // „Erneut prüfen“ beginnt eine neue Frist
         c.problem = String(reach.problem || T('core.wizard.connect.not_reaching')).slice(0, 400); save(); return;
       }

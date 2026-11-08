@@ -4,18 +4,19 @@
 --   ("nicht gesendet = unveraendert"). Reine UPDATE -- kein Trigger/GENERATED; die Net-Worth-View
 --   finance_real_estate_overview liest current_value live.
 --   Wird current_value gesetzt OHNE value_updated_at -> value_updated_at = CURRENT_DATE (Bewertungsdatum).
---   HINWEIS: status='sold' loest verknuepfte Kredite (real_estate_id) NICHT automatisch ab.
 --   Eingabe jsonb: real_estate_id (im n8n via fn_resolve_real_estate aufgeloest), name,
---   current_value, value_updated_at, owner_person_id (Slug; leer=unveraendert), status ('active'|'sold'), notes,
+--   current_value (Betrag, auch deutsch geschrieben), value_updated_at, owner_person_id (Slug; leer=unveraendert),
+--   status ('active'; 'sold' nur, wenn schon verkauft -- ein Verkauf laeuft ueber fn_sell_real_estate), notes,
 --   living_area_m2, year_built (Instandhaltungsruecklage 2026-10-27; leer=unveraendert).
 --   RUECKGABE: {ok:true, real_estate_id, card_lines (nur wenn Flaeche/Baujahr gesendet: fn_maintenance_card_lines)}.
---   Korrigierbar (current_value<0, unbekannter status, Flaeche/Baujahr ungueltig) -> {ok:false}.
+--   Korrigierbar (current_value<0 oder unlesbar, unbekannter status, Flaeche/Baujahr ungueltig) -> {ok:false};
+--   status sold auf einer aktiven Immobilie -> {ok:false, code:'use_sell_tool'}.
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_set_real_estate(p jsonb)
 RETURNS jsonb LANGUAGE plpgsql AS $$
 DECLARE
     v_id     INT     := (p->>'real_estate_id')::int;
-    v_cv     NUMERIC := NULLIF(p->>'current_value', '')::numeric;
+    v_cv     NUMERIC := finance.fn_parse_numeric_or_null(p->>'current_value', true);
     v_reason TEXT    := finance.fn_enum_reason('finance.property_status'::regtype, p->>'status', 'status');
     v_dates  JSONB;
 BEGIN
@@ -28,6 +29,15 @@ BEGIN
     END IF;
     IF v_reason IS NOT NULL THEN
         RETURN jsonb_build_object('ok', false, 'reason', v_reason);
+    END IF;
+    -- Verkauf nur ueber fn_sell_real_estate: nur dort entstehen Erloes-Buchung und sale_tx_id (Rueckgaengig)
+    IF NULLIF(p->>'status', '') = 'sold' AND (SELECT status FROM finance.real_estate WHERE id = v_id) <> 'sold' THEN
+        RETURN jsonb_build_object('ok', false, 'code', 'use_sell_tool',
+            'reason', 'A sale is recorded with tool_sell_real_estate (it books the proceeds and can be undone) - status sold cannot be set here.');
+    END IF;
+    IF v_cv IS NULL AND NULLIF(btrim(p->>'current_value'), '') IS NOT NULL THEN
+        RETURN jsonb_build_object('ok', false,
+            'reason', 'Current value "' || (p->>'current_value') || '" is not a readable amount - give it as a plain number.');
     END IF;
 
     -- Korrigierbar: Wert darf nicht negativ sein.

@@ -278,4 +278,16 @@ BEGIN
     RAISE EXCEPTION 'FAIL close [11 Rest 0.01 in der Toleranz]: %', v_res; END IF;
   RAISE NOTICE 'PASS close [10 Historie = Buchungen + Zuordnungen, 11 Cent-Toleranz]';
 END $$;
+-- (12) Unbekanntes outcome (Tippfehler "complete") -> {ok:false}, das Ziel bleibt aktiv (nie still "abgebrochen").
+DO $$
+DECLARE v_res JSONB; v_g INT;
+BEGIN
+  INSERT INTO finance.savings_goals (name, target_amount, target_date) VALUES ('__csg12 tipp__', 1000, current_date + 200) RETURNING id INTO v_g;
+  v_res := finance.fn_close_savings_goal(jsonb_build_object('savings_goal_name', '__csg12 tipp__', 'outcome', 'complete'));
+  IF (v_res->>'ok')::boolean IS DISTINCT FROM false
+     OR (SELECT status::text FROM finance.savings_goals WHERE id = v_g) IS DISTINCT FROM 'active' THEN
+    RAISE EXCEPTION 'FAIL close [12 unbekanntes outcome]: %', v_res; END IF;
+  RAISE NOTICE 'PASS close [12 unbekanntes outcome -> ok:false]';
+END $$;
+
 ROLLBACK;

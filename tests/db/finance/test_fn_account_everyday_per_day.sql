@@ -122,4 +122,28 @@ BEGIN
   IF r.per_day IS DISTINCT FROM -9.68::numeric THEN RAISE EXCEPTION 'FAIL [6] basis per_day auf Cent -9.68, got %', r; END IF;
   RAISE NOTICE 'PASS fn_account_everyday_basis: per_day je Auszug auf Cent';
 END $$;
+-- Monatswert aus dem UNGERUNDETEN Tageswert, einmal gerundet: 92 gezaehlte Tage, -1.000,49 -> -1.000,49 / 92 x 30,4375
+-- = -331,004 -> -331,00 (vorher -10,87 x 30,4375 = -330,86).
+DO $$
+DECLARE
+  t date := current_date;
+  v_a int; r record;
+BEGIN
+  UPDATE finance.accounts SET status = 'closed' WHERE status = 'active' AND account_type = 'cash';
+  INSERT INTO finance.accounts (name, account_type, currency, status) VALUES ('__t_ed_round__', 'cash', 'EUR', 'active') RETURNING id INTO v_a;
+  INSERT INTO finance.bank_statements (account_id, period_start, period_end, opening_balance, closing_balance, currency,
+                                       line_count, matched_count, unmatched_out, unmatched_in)
+  VALUES (v_a, t - 130, t - 100, 5000, 4900, 'EUR', 3, 0, -100,    0),
+         (v_a, t - 96,  t - 66,  4900, 4500, 'EUR', 3, 0, -400,    0),
+         (v_a, t - 65,  t - 36,  4500, 4199.51, 'EUR', 3, 0, -300.49, 0),
+         (v_a, t - 35,  t - 5,   4199.51, 3899.51, 'EUR', 3, 0, -300, 0);
+  SELECT * INTO r FROM finance.fn_household_everyday_month();
+  IF r.monthly_everyday IS DISTINCT FROM -331.00 THEN
+    RAISE EXCEPTION 'FAIL [7] Alltag je Monat einmal gerundet: erwartet -331.00, got %', r.monthly_everyday; END IF;
+  -- der Tageswert selbst bleibt die Cent-Anzeige
+  IF (SELECT per_day FROM finance.fn_account_everyday_per_day(v_a)) IS DISTINCT FROM -10.87 THEN
+    RAISE EXCEPTION 'FAIL [7] per_day bleibt auf Cent: %', (SELECT per_day FROM finance.fn_account_everyday_per_day(v_a)); END IF;
+  RAISE NOTICE 'PASS [7] Alltag je Monat aus dem ungerundeten Tageswert';
+END $$;
+
 ROLLBACK;

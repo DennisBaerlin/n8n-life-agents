@@ -166,4 +166,29 @@ BEGIN
   RAISE NOTICE 'PASS split [naechste offene Rate gewinnt]';
 END $$;
 
+-- Sondertilgung nach gebuchter Rate: der Zins der Periode ist mit der Rate bezahlt -> die Zusatzzahlung ohne
+-- principal_amount ist reine Tilgung (100.000 zu 3 %, Rate 800 heute gebucht, dann 5.000 extra: Zins 0, Tilgung 5.000).
+DO $$
+DECLARE
+  v_giro int; v_la int; v_rp int; v_l int; r jsonb;
+BEGIN
+  INSERT INTO finance.accounts (name, account_type, currency, status) VALUES ('__lpsx_giro__', 'cash', 'EUR', 'active') RETURNING id INTO v_giro;
+  INSERT INTO finance.accounts (name, account_type, currency, status) VALUES ('__lpsx_loan__', 'loan', 'EUR', 'active') RETURNING id INTO v_la;
+  INSERT INTO finance.recurring_payments (name, account_id, amount, schedule_unit, first_payment_date, valid_from)
+    VALUES ('__lpsx_rate__', v_giro, -800, 'month', current_date - 2, current_date - 2) RETURNING id INTO v_rp;
+  INSERT INTO finance.loans (name, interest_rate, status, loan_account_id, debit_account_id, recurring_payment_id)
+    VALUES ('__lpsx_kredit__', 3.0, 'active', v_la, v_giro, v_rp) RETURNING id INTO v_l;
+  INSERT INTO finance.transactions (account_id, amount, transaction_date, category, loan_id) VALUES (v_la, -100000, current_date - 40, 'disbursement', v_l);
+  INSERT INTO finance.transactions (account_id, amount, transaction_date, category) VALUES (v_giro, 20000, current_date - 40, 'other');
+  r := finance.fn_book_loan_payment(jsonb_build_object('loan_id', v_l, 'loan_account_id', v_la, 'debit_account_id', v_giro,
+                                                      'payment_amount', 800, 'payment_date', current_date::text));
+  IF (r->>'ok')::boolean IS NOT TRUE OR (r->>'remaining_debt')::numeric IS DISTINCT FROM 99450.00 OR r->>'matched_due_date' IS NULL THEN
+    RAISE EXCEPTION 'SETUP split [regulaere Rate]: %', r; END IF;
+  r := finance.fn_get_loan_payment_split(jsonb_build_object('loan_id', v_l, 'payment_amount', 5000, 'payment_date', current_date::text));
+  IF (r->>'principal_amount')::numeric IS DISTINCT FROM 5000.00 OR (r->>'interest_portion')::numeric IS DISTINCT FROM 0
+     OR r->>'matched_due_date' IS NOT NULL THEN
+    RAISE EXCEPTION 'FAIL split [Sondertilgung nach gebuchter Rate: Zins 0, Tilgung 5000]: %', r; END IF;
+  RAISE NOTICE 'PASS split [Sondertilgung nach gebuchter Rate ist reine Tilgung]';
+END $$;
+
 ROLLBACK;

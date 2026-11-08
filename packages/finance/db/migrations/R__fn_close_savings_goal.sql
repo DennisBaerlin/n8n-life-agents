@@ -27,7 +27,7 @@
 --     schliesst die Reserve eines geschlossenen Ziels ohnehin aus.
 --     Soft-Close haengt an eine offene Risiko-Entscheidung (letzter Eintrag accept in savings_goal_risk_decisions) einen
 --     revoke an (2026-11-06); Hard-DELETE nimmt die Eintraege per CASCADE mit.
---   Eingabe jsonb: savings_goal_name, outcome (opt, Default 'cancelled'), force (opt bool, Default false).
+--   Eingabe jsonb: savings_goal_name, outcome (opt, Default 'cancelled'; anderer Wert -> {ok:false}), force (opt bool, Default false).
 --   RUECKGABE: {ok:true, action:'deleted'|'closed', status, tx_count} ODER {ok:false, reason, current_amount}.
 --   RAISE fuer echte Ausnahmen (nicht gefunden / mehrdeutig).
 -- ============================================================
@@ -44,6 +44,11 @@ DECLARE
     v_current   NUMERIC;
     v_chain     INT[];
 BEGIN
+    -- ein Tippfehler ("complete") galt sonst still als 'cancelled': Zuordnungen frei, Rate beendet
+    IF lower(COALESCE(NULLIF(btrim(p->>'outcome'), ''), 'cancelled')) NOT IN ('completed', 'cancelled') THEN
+        RETURN jsonb_build_object('ok', false,
+            'reason', 'Unknown outcome "' || (p->>'outcome') || '" - use completed (the money was spent on the goal) or cancelled (the goal is dropped).');
+    END IF;
     SELECT r.id, r.hit_count, r.candidates INTO v_resolve
     FROM finance.fn_resolve_savings_goal(v_name, FALSE) r;
 

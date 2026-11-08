@@ -63,6 +63,11 @@ key='core_version')`, seeded from the `.config` block of `packages/core/manifest
 | `credentials` | – | Declarative package secrets (§3.8) — the n8n credentials a package needs from external API keys: `{ "<name>": { placeholder, name, type, required?, env{ KEY: {field, validator?, secret?, prompt} } } }`. Read by `inject_credentials.sh` + the stage-4 wizard (jq), never by SQL. |
 | `approval_matrix` | – | Maker-checker tier per HITL-gate caller of this package (§3.10): `{ "<workflow-name>": { tier, reason[, break_glass] } }`. Build data only (`build.ps1` injects the tier, `approval_lint` verifies) — never read by the installer or SQL. |
 | `app_screens` | – | Screens this package contributes to the read-only Telegram Mini App (§3.12): `{ "<screen>": { handler_fn, ord, icon } }`. Host (`_seed_app_screens`) seeds them into `core.app_screens`; `core.fn_app_screen` dispatches generically. Own-schema-scoped, `(jsonb)` arity. |
+| `config` | – | Per-package central config block `config.<category>.<key> = { value, description, summary, … }`, seeded into `core.config` (§3.6). |
+| `cron_labels` | – | `{ list[], person? }` — the household reminders of the package that members can switch in `/reminders` or at the card; the texts are catalog keys `<pkg>.cron.<key>.*` (§3.11, §8). |
+| `callback_handlers` | – | **Nested** `{ "<prefix>": { handler_fn, member_permeable } }` — package button prefixes dispatched by `core.fn_dispatch_callback` (§3.3, §8). |
+| `protected_contexts` | – | List of the package's instruction contexts that cannot be deleted (§3.4). |
+| `read_surface` | – | Declares the package's read window for the core agents (`preferred_views` feed the SELECT-node descriptions at build time; §4.1). |
 | `migrations` | ✓ | Path to the package's `db/` migration set (own schema only; **no core/agent DDL** — DB4/R11). |
 
 The **core is itself a package** (`name: "core"`, always `active`) for homogeneous handling (D1/PM4) — but
@@ -663,14 +668,11 @@ fixed texts.
 
 - **Files:** `packages/<pkg>/locales/<code>.json`, a flat object `"<pkg>.<area>.<name>": "text"` (`_comment` allowed),
   exactly one file per code in the core manifest `languages.list`. One key = one whole sentence; named `{placeholders}`.
-  Areas in use: `hitl` (card titles), `label`, `enum.<type>.<value>`, `note`, `tpl`, `facts.<context>`,
-  `monitor_method`, `package.name|summary` (owner-facing name + one-liner, every package), `help.<id>.*` (§3.5),
-  `cmd.<name>` (command menu, ≤ 48 chars), `cron.<key>.on_toast|off_toast|on_message|off_message` (per `cron_labels`
-  key), `onboarding.<section>` (§3.2), `toast.*` (button toasts of the package's callback handlers), `dialog.*`
-  (cron reminders/dialogs incl. action buttons and result lines), `advisor.*` (alert/digest texts of
-  `fn_advisor_review`), `offer.*` (offer cards with a `cron_on` button), `gate.*` (agent entry-gate redirects),
-  `monitor_display.*` (validate_fn confirmation lines, §3.9), estate `register`/`binder`/`gap`, career `jobcard`,
-  core-only `fmt`/`lang`/`welcome`/`orch`/`dispatch`/`onboarding.menu`/`learn`/`monitor`/`error`. German with real
+  The areas in use are the second key segment of `packages/<pkg>/locales/de.json` (the one list; `locale_lint` checks
+  the language files against each other). Areas with a rule of their own: `enum.<type>.<value>`, `package.name|summary`
+  (owner-facing name + one-liner, every package), `help.<id>.*` (§3.5), `cmd.<name>` (command menu, ≤ 48 chars),
+  `cron.<key>.on_toast|off_toast|on_message|off_message` (per `cron_labels` key), `onboarding.<section>` (§3.2),
+  `monitor_display.*` (validate_fn confirmation lines, §3.9). German with real
   umlauts; Korean puts names as `{name} 님` (fixed particle); German legal/tax terms stay German in every language
   (with a short explanation in brackets).
 - **Seed:** `seed_data.sh _seed_ui_texts` replaces the package's rows in `core.ui_texts` on every install/update (code
@@ -1272,8 +1274,7 @@ wird unten als „bei uns anders"-Notiz festgehalten (damit sie nicht je Paket r
   `career.fn_*`) läuft unter der Orchestrator-Cred `N8N_DB_USER`, die per `apply_schema.sh _emit_pkg_owner_grants`
   EXECUTE auf **jedem** `<pkg>.*`-Schema hat — darum funktioniert der Core→Paket-Dispatch trotz D10 (die engen
   `<pkg>_rw/_ro` sind nur für die Agent-/Tool-Workflows). Schema-qualifizierte Aufrufe (kein search_path-Verlass).
-- **career WS-1-Asymmetrien (gewollt):** 1 Instruktions-Datei (read-only; `career_agent_instructions` kommt mit
-  Write-Tools) · keine Domänen-Crons (erbt die Core-Advisor-Crons über die `core.advisors`-Registrierung) ·
+- **career-Asymmetrien (gewollt):** 1 Instruktions-Datei (`career_advisor_instructions.md`) · Domänen-Crons nur für Stellen-Scan und Marktsignale (`provides.crons` in `packages/career/manifest.json`), die Advisor-Crons erbt es über die `core.advisors`-Registrierung ·
   Validator/Renderer-Asymmetrie (`career_planning` ist raw-authored → validiert; der finance-Plan ist derivativ).
 - **career `read_surface`/`catalog` (Phase 0 WS-0d — Paritaet + WS-1-Scaffold):** `read_surface.host_read_role` =
   `core_ro` **wie finance** (Paritaet, **nicht** „bei uns anders") — das ist das unbedingte Core-Host-Aufsichtsfenster

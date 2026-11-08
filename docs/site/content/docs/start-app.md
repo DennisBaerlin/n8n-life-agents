@@ -56,7 +56,7 @@ Ab hier fragt die App, und du antwortest. Jede Antwort wird sofort gespeichert; 
 2. **Docker:** Fehlt es, erklärt die App in zwei Sätzen, was das ist, zeigt die Bedingungen von Docker und fragt dich. Erst nach deinem **Einverstanden** lädt sie Docker direkt beim Hersteller (gut ein halbes Gigabyte) und prüft dessen Unterschrift. Dein Rechner fragt dabei einmal nach seinem Passwort.
 3. **„Das wird geändert“:** Bevor irgendetwas passiert, zeigt die App eine Liste, was sie auf deinem Rechner einrichtet. Ohne dein Ja ändert sie nichts.
 4. **Deine Angaben**, eine Frage je Seite: Sprache, Name, Geburtsdatum, Charakter des Bots, Telegram-Bot, Anthropic, Google (freiwillig), welche Funktionen du willst, und der Weg ins Internet (Tunnel oder FritzBox, siehe [unten](#tunnel-oder-fritzbox)).
-5. **Übersicht:** alle Antworten noch einmal zum Prüfen, bevor installiert wird.
+5. **Übersicht:** alle Antworten noch einmal zum Prüfen. Danach kommt eine letzte Seite: Sie nennt, was neu dazukommt und was unberührt bleibt. Erst mit **Einverstanden, Installation starten** geht es los; bis dahin kannst du noch abbrechen.
 6. **Installation** mit Fortschrittsanzeige. Die App lädt dabei die Bausteine des Bots, gut ein halbes Gigabyte.
 7. **Verbinden:** Beim Tunnel meldest du dich hier bei Tailscale an ([Tunnel einrichten](tunnel.html)). Dann verbindest du Telegram per QR-Code: mit dem Handy scannen, Telegram öffnet den Chat mit deinem Bot.
 8. **Dauerbetrieb:** ob der Rechner durchlaufen soll (siehe [unten](#dauerbetrieb)).

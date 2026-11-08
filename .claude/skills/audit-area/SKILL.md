@@ -1,6 +1,6 @@
 ---
 name: audit-area
-description: Vierteljährliches Audit als Session – Sonnet-Unteragenten prüfen je einen Bereich (DB-Funktionen, Workflows, Installer, Mini-App, Testfälle) gegen eine feste Prüfliste; Ergebnis ist eine Vorschlagsliste für den Owner. Nutzen auf Zuruf „Audit“, „Quartalsprüfung“. Args = Bereich oder leer.
+description: Vierteljährliches Audit als Session – Sonnet-Unteragenten prüfen je einen Bereich (DB-Funktionen, Workflows, Installer, Mini-App, Testfälle, Doku) gegen eine feste Prüfliste; Ergebnis ist eine Vorschlagsliste für den Owner. Nutzen auf Zuruf „Audit“, „Quartalsprüfung“. Args = Bereich oder leer.
 ---
 
 # Bereichs-Audit (`/audit-area`)
@@ -9,7 +9,7 @@ Quartalsweise Sichtprüfung gegen die geschriebenen Gesetze des Repos, getrennt 
 
 ## Ablauf
 
-1. **Bereiche wählen:** Args nennen einen Bereich (`db`, `workflows`, `installer`, `app`, `tests`) oder alle fünf. Dem Owner vorher in einem Satz sagen, wie viele Unteragenten laufen (Kontingent).
+1. **Bereiche wählen:** Args nennen einen Bereich (`db`, `workflows`, `installer`, `app`, `tests`, `docs`) oder alle sechs. Eine geplante Erinnerung schlägt den Lauf nur vor: Er bleibt eine Owner-Session (kostet Kontingent). Dem Owner vorher in einem Satz sagen, wie viele Unteragenten laufen (Kontingent).
 2. **Je Bereich ein Unteragent** vom Typ `Explore` (Sonnet, nur lesend). Der Prompt enthält die Prüfliste unten wörtlich plus „nur lesen, nichts ändern; jeder Fund mit Datei:Zeile und dem Gesetz, gegen das er verstößt; Funde ohne Beleg verwerfen“. Parallel starten nur, wenn der Owner dem Kontingent zustimmt; sonst nacheinander.
 3. **Auswertung im Haupt-Loop:** Funde gegen das Gesetz gegenprüfen (Stichprobe: die schwersten Funde selbst öffnen), Doppelte zusammenfassen, Schwere vergeben (hoch = Daten-/Geldfehler, Sicherheit, Privatsphäre · mittel = bricht Konvention, still falsch möglich · niedrig = Stil/Drift). Bewusst akzeptierte Ausnahmen (stehen in den Sub-`CLAUDE.md` als „bei uns anders“) sind keine Funde.
 4. **Bericht** als privates Artefakt `Audit <Bereich> <Quartal>` (nie ins Repo, Ablage wie bei `/live-findings`; keine Live-Werte): Kurzfazit je Bereich, Tabelle {Bereich, Schwere, Fund, Beleg, Gesetz, Vorschlag, Aufwand}, Teil „geprüft, ohne Befund“, Teil „nicht geprüft“. Der Owner gibt Vorschläge frei; freigegebene gehen als Plan oder als Punkt im privaten Backlog in die Entwicklung.
@@ -51,3 +51,8 @@ Für das Regelwerk selbst (CLAUDE.md, Regeln, Skills) gibt es das eingebaute `/d
 - Veraltete Fälle: Tool oder Regel, die der Fall erwartet, gibt es nicht mehr; je Vorschlag der Beleg und die Begründung.
 - Doppelte Fälle: zwei Fälle prüfen dieselbe Eigenschaft; je Vorschlag, welcher bleibt.
 - Quarantäne ohne Grund oder mit erfülltem Re-Evaluierungs-Trigger.
+
+**Doku-Faktencheck gegen den Code** (`docs/reference/*.md`, Sub-`CLAUDE.md`, `docs/site/content/` = Nutzer-Doku; nur Vorschläge)
+- Jede Behauptung gegen den Code prüfen: Namen von Funktionen, Tabellen, Workflows, Skripten, Schaltern sowie Zahlen. Existiert es, heißt es so, verhält es sich so?
+- Fund = Datei:Zeile, Behauptung, Code-Stand (mit Beleg-Datei). Generierte Dateien (`docs/fn_catalog.md`, `docs/site/public/`) sind nicht von Hand zu ändern: dort Drift der Quelle melden.
+- Nutzer-Doku zusätzlich: Aussagen über Bedienung, die der Code nicht (mehr) hergibt.

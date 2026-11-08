@@ -1,67 +1,58 @@
 ---
 name: coordinate
-description: Koordination paralleler Claude-Sessions – beim Start prüfen, wer läuft, eine Leitung mit Merge-Hoheit bestimmen, Statusrunde, direkte Absprache mit Info an die Leitung, Release-Umfang beim Owner; Sonderfall gestartete Unter-Sessions. Nutzen bei jedem Session-Start und sobald eine Session dazukommt.
+description: Koordination paralleler Claude-Sessions – beim Start Stand-Datei und Lage prüfen, die eine Leitung mit Merge-Hoheit kennen, Sperren und Merge-Reihenfolge einhalten, direkte Absprache mit Info an die Leitung. Nutzen bei jedem Session-Start und sobald eine Session dazukommt.
 ---
 
 # Parallele Sessions koordinieren (`/coordinate`)
 
-Je Thema gibt es genau eine leitende Session mit Merge-Hoheit, die die Sessions ihres Themas zentral koordiniert; ein großes, eigenständiges Thema darf eine eigene Leitung haben (§3 *Mehrere Leitungen*). Sessions warten nicht untätig aufeinander und verlassen sich nicht darauf, dass die Leitung Infos weiterreicht.
+Je Thema gibt es genau eine leitende Session mit Merge-Hoheit (`/leitung`), die die Sessions ihres Themas zentral koordiniert; ein großes, eigenständiges Thema darf eine eigene Leitung haben (§3 *Mehrere Leitungen*). Sessions warten nicht untätig aufeinander und verlassen sich nicht darauf, dass die Leitung Infos weiterreicht. Mechanik, Vorlagen und Fallgeschichten: `docs/reference/sessions.md`.
 
 ## 1. Beim Start: Lage prüfen
 
-- **Bypass-Modus:** Eine Session mit „Bypass permissions“ kann sich mit den übrigen nicht austauschen; Nachrichten an sie bleiben zur Freigabe hängen, bis sie verfallen. Claude kann den Modus nicht selbst umstellen → anhalten und den Owner bitten, auf „Auto“ zu wechseln, danach die Anmeldung wiederholen (`.claude/hooks/coordination_mode_guard.ps1` sperrt `ListAgents`/`SendMessage` im Bypass-Modus).
+- **Bypass-Modus:** Eine Session mit „Bypass permissions“ kann sich mit den übrigen nicht austauschen → anhalten und den Owner bitten, auf „Auto“ zu wechseln, danach die Anmeldung wiederholen (`docs/reference/sessions.md` *Bypass-Modus*).
+- **Stand-Datei lesen:** `.claude/plans/leitung-stand.md` im Haupt-Checkout (gitignored) ist die eine Datei für alle Sessions. Jede Session liest sie beim Start und hält sich an `## Sperren` und `## Merge-Reihenfolge`; schreiben darf nur die Leitung. Zusagen zwischen Sessions gelten erst, wenn sie dort stehen. Fehlt die Datei, gibt es keine Leitung (§2).
 - `ListAgents` (deferred → per `ToolSearch` laden) + `ReadNotifications`.
 - **Keine anderen Sessions** → du bist Leitung, sobald eine dazukommt. Weiter mit deiner Aufgabe.
-- **Andere Sessions laufen** → per `SendMessage` an alle: „Wer leitet? Woran arbeitest du, welche Dateien/Pakete fasst du an?“ (Antwortpflicht §4).
+- **Andere Sessions laufen** → bei der Leitung anmelden: Aufgabe, berührte Dateien, Worktree und Branch (Titel `[Leitung] <Thema>` in `ListAgents`). Ohne Leitung per `SendMessage` an alle: „Wer leitet? Woran arbeitest du, welche Dateien fasst du an?“ (Antwortpflicht §4).
 
 ## 2. Leitung bestimmen
 
-- Ernennt der Owner eine Session („du bist die Leitung“), gilt das vor allem Folgenden: Sie folgt `/leitung`, eine bisherige Leitung übergibt an sie.
-- **Leitungen erkennen:** Titel mit der Marke `[Leitung] <Thema>` (`/leitung` §1). Rundrufe an alle Leitungen gehen an jede `ListAgents`-Zeile mit ihr; keine andere trägt sie.
-- Gibt es schon eine Leitung, bleibt sie es. Die neue Session meldet sich bei ihr an: Aufgabe, berührte Dateien, Worktree und Branch. Bei mehreren Leitungen: bei der ihres Themas.
+- Ernennt der Owner eine Session („du bist die Leitung“), gilt das vor allem Folgenden: Sie folgt `/leitung`, eine bisherige Leitung übergibt an sie, samt Stand-Datei, Integrations-Branch, offenen Merges und laufenden Tests.
+- **Leitungen erkennen:** Titel mit der Marke `[Leitung] <Thema>` (`/leitung` §1); keine andere Session trägt sie. Gibt es schon eine Leitung, bleibt sie es; bei mehreren meldet sich die neue Session bei der ihres Themas an.
 - Zwei Leitungen, gleiches Thema → Übergabe; anderes Thema → beide bleiben und melden sich gegenseitig an.
-- Gibt es keine, übernimmt die am längsten laufende Session (`ListAgents` → „started … ago“) und teilt das allen mit.
-- Wird die Leitung beendet, übergibt sie vorher ausdrücklich an eine andere Session, samt Stand: Integrations-Branch, offene Merges, laufende Tests.
+- Gibt es keine und keine Stand-Datei, übernimmt die am längsten laufende Session (`ListAgents` → „started … ago“) und teilt das allen mit.
+- Wird die Leitung beendet, übergibt sie vorher ausdrücklich an eine andere Session.
 
 ## 3. Pflichten der Leitung
 
-- **Merge-Hoheit:** Nur die Leitung merged auf den Integrations-Branch, fährt die Schluss-Gates, pusht `main` und taggt. Niemand sonst pusht oder taggt. Liegen ungepushte Commits eines Sprints auf `main`, merged eine andere Session erst nach Absprache mit dessen Leitung nach `main`.
+- **Merge-Hoheit:** Nur die Leitung merged auf den Integrations-Branch, fährt die Schluss-Gates, pusht `main` und taggt. Auf lokalem `main` landet nichts außer durch die Leitung, auch kein Doku-Commit; niemand sonst pusht oder taggt.
 - **Mehrere Leitungen:** Sie legen die Release-Reihenfolge fest (wer zuerst fertig ist; bei mehr als zwei eine Liste). Nur die Leitung an der Reihe pusht und taggt, die nächste zieht danach `origin/main` nach und prüft erneut. Unaufgefordert weitergeben, was die andere braucht: gemeinsame Dateien, `V__`-Nummern, Testplätze, rote CI, Owner-Entscheide.
-- **Vor jedem Merge `git fetch origin`:** `main` hinter `origin/main` → erst nachziehen; Branch-Inhalt gegen `origin/main` zählen, sonst wirken veröffentlichte Commits fremd.
-- **Geschützte `main` und `v*`-Tags** (Rulesets → `CONTRIBUTING.md` *Branch protection*): Die Leitung pusht direkt per Admin-Bypass der CI-Pflicht. Ein fehlerhafter Tag wird nicht verschoben → neue Patch-Version. Nach jedem Push die CI-Ampel prüfen (`scripts/check_ci_status.ps1`). Ein gepushter Text lässt sich nicht still zurückholen; meldet `privacy_lint -Outgoing` rot, wird der Text korrigiert.
-- **Fremd-PRs:** Nie auschecken, bevor der Diff gelesen ist (Hooks sehen `.env`). `gh pr diff <nr>` in eine Datei, darauf `privacy_lint -TextFile <datei>` und die Modell-Prüfung (Fork-Läufe sehen die Denylist nie), erst dann den Lauf freigeben. Merge nur per Squash mit eigenem, geprüftem Text, nach Bestätigung des Owners. Antworten im PR sind öffentlich: keine Live-Werte, auch nicht zur Begründung.
-- **Statusrunde alle 15 Minuten** per `CronCreate` (Off-Minuten, z. B. `7,22,37,52 * * * *`, `recurring: true`):
-  - zuerst `ListAgents`: Sessions, die noch nicht angemeldet sind, sofort anschreiben — wer leitet, welche Regeln gelten; Aufgabe, Dateien und Worktree erfragen. Sessions können still dazukommen.
-  - jede Session mit offener Release-Arbeit anschreiben. Fertige Sessions nur, wenn eine neue Information ihre Arbeit berührt: ein Test-Befund in ihrem Bereich, ein Merge-Konflikt mit ihren Dateien, eine geänderte Entscheidung. Sie sollen dann prüfen, ob sie nacharbeiten müssen, und antworten. Fertige Sessions bleiben bis zum Tag erreichbar.
-  - Pflicht-Fragen:
-    - Was ist dein Stand?
-    - Wartest du auf etwas — ja oder nein? Wenn ja: worauf, von wem?
-  - dem Owner danach kurz den Stand melden
-  - nach dem Tag mit `CronDelete` beenden
-- **Release-Umfang:** Vor dem Zusammenführen fragt die Leitung den Owner (`AskUserQuestion`), welche fertigen Arbeiten in das gemeinsame Release kommen. Nicht selbst festlegen.
-- **Engpässe lösen:** Wartet eine Session auf eine andere, bringt die Leitung beide direkt zusammen. Belegt die Leitung einen Substrat-Platz, den sie gerade nicht braucht (Parallel-Limit in `scripts/dev/bootstrap_test_n8n.ps1`), gibt sie ihn frei. Eine zugesagte, noch nicht gestartete Zuteilung trägt sie mit `scripts/reserve_substrate_slot.ps1` ein, sonst nimmt ihn eine andere Session in der Lücke weg.
-- **Prüfläufe vor dem Bewegen von `main`:** `ci` und `genericity` laufen sonst nur auf main/PR → auf dem Integrations-Branch `gh workflow run <ci|genericity>.yml --ref <branch>`, auf Grün warten.
-- **Git je Worktree nur nacheinander:** Merge, Checkout und Regenerieren (post-merge-Hook) laufen in einem Worktree nie gleichzeitig.
-- Ablauf danach: Merge-Kette → freie Gates auf dem Gesamtstand (Standard: Integrations-Branch pushen, `gh workflow run free-gates.yml --ref <branch>`; zusätzlich lokal `scripts/dev/run_free_gates.ps1 -Reset -Parallel` mit eigenen Containern nur bei geänderten Test-Skripten, Bot-Anschluss oder Install-Kern (dann `-Cold`) und vor einem Release, Platz per `docker ps` prüfen, sonst den Halter um Freigabe bitten; reine Doku-Merges brauchen keinen Lauf) → bezahlte Suiten im Owner-Fenster → master-Image + Pin-Commit (`docs/reference/provisioning.md` *Docker-Verbund*) → annotierter Tag mit englischen Release-Notes (was sich geändert hat, keine Live-Werte; `git tag -a vX.Y.Z --cleanup=whitespace -F <datei>`) → alle Sessions benachrichtigen → Aufräumen.
+- **Push-Regeln:** Vor jedem Push auf `main` steht ein grüner `free-gates`-Lauf auf GitHub (Linux) auf dem Integrations-Branch; lokale Windows-Gates sehen Linux-Fehler nicht. Die bezahlten Fall-IDs werden vor dem Push gesammelt und dem Owner als eine Liste genannt. Das Owner-Wort zu Merge oder Push nennt den Umfang (welche Branches, welche Hashes); ein „Ja“ ohne Umfang gilt nur für das, was die Leitung ihm unmittelbar davor als Liste genannt hat. Ablauf und Push-Sperre: `docs/reference/sessions.md` *Release-Ablauf*.
+- **Geschützte `main` und `v*`-Tags** (Rulesets → `CONTRIBUTING.md` *Branch protection*): Push per Admin-Bypass der CI-Pflicht, danach die CI-Ampel prüfen (`scripts/check_ci_status.ps1`). Ein fehlerhafter Tag wird nicht verschoben → neue Patch-Version.
+- **Fremd-PRs:** nie auschecken, bevor der Diff gelesen und privacy-geprüft ist; Merge nur per Squash nach Bestätigung des Owners (`docs/reference/sessions.md` *Fremd-PRs*).
+- **Statusrunde** nur für vom Owner gestartete Sessions, alle 15 Minuten per `CronCreate`, nach dem Tag `CronDelete` (`docs/reference/sessions.md` *Statusrunde*). Für Unter-Sessions der Leitung entfällt sie (§5).
+- **Release-Umfang:** Vor dem Zusammenführen fragt die Leitung den Owner, welche fertigen Arbeiten in das Release kommen; gebündelt mit den übrigen Entscheidungen (`/leitung` §2).
+- **Engpässe lösen:** Wartet eine Session auf eine andere, bringt die Leitung beide direkt zusammen. Substrat-Plätze verteilt und reserviert die Leitung (`docs/reference/sessions.md` *Substrat-Plätze*).
+- **Prüfläufe vor dem Bewegen von `main`:** `free-gates`, `ci` und `genericity` auf dem Integrations-Branch auf GitHub, auf Grün warten (`gh run watch` im Hintergrund).
+- Danach: bezahlte Suiten im Owner-Fenster → Master-Image + Pin-Commit → Tag → Release-Nachschau → Sprint-Ende (`/leitung` §4).
 
 ## 4. Pflichten der übrigen Sessions
 
 - **Direkt untereinander absprechen**, nicht über die Leitung: wer welche Datei bzw. welchen Testfall anfasst, wer auf wessen Commit aufsetzt, wer welchen Substrat-Platz nutzt.
-- **Die Leitung immer informieren**, was abgesprochen wurde: kurze Kopie mit Ergebnis, Hashes, wer was macht.
-- Jede Nachricht einer anderen Session beantworten, auch als Leitung: mindestens „angekommen“ und was daraus folgt, eine Statusfrage auch mit „unverändert“; sonst wartet die andere Seite. Hashes an die Leitung und betroffene Sessions.
+- **Die Leitung immer informieren**, was abgesprochen wurde: kurze Kopie mit Ergebnis, Hashes, wer was macht. Sie trägt es in die Stand-Datei ein; erst dann gilt es.
+- Jede Nachricht einer anderen Session beantworten, auch als Leitung: mindestens „angekommen“ und was daraus folgt, eine Statusfrage auch mit „unverändert“; sonst wartet die andere Seite.
 - Fertig heißt: committet, Gates grün, Hash an die Leitung. Danach nichts mehr ohne Absprache committen. Eigene Container abräumen; den eigenen Worktree erst nach dem Tag.
 
 ## 5. Von der Leitung gestartete Sessions
 
-Startet die Leitung Unter-Sessions selbst (`start_session`, Desktop-App), kennt die App die Verwandtschaft; die Leitung muss sie nicht über Rundfragen einsammeln:
+Startet die Leitung Unter-Sessions selbst (`start_session`, Desktop-App), kennt die App die Verwandtschaft:
 
-- **Die 15-Minuten-Statusrunde (§3) entfällt** für diese Sessions, ebenso das `CronCreate`. Die App meldet der Leitung jedes Zug-Ende einer Unter-Session als Notiz (Auszug aus deren Abschlussbericht); die Leitung wird damit geweckt und muss nicht nachfragen.
-- **Überblick:** `list_sessions {linked:true}` (Tool `mcp__ccd_session_mgmt__list_sessions`) zeigt alle verwandten Sessions mit Status, Titel, Ordner und Branch. Nachrichten gehen per `SendMessage` an die Session-ID (`local_…`), nicht an den Namen.
-- **IDs merken:** Sessions können sich umbenennen, die ID bleibt. Die Leitung hält die ID jeder gestarteten Session in der Stand-Datei und adressiert nur darüber.
-- **Kein Rundruf:** Eine gestartete Unter-Session kennt ihre Leitung aus dem Brief und fragt nicht alle Sessions an (§1 entfällt); mit Sessions, deren Dateien sie berührt, spricht sie sich direkt ab (§4).
-- **Owner-Freigaben:** Der Owner bestätigt jedes Paket vor dem Merge. Eine Freigabe, die eine andere Session weiterreicht, fragt die Leitung bei ihm gegen. Unter-Sessions melden Entscheidungen des Owners im Wortlaut an die Leitung; ändert sich ein bestätigter Stand danach, sieht der Owner ihn vor dem Merge erneut.
-- **Offene Läufe:** Grüne GitHub-Läufe und fertige Routinen wecken niemanden von selbst. Wer auf einen GitHub-Lauf ohne PR wartet, startet `gh run watch <id> --exit-status` als Hintergrund-Befehl, das weckt die Session beim Ende; fertige Routinen prüft die Leitung bei jedem eigenen Zug und meldet das Ergebnis der wartenden Session. Sonstige Dauerabfragen gibt es nicht.
-- **Fragen an den Owner laufen über die Leitung:** Eine Unter-Session schickt ihre Frage per `SendMessage` an die Leitung statt per `AskUserQuestion`; die Leitung fragt den Owner und gibt die Antwort im Wortlaut zurück. Am Zug-Ende keine Frage an den Owner (auch nicht nach Merge, Push, Release), nur der Bericht an die Leitung. Ausnahme Berechtigungs-Karte: melden, die Leitung sagt dem Owner, wo er tippt. Pläne als Datei (`/feature` §2). Regel in jeden Brief, Session eintragen (`scripts/register_sub_session.ps1`); Hook `.claude/hooks/enforce_sub_session_questions.ps1` lehnt direkte Fragen ab.
+- **Keine Statusrunde:** Die App meldet der Leitung jedes Zug-Ende einer Unter-Session als Notiz; die Leitung wird damit geweckt und muss nicht nachfragen. Überblick per `list_sessions {linked:true}`.
+- **Adressieren:** Nachrichten an Unter-Sessions gehen an den Titel aus `ListAgents`, nicht an den `name` aus `start_session`; die Stand-Datei hält ID und Titel jeder Session (`docs/reference/sessions.md` *Sessions ansprechen*).
+- **Kein Rundruf:** Eine gestartete Unter-Session kennt ihre Leitung aus dem Brief und fragt nicht alle Sessions an (§1 entfällt bis auf Bypass und Stand-Datei); mit Sessions, deren Dateien sie berührt, spricht sie sich direkt ab (§4).
+- **Owner-Freigaben:** Der Owner bestätigt jedes Paket vor dem Merge. Eine Freigabe, die eine andere Session weiterreicht, fragt die Leitung bei ihm gegen. Unter-Sessions melden Entscheidungen des Owners im Wortlaut an die Leitung, die sie in `## Owner-Freigaben` einträgt; ändert sich ein bestätigter Stand danach, sieht der Owner ihn vor dem Merge erneut.
+- **Offene Läufe:** Grüne GitHub-Läufe und fertige Routinen wecken niemanden von selbst. Wer auf einen GitHub-Lauf ohne PR wartet, startet `gh run watch <id> --exit-status` als Hintergrund-Befehl; fertige Routinen prüft die Leitung bei jedem eigenen Zug und meldet das Ergebnis der wartenden Session. Sonstige Dauerabfragen gibt es nicht.
+- **Fragen an den Owner laufen über die Leitung:** Eine Unter-Session schickt ihre Frage per `SendMessage` an die Leitung statt per `AskUserQuestion`; die Leitung sammelt sie für die gebündelte Vorlage (`/leitung` §2) und gibt die Antwort im Wortlaut zurück. Am Zug-Ende keine Frage an den Owner (auch nicht nach Merge, Push, Release), nur der Bericht an die Leitung. Ausnahme Berechtigungs-Karte: melden, die Leitung sagt dem Owner, wo er tippt. Pläne als Datei im eigenen Worktree (`/feature` §2). Regel in jeden Brief, Session eintragen (`scripts/register_sub_session.ps1`); Hook `.claude/hooks/enforce_sub_session_questions.ps1` lehnt direkte Fragen ab.
 - **Sprint-Ende:** Archivieren und Aufräumen der Unter-Sessions → `/leitung` §4.
-- **Weiter gilt für alle Sessions:** Merge-Hoheit (§3) und Release-Umfang beim Owner bleiben bei der Leitung, kein Koordinieren im Bypass-Modus (§1).
+- **Weiter gilt für alle Sessions:** Merge-Hoheit und Push-Regeln (§3) bleiben bei der Leitung, kein Koordinieren im Bypass-Modus (§1).
 - **Vom Owner selbst gestartete Sessions** folgen unverändert §1–§4 (Anmeldung, Statusrunde, Absprache mit Info an die Leitung); `ListAgents` zeigt, wer nicht in `list_sessions {linked:true}` steht.

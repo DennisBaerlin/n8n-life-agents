@@ -157,10 +157,12 @@ _oc_gateway_hint() {
 # _oc_reachable — ist der Bot von aussen erreichbar? 0 = ja; sonst Grund (Klartext) in _OC_PROBLEM.
 _oc_reachable() {
   _OC_PROBLEM=''
+  _OC_WAIT=0   # 1 = nur Zeit fehlt (Zertifikat, DNS), der Wizard wartet dann statt zu melden
   local code st id active info url
   code="$(https_code "$DOMAIN")"
   if [ "$code" = "000" ]; then
     _OC_PROBLEM="https://${DOMAIN} antwortet nicht (DNS, Zertifikat, Reverse Proxy oder Port-Weiterleitung)"
+    _OC_WAIT=1
     return 1
   fi
   # Aktive Probe der ganzen Kette (Install-UX-Phase 5): ein unbekannter Webhook-Pfad muss bis zu n8n durchgehen
@@ -182,11 +184,13 @@ _oc_reachable() {
   # ∧ URL zeigt nicht auf die Domain). Aktiv ∧ unbekannt -> nichts anfassen, „erneut prüfen" anbieten.
   if [ "$active" = "true" ] && ! _oc_webhook_known "$info"; then
     _OC_PROBLEM="$_OC_TG_UNKNOWN"
+    _OC_WAIT=1
     return 1
   fi
   if [ "$active" != "true" ] || [ "${url#"https://${DOMAIN}/"}" = "$url" ]; then
     if ! _oc_activate_orchestrator "$id"; then
       _OC_PROBLEM="Telegram nimmt die Adresse noch nicht an: ${_OC_ACT_ERR}"
+      _OC_WAIT=1
       return 1
     fi
     info="$(_oc_webhook_info)"

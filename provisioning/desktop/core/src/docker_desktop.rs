@@ -80,6 +80,7 @@ fn curl(os: Os) -> &'static str {
 /// Lädt mit dem System-`curl`, nur über HTTPS, auch bei Weiterleitungen. Blockiert; den Fortschritt liest die
 /// App parallel über die Dateigröße.
 pub fn download(host: &dyn Host, dest: &str) -> Result<(), FetchError> {
+    host.create_parent_dir(dest).map_err(FetchError::Download)?;
     let url = download_url(host.os(), host.arch());
     let a = args(&[
         "--fail",
@@ -274,6 +275,19 @@ mod tests {
             CmdOut::fail(22, "curl: (22) The requested URL returned error: 404"),
         );
         assert!(matches!(download(&h, &dest), Err(FetchError::Download(_))));
+    }
+
+    /// Live-Fund: Beim Erstlauf fehlt der App-Datenordner, und `curl --output` legt ihn nicht an.
+    #[test]
+    fn download_creates_its_folder_first() {
+        let h = FakeHost::mac();
+        let dest = download_path(&h);
+        h.set(
+            &format!("/usr/bin/curl --fail --location --proto =https --proto-redir =https --retry 3 --silent --show-error --output {dest} {URL_MAC_ARM64}"),
+            CmdOut::ok(""),
+        );
+        download(&h, &dest).unwrap();
+        assert_eq!(*h.parent_dirs.borrow(), vec![dest]);
     }
 
     const MNT: &str = "/Users/erika/Library/Application Support/io.lifeagents.desktop/docker-dmg";

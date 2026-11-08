@@ -60,6 +60,8 @@ pub trait Host {
     /// Schreibt atomar (temporäre Datei + Umbenennen) und legt fehlende Ordner an.
     fn write_file(&self, path: &str, content: &str) -> Result<(), String>;
     fn remove_file(&self, path: &str) -> Result<(), String>;
+    /// Legt den Ordner an, in dem `path` liegen wird (Werkzeuge wie `curl --output` tun das nicht).
+    fn create_parent_dir(&self, path: &str) -> Result<(), String>;
     /// Größe einer Datei in Bytes (Fortschritt beim Laden).
     fn file_size(&self, path: &str) -> Option<u64>;
     /// Ein TCP-Port auf 127.0.0.1 ist frei.
@@ -210,7 +212,7 @@ impl Host for RealHost {
     fn run(&self, program: &str, args: &[String]) -> Result<CmdOut, String> {
         let mut cmd = std::process::Command::new(program);
         cmd.args(args);
-        no_window(&mut cmd);
+        prepare_child(&mut cmd);
         let out = cmd.output().map_err(|e| format!("{program}: {e}"))?;
         Ok(CmdOut { code: out.status.code().unwrap_or(-1), stdout: decode(&out.stdout), stderr: decode(&out.stderr) })
     }
@@ -219,7 +221,7 @@ impl Host for RealHost {
         use std::process::Stdio;
         let mut cmd = std::process::Command::new(program);
         cmd.args(args).stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped());
-        no_window(&mut cmd);
+        prepare_child(&mut cmd);
         let mut child = cmd.spawn().map_err(|e| format!("{program}: {e}"))?;
         if let Some(mut stdin) = child.stdin.take() {
             stdin.write_all(input.as_bytes()).map_err(|e| e.to_string())?;
@@ -230,7 +232,7 @@ impl Host for RealHost {
     fn spawn(&self, program: &str, args: &[String]) -> Result<(), String> {
         let mut cmd = std::process::Command::new(program);
         cmd.args(args).stdin(std::process::Stdio::null()).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null());
-        no_window(&mut cmd);
+        prepare_child(&mut cmd);
         cmd.spawn().map(|_| ()).map_err(|e| format!("{program}: {e}"))
     }
     fn read_file(&self, path: &str) -> Option<String> {
@@ -257,6 +259,12 @@ impl Host for RealHost {
             Ok(()) => Ok(()),
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
             Err(e) => Err(e.to_string()),
+        }
+    }
+    fn create_parent_dir(&self, path: &str) -> Result<(), String> {
+        match std::path::Path::new(path).parent() {
+            Some(dir) => std::fs::create_dir_all(dir).map_err(|e| e.to_string()),
+            None => Ok(()),
         }
     }
     fn file_size(&self, path: &str) -> Option<u64> {
@@ -312,13 +320,30 @@ pub fn decode(bytes: &[u8]) -> String {
 }
 
 #[cfg(target_os = "windows")]
-fn no_window(cmd: &mut std::process::Command) {
+fn prepare_child(cmd: &mut std::process::Command) {
     use std::os::windows::process::CommandExt;
     const CREATE_NO_WINDOW: u32 = 0x0800_0000;
     cmd.creation_flags(CREATE_NO_WINDOW);
 }
 #[cfg(not(target_os = "windows"))]
-fn no_window(_cmd: &mut std::process::Command) {}
+fn prepare_child(cmd: &mut std::process::Command) {
+    cmd.env("PATH", with_docker_dirs(&std::env::var("PATH").unwrap_or_default()));
+}
+
+/// macOS startet Apps mit dem kurzen `PATH` /usr/bin:/bin:/usr/sbin:/sbin. Docker sucht dort `docker-credential-desktop`
+/// (`credsStore: desktop`), ohne die Docker-Ordner scheitert jeder Image-Pull mit „executable file not found in $PATH“.
+#[cfg(any(test, not(target_os = "windows")))]
+fn with_docker_dirs(current: &str) -> String {
+    let mut path: Vec<&str> = current.split(':').filter(|p| !p.is_empty()).collect();
+    for dir in
+        ["/usr/bin", "/bin", "/usr/sbin", "/sbin", "/usr/local/bin", "/opt/homebrew/bin", "/Applications/Docker.app/Contents/Resources/bin"]
+    {
+        if !path.contains(&dir) {
+            path.push(dir);
+        }
+    }
+    path.join(":")
+}
 
 // ---------------------------------------------------------------------------------------------------------
 // Attrappe für Tests
@@ -338,6 +363,8 @@ pub struct FakeHost {
     pub calls: RefCell<Vec<String>>,
     pub spawned: RefCell<Vec<String>>,
     pub trashed: RefCell<Vec<String>>,
+    /// Pfade, deren Ordner `create_parent_dir` angelegt hat.
+    pub parent_dirs: RefCell<Vec<String>>,
     /// (Befehlszeile, stdin) je `run_stdin`.
     pub stdin_log: RefCell<Vec<(String, String)>>,
     /// Zertifikat, das `peer_cert_der` liefert (None = keine Gegenstelle).
@@ -369,6 +396,7 @@ impl FakeHost {
             calls: RefCell::new(Vec::new()),
             spawned: RefCell::new(Vec::new()),
             trashed: RefCell::new(Vec::new()),
+            parent_dirs: RefCell::new(Vec::new()),
             stdin_log: RefCell::new(Vec::new()),
             peer_cert: RefCell::new(None),
             ptr: RefCell::new(None),
@@ -455,6 +483,10 @@ impl Host for FakeHost {
         self.paths.borrow_mut().remove(path);
         Ok(())
     }
+    fn create_parent_dir(&self, path: &str) -> Result<(), String> {
+        self.parent_dirs.borrow_mut().push(path.to_string());
+        Ok(())
+    }
     fn file_size(&self, path: &str) -> Option<u64> {
         self.files.borrow().get(path).map(|c| c.len() as u64)
     }
@@ -511,6 +543,17 @@ mod tests {
         let bytes: Vec<u8> = "Ubuntu\r\n".encode_utf16().flat_map(|u| u.to_le_bytes()).collect();
         assert_eq!(decode(&bytes), "Ubuntu\r\n");
         assert_eq!(decode("Grüße".as_bytes()), "Grüße");
+    }
+
+    /// Live-Fund: Apps starten auf dem Mac mit kurzem `PATH`, Docker findet dann `docker-credential-desktop` nicht.
+    #[test]
+    fn child_path_adds_docker_dirs_and_keeps_the_existing_order() {
+        let p = with_docker_dirs("/custom/bin:/usr/bin");
+        let parts: Vec<&str> = p.split(':').collect();
+        assert_eq!(&parts[..2], ["/custom/bin", "/usr/bin"]);
+        assert!(parts.contains(&"/Applications/Docker.app/Contents/Resources/bin"));
+        assert_eq!(parts.iter().filter(|d| **d == "/usr/bin").count(), 1);
+        assert!(with_docker_dirs("").split(':').all(|d| !d.is_empty()));
     }
 
     /// Echter TLS-Server auf 127.0.0.1 mit einer Attrappe des FritzBox-Zertifikats (erfundene Kennung).

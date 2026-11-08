@@ -434,3 +434,44 @@ test('Sprache: Antippen stellt die Einrichtung sofort um, die Auswahl bleibt in 
     assert.equal((await answer(w, 'h:OWNER_FIRST_NAME', '')).json.error, 'Something is still missing here.');
   } finally { await w.stop(); }
 });
+
+// Live-Fund: Direkt nach dem Einrichten antwortet die Adresse oft noch nicht (Zertifikat, DNS). Nur dann wartet die Seite
+// sichtbar; was Zeit nicht heilt, meldet sie sofort.
+async function toConnect(env, signal) {
+  const w = await startWizard({ hints: {}, env });
+  await login(w);
+  fs.writeFileSync(path.join(w.fake, signal), '');
+  for (const [id, v] of [['h:OWNER_LANGUAGE', 'de'], ['h:OWNER_FIRST_NAME', 'Erika'], ['h:OWNER_LAST_NAME', 'Muster'],
+    ['h:OWNER_BIRTH_DATE', '1980-01-01'], ['h:OWNER_PERSONA', 'neutral'], ['tg_why', null], ['h:TELEGRAM_BOT_TOKEN', '1:beispiel'],
+    ['h:ANTHROPIC_API_KEY', 'sk-ant-beispiel'], ['voice', 'no'], ['packages', []], ['reach', 'tunnel'], ['review', null], ['confirm', null]]) await expectOk(await answer(w, id, v));
+  await waitFor(async () => (await page(w)).id === 'connect');
+  return w;
+}
+
+test('Verbinden: Adresse noch nicht da = sichtbar warten mit Restzeit, dann geht es von allein weiter', async () => {
+  const w = await toConnect({}, 'reach_wait');
+  try {
+    const p = await waitFor(async () => { const x = await page(w); return /Minuten/.test(JSON.stringify(x.help || '')) ? x : null; });
+    assert.match(p.wait, /höchstens 5 Min/, 'Standard-Frist 5 Minuten');
+    assert.equal(p.action || null, null, 'kein „Noch einmal prüfen“ während des Wartens');
+    assert.equal(p.note || null, null, 'keine Warnung während des Wartens');
+    fs.rmSync(path.join(w.fake, 'reach_wait'));
+    await waitFor(async () => (await page(w)).qr);
+  } finally { await w.stop(); }
+});
+
+test('Verbinden: nach Ablauf der Frist erscheint das Problem mit „Noch einmal prüfen“', async () => {
+  const w = await toConnect({ WIZARD_REACH_GRACE_MS: '0' }, 'reach_wait');
+  try {
+    const p = await waitFor(async () => { const x = await page(w); return x.action === 'connect_retry' ? x : null; });
+    assert.equal(p.note.kind, 'warn');
+  } finally { await w.stop(); }
+});
+
+test('Verbinden: ein Fehler, den Warten nicht heilt, erscheint sofort', async () => {
+  const w = await toConnect({ WIZARD_REACH_GRACE_MS: '600000' }, 'unreachable');
+  try {
+    const p = await waitFor(async () => { const x = await page(w); return x.action === 'connect_retry' ? x : null; });
+    assert.equal(p.note.kind, 'warn');
+  } finally { await w.stop(); }
+});

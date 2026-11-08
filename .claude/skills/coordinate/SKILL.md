@@ -5,7 +5,7 @@ description: Koordination paralleler Claude-Sessions – beim Start Stand-Datei 
 
 # Parallele Sessions koordinieren (`/coordinate`)
 
-Je Thema gibt es genau eine leitende Session mit Merge-Hoheit (`/leitung`), die die Sessions ihres Themas zentral koordiniert; ein großes, eigenständiges Thema darf eine eigene Leitung haben (§3 *Mehrere Leitungen*). Sessions warten nicht untätig aufeinander und verlassen sich nicht darauf, dass die Leitung Infos weiterreicht. Mechanik, Vorlagen und Fallgeschichten: `docs/reference/sessions.md`.
+Es gibt genau eine leitende Session mit Merge-Hoheit (`/leitung`); alle anderen arbeiten auf eigenen Branches und melden ihr Ergebnis. Sessions warten nicht untätig aufeinander und verlassen sich nicht darauf, dass die Leitung Infos weiterreicht. Mechanik, Vorlagen und Fallgeschichten: `docs/reference/sessions.md`.
 
 ## 1. Beim Start: Lage prüfen
 
@@ -17,16 +17,16 @@ Je Thema gibt es genau eine leitende Session mit Merge-Hoheit (`/leitung`), die 
 
 ## 2. Leitung bestimmen
 
-- Ernennt der Owner eine Session („du bist die Leitung“), gilt das vor allem Folgenden: Sie folgt `/leitung`, eine bisherige Leitung übergibt an sie, samt Stand-Datei, Integrations-Branch, offenen Merges und laufenden Tests.
-- **Leitungen erkennen:** Titel mit der Marke `[Leitung] <Thema>` (`/leitung` §1); keine andere Session trägt sie. Gibt es schon eine Leitung, bleibt sie es; bei mehreren meldet sich die neue Session bei der ihres Themas an.
-- Zwei Leitungen, gleiches Thema → Übergabe; anderes Thema → beide bleiben und melden sich gegenseitig an.
+- **Eine Leitung zur Zeit:** Sprints von zwei bis drei Tagen laufen nacheinander; ein zweites großes Thema ist der nächste Sprint, keine zweite Leitung. Höchstens ein Integrations-Branch ist offen.
+- Ernennt der Owner eine Session („du bist die Leitung“) und läuft keine Leitung, gilt das vor allem Folgenden: Sie folgt `/leitung`, eine bisherige Leitung übergibt an sie, samt Stand-Datei, Integrations-Branch, offenen Merges und laufenden Tests.
+- **Leitung erkennen:** Titel mit der Marke `[Leitung] <Thema>` (`/leitung` §1); keine andere Session trägt sie. Die bestehende Leitung ist immer die, die zuerst da war.
+- **Zweite Ernennung:** Zeigt `ListAgents` schon eine Session mit der Marke, wird die ernannte Session nicht Leitung. Sie erinnert den Owner an die Regel und legt ihm eine Karte mit zwei Wegen vor: (a) empfohlen: die Aufgabe per `SendMessage` (Aufgabe, Dateien) an die bestehende Leitung übergeben, die entscheidet, ob sie als Paket in den laufenden Sprint passt oder als nächster Sprint in der Stand-Datei vorgemerkt wird; diese Session arbeitet dann höchstens als Unter-Session unter ihr; (b) diese Session pausiert bis zum Sprint-Ende und wird dann die nächste Leitung.
 - Gibt es keine und keine Stand-Datei, übernimmt die am längsten laufende Session (`ListAgents` → „started … ago“) und teilt das allen mit.
 - Wird die Leitung beendet, übergibt sie vorher ausdrücklich an eine andere Session.
 
 ## 3. Pflichten der Leitung
 
 - **Merge-Hoheit:** Nur die Leitung merged auf den Integrations-Branch, fährt die Schluss-Gates, pusht `main` und taggt. Auf lokalem `main` landet nichts außer durch die Leitung, auch kein Doku-Commit; niemand sonst pusht oder taggt.
-- **Mehrere Leitungen:** Sie legen die Release-Reihenfolge fest (wer zuerst fertig ist; bei mehr als zwei eine Liste). Nur die Leitung an der Reihe pusht und taggt, die nächste zieht danach `origin/main` nach und prüft erneut. Unaufgefordert weitergeben, was die andere braucht: gemeinsame Dateien, `V__`-Nummern, Testplätze, rote CI, Owner-Entscheide.
 - **Push-Regeln:** Vor jedem Push auf `main` steht ein grüner `free-gates`-Lauf auf GitHub (Linux) auf dem Integrations-Branch; lokale Windows-Gates sehen Linux-Fehler nicht. Die bezahlten Fall-IDs werden vor dem Push gesammelt und dem Owner als eine Liste genannt. Das Owner-Wort zu Merge oder Push nennt den Umfang (welche Branches, welche Hashes); ein „Ja“ ohne Umfang gilt nur für das, was die Leitung ihm unmittelbar davor als Liste genannt hat. Ablauf und Push-Sperre: `docs/reference/sessions.md` *Release-Ablauf*.
 - **Geschützte `main` und `v*`-Tags** (Rulesets → `CONTRIBUTING.md` *Branch protection*): Push per Admin-Bypass der CI-Pflicht, danach die CI-Ampel prüfen (`scripts/check_ci_status.ps1`). Ein fehlerhafter Tag wird nicht verschoben → neue Patch-Version.
 - **Fremd-PRs:** nie auschecken, bevor der Diff gelesen und privacy-geprüft ist; Merge nur per Squash nach Bestätigung des Owners (`docs/reference/sessions.md` *Fremd-PRs*).

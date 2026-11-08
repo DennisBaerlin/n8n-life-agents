@@ -19,7 +19,7 @@ Das Repo ist öffentlich: Stand und private Anlässe gehören nie in diesen Skil
 ## 1. Beim Start
 
 1. **Modus:** Läuft die Session im Bypass-Modus, anhalten und den Owner um „Auto“ bitten (`/coordinate` §1).
-2. **Andere Leitung:** Läuft noch eine andere Leitung: gleiches Thema → Übergabe mit Stand-Datei, anderes Thema → beide bleiben und stimmen sich ab (`/coordinate` §2 und §3 *Mehrere Leitungen*).
+2. **Eine Leitung zur Zeit:** Sprints von zwei bis drei Tagen laufen nacheinander; ein zweites großes Thema ist der nächste Sprint, keine zweite Leitung. Zeigt `ListAgents` schon eine Session mit der Marke `[Leitung]`, wird diese Session nicht Leitung, auch nicht auf Ernennung: Sie erinnert den Owner an die Regel und legt ihm die Karte mit den zwei Wegen vor, Übergabe an die bestehende Leitung (empfohlen) oder Pause bis zum Sprint-Ende (`/coordinate` §2 *Zweite Ernennung*).
 3. **Ort:** Die Leitung arbeitet im Haupt-Checkout. Läuft die Session in einem Worktree, das dem Owner sagen; die Stand-Datei liegt trotzdem im Haupt-Checkout.
 4. **Sichtbar machen:** Session anpinnen (`set_pinned`, „self“) und `[Leitung] <Thema>` nennen (`set_session_title`), auch wer erst unterwegs Leitung wird; bei Übergabe die Marke entfernen. Sie ist das Erkennungszeichen (`/coordinate` §2). Eigene Session-ID per `get_session` mit `self` ermitteln (nicht die Transkript-ID) und in die Stand-Datei schreiben.
 5. **Stand lesen:** `.claude/plans/leitung-stand.md`, die eine Datei für alle Sessions; Themen-Dateien gibt es nicht. Fehlt sie, aus der Vorlage in §5 anlegen. Schreiben darf nur die Leitung; jede andere Session liest und hält sich an Sperren und Merge-Reihenfolge.

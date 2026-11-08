@@ -97,6 +97,7 @@ Weitere Routinen übernehmen den Rest: `/retro-bundle` (Freitag) bündelt die Ve
 
 ## Fallgeschichten
 
+- **Vier Leitungen gleichzeitig:** Wartezeiten aufeinander, dieselbe Owner-Frage in zwei Chats verschieden beantwortet, Merge-Ketten über vier Integrations-Branches, zweimal die Nutzungsgrenze. Daraus: eine Leitung, Sprints nacheinander, eine Stand-Datei, Entscheidungen gebündelt; eine zweite Ernennung wird zur Übergabe oder Pause.
 - **Windows-Gates grün, Linux rot:** Ein Backslash-Pfad zur `.env` lief lokal, brach aber im `free-gates`-Lauf auf GitHub (Linux). Daraus: vor jedem Push auf `main` ein grüner Linux-Lauf auf dem Integrations-Branch.
 - **Doku-Commit auf lokalem `main`:** Eine Nicht-Leitung committete eine Skill-Zeile direkt auf `main`; die Leitung musste die Reihenfolge der Merges neu sortieren. Daraus: auf `main` landet nichts außer durch die Leitung.
 - **Transkript-ID im Brief:** Die Unter-Session schrieb ihre Berichte an eine Kennung, die keine Session war. Daraus: eigene ID per `get_session self`, Titel für Nachrichten.

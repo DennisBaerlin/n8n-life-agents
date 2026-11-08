@@ -61,7 +61,7 @@ The system has a fixed core (router, approval logic, memory, onboarding) plus on
 - An **Anthropic API key** (required — every agent runs on Claude).
 - Optional: a **Google Gemini API key on the paid tier**, only for voice messages. Without it the bot asks you to type instead.
 
-**Costs:** there is no subscription. You pay for your own hardware and for AI usage by consumption, billed directly by Anthropic (and Google, if you use voice messages). The model choice is deliberately frugal: routing and plan reminders run on Haiku, bookkeeping, help, monitoring, web search, reading documents and job scoring on Sonnet, and only the advisor agents on Opus. A local gateway on your server adds prompt caching for every agent (the identical start of each request costs only a fraction when re-read) and counts tokens — never content.
+**Costs:** there is no subscription. You pay for your own hardware and for AI usage by consumption, billed directly by Anthropic (and Google, if you use voice messages). The model choice is deliberately frugal: routing, plan reminders and the document assistant run on Haiku, bookkeeping, help, monitoring, web search, reading uploaded documents and job scoring on Sonnet, and only the advisor agents on Opus. A local gateway on your server adds prompt caching for every agent (the identical start of each request costs only a fraction when re-read) and counts tokens — never content.
 
 ## Installation
 
@@ -97,7 +97,7 @@ lifeagents reconfigure [core|<pkg>]  # change or add settings (address, bot toke
 lifeagents config list|set|reset …   # central runtime config
 lifeagents proxy show|set …          # reverse proxy status + configuration
 lifeagents household …               # invite/pair/remove/block members
-lifeagents backup export|restore …   # encrypted full backup, optionally to Telegram
+lifeagents backup export|restore …   # encrypted backup of your user data, optionally to Telegram
 lifeagents rollback                  # after a failed update: back to the previous version (asks first)
 lifeagents doctor                    # read-only health check
 lifeagents uninstall [--purge-data]  # clean removal
@@ -154,11 +154,13 @@ flowchart TD
     ORCH --> GUI["🚪 agent.guide"]
     ORCH --> CAR["💼 agent.career_advisor"]
     ORCH --> EST["🗂️ agent.estate_advisor"]
+    ORCH --> DOC["📄 agent.paperless_assistant"]
     FIN --> GATE["agent.tool_human_approval – HITL gate"]
     CAR --> GATE
     EST --> GATE
-    GATE --> PG[("PostgreSQL 17 – schemas core · agent · finance · career · estate")]
+    GATE --> PG[("PostgreSQL 17 – schemas core · agent · finance · career · estate · paperless")]
     ADV -. read only .-> PG
+    DOC -. read only .-> PPL["your Paperless instance"]
     MON -. triggers as data rows .-> PG
     GUI --> GATE
 ```

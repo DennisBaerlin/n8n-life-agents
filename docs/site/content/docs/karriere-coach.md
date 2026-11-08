@@ -28,7 +28,7 @@ Vollzeit · Homeoffice-Anteil möglich
 
 ## Wo fehlen dir noch Fähigkeiten?
 
-Für jede Zielrolle in deinem Plan vergleicht das System automatisch, welche Fähigkeiten die Rolle braucht (die du beim Planen hinterlegst) mit den Fähigkeiten in deinem Profil — nicht der Coach persönlich, sondern eine feste Berechnung in der Datenbank, damit das Ergebnis immer stimmt. Fehlende, zu schwach ausgeprägte oder überschüssige Fähigkeiten erscheinen als Zeile im veröffentlichten Plan; dein Übergangsplan-Abschnitt beschreibt dann, wie du die Lücke schließt.
+Für die wichtigste Zielrolle in deinem Plan vergleicht das System automatisch, welche Fähigkeiten die Rolle braucht (die du beim Planen hinterlegst) mit den Fähigkeiten in deinem Profil — nicht der Coach persönlich, sondern eine feste Berechnung in der Datenbank, damit das Ergebnis immer stimmt. Fehlende oder zu schwach ausgeprägte Fähigkeiten erscheinen als Zeile im veröffentlichten Plan, die wichtigsten zuerst; dein Übergangsplan-Abschnitt beschreibt dann, wie du die Lücke schließt.
 
 ## Marktlage einschätzen
 

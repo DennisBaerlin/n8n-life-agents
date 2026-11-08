@@ -20,14 +20,14 @@ Betreiben statt nutzen? → [Installation & Betrieb](installation.html).
 - 📒 [**Buchhalter**](buchhalter.html) (`agent.finance`) — bucht Konten, Ausgaben, Überweisungen, Wertpapiere, Zinsen, Kredite und mehr; pflegt Salden automatisch.
 - 🧭 [**Finanzberater**](finanzberater.html) (`agent.finance_advisor`) — interviewt dich, pflegt deinen Finanzplan, recherchiert und meldet Abweichungen. Bucht selbst nie etwas — er hat dafür gar keine Werkzeuge. Einzige Ausnahme: In der Finanzplanung ordnet er deine Depot-Positionen den Bausteinen deines Plans zu (eine Karte zum Bestätigen).
 - 🔭 [**Monitor**](monitor-guide.html) (`agent.monitor`) — überwacht von dir angelegte Schwellwerte (z. B. einen Kurs oder eine Fälligkeit) und meldet sich, wenn einer auslöst. Gibt selbst keine Ratschläge.
-- 🚪 [**Guide**](monitor-guide.html) (`agent.guide`) — begleitet dich durch die Ersteinrichtung, beantwortet `/help` und schlägt (nur wenn du es einschaltest) täglich merkenswerte Fakten vor.
+- 🚪 [**Guide**](monitor-guide.html) (`agent.guide`) — begleitet dich durch die Ersteinrichtung, erklärt, was der Assistent kann und was sich noch installieren lässt, und schlägt (nur wenn du es einschaltest) täglich merkenswerte Fakten vor.
 - 💼 [**Karriere-Coach**](karriere-coach.html) (`agent.career_advisor`) — liest deinen Lebenslauf, pflegt Profil und Karriereplan, scannt regelmäßig Stellenangebote und lernt aus deinem Feedback.
 - 🗂️ [**Nachlass-Berater**](nachlass-berater.html) (`agent.estate_advisor`) — pflegt dein Vorsorge-Register (nur Fundorte, nie Passwörter), erstellt die Notfallmappe als weiterreichbares Dokument und begleitet einfühlsam durch den Todes- oder Vorsorgefall.
 - 📄 [**Dokumenten-Assistent**](dokumente.html) (`agent.paperless_assistant`) — findet, liest und befragt deine eingescannten Papiere in deiner Paperless-Instanz (nur lesend, nur für Erwachsene); dieselben Werkzeuge nutzen auch Buchhalter, Finanzberater, Karriere-Coach und Nachlass-Berater.
 
 ## Ein Kern, mehrere Pakete
 
-Unter der Haube ist das System als **Paket-Plattform** gebaut: ein gemeinsamer Kern (Core) kümmert sich um Orchestrator, Bestätigungs-Gates, Gedächtnis und Ersteinrichtung — unabhängig davon, worüber du gerade sprichst. Darauf setzen installierbare **Domänen-Pakete** auf, heute Finanzen, Karriere und Vorsorge/Nachlass; ein neues Lebensthema kann als eigenes Paket mit eigenem Datenbereich andocken, ohne den Kern anzufassen. Mehr dazu auf der Seite [Pakete](pakete.html).
+Unter der Haube ist das System als **Paket-Plattform** gebaut: ein gemeinsamer Kern (Core) kümmert sich um Orchestrator, Bestätigungs-Gates, Gedächtnis und Ersteinrichtung — unabhängig davon, worüber du gerade sprichst. Darauf setzen installierbare **Domänen-Pakete** auf, heute Finanzen, Karriere, Vorsorge/Nachlass und Dokumente; ein neues Lebensthema kann als eigenes Paket mit eigenem Datenbereich andocken, ohne den Kern anzufassen. Mehr dazu auf der Seite [Pakete](pakete.html).
 
 ## Ein Beispiel
 

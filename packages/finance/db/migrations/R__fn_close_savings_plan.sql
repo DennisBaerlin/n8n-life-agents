@@ -8,7 +8,8 @@
 --   v_tx_count > 0 -> Soft-Close: RP.valid_to = CURRENT_DATE, plan.status = 'paused'
 --   (Buchungshistorie bleibt erhalten; Plan taucht nicht mehr in fn_recurring_due_open auf).
 --   Eingabe jsonb: savings_plan_name.
---   RUECKGABE: {ok:true, action:'deleted'|'closed', tx_count}. RAISE fuer echte
+--   RUECKGABE: {ok:true, action:'deleted'|'closed', tx_count, card_lines (Broker-Hinweis fn_bank_setup_note 'bank_stop';
+--   der Plan bleibt sonst beim Broker aktiv, eine Erinnerung kommt nicht: die Kette ist pausiert)}. RAISE fuer echte
 --   Ausnahmen (nicht gefunden).
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_close_savings_plan(p jsonb)
@@ -19,6 +20,7 @@ DECLARE
     v_resolve   RECORD;
     v_tx_count  INT;
     v_chain     INT[];
+    v_note      JSONB;
 BEGIN
     -- Plan aufloesen (auch paused Plaene koennen geschlossen werden)
     SELECT r.id, r.hit_count, r.candidates INTO v_resolve
@@ -41,23 +43,25 @@ BEGIN
     FROM finance.transactions
     WHERE recurring_payment_id = ANY(v_chain);
 
+    -- Auch vor dem Hard-DELETE beenden: Die Notiz liest die Kette, und ein laufendes kuenftiges Ende ergaebe den _until-Text.
+    PERFORM finance.fn_end_recurring_chain(v_plan.recurring_payment_id, CURRENT_DATE);
+    v_note := finance.fn_bank_setup_note(v_plan.recurring_payment_id, 'bank_stop');
+
     IF v_tx_count = 0 THEN
         -- Hard-DELETE: erst Plan (FK RESTRICT plan->rp), dann alle Ketten-rps in EINEM Statement (predecessor-FK
         -- NO ACTION prueft am Statement-Ende)
         DELETE FROM finance.savings_plans        WHERE id = v_plan.id;
         DELETE FROM finance.recurring_payments   WHERE id = ANY(v_chain);
 
-        RETURN jsonb_build_object('ok', true, 'action', 'deleted', 'tx_count', 0);
+        RETURN jsonb_build_object('ok', true, 'action', 'deleted', 'tx_count', 0, 'card_lines', v_note);
     ELSE
-        -- Soft-Close: ALLE noch laufenden Glieder der Kette beenden (auch eine alte rp mit noch anstehender
-        -- Ausfuehrung, Audit Paket 2) -> nichts taucht mehr in fn_recurring_due_open auf; Plan pausieren.
-        PERFORM finance.fn_end_recurring_chain(v_plan.recurring_payment_id, CURRENT_DATE);
-
+        -- Soft-Close: Plan pausieren; die Kette ist oben schon beendet (ALLE noch laufenden Glieder, auch eine alte rp
+        -- mit noch anstehender Ausfuehrung) -> nichts taucht mehr in fn_recurring_due_open auf.
         UPDATE finance.savings_plans
         SET status = 'paused'
         WHERE id = v_plan.id;
 
-        RETURN jsonb_build_object('ok', true, 'action', 'closed', 'tx_count', v_tx_count);
+        RETURN jsonb_build_object('ok', true, 'action', 'closed', 'tx_count', v_tx_count, 'card_lines', v_note);
     END IF;
 END;
 $$;

@@ -167,4 +167,38 @@ BEGIN
 
 END $$;
 
+
+-- Karte: Hinweis, den Sparplan auch beim Broker zu beenden, in beiden Wegen; nie mit dem alten Enddatum
+DO $$
+DECLARE
+  v_cash int; v_depot int; v_nob int; v_rp int; v_r jsonb;
+BEGIN
+  INSERT INTO finance.accounts (name, account_type, currency, status) VALUES ('__cp_note_cash__','cash','EUR','active') RETURNING id INTO v_cash;
+  INSERT INTO finance.accounts (name, account_type, currency, status, settlement_account_id, bank)
+    VALUES ('__cp_note_depot__','stocks_depot','EUR','active', v_cash, 'Testbroker') RETURNING id INTO v_depot;
+  INSERT INTO finance.accounts (name, account_type, currency, status, settlement_account_id)
+    VALUES ('__cp_note_nob__','stocks_depot','EUR','active', v_cash) RETURNING id INTO v_nob;
+
+  -- Hard-DELETE mit kuenftigem Ende, Broker bekannt
+  INSERT INTO finance.recurring_payments (name, account_id, amount, schedule_unit, first_payment_date, valid_from, valid_to)
+    VALUES ('__cp_note_a__', v_cash, -50, 'month', current_date - 10, current_date - 10, current_date + 90) RETURNING id INTO v_rp;
+  INSERT INTO finance.savings_plans (name, depot_id, symbol, security_name, recurring_payment_id)
+    VALUES ('__cp_note_a__', v_depot, 'CPA', 'Test ETF A', v_rp);
+  v_r := finance.fn_close_savings_plan('{"savings_plan_name":"__cp_note_a__"}');
+  IF v_r->>'action' <> 'deleted' OR v_r->'card_lines'->0->>'value' IS DISTINCT FROM 'finance.note.bank_stop_savings_plan'
+     OR v_r->'card_lines'->0->'params'->>'bank' IS DISTINCT FROM 'Testbroker' OR COALESCE(v_r->'card_lines'->0->'params' ? 'date', false) THEN
+    RAISE EXCEPTION 'FAIL fn_close_savings_plan [Hinweis hard-delete]: %', v_r; END IF;
+
+  -- Soft-Close, Broker unbekannt
+  INSERT INTO finance.recurring_payments (name, account_id, amount, schedule_unit, first_payment_date, valid_from)
+    VALUES ('__cp_note_b__', v_cash, -50, 'month', current_date - 40, current_date - 40) RETURNING id INTO v_rp;
+  INSERT INTO finance.savings_plans (name, depot_id, symbol, security_name, recurring_payment_id)
+    VALUES ('__cp_note_b__', v_nob, 'CPB', 'Test ETF B', v_rp);
+  INSERT INTO finance.transactions (account_id, amount, transaction_date, category, recurring_payment_id, description)
+    VALUES (v_cash, -50, current_date - 40, 'other', v_rp, '__cp_note_tx__');
+  v_r := finance.fn_close_savings_plan('{"savings_plan_name":"__cp_note_b__"}');
+  IF v_r->>'action' <> 'closed' OR v_r->'card_lines'->0->>'value' IS DISTINCT FROM 'finance.note.bank_stop_savings_plan_generic' THEN
+    RAISE EXCEPTION 'FAIL fn_close_savings_plan [Hinweis soft-close]: %', v_r; END IF;
+  RAISE NOTICE 'PASS fn_close_savings_plan [Broker-Hinweis auf der Karte]';
+END $$;
 ROLLBACK;

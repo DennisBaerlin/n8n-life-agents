@@ -480,7 +480,7 @@
                   },
                   {
                       "parameters":  {
-                                         "content":  "## DB-Automatik\n**Smart-Close-Guard: tx_count entscheidet**\n\nfn und Karte (Read Plan) zählen Transaktionen über die ganze Vorgänger-Kette des Plans (fn_recurring_lineage; nach einer Betragsänderung liegt die Historie auf der alten Zeile). tx_count=0: Hard-DELETE finance.savings_plans, dann alle Ketten-rps; action=deleted. tx_count\u003e0: Soft-Close — alle noch laufenden Ketten-Glieder enden heute (fn_end_recurring_chain, status=paused); plan.status=paused; action=closed. RAISE EXCEPTION bei Plan-nicht-gefunden.",
+                                         "content":  "## DB-Automatik\n**Smart-Close-Guard: tx_count entscheidet**\n\nfn und Karte (Read Plan) zählen Transaktionen über die ganze Vorgänger-Kette des Plans (fn_recurring_lineage; nach einer Betragsänderung liegt die Historie auf der alten Zeile). tx_count=0: Hard-DELETE finance.savings_plans, dann alle Ketten-rps; action=deleted. tx_count\u003e0: Soft-Close — alle noch laufenden Ketten-Glieder enden heute (fn_end_recurring_chain, status=paused); plan.status=paused; action=closed. Beide Wege liefern card_lines mit dem Hinweis, den Sparplan auch beim Broker zu beenden (der Bot ändert dort nichts, eine spätere Erinnerung kommt nicht). RAISE EXCEPTION bei Plan-nicht-gefunden.",
                                          "height":  240,
                                          "width":  480,
                                          "color":  4

@@ -10,7 +10,7 @@ DECLARE
 BEGIN
   INSERT INTO finance.accounts (name, account_type, currency, status) VALUES ('__t_ed_a__', 'cash', 'EUR', 'active') RETURNING id INTO v_a;
   SELECT * INTO r FROM finance.fn_account_everyday_per_day(v_a);
-  IF r.per_day <> 0 OR r.per_day_net <> 0 OR r.has_history THEN RAISE EXCEPTION 'FAIL [1] ohne Auszug 0/0/false, got %', r; END IF;
+  IF r.per_day IS DISTINCT FROM 0 OR r.per_day_net IS DISTINCT FROM 0 OR r.has_history THEN RAISE EXCEPTION 'FAIL [1] ohne Auszug 0/0/false, got %', r; END IF;
 
   -- 30 neue Tage: -300 raus, +60 rein -> per_day -10, netto -8
   INSERT INTO finance.bank_statements (account_id, period_start, period_end, opening_balance, closing_balance, currency,
@@ -48,6 +48,9 @@ BEGIN
   -- gezaehlt: die 3 juengsten (der frueheste faellt ohnehin raus) -> -1200 / 90 = -13.33
   IF r.per_day IS DISTINCT FROM -13.33::numeric OR r.provisional THEN
     RAISE EXCEPTION 'FAIL [4a] 3 juengste gezaehlt, fruehester raus: -13.33, got %', r; END IF;
+  -- bei 3 spaeteren Auszuegen zeigt die Detail-Liste den fruehesten nicht mehr
+  SELECT count(*) INTO v_n FROM finance.fn_account_everyday_basis(v_a);
+  IF v_n <> 3 THEN RAISE EXCEPTION 'FAIL [4a2] 3 Detail-Zeilen ohne den fruehesten, got %', v_n; END IF;
   DELETE FROM finance.bank_statements WHERE account_id = v_a AND period_end IN (t - 65, t - 35);
   SELECT * INTO r FROM finance.fn_account_everyday_per_day(v_a);
   IF r.per_day IS DISTINCT FROM -10.00::numeric OR r.provisional THEN
@@ -103,5 +106,20 @@ BEGIN
     RAISE EXCEPTION 'FAIL [5e] positives oneoff_out angenommen';
   EXCEPTION WHEN check_violation THEN NULL; END;
   RAISE NOTICE 'PASS fn_account_everyday_per_day: einmalige Grossausgaben zaehlen nicht in per_day, Backstops';
+END $$;
+
+-- Detail je Auszug auf Cent: -300 in 31 Tagen -> -9.68 je Tag
+DO $$
+DECLARE
+  t DATE := CURRENT_DATE;
+  v_a INT; r record;
+BEGIN
+  INSERT INTO finance.accounts (name, account_type, currency, status) VALUES ('__t_ed_d__', 'cash', 'EUR', 'active') RETURNING id INTO v_a;
+  INSERT INTO finance.bank_statements (account_id, period_start, period_end, opening_balance, closing_balance, currency,
+                                       line_count, matched_count, unmatched_out, unmatched_in, prev_last_reconciled_at)
+  VALUES (v_a, t - 35, t - 5, 1300, 1000, 'EUR', 5, 0, -300, 0, NULL);
+  SELECT * INTO r FROM finance.fn_account_everyday_basis(v_a);
+  IF r.per_day IS DISTINCT FROM -9.68::numeric THEN RAISE EXCEPTION 'FAIL [6] basis per_day auf Cent -9.68, got %', r; END IF;
+  RAISE NOTICE 'PASS fn_account_everyday_basis: per_day je Auszug auf Cent';
 END $$;
 ROLLBACK;

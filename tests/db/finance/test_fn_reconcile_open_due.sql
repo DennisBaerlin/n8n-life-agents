@@ -39,4 +39,19 @@ BEGIN
   RAISE NOTICE 'PASS fn_reconcile_open_due';
 END $$;
 
+-- Zins-Vorkommen haben dieselbe Karenz: value_date 2026-02-01 liegt bei Stichtag 2026-02-11 genau 10 Tage zurueck
+-- (erledigt), bei Stichtag 2026-02-05 noch nicht.
+DO $$
+DECLARE v_a INT;
+BEGIN
+  v_a := (finance.fn_create_account('{"name":"__t_rod_int__","account_type":"cash","currency":"EUR"}'::jsonb)->>'account_id')::int;
+  INSERT INTO finance.account_interest_rates (account_id, annual_rate, schedule_interval, schedule_unit, day_count_convention, valid_from)
+  VALUES (v_a, 4, 1, 'month', 'ACT/365', '2026-01-01');
+  IF NOT EXISTS (SELECT 1 FROM finance.fn_reconcile_open_due(v_a, DATE '2026-02-11') WHERE interest_period_end = '2026-02-01') THEN
+    RAISE EXCEPTION 'FAIL Zins-Vorkommen 10 Tage alt fehlt'; END IF;
+  IF EXISTS (SELECT 1 FROM finance.fn_reconcile_open_due(v_a, DATE '2026-02-05') WHERE interest_period_end = '2026-02-01') THEN
+    RAISE EXCEPTION 'FAIL Zins-Vorkommen juenger als 10 Tage wird schon als erledigt markiert'; END IF;
+  RAISE NOTICE 'PASS fn_reconcile_open_due [Zins-Karenz 10 Tage]';
+END $$;
+
 ROLLBACK;

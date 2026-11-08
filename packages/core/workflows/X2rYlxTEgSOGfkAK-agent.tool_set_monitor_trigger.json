@@ -495,6 +495,135 @@
                   },
                   {
                       "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "=SELECT core.fn_dry_run(\u0027agent.fn_set_monitor_trigger(jsonb)\u0027::regprocedure, $1::jsonb) AS r;",
+                                         "options":  {
+                                                         "queryReplacement":  "={{ JSON.stringify({ domain: $(\u0027Resolve domain\u0027).item.json.domain, label: $(\u0027Start\u0027).item.json.label, new_label: $(\u0027Start\u0027).item.json.new_label, acquisition_prompt: $(\u0027Start\u0027).item.json.acquisition_prompt, acquisition_sql: $(\u0027Start\u0027).item.json.acquisition_sql, acquisition_params: (() =\u003e { try { return $(\u0027Start\u0027).item.json.acquisition_params ? JSON.parse($(\u0027Start\u0027).item.json.acquisition_params) : null; } catch (e) { return \u0027__invalid_json__\u0027; } })(), comparator: $(\u0027Start\u0027).item.json.comparator, threshold_value: $(\u0027Start\u0027).item.json.threshold_value, drawdown_pct: $(\u0027Start\u0027).item.json.drawdown_pct, due_date: ($(\u0027Resolve trigger\u0027).item.json.due_resolved || $(\u0027Start\u0027).item.json.due_date), warn_days_before: $(\u0027Start\u0027).item.json.warn_days_before, expected_unit: $(\u0027Start\u0027).item.json.expected_unit, min_plausible: $(\u0027Start\u0027).item.json.min_plausible, max_plausible: $(\u0027Start\u0027).item.json.max_plausible, max_jump_pct: $(\u0027Start\u0027).item.json.max_jump_pct, check_interval: $(\u0027Start\u0027).item.json.check_interval, action_note: $(\u0027Start\u0027).item.json.action_note, status: $(\u0027Start\u0027).item.json.status, reset_peak: $(\u0027Start\u0027).item.json.reset_peak }) }}"
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       1860,
+                                       0
+                                   ],
+                      "id":  "99dd6b18-452f-5dc7-9b08-f45567fb5342",
+                      "name":  "Dry run",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_WRITE__",
+                                                           "name":  "Postgres account"
+                                                       }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "c55de1b0-67cc-563d-92f3-81c6b961f38a",
+                                                                                   "leftValue":  "={{ $(\u0027Dry run\u0027).item.json.r.ok }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       2080,
+                                       0
+                                   ],
+                      "id":  "8fceffc5-3c36-533b-93be-66658888f30a",
+                      "name":  "Dry run ok?"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "769205a3-0bd5-53de-aa84-cb26a38b8d48",
+                                                                                     "name":  "ok",
+                                                                                     "value":  "false",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "20613505-3d0d-5916-a57b-04a09b665536",
+                                                                                     "name":  "card_sent",
+                                                                                     "value":  "false",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "413f8618-a615-5681-87f7-4bfd414cb531",
+                                                                                     "name":  "error",
+                                                                                     "value":  "={{ $(\u0027Dry run\u0027).item.json.r.reason || $(\u0027Dry run\u0027).item.json.r.error || \u0027The database rejected this entry.\u0027 }}",
+                                                                                     "type":  "string"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "ab91dd25-88fc-50d5-8dcb-2e07c40aebab",
+                                                                                     "name":  "code",
+                                                                                     "value":  "={{ $(\u0027Dry run\u0027).item.json.r.code || \u0027\u0027 }}",
+                                                                                     "type":  "string"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "02c70bda-7365-54f3-a55f-ce2041db36be",
+                                                                                     "name":  "candidates",
+                                                                                     "value":  "={{ $(\u0027Dry run\u0027).item.json.r.candidates || [] }}",
+                                                                                     "type":  "array"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       2300,
+                                       200
+                                   ],
+                      "id":  "163a4fb2-fd4d-5876-b58b-66e1fb5261a2",
+                      "name":  "Dry run rejected"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "=SELECT (r-\u003e\u003e\u0027ok\u0027)::boolean AS ok, r-\u003e\u003e\u0027reason\u0027 AS reason, (r-\u003e\u003e\u0027trigger_id\u0027)::int AS trigger_id, r-\u003e\u003e\u0027status\u0027 AS status, r-\u003e\u003e\u0027next_check_at\u0027 AS next_check_at, r-\u003e\u003e\u0027check_interval\u0027 AS check_interval, (r-\u003e\u003e\u0027reference_value\u0027)::numeric AS reference_value FROM agent.fn_set_monitor_trigger(($1::jsonb - \u0027_effective\u0027) || COALESCE(NULLIF(($1::jsonb)-\u003e\u0027_effective\u0027, \u0027null\u0027::jsonb), \u0027{}\u0027::jsonb)) AS r;",
+                                         "options":  {
+                                                         "queryReplacement":  "={{ JSON.stringify({ domain: $(\u0027Resolve domain\u0027).item.json.domain, label: $(\u0027Start\u0027).item.json.label, new_label: $(\u0027Start\u0027).item.json.new_label, acquisition_prompt: $(\u0027Start\u0027).item.json.acquisition_prompt, acquisition_sql: $(\u0027Start\u0027).item.json.acquisition_sql, acquisition_params: (() =\u003e { try { return $(\u0027Start\u0027).item.json.acquisition_params ? JSON.parse($(\u0027Start\u0027).item.json.acquisition_params) : null; } catch (e) { return \u0027__invalid_json__\u0027; } })(), comparator: $(\u0027Start\u0027).item.json.comparator, threshold_value: $(\u0027Start\u0027).item.json.threshold_value, drawdown_pct: $(\u0027Start\u0027).item.json.drawdown_pct, due_date: ($(\u0027Resolve trigger\u0027).item.json.due_resolved || $(\u0027Start\u0027).item.json.due_date), warn_days_before: $(\u0027Start\u0027).item.json.warn_days_before, expected_unit: $(\u0027Start\u0027).item.json.expected_unit, min_plausible: $(\u0027Start\u0027).item.json.min_plausible, max_plausible: $(\u0027Start\u0027).item.json.max_plausible, max_jump_pct: $(\u0027Start\u0027).item.json.max_jump_pct, check_interval: $(\u0027Start\u0027).item.json.check_interval, action_note: $(\u0027Start\u0027).item.json.action_note, status: $(\u0027Start\u0027).item.json.status, reset_peak: $(\u0027Start\u0027).item.json.reset_peak, _effective: ($(\u0027Dry run\u0027).item.json.r.effective || null) }) }}"
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       2840,
+                                       0
+                                   ],
+                      "id":  "962e57e9-5de9-57c8-abad-4e057be46ea5",
+                      "name":  "Set trigger (atomic)",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_WRITE__",
+                                                           "name":  "Postgres account"
+                                                       }
+                                      }
+                  },
+                  {
+                      "parameters":  {
                                          "assignments":  {
                                                              "assignments":  [
                                                                                  {
@@ -512,7 +641,7 @@
                       "type":  "n8n-nodes-base.set",
                       "typeVersion":  3.4,
                       "position":  [
-                                       1800,
+                                       2300,
                                        0
                                    ],
                       "id":  "15fbf090-bc9b-52ed-bc15-d581fc1cacda",
@@ -550,7 +679,7 @@
                       "type":  "n8n-nodes-base.executeWorkflow",
                       "typeVersion":  1.2,
                       "position":  [
-                                       1980,
+                                       2480,
                                        0
                                    ],
                       "id":  "45c79c21-b59e-5c55-abf6-278a283807f5",
@@ -584,7 +713,7 @@
                       "type":  "n8n-nodes-base.if",
                       "typeVersion":  2.2,
                       "position":  [
-                                       2160,
+                                       2660,
                                        0
                                    ],
                       "id":  "7c43cc60-40f9-5303-8350-3de933db5c78",
@@ -621,34 +750,11 @@
                       "type":  "n8n-nodes-base.set",
                       "typeVersion":  3.4,
                       "position":  [
-                                       2340,
+                                       2840,
                                        200
                                    ],
                       "id":  "62a9bc29-cc5d-5d75-8159-808ed8b2dc15",
                       "name":  "Return cancelled"
-                  },
-                  {
-                      "parameters":  {
-                                         "operation":  "executeQuery",
-                                         "query":  "=SELECT (r-\u003e\u003e\u0027ok\u0027)::boolean AS ok, r-\u003e\u003e\u0027reason\u0027 AS reason, (r-\u003e\u003e\u0027trigger_id\u0027)::int AS trigger_id, r-\u003e\u003e\u0027status\u0027 AS status, r-\u003e\u003e\u0027next_check_at\u0027 AS next_check_at, r-\u003e\u003e\u0027check_interval\u0027 AS check_interval, (r-\u003e\u003e\u0027reference_value\u0027)::numeric AS reference_value FROM agent.fn_set_monitor_trigger($1::jsonb) AS r;",
-                                         "options":  {
-                                                         "queryReplacement":  "={{ JSON.stringify({ domain: $(\u0027Resolve domain\u0027).item.json.domain, label: $(\u0027Start\u0027).item.json.label, new_label: $(\u0027Start\u0027).item.json.new_label, acquisition_prompt: $(\u0027Start\u0027).item.json.acquisition_prompt, acquisition_sql: $(\u0027Start\u0027).item.json.acquisition_sql, acquisition_params: (() =\u003e { try { return $(\u0027Start\u0027).item.json.acquisition_params ? JSON.parse($(\u0027Start\u0027).item.json.acquisition_params) : null; } catch (e) { return \u0027__invalid_json__\u0027; } })(), comparator: $(\u0027Start\u0027).item.json.comparator, threshold_value: $(\u0027Start\u0027).item.json.threshold_value, drawdown_pct: $(\u0027Start\u0027).item.json.drawdown_pct, due_date: ($(\u0027Resolve trigger\u0027).item.json.due_resolved || $(\u0027Start\u0027).item.json.due_date), warn_days_before: $(\u0027Start\u0027).item.json.warn_days_before, expected_unit: $(\u0027Start\u0027).item.json.expected_unit, min_plausible: $(\u0027Start\u0027).item.json.min_plausible, max_plausible: $(\u0027Start\u0027).item.json.max_plausible, max_jump_pct: $(\u0027Start\u0027).item.json.max_jump_pct, check_interval: $(\u0027Start\u0027).item.json.check_interval, action_note: $(\u0027Start\u0027).item.json.action_note, status: $(\u0027Start\u0027).item.json.status, reset_peak: $(\u0027Start\u0027).item.json.reset_peak }) }}"
-                                                     }
-                                     },
-                      "type":  "n8n-nodes-base.postgres",
-                      "typeVersion":  2.6,
-                      "position":  [
-                                       2340,
-                                       0
-                                   ],
-                      "id":  "962e57e9-5de9-57c8-abad-4e057be46ea5",
-                      "name":  "Set trigger (atomic)",
-                      "credentials":  {
-                                          "postgres":  {
-                                                           "id":  "__CRED_POSTGRES_WRITE__",
-                                                           "name":  "Postgres account"
-                                                       }
-                                      }
                   },
                   {
                       "parameters":  {
@@ -678,7 +784,7 @@
                       "type":  "n8n-nodes-base.if",
                       "typeVersion":  2.2,
                       "position":  [
-                                       2520,
+                                       3020,
                                        0
                                    ],
                       "id":  "826e20af-3440-5caa-9b7b-eb707ee65703",
@@ -709,7 +815,7 @@
                       "type":  "n8n-nodes-base.set",
                       "typeVersion":  3.4,
                       "position":  [
-                                       2700,
+                                       3200,
                                        200
                                    ],
                       "id":  "81db7fd9-5421-58dd-aea2-fde0ceb430c2",
@@ -764,7 +870,7 @@
                       "type":  "n8n-nodes-base.set",
                       "typeVersion":  3.4,
                       "position":  [
-                                       2700,
+                                       3200,
                                        0
                                    ],
                       "id":  "5cee9ca7-50e9-50b5-aeff-a1bdd4f17891",
@@ -772,7 +878,7 @@
                   },
                   {
                       "parameters":  {
-                                         "content":  "## DB-Automatik\n**Re-Probe bei Spec-Änderung + agent.fn_set_monitor_trigger (atomar)**\n\nNeues due_date: Resolve trigger prüft es per agent.fn_resolve_monitor_due (dieselbe Regel wie der Write; relativ wie +6 months erlaubt) — ungültig oder vergangen -\u003e Due date rejected VOR der Karte; Karte und Write nutzen genau dieses Datum. Nur agent.monitor bindet dieses Tool (Advisor verweist Edits/Repair hierher). Partielles UPDATE (COALESCE/NULLIF in der fn: nicht gesendet = unverändert). Lifecycle: status=armed auf fired = RE-ARM (fired_at/fail_streak weg, next_check_at frisch); disabled = parken; reset_peak nullt den Drawdown-Ratchet (neue Epoche). REPAIR-FLOW: neuer Prompt/SQL/Methoden-Parameter (acquisition_params einer Paket-Methode, über die gespeicherte Spec gemergt) -\u003e Re-Probe VOR dem Gate (exakt der Cron-Pfad inkl. Load model config = model.monitor_acquisition zur Laufzeit; Jump-Guard prüft die neue Quelle gegen den letzten sauberen Wert — fängt Skalen-/Quellenwechsel). Typ-Wechsel lehnt die fn ab (delete + create). Web-Cadence \u003e= 12h DB-CHECK.",
+                                         "content":  "## DB-Automatik\n**Re-Probe bei Spec-Änderung + agent.fn_set_monitor_trigger (atomar)**\n\nNeues due_date: Resolve trigger prüft es per agent.fn_resolve_monitor_due (dieselbe Regel wie der Write; relativ wie +6 months erlaubt) — ungültig oder vergangen -\u003e Due date rejected VOR der Karte; Karte und Write nutzen genau dieses Datum. Nur agent.monitor bindet dieses Tool (Advisor verweist Edits/Repair hierher). Partielles UPDATE (COALESCE/NULLIF in der fn: nicht gesendet = unverändert). Lifecycle: status=armed auf fired = RE-ARM (fired_at/fail_streak weg, next_check_at frisch); disabled = parken; reset_peak nullt den Drawdown-Ratchet (neue Epoche). REPAIR-FLOW: neuer Prompt/SQL/Methoden-Parameter (acquisition_params einer Paket-Methode, über die gespeicherte Spec gemergt) -\u003e Re-Probe VOR dem Gate (exakt der Cron-Pfad inkl. Load model config = model.monitor_acquisition zur Laufzeit; Jump-Guard prüft die neue Quelle gegen den letzten sauberen Wert — fängt Skalen-/Quellenwechsel). Typ-Wechsel lehnt die fn ab (delete + create). PROBELAUF VOR DER KARTE: Dry run = agent.fn_set_monitor_trigger mit denselben Werten, immer zurückgerollt (core.fn_dry_run); beide Wege (Spec unverändert / Re-Probe ok) münden dort, ok:false -\u003e Dry run rejected, KEINE Karte (die fn prüft nach dem Tipp erneut). Web-Cadence \u003e= 12h DB-CHECK.",
                                          "height":  320,
                                          "width":  560,
                                          "color":  4
@@ -869,7 +975,7 @@
                                                            [
                                                                {
                                                                    "index":  0,
-                                                                   "node":  "Build Approval Summary",
+                                                                   "node":  "Dry run",
                                                                    "type":  "main"
                                                                }
                                                            ]
@@ -942,7 +1048,7 @@
                                                        [
                                                            {
                                                                "index":  0,
-                                                               "node":  "Build Approval Summary",
+                                                               "node":  "Dry run",
                                                                "type":  "main"
                                                            }
                                                        ],
@@ -955,6 +1061,35 @@
                                                        ]
                                                    ]
                                       },
+                        "Dry run":  {
+                                        "main":  [
+                                                     [
+                                                         {
+                                                             "index":  0,
+                                                             "node":  "Dry run ok?",
+                                                             "type":  "main"
+                                                         }
+                                                     ]
+                                                 ]
+                                    },
+                        "Dry run ok?":  {
+                                            "main":  [
+                                                         [
+                                                             {
+                                                                 "index":  0,
+                                                                 "node":  "Build Approval Summary",
+                                                                 "type":  "main"
+                                                             }
+                                                         ],
+                                                         [
+                                                             {
+                                                                 "index":  0,
+                                                                 "node":  "Dry run rejected",
+                                                                 "type":  "main"
+                                                             }
+                                                         ]
+                                                     ]
+                                        },
                         "Build Approval Summary":  {
                                                        "main":  [
                                                                     [

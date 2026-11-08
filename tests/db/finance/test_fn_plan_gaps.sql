@@ -10,7 +10,7 @@ DECLARE
   v   jsonb;
   v_h text;
 BEGIN
-  -- Fixture-unabhaengig: eigener finance-Plan-Stand (das Substrat seedet einen Plan mit reit_strategy)
+  -- Fixture-unabhaengig: eigener finance-Plan-Stand (das Substrat seedet einen Plan mit wealth_building)
   DELETE FROM agent.advisor_plans WHERE domain IN ('finance', '__e2e_finance__');
   INSERT INTO agent.core_contexts (name, description, agent_name, load_strategy, content, metadata)
   VALUES ('financial_planning', 'fix', NULL, 'lazy', E'## Plan Prosa',

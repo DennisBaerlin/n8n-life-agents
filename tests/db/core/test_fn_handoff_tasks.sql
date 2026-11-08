@@ -178,9 +178,9 @@ BEGIN
   r := core.fn_complete_handoff_task(jsonb_build_object('handoff_task_id', v_id1, 'chat_id', '111'));
   IF (r->>'ok')::boolean IS NOT FALSE THEN RAISE EXCEPTION 'FAIL [7 zweimal]: %', r; END IF;
   -- offene (nicht beanspruchte) Aufgabe ist nicht abschliessbar
-  r := agent.fn_advisor_save_section(jsonb_build_object('domain','finance','chat_id','111','section_key','retirement','topic','Allgemein',
+  r := agent.fn_advisor_save_section(jsonb_build_object('domain','finance','chat_id','111','section_key','retirement_pension','topic','Allgemein',
          'section_content','r','handoff_tasks', jsonb_build_array(jsonb_build_object('kind','other','text','Rentenbescheid hochladen'))));
-  SELECT id INTO v_id2 FROM agent.handoff_tasks WHERE section_key = 'retirement';
+  SELECT id INTO v_id2 FROM agent.handoff_tasks WHERE section_key = 'retirement_pension';
   r := core.fn_handoff_task_check(jsonb_build_object('handoff_task_id', v_id2, 'chat_id', '111'));
   IF (r->>'ok')::boolean IS NOT FALSE THEN RAISE EXCEPTION 'FAIL [7 open]: %', r; END IF;
   RAISE NOTICE 'PASS [7 read/check/complete]';

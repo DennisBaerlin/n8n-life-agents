@@ -581,6 +581,7 @@
   "core.orch.card_open": "A confirmation from me is still waiting. Please tap Cancel or Confirm there first, wait for my reply, then send me your message again. Without a tap, the confirmation expires on its own after a few minutes.",
   "core.orch.card_waiting": "Your last request is still waiting for approval by the household owner. Once that is done and I have replied, please send me your message again. Without approval it expires on its own after a few minutes.",
   "core.orch.relay_empty": "I did not get an answer to that just now. Please try again.",
+  "core.orch.step_limit": "That was too many steps at once and I did not manage all of it. Please check what has already been saved, and send me the rest one piece at a time.",
   "core.orch.react_fallback": "Glad to hear it!",
   "core.toast.unresolved_sender": "Sender not recognised",
   "core.toast.owner_only": "Only the household owner can do this",

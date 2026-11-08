@@ -24,7 +24,16 @@ function Build-DeleteMonitorTrigger {
 
     # Strukturiertes Summary (Textkatalog). Der Hinweis nennt den Knopf "Abbrechen" (seit dem Chat-Knopf-Wortlaut).
     $R = "`$('Resolve trigger').item.json"
-    $summary = New-HitlSummary -Pos @(720, 0) -Title 'core.hitl.delete_monitor_trigger' -Lines @(
+    # Probelauf vor der Karte: lehnt z. B. einen Core-Systemtrigger ab, bevor der Nutzer bestaetigt.
+    $wg = New-FnWriteGate -Fn 'agent.fn_delete_monitor_trigger' -DryPos @(720, 0) -WritePos @(1700, 0) `
+        -WriteName 'Delete trigger (atomic)' `
+        -WriteSelect "(r->>'ok')::boolean AS ok, r->>'reason' AS reason, (r->>'trigger_id')::int AS trigger_id, (r->>'observations_deleted')::int AS observations_deleted" `
+        -Params ([ordered]@{
+            domain = '$(''Resolve domain'').item.json.domain'
+            label  = '$(''Start'').item.json.label'
+        })
+
+    $summary = New-HitlSummary -Pos @(1160, 0) -Title 'core.hitl.delete_monitor_trigger' -Lines @(
         (New-HitlLine 'core.label.label'  "`$('Start').item.json.label")
         (New-HitlLine 'core.label.domain' "`$('Resolve domain').item.json.domain")
         (New-HitlLine 'core.label.type' "'core.tpl.type_with_status'" -Kind tpl -Params @{
@@ -34,22 +43,15 @@ function Build-DeleteMonitorTrigger {
         (New-HitlNote -Key 'core.note.monitor_delete_final')
     )
 
-    $reqApproval = Build-CallWorkflow 'Request Approval' @(900, 0) $GateId 'agent.tool_human_approval' `
+    $reqApproval = Build-CallWorkflow 'Request Approval' @(1340, 0) $GateId 'agent.tool_human_approval' `
         ([ordered]@{ summary = "={{ `$('Build Approval Summary').item.json.summary }}"; chat_id = "={{ `$('Start').item.json.chat_id }}" })
-    $ifApproved = Build-If 'Approved?' @(1080, 0) '={{ $json.approved }}' 'true' 'equals' 'boolean'
-    $retCancelled = Build-ToolCancelled 'Return cancelled' @(1260, 200) 'the delete_monitor_trigger action'
+    $ifApproved = Build-If 'Approved?' @(1520, 0) '={{ $json.approved }}' 'true' 'equals' 'boolean'
+    $retCancelled = Build-ToolCancelled 'Return cancelled' @(1700, 200) 'the delete_monitor_trigger action'
 
-    $del = Build-Pg 'Delete trigger (atomic)' @(1260, 0) `
-        "=SELECT (r->>'ok')::boolean AS ok, r->>'reason' AS reason, (r->>'trigger_id')::int AS trigger_id, (r->>'observations_deleted')::int AS observations_deleted FROM agent.fn_delete_monitor_trigger(`$1::jsonb) AS r;" `
-        ([ordered]@{
-            domain = '$(''Resolve domain'').item.json.domain'
-            label  = '$(''Start'').item.json.label'
-        })
+    $ifOk = Build-If 'Write ok?' @(1880, 0) '={{ $json.ok }}' 'true' 'equals' 'boolean'
+    $errWrite = Build-ToolError 'Delete rejected' @(2060, 200) "={{ `$('Delete trigger (atomic)').item.json.reason }}"
 
-    $ifOk = Build-If 'Write ok?' @(1440, 0) '={{ $json.ok }}' 'true' 'equals' 'boolean'
-    $errWrite = Build-ToolError 'Delete rejected' @(1620, 200) "={{ `$('Delete trigger (atomic)').item.json.reason }}"
-
-    $ret = Build-Return @(1620, 0) @(
+    $ret = Build-Return @(2060, 0) @(
         ,@('ok','true','boolean')
         ,@('trigger_id', '={{ $json.trigger_id }}', 'number')
         ,@('observations_deleted', '={{ $json.observations_deleted }}', 'number')
@@ -57,17 +59,22 @@ function Build-DeleteMonitorTrigger {
 
     $sticky = Build-Sticky 'Doc Delete Trigger' @(120, -380) `
         'HITL + agent.fn_delete_monitor_trigger (Hard-DELETE)' `
-        'Nur agent.monitor bindet dieses Tool. Trigger sind CONFIG, kein Ledger -> Hard-DELETE legitim; monitor_observations gehen per FK ON DELETE CASCADE mit (Count steht in Summary + Rückgabe). Auflösung per (domain, label) VOR dem Gate (0/>1 Treffer = ToolError, kein Gate-Spam). Stilllegen statt löschen = tool_set_monitor_trigger status=disabled.' 240 480
+        'Nur agent.monitor bindet dieses Tool. Trigger sind CONFIG, kein Ledger -> Hard-DELETE legitim; monitor_observations gehen per FK ON DELETE CASCADE mit (Count steht in Summary + Rückgabe). Auflösung per (domain, label) VOR dem Gate (0/>1 Treffer = ToolError, kein Gate-Spam). Danach PROBELAUF: Dry run = agent.fn_delete_monitor_trigger mit denselben Werten, immer zurückgerollt (core.fn_dry_run); ok:false (z. B. Core-Systemtrigger, nur deaktivierbar) -> Dry run rejected, KEINE Karte; die fn prüft nach dem Tipp erneut. Stilllegen statt löschen = tool_set_monitor_trigger status=disabled.' 240 480
 
-    $nodes = @($trig, $resolveDomain, $resolve, $ifFound, $errFound, $summary, $reqApproval,
-               $ifApproved, $retCancelled, $del, $ifOk, $errWrite, $ret, $sticky)
+    $nodes = @($trig, $resolveDomain, $resolve, $ifFound, $errFound) + $wg.Nodes + @($summary, $reqApproval,
+               $ifApproved, $retCancelled, $ifOk, $errWrite, $ret, $sticky)
     $conns = [ordered]@{
         'Start'                   = @{ main = @( ,@( E 'Resolve domain' ) ) }
         'Resolve domain'          = @{ main = @( ,@( E 'Resolve trigger' ) ) }
         'Resolve trigger'         = @{ main = @( ,@( E 'Found?' ) ) }
         'Found?'                  = @{ main = @(
-            @( E 'Build Approval Summary' ),
+            @( E 'Dry run' ),
             @( E 'Not found' )
+        ) }
+        'Dry run'                 = @{ main = @( ,@( E 'Dry run ok?' ) ) }
+        'Dry run ok?'             = @{ main = @(
+            @( E 'Build Approval Summary' ),
+            @( E 'Dry run rejected' )
         ) }
         'Build Approval Summary'  = @{ main = @( ,@( E 'Request Approval' ) ) }
         'Request Approval'        = @{ main = @( ,@( E 'Approved?' ) ) }

@@ -121,18 +121,20 @@ function Build-CreateMonitorTrigger {
 })()
 '@
     $linesExpr = $linesExpr.Replace('__PKG_METHODS__', $MonitorMethodPkgJson).Trim()
-    $summary = New-HitlSummary -Pos @(1620, 0) -Title 'core.hitl.create_monitor_trigger' -LinesExpr $linesExpr
+    $summary = New-HitlSummary -Pos @(2060, 0) -Title 'core.hitl.create_monitor_trigger' -LinesExpr $linesExpr
 
-    $reqApproval = Build-CallWorkflow 'Request Approval' @(1800, 0) $GateId 'agent.tool_human_approval' `
+    $reqApproval = Build-CallWorkflow 'Request Approval' @(2240, 0) $GateId 'agent.tool_human_approval' `
         ([ordered]@{ summary = "={{ `$('Build Approval Summary').item.json.summary }}"; chat_id = "={{ `$('Start').item.json.chat_id }}" })
 
-    $ifApproved = Build-If 'Approved?' @(1980, 0) '={{ $json.approved }}' 'true' 'equals' 'boolean'
+    $ifApproved = Build-If 'Approved?' @(2420, 0) '={{ $json.approved }}' 'true' 'equals' 'boolean'
 
-    $retCancelled = Build-ToolCancelled 'Return cancelled' @(2160, 200) 'the create_monitor_trigger action'
+    $retCancelled = Build-ToolCancelled 'Return cancelled' @(2600, 200) 'the create_monitor_trigger action'
 
-    $create = Build-Pg 'Create trigger (atomic)' @(2160, 0) `
-        "=SELECT (r->>'ok')::boolean AS ok, r->>'reason' AS reason, (r->>'trigger_id')::int AS trigger_id, r->>'status' AS status, r->>'next_check_at' AS next_check_at, r->>'check_interval' AS check_interval, (r->>'armed_count')::int AS armed_count FROM agent.fn_create_monitor_trigger(`$1::jsonb) AS r;" `
-        ([ordered]@{
+    # Probelauf vor der Karte: dieselbe fn mit denselben Parametern, immer zurueckgerollt; ok:false -> keine Karte.
+    $wg = New-FnWriteGate -Fn 'agent.fn_create_monitor_trigger' -DryPos @(1620, 0) -WritePos @(2600, 0) `
+        -WriteName 'Create trigger (atomic)' `
+        -WriteSelect "(r->>'ok')::boolean AS ok, r->>'reason' AS reason, (r->>'trigger_id')::int AS trigger_id, r->>'status' AS status, r->>'next_check_at' AS next_check_at, r->>'check_interval' AS check_interval, (r->>'armed_count')::int AS armed_count" `
+        -Params ([ordered]@{
             domain             = '$(''Resolve domain'').item.json.domain'
             package            = '$(''Start'').item.json.package'
             label              = '$(''Start'').item.json.label'
@@ -156,10 +158,10 @@ function Build-CreateMonitorTrigger {
             probe_observation  = 'JSON.parse($(''Probe (validate)'').item.json.probe_json || ''null'')'
         })
 
-    $ifOk = Build-If 'Write ok?' @(2340, 0) '={{ $json.ok }}' 'true' 'equals' 'boolean'
-    $errWrite = Build-ToolError 'Create rejected' @(2520, 200) "={{ `$('Create trigger (atomic)').item.json.reason }}"
+    $ifOk = Build-If 'Write ok?' @(2780, 0) '={{ $json.ok }}' 'true' 'equals' 'boolean'
+    $errWrite = Build-ToolError 'Create rejected' @(2960, 200) "={{ `$('Create trigger (atomic)').item.json.reason }}"
 
-    $ret = Build-Return @(2520, 0) @(
+    $ret = Build-Return @(2960, 0) @(
         ,@('ok','true','boolean')
         ,@('trigger_id', '={{ $json.trigger_id }}', 'number')
         ,@('status', '={{ $json.status }}', 'string')
@@ -170,15 +172,15 @@ function Build-CreateMonitorTrigger {
 
     $stickyOverview = Build-Sticky 'Doc Create Trigger' @(120, -460) `
         'Probe vor Gate + agent.fn_create_monitor_trigger (atomar)' `
-        'Fälligkeit (date-Trigger): Probe (validate) prüft due_date per agent.fn_resolve_monitor_due (dieselbe Regel wie der Write) EINMAL (YYYY-MM-DD oder relativ wie +6 months); ungültig oder vergangen -> ToolError vor dem Gate; Karte und Write nutzen genau dieses Datum. Optionales first_check (erster Lauf und Anker des Rhythmus, z. B. jeden Montag ab dem nächsten) läuft durch dieselbe Regel, steht als Datum auf der Karte und geht aufgelöst in den Write. Cross-agent (Monitor-Agent: domain via LLM, package fix core; Fach-Advisor: domain+package fix = sein Paket). package = Lifecycle-Owner (Purge-Schlüssel, fn_pkg_purge_data räumt WHERE package=<pkg> AND origin=user) — fix per Binding, NIE $fromAI. E2E-Switch IM Tool: chat_id test_e2e -> Sentinel-Domain __e2e_monitor__ (package erbt den Binding-Wert; fn_clear_e2e_data räumt per domain). Ablauf: Dubletten-Backstop (UNIQUE(domain,lower(label)) ist DB-Gesetz) -> PROBE (web: Claude-web_search-HTTP + deterministischer Parse, gleicher Vertrag wie der Cron; sql/Paket-Methoden: fn_monitor_probe beschafft selbst, sql unter SET LOCAL ROLE core_ro, Paket-Methode über ihre Registry-fns aus core.monitor_acquisition_methods — acquisition_params geschützt geparst, die validate_fn des Pakets liefert die Bestätigungszeile) + Validierungs-Kaskade (numerisch/Unit-Echo/Bounds) -> Probe-Fail = ToolError VOR dem Gate -> HITL-Summary MIT Test-Abruf-Wert -> fn_create_monitor_trigger (alle CHECKs als {ok:false} gespiegelt; Probe wird erste Observation + Drawdown-Ratchet-Seed). Web-Cadence >= 12h ist DB-CHECK (Free-Tier-Schutz).' 320 560
+        'Fälligkeit (date-Trigger): Probe (validate) prüft due_date per agent.fn_resolve_monitor_due (dieselbe Regel wie der Write) EINMAL (YYYY-MM-DD oder relativ wie +6 months); ungültig oder vergangen -> ToolError vor dem Gate; Karte und Write nutzen genau dieses Datum. Optionales first_check (erster Lauf und Anker des Rhythmus, z. B. jeden Montag ab dem nächsten) läuft durch dieselbe Regel, steht als Datum auf der Karte und geht aufgelöst in den Write. Cross-agent (Monitor-Agent: domain via LLM, package fix core; Fach-Advisor: domain+package fix = sein Paket). package = Lifecycle-Owner (Purge-Schlüssel, fn_pkg_purge_data räumt WHERE package=<pkg> AND origin=user) — fix per Binding, NIE $fromAI. E2E-Switch IM Tool: chat_id test_e2e -> Sentinel-Domain __e2e_monitor__ (package erbt den Binding-Wert; fn_clear_e2e_data räumt per domain). Ablauf: Dubletten-Backstop (UNIQUE(domain,lower(label)) ist DB-Gesetz) -> PROBE (web: Claude-web_search-HTTP + deterministischer Parse, gleicher Vertrag wie der Cron; sql/Paket-Methoden: fn_monitor_probe beschafft selbst, sql unter SET LOCAL ROLE core_ro, Paket-Methode über ihre Registry-fns aus core.monitor_acquisition_methods — acquisition_params geschützt geparst, die validate_fn des Pakets liefert die Bestätigungszeile) + Validierungs-Kaskade (numerisch/Unit-Echo/Bounds) -> Probe-Fail = ToolError VOR dem Gate -> PROBELAUF (Dry run = agent.fn_create_monitor_trigger mit denselben Werten, immer zurückgerollt via core.fn_dry_run; ok:false -> Dry run rejected, KEINE Karte) -> HITL-Summary MIT Test-Abruf-Wert -> fn_create_monitor_trigger (alle CHECKs als {ok:false} gespiegelt; Probe wird erste Observation + Drawdown-Ratchet-Seed; prüft nach dem Tipp erneut). Web-Cadence >= 12h ist DB-CHECK (Free-Tier-Schutz).' 320 560
 
     $stickyBranch = Build-Sticky 'Doc Probe-Branch' @(880, -340) `
         'Exklusive Branches statt Merge' `
         'Web probe? routet jedes Item GENAU einen Weg (web: Load model config [model.monitor_acquisition, bei jedem Lauf aus core.config] + HTTP + Parse; sonst direkt) — beide Wege münden in Probe (validate), der dadurch exakt 1x läuft. Kein Merge-Node nötig (im Repo unbewiesen).' 180 360
 
     $nodes = @($trig, $resolveDomain, $dupCheck, $ifDup, $errDup, $ifWeb, $loadModel, $acquire, $shape,
-               $probe, $ifProbeOk, $errProbe, $summary, $reqApproval, $ifApproved,
-               $retCancelled, $create, $ifOk, $errWrite, $ret, $stickyOverview, $stickyBranch)
+               $probe, $ifProbeOk, $errProbe) + $wg.Nodes + @($summary, $reqApproval, $ifApproved,
+               $retCancelled, $ifOk, $errWrite, $ret, $stickyOverview, $stickyBranch)
     $conns = [ordered]@{
         'Start'                   = @{ main = @( ,@( E 'Resolve domain' ) ) }
         'Resolve domain'          = @{ main = @( ,@( E 'Check duplicate label' ) ) }
@@ -196,8 +198,13 @@ function Build-CreateMonitorTrigger {
         'Shape probe observation' = @{ main = @( ,@( E 'Probe (validate)' ) ) }
         'Probe (validate)'        = @{ main = @( ,@( E 'Probe ok?' ) ) }
         'Probe ok?'               = @{ main = @(
-            @( E 'Build Approval Summary' ),
+            @( E 'Dry run' ),
             @( E 'Probe failed' )
+        ) }
+        'Dry run'                 = @{ main = @( ,@( E 'Dry run ok?' ) ) }
+        'Dry run ok?'             = @{ main = @(
+            @( E 'Build Approval Summary' ),
+            @( E 'Dry run rejected' )
         ) }
         'Build Approval Summary'  = @{ main = @( ,@( E 'Request Approval' ) ) }
         'Request Approval'        = @{ main = @( ,@( E 'Approved?' ) ) }

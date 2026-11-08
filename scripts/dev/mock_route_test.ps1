@@ -358,6 +358,42 @@ if ($isOrch -and -not $Discover -and @($cases).Count -gt 0) {
     if ($ok) { $passed++; Write-Host "    [PASS]" -ForegroundColor Green } else { $failed++; Write-Host "    [FAIL] Antwort fehlt oder Execution nicht success, wenn der Platzhalter scheitert" -ForegroundColor Red }
 }
 
+# --- Schrittlimit des Orchestrators: der Nutzer bekommt einen Hinweis, kein stilles Ende -----------------------------
+# Mock-Szenario __mock_step_limit__ laesst den Router siebenmal einen Agenten rufen (maxIterations 6). Die Agent-Node
+# wirft "Max iterations (6) reached"; ihr Fehler-Ausgang fuehrt in die normale Zustell-Kette (Hinweis core.orch.step_limit)
+# und danach in "Agent error alert" (Stop and Error -> Owner-Alarm). Erwartet: Hinweis im Chat (Sprache des Absenders),
+# kein Sticker/keine Reaktion, "Denkt nach"-Schalter weg, Execution status=error mit der Limit-Meldung.
+if ($isOrch -and -not $Discover -and @($cases).Count -gt 0) {
+    $extra++
+    Write-Host ""
+    Write-Host "  [step-limit] Schrittlimit erreicht -> fester Hinweis an den Nutzer, Owner-Alarm bleibt"
+    $ok = $false
+    try {
+        Test-ForceAbort 'step-limit' $ForceAbortId
+        [long]$chatId = $PairedUid
+        Clear-ChatSessionMemory -Container $Container -SessionId "$chatId"
+        Clear-MockTelegramRequests -Container $Container
+        $base = Get-MaxExecId -WfId $TargetWfId -BridgeUrl $N8N_URL -ApiKey $N8N_API_KEY
+        Send-TelegramIngress -IngressUrl $ingress.Url -Secret $ingress.Secret -ChatId $chatId -FromUid $PairedUid -Text '__mock_step_limit__' | Out-Null
+        $ex = Wait-ExecResolvingGates -WfId $TargetWfId -AfterId $base -Approve $false -Container $Container -BridgeUrl $N8N_URL -ApiKey $N8N_API_KEY -TimeoutSec $Timeout
+        $reqs = @(Get-MockTelegramRequests -Container $Container)
+        $texts = @($reqs | Where-Object { $_.method -eq 'sendMessage' -and [string]$_.body.chat_id -eq "$chatId" } | ForEach-Object { [string]$_.body.text })
+        $hinted = @($texts | Where-Object { Test-TextHasKey -Text $_ -Key 'core.orch.step_limit' }).Count
+        $errMsg = ''; try { $errMsg = [string]$ex.data.resultData.error.message } catch { }
+        $lastNode = ''; try { $lastNode = [string]$ex.data.resultData.lastNodeExecuted } catch { }
+        if ($Verbose) { Write-Host "    Execution=$($ex.status)  letzter Knoten=$lastNode  Meldung=$errMsg  Hinweise=$hinted  Texte=$($texts.Count)" -ForegroundColor DarkGray }
+        $ok = $ex -and ($ex.status -eq 'error') -and ($lastNode -eq 'Agent error alert') -and ($hinted -eq 1)
+        if ($ok -and -not (Test-ThinkingAfterAnswer $chatId)) { $ok = $false }
+        if ($ok) {
+            $emoji = @($reqs | Where-Object { $_.method -in @('sendSticker', 'setMessageReaction') }).Count
+            if ($emoji -gt 0) { $ok = $false; Write-Host "    FEHLER: Sticker/Reaktion neben dem Limit-Hinweis" -ForegroundColor Red }
+        }
+    } catch {
+        Write-CaseAbort -ErrorRecord $_ -CaseId 'step-limit' -Cleanup { Clear-CaseLeftovers }
+    }
+    if ($ok) { $passed++; Write-Host "    [PASS]" -ForegroundColor Green } else { $failed++; Write-Host "    [FAIL] Schrittlimit: Hinweis fehlt, doppelt, oder Owner-Alarm (Agent error alert) bleibt aus" -ForegroundColor Red }
+}
+
 # --- "Bot denkt nach" lebt bis zur Antwort (Schleife core.sub_show_thinking, 5-s-Takt) ------------------------------
 # Mock-Szenario __mock_slow_answer_long__ antwortet erst nach 25 s. Zeitplan ab dem Schalter (agent.thinking_lease):
 # bei ~7 s eine offene Karte fuer den Chat (agent.hitl_pending) -> Pause; bei ~16 s Karte weg -> wieder Anzeige.

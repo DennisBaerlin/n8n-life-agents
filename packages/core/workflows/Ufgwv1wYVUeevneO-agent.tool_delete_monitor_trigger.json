@@ -142,6 +142,135 @@
                   },
                   {
                       "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "=SELECT core.fn_dry_run(\u0027agent.fn_delete_monitor_trigger(jsonb)\u0027::regprocedure, $1::jsonb) AS r;",
+                                         "options":  {
+                                                         "queryReplacement":  "={{ JSON.stringify({ domain: $(\u0027Resolve domain\u0027).item.json.domain, label: $(\u0027Start\u0027).item.json.label }) }}"
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       720,
+                                       0
+                                   ],
+                      "id":  "88261068-4b65-5701-9e8d-dab03b548f15",
+                      "name":  "Dry run",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_WRITE__",
+                                                           "name":  "Postgres account"
+                                                       }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "b4a4710c-1e36-578b-89e9-5b10335ed976",
+                                                                                   "leftValue":  "={{ $(\u0027Dry run\u0027).item.json.r.ok }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       940,
+                                       0
+                                   ],
+                      "id":  "a81c340b-e61b-5783-acfb-dc1617b0be06",
+                      "name":  "Dry run ok?"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "2d45d581-06d3-55b0-a00a-96716f07ac71",
+                                                                                     "name":  "ok",
+                                                                                     "value":  "false",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "5f9fb775-da9b-552e-a239-388ed9dc9e97",
+                                                                                     "name":  "card_sent",
+                                                                                     "value":  "false",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "e7c89478-c977-5331-8092-2157f7937150",
+                                                                                     "name":  "error",
+                                                                                     "value":  "={{ $(\u0027Dry run\u0027).item.json.r.reason || $(\u0027Dry run\u0027).item.json.r.error || \u0027The database rejected this entry.\u0027 }}",
+                                                                                     "type":  "string"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "c59dee5b-08dd-56a4-b6a5-9c1991863df8",
+                                                                                     "name":  "code",
+                                                                                     "value":  "={{ $(\u0027Dry run\u0027).item.json.r.code || \u0027\u0027 }}",
+                                                                                     "type":  "string"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "f863cb7d-f525-5e08-adb8-47d1e831dbb9",
+                                                                                     "name":  "candidates",
+                                                                                     "value":  "={{ $(\u0027Dry run\u0027).item.json.r.candidates || [] }}",
+                                                                                     "type":  "array"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       1160,
+                                       200
+                                   ],
+                      "id":  "e82fc534-21df-5953-9faf-e2dd16f2cc04",
+                      "name":  "Dry run rejected"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "=SELECT (r-\u003e\u003e\u0027ok\u0027)::boolean AS ok, r-\u003e\u003e\u0027reason\u0027 AS reason, (r-\u003e\u003e\u0027trigger_id\u0027)::int AS trigger_id, (r-\u003e\u003e\u0027observations_deleted\u0027)::int AS observations_deleted FROM agent.fn_delete_monitor_trigger(($1::jsonb - \u0027_effective\u0027) || COALESCE(NULLIF(($1::jsonb)-\u003e\u0027_effective\u0027, \u0027null\u0027::jsonb), \u0027{}\u0027::jsonb)) AS r;",
+                                         "options":  {
+                                                         "queryReplacement":  "={{ JSON.stringify({ domain: $(\u0027Resolve domain\u0027).item.json.domain, label: $(\u0027Start\u0027).item.json.label, _effective: ($(\u0027Dry run\u0027).item.json.r.effective || null) }) }}"
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       1700,
+                                       0
+                                   ],
+                      "id":  "f84ea1c5-2e0a-5498-a2a8-081bd3de2121",
+                      "name":  "Delete trigger (atomic)",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_WRITE__",
+                                                           "name":  "Postgres account"
+                                                       }
+                                      }
+                  },
+                  {
+                      "parameters":  {
                                          "assignments":  {
                                                              "assignments":  [
                                                                                  {
@@ -159,7 +288,7 @@
                       "type":  "n8n-nodes-base.set",
                       "typeVersion":  3.4,
                       "position":  [
-                                       720,
+                                       1160,
                                        0
                                    ],
                       "id":  "0fceb69d-d203-562a-aa48-0fc818f390dd",
@@ -197,7 +326,7 @@
                       "type":  "n8n-nodes-base.executeWorkflow",
                       "typeVersion":  1.2,
                       "position":  [
-                                       900,
+                                       1340,
                                        0
                                    ],
                       "id":  "a0c76cf5-c2d5-54a3-bde8-d76b55e51933",
@@ -231,7 +360,7 @@
                       "type":  "n8n-nodes-base.if",
                       "typeVersion":  2.2,
                       "position":  [
-                                       1080,
+                                       1520,
                                        0
                                    ],
                       "id":  "04eaf445-a08e-5b80-b265-a879b9f8b990",
@@ -268,34 +397,11 @@
                       "type":  "n8n-nodes-base.set",
                       "typeVersion":  3.4,
                       "position":  [
-                                       1260,
+                                       1700,
                                        200
                                    ],
                       "id":  "5c289319-d5d2-52ef-b3a9-bf9bfef808ea",
                       "name":  "Return cancelled"
-                  },
-                  {
-                      "parameters":  {
-                                         "operation":  "executeQuery",
-                                         "query":  "=SELECT (r-\u003e\u003e\u0027ok\u0027)::boolean AS ok, r-\u003e\u003e\u0027reason\u0027 AS reason, (r-\u003e\u003e\u0027trigger_id\u0027)::int AS trigger_id, (r-\u003e\u003e\u0027observations_deleted\u0027)::int AS observations_deleted FROM agent.fn_delete_monitor_trigger($1::jsonb) AS r;",
-                                         "options":  {
-                                                         "queryReplacement":  "={{ JSON.stringify({ domain: $(\u0027Resolve domain\u0027).item.json.domain, label: $(\u0027Start\u0027).item.json.label }) }}"
-                                                     }
-                                     },
-                      "type":  "n8n-nodes-base.postgres",
-                      "typeVersion":  2.6,
-                      "position":  [
-                                       1260,
-                                       0
-                                   ],
-                      "id":  "f84ea1c5-2e0a-5498-a2a8-081bd3de2121",
-                      "name":  "Delete trigger (atomic)",
-                      "credentials":  {
-                                          "postgres":  {
-                                                           "id":  "__CRED_POSTGRES_WRITE__",
-                                                           "name":  "Postgres account"
-                                                       }
-                                      }
                   },
                   {
                       "parameters":  {
@@ -325,7 +431,7 @@
                       "type":  "n8n-nodes-base.if",
                       "typeVersion":  2.2,
                       "position":  [
-                                       1440,
+                                       1880,
                                        0
                                    ],
                       "id":  "0555697f-65e8-522d-ae48-54d43a5d4991",
@@ -356,7 +462,7 @@
                       "type":  "n8n-nodes-base.set",
                       "typeVersion":  3.4,
                       "position":  [
-                                       1620,
+                                       2060,
                                        200
                                    ],
                       "id":  "58bdfe22-8805-562f-8d17-e4b42df29c72",
@@ -393,7 +499,7 @@
                       "type":  "n8n-nodes-base.set",
                       "typeVersion":  3.4,
                       "position":  [
-                                       1620,
+                                       2060,
                                        0
                                    ],
                       "id":  "50a7aa77-d347-5f12-a19f-eff57a4a0d9e",
@@ -401,7 +507,7 @@
                   },
                   {
                       "parameters":  {
-                                         "content":  "## DB-Automatik\n**HITL + agent.fn_delete_monitor_trigger (Hard-DELETE)**\n\nNur agent.monitor bindet dieses Tool. Trigger sind CONFIG, kein Ledger -\u003e Hard-DELETE legitim; monitor_observations gehen per FK ON DELETE CASCADE mit (Count steht in Summary + Rückgabe). Auflösung per (domain, label) VOR dem Gate (0/\u003e1 Treffer = ToolError, kein Gate-Spam). Stilllegen statt löschen = tool_set_monitor_trigger status=disabled.",
+                                         "content":  "## DB-Automatik\n**HITL + agent.fn_delete_monitor_trigger (Hard-DELETE)**\n\nNur agent.monitor bindet dieses Tool. Trigger sind CONFIG, kein Ledger -\u003e Hard-DELETE legitim; monitor_observations gehen per FK ON DELETE CASCADE mit (Count steht in Summary + Rückgabe). Auflösung per (domain, label) VOR dem Gate (0/\u003e1 Treffer = ToolError, kein Gate-Spam). Danach PROBELAUF: Dry run = agent.fn_delete_monitor_trigger mit denselben Werten, immer zurückgerollt (core.fn_dry_run); ok:false (z. B. Core-Systemtrigger, nur deaktivierbar) -\u003e Dry run rejected, KEINE Karte; die fn prüft nach dem Tipp erneut. Stilllegen statt löschen = tool_set_monitor_trigger status=disabled.",
                                          "height":  240,
                                          "width":  480,
                                          "color":  4
@@ -455,7 +561,7 @@
                                                     [
                                                         {
                                                             "index":  0,
-                                                            "node":  "Build Approval Summary",
+                                                            "node":  "Dry run",
                                                             "type":  "main"
                                                         }
                                                     ],
@@ -468,6 +574,35 @@
                                                     ]
                                                 ]
                                    },
+                        "Dry run":  {
+                                        "main":  [
+                                                     [
+                                                         {
+                                                             "index":  0,
+                                                             "node":  "Dry run ok?",
+                                                             "type":  "main"
+                                                         }
+                                                     ]
+                                                 ]
+                                    },
+                        "Dry run ok?":  {
+                                            "main":  [
+                                                         [
+                                                             {
+                                                                 "index":  0,
+                                                                 "node":  "Build Approval Summary",
+                                                                 "type":  "main"
+                                                             }
+                                                         ],
+                                                         [
+                                                             {
+                                                                 "index":  0,
+                                                                 "node":  "Dry run rejected",
+                                                                 "type":  "main"
+                                                             }
+                                                         ]
+                                                     ]
+                                        },
                         "Build Approval Summary":  {
                                                        "main":  [
                                                                     [

@@ -238,4 +238,51 @@ BEGIN
     END IF;
     RAISE NOTICE 'PASS [V Void]';
 END $$;
+
+-- ---------- W: Grenzen ----------
+--   W1 Lot am Uebernahme-Tag + spaeterer Verkauf ALLER Stuecke (Bestand danach genau 0) -> gueltig
+--   W2 Lot mit Kurswert unter einem Cent -> lot_invalid
+--   W3 Uebernahme-Gruppe, deren Betraege sich nicht aufheben -> keine reine Uebernahme, Ablehnung
+DO $$
+DECLARE
+    T       DATE := core.fn_today();
+    v_cash  INT; v_depot INT; v_h INT; v_res JSONB; v_old UUID;
+BEGIN
+    v_cash := (finance.fn_create_account(jsonb_build_object('name', '__t_hlw_cash__', 'account_type', 'cash', 'currency', 'EUR',
+                   'opening_balance', 1000, 'opening_balance_date', (T - 20)::text))->>'account_id')::int;
+    v_depot := (finance.fn_create_account(jsonb_build_object('name', '__t_hlw_depot__', 'account_type', 'stocks_depot',
+                    'currency', 'EUR', 'settlement_id', v_cash))->>'account_id')::int;
+
+    -- W1
+    v_h := (finance.fn_book_stock_buy(jsonb_build_object('depot_id', v_depot, 'settlement_id', v_cash, 'isin', 'IE00HLOTW001',
+              'symbol', 'HLW1', 'name', 'HL W1 ETF', 'shares', 10, 'price_per_share', 10, 'order_fee', 0,
+              'transaction_date', (T - 5)::text, 'existing_position', true))->>'holding_id')::int;
+    PERFORM finance.fn_book_stock_sell(jsonb_build_object('settlement_id', v_cash, 'holding_id', v_h, 'shares', 10,
+              'price_per_share', 11, 'order_fee', 0, 'transaction_date', (T - 1)::text, 'symbol', 'HLW1'));
+    v_res := finance.fn_replace_holding_lots(jsonb_build_object('depot_name', '__t_hlw_depot__', 'position', 'IE00HLOTW001',
+              'lots', jsonb_build_array(jsonb_build_object('date', (T - 5)::text, 'shares', 6, 'price_per_share', 9),
+                                        jsonb_build_object('date', (T - 40)::text, 'shares', 4, 'price_per_share', 11))));
+    IF (v_res->>'ok')::boolean IS DISTINCT FROM true THEN
+        RAISE EXCEPTION 'FAIL [W1 Lot am Uebernahme-Tag, Bestand danach 0]: %', v_res; END IF;
+
+    -- W2
+    v_h := (finance.fn_book_stock_buy(jsonb_build_object('depot_id', v_depot, 'settlement_id', v_cash, 'isin', 'IE00HLOTW002',
+              'symbol', 'HLW2', 'name', 'HL W2 ETF', 'shares', 10, 'price_per_share', 10, 'order_fee', 0,
+              'transaction_date', (T - 5)::text, 'existing_position', true))->>'holding_id')::int;
+    v_res := finance.fn_replace_holding_lots(jsonb_build_object('depot_name', '__t_hlw_depot__', 'position', 'IE00HLOTW002',
+              'lots', jsonb_build_array(jsonb_build_object('date', (T - 30)::text, 'shares', 1, 'price_per_share', 0.001))));
+    IF v_res->>'code' IS DISTINCT FROM 'lot_invalid' THEN RAISE EXCEPTION 'FAIL [W2 Kurswert unter 1 Cent]: %', v_res; END IF;
+
+    -- W3
+    v_h := (finance.fn_book_stock_buy(jsonb_build_object('depot_id', v_depot, 'settlement_id', v_cash, 'isin', 'IE00HLOTW003',
+              'symbol', 'HLW3', 'name', 'HL W3 ETF', 'shares', 5, 'price_per_share', 10, 'order_fee', 0,
+              'transaction_date', (T - 5)::text, 'existing_position', true))->>'holding_id')::int;
+    SELECT group_id INTO v_old FROM finance.transactions WHERE holding_id = v_h AND category::text = 'buy';
+    UPDATE finance.transactions SET amount = amount + 1 WHERE group_id = v_old AND category::text = 'position_takeover';
+    v_res := finance.fn_replace_holding_lots(jsonb_build_object('depot_name', '__t_hlw_depot__', 'position', 'IE00HLOTW003',
+              'lots', jsonb_build_array(jsonb_build_object('date', (T - 30)::text, 'shares', 5, 'price_per_share', 10))));
+    IF (v_res->>'ok')::boolean IS DISTINCT FROM false THEN
+        RAISE EXCEPTION 'FAIL [W3 Gruppe hebt sich nicht auf]: %', v_res; END IF;
+    RAISE NOTICE 'PASS [W Grenzen: Uebernahme-Tag, Bestand 0, Cent-Grenze, unreine Gruppe]';
+END $$;
 ROLLBACK;

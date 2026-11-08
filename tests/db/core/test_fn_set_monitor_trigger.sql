@@ -186,4 +186,37 @@ BEGIN
 
 END $$;
 
+-- Re-arm eines gefeuerten Termin-Triggers ohne neues Datum, solange due_date vorbei ist -> {ok:false} (feuerte sonst sofort).
+DO $$
+DECLARE v jsonb;
+BEGIN
+  v := agent.fn_create_monitor_trigger(jsonb_build_object('domain','__t_mon__','label','__t_mon_s29_frist__',
+         'trigger_type','date','acquisition_method','none','due_date',(CURRENT_DATE + 5)::text,'check_interval','1 day'));
+  IF NOT (v->>'ok')::boolean THEN RAISE EXCEPTION 'SETUP [S2.9] %', v; END IF;
+  -- Zeitablauf simulieren: Frist vorbei, Trigger hat gefeuert
+  UPDATE agent.monitor_triggers SET due_date = CURRENT_DATE - 3, status = 'fired', fired_at = now() - interval '3 days'
+   WHERE label = '__t_mon_s29_frist__';
+  v := agent.fn_set_monitor_trigger('{"domain":"__t_mon__","label":"__t_mon_s29_frist__","status":"armed"}'::jsonb);
+  IF (v->>'ok')::boolean THEN
+    RAISE EXCEPTION 'FAIL [S2.9] Re-arm mit vergangenem due_date angenommen (feuert sofort wieder), erwartet ok:false, got %', v;
+  END IF;
+  RAISE NOTICE 'PASS [S2.9]';
+END $$;
+
+-- Unbekannter comparator (">=" statt gte) -> {ok:false} statt still den alten Wert zu behalten.
+DO $$
+DECLARE v jsonb; v_cmp text;
+BEGIN
+  v := agent.fn_create_monitor_trigger(jsonb_build_object('domain','__t_mon__','label','__t_mon_s210_kurs__',
+         'trigger_type','threshold','acquisition_method','web_search','acquisition_prompt','Beispielkurs in EUR',
+         'comparator','lte','threshold_value',50,'expected_unit','EUR','check_interval','1 day'));
+  IF NOT (v->>'ok')::boolean THEN RAISE EXCEPTION 'SETUP [S2.10] %', v; END IF;
+  v := agent.fn_set_monitor_trigger('{"domain":"__t_mon__","label":"__t_mon_s210_kurs__","comparator":">="}'::jsonb);
+  SELECT comparator INTO v_cmp FROM agent.monitor_triggers WHERE label = '__t_mon_s210_kurs__';
+  IF (v->>'ok')::boolean THEN
+    RAISE EXCEPTION 'FAIL [S2.10] comparator ">=" still ignoriert (gespeichert %), erwartet ok:false, got %', v_cmp, v;
+  END IF;
+  RAISE NOTICE 'PASS [S2.10]';
+END $$;
+
 ROLLBACK;

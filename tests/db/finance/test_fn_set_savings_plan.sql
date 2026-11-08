@@ -551,4 +551,27 @@ BEGIN
   END;
 END $$;
 
+-- Betrag aendern: gleicher Betrag -> Text nennt ihn positiv; ein
+-- neuer Betrag meldet monthly_amount positiv.
+DO $$
+DECLARE v_settle INT; v_res JSONB; v_vf DATE;
+BEGIN
+  v_settle := (finance.fn_create_account('{"name":"__test_ssp2_settle__","account_type":"cash","currency":"EUR"}'::jsonb)->>'account_id')::int;
+  PERFORM finance.fn_create_account(jsonb_build_object('name', '__test_ssp2_depot__', 'account_type', 'stocks_depot', 'currency', 'EUR', 'settlement_id', v_settle));
+  v_res := finance.fn_create_savings_plan(jsonb_build_object('name', '__test_ssp2_plan__', 'depot_name', '__test_ssp2_depot__',
+             'isin', 'IE00SSP2A001', 'symbol', 'SSPA', 'security_name', 'A ETF', 'amount', 100, 'schedule_interval', 1,
+             'schedule_unit', 'month', 'first_payment_date', CURRENT_DATE + 3));
+  IF (v_res->>'ok')::boolean IS DISTINCT FROM true THEN RAISE EXCEPTION 'SETUP: %', v_res; END IF;
+  SELECT valid_from INTO v_vf FROM finance.recurring_payments WHERE id = (v_res->>'recurring_payment_id')::int;
+
+  v_res := finance.fn_set_savings_plan(jsonb_build_object('savings_plan_name', '__test_ssp2_plan__', 'new_amount', 100));
+  IF v_res->>'reason' NOT LIKE '% with 100.00 EUR per execution%' THEN RAISE EXCEPTION 'FAIL [gleicher Betrag, Text]: %', v_res; END IF;
+
+  v_res := finance.fn_set_savings_plan(jsonb_build_object('savings_plan_name', '__test_ssp2_plan__', 'new_amount', 150,
+             'valid_from', (v_vf + 10)::text));
+  IF (v_res->>'ok')::boolean IS DISTINCT FROM true OR (v_res->>'monthly_amount')::numeric IS DISTINCT FROM 150 THEN
+    RAISE EXCEPTION 'FAIL [neuer Betrag, monthly_amount 150]: %', v_res; END IF;
+  RAISE NOTICE 'PASS [Text ohne Minus, monthly_amount positiv]';
+END $$;
+
 ROLLBACK;

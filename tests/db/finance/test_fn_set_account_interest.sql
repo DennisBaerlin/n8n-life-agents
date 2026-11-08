@@ -221,4 +221,28 @@ BEGIN
 
 END $$;
 
+-- Grenzen der Vorschau: Satz 0 ist gueltig (Zins faellt weg), ein neuer Satz am Starttag des offenen ist es nicht.
+DO $$
+DECLARE
+  v_a INT;
+  v_p JSONB;
+BEGIN
+  v_a := (finance.fn_create_account(
+    '{"name":"__test_sai_bnd__","account_type":"cash","currency":"EUR","interest_rate":2,"interest_credit_unit":"year","interest_valid_from":"2026-01-01"}'::jsonb
+  )->>'account_id')::int;
+  v_p := finance.fn_interest_rate_preview(jsonb_build_object('account_id', v_a, 'annual_rate', 0, 'valid_from', '2026-03-01'));
+  IF (v_p->>'ok')::boolean IS DISTINCT FROM true THEN
+    RAISE EXCEPTION 'FAIL preview [Satz 0]: erwartet ok=true, got %', v_p; END IF;
+  v_p := finance.fn_interest_rate_preview(jsonb_build_object('account_id', v_a, 'annual_rate', 3, 'valid_from', '2026-01-01'));
+  IF (v_p->>'ok')::boolean IS DISTINCT FROM false OR (v_p->>'current_valid_from')::date IS DISTINCT FROM '2026-01-01' THEN
+    RAISE EXCEPTION 'FAIL preview [gleicher Starttag]: erwartet ok=false, got %', v_p; END IF;
+  -- verzinst bis 2026-06-01 -> ein neuer Satz darf genau dort beginnen
+  INSERT INTO finance.transactions (account_id, amount, transaction_date, category, interest_period_end)
+  VALUES (v_a, 5, '2026-06-01', 'interest', '2026-06-01');
+  v_p := finance.fn_interest_rate_preview(jsonb_build_object('account_id', v_a, 'annual_rate', 3, 'valid_from', '2026-06-01'));
+  IF (v_p->>'ok')::boolean IS DISTINCT FROM true THEN
+    RAISE EXCEPTION 'FAIL preview [Start am Ende der verzinsten Periode]: erwartet ok=true, got %', v_p; END IF;
+  RAISE NOTICE 'PASS preview [Satz 0 gueltig, gleicher Starttag abgelehnt, Start am Verzinst-bis-Tag gueltig]';
+END $$;
+
 ROLLBACK;

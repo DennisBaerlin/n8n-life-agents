@@ -210,4 +210,32 @@ BEGIN
   RAISE NOTICE 'PASS [13 Notreserve von falschem Konto wegziehen]';
 END $$;
 
+-- (14) Geld (EUR) -> Geld (USD): der Ziel-Anteil wird in USD umgerechnet (400 EUR x 1.25 = 500 USD); die Quelle ist
+--      nicht der Raten-Topf des Ziels -> rate_pot_name bleibt leer.
+DO $$
+DECLARE v_res JSONB; v_giro INT; v_pot INT; v_eur INT; v_usd INT; v_goal INT;
+BEGIN
+  INSERT INTO finance.currencies (code, minor_unit) VALUES ('USD', 2) ON CONFLICT (code) DO NOTHING;
+  DELETE FROM finance.fx_rates WHERE base_currency = 'EUR' AND quote_currency = 'USD';
+  INSERT INTO finance.fx_rates (base_currency, quote_currency, rate, as_of) VALUES ('EUR', 'USD', 1.25, current_date);
+  v_giro := (finance.fn_create_account('{"name":"__rea14_giro__","account_type":"cash"}'::jsonb)->>'account_id')::int;
+  v_pot  := (finance.fn_create_account('{"name":"__rea14_pot__","account_type":"cash"}'::jsonb)->>'account_id')::int;
+  INSERT INTO finance.accounts (name, account_type, currency, status) VALUES ('__rea14_eur__','cash','EUR','active') RETURNING id INTO v_eur;
+  INSERT INTO finance.accounts (name, account_type, currency, status) VALUES ('__rea14_usd__','cash','USD','active') RETURNING id INTO v_usd;
+  INSERT INTO finance.transactions (account_id, amount, transaction_date, category) VALUES
+    (v_eur, 1000, current_date - 1, 'other'), (v_usd, 1000, current_date - 1, 'other');
+  v_goal := (finance.fn_create_savings_goal(jsonb_build_object(
+    'name','__rea14_goal__','target_amount',5000,'target_date',(current_date + 900)::text,
+    'monthly_savings_rate',50,'account_id',v_giro,'reserve_account_id',v_pot,
+    'schedule_day_of_month',1,'first_payment_date',(current_date + 3)::text))->>'goal_id')::int;
+  PERFORM finance.fn_book_savings_reservation(jsonb_build_object('savings_goal_id', v_goal, 'account_id', v_eur, 'amount', 400));
+
+  v_res := finance.fn_book_savings_goal_transfer(jsonb_build_object('savings_goal_id', v_goal, 'direction', 'reassign',
+    'from_account_id', v_eur, 'to_account_id', v_usd, 'amount', 400));
+  IF (v_res->>'ok')::boolean IS DISTINCT FROM true OR (v_res->>'to_share')::numeric IS DISTINCT FROM 500
+     OR v_res->'effective'->>'rate_pot_name' IS NOT NULL THEN
+    RAISE EXCEPTION 'FAIL [14 EUR -> USD]: erwartet to_share 500 USD, kein rate_pot_name, got %', v_res; END IF;
+  RAISE NOTICE 'PASS [14 EUR -> USD umgerechnet, Quelle ohne Raten-Topf]';
+END $$;
+
 ROLLBACK;

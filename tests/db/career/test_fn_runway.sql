@@ -70,6 +70,17 @@ BEGIN
     RAISE NOTICE 'PASS [4b] has_fx_gap aus Snapshot durchgereicht (false ohne / true mit Fremdwaehrungs-Luecke)';
   END;
 
+  -- ---------- TEST 4c: Grenzen -- Einkommen = Ausgaben (kein Abbau, keine Division durch 0); Reichweite = Probezeit deckt
+  snap := finance.fn_liquidity_snapshot();
+  v_cash := (snap->>'cash_eur')::numeric; v_exp := (snap->>'monthly_expenses_eur')::numeric;
+  res := career.fn_runway(jsonb_build_object('transition', jsonb_build_object('probation_months', 6, 'expected_gap_income_eur', v_exp)));
+  IF res->>'runway_months' IS NOT NULL OR (res->>'covers')::boolean IS DISTINCT FROM true THEN
+    RAISE EXCEPTION 'FAIL [4c Einkommen = Ausgaben]: %', res; END IF;
+  res := career.fn_runway(jsonb_build_object('transition', jsonb_build_object('probation_months', floor(v_cash / v_exp)::int)));
+  IF (res->>'covers')::boolean IS DISTINCT FROM true THEN
+    RAISE EXCEPTION 'FAIL [4c Reichweite = Probezeit deckt]: %', res; END IF;
+  RAISE NOTICE 'PASS [4c] Grenzen Einkommen = Ausgaben, Reichweite = Probezeit';
+
   -- ---------- TEST 5 (Guard a): finance inaktiv -> graceful NULL, kein RAISE ----------
   UPDATE core.package_registry SET status='inactive' WHERE package='finance';
   IF career.fn_runway('{}'::jsonb) IS NOT NULL THEN RAISE EXCEPTION 'FAIL [5 inactive]: nicht NULL'; END IF;

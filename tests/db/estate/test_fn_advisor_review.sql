@@ -73,6 +73,13 @@ BEGIN
   IF EXISTS (SELECT 1 FROM jsonb_array_elements(r->'alerts') a
              WHERE a->>'metric_key' = 'review_staleness:lena') THEN
     RAISE EXCEPTION 'FAIL [A frischer Review von lena darf NICHT feuern]'; END IF;
+  -- Zahlen im Return: 1 ueberfaellig; bestaetigte Reviews zaehlen nur Erwachsene (ein Kinder-Datensatz zaehlt nicht)
+  INSERT INTO estate.person_records (person_id, last_reviewed_at) VALUES ('kid', now());
+  r := estate.fn_advisor_review('estate');
+  IF (r->'digest'->>'stale_review_count')::int IS DISTINCT FROM 1 OR (r->'digest'->>'reviews_recorded')::int IS DISTINCT FROM 2
+     OR (r->'digest'->>'adults_total')::int IS DISTINCT FROM 2 THEN
+    RAISE EXCEPTION 'FAIL [A Zahlen]: %', r->'digest'; END IF;
+  DELETE FROM estate.person_records WHERE person_id = 'kid';
   RAISE NOTICE 'PASS [A] Staleness feuert per ueberfaelligem Erwachsenen, nicht bei frischem Review';
 
   -- Grenze: NULL last_reviewed_at (nie bestaetigt) feuert KEINE Staleness (keine gerissene Frist).

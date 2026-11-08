@@ -51,4 +51,37 @@ BEGIN
   RAISE NOTICE 'PASS [3/4] Latch + Re-Arm';
 END $$;
 
+-- (5) Alltagsausgaben aus dem Kontoauszug: ohne laufende Zahlung bleibt es neutral; frei genau 0 meldet nicht; Gehalt =
+--     Miete, nur der Alltag macht das Defizit -> Hinweis mit monthly_free = Alltag.
+DO $$
+DECLARE
+  t DATE := CURRENT_DATE;
+  v_acct int; v_ev numeric; r jsonb;
+BEGIN
+  UPDATE finance.recurring_payments SET status = 'paused' WHERE name LIKE '\_\_ccf\_%';
+  PERFORM core.fn_notify_resolve('finance', 'cashflow_coverage');
+  INSERT INTO finance.accounts (name, account_type, currency, status) VALUES ('__ccf5_giro__','cash','EUR','active') RETURNING id INTO v_acct;
+  INSERT INTO finance.bank_statements (account_id, period_start, period_end, opening_balance, closing_balance, currency,
+                                       line_count, matched_count, unmatched_out, unmatched_in, prev_last_reconciled_at)
+  VALUES (v_acct, t - 34, t - 5, 1300, 1000, 'EUR', 5, 0, -300, 0, NULL);
+  SELECT monthly_everyday INTO v_ev FROM finance.fn_household_everyday_month();
+  IF finance.fn_cashflow_coverage_fold() <> '{}'::jsonb THEN
+    RAISE EXCEPTION 'FAIL [5a]: ohne laufende Zahlung neutral, auch mit Alltag, got %', finance.fn_cashflow_coverage_fold(); END IF;
+
+  INSERT INTO finance.recurring_payments (name, account_id, amount, schedule_unit, first_payment_date, valid_from) VALUES
+    ('__ccf5_salary__', v_acct, 500 - v_ev, 'month', t, t),
+    ('__ccf5_rent__',   v_acct, -500, 'month', t, t);
+  IF finance.fn_cashflow_coverage_fold() <> '{}'::jsonb THEN
+    RAISE EXCEPTION 'FAIL [5b]: frei genau 0 meldet nicht, got %', finance.fn_cashflow_coverage_fold(); END IF;
+
+  UPDATE finance.recurring_payments SET amount = 500 WHERE name = '__ccf5_salary__';
+  r := finance.fn_cashflow_coverage_fold();
+  IF (r->'cashflow_coverage'->>'monthly_free')::numeric IS DISTINCT FROM v_ev
+     -- der Text fuers Modell nennt beide Betraege positiv
+     OR r->'cashflow_coverage'->>'note' NOT LIKE '%(about ' || abs(v_ev) || ' EUR/month)%'
+     OR r->'cashflow_coverage'->>'note' NOT LIKE '%exceed income by about ' || abs(v_ev) || ' EUR/month%' THEN
+    RAISE EXCEPTION 'FAIL [5c]: Defizit nur aus dem Alltag, monthly_free %, got %', v_ev, r; END IF;
+  RAISE NOTICE 'PASS [5] Alltag im Defizit, Grenze 0, leere Quelle neutral';
+END $$;
+
 ROLLBACK;

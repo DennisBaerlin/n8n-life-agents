@@ -142,4 +142,28 @@ BEGIN
     END IF;
     RAISE NOTICE 'PASS [B13-B17 deutscher Export]';
 END $$;
+
+-- B18: Datei mit neuestem Eintrag zuerst (absteigend) und einer Leerzeile dazwischen -> der laufende Saldo wird in
+--      Datumsfolge geprueft, die Leerzeile uebersprungen.
+DO $$
+DECLARE
+    v_res JSONB;
+BEGIN
+    v_res := finance.fn_bank_export_normalize(jsonb_build_object('rows', jsonb_build_array(
+        '["Test Person","","","Summary",""]'::jsonb,
+        '["9/1/2026-9/30/2026","","","Opening","100"]'::jsonb,
+        '["","","","Payments in","50"]'::jsonb,
+        '["","","","Payments out","20"]'::jsonb,
+        '["","","","Closing","130"]'::jsonb,
+        '[]'::jsonb,
+        '["All Goals"]'::jsonb,
+        '["Date","Payment type","In","Out","Balance"]'::jsonb,
+        '["9/20/2026","Withdrawal to bank account","","20","130"]'::jsonb,
+        '["","","","",""]'::jsonb,
+        '["9/5/2026","SEPA payment","50","","150"]'::jsonb)));
+    IF (v_res->>'ok')::boolean IS DISTINCT FROM true OR jsonb_array_length(v_res->'rows') <> 2 THEN
+        RAISE EXCEPTION 'FAIL [B18 absteigend + Leerzeile]: %', v_res;
+    END IF;
+    RAISE NOTICE 'PASS [B18 absteigende Datei mit Leerzeile]';
+END $$;
 ROLLBACK;

@@ -212,4 +212,23 @@ BEGIN
     RAISE EXCEPTION 'FAIL [j] Kreditkonto/unbekannt'; END IF;
   RAISE NOTICE 'PASS [j] Kredit/unbekannt -> ok:false';
 END $$;
+
+-- [m] Konto schon heute im Minus (Saldo -50, Abo -20 monatlich): reicht nur bis heute, nicht bis morgen
+DO $$
+DECLARE t DATE := CURRENT_DATE; v_acc INT; v JSONB;
+BEGIN
+  DELETE FROM core.config WHERE package = 'finance' AND category = 'finance' AND key IN ('funding_horizon_months', 'funding_alert_months');
+  INSERT INTO finance.accounts (name, account_type, currency, status) VALUES ('__t_fu_minus__', 'cash', 'EUR', 'active') RETURNING id INTO v_acc;
+  INSERT INTO finance.transactions (account_id, amount, transaction_date, category) VALUES (v_acc, -50, t - 3, 'other');
+  -- ein Kontoauszug ohne Alltagsausgaben macht den Alltag bekannt (sonst bleibt die Lage neutral)
+  INSERT INTO finance.bank_statements (account_id, period_start, period_end, opening_balance, closing_balance, currency,
+                                       line_count, matched_count, unmatched_out, unmatched_in, prev_last_reconciled_at)
+  VALUES (v_acc, t - 34, t - 5, 0, 0, 'EUR', 1, 1, 0, 0, NULL);
+  INSERT INTO finance.recurring_payments (name, account_id, amount, schedule_unit, first_payment_date, valid_from)
+    VALUES ('__t_fu_minus_abo__', v_acc, -20, 'month', t + 5, t + 5);
+  v := finance.fn_account_funding(v_acc);
+  IF (v->>'runs_out_on')::date IS DISTINCT FROM t OR v->>'state' IS DISTINCT FROM 'alert' THEN
+    RAISE EXCEPTION 'FAIL [m] heute im Minus -> runs_out_on heute, alert, got %', v; END IF;
+  RAISE NOTICE 'PASS [m] heute im Minus';
+END $$;
 ROLLBACK;

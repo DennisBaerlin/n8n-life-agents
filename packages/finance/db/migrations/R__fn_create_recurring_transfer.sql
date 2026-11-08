@@ -27,7 +27,7 @@
 --   execution = aufgeloeste Ausfuehrung (bank|manual|unknown, fn_transfer_executed_by) als EIGENES Feld, bewusst NICHT unter
 --   effective: New-FnWriteGate mischt effective in die Eingabe des echten Writes, ein abgeleitetes manual/unknown wuerde
 --   sonst fest gespeichert.
---   Korrigierbar (amount<=0 / Quelle==Ziel / until_free_money mit valid_to / ungueltiger executed_by / Ablehnung von
+--   Korrigierbar (amount<=0 / Quelle==Ziel / Depot- oder Kreditkonto als Bein (fn_bookable_account_reason) / until_free_money mit valid_to / ungueltiger executed_by / Ablehnung von
 --   fn_transfer_free_end) -> {ok:false, reason} OHNE Write.
 --   handoff_task_id (optional): Eintrag einer vereinbarten Plan-Aufgabe -> finance.fn_with_handoff (Pruefung, Abschluss
 --   im selben Write, Kartenzeile core.hitl.handoff_note).
@@ -52,6 +52,7 @@ DECLARE
     v_free     BOOLEAN  := COALESCE(NULLIF(p->>'until_free_money', '')::boolean, false);
     v_end      JSONB    := '{}'::jsonb;
     v_exec     TEXT     := NULLIF(p->>'executed_by', '');
+    v_acct_why TEXT;
 BEGIN
     -- Vereinbarte Plan-Aufgabe (Uebergabe Berater -> Buchhalter): pruefen, schreiben, abschliessen in einer Transaktion
     IF NULLIF(btrim(COALESCE(p->>'handoff_task_id', '')), '') IS NOT NULL THEN
@@ -81,6 +82,11 @@ BEGIN
     IF v_from = v_to THEN
         RETURN jsonb_build_object('ok', false,
             'reason', 'Source and destination account are the same — a transfer needs two different accounts.');
+    END IF;
+    -- Depot/Kredit traegt nie eine freie Buchung: der Dauerauftrag schluege sonst erst beim Buchen fehl.
+    v_acct_why := COALESCE(finance.fn_bookable_account_reason(v_from), finance.fn_bookable_account_reason(v_to));
+    IF v_acct_why IS NOT NULL THEN
+        RETURN jsonb_build_object('ok', false, 'reason', v_acct_why);
     END IF;
     IF v_free AND v_to_dt IS NOT NULL THEN
         RETURN jsonb_build_object('ok', false,

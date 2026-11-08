@@ -85,6 +85,10 @@ BEGIN
                                         valid_to = current_date - 5 WHERE id = v_rp2;
   IF jsonb_typeof(finance.fn_savings_goal_sources(v_g2)->'transfer') <> 'null' THEN
     RAISE EXCEPTION 'FAIL [2c] beendete Rate ist keine Quelle, got %', finance.fn_savings_goal_sources(v_g2); END IF;
+  -- valid_to ist exklusiv: endet heute -> schon keine Quelle mehr
+  UPDATE finance.recurring_payments SET valid_to = current_date WHERE id = v_rp2;
+  IF jsonb_typeof(finance.fn_savings_goal_sources(v_g2)->'transfer') <> 'null' THEN
+    RAISE EXCEPTION 'FAIL [2c2] Rate endet heute ist keine Quelle, got %', finance.fn_savings_goal_sources(v_g2); END IF;
   -- pausiert -> keine Quelle
   UPDATE finance.recurring_payments SET valid_to = NULL, status = 'paused' WHERE id = v_rp2;
   IF jsonb_typeof(finance.fn_savings_goal_sources(v_g2)->'transfer') <> 'null' THEN

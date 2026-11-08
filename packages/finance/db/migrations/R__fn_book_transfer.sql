@@ -6,7 +6,8 @@
 --     - Verschiedene Wgr. -> to_amount (Zielbetrag) ist PFLICHT (der Nutzer bestaetigt beide Betraege
 --       ueber das HITL-Gate; er ist die Kurs-Autoritaet). Soll = -from_amount (Quell-Wgr.),
 --       Haben = +to_amount (Ziel-Wgr.); realisierter Kurs fx_rate = to_amount/from_amount auf beiden Beinen.
---   Eingabe jsonb: from_account_id, to_account_id (im n8n aufgeloest), from_amount (alias: amount),
+--   Eingabe jsonb: from_account_id, to_account_id (im n8n aufgeloest), from_amount (alias: amount; Betraege auch deutsch
+--     geschrieben, unlesbar -> {ok:false}),
 --     to_amount (nur Cross-Currency), transaction_date (ISO oder relativ, core.fn_resolve_input_dates), from_account_name, to_account_name, purpose.
 --   RUECKGABE-VERTRAG: Erfolg -> {ok:true, debit_tx_id, credit_tx_id, fx_rate, from_balance,
 --   to_balance} (Post-State: neue NATIVE Salden beider Konten, in derselben Transaktion gelesen).
@@ -27,8 +28,9 @@ RETURNS jsonb LANGUAGE plpgsql AS $$
 DECLARE
     v_from     INT     := (p->>'from_account_id')::int;
     v_to       INT     := (p->>'to_account_id')::int;
-    v_from_amt NUMERIC := COALESCE(NULLIF(p->>'from_amount', '')::numeric, NULLIF(p->>'amount', '')::numeric);
-    v_to_amt   NUMERIC := NULLIF(p->>'to_amount', '')::numeric;
+    v_from_raw TEXT    := COALESCE(NULLIF(btrim(p->>'from_amount'), ''), NULLIF(btrim(p->>'amount'), ''));
+    v_from_amt NUMERIC := finance.fn_parse_numeric_or_null(v_from_raw, true);
+    v_to_amt   NUMERIC := finance.fn_parse_numeric_or_null(p->>'to_amount', true);
     v_date     DATE;
     v_purpose  TEXT    := NULLIF(p->>'purpose', '');   -- optionaler Verwendungszweck (sonst Auto)
     v_from_ccy CHAR(3);
@@ -58,6 +60,12 @@ BEGIN
     p := v_dates->'p';
     v_date := COALESCE(NULLIF(p->>'transaction_date', '')::date, core.fn_today());   -- leer = heute (DB-Default)
     -- Korrigierbare Input-Pruefungen -> {ok:false} (kein RAISE).
+    -- freie Tool-Eingabe ("1.234,56"): unlesbar -> Rueckfrage statt Cast-Fehler mit Owner-Alarm
+    IF (v_from_amt IS NULL AND v_from_raw IS NOT NULL)
+       OR (v_to_amt IS NULL AND NULLIF(btrim(p->>'to_amount'), '') IS NOT NULL) THEN
+        RETURN jsonb_build_object('ok', false,
+            'reason', 'The amount "' || CASE WHEN v_from_amt IS NULL AND v_from_raw IS NOT NULL THEN v_from_raw ELSE p->>'to_amount' END || '" is not readable - give it as a plain number.');
+    END IF;
     IF v_from_amt IS NULL OR v_from_amt <= 0 THEN
         RETURN jsonb_build_object('ok', false,
             'reason', 'Transfer amount must be a positive number, got ' || COALESCE(v_from_amt::text, 'null') || '.');

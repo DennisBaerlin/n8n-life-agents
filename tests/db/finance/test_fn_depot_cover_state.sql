@@ -73,5 +73,13 @@ BEGIN
   UPDATE core.config SET value = '0.3' WHERE category = 'finance' AND key = 'depot_cover_warn_pct';
   IF finance.fn_depot_cover_state(v_dip)->>'state' <> 'short' THEN RAISE EXCEPTION 'FAIL [8] Schwelle 0,3 %% -> short'; END IF;
   RAISE NOTICE 'PASS [8] Schwelle zur Laufzeit aus core.config';
+
+  -- Grenze: Fehlbetrag genau = Schwelle ist schon eine Luecke (short-Depot: 120 von 1000 bei Schwelle 12 %%)
+  UPDATE core.config SET value = '12' WHERE category = 'finance' AND key = 'depot_cover_warn_pct';
+  IF finance.fn_depot_cover_state(v_short)->>'state' <> 'short' THEN RAISE EXCEPTION 'FAIL [9] Fehlbetrag = Schwelle -> short'; END IF;
+  -- ok ohne Reserve meldet reserved 0, nicht NULL
+  IF (finance.fn_depot_cover_state(v_settle)->>'reserved')::numeric IS DISTINCT FROM 0 THEN
+    RAISE EXCEPTION 'FAIL [10] ohne Reserve -> reserved 0, got %', finance.fn_depot_cover_state(v_settle); END IF;
+  RAISE NOTICE 'PASS [9-10] Schwellen-Grenze, reserved 0 ohne Reserve';
 END $$;
 ROLLBACK;

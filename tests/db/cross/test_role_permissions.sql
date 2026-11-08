@@ -1423,7 +1423,7 @@ BEGIN
     RESET ROLE;
     RAISE EXCEPTION 'FAIL [finance_rw -> fn_set_onboarding_section Mitglied]: % (core.fn_check_write_permission-Grant fehlt?)', SQLERRM;
   END;
-  IF (v_out::jsonb)->>'reason' IS DISTINCT FROM 'owner_only' THEN
+  IF (v_out::jsonb)->>'code' IS DISTINCT FROM 'owner_only' THEN
     RAISE EXCEPTION 'FAIL [finance_rw -> fn_set_onboarding_section Mitglied]: owner_only erwartet, bekam %', v_out; END IF;
   SELECT count(*) INTO v_cnt FROM finance.onboarding_state WHERE section_key = '__rp_sec__' AND status = 'completed';
   IF v_cnt <> 1 THEN RAISE EXCEPTION 'FAIL [finance_rw -> fn_set_onboarding_section Mitglied]: Status wurde trotzdem geaendert'; END IF;

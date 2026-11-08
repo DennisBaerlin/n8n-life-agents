@@ -1,6 +1,6 @@
 -- tests/db/core/test_fn_set_onboarding_section.sql
 -- core.fn_set_onboarding_section: Haushalts-Sektionen (core/household-Pakete, kein per_user-Scope) setzt nur der
--- Owner. Ein positiv aufgeloestes Mitglied bekommt {ok:false, reason:'owner_only'} OHNE Write — sonst koennte es
+-- Owner. Ein positiv aufgeloestes Mitglied bekommt {ok:false, code:'owner_only', reason=Satz} OHNE Write — sonst koennte es
 -- z. B. den Haushalt auf 'unknown' zuruecksetzen und damit per Core-first-Gate alle Paket-Agenten fuer den
 -- ganzen Haushalt sperren. Pruefung ueber das publizierte Fenster core.fn_check_write_permission('owner_only')
 -- (Pass-Through bei fehlender/nicht-numerischer chat_id = CLI/Test/Sentinel, wie alle owner_only-fns).
@@ -28,14 +28,14 @@ BEGIN
 
   -- ---------- 1) Mitglied setzt den Haushalt zurueck -> owner_only, kein Write ----------
   r := core.fn_set_onboarding_section('{"package":"core","section_key":"household","status":"unknown","chat_id":"6602"}');
-  IF (r->>'ok')::boolean IS NOT FALSE OR r->>'reason' <> 'owner_only' THEN
+  IF (r->>'ok')::boolean IS NOT FALSE OR r->>'code' IS DISTINCT FROM 'owner_only' THEN
     RAISE EXCEPTION 'FAIL [Mitglied core/household -> owner_only erwartet]: %', r; END IF;
   SELECT status INTO v_status FROM agent.guide_onboarding_state WHERE section_key = 'household';
   IF v_status <> 'completed' THEN RAISE EXCEPTION 'FAIL [Mitglied hat household trotzdem geschrieben: %]', v_status; END IF;
 
   -- ---------- 2) Mitglied markiert eine household-Paket-Sektion (finance) -> owner_only, kein Write ----------
   r := core.fn_set_onboarding_section('{"package":"finance","section_key":"__sos_sec__","status":"skipped","chat_id":"6602"}');
-  IF (r->>'ok')::boolean IS NOT FALSE OR r->>'reason' <> 'owner_only' THEN
+  IF (r->>'ok')::boolean IS NOT FALSE OR r->>'code' IS DISTINCT FROM 'owner_only' THEN
     RAISE EXCEPTION 'FAIL [Mitglied finance -> owner_only erwartet]: %', r; END IF;
   SELECT status INTO v_status FROM finance.onboarding_state WHERE section_key = '__sos_sec__';
   IF v_status <> 'completed' THEN RAISE EXCEPTION 'FAIL [Mitglied hat finance trotzdem geschrieben: %]', v_status; END IF;
@@ -109,6 +109,26 @@ BEGIN
     RAISE EXCEPTION 'FAIL [unknown -> offen, kein Kipp]: %', r; END IF;
 
   RAISE NOTICE 'PASS test_fn_set_onboarding_section (area_completed_now genau einmal je Uebergang, status_changed_at)';
+END $$;
+
+-- owner_only-Ablehnung ist ein englischer Satz mit naechstem Schritt, kein nackter Code.
+DO $$
+DECLARE v jsonb;
+BEGIN
+  INSERT INTO agent.core_contexts (name, description, agent_name, load_strategy, content, metadata)
+  VALUES ('family', 'test fixture', NULL, 'lazy', E'## Prosa',
+          jsonb_build_object('facts', jsonb_build_object('persons', jsonb_build_array(
+            jsonb_build_object('person_id','erika','first_name','Erika','last_name','Mustermann','role','owner',
+                               'birth_date','1980-05-20','telegram_user_id',111),
+            jsonb_build_object('person_id','lena','first_name','Lena','last_name','Beispiel','role','partner',
+                               'birth_date','1985-06-21','telegram_user_id',222)))))
+  ON CONFLICT (name) DO UPDATE SET metadata = EXCLUDED.metadata;
+  v := core.fn_set_onboarding_section('{"package":"finance","section_key":"accounts","status":"completed","chat_id":"222"}'::jsonb);
+  IF (v->>'ok')::boolean IS DISTINCT FROM false THEN RAISE EXCEPTION 'SETUP [S3.12] Ablehnung erwartet, got %', v; END IF;
+  IF v->>'reason' !~ ' ' THEN
+    RAISE EXCEPTION 'FAIL [S3.12] Ablehnung nur als Code "%", erwartet Satz mit naechstem Schritt, got %', v->>'reason', v;
+  END IF;
+  RAISE NOTICE 'PASS [S3.12]';
 END $$;
 
 ROLLBACK;

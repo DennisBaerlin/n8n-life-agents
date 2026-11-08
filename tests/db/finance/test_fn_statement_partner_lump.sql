@@ -495,4 +495,29 @@ BEGIN
     END IF;
     RAISE NOTICE 'PASS [F1-F3 Bank-Export]';
 END $$;
+
+-- U9: offset_date nie am oder vor dem Vor-Abgleich des Auszugs (der Tag steckt schon im bestaetigten Saldo):
+--     Vor-Abgleich ps + 5, Zeile ps + 3 -> Gegenbein am ps + 6
+DO $$
+DECLARE
+    ps  DATE := date_trunc('month', CURRENT_DATE - 120)::date;
+    pe  DATE := (date_trunc('month', CURRENT_DATE - 120) + interval '1 month - 1 day')::date;
+    a   INT; r JSONB;
+BEGIN
+    INSERT INTO finance.accounts (name, account_type, currency, status) VALUES ('__t_pl_u9__', 'cash', 'EUR', 'active') RETURNING id INTO a;
+    PERFORM pg_temp.mk_stmt(a, ps, pe, 100, 0, 100, NULL, ps + 5);
+    r := finance.fn_statement_partner_lump(a, ps + 3, 100, '{}'::jsonb);
+    IF (r->>'offset_date')::date IS DISTINCT FROM ps + 6 THEN
+        RAISE EXCEPTION 'FAIL [U9 offset_date nach dem Vor-Abgleich]: %', r;
+    END IF;
+    -- dasselbe fuer den Startsaldo-Stichtag des Kontos (opening_balance_date ps + 5)
+    INSERT INTO finance.accounts (name, account_type, currency, status, opening_balance_date)
+    VALUES ('__t_pl_u9b__', 'cash', 'EUR', 'active', ps + 5) RETURNING id INTO a;
+    PERFORM pg_temp.mk_stmt(a, ps, pe, 100, 0, 100);
+    r := finance.fn_statement_partner_lump(a, ps + 3, 100, '{}'::jsonb);
+    IF (r->>'offset_date')::date IS DISTINCT FROM ps + 6 THEN
+        RAISE EXCEPTION 'FAIL [U9b offset_date nach dem Startsaldo]: %', r;
+    END IF;
+    RAISE NOTICE 'PASS [U9 offset_date nach dem Vor-Abgleich bzw. Startsaldo]';
+END $$;
 ROLLBACK;

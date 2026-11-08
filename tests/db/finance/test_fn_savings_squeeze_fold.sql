@@ -30,7 +30,8 @@ BEGIN
     VALUES ('__ssf_plan__', v_depot, 'SSFW', 'World', v_rp);
   r := finance.fn_savings_squeeze_fold();
   IF (r->'savings_squeeze'->>'account_change')::numeric IS DISTINCT FROM -300.00
-     OR COALESCE(r->'savings_squeeze'->>'note', '') NOT ILIKE '%savings rates exceed%' THEN
+     OR COALESCE(r->'savings_squeeze'->>'note', '') NOT ILIKE '%savings rates exceed%'
+     OR COALESCE(r->'savings_squeeze'->>'note', '') NOT LIKE '%shrinks by about 300.00 EUR%' THEN
     RAISE EXCEPTION 'FAIL [1]: Sparraten > frei -> Hinweis mit account_change -300, got %', r; END IF;
   RAISE NOTICE 'PASS [1] Sparraten leeren das Girokonto -> Hinweis';
 
@@ -65,6 +66,57 @@ BEGIN
      OR COALESCE(r->'savings_squeeze'->>'note', '') NOT ILIKE '%already exceed%' THEN
     RAISE EXCEPTION 'FAIL [5]: frei < 0 -> Text already exceed + account_change -2300, got %', r; END IF;
   RAISE NOTICE 'PASS [5] Pflicht-Defizit -> eigener Text';
+END $$;
+
+-- Grenzen und Alltag: Einnahmen 0 / Kontoveraenderung genau 0 melden nie; die geschaetzten Alltagsausgaben
+-- (Kontoauszug) senken frei UND Kontoveraenderung, der Text nennt den Betrag positiv.
+DO $$
+DECLARE
+  t DATE := CURRENT_DATE;
+  v_acct int; v_base numeric; v_exp numeric; r jsonb;
+BEGIN
+  UPDATE finance.recurring_payments SET status = 'paused' WHERE name LIKE '\_\_ssf\_%';
+  SELECT monthly_everyday INTO v_base FROM finance.fn_household_everyday_month();
+  INSERT INTO finance.accounts (name, account_type, currency, status) VALUES ('__ssf2_giro__','cash','EUR','active') RETURNING id INTO v_acct;
+
+  -- Einnahmen 0, nur Ausgaben -> kein Hinweis, auch ohne Latch
+  PERFORM core.fn_notify_resolve('finance', 'savings_squeeze');
+  INSERT INTO finance.recurring_payments (name, account_id, amount, schedule_unit, first_payment_date, valid_from)
+    VALUES ('__ssf2_rent__', v_acct, -1800, 'month', t, t);
+  IF finance.fn_savings_squeeze_fold() <> '{}'::jsonb THEN
+    RAISE EXCEPTION 'FAIL [6a]: ohne Einnahmen kein Hinweis, got %', finance.fn_savings_squeeze_fold(); END IF;
+
+  RAISE NOTICE 'PASS [6] Einnahmen 0 -> kein Hinweis';
+
+  -- frei genau 0 (Gehalt = Miete + bestehende Alltagsschaetzung), nur der Sparplan leert das Konto -> der Sparraten-Text,
+  -- nicht "already exceed"
+  INSERT INTO finance.recurring_payments (name, account_id, amount, schedule_unit, first_payment_date, valid_from)
+    VALUES ('__ssf2_salary__', v_acct, 2000, 'month', t, t);
+  UPDATE finance.recurring_payments SET amount = -(2000 + v_base) WHERE name = '__ssf2_rent__';
+  INSERT INTO finance.recurring_payments (name, account_id, amount, schedule_unit, first_payment_date, valid_from)
+    VALUES ('__ssf2_plan_rp__', v_acct, -100, 'month', t, t);
+  INSERT INTO finance.savings_plans (name, depot_id, symbol, security_name, recurring_payment_id)
+    VALUES ('__ssf2_plan__', (SELECT id FROM finance.accounts WHERE name = '__ssf_depot__'), 'SSFX', 'World',
+            (SELECT id FROM finance.recurring_payments WHERE name = '__ssf2_plan_rp__'));
+  r := finance.fn_savings_squeeze_fold();
+  IF COALESCE(r->'savings_squeeze'->>'note', '') NOT ILIKE '%savings rates exceed%' THEN
+    RAISE EXCEPTION 'FAIL [6b]: frei genau 0 -> Sparraten-Text, got %', r; END IF;
+  UPDATE finance.recurring_payments SET status = 'paused' WHERE name = '__ssf2_plan_rp__';
+  UPDATE finance.recurring_payments SET amount = -1800 WHERE name = '__ssf2_rent__';
+  PERFORM core.fn_notify_resolve('finance', 'savings_squeeze');
+  RAISE NOTICE 'PASS [6b] frei genau 0 -> Sparraten-Text';
+
+  -- Einnahmen 2000, Miete 1800 -> ohne Alltag +200; Alltag -10/Tag (-304.38/Monat) -> frei und Kontoveraenderung negativ
+  INSERT INTO finance.bank_statements (account_id, period_start, period_end, opening_balance, closing_balance, currency,
+                                       line_count, matched_count, unmatched_out, unmatched_in, prev_last_reconciled_at)
+  VALUES (v_acct, t - 34, t - 5, 1300, 1000, 'EUR', 5, 0, -300, 0, NULL);
+  v_exp := 200 + v_base - 304.38;
+  r := finance.fn_savings_squeeze_fold();
+  IF (r->'savings_squeeze'->>'account_change')::numeric IS DISTINCT FROM v_exp
+     OR COALESCE(r->'savings_squeeze'->>'note', '') NOT ILIKE '%already exceed%'
+     OR COALESCE(r->'savings_squeeze'->>'note', '') NOT LIKE '%about ' || abs(v_exp) || ' EUR%' THEN
+    RAISE EXCEPTION 'FAIL [7]: Alltag im Engpass, erwartet account_change % und Text mit %, got %', v_exp, abs(v_exp), r; END IF;
+  RAISE NOTICE 'PASS [7] Alltag senkt frei und Kontoveraenderung, Text nennt den Betrag positiv';
 END $$;
 
 ROLLBACK;

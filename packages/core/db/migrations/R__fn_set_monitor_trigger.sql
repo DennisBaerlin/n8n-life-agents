@@ -5,7 +5,8 @@
 --   per (domain, label) ueber fn_resolve_monitor_trigger (0/>1 -> {ok:false} + Kandidaten).
 --   Lifecycle:
 --     * status='armed' auf einem fired Trigger = RE-ARM (bewusster Akt): fired_at und
---       fail_streak werden geloescht, next_check_at = now (neue Epoche)
+--       fail_streak werden geloescht, next_check_at = now (neue Epoche); date-Trigger mit vergangenem
+--       due_date nur zusammen mit neuem due_date (sonst {ok:false})
 --     * status='disabled' = parken (Due-Selection ueberspringt)
 --     * reset_peak=true = Drawdown-Ratchet nullen (neue Referenz-Epoche; naechste
 --       saubere Beobachtung seedet neu)
@@ -18,6 +19,7 @@
 --   Cadence-Aenderung re-anker next_check_at = now; Web-Rate-Limit (>= 12h) gespiegelt.
 --   due_date: YYYY-MM-DD oder relativ ("+6 months") -> core.fn_resolve_date; ein neu gesendetes Datum in der
 --     Vergangenheit -> {ok:false}.
+--   comparator nur gte|lte, Zahl-Felder als Text mit Punkt oder Komma (agent.fn_parse_decimal_or_null); sonst {ok:false}.
 --   RUECKGABE (Post-State): {ok:true, trigger_id, status, next_check_at,
 --     check_interval, due_date, reference_value}.
 -- ============================================================
@@ -39,6 +41,7 @@ DECLARE
     v_due     DATE;
     v_dchk    JSONB;
     v_avail   JSONB;
+    v_key     TEXT;
 BEGIN
     -- Aufloesung (auch fired/disabled — Lifecycle braucht sie)
     SELECT * INTO v_r FROM agent.fn_resolve_monitor_trigger(p->>'label', v_domain, FALSE);
@@ -70,6 +73,20 @@ BEGIN
             'reason', 'status must be armed (re-arm) or disabled — fired is set only by the monitor itself');
     END IF;
     v_rearm := (v_status = 'armed' AND v_t.status = 'fired');
+
+    -- comparator nur gte|lte (ein unbekannter Wert blieb sonst still beim alten)
+    IF NULLIF(trim(COALESCE(p->>'comparator', '')), '') IS NOT NULL AND trim(p->>'comparator') NOT IN ('gte', 'lte') THEN
+        RETURN jsonb_build_object('ok', false,
+            'reason', 'comparator must be gte (fires at or above the threshold) or lte (at or below), got "'
+                   || (p->>'comparator') || '"');
+    END IF;
+    -- Zahl-Felder als freier Text: unlesbar -> {ok:false} statt Cast-RAISE
+    FOREACH v_key IN ARRAY ARRAY['threshold_value', 'drawdown_pct', 'min_plausible', 'max_plausible', 'max_jump_pct'] LOOP
+        IF NULLIF(btrim(COALESCE(p->>v_key, '')), '') IS NOT NULL AND agent.fn_parse_decimal_or_null(p->>v_key) IS NULL THEN
+            RETURN jsonb_build_object('ok', false,
+                'reason', v_key || ' is not a readable number (e.g. 1.5 or 1,5), got "' || (p->>v_key) || '"');
+        END IF;
+    END LOOP;
 
     -- check_interval (optional)
     IF NULLIF(trim(COALESCE(p->>'check_interval', '')), '') IS NOT NULL THEN
@@ -125,6 +142,12 @@ BEGIN
         END IF;
         v_due := (v_dchk->>'due_date')::date;
     END IF;
+    -- Re-Arm eines Termins, dessen Datum vorbei ist, feuerte im naechsten Lauf sofort wieder -> neues Datum verlangen
+    IF v_rearm AND v_t.trigger_type = 'date' AND v_due IS NULL AND v_t.due_date <= core.fn_today() THEN
+        RETURN jsonb_build_object('ok', false,
+            'reason', 'The date ' || v_t.due_date || ' of this reminder has passed - re-arming it without a new due_date '
+                   || 'would fire again right away. Ask for the new date (e.g. the same day next year) and send it as due_date.');
+    END IF;
 
     BEGIN
         UPDATE agent.monitor_triggers SET
@@ -132,14 +155,14 @@ BEGIN
             acquisition_spec = v_spec,
             comparator       = CASE WHEN NULLIF(trim(COALESCE(p->>'comparator','')),'') IN ('gte','lte')
                                     THEN p->>'comparator' ELSE comparator END,
-            threshold_value  = COALESCE(NULLIF(p->>'threshold_value', '')::numeric, threshold_value),
-            drawdown_pct     = COALESCE(NULLIF(p->>'drawdown_pct', '')::numeric, drawdown_pct),
+            threshold_value  = COALESCE(agent.fn_parse_decimal_or_null(p->>'threshold_value'), threshold_value),
+            drawdown_pct     = COALESCE(agent.fn_parse_decimal_or_null(p->>'drawdown_pct'), drawdown_pct),
             due_date         = COALESCE(v_due, due_date),
             warn_days_before = COALESCE(NULLIF(p->>'warn_days_before', '')::int, warn_days_before),
             expected_unit    = COALESCE(NULLIF(trim(COALESCE(p->>'expected_unit','')), ''), expected_unit),
-            min_plausible    = COALESCE(NULLIF(p->>'min_plausible', '')::numeric, min_plausible),
-            max_plausible    = COALESCE(NULLIF(p->>'max_plausible', '')::numeric, max_plausible),
-            max_jump_pct     = COALESCE(NULLIF(p->>'max_jump_pct', '')::numeric, max_jump_pct),
+            min_plausible    = COALESCE(agent.fn_parse_decimal_or_null(p->>'min_plausible'), min_plausible),
+            max_plausible    = COALESCE(agent.fn_parse_decimal_or_null(p->>'max_plausible'), max_plausible),
+            max_jump_pct     = COALESCE(agent.fn_parse_decimal_or_null(p->>'max_jump_pct'), max_jump_pct),
             action_note      = COALESCE(NULLIF(trim(COALESCE(p->>'action_note','')), ''), action_note),
             check_interval   = v_interval,
             next_check_at    = CASE WHEN v_rearm OR v_interval_given THEN NOW() ELSE next_check_at END,

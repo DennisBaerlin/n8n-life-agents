@@ -162,6 +162,10 @@ BEGIN
        OR COALESCE(finance.fn_savings_goal_pace(p.id) = 'unknown', false) IS DISTINCT FROM COALESCE(p.pace_drift_pp > -5 AND p.has_fx_gap, false)
        OR COALESCE(finance.fn_savings_goal_pace(p.id) = 'unmeasurable', false) IS DISTINCT FROM (NOT p.progress_measurable));
   IF v_n <> 0 THEN RAISE EXCEPTION 'FAIL [3c] % Ziele weichen bei Toleranz -5 von der Regel ab', v_n; END IF;
+  -- Grenze: drift genau = Toleranz ist noch nicht behind
+  UPDATE core.config SET value = '0' WHERE category = 'advisor' AND key = 'drift_pace_pp';
+  IF finance.fn_savings_goal_pace(g_late) IS DISTINCT FROM 'reached' THEN
+    RAISE EXCEPTION 'FAIL [3d] Toleranz 0: drift 0 = Toleranz -> reached, got %', finance.fn_savings_goal_pace(g_late); END IF;
   DELETE FROM core.config WHERE package = 'core' AND category = 'advisor' AND key = 'drift_pace_pp';
   RAISE NOTICE 'PASS [3] behind|unknown <=> drift > Toleranz, unknown <=> zusaetzlich has_fx_gap, unmeasurable <=> NOT measurable (10 und -5)';
 
@@ -187,5 +191,24 @@ BEGIN
      OR finance.fn_savings_goal_pace(g_gap_net) IS DISTINCT FROM 'on_track' THEN
     RAISE EXCEPTION 'FAIL [4e] netto positiver Luecken-Anteil (Einzahlung + kleinere Entnahme) -> on_track, got %', finance.fn_savings_goal_pace(g_gap_net); END IF;
   RAISE NOTICE 'PASS [4c-4e] Kurs-Luecke: behind -> unknown, on_track/reached/paused bleiben';
+END $$;
+
+-- valid_to ist exklusiv: eine Rate mit valid_to = heute laeuft nicht mehr -> paused; valid_to = morgen -> laeuft.
+DO $$
+DECLARE v_giro INT; v_pot INT; v_rp INT; g INT;
+BEGIN
+  INSERT INTO finance.accounts (name, account_type, currency, status) VALUES ('__pace5_giro__', 'cash', 'EUR', 'active') RETURNING id INTO v_giro;
+  INSERT INTO finance.accounts (name, account_type, currency, status) VALUES ('__pace5_pot__', 'cash', 'EUR', 'active') RETURNING id INTO v_pot;
+  INSERT INTO finance.recurring_payments (name, account_id, target_account_id, amount, schedule_unit, first_payment_date, valid_from, valid_to)
+    VALUES ('__pace5_rp__', v_giro, v_pot, -100, 'month', current_date - 30, current_date - 30, current_date + 1) RETURNING id INTO v_rp;
+  INSERT INTO finance.savings_goals (name, target_amount, target_date, created_at, recurring_payment_id)
+    VALUES ('__pace5_goal__', 10000, current_date + 265, now() - interval '100 days', v_rp) RETURNING id INTO g;
+  INSERT INTO finance.savings_goal_reserve_entries (savings_goal_id, account_id, delta_native, kind) VALUES (g, v_pot, 2000, 'manual');
+  IF finance.fn_savings_goal_pace(g) = 'paused' THEN
+    RAISE EXCEPTION 'FAIL [5a] Rate bis morgen gueltig -> nicht paused'; END IF;
+  UPDATE finance.recurring_payments SET valid_to = current_date WHERE id = v_rp;
+  IF finance.fn_savings_goal_pace(g) IS DISTINCT FROM 'paused' THEN
+    RAISE EXCEPTION 'FAIL [5b] Rate endet heute -> paused, got %', finance.fn_savings_goal_pace(g); END IF;
+  RAISE NOTICE 'PASS [5] valid_to exklusiv: endet heute -> paused';
 END $$;
 ROLLBACK;

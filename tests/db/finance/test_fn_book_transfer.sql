@@ -265,4 +265,30 @@ BEGIN
   RAISE NOTICE 'PASS fn_book_transfer [Reserve-Waechter nur mit gebuchtem Soll-Bein]';
 END $$;
 
+-- Betrag als deutscher Text: "1.234,56" wird gebucht, Unlesbares -> {ok:false} statt Cast-Fehler (Owner-Alarm).
+DO $$
+DECLARE r jsonb; v_a int; v_b int;
+BEGIN
+  v_a := (finance.fn_create_account('{"name":"__t_bt_de_a__","account_type":"cash","opening_balance":5000}'::jsonb)->>'account_id')::int;
+  v_b := (finance.fn_create_account('{"name":"__t_bt_de_b__","account_type":"cash"}'::jsonb)->>'account_id')::int;
+  r := finance.fn_book_transfer(jsonb_build_object('from_account_id',v_a,'to_account_id',v_b,'amount','1.234,56'));
+  IF (r->>'ok')::boolean IS DISTINCT FROM true OR finance.fn_get_balance(v_b) IS DISTINCT FROM 1234.56 THEN
+    RAISE EXCEPTION 'FAIL book_transfer ["1.234,56" -> 1234.56]: % / %', r, finance.fn_get_balance(v_b); END IF;
+  r := finance.fn_book_transfer(jsonb_build_object('from_account_id',v_a,'to_account_id',v_b,'amount','etwa hundert'));
+  IF (r->>'ok')::boolean IS DISTINCT FROM false THEN RAISE EXCEPTION 'FAIL book_transfer [unlesbar -> ok:false]: %', r; END IF;
+  RAISE NOTICE 'PASS book_transfer [deutscher Betrag, unlesbar -> ok:false]';
+END $$;
+
+-- Unlesbarer Zielbetrag: die Ablehnung nennt den unlesbaren Wert, nicht den lesbaren Quellbetrag.
+DO $$
+DECLARE r jsonb; v_a int; v_b int;
+BEGIN
+  v_a := (finance.fn_create_account('{"name":"__t_bt_msg_a__","account_type":"cash","opening_balance":500}'::jsonb)->>'account_id')::int;
+  v_b := (finance.fn_create_account('{"name":"__t_bt_msg_b__","account_type":"cash"}'::jsonb)->>'account_id')::int;
+  r := finance.fn_book_transfer(jsonb_build_object('from_account_id',v_a,'to_account_id',v_b,'amount','100','to_amount','etwa neunzig'));
+  IF (r->>'ok')::boolean IS DISTINCT FROM false OR r->>'reason' NOT LIKE '%etwa neunzig%' THEN
+    RAISE EXCEPTION 'FAIL book_transfer [Ablehnung nennt den unlesbaren to_amount]: %', r; END IF;
+  RAISE NOTICE 'PASS book_transfer [unlesbarer to_amount im Grund genannt]';
+END $$;
+
 ROLLBACK;

@@ -26,7 +26,8 @@
 --                   die Deadline selbst darf nie still verstreichen)
 --        recurring_info: Info-Eintrag jede faellige Runde, latcht NIE
 --     7. next_check_at via fn_next_check IMMER advancen (Erfolg UND Fehlschlag — sonst
---        brennt ein kaputter Web-Prompt jede Heartbeat-Runde einen Web-Abruf)
+--        brennt ein kaputter Web-Prompt jede Heartbeat-Runde einen Web-Abruf); date-Trigger kappt den Slot auf
+--        den naechsten Meilenstein (Warn-Beginn, sonst due_date), damit ein langer Rhythmus die Frist nicht ueberspringt
 --   Datums-Logik gepinnt: heute = core.fn_today(now) (Haushalts-Zeitzone der Sitzung, die eine Adresse fuer "heute").
 --   ERINNERUNGS-FENSTER (Roter Faden, Owner-Entscheid 2026-10-23, core.fn_in_reminder_window): Wert-Waechter
 --   (threshold/drawdown) melden sofort, auch nachts. Datums-/Info-Trigger gelten ausserhalb des Fensters nicht als
@@ -172,7 +173,15 @@ BEGIN
 
         UPDATE agent.monitor_triggers
            SET last_checked_at  = v_now,
-               next_check_at    = agent.fn_next_check(next_check_at, check_interval, v_now),
+               -- date: nie ueber den naechsten Meilenstein (Warn-Beginn, sonst Frist) hinaus, sonst springt ein langer
+               -- Rhythmus ueber die Frist und sie verstreicht still; ::timestamptz = Tagesbeginn in der Sitzungs-Zeitzone.
+               next_check_at    = CASE WHEN v_t.trigger_type = 'date' AND NOT v_fire THEN
+                                      LEAST(agent.fn_next_check(next_check_at, check_interval, v_now),
+                                            (CASE WHEN v_t.warn_days_before > 0
+                                                       AND v_t.due_date - v_t.warn_days_before > v_today
+                                                  THEN v_t.due_date - v_t.warn_days_before
+                                                  ELSE v_t.due_date END)::timestamptz)
+                                  ELSE agent.fn_next_check(next_check_at, check_interval, v_now) END,
                fail_streak      = 0,
                last_value       = COALESCE(v_value, last_value),
                last_value_as_of = CASE WHEN v_value IS NOT NULL

@@ -7,10 +7,14 @@
 --   Faellig, wenn: Schalter config feature.update_check = 'true' (fail-closed) UND installed ein stabiles Tag (nicht
 --   'dev') UND es stabile Releases > installed gibt (keine Drafts/Prereleases/Nicht-SemVer; mit require_signature nur
 --   solche mit Asset 'SHA256SUMS.sig') UND fuer das neueste noch keine Karte ging (Latch release_update/<tag>).
---   Text: Titel + die Kurzfassungen der hoechstens 3 neuesten Releases (core.fn_release_intro) + Hinweis.
+--   Text: Titel + die Kurzfassungen der hoechstens 3 neuesten Releases in der Owner-Sprache
+--   (core.fn_release_intro(body, lang): summary:<lang>-Marker, sonst englischer Einleitungsabsatz) + Hinweis.
 --   Knoepfe: [Jetzt aktualisieren] (upd:now:<tag>, core.fn_handle_update_cb) + Link [Alle Aenderungen] (nur https).
---   p: {installed, releases:[{tag, draft, prerelease, body, html_url, assets:[name]}], require_signature?}
---   RUECKGABE: {due:false, reason:'disabled'|'not_release'|'invalid'|'up_to_date'|'notified'}
+--   Fenster: bei scheduled=true (Timer/Tick) kommt die Karte nur im Erinnerungs-Fenster (core.fn_in_reminder_window),
+--   sonst outside_window ohne zu latchen; ohne scheduled (Handaufruf, Folge-Check nach einem Update) sofort.
+--   p: {installed, releases:[{tag, draft, prerelease, body, html_url, assets:[name]}], require_signature?, scheduled?,
+--       at? (nur Test: Zeitpunkt fuer den Fenster-Test)}
+--   RUECKGABE: {due:false, reason:'disabled'|'not_release'|'invalid'|'up_to_date'|'notified'|'outside_window'}
 --            | {due:true, tag, text, keyboard:[[{text,callback_data}],[{text,url}]]}
 --   Nie RAISE. INVOKER (Aufrufer = root ueber runuser postgres; db_test als Superuser).
 --   Tests: tests/db/core/test_fn_release_card.sql
@@ -64,13 +68,21 @@ BEGIN
         RETURN jsonb_build_object('due', false, 'reason', 'notified', 'tag', v_latest->>'tag');
     END IF;
 
+    -- Geplanter Check (Timer/Tick alle 2 h) schickt nur im Erinnerungs-Fenster; der Handaufruf ignoriert es.
+    -- Erst NACH up_to_date/notified geprueft, damit das Log nachts den eigentlichen Zustand zeigt. 'at' ist nur die
+    -- Test-Injektion (Produktion uebergibt es nie); kaputter Wert -> now(), nie RAISE.
+    IF COALESCE(p->'scheduled' = 'true'::jsonb, false)
+       AND NOT core.fn_in_reminder_window(CASE WHEN pg_input_is_valid(p->>'at', 'timestamptz')
+                                               THEN (p->>'at')::timestamptz ELSE now() END) THEN
+        RETURN jsonb_build_object('due', false, 'reason', 'outside_window', 'tag', v_latest->>'tag');
+    END IF;
+
     v_lang := agent.fn_person_lang(NULL)->>'lang';   -- NULL = Owner (Person -> Owner -> en)
-    -- Eine Zeile je Release: '• <tag>: <Kurzfassung>' (reine Formatierung, sprachneutral -> kein Katalog-Key)
-    SELECT string_agg('• ' || (e->>'tag')
-                      || CASE WHEN core.fn_release_intro(e->>'body') <> '' THEN ': ' || core.fn_release_intro(e->>'body') ELSE '' END,
-                      E'\n' ORDER BY o)
+    -- Eine Zeile je Release: '• <tag>: <Kurzfassung in Owner-Sprache>' (reine Formatierung, sprachneutral -> kein Katalog-Key)
+    SELECT string_agg('• ' || (e->>'tag') || CASE WHEN s.intro <> '' THEN ': ' || s.intro ELSE '' END, E'\n' ORDER BY o)
       INTO v_items
-      FROM jsonb_array_elements(v_newer) WITH ORDINALITY AS t(e, o)
+      FROM jsonb_array_elements(v_newer) WITH ORDINALITY AS t(e, o),
+           LATERAL (SELECT core.fn_release_intro(e->>'body', v_lang) AS intro) s
      WHERE o <= 3;
 
     v_text := core.fn_ui_text('core.update.card.title', v_lang,

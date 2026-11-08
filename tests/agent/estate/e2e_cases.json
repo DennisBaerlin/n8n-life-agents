@@ -42,11 +42,11 @@
   {
     "id": "ee05",
     "name": "create_case: echter Ereignisfall-Write + Task-Instanziierung (WS-3)",
-    "task": "Lege bitte einen Todesfall für Erika an, gestorben am 15. Oktober 2026 in Bayern. Sie war angestellt und es gibt ein Testament.",
+    "task": "Lege bitte einen Todesfall für Erika an, gestern gestorben, in Bayern. Sie war angestellt und es gibt ein Testament.",
     "chat_id": "test_e2e_ee05",
     "verify_sql": "SELECT count(*) FROM estate.case_tasks ct JOIN estate.cases c ON c.id = ct.case_id WHERE c.case_type = 'death' AND c.status = 'open' AND ct.template_key = 'sterbefallanzeige' AND ct.status = 'open';",
     "expect": 1,
     "is_negative": false,
-    "notes": "WS-3 estate: prueft die Schema-Fidelity des create_case-Payloads durch estate.fn_create_case in die DB — der Fall wird angelegt UND die Fristen-Checkliste instanziiert (die Sterbefallanzeige-Task existiert als offene Task, ihre due_date rechnet die DB). Subjekt = die owner-Person (Erika): die non-numerische test_e2e-chat_id laeuft adults_only pass-through UND ueberspringt den subject_is_sender-Guard (nur der numerische Prod-Pfad prueft ihn, db-getestet in test_fn_create_case) -> der Write-Pfad ist voll exerzierbar ohne eine 2. gepairte Person. cases/case_tasks haben keinen Namen -> Cleanup wholesale in fn_clear_e2e_data (estate-Block). set_/cancel_case + set_/create_case_task: triviale case_id/status-Payloads -> contract_lint (Input-Paritaet) + test_fn_* decken die Fidelity. Todesdatum bewusst nah am Lauf (2026-10-15): bei einem Jahre zurueckliegenden Datum sind alle Fristen laengst abgelaufen und der Agent klaert das zuerst, statt den Fall anzulegen -> spaetestens nach ~2 Monaten in task + expected_tool_args + scenarios.json (bzw. ee05) nachziehen."
+    "notes": "WS-3 estate: prueft die Schema-Fidelity des create_case-Payloads durch estate.fn_create_case in die DB — der Fall wird angelegt UND die Fristen-Checkliste instanziiert (die Sterbefallanzeige-Task existiert als offene Task, ihre due_date rechnet die DB). Subjekt = die owner-Person (Erika): die non-numerische test_e2e-chat_id laeuft adults_only pass-through UND ueberspringt den subject_is_sender-Guard (nur der numerische Prod-Pfad prueft ihn, db-getestet in test_fn_create_case) -> der Write-Pfad ist voll exerzierbar ohne eine 2. gepairte Person. cases/case_tasks haben keinen Namen -> Cleanup wholesale in fn_clear_e2e_data (estate-Block). set_/cancel_case + set_/create_case_task: triviale case_id/status-Payloads -> contract_lint (Input-Paritaet) + test_fn_* decken die Fidelity. Todesdatum relativ (gestern, Muster es18): bei einem lange zurueckliegenden festen Datum sind alle Fristen abgelaufen und der Agent klaert das zuerst, statt den Fall anzulegen."
   }
 ]

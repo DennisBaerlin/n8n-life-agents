@@ -307,4 +307,17 @@ BEGIN
 END $$;
 ROLLBACK TO SAVEPOINT srp_exec;
 
+-- Betrag 0 ist keine Aenderung, sondern eine korrigierbare Ablehnung (kein Split)
+DO $$
+DECLARE v_acc INT; v_rp INT; v_res JSONB;
+BEGIN
+  v_acc := (finance.fn_create_account('{"name":"__test_srp0_giro__","account_type":"cash"}'::jsonb)->>'account_id')::int;
+  INSERT INTO finance.recurring_payments (name, account_id, amount, schedule_unit, first_payment_date, valid_from)
+    VALUES ('__test_srp0_abo__', v_acc, -15, 'month', CURRENT_DATE + 5, CURRENT_DATE - 20) RETURNING id INTO v_rp;
+  v_res := finance.fn_set_recurring_payment(jsonb_build_object('recurring_payment_id', v_rp, 'amount', 0));
+  IF (v_res->>'ok')::boolean IS DISTINCT FROM false
+     OR (SELECT count(*) FROM finance.recurring_payments WHERE name = '__test_srp0_abo__') <> 1 THEN
+    RAISE EXCEPTION 'FAIL [Betrag 0]: %', v_res; END IF;
+  RAISE NOTICE 'PASS set_recurring_payment [Betrag 0 -> ok:false ohne Split]';
+END $$;
 ROLLBACK;

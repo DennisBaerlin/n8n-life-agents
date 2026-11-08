@@ -210,4 +210,73 @@ BEGIN
   END;
   RAISE NOTICE 'PASS [6] set-Karte, Kinderkonto raus, Umwidmung prueft die laufende Rate';
 END $$;
+
+-- 8) Kandidat mit Ziel-Zuordnung UND Abgaengen: frei = tiefster Stand minus das fuer Ziele reservierte Geld;
+--    (9) eine Zuordnung eines geschlossenen Ziels senkt die Notreserve-Deckung nicht.
+DO $$
+DECLARE v_acc INT; v_g INT; v_min NUMERIC; v_free NUMERIC; v_cov0 NUMERIC; r record;
+BEGIN
+  v_acc := (finance.fn_create_account('{"name":"__ers8_tg__","account_type":"cash","currency":"EUR","opening_balance":10000}'::jsonb)->>'account_id')::int;
+  PERFORM finance.fn_add_recurring_payment(v_acc, -100, '__ers8_abo__', 1::smallint, 'month'::finance.schedule_unit, 1::smallint,
+            CURRENT_DATE - 10, CURRENT_DATE - 10, NULL, NULL, NULL);
+  INSERT INTO finance.savings_goals (name, target_amount, target_date) VALUES ('__ers8_ziel__', 5000, CURRENT_DATE + 300) RETURNING id INTO v_g;
+  PERFORM finance.fn_book_savings_reservation(jsonb_build_object('savings_goal_id', v_g, 'account_id', v_acc, 'amount', 2000));
+  v_min := (finance.fn_account_outlook(v_acc)->>'min_projected')::numeric;
+  IF v_min IS NULL OR v_min <= 2000 THEN RAISE EXCEPTION 'SETUP FAIL [8] Vorschau: %', finance.fn_account_outlook(v_acc); END IF;
+  SELECT (c->>'free_eur')::numeric INTO v_free FROM jsonb_array_elements(finance.fn_emergency_reserve_candidates()) c
+   WHERE c->>'name' = '__ers8_tg__';
+  IF v_free IS DISTINCT FROM LEAST(v_min - 2000, 8000) THEN
+    RAISE EXCEPTION 'FAIL [8] frei = tiefster Stand % minus reserviert 2000, got %', v_min, v_free; END IF;
+  RAISE NOTICE 'PASS [8] Kandidat: tiefster Stand minus Ziel-Geld';
+
+  -- (9) Notreserve 600 auf einem Konto mit Saldo 1000; ein GESCHLOSSENES Ziel mit dem ganzen Saldo zaehlt nicht mit
+  UPDATE finance.savings_goals SET status = 'cancelled' WHERE kind = 'emergency_reserve' AND status = 'active';
+  v_acc := (finance.fn_create_account('{"name":"__ers9_tg__","account_type":"cash","currency":"EUR","opening_balance":1000}'::jsonb)->>'account_id')::int;
+  INSERT INTO finance.savings_goals (name, kind, target_amount, status) VALUES ('__ers9_nr__', 'emergency_reserve', 3000, 'active')
+    RETURNING id INTO v_g;
+  INSERT INTO finance.savings_goal_reserve_entries (savings_goal_id, account_id, delta_native, kind) VALUES (v_g, v_acc, 600, 'manual');
+  INSERT INTO finance.savings_goals (name, target_amount, target_date, status)
+    VALUES ('__ers9_zu__', 1000, CURRENT_DATE + 100, 'cancelled') RETURNING id INTO v_g;
+  INSERT INTO finance.savings_goal_reserve_entries (savings_goal_id, account_id, delta_native, kind) VALUES (v_g, v_acc, 1000, 'manual');
+  SELECT c.covered_eur INTO v_cov0 FROM finance.fn_emergency_reserve_covered() c WHERE c.account_id = v_acc;
+  IF v_cov0 IS DISTINCT FROM 600 THEN
+    RAISE EXCEPTION 'FAIL [9] geschlossenes Ziel senkt die Deckung: erwartet 600, got %', v_cov0; END IF;
+  RAISE NOTICE 'PASS [9] Zuordnungen geschlossener Ziele zaehlen nicht';
+END $$;
+
+-- 10) Notreserve ohne zugeordnetes Geld: gedeckt 0 (nicht NULL); Geld nur auf einem Fremdwaehrungs-Konto ohne Kurs ->
+--     kein Urteil (neutral) und has_fx_gap, auch wenn der Liquiditaets-Schnappschuss selbst keine Luecke sieht.
+DO $$
+DECLARE v_g INT; v_chf INT; v_s jsonb;
+BEGIN
+  UPDATE finance.savings_goals SET status = 'cancelled' WHERE kind = 'emergency_reserve' AND status = 'active';
+  INSERT INTO finance.savings_goals (name, kind, target_amount, status) VALUES ('__ers10_nr__', 'emergency_reserve', 1000, 'active')
+    RETURNING id INTO v_g;
+  v_s := finance.fn_emergency_reserve_status();
+  IF (v_s->>'covered_eur')::numeric IS DISTINCT FROM 0 OR v_s->>'state' IS DISTINCT FROM 'warn' THEN
+    RAISE EXCEPTION 'FAIL [10a] ohne Geld: covered 0, warn: %', v_s; END IF;
+
+  INSERT INTO finance.currencies (code, minor_unit) VALUES ('CHF', 2) ON CONFLICT (code) DO NOTHING;
+  DELETE FROM finance.fx_rates WHERE quote_currency = 'CHF' OR base_currency = 'CHF';
+  INSERT INTO finance.accounts (name, account_type, currency, status) VALUES ('__ers10_chf__', 'cash', 'CHF', 'active') RETURNING id INTO v_chf;
+  INSERT INTO finance.transactions (account_id, amount, transaction_date, category) VALUES (v_chf, 500, CURRENT_DATE - 1, 'other');
+  INSERT INTO finance.savings_goal_reserve_entries (savings_goal_id, account_id, delta_native, currency, kind)
+    VALUES (v_g, v_chf, 400, 'CHF', 'manual');
+  v_s := finance.fn_emergency_reserve_status();
+  IF v_s->>'state' IS DISTINCT FROM 'neutral' OR (v_s->>'has_fx_gap')::boolean IS DISTINCT FROM true THEN
+    RAISE EXCEPTION 'FAIL [10b] Kursluecke: neutral + has_fx_gap: %', v_s; END IF;
+  RAISE NOTICE 'PASS [10] covered 0 ohne Geld, Kursluecke -> neutral';
+END $$;
+
+-- 7) Monats-Ziel 0 ist kein Ziel -> {ok:false} ohne Write.
+DO $$
+DECLARE v_cash INT; v_res JSONB;
+BEGIN
+  INSERT INTO finance.accounts (name, account_type, currency, status) VALUES ('__ers7_cash__', 'cash', 'EUR', 'active') RETURNING id INTO v_cash;
+  UPDATE finance.savings_goals SET status = 'cancelled' WHERE kind = 'emergency_reserve' AND status = 'active';
+  v_res := finance.fn_create_savings_goal(jsonb_build_object('kind', 'emergency_reserve', 'target_months', 0,
+             'reserve_account_id', v_cash));
+  IF (v_res->>'ok')::boolean IS DISTINCT FROM false THEN RAISE EXCEPTION 'FAIL [7] target_months 0 angenommen: %', v_res; END IF;
+  RAISE NOTICE 'PASS [7] target_months 0 -> ok:false';
+END $$;
 ROLLBACK;

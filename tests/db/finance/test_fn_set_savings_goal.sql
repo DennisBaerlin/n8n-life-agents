@@ -369,4 +369,25 @@ BEGIN
     RAISE EXCEPTION 'FAIL set [R6 Datum vorgezogen]: %', v_r; END IF;
   RAISE NOTICE 'PASS set [R6 vorgezogenes Datum zeigt die Warnkarte]';
 END $$;
+
+-- (R7) Instandhaltungsruecklage wieder oeffnen: nur eine aktive Ruecklage DERSELBEN Immobilie sperrt, ein beliebiges
+--      anderes aktives Ziel nicht; ohne gestoppte Quellen meldet der Return 0/false statt NULL.
+DO $$
+DECLARE v_re INT; v_g INT; v_r JSONB;
+BEGIN
+  INSERT INTO finance.real_estate (name) VALUES ('__ssg7 Haus__') RETURNING id INTO v_re;
+  INSERT INTO finance.savings_goals (name, kind, real_estate_id, status)
+    VALUES ('__ssg7 Ruecklage__', 'maintenance_reserve', v_re, 'cancelled') RETURNING id INTO v_g;
+  INSERT INTO finance.savings_goals (name, target_amount, target_date, status)
+    VALUES ('__ssg7 anderes Ziel__', 1000, current_date + 300, 'active');
+  -- eine aktive Notreserve sperrt nur das Wiederoeffnen einer Notreserve, nicht das einer Instandhaltungsruecklage
+  IF NOT EXISTS (SELECT 1 FROM finance.savings_goals WHERE kind = 'emergency_reserve' AND status = 'active') THEN
+    INSERT INTO finance.savings_goals (name, kind, target_amount, status) VALUES ('__ssg7 Notreserve__', 'emergency_reserve', 3000, 'active');
+  END IF;
+  v_r := finance.fn_set_savings_goal(jsonb_build_object('goal_id', v_g, 'status', 'active'));
+  IF (v_r->>'ok')::boolean IS DISTINCT FROM true
+     OR (v_r->>'paused_plan_count')::int IS DISTINCT FROM 0 OR (v_r->>'paused_cash_rate')::boolean IS DISTINCT FROM false THEN
+    RAISE EXCEPTION 'FAIL set [R7 Ruecklage wieder oeffnen]: %', v_r; END IF;
+  RAISE NOTICE 'PASS set [R7 Ruecklage oeffnen trotz anderem Ziel, Return 0/false]';
+END $$;
 ROLLBACK;

@@ -21,6 +21,18 @@ BEGIN
   v := finance.fn_plan_goal_resolved('{"withdrawal_rate_pct":4}');
   IF v ? 'target_portfolio_eur' OR v->>'derived_key' IS NOT NULL THEN RAISE EXCEPTION 'FAIL [einer]: %', v; END IF;
   IF finance.fn_plan_goal_resolved(NULL) IS NOT NULL THEN RAISE EXCEPTION 'FAIL [null]'; END IF;
+  -- Nicht-Objekt bleibt unveraendert
+  IF finance.fn_plan_goal_resolved('[1,2]') IS DISTINCT FROM '[1,2]'::jsonb THEN RAISE EXCEPTION 'FAIL [array]'; END IF;
+  -- Rate oder Portfolio 0 leiten nichts ab (keine Division durch 0, kein Einkommen 0)
+  v := finance.fn_plan_goal_resolved('{"target_income_eur_month":2500,"withdrawal_rate_pct":0}');
+  IF v->>'derived_key' IS NOT NULL THEN RAISE EXCEPTION 'FAIL [Rate 0 -> Portfolio]: %', v; END IF;
+  v := finance.fn_plan_goal_resolved('{"target_portfolio_eur":0,"withdrawal_rate_pct":4}');
+  IF v->>'derived_key' IS NOT NULL THEN RAISE EXCEPTION 'FAIL [Portfolio 0 -> Einkommen]: %', v; END IF;
+  v := finance.fn_plan_goal_resolved('{"target_portfolio_eur":700000,"withdrawal_rate_pct":0}');
+  IF v->>'derived_key' IS NOT NULL THEN RAISE EXCEPTION 'FAIL [Rate 0 -> Einkommen]: %', v; END IF;
+  -- Einkommen auf Cent: 100.000 x 3,5 % / 12 = 291,67
+  v := finance.fn_plan_goal_resolved('{"target_portfolio_eur":100000,"withdrawal_rate_pct":3.5}');
+  IF (v->>'target_income_eur_month')::numeric IS DISTINCT FROM 291.67 THEN RAISE EXCEPTION 'FAIL [Einkommen Cent]: %', v; END IF;
 
   -- Validator: alle drei -> abgelehnt, zwei -> gueltig
   IF finance.fn_validate_financial_planning(

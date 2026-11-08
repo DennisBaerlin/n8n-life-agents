@@ -54,28 +54,6 @@ _owner_psql() {
   pg_su_psql -v ON_ERROR_STOP=1 -X -d "$N8N_DB_NAME" "$@"
 }
 
-# _psql_setvar <name> <value> -> eine psql-`\set name 'value'`-Zeile fuer einen 600/postgres-eigenen
-# Treiber (NIE als `-v` auf die Kommandozeile -> kein /proc/cmdline-Leak von Code/PII; Plan-Checkliste
-# "Secret nie als CLI-Argument"). Escaping fuer den psql-Single-Quote-Kontext: \ -> \\, ' -> \'.
-_psql_setvar() {
-  local v="$2"
-  v="${v//\\/\\\\}"
-  v="${v//\'/\\\'}"
-  printf "\\set %s '%s'\n" "$1" "$v"
-}
-
-# _owner_psql_driver [psql-args...] -> liest Treiber-Inhalt (\set-Zeilen + SQL) von STDIN, fuehrt ihn
-# ueber eine 600/postgres-eigene Temp-Datei aus. Werte stehen NUR in der 600-Datei, nie in der CLI.
-_owner_psql_driver() {
-  local drv; drv="$(mktemp /tmp/owner_drv.XXXXXX.sql)"
-  cat > "$drv"
-  chmod 600 "$drv"; chown "$DB_SUPERUSER" "$drv" 2>/dev/null || true
-  local rc=0
-  _owner_psql "$@" -f "$drv" || rc=$?
-  rm -f "$drv"
-  return $rc
-}
-
 # Owner-Credentials aufloesen (Email + Klartext-Passwort). KEIN bcrypt/managed-env mehr —
 # /rest/owner/setup nimmt das Klartext-Passwort und hasht selbst. Das generierte Passwort MUSS
 # n8ns Policy erfuellen (>=8 Zeichen, >=1 Ziffer, >=1 Grossbuchstabe; rand_hex liefert nur
@@ -374,15 +352,16 @@ _seed_owner_skeleton() {
 
   # PII (Name/Geburtsdatum) ueber \set in einem 600-Treiber, NICHT als -v (Prozessliste). Der
   # postgres-User liest die 600/postgres-eigene Treiberdatei; die Repo-Datei bleibt root-only.
+  # shellcheck disable=SC2119  # psql_superuser_driver bewusst ohne extra psql-Args
   if {
-        _psql_setvar owner_first     "$OWNER_FIRST_NAME"
-        _psql_setvar owner_last      "$OWNER_LAST_NAME"
-        _psql_setvar owner_birth     "$OWNER_BIRTH_DATE"
-        _psql_setvar owner_language  "${OWNER_LANGUAGE:-de}"   # Sprache fester Texte (Textkatalog), Standard Deutsch
-        _psql_setvar owner_persona   "${OWNER_PERSONA:-neutral}"   # Bot-Charakter (Skelett schreibt nur gueltige, nie neutral)
-        _psql_setvar owner_person_id "${OWNER_PERSON_ID:-owner}"
+        psql_setvar owner_first     "$OWNER_FIRST_NAME"
+        psql_setvar owner_last      "$OWNER_LAST_NAME"
+        psql_setvar owner_birth     "$OWNER_BIRTH_DATE"
+        psql_setvar owner_language  "${OWNER_LANGUAGE:-de}"   # Sprache fester Texte (Textkatalog), Standard Deutsch
+        psql_setvar owner_persona   "${OWNER_PERSONA:-neutral}"   # Bot-Charakter (Skelett schreibt nur gueltige, nie neutral)
+        psql_setvar owner_person_id "${OWNER_PERSON_ID:-owner}"
         cat "$seed"
-      } | _owner_psql_driver; then
+      } | psql_superuser_driver; then
     ok "Owner-Person-Skelett gesichert (family)."
   else
     warn "Owner-Skelett-Seed fehlgeschlagen — Telegram-Pairing ist so nicht moeglich (Details im Protokoll)."
@@ -396,9 +375,9 @@ _seed_owner_skeleton() {
 # bis zum Ende abgelaufen). fn_arm guardt selbst: bereits gepairter Owner -> {ok:false}; ein neuer Code
 # ersetzt eine offene Owner-Challenge. Code via \set im 600-Treiber (nie als -v / argv).
 _arm_owner_challenge() {
-  { _psql_setvar code "$1"
+  { psql_setvar code "$1"
     printf "SELECT agent.fn_arm_pairing_challenge(jsonb_build_object('role','owner','challenge', :'code'));\n"
-  } | _owner_psql_driver -At 2>/dev/null || true
+  } | psql_superuser_driver -At 2>/dev/null || true
 }
 
 # core.backup_key-Backup-Key sicherstellen: generiert einen backup_encryption_key, falls NOCH KEINER
@@ -407,9 +386,10 @@ _arm_owner_challenge() {
 # die Leserollen. Generiert via openssl rand; Wert NUR ueber den 600-Treiber (Secret, kein argv-Leak).
 _ensure_backup_secret() {
   local val; val="$(rand_hex 32)"
-  if { _psql_setvar bkey "$val"
+  # shellcheck disable=SC2119  # psql_superuser_driver bewusst ohne extra psql-Args
+  if { psql_setvar bkey "$val"
        printf "INSERT INTO core.backup_key(key, value) VALUES ('backup_encryption_key', :'bkey') ON CONFLICT (key) DO NOTHING;\n"
-     } | _owner_psql_driver >/dev/null 2>&1; then
+     } | psql_superuser_driver >/dev/null 2>&1; then
     ok "core.backup_key backup_encryption_key sichergestellt (generiert, falls fehlend; bestehender unberuehrt)."
   else
     warn "core.backup_key backup_encryption_key konnte nicht gesetzt werden — provision.sh erneut laufen lassen (bzw. den Key als Credential-Owner direkt per psql in core.backup_key eintragen); Export/Restore bleibt bis dahin ungenutzt."

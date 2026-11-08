@@ -798,6 +798,8 @@
   "finance.advisor.tax_year": "새 과세연도: Basiszins/Vorabpauschale와 Freistellungsauftrag(비과세 한도 신청)를 확인하세요 (Basiszins는 매년 바뀌어서, 그렇지 않으면 1월 Vorabpauschale 출금이 불필요하게 비과세 한도를 넘을 수 있어요). 계획은 {year}년에 마지막으로 확인했어요.",
   "finance.advisor.risk_profile_stale": "위험 성향을 {days}일 동안 확인하지 않았어요 (기준 {threshold}일). 위험 감수 의향과 감당 능력을 잠깐 점검하세요.",
   "finance.advisor.account_coverage": "계좌 잔액 부족 예상: ‘{account}’의 잔액이 {date}에 {min}까지 내려갈 것으로 보여요. 설정한 여유 자금 {buffer}보다 적어요. 다음 입금까지의 예정된 결제와 계좌 명세서로 추정한 생활비(하루 약 {per_day})를 기준으로 계산했어요.",
+  "finance.advisor.statement_stale": "계좌 명세서가 오래됐어요: ‘{account}’의 마지막 명세서는 {date} 자예요 ({days}일 전). 이대로는 잔액이 충분할지 예측하기 어려워요. 최신 명세서를 보내 주세요.",
+  "finance.advisor.fx_rate_stale": "환율이 오래됐어요: {currency}의 최신 환율은 {date} 자예요 ({days}일 전). 그 이후 자동 환율 업데이트가 없었어요. 그동안 {currency} 금액은 이 환율로 유로로 환산돼요.",
   "finance.advisor.account_coverage_provisional": "생활비 추정은 잠정치예요. 명세서가 아직 하나뿐이고 보통 자동이체 등록 전의 것이라 다소 높게 나올 수 있어요.",
   "finance.advisor.account_coverage_default_buffer": "완충액은 가계 기본값이에요. 채팅에서 이 계좌의 완충액을 바꿀 수 있어요 (예: “이 계좌에는 항상 400 €를 남겨 둬”).",
   "finance.advisor.maintenance_reserve_low": "유지보수 적립금 ‘{property}’: 현재 월 {rate}를 적립하고 있는데, II. BV 기준 최소 금액은 {recommended}예요 (연간 m²당 {rate_m2}, 건물 {age}년). 채팅에서 금액을 바꿀 수 있어요.",

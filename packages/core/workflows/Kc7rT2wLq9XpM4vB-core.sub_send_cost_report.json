@@ -48,7 +48,7 @@
                   {
                       "parameters":  {
                                          "operation":  "executeQuery",
-                                         "query":  "=SELECT core.fn_import_llm_usage(\u0027{\"rows\":[]}\u0027::jsonb)-\u003e\u003e\u0027after\u0027 AS after, COALESCE(agent.fn_resolve_sender(CASE WHEN ($1::jsonb)-\u003e\u003e\u0027chat_id\u0027 ~ \u0027^[0-9]{1,18}$\u0027 THEN (($1::jsonb)-\u003e\u003e\u0027chat_id\u0027)::bigint END)-\u003e\u003e\u0027role\u0027, \u0027\u0027) = \u0027owner\u0027 AS is_owner;",
+                                         "query":  "=SELECT COALESCE(agent.fn_resolve_sender(CASE WHEN ($1::jsonb)-\u003e\u003e\u0027chat_id\u0027 ~ \u0027^[0-9]{1,18}$\u0027 THEN (($1::jsonb)-\u003e\u003e\u0027chat_id\u0027)::bigint END)-\u003e\u003e\u0027role\u0027, \u0027\u0027) = \u0027owner\u0027 AS is_owner;",
                                          "options":  {
                                                          "queryReplacement":  "={{ JSON.stringify({ chat_id: $(\u0027Start\u0027).item.json.chat_id }) }}"
                                                      }
@@ -59,8 +59,8 @@
                                        -400,
                                        0
                                    ],
-                      "id":  "92b76a94-ad1a-5580-8ed4-c12b7b9fa2a1",
-                      "name":  "Read cursor",
+                      "id":  "1f29af23-999d-5ff1-8ab2-b98382576635",
+                      "name":  "Read role",
                       "credentials":  {
                                           "postgres":  {
                                                            "id":  "__CRED_POSTGRES_WRITE__",
@@ -105,77 +105,39 @@
                   },
                   {
                       "parameters":  {
-                                         "url":  "http://127.0.0.1:8090/__usage",
-                                         "sendQuery":  true,
-                                         "queryParameters":  {
-                                                                 "parameters":  [
-                                                                                    {
-                                                                                        "name":  "after",
-                                                                                        "value":  "={{ $json.after || \u0027\u0027 }}"
-                                                                                    },
-                                                                                    {
-                                                                                        "name":  "limit",
-                                                                                        "value":  "5000"
-                                                                                    }
-                                                                                ]
-                                                             },
+                                         "workflowId":  {
+                                                            "__rl":  true,
+                                                            "value":  "Ci7mQ3vXp9LkT2wZ",
+                                                            "mode":  "list",
+                                                            "cachedResultUrl":  "/workflow/Ci7mQ3vXp9LkT2wZ",
+                                                            "cachedResultName":  "core.sub_import_llm_usage"
+                                                        },
+                                         "workflowInputs":  {
+                                                                "mappingMode":  "defineBelow",
+                                                                "value":  {
+                                                                              "chat_id":  "={{ $(\u0027Start\u0027).item.json.chat_id }}"
+                                                                          },
+                                                                "matchingColumns":  [
+
+                                                                                    ],
+                                                                "schema":  [
+
+                                                                           ],
+                                                                "attemptToConvertTypes":  false,
+                                                                "convertFieldsToString":  true
+                                                            },
                                          "options":  {
-                                                         "timeout":  30000,
-                                                         "pagination":  {
-                                                                            "pagination":  {
-                                                                                               "paginationMode":  "updateAParameterInEachRequest",
-                                                                                               "parameters":  {
-                                                                                                                  "parameters":  [
-                                                                                                                                     {
-                                                                                                                                         "type":  "qs",
-                                                                                                                                         "name":  "after",
-                                                                                                                                         "value":  "={{ $response.body.next_after }}"
-                                                                                                                                     }
-                                                                                                                                 ]
-                                                                                                              },
-                                                                                               "paginationCompleteWhen":  "other",
-                                                                                               "completeExpression":  "={{ $response.body.has_more !== true }}",
-                                                                                               "limitPagesFetched":  true,
-                                                                                               "maxRequests":  40
-                                                                                           }
-                                                                        }
+
                                                      }
                                      },
-                      "type":  "n8n-nodes-base.httpRequest",
-                      "typeVersion":  4.2,
+                      "type":  "n8n-nodes-base.executeWorkflow",
+                      "typeVersion":  1.2,
                       "position":  [
                                        -180,
                                        0
                                    ],
-                      "id":  "86291880-626b-584f-b610-09b74b49e14d",
-                      "name":  "Fetch usage",
-                      "retryOnFail":  true,
-                      "maxTries":  2,
-                      "waitBetweenTries":  1000,
-                      "onError":  "continueRegularOutput"
-                  },
-                  {
-                      "parameters":  {
-                                         "operation":  "executeQuery",
-                                         "query":  "=SELECT core.fn_import_llm_usage(jsonb_build_object(\u0027rows\u0027, ($1::jsonb)-\u003e\u0027rows\u0027)) AS r;",
-                                         "options":  {
-                                                         "queryReplacement":  "={{ JSON.stringify({ rows: (Array.isArray($json.rows) ? $json.rows : []) }) }}"
-                                                     }
-                                     },
-                      "type":  "n8n-nodes-base.postgres",
-                      "typeVersion":  2.6,
-                      "position":  [
-                                       40,
-                                       0
-                                   ],
-                      "id":  "9cd99b17-f823-5de4-b05f-37aef878a504",
-                      "name":  "Import usage",
-                      "credentials":  {
-                                          "postgres":  {
-                                                           "id":  "__CRED_POSTGRES_WRITE__",
-                                                           "name":  "Postgres account"
-                                                       }
-                                      },
+                      "id":  "2dbb9714-7ae8-5a18-a7e7-6d79efdd7ea9",
+                      "name":  "Import LLM usage",
                       "onError":  "continueRegularOutput"
                   },
                   {
@@ -246,7 +208,7 @@
                   },
                   {
                       "parameters":  {
-                                         "content":  "## Ablauf\n**core.sub_send_cost_report — /costs + /kosten: KI-Kosten der letzten 7 und 30 Tage (deterministisch, kein LLM)**\n\nStart (chat_id) -\u003e Read texts (Texte + Locale in der Sprache des Betrachters über core.fn_ui_texts + Sprach-Kette, dazu alle Anzeige-Namen \u003cpkg\u003e.wf.\u003ckurzname\u003e; core_ro, fail-open) -\u003e Read cursor (core.fn_import_llm_usage mit rows:[] liefert nur den Cursor after = jüngste Zeile bis jetzt minus 10 Min, Überlappung gegen Uhr-Sprünge; dazu die Rolle des Absenders) -\u003e Owner? (nur der Owner löst Abruf + Import aus; ein Mitglied geht direkt zu Read report und bekommt dort den Owner-only-Hinweis) -\u003e Fetch usage (GET 127.0.0.1:8090/__usage?after=..\u0026limit=5000 am lokalen LLM-Gateway, Pagination über next_after bis has_more=false, höchstens 40 Seiten; Gateway nicht erreichbar -\u003e weiter mit dem DB-Stand) -\u003e Import usage (je Seite core.fn_import_llm_usage: idempotent über id, ungültige Zeilen übersprungen, Retention 13 Monate) -\u003e Read report (core.fn_get_llm_cost_report, einmal, core_ro: Owner-Gate in der DB, alle Beträge aus agent.ai_models.pricing_usd_per_mtok, Tage in Haushalts-Zeitzone, Kaltstarts, teuerster Tag, Cache-Trefferquote) -\u003e Build message (nur Formatierung: Intl-Zahlen/-Daten im Locale, Tabellen je Assistent und Modell als \u003cpre\u003e, Kostenarten in Prozent, Auffälligkeiten; jeder DB-Wert HTML-escapt; Mitglied -\u003e core.toast.owner_only, Lesefehler -\u003e core.cost.load_failed, noch keine Daten -\u003e core.cost.empty) -\u003e Send cost report (ein HTML-Send; feste, kurze Form, daher keine Relay-Kette). Die Gateway-Mitschrift kennt den Workflow über eine konstante Kennzeile in der System-Nachricht (Add-LlmWorkflowTag) bzw. den Header x-lifeagents-workflow; der Gateway entfernt beides vor dem Weiterleiten.",
+                                         "content":  "## Ablauf\n**core.sub_send_cost_report — /costs + /kosten: KI-Kosten der letzten 7 und 30 Tage (deterministisch, kein LLM)**\n\nStart (chat_id) -\u003e Read texts (Texte + Locale in der Sprache des Betrachters über core.fn_ui_texts + Sprach-Kette, dazu alle Anzeige-Namen \u003cpkg\u003e.wf.\u003ckurzname\u003e; core_ro, fail-open) -\u003e Read role (Rolle des Absenders) -\u003e Owner? (nur der Owner lÃ¶st Abruf + Import aus; ein Mitglied geht direkt zu Read report und bekommt dort den Owner-only-Hinweis) -\u003e Import LLM usage (Sub core.sub_import_llm_usage: holt die Mitschrift am lokalen LLM-Gateway und spielt sie idempotent in core.llm_usage ein, derselbe Weg wie der Nacht-Cron core.cron_import_llm_usage; Gateway nicht erreichbar -\u003e onError=continue, weiter mit dem DB-Stand) -\u003e Read report (core.fn_get_llm_cost_report, einmal, core_ro: Owner-Gate in der DB, alle Beträge aus agent.ai_models.pricing_usd_per_mtok, Tage in Haushalts-Zeitzone, Kaltstarts, teuerster Tag, Cache-Trefferquote) -\u003e Build message (nur Formatierung: Intl-Zahlen/-Daten im Locale, Tabellen je Assistent und Modell als \u003cpre\u003e, Kostenarten in Prozent, Auffälligkeiten; jeder DB-Wert HTML-escapt; Mitglied -\u003e core.toast.owner_only, Lesefehler -\u003e core.cost.load_failed, noch keine Daten -\u003e core.cost.empty) -\u003e Send cost report (ein HTML-Send; feste, kurze Form, daher keine Relay-Kette). Die Gateway-Mitschrift kennt den Workflow über eine konstante Kennzeile in der System-Nachricht (Add-LlmWorkflowTag) bzw. den Header x-lifeagents-workflow; der Gateway entfernt beides vor dem Weiterleiten.",
                                          "height":  420,
                                          "width":  820,
                                          "color":  4
@@ -278,29 +240,29 @@
                                                         [
                                                             {
                                                                 "index":  0,
-                                                                "node":  "Read cursor",
+                                                                "node":  "Read role",
                                                                 "type":  "main"
                                                             }
                                                         ]
                                                     ]
                                        },
-                        "Read cursor":  {
-                                            "main":  [
-                                                         [
-                                                             {
-                                                                 "index":  0,
-                                                                 "node":  "Owner?",
-                                                                 "type":  "main"
-                                                             }
-                                                         ]
-                                                     ]
-                                        },
+                        "Read role":  {
+                                          "main":  [
+                                                       [
+                                                           {
+                                                               "index":  0,
+                                                               "node":  "Owner?",
+                                                               "type":  "main"
+                                                           }
+                                                       ]
+                                                   ]
+                                      },
                         "Owner?":  {
                                        "main":  [
                                                     [
                                                         {
                                                             "index":  0,
-                                                            "node":  "Fetch usage",
+                                                            "node":  "Import LLM usage",
                                                             "type":  "main"
                                                         }
                                                     ],
@@ -313,28 +275,17 @@
                                                     ]
                                                 ]
                                    },
-                        "Fetch usage":  {
-                                            "main":  [
-                                                         [
-                                                             {
-                                                                 "index":  0,
-                                                                 "node":  "Import usage",
-                                                                 "type":  "main"
-                                                             }
-                                                         ]
-                                                     ]
-                                        },
-                        "Import usage":  {
-                                             "main":  [
-                                                          [
-                                                              {
-                                                                  "index":  0,
-                                                                  "node":  "Read report",
-                                                                  "type":  "main"
-                                                              }
+                        "Import LLM usage":  {
+                                                 "main":  [
+                                                              [
+                                                                  {
+                                                                      "index":  0,
+                                                                      "node":  "Read report",
+                                                                      "type":  "main"
+                                                                  }
+                                                              ]
                                                           ]
-                                                      ]
-                                         },
+                                             },
                         "Read report":  {
                                             "main":  [
                                                          [

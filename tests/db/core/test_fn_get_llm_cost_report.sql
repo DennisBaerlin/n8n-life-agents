@@ -140,4 +140,33 @@ BEGIN
   RAISE NOTICE 'PASS test_fn_get_llm_cost_report (Preis-Mathematik, Toepfe, Top-N, Vorwoche, Kaltstarts, TZ, Owner-Gate, core_ro)';
 END $$;
 
+-- Grenzen: Abdeckung bei Daten erst seit 3 Tagen = 4 Tage; Langkontext zaehlt Input + Cache-Tokens und greift erst
+-- UEBER der Schwelle (genau 1000 = Standardpreis); Zeilen vor dem 30-Tage-Fenster zaehlen nicht.
+DO $$
+DECLARE
+  noon timestamptz := (current_date + time '12:00')::timestamptz;
+  r jsonb;
+BEGIN
+  DELETE FROM core.llm_usage;
+  INSERT INTO core.llm_usage (id, ts, wf, model, keepalive, input_tokens, cache_creation_input_tokens,
+                              ephemeral_1h_input_tokens, cache_read_input_tokens, output_tokens, web_search_requests, status) VALUES
+    -- genau an der Schwelle: 1000 x 1 / 1 Mio = 0,001
+    ('1000000000011-aaaaaa-000011', noon - interval '3 days', 'agent.finance', 'zz-model-lc', false, 1000, 0, 0, 0, 0, 0, 200),
+    -- 600 Input + 600 Cache lesen = 1200 > 1000 -> Langkontext: 600 x 3 + 600 x 1,5 = 0,0027
+    ('1000000000012-aaaaaa-000012', noon - interval '3 days', 'agent.finance', 'zz-model-lc', false, 600, 0, 0, 600, 0, 0, 200);
+  r := core.fn_get_llm_cost_report(jsonb_build_object('chat_id', '7601'));
+  IF (r->'periods'->'d7'->>'days_covered')::int IS DISTINCT FROM 4 THEN
+    RAISE EXCEPTION 'FAIL [Abdeckung 4 Tage]: %', r->'periods'; END IF;
+  IF abs((r->'periods'->'d30'->>'total_usd')::numeric - 0.0037) > 0.00001 THEN
+    RAISE EXCEPTION 'FAIL [Schwelle/Langkontext 0,0037]: %', r->'periods'; END IF;
+
+  INSERT INTO core.llm_usage (id, ts, wf, model, keepalive, input_tokens, cache_creation_input_tokens,
+                              ephemeral_1h_input_tokens, cache_read_input_tokens, output_tokens, web_search_requests, status) VALUES
+    ('1000000000013-aaaaaa-000013', noon - interval '40 days', 'agent.guide', 'zz-model-a', false, 0, 0, 0, 0, 100000, 0, 200);
+  r := core.fn_get_llm_cost_report(jsonb_build_object('chat_id', '7601'));
+  IF abs((r->'periods'->'d30'->>'total_usd')::numeric - 0.0037) > 0.00001 THEN
+    RAISE EXCEPTION 'FAIL [vor dem 30-Tage-Fenster zaehlt nicht]: %', r->'periods'; END IF;
+  RAISE NOTICE 'PASS [Abdeckung, Langkontext-Schwelle, 30-Tage-Fenster]';
+END $$;
+
 ROLLBACK;

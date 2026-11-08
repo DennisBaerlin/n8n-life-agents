@@ -3,6 +3,7 @@
 # Usage:  .\scripts\dev\post_merge_regenerate_test.ps1
 # Exit-Code = Anzahl Fehler.
 $ErrorActionPreference = 'Stop'
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $repo = git -C $PSScriptRoot rev-parse --show-toplevel
 $script = Join-Path $repo 'scripts\post_merge_regenerate.ps1'
 $failed = 0

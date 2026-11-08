@@ -27,4 +27,17 @@ BEGIN
   IF finance.fn_goal_in_derisk_window(-1) IS NOT NULL THEN RAISE EXCEPTION 'FAIL [4 unbekannt]'; END IF;
   RAISE NOTICE 'PASS fn_goal_in_derisk_window [24 Monate, 10 Jahre, verstrichen, ohne Datum, unbekannt]';
 END $$;
+
+-- Fenstergrenze in Kalendermonaten (Default 60): genau 60 Monate -> drin, 61 -> draussen.
+DO $$
+DECLARE v_g60 int; v_g61 int;
+BEGIN
+  INSERT INTO finance.savings_goals (name, target_amount, target_date, status)
+    VALUES ('__gdw 60__', 6000, (current_date + interval '60 months')::date, 'active') RETURNING id INTO v_g60;
+  INSERT INTO finance.savings_goals (name, target_amount, target_date, status)
+    VALUES ('__gdw 61__', 6000, (current_date + interval '61 months')::date, 'active') RETURNING id INTO v_g61;
+  IF finance.fn_goal_in_derisk_window(v_g60) IS DISTINCT FROM true THEN RAISE EXCEPTION 'FAIL [5 genau 60 Monate]'; END IF;
+  IF finance.fn_goal_in_derisk_window(v_g61) IS DISTINCT FROM false THEN RAISE EXCEPTION 'FAIL [6 61 Monate]'; END IF;
+  RAISE NOTICE 'PASS fn_goal_in_derisk_window [Grenze 60/61 Monate]';
+END $$;
 ROLLBACK;

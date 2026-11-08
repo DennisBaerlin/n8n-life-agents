@@ -297,4 +297,84 @@ BEGIN
   RAISE NOTICE 'PASS [CHECK finance_loans_disbursement_needs_amount]';
 END $$;
 
+-- Grenzen der Guards: Rate 0, Auszahlungskonto ohne Datum, Laufzeitende = Zinsbindungsende/Auszahlung ist gueltig.
+DO $$
+DECLARE
+  v_res  JSONB;
+  v_giro INT;
+  v_base JSONB;
+BEGIN
+  SELECT (finance.fn_create_account(jsonb_build_object('name','__test_clg_giro__','account_type','cash',
+    'currency','EUR'))->>'account_id')::int INTO v_giro;
+  v_base := jsonb_build_object('lender','__test_clg_bank__','borrower','T','original_amount',9000,
+    'current_balance',9000,'disbursement_date',(CURRENT_DATE - 10)::text,'interest_rate',4,
+    'first_payment_date',(CURRENT_DATE + 20)::text,'debit_account_id',v_giro);
+
+  -- zinslos, damit nicht schon die Mindest-Rate (Monatszins) greift
+  v_res := finance.fn_create_loan(v_base || jsonb_build_object('name','__test_clg_r0__','monthly_annuity',0,'interest_rate',0));
+  IF (v_res->>'ok')::boolean IS DISTINCT FROM false THEN
+    RAISE EXCEPTION 'FAIL [Rate 0]: erwartet ok=false, got %', v_res; END IF;
+
+  v_res := finance.fn_create_loan((v_base - 'disbursement_date') || jsonb_build_object('name','__test_clg_nodate__',
+    'monthly_annuity',200,'disbursement_account_id',v_giro));
+  IF (v_res->>'ok')::boolean IS DISTINCT FROM false THEN
+    RAISE EXCEPTION 'FAIL [Auszahlungskonto ohne Datum]: erwartet ok=false, got %', v_res; END IF;
+
+  v_res := finance.fn_create_loan(v_base || jsonb_build_object('name','__test_clg_fixend__','monthly_annuity',200,
+    'interest_rate_fixed_until',(CURRENT_DATE + 3650)::text,'term_end_date',(CURRENT_DATE + 3650)::text));
+  IF (v_res->>'ok')::boolean IS DISTINCT FROM true THEN
+    RAISE EXCEPTION 'FAIL [Laufzeitende = Zinsbindungsende]: erwartet ok=true, got %', v_res; END IF;
+
+  v_res := finance.fn_create_loan(v_base || jsonb_build_object('name','__test_clg_disbend__','original_amount',100,
+    'current_balance',100,'term_end_date',(CURRENT_DATE - 10)::text));
+  IF (v_res->>'ok')::boolean IS DISTINCT FROM true THEN
+    RAISE EXCEPTION 'FAIL [Laufzeitende = Auszahlungstag]: erwartet ok=true, got %', v_res; END IF;
+  RAISE NOTICE 'PASS [Guard-Grenzen: Rate 0 / Konto ohne Datum abgelehnt, gleiche Enddaten gueltig]';
+END $$;
+
+-- Dubletten-Hinweis: gleiche Bank + gleiche Rate zaehlt nur, wenn der neue Kredit keinen Betrag nennt.
+DO $$
+DECLARE
+  v_res  JSONB;
+  v_giro INT;
+BEGIN
+  SELECT (finance.fn_create_account(jsonb_build_object('name','__test_cls_giro__','account_type','cash',
+    'currency','EUR'))->>'account_id')::int INTO v_giro;
+  v_res := finance.fn_create_loan(jsonb_build_object('name','__test_cls_a__','lender','__test_cls_bank__','borrower','T',
+    'original_amount',8000,'current_balance',8000,'disbursement_date',(CURRENT_DATE - 10)::text,'interest_rate',3,
+    'monthly_annuity',250,'first_payment_date',(CURRENT_DATE + 20)::text,'debit_account_id',v_giro));
+  IF (v_res->>'ok')::boolean IS DISTINCT FROM true THEN RAISE EXCEPTION 'FAIL [Setup Kredit A]: %', v_res; END IF;
+
+  v_res := finance.fn_create_loan(jsonb_build_object('name','__test_cls_b__','lender','__test_cls_bank__','borrower','T',
+    'original_amount',5000,'current_balance',5000,'disbursement_date',(CURRENT_DATE - 10)::text,'interest_rate',3,
+    'monthly_annuity',250,'first_payment_date',(CURRENT_DATE + 20)::text,'debit_account_id',v_giro));
+  IF jsonb_array_length(v_res->'card_lines') <> 0 THEN
+    RAISE EXCEPTION 'FAIL [Hinweis bei anderem Betrag]: erwartet keinen, got %', v_res->'card_lines'; END IF;
+
+  v_res := finance.fn_create_loan(jsonb_build_object('name','__test_cls_c__','lender','__test_cls_bank__','borrower','T',
+    'current_balance',4000,'interest_rate',3,
+    'monthly_annuity',250,'first_payment_date',(CURRENT_DATE + 20)::text,'debit_account_id',v_giro));
+  IF v_res->'card_lines'->0->'params'->>'name' IS DISTINCT FROM '__test_cls_a__' THEN
+    RAISE EXCEPTION 'FAIL [Hinweis ohne Betrag, gleiche Rate]: erwartet __test_cls_a__, got %', v_res; END IF;
+  RAISE NOTICE 'PASS [Dubletten-Hinweis: Betrag schlaegt Rate, ohne Betrag zaehlt die Rate]';
+END $$;
+
+-- Raten-Kette gilt ab dem spaeteren Stichtag beider Konten: Abbuchungskonto mit heute genanntem Saldo.
+DO $$
+DECLARE
+  v_res  JSONB;
+  v_giro INT;
+  v_from DATE;
+BEGIN
+  SELECT (finance.fn_create_account(jsonb_build_object('name','__test_clv_giro__','account_type','cash',
+    'currency','EUR','opening_balance',500))->>'account_id')::int INTO v_giro;
+  v_res := finance.fn_create_loan(jsonb_build_object('name','__test_clv_kredit__','lender','B','borrower','T',
+    'original_amount',3000,'current_balance',3000,'disbursement_date',(CURRENT_DATE - 40)::text,'interest_rate',3,
+    'monthly_annuity',150,'first_payment_date',(CURRENT_DATE - 10)::text,'debit_account_id',v_giro));
+  SELECT valid_from INTO v_from FROM finance.recurring_payments WHERE id = (v_res->>'recurring_payment_id')::int;
+  IF v_from IS DISTINCT FROM core.fn_today() THEN
+    RAISE EXCEPTION 'FAIL [valid_from]: erwartet heute (Saldo-Stichtag Abbuchungskonto), got % / %', v_from, v_res; END IF;
+  RAISE NOTICE 'PASS [Raten-Kette ab dem spaeteren Konto-Stichtag]';
+END $$;
+
 ROLLBACK;

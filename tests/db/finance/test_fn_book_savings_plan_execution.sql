@@ -243,4 +243,24 @@ BEGIN
 
 END $$;
 
+-- Abweichung: variance = |Kurswert + Gebuehr - Planbetrag| / Plan in Prozent auf zwei Stellen (2 x 149 + 1 = 299 gegen 300 -> 0.33).
+DO $$
+DECLARE v_settle INT; v_res JSONB; v_base JSONB;
+BEGIN
+  v_settle := (finance.fn_create_account('{"name":"__test_bse2_settle__","account_type":"cash","currency":"EUR"}'::jsonb)->>'account_id')::int;
+  PERFORM finance.fn_create_account(jsonb_build_object('name', '__test_bse2_depot__', 'account_type', 'stocks_depot',
+            'currency', 'EUR', 'settlement_id', v_settle));
+  v_res := finance.fn_create_savings_plan(jsonb_build_object('name', '__test_bse2_plan__', 'depot_name', '__test_bse2_depot__',
+            'isin', 'IE00BSE2PLN1', 'symbol', 'BSE2', 'security_name', 'Plan ETF', 'amount', 300, 'schedule_interval', 1,
+            'schedule_unit', 'month', 'first_payment_date', CURRENT_DATE - 5));
+  IF NOT (v_res->>'ok')::boolean THEN RAISE EXCEPTION 'SETUP FAIL Plan: %', v_res; END IF;
+  -- Kontoauszug-Pfad (recurring_payment_id + due_date): der Planbetrag kommt hier direkt aus der Rate
+  v_base := jsonb_build_object('recurring_payment_id', (v_res->>'recurring_payment_id')::int, 'due_date', (CURRENT_DATE - 5)::text);
+
+  v_res := finance.fn_book_savings_plan_execution(v_base || jsonb_build_object('shares', 2, 'price_per_share', 149, 'order_fee', 1));
+  IF (v_res->>'ok')::boolean IS DISTINCT FROM true OR (v_res->>'variance')::numeric IS DISTINCT FROM 0.33 THEN
+    RAISE EXCEPTION 'FAIL [variance 0.33]: %', v_res; END IF;
+  RAISE NOTICE 'PASS [variance 0.33 im Kontoauszug-Pfad]';
+END $$;
+
 ROLLBACK;

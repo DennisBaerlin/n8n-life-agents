@@ -170,4 +170,21 @@ BEGIN
 
 END $$;
 
+-- fehlender / leerer bestaetigter Saldo -> {ok:false} vor jedem Write (sonst stuende NULL als Abgleichsstand).
+DO $$
+DECLARE v_res JSONB; v_a INT; v_case JSONB;
+BEGIN
+  SELECT (finance.fn_create_account('{"name":"__test_rca_nobal__","account_type":"cash","currency":"EUR"}'::jsonb)->>'account_id')::int INTO v_a;
+  FOREACH v_case IN ARRAY ARRAY[jsonb_build_object('account_id', v_a),
+                                jsonb_build_object('account_id', v_a, 'confirmed_balance', ''),
+                                jsonb_build_object('account_id', v_a, 'confirmed_balance', NULL)] LOOP
+    v_res := finance.fn_reconcile_account(v_case);
+    IF (v_res->>'ok')::boolean IS DISTINCT FROM false OR v_res->>'reason' IS NULL THEN
+      RAISE EXCEPTION 'FAIL reconcile [ohne Saldo %]: erwartet ok=false mit Grund, got %', v_case, v_res; END IF;
+  END LOOP;
+  IF EXISTS (SELECT 1 FROM finance.accounts WHERE id = v_a AND last_reconciled_at IS NOT NULL) THEN
+    RAISE EXCEPTION 'FAIL reconcile [ohne Saldo]: Abgleichsstand trotzdem gestempelt'; END IF;
+  RAISE NOTICE 'PASS reconcile [fehlender/leerer Saldo -> ok:false, nichts gestempelt]';
+END $$;
+
 ROLLBACK;

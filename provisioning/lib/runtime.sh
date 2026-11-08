@@ -237,8 +237,19 @@ rt_volumes_ensure() {
 # rt_stack_config_check — Prueft die Compose-Datei samt Interpolation (Pruefliste Nr. 13), OHNE sie auszugeben: die
 # aufgeloeste Fassung enthaelt das Superuser-Passwort (`config --quiet` = nur Fehlermeldungen).
 rt_stack_config_check() { _rt_compose config --quiet; }
-# rt_stack_dry_run <dienste…> — `up --dry-run`: zeigt, welche Container angelegt/geaendert wuerden (Pruefliste Nr. 13).
-rt_stack_dry_run() { _rt_compose up --dry-run -d --no-deps "$@" 2>&1; }
+# rt_stack_pull <dienste…> — fehlende Images dieser Dienste vorab laden (per Digest festgelegt: ein lokaler Treffer
+# genuegt, wie bei rt_image_ensure; so scheitert ein Update nicht an einer Registry-Stoerung fuer Vorhandenes). Vor dem Stopp
+# von n8n gerufen, damit ein Netz- oder Platzfehler das Update abbricht, solange nichts steht; `up` laedt sonst erst danach.
+# Die aufgeloeste Konfiguration traegt das Superuser-Passwort: sie geht nur in jq, nie in eine Ausgabe.
+rt_stack_pull() {
+  local s img missing=()
+  for s in "$@"; do
+    img="$(_rt_compose config --format json "$s" 2>/dev/null | jq -r --arg s "$s" '.services[$s].image // empty' 2>/dev/null || true)"
+    if [ -z "$img" ] || ! docker image inspect "$img" >/dev/null 2>&1; then missing+=("$s"); fi
+  done
+  [ "${#missing[@]}" -gt 0 ] || return 0
+  _rt_compose pull "${missing[@]}" >&2
+}
 # rt_host_port_free <port> — ist der Port auf dem Rechner frei (FritzBox-Weg: 80/443)? Probe mit einem Kurzlauf-Container,
 # der nur den Port belegt und sofort endet: Docker Desktop bindet den Host-Port beim Start und scheitert, wenn ein anderes
 # Programm (auch ausserhalb von Docker) ihn haelt. Ein Port-Scan aus dem Container saehe den Rechner nicht.

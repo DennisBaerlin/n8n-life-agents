@@ -104,6 +104,9 @@ BEGIN
     -- Sticker-Bremse der Person (agent.fn_claim_persona_sticker, key = person_id exakt)
     DELETE FROM core.notification_state
     WHERE source = 'persona_sticker' AND key = v_pid;
+    -- Tagesgruss-Latch der Person (agent.fn_claim_persona_frame, key '<pid>:<datum>'; split_part statt LIKE: '_' im Slug)
+    DELETE FROM core.notification_state
+    WHERE source = 'persona_greet' AND split_part(key, ':', 1) = v_pid;
 
     RETURN jsonb_build_object('ok', true, 'person_id', v_pid, 'removed', true, 'removed_from_contexts', v_ctx);
 END;

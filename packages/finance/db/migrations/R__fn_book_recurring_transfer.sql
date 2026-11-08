@@ -15,7 +15,8 @@
 --   (fn_reconciled_reason; ein abgeglichenes Ziel enthaelt den Zufluss schon -> sonst Doppelzaehlung).
 --   STARTBETRAG je Bein-Konto (fn_opening_balance_reason, Befund 2026-11-03): {ok:false, code:'before_opening', reason}; reason
 --   lenkt aufs Ueberspringen (umgezogener Sparziel-Topf: ein altes Vorkommen liegt vor dessen Stichtag). already_booked hat Vorrang.
---   RUECKGABE: Erfolg -> {ok:true, debit_tx_id, credit_tx_id, fx_rate}. Idempotenz (schon gebucht) /
+--   RUECKGABE: Erfolg -> {ok:true, debit_tx_id, credit_tx_id, fx_rate, amount (gebucht, Quell-Waehrung),
+--   plan_amount (laut Plan)} -- beide Quell-seitig negativ wie rp.amount -- gleiche Felder wie der Zahlungs-Pfad von fn_book_recurring_occurrence. Idempotenz (schon gebucht) /
 --   kein-Transfer (target NULL) / fehlender FX-Kurs / amount<=0 / abgeglichen / Startbetrag -> {ok:false, reason} OHNE Write.
 --   Aufgerufen aus fn_book_recurring_occurrence (Delegation fuer Transfer-rps) — der Scheduler-Pfad
 --   bleibt unveraendert, die Zwei-Bein-Invariante sitzt am fn-Layer (caller-agnostisch).
@@ -152,6 +153,6 @@ BEGIN
     RETURNING id INTO v_credit_id;
 
     RETURN jsonb_build_object('ok', true, 'debit_tx_id', v_debit_id, 'credit_tx_id', v_credit_id, 'fx_rate', v_fx,
-        'effective', v_dates->'resolved');
+        'amount', sign(v_amount) * v_mag, 'plan_amount', v_amount, 'effective', v_dates->'resolved');
 END;
 $$;

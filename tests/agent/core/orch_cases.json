@@ -438,5 +438,82 @@
     "expected_route": "finance",
     "notes": "Sparziel unter 5 Jahren im Depot als bewusste Ausnahme (2026-11-06): die Berater-Erinnerung endet mit 'schreib mir das bleibt so'; festhalten kann nur der Buchhalter (tool_set_savings_goal depot_risk_accepted), der Berater bucht nie."
   },
-  {"id": "oc51", "name": "Folgenachricht nach dem Durchgehen-Lauf -> agent.finance", "task": "Ja, die Miete geht vom __E2E__ HO Giro ab, trag sie so ein.", "chat_id": "test_orc51", "expected_route": "finance", "notes": "Uebergabe Berater -> Buchhalter: nach dem Knopf Durchgehen bindet Add-FollowupSet die naechste Nachricht an den Buchhalter; der Fall prueft die Routing-Basis (Eintragen = Buchhalter, nie der Berater)."}
+  {"id": "oc51", "name": "Folgenachricht nach dem Durchgehen-Lauf -> agent.finance", "task": "Ja, die Miete geht vom __E2E__ HO Giro ab, trag sie so ein.", "chat_id": "test_orc51", "expected_route": "finance", "notes": "Uebergabe Berater -> Buchhalter: nach dem Knopf Durchgehen bindet Add-FollowupSet die naechste Nachricht an den Buchhalter; der Fall prueft die Routing-Basis (Eintragen = Buchhalter, nie der Berater)."},
+  {
+    "id": "oc52",
+    "name": "Bot persoenlicher: Routine-Beratung (Notgroschen) -> Signal FRAME, nicht ernst",
+    "task": "Wie viel Notgroschen sollte ich eigentlich zur Seite legen?",
+    "chat_id": "test_orc52",
+    "expected_route": "finance_advisor",
+    "expected_signal": "FRAME",
+    "timeout_s": 180,
+    "notes": "Router-Regel 6 gekuerzt: gewoehnliche Beratung samt Empfehlung ist nicht ernst (vorher die haeufigste NOFRAME-Quelle)."
+  },
+  {
+    "id": "oc53",
+    "name": "Bot persoenlicher: reine Wertschaetzung ohne Frage -> nur REACT LOVE, kein Text",
+    "task": "Danke dir, super, das hat echt geholfen!",
+    "chat_id": "test_orc53",
+    "expected_route": null,
+    "expected_mood": "LOVE",
+    "expect_body_empty": true,
+    "notes": "Grammatik N1 / Router-Regel 7: ohne Werkzeug genau 'REACT LOVE'; agent.fn_claim_reaction setzt ❤ statt einer Antwort (kein exakter Dank, darum nicht der Herz-Kurzschluss)."
+  },
+  {
+    "id": "oc54",
+    "name": "Bot persoenlicher: Witz + Smalltalk-Frage -> REACT FUN + eigene kurze Antwort",
+    "task": "Haha, der war gut! Und wie war dein Tag so?",
+    "chat_id": "test_orc54",
+    "expected_route": null,
+    "expected_mood": "FUN",
+    "expected_behavior": "The reply is the orchestrator's own (no specialist), short and friendly in German and answers the small-talk question. It never contains the words REACT, FUN, FRAME or NOFRAME, has at most ONE emoji and no *asterisk stage directions*.",
+    "notes": "Grammatik N1: erste Zeile 'REACT FUN', danach Text; Relay compose schneidet die Zeile ab (geprueft wird der gesendete Body)."
+  },
+  {
+    "id": "oc55",
+    "name": "Bot persoenlicher: Erkrankung + Finanzfrage -> NOFRAME, keine Stimmung",
+    "task": "Ich bin schwer krank geworden und kann vielleicht monatelang nicht arbeiten. Wie lange reicht mein Geld?",
+    "chat_id": "test_orc55",
+    "expected_route": "finance_advisor",
+    "expected_signal": "NOFRAME",
+    "expected_mood": "",
+    "timeout_s": 180,
+    "notes": "Ernst-Liste Regel 6 (Krankheit) -> nie eine Gefuehls-Reaktion (R6)."
+  },
+  {
+    "id": "oc56",
+    "name": "Bot persoenlicher: gute Nachricht + Kontostand -> FRAME CHEER",
+    "task": "Juhu, das Gehalt ist da! Wie steht mein Lindenbank Girokonto?",
+    "chat_id": "test_orc56",
+    "expected_route": "finance",
+    "expected_signal": "FRAME",
+    "expected_mood": "CHEER",
+    "timeout_s": 180,
+    "notes": "Grammatik N1: Stimmung nur, wenn die Nachricht sie klar traegt; Lindenbank Girokonto ist ein Fixture-Konto, kein Sparziel-Fixture noetig."
+  },
+  {
+    "id": "oc57",
+    "name": "Bot persoenlicher: Dank nach einer Buchhalter-Antwort -> nicht an finance weiterreichen, nur REACT LOVE",
+    "task": "Danke dir, super, das hat echt geholfen!",
+    "chat_id": "test_orc57",
+    "router_history": {
+      "human": "Wie ist der aktuelle Stand auf meinem Lindenbank Girokonto?",
+      "agent": "agent.finance",
+      "output": "Dein Lindenbank Girokonto steht bei 1.234,56 EUR."
+    },
+    "expected_route": null,
+    "expected_mood": "LOVE",
+    "expect_body_empty": true,
+    "notes": "Router-Regel 2 (Sticky-Routing): reiner Dank und ein Gefuehls-Emoji gehen nicht an den Agenten der Vorrunde; Gegenprobe zu oc53 mit Vorgeschichte."
+  },
+  {
+    "id": "oc58",
+    "name": "Bot persoenlicher: nur ein Lach-Emoji ohne Vorgeschichte -> REACT FUN, hoechstens ein kurzer eigener Satz",
+    "task": "😂",
+    "chat_id": "test_orc58",
+    "expected_route": null,
+    "expected_mood": "FUN",
+    "expected_behavior": "The reply is either empty (reaction only) or one short own sentence in German. It never contains the words REACT, FUN, FRAME or NOFRAME, has at most ONE emoji and no *asterisk stage directions*.",
+    "notes": "Grammatik N1: ein reines Gefuehls-Emoji traegt die Stimmung klar; geprueft werden Stimmung und gesendeter Body (judge_eval)."
+  }
 ]

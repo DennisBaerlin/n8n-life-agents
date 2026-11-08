@@ -624,7 +624,7 @@
                   },
                   {
                       "parameters":  {
-                                         "content":  "## DB-Automatik\n**fn_set_real_estate: partielles UPDATE**\n\nNeubewertung/Status/Stammdaten. current_value ohne value_updated_at -\u003e Datum = heute. Net-Worth-View liest current_value live (kein Recompute). HINWEIS: status=sold löst verknüpfte Kredite NICHT ab. {ok:false} bei current_value\u003c0 oder ungültiger Wohnfläche/Baujahr. Wohnfläche/Baujahr gesendet -\u003e Karten-Hinweis mit der Instandhaltungs-Empfehlung (fn_maintenance_card_lines).",
+                                         "content":  "## DB-Automatik\n**fn_set_real_estate: partielles UPDATE**\n\nNeubewertung/Status/Stammdaten. current_value ohne value_updated_at -\u003e Datum = heute. Net-Worth-View liest current_value live (kein Recompute). status=sold lehnt die fn ab (Verkauf nur über tool_sell_real_estate: Erlös + Rückgängig). {ok:false} bei current_value\u003c0 oder ungültiger Wohnfläche/Baujahr. Wohnfläche/Baujahr gesendet -\u003e Karten-Hinweis mit der Instandhaltungs-Empfehlung (fn_maintenance_card_lines).",
                                          "height":  200,
                                          "width":  400,
                                          "color":  4

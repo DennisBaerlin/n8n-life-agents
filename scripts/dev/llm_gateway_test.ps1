@@ -19,7 +19,7 @@
 # x-lifeagents-workflow erreichen upstream nie, wf steht in der usage-Zeile + usage.jsonl, GET /__usage blaettert,
 # Keep-Alive-Schluessel mit/ohne Kennzeile gleich · (h) echter Upstream: POST /v1/messages/count_tokens (kostenlos)
 # mit TEST_ANTHROPIC_API_KEY (fehlt er -> SKIP). (m) Telegram-Relay (Bot mit Gesicht; eigene Units: Mock-Telegram 8103, Gateway 8102):
-# Reaktion durchgereicht, Methoden-Allowlist (404, kein Anthropic-Forward), Pfad mit Query -> 404, kaputtes Token -> 400,
+# Reaktion durchgereicht (❤ ohne VS16, dazu 👀 🙏 😁), Methoden-Allowlist (404, kein Anthropic-Forward), Pfad mit Query -> 404, kaputtes Token -> 400,
 # Sticker erst Upload (multipart, Dateiname) dann file_id, Sticker-Name ausserhalb des Musters -> 400, Token nie im Journal.
 #
 # Kein LLM-Credit (count_tokens ist laut Anthropic kostenlos). Exit = Anzahl FAIL.
@@ -35,6 +35,7 @@ $OutputEncoding = $Utf8NoBom
 $RepoRoot = git -C $PSScriptRoot rev-parse --show-toplevel
 
 . "$PSScriptRoot\test_n8n_state.ps1"
+. "$PSScriptRoot\..\lib\dotenv.ps1"
 $conn = Get-TestN8nConnection
 $Container = $conn.Container
 
@@ -296,7 +297,7 @@ try {
     $envFile = Join-Path $RepoRoot '.env'
     $realKey = $null
     if (Test-Path $envFile) {
-        $line = Get-Content $envFile | Where-Object { $_ -match '^\s*TEST_ANTHROPIC_API_KEY=' } | Select-Object -First 1
+        $line = Read-DotEnvLines $envFile | Where-Object { $_ -match '^\s*TEST_ANTHROPIC_API_KEY=' } | Select-Object -First 1
         if ($line) { $realKey = ($line -split '=', 2)[1].Trim() }
     }
     if (-not $realKey) { Skip 'TEST_ANTHROPIC_API_KEY fehlt in .env' }
@@ -353,6 +354,18 @@ try {
     $res2 = Send-Tg '/__telegram/setMessageReaction' '{"chat_id":"4242","message_id":1,"emoji":"💩"}'
     if ($res.Status -eq '400' -and $res2.Status -eq '400' -and @(Get-TgEntries).Count -eq 1) { Pass 'kaputtes Token / nicht erlaubtes Emoji -> 400, kein Aufruf' }
     else { Fail "Token/Emoji: $($res.Status)/$($res2.Status)" }
+
+    # Lebenszeichen + Stimmungen (agent.fn_claim_reaction): 👀 🙏 😁 kommen durch (Zeichen per Codepoint, Datei-Kodierung egal)
+    $tgBefore = @(Get-TgEntries).Count   # Clear-MockLog leert nur die Anthropic-Attrappe
+    $okAll = $true
+    foreach ($cp in @(0x1F440, 0x1F64F, 0x1F601)) {
+        $em = [char]::ConvertFromUtf32($cp)
+        $r = Send-Tg '/__telegram/setMessageReaction' ('{"chat_id":"4242","message_id":5,"emoji":"' + $em + '"}')
+        $last = @(Get-TgEntries) | Select-Object -Last 1
+        if ($r.Status -ne '200' -or -not $last -or $last.body.reaction[0].emoji -ne $em) { $okAll = $false; Write-Host "  U+$('{0:X}' -f $cp): $($r.Status)" }
+    }
+    $tgNew = @(Get-TgEntries).Count - $tgBefore
+    if ($okAll -and $tgNew -eq 3) { Pass 'Reaktionen 👀 🙏 😁 durchgereicht' } else { Fail "neue Reaktionen: $tgNew statt 3 Telegram-Aufrufe" }
 
     $res = Send-Tg '/__telegram/sendSticker' '{"chat_id":"4242","sticker":"butler_top"}'
     $res2 = Send-Tg '/__telegram/sendSticker' '{"chat_id":"4242","sticker":"butler_top"}'

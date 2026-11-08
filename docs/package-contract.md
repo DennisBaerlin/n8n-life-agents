@@ -76,7 +76,7 @@ as the **privileged host** it is the one documented exception to the single-sche
   both *never dropped*). `schema` (singular, = `name`) stays for homogeneity; `schemas` lists the full set
   it owns. A normal package owns exactly one schema (`schemas` = `[name]`, may be omitted).
 
-These two fields are **only** valid on the core package; the registry/catalog/lifecycle treat core like any
+`privileged` is **only** valid on the core package (`schemas` may appear on any package, see above); the registry/catalog/lifecycle treat core like any
 other package (it has a manifest with `description`, a registry row, a catalog fragment).
 
 ---
@@ -126,7 +126,7 @@ The host seeds them into the package's own state table via `seed_data.sh` (`_see
   proactively guides capture with its own tools + marks sections via its `set_onboarding_section` tool. There
   is **no** guide→package delegation: the guide onboards only `household`; each package onboards its own
   sections. The mandatory-onboarding gate (finance advisor pre-req, finance-owned key `feature.onboarding_gate`) reads the same combined
-  fn (`core.complete AND package.complete`), except that open sections marked `"gates_advisor": false` in `sections.json` do not block it (finance: the monthly statement check). The flag only matters for a package whose advisor has such a hard entry gate and is not itself the onboarding agent (finance); career's advisor onboards its own sections, estate has no package gate.
+  fn (`core.complete AND package.complete`), except that open sections marked `"gates_advisor": false` in `sections.json` do not block it (finance: the emergency reserve and the monthly statement check). The flag only matters for a package whose advisor has such a hard entry gate and is not itself the onboarding agent (finance); career's advisor onboards its own sections, estate has no package gate.
 - **Next-step card + follow-up (Roter Faden 2026-10-23):** every `set_onboarding_section` tool ends with
   `New-OnboardingProgressCallNode` (core service `core:onboarding_progress` → `core.sub_onboarding_progress`, fire-and-
   forget). `core.fn_set_onboarding_section` returns `area_completed_now` (this call closed the area — advisory-locked per
@@ -283,7 +283,7 @@ benefit moot), and the column variant would force a `DROP UNIQUE(name)` breaking
 written at runtime, yet D10 forbids any package role from writing the shared host table `agent.core_contexts`. The
 single core service `agent.fn_set_context_facts(p jsonb)` (HITL tool `agent.tool_set_context_facts`, approval tier
 `owner_only`; one workflow, several bindings — the guide binds it as `tool_set_household_facts` with `scope='household'`
-fixed, career as `tool_set_profile_facts`/`tool_set_career_preferences` with `scope='per_user'` fixed, never `$fromAI`)
+fixed, never `$fromAI`; career binds the sibling `agent.tool_set_own_context_facts` (tier `self`, scope `per_user` set by `agent.fn_set_own_context_facts`) as `tool_set_profile_facts`/`tool_set_career_preferences`)
 mediates it — gated **not** by a hardcoded context allowlist but by the registries: a package opts in by declaring a
 `context_validators` entry (+ `context_scopes`). It replaced `fn_set_household_facts` + `fn_set_profile_facts`.
 - **household branch** (`family` = host context, hard `owner_only` checked first; plus registered household contexts of
@@ -360,7 +360,7 @@ layering: structured SSOT (manifest + catalog) → build-time renderer (`build.p
 
 **Installed-set composition (Install-UX-Phase 4) per language.** `seed_data.sh::_capabilities_catalog_md <lang>`
 composes at install time from the header of the composed file (up to the first `##` heading) + the fragments of
-core + every **active** registry package (same rule as the command menu and onboarding menu; + the package being seeded),
+core + every **active** registry package (same rule as the command menu; + the package being seeded),
 ordered by `catalog.ord`, + the section „more functions" (`core.help.more_*`, `<pkg>.package.*`) — one row per
 catalog language in **`core.help_catalog(lang, content)`**, which the orchestrator reads for `/help` in the sender's
 language (missing → en). The lazy context `capabilities_catalog` (guide agent, model knowledge) is the German
@@ -636,7 +636,7 @@ package that owns the workflow (the build engine knows no package; before Phase 
   sole write is `agent.fn_set_own_context_facts` (scope fixed to `per_user` inside the fn) and that has no `scope`
   input — enforced by `approval_lint` (e) on the built JSON. First consumer: `agent.tool_set_own_context_facts`.
 - **Verb floor** (the tier must be at least as strict as the verb implies; stricter is allowed, weaker = build error):
-  `save`/`publish`/`invite` → `owner_only`; `set`/`close`/`delete`/`void`/`settle`/`sell`/`reconcile`/`commit` →
+  `save`/`publish`/`invite` → `owner_only`; `set`/`close`/`delete`/`void`/`settle`/`sell`/`reconcile`/`commit`/`import`/`replace` →
   `owner_approval`; `create`/`book`/`record`/`cancel`/`export` → `owner_info`. `record_` = idempotent tracking entry
   (UPSERT, deliberately not `create_`). A new verb must be classified on purpose in the ONE verb→rank map
   (`scripts/build/lib/approval_matrix.ps1`). **Break-glass:** an entry with `"break_glass": true` may carry
@@ -874,9 +874,11 @@ path (`postgres_select`) needs to browse **both** their own `agent`/`core` table
 before saving it as a trigger). The narrow package role `<pkg>_ro` cannot serve this (it is scoped to
 `<pkg>` only). Therefore:
 
-- **`core_ro`** — a Core-host read-only login role (read-only on `agent` + `core`; **not** a package
-  isolation role, distinct from the "Core gets no core_rw/_ro" rule in §2 which is about isolation roles).
-  `packages/core/db/util/util_create_core_ro.sql`; `core.backup_key` is REVOKEd from it (backup key). The core-agent n8n
+- **`core_ro`** — a Core-host read-only login role (**not** a package isolation role, distinct from the
+  "Core gets no core_rw/_ro" rule in §2 which is about isolation roles). In `agent` + `core` it reads **only an
+  allowlist** (Owner decision 2026-11-07): the list and the reason per entry live in
+  `packages/core/db/util/util_create_core_ro.sql`; a new table stays invisible until it is listed there
+  (`tests/db/core/test_core_ro_allowlist.sql`); `core.backup_key` is REVOKEd from it (backup key). The core-agent n8n
   read credentials (`__CRED_POSTGRES_CORE_RO__`) connect as `core_ro`. Write-safety for LLM-authored SQL is
   preserved (read-only role) — the reason a read role exists at all.
 - **Package opens a read window (declaration vs. execution):** when a domain package is provisioned,
@@ -1228,8 +1230,8 @@ wird unten als „bei uns anders"-Notiz festgehalten (damit sie nicht je Paket r
   (die sind opt-in, publish-getriggert) sondern hat einen **eigenen dünnen always-on Enable-Cron**
   `agent.estate.cron_review_register` (Opus-M4: ohne Publish-Knopf liefe der Review sonst nie) — er ruft
   `core.fn_advisor_review_evaluate('estate', NULL, '{}')` monatlich, self-still über den Latch. household → `person_id`
-  NULL (keine `context_scopes`-Zeile, `fn_context_persons('estate_overview')` leer). **Kein** Publish-Ziel, **kein**
-  `cron_labels`-Eintrag (always-on, nur Konsole). Seit dem Roten Faden (2026-10-23) trägt estate `advisors.estate.own_review_cron:
+  NULL (keine `context_scopes`-Zeile, `fn_context_persons('estate_overview')` leer). **Kein** Publish-Ziel; als Haushalts-Erinnerung steht er in
+  `cron_labels.list` (schaltbar in `/reminders`). Seit dem Roten Faden (2026-10-23) trägt estate `advisors.estate.own_review_cron:
   true` → die geteilten Advisor-Crons lassen die Domäne aus (vorher latchte der geteilte Drift-Wächter estate-Alerts
   unter „Plan-Abweichung" und der eigene Cron fand den Latch verbraucht). „Erst einladen, dann mahnen": `estate.fn_advisor_review`
   liefert Alerts erst, wenn mindestens ein estate-Onboarding-Abschnitt `completed` ist.
@@ -1280,7 +1282,7 @@ wird unten als „bei uns anders"-Notiz festgehalten (damit sie nicht je Paket r
   rendert die Tail-Sektion „Karriere-Beratung & Planung" **und** seit WS-2 die Kategorie „Jobsuche & Matching" (sie trägt
   jetzt `tool_record_job_match`). **WS-2-Konsumenten der §8-Nähte:** career-Prefix `job:` ist der erste echte
   `callback_handlers`-Eintrag (`career.fn_handle_job_feedback`); `career_preferences` ist der 2. Fakten-Kontext +
-  `tool_set_career_preferences` die 2. Bindung des geteilten `agent.tool_set_context_facts` (KI-Name `tool_set_career_preferences`); `cron.score_jobs` der erste career-Opt-in-Cron
+  `tool_set_career_preferences` die 2. Bindung des geteilten `agent.tool_set_own_context_facts` (KI-Name `tool_set_career_preferences`); `cron.score_jobs` der erste career-Opt-in-Cron
   (`cron_labels.score_jobs`); `tool_record_job_match` der neue Write-Verb `record_` (idempotenter UPSERT, arch-challenge).
 - **career WS-3 Skill-Gap-Soll im Sidecar (Pattern-Paritaet, NICHT „bei uns anders"):** die Ziel-Skills
   (`target_roles[].required_skills[]{name,min_level?,is_blocker?}`) leben als Block des `targets`-Abschnitts im
@@ -1306,8 +1308,8 @@ wird unten als „bei uns anders"-Notiz festgehalten (damit sie nicht je Paket r
   deterministische Quelle (read_plan-Fallback/Review/refresh_market_signals/Migration). `fn_advisor_read_plan` ist
   jetzt `(text, text)` (chat_id-Person-Scope; `core:V014` droppt 1-Arg, Muster fn_fetch_context/V013). Multi-Person-
   Faecherung (Cron-Schleife, per-Person-Notify, `job_matches.person_id`) = P2.
-- **#10 finance_ro/core_ro-Grant-Split = Design, kein Bug:** Agent-Layer-Reads laufen unter `core_ro` (hat `SELECT
-  agent.*`), Paket-Tabellen unter `<pkg>_ro` — bewusst getrennt (D10/D12).
+- **#10 finance_ro/core_ro-Grant-Split = Design, kein Bug:** Agent-Layer-Reads laufen unter `core_ro` (Erlaubnisliste in
+  `agent`/`core`, §4), Paket-Tabellen unter `<pkg>_ro` — bewusst getrennt (D10/D12).
 - **career P2a — Multi-Person-Fundament (4 Entscheidungen, arch-challenge 5× ADOPT):**
   - **`career.job_matches.person_id` ist `text NOT NULL` + FK `ON DELETE RESTRICT`** (Backfill Owner via
     `career:V003`) — **wholly-per-person** Tabelle (kein Haushalts-Job-Match), darum NOT NULL, **anders** als die

@@ -19,15 +19,15 @@ Das Repo ist öffentlich: Stand und private Anlässe gehören nie in diesen Skil
 
 1. **Modus:** Läuft die Session im Bypass-Modus, anhalten und den Owner um „Auto“ bitten (`/coordinate` §1).
 2. **Ort:** Die Leitung arbeitet im Haupt-Checkout. Läuft die Session in einem Worktree, das dem Owner sagen; die Stand-Datei liegt trotzdem dort.
-3. **Sichtbar machen:** Session anpinnen (`set_pinned`, session_id „self“) und „Leitung“ nennen (`set_session_title`).
+3. **Sichtbar machen:** Session anpinnen (`set_pinned`, „self“) und `[Leitung] <Thema>` nennen (`set_session_title`), auch wer erst unterwegs Leitung wird; bei Übergabe die Marke entfernen. Sie ist das Erkennungszeichen (`/coordinate` §2), keine andere Session trägt sie.
 4. **Stand lesen:** `.claude/plans/leitung-stand.md` (bzw. die eigene Themen-Datei). Fehlt die Datei, aus der Vorlage in §5 anlegen.
 5. **Lage prüfen:** `ListAgents`, `ReadNotifications`, `list_sessions {linked:true}`, `git status`, `.\scripts\check_ci_status.ps1`. Läuft noch eine andere Leitung: gleiches Thema → Übergabe, anderes Thema → beide bleiben und stimmen sich ab (`/coordinate` §2 und §3 *Mehrere Leitungen*).
 6. **Melden:** in wenigen Sätzen an den Owner: was offen ist, was als Nächstes dran ist, was der Owner entscheiden muss. Nichts aus dem Stand ohne Auftrag beginnen.
 
 ## 2. Während der Arbeit
 
-- **Hauptüberlegung bei jedem Arbeitspaket (neue Aufgabe, Fix-Welle, Sprint-Nachbereitung, Retro-Punkte), an jeder Stelle:** zuerst die Aufgabe klären, dann ausdrücklich prüfen, wie sie sich auf mehrere Unter-Sessions verteilen lässt, um schneller zu werden. Der Schnitt folgt den Dateigruppen, damit keine zwei Sessions dieselben Dateien anfassen. Eine einzige Session braucht eine Begründung (z. B. alles liegt in denselben Dateien). Beispiel: Acht unabhängige Retro-Punkte gingen an eine Session statt an drei (Regeln und Texte, Skripte, Hooks).
-- **Verteilen:** Was wenige Tool-Aufrufe braucht, macht die Leitung selbst. Eigenständige Aufgaben bekommen je eine Unter-Session (`start_session`, „fresh“, eigener Worktree). Sessions ohne gemeinsame Dateien dürfen parallel laufen.
+- **Hauptüberlegung bei jedem Arbeitspaket (neue Aufgabe, Fix-Welle, Sprint-Nachbereitung, Retro-Punkte), an jeder Stelle:** zuerst die Aufgabe klären, dann ausdrücklich prüfen, wie sie sich auf mehrere Unter-Sessions verteilen lässt. Der Schnitt folgt den Dateigruppen, damit keine zwei Sessions dieselben Dateien anfassen. Eine einzige Session braucht eine Begründung (z. B. alles liegt in denselben Dateien). Beispiel: Acht unabhängige Retro-Punkte gingen an eine Session statt an drei.
+- **Verteilen:** Was wenige Tool-Aufrufe braucht, macht die Leitung selbst. Eigenständige Aufgaben bekommen je eine Unter-Session (`start_session`, „fresh“, eigener Worktree). Sessions ohne gemeinsame Dateien dürfen parallel laufen. Nach einer Unteragenten-Meldung verweigert die App `start_session`, auch nach Karte: erst auf getippte Owner-Nachricht starten.
 - **Direkt nach jedem `start_session`:** `.\scripts\register_sub_session.ps1 -Id <local_…>`. Dann lehnt der Hook direkte Fragen dieser Session an den Owner ab (`.claude/hooks/enforce_sub_session_questions.ps1`). Das wirkt nur in Sessions, die den Hook beim Start schon in ihrem Checkout hatten.
 - **Jeder Brief enthält:**
   - Aufgabe, betroffene Dateien, woran „fertig“ erkennbar ist
@@ -46,12 +46,12 @@ Das Repo ist öffentlich: Stand und private Anlässe gehören nie in diesen Skil
 - **Prüfläufe vor dem Merge:** `ci` und `genericity` auf dem Integrations-Branch, bevor `main` sich bewegt (`/coordinate` §3).
 - **Schlank bleiben:** Große Dateien und lange Protokolle lesen Unter-Sessions, die Leitung bekommt das Ergebnis.
 - **Stand sofort festhalten:** Session-ID, Branch, Container und jede Owner-Entscheidung im Wortlaut kommen gleich in die Stand-Datei, nicht erst am Ende. Erledigtes fliegt raus; die Datei beschreibt nur das Jetzt. Geändert wird sie nur mit dem Edit-Werkzeug, nie per Zeilennummer oder `Add-Content`.
-- **Entscheidungen als Karte:** Offene Punkte und Entscheidungen für den Owner stellt die Leitung immer als Karte, mit kurzer Erläuterung der Folgen und Empfehlung.
+- **Entscheidungen als Karte:** Offene Punkte und Entscheidungen für den Owner stellt die Leitung immer als Karte, mit kurzer Erläuterung der Folgen und Empfehlung. Die Handy-App zeigt Karten oft nicht (anthropics/claude-code#28330), darum jede Entscheidung zusätzlich als nummerierter Klartext in der Nachricht.
 - **Freigaben:** Merge, Push und Release nur auf das eigene Wort des Owners im Chat der Leitung (`/coordinate` §5 *Owner-Freigaben*). Prüfungen werden nicht übersprungen.
 - **Push-Sperre:** Soll nichts nach GitHub (z. B. vor einem Repo-Neustart), setzt die Leitung `.\scripts\set_no_push.ps1 -On`, noch bevor ein Brief das Pushen erwähnt. Aufheben kann nur der Owner im Terminal (`-Off`).
 - **Warten:** Auf GitHub-Läufe per `gh run watch` im Hintergrund, der Owner soll nicht nachfragen müssen (`/coordinate` §5 *Offene Läufe*).
-- **Über Remote Control:** Der Owner sieht keine Seitenfenster, Bilder und Diffs darum als Datei in den Chat. Die App verweigert dann den Start einer Session; das sagt die Leitung sofort, der Owner tippt die Nachricht in der Desktop-App.
-- **Plan-Freigabe:** Bei einer weitergeleiteten Plan-Karte sagt die Leitung dem Owner, das schlichte „Akzeptieren“ zu wählen; die Option „mit Bearbeitungsrecht“ stellt die Session von Auto um. Danach prüft sie `permissionMode` und stellt im selben Schritt die Denkstufe laut Plan-Zeile ein: für eine neue bauende Session per `start_session` `effort`, für die planende Session per `set_session_effort`. Liegt die Stufe über der eigenen, fragt die App den Owner; die Leitung kündigt das in derselben Nachricht wie die Plan-Abnahme an, damit kein eigener Termin entsteht.
+- **Über Remote Control:** keine Seitenfenster, also Bilder und Diffs als Datei in den Chat.
+- **Plan-Freigabe:** Planende Unter-Sessions melden die Plan-Datei statt einer Plan-Karte (`/feature` §2). Die Leitung prüft die Zeilen `Plan-Reviewer:` und `Denkstufe:` (sonst Aufgabe des ExitPlanMode-Hooks) und legt den Plan selbst vor: „Kurz gesagt“, Datei per `SendUserFile`, Karte. Auf das Ja trägt sie die Antworten in die Plan-Datei ein und startet die Bauer frisch (`permission_mode` „auto“, `effort` laut Plan-Zeile; liegt sie über der eigenen, fragt die App den Owner, in derselben Nachricht ankündigen).
 - **Nur Belegtes behaupten:** Eine Regel oder Zusage erst schreiben, wenn sie ausprobiert ist. Was nicht geprüft wurde, steht als ungeprüft im Bericht.
 
 ## 3. Arbeitsweise weiterentwickeln

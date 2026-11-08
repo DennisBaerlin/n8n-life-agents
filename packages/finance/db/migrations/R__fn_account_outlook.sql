@@ -12,6 +12,9 @@
 --     finance.fn_account_everyday_per_day (gezaehlte Auszuege, 0 ohne Historie; provisional = nur ein Auszug).
 --     Horizont = naechstes Vorkommen der groessten Einnahme AUF DIESES Konto (Einnahme oder Transfer-Ziel) nach heute,
 --     sonst heute + 31. Tiefster Stand ueber [heute, Horizont].
+--   statement_age_days = Tage seit dem bestaetigten Stand (NULL ohne Abgleich): der Alltag laeuft ab d0 ohne Obergrenze,
+--   ein alter Auszug drueckt die Vorschau also beliebig tief -> fn_advisor_review warnt ab finance.statement_stale_days
+--   nicht mehr vor Unterdeckung, sondern meldet den veralteten Auszug.
 --   Puffer = accounts.min_balance (Kontowaehrung, buffer_source 'account'), sonst core.config
 --   finance.coverage_buffer_eur (Default 250) in die Kontowaehrung umgerechnet (buffer_source 'default').
 --   Bruecke (Transparenz 2026-10-30) = Teilsummen derselben Reihe von d0 bis min_date: base (Saldo zum Vortag von d0;
@@ -20,7 +23,7 @@
 --   Vorschlag bei Unterschreitung: Umbuchung (auf 50 aufgerundet) bis 2 Tage vor dem Tief von dem cash-Konto gleicher
 --   Waehrung mit dem groessten freien Saldo (account_reserve_status: Saldo - Ruecklage), wenn es den Betrag hat; nie von
 --   einem Kinderkonto (Eigentuemer role child, core.fn_household_persons): der Vorschlag geht ohne LLM in Karte/Alert.
---   RUECKGABE: {ok, account_id, account_name, currency, confirmed_balance, confirmed_as_of, estimated_today,
+--   RUECKGABE: {ok, account_id, account_name, currency, confirmed_balance, confirmed_as_of, statement_age_days, estimated_today,
 --   next_income_date, next_income_name, next_income_amount, next_income_rp_id, horizon_end, planned_out, planned_in, everyday_per_day,
 --   has_history, provisional, min_projected, min_date, buffer, buffer_source, shortfall,
 --   bridge:{from, base, confirmed, booked, out, in, everyday, days},
@@ -131,6 +134,7 @@ BEGIN
     RETURN jsonb_build_object('ok', true,
         'account_id', p_account_id, 'account_name', v_acct.name, 'currency', v_acct.currency,
         'confirmed_balance', v_acct.last_reconciled_balance, 'confirmed_as_of', v_acct.last_reconciled_at,
+        'statement_age_days', v_today - v_acct.last_reconciled_at,
         'estimated_today', round(v_est, 2),
         'next_income_date', v_inc_date, 'next_income_name', v_inc_name, 'next_income_amount', v_inc_amt,
         'next_income_rp_id', v_inc_rp,

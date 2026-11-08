@@ -238,4 +238,34 @@ BEGIN
 
 END $$;
 
+-- Optionaler Start first_check (Datum) setzt den Anker eines Rhythmus-Triggers ("jeden Montag").
+DO $$
+DECLARE v jsonb; v_first date := CURRENT_DATE + (8 - extract(isodow FROM CURRENT_DATE)::int); v_next timestamptz;
+BEGIN
+  v := agent.fn_create_monitor_trigger(jsonb_build_object('domain','__t_mon__','label','__t_mon_s28_montag__',
+         'trigger_type','recurring_info','acquisition_method','none','check_interval','7 days',
+         'action_note','Wochenplan ansehen','first_check',v_first::text));
+  IF NOT (v->>'ok')::boolean THEN RAISE EXCEPTION 'SETUP [S2.8] %', v; END IF;
+  v_next := (v->>'next_check_at')::timestamptz;
+  IF v_next::date IS DISTINCT FROM v_first THEN
+    RAISE EXCEPTION 'FAIL [S2.8] first_check % ignoriert, next_check_at = % (Anker = Anlegezeitpunkt)', v_first, v_next;
+  END IF;
+  RAISE NOTICE 'PASS [S2.8]';
+END $$;
+
+-- Schwelle mit deutschem Komma ("1,5") wird gelesen oder abgelehnt, nie ein Cast-RAISE.
+DO $$
+DECLARE v jsonb;
+BEGIN
+  BEGIN
+    v := agent.fn_create_monitor_trigger(jsonb_build_object('domain','__t_mon__','label','__t_mon_s32_zins__',
+           'trigger_type','threshold','acquisition_method','web_search','acquisition_prompt','Beispiel-Zinssatz in Prozent',
+           'comparator','gte','threshold_value','1,5','expected_unit','%','min_plausible','0','max_plausible','20',
+           'check_interval','1 day'));
+  EXCEPTION WHEN others THEN
+    RAISE EXCEPTION 'FAIL [S3.2] threshold_value "1,5" -> RAISE (%), erwartet 1.5 oder ok:false', SQLERRM;
+  END;
+  RAISE NOTICE 'PASS [S3.2] %', v;
+END $$;
+
 ROLLBACK;

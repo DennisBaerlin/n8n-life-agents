@@ -13,6 +13,9 @@
 #     Sonst Erinnerung an /code-review: 'ask' mit Hinweis-Charakter - die VS-Code-Erweiterung winkt ein Hook-'ask' unter
 #     bypassPermissions still durch (GH #77212); "Review gelaufen" ist kein deterministisch pruefbarer Zustand, die harten Gates sind die von prek.
 #     Test: scripts/dev/privacy_review_hook_test.ps1. Grenze: wirkt nur auf Claude-Sessions; im Terminal greift prek pre-push.
+# (3) Release-Tags (v*.*.*): 'git tag v..' (Anlegen; git kennt keinen Hook dafuer) und jeder 'git push', der einen solchen Tag
+#     mitnimmt -> scripts/release_pin_guard.ps1 (Pin des master-Images passt zum Release-Baum, ohne Netz). Rot = 'deny'.
+#     Branch-Pushes und andere Tags laufen nie hinein. Test: scripts/dev/release_pin_guard_test.ps1.
 # Kein jq -> native ConvertFrom-Json. ASCII-only + Compact-JSON (kein BOM in stdout-JSON).
 $ErrorActionPreference = 'Stop'
 $raw = [Console]::In.ReadToEnd()
@@ -26,6 +29,17 @@ function Out-Decision($decision, $reason) {
 }
 $lint = Join-Path $PSScriptRoot '..\..\scripts\privacy_lint.ps1'
 $outgoing = Join-Path $PSScriptRoot '..\..\scripts\privacy_outgoing.ps1'
+$pinGuard = Join-Path $PSScriptRoot '..\..\scripts\release_pin_guard.ps1'
+# Release-Pin pruefen; '' = frei, sonst der Grund. Jeder andere Ausgang sperrt (fail-closed).
+function Get-PinProblem([string[]]$ExtraArgs = @()) {
+  if (-not (Test-Path -LiteralPath $pinGuard)) { return '[FAIL] scripts/release_pin_guard.ps1 fehlt' }
+  $res = @(& powershell (@('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $pinGuard) + $ExtraArgs))
+  if ($LASTEXITCODE -eq 0) { return '' }
+  $why = (@($res | Where-Object { $_ -match '\[FAIL\]' } | ForEach-Object { $_.Trim() }) -join '; ')
+  if ($why) { return $why }
+  return "[FAIL] Release-Pin nicht pruefbar (Exit $LASTEXITCODE)"
+}
+$pinDeny = 'RELEASE-TAG GESPERRT (master-Image-Pin, Ablauf docs/reference/provisioning.md *Docker-Verbund*): {0}. Nicht umgehen.'
 function Get-FailLines($res) { (@($res | Where-Object { $_ -match '\[FAIL\]' } | ForEach-Object { $_.Trim() }) -join '; ') }
 # Pruefstempel fuer das Ausgehende laut PRE_COMMIT_*-Umgebung. Liefert '' = frei, sonst den Grund. Jeder andere Ausgang sperrt.
 function Get-StampProblem([string[]]$ExtraArgs = @()) {
@@ -96,6 +110,24 @@ if ($isGh -and -not $ghRead) {
     if ($why) { Out-Decision 'deny' "RELEASE GESPERRT (Repo ist public): $why. Nicht umgehen." }
   }
 }
+# 'git tag <v..> [stand]' legt einen Release-Tag an (Liste/Loeschen/Pruefen nicht). Werte von -m/-F/-u/--cleanup/--trailer
+# sind keine Positionen; kombinierte Kurz-Flags (-am, -sF) nehmen den naechsten Wert, wenn sie auf m/F/u enden.
+$tagCalls = [regex]::Matches($cmd, '(?:^|[;&|(]|\r?\n)\s*(?:[A-Za-z_]\w*=\S*\s+)*git(?:\.exe)?(?:\s+(?:-[Cc]\s+(?:"[^"]+"|''[^'']+''|\S+)|--[\w-]+(?:=\S*)?))*\s+tag\b([^;&|\r\n]*)')
+foreach ($tc in $tagCalls) {
+  $toks = @([regex]::Matches($tc.Groups[1].Value, '"[^"]*"|''[^'']*''|\S+') | ForEach-Object { $_.Value })
+  $posT = @(); $skip = $false; $noCreate = $false
+  foreach ($t in $toks) {
+    if ($skip) { $skip = $false; continue }
+    if ($t -match '^(--delete|--list|--verify|-[dlv]|--(no-)?(contains|merged)|--points-at|--sort|--format)(=|$)') { $noCreate = $true; break }
+    if ($t -match '^(--message|--file|--local-user|--cleanup|--trailer)$' -or $t -match '^-[A-Za-z]*[mFu]$') { $skip = $true; continue }
+    if ($t -match '^-') { continue }
+    $posT += $t.Trim('"', "'")
+  }
+  if ($noCreate -or $posT.Count -lt 1) { continue }
+  $pinArgs = @('-Tag', $posT[0]) + $(if ($posT.Count -ge 2) { @('-Commit', $posT[1]) } else { @() })
+  try { $why = Get-PinProblem $pinArgs } catch { $why = "[FAIL] Hook-Fehler: $($_.Exception.Message)" }
+  if ($why) { Out-Decision 'deny' ($pinDeny -f $why) }
+}
 # Nur ein echter Aufruf zaehlt: 'git [-C dir] push' am Anfang eines Befehls-Segments (nicht der Text in einem
 # Argument, z. B. einer sed-Ersetzung oder Commit-Message). Geprueft wird das tatsaechliche Ziel: Remote + Refspecs
 # aus dem Befehl (ohne Refspec: HEAD), mit --tags/--follow-tags/--all/--mirror zusaetzlich jeder lokale Tag, der dem
@@ -119,6 +151,7 @@ if ($push.Success) {
   if ($pArgs | Where-Object { $_ -match '^(--delete|-d)$' }) { $specs = @() }
   $fails = @()
   $stampFails = @()
+  $pinFails = @()
   try {
     foreach ($spec in $specs) {
       $src = ($spec -split ':')[0].TrimStart('+')
@@ -129,6 +162,8 @@ if ($push.Success) {
       Remove-Item Env:PRE_COMMIT_FROM_REF -ErrorAction SilentlyContinue
       # Der Hook laeuft VOR dem Befehl: ein im selben Aufruf erst angelegter Tag/Commit existiert noch nicht.
       if (-not $env:PRE_COMMIT_TO_REF) { $fails += "[FAIL] Refspec '$spec' nicht aufloesbar (im selben Aufruf erst angelegt? Tag/Commit zuerst in einem eigenen Aufruf anlegen, dann pushen)"; continue }
+      $why = Get-PinProblem $(if ($allTags) { @('-AllTags') } else { @() })
+      if ($why) { $pinFails += $why }
       $lintArgs = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $lint, '-Outgoing') + $(if ($allTags) { @('-AllTags') } else { @() })
       $res = @(& powershell $lintArgs)
       if ($LASTEXITCODE -ne 0) { $fails += @($res | Where-Object { $_ -match '\[FAIL\]' } | ForEach-Object { $_.Trim() }); continue }
@@ -136,6 +171,7 @@ if ($push.Success) {
       if ($why) { $stampFails += $why }
     }
   } catch { $fails += "[FAIL] Hook-Fehler: $($_.Exception.Message)" }
+  if ($pinFails.Count -gt 0) { Out-Decision 'deny' ($pinDeny -f (@($pinFails | Sort-Object -Unique) -join '; ')) }
   if ($fails.Count -gt 0) {
     $shown = (@($fails | Select-Object -First 5) -join '; ') + $(if ($fails.Count -gt 5) { " (+$($fails.Count - 5) weitere)" } else { '' })
     Out-Decision 'deny' "PUSH GESPERRT (Repo ist public, privacy_lint -Outgoing, Ziel '$remote'): $shown. Commit-Message/Tag-Message korrigieren (Commit: amend/rebase; Tag: neu anlegen), nie --no-verify."

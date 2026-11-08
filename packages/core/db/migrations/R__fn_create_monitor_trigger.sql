@@ -18,6 +18,9 @@
 --     due_date (YYYY-MM-DD oder relativ "+6 months" -> core.fn_resolve_date; Vergangenheit -> {ok:false}),
 --     warn_days_before, expected_unit, min_plausible, max_plausible,
 --     max_jump_pct, check_interval (Text, z. B. '1 day'), action_note, probe_observation.
+--     first_check (optional, Datum oder relativ, Regel agent.fn_resolve_monitor_due; Tagesbeginn = erster Lauf und Anker des
+--     Rhythmus; leer = sofort; Vergangenheit/unlesbar -> {ok:false}). Zahl-Felder als Text mit Punkt oder Komma
+--     (agent.fn_parse_decimal_or_null); unlesbar -> {ok:false}.
 --   RUECKGABE (Post-State): {ok:true, trigger_id, status:'armed', next_check_at,
 --     check_interval (normalisiert — DB-berechnet), due_date (aufgeloest, nur date-Trigger), armed_count (Domain)}.
 -- ============================================================
@@ -36,13 +39,13 @@ DECLARE
     v_mst      JSONB;
     v_val      JSONB;
     v_unit     TEXT := NULLIF(trim(COALESCE(p->>'expected_unit', '')), '');
-    v_min      NUMERIC := NULLIF(p->>'min_plausible', '')::numeric;
-    v_max      NUMERIC := NULLIF(p->>'max_plausible', '')::numeric;
-    v_jump     NUMERIC := NULLIF(p->>'max_jump_pct', '')::numeric;
+    v_min      NUMERIC := agent.fn_parse_decimal_or_null(p->>'min_plausible');
+    v_max      NUMERIC := agent.fn_parse_decimal_or_null(p->>'max_plausible');
+    v_jump     NUMERIC := agent.fn_parse_decimal_or_null(p->>'max_jump_pct');
     v_cmp      TEXT := NULLIF(trim(COALESCE(p->>'comparator', '')), '');
-    v_thr      NUMERIC := NULLIF(p->>'threshold_value', '')::numeric;
-    v_dd       NUMERIC := NULLIF(p->>'drawdown_pct', '')::numeric;
-    v_ref      NUMERIC := NULLIF(p->>'reference_value', '')::numeric;
+    v_thr      NUMERIC := agent.fn_parse_decimal_or_null(p->>'threshold_value');
+    v_dd       NUMERIC := agent.fn_parse_decimal_or_null(p->>'drawdown_pct');
+    v_ref      NUMERIC := agent.fn_parse_decimal_or_null(p->>'reference_value');
     v_due      DATE;
     v_dchk     JSONB;
     v_warn     INT := COALESCE(NULLIF(p->>'warn_days_before', '')::int, 0);
@@ -52,6 +55,8 @@ DECLARE
     v_next     TIMESTAMPTZ;
     v_norm_int TEXT;
     v_armed    INT;
+    v_key      TEXT;
+    v_first    DATE;
 BEGIN
     -- Basis-Guards
     IF v_label = '' THEN
@@ -72,6 +77,15 @@ BEGIN
             'reason', 'invalid package (expect ^[a-z0-9_]+$): ' || v_pkg);
     END IF;
 
+    -- Zahl-Felder als freier Text: unlesbar ("1.234,5", Einheit) -> {ok:false} statt Cast-RAISE
+    FOREACH v_key IN ARRAY ARRAY['threshold_value', 'drawdown_pct', 'reference_value', 'min_plausible',
+                                 'max_plausible', 'max_jump_pct'] LOOP
+        IF NULLIF(btrim(COALESCE(p->>v_key, '')), '') IS NOT NULL AND agent.fn_parse_decimal_or_null(p->>v_key) IS NULL THEN
+            RETURN jsonb_build_object('ok', false,
+                'reason', v_key || ' is not a readable number (e.g. 1.5 or 1,5), got "' || (p->>v_key) || '"');
+        END IF;
+    END LOOP;
+
     -- check_interval parsen (Roh-Wert vom Nutzer, die DB normalisiert)
     BEGIN
         v_interval := (p->>'check_interval')::interval;
@@ -81,6 +95,16 @@ BEGIN
     IF v_interval IS NULL OR v_interval <= INTERVAL '0' THEN
         RETURN jsonb_build_object('ok', false,
             'reason', 'check_interval is not a valid positive interval (e.g. ''12 hours'', ''1 day'', ''2 weeks''), got ' || COALESCE(p->>'check_interval', 'none'));
+    END IF;
+
+    -- first_check (optional): Anker des ersten Laufs ("jeden Montag" ab dem naechsten Montag), sonst sofort
+    IF NULLIF(btrim(COALESCE(p->>'first_check', '')), '') IS NOT NULL THEN
+        v_dchk := agent.fn_resolve_monitor_due(p->>'first_check');   -- dieselbe Regel wie due_date und die Karte
+        IF NOT (v_dchk->>'ok')::boolean THEN
+            RETURN jsonb_build_object('ok', false,
+                'reason', 'first_check: ' || replace(v_dchk->>'reason', 'due_date', 'the start date'));
+        END IF;
+        v_first := (v_dchk->>'due_date')::date;
     END IF;
 
     -- Beschaffungs-Spec je Methode validieren + bauen
@@ -169,13 +193,14 @@ BEGIN
              comparator, threshold_value, drawdown_pct, reference_value,
              due_date, warn_days_before, expected_unit,
              min_plausible, max_plausible, max_jump_pct,
-             check_interval, action_note)
+             check_interval, action_note, next_check_at)
         VALUES
             (v_domain, v_pkg, v_label, v_type, v_method, v_spec,
              v_cmp, v_thr, v_dd, CASE WHEN v_type = 'drawdown' THEN v_ref END,
              v_due, v_warn, v_unit,
              v_min, v_max, v_jump,
-             v_interval, NULLIF(trim(COALESCE(p->>'action_note', '')), ''))
+             v_interval, NULLIF(trim(COALESCE(p->>'action_note', '')), ''),
+             COALESCE(v_first::timestamptz, now()))
         RETURNING id, next_check_at, check_interval::text
         INTO v_id, v_next, v_norm_int;
     EXCEPTION

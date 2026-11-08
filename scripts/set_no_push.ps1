@@ -11,6 +11,7 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 if ($On -eq $Off) { throw 'Genau einen Schalter angeben: -On oder -Off.' }
 $common = git -C $PSScriptRoot rev-parse --path-format=absolute --git-common-dir
 $file = Join-Path (Split-Path $common -Parent) '.claude\no_push.txt'

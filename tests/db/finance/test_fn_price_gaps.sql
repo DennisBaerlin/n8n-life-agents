@@ -82,6 +82,13 @@ BEGIN
 
   -- (5) Feed-Ausfall: alle Positionen mit Historie stale, keine ok
   DELETE FROM finance.market_prices;
+  -- Grenze: genau 2 Positionen mit (veralteter) Historie reichen schon
+  INSERT INTO finance.market_prices (symbol, price, currency, as_of) VALUES
+    ('PGA', 50, 'EUR', current_date - v_days - 3),
+    ('PGB', 44, 'EUR', current_date - v_days - 3);
+  IF NOT (finance.fn_price_gaps()->>'feed_down')::boolean THEN
+    RAISE EXCEPTION 'FAIL [5 feed_down bei genau 2 veralteten Kursen]'; END IF;
+  DELETE FROM finance.market_prices;
   INSERT INTO finance.market_prices (symbol, price, currency, as_of) VALUES
     ('PGA', 50, 'EUR', current_date - v_days - 3),
     ('PGB', 44, 'EUR', current_date - v_days - 3),

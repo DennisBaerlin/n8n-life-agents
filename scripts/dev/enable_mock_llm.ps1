@@ -110,9 +110,10 @@ function Set-GatewayUpstream {
 }
 
 # --- .env: TEST_GOOGLE_API_KEY optional (Credential-data verlangt apiKey beim PATCH; der Revert stellt ihn wieder her) ----
+. "$PSScriptRoot\..\lib\dotenv.ps1"
 function Get-EnvValue([string]$name) {
     if (-not (Test-Path "$RepoRoot\.env")) { return $null }
-    $line = (Get-Content "$RepoRoot\.env" | Where-Object { $_ -match "^\s*$([regex]::Escape($name))=" } | Select-Object -First 1)
+    $line = (Read-DotEnvLines "$RepoRoot\.env" | Where-Object { $_ -match "^\s*$([regex]::Escape($name))=" } | Select-Object -First 1)
     if (-not $line) { return $null }
     $v = ($line -split '=', 2)[1].Trim()
     if ([string]::IsNullOrWhiteSpace($v)) { return $null }

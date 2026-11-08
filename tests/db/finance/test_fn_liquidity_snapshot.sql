@@ -150,4 +150,23 @@ BEGIN
 
   RAISE NOTICE 'PASS test_fn_liquidity_snapshot';
 END $$;
+
+-- Gedeckte Notreserve zaehlt als verfuegbar (cash_eur) und als emergency_eur, nie zusaetzlich als zweckgebunden:
+-- 600 Notreserve auf einem Geld-Konto mit 1000 -> earmarked unveraendert, emergency +600, cash unveraendert.
+DO $$
+DECLARE v_acc INT; v_g INT; sa jsonb; sb jsonb;
+BEGIN
+  UPDATE finance.savings_goals SET status = 'cancelled' WHERE kind = 'emergency_reserve' AND status = 'active';
+  v_acc := (finance.fn_create_account('{"name":"__t_ls_nr__","account_type":"cash","currency":"EUR","opening_balance":1000}'::jsonb)->>'account_id')::int;
+  sa := finance.fn_liquidity_snapshot();
+  INSERT INTO finance.savings_goals (name, kind, target_amount, status) VALUES ('__t_ls_nr_ziel__', 'emergency_reserve', 3000, 'active')
+    RETURNING id INTO v_g;
+  INSERT INTO finance.savings_goal_reserve_entries (savings_goal_id, account_id, delta_native, kind) VALUES (v_g, v_acc, 600, 'manual');
+  sb := finance.fn_liquidity_snapshot();
+  IF round((sb->>'earmarked_eur')::numeric - (sa->>'earmarked_eur')::numeric, 2) <> 0
+     OR round((sb->>'emergency_eur')::numeric - (sa->>'emergency_eur')::numeric, 2) <> 600
+     OR round((sb->>'cash_eur')::numeric - (sa->>'cash_eur')::numeric, 2) <> 0 THEN
+    RAISE EXCEPTION 'FAIL [10 Notreserve]: vorher % nachher %', sa, sb; END IF;
+  RAISE NOTICE 'PASS [10] Notreserve verfuegbar, nicht zweckgebunden';
+END $$;
 ROLLBACK;

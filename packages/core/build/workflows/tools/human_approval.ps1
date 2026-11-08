@@ -246,7 +246,7 @@ function Build-HumanApproval {
 
     $stStage2 = Build-Sticky 'Doc Zwei-Send-Risiko' @(1540, -60) -Header 'Ablauf' `
         'Zwei sequentielle Send-and-Wait (owner_approval)' `
-        'Der Vier-Augen-Pfad sendet ZWEI sendAndWait nacheinander (Member -> Owner) in EINER Execution -> das bekannte ~3-5min Telegram-Socket-Hang-Fenster (Memory telegram-socket-fix-watch, GH #24007) verdoppelt sich. Mitigation: limitWaitTime=10min an JEDEM sendAndWait -> Timeout resumed OHNE Approval -> data.approved leer -> approved=FALSE (fail-closed, kein Write), outcome=expired bzw. owner_expired. Kein Datenverlust (Write erst nach beiden Freigaben). Ein Tipp NACH dem Timeout bewirkt nichts mehr (n8n antwortet 409, der Knopf dreht kurz). Freitext statt Knopf / Karte per Text ersetzen: vertagt.' 360 460
+        'Der Vier-Augen-Pfad sendet ZWEI sendAndWait nacheinander (Member -> Owner) in EINER Execution -> das bekannte ~3-5min Telegram-Socket-Hang-Fenster (GH #24007) verdoppelt sich. Mitigation: limitWaitTime=10min an JEDEM sendAndWait -> Timeout resumed OHNE Approval -> data.approved leer -> approved=FALSE (fail-closed, kein Write), outcome=expired bzw. owner_expired. Kein Datenverlust (Write erst nach beiden Freigaben). Ein Tipp NACH dem Timeout bewirkt nichts mehr (n8n antwortet 409, der Knopf dreht kurz). Freitext statt Knopf / Karte per Text ersetzen: vertagt.' 360 460
 
     $stPending = Build-Sticky 'Doc Karte-offen-Sperre' @(-420, -380) -Header 'Ablauf' `
         'Karte-offen-Sperre (agent.hitl_pending, Fix C)' `

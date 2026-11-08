@@ -190,4 +190,37 @@ BEGIN
   RAISE NOTICE 'PASS goal_reserve [P2P-Topf, Entnahme aus Zuordnung, Depot kein Reserve-Konto, Kredit verboten]';
 END $$;
 
+-- (7) fn_apply_goal_reserve direkt: Kopf + noch laufendes Vorgaenger-Glied ziehen um, ein heute beendetes Glied
+--     (valid_to exklusiv) und die Rate eines anderen Ziels bleiben, wie sie sind.
+DO $$
+DECLARE
+  v_giro int; v_pot int; v_new int; v_ended int; v_old int; v_head int; v_goal int; v_other_rp int;
+BEGIN
+  v_giro := (finance.fn_create_account('{"name":"__gr7_giro__","account_type":"cash"}'::jsonb)->>'account_id')::int;
+  v_pot  := (finance.fn_create_account('{"name":"__gr7_pot__","account_type":"cash"}'::jsonb)->>'account_id')::int;
+  v_new  := (finance.fn_create_account('{"name":"__gr7_new__","account_type":"cash"}'::jsonb)->>'account_id')::int;
+  INSERT INTO finance.recurring_payments (name, account_id, target_account_id, amount, schedule_unit, first_payment_date, valid_from, valid_to)
+    VALUES ('__gr7_ended__', v_giro, v_pot, -50, 'month', current_date - 90, current_date - 90, current_date) RETURNING id INTO v_ended;
+  INSERT INTO finance.recurring_payments (name, account_id, target_account_id, amount, schedule_unit, first_payment_date, valid_from, valid_to, predecessor_id)
+    VALUES ('__gr7_old__', v_giro, v_pot, -60, 'month', current_date, current_date, current_date + 30, v_ended) RETURNING id INTO v_old;
+  INSERT INTO finance.recurring_payments (name, account_id, target_account_id, amount, schedule_unit, first_payment_date, valid_from, predecessor_id)
+    VALUES ('__gr7_head__', v_giro, v_pot, -70, 'month', current_date + 30, current_date + 30, v_old) RETURNING id INTO v_head;
+  INSERT INTO finance.savings_goals (name, target_amount, target_date, recurring_payment_id)
+    VALUES ('__gr7 Ziel__', 3000, current_date + 700, v_head) RETURNING id INTO v_goal;
+  INSERT INTO finance.recurring_payments (name, account_id, target_account_id, amount, schedule_unit, first_payment_date, valid_from)
+    VALUES ('__gr7_fremd__', v_giro, v_pot, -40, 'month', current_date, current_date) RETURNING id INTO v_other_rp;
+  INSERT INTO finance.savings_goals (name, target_amount, target_date, recurring_payment_id)
+    VALUES ('__gr7 fremdes Ziel__', 2000, current_date + 700, v_other_rp);
+
+  PERFORM finance.fn_apply_goal_reserve(v_goal, v_new);
+  IF (SELECT target_account_id FROM finance.recurring_payments WHERE id = v_head) IS DISTINCT FROM v_new
+     OR (SELECT target_account_id FROM finance.recurring_payments WHERE id = v_old) IS DISTINCT FROM v_new THEN
+    RAISE EXCEPTION 'FAIL goal_reserve [7 Kopf + laufendes Glied ziehen um]'; END IF;
+  IF (SELECT target_account_id FROM finance.recurring_payments WHERE id = v_ended) IS DISTINCT FROM v_pot THEN
+    RAISE EXCEPTION 'FAIL goal_reserve [7 beendetes Glied bleibt]'; END IF;
+  IF (SELECT target_account_id FROM finance.recurring_payments WHERE id = v_other_rp) IS DISTINCT FROM v_pot THEN
+    RAISE EXCEPTION 'FAIL goal_reserve [7 fremdes Ziel bleibt]'; END IF;
+  RAISE NOTICE 'PASS goal_reserve [7 Topf-Umzug nur fuer die laufende eigene Kette]';
+END $$;
+
 ROLLBACK;

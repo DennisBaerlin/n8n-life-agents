@@ -288,4 +288,30 @@ BEGIN
   RAISE NOTICE 'PASS sell [G3 kein Ziel-Geld, G4 unbekanntes Ziel, G5 Waehrung -> ok:false ohne Verkauf]';
 END $$;
 
+-- Kurs fehlt -> ok:false; beim Verkauf fuer ein Sparziel zieht der umgeschichtete
+-- Betrag den Erloes NACH Gebuehr heran (5 x 100 - 10 = 490), nie mehr.
+DO $$
+DECLARE v_settle INT; v_depot INT; v_hold INT; v_goal INT; v_res JSONB;
+BEGIN
+  v_settle := (finance.fn_create_account('{"name":"__test_sell2_settle__","account_type":"cash","currency":"EUR"}'::jsonb)->>'account_id')::int;
+  v_depot  := (finance.fn_create_account(jsonb_build_object('name','__test_sell2_depot__','account_type','stocks_depot',
+                'currency','EUR','settlement_id',v_settle))->>'account_id')::int;
+  v_hold := (finance.fn_book_stock_buy(jsonb_build_object('depot_id', v_depot, 'settlement_id', v_settle,
+              'isin', 'IE00B4L5Y983', 'symbol', 'SELLTWO', 'name', 'Welt ETF', 'shares', 10, 'price_per_share', 100,
+              'transaction_date', (CURRENT_DATE - 30)::text))->>'holding_id')::int;
+  INSERT INTO finance.market_prices (symbol, price, currency, as_of) VALUES ('SELLTWO', 100, 'EUR', CURRENT_DATE);
+
+  v_res := finance.fn_book_stock_sell(jsonb_build_object('settlement_id', v_settle, 'holding_id', v_hold, 'shares', 1));
+  IF (v_res->>'ok')::boolean IS DISTINCT FROM false THEN RAISE EXCEPTION 'FAIL sell [Kurs fehlt]: %', v_res; END IF;
+
+  INSERT INTO finance.savings_goals (name, target_amount, target_date, status)
+    VALUES ('__test_sell2 Ziel__', 5000, CURRENT_DATE + 3000, 'active') RETURNING id INTO v_goal;
+  PERFORM finance.fn_book_savings_reservation(jsonb_build_object('savings_goal_id', v_goal, 'account_id', v_depot, 'amount', 1000));
+  v_res := finance.fn_book_stock_sell(jsonb_build_object('settlement_id', v_settle, 'holding_id', v_hold, 'shares', 5,
+             'price_per_share', 100, 'order_fee', 10, 'savings_goal_name', '__test_sell2 Ziel__'));
+  IF (v_res->>'ok')::boolean IS DISTINCT FROM true OR (v_res->>'derisk_amount')::numeric IS DISTINCT FROM 490 THEN
+    RAISE EXCEPTION 'FAIL sell [Ziel-Verkauf: 490 nach Gebuehr]: %', v_res; END IF;
+  RAISE NOTICE 'PASS sell [Kurs fehlt abgelehnt, Ziel-Verkauf nach Gebuehr]';
+END $$;
+
 ROLLBACK;

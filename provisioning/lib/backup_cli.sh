@@ -107,7 +107,7 @@ _bkp_tmpdir() {
     d="$(mktemp -d -p /dev/shm lifeagents-bkp.XXXXXX)" || return 1
   else
     warn "/dev/shm (tmpfs) nicht verfuegbar -> Klartext-Dump liegt transient auf Disk (mktemp). Off-Site-Hygiene beachten."
-    d="$(mktemp -d lifeagents-bkp.XXXXXX)" || return 1
+    d="$(mktemp -d -p /tmp lifeagents-bkp.XXXXXX)" || return 1   # ohne -p entstuende der Ordner im aktuellen Verzeichnis
   fi
   chmod 0700 "$d"
   printf '%s' "$d"
@@ -118,7 +118,7 @@ _bkp_tmpdir() {
 # (das lokale Backup ist hier bereits sicher geschrieben -> der Versand darf den Export NIE kippen; der von
 # der lifeagents-CLI geerbte `set -e` wuerde sonst bei rc!=0 abbrechen). Praezedenzfall:
 # bootstrap_owner.sh _wire_telegram (curl an api.telegram.org, warn+skip). Token NIE ins argv -> 600-`mktemp`-
-# curl-config wie release_inputs.sh _http_status_secret; nur die Nicht-Geheim-Felder (document/chat_id/caption)
+# curl-config (curl_cfg); nur die Nicht-Geheim-Felder (document/chat_id/caption)
 # als -F-Flags. Token + Owner ueber die geteilten Helfer owner_tg_token/owner_tg_chat_id (common.sh; der Owner via
 # _resolve_owner_chat_id aus deploy_workflows.sh) -> braucht N8N_DB_NAME, also _bkp_resolve_db ZUERST (sonst faellt
 # der Resolver still auf '0'). DATENSCHUTZ: das Bundle landet im persistenten Telegram-Cloud-Speicher (bleibt dort auch nach
@@ -322,9 +322,11 @@ backup_cmd_export() {
   # --- (5) Tarball -> gpg (Passphrase via fd, nie argv) ---
   local tarf="$tmp/bundle.tar.gz"
   tar -czf "$tarf" -C "$tmp" manifest.json data.dump shared.json || die "tar fehlgeschlagen."
-  if ! gpg_sym_encrypt "$key" "$out" "$tarf"; then
+  # umask in der Teilschale: gpg legt die Datei dann nie weltlesbar an; chmod danach deckt eine vorhandene Zieldatei ab.
+  if ! ( umask 077; gpg_sym_encrypt "$key" "$out" "$tarf" ); then
     die "gpg-Verschluesselung fehlgeschlagen."
   fi
+  chmod 0600 "$out"
   if [ "$want_host" -eq 1 ]; then
     rt_host_put "$host" "$name" < "$out" || die "Sicherung ließ sich nicht in den Ordner '${host}' auf dem Rechner schreiben."
     _bkp_host_rotate "$host"

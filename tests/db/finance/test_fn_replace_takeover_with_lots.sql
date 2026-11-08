@@ -10,6 +10,9 @@
 --   ist er Stufe-0-"schon gebucht" -> nie doppelt.
 -- ============================================================
 BEGIN;
+CREATE FUNCTION pg_temp.tr_hdr() RETURNS jsonb LANGUAGE sql IMMUTABLE AS $$
+    SELECT '["datetime","date","account_type","category","type","asset_class","name","symbol","shares","price","amount","fee","tax","currency","original_amount","original_currency","fx_rate","description","transaction_id","counterparty_name","counterparty_iban","payment_reference","mcc_code"]'::jsonb;
+$$;
 CREATE FUNCTION pg_temp.tr_row(p_d date, p_typ text, p_sym text, p_sh text, p_amt text, p_fee text, p_id text)
 RETURNS jsonb LANGUAGE sql IMMUTABLE AS $$
     SELECT jsonb_build_array(p_d::text || 'T10:00:00Z', p_d::text, 'DEFAULT', 'TRADING', p_typ, 'FUND', p_sym || ' ETF', p_sym,
@@ -154,5 +157,63 @@ BEGIN
         RAISE EXCEPTION 'FAIL [L10 Void der Gruppe]: %', v_res;
     END IF;
     RAISE NOTICE 'PASS [L10 Void]';
+END $$;
+
+-- L11 FIFO ueber mehrere Lots: Kauf 1 @ 10, 1 @ 20, 3 @ 30, Verkauf 3 -> uebrig 2 aus dem dritten Lot, Einstand 30
+-- L12 Export, der die Position komplett wieder verkauft (Summe 0) -> lots_mismatch, nie stilles Ersetzen
+-- L13 Stichtag = der SPAETERE von Eroeffnung und letztem Abgleich: ein Kauf dazwischen bewegt kein Geld
+DO $$
+DECLARE
+    T DATE := core.fn_today();
+    v_acc INT; v_dep INT; v_res JSONB;
+BEGIN
+    -- L11
+    v_acc := (finance.fn_create_account(jsonb_build_object('name', '__t_lots_fifo__', 'account_type', 'cash', 'currency', 'EUR',
+                 'bank', 'Trade Republic', 'opening_balance', 1000, 'opening_balance_date', (T - 20)::text))->>'account_id')::int;
+    v_dep := (finance.fn_create_account(jsonb_build_object('name', '__t_lots_fifo_dep__', 'account_type', 'stocks_depot',
+                 'currency', 'EUR', 'settlement_id', v_acc))->>'account_id')::int;
+    PERFORM finance.fn_book_stock_buy(jsonb_build_object('depot_id', v_dep, 'settlement_id', v_acc, 'isin', 'IE00LOTSFIF1',
+                 'symbol', 'FIF', 'name', 'Fif ETF', 'shares', 2, 'price_per_share', 25, 'order_fee', 0,
+                 'transaction_date', (T - 5)::text, 'existing_position', true));
+    v_res := core.fn_dry_run('finance.fn_replace_takeover_with_lots(jsonb)'::regprocedure, jsonb_build_object(
+        'account_name', '__t_lots_fifo__', 'table', jsonb_build_object('rows', jsonb_build_array(pg_temp.tr_hdr()) || jsonb_build_array(
+            pg_temp.tr_row(T - 70, 'BUY',  'IE00LOTSFIF1', '1.0000000000',  '-10.00', '', 'f-01'),
+            pg_temp.tr_row(T - 60, 'BUY',  'IE00LOTSFIF1', '1.0000000000',  '-20.00', '', 'f-02'),
+            pg_temp.tr_row(T - 50, 'BUY',  'IE00LOTSFIF1', '3.0000000000',  '-90.00', '', 'f-03'),
+            pg_temp.tr_row(T - 45, 'SELL', 'IE00LOTSFIF1', '-3.0000000000', '100.00', '', 'f-04')))));
+    IF (v_res->>'ok')::boolean IS DISTINCT FROM true OR (v_res->'replaced'->0->>'shares')::numeric IS DISTINCT FROM 2
+       OR (v_res->'replaced'->0->>'avg_purchase_price')::numeric IS DISTINCT FROM 30 THEN
+        RAISE EXCEPTION 'FAIL [L11 FIFO ueber drei Lots]: %', v_res; END IF;
+
+    -- L12
+    v_acc := (finance.fn_create_account(jsonb_build_object('name', '__t_lots_zero__', 'account_type', 'cash', 'currency', 'EUR',
+                 'bank', 'Trade Republic', 'opening_balance', 1000, 'opening_balance_date', (T - 20)::text))->>'account_id')::int;
+    v_dep := (finance.fn_create_account(jsonb_build_object('name', '__t_lots_zero_dep__', 'account_type', 'stocks_depot',
+                 'currency', 'EUR', 'settlement_id', v_acc))->>'account_id')::int;
+    PERFORM finance.fn_book_stock_buy(jsonb_build_object('depot_id', v_dep, 'settlement_id', v_acc, 'isin', 'IE00LOTSZER1',
+                 'symbol', 'ZER', 'name', 'Zer ETF', 'shares', 2, 'price_per_share', 25, 'order_fee', 0,
+                 'transaction_date', (T - 5)::text, 'existing_position', true));
+    v_res := core.fn_dry_run('finance.fn_replace_takeover_with_lots(jsonb)'::regprocedure, jsonb_build_object(
+        'account_name', '__t_lots_zero__', 'table', jsonb_build_object('rows', jsonb_build_array(pg_temp.tr_hdr()) || jsonb_build_array(
+            pg_temp.tr_row(T - 60, 'BUY',  'IE00LOTSZER1', '2.0000000000',  '-40.00', '', 'z-01'),
+            pg_temp.tr_row(T - 50, 'SELL', 'IE00LOTSZER1', '-2.0000000000', '44.00', '', 'z-02')))));
+    IF v_res::text NOT LIKE '%lots_mismatch%' OR jsonb_array_length(COALESCE(v_res->'replaced', '[]'::jsonb)) <> 0 THEN
+        RAISE EXCEPTION 'FAIL [L12 komplett verkauft -> lots_mismatch]: %', v_res; END IF;
+
+    -- L13
+    v_acc := (finance.fn_create_account(jsonb_build_object('name', '__t_lots_cut__', 'account_type', 'cash', 'currency', 'EUR',
+                 'bank', 'Trade Republic', 'opening_balance', 1000, 'opening_balance_date', (T - 20)::text))->>'account_id')::int;
+    UPDATE finance.accounts SET last_reconciled_at = T - 10 WHERE id = v_acc;
+    v_dep := (finance.fn_create_account(jsonb_build_object('name', '__t_lots_cut_dep__', 'account_type', 'stocks_depot',
+                 'currency', 'EUR', 'settlement_id', v_acc))->>'account_id')::int;
+    PERFORM finance.fn_book_stock_buy(jsonb_build_object('depot_id', v_dep, 'settlement_id', v_acc, 'isin', 'IE00LOTSCUT1',
+                 'symbol', 'CUT', 'name', 'Cut ETF', 'shares', 1, 'price_per_share', 10, 'order_fee', 0,
+                 'transaction_date', (T - 5)::text, 'existing_position', true));
+    v_res := core.fn_dry_run('finance.fn_replace_takeover_with_lots(jsonb)'::regprocedure, jsonb_build_object(
+        'account_name', '__t_lots_cut__', 'table', jsonb_build_object('rows', jsonb_build_array(pg_temp.tr_hdr()) || jsonb_build_array(
+            pg_temp.tr_row(T - 15, 'BUY', 'IE00LOTSCUT1', '1.0000000000', '-12.00', '', 'c-01')))));
+    IF (v_res->>'ok')::boolean IS DISTINCT FROM true OR (v_res->>'settlement_change')::numeric IS DISTINCT FROM 0 THEN
+        RAISE EXCEPTION 'FAIL [L13 Kauf vor dem letzten Abgleich bewegt kein Geld]: %', v_res; END IF;
+    RAISE NOTICE 'PASS [L11-L13 FIFO ueber Lots, komplett verkauft, Stichtag = spaeterer Termin]';
 END $$;
 ROLLBACK;

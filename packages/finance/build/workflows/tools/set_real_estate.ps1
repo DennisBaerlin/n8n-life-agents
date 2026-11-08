@@ -100,7 +100,7 @@ function Build-SetRealEstate {
 
     $stickyOv = Build-Sticky 'Doc set_real_estate' @(2200, -220) `
         'fn_set_real_estate: partielles UPDATE' `
-        'Neubewertung/Status/Stammdaten. current_value ohne value_updated_at -> Datum = heute. Net-Worth-View liest current_value live (kein Recompute). HINWEIS: status=sold löst verknüpfte Kredite NICHT ab. {ok:false} bei current_value<0 oder ungültiger Wohnfläche/Baujahr. Wohnfläche/Baujahr gesendet -> Karten-Hinweis mit der Instandhaltungs-Empfehlung (fn_maintenance_card_lines).' 200 400
+        'Neubewertung/Status/Stammdaten. current_value ohne value_updated_at -> Datum = heute. Net-Worth-View liest current_value live (kein Recompute). status=sold lehnt die fn ab (Verkauf nur über tool_sell_real_estate: Erlös + Rückgängig). {ok:false} bei current_value<0 oder ungültiger Wohnfläche/Baujahr. Wohnfläche/Baujahr gesendet -> Karten-Hinweis mit der Instandhaltungs-Empfehlung (fn_maintenance_card_lines).' 200 400
 
     $nodes = @($trig, $resRe, $ifRe, $errRe, $readCur, $resPerson, $ifPersonBad, $errPerson) + $wg.Nodes + @($summary, $reqApproval,
                $ifApproved, $retCancelled, $ifWriteOk, $errWrite, $ret, $stickyDry, $stickyOv)

@@ -348,7 +348,7 @@
                   {
                       "parameters":  {
                                          "operation":  "executeQuery",
-                                         "query":  "SELECT x.s AS sender, y.l-\u003e\u003e\u0027lang\u0027 AS lang, core.fn_ui_texts(y.l-\u003e\u003e\u0027lang\u0027, ARRAY[\u0027core.orch.pairing_ok\u0027,\u0027core.orch.pairing_invalid\u0027,\u0027core.orch.voice_unavailable\u0027,\u0027core.orch.voice_empty\u0027,\u0027core.orch.agent_unavailable\u0027,\u0027core.orch.card_open\u0027,\u0027core.orch.card_waiting\u0027,\u0027core.orch.relay_empty\u0027,\u0027core.welcome.member\u0027,\u0027core.welcome.btn_household\u0027,\u0027core.welcome.btn_help\u0027,\u0027core.persona.frame.butler.1\u0027,\u0027core.persona.frame.butler.2\u0027,\u0027core.persona.frame.butler.3\u0027,\u0027core.persona.frame.sage.1\u0027,\u0027core.persona.frame.sage.2\u0027,\u0027core.persona.frame.sage.3\u0027,\u0027core.persona.frame.sportscaster.1\u0027,\u0027core.persona.frame.sportscaster.2\u0027,\u0027core.persona.frame.sportscaster.3\u0027]::text[]) AS t, core.fn_ui_texts(agent.fn_person_lang(agent.fn_owner_person_id())-\u003e\u003e\u0027lang\u0027, ARRAY[\u0027core.orch.invite_request\u0027,\u0027core.orch.invite_request_unnamed\u0027,\u0027core.orch.btn_confirm\u0027,\u0027core.orch.btn_reject\u0027,\u0027core.orch.unknown_user\u0027,\u0027core.orch.btn_block\u0027,\u0027core.orch.voice_owner_note\u0027,\u0027core.orch.reason_unknown\u0027,\u0027core.orch.reason_provider_missing\u0027,\u0027core.enum.role.owner\u0027,\u0027core.enum.role.partner\u0027,\u0027core.enum.role.child\u0027]::text[]) AS t_owner, core.fn_smalltalk_kind(($1::jsonb)-\u003e\u003e\u0027text\u0027) AS smalltalk, clock_timestamp() AS run_at FROM (SELECT agent.fn_resolve_sender((($1::jsonb)-\u003e\u003e\u0027uid\u0027)::bigint) AS s) x CROSS JOIN LATERAL (SELECT agent.fn_person_lang(x.s-\u003e\u003e\u0027person_id\u0027) AS l) y;",
+                                         "query":  "SELECT x.s AS sender, y.l-\u003e\u003e\u0027lang\u0027 AS lang, core.fn_ui_texts(y.l-\u003e\u003e\u0027lang\u0027, ARRAY[\u0027core.orch.pairing_ok\u0027,\u0027core.orch.pairing_invalid\u0027,\u0027core.orch.voice_unavailable\u0027,\u0027core.orch.voice_empty\u0027,\u0027core.orch.agent_unavailable\u0027,\u0027core.orch.card_open\u0027,\u0027core.orch.card_waiting\u0027,\u0027core.orch.relay_empty\u0027,\u0027core.welcome.member\u0027,\u0027core.welcome.btn_household\u0027,\u0027core.welcome.btn_help\u0027,\u0027core.orch.react_fallback\u0027]::text[]) AS t, core.fn_ui_texts(agent.fn_person_lang(agent.fn_owner_person_id())-\u003e\u003e\u0027lang\u0027, ARRAY[\u0027core.orch.invite_request\u0027,\u0027core.orch.invite_request_unnamed\u0027,\u0027core.orch.btn_confirm\u0027,\u0027core.orch.btn_reject\u0027,\u0027core.orch.unknown_user\u0027,\u0027core.orch.btn_block\u0027,\u0027core.orch.voice_owner_note\u0027,\u0027core.orch.reason_unknown\u0027,\u0027core.orch.reason_provider_missing\u0027,\u0027core.enum.role.owner\u0027,\u0027core.enum.role.partner\u0027,\u0027core.enum.role.child\u0027]::text[]) AS t_owner, core.fn_smalltalk_kind(($1::jsonb)-\u003e\u003e\u0027text\u0027) AS smalltalk, clock_timestamp() AS run_at, agent.fn_chat_style((($1::jsonb)-\u003e\u003e\u0027uid\u0027)::bigint) AS user_style, core.fn_daypart() AS daypart FROM (SELECT agent.fn_resolve_sender((($1::jsonb)-\u003e\u003e\u0027uid\u0027)::bigint) AS s) x CROSS JOIN LATERAL (SELECT agent.fn_person_lang(x.s-\u003e\u003e\u0027person_id\u0027) AS l) y;",
                                          "options":  {
                                                          "queryReplacement":  "={{ JSON.stringify({ uid: (($(\u0027Trigger normalize\u0027).item.json.message.from || {}).id), text: String($(\u0027Trigger normalize\u0027).item.json.message.text || \u0027\u0027) }) }}"
                                                      }
@@ -4213,7 +4213,8 @@
                                          "text":  "={{ $(\u0027Agent input\u0027).item.json.chat_message }}",
                                          "options":  {
                                                          "returnIntermediateSteps":  true,
-                                                         "systemMessage":  "=\u003c\u003cla-wf:agent.orchestrator.main_route\u003e\u003e\n{{ $(\u0027Load Agent Context\u0027).item.json.system_prompt + \u0027\\n\\n## Runtime flags\\nfollowup_agent: \u0027 + (($(\u0027Followup pin\u0027).item.json.followup_agent) || \u0027none\u0027) + \u0027\\ninterview_advisor: \u0027 + (($(\u0027Interview pin\u0027).item.json.interview_advisor) || \u0027none\u0027) + \u0027\\nonboarding_in_progress: \u0027 + ($(\u0027Onboarding pin\u0027).item.json.onboarding_in_progress === true ? \u0027true\u0027 : \u0027false\u0027) + \u0027\\nCurrent user: \u0027 + (($(\u0027Resolve sender\u0027).item.json.sender || {}).full_name || \u0027unknown\u0027) + \u0027 (\u0027 + (($(\u0027Resolve sender\u0027).item.json.sender || {}).role || \u0027unknown\u0027) + \u0027)\u0027 + \u0027\\npersona: \u0027 + (($(\u0027Resolve sender\u0027).item.json.sender || {}).persona || \u0027neutral\u0027) }}"
+                                                         "maxIterations":  6,
+                                                         "systemMessage":  "=\u003c\u003cla-wf:agent.orchestrator.main_route\u003e\u003e\n{{ $(\u0027Load Agent Context\u0027).item.json.system_prompt + \u0027\\n\\n## Runtime flags\\nfollowup_agent: \u0027 + (($(\u0027Followup pin\u0027).item.json.followup_agent) || \u0027none\u0027) + \u0027\\ninterview_advisor: \u0027 + (($(\u0027Interview pin\u0027).item.json.interview_advisor) || \u0027none\u0027) + \u0027\\nonboarding_in_progress: \u0027 + ($(\u0027Onboarding pin\u0027).item.json.onboarding_in_progress === true ? \u0027true\u0027 : \u0027false\u0027) + \u0027\\nCurrent user: \u0027 + (($(\u0027Resolve sender\u0027).item.json.sender || {}).full_name || \u0027unknown\u0027) + \u0027 (\u0027 + (($(\u0027Resolve sender\u0027).item.json.sender || {}).role || \u0027unknown\u0027) + \u0027)\u0027 + \u0027\\npersona: \u0027 + (($(\u0027Resolve sender\u0027).item.json.sender || {}).persona || \u0027neutral\u0027) + \u0027\\nuser_style: \u0027 + ($(\u0027Resolve sender\u0027).item.json.user_style || \u0027neutral\u0027) + \u0027\\ndaypart: \u0027 + ($(\u0027Resolve sender\u0027).item.json.daypart || \u0027day\u0027) }}"
                                                      }
                                      },
                       "type":  "@n8n/n8n-nodes-langchain.agent",
@@ -4249,7 +4250,7 @@
                   },
                   {
                       "parameters":  {
-                                         "jsCode":  "const a = $(\u0027Orchestrator agent\u0027).first().json || {};\nconst steps = Array.isArray(a.intermediateSteps) ? a.intermediateSteps : [];\nconst rs = $(\u0027Resolve sender\u0027).first().json || {};\nconst T = rs.t || {};\nconst persona = String((rs.sender || {}).persona || \u0027neutral\u0027);\nconst raw = String(a.output || \u0027\u0027).trim();\n// Signal = fuehrendes Wort (auch \"FRAME - und dann Prosa\" zaehlt; Review 2026-10-26).\nconst sm = raw.match(/^\\W*(NOFRAME|FRAME)\\b/i);\nconst signal = sm ? sm[1].toUpperCase() : \u0027\u0027;\nconst isSignal = signal !== \u0027\u0027 \u0026\u0026 raw.replace(/[^A-Za-z]/g, \u0027\u0027).toUpperCase() === signal;\nconst textOf = (obs) =\u003e {\n  if (obs === null || obs === undefined) return \u0027\u0027;\n  let v = obs;\n  if (typeof v === \u0027string\u0027) {\n    const s = v.trim();\n    if (!s) return \u0027\u0027;\n    try { v = JSON.parse(s); } catch (e) { return \u0027\u0027; }\n  }\n  // Ein Werkzeug liefert immer JSON (\u0027[{\"output\":\"...\"}]\u0027); ein Nicht-JSON-String ist eine n8n-/Tool-Fehlermeldung\n  // (Stacktrace, Node-Namen) und gehoert nie in den Chat -\u003e verworfen.\n  if (typeof v === \u0027string\u0027) return \u0027\u0027;\n  const arr = Array.isArray(v) ? v : [v];\n  const outs = [];\n  for (const x of arr) {\n    if (typeof x === \u0027string\u0027) { if (x.trim()) outs.push(x.trim()); continue; }\n    if (x \u0026\u0026 typeof x === \u0027object\u0027) {\n      const o = (x.output !== undefined \u0026\u0026 x.output !== null) ? x.output : x.text;\n      if (typeof o === \u0027string\u0027 \u0026\u0026 o.trim()) outs.push(o.trim());\n    }\n  }\n  return outs.join(\u0027\\n\\n\u0027);\n};\nconst byTool = new Map();\nfor (const st of steps) {\n  const tool = String((st \u0026\u0026 st.action \u0026\u0026 st.action.tool) || \u0027\u0027);\n  const txt = textOf(st \u0026\u0026 st.observation);\n  if (!txt) continue;\n  if (byTool.has(tool)) byTool.delete(tool);\n  byTool.set(tool, txt);\n}\nconst parts = Array.from(byTool.values());\nlet body;\nif (parts.length) {\n  body = parts.join(\u0027\\n\\n\u0027);\n  if (signal === \u0027FRAME\u0027 \u0026\u0026 persona !== \u0027neutral\u0027) {\n    const msg = ($(\u0027Trigger normalize\u0027).first().json || {}).message || {};\n    const prefix = \u0027core.persona.frame.\u0027 + persona + \u0027.\u0027;\n    const keys = Object.keys(T).filter(k =\u003e k.indexOf(prefix) === 0 \u0026\u0026 T[k]).sort();\n    if (keys.length) body = T[keys[Number(msg.message_id || 0) % keys.length]] + \u0027\\n\\n\u0027 + body;\n  }\n} else if (!steps.length \u0026\u0026 raw \u0026\u0026 !isSignal) {\n  body = raw;\n} else {\n  // Werkzeug lief, lieferte aber nichts Brauchbares (Fehler/leer) -\u003e nie Router-Text (der koennte Daten erfinden);\n  // ohne Werkzeug nur ein Signal -\u003e ebenfalls der feste Hinweis.\n  body = T[\u0027core.orch.relay_empty\u0027] || \u0027core.orch.relay_empty\u0027;\n}\n// Router memory signal: lief ein Werkzeug, gehoert ins Router-Gedaechtnis nur das Signal (nie eine eigene Fassung, die\n// der Nutzer nicht sah -- auch nicht beim festen Leer-Hinweis); ohne Werkzeug bleibt die Router-Antwort stehen.\nconst memory_signal = steps.length ? (signal === \u0027FRAME\u0027 ? \u0027FRAME\u0027 : \u0027NOFRAME\u0027) : \u0027\u0027;\n// signal + tool_called + reply_ok fuer die Sticker-Wahl (agent.fn_claim_persona_sticker: NOFRAME = ernst -\u003e nie ein\n// Sticker; reply_ok=false = fester Leer-/Fehler-Hinweis -\u003e nie ein Daumen hoch davor).\nconst reply_ok = parts.length \u003e 0 || (!steps.length \u0026\u0026 !!raw \u0026\u0026 !isSignal);\nreturn [{ json: { body, memory_signal, raw_output: String(a.output ?? \u0027\u0027), signal, tool_called: steps.length \u003e 0, reply_ok } }];"
+                                         "jsCode":  "const a = $(\u0027Orchestrator agent\u0027).first().json || {};\nconst steps = Array.isArray(a.intermediateSteps) ? a.intermediateSteps : [];\nconst rs = $(\u0027Resolve sender\u0027).first().json || {};\nconst T = rs.t || {};\nconst raw = String(a.output || \u0027\u0027).trim();\nconst nl = raw.indexOf(\u0027\\n\u0027);\nconst firstLine = (nl \u003c 0 ? raw : raw.slice(0, nl)).trim();\nconst afterFirst = (nl \u003c 0 ? \u0027\u0027 : raw.slice(nl + 1)).trim();\n// Signal = fuehrendes Wort (auch \"FRAME - und dann Prosa\" zaehlt; Review 2026-10-26).\nconst sm = raw.match(/^\\W*(NOFRAME|FRAME)\\b/i);\nconst signal = sm ? sm[1].toUpperCase() : \u0027\u0027;\n// Reine Signal-Zeile: das Signal, hoechstens gefolgt von einer Stimmung, sonst nur Satzzeichen/Markdown.\nconst MOOD_RE = /^(LOVE|CHEER|RELIEF|FUN)$/i;\nconst words = firstLine.replace(/[^A-Za-z]+/g, \u0027 \u0027).trim().split(\u0027 \u0027).filter(Boolean);\nconst signalLine = signal !== \u0027\u0027 \u0026\u0026 words.length \u003e= 1 \u0026\u0026 words[0].toUpperCase() === signal \u0026\u0026\n  (words.length === 1 || (words.length === 2 \u0026\u0026 MOOD_RE.test(words[1])));\nconst isSignal = signalLine \u0026\u0026 afterFirst === \u0027\u0027;\nconst isReact = !steps.length \u0026\u0026 /^\\W*REACT\\b/i.test(firstLine);\n// Stimmung nur aus der ersten Zeile und nur aus einer Signal-/REACT-Zeile; NOFRAME verwirft sie.\nconst mm = firstLine.match(/\\b(LOVE|CHEER|RELIEF|FUN)\\b/i);\nconst mood = (mm \u0026\u0026 (isReact || (signalLine \u0026\u0026 signal === \u0027FRAME\u0027))) ? mm[1].toUpperCase() : \u0027\u0027;\nconst textOf = (obs) =\u003e {\n  if (obs === null || obs === undefined) return \u0027\u0027;\n  let v = obs;\n  if (typeof v === \u0027string\u0027) {\n    const s = v.trim();\n    if (!s) return \u0027\u0027;\n    try { v = JSON.parse(s); } catch (e) { return \u0027\u0027; }\n  }\n  // Ein Werkzeug liefert immer JSON (\u0027[{\"output\":\"...\"}]\u0027); ein Nicht-JSON-String ist eine n8n-/Tool-Fehlermeldung\n  // (Stacktrace, Node-Namen) und gehoert nie in den Chat -\u003e verworfen.\n  if (typeof v === \u0027string\u0027) return \u0027\u0027;\n  const arr = Array.isArray(v) ? v : [v];\n  const outs = [];\n  for (const x of arr) {\n    if (typeof x === \u0027string\u0027) { if (x.trim()) outs.push(x.trim()); continue; }\n    if (x \u0026\u0026 typeof x === \u0027object\u0027) {\n      const o = (x.output !== undefined \u0026\u0026 x.output !== null) ? x.output : x.text;\n      if (typeof o === \u0027string\u0027 \u0026\u0026 o.trim()) outs.push(o.trim());\n    }\n  }\n  return outs.join(\u0027\\n\\n\u0027);\n};\nconst byTool = new Map();\nfor (const st of steps) {\n  const tool = String((st \u0026\u0026 st.action \u0026\u0026 st.action.tool) || \u0027\u0027);\n  const txt = textOf(st \u0026\u0026 st.observation);\n  if (!txt) continue;\n  if (byTool.has(tool)) byTool.delete(tool);\n  byTool.set(tool, txt);\n}\nconst parts = Array.from(byTool.values());\nlet body;\nlet reply_ok;\nif (parts.length) {\n  body = parts.join(\u0027\\n\\n\u0027);\n  reply_ok = true;\n} else if (isReact) {\n  // \u0027REACT \u003cMOOD\u003e\u0027 allein -\u003e leerer Body (die Reaktion ist die Antwort); mit Text -\u003e nur der Text.\n  body = afterFirst;\n  reply_ok = body !== \u0027\u0027 || mood !== \u0027\u0027;\n} else if (!steps.length \u0026\u0026 raw \u0026\u0026 !isSignal) {\n  body = raw;\n  reply_ok = true;\n} else {\n  // Werkzeug lief, lieferte aber nichts Brauchbares (Fehler/leer) -\u003e nie Router-Text (der koennte Daten erfinden);\n  // ohne Werkzeug nur ein Signal -\u003e ebenfalls der feste Hinweis.\n  body = T[\u0027core.orch.relay_empty\u0027] || \u0027core.orch.relay_empty\u0027;\n  reply_ok = false;\n}\n// Router memory signal: lief ein Werkzeug, gehoert ins Router-Gedaechtnis nur das Signal (nie eine eigene Fassung, die\n// der Nutzer nicht sah -- auch nicht beim festen Leer-Hinweis); ohne Werkzeug bleibt die Router-Antwort stehen (auch\n// \u0027REACT ...\u0027: so lernt der Router, dass reine Wertschaetzung eine Reaktion bekommt).\nconst memory_signal = steps.length ? (signal === \u0027FRAME\u0027 ? \u0027FRAME\u0027 : \u0027NOFRAME\u0027) : \u0027\u0027;\n// Eingaben fuer Claim expression: reply_ok=false = fester Leer-/Fehler-Hinweis -\u003e nie Sticker/Reaktion davor.\nreturn [{ json: { body, memory_signal, raw_output: String(a.output ?? \u0027\u0027), signal, mood, tool_called: steps.length \u003e 0,\n  reply_ok, react_only: isReact \u0026\u0026 body === \u0027\u0027 \u0026\u0026 mood !== \u0027\u0027, has_text: body !== \u0027\u0027, has_parts: parts.length \u003e 0 } }];"
                                      },
                       "type":  "n8n-nodes-base.code",
                       "typeVersion":  2,
@@ -4263,9 +4264,9 @@
                   {
                       "parameters":  {
                                          "operation":  "executeQuery",
-                                         "query":  "SELECT agent.fn_claim_persona_sticker($1::jsonb) AS r;",
+                                         "query":  "WITH s AS (SELECT agent.fn_claim_persona_sticker($1::jsonb) AS r) SELECT s.r AS sticker_r, agent.fn_claim_reaction($1::jsonb || jsonb_build_object(\u0027event\u0027, \u0027reply\u0027, \u0027sticker\u0027, COALESCE(s.r-\u003e\u003e\u0027sticker\u0027, \u0027\u0027))) AS reaction_r, agent.fn_claim_persona_frame($1::jsonb) AS frame_r FROM s;",
                                          "options":  {
-                                                         "queryReplacement":  "={{ JSON.stringify({ chat_id: String($(\u0027Trigger normalize\u0027).first().json.message.chat.id), text: String($(\u0027Trigger normalize\u0027).first().json.message.text || \u0027\u0027), tool_called: $(\u0027Relay compose\u0027).first().json.tool_called === true, has_file: !!($(\u0027Trigger normalize\u0027).first().json.message.photo || $(\u0027Trigger normalize\u0027).first().json.message.document), signal: String($(\u0027Relay compose\u0027).first().json.signal || \u0027\u0027), reply_ok: $(\u0027Relay compose\u0027).first().json.reply_ok === true, run_started_at: String($(\u0027Resolve sender\u0027).first().json.run_at || \u0027\u0027) }) }}"
+                                                         "queryReplacement":  "={{ JSON.stringify({ chat_id: String($(\u0027Trigger normalize\u0027).first().json.message.chat.id), message_id: $(\u0027Trigger normalize\u0027).first().json.message.message_id, text: String($(\u0027Trigger normalize\u0027).first().json.message.text || \u0027\u0027), tool_called: $(\u0027Relay compose\u0027).first().json.tool_called === true, has_file: !!($(\u0027Trigger normalize\u0027).first().json.message.photo || $(\u0027Trigger normalize\u0027).first().json.message.document), signal: String($(\u0027Relay compose\u0027).first().json.signal || \u0027\u0027), mood: String($(\u0027Relay compose\u0027).first().json.mood || \u0027\u0027), react_only: $(\u0027Relay compose\u0027).first().json.react_only === true, has_text: $(\u0027Relay compose\u0027).first().json.has_text === true, has_parts: $(\u0027Relay compose\u0027).first().json.has_parts === true, reply_ok: $(\u0027Relay compose\u0027).first().json.reply_ok === true, run_started_at: String($(\u0027Resolve sender\u0027).first().json.run_at || \u0027\u0027) }) }}"
                                                      }
                                      },
                       "type":  "n8n-nodes-base.postgres",
@@ -4274,8 +4275,8 @@
                                        1480,
                                        -400
                                    ],
-                      "id":  "8e21218b-fef7-5a34-bc10-bc411184cb7e",
-                      "name":  "Claim sticker",
+                      "id":  "c97c9934-7c85-5309-9abf-d0d72d148651",
+                      "name":  "Claim expression",
                       "onError":  "continueRegularOutput",
                       "credentials":  {
                                           "postgres":  {
@@ -4296,7 +4297,7 @@
                                                             "conditions":  [
                                                                                {
                                                                                    "id":  "6e6a404c-a969-5e86-bc71-d7d515b2aad5",
-                                                                                   "leftValue":  "={{ !!(($json.r || {}).sticker) }}",
+                                                                                   "leftValue":  "={{ !!(($(\u0027Claim expression\u0027).first().json.sticker_r || {}).sticker) }}",
                                                                                    "rightValue":  true,
                                                                                    "operator":  {
                                                                                                     "type":  "boolean",
@@ -4327,7 +4328,7 @@
                                          "genericAuthType":  "httpHeaderAuth",
                                          "sendBody":  true,
                                          "specifyBody":  "json",
-                                         "jsonBody":  "={{ JSON.stringify({ chat_id: String($(\u0027Trigger normalize\u0027).first().json.message.chat.id), sticker: $(\u0027Claim sticker\u0027).first().json.r.sticker }) }}",
+                                         "jsonBody":  "={{ JSON.stringify({ chat_id: String($(\u0027Trigger normalize\u0027).first().json.message.chat.id), sticker: $(\u0027Claim expression\u0027).first().json.sticker_r.sticker }) }}",
                                          "options":  {
                                                          "timeout":  4000
                                                      }
@@ -4348,6 +4349,104 @@
                                                                  "name":  "Telegram relay (gateway)"
                                                              }
                                       }
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "98ab521d-8064-527d-89b5-115c0a9e8309",
+                                                                                   "leftValue":  "={{ !!(($(\u0027Claim expression\u0027).first().json.reaction_r || {}).emoji) }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       2020,
+                                       -400
+                                   ],
+                      "id":  "4dc3805b-7a13-5b82-bfa5-53b5882a7ca8",
+                      "name":  "Reaction due?"
+                  },
+                  {
+                      "parameters":  {
+                                         "method":  "POST",
+                                         "url":  "http://127.0.0.1:8090/__telegram/setMessageReaction",
+                                         "authentication":  "genericCredentialType",
+                                         "genericAuthType":  "httpHeaderAuth",
+                                         "sendBody":  true,
+                                         "specifyBody":  "json",
+                                         "jsonBody":  "={{ JSON.stringify({ chat_id: String($(\u0027Trigger normalize\u0027).first().json.message.chat.id), message_id: $(\u0027Trigger normalize\u0027).first().json.message.message_id, emoji: $(\u0027Claim expression\u0027).first().json.reaction_r.emoji }) }}",
+                                         "options":  {
+                                                         "timeout":  4000
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.httpRequest",
+                      "typeVersion":  4.2,
+                      "position":  [
+                                       2200,
+                                       -480
+                                   ],
+                      "id":  "724a6f83-8c60-5cfd-937c-11014f24950e",
+                      "name":  "Send reaction",
+                      "onError":  "continueRegularOutput",
+                      "alwaysOutputData":  true,
+                      "credentials":  {
+                                          "httpHeaderAuth":  {
+                                                                 "id":  "__CRED_TELEGRAM_RELAY__",
+                                                                 "name":  "Telegram relay (gateway)"
+                                                             }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "02c123e2-e19d-5795-9d27-9f753d8b241a",
+                                                                                   "leftValue":  "={{ !!$(\u0027Relay compose\u0027).first().json.body || !(($(\u0027Claim expression\u0027).first().json.reaction_r || {}).emoji) }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       2380,
+                                       -400
+                                   ],
+                      "id":  "94bb8a42-cc4e-5cae-8b2f-41f337f65a68",
+                      "name":  "Has text?"
                   },
                   {
                       "parameters":  {
@@ -4411,6 +4510,94 @@
                       "id":  "c0f2496f-466e-52ec-93c1-a492d7a9938c",
                       "name":  "Show thinking",
                       "onError":  "continueRegularOutput"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "SELECT agent.fn_claim_reaction($1::jsonb) AS r;",
+                                         "options":  {
+                                                         "queryReplacement":  "={{ JSON.stringify({ chat_id: String($(\u0027Trigger normalize\u0027).first().json.message.chat.id), message_id: $(\u0027Trigger normalize\u0027).first().json.message.message_id, event: \u0027seen\u0027 }) }}"
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       -272,
+                                       -1120
+                                   ],
+                      "id":  "2bd0ebf5-f3ef-5e92-ad7c-3a27b849616d",
+                      "name":  "Claim seen reaction",
+                      "onError":  "continueRegularOutput",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_WRITE__",
+                                                           "name":  "Postgres account"
+                                                       }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "9a941503-cbdc-51fb-bcb9-2eb0b1a224df",
+                                                                                   "leftValue":  "={{ !!(($json.r || {}).emoji) }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       -60,
+                                       -1120
+                                   ],
+                      "id":  "ad7a6a14-1df1-5fd4-ab79-2fc3dc8e0d72",
+                      "name":  "Seen due?"
+                  },
+                  {
+                      "parameters":  {
+                                         "method":  "POST",
+                                         "url":  "http://127.0.0.1:8090/__telegram/setMessageReaction",
+                                         "authentication":  "genericCredentialType",
+                                         "genericAuthType":  "httpHeaderAuth",
+                                         "sendBody":  true,
+                                         "specifyBody":  "json",
+                                         "jsonBody":  "={{ JSON.stringify({ chat_id: String($(\u0027Trigger normalize\u0027).first().json.message.chat.id), message_id: $(\u0027Trigger normalize\u0027).first().json.message.message_id, emoji: $(\u0027Claim seen reaction\u0027).first().json.r.emoji }) }}",
+                                         "options":  {
+                                                         "timeout":  4000
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.httpRequest",
+                      "typeVersion":  4.2,
+                      "position":  [
+                                       160,
+                                       -1120
+                                   ],
+                      "id":  "283966e3-0610-54c1-9117-61d997d364d6",
+                      "name":  "React seen",
+                      "onError":  "continueRegularOutput",
+                      "alwaysOutputData":  true,
+                      "credentials":  {
+                                          "httpHeaderAuth":  {
+                                                                 "id":  "__CRED_TELEGRAM_RELAY__",
+                                                                 "name":  "Telegram relay (gateway)"
+                                                             }
+                                      }
                   },
                   {
                       "parameters":  {
@@ -4485,81 +4672,8 @@
                                       }
                   },
                   {
-                      "disabled":  true,
                       "parameters":  {
-                                         "rule":  {
-                                                      "interval":  [
-                                                                       {
-                                                                           "triggerAtHour":  2
-                                                                       }
-                                                                   ]
-                                                  }
-                                     },
-                      "type":  "n8n-nodes-base.scheduleTrigger",
-                      "typeVersion":  1.3,
-                      "position":  [
-                                       -1840,
-                                       528
-                                   ],
-                      "id":  "399c082a-e3ed-51e6-98fd-50279fcd99c2",
-                      "name":  "AI context compression schedule"
-                  },
-                  {
-                      "parameters":  {
-                                         "workflowId":  {
-                                                            "__rl":  true,
-                                                            "value":  "vjyM3vnkavi5b0xU",
-                                                            "mode":  "list",
-                                                            "cachedResultUrl":  "/workflow/vjyM3vnkavi5b0xU",
-                                                            "cachedResultName":  "core.sub_load_config"
-                                                        },
-                                         "workflowInputs":  {
-                                                                "mappingMode":  "defineBelow",
-                                                                "value":  {
-
-                                                                          },
-                                                                "matchingColumns":  [
-
-                                                                                    ],
-                                                                "schema":  [
-
-                                                                           ],
-                                                                "attemptToConvertTypes":  false,
-                                                                "convertFieldsToString":  true
-                                                            },
-                                         "options":  {
-
-                                                     }
-                                     },
-                      "type":  "n8n-nodes-base.executeWorkflow",
-                      "typeVersion":  1.2,
-                      "position":  [
-                                       -1616,
-                                       528
-                                   ],
-                      "id":  "16eca2b0-5c41-5ae5-88ae-567015a72cfd",
-                      "name":  "Inject core.config 1",
-                      "disabled":  true
-                  },
-                  {
-                      "disabled":  true,
-                      "parameters":  {
-                                         "options":  {
-
-                                                     }
-                                     },
-                      "type":  "n8n-nodes-base.executeWorkflow",
-                      "typeVersion":  1.3,
-                      "position":  [
-                                       -1392,
-                                       528
-                                   ],
-                      "id":  "d6b893c6-55cd-5ba1-a264-3964a3583b3d",
-                      "name":  "Execute Workflow"
-                  },
-                  {
-                      "parameters":  {
-                                         "content":  "## Ablauf\n**agent.orchestrator.main_route -- zentraler Telegram-Eingang (einziger Webhook)**\n\nNew Telegram message -\u003e Private chat? (nur Einzelchats; Gruppe/Kanal endet vor jedem DB-Zugriff — in Gruppen ist chat.id negativ und Antworten gingen an alle; ein Knopf-Tipp aus einer Gruppe bekommt per Group button tap? -\u003e Answer group tap nur eine leere Quittung) -\u003e Eingangs-Bündelung (Doc: Eingangs-Bündelung; nur message, Button-Taps direkt) -\u003e Trigger normalize (zusammengeführtes bzw. Roh-Update) -\u003e Update type (message vs Button-Tap callback_query) -\u003e Sender-Gate (fn_resolve_sender; unbekannt -\u003e Pairing/Knock) -\u003e Card open check (Karte-offen-Sperre, agent.fn_get_hitl_pending_state: offene Bestätigungskarte für diesen Chat -\u003e Reply card open, fester Hinweis \"tippe dort\" bzw. \"wartet auf Freigabe\", KEIN Agent; DB-Fehler -\u003e weiter; nach der Relay-Antwort löscht Finish card lock die freigegebenen Sperren des Chats) -\u003e Load core.config -\u003e Load Agent Context (include_manifest=false: der Router callt nie load_context) -\u003e Interview pin -\u003e Onboarding pin -\u003e Which type of message. Button-Taps (callback_query) laufen am LLM vorbei in den deterministischen Callback-Handler (Owner bestätigt/lehnt Member-Einladungen). Der Orchestrator agent routet via je ein Call-Tool pro provides.agents-Eintrag (finance, finance_advisor, monitor, guide, career_advisor, estate_advisor, paperless_assistant) und relayed die Antwort; der task ist die Nachricht aus Agent input WÖRTLICH (kein $fromAI: der Router wählt nur, er formuliert nicht um). PAKET-NEUTRAL (Phase C): WANN welcher Agent (inkl. Grenzen zwischen Paketen + angenommene Anhang-Dokumentarten) steht NUR in der router_description des besitzenden Pakets = die Tool-Beschreibung; der Prompt orchestrator_agent_instructions trägt nur Mechanik (Pins, Sticky, Anhang-Reihenfolge, Backup-Hinweis). Interview pin (Haupt-Credential, onError continue) injiziert interview_advisor (GENERISCH WS-0c #1: der advisor_agent der Domäne mit aktivem Draft via JOIN core.advisors; nur der EIGENE Personen-Draft bzw. — für den Owner — ein Haushalts-Draft, nie der Draft eines anderen Mitglieds) in den Router-Prompt -\u003e kurze/ambige Folgeturns während eines Advisor-Interviews gehen an genau diesen Advisor (jede Advisor-Domäne). Onboarding pin (RO) injiziert onboarding_in_progress (Haushalt offen, nur für den Owner relevant; Regel 3b) als 2. Flag -\u003e bevorzugt agent.guide; das Interview hat Vorrang. persona (Bot-Persona aus Resolve sender, agent.fn_resolve_sender; fehlt -\u003e neutral) ist das 3. Flag am Ende des System-Prompts = nur Rahmen: eigene Sätze im Persona-Stil; nach einem Spezialisten antwortet der Router nur FRAME/NOFRAME, Relay compose setzt dann einen festen Katalog-Rahmensatz vor die WÖRTLICHE Spezialisten-Antwort, ernste Themen ohne Rahmen (Regeln im statischen Kontext persona_styles.md, gecacht). Die Spezialisten sehen die Persona nie. Jeder Workflow ist build-generiert (löst die 6 alten sync_orchestrator_*.ps1 ab).",
+                                         "content":  "## Ablauf\n**agent.orchestrator.main_route -- zentraler Telegram-Eingang (einziger Webhook)**\n\nNew Telegram message -\u003e Private chat? (nur Einzelchats; Gruppe/Kanal endet vor jedem DB-Zugriff — in Gruppen ist chat.id negativ und Antworten gingen an alle; ein Knopf-Tipp aus einer Gruppe bekommt per Group button tap? -\u003e Answer group tap nur eine leere Quittung) -\u003e Eingangs-Bündelung (Doc: Eingangs-Bündelung; nur message, Button-Taps direkt) -\u003e Trigger normalize (zusammengeführtes bzw. Roh-Update) -\u003e Update type (message vs Button-Tap callback_query) -\u003e Sender-Gate (fn_resolve_sender; unbekannt -\u003e Pairing/Knock) -\u003e Card open check (Karte-offen-Sperre, agent.fn_get_hitl_pending_state: offene Bestätigungskarte für diesen Chat -\u003e Reply card open, fester Hinweis \"tippe dort\" bzw. \"wartet auf Freigabe\", KEIN Agent; DB-Fehler -\u003e weiter; nach der Relay-Antwort löscht Finish card lock die freigegebenen Sperren des Chats) -\u003e Load core.config -\u003e Load Agent Context (include_manifest=false: der Router callt nie load_context) -\u003e Interview pin -\u003e Onboarding pin -\u003e Which type of message. Button-Taps (callback_query) laufen am LLM vorbei in den deterministischen Callback-Handler (Owner bestätigt/lehnt Member-Einladungen). Der Orchestrator agent routet via je ein Call-Tool pro provides.agents-Eintrag (finance, finance_advisor, monitor, guide, career_advisor, estate_advisor, paperless_assistant) und relayed die Antwort; der task ist die Nachricht aus Agent input WÖRTLICH (kein $fromAI: der Router wählt nur, er formuliert nicht um). PAKET-NEUTRAL:WANN welcher Agent (inkl. Grenzen zwischen Paketen + angenommene Anhang-Dokumentarten) steht NUR in der router_description des besitzenden Pakets = die Tool-Beschreibung; der Prompt orchestrator_agent_instructions trägt nur Mechanik (Pins, Sticky, Anhang-Reihenfolge, Backup-Hinweis). Interview pin (Haupt-Credential, onError continue) injiziert interview_advisor (GENERISCH: der advisor_agent der Domäne mit aktivem Draft via JOIN core.advisors; nur der EIGENE Personen-Draft bzw. — für den Owner — ein Haushalts-Draft, nie der Draft eines anderen Mitglieds) in den Router-Prompt -\u003e kurze/ambige Folgeturns während eines Advisor-Interviews gehen an genau diesen Advisor (jede Advisor-Domäne). Onboarding pin (RO) injiziert onboarding_in_progress (Haushalt offen, nur für den Owner relevant; Regel 3b) als 2. Flag -\u003e bevorzugt agent.guide; das Interview hat Vorrang. persona (Bot-Persona aus Resolve sender, agent.fn_resolve_sender; fehlt -\u003e neutral) ist das 3. Flag am Ende des System-Prompts = nur Rahmen: eigene Sätze im Persona-Stil; nach einem Spezialisten antwortet der Router nur mit der Signal-Zeile, Claim expression wählt dann einen festen Katalog-Rahmensatz bzw. Tagesgruß vor die WÖRTLICHE Spezialisten-Antwort, ernste Themen ohne Rahmen; danach user_style + daypart (Doc: Agent + Modell + Send) (Regeln im statischen Kontext persona_styles.md, gecacht). Die Spezialisten sehen die Persona nie.",
                                          "height":  320,
                                          "width":  720,
                                          "color":  4
@@ -4575,7 +4689,7 @@
                   },
                   {
                       "parameters":  {
-                                         "content":  "## Ablauf\n**Zusammengehörige Telegram-Nachrichten -\u003e EIN Lauf (agent.ingress_buffer)**\n\nWARUM: Telegram liefert \"Weiterleiten mit Kommentar\" als ZWEI Updates (Datei + Text, ~0,4 s Abstand, Reihenfolge nicht garantiert, kein verknüpfendes Feld). Früher startete jedes einen eigenen Lauf -\u003e zwei Agenten -\u003e zwei Karten (live msg 284/285). n8n hat kein Debounce und keine Per-Chat-Concurrency. ABLAUF: Message update? (Button-Tap -\u003e direkt Trigger normalize, ohne Warten) -\u003e Ingress record (agent.fn_record_ingress_message: Zeile je update_id = Dedupe bei Webhook-Retry; kind text = Text ohne /, file = Foto/Dokument, solo = alles andere) -\u003e Ingress action: wait (text/file) -\u003e Ingress wait (1,5 s im Prozess) -\u003e Ingress claim (agent.fn_claim_ingress_burst unter Advisory-Lock je Chat: Bündel = alle Texte + Dateien desselben Absenders, 2 s vor bis 10 s nach der eigenen Ankunft; früheste Datei primär, weitere als message.extra_files -\u003e je Datei ein Anhang-Marker) -\u003e wieder Ingress action: wait (jüngste Nachricht \u003c 1 s alt; DB-Obergrenze 5 s, die 4. Claim-Runde ist final und greift immer zu; Graph-Bremse $runIndex \u003c 4) -\u003e zurück zu Ingress wait; drop (Duplikat bzw. Teil eines fremden Bündels) -\u003e still enden; extra (solo = Befehl/Sprache sofort, verarbeitetes Bündel, DB-Fehler) -\u003e Trigger normalize (nimmt r.update = Datei mit allen Texten als caption bzw. verbundene Texte, sonst das Roh-Update). FAIL-OPEN: jeder DB-Fehler -\u003e die Nachricht läuft einzeln wie früher (lieber doppelt als verloren). PREIS: jede Text-/Datei-Antwort kommt ~1,5 s später. BEKANNT: ein manueller Retry dieser Execution in der n8n-Oberfläche trägt dieselbe update_id und endet als Duplikat (drop); ein n8n-Neustart in den 1,5–5 s verliert die Nachricht wie jeden laufenden Lauf.",
+                                         "content":  "## Ablauf\n**Zusammengehörige Telegram-Nachrichten -\u003e EIN Lauf (agent.ingress_buffer)**\n\nWARUM: Telegram liefert \"Weiterleiten mit Kommentar\" als ZWEI Updates (Datei + Text, ~0,4 s Abstand, Reihenfolge nicht garantiert, kein verknüpfendes Feld). Ohne Bündelung startet jedes einen eigenen Lauf -\u003e zwei Agenten -\u003e zwei Karten. n8n hat kein Debounce und keine Per-Chat-Concurrency. ABLAUF: Message update? (Button-Tap -\u003e direkt Trigger normalize, ohne Warten) -\u003e Ingress record (agent.fn_record_ingress_message: Zeile je update_id = Dedupe bei Webhook-Retry; kind text = Text ohne /, file = Foto/Dokument, solo = alles andere) -\u003e Ingress action: wait (text/file) -\u003e Ingress wait (1,5 s im Prozess) -\u003e Ingress claim (agent.fn_claim_ingress_burst unter Advisory-Lock je Chat: Bündel = alle Texte + Dateien desselben Absenders, 2 s vor bis 10 s nach der eigenen Ankunft; früheste Datei primär, weitere als message.extra_files -\u003e je Datei ein Anhang-Marker) -\u003e wieder Ingress action: wait (jüngste Nachricht \u003c 1 s alt; DB-Obergrenze 5 s, die 4. Claim-Runde ist final und greift immer zu; Graph-Bremse $runIndex \u003c 4) -\u003e zurück zu Ingress wait; drop (Duplikat bzw. Teil eines fremden Bündels) -\u003e still enden; extra (solo = Befehl/Sprache sofort, verarbeitetes Bündel, DB-Fehler) -\u003e Trigger normalize (nimmt r.update = Datei mit allen Texten als caption bzw. verbundene Texte, sonst das Roh-Update). FAIL-OPEN: jeder DB-Fehler -\u003e die Nachricht läuft einzeln wie früher (lieber doppelt als verloren). PREIS: jede Text-/Datei-Antwort kommt ~1,5 s später. BEKANNT: ein manueller Retry dieser Execution in der n8n-Oberfläche trägt dieselbe update_id und endet als Duplikat (drop); ein n8n-Neustart in den 1,5–5 s verliert die Nachricht wie jeden laufenden Lauf.",
                                          "height":  300,
                                          "width":  1000,
                                          "color":  4
@@ -4591,7 +4705,7 @@
                   },
                   {
                       "parameters":  {
-                                         "content":  "## Ablauf\n**Multi-User-Sender-Gate (deterministisch, KEIN LLM)**\n\nUpdate type trennt zuerst message vs callback_query (Tastendruck -\u003e callback-Handler unten). Auf dem message-Pfad löst Resolve sender message.from.id über agent.fn_resolve_sender gegen die family-Facts auf (DB = Allowlist; Trigger auf * -\u003e kein userIds-Filter). Sender known? found=true -\u003e Thanks only? (HERZ-KURZSCHLUSS, Bot mit Gesicht: Resolve sender liefert zusätzlich core.fn_smalltalk_kind(message.text); ist die Nachricht NUR ein Dank — exakter Abgleich, nie eine Caption, nie eine Antwort (reply_to) auf eine Bot-Nachricht — setzt React heart über den Telegram-Relay des LLM-Gateways ein ❤ an die Nachricht und der Lauf endet: kein Agent, keine Thinking-Lease, kein Text, kein Gedächtnis-Eintrag; gilt auch bei offener Karte) -\u003e sonst Card open check (Karte-offen-Sperre: hat der Chat eine offene Bestätigungskarte des HITL-Gates, parkt n8n die Kette dahinter und ein neuer Agent-Lauf sähe die Kartenrunde nicht -\u003e Reply card open = fester Katalogtext core.orch.card_open bzw. core.orch.card_waiting [Freigabe durch jemand anderen], kein Agent, keine Transkription; Zeilen legt das Gate an und gibt sie nach dem Tipp frei, Finish card lock löscht sie nach der Antwort, Ablauf expires_at ist die Wahrheit; fail-open) -\u003e normale Pipeline; sonst -\u003e Pairing router. /start \u003ccode\u003e -\u003e Run claim pairing (fn_claim_pairing_challenge: versucht es als MEMBER-Einladung, STAGT nur). Claim staged? true -\u003e Notify owner invite (Inline-Buttons Bestätigen/Ablehnen, callback_data confirm:\u003cid\u003e/reject:\u003cid\u003e) + Reply member waiting (Text in der Sprache der eingeladenen Person: t_person aus dem Pairing-Node; die Telegram-App-Sprache language_code geht roh an fn_claim und wird nur als Vorschlag gemerkt). false (Owner-Bootstrap-Code/pending/ungültig) -\u003e Resolve pairing target (unverknüpftes Owner-Skelett) -\u003e Run consume pairing (sofort-bindend) -\u003e Send pairing result (Install-UX-Phase 6: nur kurz „Verbunden! Einen Moment …\" — die eigentliche Begrüßung mit Knöpfen schickt der Installer NACH dem Neu-Einstellen [owner_connect._oc_send_welcome, Text aus core.fn_render_welcome], sonst liefe ein früher Knopf-Tipp gegen die alten Workflows mit Owner-chat_id 0). Fremder ohne Code: STUMM (kein Ack-Send mehr) -\u003e Knock throttle (fn_register_knock, 1h-Cooldown) -\u003e Notify owner? -\u003e Notify owner unknown. Diese Owner-Notiz trägt jetzt einen „Sperren\"-Button (callback_data block:\u003cuid\u003e, WS-5d) -\u003e tappt ihn der Owner, geht es in den callback-Handler (fn_block_knocker). Eine in agent.access_blocks gesperrte uid bekommt KEINE Knock-Notiz mehr (fn_register_knock Guard) UND pairt nicht (fn_claim/fn_consume Guard). DB-Fehler: onError continue.",
+                                         "content":  "## Ablauf\n**Multi-User-Sender-Gate (deterministisch, KEIN LLM)**\n\nUpdate type trennt zuerst message vs callback_query (Tastendruck -\u003e callback-Handler unten). Auf dem message-Pfad löst Resolve sender message.from.id über agent.fn_resolve_sender gegen die family-Facts auf (DB = Allowlist; Trigger auf * -\u003e kein userIds-Filter). Sender known? found=true -\u003e Thanks only? (HERZ-KURZSCHLUSS, Bot mit Gesicht: Resolve sender liefert zusätzlich core.fn_smalltalk_kind(message.text); ist die Nachricht NUR ein Dank — exakter Abgleich, nie eine Caption, nie eine Antwort (reply_to) auf eine Bot-Nachricht — setzt React heart über den Telegram-Relay des LLM-Gateways ein ❤ an die Nachricht und der Lauf endet: kein Agent, keine Thinking-Lease, kein Text, kein Gedächtnis-Eintrag; gilt auch bei offener Karte) -\u003e sonst Card open check (Karte-offen-Sperre: hat der Chat eine offene Bestätigungskarte des HITL-Gates, parkt n8n die Kette dahinter und ein neuer Agent-Lauf sähe die Kartenrunde nicht -\u003e Reply card open = fester Katalogtext core.orch.card_open bzw. core.orch.card_waiting [Freigabe durch jemand anderen], kein Agent, keine Transkription; Zeilen legt das Gate an und gibt sie nach dem Tipp frei, Finish card lock löscht sie nach der Antwort, Ablauf expires_at ist die Wahrheit; fail-open) -\u003e normale Pipeline; sonst -\u003e Pairing router. /start \u003ccode\u003e -\u003e Run claim pairing (fn_claim_pairing_challenge: versucht es als MEMBER-Einladung, STAGT nur). Claim staged? true -\u003e Notify owner invite (Inline-Buttons Bestätigen/Ablehnen, callback_data confirm:\u003cid\u003e/reject:\u003cid\u003e) + Reply member waiting (Text in der Sprache der eingeladenen Person: t_person aus dem Pairing-Node; die Telegram-App-Sprache language_code geht roh an fn_claim und wird nur als Vorschlag gemerkt). false (Owner-Bootstrap-Code/pending/ungültig) -\u003e Resolve pairing target (unverknüpftes Owner-Skelett) -\u003e Run consume pairing (sofort-bindend) -\u003e Send pairing result (nur kurz „Verbunden! Einen Moment …\" — die eigentliche Begrüßung mit Knöpfen schickt der Installer NACH dem Neu-Einstellen [owner_connect._oc_send_welcome, Text aus core.fn_render_welcome], sonst liefe ein früher Knopf-Tipp gegen die alten Workflows mit Owner-chat_id 0). Fremder ohne Code: STUMM (kein Ack-Send) -\u003e Knock throttle (fn_register_knock, 1h-Cooldown) -\u003e Notify owner? -\u003e Notify owner unknown. Diese Owner-Notiz trägt einen „Sperren\"-Button (callback_data block:\u003cuid\u003e) -\u003e tappt ihn der Owner, geht es in den callback-Handler (fn_block_knocker). Eine in agent.access_blocks gesperrte uid bekommt KEINE Knock-Notiz mehr (fn_register_knock Guard) UND pairt nicht (fn_claim/fn_consume Guard). DB-Fehler: onError continue.",
                                          "height":  360,
                                          "width":  640,
                                          "color":  4
@@ -4607,7 +4721,7 @@
                   },
                   {
                       "parameters":  {
-                                         "content":  "## Ablauf\n**Owner-Admin + Member-Callback-Dispatch (callback_query, KEIN LLM): Owner bestaetigt Einladungen/togglet Crons; Mitglied bedient seine est:/job:-Karten**\n\nEin Inline-Button-Tap kommt als callback_query (kein top-level message). Resolve callback sender loest callback_query.from.id auf. Zweistufige Auth (Transport=n8n-secret_token + App=Owner-/Member-Gate): Callback owner? [true=gepairter Owner] -\u003e Callback action (die 9 Admin-Arme + [9] extra); [false=Nicht-Owner] -\u003e Callback member? [true=aufgeloestes Mitglied] -\u003e DIREKT Dispatch callback (die Owner-Admin-Arme bleiben so unerreichbar), [false=unbekannter/ungepairter Sender] -\u003e Discard non-owner callback (generisches answerCallbackQuery -\u003e Spinner stoppt, KEIN Handler). Callback action parst das callback_data-Verb (vor dem „:\"). confirm:\u003cid\u003e/reject:\u003cid\u003e -\u003e Run confirm/reject pairing (Member-Einladung; fn_confirm_pairing bindet die beim Claim gestagete Identitaet via Merge-Kern, idempotent). block:\u003cuid\u003e/unblock:\u003cuid\u003e (WS-5d) -\u003e Run block/unblock knocker (agent.fn_block_knocker/fn_unblock_knocker auf agent.access_blocks; uid = data.split(\":\")[1]). cron_on:\u003ckey\u003e/cron_off:\u003ckey\u003e (WS-3 Phase A + Phase C + Phase 0 WS-0c) -\u003e Run cron on/off (core.fn_set_cron_enable -\u003e core.config cron_enable; key = data.split(\":\")[1]). GENERISCH: die Togglability-Sicherung ist die Mitgliedschaft in core.cron_labels (Roter Faden Paket B: die Erinnerungs-Registry aller nutzer-sichtbaren Crons; Haushalts-Erinnerungen schaltbar, Person-Erinnerungen und Pflicht lehnt fn_set_cron_enable ab -\u003e dann Toast core.toast.reminder_unavailable + Hinweis /reminders statt Erfolg). Der Postgres-Node liest neben dem fn-Call das Paket aus core.cron_labels und die vier Katalog-Texte \u003cpkg\u003e.cron.\u003ckey\u003e.* in der Sprache des Tippenden (lang aus Resolve callback sender) -\u003e Answer/Notify cron on/off; der Hinweis im off-Send ist core.cron.off_reminders_hint (wieder an per /reminders). Ein neuer Cron = Key in der Manifest-cron_labels-Liste + Texte im Katalog, kein Orchestrator-Edit. learn:\u003cok|no|undo\u003e:\u003cid\u003e (Phase C Lern-Loop) -\u003e Learn action (split[1]=Verb, split[2]=candidate_id): ok -\u003e Run approve learn (agent.fn_approve_learn_candidate dispatcht fact-\u003efn_set_context_facts | note-\u003ecore.fn_append_context_note, approved nur bei Write-Erfolg) -\u003e nach NOTE-approve eine Folge-Karte Offer undo ([Rueckgaengig]=learn:undo:\u003cid\u003e, der einzige Weg zu undo); no -\u003e Run reject learn (durable); undo -\u003e Run undo learn (core.fn_remove_context_note, nur approved notes). Idempotent (re-tap -\u003e {ok:false}-Toast). help:overview (WS-1/WS-5) -\u003e Answer help cb (Button ZUERST quittieren) -\u003e Load capabilities cb -\u003e Split help cb (chunked, Index + (n/N)) -\u003e Send help cb PER-ITEM (terminal; answerCallbackQuery feuert NICHT pro Chunk). onboarding:\u003cpackage\u003e:\u003ckey\u003e (P1, aus dem Menue-Grid) -\u003e Onboarding section? (Switch nach data.split(\":\")[1] = das \u003cpackage\u003e-Glied): core -\u003e Run onboarding cb (agent.guide INLINE, Haushalt) -\u003e Answer/Relay onboarding cb; jedes Paket mit provides.onboarding bekommt build-time aus $OnboardingDispatchList einen eigenen Arm Run/Answer/Relay onboarding \u003cpkg\u003e -\u003e agent.\u003conboarding_agent\u003e INLINE (generischer Self-Onboarding-Task, section_key = split[2]) -\u003e kein agent.\u003cpkg\u003e-Literal mehr (core_literal #1), neues Onboarding-Paket dockt ohne Orchestrator-Edit an. onboarding:_area:\u003cpackage\u003e (Bereichs-Knopf der Menue-Uebersicht, _area reserviert: kein Paketname beginnt mit _) -\u003e Answer onboarding area -\u003e Send onboarding area (core.sub_send_onboarding_menu mit area = split[2]; leer = Uebersicht; der Sub sendet selbst, terminal). Cron-Toggle-Modell (gelockt): SETUP=aktivieren per Knopf (die on-Knoepfe erscheinen am Publish-Aktivierungs-Angebot — Phase 0: je ein Knopf fuer drift_check + plan_review, unabhaengig — bzw. an der Onboarding-/Lern-Karte fuer learn_context), LAUFZEIT=abschalten per Knopf (an jedem Nudge), RE-AKTIVIEREN per /reminders (Roter Faden Paket B: Menue-Knopf rem:on:\u003ckey\u003e:m; der off-Send nennt /reminders). Answer \u003caktion\u003e quittiert den Button (answerCallbackQuery-Toast); danach Notify member confirmed/rejected an pairing_state.claimed_chat_id (in der Sprache der Person; ohne eigene Sprache danach Member needs language? -\u003e Send member language picker, Telegram-App-Sprache vom Einloesen als Vorschlag markiert, gespeichert erst beim Tipp) bzw. Notify block/unblock done an den Owner MIT dem inversen Toggle-Button (Sperren\u003c-\u003eEntsperren, damit Entsperren button-erreichbar bleibt). Stateful Korrelation ueber die Zeilen-id (Member) bzw. die uid direkt (Block). GENERISCHER DISPATCH (WS-0c CB): jeder Prefix, den KEIN hartkodierter Arm faengt, faellt auf die extra-Ausgabe [9] -\u003e Dispatch callback (core.fn_dispatch_callback schlaegt den Prefix in core.callback_handlers nach + fuehrt die Paket-Handler-fn(jsonb) dynamisch aus) -\u003e Answer dispatched cb (Toast = result.toast || Fallback). Erster Konsument: career job:-Feedback (👍/👎 an Job-Karten, WS-2). P2b-2: das Dispatch-Payload reicht chat_id=callback_query.from.id mit -\u003e career.fn_handle_job_feedback loest den Sender auf (Eigentuemer-Check person_id=sender). Die 9 hartkodierten Arme bleiben unveraendert. MEMBER-PERMEABILITAET: aufgeloeste Nicht-Owner-Mitglieder erreichen Dispatch callback DIREKT (2. Eingangskante von Callback member?); core.fn_dispatch_callback enforced core.callback_handlers.member_permeable FAIL-CLOSED (Owner immer; Mitglied nur bei member_permeable=true; unaufgeloest -\u003e reject) + re-resolvt den Sender selbst; die FEINE Auth (est=adults_only haushalts-skopiert, job=Per-Item-Eigentum) macht der Handler. Owner-Admin-Prefixes (confirm/block/cron/learn/...) sind KEINE Registry-Handler -\u003e ein Member-Tap darauf -\u003e unknown_callback_prefix -\u003e Reject-Toast (strukturell unerreichbar). MITGLIEDER-ONBOARDING: Prefix onboarding ist zusaetzlich Registry-Handler (core.fn_handle_onboarding_cb, member_permeable; contract_lint 9 erlaubt die Kollision nur so) -\u003e Dispatch callback (Payload + chat_type) -\u003e Onboarding route? (result.route===onboarding) -\u003e derselbe Onboarding section?-Switch wie beim Owner; sonst Plan route? (PLAN-SCHRITT, 2026-10-28: plan:\u003cdomain\u003e aus dem Onboarding-Menü, Owner UND Mitglied über Dispatch callback; core.fn_handle_plan_cb prüft Privatchat, Domain mit plan_step, Schreibrecht und Daten-Reife und gibt route=plan + domain -\u003e Plan domain? build-time je $AdvisorPlanStepList -\u003e Answer plan \u003cdomain\u003e ZUERST (Toast, onError continue) -\u003e Run plan \u003cdomain\u003e = agent.sub_dispatch_agent -\u003e advisor_agent mit festem englischem Auftrag + Antwortsprache des Tippenden -\u003e Relay plan \u003cdomain\u003e), sonst Handoff route? (ÜBERGABE Berater -\u003e Buchhalter: handoff:\u003cdomain\u003e:\u003cmax_task_id\u003e vom Knopf Durchgehen; core.fn_handle_handoff_cb prüft Privatchat, Person, can_write und beansprucht die Aufgaben open -\u003e working -\u003e Handoff domain? build-time je Domain mit handoff_agent -\u003e Answer handoff \u003cdomain\u003e ZUERST -\u003e Run handoff \u003cdomain\u003e = agent.sub_dispatch_agent -\u003e handoff_agent mit festem Auftrag + den Aufgaben als Daten -\u003e Handoff run ok \u003cdomain\u003e? (leere Ausgabe zählt als Fehler) -\u003e Relay + Folge-Bindung; Fehler-Ausgang oder leer -\u003e Release handoff \u003cdomain\u003e (core.fn_release_handoff_tasks) -\u003e Hinweis core.orch.agent_unavailable), sonst Answer dispatched cb (Toast). PERSONA-STICKER (Bot mit Gesicht): zweiter Ast nach Dispatch callback -\u003e Persona sticker? (result.sticker_event = persona_chosen, nur bei EIGENER Persona-Wahl) -\u003e Claim persona sticker (agent.fn_claim_persona_sticker, Event persona_chosen = Hallo im neuen Set, umgeht die Bremse) -\u003e Persona sticker due? -\u003e Send persona sticker (Gateway-Relay, an callback_query.from.id). Alle Knopf-Aufträge (Haushalt, Paket-Onboarding, Plan) sind englisch und nennen die Antwortsprache (lang aus Resolve callback sender), ihre Answer-Knoten laufen mit onError continue.",
+                                         "content":  "## Ablauf\n**Owner-Admin + Member-Callback-Dispatch (callback_query, KEIN LLM): Owner bestaetigt Einladungen/togglet Crons; Mitglied bedient seine est:/job:-Karten**\n\nEin Inline-Button-Tap kommt als callback_query (kein top-level message). Resolve callback sender loest callback_query.from.id auf. Zweistufige Auth (Transport=n8n-secret_token + App=Owner-/Member-Gate): Callback owner? [true=gepairter Owner] -\u003e Callback action (die 9 Admin-Arme + [9] extra); [false=Nicht-Owner] -\u003e Callback member? [true=aufgeloestes Mitglied] -\u003e DIREKT Dispatch callback (die Owner-Admin-Arme bleiben so unerreichbar), [false=unbekannter/ungepairter Sender] -\u003e Discard non-owner callback (generisches answerCallbackQuery -\u003e Spinner stoppt, KEIN Handler). Callback action parst das callback_data-Verb (vor dem „:\"). confirm:\u003cid\u003e/reject:\u003cid\u003e -\u003e Run confirm/reject pairing (Member-Einladung; fn_confirm_pairing bindet die beim Claim gestagete Identitaet via Merge-Kern, idempotent). block:\u003cuid\u003e/unblock:\u003cuid\u003e -\u003e Run block/unblock knocker (agent.fn_block_knocker/fn_unblock_knocker auf agent.access_blocks; uid = data.split(\":\")[1]). cron_on:\u003ckey\u003e/cron_off:\u003ckey\u003e -\u003e Run cron on/off (core.fn_set_cron_enable -\u003e core.config cron_enable; key = data.split(\":\")[1]). GENERISCH: die Togglability-Sicherung ist die Mitgliedschaft in core.cron_labels (die Erinnerungs-Registry aller nutzer-sichtbaren Crons; Haushalts-Erinnerungen schaltbar, Person-Erinnerungen und Pflicht lehnt fn_set_cron_enable ab -\u003e dann Toast core.toast.reminder_unavailable + Hinweis /reminders statt Erfolg). Der Postgres-Node liest neben dem fn-Call das Paket aus core.cron_labels und die vier Katalog-Texte \u003cpkg\u003e.cron.\u003ckey\u003e.* in der Sprache des Tippenden (lang aus Resolve callback sender) -\u003e Answer/Notify cron on/off; der Hinweis im off-Send ist core.cron.off_reminders_hint (wieder an per /reminders). Ein neuer Cron = Key in der Manifest-cron_labels-Liste + Texte im Katalog, kein Orchestrator-Edit. learn:\u003cok|no|undo\u003e:\u003cid\u003e (Lern-Loop) -\u003e Learn action (split[1]=Verb, split[2]=candidate_id): ok -\u003e Run approve learn (agent.fn_approve_learn_candidate dispatcht fact-\u003efn_set_context_facts | note-\u003ecore.fn_append_context_note, approved nur bei Write-Erfolg) -\u003e nach NOTE-approve eine Folge-Karte Offer undo ([Rueckgaengig]=learn:undo:\u003cid\u003e, der einzige Weg zu undo); no -\u003e Run reject learn (durable); undo -\u003e Run undo learn (core.fn_remove_context_note, nur approved notes). Idempotent (re-tap -\u003e {ok:false}-Toast). help:overview -\u003e Answer help cb (Button ZUERST quittieren) -\u003e Load capabilities cb -\u003e Split help cb (chunked, Index + (n/N)) -\u003e Send help cb PER-ITEM (terminal; answerCallbackQuery feuert NICHT pro Chunk). onboarding:\u003cpackage\u003e:\u003ckey\u003e (aus dem Menue-Grid) -\u003e Onboarding section? (Switch nach data.split(\":\")[1] = das \u003cpackage\u003e-Glied): core -\u003e Run onboarding cb (agent.guide INLINE, Haushalt) -\u003e Answer/Relay onboarding cb; jedes Paket mit provides.onboarding bekommt build-time aus $OnboardingDispatchList einen eigenen Arm Run/Answer/Relay onboarding \u003cpkg\u003e -\u003e agent.\u003conboarding_agent\u003e INLINE (generischer Self-Onboarding-Task, section_key = split[2]) -\u003e kein agent.\u003cpkg\u003e-Literal mehr (core_literal #1), neues Onboarding-Paket dockt ohne Orchestrator-Edit an. onboarding:_area:\u003cpackage\u003e (Bereichs-Knopf der Menue-Uebersicht, _area reserviert: kein Paketname beginnt mit _) -\u003e Answer onboarding area -\u003e Send onboarding area (core.sub_send_onboarding_menu mit area = split[2]; leer = Uebersicht; der Sub sendet selbst, terminal). Cron-Toggle-Modell (gelockt): SETUP=aktivieren per Knopf (die on-Knoepfe erscheinen am Publish-Aktivierungs-Angebot, je ein Knopf fuer drift_check + plan_review, unabhaengig, bzw. an der Onboarding-/Lern-Karte fuer learn_context), LAUFZEIT=abschalten per Knopf (an jedem Nudge), RE-AKTIVIEREN per /reminders (Menue-Knopf rem:on:\u003ckey\u003e:m; der off-Send nennt /reminders). Answer \u003caktion\u003e quittiert den Button (answerCallbackQuery-Toast); danach Notify member confirmed/rejected an pairing_state.claimed_chat_id (in der Sprache der Person; ohne eigene Sprache danach Member needs language? -\u003e Send member language picker, Telegram-App-Sprache vom Einloesen als Vorschlag markiert, gespeichert erst beim Tipp) bzw. Notify block/unblock done an den Owner MIT dem inversen Toggle-Button (Sperren\u003c-\u003eEntsperren, damit Entsperren button-erreichbar bleibt). Stateful Korrelation ueber die Zeilen-id (Member) bzw. die uid direkt (Block). GENERISCHER DISPATCH: jeder Prefix, den KEIN hartkodierter Arm faengt, faellt auf die extra-Ausgabe [9] -\u003e Dispatch callback (core.fn_dispatch_callback schlaegt den Prefix in core.callback_handlers nach + fuehrt die Paket-Handler-fn(jsonb) dynamisch aus) -\u003e Answer dispatched cb (Toast = result.toast || Fallback). Erster Konsument: career job:-Feedback (👍/👎 an Job-Karten). Das Dispatch-Payload reicht chat_id=callback_query.from.id mit -\u003e career.fn_handle_job_feedback loest den Sender auf (Eigentuemer-Check person_id=sender). MEMBER-PERMEABILITAET: aufgeloeste Nicht-Owner-Mitglieder erreichen Dispatch callback DIREKT (2. Eingangskante von Callback member?); core.fn_dispatch_callback enforced core.callback_handlers.member_permeable FAIL-CLOSED (Owner immer; Mitglied nur bei member_permeable=true; unaufgeloest -\u003e reject) + re-resolvt den Sender selbst; die FEINE Auth (est=adults_only haushalts-skopiert, job=Per-Item-Eigentum) macht der Handler. Owner-Admin-Prefixes (confirm/block/cron/learn/...) sind KEINE Registry-Handler -\u003e ein Member-Tap darauf -\u003e unknown_callback_prefix -\u003e Reject-Toast (strukturell unerreichbar). MITGLIEDER-ONBOARDING: Prefix onboarding ist zusaetzlich Registry-Handler (core.fn_handle_onboarding_cb, member_permeable; contract_lint 9 erlaubt die Kollision nur so) -\u003e Dispatch callback (Payload + chat_type) -\u003e Onboarding route? (result.route===onboarding) -\u003e derselbe Onboarding section?-Switch wie beim Owner; sonst Plan route? (PLAN-SCHRITT: plan:\u003cdomain\u003e aus dem Onboarding-Menü, Owner UND Mitglied über Dispatch callback; core.fn_handle_plan_cb prüft Privatchat, Domain mit plan_step, Schreibrecht und Daten-Reife und gibt route=plan + domain -\u003e Plan domain? build-time je $AdvisorPlanStepList -\u003e Answer plan \u003cdomain\u003e ZUERST (Toast, onError continue) -\u003e Run plan \u003cdomain\u003e = agent.sub_dispatch_agent -\u003e advisor_agent mit festem englischem Auftrag + Antwortsprache des Tippenden -\u003e Relay plan \u003cdomain\u003e), sonst Handoff route? (ÜBERGABE Berater -\u003e Buchhalter: handoff:\u003cdomain\u003e:\u003cmax_task_id\u003e vom Knopf Durchgehen; core.fn_handle_handoff_cb prüft Privatchat, Person, can_write und beansprucht die Aufgaben open -\u003e working -\u003e Handoff domain? build-time je Domain mit handoff_agent -\u003e Answer handoff \u003cdomain\u003e ZUERST -\u003e Run handoff \u003cdomain\u003e = agent.sub_dispatch_agent -\u003e handoff_agent mit festem Auftrag + den Aufgaben als Daten -\u003e Handoff run ok \u003cdomain\u003e? (leere Ausgabe zählt als Fehler) -\u003e Relay + Folge-Bindung; Fehler-Ausgang oder leer -\u003e Release handoff \u003cdomain\u003e (core.fn_release_handoff_tasks) -\u003e Hinweis core.orch.agent_unavailable), sonst Answer dispatched cb (Toast). PERSONA-STICKER (Bot mit Gesicht): zweiter Ast nach Dispatch callback -\u003e Persona sticker? (result.sticker_event = persona_chosen, nur bei EIGENER Persona-Wahl) -\u003e Claim persona sticker (agent.fn_claim_persona_sticker, Event persona_chosen = Hallo im neuen Set, umgeht die Bremse) -\u003e Persona sticker due? -\u003e Send persona sticker (Gateway-Relay, an callback_query.from.id). Alle Knopf-Aufträge (Haushalt, Paket-Onboarding, Plan) sind englisch und nennen die Antwortsprache (lang aus Resolve callback sender), ihre Answer-Knoten laufen mit onError continue.",
                                          "height":  380,
                                          "width":  900,
                                          "color":  4
@@ -4623,7 +4737,7 @@
                   },
                   {
                       "parameters":  {
-                                         "content":  "## Ablauf\n**/help, /onboarding, /start (deterministisch, KEIN LLM)**\n\nTEXT -\u003e Command router. Core-Zweige (Host-bespoke, hardkodiert): /help|/hilfe -\u003e Load capabilities (core.help_catalog in der Sprache des Absenders, sonst en; Rahmen-Texte als t-Map) -\u003e Split help (WS-5 Code-Node: splittet an `## `-Kategorie-Grenzen, baut Index-Karte zuerst + (n/N)-Praefix, greedy-Chunks \u003c 4096) -\u003e Send help laeuft PER-ITEM (N sequenzielle Plain-Text-Nachrichten, ## -\u003e \u003e, memory-los). /onboarding (WS-2) -\u003e Send onboarding menu (ruft core.sub_send_onboarding_menu INLINE: Uebersicht in Onboarding-Reihenfolge: Bereiche mit Fortschritt + Weiter-Knopf auf den naechsten offenen Abschnitt, der Sub sendet selbst -\u003e KEIN Relay, KEIN LLM, gratis; nur hier am Eintritt -\u003e kein Spam). bare /start -\u003e Start owner? (Rolle aus Resolve sender): Owner -\u003e Start onboarding read (core.fn_render_welcome = EINE Textquelle mit der Installer-Begruessung: Vorname + installierte Funktionen + naechster Schritt; kind back = Haushalt fertig; Lesefehler -\u003e statischer Ersatztext) -\u003e Welcome-zurueck (Core fertig) bzw. Send welcome new + Buttons [Haushalt einrichten=onboarding:core:household / Was kannst du?=help:overview] (Core offen); Mitglied -\u003e Send welcome member (kein Haushalts-Onboarding). /language|/sprache -\u003e Send language picker (core.sub_send_language_picker Modus self: die Person waehlt ihre EIGENE Sprache, Tipp -\u003e lang:-Callback). /persona -\u003e Send persona picker (core.sub_send_persona_picker: die Person waehlt ihren EIGENEN Bot-Charakter, Tipp -\u003e persona:-Callback; wirkt nur als Runtime-Flag persona im Orchestrator-Prompt = Rahmen, s. persona_styles.md). /costs|/kosten -\u003e Send cost report (core.sub_send_cost_report: KI-Kosten 7/30 Tage je Assistent/Modell/Kostenart aus der Gateway-Mitschrift, Rechnung in der DB, sendet selbst; das Owner-Gate sitzt in core.fn_get_llm_cost_report, ein Mitglied bekommt den Owner-only-Hinweis). FESTE TEXTE (Textkatalog Phase B): Resolve sender laedt die t-Maps (t = Absender-Sprache, t_owner = Owner-Sprache), jede feste Antwort liest daraus; die Begruessung kommt aus core.fn_render_welcome(lang) inkl. Knopf-Texte. PAKET-COMMANDS (WS-5 Command-Router-Generalisierung, build-time aus $CommandDispatchList je Manifest-commands.dispatch): je Befehl /\u003ccmd\u003e -\u003e Run command \u003ccmd\u003e (der dispatch.agent des Pakets INLINE ueber agent.sub_dispatch_agent, synthetischer Task, call_depth=1) -\u003e Relay command \u003ccmd\u003e (Markdown-\u003ePlain-Fallback). Der Switch-Fallback (Nicht-Command-Text) steht ZULETZT (fallbackOutput=extra, dynamisch verdrahtet) -\u003e ein neues Paket-Command verschiebt ihn NICHT. Sonst -\u003e normale Agent-Pipeline. DOCUMENT/PHOTO -\u003e Attachment-Marker (das Ziel waehlt der Router nach Dokumentart, s. Doc: Voice/Vision). Backup/Restore CLI-only (lifeagents backup).",
+                                         "content":  "## Ablauf\n**/help, /onboarding, /start (deterministisch, KEIN LLM)**\n\nTEXT -\u003e Command router. Core-Zweige (Host-bespoke, hardkodiert): /help|/hilfe -\u003e Load capabilities (core.help_catalog in der Sprache des Absenders, sonst en; Rahmen-Texte als t-Map) -\u003e Split help (Code-Node: splittet an `## `-Kategorie-Grenzen, baut Index-Karte zuerst + (n/N)-Praefix, greedy-Chunks \u003c 4096) -\u003e Send help laeuft PER-ITEM (N sequenzielle Plain-Text-Nachrichten, ## -\u003e \u003e, memory-los). /onboarding -\u003e Send onboarding menu (ruft core.sub_send_onboarding_menu INLINE: Uebersicht in Onboarding-Reihenfolge: Bereiche mit Fortschritt + Weiter-Knopf auf den naechsten offenen Abschnitt, der Sub sendet selbst -\u003e KEIN Relay, KEIN LLM, gratis; nur hier am Eintritt -\u003e kein Spam). bare /start -\u003e Start owner? (Rolle aus Resolve sender): Owner -\u003e Start onboarding read (core.fn_render_welcome = EINE Textquelle mit der Installer-Begruessung: Vorname + installierte Funktionen + naechster Schritt; kind back = Haushalt fertig; Lesefehler -\u003e statischer Ersatztext) -\u003e Welcome-zurueck (Core fertig) bzw. Send welcome new + Buttons [Haushalt einrichten=onboarding:core:household / Was kannst du?=help:overview] (Core offen); Mitglied -\u003e Send welcome member (kein Haushalts-Onboarding). /language|/sprache -\u003e Send language picker (core.sub_send_language_picker Modus self: die Person waehlt ihre EIGENE Sprache, Tipp -\u003e lang:-Callback). /persona -\u003e Send persona picker (core.sub_send_persona_picker: die Person waehlt ihren EIGENEN Bot-Charakter, Tipp -\u003e persona:-Callback; wirkt nur als Runtime-Flag persona im Orchestrator-Prompt = Rahmen, s. persona_styles.md). /costs|/kosten -\u003e Send cost report (core.sub_send_cost_report: KI-Kosten 7/30 Tage je Assistent/Modell/Kostenart aus der Gateway-Mitschrift, Rechnung in der DB, sendet selbst; das Owner-Gate sitzt in core.fn_get_llm_cost_report, ein Mitglied bekommt den Owner-only-Hinweis). FESTE TEXTE: Resolve sender laedt die t-Maps (t = Absender-Sprache, t_owner = Owner-Sprache), jede feste Antwort liest daraus; die Begruessung kommt aus core.fn_render_welcome(lang) inkl. Knopf-Texte. PAKET-COMMANDS (build-time aus $CommandDispatchList je Manifest-commands.dispatch): je Befehl /\u003ccmd\u003e -\u003e Run command \u003ccmd\u003e (der dispatch.agent des Pakets INLINE ueber agent.sub_dispatch_agent, synthetischer Task, call_depth=1) -\u003e Relay command \u003ccmd\u003e (Markdown-\u003ePlain-Fallback). Der Switch-Fallback (Nicht-Command-Text) steht ZULETZT (fallbackOutput=extra, dynamisch verdrahtet) -\u003e ein neues Paket-Command verschiebt ihn NICHT. Sonst -\u003e normale Agent-Pipeline. DOCUMENT/PHOTO -\u003e Attachment-Marker (das Ziel waehlt der Router nach Dokumentart, s. Doc: Voice/Vision). Backup/Restore CLI-only (lifeagents backup).",
                                          "height":  360,
                                          "width":  520,
                                          "color":  4
@@ -4639,7 +4753,7 @@
                   },
                   {
                       "parameters":  {
-                                         "content":  "## Ablauf\n**Voice/Audio -\u003e Tool; Foto/Dokument -\u003e Marker**\n\nWhich type of message verzweigt auf die VERSCHACHTELTEN Telegram-Felder (gefixt): audio=message.audio.file_id, voice=message.voice.file_id, text=message.text, photo=message.photo, document=message.document.file_id. Voice UND Audio rufen INLINE agent.tool_transcribe_telegram_voice (Download + Transkription via core.config transcription.provider) -\u003e Transcription ok? -\u003e true: Chat message normalization branch 2 (chat_message = text) -\u003e Agent input -\u003e Agent (alle vier Normalisierungen münden in Agent input; dessen chat_message ist der wörtliche task der Agent-Call-Tools); false -\u003e Close thinking lease (voice) (Schalter der \"Bot denkt nach\"-Schleife weg, Draft-Fenster abwarten) -\u003e Reply voice unavailable (feste Antwort an den Absender, kein Agent-Lauf; Text je Fehlercode) -\u003e Voice outage? -\u003e nur bei voice_unavailable (kein Google-Schlüssel, Download-/API-Fehler, unbekannter Anbieter), NICHT bei voice_empty (leeres Transkript = stille Aufnahme -\u003e nur Bitte um Wiederholung) -\u003e Voice notify gate (core.fn_should_notify voice/transcription, 24 h) -\u003e Notify owner voice (Grund + Abhilfe, höchstens 1x/Tag). Kein errorWorkflow-Alarm. Foto/Dokument: Set baut chat_message = (Caption || neutraler Hinweis „… ohne Bildunterschrift gesendet.\" — bewusst OHNE Vermutung zur Dokumentart, Phase C) + [attachment file_id=... type=... (Dokument: + ext=\u003cEndung des Dateinamens\u003e, nie der Name selbst)], bei mehreren Dateien des Bündels (message.extra_files) je Datei ein Marker + neutraler Hinweis „N Dateien … gesendet\"; der Marker reicht unverändert durch an den Agenten, den der Router nach Dokumentart wählt (angenommene Arten stehen in den router_descriptions der Pakete; Art unklar -\u003e der Agent mit fallback_for attachment, dessen Tool-Beschreibung den Satz dazu trägt). Dessen eigenes Extraktions-Tool lädt via Core-Baustein fetch_telegram_file (paid Key). Kein Download und keine Inhalts-Vorklassifikation im Orchestrator (Privacy-Hard-Rule).",
+                                         "content":  "## Ablauf\n**Voice/Audio -\u003e Tool; Foto/Dokument -\u003e Marker**\n\nWhich type of message verzweigt auf die VERSCHACHTELTEN Telegram-Felder:audio=message.audio.file_id, voice=message.voice.file_id, text=message.text, photo=message.photo, document=message.document.file_id. Voice UND Audio rufen INLINE agent.tool_transcribe_telegram_voice (Download + Transkription via core.config transcription.provider) -\u003e Transcription ok? -\u003e true: Chat message normalization branch 2 (chat_message = text) -\u003e Agent input -\u003e Agent (alle vier Normalisierungen münden in Agent input; dessen chat_message ist der wörtliche task der Agent-Call-Tools); false -\u003e Close thinking lease (voice) (Schalter der \"Bot denkt nach\"-Schleife weg, Draft-Fenster abwarten) -\u003e Reply voice unavailable (feste Antwort an den Absender, kein Agent-Lauf; Text je Fehlercode) -\u003e Voice outage? -\u003e nur bei voice_unavailable (kein Google-Schlüssel, Download-/API-Fehler, unbekannter Anbieter), NICHT bei voice_empty (leeres Transkript = stille Aufnahme -\u003e nur Bitte um Wiederholung) -\u003e Voice notify gate (core.fn_should_notify voice/transcription, 24 h) -\u003e Notify owner voice (Grund + Abhilfe, höchstens 1x/Tag). Kein errorWorkflow-Alarm. Foto/Dokument: LEBENSZEICHEN zuerst (liegt am höchsten -\u003e läuft in der v1-Reihenfolge vor \"Denkt nach\" und Normalisierung): Claim seen reaction (agent.fn_claim_reaction event seen, Write-Cred, onError continue) -\u003e Seen due? -\u003e React seen = 👀 an die Nachricht (Gateway-Relay, 4-s-Limit; Sprachnachrichten bekommen keins; 👌 bzw. eine Stimmung nach der Antwort ersetzt es). Dann: Set baut chat_message = (Caption || neutraler Hinweis „… ohne Bildunterschrift gesendet.\" — bewusst OHNE Vermutung zur Dokumentart) + [attachment file_id=... type=... (Dokument: + ext=\u003cEndung des Dateinamens\u003e, nie der Name selbst)], bei mehreren Dateien des Bündels (message.extra_files) je Datei ein Marker + neutraler Hinweis „N Dateien … gesendet\"; der Marker reicht unverändert durch an den Agenten, den der Router nach Dokumentart wählt (angenommene Arten stehen in den router_descriptions der Pakete; Art unklar -\u003e der Agent mit fallback_for attachment, dessen Tool-Beschreibung den Satz dazu trägt). Dessen eigenes Extraktions-Tool lädt via Core-Baustein fetch_telegram_file (paid Key). Kein Download und keine Inhalts-Vorklassifikation im Orchestrator (Privacy-Hard-Rule).",
                                          "height":  300,
                                          "width":  560,
                                          "color":  4
@@ -4655,7 +4769,7 @@
                   },
                   {
                       "parameters":  {
-                                         "content":  "## Ablauf\n**Orchestrator agent + Auslieferung**\n\nModell via Model Selector aus core.config (model.orchestrator, default claude-haiku-latest, Denk-Tiefe low; je Chat-Modell eine Regel model_key-\u003eselector_index aus packages/core/seed/ai_models.json, gemeinsamer Builder New-ModelSelectorBundle). Eigenes Chat-Memory agent.orchestrator_chat_memory (sessionKey=chat_id), getrennt von den Agenten. Call-Tools (generiert): finance, finance_advisor, monitor, guide, career_advisor, estate_advisor, paperless_assistant. task = $(\u0027Agent input\u0027).first().json.chat_message WÖRTLICH (Fix C: kein $fromAI, der Router wählt nur das Tool; enthält eine Nachricht mehrere Anliegen, bekommt jeder gewählte Agent die ganze Nachricht). Paket-Agenten (alle Nicht-Core-Agenten) sowie die Paket-Onboarding- und Paket-Befehls-Arme laufen über den Core-Verteiler agent.sub_dispatch_agent (feste Eingaben workflow_id/package; Anzeigename + Hinweise holt er zur Laufzeit aus dem Textkatalog in der Sprache des Absenders): er prüft core.fn_package_status und ruft den Agenten per Ausdrucks-ID - ein nicht installiertes/ausgeschaltetes Paket bekommt eine freundliche Antwort statt eines Absturzes; der Orchestrator selbst verweist nie literal auf einen Paket-Workflow (sonst verweigert n8n seine Aktivierung). WÖRTLICHES WEITERREICHEN (Befund 2026-10-25: der Router formulierte Spezialisten-Antworten um und verfälschte eine Aussage): der Agent gibt per returnIntermediateSteps die Tool-Ergebnisse mit; Relay compose sendet die Spezialisten-Texte WÖRTLICH (Aufruf-Reihenfolge, je Tool der letzte Aufruf). Nach einem Tool antwortet der Router nur mit dem Signal FRAME/NOFRAME; bei FRAME und Persona != neutral steht ein FESTER Rahmensatz aus dem Textkatalog davor (core.persona.frame.\u003ccode\u003e.\u003cn\u003e, rotiert) - nie Modelltext neben Zahlen. Ohne Tool geht die Router-Antwort raus; nichts Brauchbares -\u003e core.orch.relay_empty. STICKER (Bot mit Gesicht): Relay compose -\u003e Claim sticker (agent.fn_claim_persona_sticker, Write-Cred, onError continue: Set = Persona, neutral = Roboter; yay = Einrichtung in diesem Lauf fertig, top = Karte dieses Laufs endgültig bestätigt + FRAME, hmm = Datei + FRAME, hallo = reiner Gruß ohne Werkzeug; nie bei NOFRAME; Bremse je Person aus core.config persona.*) -\u003e Sticker due? -\u003e Send sticker (Telegram-Relay des LLM-Gateways, 3-s-Limit, onError continue) -\u003e Text; ohne Sticker direkt zum Text. Kein LLM, die Antwort kommt immer. Router memory signal (nach dem Senden, vor Finish card lock, executeOnce, onError continue): hat der Router nach einem Werkzeug doch eine eigene Fassung geschrieben (der Nutzer sieht sie nie), ersetzt agent.fn_set_router_memory_signal sie im Router-Gedächtnis durch das Signal - die gesendete Antwort steht direkt davor wörtlich als tool-Zeile; sonst ahmen die Folge-Turns die Umformulierung nach (Befund 2026-10-26). Teile \u003c= 3500 Zeichen an Absatzgrenzen; Send a text message läuft je Teil in Reihenfolge mit parse_mode=HTML und escaptem Text (= echtes Plain; alle Agenten schreiben Plain-Text; leeres parse_mode macht n8n still zu Markdown) -\u003e kein Parse-Fehler, kein Fallback-Zweig; ein echter Zustellausfall bleibt UNGEFANGEN -\u003e errorWorkflow. Finish card lock executeOnce (mehrere Teile). appendAttribution=false (Mehrbyte-Entity-Bug). KNOWN ISSUE: Send hängt sporadisch ~3-5 Min (Node-keepAlive-Socket) -\u003e CLAUDE.md, kein Code-Bug. BOT DENKT NACH: Sprache/Audio/Foto/Dokument direkt an Which type of message, Text nach dem Command-router-Fallback -\u003e Open thinking lease (Schalter agent.thinking_lease, synchron) -\u003e Show thinking (core.sub_show_thinking fire-and-forget mit execution_id; liegt höher -\u003e v1 führt es vor Transkription/Agent aus, wartet nicht, onError continue) = Telegram-Platzhalter \"Thinking...\" (am Client nur ~8 s je Draft), den der Sub alle 5 s erneuert, solange der Schalter lebt; bei offener Bestätigungskarte pausiert er. Close thinking lease liegt SERIELL vor Relay compose (und damit vor dem Senden) bzw. Reply voice unavailable: löscht den Schalter und wartet ein evtl. laufendes Draft-Fenster ab (\u003c= 1 s) -\u003e kein \"Thinking...\" unter der Antwort; Finish card lock löscht die Schalter des Chats ein zweites Mal (Netz), core.sub_error_notify beim Absturz; je Chat ein Schalter (eine neue Nachricht verdrängt einen liegengebliebenen). Paket-Befehle und Paket-Onboarding-Tipps (thinking=loop an agent.sub_dispatch_agent) führen ihre Schleife im Vermittler; der KI-Weg lässt thinking leer.",
+                                         "content":  "## Ablauf\n**Orchestrator agent + Auslieferung**\n\nModell via Model Selector aus core.config (model.orchestrator, default claude-haiku-latest, Denk-Tiefe low; je Chat-Modell eine Regel model_key-\u003eselector_index aus packages/core/seed/ai_models.json, gemeinsamer Builder New-ModelSelectorBundle). Eigenes Chat-Memory agent.orchestrator_chat_memory (sessionKey=chat_id), getrennt von den Agenten. maxIterations=6: der Router ruft meist ein Tool (Aufruf + Signal-Zeile = 2 Läufe), bei mehreren Anliegen nacheinander mehrere (der Gateway schaltet parallele Tool-Aufrufe ab) - eine Tool-Schleife bricht ab statt Tokens zu verbrennen. Call-Tools (generiert): finance, finance_advisor, monitor, guide, career_advisor, estate_advisor, paperless_assistant. task = $(\u0027Agent input\u0027).first().json.chat_message WÖRTLICH (kein $fromAI, der Router wählt nur das Tool; enthält eine Nachricht mehrere Anliegen, bekommt jeder gewählte Agent die ganze Nachricht). Paket-Agenten (alle Nicht-Core-Agenten) sowie die Paket-Onboarding- und Paket-Befehls-Arme laufen über den Core-Verteiler agent.sub_dispatch_agent (feste Eingaben workflow_id/package; Anzeigename + Hinweise holt er zur Laufzeit aus dem Textkatalog in der Sprache des Absenders): er prüft core.fn_package_status und ruft den Agenten per Ausdrucks-ID - ein nicht installiertes/ausgeschaltetes Paket bekommt eine freundliche Antwort statt eines Absturzes; der Orchestrator selbst verweist nie literal auf einen Paket-Workflow (sonst verweigert n8n seine Aktivierung). WÖRTLICHES WEITERREICHEN (der Router darf Spezialisten-Antworten nicht umformulieren):der Agent gibt per returnIntermediateSteps die Tool-Ergebnisse mit; Relay compose sendet die Spezialisten-Texte WÖRTLICH (Aufruf-Reihenfolge, je Tool der letzte Aufruf). Nach einem Tool antwortet der Router nur mit einer Signal-Zeile FRAME, NOFRAME oder FRAME \u003cMOOD\u003e (LOVE/CHEER/RELIEF/FUN) - nie Modelltext neben Zahlen. Ohne Tool geht die Router-Antwort raus; eine erste Zeile REACT \u003cMOOD\u003e schneidet Relay compose immer ab (allein = nur Reaktion, kein Text; mit Text = Reaktion + Text). Nichts Brauchbares -\u003e core.orch.relay_empty. Router-Flags am Ende des System-Prompts: persona, user_style (agent.fn_chat_style: expressive/neutral/terse aus den letzten 20 Nachrichten, Emoji-Spiegeln) und daypart (core.fn_daypart, passende Begrüßung). STICKER, REAKTION, RAHMENSATZ (KEIN LLM): Relay compose -\u003e Claim expression (EINE Abfrage, Write-Cred, onError continue): agent.fn_claim_persona_sticker (Set = Persona, neutral = Roboter; yay/top/hmm/hallo; nie bei NOFRAME; Bremse je Person), dann agent.fn_claim_reaction mit dem Sticker-Ergebnis (👌 nach endgültig bestätigter Karte dieses Laufs + FRAME, ersetzt ein 👀; Stimmung ❤/🎉/🙏/😁 aus der Router-Zeile, nie neben einem Sticker, nie bei NOFRAME oder Fehler-Hinweis; Tages-Obergrenze je Person nach Stil aus core.config persona.mood_reactions_per_day, die reine Reaktion zählt nicht; Aus-Schalter persona.reactions_enabled), dann agent.fn_claim_persona_frame (Persona != neutral + FRAME + Spezialisten-Text: erste solche Antwort des Tages = Tagesgruß mit Vornamen, sonst fester Katalog-Rahmensatz core.persona.frame.\u003ccode\u003e.\u003cn\u003e, gewählt per message_id). -\u003e Sticker due? -\u003e Send sticker -\u003e Reaction due? -\u003e Send reaction (beide über den Telegram-Relay des LLM-Gateways, 3-s-Limit, onError continue; beide False-Ausgänge verdrahtet) -\u003e Has text? -\u003e Relay-Kette (Text = Rahmensatz + Leerzeile + Body; fehlt die zugesagte Reaktion bei leerem Body, ein kurzer Ersatztext statt Stille) bzw. bei reiner Reaktion direkt Router memory signal -\u003e Finish card lock. Die Antwort kommt immer. Router memory signal (nach dem Senden, vor Finish card lock, executeOnce, onError continue): hat der Router nach einem Werkzeug doch eine eigene Fassung geschrieben (der Nutzer sieht sie nie), ersetzt agent.fn_set_router_memory_signal sie im Router-Gedächtnis durch das Signal - die gesendete Antwort steht direkt davor wörtlich als tool-Zeile; sonst ahmen die Folge-Turns die Umformulierung nach.Teile \u003c= 3500 Zeichen an Absatzgrenzen; Send a text message läuft je Teil in Reihenfolge mit parse_mode=HTML und escaptem Text (= echtes Plain; alle Agenten schreiben Plain-Text; leeres parse_mode macht n8n still zu Markdown) -\u003e kein Parse-Fehler, kein Fallback-Zweig; ein echter Zustellausfall bleibt UNGEFANGEN -\u003e errorWorkflow. Finish card lock executeOnce (mehrere Teile). appendAttribution=false (Mehrbyte-Entity-Bug). KNOWN ISSUE: Send hängt sporadisch ~3-5 Min (Node-keepAlive-Socket) -\u003e CLAUDE.md, kein Code-Bug. BOT DENKT NACH: Sprache/Audio/Foto/Dokument direkt an Which type of message, Text nach dem Command-router-Fallback -\u003e Open thinking lease (Schalter agent.thinking_lease, synchron) -\u003e Show thinking (core.sub_show_thinking fire-and-forget mit execution_id; liegt höher -\u003e v1 führt es vor Transkription/Agent aus, wartet nicht, onError continue) = Telegram-Platzhalter \"Thinking...\" (am Client nur ~8 s je Draft), den der Sub alle 5 s erneuert, solange der Schalter lebt; bei offener Bestätigungskarte pausiert er. Close thinking lease liegt SERIELL vor Relay compose (und damit vor dem Senden) bzw. Reply voice unavailable: löscht den Schalter und wartet ein evtl. laufendes Draft-Fenster ab (\u003c= 1 s) -\u003e kein \"Thinking...\" unter der Antwort; Finish card lock löscht die Schalter des Chats ein zweites Mal (Netz), core.sub_error_notify beim Absturz; je Chat ein Schalter (eine neue Nachricht verdrängt einen liegengebliebenen). Paket-Befehle und Paket-Onboarding-Tipps (thinking=loop an agent.sub_dispatch_agent) führen ihre Schleife im Vermittler; der KI-Weg lässt thinking leer.",
                                          "height":  320,
                                          "width":  800,
                                          "color":  4
@@ -4668,22 +4782,6 @@
                                    ],
                       "id":  "c649bfb3-15d4-5f6a-a0b3-74d0bbe679e9",
                       "name":  "Doc: Agent + Modell + Send"
-                  },
-                  {
-                      "parameters":  {
-                                         "content":  "## Ablauf\n**Zweiter Trigger: AI context compression (DEAKTIVIERT)**\n\nUnabhängiger, derzeit DEAKTIVIERTER Cron-Stub (NICHT der Telegram-Flow): AI context compression schedule -\u003e Inject core.config 1 -\u003e Execute Workflow. 1:1 erhalten (Platzhalter für künftige periodische Kontext-Verdichtung).",
-                                         "height":  180,
-                                         "width":  560,
-                                         "color":  4
-                                     },
-                      "type":  "n8n-nodes-base.stickyNote",
-                      "typeVersion":  1,
-                      "position":  [
-                                       -1840,
-                                       432
-                                   ],
-                      "id":  "bd405cb0-1983-5285-b140-360adedcfb53",
-                      "name":  "Doc: Schedule-Job (deaktiviert)"
                   },
                   {
                       "parameters":  {
@@ -6991,7 +7089,7 @@
                   },
                   {
                       "parameters":  {
-                                         "jsCode":  "const body = String(($(\u0027Relay compose\u0027).first().json.body) || (\u0027\u0027) || \u0027\u0027);\nconst LIMIT = 3500;\nconst chunks = [];\nlet cur = \u0027\u0027;\nconst push = (s) =\u003e { if (s.trim()) chunks.push(s); };\nfor (const para of body.split(\u0027\\n\\n\u0027)) {\n  const add = cur ? cur + \u0027\\n\\n\u0027 + para : para;\n  if (add.length \u003c= LIMIT) { cur = add; continue; }\n  push(cur); cur = \u0027\u0027;\n  let rest = para;\n  while (rest.length \u003e LIMIT) {\n    let cut = rest.lastIndexOf(\u0027\\n\u0027, LIMIT);\n    if (cut \u003c LIMIT / 2) cut = rest.lastIndexOf(\u0027 \u0027, LIMIT);\n    if (cut \u003c LIMIT / 2) cut = LIMIT;\n    push(rest.slice(0, cut)); rest = rest.slice(cut).replace(/^\\s+/, \u0027\u0027);\n  }\n  cur = rest;\n}\npush(cur);\nconst esc = (s) =\u003e s.replace(/\u0026/g, \u0027\u0026amp;\u0027).replace(/\u003c/g, \u0027\u0026lt;\u0027).replace(/\u003e/g, \u0027\u0026gt;\u0027);\nreturn chunks.map((c, i) =\u003e ({ json: { text: esc(c), part: i + 1, parts: chunks.length } }));"
+                                         "jsCode":  "const body = String(((((($(\u0027Claim expression\u0027).first().json.frame_r || {}).text || \u0027\u0027) ? (($(\u0027Claim expression\u0027).first().json.frame_r || {}).text || \u0027\u0027) + \u0027\\n\\n\u0027 : \u0027\u0027) + ($(\u0027Relay compose\u0027).first().json.body || \u0027\u0027))) || (($(\u0027Resolve sender\u0027).first().json.t || {})[\u0027core.orch.react_fallback\u0027]) || \u0027\u0027);\nconst LIMIT = 3500;\nconst chunks = [];\nlet cur = \u0027\u0027;\nconst push = (s) =\u003e { if (s.trim()) chunks.push(s); };\nfor (const para of body.split(\u0027\\n\\n\u0027)) {\n  const add = cur ? cur + \u0027\\n\\n\u0027 + para : para;\n  if (add.length \u003c= LIMIT) { cur = add; continue; }\n  push(cur); cur = \u0027\u0027;\n  let rest = para;\n  while (rest.length \u003e LIMIT) {\n    let cut = rest.lastIndexOf(\u0027\\n\u0027, LIMIT);\n    if (cut \u003c LIMIT / 2) cut = rest.lastIndexOf(\u0027 \u0027, LIMIT);\n    if (cut \u003c LIMIT / 2) cut = LIMIT;\n    push(rest.slice(0, cut)); rest = rest.slice(cut).replace(/^\\s+/, \u0027\u0027);\n  }\n  cur = rest;\n}\npush(cur);\nconst esc = (s) =\u003e s.replace(/\u0026/g, \u0027\u0026amp;\u0027).replace(/\u003c/g, \u0027\u0026lt;\u0027).replace(/\u003e/g, \u0027\u0026gt;\u0027);\nreturn chunks.map((c, i) =\u003e ({ json: { text: esc(c), part: i + 1, parts: chunks.length } }));"
                                      },
                       "type":  "n8n-nodes-base.code",
                       "typeVersion":  2,
@@ -8077,6 +8175,11 @@
                                                                    [
                                                                        {
                                                                            "index":  0,
+                                                                           "node":  "Claim seen reaction",
+                                                                           "type":  "main"
+                                                                       },
+                                                                       {
+                                                                           "index":  0,
                                                                            "node":  "Open thinking lease",
                                                                            "type":  "main"
                                                                        },
@@ -8087,6 +8190,11 @@
                                                                        }
                                                                    ],
                                                                    [
+                                                                       {
+                                                                           "index":  0,
+                                                                           "node":  "Claim seen reaction",
+                                                                           "type":  "main"
+                                                                       },
                                                                        {
                                                                            "index":  0,
                                                                            "node":  "Open thinking lease",
@@ -8100,6 +8208,31 @@
                                                                    ]
                                                                ]
                                                   },
+                        "Claim seen reaction":  {
+                                                    "main":  [
+                                                                 [
+                                                                     {
+                                                                         "index":  0,
+                                                                         "node":  "Seen due?",
+                                                                         "type":  "main"
+                                                                     }
+                                                                 ]
+                                                             ]
+                                                },
+                        "Seen due?":  {
+                                          "main":  [
+                                                       [
+                                                           {
+                                                               "index":  0,
+                                                               "node":  "React seen",
+                                                               "type":  "main"
+                                                           }
+                                                       ],
+                                                       [
+
+                                                       ]
+                                                   ]
+                                      },
                         "Open thinking lease":  {
                                                     "main":  [
                                                                  [
@@ -8373,23 +8506,23 @@
                                                            [
                                                                {
                                                                    "index":  0,
-                                                                   "node":  "Claim sticker",
+                                                                   "node":  "Claim expression",
                                                                    "type":  "main"
                                                                }
                                                            ]
                                                        ]
                                           },
-                        "Claim sticker":  {
-                                              "main":  [
-                                                           [
-                                                               {
-                                                                   "index":  0,
-                                                                   "node":  "Sticker due?",
-                                                                   "type":  "main"
-                                                               }
-                                                           ]
-                                                       ]
-                                          },
+                        "Claim expression":  {
+                                                 "main":  [
+                                                              [
+                                                                  {
+                                                                      "index":  0,
+                                                                      "node":  "Sticker due?",
+                                                                      "type":  "main"
+                                                                  }
+                                                              ]
+                                                          ]
+                                             },
                         "Sticker due?":  {
                                              "main":  [
                                                           [
@@ -8402,7 +8535,7 @@
                                                           [
                                                               {
                                                                   "index":  0,
-                                                                  "node":  "Send a text message split",
+                                                                  "node":  "Reaction due?",
                                                                   "type":  "main"
                                                               }
                                                           ]
@@ -8413,12 +8546,59 @@
                                                           [
                                                               {
                                                                   "index":  0,
-                                                                  "node":  "Send a text message split",
+                                                                  "node":  "Reaction due?",
                                                                   "type":  "main"
                                                               }
                                                           ]
                                                       ]
                                          },
+                        "Reaction due?":  {
+                                              "main":  [
+                                                           [
+                                                               {
+                                                                   "index":  0,
+                                                                   "node":  "Send reaction",
+                                                                   "type":  "main"
+                                                               }
+                                                           ],
+                                                           [
+                                                               {
+                                                                   "index":  0,
+                                                                   "node":  "Has text?",
+                                                                   "type":  "main"
+                                                               }
+                                                           ]
+                                                       ]
+                                          },
+                        "Send reaction":  {
+                                              "main":  [
+                                                           [
+                                                               {
+                                                                   "index":  0,
+                                                                   "node":  "Has text?",
+                                                                   "type":  "main"
+                                                               }
+                                                           ]
+                                                       ]
+                                          },
+                        "Has text?":  {
+                                          "main":  [
+                                                       [
+                                                           {
+                                                               "index":  0,
+                                                               "node":  "Send a text message split",
+                                                               "type":  "main"
+                                                           }
+                                                       ],
+                                                       [
+                                                           {
+                                                               "index":  0,
+                                                               "node":  "Router memory signal",
+                                                               "type":  "main"
+                                                           }
+                                                       ]
+                                                   ]
+                                      },
                         "Router memory signal":  {
                                                      "main":  [
                                                                   [
@@ -8440,28 +8620,6 @@
                                                                            }
                                                                        ]
                                                                    ]
-                                                 },
-                        "AI context compression schedule":  {
-                                                                "main":  [
-                                                                             [
-                                                                                 {
-                                                                                     "index":  0,
-                                                                                     "node":  "Inject core.config 1",
-                                                                                     "type":  "main"
-                                                                                 }
-                                                                             ]
-                                                                         ]
-                                                            },
-                        "Inject core.config 1":  {
-                                                     "main":  [
-                                                                  [
-                                                                      {
-                                                                          "index":  0,
-                                                                          "node":  "Execute Workflow",
-                                                                          "type":  "main"
-                                                                      }
-                                                                  ]
-                                                              ]
                                                  },
                         "claude-haiku-latest":  {
                                                     "ai_languageModel":  [

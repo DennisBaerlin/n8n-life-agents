@@ -363,7 +363,7 @@ if grep -q '|down|' "$STUB_LOG"; then fail D.waehrend-wechsel-unberuehrt "down l
 . "$ROOT/provisioning/lib/update_runner.sh"
 export LIFEAGENTS_RUNTIME=compose
 update_run_requested() { echo run >> "$W/tick.log"; }
-update_check() { echo check >> "$W/tick.log"; }
+update_check() { echo check >> "$W/tick.log"; echo "$*" >> "$W/check.args"; }
 printf '#!/usr/bin/env bash\necho "cli $*" >> "$TICK_LOG"\n' > "$W/bin/lifeagents"
 chmod +x "$W/bin/lifeagents"; export TICK_LOG="$W/tick.log"
 lifeagents_version_marker() { printf '%s' "$W/VERSION_TICK"; }
@@ -377,8 +377,24 @@ eq K.erster-tick-alles 'run check cli backup auto' "$(tr '\n' ' ' < "$W/tick.log
 : > "$W/tick.log"; ( UPDATE_CHECK_AT=0000 BACKUP_AUTO_AT=0000 update_tick )
 eq K.einmal-am-tag 'run' "$(tr '\n' ' ' < "$W/tick.log" | sed 's/ $//')"
 case "$(read_env_value "$UPDATE_TICK_STATE" LAST_TICK)" in ''|*[!0-9]*) fail K.lebenszeichen "LAST_TICK fehlt" ;; *) pass K.lebenszeichen ;; esac
-rm -f "$UPDATE_TICK_STATE"; : > "$W/tick.log"; ( UPDATE_CHECK_AT=2400 BACKUP_AUTO_AT=2400 update_tick )
-eq K.vor-der-uhrzeit-nur-auftraege 'run' "$(tr '\n' ' ' < "$W/tick.log" | sed 's/ $//')"
+# Vertragsaenderung: der Check laeuft im Intervall (UPDATE_CHECK_EVERY_S), nicht mehr ab einer Uhrzeit. BACKUP_AUTO_AT=2400
+# bleibt gesetzt -> deckt weiter "Sicherung nicht vor der Uhrzeit" ab.
+rm -f "$UPDATE_TICK_STATE"; : > "$W/tick.log"; env_upsert "$UPDATE_TICK_STATE" LAST_CHECK "$(date -u +%s)"
+( BACKUP_AUTO_AT=2400 update_tick )
+eq K.frisch-geprueft-nur-auftraege 'run' "$(tr '\n' ' ' < "$W/tick.log" | sed 's/ $//')"
+env_upsert "$UPDATE_TICK_STATE" LAST_CHECK "$(( $(date -u +%s) - 7300 ))"; : > "$W/tick.log"
+( BACKUP_AUTO_AT=2400 update_tick )
+eq K.intervall-abgelaufen-prueft-wieder 'run check' "$(tr '\n' ' ' < "$W/tick.log" | sed 's/ $//')"
+env_upsert "$UPDATE_TICK_STATE" LAST_CHECK 2026-11-08; : > "$W/tick.log"
+( BACKUP_AUTO_AT=2400 update_tick )
+eq K.alter-datumswert-prueft 'run check' "$(tr '\n' ' ' < "$W/tick.log" | sed 's/ $//')"
+case "$(read_env_value "$UPDATE_TICK_STATE" LAST_CHECK)" in ''|*[!0-9]*) fail K.epoch-nach-datum "LAST_CHECK kein Epoch-Wert" ;; *) pass K.epoch-nach-datum ;; esac
+env_upsert "$UPDATE_TICK_STATE" LAST_CHECK 0; : > "$W/tick.log"; : > "$W/check.args"
+( BACKUP_AUTO_AT=2400 update_tick )
+eq K.tick-prueft-geplant 'scheduled' "$(cat "$W/check.args")"
+env_upsert "$UPDATE_TICK_STATE" LAST_CHECK "$(( $(date -u +%s) + 99999 ))"; : > "$W/tick.log"
+( BACKUP_AUTO_AT=2400 update_tick )
+eq K.uhr-zurueck-prueft-wieder 'run check' "$(tr '\n' ' ' < "$W/tick.log" | sed 's/ $//')"
 unset LIFEAGENTS_RUNTIME
 
 # ---------------------------------------------------------------------------- O: veroeffentlichte Ports (Wizard, Paperless)

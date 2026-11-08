@@ -23,7 +23,8 @@ param(
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $ErrorActionPreference = 'Stop'
 $RepoRoot = git -C $PSScriptRoot rev-parse --show-toplevel
-$MainRoot = Split-Path ([string](& git -C $RepoRoot rev-parse --path-format=absolute --git-common-dir)) -Parent
+. (Join-Path $PSScriptRoot 'lib\owner_machine.ps1')
+$MainRoot = Get-MainCheckoutRoot $RepoRoot
 $u8 = New-Object System.Text.UTF8Encoding($false)
 
 function Stop-Outgoing([string]$Message) { Write-Host "  [FAIL] $Message" -ForegroundColor Red; exit 2 }
@@ -32,13 +33,7 @@ function Invoke-Git([string[]]$GitArgs) {
     if ($LASTEXITCODE -ne 0) { Stop-Outgoing "git fehlgeschlagen (Exit $LASTEXITCODE): git $($GitArgs -join ' ')" }
     @($out)
 }
-function Test-OwnerMachine {
-    if (Test-Path (Join-Path $MainRoot '.local\privacy_denylist.txt')) { return $true }
-    $envPath = Join-Path $MainRoot '.env'
-    if (-not (Test-Path $envPath)) { return $false }
-    return @([System.IO.File]::ReadAllLines($envPath, $u8) | Where-Object { $_ -match '^\s*[A-Z0-9_]*CHAT_ID\s*=\s*["'']?-?[0-9]{6,}["'']?\s*$' }).Count -gt 0
-}
-if ($Check -and -not (Test-OwnerMachine)) {
+if ($Check -and -not (Test-OwnerMachine $MainRoot)) {
     Write-Host '  [skip] keine Owner-Maschine -> kein Pruefstempel noetig' -ForegroundColor DarkGray
     exit 0
 }

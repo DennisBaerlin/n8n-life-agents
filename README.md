@@ -61,7 +61,7 @@ The system has a fixed core (router, approval logic, memory, onboarding) plus on
 - An **Anthropic API key** (required — every agent runs on Claude).
 - Optional: a **Google Gemini API key on the paid tier**, only for voice messages. Without it the bot asks you to type instead.
 
-**Costs:** there is no subscription. You pay for your own hardware and for AI usage by consumption, billed directly by Anthropic (and Google, if you use voice messages). The model choice is deliberately frugal: routing and plan reminders run on Haiku, bookkeeping, help, monitoring, web search, reading documents and job scoring on Sonnet, and only the advisor agents on Opus. A local gateway on your server adds prompt caching for every agent (the identical start of each request costs only a fraction when re-read) and counts tokens — never content.
+**Costs:** there is no subscription. You pay for your own hardware and for AI usage by consumption, billed directly by Anthropic (and Google, if you use voice messages). The model choice is deliberately frugal: routing, plan reminders and the document assistant run on Haiku, bookkeeping, help, monitoring, web search, reading uploaded documents and job scoring on Sonnet, and only the advisor agents on Opus. A local gateway on your server adds prompt caching for every agent (the identical start of each request costs only a fraction when re-read) and counts tokens — never content.
 
 ## Installation
 
@@ -97,7 +97,7 @@ lifeagents reconfigure [core|<pkg>]  # change or add settings (address, bot toke
 lifeagents config list|set|reset …   # central runtime config
 lifeagents proxy show|set …          # reverse proxy status + configuration
 lifeagents household …               # invite/pair/remove/block members
-lifeagents backup export|restore …   # encrypted full backup, optionally to Telegram
+lifeagents backup export|restore …   # encrypted backup of your user data, optionally to Telegram
 lifeagents rollback                  # after a failed update: back to the previous version (asks first)
 lifeagents doctor                    # read-only health check
 lifeagents uninstall [--purge-data]  # clean removal
@@ -113,7 +113,7 @@ The help output is the **one** command reference (lint-checked against the code 
 
 Just write to the bot the way you would write to a person, in any language. There are no commands to memorise for booking, asking or getting advice. Fixed texts — greeting, approval cards, buttons, `/help`, the `/onboarding` menu and everything the bot sends on its own (reminders, advisor notes, job cards, emergency folder) — come in each person's chosen language (Deutsch, English or 한국어), switchable with `/language`.
 
-A few fixed commands exist for special cases: `/start [code]` (first contact or redeeming an invitation code), `/help`, `/onboarding` (back to the setup steps), `/language`, `/persona` (pick the bot's character: butler, sports commentator or wise sage, or back to the default — it only flavours greetings, small talk and at most one sentence around an answer; numbers, cards and buttons stay neutral; every character, and the default robot, has a drawn sticker set the bot sends now and then before a reply, never in serious moments; a plain "thanks" gets a ❤️ reaction instead of an LLM run), `/reminders` (everything the bot sends on its own, switchable per tap), `/costs` (owner only: what Claude cost in the last 7 and 30 days, per assistant, model and cost type — computed by the database, the command itself is free) and `/notfall` (starts the estate advisor directly in an emergency).
+A few fixed commands exist for special cases: `/start [code]` (first contact or redeeming an invitation code), `/help`, `/onboarding` (back to the setup steps), `/language`, `/persona` (pick the bot's character: butler, sports commentator or wise sage, or back to the default — it only flavours greetings, small talk and at most one sentence around an answer; numbers, cards and buttons stay neutral; every character, and the default robot, has a drawn sticker set the bot sends now and then before a reply, never in serious moments; a plain "thanks" gets a ❤️ reaction instead of an LLM run; with or without a character the bot reacts 👀 to a photo or document it reads, 👌 to a confirmed booking and, at most a few times a day and never in serious moments, ❤️ 🎉 🙏 😁 when a message carries thanks, good news, relief or a joke), `/reminders` (everything the bot sends on its own, switchable per tap), `/costs` (owner only: what Claude cost in the last 7 and 30 days, per assistant, model and cost type — computed by the database, the command itself is free) and `/notfall` (starts the estate advisor directly in an emergency).
 
 Whenever the bot needs a decision, you get **buttons**: ✅/❌ to confirm or cancel, 👍/👎 for job suggestions, on/off switches. While an approval card is open the bot accepts no new message — tap ❌ first, then write your correction; the assistant still knows the cancelled card. Attachments work too: a bank statement PDF runs the **monthly check** (a bank's transaction export file works too, read by a fixed parser, never by a language model: a Trade Republic or N26 CSV plus the balance the app shows, or the Bondora Go&Grow Excel statement, which prints its own balances; it may come without a caption, the bot then picks the account of the bank that made the file and refuses an account of another bank; transfers between your own accounts are recognized whichever statement comes first and listed after booking; a missing IBAN of one of your accounts is learned from a transfer to it, a statement of a new account creates it with the printed balance and suggests the printed holder as owner, each shown on the card for confirmation; an export covering several months can also propose the standing orders it shows that are not recorded yet (one by one, each confirmed on a card)), a photo of a portfolio statement or insurance policy becomes one approval card, a CV goes to the career coach, and voice messages are transcribed and handled like text.
 
@@ -154,11 +154,13 @@ flowchart TD
     ORCH --> GUI["🚪 agent.guide"]
     ORCH --> CAR["💼 agent.career_advisor"]
     ORCH --> EST["🗂️ agent.estate_advisor"]
+    ORCH --> DOC["📄 agent.paperless_assistant"]
     FIN --> GATE["agent.tool_human_approval – HITL gate"]
     CAR --> GATE
     EST --> GATE
-    GATE --> PG[("PostgreSQL 17 – schemas core · agent · finance · career · estate")]
+    GATE --> PG[("PostgreSQL 17 – schemas core · agent · finance · career · estate · paperless")]
     ADV -. read only .-> PG
+    DOC -. read only .-> PPL["your Paperless instance"]
     MON -. triggers as data rows .-> PG
     GUI --> GATE
 ```

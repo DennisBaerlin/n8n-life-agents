@@ -27,7 +27,7 @@
 // MESSUNG (12-Factor): je Anfrage EINE JSON-Zeile {"ev":"usage",...} auf stdout → systemd-Journal. Bewusst die
 //   Anthropic-Feldnamen (input_tokens = UNGECACHTER Rest; Gesamt-Eingabe = input + cache_creation + cache_read),
 //   nicht OTel-GenAI (dort noch "Development"). Zusaetzlich haengt sie (mit id + Workflow) an
-//   $STATE_DIRECTORY/usage.jsonl (systemd StateDirectory, 62 Tage, atomar gekuerzt); der /kosten-Sub holt sie per
+//   $STATE_DIRECTORY/usage.jsonl (systemd StateDirectory, 62 Tage, atomar gekuerzt); der Sub core.sub_import_llm_usage (nachts per Cron, dazu /kosten) holt sie per
 //   GET /__usage (nur 127.0.0.1) nach core.llm_usage (core.fn_import_llm_usage), die DB rechnet die Kosten.
 // WORKFLOW-KENNUNG (Kosten je Workflow): HTTP-Knoten senden Header x-lifeagents-workflow; lmChatAnthropic kann keinen
 //   Header je Knoten setzen (n8n-Quirk) -> der Build setzt eine KONSTANTE Kennzeile `<<la-wf:NAME>>` an den Anfang der
@@ -99,7 +99,8 @@ const TG_METHODS = new Set(['setMessageReaction', 'sendSticker']);
 const TG_TOKEN_RE = /^\d{5,15}:[A-Za-z0-9_-]{30,64}$/;
 const TG_CHAT_RE = /^-?\d{1,20}$/;
 const TG_STICKER_RE = /^[a-z_]{1,32}_(hallo|top|hmm|yay)$/;
-const TG_REACTIONS = new Set(['❤', '👌', '🎉']);   // ❤ (ohne VS16, Telegram-Liste), 👌, 🎉
+// Spiegel des CHECK agent.reaction_log.emoji (packages/core/db/agent.reaction_log_init.sql); ❤ ohne VS16 (Telegram-Liste).
+const TG_REACTIONS = new Set(['❤', '👌', '🎉', '👀', '🙏', '😁']);
 const TG_MAX_BODY = 4096;
 const TG_TIMEOUT_MS = Math.max(500, Math.min(10000, parseInt(process.env.LLM_GATEWAY_TELEGRAM_TIMEOUT_MS || '3000', 10) || 3000));
 const TG_STICKER_DIR = process.env.LLM_GATEWAY_STICKER_DIR || '';

@@ -7,9 +7,9 @@
 # Muster core.sub_send_reminders_menu (Texte in der Sprache des Betrachters, core_ro-Reads fail-open, Sub sendet selbst).
 #
 # Eingang: chat_id. Aufrufer: Orchestrator /costs|/kosten.
-# Ablauf: Start -> Read texts (core_ro) -> Read cursor (core.fn_import_llm_usage rows:[] = nur der Cursor, + Rolle) -> Owner?
-#   (Mitglied -> direkt Read report) -> Fetch usage
-#   (GET 127.0.0.1:8090/__usage, blaettert per Pagination) -> Import usage (je Seite core.fn_import_llm_usage) -> Read report
+# Ablauf: Start -> Read texts (core_ro) -> Read role (Rolle des Absenders) -> Owner?
+#   (Mitglied -> direkt Read report) -> Import LLM usage (Sub core.sub_import_llm_usage: Abruf am Gateway + Import, derselbe Weg wie der
+#   Nacht-Cron; onError=continue -> bei Gateway-Ausfall zaehlt der DB-Stand) -> Read report
 #   (core.fn_get_llm_cost_report, core_ro, einmal) -> Build message (nur Formatierung) -> Send cost report (HTML, Tabellen <pre>).
 # Rechnen tut nur die DB (Preise aus agent.ai_models); das Owner-Gate sitzt in der fn, ein Mitglied bekommt core.toast.owner_only.
 # Versand: ein einzelner HTML-Send statt New-TelegramRelayChain — die Nachricht hat eine feste, kurze Form (hoechstens Top 5 +
@@ -50,48 +50,18 @@ function Build-CoreSubSendCostReport {
     $readTexts.credentials = @{ postgres = $CRED_PG_RO }
     $readTexts['onError'] = 'continueRegularOutput'
 
-    # Cursor fuer den Abruf: juengste Zeile minus 10 Min als 13-stellige ms (die fn rechnet; rows:[] importiert nichts) +
     # Vorab-Rolle: nur fuer den Owner lohnt Abruf + Import (das verbindliche Gate bleibt core.fn_get_llm_cost_report).
-    $readCursor = Build-Pg 'Read cursor' @(-400, 0) `
-        ("=SELECT core.fn_import_llm_usage('{`"rows`":[]}'::jsonb)->>'after' AS after, " +
-         "COALESCE(agent.fn_resolve_sender(CASE WHEN (`$1::jsonb)->>'chat_id' ~ '^[0-9]{1,18}$' THEN ((`$1::jsonb)->>'chat_id')::bigint END)->>'role', '') = 'owner' AS is_owner;") `
+    $readRole = Build-Pg 'Read role' @(-400, 0) `
+        ("=SELECT COALESCE(agent.fn_resolve_sender(CASE WHEN (`$1::jsonb)->>'chat_id' ~ '^[0-9]{1,18}$' THEN ((`$1::jsonb)->>'chat_id')::bigint END)->>'role', '') = 'owner' AS is_owner;") `
         ([ordered]@{ chat_id = "`$('Start').item.json.chat_id" })
-    $readCursor['onError'] = 'continueRegularOutput'
+    $readRole['onError'] = 'continueRegularOutput'
     $ifOwner = Build-If 'Owner?' @(-290, 0) '={{ $json.is_owner === true }}' 'true' 'equals' 'boolean'
 
-    # Gateway-Mitschrift seitenweise (Seite = ein Item); faellt der Abruf aus, rechnet der Bericht mit dem DB-Stand.
-    $fetch = [ordered]@{
-        parameters = [ordered]@{
-            url = 'http://127.0.0.1:8090/__usage'   # lokaler LLM-Gateway (provisioning/llm_gateway), nur 127.0.0.1
-            sendQuery = $true
-            queryParameters = [ordered]@{ parameters = @(
-                [ordered]@{ name = 'after'; value = "={{ `$json.after || '' }}" },
-                [ordered]@{ name = 'limit'; value = '5000' }
-            ) }
-            options = [ordered]@{
-                timeout = 30000
-                pagination = [ordered]@{ pagination = [ordered]@{
-                    paginationMode = 'updateAParameterInEachRequest'
-                    parameters = [ordered]@{ parameters = @( ,([ordered]@{ type = 'qs'; name = 'after'; value = '={{ $response.body.next_after }}' }) ) }
-                    paginationCompleteWhen = 'other'
-                    completeExpression = '={{ $response.body.has_more !== true }}'
-                    limitPagesFetched = $true
-                    maxRequests = 40
-                } }
-            }
-        }
-        type = 'n8n-nodes-base.httpRequest'; typeVersion = 4.2; position = @(-180, 0)
-        id = (New-Id); name = 'Fetch usage'
-        retryOnFail = $true; maxTries = 2; waitBetweenTries = 1000
-        onError = 'continueRegularOutput'
-    }
-
-    # Je Seite einspielen (idempotent ueber id). Ein Fehl-Item (Gateway nicht erreichbar) traegt keine rows -> leeres Array
-    # -> nichts importiert, der Bericht zeigt den DB-Stand (bewusst still: der Gateway-Ausfall meldet doctor, nicht /kosten).
-    $import = Build-Pg 'Import usage' @(40, 0) "=SELECT core.fn_import_llm_usage(jsonb_build_object('rows', (`$1::jsonb)->'rows')) AS r;" `
-        ([ordered]@{ rows = "(Array.isArray(`$json.rows) ? `$json.rows : [])" })
+    # Abruf + Import im gemeinsamen Sub. Faellt der Gateway aus, scheitert der Sub; onError=continue laesst den Bericht den
+    # DB-Stand zeigen (bewusst still: den Gateway-Ausfall meldet doctor bzw. der Nacht-Cron, nicht /costs).
+    $idImport = Get-RequiredWorkflowId 'core.sub_import_llm_usage' -Caller 'Build-CoreSubSendCostReport'
+    $import = Build-CallWorkflow 'Import LLM usage' @(-180, 0) $idImport 'core.sub_import_llm_usage' ([ordered]@{ chat_id = "={{ `$('Start').item.json.chat_id }}" })
     $import['onError'] = 'continueRegularOutput'
-
     # Bericht einmal (Import liefert ein Item je Seite); DEFINER-Fenster mit Owner-Gate.
     $report = Build-Pg 'Read report' @(260, 0) "=SELECT core.fn_get_llm_cost_report(jsonb_build_object('chat_id', (`$1::jsonb)->>'chat_id')) AS rep;" `
         ([ordered]@{ chat_id = "`$('Start').first().json.chat_id" })
@@ -178,16 +148,15 @@ return [{ json: { text: lines.join(NL), chat_id: chat } }];
 
     $sticky = Build-Sticky 'Überblick' @(-860, -420) -Header 'Ablauf' `
         'core.sub_send_cost_report — /costs + /kosten: KI-Kosten der letzten 7 und 30 Tage (deterministisch, kein LLM)' `
-        'Start (chat_id) -> Read texts (Texte + Locale in der Sprache des Betrachters über core.fn_ui_texts + Sprach-Kette, dazu alle Anzeige-Namen <pkg>.wf.<kurzname>; core_ro, fail-open) -> Read cursor (core.fn_import_llm_usage mit rows:[] liefert nur den Cursor after = jüngste Zeile bis jetzt minus 10 Min, Überlappung gegen Uhr-Sprünge; dazu die Rolle des Absenders) -> Owner? (nur der Owner löst Abruf + Import aus; ein Mitglied geht direkt zu Read report und bekommt dort den Owner-only-Hinweis) -> Fetch usage (GET 127.0.0.1:8090/__usage?after=..&limit=5000 am lokalen LLM-Gateway, Pagination über next_after bis has_more=false, höchstens 40 Seiten; Gateway nicht erreichbar -> weiter mit dem DB-Stand) -> Import usage (je Seite core.fn_import_llm_usage: idempotent über id, ungültige Zeilen übersprungen, Retention 13 Monate) -> Read report (core.fn_get_llm_cost_report, einmal, core_ro: Owner-Gate in der DB, alle Beträge aus agent.ai_models.pricing_usd_per_mtok, Tage in Haushalts-Zeitzone, Kaltstarts, teuerster Tag, Cache-Trefferquote) -> Build message (nur Formatierung: Intl-Zahlen/-Daten im Locale, Tabellen je Assistent und Modell als <pre>, Kostenarten in Prozent, Auffälligkeiten; jeder DB-Wert HTML-escapt; Mitglied -> core.toast.owner_only, Lesefehler -> core.cost.load_failed, noch keine Daten -> core.cost.empty) -> Send cost report (ein HTML-Send; feste, kurze Form, daher keine Relay-Kette). Die Gateway-Mitschrift kennt den Workflow über eine konstante Kennzeile in der System-Nachricht (Add-LlmWorkflowTag) bzw. den Header x-lifeagents-workflow; der Gateway entfernt beides vor dem Weiterleiten.' 420 820
+        'Start (chat_id) -> Read texts (Texte + Locale in der Sprache des Betrachters über core.fn_ui_texts + Sprach-Kette, dazu alle Anzeige-Namen <pkg>.wf.<kurzname>; core_ro, fail-open) -> Read role (Rolle des Absenders) -> Owner? (nur der Owner lÃ¶st Abruf + Import aus; ein Mitglied geht direkt zu Read report und bekommt dort den Owner-only-Hinweis) -> Import LLM usage (Sub core.sub_import_llm_usage: holt die Mitschrift am lokalen LLM-Gateway und spielt sie idempotent in core.llm_usage ein, derselbe Weg wie der Nacht-Cron core.cron_import_llm_usage; Gateway nicht erreichbar -> onError=continue, weiter mit dem DB-Stand) -> Read report (core.fn_get_llm_cost_report, einmal, core_ro: Owner-Gate in der DB, alle Beträge aus agent.ai_models.pricing_usd_per_mtok, Tage in Haushalts-Zeitzone, Kaltstarts, teuerster Tag, Cache-Trefferquote) -> Build message (nur Formatierung: Intl-Zahlen/-Daten im Locale, Tabellen je Assistent und Modell als <pre>, Kostenarten in Prozent, Auffälligkeiten; jeder DB-Wert HTML-escapt; Mitglied -> core.toast.owner_only, Lesefehler -> core.cost.load_failed, noch keine Daten -> core.cost.empty) -> Send cost report (ein HTML-Send; feste, kurze Form, daher keine Relay-Kette). Die Gateway-Mitschrift kennt den Workflow über eine konstante Kennzeile in der System-Nachricht (Add-LlmWorkflowTag) bzw. den Header x-lifeagents-workflow; der Gateway entfernt beides vor dem Weiterleiten.' 420 820
 
-    $nodes = @($start, $readTexts, $readCursor, $ifOwner, $fetch, $import, $report, $build, $send, $sticky)
+    $nodes = @($start, $readTexts, $readRole, $ifOwner, $import, $report, $build, $send, $sticky)
     $conns = [ordered]@{
         'Start'         = @{ main = @( ,@( E 'Read texts' ) ) }
-        'Read texts'    = @{ main = @( ,@( E 'Read cursor' ) ) }
-        'Read cursor'   = @{ main = @( ,@( E 'Owner?' ) ) }
-        'Owner?'        = @{ main = @( @( E 'Fetch usage' ), @( E 'Read report' ) ) }
-        'Fetch usage'   = @{ main = @( ,@( E 'Import usage' ) ) }
-        'Import usage'  = @{ main = @( ,@( E 'Read report' ) ) }
+        'Read texts'    = @{ main = @( ,@( E 'Read role' ) ) }
+        'Read role'     = @{ main = @( ,@( E 'Owner?' ) ) }
+        'Owner?'        = @{ main = @( @( E 'Import LLM usage' ), @( E 'Read report' ) ) }
+        'Import LLM usage' = @{ main = @( ,@( E 'Read report' ) ) }
         'Read report'   = @{ main = @( ,@( E 'Build message' ) ) }
         'Build message' = @{ main = @( ,@( E 'Send cost report' ) ) }
     }

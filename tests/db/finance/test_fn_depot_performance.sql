@@ -245,4 +245,34 @@ BEGIN
           return_pa_pct, return_since_start_pct, takeover_start_date, price_stale, missing_reason FROM finance.depot_performance;
   RAISE NOTICE 'PASS [4] bad_request + View';
 END $$;
+
+-- 5) Uebernahme gilt je Buchungsgruppe: ein normaler Kauf mit eigener group_id bleibt ein Kauf, auch wenn ein anderes Depot
+--    eine Uebernahme hat (kein Uebernahme-Start, Rendite aus dem echten Kaufbetrag).
+DO $$
+DECLARE
+  v_giro INT; v_x INT; v_y INT; h_x INT; h_y INT; v jsonb; v_row jsonb;
+  c_as_of CONSTANT date := DATE '2026-06-30';
+  gx uuid := gen_random_uuid(); gy uuid := gen_random_uuid();
+BEGIN
+  UPDATE finance.accounts SET status = 'closed' WHERE status = 'active' AND account_type IN ('stocks_depot', 'crypto_depot');
+  INSERT INTO finance.accounts (name, account_type, currency, status) VALUES ('__dpf5_giro__', 'cash', 'EUR', 'active') RETURNING id INTO v_giro;
+  INSERT INTO finance.accounts (name, account_type, currency, status, settlement_account_id)
+    VALUES ('__dpf5_x__', 'stocks_depot', 'EUR', 'active', v_giro) RETURNING id INTO v_x;
+  INSERT INTO finance.accounts (name, account_type, currency, status, settlement_account_id)
+    VALUES ('__dpf5_y__', 'stocks_depot', 'EUR', 'active', v_giro) RETURNING id INTO v_y;
+  INSERT INTO finance.depot_holdings (account_id, isin, symbol, name, currency) VALUES (v_x, 'DPF00000051', 'DPF5X', 'X eins', 'EUR') RETURNING id INTO h_x;
+  INSERT INTO finance.depot_holdings (account_id, isin, symbol, name, currency) VALUES (v_y, 'DPF00000052', 'DPF5Y', 'Y eins', 'EUR') RETURNING id INTO h_y;
+  INSERT INTO finance.transactions (account_id, amount, transaction_date, category, holding_id, shares, unit_price, group_id) VALUES
+    (v_giro, -1000, '2025-06-30', 'buy', h_x, 10, 100, gx),
+    (v_giro, -500, '2026-01-01', 'buy', h_y, 10, 50, gy);
+  INSERT INTO finance.transactions (account_id, amount, transaction_date, category, group_id) VALUES
+    (v_giro, 500, '2026-01-01', 'position_takeover', gy);
+  INSERT INTO finance.market_prices (symbol, price, currency, as_of) VALUES
+    ('DPF5X', 110, 'EUR', c_as_of), ('DPF5Y', 80, 'EUR', '2026-01-01'), ('DPF5Y', 88, 'EUR', c_as_of);
+  v := finance.fn_depot_performance(jsonb_build_object('as_of', c_as_of));
+  SELECT r INTO v_row FROM jsonb_array_elements(v->'rows') r WHERE r->>'depot_name' = '__dpf5_x__';
+  IF jsonb_typeof(v_row->'takeover_start_date') <> 'null' OR (v_row->>'return_pa_pct')::numeric IS DISTINCT FROM 10.00 THEN
+    RAISE EXCEPTION 'FAIL [5] normaler Kauf mit group_id ist keine Uebernahme: %', v_row; END IF;
+  RAISE NOTICE 'PASS [5] Uebernahme je Buchungsgruppe';
+END $$;
 ROLLBACK;

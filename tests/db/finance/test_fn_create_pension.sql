@@ -109,4 +109,21 @@ BEGIN
   IF (v_res->>'ok')::boolean IS DISTINCT FROM false THEN RAISE EXCEPTION 'FAIL fn_create_pension [Rhythmus unbekannt]: %', v_res; END IF;
   RAISE NOTICE 'PASS fn_create_pension [600 jaehrlich roh, Monatswert -50 abgeleitet; unbekannter Rhythmus ok:false]';
 END $$;
+-- Beitrag mit anderem Rhythmus als monatlich braucht ein Startdatum (wie Versicherung/Kredit): ohne -> missing_required,
+-- nie still auf heute verankert.
+DO $$
+DECLARE r jsonb; v_acct int;
+BEGIN
+  v_acct := (finance.fn_create_account('{"name":"__t_cp_start_giro__","account_type":"cash"}'::jsonb)->>'account_id')::int;
+  r := finance.fn_create_pension(jsonb_build_object('name','__t_cp_ruerup__','pension_type','ruerup',
+         'contribution_amount','1200','schedule_unit','year','debit_account_id',v_acct));
+  IF (r->>'ok')::boolean IS DISTINCT FROM false OR r->>'code' IS DISTINCT FROM 'missing_required' THEN
+    RAISE EXCEPTION 'FAIL create_pension [Jahresbeitrag ohne Startdatum -> missing_required]: %', r; END IF;
+  r := finance.fn_create_pension(jsonb_build_object('name','__t_cp_ruerup2__','pension_type','ruerup',
+         'contribution_amount','1200','schedule_unit','year','debit_account_id',v_acct,
+         'first_payment_date',(CURRENT_DATE + 40)::text));
+  IF (r->>'ok')::boolean IS DISTINCT FROM true THEN RAISE EXCEPTION 'FAIL create_pension [mit Startdatum ok]: %', r; END IF;
+  RAISE NOTICE 'PASS create_pension [Jahresbeitrag braucht ein Startdatum]';
+END $$;
+
 ROLLBACK;

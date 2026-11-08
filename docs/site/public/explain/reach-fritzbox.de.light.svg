@@ -31,7 +31,7 @@ text { font-family: var(--font); fill: var(--ink); }
       72%, 74% { opacity: 1; transform: translateY(294px); }
       76%, 100% { opacity: 0; transform: translateY(294px); }
     }
-    @media (prefers-reduced-motion: no-preference) { .dot { animation: dot 10s linear infinite; } }
+    @media (prefers-reduced-motion: no-preference) { .dot { animation: dot 14s linear infinite; } }
 </style>
   <path d="M56 82 V346" stroke="var(--gray)" stroke-width="2" stroke-dasharray="6 6" fill="none" />
   <rect x="36" y="18" width="40" height="64" rx="8" fill="var(--bg)" stroke="var(--ink)" stroke-width="2.5" />

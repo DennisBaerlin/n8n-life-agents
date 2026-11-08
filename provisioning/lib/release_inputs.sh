@@ -395,6 +395,9 @@ Das Token wird sofort bei Telegram geprüft." ;;
 Belege lesen, Websuche, Beratung). Ohne diesen Schlüssel antwortet der Bot nicht.
   1. console.anthropic.com öffnen und anmelden.
   2. Guthaben aufladen („Billing“), dann „API Keys“ → „Create Key“ → Schlüssel kopieren.
+  3. Automatisch nachladen, sonst antwortet der Bot bei leerem Guthaben nicht mehr: „Billing“ →
+     „Set up auto-reload“ → bei „When credit balance reaches“ z. B. 5 und bei
+     „Bring credit balance back up to“ z. B. 15 eintragen → „Turn on“.
 Deine Daten bleiben bei dir zu Hause gespeichert. Schreibst du eine Frage, wird sie zu Claude
 geschickt, zusammen mit dem, was für die Antwort gebraucht wird. Dafür bezahlen wir: Mit dem
 bezahlten Zugang ist vertraglich ausgeschlossen, dass die KI mit deinen Inhalten trainiert wird

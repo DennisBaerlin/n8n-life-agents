@@ -23,8 +23,8 @@
     }
     @keyframes shift { 0%, 63% { transform: translateX(94px); } 66.5%, 100% { transform: translateX(0); } }
     @media (prefers-reduced-motion: no-preference) {
-      .dot { animation: dot 18s linear infinite; }
-      .shift { animation: shift 18s ease-in-out infinite; }
+      .dot { animation: dot 27s linear infinite; }
+      .shift { animation: shift 27s ease-in-out infinite; }
     }
   </style>
 

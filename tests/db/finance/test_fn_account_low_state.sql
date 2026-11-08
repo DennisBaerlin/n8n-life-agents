@@ -119,4 +119,23 @@ BEGIN
   RAISE NOTICE 'PASS [8] warn-Schwelle Faktor x Puffer, Grenze exklusiv';
 END $$;
 
+-- [9] Auszug aelter als statement_stale_days: die Vorschau ist nicht verlaesslich -> warn, verdict stale, Auszug-Datum;
+--     genau am Grenztag gilt noch das normale Urteil
+DO $$
+DECLARE
+  v jsonb; v_id int := (SELECT id::int FROM pg_temp.app_fx WHERE key = 'acc_giro_jonas');
+BEGIN
+  INSERT INTO core.config (category, key, value, package) VALUES ('finance', 'statement_stale_days', '45', 'finance')
+    ON CONFLICT (category, key) DO UPDATE SET value = EXCLUDED.value;
+  UPDATE finance.accounts SET last_reconciled_at = core.fn_today() - 46 WHERE id = v_id;
+  v := finance.fn_account_low_state(v_id);
+  IF v->>'source' <> 'outlook' OR v->>'state' <> 'warn' OR v->>'verdict' <> 'stale'
+     OR (v->>'statement_date')::date <> core.fn_today() - 46 THEN
+    RAISE EXCEPTION 'FAIL [9a] alter Auszug -> warn stale mit Datum, got %', v; END IF;
+  UPDATE finance.accounts SET last_reconciled_at = core.fn_today() - 45 WHERE id = v_id;
+  v := finance.fn_account_low_state(v_id);
+  IF v->>'verdict' = 'stale' THEN RAISE EXCEPTION 'FAIL [9b] Grenztag ist noch nicht alt, got %', v; END IF;
+  RAISE NOTICE 'PASS [9] alter Auszug';
+END $$;
+
 ROLLBACK;

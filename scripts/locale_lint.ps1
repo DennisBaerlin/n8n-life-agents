@@ -252,8 +252,9 @@ Check 'SQL-Text-Verweise: jedes Katalog-Key-Literal in R__-Funktionen existiert 
 #     RATCHET: Ausnahmen stehen je EXAKTEM Key in $appWordExcept (seit dem UX-Umbau leer); wer eine Seite umbaut,
 #     streicht seine Zeilen. Eine Ausnahme ohne Verstoss oder fuer einen Key, den es nicht mehr gibt, ist ein FEHLER
 #     („Zeile streichen“) — so bleibt keine Ausnahme still stehen. Neue Ausnahmen nur mit Owner-Freigabe.
-$AppDeniedWords = @('Kursminus', 'ermittelbar', 'Deckung', 'Verrechnungskonto', 'Projektion', 'Liquide', 'nicht in der Summe')
-$appWordExcept = @(           # leer seit dem Umbau aller Bildschirme (UX-Gesamtkonzept B/C/D); neue Zeile = Owner-Freigabe
+$AppDeniedWords = @('Kursminus', 'ermittelbar', 'Deckung', 'Verrechnungskonto', 'Projektion', 'Liquide', 'nicht in der Summe', 'II. BV')
+$appWordExcept = @(           # neue Zeile = Owner-Freigabe
+    'finance.app.goals.d_guide_more'   # Rechtsquelle nur hinter dem Info-Zeichen (docs/reference/ui.md Regel 3)
 )
 Check 'Mini-App-Laien-Test: keine Fachwoerter in App-Texten (Ratchet je Key)' {
     $prefixes = @()

@@ -2,6 +2,7 @@
 -- fn_account_low_state (READ, STABLE, RAISE-frei) -- das EINE Urteil „Tiefster Stand“ eines Geld-Kontos
 --   UX-Gesamtkonzept 2026-10-31 (5.2, P12): dieselbe Antwort fuer die Konten-Zeile „Tiefster Stand“, den Konten-Banner
 --   der Startseite und die Spiegel-Pille am Sparplan (Ziele) — beide Tabs koennen sich so nicht widersprechen.
+--   Auszug aelter als finance.statement_stale_days -> state warn, verdict stale, statement_date, keine Zahl (amount null).
 --   Quelle:
 --     outlook  Konto mit Kontoauszug (finance.fn_coverage_accounts, cash): finance.fn_account_outlook bis zum naechsten
 --              Geldeingang mit Puffer; Zustand wie die Berater-Warnung (Kurs fehlt -> neutral, shortfall > 0 -> alert,
@@ -29,6 +30,7 @@ RETURNS jsonb LANGUAGE plpgsql STABLE AS $$
 DECLARE
     v_acct    finance.accounts%ROWTYPE;
     v_factor  numeric;
+    v_stale   int;
     v_o       jsonb;
     v_f       jsonb;
     v_src     text := 'none';
@@ -48,11 +50,18 @@ BEGIN
         RETURN jsonb_build_object('ok', false);
     END IF;
     v_factor := COALESCE(NULLIF(core.fn_config_get('finance', 'finance', 'coverage_warn_factor'), '')::numeric, 2);
+    v_stale  := COALESCE(NULLIF(core.fn_config_get('finance', 'finance', 'statement_stale_days'), '')::int, 45);
 
     IF EXISTS (SELECT 1 FROM finance.fn_coverage_accounts() c(id) WHERE c.id = p_account_id) THEN
         v_o := finance.fn_account_outlook(p_account_id);
     END IF;
-    IF (v_o->>'ok') = 'true' THEN
+    IF (v_o->>'ok') = 'true' AND v_acct.last_reconciled_at::date < core.fn_today() - v_stale THEN
+        -- die Vorschau zieht den Alltag ab dem letzten Abgleich ohne Gegenbuchung: jede Zahl waere zu tief
+        v_src     := 'outlook';
+        v_verdict := 'stale';
+        v_state   := 'warn';
+        v_out     := true;
+    ELSIF (v_o->>'ok') = 'true' THEN
         v_src    := 'outlook';
         v_verdict := 'buffer';
         v_gap    := v_acct.currency <> 'EUR' AND finance.fn_to_eur_unrounded(1, v_acct.currency) IS NULL;
@@ -96,6 +105,7 @@ BEGIN
         'month', to_char(v_on, 'YYYY-MM'), 'buffer', round(v_buffer, 2),
         'has_outflow', v_out, 'gap', v_gap, 'monthly_in', v_in_m, 'monthly_out', v_out_m,
         'short_by', CASE WHEN v_verdict = 'buffer' THEN (v_o->>'shortfall')::numeric END,
-        'horizon_end', CASE WHEN v_src = 'funding' THEN (v_f->>'horizon_end')::date END);
+        'horizon_end', CASE WHEN v_src = 'funding' THEN (v_f->>'horizon_end')::date END,
+        'statement_date', CASE WHEN v_verdict = 'stale' THEN v_acct.last_reconciled_at::date END);
 END;
 $$;

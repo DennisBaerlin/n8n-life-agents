@@ -13,8 +13,11 @@
 --   fn_emergency_reserve_status (Notreserve), maintenance_reserve_status (Instandhaltung + Richtwert nach II. BV),
 --   savings_plan_overview (Sparplaene), fn_account_low_state (Zustand des Abbuchungskontos), fn_app_order_line
 --   (Betrag · Rhythmus). Die Seite rechnet nichts.
---   PILLE = HANDLUNGSBEDARF (§3.12): nur warn/alert mit Betrag, Datum oder Monat; neutral nur „pausiert" bzw. „nicht
---   messbar: kein Konto zugeordnet" (sagt, was fehlt); NIE ok, auch kein ok-Balken (Balken auf Kurs = neutral/Akzent).
+--   PILLE = HANDLUNGSBEDARF (§3.12): kurz, nur warn/alert oder neutral „pausiert"/„nicht messbar"; Betrag und Grund stehen
+--   in der Erklaerzeile (details[0] kind info), bei einem Problem dahinter „Das kannst du tun" (kind todo); NIE ok, auch
+--   kein ok-Balken (Balken auf Kurs = neutral/Akzent).
+--   KINDER (Haushalts-Sicht, Begünstigte role child): Zeilen bleiben in Sparziele/Sparplaene, stehen zuletzt, tragen Name
+--     im Untertitel + marked und zaehlen in keine Summe; hero.hint erklaert das.
 --   Hero „Zurueckgelegt" = Sparziele + Ruecklagen (Notreserve gedeckt + Instandhaltung); Note „jeden Monat kommen x
 --     dazu" = Summe fn_savings_goal_sources.monthly_eur der sichtbaren aktiven Ziele inkl. Ruecklagen (entfaellt bei 0 oder
 --     fx-Luecke und wenn sie = „zusammen … im Monat" der Sparplaene waere). Ruecklagen und Sparziele tragen ihre Summe als
@@ -75,12 +78,15 @@ DECLARE
     v_goals     jsonb;
     v_total     numeric;
     v_gap       boolean;
+    v_goals_n   int;       -- Sparziele ohne Kinder (ab 2 steht „zusammen“)
+    v_has_kids  boolean;
     v_reserves  jsonb;
     v_res_total numeric;
     v_res_gap   boolean;
     v_res_warn  int;       -- Instandhaltungs-Zeilen mit gelber Pille (Reihenfolge der Notreserve)
     v_plans     jsonb;
     v_plans_sum numeric;
+    v_plan_kids boolean;
     v_monthly   numeric;   -- Hero-Note: je Monat in Ruecklagen + Sparziele (fn_savings_goal_sources.monthly_eur)
     v_month_gap boolean;
     v_sections  jsonb := '[]'::jsonb;
@@ -165,9 +171,11 @@ BEGIN
     -- (finance.fn_account_low_state + finance.fn_app_low_state_pill); gap = Kurs der Kontowaehrung fehlt
     SELECT COALESCE(jsonb_object_agg(x.id::text, jsonb_build_object(
                'fx_gap', COALESCE((x.ls ->> 'gap')::boolean, false),
-               'pill', finance.fn_app_low_state_pill(x.ls))), '{}'::jsonb)
+               'pill', finance.fn_app_low_state_pill(x.ls),
+               'notes', finance.fn_app_low_state_explain(x.ls, x.name))), '{}'::jsonb)
       INTO v_fund
-      FROM (SELECT u.id, finance.fn_account_low_state(u.id, false) AS ls FROM unnest(v_plan_accts) u(id)) x;
+      FROM (SELECT u.id, a.name, finance.fn_account_low_state(u.id, false) AS ls
+              FROM unnest(v_plan_accts) u(id) JOIN finance.accounts a ON a.id = u.id) x;
 
     -- Depot-Deckung je fuer den Betrachter sichtbarem Depot mit Ziel-Geld (ein fremdes Depot gibt nichts her)
     SELECT COALESCE(jsonb_object_agg(x.id::text, finance.fn_depot_cover_state(x.id) || jsonb_build_object('name', x.name)), '{}'::jsonb)
@@ -234,6 +242,7 @@ BEGIN
     WITH g AS (
         SELECT sg.id, sg.name, sg.target_amount, sg.target_date, sg.current_amount, sg.progress_percent, sg.priority,
                sg.has_fx_gap, sg.behind_amount, finance.fn_savings_goal_pace(sg.id) AS pace,
+               (v_hh AND hp.role IS NOT DISTINCT FROM 'child') AS kid, split_part(hp.full_name, ' ', 1) AS kid_name,
                -- Einbruch: das sichtbare Depot des Ziels mit dem groessten Fehlbetrag im Zustand short
                (SELECT v_dep -> s.account_id::text
                   FROM finance.savings_goal_account_share s
@@ -244,6 +253,7 @@ BEGIN
                         WHERE s.goal_id = sg.id AND v_dep -> s.account_id::text ->> 'state' = 'unknown'
                           AND (COALESCE(s.share_native, s.share_eur, 0) <> 0 OR s.has_fx_gap)) AS dep_unknown
           FROM finance.savings_goal_progress sg
+          LEFT JOIN core.fn_household_persons() hp ON hp.person_id = sg.beneficiary_person_id
          WHERE sg.status = 'active' AND sg.target_amount IS NOT NULL
            AND sg.id NOT IN (SELECT e.id FROM finance.savings_goals e WHERE e.kind = 'emergency_reserve')
            AND (v_hh OR sg.beneficiary_person_id = v_pid)
@@ -256,24 +266,43 @@ BEGIN
                                          'gap', core.fn_ui_money((g.dep_short ->> 'gap')::numeric, 'EUR'))))
                     WHEN g.pace = 'behind' AND g.behind_amount > 0
                     THEN jsonb_build_object('state', 'warn', 'icon', 'alert',
-                             'text', core.fn_ui_tpl('finance.app.goals.pace.behind_gap', jsonb_build_object(
-                                         'gap', core.fn_ui_money(g.behind_amount, 'EUR'))))
+                             'text', core.fn_ui_tpl('finance.app.goals.pace.behind_gap'))
                     WHEN g.pace = 'paused'
                     THEN jsonb_build_object('state', 'neutral', 'icon', 'pause',
                              'text', core.fn_ui_tpl('finance.app.goals.pace.paused'))
                     WHEN g.pace = 'unmeasurable'
                     THEN jsonb_build_object('state', 'neutral', 'icon', 'info',
                              'text', core.fn_ui_tpl('finance.app.goals.pace.unmeasurable')) END AS pill,
+               -- Erklaerzeile zur Pille, bei einem Problem dazu „Das kannst du tun“
+               CASE WHEN g.dep_short IS NOT NULL
+                    THEN jsonb_build_array(
+                             jsonb_build_object('label', core.fn_ui_tpl('finance.app.goals.i_cover_short', jsonb_build_object(
+                                 'depot', g.dep_short ->> 'name', 'gap', core.fn_ui_money((g.dep_short ->> 'gap')::numeric, 'EUR'))),
+                                 'value', NULL, 'kind', 'info'),
+                             jsonb_build_object('label', core.fn_ui_tpl('finance.app.goals.todo_cover'), 'value', NULL, 'kind', 'todo'))
+                    WHEN g.pace = 'behind' AND g.behind_amount > 0
+                    THEN jsonb_build_array(
+                             jsonb_build_object('label', core.fn_ui_tpl('finance.app.goals.i_behind', jsonb_build_object(
+                                 'gap', core.fn_ui_money(g.behind_amount, 'EUR'))), 'value', NULL, 'kind', 'info'),
+                             jsonb_build_object('label', core.fn_ui_tpl('finance.app.goals.todo_behind'), 'value', NULL, 'kind', 'todo'))
+                    WHEN g.pace = 'paused'
+                    THEN jsonb_build_array(jsonb_build_object('label', core.fn_ui_tpl('finance.app.goals.i_paused'), 'value', NULL, 'kind', 'info'))
+                    WHEN g.pace = 'unmeasurable'
+                    THEN jsonb_build_array(jsonb_build_object('label', core.fn_ui_tpl('finance.app.goals.i_unmeasurable'), 'value', NULL, 'kind', 'info'))
+                    ELSE '[]'::jsonb END AS notes,
+               CASE WHEN g.pace = 'reached'
+                    THEN core.fn_ui_tpl('finance.app.goals.goal_sub_reached', jsonb_build_object(
+                             'target', core.fn_ui_money(g.target_amount, 'EUR'), 'date', core.fn_ui_date(g.target_date)))
+                    ELSE core.fn_ui_tpl('finance.app.goals.goal_sub', jsonb_build_object(
+                             'target', core.fn_ui_money(g.target_amount, 'EUR'), 'date', core.fn_ui_month(g.target_date))) END AS base_sub,
                g.has_fx_gap OR g.dep_unknown OR COALESCE((v_rates -> g.id::text ->> 'fx_gap')::boolean, false) AS row_gap
           FROM g
     )
     SELECT COALESCE(jsonb_agg(jsonb_build_object(
                'label', gp.name,
-               'sub', CASE WHEN gp.pace = 'reached'
-                           THEN core.fn_ui_tpl('finance.app.goals.goal_sub_reached', jsonb_build_object(
-                                    'target', core.fn_ui_money(gp.target_amount, 'EUR'), 'date', core.fn_ui_date(gp.target_date)))
-                           ELSE core.fn_ui_tpl('finance.app.goals.goal_sub', jsonb_build_object(
-                                    'target', core.fn_ui_money(gp.target_amount, 'EUR'), 'date', core.fn_ui_month(gp.target_date))) END,
+               'sub', CASE WHEN gp.kid THEN core.fn_ui_tpl('finance.app.goals.kid_sub', jsonb_build_object('name', gp.kid_name, 'sub', gp.base_sub))
+                           ELSE gp.base_sub END,
+               'marked', gp.kid,
                'value', core.fn_ui_money(gp.current_amount, 'EUR'),
                'gap', gp.row_gap,
                'pill', gp.pill,
@@ -286,7 +315,8 @@ BEGIN
                                              ELSE 'neutral' END) END,
                'target', NULL,
                -- ein erreichtes Ziel ohne Rate braucht keine Zeile „keine laufende Rate" (weglassen vor erklaeren)
-               'details', CASE WHEN gp.pace = 'reached' AND (v_rates -> gp.id::text ->> 'none')::boolean THEN '[]'::jsonb
+               'details', gp.notes
+                          || CASE WHEN gp.pace = 'reached' AND (v_rates -> gp.id::text ->> 'none')::boolean THEN '[]'::jsonb
                                ELSE COALESCE(v_rates -> gp.id::text -> 'lines', '[]'::jsonb) END
                           || (SELECT COALESCE(jsonb_agg(x.d ORDER BY x.o, x.k), '[]'::jsonb) FROM (
                    -- wo liegt das Geld: je Konto der Anteil, groesste zuerst; ab fuenf Konten die kleineren in einer Zeile
@@ -316,11 +346,13 @@ BEGIN
                    SELECT 2, 0, jsonb_build_object('label', core.fn_ui_tpl('finance.app.goals.d_target_date'),
                                                    'value', core.fn_ui_date(gp.target_date))
                     WHERE gp.pace IS DISTINCT FROM 'reached') x))
-             ORDER BY CASE gp.pill ->> 'state' WHEN 'alert' THEN 0 WHEN 'warn' THEN 1 ELSE 2 END,
+             ORDER BY gp.kid, CASE gp.pill ->> 'state' WHEN 'alert' THEN 0 WHEN 'warn' THEN 1 ELSE 2 END,
                       (gp.pace = 'reached'), gp.target_date, gp.priority NULLS LAST, gp.name), '[]'::jsonb),
-           COALESCE(sum(gp.current_amount), 0),
-           COALESCE(bool_or(gp.has_fx_gap), false)
-      INTO v_goals, v_total, v_gap
+           COALESCE(sum(gp.current_amount) FILTER (WHERE NOT gp.kid), 0),
+           COALESCE(bool_or(gp.has_fx_gap) FILTER (WHERE NOT gp.kid), false),
+           count(*) FILTER (WHERE NOT gp.kid),
+           COALESCE(bool_or(gp.kid), false)
+      INTO v_goals, v_total, v_gap, v_goals_n, v_has_kids
       FROM gp;
 
     -- 1 Ruecklagen: Notreserve (nur Haushalt) + Instandhaltung
@@ -376,14 +408,20 @@ BEGIN
                'gap', COALESCE(sg.has_fx_gap, false),
                'pill', CASE WHEN m.property_status = 'active' AND m.gap_monthly_eur > 0
                             THEN jsonb_build_object('state', 'warn', 'icon', 'alert',
-                                     'text', core.fn_ui_tpl('finance.app.goals.reserve_low', jsonb_build_object(
-                                                 'gap', core.fn_ui_money(m.gap_monthly_eur, 'EUR')))) END,
+                                     'text', core.fn_ui_tpl('finance.app.goals.reserve_low')) END,
                -- kein Balken: eine Ruecklage hat kein Betragsziel (Owner-Entscheid 2026-10-30)
                'progress', NULL,
                'target', NULL,
-               'details', COALESCE(v_rates -> m.goal_id::text -> 'lines', '[]'::jsonb)
+               'details', CASE WHEN m.property_status = 'active' AND m.gap_monthly_eur > 0
+                               THEN jsonb_build_array(
+                                        jsonb_build_object('label', core.fn_ui_tpl('finance.app.goals.i_reserve_low', jsonb_build_object(
+                                            'gap', core.fn_ui_money(m.gap_monthly_eur, 'EUR'))), 'value', NULL, 'kind', 'info'),
+                                        jsonb_build_object('label', core.fn_ui_tpl('finance.app.goals.todo_reserve_low'), 'value', NULL, 'kind', 'todo'))
+                               ELSE '[]'::jsonb END
+                          || COALESCE(v_rates -> m.goal_id::text -> 'lines', '[]'::jsonb)
                           || (SELECT COALESCE(jsonb_agg(x.d ORDER BY x.o), '[]'::jsonb) FROM (
                    SELECT 1 AS o, jsonb_build_object('label', core.fn_ui_tpl('finance.app.goals.d_guide'),
+                              'more', core.fn_ui_tpl('finance.app.goals.d_guide_more'),
                               'value', core.fn_ui_tpl('finance.app.goals.d_guide_value', jsonb_build_object(
                                   'monthly', core.fn_ui_money(m.recommended_monthly, 'EUR'),
                                   'area', core.fn_ui_num(m.living_area_m2, scale(trim_scale(m.living_area_m2))),
@@ -419,27 +457,40 @@ BEGIN
     END IF;
 
     -- 3 Sparplaene: Untertitel aus dem HEUTE gueltigen Glied (current_rp_id + days_of_month der View)
-    WITH sp AS (
+    WITH sp0 AS (
         SELECT s.*, bp.full_name AS beneficiary_name,
+               (v_hh AND bp.role IS NOT DISTINCT FROM 'child') AS kid,
+               CASE WHEN s.status = 'paused'
+                    THEN jsonb_build_array(jsonb_build_object('label', core.fn_ui_tpl('finance.app.goals.i_plan_paused'), 'value', NULL, 'kind', 'info'))
+                    WHEN s.status = 'active' THEN COALESCE(v_fund -> s.settlement_account_id::text -> 'notes', '[]'::jsonb)
+                    ELSE '[]'::jsonb END AS notes,
                CASE WHEN s.status = 'active' THEN v_fund -> s.settlement_account_id::text -> 'pill' END AS fund_pill,
                COALESCE(s.status = 'active' AND (v_fund -> s.settlement_account_id::text ->> 'fx_gap')::boolean, false) AS row_gap
           FROM finance.savings_plan_overview s
           JOIN finance.accounts d ON d.id = s.depot_id
           LEFT JOIN core.fn_household_persons() bp ON bp.person_id = s.beneficiary_person_id
          WHERE v_hh OR (s.beneficiary_person_id = v_pid AND d.owner_person_id = v_pid)
+    ), sq AS (
+        SELECT p0.*,
+               CASE WHEN p0.status <> 'active' THEN NULL
+                    WHEN cardinality(p0.days_of_month) >= 2 AND p0.next_execution IS NOT NULL
+                    THEN core.fn_ui_tpl('finance.app.goals.plan_days_next', jsonb_build_object(
+                             'n', core.fn_ui_num(cardinality(p0.days_of_month)),
+                             'amount', core.fn_ui_money(p0.amount_per_execution, p0.currency),
+                             'date', core.fn_ui_date(p0.next_execution)))
+                    WHEN p0.amount_per_execution = p0.monthly_amount AND p0.next_execution IS NOT NULL
+                    THEN core.fn_ui_tpl('finance.app.goals.plan_next', jsonb_build_object(
+                             'date', core.fn_ui_date(p0.next_execution)))
+                    ELSE finance.fn_app_order_line(p0.current_rp_id) END AS base_sub
+          FROM sp0 p0
     )
     SELECT COALESCE(jsonb_agg(jsonb_build_object(
                'label', sp.name,
-               'sub', CASE WHEN sp.status <> 'active' THEN NULL
-                           WHEN cardinality(sp.days_of_month) >= 2 AND sp.next_execution IS NOT NULL
-                           THEN core.fn_ui_tpl('finance.app.goals.plan_days_next', jsonb_build_object(
-                                    'n', core.fn_ui_num(cardinality(sp.days_of_month)),
-                                    'amount', core.fn_ui_money(sp.amount_per_execution, sp.currency),
-                                    'date', core.fn_ui_date(sp.next_execution)))
-                           WHEN sp.amount_per_execution = sp.monthly_amount AND sp.next_execution IS NOT NULL
-                           THEN core.fn_ui_tpl('finance.app.goals.plan_next', jsonb_build_object(
-                                    'date', core.fn_ui_date(sp.next_execution)))
-                           ELSE finance.fn_app_order_line(sp.current_rp_id) END,
+               'sub', CASE WHEN sp.kid AND sp.base_sub IS NOT NULL
+                           THEN core.fn_ui_tpl('finance.app.goals.kid_sub', jsonb_build_object('name', split_part(sp.beneficiary_name, ' ', 1), 'sub', sp.base_sub))
+                           WHEN sp.kid THEN to_jsonb(split_part(sp.beneficiary_name, ' ', 1))
+                           ELSE sp.base_sub END,
+               'marked', sp.kid,
                'value', core.fn_ui_money(sp.monthly_amount, sp.currency),
                'gap', sp.row_gap,
                'pill', CASE WHEN sp.status = 'paused'
@@ -448,7 +499,7 @@ BEGIN
                             ELSE sp.fund_pill END,
                'progress', NULL,
                'target', NULL,
-               'details', (SELECT COALESCE(jsonb_agg(x.d ORDER BY x.o), '[]'::jsonb) FROM (
+               'details', sp.notes || (SELECT COALESCE(jsonb_agg(x.d ORDER BY x.o), '[]'::jsonb) FROM (
                    SELECT 1 AS o, jsonb_build_object('label', core.fn_ui_tpl('finance.app.goals.d_security'),
                               'value', COALESCE(sp.security_name, sp.symbol)) AS d
                     WHERE COALESCE(sp.security_name, sp.symbol) IS NOT NULL
@@ -470,16 +521,17 @@ BEGIN
                    SELECT 6, jsonb_build_object('label', core.fn_ui_tpl('finance.app.goals.d_change'),
                               'value', finance.fn_app_order_line(sp.head_rp_id))
                     WHERE sp.change_from IS NOT NULL) x))
-             ORDER BY CASE sp.fund_pill ->> 'state' WHEN 'alert' THEN 0 WHEN 'warn' THEN 1 ELSE 2 END,
+             ORDER BY sp.kid, CASE sp.fund_pill ->> 'state' WHEN 'alert' THEN 0 WHEN 'warn' THEN 1 ELSE 2 END,
                       (sp.status = 'active') DESC, sp.name), '[]'::jsonb),
-           -- Summe nur ab 2 aktiven Plaenen, ohne fehlenden Wechselkurs und ohne gap an einer Zeile (sonst NULL)
-           CASE WHEN count(*) FILTER (WHERE sp.status = 'active') >= 2
+           -- Summe nur ab 2 aktiven Plaenen der Eltern, ohne fehlenden Wechselkurs und ohne gap an einer Zeile (sonst NULL)
+           CASE WHEN count(*) FILTER (WHERE sp.status = 'active' AND NOT sp.kid) >= 2
                  AND NOT COALESCE(bool_or(finance.fn_to_eur(sp.monthly_amount, sp.currency) IS NULL)
-                                  FILTER (WHERE sp.status = 'active'), false)
-                 AND NOT COALESCE(bool_or(sp.row_gap), false)
-                THEN sum(finance.fn_to_eur(sp.monthly_amount, sp.currency)) FILTER (WHERE sp.status = 'active') END
-      INTO v_plans, v_plans_sum
-      FROM sp;
+                                  FILTER (WHERE sp.status = 'active' AND NOT sp.kid), false)
+                 AND NOT COALESCE(bool_or(sp.row_gap) FILTER (WHERE NOT sp.kid), false)
+                THEN sum(finance.fn_to_eur(sp.monthly_amount, sp.currency)) FILTER (WHERE sp.status = 'active' AND NOT sp.kid) END,
+           COALESCE(bool_or(sp.kid), false)
+      INTO v_plans, v_plans_sum, v_plan_kids
+      FROM sq sp;
 
     -- was HEUTE je Monat in Ruecklagen + Sparziele fliesst (Hero-Note), aus der einen Raten-Adresse fn_savings_goal_sources;
     -- dieselbe Sicht wie die Zeilen (Notreserve nur im Haushalt); ein Kurs fehlt -> keine Note
@@ -487,7 +539,9 @@ BEGIN
       INTO v_monthly, v_month_gap
       FROM (SELECT finance.fn_savings_goal_sources(sg.id) AS s
               FROM finance.savings_goals sg
+              LEFT JOIN core.fn_household_persons() hp ON hp.person_id = sg.beneficiary_person_id
              WHERE sg.status = 'active'
+               AND NOT (v_hh AND hp.role IS NOT DISTINCT FROM 'child')
                AND (v_hh OR (sg.beneficiary_person_id = v_pid AND sg.kind <> 'emergency_reserve'))) x;
 
     -- Sparziele immer (mit Leer-Text), alles Weitere nur mit Eintraegen. Summe „zusammen“ je Abschnitt (Owner-Abnahme
@@ -501,7 +555,7 @@ BEGIN
     END IF;
     v_sections := v_sections || jsonb_build_object(
         'title', core.fn_ui_tpl('finance.app.goals.section_goals'),
-        'value', CASE WHEN jsonb_array_length(v_goals) >= 2 AND v_res_total <> 0 AND NOT v_gap
+        'value', CASE WHEN v_goals_n >= 2 AND v_res_total <> 0 AND NOT v_gap
                       THEN core.fn_ui_money(v_total, 'EUR') END,
         'empty', core.fn_ui_tpl('finance.app.goals.empty'), 'items', v_goals);
     IF jsonb_array_length(v_plans) > 0 THEN
@@ -514,8 +568,12 @@ BEGIN
 
     RETURN jsonb_build_object(
         'ok', true,
+        'gap_note', core.fn_ui_tpl('finance.app.gap'),
         'title', core.fn_ui_tpl('finance.app.goals.title'),
         'hero', jsonb_build_object(
+            'hint', CASE WHEN v_has_kids OR v_plan_kids
+                         THEN jsonb_build_object('text', core.fn_ui_tpl('finance.app.goals.hero_kids'),
+                                                 'more', core.fn_ui_tpl('finance.app.goals.hero_kids_more'), 'marked', true) END,
             'label', core.fn_ui_tpl('finance.app.goals.hero'),
             'value', core.fn_ui_money(v_total + v_res_total, 'EUR'),
             'gap', v_gap OR v_res_gap,

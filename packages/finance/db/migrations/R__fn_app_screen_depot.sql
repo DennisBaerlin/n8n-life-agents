@@ -360,6 +360,7 @@ BEGIN
 
     RETURN jsonb_build_object(
         'ok', true,
+        'gap_note', core.fn_ui_tpl('finance.app.gap'),
         'title', core.fn_ui_tpl('finance.app.depot.title'),
         'hero', jsonb_build_object(
             'label', core.fn_ui_tpl('finance.app.depot.hero'),

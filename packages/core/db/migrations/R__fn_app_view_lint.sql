@@ -9,13 +9,13 @@
 --     L3 neutral-Pille, deren tpl-Key nicht in p_neutral_keys steht (der Handler-Test gibt seine erlaubten Keys frei:
 --        neutral nur, wenn der Text sagt, was fehlt und wer es beheben kann)
 --     L4 section.value = hero.value (Betrag + Waehrung aus money oder dem einzigen money-Parameter eines tpl; sign egal)
---     L5 details > 8 Zeilen
+--     L5 details > 8 Zeilen (Zeilen mit kind info/todo/result zaehlen nicht)
 --     L6 doppelter Fakt auf der Seite: dasselbe benannte Ding (roher Namens-String als Anker: das Zeilen-Label bzw. das
 --        Label einer Detailzeile) mit demselben Betrag in zwei Abschnitten — egal ob als Zeilenwert, als Detailwert
 --        oder als Betrag in sub/Detail-Texten der Zeile; Betrag 0 zaehlt nicht; tpl-Labels („Gehen ab“ je Konto) sind
 --        kein Anker (keine falschen Treffer bei Abschnitten je Konto)
---     L7 warn/alert-Pille ohne money/date/month in den Text-Parametern, ausser ihr Key steht in p_undated_keys
---        (echte Handlungsaufforderung ohne Zahl, z. B. „Kurs fehlt“)
+--     L7 warn/alert-Pille ohne money/date/month in den Text-Parametern und ohne Erklaerzeile (erste Detailzeile kind
+--        info), ausser ihr Key steht in p_undated_keys (echte Handlungsaufforderung ohne Zahl, z. B. „Kurs fehlt“)
 --     L8 section.value nicht null, obwohl eine Zeile gap:true traegt (Summe waere unvollstaendig)
 --     shape  kaputte Form (View kein Objekt, sections/items/details kein Array, Element kein Objekt, Betrag keine
 --            Zahl) mit Pfad; nie eine Exception, die uebrigen Regeln laufen weiter
@@ -113,6 +113,7 @@ BEGIN
                 END IF;
                 IF v_pill->>'state' IN ('warn', 'alert')
                    AND NOT COALESCE(v_pill->'text'->>'value' = ANY (COALESCE(p_undated_keys, '{}')), false)
+                   AND COALESCE(v_it->'details'->0->>'kind', '') <> 'info'
                    AND NOT jsonb_path_exists(COALESCE(v_pill->'text', 'null'::jsonb),
                                              'strict $.** ? (@.kind == "money" || @.kind == "date" || @.kind == "month")') THEN
                     rule := 'L7'; path := v_ip || '.pill'; RETURN NEXT;
@@ -123,7 +124,8 @@ BEGIN
             END IF;
             IF v_it ? 'details' AND jsonb_typeof(v_it->'details') NOT IN ('array', 'null') THEN
                 rule := 'shape'; path := v_ip || '.details'; RETURN NEXT;
-            ELSIF jsonb_typeof(v_it->'details') = 'array' AND jsonb_array_length(v_it->'details') > 8 THEN
+            ELSIF jsonb_typeof(v_it->'details') = 'array'
+                  AND (SELECT count(*) FROM jsonb_array_elements(v_it->'details') d(e) WHERE NOT COALESCE(d.e ? 'kind', false)) > 8 THEN
                 rule := 'L5'; path := v_ip || '.details'; RETURN NEXT;
             END IF;
 

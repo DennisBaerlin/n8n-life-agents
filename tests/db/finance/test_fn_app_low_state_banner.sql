@@ -42,5 +42,11 @@ BEGIN
      OR finance.fn_app_low_state_banner(NULL, 'x', NULL) IS NOT NULL THEN
     RAISE EXCEPTION 'FAIL [3b] goals warn / ok / neutral / ohne state / ok:false / NULL -> kein Banner'; END IF;
   RAISE NOTICE 'PASS [3] knapp + keine Banner ohne Handlungsbedarf';
+
+  IF finance.fn_app_low_state_banner('{"ok":true,"currency":"EUR","verdict":"stale","state":"warn"}', 'Giro', NULL)
+       IS DISTINCT FROM jsonb_build_object('state', 'warn', 'icon', 'clock', 'text', core.fn_ui_tpl('finance.app.accounts.banner_stale',
+            jsonb_build_object('account', 'Giro'))) THEN
+    RAISE EXCEPTION 'FAIL [4] alter Auszug -> gelbe Bitte'; END IF;
+  RAISE NOTICE 'PASS [4] alter Auszug';
 END $$;
 ROLLBACK;

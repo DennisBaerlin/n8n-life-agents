@@ -15,9 +15,9 @@
 --     Kreditnehmer) ist dieselbe Zahl, solange das Kreditkonto eines ausstehenden Kredits aktiv ist (Randfall: dort
 --     zaehlt das Kreditkonto, hier der Kreditstatus). Der Hauptabschnitt hat keine Summe (sie waere der Hero).
 --   Pille nur bei Handlungsbedarf (Gesamtkonzept P3, nie ok; warn vor neutral): Zinsbindung endet in [heute, heute +
---   finance.fixed_rate_warn_months) -> warn „endet {date}" + Banner (mit voraussichtlicher Restschuld zum Bindungsende,
---   wenn loan_overview sie kennt), auch wenn pausiert; Bindung schon abgelaufen -> warn „endete am {date}" ohne Banner
---   (Anschluss oder Datum nachpflegen); pausiert -> neutral. „schuldenfrei {Jahr}" (payoff_date_projected, nur wenn die
+--   finance.fixed_rate_warn_months) -> warn „Zinsbindung endet" + Banner (mit voraussichtlicher Restschuld zum Bindungsende,
+--   wenn loan_overview sie kennt), auch wenn pausiert; Bindung schon abgelaufen -> warn „abgelaufen" ohne Banner
+--   (Anschluss oder Datum nachpflegen); pausiert -> neutral; Datum und Grund in der Erklaerzeile. „schuldenfrei {Jahr}" (payoff_date_projected, nur wenn die
 --   Tilgung bis zum Laufzeitende fertig ist) steht als Fakt im Untertitel; das Jahr ist Klartext (fn_ui_num setzte
 --   Tausenderpunkte).
 --   Aufklappen (details, NULL-Zeilen entfallen, hoechstens 8): Bank, Kreditnehmer (nur Haushalt), Kreditbetrag +
@@ -136,18 +136,24 @@ BEGIN
                    WHEN 'paused' THEN jsonb_build_object('state', 'neutral', 'icon', 'pause',
                                           'text', core.fn_ui_tpl('finance.app.loans.paused'))
                    WHEN 'ends'   THEN jsonb_build_object('state', 'warn', 'icon', 'calendar',
-                                          'text', core.fn_ui_tpl('finance.app.loans.fixed_ends',
-                                              jsonb_build_object('date', core.fn_ui_date(l.interest_rate_fixed_until))))
+                                          'text', core.fn_ui_tpl('finance.app.loans.fixed_ends'))
                    WHEN 'ended'  THEN jsonb_build_object('state', 'warn', 'icon', 'calendar',
-                                          'text', core.fn_ui_tpl('finance.app.loans.fixed_ended',
-                                              jsonb_build_object('date', core.fn_ui_date(l.interest_rate_fixed_until))))
+                                          'text', core.fn_ui_tpl('finance.app.loans.fixed_ended'))
                    END,
                'progress', CASE WHEN l.original_amount > 0 AND l.current_remaining_debt IS NOT NULL THEN
                    jsonb_build_object('pct', round(100 * GREATEST(l.original_amount - abs(l.current_remaining_debt), 0)
                                                    / l.original_amount, 1), 'state', 'neutral') END,
                'target', NULL,
                'details', (SELECT COALESCE(jsonb_agg(x.d ORDER BY x.o), '[]'::jsonb) FROM (
-                   SELECT 0 AS o, jsonb_build_object('label', core.fn_ui_tpl('finance.app.loans.d_lender'),
+                   SELECT -1 AS o, jsonb_build_object('label', core.fn_ui_tpl(CASE l.flag WHEN 'paused' THEN 'finance.app.loans.i_paused'
+                                                                                     WHEN 'ends' THEN 'finance.app.loans.i_ends'
+                                                                                     ELSE 'finance.app.loans.i_ended' END,
+                              CASE WHEN l.flag = 'paused' THEN '{}'::jsonb
+                                   ELSE jsonb_build_object('date', core.fn_ui_date(l.interest_rate_fixed_until)) END),
+                              'value', NULL, 'kind', 'info') AS d
+                    WHERE l.flag IS NOT NULL
+                   UNION ALL
+                   SELECT 0, jsonb_build_object('label', core.fn_ui_tpl('finance.app.loans.d_lender'),
                               'value', l.lender) AS d
                     WHERE l.lender IS NOT NULL
                    UNION ALL
@@ -243,6 +249,7 @@ BEGIN
 
     RETURN jsonb_build_object(
         'ok', true,
+        'gap_note', core.fn_ui_tpl('finance.app.gap'),
         'title', core.fn_ui_tpl('finance.app.loans.title'),
         'hero', jsonb_build_object(
             'label', core.fn_ui_tpl('finance.app.loans.hero'),

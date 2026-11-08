@@ -59,7 +59,8 @@ BEGIN
   IF it->'label' <> core.fn_ui_tpl('finance.app.accounts.until') OR it->'value'->>'kind' <> 'month'
      OR it->'value' <> core.fn_ui_month((finance.fn_account_low_state((SELECT id::int FROM pg_temp.app_fx WHERE key = 'acc_sparkonto'))->>'on_date')::date)
      OR it->'pill'->>'state' <> 'warn'
-     OR it->'pill'->'text' <> core.fn_ui_tpl('finance.app.accounts.pill_net_out', jsonb_build_object('amount', core.fn_ui_money(2215, 'EUR'))) THEN
+     OR it->'pill'->'text' <> core.fn_ui_tpl('finance.app.accounts.pill_net_out')
+     OR it->'details'->0->'label' <> core.fn_ui_tpl('finance.app.accounts.i_net_out', jsonb_build_object('amount', core.fn_ui_money(2215, 'EUR'))) THEN
     RAISE EXCEPTION 'FAIL [2b] Sparkonto Reicht bis {Monat}, warn 2215 im Monat mehr ab als rein, got %', it; END IF;
   -- Girokonto: Bruecke <= 8 Zeilen, Gehen ab / Kommen rein
   SELECT x INTO s FROM jsonb_array_elements(v->'sections') x WHERE x->'title'->'params'->>'account' = 'Girokonto Jonas';

@@ -803,7 +803,8 @@ page computes nothing — states, progress and sums come from the DB.
   - One home per fact across ALL screens: balance → accounts screen, saved amount → goals, remaining debt → loans,
     market value → depot, asset-class sums → overview. Another screen refers by name, never by number.
   - Children appear on a screen only in one section titled „… der Kinder“; heroes count the household without them;
-    no footnote.
+    no footnote. Exception `goals`: child rows stay in their category, last, with name in `sub` and `marked: true`,
+    count in no sum, and `hero.hint` says so.
   - Section order inside a screen and row order inside a section: alert → warn → everyday before savings → parents
     before children → name.
   - A screen shows ≤ ~12 rows without expanding; a list longer than 3 becomes one row (sum + count) with the items
@@ -814,11 +815,11 @@ page computes nothing — states, progress and sums come from the DB.
   |---|---|---|
   | `item.value` | the actual amount of the row | always there, never replaced by a pill |
   | `section.value` | the sum of the row values | rendered as „zusammen {sum}“ (renderer, key `core.app.sum`); null with ≤ 1 row, when it equals the hero value or a part has no FX rate; a net sum of in- and outflows is never a section value |
-  | `pill` | **a call to action** | only `warn`/`alert`, naming amount or date; `neutral` only when the text names what is missing and who can fix it (the handler test passes these keys to `core.fn_app_view_lint`); **never `ok`** — the normal state has no pill |
+  | `pill` | **a short highlight** | at most two words; `warn`/`alert` name an amount or date only when that is the statement, otherwise `details[0]` with `kind: 'info'` explains it (the renderer adds ⓘ, `core.fn_app_view_lint` L7); `neutral` only when the text names what is missing and who can fix it (the handler test passes these keys to `core.fn_app_view_lint`); **never `ok`** — the normal state has no pill |
   | home banner `ok` | the one green signal of the app | exactly one „Alles in Ordnung“ banner on the home screen when no alert/warn banner was collected (`core.fn_app_nav`) |
   | `progress` | progress towards an amount target | neutral/accent colour on track, warn/alert = the row's pill, never `ok`; shares neutral; no bar when reached or without amount target |
   | `sub` | one line of „from/whom · when“ or the target („von 40.000 € · bis 03.2040“) | never an explanation, never a second amount of the same kind |
-  | `details` | derivation, single items | ≤ 8 lines; no fact that is a row elsewhere in the app (a name as cross-reference is fine) |
+  | `details` | derivation, single items | ≤ 8 lines, not counting lines with `kind` (`info` explanation, `todo` what you can do, `result` end of a calculation); optional `more` = explanation behind the line's own ⓘ; no fact that is a row elsewhere in the app (a name as cross-reference is fine) |
   | words | layperson test | `locale_lint` (9) denies the jargon list `$AppDeniedWords` in `*.app.*` texts |
 
   `core.fn_app_view_lint(view, neutral_keys, undated_keys) RETURNS TABLE(rule, path)` checks one view model against

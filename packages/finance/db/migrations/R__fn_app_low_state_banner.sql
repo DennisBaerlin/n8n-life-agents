@@ -6,7 +6,8 @@
 --   meldet und wohin der Tipp fuehrt (target), entscheidet der Aufrufer.
 --   Banner nur bei Handlungsbedarf: alert (verdict goals „reicht nur bis {on_date}", verdict buffer „unter dem Puffer"
 --   mit tiefstem Stand + Tag des Tiefs, mit Umbuchungs-Vorschlag p_sugg {amount, from_account, by_date} die
---   _suggest-Fassung) und warn nur bei verdict buffer („Es wird knapp"; ein gelbes „reicht bis" stuende monatelang da).
+--   _suggest-Fassung) und warn bei verdict buffer („Es wird knapp"; ein gelbes „reicht bis" stuende monatelang da) oder
+--   stale (Bitte um einen aktuellen Auszug).
 --   ok / neutral (auch Kurs fehlt) / ohne state / {ok:false} / NULL -> NULL. p_account = Name, wie der Betrachter ihn
 --   sehen darf (Aufrufer).
 --   plpgsql (late-bound: core.fn_ui_* sind core-R__).
@@ -24,8 +25,12 @@ DECLARE
 BEGIN
     -- „Kurs fehlt" ist schon state neutral (fn_account_low_state), deshalb keine eigene gap-Regel hier
     IF (p_ls ->> 'ok') IS DISTINCT FROM 'true'
-       OR NOT COALESCE(p_ls ->> 'state' = 'alert' OR (p_ls ->> 'state' = 'warn' AND p_ls ->> 'verdict' = 'buffer'), false) THEN
+       OR NOT COALESCE(p_ls ->> 'state' = 'alert' OR (p_ls ->> 'state' = 'warn' AND p_ls ->> 'verdict' IN ('buffer', 'stale')), false) THEN
         RETURN NULL;
+    END IF;
+    IF p_ls ->> 'verdict' = 'stale' THEN
+        RETURN jsonb_build_object('state', 'warn', 'icon', 'clock',
+                   'text', core.fn_ui_tpl('finance.app.accounts.banner_stale', jsonb_build_object('account', p_account)));
     END IF;
     v_min := core.fn_ui_money((p_ls ->> 'amount')::numeric, v_cur);
     v_day := core.fn_ui_date((p_ls ->> 'low_date')::date);

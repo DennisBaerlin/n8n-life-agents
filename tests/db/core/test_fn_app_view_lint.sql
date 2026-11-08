@@ -89,6 +89,10 @@ BEGIN
   SELECT jsonb_agg(jsonb_build_object('label', 'D' || g, 'value', NULL)) INTO v_det FROM generate_series(1, 9) g;
   r := pg_temp.lint(pg_temp.view(jsonb_build_array(pg_temp.sec(jsonb_build_array(pg_temp.it('"A"', pg_temp.m(5), NULL, NULL, v_det))))));
   IF r <> 'L5@sections[0].items[0].details' THEN RAISE EXCEPTION 'FAIL [5] L5 erwartet, got %', r; END IF;
+  -- Erklaer- und Ergebniszeilen zaehlen nicht mit
+  v_det := v_det - 8 || '[{"label":"a","value":null,"kind":"info"},{"label":"b","value":null,"kind":"todo"}]'::jsonb;
+  r := pg_temp.lint(pg_temp.view(jsonb_build_array(pg_temp.sec(jsonb_build_array(pg_temp.it('"A"', pg_temp.m(5), NULL, NULL, v_det))))));
+  IF r <> '' THEN RAISE EXCEPTION 'FAIL [5b] kind-Zeilen zaehlen nicht, got %', r; END IF;
   RAISE NOTICE 'PASS [5] L5';
 
   -- [6] L6: dasselbe Konto mit demselben Stand in zwei Abschnitten; derselbe sub-Betrag an derselben Zeile
@@ -136,6 +140,15 @@ BEGIN
          pg_temp.it('"A"', pg_temp.m(5), '{"state":"warn","icon":"alert","text":{"kind":"tpl","value":"x.app.s.price_missing","params":{}}}'))))),
        '{}', ARRAY['x.app.s.price_missing']);
   IF r <> '' THEN RAISE EXCEPTION 'FAIL [7b] undated-Key meldet %', r; END IF;
+  -- kurze Pille ohne Zahl ist erlaubt, wenn die erste Detailzeile sie erklaert; eine andere erste Zeile reicht nicht
+  r := pg_temp.lint(pg_temp.view(jsonb_build_array(pg_temp.sec(jsonb_build_array(
+         pg_temp.it('"A"', pg_temp.m(5), '{"state":"warn","icon":"alert","text":{"kind":"tpl","value":"x.app.s.short","params":{}}}', NULL,
+                    '[{"label":"a","value":null,"kind":"info"}]'::jsonb))))));
+  IF r <> '' THEN RAISE EXCEPTION 'FAIL [7c] erklaerte Pille meldet %', r; END IF;
+  r := pg_temp.lint(pg_temp.view(jsonb_build_array(pg_temp.sec(jsonb_build_array(
+         pg_temp.it('"A"', pg_temp.m(5), '{"state":"warn","icon":"alert","text":{"kind":"tpl","value":"x.app.s.short","params":{}}}', NULL,
+                    '[{"label":"a","value":null}]'::jsonb))))));
+  IF r <> 'L7@sections[0].items[0].pill' THEN RAISE EXCEPTION 'FAIL [7d] Pille ohne Erklaerung, got %', r; END IF;
   RAISE NOTICE 'PASS [7] L7';
 
   -- [8] L8: Summe trotz gap

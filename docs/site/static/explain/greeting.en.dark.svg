@@ -1,7 +1,7 @@
 <!-- Erzeugt von scripts/build_ui_tokens.ps1 aus config/ui.art.greeting.svg, nicht von Hand ändern. -->
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 392" width="720" height="392" role="img" lang="en">
   <style>
-:root { --ink: #EEF3F6; --gray: #A2B1BC; --hairline: #2A343C; --accent: #5DB7DD; --accent-hover: #A8D3E6; --accent-mid: #2A5A70; --accent-pale: #183A4A; --accent-wash: #1B2329; --code-wash: #2A343C; --ok: #3CC08C; --warn: #E0A030; --warn-wash: #3A2E10; --alert: #E5605F; --alert-wash: #3D1F20; --bg: #12181D; --bg-soft: #1B2329; --font: -apple-system, "Segoe UI", system-ui, "Helvetica Neue", Arial, sans-serif; }
+:root { --ink: #EEF3F6; --gray: #A2B1BC; --hairline: #2A343C; --accent: #5DB7DD; --accent-hover: #A8D3E6; --accent-mid: #2A5A70; --accent-pale: #183A4A; --accent-wash: #1B2329; --code-wash: #2A343C; --ok: #3CC08C; --warn: #E0A030; --warn-wash: #3A2E10; --alert: #E5605F; --alert-wash: #3D1F20; --kid: #A48AFB; --bg: #12181D; --bg-soft: #1B2329; --font: -apple-system, "Segoe UI", system-ui, "Helvetica Neue", Arial, sans-serif; }
 @keyframes in1 { 0% { opacity: 0 } 1.48%, 97% { opacity: 1 } 100% { opacity: 0 } }
 @keyframes on1 { 0% { opacity: 0 } 1.48%, 15.19% { opacity: 1 } 16.67%, 100% { opacity: 0 } }
 .on1 { opacity: 0 }

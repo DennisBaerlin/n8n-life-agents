@@ -10,6 +10,8 @@
   "banners": [
     { "state": "alert", "icon": "alert", "target": { "screen": "accounts", "params": {} },
       "text": { "kind": "tpl", "value": "finance.app.accounts.banner_short_suggest", "params": { "account": "Girokonto Beispielbank", "min": { "kind": "money", "value": 180.20, "currency": "EUR" }, "date": { "kind": "date", "value": "2026-11-24" }, "amount": { "kind": "money", "value": 300.00, "currency": "EUR" }, "from": "Tagesgeld Beispielbank", "by": { "kind": "date", "value": "2026-11-23" } } } },
+    { "state": "warn", "icon": "clock", "target": { "screen": "accounts", "params": {} },
+      "text": {"kind": "tpl", "value": "finance.app.accounts.banner_stale", "params": {"account": "Sparkonto Beispielbank"}} },
     { "state": "warn", "icon": "calendar", "target": { "screen": "loans", "params": {} },
       "text": { "kind": "tpl", "value": "finance.app.loans.banner_fixed_ends_rest", "params": { "name": "Baukredit Wohnung", "date": { "kind": "date", "value": "2027-03-31" }, "rest": { "kind": "money", "value": 142300.00, "currency": "EUR" } } } },
     { "state": "warn", "icon": "alert", "target": { "screen": "goals", "params": {} },
@@ -18,6 +20,7 @@
   "views": {
     "overview": {
       "ok": true,
+      "gap_note": {"kind": "tpl", "value": "finance.app.gap", "params": {}},
       "title": { "kind": "tpl", "value": "finance.app.overview.title", "params": {} },
       "hero": { "label": { "kind": "tpl", "value": "finance.app.overview.hero", "params": {} }, "value": { "kind": "money", "value": 318467.40, "currency": "EUR" }, "gap": false,
                 "note": { "kind": "tpl", "value": "finance.app.overview.hero_note", "params": { "assets": { "kind": "money", "value": 516967.40, "currency": "EUR" }, "debts": { "kind": "money", "value": 198500.00, "currency": "EUR" } } } },
@@ -64,14 +67,17 @@
           "items": [
             { "label": { "kind": "tpl", "value": "finance.app.accounts.balance_today", "params": {} }, "sub": { "kind": "tpl", "value": "finance.app.accounts.free_of", "params": { "amount": { "kind": "money", "value": 1840.55, "currency": "EUR" } } }, "value": { "kind": "money", "value": 2340.55, "currency": "EUR" }, "gap": false, "pill": null, "progress": null, "target": null,
               "details": [ { "label": { "kind": "tpl", "value": "finance.app.accounts.d_reserved", "params": {} }, "value": { "kind": "money", "value": 500.00, "currency": "EUR" } }, { "label": { "kind": "tpl", "value": "finance.app.accounts.d_owner", "params": {} }, "value": "Max Muster" }, { "label": { "kind": "tpl", "value": "finance.app.accounts.d_statement", "params": {} }, "value": { "kind": "date", "value": "2026-10-28" } } ] },
-            { "label": { "kind": "tpl", "value": "finance.app.accounts.low", "params": {} }, "sub": { "kind": "tpl", "value": "finance.app.accounts.low_before_income", "params": { "date": { "kind": "date", "value": "2026-11-24" }, "income": { "kind": "date", "value": "2026-11-28" } } }, "value": { "kind": "money", "value": 180.20, "currency": "EUR" }, "gap": false, "progress": null, "target": null,
-              "pill": { "state": "alert", "icon": "alert", "text": { "kind": "tpl", "value": "finance.app.accounts.pill_short", "params": { "amount": { "kind": "money", "value": 69.80, "currency": "EUR" } } } },
+            { "label": { "kind": "tpl", "value": "finance.app.accounts.low", "params": {} }, "sub": null, "value": { "kind": "money", "value": 180.20, "currency": "EUR" }, "gap": false, "progress": null, "target": null,
+              "pill": { "state": "alert", "icon": "alert", "text": { "kind": "tpl", "value": "finance.app.accounts.pill_short", "params": {} } },
               "details": [
+                {"label": {"kind": "tpl", "value": "finance.app.accounts.i_short", "params": {"amount": {"kind": "money", "value": 69.8, "currency": "EUR"}, "buffer": {"kind": "money", "value": 250, "currency": "EUR"}}}, "value": null, "kind": "info"},
+                {"label": {"kind": "tpl", "value": "finance.app.accounts.todo_low", "params": {}}, "value": null, "kind": "todo"},
                 { "label": { "kind": "tpl", "value": "finance.app.accounts.b_start", "params": { "date": { "kind": "date", "value": "2026-10-28" } } }, "value": { "kind": "money", "value": 2610.75, "currency": "EUR" } },
                 { "label": { "kind": "tpl", "value": "finance.app.accounts.b_booked", "params": { "date": { "kind": "date", "value": "2026-10-29" } } }, "value": { "kind": "money", "value": -270.20, "currency": "EUR" } },
                 { "label": { "kind": "tpl", "value": "finance.app.accounts.b_out", "params": { "date": { "kind": "date", "value": "2026-11-24" } } }, "value": { "kind": "money", "value": -1890.35, "currency": "EUR" } },
                 { "label": { "kind": "tpl", "value": "finance.app.accounts.b_in", "params": { "date": { "kind": "date", "value": "2026-11-24" } } }, "value": { "kind": "money", "value": 250.00, "currency": "EUR", "sign": true } },
-                { "label": { "kind": "tpl", "value": "finance.app.accounts.b_everyday", "params": { "per_day": { "kind": "money", "value": 23.65, "currency": "EUR" }, "days": { "kind": "number", "value": 22, "digits": 0, "sign": false } } }, "value": { "kind": "money", "value": -520.30, "currency": "EUR" } },
+                { "label": { "kind": "tpl", "value": "finance.app.accounts.b_everyday", "params": { "per_day": { "kind": "money", "value": 23.65, "currency": "EUR" }, "days": { "kind": "number", "value": 22, "digits": 0, "sign": false } } }, "value": { "kind": "money", "value": -520.00, "currency": "EUR" } },
+                {"label": {"kind": "tpl", "value": "finance.app.accounts.low_result", "params": {"date": {"kind": "date", "value": "2026-11-24"}}}, "value": {"kind": "money", "value": 180.2, "currency": "EUR"}, "kind": "result"},
                 { "label": { "kind": "tpl", "value": "finance.app.accounts.b_buffer_account", "params": {} }, "value": { "kind": "money", "value": 250.00, "currency": "EUR" } },
                 { "label": { "kind": "tpl", "value": "finance.app.accounts.b_income", "params": { "name": "Gehalt" } }, "value": { "kind": "tpl", "value": "finance.app.accounts.d_payment", "params": { "date": { "kind": "date", "value": "2026-11-28" }, "amount": { "kind": "money", "value": 3150.00, "currency": "EUR", "sign": true } } } },
                 { "label": { "kind": "tpl", "value": "finance.app.accounts.b_suggest", "params": { "amount": { "kind": "money", "value": 300.00, "currency": "EUR" }, "from": "Tagesgeld Beispielbank", "by": { "kind": "date", "value": "2026-11-23" } } }, "value": null }
@@ -94,8 +100,8 @@
         { "title": { "kind": "tpl", "value": "finance.app.accounts.section", "params": { "account": "Gemeinschaftskonto Hausbank" } }, "value": null, "empty": { "kind": "tpl", "value": "finance.app.accounts.empty", "params": {} },
           "items": [
             { "label": { "kind": "tpl", "value": "finance.app.accounts.balance_today", "params": {} }, "sub": null, "value": { "kind": "money", "value": 1200.00, "currency": "EUR" }, "gap": false, "progress": null, "target": null,
-              "pill": { "state": "warn", "icon": "alert", "text": { "kind": "tpl", "value": "finance.app.accounts.pill_overcommitted", "params": { "amount": { "kind": "money", "value": 300.00, "currency": "EUR" } } } },
-              "details": [ { "label": { "kind": "tpl", "value": "finance.app.accounts.d_reserved", "params": {} }, "value": { "kind": "money", "value": 1500.00, "currency": "EUR" } }, { "label": { "kind": "tpl", "value": "finance.app.accounts.d_owner", "params": {} }, "value": { "kind": "tpl", "value": "finance.app.common.joint", "params": {} } }, { "label": { "kind": "tpl", "value": "finance.app.accounts.d_statement", "params": {} }, "value": { "kind": "tpl", "value": "finance.app.accounts.d_statement_none", "params": {} } } ] },
+              "pill": { "state": "warn", "icon": "alert", "text": { "kind": "tpl", "value": "finance.app.accounts.pill_overcommitted", "params": {} } },
+              "details": [ {"label": {"kind": "tpl", "value": "finance.app.accounts.i_overcommitted", "params": {"amount": {"kind": "money", "value": 300, "currency": "EUR"}}}, "value": null, "kind": "info"}, {"label": {"kind": "tpl", "value": "finance.app.accounts.todo_overcommitted", "params": {}}, "value": null, "kind": "todo"}, { "label": { "kind": "tpl", "value": "finance.app.accounts.d_reserved", "params": {} }, "value": { "kind": "money", "value": 1500.00, "currency": "EUR" } }, { "label": { "kind": "tpl", "value": "finance.app.accounts.d_owner", "params": {} }, "value": { "kind": "tpl", "value": "finance.app.common.joint", "params": {} } }, { "label": { "kind": "tpl", "value": "finance.app.accounts.d_statement", "params": {} }, "value": { "kind": "tpl", "value": "finance.app.accounts.d_statement_none", "params": {} } } ] },
             { "label": { "kind": "tpl", "value": "finance.app.accounts.low", "params": {} }, "sub": null, "value": null, "gap": false, "pill": null, "progress": null, "target": null,
               "details": [ { "label": { "kind": "tpl", "value": "finance.app.accounts.d_no_preview", "params": {} }, "value": null } ] },
             { "label": { "kind": "tpl", "value": "finance.app.accounts.out_month_rest", "params": { "month": { "kind": "month", "value": "2026-11", "style": "long" } } }, "sub": { "kind": "tpl", "value": "finance.app.accounts.n_payments", "params": { "n": { "kind": "number", "value": 2, "digits": 0, "sign": false } } }, "value": { "kind": "money", "value": -1114.08, "currency": "EUR" }, "gap": false, "pill": null, "progress": null, "target": null,
@@ -111,7 +117,8 @@
             { "label": { "kind": "tpl", "value": "finance.app.accounts.balance_today", "params": {} }, "sub": { "kind": "tpl", "value": "finance.app.accounts.free_of", "params": { "amount": { "kind": "money", "value": 6000.00, "currency": "EUR" } } }, "value": { "kind": "money", "value": 15000.00, "currency": "EUR" }, "gap": false, "pill": null, "progress": null, "target": null,
               "details": [ { "label": { "kind": "tpl", "value": "finance.app.accounts.d_reserved", "params": {} }, "value": { "kind": "money", "value": 9000.00, "currency": "EUR" } }, { "label": { "kind": "tpl", "value": "finance.app.accounts.d_owner", "params": {} }, "value": "Max Muster" }, { "label": { "kind": "tpl", "value": "finance.app.accounts.d_statement", "params": {} }, "value": { "kind": "date", "value": "2026-10-30" } } ] },
             { "label": { "kind": "tpl", "value": "finance.app.accounts.until", "params": {} }, "sub": { "kind": "tpl", "value": "finance.app.accounts.low_funding_sub", "params": { "out": { "kind": "money", "value": 700.00, "currency": "EUR" }, "in": { "kind": "money", "value": 200.00, "currency": "EUR" } } }, "value": { "kind": "month", "value": "2027-10" }, "gap": false, "progress": null, "target": null,
-              "pill": { "state": "warn", "icon": "calendar", "text": { "kind": "tpl", "value": "finance.app.accounts.pill_net_out", "params": { "amount": { "kind": "money", "value": 500.00, "currency": "EUR" } } } } },
+              "pill": { "state": "warn", "icon": "calendar", "text": { "kind": "tpl", "value": "finance.app.accounts.pill_net_out", "params": {} } },
+              "details": [ {"label": {"kind": "tpl", "value": "finance.app.accounts.i_net_out", "params": {"amount": {"kind": "money", "value": 500, "currency": "EUR"}}}, "value": null, "kind": "info"}, {"label": {"kind": "tpl", "value": "finance.app.accounts.todo_net_out", "params": {}}, "value": null, "kind": "todo"} ] },
             { "label": { "kind": "tpl", "value": "finance.app.accounts.out_month_rest", "params": { "month": { "kind": "month", "value": "2026-11", "style": "long" } } }, "sub": { "kind": "tpl", "value": "finance.app.accounts.n_payment_one", "params": { "n": { "kind": "number", "value": 1, "digits": 0, "sign": false } } }, "value": { "kind": "money", "value": -700.00, "currency": "EUR" }, "gap": false, "pill": null, "progress": null, "target": null,
               "details": [ { "label": "Rate Neues Auto", "value": { "kind": "tpl", "value": "finance.app.accounts.d_payment", "params": { "date": { "kind": "date", "value": "2026-11-15" }, "amount": { "kind": "money", "value": -700.00, "currency": "EUR" } } } } ] },
             { "label": { "kind": "tpl", "value": "finance.app.accounts.in_month_rest", "params": { "month": { "kind": "month", "value": "2026-11", "style": "long" } } }, "sub": { "kind": "tpl", "value": "finance.app.accounts.n_incoming_one", "params": { "n": { "kind": "number", "value": 1, "digits": 0, "sign": false } } }, "value": { "kind": "money", "value": 200.00, "currency": "EUR", "sign": true }, "gap": false, "pill": null, "progress": null, "target": null,
@@ -133,14 +140,21 @@
             { "label": { "kind": "tpl", "value": "finance.app.accounts.out_month_rest", "params": { "month": { "kind": "month", "value": "2026-11", "style": "long" } } }, "sub": { "kind": "tpl", "value": "finance.app.accounts.n_payments_none", "params": {} }, "value": { "kind": "money", "value": 0.00, "currency": "EUR" }, "gap": false, "pill": null, "progress": null, "target": null, "details": [] },
             { "label": { "kind": "tpl", "value": "finance.app.accounts.in_month_rest", "params": { "month": { "kind": "month", "value": "2026-11", "style": "long" } } }, "sub": { "kind": "tpl", "value": "finance.app.accounts.n_incoming_one", "params": { "n": { "kind": "number", "value": 1, "digits": 0, "sign": false } } }, "value": { "kind": "money", "value": 100.00, "currency": "EUR", "sign": true }, "gap": false, "pill": null, "progress": null, "target": null,
               "details": [ { "label": "Dauerauftrag vom Girokonto", "value": { "kind": "tpl", "value": "finance.app.accounts.d_payment", "params": { "date": { "kind": "date", "value": "2026-11-28" }, "amount": { "kind": "money", "value": 100.00, "currency": "EUR", "sign": true } } } } ] }
+          ] },
+        { "title": {"kind": "tpl", "value": "finance.app.accounts.section", "params": {"account": "Sparkonto Beispielbank"}}, "value": null, "empty": {"kind": "tpl", "value": "finance.app.accounts.empty", "params": {}},
+          "items": [
+            {"label": {"kind": "tpl", "value": "finance.app.accounts.balance_today", "params": {}}, "sub": null, "value": {"kind": "money", "value": 840, "currency": "EUR"}, "gap": false, "pill": null, "progress": null, "target": null},
+            {"label": {"kind": "tpl", "value": "finance.app.accounts.low", "params": {}}, "sub": null, "value": {"kind": "tpl", "value": "finance.app.accounts.low_unknown", "params": {}}, "gap": false, "progress": null, "target": null, "pill": {"state": "warn", "icon": "clock", "text": {"kind": "tpl", "value": "finance.app.accounts.pill_stale", "params": {}}}, "details": [{"label": {"kind": "tpl", "value": "finance.app.accounts.i_stale", "params": {}}, "value": null, "kind": "info"},{"label": {"kind": "tpl", "value": "finance.app.accounts.d_statement_last", "params": {}}, "value": {"kind": "date", "value": "2026-08-12"}}]}
           ] }
       ]
     },
     "goals": {
       "ok": true,
+      "gap_note": {"kind": "tpl", "value": "finance.app.gap", "params": {}},
       "title": { "kind": "tpl", "value": "finance.app.goals.title", "params": {} },
-      "hero": { "label": { "kind": "tpl", "value": "finance.app.goals.hero", "params": {} }, "value": { "kind": "money", "value": 23450.00, "currency": "EUR" }, "gap": false,
-                "note": { "kind": "tpl", "value": "finance.app.goals.hero_note_monthly", "params": { "amount": { "kind": "money", "value": 1095.00, "currency": "EUR" } } } },
+      "hero": { "label": { "kind": "tpl", "value": "finance.app.goals.hero", "params": {} }, "value": { "kind": "money", "value": 21870.00, "currency": "EUR" }, "gap": false,
+                "note": { "kind": "tpl", "value": "finance.app.goals.hero_note_monthly", "params": { "amount": { "kind": "money", "value": 995.00, "currency": "EUR" } } },
+                "hint": {"text": {"kind": "tpl", "value": "finance.app.goals.hero_kids", "params": {}}, "more": {"kind": "tpl", "value": "finance.app.goals.hero_kids_more", "params": {}}, "marked": true} },
       "banners": [],
       "sections": [
         { "title": { "kind": "tpl", "value": "finance.app.goals.section_reserves", "params": {} }, "value": { "kind": "money", "value": 10950.00, "currency": "EUR" }, "empty": { "kind": "tpl", "value": "finance.app.goals.empty", "params": {} },
@@ -154,25 +168,22 @@
                 { "label": { "kind": "tpl", "value": "finance.app.goals.d_on_account", "params": { "account": "Tagesgeld Beispielbank" } }, "value": { "kind": "money", "value": 9000.00, "currency": "EUR" } }
               ] },
             { "label": "Instandhaltungsrücklage Wohnung Beispielstadt", "sub": { "kind": "tpl", "value": "finance.app.goals.reserve_rate", "params": { "rate": { "kind": "money", "value": 120.00, "currency": "EUR" } } }, "value": { "kind": "money", "value": 1950.00, "currency": "EUR" }, "gap": false, "progress": null, "target": null,
-              "pill": { "state": "warn", "icon": "alert", "text": { "kind": "tpl", "value": "finance.app.goals.reserve_low", "params": { "gap": { "kind": "money", "value": 25.00, "currency": "EUR" } } } },
+              "pill": { "state": "warn", "icon": "alert", "text": { "kind": "tpl", "value": "finance.app.goals.reserve_low", "params": {} } },
               "details": [
+                {"label": {"kind": "tpl", "value": "finance.app.goals.i_reserve_low", "params": {"gap": {"kind": "money", "value": 25, "currency": "EUR"}}}, "value": null, "kind": "info"},
+                {"label": {"kind": "tpl", "value": "finance.app.goals.todo_reserve_low", "params": {}}, "value": null, "kind": "todo"},
                 { "label": { "kind": "tpl", "value": "finance.app.goals.d_rate_from", "params": { "account": "Gemeinschaftskonto Hausbank" } }, "value": { "kind": "tpl", "value": "finance.app.goals.amount_rhythm", "params": { "amount": { "kind": "money", "value": 120.00, "currency": "EUR" }, "rhythm": { "kind": "tpl", "value": "finance.app.goals.rhythm_month_day", "params": { "day": "1" } } } } },
-                { "label": { "kind": "tpl", "value": "finance.app.goals.d_guide", "params": {} }, "value": { "kind": "tpl", "value": "finance.app.goals.d_guide_value", "params": { "monthly": { "kind": "money", "value": 145.00, "currency": "EUR" }, "area": { "kind": "number", "value": 92, "digits": 0, "sign": false }, "rate": { "kind": "money", "value": 18.91, "currency": "EUR" } } } },
+                { "label": { "kind": "tpl", "value": "finance.app.goals.d_guide", "params": {} }, "more": {"kind": "tpl", "value": "finance.app.goals.d_guide_more", "params": {}}, "value": { "kind": "tpl", "value": "finance.app.goals.d_guide_value", "params": { "monthly": { "kind": "money", "value": 145.00, "currency": "EUR" }, "area": { "kind": "number", "value": 92, "digits": 0, "sign": false }, "rate": { "kind": "money", "value": 18.91, "currency": "EUR" } } } },
                 { "label": { "kind": "tpl", "value": "finance.app.goals.d_property", "params": {} }, "value": "Wohnung Beispielstadt" }
               ] }
           ] },
-        { "title": { "kind": "tpl", "value": "finance.app.goals.section_goals", "params": {} }, "value": { "kind": "money", "value": 12500.00, "currency": "EUR" }, "empty": { "kind": "tpl", "value": "finance.app.goals.empty", "params": {} },
+        { "title": { "kind": "tpl", "value": "finance.app.goals.section_goals", "params": {} }, "value": { "kind": "money", "value": 10920.00, "currency": "EUR" }, "empty": { "kind": "tpl", "value": "finance.app.goals.empty", "params": {} },
           "items": [
-            { "label": "Aktiendepot Lena 20.000", "sub": { "kind": "tpl", "value": "finance.app.goals.goal_sub", "params": { "target": { "kind": "money", "value": 20000.00, "currency": "EUR" }, "date": { "kind": "month", "value": "2040-06" } } }, "value": { "kind": "money", "value": 4080.00, "currency": "EUR" }, "gap": false, "progress": { "pct": 20.4, "state": "alert" }, "target": null,
-              "pill": { "state": "alert", "icon": "alert", "text": { "kind": "tpl", "value": "finance.app.goals.cover_short", "params": { "depot": "Depot Lena", "gap": { "kind": "money", "value": 210.00, "currency": "EUR" } } } },
-              "details": [
-                { "label": { "kind": "tpl", "value": "finance.app.goals.d_rate", "params": {} }, "value": { "kind": "tpl", "value": "finance.app.goals.d_rate_plan", "params": { "rate": { "kind": "money", "value": 100.00, "currency": "EUR" }, "plans": "Sparplan Welt-ETF Lena" } } },
-                { "label": { "kind": "tpl", "value": "finance.app.goals.d_on_account", "params": { "account": "Depot Lena" } }, "value": { "kind": "money", "value": 4080.00, "currency": "EUR" } },
-                { "label": { "kind": "tpl", "value": "finance.app.goals.d_target_date", "params": {} }, "value": { "kind": "date", "value": "2040-06-30" } }
-              ] },
             { "label": "Neues Auto", "sub": { "kind": "tpl", "value": "finance.app.goals.goal_sub", "params": { "target": { "kind": "money", "value": 18000.00, "currency": "EUR" }, "date": { "kind": "month", "value": "2027-09" } } }, "value": { "kind": "money", "value": 6000.00, "currency": "EUR" }, "gap": false, "progress": { "pct": 33.3, "state": "warn" }, "target": null,
-              "pill": { "state": "warn", "icon": "alert", "text": { "kind": "tpl", "value": "finance.app.goals.pace.behind_gap", "params": { "gap": { "kind": "money", "value": 1450.00, "currency": "EUR" } } } },
+              "pill": { "state": "warn", "icon": "alert", "text": { "kind": "tpl", "value": "finance.app.goals.pace.behind_gap", "params": {} } },
               "details": [
+                {"label": {"kind": "tpl", "value": "finance.app.goals.i_behind", "params": {"gap": {"kind": "money", "value": 1450, "currency": "EUR"}}}, "value": null, "kind": "info"},
+                {"label": {"kind": "tpl", "value": "finance.app.goals.todo_behind", "params": {}}, "value": null, "kind": "todo"},
                 { "label": { "kind": "tpl", "value": "finance.app.goals.d_rate_from", "params": { "account": "Tagesgeld Beispielbank" } }, "value": { "kind": "tpl", "value": "finance.app.goals.amount_rhythm", "params": { "amount": { "kind": "money", "value": 700.00, "currency": "EUR" }, "rhythm": { "kind": "tpl", "value": "finance.app.goals.rhythm_month_day", "params": { "day": "15" } } } } },
                 { "label": { "kind": "tpl", "value": "finance.app.goals.d_on_account", "params": { "account": "P2P Beispielplattform" } }, "value": { "kind": "money", "value": 6000.00, "currency": "EUR" } },
                 { "label": { "kind": "tpl", "value": "finance.app.goals.d_target_date", "params": {} }, "value": { "kind": "date", "value": "2027-09-01" } }
@@ -187,15 +198,25 @@
             { "label": "Umzug", "sub": { "kind": "tpl", "value": "finance.app.goals.goal_sub", "params": { "target": { "kind": "money", "value": 4000.00, "currency": "EUR" }, "date": { "kind": "month", "value": "2027-12" } } }, "value": { "kind": "money", "value": 620.00, "currency": "EUR" }, "gap": false, "progress": { "pct": 15.5, "state": "neutral" }, "target": null,
               "pill": { "state": "neutral", "icon": "pause", "text": { "kind": "tpl", "value": "finance.app.goals.pace.paused", "params": {} } },
               "details": [
+                {"label": {"kind": "tpl", "value": "finance.app.goals.i_paused", "params": {}}, "value": null, "kind": "info"},
                 { "label": { "kind": "tpl", "value": "finance.app.goals.d_rate", "params": {} }, "value": { "kind": "tpl", "value": "finance.app.goals.d_rate_none", "params": {} } },
                 { "label": { "kind": "tpl", "value": "finance.app.goals.d_on_account", "params": { "account": "Girokonto Beispielbank" } }, "value": { "kind": "money", "value": 500.00, "currency": "EUR" } },
                 { "label": { "kind": "tpl", "value": "finance.app.goals.d_on_more", "params": { "n": { "kind": "number", "value": 1, "digits": 0, "sign": false } } }, "value": { "kind": "money", "value": 120.00, "currency": "EUR" } },
                 { "label": { "kind": "tpl", "value": "finance.app.goals.d_target_date", "params": {} }, "value": { "kind": "date", "value": "2027-12-01" } }
               ] },
             { "label": "Fahrrad", "sub": { "kind": "tpl", "value": "finance.app.goals.goal_sub_reached", "params": { "target": { "kind": "money", "value": 2500.00, "currency": "EUR" }, "date": { "kind": "date", "value": "2027-03-01" } } }, "value": { "kind": "money", "value": 2500.00, "currency": "EUR" }, "gap": false, "progress": { "pct": 100, "state": "neutral" }, "target": null, "pill": null,
-              "details": [ { "label": { "kind": "tpl", "value": "finance.app.goals.d_on_account", "params": { "account": "Tagesgeld Beispielbank" } }, "value": { "kind": "money", "value": 2500.00, "currency": "EUR" } } ] }
+              "details": [ { "label": { "kind": "tpl", "value": "finance.app.goals.d_on_account", "params": { "account": "Tagesgeld Beispielbank" } }, "value": { "kind": "money", "value": 2500.00, "currency": "EUR" } } ] },
+            { "label": "Aktiendepot Lena 20.000", "sub": { "kind": "tpl", "value": "finance.app.goals.kid_sub", "params": { "name": "Lena", "sub": { "kind": "tpl", "value": "finance.app.goals.goal_sub", "params": { "target": { "kind": "money", "value": 20000.00, "currency": "EUR" }, "date": { "kind": "month", "value": "2040-06" } } } } }, "marked": true, "value": { "kind": "money", "value": 4080.00, "currency": "EUR" }, "gap": false, "progress": { "pct": 20.4, "state": "alert" }, "target": null,
+              "pill": { "state": "alert", "icon": "alert", "text": { "kind": "tpl", "value": "finance.app.goals.cover_short", "params": { "depot": "Depot Lena", "gap": { "kind": "money", "value": 210.00, "currency": "EUR" } } } },
+              "details": [
+                {"label": {"kind": "tpl", "value": "finance.app.goals.i_cover_short", "params": {"depot": "Depot Lena", "gap": {"kind": "money", "value": 210, "currency": "EUR"}}}, "value": null, "kind": "info"},
+                {"label": {"kind": "tpl", "value": "finance.app.goals.todo_cover", "params": {}}, "value": null, "kind": "todo"},
+                { "label": { "kind": "tpl", "value": "finance.app.goals.d_rate", "params": {} }, "value": { "kind": "tpl", "value": "finance.app.goals.d_rate_plan", "params": { "rate": { "kind": "money", "value": 100.00, "currency": "EUR" }, "plans": "Sparplan Welt-ETF Lena" } } },
+                { "label": { "kind": "tpl", "value": "finance.app.goals.d_on_account", "params": { "account": "Depot Lena" } }, "value": { "kind": "money", "value": 4080.00, "currency": "EUR" } },
+                { "label": { "kind": "tpl", "value": "finance.app.goals.d_target_date", "params": {} }, "value": { "kind": "date", "value": "2040-06-30" } }
+              ] }
           ] },
-        { "title": { "kind": "tpl", "value": "finance.app.goals.section_plans", "params": {} }, "value": { "kind": "tpl", "value": "finance.app.goals.reserve_rate", "params": { "rate": { "kind": "money", "value": 500.00, "currency": "EUR" } } }, "empty": { "kind": "tpl", "value": "finance.app.goals.empty", "params": {} },
+        { "title": { "kind": "tpl", "value": "finance.app.goals.section_plans", "params": {} }, "value": null, "empty": { "kind": "tpl", "value": "finance.app.goals.empty", "params": {} },
           "items": [
             { "label": "Sparplan Welt-ETF", "sub": { "kind": "tpl", "value": "finance.app.goals.plan_days_next", "params": { "n": { "kind": "number", "value": 2, "digits": 0, "sign": false }, "amount": { "kind": "money", "value": 150.00, "currency": "EUR" }, "date": { "kind": "date", "value": "2026-11-02" } } }, "value": { "kind": "money", "value": 300.00, "currency": "EUR" }, "gap": false, "progress": null, "target": null, "pill": null,
               "details": [
@@ -204,22 +225,25 @@
                 { "label": { "kind": "tpl", "value": "finance.app.goals.d_from", "params": {} }, "value": "Girokonto Beispielbank" },
                 { "label": { "kind": "tpl", "value": "finance.app.goals.d_for", "params": {} }, "value": "Max Muster" }
               ] },
-            { "label": "Sparplan Welt-ETF Lena", "sub": { "kind": "tpl", "value": "finance.app.goals.plan_next", "params": { "date": { "kind": "date", "value": "2026-11-16" } } }, "value": { "kind": "money", "value": 100.00, "currency": "EUR" }, "gap": false, "progress": null, "target": null,
-              "pill": { "state": "warn", "icon": "alert", "text": { "kind": "tpl", "value": "finance.app.accounts.pill_short", "params": { "amount": { "kind": "money", "value": 69.80, "currency": "EUR" } } } },
+            { "label": "Sparplan Europa-ETF", "sub": { "kind": "tpl", "value": "finance.app.goals.plan_next", "params": { "date": { "kind": "date", "value": "2026-11-16" } } }, "value": { "kind": "money", "value": 100.00, "currency": "EUR" }, "gap": false, "progress": null, "target": null,
+              "pill": { "state": "neutral", "icon": "pause", "text": { "kind": "tpl", "value": "finance.app.goals.pace.paused", "params": {} } },
               "details": [
+                {"label": {"kind": "tpl", "value": "finance.app.goals.i_plan_paused", "params": {}}, "value": null, "kind": "info"},
+                { "label": { "kind": "tpl", "value": "finance.app.goals.d_security", "params": {} }, "value": "Europa-ETF (Dist)" },
+                { "label": { "kind": "tpl", "value": "finance.app.goals.d_depot", "params": {} }, "value": "ETF-Depot Beispielbroker" },
+                { "label": { "kind": "tpl", "value": "finance.app.goals.d_from", "params": {} }, "value": "Girokonto Beispielbank" },
+                { "label": { "kind": "tpl", "value": "finance.app.goals.d_for", "params": {} }, "value": "Mia Muster" }
+              ] },
+            { "label": "Sparplan Welt-ETF Lena", "sub": { "kind": "tpl", "value": "finance.app.goals.kid_sub", "params": { "name": "Lena", "sub": { "kind": "tpl", "value": "finance.app.goals.plan_next", "params": { "date": { "kind": "date", "value": "2026-11-16" } } } } }, "marked": true, "value": { "kind": "money", "value": 100.00, "currency": "EUR" }, "gap": false, "progress": null, "target": null,
+              "pill": { "state": "alert", "icon": "alert", "text": { "kind": "tpl", "value": "finance.app.accounts.pill_short", "params": {} } },
+              "details": [
+                {"label": {"kind": "tpl", "value": "finance.app.goals.i_plan_short", "params": {"account": "Girokonto Beispielbank", "amount": {"kind": "money", "value": 69.8, "currency": "EUR"}, "buffer": {"kind": "money", "value": 250, "currency": "EUR"}}}, "value": null, "kind": "info"},
+                {"label": {"kind": "tpl", "value": "finance.app.goals.todo_plan", "params": {}}, "value": null, "kind": "todo"},
                 { "label": { "kind": "tpl", "value": "finance.app.goals.d_security", "params": {} }, "value": "Welt-ETF (Acc)" },
                 { "label": { "kind": "tpl", "value": "finance.app.goals.d_depot", "params": {} }, "value": "Depot Lena" },
                 { "label": { "kind": "tpl", "value": "finance.app.goals.d_from", "params": {} }, "value": "Girokonto Beispielbank" },
                 { "label": { "kind": "tpl", "value": "finance.app.goals.d_for", "params": {} }, "value": "Lena Muster" },
                 { "label": { "kind": "tpl", "value": "finance.app.goals.d_goal", "params": {} }, "value": "Aktiendepot Lena 20.000" }
-              ] },
-            { "label": "Sparplan Europa-ETF", "sub": { "kind": "tpl", "value": "finance.app.goals.plan_next", "params": { "date": { "kind": "date", "value": "2026-11-16" } } }, "value": { "kind": "money", "value": 100.00, "currency": "EUR" }, "gap": false, "progress": null, "target": null,
-              "pill": { "state": "neutral", "icon": "pause", "text": { "kind": "tpl", "value": "finance.app.goals.pace.paused", "params": {} } },
-              "details": [
-                { "label": { "kind": "tpl", "value": "finance.app.goals.d_security", "params": {} }, "value": "Europa-ETF (Dist)" },
-                { "label": { "kind": "tpl", "value": "finance.app.goals.d_depot", "params": {} }, "value": "ETF-Depot Beispielbroker" },
-                { "label": { "kind": "tpl", "value": "finance.app.goals.d_from", "params": {} }, "value": "Girokonto Beispielbank" },
-                { "label": { "kind": "tpl", "value": "finance.app.goals.d_for", "params": {} }, "value": "Mia Muster" }
               ] }
           ] }
       ]
@@ -234,8 +258,9 @@
         { "title": { "kind": "tpl", "value": "finance.app.loans.section", "params": {} }, "value": null, "empty": { "kind": "tpl", "value": "finance.app.loans.empty", "params": {} },
           "items": [
             { "label": "Baukredit Wohnung", "sub": { "kind": "tpl", "value": "finance.app.loans.rate_line_payoff", "params": { "interest": { "kind": "number", "value": 1.45, "digits": 2, "sign": false }, "rate": { "kind": "money", "value": 780.00, "currency": "EUR" }, "year": "2041" } }, "value": { "kind": "money", "value": 156200.00, "currency": "EUR" }, "gap": false, "progress": { "pct": 37.5, "state": "neutral" }, "target": null,
-              "pill": { "state": "warn", "icon": "calendar", "text": { "kind": "tpl", "value": "finance.app.loans.fixed_ends", "params": { "date": { "kind": "date", "value": "2027-03-31" } } } },
+              "pill": { "state": "warn", "icon": "calendar", "text": { "kind": "tpl", "value": "finance.app.loans.fixed_ends", "params": {} } },
               "details": [
+                {"label": {"kind": "tpl", "value": "finance.app.loans.i_ends", "params": {"date": {"kind": "date", "value": "2027-03-31"}}}, "value": null, "kind": "info"},
                 { "label": { "kind": "tpl", "value": "finance.app.loans.d_lender", "params": {} }, "value": "Hausbank Beispielstadt" },
                 { "label": { "kind": "tpl", "value": "finance.app.loans.d_borrower", "params": {} }, "value": { "kind": "tpl", "value": "finance.app.common.joint", "params": {} } },
                 { "label": { "kind": "tpl", "value": "finance.app.loans.d_amount", "params": {} }, "value": { "kind": "tpl", "value": "finance.app.loans.d_amount_paid_out", "params": { "amount": { "kind": "money", "value": 250000.00, "currency": "EUR" }, "date": { "kind": "date", "value": "2017-04-01" } } } },
@@ -267,6 +292,7 @@
             { "label": "Renovierungskredit", "sub": { "kind": "tpl", "value": "finance.app.loans.rate_line", "params": { "interest": { "kind": "number", "value": 4.20, "digits": 2, "sign": false }, "rate": { "kind": "money", "value": 0.00, "currency": "EUR" } } }, "value": { "kind": "money", "value": 3400.00, "currency": "EUR" }, "gap": false, "progress": { "pct": 32, "state": "neutral" }, "target": null,
               "pill": { "state": "neutral", "icon": "pause", "text": { "kind": "tpl", "value": "finance.app.loans.paused", "params": {} } },
               "details": [
+                {"label": {"kind": "tpl", "value": "finance.app.loans.i_paused", "params": {}}, "value": null, "kind": "info"},
                 { "label": { "kind": "tpl", "value": "finance.app.loans.d_lender", "params": {} }, "value": "Hausbank Beispielstadt" },
                 { "label": { "kind": "tpl", "value": "finance.app.loans.d_borrower", "params": {} }, "value": "Mia Muster" },
                 { "label": { "kind": "tpl", "value": "finance.app.loans.d_amount", "params": {} }, "value": { "kind": "tpl", "value": "finance.app.loans.d_amount_paid_out", "params": { "amount": { "kind": "money", "value": 5000.00, "currency": "EUR" }, "date": { "kind": "date", "value": "2025-02-01" } } } },
@@ -288,6 +314,7 @@
     },
     "depot": {
       "ok": true,
+      "gap_note": {"kind": "tpl", "value": "finance.app.gap", "params": {}},
       "title": { "kind": "tpl", "value": "finance.app.depot.title", "params": {} },
       "hero": { "label": { "kind": "tpl", "value": "finance.app.depot.hero", "params": {} }, "value": { "kind": "money", "value": 48200.00, "currency": "EUR" }, "gap": true,
                 "note": { "kind": "tpl", "value": "finance.app.depot.hero_note", "params": { "gain": { "kind": "money", "value": 3120.00, "currency": "EUR", "sign": true }, "pct": { "kind": "number", "value": 6.9, "digits": 1, "sign": true }, "date": { "kind": "date", "value": "2026-11-02" } } } },

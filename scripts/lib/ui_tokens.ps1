@@ -31,8 +31,8 @@ function Get-UiSurfaces {
                 [pscustomobject]@{ Media = '@media (prefers-color-scheme: dark)'; Selector = ':root:not([data-scheme="light"])'; Group = 'dark' }
                 [pscustomobject]@{ Selector = ':root[data-scheme="dark"]'; Group = 'dark' }
             )
-            Colors = @('ink', 'gray', 'hairline', 'accent', 'ok', 'warn', 'alert', 'bg', 'bg-soft')
-            Shape  = @('radius', 'font')
+            Colors = @('ink', 'gray', 'hairline', 'accent', 'ok', 'warn', 'alert', 'kid', 'bg', 'bg-soft')
+            Shape  = @('radius', 'radius-pill', 'font')
         }
         # Wizard im Fenster der Start-App: hell/dunkel nach der System-Einstellung. Der QR-Code steht immer auf der hellen
         # Flaeche (.qr = helle Gruppe): nicht jede Kamera-App liest einen invertierten Code.

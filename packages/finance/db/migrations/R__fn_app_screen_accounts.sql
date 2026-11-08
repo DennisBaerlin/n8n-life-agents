@@ -9,13 +9,14 @@
 --   Kein Hero (die Frage ist je Konto; ein Haushalts-„Abgaenge“ mischt Sparen mit Rechnungen).
 --   Zeilen je Konto — jede Karte gleich gebaut, immer vier (Owner-Abnahme 2026-10-31):
 --     1 Stand heute — Saldo; sub „davon x frei“, wenn Ziel-Geld darauf liegt (finance.fn_account_free_balance); liegt mehr
---       Ziel-Geld darauf als Saldo -> warn „x mehr verplant als vorhanden“. Aufklappen: Zurueckgelegt fuer Ziele (immer,
+--       Ziel-Geld darauf als Saldo -> warn „ueberplant“ mit Erklaerzeile. Aufklappen: Zurueckgelegt fuer Ziele (immer,
 --       auch 0), Besitzer (Haushalts-Sicht), Kontoauszug (Datum; ein Geld-Konto ohne Auszug und darum ohne Vorschau:
 --       „noch keiner“ — dieselbe Stelle bei jedem Konto).
 --     2 Urteil allein aus finance.fn_account_low_state (dieselbe Rechnung wie die Spiegel-Pille am Sparplan):
---       outlook = „Tiefster Stand“ bis zum Geldeingang, Aufklappen = Bruecke (<= 8 Zeilen: Stand,
---       gebucht seit Abgleich, feste Ab-/Eingaenge, Alltag geschaetzt, Puffer, naechster Geldeingang, Umbuchungs-
---       Vorschlag nur Haushalt + alert); funding = „Reicht bis“ mit dem Monat, in dem das FREIE Geld aufgebraucht ist
+--       outlook = „Tiefster Stand“ bis zum Geldeingang, Aufklappen = Erklaerzeilen (fn_app_low_state_explain) + Bruecke
+--       (Stand, gebucht seit Abgleich, feste Ab-/Eingaenge, Alltag geschaetzt, Ergebnis-Zeile mit Datum, Puffer, naechster
+--       Geldeingang, Umbuchungs-Vorschlag nur Haushalt + alert); Auszug zu alt (verdict stale) -> Wert „–“, Erklaerung und
+--       Auszug-Datum statt Bruecke; funding = „Reicht bis“ mit dem Monat, in dem das FREIE Geld aufgebraucht ist
 --       (ohne Lauf-Ende „ueber <Monat> hinaus“; nie ein negativer Kontostand, Owner-Abnahme 2026-10-31). Pille nur
 --       warn/alert, gebaut allein von finance.fn_app_low_state_pill (Konten-Zeile funding mit p_month_row: „x im Monat
 --       mehr ab als rein“); Kurs fehlt -> gap ohne Pille. Ohne Vorschau (Geld-Konto ohne Auszug, oder Abgaenge bei
@@ -133,14 +134,19 @@ BEGIN
         v_free := finance.fn_account_free_balance(v_acc.id);
         v_res  := CASE WHEN v_free IS NULL THEN 0 ELSE GREATEST(v_acc.balance - v_free, 0) END;
         v_pill := NULL;
+        v_det := '[]'::jsonb;
         IF v_res > v_acc.balance THEN
             v_pill := jsonb_build_object('state', 'warn', 'icon', 'alert',
-                          'text', core.fn_ui_tpl('finance.app.accounts.pill_overcommitted',
-                                      jsonb_build_object('amount', core.fn_ui_money(v_res - v_acc.balance, v_cur))));
+                          'text', core.fn_ui_tpl('finance.app.accounts.pill_overcommitted'));
+            v_det := jsonb_build_array(
+                jsonb_build_object('label', core.fn_ui_tpl('finance.app.accounts.i_overcommitted',
+                                       jsonb_build_object('amount', core.fn_ui_money(v_res - v_acc.balance, v_cur))),
+                                   'value', NULL, 'kind', 'info'),
+                jsonb_build_object('label', core.fn_ui_tpl('finance.app.accounts.todo_overcommitted'), 'value', NULL, 'kind', 'todo'));
         END IF;
         -- jede Karte gleich gebaut: „Zurueckgelegt fuer Ziele“ steht immer, auch mit 0
-        v_det := jsonb_build_array(jsonb_build_object('label', core.fn_ui_tpl('finance.app.accounts.d_reserved'),
-                                                      'value', core.fn_ui_money(v_res, v_cur)));
+        v_det := v_det || jsonb_build_object('label', core.fn_ui_tpl('finance.app.accounts.d_reserved'),
+                                             'value', core.fn_ui_money(v_res, v_cur));
         IF v_hh THEN
             v_det := v_det || jsonb_build_object('label', core.fn_ui_tpl('finance.app.accounts.d_owner'),
                                                  'value', COALESCE(to_jsonb(v_acc.owner_name), core.fn_ui_tpl('finance.app.common.joint')));
@@ -170,10 +176,19 @@ BEGIN
             -- Monat schon als Wert, ihre Pille sagt deshalb, warum (p_month_row)
             v_pill := finance.fn_app_low_state_pill(v_ls, v_ls->>'source' = 'funding');
 
-            IF v_ls->>'source' = 'outlook' THEN
+            IF v_ls->>'verdict' = 'stale' THEN
+                -- keine Zahl: mit dem alten Auszug waere sie zu tief; das Datum sagt, wie alt er ist
+                v_items := v_items || jsonb_build_object(
+                    'label', core.fn_ui_tpl('finance.app.accounts.low'), 'sub', NULL,
+                    'value', core.fn_ui_tpl('finance.app.accounts.low_unknown'),
+                    'gap', false, 'pill', v_pill, 'progress', NULL, 'target', NULL,
+                    'details', finance.fn_app_low_state_explain(v_ls)
+                               || jsonb_build_object('label', core.fn_ui_tpl('finance.app.accounts.d_statement_last'),
+                                                     'value', core.fn_ui_date((v_ls->>'statement_date')::date)));
+            ELSIF v_ls->>'source' = 'outlook' THEN
                 v_o := finance.fn_account_outlook(v_acc.id);
                 v_b := v_o->'bridge';
-                v_det := '[]'::jsonb;
+                v_det := finance.fn_app_low_state_explain(v_ls);
                 IF jsonb_typeof(v_b) = 'object' THEN
                     -- Stand = der bestaetigte (Kontoauszug); eine spaeter erfasste, rueckdatierte Buchung zaehlt mit zu
                     -- „Gebucht seit“ — die Posten summieren weiter exakt auf den tiefsten Stand
@@ -204,6 +219,9 @@ BEGIN
                                          'days', core.fn_ui_num((v_b->>'days')::numeric))),
                             'value', core.fn_ui_money((v_b->>'everyday')::numeric, v_cur));
                     END IF;
+                    v_det := v_det || jsonb_build_object(
+                        'label', core.fn_ui_tpl('finance.app.accounts.low_result', jsonb_build_object('date', core.fn_ui_date((v_ls->>'low_date')::date))),
+                        'value', core.fn_ui_money((v_ls->>'amount')::numeric, v_cur), 'kind', 'result');
                 END IF;
                 v_det := v_det || jsonb_build_object(
                     'label', core.fn_ui_tpl(CASE WHEN v_o->>'buffer_source' = 'account' THEN 'finance.app.accounts.b_buffer_account'
@@ -232,11 +250,7 @@ BEGIN
                 END IF;
                 v_items := v_items || jsonb_build_object(
                     'label', core.fn_ui_tpl('finance.app.accounts.low'),
-                    'sub', CASE WHEN v_o->>'next_income_date' IS NOT NULL
-                                THEN core.fn_ui_tpl('finance.app.accounts.low_before_income', jsonb_build_object(
-                                         'date', core.fn_ui_date((v_ls->>'low_date')::date),
-                                         'income', core.fn_ui_date((v_o->>'next_income_date')::date)))
-                                ELSE core.fn_ui_tpl('finance.app.accounts.low_on', jsonb_build_object('date', core.fn_ui_date((v_ls->>'low_date')::date))) END,
+                    'sub', NULL,
                     'value', core.fn_ui_money((v_ls->>'amount')::numeric, v_cur),
                     'gap', (v_ls->>'gap')::boolean, 'pill', v_pill, 'progress', NULL, 'target', NULL,
                     'details', v_det);
@@ -252,7 +266,8 @@ BEGIN
                                   WHEN v_ls->>'horizon_end' IS NOT NULL
                                   THEN core.fn_ui_tpl('finance.app.accounts.until_beyond', jsonb_build_object(
                                            'month', core.fn_ui_month((v_ls->>'horizon_end')::date))) END,
-                    'gap', (v_ls->>'gap')::boolean, 'pill', v_pill, 'progress', NULL, 'target', NULL);
+                    'gap', (v_ls->>'gap')::boolean, 'pill', v_pill, 'progress', NULL, 'target', NULL,
+                    'details', finance.fn_app_low_state_explain(v_ls, NULL, true));
             END IF;
         ELSIF v_ls->>'source' = 'none' AND (v_acc.account_type = 'cash' OR v_out) THEN
             -- ohne Vorschau (kein Auszug, Alltag unbekannt): die Zeile bleibt, „—“, aufgeklappt was fehlt und wer es behebt
@@ -309,6 +324,7 @@ BEGIN
 
     RETURN jsonb_build_object(
         'ok', true,
+        'gap_note', core.fn_ui_tpl('finance.app.gap'),
         'title', core.fn_ui_tpl('finance.app.accounts.title'),
         'hero', NULL,
         'banners', '[]'::jsonb,

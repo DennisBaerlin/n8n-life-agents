@@ -19,9 +19,11 @@
   --ok: #1E9E6A;
   --warn: #CC8600;
   --alert: #D23F44;
+  --kid: #7A5AF8;
   --bg: #FFFFFF;
   --bg-soft: #F1F8FB;
   --radius: 16px;
+  --radius-pill: 999px;
   --font: -apple-system, "Segoe UI", system-ui, "Helvetica Neue", Arial, sans-serif;
 }
 @media (prefers-color-scheme: dark) {
@@ -33,6 +35,7 @@
     --ok: #3CC08C;
     --warn: #E0A030;
     --alert: #E5605F;
+    --kid: #A48AFB;
     --bg: #12181D;
     --bg-soft: #1B2329;
   }
@@ -45,6 +48,7 @@
   --ok: #3CC08C;
   --warn: #E0A030;
   --alert: #E5605F;
+  --kid: #A48AFB;
   --bg: #12181D;
   --bg-soft: #1B2329;
 }
@@ -112,10 +116,14 @@ body.loading #app { opacity: .45; }
   margin-top: 4px; font-variant-numeric: tabular-nums; overflow-wrap: anywhere;
 }
 .hero-note { color: var(--hint); font-size: 13px; margin-top: 6px; }
+.hero-note[hidden] { display: none; }
+.mark-bar { display: inline-block; width: 4px; height: 12px; margin-right: 6px; vertical-align: -1px; background: var(--kid); border-radius: 2px; }
+/* 24 px Tippflaeche um ein 15-px-Zeichen */
+.info-btn { display: inline-block; min-width: 24px; line-height: 24px; text-align: center; margin: -4px 0 -4px 2px; font-size: 15px; }
 
 .banner {
   position: relative; overflow: hidden; display: flex; align-items: center; gap: 10px; width: 100%;
-  background: var(--card); border-radius: 12px; padding: 12px 14px 12px 18px; margin-bottom: 8px;
+  background: var(--card); border-radius: var(--radius); padding: 12px 14px 12px 18px; margin-bottom: 8px;
 }
 .banner::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 5px; background: var(--st); }
 .banner-tx { flex: 1; min-width: 0; }
@@ -133,6 +141,9 @@ body.loading #app { opacity: .45; }
 .list { list-style: none; margin: 0; padding: 0; }
 .item { padding: 12px 16px; }
 .item + .item { border-top: 1px solid var(--sep); }
+.item.marked { border-left: 4px solid var(--kid); padding-left: 12px; }
+.item.marked:first-child { border-top-left-radius: var(--radius); }
+.item.marked:last-child { border-bottom-left-radius: var(--radius); }
 .row { display: flex; align-items: center; gap: 12px; width: 100%; }
 button.row:active, button.banner:active { opacity: .6; }
 .left { flex: 1; min-width: 0; }
@@ -148,15 +159,16 @@ button.row:active, button.banner:active { opacity: .6; }
 .kv { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; padding: 3px 0; }
 .kv-k { color: var(--hint); min-width: 0; overflow-wrap: anywhere; }
 .kv-v { text-align: right; font-variant-numeric: tabular-nums; flex-shrink: 0; max-width: 60%; overflow-wrap: anywhere; }
+.kv[hidden] { display: none; }
 
 .pill {
   position: relative; isolation: isolate; display: inline-flex; align-items: center; gap: 4px;
-  padding: 2px 9px; border: 1px solid var(--st); border-radius: 999px; font-size: 12.5px; font-weight: 500;
+  padding: 2px 9px; border: 1px solid var(--st); border-radius: var(--radius-pill); font-size: 12.5px; font-weight: 500;
 }
 .pill::before { content: ""; position: absolute; inset: 0; z-index: -1; border-radius: inherit; background: var(--st); opacity: .22; }
 .pill .ic { width: 13px; height: 13px; }
 
-.bar { height: 6px; margin-top: 10px; border-radius: 999px; background: var(--page); overflow: hidden; }
+.bar { height: 6px; margin-top: 10px; border-radius: var(--radius-pill); background: var(--page); overflow: hidden; }
 .bar-fill { height: 100%; border-radius: inherit; background: var(--st); }
 
 .gap { display: flex; align-items: center; gap: 4px; color: var(--hint); font-size: 12.5px; margin-top: 4px; }
@@ -229,6 +241,8 @@ button.row:active, button.banner:active { opacity: .6; }
   let stack = [];
   let seq = 0;
   let detSeq = 0;
+  let gapText = null;
+  const INFO = 'ⓘ';
 
   function el(tag, cls, text) {
     const e = document.createElement(tag);
@@ -407,6 +421,7 @@ button.row:active, button.banner:active { opacity: .6; }
 
   function renderView(v, R) {
     clear(app);
+    gapText = v.gap_note ? txt(R, v.gap_note) : null;
     if (v.title) app.appendChild(el('h1', 'title', txt(R, v.title)));
     if (v.hero && typeof v.hero === 'object') app.appendChild(hero(v.hero, R));
     (Array.isArray(v.banners) ? v.banners : []).forEach((b) => { if (b) app.appendChild(banner(b, R)); });
@@ -415,8 +430,23 @@ button.row:active, button.banner:active { opacity: .6; }
   function gapNote(R) {
     const g = el('div', 'gap');
     g.appendChild(icon('alert'));
-    if (R.has('core.app.gap')) g.appendChild(el('span', null, R.t('core.app.gap')));
+    // view.gap_note: der Text des Pakets (Core kennt keine Kurse); sonst der allgemeine
+    if (gapText) g.appendChild(el('span', null, gapText));
+    else if (R.has('core.app.gap')) g.appendChild(el('span', null, R.t('core.app.gap')));
     return g;
+  }
+  // Info-Zeichen, das einen versteckten Erklaertext ein- und ausblendet (Maus: title zeigt ihn ohne Klick)
+  function infoButton(target, text) {
+    const b = el('button', 'info-btn', INFO);
+    b.type = 'button';
+    b.title = text;
+    b.setAttribute('aria-label', text);
+    b.setAttribute('aria-expanded', 'false');
+    b.addEventListener('click', () => {
+      target.hidden = !target.hidden;
+      b.setAttribute('aria-expanded', target.hidden ? 'false' : 'true');
+    });
+    return b;
   }
   function hero(h, R) {
     const box = el('section', 'hero');
@@ -424,6 +454,20 @@ button.row:active, button.banner:active { opacity: .6; }
     box.appendChild(el('div', 'hero-value', R.val(h.value)));
     if (h.gap === true) box.appendChild(gapNote(R));
     if (h.note) box.appendChild(el('div', 'hero-note', txt(R, h.note)));
+    // hero.hint (optional) {text, more, marked}: kleine Zeile, die sagt, was die Zahl nicht enthaelt
+    if (h.hint && typeof h.hint === 'object') {
+      const line = el('div', 'hero-note');
+      if (h.hint.marked === true) line.appendChild(el('span', 'mark-bar'));
+      line.appendChild(el('span', null, txt(R, h.hint.text)));
+      box.appendChild(line);
+      if (h.hint.more) {
+        const moreText = txt(R, h.hint.more);
+        const more = el('div', 'hero-note', INFO + ' ' + moreText);
+        more.hidden = true;
+        line.appendChild(infoButton(more, moreText));
+        box.appendChild(more);
+      }
+    }
     return box;
   }
   function banner(b, R) {
@@ -462,9 +506,11 @@ button.row:active, button.banner:active { opacity: .6; }
   // Aufklappen (item.details, optional): Zeile wird ein Toggle-Button, darunter eine Schluessel/Wert-Liste. Ein
   // Sprungziel (target) hat Vorrang. Beim Umschalten kurz kein aria-live, sonst liest der Screenreader alles vor.
   function item(it, R) {
-    const li = el('li', 'item');
+    const li = el('li', it.marked === true ? 'item marked' : 'item');
     const go = isTarget(it.target);
     const det = !go && Array.isArray(it.details) && it.details.length > 0;
+    // Erste Detailzeile kind 'info' erklaert die Pille: Info-Zeichen an beiden, Maus-Hinweis an der Pille
+    const infoText = det && it.details[0] && it.details[0].kind === 'info' ? txt(R, it.details[0].label) : null;
     const row = el((go || det) ? 'button' : 'div', det ? 'row toggle' : 'row');
     if (go) { row.type = 'button'; row.addEventListener('click', () => open(it.target)); }
     let list = null;
@@ -476,9 +522,19 @@ button.row:active, button.banner:active { opacity: .6; }
       it.details.forEach((d) => {
         if (!d || typeof d !== 'object') return;
         const kv = el('li', 'kv');
-        kv.appendChild(el('span', 'kv-k', txt(R, d.label)));
+        const label = el('span', 'kv-k', (d.kind === 'info' ? INFO + ' ' : '') + txt(R, d.label));
+        kv.appendChild(label);
         if (!R.isEmpty(d.value)) kv.appendChild(el('span', 'kv-v', txt(R, d.value)));
         list.appendChild(kv);
+        // d.more (optional): Erklaerung einer einzelnen Zeile, erst nach Tipp auf ihr Info-Zeichen
+        if (d.more) {
+          const moreText = txt(R, d.more);
+          const more = el('li', 'kv');
+          more.appendChild(el('span', 'kv-k', INFO + ' ' + moreText));
+          more.hidden = true;
+          label.appendChild(infoButton(more, moreText));
+          list.appendChild(more);
+        }
       });
       row.setAttribute('aria-expanded', 'false');
       row.setAttribute('aria-controls', list.id);
@@ -497,7 +553,7 @@ button.row:active, button.banner:active { opacity: .6; }
     const right = el('div', 'right');
     if (it.value !== null && it.value !== undefined) right.appendChild(el('div', 'value', R.val(it.value)));
     if (it.trend && typeof it.trend === 'object') right.appendChild(trend(it.trend, R));
-    if (it.pill && typeof it.pill === 'object') right.appendChild(pill(it.pill, R));
+    if (it.pill && typeof it.pill === 'object') right.appendChild(pill(it.pill, R, infoText));
     row.appendChild(left);
     if (right.firstChild) row.appendChild(right);
     if (go || det) row.appendChild(icon('chev', 'ic chev'));
@@ -506,11 +562,12 @@ button.row:active, button.banner:active { opacity: .6; }
     if (list) li.appendChild(list);
     return li;
   }
-  function pill(p, R) {
+  function pill(p, R, infoText) {
     const s = el('span', 'pill st-' + stateOf(p.state));
     const ic = icon(p.icon);
     if (ic) s.appendChild(ic);
-    if (p.text) s.appendChild(el('span', null, txt(R, p.text)));
+    if (p.text) s.appendChild(el('span', null, txt(R, p.text) + (infoText ? ' ' + INFO : '')));
+    if (infoText) s.title = infoText;
     return s;
   }
   // item.trend (optional) {direction: up|down|flat, text}: Pfeil nur aus der Whitelist, Text wie jeder andere Wert

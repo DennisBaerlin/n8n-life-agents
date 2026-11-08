@@ -233,6 +233,7 @@ BEGIN
 
     RETURN jsonb_build_object(
         'ok', true,
+        'gap_note', core.fn_ui_tpl('finance.app.gap'),
         'title', core.fn_ui_tpl('finance.app.overview.title'),
         'hero', jsonb_build_object(
             'label', CASE WHEN v_hh THEN core.fn_ui_tpl('finance.app.overview.hero')

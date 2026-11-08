@@ -95,7 +95,7 @@ BEGIN
     RAISE EXCEPTION 'FAIL [1c3] keine Fussnote „nicht in der Summe" mehr'; END IF;
   IF jsonb_path_exists(v, 'strict $.**.state ? (@ == "ok")') THEN
     RAISE EXCEPTION 'FAIL [1c4] keine ok-Pille / kein ok-Balken: %', v; END IF;
-  IF jsonb_path_exists(v, 'strict $.sections[*].items[*] ? (@.details.size() > 8)') THEN
+  IF EXISTS (SELECT 1 FROM core.fn_app_view_lint(v, ARRAY['finance.app.loans.paused']) l WHERE l.rule = 'L5') THEN
     RAISE EXCEPTION 'FAIL [1c5] hoechstens 8 Detail-Zeilen je Kredit'; END IF;
   SELECT i INTO v_it FROM jsonb_array_elements(v->'sections'->0->'items') i WHERE i->>'label' = '__apl_haus__';
   IF v_it->'value' <> core.fn_ui_money(8000, 'EUR') OR (v_it->'progress'->>'pct')::numeric IS DISTINCT FROM 20.0
@@ -103,20 +103,21 @@ BEGIN
           'rate', core.fn_ui_money(300, 'EUR'), 'interest', core.fn_ui_num(3.5, 2),
           'year', (SELECT to_char(payoff_date_projected, 'YYYY') FROM finance.loan_overview WHERE id = v_l1)))
      OR v_it->'pill'->>'state' <> 'warn' OR v_it->'pill'->>'icon' <> 'calendar'
-     OR v_it->'pill'->'text' <> core.fn_ui_tpl('finance.app.loans.fixed_ends',
+     OR v_it->'pill'->'text' <> core.fn_ui_tpl('finance.app.loans.fixed_ends')
+     OR v_it->'details'->0->'label' <> core.fn_ui_tpl('finance.app.loans.i_ends',
           jsonb_build_object('date', core.fn_ui_date((t + interval '12 months')::date - 1))) THEN
     RAISE EXCEPTION 'FAIL [1d] Haus-Kredit (Rest, 20 %% getilgt, Zins/Rate/schuldenfrei im Untertitel, warn 1 Tag vor 12 Monaten): %', v_it; END IF;
   SELECT array_agg(d->'label'->>'value' ORDER BY o) INTO v_keys FROM jsonb_array_elements(v_it->'details') WITH ORDINALITY AS t(d, o);
-  IF v_keys IS DISTINCT FROM ARRAY['finance.app.loans.d_lender', 'finance.app.loans.d_borrower', 'finance.app.loans.d_amount', 'finance.app.loans.d_repaid',
+  IF v_keys IS DISTINCT FROM ARRAY['finance.app.loans.i_ends', 'finance.app.loans.d_lender', 'finance.app.loans.d_borrower', 'finance.app.loans.d_amount', 'finance.app.loans.d_repaid',
                                    'finance.app.loans.d_split', 'finance.app.loans.d_fixed', 'finance.app.loans.d_payoff',
                                    'finance.app.loans.d_interest_left'] THEN
     RAISE EXCEPTION 'FAIL [1d2] Details in fester Reihenfolge, NULL-Zeilen entfallen (kein Laufzeitende), got %', v_keys; END IF;
-  IF v_it->'details'->0->'value' <> to_jsonb('Bank'::text) OR v_it->'details'->1->'value' <> core.fn_ui_tpl('finance.app.common.joint')
-     OR v_it->'details'->3->'value' <> core.fn_ui_tpl('finance.app.loans.d_repaid_value', jsonb_build_object(
+  IF v_it->'details'->1->'value' <> to_jsonb('Bank'::text) OR v_it->'details'->2->'value' <> core.fn_ui_tpl('finance.app.common.joint')
+     OR v_it->'details'->4->'value' <> core.fn_ui_tpl('finance.app.loans.d_repaid_value', jsonb_build_object(
           'pct', core.fn_ui_num(20.0, 1), 'amount', core.fn_ui_money(2000, 'EUR')))
-     OR v_it->'details'->4->'value' <> core.fn_ui_tpl('finance.app.loans.d_split_value', jsonb_build_object(
+     OR v_it->'details'->5->'value' <> core.fn_ui_tpl('finance.app.loans.d_split_value', jsonb_build_object(
           'interest', core.fn_ui_money(23.33, 'EUR'), 'principal', core.fn_ui_money(276.67, 'EUR')))
-     OR v_it->'details'->6->'value' <> (SELECT core.fn_ui_date(payoff_date_projected) FROM finance.loan_overview WHERE id = v_l1) THEN
+     OR v_it->'details'->7->'value' <> (SELECT core.fn_ui_date(payoff_date_projected) FROM finance.loan_overview WHERE id = v_l1) THEN
     RAISE EXCEPTION 'FAIL [1d3] Details: Bank, Gemeinsam, getilgt 20 %% · 2000, Zins 23.33 + Tilgung 276.67, schuldenfrei-Datum, got %', v_it->'details'; END IF;
   SELECT i INTO v_it FROM jsonb_array_elements(v->'sections'->0->'items') i WHERE i->'label' = to_jsonb('<img src=x onerror=alert(1)>'::text);
   IF v_it IS NULL OR jsonb_typeof(v_it->'progress') <> 'null'
@@ -130,8 +131,8 @@ BEGIN
   IF v_it->'pill'->>'state' <> 'neutral' OR v_it->'pill'->>'icon' <> 'pause' OR v_it->'pill'->'text' <> core.fn_ui_tpl('finance.app.loans.paused') THEN
     RAISE EXCEPTION 'FAIL [1f2] pausiert ohne Bindung -> neutral pause: %', v_it; END IF;
   SELECT i INTO v_it FROM jsonb_array_elements(v->'sections'->0->'items') i WHERE i->>'label' = '__apl_abgelaufen__';
-  IF v_it->'pill'->>'state' <> 'warn' OR v_it->'pill'->'text' <> core.fn_ui_tpl('finance.app.loans.fixed_ended',
-       jsonb_build_object('date', core.fn_ui_date(t - 30))) THEN
+  IF v_it->'pill'->>'state' <> 'warn' OR v_it->'pill'->'text' <> core.fn_ui_tpl('finance.app.loans.fixed_ended')
+     OR v_it->'details'->0->'label' <> core.fn_ui_tpl('finance.app.loans.i_ended', jsonb_build_object('date', core.fn_ui_date(t - 30))) THEN
     RAISE EXCEPTION 'FAIL [1g] abgelaufene Bindung -> warn „endete“: %', v_it; END IF;
   IF NOT (v_it->'details' @> jsonb_build_array(jsonb_build_object('label', core.fn_ui_tpl('finance.app.loans.d_fixed',
             jsonb_build_object('date', core.fn_ui_date(t - 30))))))

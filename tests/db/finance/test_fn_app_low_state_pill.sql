@@ -13,10 +13,10 @@ DECLARE
   g jsonb := '{"ok":true,"currency":"EUR","source":"funding","verdict":"goals","amount":-50,"buffer":null,"short_by":null,"gap":false,"on_date":"2027-04-01"}';
 BEGIN
   IF finance.fn_app_low_state_pill(b || '{"state":"warn"}') <> jsonb_build_object('state', 'warn', 'icon', 'clock',
-       'text', core.fn_ui_tpl('finance.app.accounts.pill_tight', jsonb_build_object('buffer', core.fn_ui_money(250, 'EUR')))) THEN
+       'text', core.fn_ui_tpl('finance.app.accounts.pill_tight')) THEN
     RAISE EXCEPTION 'FAIL [1a] buffer warn, got %', finance.fn_app_low_state_pill(b || '{"state":"warn"}'); END IF;
   IF finance.fn_app_low_state_pill(b || '{"state":"alert"}') <> jsonb_build_object('state', 'alert', 'icon', 'alert',
-       'text', core.fn_ui_tpl('finance.app.accounts.pill_short', jsonb_build_object('amount', core.fn_ui_money(110, 'EUR')))) THEN
+       'text', core.fn_ui_tpl('finance.app.accounts.pill_short')) THEN
     RAISE EXCEPTION 'FAIL [1b] buffer alert mit short_by, got %', finance.fn_app_low_state_pill(b || '{"state":"alert"}'); END IF;
   RAISE NOTICE 'PASS [1] verdict buffer';
 
@@ -31,7 +31,7 @@ BEGIN
   -- p_month_row (Konten-Zeile „Reicht bis“, der Monat ist schon der Wert): die Pille sagt, warum — Netto-Abfluss je Monat
   IF finance.fn_app_low_state_pill(g || '{"state":"warn","monthly_out":-3000,"monthly_in":220}', true)
        <> jsonb_build_object('state', 'warn', 'icon', 'calendar',
-            'text', core.fn_ui_tpl('finance.app.accounts.pill_net_out', jsonb_build_object('amount', core.fn_ui_money(2780, 'EUR')))) THEN
+            'text', core.fn_ui_tpl('finance.app.accounts.pill_net_out')) THEN
     RAISE EXCEPTION 'FAIL [4a] month_row warn netto, got %', finance.fn_app_low_state_pill(g || '{"state":"warn","monthly_out":-3000,"monthly_in":220}', true); END IF;
   IF finance.fn_app_low_state_pill(g || '{"state":"alert","monthly_out":-3000,"monthly_in":220}', true) ->> 'state' <> 'alert' THEN
     RAISE EXCEPTION 'FAIL [4b] month_row alert behaelt den Zustand'; END IF;
@@ -53,5 +53,10 @@ BEGIN
      OR finance.fn_app_low_state_pill(NULL) IS NOT NULL THEN
     RAISE EXCEPTION 'FAIL [3] ok/neutral/ohne state/ok:false/NULL -> keine Pille'; END IF;
   RAISE NOTICE 'PASS [3] ohne Handlungsbedarf keine Pille';
+
+  IF finance.fn_app_low_state_pill('{"ok":true,"currency":"EUR","source":"outlook","verdict":"stale","state":"warn"}')
+       IS DISTINCT FROM jsonb_build_object('state', 'warn', 'icon', 'clock', 'text', core.fn_ui_tpl('finance.app.accounts.pill_stale')) THEN
+    RAISE EXCEPTION 'FAIL [5] alter Auszug -> gelbe Pille ohne Betrag'; END IF;
+  RAISE NOTICE 'PASS [5] alter Auszug';
 END $$;
 ROLLBACK;

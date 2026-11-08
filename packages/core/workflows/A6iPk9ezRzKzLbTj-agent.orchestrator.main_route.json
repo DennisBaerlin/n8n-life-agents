@@ -5046,7 +5046,7 @@
                   },
                   {
                       "parameters":  {
-                                         "description":  "Onboarding and help: set up the household (who belongs to it), explain what the system can do, which functions are installed and how to add more. Route here for /onboarding, \"richte mich ein\", \"ich bin neu\", \"wie fange ich an\", \"wie geht es jetzt los\", \"was kann ich noch installieren\", follow-ups of the household setup and \"which area next\", and meta/how-do-I questions. NOT for concrete work inside an installed domain (bookings, advice, plans, register entries) and NOT for finishing or skipping a domain\u0027s onboarding area (\"dieser Bereich ist fertig\", \"da fehlt nichts mehr\") - that goes to that domain\u0027s agent.",
+                                         "description":  "Onboarding and help: set up the household (who belongs to it), explain what the system can do, which functions are installed and how to add more. Route here for \"richte mich ein\", \"ich bin neu\", \"wie fange ich an\", \"wie geht es jetzt los\", \"was kann ich noch installieren\", follow-ups of the household setup and \"which area next\", and meta/how-do-I questions. NOT for concrete work inside an installed domain (bookings, advice, plans, register entries) and NOT for finishing or skipping a domain\u0027s onboarding area (\"dieser Bereich ist fertig\", \"da fehlt nichts mehr\") - that goes to that domain\u0027s agent.",
                                          "workflowId":  {
                                                             "__rl":  true,
                                                             "value":  "XoSQPFWjY70o6llv",

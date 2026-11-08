@@ -6,6 +6,7 @@
 #   - ohne Bild genau ein gueltiger Upload (static, attach://, JPEG), einmal je Bot; ein selbst geloeschtes Bild bleibt weg;
 #   - Aus-Schalter BOT_PROFILE_PHOTO=0, kein Bot-Schluessel in Ausgabe oder Protokoll;
 #   - das committete Bild (JPEG, 640 x 640) und, im Substrat, die mitgelieferte Datei im installierten Baum.
+# Faehrt zusaetzlich tests/mock_telegram/bot_username_cases.sh (_sync_bot_username, Bot-Name aus getMe).
 # Belegt NICHT das Verhalten des echten Telegram (Bot API: setMyProfilePhoto, getUserProfilePhotos mit eigener Kennung).
 # Dazu prueft es, dass das Test-Substrat den Schritt abschaltet: es installiert mit einem echten Test-Bot-Schluessel.
 # Braucht kein n8n, kein Netz und keine enable_mock_*: nur einen laufenden Container mit bash, curl, jq und node.
@@ -52,20 +53,24 @@ foreach ($pair in $pairs) {
     if ($r.Code -ne 0) { throw "docker cp $($pair[0]) fehlgeschlagen: $($r.Output -join ' | ')" }
 }
 
-$r = Invoke-Native docker @('exec', $Container, 'bash', "$root/mock_telegram/profile_photo_cases.sh", $root, "$Port")
-$lines = @($r.Output)
-foreach ($l in $lines) {
-    if ($l -match '^PASS ') { if ($Verbose) { Write-Host "    [OK]   $($l.Substring(5))" -ForegroundColor DarkGray } }
-    elseif ($l -match '^SKIP ') { Write-Host "    [SKIP] $($l.Substring(5))" -ForegroundColor Yellow }
-    elseif ($l -match '^FAIL ') { Write-Host "    [FAIL] $($l.Substring(5))" -ForegroundColor Red }
-    elseif ($Verbose) { Write-Host "    $l" -ForegroundColor DarkGray }
+$passed = 0
+foreach ($cases in 'profile_photo_cases.sh', 'bot_username_cases.sh') {
+    $r = Invoke-Native docker @('exec', $Container, 'bash', "$root/mock_telegram/$cases", $root, "$Port")
+    $lines = @($r.Output)
+    foreach ($l in $lines) {
+        if ($l -match '^PASS ') { if ($Verbose) { Write-Host "    [OK]   $($l.Substring(5))" -ForegroundColor DarkGray } }
+        elseif ($l -match '^SKIP ') { Write-Host "    [SKIP] $($l.Substring(5))" -ForegroundColor Yellow }
+        elseif ($l -match '^FAIL ') { Write-Host "    [FAIL] $($l.Substring(5))" -ForegroundColor Red }
+        elseif ($Verbose) { Write-Host "    $l" -ForegroundColor DarkGray }
+    }
+    $thisPassed = @($lines | Where-Object { $_ -match '^PASS ' }).Count
+    $caseFails = @($lines | Where-Object { $_ -match '^FAIL ' }).Count
+    $passed += $thisPassed
+    $failed += $caseFails
+    # Abbruch des Runners ohne FAIL-Zeile (Setup, Syntax) zaehlt als Fehler.
+    if ($r.Code -ne 0 -and $caseFails -eq 0) { $failed++; Write-Host "    [FAIL] $cases brach ab (exit $($r.Code)): $($lines -join ' | ')" -ForegroundColor Red }
+    if ($thisPassed -eq 0 -and $caseFails -eq 0) { $failed++; Write-Host "    [FAIL] $cases lieferte keine Faelle" -ForegroundColor Red }
 }
-$passed = @($lines | Where-Object { $_ -match '^PASS ' }).Count
-$caseFails = @($lines | Where-Object { $_ -match '^FAIL ' }).Count
-$failed += $caseFails
-# Abbruch des Runners ohne FAIL-Zeile (Setup, Syntax) zaehlt als Fehler.
-if ($r.Code -ne 0 -and $caseFails -eq 0) { $failed++; Write-Host "    [FAIL] profile_photo_cases.sh brach ab (exit $($r.Code)): $($lines -join ' | ')" -ForegroundColor Red }
-if ($passed -eq 0 -and $caseFails -eq 0) { $failed++; Write-Host "    [FAIL] profile_photo_cases.sh lieferte keine Faelle" -ForegroundColor Red }
 
 Write-Host ("-" * 64)
 if ($failed -eq 0) { Write-Host "bot_profile_photo_test: OK ($passed Faelle)" -ForegroundColor Green }

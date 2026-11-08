@@ -810,9 +810,26 @@ _set_bot_command_menus() {
   else
     note "Telegram-Owner-Menue noch nicht gesetzt (Owner noch nicht verbunden) — das Pairing setzt es danach automatisch."
   fi
+  _sync_bot_username "$token"
   # Mini-App „Übersicht“ (docs/package-contract.md §3.12): die Menue-Knoepfe haengen an denselben Aufrufern (Install,
   # Update, Pairing, Paket-Statuswechsel) wie das Befehlsmenue. Den Pruef-Schluessel setzt _wire_telegram eigenstaendig.
   _set_bot_menu_buttons "$token"
+}
+
+# _sync_bot_username <bot-token> — traegt den Namen aus getMe in core.config ein (core.fn_set_bot_username). Best-effort,
+#   nie fatal; hier statt im minuetlichen Menue-Lauf, damit getMe nur bei Install, Update, Pairing und Paket-Wechsel laeuft.
+_sync_bot_username() {
+  local token="$1" name
+  need_cmd jq || return 0
+  name="$(tg_api_curl "$token" getMe -fsS --max-time 10 2>/dev/null | jq -r '.result.username // empty' 2>/dev/null || true)"
+  # Das Muster sichert auch das Einsetzen in die SQL; [[ =~ ]] statt grep, das eine zweite Zeile durchliesse.
+  if [[ ! "$name" =~ ^[A-Za-z0-9_]{5,32}$ ]]; then
+    warn "Bot-Name nicht ermittelt (Telegram-Antwort unklar) — Wert bleibt, nächstes Update prüft neu."
+    return 0
+  fi
+  pg_su_psql -X -tA -d "$N8N_DB_NAME" -c "SELECT core.fn_set_bot_username('$name')" >/dev/null 2>&1 \
+    || warn "Bot-Name konnte nicht gespeichert werden — nächstes Update versucht es neu."
+  return 0
 }
 
 # _ensure_app_secret <bot-token> — Pruef-Schluessel der Mini-App = HMAC_SHA256(key="WebAppData", msg=Bot-Token)

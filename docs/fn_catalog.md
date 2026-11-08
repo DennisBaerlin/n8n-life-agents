@@ -7,7 +7,7 @@
 > bleibt die jeweilige SQL-Datei. Nach jeder fn-Aenderung neu generieren + committen;
 > Drift ist hartes Gate (prek-Hook `fn-catalog` -> `gen_fn_catalog.ps1 -Verify`).
 
-Umfang: 503 fn-Dateien.
+Umfang: 504 fn-Dateien.
 
 ## finance.fn_account_everyday_basis (READ, STABLE) -- Grundlage der geschaetzten Alltagsausgaben eines Kontos, je Kontoauszug
 - `finance.fn_account_everyday_basis(p_account_id int) -> TABLE(period_start date, period_end date, days int, unmatched_out numeric, unmatched_in numeric, per_day numeric, counted boolean, reason text, oneoff_out numeric, oneoff_threshold numeric)`
@@ -2085,6 +2085,11 @@ Umfang: 503 fn-Dateien.
 - `finance.fn_set_asset_classes(p jsonb) -> jsonb`
 - jsonb-Keys: asset_class, asset_class_before, assignments, candidates, depot_name, holding_id, index, name, ok, position, reason
 - Owner-Entscheid 2026-10-23: die Anlageklasse wird in der Finanzplanung geklaert -> der Finanzberater (und der Buchhalter) ordnet alle offenen Positionen mit EINER Karte zu. Setzt NUR asset_class (Stammdatum), nie Bestand, Einstand oder Buchungen. Keine zweite Pruef-Logik: je Zeile fn_find_holding (Depot + Position) und fn_set_holding({holding_id, asset_class}) (Format-Pruefung lowercase snake). Reservierter Key outside_plan = "bewusst ausserhalb des Haushaltsplans" (z. B. Kinder-Depot; fn_advisor_review meldet ihn nicht). Eingabe jsonb: { assignments: [ {depot_name, position (Symbol oder ISIN), asset_class}, ... ] } (1..50) Atomar: ALLE Zeilen werden zuerst aufgeloest/geprueft (Position unbekannt/mehrdeutig, Format, doppelte Position) -> eine Ablehnung = KEIN Write, {ok:false, reason, errors:[{index, reason, candidates?}], candidates (alle, fuer das Gate)}. RUECKGABE {ok:true, updated:[{holding_id, name, depot_name, asset_class_before, asset_class}], card_lines} card_lines = je Position eine Kartenzeile (Name, Depot, alt -> neu) fuer das Gate (core.fn_dry_run-Probelauf).
+
+## core.fn_set_bot_username
+- `core.fn_set_bot_username(p_name text) -> jsonb`
+- jsonb-Keys: --
+- core.fn_set_bot_username — traegt den Telegram-Benutzernamen des Bots in core.config (telegram.bot_username) ein Eingabe: p_name (Benutzername aus getMe, ohne @). Der Name folgt zwingend aus dem Bot-Token, darum ersetzt er auch einen von Hand gesetzten Wert; der Update-Seed laesst ihn stehen (Wert ungleich Default, core.fn_config_seed). Rueckgabe: {ok:true, changed} (false = Wert stimmte schon, kein Schreibvorgang); {ok:false, code:'invalid_name'|'no_row'}. Aufrufer: postgres-Superuser (provisioning/lib/deploy_workflows.sh _sync_bot_username). Tests: tests/db/core/test_fn_set_bot_username.sql, tests/mock_telegram/bot_username_cases.sh
 
 ## estate.fn_set_case_task
 - `estate.fn_set_case_task(p jsonb) -> jsonb`

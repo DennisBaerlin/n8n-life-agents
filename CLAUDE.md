@@ -60,7 +60,7 @@ n8n 2.45.4 · PostgreSQL 17. Der getrackte Baum ist die Source of Truth, keine I
 
 ## Entwicklungszyklus
 
-Ein Diff, der in einen Satz passt, braucht keinen Plan. Blast-Radius-Arbeit (Tabelle unten) → `/feature`; neue Architektur/Mechanik → vorher `/arch-challenge`; parallele Sessions → `/coordinate`, „du bist die Leitung“ → `/leitung`. Ein rotes Gate wird gefixt, nicht mit `--no-verify` umgangen. Neues, unabhängiges Thema nach abgeschlossener Arbeit → Owner in einem Satz auf `/clear` oder neue Session hinweisen, Offenes vorher in Plan-Datei/Memory; mitten im Sprint nicht.
+Ein Diff, der in einen Satz passt, braucht keinen Plan. Blast-Radius-Arbeit (Tabelle unten) → `/feature`; neue Architektur/Mechanik → vorher `/arch-challenge`; parallele Sessions → `/coordinate` (eine Leitung zur Zeit, Stand-Datei `.claude/plans/leitung-stand.md`), „du bist die Leitung“ → `/leitung`. Ein rotes Gate wird gefixt, nicht mit `--no-verify` umgangen. Neues Thema nach abgeschlossener Arbeit → Owner auf `/clear` oder neue Session hinweisen, Offenes vorher ins Memory; mitten im Sprint nicht.
 
 ## Compact Instructions
 
@@ -99,4 +99,4 @@ Alle Sprachmodelle sind Claude (Register `packages/core/seed/ai_models.json`); D
 
 ## Subagenten
 
-Delegieren macht keine Antwort besser, es lohnt nur für breites, paralleles Lesen oder lange Rohausgaben. Ein frischer Prüfer hilft, weil er die Herleitung nicht kennt (Plan-Reviewer, `/code-review`, `ui-review`, `/privacy-review`): ihm Artefakt und Maßstab geben, nicht die Begründung. Code-Suche → `Explore` (Sonnet im Frontmatter); Agenten-Typen ohne Modell im Frontmatter bekommen ein explizites `model`.
+Delegieren lohnt nur für breites, paralleles Lesen oder lange Rohausgaben. Ein frischer Prüfer hilft, weil er die Herleitung nicht kennt (Plan-Reviewer, `/code-review`, `ui-review`, `/privacy-review`): ihm Artefakt und Maßstab geben, nicht die Begründung. Code-Suche → `Explore` (Sonnet im Frontmatter); Agenten-Typen ohne Modell im Frontmatter bekommen ein explizites `model`.

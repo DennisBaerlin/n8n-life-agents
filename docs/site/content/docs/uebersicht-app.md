@@ -97,9 +97,21 @@ Die Übersicht spricht die Sprache, die du mit `/language` eingestellt hast.
 
 Die Übersicht zeigt nur an. Buchen, Ändern und Löschen läuft wie gewohnt im Chat, mit der Bestätigungs-Karte davor (siehe [Chatten & Bestätigen](chatten-bestaetigen.html)). Alle Zahlen rechnet die Datenbank aus denselben Daten, die auch der Chat nutzt; die App selbst rechnet nichts.
 
+## Aus der Übersicht im Chat nachfragen
+
+Gibt es bei einer Zeile etwas zu tun, steht aufgeklappt unter „Das kannst du tun“ ein Vorschlag. Auf den Seiten Konten und Sparziele hat so eine Zeile den Knopf **„Im Chat fragen ›“**. Ein Tipp darauf schließt die Übersicht und öffnet den Chat mit dem Bot. Im Eingabefeld steht schon eine passende Frage, zum Beispiel „Auf Erlenkasse Giro wird es knapp. Welche Zahlung lässt sich verschieben?“. Du kannst den Text ändern und schickst ihn selbst ab; erst dann geht etwas an den Bot, und gebucht wird auch dann nur nach deiner Bestätigung im Chat.
+
+Der Knopf fehlt, wenn die Telegram-App dafür zu alt ist oder der Bot-Name noch nicht eingetragen ist. Die Übersicht zeigt dann nur den Vorschlag.
+
 ## Befehle gehen jetzt über „/“
 
 Der Knopf „📊 Übersicht“ sitzt an der Stelle, an der vorher der Menü-Knopf mit der Befehlsliste war. Die Befehle gibt es weiterhin: Tippe im Eingabefeld **„/“**, dann klappt die Liste auf (`/help`, `/reminders` usw., siehe [Befehle](befehle.html)).
+
+## Wann der Knopf erscheint
+
+Der Knopf „📊 Übersicht“ kommt erst, wenn die Einrichtung durch ist: Der Haushalt und jedes Paket mit eigener Übersichts-Seite müssen fertig oder bewusst übersprungen sein. Vorher gäbe es nur leere Seiten. Einmal da, bleibt der Knopf, auch wenn mit einem Update ein neuer Einrichtungsschritt dazukommt. Er verschwindet nur, wenn die Einrichtung ganz zurückgesetzt wird.
+
+Wer den Knopf neu bekommt, sieht im Chat einmal eine kurze Animation in der eigenen Sprache, die zeigt, wo er sitzt. Chats, die den Knopf schon hatten, bekommen sie nicht.
 
 ## Wer was sieht
 

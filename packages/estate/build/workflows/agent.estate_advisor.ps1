@@ -139,6 +139,11 @@ function Build-AgentEstateAdvisor {
     # (household: von der fn ignoriert); package ist fix im Tool. Die Key-Liste kommt aus
     # onboarding/sections.json (Get-OnboardingSectionKeys) — abgetippt fehlte system_profile.
     $estateSectionKeys = (Get-OnboardingSectionKeys $RepoRoot 'estate') -join ', '
+    # Die 16 Slugs stehen im Manifest; abgetippt nannte die Beschreibung nur fuenf.
+    $estateManifest = [IO.File]::ReadAllText("$RepoRoot\packages\estate\manifest.json", [Text.Encoding]::UTF8) | ConvertFrom-Json
+    $bundeslandMatch = [regex]::Match([string]$estateManifest.config.general.bundesland.description, 'Valid slugs: ([a-z_, ]+)\.')
+    $bundeslandSlugs = if ($bundeslandMatch.Success) { $bundeslandMatch.Groups[1].Value } else { '' }
+    if (@($bundeslandSlugs -split ',\s*' | Where-Object { $_ }).Count -ne 16) { throw 'estate manifest: bundesland description muss nach "Valid slugs:" genau 16 Slugs nennen' }
     $nToolSetOnb = New-AdvisorToolNode 'tool_set_onboarding_section' 'agent.estate.tool_set_onboarding_section' `
         "Mark ONE estate ONBOARDING section as done - ONLY while onboarding (the task names an onboarding section), NEVER during normal advice or an event conversation. CALL this right after you walked a section through with the user (status=completed) or the user deliberately skipped it (status=skipped). section_key is one of the ESTATE ONBOARDING sections: $estateSectionKeys. No confirmation button: this only flips a progress flag, it writes NO register data." `
         @(
@@ -355,7 +360,7 @@ function Build-AgentEstateAdvisor {
             ,@('case_type', 'death (a member died) or incapacity (Vorsorgefall/Pflegefall - a member cannot act for themselves)', 'string')
             ,@('event_date', ('Date of death or onset of incapacity: ' + (Get-DateParamHint)), 'string')
             ,@('knowledge_date', ('Date the household learned of it: ' + (Get-DateParamHint) + '; leave empty if same as event_date'), 'string', '')
-            ,@('bundesland', 'German state slug for deadline/holiday calculation: bayern, nordrhein_westfalen, berlin, hessen, sachsen, ... Leave empty ONLY if it is configured.', 'string', '')
+            ,@('bundesland', ('German state for deadline/holiday calculation, exactly one of these slugs: ' + $bundeslandSlugs + '. Leave empty ONLY if it is configured.'), 'string', '')
             ,@('tenant', 'true or false only if the user said whether the affected person rented a home; empty = derive from the register', 'string', '')
             ,@('employed', 'true or false only if the user said whether the affected person was employed; empty = derive from the register', 'string', '')
             ,@('pension_relevant', 'true or false only if the user said whether a statutory pension is involved; empty = derive from the register', 'string', '')
@@ -369,7 +374,7 @@ function Build-AgentEstateAdvisor {
         @(
             ,@('case_id', 'The id of the open case (from estate.cases)', 'string')
             ,@('knowledge_date', ('New knowledge date: ' + (Get-DateParamHint) + '; empty to leave unchanged'), 'string', '')
-            ,@('bundesland', 'New German state slug; empty to leave unchanged', 'string', '')
+            ,@('bundesland', ('New German state, exactly one of these slugs: ' + $bundeslandSlugs + '; empty to leave unchanged'), 'string', '')
             ,@('tenant', 'true / false / register (forget the statement); empty = unchanged. The affected person rented a home', 'string', '')
             ,@('employed', 'true / false / register; empty = unchanged. The affected person was employed', 'string', '')
             ,@('pension_relevant', 'true / false / register; empty = unchanged. A statutory pension is involved', 'string', '')

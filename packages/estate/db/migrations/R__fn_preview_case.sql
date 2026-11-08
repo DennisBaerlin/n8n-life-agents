@@ -92,7 +92,7 @@ BEGIN
                     'mecklenburg_vorpommern', 'niedersachsen', 'nordrhein_westfalen', 'rheinland_pfalz',
                     'saarland', 'sachsen', 'sachsen_anhalt', 'schleswig_holstein', 'thueringen') THEN
         RETURN jsonb_build_object('ok', false, 'reason',
-            'invalid bundesland "' || v_bl || '" — use a German state slug like bayern or nordrhein_westfalen.');
+            'invalid bundesland "' || v_bl || '" — use one of these slugs: baden_wuerttemberg, bayern, berlin, brandenburg, bremen, hamburg, hessen, mecklenburg_vorpommern, niedersachsen, nordrhein_westfalen, rheinland_pfalz, saarland, sachsen, sachsen_anhalt, schleswig_holstein, thueringen.');
     END IF;
 
     SELECT id, case_type INTO v_open_id, v_open_type

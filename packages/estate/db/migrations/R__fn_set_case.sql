@@ -64,7 +64,7 @@ BEGIN
          'mecklenburg_vorpommern', 'niedersachsen', 'nordrhein_westfalen', 'rheinland_pfalz',
          'saarland', 'sachsen', 'sachsen_anhalt', 'schleswig_holstein', 'thueringen') THEN
         RETURN jsonb_build_object('ok', false, 'reason',
-            'invalid bundesland "' || v_new_bl || '" — use a German state slug like bayern.');
+            'invalid bundesland "' || v_new_bl || '" — use one of these slugs: baden_wuerttemberg, bayern, berlin, brandenburg, bremen, hamburg, hessen, mecklenburg_vorpommern, niedersachsen, nordrhein_westfalen, rheinland_pfalz, saarland, sachsen, sachsen_anhalt, schleswig_holstein, thueringen.');
     END IF;
 
     v_new_flags := p->'flags';

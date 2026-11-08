@@ -319,8 +319,9 @@ BEGIN
             -- ein Notiz-Edit; Notiz/Anlageklasse/Person aendern beim Broker nichts)
             CASE WHEN v_status IS DISTINCT FROM v_plan.status AND v_status IS NOT NULL
                  THEN finance.fn_merge_fold(finance.fn_savings_funding_fold(ARRAY[v_rp.account_id], v_status = 'active'),
-                          jsonb_build_object('card_lines', finance.fn_bank_setup_note(v_plan.recurring_payment_id,
-                              CASE WHEN v_status = 'paused' THEN 'bank_stop' ELSE 'bank_change' END)))
+                          jsonb_build_object('card_lines', CASE WHEN v_status = 'paused'
+                              THEN finance.fn_bank_stop_note_told(v_plan.recurring_payment_id)
+                              ELSE finance.fn_bank_setup_note(v_plan.recurring_payment_id, 'bank_change') END))
                  ELSE '{}'::jsonb END);
     END IF;
 END;

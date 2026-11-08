@@ -7,7 +7,7 @@
 --   Yahoo offenbar gar nichts -> feed_down=true, stale_since = juengster Kurs; der Cron sendet dann EINE Meldung statt
 --   einer Karte je Position (die Symbol-Suche fiele ohnehin aus).
 --   RE-ARM (Seiteneffekt, darum VOLATILE): jede Position OHNE Luecke (auch verkaufte) bekommt
---   core.fn_notify_resolve('finance_prices', <id>), ohne Feed-Ausfall auch der Key 'feed_down' -> eine spaeter neu
+--   core.fn_notify_resolve('finance:prices', <id>), ohne Feed-Ausfall auch der Key 'feed_down' -> eine spaeter neu
 --   entstehende Luecke meldet sofort. Bewusst NICHT core.fn_notify_reconcile: das ist advisor-only (kein Paket-Grant,
 --   R__fn_provision_package_roles). Gemeldet (gelatcht) wird erst im Cron je Karte via fn_price_gap_claim.
 --   RUECKGABE jsonb: { feed_down, stale_since, fx:{CCY: rate EUR->CCY, EUR:1},
@@ -58,10 +58,10 @@ BEGIN
         SELECT h.id FROM finance.depot_holdings h
         WHERE NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v_gaps) g WHERE (g->>'holding_id')::int = h.id)
     LOOP
-        PERFORM core.fn_notify_resolve('finance_prices', v_id::text);
+        PERFORM core.fn_notify_resolve('finance:prices', v_id::text);
     END LOOP;
     IF NOT v_feed_down THEN
-        PERFORM core.fn_notify_resolve('finance_prices', 'feed_down');
+        PERFORM core.fn_notify_resolve('finance:prices', 'feed_down');
     END IF;
 
     RETURN jsonb_build_object(

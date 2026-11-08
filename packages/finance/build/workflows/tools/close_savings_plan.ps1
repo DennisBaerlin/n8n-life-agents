@@ -64,7 +64,7 @@ function Build-CloseSavingsPlan {
 
     $stickyFn = Build-Sticky 'fn_close_savings_plan: Hard-DELETE vs. Soft-Close' @(1760, -260) `
         'Smart-Close-Guard: tx_count entscheidet' `
-        'fn und Karte (Read Plan) zählen Transaktionen über die ganze Vorgänger-Kette des Plans (fn_recurring_lineage; nach einer Betragsänderung liegt die Historie auf der alten Zeile). tx_count=0: Hard-DELETE finance.savings_plans, dann alle Ketten-rps; action=deleted. tx_count>0: Soft-Close — alle noch laufenden Ketten-Glieder enden heute (fn_end_recurring_chain, status=paused); plan.status=paused; action=closed. RAISE EXCEPTION bei Plan-nicht-gefunden.' 240 480
+        'fn und Karte (Read Plan) zählen Transaktionen über die ganze Vorgänger-Kette des Plans (fn_recurring_lineage; nach einer Betragsänderung liegt die Historie auf der alten Zeile). tx_count=0: Hard-DELETE finance.savings_plans, dann alle Ketten-rps; action=deleted. tx_count>0: Soft-Close — alle noch laufenden Ketten-Glieder enden heute (fn_end_recurring_chain, status=paused); plan.status=paused; action=closed. Beide Wege liefern card_lines mit dem Hinweis, den Sparplan auch beim Broker zu beenden (der Bot ändert dort nichts, eine spätere Erinnerung kommt nicht). RAISE EXCEPTION bei Plan-nicht-gefunden.' 240 480
 
     $stickyDry = Build-Sticky 'Probelauf vor der Karte' @(440, -220) `
         'core.fn_dry_run (DB ist das Gesetz)' `

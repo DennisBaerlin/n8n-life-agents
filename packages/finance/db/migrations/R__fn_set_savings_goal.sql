@@ -564,11 +564,11 @@ BEGIN
     IF v_new_rp IS NOT NULL THEN
         v_bank := CASE WHEN v_old IS NULL THEN finance.fn_bank_setup_note(v_new_rp, 'bank_setup') ELSE '[]'::jsonb END;
     ELSIF v_stop_funders THEN
-        v_bank := COALESCE(finance.fn_bank_setup_note(v_row.recurring_payment_id, 'bank_stop'), '[]'::jsonb)
+        v_bank := COALESCE(finance.fn_bank_stop_note_told(v_row.recurring_payment_id), '[]'::jsonb)
                || COALESCE((
                       SELECT jsonb_agg(n ORDER BY sp.id)
                         FROM finance.savings_plans sp,
-                             jsonb_array_elements(finance.fn_bank_setup_note(sp.recurring_payment_id, 'bank_stop')) n
+                             jsonb_array_elements(finance.fn_bank_stop_note_told(sp.recurring_payment_id)) n
                        WHERE sp.savings_goal_id = v_id), '[]'::jsonb);
     ELSIF v_rate IS NOT NULL OR v_rate_change IS NOT NULL OR (v_reserve IS NOT NULL AND v_reserve IS DISTINCT FROM v_pot_before)
           OR (v_status = 'active' AND v_row.status IS DISTINCT FROM 'active') THEN

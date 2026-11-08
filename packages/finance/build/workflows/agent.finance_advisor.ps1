@@ -260,6 +260,7 @@ function Build-AgentFinanceAdvisor {
             ,@('max_plausible', 'Upper plausibility bound', 'string', '')
             ,@('max_jump_pct', 'Optional continuity guard: max percent deviation from last clean value', 'string', '')
             ,@('check_interval', 'How often to check, e.g. 12 hours / 1 day / 1 week / 1 month', 'string')
+            ,@('first_check', ('Optional day of the FIRST check, which also anchors the rhythm (every Monday = next monday), ' + (Get-DateParamHint) + '; empty = first check right away'), 'string', '')
             ,@('action_note', 'German note sent verbatim in the alert: what to do when it fires', 'string', '')
         ) ([ordered]@{ domain = 'finance'; package = 'finance' }) @(800, 208) -StartNode $START_NODE
 

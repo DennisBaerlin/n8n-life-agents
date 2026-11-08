@@ -30,7 +30,7 @@
 --   Vor dem UPDATE materialisiert core.fn_ensure_onboarding_person die Sektionszeilen der Person aus dem Katalog
 --   (Lazy-Onboarding einer weiteren Person). UPDATE + Completeness-Read tragen dann das person_id-Praedikat.
 --   household-Pakete (finance/guide/estate, scope-frei in context_scopes): kein person_id; schreiben darf NUR der
---   Owner — ein positiv aufgeloestes Mitglied (p->>'chat_id') -> {ok:false, reason:'owner_only'} ohne Write, ueber
+--   Owner — ein positiv aufgeloestes Mitglied (p->>'chat_id') -> {ok:false, code:'owner_only', reason (EN-Satz mit naechstem Schritt)} ohne Write, ueber
 --   das publizierte Fenster core.fn_check_write_permission('owner_only') (Pass-Through ohne chat_id = CLI/Test).
 --   Die Paket-Tools reichen dafuer die build-fixe chat_id (nie LLM) im Payload durch.
 -- ============================================================
@@ -89,7 +89,9 @@ BEGIN
         -- Haushalts-Sektion (core/household-Paket): nur der Owner. Sonst setzte ein Mitglied z. B. household auf
         -- 'unknown' und sperrte per Core-first-Gate alle Paket-Agenten fuer den ganzen Haushalt. Publiziertes
         -- DEFINER-Fenster (laeuft auch unter den engen <pkg>_rw-Rollen); Pass-Through ohne/nicht-numerische chat_id.
-        RETURN jsonb_build_object('ok', false, 'reason', 'owner_only');
+        RETURN jsonb_build_object('ok', false, 'code', 'owner_only',
+            'reason', 'Only the household owner can change the shared ' || v_pkg || ' setup step "' || COALESCE(v_key, '')
+                   || '". Tell the user the owner can finish it in their own chat.');
     END IF;
 
     -- Roter Faden: Vor-/Nach-Zustand des Bereichs serialisiert je (Paket, Person) -> genau EIN Kipp je Uebergang.

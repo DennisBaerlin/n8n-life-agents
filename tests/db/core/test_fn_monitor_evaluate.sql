@@ -558,4 +558,24 @@ BEGIN
   RAISE NOTICE 'PASS evaluate [erster Warntag, gerundeter Rueckgang, checked]';
 END $$;
 
+-- Termin-Trigger mit langem Pruef-Rhythmus: der naechste Pruefslot wird auf Erinnerungsfenster bzw. Frist gekappt,
+-- sonst ruecken Monatsslots hinter die Frist und am Fristtag feuert nichts.
+DO $$
+DECLARE v jsonb; v_due date := CURRENT_DATE + 10; v_tz text := current_setting('TimeZone');
+BEGIN
+  PERFORM set_config('TimeZone', 'Europe/Berlin', true);
+  v := agent.fn_create_monitor_trigger(jsonb_build_object('domain','__t_mon__','label','__t_mon_s27_frist__',
+         'trigger_type','date','acquisition_method','none','due_date',v_due::text,'warn_days_before',0,
+         'check_interval','1 month','action_note','Beispiel-Frist'));
+  IF NOT (v->>'ok')::boolean THEN RAISE EXCEPTION 'SETUP [S2.7] %', v; END IF;
+  PERFORM agent.fn_monitor_evaluate(jsonb_build_object('now', ((CURRENT_DATE + 1)::timestamp + interval '10 hours')::timestamptz));
+  v := agent.fn_monitor_evaluate(jsonb_build_object('now', (v_due::timestamp + interval '10 hours')::timestamptz));
+  IF NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v->'fired') e WHERE e->>'label' = '__t_mon_s27_frist__') THEN
+    RAISE EXCEPTION 'FAIL [S2.7] Frist % nicht am Fristtag gefeuert; naechster Pruefslot %',
+      v_due, (SELECT next_check_at FROM agent.monitor_triggers WHERE label = '__t_mon_s27_frist__');
+  END IF;
+  PERFORM set_config('TimeZone', v_tz, true);
+  RAISE NOTICE 'PASS [S2.7]';
+END $$;
+
 ROLLBACK;

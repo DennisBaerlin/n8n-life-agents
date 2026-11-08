@@ -56,21 +56,6 @@ if (-not $state.mock_telegram) {
 # Tatsaechlichen Gateway-Upstream pruefen (das Laufzeit-Drop-in ueberlebt keinen Container-Neustart) — sonst Credits.
 Assert-LlmGatewayUpstream -Container $Container -Expect mock
 
-function Invoke-N8nGet([string]$Path) { Invoke-RestMethod -Uri "$N8nUrl/api/v1/$Path" -Headers $Headers -Method Get }
-function Get-ExecDetail([string]$ExecId) { Invoke-RestMethod -Uri "$N8nUrl/api/v1/executions/$ExecId`?includeData=true" -Headers $Headers -Method Get }
-function Stop-Exec([string]$ExecId) {
-    try { Invoke-RestMethod -Uri "$N8nUrl/api/v1/executions/$ExecId/stop" -Headers $Headers -Method Post -ContentType 'application/json' -Body '{}' | Out-Null } catch { }
-}
-# Hoechste bestehende Execution-id eines Workflows (n8n vergibt monotone Integer-ids). Vor dem Feuern
-# aufnehmen -> die eigene Execution ist danach die EINZIGE mit id > diesem Wert (race-frei, kein
-# Zeitfenster: ein knapp vorher terminierter Vorlauf wird nie faelschlich gegriffen).
-function Get-MaxExecId([string]$WfId) {
-    try {
-        $d = (Invoke-N8nGet "executions?workflowId=$WfId&limit=1").data
-        if ($d -and @($d).Count -gt 0) { return [int]$d[0].id }
-    } catch { }
-    return 0
-}
 # Takt der Wait-*Exec*-Schleifen: reiner HTTP-Abruf (ms) -> kurz; Polls ueber docker exec (~0,2 s) bleiben langsamer.
 $ApiPollMs = 300
 # Auf die NEUE Execution (id > $AfterId) warten und dann auf einen Terminalstatus (success/error).

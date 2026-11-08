@@ -64,33 +64,9 @@ $llmCursor = Get-LlmUsageCursor -Container $Container
 # -------------------------------------------------------
 # Hilfsfunktionen
 # -------------------------------------------------------
-function Invoke-N8nGet([string]$Path) { Invoke-RestMethod -Uri "$N8N_URL/api/v1/$Path" -Headers $Headers -Method Get }
-function Stop-Exec([string]$ExecId) {
-    try { Invoke-RestMethod -Uri "$N8N_URL/api/v1/executions/$ExecId/stop" -Headers $Headers -Method Post -ContentType 'application/json' -Body '{}' | Out-Null } catch { }
-}
-
-# Alle Tool-Calls (Read + Write) als Liste @{ tool; input; inputObj }.
-function Get-ToolCall([object]$RunData, [string]$AgentNodeName) {
-    $out = @()
-    if ($null -eq $AgentNodeName -or -not $RunData.PSObject.Properties.Name.Contains($AgentNodeName)) { return $out }
-    foreach ($run in $RunData.$AgentNodeName) {
-        $actions = $null; try { $actions = $run.metadata.subNodeExecutionData.actions } catch { }
-        if (-not $actions) { continue }
-        foreach ($a in $actions) {
-            $nn = $null; try { $nn = $a.action.nodeName } catch { }; if (-not $nn) { try { $nn = $a.nodeName } catch { } }
-            $inp = ''; try { $inp = ($a.action.input | ConvertTo-Json -Depth 4 -Compress) } catch { }
-            if ($nn) { $out += @{ tool = $nn; input = $inp; inputObj = $a.action.input } }
-        }
-    }
-    return $out
-}
 function Clear-TestCaseSetup {
     $res = Invoke-TestN8nPsql -Container $Container -PsqlArgs @('-q', '-t', '-A', '-c', 'SELECT agent.fn_clear_e2e_data();')
     if ($res.Code -ne 0) { throw "Cleanup (fn_clear_e2e_data) fehlgeschlagen: $(($res.Output | Where-Object { $_ }) -join ' ')" }
-}
-function Test-IsWriteTool([string]$Name) {
-    if ($script:WriteTools -and $script:WriteTools.Count -gt 0) { return ($script:WriteTools -contains $Name) }
-    return ($Name -like 'tool_*')
 }
 # Werkzeug-Aufrufe aus den Sub-Workflow-Executions (zuverlaessig): der n8n-Action-Log (Get-ToolCall) laesst Aufrufe aus
 # Modell-Antworten MIT Denk-Block aus (belegt 2026-10-23, tc12: stage_rows fehlte, commit_import stand drin) -> jede neue
@@ -109,7 +85,7 @@ function Get-ExecutedToolRun([long]$AfterId) {
 # Eingabe eines Werkzeug-Laufs aus seiner Execution (Start-Knoten), wenn der Action-Log den Aufruf nicht hat.
 function Get-ToolRunInput([string]$ExecId) {
     try {
-        $d = Invoke-N8nGet "executions/$ExecId`?includeData=true"
+        $d = Get-ExecDetail $ExecId
         $rd = $d.data.resultData.runData
         $start = if ($rd.PSObject.Properties.Name -contains 'Start') { 'Start' } else { $rd.PSObject.Properties.Name | Select-Object -First 1 }
         return $rd.$start[0].data.main[0][0].json
@@ -118,53 +94,12 @@ function Get-ToolRunInput([string]$ExecId) {
 # Rueckgabe eines Werkzeug-Laufs (Ausgabe des letzten Knotens, gekuerzt) fuer den Bewerter.
 function Get-ToolRunOutput([string]$ExecId) {
     try {
-        $d = Invoke-N8nGet "executions/$ExecId`?includeData=true"
-        $last = $d.data.resultData.lastNodeExecuted
+        $d = Get-ExecDetail $ExecId
+        $last =$d.data.resultData.lastNodeExecuted
         $json = ($d.data.resultData.runData.$last[-1].data.main[0][0].json | ConvertTo-Json -Depth 6 -Compress)
         if ($json.Length -gt 1500) { $json = $json.Substring(0, 1500) + ' ...' }
         return $json
     } catch { return '' }
-}
-function Get-CalledTool([object]$RunData, [string]$AgentNodeName) {
-    foreach ($c in (Get-ToolCall $RunData $AgentNodeName)) { if (Test-IsWriteTool $c.tool) { return $c.tool } }
-    return $null
-}
-function Format-AgentRunData([object]$RunData, [string]$AgentNodeName) {
-    if ($null -eq $AgentNodeName -or -not $RunData.PSObject.Properties.Name.Contains($AgentNodeName)) { return "(kein runData fuer Agent-Node '$AgentNodeName')" }
-    $lines = @()
-    foreach ($c in (Get-ToolCall $RunData $AgentNodeName)) { $lines += "tool-call: $($c.tool)  input=$($c.input)" }
-    foreach ($run in $RunData.$AgentNodeName) { $txt = $null; try { $txt = $run.data.main[0][0].json.output } catch { }; if ($txt) { $lines += "output: $txt" } }
-    if ($lines.Count -eq 0) { return '(keine Tool-Calls/Output im runData)' }
-    return ($lines -join "`n             ")
-}
-function Get-AgentOutput([object]$RunData, [string]$AgentNodeName) {
-    $txt = ''
-    if ($null -eq $AgentNodeName -or -not $RunData.PSObject.Properties.Name.Contains($AgentNodeName)) { return $txt }
-    foreach ($run in $RunData.$AgentNodeName) { try { if ($run.data.main[0][0].json.output) { $txt = $run.data.main[0][0].json.output } } catch { } }
-    return $txt
-}
-function Compare-ArgValue($Actual, $Expected) {
-    if ($null -eq $Actual) { return $false }
-    $aStr = ("$Actual").Trim(); $eStr = ("$Expected").Trim(); if ($aStr -eq '') { return $false }
-    $aNum = 0.0; $eNum = 0.0; $inv = [Globalization.CultureInfo]::InvariantCulture; $any = [Globalization.NumberStyles]::Any
-    $aIsNum = [double]::TryParse($aStr, $any, $inv, [ref]$aNum); $eIsNum = [double]::TryParse($eStr, $any, $inv, [ref]$eNum)
-    if ($aIsNum -and $eIsNum) { return ([math]::Abs($aNum - $eNum) -lt 0.0001) }
-    if ($aIsNum -ne $eIsNum)  { return $false }
-    if ($aStr -ieq $eStr) { return $true }
-    $al = $aStr.ToLowerInvariant(); $el = $eStr.ToLowerInvariant(); return ($al.Contains($el) -or $el.Contains($al))
-}
-function Test-ToolArg([object]$InputObj, [object]$Expected) {
-    if ($null -eq $InputObj) { return @('kein Tool-Input im runData erfassbar') }
-    if ($InputObj -is [string]) { try { $InputObj = $InputObj | ConvertFrom-Json } catch { return @("Tool-Input nicht parsebar: $InputObj") } }
-    $errs = @()
-    foreach ($p in $Expected.PSObject.Properties) {
-        $act = $null; try { $act = $InputObj.$($p.Name) } catch { }
-        if (-not (Compare-ArgValue $act $p.Value)) {
-            $shown = if ($null -eq $act) { '(fehlt)' } else { "$act" }
-            $errs += "$($p.Name): erwartet '$($p.Value)', erhalten '$shown'"
-        }
-    }
-    return $errs
 }
 
 # -------------------------------------------------------

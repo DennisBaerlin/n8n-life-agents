@@ -89,32 +89,6 @@ Assert-LlmGatewayUpstream -Container $Container -Expect real
 $llmCursor = Get-LlmUsageCursor -Container $Container
 
 # -------------------------------------------------------
-# n8n-Helfer (analog n8n_test.ps1)
-# -------------------------------------------------------
-function Invoke-N8nGet([string]$Path) { Invoke-RestMethod -Uri "$N8N_URL/api/v1/$Path" -Headers $Headers -Method Get }
-function Stop-Exec([string]$ExecId) {
-    try { Invoke-RestMethod -Uri "$N8N_URL/api/v1/executions/$ExecId/stop" -Headers $Headers -Method Post -ContentType 'application/json' -Body '{}' | Out-Null } catch { }
-}
-function Get-ExecDetail([string]$ExecId) { Invoke-RestMethod -Uri "$N8N_URL/api/v1/executions/$ExecId`?includeData=true" -Headers $Headers -Method Get }
-# Tool-Calls + finaler Output (nur fuer Diagnose, v. a. Negativ-Faelle: zeigt den ok:false-Pfad)
-function Format-AgentRunData([object]$RunData, [string]$AgentNodeName) {
-    if ($null -eq $AgentNodeName -or -not $RunData.PSObject.Properties.Name.Contains($AgentNodeName)) { return '(kein Agent-runData)' }
-    $lines = @()
-    foreach ($run in $RunData.$AgentNodeName) {
-        $actions = $null; try { $actions = $run.metadata.subNodeExecutionData.actions } catch { }
-        foreach ($a in $actions) {
-            $nn = $null; try { $nn = $a.action.nodeName } catch { }
-            $inp = ''; try { $inp = ($a.action.input | ConvertTo-Json -Depth 4 -Compress) } catch { }
-            if ($nn) { $lines += "tool-call: $nn  input=$inp" }
-        }
-        $txt = $null; try { $txt = $run.data.main[0][0].json.output } catch { }
-        if ($txt) { $lines += "output: $txt" }
-    }
-    if ($lines.Count -eq 0) { return '(keine Tool-Calls/Output)' }
-    return ($lines -join "`n             ")
-}
-
-# -------------------------------------------------------
 # DB-Helfer (psql direkt -- e2e_test ist selbst ein offizielles Skript, wie db_test/db_query)
 # -------------------------------------------------------
 # Cleanup: NUR ueber die geguardete Function (in der Container-DB). Wirft bei Guard-Verletzung.

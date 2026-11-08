@@ -60,6 +60,26 @@ function Get-TestN8nConnection {
     }
 }
 
+# --- n8n-REST-Zugang der Tests (EINE Quelle fuer alle Treiber) ---------------------------------
+# Einmal je Skriptlauf aus dem Substrat-State gelesen; die Treiber halten daneben eigene $N8N_URL/$Headers fuer ihre Webhook-Aufrufe.
+function Get-N8nApi {
+    if (-not $script:N8nApi) {
+        $c = Get-TestN8nConnection
+        $script:N8nApi = @{ Url = $c.Url; Headers = @{ 'X-N8N-API-KEY' = $c.ApiKey } }
+    }
+    return $script:N8nApi
+}
+function Invoke-N8nGet([string]$Path) {
+    $api = Get-N8nApi
+    Invoke-RestMethod -Uri "$($api.Url)/api/v1/$Path" -Headers $api.Headers -Method Get
+}
+function Get-ExecDetail([string]$ExecId) { Invoke-N8nGet "executions/$ExecId`?includeData=true" }
+# Stoppen darf scheitern (Execution schon beendet): Aufraeumen, kein Testergebnis.
+function Stop-Exec([string]$ExecId) {
+    $api = Get-N8nApi
+    try { Invoke-RestMethod -Uri "$($api.Url)/api/v1/executions/$ExecId/stop" -Headers $api.Headers -Method Post -ContentType 'application/json' -Body '{}' | Out-Null } catch { }
+}
+
 # --- Container-DB-Zugriff (Tier 2 Fixture-Seed/-Pre-Flight + Tier 5 verify/cleanup) ---------
 # Die n8n-Test-Instanz haelt ihr Postgres NUR container-intern (127.0.0.1:5432, von install.sh als
 # DB 'n8n' angelegt) — Docker-Port-Publishing erreicht den loopback-gebundenen Dienst nicht, und es
@@ -525,9 +545,11 @@ function Invoke-TestN8nPsqlFile {
 # Feuern aufnehmen -> die eigene Execution ist danach die EINZIGE mit id > diesem Wert (race-frei, kein
 # Zeitfenster). Auch der Gate-Floor: jede Gate-Execution dieses Laufs hat id > diesem Wert.
 function Get-MaxExecId {
-    param([Parameter(Mandatory)][string]$WfId, [Parameter(Mandatory)][string]$BridgeUrl, [Parameter(Mandatory)][string]$ApiKey)
+    param([Parameter(Mandatory)][string]$WfId, [string]$BridgeUrl, [string]$ApiKey)
+    if (-not $BridgeUrl) { $BridgeUrl = (Get-N8nApi).Url }
+    $headers = if ($ApiKey) { @{ 'X-N8N-API-KEY' = $ApiKey } } else { (Get-N8nApi).Headers }
     try {
-        $d = (Invoke-RestMethod -Uri "$BridgeUrl/api/v1/executions?workflowId=$WfId&limit=1" -Headers @{ 'X-N8N-API-KEY' = $ApiKey } -Method Get).data
+        $d = (Invoke-RestMethod -Uri "$BridgeUrl/api/v1/executions?workflowId=$WfId&limit=1" -Headers $headers -Method Get).data
         if ($d -and @($d).Count -gt 0) { return [int]$d[0].id }
     } catch { }
     return 0
@@ -1002,4 +1024,110 @@ function Assert-ForceAbortFired([string]$ForceAbortId) {
         return 1
     }
     return 0
+}
+
+# Sprache des Owners in der Familien-Context-Zeile setzen; leerer Code entfernt sie (Rueckfall auf den Standard).
+function Set-OwnerLanguage {
+    param([Parameter(Mandatory)][string]$Container, [string]$Code)
+    $patch = if ($Code) { "p || jsonb_build_object('language', '$Code')" } else { "p - 'language'" }
+    $sql = "UPDATE agent.core_contexts SET metadata = jsonb_set(metadata, '{facts,persons}', (SELECT jsonb_agg(CASE WHEN p->>'person_id' = 'owner' THEN $patch ELSE p END) FROM jsonb_array_elements(metadata->'facts'->'persons') p)) WHERE name = 'family';"
+    $r = Invoke-TestN8nPsql -Container $Container -PsqlArgs @('-q', '-c', $sql)
+    if ($r.Code -ne 0) { throw "Owner-Sprache setzen fehlgeschlagen: $($r.Output -join ' ')" }
+}
+
+# ===== Test-Eingaenge (Harness-Webhooks) =====
+# Ein Client-Timeout ist hier der Normalfall: der Eingang antwortet erst, wenn das Gate nach dem Tipp auf die Karte endet
+# (die Aufrufer warten selbst auf Karte bzw. Execution). Alles andere (HTTP-Fehler, Port zu, falsches Secret) ist ein Ausfall
+# des Eingangs und wirft, sonst erscheint er als "Karte nicht abgefangen" statt mit seiner Ursache. Selbsttest: case_abort_test.ps1.
+function Test-RestTimeout($ErrorRecord) {
+    for ($e = $ErrorRecord.Exception; $e; $e = $e.InnerException) {
+        if ($e -is [System.Net.WebException] -and $e.Status -eq [System.Net.WebExceptionStatus]::Timeout) { return $true }
+        if ($e -is [System.TimeoutException] -or $e -is [System.Threading.Tasks.TaskCanceledException]) { return $true }
+    }
+    return $false
+}
+function Send-HarnessRequest {
+    param([Parameter(Mandatory)][string]$Uri, [Parameter(Mandatory)][hashtable]$Headers, [Parameter(Mandatory)][hashtable]$Body, [int]$TimeoutSec = 4)
+    $json = ($Body | ConvertTo-Json -Compress -Depth 10)
+    try {
+        Invoke-RestMethod -Uri $Uri -Method Post -Headers $Headers -TimeoutSec $TimeoutSec -ContentType 'application/json; charset=utf-8' `
+            -Body ([System.Text.Encoding]::UTF8.GetBytes($json)) | Out-Null
+    } catch {
+        if (Test-RestTimeout $_) { return }
+        $reason = Get-CaseAbortReason $_
+        # PS 5.1 legt den Antwort-Text nicht in ErrorDetails; ohne ihn bliebe vom n8n-Fehler nur "(500) Interner Serverfehler".
+        if (-not $_.ErrorDetails.Message -and $_.Exception.Response) {
+            try {
+                $stream = $_.Exception.Response.GetResponseStream()
+                if ($stream.CanSeek) { $stream.Position = 0 }   # Invoke-RestMethod hat den Strom schon gelesen
+                $text = (New-Object System.IO.StreamReader ($stream)).ReadToEnd()
+                if ($text.Length -gt 300) { $text = $text.Substring(0, 300) + ' ...' }
+                $reason = "$reason | $text"
+            } catch { }
+        }
+        throw (New-Object System.Exception ("Test-Eingang ${Uri}: $reason"), $_.Exception)
+    }
+}
+
+# ===== Agent-runData lesen (n8n_test, multiturn_test, e2e_test, orch_test, mock_route_test) =====
+# Alle Tool-Calls (Read + Write) eines Agent-Nodes als @{ tool; input; inputObj }.
+function Get-ToolCall([object]$RunData, [string]$AgentNodeName) {
+    $out = @()
+    if ($null -eq $AgentNodeName -or -not $RunData.PSObject.Properties.Name.Contains($AgentNodeName)) { return $out }
+    foreach ($run in $RunData.$AgentNodeName) {
+        $actions = $null; try { $actions = $run.metadata.subNodeExecutionData.actions } catch { }
+        if (-not $actions) { continue }
+        foreach ($a in $actions) {
+            $nn = $null; try { $nn = $a.action.nodeName } catch { }; if (-not $nn) { try { $nn = $a.nodeName } catch { } }
+            $inp = ''; try { $inp = ($a.action.input | ConvertTo-Json -Depth 4 -Compress) } catch { }
+            if ($nn) { $out += @{ tool = $nn; input = $inp; inputObj = $a.action.input } }
+        }
+    }
+    return $out
+}
+# Write-Tools: $script:WriteTools des Treibers (Manifest), sonst die Namenskonvention tool_*.
+function Test-IsWriteTool([string]$Name) {
+    if ($script:WriteTools -and $script:WriteTools.Count -gt 0) { return ($script:WriteTools -contains $Name) }
+    return ($Name -like 'tool_*')
+}
+function Get-CalledTool([object]$RunData, [string]$AgentNodeName) {
+    foreach ($c in (Get-ToolCall $RunData $AgentNodeName)) { if (Test-IsWriteTool $c.tool) { return $c.tool } }
+    return $null
+}
+function Format-AgentRunData([object]$RunData, [string]$AgentNodeName) {
+    if ($null -eq $AgentNodeName -or -not $RunData.PSObject.Properties.Name.Contains($AgentNodeName)) { return "(kein runData fuer Agent-Node '$AgentNodeName')" }
+    $lines = @()
+    foreach ($c in (Get-ToolCall $RunData $AgentNodeName)) { $lines += "tool-call: $($c.tool)  input=$($c.input)" }
+    foreach ($run in $RunData.$AgentNodeName) { $txt = $null; try { $txt = $run.data.main[0][0].json.output } catch { }; if ($txt) { $lines += "output: $txt" } }
+    if ($lines.Count -eq 0) { return '(keine Tool-Calls/Output im runData)' }
+    return ($lines -join "`n             ")
+}
+function Get-AgentOutput([object]$RunData, [string]$AgentNodeName) {
+    $txt = ''
+    if ($null -eq $AgentNodeName -or -not $RunData.PSObject.Properties.Name.Contains($AgentNodeName)) { return $txt }
+    foreach ($run in $RunData.$AgentNodeName) { try { if ($run.data.main[0][0].json.output) { $txt = $run.data.main[0][0].json.output } } catch { } }
+    return $txt
+}
+function Compare-ArgValue($Actual, $Expected) {
+    if ($null -eq $Actual) { return $false }
+    $aStr = ("$Actual").Trim(); $eStr = ("$Expected").Trim(); if ($aStr -eq '') { return $false }
+    $aNum = 0.0; $eNum = 0.0; $inv = [Globalization.CultureInfo]::InvariantCulture; $any = [Globalization.NumberStyles]::Any
+    $aIsNum = [double]::TryParse($aStr, $any, $inv, [ref]$aNum); $eIsNum = [double]::TryParse($eStr, $any, $inv, [ref]$eNum)
+    if ($aIsNum -and $eIsNum) { return ([math]::Abs($aNum - $eNum) -lt 0.0001) }
+    if ($aIsNum -ne $eIsNum)  { return $false }
+    if ($aStr -ieq $eStr) { return $true }
+    $al = $aStr.ToLowerInvariant(); $el = $eStr.ToLowerInvariant(); return ($al.Contains($el) -or $el.Contains($al))
+}
+function Test-ToolArg([object]$InputObj, [object]$Expected) {
+    if ($null -eq $InputObj) { return @('kein Tool-Input im runData erfassbar') }
+    if ($InputObj -is [string]) { try { $InputObj = $InputObj | ConvertFrom-Json } catch { return @("Tool-Input nicht parsebar: $InputObj") } }
+    $errs = @()
+    foreach ($p in $Expected.PSObject.Properties) {
+        $act = $null; try { $act = $InputObj.$($p.Name) } catch { }
+        if (-not (Compare-ArgValue $act $p.Value)) {
+            $shown = if ($null -eq $act) { '(fehlt)' } else { "$act" }
+            $errs += "$($p.Name): erwartet '$($p.Value)', erhalten '$shown'"
+        }
+    }
+    return $errs
 }

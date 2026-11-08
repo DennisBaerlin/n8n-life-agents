@@ -50,12 +50,6 @@ if ([string]::IsNullOrEmpty($TEST_HARNESS_SECRET)) { throw "TEST_HARNESS_SECRET 
 $Headers    = @{ 'X-N8N-API-KEY' = $N8N_API_KEY }
 $AuthHeader = 'X-Test-Auth'
 
-function Invoke-N8nGet([string]$Path) { Invoke-RestMethod -Uri "$N8N_URL/api/v1/$Path" -Headers $Headers -Method Get }
-function Stop-Exec([string]$ExecId) {
-    try { Invoke-RestMethod -Uri "$N8N_URL/api/v1/executions/$ExecId/stop" -Headers $Headers -Method Post -ContentType 'application/json' -Body '{}' | Out-Null } catch { }
-}
-function Get-ExecDetail([string]$ExecId) { Invoke-RestMethod -Uri "$N8N_URL/api/v1/executions/$ExecId`?includeData=true" -Headers $Headers -Method Get }
-
 function Find-Exec([string]$WfId, [datetime]$Since) {
     $all = @()
     foreach ($st in @('', 'waiting', 'running')) {

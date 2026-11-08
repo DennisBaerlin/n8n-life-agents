@@ -70,11 +70,10 @@ $AuthHeader = 'X-Test-Auth'
 $HarnessPath = 'gate-test'
 $GateName    = 'agent.tool_human_approval'
 
-function Invoke-N8nGet([string]$Path) { Invoke-RestMethod -Uri "$N8nUrl/api/v1/$Path" -Headers $Headers -Method Get }
-function Stop-Exec([string]$ExecId) {
-    try { Invoke-RestMethod -Uri "$N8nUrl/api/v1/executions/$ExecId/stop" -Headers $Headers -Method Post -ContentType 'application/json' -Body '{}' | Out-Null } catch { }
+# POST an einen Test-Eingang; das Warten auf die Karte uebernehmen die Aufrufer. Ausfall des Eingangs wirft (Send-HarnessRequest).
+function Send-HarnessPost([string]$Path, [hashtable]$Body, [int]$TimeoutSec = 4) {
+    Send-HarnessRequest -Uri "$N8nUrl/webhook/$Path" -Headers @{ $AuthHeader = $TEST_HARNESS_SECRET } -Body $Body -TimeoutSec $TimeoutSec
 }
-function Get-ExecDetail([string]$ExecId) { Invoke-RestMethod -Uri "$N8nUrl/api/v1/executions/$ExecId`?includeData=true" -Headers $Headers -Method Get }
 
 # Gate-Workflow-id (Laufzeit == getrackte id, import:workflow behaelt sie; trotzdem dynamisch via Name).
 $wfList = Invoke-N8nGet 'workflows?limit=200'
@@ -549,12 +548,8 @@ try {
     if ($leftPid) { Invoke-TestN8nPsql -Container $Container -PsqlArgs @('-q', '-c', "SELECT agent.fn_remove_household_person(jsonb_build_object('person_id', '$leftPid'));") | Out-Null }
     $probePid = ''
     $persons = (ConvertTo-Json -Compress -InputObject @(@{ first_name = 'Nora'; last_name = 'Probe'; birth_date = '2015-01-01'; role = 'child' }))
-    $payload = (@{ chat_id = '999000111'; context_name = 'family'; persons = $persons; scope = 'household' } | ConvertTo-Json -Compress)
     $f3ok = $false
-    try {
-        Invoke-RestMethod -Uri "$N8nUrl/webhook/facts-test" -Method Post -Headers @{ $AuthHeader = $TEST_HARNESS_SECRET } `
-            -TimeoutSec 6 -ContentType 'application/json; charset=utf-8' -Body ([System.Text.Encoding]::UTF8.GetBytes($payload)) | Out-Null
-    } catch { }
+    Send-HarnessPost 'facts-test' @{ chat_id = '999000111'; context_name = 'family'; persons = $persons; scope = 'household' } 6
     $msg = $null; $start = Get-Date
     while (-not $msg -and ((Get-Date) - $start).TotalSeconds -lt $Timeout) {
         $msg = Get-MockTelegramRequests -Container $Container | Where-Object {
@@ -607,11 +602,7 @@ try {
     Write-Host ""
     Write-Host "  [hitlW1] Offene Karte laeuft nach der Wartegrenze ab (waitTill ~ +10 Min, nicht 3000)"
     Clear-MockTelegramRequests -Container $Container
-    $wPayload = (@{ chat_id = '999000111'; summary = 'HITL probe hitlW1: bitte nicht tippen.'; approval_tier = '' } | ConvertTo-Json -Compress)
-    try {
-        Invoke-RestMethod -Uri "$N8nUrl/webhook/$HarnessPath" -Method Post -Headers @{ $AuthHeader = $TEST_HARNESS_SECRET } `
-            -TimeoutSec 4 -ContentType 'application/json; charset=utf-8' -Body ([System.Text.Encoding]::UTF8.GetBytes($wPayload)) | Out-Null
-    } catch { }
+    Send-HarnessPost $HarnessPath @{ chat_id = '999000111'; summary = 'HITL probe hitlW1: bitte nicht tippen.'; approval_tier = '' }
     $wOk = $false; $wDetail = 'kein Button-Send abgefangen'
     $msg = $null; $start = Get-Date
     while (-not $msg -and ((Get-Date) - $start).TotalSeconds -lt $Timeout) {
@@ -643,14 +634,6 @@ try {
 # Die Faelle oben laufen in BEIDEN Modi (Get-HitlResumeUrl/Invoke-HitlResume sind modus-neutral); hier die
 # Sicherheits-Eigenschaften, die es nur bei callback_data gibt: fremder Tipper, gefaelschte Signatur, Replay des
 # Stufe-1-Tipps im Vier-Augen-Pfad, Markdown-Entities im Text.
-# POST an einen Test-Eingang; das Warten auf die Karte uebernehmen die Aufrufer (Client-Timeout ist kein Fehler).
-function Send-HarnessPost([string]$Path, [hashtable]$Body) {
-    $p = ($Body | ConvertTo-Json -Compress -Depth 10)
-    try {
-        Invoke-RestMethod -Uri "$N8nUrl/webhook/$Path" -Method Post -Headers @{ $AuthHeader = $TEST_HARNESS_SECRET } `
-            -TimeoutSec 4 -ContentType 'application/json; charset=utf-8' -Body ([System.Text.Encoding]::UTF8.GetBytes($p)) | Out-Null
-    } catch { }
-}
 function Start-GateCase([string]$Marker, [string]$ChatId, [string]$Tier, [string]$Summary) {
     Send-HarnessPost $HarnessPath @{ chat_id = $ChatId; summary = $Summary; approval_tier = $Tier }
 }
@@ -978,12 +961,6 @@ function Get-LocaleText([string]$Pkg, [string]$Lang, [string]$Key) {
     if (-not $v) { throw "Locale-Text fehlt: $Pkg/$Lang $Key" }
     [string]$v
 }
-function Set-OwnerLanguage([string]$Code) {
-    $patch = if ($Code) { "p || jsonb_build_object('language', '$Code')" } else { "p - 'language'" }
-    $sql = "UPDATE agent.core_contexts SET metadata = jsonb_set(metadata, '{facts,persons}', (SELECT jsonb_agg(CASE WHEN p->>'person_id' = 'owner' THEN $patch ELSE p END) FROM jsonb_array_elements(metadata->'facts'->'persons') p)) WHERE name = 'family';"
-    $r = Invoke-TestN8nPsql -Container $Container -PsqlArgs @('-q', '-c', $sql)
-    if ($r.Code -ne 0) { throw "Owner-Sprache setzen fehlgeschlagen: $($r.Output -join ' ')" }
-}
 function Send-PlanSection([string]$Domain, [string]$Key, [string]$Content, [string]$ChatId = $OwnerUnpaired) {
     Send-HarnessPost 'plan-section-test' @{ domain = $Domain; section_key = $Key; section_content = $Content; section_data = ''; plan_name = ''; chat_id = $ChatId }
 }
@@ -1008,7 +985,7 @@ try {
         try {
             Test-ForceAbort "hitlP1$lang" $ForceAbortId
             $id = "hitlP1$lang"
-            Set-OwnerLanguage $lang
+            Set-OwnerLanguage -Container $Container -Code $lang
             Clear-MockTelegramRequests -Container $Container
             Send-PlanSection 'finance' 'household_basics' "**Zwei** Erwachsene und eine Regel {bleibt} `# Ende $id"
             $m = Wait-ButtonSend $id ''
@@ -1024,7 +1001,7 @@ try {
             Write-RepeatCase $id "Plan-Karte in $lang`: Namen aus dem Katalog, keine Schluessel, ganzer Text" $probs
         } catch { Register-Abort $_ "hitlP1$lang" }
     }
-} finally { Set-OwnerLanguage $ownerLangBefore }
+} finally { Set-OwnerLanguage -Container $Container -Code $ownerLangBefore }
 
 # hitlP2: Abschnitt ohne Katalogeintrag -> lesbarer Rueckfall.
 try {

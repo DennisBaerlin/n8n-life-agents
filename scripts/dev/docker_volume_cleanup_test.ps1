@@ -5,7 +5,7 @@
 # (2026-11-06: 201 Stueck, ~17 GB). Erst `docker rm -fv` raeumt es mit weg. Benannte Volumes fasst `-v` nie an.
 #
 # Zwei Teile:
-#   1) statisch (immer): kein `docker rm` ohne -v in scripts/ und .claude/hooks/ (faengt auch -Reset und neue Abbau-Stellen).
+#   1) statisch (immer): kein `docker rm` ohne -v in scripts/, .claude/hooks/ und .github/workflows/ (faengt auch -Reset und neue Abbau-Stellen).
 #   2) dynamisch (braucht Docker + das Image pgvector/pgvector:pg17 lokal, sonst uebersprungen): je Abbau-Pfad ein Wegwerf-Container nur
 #      mit `docker create` (nie gestartet, dauert Sekunden), eigener Name `ta-voltest-*`; Volumes vor dem Abbau merken, danach pruefen.
 #      Pfade: bootstrap_test_db.ps1 -Down, bootstrap_test_n8n.ps1 -Down, Hook stop_own_substrate.ps1 (in einem Wegwerf-Worktree, damit
@@ -35,9 +35,10 @@ function Invoke-Docker([string[]]$CmdArgs) {
 Write-Host "docker_volume_cleanup_test"
 
 # --- 1) statisch: jede Abbau-Stelle traegt -v ---------------------------------------------------------------------------------
-Write-Host "  Abbau-Stellen (docker rm) in scripts/ und .claude/hooks/"
+Write-Host "  Abbau-Stellen (docker rm) in scripts/, .claude/hooks/ und .github/workflows/"
 $sites = @(Get-ChildItem (Join-Path $repo 'scripts'), (Join-Path $repo '.claude\hooks') -Recurse -Filter '*.ps1' |
     Where-Object { $_.FullName -ne $self })
+$sites += @(Get-ChildItem (Join-Path $repo '.github\workflows') -Filter '*.yml')
 $bad = @()
 $count = 0
 foreach ($f in $sites) {

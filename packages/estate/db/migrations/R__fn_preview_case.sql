@@ -23,7 +23,8 @@
 --       vehicle|business_interest|firearm|pet, Beschreibung nicht leer, und der Typ braucht im Falltyp eine
 --       Checklisten-Vorlage (incapacity kennt nur business_interest -> sonst reject "no checklist step ... register
 --       it with tool_create_special_asset"). Dublette (gleicher Typ + Beschreibung, lower/trim, bei Person oder
---       Haushalt oder schon in der Liste) entfaellt. Die Task-Zahl zaehlt die neuen Stubs mit (fn_case_template_rows,
+--       Haushalt oder schon in der Liste) entfaellt. Eine offensichtliche Verneinung als Beschreibung ("keine Waffen",
+--       "nein", "-") wird abgewiesen (das Modell soll das Feld leer lassen). Die Task-Zahl zaehlt die neuen Stubs mit (fn_case_template_rows,
 --       Platzhalter-Ref 'new:<n>'); geschrieben wird hier nichts.
 --   RUECKGABE ok:true: case_type, subject_person_id, event_date, knowledge_date, bundesland, phase_counts, total_open,
 --     intake_facts, unknown_flags, special_assets (die NEU anzulegenden Stubs [{asset_type, description}], fuer die
@@ -139,6 +140,12 @@ BEGIN
             IF v_ds IS NULL THEN
                 RETURN jsonb_build_object('ok', false, 'reason',
                     'every special_assets entry needs a non-empty description (e.g. "Jagdgewehr im Waffenschrank").');
+            END IF;
+            -- Offensichtliche Verneinung ("keine Waffen"): das Modell soll das Feld dann leer lassen; ein Eintrag mit so einer
+            -- Beschreibung legte sonst Stub + kritische Aufgabe "... - keine" an.
+            IF lower(v_ds) ~ '^(kein(e|en|er|es|em)?|nein|nichts|nix|ohne|none|no|n/a|na)([[:space:]]|[.!,;]|$)' OR v_ds ~ '^[-–—?.]+$' THEN
+                RETURN jsonb_build_object('ok', false, 'reason',
+                    'special_assets entry "' || v_ds || '" reads like a negation - leave the field empty when the user said there is none.');
             END IF;
             -- Typ ohne Checklisten-Vorlage im Falltyp: genannt => Aufgabe bleibt ehrlich, sonst ok:false
             IF NOT EXISTS (SELECT 1 FROM estate.task_templates t

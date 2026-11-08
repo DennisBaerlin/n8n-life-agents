@@ -150,6 +150,25 @@ BEGIN
            'event_date',(CURRENT_DATE - 2)::text,'bundesland','bayern'));
   IF NOT (v_r->>'ok')::boolean OR v_r->'special_asset_ids' IS DISTINCT FROM '[]'::jsonb THEN RAISE EXCEPTION 'FAIL [9 ohne Angabe]: %', v_r; END IF;
   RAISE NOTICE 'PASS [9 ohne special_assets unveraendert, special_asset_ids = []]';
+
+  -- ---- (10) offensichtliche Verneinung als Beschreibung ("keine Waffen"): ok:false, nichts geschrieben ----
+  v_stubs0 := (SELECT count(*) FROM estate.special_assets);
+  FOREACH v_ref IN ARRAY ARRAY['keine', 'Keine Waffen', ' nein ', 'kein Auto', 'None', 'no pets', 'nichts', 'ohne Haustier', '-', 'n/a'] LOOP
+    v_r := estate.fn_preview_case(jsonb_build_object('chat_id','111','case_type','death','subject_person_id','kid',
+             'event_date',(CURRENT_DATE - 2)::text,'bundesland','bayern',
+             'special_assets', jsonb_build_array(jsonb_build_object('asset_type','firearm','description', v_ref))));
+    IF (v_r->>'ok')::boolean OR v_r->>'reason' NOT LIKE '%negation%' THEN
+      RAISE EXCEPTION 'FAIL [10 Verneinung "%" muss abgewiesen werden]: %', v_ref, v_r; END IF;
+  END LOOP;
+  -- echte Beschreibungen, die so aehnlich beginnen, bleiben erlaubt (Kleinwagen, Keiner-Kombi, Nordic-Roller)
+  FOREACH v_ref IN ARRAY ARRAY['Kleinwagen', 'Keiner-Kombi', 'Nordic-Roller', 'Nobel-Limousine'] LOOP
+    v_r := estate.fn_preview_case(jsonb_build_object('chat_id','111','case_type','death','subject_person_id','kid',
+             'event_date',(CURRENT_DATE - 2)::text,'bundesland','bayern',
+             'special_assets', jsonb_build_array(jsonb_build_object('asset_type','vehicle','description', v_ref))));
+    IF NOT (v_r->>'ok')::boolean THEN RAISE EXCEPTION 'FAIL [10 echte Beschreibung "%" darf nicht abgewiesen werden]: %', v_ref, v_r; END IF;
+  END LOOP;
+  IF (SELECT count(*) FROM estate.special_assets) <> v_stubs0 THEN RAISE EXCEPTION 'FAIL [10 nichts geschrieben]'; END IF;
+  RAISE NOTICE 'PASS [10 Verneinung wird abgewiesen, echte Beschreibung bleibt]';
 END $$;
 
 ROLLBACK;

@@ -19,7 +19,7 @@ Pflichtabschnitte und was hineingehört:
 
 Pflege: Session-ID, Branch, Container und jede Owner-Entscheidung im Wortlaut kommen sofort hinein, nicht am Ende. Erledigtes fliegt raus; die Datei beschreibt nur das Jetzt. Geändert wird sie nur mit dem Edit-Werkzeug, nie per Zeilennummer oder `Add-Content` (Encoding-Falle in PowerShell 5.1, `.claude/rules/powershell.md`).
 
-Ein Hook sperrt Schreibzugriffe aus einem Worktree auf das geteilte `.claude/` des Haupt-Checkouts. Planende Unter-Sessions schreiben ihre Plan-Datei deshalb im eigenen Worktree; die Leitung kopiert sie ins Haupt-Checkout, wenn sie den Plan vorlegt.
+`.claude/plans/` gilt nur im Haupt-Checkout, und eine Unter-Session ändert dort nichts. Planende Unter-Sessions schreiben ihre Plan-Datei deshalb im eigenen Worktree; die Leitung kopiert sie ins Haupt-Checkout, wenn sie den Plan vorlegt.
 
 ## Bypass-Modus
 

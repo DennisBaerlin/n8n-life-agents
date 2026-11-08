@@ -13,7 +13,8 @@
 # web_search) -> nichts eingefuegt · (d) Streaming durchgereicht + usage gemessen · (e) Upstream tot -> 502 + fester
 # Fehlercode · (f) Kanarien-Text + Test-Schluessel nie im Journal (auch bei kaputtem JSON) · (g) 400 mit cache_control
 # -> einmal ohne Einfuegen wiederholt (fallback) · (i) ungueltiges Anfrage-Ziel -> 400 ohne Absturz · (j) Agenten-Anfrage ->
-# tool_choice auto + disable_parallel_tool_use, eigener Wert unveraendert · (k) Keep-Alive (eigene Unit, Takt 1,5 s):
+# tool_choice auto + disable_parallel_tool_use, eigener Wert unveraendert; (j2) Schalter LLM_GATEWAY_SERIAL_TOOLS=0 = nichts
+# eingefuegt · (k) Keep-Alive (eigene Unit, Takt 1,5 s):
 # Agenten-Anfang mit max_tokens 0 angestupst, Einmal-Aufruf nicht gemerkt, KEEPALIVE_HOURS=0 = aus · (l) Workflow-Kennung
 # (Kosten-Report): Kennzeile `<<la-wf:NAME>>` (String-/Block-System, Kette nur mit Kennzeile, 400-Wiederholung) und Header
 # x-lifeagents-workflow erreichen upstream nie, wf steht in der usage-Zeile + usage.jsonl, GET /__usage blaettert,
@@ -42,7 +43,7 @@ $GwJs     = '/usr/local/lib/lifeagents-llm-gateway/server.js'
 $MockDir  = '/opt/gwtest'
 $MockLog  = '/tmp/gwtest_mock.jsonl'
 $UsageDir = '/tmp/gwtest_usage'
-$Units    = @{ mock = 'n8ntest-gwt-mock'; gw = 'n8ntest-gwt'; dead = 'n8ntest-gwt-dead'; real = 'n8ntest-gwt-real'; ka = 'n8ntest-gwt-ka'; tgmock = 'n8ntest-gwt-tgmock'; tg = 'n8ntest-gwt-tg' }
+$Units    = @{ mock = 'n8ntest-gwt-mock'; gw = 'n8ntest-gwt'; dead = 'n8ntest-gwt-dead'; real = 'n8ntest-gwt-real'; ka = 'n8ntest-gwt-ka'; tgmock = 'n8ntest-gwt-tgmock'; tg = 'n8ntest-gwt-tg'; par = 'n8ntest-gwt-par' }
 $Canary   = 'CANARY_7f3a9c_PROMPT'
 $FakeKey  = 'sk-ant-test-CANARYKEY-0000'
 
@@ -134,6 +135,8 @@ Start-TestUnit $Units.mock @('MOCK_LLM_PORT=8096', "MOCK_LLM_LOG=$MockLog", "MOC
 Invoke-InC @('sh', '-c', "rm -rf $UsageDir && mkdir -p $UsageDir") | Out-Null
 Start-TestUnit $Units.gw @('LLM_GATEWAY_PORT=8095', 'LLM_GATEWAY_UPSTREAM=http://127.0.0.1:8096', 'LLM_GATEWAY_KEEPALIVE_HOURS=0', "LLM_GATEWAY_USAGE_DIR=$UsageDir") $GwJs 8095
 Start-TestUnit $Units.dead @('LLM_GATEWAY_PORT=8097', 'LLM_GATEWAY_UPSTREAM=http://127.0.0.1:1', 'LLM_GATEWAY_KEEPALIVE_HOURS=0') $GwJs 8097
+# (j2) Schalter LLM_GATEWAY_SERIAL_TOOLS=0 (Probelauf parallele Werkzeug-Aufrufe), sonst identisch.
+Start-TestUnit $Units.par @('LLM_GATEWAY_PORT=8094', 'LLM_GATEWAY_UPSTREAM=http://127.0.0.1:8096', 'LLM_GATEWAY_KEEPALIVE_HOURS=0', 'LLM_GATEWAY_SERIAL_TOOLS=0', "LLM_GATEWAY_USAGE_DIR=$UsageDir") $GwJs 8094
 # (k) Keep-Alive mit verkuerztem Takt (1,5 s statt 55 Min), sonst identisch.
 Start-TestUnit $Units.ka @('LLM_GATEWAY_PORT=8099', 'LLM_GATEWAY_UPSTREAM=http://127.0.0.1:8096', 'LLM_GATEWAY_KEEPALIVE_HOURS=1', 'LLM_GATEWAY_KEEPALIVE_EVERY_MS=1500') $GwJs 8099
 
@@ -217,6 +220,19 @@ try {
         $res2.Status -eq '200' -and $m2.tool_choice.type -eq 'none' -and $null -eq $m2.tool_choice.disable_parallel_tool_use -and
         $res3.Status -eq '200' -and $null -eq $m3.tool_choice) { Pass 'auto+disable_parallel_tool_use gesetzt; none unveraendert; Einmal-Aufruf ohne tool_choice' }
     else { Fail "tool_choice: agent=$($m1.tool_choice | ConvertTo-Json -Compress) none=$($m2.tool_choice | ConvertTo-Json -Compress) einmal=$($m3.tool_choice | ConvertTo-Json -Compress)" }
+
+    # (j2) Schalter aus: Agenten-Anfrage ohne tool_choice bleibt ohne (parallele Aufrufe erlaubt), Caching laeuft weiter;
+    #      ein eigenes tool_choice bleibt auch hier unveraendert.
+    Write-Host '  (j2) LLM_GATEWAY_SERIAL_TOOLS=0 -> kein tool_choice eingefuegt, Haltepunkte weiter gesetzt'
+    Clear-MockLog
+    $res = Send-Gw 8094 '/v1/messages' (ConvertTo-Body ([ordered]@{ model = 'claude-sonnet-5-5'; max_tokens = 10; system = 'SYS'; tools = @($tool1, $tool2); messages = $msgs }))
+    $p1 = Get-LastMockEntry
+    Clear-MockLog
+    $res2 = Send-Gw 8094 '/v1/messages' (ConvertTo-Body ([ordered]@{ model = 'claude-sonnet-5-5'; max_tokens = 10; system = 'SYS'; tools = @($tool1); tool_choice = [ordered]@{ type = 'none' }; messages = $msgs }))
+    $p2 = Get-LastMockEntry
+    if ($res.Status -eq '200' -and $p1 -and $null -eq $p1.tool_choice -and $p1.markers.tool -eq '1h' -and $p1.markers.top -eq '5m' -and
+        $res2.Status -eq '200' -and $p2.tool_choice.type -eq 'none') { Pass 'Schalter 0: kein disable_parallel_tool_use, Caching unveraendert, eigener Wert bleibt' }
+    else { Fail "Schalter 0: agent=$($p1.tool_choice | ConvertTo-Json -Compress) markers=$($p1.markers | ConvertTo-Json -Compress) none=$($p2.tool_choice | ConvertTo-Json -Compress)" }
 
     # (k) Keep-Alive: Agenten-Anfang wird mit max_tokens 0 angestupst (gleiche Haltepunkte, ohne oberen Marker und ohne
     #     Gespraech); Einmal-Aufrufe werden nicht gemerkt; KEEPALIVE_HOURS=0 schaltet es ab.

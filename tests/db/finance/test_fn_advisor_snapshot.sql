@@ -5,19 +5,19 @@
 --   2) Wertgleich zu den Quellen (Kontosaldo + Alltag, Cashflow, Kredite, Notreserve, Ziel-Ampel, Rente).
 --   3) Beendetes fehlt (Konto, Kredit, Ziel, Vorsorge, Immobilie, Sparplan), Pausiertes bleibt wo vorgesehen.
 --   4) Keine Vertrags-/Kontonummern und keine notes, auch nicht als Wert, und keine technischen Spalten.
+--   5) warnings: welche Konten gemeldet werden, Werte gleich fn_account_outlook / account_funding_overview.
 -- Perspektive finance_ro: tests/db/cross/test_role_permissions.sql (2-adv). Self-contained (BEGIN..ROLLBACK), Werte erfunden.
 BEGIN;
 DO $$
 DECLARE
   t DATE := CURRENT_DATE;
   -- enthalten: das Gesamtbild
-  v_included text[] := ARRAY['account_everyday_spending', 'account_overview', 'active_insurances', 'depot_holdings_overview',
+  v_included text[] := ARRAY['account_everyday_spending', 'account_funding_overview', 'account_overview', 'active_insurances', 'depot_holdings_overview',
     'depot_performance', 'loan_overview', 'loan_summary', 'monthly_cashflow_overview', 'monthly_cashflow_summary',
     'networth_by_asset_class', 'parent_cashflow_summary', 'pension_overview', 'real_estate_overview', 'savings_goal_progress',
     'savings_plan_overview', 'standing_order_overview', 'upcoming_recurring_payments'];
   -- bewusst nicht enthalten (Detailfragen, die Einzel-View reicht; das Gesamtbild waere sonst doppelt oder teuer):
   v_excluded text[] := ARRAY[
-    'account_funding_overview',        -- eine Projektion je Konto: nur auf Nachfrage
     'active_recurring_payments',       -- Rohsicht inkl. Transfers; das Bild traegt monthly_cashflow_overview
     'recurring_cashflow_classified',   -- Unterbau von monthly_cashflow_overview
     'cashflow_summary_by_scope',       -- Unterbau der beiden Summen-Views
@@ -29,11 +29,12 @@ DECLARE
     'depot_reserve_status',            -- Deckungs-Alarm-Detail je Depot
     'maintenance_reserve_status'];     -- Instandhaltungs-Detail
   v_lists text[] := ARRAY['persons', 'recurring', 'planned_recurring', 'accounts', 'networth', 'savings_plans', 'standing_orders', 'loans', 'insurances',
-    'pensions', 'pension_outlook', 'real_estate', 'goals', 'depot_risk', 'depot_holdings', 'depot_performance'];
+    'pensions', 'pension_outlook', 'real_estate', 'goals', 'depot_risk', 'depot_holdings', 'depot_performance', 'warnings'];
   v_objects text[] := ARRAY['cashflow_summary', 'parent_cashflow_summary', 'loan_summary', 'emergency_reserve'];
   v_giro INT; v_tg INT; v_closed INT; v_depot INT; v_kind INT;
   v_loan_open INT; v_loan_paid INT; v_pen INT; v_g_ok INT; v_g_done INT;
-  v_bad text[]; v_src text; k text; v jsonb; v_row jsonb; v_txt text;
+  v_bad text[]; v_src text; k text; v jsonb; v_row jsonb; v_txt text; v_o jsonb;
+  v_low INT; v_tight INT; v_hist INT; v_fund INT; v_fund_ok INT;
 BEGIN
   -- ===== 0) Drift-Waechter =====
   SELECT array_agg(table_name::text ORDER BY table_name) INTO v_bad
@@ -240,5 +241,57 @@ BEGIN
   IF v_txt ~ '"(holding_id|current_rp_id|head_rp_id|recurring_payment_id)"\s*:' THEN
     RAISE EXCEPTION 'FAIL [4c] technische Spalte: %', v_txt; END IF;
   RAISE NOTICE 'PASS [4] keine Nummern, keine notes, keine technischen Spalten';
+
+  -- ===== 5) warnings: Unterdeckung + Spar-Deckung je Konto, Werte aus denselben fns wie Tool und App =====
+  -- ohne Auszug: die festen Zahlungen allein ziehen das Konto ins Minus (Alltag kaeme nur noch dazu)
+  v_low := (finance.fn_create_account('{"name":"__snap_low__","account_type":"cash","currency":"EUR","opening_balance":100}'::jsonb)->>'account_id')::int;
+  PERFORM finance.fn_add_recurring_payment(v_low, -500, '__snap_low_miete__', 1::smallint, 'month'::finance.schedule_unit, NULL::smallint, t + 3, t + 3, NULL, NULL, NULL);
+  PERFORM finance.fn_add_recurring_payment(v_low, 2000, '__snap_low_gehalt__', 1::smallint, 'month'::finance.schedule_unit, NULL::smallint, t + 20, t + 20, NULL, NULL, NULL);
+  -- ohne Auszug nur unter dem Puffer, nicht im Minus: keine Warnung auf Halbwissen
+  v_tight := (finance.fn_create_account('{"name":"__snap_tight__","account_type":"cash","currency":"EUR","opening_balance":300}'::jsonb)->>'account_id')::int;
+  PERFORM finance.fn_add_recurring_payment(v_tight, -100, '__snap_tight_miete__', 1::smallint, 'month'::finance.schedule_unit, NULL::smallint, t + 3, t + 3, NULL, NULL, NULL);
+  PERFORM finance.fn_add_recurring_payment(v_tight, 2000, '__snap_tight_gehalt__', 1::smallint, 'month'::finance.schedule_unit, NULL::smallint, t + 20, t + 20, NULL, NULL, NULL);
+  -- mit Auszug: unter dem Puffer zaehlt schon
+  v_hist := (finance.fn_create_account('{"name":"__snap_hist__","account_type":"cash","currency":"EUR","opening_balance":300}'::jsonb)->>'account_id')::int;
+  UPDATE finance.accounts SET opening_balance_date = t - 60, min_balance = 1000, last_reconciled_at = t - 5 WHERE id = v_hist;
+  INSERT INTO finance.bank_statements (account_id, period_start, period_end, opening_balance, closing_balance, currency,
+                                       line_count, matched_count, unmatched_out, unmatched_in, prev_last_reconciled_at)
+  VALUES (v_hist, t - 34, t - 5, 600, 300, 'EUR', 5, 0, -300, 0, NULL);
+  -- Sparplan ohne Zufluss: das Geld reicht wenige Wochen; daneben ein gut gedecktes Konto
+  v_fund := (finance.fn_create_account('{"name":"__snap_fund__","account_type":"cash","currency":"EUR","opening_balance":1000}'::jsonb)->>'account_id')::int;
+  v_fund_ok := (finance.fn_create_account('{"name":"__snap_fund_ok__","account_type":"cash","currency":"EUR","opening_balance":100000}'::jsonb)->>'account_id')::int;
+  INSERT INTO finance.accounts (name, account_type, currency, status, settlement_account_id, plan_execution_days)
+    VALUES ('__snap_fund_depot__', 'stocks_depot', 'EUR', 'active', v_fund, '{}'),
+           ('__snap_fund_ok_depot__', 'stocks_depot', 'EUR', 'active', v_fund_ok, '{}');
+  PERFORM finance.fn_create_savings_plan(jsonb_build_object('name', '__snap_fund_plan__', 'depot_name', '__snap_fund_depot__', 'isin', 'SNAP00000001',
+            'symbol', 'SNAPETF', 'security_name', 'Snap ETF', 'amount', 150, 'schedule_interval', 1, 'schedule_unit', 'week', 'first_payment_date', (t + 2)::text));
+  PERFORM finance.fn_create_savings_plan(jsonb_build_object('name', '__snap_fund_ok_plan__', 'depot_name', '__snap_fund_ok_depot__', 'isin', 'SNAP00000001',
+            'symbol', 'SNAPETF', 'security_name', 'Snap ETF', 'amount', 10, 'schedule_interval', 1, 'schedule_unit', 'week', 'first_payment_date', (t + 2)::text));
+  v := finance.fn_advisor_snapshot();
+
+  SELECT e INTO v_row FROM jsonb_array_elements(v->'warnings') e WHERE e->>'account' = '__snap_low__' AND e->>'kind' = 'account_coverage';
+  IF (v_row->>'lowest_balance')::numeric IS DISTINCT FROM -400 OR (v_row->>'lowest_on')::date IS DISTINCT FROM t + 3
+     OR (v_row->>'has_history')::boolean IS DISTINCT FROM false OR v_row->>'currency' IS DISTINCT FROM 'EUR' THEN
+    RAISE EXCEPTION 'FAIL [5a] Minus ohne Auszug: %', v->'warnings'; END IF;
+  IF v->'warnings' @? '$[*] ? (@.account == "__snap_tight__")' THEN
+    RAISE EXCEPTION 'FAIL [5b] nur unter dem Puffer ohne Auszug warnt nicht: %', v->'warnings'; END IF;
+  SELECT e INTO v_row FROM jsonb_array_elements(v->'warnings') e WHERE e->>'account' = '__snap_hist__' AND e->>'kind' = 'account_coverage';
+  v_o := finance.fn_account_outlook(v_hist);
+  IF (v_o->>'shortfall')::numeric <= 0 OR (v_row->>'lowest_balance')::numeric IS DISTINCT FROM (v_o->>'min_projected')::numeric
+     OR (v_row->>'lowest_on')::date IS DISTINCT FROM (v_o->>'min_date')::date OR (v_row->>'has_history')::boolean IS DISTINCT FROM true THEN
+    RAISE EXCEPTION 'FAIL [5c] Unterdeckung mit Auszug wie fn_account_outlook: % / %', v_row, v_o; END IF;
+  SELECT e INTO v_row FROM jsonb_array_elements(v->'warnings') e WHERE e->>'account' = '__snap_fund__' AND e->>'kind' = 'savings_funding';
+  IF v_row->>'state' IS DISTINCT FROM 'alert'
+     OR (v_row->>'runs_out_on')::date IS DISTINCT FROM (SELECT runs_out_on FROM finance.account_funding_overview WHERE account_id = v_fund)
+     OR (v_row->>'lowest_balance')::numeric IS DISTINCT FROM (SELECT min_projected FROM finance.account_funding_overview WHERE account_id = v_fund)
+     OR (v_row->>'lowest_on')::date IS DISTINCT FROM (SELECT min_date FROM finance.account_funding_overview WHERE account_id = v_fund) THEN
+    RAISE EXCEPTION 'FAIL [5d] Spar-Deckung wie account_funding_overview: %', v_row; END IF;
+  IF v->'warnings' @? '$[*] ? (@.account == "__snap_fund_ok__")' THEN
+    RAISE EXCEPTION 'FAIL [5e] gedecktes Konto warnt nicht: %', v->'warnings'; END IF;
+  -- veralteter Auszug: die Vorschau ist dann nicht belastbar, gemeldet wird der Auszug (fn_advisor_review), nicht die Unterdeckung
+  UPDATE finance.accounts SET last_reconciled_at = t - 100 WHERE id = v_hist;
+  IF finance.fn_advisor_snapshot()->'warnings' @? '$[*] ? (@.account == "__snap_hist__")' THEN
+    RAISE EXCEPTION 'FAIL [5f] veralteter Auszug warnt nicht als Unterdeckung'; END IF;
+  RAISE NOTICE 'PASS [5] warnings: Unterdeckung, Puffer-Grenze, Spar-Deckung, gedeckt, veralteter Auszug';
 END $$;
 ROLLBACK;

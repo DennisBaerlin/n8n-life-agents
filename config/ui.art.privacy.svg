@@ -1,0 +1,68 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 360" width="720" height="360" role="img" data-scenes="4" data-scene-s="6">
+  <!-- Wohin die Daten gehen: Quelle für die Wizard-Seite des Anthropic-Schlüssels. Generator scripts/build_ui_tokens.ps1, Format scripts/lib/ui_art.ps1.
+       Szenen: 1 Daten liegen zu Hause, 2 nur das Nötige geht raus, 3 Antwort kommt zurück + kein Training, 4 Löschfrist.
+       Aussagen belegt: Training = Commercial Terms (Vertrag), 30 Tage = Hilfeseite von Anthropic, deshalb „laut Anthropic“. Ausnahmen stehen im Hilfetext darüber.
+       Schlussbild (Bewegung reduziert) zeigt beide Zusagen. -->
+  <style>
+    text { font-family: var(--font); fill: var(--ink); }
+    .cap { font-size: 22px; text-anchor: middle; }
+    .nar { display: none; font-size: 32px; text-anchor: middle; }
+    .label { font-size: 16px; font-weight: 600; text-anchor: middle; }
+    .name { font-size: 26px; font-weight: 600; text-anchor: middle; }
+    .chip { font-size: 15px; font-weight: 600; text-anchor: middle; }
+    .card { font-size: 14px; text-anchor: middle; }
+    /* Schmal angezeigt: Beschriftungen vergrößert, sonst wären sie unter 12 px; Text auf Karten und Marken entfällt, der Erklärtext sagt dasselbe. */
+    @media (max-width: 520px) { .wide { display: none; } .nar { display: inline; } .label { font-size: 32px; } .name { font-size: 36px; } .chips, .card { display: none; } }
+    .row { fill: var(--bg-soft); stroke: var(--hairline); stroke-width: 1.5; }
+    .pale { fill: var(--accent-pale); }
+    .box { fill: var(--bg); stroke: var(--ink); stroke-width: 3; }
+    @keyframes fly { 0%, 28% { transform: translateX(0); } 44%, 100% { transform: translateX(120px); } }
+    @keyframes back { 0%, 53% { transform: translateX(0); } 69%, 100% { transform: translateX(-135px); } }
+    @media (prefers-reduced-motion: no-preference) { .fly { animation: fly 24s ease-in-out infinite; } .back { animation: back 24s ease-in-out infinite; } }
+  </style>
+
+  <!-- Zuhause mit Datenbank-Zeilen -->
+  <path class="box" d="M60 82 L170 18 L280 82 Z"/>
+  <rect class="box" x="74" y="82" width="192" height="128"/>
+  <rect class="row" x="96" y="96" width="148" height="18" rx="4"/>
+  <rect class="row" x="96" y="122" width="148" height="18" rx="4"/>
+  <rect class="row" x="96" y="148" width="148" height="18" rx="4"/>
+  <rect class="row" x="96" y="174" width="148" height="18" rx="4"/>
+  <rect class="pale on2" x="96" y="122" width="148" height="18" rx="4"/>
+  <text class="label" x="170" y="238" data-t="privacy.home" data-wrap="22"/>
+
+  <!-- Weg -->
+  <path d="M266 150 H470" stroke="var(--hairline)" stroke-width="2" stroke-dasharray="6 6"/>
+
+  <!-- Claude -->
+  <rect class="box" x="470" y="30" width="190" height="180" rx="18"/>
+  <text class="name" x="565" y="74">Claude</text>
+  <g class="in3 chips">
+    <rect class="pale" x="484" y="94" width="162" height="42" rx="21"/>
+    <text class="chip" x="565" y="121" data-t="privacy.no_train" data-wrap="18"/>
+  </g>
+  <g class="in4 chips">
+    <rect class="pale" x="484" y="148" width="162" height="42" rx="21"/>
+    <text class="chip" x="565" y="175" data-t="privacy.days" data-wrap="18"/>
+  </g>
+
+  <!-- Bewegte Karten -->
+  <g class="on2"><g class="fly">
+    <rect class="row pale" x="181" y="132" width="170" height="36" rx="10"/>
+    <text class="card" x="266" y="155" data-t="privacy.card" data-wrap="20"/>
+  </g></g>
+  <g class="on3"><g class="back">
+    <rect class="row" x="372" y="132" width="96" height="36" rx="10"/>
+    <text class="card" x="420" y="155" data-t="privacy.answer" data-wrap="12"/>
+  </g></g>
+
+  <!-- Erklärtext je Szene -->
+  <text class="cap wide on1" x="360" y="306" data-t="privacy.s1" data-wrap="58" data-lh="30" data-max="2" data-valign="middle"/>
+  <text class="cap wide on2" x="360" y="306" data-t="privacy.s2" data-wrap="58" data-lh="30" data-max="2" data-valign="middle"/>
+  <text class="cap wide on3" x="360" y="306" data-t="privacy.s3" data-wrap="58" data-lh="30" data-max="2" data-valign="middle"/>
+  <text class="cap wide on4" x="360" y="306" data-t="privacy.s4" data-wrap="58" data-lh="30" data-max="2" data-valign="middle"/>
+  <text class="cap nar on1" x="360" y="306" data-t="privacy.s1" data-wrap="38" data-lh="40" data-max="3" data-valign="middle"/>
+  <text class="cap nar on2" x="360" y="306" data-t="privacy.s2" data-wrap="38" data-lh="40" data-max="3" data-valign="middle"/>
+  <text class="cap nar on3" x="360" y="306" data-t="privacy.s3" data-wrap="38" data-lh="40" data-max="3" data-valign="middle"/>
+  <text class="cap nar on4" x="360" y="306" data-t="privacy.s4" data-wrap="38" data-lh="40" data-max="3" data-valign="middle"/>
+</svg>

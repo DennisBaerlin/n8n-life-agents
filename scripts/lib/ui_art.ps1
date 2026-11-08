@@ -35,6 +35,9 @@ function Get-UiArts {
         # Warum Telegram: Wizard-Seite vor dem Bot-Token.
         [pscustomobject]@{ Name = 'telegram'; Variants = @(''); Targets = @(
                 @{ Dir = $d.Wizard; Langs = @('de', 'en', 'ko'); Themes = @('auto') }) }
+        # Wohin die Daten gehen: Wizard-Seite des Anthropic-Schlüssels.
+        [pscustomobject]@{ Name = 'privacy'; Variants = @(''); Targets = @(
+                @{ Dir = $d.Wizard; Langs = @('de', 'en', 'ko'); Themes = @('auto') }) }
         # Wege ins Internet: Wizard-Seite reach (Bild wechselt mit der Auswahl) und die Weg-Seiten der Anleitung.
         [pscustomobject]@{ Name = 'reach'; Variants = @('tunnel', 'fritzbox', 'proxy'); Targets = @(
                 # Wizard: 200 px breit neben den Antwortkarten, dort ohne Bildunterschrift (die Karten erklären den Weg).

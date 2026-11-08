@@ -319,6 +319,7 @@ function pageFor(id) {
       value: q.secret ? '' : (typeof v === 'string' ? v : ''), hasSecret: q.secret && v === null,
       options: choicesOf(q), next,
     });
+    if (key === 'ANTHROPIC_API_KEY') page.explain = Object.assign(explainOf('privacy', 'privacy.alt'), { below: true });
     if (key === 'DOMAIN') {
       page.optional = false;
       Object.assign(page, domainView(v));

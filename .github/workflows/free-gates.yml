@@ -90,6 +90,22 @@ jobs:
           ./scripts/dev/bootstrap_test_n8n.ps1 -SkipInstall
           ./scripts/dev/bootstrap_test_n8n.ps1 -Down
 
+      # Der Bootstrap zeigt bei einem Fehlschlag nur die letzten 30 Zeilen des Docker-Logs; die Ursache eines npm-Abbruchs
+      # (z. B. 504 beim Laden eines vorgebauten Bausteins von github.com, danach scheitert der Quell-Bau an fehlendem make)
+      # steht weiter oben. Deshalb die Ursache-Zeilen ins Job-Log und das volle Log als Artefakt.
+      - name: Bau-Log bei Fehler
+        if: failure() && steps.cache.outputs.cache-hit != 'true'
+        run: grep -nE 'response status|Hit error|ERR! stack Error|npm error (code|path|command)' .local/substrate-base-build.log | head -n 40 || true
+
+      - name: Bau-Log sichern
+        if: failure() && steps.cache.outputs.cache-hit != 'true'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: substrate-base-build-log
+          path: .local/substrate-base-build.log
+          if-no-files-found: warn
+          retention-days: 7
+
       - name: Basis-Image packen
         if: steps.cache.outputs.cache-hit != 'true'
         run: |

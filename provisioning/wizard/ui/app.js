@@ -261,14 +261,22 @@ const UiNudge = {
       select: (v) => { const o = x.variants && x.variants[v]; if (o) { img.src = o.src; img.alt = o.alt; } } };
   }
 
-  function getAppNode(g) {
+  function extLink(l, cls) { return h('a', { class: cls || null, href: l.href, target: '_blank', rel: 'noopener noreferrer', text: l.label }); }
+
+  // Handy-Seite: QR-Code (lokal erzeugt, fester Link, keine Nutzer- oder Fremddaten) mit Satz daneben.
+  function phoneNode(g) {
     const box = h('div', { class: 'qr qr-small' });
-    box.innerHTML = g.qr;   // eigener Code (qr.js), fester Link, keine Nutzer- oder Fremddaten
-    const ext = (l) => h('a', { href: l.href, target: '_blank', rel: 'noopener noreferrer', text: l.label });
-    const links = [];
-    (g.links || []).forEach((l, i) => links.push(i ? ' · ' : '', ext(l)));
-    return h('details', { class: 'get-app' }, h('summary', { text: g.summary }),
-      h('div', { class: 'pair' }, box, h('div', null, h('p', { text: g.scan }), h('p', null, g.computer + ' ', ...links))));
+    box.innerHTML = g.svg;
+    return h('div', { class: 'pair phone-qr' }, box, h('div', null, h('p', { text: g.text })));
+  }
+
+  // Knopf nach dem ersten Absatz mit dem Ausweg „im Browser“ darunter: „BotFather öffnen“ (Token-Seite, o.href) oder Telegram
+  // herunterladen (Rechner-Seite, o.links: Knopf für das erkannte System, sonst beide).
+  function openNode(o) {
+    const ua = navigator.userAgent || '';
+    const mine = /Windows/.test(ua) ? 'windows' : /Macintosh|Mac OS X/.test(ua) ? 'mac' : '';
+    const buttons = o.links ? o.links.filter((l) => !mine || l.os === mine) : [{ href: o.href, label: o.label }];
+    return h('div', { class: 'open-bot' }, h('p', null, ...buttons.map((l) => extLink(l, 'button'))), h('p', null, extLink(o.web)));
   }
 
   function setErr(t) { const e = document.getElementById('er'); if (e) e.textContent = t || ''; }
@@ -326,12 +334,17 @@ const UiNudge = {
       h('h1', { id: 'title', text: p.title })];
     const help = p.kind === 'connect' && p.qr ? [] : helpNodes(p.help);
     if (help[0] && help[0].tagName === 'P') help[0].className = 'lead';
+    // Einleitender Satz (intro) und Erklär-Bild mit top stehen direkt unter der Überschrift, vor der Frage.
+    if (p.intro) kids.push(h('p', { class: 'lead', text: p.intro }));
+    const exTop = p.explain && p.explain.top ? explainNode(p.explain, p.value) : null;
+    if (exTop) { exTop.el.classList.add('top'); kids.push(exTop.el); }
+    // Knopf bzw. QR-Code direkt nach dem ersten Absatz, vor den Schritten.
+    const extra = p.open ? openNode(p.open) : p.phoneQr ? phoneNode(p.phoneQr) : null;
+    if (extra) help.splice(help.length ? 1 : 0, 0, extra);
     kids.push(...help);
     // Erklär-Bild (fertige SVG-Datei, page.explain vom Server): unter dem Text, bei side neben den Antworten (unten).
     const ex = p.explain ? explainNode(p.explain, p.value) : null;
-    if (ex && !p.explain.side && !p.explain.below) kids.push(ex.el);
-    // „Noch kein Telegram?“ (Seite „Warum Telegram?“): zugeklappt unter dem Bild, damit Bild und Knöpfe im Fenster bleiben.
-    if (p.getApp) kids.push(getAppNode(p.getApp));
+    if (ex && !p.explain.side && !p.explain.below && !p.explain.top) kids.push(ex.el);
     if (p.note && p.note.busy) kids.push(h('ul', { class: 'steps' }, h('li', { class: 'run' }, h('i', { 'aria-hidden': 'true' }), p.note.text)));
     else if (p.note && !takes.includes('note')) kids.push(h('div', { class: 'note ' + (p.note.kind || ''), text: p.note.text }));   // takes: das Bild zeigt den Hinweis selbst
     if (artBefore) kids.push(art.el);

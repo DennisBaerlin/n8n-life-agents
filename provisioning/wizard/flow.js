@@ -27,7 +27,11 @@ function pkgDef(Q, id) { return Q.packages.find((p) => p.id === id) || null; }
 function steps(Q, A) {
   const s = [];
   for (const k of ABOUT_ORDER) if (hostDef(Q, k)) s.push('h:' + k);
-  s.push('tg_why', 'h:TELEGRAM_BOT_TOKEN');   // „Warum Telegram?“ (Owner): erst der Nutzen, dann der Schlüssel
+  // „Warum Telegram?“ (Owner): erst der Nutzen; dann je nach Bestand Handy (neues Konto nur dort), Rechner verbinden, zuletzt der Schlüssel.
+  s.push('tg_why');
+  if (A.__tg_have === 'none') s.push('tg_phone');
+  if (A.__tg_have !== 'both') s.push('tg_pc');
+  s.push('h:TELEGRAM_BOT_TOKEN');
   if (A.__tg_conflict && !A.__tg_choice) s.push('tg_busy');
   s.push('h:ANTHROPIC_API_KEY', 'voice');
   if (A.__voice === 'yes') s.push('h:GOOGLE_API_KEY');
@@ -66,7 +70,9 @@ function reachMode(A) {
 function answered(Q, A, id) {
   if (id.startsWith('h:') || id.startsWith('c:') || id.startsWith('s:')) return Object.prototype.hasOwnProperty.call(A, envOf(Q, id));
   switch (id) {
-    case 'tg_why': return !!A.__tg_why;
+    case 'tg_why': return !!A.__tg_have;
+    case 'tg_phone': return !!A.__tg_phone;
+    case 'tg_pc': return !!A.__tg_pc;
     case 'tg_busy': return !!A.__tg_choice;
     case 'voice': return !!A.__voice;
     case 'packages': return Array.isArray(A.__packages);
@@ -126,7 +132,7 @@ function stepOf(id) {
   let sub = 'about';
   if (id.startsWith('h:')) sub = HOST_SUB[id.slice(2)] || 'about';
   else if (id.startsWith('s:') || id.startsWith('c:') || id === 'packages') sub = 'modules';
-  else sub = ({ tg_why: 'access', tg_busy: 'access', voice: 'access', reach: 'reach', fb_dslite: 'reach', fb_ports_busy: 'reach', fb_guide: 'reach',
+  else sub = ({ tg_why: 'access', tg_phone: 'access', tg_pc: 'access', tg_busy: 'access', voice: 'access', reach: 'reach', fb_dslite: 'reach', fb_ports_busy: 'reach', fb_guide: 'reach',
     review: 'check', confirm: 'check' })[id] || 'about';
   return { current: 'questions', sub };
 }

@@ -6,11 +6,11 @@ Die eine Adresse für Gestaltungsregeln. Gilt für Doku-Seite, Mini-App, Wizard 
 
 1. **Eine Frage je Abschnitt.** Jeder Abschnitt beantwortet genau eine Frage. Nie drei Fragen in einen Abschnitt mischen. In der Mini-App steht die Frage im Kopf der `fn_app_screen_*` (`contract_lint`).
 2. **Ein Zuhause je Fakt**, über alle Reiter und Seiten hinweg. Steht ein Fakt schon woanders, wird er nicht wiederholt, höchstens als Sprungziel.
-3. **Kein Jargon.** Jedes Wort besteht den Laientest: Jemand ohne Technikwissen versteht es. Keine Markierung wie „nicht ermittelbar“ ohne Grund; jede Markierung nennt, wie viel fehlt oder ab wann.
+3. **Kein Jargon.** Jedes Wort besteht den Laientest: Jemand ohne Technikwissen versteht es. Keine Markierung wie „nicht ermittelbar“ ohne Grund. Rechtsquellen gehören in die Erklärung, nicht auf den ersten Blick, und nennen die gängige Abkürzung mit („Zweite Berechnungsverordnung, II. BV“). Eingeführte Wörter bleiben („Puffer“).
 4. **Ein Zeitraum.** Eine Anzeige zeigt einen Zeitraum, keine zwei konkurrierenden Zahlen. Lieber die verwirrende zweite Zahl entfernen, als sie zu erklären. Kurzform ohne Jahr nur im Fenster [heute − 3 Monate, heute + 9 Monate).
-5. **Markierung (Pille) nur, wenn gehandelt werden muss.** Keine grünen Pillen bei „alles gut“. Gelb und Rot nennen immer den Betrag oder das Datum.
+5. **Pille = kurze Hervorhebung, höchstens zwei Wörter** („pausiert“, „unter Puffer“), und nur, wenn hier etwas ist. Keine grünen Pillen bei „alles gut“. Betrag oder Datum stehen nur in der Pille, wenn sie die Aussage sind („fehlen 3.000 €“), sonst in der Erklärung (Regel 15).
 6. **Summen sichtbar als Summen beschriften** („zusammen …“), nie über einer einzelnen Zeile.
-7. **Entfernen vor Erklären.** Eine Erklärung ist ein Zeichen, dass die Darstellung falsch ist.
+7. **Entfernen vor Erklären.** Eine Erklärung auf dem ersten Blick ist ein Zeichen, dass die Darstellung falsch ist; Hintergrund gehört hinter ein ⓘ (Regel 15).
 8. **Lange Listen kurz halten** (aufklappbare Zeilen), Betrag rechts, Balken nur mit Zielbetrag.
 9. **Im Zustand mit Daten prüfen**, alle Zustände aus dem erfundenen Datenmodell, nicht nur den Leerzustand.
 10. **Eine Frage je Wizard-Seite**, ein Hauptknopf, Zurück als Link.
@@ -18,6 +18,12 @@ Die eine Adresse für Gestaltungsregeln. Gilt für Doku-Seite, Mini-App, Wizard 
 12. **Feld zuerst.** Das Eingabefeld steht direkt nach der Anleitung, was nur zusätzlich erklärt (Bild, Begründung), darunter.
 13. **Bilder zeigen Dinge.** Eine Animation zeigt Gegenstände und Symbole statt abstrakter Wörter und nutzt die vorhandenen Figuren (Haus, Wolke, Handy).
 14. **Nur versprechen, was stimmt.** Ein Werbesatz verspricht nie mehr als das Kleingedruckte. Vertraglich Zugesagtes heißt „vertraglich“, Angaben des Anbieters „laut Anbieter“.
+15. **Erklärung bei Bedarf, einheitlich.** Gibt es zu einer Pille etwas zu erklären, trägt sie ein ⓘ. Antippen klappt die Zeile auf, eine Zeile mit ⓘ-Pille ist deshalb immer aufklappbar. Die Erklärung steht zuoberst und beginnt mit ⓘ, damit sie erkennbar zur Pille gehört. Drüberfahren mit der Maus ergänzt das nur, denn am Handy gibt es kein Drüberfahren. Was sich nicht aufklappen lässt (Kopf einer Seite) oder schon aufgeklappt ist (Zeile im Aufklappen), bekommt ein eigenes ⓘ, das die Erklärung direkt darunter öffnet.
+16. **Zu jedem Problem steht, was man tun kann.** Unter der Erklärung einer gelben oder roten Pille folgt ein Absatz „Das kannst du tun: …“ mit konkreten Schritten.
+17. **Farbe nach Dringlichkeit, auf Pillen und Hinweisen gleich.** Rot: Es fehlt bald Geld, oder es entsteht Schaden, wenn nichts passiert. Gelb: Es gibt etwas zu tun, aber nichts ist akut. Ohne Farbe: nur Information oder Zustand.
+18. **Im Aufklappen sagt jede Zeile, worauf sie sich bezieht.** Lose Sätze ohne Bezug gehören nicht hinein; eine Rechnung endet mit ihrer Ergebnis-Zeile („Tiefster Stand am 24.11.“).
+19. **Der erste Blick ist knapp.** Keine Füllwörter und Trennpunkte, wo eine Wortgruppe reicht („20.000 € bis 06.2040“).
+20. **Geld der Kinder zählt in keine Summe des Haushalts**, und der Kopf sagt das. Ihre Zeilen tragen Name und Streifen, nie nur Farbe.
 
 ## Sprache
 

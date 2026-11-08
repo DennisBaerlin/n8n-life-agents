@@ -8,6 +8,12 @@
       "port": 8765
     },
     {
+      "name": "ui-compare",
+      "runtimeExecutable": "powershell",
+      "runtimeArgs": ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "scripts/dev/serve_ui_compare.ps1", "-Port", "8768"],
+      "port": 8768
+    },
+    {
       "name": "docs-site",
       "runtimeExecutable": "powershell",
       "runtimeArgs": ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "scripts/build_site.ps1", "-Serve", "-Port", "1313"],

@@ -37,7 +37,7 @@ Feature-Pläne führen App-Ideen nur als „offen, eigener Plan“. Taucht die A
 
 ## 4. Regeln
 
-`docs/reference/ui.md`, dazu `docs/package-contract.md` §3.12 (Bedeutung je Element). Mini-App-eigen: Grün ist allein „Alles in Ordnung“ oben auf der Startseite. Mehr Bildsprache → `docs/site/content/docs/uebersicht-app.md` *Was du siehst*. Beschwerden aus Live-Prüfungen sind Beispiele für ein Muster, keine Anforderungsliste.
+`docs/reference/ui.md`, dazu `docs/package-contract.md` §3.12 (Bedeutung je Element). Mini-App-eigen: Grün ist allein „Alles in Ordnung“ oben auf der Startseite. Mehr Bildsprache → `docs/site/content/docs/uebersicht-app.md` *Was du siehst*. Beschwerden aus Live-Prüfungen sind Beispiele für ein Muster, keine Anforderungsliste. Jede Überarbeitung gleicht alle Pillen und Aufklapp-Zeilen der berührten Bildschirme mit den Regeln 5 und 15 bis 20 in `ui.md` ab, auch die, die sie nicht ändert, und nennt Abweichungen im Vergleich.
 
 ## 5. Umsetzung (erst nach Ja + offenem Fenster)
 

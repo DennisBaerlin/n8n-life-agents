@@ -29,7 +29,7 @@ Einfache Worte, je Bildschirm, konkrete erfundene Werte:
 
 - Die kleinste Änderung, die das Ziel trifft; verworfene Alternativen in einem Satz. Kein Umbau.
 - Frühere Beschlüsse nicht still kippen. Stelle vorher fest, ob `docs/reference/ui.md` eine Regel dazu hat.
-- Zeig den Ist-Stand als Bild (Abschnitt 3, `-Capture vorher`). Für den Soll-Stand genügt bis zum Ja der Text.
+- Tabelle und Text reichen dem Owner nicht zur Entscheidung: Lege jede sichtbare Änderung als Vergleich vor, links die bisherige Darstellung, rechts die neue, jede Abweichung markiert, nie in Farben der Oberfläche. Mini-App: `.\scripts\dev\build_ui_compare.ps1 -Name <kurzname> -Patch .local\ui_review\<kurzname>\patch.js` (der Patch simuliert den Vorschlag auf erfundenen Daten, ohne die App-Fläche zu ändern), dann `preview_start` mit `ui-compare`. Wizard, Mac-App und Doku-Seite: bis es dort ein Werkzeug gibt, dieselbe Form von Hand. Frag erst danach nach dem Ja.
 - Warte auf ein klares Ja. Fragen laufen über die Leitung (`/coordinate` §5), außer der Owner schreibt in dieser Session.
 
 ## 3. Bauen und aufnehmen
@@ -68,7 +68,7 @@ Der Agent liest mit frischem Blick und meldet nur. Jede Meldung beheben oder in 
 
 **Normalfall: Der Owner ist am Rechner.** Vorschau im Browser-Bereich dieser Session: `preview_start` (`mini-app`, `docs-site`), Reiter und Zustand einstellen. Die Handygröße setzt die App nach deinem Zug zurück: Bitte den Owner, im Menü `Viewport` den Eintrag `Mobile` zu wählen. Die Session muss dafür offen sein, Freigabe-Karten und Markierungen erreichen nur sie.
 
-Nachricht an den Owner: Link in den Tab, ein Satz zur Änderung, Stand (Commit), Meldungen des Prüf-Agenten, Vorher-Bilder per `SendUserFile`.
+Nachricht an den Owner: die vollständige, anklickbare Adresse als Markdown-Link (nie nur „im Browser-Bereich“), darunter die Punkte zum Ansehen mit Reiter und Stelle, ein Satz zur Änderung, Stand (Commit), Meldungen des Prüf-Agenten, Vorher-Bilder per `SendUserFile`.
 
 **Reserve: Der Owner ist per Remote Control am Handy.** `localhost` ist dort nicht erreichbar. Bilder per `SendUserFile`, dazu die Seite ohne Server:
 

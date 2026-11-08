@@ -65,17 +65,37 @@ test('Durchlauf FritzBox mit drei Modulen: Antwort-Datei, Installation, Pairing,
     for (const p of ['/sticker/pirat.webp', '/sticker/..%2Fstickers.webp', '/sticker/Butler.webp']) assert.equal((await req(w, 'GET', p)).status, 404, p);
     assert.equal((await answer(w, 'h:OWNER_PERSONA', 'pirat')).status, 422, 'nur angebotene Charaktere');
     await expectOk(await answer(w, 'h:OWNER_PERSONA', 'butler'));
-    // „Noch kein Telegram?“: QR-Code (lokal erzeugt) und Links nur zu offiziellen Telegram-Adressen, Texte aus dem Katalog.
+    // Telegram einrichten: erst der Nutzen, dann je nach Bestand Handy (QR-Code lokal erzeugt, Konto nur dort anlegbar), Rechner
+    // (Download je System, Telegram Web als Ausweg), dann der Bot. Links nur zu offiziellen Telegram-Adressen, Texte aus dem Katalog.
     const why = await page(w);
     assert.equal(why.id, 'tg_why', '„Warum Telegram?“ vor dem Token');
     assert.equal(why.explain.src, '/explain/telegram.de.svg', 'Erklär-Bild in der Sprache der Seiten');
     assert.ok(why.explain.alt.length > 20, 'Alt-Text aus dem Katalog');
-    assert.ok(!why.help, 'das Bild ersetzt die Absätze');
-    const ga = why.getApp;
-    assert.equal(ga.qr, qr.toSvg(qr.encode('https://telegram.org/dl')), 'QR-Code = Telegram-Link, der je Handy in den passenden Store führt');
-    assert.ok(ga.summary.startsWith('Noch kein Telegram?') && ga.scan && ga.computer);
-    assert.deepEqual(ga.links.map((l) => new URL(l.href).origin), ['https://macos.telegram.org', 'https://desktop.telegram.org']);
-    await expectOk(await answer(w, 'tg_why', null));
+    assert.ok(why.explain.top && !why.getApp, 'das Bild steht über der Frage, das Holen der App auf eigenen Seiten');
+    assert.match(why.intro, /Messenger.*WhatsApp/, 'ganz oben: chatten wie im Messenger');
+    assert.equal(why.kind, 'choice', 'dieselbe Seite fragt, was schon da ist');
+    assert.deepEqual(why.options.map((o) => o.value), ['none', 'phone', 'both']);
+    assert.ok(why.options.every((o) => o.label && o.desc), 'Antworten aus dem Katalog');
+    assert.equal((await answer(w, 'tg_why', 'bogus')).status, 422, 'nur angebotene Antworten');
+    assert.equal((await answer(w, 'tg_why', null)).status, 422, 'eine Antwort ist Pflicht');
+    await expectOk(await answer(w, 'tg_why', 'none'));
+    const ph = await page(w);
+    assert.equal(ph.id, 'tg_phone', 'ohne Telegram: erst das Handy');
+    assert.equal(ph.phoneQr.svg, qr.toSvg(qr.encode('https://telegram.org/dl')), 'QR-Code = Telegram-Link, der je Handy in den passenden Store führt');
+    assert.ok(ph.phoneQr.text && ph.help.length === 2 && ph.next);
+    await expectOk(await answer(w, 'tg_phone', null));
+    const pc = await page(w);
+    assert.equal(pc.id, 'tg_pc', 'danach der Rechner');
+    assert.deepEqual(pc.open.links.map((l) => [l.os, new URL(l.href).origin]), [['mac', 'https://macos.telegram.org'], ['windows', 'https://desktop.telegram.org']]);
+    assert.equal(pc.open.web.href, 'https://web.telegram.org/k/', 'Ausweg ohne Installation: Telegram Web');
+    assert.ok(pc.help[1].ol.length === 3 && pc.next);
+    await expectOk(await answer(w, 'tg_pc', null));
+    const tok = await page(w);
+    assert.equal(tok.id, 'h:TELEGRAM_BOT_TOKEN');
+    assert.equal(tok.open.href, 'https://t.me/BotFather', 'Knopf „BotFather öffnen“: t.me öffnet die App, ohne App bietet t.me selbst Telegram Web an');
+    assert.equal(tok.open.web.href, 'https://web.telegram.org/k/#@BotFather', 'Ausweg: BotFather direkt im Browser');
+    assert.ok(tok.open.label && tok.open.web.label);
+    assert.ok(!JSON.stringify(tok.help).includes('Suche'), 'die Anleitung schickt nicht mehr in die Telegram-Suche');
     assert.equal((await answer(w, 'h:TELEGRAM_BOT_TOKEN', '')).status, 422, 'Pflicht');
     assert.equal((await answer(w, 'h:TELEGRAM_BOT_TOKEN', 'bad-token')).status, 422);
     const tg = await expectOk(await answer(w, 'h:TELEGRAM_BOT_TOKEN', '123456789:ABC-beispiel-token'));
@@ -200,7 +220,7 @@ test('Durchlauf Tunnel: belegter Bot, Fehlschlag + neuer Versuch, Neustart, Tail
     await expectOk(await post(w, '/api/lang', { lang: 'de' }));
     // Prüfliste Nr. 10: der Bot hat schon eine fremde Webhook-Adresse.
     fs.writeFileSync(path.join(w.fake, 'tg_conflict'), 'beispiel.example');
-    await expectOk(await answer(w, 'tg_why', null));
+    await expectOk(await answer(w, 'tg_why', 'both'));
     await expectOk(await answer(w, 'h:TELEGRAM_BOT_TOKEN', '111:alt-beispiel'));
     const busy = await page(w);
     assert.equal(busy.id, 'tg_busy');
@@ -303,7 +323,7 @@ async function toDomain(hints, dnsSpec, ip) {
   if (ip !== undefined) fs.writeFileSync(path.join(w.fake, 'public_ip'), ip);
   await login(w);
   for (const [id, v] of [['h:OWNER_LANGUAGE', 'de'], ['h:OWNER_FIRST_NAME', 'Erika'], ['h:OWNER_LAST_NAME', 'Muster'],
-    ['h:OWNER_BIRTH_DATE', '1980-01-01'], ['h:OWNER_PERSONA', 'neutral'], ['tg_why', null], ['h:TELEGRAM_BOT_TOKEN', '1:beispiel'],
+    ['h:OWNER_BIRTH_DATE', '1980-01-01'], ['h:OWNER_PERSONA', 'neutral'], ['tg_why', 'both'], ['h:TELEGRAM_BOT_TOKEN', '1:beispiel'],
     ['h:ANTHROPIC_API_KEY', 'sk-ant-beispiel'], ['voice', 'no'], ['packages', []], ['reach', 'fritzbox'], ['fb_dslite', 'no'],
     ['fb_guide', null]]) await expectOk(await answer(w, id, v));
   const dom = await waitFor(async () => { const x = await page(w); return x.id === 'h:DOMAIN' && !x.poll ? x : null; });
@@ -317,7 +337,7 @@ test('DS-Lite automatisch: „keine eigene IPv4“ = Bestätigung, „eigene“ 
   try {
     await login(w);
     for (const [id, v] of [['h:OWNER_LANGUAGE', 'de'], ['h:OWNER_FIRST_NAME', 'Erika'], ['h:OWNER_LAST_NAME', 'Muster'],
-      ['h:OWNER_BIRTH_DATE', '1980-01-01'], ['h:OWNER_PERSONA', 'neutral'], ['tg_why', null], ['h:TELEGRAM_BOT_TOKEN', '1:beispiel'],
+      ['h:OWNER_BIRTH_DATE', '1980-01-01'], ['h:OWNER_PERSONA', 'neutral'], ['tg_why', 'both'], ['h:TELEGRAM_BOT_TOKEN', '1:beispiel'],
       ['h:ANTHROPIC_API_KEY', 'sk-ant-beispiel'], ['voice', 'no'], ['packages', []]]) await expectOk(await answer(w, id, v));
     fs.writeFileSync(path.join(w.fake, 'dslite'), 'yes');
     await expectOk(await answer(w, 'reach', 'fritzbox'));
@@ -442,7 +462,7 @@ async function toConnect(env, signal) {
   await login(w);
   fs.writeFileSync(path.join(w.fake, signal), '');
   for (const [id, v] of [['h:OWNER_LANGUAGE', 'de'], ['h:OWNER_FIRST_NAME', 'Erika'], ['h:OWNER_LAST_NAME', 'Muster'],
-    ['h:OWNER_BIRTH_DATE', '1980-01-01'], ['h:OWNER_PERSONA', 'neutral'], ['tg_why', null], ['h:TELEGRAM_BOT_TOKEN', '1:beispiel'],
+    ['h:OWNER_BIRTH_DATE', '1980-01-01'], ['h:OWNER_PERSONA', 'neutral'], ['tg_why', 'both'], ['h:TELEGRAM_BOT_TOKEN', '1:beispiel'],
     ['h:ANTHROPIC_API_KEY', 'sk-ant-beispiel'], ['voice', 'no'], ['packages', []], ['reach', 'tunnel'], ['review', null], ['confirm', null]]) await expectOk(await answer(w, id, v));
   await waitFor(async () => (await page(w)).id === 'connect');
   return w;

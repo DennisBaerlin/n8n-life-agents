@@ -46,11 +46,13 @@ const BRIDGE = process.env.WIZARD_BRIDGE || path.join(__dirname, 'bridge.sh');
 const PROVISION = process.env.LA_PROVISION || path.join(__dirname, '..', 'provision.sh');
 const LA_CLI = process.env.LA_CLI || 'lifeagents';
 // Ausführliche FritzBox-Anleitung für den Docker-Weg (docs/site fritzbox.md, Abschnitt start-app, Paket 8).
-const GUIDE_URL = process.env.WIZARD_GUIDE_URL || 'https://dennisbaerlin.github.io/n8n-life-agents/docs/fritzbox/#start-app';
-// Telegram-App für Leute ohne Telegram (Token-Seite). Offizielle Links von telegram.org/apps: /dl leitet je Gerät weiter
-// (iPhone → App Store, Android → Google-Play-Seite), daher ein QR-Code für beide Handys; für den Rechner die Seiten für Mac
-// und Windows. Der QR-Code entsteht lokal mit qr.js, zur Laufzeit wird nichts nachgeladen.
-const TG_APP = { phone: 'https://telegram.org/dl', mac: 'https://macos.telegram.org/', windows: 'https://desktop.telegram.org/' };
+const GUIDE_URL = process.env.WIZARD_GUIDE_URL || 'https://dennisbaerlin.github.io/n8n-life-agents/docs/fritzbox.html#start-app';
+// Telegram-App für Leute ohne Telegram (Seite „Warum Telegram?“). Offizielle Links von telegram.org/apps: /dl leitet je Gerät
+// weiter (iPhone → App Store, Android → Google-Play-Seite), daher ein QR-Code für beide Handys; für den Rechner die Seiten für
+// Mac und Windows, als Ausweg ohne Installation Telegram Web. Der QR-Code entsteht lokal mit qr.js, zur Laufzeit wird nichts
+// nachgeladen. BotFather: t.me/BotFather öffnet die Desktop-App, bietet ohne App selbst „Telegram Web“ an.
+const TG_APP = { phone: 'https://telegram.org/dl', mac: 'https://macos.telegram.org/', windows: 'https://desktop.telegram.org/',
+  web: 'https://web.telegram.org/k/', botfather: 'https://t.me/BotFather', botfatherWeb: 'https://web.telegram.org/k/#@BotFather' };
 const TG_APP_QR = qr.toSvg(qr.encode(TG_APP.phone));
 const POLL_MS = Math.max(50, parseInt(process.env.WIZARD_POLL_MS || '1000', 10));
 // Zertifikat und DNS brauchen nach dem Einrichten oft einige Minuten: so lange sichtbar warten (nur bei reach.wait, was Zeit nicht heilt, kommt sofort).
@@ -302,6 +304,7 @@ function optionsFor(id) {
   switch (id) {
     case 'voice': return [o('no', 'voice_no'), o('yes', 'voice_yes')];
     case 'tg_busy': return [o('new', 'tg_new', true), o('take', 'tg_take')];
+    case 'tg_why': return [o('none', 'tg_have_none'), o('phone', 'tg_have_phone'), o('both', 'tg_have_both')];
     case 'reach': return [o('tunnel', 'reach_tunnel', true), o('fritzbox', 'reach_fritzbox')];
     case 'fb_dslite': return [o('no', 'dslite_no'), o('yes', 'dslite_yes')];
     case 'packages': return Q.packages.map((p) => ({ value: p.id, label: pkgName(p), desc: pkgSummary(p) }));
@@ -321,6 +324,8 @@ function pageFor(id) {
       value: q.secret ? '' : (typeof v === 'string' ? v : ''), hasSecret: q.secret && v === null,
       options: choicesOf(q), next,
     });
+    // Knopf „BotFather öffnen“ nach dem ersten Absatz der Anleitung; ohne Telegram-App zeigt t.me selbst „Telegram Web“, der Link darunter ist der direkte Ausweg.
+    if (key === 'TELEGRAM_BOT_TOKEN') page.open = { href: TG_APP.botfather, label: T('core.wizard.page.tg_open'), web: { href: TG_APP.botfatherWeb, label: T('core.wizard.page.tg_open_web') } };
     if (key === 'ANTHROPIC_API_KEY') page.explain = Object.assign(explainOf('privacy', 'privacy.alt'), { below: true, after: flow.helpBlocks(T('core.wizard.q.anthropic_api_key.why')) });
     if (key === 'DOMAIN') {
       page.optional = false;
@@ -351,13 +356,19 @@ function pageFor(id) {
   const next = T('core.wizard.ui.next');
   const P1 = (k) => [{ p: T(k) }];
   switch (id) {
-    // „Warum Telegram?“: Erklär-Bild (unterwegs fragen, Bot, Übersicht; ersetzt die Absätze, Platz im Fenster), zugeklappt
-    // „Noch kein Telegram?“ mit QR-Code fürs Handy und Links für den Rechner (die Token-Anleitung danach setzt Telegram voraus).
-    case 'tg_why': return Object.assign(base, { kind: 'info', title: T('core.wizard.page.tg_why_title'), explain: explainOf('telegram', 'telegram.alt'),
-      getApp: { summary: T('core.wizard.page.get_tg_summary'), scan: T('core.wizard.page.get_tg_scan'), qr: TG_APP_QR,
-        computer: T('core.wizard.page.get_tg_computer'),
-        links: [{ href: TG_APP.mac, label: T('core.wizard.page.get_tg_mac') }, { href: TG_APP.windows, label: T('core.wizard.page.get_tg_windows') }] },
-      next });
+    // „Warum Telegram?“: Erklär-Bild (unterwegs fragen, Bot, Übersicht; ersetzt die Absätze, Platz im Fenster) über der Frage, was
+    // schon da ist. Die Antwort (__tg_have) bestimmt die Seiten danach: Konto nur am Handy anlegbar (Desktop und macOS-App weisen ein
+    // unbekanntes Konto auf das Handy), dann den Rechner verbinden (QR vom Handy), dann der Bot (Token-Seite) am Rechner zum Kopieren.
+    case 'tg_why': return Object.assign(base, { kind: 'choice', title: T('core.wizard.page.tg_why_title'), intro: T('core.wizard.page.tg_why_chat'), help: P1('core.wizard.page.tg_have_title'),
+      explain: Object.assign(explainOf('telegram', 'telegram.alt'), { top: true }), options: optionsFor(id), value: P.A.__tg_have || 'none', next });
+    case 'tg_phone': return Object.assign(base, { kind: 'info', title: T('core.wizard.page.tg_phone_title'),
+      help: [{ p: T('core.wizard.page.tg_phone_help') }, { ol: [T('core.wizard.page.tg_phone_step1'), T('core.wizard.page.tg_phone_step2')] }],
+      phoneQr: { svg: TG_APP_QR, text: T('core.wizard.page.get_tg_scan') }, next: T('core.wizard.page.tg_phone_next') });
+    case 'tg_pc': return Object.assign(base, { kind: 'info', title: T('core.wizard.page.tg_pc_title'),
+      help: [{ p: T('core.wizard.page.tg_pc_help') }, { ol: [T('core.wizard.page.tg_pc_step1'), T('core.wizard.page.tg_pc_step2'), T('core.wizard.page.tg_pc_step3')] }],
+      open: { links: [{ os: 'mac', href: TG_APP.mac, label: T('core.wizard.page.tg_pc_get_mac') }, { os: 'windows', href: TG_APP.windows, label: T('core.wizard.page.tg_pc_get_windows') }],
+        web: { href: TG_APP.web, label: T('core.wizard.page.tg_pc_web') } },
+      next: T('core.wizard.page.tg_pc_next') });
     case 'tg_busy': return Object.assign(base, { kind: 'choice', title: T('core.wizard.page.tg_busy_title'), help: P1('core.wizard.page.tg_busy_help'),
       note: P.A.__tg_conflict && P.A.__tg_conflict !== 'polling' ? { kind: 'warn', text: T('core.wizard.page.tg_busy_previous', { host: P.A.__tg_conflict }) } : null,
       options: optionsFor(id), value: P.A.__tg_choice || 'new', next });
@@ -751,7 +762,12 @@ async function answer(id, raw, skip) {
       if (!['yes', 'no'].includes(raw)) return { error: T('core.wizard.msg.choose') };
       P.A.__dslite = raw;
       break;
-    case 'tg_why': P.A.__tg_why = true; break;
+    case 'tg_why':
+      if (!['none', 'phone', 'both'].includes(raw)) return { error: T('core.wizard.msg.choose') };
+      P.A.__tg_have = raw;
+      break;
+    case 'tg_phone': P.A.__tg_phone = true; break;
+    case 'tg_pc': P.A.__tg_pc = true; break;
     case 'fb_guide': P.A.__fb_guide = true; break;
     case 'fb_ports_busy': P.A.__reach = 'tunnel'; break;
     case 'review': P.cursor = 'confirm'; save(); return { ok: true };

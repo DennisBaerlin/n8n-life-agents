@@ -161,7 +161,7 @@ test('Doppelklick: zwei gleichzeitige Antworten laufen nacheinander, die zweite 
 test('Geheimnisse liegen nie im Klartext auf der Platte; Dateirechte 0600', async () => {
   await login(w);
   let s = (await state(w)).json.page;
-  const vals = { 'h:OWNER_FIRST_NAME': 'Erika', 'h:OWNER_LAST_NAME': 'Muster', 'h:OWNER_BIRTH_DATE': '1980-01-01', 'h:OWNER_PERSONA': 'neutral', tg_why: null };
+  const vals = { 'h:OWNER_FIRST_NAME': 'Erika', 'h:OWNER_LAST_NAME': 'Muster', 'h:OWNER_BIRTH_DATE': '1980-01-01', 'h:OWNER_PERSONA': 'neutral', tg_why: 'both' };
   while (s.id in vals) { await answer(w, s.id, vals[s.id]); s = (await state(w)).json.page; }
   const secret = '123456789:ABC-beispiel-GEHEIM-zz';
   const r = await answer(w, 'h:TELEGRAM_BOT_TOKEN', secret);

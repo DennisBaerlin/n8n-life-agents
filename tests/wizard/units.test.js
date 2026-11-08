@@ -71,6 +71,16 @@ test('Antwort-Datei: Übernahme eines belegten Bots nur nach ausdrücklicher Wah
   assert.ok(!none.has('TELEGRAM_WEBHOOK_TAKEOVER'));
 });
 
+test('Ablauf: Telegram je nach Bestand (Handy nur ohne Konto, Rechner nur ohne Telegram dort)', () => {
+  const tg = (have) => flow.steps(Q, { __tg_have: have }).filter((x) => x.startsWith('tg_') || x === 'h:TELEGRAM_BOT_TOKEN');
+  assert.deepEqual(tg('none'), ['tg_why', 'tg_phone', 'tg_pc', 'h:TELEGRAM_BOT_TOKEN']);
+  assert.deepEqual(tg('phone'), ['tg_why', 'tg_pc', 'h:TELEGRAM_BOT_TOKEN'], 'Konto da: Handy-Seite entfällt');
+  assert.deepEqual(tg('both'), ['tg_why', 'h:TELEGRAM_BOT_TOKEN'], 'alles da: gleich zum Bot');
+  assert.equal(flow.answered(Q, {}, 'tg_why'), false);
+  assert.equal(flow.answered(Q, { __tg_have: 'phone' }, 'tg_why'), true);
+  for (const id of ['tg_why', 'tg_phone', 'tg_pc']) assert.deepEqual(flow.stepOf(id), { current: 'questions', sub: 'access' }, id);
+});
+
 test('Ablauf: Folgefragen nur gewählter Module, „beide oder keine“, FritzBox-Weg', () => {
   const base = { __packages: ['career', 'estate'] };
   let s = flow.steps(Q, base);

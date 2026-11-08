@@ -41,7 +41,7 @@ test('scanPaperless: erkennt nur die Paperless-Anmeldeseite, eigener Rechner zue
 async function toPaperlessPage(w) {
   await login(w);
   for (const [id, v] of [['h:OWNER_LANGUAGE', 'de'], ['h:OWNER_FIRST_NAME', 'Erika'], ['h:OWNER_LAST_NAME', 'Muster'],
-    ['h:OWNER_BIRTH_DATE', '1980-01-01'], ['h:OWNER_PERSONA', 'neutral'], ['tg_why', null], ['h:TELEGRAM_BOT_TOKEN', '1:beispiel'],
+    ['h:OWNER_BIRTH_DATE', '1980-01-01'], ['h:OWNER_PERSONA', 'neutral'], ['tg_why', 'both'], ['h:TELEGRAM_BOT_TOKEN', '1:beispiel'],
     ['h:ANTHROPIC_API_KEY', 'sk-ant-beispiel'], ['voice', 'no'], ['packages', ['paperless']]]) {
     const r = await answer(w, id, v);
     if (r.status !== 200) throw new Error(id + ' ' + JSON.stringify(r.json));

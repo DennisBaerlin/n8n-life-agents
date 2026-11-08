@@ -85,7 +85,12 @@ function Get-WizardPreviewHtml([string]$RepoRoot, $Entry, [int]$PhoneWidth = 0, 
     $model = [regex]::Replace($model, '"/explain/([a-z-]{1,40}\.[a-z]{2}\.svg)"', {
         param($m)
         $f = Join-Path $ui "explain\$($m.Groups[1].Value)"
-        if (Test-Path $f) { '"data:image/svg+xml;base64,' + [Convert]::ToBase64String([System.IO.File]::ReadAllBytes($f)) + '"' } else { '""' }
+        if (-not (Test-Path $f)) { return '""' }
+        # Ein <img>-SVG folgt dem Farbschema des Systems, nicht dem der Seite: bei erzwungenem Schema (Aufnahmen, Vergleich) dieselbe
+        # Umschaltung wie oben im CSS, sonst steht heller Text auf heller Seite (Satz neben dem Handy-Bild unlesbar).
+        $svg = [System.IO.File]::ReadAllText($f, $u8)
+        if ($Scheme -ne 'auto') { $svg = $svg.Replace('@media (prefers-color-scheme: dark)', $(if ($Scheme -eq 'dark') { '@media all' } else { '@media not all' })) }
+        '"data:image/svg+xml;base64,' + [Convert]::ToBase64String($u8.GetBytes($svg)) + '"'
     })
     $stub = "window.WIZARD_PREVIEW = (function () { var m = $model; return { error: m.error, value: m.value, open: m.open, api: function (method, path) { return Promise.resolve(method === 'GET' && path === '/api/state' ? { csrf: 'vorschau', page: m.page } : path === '/api/check' && m.live ? { live: m.live } : { error: 'Vorschau: nichts wird gesendet.' }); } }; })();"
     $width = if ($PhoneWidth -gt 0) { "html { width: ${PhoneWidth}px; }" } else { '' }

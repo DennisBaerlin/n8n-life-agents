@@ -24,15 +24,21 @@
 --                 weak:[{name,have,required,is_blocker}],
 --                 overskilled:[{name,have,required}] } ] }
 --     roles[] enthaelt NUR Ziel-Rollen mit einem required_skills-Array (Konsumenten matchen per title).
+--   ZAEHLUNG je FAEHIGKEIT (Name lower(trim)), nicht je Rolle: eine Faehigkeit, die in mehreren Ziel-Rollen fehlt oder
+--     zu schwach ist, zaehlt in gap_count einmal. blocker_gap_count zaehlt sie, wenn sie in mindestens einer Rolle
+--     Luecke UND Pflicht zugleich ist (Pflicht in einer Rolle, in der sie erfuellt ist, macht eine Luecke ohne Pflicht
+--     anderswo nicht zum Blocker). overskill_count zaehlt sie einmal, wenn sie in mindestens einer Rolle uebererfuellt
+--     ist. roles[] bleibt je Rolle voll (die Zeilen "Ziel X: ..." brauchen das); gap_count minus die Luecken der
+--     primaeren Rolle = Faehigkeiten, die die primaere Rolle nicht hat (fn_advisor_review "Dazu kommen n").
 --   Anwenden via: db_apply.ps1 -File packages\career\db\migrations\R__fn_skill_gap.sql
 -- ============================================================
 CREATE OR REPLACE FUNCTION career.fn_skill_gap(p_plan_facts jsonb, p_profile_facts jsonb)
 RETURNS jsonb LANGUAGE plpgsql STABLE AS $$
 DECLARE
     v_roles_out  jsonb := '[]'::jsonb;
-    v_gap_count  int := 0;
-    v_blk_count  int := 0;
-    v_ovr_count  int := 0;
+    v_gap_names  text[] := ARRAY[]::text[];   -- Namens-Mengen statt Zaehler: je Faehigkeit einmal
+    v_blk_names  text[] := ARRAY[]::text[];
+    v_ovr_names  text[] := ARRAY[]::text[];
     v_skills     jsonb;
     v_role       jsonb;
     v_req        jsonb;
@@ -82,8 +88,8 @@ BEGIN
 
             IF v_ist IS NULL THEN
                 v_missing := v_missing || jsonb_build_object('name', v_name, 'required', v_minlvl, 'is_blocker', v_blocker);
-                v_gap_count := v_gap_count + 1;
-                IF v_blocker THEN v_blk_count := v_blk_count + 1; END IF;
+                v_gap_names := v_gap_names || v_nname;
+                IF v_blocker THEN v_blk_names := v_blk_names || v_nname; END IF;
             ELSE
                 v_havelvl  := v_ist->>'level';
                 v_haverank := career.fn_skill_level_rank(v_havelvl);
@@ -91,11 +97,11 @@ BEGIN
                     v_met := v_met + 1;       -- presence-only (kein Mindest-Level) -> Praesenz erfuellt, Level egal
                 ELSIF v_haverank < v_reqrank THEN
                     v_weak := v_weak || jsonb_build_object('name', v_name, 'have', v_havelvl, 'required', v_minlvl, 'is_blocker', v_blocker);
-                    v_gap_count := v_gap_count + 1;
-                    IF v_blocker THEN v_blk_count := v_blk_count + 1; END IF;
+                    v_gap_names := v_gap_names || v_nname;
+                    IF v_blocker THEN v_blk_names := v_blk_names || v_nname; END IF;
                 ELSIF v_haverank > v_reqrank THEN
                     v_over := v_over || jsonb_build_object('name', v_name, 'have', v_havelvl, 'required', v_minlvl);
-                    v_ovr_count := v_ovr_count + 1;
+                    v_ovr_names := v_ovr_names || v_nname;
                     v_met := v_met + 1;       -- uebererfuellt = erfuellt (zaehlt zu met_count)
                 ELSE
                     v_met := v_met + 1;       -- have == req
@@ -113,9 +119,9 @@ BEGIN
     END LOOP;
 
     RETURN jsonb_build_object(
-        'gap_count',         v_gap_count,
-        'blocker_gap_count', v_blk_count,
-        'overskill_count',   v_ovr_count,
+        'gap_count',         (SELECT count(DISTINCT n) FROM unnest(v_gap_names) n),
+        'blocker_gap_count', (SELECT count(DISTINCT n) FROM unnest(v_blk_names) n),
+        'overskill_count',   (SELECT count(DISTINCT n) FROM unnest(v_ovr_names) n),
         'roles',             v_roles_out);
 END;
 $$;

@@ -6,7 +6,8 @@
 --   Beschreibungs-Re-Resolve, 0/>1 Treffer -> {ok:false, code, candidates} (Probelauf vor der Karte) — das TOOL loest vor dem Gate auf.
 --   DB-Backstop: core.fn_check_write_permission('adults_only', chat_id) — Kind -> {ok:false}.
 --   Eingabe jsonb: chat_id, description (exakt), asset_type (optionaler Filter).
---   RUECKGABE: {ok:true, action:'deleted', special_asset_id} | {ok:false, reason}.
+--   Seiteneffekt: offene case_tasks mit subject_ref 'asset:<id>' -> not_applicable (derselbe Tx).
+--   RUECKGABE: {ok:true, action:'deleted', special_asset_id, tasks_closed} | {ok:false, reason}.
 --   Anwenden via: db_apply.ps1 -File packages\estate\db\migrations\R__fn_delete_special_asset.sql
 -- ============================================================
 CREATE OR REPLACE FUNCTION estate.fn_delete_special_asset(p jsonb)
@@ -15,6 +16,7 @@ DECLARE
     v_perm    TEXT;
     v_desc    TEXT := NULLIF(trim(COALESCE(p->>'description', '')), '');
     v_resolve RECORD;
+    v_closed  INT;
 BEGIN
     v_perm := core.fn_check_write_permission('adults_only', p->>'chat_id', NULL);
     IF v_perm IS NOT NULL THEN
@@ -35,6 +37,13 @@ BEGIN
 
     DELETE FROM estate.special_assets WHERE id = v_resolve.id;
 
-    RETURN jsonb_build_object('ok', true, 'action', 'deleted', 'special_asset_id', v_resolve.id);
+    -- Offene Fall-Aufgaben dieses Stubs (subject_ref 'asset:<id>', auch vom Nutzer wieder geoeffnete) haben keinen
+    -- Gegenstand mehr: n.a. in derselben Tx, sonst bliebe z. B. "Waffe melden" offen und der Fall schlosse nie ab
+    -- (der Autocomplete-Trigger schliesst den Fall, wenn dies die letzte offene Aufgabe war).
+    UPDATE estate.case_tasks SET status = 'not_applicable'
+     WHERE subject_ref = 'asset:' || v_resolve.id AND status = 'open';
+    GET DIAGNOSTICS v_closed = ROW_COUNT;
+
+    RETURN jsonb_build_object('ok', true, 'action', 'deleted', 'special_asset_id', v_resolve.id, 'tasks_closed', v_closed);
 END;
 $$;

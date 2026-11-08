@@ -11,9 +11,10 @@
 --       Docker >= beginner -> schwach (ohne Level); Kubernetes >= advanced -> uebererfuellt (zaehlt als erfuellt)
 --       -> gefordert 5, erfuellt 2, fehlend 1, schwach 2, ueber 1.
 --   (2) Rolle B: Python >= intermediate -> schwach; dbt Pflicht -> fehlt; SQL ohne Level -> erfuellt
---       -> gefordert 3, erfuellt 1. Summe je Rolle: Luecken 3 + 2 = 5, davon Pflicht 1 + 1 = 2, ueber 1.
---       (Zaehlweise je Rolle; dass Python in beiden Rollen doppelt zaehlt, steht als Auslegungsfrage in
---       pending_recalc2_findings.sql.)
+--       -> gefordert 3, erfuellt 1. Gesamt je FAEHIGKEIT: Luecken Spark, Python, Docker, dbt = 4 (Python steht in
+--       beiden Rollen schwach, zaehlt einmal), davon Pflicht Python + dbt = 2, ueber 1.
+--   (2c) Je Faehigkeit statt je Rolle (Owner-Entscheid): Rolle A Python + Spark, Rolle B python + dbt, leeres Profil
+--       -> Python, Spark, dbt = 3 (nicht 2 + 2).
 --   (3) Trend: 90 (vor 60 T.), 100 (vor 30 T.), Messung ohne Zahl (vor 10 T.), 67 (heute) -> 67 vs 100 = -33,0 % down.
 --       Vorherige 0 -> kein Trend (flat, trend_pct null).
 --   (4) Gehalt 4.250/Monat -> 51.000/Jahr; 61.000/Jahr -> 61.000; ohne Einheit -> unbekannt (NULL).
@@ -44,9 +45,17 @@ BEGIN
   IF (rb->>'required_count')::int <> 3 OR (rb->>'met_count')::int <> 1 OR jsonb_array_length(rb->'missing') <> 1
      OR jsonb_array_length(rb->'weak') <> 1 THEN
     RAISE EXCEPTION 'FAIL [2] Rolle B: %', rb; END IF;
-  IF (g->>'gap_count')::int <> 5 OR (g->>'blocker_gap_count')::int <> 2 OR (g->>'overskill_count')::int <> 1 THEN
-    RAISE EXCEPTION 'FAIL [2b] Summen: erwartet 5 / 2 / 1, got %', g; END IF;
+  IF (g->>'gap_count')::int <> 4 OR (g->>'blocker_gap_count')::int <> 2 OR (g->>'overskill_count')::int <> 1 THEN
+    RAISE EXCEPTION 'FAIL [2b] Summen je Faehigkeit: erwartet 4 / 2 / 1, got %', g; END IF;
   RAISE NOTICE 'PASS [1-2] Skill-Luecken je Rolle: Level-Rang, ohne Level, Gross-/Kleinschreibung, Pflicht';
+
+  g := career.fn_skill_gap(
+    '{"target_roles":[{"title":"A","required_skills":[{"name":"Python"},{"name":"Spark"}]},
+                      {"title":"B","required_skills":[{"name":"python"},{"name":"dbt"}]}]}',
+    '{"skills":[]}');
+  IF (g->>'gap_count')::int <> 3 THEN
+    RAISE EXCEPTION 'FAIL [2c] Skill-Luecken je Faehigkeit: erwartet 3 (Python, Spark, dbt), got %', g; END IF;
+  RAISE NOTICE 'PASS [2c] gleiche Faehigkeit in zwei Ziel-Rollen zaehlt einmal';
 
   v_key := career.fn_market_scope_key('postings', 'Data Engineer', 'Musterstadt');
   DELETE FROM career.market_signals WHERE scope_key = v_key;

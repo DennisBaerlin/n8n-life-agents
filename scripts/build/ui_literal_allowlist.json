@@ -414,6 +414,12 @@
                       "literal":  "fn_clear_e2e_data GUARD: ungültige run-id % (nur [a-z0-9])",
                       "count":  1,
                       "reason":  "admin:raise-meldung (Test-Cleanup/Config-Seed, nur Betreiber)"
+                  },
+                  {
+                      "where":  "packages/estate/db/migrations/R__fn_preview_case.sql",
+                      "literal":  "^(kein(e|en|er|es|em)?|nein|nichts|nix|ohne|none|no|n/a|na)([[:space:]]|[.!,;]|$)",
+                      "count":  1,
+                      "reason":  "data:vergleichswort (Erkennungsmuster fuer eine Verneinung in einer Modell-Eingabe, nie ein Nutzertext)"
                   }
               ]
 }

@@ -10,8 +10,13 @@
 --   adults_only-DB-Backstop (im Preview). Eingabe jsonb: chat_id, subject_person_id (Slug, vom Tool
 --   aufgeloest), case_type, event_date, knowledge_date (optional), bundesland (optional), flags (jsonb).
 --   flags = nur Nutzer-Aussagen (true/false, null faellt weg); der Rest kommt live aus dem Register (WP3).
+--   special_assets (optional, Array von {asset_type, description}) = im Gespraech genannte Sonderfaelle (Waffe, Tier,
+--   Fahrzeug, Firma): die Stubs entstehen in DERSELBEN Tx (Besitzer = betroffene Person), danach erzeugt fan_out die
+--   Pflicht-Aufgaben. Validierung/Dubletten/"Typ ohne Vorlage im Falltyp" kommen aus fn_preview_case. Eine Absage
+--   des Falls (fn_cancel_case) laesst die Stubs stehen: der Gegenstand existiert real; irrtuemlich angelegte Eintraege
+--   entfernt tool_delete_special_asset.
 --   RUECKGABE: {ok:true, case_id, case_type, status, superseded_case_id, phase_counts, total_open, intake_facts,
---     unknown_flags}
+--     unknown_flags, special_asset_ids (neu angelegte Stubs, [] wenn keine)}
 --     | {ok:false, reason} (das Preview-Verdikt).
 --   Anwenden via: db_apply.ps1 -File packages\estate\db\migrations\R__fn_create_case.sql
 -- ============================================================
@@ -23,6 +28,7 @@ DECLARE
     v_id     BIGINT;
     v_counts JSONB;
     v_total  INT;
+    v_asset_ids JSONB;
 BEGIN
     v_prev := estate.fn_preview_case(p);
     IF NOT COALESCE((v_prev->>'ok')::boolean, false) THEN
@@ -42,6 +48,16 @@ BEGIN
             CASE WHEN jsonb_typeof(p->'flags') = 'object' THEN jsonb_strip_nulls(p->'flags') ELSE '{}'::jsonb END)
     RETURNING id INTO v_id;
 
+    -- Genannte Sonderfaelle: exakt die Stubs, die die Preview als NEU gemeldet hat (Dubletten sind dort schon raus),
+    -- vor der Instanziierung, damit fan_out die Pflicht-Aufgaben in derselben Tx anlegt. Besitzer = betroffene Person.
+    WITH ins AS (
+        INSERT INTO estate.special_assets (owner_person_id, asset_type, description)
+        SELECT v_prev->>'subject_person_id', e->>'asset_type', e->>'description'
+          FROM jsonb_array_elements(COALESCE(v_prev->'special_assets', '[]'::jsonb)) WITH ORDINALITY x(e, ord)
+         ORDER BY ord
+        RETURNING id)
+    SELECT COALESCE(jsonb_agg(id ORDER BY id), '[]'::jsonb) INTO v_asset_ids FROM ins;
+
     PERFORM estate.fn_instantiate_case_tasks(v_id);
 
     SELECT COALESCE(jsonb_object_agg(phase, cnt), '{}'::jsonb), COALESCE(sum(cnt), 0)::int
@@ -58,6 +74,7 @@ BEGIN
         'phase_counts', v_counts,
         'total_open', v_total,
         'intake_facts', v_prev->'intake_facts',
-        'unknown_flags', v_prev->'unknown_flags');
+        'unknown_flags', v_prev->'unknown_flags',
+        'special_asset_ids', v_asset_ids);
 END;
 $$;

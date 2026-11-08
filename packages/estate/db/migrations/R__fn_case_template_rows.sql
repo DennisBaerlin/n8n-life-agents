@@ -12,11 +12,17 @@
 --   Haushalt) eine 'open'-Task (subject_ref='asset:<id>', Titel um die Beschreibung ergaenzt); 0 Stubs
 --   -> 0 Tasks. Rolle/Minderjaehrige NUR ueber core.fn_household_persons() (DEFINER-Fenster) — NIE
 --   agent.persons direkt (D10: crasht unter estate_rw).
+--   p_extra_assets (optional, NUR die Preview): Sonderfall-Stubs, die der Fall noch anlegen wird, als Array von
+--   {asset_type, description}, bereits normalisiert/dedupliziert (fn_preview_case). Sie zaehlen wie Register-Stubs
+--   als offene fan_out-Aufgabe, tragen aber den Platzhalter-Ref 'new:<n>' (nie 'asset:'): der Create-Pfad legt die
+--   Stubs an und ruft diese fn OHNE Extras, daher landet ein Platzhalter nie in case_tasks.
 --   STABLE (liest task_templates + special_assets + DEFINER-Fenster; kein Write).
 --   Anwenden via: db_apply.ps1 -File packages\estate\db\migrations\R__fn_case_template_rows.sql
 -- ============================================================
+DROP FUNCTION IF EXISTS estate.fn_case_template_rows(text, text, jsonb, date, date, text);   -- Signaturwechsel (7. Parameter), sonst zwei Ueberladungen
 CREATE OR REPLACE FUNCTION estate.fn_case_template_rows(
-    p_case_type text, p_subject text, p_flags jsonb, p_event date, p_know date, p_bundesland text)
+    p_case_type text, p_subject text, p_flags jsonb, p_event date, p_know date, p_bundesland text,
+    p_extra_assets jsonb DEFAULT NULL)
 RETURNS TABLE (
     template_key text, subject_ref text, phase text, title text, detail text,
     due_date date, hardness text, legal_source text, status text)
@@ -69,6 +75,18 @@ BEGIN
                                     (t.title || ' — ' || a.description)::text, t.detail, v_due,
                                     t.hardness, t.legal_source, 'open'::text;
             END LOOP;
+            IF jsonb_typeof(p_extra_assets) = 'array' THEN
+                FOR a IN
+                    SELECT x.e->>'description' AS description, x.ord
+                      FROM jsonb_array_elements(p_extra_assets) WITH ORDINALITY x(e, ord)
+                     WHERE x.e->>'asset_type' = t.fan_out
+                     ORDER BY x.ord
+                LOOP
+                    RETURN QUERY SELECT t.template_key, ('new:' || a.ord)::text, t.phase,
+                                        (t.title || ' — ' || a.description)::text, t.detail, v_due,
+                                        t.hardness, t.legal_source, 'open'::text;
+                END LOOP;
+            END IF;
         END IF;
     END LOOP;
 END;

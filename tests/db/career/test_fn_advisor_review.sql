@@ -150,6 +150,24 @@ BEGIN
   END IF;
   RAISE NOTICE 'PASS [6c] Zaehlung im Skill-Gap-Alert';
 
+  -- ---------- TEST 6d (je Faehigkeit: Python steht in beiden Rollen -> Hauptsatz 3 statt 4; "weitere Ziele" = nur
+  --            Faehigkeiten, die die primaere Rolle nicht hat) ----------
+  UPDATE agent.core_contexts SET metadata = jsonb_set(metadata, '{facts,target_roles}', jsonb_build_array(
+      jsonb_build_object('title','Analyst','required_skills', jsonb_build_array(
+        jsonb_build_object('name','Statistik','min_level','advanced'), jsonb_build_object('name','Python','min_level','advanced'))),
+      jsonb_build_object('title','Engineer','required_skills', jsonb_build_array(
+        jsonb_build_object('name','python','min_level','advanced'), jsonb_build_object('name','Docker','min_level','advanced')))))
+    WHERE name = 'career_planning';
+  v_res := career.fn_advisor_review('career');
+  IF NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v_res->'alerts') a
+                 WHERE a->>'metric_key' = 'skill_gaps' AND (a->>'value')::int = 3)
+     OR NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v_res->'alerts') a, jsonb_array_elements(a->'msg') m
+                 WHERE a->>'metric_key' = 'skill_gaps' AND m->>'value' = 'career.advisor.skill_gaps_other'
+                   AND (m->'params'->'n'->>'value')::int = 1) THEN
+    RAISE EXCEPTION 'FAIL [6d] erwartet Luecken 3 (Statistik, Python, Docker) und weitere Ziele 1 (Docker): %', v_res->'alerts';
+  END IF;
+  RAISE NOTICE 'PASS [6d] gemeinsame Luecke zaehlt im Berater-Satz einmal';
+
   -- ---------- TEST 7 (P0c per-Person): career_planning + career_profile per_user am OWNER-Suffix ----------
   -- P0c entfernt den P0b-Suspend-Guard: die Review liest jetzt den OWNER-Plan am Suffix (agent.fn_owner_person_id),
   -- der geteilte Wrapper hat keine Person-Dimension (P2 = Faecherung). Beweis: family(owner=erika) +

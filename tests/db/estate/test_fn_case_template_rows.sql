@@ -88,6 +88,25 @@ BEGIN
   IF v_due <> estate.fn_add_business_days('2024-01-15'::date, 3, 'berlin') THEN
     RAISE EXCEPTION 'FAIL [PStG Anker=event: %]', v_due; END IF;
   RAISE NOTICE 'PASS [event- vs knowledge-Anker]';
+
+  -- ---- Extra-Stubs (7. Parameter, nur die Preview): noch nicht angelegte Sonderfaelle zaehlen als offene Aufgabe mit
+  --      Platzhalter-Ref 'new:<n>' (nie ein 'asset:'-Ref -> kann nicht versehentlich materialisiert werden). ----
+  SELECT count(*) INTO v_cnt FROM estate.fn_case_template_rows('death','hans','{}'::jsonb,'2024-05-10','2024-05-10','bayern',
+    '[{"asset_type":"firearm","description":"Beispiel-Waffe"},{"asset_type":"pet","description":"Beispiel-Hund"}]'::jsonb)
+    WHERE status = 'open' AND subject_ref LIKE 'new:%';
+  IF v_cnt <> 2 THEN RAISE EXCEPTION 'FAIL [Extra-Stubs -> zwei new:-Aufgaben, got %]', v_cnt; END IF;
+  IF NOT EXISTS (SELECT 1 FROM estate.fn_case_template_rows('death','hans','{}'::jsonb,'2024-05-10','2024-05-10','bayern',
+        '[{"asset_type":"firearm","description":"Beispiel-Waffe"}]'::jsonb)
+      WHERE template_key = 'secure_firearms' AND subject_ref = 'new:1' AND title LIKE '%Beispiel-Waffe%') THEN
+    RAISE EXCEPTION 'FAIL [Extra-Stub: Ref new:1 + Titel um Beschreibung ergaenzt]'; END IF;
+  -- Ohne Extras (NULL oder 6 Argumente) identisch zu vorher; Extras eines Typs ohne Vorlage im Falltyp liefern nichts.
+  IF (SELECT count(*) FROM estate.fn_case_template_rows('death','hans','{}'::jsonb,'2024-05-10','2024-05-10','bayern', NULL))
+     <> (SELECT count(*) FROM estate.fn_case_template_rows('death','hans','{}'::jsonb,'2024-05-10','2024-05-10','bayern')) THEN
+    RAISE EXCEPTION 'FAIL [NULL-Extras = 6-Argument-Aufruf]'; END IF;
+  IF EXISTS (SELECT 1 FROM estate.fn_case_template_rows('incapacity','hans','{}'::jsonb,'2024-05-10','2024-05-10','bayern',
+        '[{"asset_type":"firearm","description":"Beispiel-Waffe"}]'::jsonb) WHERE subject_ref LIKE 'new:%') THEN
+    RAISE EXCEPTION 'FAIL [Extra-Typ ohne Vorlage im Falltyp -> keine Aufgabe]'; END IF;
+  RAISE NOTICE 'PASS [Extra-Stubs der Preview]';
 END $$;
 
 ROLLBACK;

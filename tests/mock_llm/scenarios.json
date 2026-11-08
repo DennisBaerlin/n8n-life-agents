@@ -1039,6 +1039,14 @@
     "final": "Todesfall angelegt, hier der erste Schritt."
   },
   {
+    "_comment": "S2.1 estate (es19): Todesfall mit genannter Waffe - firearm im selben tool_create_case-Aufruf. Match auf 'Jagdwaffe im Waffenschrank'.",
+    "match": "Jagdwaffe im Waffenschrank",
+    "calls": [
+      { "tool": "tool_create_case", "args": { "subject_person": "Lena", "case_type": "death", "event_date": "yesterday", "bundesland": "bayern", "employed": "true", "firearm": "Jagdwaffe im Waffenschrank" } }
+    ],
+    "final": "Todesfall angelegt, hier der erste Schritt."
+  },
+  {
     "_comment": "WS-5 estate (es16): export_emergency_binder (gegateter Read-Egress, owner_info Break-Glass). KEINE Pflicht-$fromAI (mask_sensitive optional -> args leer). Match auf 'Notfallmappe als Dokument'.",
     "match": "Notfallmappe als Dokument",
     "calls": [

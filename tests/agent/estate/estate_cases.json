@@ -172,6 +172,17 @@
     "notes": "WP3: relative Daten rechnet die DB (core.fn_resolve_date in estate.fn_preview_case), die Preview loest einmal auf und der Write uebernimmt genau dieses Datum. Das relative Datum altert nicht -> kein Nachziehen wie bei es15."
   },
   {
+    "id": "es19",
+    "name": "create_case: Todesfall mit genannter Waffe (Sonderfall im selben Aufruf)",
+    "task": "Meine Partnerin Lena ist gestern in Bayern gestorben. Sie war angestellt und hatte eine Jagdwaffe im Waffenschrank. Öffne bitte den Todesfall und sag mir den ersten Schritt.",
+    "chat_id": "test_es19",
+    "timeout_s": 300,
+    "expected_tool": "tool_create_case",
+    "expected_tool_args": { "case_type": "death", "bundesland": "bayern" },
+    "expected_behavior": "The advisor opens the death case via tool_create_case and passes the firearm the user named in the firearm field of THAT call (a short description such as hunting weapon in the gun cabinet) - it must NOT register the weapon with a separate tool_create_special_asset call first and must not leave it out. It passes the date as the user said it (relative, e.g. yesterday), does not invent dates, and does not ask for facts the register derives. It acknowledges the loss briefly.",
+    "notes": "S2.1: genannte Waffe/Tier/Fahrzeug/Firma gehen als Felder firearm/pet/vehicle/business in tool_create_case; die DB legt den Register-Eintrag und die Pflicht-Aufgabe (secure_firearms) selbst an (test_fn_create_case_special_assets). Dieser Fall prueft nur das Routing/die Feldwahl. Relatives Datum altert nicht."
+  },
+  {
     "id": "es16",
     "name": "export_emergency_binder: Notfallmappe als Dokument (gegateter Read-Egress)",
     "task": "Schick mir bitte die Notfallmappe als Dokument, damit ich alles ausgedruckt im Ordner habe.",

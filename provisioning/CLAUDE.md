@@ -54,7 +54,6 @@ Der Auslieferungs-Kern läuft byte-identisch im Test-Substrat (systemd-Docker-Co
 - Inhalte gehen nur an api.anthropic.com (Privacy-Hard-Rule; externe Gateways ausgeschlossen). Nie Header, Schlüssel oder Inhalte loggen; Fehler nur als feste Codes. Die n8n-Built-in-Cache-Option auch nach einem Update aus lassen (setzt nur den oberen Haltepunkt). `install_llm_gateway` bricht ab, bevor die Credential umgestellt wird, wenn `/__health` nicht antwortet.
 - Einzige Datei des Gateways ist `usage.jsonl` (62 Tage): nur Zahlen, Modell, Workflow-Name, Zeit. Die Workflow-Kennung (Header `x-lifeagents-workflow` bzw. Kennzeile `<<la-wf:…>>` vorn in der System-Nachricht) geht nie an Anthropic; die Kennzeile wird vor Caching/Keep-Alive-Schlüssel entfernt. Telegram-Relay und Begründungen → Referenz *LLM-Gateway*.
 - Keep-Alive hält Anfang + Auth-Header nur im RAM (nie Gespräch, nie Platte); Schalter `LLM_GATEWAY_KEEPALIVE_HOURS` (Install-Env vor `core.env`, Standard 24, `0` = aus). Das Test-Substrat setzt `0` (`bootstrap_test_n8n.ps1`), sonst stupst ein liegengelassenes Substrat den Cache auf dem Entwickler-Schlüssel an.
-
 ## Gotchas
 
 - **Owner-Setup:** `N8N_SECURE_COOKIE=false` Pflicht (UI/REST nur über localhost-http); Owner-Email muss FQDN sein + Passwort-Policy 8–64/≥1 Ziffer/≥1 Großbuchstabe; API-Key braucht `scopes` (erst `GET /rest/api-keys/scopes`).

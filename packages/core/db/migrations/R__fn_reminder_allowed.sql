@@ -7,7 +7,7 @@
 --   scope='household' -> nur der Notschalter (die Person spielt keine Rolle). Unbekannter Key -> false (fail-closed).
 --   Jeder Cron mit Person-Faecherung fragt HIER (nie eigene Praeferenz-Logik).
 --   SECURITY DEFINER (liest agent.reminder_prefs + core.config/cron_labels; Paket-Crons laufen unter engen Rollen),
---   STABLE, search_path gepinnt, REVOKE PUBLIC. Grants je Konsument (fn_provision_package_roles), sobald einer existiert.
+--   STABLE, search_path gepinnt, REVOKE PUBLIC. Grant an jede _rw-Rolle in fn_provision_package_roles.
 --   Tests: tests/db/core/test_fn_reminder_prefs.sql
 -- ============================================================
 CREATE OR REPLACE FUNCTION core.fn_reminder_allowed(p_cron_key text, p_person_id text)

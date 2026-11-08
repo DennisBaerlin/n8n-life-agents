@@ -17,6 +17,8 @@ StateDirectoryMode=0700
 Environment=LLM_GATEWAY_PORT=@@GATEWAY_PORT@@
 # Cache-Keep-Alive: Stunden nach der letzten Nutzung eines Agenten-Anfangs (0 = aus; install_llm_gateway.sh).
 Environment=LLM_GATEWAY_KEEPALIVE_HOURS=@@KEEPALIVE_HOURS@@
+# Ein Werkzeug je Antwort (1 = an, 0 = aus; Kopf von server.js).
+Environment=LLM_GATEWAY_SERIAL_TOOLS=@@SERIAL_TOOLS@@
 # Ausgehend IPv4 bevorzugen (api.anthropic.com hat AAAA): ein haengender IPv6-Pfad im Heimnetz kostete sonst
 # den vollen TCP-Timeout je Claude-Aufruf — dieselbe Massnahme wie in n8n.service.tpl.
 Environment=NODE_OPTIONS=--dns-result-order=ipv4first

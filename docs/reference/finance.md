@@ -78,12 +78,14 @@ Propose→Review→Commit. Eine Row = eine zu erzeugende Entität als roher Payl
 | `finance.onboarding_state` | Finanz-Sektionen, geseedet aus `packages/finance/onboarding/sections.json` |
 
 **Kurs-Lücken (2026-10-27).** `fn_holding_price_status` ist die eine Adresse für „hat diese Position einen Kurs?“ (`missing` = nie einer, `stale` = älter als `core.advisor.price_stale_days`). Sie speist `depot_holdings_overview.price_status`, die Tool-Antworten nach dem Sofort-Abruf (`price_status` bei Kauf, Korrektur und Sparplan-Ausführung, `positions_without_price` beim Import) und den Berater (`null_price`). Gemeldet wird eine Lücke unabhängig vom Finanzplan durch `agent.finance.cron_remind_missing_prices`:
-- Latch je Position: `core.fn_should_notify`, source `finance_prices`, 7 Tage. Re-Arm nach Behebung macht `fn_price_gaps`.
+- Latch je Position: `core.fn_should_notify`, source `finance:prices`, 7 Tage. Re-Arm nach Behebung macht `fn_price_gaps`.
 - Liefert der Feed gar nichts mehr, kommt eine einzige Meldung statt Einzelkarten.
 - Vorschlag: zuerst die Yahoo-ISIN-Suche, sonst die Websuche nach Tickern. Beides geht durch dieselbe Plausi-Prüfung des Subs.
 - Übernommen wird per Tipp (`fn_apply_price_symbol`, Guard `already_resolved`), danach wird der Kurs sofort geholt.
 
 Der Berater-Datenqualitäts-Alarm nennt Kurs-Lücken nur im Text, ohne eigenen Latch, damit nichts doppelt gemeldet wird.
+
+**Bank-Ende-Erinnerung.** `cron_remind_bank_end` meldet 3 bis 60 Tage nach dem letzten Termin (`fn_bank_end_due`) jeden aktiven Bank-Auftrag mit Ende; Latch je Kette, Termin und Empfänger in `fn_bank_end_claim` (source `finance:bank_end`). Der Owner bekommt alles gesammelt, ein gekoppelter `partner` als Konto-Inhaber zusätzlich seine eigenen (Person-Key `remind_bank_end_person`). Beenden im Bot mit Termin in der Vergangenheit setzt nur den Owner-Key (`fn_bank_stop_note_told`). Abgrenzung: Der Berater-Alarm `standing_order_ending` warnt vor dem Ende und nur für Zubringer, diese Erinnerung kommt danach und gilt jedem Bank-Auftrag.
 
 ## Views — Nicht-Offensichtliches (Logik = `R__finance_views.sql`)
 

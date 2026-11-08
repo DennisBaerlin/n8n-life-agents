@@ -43,52 +43,6 @@ if (-not $state.mock_telegram) { throw "Mock-Telegram nicht aktiv (fuer die Gate
 Assert-LlmGatewayUpstream -Container $Container -Expect real
 $llmCursor = Get-LlmUsageCursor -Container $Container
 
-function Invoke-N8nGet([string]$Path) { Invoke-RestMethod -Uri "$N8N_URL/api/v1/$Path" -Headers $Headers -Method Get }
-function Stop-Exec([string]$ExecId) { try { Invoke-RestMethod -Uri "$N8N_URL/api/v1/executions/$ExecId/stop" -Headers $Headers -Method Post -ContentType 'application/json' -Body '{}' | Out-Null } catch { } }
-function Get-ToolCall([object]$RunData, [string]$AgentNodeName) {
-    $out = @()
-    if ($null -eq $AgentNodeName -or -not $RunData.PSObject.Properties.Name.Contains($AgentNodeName)) { return $out }
-    foreach ($run in $RunData.$AgentNodeName) {
-        $actions = $null; try { $actions = $run.metadata.subNodeExecutionData.actions } catch { }
-        if (-not $actions) { continue }
-        foreach ($a in $actions) {
-            $nn = $null; try { $nn = $a.action.nodeName } catch { }; if (-not $nn) { try { $nn = $a.nodeName } catch { } }
-            if ($nn) { $out += @{ tool = $nn; inputObj = $a.action.input } }
-        }
-    }
-    return $out
-}
-function Get-CalledTool([object]$RunData, [string]$AgentNodeName) {
-    foreach ($c in (Get-ToolCall $RunData $AgentNodeName)) { if ($c.tool -like 'tool_*') { return $c.tool } }
-    return $null
-}
-function Get-AgentOutput([object]$RunData, [string]$AgentNodeName) {
-    $txt = ''
-    if ($null -eq $AgentNodeName -or -not $RunData.PSObject.Properties.Name.Contains($AgentNodeName)) { return $txt }
-    foreach ($run in $RunData.$AgentNodeName) { try { if ($run.data.main[0][0].json.output) { $txt = $run.data.main[0][0].json.output } } catch { } }
-    return $txt
-}
-function Compare-ArgValue($Actual, $Expected) {
-    if ($null -eq $Actual) { return $false }
-    $aStr = ("$Actual").Trim(); $eStr = ("$Expected").Trim(); if ($aStr -eq '') { return $false }
-    $aNum = 0.0; $eNum = 0.0; $inv = [Globalization.CultureInfo]::InvariantCulture; $any = [Globalization.NumberStyles]::Any
-    $aIsNum = [double]::TryParse($aStr, $any, $inv, [ref]$aNum); $eIsNum = [double]::TryParse($eStr, $any, $inv, [ref]$eNum)
-    if ($aIsNum -and $eIsNum) { return ([math]::Abs($aNum - $eNum) -lt 0.0001) }
-    if ($aIsNum -ne $eIsNum) { return $false }
-    if ($aStr -ieq $eStr) { return $true }
-    $al = $aStr.ToLowerInvariant(); $el = $eStr.ToLowerInvariant(); return ($al.Contains($el) -or $el.Contains($al))
-}
-function Test-ToolArg([object]$InputObj, [object]$Expected) {
-    if ($null -eq $InputObj) { return @('kein Tool-Input erfassbar') }
-    if ($InputObj -is [string]) { try { $InputObj = $InputObj | ConvertFrom-Json } catch { return @("Tool-Input nicht parsebar") } }
-    $errs = @()
-    foreach ($p in $Expected.PSObject.Properties) {
-        $act = $null; try { $act = $InputObj.$($p.Name) } catch { }
-        if (-not (Compare-ArgValue $act $p.Value)) { $errs += "$($p.Name): erwartet '$($p.Value)', erhalten '$(if($null -eq $act){'(fehlt)'}else{$act})'" }
-    }
-    return $errs
-}
-
 # --- Setup ---
 $wfList    = Invoke-N8nGet 'workflows?limit=200'
 $financeWf = $wfList.data | Where-Object { $_.name -eq 'agent.finance' } | Select-Object -First 1

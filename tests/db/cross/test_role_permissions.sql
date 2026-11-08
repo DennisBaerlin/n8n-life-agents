@@ -1678,7 +1678,7 @@ DECLARE
                               'fn_household_persons', 'fn_resolve_person', 'fn_ui_texts_for', 'fn_today',
                               'fn_resolve_date', 'fn_resolve_input_dates', 'fn_handoff_tasks_read'];
   v_published_rw text[] := ARRAY['fn_set_onboarding_section', 'fn_check_write_permission', 'fn_person_chat_id',
-                                 'fn_should_notify', 'fn_notify_resolve', 'fn_dry_run',
+                                 'fn_should_notify', 'fn_notify_resolve', 'fn_dry_run', 'fn_reminder_allowed', 'fn_notify_forget_before',
                                  'fn_handoff_task_check', 'fn_complete_handoff_task', 'fn_cancel_handoff_task'];
   v_n int := 0;
 BEGIN
@@ -1779,6 +1779,20 @@ BEGIN
     RESET ROLE;
     RAISE EXCEPTION 'FAIL [Kurs-Luecken-Rollenpfad]: %', SQLERRM;
   END;
+  BEGIN
+    SET LOCAL ROLE finance_rw;
+    PERFORM finance.fn_bank_end_claim();
+    PERFORM core.fn_reminder_allowed('remind_bank_end', NULL);
+    PERFORM core.fn_notify_forget_before('__rp_test__', now());
+    RESET ROLE;
+    SET LOCAL ROLE finance_ro;
+    PERFORM finance.fn_bank_end_due();
+    RESET ROLE;
+  EXCEPTION WHEN OTHERS THEN
+    RESET ROLE;
+    RAISE EXCEPTION 'FAIL [Bank-Ende-Rollenpfad]: %', SQLERRM;
+  END;
+  RAISE NOTICE 'PASS [finance_rw -> fn_bank_end_claim/fn_reminder_allowed/fn_notify_forget_before, finance_ro -> fn_bank_end_due]';
   RAISE NOTICE 'PASS [finance_rw -> fn_price_gaps/fn_price_gap_claim/fn_apply_price_symbol, finance_ro -> fn_holding_price_status/fn_fx_rate_map/price_status]';
 END $$;
 

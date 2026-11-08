@@ -51,28 +51,12 @@ if (-not $state.mock_telegram) { throw "Mock-Telegram nicht aktiv (fuer die Gate
 Assert-LlmGatewayUpstream -Container $Container -Expect real
 $llmCursor = Get-LlmUsageCursor -Container $Container
 
-function Invoke-N8nGet([string]$Path) { Invoke-RestMethod -Uri "$N8N_URL/api/v1/$Path" -Headers $Headers -Method Get }
-function Stop-Exec([string]$ExecId) {
-    try { Invoke-RestMethod -Uri "$N8N_URL/api/v1/executions/$ExecId/stop" -Headers $Headers -Method Post -ContentType 'application/json' -Body '{}' | Out-Null } catch { }
-}
 $AgentNode   = 'Orchestrator agent'
 # Route-Agenten aus den Manifesten (kein Paket im Treiber; Verdikt-Logik geteilt mit mock_route_test).
 $routeAgents = Get-TestRouteAgent
 
-function Get-ToolCall([object]$RunData) {
-    $out = @()
-    if (-not $RunData.PSObject.Properties.Name.Contains($AgentNode)) { return $out }
-    foreach ($run in $RunData.$AgentNode) {
-        $actions = $null; try { $actions = $run.metadata.subNodeExecutionData.actions } catch { }
-        if (-not $actions) { continue }
-        foreach ($a in $actions) {
-            $nn = $null; try { $nn = $a.action.nodeName } catch { }; if (-not $nn) { try { $nn = $a.nodeName } catch { } }
-            if ($nn) { $out += $nn }
-        }
-    }
-    return $out
-}
-function Get-AgentOutput([object]$RunData) {
+# Anders als Get-AgentOutput (test_n8n_state.ps1): nach einem Spezialisten zaehlt der gesendete Text, nicht die Agent-Ausgabe.
+function Get-SentOutput([object]$RunData) {
     $txt = ''
     # Woertliches Weiterreichen: die GESENDETE Nachricht = Rahmensatz aus 'Claim expression' (frame_r.text, falls da)
     # + Leerzeile + 'Relay compose'.body; der Agent selbst liefert nach einem Spezialisten nur FRAME/NOFRAME. Fuer Judge
@@ -216,7 +200,7 @@ foreach ($tc in $cases) {
     if (-not $ex) { Write-Host "    [FAIL] Keine Orchestrator-Execution gefunden (Timeout $caseTimeout s)." -ForegroundColor Red; $failed++; continue }
 
     $runData = $ex.data.resultData.runData
-    $tools = Get-ToolCall $runData
+    $tools = @(Get-ToolCall $runData $AgentNode | ForEach-Object { $_.tool })
     $routed = Get-RoutedAgent -Tools $tools -RouteAgents $routeAgents
     $routeShown = $routed -join '+'; if (-not $routeShown) { $routeShown = '(kein)' }
     Write-Host "    Execution: id=$($ex.id)  status=$($ex.status)  route=$routeShown  tools=[$($tools -join ', ')]"
@@ -229,7 +213,7 @@ foreach ($tc in $cases) {
     }
     $specialistOut = Get-SpecialistOutput $runData
     if ($tc.verbatim_relay) {
-        $vr = Test-VerbatimRelay $specialistOut (Get-AgentOutput $runData)
+        $vr = Test-VerbatimRelay $specialistOut (Get-SentOutput $runData)
         Write-Host "    verbatim_relay: $($vr.ok) ($($vr.reason))"
         if (-not $vr.ok) { $pass = $false }
     }
@@ -262,17 +246,17 @@ foreach ($tc in $cases) {
             id = $tc.id; name = $tc.name; task = $tc.task
             expected_behavior = $tc.expected_behavior; expected_tool = $tc.expected_route
             det_pass = $pass; actual_tool = $routeShown; actual_tool_input = ''
-            read_tools = ''; specialist_output = $specialistOut; actual_output = (Get-AgentOutput $runData)
+            read_tools = ''; specialist_output = $specialistOut; actual_output = (Get-SentOutput $runData)
         }
         Write-Host "    [JUDGE] Verhalten zur AI-Bewertung vorgemerkt" -ForegroundColor Cyan
     }
 
     if ($pass) {
         $passed++; Write-Host "    [PASS] route=$routeShown" -ForegroundColor Green
-        if ($Verbose) { Write-Host "    output: $(Get-AgentOutput $runData)" -ForegroundColor DarkGray }
+        if ($Verbose) { Write-Host "    output: $(Get-SentOutput $runData)" -ForegroundColor DarkGray }
     } else {
         $failed++; Write-Host "    [FAIL] $($tc.name)" -ForegroundColor Red
-        Write-Host "    output: $(Get-AgentOutput $runData)" -ForegroundColor Yellow
+        Write-Host "    output: $(Get-SentOutput $runData)" -ForegroundColor Yellow
     }
 }
 

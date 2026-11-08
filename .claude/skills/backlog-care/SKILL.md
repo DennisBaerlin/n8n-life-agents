@@ -18,10 +18,10 @@ Die Fleißarbeit machen Sonnet-Unteragenten (`Explore`): die „Erledigt?“-Suc
    - `git log origin/main --since=<letzter Lauf> --oneline` sowie `git log origin/main -S<Stichwort> --oneline` bzw. `--grep`;
    - im Code/Test nachsehen, ob die beschriebene Lücke noch besteht (Grep in `packages/`, `tests/`, `docs/`). Ein Commit mit passendem Wort allein reicht nicht: der Beleg ist der Code-Stand.
    - Ergebnis je Punkt: erledigt (Beleg: Commit + Datei), teilweise (was fehlt), offen, unklar (Grund).
-3. **Getriggert?** Bei DEFER-Punkten den Trigger lesen und prüfen, ob er eingetreten ist (ein Datum, eine Version, ein Bedarf, der in Commits oder in der PRIO-Liste auftaucht). Eingetretene Trigger nach oben melden.
+3. **Getriggert?** Bei DEFER-Punkten den Trigger lesen und prüfen, ob er eingetreten ist (ein Datum, eine Version, ein Bedarf, der in Commits oder in der PRIO-Liste auftaucht). Eingetretene Trigger nach oben melden. Daten-Auslöser (Termine, Fristen, Versionen), die innerhalb der nächsten 30 Tage fällig werden, im Bericht ausdrücklich nennen, auch aus den Abschnitten „Owner-Proben“ und „Offene bezahlte Prüfungen“ (z. B. Testfälle mit festem Datum).
 4. **Doppelungen und Widersprüche:** gleiche oder überlappende Punkte (auch zwischen PRIO, Owner-Proben und DEFER), Punkte, die einem Owner-Grundsatz in der Root-`CLAUDE.md` widersprechen, Punkte, die ein anderer Punkt schon enthält.
 5. **Priorität:** Vorschlag für die Reihenfolge der PRIO-Liste. Kriterien in dieser Reihenfolge: Daten-Korrektheit/Sicherheit/Privatsphäre · von echten Nutzern gemeldeter Schmerz · schon vorbereitete Pläne · Aufwand (klein zuerst bei gleichem Nutzen) · Abhängigkeiten (was blockiert was). Je Punkt ein Satz Begründung. Bezahlte Suiten (Owner-Fenster) als Bündel nennen, weil sie Kontingent kosten.
-6. **Formfehler:** Einträge ohne Trigger (DEFER braucht einen), durchgestrichene oder als „erledigt“ markierte Reste; echte Werte aus der privaten Datei im Bericht nie wiederholen.
+6. **Formfehler:** Einträge ohne Trigger (DEFER braucht einen), durchgestrichene oder als „erledigt“ markierte Reste; Einträge, deren einziger Auslöser ein Owner-Wunsch ist (Regel steht oben in `.local/BACKLOG.md`); echte Werte aus der privaten Datei im Bericht nie wiederholen.
 
 **Falle:** Ein Hook sperrt jeden Shell-Befehl, in dem der Dateiname einer bezahlten Test-Suite steht (auch beim bloßen Suchen). Backlog-Punkte zu diesen Suiten deshalb mit dem Grep-Tool oder mit Stichworten ohne den Skript-Namen prüfen, nie eine Suite starten.
 

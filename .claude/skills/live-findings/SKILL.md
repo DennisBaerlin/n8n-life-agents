@@ -41,6 +41,7 @@ Privates Artefakt, Titel `Befunde KW <nn>`, einfache deutsche Sprache (Fachbegri
 2. **Zahlen:** Gespräche, Fehlerläufe je Workflow, liegengebliebene Karten.
 3. **Funde** als Tabelle: Art (Fehlroute/Abbruch/Rückfrage/Fehler), wo, was, Folge für den Nutzer. Ein Fund, der ein neuer Testfall werden sollte, trägt die Markierung Testfall und nennt in einem Satz die zu prüfende Eigenschaft. Live-Werte bleiben im privaten Bericht; der Owner gibt markierte Funde für `/test-task` frei, und weiter geht nur dieser eine Satz zur Eigenschaft.
 4. **Backlog-Vorschläge:** je Vorschlag Problem, Beleg (Anzahl/Tage, ohne private Werte), grobe Lösungsrichtung, Dringlichkeit. Aufnehmen ins private Backlog tut eine Session auf das Wort des Owners. Das Artefakt ist eine statische Seite ohne Knopf: Schreibe am Ende den Satz, den der Owner in einer neuen Sitzung im Repo sagt (z. B. „Nimm die Vorschläge 1 und 3 aus dem Bericht Befunde KW <nn> ins Backlog auf“), und nummeriere die Vorschläge, damit er einzelne auswählen kann. Nie „mit deinem OK passiert X“ als Knopf-Ersatz schreiben.
-5. **Nicht geprüft** (was fehlte oder nicht erreichbar war), ehrlich.
+5. **Deine Probe diese Woche** (fester Abschnitt): genau EINE Probe aus `.local/BACKLOG.md`, Abschnitt „Owner-Proben“, und zwar die erste, die noch dort steht (erledigte streicht der Owner selbst). In zwei Sätzen: was er tun und worauf er achten soll. Steht keine mehr dort, einen Satz dazu.
+6. **Nicht geprüft** (was fehlte oder nicht erreichbar war), ehrlich.
 
 Link zum Artefakt als Ergebnis ausgeben; keine Zahlen oder Gesprächsinhalte in die Chat-Antwort kopieren, die Kurzfassung genügt.

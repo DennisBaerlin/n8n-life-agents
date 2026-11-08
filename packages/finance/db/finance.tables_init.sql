@@ -221,7 +221,7 @@ CREATE INDEX IF NOT EXISTS idx_fx_rates_lookup
 -- Pro gehaltenem Depot-Symbol ein datierter Kurs in seiner NATIVE-Waehrung (= Holding-Waehrung);
 -- die Roll-up-/Drift-Views rechnen den Marktwert (shares x price) und konvertieren via finance.fn_to_eur.
 -- Befuellt vom deterministischen Cron agent.finance.cron_refresh_market_prices (Yahoo Finance v8/chart fuer
--- Aktien/ETF wie Portfolio Performance, CoinGecko fuer Krypto; HTTP -> finance.fn_upsert_market_prices, KEIN LLM). Symbol ist der stabile
+-- Aktien/ETF und Krypto (TICKER-FIAT); HTTP -> finance.fn_upsert_market_prices, KEIN LLM). Symbol ist der stabile
 -- Join-Key (immer vorhanden; isin NULL bei Krypto). PK (symbol, as_of) = idempotenter Tages-Upsert.
 -- Schliesst zugleich die "Depot-Marktwert = Live-Injection"-Luecke (depot_holdings_overview kann kuenftig
 -- echten Marktwert via juengstem as_of zeigen — Folge-Cleanup, vertagt).

@@ -24,6 +24,7 @@
 #       trifft einen Workflow; consumes ⊆ provides) + Referenz-Scan der Build-Defs (jedes Nicht-Core-Paket
 #       nutzt nur Aliase aus seiner consumes.services). Paket eines Defs = physischer Ort (packages/<pkg>/build/).
 #       Scannt .ps1 (Tokens werden build-time aufgeloest).
+#   (6b) CROSS-PACKAGE READS: consumes.reads (nicht core.*) braucht ein passendes provides.reads im Provider-Paket.
 #   (7) CRON-ENABLE (F9/R1-MINOR): jeder gegatete Cron liest sein Enable-Flag ueber
 #       core.fn_config_get('<pkg>','cron_enable','<key>'); dieses Literal MUSS im Manifest
 #       (.config.cron_enable.<key>) deklariert sein (sonst seedet der Host die Zeile nicht ->
@@ -37,6 +38,9 @@
 #   (9) CRON-CONTEXT-WRITE (M1, Phase C): ein Cron (scheduleTrigger-Workflow) schreibt NIE agent.core_contexts
 #       -- weder direkt (INSERT/UPDATE/DELETE) noch ueber eine fn, die es transitiv tut. Der einzige
 #       core_contexts-Schreibpfad ist die owner-gegatete Approve-fn (Orchestrator-Callback learn:ok), NIE ein Cron.
+#   (9b) CALLBACK-PREFIX-KOLLISION: ein Manifest-callback_handlers-Prefix doppelt keinen hartkodierten Switch-Arm (Ausnahme member_permeable).
+#   (10) CONTEXT-SCOPE-PARITAET: facts-Context mit context_validators braucht context_scopes (bidirektional).
+#   (11) ONBOARDING-PARITAET: provides.onboarding.agent <-> onboarding/sections.json (bidirektional, Core ausgenommen).
 #   (12) CREDENTIALS-BLOCK (Install-UX, §3.8): (a) Schema + type-/validator-Enum + env-Key-Bezeichner-
 #       Pin (^[A-Z_][A-Z0-9_]*$ — der Name fliesst in eval/grep) + httpHeaderAuth=genau-1-env-Key,
 #       (b) bidirektionale Paritaet manifest-credentials <-> __CRED_*__-Referenzen der Paket-Workflows
@@ -687,7 +691,7 @@ foreach ($decl in $cronEnableDeclared) {
 }
 
 # ---------------------------------------------------------------
-# (9) CALLBACK-PREFIX-KOLLISION (Phase 0 WS-0c CB): ein Manifest-callback_handlers-Prefix darf KEINEN der
+# (9b) CALLBACK-PREFIX-KOLLISION (Phase 0 WS-0c CB): ein Manifest-callback_handlers-Prefix darf KEINEN der
 #     hartkodierten 'Callback action'-Switch-Arme doppeln -- sonst faengt der Switch-Arm zuerst und die
 #     core.callback_handlers-Zeile feuert NIE (tote Handler-Bindung, da der generische Dispatch nur die
 #     extra-Fallback-Ausgabe sieht). SoT der hartkodierten Arme = der gebaute Orchestrator-Switch (rightValue

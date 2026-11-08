@@ -1,6 +1,6 @@
 -- packages/finance/db/migrations/R__fn_upsert_market_prices.sql
 -- Atomarer Markt-Preis-Upsert (WS2b). Vom Cron agent.finance.cron_refresh_market_prices aufgerufen
--- (Yahoo Finance Aktien/ETF + CoinGecko Krypto -> diese fn, KEIN LLM; der Cron uebergibt source='yahoo').
+-- (Yahoo Finance fuer Aktien/ETF und Krypto -> diese fn, KEIN LLM; der Cron uebergibt source='yahoo').
 -- Extrahiert wie fn_upsert_fx_rates, damit die Upsert-Invarianten deterministisch testbar sind
 -- (tests/db/finance/test_fn_upsert_market_prices.sql) statt nur im Cron-Node zu leben. Provider-agnostisch.
 --

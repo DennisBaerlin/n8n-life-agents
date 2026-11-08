@@ -350,7 +350,7 @@ eq W_no_error "0||null" "$(field "$out" webhook_pending)|$(field "$out" webhook_
 A_TG=''; out="$(js)"
 eq W_unknown "unknown|null" "$(field "$out" webhook)|$(field "$out" webhook_pending)"
 
-# --- N: Tailscale-Rechnername aus zwei Woertern (lib/ts_name.sh, eine Liste lib/ts_names.json) ---------------------
+# --- N: Tailscale-Rechnername aus zwei Woertern (lib/reach.sh ts_name_ensure, eine Liste lib/ts_names.json) ---------------------
 L="$ROOT/provisioning/lib/ts_names.json"
 jq -e '[.adjectives, .nouns] | all(length >= 40 and (unique | length) == length and all(test("^[a-z]+$")))' "$L" >/dev/null \
   && pass N_list_shape || fail N_list_shape "Woerter nicht a-z, doppelt oder zu wenige"

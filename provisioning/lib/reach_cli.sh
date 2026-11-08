@@ -19,7 +19,7 @@
 #   leer     nur Heimnetz. Bestand ohne REACH_MODE, aber mit DOMAIN -> proxy (abgeleitet, nie neu gefragt).
 
 # Neutraler Rechnername (Zertifikats-Protokolle sind oeffentlich): einmal gezogen und als TS_HOSTNAME in core.env
-# gemerkt (ts_name_ensure aus lib/ts_name.sh, dieselbe Regel wie die Start-App); fehlt die Funktion, `bot`.
+# gemerkt (ts_name_ensure aus lib/reach.sh, dieselbe Regel wie die Start-App); fehlt die Funktion, `bot`.
 reach_cli_ts_host() {
   local f="${INSTALL_ENV_FILE:-$REACH_CORE_ENV}" n
   if declare -F ts_name_ensure >/dev/null && n="$(ts_name_ensure "$f" TS_HOSTNAME)" && [ -n "$n" ]; then printf '%s' "$n"; return 0; fi
@@ -273,7 +273,7 @@ einen Reverse Proxy brauchst du nicht. Öffentlich sind nur diese Pfade, alles a
   $(printf '%s' "$LA_PUBLIC_PATHS" | sed 's/ /   /g')
 Der n8n-Editor bleibt nur auf diesem Rechner (http://127.0.0.1:${N8N_PORT:-5678}).
 Läuft die Geräte-Anmeldung bei Tailscale ab, schweigt der Bot: im Tailscale-Konto unter Machines beim Gerät
-„Disable key expiry“ wählen. Stand jederzeit: lifeagents proxy show · Schritt für Schritt: https://dennisbaerlin.github.io/n8n-life-agents/docs/tunnel/
+„Disable key expiry“ wählen. Stand jederzeit: lifeagents proxy show · Schritt für Schritt: https://dennisbaerlin.github.io/n8n-life-agents/docs/tunnel.html
 EOF
   _INGRESS_HELP_SHOWN=1
 }

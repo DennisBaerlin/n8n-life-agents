@@ -2,7 +2,7 @@
 title: "Beispiele"
 ---
 
-Die beste Art, das System zu verstehen, ist es in Aktion zu sehen. Hier sind elf typische Unterhaltungen mit dem Bot — alle Namen, Beträge und Treffer sind erfunden. Wie das Bestätigen per Knopf genau funktioniert, erklärt [Chatten & Bestätigen](chatten-bestaetigen.html); die einzelnen Fähigkeiten im Detail stehen bei [Buchhalter](buchhalter.html), [Finanzberater](finanzberater.html), [Monitor & Guide](monitor-guide.html), [Karriere-Coach](karriere-coach.html) und [Nachlass & Vorsorge](nachlass-berater.html).
+Die beste Art, das System zu verstehen, ist es in Aktion zu sehen. Hier sind elf typische Unterhaltungen mit dem Bot — alle Namen, Beträge und Treffer sind erfunden, und die Bot-Antworten sind sinngemäß und gekürzt wiedergegeben (der genaue Wortlaut im Chat kann abweichen). Wie das Bestätigen per Knopf genau funktioniert, erklärt [Chatten & Bestätigen](chatten-bestaetigen.html); die einzelnen Fähigkeiten im Detail stehen bei [Buchhalter](buchhalter.html), [Finanzberater](finanzberater.html), [Monitor & Guide](monitor-guide.html), [Karriere-Coach](karriere-coach.html) und [Nachlass & Vorsorge](nachlass-berater.html).
 
 ## Eine Ausgabe buchen
 
@@ -306,8 +306,7 @@ Sprachnachrichten werden zuerst automatisch in Text umgewandelt (Transkription) 
 ```
 Erika: [sendet Sprachnachricht, 4 Sekunden]
 
-Bot: 🎙 "Ich hab grad 12 Euro für den Bus bezahlt"
-     Ausgabe buchen – bitte prüfen:
+Bot: Ausgabe buchen – bitte prüfen:
      • Konto: Girokonto
      • Betrag: -12,00 €
      • Kategorie: Sonstiges

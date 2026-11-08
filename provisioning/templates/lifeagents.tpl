@@ -52,14 +52,15 @@ Usage: lifeagents <befehl> [optionen]
   reconfigure Angaben nach der Installation ändern oder neu anwenden: Grundsystem (Internet-Adresse,
               Telegram-Bot, Google-/Anthropic-Schlüssel) oder die Zugangsdaten eines Pakets; ohne
               Argument mit Auswahl-Liste. `lifeagents reconfigure help` für Details. Braucht root.
-  config      Zentralen Config-Store (core.config) ansehen/ändern: list/set. Cron-Schalter +
+  config      Zentralen Config-Store (core.config) ansehen/ändern: list/set/reset. Cron-Schalter +
               Modell-/Tuning-Werte zur Laufzeit. `lifeagents config help` für Details.
   proxy       Reverse Proxy: show (Stand + Proxy-Konfiguration erneut) / set <ip> (Proxy auf einem
               anderen Rechner: n8n nur für diese Adresse öffnen; 127.0.0.1 = dieser Rechner). Braucht root.
   household   Owner-Lifecycle am Haushalt: list/add/remove/unlink/pair-owner (Personen) + block/unblock/
               blocked (unbekannte Anklopfer sperren). `lifeagents household help` für Details. Braucht root.
   backup      Nutzerdaten sichern/wiederherstellen: export/restore (verschluesselt, paket-bewusst,
-              atomar). `lifeagents backup help` für Details. Braucht root.
+              atomar); im Docker-Verbund außerdem host-dir/auto (Sicherungs-Ordner auf dem Rechner).
+              `lifeagents backup help` für Details. Braucht root.
   doctor      Diagnose (Dienste/Schema/Routen; read-only). Exit = Anzahl ROT.
   uninstall   Instanz abbauen (Schema DROP, Dienste stop; im Docker-Verbund entfernt die Start-App); --purge-data für den Voll-Wipe,
               --yes für ohne Rückfrage durchreichen: `lifeagents uninstall --purge-data --yes`. Braucht root.

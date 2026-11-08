@@ -63,6 +63,7 @@ DO $$
 DECLARE
   v_out  TEXT;
   v_out2 TEXT;
+  v_rp_case JSONB;
   v_bool BOOLEAN;
   v_cnt  INT;
 BEGIN
@@ -1566,6 +1567,25 @@ BEGIN
   IF v_out IS DISTINCT FROM 'true' THEN
     RAISE EXCEPTION 'FAIL [estate_rw -> fn_cancel_case]: erwartet ok=true, got %', COALESCE(v_out, '<null>'); END IF;
   RAISE NOTICE 'PASS [estate_rw -> fn_create_case/set_case_task/cancel_case (voller Ereignisfall-Write inkl. fn_person_chat_id, D10)]';
+
+  -- (7b3b) Todesfall MIT genannter Waffe unter estate_rw: Insert in estate.special_assets + Fan-out-Aufgabe in
+  -- derselben Transaktion (der Superuser-db_test saehe einen fehlenden Tabellen-Grant nicht).
+  BEGIN
+    SET LOCAL ROLE estate_rw;
+    v_rp_case := estate.fn_create_case(jsonb_build_object(
+      'chat_id','777', 'case_type','death', 'subject_person_id','__rp_person__',
+      'event_date','2024-01-15', 'bundesland','bayern',
+      'special_assets', jsonb_build_array(jsonb_build_object('asset_type','firearm','description','__rp__ Beispiel-Waffe'))));
+    RESET ROLE;
+  EXCEPTION WHEN OTHERS THEN
+    RESET ROLE;
+    RAISE EXCEPTION 'FAIL [estate_rw -> fn_create_case mit special_assets]: bricht unter estate_rw -- %', SQLERRM;
+  END;
+  IF (v_rp_case->>'ok')::boolean IS DISTINCT FROM true OR jsonb_array_length(v_rp_case->'special_asset_ids') <> 1
+     OR NOT EXISTS (SELECT 1 FROM estate.case_tasks t WHERE t.case_id = (v_rp_case->>'case_id')::bigint
+                      AND t.template_key = 'secure_firearms' AND t.status = 'open') THEN
+    RAISE EXCEPTION 'FAIL [estate_rw -> fn_create_case mit special_assets]: erwartet Stub + offene Waffen-Aufgabe, got %', v_rp_case; END IF;
+  RAISE NOTICE 'PASS [estate_rw -> fn_create_case mit Sonderfaellen (special_assets-Insert + Fan-out)]';
 
   -- (7b4) WS-5: der gegatete Read-EGRESS + der System-Steckbrief unter estate_rw. Das Export-Tool laeuft
   -- unter estate_rw und ruft die DEFINER-Binder-fn estate.fn_render_emergency_binder (Blanket-EXECUTE-Grant

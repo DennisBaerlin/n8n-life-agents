@@ -19,6 +19,15 @@
 --     * offener Fall derselben Person: gleicher Typ -> reject (Idempotenz); death ueber offenem
 --       incapacity -> supersede_case_id gesetzt (Auto-Supersede in fn_create_case); incapacity ueber
 --       offenem death -> reject.
+--     * special_assets (optional, Array von {asset_type, description}): im Gespraech genannte Sonderfaelle. Typ aus
+--       vehicle|business_interest|firearm|pet, Beschreibung nicht leer, und der Typ braucht im Falltyp eine
+--       Checklisten-Vorlage (incapacity kennt nur business_interest -> sonst reject "no checklist step ... register
+--       it with tool_create_special_asset"). Dublette (gleicher Typ + Beschreibung, lower/trim, bei Person oder
+--       Haushalt oder schon in der Liste) entfaellt. Die Task-Zahl zaehlt die neuen Stubs mit (fn_case_template_rows,
+--       Platzhalter-Ref 'new:<n>'); geschrieben wird hier nichts.
+--   RUECKGABE ok:true: case_type, subject_person_id, event_date, knowledge_date, bundesland, phase_counts, total_open,
+--     intake_facts, unknown_flags, special_assets (die NEU anzulegenden Stubs [{asset_type, description}], fuer die
+--     Karte und fn_create_case), supersede_case_id. ok:false: reason (+ code bundesland_required / subject_is_sender).
 --   Anwenden via: db_apply.ps1 -File packages\estate\db\migrations\R__fn_preview_case.sql
 -- ============================================================
 CREATE OR REPLACE FUNCTION estate.fn_preview_case(p jsonb)
@@ -43,6 +52,10 @@ DECLARE
     v_known     JSONB;
     v_unknown   JSONB;
     v_dates     JSONB;
+    v_sa        JSONB := '[]'::jsonb;   -- neu anzulegende Sonderfall-Stubs (normalisiert, dedupliziert)
+    v_e         JSONB;
+    v_at        TEXT;
+    v_ds        TEXT;
 BEGIN
     v_perm := core.fn_check_write_permission('adults_only', v_chat, NULL);
     IF v_perm IS NOT NULL THEN
@@ -109,10 +122,45 @@ BEGIN
         END IF;
     END IF;
 
+    -- Im Gespraech genannte Sonderfaelle: validieren und gegen das Register dedublizieren. Das Ergebnis ist die Liste
+    -- der NEU anzulegenden Stubs (fn_create_case legt exakt diese an); die Aufgaben-Zahl unten zaehlt sie mit.
+    IF p->'special_assets' IS NOT NULL AND jsonb_typeof(p->'special_assets') <> 'null' THEN
+        IF jsonb_typeof(p->'special_assets') <> 'array' THEN
+            RETURN jsonb_build_object('ok', false, 'reason',
+                'special_assets must be an array of {asset_type, description} entries.');
+        END IF;
+        FOR v_e IN SELECT x FROM jsonb_array_elements(p->'special_assets') x LOOP
+            v_at := lower(NULLIF(trim(COALESCE(v_e->>'asset_type', '')), ''));
+            v_ds := NULLIF(trim(COALESCE(v_e->>'description', '')), '');
+            IF v_at IS NULL OR v_at NOT IN ('vehicle', 'business_interest', 'firearm', 'pet') THEN
+                RETURN jsonb_build_object('ok', false, 'reason',
+                    'invalid asset_type "' || COALESCE(v_at, '') || '" in special_assets - valid: vehicle | business_interest | firearm | pet.');
+            END IF;
+            IF v_ds IS NULL THEN
+                RETURN jsonb_build_object('ok', false, 'reason',
+                    'every special_assets entry needs a non-empty description (e.g. "Jagdgewehr im Waffenschrank").');
+            END IF;
+            -- Typ ohne Checklisten-Vorlage im Falltyp: genannt => Aufgabe bleibt ehrlich, sonst ok:false
+            IF NOT EXISTS (SELECT 1 FROM estate.task_templates t
+                            WHERE t.case_type = v_type AND t.fan_out = v_at AND NOT t.retired) THEN
+                RETURN jsonb_build_object('ok', false, 'reason',
+                    'asset type ' || v_at || ' has no checklist step in a ' || v_type || ' case - leave it out here; '
+                    || 'register it with tool_create_special_asset if it should be kept.');
+            END IF;
+            IF NOT EXISTS (SELECT 1 FROM estate.special_assets s
+                            WHERE s.asset_type = v_at AND lower(trim(s.description)) = lower(v_ds)
+                              AND (s.owner_person_id = v_subject OR s.owner_person_id IS NULL))
+               AND NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v_sa) z
+                                WHERE z->>'asset_type' = v_at AND lower(z->>'description') = lower(v_ds)) THEN
+                v_sa := v_sa || jsonb_build_array(jsonb_build_object('asset_type', v_at, 'description', v_ds));
+            END IF;
+        END LOOP;
+    END IF;
+
     SELECT COALESCE(jsonb_object_agg(phase, cnt), '{}'::jsonb), COALESCE(sum(cnt), 0)::int
       INTO v_counts, v_total
       FROM (SELECT phase, count(*) AS cnt
-              FROM estate.fn_case_template_rows(v_type, v_subject, v_flags, v_event, v_know, v_bl)
+              FROM estate.fn_case_template_rows(v_type, v_subject, v_flags, v_event, v_know, v_bl, v_sa)
              WHERE status = 'open'
              GROUP BY phase) s;
 
@@ -137,6 +185,7 @@ BEGIN
         'total_open', v_total,
         'intake_facts', v_known,
         'unknown_flags', v_unknown,
+        'special_assets', v_sa,
         'supersede_case_id', v_super);
 END;
 $$;

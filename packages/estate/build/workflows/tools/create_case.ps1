@@ -11,11 +11,15 @@
 function Build-EstateCreateCase {
     $CRED_POSTGRES = $CRED_ESTATE_RW
     $trig = Build-Trigger @('subject_person','case_type','event_date','knowledge_date','bundesland',
-                            'tenant','employed','pension_relevant','has_will','no_poa','abroad_or_work_accident')
+                            'tenant','employed','pension_relevant','has_will','no_poa','abroad_or_work_accident',
+                            'firearm','pet','vehicle','business')
 
     # Die Intake-Merkmale -> flags-jsonb NUR mit ausdruecklichen Aussagen ('true'/'false'); leer = weglassen, dann
     # leitet die DB den Wert aus dem Register ab (estate.fn_case_register_flags, WP3) — der Agent fragt nur Unbekanntes.
     $flagsExpr = 'Object.fromEntries([''tenant'',''employed'',''pension_relevant'',''has_will'',''no_poa'',''abroad_or_work_accident''].filter(k => [''true'',''false''].includes(String($(''Start'').item.json[k] || '''').toLowerCase())).map(k => [k, String($(''Start'').item.json[k]).toLowerCase() === ''true'']))'
+    # Im Gespraech genannte Sonderfaelle (Waffe/Tier/Fahrzeug/Firma) -> special_assets-Array; mehrere Stuecke je Feld per
+    # ';' getrennt, leer = nichts genannt. Nur Weiterreichen: Validierung, Dubletten und die Pflicht-Aufgaben macht die DB.
+    $specialExpr = '[[''firearm'',''firearm''],[''pet'',''pet''],[''vehicle'',''vehicle''],[''business'',''business_interest'']].flatMap(p => String($(''Start'').item.json[p[0]] || '''').split('';'').map(s => s.trim()).filter(Boolean).map(d => ({ asset_type: p[1], description: d })))'
     $caseParams = [ordered]@{
         chat_id           = '$(''Start'').item.json.chat_id'
         subject_person_id = '$(''Resolve Subject'').item.json.person_id'
@@ -24,6 +28,7 @@ function Build-EstateCreateCase {
         knowledge_date    = '$(''Start'').item.json.knowledge_date'
         bundesland        = '$(''Start'').item.json.bundesland'
         flags             = $flagsExpr
+        special_assets    = $specialExpr
     }
     # Der Write uebernimmt die in der Preview AUFGELOESTEN Daten ("yesterday" -> Datum): Karte = Speicher, auch wenn
     # erst nach Mitternacht getippt wird (die gesetzlichen Fristen haengen am Datum).
@@ -39,7 +44,7 @@ function Build-EstateCreateCase {
         "=The affected person '{{ `$('Start').item.json.subject_person }}' could not be uniquely resolved. Name the household member clearly (you cannot open a case for someone outside the household)."
 
     $preview = Build-Pg 'Preview' @(660, 0) `
-        "=SELECT (r->>'ok')::boolean AS ok, r->>'reason' AS reason, r->'phase_counts' AS phase_counts, (r->>'total_open')::int AS total_open, r->>'supersede_case_id' AS supersede_case_id, r->>'case_type' AS case_type, r->>'bundesland' AS bundesland, r->>'event_date' AS event_date, r->>'knowledge_date' AS knowledge_date, r->'intake_facts' AS intake_facts, r->'unknown_flags' AS unknown_flags FROM estate.fn_preview_case(`$1::jsonb) AS r;" `
+        "=SELECT (r->>'ok')::boolean AS ok, r->>'reason' AS reason, r->'phase_counts' AS phase_counts, (r->>'total_open')::int AS total_open, r->>'supersede_case_id' AS supersede_case_id, r->>'case_type' AS case_type, r->>'bundesland' AS bundesland, r->>'event_date' AS event_date, r->>'knowledge_date' AS knowledge_date, r->'intake_facts' AS intake_facts, r->'unknown_flags' AS unknown_flags, r->'special_assets' AS special_assets FROM estate.fn_preview_case(`$1::jsonb) AS r;" `
         $caseParams
     $ifPrevOk = Build-If 'Preview ok?' @(880, 0) "={{ `$json.ok }}" 'true' 'equals' 'boolean'
     $errPrev = Build-ToolError 'Preview rejected' @(1100, 200) "={{ `$('Preview').item.json.reason }}"
@@ -59,14 +64,16 @@ function Build-EstateCreateCase {
             -Params @{ n = "($P.total_open || 0)"; phases = $phaseList })
         # WP3: was laut Register bzw. Angabe fuer den Fall gilt (DB-abgeleitet, Preview) — leer -> Zeile entfaellt
         (New-HitlLine 'estate.label.intake_facts'    "($P.intake_facts || []).map(k => ({ kind: 'enum', value: k, enum: 'estate.enum.case_flag' }))" -Kind list -OmitEmpty)
-        (New-HitlLine 'estate.label.hint'            "'estate.note.supersede_incapacity'" -Kind key -If "$P.supersede_case_id")
+        # im Gespraech genannte Sonderfaelle, die mit angelegt werden (Preview, nach Abzug der schon registrierten)
+        (New-HitlLine 'estate.label.special_cases'   "($P.special_assets || []).map(a => ({ kind: 'tpl', value: 'estate.tpl.special_case', params: { type: { kind: 'enum', value: a.asset_type, enum: 'estate.enum.asset_type' }, description: a.description } }))" -Kind list -OmitEmpty)
+        (New-HitlLine 'estate.label.hint'           "'estate.note.supersede_incapacity'" -Kind key -If "$P.supersede_case_id")
     )
     $reqApproval = Build-CallWorkflow 'Request Approval' @(1320, 0) $GateId 'agent.tool_human_approval' `
         ([ordered]@{ summary = "={{ `$('Build Approval Summary').item.json.summary }}"; chat_id = "={{ `$('Start').item.json.chat_id }}" })
     $ifApproved = Build-If 'Approved?' @(1540, 0) "={{ `$json.approved }}" 'true' 'equals' 'boolean'
     $retCancelled = Build-ToolCancelled 'Return cancelled' @(1760, 200) 'the create_case action'
     $create = Build-Pg 'Create case (atomic)' @(1760, 0) `
-        "=SELECT (r->>'ok')::boolean AS ok, r->>'reason' AS reason, (r->>'case_id')::bigint AS case_id, (r->>'total_open')::int AS total_open, r->>'case_type' AS case_type, r->>'superseded_case_id' AS superseded_case_id FROM estate.fn_create_case(`$1::jsonb) AS r;" `
+        "=SELECT (r->>'ok')::boolean AS ok, r->>'reason' AS reason, (r->>'case_id')::bigint AS case_id, (r->>'total_open')::int AS total_open, r->>'case_type' AS case_type, r->>'superseded_case_id' AS superseded_case_id, r->'special_asset_ids' AS special_asset_ids FROM estate.fn_create_case(`$1::jsonb) AS r;" `
         $writeParams
     $ifWriteOk = Build-If 'Write ok?' @(1980, 0) "={{ `$json.ok }}" 'true' 'equals' 'boolean'
     $errWrite = Build-ToolError 'Case rejected' @(2200, 200) "={{ `$('Create case (atomic)').item.json.reason }}"
@@ -77,10 +84,12 @@ function Build-EstateCreateCase {
         ,@('superseded_case_id', "={{ `$('Create case (atomic)').item.json.superseded_case_id }}", 'string')
         # WP3: Merkmale, die weder Register noch Angabe kennen -> der Agent fragt sie EINMAL gesammelt (dann tool_set_case)
         ,@('unknown_flags', "={{ `$('Preview').item.json.unknown_flags || [] }}", 'array')
+        # neu im Register angelegte Sonderfall-Stubs (Handles; die Aufgaben dazu stehen schon in der Checkliste)
+        ,@('special_asset_ids', "={{ `$('Create case (atomic)').item.json.special_asset_ids || [] }}", 'array')
     )
     $stickyFn = Build-Sticky 'Break-Glass owner_info + Fristen-Engine' @(660, -320) `
         'estate.fn_create_case (Preview -> Gate -> atomarer Write + Task-Instanziierung)' `
-        'Subject-Name -> Slug (core.fn_resolve_person). estate.fn_preview_case (read-only, DIESELBE fn) validiert VOR dem Gate (adults_only, subject_is_sender via core.fn_person_chat_id, bundesland fail-closed [Parameter -> Config estate.general.bundesland -> bundesland_required], Datums-Guards, Dublette/Supersede) und liefert die Task-ZAHL je Phase für die HITL-Zusammenfassung (Trauer-UX: KEINE Voll-Liste). Nach Approve schreibt estate.fn_create_case atomar: Fall anlegen (+ AUTO-SUPERSEDE eines offenen incapacity-Falls bei death) + case_tasks aus task_templates (estate.fn_case_template_rows: Condition-Matrix + fan_out je special_asset; Fristen estate.fn_compute_due_date). Intake-Merkmale (tenant/employed/...): nur ausdrückliche Aussagen (true/false) gehen in case.flags; den Rest leitet estate.fn_case_register_flags aus dem Register ab (Testament, Vollmacht, Arbeitgeber, Rentennummer, Vermieter). Die Preview liefert intake_facts (Karte) und unknown_flags (Rückgabe: der Agent fragt nur das). Relative Daten (yesterday, -3 days) löst die Preview EINMAL auf, der Write übernimmt genau diese Daten. HITL owner_info (Break-Glass: der Owner kann der Betroffene sein).' 340 760
+        'Subject-Name -> Slug (core.fn_resolve_person). estate.fn_preview_case (read-only, DIESELBE fn) validiert VOR dem Gate (adults_only, subject_is_sender via core.fn_person_chat_id, bundesland fail-closed [Parameter -> Config estate.general.bundesland -> bundesland_required], Datums-Guards, Dublette/Supersede) und liefert die Task-ZAHL je Phase für die HITL-Zusammenfassung (Trauer-UX: KEINE Voll-Liste). Nach Approve schreibt estate.fn_create_case atomar: Fall anlegen (+ AUTO-SUPERSEDE eines offenen incapacity-Falls bei death) + case_tasks aus task_templates (estate.fn_case_template_rows: Condition-Matrix + fan_out je special_asset; Fristen estate.fn_compute_due_date). Intake-Merkmale (tenant/employed/...): nur ausdrückliche Aussagen (true/false) gehen in case.flags; den Rest leitet estate.fn_case_register_flags aus dem Register ab (Testament, Vollmacht, Arbeitgeber, Rentennummer, Vermieter). Die Preview liefert intake_facts (Karte) und unknown_flags (Rückgabe: der Agent fragt nur das). Relative Daten (yesterday, -3 days) löst die Preview EINMAL auf, der Write übernimmt genau diese Daten. Genannte Sonderfälle (Waffe/Tier/Fahrzeug/Firma, Felder firearm/pet/vehicle/business, mehrere mit Semikolon) gehen als special_assets-Array an die DB: die Preview prüft sie (Typ, Beschreibung, nur Typen mit Vorlage im Falltyp, schon registrierte entfallen) und zählt die künftigen Pflicht-Aufgaben mit; estate.fn_create_case legt die Register-Einträge in derselben Transaktion an, danach erzeugt fan_out die Aufgaben. HITL owner_info (Break-Glass: der Owner kann der Betroffene sein).' 340 760
     $nodes = @($trig, $resSubj, $ifSubjBad, $errSubj, $preview, $ifPrevOk, $errPrev, $summary,
                $reqApproval, $ifApproved, $retCancelled, $create, $ifWriteOk, $errWrite, $ret, $stickyFn)
     $conns = [ordered]@{

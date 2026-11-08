@@ -2499,7 +2499,7 @@
                   {
                       "parameters":  {
                                          "name":  "tool_create_case",
-                                         "description":  "Open a guided EVENT case (a household member has DIED or become INCAPACITATED) and instantiate the deadline checklist. Use ONLY in event mode, after acknowledging the loss and gathering the facts. The DATABASE computes all legal deadlines - never invent dates. subject_person is the AFFECTED member (must be a household member and NOT you the sender). bundesland (German state) is required unless configured; if you do not have it, ask. The database DERIVES the intake facts from the register (will, Vorsorgevollmacht, employer, pension number, landlord) - pass an intake value ONLY if the user stated it (true or false); leave it empty otherwise, never ask for what the register already shows. The result lists unknown_flags: ask about those ONCE, together, then correct with tool_set_case. Shows a short confirmation (task counts per phase, what applies), then instantiates.",
+                                         "description":  "Open a guided EVENT case (a household member has DIED or become INCAPACITATED) and instantiate the deadline checklist. Use ONLY in event mode, after acknowledging the loss and gathering the facts. The DATABASE computes all legal deadlines - never invent dates. subject_person is the AFFECTED member (must be a household member and NOT you the sender). bundesland (German state) is required unless configured; if you do not have it, ask. The database DERIVES the intake facts from the register (will, Vorsorgevollmacht, employer, pension number, landlord) - pass an intake value ONLY if the user stated it (true or false); leave it empty otherwise, never ask for what the register already shows. The result lists unknown_flags: ask about those ONCE, together, then correct with tool_set_case. Special cases the user NAMES (firearm, pet, vehicle, business) go into the matching fields of THIS call - the database then registers them and adds their mandatory checklist steps itself; do not register them separately first, and do not pass ones the register already shows. For an incapacity case only business is accepted. Shows a short confirmation (task counts per phase, what applies, special cases), then instantiates.",
                                          "workflowId":  {
                                                             "__rl":  true,
                                                             "value":  "UKFpdCjOZwfTJL6x",
@@ -2521,6 +2521,10 @@
                                                                               "has_will":  "={{ $fromAI(\u0027has_will\u0027, \u0027true or false only if the user said whether a will (Testament) exists; empty = derive from the register\u0027, \u0027string\u0027, \u0027\u0027) }}",
                                                                               "no_poa":  "={{ $fromAI(\u0027no_poa\u0027, \u0027incapacity only: true if the user said there is NO Vorsorgevollmacht, false if there is one; empty = derive from the register\u0027, \u0027string\u0027, \u0027\u0027) }}",
                                                                               "abroad_or_work_accident":  "={{ $fromAI(\u0027abroad_or_work_accident\u0027, \u0027true or false: death abroad or a work accident (consulate / Berufsgenossenschaft); empty if not mentioned\u0027, \u0027string\u0027, \u0027\u0027) }}",
+                                                                              "firearm":  "={{ $fromAI(\u0027firearm\u0027, \u0027Firearm the user mentioned, as a short description (e.g. hunting rifle in the gun cabinet); several separated by a semicolon; empty if none was mentioned or it is already in the register. Death case only.\u0027, \u0027string\u0027, \u0027\u0027) }}",
+                                                                              "pet":  "={{ $fromAI(\u0027pet\u0027, \u0027Pet the user mentioned, as a short description (e.g. cat Mimi); several separated by a semicolon; empty if none was mentioned or it is already in the register. Death case only.\u0027, \u0027string\u0027, \u0027\u0027) }}",
+                                                                              "vehicle":  "={{ $fromAI(\u0027vehicle\u0027, \u0027Vehicle the user mentioned, as a short description (e.g. blue estate car); several separated by a semicolon; empty if none was mentioned or it is already in the register. Death case only.\u0027, \u0027string\u0027, \u0027\u0027) }}",
+                                                                              "business":  "={{ $fromAI(\u0027business\u0027, \u0027Business interest or company the user mentioned, as a short description (e.g. GmbH share); several separated by a semicolon; empty if none was mentioned or it is already in the register.\u0027, \u0027string\u0027, \u0027\u0027) }}",
                                                                               "chat_id":  "={{ $(\u0027Start agent.estate_advisor\u0027).item.json.chat_id }}"
                                                                           },
                                                                 "matchingColumns":  [
@@ -2630,6 +2634,46 @@
                                                                                {
                                                                                    "id":  "abroad_or_work_accident",
                                                                                    "displayName":  "abroad_or_work_accident",
+                                                                                   "required":  false,
+                                                                                   "defaultMatch":  false,
+                                                                                   "display":  true,
+                                                                                   "canBeUsedToMatch":  true,
+                                                                                   "type":  "string",
+                                                                                   "removed":  false
+                                                                               },
+                                                                               {
+                                                                                   "id":  "firearm",
+                                                                                   "displayName":  "firearm",
+                                                                                   "required":  false,
+                                                                                   "defaultMatch":  false,
+                                                                                   "display":  true,
+                                                                                   "canBeUsedToMatch":  true,
+                                                                                   "type":  "string",
+                                                                                   "removed":  false
+                                                                               },
+                                                                               {
+                                                                                   "id":  "pet",
+                                                                                   "displayName":  "pet",
+                                                                                   "required":  false,
+                                                                                   "defaultMatch":  false,
+                                                                                   "display":  true,
+                                                                                   "canBeUsedToMatch":  true,
+                                                                                   "type":  "string",
+                                                                                   "removed":  false
+                                                                               },
+                                                                               {
+                                                                                   "id":  "vehicle",
+                                                                                   "displayName":  "vehicle",
+                                                                                   "required":  false,
+                                                                                   "defaultMatch":  false,
+                                                                                   "display":  true,
+                                                                                   "canBeUsedToMatch":  true,
+                                                                                   "type":  "string",
+                                                                                   "removed":  false
+                                                                               },
+                                                                               {
+                                                                                   "id":  "business",
+                                                                                   "displayName":  "business",
                                                                                    "required":  false,
                                                                                    "defaultMatch":  false,
                                                                                    "display":  true,

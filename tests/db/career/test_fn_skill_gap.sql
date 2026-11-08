@@ -93,6 +93,46 @@ BEGIN
   IF (v_res->>'gap_count')::int <> 0 THEN RAISE EXCEPTION 'FAIL [5 junk -> met, gap=0]: %', v_res; END IF;
   RAISE NOTICE 'PASS [5] Junk-level/is_blocker -> kein RAISE';
 
+  -- ---------- TEST 6: gleiche Faehigkeit in mehreren Rollen zaehlt je Faehigkeit einmal ----------
+  -- Python ist in A Pflicht und fehlt, in B ohne Pflicht -> 1 Luecke, 1 Blocker (Luecke UND Pflicht in einer Rolle).
+  v_res := career.fn_skill_gap(
+    '{"target_roles":[{"title":"A","required_skills":[{"name":"Python","is_blocker":true}]},
+                      {"title":"B","required_skills":[{"name":" python "}]}]}', '{}'::jsonb);
+  IF (v_res->>'gap_count')::int <> 1 OR (v_res->>'blocker_gap_count')::int <> 1 THEN
+    RAISE EXCEPTION 'FAIL [6a gleiche Luecke in 2 Rollen: 1 / 1]: %', v_res; END IF;
+  IF jsonb_array_length(v_res->'roles'->0->'missing') <> 1 OR jsonb_array_length(v_res->'roles'->1->'missing') <> 1 THEN
+    RAISE EXCEPTION 'FAIL [6a roles[] bleibt je Rolle voll]: %', v_res; END IF;
+
+  -- Pflicht in B, dort erfuellt; in A nur Luecke OHNE Pflicht -> KEIN Blocker (Pflicht ohne Luecke zaehlt nicht).
+  v_res := career.fn_skill_gap(
+    '{"target_roles":[{"title":"A","required_skills":[{"name":"SQL","min_level":"advanced"}]},
+                      {"title":"B","required_skills":[{"name":"SQL","min_level":"beginner","is_blocker":true}]}]}',
+    '{"skills":[{"name":"SQL","level":"intermediate"}]}');
+  IF (v_res->>'gap_count')::int <> 1 OR (v_res->>'blocker_gap_count')::int <> 0 THEN
+    RAISE EXCEPTION 'FAIL [6b Pflicht ohne Luecke: 1 Luecke / 0 Blocker]: %', v_res; END IF;
+
+  -- schwach in beiden Rollen mit verschiedenem Mindest-Level -> eine Luecke.
+  v_res := career.fn_skill_gap(
+    '{"target_roles":[{"title":"A","required_skills":[{"name":"Excel","min_level":"advanced"}]},
+                      {"title":"B","required_skills":[{"name":"excel","min_level":"expert"}]}]}',
+    '{"skills":[{"name":"Excel","level":"beginner"}]}');
+  IF (v_res->>'gap_count')::int <> 1 THEN RAISE EXCEPTION 'FAIL [6c weak in 2 Rollen: 1]: %', v_res; END IF;
+
+  -- uebererfuellt in zwei Rollen -> ein Ueberskill; uebererfuellt in A + schwach in B -> Luecke 1 UND Ueberskill 1.
+  v_res := career.fn_skill_gap(
+    '{"target_roles":[{"title":"A","required_skills":[{"name":"Git","min_level":"beginner"}]},
+                      {"title":"B","required_skills":[{"name":"git","min_level":"intermediate"}]}]}',
+    '{"skills":[{"name":"Git","level":"expert"}]}');
+  IF (v_res->>'overskill_count')::int <> 1 OR (v_res->>'gap_count')::int <> 0 THEN
+    RAISE EXCEPTION 'FAIL [6d Ueberskill in 2 Rollen: 1 / Luecke 0]: %', v_res; END IF;
+  v_res := career.fn_skill_gap(
+    '{"target_roles":[{"title":"A","required_skills":[{"name":"Git","min_level":"beginner"}]},
+                      {"title":"B","required_skills":[{"name":"git","min_level":"expert"}]}]}',
+    '{"skills":[{"name":"Git","level":"advanced"}]}');
+  IF (v_res->>'overskill_count')::int <> 1 OR (v_res->>'gap_count')::int <> 1 THEN
+    RAISE EXCEPTION 'FAIL [6e ueber in A + schwach in B: Ueberskill 1 / Luecke 1]: %', v_res; END IF;
+  RAISE NOTICE 'PASS [6] Zaehlung je Faehigkeit (Luecke, Blocker, Ueberskill)';
+
   RAISE NOTICE 'PASS test_fn_skill_gap';
 END $$;
 ROLLBACK;

@@ -26,8 +26,8 @@ Das Repo ist öffentlich: Stand und private Anlässe gehören nie in diesen Skil
 
 ## 2. Während der Arbeit
 
-- **Hauptüberlegung bei jedem Arbeitspaket (neue Aufgabe, Fix-Welle, Sprint-Nachbereitung, Retro-Punkte), an jeder Stelle:** zuerst die Aufgabe klären, dann ausdrücklich prüfen, wie sie sich auf mehrere Unter-Sessions verteilen lässt, um schneller zu werden. Der Schnitt folgt den Dateigruppen, damit keine zwei Sessions dieselben Dateien anfassen. Eine einzige Session braucht eine Begründung (z. B. alles liegt in denselben Dateien). Beispiel: Acht unabhängige Retro-Punkte gingen an eine Session statt an drei (Regeln und Texte, Skripte, Hooks).
-- **Verteilen:** Was wenige Tool-Aufrufe braucht, macht die Leitung selbst. Eigenständige Aufgaben bekommen je eine Unter-Session (`start_session`, „fresh“, eigener Worktree). Sessions ohne gemeinsame Dateien dürfen parallel laufen.
+- **Hauptüberlegung bei jedem Arbeitspaket (neue Aufgabe, Fix-Welle, Sprint-Nachbereitung, Retro-Punkte), an jeder Stelle:** zuerst die Aufgabe klären, dann ausdrücklich prüfen, wie sie sich auf mehrere Unter-Sessions verteilen lässt. Der Schnitt folgt den Dateigruppen, damit keine zwei Sessions dieselben Dateien anfassen. Eine einzige Session braucht eine Begründung (z. B. alles liegt in denselben Dateien). Beispiel: Acht unabhängige Retro-Punkte gingen an eine Session statt an drei.
+- **Verteilen:** Was wenige Tool-Aufrufe braucht, macht die Leitung selbst. Eigenständige Aufgaben bekommen je eine Unter-Session (`start_session`, „fresh“, eigener Worktree). Sessions ohne gemeinsame Dateien dürfen parallel laufen. Nach einer Unteragenten-Meldung verweigert die App `start_session`, auch nach Karte: erst auf getippte Owner-Nachricht starten.
 - **Direkt nach jedem `start_session`:** `.\scripts\register_sub_session.ps1 -Id <local_…>`. Dann lehnt der Hook direkte Fragen dieser Session an den Owner ab (`.claude/hooks/enforce_sub_session_questions.ps1`). Das wirkt nur in Sessions, die den Hook beim Start schon in ihrem Checkout hatten.
 - **Jeder Brief enthält:**
   - Aufgabe, betroffene Dateien, woran „fertig“ erkennbar ist

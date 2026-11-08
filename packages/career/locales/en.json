@@ -90,6 +90,7 @@
   "career.plan_section.path": "Path to the target",
   "career.wizard.adzuna_app_id.title": "Adzuna App ID",
   "career.wizard.adzuna_app_id.help": "An additional source of job offers (Adzuna, also includes StepStone ads). Without it, the career assistant only searches the German Federal Employment Agency.\n\nFree: developer.adzuna.com → register → copy “App ID” and “App Key”. Both belong together: the key is asked right after. If you leave the App ID empty, it is skipped.",
+  "career.wizard.adzuna_app_id.placeholder": "Paste the app ID here",
   "career.wizard.adzuna_app_key.title": "Adzuna App Key",
   "career.wizard.jsearch_api_key.title": "JSearch key",
   "career.wizard.jsearch_api_key.help": "Another source of job offers (JSearch, also includes LinkedIn jobs).\n\nFree plan: rapidapi.com → search for “JSearch” → “Subscribe” (Basic, free) → copy the “X-RapidAPI-Key”."

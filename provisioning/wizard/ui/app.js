@@ -359,7 +359,7 @@ const UiNudge = {
           } } }, h('b', { text: s })))));
       }
       // below: Das Feld muss ohne Scrollen im Fenster bleiben, das Bild ist Zusatz-Erklärung.
-      if (ex && p.explain.below) kids.push(ex.el);
+      if (ex && p.explain.below) kids.push(ex.el, ...helpNodes(p.explain.after));
     }
     if (p.kind === 'choice' || p.kind === 'multi') {
       const multi = p.kind === 'multi';

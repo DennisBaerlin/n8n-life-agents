@@ -414,10 +414,11 @@ Das Token wird sofort bei Telegram geprüft." ;;
 Belege lesen, Websuche, Beratung). Ohne diesen Schlüssel antwortet der Bot nicht.
   1. console.anthropic.com öffnen und anmelden.
   2. Guthaben aufladen („Billing“), dann „API Keys“ → „Create Key“ → Schlüssel kopieren.
-Claude läuft bei Anthropic, deshalb geht für jede Frage das Nötige dorthin. Mit dem
-bezahlten Zugang ist vertraglich ausgeschlossen, dass damit trainiert wird. Laut Anthropic
-wird es nach spätestens 30 Tagen gelöscht, außer bei Verdacht auf Missbrauch oder
-gesetzlicher Pflicht. Darum nutzen wir keine kostenlose Variante. Abgerechnet wird nach Nutzung.
+Deine Daten bleiben bei dir zu Hause gespeichert. Schreibst du eine Frage, wird sie zu Claude
+geschickt, zusammen mit dem, was für die Antwort gebraucht wird. Dafür bezahlen wir: Mit dem
+bezahlten Zugang ist vertraglich ausgeschlossen, dass die KI mit deinen Inhalten trainiert wird
+und sie so woanders wieder auftauchen. Laut Anthropic wird nach spätestens 30 Tagen gelöscht;
+länger nur bei Verdacht auf Missbrauch oder wenn ein Gesetz es verlangt. Abgerechnet wird nach Nutzung.
 Der Schlüssel wird sofort bei Anthropic geprüft." ;;
     GOOGLE_API_KEY)
       _HK_PROMPT="Google-API-Schlüssel (optional, Enter = überspringen): "; _HK_VFN=_validate_google; _HK_SECRET=1

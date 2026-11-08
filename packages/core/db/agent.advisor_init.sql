@@ -47,7 +47,7 @@ CREATE TABLE IF NOT EXISTS agent.advisor_plans (
     status          text NOT NULL DEFAULT 'draft'
                         CHECK (status IN ('draft', 'active', 'superseded')),
     version         int  NOT NULL DEFAULT 1 CHECK (version >= 1),
-    interview_state jsonb NOT NULL DEFAULT '{}'::jsonb,   -- { "<section_key>": {content, data, saved_at}, ... }
+    interview_state jsonb NOT NULL DEFAULT '{}'::jsonb,   -- { "<section_key>": {content | topics[{topic,content,data,saved_at}] + legacy_content/legacy_data, data, saved_at}, ... }
     plan_md         text,                                  -- publizierter Voll-Plan (Markdown); NULL solange draft
     created_at      timestamptz NOT NULL DEFAULT now(),
     updated_at      timestamptz NOT NULL DEFAULT now()
@@ -92,6 +92,21 @@ CREATE TRIGGER trg_advisor_plans_touch
 -- Gesetzt NUR von agent.fn_advisor_publish_plan.
 ALTER TABLE agent.advisor_plans ADD COLUMN IF NOT EXISTS change_summary text;
 ALTER TABLE agent.advisor_plans ADD COLUMN IF NOT EXISTS change_summary_lang text;
+
+-- Gesamtcheck vor dem Veroeffentlichen (Provenienz der Version, Ausnahme (c)): die Funde, die der Berater mit dem Nutzer
+-- geklaert hat, je {text, outcome resolved|deferred|accepted}, und die Zahl der Durchgaenge. Beide gesetzt oder beide NULL
+-- (NULL = Version ohne Gesamtcheck). Gesetzt NUR von agent.fn_advisor_publish_plan, die auch die
+-- Elementform prueft; der CHECK ist der Backstop fuer die Form.
+ALTER TABLE agent.advisor_plans ADD COLUMN IF NOT EXISTS check_findings jsonb;
+ALTER TABLE agent.advisor_plans ADD COLUMN IF NOT EXISTS check_passes int;
+DO $$ BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'advisor_plans_final_check_shape') THEN
+        ALTER TABLE agent.advisor_plans ADD CONSTRAINT advisor_plans_final_check_shape CHECK (
+            (check_findings IS NULL) = (check_passes IS NULL)
+            AND (check_findings IS NULL OR jsonb_typeof(check_findings) = 'array')
+            AND (check_passes IS NULL OR check_passes >= 1));
+    END IF;
+END $$;
 
 -- Wuensche erwachsener Mitglieder an den Owner zu einem veroeffentlichten Haushalts-Plan ("Wunsch an den Owner").
 -- Wortlaut in Originalsprache (nie uebersetzt). plan_id = die aktive Version beim Wunsch (Provenienz: "offen" heisst
@@ -148,6 +163,15 @@ CREATE TABLE IF NOT EXISTS agent.handoff_tasks (
     CONSTRAINT handoff_tasks_claim_check  CHECK (status <> 'working' OR claimed_at IS NOT NULL),
     CONSTRAINT handoff_tasks_closed_check CHECK ((status IN ('done', 'cancelled')) = (closed_at IS NOT NULL))
 );
+-- topic = das Thema des Abschnitts, in dem die Aufgabe vereinbart wurde (NULL = Abschnitt ohne Themen oder vor den Themen);
+-- ein Themen-Save ersetzt die offenen Aufgaben seines Themas plus die themenlosen des Abschnitts (agent.fn_advisor_save_section).
+ALTER TABLE agent.handoff_tasks ADD COLUMN IF NOT EXISTS topic text;
+DO $$ BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'handoff_tasks_topic_check') THEN
+        ALTER TABLE agent.handoff_tasks ADD CONSTRAINT handoff_tasks_topic_check
+            CHECK (topic IS NULL OR (btrim(topic) <> '' AND length(topic) <= 60));
+    END IF;
+END $$;
 CREATE INDEX IF NOT EXISTS handoff_tasks_open_idx ON agent.handoff_tasks (domain, person_id, status);
 
 -- Endzustand-Gesetz: done/cancelled aendert niemand mehr (auch kein Re-Open). DELETE bleibt erlaubt (Purge, E2E-Cleanup).

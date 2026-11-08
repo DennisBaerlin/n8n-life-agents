@@ -9,7 +9,7 @@
 # Die Approval-Summary erklaert das WAS (Versionen aus der DB gelesen, nicht vom LLM
 # gerechnet; change_summary liefert der Agent) — nie nur "Plan speichern?".
 function Build-PublishPlan {
-    $trig = Build-Trigger @('domain', 'plan_md', 'plan_name', 'change_summary', 'context_description')
+    $trig = Build-Trigger @('domain', 'plan_md', 'plan_name', 'change_summary', 'context_description', 'check_findings', 'check_passes')
 
     # Read-only Pre-State: Scope des Plan-Dokuments (m2: domaenenneutral aus core.advisors.plan_context, NICHT hardcoded
     # financial_planning) + Draft-/Active-Version + Sektionszahl aus der DB (LLM rechnet nicht). P0c person-
@@ -54,6 +54,8 @@ LEFT JOIN agent.advisor_plans a ON a.domain = p.dom AND a.person_id IS NOT DISTI
             plan_name           = '$(''Start'').item.json.plan_name'
             context_description = '$(''Start'').item.json.context_description'
             change_summary      = '$(''Start'').item.json.change_summary'   # Plan teilen: Provenienz der Version (+ Owner-Sprache in der fn)
+            check_findings      = '$(''Start'').item.json.check_findings'   # Gesamtcheck (JSON-String, leer = nicht angegeben); Pflicht und Kartenzahlen entscheidet die fn
+            check_passes        = '$(''Start'').item.json.check_passes'
             chat_id             = '$(''Start'').item.json.chat_id'   # WS-5b: owner_only-Backstop (fn_sender_is_member)
         })
 
@@ -145,7 +147,7 @@ LEFT JOIN agent.advisor_plans a ON a.domain = p.dom AND a.person_id IS NOT DISTI
 
     $sticky = Build-Sticky 'Doc Publish Plan' @(120, -340) `
         'HITL + agent.fn_advisor_publish_plan (atomar, 3 Schritte)' `
-        'Cross-agent (domain = fixer Binding-Input). Dry run = dieselbe fn VOR der Karte, immer zurückgerollt (core.fn_dry_run): ok:false -> Dry run rejected, KEINE Karte, reason an den Berater; der echte Write prüft erneut. fn_advisor_publish_plan in EINER Transaktion: (1) bisheriger active-Plan -> superseded (Versions-Audit, nie gelöscht), (2) Draft -> active + plan_md persistiert, (3) Domänen-Plan-Doc upserted (Context-Name aus core.advisors.plan_context der Domäne; content = neues plan_md + der UNVERÄNDERTE gespeicherte "## Gelernt"-Block [system-verwaltet, core.fn_split_learned_block; ein im plan_md mitgeschickter wird verworfen, auch im Versions-Audit]; lazy, agent_name=NULL, Spalte managed_by=agent -> der Seeder fasst es nie an; löschgeschützt via core.protected_contexts). P0c PERSON-SCOPE: Plan-Schlüssel (domain, person_id); household (finance) -> person_id NULL, Doc am Basis-Namen; per_user (career) -> person_id = Sender (own_user_only) aus chat_id, Doc suffigiert <base>__<pid>. Read plan state (read-only) ist domänenneutral + person-skopiert (Vorschau = der Write). Ein aktiver Plan pro (Domain, Person) = Partial-UNIQUE NULLS NOT DISTINCT (DB-Gesetz). Multi-Person-Fächerung = P2. KARTE: zeigt den Plannamen aus dem Textkatalog (<domain>.plan.name) statt des Kontextnamens. WIEDERHOL-SPERRE: repeat_key = Domain, nach Abbrechen kommt im selben Lauf keine zweite Karte, auch wenn change_summary anders lautet.' 320 540
+        'Cross-agent (domain = fixer Binding-Input). Dry run = dieselbe fn VOR der Karte, immer zurückgerollt (core.fn_dry_run): ok:false -> Dry run rejected, KEINE Karte, reason an den Berater; der echte Write prüft erneut. fn_advisor_publish_plan in EINER Transaktion: (1) bisheriger active-Plan -> superseded (Versions-Audit, nie gelöscht), (2) Draft -> active + plan_md persistiert, (3) Domänen-Plan-Doc upserted (Context-Name aus core.advisors.plan_context der Domäne; content = neues plan_md + der UNVERÄNDERTE gespeicherte "## Gelernt"-Block [system-verwaltet, core.fn_split_learned_block; ein im plan_md mitgeschickter wird verworfen, auch im Versions-Audit]; lazy, agent_name=NULL, Spalte managed_by=agent -> der Seeder fasst es nie an; löschgeschützt via core.protected_contexts). P0c PERSON-SCOPE: Plan-Schlüssel (domain, person_id); household (finance) -> person_id NULL, Doc am Basis-Namen; per_user (career) -> person_id = Sender (own_user_only) aus chat_id, Doc suffigiert <base>__<pid>. Read plan state (read-only) ist domänenneutral + person-skopiert (Vorschau = der Write). Ein aktiver Plan pro (Domain, Person) = Partial-UNIQUE NULLS NOT DISTINCT (DB-Gesetz). Multi-Person-Fächerung = P2. KARTE: zeigt den Plannamen aus dem Textkatalog (<domain>.plan.name) statt des Kontextnamens. GESAMTCHECK: check_findings ({text, outcome resolved|deferred|accepted} je Fund, [] = keine Funde) + check_passes gehen in die fn; ist core.config <paket>.advisor.final_check_required = true (finance), lehnt schon der Probelauf ohne Gesamtcheck oder mit einem Fund ohne outcome ab. Die fn speichert beides an der Version und liefert die Kartenzeilen (card_lines): Gesamtcheck mit den von der DB gezählten Punkten, Durchgängen, geklärt und bewusst offen, darunter jeder nicht geklärte Fund einzeln. WIEDERHOL-SPERRE: repeat_key = Domain, nach Abbrechen kommt im selben Lauf keine zweite Karte, auch wenn change_summary anders lautet.' 320 540
 
     $stickyOffer = Build-Sticky 'Doc Monitor-Angebot (WS-3 Phase A / Phase 0)' @(2400, -360) `
         'Owner-Notify nach Publish (bewusste tool-Seitenkanal-Ausnahme)' `

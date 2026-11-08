@@ -21,8 +21,10 @@
 --   RUECKGABE jsonb, Listen (leer = []): persons, recurring, planned_recurring, accounts (+ has_history, everyday_per_day, everyday_per_month,
 --   everyday_provisional nur an Geld-Konten), networth, savings_plans, standing_orders, loans, insurances, pensions,
 --   pension_outlook, real_estate, goals (+ goal_status), depot_risk (fn_savings_goal_derisk_status je Ziel im Fenster:
---   Rat, Entscheidung accepted/acceptance_expired, letzter Check), depot_holdings, depot_performance; Objekte: cashflow_summary,
---   parent_cashflow_summary, loan_summary, emergency_reserve
+--   Rat, Entscheidung accepted/acceptance_expired, letzter Check), depot_holdings, depot_performance, warnings (je Konto:
+--   kind account_coverage {account, currency, lowest_balance, lowest_on, has_history} aus fn_account_outlook bzw. kind
+--   savings_funding {account, currency, state warn|alert, runs_out_on, lowest_balance, lowest_on} aus
+--   account_funding_overview); Objekte: cashflow_summary, parent_cashflow_summary, loan_summary, emergency_reserve
 --   Tests: tests/db/finance/test_fn_advisor_snapshot.sql, tests/db/cross/test_role_permissions.sql (2-adv)
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_advisor_snapshot()
@@ -30,6 +32,7 @@ RETURNS jsonb LANGUAGE plpgsql STABLE AS $$
 DECLARE
     v_drop CONSTANT text[] := ARRAY['account_number', 'contract_number', 'policy_number', 'notes',
                                     'holding_id', 'current_rp_id', 'head_rp_id', 'recurring_payment_id', 'valid_to'];
+    v_stale CONSTANT numeric := COALESCE(NULLIF(core.fn_config_get('finance', 'finance', 'statement_stale_days'), '')::numeric, 45);
 BEGIN
     RETURN jsonb_build_object(
         'persons', (SELECT COALESCE(jsonb_agg(to_jsonb(p) ORDER BY p.person_id), '[]'::jsonb)
@@ -87,6 +90,27 @@ BEGIN
         'depot_holdings', (SELECT COALESCE(jsonb_agg(to_jsonb(v) - v_drop ORDER BY v.account_id, v.id), '[]'::jsonb)
                              FROM finance.depot_holdings_overview v),
         'depot_performance', (SELECT COALESCE(jsonb_agg(to_jsonb(v) - v_drop ORDER BY v.is_total, v.account_id), '[]'::jsonb)
-                                FROM finance.depot_performance v));
+                                FROM finance.depot_performance v),
+        -- Ohne Auszug zaehlt nur ein Minus: die festen Zahlungen allein reichen dann schon, der fehlende Alltag kaeme dazu;
+        -- ein blosses Unterschreiten des Puffers waere Halbwissen (Regel fn_coverage_accounts). Veralteter Auszug: die
+        -- Vorschau ist nicht belastbar, fn_advisor_review meldet ihn statt der Unterdeckung.
+        'warnings', (SELECT COALESCE(jsonb_agg(w.e ORDER BY w.ord, w.account_id), '[]'::jsonb)
+                       FROM (SELECT 1 AS ord, a.id AS account_id, jsonb_build_object(
+                                    'kind', 'account_coverage', 'account', a.name, 'currency', a.currency,
+                                    'lowest_balance', (j.o->>'min_projected')::numeric, 'lowest_on', (j.o->>'min_date')::date,
+                                    'has_history', (j.o->>'has_history')::boolean) AS e
+                               FROM finance.accounts a
+                              CROSS JOIN LATERAL finance.fn_account_outlook(a.id) AS j(o)
+                              WHERE a.status = 'active' AND a.account_type = 'cash' AND (j.o->>'ok')::boolean
+                                AND CASE WHEN (j.o->>'has_history')::boolean
+                                         THEN (j.o->>'shortfall')::numeric > 0
+                                              AND COALESCE((j.o->>'statement_age_days')::numeric, 0) <= v_stale
+                                         ELSE (j.o->>'min_projected')::numeric < 0 END
+                             UNION ALL
+                             SELECT 2, f.account_id, jsonb_build_object(
+                                    'kind', 'savings_funding', 'account', f.account_name, 'currency', f.currency, 'state', f.state,
+                                    'runs_out_on', f.runs_out_on, 'lowest_balance', f.min_projected, 'lowest_on', f.min_date)
+                               FROM finance.account_funding_overview f
+                              WHERE f.state IN ('warn', 'alert')) w));
 END;
 $$;

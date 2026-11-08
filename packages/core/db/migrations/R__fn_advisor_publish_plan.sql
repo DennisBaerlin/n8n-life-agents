@@ -17,7 +17,11 @@
 --   Eingabe jsonb: domain (default 'finance'), chat_id (Identitaet), plan_md (Pflicht, Markdown),
 --     plan_name (optional, Umbenennung beim Publish),
 --     context_description (optional; sonst generischer EN-Default mit Scope-Pointer),
---     change_summary (optional; Aenderungs-Zusammenfassung der Version, gespeichert mit der Owner-Sprache — Plan teilen).
+--     change_summary (optional; Aenderungs-Zusammenfassung der Version, gespeichert mit der Owner-Sprache — Plan teilen),
+--     check_findings (Array ODER JSON-String, leerer String = nicht angegeben; '[]' = ausdruecklich keine Funde) je
+--       {text 1..300, outcome resolved|deferred|accepted} + check_passes (int >= 1, Pflicht mit check_findings): der
+--       Gesamtcheck vor dem Veroeffentlichen, gespeichert an der Version. Pflicht, wenn core.config
+--       <paket>.advisor.final_check_required = 'true' (Paket der Domain aus core.advisors, E2E-Domain -> echte Domain).
 --   WS3 Naht-Backstop: VOR jedem Write komponiert die fn die section_data block-weise und prueft
 --     deterministisch, dass jeder Top-Block (goal/risk_profile/target_allocation/glidepath/emergency_reserve)
 --     von genau EINER Sektion kommt (der jsonb_each-Merge ist storage-order/nicht-deterministisch -> zwei
@@ -27,9 +31,12 @@
 --     unveraendert (angehaengt ans neue plan_md) und VERWIRFT einen im plan_md mitgeschickten (auch im Versions-
 --     Audit advisor_plans.plan_md) — vorher ersetzte content = plan_md alles und loeschte still jede Notiz.
 --   RUECKGABE-VERTRAG: Erfolg -> {ok:true, plan_id, version, superseded_plan_id,
---     context_name, section_count} (Post-State der Publish-Kette).
+--     context_name, section_count, card_lines} (Post-State der Publish-Kette; card_lines = mit Gesamtcheck die Zeile
+--     core.label.final_check {n, passes, resolved, open} bzw. core.tpl.final_check_clean {passes} und je nicht geklaertem
+--     Fund (deferred, accepted) eine raw-Zeile mit seinem Text).
 --   Korrigierbar (fehlendes domain, leeres plan_md, kein Draft, Block-Kollision, ungueltige Plan-Fakten laut Core-
---   Form oder Paket-Validator des Basis-Namens) -> {ok:false, reason} OHNE Write.
+--   Form oder Paket-Validator des Basis-Namens, code final_check_missing | final_check_open {index} | final_check_invalid)
+--   -> {ok:false, reason [, code]} OHNE Write.
 -- ============================================================
 CREATE OR REPLACE FUNCTION agent.fn_advisor_publish_plan(p jsonb)
 RETURNS jsonb LANGUAGE plpgsql AS $$
@@ -59,6 +66,12 @@ DECLARE
     v_learned  TEXT;
     v_split    RECORD;
     v_doc_md   TEXT;                    -- content des Plan-Docs = plan_md (ohne Fremd-Block) + gespeicherter Block
+    v_pkg      TEXT;
+    v_findings JSONB;                   -- Gesamtcheck: NULL = nicht angegeben ('' zaehlt so), '[]' = ausdruecklich keine Funde
+    v_passes   INT;
+    v_bad      TEXT;
+    v_idx      INT;
+    v_lines    JSONB := '[]'::jsonb;
 BEGIN
     IF v_domain IS NULL THEN
         RETURN jsonb_build_object('ok', false,
@@ -100,6 +113,64 @@ BEGIN
 
     IF trim(v_plan_md) = '' THEN
         RETURN jsonb_build_object('ok', false, 'reason', 'plan_md must be non-empty');
+    END IF;
+
+    -- Gesamtcheck (check_findings/check_passes): Array oder JSON-String, leerer String = nicht angegeben. Pflicht, wenn das
+    -- Paket der Domain advisor.final_check_required = 'true' setzt (E2E-Domain -> echte Domain); angegeben wird er immer geprueft.
+    IF p ? 'check_findings' AND jsonb_typeof(p->'check_findings') IS DISTINCT FROM 'null'
+       AND btrim(COALESCE(p->>'check_findings', '')) <> '' THEN
+        IF jsonb_typeof(p->'check_findings') = 'string' THEN
+            BEGIN
+                v_findings := (p->>'check_findings')::jsonb;
+            EXCEPTION WHEN OTHERS THEN
+                RETURN jsonb_build_object('ok', false, 'code', 'final_check_invalid',
+                    'reason', 'check_findings is not valid JSON: ' || left(p->>'check_findings', 120));
+            END;
+        ELSE
+            v_findings := p->'check_findings';
+        END IF;
+    END IF;
+    v_pkg := COALESCE((SELECT a.package FROM core.advisors a WHERE a.domain = regexp_replace(v_domain, '^__e2e_(.+)__$', '\1')), 'core');
+    IF v_findings IS NULL AND COALESCE(core.fn_config_get(v_pkg, 'advisor', 'final_check_required'), 'false') = 'true' THEN
+        RETURN jsonb_build_object('ok', false, 'code', 'final_check_missing',
+            'reason', 'final check missing: before publishing, review the whole draft against the current figures, clear every '
+                   || 'finding with the user one by one, then send check_findings (all findings with their outcome, [] when none) and check_passes');
+    END IF;
+    IF v_findings IS NOT NULL THEN
+        IF jsonb_typeof(v_findings) IS DISTINCT FROM 'array' THEN
+            RETURN jsonb_build_object('ok', false, 'code', 'final_check_invalid',
+                'reason', 'check_findings must be a JSON array of {text, outcome}');
+        END IF;
+        SELECT i::int INTO v_idx FROM jsonb_array_elements(v_findings) WITH ORDINALITY AS x(f, i)
+         WHERE COALESCE(f->>'outcome', '') NOT IN ('resolved', 'deferred', 'accepted') ORDER BY i LIMIT 1;
+        IF v_idx IS NOT NULL THEN
+            RETURN jsonb_build_object('ok', false, 'code', 'final_check_open', 'index', v_idx,
+                'reason', format('finding #%s has no outcome: clear it with the user first (resolved | deferred | accepted)', v_idx));
+        END IF;
+        SELECT string_agg(format('#%s', i), ', ') INTO v_bad FROM jsonb_array_elements(v_findings) WITH ORDINALITY AS x(f, i)
+         WHERE btrim(COALESCE(f->>'text', '')) = '' OR length(f->>'text') > 300;
+        IF v_bad IS NOT NULL THEN
+            RETURN jsonb_build_object('ok', false, 'code', 'final_check_invalid',
+                'reason', 'check_findings text must be 1-300 characters: ' || v_bad);
+        END IF;
+        v_passes := NULLIF(substring(COALESCE(p->>'check_passes', '') FROM '^\s*(\d{1,9})\s*$'), '')::int;
+        IF v_passes IS NULL OR v_passes < 1 THEN
+            RETURN jsonb_build_object('ok', false, 'code', 'final_check_invalid',
+                'reason', 'check_passes (number of review passes, at least 1) is required with check_findings');
+        END IF;
+        v_findings := (SELECT COALESCE(jsonb_agg(jsonb_build_object('text', btrim(f->>'text'), 'outcome', f->>'outcome') ORDER BY i), '[]'::jsonb)
+                         FROM jsonb_array_elements(v_findings) WITH ORDINALITY AS x(f, i));
+        -- Karte: Zahlen rechnet die DB; alles nicht Geklaerte (deferred, accepted) steht einzeln darunter.
+        v_lines := jsonb_build_array(CASE WHEN jsonb_array_length(v_findings) = 0
+            THEN jsonb_build_object('label', 'core.label.final_check', 'kind', 'tpl', 'value', 'core.tpl.final_check_clean',
+                                    'params', jsonb_build_object('passes', v_passes))
+            ELSE jsonb_build_object('label', 'core.label.final_check', 'kind', 'tpl', 'value', 'core.tpl.final_check_counts',
+                                    'params', jsonb_build_object('n', jsonb_array_length(v_findings), 'passes', v_passes,
+                                        'resolved', (SELECT count(*) FROM jsonb_array_elements(v_findings) f WHERE f->>'outcome' = 'resolved'),
+                                        'open', (SELECT count(*) FROM jsonb_array_elements(v_findings) f WHERE f->>'outcome' <> 'resolved')))
+            END)
+            || COALESCE((SELECT jsonb_agg(jsonb_build_object('kind', 'raw', 'value', f->>'text') ORDER BY i)
+                           FROM jsonb_array_elements(v_findings) WITH ORDINALITY AS x(f, i) WHERE f->>'outcome' <> 'resolved'), '[]'::jsonb);
     END IF;
 
     -- Draft der (Domain, Person) sperren (genau einer moeglich — Partial-UNIQUE (domain, person_id)).
@@ -184,7 +255,9 @@ BEGIN
         -- Plan teilen (2026-10-28): Provenienz der Version — Aenderungs-Zusammenfassung (Originalsprache) + Sprache des
         -- veroeffentlichenden Owners (Plan-Writes sind owner_only); die Mitglieder-Nachricht zeigt sie nur bei gleicher Sprache.
         change_summary      = NULLIF(btrim(COALESCE(p->>'change_summary', '')), ''),
-        change_summary_lang = agent.fn_person_lang(agent.fn_owner_person_id())->>'lang'
+        change_summary_lang = agent.fn_person_lang(agent.fn_owner_person_id())->>'lang',
+        check_findings = v_findings,
+        check_passes   = v_passes
     WHERE id = v_plan_id;
 
     -- 3. Context-Doc upserten: das publizierte Plan-Dokument ist das cross-agent Interface
@@ -225,7 +298,8 @@ BEGIN
         'version', v_version,
         'superseded_plan_id', v_old_id,
         'context_name', v_ctx_name,
-        'section_count', v_sections
+        'section_count', v_sections,
+        'card_lines', v_lines
     ));
 END;
 $$;

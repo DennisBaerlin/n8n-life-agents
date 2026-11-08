@@ -6,7 +6,8 @@
 --   * core.fn_handle_handoff_cb: Privatchat, Tippender = Person, can_write, Claim open -> working (Doppeltipp, veraltetes
 --     max, Re-Claim nach TTL); core.fn_release_handoff_tasks gibt Claims frei;
 --   * core.fn_handoff_tasks_read / fn_handoff_task_check / fn_complete_handoff_task / fn_cancel_handoff_task;
---   * Endzustand unveraenderlich (Trigger), CHECKs.
+--   * Endzustand unveraenderlich (Trigger), CHECKs;
+--   * Themen: ein Themen-Save ersetzt die offenen Aufgaben seines Themas plus die themenlosen des Abschnitts.
 BEGIN;
 
 DO $$
@@ -39,7 +40,7 @@ BEGIN
   DELETE FROM agent.advisor_plans WHERE domain = 'finance';
 
   -- ---------- 1) Abschnitt mit zwei Aufgaben speichern ----------
-  r := agent.fn_advisor_save_section(jsonb_build_object('domain','finance','chat_id','111','section_key','goals_triggers',
+  r := agent.fn_advisor_save_section(jsonb_build_object('domain','finance','chat_id','111','section_key','goals_triggers','topic','Allgemein',
          'section_content','Emergency fund and a car.',
          'handoff_tasks', jsonb_build_array(
             jsonb_build_object('kind','savings_goal','payload',jsonb_build_object('name','Notgroschen','target_amount',6000),'text','Sparziel Notgroschen 6.000 €'),
@@ -54,31 +55,31 @@ BEGIN
   RAISE NOTICE 'PASS [1 save mit handoff_tasks]';
 
   -- ---------- 2) korrigierbare Eingaben -> ok:false, kein Write ----------
-  r := agent.fn_advisor_save_section(jsonb_build_object('domain','finance','chat_id','111','section_key','risk_profile',
+  r := agent.fn_advisor_save_section(jsonb_build_object('domain','finance','chat_id','111','section_key','risk_profile','topic','Allgemein',
          'section_content','x','handoff_tasks', jsonb_build_array(jsonb_build_object('kind','loan','text','Kredit'))));
   IF (r->>'ok')::boolean IS NOT FALSE THEN RAISE EXCEPTION 'FAIL [2 kind]: %', r; END IF;
-  r := agent.fn_advisor_save_section(jsonb_build_object('domain','finance','chat_id','111','section_key','risk_profile',
+  r := agent.fn_advisor_save_section(jsonb_build_object('domain','finance','chat_id','111','section_key','risk_profile','topic','Allgemein',
          'section_content','x','handoff_tasks', jsonb_build_array(jsonb_build_object('kind','other','text',repeat('a',301)))));
   IF (r->>'ok')::boolean IS NOT FALSE THEN RAISE EXCEPTION 'FAIL [2 text lang]: %', r; END IF;
-  r := agent.fn_advisor_save_section(jsonb_build_object('domain','finance','chat_id','111','section_key','risk_profile',
+  r := agent.fn_advisor_save_section(jsonb_build_object('domain','finance','chat_id','111','section_key','risk_profile','topic','Allgemein',
          'section_content','x','handoff_tasks', jsonb_build_array(jsonb_build_object('kind','other','text','  '))));
   IF (r->>'ok')::boolean IS NOT FALSE THEN RAISE EXCEPTION 'FAIL [2 text leer]: %', r; END IF;
-  r := agent.fn_advisor_save_section(jsonb_build_object('domain','finance','chat_id','111','section_key','risk_profile',
+  r := agent.fn_advisor_save_section(jsonb_build_object('domain','finance','chat_id','111','section_key','risk_profile','topic','Allgemein',
          'section_content','x','handoff_tasks', jsonb_build_array(jsonb_build_object('kind','other','text','t','payload','[1]'::jsonb))));
   IF (r->>'ok')::boolean IS NOT FALSE THEN RAISE EXCEPTION 'FAIL [2 payload]: %', r; END IF;
-  r := agent.fn_advisor_save_section(jsonb_build_object('domain','finance','chat_id','111','section_key','risk_profile',
+  r := agent.fn_advisor_save_section(jsonb_build_object('domain','finance','chat_id','111','section_key','risk_profile','topic','Allgemein',
          'section_content','x','handoff_tasks', 'not json'));
   IF (r->>'ok')::boolean IS NOT FALSE THEN RAISE EXCEPTION 'FAIL [2 kein JSON]: %', r; END IF;
-  r := agent.fn_advisor_save_section(jsonb_build_object('domain','finance','chat_id','111','section_key','risk_profile',
+  r := agent.fn_advisor_save_section(jsonb_build_object('domain','finance','chat_id','111','section_key','risk_profile','topic','Allgemein',
          'section_content','x','handoff_tasks', '{"kind":"other"}'::jsonb));
   IF (r->>'ok')::boolean IS NOT FALSE THEN RAISE EXCEPTION 'FAIL [2 kein Array]: %', r; END IF;
   IF EXISTS (SELECT 1 FROM agent.advisor_plans WHERE domain = 'finance' AND interview_state ? 'risk_profile') THEN
     RAISE EXCEPTION 'FAIL [2 Abschnitt trotz Ablehnung gespeichert]'; END IF;
   -- JSON-String-Form (Tool-Binding liefert Strings), leerer String = nicht angegeben
-  r := agent.fn_advisor_save_section(jsonb_build_object('domain','finance','chat_id','111','section_key','risk_profile',
+  r := agent.fn_advisor_save_section(jsonb_build_object('domain','finance','chat_id','111','section_key','risk_profile','topic','Allgemein',
          'section_content','x','handoff_tasks', '[{"kind":"other","text":"Haftpflicht prüfen"}]'));
   IF (r->>'ok')::boolean IS NOT TRUE OR (r->>'handoff_task_count')::int <> 1 THEN RAISE EXCEPTION 'FAIL [2 String-Form]: %', r; END IF;
-  r := agent.fn_advisor_save_section(jsonb_build_object('domain','finance','chat_id','111','section_key','household_basics',
+  r := agent.fn_advisor_save_section(jsonb_build_object('domain','finance','chat_id','111','section_key','household_basics','topic','Allgemein',
          'section_content','x','handoff_tasks', ''));
   IF (r->>'ok')::boolean IS NOT TRUE OR (r->>'handoff_task_count')::int <> 0 OR jsonb_array_length(r->'card_lines') <> 0 THEN
     RAISE EXCEPTION 'FAIL [2 leerer String]: %', r; END IF;
@@ -86,7 +87,7 @@ BEGIN
 
   -- ---------- 3) Neu-Speichern ersetzt nur offene Aufgaben dieses Abschnitts ----------
   UPDATE agent.handoff_tasks SET status = 'working', claimed_at = now() WHERE kind = 'savings_plan' RETURNING id INTO v_idw;
-  r := agent.fn_advisor_save_section(jsonb_build_object('domain','finance','chat_id','111','section_key','goals_triggers',
+  r := agent.fn_advisor_save_section(jsonb_build_object('domain','finance','chat_id','111','section_key','goals_triggers','topic','Allgemein',
          'section_content','Emergency fund only.',
          'handoff_tasks', jsonb_build_array(jsonb_build_object('kind','savings_goal','text','Sparziel Notgroschen 5.000 €'))));
   IF (r->>'ok')::boolean IS NOT TRUE THEN RAISE EXCEPTION 'FAIL [3 save]: %', r; END IF;
@@ -97,19 +98,19 @@ BEGIN
   IF (SELECT count(*) FROM agent.handoff_tasks WHERE section_key = 'risk_profile' AND status = 'open') <> 1 THEN
     RAISE EXCEPTION 'FAIL [3 anderer Abschnitt angefasst]'; END IF;
   -- Ohne handoff_tasks gespeichert (Prosa-Korrektur) -> die offenen bleiben; ausdruecklich leere Liste -> sie entfallen
-  r := agent.fn_advisor_save_section(jsonb_build_object('domain','finance','chat_id','111','section_key','risk_profile','section_content','y'));
+  r := agent.fn_advisor_save_section(jsonb_build_object('domain','finance','chat_id','111','section_key','risk_profile','topic','Allgemein','section_content','y'));
   IF (SELECT count(*) FROM agent.handoff_tasks WHERE section_key = 'risk_profile' AND status = 'open') <> 1 THEN RAISE EXCEPTION 'FAIL [3 ohne Parameter geloescht]'; END IF;
-  r := agent.fn_advisor_save_section(jsonb_build_object('domain','finance','chat_id','111','section_key','risk_profile','section_content','y','handoff_tasks','[]'));
+  r := agent.fn_advisor_save_section(jsonb_build_object('domain','finance','chat_id','111','section_key','risk_profile','topic','Allgemein','section_content','y','handoff_tasks','[]'));
   IF (SELECT count(*) FROM agent.handoff_tasks WHERE section_key = 'risk_profile') <> 0 THEN RAISE EXCEPTION 'FAIL [3 leere Liste]'; END IF;
   -- Mitglied darf nicht speichern (owner_only) -> keine Aufgaben
-  r := agent.fn_advisor_save_section(jsonb_build_object('domain','finance','chat_id','222','section_key','risk_profile',
+  r := agent.fn_advisor_save_section(jsonb_build_object('domain','finance','chat_id','222','section_key','risk_profile','topic','Allgemein',
          'section_content','x','handoff_tasks', jsonb_build_array(jsonb_build_object('kind','other','text','t'))));
   IF (r->>'ok')::boolean IS NOT FALSE OR EXISTS (SELECT 1 FROM agent.handoff_tasks WHERE person_id = 'lena') THEN
     RAISE EXCEPTION 'FAIL [3 Mitglied]: %', r; END IF;
   RAISE NOTICE 'PASS [3 Neu-Speichern ersetzt nur offene]';
 
   -- ---------- 4) Uebersicht ----------
-  r := agent.fn_advisor_save_section(jsonb_build_object('domain','finance','chat_id','111','section_key','wealth_building',
+  r := agent.fn_advisor_save_section(jsonb_build_object('domain','finance','chat_id','111','section_key','wealth_building','topic','Allgemein',
          'section_content','z','handoff_tasks', jsonb_build_array(jsonb_build_object('kind','recurring_transfer','text','Dauerauftrag 100 € aufs Tagesgeld'))));
   SELECT max(id) INTO v_id3 FROM agent.handoff_tasks;
   SELECT id INTO v_id1 FROM agent.handoff_tasks WHERE section_key = 'goals_triggers' AND status = 'open';
@@ -177,7 +178,7 @@ BEGIN
   r := core.fn_complete_handoff_task(jsonb_build_object('handoff_task_id', v_id1, 'chat_id', '111'));
   IF (r->>'ok')::boolean IS NOT FALSE THEN RAISE EXCEPTION 'FAIL [7 zweimal]: %', r; END IF;
   -- offene (nicht beanspruchte) Aufgabe ist nicht abschliessbar
-  r := agent.fn_advisor_save_section(jsonb_build_object('domain','finance','chat_id','111','section_key','retirement',
+  r := agent.fn_advisor_save_section(jsonb_build_object('domain','finance','chat_id','111','section_key','retirement','topic','Allgemein',
          'section_content','r','handoff_tasks', jsonb_build_array(jsonb_build_object('kind','other','text','Rentenbescheid hochladen'))));
   SELECT id INTO v_id2 FROM agent.handoff_tasks WHERE section_key = 'retirement';
   r := core.fn_handoff_task_check(jsonb_build_object('handoff_task_id', v_id2, 'chat_id', '111'));
@@ -225,7 +226,7 @@ BEGIN
   RAISE NOTICE 'PASS [9 Gesetz]';
 
   -- ---------- 10) E2E-Sentinel-Domain: nicht-numerische chat_id -> Owner, Cleanup ----------
-  r := agent.fn_advisor_save_section(jsonb_build_object('domain','__e2e_finance__','chat_id','test_e2e_x','section_key','goals_triggers',
+  r := agent.fn_advisor_save_section(jsonb_build_object('domain','__e2e_finance__','chat_id','test_e2e_x','section_key','goals_triggers','topic','Allgemein',
          'section_content','e','handoff_tasks', jsonb_build_array(jsonb_build_object('kind','other','text','__E2E__ t'))));
   IF (r->>'ok')::boolean IS NOT TRUE OR (SELECT person_id || '/' || package FROM agent.handoff_tasks WHERE domain = '__e2e_finance__') <> 'erika/finance' THEN
     RAISE EXCEPTION 'FAIL [10 e2e save]: %', r; END IF;
@@ -235,6 +236,30 @@ BEGIN
   IF (r->>'handoff_tasks')::int <> 2 OR EXISTS (SELECT 1 FROM agent.handoff_tasks WHERE text LIKE '%\_\_E2E%') OR EXISTS (SELECT 1 FROM agent.handoff_tasks WHERE domain = '__e2e_finance__') THEN
     RAISE EXCEPTION 'FAIL [10 e2e cleanup]: %', r; END IF;
   RAISE NOTICE 'PASS [10 E2E-Domain]';
-END $$;
+
+  -- ---------- 11) Themen: ein Themen-Save ersetzt die offenen Aufgaben seines Themas plus die themenlosen ----------
+  DELETE FROM agent.handoff_tasks;
+  INSERT INTO agent.handoff_tasks (domain, package, person_id, section_key, kind, text)
+  VALUES ('finance', 'finance', 'erika', 'wealth_building', 'other', 'Vor den Themen vereinbart');
+  r := agent.fn_advisor_save_section(jsonb_build_object('domain','finance','chat_id','111','section_key','wealth_building',
+         'topic','Aufteilung','section_content','a','handoff_tasks', jsonb_build_array(jsonb_build_object('kind','savings_plan','text','Sparplan 150 € Welt-ETF'))));
+  r := agent.fn_advisor_save_section(jsonb_build_object('domain','finance','chat_id','111','section_key','wealth_building',
+         'topic','Steuer','section_content','s','handoff_tasks', jsonb_build_array(jsonb_build_object('kind','other','text','Freistellungsauftrag stellen'))));
+  IF (SELECT count(*) FROM agent.handoff_tasks WHERE section_key = 'wealth_building' AND status = 'open') <> 2
+     OR EXISTS (SELECT 1 FROM agent.handoff_tasks WHERE topic IS NULL)
+     OR (SELECT topic FROM agent.handoff_tasks WHERE text = 'Sparplan 150 € Welt-ETF') <> 'Aufteilung' THEN
+    RAISE EXCEPTION 'FAIL [11 je Thema]: %', (SELECT jsonb_agg(to_jsonb(t)) FROM agent.handoff_tasks t); END IF;
+  -- dasselbe Thema anders geschrieben ersetzt nur seine eigene Aufgabe
+  r := agent.fn_advisor_save_section(jsonb_build_object('domain','finance','chat_id','111','section_key','wealth_building',
+         'topic','aufteilung','section_content','a2','handoff_tasks', '[]'));
+  IF EXISTS (SELECT 1 FROM agent.handoff_tasks WHERE text = 'Sparplan 150 € Welt-ETF')
+     OR NOT EXISTS (SELECT 1 FROM agent.handoff_tasks WHERE text = 'Freistellungsauftrag stellen' AND status = 'open') THEN
+    RAISE EXCEPTION 'FAIL [11 Thema ersetzt]: %', (SELECT jsonb_agg(to_jsonb(t)) FROM agent.handoff_tasks t); END IF;
+  BEGIN
+    INSERT INTO agent.handoff_tasks (domain, package, person_id, section_key, topic, kind, text) VALUES ('finance','finance','erika','x', repeat('t', 61), 'other','t');
+    RAISE EXCEPTION 'FAIL [11 CHECK topic]';
+  EXCEPTION WHEN check_violation THEN NULL;
+  END;
+  RAISE NOTICE 'PASS [11 Aufgaben je Thema]';END $$;
 
 ROLLBACK;

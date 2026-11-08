@@ -298,11 +298,11 @@ BEGIN
     IF NOT EXISTS (SELECT 1 FROM agent.advisor_plans WHERE domain = 'finance' AND person_id IS NULL AND status = 'active') THEN
         v_r := agent.fn_advisor_save_section(jsonb_build_object(
             'domain','finance', 'chat_id','test_fixture', 'plan_name','Haushaltsplan (Testfixture)',
-            'section_key','reit_strategy',
+            'section_key','reit_strategy', 'topic','REIT-Beimischung',
             'section_content','REITs: optionale Beimischung von 6 % zur Streuung. Kauf-Trigger: nur unter 30 Euro je Anteil. Bevorzugt breite ETFs, keine Einzeltitel.'));
         PERFORM pg_temp.assert_ok('Finanzplan Sektion reit_strategy', v_r);
         v_r := agent.fn_advisor_publish_plan(jsonb_build_object(
-            'domain','finance', 'chat_id','test_fixture',
+            'domain','finance', 'chat_id','test_fixture', 'check_findings','[]', 'check_passes',1,
             'plan_md', E'# Haushaltsplan (Testfixture)\n\n## REIT-Strategie\n- Optionale REIT-Beimischung: 6 % des Portfolios zur Streuung.\n- Kauf-Trigger: REITs nur unter 30 Euro je Anteil nachkaufen.\n- Form: breite ETFs, keine Einzeltitel.\n'));
         PERFORM pg_temp.assert_ok('Finanzplan Publish', v_r);
         RAISE NOTICE 'FIXTURES ANGELEGT: veroeffentlichter Finanzplan (REIT-Regeln).';

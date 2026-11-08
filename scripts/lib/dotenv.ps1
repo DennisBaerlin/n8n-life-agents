@@ -5,5 +5,7 @@
 
 # Read-DotEnvLines <pfad> -> die Zeilen der Datei (string[]); fehlt die Datei, wirft ReadAllLines wie Get-Content.
 function Read-DotEnvLines([string]$Path) {
-    [System.IO.File]::ReadAllLines($Path, (New-Object System.Text.UTF8Encoding($false)))
+    # .NET normalisiert anders als Get-Content keinen Backslash: Aufrufer bauen den Pfad mit Backslash, unter Linux (CI) waere das ein Dateiname.
+    $native = $Path.Replace([char]92, [System.IO.Path]::DirectorySeparatorChar)
+    [System.IO.File]::ReadAllLines($native, (New-Object System.Text.UTF8Encoding($false)))
 }

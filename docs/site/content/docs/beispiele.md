@@ -141,7 +141,7 @@ Max: Wie sieht meine Aktienquote gerade im Vergleich zum Plan aus?
 Bot: Dein Plan sieht 60 % Aktien-ETF vor (Korridor 55–65 %).
      Aktuell liegt der Anteil bei 68 % — außerhalb des Korridors,
      weil die Kurse zuletzt gestiegen sind.
-     Empfehlung: einen Teil in Festgeld oder Anleihen umschichten,
+     Empfehlung: einen Teil in Anleihen oder Cash umschichten,
      um wieder in den Zielkorridor zu kommen. Ich buche das nicht
      selbst — sag Bescheid, dann übernimmt der Buchhalter das.
 ```
@@ -172,7 +172,7 @@ Max: Sag mir Bescheid, wenn der Ölpreis unter 60 Euro
 
 Bot: Verstanden: Ölpreis in Euro pro Barrel, Alarm bei
      Unterschreiten von 60,00 €, Prüfung einmal täglich.
-     Trigger anlegen – bitte prüfen:
+     Neue Überwachung anlegen – bitte prüfen:
      • Bezeichnung: Ölpreis-Alarm
      • Aktueller Wert: 64,20 €
      • Schwelle: 60,00 € (unterschritten)
@@ -203,13 +203,13 @@ Nach der Einrichtung führt der Guide (`agent.guide`) Schritt für Schritt durch
 ```
 Erika: /onboarding
 
-Bot: Dein Onboarding - 0 von 9 erledigt
+Bot: Dein Onboarding – 0 von 11 erledigt
      ◻ Haushalt & Personen
-     ◻ Finanzen (0/5)
+     ◻ Finanzen (0/7)
      ◻ Karriere (0/3)
-     👉 Als Naechstes: Haushalt & Personen
+     👉 Als Nächstes: Haushalt & Personen
      [👉 Weiter: Haushalt & Personen]
-     [👉 Haushalt & Personen] [Finanzen (0/5)] [Karriere (0/3)]
+     [👉 Haushalt & Personen] [Finanzen (0/7)] [Karriere (0/3)]
 
 Erika: [tippt "Weiter"]
 
@@ -229,7 +229,7 @@ Bot: Danke! Als Nächstes: dein monatliches Netto-Einkommen?
 Der werktägliche Stellen-Scan des Karriere-Coachs (`agent.career_advisor`) schickt passende Treffer als Karte mit 👍/👎 — ein Daumen-runter mit Begründung schärft künftige Treffer.
 
 ```
-Bot: 🎯 Neuer Treffer (4/4 Punkte): Data Analyst (m/w/d)
+Bot: ✨ Passende Stelle (4/4): Data Analyst (m/w/d)
      bei Beispiel GmbH, Leipzig
      [👍]  [👎]
 

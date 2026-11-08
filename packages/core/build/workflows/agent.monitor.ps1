@@ -156,11 +156,12 @@ function Build-AgentMonitor {
             ,@('max_plausible', 'Upper plausibility bound', 'string', '')
             ,@('max_jump_pct', 'Optional continuity guard: max percent deviation from the last clean value', 'string', '')
             ,@('check_interval', 'How often to check, e.g. 12 hours / 1 day / 1 week / 1 month', 'string')
+            ,@('first_check', ('Optional day of the FIRST check, which also anchors the rhythm (every Monday = next monday), ' + (Get-DateParamHint) + '; empty = first check right away'), 'string', '')
             ,@('action_note', 'German note sent verbatim in the alert: what to do when it fires', 'string', '')
         ) ([ordered]@{ package = 'core' }) @(320, 208) -StartNode $START_NODE
 
     $nToolSet = New-AdvisorToolNode 'tool_set_monitor_trigger' 'agent.tool_set_monitor_trigger' `
-        'Change ONE existing monitoring trigger by label (partial update - only fields you send change). Also the LIFECYCLE tool: status=armed RE-ARMS a fired trigger (new epoch; add reset_peak=true to also reset the drawdown peak), status=disabled parks it without deleting. REPAIR a broken acquisition by sending a new acquisition_prompt / acquisition_sql / acquisition_params (package method: only the keys to change) - the tool test-fetches the NEW spec before the button confirmation (diagnose first: read agent.monitor_observations via postgres_select for the failure reasons, then load trigger_design and re-engineer the source). The trigger type cannot be changed - delete and create instead. Web cadence stays at least 12 hours.' `
+        'Change ONE existing monitoring trigger by label (partial update - only fields you send change). Also the LIFECYCLE tool: status=armed RE-ARMS a fired trigger (new epoch; add reset_peak=true to also reset the drawdown peak) - a date reminder whose date has passed re-arms only together with its new due_date (ask for it), status=disabled parks it without deleting. REPAIR a broken acquisition by sending a new acquisition_prompt / acquisition_sql / acquisition_params (package method: only the keys to change) - the tool test-fetches the NEW spec before the button confirmation (diagnose first: read agent.monitor_observations via postgres_select for the failure reasons, then load trigger_design and re-engineer the source). The trigger type cannot be changed - delete and create instead. Web cadence stays at least 12 hours.' `
         @(
             ,@('domain', "Domain of the trigger ($domainEnum)", 'string', 'general')
             ,@('label', 'Label of the existing trigger to change', 'string')

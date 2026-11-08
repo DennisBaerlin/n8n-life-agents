@@ -29,10 +29,5 @@ CREATE TABLE IF NOT EXISTS agent.access_blocks (
     reason           text                            -- optionaler Owner-Vermerk
 );
 
--- Lesepfad: der CLI-`blocked`-Listing laeuft als Superuser; core_ro analog pairing_state
--- (Lese-Konsistenz, falls die Init standalone via db_apply -File ohne die util-Blanket-Grants laeuft).
-DO $$ BEGIN
-    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'core_ro') THEN
-        GRANT SELECT ON agent.access_blocks TO core_ro;
-    END IF;
-END $$;
+-- Lesepfad: das CLI-`blocked`-Listing laeuft als Superuser, fn_is_blocked unter der Haupt-Credential; kein Grant an core_ro
+-- (Erlaubnisliste in util_create_core_ro.sql).

@@ -16,6 +16,16 @@ BEGIN
   IF NOT (make_date(2024,5,20) = ANY(v_by)) THEN RAISE EXCEPTION 'FAIL [Pfingstmontag 2024=20.05. fehlt]'; END IF;
   -- 2025 Ostersonntag = 20.04. -> Karfreitag 18.04.
   IF NOT (make_date(2025,4,18) = ANY(estate.fn_public_holidays(2025,'bayern'))) THEN RAISE EXCEPTION 'FAIL [Karfreitag 2025=18.04. fehlt]'; END IF;
+  -- weitere Jahre inkl. Jahrhundertterme (1900, 2100) und die zwei Korrektur-Ausnahmen (1981/2076: 19.04.,
+  -- 1954/2049: 18.04.); Pruefung ueber Ostermontag = Ostersonntag + 1
+  IF NOT (make_date(1900,4,16) = ANY(estate.fn_public_holidays(1900,'berlin'))) THEN RAISE EXCEPTION 'FAIL [Ostern 1900=15.04.]'; END IF;
+  IF NOT (make_date(2008,3,24) = ANY(estate.fn_public_holidays(2008,'berlin'))) THEN RAISE EXCEPTION 'FAIL [Ostern 2008=23.03.]'; END IF;
+  IF NOT (make_date(2038,4,26) = ANY(estate.fn_public_holidays(2038,'berlin'))) THEN RAISE EXCEPTION 'FAIL [Ostern 2038=25.04.]'; END IF;
+  IF NOT (make_date(2100,3,29) = ANY(estate.fn_public_holidays(2100,'berlin'))) THEN RAISE EXCEPTION 'FAIL [Ostern 2100=28.03.]'; END IF;
+  IF NOT (make_date(1981,4,20) = ANY(estate.fn_public_holidays(1981,'berlin'))) THEN RAISE EXCEPTION 'FAIL [Ostern 1981=19.04.]'; END IF;
+  IF NOT (make_date(2076,4,20) = ANY(estate.fn_public_holidays(2076,'berlin'))) THEN RAISE EXCEPTION 'FAIL [Ostern 2076=19.04.]'; END IF;
+  IF NOT (make_date(1954,4,19) = ANY(estate.fn_public_holidays(1954,'berlin'))) THEN RAISE EXCEPTION 'FAIL [Ostern 1954=18.04.]'; END IF;
+  IF NOT (make_date(2049,4,19) = ANY(estate.fn_public_holidays(2049,'berlin'))) THEN RAISE EXCEPTION 'FAIL [Ostern 2049=18.04.]'; END IF;
   RAISE NOTICE 'PASS [Osterformel + bewegliche Feiertage]';
 
   -- Bundesweite Feiertage (in jedem Bundesland).

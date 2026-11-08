@@ -136,7 +136,7 @@ Die Übersicht stellst du auf dem Server mit zwei Einstellungen ein. Die Knöpfe
 | `lifeagents config set app enabled false` | Schaltet die Übersicht ganz ab. Die Übersicht ist sofort gesperrt, der Knopf verschwindet nach etwa einer Minute; an seiner Stelle ist dann wieder der Menü-Knopf mit den Befehlen. |
 | `lifeagents config set app enabled true` | Schaltet sie wieder ein. |
 
-Kopplung, Entkoppeln und Sprachwechsel zieht der Server genauso nach. Klappt das wiederholt nicht (etwa weil Telegram nicht erreichbar ist), versucht er es alle zehn Minuten erneut, und `lifeagents doctor` meldet es nach einer halben Stunde.
+Kopplung, Entkoppeln und Sprachwechsel zieht der Server genauso nach. Klappt das wiederholt nicht (etwa weil Telegram nicht erreichbar ist), versucht er es nach zehn Minuten erneut, nach dem dritten Fehlschlag in Folge erst beim nächsten Anlass oder Update wieder; `lifeagents doctor` meldet es.
 
 Ab wann ein Konto als knapp gilt und wie früh vor dem Ende einer Zinsbindung gewarnt wird, stellst du ebenfalls ein:
 

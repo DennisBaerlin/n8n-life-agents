@@ -527,4 +527,55 @@ BEGIN
   RAISE NOTICE 'PASS evaluate [Erinnerungs-Fenster: Datum/Problem halten statt verwerfen, Wert sofort]';
 END $$;
 
+-- Grenzen: Vorwarnung schon am ersten Tag des Fensters (due - warn_days_before); der Rueckgang wird auf zwei Stellen
+-- gerundet bewertet (9.996 %% -> 10.00 %% feuert bei Schwelle 10, wie die Meldung ihn zeigt); checked zaehlt die
+-- geprueften Trigger.
+DO $$
+DECLARE
+  v_now   TIMESTAMPTZ := '2026-07-10 07:10+02'::timestamptz;
+  v_today CONSTANT DATE := '2026-07-10';
+  v JSONB; v_dd INT;
+BEGIN
+  UPDATE core.config SET value = '0' WHERE category = 'general' AND key = 'reminders_from';
+  UPDATE core.config SET value = '24' WHERE category = 'general' AND key = 'reminders_until';
+  INSERT INTO agent.monitor_triggers
+    (domain, label, trigger_type, acquisition_method, due_date, warn_days_before, check_interval, next_check_at)
+  VALUES ('__test__', 'frist erster warntag', 'date', 'none', v_today + 7, 7, INTERVAL '1 day', v_now - INTERVAL '1 hour');
+  INSERT INTO agent.monitor_triggers
+    (domain, label, trigger_type, acquisition_method, acquisition_spec, drawdown_pct, reference_value,
+     expected_unit, min_plausible, max_plausible, check_interval, next_check_at)
+  VALUES ('__test__', 'index rueckgang 10', 'drawdown', 'web_search', '{"prompt": "index eur"}', 10, 100000,
+          'EUR', 1000, 1000000, INTERVAL '1 day', v_now - INTERVAL '1 hour')
+  RETURNING id INTO v_dd;
+  v := agent.fn_monitor_evaluate(jsonb_build_object('now', v_now,
+    'observations', jsonb_build_array(jsonb_build_object('trigger_id', v_dd, 'ok', true, 'value', 90004, 'unit', 'EUR'))));
+  IF NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v->'info') e
+                 WHERE e->>'label' = 'frist erster warntag' AND e->>'kind' = 'date_warning') THEN
+    RAISE EXCEPTION 'FAIL evaluate [Vorwarnung am ersten Warntag]: %', v; END IF;
+  IF NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v->'fired') e WHERE e->>'label' = 'index rueckgang 10') THEN
+    RAISE EXCEPTION 'FAIL evaluate [9.996 %% gerundet 10.00 %% feuert]: %', v; END IF;
+  IF (v->>'checked')::int < 2 THEN RAISE EXCEPTION 'FAIL evaluate [checked]: %', v->>'checked'; END IF;
+  RAISE NOTICE 'PASS evaluate [erster Warntag, gerundeter Rueckgang, checked]';
+END $$;
+
+-- Termin-Trigger mit langem Pruef-Rhythmus: der naechste Pruefslot wird auf Erinnerungsfenster bzw. Frist gekappt,
+-- sonst ruecken Monatsslots hinter die Frist und am Fristtag feuert nichts.
+DO $$
+DECLARE v jsonb; v_due date := CURRENT_DATE + 10; v_tz text := current_setting('TimeZone');
+BEGIN
+  PERFORM set_config('TimeZone', 'Europe/Berlin', true);
+  v := agent.fn_create_monitor_trigger(jsonb_build_object('domain','__t_mon__','label','__t_mon_s27_frist__',
+         'trigger_type','date','acquisition_method','none','due_date',v_due::text,'warn_days_before',0,
+         'check_interval','1 month','action_note','Beispiel-Frist'));
+  IF NOT (v->>'ok')::boolean THEN RAISE EXCEPTION 'SETUP [S2.7] %', v; END IF;
+  PERFORM agent.fn_monitor_evaluate(jsonb_build_object('now', ((CURRENT_DATE + 1)::timestamp + interval '10 hours')::timestamptz));
+  v := agent.fn_monitor_evaluate(jsonb_build_object('now', (v_due::timestamp + interval '10 hours')::timestamptz));
+  IF NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v->'fired') e WHERE e->>'label' = '__t_mon_s27_frist__') THEN
+    RAISE EXCEPTION 'FAIL [S2.7] Frist % nicht am Fristtag gefeuert; naechster Pruefslot %',
+      v_due, (SELECT next_check_at FROM agent.monitor_triggers WHERE label = '__t_mon_s27_frist__');
+  END IF;
+  PERFORM set_config('TimeZone', v_tz, true);
+  RAISE NOTICE 'PASS [S2.7]';
+END $$;
+
 ROLLBACK;

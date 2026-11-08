@@ -79,8 +79,9 @@ function Set-TelegramBaseUrl {
 }
 
 # --- .env: TEST_TELEGRAM_BOT_TOKEN (Credential-data verlangt accessToken beim PATCH) -----------------
+. "$PSScriptRoot\..\lib\dotenv.ps1"
 function Get-EnvValue([string]$name) {
-    $line = (Get-Content "$RepoRoot\.env" | Where-Object { $_ -match "^\s*$([regex]::Escape($name))=" } | Select-Object -First 1)
+    $line = (Read-DotEnvLines "$RepoRoot\.env" | Where-Object { $_ -match "^\s*$([regex]::Escape($name))=" } | Select-Object -First 1)
     if (-not $line) { return $null }
     $v = ($line -split '=', 2)[1].Trim()
     if ([string]::IsNullOrWhiteSpace($v)) { return $null }

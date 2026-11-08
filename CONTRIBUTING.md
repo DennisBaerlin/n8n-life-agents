@@ -17,7 +17,8 @@ architecture in the [CLAUDE.md](CLAUDE.md) family.
 - Everything in this repo is public, including commit messages and PR texts. Use invented values only: no
   real names, amounts, account numbers or addresses, neither your own nor anyone else's.
 - You need **no API credits** for the free gates (lints, `db_test`, the mock-based substrate suites). The
-  paid LLM suites run against your own `ANTHROPIC_API_KEY`; you do not have to run them for a PR.
+  paid LLM suites run against your own Anthropic key (`TEST_ANTHROPIC_API_KEY` for the agent suites,
+  `ANTHROPIC_API_KEY` for `judge_eval`); you do not have to run them for a PR.
 - The PR template's **Real behavior proof** comes from your own throwaway Docker substrate
   (`scripts/dev/bootstrap_test_n8n.ps1 -Reset`), not from a production instance.
 - By contributing you agree that your contribution is licensed under the repository's
@@ -57,7 +58,7 @@ isolation). The exceptions are the PowerShell linter (a module) and the three pr
 
 ```powershell
 winget install --id j178.Prek        # the hook runner (a single Rust binary)
-prek install                         # wire up the git hooks (or: scripts/install_git_hooks.ps1)
+scripts/install_git_hooks.ps1        # wire up all four hook stages (pre-commit, commit-msg, pre-push, post-merge)
 ```
 
 ### Required for editing `*.ps1`: `PSScriptAnalyzer`
@@ -208,13 +209,14 @@ CI runs the *same* commit-stage hooks via the same runner OS (Windows), so there
 
 | Stage | When | Examples | Hardness |
 |---|---|---|---|
-| **commit-stage** | every commit + CI | hygiene (trailing-ws, eof, private-key), actionlint/zizmor on our CI, the per-language linters (`shellcheck` on `provisioning/**/*.sh`, `ps-lint`/PSScriptAnalyzer on `scripts/**/*.ps1` + `packages/*/build/**`, `markdownlint` on hand-authored `*.md`, `sqlfluff-lint` on all tracked SQL (`packages/*/db/**` + `tests/**`; 7 per-file excludes with reasons in [.pre-commit-config.yaml](.pre-commit-config.yaml)), `gitleaks` secret scan on the staged diff), and the project gates: `doc_lint`, `config_test`, `mock_lint`, `workflow_lint`, `locale_lint` (text catalog per language complete, real umlauts), `contract_lint`, `cron_toggle_lint` (cron-toggle UX parity), `core_literal_lint` (no new core package-literal), `ui_literal_lint` (no new fixed German user text in workflows/R__ fns; ratchet allowlist), `ui_token_lint` (one colour source for all UI surfaces, [config/ui.tokens.json](config/ui.tokens.json): no new fixed colours, contrast of the intended pairs, generated token blocks current, no unregistered UI files; ratchet allowlist), `role_test_lint` (every published DEFINER read-bridge fn with a `_ro` EXECUTE grant needs a SET-LOCAL-ROLE role-perspective test, fail-closed), `privacy_lint` (no real owner data: private IPs outside the example allowlist, home-network hostnames, Windows user paths; on the owner's machine also the gitignored denylist `.local/privacy_denylist.txt`), `owner_fact_lint` (no sentences about the operator in prompts, no provenance markers, no live finding with an amount), `layout_lint` (repo layout/structure invariants L1–L7 + retired-roots ratchet), the `repo: meta` hooks (`check-hooks-apply`/`check-useless-excludes` — every hook filter/exclude matches ≥1 file), capabilities catalog, fn catalog | **Hard** — deterministic, free, blocks the commit. |
+| **commit-stage** | every commit + CI | hygiene (trailing-ws, eof, private-key), actionlint/zizmor on our CI, the per-language linters (`shellcheck` on all tracked `*.sh`, `ps-lint`/PSScriptAnalyzer on `scripts/**/*.ps1` + `packages/*/build/**`, `markdownlint` on hand-authored `*.md`, `sqlfluff-lint` on all tracked SQL (`packages/*/db/**` + `tests/**`; per-file excludes with reasons in [.pre-commit-config.yaml](.pre-commit-config.yaml)), `gitleaks` secret scan on the staged diff), and the project gates: `doc_lint`, `approval_lint` (HITL approval tiers vs built workflows), `command_lint` (manifest commands vs command router + `/help` catalog), `config_test`, `mock_lint`, `workflow_lint`, `locale_lint` (text catalog per language complete, real umlauts), `contract_lint`, `cron_toggle_lint` (cron-toggle UX parity), `core_literal_lint` (no new core package-literal), `ui_literal_lint` (no new fixed German user text in workflows/R__ fns; ratchet allowlist), `ui_token_lint` (one colour source for all UI surfaces, [config/ui.tokens.json](config/ui.tokens.json): no new fixed colours, contrast of the intended pairs, generated token blocks current, no unregistered UI files; ratchet allowlist), `role_test_lint` (every published DEFINER read-bridge fn with a `_ro` EXECUTE grant needs a SET-LOCAL-ROLE role-perspective test, fail-closed), `privacy_lint` (no real owner data: private IPs outside the example allowlist, home-network hostnames, Windows user paths; on the owner's machine also the gitignored denylist `.local/privacy_denylist.txt`), `owner_fact_lint` (no sentences about the operator in prompts, no provenance markers, no live finding with an amount), `layout_lint` (repo layout/structure invariants L1–L7 + retired-roots ratchet), the `repo: meta` hooks (`check-hooks-apply`/`check-useless-excludes` — every hook filter/exclude matches ≥1 file), capabilities catalog, fn catalog | **Hard** — deterministic, free, blocks the commit. |
 | **commit-stage (migrations)** | adding/editing `packages/*/db/migrations/V*.sql` | `squawk` (Postgres migration safety: unsafe `NOT NULL` add, `CONCURRENTLY` inside a transaction, stray `BEGIN/COMMIT`) | **Hard** — runs locally **and** in CI (pinned binary; see Setup). |
 | **commit-stage (local-only)** | editing `.env.example` | `dotenv-linter` (.env style) | **Hard locally, skipped in CI** (needs the prebuilt binary; see Setup). |
 | **commit-msg** | every commit | Conventional Commits regex (`type(scope): subject`; optional `!` before the colon marks a breaking change) + `privacy-msg` (`scripts/privacy_lint.ps1 -MessageFile`: the message and the author/committer identity against the same privacy rules as the tree) | **Hard.** |
 | **pre-push** | every push | `privacy-outgoing` (`privacy_lint -Outgoing`: messages + identities of every outgoing commit and every new annotated tag, i.e. the release notes) + `privacy-review-stamp` (`privacy_outgoing -Check`: a model reviewed exactly this push; owner's machine only, contributors and CI do not need the private lists or a stamp and get the generic privacy rules) + `release-pin` (`release_pin_guard`: a pushed release tag `v*.*.*` must carry a master image pin built from its own release tree, checked offline; owner's machine only, branch pushes never) + `db_test` (Tier 1, deterministic DB/`fn_*` suite against an ephemeral Docker test DB) | **Hard.** |
-| **pre-push (site)** | pushes touching `docs/site/` | `site-verify` (`build_site.ps1 -Verify`: fresh Hugo build byte-compared against the tracked `docs/site/public/`; needs the pinned Hugo binary — see Setup) | **Hard** (fires only for site-touching pushes). |
+| **pre-push (site)** | pushes touching `docs/site/` or `scripts/build_site.ps1` | `site-verify` (`build_site.ps1 -Verify`: fresh Hugo build byte-compared against the tracked `docs/site/public/`; needs the pinned Hugo binary — see Setup) | **Hard** (fires only for site-touching pushes). |
 | **pre-push (soft)** | every push | `infra_softcheck` + `llm_suite_advice` (warns on touched behaviour surfaces; flags a new package surface for the parity checklist + owed README/site when the diff adds a new package-surface) — warnings only, never block | **Soft** (exit 0). |
+| **post-merge** | after a merge/pull | `post-merge-regenerate` (rebuilds the generated UI token blocks and the site when their sources changed in the merge; the result stays uncommitted) | **Soft** (never commits). |
 
 The Docker-substrate and slow hooks are pre-push only and are **excluded from `ci.yml`** (no test substrate
 there). The **LLM-cost test suites** (`n8n_test`, `orch_test`, `e2e_test`, `judge_eval`,
@@ -227,14 +229,14 @@ the owner's own plan.
 
 The **free substrate suites** (`scripts/dev/hitl_gate_test.ps1`, `real_ingress_test.ps1`, `mock_route_test.ps1`,
 `bot_menu_test.ps1`, `cron_text_test.ps1` — the last one triggers every cron and checks its Telegram texts in the
-recipient's language, ~2 min per case) run against the mock Telegram/LLM in your own Docker substrate;
+recipient's language, ~3 min in total) run against the mock Telegram/LLM in your own Docker substrate;
 `release_fetch_test.ps1` tests the anonymous release download against a mock GitHub in a container (no n8n
 needed), `reachability_test.ps1` the installer/doctor reachability check (IPv4/IPv6, FritzBox trap) against mock
 endpoints in a container, `runtime_test.ps1` the installer's runtime seam (systemd vs. Docker stack wrappers, the
 `--unattended` answer reader that never executes, the Telegram webhook check) against stubs in a container,
 `bot_profile_photo_test.ps1` the installer step for the bot's profile photo against the mock
 Telegram in a container. They are not
-gates either (they need the substrate); run the one matching the surface you touched, or all of them at once with `scripts/dev/run_free_gates.ps1` (merge/release state; `-Parallel` splits them across two substrates).
+gates either (they need the substrate); run the one matching the surface you touched, or all of them at once with `scripts/dev/run_free_gates.ps1` (merge/release state; `-Parallel` splits them across two substrates; `-ListSuites` prints the complete list, the suites above are only the most common ones).
 
 [.github/workflows/free-gates.yml](.github/workflows/free-gates.yml) runs the same suites plus `db_test` on GitHub: PowerShell 7 on Linux, one runner per suite, the base image from a cache, invented values instead of secrets. It starts on every push to `main` and every pull request, unless the change only touches root `*.md`, `**/CLAUDE.md`, `docs/**` or `.claude/**`; start it by hand with `gh workflow run free-gates.yml --ref <branch>`. It is not a required check. **Only a local run covers** Windows PowerShell 5.1, the real Telegram test bot, the real Anthropic API (case (h) of `llm_gateway_test.ps1`) and the LLM-cost suites.
 

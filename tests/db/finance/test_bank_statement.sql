@@ -146,8 +146,12 @@ BEGIN
   RAISE NOTICE 'PASS Buchung: Salden, Ist-Datum, Sparplan geschaetzt, Skip, Schluessel, Plan-Split, Aggregat; Doppel gesperrt';
 
   -- ---------- Ruecknahme ----------
+  -- ein fremder Skip am selben Tag (anderer Dauerauftrag, nicht aus diesem Auszug) bleibt stehen
+  INSERT INTO finance.recurring_payment_skips (recurring_payment_id, due_date) VALUES (r_gehalt, ps + 11);
   v_res := finance.fn_void_bank_statement(jsonb_build_object('account_id', v_giro));
-  IF (v_res->>'ok')::boolean IS DISTINCT FROM true THEN RAISE EXCEPTION 'FAIL void: %', v_res; END IF;
+  IF (v_res->>'ok')::boolean IS DISTINCT FROM true OR (v_res->>'voided_tx_count')::int < 1 THEN RAISE EXCEPTION 'FAIL void: %', v_res; END IF;
+  IF NOT EXISTS (SELECT 1 FROM finance.recurring_payment_skips WHERE recurring_payment_id = r_gehalt AND due_date = ps + 11) THEN
+    RAISE EXCEPTION 'FAIL void: fremder Skip am selben Tag geloescht'; END IF;
   IF finance.fn_get_balance(v_giro) IS DISTINCT FROM 1000.00 OR finance.fn_get_balance(v_tg) IS DISTINCT FROM 0.00
      OR (SELECT last_reconciled_at FROM finance.accounts WHERE id = v_giro) IS DISTINCT FROM ps - 1
      OR EXISTS (SELECT 1 FROM finance.bank_statements WHERE account_id = v_giro)

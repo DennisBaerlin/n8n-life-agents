@@ -8,103 +8,14 @@ $ID_LOAD_CONFIG         = $LoadConfigId    # core.sub_load_config (build.ps1: pe
 # Credentials: $CRED_POSTGRES (Schreibpfad: Chat-Memory + tool_* fn-Nodes) und $CRED_CONTEXT_RO (load_context) sind
 # Host-Deskriptoren aus build.ps1; die enge Leserolle finance_ro ($CRED_FINANCE_RO) erzeugt die Engine aus dem Manifest.
 
-# Tool-IDs kommen NICHT mehr aus einer Registry, sondern werden in New-ToolWorkflowNode per
-# Get-WorkflowIdByName aus dem State (packages/*/workflows) aufgeloest. $WorkflowsDir setzt der Orchestrator.
+# Tool-IDs: New-AdvisorToolNode löst sie per Get-RequiredWorkflowId aus dem State (packages/*/workflows) auf.
 # Das Modell-Register (packages/core/seed/ai_models.json) liest New-ModelSelectorBundle selbst.
 
-# Flexible Doku-Sticky (Farbe 4, freier Markdown-Content) — Workflows sind die Doku (CLAUDE.md).
-function New-Sticky {
-    param([string]$Name, [int[]]$Pos, [string]$Content, [int]$Width = 360, [int]$Height = 160)
-    [ordered]@{
-        parameters = [ordered]@{ content = $Content; height = $Height; width = $Width; color = 4 }
-        type = 'n8n-nodes-base.stickyNote'
-        typeVersion = 1
-        position = $Pos
-        id = (New-Id)
-        name = $Name
-    }
-}
-
-# Build a toolWorkflow node that exposes a tool sub-workflow as an AI tool.
-# $InputSpec is an array of @(name, description, type) tuples; type is 'string' or 'number'.
-# Optional 4th element = default value -> emits the 4-arg $fromAI(key, desc, type, default),
-# which makes the field OPTIONAL for the LLM (it may omit it; the default is used).
-# Without a 4th element the field is required (LLM must provide it).
+# Dünner Wrapper um den geteilten Builder New-AdvisorToolNode (lib/build_helpers.ps1): Tool-Workflow `agent.finance.<ToolKey>`,
+# chat_id aus dem Start-Node an jedes Tool (das Gate braucht sie für den Test-Bypass), InputSpec-Format dort dokumentiert.
 function New-ToolWorkflowNode {
-    param(
-        [string]$ToolKey,           # e.g. 'tool_book_dividend'
-        [string]$Description,          # tool description for the LLM
-        [array] $InputSpec,            # @( @('isin','ISIN','string'), @('amount','EUR amount','number'), ... )
-        [int[]] $Position
-    )
-    # ID aus dem State (getrackte Dateien), nicht aus einer Registry. Fehlt sie -> hartes throw
-    # (nicht still skippen): entweder echter Fehler oder ein noch nicht angelegtes Tool (dann zuerst
-    # das Tool via build.ps1 -Only anlegen + ID im Dateinamen vergeben, siehe Bootstrap-Doku in packages/CLAUDE.md *Workflow-Bau*).
-    $id = Get-RequiredWorkflowId "agent.finance.$ToolKey" 'agent.finance'
-    Assert-FromAiSpec $InputSpec "New-ToolWorkflowNode '$ToolKey'"
-
-    # value-mapping with $fromAI per input
-    $valueMap = [ordered]@{}
-    $schema   = @()
-    foreach ($spec in $InputSpec) {
-        $name = $spec[0]; $desc = $spec[1]; $type = $spec[2]
-        if ($spec.Count -ge 4) {
-            $def = $spec[3]
-            if ($type -eq 'number') {
-                $valueMap[$name] = "={{ `$fromAI('$name', '$desc', '$type', $def) }}"
-            } else {
-                $valueMap[$name] = "={{ `$fromAI('$name', '$desc', '$type', '$def') }}"
-            }
-        } else {
-            $valueMap[$name] = "={{ `$fromAI('$name', '$desc', '$type') }}"
-        }
-        $schema += [ordered]@{
-            id            = $name
-            displayName   = $name
-            required      = $false
-            defaultMatch  = $false
-            display       = $true
-            canBeUsedToMatch = $true
-            type          = $type
-            removed       = $false
-        }
-    }
-
-    # Fixer (nicht-$fromAI) Input: chat_id aus dem agent.finance-Trigger an JEDES Tool durchreichen.
-    # Das Gate braucht chat_id fuer den Test-Bypass (chat_id=='test_9999' -> kein Telegram-Send).
-    # Statische Expression => das LLM fuellt den Wert NICHT (anders als $fromAI-Felder).
-    $valueMap['chat_id'] = "={{ `$('Start agent.finance').item.json.chat_id }}"
-    $schema += [ordered]@{
-        id = 'chat_id'; displayName = 'chat_id'; required = $false; defaultMatch = $false
-        display = $true; canBeUsedToMatch = $true; type = 'string'; removed = $false
-    }
-
-    [ordered]@{
-        parameters = [ordered]@{
-            name = $ToolKey
-            description = $Description
-            workflowId = [ordered]@{
-                __rl = $true
-                value = $id
-                mode = 'list'
-                cachedResultUrl = "/workflow/$id"
-                cachedResultName = "agent.finance.$ToolKey"
-            }
-            workflowInputs = [ordered]@{
-                mappingMode = 'defineBelow'
-                value = $valueMap
-                matchingColumns = @()
-                schema = @($schema)
-                attemptToConvertTypes = $false
-                convertFieldsToString = $false
-            }
-        }
-        type = '@n8n/n8n-nodes-langchain.toolWorkflow'
-        typeVersion = 2.2
-        position = $Position
-        id = (New-Id)
-        name = $ToolKey
-    }
+    param([string]$ToolKey, [string]$Description, [array]$InputSpec, [int[]]$Position)
+    New-AdvisorToolNode $ToolKey "agent.finance.$ToolKey" $Description $InputSpec $null $Position -StartNode 'Start agent.finance'
 }
 
 function Build-AgentFinance {
@@ -128,90 +39,15 @@ $nTrigger = [ordered]@{
     name = 'Start agent.finance'
 }
 
-# Anti-Loop-Backstop: lehnt einen Aufruf mit call_depth >= 2 VOR jedem LLM-Call ab.
-# Number(...)||0 castet den evtl. als String ankommenden Wert (typeValidation:strict) + Default 0
-# bei fehlend/leer. largerEqual -> gte (Build-If-Alias; kanonischer n8n-Operator).
-$nDepthGate = Build-If 'Depth gate' @(-1480, 0) `
-    "={{ Number(`$json.call_depth) || 0 }}" '2' 'largerEqual' 'number'
+# Eingangs-Naht Depth -> Package-active -> Core-first = geteilter Helfer (Gate-Gesetz: packages/CLAUDE.md *Agent-Eingang*).
+# Der weiche Finance-Self-Onboard (unten, Onboarding status read) greift erst NACH dieser Kette: mid-CORE blockt hart,
+# mid-PAKET (Core fertig, Finanz-Sektionen offen) laeuft.
+$gate = New-AdvisorGateChain -StartNode 'Start agent.finance' -Package 'finance' -CredPgRo $CRED_POSTGRES_RO -NextNode 'Load Config'
 
-$nDepthDeny = Build-ToolError 'Max call depth' @(-1300, 200) 'max_call_depth'
+$nLoadConfig = Build-CallWorkflow 'Load Config' @(-1376, 0) $ID_LOAD_CONFIG 'core.sub_load_config' (@{})
 
-# WS-B8 Routing-Status-Gate: bricht VOR dem LLM ab, wenn das finance-Paket nicht 'active' ist.
-# Liest core.fn_package_active('finance') unter finance_ro (publiziertes SECURITY-DEFINER-Read-Window,
-# D10 — finance_ro hat kein direktes SELECT auf core.package_registry). Status kippt zur Laufzeit per
-# CLI active<->inactive OHNE Redeploy -> dieses Gate kappt den deaktivierten Pfad strukturell (analog
-# Depth-Gate, kein LLM-Cost; NICHT per LLM-Prompt, der "nur Komfort und driftet"). Build-Pg emittiert
-# default die WRITE-Cred -> post-construction auf finance_ro umstellen (wie 'Onboarding status read').
-# onError=continue + IF prueft '=== false': ein DB-Lesefehler faellt fail-open durch (Normalfall finance
-# aktiv), nur ein expliziter Nicht-active-Status (installing/installed/inactive) sperrt.
-$nPkgRead = Build-Pg 'Package active read' @(-1480, 360) `
-    "SELECT core.fn_package_active('finance') AS active;"
-$nPkgRead.credentials = @{ postgres = $CRED_POSTGRES_RO }
-$nPkgRead.onError = 'continueRegularOutput'
-$nPkgGate = Build-If 'Package active gate' @(-1360, 360) `
-    "={{ `$('Package active read').item.json.active === false }}" 'true' 'equals' 'boolean'
-$nPkgDeny = Build-ToolError 'Package inactive' @(-1360, 540) 'package_inactive'
-
-# WS-3 Core-first Hard-Gate (immer-an Onboarding-Invariante): bricht VOR dem LLM ab, wenn das CORE-Onboarding
-# (Haushalt) nicht abgeschlossen ist -> kein Paket vor dem Core-Onboarding. Geteilte Naht New-CoreOnboardingGate
-# (lib/build_helpers.ps1, auch in New-AdvisorGateChain): Read unter finance_ro (Status + Umleitungs-Text in der Sprache
-# des Absenders), fail-open bei Lesefehler. Der weiche Finance-Self-Onboard (unten, Onboarding status read) greift erst
-# NACH diesem Gate -> mid-CORE blockt hart, mid-PAKET (Core fertig, Finanz-Sektionen offen) laeuft.
-$coreGate = New-CoreOnboardingGate -StartNode 'Start agent.finance' -CredPgRo $CRED_POSTGRES_RO `
-    -ReadPos @(-1240, 360) -GatePos @(-1120, 360) -RedirectPos @(-1120, 540)
-$nCoreRead = $coreGate.Read; $nCoreGate = $coreGate.Gate; $nCoreRedirect = $coreGate.Redirect
-
-$nLoadConfig = [ordered]@{
-    parameters = [ordered]@{
-        workflowId = [ordered]@{
-            __rl = $true
-            value = $ID_LOAD_CONFIG
-            mode = 'list'
-            cachedResultUrl = "/workflow/$ID_LOAD_CONFIG"
-            cachedResultName = 'core.sub_load_config'
-        }
-        workflowInputs = [ordered]@{
-            mappingMode = 'defineBelow'
-            value = @{}
-            matchingColumns = @()
-            schema = @()
-            attemptToConvertTypes = $false
-            convertFieldsToString = $true
-        }
-        options = @{}
-    }
-    type = 'n8n-nodes-base.executeWorkflow'
-    typeVersion = 1.2
-    position = @(-1376, 0)
-    id = (New-Id)
-    name = 'Load Config'
-}
-
-$nLoadCtx = [ordered]@{
-    parameters = [ordered]@{
-        workflowId = [ordered]@{
-            __rl = $true
-            value = $ID_LOAD_AGENT_CONTEXT
-            mode = 'list'
-            cachedResultUrl = "/workflow/$ID_LOAD_AGENT_CONTEXT"
-            cachedResultName = 'core.load_agent_context'
-        }
-        workflowInputs = [ordered]@{
-            mappingMode = 'defineBelow'
-            value = [ordered]@{ agent_name = 'finance'; include_manifest = 'true' }
-            matchingColumns = @()
-            schema = @()
-            attemptToConvertTypes = $false
-            convertFieldsToString = $true
-        }
-        options = @{}
-    }
-    type = 'n8n-nodes-base.executeWorkflow'
-    typeVersion = 1.2
-    position = @(-1152, 0)
-    id = (New-Id)
-    name = 'Load Agent Context'
-}
+$nLoadCtx = Build-CallWorkflow 'Load Agent Context' @(-1152, 0) $ID_LOAD_AGENT_CONTEXT 'agent.tool_load_context' `
+    ([ordered]@{ agent_name = 'finance'; include_manifest = 'true' })
 
 # WS-B3 Self-Onboarding: liest die kombinierte Core-Schnittstelle (unter finance_ro = das publizierte
 # SECURITY-DEFINER-Lesefenster) und reicht die offenen Finanz-Sektionen unten in den System-Prompt. Kein
@@ -225,23 +61,11 @@ $nOnboardRead = Build-Pg 'Onboarding status read' @(-1040, 0) `
 $nOnboardRead.credentials = @{ postgres = $CRED_POSTGRES_RO }
 $nOnboardRead.onError = 'continueRegularOutput'
 
-$nBuildInput = [ordered]@{
-    parameters = [ordered]@{
-        assignments = @{
-            assignments = @(
-                [ordered]@{ id = (New-Id); name = 'task';          value = "={{ `$('Start agent.finance').item.json.task }}";       type = 'string' }
-                [ordered]@{ id = (New-Id); name = 'system_prompt'; value = "={{ `$('Load Agent Context').item.json.system_prompt + (`$('Onboarding status read').item.json.complete === false && `$('Onboarding status read').item.json.viewer_is_member !== true ? ('\n\n## Onboarding ausstehend\nThe finance onboarding is not complete yet. Open areas: ' + (`$('Onboarding status read').item.json.open_labels || '-') + '. Follow the Onboarding section of your instructions (what belongs to each area, when to offer it, when an area is done).') : '') }}";             type = 'string' }
-                [ordered]@{ id = (New-Id); name = 'chat_id';       value = "={{ `$('Start agent.finance').item.json.chat_id }}";    type = 'string' }
-            )
-        }
-        options = @{}
-    }
-    type = 'n8n-nodes-base.set'
-    typeVersion = 3.4
-    position = @(-928, 0)
-    id = (New-Id)
-    name = 'Build Agent Input'
-}
+$nBuildInput = Build-Set 'Build Agent Input' @(-928, 0) @(
+    ,@('task',          "={{ `$('Start agent.finance').item.json.task }}", 'string')
+    ,@('system_prompt', "={{ `$('Load Agent Context').item.json.system_prompt + (`$('Onboarding status read').item.json.complete === false && `$('Onboarding status read').item.json.viewer_is_member !== true ? ('\n\n## Onboarding ausstehend\nThe finance onboarding is not complete yet. Open areas: ' + (`$('Onboarding status read').item.json.open_labels || '-') + '. Follow the Onboarding section of your instructions (what belongs to each area, when to offer it, when an area is done).') : '') }}", 'string')
+    ,@('chat_id',       "={{ `$('Start agent.finance').item.json.chat_id }}", 'string')
+)
 
 $nAgent = [ordered]@{
     parameters = [ordered]@{
@@ -622,7 +446,7 @@ $nToolCreateRecurringPayment = New-ToolWorkflowNode 'tool_create_recurring_payme
     ) @(2240, 208)
 
 $nToolCreateRecurringTransfer = New-ToolWorkflowNode 'tool_create_recurring_transfer' `
-    'Set up a RECURRING internal transfer between TWO of the user''s OWN accounts (e.g. a monthly standing order of 200 EUR from the owner''s account to a child''s custodial-depot cash account). This is for a REPEATING move - for a ONE-OFF move between own accounts use tool_book_transfer, and for a standalone income/expense to/from an EXTERNAL party use tool_create_recurring_payment. An internal transfer is cashflow-neutral (it is NOT counted as a household expense or savings amount); the booking each period is two-legged (debit on the source, credit on the destination) and runs through the recurring scheduler. amount is always positive (money leaving the source); the tool stores the sign and books the magnitude. schedule_unit day|week|month|year with schedule_interval (e.g. 1 + month = monthly). Required: name, from_account_name, to_account_name, amount, schedule_unit, first_payment_date. Optional: schedule_interval (default 1), schedule_day_of_month (1-28, -1 for last day or -2 for second-to-last day), valid_from (default first_payment_date), valid_to, notes, until_free_money, executed_by (only when the user says so). MOVING MONEY GRADUALLY ("shift my P2P money into the depot step by step", "until the free money is used up"): until_free_money=true lets the database set the end - the last transfer before money that belongs to savings goals on the source account would be touched; never compute an end date yourself and do not pass valid_to with it. The card shows the last transfer and its closing sentence already tells the user what to do at the end date: add no bank reminder of your own and never say a standing order exists at the bank unless the user said so. Rejections: no_free_money = nothing free to move; funding_unknown, source_short or free_money_beyond_horizon = ask the user for an end date instead.' `
+    'Set up a RECURRING internal transfer between TWO of the user''s OWN accounts (e.g. a monthly standing order of 200 EUR from the owner''s account to a child''s custodial-depot cash account). This is for a REPEATING move - for a ONE-OFF move between own accounts use tool_book_transfer, and for a standalone income/expense to/from an EXTERNAL party use tool_create_recurring_payment. An internal transfer is cashflow-neutral (it is NOT counted as a household expense or savings amount); the booking each period is two-legged (debit on the source, credit on the destination) and runs through the recurring scheduler. amount is always positive (money leaving the source); the tool stores the sign and books the magnitude. schedule_unit day|week|month|year with schedule_interval (e.g. 1 + month = monthly). Required: name, from_account_name, to_account_name, amount, schedule_unit, first_payment_date. Optional: schedule_interval (default 1), schedule_day_of_month (1-28, -1 for last day or -2 for second-to-last day), valid_from (default first_payment_date), valid_to, notes, until_free_money, executed_by (only when the user says so). MOVING MONEY GRADUALLY ("shift my P2P money into the depot step by step", "until the free money is used up"): until_free_money=true lets the database set the end - the last transfer before money that belongs to savings goals on the source account would be touched; never compute an end date yourself and do not pass valid_to with it. The card shows the last transfer and its closing sentence already tells the user what to do at the end date: add no bank reminder of your own and never say a standing order exists at the bank unless the user said so. Rejections: no_free_money = nothing free to move; funding_unknown, source_short or free_money_beyond_horizon = ask the user for an end date instead. A depot or loan account is never a leg (ok:false): transfer to the cash account that settles the depot; loan rates belong to the loan.' `
     @(
         ,@('handoff_task_id', 'ONLY in handoff mode: the id of the agreed plan entry this booking fulfils (from the entry list of your task); the card then shows where it comes from and the entry is marked done with the booking. Empty otherwise.', 'string', '')
         ,@('name', 'Display name (e.g. Sparübertrag Kinderdepot)', 'string')
@@ -672,7 +496,7 @@ $nToolCreatePension = New-ToolWorkflowNode 'tool_create_pension' `
         ,@('schedule_interval', 'Every N units (optional, default 1)', 'string', '')
         ,@('debit_account_name', 'Cash account the contribution is paid from (required if contribution_amount set)', 'string', '')
         ,@('schedule_day_of_month', 'Contribution debit day 1-28, -1 for last day or -2 for second-to-last day (optional)', 'string', '')
-        ,@('first_payment_date', ('First contribution debit date (' + (Get-DateParamHint) + ') (optional)'), 'string', '')
+        ,@('first_payment_date', ('First contribution debit date (' + (Get-DateParamHint) + ') (required for a contribution that is not debited every month, otherwise optional)'), 'string', '')
         ,@('notes', 'Free-text notes (optional)', 'string', '')
     ) @(2400, 208)
 
@@ -712,14 +536,14 @@ $nToolSetAccountInterest = New-ToolWorkflowNode 'tool_set_account_interest' `
     ) @(2720, 208)
 
 $nToolSetRealEstate = New-ToolWorkflowNode 'tool_set_real_estate' `
-    'Update an EXISTING real-estate asset: revalue it (current_value; if you change the value without a date the tool stamps today as value_updated_at), assign/retag the owner (owner_person), rename, set status to sold, or edit notes. Only the fields you pass change (you cannot clear the owner back to household here). Resolve by exact name (ambiguity -> candidates). NOTE: marking it sold does NOT settle any linked mortgage - handle the loan separately. Also records living_area_m2 / year_built (the card then shows the recommended monthly maintenance reserve per II. BV - never calculate it yourself). Required: real_estate_name. Optional: new_name, current_value, value_updated_at, owner_person, status (active/sold), notes, living_area_m2, year_built. Returns ok:false if current_value is negative or the area/year is invalid.' `
+    'Update an EXISTING real-estate asset: revalue it (current_value; if you change the value without a date the tool stamps today as value_updated_at), assign/retag the owner (owner_person), rename, or edit notes. Only the fields you pass change (you cannot clear the owner back to household here). Resolve by exact name (ambiguity -> candidates). A SALE is never recorded here: use tool_sell_real_estate (status sold here returns ok:false with code use_sell_tool). Also records living_area_m2 / year_built (the card then shows the recommended monthly maintenance reserve per II. BV - never calculate it yourself). Required: real_estate_name. Optional: new_name, current_value, value_updated_at, owner_person, status (active), notes, living_area_m2, year_built. Returns ok:false if current_value is negative or the area/year is invalid.' `
     @(
         ,@('real_estate_name', 'Exact name of the property to update', 'string')
         ,@('new_name', 'New display name (only if renaming)', 'string', '')
         ,@('current_value', 'New estimated market value in EUR', 'string', '')
         ,@('value_updated_at', ('Valuation date (' + (Get-DateParamHint) + ') (optional; defaults to today when current_value changes)'), 'string', '')
         ,@('owner_person', 'Assign the single household member who owns this property (as the user names them - a first name is enough; never ask for a surname). Omit to leave unchanged.', 'string', '')
-        ,@('status', 'active or sold', 'string', '')
+        ,@('status', 'active (a sale goes through tool_sell_real_estate)', 'string', '')
         ,@('notes', 'New free-text notes', 'string', '')
         ,@('living_area_m2', 'Living area in square metres as the user states it (e.g. 105). Omit to leave unchanged.', 'string', '')
         ,@('year_built', 'Year the building was completed / ready for occupancy (Baujahr, four digits). Omit to leave unchanged.', 'string', '')
@@ -765,7 +589,7 @@ $nToolSetInsurance = New-ToolWorkflowNode 'tool_set_insurance' `
     ) @(3200, 208)
 
 $nToolSetLoan = New-ToolWorkflowNode 'tool_set_loan' `
-    'Update the terms or status of an EXISTING loan, e.g. when the fixed-interest period Zinsbindung ends (new interest_rate / monthly_annuity), or to add the original loan amount / payout date of a loan that was recorded with its remaining debt. A new monthly_annuity or debit day takes effect from effective_from (the first debit with the new rate, if the user names it) or else from the next due rate - the old rate stays in the history. For a loan without a rate (family loan), monthly_annuity needs effective_from (its first debit). original_amount and disbursement_date can only be added to a loan that was recorded with its remaining debt (otherwise ok:false - relay the reason). term_end_date = Laufzeitende (date of the last rate; for a balloon the date of the final payment). Interest, principal and the projected remaining debt are derived by the database. Renaming also renames the rate and the loan account. Setting status to paused/paid_off/refinanced pauses the rate. Only passed fields change; a field cannot be cleared here (also not the borrower back to household). Resolve by exact name across ALL statuses (ambiguity -> candidates). Does NOT perform the multi-step refinancing flow (new account + settlement booking + new loan). Required: loan_name. Optional: new_name, lender, borrower_person, interest_rate, interest_rate_fixed_until, term_end_date, monthly_annuity, schedule_day_of_month, effective_from, original_amount, disbursement_date, status (active/paused/paid_off/refinanced), notes. Returns ok:false if a rate is negative, the annuity is non-positive or does not cover the monthly interest, a loan would be active without a rate, the term ends before the fixed-interest period, or original values cannot be changed; ok:false with no_change = the loan already has exactly these values (the earlier change is saved) - tell the user so, never call again.' `
+    'Update the terms or status of an EXISTING loan, e.g. when the fixed-interest period Zinsbindung ends (new interest_rate / monthly_annuity), or to add the original loan amount / payout date of a loan that was recorded with its remaining debt. A new monthly_annuity or debit day takes effect from effective_from (the first debit with the new rate, if the user names it) or else from the next due rate - the old rate stays in the history. For a loan without a rate (family loan), monthly_annuity needs effective_from (its first debit). original_amount and disbursement_date can only be added to a loan that was recorded with its remaining debt (otherwise ok:false - relay the reason). term_end_date = Laufzeitende (date of the last rate; for a balloon the date of the final payment). Interest, principal and the projected remaining debt are derived by the database. Renaming also renames the rate and the loan account. Setting status to paused/paid_off/refinanced pauses the rate; paid_off while debt remains returns ok:false (code use_settle_tool) - pay it off with tool_settle_loan instead. Only passed fields change; a field cannot be cleared here (also not the borrower back to household). Resolve by exact name across ALL statuses (ambiguity -> candidates). Does NOT perform the multi-step refinancing flow (new account + settlement booking + new loan). Required: loan_name. Optional: new_name, lender, borrower_person, interest_rate, interest_rate_fixed_until, term_end_date, monthly_annuity, schedule_day_of_month, effective_from, original_amount, disbursement_date, status (active/paused/paid_off/refinanced), notes. Returns ok:false if a rate is negative, the annuity is non-positive or does not cover the monthly interest, a loan would be active without a rate, the term ends before the fixed-interest period, or original values cannot be changed; ok:false with no_change = the loan already has exactly these values (the earlier change is saved) - tell the user so, never call again.' `
     @(
         ,@('loan_name', 'Exact name of the loan to update', 'string')
         ,@('new_name', 'New display name (only if renaming)', 'string', '')
@@ -953,7 +777,7 @@ $nToolCloseSavingsGoal = New-ToolWorkflowNode 'tool_close_savings_goal' `
     ) @(5120, 208)
 
 $nToolDeleteRealEstate = New-ToolWorkflowNode 'tool_delete_real_estate' `
-    'Delete a real-estate asset that was created BY MISTAKE. Hard-DELETE only when it has NO linked loans; if a loan references the property the tool returns ok:false (pay off / unlink the loan first) - relay that to the user and do NOT retry. There is no soft-close here: to mark a property as actually SOLD use tool_set_real_estate (status=sold) instead. Call this tool directly - it shows an approve/decline summary (incl. the linked-loan count) first. Input: real_estate_name.' `
+    'Delete a real-estate asset that was created BY MISTAKE. Hard-DELETE only when it has NO linked loans; if a loan references the property the tool returns ok:false (pay off / unlink the loan first) - relay that to the user and do NOT retry. There is no soft-close here: to record an actual SALE use tool_sell_real_estate instead. Call this tool directly - it shows an approve/decline summary (incl. the linked-loan count) first. Input: real_estate_name.' `
     @(
         ,@('real_estate_name', 'Exact name of the property to delete', 'string')
     ) @(5280, 208)
@@ -1014,56 +838,48 @@ $nToolSetOnboarding = New-ToolWorkflowNode 'tool_set_onboarding_section' `
     ) @(6400, 208)
 
 # --- Doku-Stickies (Workflows sind die Doku, CLAUDE.md) ---
-$stickyOverview = New-Sticky 'Doc: Überblick' @(-1640, -340) @"
-## agent.finance — Finance-Agent (Sub-Workflow)
-Eingang: task, chat_id, call_depth (vom Orchestrator als Tool aufgerufen).
-Pipeline (y=0): **Depth gate** (Anti-Loop) -> **Package-Gate** (R4/WS-B8: nur wenn finance aktiv, sonst package_inactive) -> Config laden (core.sub_load_config) -> System-Prompt + Lazy-Manifest laden (agent.tool_load_context, static-concat global+finance) -> Agent-Input bauen -> **Finance Agent** (AI).
-**CQRS:** Reads frei via postgres_select / load_context (+ web_search fuer oeffentliche Produkt-Konditionen); Writes NUR ueber die tool_*-Sub-Workflows (jeweils HITL-Gate + atomar via agent.fn_*). Antwort geht zurueck an den Orchestrator.
-"@ 560 250
+$stickyOverview = Build-Sticky 'Doc: Überblick' @(-1640, -340) -Header 'Ablauf' `
+    'agent.finance — Buchhalter (Sub-Workflow)' `
+    ("Eingang: task, chat_id, call_depth (vom Orchestrator als Tool aufgerufen).`n" +
+     "Pipeline (y=0): Depth gate (Anti-Loop) -> Package-Gate (nur wenn finance aktiv, sonst package_inactive) -> Core-first-Gate (Haushalts-Onboarding offen -> Hinweis statt Agent) -> Load Config -> Load Agent Context (System-Prompt + Lazy-Manifest) -> Onboarding status read -> Build Agent Input -> Finance Agent.`n" +
+     "CQRS: Reads frei via postgres_select / load_context (+ web_search für öffentliche Produkt-Konditionen); Writes NUR über die tool_*-Sub-Workflows (jeweils HITL-Gate + atomar via agent.fn_*). Antwort geht zurück an den Orchestrator.") `
+    -Height 250 -Width 560
 
-$stickyDepth = New-Sticky 'Doc: Anti-Loop' @(-1560, 120) @"
-## Anti-Loop-Backstop (Depth gate)
-call_depth >= 2 -> strukturierte Ablehnung ``{ok:false, error:'max_call_depth'}`` VOR jedem LLM-Call (kein Cost, kein Owner-Alert). call_depth = Tiefe dieses Workflows (Orchestrator=0, Finance=1). Einziger noetiger Gate-Punkt: Tools koennen keinen Agenten aufrufen (n8n Bound-Tool-Closure) -> Rekursion strukturell ausgeschlossen; der Gate ist Backstop fuer kuenftige Agent->Agent-Pfade. Details: Root-CLAUDE.md *Anti-Loop-Konvention*.
-"@ 420 200
+$stickyDepth = Build-Sticky 'Doc: Anti-Loop' @(-1560, 120) -Header 'Ablauf' `
+    'Anti-Loop-Backstop (Depth gate)' `
+    "call_depth >= 2 -> strukturierte Ablehnung {ok:false, error:'max_call_depth'} VOR jedem LLM-Call (kein Cost, kein Owner-Alert). call_depth = Tiefe dieses Workflows (Orchestrator 0, Finance 1). Tools können keinen Agenten aufrufen (n8n Bound-Tool-Closure), die Rekursion ist strukturell ausgeschlossen; das Gate ist Backstop für künftige Agent->Agent-Pfade. Gesetz: packages/CLAUDE.md *Agent-Eingang*." `
+    -Height 200 -Width 420
 
-$stickyPkg = New-Sticky 'Doc: Package-Gate' @(-2000, 320) @"
-## Routing-Status-Gate (WS-B8)
-Bricht VOR dem LLM ab, wenn das finance-Paket nicht ``status='active'`` ist: **Package active read** liest ``core.fn_package_active('finance')`` unter **finance_ro** (publiziertes SECURITY-DEFINER-Read-Window, D10 — kein direktes SELECT auf core.package_registry). **Package active gate** (``active === false``) -> **Package inactive** ``{ok:false, error:'package_inactive'}`` (kein LLM-Cost), sonst weiter zu Load Config. Status kippt per CLI active<->inactive OHNE Redeploy -> Laufzeit-Gate kappt den deaktivierten Pfad **strukturell** (kein Prompt-Vertrauen). onError=continue + ``=== false`` => DB-Lesefehler faellt **fail-open** durch (Normalfall finance aktiv); nur expliziter Nicht-active-Status (installing/installed/inactive) sperrt. Per-Paket generisch (Paketname im SQL); Crons sind hier NICHT gegatet (Lifecycle Phase 4/5, vertagt).
-"@ 660 340
+$stickyPkg = Build-Sticky 'Doc: Package-Gate' @(-2000, 320) -Header 'Ablauf' `
+    'Routing-Status-Gate' `
+    "Bricht VOR dem LLM ab, wenn das finance-Paket nicht status=active ist: Package active read liest core.fn_package_active('finance') unter finance_ro (publiziertes SECURITY-DEFINER-Lesefenster, kein direktes SELECT auf core.package_registry). Package active gate (active === false) -> Package inactive {ok:false, error:'package_inactive'}, sonst weiter zum Core-first-Gate. Der Status kippt per CLI active<->inactive ohne Redeploy; das Laufzeit-Gate kappt den Pfad strukturell (kein Prompt-Vertrauen). onError=continue + '=== false': ein DB-Lesefehler fällt fail-open durch, nur ein expliziter Nicht-active-Status sperrt. Die Paket-Crons gaten separat und fail-closed (fn_package_active UND cron_enable)." `
+    -Height 340 -Width 660
 
-$stickyCore = New-Sticky 'Doc: Core-first-Gate' @(-1120, 660) @"
-## Core-first Hard-Gate (WS-3, immer-an Onboarding-Invariante)
-**Core onboarding read** liest ``core.fn_onboarding_status('core')->>'complete'`` unter **finance_ro** (publiziertes SECURITY-DEFINER-Window; EXECUTE via fn_provision_package_roles). **Core onboarding gate** (``core_complete === false``) -> **Core onboarding required** ``{ok:false, output:'... /onboarding ...'}`` (relaybarer DE-Hinweis, KEIN LLM-Cost), sonst weiter zu Load Config. **Invariante:** kein Paket vor dem Core-Onboarding (Haushalt). Sitzt NACH dem Package-active-Gate, VOR Load Config. onError=continue + ``=== false`` => DB-Lesefehler faellt **fail-open** durch (null !== false). Abgrenzung: nur Core-Haushalt; der weiche Finance-Self-Onboard (Onboarding status read, weiter rechts) nudged die Finanz-Sektionen erst NACH diesem Gate -> mid-CORE blockt hart, mid-PAKET laeuft. Muster generisch (jeder Paket-Agent erbt es).
-"@ 540 240
+$stickyCore = Build-Sticky 'Doc: Core-first-Gate' @(-1120, 660) -Header 'Ablauf' `
+    'Core-first-Gate (immer an)' `
+    "Core onboarding read liest core.fn_onboarding_status('core') unter finance_ro (DEFINER-Lesefenster) und im selben Read den Hinweistext in der Sprache des Absenders (Textkatalog core.gate.*). Core onboarding gate (core_complete === false) -> Core onboarding required {ok:false, output} (relaybar, kein LLM-Cost; ein Mitglied bekommt den Warte-Hinweis statt /onboarding), sonst weiter zu Load Config. Invariante: kein Paket vor dem Core-Onboarding (Haushalt). onError=continue + '=== false': Lesefehler fällt fail-open durch. Der weiche Finance-Self-Onboard (Onboarding status read, weiter rechts) reicht die offenen Finanz-Sektionen erst NACH diesem Gate in den Prompt: mid-CORE blockt hart, mid-PAKET läuft. Gebaut vom geteilten Helfer New-AdvisorGateChain." `
+    -Height 240 -Width 540
 
-$stickyModel = New-Sticky 'Doc: Modellwahl' @(-900, 560) @"
-## Modellwahl (Config-gesteuert)
-Je Claude-Modell des Registers ein Modell-Node (Haiku/Sonnet/Opus, Name = model_key) + Model Selector — generiert vom gemeinsamen Builder New-ModelSelectorBundle (lib/build_helpers.ps1), UEBERALL identisch (finance/advisor/orchestrator). Der Selector liest **core.config** ueber `Load Config` (core.sub_load_config): `model.finance` = model_key; eine Regel je Modell (model_key -> selector_index) aus packages/core/seed/ai_models.json. Standard `claude-sonnet-latest` (zuverlaessiges Function-Calling, Denk-Tiefe medium). Adaptives Thinking an, KEINE Sampling-Parameter (5.5-Generation -> 400). Modell wechseln = model.*-Wert im .config-Block eines packages/*/manifest.json + re-seed (provision.sh / Substrat -Reset), kein Workflow-Edit.
-"@ 480 200
+$stickyModel = Build-Sticky 'Doc: Modellwahl' @(-900, 560) -Header 'Ablauf' `
+    'Modellwahl (Config-gesteuert)' `
+    "Der geteilte Builder New-ModelSelectorBundle (lib/build_helpers.ps1) erzeugt je Chat-Modell des Registers einen Modell-Node (Name = model_key) plus Model Selector. Der Selector liest core.config über Load Config: model.finance = model_key, eine Regel je Modell (model_key -> selector_index) aus packages/core/seed/ai_models.json; Denk-Tiefe medium. Keine Sampling-Parameter (die 5.5-Generation lehnt sie mit 400 ab). Modell wechseln = lifeagents config set model finance <wert> oder der model.*-Wert im .config-Block des Manifests, kein Workflow-Edit." `
+    -Height 200 -Width 480
 
-$stickyMemory = New-Sticky 'Doc: Chat-Memory' @(-1380, 416) @"
-## Chat-Memory
-Eigene Tabelle agent.finance_chat_memory (sessionKey = chat_id, Fenster 15, zaehlt inkl. Tool-Nachrichten) fuer Multi-Turn-Dialoge. Getrennt von agent.orchestrator_chat_memory.
-"@ 340 150
+$stickyMemory = Build-Sticky 'Doc: Chat-Memory' @(-1380, 416) -Header 'Ablauf' `
+    'Chat-Memory' `
+    "Eigene Tabelle agent.finance_chat_memory (sessionKey = chat_id, Fenster 15; das Fenster zählt Tool-Nachrichten mit) für Multi-Turn-Dialoge. Getrennt von agent.orchestrator_chat_memory." `
+    -Height 150 -Width 340
 
-$stickyTools = New-Sticky 'Doc: Tools (CQRS)' @(150, 100) @"
-## Write-Tools (CQRS) — je HITL-Gate + atomar
-Booking: book_dividend/transfer/transaction/stock_buy/stock_sell/loan_payment
-Create: create_account/insurance/loan/real_estate/savings_goal/recurring_payment/pension
-Set (Update bestehender Entitaeten): set_account/set_account_interest/set_real_estate/set_pension/set_insurance/set_loan/set_recurring_payment/set_savings_goal/set_holding/set_asset_classes (Anlageklassen mehrerer Positionen, eine Karte; auch beim Berater gebunden)
-Reconcile: reconcile_account (ein Konto) / reconcile_accounts_batch (mehrere Staende auf einmal -> Monats-Reminder, ein Sammel-Approval). Close: close_account
-Void: void_transaction (Hard-DELETE einer Fehlbuchung; Kredit-Paar zusammen; Holding-Zeile bleibt)
-Sparplan: create_savings_plan/book_savings_plan_execution/set_savings_plan/close_savings_plan (Depot + monatlicher Cash-Debit + Broker-Ausfuehrung; Cron fn_recurring_due_open erkennt Ausfuehrung via rp_id+due_date auf buy-Tx automatisch)
-Datumsfelder: das Modell gibt relative Angaben roh weiter ("yesterday", "in 2 weeks"; Text = Get-DateParamHint), die Write-fn rechnet sie (core.fn_resolve_input_dates), unlesbar -> ok:false invalid_date, keine Karte. Die Karte zeigt das aufgeloeste Datum aus dem Probelauf (effective).
-Write-Logik in agent.fn_*. transfer = nur zwischen EIGENEN Konten; book_transaction = externe Ausgabe/Einnahme (1 Bein). set_* aendert NUR Bestehendes (partielles UPDATE, Resolve per Name); set_insurance synct den verknuepften Beitrag, set_pension kaskadiert Status auf den Beitrag, set_account_interest schliesst die offene Zinszeile. Reads: postgres_select (Views bevorzugt) + load_context (lazy) + web_search (nur oeffentliche Produkt-Konditionen nachschlagen, z. B. Kontozins; eintragen erst nach Chat-Ja via set_account_interest).
-
-postgres_select (geteilter Builder New-PostgresSelectToolNode): onError=continueRegularOutput -> fehlerhafte SELECT gibt DB-Fehler an Agent zurueck (selbst korrigieren); fehlt das query-Argument, liefert der Guard {ok:false, error} statt eines n8n-Absturzes. Views sind stabiles Schema-Interface.
-"@ 760 230
+$stickyTools = Build-Sticky 'Doc: Tools (CQRS)' @(150, 100) -Header 'Ablauf' `
+    'Tools: Writes nur über tool_*, Reads frei' `
+    ("Jedes tool_* ist ein toolWorkflow-Node (Name = Tool-Name, Bau über New-ToolWorkflowNode); die Liste ist der Canvas, die Verben stehen in packages/CLAUDE.md *Verb-Taxonomie*. Jedes Write-Tool hat ein HITL-Gate und schreibt atomar über eine agent.fn_*-Function.`n`n" +
+     "Datumsfelder: das Modell gibt relative Angaben roh weiter (Text = Get-DateParamHint), die Write-fn löst sie auf (core.fn_resolve_input_dates); unlesbar -> ok:false invalid_date, keine Karte. Die Karte zeigt das aufgelöste Datum aus dem Probelauf.`n" +
+     "transfer = nur zwischen EIGENEN Konten; book_transaction = externe Ausgabe/Einnahme (ein Bein). set_* ändert nur Bestehendes (partielles UPDATE, Auflösung per Name).`n" +
+     "Reads: postgres_select (Views bevorzugt; geteilter Builder New-PostgresSelectToolNode: onError=continueRegularOutput gibt den DB-Fehler an den Agenten zurück, fehlt das query-Argument, liefert der Guard {ok:false, error}) + load_context (lazy) + web_search (nur öffentliche Produkt-Konditionen nachschlagen, z. B. Kontozins; eingetragen wird erst nach dem Chat-Ja über set_account_interest).") `
+    -Height 230 -Width 760
 
 # --- assemble ---
-$allNodes = @(
-    $nTrigger, $nDepthGate, $nDepthDeny, $nPkgRead, $nPkgGate, $nPkgDeny,
-    $nCoreRead, $nCoreGate, $nCoreRedirect,
+$allNodes = @($nTrigger) + $gate.Nodes + @(
     $nLoadConfig, $nLoadCtx, $nOnboardRead, $nBuildInput, $nAgent,
     $nMemory,
     $nToolSelect, $nToolLoad, $nToolWebSearch,
@@ -1094,97 +910,81 @@ $svc = Add-ServiceTools -Package 'finance' -AgentNode 'Finance Agent' -StartNode
     -Position @(-336, 1400) -ExistingNodes $allNodes -Exclude @('ask_documents')
 $allNodes = @($allNodes) + $svc.Nodes
 
-# connections
-function E([string]$node, [string]$type, [int]$index = 0) {
-    return @{ node = $node; type = $type; index = $index }
-}
+# connections: Eingangs-Naht-Kanten des Helfers ZUERST (Schluessel-Reihenfolge = JSON-Reihenfolge), dann die finance-lokalen.
+$connRest = [ordered]@{
+    'Load Config'                       = @{ main = @(,@( E 'Load Agent Context' )) }
+    'Load Agent Context'                = @{ main = @(,@( E 'Onboarding status read' )) }
+    'Onboarding status read'            = @{ main = @(,@( E 'Build Agent Input' )) }
+    'Build Agent Input'                 = @{ main = @(,@( E 'Finance Agent' )) }
 
-$connections = [ordered]@{
-    'Start agent.finance'               = @{ main = @(,@( E 'Depth gate'            'main' 0 )) }
-    'Depth gate'                        = @{ main = @(
-        @( E 'Max call depth'      'main' 0 ),   # true: call_depth >= 2 -> structured decline
-        @( E 'Package active read' 'main' 0 )    # false: -> WS-B8 Routing-Status-Gate
-    ) }
-    'Package active read'               = @{ main = @(,@( E 'Package active gate' 'main' 0 )) }
-    'Package active gate'               = @{ main = @(
-        @( E 'Package inactive'      'main' 0 ),  # true: status != active -> structured decline (no LLM)
-        @( E 'Core onboarding read'  'main' 0 )   # false: active OR read error (fail-open) -> WS-3 Core-first-Gate
-    ) }
-    'Core onboarding read'              = @{ main = @(,@( E 'Core onboarding gate' 'main' 0 )) }
-    'Core onboarding gate'              = @{ main = @(
-        @( E 'Core onboarding required' 'main' 0 ),  # true: Core-Haushalt offen -> Redirect (kein LLM)
-        @( E 'Load Config'              'main' 0 )    # false: Core fertig OR read error (fail-open) -> proceed
-    ) }
-    'Load Config'                       = @{ main = @(,@( E 'Load Agent Context'    'main' 0 )) }
-    'Load Agent Context'                = @{ main = @(,@( E 'Onboarding status read' 'main' 0 )) }
-    'Onboarding status read'            = @{ main = @(,@( E 'Build Agent Input'     'main' 0 )) }
-    'Build Agent Input'                 = @{ main = @(,@( E 'Finance Agent'         'main' 0 )) }
-
-    'Postgres Chat Memory'              = @{ ai_memory = @(,@( E 'Finance Agent' 'ai_memory' 0 )) }
+    'Postgres Chat Memory'              = @{ ai_memory = @(,@( E 'Finance Agent' 'ai_memory' )) }
     # Model Selector + Modell-Node-Connections kommen aus dem gemeinsamen Bundle (unten gemerged).
 
-    'postgres_select'          = @{ ai_tool = @(,@( E 'Finance Agent' 'ai_tool' 0 )) }
-    'load_context'             = @{ ai_tool = @(,@( E 'Finance Agent' 'ai_tool' 0 )) }
-    'web_search'               = @{ ai_tool = @(,@( E 'Finance Agent' 'ai_tool' 0 )) }
-    'tool_book_dividend'       = @{ ai_tool = @(,@( E 'Finance Agent' 'ai_tool' 0 )) }
-    'tool_book_transfer'       = @{ ai_tool = @(,@( E 'Finance Agent' 'ai_tool' 0 )) }
-    'tool_book_transaction'    = @{ ai_tool = @(,@( E 'Finance Agent' 'ai_tool' 0 )) }
-    'tool_book_stock_buy'      = @{ ai_tool = @(,@( E 'Finance Agent' 'ai_tool' 0 )) }
-    'tool_create_account'      = @{ ai_tool = @(,@( E 'Finance Agent' 'ai_tool' 0 )) }
-    'tool_create_insurance'    = @{ ai_tool = @(,@( E 'Finance Agent' 'ai_tool' 0 )) }
-    'tool_create_loan'         = @{ ai_tool = @(,@( E 'Finance Agent' 'ai_tool' 0 )) }
-    'tool_create_real_estate'  = @{ ai_tool = @(,@( E 'Finance Agent' 'ai_tool' 0 )) }
-    'tool_book_stock_sell'     = @{ ai_tool = @(,@( E 'Finance Agent' 'ai_tool' 0 )) }
-    'tool_book_loan_payment'   = @{ ai_tool = @(,@( E 'Finance Agent' 'ai_tool' 0 )) }
-    'tool_create_savings_goal' = @{ ai_tool = @(,@( E 'Finance Agent' 'ai_tool' 0 )) }
-    'tool_book_savings_goal_transfer' = @{ ai_tool = @(,@( E 'Finance Agent' 'ai_tool' 0 )) }
-    'tool_book_savings_reservation' = @{ ai_tool = @(,@( E 'Finance Agent' 'ai_tool' 0 )) }
-    'tool_reconcile_account'   = @{ ai_tool = @(,@( E 'Finance Agent' 'ai_tool' 0 )) }
-    'tool_reconcile_accounts_batch' = @{ ai_tool = @(,@( E 'Finance Agent' 'ai_tool' 0 )) }
-    'tool_import_stage_rows'   = @{ ai_tool = @(,@( E 'Finance Agent' 'ai_tool' 0 )) }
-    'tool_update_staging_row'  = @{ ai_tool = @(,@( E 'Finance Agent' 'ai_tool' 0 )) }
-    'tool_commit_import'       = @{ ai_tool = @(,@( E 'Finance Agent' 'ai_tool' 0 )) }
-    'tool_extract_finance_document' = @{ ai_tool = @(,@( E 'Finance Agent' 'ai_tool' 0 )) }
-    'tool_reconcile_bank_statement' = @{ ai_tool = @(,@( E 'Finance Agent' 'ai_tool' 0 )) }
-    'tool_import_bank_export' = @{ ai_tool = @(,@( E 'Finance Agent' 'ai_tool' 0 )) }
-    'tool_void_bank_statement' = @{ ai_tool = @(,@( E 'Finance Agent' 'ai_tool' 0 )) }
-    'tool_close_account'       = @{ ai_tool = @(,@( E 'Finance Agent' 'ai_tool' 0 )) }
-    'tool_create_recurring_payment' = @{ ai_tool = @(,@( E 'Finance Agent' 'ai_tool' 0 )) }
-    'tool_create_recurring_transfer' = @{ ai_tool = @(,@( E 'Finance Agent' 'ai_tool' 0 )) }
-    'tool_get_recurring_suggestions' = @{ ai_tool = @(,@( E 'Finance Agent' 'ai_tool' 0 )) }
-    'tool_cancel_handoff_task' = @{ ai_tool = @(,@( E 'Finance Agent' 'ai_tool' 0 )) }
-    'tool_create_pension'      = @{ ai_tool = @(,@( E 'Finance Agent' 'ai_tool' 0 )) }
-    'tool_set_account'         = @{ ai_tool = @(,@( E 'Finance Agent' 'ai_tool' 0 )) }
-    'tool_set_account_interest' = @{ ai_tool = @(,@( E 'Finance Agent' 'ai_tool' 0 )) }
-    'tool_set_real_estate'     = @{ ai_tool = @(,@( E 'Finance Agent' 'ai_tool' 0 )) }
-    'tool_set_pension'         = @{ ai_tool = @(,@( E 'Finance Agent' 'ai_tool' 0 )) }
-    'tool_set_insurance'       = @{ ai_tool = @(,@( E 'Finance Agent' 'ai_tool' 0 )) }
-    'tool_set_loan'            = @{ ai_tool = @(,@( E 'Finance Agent' 'ai_tool' 0 )) }
-    'tool_set_recurring_payment' = @{ ai_tool = @(,@( E 'Finance Agent' 'ai_tool' 0 )) }
-    'tool_set_savings_goal'    = @{ ai_tool = @(,@( E 'Finance Agent' 'ai_tool' 0 )) }
-    'tool_set_holding'         = @{ ai_tool = @(,@( E 'Finance Agent' 'ai_tool' 0 )) }
-    'tool_set_asset_classes'   = @{ ai_tool = @(,@( E 'Finance Agent' 'ai_tool' 0 )) }
-    'tool_replace_holding_lots' = @{ ai_tool = @(,@( E 'Finance Agent' 'ai_tool' 0 )) }
-    'tool_verify_price_symbol' = @{ ai_tool = @(,@( E 'Finance Agent' 'ai_tool' 0 )) }
-    'tool_void_transaction'    = @{ ai_tool = @(,@( E 'Finance Agent' 'ai_tool' 0 )) }
-    'tool_create_savings_plan' = @{ ai_tool = @(,@( E 'Finance Agent' 'ai_tool' 0 )) }
-    'tool_book_savings_plan_execution' = @{ ai_tool = @(,@( E 'Finance Agent' 'ai_tool' 0 )) }
-    'tool_book_recurring_occurrence' = @{ ai_tool = @(,@( E 'Finance Agent' 'ai_tool' 0 )) }
-    'tool_book_interest'       = @{ ai_tool = @(,@( E 'Finance Agent' 'ai_tool' 0 )) }
-    'tool_set_savings_plan'    = @{ ai_tool = @(,@( E 'Finance Agent' 'ai_tool' 0 )) }
-    'tool_close_savings_plan'  = @{ ai_tool = @(,@( E 'Finance Agent' 'ai_tool' 0 )) }
-    'tool_close_insurance'     = @{ ai_tool = @(,@( E 'Finance Agent' 'ai_tool' 0 )) }
-    'tool_close_pension'       = @{ ai_tool = @(,@( E 'Finance Agent' 'ai_tool' 0 )) }
-    'tool_close_savings_goal'  = @{ ai_tool = @(,@( E 'Finance Agent' 'ai_tool' 0 )) }
-    'tool_delete_real_estate'  = @{ ai_tool = @(,@( E 'Finance Agent' 'ai_tool' 0 )) }
-    'tool_delete_holding'      = @{ ai_tool = @(,@( E 'Finance Agent' 'ai_tool' 0 )) }
-    'tool_delete_account'      = @{ ai_tool = @(,@( E 'Finance Agent' 'ai_tool' 0 )) }
-    'tool_delete_recurring_payment' = @{ ai_tool = @(,@( E 'Finance Agent' 'ai_tool' 0 )) }
-    'tool_delete_loan'         = @{ ai_tool = @(,@( E 'Finance Agent' 'ai_tool' 0 )) }
-    'tool_settle_loan'         = @{ ai_tool = @(,@( E 'Finance Agent' 'ai_tool' 0 )) }
-    'tool_sell_real_estate'    = @{ ai_tool = @(,@( E 'Finance Agent' 'ai_tool' 0 )) }
-    'tool_set_onboarding_section' = @{ ai_tool = @(,@( E 'Finance Agent' 'ai_tool' 0 )) }
+    'postgres_select'          = @{ ai_tool = @(,@( E 'Finance Agent' 'ai_tool' )) }
+    'load_context'             = @{ ai_tool = @(,@( E 'Finance Agent' 'ai_tool' )) }
+    'web_search'               = @{ ai_tool = @(,@( E 'Finance Agent' 'ai_tool' )) }
+    'tool_book_dividend'       = @{ ai_tool = @(,@( E 'Finance Agent' 'ai_tool' )) }
+    'tool_book_transfer'       = @{ ai_tool = @(,@( E 'Finance Agent' 'ai_tool' )) }
+    'tool_book_transaction'    = @{ ai_tool = @(,@( E 'Finance Agent' 'ai_tool' )) }
+    'tool_book_stock_buy'      = @{ ai_tool = @(,@( E 'Finance Agent' 'ai_tool' )) }
+    'tool_create_account'      = @{ ai_tool = @(,@( E 'Finance Agent' 'ai_tool' )) }
+    'tool_create_insurance'    = @{ ai_tool = @(,@( E 'Finance Agent' 'ai_tool' )) }
+    'tool_create_loan'         = @{ ai_tool = @(,@( E 'Finance Agent' 'ai_tool' )) }
+    'tool_create_real_estate'  = @{ ai_tool = @(,@( E 'Finance Agent' 'ai_tool' )) }
+    'tool_book_stock_sell'     = @{ ai_tool = @(,@( E 'Finance Agent' 'ai_tool' )) }
+    'tool_book_loan_payment'   = @{ ai_tool = @(,@( E 'Finance Agent' 'ai_tool' )) }
+    'tool_create_savings_goal' = @{ ai_tool = @(,@( E 'Finance Agent' 'ai_tool' )) }
+    'tool_book_savings_goal_transfer' = @{ ai_tool = @(,@( E 'Finance Agent' 'ai_tool' )) }
+    'tool_book_savings_reservation' = @{ ai_tool = @(,@( E 'Finance Agent' 'ai_tool' )) }
+    'tool_reconcile_account'   = @{ ai_tool = @(,@( E 'Finance Agent' 'ai_tool' )) }
+    'tool_reconcile_accounts_batch' = @{ ai_tool = @(,@( E 'Finance Agent' 'ai_tool' )) }
+    'tool_import_stage_rows'   = @{ ai_tool = @(,@( E 'Finance Agent' 'ai_tool' )) }
+    'tool_update_staging_row'  = @{ ai_tool = @(,@( E 'Finance Agent' 'ai_tool' )) }
+    'tool_commit_import'       = @{ ai_tool = @(,@( E 'Finance Agent' 'ai_tool' )) }
+    'tool_extract_finance_document' = @{ ai_tool = @(,@( E 'Finance Agent' 'ai_tool' )) }
+    'tool_reconcile_bank_statement' = @{ ai_tool = @(,@( E 'Finance Agent' 'ai_tool' )) }
+    'tool_import_bank_export' = @{ ai_tool = @(,@( E 'Finance Agent' 'ai_tool' )) }
+    'tool_void_bank_statement' = @{ ai_tool = @(,@( E 'Finance Agent' 'ai_tool' )) }
+    'tool_close_account'       = @{ ai_tool = @(,@( E 'Finance Agent' 'ai_tool' )) }
+    'tool_create_recurring_payment' = @{ ai_tool = @(,@( E 'Finance Agent' 'ai_tool' )) }
+    'tool_create_recurring_transfer' = @{ ai_tool = @(,@( E 'Finance Agent' 'ai_tool' )) }
+    'tool_get_recurring_suggestions' = @{ ai_tool = @(,@( E 'Finance Agent' 'ai_tool' )) }
+    'tool_cancel_handoff_task' = @{ ai_tool = @(,@( E 'Finance Agent' 'ai_tool' )) }
+    'tool_create_pension'      = @{ ai_tool = @(,@( E 'Finance Agent' 'ai_tool' )) }
+    'tool_set_account'         = @{ ai_tool = @(,@( E 'Finance Agent' 'ai_tool' )) }
+    'tool_set_account_interest' = @{ ai_tool = @(,@( E 'Finance Agent' 'ai_tool' )) }
+    'tool_set_real_estate'     = @{ ai_tool = @(,@( E 'Finance Agent' 'ai_tool' )) }
+    'tool_set_pension'         = @{ ai_tool = @(,@( E 'Finance Agent' 'ai_tool' )) }
+    'tool_set_insurance'       = @{ ai_tool = @(,@( E 'Finance Agent' 'ai_tool' )) }
+    'tool_set_loan'            = @{ ai_tool = @(,@( E 'Finance Agent' 'ai_tool' )) }
+    'tool_set_recurring_payment' = @{ ai_tool = @(,@( E 'Finance Agent' 'ai_tool' )) }
+    'tool_set_savings_goal'    = @{ ai_tool = @(,@( E 'Finance Agent' 'ai_tool' )) }
+    'tool_set_holding'         = @{ ai_tool = @(,@( E 'Finance Agent' 'ai_tool' )) }
+    'tool_set_asset_classes'   = @{ ai_tool = @(,@( E 'Finance Agent' 'ai_tool' )) }
+    'tool_replace_holding_lots' = @{ ai_tool = @(,@( E 'Finance Agent' 'ai_tool' )) }
+    'tool_verify_price_symbol' = @{ ai_tool = @(,@( E 'Finance Agent' 'ai_tool' )) }
+    'tool_void_transaction'    = @{ ai_tool = @(,@( E 'Finance Agent' 'ai_tool' )) }
+    'tool_create_savings_plan' = @{ ai_tool = @(,@( E 'Finance Agent' 'ai_tool' )) }
+    'tool_book_savings_plan_execution' = @{ ai_tool = @(,@( E 'Finance Agent' 'ai_tool' )) }
+    'tool_book_recurring_occurrence' = @{ ai_tool = @(,@( E 'Finance Agent' 'ai_tool' )) }
+    'tool_book_interest'       = @{ ai_tool = @(,@( E 'Finance Agent' 'ai_tool' )) }
+    'tool_set_savings_plan'    = @{ ai_tool = @(,@( E 'Finance Agent' 'ai_tool' )) }
+    'tool_close_savings_plan'  = @{ ai_tool = @(,@( E 'Finance Agent' 'ai_tool' )) }
+    'tool_close_insurance'     = @{ ai_tool = @(,@( E 'Finance Agent' 'ai_tool' )) }
+    'tool_close_pension'       = @{ ai_tool = @(,@( E 'Finance Agent' 'ai_tool' )) }
+    'tool_close_savings_goal'  = @{ ai_tool = @(,@( E 'Finance Agent' 'ai_tool' )) }
+    'tool_delete_real_estate'  = @{ ai_tool = @(,@( E 'Finance Agent' 'ai_tool' )) }
+    'tool_delete_holding'      = @{ ai_tool = @(,@( E 'Finance Agent' 'ai_tool' )) }
+    'tool_delete_account'      = @{ ai_tool = @(,@( E 'Finance Agent' 'ai_tool' )) }
+    'tool_delete_recurring_payment' = @{ ai_tool = @(,@( E 'Finance Agent' 'ai_tool' )) }
+    'tool_delete_loan'         = @{ ai_tool = @(,@( E 'Finance Agent' 'ai_tool' )) }
+    'tool_settle_loan'         = @{ ai_tool = @(,@( E 'Finance Agent' 'ai_tool' )) }
+    'tool_sell_real_estate'    = @{ ai_tool = @(,@( E 'Finance Agent' 'ai_tool' )) }
+    'tool_set_onboarding_section' = @{ ai_tool = @(,@( E 'Finance Agent' 'ai_tool' )) }
 }
+$connections = [ordered]@{}
+foreach ($k in $gate.Connections.Keys) { $connections[$k] = $gate.Connections[$k] }
+foreach ($k in $connRest.Keys) { $connections[$k] = $connRest[$k] }
 
 # Paket-Werkzeug-Kanten (ai_tool -> Finance Agent) mergen.
 foreach ($k in $svc.Connections.Keys) { $connections[$k] = $svc.Connections[$k] }
@@ -1192,19 +992,9 @@ foreach ($k in $svc.Connections.Keys) { $connections[$k] = $svc.Connections[$k] 
 # Bundle-Connections (Model Selector -> Finance Agent + Modell-Nodes -> Model Selector) mergen.
 foreach ($k in $mb.Connections.Keys) { $connections[$k] = $mb.Connections[$k] }
 
-# Alle Tools werden in New-ToolWorkflowNode hart aufgeloest (throw bei fehlender ID) -> keine
-# null-Nodes, keine zu entfernenden Connections mehr (die alte $ToolIds-Skip-Schleife entfaellt).
-
-    # Workflow-Objekt OHNE id zurueckgeben — Save-WorkflowFile (build.ps1) backt die State-ID ein.
-    return [ordered]@{
-        name        = 'agent.finance'
-        active      = $false
-        nodes       = $allNodes
-        connections = $connections
-        settings    = [ordered]@{ executionOrder = 'v1'; binaryMode = 'separate'; errorWorkflow = $ErrorNotifyId }
-        staticData  = $null
-        pinData     = @{}
-        triggerCount = 0
-        tags        = @()
-    }
+    $wf = Build-Workflow 'agent.finance' $allNodes $connections
+    $wf.settings['binaryMode'] = 'separate'
+    # Leere Standardfelder bleiben im Export stehen (Datei bleibt gleichwertig zum bisherigen Stand).
+    $wf['active'] = $false; $wf['staticData'] = $null; $wf['pinData'] = @{}; $wf['triggerCount'] = 0; $wf['tags'] = @()
+    return $wf
 }

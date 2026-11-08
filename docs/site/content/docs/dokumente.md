@@ -14,7 +14,7 @@ Er antwortet nur aus deinen Dokumenten: steht etwas nicht drin, sagt er das, sta
 
 ## Auch die anderen Agenten schauen nach
 
-Die drei Werkzeuge stehen nicht nur dem Dokumenten-Assistenten zur Verfügung: Auch **Buchhalter, Finanzberater, Karriere-Coach und Nachlass-Berater** können damit in deinen Dokumenten nachsehen — etwa der Finanzberater im Wortlaut deiner Hausrat-Police oder der Karriere-Coach in deinem Arbeitsvertrag. Ist das Dokumente-Paket nicht installiert, laufen alle anderen Agenten ganz normal weiter; sie sagen dir dann nur, dass die Dokumentensuche fehlt.
+Die Werkzeuge stehen nicht nur dem Dokumenten-Assistenten zur Verfügung: Auch **Buchhalter, Finanzberater, Karriere-Coach und Nachlass-Berater** können damit in deinen Dokumenten nachsehen (der Buchhalter nur suchen und lesen, die Paperless-KI fragt er nicht) — etwa der Finanzberater im Wortlaut deiner Hausrat-Police oder der Karriere-Coach in deinem Arbeitsvertrag. Ist das Dokumente-Paket nicht installiert, laufen alle anderen Agenten ganz normal weiter; sie sagen dir dann nur, dass die Dokumentensuche fehlt.
 
 ## Wer darf?
 

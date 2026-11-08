@@ -185,4 +185,44 @@ BEGIN
   RAISE NOTICE 'PASS set_loan [gleiche Werte -> no_change ohne Write, ein neues Feld -> Write]';
 END $$;
 
+-- Grenzen der Guards: Zins 0, Auszahlung am Erfassungstag und Kreditbetrag = erfasste Restschuld sind gueltig.
+DO $$
+DECLARE
+  v_res  JSONB;
+  v_giro INT;
+  v_loan INT;
+BEGIN
+  SELECT (finance.fn_create_account(jsonb_build_object('name','__test_slg_giro__','account_type','cash',
+    'currency','EUR'))->>'account_id')::int INTO v_giro;
+  SELECT (finance.fn_create_loan(jsonb_build_object('name','__test_slg_kredit__','lender','B','borrower','T',
+    'current_balance',2400,'interest_rate',2,'monthly_annuity',100,
+    'first_payment_date',(CURRENT_DATE + 15)::text,'debit_account_id',v_giro))->>'loan_id')::int INTO v_loan;
+
+  v_res := finance.fn_set_loan(jsonb_build_object('loan_id',v_loan,'interest_rate',0));
+  IF (v_res->>'ok')::boolean IS DISTINCT FROM true THEN
+    RAISE EXCEPTION 'FAIL set_loan [Zins 0]: erwartet ok=true, got %', v_res; END IF;
+
+  v_res := finance.fn_set_loan(jsonb_build_object('loan_id',v_loan,'original_amount',2400,
+    'disbursement_date',core.fn_today()::text));
+  IF (v_res->>'ok')::boolean IS DISTINCT FROM true THEN
+    RAISE EXCEPTION 'FAIL set_loan [Betrag = Restschuld, Auszahlung heute]: erwartet ok=true, got %', v_res; END IF;
+  RAISE NOTICE 'PASS set_loan [Zins 0, Betrag = Restschuld, Auszahlung am Erfassungstag gueltig]';
+END $$;
+
+-- "Abbezahlt" mit Restschuld nur ueber die Abloesung (tool_settle_loan bucht sie): status=paid_off -> {ok:false}.
+DO $$
+DECLARE r jsonb; v_debit int; v_loan int;
+BEGIN
+  v_debit := (finance.fn_create_account('{"name":"__t_sl_po_giro__","account_type":"cash"}'::jsonb)->>'account_id')::int;
+  r := finance.fn_create_loan(jsonb_build_object('name','__t_sl_po_kredit__','lender','Beispielbank','original_amount',50000,
+         'disbursement_date',(CURRENT_DATE - 60)::text,'interest_rate',3.0,'monthly_annuity',900,'schedule_day_of_month',1,
+         'first_payment_date',(CURRENT_DATE + 20)::text,'debit_account_id',v_debit));
+  v_loan := (r->>'loan_id')::int;
+  r := finance.fn_set_loan(jsonb_build_object('loan_id', v_loan, 'status', 'paid_off'));
+  IF (r->>'ok')::boolean IS DISTINCT FROM false OR r->>'reason' NOT LIKE '%tool_settle_loan%'
+     OR (SELECT status::text FROM finance.loans WHERE id = v_loan) IS DISTINCT FROM 'active' THEN
+    RAISE EXCEPTION 'FAIL set_loan [paid_off mit Restschuld -> ok:false]: %', r; END IF;
+  RAISE NOTICE 'PASS set_loan [paid_off nur ueber die Abloesung]';
+END $$;
+
 ROLLBACK;

@@ -24,7 +24,8 @@
 --   settlement_id ist bereits im n8n-Workflow aufgeloest (Ambiguitaet/Depot-Pflicht dort).
 --   Pruefung des Verrechnungskontos: finance.fn_settlement_account_reason (nur Depot/P2P, P2P -> Girokonto).
 --   Die DB-CHECKs finance_accounts_depot_needs_settlement + _settlement_kind bleiben harter Backstop.
---   RUECKGABE-VERTRAG: Erfolg -> {ok:true, account_id, interest_added, balance, opening_balance_date} (balance =
+--   RUECKGABE-VERTRAG: Erfolg -> {ok:true, account_id, interest_added, balance, opening_balance_date, currency} (currency =
+--   abgeleitete Kontowaehrung: genannt, sonst die des Verrechnungskontos, sonst EUR - die Karte liest sie von hier; balance =
 --   Post-State nach dem Saldo-Trigger, in derselben Transaktion gelesen; opening_balance_date = geschriebener
 --   Stichtag oder NULL ohne Saldo — die Karte liest ihn aus dem Probelauf). Korrigierbar -> {ok:false, reason} OHNE Write:
 --   Stichtag kein YYYY-MM-DD / in der Zukunft / ohne Saldo / auf einem Depot;
@@ -280,6 +281,7 @@ BEGIN
         'interest_added', (v_rate IS NOT NULL AND v_rate <> 0),
         'balance', v_balance,
         'opening_balance_date', v_open_date,
+        'currency', v_currency,
         'effective', v_dates->'resolved',
         'card_lines', COALESCE(v_similar, '[]'::jsonb)
     );

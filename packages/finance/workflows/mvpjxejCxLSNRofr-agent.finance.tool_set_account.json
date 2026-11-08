@@ -436,7 +436,7 @@
                   {
                       "parameters":  {
                                          "operation":  "executeQuery",
-                                         "query":  "=SELECT (r-\u003e\u003e\u0027ok\u0027)::boolean AS ok, (r-\u003e\u003e\u0027account_id\u0027)::int AS account_id FROM finance.fn_set_account(($1::jsonb - \u0027_effective\u0027) || COALESCE(NULLIF(($1::jsonb)-\u003e\u0027_effective\u0027, \u0027null\u0027::jsonb), \u0027{}\u0027::jsonb)) AS r;",
+                                         "query":  "=SELECT (r-\u003e\u003e\u0027ok\u0027)::boolean AS ok, r-\u003e\u003e\u0027reason\u0027 AS reason, (r-\u003e\u003e\u0027account_id\u0027)::int AS account_id FROM finance.fn_set_account(($1::jsonb - \u0027_effective\u0027) || COALESCE(NULLIF(($1::jsonb)-\u003e\u0027_effective\u0027, \u0027null\u0027::jsonb), \u0027{}\u0027::jsonb)) AS r;",
                                          "options":  {
                                                          "queryReplacement":  "={{ JSON.stringify({ account_id: $(\u0027Resolve Account\u0027).item.json.id, name: $(\u0027Start\u0027).item.json.new_name, bank: $(\u0027Start\u0027).item.json.bank, account_number: $(\u0027Start\u0027).item.json.account_number, remove_account_number: $(\u0027Start\u0027).item.json.remove_account_number, owner_person_id: $(\u0027Resolve Person\u0027).item.json.person_id, settlement_id: ($(\u0027Start\u0027).item.json.settlement_account ? $(\u0027Resolve Settlement\u0027).item.json.id : null), notes: $(\u0027Start\u0027).item.json.notes, fixed_deposit_maturity_date: $(\u0027Start\u0027).item.json.fixed_deposit_maturity_date, fixed_deposit_auto_renew: $(\u0027Start\u0027).item.json.fixed_deposit_auto_renew, ownership: $(\u0027Start\u0027).item.json.ownership, has_transmortal_poa: $(\u0027Start\u0027).item.json.has_transmortal_poa, min_balance: $(\u0027Start\u0027).item.json.min_balance, min_balance_default: $(\u0027Start\u0027).item.json.min_balance_default, _effective: ($(\u0027Dry run\u0027).item.json.r.effective || null) }) }}"
                                                      }
@@ -592,6 +592,71 @@
                   },
                   {
                       "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "4d701f8f-7c29-5ed9-9bb9-33dda532468e",
+                                                                                   "leftValue":  "={{ $json.ok }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       2420,
+                                       0
+                                   ],
+                      "id":  "737e4fe6-7c48-5b5c-a82c-64c8e4ec0537",
+                      "name":  "Write ok?"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "ce693dcf-f0a0-51a6-b639-f33522778dc4",
+                                                                                     "name":  "ok",
+                                                                                     "value":  "false",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "6107d4e6-5d65-59ec-8962-31abb24ad3c7",
+                                                                                     "name":  "error",
+                                                                                     "value":  "={{ $(\u0027Set account (atomic)\u0027).item.json.reason }}",
+                                                                                     "type":  "string"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       2640,
+                                       200
+                                   ],
+                      "id":  "272c54c2-d06e-5c09-8950-926166131994",
+                      "name":  "Account not changed"
+                  },
+                  {
+                      "parameters":  {
                                          "assignments":  {
                                                              "assignments":  [
                                                                                  {
@@ -615,7 +680,7 @@
                       "type":  "n8n-nodes-base.set",
                       "typeVersion":  3.4,
                       "position":  [
-                                       2420,
+                                       2640,
                                        0
                                    ],
                       "id":  "17a959ac-0ec7-5c7f-81ab-4b749cca4219",
@@ -623,7 +688,7 @@
                   },
                   {
                       "parameters":  {
-                                         "content":  "## DB-Automatik\n**core.fn_dry_run (DB ist das Gesetz)**\n\nDry run = fn_set_account mit denselben Werten, immer zurückgerollt. ok:false -\u003e Dry run rejected: KEINE Karte, card_sent:false + Grund an den Agenten. Die fn kennt kaum freundliche Ablehnungen; ein Verstoß gegen den ownership-CHECK ist eine Exception -\u003e Abbruch + errorWorkflow-Alarm, aber VOR der Karte statt nach dem Tipp. ok:true -\u003e Karte. Der echte Write nach dem Tipp prüft erneut.",
+                                         "content":  "## DB-Automatik\n**core.fn_dry_run (DB ist das Gesetz)**\n\nDry run = fn_set_account mit denselben Werten, immer zurückgerollt. ok:false -\u003e Dry run rejected: KEINE Karte, card_sent:false + Grund an den Agenten. Die fn kennt kaum freundliche Ablehnungen; ein Verstoß gegen den ownership-CHECK ist eine Exception -\u003e Abbruch + errorWorkflow-Alarm, aber VOR der Karte statt nach dem Tipp. ok:true -\u003e Karte. Der echte Write nach dem Tipp prüft erneut (Write ok? -\u003e false: Account not changed mit reason).",
                                          "height":  200,
                                          "width":  400,
                                          "color":  4
@@ -827,12 +892,30 @@
                                                                   [
                                                                       {
                                                                           "index":  0,
-                                                                          "node":  "Return",
+                                                                          "node":  "Write ok?",
                                                                           "type":  "main"
                                                                       }
                                                                   ]
                                                               ]
-                                                 }
+                                                 },
+                        "Write ok?":  {
+                                          "main":  [
+                                                       [
+                                                           {
+                                                               "index":  0,
+                                                               "node":  "Return",
+                                                               "type":  "main"
+                                                           }
+                                                       ],
+                                                       [
+                                                           {
+                                                               "index":  0,
+                                                               "node":  "Account not changed",
+                                                               "type":  "main"
+                                                           }
+                                                       ]
+                                                   ]
+                                      }
                     },
     "settings":  {
                      "executionOrder":  "v1",

@@ -106,4 +106,19 @@ BEGIN
     RAISE EXCEPTION 'FAIL [h] mit Enddatum, got %', v_r; END IF;
   RAISE NOTICE 'PASS [h] executed_by zusammen mit Enddatum';
 END $$;
+-- Dauerueberweisung auf ein Konto, das keine Buchungen annimmt (Depot): schon beim Anlegen {ok:false}, nicht erst bei
+-- jeder Ausfuehrung.
+DO $$
+DECLARE r jsonb; v_giro int; v_depot int;
+BEGIN
+  v_giro  := (finance.fn_create_account('{"name":"__t_crt_dep_giro__","account_type":"cash","opening_balance":3000}'::jsonb)->>'account_id')::int;
+  v_depot := (finance.fn_create_account(jsonb_build_object('name','__t_crt_dep_depot__','account_type','stocks_depot',
+                'settlement_id',v_giro))->>'account_id')::int;
+  r := finance.fn_create_recurring_transfer(jsonb_build_object('name','__t_crt_dep_dauer__','from_account_id',v_giro,
+         'to_account_id',v_depot,'amount','100','schedule_unit','month','first_payment_date',(CURRENT_DATE + 3)::text));
+  IF (r->>'ok')::boolean IS DISTINCT FROM false OR EXISTS (SELECT 1 FROM finance.recurring_payments WHERE name = '__t_crt_dep_dauer__') THEN
+    RAISE EXCEPTION 'FAIL create_recurring_transfer [Ziel Depot -> ok:false ohne Insert]: %', r; END IF;
+  RAISE NOTICE 'PASS create_recurring_transfer [Depot als Ziel abgelehnt]';
+END $$;
+
 ROLLBACK;

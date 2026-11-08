@@ -99,63 +99,20 @@ return out;
         credentials = @{ telegramApi = $CRED_TELEGRAM }
     }
 
-    $stickyOverview = [ordered]@{
-        parameters  = [ordered]@{
-            content = @'
-## core.sub_error_notify
+    $stickyOverview = Build-Sticky 'Doc: Überblick' @(-240, -380) -Header 'Ablauf' `
+        'core.sub_error_notify' `
+        ("Globaler Fehler-Notifier: n8n ruft ihn automatisch, wenn ein Workflow mit settings.errorWorkflow auf ihn fällt (nur automatische Executions, nicht manuelle Tests im Editor).`n`n" +
+         "On Error (Error Trigger) -> Load alert texts (Owner-Sprache, core.fn_ui_texts_for; onError continue, kein Retry) -> Format Message (Texte aus dem Katalog, Zeit im Owner-Locale; DB weg -> englische Ersatztexte, der Alarm geht immer raus) -> Send Telegram Alert (an den Owner-Chat). Zweiter Ast: Clear card lock (Karte-offen-Sperre eines gescheiterten Gate-Laufs löschen). Erster Ast (liegt höher, läuft vor dem Alarm): Clear thinking lease (Schalter der 'Bot denkt nach'-Schleife eines gescheiterten Orchestrator-Laufs löschen, agent.fn_delete_thinking_lease).`n`n" +
+         "Genutzte Felder des Error Triggers: execution.error.message, execution.lastNodeExecuted, execution.url (optional), workflow.name.") `
+        -Height 360 -Width 500
 
-Globaler Fehler-Notifier. Wird von n8n automatisch aufgerufen wenn ein verlinkter Workflow faellt (settings.errorWorkflow in den Workflow-Einstellungen).
+    $stickyFormat = Build-Sticky 'Doc: Format' @(220, -280) -Header 'Ablauf' `
+        'Format Message' `
+        ("Baut den Alarm-Text aus den Error-Trigger-Daten (Zeilen: Titel, Workflow, Node, Fehler, Zeit, optional Link; Beschriftungen aus dem Katalog in der Owner-Sprache).`n" +
+         "Der Send hat kein parse_mode, Telegram liest also Legacy-Markdown: Format Message escapt darum die vier Entities (Unterstrich, Stern, Backtick, eckige Klammer auf) per Backslash (der Send escapt nicht selbst). Harness-getriggerte Läufe (Root-Trigger 'Test Webhook') alerten nie.") `
+        -Height 240 -Width 400
 
-**Ablauf:** On Error (Error Trigger) -> Load alert texts (Owner-Sprache, core.fn_ui_texts_for; onError continue, kein Retry) -> Format Message (Texte aus dem Katalog, Zeit im Owner-Locale; DB weg -> englische Ersatztexte, der Alarm geht immer raus) -> Send Telegram Alert (an Owner-Chat). Zweiter Ast: Clear card lock (Karte-offen-Sperre eines gescheiterten Gate-Laufs loeschen). Erster Ast (liegt hoeher, laeuft vor dem Alarm): Clear thinking lease (Schalter der "Bot denkt nach"-Schleife eines gescheiterten Orchestrator-Laufs loeschen, agent.fn_delete_thinking_lease).
-
-**Empfangene Daten (n8n Error Trigger):**
-- execution.error.message - Fehlermeldung
-- execution.lastNodeExecuted - letzter Node vor dem Fehler
-- execution.url - Execution-Link (optional)
-- workflow.name - Name des fehlgeschlagenen Workflows
-
-**Einschraenkung:** Feuert nur bei automatischen Executions - nicht bei manuellen Tests im n8n-Editor.
-'@
-            height  = 360
-            width   = 500
-            color   = 4
-        }
-        type        = 'n8n-nodes-base.stickyNote'
-        typeVersion = 1
-        position    = @(-240, -380)
-        id          = (New-Id)
-        name        = 'Doc: Überblick'
-    }
-
-    $stickyFormat = [ordered]@{
-        parameters  = [ordered]@{
-            content = (@'
-## Format Message
-
-Baut plain-text Telegram-Nachricht aus den Error-Trigger-Daten.
-Kein Markdown (Telegram rendert sonst inkonsistent bei Sonderzeichen).
-
-Beispiel-Output:
-__WARN__ n8n Fehler
-
-Workflow: agent.monitor
-Node: Monitor Agent
-Fehler: connection refused
-Zeit: 05.06.2026, 14:23:01
-https://n8n.example.com/...
-'@).Replace('__WARN__', $warn)
-            height  = 240
-            width   = 400
-            color   = 4
-        }
-        type        = 'n8n-nodes-base.stickyNote'
-        typeVersion = 1
-        position    = @(220, -280)
-        id          = (New-Id)
-        name        = 'Doc: Format'
-    }
-
-    # Karte-offen-Sperre (Fix C): scheitert ein Gate-Lauf (z. B. Telegram-Send), laeuft dessen 'Close pending' nie ->
+    # Karte-offen-Sperre: scheitert ein Gate-Lauf (z. B. Telegram-Send), laeuft dessen 'Close pending' nie ->
     # die Zeile in agent.hitl_pending dieser Execution hier sofort freigeben (Gnadenfrist 0; sonst sperrt ein Hinweis auf
     # eine NICHT existierende Karte den Chat bis zur TTL). Leerer/fremder Lauf = no-op in der fn. Zweiter Ast NACH dem
     # Alarm (v1-Reihenfolge), onError=continue: die Sicherheitsleine haengt nie an diesem Schritt.
@@ -164,23 +121,10 @@ https://n8n.example.com/...
         ([ordered]@{ execution_id = 'String(($(''On Error'').first().json.execution || {}).id || '''')'; grace_minutes = '0' })
     $clearLock['onError'] = 'continueRegularOutput'
 
-    $stickyLock = [ordered]@{
-        parameters  = [ordered]@{
-            content = @'
-## Clear card lock
-
-Scheitert ein Lauf des HITL-Gates (agent.tool_human_approval), bleibt seine Zeile in agent.hitl_pending (Karte-offen-Sperre) liegen, weil 'Close pending' nie laeuft. Dieser Ast gibt sie per execution.id sofort frei (agent.fn_set_hitl_pending_released, Gnadenfrist 0). Laeuft NACH dem Alarm, onError continue; fremde Workflows = no-op. Backstop bleibt die TTL (expires_at).
-'@
-            height  = 200
-            width   = 400
-            color   = 4
-        }
-        type        = 'n8n-nodes-base.stickyNote'
-        typeVersion = 1
-        position    = @(-240, 260)
-        id          = (New-Id)
-        name        = 'Doc: Clear card lock'
-    }
+    $stickyLock = Build-Sticky 'Doc: Clear card lock' @(-240, 260) -Header 'Ablauf' `
+        'Clear card lock' `
+        "Scheitert ein Lauf des HITL-Gates (agent.tool_human_approval), bleibt seine Zeile in agent.hitl_pending (Karte-offen-Sperre) liegen, weil 'Close pending' nie läuft. Dieser Ast gibt sie per execution.id sofort frei (agent.fn_set_hitl_pending_released, Gnadenfrist 0). Läuft NACH dem Alarm, onError continue; fremde Workflows = no-op. Backstop bleibt die TTL (expires_at)." `
+        -Height 200 -Width 400
 
     # "Bot denkt nach"-Schalter (agent.thinking_lease): scheitert ein Orchestrator-Lauf, loescht ihn niemand vor einer
     # Antwort -> die Draft-Schleife (core.sub_show_thinking) zeigte bis zur TTL "Thinking..." ohne Antwort. Hier per

@@ -33,7 +33,8 @@ _preflight_n8n_mb() {
 # _preflight_disk_need -> benoetigte MB auf STDOUT (siehe oben).
 _preflight_disk_need() {
   if [ -n "$PREFLIGHT_MIN_DISK_MB" ]; then printf '%s' "$PREFLIGHT_MIN_DISK_MB"; return 0; fi
-  # Verbund: die Images (n8n, Postgres, Gateway) laedt Docker, nicht dieser Lauf -> nur die Reserve im master.
+  # Verbund: die Images (n8n, Postgres, Gateway) laedt Docker, nicht dieser Lauf -> nur die Reserve im master; die
+  # Update-Sicherung liegt auf dem Volume var_la (_preflight_backup_need_mb, eigene Messung in preflight()).
   if rt_is_compose; then printf '%s' "$PREFLIGHT_RESERVE_MB"; return 0; fi
   local need="$PREFLIGHT_RESERVE_MB"
   if ! { need_cmd n8n && [ "$(_upg_n8n_version)" = "${N8N_VERSION:-}" ]; }; then
@@ -51,12 +52,20 @@ _preflight_disk_need() {
 
 # _preflight_db_mb -> Groesse der App-DB in MB (0, wenn PG/DB noch fehlen oder nicht erreichbar).
 _preflight_db_mb() {
-  local mb=''
-  if need_cmd psql && dpkg -s "postgresql-${PG_VERSION:-17}" >/dev/null 2>&1; then
+  local mb='' have=0
+  if rt_is_compose; then svc_is_active postgresql && have=1
+  elif need_cmd psql && dpkg -s "postgresql-${PG_VERSION:-17}" >/dev/null 2>&1; then have=1; fi
+  if [ "$have" -eq 1 ]; then
     mb="$(pg_su_psql -X -tAc \
             "SELECT pg_database_size(datname) / 1048576 FROM pg_database WHERE datname = '${N8N_DB_NAME:-n8n}'" 2>/dev/null || true)"
   fi
   case "$mb" in ''|*[!0-9]*) printf '0' ;; *) printf '%s' "$mb" ;; esac
+}
+
+# _preflight_backup_need_mb -> MB fuer die Sicherung vor einem Tausch (0 ohne anstehenden Tausch). Nur im Verbund: dort
+# liegt sie auf dem Volume var_la, nicht auf / des master; im systemd-Betrieb steckt sie in _preflight_disk_need.
+_preflight_backup_need_mb() {
+  if [ -n "$(_upg_changes)" ]; then _preflight_db_mb; else printf '0'; fi
 }
 
 preflight() {
@@ -103,6 +112,15 @@ preflight() {
     die "Zu wenig freier Speicher auf / : ${avail_mb} MB frei, ${need_mb} MB nötig."
   fi
   ok "Freier Speicher auf / : ${avail_mb:-?} MB (nötig: ${need_mb} MB)"
+  if rt_is_compose; then
+    local vol_mb vol_need
+    vol_need="$(_preflight_backup_need_mb)"
+    vol_mb="$(df -Pm "$UPGRADE_STATE_DIR" 2>/dev/null | awk 'NR==2 {print $4}')"
+    if [ "$vol_need" -gt 0 ] && [ -n "$vol_mb" ] && [ "$vol_mb" -lt "$vol_need" ]; then
+      die "Zu wenig freier Speicher für die Update-Sicherung (${UPGRADE_STATE_DIR}, Volume var_la): ${vol_mb} MB frei, ${vol_need} MB nötig."
+    fi
+    if [ "$vol_need" -gt 0 ]; then ok "Freier Speicher für die Sicherung (${UPGRADE_STATE_DIR}): ${vol_mb:-?} MB (nötig: ${vol_need} MB)"; fi
+  fi
 
   # Outbound network (apt.postgresql.org / cloudsmith / npm / deb.nodesource).
   if ! curl -fsS --max-time 10 -o /dev/null https://deb.debian.org 2>/dev/null; then

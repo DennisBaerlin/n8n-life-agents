@@ -38,6 +38,10 @@
 --     den Puffer finance.coverage_buffer_eur, nur Konten mit Kontoauszug; recurring_missing:<ketten-kopf> = die
 --     juengsten zwei Termine einer laufenden Dauerauftrags-Kette hat ein Kontoauszug als fehlend festgestellt; lief ein
 --     selbst einzurichtender Auftrag (fn_bank_setup_kind) nie, lautet der Satz recurring_never_started_<art>[_generic].
+--     Auszug aelter als finance.statement_stale_days (Default 45) -> statt account_coverage statement_stale:<konto>
+--     (Staleness, die Vorschau waere nur noch der aufgelaufene Alltag).
+--   Wechselkurs-Alter: fx_rate_stale:<waehrung> = juengster EUR-Kurs einer aktiven Fremdwaehrung aelter als
+--     finance.fx_stale_days (Default 7; ohne jeden Kurs meldet data_quality).
 --   Umschichtung mit Enddatum (2026-11-01): standing_order_ending:<ketten-kopf> = ein freistehender Uebertrag, der ein
 --     Sparplan-Verrechnungskonto oder Ziel-Geld-Konto speist, ueberweist in <= 42 Tagen zum letzten Mal (latch = Termin).
 --   Instandhaltungsruecklage (2026-10-27, aus finance.maintenance_reserve_status): maintenance_reserve_low:<immobilie>
@@ -78,6 +82,8 @@ DECLARE
     v_digest       jsonb;
     v_stale_days   numeric;
     v_drift_tol    numeric;
+    v_stmt_stale   numeric;   -- finance.statement_stale_days: ab diesem Auszug-Alter keine Deckungs-Warnung
+    v_fx_stale     numeric;   -- finance.fx_stale_days: Alter des juengsten Kurses einer aktiven Fremdwaehrung
     v_last_conf    text;
     v_stale_age    numeric;
     r              record;
@@ -421,12 +427,25 @@ BEGIN
     -- Nur Konten aus finance.fn_coverage_accounts (cash, aktiv, >= 1 Kontoauszug; ohne Auszug fehlt die Alltags-
     -- Schaetzung -> keine Warnung auf Halbwissen). Die Rechnung lebt allein in finance.fn_account_outlook (eine Adresse,
     -- auch fuer die Tool-Antwort und die Mini-App). Gelatcht ueber den Core-Wrapper (stabiler metric_key je Konto).
+    -- Veralteter Auszug (Alter > finance.statement_stale_days): die Vorschau zieht den Alltag ab dem letzten Abgleich ohne
+    -- Obergrenze ab und unterschritte den Puffer jede Woche -> statt account_coverage der Hinweis statement_stale:<konto>.
+    v_stmt_stale := COALESCE(NULLIF(core.fn_config_get('finance', 'finance', 'statement_stale_days'), '')::numeric, 45);
     FOR r IN
         SELECT x.o
         FROM (SELECT finance.fn_account_outlook(c.id) AS o
               FROM finance.fn_coverage_accounts() c(id)) x
         WHERE (x.o->>'ok')::boolean AND (x.o->>'shortfall')::numeric > 0
     LOOP
+        IF (r.o->>'statement_age_days')::numeric > v_stmt_stale THEN
+            v_alerts := v_alerts || core.fn_staleness_alert(
+                'statement_stale:' || (r.o->>'account_id'), 'statement_stale',
+                (r.o->>'statement_age_days')::numeric, v_stmt_stale,
+                jsonb_build_array(core.fn_ui_tpl('finance.advisor.statement_stale', jsonb_build_object(
+                    'account', r.o->>'account_name',
+                    'date',    core.fn_ui_date((r.o->>'confirmed_as_of')::date),
+                    'days',    core.fn_ui_num((r.o->>'statement_age_days')::numeric)))));
+            CONTINUE;
+        END IF;
         v_alerts := v_alerts || jsonb_build_object(
             'metric_key', 'account_coverage:' || (r.o->>'account_id'),
             'kind',       'account_coverage',
@@ -650,6 +669,25 @@ BEGIN
         EXCEPTION WHEN OTHERS THEN NULL;
         END;
     END IF;
+
+    -- ---------- Wechselkurs-Alter ----------
+    -- Je aktive Fremdwaehrung (fn_active_currencies) der juengste EUR-Kurs; aelter als finance.fx_stale_days -> Hinweis
+    -- fx_rate_stale:<waehrung> (rechnen die Summen mit einem alten Kurs weiter, waere das still falsch). Ohne jeden Kurs
+    -- meldet data_quality (dq_null_rate), hier nicht doppelt.
+    v_fx_stale := COALESCE(NULLIF(core.fn_config_get('finance', 'finance', 'fx_stale_days'), '')::numeric, 7);
+    FOR r IN
+        SELECT ac.code, max(fxr.as_of) AS as_of
+        FROM finance.fn_active_currencies() ac
+        JOIN finance.fx_rates fxr ON fxr.base_currency = 'EUR' AND fxr.quote_currency = ac.code
+        GROUP BY ac.code ORDER BY ac.code
+    LOOP
+        v_alerts := v_alerts || core.fn_staleness_alert(
+            'fx_rate_stale:' || r.code, 'fx_rate_stale', current_date - r.as_of, v_fx_stale,
+            jsonb_build_array(core.fn_ui_tpl('finance.advisor.fx_rate_stale', jsonb_build_object(
+                'currency', r.code,
+                'date',     core.fn_ui_date(r.as_of),
+                'days',     core.fn_ui_num(current_date - r.as_of)))));
+    END LOOP;
 
     -- ---------- Phase L (WS-1): Cashflow-Deckung (FLUSS-Check, nicht Bestand) ----------
     -- Audit Paket 3: hartes Defizit monthly_free<0 = die PFLICHTausgaben (Konsum inkl. Kreditzins + Tilgung) uebersteigen

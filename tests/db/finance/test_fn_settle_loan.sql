@@ -94,4 +94,24 @@ BEGIN
   RAISE NOTICE 'PASS settle_loan [not-found -> ok:false]';
 END $$;
 
+-- Belastungskonto in fremder Waehrung -> {ok:false}, nichts gebucht
+-- (die Abloesesumme ist in Kreditwaehrung; ein USD-Konto wuerde sie still als USD abbuchen).
+DO $$
+DECLARE v_res JSONB; v_eur INT; v_usd INT; v_lacc INT;
+BEGIN
+  SELECT (finance.fn_create_account('{"name":"__test_sl_cur_eur__","account_type":"cash","currency":"EUR"}'::jsonb)->>'account_id')::int INTO v_eur;
+  SELECT (finance.fn_create_account('{"name":"__test_sl_cur_usd__","account_type":"cash","currency":"USD"}'::jsonb)->>'account_id')::int INTO v_usd;
+  v_res := finance.fn_create_loan(jsonb_build_object('name','__test_sl_cur__','lender','TB','original_amount','5000',
+    'current_balance','5000','disbursement_date',CURRENT_DATE::text,'interest_rate','3','monthly_annuity','300',
+    'schedule_day_of_month','1','first_payment_date',CURRENT_DATE::text,'debit_account_id',v_eur));
+  v_lacc := (v_res->>'loan_account_id')::int;
+  v_res := finance.fn_settle_loan(jsonb_build_object('loan_name','__test_sl_cur__','debit_account_id',v_usd,
+    'settlement_date',CURRENT_DATE::text));
+  IF (v_res->>'ok')::boolean IS DISTINCT FROM false OR v_res->>'reason' NOT LIKE '%currency%' THEN
+    RAISE EXCEPTION 'FAIL settle_loan [USD-Belastungskonto]: erwartet ok=false mit currency-Grund, got %', v_res; END IF;
+  IF EXISTS (SELECT 1 FROM finance.transactions WHERE account_id IN (v_usd, v_lacc) AND category = 'settlement') THEN
+    RAISE EXCEPTION 'FAIL settle_loan [USD-Belastungskonto]: trotzdem gebucht'; END IF;
+  RAISE NOTICE 'PASS settle_loan [Belastungskonto in fremder Waehrung -> ok:false, nichts gebucht]';
+END $$;
+
 ROLLBACK;

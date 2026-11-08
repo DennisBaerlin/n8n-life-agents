@@ -296,7 +296,7 @@ function Get-FinanceHitlLines {
                 (New-HitlLine 'finance.label.target_amount'        "$S.target_amount" -Kind money -EurByModel -If "!$isRes && !($isEm && !Number($S.target_amount))")
                 (New-HitlLine 'finance.label.target_months'        "$S.target_months" -Kind number -Digits 1 -If "$isEm && !!$S.target_months")
                 (New-HitlLine 'finance.label.target_date'          (& $need 'TargetDate') -Kind date -If "!$isRes && !$isEm")
-                (New-HitlLine 'finance.label.already_saved'        "($S.already_saved || null)" -Kind money -Currency "($S.reserve_currency || 'EUR')" -OmitEmpty)
+                (New-HitlLine 'finance.label.already_saved'        "($S.already_saved || null)" -Kind money -Currency "($S.reserve_currency || 'EUR')" -EurByModel -OmitEmpty)  # reserve_currency kommt aus effective; Fallback EUR = Zuordnung auf Depot (EUR-Modell)
                 (New-HitlLine 'finance.label.monthly_savings_rate' "'finance.tpl.rate_computed'" -Kind tpl -If "$hasRate && !$isRes && !$isEm" -Params @{
                     value  = (New-HitlValue -Kind money -Value $rate -EurByModel)
                     months = (& $need 'Months') })

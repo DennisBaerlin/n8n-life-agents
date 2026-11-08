@@ -318,4 +318,38 @@ BEGIN
 
 END $$;
 
+-- Betrag 0 -> ok:false; Dubletten-Hinweis nur fuer einen aktiven Plan aufs selbe Wertpapier (ISIN vor Symbol) im SELBEN Depot.
+DO $$
+DECLARE v_settle INT; v_res JSONB; v_base JSONB;
+BEGIN
+  v_settle := (finance.fn_create_account('{"name":"__test_csp2_settle__","account_type":"cash","currency":"EUR"}'::jsonb)->>'account_id')::int;
+  PERFORM finance.fn_create_account(jsonb_build_object('name', '__test_csp2_d1__', 'account_type', 'stocks_depot', 'currency', 'EUR', 'settlement_id', v_settle));
+  PERFORM finance.fn_create_account(jsonb_build_object('name', '__test_csp2_d2__', 'account_type', 'stocks_depot', 'currency', 'EUR', 'settlement_id', v_settle));
+  v_base := jsonb_build_object('amount', 50, 'schedule_interval', 1, 'schedule_unit', 'month', 'first_payment_date', CURRENT_DATE + 3);
+
+  v_res := finance.fn_create_savings_plan(v_base || jsonb_build_object('name', '__test_csp2_null__', 'depot_name', '__test_csp2_d1__',
+             'isin', 'IE00CSP2A001', 'symbol', 'CSPA', 'security_name', 'A ETF', 'amount', 0));
+  IF (v_res->>'ok')::boolean IS DISTINCT FROM false THEN RAISE EXCEPTION 'FAIL [Betrag 0]: %', v_res; END IF;
+
+  v_res := finance.fn_create_savings_plan(v_base || jsonb_build_object('name', '__test_csp2_p1__', 'depot_name', '__test_csp2_d2__',
+             'isin', 'IE00CSP2A001', 'symbol', 'CSPA', 'security_name', 'A ETF'));
+  IF (v_res->>'ok')::boolean IS DISTINCT FROM true THEN RAISE EXCEPTION 'SETUP p1: %', v_res; END IF;
+  -- dasselbe Wertpapier in einem ANDEREN Depot -> kein Hinweis
+  v_res := finance.fn_create_savings_plan(v_base || jsonb_build_object('name', '__test_csp2_p2__', 'depot_name', '__test_csp2_d1__',
+             'isin', 'IE00CSP2A001', 'symbol', 'CSPA', 'security_name', 'A ETF'));
+  IF (v_res->>'ok')::boolean IS DISTINCT FROM true OR v_res->'card_lines' @> '[{"value":"finance.note.similar_entry"}]' THEN
+    RAISE EXCEPTION 'FAIL [anderes Depot -> kein Hinweis]: %', v_res; END IF;
+  -- gleiches Symbol, andere ISIN im selben Depot -> kein Hinweis (die ISIN entscheidet)
+  v_res := finance.fn_create_savings_plan(v_base || jsonb_build_object('name', '__test_csp2_p3__', 'depot_name', '__test_csp2_d1__',
+             'isin', 'IE00CSP2B001', 'symbol', 'CSPA', 'security_name', 'B ETF'));
+  IF (v_res->>'ok')::boolean IS DISTINCT FROM true OR v_res->'card_lines' @> '[{"value":"finance.note.similar_entry"}]' THEN
+    RAISE EXCEPTION 'FAIL [gleiches Symbol, andere ISIN -> kein Hinweis]: %', v_res; END IF;
+  -- ein anderes Wertpapier ohne jeden Treffer -> kein Hinweis
+  v_res := finance.fn_create_savings_plan(v_base || jsonb_build_object('name', '__test_csp2_p4__', 'depot_name', '__test_csp2_d1__',
+             'isin', 'IE00CSP2C001', 'symbol', 'CSPC', 'security_name', 'C ETF'));
+  IF (v_res->>'ok')::boolean IS DISTINCT FROM true OR v_res->'card_lines' @> '[{"value":"finance.note.similar_entry"}]' THEN
+    RAISE EXCEPTION 'FAIL [anderes Wertpapier -> kein Hinweis]: %', v_res; END IF;
+  RAISE NOTICE 'PASS [Betrag 0, Dubletten-Hinweis nur gleiches Depot + gleiche ISIN]';
+END $$;
+
 ROLLBACK;

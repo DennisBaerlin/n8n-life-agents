@@ -517,6 +517,9 @@ $envLines.Add("LIFEAGENTS_DEPLOY_FULL=$(if ($FullDeploy) { '1' } else { '0' })")
 # Cache-Keep-Alive des LLM-Gateways AUS: ein stundenlang laufendes Substrat wuerde den Cache sonst bis zu 24 h auf dem
 # Entwickler-Schluessel anstupsen (kostet ohne Nutzen). Die Mechanik prueft llm_gateway_test (k) mit eigener Unit.
 $envLines.Add('LLM_GATEWAY_KEEPALIVE_HOURS=0')
+# Probelauf "parallele Werkzeug-Aufrufe": $env:LLM_GATEWAY_SERIAL_TOOLS=0 vor -Reset schaltet das Erzwingen "ein Werkzeug je
+# Antwort" im Gateway des Substrats ab (nur 0 oder 1; ungesetzt = Standard an).
+if ($env:LLM_GATEWAY_SERIAL_TOOLS -in @('0', '1')) { $envLines.Add("LLM_GATEWAY_SERIAL_TOOLS=$($env:LLM_GATEWAY_SERIAL_TOOLS)") }
 # Bot-Profilbild AUS: das Substrat installiert mit dem echten TEST_TELEGRAM_BOT_TOKEN, ein -Reset wuerde dem Test-Bot sonst
 # ein Bild setzen. Die Mechanik prueft bot_profile_photo_test gegen den Mock.
 $envLines.Add('BOT_PROFILE_PHOTO=0')

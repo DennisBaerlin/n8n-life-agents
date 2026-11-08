@@ -33,6 +33,8 @@
 //   - Alle angebotenen Calls emittiert -> finale Textantwort. Kein Szenario -> finale Textantwort
 //     (der Agent bricht sauber ab, kein Crash).
 //
+//   - Szenario-Feld `parallel: true`: alle angebotenen Calls in EINEM Turn (mehrere tool_use unter einem Denkblock).
+//
 // Anthropic-tool_use.input ist ein OBJEKT (nicht stringified wie OpenAI).
 // Bewusst dependency-frei (nur Node-Core) und winzig: kein npm install, Node ist durch n8n garantiert.
 'use strict';
@@ -173,8 +175,10 @@ function fromSchema(s) {
 // 5.5-Modelle von sich aus senden. n8n spielt den Aufruf danach ueber einen anderen Weg zurueck (buildSteps:
 // Anthropic-Inhaltsbloecke statt tool_calls) -- genau dort gingen bis n8n 2.44 die Angaben verloren (n8n-Fix
 // #41241 ab 2.45, Regressionswache). Default an = jeder Mock-Tier faehrt den Live-Weg.
-function anthropicToolUse(call, k, thinking) {
-  const blocks = [{ type: 'tool_use', id: 'toolu_' + k, name: call.tool, input: call.args || {} }];
+// calls: ein Aufruf je Turn, oder bei `parallel: true` alle Aufrufe des Szenarios als mehrere tool_use-Bloecke unter EINEM
+// gemeinsamen Denkblock (die Form, die das Modell bei zwei Buchungen in einer Nachricht ohne disable_parallel_tool_use schickt).
+function anthropicToolUse(calls, k, thinking) {
+  const blocks = calls.map((call, i) => ({ type: 'tool_use', id: 'toolu_' + k + (i ? '_' + i : ''), name: call.tool, input: call.args || {} }));
   if (thinking) blocks.unshift({ type: 'thinking', thinking: '', signature: 'mock-signature-' + k });
   return { id: 'msg_' + k, type: 'message', role: 'assistant', model: 'claude-mock',
     content: blocks, stop_reason: 'tool_use', stop_sequence: null, usage: { input_tokens: 1, output_tokens: 1 } };
@@ -182,20 +186,41 @@ function anthropicToolUse(call, k, thinking) {
 // Zurueckgespielte Aufrufe ohne ihre Angaben: das j-te assistant-tool_use der Historie gegen die Angaben, die der Mock
 // selbst emittiert hat (eligible[j].args). Treffer = n8n hat sie verloren (Befund 2026-10-26: das Modell
 // wiederholte den "leeren" Aufruf mit neuer Karte) -> mock_route_test schlaegt fehl.
-function replayLostInputs(messages, eligible) {
+// parallel: die Bloecke EINES Turns gehoeren der Reihe nach zu eligible[0..n-1] (sonst ein Turn = ein Aufruf).
+function replayLostInputs(messages, eligible, parallel) {
   const lost = [];
   let j = 0;
   for (const m of messages) {
     if (!m || m.role !== 'assistant' || !Array.isArray(m.content)) continue;
     const uses = m.content.filter((p) => p && p.type === 'tool_use');
     if (!uses.length) continue;
-    const want = eligible[j] && eligible[j].args ? eligible[j].args : {};
-    for (const u of uses) {
+    uses.forEach((u, i) => {
+      const e = eligible[parallel ? i : j];
+      const want = e && e.args ? e.args : {};
       if (Object.keys(want).length && (!u.input || typeof u.input !== 'object' || !Object.keys(u.input).length)) lost.push(u.name);
-    }
+    });
     j++;
   }
   return lost;
+}
+// Nur parallel-Szenarien: n8n 2.45 haengt die gemeinsame KI-Nachricht nur an den ersten Schritt und liest je Schritt
+// tool_calls[0] -> die Historie kann Bloecke verlieren. Anthropic lehnt einen Turn ab, dessen tool_use keinen tool_result in
+// der naechsten user-Nachricht hat -> fehlende Bloecke ('dropped:<n>') und unbeantwortete ('unpaired:<tool>') melden.
+function replayPairing(messages, eligible, parallel) {
+  const problems = [];
+  if (!parallel) return problems;
+  for (let i = 0; i < messages.length; i++) {
+    const m = messages[i];
+    if (!m || m.role !== 'assistant' || !Array.isArray(m.content)) continue;
+    const uses = m.content.filter((p) => p && p.type === 'tool_use');
+    if (!uses.length) continue;
+    if (uses.length < eligible.length) problems.push('dropped:' + (eligible.length - uses.length));
+    const next = messages[i + 1];
+    const answered = next && next.role === 'user' && Array.isArray(next.content)
+      ? next.content.filter((p) => p && p.type === 'tool_result').map((p) => p.tool_use_id) : [];
+    for (const u of uses) if (answered.indexOf(u.id) === -1) problems.push('unpaired:' + u.name);
+  }
+  return problems;
 }
 function anthropicText(text) {
   return { id: 'msg_final', type: 'message', role: 'assistant', model: 'claude-mock',
@@ -250,10 +275,14 @@ function decide(body) {
   }
   // Nur die Calls, deren Tool im Request ANGEBOTEN wird (Namespace-Filter Orchestrator vs Agent).
   const eligible = scenario.calls.filter((c) => offered.indexOf(c.tool) !== -1);
-  const replay_lost = replayLostInputs(messages, eligible);
-  if (k < eligible.length) {
-    return { payload: anthropicToolUse(eligible[k], k, scenario.thinking !== false), why: 'tool-call:' + eligible[k].tool + ' turn=' + k,
-      offered, task, delay, replay_lost };
+  // parallel (Szenario-Feld): alle angebotenen Calls in EINEM Turn (ein Denkblock, mehrere tool_use-Bloecke).
+  const parallel = scenario.parallel === true;
+  const replay_lost = replayLostInputs(messages, eligible, parallel).concat(replayPairing(messages, eligible, parallel));
+  const turns = parallel ? Math.min(eligible.length, 1) : eligible.length;
+  if (k < turns) {
+    const calls = parallel ? eligible : [eligible[k]];
+    return { payload: anthropicToolUse(calls, k, scenario.thinking !== false),
+      why: 'tool-call:' + calls.map((c) => c.tool).join('+') + ' turn=' + k, offered, task, delay, replay_lost };
   }
   // Woertliches Weiterreichen (Orchestrator-Relay): nach einem Spezialisten-Aufruf antwortet der Router nur mit dem
   // Signal FRAME/NOFRAME (Prompt-Regel 6) — der Workflow haengt die Spezialisten-Antwort selbst an. Der Router ist der

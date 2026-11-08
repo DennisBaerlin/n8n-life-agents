@@ -7,7 +7,7 @@
 //   - Einmal-Wert nur im Arbeitsspeicher, ausgestellt über einen Unix-Socket, den nur root im master erreicht
 //     (`node ctl.js issue`, die App ruft das per `docker exec`); jeder neue Wert macht den alten ungültig;
 //   - strenge Host- und Origin-Prüfung (gegen DNS-Rebinding und fremde Seiten), Sitzungs-Cookie HttpOnly +
-//     SameSite=Strict, CSRF-Wert in einem eigenen Kopf, nur JSON-Anfragen, Sec-Fetch-Site muss same-origin sein;
+//     SameSite=Lax (Live-Fund Mac: Strict hielt die Sitzung nach dem Sprung aus der Start-App nicht), CSRF-Wert in einem eigenen Kopf, nur JSON-Anfragen, Sec-Fetch-Site muss same-origin sein;
 //   - CSP ohne Inline-Skript, kein Referrer, kein Caching, kein Einbetten;
 //   - Fortschritt im Volume, Geheimnisse dort nur AES-256-GCM-verschlüsselt (Schlüssel getrennt, 0600 root);
 //   - die Antwort-Datei für den Installer entsteht erst nach der zweiten Bestätigung (Prüfliste Nr. 14), flüchtig unter
@@ -53,6 +53,8 @@ const GUIDE_URL = process.env.WIZARD_GUIDE_URL || 'https://dennisbaerlin.github.
 const TG_APP = { phone: 'https://telegram.org/dl', mac: 'https://macos.telegram.org/', windows: 'https://desktop.telegram.org/' };
 const TG_APP_QR = qr.toSvg(qr.encode(TG_APP.phone));
 const POLL_MS = Math.max(50, parseInt(process.env.WIZARD_POLL_MS || '1000', 10));
+// Zertifikat, DNS und FritzBox-Freigaben brauchen nach dem Einrichten oft einige Minuten: so lange still weiter prüfen.
+const REACH_GRACE_MS = Math.max(0, parseInt(process.env.WIZARD_REACH_GRACE_MS || String(10 * 60 * 1000), 10));
 const TOKEN_TTL_MS = 10 * 60 * 1000;
 const UI_DIR = path.join(__dirname, 'ui');
 const PROGRESS = path.join(STATE_DIR, 'progress.json');
@@ -877,7 +879,13 @@ async function connectTick(force) {
     if (c.activating) return;
     if (!PAIR && !c.connected && !c.problem && !c.expired) {
       const reach = await laCli('reach');
-      if (reach && reach.ok === false) { c.problem = String(reach.problem || T('core.wizard.connect.not_reaching')).slice(0, 400); save(); return; }
+      if (reach && reach.ok === false) {
+        c.reachSince = c.reachSince || Date.now();
+        if (Date.now() - c.reachSince < REACH_GRACE_MS) { save(); return; }
+        delete c.reachSince;   // „Erneut prüfen“ beginnt eine neue Frist
+        c.problem = String(reach.problem || T('core.wizard.connect.not_reaching')).slice(0, 400); save(); return;
+      }
+      delete c.reachSince;
       const a = await laCli('arm');
       if (a && a.ok && a.connected) { c.connected = true; }
       else if (a && a.ok && /^https:\/\/t\.me\/[A-Za-z0-9_]{1,64}\?start=[A-Za-z0-9_-]{1,64}$/.test(a.link || '')) {
@@ -1001,7 +1009,7 @@ async function handle(req, res) {
     }
     pending = null;
     session = { sid: rnd(32), csrf: rnd(32) };
-    return send(res, 303, '', 'text/plain', { Location: '/', 'Set-Cookie': `la_wizard=${session.sid}; HttpOnly; SameSite=Strict; Path=/` });
+    return send(res, 303, '', 'text/plain', { Location: '/', 'Set-Cookie': `la_wizard=${session.sid}; HttpOnly; SameSite=Lax; Path=/` });
   }
   if (req.method === 'GET' && STATIC[url.pathname]) {
     const [f, type] = STATIC[url.pathname];

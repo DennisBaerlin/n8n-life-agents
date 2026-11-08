@@ -52,7 +52,7 @@ test('Einmal-Wert: falsch, wiederverwendet, ersetzt; Cookie-Attribute', async ()
   assert.equal(ok.status, 303);
   assert.equal(ok.headers.location, '/');
   const c = ok.headers['set-cookie'][0];
-  assert.match(c, /HttpOnly/); assert.match(c, /SameSite=Strict/); assert.match(c, /Path=\//);
+  assert.match(c, /HttpOnly/); assert.match(c, /SameSite=Lax/); assert.match(c, /Path=\//);
   assert.equal((await req(w, 'GET', b.pathname + b.search)).status, 403, 'Wert nur einmal');
   assert.equal((await req(w, 'GET', b.pathname + b.search, { headers: { 'Sec-Fetch-Site': 'cross-site' } })).status, 403);
 });

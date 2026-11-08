@@ -434,3 +434,36 @@ test('Sprache: Antippen stellt die Einrichtung sofort um, die Auswahl bleibt in 
     assert.equal((await answer(w, 'h:OWNER_FIRST_NAME', '')).json.error, 'Something is still missing here.');
   } finally { await w.stop(); }
 });
+
+// Live-Fund: Direkt nach dem Einrichten ist der Rechner oft noch nicht erreichbar (Zertifikat, DNS, Freigaben). Die Seite wartet
+// in der Frist still weiter und meldet das Problem erst danach.
+async function toConnect(env) {
+  const w = await startWizard({ hints: {}, env });
+  await login(w);
+  fs.writeFileSync(path.join(w.fake, 'unreachable'), '');
+  for (const [id, v] of [['h:OWNER_LANGUAGE', 'de'], ['h:OWNER_FIRST_NAME', 'Erika'], ['h:OWNER_LAST_NAME', 'Muster'],
+    ['h:OWNER_BIRTH_DATE', '1980-01-01'], ['h:OWNER_PERSONA', 'neutral'], ['tg_why', null], ['h:TELEGRAM_BOT_TOKEN', '1:beispiel'],
+    ['h:ANTHROPIC_API_KEY', 'sk-ant-beispiel'], ['voice', 'no'], ['packages', []], ['reach', 'tunnel'], ['review', null], ['confirm', null]]) await expectOk(await answer(w, id, v));
+  await waitFor(async () => (await page(w)).id === 'connect');
+  return w;
+}
+
+test('Verbinden: in der Frist wird still weiter geprüft, danach erst das Problem gemeldet', async () => {
+  const w = await toConnect({ WIZARD_REACH_GRACE_MS: '600000' });
+  try {
+    await waitFor(() => fs.existsSync(path.join(w.fake, 'cli_reach_calls')));
+    const p = await page(w);
+    assert.equal(p.action || null, null, 'kein „Erneut prüfen“ in der Frist');
+    assert.equal(p.note || null, null, 'keine Warnung in der Frist');
+    fs.rmSync(path.join(w.fake, 'unreachable'));
+    await waitFor(async () => (await page(w)).qr);
+  } finally { await w.stop(); }
+});
+
+test('Verbinden: nach Ablauf der Frist erscheint das Problem mit „Erneut prüfen“', async () => {
+  const w = await toConnect({ WIZARD_REACH_GRACE_MS: '0' });
+  try {
+    const p = await waitFor(async () => { const x = await page(w); return x.action === 'connect_retry' ? x : null; });
+    assert.equal(p.note.kind, 'warn');
+  } finally { await w.stop(); }
+});

@@ -78,13 +78,45 @@ BEGIN
   IF v->>'state' <> 'neutral' OR NOT (v->>'gap')::boolean THEN RAISE EXCEPTION 'FAIL [6] ohne Kurs -> neutral + gap, got %', v; END IF;
   IF (finance.fn_account_low_state((SELECT id::int FROM pg_temp.app_fx WHERE key = 'acc_depot_jonas'))->>'ok')::boolean
      OR (finance.fn_account_low_state(-1)->>'ok')::boolean THEN RAISE EXCEPTION 'FAIL [6b] Depot/unbekannt -> ok:false'; END IF;
-  RAISE NOTICE 'PASS [6] Kurs fehlt -> neutral + gap; Depot/unbekannt -> ok:false';
+  -- mit Wechselkurs ist dasselbe Konto beurteilbar (kein gap)
+  INSERT INTO finance.fx_rates (base_currency, quote_currency, rate, as_of) VALUES ('EUR', 'CHF', 0.95, core.fn_today() - 1)
+    ON CONFLICT DO NOTHING;
+  IF (finance.fn_account_low_state(v_chf)->>'gap')::boolean THEN
+    RAISE EXCEPTION 'FAIL [6c] mit Kurs kein gap, got %', finance.fn_account_low_state(v_chf); END IF;
+  RAISE NOTICE 'PASS [6] Kurs fehlt -> neutral + gap; mit Kurs kein gap; Depot/unbekannt -> ok:false';
 
   -- [7] probe-Fenster: gleiche Form, Sparkonto bleibt Deckungs-Konto
   v := finance.fn_account_low_state((SELECT id::int FROM pg_temp.app_fx WHERE key = 'acc_sparkonto'), true);
   IF v->>'source' <> 'funding' OR NOT (v ? 'state' AND v ? 'on_date' AND v ? 'month') THEN
     RAISE EXCEPTION 'FAIL [7] p_alert_only, got %', v; END IF;
   RAISE NOTICE 'PASS [7] p_alert_only';
+END $$;
+
+-- [8] Schwelle warn = coverage_warn_factor x Puffer, Grenze exklusiv: ein Puffer-Urteil ohne Fehlbetrag mit Faktor genau
+--     tiefster Stand / Puffer ist noch ok, ein Faktor darueber macht es knapp (warn).
+DO $$
+DECLARE
+  v jsonb; v_id int; v_amt numeric; v_buf numeric;
+BEGIN
+  SELECT x.id INTO v_id FROM (SELECT id::int AS id FROM pg_temp.app_fx WHERE key LIKE 'acc\_%') x
+   WHERE finance.fn_account_low_state(x.id)->>'verdict' = 'buffer'
+     AND (finance.fn_account_low_state(x.id)->>'short_by')::numeric = 0
+     AND (finance.fn_account_low_state(x.id)->>'buffer')::numeric > 0
+     AND (finance.fn_account_low_state(x.id)->>'amount')::numeric > 0
+   ORDER BY x.id LIMIT 1;
+  IF v_id IS NULL THEN RAISE EXCEPTION 'SETUP [8] kein Fixture-Konto mit Puffer-Urteil ohne Fehlbetrag'; END IF;
+  v := finance.fn_account_low_state(v_id);
+  v_amt := (v->>'amount')::numeric; v_buf := (v->>'buffer')::numeric;
+  IF trim_scale(v_amt / v_buf) * v_buf <> v_amt THEN RAISE EXCEPTION 'SETUP [8] Verhaeltnis nicht exakt: % / %', v_amt, v_buf; END IF;
+
+  INSERT INTO core.config (category, key, value, package) VALUES ('finance', 'coverage_warn_factor', trim_scale(v_amt / v_buf)::text, 'finance')
+    ON CONFLICT (category, key) DO UPDATE SET value = EXCLUDED.value;
+  IF finance.fn_account_low_state(v_id)->>'state' IS DISTINCT FROM 'ok' THEN
+    RAISE EXCEPTION 'FAIL [8a] tiefster Stand = Faktor x Puffer -> ok, got %', finance.fn_account_low_state(v_id); END IF;
+  UPDATE core.config SET value = trim_scale(v_amt / v_buf + 1)::text WHERE category = 'finance' AND key = 'coverage_warn_factor';
+  IF finance.fn_account_low_state(v_id)->>'state' IS DISTINCT FROM 'warn' THEN
+    RAISE EXCEPTION 'FAIL [8b] tiefster Stand unter Faktor x Puffer -> warn, got %', finance.fn_account_low_state(v_id); END IF;
+  RAISE NOTICE 'PASS [8] warn-Schwelle Faktor x Puffer, Grenze exklusiv';
 END $$;
 
 ROLLBACK;

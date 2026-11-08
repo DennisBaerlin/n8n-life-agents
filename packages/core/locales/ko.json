@@ -225,7 +225,7 @@
   "core.desktop.stopped.next": "동의해요, Docker 켜기",
   "core.desktop.wait.title_fresh": "Docker를 켜는 중",
   "core.desktop.wait.title": "Docker가 시작되는 중",
-  "core.desktop.wait.text": "Docker가 응답할 때까지 기다리는 중이에요. 처음에는 1~2분 걸려요.",
+  "core.desktop.wait.text": "Docker가 응답할 때까지 기다리는 중이에요. 처음에는 1~2분 걸려요. 곧 Docker 창이 열려요. 그냥 닫아도 Docker는 계속 실행돼요. 거기서 로그인할 필요는 없어요.",
   "core.desktop.ready.title": "Docker가 이미 있어요. 함께 쓸게요",
   "core.desktop.ready.lead": "아무것도 설치하지 않아도 돼요. 앱은 옆에 자리를 잡고, 이미 실행 중인 것은 건드리지 않아요.",
   "core.desktop.ready.running": "{engine} 실행 중, 버전도 충분해요",

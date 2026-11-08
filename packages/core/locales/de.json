@@ -225,7 +225,7 @@
   "core.desktop.stopped.next": "Einverstanden, Docker starten",
   "core.desktop.wait.title_fresh": "Docker wird gestartet",
   "core.desktop.wait.title": "Docker startet",
-  "core.desktop.wait.text": "Warten, bis Docker antwortet. Das dauert beim ersten Mal ein bis zwei Minuten.",
+  "core.desktop.wait.text": "Warten, bis Docker antwortet. Das dauert beim ersten Mal ein bis zwei Minuten. Gleich öffnet sich ein Fenster von Docker. Du kannst es einfach schließen, Docker läuft trotzdem weiter. Anmelden musst du dich dort nicht.",
   "core.desktop.ready.title": "Docker ist schon da, wir nutzen es mit",
   "core.desktop.ready.lead": "Du musst nichts installieren. Die App legt sich daneben und fasst nichts an, was schon läuft.",
   "core.desktop.ready.running": "{engine} läuft und ist aktuell genug",

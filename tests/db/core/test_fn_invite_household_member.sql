@@ -17,6 +17,7 @@ DECLARE
   v_after  INT;
 BEGIN
   -- ---------- Fixture ----------
+  UPDATE core.config SET value = 'muster_haushalt_bot', default_value = 'your_bot' WHERE category = 'telegram' AND key = 'bot_username';
   INSERT INTO agent.core_contexts (name, description, agent_name, load_strategy, content, metadata)
   VALUES ('finance_profile', 'invite test fixture', 'finance_advisor', 'lazy', E'## fp',
           jsonb_build_object('managed_by','agent','protected', true, 'facts', jsonb_build_object()))
@@ -105,6 +106,10 @@ BEGIN
   IF (r->>'ok')::boolean THEN RAISE EXCEPTION 'FAIL invite [bereits gepairte Person erneut einladbar: %]', r; END IF;
   RAISE NOTICE 'PASS person-check [bereits gepairte Person abgelehnt]';
 
+  -- Bot-Name unbekannt: verstaendliche Ablehnung vor der Karte, kein Link auf einen fremden Bot
+  UPDATE core.config SET value = 'your_bot' WHERE category = 'telegram' AND key = 'bot_username';
+  r := agent.fn_check_household_invite('{"chat_id":"111","person_name":"Lisa"}'::jsonb);
+  IF (r->>'ok')::boolean IS DISTINCT FROM false OR r->>'reason' NOT LIKE '%bot%name%' THEN RAISE EXCEPTION 'FAIL Platzhalter nicht abgelehnt: %', r; END IF;
   RAISE NOTICE 'PASS fn_check_household_invite/fn_invite_household_member [alle Invarianten]';
 END $$;
 

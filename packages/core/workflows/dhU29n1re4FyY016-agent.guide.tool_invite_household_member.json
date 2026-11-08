@@ -382,7 +382,7 @@
                                                                                  {
                                                                                      "id":  "cd5ad36a-58a6-5252-ac92-344401e528e8",
                                                                                      "name":  "deep_link",
-                                                                                     "value":  "={{ \u0027https://t.me/\u0027 + ($(\u0027Load bot username\u0027).item.json.bot || \u0027your_bot\u0027) + \u0027?start=\u0027 + $(\u0027Run invite (atomic)\u0027).item.json.challenge }}",
+                                                                                     "value":  "={{ \u0027https://t.me/\u0027 + $(\u0027Load bot username\u0027).item.json.bot + \u0027?start=\u0027 + $(\u0027Run invite (atomic)\u0027).item.json.challenge }}",
                                                                                      "type":  "string"
                                                                                  },
                                                                                  {

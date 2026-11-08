@@ -54,7 +54,7 @@ function Build-InviteHouseholdMember {
         ,@('ok', 'true', 'boolean')
         ,@('person', "={{ `$('Run invite (atomic)').item.json.full_name }}", 'string')
         ,@('role', "={{ `$('Run invite (atomic)').item.json.role }}", 'string')
-        ,@('deep_link', "={{ 'https://t.me/' + (`$('Load bot username').item.json.bot || 'your_bot') + '?start=' + `$('Run invite (atomic)').item.json.challenge }}", 'string')
+        ,@('deep_link', "={{ 'https://t.me/' + `$('Load bot username').item.json.bot + '?start=' + `$('Run invite (atomic)').item.json.challenge }}", 'string')
         ,@('expires_at', "={{ `$('Run invite (atomic)').item.json.expires_at }}", 'string')
     )
 

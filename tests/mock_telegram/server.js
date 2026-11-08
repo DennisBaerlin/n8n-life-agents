@@ -76,6 +76,7 @@ const BOT_USER = { id: 7000000001, is_bot: true, first_name: 'MockBot', username
 // Antwort: leer = keine, nofield/string/float/negative/notok; stuck = der Upload aendert die Zahl nicht). Die Form-Regeln
 // folgen der Bot-API-Doku (InputProfilePhotoStatic), die Fehlertexte sind erfunden: das Verhalten des echten Telegram belegt
 // dieser Mock nicht.
+const menuButtons = {};
 const profile = { count: 0, odd: '', stuck: false };
 const ODD_PROFILE = { nofield: {}, string: { total_count: '0' }, float: { total_count: 0.5 }, negative: { total_count: -1 } };
 
@@ -127,6 +128,11 @@ function buildResult(method, body) {
   switch (method) {
     case 'getMe':
       return BOT_USER;
+    case 'setChatMenuButton':
+      menuButtons[String(body && body.chat_id)] = body && body.menu_button;
+      return true;
+    case 'getChatMenuButton':
+      return menuButtons[String(body && body.chat_id)] || { type: 'default' };
     case 'sendMessage':
       // Spiegelt die echte Bot-API: das gesendete Message-Objekt enthaelt auch reply_markup zurueck
       // (faithful, falls ein Test je die Node-Antwort statt der Aufzeichnung prueft).

@@ -885,7 +885,7 @@ _set_bot_menu_buttons() {
 }
 # _app_intro_announce <token> <chat> <lang> <core_loc> <listed> — einmalige Ankuendigung der Uebersicht mit Animation, nachdem
 #   der Knopf gesetzt ist. listed=1: der Chat hatte den Knopf schon, nur merken. Erst senden, dann merken: ein gescheiterter
-#   Versand kommt beim naechsten Menue-Lauf nach. Best-effort, nie fatal. Datei aus scripts/dev/render_app_intro.ps1.
+#   Versand kommt beim naechsten Menue-Lauf nach (rc 1, der Lauf zaehlt ihn als Fehlschlag). Datei aus scripts/dev/render_app_intro.ps1.
 _app_intro_announce() {
   local token="$1" tid="$2" lang="$3" core_loc="$4" listed="$5" due file caption
   due="$(pg_su_psql -X -tA -d "$N8N_DB_NAME" -c "SELECT core.fn_app_intro_pending('$tid')" 2>/dev/null || true)"
@@ -897,16 +897,39 @@ _app_intro_announce() {
     caption="$(jq -r '."core.app.intro_caption" // empty' "$core_loc/$lang.json" 2>/dev/null || true)"
     if ! tg_api_curl "$token" sendAnimation -fsS --max-time 60 -F "chat_id=$tid" -F "animation=@$file" --form-string "caption=$caption" >/dev/null 2>&1; then
       warn "Ankündigung der Übersicht nicht gesendet — nächster Menü-Lauf versucht es neu."
-      return 0
+      return 1
     fi
   fi
   pg_su_psql -X -tA -d "$N8N_DB_NAME" -c "SELECT core.fn_should_notify('app_intro', '$tid')" >/dev/null 2>&1 || true
   return 0
 }
 
+# _app_button_legacy <token> <merkliste> <ready> — einmalig beim ersten Lauf: Hatte ein Chat der alten Merkliste bei Telegram schon
+#   den Knopf, bleibt er (Bestand mit offener oder beim Update neuer Sektion). Nur einmal, sonst holte er sich den Knopf nach
+#   einem Reset zurueck. Der Marker liegt beim Ankuendigungs-Latch (Schluessel nicht numerisch, kann keinen Chat treffen).
+#   Ausgabe: proven | failed | none.
+_app_button_legacy() {
+  local token="$1" state="$2" ready="$3" due tid type rc=none
+  due="$(pg_su_psql -X -tA -d "$N8N_DB_NAME" -c "SELECT core.fn_app_intro_pending('legacy_checked')" 2>/dev/null || true)"
+  [ "$due" = t ] || { echo none; return 0; }
+  if [ "$ready" != true ] && [ -r "$state" ]; then
+    while IFS= read -r tid; do
+      printf '%s' "$tid" | grep -qE '^[0-9]{1,18}$' || continue
+      type="$({ curl_cfg url "${LIFEAGENTS_TELEGRAM_API:-https://api.telegram.org}/bot${token}/getChatMenuButton"; curl_cfg data "{\"chat_id\":${tid}}"; } |
+              curl_secret -fsS --max-time 10 -X POST -H 'content-type: application/json' 2>/dev/null | jq -r '.result.type // empty' 2>/dev/null || true)"
+      if [ "$type" = web_app ]; then rc=proven; break; fi
+      [ -n "$type" ] || rc=failed
+    done < "$state"
+  fi
+  if [ "$rc" = failed ]; then echo failed; return 0; fi
+  [ "$rc" != proven ] || pg_su_psql -X -tA -d "$N8N_DB_NAME" -c "SELECT core.fn_should_notify('app_button', 'ready')" >/dev/null 2>&1 || true
+  pg_su_psql -X -tA -d "$N8N_DB_NAME" -c "SELECT core.fn_should_notify('app_intro', 'legacy_checked')" >/dev/null 2>&1 || true
+  echo "$rc"
+}
+
 _set_bot_menu_buttons_run() {
   local token="$1" wh path url enabled audience screens ready prev=' ' rows tid role lang text tj uj body kind ok_n=0 reset_n=0
-  local state="${LIFEAGENTS_DIR:-/etc/lifeagents}/app-menu-chats" core_loc keep=' ' seen=' ' gen fails=0 listed
+  local state="${LIFEAGENTS_DIR:-/etc/lifeagents}/app-menu-chats" core_loc keep=' ' seen=' ' got=' ' gen fails=0 listed
   need_cmd jq || return 0
   # Generation VOR dem Lesen uebernehmen: was danach markiert wird, bleibt fuer den naechsten Lauf offen.
   gen="$(pg_su_psql -X -tA -d "$N8N_DB_NAME" -c "SELECT core.fn_menu_refresh_claim()->>'gen'" 2>/dev/null || true)"
@@ -930,7 +953,11 @@ _set_bot_menu_buttons_run() {
   case "$screens" in ''|*[!0-9]*) screens=0 ;; esac
   ready="$(printf '%s\n' "$rows" | awk -F'|' '$1=="cfg"{print $5}')"
   # Wer schon auf der Merkliste steht, hatte den Knopf vorher: keine Ankuendigung (Bestandsnutzer beim Update).
-  [ -r "$state" ] && prev=" $(tr '\n' ' ' < "$state")"
+  [ -r "$state" ] && prev=" $(tr '\n' ' ' < "$state") "
+  case "$(_app_button_legacy "$token" "$state" "$ready")" in
+    proven) ready=true ;;
+    failed) fails=$((fails + 1)); warn "Übersicht-Knopf: Bestand bei Telegram nicht prüfbar — neuer Versuch in etwa 10 Minuten." ;;
+  esac
   [ -n "$url" ] || [ "$enabled" != true ] || [ "$screens" -eq 0 ] || note "Übersicht-Knopf: keine https-WEBHOOK_URL bzw. kein INGRESS_ID_KEY — nur Befehlsmenüs."
   uj="$(jq -Rn --arg u "$url" '$u')"
   core_loc="${REPO_ROOT:-${LIFEAGENTS_LIB:-/usr/local/lib/lifeagents}}/packages/core/locales"
@@ -955,13 +982,15 @@ _set_bot_menu_buttons_run() {
     if _tg_set_menu_button "$token" "$body"; then
       if [ "$kind" = web_app ]; then
         ok_n=$((ok_n + 1))
+        got="${got}${tid} "
         case "$prev" in *" $tid "*) listed=1 ;; *) listed=0 ;; esac
-        _app_intro_announce "$token" "$tid" "$lang" "$core_loc" "$listed"
+        _app_intro_announce "$token" "$tid" "$lang" "$core_loc" "$listed" || fails=$((fails + 1))
       else
         reset_n=$((reset_n + 1))
       fi
     else
       fails=$((fails + 1))
+      case "$prev" in *" $tid "*) got="${got}${tid} " ;; esac
       warn "Übersicht-Knopf für einen Chat nicht gesetzt (Token/Netz/Chat?) — unkritisch, neuer Versuch in etwa 10 Minuten."
     fi
   done <<EOF
@@ -982,8 +1011,9 @@ EOF
     done < "$state"
   fi
   if [ -d "$(dirname "$state")" ]; then
+    # Nur Chats, die den Knopf wirklich haben: ein Chat ohne Knopf bekaeme sonst nie die Ankuendigung.
     # shellcheck disable=SC2086  # numerisch geprüfte ids, Leerzeichen-Liste -> bewusst aufgeteilt
-    { printf '%s\n' $seen $keep > "$state" && chmod 0600 "$state"; } 2>/dev/null || true
+    { printf '%s\n' $got $keep > "$state" && chmod 0600 "$state"; } 2>/dev/null || true
   fi
   if [ -n "$gen" ]; then
     pg_su_psql -X -tA -q -d "$N8N_DB_NAME" \

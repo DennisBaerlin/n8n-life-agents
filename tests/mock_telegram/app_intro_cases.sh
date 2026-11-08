@@ -53,7 +53,7 @@ reset_case; run de 1
 eq 'bestand: keine Animation' 0 "$(calls)"; eq 'bestand: gemerkt' 1 "$(marks)"
 
 reset_case; curl -sf "http://127.0.0.1:$PORT/__fail?method=sendAnimation" >/dev/null; run de 0
-eq 'fehler: Rueckgabe 0' 0 "$RC"; eq 'fehler: nicht gemerkt' 0 "$(marks)"
+eq 'fehler: Rueckgabe 1 (Lauf gilt als gescheitert)' 1 "$RC"; eq 'fehler: nicht gemerkt' 0 "$(marks)"
 LEAK="$OUT"
 
 # Fehlende Sprache: Englisch als Rueckfall
@@ -66,5 +66,58 @@ case "$OUT$LEAK$fallback_out" in
   *MARKERTOKENzz9*) fail 'schluessel: Ausgabe' 'Bot-Schluessel steht in der Ausgabe' ;;
   *) pass 'schluessel: Ausgabe' ;;
 esac
+
+# --- Ganzer Menue-Lauf: Merkliste, einmalige Ankuendigung, Bestandsnutzer ---------------------------------------------
+R="$W/r"; ETC="$W/etc"; L="$W/latch"
+mkdir -p "$R/packages/core/locales" "$R/packages/core/build/stickers" "$ETC" "$L"
+cp "$W/core/locales/"* "$R/packages/core/locales/"; cp "$W/core/build/stickers/"* "$R/packages/core/build/stickers/"
+printf 'WEBHOOK_URL=https://example.com/\n' > "$W/n8n.env"
+export REPO_ROOT="$R" LIFEAGENTS_DIR="$ETC" N8N_ENV_FILE="$W/n8n.env" LIFEAGENTS_MENU_LOCK="$W/menu.lock"
+LIST="$ETC/app-menu-chats"; READY="$W/ready"
+_app_path() { echo app-1; }
+pg_su_psql() {
+  printf '%s\n' "$*" >> "$SQL"
+  case "$*" in
+    *fn_menu_refresh_claim*) echo 5 ;;
+    *fn_app_button_ready*) printf 'cfg|true|household|1|%s\n111|owner|de||\n' "$(cat "$READY")" ;;
+    *fn_app_intro_pending*)
+      k="$(printf '%s' "$*" | sed -n "s/.*fn_app_intro_pending('\([^']*\)').*/\1/p")"
+      if [ -e "$L/$k" ]; then echo f; else echo t; fi ;;
+    *"fn_should_notify('app_intro'"*)
+      k="$(printf '%s' "$*" | sed -n "s/.*'app_intro', '\([^']*\)').*/\1/p")"; : > "$L/$k" ;;
+    *"fn_should_notify('app_button', 'ready')"*) echo true > "$READY" ;;
+  esac
+}
+full_reset() { : > "$SQL"; : > "$LOG"; rm -f "$L"/* "$LIST"; echo false > "$READY"; curl -sf "http://127.0.0.1:$PORT/__fail?method=sendAnimation&off=1" >/dev/null; }
+run_menu() { OUT="$( ( set -euo pipefail; _set_bot_menu_buttons_run "$TOKEN"; echo RC_REACHED ) 2>&1 )"; RC=$?; }
+webapp_calls() { local n; n="$(grep '"method":"setChatMenuButton"' "$LOG" | grep -c '"web_app"')"; printf '%s' "${n:-0}"; }
+finished() { grep -c "fn_menu_refresh_finish(5, $1)" "$SQL"; }
+on_list() { if grep -qx 111 "$LIST" 2>/dev/null; then echo ja; else echo nein; fi; }
+set_button() { curl -sf -H 'content-type: application/json' -d "{\"chat_id\":111,\"menu_button\":{\"type\":\"$1\"}}" "http://127.0.0.1:$PORT/bot$TOKEN/setChatMenuButton" >/dev/null; }
+
+full_reset; run_menu
+eq 'einrichtung-offen: Rueckgabe 0' 0 "$RC"; eq 'einrichtung-offen: kein Knopf' 0 "$(webapp_calls)"; eq 'einrichtung-offen: nicht auf der Merkliste' nein "$(on_list)"
+echo true > "$READY"; : > "$LOG"; run_menu
+eq 'fertig: Knopf' 1 "$(webapp_calls)"; eq 'fertig: genau eine Animation' 1 "$(calls)"; eq 'fertig: auf der Merkliste' ja "$(on_list)"
+: > "$LOG"; run_menu
+eq 'zweitlauf: keine zweite Animation' 0 "$(calls)"
+
+# Versand scheitert: Lauf zaehlt als gescheitert, der naechste holt nach
+full_reset; echo true > "$READY"; curl -sf "http://127.0.0.1:$PORT/__fail?method=sendAnimation" >/dev/null; run_menu
+eq 'versand-fehler: Auftrag bleibt offen' 1 "$(finished false)"
+curl -sf "http://127.0.0.1:$PORT/__fail?method=sendAnimation&off=1" >/dev/null; : > "$LOG"; run_menu
+eq 'versand-fehler: naechster Lauf holt nach' 1 "$(calls)"; eq 'versand-fehler: danach geschlossen' 1 "$(finished true)"
+
+# Bestand: alte Liste, Knopf bei Telegram nachweisbar, Einrichtung offen -> Knopf bleibt, keine Ankuendigung
+full_reset; printf '111\n' > "$LIST"; set_button web_app; : > "$LOG"; run_menu
+eq 'bestand-knopf: bleibt' 1 "$(webapp_calls)"; eq 'bestand-knopf: bereit gemerkt' true "$(cat "$READY")"; eq 'bestand-knopf: keine Animation' 0 "$(calls)"
+
+# Alte Liste ohne Knopf bei Telegram: kein Nachweis
+full_reset; printf '111\n' > "$LIST"; set_button commands; : > "$LOG"; run_menu
+eq 'bestand-ohne-knopf: kein Knopf' 0 "$(webapp_calls)"; eq 'bestand-ohne-knopf: nicht bereit' false "$(cat "$READY")"
+
+# Nachweis nur beim ersten Lauf: ein Reset nimmt den Knopf wirklich
+full_reset; : > "$L/legacy_checked"; printf '111\n' > "$LIST"; set_button web_app; : > "$LOG"; run_menu
+eq 'nach-reset: Knopf weg' 0 "$(webapp_calls)"; eq 'nach-reset: nicht bereit' false "$(cat "$READY")"
 
 exit "$fails"

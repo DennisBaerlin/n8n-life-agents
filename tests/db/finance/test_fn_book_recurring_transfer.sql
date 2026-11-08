@@ -322,7 +322,7 @@ BEGIN
   RAISE NOTICE 'PASS [before_opening: beide Richtungen, relativ, Durchreichen, Vorrang already_booked]';
 END $$;
 
--- Rueckgabe-Vertrag wie bei einer Zahlung: amount (gebucht, Kontowaehrung der Quelle) und plan_amount (laut Plan).
+-- Rueckgabe-Vertrag wie bei einer Zahlung: amount (gebucht) und plan_amount (laut Plan), Quell-seitig negativ wie rp.amount.
 DO $$
 DECLARE r jsonb; v_a int; v_b int; v_rp int;
 BEGIN
@@ -333,9 +333,9 @@ BEGIN
   v_rp := (r->>'recurring_payment_id')::int;
   r := finance.fn_book_recurring_occurrence(jsonb_build_object('recurring_payment_id',v_rp,
          'due_date',(CURRENT_DATE - 2)::text,'amount','250'));
-  IF (r->>'ok')::boolean IS DISTINCT FROM true OR (r->>'amount')::numeric IS DISTINCT FROM 250
-     OR (r->>'plan_amount')::numeric IS DISTINCT FROM 200 THEN
-    RAISE EXCEPTION 'FAIL book_recurring_transfer [amount 250 / plan_amount 200]: %', r; END IF;
+  IF (r->>'ok')::boolean IS DISTINCT FROM true OR (r->>'amount')::numeric IS DISTINCT FROM -250
+     OR (r->>'plan_amount')::numeric IS DISTINCT FROM -200 THEN
+    RAISE EXCEPTION 'FAIL book_recurring_transfer [amount -250 / plan_amount -200]: %', r; END IF;
   RAISE NOTICE 'PASS book_recurring_transfer [amount + plan_amount wie bei einer Zahlung]';
 END $$;
 

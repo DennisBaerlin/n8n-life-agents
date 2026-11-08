@@ -116,7 +116,7 @@ BEGIN
         v_extra := EXISTS (
                 SELECT 1 FROM finance.transactions t
                 WHERE t.recurring_payment_id IN (SELECT finance.fn_recurring_lineage(v_loan.recurring_payment_id))
-                  AND t.recurring_due_date > (v_date - make_interval(months => v_months::int))::date
+                  AND t.recurring_due_date > (v_date - v_months * interval '1 month')::date
                   AND t.recurring_due_date <= v_date + 14)
             AND NOT EXISTS (
                 SELECT 1 FROM finance.fn_recurring_due_open(v_date + 14) o

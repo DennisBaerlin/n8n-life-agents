@@ -9,7 +9,8 @@ BEGIN
   IF agent.fn_parse_decimal_or_null('-3') IS DISTINCT FROM -3 THEN
     RAISE EXCEPTION 'FAIL parse_decimal [-3]: %', agent.fn_parse_decimal_or_null('-3'); END IF;
   IF agent.fn_parse_decimal_or_null('1.234,5') IS NOT NULL OR agent.fn_parse_decimal_or_null('etwa 5') IS NOT NULL
-     OR agent.fn_parse_decimal_or_null('5 %') IS NOT NULL THEN
+     OR agent.fn_parse_decimal_or_null('5 %') IS NOT NULL OR agent.fn_parse_decimal_or_null('NaN') IS NOT NULL
+     OR agent.fn_parse_decimal_or_null('Infinity') IS NOT NULL OR agent.fn_parse_decimal_or_null('1e3') IS NOT NULL THEN
     RAISE EXCEPTION 'FAIL parse_decimal [unlesbar -> NULL]'; END IF;
   IF agent.fn_parse_decimal_or_null('') IS NOT NULL OR agent.fn_parse_decimal_or_null(NULL) IS NOT NULL THEN
     RAISE EXCEPTION 'FAIL parse_decimal [leer -> NULL]'; END IF;

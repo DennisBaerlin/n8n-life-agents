@@ -12,7 +12,8 @@ RETURNS numeric LANGUAGE plpgsql IMMUTABLE AS $$
 DECLARE
     v_txt TEXT := replace(replace(btrim(COALESCE(p_raw, '')), ' ', ''), ',', '.');
 BEGIN
-    IF v_txt = '' OR NOT pg_input_is_valid(v_txt, 'numeric') THEN RETURN NULL; END IF;
+    -- nur Ziffern mit hoechstens einem Punkt: pg_input_is_valid nimmt auch NaN/Infinity (NaN sortiert ueber jeder Zahl)
+    IF v_txt !~ '^[+-]?([0-9]+[.]?[0-9]*|[.][0-9]+)$' THEN RETURN NULL; END IF;
     RETURN v_txt::numeric;
 END;
 $$;

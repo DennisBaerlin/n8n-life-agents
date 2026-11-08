@@ -290,4 +290,19 @@ BEGIN
   RAISE NOTICE 'PASS close [12 unbekanntes outcome -> ok:false]';
 END $$;
 
+-- (13) outcome mit Leerzeichen (" completed ") gilt als completed, nicht still als abgebrochen.
+DO $$
+DECLARE v_res JSONB; v_g INT; v_a INT;
+BEGIN
+  v_a := (finance.fn_create_account('{"name":"__csg13 konto__","account_type":"cash"}'::jsonb)->>'account_id')::int;
+  INSERT INTO finance.savings_goals (name, target_amount, target_date) VALUES ('__csg13 leer__', 1000, current_date + 200) RETURNING id INTO v_g;
+  INSERT INTO finance.transactions (account_id, amount, transaction_date, category, savings_goal_id, group_id, description)
+  VALUES (v_a, 300, CURRENT_DATE - 5, 'transfer', v_g, gen_random_uuid(), 'Beispielreserve');
+  v_res := finance.fn_close_savings_goal(jsonb_build_object('savings_goal_name', '__csg13 leer__', 'outcome', ' completed ', 'force', true));
+  IF (v_res->>'ok')::boolean IS DISTINCT FROM true
+     OR (SELECT status::text FROM finance.savings_goals WHERE id = v_g) IS DISTINCT FROM 'completed' THEN
+    RAISE EXCEPTION 'FAIL close [13 outcome mit Leerzeichen]: % / %', v_res, (SELECT status FROM finance.savings_goals WHERE id = v_g); END IF;
+  RAISE NOTICE 'PASS close [13 " completed " -> completed]';
+END $$;
+
 ROLLBACK;

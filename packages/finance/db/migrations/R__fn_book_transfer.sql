@@ -64,7 +64,7 @@ BEGIN
     IF (v_from_amt IS NULL AND v_from_raw IS NOT NULL)
        OR (v_to_amt IS NULL AND NULLIF(btrim(p->>'to_amount'), '') IS NOT NULL) THEN
         RETURN jsonb_build_object('ok', false,
-            'reason', 'The amount "' || COALESCE(v_from_raw, p->>'to_amount') || '" is not readable - give it as a plain number.');
+            'reason', 'The amount "' || CASE WHEN v_from_amt IS NULL AND v_from_raw IS NOT NULL THEN v_from_raw ELSE p->>'to_amount' END || '" is not readable - give it as a plain number.');
     END IF;
     IF v_from_amt IS NULL OR v_from_amt <= 0 THEN
         RETURN jsonb_build_object('ok', false,

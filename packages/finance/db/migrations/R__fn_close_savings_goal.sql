@@ -35,7 +35,7 @@ CREATE OR REPLACE FUNCTION finance.fn_close_savings_goal(p jsonb)
 RETURNS jsonb LANGUAGE plpgsql AS $$
 DECLARE
     v_name      TEXT := p->>'savings_goal_name';
-    v_completed BOOLEAN := lower(COALESCE(NULLIF(p->>'outcome', ''), 'cancelled')) = 'completed';
+    v_completed BOOLEAN := lower(COALESCE(NULLIF(btrim(p->>'outcome'), ''), 'cancelled')) = 'completed';
     v_force     BOOLEAN := COALESCE(NULLIF(p->>'force', '')::boolean, false);
     v_status    finance.goal_status;
     v_goal      finance.savings_goals%ROWTYPE;

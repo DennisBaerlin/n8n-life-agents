@@ -87,7 +87,7 @@ function Build-SetHolding {
         # nur wenn adoptable, sonst das Standard-Symbol des Tickers; den Kurs nur zu einem tatsaechlich gepruefen Symbol.
         (New-HitlLine 'finance.label.quote_symbol'    "((($S.provider_symbol || $Y.adoptable) && $Y.market_price) ? 'finance.tpl.quote_symbol_price' : 'finance.tpl.quote_symbol_plain')" -Kind tpl -If $quoted -Params @{
             symbol = "($S.provider_symbol || ($Y.adoptable ? $Y.provider_symbol : ($S.symbol || $R.symbol)))"
-            price  = (New-HitlValue -Kind money -Value "$Y.market_price" -Currency "($Y.currency || $S.quote_currency || $R.holding_currency || 'EUR')") })
+            price  = (New-HitlValue -Kind money -Value "$Y.market_price" -Currency "($Y.currency || $S.quote_currency || $R.holding_currency)") })
         (New-HitlLine 'finance.label.quote_currency'  "$S.quote_currency" -If "$S.quote_currency")
         (New-HitlNote -Key 'finance.note.quote_symbol_unverified' -If "$quoted && !$Y.adoptable")
         (New-HitlNote -Key 'finance.note.quote_symbol_foreign' -If "$quoted && $Y.foreign_listing && $Y.plausible" -Params @{ currency = "$Y.currency" })

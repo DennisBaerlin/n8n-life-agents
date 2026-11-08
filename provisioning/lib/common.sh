@@ -128,8 +128,21 @@ env_upsert() {
   local tmp; tmp="$(mktemp "${file}.XXXXXX")"
   if [ -f "$file" ]; then grep -vE "^${key}=" "$file" > "$tmp" || true; fi
   printf '%s=%s\n' "$key" "$val" >> "$tmp"
-  cat "$tmp" > "$file"
-  rm -f "$tmp"
+  _env_swap_in "$tmp" "$file"
+}
+
+# _env_swap_in <tmp> <file> — die fertige Temp-Datei per mv an die Stelle von <file> setzen (rename ist atomar; ein
+# `cat tmp > file` schnitte bei einem Abbruch mittendrin die Env-Datei ab). mktemp legt 0600 root an -> Modus + Besitzer der
+# alten Datei uebernehmen; fehlt sie, gilt die umask wie bei einer frisch angelegten Datei.
+_env_swap_in() {
+  local tmp="$1" file="$2"
+  if [ -e "$file" ]; then
+    chmod --reference="$file" "$tmp"
+    chown --reference="$file" "$tmp" 2>/dev/null || true
+  else
+    chmod "$(printf '%04o' $((0666 & ~$(umask))))" "$tmp"
+  fi
+  mv -f "$tmp" "$file"
 }
 
 # read_env_value <file> <key>  → value on stdout, or non-zero if absent. Used to
@@ -167,8 +180,7 @@ env_remove_key() {
   [ -f "$file" ] || return 0
   tmp="$(mktemp "${file}.XXXXXX")"
   grep -vE "^${key}=" "$file" > "$tmp" || true
-  cat "$tmp" > "$file"
-  rm -f "$tmp"
+  _env_swap_in "$tmp" "$file"
 }
 
 # ---- /etc/lifeagents secret namespace (Phase 5) -------------------------------------------------
@@ -786,7 +798,6 @@ curl_cfg() {
 # curl_secret [curl-args...] — curl mit der Config von STDIN (`-K -`): URL mit Token, Header mit Keys
 # und Request-Bodies mit Passwoertern stehen so NIE in der Prozessliste (/proc/<pid>/cmdline ist fuer
 # jeden lokalen Nutzer lesbar). Aufrufer: `{ curl_cfg url "…"; curl_cfg header "…"; } | curl_secret -fsS`.
-# Muster: release_inputs._http_status_secret (600-Config-Datei) — hier ohne Temp-Datei via stdin.
 curl_secret() { curl -K - "$@"; }
 
 # --- n8n-Gesundheit ------------------------------------------------------------------------------

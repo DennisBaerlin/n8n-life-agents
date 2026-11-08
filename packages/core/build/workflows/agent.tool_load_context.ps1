@@ -4,7 +4,7 @@
 # --- agent.tool_load_context (gemeinsamer System-Prompt-Bauer) --------------
 # Deterministischer Sub (KEIN Agent/LLM): jeder Agent-Workflow ruft ihn VOR dem AI-Node. Inputs:
 # agent_name, include_manifest. EINE Postgres-Query: static-concat der static-Docs aus
-# agent.core_contexts (global zuerst, dann agent-spezifisch) + optional das Lazy-Manifest
+# agent.core_contexts (global_instructions, dann agent-spezifisch, dann übrige agentlose) + optional das Lazy-Manifest
 # (Name+Description der lazy-Contexts). Rueckgabe: system_prompt. Von den Agenten per Name aus dem
 # State referenziert ($LoadContextId, kein ID-Literal). Die Assembly-SQL lebt hier im Workflow,
 # nicht in der DB (Verweis in packages/core/db/agent.core_init.sql).
@@ -64,47 +64,19 @@ SELECT COALESCE((SELECT static_part FROM static_docs), '')
         ,@('system_prompt', "={{ `$json.system_prompt }}", 'string')
     )
 
-    $stickyManifest = [ordered]@{
-        parameters  = [ordered]@{
-            content = @'
-## include_manifest
+    $stickyManifest = Build-Sticky 'Doc: include_manifest' @(-40, 180) -Header 'Ablauf' `
+        'include_manifest' `
+        ("false -> nur die Static-Docs, KEIN Lazy-Manifest (Agenten ohne load_context-Tool, z. B. der Orchestrator).`n" +
+         "sonst / true -> Static-Docs + Lazy-Manifest.`n`n" +
+         "Die Assembly-SQL lebt hier im Workflow, nicht in der DB (Zeiger in packages/core/db/agent.core_init.sql).") `
+        -Height 240 -Width 380
 
-**Aufbau des system_prompt (Inputs: agent_name, include_manifest):**
-- `false` -> nur Static-Docs (global + agent_instructions), KEIN Lazy-Manifest. Fuer Agenten OHNE load_context-Tool (Orchestrator/Router).
-- sonst / `true` -> Static-Docs + Lazy-Manifest (z. B. finance).
-
-Die Assembly-SQL lebt hier im Workflow, nicht in der DB (siehe Verweis in core_init.sql).
-'@
-            height  = 240
-            width   = 380
-            color   = 4
-        }
-        type        = 'n8n-nodes-base.stickyNote'
-        typeVersion = 1
-        position    = @(-40, 180)
-        id          = (New-Id)
-        name        = 'Doc: include_manifest'
-    }
-
-    $stickyOverview = [ordered]@{
-        parameters  = [ordered]@{
-            content = @'
-## agent.tool_load_context
-
-Gemeinsamer Sub-Workflow: baut den System-Prompt eines Agenten. Inputs: agent_name, include_manifest.
-EINE Postgres-Query: static-concat der static-Docs aus agent.core_contexts (global zuerst, dann agent-spezifisch) + optional das Lazy-Manifest (Name+Description der lazy-Contexts; OHNE die physischen per_user-Zeilen '<base>__<person_id>' anderer Personen — agent.fn_is_per_user_row; gelesen wird per Basisname + eigener chat_id). Rueckgabe: system_prompt.
-Wird von jedem Agent-Workflow VOR dem AI-Node aufgerufen. Sichtbarkeit = (load_strategy x agent_name) -> siehe CLAUDE.md Vier-Schichten-Memory.
-'@
-            height  = 240
-            width   = 420
-            color   = 4
-        }
-        type        = 'n8n-nodes-base.stickyNote'
-        typeVersion = 1
-        position    = @(-40, -180)
-        id          = (New-Id)
-        name        = 'Doc: Überblick'
-    }
+    $stickyOverview = Build-Sticky 'Doc: Überblick' @(-40, -180) -Header 'Ablauf' `
+        'agent.tool_load_context' `
+        ("Gemeinsamer Sub-Workflow, KEIN LLM: baut den System-Prompt eines Agenten. Inputs: agent_name, include_manifest. Aufruf durch jeden Agent-Workflow VOR dem AI-Node.`n" +
+         "EINE Postgres-Query: Static-Docs aus agent.core_contexts, sortiert global_instructions, dann die Docs dieses Agenten, dann die übrigen agentlosen Docs (je nach Name); danach optional das Lazy-Manifest (Name + Description der lazy-Contexts; ohne die physischen per_user-Zeilen '<base>__<person_id>' anderer Personen, agent.fn_is_per_user_row — gelesen wird per Basisname + eigener chat_id). Rückgabe: system_prompt.`n" +
+         "Sichtbarkeit = load_strategy x agent_name (Frontmatter-Schema: docs/package-contract.md §3.1).") `
+        -Height 240 -Width 420
 
     $nodes = @($start, $load, $return, $stickyManifest, $stickyOverview)
     $conns = [ordered]@{

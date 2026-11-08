@@ -4,6 +4,7 @@
 # Usage:  .\scripts\dev\substrate_reservation_test.ps1
 # Exit-Code = Anzahl Fehler.
 $ErrorActionPreference = 'Stop'
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $repo = git -C $PSScriptRoot rev-parse --show-toplevel
 $sandbox = Join-Path $env:TEMP ("substrate_reservation_" + [guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Force $sandbox | Out-Null

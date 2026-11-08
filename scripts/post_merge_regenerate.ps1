@@ -12,6 +12,7 @@
 # Test: scripts/dev/post_merge_regenerate_test.ps1.
 param([string[]]$Files)
 $ErrorActionPreference = 'Stop'
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 
 function Get-RegenerateTargets([string[]]$Changed) {
     $norm = @($Changed | Where-Object { $_ } | ForEach-Object { $_ -replace '\\', '/' })

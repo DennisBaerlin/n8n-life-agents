@@ -49,7 +49,7 @@ function Build-BookSavingsReservation {
     $summary = New-HitlSummary -Pos @(1760, 0) -Title 'finance.hitl.book_savings_reservation' -LinesExpr $wg.CardLinesExpr -ApproveKeyExpr $wg.ApproveKeyExpr -Lines @(
         (New-HitlLine 'finance.label.savings_goal'    "$S.savings_goal_name")
         (New-HitlLine 'finance.label.account'         "$S.account_name")
-        (New-HitlLine 'finance.label.reserved_amount' "$S.amount" -Kind money -Currency "($A.is_depot ? 'EUR' : $A.currency)")
+        (New-HitlLine 'finance.label.reserved_amount' "$S.amount" -Kind money -Currency "($A.is_depot ? 'EUR' : $A.currency)" -EurByModel)  # Depot-Zuordnung ist EUR (fn_goal_earmark_account_types), Saldo-Konto Kontowaehrung
         (New-HitlNote -KeyExpr "($A.is_depot ? 'finance.note.reserve_fixed' : 'finance.note.earmark_balance')")
     )
 

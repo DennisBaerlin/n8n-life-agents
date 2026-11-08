@@ -23,7 +23,8 @@
 --   bei leerer Eingabe DB-abgeleitet), interest_portion, principal_amount, remaining_debt, matched_due_date, loan_status} (Post-State: neue Restschuld
 --   NACH der Tilgung + Kredit-Status, in derselben Transaktion gelesen; matched_due_date = gestempeltes Vorkommen
 --   oder null).
---   Korrigierbarer Fall (Ueberzahlung/Unterzahlung/nicht-positive Rate/Vorkommen schon gebucht) ->
+--   Korrigierbarer Fall (Ueberzahlung/Unterzahlung/nicht-positive Rate/Vorkommen schon gebucht/Belastungskonto in
+--   anderer Waehrung als das Kreditkonto, fn_loan_debit_currency_reason) ->
 --   {ok:false, reason, ...betraege} OHNE Write (kein RAISE -> kein Owner-Alert). Bei Ueberzahlung wird die exakte
 --   Abloesesumme (payoff_amount = Restschuld + Zins) mitgegeben, damit der Agent sie anbieten kann.
 -- ============================================================
@@ -61,7 +62,9 @@ BEGIN
 
     -- Korrigierbar (Audit Paket 2, Kontotyp): die Rate zahlt ein Geld-Konto, nie ein Depot oder ein Kreditkonto
     -- (sonst Backstop-RAISE mit Owner-Alarm bzw. still erhoehte Restschuld eines anderen Kredits).
-    v_reason := finance.fn_bookable_account_reason(v_debit_acc);
+    v_reason := COALESCE(finance.fn_bookable_account_reason(v_debit_acc),
+                         -- debit_account_id kommt aus dem Payload: Rate ist in Kreditwaehrung
+                         finance.fn_loan_debit_currency_reason(v_debit_acc, v_loan_acc));
     IF v_reason IS NOT NULL THEN
         RETURN jsonb_build_object('ok', false, 'reason', v_reason);
     END IF;

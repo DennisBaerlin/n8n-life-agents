@@ -54,13 +54,14 @@ function Build-Pg {
     # (mit Cast: (($1::jsonb)->>'feld')::numeric) bzw. fn(... $1::jsonb).
     # Begruendung: ein JSON-Objekt ist nie leer und splittet nie -> kein $1-Drop / Parameter-Shift
     # (siehe CLAUDE.md Build-Gotchas). Loest Sentinel + positionale Komma-Parameter komplett ab.
-    param([string]$Name, [int[]]$Pos, [string]$Query, $Params = $null)
+    # -Cred: eigenes Credential statt $CRED_POSTGRES (RO-Reads); -ContinueOnError: DB-Fehler bricht den Lauf nicht (onError continueRegularOutput).
+    param([string]$Name, [int[]]$Pos, [string]$Query, $Params = $null, $Cred = $null, [switch]$ContinueOnError)
     $opts = @{}
     if ($null -ne $Params -and $Params.Count -gt 0) {
         $pairs = foreach ($k in $Params.Keys) { "${k}: " + $Params[$k] }
         $opts = [ordered]@{ queryReplacement = '={{ JSON.stringify({ ' + ($pairs -join ', ') + ' }) }}' }
     }
-    [ordered]@{
+    $node = [ordered]@{
         parameters = [ordered]@{
             operation = 'executeQuery'
             query = $Query
@@ -71,8 +72,10 @@ function Build-Pg {
         position = $Pos
         id = (New-Id)
         name = $Name
-        credentials = @{ postgres = $CRED_POSTGRES }
     }
+    if ($ContinueOnError) { $node['onError'] = 'continueRegularOutput' }
+    $node['credentials'] = @{ postgres = $(if ($null -ne $Cred) { $Cred } else { $CRED_POSTGRES }) }
+    return $node
 }
 
 # Personen-Feld eines Write-Tools aufloesen (Name/Vorname/Alias -> person_id-Slug) — der EINE Baustein aller
@@ -819,8 +822,9 @@ function ConvertTo-HitlParams([hashtable]$Params) {
 # bewusst markiert sein (vorher zeigten ~20 Karten Fremdwaehrungs-Betraege still als Euro).
 function Assert-HitlCurrency([string]$Currency, [bool]$EurByModel, [string]$Ctx) {
     if ([string]::IsNullOrWhiteSpace($Currency)) { throw "${Ctx}: kind money braucht -Currency <Zeilen-Waehrung>" }
-    if ($Currency.Trim() -eq "'EUR'" -and -not $EurByModel) {
-        throw "${Ctx}: festes 'EUR' — Waehrung aus der Zeile (-Currency <expr>) oder, wenn das Datenmodell EUR fuehrt, -EurByModel"
+    # Auch zusammengesetzte Ausdruecke ("(x || 'EUR')", "(c ? 'EUR' : y)"): jedes quotierte EUR-Literal umgeht sonst das Assert.
+    if ($Currency -match "['""]EUR['""]" -and -not $EurByModel) {
+        throw "${Ctx}: festes 'EUR' in '$Currency' — Waehrung aus der Zeile (-Currency <expr>) oder, wenn das Datenmodell EUR fuehrt, -EurByModel"
     }
 }
 function New-HitlValue {

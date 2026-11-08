@@ -471,7 +471,7 @@ main() {
   # Fail fast if a template is missing: render_template dies inside a pipeline subshell,
   # which the `if … | write_if_changed` callers would otherwise misread as "unchanged".
   local t
-  for t in n8n.env.tpl n8n.service.tpl Caddyfile.tpl lifeagents.tpl lifeagents-firewall.service.tpl n8n-firewall.conf.tpl lifeagents-llm-gateway.service.tpl \
+  for t in n8n.env.tpl n8n.service.tpl Caddyfile.tpl lifeagents.tpl lifeagents-firewall.service.tpl n8n-firewall.conf.tpl firewall.nft.tpl lifeagents-llm-gateway.service.tpl \
            lifeagents-update-check.service.tpl lifeagents-update-check.timer.tpl lifeagents-update-run.service.tpl lifeagents-update-run.timer.tpl; do
     [ -f "$TEMPLATE_DIR/$t" ] || die "Template fehlt: $TEMPLATE_DIR/$t (unvollständiges Paket)."
   done
@@ -491,6 +491,11 @@ main() {
   # install_postgres/install_n8n irgendetwas tauschen (upgrade_guard.sh). Ein normales Update ueberspringt das.
   if upgrade_detect; then
     ui_step 'Update absichern (Datenbank-Sicherung)' backup
+    # Verbund: neue Images ZUERST laden — scheitert der Pull, bricht das Update ab, bevor n8n angehalten wird.
+    if rt_is_compose; then
+      rt_stack_pull postgres n8n gateway \
+        || die "Die neuen Images ließen sich nicht laden (Netz oder Platz?) — Update abgebrochen, es wurde nichts angehalten oder getauscht."
+    fi
     upgrade_prepare
     ui_step_done
   fi
@@ -809,12 +814,12 @@ ${_next}
 EOF
 }
 
-# install_cli — die `lifeagents`-Admin-CLI nach /usr/local/bin legen + den Runtime-Baum nach
-# /usr/local/lib/lifeagents spiegeln, damit `lifeagents update/doctor/uninstall` ohne Netz laufen
-# (Muster `openclaw <verb>`/`rustup <verb>`). Gespiegelt wird der gesamte provisioning/-Baum OHNE
-# install.sh (der Wegwerf-Bootstrap gehoert NICHT in die Runtime) + packages/ (REPO_ROOT-relativ,
-# damit der gespiegelte provision.sh self-contained bleibt). Idempotent: write_if_changed schreibt
-# die CLI nur bei Aenderung; der Baum wird je Lauf frisch gespiegelt (atomarer Swap je Top-Eintrag).
+# install_cli — die `lifeagents`-Admin-CLI nach /usr/local/bin legen (Verbund: <Baum>/bin im Volume rt_tree) + den
+# Runtime-Baum nach lifeagents_runtime_dir (Standard /usr/local/lib/lifeagents) spiegeln, damit
+# `lifeagents update/doctor/uninstall` ohne Netz laufen (Muster `openclaw <verb>`/`rustup <verb>`). Gespiegelt wird
+# der gesamte provisioning/-Baum OHNE install.sh (der Wegwerf-Bootstrap gehoert nicht in die Runtime) + packages/
+# (REPO_ROOT-relativ, damit der gespiegelte provision.sh self-contained bleibt) + der Marker VERSION. Die CLI schreibt
+# write_if_changed nur bei Aenderung; der Baum wird je Lauf frisch gespiegelt (atomarer Swap je Top-Eintrag).
 install_cli() {
   local libdir bindir="/usr/local/bin"
   libdir="$(lifeagents_runtime_dir)"   # EINE Adresse (common.sh) — auch fuer den Erfolgs-Marker VERSION unten

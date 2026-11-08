@@ -1,6 +1,9 @@
 # /etc/n8n/n8n.env — rendered by provisioning (chmod 640 root:n8n). DO NOT hand-edit
 # secrets: the provisioning core generates them ONCE and preserves them on re-run.
 # systemd EnvironmentFile syntax: plain KEY=value, no quoting, no shell expansion.
+#
+# This file is re-rendered from this template on EVERY run: hand edits are lost. Put your own overrides into
+# /etc/lifeagents/core.env instead (the n8n unit reads it after this file, so its entries win).
 
 # --- secret (generated once; changing it makes ALL stored credentials undecryptable) ---
 N8N_ENCRYPTION_KEY=@@N8N_ENCRYPTION_KEY@@

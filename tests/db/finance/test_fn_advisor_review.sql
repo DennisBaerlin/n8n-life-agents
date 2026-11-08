@@ -1360,4 +1360,36 @@ BEGIN
 END $$;
 ROLLBACK TO SAVEPOINT order_ending;
 
+-- ---------- (FX) Wechselkurs-Alter: fx_rate_stale:<waehrung> ----------
+-- Juengster EUR-Kurs einer aktiven Fremdwaehrung aelter als finance.fx_stale_days (Default 7) -> Staleness-Hinweis;
+-- frischer Kurs -> keiner; Waehrung ganz ohne Kurs -> nur data_quality (kein fx_rate_stale).
+SAVEPOINT fx_stale;
+DO $$
+DECLARE r jsonb;
+BEGIN
+  PERFORM finance.fn_ensure_currency('USD');
+  PERFORM finance.fn_ensure_currency('CHF');
+  DELETE FROM finance.fx_rates WHERE quote_currency IN ('USD', 'CHF');
+  INSERT INTO finance.accounts (name, account_type, currency, status) VALUES ('__fxs_usd__', 'cash', 'USD', 'active'),
+                                                                              ('__fxs_chf__', 'cash', 'CHF', 'active');
+  INSERT INTO finance.fx_rates (base_currency, quote_currency, rate, as_of) VALUES ('EUR', 'USD', 1.1, current_date - 30),
+                                                                                    ('EUR', 'USD', 1.1, current_date - 10);
+  r := finance.fn_advisor_review('finance');
+  IF NOT EXISTS (SELECT 1 FROM jsonb_array_elements(r->'alerts') a
+                 WHERE a->>'metric_key' = 'fx_rate_stale:USD' AND a->>'kind' = 'staleness'
+                   AND (a->>'value')::numeric = 10 AND (a->>'target')::numeric = 7
+                   AND a->'msg'->0->>'value' = 'finance.advisor.fx_rate_stale'
+                   AND a->'msg'->0->'params'->>'currency' = 'USD') THEN
+    RAISE EXCEPTION 'FAIL [FX stale]: fx_rate_stale:USD (10 Tage, Schwelle 7) fehlt (alerts=%)', r->'alerts'; END IF;
+  IF EXISTS (SELECT 1 FROM jsonb_array_elements(r->'alerts') a WHERE a->>'metric_key' = 'fx_rate_stale:CHF') THEN
+    RAISE EXCEPTION 'FAIL [FX stale]: CHF ohne jeden Kurs gehoert zu data_quality, nicht fx_rate_stale'; END IF;
+
+  INSERT INTO finance.fx_rates (base_currency, quote_currency, rate, as_of) VALUES ('EUR', 'USD', 1.1, current_date - 2);
+  r := finance.fn_advisor_review('finance');
+  IF EXISTS (SELECT 1 FROM jsonb_array_elements(r->'alerts') a WHERE a->>'metric_key' LIKE 'fx_rate_stale:%') THEN
+    RAISE EXCEPTION 'FAIL [FX fresh]: Kurs 2 Tage alt darf nicht melden (alerts=%)', r->'alerts'; END IF;
+  RAISE NOTICE 'PASS [FX: Kurs 10 Tage alt -> fx_rate_stale:USD; frisch -> nichts; ohne Kurs -> nicht hier]';
+END $$;
+ROLLBACK TO SAVEPOINT fx_stale;
+
 ROLLBACK;

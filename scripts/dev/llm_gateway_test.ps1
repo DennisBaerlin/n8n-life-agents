@@ -35,6 +35,7 @@ $OutputEncoding = $Utf8NoBom
 $RepoRoot = git -C $PSScriptRoot rev-parse --show-toplevel
 
 . "$PSScriptRoot\test_n8n_state.ps1"
+. "$PSScriptRoot\..\lib\dotenv.ps1"
 $conn = Get-TestN8nConnection
 $Container = $conn.Container
 
@@ -296,7 +297,7 @@ try {
     $envFile = Join-Path $RepoRoot '.env'
     $realKey = $null
     if (Test-Path $envFile) {
-        $line = Get-Content $envFile | Where-Object { $_ -match '^\s*TEST_ANTHROPIC_API_KEY=' } | Select-Object -First 1
+        $line = Read-DotEnvLines $envFile | Where-Object { $_ -match '^\s*TEST_ANTHROPIC_API_KEY=' } | Select-Object -First 1
         if ($line) { $realKey = ($line -split '=', 2)[1].Trim() }
     }
     if (-not $realKey) { Skip 'TEST_ANTHROPIC_API_KEY fehlt in .env' }

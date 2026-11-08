@@ -45,7 +45,8 @@ $ReleasePaths = @('provisioning', 'packages', '.gitattributes')
 $SecretPathRegex = '(?i)((^|/)(\.env|\.local/|\.claude/|\.git/)|\.(key|pem)$|(^|/)id_rsa)'
 
 # --- .env laden (gleiche Mechanik wie die uebrigen scripts/-Treiber) ---------
-Get-Content "$RepoRoot\.env" | ForEach-Object {
+. "$PSScriptRoot\lib\dotenv.ps1"
+Read-DotEnvLines "$RepoRoot\.env" | ForEach-Object {
     if ($_ -match '^\s*([^#\s][^=]*)=(.*)$') {
         Set-Variable -Name $Matches[1].Trim() -Value $Matches[2].Trim() -Scope Script
     }

@@ -1,4 +1,4 @@
-#Requires -Version 5.1
+﻿#Requires -Version 5.1
 # Contract-Smoke fuer externe APIs (A4b). Kein LLM, kein DB-Write -- prueft NUR, dass die
 # Antwort-Schemata externer Integrationen noch dem entsprechen, was unsere Workflows erwarten.
 # Hintergrund: cron_refresh_fx_rates -> agent.fn_upsert_fx_rates liest p->'rates'->>CCY als

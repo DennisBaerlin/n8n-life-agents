@@ -79,10 +79,5 @@ DROP TRIGGER IF EXISTS trg_guide_learn_watermark_touch ON agent.guide_learn_wate
 CREATE TRIGGER trg_guide_learn_watermark_touch BEFORE UPDATE ON agent.guide_learn_watermark
     FOR EACH ROW EXECUTE FUNCTION agent.touch_updated_at();
 
--- FMEA-Backstop-GRANT (Muster agent.guide_init.sql): der Guide ist ein CORE-Agent -> Lesepfade laufen
--- unter core_ro. No-op falls core_ro (noch) fehlt (Init-Phase < util_create_core_ro).
-DO $$ BEGIN
-    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'core_ro') THEN
-        GRANT SELECT ON agent.guide_learn_candidates, agent.guide_learn_watermark TO core_ro;
-    END IF;
-END $$;
+-- Kein Grant an core_ro: Vorschlaege tragen Wortlaut zu Personen; Lesen/Schreiben nur ueber die Lern-fns
+-- (Erlaubnisliste in util_create_core_ro.sql).

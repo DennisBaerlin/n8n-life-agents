@@ -318,9 +318,8 @@ WHERE NOT EXISTS (
 -- ============================================================
 -- GRANTS (Paket-Isolation, B3): der Monitor-Agent liest seine Trigger/Observations ueber den
 -- Frei-SQL-Pfad unter der CORE-HOST-Leserolle core_ro (nicht mehr finance_ro — das ist nach
--- der Paket-Extraktion eng auf `finance` skopiert; der Monitor ist ein CORE-Agent). core_ro
--- bekommt seinen breiten agent-SELECT ohnehin in util_create_core_ro (deckt diese Tabellen) —
--- der explizite GRANT hier ist FMEA-Backstop (nicht allein auf Default-Privileges verlassen).
+-- der Paket-Extraktion eng auf `finance` skopiert; der Monitor ist ein CORE-Agent). Massgeblich ist
+-- die Erlaubnisliste in util_create_core_ro (fuehrt beide Tabellen); der GRANT hier ist Backstop.
 -- Keine Mitgliedschaft des App-Users in core_ro mehr (Security-Audit 2026-10: agent.fn_monitor_ro_eval statt
 -- SET ROLE). No-op, falls core_ro (noch) nicht existiert (Phase 1 vor util_create_core_ro = Phase 4;
 -- greift beim Re-Apply / im db_test, wo core_ro vor den Monitor-Tests da ist).

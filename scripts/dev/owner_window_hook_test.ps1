@@ -1,4 +1,4 @@
-#Requires -Version 5.1
+﻿#Requires -Version 5.1
 # Test des Hooks .claude/hooks/enforce_owner_window.ps1 (bezahlte Suiten + Dev-Reset nur im Owner-Fenster): fuettert ihn mit
 # Tool-Aufrufen wie Claude Code (JSON auf stdin) und prueft deny/allow. Laeuft in einem Wegwerf-Repo mit zwei Worktrees: die
 # Grant-Dateien liegen nur dort, das echte .claude/ bleibt unberuehrt. Kein Substrat, kein Netz, keine Kosten.
@@ -6,6 +6,7 @@
 # Usage:  .\scripts\dev\owner_window_hook_test.ps1
 # Exit-Code = Anzahl Fehler.
 $ErrorActionPreference = 'Stop'
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 . (Join-Path $PSScriptRoot '..\lib\git_sandbox.ps1')
 Clear-GitEnvironment
 $HookSource = Join-Path $PSScriptRoot '..\..\.claude\hooks\enforce_owner_window.ps1'

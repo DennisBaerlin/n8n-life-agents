@@ -34,7 +34,7 @@
     {
       "name": "VWCE-Holding",
       "check": { "type": "isin", "table": "finance.depot_holdings", "column": "isin", "value": "IE00BK5BQT80" },
-      "note": "30 Stueck VWCE im Testbroker Depot (>5 fuer tc16-Sell, <<999 fuer tc21-Oversell)."
+      "note": "30 Stueck VWCE im Testbroker Depot (>5 fuer tc16-Sell, <<5000 fuer tc54-Oversell)."
     },
     {
       "name": "VWCE Bestandsplan",

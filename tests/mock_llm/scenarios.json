@@ -394,14 +394,6 @@
     "final": "So viele Anteile liegen nicht im Depot."
   },
   {
-    "_comment": "tc21 Oversell mit Ordergebuehr: der Probelauf lehnt VOR der Karte ab (kein sendAndWait).",
-    "match": "Verkaufe 999 Anteile Vanguard FTSE All-World",
-    "calls": [
-      { "tool": "tool_book_stock_sell", "args": { "depot_name": "Testbroker Depot", "shares": 999, "price_per_share": 115, "order_fee": "2", "transaction_date": "2026-06-16", "symbol": "VWCE" } }
-    ],
-    "final": "So viele Anteile liegen nicht im Depot."
-  },
-  {
     "_comment": "tc11 Dublette: fn_create_account lehnt den bestehenden Namen im Probelauf ab (kein sendAndWait).",
     "match": "Lege ein Testbroker Depot an",
     "calls": [
@@ -1332,17 +1324,17 @@
   },
   {
     "_comment": "tc90 Geldquelle Sparplan (savings_funding, 2026-10-30), Antwort 1: eigene Ueberweisung -> tool_create_recurring_transfer auf das Sparplan-Konto. tc93 (bewusster Abbau) ist ein NULL-Case -> kein Szenario.",
-    "match": "Ich ueberweise ab dem 2027-01-01 jeden Monat 150 Euro vom Lindenbank Giro dorthin",
+    "match": "Ich ueberweise jeden Monat 150 Euro vom Lindenbank Giro dorthin",
     "calls": [
-      { "tool": "tool_create_recurring_transfer", "args": { "name": "Sparuebertrag VWCE", "from_account_name": "Lindenbank Giro", "to_account_name": "Testbroker Cash Girokonto", "amount": 150, "schedule_unit": "month", "first_payment_date": "2027-01-01" } }
+      { "tool": "tool_create_recurring_transfer", "args": { "name": "Sparuebertrag VWCE", "from_account_name": "Lindenbank Giro", "to_account_name": "Testbroker Cash Girokonto", "amount": 150, "schedule_unit": "month", "first_payment_date": "in 4 weeks" } }
     ],
     "final": "Der Dauerauftrag wurde nicht angelegt."
   },
   {
     "_comment": "tc91 Geldquelle Sparplan, Antwort 2: Zahlung von ausserhalb (Oma) -> tool_create_recurring_payment income auf dem Sparplan-Konto.",
-    "match": "Oma Erika zahlt ab dem 2027-01-01 jeden Monat 50 Euro",
+    "match": "Oma Erika zahlt jeden Monat 50 Euro",
     "calls": [
-      { "tool": "tool_create_recurring_payment", "args": { "name": "Zuwendung Oma Erika", "account_name": "Testbroker Cash Girokonto", "direction": "income", "amount": 50, "schedule_unit": "month", "first_payment_date": "2027-01-01" } }
+      { "tool": "tool_create_recurring_payment", "args": { "name": "Zuwendung Oma Erika", "account_name": "Testbroker Cash Girokonto", "direction": "income", "amount": 50, "schedule_unit": "month", "first_payment_date": "in 4 weeks" } }
     ],
     "final": "Die Einzahlung wurde nicht angelegt."
   },
@@ -1350,7 +1342,7 @@
     "_comment": "tc92 Geldquelle Sparplan, zwei Quellen: zuerst NUR der Dauerauftrag (nacheinander, nie parallel).",
     "match": "gehen jeden Monat 100 Euro per Dauerauftrag vom Lindenbank Giro",
     "calls": [
-      { "tool": "tool_create_recurring_transfer", "args": { "name": "Sparuebertrag VWCE", "from_account_name": "Lindenbank Giro", "to_account_name": "Testbroker Cash Girokonto", "amount": 100, "schedule_unit": "month", "first_payment_date": "2027-01-01" } }
+      { "tool": "tool_create_recurring_transfer", "args": { "name": "Sparuebertrag VWCE", "from_account_name": "Lindenbank Giro", "to_account_name": "Testbroker Cash Girokonto", "amount": 100, "schedule_unit": "month", "first_payment_date": "in 4 weeks" } }
     ],
     "final": "Der Dauerauftrag wurde nicht angelegt; die Einzahlung von Oma Erika habe ich deshalb noch nicht eingetragen."
   },
@@ -1426,7 +1418,7 @@
     "_comment": "tc104 Umschichtung mit Enddatum: Dauerauftrag bis das freie Geld aufgebraucht ist -> until_free_money, kein valid_to.",
     "match": "und zwar so lange, bis dort das freie Geld aufgebraucht ist",
     "calls": [
-      { "tool": "tool_create_recurring_transfer", "args": { "name": "Umschichtung", "from_account_name": "Lindenbank Giro", "to_account_name": "Testbroker Cash Girokonto", "amount": 500, "schedule_unit": "month", "schedule_day_of_month": "25", "first_payment_date": "2027-11-25", "until_free_money": "true" } }
+      { "tool": "tool_create_recurring_transfer", "args": { "name": "Umschichtung", "from_account_name": "Lindenbank Giro", "to_account_name": "Testbroker Cash Girokonto", "amount": 500, "schedule_unit": "month", "schedule_day_of_month": "25", "first_payment_date": "in 2 weeks", "until_free_money": "true" } }
     ],
     "final": "Der Dauerauftrag wurde nicht angelegt."
   },
@@ -1434,7 +1426,7 @@
     "_comment": "tc116 Bank-Hinweis nur, wo er passt: Nutzerin ueberweist selbst -> executed_by manual.",
     "match": "Den Betrag ueberweise ich jeden Monat selbst, bei meiner Bank liegt dafuer kein Dauerauftrag",
     "calls": [
-      { "tool": "tool_create_recurring_transfer", "args": { "name": "Umschichtung", "from_account_name": "Lindenbank Giro", "to_account_name": "Testbroker Cash Girokonto", "amount": 200, "schedule_unit": "month", "schedule_day_of_month": "25", "first_payment_date": "2027-11-25", "executed_by": "manual" } }
+      { "tool": "tool_create_recurring_transfer", "args": { "name": "Umschichtung", "from_account_name": "Lindenbank Giro", "to_account_name": "Testbroker Cash Girokonto", "amount": 200, "schedule_unit": "month", "schedule_day_of_month": "25", "first_payment_date": "in 2 weeks", "executed_by": "manual" } }
     ],
     "final": "Der Uebertrag wurde nicht angelegt."
   },
@@ -1442,7 +1434,7 @@
     "_comment": "tc117 Bank-Hinweis nur, wo er passt: Dauerauftrag bei der Bank -> executed_by bank.",
     "match": "Das ist ein Dauerauftrag, den ich bei meiner Bank eingerichtet habe",
     "calls": [
-      { "tool": "tool_create_recurring_transfer", "args": { "name": "Umschichtung", "from_account_name": "Lindenbank Giro", "to_account_name": "Testbroker Cash Girokonto", "amount": 300, "schedule_unit": "month", "schedule_day_of_month": "25", "first_payment_date": "2027-11-25", "executed_by": "bank" } }
+      { "tool": "tool_create_recurring_transfer", "args": { "name": "Umschichtung", "from_account_name": "Lindenbank Giro", "to_account_name": "Testbroker Cash Girokonto", "amount": 300, "schedule_unit": "month", "schedule_day_of_month": "25", "first_payment_date": "in 2 weeks", "executed_by": "bank" } }
     ],
     "final": "Der Uebertrag wurde nicht angelegt."
   },
@@ -1567,5 +1559,6 @@
   {"_comment": "ADVISOR ac23 Uebergabe: Nutzer will gleich eintragen -> Uebersicht mit Knopf Durchgehen.", "match": "Lass uns das Vereinbarte gleich eintragen", "calls": [{"tool": "tool_send_handoff_overview", "args": {}}], "final": "Die Liste kommt gleich, tippe dort auf Durchgehen."},
   {"_comment": "ADVISOR ac24 Uebergabe-Negativfall: abgelehnte Idee -> Abschnitt ohne handoff_tasks.", "match": "Speichere den Abschnitt retirement_pension ohne neuen Sparplan", "calls": [{"tool": "tool_save_plan_section", "args": {"section_key": "retirement_pension", "section_content": "Gesetzliche Rente und bestehende Vorsorge bleiben die Basis, kein zusaetzlicher Sparplan."}}], "final": "Der Abschnitt wurde nicht bestaetigt, es wurde nichts gespeichert."},
   {"_comment": "tc120 Uebergabe: Durchgehen-Auftrag -> erster Punkt mit handoff_task_id.", "match": "Miete 900 Euro monatlich am 3. vom __E2E__ HO Giro", "calls": [{"tool": "tool_create_recurring_payment", "args": {"name": "__E2E__ HO Miete", "account_name": "__E2E__ HO Giro", "direction": "expense", "amount": 900, "schedule_unit": "month", "schedule_day_of_month": "3", "first_payment_date": "2026-12-03", "handoff_task_id": "990001"}}], "final": "Die Miete ist nicht bestaetigt. Anders eintragen oder ueberspringen?"},
-  {"_comment": "oc51 Uebergabe: Folgenachricht zum Eintragen -> Call_agent_finance_.", "match": "die Miete geht vom __E2E__ HO Giro ab", "calls": [{"tool": "Call_agent_finance_", "args": {"task": "Ja, die Miete geht vom __E2E__ HO Giro ab, trag sie so ein."}}], "final": "Der Buchhalter kuemmert sich darum."}
+  {"_comment": "oc51 Uebergabe: Folgenachricht zum Eintragen -> Call_agent_finance_.", "match": "die Miete geht vom __E2E__ HO Giro ab", "calls": [{"tool": "Call_agent_finance_", "args": {"task": "Ja, die Miete geht vom __E2E__ HO Giro ab, trag sie so ein."}}], "final": "Der Buchhalter kuemmert sich darum."},
+  {"_comment": "tc121 Immobilie anlegen: tool_create_real_estate mit Rohwerten (Rate/Ruecklage rechnet die DB).", "match": "Lege eine neue Immobilie an: 'Ferienhaus Probestadt'", "calls": [{"tool": "tool_create_real_estate", "args": {"name": "Ferienhaus Probestadt", "current_value": "280000", "living_area_m2": "90", "year_built": "1998"}}], "final": "Die Karte fuer das Ferienhaus Probestadt ist unterwegs."}
 ]

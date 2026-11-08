@@ -23,7 +23,7 @@
 --   `family` wird ausschließlich vom Owner-/Host-Credential geschrieben (Eigentümer beider
 --   Schemata, siehe agent.core_init.sql trg_core_contexts_protect-Kommentar) → der Trigger
 --   schreibt agent.persons mit Owner-Rechten, kein SECURITY-DEFINER-Fenster nötig. core_ro
---   liest agent.persons automatisch (util_create_core_ro GRANT SELECT ON ALL TABLES agent);
+--   liest agent.persons nicht (nicht auf der Erlaubnisliste in util_create_core_ro; Inhalt steht im family-Kontext);
 --   finance_rw braucht KEINE Grants (FK-Check ist intern). person_id ist eine STABILE
 --   Identität — full_name/role-Änderungen re-projizieren ohne FK-Effekt (DELETE feuert nur
 --   für TATSÄCHLICH entfernte Slugs).

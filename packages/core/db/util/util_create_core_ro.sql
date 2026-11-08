@@ -8,7 +8,7 @@
 --   agent.guide_onboarding_state) UND ueber die Finance-Uebersichten. Die enge Paket-Rolle
 --   `finance_ro` (schema-scoped, via core.fn_provision_package_roles) reicht dafuer NICHT —
 --   sie sieht NUR `finance`. `core_ro` ist die Leserolle des PRIVILEGIERTEN CORE-HOSTS:
---   read-only auf agent + core (seine eigenen Daten); den Finance-Lesezugriff oeffnet das
+--   read-only auf die Erlaubnisliste in agent + core (unten); den Finance-Lesezugriff oeffnet das
 --   Finance-PAKET selbst bei der Provisionierung (core.fn_provision_package_roles grantet
 --   core_ro SELECT auf `finance` — own-schema-scoped, faellt bei Deinstall weg).
 --
@@ -41,15 +41,39 @@ ALTER ROLE core_ro SET idle_in_transaction_session_timeout = '30s';
 -- existiert noch kein Paket -> reine Basis; jeder Paket-Install recomputet den Tail dazu.
 ALTER ROLE core_ro SET search_path = pg_catalog, agent, core;
 
--- Lesen auf den Core-Schemata (TABLES deckt auch VIEWs ab). Finance NICHT hier — das
--- Lesefenster oeffnet das Finance-Paket bei der Provisionierung (core.fn_provision_package_roles).
+-- ERLAUBNISLISTE (Owner-Entscheid 2026-11-07 "Nur Freigegebenes lesen"): in agent/core liest core_ro NUR die hier
+-- benannten Relationen; eine neue Tabelle ist unsichtbar, bis sie hier steht. Jeder Eintrag braucht einen belegten
+-- Lesepfad (Workflow-Knoten unter __CRED_POSTGRES_CORE_RO__, Guide/Monitor-Frei-SQL, Monitor-Spec oder eine INVOKER-fn,
+-- die core_ro aufruft); DEFINER-Fenster brauchen keinen Tabellen-Grant. Re-Apply: erst alles entziehen (Bestand hat noch
+-- den frueheren Sammel-Grant + Default-Privilegien), dann die Liste grantieren -> nichts wird still neu lesbar.
+-- Paket-Schemata oeffnet core.fn_provision_package_roles (eigenes Lesefenster, hier unberuehrt).
+-- Gegenprobe: tests/db/core/test_core_ro_allowlist.sql (traegt die Liste bewusst ein zweites Mal).
 GRANT USAGE ON SCHEMA agent, core TO core_ro;
-GRANT SELECT ON ALL TABLES IN SCHEMA agent TO core_ro;
-GRANT SELECT ON ALL TABLES IN SCHEMA core  TO core_ro;
-
--- Kuenftige Tabellen/Views (von postgres angelegt) automatisch lesbar machen.
-ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA agent GRANT SELECT ON TABLES TO core_ro;
-ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA core  GRANT SELECT ON TABLES TO core_ro;
+ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA agent REVOKE SELECT ON TABLES FROM core_ro;
+ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA core  REVOKE SELECT ON TABLES FROM core_ro;
+REVOKE ALL ON ALL TABLES IN SCHEMA agent FROM core_ro;
+REVOKE ALL ON ALL TABLES IN SCHEMA core  FROM core_ro;
+DO $$
+DECLARE v_t text;
+BEGIN
+    FOREACH v_t IN ARRAY ARRAY[
+        'agent.core_contexts',           -- family-Leser (Orchestrator, Guide, Picker) + fn_resolve_sender/fn_person_lang; per_user-Zeilen sperrt RLS
+        'agent.guide_onboarding_state',  -- Orchestrator 'Onboarding pin', Guide 'Household status read', fn_render_welcome
+        'agent.monitor_triggers',        -- Monitor-Frei-SQL (Heimtabelle)
+        'agent.monitor_observations',    -- Monitor-Frei-SQL (Audit-Log, Reparatur-Pfad)
+        'core.config',                   -- reminders_menu liest reminders_from/until direkt; keine Secrets in config
+        'core.help_catalog',             -- Orchestrator 'Load capabilities'
+        'core.ui_texts',                 -- cost_report (wf-Labels) direkt; fn_ui_text(s), fn_hitl_texts
+        'core.ui_languages',             -- cost_report/language_picker direkt; fn_person_lang, fn_ui_text(s)
+        'core.package_registry',         -- fn_render_welcome, fn_stale_facts_count
+        'core.context_validators',       -- fn_stale_facts_count (Monitor-Spec household_facts_freshness)
+        'core.context_scopes'            -- dito
+    ] LOOP
+        IF to_regclass(v_t) IS NOT NULL THEN
+            EXECUTE format('GRANT SELECT ON %s TO core_ro', v_t);
+        END IF;
+    END LOOP;
+END $$;
 
 -- AUSNAHME (Security-Review Krypto-Rework, Finding 1; uebernommen aus dem retired
 -- util_create_finance_ro): core.backup_key traegt den Backup-Schluessel und darf NIE an eine
@@ -67,8 +91,8 @@ DO $$ BEGIN
 END $$;
 
 -- DENY-LISTE (Security-Audit 2026-10, Owner-Entscheid "strikt privat"): Tabellen mit fremden Gespraechen, Einmal-Codes
--- oder rohen Eingaengen sind fuer den Frei-SQL-Pfad (guide/monitor-LLM, Monitor-Specs) tabu. Gleiche Begruendung wie
--- core.backup_key: der REVOKE lebt am Ort des Sammel-Grants, damit ein Re-Apply nichts still re-grantet. Die
+-- oder rohen Eingaengen sind fuer den Frei-SQL-Pfad (guide/monitor-LLM, Monitor-Specs) tabu. Zweiter Riegel hinter der
+-- Erlaubnisliste: rutscht eine dieser Tabellen versehentlich auf die Liste, nimmt dieser REVOKE sie wieder zurueck. Die
 -- *_chat_memory-Tabellen legt n8n zur Laufzeit an -> dynamisch ueber pg_tables. Die per_user-Kontext- und
 -- Personen-Plan-ZEILEN sperrt RLS (agent.core_init.sql / agent.advisor_init.sql). Test: test_core_ro_deny_acl.sql.
 DO $$
@@ -213,7 +237,7 @@ DO $$ BEGIN
 END $$;
 
 -- Instandhaltungsruecklage (2026-10-27): die Paket-View finance.maintenance_reserve_status ruft (ueber die INVOKER-fn
--- finance.fn_maintenance_reserve_rate) core.fn_config_get. core_ro liest core.config ohnehin direkt (Sammel-GRANT oben,
+-- finance.fn_maintenance_reserve_rate) core.fn_config_get. core_ro liest core.config ohnehin direkt (Erlaubnisliste oben,
 -- keine Secrets in config) -> EXECUTE auf das read-all-Fenster gibt keine neue Sicht frei, verhindert aber den stillen
 -- "permission denied for function fn_config_get", wenn der Monitor (core_ro / core_ro_eval) eine Paket-View mit
 -- Config-Lesezugriff abfragt. Grant am Rollen-Ort (die fn-R__ re-REVOKEt PUBLIC). Guarded auf fn-Existenz.

@@ -54,16 +54,21 @@ master_swap_begin() {
     || die_because net "Das Programm-Paket ${target} ließ sich nicht laden — Update abgebrochen, es wurde nichts geändert."
   mkdir -p "$SWAP_DIR"; chmod 0700 "$SWAP_DIR"
   rm -f "$SWAP_DIR"/compose.new.yml "$SWAP_DIR"/stack.env
-  install -m 0600 "$cf" "$SWAP_DIR/compose.new.yml"
-  install -m 0600 "$LA_COMPOSE_FILE" "$SWAP_DIR/compose.old.yml"
-  _swap_write_stack_env "$SWAP_DIR/stack.env" "$target"
-  # SWAP_DROP_DB_AFTER/SWAP_NOTIFY (nur der Rueckweg) stehen VOR dem Helfer-Start in der Datei: danach schreibt der Helfer
-  # sie, ein zweiter Schreiber koennte eine Zeile verlieren.
-  printf 'PHASE=handoff\nMODE=%s\nTAG=%s\nFROM=%s\nTO=%s\nREQUEST_ID=%s\nALLOW_DOWNGRADE=%s\nDROP_DB_AFTER=%s\nNOTIFY=%s\nSTARTED=%s\n' \
-    "$mode" "$tag" "$from" "$target" "${LIFEAGENTS_UPDATE_REQUEST_ID:-}" "${LIFEAGENTS_ALLOW_DOWNGRADE:-0}" \
-    "${SWAP_DROP_DB_AFTER:-}" "${SWAP_NOTIFY:-}" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" | write_file "$SWAP_STATE" 0600
-  if ! rt_swap_helper_start "$from" "$SWAP_DIR"; then
-    rm -f "$SWAP_STATE" "$SWAP_DIR/stack.env"
+  # Teilschale mit EXIT-Trap: scheitert ein Schritt vor der Uebergabe, verschwinden stack.env (traegt das Superuser-
+  # Passwort) und Zustandsdatei wieder. Ein globaler Trap kollidierte mit dem der Ausgabe (common.sh ui_log_begin); `set -e`
+  # gilt in einer Teilschale unter `if !` nicht -> jeder Schritt mit eigenem `|| exit 1`.
+  if ! (
+    trap '[ "$?" -eq 0 ] || rm -f "$SWAP_STATE" "$SWAP_DIR/stack.env"' EXIT
+    install -m 0600 "$cf" "$SWAP_DIR/compose.new.yml" || exit 1
+    install -m 0600 "$LA_COMPOSE_FILE" "$SWAP_DIR/compose.old.yml" || exit 1
+    _swap_write_stack_env "$SWAP_DIR/stack.env" "$target" || exit 1
+    # SWAP_DROP_DB_AFTER/SWAP_NOTIFY (nur der Rueckweg) stehen VOR dem Helfer-Start in der Datei: danach schreibt der Helfer
+    # sie, ein zweiter Schreiber koennte eine Zeile verlieren.
+    printf 'PHASE=handoff\nMODE=%s\nTAG=%s\nFROM=%s\nTO=%s\nREQUEST_ID=%s\nALLOW_DOWNGRADE=%s\nDROP_DB_AFTER=%s\nNOTIFY=%s\nSTARTED=%s\n' \
+      "$mode" "$tag" "$from" "$target" "${LIFEAGENTS_UPDATE_REQUEST_ID:-}" "${LIFEAGENTS_ALLOW_DOWNGRADE:-0}" \
+      "${SWAP_DROP_DB_AFTER:-}" "${SWAP_NOTIFY:-}" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" | write_file "$SWAP_STATE" 0600 || exit 1
+    rt_swap_helper_start "$from" "$SWAP_DIR" || exit 1
+  ); then
     die "Der Helfer für den master-Wechsel ließ sich nicht starten — Update abgebrochen, es wurde nichts geändert."
   fi
   result_set status handoff

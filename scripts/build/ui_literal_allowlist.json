@@ -2,6 +2,12 @@
     "_comment":  "Ratchet-Allowlist von scripts/ui_literal_lint.ps1 (Textkatalog, docs/package-contract.md §3.11): jede verbliebene fest deutsche Text-Stelle mit Begruendung. Seit Phase C gibt es keine Nutzertexte mehr ausserhalb des Katalogs; erlaubt sind nur model:/admin:/data: (kein fester Nutzertext: Modell-Eingabe/-Kontext, Konsolen-RAISE, gespeicherte Inhalte). Nur schrumpfen; neue Nutzertexte kommen in den Katalog.",
     "allow":  [
                   {
+                      "where":  "packages/finance/db/migrations/R__fn_setup_reanchor.sql",
+                      "literal":  "Eröffnungssaldo",
+                      "count":  1,
+                      "reason":  "data:buchungstext (wie fn_create_account, Bezeichnung der Eroeffnungsbuchung; nie ein Bot-Text)"
+                  },
+                  {
                       "where":  "packages/core/db/migrations/R__fn_claim_persona_sticker.sql",
                       "literal":  "hallo",
                       "count":  2,

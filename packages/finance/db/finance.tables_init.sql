@@ -2955,3 +2955,26 @@ CREATE TABLE IF NOT EXISTS finance.bank_todos (
 COMMENT ON COLUMN finance.bank_todos.first_sent_at IS 'Provenienz (Ausnahme c): erste Zustellung, Basis der Nachfass-Runden.';
 COMMENT ON COLUMN finance.bank_todos.closed_at IS 'Provenienz (Ausnahme c): Tipp auf erledigt.';
 CREATE UNIQUE INDEX IF NOT EXISTS bank_todos_one_open ON finance.bank_todos (head_id) WHERE status = 'open';
+
+-- Herkunft des Einstands einer Bestandsuebernahme (Provenienz-Ausnahme der Regel "keine ableitbaren Spalten"):
+-- 'export' = echter Kauf mit Datum und Betrag aus der Bank-Datei (zaehlt in fn_depot_performance als Geldfluss),
+-- 'estimated' = Schaetzung aus dem historischen Kurs oder Nutzer-Angabe bei Abspaltung/Einbuchung; NULL = alles andere.
+ALTER TABLE finance.transactions ADD COLUMN IF NOT EXISTS cost_origin text
+    CONSTRAINT finance_transactions_cost_origin_chk CHECK (cost_origin IN ('export', 'estimated'));
+
+-- Gefuehrte Ersteinrichtung aus einer Export-Datei: nur, was nicht ableitbar ist (Datei, Bindung, Antworten). Der aktuelle
+-- Schritt wird nie gespeichert (fn_setup_next leitet ihn aus Konten, Depots und Positionen ab). Eine Zeile = offen;
+-- ab 7 Tagen abgelaufen (Praedikat in fn_setup_*), Abschluss und Abbruch loeschen sie samt file_id.
+CREATE TABLE IF NOT EXISTS finance.setup_session (
+    id              uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    profile         text NOT NULL,
+    chat_id         text NOT NULL,
+    file_id         text NOT NULL,
+    file_hash       text NOT NULL,
+    cash_account_id int REFERENCES finance.accounts(id) ON DELETE SET NULL,
+    batch_id        uuid,
+    decisions       jsonb NOT NULL DEFAULT '{}'::jsonb,
+    created_at      timestamptz NOT NULL DEFAULT now(),
+    updated_at      timestamptz NOT NULL DEFAULT now(),
+    CONSTRAINT finance_setup_session_profile_chat_uq UNIQUE (profile, chat_id)
+);

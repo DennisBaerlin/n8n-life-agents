@@ -1,0 +1,81 @@
+{
+    "id":  "pW3sYd9GcJ6aEf1U",
+    "name":  "agent.finance.sub_fetch_historic_price",
+    "nodes":  [
+                  {
+                      "parameters":  {
+                                         "workflowInputs":  {
+                                                                "values":  [
+                                                                               {
+                                                                                   "name":  "isin"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "date"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "currency"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "chat_id"
+                                                                               }
+                                                                           ]
+                                                            }
+                                     },
+                      "type":  "n8n-nodes-base.executeWorkflowTrigger",
+                      "typeVersion":  1.1,
+                      "position":  [
+                                       0,
+                                       0
+                                   ],
+                      "id":  "6ad4d00d-f5eb-56b0-920e-7bfac3a8959f",
+                      "name":  "Start"
+                  },
+                  {
+                      "parameters":  {
+                                         "jsCode":  "const isin = String($(\u0027Start\u0027).item.json.isin || \u0027\u0027).trim().toUpperCase();\nconst day  = String($(\u0027Start\u0027).item.json.date || \u0027\u0027).slice(0, 10);\nconst want = String($(\u0027Start\u0027).item.json.currency || \u0027EUR\u0027).trim().toUpperCase();\nconst fail = () =\u003e [{ json: { ok: false, price: null, symbol: null, currency: want } }];\nif (!/^[A-Z0-9]{8,14}$/.test(isin) || !/^\\d{4}-\\d{2}-\\d{2}$/.test(day)) return fail();\nconst end = Math.floor(Date.parse(day + \u0027T00:00:00Z\u0027) / 1000) + 86400;\ntry {\n  const s = await this.helpers.httpRequest({ url: \u0027https://query1.finance.yahoo.com/v1/finance/search?q=\u0027 + encodeURIComponent(isin) + \u0027\u0026quotesCount=8\u0026newsCount=0\u0027, json: true, timeout: 3000 });\n  const symbols = ((s \u0026\u0026 s.quotes) || []).map(q =\u003e q \u0026\u0026 q.symbol).filter(Boolean);\n  for (const sym of symbols.slice(0, 6)) {\n    let r = null;\n    try {\n      const c = await this.helpers.httpRequest({ url: \u0027https://query1.finance.yahoo.com/v8/finance/chart/\u0027 + encodeURIComponent(sym) + \u0027?period1=\u0027 + (end - 7 * 86400) + \u0027\u0026period2=\u0027 + end + \u0027\u0026interval=1d\u0027, json: true, timeout: 3000 });\n      r = c \u0026\u0026 c.chart \u0026\u0026 c.chart.result \u0026\u0026 c.chart.result[0];\n    } catch (e) { continue; }\n    let ccy = r \u0026\u0026 r.meta ? String(r.meta.currency || \u0027\u0027) : \u0027\u0027;\n    const pence = ccy === \u0027GBp\u0027;\n    if (pence) ccy = \u0027GBP\u0027;\n    if (ccy !== want || !r.timestamp || !r.indicators || !r.indicators.quote || !r.indicators.quote[0]) continue;\n    const close = r.indicators.quote[0].close || [];\n    for (let i = close.length - 1; i \u003e= 0; i--) {\n      if (r.timestamp[i] \u003c end \u0026\u0026 Number(close[i]) \u003e 0) {\n        return [{ json: { ok: true, price: pence ? Number(close[i]) / 100 : Number(close[i]), symbol: sym, currency: ccy } }];\n      }\n    }\n  }\n} catch (e) { /* Yahoo-Ausfall: der Agent fragt nach */ }\nreturn fail();"
+                                     },
+                      "type":  "n8n-nodes-base.code",
+                      "typeVersion":  2,
+                      "position":  [
+                                       260,
+                                       0
+                                   ],
+                      "id":  "a99b2363-a367-55ba-80c4-8d5ec1509b7d",
+                      "name":  "Fetch close",
+                      "onError":  "continueRegularOutput"
+                  },
+                  {
+                      "parameters":  {
+                                         "content":  "## DB-Automatik\n**Historischer Schlusskurs (deterministisch, kein LLM)**\n\nInput { isin, date, currency }. Ein Code-Knoten: Yahoo-Suche nach der ISIN, dann Chart mit Datumsgrenzen; letzter Kurs der 7 Tage bis zum Buchungstag. Nur Notierung in der gewünschten Währung, sonst ok:false und der Agent fragt nach dem Einstand. Output { ok, price, symbol, currency }.",
+                                         "height":  320,
+                                         "width":  300,
+                                         "color":  4
+                                     },
+                      "type":  "n8n-nodes-base.stickyNote",
+                      "typeVersion":  1,
+                      "position":  [
+                                       -360,
+                                       -300
+                                   ],
+                      "id":  "7e70c805-59c8-5445-8c41-6e8689c1dc26",
+                      "name":  "Überblick"
+                  }
+              ],
+    "connections":  {
+                        "Start":  {
+                                      "main":  [
+                                                   [
+                                                       {
+                                                           "index":  0,
+                                                           "node":  "Fetch close",
+                                                           "type":  "main"
+                                                       }
+                                                   ]
+                                               ]
+                                  }
+                    },
+    "settings":  {
+                     "executionOrder":  "v1",
+                     "errorWorkflow":  "Nd3UVmUTzTLOBeba"
+                 }
+}

@@ -148,3 +148,7 @@ Verantwortungs-Split: DB (Trigger/GENERATED/CHECK) = `balance`, `holding.shares`
 **Dubletten auf Agent-Ebene (unscharf):** der Finance-Agent prüft vor dem Anlegen via `postgres_select` bestehende Einträge gleichen Typs und fragt bei Ähnlichkeit nach; der deterministische Backstop ist der `Check duplicate name`-Node (Muster `tools/create_account.ps1`: `Build-Pg` → `fn_resolve_<entity>` → `Build-If hit_count >= 1` → `Build-ToolError` vor dem Gate) — real nötig geworden bei `create_savings_goal`.
 
 **Konto-Zeichen.** `accounts.emoji` (NULL = Zeichen der Kontoart, nie gespeichert), Liste, Ersatz und Anzeigename stehen im Init (`fn_account_emoji_choices`, `fn_account_emoji`, `fn_account_label`), weil der CHECK und `R__finance_views` sie vor den `R__fn_*` brauchen. Lesen: `name` ist die Tool-Eingabe, `label` bzw. `*_label` die Anzeige. Die Knopf-Seiten rechnet nur `fn_account_emoji_page`; der Orchestrator sendet Folgeseiten paket-neutral über `result.choice_card`.
+
+## Ersteinrichtung aus einer Datei
+
+`finance.setup_session` hält nur Datei-Referenz, Bindung und Antworten; der Schritt kommt aus `fn_setup_next`. Bei uns anders (arch-challenge 2026-11-09): die Rohdatei liegt nicht in der Datenbank, eine Finanzdatei bleibt nie ruhend gespeichert; schlägt das Holen fehl, bittet der Bot um erneutes Senden.

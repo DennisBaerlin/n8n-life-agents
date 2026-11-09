@@ -97,6 +97,7 @@ BEGIN
 
     -- 8b. Import-Staging-Rows, deren Payload den Sentinel traegt (payload-weiter Match)
     DELETE FROM finance.import_staging WHERE payload::text LIKE v_pat_any;  GET DIAGNOSTICS v_stg = ROW_COUNT;
+    DELETE FROM finance.setup_session WHERE chat_id LIKE 'test_%';
 
     -- GUARD 2: keine finance-Sentinel-Zeile darf zurueckbleiben.
     IF EXISTS (SELECT 1 FROM finance.accounts     WHERE name LIKE v_pat)

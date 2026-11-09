@@ -7,15 +7,15 @@
 # Funktionskoerpern -> Ladereihenfolge egal.
 #
 # New-StatementGateChain -X <Start-x> -StmtParams <[ordered] Rohwerte fuer Build-Pg> -Title <finance.hitl.*>
-#   -CancelAction <ASCII, Build-ToolCancelled> [-ReturnExtra <@(,@(name, expr, type))> ]
+#   -CancelAction <ASCII, Build-ToolCancelled> [-ReturnExtra <@(,@(name, expr, type))> ] [-NotReadyExtra <gleiche Form, Felder auch fuer ok:false>]
 #   -> @{ Nodes; Conns; Entry = 'Prepare statement' }. Der Konsument verbindet seinen letzten Knoten mit Entry.
 function New-StatementGateChain {
     param([int]$X, [Parameter(Mandatory)]$StmtParams, [Parameter(Mandatory)][string]$Title,
-          [Parameter(Mandatory)][string]$CancelAction, [array]$ReturnExtra = @())
+          [Parameter(Mandatory)][string]$CancelAction, [array]$ReturnExtra = @(), [array]$NotReadyExtra = @())
     $prepare = Build-Pg 'Prepare statement' @($X, 0) "=SELECT finance.fn_statement_prepare(`$1::jsonb) AS r;" $StmtParams
     $ifPrep = Build-If 'Statement ok?' @(($X + 220), 0) "={{ `$json.r.ok }}" 'true' 'equals' 'boolean'
     $P = "`$('Prepare statement').item.json.r"
-    $errPrep = Build-Set 'Statement not ready' @(($X + 440), 200) @(
+    $errPrep = Build-Set 'Statement not ready' @(($X + 440), 200) (@(
         ,@('ok', 'false', 'boolean')
         ,@('code', "={{ $P.code }}", 'string')
         ,@('error', "={{ $P.reason }}", 'string')
@@ -40,7 +40,7 @@ function New-StatementGateChain {
         # already_covered: bis wann bestaetigt, ab wann ein Auszug weiterhilft (Sackgasse, Befund KW 45)
         ,@('covered_until', "={{ $P.covered_until || '' }}", 'string')
         ,@('useful_from', "={{ $P.useful_from || '' }}", 'string')
-    )
+    ) + $NotReadyExtra)
 
     $summary = New-HitlSummary -Pos @(($X + 440), 0) -Title $Title `
         -TitleParams @{ account = "$P.account_name" } -LinesExpr "($P.card_lines || [])"

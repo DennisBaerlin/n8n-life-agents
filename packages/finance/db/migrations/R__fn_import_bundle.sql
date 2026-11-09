@@ -345,7 +345,7 @@ BEGIN
                     v_r := finance.fn_book_takeover_pair((v_lot->>'holding_id')::int, v_settle,
                         NULLIF(v_payload->>'shares', '')::numeric, NULLIF(v_payload->>'price_per_share', '')::numeric,
                         NULLIF(v_payload->>'order_fee', '')::numeric, (v_dates->'p'->>'transaction_date')::date,
-                        (v_lot->>'group_id')::uuid, v_lot->>'symbol');
+                        (v_lot->>'group_id')::uuid, v_lot->>'symbol', TRUE, NULLIF(v_payload->>'cost_origin', ''));
                     IF (v_r->>'ok')::boolean IS DISTINCT FROM true THEN
                         v_errors := v_errors || jsonb_build_object('row_no', v_cur_row, 'error', v_r->>'reason');
                         CONTINUE;
@@ -357,7 +357,7 @@ BEGIN
                     CONTINUE;
                 END IF;
                 v_r := finance.fn_book_stock_buy(
-                    (v_payload - 'depot' - 'depot_number' - 'depot_holder' - 'provider_currency')
+                    (v_payload - 'depot' - 'depot_number' - 'depot_holder' - 'provider_currency' - 'setup_hints')
                     || jsonb_build_object('depot_id', v_ref_id, 'settlement_id', v_settle,
                         'existing_position', true,   -- Import = heutiger Bestand: Saldo bleibt der genannte Stand
                         'transaction_date', COALESCE(NULLIF(v_payload->>'transaction_date',''),

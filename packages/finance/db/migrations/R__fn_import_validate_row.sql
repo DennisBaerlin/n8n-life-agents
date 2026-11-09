@@ -178,6 +178,9 @@ BEGIN
         -- dem Einstand: ein falsches Depot klaert der Agent zuerst
         v_key := finance.fn_import_depot_conflict(p_batch_id, p);
         IF v_key IS NOT NULL THEN RETURN v_key; END IF;
+        IF NULLIF(p->>'cost_origin','') IS NOT NULL AND p->>'cost_origin' NOT IN ('export','estimated') THEN
+            RETURN 'cost_origin must be export or estimated';
+        END IF;
         v_num := NULLIF(p->>'shares','')::numeric;
         IF v_num IS NULL OR v_num <= 0 THEN RETURN 'shares must be a positive number'; END IF;
         v_num := NULLIF(p->>'price_per_share','')::numeric;

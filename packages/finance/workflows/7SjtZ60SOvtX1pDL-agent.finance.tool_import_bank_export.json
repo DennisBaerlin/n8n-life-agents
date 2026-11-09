@@ -222,6 +222,146 @@
                   {
                       "parameters":  {
                                          "operation":  "executeQuery",
+                                         "query":  "=SELECT finance.fn_setup_begin($1::jsonb) AS r;",
+                                         "options":  {
+                                                         "queryReplacement":  "={{ JSON.stringify({ chat_id: String($(\u0027Start\u0027).first().json.chat_id || \u0027\u0027), file_id: $(\u0027Start\u0027).first().json.file_id, table: ({ rows: $(\u0027Read table\u0027).first().json.rows }) }) }}"
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       1100,
+                                       760
+                                   ],
+                      "id":  "9675daad-d67f-52ef-bac5-b551abe37ac3",
+                      "name":  "Setup begin",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_FINANCE_RW__",
+                                                           "name":  "Postgres finance_rw (read-write)"
+                                                       }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "1e4f46ad-8567-5439-968f-3ab3923aecce",
+                                                                                   "leftValue":  "={{ $json.r.setup === true || $json.r.ok === false }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       1320,
+                                       760
+                                   ],
+                      "id":  "1e275207-be6b-58e8-8ab5-bb6c983d8cb6",
+                      "name":  "Setup running?"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "fbdca738-a320-5f43-9708-b22a9b328ab4",
+                                                                                     "name":  "ok",
+                                                                                     "value":  "={{ $(\u0027Setup begin\u0027).first().json.r.ok === true }}",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "0177e368-9364-51f6-9a5a-c7553d5efdf6",
+                                                                                     "name":  "setup",
+                                                                                     "value":  "true",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "8e14eae4-387f-5288-98c9-aa333aff80ab",
+                                                                                     "name":  "phase",
+                                                                                     "value":  "={{ $(\u0027Setup begin\u0027).first().json.r.phase || \u0027\u0027 }}",
+                                                                                     "type":  "string"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "ccd2278d-fbdb-54af-a305-4444eb523b29",
+                                                                                     "name":  "code",
+                                                                                     "value":  "={{ $(\u0027Setup begin\u0027).first().json.r.code || \u0027\u0027 }}",
+                                                                                     "type":  "string"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "ef92bb48-58e6-5191-bce4-3627ce0be05f",
+                                                                                     "name":  "say",
+                                                                                     "value":  "={{ $(\u0027Setup begin\u0027).first().json.r.say || $(\u0027Setup begin\u0027).first().json.r.reason || \u0027\u0027 }}",
+                                                                                     "type":  "string"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "28f47eec-fdfb-54ee-b244-497a3024b343",
+                                                                                     "name":  "ask",
+                                                                                     "value":  "={{ $(\u0027Setup begin\u0027).first().json.r.ask || null }}",
+                                                                                     "type":  "object"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "b24108e8-356a-5e7b-b45f-4345fd057c25",
+                                                                                     "name":  "card",
+                                                                                     "value":  "={{ $(\u0027Setup begin\u0027).first().json.r.card || null }}",
+                                                                                     "type":  "object"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "7fb9ba99-b53d-59b5-b6ea-b8500212aad2",
+                                                                                     "name":  "interest_source",
+                                                                                     "value":  "={{ $(\u0027Setup begin\u0027).first().json.r.interest_source || \u0027\u0027 }}",
+                                                                                     "type":  "string"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       1540,
+                                       760
+                                   ],
+                      "id":  "5abb932a-e706-5b9d-8ad9-f126c521b0c6",
+                      "name":  "Setup step"
+                  },
+                  {
+                      "parameters":  {
+                                         "content":  "## DB-Automatik\n**Sitzung statt Monats-Check**\n\nSetup begin = finance.fn_setup_begin: fehlt das Konto, das Depot oder ist ein unberührtes Konto zu spät gestartet, entsteht oder läuft eine Sitzung (finance.setup_session), die Antwort nennt den nächsten Schritt und dies Tool endet (Setup step). Sonst weiter zum Monats-Check. Statement can run? lässt already_covered zur Einzelkäufe-Vorschau durch: die Datei bringt keinen neuen Zeitraum, kann aber eine Übernahme belegen.",
+                                         "height":  340,
+                                         "width":  260,
+                                         "color":  4
+                                     },
+                      "type":  "n8n-nodes-base.stickyNote",
+                      "typeVersion":  1,
+                      "position":  [
+                                       1100,
+                                       960
+                                   ],
+                      "id":  "66f84a93-da48-595d-a395-674bb1b8c688",
+                      "name":  "Ersteinrichtung"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
                                          "query":  "=SELECT finance.fn_statement_prepare($1::jsonb) AS r;",
                                          "options":  {
                                                          "queryReplacement":  "={{ JSON.stringify({ source: \u0027file\u0027, account_name: $(\u0027Start\u0027).first().json.account_name || null, closing_balance: $(\u0027Start\u0027).first().json.closing_balance === undefined || $(\u0027Start\u0027).first().json.closing_balance === null ? null : String($(\u0027Start\u0027).first().json.closing_balance), table: ({ rows: $(\u0027Read table\u0027).first().json.rows }), transfer_account: $(\u0027Start\u0027).first().json.transfer_account || null }) }}"
@@ -253,7 +393,7 @@
                                                             "conditions":  [
                                                                                {
                                                                                    "id":  "a482be9e-e01f-53a4-962b-350c53614172",
-                                                                                   "leftValue":  "={{ $json.r.ok }}",
+                                                                                   "leftValue":  "={{ $json.r.ok || $json.r.code === \u0027already_covered\u0027 }}",
                                                                                    "rightValue":  true,
                                                                                    "operator":  {
                                                                                                     "type":  "boolean",
@@ -699,6 +839,18 @@
                                                                                      "name":  "useful_from",
                                                                                      "value":  "={{ $(\u0027Prepare statement\u0027).item.json.r.useful_from || \u0027\u0027 }}",
                                                                                      "type":  "string"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "8bca679f-e337-55b8-8781-999ae3c44049",
+                                                                                     "name":  "positions_replaced_by_purchases",
+                                                                                     "value":  "={{ (($(\u0027Replace lots\u0027).isExecuted ? $(\u0027Replace lots\u0027).first().json.r : null) || {}).replaced || [] }}",
+                                                                                     "type":  "array"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "f29ecd61-a44a-5b23-aaac-5ed15c4530f7",
+                                                                                     "name":  "purchases_cash_effect",
+                                                                                     "value":  "={{ (($(\u0027Replace lots\u0027).isExecuted ? $(\u0027Replace lots\u0027).first().json.r : null) || {}).settlement_change || 0 }}",
+                                                                                     "type":  "number"
                                                                                  }
                                                                              ]
                                                          },
@@ -1275,7 +1427,7 @@
                                                          [
                                                              {
                                                                  "index":  0,
-                                                                 "node":  "Precheck statement",
+                                                                 "node":  "Setup begin",
                                                                  "type":  "main"
                                                              }
                                                          ],
@@ -1288,6 +1440,35 @@
                                                          ]
                                                      ]
                                         },
+                        "Setup begin":  {
+                                            "main":  [
+                                                         [
+                                                             {
+                                                                 "index":  0,
+                                                                 "node":  "Setup running?",
+                                                                 "type":  "main"
+                                                             }
+                                                         ]
+                                                     ]
+                                        },
+                        "Setup running?":  {
+                                               "main":  [
+                                                            [
+                                                                {
+                                                                    "index":  0,
+                                                                    "node":  "Setup step",
+                                                                    "type":  "main"
+                                                                }
+                                                            ],
+                                                            [
+                                                                {
+                                                                    "index":  0,
+                                                                    "node":  "Precheck statement",
+                                                                    "type":  "main"
+                                                                }
+                                                            ]
+                                                        ]
+                                           },
                         "Precheck statement":  {
                                                    "main":  [
                                                                 [

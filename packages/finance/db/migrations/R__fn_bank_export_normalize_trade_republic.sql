@@ -15,7 +15,7 @@
 --   EINE gleich hohe positive Zeile derselben ISIN + Stueckzahl (die zeitlich naechste = Neu-Buchung) werden unknown (reason dividend_correction) ->
 --   nie automatisch gebucht, die Karte nennt sie. Das Geld zaehlt trotzdem (cash_amount bleibt).
 --   RUECKGABE: {ok:true, rows:[{row_no, date, kind, category, type, cash_amount, isin, symbol, name,
---   asset_class, shares (Betrag), price, gross (|amount|), fee (Betrag), tax (signiert), currency, account_type,
+--   asset_class, shares (Betrag), shares_signed (roh, Fusion: alt negativ, neu positiv), price, gross (|amount|), fee (Betrag), tax (signiert), currency, account_type,
 --   counterparty, counterparty_iban, purpose, ext_ref (md5 der transaction_id), reason}], unknown_rows:[{row_no, date,
 --   category, type, cash_amount, name, reason}], account_types[], currencies[]}
 --   | {ok:false, code:'export_invalid', reason, row_no?}.
@@ -115,7 +115,7 @@ BEGIN
             'cash_amount', round(v_amt + v_fee + v_tax, 2),
             'isin', CASE WHEN v_cls = 'CRYPTO' THEN NULL ELSE upper(v_sym) END,
             'symbol', v_sym, 'name', v_r->>'name', 'asset_class', v_cls,
-            'shares', CASE WHEN v_sh > 0 THEN v_sh END, 'price', v_px, 'gross', abs(v_amt), 'fee', abs(v_fee), 'tax', v_tax,
+            'shares', CASE WHEN v_sh > 0 THEN v_sh END, 'shares_signed', (v_r->>'shares')::numeric, 'price', v_px, 'gross', abs(v_amt), 'fee', abs(v_fee), 'tax', v_tax,
             'currency', upper(v_r->>'currency'), 'account_type', upper(v_r->>'account_type'),
             'counterparty', v_r->>'counterparty_name', 'counterparty_iban', v_r->>'counterparty_iban',
             'purpose', NULLIF(concat_ws(' ', v_r->>'description', v_r->>'payment_reference'), ''),

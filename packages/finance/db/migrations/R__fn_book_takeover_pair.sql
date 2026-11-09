@@ -10,14 +10,16 @@
 --   Eingabe: holding_id, settlement_id, shares, unit_price, fee, date, group_id, label (Kennung fuer den Buchungstext).
 --   RUECKGABE: {ok:true, buy_tx_id} | {ok:false, reason} (nicht-positive Stueck/Kurs, negative Gebuehr, > 8 Stueck-
 --   Stellen / Betrag < 1 Cent via fn_trade_amount_reason). Kurs auf 8, Gebuehr auf 2 Stellen gerundet (Rundungs-Paket).
+--   p_cost_origin (opt): Herkunft des Einstands am Kauf (transactions.cost_origin).
 --   CHECK finance_transactions_position_takeover_shape bleibt der Backstop der Gegenbuchungs-Form.
 --   p_with_counter (Default true): false = ECHTER Kauf ohne Gegenbuchung (Cash-Abfluss) -- nur fn_replace_takeover_with_lots (ueber fn_replace_takeover_apply)
 --   fuer Einzelkaeufe NACH dem bestaetigten Kontostand-Tag (der Stand davon enthaelt sie noch nicht, Paket B 2026-10-28).
 -- ============================================================
 DROP FUNCTION IF EXISTS finance.fn_book_takeover_pair(int, int, numeric, numeric, numeric, date, uuid, text);
+DROP FUNCTION IF EXISTS finance.fn_book_takeover_pair(int, int, numeric, numeric, numeric, date, uuid, text, boolean);
 CREATE OR REPLACE FUNCTION finance.fn_book_takeover_pair(
     p_holding int, p_settle int, p_shares numeric, p_unit_price numeric, p_fee numeric,
-    p_date date, p_group uuid, p_label text, p_with_counter boolean DEFAULT TRUE)
+    p_date date, p_group uuid, p_label text, p_with_counter boolean DEFAULT TRUE, p_cost_origin text DEFAULT NULL)
 RETURNS jsonb LANGUAGE plpgsql AS $$
 DECLARE
     v_price  NUMERIC := round(p_unit_price, 8);
@@ -43,11 +45,11 @@ BEGIN
     END IF;
 
     INSERT INTO finance.transactions
-        (account_id, amount, transaction_date, category, holding_id, shares, order_fee, unit_price, description, group_id)
+        (account_id, amount, transaction_date, category, holding_id, shares, order_fee, unit_price, description, group_id, cost_origin)
     VALUES (p_settle, -(p_shares * v_price + v_fee), p_date, 'buy', p_holding, p_shares, v_fee, v_price,
             CASE WHEN p_with_counter THEN 'Bestandsübernahme ' ELSE 'Kauf ' END || trim_scale(p_shares) || ' ' || p_label || ' @ ' || trim_scale(v_price)
                 || ' (Gebühr ' || trim_scale(v_fee) || ')',
-            p_group)
+            p_group, p_cost_origin)
     RETURNING id INTO v_buy;
 
     IF p_with_counter THEN

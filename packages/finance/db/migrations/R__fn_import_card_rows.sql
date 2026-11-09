@@ -18,6 +18,7 @@
 --     running         Kredit: laufend (Restschuld zum Stichtag heute) wie fn_create_loan, sonst frisch
 --     rate_split      Kredit mit Rate: {interest, principal} der 1. Rate aus der Restschuld (fn_loan_monthly_interest,
 --                     wie fn_create_loan first_rate_interest/_principal)
+--   Zeilen mit cost_origin (Ersteinrichtung) erscheinen je Position einmal: Stueck und Einstand summiert, x.lots_count, x.transaction_date = erster Kauf.
 --   name = Anzeige-Name der Zeile (name, sonst symbol, sonst die referenzierte Rente).
 --   RUECKGABE jsonb-Array (leer = '[]', nie NULL -> der Pg-Knoten liefert immer genau ein Item).
 -- ============================================================
@@ -133,6 +134,22 @@ BEGIN
             'name', COALESCE(v_p->>'name', finance.fn_holding_symbol(v_p->>'symbol', v_p->>'isin'), v_p->>'pension', '?'),
             'p', v_p, 'x', v_x));
     END LOOP;
+    -- Ersteinrichtung: Kaeufe einer Position (cost_origin) auf der Karte zusammenfassen, je Position eine Zeile statt je Kauf
+    SELECT COALESCE(jsonb_agg(e ORDER BY (e->>'row_no')::int), '[]'::jsonb) INTO v_out FROM (
+        SELECT x AS e FROM jsonb_array_elements(v_out) x
+        WHERE x->>'entity_type' <> 'stock_buy' OR NULLIF(x->'p'->>'cost_origin', '') IS NULL
+        UNION ALL
+        SELECT (first_row) || jsonb_build_object(
+                   'p', (first_row->'p') || jsonb_build_object('shares', shs, 'price_per_share', finance.fn_unit_price_from_total(cost, shs), 'order_fee', fee),
+                   'x', (first_row->'x') || jsonb_build_object('lots_count', n, 'transaction_date', first_date))
+        FROM (
+            SELECT (array_agg(x ORDER BY (x->>'row_no')::int))[1] AS first_row, count(*) AS n, min(x->'p'->>'transaction_date') AS first_date,
+                   sum((x->'p'->>'shares')::numeric) AS shs,
+                   sum((x->'p'->>'shares')::numeric * (x->'p'->>'price_per_share')::numeric) AS cost,
+                   sum(COALESCE((x->'p'->>'order_fee')::numeric, 0)) AS fee
+            FROM jsonb_array_elements(v_out) x
+            WHERE x->>'entity_type' = 'stock_buy' AND NULLIF(x->'p'->>'cost_origin', '') IS NOT NULL
+            GROUP BY x->'p'->>'depot', COALESCE(x->'p'->>'isin', x->'p'->>'symbol')) g) z;
     RETURN v_out;
 END;
 $$;

@@ -1197,6 +1197,23 @@ BEGIN
   END;
   RAISE NOTICE 'PASS [finance_rw/finance_ro -> core.fn_resolve_person (DEFINER-Fenster aufrufbar, D10)]';
 
+  -- ===== (4g1) Ersteinrichtung aus Export-Datei unter den Tool-Rollen =====
+  DECLARE v_su JSONB; v_tb JSONB := jsonb_build_object('rows', jsonb_build_array(
+      jsonb_build_array('datetime','category','type','amount','currency'),
+      jsonb_build_array('2024-01-01T10:00:00Z','CASH','CUSTOMER_INPAYMENT','1.00','EUR'))); BEGIN
+    SET LOCAL ROLE finance_rw;
+    v_su := finance.fn_setup_begin(jsonb_build_object('chat_id','__rp_setup','file_id','f','table',v_tb));
+    IF (v_su->>'ok')::boolean IS DISTINCT FROM true THEN RESET ROLE; RAISE EXCEPTION 'FAIL [finance_rw fn_setup_begin]: %', v_su; END IF;
+    v_su := finance.fn_setup_advance(jsonb_build_object('chat_id','__rp_setup','table',v_tb));
+    PERFORM finance.fn_setup_positions('[]'::jsonb, '{}'::jsonb, NULL, CURRENT_DATE);
+    PERFORM finance.fn_setup_close(jsonb_build_object('chat_id','__rp_setup'));
+    RESET ROLE;
+    SET LOCAL ROLE finance_ro;
+    PERFORM count(*) FROM finance.setup_session;
+    RESET ROLE;
+  END;
+  RAISE NOTICE 'PASS [finance_rw/finance_ro -> fn_setup_*]';
+
   -- ===== (4g2) Import mit Personen-Feld unter finance_rw (stage -> bundle) =====
   -- fn_import_validate_row faengt JEDEN Fehler als Row-Fehler (EXCEPTION WHEN OTHERS) -> ein Rechte-Fehler
   -- des Personen-Resolvers wuerde als "invalid payload" verschluckt. Hier: die Zeile muss VALID sein und

@@ -81,6 +81,10 @@ Bei N26:
 - **Datum:** Es zählt der Buchungstag, nicht die Wertstellung.
 - **Unbekannte Umsatzarten** bucht er nicht automatisch. Die Karte nennt sie einzeln, ihr Betrag zählt zum Rest.
 
+## Neu dabei: Einrichtung aus einer einzigen Datei
+
+Hast du noch kein passendes Konto oder Depot, reicht es, den Export einmal zu schicken. Der Bot fragt nach dem aktuellen Kontostand, schlägt die Zinsen nach und legt Konto und Depot je per Karte an. Danach rechnet er deinen heutigen Bestand mit den echten Kaufdaten aus der Datei aus und zeigt ihn auf einer Karte. Fusionen übernimmt er selbst, bei Abspaltungen und Gratis-Aktien schlägt er einen geschätzten Einstand vor oder fragt nach. Bei einer Datei mit gedrucktem Stand wie von Bondora beginnt das Konto am Anfang der Datei, die echten Zinsen kommen aus ihr.
+
 ## Bondora Go&Grow (Excel-Kontoauszug)
 
 Den Kontoauszug von Bondora Go&Grow lädst du in der Bondora-App als Excel-Datei herunter und schickst ihn an den Bot. Diese Datei enthält Zeitraum, Anfangs- und Endstand. Du musst also keinen Kontostand nennen. Auch sie liest ein fester Leser, kein Sprachmodell. Ob die Datei deutsch oder englisch ist (je nach Spracheinstellung deines Bondora-Kontos), spielt keine Rolle.

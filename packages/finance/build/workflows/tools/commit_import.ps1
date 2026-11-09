@@ -22,7 +22,7 @@ function Build-CommitImport {
     # leer, nach dem Import fragt der Agent nach (positions_without_price). alwaysOutputData: 0 Positionen -> EIN leeres
     # Item, der Loop laeuft einmal leer durch (Sub ohne ISIN = sofort roh, kein HTTP).
     $loadPos = Build-Pg 'Load positions' @(220, -420) `
-        "=SELECT s.row_no, s.payload->>'isin' AS isin, s.payload->>'symbol' AS symbol, s.payload->>'price_per_share' AS price, COALESCE(NULLIF(s.payload->>'quote_currency',''), finance.fn_import_depot_currency(s.batch_id, s.payload->>'depot')) AS ccy FROM finance.import_staging s WHERE s.batch_id = ((`$1::jsonb)->>'batch_id')::uuid AND s.entity_type = 'stock_buy' AND s.status <> 'committed' AND NULLIF(s.payload->>'isin','') IS NOT NULL AND NULLIF(s.payload->>'provider_symbol','') IS NULL ORDER BY s.row_no;" `
+        "=SELECT s.row_no, s.payload->>'isin' AS isin, s.payload->>'symbol' AS symbol, s.payload->>'price_per_share' AS price, COALESCE(NULLIF(s.payload->>'quote_currency',''), finance.fn_import_depot_currency(s.batch_id, s.payload->>'depot')) AS ccy FROM finance.import_staging s WHERE s.batch_id = ((`$1::jsonb)->>'batch_id')::uuid AND s.entity_type = 'stock_buy' AND s.status <> 'committed' AND NULLIF(s.payload->>'isin','') IS NOT NULL AND NULLIF(s.payload->>'provider_symbol','') IS NULL AND NOT EXISTS (SELECT 1 FROM finance.import_staging e WHERE e.batch_id = s.batch_id AND e.entity_type = 'stock_buy' AND e.row_no < s.row_no AND e.payload->>'depot' = s.payload->>'depot' AND e.payload->>'isin' = s.payload->>'isin') ORDER BY s.row_no;" `
         ([ordered]@{ batch_id = '$(''Start'').first().json.batch_id' })
     $loadPos['alwaysOutputData'] = $true
     $eachPos = Build-Loop 'Each position' @(440, -420)
@@ -132,6 +132,7 @@ function Build-CommitImport {
     $checkPos['executeOnce'] = $true   # beide Zweige (mit/ohne FX) muenden hier -> EIN Check
     $ret = Build-Return @(3300, 0) @(
         ,@('ok','true','boolean')
+        ,@('approved_via_card','true','boolean')
         ,@('committed', "={{ `$('Import bundle (atomic)').first().json.committed }}", 'number')
         ,@('created',   "={{ `$('Import bundle (atomic)').first().json.created }}", 'array')
         ,@('positions_without_price',       "={{ `$('Check positions').first().json.positions_without_price || [] }}", 'array')

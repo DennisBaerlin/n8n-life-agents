@@ -23,6 +23,7 @@
 --     Uebernahme-Tag (kein Kurs an dem Tag), traegt das Depot takeover_start_date = juengstes solches S (fuer den
 --     Agenten-Read; die Mini-App zeigt nur Jahreswerte und keinen Uebernahme-Hinweis, finance.fn_app_screen_depot).
 --     Kein Kurs ab dem Uebernahme-Tag -> no_price.
+--     Ausnahme cost_origin='export': Kauf mit echtem Datum und Betrag aus der Bank-Datei zaehlt als Geldfluss ab Kaufdatum (Gegenbuchung ohne holding_id, also kein Fluss).
 --   missing_reason (dann value_eur und/oder Rendite NULL, nie 0, nie Kaufwert-Fallback): no_price (Position mit Bestand
 --     ohne Kurs, Uebernahme ohne Startkurs), no_fx (Wechselkurs fehlt fuer Endwert, Startwert oder einen Fluss),
 --     no_flows (nichts eingezahlt, z. B. leeres Depot), no_result (XIRR ohne Loesung).
@@ -72,7 +73,7 @@ BEGIN
     ), tx AS MATERIALIZED (
         SELECT t.holding_id, t.transaction_date AS d, t.shares,
                finance.fn_to_eur(t.amount, ac.currency, t.transaction_date) AS eur,
-               (t.category = 'buy' AND t.group_id IS NOT NULL
+               (t.category = 'buy' AND t.group_id IS NOT NULL AND t.cost_origin IS DISTINCT FROM 'export'
                 AND EXISTS (SELECT 1 FROM finance.transactions g
                              WHERE g.group_id = t.group_id AND g.category = 'position_takeover')) AS takeover
           FROM finance.transactions t

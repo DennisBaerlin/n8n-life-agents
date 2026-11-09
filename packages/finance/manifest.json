@@ -31,7 +31,7 @@
       "create_savings_plan", "set_savings_plan", "close_savings_plan", "book_savings_plan_execution",
       "book_recurring_occurrence", "book_interest",
       "import_stage_rows", "update_staging_row", "commit_import", "extract_finance_document",
-      "reconcile_bank_statement", "void_bank_statement", "import_bank_export", "send_bank_todos",
+      "reconcile_bank_statement", "void_bank_statement", "import_bank_export", "import_setup", "send_bank_todos",
       "set_onboarding_section"
     ],
     "crons": ["cron_refresh_fx_rates", "cron_refresh_market_prices", "cron_remind_interest", "cron_reconcile_accounts", "cron_remind_pension_statement", "cron_remind_missing_prices", "cron_remind_bank_end", "cron_remind_bank_todo"],
@@ -250,6 +250,7 @@
     "agent.finance.tool_sell_real_estate": { "tier": "owner_approval", "reason": "sell_: Immobilien-Verkauf buchen." },
     "agent.finance.tool_reconcile_account": { "tier": "owner_approval", "reason": "reconcile_: Saldo-Korrektur (Manipulationsschutz = Vier-Augen)." },
     "agent.finance.tool_reconcile_accounts_batch": { "tier": "owner_approval", "reason": "reconcile_: Sammel-Saldo-Korrektur." },
+    "agent.finance.tool_import_setup": { "tier": "owner_approval", "reason": "setup: Kontostart auf den Anfang einer Datei umstellen." },
     "agent.finance.tool_commit_import": { "tier": "owner_approval", "reason": "commit_: Bulk-Import committen (atomarer Multi-Row-Write)." },
     "agent.finance.tool_reconcile_bank_statement": { "tier": "owner_approval", "reason": "reconcile_: Kontoauszug abgleichen (Daueraufträge, Rest als Abgleich, atomarer Multi-Row-Write)." },
     "agent.finance.tool_import_bank_export": { "tier": "owner_approval", "reason": "import_: Bank-Export-Datei (CSV/Excel) als Monats-Check (Einzelkäufe statt Übernahme, Trades, Rest als Abgleich; atomare Multi-Row-Writes)." },

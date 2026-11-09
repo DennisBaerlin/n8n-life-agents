@@ -39,11 +39,7 @@ DECLARE
     v_before   NUMERIC;
     v_h        RECORD;
     v_rows     JSONB;
-    v_row      JSONB;
     v_lots     JSONB;
-    v_rest     NUMERIC;
-    v_take     NUMERIC;
-    v_i        INT;
     v_sum      NUMERIC;
     v_r        JSONB;
     v_cash_n   INT;
@@ -72,7 +68,7 @@ BEGIN
         FROM finance.depot_holdings h
         JOIN finance.accounts d ON d.id = h.account_id AND d.settlement_account_id = v_acct.id
         JOIN finance.transactions t ON t.holding_id = h.id AND t.category::text = 'buy' AND t.group_id IS NOT NULL
-        WHERE EXISTS (SELECT 1 FROM finance.transactions g WHERE g.group_id = t.group_id AND g.category::text = 'position_takeover')
+        WHERE t.cost_origin IS NULL AND EXISTS (SELECT 1 FROM finance.transactions g WHERE g.group_id = t.group_id AND g.category::text = 'position_takeover')
           AND (SELECT count(*) FROM finance.transactions g WHERE g.group_id = t.group_id) = 2
           -- eine Gruppe aus einer frueheren Ersetzung ist keine Uebernahme mehr (sonst kaeme dieselbe Karte jeden Monat)
           AND NOT EXISTS (SELECT 1 FROM finance.transaction_audit a WHERE a.replaced_by_group = t.group_id)
@@ -94,27 +90,17 @@ BEGIN
                             AND abs(t.transaction_date - (r->>'date')::date) <= 5);
         CONTINUE WHEN NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v_rows) r WHERE r->>'kind' = 'buy');
 
-        -- FIFO; ein Bestand 0 setzt neu an (fruehere Kaeufe sind vollstaendig verkauft)
-        v_lots := '[]'::jsonb;
-        FOR v_row IN SELECT e FROM jsonb_array_elements(v_rows) e LOOP
-            IF v_row->>'kind' = 'buy' THEN
-                v_lots := v_lots || jsonb_build_object('date', v_row->>'date', 'shares', (v_row->>'shares')::numeric,
-                    'orig', (v_row->>'shares')::numeric, 'gross', (v_row->>'gross')::numeric, 'fee', (v_row->>'fee')::numeric);
-            ELSE
-                v_rest := (v_row->>'shares')::numeric;
-                v_i := 0;
-                WHILE v_rest > 0 AND v_i < jsonb_array_length(v_lots) LOOP
-                    v_take := LEAST(v_rest, (v_lots->v_i->>'shares')::numeric);
-                    v_lots := jsonb_set(v_lots, ARRAY[v_i::text, 'shares'], to_jsonb((v_lots->v_i->>'shares')::numeric - v_take));
-                    v_rest := v_rest - v_take;
-                    v_i := v_i + 1;
-                END LOOP;
-                SELECT COALESCE(jsonb_agg(l), '[]'::jsonb) INTO v_lots FROM jsonb_array_elements(v_lots) l
-                WHERE (l->>'shares')::numeric > 0;
-            END IF;
-        END LOOP;
+        -- FIFO: die eine Adresse (fn_import_fifo_lots), ein Bestand 0 setzt neu an
+        v_lots := finance.fn_import_fifo_lots(v_rows)->'lots';
         SELECT COALESCE(sum((l->>'shares')::numeric), 0) INTO v_sum FROM jsonb_array_elements(v_lots) l;
 
+        -- Exporte liefern mehr Stellen als gespeichert: Rundungs-Staub der Zeilen ist kein Unterschied, er landet auf dem letzten Lot
+        IF v_sum <> v_h.take_shares AND abs(v_sum - v_h.take_shares) <= 0.00000001 * GREATEST(jsonb_array_length(v_lots), 1)
+           AND jsonb_array_length(v_lots) > 0 THEN
+            v_lots := jsonb_set(v_lots, ARRAY[(jsonb_array_length(v_lots) - 1)::text, 'shares'],
+                          to_jsonb((v_lots->-1->>'shares')::numeric + v_h.take_shares - v_sum));
+            v_sum := v_h.take_shares;
+        END IF;
         IF v_sum <> v_h.take_shares THEN
             v_mism := v_mism || jsonb_build_object('holding_id', v_h.id, 'name', v_h.name, 'code', 'lots_mismatch',
                 'takeover_shares', v_h.take_shares, 'export_shares', v_sum, 'difference', v_h.take_shares - v_sum);

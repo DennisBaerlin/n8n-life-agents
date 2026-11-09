@@ -16,7 +16,7 @@ function Build-ImportBankExport {
     $trig = Build-Trigger @('file_id', 'account_name', 'closing_balance', 'transfer_account')
 
     # Datei holen + Tabelle lesen: der geteilte Leser (../bank_export_table.ps1, gleich in tool_get_recurring_suggestions)
-    $reader = New-BankExportTableReader -FetchId $idFetch -OnTable 'Precheck statement'
+    $reader = New-BankExportTableReader -FetchId $idFetch -OnTable 'Setup begin'
     $tableExpr = $reader.TableExpr
     # account_name optional: ohne Namen waehlt finance.fn_bank_export_resolve_account das Konto nach Bank-Profil
     # (Konto-Waechter, Befund 2026-10-30); der Kartentitel kommt daher aus der DB-Antwort, nie aus dem Start-Input.
@@ -40,8 +40,26 @@ function Build-ImportBankExport {
     # (closing_balance_required, transfer_choice_required, Konto-Waechter ...) kommt VOR Karte 1 -> der Folgeaufruf mit
     # der Antwort zeigt Karte 1 genau einmal, nie doppelt und nie eine bestaetigte Ersetzung ohne Rueckmeldung. Nicht ok ->
     # direkt in die Kette: deren Prepare meldet denselben Grund als Daten (Statement not ready, eine Adresse).
+    # Ersteinrichtung vor dem Monats-Check: fehlt Konto, Depot oder der Startpunkt, fuehrt die Sitzung (finance.setup_session).
+    $setupBegin = Build-Pg 'Setup begin' @(1100, 760) "=SELECT finance.fn_setup_begin(`$1::jsonb) AS r;" `
+        ([ordered]@{ chat_id = "String(`$('Start').first().json.chat_id || '')"; file_id = "`$('Start').first().json.file_id"; table = $tableExpr })
+    $ifSetup = Build-If 'Setup running?' @(1320, 760) "={{ `$json.r.setup === true || `$json.r.ok === false }}" 'true' 'equals' 'boolean'
+    $SB = "`$('Setup begin').first().json.r"
+    $retSetup = Build-Set 'Setup step' @(1540, 760) @(
+        ,@('ok', "={{ $SB.ok === true }}", 'boolean')
+        ,@('setup', 'true', 'boolean')
+        ,@('phase', "={{ $SB.phase || '' }}", 'string')
+        ,@('code', "={{ $SB.code || '' }}", 'string')
+        ,@('say', "={{ $SB.say || $SB.reason || '' }}", 'string')
+        ,@('ask', "={{ $SB.ask || null }}", 'object')
+        ,@('card', "={{ $SB.card || null }}", 'object')
+        ,@('interest_source', "={{ $SB.interest_source || '' }}", 'string')
+    )
+    $stickySetup = Build-Sticky 'Ersteinrichtung' @(1100, 960) `
+        'Sitzung statt Monats-Check' `
+        'Setup begin = finance.fn_setup_begin: fehlt das Konto, das Depot oder ist ein unberührtes Konto zu spät gestartet, entsteht oder läuft eine Sitzung (finance.setup_session), die Antwort nennt den nächsten Schritt und dies Tool endet (Setup step). Sonst weiter zum Monats-Check. Statement can run? lässt already_covered zur Einzelkäufe-Vorschau durch: die Datei bringt keinen neuen Zeitraum, kann aber eine Übernahme belegen.' 340 260
     $precheck = Build-Pg 'Precheck statement' @(1100, 400) "=SELECT finance.fn_statement_prepare(`$1::jsonb) AS r;" $stmtParams
-    $ifPrecheck = Build-If 'Statement can run?' @(1320, 400) "={{ `$json.r.ok }}" 'true' 'equals' 'boolean'
+    $ifPrecheck = Build-If 'Statement can run?' @(1320, 400) "={{ `$json.r.ok || `$json.r.code === 'already_covered' }}" 'true' 'equals' 'boolean'
     # Karte 1: Probelauf -> nur wenn eine Uebernahme ersetzt wuerde. Eine Ablehnung des Probelaufs (Profil/Konto) zeigt
     # dieselbe Meldung wie die Prepare -> direkt weiter in die Kette (die meldet sie als Daten).
     $lotsDry = Build-Pg 'Preview lots' @(1100, 0) "=SELECT core.fn_dry_run('finance.fn_replace_takeover_with_lots(jsonb)'::regprocedure, `$1::jsonb) AS r;" $lotsParams
@@ -65,7 +83,10 @@ function Build-ImportBankExport {
     )
 
     $R ="`$('Replace lots').isExecuted ? `$('Replace lots').first().json.r : null"
-    $chain = New-StatementGateChain -X 2420 -StmtParams $stmtParams -Title 'finance.hitl.import_bank_export' `
+    $chain = New-StatementGateChain -X 2420 -StmtParams $stmtParams -Title 'finance.hitl.import_bank_export' -NotReadyExtra @(
+            ,@('positions_replaced_by_purchases', "={{ (($R) || {}).replaced || [] }}", 'array')
+            ,@('purchases_cash_effect', "={{ (($R) || {}).settlement_change || 0 }}", 'number')
+        ) `
         -CancelAction 'the monthly check from the bank export (no statement was booked)' -ReturnExtra @(
             ,@('trades_booked', "={{ `$('Apply statement').item.json.r.trades_booked || 0 }}", 'number')
             ,@('trades_not_booked', "={{ `$('Apply statement').item.json.r.trades_blocked || [] }}", 'array')
@@ -85,11 +106,13 @@ function Build-ImportBankExport {
         'Erst Einzelkäufe, dann Monats-Check – nie doppelt gebucht' `
         'Karte 1 kommt nur, wenn die Vorprüfung (Precheck statement = dieselbe Prepare) ok ist und der Probelauf eine Position ersetzen würde: jede Rückfrage (Kontostand, Konto, Pool-Zuordnung) kommt vorher, der Folgeaufruf zeigt Karte 1 genau einmal; der echte Write bekommt den fingerprint des Probelaufs (anderer Plan -> stale_preview, nichts gebucht, Lots not replaced). Ablehnung oder kein Kandidat -> weiter zu Karte 2. Ein Kauf bis zum Übernahme-Datum wird im Monats-Check nie gebucht (covered_by_takeover); nach dem Ersetzen erkennt ihn Stufe 0 als schon gebucht. Abweichende Positionen (lots_mismatch) bleiben unverändert und stehen im Rückgabewert.' 340 320
 
-    $nodes = @($trig) + $reader.Nodes + @($precheck, $ifPrecheck, $lotsDry, $ifLots, $lotsSummary,
+    $nodes = @($trig) + $reader.Nodes + @($setupBegin, $ifSetup, $retSetup, $stickySetup, $precheck, $ifPrecheck, $lotsDry, $ifLots, $lotsSummary,
                $lotsApproval, $ifLotsOk, $lotsApply, $ifReplaced, $errReplaced) + $chain.Nodes + @($sticky, $stickyLots)
     $conns = [ordered]@{ 'Start' = @{ main = @( ,@( E $reader.Entry ) ) } }
     foreach ($k in $reader.Conns.Keys) { $conns[$k] = $reader.Conns[$k] }
     $rest = [ordered]@{
+        'Setup begin'           = @{ main = @( ,@( E 'Setup running?' ) ) }
+        'Setup running?'        = @{ main = @( @( E 'Setup step' ), @( E 'Precheck statement' ) ) }
         'Precheck statement'    = @{ main = @( ,@( E 'Statement can run?' ) ) }
         'Statement can run?'    = @{ main = @( @( E 'Preview lots' ), @( E $chain.Entry ) ) }
         'Preview lots'          = @{ main = @( ,@( E 'Lots to replace?' ) ) }

@@ -1,0 +1,1185 @@
+{
+    "id":  "kT4mZq8RvN2xLb7H",
+    "name":  "agent.finance.tool_import_setup",
+    "nodes":  [
+                  {
+                      "parameters":  {
+                                         "workflowInputs":  {
+                                                                "values":  [
+                                                                               {
+                                                                                   "name":  "action"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "question_key"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "answer"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "amount"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "chat_id"
+                                                                               }
+                                                                           ]
+                                                            }
+                                     },
+                      "type":  "n8n-nodes-base.executeWorkflowTrigger",
+                      "typeVersion":  1.1,
+                      "position":  [
+                                       0,
+                                       0
+                                   ],
+                      "id":  "e29231a0-24ab-52f5-abce-cff79a5d25c8",
+                      "name":  "Start"
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "50e72f1d-33ef-542b-9585-321ff7c5455e",
+                                                                                   "leftValue":  "={{ $(\u0027Start\u0027).first().json.action === \u0027cancel\u0027 }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       0,
+                                       0
+                                   ],
+                      "id":  "8bc5c835-fa45-510f-8a92-ea1c4dea2715",
+                      "name":  "Cancel?"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "=SELECT finance.fn_setup_advance($1::jsonb) AS r;",
+                                         "options":  {
+                                                         "queryReplacement":  "={{ JSON.stringify({ chat_id: String($(\u0027Start\u0027).first().json.chat_id || \u0027\u0027), action: \u0027cancel\u0027 }) }}"
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       220,
+                                       -300
+                                   ],
+                      "id":  "303ad7ab-b3e6-5189-b31d-159e5cf20da7",
+                      "name":  "Cancel setup",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_FINANCE_RW__",
+                                                           "name":  "Postgres finance_rw (read-write)"
+                                                       }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "=SELECT (array_agg(file_id ORDER BY updated_at DESC))[1] AS file_id FROM finance.setup_session WHERE chat_id = ($1::jsonb)-\u003e\u003e\u0027chat_id\u0027 AND created_at \u003e now() - interval \u00277 days\u0027;",
+                                         "options":  {
+                                                         "queryReplacement":  "={{ JSON.stringify({ chat_id: String($(\u0027Start\u0027).first().json.chat_id || \u0027\u0027) }) }}"
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       220,
+                                       0
+                                   ],
+                      "id":  "70f72156-86ed-555e-b5f3-b8b96a5bbeca",
+                      "name":  "Load setup",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_FINANCE_RW__",
+                                                           "name":  "Postgres finance_rw (read-write)"
+                                                       }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "d13783a4-be69-5dfb-b863-23a0cc4634e6",
+                                                                                   "leftValue":  "={{ !!$json.file_id }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       440,
+                                       0
+                                   ],
+                      "id":  "27f36de0-2190-5eca-b957-938a80c06260",
+                      "name":  "Setup open?"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "8ed28c1a-c6ed-5519-af7c-408abe1a6eb2",
+                                                                                     "name":  "ok",
+                                                                                     "value":  "false",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "bbd52a9c-739f-5c1e-ac54-ef95b8ef3d77",
+                                                                                     "name":  "code",
+                                                                                     "value":  "no_open_setup",
+                                                                                     "type":  "string"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "85cb47f5-e27a-545e-95b0-e5e0645cf3f1",
+                                                                                     "name":  "error",
+                                                                                     "value":  "There is no open first-time setup. Ask the user to send the export file.",
+                                                                                     "type":  "string"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       660,
+                                       200
+                                   ],
+                      "id":  "b9c13412-e80d-5154-a7fc-d74a7f36bd36",
+                      "name":  "No open setup"
+                  },
+                  {
+                      "parameters":  {
+                                         "workflowId":  {
+                                                            "__rl":  true,
+                                                            "value":  "PWPPVNrauWK7EpuB",
+                                                            "mode":  "list",
+                                                            "cachedResultUrl":  "/workflow/PWPPVNrauWK7EpuB",
+                                                            "cachedResultName":  "agent.tool_fetch_telegram_file"
+                                                        },
+                                         "workflowInputs":  {
+                                                                "mappingMode":  "defineBelow",
+                                                                "value":  {
+                                                                              "file_id":  "={{ $(\u0027Load setup\u0027).first().json.file_id }}",
+                                                                              "accept":  "table"
+                                                                          },
+                                                                "matchingColumns":  [
+
+                                                                                    ],
+                                                                "schema":  [
+
+                                                                           ],
+                                                                "attemptToConvertTypes":  false,
+                                                                "convertFieldsToString":  true
+                                                            },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.executeWorkflow",
+                      "typeVersion":  1.2,
+                      "position":  [
+                                       220,
+                                       0
+                                   ],
+                      "id":  "40fab1d5-0eaf-5811-bebf-b1589c6a2d90",
+                      "name":  "Fetch telegram file"
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "0d74f32a-149f-555d-a883-5fda61948c1d",
+                                                                                   "leftValue":  "={{ $(\u0027Fetch telegram file\u0027).item.json.ok }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       440,
+                                       0
+                                   ],
+                      "id":  "47b792f1-3689-55e4-9f70-92418f667fc4",
+                      "name":  "File ok?"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "3be34e5e-0214-5144-8ff3-92b653fe084e",
+                                                                                     "name":  "ok",
+                                                                                     "value":  "false",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "ba194734-c4e1-5802-b512-54792d2d72b2",
+                                                                                     "name":  "error",
+                                                                                     "value":  "={{ $(\u0027Fetch telegram file\u0027).item.json.error }}",
+                                                                                     "type":  "string"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       660,
+                                       200
+                                   ],
+                      "id":  "a60585c8-ffda-508d-8c6f-95aaa416fd66",
+                      "name":  "File unusable"
+                  },
+                  {
+                      "parameters":  {
+                                         "jsCode":  "const f = $(\u0027Fetch telegram file\u0027).first().json;\nconst fail = (code, m) =\u003e [{ json: { ok: false, code, error: m, rows: [] } }];\nconst cell = (v) =\u003e (v === null || v === undefined) ? \u0027\u0027 : String(v);\nif (Array.isArray(f.rows) \u0026\u0026 f.rows.length) {\n  const grid = f.rows.map((r) =\u003e (Array.isArray(r) ? r : []).map(cell));\n  if (grid.length \u003e 20000) return fail(\u0027export_invalid\u0027, \u0027The export is too long (more than 20000 rows) - ask the user to export a shorter period (this year).\u0027);\n  return [{ json: { ok: true, rows: grid, row_count: grid.length } }];\n}\nconst t = String(f.text || \u0027\u0027);\nif (!t.trim()) return fail(\u0027not_an_export\u0027, \u0027This file is not a bank export (it is a photo or PDF). A printed bank statement goes to tool_reconcile_bank_statement.\u0027);\nconst head = t.split(/\\r?\\n/, 20).join(\u0027\\n\u0027);\nconst delim = head.split(\u0027;\u0027).length \u003e head.split(\u0027,\u0027).length ? \u0027;\u0027 : \u0027,\u0027;\nconst rows = []; let row = []; let fld = \u0027\u0027; let q = false;\nfor (let i = 0; i \u003c t.length; i++) {\n  const c = t[i];\n  if (q) { if (c === \u0027\"\u0027) { if (t[i + 1] === \u0027\"\u0027) { fld += \u0027\"\u0027; i++; } else q = false; } else fld += c; }\n  else if (c === \u0027\"\u0027) q = true;\n  else if (c === delim) { row.push(fld); fld = \u0027\u0027; }\n  else if (c === \u0027\\n\u0027 || c === \u0027\\r\u0027) { if (c === \u0027\\r\u0027 \u0026\u0026 t[i + 1] === \u0027\\n\u0027) i++; row.push(fld); rows.push(row); row = []; fld = \u0027\u0027; }\n  else fld += c;\n}\nif (fld !== \u0027\u0027 || row.length) { row.push(fld); rows.push(row); }\nif (rows.length \u003c 2 || !rows.some((r) =\u003e r.length \u003e= 2)) return fail(\u0027export_invalid\u0027, \u0027The file has no readable table (header row missing).\u0027);\nif (rows.length \u003e 20000) return fail(\u0027export_invalid\u0027, \u0027The export is too long (more than 20000 rows) - ask the user to export a shorter period (this year).\u0027);\nreturn [{ json: { ok: true, rows, row_count: rows.length } }];"
+                                     },
+                      "type":  "n8n-nodes-base.code",
+                      "typeVersion":  2,
+                      "position":  [
+                                       660,
+                                       0
+                                   ],
+                      "id":  "9b2599d2-08fc-5bac-97cc-261fec5a90ea",
+                      "name":  "Read table"
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "ed3d118f-8fc4-5691-9346-e8d5278c8c30",
+                                                                                   "leftValue":  "={{ $json.ok }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       880,
+                                       0
+                                   ],
+                      "id":  "c4f43913-1960-5271-9c4f-dc4f63a5e336",
+                      "name":  "Table read?"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "26f6cbe8-442a-5a43-9406-11512ebf50cd",
+                                                                                     "name":  "ok",
+                                                                                     "value":  "false",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "ee6f72fe-e8e3-5cb2-bffe-ee5513d971a3",
+                                                                                     "name":  "code",
+                                                                                     "value":  "={{ $(\u0027Read table\u0027).item.json.code }}",
+                                                                                     "type":  "string"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "97c4203e-f4f9-522c-bbb8-b22f0bbd43c1",
+                                                                                     "name":  "error",
+                                                                                     "value":  "={{ $(\u0027Read table\u0027).item.json.error }}",
+                                                                                     "type":  "string"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       1100,
+                                       200
+                                   ],
+                      "id":  "bb760737-eb29-5c96-a951-662b6c24638c",
+                      "name":  "Not an export"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "=SELECT finance.fn_setup_next($1::jsonb) AS r;",
+                                         "options":  {
+                                                         "queryReplacement":  "={{ JSON.stringify({ chat_id: String($(\u0027Start\u0027).first().json.chat_id || \u0027\u0027), table: ({ rows: $(\u0027Read table\u0027).first().json.rows }) }) }}"
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       1100,
+                                       400
+                                   ],
+                      "id":  "c357ff58-13af-5d07-b389-445f9d29008b",
+                      "name":  "Peek next",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_FINANCE_RW__",
+                                                           "name":  "Postgres finance_rw (read-write)"
+                                                       }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "91adb799-58cb-58ab-9aa0-24ad10bac6c9",
+                                                                                   "leftValue":  "={{ $(\u0027Start\u0027).first().json.action === \u0027reanchor\u0027 \u0026\u0026 $(\u0027Peek next\u0027).first().json.r.phase === \u0027reanchor\u0027 }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       1320,
+                                       400
+                                   ],
+                      "id":  "651255ce-3f12-550f-a5a7-1e76c69ba00a",
+                      "name":  "Reanchor?"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "=SELECT core.fn_dry_run(\u0027finance.fn_setup_reanchor(jsonb)\u0027::regprocedure, $1::jsonb) AS r;",
+                                         "options":  {
+                                                         "queryReplacement":  "={{ JSON.stringify({ chat_id: String($(\u0027Start\u0027).first().json.chat_id || \u0027\u0027), table: ({ rows: $(\u0027Read table\u0027).first().json.rows }) }) }}"
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       1540,
+                                       100
+                                   ],
+                      "id":  "52656370-0d1b-5c50-b1b0-7062d60270fa",
+                      "name":  "Dry run",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_FINANCE_RW__",
+                                                           "name":  "Postgres finance_rw (read-write)"
+                                                       }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "91a50a44-bee3-5543-98b6-2e72d71f061e",
+                                                                                   "leftValue":  "={{ $(\u0027Dry run\u0027).item.json.r.ok }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       1760,
+                                       100
+                                   ],
+                      "id":  "ee227937-2f7f-5df5-a79f-860fbf7d1c0e",
+                      "name":  "Dry run ok?"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "0dc0ba60-29e5-5d98-b619-ba9c52f93045",
+                                                                                     "name":  "ok",
+                                                                                     "value":  "false",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "e2a41705-cf0c-5027-ae0a-5b9a956f6e88",
+                                                                                     "name":  "card_sent",
+                                                                                     "value":  "false",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "a2eaa257-ee25-5f27-9272-034b626dbb16",
+                                                                                     "name":  "error",
+                                                                                     "value":  "={{ $(\u0027Dry run\u0027).item.json.r.reason || $(\u0027Dry run\u0027).item.json.r.error || \u0027The database rejected this entry.\u0027 }}",
+                                                                                     "type":  "string"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "0637b830-a30b-55b7-bb5d-acd2a324838d",
+                                                                                     "name":  "code",
+                                                                                     "value":  "={{ $(\u0027Dry run\u0027).item.json.r.code || \u0027\u0027 }}",
+                                                                                     "type":  "string"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "bd6dcf57-a30a-517d-a20e-01a01c6db973",
+                                                                                     "name":  "candidates",
+                                                                                     "value":  "={{ $(\u0027Dry run\u0027).item.json.r.candidates || [] }}",
+                                                                                     "type":  "array"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       1980,
+                                       300
+                                   ],
+                      "id":  "5d8b2da6-f478-54bd-9212-ec086973c38b",
+                      "name":  "Dry run rejected"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "=SELECT r AS r FROM finance.fn_setup_reanchor(($1::jsonb - \u0027_effective\u0027) || COALESCE(NULLIF(($1::jsonb)-\u003e\u0027_effective\u0027, \u0027null\u0027::jsonb), \u0027{}\u0027::jsonb)) AS r;",
+                                         "options":  {
+                                                         "queryReplacement":  "={{ JSON.stringify({ chat_id: String($(\u0027Start\u0027).first().json.chat_id || \u0027\u0027), table: ({ rows: $(\u0027Read table\u0027).first().json.rows }), _effective: ($(\u0027Dry run\u0027).item.json.r.effective || null) }) }}"
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       2420,
+                                       100
+                                   ],
+                      "id":  "aff06a5b-a6ff-597a-b8a2-370f6ad51e57",
+                      "name":  "Reanchor (atomic)",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_FINANCE_RW__",
+                                                           "name":  "Postgres finance_rw (read-write)"
+                                                       }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "aaa805af-8c9c-50f7-8617-535b94507421",
+                                                                                     "name":  "summary",
+                                                                                     "value":  "={{ ({ title: \u0027finance.hitl.setup_reanchor\u0027, title_params: { account: ($(\u0027Peek next\u0027).first().json.r.account_name) }, lines: [  ].concat(($(\u0027Dry run\u0027).item.json.r.card_lines || [])).filter(Boolean) }) }}",
+                                                                                     "type":  "object"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       1980,
+                                       100
+                                   ],
+                      "id":  "4bdab742-eebd-5a31-834a-9622ad322ed3",
+                      "name":  "Build Approval Summary"
+                  },
+                  {
+                      "parameters":  {
+                                         "workflowId":  {
+                                                            "__rl":  true,
+                                                            "value":  "pZnnFEZFtBWYJvrx",
+                                                            "mode":  "list",
+                                                            "cachedResultUrl":  "/workflow/pZnnFEZFtBWYJvrx",
+                                                            "cachedResultName":  "agent.tool_human_approval"
+                                                        },
+                                         "workflowInputs":  {
+                                                                "mappingMode":  "defineBelow",
+                                                                "value":  {
+                                                                              "summary":  "={{ $(\u0027Build Approval Summary\u0027).item.json.summary }}",
+                                                                              "chat_id":  "={{ $(\u0027Start\u0027).first().json.chat_id }}",
+                                                                              "approval_tier":  "owner_approval"
+                                                                          },
+                                                                "matchingColumns":  [
+
+                                                                                    ],
+                                                                "schema":  [
+
+                                                                           ],
+                                                                "attemptToConvertTypes":  false,
+                                                                "convertFieldsToString":  true
+                                                            },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.executeWorkflow",
+                      "typeVersion":  1.2,
+                      "position":  [
+                                       2200,
+                                       100
+                                   ],
+                      "id":  "7310fda0-27b5-5d83-9e28-062c50ba78ae",
+                      "name":  "Request Approval"
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "51430e2a-8f1a-5e01-9a9f-98ce59a41d90",
+                                                                                   "leftValue":  "={{ $json.approved }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       2420,
+                                       300
+                                   ],
+                      "id":  "75dc19d6-42a8-5e80-aa91-8718becb049a",
+                      "name":  "Approved?"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "e906dd0b-8afe-53d4-9d68-5f8cd0e95c7a",
+                                                                                     "name":  "ok",
+                                                                                     "value":  "false",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "669f0ca7-44ec-5499-aa70-e6ddcd366884",
+                                                                                     "name":  "cancelled",
+                                                                                     "value":  "true",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "5306b965-e9f2-5e2d-a4a7-b027e73347bf",
+                                                                                     "name":  "message",
+                                                                                     "value":  "={{ $json.repeat_blocked === true ? \u0027The same confirmation card for moving the account start (nothing changed) was already not confirmed in this turn, no new card was sent. Nothing was saved. Do NOT call this tool again in this turn. Answer the user now, based on the earlier result.\u0027 : $json.reason === \u0027owner_only\u0027 ? \u0027Only the household owner may do moving the account start (nothing changed); no card was sent. Nothing was saved. Do NOT call this tool again in this turn. Tell the user only the owner can do this.\u0027 : ({ declined: \u0027The user tapped the cancel button on the confirmation card for moving the account start (nothing changed). Nothing was saved. Do NOT call this tool again in this turn. This was their decision, not an error: say it was cancelled and ask what to change, if anything.\u0027, expired: \u0027The confirmation card for moving the account start (nothing changed) expired: nobody tapped a button within the time limit, so nobody declined it. Nothing was saved. Do NOT call this tool again in this turn. Tell the user the card ran out of time, not that they cancelled it, and ask whether to send it again.\u0027, owner_declined: \u0027The household owner declined the confirmation card for moving the account start (nothing changed) after the user had confirmed it. Nothing was saved. Do NOT call this tool again in this turn. Tell the user the owner declined it; the user did not cancel it.\u0027, owner_expired: \u0027The household owner did not answer the confirmation card for moving the account start (nothing changed) within the time limit; the user had already confirmed it. Nothing was saved. Do NOT call this tool again in this turn. Tell the user the owner did not answer in time and ask whether to send it again.\u0027 })[$json.outcome] || \u0027The confirmation card for moving the account start (nothing changed) was not confirmed. Nothing was saved. Do NOT call this tool again in this turn. Tell the user it was not confirmed and ask whether to try again or what to change.\u0027 }}",
+                                                                                     "type":  "string"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       2640,
+                                       500
+                                   ],
+                      "id":  "1e0fe802-e317-57be-a1ea-8202e3d9108c",
+                      "name":  "Return cancelled"
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "6fefbcb8-7279-5003-ad2d-277e89881651",
+                                                                                   "leftValue":  "={{ $(\u0027Peek next\u0027).first().json.r.phase === \u0027open_items\u0027 \u0026\u0026 !!($(\u0027Peek next\u0027).first().json.r.ask || {}).isin \u0026\u0026 !!($(\u0027Peek next\u0027).first().json.r.ask || {}).date \u0026\u0026 Number(($(\u0027Peek next\u0027).first().json.r.ask || {}).shares) \u003e 0 }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       1540,
+                                       600
+                                   ],
+                      "id":  "92811418-b376-5d13-b6f9-cf3df6e82000",
+                      "name":  "Needs historic price?"
+                  },
+                  {
+                      "parameters":  {
+                                         "workflowId":  {
+                                                            "__rl":  true,
+                                                            "value":  "pW3sYd9GcJ6aEf1U",
+                                                            "mode":  "list",
+                                                            "cachedResultUrl":  "/workflow/pW3sYd9GcJ6aEf1U",
+                                                            "cachedResultName":  "agent.finance.sub_fetch_historic_price"
+                                                        },
+                                         "workflowInputs":  {
+                                                                "mappingMode":  "defineBelow",
+                                                                "value":  {
+                                                                              "isin":  "={{ ($(\u0027Peek next\u0027).first().json.r.ask || {}).isin }}",
+                                                                              "date":  "={{ ($(\u0027Peek next\u0027).first().json.r.ask || {}).date }}",
+                                                                              "currency":  "={{ $(\u0027Peek next\u0027).first().json.r.currency || \u0027EUR\u0027 }}"
+                                                                          },
+                                                                "matchingColumns":  [
+
+                                                                                    ],
+                                                                "schema":  [
+
+                                                                           ],
+                                                                "attemptToConvertTypes":  false,
+                                                                "convertFieldsToString":  true
+                                                            },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.executeWorkflow",
+                      "typeVersion":  1.2,
+                      "position":  [
+                                       1760,
+                                       800
+                                   ],
+                      "id":  "ac608a3c-d706-5c0b-8c4f-4cb33d998293",
+                      "name":  "Fetch historic price"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "=SELECT finance.fn_setup_advance($1::jsonb) AS r;",
+                                         "options":  {
+                                                         "queryReplacement":  "={{ JSON.stringify({ chat_id: String($(\u0027Start\u0027).first().json.chat_id || \u0027\u0027), action: ($(\u0027Start\u0027).first().json.action || \u0027continue\u0027), question_key: ($(\u0027Start\u0027).first().json.question_key || null), answer: ($(\u0027Start\u0027).first().json.answer || null), amount: ($(\u0027Start\u0027).first().json.amount || null), table: ({ rows: $(\u0027Read table\u0027).first().json.rows }), historic_price: ($(\u0027Fetch historic price\u0027).isExecuted \u0026\u0026 $(\u0027Fetch historic price\u0027).first().json.ok ? $(\u0027Fetch historic price\u0027).first().json.price : null) }) }}"
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       1980,
+                                       600
+                                   ],
+                      "id":  "d19332c9-7567-5709-ab27-7fc3a45eaf4c",
+                      "name":  "Advance",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_FINANCE_RW__",
+                                                           "name":  "Postgres finance_rw (read-write)"
+                                                       }
+                                      },
+                      "executeOnce":  true
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "fc5cbf67-46d3-52eb-a8c0-785f9289b1c5",
+                                                                                     "name":  "ok",
+                                                                                     "value":  "={{ (($(\u0027Advance\u0027).isExecuted ? $(\u0027Advance\u0027).first().json.r : ($(\u0027Reanchor (atomic)\u0027).isExecuted ? $(\u0027Reanchor (atomic)\u0027).first().json.r : $(\u0027Cancel setup\u0027).first().json.r)).ok) === true }}",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "7957e18a-638f-5cae-9741-34e64f0149b0",
+                                                                                     "name":  "phase",
+                                                                                     "value":  "={{ ($(\u0027Advance\u0027).isExecuted ? $(\u0027Advance\u0027).first().json.r : ($(\u0027Reanchor (atomic)\u0027).isExecuted ? $(\u0027Reanchor (atomic)\u0027).first().json.r : $(\u0027Cancel setup\u0027).first().json.r)).phase || \u0027\u0027 }}",
+                                                                                     "type":  "string"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "4dda32f8-1b5e-52db-b9d1-2ad880da8f92",
+                                                                                     "name":  "say",
+                                                                                     "value":  "={{ ($(\u0027Advance\u0027).isExecuted ? $(\u0027Advance\u0027).first().json.r : ($(\u0027Reanchor (atomic)\u0027).isExecuted ? $(\u0027Reanchor (atomic)\u0027).first().json.r : $(\u0027Cancel setup\u0027).first().json.r)).say || ($(\u0027Advance\u0027).isExecuted ? $(\u0027Advance\u0027).first().json.r : ($(\u0027Reanchor (atomic)\u0027).isExecuted ? $(\u0027Reanchor (atomic)\u0027).first().json.r : $(\u0027Cancel setup\u0027).first().json.r)).reason || \u0027\u0027 }}",
+                                                                                     "type":  "string"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "169a6a09-85ab-56fb-b37f-f556c854226e",
+                                                                                     "name":  "ask",
+                                                                                     "value":  "={{ ($(\u0027Advance\u0027).isExecuted ? $(\u0027Advance\u0027).first().json.r : ($(\u0027Reanchor (atomic)\u0027).isExecuted ? $(\u0027Reanchor (atomic)\u0027).first().json.r : $(\u0027Cancel setup\u0027).first().json.r)).ask || null }}",
+                                                                                     "type":  "object"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "063a2ce9-95fd-565e-89d4-0cf7972e0873",
+                                                                                     "name":  "card",
+                                                                                     "value":  "={{ ($(\u0027Advance\u0027).isExecuted ? $(\u0027Advance\u0027).first().json.r : ($(\u0027Reanchor (atomic)\u0027).isExecuted ? $(\u0027Reanchor (atomic)\u0027).first().json.r : $(\u0027Cancel setup\u0027).first().json.r)).card || null }}",
+                                                                                     "type":  "object"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "cf22770d-fa02-5018-95a6-3b5476ef5f94",
+                                                                                     "name":  "done",
+                                                                                     "value":  "={{ ($(\u0027Advance\u0027).isExecuted ? $(\u0027Advance\u0027).first().json.r : ($(\u0027Reanchor (atomic)\u0027).isExecuted ? $(\u0027Reanchor (atomic)\u0027).first().json.r : $(\u0027Cancel setup\u0027).first().json.r)).done === true }}",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "060bf02b-242e-59de-8fbb-620efb78d0fe",
+                                                                                     "name":  "batch_id",
+                                                                                     "value":  "={{ ($(\u0027Advance\u0027).isExecuted ? $(\u0027Advance\u0027).first().json.r : ($(\u0027Reanchor (atomic)\u0027).isExecuted ? $(\u0027Reanchor (atomic)\u0027).first().json.r : $(\u0027Cancel setup\u0027).first().json.r)).batch_id || \u0027\u0027 }}",
+                                                                                     "type":  "string"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "3558146d-f617-5d2e-827c-eb68736ef3f6",
+                                                                                     "name":  "file_id",
+                                                                                     "value":  "={{ ($(\u0027Advance\u0027).isExecuted ? $(\u0027Advance\u0027).first().json.r : ($(\u0027Reanchor (atomic)\u0027).isExecuted ? $(\u0027Reanchor (atomic)\u0027).first().json.r : $(\u0027Cancel setup\u0027).first().json.r)).file_id || \u0027\u0027 }}",
+                                                                                     "type":  "string"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "85bc5cdf-6930-5a49-a2bc-fb4e833c23ca",
+                                                                                     "name":  "account_name",
+                                                                                     "value":  "={{ ($(\u0027Advance\u0027).isExecuted ? $(\u0027Advance\u0027).first().json.r : ($(\u0027Reanchor (atomic)\u0027).isExecuted ? $(\u0027Reanchor (atomic)\u0027).first().json.r : $(\u0027Cancel setup\u0027).first().json.r)).account_name || \u0027\u0027 }}",
+                                                                                     "type":  "string"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "2216e55c-4af8-52fa-b2ea-e5ae08139346",
+                                                                                     "name":  "interest_source",
+                                                                                     "value":  "={{ ($(\u0027Advance\u0027).isExecuted ? $(\u0027Advance\u0027).first().json.r : ($(\u0027Reanchor (atomic)\u0027).isExecuted ? $(\u0027Reanchor (atomic)\u0027).first().json.r : $(\u0027Cancel setup\u0027).first().json.r)).interest_source || \u0027\u0027 }}",
+                                                                                     "type":  "string"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "2fad81eb-7870-5bda-aa96-1b4604ce4b03",
+                                                                                     "name":  "open_count",
+                                                                                     "value":  "={{ ($(\u0027Advance\u0027).isExecuted ? $(\u0027Advance\u0027).first().json.r : ($(\u0027Reanchor (atomic)\u0027).isExecuted ? $(\u0027Reanchor (atomic)\u0027).first().json.r : $(\u0027Cancel setup\u0027).first().json.r)).open_count || 0 }}",
+                                                                                     "type":  "number"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "ee293a18-3b94-5707-b2e2-898f0fcf3943",
+                                                                                     "name":  "notes",
+                                                                                     "value":  "={{ ($(\u0027Advance\u0027).isExecuted ? $(\u0027Advance\u0027).first().json.r : ($(\u0027Reanchor (atomic)\u0027).isExecuted ? $(\u0027Reanchor (atomic)\u0027).first().json.r : $(\u0027Cancel setup\u0027).first().json.r)).notes || [] }}",
+                                                                                     "type":  "array"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "feea920c-2a39-527c-9a71-5c31f1eaba77",
+                                                                                     "name":  "held",
+                                                                                     "value":  "={{ ($(\u0027Advance\u0027).isExecuted ? $(\u0027Advance\u0027).first().json.r : ($(\u0027Reanchor (atomic)\u0027).isExecuted ? $(\u0027Reanchor (atomic)\u0027).first().json.r : $(\u0027Cancel setup\u0027).first().json.r)).held || [] }}",
+                                                                                     "type":  "array"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       2860,
+                                       300
+                                   ],
+                      "id":  "0ca0a1f3-0f40-56e8-81c7-d5c78808e388",
+                      "name":  "Return"
+                  },
+                  {
+                      "parameters":  {
+                                         "content":  "## DB-Automatik\n**Ersteinrichtung: eine Datei, nur noch Karten**\n\nStart (action continue|cancel|reanchor, question_key, answer, amount) -\u003e Sitzung aus finance.setup_session laden (Datei-Referenz bleibt nur dort, fällt nie aus dem Gesprächsfenster) -\u003e Datei neu holen und lesen -\u003e Peek next = finance.fn_setup_next (STABLE): der Schritt wird aus Fakten abgeleitet, nie gespeichert -\u003e offener Punkt mit ISIN: historischer Kurs (Vorschlag) -\u003e Advance = finance.fn_setup_advance: Antwort speichern, Konto binden, Positionen per fn_import_positions_from_export einstellen. Karten kommen aus tool_create_account und tool_commit_import, der Agent ruft sie mit card.params. reanchor: unberührtes Konto auf den Anfang einer Datei mit gedrucktem Stand umstellen (Gate, fn_setup_reanchor). Die Datei geht nie ans Sprachmodell. Kein HITL für Antworten und Staging: das sind keine Domänen-Daten.",
+                                         "height":  460,
+                                         "width":  400,
+                                         "color":  4
+                                     },
+                      "type":  "n8n-nodes-base.stickyNote",
+                      "typeVersion":  1,
+                      "position":  [
+                                       -200,
+                                       -520
+                                   ],
+                      "id":  "27588141-5ee6-5e54-93a8-93c341f35db2",
+                      "name":  "Überblick"
+                  }
+              ],
+    "connections":  {
+                        "Start":  {
+                                      "main":  [
+                                                   [
+                                                       {
+                                                           "index":  0,
+                                                           "node":  "Cancel?",
+                                                           "type":  "main"
+                                                       }
+                                                   ]
+                                               ]
+                                  },
+                        "Cancel?":  {
+                                        "main":  [
+                                                     [
+                                                         {
+                                                             "index":  0,
+                                                             "node":  "Cancel setup",
+                                                             "type":  "main"
+                                                         }
+                                                     ],
+                                                     [
+                                                         {
+                                                             "index":  0,
+                                                             "node":  "Load setup",
+                                                             "type":  "main"
+                                                         }
+                                                     ]
+                                                 ]
+                                    },
+                        "Cancel setup":  {
+                                             "main":  [
+                                                          [
+                                                              {
+                                                                  "index":  0,
+                                                                  "node":  "Return",
+                                                                  "type":  "main"
+                                                              }
+                                                          ]
+                                                      ]
+                                         },
+                        "Load setup":  {
+                                           "main":  [
+                                                        [
+                                                            {
+                                                                "index":  0,
+                                                                "node":  "Setup open?",
+                                                                "type":  "main"
+                                                            }
+                                                        ]
+                                                    ]
+                                       },
+                        "Setup open?":  {
+                                            "main":  [
+                                                         [
+                                                             {
+                                                                 "index":  0,
+                                                                 "node":  "Fetch telegram file",
+                                                                 "type":  "main"
+                                                             }
+                                                         ],
+                                                         [
+                                                             {
+                                                                 "index":  0,
+                                                                 "node":  "No open setup",
+                                                                 "type":  "main"
+                                                             }
+                                                         ]
+                                                     ]
+                                        },
+                        "Fetch telegram file":  {
+                                                    "main":  [
+                                                                 [
+                                                                     {
+                                                                         "index":  0,
+                                                                         "node":  "File ok?",
+                                                                         "type":  "main"
+                                                                     }
+                                                                 ]
+                                                             ]
+                                                },
+                        "File ok?":  {
+                                         "main":  [
+                                                      [
+                                                          {
+                                                              "index":  0,
+                                                              "node":  "Read table",
+                                                              "type":  "main"
+                                                          }
+                                                      ],
+                                                      [
+                                                          {
+                                                              "index":  0,
+                                                              "node":  "File unusable",
+                                                              "type":  "main"
+                                                          }
+                                                      ]
+                                                  ]
+                                     },
+                        "Read table":  {
+                                           "main":  [
+                                                        [
+                                                            {
+                                                                "index":  0,
+                                                                "node":  "Table read?",
+                                                                "type":  "main"
+                                                            }
+                                                        ]
+                                                    ]
+                                       },
+                        "Table read?":  {
+                                            "main":  [
+                                                         [
+                                                             {
+                                                                 "index":  0,
+                                                                 "node":  "Peek next",
+                                                                 "type":  "main"
+                                                             }
+                                                         ],
+                                                         [
+                                                             {
+                                                                 "index":  0,
+                                                                 "node":  "Not an export",
+                                                                 "type":  "main"
+                                                             }
+                                                         ]
+                                                     ]
+                                        },
+                        "Peek next":  {
+                                          "main":  [
+                                                       [
+                                                           {
+                                                               "index":  0,
+                                                               "node":  "Reanchor?",
+                                                               "type":  "main"
+                                                           }
+                                                       ]
+                                                   ]
+                                      },
+                        "Reanchor?":  {
+                                          "main":  [
+                                                       [
+                                                           {
+                                                               "index":  0,
+                                                               "node":  "Dry run",
+                                                               "type":  "main"
+                                                           }
+                                                       ],
+                                                       [
+                                                           {
+                                                               "index":  0,
+                                                               "node":  "Needs historic price?",
+                                                               "type":  "main"
+                                                           }
+                                                       ]
+                                                   ]
+                                      },
+                        "Dry run":  {
+                                        "main":  [
+                                                     [
+                                                         {
+                                                             "index":  0,
+                                                             "node":  "Dry run ok?",
+                                                             "type":  "main"
+                                                         }
+                                                     ]
+                                                 ]
+                                    },
+                        "Dry run ok?":  {
+                                            "main":  [
+                                                         [
+                                                             {
+                                                                 "index":  0,
+                                                                 "node":  "Build Approval Summary",
+                                                                 "type":  "main"
+                                                             }
+                                                         ],
+                                                         [
+                                                             {
+                                                                 "index":  0,
+                                                                 "node":  "Dry run rejected",
+                                                                 "type":  "main"
+                                                             }
+                                                         ]
+                                                     ]
+                                        },
+                        "Build Approval Summary":  {
+                                                       "main":  [
+                                                                    [
+                                                                        {
+                                                                            "index":  0,
+                                                                            "node":  "Request Approval",
+                                                                            "type":  "main"
+                                                                        }
+                                                                    ]
+                                                                ]
+                                                   },
+                        "Request Approval":  {
+                                                 "main":  [
+                                                              [
+                                                                  {
+                                                                      "index":  0,
+                                                                      "node":  "Approved?",
+                                                                      "type":  "main"
+                                                                  }
+                                                              ]
+                                                          ]
+                                             },
+                        "Approved?":  {
+                                          "main":  [
+                                                       [
+                                                           {
+                                                               "index":  0,
+                                                               "node":  "Reanchor (atomic)",
+                                                               "type":  "main"
+                                                           }
+                                                       ],
+                                                       [
+                                                           {
+                                                               "index":  0,
+                                                               "node":  "Return cancelled",
+                                                               "type":  "main"
+                                                           }
+                                                       ]
+                                                   ]
+                                      },
+                        "Reanchor (atomic)":  {
+                                                  "main":  [
+                                                               [
+                                                                   {
+                                                                       "index":  0,
+                                                                       "node":  "Return",
+                                                                       "type":  "main"
+                                                                   }
+                                                               ]
+                                                           ]
+                                              },
+                        "Needs historic price?":  {
+                                                      "main":  [
+                                                                   [
+                                                                       {
+                                                                           "index":  0,
+                                                                           "node":  "Fetch historic price",
+                                                                           "type":  "main"
+                                                                       }
+                                                                   ],
+                                                                   [
+                                                                       {
+                                                                           "index":  0,
+                                                                           "node":  "Advance",
+                                                                           "type":  "main"
+                                                                       }
+                                                                   ]
+                                                               ]
+                                                  },
+                        "Fetch historic price":  {
+                                                     "main":  [
+                                                                  [
+                                                                      {
+                                                                          "index":  0,
+                                                                          "node":  "Advance",
+                                                                          "type":  "main"
+                                                                      }
+                                                                  ]
+                                                              ]
+                                                 },
+                        "Advance":  {
+                                        "main":  [
+                                                     [
+                                                         {
+                                                             "index":  0,
+                                                             "node":  "Return",
+                                                             "type":  "main"
+                                                         }
+                                                     ]
+                                                 ]
+                                    }
+                    },
+    "settings":  {
+                     "executionOrder":  "v1",
+                     "errorWorkflow":  "Nd3UVmUTzTLOBeba"
+                 }
+}

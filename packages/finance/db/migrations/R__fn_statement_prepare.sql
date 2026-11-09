@@ -249,6 +249,21 @@ BEGIN
         SELECT COALESCE(sum((l->>'amount')::numeric), 0) INTO v_sum FROM jsonb_array_elements(v_lines) l;
         v_balance_ok := (v_open + v_sum = v_close);
         ELSE
+        IF v_acct.last_reconciled_at IS NULL AND v_acct.opening_balance_date IS NULL
+           AND round(finance.fn_parse_numeric_or_null(p->>'closing_balance', true), 2) IS NOT NULL THEN
+            RETURN jsonb_build_object('ok', false, 'code', 'no_starting_point', 'account_name', v_acct.name,
+                'reason','The account "' || v_acct.name || '" has no confirmed balance date yet - confirm its balance once '
+                       || '(tool_reconcile_account), then send the export again.');
+        END IF;
+        v_pe  := core.fn_today() - 1;
+        v_cut := GREATEST(v_acct.last_reconciled_at, v_acct.opening_balance_date);
+        -- vor der Saldo-Pflicht: eine Datei, die nichts Neues bringen kann, fragt nie nach dem Kontostand
+        IF v_cut >= v_pe THEN
+            RETURN jsonb_build_object('ok', false, 'code', 'already_covered', 'account_name', v_acct.name,
+                'covered_until', v_cut, 'useful_from', v_cut + 1,
+                'reason', 'The balance of "' || v_acct.name || '" is already confirmed up to ' || v_cut
+                       || '; only a statement reaching ' || (v_cut + 1) || ' or later helps.');
+        END IF;
         -- so, wie der Nutzer ihn nennt ("1.234,56", "1234.56 EUR"): die eine Adresse fuer freie Geld-Eingaben
         v_owner := round(finance.fn_parse_numeric_or_null(p->>'closing_balance', true), 2);
         IF v_owner IS NULL THEN
@@ -256,13 +271,6 @@ BEGIN
                 'reason','The export has no balance - ask the user for the current balance of "' || v_acct.name
                        || '" exactly as the bank app shows it right now, then call again.');
         END IF;
-        IF v_acct.last_reconciled_at IS NULL AND v_acct.opening_balance_date IS NULL THEN
-            RETURN jsonb_build_object('ok', false, 'code', 'no_starting_point', 'account_name', v_acct.name,
-                'reason','The account "' || v_acct.name || '" has no confirmed balance date yet - confirm its balance once '
-                       || '(tool_reconcile_account), then send the export again.');
-        END IF;
-        v_pe  := core.fn_today() - 1;
-        v_cut := GREATEST(v_acct.last_reconciled_at, v_acct.opening_balance_date);
         v_ps  := LEAST(v_cut + 1, v_pe);
         SELECT * INTO v_prev FROM finance.bank_statements
         WHERE account_id = v_acct.id AND balance_source = 'owner' ORDER BY period_end DESC LIMIT 1;

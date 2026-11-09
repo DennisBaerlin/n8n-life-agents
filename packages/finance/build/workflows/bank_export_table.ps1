@@ -7,12 +7,14 @@
 # Funktionskoerpern -> Ladereihenfolge egal.
 #
 # New-BankExportTableReader -FetchId <Workflow-ID core:fetch_telegram_file> -OnTable <Name des ersten Konsumenten-Knotens>
+#   [-FileIdExpr <JS-Ausdruck>] (Default Start.file_id; die Ersteinrichtung liest sie aus der Sitzung)
 #   -> @{ Nodes; Conns (inkl. 'Table read?' Ausgang 0 -> OnTable); Entry = 'Fetch telegram file' (an 'Start' haengen);
 #      TableExpr = JS-Ausdruck {rows} fuer Build-Pg }. Positionen fest x 220..1100 (der Konsument beginnt ab x 1100).
 function New-BankExportTableReader {
-    param([Parameter(Mandatory)][string]$FetchId, [Parameter(Mandatory)][string]$OnTable)
+    param([Parameter(Mandatory)][string]$FetchId, [Parameter(Mandatory)][string]$OnTable,
+          [string]$FileIdExpr = "`$('Start').item.json.file_id")
     $fetch = Build-CallWorkflow 'Fetch telegram file' @(220, 0) $FetchId 'agent.tool_fetch_telegram_file' `
-        ([ordered]@{ file_id = "={{ `$('Start').item.json.file_id }}"; accept = 'table' })
+        ([ordered]@{ file_id = "={{ $FileIdExpr }}"; accept = 'table' })
     $ifFile = Build-If 'File ok?' @(440, 0) "={{ `$('Fetch telegram file').item.json.ok }}" 'true' 'equals' 'boolean'
     $errFile = Build-ToolError 'File unusable' @(660, 200) "={{ `$('Fetch telegram file').item.json.error }}"
 

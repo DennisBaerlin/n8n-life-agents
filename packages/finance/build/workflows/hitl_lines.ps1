@@ -164,6 +164,10 @@ function Get-FinanceHitlLines {
                 $lines += (New-HitlLine 'finance.label.depot_number' "$S.depot_number" -If "$S.depot_number")
                 $lines += (New-HitlNote -Key 'finance.note.depot_number_stored' -If "!!$(& $need 'DepotNumberToStore')" -Params @{
                     number = (& $need 'DepotNumberToStore'); depot = "$S.depot_name" })
+                $lines += (New-HitlLine 'finance.label.setup_lots_count' "(X.lots_count)" -If "X.lots_count")
+                $lines += (New-HitlNote -Key 'finance.note.setup_merger' -If "($S.setup_hints || []).includes('merger')")
+                $lines += (New-HitlNote -Key 'finance.note.setup_buy_without_amount' -If "($S.setup_hints || []).includes('buy_without_amount')")
+                $lines += (New-HitlNote -Key 'finance.note.setup_estimated' -If "$S.cost_origin === 'estimated'")
                 $lines += (New-HitlLine 'finance.label.booking'  "'finance.value.position_takeover'" -Kind key)
             } else {
                 $lines += (New-HitlLine 'finance.label.asset_class'  "$S.asset_class")

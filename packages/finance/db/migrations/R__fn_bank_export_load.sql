@@ -8,7 +8,8 @@
 --   Eingabe jsonb: {account_name (optional), table:{rows}}.
 --   RUECKGABE: Leser-Rueckgabe (rows, unknown_rows, account_types, currencies, profile, printed_balance, statement?)
 --   || {account_id, account_name} | {ok:false, code, reason, ...} (Codes des Lesers bzw. des Konto-Waechters,
---   multiple_sub_accounts + account_types).
+--   multiple_sub_accounts + account_types). account_unknown bei printed_balance traegt opening_anchor
+--   {opening_balance, opening_balance_date, balance_verified}.
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_bank_export_load(p jsonb)
 RETURNS jsonb LANGUAGE plpgsql STABLE AS $$
@@ -22,6 +23,15 @@ BEGIN
     END IF;
     v_m := finance.fn_bank_export_resolve_account(p->>'account_name', v_norm->>'profile', v_norm->'currencies');
     IF (v_m->>'ok')::boolean IS DISTINCT FROM true THEN
+        -- Datei mit gedrucktem Stand und noch ohne Konto: Startpunkt fuer die Anlage (Tag vor Zeitraumbeginn, Anfangsstand),
+        -- damit die Datei danach eingelesen werden kann statt already_covered zu sein. Die fn rechnet das Datum.
+        IF v_m->>'code' = 'account_unknown' AND (v_norm->>'printed_balance')::boolean THEN
+            RETURN v_m || jsonb_build_object('opening_anchor', jsonb_build_object(
+                'opening_balance', (v_norm->'statement'->>'opening_balance')::numeric,
+                'opening_balance_date', (v_norm->'statement'->>'period_start')::date - 1,
+                'balance_verified', (SELECT COALESCE(sum((r->>'cash_amount')::numeric), 0) FROM jsonb_array_elements(v_norm->'rows') r)
+                    + (v_norm->'statement'->>'opening_balance')::numeric = (v_norm->'statement'->>'closing_balance')::numeric));
+        END IF;
         RETURN v_m;
     END IF;
     IF jsonb_array_length(COALESCE(v_norm->'account_types', '[]'::jsonb)) > 1 THEN

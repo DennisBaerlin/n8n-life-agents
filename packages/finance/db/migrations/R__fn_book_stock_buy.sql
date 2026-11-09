@@ -14,6 +14,7 @@
 --   recurring_payment_id (opt -- verknuepft den Kauf mit einem Sparplan), due_date (opt, nur mit
 --   recurring_payment_id -- Monats-Check WP-A: die Faelligkeit, die der Kauf erledigt = recurring_due_date;
 --   Default transaction_date; Abgleich-Sperre auf dem Verrechnungskonto -> {ok:false, code:'reconciled'}),
+--   cost_origin (opt, nur Bestandsuebernahme): export | estimated -> transactions.cost_origin.
 --   existing_position (opt bool, Default false -- BESTANDSUEBERNAHME einer bereits gehaltenen Position,
 --   z. B. beim Onboarding/Depotauszug-Import): der Kauf wird wie gewohnt gebucht (shares/avg korrekt aus
 --   der 'buy'-Zeile), dazu EINE Gegenbuchung category='position_takeover' (+Betrag, gleiches Datum, gleiche
@@ -312,7 +313,7 @@ BEGIN
     -- Bestandsuebernahme: Kauf + Gegenbuchung (Verrechnungskonto-Saldo unveraendert) ueber den EINEN Paar-Baustein.
     IF v_existing THEN
         v_group := gen_random_uuid();
-        v_pair := finance.fn_book_takeover_pair(v_holding, v_settle, v_shares, v_price, v_fee, v_date, v_group, v_symbol);
+        v_pair := finance.fn_book_takeover_pair(v_holding, v_settle, v_shares, v_price, v_fee, v_date, v_group, v_symbol, TRUE, NULLIF(p->>'cost_origin', ''));
         -- Dieselben Eingaben sind oben schon geprueft -> ein ok:false hier ist ein echter Defekt; RAISE rollt auch eine
         -- eben angelegte Holding zurueck (kein 0-Stueck-Waisen-Eintrag).
         IF NOT (v_pair->>'ok')::boolean THEN

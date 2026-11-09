@@ -13,7 +13,9 @@
 --   exportiert in der Sprache des Nutzerkontos, gleicher Aufbau). Der Dispatcher setzt
 --   sie vor Erkennung und Spalten-Index ein; sprachige Zellen jenseits der Kopfzeile uebersetzt die Profil-fn.
 --   RUECKGABE: [{key, bank, bank_pattern (POSIX-Regex, case-insensitiv gegen accounts.bank bzw. name), required[],
---   header_aliases?, printed_balance, withdrawal_fee?, small_inflow_max?, legacy_return_label?, counterparty_pattern?}]
+--   header_aliases?, printed_balance, interest_source, is_broker, default_account_type, withdrawal_fee?, small_inflow_max?, legacy_return_label?, counterparty_pattern?}]
+--   interest_source: Quelle der Zinsen eines neuen Kontos: web (Konditionen nachschlagen), export (echte Zinszeilen der Datei), none.
+--   is_broker: Datei kann Wertpapierzeilen tragen (Ersteinrichtung mit Depot); default_account_type: Typ eines neuen Kontos.
 --   counterparty_pattern: Gegenpart-Name des Anbieter-Sammelkontos (Pool-Regel in fn_statement_prepare: Ein-/Auszahlungen
 --   auf einem Bankkonto ohne eigene Gegen-IBAN werden einem P2P-Konto dieses Profils zugeordnet).
 -- ============================================================
@@ -22,15 +24,18 @@ RETURNS jsonb LANGUAGE sql IMMUTABLE AS $$
     SELECT jsonb_build_array(
         jsonb_build_object('key', 'trade_republic_v1', 'bank', 'Trade Republic', 'bank_pattern', 'trade[[:space:]-]*republic',
                            'required', jsonb_build_array('datetime', 'category', 'type', 'amount', 'currency'),
+                           'interest_source', 'web', 'is_broker', true, 'default_account_type', 'cash',
                            'printed_balance', false),
         jsonb_build_object('key', 'bondora_go_grow_v1', 'bank', 'Bondora', 'bank_pattern', 'bondora|go[[:space:]]*&[[:space:]]*grow',
                            'required', jsonb_build_array('date', 'payment type', 'in', 'out', 'balance'),
                            'header_aliases', jsonb_build_object('datum', 'date', 'zahlungsart', 'payment type',
                                                                 'eingänge', 'in', 'ausgänge', 'out', 'guthaben', 'balance'),
+                           'interest_source', 'export', 'is_broker', false, 'default_account_type', 'p2p',
                            'printed_balance', true, 'withdrawal_fee', 1.00, 'small_inflow_max', 1.00,
                            'counterparty_pattern', 'bondora|go[[:space:]]*&[[:space:]]*grow',
                            'legacy_return_label', 'Rückflüsse Bondora-Altkredite'),
         jsonb_build_object('key', 'n26_v1', 'bank', 'N26', 'bank_pattern', '(^|[^[:alnum:]])n[[:space:]-]*26([^[:alnum:]]|$)',
                            'required', jsonb_build_array('booking date', 'value date', 'partner name', 'type', 'amount (eur)'),
+                           'interest_source', 'none', 'is_broker', false, 'default_account_type', 'cash',
                            'printed_balance', false));
 $$;

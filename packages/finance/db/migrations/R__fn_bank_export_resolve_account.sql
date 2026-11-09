@@ -11,7 +11,8 @@
 --   Nur Datei-Wege: der gedruckte Auszug (IBAN/Name) laeuft nie hier durch.
 --   plpgsql (late-bound): fn_bookable_account_reason / fn_resolve_account liegen alphabetisch spaeter.
 --   RUECKGABE: {ok:true, account_id, account_name}
---   | {ok:false, code, reason, bank (Bank der Datei), account_name?, candidates[{id,name,bank,account_type,status}]}.
+--   | {ok:false, code, reason, bank (Bank der Datei), account_name?, candidates[{id,name,bank,account_type,status}]};
+--   account_unknown ohne Kandidaten traegt profile, is_broker, interest_source.
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_bank_export_resolve_account(p_account_name text, p_profile text,
                                                                  p_currencies jsonb DEFAULT '[]'::jsonb)
@@ -24,8 +25,10 @@ DECLARE
     v_acct   finance.accounts%ROWTYPE;
     v_prof   TEXT;
     v_reason TEXT;
+    v_setup  JSONB;   -- Profilfelder fuer account_unknown (die Prepare kennt das Profil dort nicht)
 BEGIN
-    SELECT pr->>'bank' INTO v_bank FROM jsonb_array_elements(finance.fn_bank_export_profiles()) pr WHERE pr->>'key' = p_profile;
+    SELECT pr->>'bank', jsonb_build_object('profile', pr->>'key', 'is_broker', pr->'is_broker', 'interest_source', pr->'interest_source')
+    INTO v_bank, v_setup FROM jsonb_array_elements(finance.fn_bank_export_profiles()) pr WHERE pr->>'key' = p_profile;
     SELECT COALESCE(jsonb_agg(jsonb_build_object('id', a.id, 'name', a.name, 'bank', a.bank,
                                                  'account_type', a.account_type, 'status', a.status) ORDER BY a.id), '[]'::jsonb),
            string_agg('"' || a.name || '"', ', ' ORDER BY a.id)
@@ -48,7 +51,8 @@ BEGIN
                 THEN 'This is a ' || v_bank || ' export, but no active ' || v_bank || ' account is known - ask the user which '
                      || 'existing account it belongs to or whether to create one.'
                 ELSE 'This is a ' || v_bank || ' export and several accounts fit (' || v_names || ') - ask the user which one, '
-                     || 'then call again with account_name.' END);
+                     || 'then call again with account_name.' END)
+            || CASE WHEN jsonb_array_length(v_cand) = 0 THEN COALESCE(v_setup, '{}'::jsonb) ELSE '{}'::jsonb END;
     END IF;
 
     SELECT * INTO v_res FROM finance.fn_resolve_account(trim(p_account_name), NULL, TRUE);

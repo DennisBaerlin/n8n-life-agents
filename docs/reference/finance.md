@@ -146,3 +146,7 @@ Der paket-übergreifende Katalog aller Write-Tools (finance, career, estate, pap
 Verantwortungs-Split: DB (Trigger/GENERATED/CHECK) = `balance`, `holding.shares`/`average_purchase_price`, `monthly_equivalent`, Category-Consistency, Closed-Account-Block · n8n-Tool = Lookup/Ambiguitäts-Auflösung (`fn_resolve_*`), Inserts/Updates der Fakten, Schedule-Berechnung, Branching, Fehler-Ausgänge.
 
 **Dubletten auf Agent-Ebene (unscharf):** der Finance-Agent prüft vor dem Anlegen via `postgres_select` bestehende Einträge gleichen Typs und fragt bei Ähnlichkeit nach; der deterministische Backstop ist der `Check duplicate name`-Node (Muster `tools/create_account.ps1`: `Build-Pg` → `fn_resolve_<entity>` → `Build-If hit_count >= 1` → `Build-ToolError` vor dem Gate) — real nötig geworden bei `create_savings_goal`.
+
+## Ersteinrichtung aus einer Datei
+
+`finance.setup_session` hält nur Datei-Referenz, Bindung und Antworten; der Schritt kommt aus `fn_setup_next`. Bei uns anders (arch-challenge 2026-11-09): die Rohdatei liegt nicht in der Datenbank, eine Finanzdatei bleibt nie ruhend gespeichert; schlägt das Holen fehl, bittet der Bot um erneutes Senden.

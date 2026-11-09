@@ -124,9 +124,11 @@ BEGIN
               'shares', core.fn_ui_num(5, 0), 'price', core.fn_ui_money(60, 'EUR')))) THEN
     RAISE EXCEPTION 'FAIL [1j] veralteter Kurs: warn mit Kurs-Datum, Bestand ohne zweites Datum, got %', v_it; END IF;
   v_it := v_sec->'items'->2;
-  IF v_it->'value' <> 'null'::jsonb OR (v_it->>'gap')::boolean IS NOT TRUE
+  IF v_it->'value' <> 'null'::jsonb OR (v_it->>'gap')::boolean
      OR v_it->'pill' <> jsonb_build_object('state', 'warn', 'icon', 'alert', 'text', core.fn_ui_tpl('finance.app.depot.price_missing'))
-     OR v_it->'details'->0->'value' <> core.fn_ui_tpl('finance.app.depot.d_holding_shares', jsonb_build_object('shares', core.fn_ui_num(2, 0))) THEN
+     OR v_it->'details'->0->'label' <> core.fn_ui_tpl('finance.app.depot.i_price_missing')
+     OR v_it->'details'->1->>'kind' <> 'todo'
+     OR v_it->'details'->2->'value' <> core.fn_ui_tpl('finance.app.depot.d_holding_shares', jsonb_build_object('shares', core.fn_ui_num(2, 0))) THEN
     RAISE EXCEPTION 'FAIL [1k] Position ohne Kurs: kein Wert, gap, Pille, Bestand nur Stueck, got %', v_it; END IF;
   SELECT s INTO v_sec FROM jsonb_array_elements(v->'sections') s
    WHERE s->'title' = core.fn_ui_tpl('finance.app.depot.section', jsonb_build_object('name', '__apdp_g_depot__'));
@@ -326,7 +328,7 @@ BEGIN
   SELECT it INTO v_it
     FROM jsonb_array_elements(finance.fn_app_screen_depot(jsonb_build_object('person_id', 'apdp_owner'))->'sections'->0->'items') it
    WHERE it->>'label' = '__apdp_perf3__';
-  IF v_it IS NULL OR (v_it->>'gap')::boolean
+  IF v_it IS NULL OR (v_it->>'gap')::boolean OR v_it->'details'->0->'label' <> core.fn_ui_tpl('finance.app.depot.i_perf_missing')
      OR v_it->'pill' <> jsonb_build_object('state', 'warn', 'icon', 'alert', 'text', core.fn_ui_tpl('finance.app.depot.price_missing')) THEN
     RAISE EXCEPTION 'FAIL [6f3] altes Depot ohne Kurs: Zeile mit Kurs fehlt ohne gap, got %', v_it; END IF;
   INSERT INTO finance.market_prices (symbol, price, currency, as_of) VALUES ('APDPR3', 110, 'EUR', core.fn_today());
@@ -386,10 +388,11 @@ BEGIN
       RAISE EXCEPTION 'FAIL [7b] Pillen-Zeile zuerst, dann nach Wert; Depot ohne Positionen fehlt; Summe entfaellt bei gap, got % / %', v_labels, v_sec->'value'; END IF;
     v_it := v_sec->'items'->0;
     -- Wert nach der Vermoegen-Regel: ohne Kurs zaehlt der Kaufwert (360 + 90), gap weil eine Position keinen Kurs hat
-    IF v_it->'value' <> core.fn_ui_money(450, 'EUR') OR (v_it->>'gap')::boolean IS NOT TRUE
+    IF v_it->'value' <> core.fn_ui_money(450, 'EUR') OR (v_it->>'gap')::boolean
        OR v_it->'pill' <> jsonb_build_object('state', 'warn', 'icon', 'alert', 'text', core.fn_ui_tpl('finance.app.depot.price_missing'))
        OR v_it->'sub' <> core.fn_ui_tpl('finance.app.depot.kid_owner', jsonb_build_object('name', 'Beta Kind'))
-       OR jsonb_array_length(v_it->'details') <> 8
+       OR jsonb_array_length(v_it->'details') <> 10
+       OR v_it->'details'->0->'label' <> core.fn_ui_tpl('finance.app.depot.i_prices_missing')
        OR v_it->'details'->-1 <> jsonb_build_object('label', core.fn_ui_tpl('finance.app.depot.more_positions',
             jsonb_build_object('count', core.fn_ui_num(2, 0))), 'value', NULL) THEN
       RAISE EXCEPTION 'FAIL [7c] Kind-Depot mit Kurs-Luecke: Wert 450 + gap, Pille Kurs fehlt, 7 Positionen + „2 weitere", got %', v_it; END IF;

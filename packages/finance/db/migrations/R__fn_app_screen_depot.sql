@@ -151,7 +151,7 @@ BEGIN
                    'sub', NULL,
                    'value', CASE WHEN h.market_value_eur IS NOT NULL THEN core.fn_ui_money(h.market_value_eur, 'EUR')
                                  WHEN h.market_value IS NOT NULL THEN core.fn_ui_money(h.market_value, h.price_currency) END,
-                   'gap', h.market_value_eur IS NULL,
+                   'gap', h.market_value_eur IS NULL AND h.price_status <> 'missing',
                    -- Pille nur fuer ein Kurs-Problem (Handlungsbedarf); der Gewinn seit Kauf ist Information -> trend
                    'pill', CASE
                        WHEN h.price_status = 'missing' THEN jsonb_build_object('state', 'warn', 'icon', 'alert',
@@ -171,6 +171,9 @@ BEGIN
                                           'date', core.fn_ui_date(h.price_as_of))), 'value', NULL, 'kind', 'info'),
                                       jsonb_build_object('label', core.fn_ui_tpl('finance.app.depot.todo_price_outdated'), 'value', NULL, 'kind', 'todo',
                                           'ask', core.fn_ui_tpl('finance.app.depot.ask_price_outdated', jsonb_build_object('name', h.name))))
+                                      WHEN h.price_status = 'missing' THEN jsonb_build_array(
+                                      jsonb_build_object('label', core.fn_ui_tpl('finance.app.depot.i_price_missing'), 'value', NULL, 'kind', 'info'),
+                                      jsonb_build_object('label', core.fn_ui_tpl('finance.app.depot.todo_price_missing'), 'value', NULL, 'kind', 'todo', 'ask', core.fn_ui_tpl('finance.app.depot.ask_price_missing', jsonb_build_object('name', h.name))))
                                       ELSE '[]'::jsonb END
                               || (SELECT COALESCE(jsonb_agg(e ORDER BY n) FILTER (WHERE e IS NOT NULL), '[]'::jsonb)
                                  FROM unnest(ARRAY[
@@ -260,7 +263,7 @@ BEGIN
                     'sub', CASE WHEN kr.owner_name IS NOT NULL
                                 THEN core.fn_ui_tpl('finance.app.depot.kid_owner', jsonb_build_object('name', kr.owner_name)) END,
                     'value', core.fn_ui_money(kr.val, 'EUR'),
-                    'gap', kr.val_gap,
+                    'gap', kr.val_gap AND NOT kr.missing,
                     'pill', kr.pill,
                     'trend', CASE WHEN kr.book > 0 AND kr.gain <> 0 THEN jsonb_build_object(
                                  'direction', CASE WHEN kr.gain > 0 THEN 'up' ELSE 'down' END,
@@ -270,7 +273,10 @@ BEGIN
                     'progress', NULL,
                     'target', NULL,
                     'details',
-                        CASE WHEN NOT kr.missing AND kr.stale_date IS NOT NULL THEN jsonb_build_array(
+                        CASE WHEN kr.missing THEN jsonb_build_array(
+                            jsonb_build_object('label', core.fn_ui_tpl('finance.app.depot.i_prices_missing'), 'value', NULL, 'kind', 'info'),
+                            jsonb_build_object('label', core.fn_ui_tpl('finance.app.depot.todo_price_missing'), 'value', NULL, 'kind', 'todo', 'ask', core.fn_ui_tpl('finance.app.depot.ask_price_missing', jsonb_build_object('name', kr.depot_name))))
+                             WHEN kr.stale_date IS NOT NULL THEN jsonb_build_array(
                             jsonb_build_object('label', core.fn_ui_tpl('finance.app.depot.i_prices_outdated', jsonb_build_object(
                                 'date', core.fn_ui_date(kr.stale_date))), 'value', NULL, 'kind', 'info'),
                             jsonb_build_object('label', core.fn_ui_tpl('finance.app.depot.todo_price_outdated'), 'value', NULL, 'kind', 'todo',
@@ -342,6 +348,13 @@ BEGIN
                'target', NULL,
                'details', (SELECT COALESCE(jsonb_agg(e ORDER BY k) FILTER (WHERE e IS NOT NULL), '[]'::jsonb)
                              FROM unnest(ARRAY[
+                              CASE WHEN r.pct IS NULL AND r.x ->> 'missing_reason' IN ('no_price', 'no_fx') THEN jsonb_build_object(
+                                  'label', core.fn_ui_tpl(CASE r.x ->> 'missing_reason' WHEN 'no_fx' THEN 'finance.app.depot.i_perf_fx_missing'
+                                                                                        ELSE 'finance.app.depot.i_perf_missing' END),
+                                  'value', NULL, 'kind', 'info') END,
+                              CASE WHEN r.pct IS NULL AND r.x ->> 'missing_reason' IN ('no_price', 'no_fx') THEN jsonb_build_object(
+                                  'label', core.fn_ui_tpl('finance.app.depot.todo_price_missing'), 'value', NULL, 'kind', 'todo',
+                                  'ask', core.fn_ui_tpl('finance.app.depot.ask_perf_missing')) END,
                               CASE WHEN (r.x ->> 'price_stale')::boolean AND r.pct IS NOT NULL THEN jsonb_build_object(
                                   'label', core.fn_ui_tpl('finance.app.depot.i_perf_outdated', jsonb_build_object(
                                                'date', core.fn_ui_date(r.stale_date))), 'value', NULL, 'kind', 'info') END,

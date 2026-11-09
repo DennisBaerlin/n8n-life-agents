@@ -90,7 +90,7 @@
                 { "label": "Handyvertrag", "value": { "kind": "tpl", "value": "finance.app.accounts.d_payment", "params": { "date": { "kind": "date", "value": "2026-11-10" }, "amount": { "kind": "money", "value": -29.99, "currency": "EUR" } } } },
                 { "label": "Sparplan Welt-ETF", "value": { "kind": "tpl", "value": "finance.app.accounts.d_payment_n", "params": { "n": { "kind": "number", "value": 2, "digits": 0, "sign": false }, "amount": { "kind": "money", "value": -150.00, "currency": "EUR" }, "first": { "kind": "date", "value": "2026-11-02" }, "last": { "kind": "date", "value": "2026-11-16" } } } },
                 { "label": "Kreditrate Baukredit Wohnung", "value": { "kind": "tpl", "value": "finance.app.accounts.d_payment", "params": { "date": { "kind": "date", "value": "2026-11-30" }, "amount": { "kind": "money", "value": -780.00, "currency": "EUR" } } } },
-                { "label": { "kind": "tpl", "value": "finance.app.accounts.d_more", "params": { "n": { "kind": "number", "value": 1, "digits": 0, "sign": false } } }, "value": { "kind": "money", "value": -637.36, "currency": "EUR" } }
+                { "label": { "kind": "tpl", "value": "finance.app.accounts.d_more", "params": { "n": { "kind": "number", "value": 2, "digits": 0, "sign": false } } }, "value": { "kind": "money", "value": -637.36, "currency": "EUR" } }
               ] },
             { "label": { "kind": "tpl", "value": "finance.app.accounts.in_month_rest", "params": { "month": { "kind": "month", "value": "2026-11", "style": "long" } } }, "sub": { "kind": "tpl", "value": "finance.app.accounts.n_incoming", "params": { "n": { "kind": "number", "value": 2, "digits": 0, "sign": false } } }, "value": { "kind": "money", "value": 3400.00, "currency": "EUR", "sign": true }, "gap": false, "pill": null, "progress": null, "target": null,
               "details": [
@@ -145,7 +145,7 @@
         { "title": {"kind": "tpl", "value": "finance.app.accounts.section", "params": {"account": "Sparkonto Beispielbank"}}, "value": null, "empty": {"kind": "tpl", "value": "finance.app.accounts.empty", "params": {}},
           "items": [
             {"label": {"kind": "tpl", "value": "finance.app.accounts.balance_today", "params": {}}, "sub": null, "value": {"kind": "money", "value": 840, "currency": "EUR"}, "gap": false, "pill": null, "progress": null, "target": null},
-            {"label": {"kind": "tpl", "value": "finance.app.accounts.low", "params": {}}, "sub": null, "value": {"kind": "tpl", "value": "finance.app.accounts.low_unknown", "params": {}}, "gap": false, "progress": null, "target": null, "pill": {"state": "warn", "icon": "clock", "text": {"kind": "tpl", "value": "finance.app.accounts.pill_stale", "params": {}}}, "details": [{"label": {"kind": "tpl", "value": "finance.app.accounts.i_stale", "params": {}}, "value": null, "kind": "info"},{"label": {"kind": "tpl", "value": "finance.app.accounts.d_statement_last", "params": {}}, "value": {"kind": "date", "value": "2026-08-12"}}]}
+            {"label": {"kind": "tpl", "value": "finance.app.accounts.low", "params": {}}, "sub": null, "value": {"kind": "tpl", "value": "finance.app.accounts.low_unknown", "params": {}}, "gap": false, "progress": null, "target": null, "pill": {"state": "warn", "icon": "clock", "text": {"kind": "tpl", "value": "finance.app.accounts.pill_stale", "params": {}}}, "details": [{"label": {"kind": "tpl", "value": "finance.app.accounts.i_stale", "params": {}}, "value": null, "kind": "info"}, { "label": { "kind": "tpl", "value": "finance.app.accounts.todo_stale", "params": {} }, "value": null, "kind": "todo", "ask": { "kind": "tpl", "value": "finance.app.accounts.ask_stale", "params": { "account": "Sparkonto Beispielbank" } } },{"label": {"kind": "tpl", "value": "finance.app.accounts.d_statement_last", "params": {}}, "value": {"kind": "date", "value": "2026-08-12"}}]}
           ] }
       ]
     },
@@ -265,6 +265,7 @@
               "pill": { "state": "warn", "icon": "calendar", "text": { "kind": "tpl", "value": "finance.app.loans.fixed_ends", "params": {} } },
               "details": [
                 {"label": {"kind": "tpl", "value": "finance.app.loans.i_ends", "params": {"date": {"kind": "date", "value": "2027-03-31"}}}, "value": null, "kind": "info"},
+                { "label": { "kind": "tpl", "value": "finance.app.loans.todo_ends", "params": {} }, "value": null, "kind": "todo", "ask": { "kind": "tpl", "value": "finance.app.loans.ask_ends", "params": { "name": "Baukredit Wohnung" } } },
                 { "label": { "kind": "tpl", "value": "finance.app.loans.d_lender", "params": {} }, "value": "Hausbank Beispielstadt" },
                 { "label": { "kind": "tpl", "value": "finance.app.loans.d_borrower", "params": {} }, "value": { "kind": "tpl", "value": "finance.app.common.joint", "params": {} } },
                 { "label": { "kind": "tpl", "value": "finance.app.loans.d_amount", "params": {} }, "value": { "kind": "tpl", "value": "finance.app.loans.d_amount_paid_out", "params": { "amount": { "kind": "money", "value": 250000.00, "currency": "EUR" }, "date": { "kind": "date", "value": "2017-04-01" } } } },
@@ -375,9 +376,11 @@
                 { "label": { "kind": "tpl", "value": "finance.app.depot.d_avg_price", "params": {} }, "value": { "kind": "money", "value": 64385.03, "currency": "EUR" } },
                 { "label": { "kind": "tpl", "value": "finance.app.depot.d_book_value", "params": {} }, "value": { "kind": "money", "value": 6020.00, "currency": "EUR" } }
               ] },
-            { "label": "Beispielcoin", "sub": null, "value": { "kind": "money", "value": 120.00, "currency": "USD" }, "gap": true, "progress": null, "target": null, "trend": null,
+            { "label": "Beispielcoin", "sub": null, "value": { "kind": "money", "value": 120.00, "currency": "USD" }, "gap": false, "progress": null, "target": null, "trend": null,
               "pill": { "state": "warn", "icon": "alert", "text": { "kind": "tpl", "value": "finance.app.depot.price_missing", "params": {} } },
               "details": [
+                { "label": { "kind": "tpl", "value": "finance.app.depot.i_price_missing", "params": {} }, "value": null, "kind": "info" },
+                { "label": { "kind": "tpl", "value": "finance.app.depot.todo_price_missing", "params": {} }, "value": null, "kind": "todo", "ask": { "kind": "tpl", "value": "finance.app.depot.ask_price_missing", "params": { "name": "Beispielcoin" } } },
                 { "label": { "kind": "tpl", "value": "finance.app.depot.d_holding", "params": {} }, "value": { "kind": "tpl", "value": "finance.app.depot.d_holding_shares", "params": { "shares": { "kind": "number", "value": 250, "digits": 0, "sign": false } } } },
                 { "label": { "kind": "tpl", "value": "finance.app.depot.d_book_value", "params": {} }, "value": { "kind": "money", "value": 110.00, "currency": "EUR" } }
               ] }

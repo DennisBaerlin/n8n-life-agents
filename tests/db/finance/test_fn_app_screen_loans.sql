@@ -108,16 +108,16 @@ BEGIN
           jsonb_build_object('date', core.fn_ui_date((t + interval '12 months')::date - 1))) THEN
     RAISE EXCEPTION 'FAIL [1d] Haus-Kredit (Rest, 20 %% getilgt, Zins/Rate/schuldenfrei im Untertitel, warn 1 Tag vor 12 Monaten): %', v_it; END IF;
   SELECT array_agg(d->'label'->>'value' ORDER BY o) INTO v_keys FROM jsonb_array_elements(v_it->'details') WITH ORDINALITY AS t(d, o);
-  IF v_keys IS DISTINCT FROM ARRAY['finance.app.loans.i_ends', 'finance.app.loans.d_lender', 'finance.app.loans.d_borrower', 'finance.app.loans.d_amount', 'finance.app.loans.d_repaid',
+  IF v_keys IS DISTINCT FROM ARRAY['finance.app.loans.i_ends', 'finance.app.loans.todo_ends', 'finance.app.loans.d_lender', 'finance.app.loans.d_borrower', 'finance.app.loans.d_amount', 'finance.app.loans.d_repaid',
                                    'finance.app.loans.d_split', 'finance.app.loans.d_fixed', 'finance.app.loans.d_payoff',
                                    'finance.app.loans.d_interest_left'] THEN
     RAISE EXCEPTION 'FAIL [1d2] Details in fester Reihenfolge, NULL-Zeilen entfallen (kein Laufzeitende), got %', v_keys; END IF;
-  IF v_it->'details'->1->'value' <> to_jsonb('Bank'::text) OR v_it->'details'->2->'value' <> core.fn_ui_tpl('finance.app.common.joint')
-     OR v_it->'details'->4->'value' <> core.fn_ui_tpl('finance.app.loans.d_repaid_value', jsonb_build_object(
+  IF v_it->'details'->2->'value' <> to_jsonb('Bank'::text) OR v_it->'details'->3->'value' <> core.fn_ui_tpl('finance.app.common.joint')
+     OR v_it->'details'->5->'value' <> core.fn_ui_tpl('finance.app.loans.d_repaid_value', jsonb_build_object(
           'pct', core.fn_ui_num(20.0, 1), 'amount', core.fn_ui_money(2000, 'EUR')))
-     OR v_it->'details'->5->'value' <> core.fn_ui_tpl('finance.app.loans.d_split_value', jsonb_build_object(
+     OR v_it->'details'->6->'value' <> core.fn_ui_tpl('finance.app.loans.d_split_value', jsonb_build_object(
           'interest', core.fn_ui_money(23.33, 'EUR'), 'principal', core.fn_ui_money(276.67, 'EUR')))
-     OR v_it->'details'->7->'value' <> (SELECT core.fn_ui_date(payoff_date_projected) FROM finance.loan_overview WHERE id = v_l1) THEN
+     OR v_it->'details'->8->'value' <> (SELECT core.fn_ui_date(payoff_date_projected) FROM finance.loan_overview WHERE id = v_l1) THEN
     RAISE EXCEPTION 'FAIL [1d3] Details: Bank, Gemeinsam, getilgt 20 %% · 2000, Zins 23.33 + Tilgung 276.67, schuldenfrei-Datum, got %', v_it->'details'; END IF;
   SELECT i INTO v_it FROM jsonb_array_elements(v->'sections'->0->'items') i WHERE i->'label' = to_jsonb('<img src=x onerror=alert(1)>'::text);
   IF v_it IS NULL OR jsonb_typeof(v_it->'progress') <> 'null'

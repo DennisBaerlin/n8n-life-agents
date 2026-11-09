@@ -354,7 +354,12 @@ EOF
 #   aktiviert danach den neuen Stand. Damit entfaellt auch das Warten auf laufende Ausfuehrungen — das
 #   Deaktivieren bricht keine laufende Ausfuehrung ab (die "verbunden"-Antwort des Orchestrators kommt an).
 _oc_finalize() {
-  local pkgs p
+  local pkgs p chat
+  # chat_id einmal lesen und fuer alle Deploys festhalten: _owner_chat_id_db verschluckt DB-Fehler, ein spaeterer Lesefehler
+  # liesse _resolve_owner_chat_id sonst still auf 0 fallen (die Subshell des Aufrufers begrenzt den Wert auf diesen Lauf).
+  chat="$(_owner_chat_id_db)"
+  _oc_is_chat_id "$chat" || return 1
+  OWNER_CHAT_ID="$chat"
   # Explizit pruefen: im if-Kontext des Aufrufers ist set -e aus, ein Fehler-Rueckgabewert liefe sonst still weiter.
   deploy_workflows core || return 1
   pkgs="$(_owner_psql -tA -c "SELECT package FROM core.package_registry WHERE status='active' AND package <> 'core' ORDER BY package;" 2>/dev/null || true)"

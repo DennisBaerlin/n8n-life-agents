@@ -39,6 +39,30 @@ test('reach: Adresse antwortet noch nicht = wait:true, Proxy-Fehler ohne wait', 
   assert.equal(hard.ok, false); assert.equal(hard.wait, undefined); assert.match(hard.problem, /Reverse Proxy/);
 });
 
+// Die chat_id wird einmal gelesen und gilt für den ganzen Abschluss: ein späterer Lesefehler der DB darf keinen Deploy mit 0 erzeugen.
+test('_oc_finalize: Lesefehler der DB mitten im Lauf ergibt keine chat_id 0', () => {
+  const P = path.join(REPO, 'provisioning', 'lib');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'fin-'));
+  const src = LIBS.map((l) => `. '${P}/${l}.sh'`).join('; ');
+  const stubs = `_owner_chat_id_db() { if [ -e '${dir}/read' ]; then return 0; fi; : > '${dir}/read'; echo 4711; }
+    deploy_workflows() { echo "deploy $1 chat=$(_resolve_owner_chat_id)"; }
+    _owner_psql() { echo finance; }; _set_bot_command_menus() { :; }`;
+  const out = execFileSync('bash', ['-c', `set -euo pipefail; export REPO_ROOT='${REPO}'; UNATTENDED=1; ${src}; ${stubs}; unset OWNER_CHAT_ID; ( _oc_finalize )`],
+    { env: Object.assign({}, process.env, { TELEGRAM_BOT_TOKEN: '' }), stdio: ['ignore', 'pipe', 'ignore'] }).toString();
+  assert.match(out, /deploy core chat=4711/);
+  assert.match(out, /deploy finance chat=4711/);
+});
+
+test('_oc_finalize: ohne lesbare chat_id gar nicht erst einspielen', () => {
+  const P = path.join(REPO, 'provisioning', 'lib');
+  const src = LIBS.map((l) => `. '${P}/${l}.sh'`).join('; ');
+  const stubs = '_owner_chat_id_db() { return 0; }; deploy_workflows() { echo DEPLOY; }; _set_bot_command_menus() { :; }';
+  const out = execFileSync('bash', ['-c', `set -euo pipefail; export REPO_ROOT='${REPO}'; UNATTENDED=1; ${src}; ${stubs}; if ( _oc_finalize ); then echo OK; else echo FAIL; fi`],
+    { env: Object.assign({}, process.env, { TELEGRAM_BOT_TOKEN: '' }), stdio: ['ignore', 'pipe', 'ignore'] }).toString();
+  assert.doesNotMatch(out, /DEPLOY/);
+  assert.match(out, /FAIL/);
+});
+
 // Abschluss: Erfolg heißt nachgeprüft, dass kein Telegram-Schritt mehr die Platzhalter-chat_id trägt.
 const PAIRED = '_owner_chat_id_db() { echo 4711; }; _oc_send_welcome() { return 0; }';
 const NOLOCK = 'update_lock_acquire() { return 0; }';

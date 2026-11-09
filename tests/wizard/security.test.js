@@ -190,7 +190,7 @@ test('Fehlerbericht nur aus festen Feldern, ohne Namen und Schlüssel', async ()
   const t = r.json.text;
   assert.match(t, /^lifeagents-wizard-report v1\n/);
   assert.ok(!/Erika|Muster|O'Neil|GEHEIM|ABC-beispiel/.test(t), t);
-  for (const line of t.split('\n').slice(1)) assert.match(line, /^(wizard|phase|step|packages|reach|install_status|install_stage|install_reason|install_exit|tunnel|pairing|time): [A-Za-z0-9_.:,?-]*$/);
+  for (const line of t.split('\n').slice(1)) assert.match(line, /^(wizard|phase|step|packages|reach|install_status|install_stage|install_reason|install_exit|tunnel|pairing|finalize_attempts|finalize_reason|time): [A-Za-z0-9_.:,?-]*$/);
 });
 
 test('„Fertig“ über den Steuerkanal: Fortschritt und Schlüssel weg, Prozess endet', async () => {

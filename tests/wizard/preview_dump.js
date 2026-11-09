@@ -101,7 +101,14 @@ async function step(w, id, value, opt) {
     fs.writeFileSync(path.join(w.fake, 'reach'), JSON.stringify({ mode: 'fritzbox', state: 'ready', webhook: 'ours', webhook_error: 'Connection timed out' }));
     const pe = await waitFor(async () => { const p = (await state(w)).json.page; return p.note ? p : null; }, 30000);
     out.push({ name: 'connect-zustellfehler', page: pe });
+    fs.writeFileSync(path.join(w.fake, 'finalize_plan'), '{"ok":false,"reason":"finalize_failed"}\n'.repeat(3));
     fs.writeFileSync(path.join(w.fake, 'paired'), '');
+    const pf = await waitFor(async () => { const p = (await state(w)).json.page; return p.action === 'finalize_retry' ? p : null; }, 90000);
+    out.push({ name: 'connect-abschluss-fehler', page: pf });
+    fs.writeFileSync(path.join(w.fake, 'finalize_sleep'), '2');
+    const rw = await post(w, '/api/action', { name: 'finalize_retry' });
+    out.push({ name: 'connect-abschluss-wartet', page: rw.json.page });
+    fs.rmSync(path.join(w.fake, 'finalize_sleep'));
     await waitFor(async () => (await state(w)).json.page.id === 'handoff');
     await shot(w, 'handoff');
   } catch (e) {

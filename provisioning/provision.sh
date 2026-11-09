@@ -601,7 +601,7 @@ main() {
   if [ "$PROFILE" = "release" ]; then
     owner_connect_guided
     # Nicht verbunden + Domain gesetzt -> Proxy-Anleitung mindestens einmal ausgeben (non-TTY wie bisher).
-    if [ "$OWNER_CONNECT_RESULT" != "connected" ] && [ "$_INGRESS_HELP_SHOWN" -eq 0 ] && [ -n "$DOMAIN" ]; then
+    if [ "$OWNER_CONNECT_RESULT" != "connected" ] && [ "$OWNER_CONNECT_RESULT" != "unfinished" ] && [ "$_INGRESS_HELP_SHOWN" -eq 0 ] && [ -n "$DOMAIN" ]; then
       if rt_is_compose || [ "$(reach_cli_mode)" = tunnel ]; then ui_section 'Erreichbarkeit'; else ui_section 'Ingress (Reverse Proxy — bring your own)'; fi
       emit_ingress_help "$TEMPLATE_DIR" "$DOMAIN" "$N8N_PORT" "$WEBHOOK_URL"
     fi
@@ -712,6 +712,10 @@ display_install_recap() {
   fi
   case "${OWNER_CONNECT_RESULT:-}" in
     connected) : ;;
+    unfinished)
+      _todo="${_todo}  ${_n}. Telegram ist verbunden, der Bot aber noch nicht auf dich eingestellt (Bestätigungen gehen so nicht) —
+     ${OWNER_CONNECT_FIX}
+"; _n=$((_n + 1)) ;;
     unavailable)
       _todo="${_todo}  ${_n}. Telegram-Verbindung noch nicht möglich (${OWNER_CONNECT_REASON:-Voraussetzung fehlt}) —
      ${OWNER_CONNECT_FIX:-danach verbinden mit: lifeagents household pair-owner}

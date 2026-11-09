@@ -354,11 +354,47 @@ EOF
 #   aktiviert danach den neuen Stand. Damit entfaellt auch das Warten auf laufende Ausfuehrungen — das
 #   Deaktivieren bricht keine laufende Ausfuehrung ab (die "verbunden"-Antwort des Orchestrators kommt an).
 _oc_finalize() {
-  local pkgs p
-  deploy_workflows core
+  local pkgs p chat
+  # chat_id einmal lesen und fuer alle Deploys festhalten: _owner_chat_id_db verschluckt DB-Fehler, ein spaeterer Lesefehler
+  # liesse _resolve_owner_chat_id sonst still auf 0 fallen (die Subshell des Aufrufers begrenzt den Wert auf diesen Lauf).
+  chat="$(_owner_chat_id_db)"
+  _oc_is_chat_id "$chat" || return 1
+  OWNER_CHAT_ID="$chat"
+  # Explizit pruefen: im if-Kontext des Aufrufers ist set -e aus, ein Fehler-Rueckgabewert liefe sonst still weiter.
+  deploy_workflows core || return 1
   pkgs="$(_owner_psql -tA -c "SELECT package FROM core.package_registry WHERE status='active' AND package <> 'core' ORDER BY package;" 2>/dev/null || true)"
-  for p in $pkgs; do deploy_workflows "$p"; done
-  _set_bot_command_menus "$TELEGRAM_BOT_TOKEN"
+  for p in $pkgs; do deploy_workflows "$p" || return 1; done
+  _set_bot_command_menus "${TELEGRAM_BOT_TOKEN:-}"
+}
+
+# _oc_finalize_verified — der eine Abschluss nach dem Pairing (Terminal, Wizard, Reparatur): unter der Update-Sperre
+#   einspielen und nachpruefen, dass kein Telegram-Knoten mehr chat_id 0 traegt. rc0 nur nach bestandener Pruefung; sonst
+#   OC_FINALIZE_REASON = busy|finalize_failed|check_failed|placeholders_left (+ OC_FINALIZE_PLACEHOLDERS). Nur im
+#   if-/||-Kontext rufen (deploy_workflows ist auf set -e aus nicht ausgelegt). Die Sperre verhindert auch den zweiten Lauf
+#   neben einem Vorgaenger, dessen Elternprozess schon weg ist.
+_oc_finalize_verified() {
+  OC_FINALIZE_REASON=''; OC_FINALIZE_PLACEHOLDERS=0
+  local n
+  update_lock_acquire 30 || { OC_FINALIZE_REASON=busy; return 1; }
+  ( _oc_finalize ) || { OC_FINALIZE_REASON=finalize_failed; return 1; }
+  n="$(owner_chat_placeholder_count)" || { OC_FINALIZE_REASON=check_failed; return 1; }
+  if [ "$n" -gt 0 ]; then OC_FINALIZE_REASON=placeholders_left; OC_FINALIZE_PLACEHOLDERS="$n"; return 1; fi
+  return 0
+}
+
+# _oc_log_scrub — Filter fuer das Abschluss-Protokoll, das in den Fehlerbericht wandert: Bot-Token, Schluessel, Pairing-Codes,
+#   lange Kennungen und chat_ids raus, Adressen auch (die Domain verraet den Anschluss). Reihenfolge: Token vor Ziffernfolgen.
+_oc_log_scrub() {
+  sed -uE \
+    -e 's/[0-9]{5,}:[A-Za-z0-9_-]{20,}/<token>/g' \
+    -e 's/sk-ant-[A-Za-z0-9_-]+/<key>/g' \
+    -e 's/eyJ[A-Za-z0-9_.-]{10,}/<key>/g' \
+    -e 's/(start=)[^ &"]+/\1<code>/g' \
+    -e 's/(x-n8n-api-key:|authorization:)[[:space:]]*[^[:space:]]+/\1 <key>/Ig' \
+    -e 's/([a-z_]*(token|key|secret|password)=)[^[:space:]]+/\1<key>/Ig' \
+    -e 's#https?://[^[:space:]"]+#<url>#g' \
+    -e 's/[0-9a-fA-F]{16,}/<id>/g' \
+    -e 's/[0-9]{6,}/<nr>/g'
 }
 
 # _oc_send_welcome — Install-UX-Phase 6: die Owner-Begruessung NACH _oc_finalize schicken (erst dann sind die
@@ -373,6 +409,7 @@ _oc_send_welcome() {
   local chat w rest
   chat="$(_owner_chat_id_db)"
   _oc_is_chat_id "$chat" || return 1
+  [ -n "${TELEGRAM_BOT_TOKEN:-}" ] || return 1
   w="$(_owner_psql -tA -c "SELECT core.fn_render_welcome();" 2>/dev/null || true)"
   [ "$(printf '%s' "$w" | jq -r '.ok // false' 2>/dev/null || echo false)" = "true" ] || return 1
   rest="$(printf '%s' "$w" | jq -c '{text}
@@ -409,16 +446,17 @@ owner_connect_guided() {
   _oc_device_check ask
   if ! _oc_pair; then OWNER_CONNECT_RESULT='later'; return 0; fi
   ui_step 'Bot auf dich einstellen'
-  if ( _oc_finalize ); then
-    ui_step_done
-    ui_step 'Begrüßung in Telegram schicken'
-    if _oc_send_welcome; then
-      OWNER_WELCOME_SENT=1; ui_step_done
-    else
-      ui_step_bad "nicht angekommen — schreib deinem Bot einfach /start"
-    fi
+  if ! _oc_finalize_verified; then
+    ui_step_bad "nicht fertig (${OC_FINALIZE_REASON}) — Bestätigungen im Chat gehen so nicht"
+    OWNER_CONNECT_RESULT='unfinished'; OWNER_CONNECT_REASON="$OC_FINALIZE_REASON"; OWNER_CONNECT_FIX='Abhilfe: lifeagents household pair-owner'
+    return 0
+  fi
+  ui_step_done
+  ui_step 'Begrüßung in Telegram schicken'
+  if _oc_send_welcome; then
+    OWNER_WELCOME_SENT=1; ui_step_done
   else
-    ui_step_bad "nicht vollständig — 'lifeagents update' holt es nach"
+    ui_step_bad "nicht angekommen — schreib deinem Bot einfach /start"
   fi
   OWNER_CONNECT_RESULT='connected'
   return 0

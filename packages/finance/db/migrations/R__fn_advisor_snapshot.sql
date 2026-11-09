@@ -97,7 +97,8 @@ BEGIN
         -- Vorschau ist nicht belastbar, fn_advisor_review meldet ihn statt der Unterdeckung.
         'warnings', (SELECT COALESCE(jsonb_agg(w.e ORDER BY w.ord, w.account_id), '[]'::jsonb)
                        FROM (SELECT 1 AS ord, a.id AS account_id, jsonb_build_object(
-                                    'kind', 'account_coverage', 'account', a.name, 'currency', a.currency,
+                                    'kind', 'account_coverage', 'account', a.name,
+                                    'account_label', finance.fn_account_label(a.emoji, a.account_type, a.name), 'currency', a.currency,
                                     'lowest_balance', (j.o->>'min_projected')::numeric, 'lowest_on', (j.o->>'min_date')::date,
                                     'has_history', (j.o->>'has_history')::boolean) AS e
                                FROM finance.accounts a
@@ -109,7 +110,9 @@ BEGIN
                                          ELSE (j.o->>'min_projected')::numeric < 0 END
                              UNION ALL
                              SELECT 2, f.account_id, jsonb_build_object(
-                                    'kind', 'savings_funding', 'account', f.account_name, 'currency', f.currency, 'state', f.state,
+                                    'kind', 'savings_funding', 'account', f.account_name,
+                                    'account_label', (SELECT finance.fn_account_label(x.emoji, x.account_type, x.name) FROM finance.accounts x WHERE x.id = f.account_id),
+                                    'currency', f.currency, 'state', f.state,
                                     'runs_out_on', f.runs_out_on, 'lowest_balance', f.min_projected, 'lowest_on', f.min_date)
                                FROM finance.account_funding_overview f
                               WHERE f.state IN ('warn', 'alert')) w));

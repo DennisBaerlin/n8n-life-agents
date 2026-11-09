@@ -11,7 +11,7 @@
 --   entstehende Luecke meldet sofort. Bewusst NICHT core.fn_notify_reconcile: das ist advisor-only (kein Paket-Grant,
 --   R__fn_provision_package_roles). Gemeldet (gelatcht) wird erst im Cron je Karte via fn_price_gap_claim.
 --   RUECKGABE jsonb: { feed_down, stale_since, fx:{CCY: rate EUR->CCY, EUR:1},
---     gaps:[{holding_id, name, isin, symbol, feed_symbol, account_name, currency, status, price, price_currency,
+--     gaps:[{holding_id, name, isin, symbol, feed_symbol, account_name, account_label, currency, status, price, price_currency,
 --            price_as_of, avg_price}] }
 --   Tests: tests/db/finance/test_fn_price_gaps.sql
 -- ============================================================
@@ -36,6 +36,7 @@ BEGIN
                'symbol',         s.symbol,
                'feed_symbol',    s.feed_symbol,
                'account_name',   s.account_name,
+               'account_label',  (SELECT finance.fn_account_label(a.emoji, a.account_type, a.name) FROM finance.depot_holdings h JOIN finance.accounts a ON a.id = h.account_id WHERE h.id = s.holding_id),
                'currency',       s.currency,
                'status',         s.status,
                'price',          s.price,

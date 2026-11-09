@@ -16,7 +16,7 @@ DECLARE
 BEGIN
     FOR v_line IN SELECT unnest(ARRAY[
         -- view-hints:begin
-        'account_overview|id, name, account_type, balance, currency, status, settlement_account_id, balance_eur',
+        'account_overview|id, name, account_type, balance, currency, status, settlement_account_id, balance_eur, label',
         'depot_holdings_overview|id, account_id, account_name, name, isin, symbol, shares, book_value, market_value, market_value_eur, price_as_of',
         'savings_goal_progress|id, name, target_amount, current_amount, progress_percent, status',
         'active_recurring_payments|id, name, account_id, target_account_id, amount, rhythm, monthly_equivalent, last_valid_day',

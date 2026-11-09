@@ -108,8 +108,8 @@ const sym = String(y.provider_symbol || '').toUpperCase();
 const hasQuote = !!g.isin && !!sym && sym !== cur && Number(y.market_price) > 0;
 const accept = hasQuote && y.adoptable === true;
 const head = g.status === 'stale'
-  ? U.fill(U.t('finance.dialog.price_gap_stale'), { name: g.name, account: g.account_name, feed: g.feed_symbol, date: { kind: 'date', value: g.price_as_of } })
-  : U.fill(U.t('finance.dialog.price_gap_missing'), { name: g.name, account: g.account_name, feed: g.feed_symbol });
+  ? U.fill(U.t('finance.dialog.price_gap_stale'), { name: g.name, account: g.account_label, feed: g.feed_symbol, date: { kind: 'date', value: g.price_as_of } })
+  : U.fill(U.t('finance.dialog.price_gap_missing'), { name: g.name, account: g.account_label, feed: g.feed_symbol });
 const price = { kind: 'money', value: y.market_price, currency: y.currency };
 const footer = U.t('core.reminders.card_footer');
 const card = head + '\n\n' + U.fill(U.t('finance.dialog.price_gap_found'), { symbol: sym, listing: y.name || sym, exchange: y.exchange || '', price: price })

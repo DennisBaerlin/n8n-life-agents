@@ -827,6 +827,51 @@ DO $$ BEGIN
         CHECK (min_balance IS NULL OR (min_balance >= 0 AND account_type = 'cash'));
 END $$;
 
+-- Konto-Zeichen. Im Init, weil der CHECK die Liste braucht und R__finance_views alphabetisch vor jedem R__fn_* laeuft.
+-- Liste: je Zeichen genau ein Code-Punkt mit Standard-Emoji-Darstellung (kein VS16/ZWJ, sonst lehnt der CHECK je nach
+-- Tastatur zufaellig ab), Unicode <= 11, keine Warn-Farben. Tests: tests/db/finance/test_fn_account_label.sql.
+-- Nur erweitern; Entfernen braucht hier vor ADD CONSTRAINT ein idempotentes UPDATE ... SET emoji = NULL (eine V__ liefe zu spaet).
+-- Bezeichnungen je Code-Punkt: Textkatalog finance.emoji.<hex> (locale_lint).
+CREATE OR REPLACE FUNCTION finance.fn_account_emoji_choices()
+RETURNS text[] LANGUAGE sql IMMUTABLE AS $$
+    SELECT ARRAY['🏦','💳','👛','💶','💰','🐷','📈','💎','🤝','🔒','🌱','🎯',
+                 '🏠','🚗','🛒','🌴','🎓','🎁','👶','🐾','🔧','🧾','🌟','🍀']::text[];
+$$;
+
+-- Eingabe auf die Listen-Schreibweise bringen: Tastaturen und Modell haengen teils ein unsichtbares VS16 an, der CHECK bleibt streng.
+CREATE OR REPLACE FUNCTION finance.fn_account_emoji_clean(p_emoji text)
+RETURNS text LANGUAGE sql IMMUTABLE AS $$
+    SELECT NULLIF(replace(btrim(COALESCE(p_emoji, '')), chr(65039), ''), '');
+$$;
+
+-- Die eine Stelle fuer den Ersatz je Kontoart; er wird nie gespeichert (NULL = Ersatz gilt).
+CREATE OR REPLACE FUNCTION finance.fn_account_emoji(p_emoji text, p_type finance.account_type)
+RETURNS text LANGUAGE sql IMMUTABLE AS $$
+    SELECT COALESCE(p_emoji, CASE p_type WHEN 'cash' THEN '🏦' WHEN 'p2p' THEN '🤝' WHEN 'stocks_depot' THEN '📈'
+                                         WHEN 'crypto_depot' THEN '💎' WHEN 'fixed_deposit' THEN '🔒' WHEN 'loan' THEN '🧾' END);
+$$;
+
+-- Name ohne fuehrendes Listen-Zeichen (samt VS16 und Leerzeichen); NULL = beginnt nicht damit. Guard emoji_in_name + Resolver.
+CREATE OR REPLACE FUNCTION finance.fn_account_name_without_emoji(p_name text)
+RETURNS text LANGUAGE sql IMMUTABLE AS $$
+    SELECT CASE WHEN left(btrim(p_name), 1) = ANY(finance.fn_account_emoji_choices())
+                THEN ltrim(substr(btrim(p_name), 2), chr(65039) || ' ') END;
+$$;
+
+-- Anzeigename. Ein Bestandsname, der schon mit einem Listen-Zeichen beginnt, bekommt kein zweites.
+CREATE OR REPLACE FUNCTION finance.fn_account_label(p_emoji text, p_type finance.account_type, p_name text)
+RETURNS text LANGUAGE sql IMMUTABLE AS $$
+    SELECT CASE WHEN finance.fn_account_name_without_emoji(p_name) IS NOT NULL THEN p_name
+                ELSE finance.fn_account_emoji(p_emoji, p_type) || ' ' || p_name END;
+$$;
+
+ALTER TABLE finance.accounts ADD COLUMN IF NOT EXISTS emoji text;
+DO $$ BEGIN
+    ALTER TABLE finance.accounts DROP CONSTRAINT IF EXISTS finance_accounts_emoji_chk;
+    ALTER TABLE finance.accounts ADD CONSTRAINT finance_accounts_emoji_chk
+        CHECK (emoji IS NULL OR emoji = ANY(finance.fn_account_emoji_choices()));
+END $$;
+
 -- Migration: enforce depot-needs-settlement on already-installed databases
 DO $$ BEGIN
     ALTER TABLE finance.accounts

@@ -177,7 +177,8 @@ Eine Zeile je Write-Tool; Mechanik je Tool lebt in Tool-Description + fn-Vertrag
 | `tool_get_recurring_suggestions` | Lese-Tool ohne Karte: wiederkehrende Zahlungen aus einem mehrmonatigen Bank-Export erkennen, die noch kein Dauerauftrag abdeckt (Rhythmus/Betrag/Startdatum aus der DB); der Agent fragt je Vorschlag, angelegt wird über die beiden Tools oben |
 | `tool_send_bank_todos` | Lese-Tool ohne Karte: sendet je Bank, was der Fragende noch einstellen muss (`fn_bank_todo_groups`), mit Knopf `btodo`. |
 | `tool_create_pension` | Altersvorsorge (+ optional Beitrag) anlegen |
-| `tool_set_account` | Konto-Stammdaten ändern; Puffer je Konto (`min_balance`, `min_balance_default`) |
+| `tool_send_account_emoji_picker` | Lese-Tool ohne Karte: schickt dem Owner die Knopf-Liste fürs Konto-Zeichen (`fn_account_emoji_picker`), Mitglieder bekommen die Zeichen als Text. Handler `acem` (`fn_handle_account_emoji_cb`) speichert den Tipp **bewusst ohne HITL-Karte** (Owner-Entscheidung: der Tipp ist die Bestätigung, das Zeichen rechnet nichts); genannte Zeichen laufen über `tool_set_account` mit Karte. |
+| `tool_set_account` | Konto-Stammdaten ändern; Puffer je Konto (`min_balance`, `min_balance_default`); Konto-Zeichen (`emoji`, `emoji_default`) |
 | `tool_set_account_interest` | Kontozins setzen/ändern |
 | `tool_set_real_estate` | Immobilie neubewerten/ändern (auch Wohnfläche + Baujahr) |
 | `tool_set_pension` | Altersvorsorge ändern |

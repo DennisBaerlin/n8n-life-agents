@@ -42,7 +42,7 @@ function Build-CronReconcileAccounts {
 =WITH cut AS (
     SELECT (date_trunc('month', CURRENT_DATE) - interval '1 day')::date AS d
 ), acc AS (
-    SELECT a.name, a.last_reconciled_at::date AS last_reconciled,
+    SELECT a.name, finance.fn_account_label(a.emoji, a.account_type, a.name) AS label, a.last_reconciled_at::date AS last_reconciled,
            finance.fn_bank_export_account_profile(a.id) IS NOT NULL AS file_export,
            CASE WHEN s.period_end IS NOT NULL
                 THEN (s.period_end + make_interval(months => GREATEST(round((s.period_end - s.period_start + 1) / 30.0)::int, 1)))::date
@@ -57,7 +57,7 @@ function Build-CronReconcileAccounts {
 SELECT
     (SELECT d FROM cut) AS cut_date,
     (SELECT count(*)::int FROM acc WHERE next_due <= (SELECT d FROM cut)) AS overdue_count,
-    COALESCE((SELECT jsonb_agg(jsonb_build_object('name', name, 'last_reconciled', last_reconciled, 'file_export', file_export)
+    COALESCE((SELECT jsonb_agg(jsonb_build_object('name', name, 'label', label, 'last_reconciled', last_reconciled, 'file_export', file_export)
                                ORDER BY last_reconciled NULLS FIRST, name)
               FROM acc WHERE next_due <= (SELECT d FROM cut)), '[]'::jsonb) AS accounts,
     core.fn_ui_texts_for(jsonb_build_object('keys', to_jsonb($keys))) AS ui;
@@ -71,7 +71,7 @@ const m = $('Find overdue accounts').first().json;
 const U = uiRender(m.ui || {});
 const rows = Array.isArray(m.accounts) ? m.accounts : [];
 const lines = rows.map((r) => U.fill(U.t(r.file_export ? 'finance.dialog.monthly_check_line_file' : 'finance.dialog.monthly_check_line'), {
-  name: r.name, date: r.last_reconciled ? { kind: 'date', value: r.last_reconciled } : U.t('finance.dialog.monthly_check_never') }));
+  name: r.label, date: r.last_reconciled ? { kind: 'date', value: r.last_reconciled } : U.t('finance.dialog.monthly_check_never') }));
 const intro = U.fill(U.t('finance.dialog.monthly_check_intro'), { date: { kind: 'date', value: m.cut_date } });
 // Datei-Export-Bank (finance.fn_bank_export_account_profile): der Schritt steht in der Kontozeile, die PDF-Anleitung nur bei PDF-Konten
 const howto = rows.some((r) => !r.file_export) ? '\n\n' + U.t('finance.dialog.monthly_check_howto') : '';

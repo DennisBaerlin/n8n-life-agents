@@ -59,7 +59,7 @@ return $input.all().map(({ json: row }) => {
     if (isOwner && r.holder_name) parts.push(r.holder_name);
     if (r.goal) parts.push(U.fill(U.t('finance.dialog.bank_end_goal'), { goal: r.goal }));
     return U.fill(U.t(LINE[group][r.bank ? 'bank' : 'generic']), {
-      name: r.name, extra: parts.length ? ' (' + parts.join(', ') + ')' : '', to: r.to_name, bank: r.bank,
+      name: r.name, extra: parts.length ? ' (' + parts.join(', ') + ')' : '', to: r.to_label, bank: r.bank,
       amount: { kind: 'money', value: r.amount, currency: r.currency }, date: { kind: 'date', value: r.last_due } });
   });
   return { json: { is_owner: isOwner, chat_id: msg.chat_id,

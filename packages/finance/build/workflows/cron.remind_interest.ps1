@@ -29,10 +29,10 @@ function Build-CronRemindInterest {
     # Zins zwischen zwei Auszuegen im Saldo. Kein Doppel: der Auszug-Rest ist die DB-Differenz zum Endsaldo, die schon
     # gebuchten Gutschriften stecken im Systemstand.
     $getOpen = Build-Pg 'Get open interest' @(-240, 0) @"
-=SELECT q.account_id, q.value_date, q.period_end, q.account_name, q.amount, q.auto_post, q.currency
+=SELECT q.account_id, q.value_date, q.period_end, q.account_name, q.account_label, q.amount, q.auto_post, q.currency
 FROM (
   SELECT o.account_id, o.value_date::text AS value_date, o.period_end::text AS period_end,
-         a.name AS account_name, a.currency AS currency,   -- WP-5: Konto-Waehrung fuer die Betrag-Formatierung
+         a.name AS account_name, finance.fn_account_label(a.emoji, a.account_type, a.name) AS account_label, a.currency AS currency,   -- WP-5: Konto-Waehrung fuer die Betrag-Formatierung
          finance.fn_interest_amount_due(o.account_id, o.period_end) AS amount,
          o.auto_post
   FROM finance.fn_interest_due_open(CURRENT_DATE) o
@@ -68,7 +68,7 @@ ORDER BY q.period_end, q.account_name;
     # Roter Faden Paket B: die Bestaetigungs-Frage hat genau zwei Knoepfe (sendAndWait) -> statt eines Abschalten-Knopfs
     # die Fusszeile core.reminders.card_footer ("Erinnerungen verwalten: /reminders"); cron_toggle_lint verlangt eins von beiden.
     $askInterest = New-TelegramSendAndWaitNode 'Ask interest booked' @(440, 60) `
-        ('={{ ' + (Get-UiTextJs $T 'finance.dialog.interest_ask' @{ amount = $intAmt; account = "$it.account_name"; period_end = $intPe; value_date = $intVd }) +
+        ('={{ ' + (Get-UiTextJs $T 'finance.dialog.interest_ask' @{ amount = $intAmt; account = "$it.account_label"; period_end = $intPe; value_date = $intVd }) +
          " + '\n\n' + " + (Get-UiTextJs $T 'core.reminders.card_footer') + ' }}') `
         -ApproveLabel (Get-UiTextExpr $T 'finance.dialog.btn_book') -DisapproveLabel (Get-UiTextExpr $T 'finance.dialog.btn_other') `
         -UnauthorizedReply $popup
@@ -88,7 +88,7 @@ ORDER BY q.period_end, q.account_name;
     $ifAuto = Build-If 'Auto-posted?' @(1100, -120) "={{ $it.auto_post }}" 'true' 'equals' 'boolean'
 
     $askDefer = New-TelegramSendAndWaitNode 'Ask defer' @(880, 120) `
-        (Get-UiTextExpr $T 'finance.dialog.interest_defer' @{ account = "$it.account_name" }) `
+        (Get-UiTextExpr $T 'finance.dialog.interest_defer' @{ account = "$it.account_label" }) `
         -ApproveLabel (Get-UiTextExpr $T 'finance.dialog.btn_tomorrow') -DisapproveLabel (Get-UiTextExpr $T 'finance.dialog.btn_skip') `
         -UnauthorizedReply $popup
     $ifTomorrow = Build-If 'Tomorrow?' @(1100, 120) "={{ `$json.data.approved }}" 'true' 'equals' 'boolean'
@@ -96,14 +96,14 @@ ORDER BY q.period_end, q.account_name;
     # Ergebnis-Zeilen nach jedem Tipp (removeButtons entfernt nur die Knoepfe); onError continue. Den Fehlgrund
     # liefert die fn als code (der englische reason ist Modell-Text und kommt nie in die Nachricht).
     $nBooked = New-TelegramSendNode 'Notify booked' @(1320, -280) `
-        ("={{ `$('Book interest').item.json.ok ? " + (Get-UiTextJs $T 'finance.dialog.interest_booked' @{ account = "$it.account_name" }) +
-         " : `$('Book interest').item.json.code === 'already_booked' ? " + (Get-UiTextJs $T 'finance.dialog.already_booked' @{ name = "$it.account_name" }) +
-         ' : ' + (Get-UiTextJs $T 'finance.dialog.book_failed' @{ name = "$it.account_name" }) + ' }}') `
+        ("={{ `$('Book interest').item.json.ok ? " + (Get-UiTextJs $T 'finance.dialog.interest_booked' @{ account = "$it.account_label" }) +
+         " : `$('Book interest').item.json.code === 'already_booked' ? " + (Get-UiTextJs $T 'finance.dialog.already_booked' @{ name = "$it.account_label" }) +
+         ' : ' + (Get-UiTextJs $T 'finance.dialog.book_failed' @{ name = "$it.account_label" }) + ' }}') `
         -OnError 'continueRegularOutput'
     $nSkipped = New-TelegramSendNode 'Notify skipped' @(1540, 260) `
-        (Get-UiTextExpr $T 'finance.dialog.skipped' @{ name = "$it.account_name" }) -OnError 'continueRegularOutput'
+        (Get-UiTextExpr $T 'finance.dialog.skipped' @{ name = "$it.account_label" }) -OnError 'continueRegularOutput'
     $nTomorrow = New-TelegramSendNode 'Notify tomorrow' @(1320, 60) `
-        (Get-UiTextExpr $T 'finance.dialog.remind_tomorrow' @{ name = "$it.account_name" }) -OnError 'continueRegularOutput'
+        (Get-UiTextExpr $T 'finance.dialog.remind_tomorrow' @{ name = "$it.account_label" }) -OnError 'continueRegularOutput'
 
     $skip = Build-Pg 'Skip occurrence' @(1320, 260) `
         "=SELECT (r->>'ok')::boolean AS ok FROM finance.fn_skip_interest_occurrence(`$1::jsonb) AS r;" `

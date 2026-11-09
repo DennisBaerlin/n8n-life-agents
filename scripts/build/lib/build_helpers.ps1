@@ -1708,6 +1708,17 @@ function New-TelegramInlineKeyboardSendNode {
     }
 }
 
+# Auswahl-Nachricht aus einer choice_card {text, options:[6 x {text,data}], more:{text,data}}: Tastaturen sind in n8n statisch,
+# darum feste sechs Slots in zwei Spalten + eine Zeile fuer more. Texte und callback_data kommen zur Laufzeit aus $CardExpr.
+function New-TelegramChoiceCardSendNode {
+    param([Parameter(Mandatory)][string]$Name, [Parameter(Mandatory)][int[]]$Pos, [Parameter(Mandatory)][string]$CardExpr,
+          [Parameter(Mandatory)][string]$ChatIdExpr)
+    $opt = { param($i) @{ Text = "={{ ($CardExpr).options[$i].text }}"; Data = "={{ ($CardExpr).options[$i].data }}" } }
+    $more = @{ Text = "={{ ($CardExpr).more.text }}"; Data = "={{ ($CardExpr).more.data }}" }
+    New-TelegramInlineKeyboardSendNode $Name $Pos "={{ ($CardExpr).text }}" -ChatIdExpr $ChatIdExpr -Rows @(
+        @((& $opt 0), (& $opt 1)), @((& $opt 2), (& $opt 3)), @((& $opt 4), (& $opt 5)), @(,$more))
+}
+
 # Budget-Gate eines Crons, dessen Versand nicht schon in einer fn_*-Latch-Funktion claimt: 'Budget claim' -> 'Budget ok?'
 # (true = senden). Laeuft unter der Schreib-Cred: Crons mit _ro-Lese-Cred uebergeben -Cred. Ein DB-Fehler laesst die Nachricht durch.
 function New-ProactiveBudgetGate {

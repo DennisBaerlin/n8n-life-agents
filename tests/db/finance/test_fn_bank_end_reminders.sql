@@ -71,7 +71,8 @@ BEGIN
   v_row := pg_temp.due_row(v_rp);
   IF v_row IS NULL OR (v_row->>'last_due')::date IS DISTINCT FROM v_l OR v_row->>'kind' IS DISTINCT FROM 'standing_order' OR v_row->>'execution' IS DISTINCT FROM 'bank'
      OR v_row->>'name' IS DISTINCT FROM '__be_win__' OR (v_row->>'amount')::numeric IS DISTINCT FROM 100 OR v_row->>'currency' IS DISTINCT FROM 'EUR'
-     OR v_row->>'bank' IS DISTINCT FROM 'Musterbank' OR v_row->>'to_name' IS DISTINCT FROM '__be_tgt__' THEN
+     OR v_row->>'bank' IS DISTINCT FROM 'Musterbank' OR v_row->>'to_name' IS DISTINCT FROM '__be_tgt__'
+     OR v_row->>'to_label' IS DISTINCT FROM finance.fn_account_label(NULL, 'cash', '__be_tgt__') THEN
     RAISE EXCEPTION 'FAIL [1 L-3 faellig mit Feldern]: %', v_row; END IF;
   IF pg_temp.due_row(v_rp, v_today - 1) IS NOT NULL THEN RAISE EXCEPTION 'FAIL [1 L+2 zu frueh]'; END IF;
   IF pg_temp.due_row(v_rp, v_l + 60) IS NULL THEN RAISE EXCEPTION 'FAIL [1 L+60 noch faellig]'; END IF;
@@ -94,7 +95,8 @@ BEGIN
     VALUES ('__be_plan__', v_depot, 'TST', 'Test ETF', v_rp);
   v_row := pg_temp.due_row(v_rp);
   IF v_row->>'kind' IS DISTINCT FROM 'savings_plan' OR v_row->>'execution' IS DISTINCT FROM 'bank' OR v_row->>'bank' IS DISTINCT FROM 'Testbroker'
-     OR v_row->>'name' IS DISTINCT FROM '__be_plan__' OR v_row->>'to_name' IS DISTINCT FROM '__be_depot__' THEN
+     OR v_row->>'name' IS DISTINCT FROM '__be_plan__' OR v_row->>'to_name' IS DISTINCT FROM '__be_depot__'
+     OR v_row->>'to_label' IS DISTINCT FROM finance.fn_account_label(NULL, 'stocks_depot', '__be_depot__') THEN
     RAISE EXCEPTION 'FAIL [3 Sparplan]: %', v_row; END IF;
   RAISE NOTICE 'PASS [3] Sparplan';
 

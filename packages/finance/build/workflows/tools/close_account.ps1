@@ -9,7 +9,7 @@ function Build-CloseAccount {
     $trig = Build-Trigger @('account_name','closure_date','notes')
 
     $resAcct = Build-Pg 'Resolve Account' @(220, 0) `
-        "=SELECT id, hit_count, candidates FROM finance.fn_resolve_account((`$1::jsonb)->>'account_name', NULL, TRUE);" `
+        "=SELECT id, hit_count, candidates, label FROM finance.fn_resolve_account((`$1::jsonb)->>'account_name', NULL, TRUE);" `
         ([ordered]@{ account_name = '$(''Start'').item.json.account_name' })
 
     $ifAcct = Build-If 'Account unique?' @(440, 0) "={{ `$json.hit_count }}" '1'
@@ -49,7 +49,7 @@ function Build-CloseAccount {
     $S = "`$('Start').item.json"
     $B = "`$('Read Current Balance').item.json"
     $summary = New-HitlSummary -Pos @(1980, 0) -Title 'finance.hitl.close_account' -LinesExpr $wg.CardLinesExpr -Lines @(
-        (New-HitlLine 'finance.label.account'         "$S.account_name")
+        (New-HitlLine 'finance.label.account'         "`$('Resolve Account').item.json.label")
         (New-HitlLine 'core.label.type'               "$B.account_type" -Kind enum -Enum 'finance.enum.account_type')
         (New-HitlLine 'finance.label.current_balance' "$B.balance" -Kind money -Currency "$B.currency")
         (New-HitlLine 'finance.label.closing_date'    "`$('Dry run').item.json.r.effective.closure_date" -Kind date)   # DB-Default heute (Probelauf)

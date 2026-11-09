@@ -1268,5 +1268,37 @@
     "expect_texts": ["Dein Tagesgeld steht bei 820,00 EUR."],
     "forbid_texts": ["🎉", "CHEER", "NOFRAME"],
     "notes": "Grammatik N1: NOFRAME verwirft die Stimmung schon in Relay compose; agent.fn_claim_reaction sperrt sie zusaetzlich (R6)."
+  },
+  {
+    "id": "ri84",
+    "expect_texts": ["Hier sind weitere Zeichen.", "Weitere Zeichen vorschlagen", "💶 Euro", "🌱 Setzling"],
+    "name": "Konto-Zeichen: Weitere Zeichen (acem:<id>:more:1) -> Dispatch -> Send choice card mit der naechsten Seite",
+    "kind": "node_ran",
+    "update": "callback",
+    "chat_id": 880055072,
+    "from_uid": 880055071,
+    "callback_data": "acem:990001:more:1",
+    "expect_keyboard": {"chat": "880055071", "buttons": 7},
+    "expect_answer_callbacks": 1,
+    "pre_sql": "INSERT INTO finance.accounts (id, name, account_type, currency, status) VALUES (990001, '__E2E__ Zeichen', 'cash', 'EUR', 'active') ON CONFLICT (id) DO NOTHING;",
+    "post_sql": "DELETE FROM finance.accounts WHERE id = 990001;",
+    "expected_node": "Send choice card",
+    "notes": "Generische Core-Naht result.choice_card: Toast aus Answer dispatched cb, Knopf-Nachricht an callback_query.from.id, schreibt nichts."
+  },
+  {
+    "id": "ri85",
+    "expect_texts": ["Erledigt:"],
+    "name": "Konto-Zeichen: Tipp auf ein Zeichen speichert ohne Karte -> Toast, keine Knopf-Nachricht",
+    "kind": "node_ran",
+    "update": "callback",
+    "chat_id": 880055071,
+    "from_uid": 880055071,
+    "callback_data": "acem:990001:🐷",
+    "expect_answer_callbacks": 1,
+    "pre_sql": "INSERT INTO finance.accounts (id, name, account_type, currency, status) VALUES (990001, '__E2E__ Zeichen', 'cash', 'EUR', 'active') ON CONFLICT (id) DO NOTHING;",
+    "post_sql": "DELETE FROM finance.accounts WHERE id = 990001;",
+    "expected_node": "Answer dispatched cb",
+    "expected_not_node": "Send choice card",
+    "notes": "Treffer ohne Nachricht; Ausnahme von der HITL-Karte, siehe fn_handle_account_emoji_cb."
   }
 ]

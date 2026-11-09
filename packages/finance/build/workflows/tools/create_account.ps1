@@ -7,7 +7,7 @@ function Build-CreateAccount {
     # Dynamic-Scope: Build-Pg liest dieses $CRED_POSTGRES. Core-Tools nutzen die Owner-Cred.
     $CRED_POSTGRES = $CRED_FINANCE_RW
     $FxCronId = Get-RequiredWorkflowId 'agent.finance.cron_refresh_fx_rates' 'Build-CreateAccount'   # Sofort-FX-Fetch (Dual-Trigger), paket-intern
-    $trig = Build-Trigger @('name','account_type','bank','account_number','settlement_account_name','owner_person','currency','opening_balance','opening_balance_date','interest_rate','interest_credit_unit','interest_credit_interval','interest_credit_day_of_month','interest_day_count_convention','interest_posting_day_of_month','interest_auto_post','interest_valid_from','fixed_deposit_maturity_date','fixed_deposit_auto_renew')
+    $trig = Build-Trigger @('name','account_type','bank','account_number','settlement_account_name','owner_person','currency','opening_balance','opening_balance_date','interest_rate','interest_credit_unit','interest_credit_interval','interest_credit_day_of_month','interest_day_count_convention','interest_posting_day_of_month','interest_auto_post','interest_valid_from','fixed_deposit_maturity_date','fixed_deposit_auto_renew','emoji')
 
     # Vorab-Spiegel der korrigierbaren fn_create_account-Ablehnungen (die fn ist das Gesetz; hier nur, damit der
     # Nutzer keine Karte bestaetigt, die danach scheitert): Typ loan (Kredite nur ueber tool_create_loan) und ein
@@ -77,7 +77,7 @@ function Build-CreateAccount {
     # derselbe Param-Satz geht nach dem Gate in den echten Write.
     $wg = New-FnWriteGate -Fn 'finance.fn_create_account' -DryPos @(900, 0) -WritePos @(2220, 0) `
         -WriteName 'Create account (atomic)' `
-        -WriteSelect "(r->>'ok')::boolean AS ok, r->>'reason' AS reason, r->>'account_id' AS account_id, (r->>'interest_added')::boolean AS interest_added, (r->>'balance')::numeric AS balance" `
+        -WriteSelect "(r->>'ok')::boolean AS ok, r->>'reason' AS reason, r->>'account_id' AS account_id, (r->>'interest_added')::boolean AS interest_added, (r->>'balance')::numeric AS balance, r->>'label' AS label" `
         -Params ([ordered]@{
             name                 = '$(''Start'').item.json.name'
             account_type         = '$(''Start'').item.json.account_type'
@@ -98,6 +98,7 @@ function Build-CreateAccount {
             interest_valid_from           = '$(''Start'').item.json.interest_valid_from'
             fixed_deposit_maturity_date   = '$(''Start'').item.json.fixed_deposit_maturity_date'
             fixed_deposit_auto_renew      = '$(''Start'').item.json.fixed_deposit_auto_renew'
+            emoji                         = '$(''Start'').item.json.emoji'
         })
 
     # --- HITL approval gate (before the write) ---
@@ -110,7 +111,7 @@ function Build-CreateAccount {
     $summary = New-HitlSummary -Pos @(1560, 0) -Title 'finance.hitl.create_account' -LinesExpr $wg.CardLinesExpr -Lines (Get-FinanceHitlLines -Entity account -S (Get-WritePayloadExpr) -D @{
         Person = "$P.full_name"; Ccy = "`$('Dry run').item.json.r.currency"
         Conv = "$D.conv"; ConvReason = "$D.conv_reason"; AutoPost = "$D.auto_post"; ValidFrom = "$D.valid_from"; FirstCredit = "$D.first_credit_date"
-        BalanceDate = "`$('Dry run').item.json.r.opening_balance_date" })
+        BalanceDate = "`$('Dry run').item.json.r.opening_balance_date"; Emoji = "`$('Dry run').item.json.r.emoji" })
 
     $gateId = $GateId
     $reqApproval = Build-CallWorkflow 'Request Approval' @(1780, 0) $gateId 'agent.tool_human_approval' `
@@ -144,6 +145,7 @@ function Build-CreateAccount {
         ,@('account_id', "={{ `$('Create account (atomic)').item.json.account_id }}", 'number')
         ,@('interest_added', "={{ `$('Create account (atomic)').item.json.interest_added }}", 'boolean')
         ,@('balance', "={{ `$('Create account (atomic)').item.json.balance }}", 'number')
+        ,@('label', "={{ `$('Create account (atomic)').item.json.label }}", 'string')
     )
 
     $stickyBalance = Build-Sticky 'DB-Automatik balance-init + Eröffnungssaldo' @(2220, -200) `

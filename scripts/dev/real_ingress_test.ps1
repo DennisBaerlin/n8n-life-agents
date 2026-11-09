@@ -387,11 +387,27 @@ function Get-StringLeaves($Obj) {
     if ($Obj -is [psobject]) { foreach ($p in $Obj.PSObject.Properties) { Get-StringLeaves $p.Value } }
 }
 function Test-CaseTexts($Tc) {
-    if (-not $Tc.expect_texts -and -not $Tc.forbid_texts) { return $true }
+    if (-not $Tc.expect_texts -and -not $Tc.forbid_texts -and -not $Tc.expect_keyboard -and $null -eq $Tc.expect_answer_callbacks) { return $true }
     $reqs = @(Get-MockTelegramRequests -Container $Container)
+    # expect_keyboard {chat, buttons}: genau eine Nachricht mit Inline-Tastatur an chat, in Summe buttons Knoepfe.
+    # expect_answer_callbacks: so viele answerCallbackQuery im Fall (doppelt quittieren wirft Telegram als Fehler zurueck).
+    $shapeOk = $true
+    if ($Tc.expect_keyboard) {
+        $kb = @(foreach ($r in $reqs) {
+            $rm = $r.body.reply_markup
+            if ($rm -is [string]) { try { $rm = $rm | ConvertFrom-Json } catch { $rm = $null } }
+            if ($rm.inline_keyboard -and "$($r.body.chat_id)" -eq "$($Tc.expect_keyboard.chat)") { ($rm.inline_keyboard | ForEach-Object { @($_).Count } | Measure-Object -Sum).Sum }
+        })
+        if ($kb.Count -ne 1 -or $kb[0] -ne [int]$Tc.expect_keyboard.buttons) { $shapeOk = $false; Write-Host "    Tastatur an $($Tc.expect_keyboard.chat): $($kb -join ',') Knoepfe (erwartet genau eine mit $($Tc.expect_keyboard.buttons))" -ForegroundColor Red }
+    }
+    if ($null -ne $Tc.expect_answer_callbacks) {
+        $ac = @($reqs | Where-Object { "$($_.method)" -eq 'answerCallbackQuery' }).Count
+        if ($ac -ne [int]$Tc.expect_answer_callbacks) { $shapeOk = $false; Write-Host "    answerCallbackQuery: $ac (erwartet $($Tc.expect_answer_callbacks))" -ForegroundColor Red }
+    }
+    if (-not $Tc.expect_texts -and -not $Tc.forbid_texts) { return $shapeOk }
     if ($Tc.text_chat) { $reqs = @($reqs | Where-Object { "$($_.body.chat_id)" -eq "$($Tc.text_chat)" }) }
     $hay = (@(foreach ($r in $reqs) { Get-StringLeaves $r.body }) -join "`n")
-    $ok = $true
+    $ok = $shapeOk
     foreach ($t in @($Tc.expect_texts)) { if ($t -and -not $hay.Contains("$t")) { $ok = $false; Write-Host "    Text fehlt: '$t'" -ForegroundColor Red } }
     foreach ($t in @($Tc.forbid_texts)) { if ($t -and $hay.Contains("$t")) { $ok = $false; Write-Host "    Text darf nicht vorkommen: '$t'" -ForegroundColor Red } }
     if (-not $ok -and $Verbose) { Write-Host "    gesendet: $($hay.Substring(0, [Math]::Min(600, $hay.Length)))" -ForegroundColor DarkGray }

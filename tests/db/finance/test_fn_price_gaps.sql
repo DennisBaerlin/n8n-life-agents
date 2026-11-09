@@ -38,6 +38,8 @@ BEGIN
     ('EUR','USD', 1.05, current_date - 3, 'test'), ('EUR','USD', 1.10, current_date, 'test')
   ON CONFLICT (base_currency, quote_currency, as_of) DO UPDATE SET rate = EXCLUDED.rate;
   r := finance.fn_price_gaps();
+  IF EXISTS (SELECT 1 FROM jsonb_array_elements(r->'gaps') e WHERE e->>'account_label' IS DISTINCT FROM finance.fn_account_label(NULL, 'stocks_depot', '__pg_depot__')) THEN
+    RAISE EXCEPTION 'FAIL [1 account_label]: %', r->'gaps'; END IF;
   IF (r->'fx'->>'EUR')::numeric <> 1 OR (r->'fx'->>'USD')::numeric <> 1.10 THEN
     RAISE EXCEPTION 'FAIL [1 fx]: erwartet EUR 1 / USD 1.10, got %', r->'fx'; END IF;
   IF EXISTS (SELECT 1 FROM jsonb_array_elements(r->'gaps') e WHERE (e->>'holding_id')::int = v_a) THEN

@@ -21,7 +21,10 @@
 --   nur Geld-Konten, >= 0 (sonst {ok:false}; CHECK finance_accounts_min_balance_chk = Backstop). min_balance_default =
 --   true setzt zurueck auf den Standard (NULL = core.config coverage_buffer_eur); zusammen mit min_balance ->
 --   {ok:false, code:'conflicting_input'}.
---   RUECKGABE: {ok:true, account_id}. RAISE nur bei not-found (Resolve haette greifen muessen).
+--   emoji (Listen-Zeichen, VS16 wird bereinigt; sonst {ok:false, code:'invalid_emoji'} mit der Liste, CHECK = Backstop);
+--   emoji_default = true setzt zurueck auf das Zeichen der Kontoart (NULL); beides zugleich -> conflicting_input.
+--   Ein neuer name mit fuehrendem Listen-Zeichen -> {ok:false, code:'emoji_in_name'}.
+--   RUECKGABE: {ok:true, account_id, emoji (wirksam), label}. RAISE nur bei not-found (Resolve haette greifen muessen).
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_set_account(p jsonb)
 RETURNS jsonb LANGUAGE plpgsql AS $$
@@ -35,6 +38,9 @@ DECLARE
     v_remove BOOLEAN := lower(btrim(COALESCE(p->>'remove_account_number', ''))) IN ('true', 't', 'yes', 'y', 'on', '1');
     v_mb_def BOOLEAN := lower(btrim(COALESCE(p->>'min_balance_default', ''))) IN ('true', 't', 'yes', 'y', 'on', '1');
     v_mb     NUMERIC;
+    v_em_def BOOLEAN := lower(btrim(COALESCE(p->>'emoji_default', ''))) IN ('true', 't', 'yes', 'y', 'on', '1');
+    v_emoji  TEXT    := finance.fn_account_emoji_clean(p->>'emoji');
+    v_res    JSONB;
 BEGIN
     -- relative Datumsangabe ("in 2 years") -> ISO; nicht aufloesbar -> {ok:false, code:'invalid_date'}
     v_dates := core.fn_resolve_input_dates(p, ARRAY['fixed_deposit_maturity_date']);
@@ -58,6 +64,20 @@ BEGIN
     IF v_mb IS NOT NULL AND (v_mb < 0 OR (SELECT account_type FROM finance.accounts WHERE id = v_id) <> 'cash') THEN
         RETURN jsonb_build_object('ok', false,
             'reason', 'A minimum balance must be 0 or more and only applies to a cash account (checking / savings).');
+    END IF;
+
+    IF v_em_def AND v_emoji IS NOT NULL THEN
+        RETURN jsonb_build_object('ok', false, 'code', 'conflicting_input',
+            'reason', 'Either set a sign or reset it to the default - not both in one call.');
+    END IF;
+    IF v_emoji IS NOT NULL AND NOT v_emoji = ANY(finance.fn_account_emoji_choices()) THEN
+        RETURN jsonb_build_object('ok', false, 'code', 'invalid_emoji',
+            'reason', 'This sign is not available. Allowed signs: ' || array_to_string(finance.fn_account_emoji_choices(), ' ')
+                   || '. Call tool_send_account_emoji_picker so the user can pick one.');
+    END IF;
+    IF finance.fn_account_name_without_emoji(NULLIF(p->>'name', '')) IS NOT NULL THEN
+        RETURN jsonb_build_object('ok', false, 'code', 'emoji_in_name',
+            'reason', 'An account name must not start with a sign - pass the name without it and the sign in the field emoji.');
     END IF;
 
     -- S7: eine IBAN-foermige Nummer muss ihre Pruefziffer bestehen (Spiegel-CHECK finance_accounts_iban_chk)
@@ -97,9 +117,12 @@ BEGIN
         -- WS-0b (estate): Nachlass-Attribute (leer=unveraendert; ownership-CHECK = geschlossene-Liste-Backstop).
         ownership                   = COALESCE(NULLIF(p->>'ownership', ''), ownership),
         has_transmortal_poa         = COALESCE(NULLIF(p->>'has_transmortal_poa', '')::boolean, has_transmortal_poa),
-        min_balance                 = CASE WHEN v_mb_def THEN NULL ELSE COALESCE(v_mb, min_balance) END
-    WHERE id = v_id;
+        min_balance                 = CASE WHEN v_mb_def THEN NULL ELSE COALESCE(v_mb, min_balance) END,
+        emoji                       = CASE WHEN v_em_def THEN NULL ELSE COALESCE(v_emoji, emoji) END
+    WHERE id = v_id
+    RETURNING jsonb_build_object('emoji', finance.fn_account_emoji(emoji, account_type),
+                                 'label', finance.fn_account_label(emoji, account_type, name)) INTO v_res;
 
-    RETURN jsonb_build_object('ok', true, 'account_id', v_id, 'effective', v_dates->'resolved');
+    RETURN jsonb_build_object('ok', true, 'account_id', v_id, 'effective', v_dates->'resolved') || v_res;
 END;
 $$;

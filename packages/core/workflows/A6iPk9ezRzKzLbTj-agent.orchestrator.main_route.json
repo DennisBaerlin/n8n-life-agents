@@ -2091,6 +2091,153 @@
                                                                         },
                                                             "conditions":  [
                                                                                {
+                                                                                   "id":  "1e707cf1-23d1-5b23-af4f-d762947fe843",
+                                                                                   "leftValue":  "={{ !!(($(\u0027Dispatch callback\u0027).item.json.result || {}).choice_card) }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       -180,
+                                       1640
+                                   ],
+                      "id":  "44cf5c89-9a5d-5e0b-b226-76e533b18be3",
+                      "name":  "Choice card?"
+                  },
+                  {
+                      "parameters":  {
+                                         "additionalFields":  {
+                                                                  "appendAttribution":  false
+                                                              },
+                                         "chatId":  "={{ String($(\u0027Trigger normalize\u0027).item.json.callback_query.from.id) }}",
+                                         "text":  "={{ (($(\u0027Dispatch callback\u0027).item.json.result.choice_card).text).replace(/[_*`[]/g, \u0027\\\\$\u0026\u0027) }}",
+                                         "replyMarkup":  "inlineKeyboard",
+                                         "inlineKeyboard":  {
+                                                                "rows":  [
+                                                                             {
+                                                                                 "row":  {
+                                                                                             "buttons":  [
+                                                                                                             {
+                                                                                                                 "text":  "={{ ($(\u0027Dispatch callback\u0027).item.json.result.choice_card).options[0].text }}",
+                                                                                                                 "additionalFields":  {
+                                                                                                                                          "callback_data":  "={{ ($(\u0027Dispatch callback\u0027).item.json.result.choice_card).options[0].data }}"
+                                                                                                                                      }
+                                                                                                             },
+                                                                                                             {
+                                                                                                                 "text":  "={{ ($(\u0027Dispatch callback\u0027).item.json.result.choice_card).options[1].text }}",
+                                                                                                                 "additionalFields":  {
+                                                                                                                                          "callback_data":  "={{ ($(\u0027Dispatch callback\u0027).item.json.result.choice_card).options[1].data }}"
+                                                                                                                                      }
+                                                                                                             }
+                                                                                                         ]
+                                                                                         }
+                                                                             },
+                                                                             {
+                                                                                 "row":  {
+                                                                                             "buttons":  [
+                                                                                                             {
+                                                                                                                 "text":  "={{ ($(\u0027Dispatch callback\u0027).item.json.result.choice_card).options[2].text }}",
+                                                                                                                 "additionalFields":  {
+                                                                                                                                          "callback_data":  "={{ ($(\u0027Dispatch callback\u0027).item.json.result.choice_card).options[2].data }}"
+                                                                                                                                      }
+                                                                                                             },
+                                                                                                             {
+                                                                                                                 "text":  "={{ ($(\u0027Dispatch callback\u0027).item.json.result.choice_card).options[3].text }}",
+                                                                                                                 "additionalFields":  {
+                                                                                                                                          "callback_data":  "={{ ($(\u0027Dispatch callback\u0027).item.json.result.choice_card).options[3].data }}"
+                                                                                                                                      }
+                                                                                                             }
+                                                                                                         ]
+                                                                                         }
+                                                                             },
+                                                                             {
+                                                                                 "row":  {
+                                                                                             "buttons":  [
+                                                                                                             {
+                                                                                                                 "text":  "={{ ($(\u0027Dispatch callback\u0027).item.json.result.choice_card).options[4].text }}",
+                                                                                                                 "additionalFields":  {
+                                                                                                                                          "callback_data":  "={{ ($(\u0027Dispatch callback\u0027).item.json.result.choice_card).options[4].data }}"
+                                                                                                                                      }
+                                                                                                             },
+                                                                                                             {
+                                                                                                                 "text":  "={{ ($(\u0027Dispatch callback\u0027).item.json.result.choice_card).options[5].text }}",
+                                                                                                                 "additionalFields":  {
+                                                                                                                                          "callback_data":  "={{ ($(\u0027Dispatch callback\u0027).item.json.result.choice_card).options[5].data }}"
+                                                                                                                                      }
+                                                                                                             }
+                                                                                                         ]
+                                                                                         }
+                                                                             },
+                                                                             {
+                                                                                 "row":  {
+                                                                                             "buttons":  [
+                                                                                                             {
+                                                                                                                 "text":  "={{ ($(\u0027Dispatch callback\u0027).item.json.result.choice_card).more.text }}",
+                                                                                                                 "additionalFields":  {
+                                                                                                                                          "callback_data":  "={{ ($(\u0027Dispatch callback\u0027).item.json.result.choice_card).more.data }}"
+                                                                                                                                      }
+                                                                                                             }
+                                                                                                         ]
+                                                                                         }
+                                                                             }
+                                                                         ]
+                                                            }
+                                     },
+                      "type":  "n8n-nodes-base.telegram",
+                      "typeVersion":  1.2,
+                      "position":  [
+                                       40,
+                                       1640
+                                   ],
+                      "id":  "d0e49672-3703-5bb0-a0aa-6d7ee97b6b4a",
+                      "name":  "Send choice card",
+                      "retryOnFail":  true,
+                      "maxTries":  3,
+                      "waitBetweenTries":  2000,
+                      "credentials":  {
+                                          "telegramApi":  {
+                                                              "id":  "__CRED_TELEGRAM__",
+                                                              "name":  "Telegram account"
+                                                          }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "content":  "## DB-Automatik\n**Auswahl-Karte aus einem Knopf-Handler**\n\nLiefert ein Registry-Handler result.choice_card {text, options[6], more}, sendet Send choice card sie als neue Nachricht an callback_query.from.id. Der Core kennt kein Paket-Feld. Der Toast kommt weiter aus Answer dispatched cb, also genau eine answerCallbackQuery; ohne result.toast zeigte er nur core.orch.toast_action_unavailable.",
+                                         "height":  240,
+                                         "width":  420,
+                                         "color":  4
+                                     },
+                      "type":  "n8n-nodes-base.stickyNote",
+                      "typeVersion":  1,
+                      "position":  [
+                                       -180,
+                                       1800
+                                   ],
+                      "id":  "8f218c57-786f-5700-9caa-a13bbce02882",
+                      "name":  "Doc Auswahl-Karte"
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
                                                                                    "id":  "9fbac364-dfdf-5c5b-905f-e11d516a1bb0",
                                                                                    "leftValue":  "={{ (($(\u0027Dispatch callback\u0027).item.json.result || {}).sticker_event) === \u0027persona_chosen\u0027 }}",
                                                                                    "rightValue":  true,
@@ -8090,10 +8237,26 @@
                                                                           "index":  0,
                                                                           "node":  "Reminders route?",
                                                                           "type":  "main"
+                                                                      },
+                                                                      {
+                                                                          "index":  0,
+                                                                          "node":  "Choice card?",
+                                                                          "type":  "main"
                                                                       }
                                                                   ]
                                                               ]
                                                  },
+                        "Choice card?":  {
+                                             "main":  [
+                                                          [
+                                                              {
+                                                                  "index":  0,
+                                                                  "node":  "Send choice card",
+                                                                  "type":  "main"
+                                                              }
+                                                          ]
+                                                      ]
+                                         },
                         "Reminders route?":  {
                                                  "main":  [
                                                               [

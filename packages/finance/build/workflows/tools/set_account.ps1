@@ -9,11 +9,12 @@ function Build-SetAccount {
     $trig = Build-Trigger @('account_name','new_name','bank','account_number','remove_account_number','owner_person','settlement_account',
                            'notes','fixed_deposit_maturity_date','fixed_deposit_auto_renew',
                            'ownership','has_transmortal_poa',  # WS-0b estate
-                           'min_balance','min_balance_default')  # Puffer je Konto (Transparenz 2026-10-30)
+                           'min_balance','min_balance_default',  # Puffer je Konto (Transparenz 2026-10-30)
+                           'emoji','emoji_default')
 
-    # currency: Waehrung des Puffers auf der Karte (min_balance ist in Kontowaehrung)
+    # currency: Waehrung des Puffers auf der Karte (min_balance ist in Kontowaehrung); label: bisheriger Anzeigename fuer die Kontozeile
     $resAcct = Build-Pg 'Resolve Account' @(220, 0) `
-        "=SELECT r.id, r.hit_count, r.candidates, a.currency FROM finance.fn_resolve_account((`$1::jsonb)->>'account_name', NULL, TRUE) r LEFT JOIN finance.accounts a ON a.id = r.id;" `
+        "=SELECT r.id, r.hit_count, r.candidates, r.label, a.currency FROM finance.fn_resolve_account((`$1::jsonb)->>'account_name', NULL, TRUE) r LEFT JOIN finance.accounts a ON a.id = r.id;" `
         ([ordered]@{ account_name = '$(''Start'').item.json.account_name' })
 
     $ifAcct = Build-If 'Account unique?' @(440, 0) "={{ `$json.hit_count }}" '1'
@@ -44,7 +45,7 @@ function Build-SetAccount {
     # in den echten Write (partielles UPDATE der Stammdaten).
     $wg = New-FnWriteGate -Fn 'finance.fn_set_account' -DryPos @(880, 0) -WritePos @(2200, 0) `
         -WriteName 'Set account (atomic)' `
-        -WriteSelect "(r->>'ok')::boolean AS ok, r->>'reason' AS reason, (r->>'account_id')::int AS account_id" `
+        -WriteSelect "(r->>'ok')::boolean AS ok, r->>'reason' AS reason, (r->>'account_id')::int AS account_id, r->>'label' AS label" `
         -Params ([ordered]@{
             account_id                  = '$(''Resolve Account'').item.json.id'
             name                        = '$(''Start'').item.json.new_name'
@@ -60,6 +61,8 @@ function Build-SetAccount {
             has_transmortal_poa         = '$(''Start'').item.json.has_transmortal_poa'
             min_balance                 = '$(''Start'').item.json.min_balance'            # Puffer je Konto
             min_balance_default         = '$(''Start'').item.json.min_balance_default'
+            emoji                       = '$(''Start'').item.json.emoji'
+            emoji_default               = '$(''Start'').item.json.emoji_default'
         })
 
     # HITL: nur die tatsaechlich gelieferten Felder anzeigen (-If je Zeile). Strukturiertes Summary (Textkatalog).
@@ -68,7 +71,9 @@ function Build-SetAccount {
     $P = "`$('Resolve Person').item.json"
     $A = "`$('Resolve Account').item.json"
     $summary = New-HitlSummary -Pos @(1540, 0) -Title 'finance.hitl.set_account' -LinesExpr $wg.CardLinesExpr -Lines @(
-        (New-HitlLine 'finance.label.account'            "$S.account_name")
+        (New-HitlLine 'finance.label.account'            "$A.label")
+        (New-HitlLine 'finance.label.emoji'              "`$('Dry run').item.json.r.emoji" -If "$S.emoji")
+        (New-HitlNote -Key 'finance.note.emoji_default' -If "(['true','t','yes','y','on','1'].indexOf(String($S.emoji_default || '').toLowerCase().trim()) >= 0)")
         (New-HitlLine 'finance.label.new_name'           "$S.new_name" -If "$S.new_name")
         (New-HitlLine 'finance.label.bank'               "$S.bank" -If "$S.bank")
         (New-HitlLine 'finance.label.iban_number' "$S.account_number" -If "$S.account_number")
@@ -101,15 +106,16 @@ function Build-SetAccount {
     $ret = Build-Return @(2640, 0) @(
         ,@('ok','true','boolean')
         ,@('account_id', "={{ `$('Set account (atomic)').item.json.account_id }}", 'number')
+        ,@('label', "={{ `$('Set account (atomic)').item.json.label }}", 'string')
     )
 
     $stickyDry = Build-Sticky 'Probelauf vor der Karte' @(880, -220) `
         'core.fn_dry_run (DB ist das Gesetz)' `
-        'Dry run = fn_set_account mit denselben Werten, immer zurückgerollt. ok:false -> Dry run rejected: KEINE Karte, card_sent:false + Grund an den Agenten. Die fn kennt kaum freundliche Ablehnungen; ein Verstoß gegen den ownership-CHECK ist eine Exception -> Abbruch + errorWorkflow-Alarm, aber VOR der Karte statt nach dem Tipp. ok:true -> Karte. Der echte Write nach dem Tipp prüft erneut (Write ok? -> false: Account not changed mit reason).' 200 400
+        'Dry run = fn_set_account mit denselben Werten, immer zurückgerollt. ok:false -> Dry run rejected: KEINE Karte, card_sent:false + Grund an den Agenten. Freundliche Ablehnungen sind u. a. invalid_emoji (Zeichen nicht in der Liste) und emoji_in_name; ein Verstoß gegen den ownership-CHECK ist eine Exception -> Abbruch + errorWorkflow-Alarm, aber VOR der Karte statt nach dem Tipp. ok:true -> Karte. Der echte Write nach dem Tipp prüft erneut (Write ok? -> false: Account not changed mit reason).' 200 400
 
     $stickyOv = Build-Sticky 'Doc set_account' @(2200, -220) `
         'fn_set_account: partielles Stammdaten-UPDATE' `
-        'Ändert NUR Stammdaten (Name/Bank/Nr./Inhaber/Verrechnungskonto (nur Depot/P2P, Resolve Settlement -> settlement_id; die DB prüft die Kontoart)/Notiz/Festgeld-Felder + WS-0b estate: ownership [single/joint_or/joint_and], transmortale Bankvollmacht). BEWUSST NICHT: account_type, currency (-> Korruption), status (-> close_account), Saldo (Trigger). Nur gelieferte Felder werden gesetzt (COALESCE); remove_account_number=true entfernt die Kontonummer (Korrektur einer falsch zugeordneten bzw. gelernten IBAN, Karten-Hinweis). Puffer je Konto (min_balance, Kontowährung, nur Geld-Konten; min_balance_default=true = zurück auf den Haushalts-Standard core.config coverage_buffer_eur) speist die Kontovorschau fn_account_outlook; CHECK finance_accounts_min_balance_chk ist der Backstop. Freundliche {ok:false}-Fälle (Probelauf vor der Karte): Puffer negativ / kein Geld-Konto / Puffer setzen und zurücksetzen zugleich, Kontonummer schon vergeben, Nummer setzen und entfernen zugleich, Verrechnungskonto unzulässig (fn_settlement_account_reason: falsche Kontoart, kein Girokonto bei P2P, andere Währung, das Konto selbst). Der ownership-CHECK (geschlossene Liste) ist der strukturelle Backstop, die Tool-Description führt den Agenten.' 220 440
+        'Ändert NUR Stammdaten (Name/Bank/Nr./Inhaber/Verrechnungskonto (nur Depot/P2P, Resolve Settlement -> settlement_id; die DB prüft die Kontoart)/Notiz/Festgeld-Felder + WS-0b estate: ownership [single/joint_or/joint_and], transmortale Bankvollmacht). BEWUSST NICHT: account_type, currency (-> Korruption), status (-> close_account), Saldo (Trigger). Nur gelieferte Felder werden gesetzt (COALESCE); remove_account_number=true entfernt die Kontonummer (Korrektur einer falsch zugeordneten bzw. gelernten IBAN, Karten-Hinweis). Puffer je Konto (min_balance, Kontowährung, nur Geld-Konten; min_balance_default=true = zurück auf den Haushalts-Standard core.config coverage_buffer_eur) speist die Kontovorschau fn_account_outlook; CHECK finance_accounts_min_balance_chk ist der Backstop. Konto-Zeichen (emoji aus der festen Liste, emoji_default=true = zurück zum Zeichen der Kontoart); die Karte zeigt das bereinigte Zeichen aus dem Probelauf und in der Kontozeile den bisherigen Anzeigenamen. Freundliche {ok:false}-Fälle (Probelauf vor der Karte): Puffer negativ / kein Geld-Konto / Puffer setzen und zurücksetzen zugleich, Kontonummer schon vergeben, Nummer setzen und entfernen zugleich, Verrechnungskonto unzulässig (fn_settlement_account_reason: falsche Kontoart, kein Girokonto bei P2P, andere Währung, das Konto selbst). Der ownership-CHECK (geschlossene Liste) ist der strukturelle Backstop, die Tool-Description führt den Agenten.' 220 440
 
     $nodes = @($trig, $resAcct, $ifAcct, $errAcct, $resPerson, $ifPersonBad, $errPerson, $resSettle, $ifSettleBad, $errSettle) + $wg.Nodes + @($summary, $reqApproval,
                $ifApproved, $retCancelled, $ifWriteOk, $errWrite, $ret, $stickyDry, $stickyOv)

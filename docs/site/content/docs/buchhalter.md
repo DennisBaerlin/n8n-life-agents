@@ -84,3 +84,7 @@ Du: [tippt auf Bestätigen]
 
 Bot: Gebucht. Neuer Saldo Girokonto: 1.205,30 €
 ```
+
+## Zeichen für deine Konten
+
+Jedes Konto trägt ein kleines Zeichen vor dem Namen, zum Beispiel `🏦 Lindenbank Giro`. Ohne eigene Wahl passt es zur Kontoart. Sag dem Bot „ich möchte ein anderes Zeichen“: Er schickt sechs Vorschläge als Knöpfe, ein Tipp speichert. Über „Weitere Zeichen vorschlagen“ siehst du die nächsten sechs. Nennst du selbst eines („nimm das Sparschwein“), bestätigst du es wie gewohnt auf der Karte.

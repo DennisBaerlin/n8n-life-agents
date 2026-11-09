@@ -23,7 +23,7 @@ function Build-BookRecurringOccurrence {
 
     # Offenes Vorkommen + Plan-Felder fuer die Summary (frueheste offene Faelligkeit).
     $findOcc = Build-Pg 'Find occurrence' @(660, 0) `
-        "=SELECT o.due_date::text AS due_date, rp.amount AS plan_amount, rp.name, a.name AS account_name, a.currency AS currency FROM finance.fn_recurring_due_open(CURRENT_DATE) o JOIN finance.recurring_payments rp ON rp.id = o.recurring_payment_id JOIN finance.accounts a ON a.id = rp.account_id WHERE o.recurring_payment_id = ((`$1::jsonb)->>'id')::int ORDER BY o.due_date LIMIT 1;" `
+        "=SELECT o.due_date::text AS due_date, rp.amount AS plan_amount, rp.name, a.name AS account_name, finance.fn_account_label(a.emoji, a.account_type, a.name) AS account_label, a.currency AS currency FROM finance.fn_recurring_due_open(CURRENT_DATE) o JOIN finance.recurring_payments rp ON rp.id = o.recurring_payment_id JOIN finance.accounts a ON a.id = rp.account_id WHERE o.recurring_payment_id = ((`$1::jsonb)->>'id')::int ORDER BY o.due_date LIMIT 1;" `
         ([ordered]@{ id = '$(''Resolve Payment'').item.json.id' })
 
     $ifOcc = Build-If 'Occurrence open?' @(880, 0) "={{ !!`$json.due_date }}" 'true' 'equals' 'boolean'
@@ -49,7 +49,7 @@ function Build-BookRecurringOccurrence {
     $O = "`$('Find occurrence').item.json"
     $summary = New-HitlSummary -Pos @(1760, 0) -Title 'finance.hitl.book_recurring_occurrence' -LinesExpr $wg.CardLinesExpr -Lines @(
         (New-HitlLine 'finance.label.item'          "$O.name")
-        (New-HitlLine 'finance.label.account'       "$O.account_name")
+        (New-HitlLine 'finance.label.account'       "$O.account_label")
         (New-HitlLine 'finance.label.due_on'        "$O.due_date" -Kind date)
         (New-HitlLine 'finance.label.planned'       "Math.abs($O.plan_amount)" -Kind money -Currency "$O.currency")
         (New-HitlLine 'finance.label.actual_book'   "Math.abs($S.actual_amount)" -Kind money -Currency "$O.currency")

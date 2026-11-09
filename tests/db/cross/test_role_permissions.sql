@@ -1937,4 +1937,27 @@ BEGIN
   RAISE NOTICE 'PASS finance_rw -> core.fn_proactive_claim';
 END $$;
 
+-- Konto-Zeichen: Lesepfad des Agenten (finance_ro), Schreibpfad des Tools mit CHECK (finance_rw)
+DO $$
+DECLARE v_id int; v_r jsonb;
+BEGIN
+  INSERT INTO finance.accounts (name, account_type, currency, status) VALUES ('__rp_emoji__', 'cash', 'EUR', 'active') RETURNING id INTO v_id;
+  SET LOCAL ROLE finance_ro;
+  PERFORM finance.fn_account_emoji_choices();
+  IF (SELECT label FROM finance.account_overview WHERE id = v_id) <> finance.fn_account_label(NULL, 'cash', '__rp_emoji__') THEN RAISE EXCEPTION 'FAIL [finance_ro label]'; END IF;
+  RESET ROLE;
+  SET LOCAL ROLE finance_rw;
+  v_r := finance.fn_set_account(jsonb_build_object('account_id', v_id, 'emoji', '🐷'));
+  RESET ROLE;
+  IF NOT (v_r->>'ok')::boolean OR (SELECT emoji FROM finance.accounts WHERE id = v_id) <> '🐷' THEN RAISE EXCEPTION 'FAIL [finance_rw emoji]: %', v_r; END IF;
+  SET LOCAL ROLE finance_rw;
+  BEGIN
+    UPDATE finance.accounts SET emoji = '🦄' WHERE id = v_id;
+    RAISE EXCEPTION 'FAIL [finance_rw CHECK]';
+  EXCEPTION WHEN check_violation THEN NULL; END;
+  RESET ROLE;
+  RAISE NOTICE 'PASS Konto-Zeichen unter finance_ro/finance_rw';
+END $$;
+
+
 ROLLBACK;

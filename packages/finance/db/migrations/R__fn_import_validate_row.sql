@@ -118,6 +118,10 @@ BEGIN
             RETURN format('account_type "%s" invalid (cash|p2p|stocks_depot|crypto_depot|fixed_deposit)', p->>'account_type');
         END;
         IF p->>'account_type' IS NULL THEN RETURN 'account_type is required'; END IF;
+        -- Spiegel von fn_create_account: scheitert hier vor der Sammelkarte statt erst nach dem Tipp
+        IF finance.fn_account_name_without_emoji(p->>'name') IS NOT NULL THEN
+            RETURN 'an account name must not start with a sign - remove it from the name';
+        END IF;
         IF p->>'account_type' = 'loan' THEN
             RETURN 'loans are imported as entity_type loan (with remaining debt and rate), not as an account';
         END IF;

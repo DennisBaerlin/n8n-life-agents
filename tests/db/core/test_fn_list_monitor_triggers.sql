@@ -21,10 +21,16 @@ BEGIN
   INSERT INTO agent.monitor_triggers (domain, label, trigger_type, acquisition_method, due_date, check_interval, status)
   VALUES ('__lst__', 'Disabled one', 'date', 'none', '2027-09-30', interval '7 days', 'disabled');
 
-  -- (1) liefert genau die 2 nicht-disabled Trigger
+  INSERT INTO agent.plan_reminder_declines (domain, package, label, remind_on) VALUES ('__lst__', 'core', 'Abgelehnt', '2027-01-15');
+
+  -- (1) liefert armed/fired, disabled und abgelehnte Eintraege
   SELECT COUNT(*) INTO v_cnt FROM core.fn_list_monitor_triggers('__lst__');
-  IF v_cnt IS DISTINCT FROM 2 THEN
-    RAISE EXCEPTION 'FAIL list [count]: erwartet 2 (armed/fired), got %', v_cnt; END IF;
+  IF v_cnt IS DISTINCT FROM 4 THEN
+    RAISE EXCEPTION 'FAIL list [count]: erwartet 4, got %', v_cnt; END IF;
+  IF NOT EXISTS (SELECT 1 FROM core.fn_list_monitor_triggers('__lst__') WHERE label = 'Disabled one' AND status = 'disabled') THEN
+    RAISE EXCEPTION 'FAIL list [disabled]'; END IF;
+  IF NOT EXISTS (SELECT 1 FROM core.fn_list_monitor_triggers('__lst__') WHERE label = 'Abgelehnt' AND status = 'declined' AND spec_summary = 'date 2027-01-15') THEN
+    RAISE EXCEPTION 'FAIL list [declined]'; END IF;
 
   -- (2) spec_summary kommt aus typisierten Spalten — NICHT aus acquisition_spec/action_note (Content-Guard M3)
   SELECT spec_summary INTO v_spec FROM core.fn_list_monitor_triggers('__lst__') WHERE label = 'Aluminium over 4000';

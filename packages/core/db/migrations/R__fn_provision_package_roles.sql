@@ -236,6 +236,9 @@ BEGIN
     IF to_regprocedure('core.fn_list_monitor_triggers(text)') IS NOT NULL THEN
         EXECUTE format('GRANT EXECUTE ON FUNCTION core.fn_list_monitor_triggers(text) TO %I, %I', v_rw, v_ro);
     END IF;
+    IF to_regprocedure('core.fn_period_reminder_date(text,date)') IS NOT NULL THEN
+        EXECUTE format('GRANT EXECUTE ON FUNCTION core.fn_period_reminder_date(text,date) TO %I', v_ro);
+    END IF;
     -- WS-3a (Multi-Member Custodial-Scope): publiziertes Personen-Rollen-Fenster. finance.fn_advisor_review
     -- (FIRE-Pool-Ausschluss role='child') + finance.parent_cashflow_overview (Eltern->Kind-Transfer-Erkennung)
     -- joinen core.fn_household_persons() statt agent.persons direkt (D10-gesperrt). Read an beide Rollen.

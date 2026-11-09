@@ -72,6 +72,7 @@ BEGIN
     --     im Satz (Testfaelle legen Aufgaben der echten Domain per setup_sql an). Der Endzustand-Trigger sperrt nur UPDATE.
     DELETE FROM agent.handoff_tasks WHERE domain ILIKE v_pat OR text LIKE v_pat_any;
     GET DIAGNOSTICS v_ht = ROW_COUNT;
+    DELETE FROM agent.plan_reminder_declines WHERE domain ILIKE v_pat OR label LIKE v_pat_any;
 
     -- 3. Advisor-Plaene: Sentinel via plan_name (Prefix) ODER domain (der E2E-Pfad des Advisors schreibt unter
     --    sentinel-DOMAIN '__e2e_<domain>__'). ILIKE: der Domain-Sentinel ist lowercase.

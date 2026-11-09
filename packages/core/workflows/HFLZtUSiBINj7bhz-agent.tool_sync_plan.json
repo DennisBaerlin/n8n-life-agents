@@ -1,0 +1,618 @@
+{
+    "id":  "HFLZtUSiBINj7bhz",
+    "name":  "agent.tool_sync_plan",
+    "nodes":  [
+                  {
+                      "parameters":  {
+                                         "workflowInputs":  {
+                                                                "values":  [
+                                                                               {
+                                                                                   "name":  "domain"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "reminders"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "declined"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "retire"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "watch_candidates"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "chat_id"
+                                                                               }
+                                                                           ]
+                                                            }
+                                     },
+                      "type":  "n8n-nodes-base.executeWorkflowTrigger",
+                      "typeVersion":  1.1,
+                      "position":  [
+                                       0,
+                                       0
+                                   ],
+                      "id":  "d9e06fd2-459f-58c5-ba30-94201fd06551",
+                      "name":  "Start"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "=SELECT core.fn_dry_run(\u0027core.fn_plan_sync(jsonb)\u0027::regprocedure, $1::jsonb) AS r;",
+                                         "options":  {
+                                                         "queryReplacement":  "={{ JSON.stringify({ domain: $(\u0027Start\u0027).item.json.domain, reminders: $(\u0027Start\u0027).item.json.reminders, declined: $(\u0027Start\u0027).item.json.declined, retire: $(\u0027Start\u0027).item.json.retire, watch_candidates: $(\u0027Start\u0027).item.json.watch_candidates, chat_id: $(\u0027Start\u0027).item.json.chat_id }) }}"
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       220,
+                                       0
+                                   ],
+                      "id":  "9acbbbac-f33d-5c38-809c-6e34d0130c4f",
+                      "name":  "Dry run",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_WRITE__",
+                                                           "name":  "Postgres account"
+                                                       }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "accdd416-fd94-5773-986b-7870d0e8df15",
+                                                                                   "leftValue":  "={{ $(\u0027Dry run\u0027).item.json.r.ok }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       440,
+                                       0
+                                   ],
+                      "id":  "bdcc6271-2495-5c4a-b74e-56d3bc56411f",
+                      "name":  "Dry run ok?"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "918df170-cf42-5c31-b1c2-a47812e7aaa2",
+                                                                                     "name":  "ok",
+                                                                                     "value":  "false",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "8454033c-e3d0-5712-8256-4c7d28f6d4ac",
+                                                                                     "name":  "card_sent",
+                                                                                     "value":  "false",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "088596d4-b29a-57ee-b00d-aad656a4b1e4",
+                                                                                     "name":  "error",
+                                                                                     "value":  "={{ $(\u0027Dry run\u0027).item.json.r.reason || $(\u0027Dry run\u0027).item.json.r.error || \u0027The database rejected this entry.\u0027 }}",
+                                                                                     "type":  "string"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "65cefcfd-d8e4-5ba0-9f4f-7fbc8ff997c7",
+                                                                                     "name":  "code",
+                                                                                     "value":  "={{ $(\u0027Dry run\u0027).item.json.r.code || \u0027\u0027 }}",
+                                                                                     "type":  "string"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "fdbf355d-1a09-51ef-baec-b5bd41c4fef7",
+                                                                                     "name":  "candidates",
+                                                                                     "value":  "={{ $(\u0027Dry run\u0027).item.json.r.candidates || [] }}",
+                                                                                     "type":  "array"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       660,
+                                       200
+                                   ],
+                      "id":  "7fbd0dde-8bfc-59c6-b3d5-e81a524c2e9f",
+                      "name":  "Dry run rejected"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "=SELECT (r-\u003e\u003e\u0027ok\u0027)::boolean AS ok, r-\u003e\u003e\u0027reason\u0027 AS reason, r-\u003e\u003e\u0027code\u0027 AS code, (r-\u003e\u003e\u0027plan_id\u0027)::int AS plan_id, r-\u003e\u003e\u0027synced_at\u0027 AS synced_at, r-\u003e\u0027created\u0027 AS created, r-\u003e\u0027moved\u0027 AS moved, r-\u003e\u0027retired\u0027 AS retired, r-\u003e\u0027skipped\u0027 AS skipped, (r-\u003e\u003e\u0027changes\u0027)::int AS changes FROM core.fn_plan_sync(($1::jsonb - \u0027_effective\u0027) || COALESCE(NULLIF(($1::jsonb)-\u003e\u0027_effective\u0027, \u0027null\u0027::jsonb), \u0027{}\u0027::jsonb)) AS r;",
+                                         "options":  {
+                                                         "queryReplacement":  "={{ JSON.stringify({ domain: $(\u0027Start\u0027).item.json.domain, reminders: $(\u0027Start\u0027).item.json.reminders, declined: $(\u0027Start\u0027).item.json.declined, retire: $(\u0027Start\u0027).item.json.retire, watch_candidates: $(\u0027Start\u0027).item.json.watch_candidates, chat_id: $(\u0027Start\u0027).item.json.chat_id, _effective: ($(\u0027Dry run\u0027).item.json.r.effective || null) }) }}"
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       1320,
+                                       0
+                                   ],
+                      "id":  "21307315-8d32-5357-81e9-c75fc88f3341",
+                      "name":  "Sync plan (atomic)",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_WRITE__",
+                                                           "name":  "Postgres account"
+                                                       }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "514ca744-df16-5c19-b7d5-8677a34bc89c",
+                                                                                   "leftValue":  "={{ $(\u0027Dry run\u0027).item.json.r.changes }}",
+                                                                                   "rightValue":  0,
+                                                                                   "operator":  {
+                                                                                                    "type":  "number",
+                                                                                                    "operation":  "gt"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       660,
+                                       -100
+                                   ],
+                      "id":  "1c17da83-9ded-54ec-99ca-dd9328d546ec",
+                      "name":  "Anything to confirm?"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "cc3f7e11-de70-5a23-a118-4cd2150e083c",
+                                                                                     "name":  "summary",
+                                                                                     "value":  "={{ ({ title: \u0027core.hitl.sync_plan\u0027, repeat_key: (String($(\u0027Start\u0027).item.json.domain || \u0027\u0027)), lines: [  ].concat(($(\u0027Dry run\u0027).item.json.r.card_lines || [])).filter(Boolean) }) }}",
+                                                                                     "type":  "object"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       880,
+                                       -200
+                                   ],
+                      "id":  "3a2e1c6b-e00f-5a09-95cc-f066c4cc6656",
+                      "name":  "Build Approval Summary"
+                  },
+                  {
+                      "parameters":  {
+                                         "workflowId":  {
+                                                            "__rl":  true,
+                                                            "value":  "pZnnFEZFtBWYJvrx",
+                                                            "mode":  "list",
+                                                            "cachedResultUrl":  "/workflow/pZnnFEZFtBWYJvrx",
+                                                            "cachedResultName":  "agent.tool_human_approval"
+                                                        },
+                                         "workflowInputs":  {
+                                                                "mappingMode":  "defineBelow",
+                                                                "value":  {
+                                                                              "summary":  "={{ $(\u0027Build Approval Summary\u0027).item.json.summary }}",
+                                                                              "chat_id":  "={{ $(\u0027Start\u0027).item.json.chat_id }}",
+                                                                              "approval_tier":  "owner_only"
+                                                                          },
+                                                                "matchingColumns":  [
+
+                                                                                    ],
+                                                                "schema":  [
+
+                                                                           ],
+                                                                "attemptToConvertTypes":  false,
+                                                                "convertFieldsToString":  true
+                                                            },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.executeWorkflow",
+                      "typeVersion":  1.2,
+                      "position":  [
+                                       1100,
+                                       -200
+                                   ],
+                      "id":  "fe2c9a2f-abc2-51f6-81aa-fe2bae14fe95",
+                      "name":  "Request Approval"
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "0e545eb6-a40d-556f-98c8-a830343427ca",
+                                                                                   "leftValue":  "={{ $json.approved }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       1320,
+                                       -200
+                                   ],
+                      "id":  "83a247b4-9e38-52e8-9f35-2fd8911c30ae",
+                      "name":  "Approved?"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "1113f668-e813-5c9c-a654-6bc0712889c1",
+                                                                                     "name":  "ok",
+                                                                                     "value":  "false",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "d56d9bd4-7d52-5178-9138-289deff16701",
+                                                                                     "name":  "cancelled",
+                                                                                     "value":  "true",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "cf1c088d-c907-5423-96ef-8d59d518d2ae",
+                                                                                     "name":  "message",
+                                                                                     "value":  "={{ $json.repeat_blocked === true ? \u0027The same confirmation card for the sync_plan action was already not confirmed in this turn, no new card was sent. Nothing was saved. Do NOT call this tool again in this turn. Answer the user now, based on the earlier result.\u0027 : $json.reason === \u0027owner_only\u0027 ? \u0027Only the household owner may do the sync_plan action; no card was sent. Nothing was saved. Do NOT call this tool again in this turn. Tell the user only the owner can do this.\u0027 : ({ declined: \u0027The user tapped the cancel button on the confirmation card for the sync_plan action. Nothing was saved. Do NOT call this tool again in this turn. This was their decision, not an error: say it was cancelled and ask what to change, if anything.\u0027, expired: \u0027The confirmation card for the sync_plan action expired: nobody tapped a button within the time limit, so nobody declined it. Nothing was saved. Do NOT call this tool again in this turn. Tell the user the card ran out of time, not that they cancelled it, and ask whether to send it again.\u0027, owner_declined: \u0027The household owner declined the confirmation card for the sync_plan action after the user had confirmed it. Nothing was saved. Do NOT call this tool again in this turn. Tell the user the owner declined it; the user did not cancel it.\u0027, owner_expired: \u0027The household owner did not answer the confirmation card for the sync_plan action within the time limit; the user had already confirmed it. Nothing was saved. Do NOT call this tool again in this turn. Tell the user the owner did not answer in time and ask whether to send it again.\u0027 })[$json.outcome] || \u0027The confirmation card for the sync_plan action was not confirmed. Nothing was saved. Do NOT call this tool again in this turn. Tell the user it was not confirmed and ask whether to try again or what to change.\u0027 }}",
+                                                                                     "type":  "string"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       1540,
+                                       -360
+                                   ],
+                      "id":  "f3fd5537-d9da-50d6-a43b-2d7646b3e4d5",
+                      "name":  "Return cancelled"
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "3e961b8e-9efc-522b-835c-aed30c069d4c",
+                                                                                   "leftValue":  "={{ $json.ok }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       1540,
+                                       0
+                                   ],
+                      "id":  "37285786-5e70-50e8-b13b-c5b4288ab129",
+                      "name":  "Write ok?"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "4c0e4909-a7a1-59a0-9ea7-f375aff450cb",
+                                                                                     "name":  "ok",
+                                                                                     "value":  "false",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "20755f6c-0849-5854-9ca5-caedd250b3a5",
+                                                                                     "name":  "error",
+                                                                                     "value":  "={{ $(\u0027Sync plan (atomic)\u0027).item.json.reason }}",
+                                                                                     "type":  "string"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       1760,
+                                       200
+                                   ],
+                      "id":  "61434ee4-4a98-50c4-9e23-820ebad1bbc4",
+                      "name":  "Sync rejected"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "805a3e2b-01c3-51a1-a6bd-b983e5e2e6f8",
+                                                                                     "name":  "ok",
+                                                                                     "value":  "true",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "662397ec-5c52-54ee-9537-dddabc16dee9",
+                                                                                     "name":  "plan_id",
+                                                                                     "value":  "={{ $(\u0027Sync plan (atomic)\u0027).item.json.plan_id }}",
+                                                                                     "type":  "number"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "a1dc4faa-efce-5964-8726-ec79649bedcb",
+                                                                                     "name":  "synced_at",
+                                                                                     "value":  "={{ $(\u0027Sync plan (atomic)\u0027).item.json.synced_at }}",
+                                                                                     "type":  "string"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "0fdb1839-2c8b-5be7-b511-52ce57f139f2",
+                                                                                     "name":  "created",
+                                                                                     "value":  "={{ $(\u0027Sync plan (atomic)\u0027).item.json.created }}",
+                                                                                     "type":  "array"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "3667cb32-4120-5d65-b5da-6590bb246bb0",
+                                                                                     "name":  "moved",
+                                                                                     "value":  "={{ $(\u0027Sync plan (atomic)\u0027).item.json.moved }}",
+                                                                                     "type":  "array"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "cd10da72-cbfb-5b08-a689-8815d1c5a972",
+                                                                                     "name":  "retired",
+                                                                                     "value":  "={{ $(\u0027Sync plan (atomic)\u0027).item.json.retired }}",
+                                                                                     "type":  "array"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "1af41c72-0f92-5f90-b00f-e85d63290360",
+                                                                                     "name":  "skipped",
+                                                                                     "value":  "={{ $(\u0027Sync plan (atomic)\u0027).item.json.skipped }}",
+                                                                                     "type":  "array"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "67857b5e-bcc1-503c-9160-2c2a495057dd",
+                                                                                     "name":  "changes",
+                                                                                     "value":  "={{ $(\u0027Sync plan (atomic)\u0027).item.json.changes }}",
+                                                                                     "type":  "number"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       1760,
+                                       0
+                                   ],
+                      "id":  "c5b8b4a4-04b8-5600-a648-22357ef61752",
+                      "name":  "Return"
+                  },
+                  {
+                      "parameters":  {
+                                         "content":  "## DB-Automatik\n**Plan-Durchlauf auf dem veröffentlichten Plan (core.fn_plan_sync)**\n\nGleicht die Erinnerungen des aktiven Plans mit dem Bestand ab, ohne neue Version. Dieselbe fn läuft im Publish in derselben Transaktion. Dry run prüft vor der Karte und liefert changes (Neu + Verschoben + Weg + neu Abgelehnt). changes = 0: Anything to confirm? geht ohne Karte direkt zum Write, der nur den Stempel synced_at und watch_candidates speichert; kein Nutzer-Datenbestand ändert sich, darum kein Gate. Sonst eine Karte aus den card_lines der fn. effective.reminders_checked_on geht in den Write: Ein Tipp nach Mitternacht lehnt ein Datum von heute nicht ab. Wiederhol-Sperre je Domain. ok:false als Daten.",
+                                         "height":  340,
+                                         "width":  300,
+                                         "color":  4
+                                     },
+                      "type":  "n8n-nodes-base.stickyNote",
+                      "typeVersion":  1,
+                      "position":  [
+                                       120,
+                                       -560
+                                   ],
+                      "id":  "296e4b97-5b6f-5307-9667-9828015e8c8a",
+                      "name":  "Doc Sync Plan"
+                  }
+              ],
+    "connections":  {
+                        "Start":  {
+                                      "main":  [
+                                                   [
+                                                       {
+                                                           "index":  0,
+                                                           "node":  "Dry run",
+                                                           "type":  "main"
+                                                       }
+                                                   ]
+                                               ]
+                                  },
+                        "Dry run":  {
+                                        "main":  [
+                                                     [
+                                                         {
+                                                             "index":  0,
+                                                             "node":  "Dry run ok?",
+                                                             "type":  "main"
+                                                         }
+                                                     ]
+                                                 ]
+                                    },
+                        "Dry run ok?":  {
+                                            "main":  [
+                                                         [
+                                                             {
+                                                                 "index":  0,
+                                                                 "node":  "Anything to confirm?",
+                                                                 "type":  "main"
+                                                             }
+                                                         ],
+                                                         [
+                                                             {
+                                                                 "index":  0,
+                                                                 "node":  "Dry run rejected",
+                                                                 "type":  "main"
+                                                             }
+                                                         ]
+                                                     ]
+                                        },
+                        "Anything to confirm?":  {
+                                                     "main":  [
+                                                                  [
+                                                                      {
+                                                                          "index":  0,
+                                                                          "node":  "Build Approval Summary",
+                                                                          "type":  "main"
+                                                                      }
+                                                                  ],
+                                                                  [
+                                                                      {
+                                                                          "index":  0,
+                                                                          "node":  "Sync plan (atomic)",
+                                                                          "type":  "main"
+                                                                      }
+                                                                  ]
+                                                              ]
+                                                 },
+                        "Build Approval Summary":  {
+                                                       "main":  [
+                                                                    [
+                                                                        {
+                                                                            "index":  0,
+                                                                            "node":  "Request Approval",
+                                                                            "type":  "main"
+                                                                        }
+                                                                    ]
+                                                                ]
+                                                   },
+                        "Request Approval":  {
+                                                 "main":  [
+                                                              [
+                                                                  {
+                                                                      "index":  0,
+                                                                      "node":  "Approved?",
+                                                                      "type":  "main"
+                                                                  }
+                                                              ]
+                                                          ]
+                                             },
+                        "Approved?":  {
+                                          "main":  [
+                                                       [
+                                                           {
+                                                               "index":  0,
+                                                               "node":  "Sync plan (atomic)",
+                                                               "type":  "main"
+                                                           }
+                                                       ],
+                                                       [
+                                                           {
+                                                               "index":  0,
+                                                               "node":  "Return cancelled",
+                                                               "type":  "main"
+                                                           }
+                                                       ]
+                                                   ]
+                                      },
+                        "Sync plan (atomic)":  {
+                                                   "main":  [
+                                                                [
+                                                                    {
+                                                                        "index":  0,
+                                                                        "node":  "Write ok?",
+                                                                        "type":  "main"
+                                                                    }
+                                                                ]
+                                                            ]
+                                               },
+                        "Write ok?":  {
+                                          "main":  [
+                                                       [
+                                                           {
+                                                               "index":  0,
+                                                               "node":  "Return",
+                                                               "type":  "main"
+                                                           }
+                                                       ],
+                                                       [
+                                                           {
+                                                               "index":  0,
+                                                               "node":  "Sync rejected",
+                                                               "type":  "main"
+                                                           }
+                                                       ]
+                                                   ]
+                                      }
+                    },
+    "settings":  {
+                     "executionOrder":  "v1",
+                     "errorWorkflow":  "Nd3UVmUTzTLOBeba"
+                 }
+}

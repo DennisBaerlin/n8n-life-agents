@@ -212,9 +212,22 @@ function Build-AgentFinanceAdvisor {
             ,@('change_summary', 'Concrete summary of what changed vs. the previous version, for the confirmation message', 'string')
             ,@('check_findings', 'JSON array string of all final-check findings, each {"text":"one plain sentence, max 300 characters","outcome":"resolved|deferred|accepted"}; [] when there were none', 'string')
             ,@('check_passes', 'Number of final-check passes over the draft, at least 1', 'number')
+            ,@('reminders', 'JSON array string of dated reminders from the plan text, each {"label":"short name up to 80 chars","remind_on":"YYYY-MM-DD","action_note":"what to do, may be left out","deadline":true when something must be DONE by that day, omit otherwise,"force":true only if the user explicitly asks again for a declined one}; [] when there are none. Dates only as ISO, computed with core.fn_period_reminder_date for vague time phrases', 'string')
+            ,@('declined', 'Optional JSON array string of reminders the user turned down, each {"label":"...","remind_on":"YYYY-MM-DD"}; [] or omitted when none', 'string', '')
+            ,@('retire', 'Optional JSON array string of existing reminders this plan version drops, each {"label":"..."}', 'string', '')
+            ,@('watch_candidates', 'Optional JSON array string of up to 10 short texts (max 120 chars): outside values or news this plan depends on and worth watching later; never create such a watcher in this step', 'string', '')
             ,@('plan_name', 'Optional new plan display name', 'string', '')
             ,@('context_description', 'Optional description for the published context document; omit for the default', 'string', '')
         ) ([ordered]@{ domain = $DOMAIN_EXPR }) @(640, 208) -StartNode $START_NODE
+
+    $nToolSyncPlan = New-AdvisorToolNode 'tool_sync_plan' (Resolve-CoreServiceAlias 'core:sync_plan' $CoreServiceMap) `
+        'Compare the reminders of the ALREADY PUBLISHED plan with what exists (no new plan version): pass the same lists as for publishing. Shows one confirmation card when something changes, otherwise it only stores the stamp. skipped lists every entry left out with its reason, use it to explain what you did not add.' `
+        @(
+            ,@('reminders', 'JSON array string, same shape as in tool_publish_plan; [] when there are none', 'string')
+            ,@('declined', 'Optional JSON array string, same shape as in tool_publish_plan', 'string', '')
+            ,@('retire', 'Optional JSON array string, same shape as in tool_publish_plan', 'string', '')
+            ,@('watch_candidates', 'Optional JSON array string, same shape as in tool_publish_plan', 'string', '')
+        ) ([ordered]@{ domain = $DOMAIN_EXPR }) @(640, 408) -StartNode $START_NODE
 
     # Plan teilen (2026-10-28): ein erwachsenes Mitglied schickt dem Owner einen Wunsch zum Haushalts-Plan (owner_info:
     # Mitglied bestaetigt, Owner bekommt den Wortlaut). domain fix wie die Plan-Tools.
@@ -245,7 +258,7 @@ function Build-AgentFinanceAdvisor {
     $advMethodText = (@($ownMethods | ForEach-Object { "$($_.Method) ($($_.ParamsDescription))" }) + @('')) -join ', '
     $advParamsText = if ($ownMethodNames.Count -gt 0) { "$($ownMethodNames -join ' / ') only: the method parameters as a JSON object string (shape: see tool description)" } else { 'unused (no package method in this build)' }
     $nToolCreateTrigger = New-AdvisorToolNode 'tool_create_monitor_trigger' (Resolve-CoreServiceAlias 'core:create_monitor_trigger' $CoreServiceMap) `
-        ('Create ONE monitoring trigger derived from the published plan (market threshold, crash drawdown, deadline, recurring check) after the user confirmed it in chat. Load context trigger_design FIRST and follow its co-design protocol (source hierarchy ' + $advHierarchy + ', retrieval-prompt rules, cadence guidance). The tool TEST-FETCHES the value before the button confirmation - a failing probe returns ok:false and nothing is created. trigger_type: threshold (comparator gte|lte + threshold_value), drawdown (drawdown_pct 1-99, percent drop from running peak), date (due_date + optional warn_days_before, acquisition none), recurring_info (periodic report, never latches). acquisition_method: ' + $advMethodText + 'sql (acquisition_sql = ONE SELECT returning ONE numeric value, dry-run via postgres_select first), web_search (acquisition_prompt naming metric, unit and decimal format; REQUIRES expected_unit; check_interval at least 12 hours), none. Set min_plausible/max_plausible for every web trigger; max_jump_pct only for jump-implausible metrics (rates), never for crash metrics. action_note (German) goes verbatim into the alert. For CHANGING, repairing, disabling or deleting triggers refer the user to the monitor agent.') `
+        ('Create ONE monitoring trigger derived from the published plan (market threshold, crash drawdown, recurring check; dates and deadlines go into reminders of tool_publish_plan or tool_sync_plan instead) after the user confirmed it in chat. Load context trigger_design FIRST and follow its co-design protocol (source hierarchy ' + $advHierarchy + ', retrieval-prompt rules, cadence guidance). The tool TEST-FETCHES the value before the button confirmation - a failing probe returns ok:false and nothing is created. trigger_type: threshold (comparator gte|lte + threshold_value), drawdown (drawdown_pct 1-99, percent drop from running peak), date (due_date + optional warn_days_before, acquisition none), recurring_info (periodic report, never latches). acquisition_method: ' + $advMethodText + 'sql (acquisition_sql = ONE SELECT returning ONE numeric value, dry-run via postgres_select first), web_search (acquisition_prompt naming metric, unit and decimal format; REQUIRES expected_unit; check_interval at least 12 hours), none. Set min_plausible/max_plausible for every web trigger; max_jump_pct only for jump-implausible metrics (rates), never for crash metrics. action_note (German) goes verbatim into the alert. For CHANGING, repairing, disabling or deleting triggers refer the user to the monitor agent.') `
         @(
             ,@('label', 'Short unique trigger label, e.g. Brent over 100 USD', 'string')
             ,@('trigger_type', 'threshold | drawdown | date | recurring_info', 'string')
@@ -270,7 +283,7 @@ function Build-AgentFinanceAdvisor {
     # READ-ONLY Dedup-Fenster: bestehende Monitorings dieser Domain lesen, BEVOR neue vorgeschlagen
     # werden (Advisor<->Monitor). domain FIX 'finance' (kein $fromAI). Kein HITL (reiner Read).
     $nToolListTriggers = New-AdvisorToolNode 'tool_list_monitor_triggers' (Resolve-CoreServiceAlias 'core:list_monitor_triggers' $CoreServiceMap) `
-        'List the EXISTING monitoring triggers for your domain (label, type, status, a compact spec line). Call this AFTER publishing a plan and BEFORE proposing any tool_create_monitor_trigger, so you only offer triggers that are not already monitored (deduplication). Read-only - changing, repairing or deleting triggers is the monitor agent''s job.' `
+        'List the EXISTING monitoring triggers for your domain (label, type, status, a compact spec line). Call this BEFORE proposing reminders or watchers: entries with status disabled or declined must not be offered again, and nothing that already exists. Read-only - changing, repairing or deleting triggers is the monitor agent''s job.' `
         @() ([ordered]@{ domain = 'finance' }) @(960, 208) -StartNode $START_NODE
 
     # EINZIGE Daten-Schreib-Ausnahme des Beraters (Owner 2026-10-23: die Anlageklasse wird in der Finanzplanung
@@ -310,7 +323,7 @@ function Build-AgentFinanceAdvisor {
     $nodes = @($nTrigger) + $gate.Nodes + @(
         $nLoadConfig, $nGateRead, $nGateIf, $nGateDeny, $nLoadCtx, $nBuildInput, $nAgent,
         $nMemory,
-        $nToolSelect, $nToolLoad, $nToolWebSearch, $nToolPanel, $nToolSaveSection, $nToolPublish, $nToolPlanWish,
+        $nToolSelect, $nToolLoad, $nToolWebSearch, $nToolPanel, $nToolSaveSection, $nToolPublish, $nToolSyncPlan, $nToolPlanWish,
         $nToolCreateTrigger, $nToolListTriggers, $nToolSetAssetClasses,
         $stickyOverview, $stickyDomain, $stickyModel, $stickyMemory, $stickyPkg, $stickyCore
     ) + $mb.Nodes
@@ -345,6 +358,7 @@ function Build-AgentFinanceAdvisor {
     if ($nToolHandoffOverview) { $conns['tool_send_handoff_overview'] = @{ ai_tool = @( ,@( E 'Advisor Agent' 'ai_tool' ) ) } }
     $conns['tool_record_plan_wish']   = @{ ai_tool = @( ,@( E 'Advisor Agent' 'ai_tool' ) ) }
     $conns['tool_publish_plan']       = @{ ai_tool = @( ,@( E 'Advisor Agent' 'ai_tool' ) ) }
+    $conns['tool_sync_plan']          = @{ ai_tool = @( ,@( E 'Advisor Agent' 'ai_tool' ) ) }
     $conns['tool_create_monitor_trigger'] = @{ ai_tool = @( ,@( E 'Advisor Agent' 'ai_tool' ) ) }
     $conns['tool_list_monitor_triggers']  = @{ ai_tool = @( ,@( E 'Advisor Agent' 'ai_tool' ) ) }
     $conns['tool_set_asset_classes']      = @{ ai_tool = @( ,@( E 'Advisor Agent' 'ai_tool' ) ) }

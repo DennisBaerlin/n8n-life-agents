@@ -33,16 +33,16 @@ BEGIN
   DELETE FROM agent.advisor_plans WHERE domain IN ('__tp_fin__', '__tp_car__', '__e2e___tp_fin____');
 
   -- ---------- 1) Laengen-Gesetz ----------
-  r := agent.fn_advisor_save_section(jsonb_build_object('domain','__tp_fin__','section_key','risk_protection',
+  r := agent.fn_advisor_save_section(jsonb_build_object('domain','__tp_fin__','reminders','[]','section_key','risk_protection',
          'section_content','Haftpflicht vorhanden.'));
   IF (r->>'ok')::boolean IS NOT FALSE OR r->>'code' IS DISTINCT FROM 'topic_required' THEN
     RAISE EXCEPTION 'FAIL [1 topic_required]: %', r; END IF;
-  r := agent.fn_advisor_save_section(jsonb_build_object('domain','__tp_fin__','section_key','risk_protection',
+  r := agent.fn_advisor_save_section(jsonb_build_object('domain','__tp_fin__','reminders','[]','section_key','risk_protection',
          'topic','Haftpflicht','section_content', repeat('x', 301)));
   IF (r->>'ok')::boolean IS NOT FALSE OR r->>'code' IS DISTINCT FROM 'topic_too_long'
      OR jsonb_typeof(r->'max') <> 'number' OR (r->>'max')::int <> 300 OR (r->>'length')::int <> 301 THEN
     RAISE EXCEPTION 'FAIL [1 topic_too_long]: %', r; END IF;
-  r := agent.fn_advisor_save_section(jsonb_build_object('domain','__tp_fin__','section_key','risk_protection',
+  r := agent.fn_advisor_save_section(jsonb_build_object('domain','__tp_fin__','reminders','[]','section_key','risk_protection',
          'topic', repeat('t', 61),'section_content','x'));
   IF (r->>'ok')::boolean IS NOT FALSE THEN RAISE EXCEPTION 'FAIL [1 topic > 60]: %', r; END IF;
   -- E2E-Domain liest die Config der echten Domain
@@ -60,14 +60,14 @@ BEGIN
   RAISE NOTICE 'PASS [1 Laengen-Gesetz]';
 
   -- ---------- 2) Themen speichern, Reihenfolge, Ersetzen ohne Gross-/Kleinschreibung ----------
-  r := agent.fn_advisor_save_section(jsonb_build_object('domain','__tp_fin__','section_key','risk_protection',
+  r := agent.fn_advisor_save_section(jsonb_build_object('domain','__tp_fin__','reminders','[]','section_key','risk_protection',
          'topic','  Berufsunfähigkeit ','section_content','Keine BU vorhanden, Lücke.'));
   IF (r->>'ok')::boolean IS NOT TRUE OR r->'topics' <> '["Berufsunfähigkeit"]'::jsonb OR (r->>'topic_replaced')::boolean IS NOT FALSE THEN
     RAISE EXCEPTION 'FAIL [2 erstes Thema]: %', r; END IF;
   v_pid := (r->>'plan_id')::int;
-  r := agent.fn_advisor_save_section(jsonb_build_object('domain','__tp_fin__','section_key','risk_protection',
+  r := agent.fn_advisor_save_section(jsonb_build_object('domain','__tp_fin__','reminders','[]','section_key','risk_protection',
          'topic','Todesfall','section_content','Risikoleben 200.000 € empfohlen.'));
-  r := agent.fn_advisor_save_section(jsonb_build_object('domain','__tp_fin__','section_key','risk_protection',
+  r := agent.fn_advisor_save_section(jsonb_build_object('domain','__tp_fin__','reminders','[]','section_key','risk_protection',
          'topic','berufsunfähigkeit','section_content','BU bis 67 mit 2.000 € abschließen.'));
   IF (r->>'ok')::boolean IS NOT TRUE OR r->'topics' <> '["berufsunfähigkeit","Todesfall"]'::jsonb
      OR (r->>'topic_replaced')::boolean IS NOT TRUE OR (r->>'section_count')::int <> 1 THEN
@@ -81,10 +81,10 @@ BEGIN
   RAISE NOTICE 'PASS [2 Themen: Reihenfolge + Ersetzen]';
 
   -- ---------- 3) data je Thema + Kollision ----------
-  r := agent.fn_advisor_save_section(jsonb_build_object('domain','__tp_fin__','section_key','wealth_building',
+  r := agent.fn_advisor_save_section(jsonb_build_object('domain','__tp_fin__','reminders','[]','section_key','wealth_building',
          'topic','Aufteilung','section_content','85 % Welt-ETF, 15 % Festgeld.',
          'section_data', '{"target_allocation":{"rebalance_drift_pp":5}}'));
-  r := agent.fn_advisor_save_section(jsonb_build_object('domain','__tp_fin__','section_key','wealth_building',
+  r := agent.fn_advisor_save_section(jsonb_build_object('domain','__tp_fin__','reminders','[]','section_key','wealth_building',
          'topic','Gleitpfad','section_content','Ab 55 Aktienquote senken.',
          'section_data', jsonb_build_object('glidepath', jsonb_build_object('start_age', 55))));
   IF (r->>'ok')::boolean IS NOT TRUE THEN RAISE EXCEPTION 'FAIL [3 zweites Thema mit Block]: %', r; END IF;
@@ -92,17 +92,17 @@ BEGIN
   IF NOT (v_state->'wealth_building'->'data' ? 'target_allocation') OR NOT (v_state->'wealth_building'->'data' ? 'glidepath')
      OR (v_state->'wealth_building'->'topics'->1->'data'->'glidepath'->>'as_of')::date IS DISTINCT FROM CURRENT_DATE THEN
     RAISE EXCEPTION 'FAIL [3 Abschnitts-data aus Themen]: %', v_state->'wealth_building'; END IF;
-  r := agent.fn_advisor_save_section(jsonb_build_object('domain','__tp_fin__','section_key','wealth_building',
+  r := agent.fn_advisor_save_section(jsonb_build_object('domain','__tp_fin__','reminders','[]','section_key','wealth_building',
          'topic','Steuer','section_content','Freistellungsauftrag nutzen.',
          'section_data', jsonb_build_object('glidepath', jsonb_build_object('start_age', 60))));
   IF (r->>'ok')::boolean IS NOT FALSE OR r->>'code' IS DISTINCT FROM 'block_in_two_topics' THEN
     RAISE EXCEPTION 'FAIL [3 block_in_two_topics]: %', r; END IF;
   -- dasselbe Thema mit seinem eigenen Block neu speichern = Ersetzen, keine Kollision; ohne Block faellt er weg
-  r := agent.fn_advisor_save_section(jsonb_build_object('domain','__tp_fin__','section_key','wealth_building',
+  r := agent.fn_advisor_save_section(jsonb_build_object('domain','__tp_fin__','reminders','[]','section_key','wealth_building',
          'topic','GLEITPFAD','section_content','Ab 60 Aktienquote senken.',
          'section_data', jsonb_build_object('glidepath', jsonb_build_object('start_age', 60))));
   IF (r->>'ok')::boolean IS NOT TRUE THEN RAISE EXCEPTION 'FAIL [3 eigener Block ersetzt]: %', r; END IF;
-  r := agent.fn_advisor_save_section(jsonb_build_object('domain','__tp_fin__','section_key','wealth_building',
+  r := agent.fn_advisor_save_section(jsonb_build_object('domain','__tp_fin__','reminders','[]','section_key','wealth_building',
          'topic','Gleitpfad','section_content','Kein Gleitpfad.'));
   SELECT interview_state INTO v_state FROM agent.advisor_plans WHERE id = v_pid;
   IF v_state->'wealth_building'->'data' ? 'glidepath' OR NOT (v_state->'wealth_building'->'data' ? 'target_allocation') THEN
@@ -115,7 +115,7 @@ BEGIN
            'content','Alter Gesamttext zu allen Krediten.', 'data', jsonb_build_object('goal', jsonb_build_object('x', 1)),
            'saved_at', '2026-10-01T10:00:00Z'))
    WHERE id = v_pid;
-  r := agent.fn_advisor_save_section(jsonb_build_object('domain','__tp_fin__','section_key','debts_loans',
+  r := agent.fn_advisor_save_section(jsonb_build_object('domain','__tp_fin__','reminders','[]','section_key','debts_loans',
          'topic','Kredit Wohnung','section_content','Sondertilgung 5 % jährlich nutzen.'));
   IF (r->>'ok')::boolean IS NOT TRUE OR NOT EXISTS (SELECT 1 FROM jsonb_array_elements(r->'card_lines') l
                                                    WHERE l->>'kind' = 'note' AND l->>'value' = 'core.hitl.plan_legacy_replaced') THEN
@@ -125,16 +125,16 @@ BEGIN
      OR v_state->'debts_loans' ? 'content' OR NOT (v_state->'debts_loans'->'data' ? 'goal') THEN
     RAISE EXCEPTION 'FAIL [4 legacy]: %', v_state->'debts_loans'; END IF;
   -- ein Thema uebernimmt den Alt-Block; laesst es ihn spaeter weg, kommt er nicht aus legacy_data zurueck
-  r := agent.fn_advisor_save_section(jsonb_build_object('domain','__tp_fin__','section_key','debts_loans',
+  r := agent.fn_advisor_save_section(jsonb_build_object('domain','__tp_fin__','reminders','[]','section_key','debts_loans',
          'topic','Kredit Wohnung','section_content','Sondertilgung 5 % jährlich nutzen.',
          'section_data', jsonb_build_object('goal', jsonb_build_object('x', 2))));
-  r := agent.fn_advisor_save_section(jsonb_build_object('domain','__tp_fin__','section_key','debts_loans',
+  r := agent.fn_advisor_save_section(jsonb_build_object('domain','__tp_fin__','reminders','[]','section_key','debts_loans',
          'topic','Kredit Wohnung','section_content','Sondertilgung 5 % jährlich nutzen.'));
   SELECT interview_state INTO v_state FROM agent.advisor_plans WHERE id = v_pid;
   IF v_state->'debts_loans' ? 'data' OR v_state->'debts_loans'->'legacy_data' ? 'goal' THEN
     RAISE EXCEPTION 'FAIL [4 Alt-Block kam zurueck]: %', v_state->'debts_loans'; END IF;
   -- zweites Thema: keine Notiz mehr
-  r := agent.fn_advisor_save_section(jsonb_build_object('domain','__tp_fin__','section_key','debts_loans',
+  r := agent.fn_advisor_save_section(jsonb_build_object('domain','__tp_fin__','reminders','[]','section_key','debts_loans',
          'topic','Tilgungsregel','section_content','Teuerster Kredit zuerst.'));
   IF EXISTS (SELECT 1 FROM jsonb_array_elements(r->'card_lines') l WHERE l->>'value' = 'core.hitl.plan_legacy_replaced') THEN
     RAISE EXCEPTION 'FAIL [4 Notiz zweimal]: %', r; END IF;
@@ -165,25 +165,25 @@ BEGIN
   RAISE NOTICE 'PASS [6 read_plan rendert Themen]';
 
   -- ---------- 7) Gesamtcheck beim Veroeffentlichen ----------
-  r := agent.fn_advisor_publish_plan(jsonb_build_object('domain','__tp_fin__','plan_md','# Plan'));
+  r := agent.fn_advisor_publish_plan(jsonb_build_object('domain','__tp_fin__','reminders','[]','plan_md','# Plan'));
   IF (r->>'ok')::boolean IS NOT FALSE OR r->>'code' IS DISTINCT FROM 'final_check_missing' THEN
     RAISE EXCEPTION 'FAIL [7 missing]: %', r; END IF;
-  r := agent.fn_advisor_publish_plan(jsonb_build_object('domain','__tp_fin__','plan_md','# Plan','check_findings','','check_passes',''));
+  r := agent.fn_advisor_publish_plan(jsonb_build_object('domain','__tp_fin__','reminders','[]','plan_md','# Plan','check_findings','','check_passes',''));
   IF r->>'code' IS DISTINCT FROM 'final_check_missing' THEN RAISE EXCEPTION 'FAIL [7 leerer String = fehlt]: %', r; END IF;
-  r := agent.fn_advisor_publish_plan(jsonb_build_object('domain','__tp_fin__','plan_md','# Plan','check_passes',1,
+  r := agent.fn_advisor_publish_plan(jsonb_build_object('domain','__tp_fin__','reminders','[]','plan_md','# Plan','check_passes',1,
          'check_findings', jsonb_build_array(jsonb_build_object('text','BU fehlt','outcome','resolved'),
                                              jsonb_build_object('text','Sparplan ohne Zufluss','outcome','später'))));
   IF (r->>'ok')::boolean IS NOT FALSE OR r->>'code' IS DISTINCT FROM 'final_check_open' OR (r->>'index')::int <> 2 THEN
     RAISE EXCEPTION 'FAIL [7 open]: %', r; END IF;
-  r := agent.fn_advisor_publish_plan(jsonb_build_object('domain','__tp_fin__','plan_md','# Plan',
+  r := agent.fn_advisor_publish_plan(jsonb_build_object('domain','__tp_fin__','reminders','[]','plan_md','# Plan',
          'check_findings', '[]'));
   IF (r->>'ok')::boolean IS NOT FALSE THEN RAISE EXCEPTION 'FAIL [7 check_passes fehlt]: %', r; END IF;
-  r := agent.fn_advisor_publish_plan(jsonb_build_object('domain','__tp_fin__','plan_md','# Plan','check_passes',0,
+  r := agent.fn_advisor_publish_plan(jsonb_build_object('domain','__tp_fin__','reminders','[]','plan_md','# Plan','check_passes',0,
          'check_findings', '[]'));
   IF (r->>'ok')::boolean IS NOT FALSE THEN RAISE EXCEPTION 'FAIL [7 check_passes 0]: %', r; END IF;
-  r := agent.fn_advisor_publish_plan(jsonb_build_object('domain','__tp_fin__','plan_md','# Plan','check_passes','99999999999','check_findings','[]'));
+  r := agent.fn_advisor_publish_plan(jsonb_build_object('domain','__tp_fin__','reminders','[]','plan_md','# Plan','check_passes','99999999999','check_findings','[]'));
   IF r->>'code' IS DISTINCT FROM 'final_check_invalid' THEN RAISE EXCEPTION 'FAIL [7 check_passes zu gross]: %', r; END IF;
-  r := agent.fn_advisor_publish_plan(jsonb_build_object('domain','__tp_fin__','plan_md','# Plan','check_passes','1',
+  r := agent.fn_advisor_publish_plan(jsonb_build_object('domain','__tp_fin__','reminders','[]','plan_md','# Plan','check_passes','1',
          'check_findings', jsonb_build_array(jsonb_build_object('text','','outcome','resolved'))));
   IF (r->>'ok')::boolean IS NOT FALSE THEN RAISE EXCEPTION 'FAIL [7 leerer Text]: %', r; END IF;
   r := agent.fn_advisor_publish_plan(jsonb_build_object('domain','__e2e___tp_fin____','plan_md','# Plan'));
@@ -193,14 +193,14 @@ BEGIN
     RAISE EXCEPTION 'FAIL [7 Ablehnung veroeffentlichte]'; END IF;
   -- [] ist ausdruecklich "keine Funde"
   r := core.fn_dry_run('agent.fn_advisor_publish_plan(jsonb)'::regprocedure, jsonb_build_object('domain','__tp_fin__',
-         'plan_md','# Plan','check_passes','1','check_findings','[]'));
+         'reminders','[]','plan_md','# Plan','check_passes','1','check_findings','[]'));
   IF (r->>'ok')::boolean IS NOT TRUE
      OR NOT EXISTS (SELECT 1 FROM jsonb_array_elements(r->'card_lines') l
                     WHERE l->>'label' = 'core.label.final_check' AND l->>'value' = 'core.tpl.final_check_clean'
                       AND (l->'params'->>'passes')::int = 1) THEN
     RAISE EXCEPTION 'FAIL [7 [] erlaubt]: %', r; END IF;
   -- echte Funde: Zahlen aus der DB, jeder bewusst offene Punkt als eigene Zeile, gespeichert
-  r := agent.fn_advisor_publish_plan(jsonb_build_object('domain','__tp_fin__','plan_md','# Plan','check_passes',2,
+  r := agent.fn_advisor_publish_plan(jsonb_build_object('domain','__tp_fin__','reminders','[]','plan_md','# Plan','check_passes',2,
          'check_findings', '[{"text":"BU fehlt","outcome":"resolved"},{"text":"Sparplan läuft nach Zuflussende weiter","outcome":"resolved"},'
                         || '{"text":"Testament offen","outcome":"deferred"},{"text":"Hohe Aktienquote trotz kurzer Frist","outcome":"accepted"}]'));
   IF (r->>'ok')::boolean IS NOT TRUE THEN RAISE EXCEPTION 'FAIL [7 publish]: %', r; END IF;

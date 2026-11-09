@@ -9,7 +9,7 @@
 # Die Approval-Summary erklaert das WAS (Versionen aus der DB gelesen, nicht vom LLM
 # gerechnet; change_summary liefert der Agent) — nie nur "Plan speichern?".
 function Build-PublishPlan {
-    $trig = Build-Trigger @('domain', 'plan_md', 'plan_name', 'change_summary', 'context_description', 'check_findings', 'check_passes')
+    $trig = Build-Trigger @('domain', 'plan_md', 'plan_name', 'change_summary', 'context_description', 'check_findings', 'check_passes', 'reminders', 'declined', 'retire', 'watch_candidates')
 
     # Read-only Pre-State: Scope des Plan-Dokuments (m2: domaenenneutral aus core.advisors.plan_context, NICHT hardcoded
     # financial_planning) + Draft-/Active-Version + Sektionszahl aus der DB (LLM rechnet nicht). P0c person-
@@ -47,7 +47,7 @@ LEFT JOIN agent.advisor_plans a ON a.domain = p.dom AND a.person_id IS NOT DISTI
     # Gate in den echten Write. Sonst lehnt die fn erst nach dem Tipp ab (Muster tool_save_plan_section, Befund 2026-11-02).
     $wg = New-FnWriteGate -Fn 'agent.fn_advisor_publish_plan' -DryPos @(660, 0) -WritePos @(1760, 0) `
         -WriteName 'Publish plan (atomic)' `
-        -WriteSelect "(r->>'ok')::boolean AS ok, r->>'reason' AS reason, (r->>'plan_id')::int AS plan_id, (r->>'version')::int AS version, (r->>'superseded_plan_id')::int AS superseded_plan_id, r->>'context_name' AS context_name, (r->>'section_count')::int AS section_count" `
+        -WriteSelect "(r->>'ok')::boolean AS ok, r->>'reason' AS reason, (r->>'plan_id')::int AS plan_id, (r->>'version')::int AS version, (r->>'superseded_plan_id')::int AS superseded_plan_id, r->>'context_name' AS context_name, (r->>'section_count')::int AS section_count, r->'sync' AS sync" `
         -Params ([ordered]@{
             domain              = '$(''Start'').item.json.domain'
             plan_md             = '$(''Start'').item.json.plan_md'
@@ -56,6 +56,10 @@ LEFT JOIN agent.advisor_plans a ON a.domain = p.dom AND a.person_id IS NOT DISTI
             change_summary      = '$(''Start'').item.json.change_summary'   # Plan teilen: Provenienz der Version (+ Owner-Sprache in der fn)
             check_findings      = '$(''Start'').item.json.check_findings'   # Gesamtcheck (JSON-String, leer = nicht angegeben); Pflicht und Kartenzahlen entscheidet die fn
             check_passes        = '$(''Start'').item.json.check_passes'
+            reminders           = '$(''Start'').item.json.reminders'          # Plan-Durchlauf (JSON-Strings, leer = nicht angegeben): core.fn_plan_sync in derselben Transaktion
+            declined            = '$(''Start'').item.json.declined'
+            retire              = '$(''Start'').item.json.retire'
+            watch_candidates    = '$(''Start'').item.json.watch_candidates'
             chat_id             = '$(''Start'').item.json.chat_id'   # WS-5b: owner_only-Backstop (fn_sender_is_member)
         })
 
@@ -83,59 +87,7 @@ LEFT JOIN agent.advisor_plans a ON a.domain = p.dom AND a.person_id IS NOT DISTI
 
     $errWrite = Build-ToolError 'Publish rejected' @(2200, 200) "={{ `$('Publish plan (atomic)').item.json.reason }}"
 
-    # WS-3 Phase A / Phase 0 (Cron-Toggle-Vereinheitlichung): nach erfolgreichem Publish EINMALIG die zwei
-    # Plan-Waechter-Crons zur Aktivierung anbieten — der Publish ist der "Setup"-Moment (alle Crons starten
-    # AUS). Owner-Modell (gelockt 2026-06-28): beim Setup AKTIVIEREN (cron_on:<key>), zur Laufzeit am Nudge
-    # ABSCHALTEN (cron_off:<key>), RE-AKTIVIEREN danach per /reminders (Paket B). ZWEI getrennte Knoepfe, unabhaengig
-    # schaltbar (Owner-Entscheid): drift_check (taegliche Abweichungs-Pruefung) + plan_review (regelmaessiger
-    # Auffrischungs-Bericht) — der frueher 1-Knopf-Stand versprach beides im Text, schaltete aber nur drift_check.
-    # Angebot nur wenn MINDESTENS EINER aus ist (kein Spam bei Re-Publish wenn beide schon an; idempotent re-tap).
-    # BEWUSSTE enge Ausnahme zu "tool = keine Seitenkanal-I/O": ein Owner-Notify (kein Domaenen-I/O).
-    # Owner-Auth: nur der Owner publiziert (owner_only-Backstop in fn_advisor_publish_plan).
-    # Textkatalog Phase C: im selben Read die Angebots-Texte in der Sprache des Absenders (core.fn_ui_texts_for).
-    $readCron = Build-Pg 'Read monitor state' @(2420, 0) `
-        ("=SELECT COALESCE((SELECT value FROM core.config WHERE category='cron_enable' AND key='drift_check'),'false') AS drift_on, COALESCE((SELECT value FROM core.config WHERE category='cron_enable' AND key='plan_review'),'false') AS review_on, " +
-         "core.fn_ui_texts_for(jsonb_build_object('chat_id', (`$1::jsonb)->>'chat_id', 'keys', to_jsonb(" +
-         (Get-UiKeysSql @('core.offer.monitoring', 'core.offer.btn_drift', 'core.offer.btn_review')) + ")))->'t' AS t;") `
-        ([ordered]@{ chat_id = "String(`$('Start').item.json.chat_id || '')" })
-    $ifMonitorOff = Build-If 'Monitor off?' @(2640, 0) `
-        "={{ `$('Read monitor state').item.json.drift_on !== 'true' || `$('Read monitor state').item.json.review_on !== 'true' }}" 'true' 'equals' 'boolean'
-    $offerMonitor = New-TelegramInlineKeyboardSendNode 'Offer monitoring' @(2860, -160) `
-        (Get-UiTextExpr "`$('Read monitor state').item.json.t" 'core.offer.monitoring') `
-        @( @{ Text = (Get-UiTextExpr "`$('Read monitor state').item.json.t" 'core.offer.btn_drift'); Data = 'cron_on:drift_check' },
-           @{ Text = (Get-UiTextExpr "`$('Read monitor state').item.json.t" 'core.offer.btn_review'); Data = 'cron_on:plan_review' } )
-    $offerMonitor['onError'] = 'continueRegularOutput'   # das Publish ist schon geschehen: ein Send-Fehler darf es nie gescheitert aussehen lassen
-
-    # Plan teilen (2026-10-28): Owner-Karte "Erwachsene informieren?" — nur fuer einen Haushalts-Plan mit Empfaengern
-    # (core.fn_plan_share_preview: Owner, Version = aktive, mind. ein Partner mit Chat und nicht abgemeldet). Der Knopf
-    # plan:share:<domain>:<version> geht ueber core.fn_handle_plan_cb an den Sub core.sub_share_plan. Texte in der Sprache
-    # des Owners; onError continue (Komfort nach einem bereits erfolgreichen Publish).
-    $readShare = Build-Pg 'Read share offer' @(2860, 160) `
-        ("=SELECT core.fn_plan_share_preview((`$1::jsonb)->>'domain', NULLIF((`$1::jsonb)->>'version', '')::int, (`$1::jsonb)->>'chat_id')::text AS pv, " +
-         "core.fn_ui_texts_for(jsonb_build_object('chat_id', (`$1::jsonb)->>'chat_id', 'keys', to_jsonb(" +
-         (Get-UiKeysSql @('core.plan_share.offer', 'core.plan_share.btn_inform')) + ")))->'t' AS t;") `
-        ([ordered]@{
-            domain  = "String(`$('Start').item.json.domain || '')"
-            version = "String(`$('Publish plan (atomic)').item.json.version || '')"
-            chat_id = "String(`$('Start').item.json.chat_id || '')"
-        })
-    $readShare['onError'] = 'continueRegularOutput'
-    $PV = "JSON.parse(`$('Read share offer').item.json.pv || '{}')"
-    $ifShare = Build-If 'Share offer?' @(3080, 160) "={{ $PV.shareable === true }}" 'true' 'equals' 'boolean'
-    $offerShare = New-TelegramInlineKeyboardSendNode 'Offer share' @(3300, 60) `
-        (Get-UiTextExpr "`$('Read share offer').item.json.t" 'core.plan_share.offer' @{ names = "($PV.names || []).join(', ')" }) `
-        @( @{ Text = (Get-UiTextExpr "`$('Read share offer').item.json.t" 'core.plan_share.btn_inform');
-              Data = "={{ 'plan:share:' + String(`$('Start').item.json.domain || '') + ':' + String(`$('Publish plan (atomic)').item.json.version || '') }}" } )
-    $offerShare['onError'] = 'continueRegularOutput'
-
-    # Uebergabe Berater -> Buchhalter: nach den beiden Angeboten die Uebersicht der im Gespraech vereinbarten Eintraege
-    # (agent.tool_send_handoff_overview sendet nur, wenn etwas offen ist). Reihenfolge fest: Waechter, Teilen, Uebersicht.
-    $nHandoff = Build-CallWorkflow 'Send handoff overview' @(3300, 260) (Get-RequiredWorkflowId 'agent.tool_send_handoff_overview' 'Build-PublishPlan') 'agent.tool_send_handoff_overview' `
-        ([ordered]@{ domain = "={{ `$('Start').item.json.domain }}"; chat_id = "={{ `$('Start').item.json.chat_id }}" })
-    $nHandoff['onError'] = 'continueRegularOutput'   # Komfort nach einem bereits committeten Publish
-
-    # Return liest die Post-State-Felder EXPLIZIT aus dem Publish-Node (zwischen Publish und Return liegt jetzt
-    # das Monitor-Angebot-Gate -> $json traegt hier nicht mehr den Publish-Output).
+    # Return liest die Post-State-Felder EXPLIZIT aus dem Publish-Node .
     $ret = Build-Return @(3520, 0) @(
         ,@('ok','true','boolean')
         ,@('plan_id', "={{ `$('Publish plan (atomic)').item.json.plan_id }}", 'number')
@@ -143,22 +95,14 @@ LEFT JOIN agent.advisor_plans a ON a.domain = p.dom AND a.person_id IS NOT DISTI
         ,@('superseded_plan_id', "={{ `$('Publish plan (atomic)').item.json.superseded_plan_id || 0 }}", 'number')
         ,@('context_name', "={{ `$('Publish plan (atomic)').item.json.context_name }}", 'string')
         ,@('section_count', "={{ `$('Publish plan (atomic)').item.json.section_count }}", 'number')
+        ,@('sync', "={{ `$('Publish plan (atomic)').item.json.sync || null }}", 'object')
     )
 
     $sticky = Build-Sticky 'Doc Publish Plan' @(120, -340) `
         'HITL + agent.fn_advisor_publish_plan (atomar, 3 Schritte)' `
-        'Cross-agent (domain = fixer Binding-Input). Dry run = dieselbe fn VOR der Karte, immer zurückgerollt (core.fn_dry_run): ok:false -> Dry run rejected, KEINE Karte, reason an den Berater; der echte Write prüft erneut. fn_advisor_publish_plan in EINER Transaktion: (1) bisheriger active-Plan -> superseded (Versions-Audit, nie gelöscht), (2) Draft -> active + plan_md persistiert, (3) Domänen-Plan-Doc upserted (Context-Name aus core.advisors.plan_context der Domäne; content = neues plan_md + der UNVERÄNDERTE gespeicherte "## Gelernt"-Block [system-verwaltet, core.fn_split_learned_block; ein im plan_md mitgeschickter wird verworfen, auch im Versions-Audit]; lazy, agent_name=NULL, Spalte managed_by=agent -> der Seeder fasst es nie an; löschgeschützt via core.protected_contexts). P0c PERSON-SCOPE: Plan-Schlüssel (domain, person_id); household (finance) -> person_id NULL, Doc am Basis-Namen; per_user (career) -> person_id = Sender (own_user_only) aus chat_id, Doc suffigiert <base>__<pid>. Read plan state (read-only) ist domänenneutral + person-skopiert (Vorschau = der Write). Ein aktiver Plan pro (Domain, Person) = Partial-UNIQUE NULLS NOT DISTINCT (DB-Gesetz). Multi-Person-Fächerung = P2. KARTE: zeigt den Plannamen aus dem Textkatalog (<domain>.plan.name) statt des Kontextnamens. GESAMTCHECK: check_findings ({text, outcome resolved|deferred|accepted} je Fund, [] = keine Funde) + check_passes gehen in die fn; ist core.config <paket>.advisor.final_check_required = true (finance), lehnt schon der Probelauf ohne Gesamtcheck oder mit einem Fund ohne outcome ab. Die fn speichert beides an der Version und liefert die Kartenzeilen (card_lines): Gesamtcheck mit den von der DB gezählten Punkten, Durchgängen, geklärt und bewusst offen, darunter jeder nicht geklärte Fund einzeln. WIEDERHOL-SPERRE: repeat_key = Domain, nach Abbrechen kommt im selben Lauf keine zweite Karte, auch wenn change_summary anders lautet.' 320 540
+        'Cross-agent (domain = fixer Binding-Input). Dry run = dieselbe fn VOR der Karte, immer zurückgerollt (core.fn_dry_run): ok:false -> Dry run rejected, KEINE Karte, reason an den Berater; der echte Write prüft erneut. fn_advisor_publish_plan in EINER Transaktion: (1) bisheriger active-Plan -> superseded (Versions-Audit, nie gelöscht), (2) Draft -> active + plan_md persistiert, (3) Domänen-Plan-Doc upserted (Context-Name aus core.advisors.plan_context der Domäne; content = neues plan_md + der UNVERÄNDERTE gespeicherte "## Gelernt"-Block [system-verwaltet, core.fn_split_learned_block; ein im plan_md mitgeschickter wird verworfen, auch im Versions-Audit]; lazy, agent_name=NULL, Spalte managed_by=agent -> der Seeder fasst es nie an; löschgeschützt via core.protected_contexts). P0c PERSON-SCOPE: Plan-Schlüssel (domain, person_id); household (finance) -> person_id NULL, Doc am Basis-Namen; per_user (career) -> person_id = Sender (own_user_only) aus chat_id, Doc suffigiert <base>__<pid>. Read plan state (read-only) ist domänenneutral + person-skopiert (Vorschau = der Write). Ein aktiver Plan pro (Domain, Person) = Partial-UNIQUE NULLS NOT DISTINCT (DB-Gesetz). Multi-Person-Fächerung = P2. KARTE: zeigt den Plannamen aus dem Textkatalog (<domain>.plan.name) statt des Kontextnamens. GESAMTCHECK: check_findings ({text, outcome resolved|deferred|accepted} je Fund, [] = keine Funde) + check_passes gehen in die fn; ist core.config <paket>.advisor.final_check_required = true (finance), lehnt schon der Probelauf ohne Gesamtcheck oder mit einem Fund ohne outcome ab. Die fn speichert beides an der Version und liefert die Kartenzeilen (card_lines): Gesamtcheck mit den von der DB gezählten Punkten, Durchgängen, geklärt und bewusst offen, darunter jeder nicht geklärte Fund einzeln. SENDET NICHTS MEHR: Wächter-Angebot, Erwachsene informieren und Übergabe-Liste kommen aus der geführten Abfolge (core.sub_plan_rollout_next), immer nur eine Nachricht zur Zeit. PLAN-DURCHLAUF: reminders, declined, retire, watch_candidates gehen in dieselbe fn (core.fn_plan_sync vor Schritt 1, eine Transaktion); ihre Zeilen stehen in den card_lines, eine Karte für alles; reminders ist Pflicht, wenn das Paket advisor.plan_sync_required setzt. WIEDERHOL-SPERRE: repeat_key = Domain, nach Abbrechen kommt im selben Lauf keine zweite Karte, auch wenn change_summary anders lautet.' 320 540
 
-    $stickyOffer = Build-Sticky 'Doc Monitor-Angebot (WS-3 Phase A / Phase 0)' @(2400, -360) `
-        'Owner-Notify nach Publish (bewusste tool-Seitenkanal-Ausnahme)' `
-        'Nach erfolgreichem Publish bietet das Tool die Plan-Wächter-Crons zur Aktivierung an — aber NUR wenn mindestens einer aus ist (Read monitor state liest drift_check + plan_review -> Monitor off? = drift_on!=true ODER review_on!=true -> Offer monitoring; kein Spam wenn beide schon an). ZWEI getrennte Knöpfe (Owner-Entscheid, Phase 0): "Abweichungs-Wächter an" (cron_on:drift_check) + "Quartals-Bericht an" (cron_on:plan_review), unabhängig schaltbar. Beide laufen in den Orchestrator-Callback -> core.fn_set_cron_enable (core.config cron_enable.<key>=true). Cron-Toggle-Modell (Owner, gelockt): SETUP=aktivieren (cron_on, hier am Publish), LAUFZEIT=abschalten (cron_off am Nudge), RE-AKTIVIEREN per /reminders (Roter Faden Paket B). Lint scripts/cron_toggle_lint.ps1 erzwingt je Cron beide Knöpfe. BEWUSSTE enge Ausnahme zu "tool = keine Seitenkanal-I/O": owner-facing Notify (kein Domänen-I/O). Return liest die Post-State-Felder explizit aus Publish plan (atomic).' 360 600
-
-    $stickyShare = Build-Sticky 'Doc Erwachsene informieren (Plan teilen)' @(2840, -360) `
-        'Owner-Karte nach dem Publish (Plan teilen, 2026-10-28)' `
-        'Nach dem Monitor-Angebot (beide Ausgänge von Monitor off?) liest Read share offer core.fn_plan_share_preview(domain, neue Version, chat_id): shareable nur für den Owner, für die aktive Version eines Haushalts-Plans (persönliche Pläne nie) und wenn es mindestens einen Empfänger gibt (Rolle partner, mit Chat, plan_news nicht abgemeldet; Regel core.fn_plan_adult_recipients). Share offer? -> Offer share: Karte in der Sprache des Owners mit den Vornamen und dem Knopf Erwachsene informieren = plan:share:<domain>:<version> (Orchestrator: core.fn_handle_plan_cb -> core.sub_share_plan, einmal je Person und Version). change_summary geht in den Publish (fn speichert sie mit der Owner-Sprache als Provenienz). Danach (beide Ausgänge) Send handoff overview = agent.tool_send_handoff_overview: Übersicht der im Gespräch vereinbarten, noch offenen Einträge mit Knopf Durchgehen (sendet nur, wenn etwas offen ist). Alle diese Knoten und Offer monitoring laufen mit onError continue: das Publish ist zu diesem Zeitpunkt schon committet.' 360 660
-
-    $nodes = @($trig, $readState, $ifDraft, $errNoDraft) + $wg.Nodes + @($summary, $reqApproval, $ifApproved, $retCancelled, $ifOk, $errWrite,
-               $readCron, $ifMonitorOff, $offerMonitor, $readShare, $ifShare, $offerShare, $nHandoff, $ret, $sticky, $stickyOffer, $stickyShare)
+    $nodes = @($trig, $readState, $ifDraft, $errNoDraft) + $wg.Nodes + @($summary, $reqApproval, $ifApproved, $retCancelled, $ifOk, $errWrite, $ret, $sticky)
     $conns = [ordered]@{
         'Start'                  = @{ main = @( ,@( E 'Read plan state' ) ) }
         'Read plan state'        = @{ main = @( ,@( E 'Draft exists?' ) ) }
@@ -179,22 +123,9 @@ LEFT JOIN agent.advisor_plans a ON a.domain = p.dom AND a.person_id IS NOT DISTI
         ) }
         'Publish plan (atomic)'  = @{ main = @( ,@( E 'Write ok?' ) ) }
         'Write ok?'              = @{ main = @(
-            @( E 'Read monitor state' ),   # [true] ok -> Monitor-Angebot-Gate, dann Return
+            @( E 'Return' ),               # [true] ok -> Rueckgabe; die Schritte danach sendet die gefuehrte Abfolge
             @( E 'Publish rejected' )      # [false] {ok:false} -> Tool-Error
         ) }
-        'Read monitor state'     = @{ main = @( ,@( E 'Monitor off?' ) ) }
-        'Monitor off?'           = @{ main = @(
-            @( E 'Offer monitoring' ),     # [true] aus -> anbieten -> Share-Angebot
-            @( E 'Read share offer' )      # [false] schon aktiv -> kein Monitor-Spam, weiter zum Share-Angebot
-        ) }
-        'Offer monitoring'       = @{ main = @( ,@( E 'Read share offer' ) ) }
-        'Read share offer'       = @{ main = @( ,@( E 'Share offer?' ) ) }
-        'Share offer?'           = @{ main = @(
-            @( E 'Offer share' ),          # [true] Haushalts-Plan mit Empfaengern -> Owner-Karte -> Uebersicht
-            @( E 'Send handoff overview' ) # [false] persoenlicher Plan / niemand zu informieren -> Uebersicht
-        ) }
-        'Offer share'            = @{ main = @( ,@( E 'Send handoff overview' ) ) }
-        'Send handoff overview'  = @{ main = @( ,@( E 'Return' ) ) }
     }
     return Build-Workflow 'agent.tool_publish_plan' $nodes $conns @{ Internal = $true }   # intern (Infra/Agent): keine Nutzer-Capability -> kein Katalog-Eintrag
 }

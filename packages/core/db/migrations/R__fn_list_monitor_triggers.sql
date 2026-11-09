@@ -16,7 +16,8 @@
 --   (acquisition_method-Enum, comparator, threshold_value, drawdown_pct, due_date) — NIE aus
 --   acquisition_spec (freier Web-Prompt/Roh-SQL) oder action_note (freier DE-Text): sonst Prompt-
 --   Injection-Echo + Token-Bombe zurueck in den Advisor-Kontext. label wird verbatim zurueckgegeben
---   (der Advisor braucht es zum Dedup). Nur status IN ('armed','fired') — disabled ist fuer Dedup irrelevant.
+--   (der Advisor braucht es zum Dedup). Auch disabled und abgelehnte Eintraege (status 'declined' aus
+--   agent.plan_reminder_declines): beide darf der Plan-Durchlauf nicht erneut anbieten.
 --
 --   SECURITY DEFINER + gepinnter search_path (CVE-2018-1058) + REVOKE ALL FROM PUBLIC + EXECUTE nur an
 --   die Paket-Rollen (erteilt in core.fn_provision_package_roles, to_regprocedure-guarded). READ-ONLY.
@@ -44,8 +45,11 @@ AS $$
         END AS spec_summary
     FROM agent.monitor_triggers t
     WHERE t.domain = p_domain
-      AND t.status IN ('armed', 'fired')
-    ORDER BY t.label;
+    UNION ALL
+    SELECT d.label, 'date', 'declined', COALESCE(format('date %s', d.remind_on), 'date')
+    FROM agent.plan_reminder_declines d
+    WHERE d.domain = p_domain
+    ORDER BY 1;
 $$;
 
 REVOKE ALL ON FUNCTION core.fn_list_monitor_triggers(text) FROM public;

@@ -43,7 +43,7 @@
 --     Fenster (es loescht in core UND agent, beide gehoeren dem Host). search_path=pg_catalog gepinnt
 --     (alle Objekte schema-qualifiziert, CVE-2018-1058-Hygiene).
 --   RUECKGABE: {ok:true, package, protected, contexts, validators, scopes, renderers, advisors, cron_labels,
---     callback_handlers, app_screens, monitor_triggers, method_triggers, acquisition_methods, services, config,
+--     callback_handlers, app_screens, monitor_triggers, advisor_plans, method_triggers, acquisition_methods, services, config,
 --     schema_version} (Lösch-Counts).
 --   ATOMAR: RAISE -> Rollback (Trigger laufen in derselben Transaktion).
 -- ============================================================
@@ -70,6 +70,8 @@ DECLARE
     v_services   INT;
     v_config     INT;
     v_ledger     INT;
+    v_domains    TEXT[];
+    v_plans      INT;
 BEGIN
     IF v_pkg = '' THEN
         RETURN jsonb_build_object('ok', false, 'reason', 'package must be non-empty');
@@ -83,6 +85,9 @@ BEGIN
 
     -- 0. Merker unter <pkg> und <pkg>:<sub> haengen an IDs, die eine Neuinstallation neu vergibt.
     DELETE FROM core.notification_state WHERE split_part(source, ':', 1) = v_pkg;
+
+    -- core.advisors faellt in Schritt 3; die Domains werden danach noch gebraucht.
+    v_domains := ARRAY(SELECT a.domain FROM core.advisors a WHERE a.package = v_pkg);
 
     -- 1. Schutz-Registry zuerst (Finalizer loesen).
     DELETE FROM core.protected_contexts WHERE package = v_pkg;
@@ -128,6 +133,15 @@ BEGIN
     -- 3b'. Vereinbarte Plan-Aufgaben des Pakets (Uebergabe Berater -> Buchhalter, Host-Tabelle agent.handoff_tasks,
     --      package = Purge-Owner). Der Endzustand-Trigger sperrt nur UPDATE, DELETE geht durch.
     DELETE FROM agent.handoff_tasks WHERE package = v_pkg;
+    DELETE FROM agent.plan_reminder_declines WHERE package = v_pkg;
+    -- Merker des Pakets und der Berater-Engine seiner Domains, sonst fragen sie nach einem Re-Install nie wieder.
+    DELETE FROM core.notification_state n
+     WHERE split_part(n.source, ':', 1) = v_pkg
+        OR (split_part(n.source, ':', 1) = 'advisor' AND split_part(n.source, ':', 2) = ANY (v_domains))
+        OR (n.source = 'plan_rollout' AND split_part(n.key, ':', 1) = ANY (v_domains));
+    -- Das Plan-Dokument faellt in Schritt 2 mit; ohne diese Zeile bliebe ein aktiver Plan ohne Dokument (Wuensche per CASCADE).
+    DELETE FROM agent.advisor_plans WHERE domain = ANY (v_domains);
+    GET DIAGNOSTICS v_plans = ROW_COUNT;
 
     -- 3c. Trigger auf den Monitor-Methoden des Pakets (auch package='core'), dann die Methoden (FK NO ACTION).
     DELETE FROM agent.monitor_triggers t
@@ -160,6 +174,7 @@ BEGIN
         'callback_handlers', v_cbhandlers,
         'app_screens',      v_appscreens,
         'monitor_triggers', v_triggers,
+        'advisor_plans',    v_plans,
         'method_triggers',  v_mtriggers,
         'acquisition_methods', v_methods,
         'services',         v_services,

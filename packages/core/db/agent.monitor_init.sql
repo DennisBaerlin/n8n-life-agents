@@ -208,6 +208,8 @@ ALTER TABLE agent.monitor_triggers ADD  CONSTRAINT monitor_triggers_package_chk 
 -- general.reminders_from..until entsteht, wird hier vorgemerkt und von agent.fn_monitor_evaluate im ersten Lauf
 -- im Fenster nachgereicht (dann NULL). Additive Spalte -> Init-only.
 ALTER TABLE agent.monitor_triggers ADD COLUMN IF NOT EXISTS problem_pending_at timestamptz;
+ALTER TABLE agent.monitor_triggers ADD COLUMN IF NOT EXISTS retired_by_plan_at timestamptz;
+COMMENT ON COLUMN agent.monitor_triggers.retired_by_plan_at IS 'Provenienz (Ausnahme c): vom Plan-Durchlauf abgeschaltet, core.fn_plan_sync darf ihn wieder scharf stellen; jede Statusaenderung ueber fn_set_monitor_trigger loescht den Stempel';
 
 CREATE OR REPLACE FUNCTION agent.trg_monitor_triggers_protect_fn()
 RETURNS trigger LANGUAGE plpgsql AS $$

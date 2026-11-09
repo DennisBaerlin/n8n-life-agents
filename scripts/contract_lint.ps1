@@ -1468,7 +1468,7 @@ foreach ($pdir in (Get-ChildItem $pkgDir -Directory -ErrorAction SilentlyContinu
                     $errors.Add("HANDOFF-AGENT: packages/$pkg/manifest.json advisors '$($p.Name)'.handoff_agent ohne plan_step=true -- der Uebergabe-Arm haengt am Plan-Weg und wuerde nie gebaut.")
                 }
             }
-            foreach ($fk in @('gaps_fn', 'readiness_fn')) {
+            foreach ($fk in @('gaps_fn', 'readiness_fn', 'rollout_fn')) {
                 if ($p.Value.PSObject.Properties.Name -notcontains $fk) { continue }
                 $fv = [string]$p.Value.$fk
                 if ($fv -cnotmatch "^$([regex]::Escape($pkg))\.[a-z][a-z0-9_]*$") {   # -c: der DB-CHECK ist case-sensitiv

@@ -142,7 +142,21 @@ return [{ json: { message: L.join('\n') } }];
 
     # Deterministischer Text mit DB-Werten (Trigger-Labels!) -> zentrales Escape via Helper
     # (ein Label mit '_' haette den Alert vorher gecrasht — Gotcha "can't parse entities").
-    $send = New-TelegramSendNode 'Send alerts' @(1080, 0) '={{ $json.message }}'
+    # MaxTries 1: Retry mit continueErrorOutput ist in n8n defekt (GH #10763); der naechste Heartbeat ist die Wiederholung.
+    $send = New-TelegramSendNode 'Send alerts' @(1080, 0) '={{ $json.message }}' -OnError 'continueErrorOutput' -MaxTries 1
+
+    $reset = Build-Pg 'Reset unsent' @(1300, 180) `
+        '=SELECT agent.fn_monitor_reset_unsent($1::jsonb) AS r;' `
+        ([ordered]@{
+            trigger_ids = "JSON.parse(`$('Evaluate (atomic)').first().json.fired || '[]').map(f => f.id)"
+            problem_ids = "JSON.parse(`$('Evaluate (atomic)').first().json.problems || '[]').map(f => f.id)"
+        })
+    $sendFailed = Build-Err 'Send failed' @(1520, 180) `
+        "={{ 'Monitor alert could not be delivered; fired triggers were re-armed.' + (((`$json.r.gave_up || []).length) ? ' Gave up (date too old): ' + `$json.r.gave_up.map(g => g.label).join(', ') : '') }}"
+
+    $stickySend = Build-Sticky 'Doc Sendefehler' @(1040, -420) `
+        'Sendefehler: Meldung geht nicht verloren' `
+        'Scheitert Send alerts, stellt Reset unsent (agent.fn_monitor_reset_unsent) alle in diesem Lauf ausgelösten Wächter wieder scharf und merkt Problem-Zeilen vor. Termine prüfen sofort wieder, Werte zum nächsten Prüftermin. Ein Termin länger als monitor.unsent_retry_days nach Fälligkeit bleibt ausgelöst (gave_up). Danach endet der Lauf als Fehler (Send failed), damit der Owner-Alarm wie gewohnt kommt. Die Meldung kommt mindestens einmal: Meldet Telegram einen Fehler trotz Zustellung, kann sie doppelt kommen.' 320 300
 
     $stickyOverview = Build-Sticky 'Überblick' @(-1140, -420) `
         'Heartbeat des generischen Trigger-Monitorings (deterministisch)' `
@@ -157,8 +171,8 @@ return [{ json: { message: L.join('\n') } }];
         '1. Due-Set unter FOR UPDATE NEU berechnen (TOCTOU: disabled/editiert zählt Row-Wahrheit; nicht verfügbare Paket-Methode -> geparkt). 2. Beschaffung sql/none/Paket-Methoden in der fn. 3. Validierungs-Kaskade fn_validate_observation: numerisch -> Unit-Echo (expected_unit, nur web) -> Bounds (min/max_plausible) -> Jump-Guard (max_jump_pct vs. letzter sauberer Wert). 4. Observation-Log IMMER (agent.monitor_observations, Audit). 5. dirty: fail_streak++, Problem-Alarm bei monitor.fail_alert_streak + Vielfachen; last_value/Ratchet UNBERÜHRT. 6. clean: threshold gte/lte-Latch; drawdown Ratchet GREATEST + dd%-Latch; date Warn-Info (kein Latch) + Latch am due_date; recurring_info latcht NIE. 7. next_check_at IMMER advancen (fn_next_check, anker-erhaltend). Datum = core.fn_today (Haushalts-Zeitzone der DB-Sitzung). Message deterministisch (kein LLM) in Owner-Sprache: Texte aus derselben Evaluate-Anweisung (core.fn_ui_texts_for), Zahlen/Daten per Intl; Domain->Paket-Map build-time aus den Manifest-advisors-Blöcken, der Paketname zur Laufzeit aus dem Katalog: fired in einer Advisor-Domain -> Berater dieses Pakets, Probleme -> Monitor-Agent.' 360 640
 
     $nodes = @($trig, $flag, $ifEnabled, $off, $loadModel, $due, $ifItems, $acquire, $shape, $collect,
-               $evaluate, $ifReport, $quiet, $build, $send,
-               $stickyOverview, $stickyAcq, $stickyEval)
+               $evaluate, $ifReport, $quiet, $build, $send, $reset, $sendFailed,
+               $stickyOverview, $stickyAcq, $stickyEval, $stickySend)
     $conns = [ordered]@{
         'Schedule (cron from config)' = @{ main = @( ,@( E 'Read feature flag' ) ) }
         'Read feature flag'           = @{ main = @( ,@( E 'Enabled?' ) ) }
@@ -181,6 +195,9 @@ return [{ json: { message: L.join('\n') } }];
             @( E 'Quiet run' )
         ) }
         'Build message'               = @{ main = @( ,@( E 'Send alerts' ) ) }
+        # main[0] = Erfolg (Ende), main[1] = Fehler-Ausgang von continueErrorOutput
+        'Send alerts'                 = @{ main = @( @(), @( E 'Reset unsent' ) ) }
+        'Reset unsent'                = @{ main = @( ,@( E 'Send failed' ) ) }
     }
     return Build-Workflow 'agent.monitor.cron_check_triggers' $nodes $conns
 }

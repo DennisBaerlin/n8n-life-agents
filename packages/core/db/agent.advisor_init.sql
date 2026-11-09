@@ -53,6 +53,24 @@ CREATE TABLE IF NOT EXISTS agent.advisor_plans (
     updated_at      timestamptz NOT NULL DEFAULT now()
 );
 
+ALTER TABLE agent.advisor_plans ADD COLUMN IF NOT EXISTS synced_at timestamptz;
+ALTER TABLE agent.advisor_plans ADD COLUMN IF NOT EXISTS watch_candidates jsonb NOT NULL DEFAULT '[]'::jsonb;
+COMMENT ON COLUMN agent.advisor_plans.synced_at IS 'Provenienz (Ausnahme c): letzter Plan-Durchlauf (core.fn_plan_sync)';
+COMMENT ON COLUMN agent.advisor_plans.watch_candidates IS 'Provenienz (Ausnahme c): im Durchlauf gemeldete Kandidaten fuer Werte-Waechter, Leser ist Schritt 4 der Abfolge';
+
+-- Vom Nutzer abgelehnte Plan-Erinnerungen; ein spaeterer Durchlauf bietet sie nicht erneut an (core.fn_plan_sync).
+CREATE TABLE IF NOT EXISTS agent.plan_reminder_declines (
+    id          serial PRIMARY KEY,
+    domain      text NOT NULL CHECK (btrim(domain) <> ''),
+    package     text NOT NULL CHECK (package ~ '^[a-z][a-z0-9_]*$'),
+    person_id   text,
+    label       text NOT NULL CHECK (length(btrim(label)) BETWEEN 1 AND 80),
+    remind_on   date,
+    declined_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE UNIQUE INDEX IF NOT EXISTS plan_reminder_declines_key
+    ON agent.plan_reminder_declines (domain, person_id, lower(btrim(label))) NULLS NOT DISTINCT;
+
 -- Invarianten (siehe Kopf-Kommentar). NULLS NOT DISTINCT (PG15+): zwei household-NULL-Zeilen
 -- KOLLIDIEREN -> "genau ein active/draft pro (domain, person_id)" haelt auch fuer person_id=NULL
 -- (sonst behandelt der Default NULLS DISTINCT zwei NULLs als verschieden -> stiller Verlust).

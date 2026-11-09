@@ -44,7 +44,7 @@
   "consumes": {
     "services": [
       "core:human_approval", "core:load_context", "core:load_config", "core:web_search", "core:expert_panel",
-      "core:transcribe_telegram_voice", "core:fetch_telegram_file", "core:error_notify", "core:save_plan_section", "core:publish_plan", "core:send_handoff_overview", "core:record_plan_wish", "core:create_monitor_trigger",
+      "core:transcribe_telegram_voice", "core:fetch_telegram_file", "core:error_notify", "core:save_plan_section", "core:publish_plan", "core:sync_plan", "core:send_handoff_overview", "core:record_plan_wish", "core:create_monitor_trigger",
       "core:list_monitor_triggers", "core:onboarding_progress",
       "paperless:search_documents", "paperless:get_document", "paperless:ask_documents"
     ],
@@ -90,6 +90,7 @@
     },
     "advisor": {
       "topic_max_chars": { "value": "900", "type": "integer", "minimum": 300, "maximum": 3500, "description": "Plan in small topics: the finance advisor saves each plan section topic by topic (tool_save_plan_section topic), and agent.fn_advisor_save_section rejects a save without topic (topic_required) or with a topic text longer than this many characters (topic_too_long) in the dry run before the card. 900 is about one phone screen. Read at RUNTIME via core.fn_config_get('finance','advisor','topic_max_chars'); domain -> package via core.advisors. Change: lifeagents config set advisor topic_max_chars <n> (no rebuild).", "summary": "So viele Zeichen darf ein Thema im Finanzplan höchstens haben (900 ≈ eine Handyseite)." },
+      "plan_sync_required": { "value": "true", "type": "boolean", "description": "Plan sync before publishing the finance plan: agent.fn_advisor_publish_plan rejects a publish without reminders (code plan_sync_missing). [] means explicitly none.", "summary": "Beim Veröffentlichen müssen die Erinnerungen des Plans mitgegeben werden." },
       "final_check_required": { "value": "true", "type": "boolean", "description": "Final check before publishing the finance plan: agent.fn_advisor_publish_plan rejects a publish without check_findings (final_check_missing) or with a finding that has no outcome (final_check_open) in the dry run before the card; the card shows the counts and each finding left open. Read at RUNTIME via core.fn_config_get('finance','advisor','final_check_required'). Change: lifeagents config set advisor final_check_required false (no rebuild).", "summary": "Vor dem Veröffentlichen prüft der Berater den ganzen Plan auf Widersprüche und Lücken (true/false)." }
     },
     "cron_enable": {
@@ -164,6 +165,7 @@
       "plan_step": true,
       "gaps_fn": "finance.fn_plan_gap_count",
       "readiness_fn": "finance.fn_plan_readiness",
+      "rollout_fn": "finance.fn_plan_rollout",
       "handoff_agent": "agent.finance"
     }
   },

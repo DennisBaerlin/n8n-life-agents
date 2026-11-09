@@ -271,7 +271,8 @@ function decide(body) {
     // Dokument-Tools): die gewollte Antwort, die der Schema-Platzhalter NICHT ueberschreiben darf. Freitext-finals
     // (Chat-Szenarien) bleiben fuer Schema-Calls beim Platzhalter.
     return { payload: anthropicText(scenario && scenario.final), why: 'no-scenario-or-no-calls', offered, task,
-      scripted: isJson(scenario && scenario.final), delay };
+      scripted: isJson(scenario && scenario.final), delay,
+      stop_reason: scenario && scenario.stop_reason, http_status: scenario && Number(scenario.http_status) };
   }
   // Nur die Calls, deren Tool im Request ANGEBOTEN wird (Namespace-Filter Orchestrator vs Agent).
   const eligible = scenario.calls.filter((c) => offered.indexOf(c.tool) !== -1);
@@ -340,13 +341,15 @@ const server = http.createServer((req, res) => {
       out.payload = anthropicText(JSON.stringify(fromSchema(fmt.schema)));
       out.why += '+schema-placeholder';
     }
+    // Fehlerbilder der Monitor-Probe (monitor_probe_test mf10): Szenario-Felder stop_reason und http_status.
+    if (out.stop_reason) out.payload.stop_reason = out.stop_reason;
     out.payload.usage = Object.assign(mockUsage(markers), { output_tokens: 1 });
     // Aufzeichnung (eine JSON-Zeile je Call; der Harness liest sie via `docker exec cat`).
     // system_tail: die letzten Zeichen des System-Prompts (dort stehen die wechselnden Runtime-Flags, z. B.
     // "persona: butler") -> real_ingress_test prueft gratis, dass ein Flag das Modell erreicht.
     const sysText = !body ? '' : (typeof body.system === 'string' ? body.system
       : (Array.isArray(body.system) ? body.system.map((s) => (s && s.text) || '').join('\n') : ''));
-    logLine({ url: req.url, dialect: 'anthropic', offered: out.offered, task: out.task, decision: out.why, markers,
+    logLine({ url: req.url, dialect: 'anthropic', model: body ? body.model : null, offered: out.offered, task: out.task, decision: out.why, markers,
       replay_lost: out.replay_lost || [],                   // mock_route_test: zurueckgespielte Aufrufe ohne Angaben
       file_blocks: fileBlocks(body && body.messages),       // infra_test: wie viele verschiedene Dateien im Request stehen
       system_tail: sysText.slice(-300),
@@ -360,7 +363,10 @@ const server = http.createServer((req, res) => {
     // Streaming (body.stream) -> echtes Anthropic-SSE; sonst JSON. Recherche-verifiziert: der Node ruft
     // non-streaming (JSON) -> der JSON-Pfad ist der Live-Pfad; SSE deckt den Gateway-Test ab.
     const send = () => {
-      if (body && body.stream === true) {
+      if (out.http_status) {
+        res.writeHead(out.http_status, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ type: 'error', error: { type: 'api_error', message: 'mock: forced http ' + out.http_status } }));
+      } else if (body && body.stream === true) {
         res.writeHead(200, { 'Content-Type': 'text/event-stream' });
         res.end(sseFrames(out.payload));
       } else {

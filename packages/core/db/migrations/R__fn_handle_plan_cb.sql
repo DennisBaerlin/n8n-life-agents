@@ -17,13 +17,16 @@
 --     plan:explain:<domain> | plan:wish:<domain> -> nur Rolle partner (Owner: Hinweis, Kind: nur Erwachsene), aktiver
 --       Haushalts-Plan (core.fn_household_plan_active); persoenliche Plaene (career) -> nicht verfuegbar.
 --     Rueckgabe {ok:true, route:'plan', verb: start|share|explain|wish, domain, version?, summary? (explain/wish)}.
+--   Berater-Verben (Geführte Abfolge): plan:scan|event|alert|watch|drift:<domain>[:<version>] -> nur can_write (alert auf general: Owner); offene Karte, Doppeltipp
+--     (Sperre 10 Minuten), Tageslimit advisor.button_starts_per_day (je Haushalt) und leere Daten -> Toast. Eine alte Version bekommt den Stale-Toast, ohne das Limit zu verbrauchen.
+--     data nur aus festen Feldlisten (Art, Wert, Einheit, Datum, Domain), nie reason, action_note oder URL; event/alert/drift lesen nur, wenn die fn existiert.
 --   Nie RAISE (Dispatcher-Vertrag). Toasts aus dem Textkatalog in der Sprache des Tippenden (agent.fn_person_lang).
 --   SECURITY INVOKER (laeuft unter der Host-Cred des Dispatchers; die Plan-Status-fn ist DEFINER), search_path gepinnt.
 --   Tests: tests/db/core/test_fn_handle_plan_cb.sql
 -- ============================================================
 CREATE OR REPLACE FUNCTION core.fn_handle_plan_cb(p jsonb)
 RETURNS jsonb
-LANGUAGE plpgsql STABLE
+LANGUAGE plpgsql VOLATILE
 SET search_path = pg_catalog, pg_temp
 AS $$
 DECLARE
@@ -37,6 +40,14 @@ DECLARE
     v_lang   text;
     v_row    jsonb;
     v_plan   record;
+    v_cand   jsonb;
+    v_out    jsonb;
+    v_n      int;
+    v_limit  int;
+    v_slot   boolean := false;
+    v_day    text;
+    v_own_pid text;
+    v_active agent.advisor_plans%ROWTYPE;
 BEGIN
     IF v_chat ~ '^[0-9]{1,18}$' THEN
         v_sender := agent.fn_resolve_sender(v_chat::bigint);
@@ -47,6 +58,72 @@ BEGIN
     IF COALESCE(p->>'chat_type', '') <> 'private' THEN
         RETURN jsonb_build_object('ok', false, 'reason', 'not_private_chat',
             'toast', core.fn_ui_text('core.toast.plan_private_only', v_lang));
+    END IF;
+
+    IF v_verb IN ('scan', 'event', 'alert', 'watch', 'drift') THEN
+        v_domain := split_part(v_data, ':', 3);
+        v_ver    := split_part(v_data, ':', 4);
+        IF v_chat !~ '^[0-9]{1,18}$' OR v_domain = '' OR split_part(v_data, ':', 5) <> '' OR (v_ver <> '' AND v_ver !~ '^[0-9]{1,9}$') THEN
+            RETURN jsonb_build_object('ok', false, 'reason', 'unknown_plan', 'toast', core.fn_ui_text('core.toast.area_unavailable', v_lang));
+        END IF;
+        IF v_domain = 'general' AND v_verb = 'alert' THEN
+            IF v_role IS DISTINCT FROM 'owner' THEN
+                RETURN jsonb_build_object('ok', false, 'reason', 'owner_only', 'toast', core.fn_ui_text('core.toast.plan_owner_only', v_lang));
+            END IF;
+        ELSE
+            SELECT e INTO v_row FROM jsonb_array_elements(core.fn_advisor_plan_status(v_chat)) e WHERE e->>'domain' = v_domain;
+            IF v_row IS NULL THEN
+                RETURN jsonb_build_object('ok', false, 'reason', 'unknown_plan', 'toast', core.fn_ui_text('core.toast.area_unavailable', v_lang));
+            END IF;
+            IF (v_row->>'can_write')::boolean IS NOT TRUE THEN
+                RETURN jsonb_build_object('ok', false, 'reason', 'owner_only', 'toast', core.fn_ui_text('core.toast.plan_owner_only', v_lang));
+            END IF;
+        END IF;
+        IF agent.fn_get_hitl_pending_state(v_chat::bigint) IS NOT NULL THEN
+            RETURN jsonb_build_object('ok', false, 'reason', 'card_open', 'toast', core.fn_ui_text('core.toast.plan_card_open', v_lang));
+        END IF;
+        v_own_pid := CASE WHEN COALESCE((SELECT cs.scope FROM core.context_scopes cs JOIN core.advisors a ON a.plan_context = cs.context_name WHERE a.domain = v_domain), 'household') = 'per_user'
+                          THEN v_sender->>'person_id' END;
+        SELECT * INTO v_active FROM agent.advisor_plans x WHERE x.domain = v_domain AND x.status = 'active' AND x.person_id IS NOT DISTINCT FROM v_own_pid;
+        IF v_ver <> '' AND (v_active.id IS NULL OR v_active.version IS DISTINCT FROM v_ver::int) THEN
+            RETURN jsonb_build_object('ok', false, 'reason', 'stale', 'toast', core.fn_ui_text('core.toast.plan_not_current', v_lang));
+        END IF;
+
+        IF v_verb = 'scan' THEN
+            IF v_active.id IS NOT NULL THEN v_out := '{}'::jsonb; END IF;
+        ELSIF v_verb = 'watch' THEN
+            v_cand := v_active.watch_candidates;
+            IF v_active.id IS NOT NULL AND jsonb_array_length(COALESCE(v_cand, '[]'::jsonb)) > 0 THEN v_out := jsonb_build_object('candidates', v_cand); END IF;
+        ELSIF v_verb = 'event' AND to_regprocedure('core.fn_plan_refs_open(text,text,boolean)') IS NOT NULL THEN
+            EXECUTE 'SELECT COALESCE(jsonb_agg(jsonb_build_object(''kind'', r->''kind'', ''value'', r->''value'', ''unit'', r->''unit'', ''date'', r->''date'', ''domain'', $1)), ''[]''::jsonb) FROM (SELECT r FROM jsonb_array_elements(core.fn_plan_refs_open($1, $2, true)) r LIMIT 20) q'
+              INTO v_cand USING v_domain, v_own_pid;
+            IF jsonb_array_length(v_cand) > 0 THEN v_out := jsonb_build_object('refs', v_cand); END IF;
+        ELSIF v_verb = 'alert' AND to_regprocedure('core.fn_monitor_recent_alerts(text,int)') IS NOT NULL THEN
+            EXECUTE 'SELECT COALESCE(jsonb_agg(jsonb_build_object(''kind'', a->''kind'', ''value'', a->''value'', ''unit'', a->''unit'', ''date'', a->''date'', ''domain'', $1)), ''[]''::jsonb) FROM (SELECT a FROM jsonb_array_elements(core.fn_monitor_recent_alerts($1, 7)) a LIMIT 20) q'
+              INTO v_cand USING v_domain;
+            IF jsonb_array_length(v_cand) > 0 THEN v_out := jsonb_build_object('alerts', v_cand); END IF;
+        ELSIF v_verb = 'drift' AND to_regprocedure('core.fn_advisor_review_read(text,text)') IS NOT NULL THEN
+            EXECUTE 'SELECT COALESCE(jsonb_agg(jsonb_build_object(''metric_key'', a->''metric_key'', ''kind'', a->''kind'', ''label'', a->''label'', ''value'', a->''value'', ''target'', a->''target'', ''drift'', a->''drift'')), ''[]''::jsonb) FROM (SELECT a FROM jsonb_array_elements(core.fn_advisor_review_read($1, $2)->''alerts'') a LIMIT 20) q'
+              INTO v_cand USING v_domain, v_sender->>'person_id';
+            IF jsonb_array_length(v_cand) > 0 THEN v_out := jsonb_build_object('alerts', v_cand); END IF;
+        END IF;
+        IF v_out IS NULL THEN
+            RETURN jsonb_build_object('ok', false, 'reason', 'nothing_new', 'toast', core.fn_ui_text('core.toast.plan_nothing_new', v_lang));
+        END IF;
+
+        IF NOT core.fn_should_notify('plan_verb', v_verb || ':' || v_domain || ':' || v_chat, interval '10 minutes') THEN
+            RETURN jsonb_build_object('ok', false, 'reason', 'busy', 'toast', core.fn_ui_text('core.toast.plan_verb_busy', v_lang));
+        END IF;
+        v_limit := COALESCE(NULLIF(core.fn_config_get('core', 'advisor', 'button_starts_per_day'), '')::int, 3);
+        v_day := to_char(core.fn_today(), 'YYYY-MM-DD');
+        FOR v_n IN 1..v_limit LOOP
+            IF core.fn_should_notify('plan_verb_day', v_n || ':' || v_day, interval '36 hours') THEN v_slot := true; EXIT; END IF;
+        END LOOP;
+        IF NOT v_slot THEN
+            PERFORM core.fn_notify_resolve('plan_verb', v_verb || ':' || v_domain || ':' || v_chat);
+            RETURN jsonb_build_object('ok', false, 'reason', 'limit', 'toast', core.fn_ui_text('core.toast.plan_verb_limit', v_lang));
+        END IF;
+        RETURN jsonb_build_object('ok', true, 'route', 'plan', 'verb', v_verb, 'domain', v_domain, 'version', v_active.version, 'data', v_out);
     END IF;
 
     -- Plan teilen (2026-10-28): Verb zuerst (share/explain/wish sind als Domain-Name reserviert), sonst Start-Format.

@@ -354,4 +354,22 @@ BEGIN
   RAISE NOTICE 'PASS [publish: gueltige Fakten -> ok]';
 END $$;
 
+DO $$
+DECLARE
+  v JSONB; v_d CONSTANT TEXT := '__e2e_finance__'; v_due DATE := core.fn_today() + 30; v_cnt INT;
+BEGIN
+  INSERT INTO core.config (package, category, key, value) VALUES ('core', 'advisor', 'plan_sync_required', 'true')
+    ON CONFLICT (category, key) DO UPDATE SET package = 'core', value = 'true';
+  PERFORM agent.fn_advisor_save_section(jsonb_build_object('domain', v_d, 'plan_name', '__E2E__ s', 'section_key', 'goals_triggers', 'topic', 't', 'section_content', 'x'));
+  v := agent.fn_advisor_publish_plan(jsonb_build_object('domain', v_d, 'plan_md', '# p', 'check_findings', '[]', 'check_passes', 1));
+  IF v->>'code' IS DISTINCT FROM 'plan_sync_missing' THEN RAISE EXCEPTION 'FAIL [plan_sync_missing] %', v; END IF;
+  v := agent.fn_advisor_publish_plan(jsonb_build_object('domain', v_d, 'plan_md', '# p', 'check_findings', '[]', 'check_passes', 1, 'reminders', jsonb_build_array(jsonb_build_object('label', 'a', 'remind_on', 'kaputt'))));
+  IF v->>'code' IS DISTINCT FROM 'invalid_date' OR NOT EXISTS (SELECT 1 FROM agent.advisor_plans WHERE domain = v_d AND status = 'draft') THEN RAISE EXCEPTION 'FAIL [sync ok:false] %', v; END IF;
+  v := agent.fn_advisor_publish_plan(jsonb_build_object('domain', v_d, 'plan_md', '# p', 'check_findings', '[]', 'check_passes', 1, 'reminders', jsonb_build_array(jsonb_build_object('label', 'Rente', 'remind_on', v_due))));
+  IF (v->>'ok')::boolean IS NOT TRUE OR jsonb_array_length(v->'sync'->'created') <> 1 OR (v->'sync'->>'changes')::int <> 1 THEN RAISE EXCEPTION 'FAIL [sync] %', v; END IF;
+  IF jsonb_array_length(v->'card_lines') <> 2 OR (v->'effective'->>'reminders_checked_on') IS NULL THEN RAISE EXCEPTION 'FAIL [card] %', v; END IF;
+  SELECT count(*) INTO v_cnt FROM agent.monitor_triggers WHERE domain = v_d AND label = 'Rente' AND due_date = v_due;
+  IF v_cnt <> 1 OR (SELECT synced_at FROM agent.advisor_plans WHERE domain = v_d AND status = 'active') IS NULL THEN RAISE EXCEPTION 'FAIL [row] %', v_cnt; END IF;
+END $$;
+
 ROLLBACK;

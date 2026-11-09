@@ -345,14 +345,51 @@
                       "id":  "a37fda20-003a-5b32-838f-3127c06eb84a",
                       "name":  "Send alerts",
                       "retryOnFail":  true,
-                      "maxTries":  3,
+                      "maxTries":  1,
                       "waitBetweenTries":  2000,
                       "credentials":  {
                                           "telegramApi":  {
                                                               "id":  "__CRED_TELEGRAM__",
                                                               "name":  "Telegram account"
                                                           }
+                                      },
+                      "onError":  "continueErrorOutput"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "=SELECT agent.fn_monitor_reset_unsent($1::jsonb) AS r;",
+                                         "options":  {
+                                                         "queryReplacement":  "={{ JSON.stringify({ trigger_ids: JSON.parse($(\u0027Evaluate (atomic)\u0027).first().json.fired || \u0027[]\u0027).map(f =\u003e f.id), problem_ids: JSON.parse($(\u0027Evaluate (atomic)\u0027).first().json.problems || \u0027[]\u0027).map(f =\u003e f.id) }) }}"
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       1300,
+                                       180
+                                   ],
+                      "id":  "2e2c7bc4-827f-5b2f-be2f-30e17c4c09d9",
+                      "name":  "Reset unsent",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_WRITE__",
+                                                           "name":  "Postgres account"
+                                                       }
                                       }
+                  },
+                  {
+                      "parameters":  {
+                                         "errorMessage":  "={{ \u0027Monitor alert could not be delivered; fired triggers were re-armed.\u0027 + ((($json.r.gave_up || []).length) ? \u0027 Gave up (date too old): \u0027 + $json.r.gave_up.map(g =\u003e g.label).join(\u0027, \u0027) : \u0027\u0027) }}"
+                                     },
+                      "type":  "n8n-nodes-base.stopAndError",
+                      "typeVersion":  1,
+                      "position":  [
+                                       1520,
+                                       180
+                                   ],
+                      "id":  "db4db9c8-e266-5ba4-9492-285525a890d0",
+                      "name":  "Send failed"
                   },
                   {
                       "parameters":  {
@@ -401,6 +438,22 @@
                                    ],
                       "id":  "8ab0e1da-cb24-55e8-82b5-b74288735d7b",
                       "name":  "Doc Evaluate"
+                  },
+                  {
+                      "parameters":  {
+                                         "content":  "## DB-Automatik\n**Sendefehler: Meldung geht nicht verloren**\n\nScheitert Send alerts, stellt Reset unsent (agent.fn_monitor_reset_unsent) alle in diesem Lauf ausgelösten Wächter wieder scharf und merkt Problem-Zeilen vor. Termine prüfen sofort wieder, Werte zum nächsten Prüftermin. Ein Termin länger als monitor.unsent_retry_days nach Fälligkeit bleibt ausgelöst (gave_up). Danach endet der Lauf als Fehler (Send failed), damit der Owner-Alarm wie gewohnt kommt. Die Meldung kommt mindestens einmal: Meldet Telegram einen Fehler trotz Zustellung, kann sie doppelt kommen.",
+                                         "height":  320,
+                                         "width":  300,
+                                         "color":  4
+                                     },
+                      "type":  "n8n-nodes-base.stickyNote",
+                      "typeVersion":  1,
+                      "position":  [
+                                       1040,
+                                       -420
+                                   ],
+                      "id":  "43ed02e7-d4f3-527c-b28a-fa9ef770e01b",
+                      "name":  "Doc Sendefehler"
                   },
                   {
                       "parameters":  {
@@ -592,6 +645,31 @@
                                                            ]
                                                        ]
                                           },
+                        "Send alerts":  {
+                                            "main":  [
+                                                         [
+
+                                                         ],
+                                                         [
+                                                             {
+                                                                 "index":  0,
+                                                                 "node":  "Reset unsent",
+                                                                 "type":  "main"
+                                                             }
+                                                         ]
+                                                     ]
+                                        },
+                        "Reset unsent":  {
+                                             "main":  [
+                                                          [
+                                                              {
+                                                                  "index":  0,
+                                                                  "node":  "Send failed",
+                                                                  "type":  "main"
+                                                              }
+                                                          ]
+                                                      ]
+                                         },
                         "Test run":  {
                                          "main":  [
                                                       [

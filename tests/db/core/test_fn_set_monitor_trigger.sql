@@ -219,4 +219,15 @@ BEGIN
   RAISE NOTICE 'PASS [S2.10]';
 END $$;
 
+DO $$
+DECLARE v JSONB; v_id INT;
+BEGIN
+  INSERT INTO agent.monitor_triggers (domain, label, trigger_type, due_date, check_interval, status, retired_by_plan_at)
+  VALUES ('__t_ret__', 'Vom Plan weg', 'date', core.fn_today() + 5, interval '1 day', 'disabled', now()) RETURNING id INTO v_id;
+  v := agent.fn_set_monitor_trigger('{"domain":"__t_ret__","label":"Vom Plan weg","action_note":"x"}'::jsonb);
+  IF (SELECT retired_by_plan_at FROM agent.monitor_triggers WHERE id = v_id) IS NULL THEN RAISE EXCEPTION 'FAIL [retired] Stempel ohne Statusaenderung verloren'; END IF;
+  v := agent.fn_set_monitor_trigger('{"domain":"__t_ret__","label":"Vom Plan weg","status":"armed"}'::jsonb);
+  IF (SELECT retired_by_plan_at FROM agent.monitor_triggers WHERE id = v_id) IS NOT NULL THEN RAISE EXCEPTION 'FAIL [retired] Statusaenderung loescht den Stempel nicht'; END IF;
+END $$;
+
 ROLLBACK;

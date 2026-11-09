@@ -24,6 +24,7 @@ function Build-GetRecurringSuggestions {
         ,@('ok', 'false', 'boolean')
         ,@('code', "={{ $R.code }}", 'string')
         ,@('error', "={{ $R.reason }}", 'string')
+        ,@('row_no', "={{ $R.row_no === undefined || $R.row_no === null ? '' : String($R.row_no) }}", 'string')
         ,@('candidates', "={{ $R.candidates || [] }}", 'array')
         ,@('bank', "={{ $R.bank || '' }}", 'string')
         ,@('account_name', "={{ $R.account_name || '' }}", 'string')

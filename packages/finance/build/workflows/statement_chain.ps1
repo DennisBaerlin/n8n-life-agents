@@ -19,6 +19,8 @@ function New-StatementGateChain {
         ,@('ok', 'false', 'boolean')
         ,@('code', "={{ $P.code }}", 'string')
         ,@('error', "={{ $P.reason }}", 'string')
+        # export_invalid: die betroffene Zeile der Datei (aus der Leser-fn), damit der Agent sie dem Nutzer nennt
+        ,@('row_no', "={{ $P.row_no === undefined || $P.row_no === null ? '' : String($P.row_no) }}", 'string')
         ,@('candidates', "={{ $P.candidates || [] }}", 'array')
         # Konto-Waechter (Bank-Export-Datei): erkannte Bank der Datei + das Konto, um das es geht (aus der DB, nie geraten)
         ,@('bank', "={{ $P.bank || '' }}", 'string')

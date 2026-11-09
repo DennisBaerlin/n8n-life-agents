@@ -10,7 +10,7 @@
 # gefensterten Aktionen durch; abgelaufene Grants loescht der Hook selbst.
 # Suche und Schreib-Erkennung: lib/grant_window.ps1 (gemeinsam mit enforce_app_window.ps1). Nur die Datei im Haupt-Checkout
 # zaehlt, ein offenes Fenster gilt fuer alle Sessions und Worktrees zugleich.
-#   gefenstert : die 5 LLM-kostenden Test-Suiten (n8n_test/orch_test/e2e_test/judge_eval/multiturn_test)
+#   gefenstert : die LLM-kostenden Test-Suiten (n8n_test/orch_test/e2e_test/judge_eval/multiturn_test/monitor_probe)
 #                + reset_dev_instance.ps1 ohne -KeepInstance (zerstoert die Dev-Instanz-Daten, kein Backup;
 #                -KeepInstance baut nichts ab und ist ausgenommen)
 #   immer deny : grant_owner_window.ps1 AUSFUEHREN (Claude oeffnet das Fenster nie - Maker-Checker). Ein
@@ -51,7 +51,7 @@ if ($cmd -match 'grant_owner_window\.ps1') {
 }
 $isReset = $cmd -match 'reset_dev_instance\.ps1'
 if ($isReset -and $cmd -match '(?i)-KeepInstance\b') { $isReset = $false }   # Update-Pfad: kein Abbau -> nicht gefenstert
-if ($isReset -or $cmd -match '(n8n_test|orch_test|e2e_test|judge_eval|multiturn_test)\.ps1') {
+if ($isReset -or $cmd -match '(n8n_test|orch_test|e2e_test|judge_eval|multiturn_test|monitor_probe)\.ps1') {
   if ($libOk -and (Test-GrantWindow 'owner_grant.txt')) { exit 0 }   # Fenster offen -> erlaubt
   $what = if ($isReset) { 'reset_dev_instance.ps1 (zerstoert die Dev-Instanz-Daten, kein Backup) ist' } else { 'Die LLM-Test-Suiten (kosten API-Credits) sind' }
   Block-ToolCall "$what owner-gegatet: der Owner oeffnet im Terminal ein Fenster (.\scripts\grant_owner_window.ps1, Default 30 Min) oder startet den Befehl selbst. Nicht umgehen - den Owner bitten und danach erneut senden."

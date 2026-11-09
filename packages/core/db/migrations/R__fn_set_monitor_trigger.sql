@@ -167,6 +167,7 @@ BEGIN
             check_interval   = v_interval,
             next_check_at    = CASE WHEN v_rearm OR v_interval_given THEN NOW() ELSE next_check_at END,
             status           = COALESCE(v_status, status),
+            retired_by_plan_at = CASE WHEN v_status IS DISTINCT FROM NULL AND v_status IS DISTINCT FROM status THEN NULL ELSE retired_by_plan_at END,
             fired_at         = CASE WHEN v_rearm THEN NULL ELSE fired_at END,
             fail_streak      = CASE WHEN v_rearm THEN 0 ELSE fail_streak END,
             reference_value  = CASE WHEN COALESCE(NULLIF(trim(COALESCE(p->>'reset_peak', '')), '')::boolean, false)

@@ -1092,7 +1092,7 @@ in-memory orphan; distinct from the removed deploy-side restart, which id-stable
   `core.fn_pkg_purge_data('<pkg>')` → `DROP SCHEMA <pkg> CASCADE` → `core.fn_drop_package_roles('<pkg>')` →
   `fn_pkg_remove`.
 
-**`core.fn_pkg_purge_data(p jsonb)`** (SECURITY INVOKER, atomic) deletes the package-owned rows that live
+**`core.fn_pkg_purge_data(p jsonb)`** also removes the package's notification latches, declined plan reminders and all `agent.advisor_plans` rows of its advisor domains (the plan document goes with the contexts; `--keep-data` keeps all of them). It deletes the package-owned rows that live
 **outside** the package schema (so `DROP SCHEMA … CASCADE` would not reach them), in **finalizer order**
 (WS-B2b, Kubernetes-ownerReference): **(1)** `core.protected_contexts WHERE package` — lifts the finalizer so
 **(2)** `agent.core_contexts WHERE package` deletes (the BEFORE-DELETE trigger blocks it otherwise; the

@@ -212,9 +212,22 @@ function Build-AgentFinanceAdvisor {
             ,@('change_summary', 'Concrete summary of what changed vs. the previous version, for the confirmation message', 'string')
             ,@('check_findings', 'JSON array string of all final-check findings, each {"text":"one plain sentence, max 300 characters","outcome":"resolved|deferred|accepted"}; [] when there were none', 'string')
             ,@('check_passes', 'Number of final-check passes over the draft, at least 1', 'number')
+            ,@('reminders', 'JSON array string of dated reminders from the plan text, each {"label":"short name up to 80 chars","remind_on":"YYYY-MM-DD","action_note":"what to do, may be left out","deadline":true when something must be DONE by that day, omit otherwise,"force":true only if the user explicitly asks again for a declined one}; [] when there are none. Dates only as ISO, computed with core.fn_period_reminder_date for vague time phrases', 'string')
+            ,@('declined', 'Optional JSON array string of reminders the user turned down, each {"label":"...","remind_on":"YYYY-MM-DD"}; [] or omitted when none', 'string', '')
+            ,@('retire', 'Optional JSON array string of existing reminders this plan version drops, each {"label":"..."}', 'string', '')
+            ,@('watch_candidates', 'Optional JSON array string of up to 10 short texts (max 120 chars): outside values or news this plan depends on and worth watching later; never create such a watcher in this step', 'string', '')
             ,@('plan_name', 'Optional new plan display name', 'string', '')
             ,@('context_description', 'Optional description for the published context document; omit for the default', 'string', '')
         ) ([ordered]@{ domain = $DOMAIN_EXPR }) @(640, 208) -StartNode $START_NODE
+
+    $nToolSyncPlan = New-AdvisorToolNode 'tool_sync_plan' (Resolve-CoreServiceAlias 'core:sync_plan' $CoreServiceMap) `
+        'Compare the reminders of the ALREADY PUBLISHED plan with what exists (no new plan version): pass the same lists as for publishing. Shows one confirmation card when something changes, otherwise it only stores the stamp. skipped lists every entry left out with its reason, use it to explain what you did not add.' `
+        @(
+            ,@('reminders', 'JSON array string, same shape as in tool_publish_plan; [] when there are none', 'string')
+            ,@('declined', 'Optional JSON array string, same shape as in tool_publish_plan', 'string', '')
+            ,@('retire', 'Optional JSON array string, same shape as in tool_publish_plan', 'string', '')
+            ,@('watch_candidates', 'Optional JSON array string, same shape as in tool_publish_plan', 'string', '')
+        ) ([ordered]@{ domain = $DOMAIN_EXPR }) @(640, 408) -StartNode $START_NODE
 
     # Plan teilen (2026-10-28): ein erwachsenes Mitglied schickt dem Owner einen Wunsch zum Haushalts-Plan (owner_info:
     # Mitglied bestaetigt, Owner bekommt den Wortlaut). domain fix wie die Plan-Tools.
@@ -270,7 +283,7 @@ function Build-AgentFinanceAdvisor {
     # READ-ONLY Dedup-Fenster: bestehende Monitorings dieser Domain lesen, BEVOR neue vorgeschlagen
     # werden (Advisor<->Monitor). domain FIX 'finance' (kein $fromAI). Kein HITL (reiner Read).
     $nToolListTriggers = New-AdvisorToolNode 'tool_list_monitor_triggers' (Resolve-CoreServiceAlias 'core:list_monitor_triggers' $CoreServiceMap) `
-        'List the EXISTING monitoring triggers for your domain (label, type, status, a compact spec line). Call this AFTER publishing a plan and BEFORE proposing any tool_create_monitor_trigger, so you only offer triggers that are not already monitored (deduplication). Read-only - changing, repairing or deleting triggers is the monitor agent''s job.' `
+        'List the EXISTING monitoring triggers for your domain (label, type, status, a compact spec line). Call this BEFORE proposing reminders or watchers: entries with status disabled or declined must not be offered again, and nothing that already exists. Read-only - changing, repairing or deleting triggers is the monitor agent''s job.' `
         @() ([ordered]@{ domain = 'finance' }) @(960, 208) -StartNode $START_NODE
 
     # EINZIGE Daten-Schreib-Ausnahme des Beraters (Owner 2026-10-23: die Anlageklasse wird in der Finanzplanung

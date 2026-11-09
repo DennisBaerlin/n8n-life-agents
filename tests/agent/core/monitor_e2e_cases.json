@@ -31,5 +31,17 @@
     "expect": 0,
     "is_negative": false,
     "notes": "tool_create_monitor_trigger -> tool_delete_monitor_trigger (Hard-DELETE, Observations via FK-CASCADE). verify erwartet 0 Zeilen nach dem Delete."
+  },
+  {
+    "id": "me04",
+    "name": "create: Web-Wert Aluminium mit echter Probe, Karte bestaetigt, erste Beobachtung",
+    "task": "Ich bestaetige den besprochenen Trigger, KEINE Rueckfrage: Label '__E2E__ Aluminium USD', Typ Schwellwert, Quelle Websuche mit dem Abruf-Text 'Current LME aluminium cash price in USD per metric tonne, report the unit as USD/t', Einheit USD/t, feuert ab 1000000 oder hoeher (gte), Pruefung taeglich (1 day), Aktion 'E2E-Test'. Lege den Trigger jetzt an.",
+    "chat_id": "test_e2e_me04",
+    "sentinel_accounts": 0,
+    "timeout_s": 240,
+    "verify_sql": "SELECT count(*) FROM agent.monitor_triggers t WHERE t.domain = '__e2e_monitor__' AND lower(t.label) = lower('__E2E__ Aluminium USD') AND t.acquisition_method = 'web_search' AND t.status = 'armed' AND EXISTS (SELECT 1 FROM agent.monitor_observations o WHERE o.trigger_id = t.id AND o.ok);",
+    "expect": 1,
+    "is_negative": false,
+    "notes": "Laeuft ueber monitor_probe.ps1 (Kostendeckel). Grenze bewusst unerreichbar: echte Probe, Karte per Mock bestaetigt, Zeile + erste Beobachtung."
   }
 ]

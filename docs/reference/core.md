@@ -181,3 +181,7 @@ Owner-Wunsch: persönlicher, ohne Mehrkosten und ohne Genauigkeitsverlust → je
 - `cron_labels` = nur noch die Toggle-Mitgliedschaft (die Texte stehen seit Textkatalog Phase B im Katalog `<pkg>.cron.<key>.*`; die fn bleibt rein `{ok,key,enabled}`).
 - Attachment-Routing über den opaken Marker, nie über Inhalts-Vorklassifikation (PII-Datenminimierung: Inhalte sieht nur das Extraktions-Tool des Empfängers).
 - Mini-App über die bestehenden `/webhook/*`-Pfade statt eines eigenen `/app/*` mit Datei-Dienst (arch-challenge 2026-10-27): der Proxy läuft oft auf einem anderen Rechner, ein eigener Pfad bräuchte dort einen Datei-Dienst samt Firewall-Freigabe; Actual/Firefly als Oberfläche verworfen (eigene Wahrheit + Sync). Rückfall-Trigger: der Telegram-Client zeigt die Seite im n8n-Sandkasten nicht.
+
+## Plan-Durchlauf (`core.fn_plan_sync`)
+
+Gleicht beim Veröffentlichen (`fn_advisor_publish_plan`, dieselbe Transaktion) oder nachträglich (`agent.tool_sync_plan`, keine neue Version) die Termin-Erinnerungen eines Plans ab: anlegen, verschieben, per `retire` abschalten, Ablehnungen merken (`agent.plan_reminder_declines`). Eine Karte zeigt nur, was neu ist; ohne Änderung keine Karte, nur Stempel `synced_at`. Regel-Reihenfolge und Rückgabe stehen im fn-Kopf (`docs/fn_catalog.md`). Pflicht je Paket über `advisor.plan_sync_required`. Ungenaue Zeitangaben rechnet `core.fn_period_reminder_date`.

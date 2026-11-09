@@ -1,0 +1,71 @@
+[
+  {
+    "id": "mp01",
+    "name": "Web-Wert Aluminium bis Mock-Telegram: Kosten je Pruefung, Antwortform web_search_20260209",
+    "kind": "cron",
+    "prompt": "What is the current LME aluminium cash price in USD per metric tonne? Report the unit as USD/t.",
+    "unit": "USD/t",
+    "threshold": 1,
+    "cap_usd": 0.15
+  },
+  {
+    "id": "mp04",
+    "name": "Laufzeit-Form Nachrichten: Firma ohne Vorfall, 14 Tage, 2 Suchen",
+    "kind": "news",
+    "model": "sonnet",
+    "max_searches": 2,
+    "structured": false,
+    "system": "You check public news about one company. List only reports from the last 14 days that describe insolvency, default or a similar credit event. Answer in two sentences and name each source URL you rely on.",
+    "prompt": "Company: Siemens AG. Any credit-relevant negative event in the last 14 days?",
+    "cap_usd": 0.15
+  },
+  {
+    "id": "mp02",
+    "name": "Nachrichten-Spike: historische Insolvenz, 365 Tage, 3 Suchen, Schema",
+    "kind": "news",
+    "model": "sonnet",
+    "max_searches": 3,
+    "structured": true,
+    "system": "You check public news about one company for credit events. Use only what the search results show and return the requested JSON.",
+    "prompt": "Company: Wirecard AG. Look back 365 days from June 2020. Did a credit event occur?",
+    "schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["event", "event_date", "sources"],
+      "properties": {
+        "event": { "type": "boolean" },
+        "event_date": { "type": ["string", "null"] },
+        "sources": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "cap_usd": 0.25
+  },
+  {
+    "id": "mp03",
+    "name": "Nachrichten-Spike mit dem kleinen Modell",
+    "kind": "news",
+    "model": "haiku",
+    "max_searches": 3,
+    "structured": true,
+    "system": "You check public news about one company for credit events. Use only what the search results show and return the requested JSON.",
+    "prompt": "Company: Wirecard AG. Look back 365 days from June 2020. Did a credit event occur?",
+    "schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["event", "event_date", "sources"],
+      "properties": {
+        "event": { "type": "boolean" },
+        "event_date": { "type": ["string", "null"] },
+        "sources": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "cap_usd": 0.06
+  },
+  {
+    "id": "me04",
+    "name": "Agent legt Web-Wert an (echte Probe, Karte per Mock bestaetigt)",
+    "kind": "e2e",
+    "e2e_id": "me04",
+    "cap_usd": 0.3
+  }
+]

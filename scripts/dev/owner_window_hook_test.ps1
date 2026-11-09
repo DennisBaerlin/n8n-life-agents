@@ -83,9 +83,10 @@ try {
     $suite = @{ command = '.\scripts\orch_test.ps1' }
 
     Write-Host 'Geschlossen:'
-    foreach ($s in @('n8n_test', 'orch_test', 'e2e_test', 'judge_eval', 'multiturn_test')) {
+    foreach ($s in @('n8n_test', 'orch_test', 'e2e_test', 'judge_eval', 'multiturn_test', 'monitor_probe')) {
         Assert-Case "$s im Worktree gesperrt" $true $wt 'PowerShell' @{ command = ".\scripts\$s.ps1" }
     }
+    Assert-Case 'Gratis-Suite monitor_probe_test frei' $false $wt  'PowerShell' @{ command = '.\scripts\dev\monitor_probe_test.ps1' }
     Assert-Case 'Suite im Haupt-Checkout gesperrt'    $true  $main 'PowerShell' $suite
     Assert-Case 'Dev-Reset gesperrt'                  $true  $wt   'PowerShell' @{ command = '.\scripts\reset_dev_instance.ps1' }
     Assert-Case 'Dev-Reset -KeepInstance frei'        $false $wt   'PowerShell' @{ command = '.\scripts\reset_dev_instance.ps1 -KeepInstance' }

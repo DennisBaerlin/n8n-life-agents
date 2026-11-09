@@ -969,7 +969,7 @@ function Send-PlanSection([string]$Domain, [string]$Key, [string]$Content, [stri
 # finance verlangt den Gesamtcheck (advisor.final_check_required) -> ein bewusst offener Probe-Fund, damit die Karte ihn zeigt.
 function Send-PlanPublish([string]$Domain, [string]$Change, [string]$ChatId = $OwnerUnpaired,
                           [string]$Findings = '[{"text":"Probe-Fund offen","outcome":"deferred"},{"text":"Probe-Fund geklaert","outcome":"resolved"}]') {
-    Send-HarnessPost 'plan-publish-test' @{ domain = $Domain; plan_md = 'Probe-Plan'; plan_name = ''; change_summary = $Change; context_description = ''; check_findings = $Findings; check_passes = '2'; chat_id = $ChatId }
+    Send-HarnessPost 'plan-publish-test' @{ domain = $Domain; plan_md = 'Probe-Plan'; plan_name = ''; change_summary = $Change; context_description = ''; check_findings = $Findings; check_passes = '2'; reminders = '[]'; chat_id = $ChatId }
 }
 # Endete der letzte Lauf des Tools im Probelauf-Abbruch (keine Karte)? Liefert die Probleme (leer = ja).
 function Get-DryRunRejectProblem($Exec, [string]$Code) {
@@ -1025,6 +1025,20 @@ try {
     $probs = if ($m) { @(Get-CardTextProblems ([string]$m.body.text) @('sonder abschnitt neu') @('sonder.{0,2}_abschnitt')) + @(Complete-CardTaps 'hitlP2' @($false)) } else { @('Karte nicht abgefangen') }
     Write-RepeatCase 'hitlP2' 'Abschnitt ohne Katalogeintrag: lesbarer Rueckfall' $probs
 } catch { Register-Abort $_ 'hitlP2' }
+
+# hitlS1: Plan-Durchlauf ohne Aenderung -> keine Karte, nur Stempel.
+try {
+    Test-ForceAbort 'hitlS1' $ForceAbortId
+    Invoke-TestN8nPsql -Container $Container -PsqlArgs @('-tAc', "INSERT INTO agent.advisor_plans (domain, plan_name, status, version, plan_md) VALUES ('__e2e_finance__', '__E2E__ hitlS1', 'active', 1, 'x') ON CONFLICT DO NOTHING;") | Out-Null
+    Clear-MockTelegramRequests -Container $Container
+    Send-HarnessPost 'plan-sync-test' @{ domain = '__e2e_finance__'; reminders = '[]'; declined = ''; retire = ''; watch_candidates = ''; chat_id = [string]$PairedUidOwner }
+    Start-Sleep -Seconds 6
+    $cards = @(Get-MockTelegramRequests -Container $Container | Where-Object { $_.body.reply_markup }).Count
+    $stamp = ((Invoke-TestN8nPsql -Container $Container -PsqlArgs @('-tAc', "SELECT count(*) FROM agent.advisor_plans WHERE domain = '__e2e_finance__' AND status = 'active' AND synced_at IS NOT NULL;")).Output -join '').Trim()
+    $probs = @(); if ($cards -ne 0) { $probs += "Karte gesendet ($cards)" }; if ($stamp -ne '1') { $probs += "synced_at fehlt ($stamp)" }
+    Write-RepeatCase 'hitlS1' 'Plan-Durchlauf ohne Aenderung: keine Karte' $probs
+    Invoke-TestN8nPsql -Container $Container -PsqlArgs @('-tAc', "DELETE FROM agent.advisor_plans WHERE plan_name = '__E2E__ hitlS1';") | Out-Null
+} catch { Register-Abort $_ 'hitlS1' }
 
 # hitlP3: Text ohne Leerzeichen ueber dem Telegram-Limit geht vollstaendig durch, nichts gekuerzt. Auf career: finance begrenzt
 # den Thementext (advisor.topic_max_chars, hitlP9), career hat keine Grenze.

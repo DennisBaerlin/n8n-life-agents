@@ -149,4 +149,19 @@ BEGIN
   RAISE NOTICE 'PASS core.fn_pkg_purge_data: Finalizer-Order, core-Guard, Scope-genau, Counts (inkl. Ledger), idempotent';
 END $$;
 
+DO $$
+DECLARE v JSONB;
+BEGIN
+  INSERT INTO agent.plan_reminder_declines (domain, package, label) VALUES ('zzd', 'zz', 'x'), ('yyd', 'yy', 'x');
+  INSERT INTO agent.advisor_plans (domain, plan_name, status, version) VALUES ('zzd', 'p', 'draft', 3), ('zzd', 'p', 'active', 2), ('zzd', 'p', 'superseded', 1), ('yyd', 'q', 'active', 1);
+  INSERT INTO core.notification_state (source, key, state) VALUES ('zz', 'a', 'fired'), ('advisor:zzd', 'b', 'fired'), ('yy', 'c', 'fired'), ('advisor:other', 'd', 'fired');
+  INSERT INTO core.advisors (domain, package, plan_context, review_fn) VALUES ('zzd', 'zz', 'zzd_planning', 'zz.fn_review');
+  v := core.fn_pkg_purge_data('{"package":"zz"}'::jsonb);
+  IF (v->>'advisor_plans')::int <> 3 THEN RAISE EXCEPTION 'FAIL [purge plans] %', v; END IF;
+  IF EXISTS (SELECT 1 FROM agent.advisor_plans WHERE domain = 'zzd') OR NOT EXISTS (SELECT 1 FROM agent.advisor_plans WHERE domain = 'yyd') THEN RAISE EXCEPTION 'FAIL [purge plans scope]'; END IF;
+  IF EXISTS (SELECT 1 FROM core.notification_state WHERE source IN ('zz', 'advisor:zzd')) THEN RAISE EXCEPTION 'FAIL [purge state]'; END IF;
+  IF (SELECT count(*) FROM core.notification_state WHERE source IN ('yy', 'advisor:other')) <> 2 THEN RAISE EXCEPTION 'FAIL [purge fremd]'; END IF;
+  IF EXISTS (SELECT 1 FROM agent.plan_reminder_declines WHERE package = 'zz') OR NOT EXISTS (SELECT 1 FROM agent.plan_reminder_declines WHERE package = 'yy') THEN RAISE EXCEPTION 'FAIL [purge declines]'; END IF;
+END $$;
+
 ROLLBACK;

@@ -1884,4 +1884,14 @@ BEGIN
   RAISE NOTICE 'PASS [finance_ro/_rw -> Handoff-Fenster]';
 END $$;
 
+-- core.fn_period_reminder_date: der Berater ruft sie ueber postgres_select unter finance_ro
+DO $$
+DECLARE v_out date;
+BEGIN
+  SET LOCAL ROLE finance_ro;
+  v_out := core.fn_period_reminder_date('next_year', DATE '2026-11-09');
+  RESET ROLE;
+  IF v_out IS DISTINCT FROM DATE '2027-02-01' THEN RAISE EXCEPTION 'FAIL [finance_ro -> fn_period_reminder_date] %', v_out; END IF;
+END $$;
+
 ROLLBACK;

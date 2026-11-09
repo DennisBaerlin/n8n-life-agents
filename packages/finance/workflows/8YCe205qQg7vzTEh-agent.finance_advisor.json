@@ -831,6 +831,10 @@
                                                                               "change_summary":  "={{ $fromAI(\u0027change_summary\u0027, \u0027Concrete summary of what changed vs. the previous version, for the confirmation message\u0027, \u0027string\u0027) }}",
                                                                               "check_findings":  "={{ $fromAI(\u0027check_findings\u0027, \u0027JSON array string of all final-check findings, each {\"text\":\"one plain sentence, max 300 characters\",\"outcome\":\"resolved|deferred|accepted\"}; [] when there were none\u0027, \u0027string\u0027) }}",
                                                                               "check_passes":  "={{ $fromAI(\u0027check_passes\u0027, \u0027Number of final-check passes over the draft, at least 1\u0027, \u0027number\u0027) }}",
+                                                                              "reminders":  "={{ $fromAI(\u0027reminders\u0027, \u0027JSON array string of dated reminders from the plan text, each {\"label\":\"short name up to 80 chars\",\"remind_on\":\"YYYY-MM-DD\",\"action_note\":\"what to do, may be left out\",\"deadline\":true when something must be DONE by that day, omit otherwise,\"force\":true only if the user explicitly asks again for a declined one}; [] when there are none. Dates only as ISO, computed with core.fn_period_reminder_date for vague time phrases\u0027, \u0027string\u0027) }}",
+                                                                              "declined":  "={{ $fromAI(\u0027declined\u0027, \u0027Optional JSON array string of reminders the user turned down, each {\"label\":\"...\",\"remind_on\":\"YYYY-MM-DD\"}; [] or omitted when none\u0027, \u0027string\u0027, \u0027\u0027) }}",
+                                                                              "retire":  "={{ $fromAI(\u0027retire\u0027, \u0027Optional JSON array string of existing reminders this plan version drops, each {\"label\":\"...\"}\u0027, \u0027string\u0027, \u0027\u0027) }}",
+                                                                              "watch_candidates":  "={{ $fromAI(\u0027watch_candidates\u0027, \u0027Optional JSON array string of up to 10 short texts (max 120 chars): outside values or news this plan depends on and worth watching later; never create such a watcher in this step\u0027, \u0027string\u0027, \u0027\u0027) }}",
                                                                               "plan_name":  "={{ $fromAI(\u0027plan_name\u0027, \u0027Optional new plan display name\u0027, \u0027string\u0027, \u0027\u0027) }}",
                                                                               "context_description":  "={{ $fromAI(\u0027context_description\u0027, \u0027Optional description for the published context document; omit for the default\u0027, \u0027string\u0027, \u0027\u0027) }}",
                                                                               "domain":  "={{ String($(\u0027Start agent.finance_advisor\u0027).item.json.chat_id || \u0027\u0027).startsWith(\u0027test_e2e\u0027) ? \u0027__e2e_finance__\u0027 : \u0027finance\u0027 }}",
@@ -878,6 +882,46 @@
                                                                                    "display":  true,
                                                                                    "canBeUsedToMatch":  true,
                                                                                    "type":  "number",
+                                                                                   "removed":  false
+                                                                               },
+                                                                               {
+                                                                                   "id":  "reminders",
+                                                                                   "displayName":  "reminders",
+                                                                                   "required":  false,
+                                                                                   "defaultMatch":  false,
+                                                                                   "display":  true,
+                                                                                   "canBeUsedToMatch":  true,
+                                                                                   "type":  "string",
+                                                                                   "removed":  false
+                                                                               },
+                                                                               {
+                                                                                   "id":  "declined",
+                                                                                   "displayName":  "declined",
+                                                                                   "required":  false,
+                                                                                   "defaultMatch":  false,
+                                                                                   "display":  true,
+                                                                                   "canBeUsedToMatch":  true,
+                                                                                   "type":  "string",
+                                                                                   "removed":  false
+                                                                               },
+                                                                               {
+                                                                                   "id":  "retire",
+                                                                                   "displayName":  "retire",
+                                                                                   "required":  false,
+                                                                                   "defaultMatch":  false,
+                                                                                   "display":  true,
+                                                                                   "canBeUsedToMatch":  true,
+                                                                                   "type":  "string",
+                                                                                   "removed":  false
+                                                                               },
+                                                                               {
+                                                                                   "id":  "watch_candidates",
+                                                                                   "displayName":  "watch_candidates",
+                                                                                   "required":  false,
+                                                                                   "defaultMatch":  false,
+                                                                                   "display":  true,
+                                                                                   "canBeUsedToMatch":  true,
+                                                                                   "type":  "string",
                                                                                    "removed":  false
                                                                                },
                                                                                {
@@ -1267,7 +1311,7 @@
                   {
                       "parameters":  {
                                          "name":  "tool_list_monitor_triggers",
-                                         "description":  "List the EXISTING monitoring triggers for your domain (label, type, status, a compact spec line). Call this AFTER publishing a plan and BEFORE proposing any tool_create_monitor_trigger, so you only offer triggers that are not already monitored (deduplication). Read-only - changing, repairing or deleting triggers is the monitor agent\u0027s job.",
+                                         "description":  "List the EXISTING monitoring triggers for your domain (label, type, status, a compact spec line). Call this BEFORE proposing reminders or watchers: entries with status disabled or declined must not be offered again, and nothing that already exists. Read-only - changing, repairing or deleting triggers is the monitor agent\u0027s job.",
                                          "workflowId":  {
                                                             "__rl":  true,
                                                             "value":  "Xp2540kl6Vga3VXl",

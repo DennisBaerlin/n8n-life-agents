@@ -104,7 +104,8 @@ BEGIN
            AND (right(tablename, 12) = '_chat_memory'
                 OR tablename IN ('pairing_state', 'ingress_buffer', 'hitl_pending',
                                  'advisor_plan_wishes', 'dispatch_followup',   -- 2026-10-28: Mitglieder-Wuensche (Wortlaut einer Person) + Knopf-Folge-Bindung
-                                 'handoff_tasks'))   -- vereinbarte Plan-Aufgaben (Wortlaut + Werte einer Person)
+                                 'handoff_tasks',    -- vereinbarte Plan-Aufgaben (Wortlaut + Werte einer Person)
+                                 'plan_reminder_declines'))
     LOOP
         EXECUTE format('REVOKE ALL ON %s FROM core_ro', v_t);
     END LOOP;

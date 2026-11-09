@@ -11,7 +11,7 @@ BEGIN
   SELECT string_agg(format('%I.%I', schemaname, tablename), ', ') INTO v_bad
     FROM pg_tables
    WHERE schemaname = 'agent'
-     AND (right(tablename, 12) = '_chat_memory' OR tablename IN ('pairing_state', 'ingress_buffer', 'hitl_pending', 'advisor_plan_wishes', 'dispatch_followup', 'handoff_tasks'))
+     AND (right(tablename, 12) = '_chat_memory' OR tablename IN ('pairing_state', 'ingress_buffer', 'hitl_pending', 'advisor_plan_wishes', 'dispatch_followup', 'handoff_tasks', 'plan_reminder_declines'))
      AND has_table_privilege('core_ro', format('%I.%I', schemaname, tablename), 'SELECT');
   IF v_bad IS NOT NULL THEN
     RAISE EXCEPTION 'FAIL acl [core_ro kann % lesen — Deny-Liste in util_create_core_ro.sql pruefen]', v_bad;

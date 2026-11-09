@@ -30,8 +30,10 @@
 --     Lern-Notizen (core.fn_append_context_note) leben im Plan-Doc. Ein Publish ERHAELT den gespeicherten Block
 --     unveraendert (angehaengt ans neue plan_md) und VERWIRFT einen im plan_md mitgeschickten (auch im Versions-
 --     Audit advisor_plans.plan_md) — vorher ersetzte content = plan_md alles und loeschte still jede Notiz.
+--     reminders, declined, retire, watch_candidates (Plan-Durchlauf core.fn_plan_sync vor Schritt 1, alles eine Transaktion; Pflicht reminders
+--       bei <paket>.advisor.plan_sync_required = 'true', code plan_sync_missing; dessen ok:false geht unveraendert zurueck, kein Write).
 --   RUECKGABE-VERTRAG: Erfolg -> {ok:true, plan_id, version, superseded_plan_id,
---     context_name, section_count, card_lines} (Post-State der Publish-Kette; card_lines = mit Gesamtcheck die Zeile
+--     context_name, section_count, card_lines, sync?, effective?} (Post-State der Publish-Kette; sync = Listen aus core.fn_plan_sync; card_lines = mit Gesamtcheck die Zeile
 --     core.label.final_check {n, passes, resolved, open} bzw. core.tpl.final_check_clean {passes} und je nicht geklaertem
 --     Fund (deferred, accepted) eine raw-Zeile mit seinem Text).
 --   Korrigierbar (fehlendes domain, leeres plan_md, kein Draft, Block-Kollision, ungueltige Plan-Fakten laut Core-
@@ -72,6 +74,8 @@ DECLARE
     v_bad      TEXT;
     v_idx      INT;
     v_lines    JSONB := '[]'::jsonb;
+    v_sync_given BOOLEAN;               -- Plan-Durchlauf (reminders/declined/retire/watch_candidates) angegeben?
+    v_sync     JSONB;
 BEGIN
     IF v_domain IS NULL THEN
         RETURN jsonb_build_object('ok', false,
@@ -173,6 +177,15 @@ BEGIN
                            FROM jsonb_array_elements(v_findings) WITH ORDINALITY AS x(f, i) WHERE f->>'outcome' <> 'resolved'), '[]'::jsonb);
     END IF;
 
+    -- Plan-Durchlauf: Pflicht, wenn das Paket advisor.plan_sync_required = 'true' setzt; '[]' heisst "ausdruecklich keine".
+    v_sync_given := EXISTS (SELECT 1 FROM unnest(ARRAY['reminders', 'declined', 'retire', 'watch_candidates']) k
+                             WHERE jsonb_typeof(p->k) IS DISTINCT FROM 'null' AND btrim(COALESCE(p->>k, '')) <> '');
+    IF btrim(COALESCE(p->>'reminders', '')) = '' AND jsonb_typeof(p->'reminders') IS DISTINCT FROM 'array'
+       AND COALESCE(core.fn_config_get(v_pkg, 'advisor', 'plan_sync_required'), 'false') = 'true' THEN
+        RETURN jsonb_build_object('ok', false, 'code', 'plan_sync_missing',
+            'reason', 'plan sync missing: before publishing, collect dates and deadlines from all sections and send reminders ([] when there are none)');
+    END IF;
+
     -- Draft der (Domain, Person) sperren (genau einer moeglich — Partial-UNIQUE (domain, person_id)).
     -- person_id IS NOT DISTINCT FROM v_pid: household (NULL) trifft NULL-Zeilen, per_user die Person.
     SELECT id, version, interview_state INTO v_plan_id, v_version, v_state
@@ -242,6 +255,15 @@ BEGIN
         RETURN jsonb_build_object('ok', false, 'reason', 'plan facts invalid: ' || v_err);
     END IF;
 
+    -- Plan-Durchlauf in derselben Transaktion; ok:false laesst den Draft stehen und geht unveraendert zurueck.
+    IF v_sync_given THEN
+        v_sync := core.fn_plan_sync(p || jsonb_build_object('plan_id', v_plan_id));
+        IF NOT COALESCE((v_sync->>'ok')::boolean, false) THEN
+            RETURN v_sync;
+        END IF;
+        v_lines := v_lines || COALESCE(v_sync->'card_lines', '[]'::jsonb);
+    END IF;
+
     -- 1. Vorgaenger abloesen (vor dem Aktivieren — Partial-UNIQUE erlaubt nur einen active je (domain, person_id))
     UPDATE agent.advisor_plans SET status = 'superseded'
     WHERE domain = v_domain AND person_id IS NOT DISTINCT FROM v_pid AND status = 'active'
@@ -299,7 +321,9 @@ BEGIN
         'superseded_plan_id', v_old_id,
         'context_name', v_ctx_name,
         'section_count', v_sections,
-        'card_lines', v_lines
+        'card_lines', v_lines,
+        'sync', v_sync - 'card_lines' - 'ok' - 'effective',
+        'effective', v_sync->'effective'
     ));
 END;
 $$;

@@ -291,7 +291,7 @@ BEGIN
 
   -- (V2) 1 Stueck zu 150 verkaufen, Erloes dem Ziel zuordnen (Depot-Anteil 100 -> 100 umschichten), dann stornieren
   SELECT id INTO v_hold FROM finance.depot_holdings WHERE account_id = v_depot;
-  v_r := finance.fn_book_stock_sell(jsonb_build_object('settlement_id',v_settle,'holding_id',v_hold,'shares',1,'price_per_share',150,
+  v_r := finance.fn_book_stock_sell(jsonb_build_object('price_currency_confirmed',true,'settlement_id',v_settle,'holding_id',v_hold,'shares',1,'price_per_share',150,
            'order_fee',0,'symbol','IUSQ','savings_goal_name','__vd2 Ziel__'));
   v_sell := (v_r->>'sell_tx_id')::int;
   IF (v_r->>'ok')::boolean IS DISTINCT FROM true THEN RAISE EXCEPTION 'FAIL void [V2 setup]: %', v_r; END IF;

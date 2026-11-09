@@ -5,7 +5,11 @@
 --   gespeichert; shares-Delta ist negativ (-verkaufte Stuecke). avg-Trigger
 --   liest nur buy -> Sell-Gebuehr verfaelscht avg nie.
 --   Eingabe jsonb: settlement_id, holding_id, shares (positiver Eingabewert),
---   price_per_share, order_fee, transaction_date (ISO oder relativ, leer = heute), symbol (fuer description).
+--   price_per_share, order_fee, transaction_date (ISO oder relativ, leer = heute), symbol (fuer description),
+--   quote_currency (opt, Waehrung des genannten Kurses), total_credited (opt, statt Kurs: Gutschrift nach Gebuehr in Kontowaehrung =
+--   Buchungsbetrag, Kurs rechnet die fn), price_currency_confirmed (opt bool, Kurs belegt in Kontowaehrung: Kontoauszug/Broker-Datei).
+--   Kurswaehrung (genannt, sonst gespeicherte Notierung der Position) != Verrechnungskonto ohne Gutschrift ->
+--   {ok:false, code:'price_currency_mismatch', price_currency, settlement_currency}; keine bekannt -> {ok:false, code:'price_currency_missing'}.
 --   RUECKGABE-VERTRAG: Erfolg -> {ok:true, sell_tx_id, settlement_balance, proceeds,
 --   remaining_shares} (Post-State aus der fn: neuer Verrechnungskonto-Saldo + Netto-Erloes
 --   + Trigger-gepflegte Rest-Stuecke, in derselben Transaktion gelesen). Korrigierbarer Fall
@@ -27,7 +31,13 @@ DECLARE
     v_settle  INT     := (p->>'settlement_id')::int;
     v_holding INT     := (p->>'holding_id')::int;
     v_shares  NUMERIC := (p->>'shares')::numeric;           -- positiver Eingabewert
-    v_price   NUMERIC := (p->>'price_per_share')::numeric;
+    -- 0 = nicht genannt (Tool-Default bei total_credited; ein Kurs 0 ist ohnehin ungueltig)
+    v_price   NUMERIC := NULLIF((p->>'price_per_share')::numeric, 0);
+    v_quote   TEXT    := finance.fn_normalize_currency(NULLIF(p->>'quote_currency', ''));
+    v_confirmed BOOLEAN := COALESCE(NULLIF(p->>'price_currency_confirmed', '')::boolean, false);
+    v_total   NUMERIC;   -- total_credited, geparst
+    v_derived NUMERIC;
+    v_pccy    TEXT;
     v_fee     NUMERIC := COALESCE(NULLIF(p->>'order_fee', '')::numeric, 0);
     v_date    DATE;
     v_avail   NUMERIC;
@@ -63,6 +73,18 @@ BEGIN
         RETURN jsonb_build_object('ok', false,
             'reason', 'Share count must be a positive number, got ' || COALESCE(v_shares::text, 'null') || '.');
     END IF;
+    IF NULLIF(p->>'total_credited', '') IS NOT NULL THEN
+        v_total := finance.fn_parse_numeric_or_null(p->>'total_credited', true);
+        IF v_total IS NULL OR v_total <= 0 THEN
+            RETURN jsonb_build_object('ok', false,
+                'reason', 'total_credited (the amount credited after fees) must be a positive number, got ' || (p->>'total_credited') || '.');
+        END IF;
+        v_derived := finance.fn_unit_price_from_total(v_total + v_fee, v_shares);
+        IF v_price IS NOT NULL AND round(v_price, 8) IS DISTINCT FROM v_derived THEN
+            RETURN jsonb_build_object('ok', false, 'reason', 'Give either price_per_share or total_credited, they do not match.');
+        END IF;
+        v_price := v_derived;
+    END IF;
     IF v_price IS NULL OR v_price <= 0 THEN
         RETURN jsonb_build_object('ok', false,
             'reason', 'Price per share must be a positive number, got ' || COALESCE(v_price::text, 'null') || '.');
@@ -79,6 +101,24 @@ BEGIN
     SELECT shares INTO v_avail FROM finance.depot_holdings WHERE id = v_holding FOR UPDATE;
     IF v_avail IS NULL THEN
         RAISE EXCEPTION 'Holding % not found.', v_holding;
+    END IF;
+
+    -- Kurs in anderer oder unbekannter Waehrung als das Gutschrift-Konto: nie 1:1 gutschreiben, nie schaetzen (Regel wie fn_book_stock_buy).
+    IF v_total IS NULL AND NOT v_confirmed THEN
+        SELECT currency INTO v_sccy FROM finance.accounts WHERE id = v_settle;
+        v_pccy := COALESCE(v_quote, (SELECT h.quote_currency FROM finance.depot_holdings h WHERE h.id = v_holding));
+        IF v_pccy IS NULL THEN
+            RETURN jsonb_build_object('ok', false, 'code', 'price_currency_missing',
+                'reason', 'The currency of the sale price is unknown. Pass the currency the user named as quote_currency; '
+                       || 'if the user named none, ask which currency the price is in, or how much ' || v_sccy || ' was actually credited after fees (then call again with total_credited).');
+        END IF;
+        IF v_pccy IS DISTINCT FROM v_sccy THEN
+            RETURN jsonb_build_object('ok', false, 'code', 'price_currency_mismatch',
+                'reason', 'The sale price is in ' || v_pccy || ' but the settlement account is in ' || v_sccy
+                       || '. Do not convert or estimate. Ask the user how much ' || v_sccy || ' was actually credited after fees, '
+                       || 'and call again with that amount as total_credited and price_per_share empty.',
+                'price_currency', v_pccy, 'settlement_currency', v_sccy);
+        END IF;
     END IF;
 
     -- Oversell -> korrigierbar (Agent fragt nach, wie viele verkauft werden sollen).
@@ -113,7 +153,7 @@ BEGIN
                 'reason', 'Savings goal "' || v_goal_name || '" has no money in this depot - book the sale without the goal, '
                        || 'or earmark the money first (tool_book_savings_reservation).');
         END IF;
-        v_proceeds := round(v_shares * v_price - v_fee, 2);
+        v_proceeds := COALESCE(v_total, round(v_shares * v_price - v_fee, 2));
         v_rate := v_proceeds / NULLIF(finance.fn_to_eur(v_proceeds, v_sccy, v_date), 0);
         IF v_rate IS NULL THEN
             RETURN jsonb_build_object('ok', false,
@@ -128,14 +168,14 @@ BEGIN
         (account_id, amount, transaction_date, category, holding_id, shares, order_fee, description)
     VALUES (
         v_settle,
-        (v_shares * v_price) - v_fee,
+        COALESCE(v_total, (v_shares * v_price) - v_fee),
         v_date,
         'sell',
         v_holding,
         -v_shares,
         v_fee,
         'Verkauf ' || (p->>'shares') || ' ' || COALESCE(NULLIF(p->>'symbol', ''), 'Papier') ||
-        ' @ ' || (p->>'price_per_share') || ' (Gebühr ' || COALESCE(p->>'order_fee', '0') || ')'
+        ' @ ' || CASE WHEN v_total IS NOT NULL THEN trim_scale(v_price)::text ELSE p->>'price_per_share' END || ' (Gebühr ' || COALESCE(p->>'order_fee', '0') || ')'
     )
     RETURNING id, amount INTO v_sell, v_proceeds;   -- proceeds = der GEBUCHTE Cent-Betrag (vorher ungerundet)
 
@@ -158,7 +198,8 @@ BEGIN
         'settlement_balance', v_bal,
         'proceeds', v_proceeds,
         'remaining_shares', v_remain,
-        'effective', (v_dates->'resolved') || jsonb_build_object('transaction_date', v_date, 'order_fee', v_fee))
+        'effective', (v_dates->'resolved') || jsonb_build_object('transaction_date', v_date, 'order_fee', v_fee)
+                      || CASE WHEN v_total IS NOT NULL THEN jsonb_build_object('price_per_share', v_price) ELSE '{}'::jsonb END)
         || CASE WHEN v_goal IS NOT NULL
                 THEN jsonb_build_object('derisk_amount', v_m, 'current_amount', round(COALESCE(v_cur, 0), 2))
                 ELSE '{}'::jsonb END;

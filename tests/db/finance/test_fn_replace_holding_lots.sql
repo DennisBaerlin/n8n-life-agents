@@ -53,7 +53,7 @@ BEGIN
                  'symbol', 'HLE', 'name', 'HL E ETF', 'shares', 10, 'price_per_share', 10, 'order_fee', 0,
                  'transaction_date', (T - 5)::text, 'existing_position', true));
     v_e := (v_res->>'holding_id')::int;
-    v_sell := finance.fn_book_stock_sell(jsonb_build_object('settlement_id', v_cash, 'holding_id', v_e, 'shares', 8,
+    v_sell := finance.fn_book_stock_sell(jsonb_build_object('price_currency_confirmed',true,'settlement_id', v_cash, 'holding_id', v_e, 'shares', 8,
                   'price_per_share', 11, 'order_fee', 0, 'transaction_date', (T - 1)::text, 'symbol', 'HLE'));
     IF (v_sell->>'ok')::boolean IS DISTINCT FROM true THEN RAISE EXCEPTION 'SETUP E sell: %', v_sell; END IF;
     -- F: Uebernahme 10 + ein spaeterer echter Kauf von 2
@@ -257,7 +257,7 @@ BEGIN
     v_h := (finance.fn_book_stock_buy(jsonb_build_object('price_currency_confirmed',true,'depot_id', v_depot, 'settlement_id', v_cash, 'isin', 'IE00HLOTW001',
               'symbol', 'HLW1', 'name', 'HL W1 ETF', 'shares', 10, 'price_per_share', 10, 'order_fee', 0,
               'transaction_date', (T - 5)::text, 'existing_position', true))->>'holding_id')::int;
-    PERFORM finance.fn_book_stock_sell(jsonb_build_object('settlement_id', v_cash, 'holding_id', v_h, 'shares', 10,
+    PERFORM finance.fn_book_stock_sell(jsonb_build_object('price_currency_confirmed',true,'settlement_id', v_cash, 'holding_id', v_h, 'shares', 10,
               'price_per_share', 11, 'order_fee', 0, 'transaction_date', (T - 1)::text, 'symbol', 'HLW1'));
     v_res := finance.fn_replace_holding_lots(jsonb_build_object('depot_name', '__t_hlw_depot__', 'position', 'IE00HLOTW001',
               'lots', jsonb_build_array(jsonb_build_object('date', (T - 5)::text, 'shares', 6, 'price_per_share', 9),

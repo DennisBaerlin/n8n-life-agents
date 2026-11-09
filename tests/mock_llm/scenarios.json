@@ -255,6 +255,14 @@
     "final": "Kauf gebucht."
   },
   {
+    "_comment": "tc124 Verkauf mit Fremdwaehrungs-Kurs: die DB lehnt nach dem Aufruf ab.",
+    "match": "5 Anteile VWCE zu 150 US-Dollar",
+    "calls": [
+      { "tool": "tool_book_stock_sell", "args": { "depot_name": "Testbroker Depot", "symbol": "VWCE", "shares": 5, "price_per_share": 150, "quote_currency": "USD", "order_fee": "0", "transaction_date": "2026-06-16" } }
+    ],
+    "final": "Wie viel Euro wurden gutgeschrieben?"
+  },
+  {
     "_comment": "tc48 Bestandsuebernahme: bestehende Position, Verrechnungskonto bleibt unberuehrt (existing_position).",
     "match": "liegen schon 10 Anteile iShares Core MSCI EM IMI",
     "calls": [

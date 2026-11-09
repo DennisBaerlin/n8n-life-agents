@@ -64,14 +64,14 @@ BEGIN
     'shares', 0.123456789, 'price_per_share', 100, 'transaction_date', CURRENT_DATE::text)) INTO v_res;
   IF (v_res->>'ok')::boolean IS DISTINCT FROM false THEN RAISE EXCEPTION 'FAIL [R2 stueck]: >8 Nachkommastellen -> ok:false, got %', v_res; END IF;
   SELECT id INTO v_hold FROM finance.depot_holdings WHERE account_id = v_depot AND symbol = 'ETH';
-  SELECT finance.fn_book_stock_sell(jsonb_build_object('settlement_id', v_cash, 'holding_id', v_hold, 'shares', 0.01,
+  SELECT finance.fn_book_stock_sell(jsonb_build_object('price_currency_confirmed',true,'settlement_id', v_cash, 'holding_id', v_hold, 'shares', 0.01,
     'price_per_share', 30, 'order_fee', 1, 'transaction_date', CURRENT_DATE::text)) INTO v_res;
   IF (v_res->>'ok')::boolean IS DISTINCT FROM false THEN RAISE EXCEPTION 'FAIL [R2 sell]: Gebuehr >= Erloes -> ok:false, got %', v_res; END IF;
-  SELECT finance.fn_book_stock_sell(jsonb_build_object('settlement_id', v_cash, 'holding_id', v_hold, 'shares', 0.0000000001,
+  SELECT finance.fn_book_stock_sell(jsonb_build_object('price_currency_confirmed',true,'settlement_id', v_cash, 'holding_id', v_hold, 'shares', 0.0000000001,
     'price_per_share', 30, 'transaction_date', CURRENT_DATE::text)) INTO v_res;
   IF (v_res->>'ok')::boolean IS DISTINCT FROM false THEN RAISE EXCEPTION 'FAIL [R2 sell stueck]: ok:false erwartet, got %', v_res; END IF;
   -- Erloes-Rueckgabe = GEBUCHTER Cent-Betrag (vorher ungerundet 99.999999 bei gebuchten 100.00)
-  SELECT finance.fn_book_stock_sell(jsonb_build_object('settlement_id', v_cash, 'holding_id', v_hold, 'shares', 3,
+  SELECT finance.fn_book_stock_sell(jsonb_build_object('price_currency_confirmed',true,'settlement_id', v_cash, 'holding_id', v_hold, 'shares', 3,
     'price_per_share', 33.333333, 'transaction_date', CURRENT_DATE::text)) INTO v_res;
   IF (v_res->>'proceeds')::numeric IS DISTINCT FROM 100.00
      OR (SELECT amount FROM finance.transactions WHERE id = (v_res->>'sell_tx_id')::int) IS DISTINCT FROM 100.00 THEN

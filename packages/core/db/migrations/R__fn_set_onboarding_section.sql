@@ -115,6 +115,10 @@ BEGIN
     EXECUTE format('SELECT NOT EXISTS (SELECT 1 FROM %s WHERE status = ''unknown''%s), '
                    'NOT EXISTS (SELECT 1 FROM %s WHERE status = ''completed''%s)', v_rel, v_pfilter, v_rel, v_pfilter)
         INTO v_complete, v_none_done;
+    -- Der Knopf „Uebersicht“ haengt am Haushalts-Bereich: nur ein echter Wechsel offen <-> fertig legt einen Auftrag an
+    IF NOT v_per_user AND v_complete IS DISTINCT FROM v_was_complete THEN
+        PERFORM core.fn_menu_refresh_request();
+    END IF;
     RETURN jsonb_build_object('ok', true, 'section_key', v_key, 'status', v_status, 'complete', v_complete,
         'area_completed_now', v_complete AND NOT v_was_complete,
         'area_all_skipped',   v_complete AND v_none_done);

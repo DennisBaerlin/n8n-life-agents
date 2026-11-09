@@ -5,6 +5,7 @@
 --     1. Owner-Gate: nur der GEPAIRTE Haushalts-Owner darf einladen. Die Sender-Identitaet kommt
 --        DETERMINISTISCH aus der Telegram-chat_id (Privatchat: chat.id == from.id), NIE aus $fromAI.
 --        fn_resolve_sender(uid).role muss 'owner' sein.
+--     1b. Bot-Name bekannt (core.fn_app_bot_username), sonst keine Einladung.
 --     2. Ziel-Person: existiert genau EINE family-Person zum Namen (gleiche Match-Logik wie
 --        core.fn_resolve_person: first/last/voll/Alias, case-insensitiv), ist sie KEIN Owner und
 --        noch UNGEPAIRT (keine telegram_user_id) -> einladbar.
@@ -41,6 +42,12 @@ BEGIN
     IF (v_sender->>'found')::boolean IS DISTINCT FROM true OR v_sender->>'role' <> 'owner' THEN
         RETURN jsonb_build_object('ok', false,
             'reason', 'only the household owner can issue member invitations');
+    END IF;
+
+    -- Ohne echten Bot-Namen wuerde der Link auf einen fremden Bot zeigen (getMe scheiterte bisher).
+    IF core.fn_app_bot_username() IS NULL THEN
+        RETURN jsonb_build_object('ok', false,
+            'reason', 'the bot name is not known yet, so no invitation link can be made. Tell the owner to run lifeagents update and try again.');
     END IF;
 
     IF v_name = '' THEN

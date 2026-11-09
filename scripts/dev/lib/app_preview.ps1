@@ -22,7 +22,7 @@
 
 $script:AppPreviewUtf8NoBom = [System.Text.UTF8Encoding]::new($false)
 # Shell-Keys wie v_shell in core.fn_app_screen (Titel, Neu laden, Luecke, leer, Summe, Formate) + das ok-Banner (-CalmHome)
-$script:AppPreviewShellKeys = @('core.app.title', 'core.app.reload', 'core.app.gap', 'core.app.nothing', 'core.app.sum',
+$script:AppPreviewShellKeys = @('core.app.title', 'core.app.reload', 'core.app.ask_chat', 'core.app.gap', 'core.app.nothing', 'core.app.sum',
                                 'core.fmt.empty', 'core.fmt.default_suffix', 'core.fmt.yes', 'core.fmt.no', 'core.fmt.removed',
                                 'core.app.all_good')
 
@@ -100,7 +100,7 @@ function Get-AppPreviewPage {
     if ($css) { $stub += "<style>$css</style>" }
     # Antwort-Formen wie core.fn_app_screen: ohne screen {ok, ui, screens, first:{screen, view+banners}}; mit screen
     # {ok, ui, view}; die Startseite traegt die Hinweise, jede andere Seite []; unbekannter Bildschirm -> {ok:false}.
-    $stub += "<script>window.Telegram = { WebApp: { colorScheme: '$Scheme', initData: '' } };" +
+    $stub += "<script>window.Telegram = { WebApp: { colorScheme: '$Scheme', initData: '', openTelegramLink: function () {}, close: function () {}, isVersionAtLeast: function () { return true; } } };" +
              "window.__APP_PREVIEW__ = $data;" +
              "window.__APP_PREVIEW__.ui = $ui;" +
              $(if ($CalmHome) { "window.__APP_PREVIEW__.banners = [{ state: 'ok', icon: 'check', target: null, text: { kind: 'tpl', value: 'core.app.all_good', params: {} } }];" } else { '' }) +
@@ -109,7 +109,7 @@ function Get-AppPreviewPage {
              "  try { body = JSON.parse((opts && opts.body) || '{}'); } catch (e) { body = {}; }" +
              "  var home = D.screens[0].screen;" +
              "  var withBanners = function (s) { return Object.assign({}, D.views[s], { banners: s === home ? D.banners : [] }); };" +
-             "  if (!body.screen) { resp = { ok: true, ui: D.ui, screens: D.screens, first: { screen: home, view: withBanners(home) } }; }" +
+             "  if (!body.screen) { resp = { ok: true, ui: D.ui, screens: D.screens, bot: D.bot, first: { screen: home, view: withBanners(home) } }; }" +
              "  else if (D.views[body.screen]) { resp = { ok: true, ui: D.ui, view: withBanners(body.screen) }; }" +
              "  else { resp = { ok: false, code: 'unknown_screen' }; }" +
              "  return Promise.resolve({ ok: true, json: function () { return Promise.resolve(resp); } });" +

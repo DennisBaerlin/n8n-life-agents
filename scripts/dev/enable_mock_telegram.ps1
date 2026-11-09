@@ -211,6 +211,9 @@ $mockBlock = [ordered]@{ port = [int]$MockPort; url = $MockUrl; log = $MockLog; 
 Write-StateMock (Read-State) $mockBlock
 
 Write-Host ""
+# Der Mock antwortet auf getMe mit diesem Namen; ohne echten Test-Bot bliebe sonst der Platzhalter und Einladungen scheiterten.
+[void](Invoke-TestN8nPsql -Container $Container -PsqlArgs @('-tA', '-c', "SELECT core.fn_set_bot_username('mock_test_bot');"))
+
 Write-Host "============================================================"
 Write-Host "  Mock-Telegram aktiv"
 Write-Host "  Unit:      $Unit  (127.0.0.1:$MockPort, im Container)"

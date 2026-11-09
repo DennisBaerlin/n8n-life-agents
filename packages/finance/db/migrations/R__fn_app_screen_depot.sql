@@ -5,10 +5,10 @@
 --   Abschnitt finance.app.depot.section: Frage: Was sind die Wertpapiere in diesem Depot heute wert, und wie stehen sie seit dem Kauf?
 --   Abschnitt finance.app.depot.section_kids: Frage: Was liegt in den Depots der Kinder, und wie stehen sie?
 --   Quellen: depot_holdings_overview (Marktwert, Kurs, Kurs-Datum, price_status ok|stale|missing, Kaufwert, Gewinn),
---   networth_by_asset_class (Hero), finance.fn_depot_performance (Rendite), transactions (Buchungen je Position,
+--   networth_items (Hero, je Anlageart einmal gerundet), finance.fn_depot_performance (Rendite), transactions (Buchungen je Position,
 --   finance.fn_app_holding_transactions). Die Seite rechnet nichts. Was im Depot fuer Ziele reserviert ist, zeigt der
 --   Bildschirm Ziele.
---   HERO = Anlageart „depot" aus networth_by_asset_class mit derselben Personen-Auswahl wie die Vermoegen-Seite (Uebersicht
+--   HERO = Anlageart „depot" aus networth_items mit derselben Personen-Auswahl wie die Vermoegen-Seite (Uebersicht
 --     R3: Depotwert = „Wertpapiere & Krypto" dort, ohne Kurs zaehlt der Kaufwert); gap, wenn eine Position keinen Kurs
 --     oder keinen Wechselkurs hat. Haushalts-Betrachter: ohne Kinder-Depots (role = 'child', T2-Muster), ohne Fussnote.
 --     Note: Gewinn seit Kauf (nur Positionen mit aktuellem Kurs und Kaufwert; veraltete Kurse nicht, wie die Pille) +
@@ -351,12 +351,12 @@ BEGIN
     END IF;
 
     -- Hero: dieselbe Zahl wie „Wertpapiere & Krypto" auf der Vermoegen-Seite (gleiche Quelle, gleiche Auswahl)
-    SELECT COALESCE(sum(n.value_eur), 0), COALESCE(bool_or(n.has_fx_gap), false)
+    SELECT COALESCE(round(sum(i.value_eur), 2), 0), COALESCE(bool_or(i.value_native <> 0 AND i.value_eur IS NULL), false)
       INTO v_total, v_gap
-      FROM finance.networth_by_asset_class n
-      LEFT JOIN core.fn_household_persons() hp ON hp.person_id = n.owner_person_id
-     WHERE n.bucket = 'depot'
-       AND ((v_hh AND hp.role IS DISTINCT FROM 'child') OR (NOT v_hh AND n.owner_person_id = v_pid));
+      FROM finance.networth_items i
+      LEFT JOIN core.fn_household_persons() hp ON hp.person_id = i.owner_person_id
+     WHERE i.bucket = 'depot'
+       AND ((v_hh AND hp.role IS DISTINCT FROM 'child') OR (NOT v_hh AND i.owner_person_id = v_pid));
 
     RETURN jsonb_build_object(
         'ok', true,

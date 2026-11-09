@@ -404,6 +404,8 @@ foreach ($pkg in $cat.Keys) {
 Check 'Mini-App-Texte: kein verwaister *.app.*-Key' {
     $shText = (@(Get-ChildItem (Join-Path $RepoRoot 'provisioning') -Recurse -File -Filter '*.sh') |
         ForEach-Object { [System.IO.File]::ReadAllText($_.FullName, $Utf8NoBom) }) -join "`n"
+    # Titel der Ankuendigungs-Animation: nur der Render-Schritt nennt ihn
+    $shText += [System.IO.File]::ReadAllText((Join-Path $RepoRoot 'scripts\dev\render_app_intro.ps1'), $Utf8NoBom)
     foreach ($k in $unused) {
         if ($shText.Contains($k)) { continue }
         if ($k -match '^[a-z0-9_]+\.app\.' -and $k -notmatch '^[a-z0-9_]+\.app\.screen\.') { "Datei packages/$($k.Split('.')[0])/locales/*.json: '$k' wird nirgends genutzt -- in allen Sprachen entfernen" }

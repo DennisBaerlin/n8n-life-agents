@@ -278,12 +278,14 @@ BEGIN
                              jsonb_build_object('label', core.fn_ui_tpl('finance.app.goals.i_cover_short', jsonb_build_object(
                                  'depot', g.dep_short ->> 'name', 'gap', core.fn_ui_money((g.dep_short ->> 'gap')::numeric, 'EUR'))),
                                  'value', NULL, 'kind', 'info'),
-                             jsonb_build_object('label', core.fn_ui_tpl('finance.app.goals.todo_cover'), 'value', NULL, 'kind', 'todo'))
+                             jsonb_build_object('label', core.fn_ui_tpl('finance.app.goals.todo_cover'), 'value', NULL, 'kind', 'todo',
+                                 'ask', core.fn_ui_tpl('finance.app.goals.ask_cover', jsonb_build_object('goal', g.name))))
                     WHEN g.pace = 'behind' AND g.behind_amount > 0
                     THEN jsonb_build_array(
                              jsonb_build_object('label', core.fn_ui_tpl('finance.app.goals.i_behind', jsonb_build_object(
                                  'gap', core.fn_ui_money(g.behind_amount, 'EUR'))), 'value', NULL, 'kind', 'info'),
-                             jsonb_build_object('label', core.fn_ui_tpl('finance.app.goals.todo_behind'), 'value', NULL, 'kind', 'todo'))
+                             jsonb_build_object('label', core.fn_ui_tpl('finance.app.goals.todo_behind'), 'value', NULL, 'kind', 'todo',
+                                 'ask', core.fn_ui_tpl('finance.app.goals.ask_behind', jsonb_build_object('goal', g.name))))
                     WHEN g.pace = 'paused'
                     THEN jsonb_build_array(jsonb_build_object('label', core.fn_ui_tpl('finance.app.goals.i_paused'), 'value', NULL, 'kind', 'info'))
                     WHEN g.pace = 'unmeasurable'
@@ -415,7 +417,8 @@ BEGIN
                                THEN jsonb_build_array(
                                         jsonb_build_object('label', core.fn_ui_tpl('finance.app.goals.i_reserve_low', jsonb_build_object(
                                             'gap', core.fn_ui_money(m.gap_monthly_eur, 'EUR'))), 'value', NULL, 'kind', 'info'),
-                                        jsonb_build_object('label', core.fn_ui_tpl('finance.app.goals.todo_reserve_low'), 'value', NULL, 'kind', 'todo'))
+                                        jsonb_build_object('label', core.fn_ui_tpl('finance.app.goals.todo_reserve_low'), 'value', NULL, 'kind', 'todo',
+                                 'ask', core.fn_ui_tpl('finance.app.goals.ask_reserve_low', jsonb_build_object('goal', m.goal_name))))
                                ELSE '[]'::jsonb END
                           || COALESCE(v_rates -> m.goal_id::text -> 'lines', '[]'::jsonb)
                           || (SELECT COALESCE(jsonb_agg(x.d ORDER BY x.o), '[]'::jsonb) FROM (

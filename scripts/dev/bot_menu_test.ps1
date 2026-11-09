@@ -10,6 +10,7 @@
 #     als gesetzt;
 #   - der Mini-App-Knopf „Übersicht“ (setChatMenuButton) nur pro Chat, bei audience=owner nur fuer den Owner, Text aus
 #     dem Katalog, URL https + /webhook/app-<uuid>; nie als Standard-Knopf.
+#   - Einrichtung offen: kein Knopf, keine Ankuendigung; fertig: Knopf und genau eine Animation je Person.
 #   - Menue-Auftrag (core.menu_refresh): ein Wechsel von app.audience legt ihn an, der minuetliche Runner
 #     (`lifeagents update --run-requested`) setzt NUR die Knoepfe (keine Befehlsmenues) fuer alle gekoppelten Personen
 #     und schliesst ihn; Zweitlauf ruft Telegram nicht; scheitert Telegram, bleibt er offen mit Wartezeit; ein
@@ -159,11 +160,21 @@ function Invoke-Runner([string]$Api) {
 [void](Invoke-Sql "UPDATE core.config SET value = 'household' WHERE category = 'app' AND key = 'audience';")
 if ((Invoke-Sql "SELECT core.fn_menu_refresh_claim()->>'open';") -ne 'true') { Fail 'audience-Wechsel hat keinen Menü-Auftrag angelegt' }
 Clear-MockTelegramRequests -Container $Container
+# Einrichtung offen: kein Knopf, keine Ankuendigung (fn_app_button_ready). Danach gilt die Einrichtung als fertig.
+Invoke-Runner "http://127.0.0.1:$MockPort"
+$req0 = @(Get-MockTelegramRequests -Container $Container)
+if (@($req0 | Where-Object { $_.method -eq 'setChatMenuButton' -and $_.body.menu_button.type -eq 'web_app' }).Count -gt 0) { Fail 'Übersicht-Knopf trotz offener Einrichtung' }
+if (@($req0 | Where-Object { $_.method -eq 'sendAnimation' }).Count -gt 0) { Fail 'Ankündigung trotz offener Einrichtung' }
+[void](Invoke-Sql "SELECT core.fn_should_notify('app_button', 'ready');")
+[void](Invoke-Sql "SELECT core.fn_menu_refresh_request();")
+Clear-MockTelegramRequests -Container $Container
 Invoke-Runner "http://127.0.0.1:$MockPort"
 $req = @(Get-MockTelegramRequests -Container $Container)
 if (@($req | Where-Object { $_.method -eq 'setMyCommands' }).Count -gt 0) { Fail 'Runner hat Befehlsmenüs gesetzt (soll nur die Knöpfe setzen)' }
 $web2 = @($req | Where-Object { $_.method -eq 'setChatMenuButton' -and $_.body.menu_button.type -eq 'web_app' })
 if ($web2.Count -ne $tids.Count) { Fail "Runner: $($web2.Count) Übersicht-Knöpfe, erwartet $($tids.Count) (alle gekoppelten Personen bei household)" }
+$anim = @($req | Where-Object { $_.method -eq 'sendAnimation' })
+if ($anim.Count -ne $tids.Count) { Fail "Ankündigung: $($anim.Count) Animationen, erwartet $($tids.Count) (einmal je Person)" }
 if ((Invoke-Sql "SELECT core.fn_menu_refresh_claim()->>'open';") -ne 'false') { Fail 'Runner hat den Menü-Auftrag nicht geschlossen' }
 Clear-MockTelegramRequests -Container $Container
 Invoke-Runner "http://127.0.0.1:$MockPort"
@@ -189,6 +200,7 @@ if ($tids.Count -gt 0) {
 if ($addedTid) {
     [void](Invoke-Sql "UPDATE agent.core_contexts SET metadata = jsonb_set(metadata, '{facts,persons}', (SELECT jsonb_agg(e - 'telegram_user_id' ORDER BY o) FROM jsonb_array_elements(metadata->'facts'->'persons') WITH ORDINALITY AS x(e, o))) WHERE name = 'family';")
 }
+[void](Invoke-Sql "SELECT core.fn_notify_resolve('app_button', 'ready');")
 if ($audienceBefore) { [void](Invoke-Sql "UPDATE core.config SET value = '$audienceBefore' WHERE category = 'app' AND key = 'audience';") }
 $prev4 = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
 [void](& docker exec $Container bash -c $sh 2>&1)

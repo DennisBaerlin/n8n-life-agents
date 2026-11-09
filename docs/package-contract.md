@@ -821,7 +821,7 @@ page computes nothing — states, progress and sums come from the DB.
   | home banner `ok` | the one green signal of the app | exactly one „Alles in Ordnung“ banner on the home screen when no alert/warn banner was collected (`core.fn_app_nav`) |
   | `progress` | progress towards an amount target | neutral/accent colour on track, warn/alert = the row's pill, never `ok`; shares neutral; no bar when reached or without amount target |
   | `sub` | one line of „from/whom · when“ or the target („von 40.000 € · bis 03.2040“) | never an explanation, never a second amount of the same kind |
-  | `details` | derivation, single items | ≤ 8 lines, not counting lines with `kind` (`info` explanation, `todo` what you can do, `result` end of a calculation); optional `more` = explanation behind the line's own ⓘ; no fact that is a row elsewhere in the app (a name as cross-reference is fine) |
+  | `details` | derivation, single items | ≤ 8 lines, not counting lines with `kind` (`info` explanation, `todo` what you can do, `result` end of a calculation); optional `more` = explanation behind the line's own ⓘ; a `todo` line may carry `ask` (template, the prepared chat message; the page shows "Ask in chat", opens `t.me/<bot>?text=…` and closes, the user sends it); no fact that is a row elsewhere in the app (a name as cross-reference is fine) |
   | words | layperson test | `locale_lint` (9) denies the jargon list `$AppDeniedWords` in `*.app.*` texts |
 
   `core.fn_app_view_lint(view, neutral_keys, undated_keys) RETURNS TABLE(rule, path)` checks one view model against

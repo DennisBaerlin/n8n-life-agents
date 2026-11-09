@@ -160,6 +160,7 @@ button.row:active, button.banner:active { opacity: .6; }
 .kv-k { color: var(--hint); min-width: 0; overflow-wrap: anywhere; }
 .kv-v { text-align: right; font-variant-numeric: tabular-nums; flex-shrink: 0; max-width: 60%; overflow-wrap: anywhere; }
 .kv[hidden] { display: none; }
+.ask { display: block; min-height: 44px; margin-top: 2px; padding: 0; border: 0; background: none; font: inherit; font-weight: 600; color: var(--active); cursor: pointer; text-align: left; }
 
 .pill {
   position: relative; isolation: isolate; display: inline-flex; align-items: center; gap: 4px;
@@ -267,6 +268,7 @@ button.row:active, button.banner:active { opacity: .6; }
   }
   const stateOf = (s) => (STATES.indexOf(s) >= 0 ? s : 'neutral');
   const txt = (R, x) => (typeof x === 'string' ? x : R.val(x));
+  let botName = null;
   const isTarget = (t) => !!(t && typeof t === 'object' && typeof t.screen === 'string' && t.screen);
 
   function scheme() {
@@ -334,6 +336,7 @@ button.row:active, button.banner:active { opacity: .6; }
       // Ablehnung ohne Text (DB-Ausfall: der Workflow antwortet nur {ok:false, code:'error'}) -> wie ein Netzfehler mit Neu-laden.
       if (resp.ok !== true) { if (resp.text) showRefusal(resp); else showNetError(start); return; }
       navR = uiRender(resp.ui, {});
+      botName = typeof resp.bot === 'string' && /^[A-Za-z0-9_]{5,32}$/.test(resp.bot) ? resp.bot : null;
       lastUi = resp.ui || lastUi;
       setLang(resp.ui);
       if (navR.has('core.app.title')) document.title = navR.t('core.app.title');
@@ -505,6 +508,19 @@ button.row:active, button.banner:active { opacity: .6; }
   }
   // Aufklappen (item.details, optional): Zeile wird ein Toggle-Button, darunter eine Schluessel/Wert-Liste. Ein
   // Sprungziel (target) hat Vorrang. Beim Umschalten kurz kein aria-live, sonst liest der Screenreader alles vor.
+  // Zeile „Das kannst du tun“: legt die Nachricht ins Eingabefeld des Bot-Chats, abschicken bleibt beim Nutzer. Seit Bot API 7.0
+  // schliesst openTelegramLink die App nicht mehr, darum selbst schliessen; kurz warten, sonst geht der Link verloren.
+  function askButton(ask, R) {
+    if (!botName || !TG || typeof TG.openTelegramLink !== 'function' || !R.has('core.app.ask_chat')) return null;
+    if (typeof TG.isVersionAtLeast === 'function' && !TG.isVersionAtLeast('6.1')) return null;
+    const b = el('button', 'ask', R.t('core.app.ask_chat'));
+    b.type = 'button';
+    b.addEventListener('click', () => {
+      TG.openTelegramLink('https://t.me/' + botName + '?text=' + encodeURIComponent(txt(R, ask).slice(0, 1000)));
+      setTimeout(() => { try { TG.close(); } catch (e) { /* Client schon zu */ } }, 400);
+    });
+    return b;
+  }
   function item(it, R) {
     const li = el('li', it.marked === true ? 'item marked' : 'item');
     const go = isTarget(it.target);
@@ -524,6 +540,7 @@ button.row:active, button.banner:active { opacity: .6; }
         const kv = el('li', 'kv');
         const label = el('span', 'kv-k', (d.kind === 'info' ? INFO + ' ' : '') + txt(R, d.label));
         kv.appendChild(label);
+        if (d.kind === 'todo' && d.ask) { const a = askButton(d.ask, R); if (a) label.appendChild(a); }
         if (!R.isEmpty(d.value)) kv.appendChild(el('span', 'kv-v', txt(R, d.value)));
         list.appendChild(kv);
         // d.more (optional): Erklaerung einer einzelnen Zeile, erst nach Tipp auf ihr Info-Zeichen

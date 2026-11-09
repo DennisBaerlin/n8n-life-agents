@@ -1396,6 +1396,16 @@ BEGIN
       RAISE EXCEPTION 'FAIL [finance_ro NEGATIV]: unerwarteter Fehler statt insufficient_privilege: %', SQLERRM;
   END;
 
+  -- Menue-Auftrag: das DEFINER-Fenster muss unter der engen Rolle laufen
+  BEGIN
+    SET LOCAL ROLE finance_rw;
+    PERFORM core.fn_menu_refresh_request();
+    RESET ROLE;
+  EXCEPTION WHEN OTHERS THEN
+    RESET ROLE;
+    RAISE EXCEPTION 'FAIL [finance_rw -> fn_menu_refresh_request]: % (Grant in fn_provision_package_roles fehlt?)', SQLERRM;
+  END;
+
   -- ===== (6) INVOKER-Write-Pfad fn_set_onboarding_section unter der ENGEN Paket-RW-Rolle =====
   -- P2b-1-Regression (gefunden estate WS-1): die fn leitet den per_user-Scope aus core.context_scopes ab
   -- (SECURITY INVOKER) -> ohne SELECT-Grant an <pkg>_rw crasht der Onboarding-Marker JEDES Paket-Tools
@@ -1697,7 +1707,7 @@ DECLARE
                               'fn_config_get', 'fn_monitor_trigger_summary', 'fn_list_monitor_triggers',
                               'fn_household_persons', 'fn_resolve_person', 'fn_ui_texts_for', 'fn_today',
                               'fn_resolve_date', 'fn_resolve_input_dates', 'fn_handoff_tasks_read'];
-  v_published_rw text[] := ARRAY['fn_set_onboarding_section', 'fn_check_write_permission', 'fn_person_chat_id',
+  v_published_rw text[] := ARRAY['fn_menu_refresh_request', 'fn_set_onboarding_section', 'fn_check_write_permission', 'fn_person_chat_id',
                                  'fn_should_notify', 'fn_notify_resolve', 'fn_dry_run', 'fn_reminder_allowed', 'fn_notify_forget_before',
                                  'fn_handoff_task_check', 'fn_complete_handoff_task', 'fn_cancel_handoff_task'];
   v_n int := 0;

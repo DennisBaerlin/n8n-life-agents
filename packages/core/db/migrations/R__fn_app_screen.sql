@@ -22,7 +22,8 @@
 --   INVOKER unter der Host-Credential (Muster core.fn_dispatch_callback); handler_fn ist installer-geschrieben und per
 --   CHECK schema-qualifiziert, nie Caller-Input.
 --   p: Request-Body als Text
---   RUECKGABE: {ok:true, ui, screens:[{screen, title, icon}], first?:{screen, view}} | {ok:true, ui, view} |
+--   bot: echter Benutzername des Bots (core.fn_app_bot_username, sonst null) fuer die Chat-Nachricht der Zeilen „Das kannst du tun“.
+--   RUECKGABE: {ok:true, ui, screens:[{screen, title, icon}], bot, first?:{screen, view}} | {ok:true, ui, view} |
 --              core.fn_app_refusal(...); jede unerwartete Ausnahme -> core.fn_app_refusal('error') (Notnetz).
 --   Tests: tests/db/core/test_fn_app_screen.sql
 -- ============================================================
@@ -48,7 +49,7 @@ DECLARE
     v_short  jsonb := jsonb_build_object('date_short', jsonb_build_object(
                           'from', to_char(core.fn_today() - interval '3 months', 'YYYY-MM-DD'),
                           'to', to_char(core.fn_today() + interval '9 months', 'YYYY-MM-DD')));
-    v_shell  jsonb := to_jsonb(ARRAY['core.app.title', 'core.app.reload', 'core.app.gap', 'core.app.nothing', 'core.app.sum',
+    v_shell  jsonb := to_jsonb(ARRAY['core.app.title', 'core.app.reload', 'core.app.ask_chat', 'core.app.gap', 'core.app.nothing', 'core.app.sum',
                                      'core.fmt.empty', 'core.fmt.default_suffix', 'core.fmt.yes',
                                      'core.fmt.no', 'core.fmt.removed']);
 BEGIN
@@ -104,7 +105,7 @@ BEGIN
             END;
         END IF;
         v_nav := v_nav->'screens';
-        RETURN jsonb_build_object('ok', true, 'screens', v_nav)
+        RETURN jsonb_build_object('ok', true, 'screens', v_nav, 'bot', core.fn_app_bot_username())
             || CASE WHEN v_first IS NULL THEN '{}'::jsonb ELSE jsonb_build_object('first', v_first) END
             || jsonb_build_object('ui', agent.fn_ui_texts_for(jsonb_build_object('chat_id', v_chat, 'keys', v_shell,
                                                                                   'doc', jsonb_build_array(v_nav, v_first))) || v_short);

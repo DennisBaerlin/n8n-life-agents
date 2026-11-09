@@ -285,7 +285,8 @@ BEGIN
                     AND v_it->'details' = jsonb_build_array(
                           jsonb_build_object('label', core.fn_ui_tpl('finance.app.goals.i_reserve_low', jsonb_build_object('gap', core.fn_ui_money(m.gap_monthly_eur, 'EUR'))),
                                              'value', NULL, 'kind', 'info'),
-                          jsonb_build_object('label', core.fn_ui_tpl('finance.app.goals.todo_reserve_low'), 'value', NULL, 'kind', 'todo'),
+                          jsonb_build_object('label', core.fn_ui_tpl('finance.app.goals.todo_reserve_low'), 'value', NULL, 'kind', 'todo',
+                                             'ask', core.fn_ui_tpl('finance.app.goals.ask_reserve_low', jsonb_build_object('goal', m.goal_name))),
                           jsonb_build_object('label', core.fn_ui_tpl('finance.app.goals.d_rate_from', jsonb_build_object('account', '__apgl_giro__')),
                                              'value', finance.fn_app_order_line((SELECT id FROM finance.recurring_payments WHERE name = '__apgl_rp_res__'))),
                           jsonb_build_object('label', core.fn_ui_tpl('finance.app.goals.d_guide'),

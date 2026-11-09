@@ -157,6 +157,22 @@ BEGIN
   RAISE NOTICE 'PASS [8] app.enabled fail-closed';
 END $$;
 
+-- ===== Bot-Name fuer „Im Chat fragen“: nur ein echter Name, nie der Platzhalter =====
+DO $$
+DECLARE r jsonb;
+BEGIN
+  INSERT INTO core.config (category, key, value, default_value) VALUES ('app', 'enabled', 'true', 'true')
+    ON CONFLICT (category, key) DO UPDATE SET value = 'true';
+  INSERT INTO core.config (category, key, value, default_value) VALUES ('telegram', 'bot_username', 'your_bot', 'your_bot')
+    ON CONFLICT (category, key) DO UPDATE SET value = 'your_bot', default_value = 'your_bot';
+  r := core.fn_app_screen(jsonb_build_object('init_data', pg_temp.mk_init(111))::text);
+  IF r->>'ok' IS DISTINCT FROM 'true' OR r->>'bot' IS NOT NULL THEN RAISE EXCEPTION 'FAIL [bot1] Platzhalter: %', r->'bot'; END IF;
+  UPDATE core.config SET value = 'muster_haushalt_bot' WHERE category = 'telegram' AND key = 'bot_username';
+  r := core.fn_app_screen(jsonb_build_object('init_data', pg_temp.mk_init(111))::text);
+  IF r->>'bot' IS DISTINCT FROM 'muster_haushalt_bot' THEN RAISE EXCEPTION 'FAIL [bot2] Name fehlt: %', r->'bot'; END IF;
+  RAISE NOTICE 'PASS [bot] Bot-Name nur, wenn echt';
+END $$;
+
 -- ===== Banner (Startseite): nur aus probe, generisch eingesammelt, alert vor warn, dann ord =====
 -- bn1 (ord 12): warn + ein ungueltiges Element + ein Element mit fremdem Ziel; fuer das Kind leer (Banner verworfen).
 -- bn2 (ord 14): alert; volle View traegt eigene Banner (muessen ignoriert werden: nur probe zaehlt).

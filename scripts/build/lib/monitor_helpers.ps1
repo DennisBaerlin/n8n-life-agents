@@ -8,7 +8,7 @@
 # Dot-gesourct von build.ps1 (sieht $RepoRoot + die lib-Helper im Parent-Scope).
 
 # Strikter Antwort-Vertrag der Wert-Beschaffung (EN, build-time Konstante).
-$script:MonitorSysText = 'You retrieve exactly ONE metric value via web search. Respond with ONLY a single JSON object, no prose, no markdown fences: {"ok": true|false, "value": number|null, "unit": "unit exactly as requested in the query", "as_of": "date the value refers to (YYYY-MM-DD if known)", "source_url": "best source url", "reason": "only when ok=false"}. Set ok=false with a concrete reason when the value cannot be RELIABLY determined (sources conflict, data is stale or paywalled). Never guess. value is a plain number with dot decimal, no thousands separators, no units inside value.'
+$script:MonitorSysText = 'You retrieve exactly ONE metric value via web search. Respond with ONLY a single JSON object, no prose, no markdown fences: {"ok": true|false, "value": number|null, "unit": "unit exactly as requested in the query", "as_of": "date the value refers to (YYYY-MM-DD)", "source_url": "best source url", "reason": "only when ok=false"}. Rules: (1) Find the primary source first (central bank, agency, exchange, issuer itself, statute, official calendar) and read value and date from its page content, not from a snippet. If sources conflict, the primary one wins. If the page shows no date, set ok=false and say so in reason instead of inventing one. (2) as_of contains ONLY a date in the form YYYY-MM-DD, nothing else: the date the value refers to in the source, not today; for a time series read the newest row; if the source gives only a month, use the best day-level date it states (publication or announcement date); put every caveat into reason. as_of is never after today. (3) The value must be the one in force or observed as of today. A decision that is announced but takes effect after today is not the current value: report the value still in force, as_of = the date it took effect. (4) Prices: use the newest dated value you can read (a quote that shows its own timestamp, or the latest dated close), never an older close when a newer dated value is available; market values must be at most about a week old. (5) Never guess or compute. If no current value can be read from a source, or the instrument or series is discontinued, or the date is not yet published, set ok=false with a concrete reason. Check year and scope (tax year vs filing year, single vs joint, announced vs effective date). value is a plain number with dot decimal, no thousands separators, no units inside value.'
 
 # HTTP-Node fuer EINEN Web-Abruf (laeuft per-Item). $PromptExpr ist ein roher
 # JS-Ausdruck, der den gespeicherten Retrieval-Prompt WOERTLICH liefert (nie umformuliert).
@@ -18,7 +18,7 @@ $script:MonitorSysText = 'You retrieve exactly ONE metric value via web search. 
 function New-MonitorAcquireHttpNode {
     param([string]$Name, [int[]]$Pos, [string]$PromptExpr)
     New-AnthropicMessagesNode -Name $Name -Position $Pos -ConfigModelKey 'monitor_acquisition' -System $script:MonitorSysText `
-        -ContentJs "String($PromptExpr || '')" -Effort medium -WebSearchMaxUses 3 -TimeoutMs 120000
+        -ContentJs "'Today is ' + `$now.toISODate() + '. ' + String($PromptExpr || '')" -Effort medium -WebSearchMaxUses 3 -TimeoutMs 120000
 }
 
 # Der zugehoerige Config-Knoten (identisch in Cron + Create/Set-Tool, damit die Probe vor dem Gate exakt das

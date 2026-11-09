@@ -1845,6 +1845,17 @@ function Build-ScheduleTrigger {
     }
 }
 
+# Feuert bei jedem Start von n8n (Geraet an, Update, Neustart), nur in einem aktiven Workflow. Fuer Nachhol-Laeufe: ein
+# scheduleTrigger holt einen verpassten Termin nicht nach (ohne Nachholen laut typeVersion 1.3).
+function Build-InstanceStartTrigger {
+    param([int[]]$Pos)
+    [ordered]@{
+        parameters = [ordered]@{ events = @('init') }
+        type = 'n8n-nodes-base.n8nTrigger'; typeVersion = 1; position = $Pos
+        id = (New-Id); name = 'Instance started'
+    }
+}
+
 function Build-NoOp {
     param([string]$Name, [int[]]$Pos)
     [ordered]@{ parameters = @{}; type = 'n8n-nodes-base.noOp'; typeVersion = 1; position = $Pos

@@ -182,10 +182,12 @@ return [{ json: Object.assign({}, $('Pick candidate').first().json, { tickers: o
     $callPrices = Build-CallWorkflow 'Refresh market prices' @(2420, -380) $MarketPricesCronId 'agent.finance.cron_refresh_market_prices' `
         ([ordered]@{ chat_id = "={{ '' }}" })
     $callPrices['alwaysOutputData'] = $true
-    $ifFx = Build-If 'Foreign quote?' @(2620, -380) "={{ $A.cand_currency !== 'EUR' }}" 'true' 'equals' 'boolean'
+    $callPrices['onError'] = 'continueRegularOutput'
+    $fxGap = New-FinanceFxGapCheck -CheckPos @(2520, -560) -IfPos @(2620, -380)
     $callFx = Build-CallWorkflow 'Refresh FX rates' @(2820, -460) $FxCronId 'agent.finance.cron_refresh_fx_rates' `
         ([ordered]@{ chat_id = "={{ '' }}" })
     $callFx['alwaysOutputData'] = $true
+    $callFx['onError'] = 'continueRegularOutput'   # Lauf-Abbruch verloere die restlichen Karten; Read new price meldet den Stand
     $readNew = Build-Pg 'Read new price' @(3020, -380) `
         "=SELECT (SELECT to_jsonb(s) FROM finance.fn_holding_price_status(ARRAY[((`$1::jsonb)->>'holding_id')::int]) s) AS st;" `
         ([ordered]@{ holding_id = "$it.holding_id" })
@@ -231,7 +233,7 @@ return [{ json: { text: U.fill(U.t('finance.dialog.price_gap_later'), { name: g.
         'Resolve Yahoo symbol = derselbe Sub wie Kauf/Korrektur/Import (provider_symbol leer -> immer ISIN-Suche; Plausi gegen letzten Kurs, Band 0,8-1,25, ODER Einstand, Band 0,2-5, je in ihrer Währung, sonst in EUR verglichen). Pick candidate: übernehmbar nur mit ISIN, anderem Symbol als dem heutigen Feed-Symbol und adoptable (Sub). Sonst (nur mit ISIN) Websuche über core:web_search (bezahlte Anthropic-API, Anfrage = ISIN + Name, keine Bestände) -> Parse tickers (bis 3 Ticker mit Börsen-Suffix, nur aus dem Antwort-Teil, URLs/Domains entfernt; Websuche-Ticker nur in Positions-Währung) -> dieselbe Sub mit try_symbols prüft sie per Chart-Abruf + Plausi -> Pick web candidate. Ein erfundener Ticker scheitert dort; den Rest prüft der Owner auf der Karte (Name, Börse, Kurs). Krypto (ohne ISIN) -> nur Text-Hinweis.' 340 620
     $stickyApply = Build-Sticky 'Übernehmen' @(2020, -660) `
         'fn_apply_price_symbol + Sofort-Kurs' `
-        'Der Tipp ist das HITL. Apply symbol = finance.fn_apply_price_symbol: Guard zuerst (Lücke noch offen, Feed-Symbol noch das der Karte, sonst code already_resolved -> "nichts überschrieben"), dann fn_set_holding mit provider_symbol + quote_currency (immer, auch EUR). Danach Refresh market prices (+ Refresh FX rates bei Fremdwährung, beide alwaysOutputData) -> Read new price (fn_holding_price_status, aggregiert -> immer ein Item) -> Ergebnis-Zeile mit Kurs und Datum. Nicht jetzt / kein Tipp in 8 h -> nur Hinweis "in 7 Tagen wieder".' 340 440
+        'Der Tipp ist das HITL. Apply symbol = finance.fn_apply_price_symbol: Guard zuerst (Lücke noch offen, Feed-Symbol noch das der Karte, sonst code already_resolved -> "nichts überschrieben"), dann fn_set_holding mit provider_symbol + quote_currency (immer, auch EUR). Danach Refresh market prices -> Check FX rates (fn_fx_rate_status, kennt auch die vom Abruf gelernte Währung; bei Lücke Refresh FX rates, alle alwaysOutputData) -> Read new price (fn_holding_price_status, aggregiert -> immer ein Item) -> Ergebnis-Zeile mit Kurs und Datum. Nicht jetzt / kein Tipp in 8 h -> nur Hinweis "in 7 Tagen wieder".' 340 440
     $stickyStale = Build-Sticky 'Doppel-Tipp-Schutz' @(1460, -480) `
         'Mehrere Karten in einer Execution' `
         'n8n bindet einen Tipp an die Execution, nicht an die Nachricht. Hinter der Karte merkt sich "(tap check)" die beantworteten Nachrichten; ein Tipp auf eine schon beantwortete Karte stellt die aktuelle neu (New-StaleTapGuard, Muster cron_remind_interest).' 300 260
@@ -241,9 +243,9 @@ return [{ json: { text: U.fill(U.t('finance.dialog.price_gap_later'), { name: g.
 
     $nodes = @($trig, $gate, $gateIf, $gateOff, $find, $plan, $ifFeed, $claimFeed, $ifFeedDue, $nFeed,
                $loop, $done, $claim, $ifDue, $resolve, $pick, $ifAccept, $ifTryWeb, $web, $parse, $ifTickers,
-               $resolveWeb, $pickWeb, $nNone, $ask, $ifApply, $apply, $ifApplied, $callPrices, $ifFx, $callFx, $readNew,
+               $resolveWeb, $pickWeb, $nNone, $ask, $ifApply, $apply, $ifApplied, $callPrices, $callFx, $readNew,
                $composeApplied, $composeRejected, $composeLater, $nResult,
-               $stickyOverview, $stickyLatch, $stickySearch, $stickyApply, $stickyStale, $stickyGate) + $gAsk.Nodes
+               $stickyOverview, $stickyLatch, $stickySearch, $stickyApply, $stickyStale, $stickyGate) + $fxGap + $gAsk.Nodes
 
     $conns = [ordered]@{
         'Schedule (cron from config)' = @{ main = @( ,@( E 'Cron enabled?' ) ) }
@@ -300,8 +302,9 @@ return [{ json: { text: U.fill(U.t('finance.dialog.price_gap_later'), { name: g.
             @( E 'Refresh market prices' ),
             @( E 'Compose not applied' )
         ) }
-        'Refresh market prices'       = @{ main = @( ,@( E 'Foreign quote?' ) ) }
-        'Foreign quote?'              = @{ main = @(
+        'Refresh market prices'       = @{ main = @( ,@( E 'Check FX rates' ) ) }
+        'Check FX rates'              = @{ main = @( ,@( E 'FX refresh needed?' ) ) }
+        'FX refresh needed?'          = @{ main = @(
             @( E 'Refresh FX rates' ),
             @( E 'Read new price' )
         ) }

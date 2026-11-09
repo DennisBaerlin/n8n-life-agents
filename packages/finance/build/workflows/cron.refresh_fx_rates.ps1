@@ -1,9 +1,9 @@
 ﻿#Requires -Version 5.1
 # Definition agent.finance.cron_refresh_fx_rates -> Build-CronRefreshFxRates. Dot-gesourct von build.ps1.
-# Deterministisch, KEIN LLM. DUAL-TRIGGER: (a) Schedule (taeglich; Platzhalter, den der Installer beim Einspielen aus
+# Deterministisch, KEIN LLM. DREI EINGAENGE: (a) Schedule (taeglich; Platzhalter, den der Installer beim Einspielen aus
 # core.config schedule.refresh_fx_rates einsetzt — scheduleTrigger liest seinen Plan nur beim Aktivieren) und (b)
 # executeWorkflowTrigger fuer den Sofort-Fetch aus tool_create_account/tool_set_holding nach einem
-# Fremdwaehrungs-Write. Beide Eingaenge muenden in denselben Pfad: Check fn_active_currencies ->
+# Fremdwaehrungs-Write, (c) n8nTrigger beim Start von n8n (Nachholen). Alle muenden in denselben Pfad: Check fn_active_currencies ->
 # HTTP GET open.er-api.com/v6/latest/EUR -> finance.fn_upsert_fx_rates. Nutzt aus dem Orchestrator-Scope:
 # $RepoRoot, $Utf8NoBom, $CRED_POSTGRES + build_helpers (Build-Pg/Build-Http/Build-Sticky/E/Build-Workflow/New-Id).
 function Build-CronRefreshFxRates {
@@ -33,6 +33,14 @@ function Build-CronRefreshFxRates {
 
     $disabled = Build-NoOp 'Disabled' @(-400, 420)
 
+    # Dritter Eingang: n8n-Start holt den verpassten Tageslauf nach (Geraet war um die Planzeit aus). Gleiches Gate wie der
+    # Schedule, zusaetzlich nur bei Luecke. Die Pause gibt Netz und DNS nach dem Hochfahren Zeit (sonst Fehlalarm).
+    $trigInit = Build-InstanceStartTrigger @(-1040, -220)
+    $waitInit = Build-WaitSeconds 'Wait for network' @(-820, -220) 30
+    $gateInit = Build-Pg 'Catch-up needed?' @(-600, -220) `
+        "SELECT core.fn_package_active('finance') AND COALESCE(core.fn_config_get('finance','cron_enable','refresh_fx_rates') = 'true', false) AND EXISTS (SELECT 1 FROM finance.fn_fx_rate_status() WHERE status <> 'ok') AS due"
+    $ifInit = Build-If 'Catch up?' @(-400, -220) "={{ `$json.due }}" 'true' 'equals' 'boolean'
+
     # Early-Exit: fn_active_currencies() zaehlt Fremdwaehrungs-Objekte. Bei cnt=0 kein HTTP-Call.
     $checkCurr = Build-Pg 'Check active currencies' @(-180, 0) `
         'SELECT count(*)::int AS cnt FROM finance.fn_active_currencies()'
@@ -49,7 +57,7 @@ function Build-CronRefreshFxRates {
 
     $stickyOverview = Build-Sticky 'Überblick' @(-460, -260) `
         'FX-Kurs-Refresh (Dual-Trigger, kein LLM)' `
-        'ZWEI Eingänge, EIN Pfad: (a) Schedule täglich (Cron aus core.config schedule.refresh_fx_rates, beim Einspielen eingesetzt); (b) executeWorkflowTrigger Start — tool_create_account/tool_set_holding rufen den Workflow nach einem Fremdwährungs-Write sofort auf (eliminiert das NULL-Fenster in Roll-up-Views bis zum nächsten Schedule-Lauf). Pfad: prüfe aktive Fremdwährungs-Menge via fn_active_currencies() -> IF leer: Abbruch ohne HTTP-Call. Sonst: HTTP GET open.er-api.com/v6/latest/EUR (kostenlos, KEIN Key, Basis EUR, 7 Tage/Woche) -> Upsert in finance.fx_rates: eine Zeile je Fremdwährung aus aktiven Konten/Holdings — keine manuelle Pflege von finance.currencies nötig. Die Roll-up-Views konvertieren via finance.fn_to_eur (As-of-Lookup).' 280 640
+        'DREI Eingänge, EIN Pfad: (a) Schedule täglich (Cron aus core.config schedule.refresh_fx_rates, beim Einspielen eingesetzt); (b) executeWorkflowTrigger Start — Tools rufen den Workflow nach einem Write sofort auf (eliminiert das NULL-Fenster in Roll-up-Views bis zum nächsten Schedule-Lauf); (c) n8n-Start holt einen verpassten Lauf nach (Sticky Nachholen beim Start). Pfad: prüfe aktive Fremdwährungs-Menge via fn_active_currencies() -> IF leer: Abbruch ohne HTTP-Call. Sonst: HTTP GET open.er-api.com/v6/latest/EUR (kostenlos, KEIN Key, Basis EUR, 7 Tage/Woche) -> Upsert in finance.fx_rates: eine Zeile je Fremdwährung aus aktiven Konten/Holdings — keine manuelle Pflege von finance.currencies nötig. Die Roll-up-Views konvertieren via finance.fn_to_eur (As-of-Lookup).' 280 640
 
     $stickyEarlyExit = Build-Sticky 'Early-Exit' @(60, 200) `
         'fn_active_currencies() leer -> kein HTTP-Call' `
@@ -63,10 +71,22 @@ function Build-CronRefreshFxRates {
         'Paket-aktiv (beide) + cron_enable (nur Schedule)' `
         'Läuft unter finance_ro? Nein: WRITE-Cron -> finance_rw. Gate liest core.fn_package_active(''finance'') AND core.fn_config_get(''finance'',''cron_enable'',''refresh_fx_rates'')=''true'' (DB entscheidet, fail-closed: fehlende/false-Zeile -> aus). Toggle zur Laufzeit: lifeagents config set cron_enable refresh_fx_rates false. DUAL-TRIGGER: der Start-Pfad (Sofort-Fetch nach erlaubtem Write) prüft NUR Paket-aktiv (kein cron_enable) -> ein abgeschalteter Schedule blockt den approvten Sofort-Fetch nicht.' 300 440
 
+    $stickyInit = Build-Sticky 'Nachholen beim Start' @(-1040, -520) `
+        'n8n-Start: verpassten Tageslauf nachholen' `
+        'Die Planzeit verfällt, wenn das Gerät aus ist; der scheduleTrigger holt nicht nach. Der n8n Trigger (Instance started) feuert bei jedem Start von n8n, unter Docker wie im LXC. Nach 30 s (Netz und DNS) prüft Catch-up needed?: Paket aktiv, cron_enable an, und finance.fn_fx_rate_status meldet eine aktive Währung ohne Kurs oder älter als finance.fx_stale_days. Sonst Ende ohne Abruf. Grenze: Aus dem Ruhezustand geweckt startet n8n nicht neu, dann greift dieser Eingang nicht.' 340 300
+
     $nodes = @($trig, $subTrig, $gateSched, $ifSched, $gateStart, $ifStart, $disabled,
+               $trigInit, $waitInit, $gateInit, $ifInit,
                $checkCurr, $ifCurr, $fetch, $upsert,
-               $stickyOverview, $stickyEarlyExit, $stickyUpsert, $stickyGate)
+               $stickyOverview, $stickyEarlyExit, $stickyUpsert, $stickyGate, $stickyInit)
     $conns = [ordered]@{
+        'Instance started'            = @{ main = @( ,@( E 'Wait for network' ) ) }
+        'Wait for network'            = @{ main = @( ,@( E 'Catch-up needed?' ) ) }
+        'Catch-up needed?'            = @{ main = @( ,@( E 'Catch up?' ) ) }
+        'Catch up?'                   = @{ main = @(
+            @( E 'Check active currencies' ),   # true: Luecke -> nachholen
+            @( E 'Disabled' )
+        ) }
         'Schedule (cron from config)' = @{ main = @( ,@( E 'Cron enabled?' ) ) }
         'Cron enabled?'               = @{ main = @( ,@( E 'Cron on?' ) ) }
         'Cron on?'                    = @{ main = @(

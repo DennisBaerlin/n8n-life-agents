@@ -583,40 +583,6 @@
                   },
                   {
                       "parameters":  {
-                                         "conditions":  {
-                                                            "options":  {
-                                                                            "caseSensitive":  true,
-                                                                            "typeValidation":  "strict",
-                                                                            "version":  2
-                                                                        },
-                                                            "conditions":  [
-                                                                               {
-                                                                                   "id":  "53729e70-6cbd-5105-b486-488892fbf6b4",
-                                                                                   "leftValue":  "={{ (!!($(\u0027Start\u0027).item.json.quote_currency) \u0026\u0026 $(\u0027Start\u0027).item.json.quote_currency !== \u0027EUR\u0027) || $(\u0027Resolve Yahoo symbol\u0027).item.json.foreign_listing === true }}",
-                                                                                   "rightValue":  true,
-                                                                                   "operator":  {
-                                                                                                    "type":  "boolean",
-                                                                                                    "operation":  "equals"
-                                                                                                }
-                                                                               }
-                                                                           ],
-                                                            "combinator":  "and"
-                                                        },
-                                         "options":  {
-
-                                                     }
-                                     },
-                      "type":  "n8n-nodes-base.if",
-                      "typeVersion":  2.2,
-                      "position":  [
-                                       3080,
-                                       -160
-                                   ],
-                      "id":  "5189e433-b8b8-5214-b347-54d5b0ab4fd0",
-                      "name":  "Non-EUR quote?"
-                  },
-                  {
-                      "parameters":  {
                                          "workflowId":  {
                                                             "__rl":  true,
                                                             "value":  "OhOudXoO9SuOxnIP",
@@ -817,7 +783,7 @@
                   },
                   {
                       "parameters":  {
-                                         "content":  "## DB-Automatik\n**quote_currency != EUR -\u003e cron_refresh_fx_rates**\n\nZwei UNABHÄNGIGE Post-Write-Fetches: (1) Refresh market prices = der Wertpapier-KURS; (2) NUR wenn die Position eine fremde Markt-Quote-Währung trägt (quote_currency != EUR) -\u003e Refresh FX rates = der Währungs-Umrechnungssatz. Ohne (2) hätte eine EUR-geführte US-Position (quote USD) bis zum nächsten FX-Schedule keinen USD-Kurs -\u003e market_value_eur NULL -\u003e still 0 im Net-Worth. Der FX-Cron liest fn_active_currencies (jetzt inkl. quote_currency).",
+                                         "content":  "## DB-Automatik\n**Wechselkurs fehlt -\u003e cron_refresh_fx_rates**\n\nZwei Post-Write-Fetches: (1) Refresh market prices = der Wertpapier-KURS, liefert auch dessen echte Währung; (2) danach Check FX rates (finance.fn_fx_rate_status): nur wenn für eine aktive Währung ein Wechselkurs fehlt oder veraltet ist -\u003e Refresh FX rates. Ohne (2) hätte eine EUR-geführte US-Position bis zum nächsten FX-Schedule keinen USD-Kurs -\u003e market_value_eur NULL -\u003e still 0 im Net-Worth.",
                                          "height":  240,
                                          "width":  420,
                                          "color":  4
@@ -830,6 +796,65 @@
                                    ],
                       "id":  "e930e930-0417-5fdf-8a77-a00c805cf667",
                       "name":  "FX-Sofort-Fetch (WP-3a)"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "SELECT count(*) FILTER (WHERE status \u003c\u003e \u0027ok\u0027)::int AS gaps FROM finance.fn_fx_rate_status()",
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       2980,
+                                       -340
+                                   ],
+                      "id":  "c4474ec6-1fce-5f9f-8df4-cc9430b22363",
+                      "name":  "Check FX rates",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_FINANCE_RW__",
+                                                           "name":  "Postgres finance_rw (read-write)"
+                                                       }
+                                      },
+                      "onError":  "continueRegularOutput",
+                      "alwaysOutputData":  true
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "b86df39f-dc17-5ea4-8e6a-cd26d3350d6c",
+                                                                                   "leftValue":  "={{ $json.gaps }}",
+                                                                                   "rightValue":  0,
+                                                                                   "operator":  {
+                                                                                                    "type":  "number",
+                                                                                                    "operation":  "gt"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       3080,
+                                       -160
+                                   ],
+                      "id":  "09aa398e-7e53-53f1-8a94-35991ce53966",
+                      "name":  "FX refresh needed?"
                   }
               ],
     "connections":  {
@@ -998,30 +1023,41 @@
                                                                    [
                                                                        {
                                                                            "index":  0,
-                                                                           "node":  "Non-EUR quote?",
+                                                                           "node":  "Check FX rates",
                                                                            "type":  "main"
                                                                        }
                                                                    ]
                                                                ]
                                                   },
-                        "Non-EUR quote?":  {
+                        "Check FX rates":  {
                                                "main":  [
                                                             [
                                                                 {
                                                                     "index":  0,
-                                                                    "node":  "Refresh FX rates",
-                                                                    "type":  "main"
-                                                                }
-                                                            ],
-                                                            [
-                                                                {
-                                                                    "index":  0,
-                                                                    "node":  "Price status",
+                                                                    "node":  "FX refresh needed?",
                                                                     "type":  "main"
                                                                 }
                                                             ]
                                                         ]
                                            },
+                        "FX refresh needed?":  {
+                                                   "main":  [
+                                                                [
+                                                                    {
+                                                                        "index":  0,
+                                                                        "node":  "Refresh FX rates",
+                                                                        "type":  "main"
+                                                                    }
+                                                                ],
+                                                                [
+                                                                    {
+                                                                        "index":  0,
+                                                                        "node":  "Price status",
+                                                                        "type":  "main"
+                                                                    }
+                                                                ]
+                                                            ]
+                                               },
                         "Refresh FX rates":  {
                                                  "main":  [
                                                               [

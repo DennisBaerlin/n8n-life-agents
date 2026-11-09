@@ -118,13 +118,9 @@ function Build-SetHolding {
     $callPriceRefresh = Build-CallWorkflow 'Refresh market prices' @(2420, -320) $MarketPricesCronId 'agent.finance.cron_refresh_market_prices' `
         ([ordered]@{ chat_id = "={{ `$('Start').item.json.chat_id }}" })
 
-    # Sofort-Fetch wenn eine Fremdwaehrung gesetzt wurde — currency ODER quote_currency (WP-3a: eine EUR-
-    # gefuehrte Position mit fremder MARKT-Quote-Waehrung braucht den FX-Kurs genauso, sonst bleibt
-    # market_value_eur bis zum naechsten Schedule NULL). Ruft den FX-Cron als Sub (Dual-Trigger) — EINE
-    # Logik-Adresse fuer Check/Fetch/Upsert; der Cron liest fn_active_currencies (jetzt inkl. quote_currency).
-    $ifForeignCurr = Build-If 'Non-EUR currency?' @(2640, 0) `
-        "={{ (!!(`$('Start').item.json.currency) && `$('Start').item.json.currency !== 'EUR') || (!!(`$('Start').item.json.quote_currency) && `$('Start').item.json.quote_currency !== 'EUR') || ((!!`$('Start').item.json.symbol || !!`$('Start').item.json.isin || !!`$('Start').item.json.provider_symbol) && `$('Resolve Yahoo symbol').item.json.foreign_listing === true) }}" `
-        'true' 'equals' 'boolean'
+    # Fehlt fuer eine aktive Waehrung der Wechselkurs, sofort holen (sonst bleibt market_value_eur bis zum naechsten
+    # Schedule NULL). Ruft den FX-Cron als Sub — EINE Logik-Adresse fuer Check/Fetch/Upsert.
+    $fxGap = New-FinanceFxGapCheck -CheckPos @(2540, 160) -IfPos @(2640, 0)
 
     $callFxRefresh = Build-CallWorkflow 'Refresh FX rates' @(2860, -120) $FxCronId 'agent.finance.cron_refresh_fx_rates' `
         ([ordered]@{ chat_id = "={{ `$('Start').item.json.chat_id }}" })
@@ -146,7 +142,7 @@ function Build-SetHolding {
 
     $stickyOv = Build-Sticky 'Doc set_holding' @(1760, -240) `
         'fn_set_holding: nur Metadaten' `
-        'Ändert NUR name/symbol/isin/currency/asset_class/provider_symbol/quote_currency. shares + average_purchase_price sind Trigger-gepflegt (aus finance.transactions) -> falsche Stückzahl/avg über die Transaktionen korrigieren, nicht hier. asset_class = Allokations-Block-key (lowercase snake; korrigiert den Auto-Tag aus book_stock_buy); ungültiges Format -> {ok:false}. provider_symbol (Phase M) = Kurs-Feed-Symbol-Override (z. B. VWCE.DE); quote_currency = native Quote-Währung (via fn_ensure_currency validiert -> {ok:false}). Dubletten-ISIN/-Symbol im Depot -> {ok:false}. NACH dem Write zwei unabhängige Sofort-Fetches: Symbol/provider_symbol geändert -> cron_refresh_market_prices; Fremdwährung (currency ODER quote_currency, WP-3a) gesetzt -> cron_refresh_fx_rates (je eliminieren das NULL-Fenster in den Roll-up-Views bis zum nächsten Schedule).' 220 560
+        'Ändert NUR name/symbol/isin/currency/asset_class/provider_symbol/quote_currency. shares + average_purchase_price sind Trigger-gepflegt (aus finance.transactions) -> falsche Stückzahl/avg über die Transaktionen korrigieren, nicht hier. asset_class = Allokations-Block-key (lowercase snake; korrigiert den Auto-Tag aus book_stock_buy); ungültiges Format -> {ok:false}. provider_symbol (Phase M) = Kurs-Feed-Symbol-Override (z. B. VWCE.DE); quote_currency = native Quote-Währung (via fn_ensure_currency validiert -> {ok:false}). Dubletten-ISIN/-Symbol im Depot -> {ok:false}. NACH dem Write zwei unabhängige Sofort-Fetches: Symbol/provider_symbol geändert -> cron_refresh_market_prices; danach Check FX rates (finance.fn_fx_rate_status): fehlt oder veraltet ein Wechselkurs -> cron_refresh_fx_rates (je eliminieren das NULL-Fenster in den Roll-up-Views bis zum nächsten Schedule).' 220 560
 
     $stickyYahoo = Build-Sticky 'Kauf-Zeit-Symbol-Validierung' @(440, -420) `
         'sub_resolve_yahoo_symbol (vor dem Gate, immer-laufend/non-blocking)' `
@@ -154,7 +150,7 @@ function Build-SetHolding {
 
     $nodes = @($trig, $readCur, $ifFound, $errNotFound, $loadRef, $resolveYahoo) + $wg.Nodes + @($summary, $reqApproval, $ifApproved, $retCancelled,
                $ifWriteOk, $errWrite, $ifSymChanged, $callPriceRefresh,
-               $ifForeignCurr, $callFxRefresh, $priceStatus, $ret, $stickyDry, $stickyOv, $stickyYahoo)
+               $callFxRefresh, $priceStatus, $ret, $stickyDry, $stickyOv, $stickyYahoo) + $fxGap
 
     $conns = [ordered]@{
         'Start'                  = @{ main = @( ,@( E 'Find Holding' ) ) }
@@ -183,12 +179,13 @@ function Build-SetHolding {
         ) }
         'Symbol/Provider changed?' = @{ main = @(
             @( E 'Refresh market prices' ),  # true: Ticker/Feed-Symbol geaendert -> Sofort-Preis-Fetch
-            @( E 'Non-EUR currency?' )        # false: weiter zum FX-Zweig
+            @( E 'Check FX rates' )           # false: weiter zum FX-Zweig
         ) }
-        'Refresh market prices'  = @{ main = @( ,@( E 'Non-EUR currency?' ) ) }
-        'Non-EUR currency?'      = @{ main = @(
-            @( E 'Refresh FX rates' ),    # true: Fremdwaehrung geaendert -> Sub-Call des FX-Crons
-            @( E 'Price status' )          # false: EUR oder unveraendert -> kein Call
+        'Refresh market prices'  = @{ main = @( ,@( E 'Check FX rates' ) ) }
+        'Check FX rates'         = @{ main = @( ,@( E 'FX refresh needed?' ) ) }
+        'FX refresh needed?'     = @{ main = @(
+            @( E 'Refresh FX rates' ),    # true: Wechselkurs fehlt -> Sub-Call des FX-Crons
+            @( E 'Price status' )          # false: alle Kurse da -> kein Call
         ) }
         'Refresh FX rates'       = @{ main = @( ,@( E 'Price status' ) ) }
         'Price status'           = @{ main = @( ,@( E 'Return' ) ) }

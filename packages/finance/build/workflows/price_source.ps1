@@ -17,6 +17,19 @@ function New-FinancePriceStatusNode {
     $n
 }
 
+# 'Check FX rates' + 'FX refresh needed?': nach einem Sofort-Kursabruf entscheidet die DB (fn_fx_rate_status), ob ein
+# Wechselkurs fehlt; die Kurswaehrung kennt erst der Abruf, darum keine Pruefung auf Eingabe-Felder. Ausgaenge des IF:
+# [0] Abruf noetig, [1] weiter. Ein Lesefehler darf eine schon gebuchte Aenderung nie als Fehler melden (dann weiter).
+function New-FinanceFxGapCheck {
+    param([Parameter(Mandatory)][int[]]$CheckPos, [Parameter(Mandatory)][int[]]$IfPos)
+    $check = Build-Pg 'Check FX rates' $CheckPos `
+        "SELECT count(*) FILTER (WHERE status <> 'ok')::int AS gaps FROM finance.fn_fx_rate_status()"
+    $check['onError'] = 'continueRegularOutput'
+    $check['alwaysOutputData'] = $true
+    $if = Build-If 'FX refresh needed?' $IfPos "={{ `$json.gaps }}" '0' 'larger' 'number'
+    @($check, $if)
+}
+
 # Plausi-Referenzen fuer agent.finance.sub_resolve_yahoo_symbol aus einer Kurs-Status-Zeile ($RefJs = JS-Objekt mit
 # price, price_currency, avg, currency — z. B. aus fn_holding_price_status) + FX-Karte ($FxJs, finance.fn_fx_rate_map):
 # letzter Kurs (enges Band) UND Einstand (grobes Band), je in ihrer eigenen Waehrung (der Sub rechnet bei Bedarf in EUR).

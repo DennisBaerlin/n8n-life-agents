@@ -690,15 +690,15 @@ BEGIN
     END IF;
 
     -- ---------- Wechselkurs-Alter ----------
-    -- Je aktive Fremdwaehrung (fn_active_currencies) der juengste EUR-Kurs; aelter als finance.fx_stale_days -> Hinweis
-    -- fx_rate_stale:<waehrung> (rechnen die Summen mit einem alten Kurs weiter, waere das still falsch). Ohne jeden Kurs
-    -- meldet data_quality (dq_null_rate), hier nicht doppelt.
+    -- Stand je Waehrung aus fn_fx_rate_status; aelter als finance.fx_stale_days -> Hinweis fx_rate_stale:<waehrung>
+    -- (rechnen die Summen mit einem alten Kurs weiter, waere das still falsch). Ohne jeden Kurs meldet data_quality
+    -- (dq_null_rate), hier nicht doppelt.
     v_fx_stale := COALESCE(NULLIF(core.fn_config_get('finance', 'finance', 'fx_stale_days'), '')::numeric, 7);
     FOR r IN
-        SELECT ac.code, max(fxr.as_of) AS as_of
-        FROM finance.fn_active_currencies() ac
-        JOIN finance.fx_rates fxr ON fxr.base_currency = 'EUR' AND fxr.quote_currency = ac.code
-        GROUP BY ac.code ORDER BY ac.code
+        SELECT s.code, s.last_as_of AS as_of
+        FROM finance.fn_fx_rate_status() s
+        WHERE s.status <> 'missing'
+        ORDER BY s.code
     LOOP
         v_alerts := v_alerts || core.fn_staleness_alert(
             'fx_rate_stale:' || r.code, 'fx_rate_stale', current_date - r.as_of, v_fx_stale,
@@ -900,9 +900,7 @@ BEGIN
     SELECT COALESCE(array_agg(code ORDER BY code), '{}'),
            COALESCE(jsonb_agg(jsonb_build_object('currency', code) ORDER BY code), '[]'::jsonb)
     INTO v_null_rate_codes, v_null_rate
-    FROM (SELECT ac.code FROM finance.fn_active_currencies() ac
-          WHERE NOT EXISTS (SELECT 1 FROM finance.fx_rates fxr
-                            WHERE fxr.base_currency = 'EUR' AND fxr.quote_currency = ac.code)) s;
+    FROM (SELECT fs.code FROM finance.fn_fx_rate_status() fs WHERE fs.status = 'missing') s;
     -- 2026-11-06 (Laien-Pruefung): der Daten-Hinweis nennt das betroffene Konto statt des Waehrungscodes. Abgebildet
     -- auf das tragende Konto: ein AKTIVES Konto mit dieser Kontowaehrung oder ein Depot mit Bestand (shares > 0),
     -- dessen Positions-, Quote- oder juengste Kurswaehrung (dieselben Quellen wie fn_active_currencies) keinen Kurs

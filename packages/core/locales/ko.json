@@ -1118,7 +1118,7 @@
   "core.wizard.connect.code_failed": "연결용 코드를 만들지 못했어요. 잠시 후 다시 시도해 주세요.",
   "core.wizard.connect.activation_failed": "지금은 텔레그램 연결을 설정하지 못했어요. 다시 시도해 보고, 또 안 되면 도와주는 사람에게 보고서를 보내 주세요.",
   "core.wizard.connect.finalize_failed": "텔레그램은 연결됐지만 어시스턴트 설정이 아직 끝나지 않았어요. 끝나기 전에는 어시스턴트가 확인을 요청할 수 없어요.",
-  "core.wizard.connect.finalize_note": "컴퓨터를 막 켰을 때 가끔 이런 일이 생겨요. „다시 시도“를 눌러 주세요. 또 안 되면 도와주는 사람에게 오류 보고서를 보여 주세요.",
+  "core.wizard.connect.finalize_note": "두 번째 시도에서는 잘 되는 경우가 많아요. „다시 시도“를 눌러 주세요. 또 안 되면 도와주는 사람에게 오류 보고서를 보여 주세요.",
   "core.wizard.connect.finalize_retry": "다시 시도",
   "core.wizard.connect.finalize_retrying": "바로 되지 않았어요. 어시스턴트가 스스로 다시 시도하고 있어요.",
   "core.wizard.connect.finalize_wait": "몇 분 정도 걸릴 수 있어요 …",

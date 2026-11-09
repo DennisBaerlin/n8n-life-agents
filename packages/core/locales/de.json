@@ -1118,7 +1118,7 @@
   "core.wizard.connect.code_failed": "Der Code für die Verbindung ließ sich nicht erzeugen. Versuch es gleich noch einmal.",
   "core.wizard.connect.activation_failed": "Die Verbindung zu Telegram ließ sich gerade nicht einrichten. Versuch es noch einmal; klappt es wieder nicht, schick den Bericht an die Person, die dir hilft.",
   "core.wizard.connect.finalize_failed": "Dein Telegram ist verbunden, aber dein Assistent ist noch nicht fertig eingerichtet. Solange das fehlt, kann er dich nicht um ein Okay bitten.",
-  "core.wizard.connect.finalize_note": "Das passiert manchmal kurz nach dem Einschalten des Rechners. Tippe auf „Erneut versuchen“. Klappt es wieder nicht, zeig der Person, die dir hilft, den Fehlerbericht.",
+  "core.wizard.connect.finalize_note": "Das klappt oft beim zweiten Versuch. Tippe auf „Erneut versuchen“. Klappt es wieder nicht, zeig der Person, die dir hilft, den Fehlerbericht.",
   "core.wizard.connect.finalize_retry": "Erneut versuchen",
   "core.wizard.connect.finalize_retrying": "Das hat nicht sofort geklappt. Dein Assistent versucht es von selbst noch einmal.",
   "core.wizard.connect.finalize_wait": "Das kann ein paar Minuten dauern …",

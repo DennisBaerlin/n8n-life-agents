@@ -1482,6 +1482,47 @@ if (-not $chatMode) {
         if ($ok) { $passed++; Write-Host "    [PASS]" -ForegroundColor Green } else { $failed++; Write-Host "    [FAIL] hitlC4 ($detail)" -ForegroundColor Red }
     } catch { Register-Abort $_ 'hitlC4' -NoCase }
 
+    # hitlC5/C6: Telegram-Vorpruefung scheitert endgueltig -> kein Knopf (auch kein Link), Gate rot, Sperre frei, Tool endet ohne Write.
+    # Mock-Attrappe liefert url='' -> beide n8n-Aufrufe (getWebhookInfo, setWebhook) sind erreichbar.
+    foreach ($fc in @(@('hitlC5', 'getWebhookInfo'), @('hitlC6', 'setWebhook'))) {
+        $cid = $fc[0]; $method = $fc[1]
+        $chatCases += $cid; Write-Host ""; Write-Host "  [$cid] Chat: $method scheitert -> keine Karte, kein Link, kein Write"
+        try {
+            Test-ForceAbort $cid $ForceAbortId
+            Clear-MockTelegramRequests -Container $Container
+            Clear-HitlPending -Container $Container
+            $mp = if ($state.mock_telegram.port) { $state.mock_telegram.port } else { 8089 }
+            $gBase = Get-MaxExecId -WfId $gateWfId -BridgeUrl $N8nUrl -ApiKey $ApiKey
+            $tBase = Get-MaxExecId -WfId $factsWfId -BridgeUrl $N8nUrl -ApiKey $ApiKey
+            $prev = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
+            & docker exec $Container sh -c "curl -s 'http://127.0.0.1:$mp/__fail?method=$method'" 2>$null | Out-Null
+            $ErrorActionPreference = $prev
+            $probs = @()
+            try {
+                Send-HarnessPost 'facts-test' @{ chat_id = '999000111'; context_name = 'family'; scope = 'household'; persons = (ConvertTo-Json -Compress -InputObject @(@{ person_id = 'owner'; hitl_probe = $cid })) } 6
+                $saved = $Timeout; $Timeout = $saved + 30
+                $tool = Wait-NewExec $factsWfId $tBase -Finished
+                $gate = Wait-NewExec $gateWfId $gBase -Finished
+                $Timeout = $saved
+            } finally {
+                $prev = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
+                & docker exec $Container sh -c "curl -s 'http://127.0.0.1:$mp/__fail?method=$method&off=1'" 2>$null | Out-Null
+                $ErrorActionPreference = $prev
+            }
+            if (-not $gate -or $gate.status -ne 'error') { $probs += "Gate-Lauf nicht rot (Status $($gate.status))" }
+            $probs += Get-CancelledMessageProblem $tool 'could not be delivered' 'tapped the cancel button|expired'
+            $reqs = @(Get-MockTelegramRequests -Container $Container)
+            if (@($reqs | Where-Object { $_.method -eq 'sendMessage' -and $_.body.reply_markup }).Count) { $probs += 'trotz Fehler Knoepfe gesendet' }
+            if (@($reqs | Where-Object { $_.method -eq $method }).Count -lt 3) { $probs += "$method nicht wiederholt" }
+            Start-Sleep -Seconds 3
+            if ($gate) { $open = @(Get-PendingRows ([string]$gate.id) | Where-Object { $_.Split('|')[2] -ne 'true' }); if ($open.Count) { $probs += "Sperre offen: $($open -join ', ')" } }
+            $w = Invoke-TestN8nPsql -Container $Container -PsqlArgs @('-tAc', "SELECT count(*) FROM agent.core_contexts WHERE name = 'family' AND metadata::text LIKE '%$cid%';")
+            if (($w.Output -join '').Trim() -ne '0') { $probs += 'Wert trotz Fehler geschrieben' }
+            $probs = @($probs | Where-Object { $_ })
+            if (-not $probs.Count) { $passed++; Write-Host "    [PASS]" -ForegroundColor Green } else { $failed++; Write-Host "    [FAIL] $cid $($probs -join '; ')" -ForegroundColor Red }
+        } catch { Register-Abort $_ $cid -NoCase }
+    }
+
     $cases += $chatCases
 }
 

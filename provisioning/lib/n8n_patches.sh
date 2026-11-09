@@ -19,6 +19,7 @@
 # der Leit-Anker fuer die Status-Erkennung.
 N8N_PATCHES=(
   "memory-all-tool-rounds|n8n/node_modules/@n8n/n8n-nodes-langchain/dist/utils/agent-execution/memoryManagement.js|265e5c43cf6474f882ef03a24bb120579022ac2da2d93a297db865635e7eff73|47358c76e32c0618b7dff6561ecc7285a79cabf20f489e7a5b4f4ccb0baae84c|AI Agent V3 speichert nur die letzte Tool-Runde einer Nachricht im Chat-Gedächtnis (https://github.com/n8n-io/n8n/issues/41554)"   # lint-ignore: npm-Paketpfad unter `npm root -g`, kein Repo-Ordner
+  "hitl-chat-no-link-fallback|n8n/node_modules/n8n-nodes-base/dist/nodes/Telegram/hitl/setup.js|6cc81da933001db3fd436891a8b4a79a5fe100ef863653d1b3f26d2b0afcb08c|0ad6de2771418e81dc5b0305c5aa2af1ab7d49219e59e08b4597dd3b7ee2d456|Bestätigen im Chat fällt bei einem Telegram-Fehler still auf Link-Knöpfe zurück, die den Browser öffnen"   # lint-ignore: npm-Paketpfad unter `npm root -g`, kein Repo-Ordner
 )
 
 # _n8n_patch_pairs <id> -> JSON-Array der Ersatz-Paare
@@ -38,6 +39,26 @@ _n8n_patch_pairs() {
 ]
 JSON
       ;;
+    # hitl-chat-no-link-fallback (n8n 2.45.4 / nodes-base 2.45.3), getestet in tests/mock_n8n_patch/:
+    #   beide Telegram-Aufrufe der Vorpruefung (idempotent) je 3 Versuche; danach und bei nicht oeffentlicher Adresse Stopp
+    #   statt Link-Knoepfen. chatApproval=false endet schon vorher in n8ns eigenem `return false`, bleibt also beim Link.
+    hitl-chat-no-link-fallback) cat <<'JSON'
+[
+  ["        const webhookInfo = (await GenericFunctions_1.apiRequest.call(context, 'POST', 'getWebhookInfo', {}));",
+   "        const webhookInfo = (await telegramApiWithRetry(context, 'getWebhookInfo', {}));"],
+  ["/**\n * Preflight for \"Approve Within Chat\"",
+   "const CHAT_APPROVAL_RETRY_DELAYS_MS = [0, 400, 1200];\nasync function telegramApiWithRetry(context, method, body) {\n    let lastError;\n    for (const delay of CHAT_APPROVAL_RETRY_DELAYS_MS) {\n        if (delay > 0)\n            await new Promise((resolve) => setTimeout(resolve, delay));\n        try {\n            return await GenericFunctions_1.apiRequest.call(context, 'POST', method, body);\n        }\n        catch (error) {\n            lastError = error;\n        }\n    }\n    throw lastError;\n}\n/**\n * Preflight for \"Approve Within Chat\""],
+  ["        context.logger.warn('\"Approve Within Chat\" requires this n8n instance to be reachable over public HTTPS; falling back to link buttons.');\n        return false;",
+   "        throw new n8n_workflow_1.NodeOperationError(context.getNode(), 'Approve Within Chat needs this instance on public HTTPS. No confirmation card was sent and nothing was saved.');"],
+  ["        context.logger.warn(`Could not check the Telegram bot's webhook status; falling back to link buttons: ${error.message}`);\n        return false;",
+   "        throw new n8n_workflow_1.NodeOperationError(context.getNode(), `Telegram could not be reached to prepare the confirmation card (getWebhookInfo): ${error.message}. No confirmation card was sent and nothing was saved.`);"],
+  ["            await GenericFunctions_1.apiRequest.call(context, 'POST', 'setWebhook', {",
+   "            await telegramApiWithRetry(context, 'setWebhook', {"],
+  ["            context.logger.warn(`Could not register the Telegram bot's webhook; falling back to link buttons: ${error.message}`);\n            return false;",
+   "            throw new n8n_workflow_1.NodeOperationError(context.getNode(), `Telegram could not be reached to prepare the confirmation card (setWebhook): ${error.message}. No confirmation card was sent and nothing was saved.`);"]
+]
+JSON
+      ;;
     *) return 1 ;;
   esac
 }
@@ -46,9 +67,14 @@ JSON
 _n8n_patch_anchor() {
   case "$1" in
     memory-all-tool-rounds) printf '%s' 'const newSteps = previousStepsCount ? steps.slice(previousStepsCount) : steps;' ;;
+    hitl-chat-no-link-fallback) printf '%s' "const webhookInfo = (await GenericFunctions_1.apiRequest.call(context, 'POST', 'getWebhookInfo', {}));" ;;
     *) return 1 ;;
   esac
 }
+
+# n8n_patch_must_stay <id> -> rc 0: ein Fehlen des Leit-Ankers heisst NICHT "vermutlich behoben" (doctor ROT statt Hinweis):
+#   die Korrektur traegt eine Sicherheitszusage, die n8n von sich aus nicht gibt.
+n8n_patch_must_stay() { [ "$1" = hitl-chat-no-link-fallback ]; }
 
 # _n8n_patch_field <id> <feldnr 1..5>
 _n8n_patch_field() {
@@ -142,18 +168,44 @@ _apply_n8n_patches_compose() {
   done < <(n8n_patch_ids)
 }
 
+# _n8n_patch_restore_original <id> — nur systemd: legt eine abweichende Datei (Handkorrektur) wieder als Original an, aus dem npm-Paket
+#   der installierten Version und nur bei passendem Fingerabdruck. Sonst bliebe sie bei gleicher n8n-Version fuer immer ungepatcht
+#   (ein Update installiert n8n dann nicht neu). rc 0 = Original liegt. Scheitert es (kein Netz, andere Fassung), bleibt die Datei.
+_n8n_patch_restore_original() {
+  local f rel pkg inner dir ver stage
+  f="$(n8n_patch_file "$1")" || return 1
+  rel="$(_n8n_patch_field "$1" 2)"; rel="${rel#*node_modules/}"; pkg="${rel%%/*}"; inner="${rel#*/}"; dir="${f%/"$inner"}"
+  ver="$(PKG_JSON="$dir/package.json" node -p 'require(process.env.PKG_JSON).version' 2>/dev/null)" || return 1
+  stage="$(mktemp -d)"
+  if (cd "$stage" && npm pack --silent "${pkg}@${ver}" >/dev/null 2>&1) \
+     && tar -xzf "$stage"/*.tgz -C "$stage" "package/$inner" 2>/dev/null \
+     && [ "$(sha256sum "$stage/package/$inner" | cut -d' ' -f1)" = "$(_n8n_patch_field "$1" 3)" ]; then
+    cp "$stage/package/$inner" "${f}.lifeagents-tmp" \
+      && chmod --reference="$f" "${f}.lifeagents-tmp" && chown --reference="$f" "${f}.lifeagents-tmp" \
+      && mv -f "${f}.lifeagents-tmp" "$f"
+    local rc=$?
+    rm -rf "$stage"
+    return "$rc"
+  fi
+  rm -rf "$stage"
+  return 1
+}
+
 # apply_n8n_patches — alle Patches anwenden (root, nach ensure_n8n_package). Setzt N8N_PATCH_CHANGED=1, wenn eine
 # Datei geaendert wurde (install_n8n_unit startet n8n dann neu). Bricht den Install nie ab (warn statt die).
 apply_n8n_patches() {
-  local id f tmp
+  local id f tmp st
   N8N_PATCH_CHANGED=0
   if rt_is_compose; then _apply_n8n_patches_compose; return 0; fi
   while IFS= read -r id; do
     [ -n "$id" ] || continue
-    case "$(n8n_patch_status "$id")" in
+    st="$(n8n_patch_status "$id")"
+    case "$st" in unknown|changed) if n8n_patch_must_stay "$id" && _n8n_patch_restore_original "$id"; then st=original; fi ;; esac
+    case "$st" in
       patched)  ok "n8n-Korrektur '${id}' ist aktiv." ;;
       missing)  warn "n8n-Korrektur '${id}': Datei nicht gefunden — n8n-Aufbau geändert? Patch prüfen ($(_n8n_patch_field "$id" 5))." ;;
-      changed)  warn "n8n-Korrektur '${id}': die fehlerhafte Zeile ist nicht mehr da — vermutlich hat n8n sie behoben; Patch prüfen und ggf. entfernen ($(_n8n_patch_field "$id" 5))." ;;
+      changed)  if n8n_patch_must_stay "$id"; then warn "n8n-Korrektur '${id}': Datei weicht ab und das Original war nicht wiederherstellbar — NICHT gepatcht ($(_n8n_patch_field "$id" 5))."
+                else warn "n8n-Korrektur '${id}': die fehlerhafte Zeile ist nicht mehr da — vermutlich hat n8n sie behoben; Patch prüfen und ggf. entfernen ($(_n8n_patch_field "$id" 5))."; fi ;;
       unknown)  warn "n8n-Korrektur '${id}': unbekannte Datei-Fassung, NICHT gepatcht ($(_n8n_patch_field "$id" 5))." ;;
       original)
         f="$(n8n_patch_file "$id")"

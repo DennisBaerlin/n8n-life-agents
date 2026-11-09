@@ -178,7 +178,8 @@ main() {
       _pst="$(n8n_patch_status "$_pid")"
       case "$_pst" in
         patched)  _pass "n8n-Korrektur '${_pid}' aktiv" ;;
-        changed)  _warn "n8n-Korrektur '${_pid}': n8n hat die Stelle geändert (vermutlich behoben) — Patch prüfen/entfernen" ;;
+        changed)  if n8n_patch_must_stay "$_pid"; then _red "n8n-Korrektur '${_pid}': n8n hat die Stelle geändert, die Korrektur fehlt — Patch an die n8n-Version anpassen"
+                  else _warn "n8n-Korrektur '${_pid}': n8n hat die Stelle geändert (vermutlich behoben) — Patch prüfen/entfernen"; fi ;;
         original) _red "n8n-Korrektur '${_pid}' fehlt — 'lifeagents update' erneut starten" ;;
         *)        _red "n8n-Korrektur '${_pid}': ${_pst} (Datei unbekannt/fehlt) — nicht gepatcht, Patch an die n8n-Version anpassen" ;;
       esac

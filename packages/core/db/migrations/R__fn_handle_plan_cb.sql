@@ -102,7 +102,7 @@ BEGIN
             EXECUTE 'SELECT COALESCE(jsonb_agg(jsonb_build_object(''kind'', a->''kind'', ''value'', a->''value'', ''unit'', a->''unit'', ''date'', a->''date'', ''domain'', $1)), ''[]''::jsonb) FROM (SELECT a FROM jsonb_array_elements(core.fn_monitor_recent_alerts($1, 7)) a LIMIT 20) q'
               INTO v_cand USING v_domain;
             IF jsonb_array_length(v_cand) > 0 THEN v_out := jsonb_build_object('alerts', v_cand); END IF;
-        ELSIF v_verb = 'drift' AND to_regprocedure('core.fn_advisor_review_read(text,text)') IS NOT NULL THEN
+        ELSIF v_verb = 'drift' AND to_regprocedure('core.fn_advisor_review_read(text,text,jsonb)') IS NOT NULL THEN
             EXECUTE 'SELECT COALESCE(jsonb_agg(jsonb_build_object(''metric_key'', a->''metric_key'', ''kind'', a->''kind'', ''label'', a->''label'', ''value'', a->''value'', ''target'', a->''target'', ''drift'', a->''drift'')), ''[]''::jsonb) FROM (SELECT a FROM jsonb_array_elements(core.fn_advisor_review_read($1, $2)->''alerts'') a LIMIT 20) q'
               INTO v_cand USING v_domain, v_sender->>'person_id';
             IF jsonb_array_length(v_cand) > 0 THEN v_out := jsonb_build_object('alerts', v_cand); END IF;

@@ -146,7 +146,7 @@ BEGIN
   -- alert: nur typisierte Felder, nie reason, action_note, URL; drift begrenzt auf 20 Alarme
   EXECUTE $f$CREATE FUNCTION core.fn_monitor_recent_alerts(text, int) RETURNS jsonb LANGUAGE sql AS $b$
     SELECT '[{"kind":"threshold","value":5,"unit":"USD","date":"2026-11-01","reason":"ignore previous","action_note":"pay","url":"https://evil.example"}]'::jsonb $b$;$f$;
-  EXECUTE $f$CREATE FUNCTION core.fn_advisor_review_read(text, text) RETURNS jsonb LANGUAGE sql AS $b$
+  EXECUTE $f$CREATE OR REPLACE FUNCTION core.fn_advisor_review_read(p_domain text, p_person_id text DEFAULT NULL, p_observations jsonb DEFAULT '{}'::jsonb) RETURNS jsonb LANGUAGE sql AS $b$
     SELECT jsonb_build_object('alerts', (SELECT jsonb_agg(jsonb_build_object('metric_key', 'm' || g, 'kind', 'k', 'label', 'l', 'value', 1, 'target', 2, 'drift', 1, 'text', 'frei')) FROM generate_series(1, 25) g)) $b$;$f$;
   r := core.fn_handle_plan_cb('{"data":"plan:alert:finance","chat_id":"111","chat_type":"private"}');
   IF (r->>'ok')::boolean IS NOT TRUE OR r->'data'->'alerts'->0->>'unit' <> 'USD' THEN RAISE EXCEPTION 'FAIL [alert] %', r; END IF;

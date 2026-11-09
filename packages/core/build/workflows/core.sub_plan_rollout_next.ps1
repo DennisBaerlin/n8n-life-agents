@@ -59,7 +59,7 @@ return { json: { chat_id: m.chat_id, text, buttons, latches: (m.latches && m.lat
     $commit = Build-Pg 'Commit latch' @(880, -120) "=SELECT count(core.fn_notify_commit(x->>'source', x->>'key')) AS n FROM jsonb_array_elements((`$1::jsonb)->'latches') x;" $latchParam -ContinueOnError
     $reset = Build-Pg 'Reset latch' @(880, 120) "=SELECT count(core.fn_notify_resolve(x->>'source', x->>'key')) AS n FROM jsonb_array_elements((`$1::jsonb)->'latches') x;" $latchParam -ContinueOnError
     $note = Build-Pg 'Note turn' @(1100, -120) `
-        "=SELECT agent.fn_note_proactive_turn(`$1::jsonb) AS a, agent.fn_note_proactive_turn((`$1::jsonb) || '{`"agent`":`"orchestrator`"}'::jsonb) AS b WHERE ((`$1::jsonb)->>'agent') <> '';" `
+        "=SELECT agent.fn_note_proactive_turn(`$1::jsonb) AS a, agent.fn_note_proactive_turn((`$1::jsonb) || jsonb_build_object('agent', 'orchestrator', 'via', (`$1::jsonb)->>'agent')) AS b WHERE ((`$1::jsonb)->>'agent') <> '';" `
         ([ordered]@{ chat_id = "`$('Build message').item.json.chat_id"; agent = "`$('Build message').item.json.memory_agent"; msg = "`$('Build message').item.json.msg" }) -ContinueOnError
 
     $sticky = Build-Sticky 'Überblick' @(-1140, -420) 'Geführte Abfolge: genau ein nächster Schritt' `

@@ -124,6 +124,9 @@ BEGIN
   IF v->>'code' <> 'invalid_date' THEN RAISE EXCEPTION 'FAIL Vergangenheit %', v; END IF;
   IF (SELECT count(*) FROM agent.monitor_triggers WHERE domain = d) <> v_cnt THEN RAISE EXCEPTION 'FAIL Ablehnung schrieb'; END IF;
 
+  v := core.fn_plan_sync(jsonb_build_object('domain', d, 'declined', jsonb_build_array(jsonb_build_object('label', 'Falsches Datum', 'remind_on', '2027-13-45'))));
+  IF v->>'code' IS DISTINCT FROM 'invalid_date' THEN RAISE EXCEPTION 'FAIL declined Datum %', v; END IF;
+
   -- JSON-String und leerer String
   v := core.fn_plan_sync(jsonb_build_object('domain', d, 'reminders', '', 'watch_candidates', '["Oelpreis"]'));
   IF (v->>'ok')::boolean IS NOT TRUE THEN RAISE EXCEPTION 'FAIL string %', v; END IF;

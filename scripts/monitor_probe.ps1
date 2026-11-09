@@ -145,7 +145,12 @@ foreach ($c in $Cases) {
         $color = if ($res.Pass) { 'Green' } else { 'Red' }
         Write-Host ("    Suchen {0} | Tokens {1:N0} | {2:N3} $ | {3}" -f $res.Searches, $res.Tokens, $res.Usd, $res.Finding) -ForegroundColor $color
         if (-not $res.Pass) { $failed++ }
-    } catch { $failed++; Write-Host "    [FAIL] $($_.Exception.Message)" -ForegroundColor Red }
+    } catch {
+        $failed++
+        # Der Abbruch kann nach dem bezahlten Aufruf liegen: zaehlt zur Sicherheit voll zur Summe, sonst ueberlaeuft die Grenze bei Wiederholungen.
+        Add-Cost $c.id ([double]$c.cap_usd) "abgebrochen: $($_.Exception.Message)"
+        Write-Host "    [FAIL] $($_.Exception.Message) (Obergrenze des Falls verbucht)" -ForegroundColor Red
+    }
 }
 Write-Host ("Summe gesamt: {0:N3} $ (Grenze {1} $), {2} rot. Rohdaten: {3}" -f [double]$Ledger.total_usd, $Limit, $failed, $RunDir)
 exit $failed

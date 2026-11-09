@@ -219,8 +219,13 @@ BEGIN
         v_label := btrim(v_item->>'label');
         IF NOT EXISTS (SELECT 1 FROM agent.plan_reminder_declines d
                         WHERE d.domain = v_domain AND d.person_id IS NOT DISTINCT FROM v_pid AND lower(btrim(d.label)) = lower(v_label)) THEN
-            IF NULLIF(v_item->>'remind_on', '') IS NOT NULL AND (v_item->>'remind_on') !~ '^\d{4}-\d{2}-\d{2}$' THEN
-                RETURN jsonb_build_object('ok', false, 'code', 'invalid_date', 'reason', format('declined "%s": remind_on must be an ISO date', v_label));
+            IF NULLIF(v_item->>'remind_on', '') IS NOT NULL THEN
+                BEGIN
+                    IF (v_item->>'remind_on') !~ '^\d{4}-\d{2}-\d{2}$' THEN RAISE EXCEPTION 'format'; END IF;
+                    PERFORM (v_item->>'remind_on')::date;
+                EXCEPTION WHEN OTHERS THEN
+                    RETURN jsonb_build_object('ok', false, 'code', 'invalid_date', 'reason', format('declined "%s": remind_on must be an ISO date', v_label));
+                END;
             END IF;
             v_newdec := v_newdec || jsonb_build_object('label', v_label, 'remind_on', NULLIF(v_item->>'remind_on', ''));
         END IF;

@@ -63,7 +63,7 @@ BEGIN
     IF v_verb IN ('scan', 'event', 'alert', 'watch', 'drift') THEN
         v_domain := split_part(v_data, ':', 3);
         v_ver    := split_part(v_data, ':', 4);
-        IF v_domain = '' OR split_part(v_data, ':', 5) <> '' OR (v_ver <> '' AND v_ver !~ '^[0-9]{1,9}$') THEN
+        IF v_chat !~ '^[0-9]{1,18}$' OR v_domain = '' OR split_part(v_data, ':', 5) <> '' OR (v_ver <> '' AND v_ver !~ '^[0-9]{1,9}$') THEN
             RETURN jsonb_build_object('ok', false, 'reason', 'unknown_plan', 'toast', core.fn_ui_text('core.toast.area_unavailable', v_lang));
         END IF;
         IF v_domain = 'general' AND v_verb = 'alert' THEN
@@ -90,7 +90,7 @@ BEGIN
         END IF;
 
         IF v_verb = 'scan' THEN
-            v_out := '{}'::jsonb;
+            IF v_active.id IS NOT NULL THEN v_out := '{}'::jsonb; END IF;
         ELSIF v_verb = 'watch' THEN
             v_cand := v_active.watch_candidates;
             IF v_active.id IS NOT NULL AND jsonb_array_length(COALESCE(v_cand, '[]'::jsonb)) > 0 THEN v_out := jsonb_build_object('candidates', v_cand); END IF;

@@ -2,7 +2,7 @@
 -- agent.fn_note_proactive_turn (traegt eine proaktive Nachricht ins Gedaechtnis nach)
 --   Crons schreiben in kein Agenten-Gedaechtnis; antwortet jemand frei auf eine Rollout-Nachricht, kennt sie sonst niemand.
 --   Nur Katalog-Schluessel mit Skalar-Parametern, nie freier Text. Router: Vier-Zeilen-Form wie agent.fn_set_router_button_turn; Agent: Paar [Proactive message] + Struktur.
---   p: {chat_id, agent ('agent.<x>' oder 'orchestrator'), msg:[{kind:'tpl', value, params}]}. Ungueltig oder Tabelle fehlt: no-op, nie RAISE.
+--   p: {chat_id, agent ('agent.<x>' oder 'orchestrator'), via ('agent.<x>', nur Router: der Agent, dem die Nachricht gehoert), msg:[{kind:'tpl', value, params}]}. Ungueltig oder Tabelle fehlt: no-op, nie RAISE.
 --   RUECKGABE {ok:true, recorded}. Tests: tests/db/core/test_fn_note_proactive_turn.sql
 -- ============================================================
 CREATE OR REPLACE FUNCTION agent.fn_note_proactive_turn(p jsonb)
@@ -34,7 +34,9 @@ BEGIN
 
     IF v_agent = 'orchestrator' THEN
         IF to_regclass('agent.orchestrator_chat_memory') IS NULL THEN RETURN v_no; END IF;
-        v_tool := 'Call_proactive_';
+        -- echter Route-Tool-Name wie agent.fn_set_router_button_turn: sonst haengt die Folgeantwort an einem unbekannten Werkzeug.
+        IF COALESCE(p->>'via', '') !~ '^agent\.[a-z][a-z0-9_]*$' THEN RETURN v_no; END IF;
+        v_tool := 'Call_' || replace(p->>'via', '.', '_') || '_';
         v_call := 'toolu_proactive_' || replace(gen_random_uuid()::text, '-', '');
         EXECUTE $q$
             INSERT INTO agent.orchestrator_chat_memory (session_id, message)

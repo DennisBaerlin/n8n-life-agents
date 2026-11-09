@@ -364,7 +364,7 @@
                   {
                       "parameters":  {
                                          "operation":  "executeQuery",
-                                         "query":  "=SELECT agent.fn_note_proactive_turn($1::jsonb) AS a, agent.fn_note_proactive_turn(($1::jsonb) || \u0027{\"agent\":\"orchestrator\"}\u0027::jsonb) AS b WHERE (($1::jsonb)-\u003e\u003e\u0027agent\u0027) \u003c\u003e \u0027\u0027;",
+                                         "query":  "=SELECT agent.fn_note_proactive_turn($1::jsonb) AS a, agent.fn_note_proactive_turn(($1::jsonb) || jsonb_build_object(\u0027agent\u0027, \u0027orchestrator\u0027, \u0027via\u0027, ($1::jsonb)-\u003e\u003e\u0027agent\u0027)) AS b WHERE (($1::jsonb)-\u003e\u003e\u0027agent\u0027) \u003c\u003e \u0027\u0027;",
                                          "options":  {
                                                          "queryReplacement":  "={{ JSON.stringify({ chat_id: $(\u0027Build message\u0027).item.json.chat_id, agent: $(\u0027Build message\u0027).item.json.memory_agent, msg: $(\u0027Build message\u0027).item.json.msg }) }}"
                                                      }

@@ -258,7 +258,7 @@ function Build-AgentFinanceAdvisor {
     $advMethodText = (@($ownMethods | ForEach-Object { "$($_.Method) ($($_.ParamsDescription))" }) + @('')) -join ', '
     $advParamsText = if ($ownMethodNames.Count -gt 0) { "$($ownMethodNames -join ' / ') only: the method parameters as a JSON object string (shape: see tool description)" } else { 'unused (no package method in this build)' }
     $nToolCreateTrigger = New-AdvisorToolNode 'tool_create_monitor_trigger' (Resolve-CoreServiceAlias 'core:create_monitor_trigger' $CoreServiceMap) `
-        ('Create ONE monitoring trigger derived from the published plan (market threshold, crash drawdown, deadline, recurring check) after the user confirmed it in chat. Load context trigger_design FIRST and follow its co-design protocol (source hierarchy ' + $advHierarchy + ', retrieval-prompt rules, cadence guidance). The tool TEST-FETCHES the value before the button confirmation - a failing probe returns ok:false and nothing is created. trigger_type: threshold (comparator gte|lte + threshold_value), drawdown (drawdown_pct 1-99, percent drop from running peak), date (due_date + optional warn_days_before, acquisition none), recurring_info (periodic report, never latches). acquisition_method: ' + $advMethodText + 'sql (acquisition_sql = ONE SELECT returning ONE numeric value, dry-run via postgres_select first), web_search (acquisition_prompt naming metric, unit and decimal format; REQUIRES expected_unit; check_interval at least 12 hours), none. Set min_plausible/max_plausible for every web trigger; max_jump_pct only for jump-implausible metrics (rates), never for crash metrics. action_note (German) goes verbatim into the alert. For CHANGING, repairing, disabling or deleting triggers refer the user to the monitor agent.') `
+        ('Create ONE monitoring trigger derived from the published plan (market threshold, crash drawdown, recurring check; dates and deadlines go into reminders of tool_publish_plan or tool_sync_plan instead) after the user confirmed it in chat. Load context trigger_design FIRST and follow its co-design protocol (source hierarchy ' + $advHierarchy + ', retrieval-prompt rules, cadence guidance). The tool TEST-FETCHES the value before the button confirmation - a failing probe returns ok:false and nothing is created. trigger_type: threshold (comparator gte|lte + threshold_value), drawdown (drawdown_pct 1-99, percent drop from running peak), date (due_date + optional warn_days_before, acquisition none), recurring_info (periodic report, never latches). acquisition_method: ' + $advMethodText + 'sql (acquisition_sql = ONE SELECT returning ONE numeric value, dry-run via postgres_select first), web_search (acquisition_prompt naming metric, unit and decimal format; REQUIRES expected_unit; check_interval at least 12 hours), none. Set min_plausible/max_plausible for every web trigger; max_jump_pct only for jump-implausible metrics (rates), never for crash metrics. action_note (German) goes verbatim into the alert. For CHANGING, repairing, disabling or deleting triggers refer the user to the monitor agent.') `
         @(
             ,@('label', 'Short unique trigger label, e.g. Brent over 100 USD', 'string')
             ,@('trigger_type', 'threshold | drawdown | date | recurring_info', 'string')
@@ -323,7 +323,7 @@ function Build-AgentFinanceAdvisor {
     $nodes = @($nTrigger) + $gate.Nodes + @(
         $nLoadConfig, $nGateRead, $nGateIf, $nGateDeny, $nLoadCtx, $nBuildInput, $nAgent,
         $nMemory,
-        $nToolSelect, $nToolLoad, $nToolWebSearch, $nToolPanel, $nToolSaveSection, $nToolPublish, $nToolPlanWish,
+        $nToolSelect, $nToolLoad, $nToolWebSearch, $nToolPanel, $nToolSaveSection, $nToolPublish, $nToolSyncPlan, $nToolPlanWish,
         $nToolCreateTrigger, $nToolListTriggers, $nToolSetAssetClasses,
         $stickyOverview, $stickyDomain, $stickyModel, $stickyMemory, $stickyPkg, $stickyCore
     ) + $mb.Nodes
@@ -358,6 +358,7 @@ function Build-AgentFinanceAdvisor {
     if ($nToolHandoffOverview) { $conns['tool_send_handoff_overview'] = @{ ai_tool = @( ,@( E 'Advisor Agent' 'ai_tool' ) ) } }
     $conns['tool_record_plan_wish']   = @{ ai_tool = @( ,@( E 'Advisor Agent' 'ai_tool' ) ) }
     $conns['tool_publish_plan']       = @{ ai_tool = @( ,@( E 'Advisor Agent' 'ai_tool' ) ) }
+    $conns['tool_sync_plan']          = @{ ai_tool = @( ,@( E 'Advisor Agent' 'ai_tool' ) ) }
     $conns['tool_create_monitor_trigger'] = @{ ai_tool = @( ,@( E 'Advisor Agent' 'ai_tool' ) ) }
     $conns['tool_list_monitor_triggers']  = @{ ai_tool = @( ,@( E 'Advisor Agent' 'ai_tool' ) ) }
     $conns['tool_set_asset_classes']      = @{ ai_tool = @( ,@( E 'Advisor Agent' 'ai_tool' ) ) }

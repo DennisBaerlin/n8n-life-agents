@@ -2,7 +2,7 @@
 title: "Wenn ein Update fehlschlägt"
 ---
 
-Tippst du in der Update-Karte im Chat auf **Jetzt aktualisieren**, meldet sich der Bot danach immer mit dem Ergebnis. Geht etwas schief, beantwortet seine Nachricht drei Fragen: Was ist passiert? Läuft mein System noch? Was kann ich tun? Diese Seite erklärt jeden Fall etwas ausführlicher. Die Nachricht verlinkt direkt auf den passenden Abschnitt.
+Tippst du in der Update-Karte im Chat auf **Jetzt aktualisieren**, zeigt eine Nachricht mit Ladebalken, wie weit das Update ist. Sie aktualisiert sich selbst; bei langen Schritten bleibt die Zahl eine Weile stehen. Sobald der Bot wieder antwortet, kommt eine kurze Ergebnis-Nachricht. Ist Telegram gerade nicht erreichbar, läuft das Update trotzdem normal durch, und die Nachricht kommt später. Geht etwas schief, beantwortet seine Nachricht drei Fragen: Was ist passiert? Läuft mein System noch? Was kann ich tun? Diese Seite erklärt jeden Fall etwas ausführlicher. Die Nachricht verlinkt direkt auf den passenden Abschnitt.
 
 Zwei Dinge gelten immer:
 

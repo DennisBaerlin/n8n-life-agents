@@ -361,6 +361,51 @@ if grep -q '|down|' "$STUB_LOG"; then fail D.waehrend-wechsel-unberuehrt "down l
 # ---------------------------------------------------------------------------- K: Tick (Ersatz der Update-Timer im Verbund)
 # shellcheck source=/dev/null
 . "$ROOT/provisioning/lib/update_runner.sh"
+
+# Eine Meldung beendet den Runner nie, auch nicht unter set -e und ohne DB.
+out="$( set -e; _ur_sql() { return 1; }; _up_close() { :; }; _ur_report 7 result bot_up=true; echo weiter )"
+eq K.report-ohne-db-kein-abbruch weiter "$(printf '%s' "$out" | tail -n1)"
+out="$( set -e; _ur_sql() { return 1; }; owner_tg_token() { echo t; }; owner_tg_chat_id() { echo 1; }; UP_STATE="$W/up.none"; _up_start 7 "$W/rf"; echo weiter )"
+eq K.helfer-ohne-db-kein-abbruch weiter "$(printf '%s' "$out" | tail -n1)"
+
+# Umstieg: Ohne die Faellig-fn geht das Ergebnis direkt hinaus, im Leerlauf bleibt es still.
+out="$( _ur_lock_release() { :; }; _ur_sql() { return 1; }; _ur_bot_up() { return 0; }; _ur_report() { echo "report $*"; }; _ur_reports_flush 7 )"
+eq K.flush-ohne-fn-direkt 'report 7 result bot_up=true' "$out"
+out="$( _ur_lock_release() { :; }; _ur_sql() { return 1; }; _ur_report() { echo "report $*"; }; _ur_reports_flush )"
+eq K.flush-ohne-fn-leerlauf '' "$out"
+# Port: Prozess-Env, sonst n8n.env, sonst Standard.
+printf 'N8N_PORT=5999\n' > "$W/n8n.env"
+eq K.port-aus-env-datei 5999 "$(unset N8N_PORT; N8N_ENV_FILE="$W/n8n.env" _ur_n8n_port)"
+eq K.port-prozess-vor-datei 1234 "$(N8N_PORT=1234 N8N_ENV_FILE="$W/n8n.env" _ur_n8n_port)"
+eq K.port-standard 5678 "$(unset N8N_PORT; N8N_ENV_FILE="$W/fehlt.env" _ur_n8n_port)"
+
+# Bereit heisst: n8n bereit UND Orchestrator aktiv; ein API-Fehler zaehlt als nicht bereit.
+printf 'N8N_API_KEY=k\n' > "$W/ready.env"
+_ready_case() ( lifeagents_env_file() { printf '%s' "$W/ready.env"; }; curl() { return 0; }
+                n8n_orchestrator_state() { printf '%b' "$STATE"; }; if _ur_bot_ready; then echo ja; else echo nein; fi )
+eq K.bereit-aktiv ja "$(STATE='id\ttrue' _ready_case)"
+eq K.bereit-inaktiv nein "$(STATE='id\tfalse' _ready_case)"
+eq K.bereit-api-fehler nein "$(STATE='' _ready_case)"
+: > "$W/ready.env"
+eq K.bereit-ohne-schluessel ja "$(STATE='' _ready_case)"
+
+# Nach dem master-Wechsel macht der neue Helfer bei derselben Nachricht weiter, ohne Rueckschritt.
+# shellcheck disable=SC2034  # UP_* lesen die Funktionen aus update_progress.sh
+up_case() (
+  UP_STATE="$W/up.state"; UP_MIN_GAP_S=0; _UP_NEXT=0; _UP_BACKOFF=15; _UP_GONE=0
+  _up_api() { shift; echo "$*" >> "$W/up.calls"; printf '{"ok":true,"result":{"message_id":55}}'; }
+  printf 'stage=%s\n' "$1" > "$W/up.rf"
+  _up_tick "$W/up.rf" tok 1
+)
+_up_plan='{"id":7,"message_id":55,"pct":45,"stage":"n8n","text":"t45","plan":{"start":{"pct":0,"text":"t0"},"stages":{"n8n":{"pct":45,"text":"t45"},"schema":{"pct":66,"text":"t66"},"backup":{"pct":25,"text":"t25"}}}}'
+printf '%s' "$_up_plan" > "$W/up.state"; : > "$W/up.calls"
+up_case schema
+case "$(cat "$W/up.calls")" in *message_id=55*text=t66*) pass K.helfer-gleiche-nachricht ;; *) fail K.helfer-gleiche-nachricht "$(cat "$W/up.calls")" ;; esac
+: > "$W/up.calls"; up_case backup
+eq K.helfer-nie-rueckwaerts '' "$(cat "$W/up.calls")"
+: > "$W/up.calls"; up_case unbekannter_schritt
+eq K.helfer-unbekannter-schritt '' "$(cat "$W/up.calls")"
+
 export LIFEAGENTS_RUNTIME=compose
 update_run_requested() { echo run >> "$W/tick.log"; }
 update_check() { echo check >> "$W/tick.log"; echo "$*" >> "$W/check.args"; }

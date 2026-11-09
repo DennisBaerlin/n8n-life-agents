@@ -40,6 +40,14 @@ CREATE TABLE IF NOT EXISTS core.update_requests (
     CONSTRAINT update_requests_finish_claimed CHECK (finished_at IS NULL OR claimed_at IS NOT NULL)
 );
 
+-- report_state: Zustell-Merker der Ergebnis-Meldung. NULL = Zeile eines Runners ohne Merker, wird nie nachgesendet.
+-- report_params: Felder der spaeteren Meldung (Log-/Sicherungs-Pfad, fehlende Angaben), nur Anzeige.
+ALTER TABLE core.update_requests ADD COLUMN IF NOT EXISTS report_state text;
+ALTER TABLE core.update_requests ADD COLUMN IF NOT EXISTS report_params jsonb;
+ALTER TABLE core.update_requests DROP CONSTRAINT IF EXISTS update_requests_report_state_chk;
+ALTER TABLE core.update_requests ADD CONSTRAINT update_requests_report_state_chk
+    CHECK (report_state IS NULL OR report_state IN ('due', 'sent'));
+
 CREATE UNIQUE INDEX IF NOT EXISTS update_requests_one_open
     ON core.update_requests ((TRUE)) WHERE finished_at IS NULL;
 

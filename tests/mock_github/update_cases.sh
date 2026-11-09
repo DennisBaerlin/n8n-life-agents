@@ -56,7 +56,10 @@ mk_release() {   # mk_release <tag> <body> [flags]
 . /usr/local/lib/lifeagents/provisioning/lib/common.sh
 sc="$(cat /tmp/upd_test/scenario 2>/dev/null || printf ok)"
 result_set status running; result_set stage preflight
+printf '%s' "${LIFEAGENTS_UPDATE_REQUEST_ID:-}" > /tmp/upd_test/request_id
 case "$sc" in
+  steps)   for s in base postgres n8n workflows final; do result_set stage "$s"; sleep 2; done
+           printf '%s\n' "$RELEASE_TAG" > /usr/local/lib/lifeagents/VERSION; result_set status ok ;;
   ok)      printf '%s\n' "$RELEASE_TAG" > /usr/local/lib/lifeagents/VERSION; result_set stage final; result_set status ok ;;
   partial) printf '%s\n' "$RELEASE_TAG" > /usr/local/lib/lifeagents/VERSION; result_set changed true
            result_set failed_packages Finanzen; result_set reason_code package; result_set status partial ;;
@@ -247,6 +250,101 @@ installed v9.9.8; reset_db; scenario ok; tg_clear; id="$(request v9.9.10)"; cli 
 o="$(outcome "$id")"
 if [ "${o%%|*}" = failed ] && [ "$(echo "$o" | cut -d'|' -f3)" = signature ] && [ "$(cat "$VER")" = v9.9.8 ]; then pass no_keyring_refused
 else fail no_keyring_refused "outcome=$o ver=$(cat "$VER") $(show "$OUT")"; fi
+unset EXTRA_ENV
+
+# --- Fortschritts-Nachricht und Zustellung: Telegram darf das Update nie beruehren ------------------------------------
+UP_STATE_FILE=/var/lib/lifeagents/update-progress.state
+TG_API="http://127.0.0.1:${TGPORT}"
+FAST="UP_MIN_GAP_S=1 UPDATE_BOT_WAIT_TRIES=1"
+tg_edits() { jq -r 'select(.method == "editMessageText") | .body' "$TGLOG" 2>/dev/null | while IFS= read -r b; do urldec "$b"; printf '\n'; done; }
+tg_edit_n() { jq -r 'select(.method == "editMessageText") | .method' "$TGLOG" 2>/dev/null | wc -l; }
+tg_mode() { curl -s "${TG_API}/__$1?$2" >/dev/null; }
+report_state() { sql "SELECT COALESCE(report_state,'') FROM core.update_requests WHERE id = $1;"; }
+fresh() { rm -f "$UP_STATE_FILE" "${UP_STATE_FILE}.stop"; installed v9.9.8; reset_db; tg_clear; scenario "$1"; }
+sign v9.9.10 'update-test project'
+
+# 18 Ablauf: eine Nachricht, Zahlen steigen, 100 % erst zum Schluss, danach die Ergebnis-Meldung; Auftragsnummer erreicht den Lauf
+fresh steps; EXTRA_ENV="$FAST"; id="$(request v9.9.10)"
+TOK_SEEN="$W/token_seen"; rm -f "$TOK_SEEN"
+( for _ in $(seq 1 60); do
+    for c in /proc/[0-9]*/cmdline; do
+      if tr '\0' ' ' < "$c" 2>/dev/null | grep -q '^curl.*mock-token'; then echo "$c" >> "$TOK_SEEN"; fi
+    done; sleep 0.2
+  done ) &
+SAMPLER=$!
+cli --run-requested; o="$(outcome "$id")"
+kill "$SAMPLER" 2>/dev/null; wait "$SAMPLER" 2>/dev/null
+pcts="$(tg_edits | grep -oE '[0-9]+ %' | grep -oE '[0-9]+' | tr '\n' ' ')"
+mono=1; last=-1; for p in $pcts; do [ "$p" -ge "$last" ] || mono=0; last="$p"; done
+if [ "${o%%|*}" = succeeded ] && [ "$(tg_n)" = 2 ] && [ "$(tg_edit_n)" -ge 4 ] && [ "$mono" = 1 ] && [ "$last" = 100 ]; then pass progress_flow
+else fail progress_flow "outcome=$o sends=$(tg_n) edits=$(tg_edit_n) pct=[$pcts] $(show "$OUT")"; fi
+if [ "$(cat "$W/request_id" 2>/dev/null)" = "$id" ]; then pass request_id_passed; else fail request_id_passed "ist=$(cat "$W/request_id" 2>/dev/null) soll=$id"; fi
+if [ ! -e "$TOK_SEEN" ]; then pass token_not_in_argv; else fail token_not_in_argv "$(cat "$TOK_SEEN")"; fi
+if flock -n /run/lifeagents-update.lock true && ! pgrep -f 'lifeagents update --run-requested' >/dev/null; then pass progress_no_leftover
+else fail progress_no_leftover "Sperre belegt oder Prozess uebrig"; fi
+if [ "$(report_state "$id")" = sent ] && [ ! -e "$UP_STATE_FILE" ]; then pass progress_cleaned; else fail progress_cleaned "state=$(report_state "$id")"; fi
+
+# 19 Telegram-Adresse tot: Update trotzdem durch, Meldung bleibt faellig, naechster Lauf holt sie genau einmal nach
+fresh ok; EXTRA_ENV="$FAST LIFEAGENTS_TELEGRAM_API=http://127.0.0.1:1"; id="$(request v9.9.10)"; cli --run-requested
+o="$(outcome "$id")"; rs="$(report_state "$id")"
+if [ "$RC" = 0 ] && [ "${o%%|*}" = succeeded ] && [ "$(cat "$VER")" = v9.9.10 ] && [ "$rs" = due ] && [ "$(tg_n)" = 0 ]; then pass telegram_dead_update_ok
+else fail telegram_dead_update_ok "rc=$RC outcome=$o ver=$(cat "$VER") state=$rs $(show "$OUT")"; fi
+EXTRA_ENV="$FAST"; tg_clear; cli --run-requested; n1="$(tg_n)"
+tg_clear; cli --run-requested; n2="$(tg_n)"
+if [ "$n1" = 1 ] && [ "$n2" = 0 ] && [ "$(report_state "$id")" = sent ]; then pass report_caught_up_once
+else fail report_caught_up_once "n1=$n1 n2=$n2 state=$(report_state "$id")"; fi
+
+# 20 Telegram haengt: Update unberuehrt, Zeit begrenzt (Helfer-Frist + ein Sendeversuch)
+fresh ok; EXTRA_ENV="$FAST"; id="$(request v9.9.10)"
+tg_mode hang method=sendMessage; tg_mode hang method=editMessageText
+t0="$(date +%s)"
+# Das Ergebnis muss feststehen, bevor auf Telegram gewartet wird: Sekunde des Abschlusses mitschreiben.
+rm -f "$W/finished_at"
+( for _ in $(seq 1 200); do
+    if [ "$(sql "SELECT finished_at IS NOT NULL FROM core.update_requests WHERE id = $id")" = t ]; then date +%s > "$W/finished_at"; break; fi
+    sleep 0.2
+  done ) &
+WATCH=$!
+cli --run-requested; dt=$(( $(date +%s) - t0 ))
+wait "$WATCH" 2>/dev/null
+fin=$(( $(cat "$W/finished_at" 2>/dev/null || echo 99999) - t0 ))
+tg_mode hang 'method=sendMessage&off=1'; tg_mode hang 'method=editMessageText&off=1'
+o="$(outcome "$id")"
+# Ergebnis schnell gesichert; die Meldung danach: Helfer-Frist 12 s + Abschluss-Edit 8 s + Senden 20 s.
+if [ "$RC" = 0 ] && [ "${o%%|*}" = succeeded ] && [ "$fin" -le 15 ] && [ "$dt" -le 45 ] && [ "$(report_state "$id")" = due ]; then pass telegram_hang_bounded
+else fail telegram_hang_bounded "rc=$RC outcome=$o ergebnis=${fin}s dauer=${dt}s state=$(report_state "$id")"; fi
+tg_clear; cli --run-requested
+
+# 21 429 mit retry_after: keine weiteren Edits in der Pause
+fresh steps; EXTRA_ENV="$FAST"; id="$(request v9.9.10)"
+tg_mode fail 'method=editMessageText&code=429&retry_after=60'
+cli --run-requested; o="$(outcome "$id")"; e="$(tg_edit_n)"
+tg_mode fail 'method=editMessageText&off=1'
+# ein Edit des Helfers, einer aus dem Abschluss
+if [ "${o%%|*}" = succeeded ] && [ "$e" -le 2 ] && [ "$(tg_n)" = 2 ]; then pass progress_429_pause; else fail progress_429_pause "outcome=$o edits=$e sends=$(tg_n)"; fi
+
+# 22 Nachricht geloescht: keine weiteren Edits, keine neue Fortschritts-Nachricht, Ergebnis kommt
+fresh steps; EXTRA_ENV="$FAST"; id="$(request v9.9.10)"
+tg_mode fail 'method=editMessageText&code=400&desc=Bad%20Request%3A%20message%20to%20edit%20not%20found'
+cli --run-requested; o="$(outcome "$id")"; e="$(tg_edit_n)"
+tg_mode fail 'method=editMessageText&off=1'
+if [ "${o%%|*}" = succeeded ] && [ "$e" = 1 ] && [ "$(tg_n)" = 2 ]; then pass progress_deleted_message; else fail progress_deleted_message "outcome=$o edits=$e sends=$(tg_n)"; fi
+
+# 23 Bot nicht bereit: keine Fertig-Meldung und keine 100 %, nach der Frist genau eine ehrliche Meldung
+fresh ok; EXTRA_ENV="$FAST N8N_PORT=1"; id="$(request v9.9.10)"; cli --run-requested
+o="$(outcome "$id")"; n1="$(tg_n)"; rs="$(report_state "$id")"
+tg_clear; cli --run-requested; n2="$(tg_n)"
+sql "UPDATE core.update_requests SET finished_at = now() - interval '16 minutes' WHERE id = $id" >/dev/null
+tg_clear; cli --run-requested; n3="$(tg_n)"; all="$(tg_all)"; ed="$(tg_edits)"
+if [ "${o%%|*}" = succeeded ] && [ "$n1" = 1 ] && [ "$rs" = due ] && [ "$n2" = 0 ] && [ "$n3" = 1 ] \
+   && printf '%s' "$all" | grep -q 'lifeagents doctor' && ! printf '%s' "$ed" | grep -q '100 %'; then pass bot_not_ready_waits
+else fail bot_not_ready_waits "outcome=$o n1=$n1 state=$rs n2=$n2 n3=$n3 $(show "$all")"; fi
+
+# 24 Zustand eines fremden Auftrags wird nicht bearbeitet
+fresh ok; EXTRA_ENV="$FAST"; id="$(request v9.9.10)"
+printf '{"id":999999,"message_id":777,"pct":50,"stage":"n8n","text":"x","plan":{"stages":{},"start":{"pct":0,"text":"alt","stopped":"alt"},"done":{"pct":100,"text":"alt"}}}' > "$UP_STATE_FILE"
+cli --run-requested
+if [ "$(jq -r 'select(.method == "editMessageText") | .body' "$TGLOG" 2>/dev/null | grep -c 'message_id=777')" = 0 ]; then pass progress_foreign_state; else fail progress_foreign_state "alte Nachricht bearbeitet"; fi
 unset EXTRA_ENV
 
 exit "$fails"

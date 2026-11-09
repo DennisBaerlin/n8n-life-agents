@@ -9,14 +9,18 @@
 #           Sprache) -> Karte per Bot-API -> erst nach 2xx core.fn_release_card_sent (Latch). Fehler = nur Log.
 #   Runner: Update-Sperre (flock -n, sonst auslassen) -> core.fn_update_request_claim (haengende schliessen + offenen
 #           Auftrag uebernehmen) -> Gegenpruefung (Tag-Format, Tag > VERSION, Tag = releases/latest) -> Vorab-Pruefung
-#           (Platz, DB) -> Start-Meldung -> `lifeagents update --version <tag>` mit Ergebnis-Datei, Ausgabe per tee ins
-#           Log -> core.fn_update_request_finish -> Ergebnis-Meldung (core.fn_update_report = die Fehler-Hilfe).
+#           (Platz, DB) -> Fortschritts-Helfer (lib/update_progress.sh) -> `lifeagents update --version <tag>` mit Ergebnis-
+#           Datei, Ausgabe per tee ins Log -> core.fn_update_request_finish (Ergebnis zuerst) -> Ergebnis-Meldung ueber
+#           _ur_reports_flush (core.fn_update_report = die Fehler-Hilfe). Nicht Zugestelltes holt der naechste Lauf nach.
 #   Der Runner traut der Auftrags-Zeile NICHT (n8n kann sie schreiben): er installiert nur das aktuelle stabile
 #   releases/latest, und nur wenn es neuer ist als VERSION (Retry: gleich VERSION erlaubt).
 #   Meldungen gehen direkt ueber die Bot-API (tg_api_curl), nicht ueber n8n — das Update startet n8n neu, und ein
 #   gescheitertes Update kann n8n lahmlegen.
 #
 # Reads globals: PROVISION_GH_API, PROVISION_REPO_SLUG (common.sh), N8N_PORT (Default 5678).
+
+# shellcheck source=update_progress.sh
+. "$(dirname "${BASH_SOURCE[0]}")/update_progress.sh"
 
 # Verbund: auf dem Volume var_la (das Protokoll eines Updates muss den master-Wechsel ueberleben).
 if rt_is_compose; then UPDATE_LOG_DIR="${UPDATE_LOG_DIR:-/var/lib/lifeagents/log}"; fi
@@ -92,20 +96,41 @@ _ur_help_url() {
   printf 'https://%s.github.io/%s/docs/update-hilfe.html' "$(printf '%s' "$owner" | tr '[:upper:]' '[:lower:]')" "$repo"
 }
 
-# _ur_bot_up — 0, wenn n8n bereit ist (Knoepfe im Chat erreichen dann einen Empfaenger). Wartet bis 120 s: direkt nach
+# _ur_n8n_port -> Port aus Prozess-Env, sonst n8n.env, sonst 5678 (die CLI laedt n8n.env nicht).
+_ur_n8n_port() {
+  local p="${N8N_PORT:-}"
+  [ -n "$p" ] || p="$(read_env_value "${N8N_ENV_FILE:-/etc/n8n/n8n.env}" N8N_PORT 2>/dev/null || true)"
+  printf '%s' "${p:-5678}"
+  return 0
+}
+
+# _ur_bot_ready — 0, wenn der Bot antwortet: n8n bereit UND Orchestrator aktiv. Ohne API-Schluessel (frueher Abbruch der
+#   Einrichtung) bleibt nur Readiness; ein API-Fehler zaehlt als nicht bereit.
+_ur_bot_ready() {
+  local key st port
+  port="$(_ur_n8n_port)"
+  curl -fsS --max-time 3 -o /dev/null "http://127.0.0.1:${port}/healthz/readiness" 2>/dev/null || return 1
+  key="$(read_env_value "$(lifeagents_env_file core)" N8N_API_KEY 2>/dev/null || true)"
+  [ -n "$key" ] || return 0
+  st="$(n8n_orchestrator_state "$key" "http://127.0.0.1:${port}")"
+  [ "${st#*$'\t'}" = true ]
+}
+
+# _ur_bot_up — 0, wenn der Bot antwortet (Knoepfe im Chat erreichen dann einen Empfaenger). Wartet bis 120 s: direkt nach
 #   einem Update startet n8n noch (/healthz/readiness erst nach den Migrationen gruen).
 _ur_bot_up() {
   local i
-  for i in $(seq 1 60); do
-    curl -fsS --max-time 3 -o /dev/null "http://127.0.0.1:${N8N_PORT:-5678}/healthz/readiness" 2>/dev/null && return 0
+  for i in $(seq 1 "${UPDATE_BOT_WAIT_TRIES:-60}"); do
+    _ur_bot_ready && return 0
     [ "${1:-wait}" = nowait ] && return 1
     sleep 2
   done
   return 1
 }
 
-# _ur_report <request_id> <phase> [key=value ...] — Meldung zum Auftrag bauen (core.fn_update_report) und senden.
-#   Zusatz-Felder (bot_up, backup, log, missing, failed, latest) als key=value; Texte/Knoepfe kommen aus der DB.
+# _ur_report <request_id> <phase> [key=value ...] — Meldung zum Auftrag bauen (core.fn_update_report) und senden; erst nach
+#   2xx gilt sie als zugestellt. Zusatz-Felder (bot_up, backup, log, missing, failed, latest) als key=value; Texte/Knoepfe
+#   kommen aus der DB. Immer rc 0: unter set -e darf eine Meldung nie den Runner beenden.
 _ur_report() {
   local id="$1" phase="$2"; shift 2
   local p kv out
@@ -117,18 +142,58 @@ _ur_report() {
       *)      p="$(jq -c --arg k "${kv%%=*}" --arg v "${kv#*=}" '. + {($k):$v}' <<<"$p")" ;;
     esac
   done
-  out="$(_ur_sql "$p" "SELECT core.fn_update_report(:'p'::jsonb);")" || { _ur_alert "Update-Meldung nicht baubar (DB)."; return 1; }
-  _ur_send "$(jq -r '.text // empty' <<<"$out")" "$(jq -c '.keyboard // []' <<<"$out")" \
-    || _ur_alert "Update-Meldung konnte nicht gesendet werden (kein Token, Owner nicht verbunden oder Netz)."
+  out="$(_ur_sql "$p" "SELECT core.fn_update_report(:'p'::jsonb);" 2>/dev/null)" || { log "Update-Meldung nicht baubar (DB)."; return 0; }
+  if [ "$phase" = result ]; then _up_close "$id" "$(jq -r '.class // empty' <<<"$out")"; fi
+  if _ur_send "$(jq -r '.text // empty' <<<"$out")" "$(jq -c '.keyboard // []' <<<"$out")"; then
+    _ur_sql "$(jq -nc --argjson i "$id" '{id:$i}')" "SELECT core.fn_update_report_sent(:'p'::jsonb);" >/dev/null 2>&1 || true
+    _up_forget "$id"
+  else
+    log "Update-Meldung nicht zugestellt (Token, Verbindung oder Netz) — der nächste Lauf versucht es erneut."
+  fi
+  return 0
 }
 
-# _ur_finish <id> <outcome> [stage] [reason_code] [changed:true|false|null] [detail]
+# _ur_lock_release — Update-Sperre abgeben: Telegram-Aufrufe duerfen ein Terminal-Update nie aufhalten (es wartet nur 30 s).
+_ur_lock_release() { exec 9>&- 2>/dev/null || true; unset LIFEAGENTS_UPDATE_LOCK_HELD; return 0; }
+
+# _ur_reports_flush [auftrag] — offene Ergebnis-Meldungen zustellen. Der erste Aufruf fragt n8n nicht (Leerlauf jede Minute).
+#   Ohne die Faellig-fn (neuer master bricht beim Umstieg vor dem Schema-Schritt ab) geht <auftrag> direkt hinaus. Immer rc 0.
+_ur_reports_flush() {
+  local due n i bot id direct="${1:-}"
+  local -a kv
+  _ur_lock_release
+  if ! due="$(_ur_sql '{}' "SELECT core.fn_update_report_due(:'p'::jsonb);" 2>/dev/null)"; then
+    [ -n "$direct" ] || return 0
+    if _ur_bot_up nowait; then bot=true; else bot=false; fi
+    _ur_report "$direct" result "bot_up=$bot"
+    return 0
+  fi
+  [ -n "$due" ] && [ "$due" != '[]' ] || return 0
+  if _ur_bot_up nowait; then bot=true; else bot=false; fi
+  due="$(_ur_sql "$(jq -nc --argjson b "$bot" '{bot_up:$b}')" "SELECT core.fn_update_report_due(:'p'::jsonb);" 2>/dev/null || true)"
+  [ -n "$due" ] || return 0
+  n="$(jq -r 'length' <<<"$due" 2>/dev/null || echo 0)"
+  [ "$n" -gt 0 ] || return 0
+  for i in $(seq 0 $((n - 1))); do
+    id="$(jq -r ".[$i].id" <<<"$due")"
+    mapfile -t kv < <(jq -r ".[$i].params | to_entries[] | \"\(.key)=\(.value)\"" <<<"$due")
+    _ur_report "$id" result "bot_up=$bot" "${kv[@]}"
+  done
+  return 0
+}
+
+# _ur_finish <id> <outcome> [stage] [reason_code] [changed:true|false|null] [detail] [key=value ...] — Ergebnis festhalten und
+#   die Meldung als faellig vormerken; key=value sind ihre Zusatz-Felder (backup, log, missing, failed, latest).
 _ur_finish() {
-  local p
-  p="$(jq -nc --argjson id "$1" --arg o "$2" --arg st "${3:-}" --arg rc "${4:-}" --arg ch "${5:-null}" --arg d "${6:-}" \
-         '{id:$id, outcome:$o, stage:$st, reason_code:$rc, detail:$d,
+  local p kv report='{}' id="$1" o="$2" st="${3:-}" rc="${4:-}" ch="${5:-null}" d="${6:-}"
+  if [ "$#" -gt 6 ]; then
+    shift 6
+    for kv in "$@"; do report="$(jq -c --arg k "${kv%%=*}" --arg v "${kv#*=}" '. + {($k):$v}' <<<"$report")"; done
+  fi
+  p="$(jq -nc --argjson id "$id" --arg o "$o" --arg st "$st" --arg rc "$rc" --arg ch "$ch" --arg d "$d" --argjson rep "$report" \
+         '{id:$id, outcome:$o, stage:$st, reason_code:$rc, detail:$d, report:$rep,
            changed:(if $ch == "true" then true elif $ch == "false" then false else null end)}')"
-  _ur_sql "$p" "SELECT core.fn_update_request_finish(:'p'::jsonb);" >/dev/null || _ur_alert "Auftrag ${1}: Ergebnis nicht speicherbar (DB)."
+  _ur_sql "$p" "SELECT core.fn_update_request_finish(:'p'::jsonb);" >/dev/null || _ur_alert "Auftrag ${id}: Ergebnis nicht speicherbar (DB)."
 }
 
 # _ur_code_reason <http-code> <hdr-file> -> reason_code fuer einen gescheiterten GitHub-Abruf.
@@ -206,15 +271,15 @@ _ur_run_one() {
   local cmp work code latest log rf rc
 
   if ! _ur_is_tag "$tag"; then
-    _ur_finish "$id" failed preflight unknown false "Ungültiges Tag im Auftrag."; _ur_report "$id" result bot_up=true; return 0
+    _ur_finish "$id" failed preflight unknown false "Ungültiges Tag im Auftrag."; _ur_reports_flush; return 0
   fi
   cmp="$(_ur_semver_cmp "$tag" "$installed")"
   if [ -z "$cmp" ]; then
     _ur_finish "$id" failed preflight unknown false "Installiert ist keine Release-Version (${installed:-keine})."
-    _ur_report "$id" result bot_up=true; return 0
+    _ur_reports_flush; return 0
   fi
   if [ "$cmp" -lt 0 ] || { [ "$cmp" -eq 0 ] && [ "$kind" != retry ]; }; then
-    _ur_finish "$id" already_current; _ur_report "$id" result bot_up=true; return 0
+    _ur_finish "$id" already_current; _ur_reports_flush; return 0
   fi
 
   work="$(mktemp -d)"
@@ -222,32 +287,32 @@ _ur_run_one() {
   case "$code" in
     2??) latest="$(jq -r '.tag_name // empty' "$work/latest.json" 2>/dev/null || true)" ;;
     *)   _ur_finish "$id" failed download "$(_ur_code_reason "$code" "$work/latest.json.hdr")" false "GitHub: HTTP ${code}"
-         rm -rf -- "$work"; _ur_report "$id" result bot_up=true; return 0 ;;
+         rm -rf -- "$work"; _ur_reports_flush; return 0 ;;
   esac
   rm -rf -- "$work"
   if [ "$latest" != "$tag" ]; then
-    _ur_finish "$id" superseded; _ur_report "$id" result bot_up=true "latest=${latest}"
+    _ur_finish "$id" superseded '' '' null '' "latest=${latest}"; _ur_reports_flush
     update_check   # die Karte fuer die neuere Version gleich hinterher
     return 0
   fi
 
   if [ "$(_ur_free_kb /)" -lt "$UPDATE_MIN_FREE_KB" ] || [ "$(_ur_free_kb /var)" -lt "$UPDATE_MIN_FREE_KB" ]; then
     _ur_finish "$id" failed preflight disk false "Frei: / $(_ur_free_kb /) KB, /var $(_ur_free_kb /var) KB (nötig ${UPDATE_MIN_FREE_KB} KB)."
-    _ur_report "$id" result bot_up=true; return 0
+    _ur_reports_flush; return 0
   fi
 
-  _ur_report "$id" start
   mkdir -p "$UPDATE_LOG_DIR"; chmod 0750 "$UPDATE_LOG_DIR"
   log="${UPDATE_LOG_DIR}/update-$(date -u +%Y%m%dT%H%M%SZ).log"
   rf="$(mktemp /run/lifeagents-update-result.XXXXXX)"
   _ur_notice "Update-Auftrag ${id}: ${installed} -> ${tag} (${kind}), Protokoll ${log}"
+  _up_start "$id" "$rf" || true
   rc=0
   # LIFEAGENTS_UPDATE_REQUEST_ID: im Docker-Verbund merkt sich der master-Wechsel den Auftrag (lib/master_swap.sh), damit der
   # neue master ihn abschliesst.
   # Linke Seite einer ||-Liste: errexit greift im Block nicht, PIPESTATUS gehoert noch der Pipeline (Exit des Updates,
   # nicht von tee). Die Sperre erbt das Kind ueber den offenen fd + LIFEAGENTS_UPDATE_LOCK_HELD (update_lock_acquire).
   {
-    LIFEAGENTS_RESULT_FILE="$rf" LIFEAGENTS_UPDATE_REQUESTED=1 \
+    LIFEAGENTS_RESULT_FILE="$rf" LIFEAGENTS_UPDATE_REQUESTED=1 LIFEAGENTS_UPDATE_REQUEST_ID="$id" \
       "$(command -v lifeagents || printf '/usr/local/bin/lifeagents')" update --version "$tag" </dev/null 2>&1 \
       | tee -a "$log" >/dev/null
     rc="${PIPESTATUS[0]}"
@@ -255,6 +320,7 @@ _ur_run_one() {
   chmod 0640 "$log" 2>/dev/null || true
   if [ "$(_ur_result "$rf" status)" = handoff ]; then
     # Docker-Verbund: der Helfer wechselt gleich den master, der neue schliesst den Auftrag ab (lib/master_swap.sh).
+    _up_stop
     rm -f -- "$rf"
     _ur_notice "Update-Auftrag ${id}: an den master-Wechsel übergeben — der neue master setzt fort."
     return 0
@@ -266,28 +332,29 @@ _ur_run_one() {
 # _ur_conclude <id> <exit-code> <ergebnis-datei> <log> — Ergebnis eines Update-Laufs lesen, Auftrag abschliessen, melden
 #   (Chat-Runner und Fortsetzung nach einem master-Wechsel). Loescht die Ergebnis-Datei.
 _ur_conclude() {
-  local id="$1" rc="$2" rf="$3" log="$4" status stage changed reason missing failed backup bot detail
+  local id="$1" rc="$2" rf="$3" log="$4" status stage changed reason missing failed backup detail
   status="$(_ur_result "$rf" status)"; stage="$(_ur_result "$rf" stage)"; changed="$(_ur_result "$rf" changed)"
   reason="$(_ur_result "$rf" reason_code)"; missing="$(_ur_result "$rf" missing_keys)"
   failed="$(_ur_result "$rf" failed_packages)"; backup="$(_ur_result "$rf" backup)"
-  rm -f -- "$rf"
   detail="$(_ur_last_error "$log")"
-  if _ur_bot_up; then bot=true; else bot=false; fi
 
+  # Das Ergebnis steht zuerst in der DB, bevor auf Helfer, n8n oder Telegram gewartet wird.
   if [ "$status" = held ]; then
-    _ur_finish "$id" held "${stage:-preflight}" '' false
-    _ur_report "$id" result "bot_up=$bot" "missing=${missing}" "log=${log}"
+    _ur_finish "$id" held "${stage:-preflight}" '' false '' "missing=${missing}" "log=${log}"
   elif [ "$rc" -eq 0 ] && [ "$status" = ok ]; then
     _ur_finish "$id" succeeded "${stage:-final}"
-    _ur_report "$id" result "bot_up=$bot"
   elif [ "$rc" -eq 0 ] && [ "$status" = partial ]; then
-    _ur_finish "$id" partial "${stage:-final}" "${reason:-package}" true "$detail"
-    _ur_report "$id" result "bot_up=$bot" "failed=${failed}" "log=${log}" "backup=${backup}"
+    _ur_finish "$id" partial "${stage:-final}" "${reason:-package}" true "$detail" "failed=${failed}" "log=${log}" "backup=${backup}"
   else
     # Kein/unvollstaendiges Ergebnis = abgebrochen. changed unbekannt -> null (die Hilfe behandelt das vorsichtig).
-    _ur_finish "$id" failed "${stage:-unknown}" "${reason:-unknown}" "${changed:-null}" "$detail"
-    _ur_report "$id" result "bot_up=$bot" "log=${log}" "backup=${backup}"
+    _ur_finish "$id" failed "${stage:-unknown}" "${reason:-unknown}" "${changed:-null}" "$detail" "log=${log}" "backup=${backup}"
   fi
+  # Der Helfer liest die Ergebnis-Datei, also erst nach ihm loeschen.
+  _up_stop
+  rm -f -- "$rf"
+  _ur_lock_release
+  _ur_bot_up >/dev/null 2>&1 || true
+  _ur_reports_flush "$id"
   return 0
 }
 
@@ -299,24 +366,16 @@ update_run_requested() {
   # Sperre nehmen, BEVOR ein Auftrag angefasst wird: unter ihr laeuft sicher kein anderes Update (provision.sh main
   # nimmt dieselbe Sperre) -> haengende Auftraege duerfen als interrupted geschlossen werden.
   update_lock_acquire || { log "Update-Sperre belegt (anderes Update/Einrichtung läuft) — nächster Lauf."; return 0; }
-  local installed claim rec n i id tag kind bot
+  local installed claim id tag kind
   # Docker-Verbund: ein offener master-Wechsel geht VOR jeden neuen Auftrag — und vor dem Schliessen haengender Auftraege,
   # denn sein Auftrag steht bis zum Abschluss offen (lib/master_swap.sh).
   if rt_is_compose && master_swap_pending; then _ur_swap_continue; return 0; fi
   installed="$(_ur_installed)"
-  claim="$(_ur_sql "$(jq -nc --arg i "$installed" '{installed:$i}')" "SELECT core.fn_update_request_claim(:'p'::jsonb);")" \
+  claim="$(_ur_sql "$(jq -nc --arg i "$installed" '{installed:$i, report:true}')" "SELECT core.fn_update_request_claim(:'p'::jsonb);")" \
     || { _ur_alert "Update-Runner: DB nicht erreichbar."; return 0; }
 
-  rec="$(jq -c '.recovered // []' <<<"$claim")"
-  n="$(jq -r 'length' <<<"$rec")"
-  if [ "$n" -gt 0 ]; then
-    if _ur_bot_up nowait; then bot=true; else bot=false; fi
-    for i in $(seq 0 $((n - 1))); do
-      _ur_report "$(jq -r ".[$i].id" <<<"$rec")" result "bot_up=$bot"
-    done
-  fi
-
   if [ "$(jq -r '.claimed' <<<"$claim")" = null ]; then
+    _ur_reports_flush
     _ur_menu_refresh
     return 0
   fi
@@ -331,8 +390,7 @@ update_run_requested() {
 #   Update wartet nur 30 s auf die Update-Sperre (Telegram-Aufrufe duerfen es nie aufhalten). Offen-Pruefung in der DB
 #   (requested_gen > done_gen, Wartezeit nach Fehlschlag), sonst still — der Leerlauf erzeugt kein Journal.
 _ur_menu_refresh() {
-  exec 9>&- 2>/dev/null || true
-  unset LIFEAGENTS_UPDATE_LOCK_HELD
+  _ur_lock_release
   local claim gen token
   claim="$(_ur_sql '{}' "SELECT core.fn_menu_refresh_claim();" 2>/dev/null || true)"
   [ -n "$claim" ] || return 0
@@ -358,7 +416,7 @@ _ur_menu_refresh() {
 #   fahren und den Auftrag abschliessen; nach einem Rueckweg des Helfers den Auftrag als gescheitert melden (nichts
 #   geaendert). Laeuft unter der Update-Sperre (update_run_requested).
 _ur_swap_continue() {
-  local what id tag mode allow log rf rc=0 bot drop note
+  local what id tag mode allow log rf rc=0 drop note
   what="$(master_swap_resolve)"
   id="$(_swap_get REQUEST_ID)"; tag="$(_swap_get TAG)"; mode="$(_swap_get MODE)"; allow="$(_swap_get ALLOW_DOWNGRADE)"
   case "$what" in
@@ -369,6 +427,7 @@ _ur_swap_continue() {
       log="${UPDATE_LOG_DIR}/update-$(date -u +%Y%m%dT%H%M%SZ).log"
       rf="$(mktemp /tmp/lifeagents-update-result.XXXXXX)"
       _ur_notice "master-Wechsel auf ${tag} steht — Einrichtung läuft weiter (${mode:-update}), Protokoll ${log}"
+      if [ -n "$id" ]; then _up_start "$id" "$rf" || true; fi
       {
         RELEASE_TAG="$tag" LIFEAGENTS_RESULT_FILE="$rf" LIFEAGENTS_UPDATE_REQUESTED=1 LIFEAGENTS_ALLOW_DOWNGRADE="${allow:-0}" \
           bash "${MASTER_IMAGE_TREE}/provisioning/provision.sh" </dev/null 2>&1 | tee -a "$log" >/dev/null
@@ -393,14 +452,13 @@ _ur_swap_continue() {
         _ur_alert "Rückweg: die Daten sind zurückgesetzt, der vorherige Stand ${tag:-?} startete aber nicht — n8n wurde wieder gestartet. Diagnose: lifeagents doctor"
       fi
       if [ -n "$id" ]; then
-        if _ur_bot_up nowait; then bot=true; else bot=false; fi
         # Schritt "base": im Verbund stecken die Basis-Programme im master-Image (core.fn_update_report kennt den Code).
         if [ "$what" = rolled_back ]; then
           _ur_finish "$id" failed base unknown false "Das neue Programm-Paket startete nicht — der vorherige Stand läuft unverändert weiter."
         else
           _ur_finish "$id" failed base unknown null "Der Wechsel wurde unterbrochen."
         fi
-        _ur_report "$id" result "bot_up=$bot"
+        _ur_reports_flush "$id"
       fi
       ;;
   esac

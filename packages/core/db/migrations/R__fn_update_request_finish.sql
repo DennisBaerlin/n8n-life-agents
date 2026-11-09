@@ -4,7 +4,9 @@
 --   bzw. aus seinen eigenen Vor-Pruefungen). Nur ein uebernommener, offener Auftrag laesst sich abschliessen.
 --   stage/reason_code nur als feste Codes ([a-z_]), sonst NULL; detail auf 500 Zeichen gekuerzt (nur Anzeige im
 --   Owner-Chat, nie in Links).
---   p: {id, outcome, stage?, reason_code?, changed?, detail?}
+--   report (Objekt) markiert die Meldung als faellig (report_state='due', core.fn_update_report_due); ohne den Key bleibt
+--   report_state NULL, damit ein Runner ohne Merker, der selbst meldet, nicht zusaetzlich nachgesendet wird.
+--   p: {id, outcome, stage?, reason_code?, changed?, detail?, report?:{log?, backup?, missing?, failed?, latest?}}
 --   RUECKGABE: {ok:true, id, outcome} | {ok:false, reason:'invalid'|'invalid_outcome'|'not_open'}. Nie RAISE.
 --   INVOKER (root ueber runuser postgres). Tests: tests/db/core/test_fn_update_requests.sql
 -- ============================================================
@@ -37,7 +39,9 @@ BEGIN
            stage       = CASE WHEN COALESCE(p->>'stage', '') ~ '^[a-z_]{1,40}$' THEN p->>'stage' END,
            reason_code = CASE WHEN COALESCE(p->>'reason_code', '') ~ '^[a-z_]{1,40}$' THEN p->>'reason_code' END,
            changed     = CASE p->'changed' WHEN 'true'::jsonb THEN true WHEN 'false'::jsonb THEN false END,
-           detail      = NULLIF(left(btrim(COALESCE(p->>'detail', '')), 500), '')
+           detail      = NULLIF(left(btrim(COALESCE(p->>'detail', '')), 500), ''),
+           report_state  = CASE WHEN jsonb_typeof(p->'report') = 'object' THEN 'due' END,
+           report_params = CASE WHEN jsonb_typeof(p->'report') = 'object' THEN p->'report' END
      WHERE id = v_id AND claimed_at IS NOT NULL AND finished_at IS NULL
     RETURNING id INTO v_done;
     IF v_done IS NULL THEN

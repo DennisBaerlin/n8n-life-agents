@@ -195,6 +195,98 @@ BEGIN
   r := core.fn_update_report('{"request_id":-1,"phase":"result"}');
   IF COALESCE(r->>'text', '') <> '' THEN RAISE EXCEPTION 'FAIL [8j unbekannt]: %', r; END IF;
 
+  -- ---------- 9) Fortschritts-Plan: fertig gerenderte Texte je Schritt ----------
+  DELETE FROM core.update_requests;
+  INSERT INTO core.ui_texts (key, lang, text, package) VALUES
+    ('core.update.bar.filled', 'de', '#', 'core'), ('core.update.bar.empty', 'de', '-', 'core'),
+    ('core.update.progress', 'de', 'P {tag} {bar} {pct} {stage}', 'core'),
+    ('core.update.progress.done', 'de', 'D {tag} {bar} {pct}', 'core'),
+    ('core.update.progress.stopped', 'de', 'S {tag} {bar} {pct}', 'core')
+  ON CONFLICT (key, lang) DO UPDATE SET text = excluded.text;
+  INSERT INTO core.update_requests (tag, claimed_at, from_version) VALUES ('v0.15.0', now(), 'v0.14.0') RETURNING id INTO v_id;
+  r := core.fn_update_report(jsonb_build_object('request_id', v_id, 'phase', 'progress_plan'));
+  IF r#>>'{start,pct}' IS DISTINCT FROM '0' OR position('P v0.15.0 ---------- 0' IN r#>>'{start,text}') = 0 THEN RAISE EXCEPTION 'FAIL [9a start]: %', r; END IF;
+  IF r#>>'{done,text}' IS DISTINCT FROM 'D v0.15.0 ########## 100' THEN RAISE EXCEPTION 'FAIL [9b done]: %', r; END IF;
+  IF (SELECT array_agg(k ORDER BY k) FROM jsonb_object_keys(r->'stages') k) IS DISTINCT FROM
+     (SELECT array_agg(k ORDER BY k) FROM unnest(ARRAY['download','verify','preflight','base','backup','postgres','n8n','gateway',
+                                                       'schema','access','workflows','packages','cli','final']) k)
+  THEN RAISE EXCEPTION 'FAIL [9c jeder Schritt-Code hat ein Gewicht]: %', r->'stages'; END IF;
+  DECLARE
+    v_prev int := 0; v_pct int; v_code text;
+  BEGIN
+    FOREACH v_code IN ARRAY ARRAY['download','verify','preflight','base','backup','postgres','n8n','gateway',
+                                  'schema','access','workflows','packages','cli','final'] LOOP
+      v_pct := (r->'stages'->v_code->>'pct')::int;
+      IF v_pct <= v_prev OR v_pct >= 100 THEN RAISE EXCEPTION 'FAIL [9d % steigt nicht: % nach %]', v_code, v_pct, v_prev; END IF;
+      v_prev := v_pct;
+    END LOOP;
+  END;
+  v_txt := r#>'{stages,postgres}'->>'text';
+  IF position('####------ 40 core.update.stage.postgres' IN v_txt) = 0 THEN RAISE EXCEPTION 'FAIL [9e Balken 40 %%]: %', v_txt; END IF;
+  v_txt := r#>'{stages,n8n}'->>'text';
+  IF position('####------ 45' IN v_txt) = 0 THEN RAISE EXCEPTION 'FAIL [9f Balken rundet ab]: %', v_txt; END IF;
+  IF r#>'{stages,n8n}'->>'stopped' IS DISTINCT FROM 'S v0.15.0 ####------ 45' THEN RAISE EXCEPTION 'FAIL [9g gestoppt]: %', r#>'{stages,n8n}'; END IF;
+  -- unbekannter Auftrag -> kein Plan, kein RAISE
+  r := core.fn_update_report('{"request_id":-1,"phase":"progress_plan"}');
+  IF r ? 'stages' THEN RAISE EXCEPTION 'FAIL [9h unbekannt]: %', r; END IF;
+
+  -- ---------- 10) Erfolg, aber Bot antwortet nicht -> kein „alles laeuft“ ----------
+  DELETE FROM core.update_requests;
+  INSERT INTO core.update_requests (tag, claimed_at, from_version, finished_at, outcome) VALUES ('v0.15.0', now(), 'v0.14.0', now(), 'succeeded') RETURNING id INTO v_id;
+  r := core.fn_update_report(jsonb_build_object('request_id', v_id, 'phase', 'result', 'bot_up', false, 'help_url', 'https://example.org/hilfe'));
+  IF r->>'class' IS DISTINCT FROM 'done_not_ready' OR position('core.update.done_not_ready' IN r->>'text') = 0 THEN RAISE EXCEPTION 'FAIL [10a Klasse]: %', r; END IF;
+  IF r->'keyboard' <> '[]'::jsonb THEN RAISE EXCEPTION 'FAIL [10b keine Knoepfe]: %', r; END IF;
+  r := core.fn_update_report(jsonb_build_object('request_id', v_id, 'phase', 'result', 'bot_up', true));
+  IF r->>'class' IS DISTINCT FROM 'done' THEN RAISE EXCEPTION 'FAIL [10c mit Bot -> done]: %', r; END IF;
+
+  -- ---------- 11) Merker: faellig -> gesendet ----------
+  DELETE FROM core.update_requests;
+  INSERT INTO core.update_requests (tag, claimed_at, from_version) VALUES ('v0.15.0', now(), 'v0.14.0') RETURNING id INTO v_id;
+  -- ohne report-Key (alter Runner) bleibt die Zeile aussen vor: er meldet selbst
+  PERFORM core.fn_update_request_finish(jsonb_build_object('id', v_id, 'outcome', 'failed', 'stage', 'download', 'reason_code', 'net', 'changed', false));
+  IF (SELECT report_state FROM core.update_requests WHERE id = v_id) IS NOT NULL THEN RAISE EXCEPTION 'FAIL [11a alter Runner -> NULL]'; END IF;
+  r := core.fn_update_report_due('{}');
+  IF jsonb_array_length(r) <> 0 THEN RAISE EXCEPTION 'FAIL [11b Altbestand nie nachsenden]: %', r; END IF;
+  DELETE FROM core.update_requests;
+  INSERT INTO core.update_requests (tag, claimed_at, from_version) VALUES ('v0.15.0', now(), 'v0.14.0') RETURNING id INTO v_id;
+  PERFORM core.fn_update_request_finish(jsonb_build_object('id', v_id, 'outcome', 'failed', 'stage', 'workflows', 'reason_code', 'unknown', 'changed', true,
+            'report', jsonb_build_object('log', '/var/log/x.log', 'backup', '/var/backups/x.gpg')));
+  r := core.fn_update_report_due('{"bot_up":false}');
+  IF jsonb_array_length(r) <> 1 OR (r#>>'{0,id}')::bigint IS DISTINCT FROM v_id OR r#>>'{0,params,log}' IS DISTINCT FROM '/var/log/x.log' THEN RAISE EXCEPTION 'FAIL [11c faellig mit Parametern]: %', r; END IF;
+  r := core.fn_update_report_sent(jsonb_build_object('id', v_id));
+  IF (r->>'ok')::boolean IS NOT TRUE THEN RAISE EXCEPTION 'FAIL [11d sent]: %', r; END IF;
+  IF jsonb_array_length(core.fn_update_report_due('{}')) <> 0 THEN RAISE EXCEPTION 'FAIL [11e nach sent nichts mehr]'; END IF;
+  r := core.fn_update_report_sent(jsonb_build_object('id', v_id));
+  IF (r->>'ok')::boolean IS NOT TRUE OR (r->>'changed')::boolean IS NOT FALSE THEN RAISE EXCEPTION 'FAIL [11f zweimal harmlos]: %', r; END IF;
+  r := core.fn_update_report_sent('{"id":"kaputt"}');
+  IF (r->>'ok')::boolean IS NOT FALSE THEN RAISE EXCEPTION 'FAIL [11g ungueltig, kein RAISE]: %', r; END IF;
+
+  -- 24-Stunden-Grenze
+  UPDATE core.update_requests SET report_state = 'due', finished_at = now() - interval '25 hours' WHERE id = v_id;
+  IF jsonb_array_length(core.fn_update_report_due('{}')) <> 0 THEN RAISE EXCEPTION 'FAIL [11h nach 24 h nicht mehr]'; END IF;
+
+  -- Erfolg/teilweise warten auf den Bot, hoechstens 15 Minuten; Fehler und "schon aktuell" nie
+  DELETE FROM core.update_requests;
+  INSERT INTO core.update_requests (tag, claimed_at, from_version, finished_at, outcome, report_state) VALUES
+    ('v0.15.0', now(), 'v0.14.0', now(), 'succeeded', 'due') RETURNING id INTO v_id;
+  IF jsonb_array_length(core.fn_update_report_due('{"bot_up":false}')) <> 0 THEN RAISE EXCEPTION 'FAIL [11i Erfolg wartet auf Bot]'; END IF;
+  IF jsonb_array_length(core.fn_update_report_due('{"bot_up":true}')) <> 1 THEN RAISE EXCEPTION 'FAIL [11j Bot bereit -> faellig]'; END IF;
+  IF jsonb_array_length(core.fn_update_report_due('{}')) <> 1 THEN RAISE EXCEPTION 'FAIL [11k ohne bot_up: alles Offene zaehlen]'; END IF;
+  UPDATE core.update_requests SET finished_at = now() - interval '16 minutes', outcome = 'partial' WHERE id = v_id;
+  IF jsonb_array_length(core.fn_update_report_due('{"bot_up":false}')) <> 1 THEN RAISE EXCEPTION 'FAIL [11l nach 15 min auch ohne Bot]'; END IF;
+  UPDATE core.update_requests SET finished_at = now(), outcome = 'already_current' WHERE id = v_id;
+  IF jsonb_array_length(core.fn_update_report_due('{"bot_up":false}')) <> 1 THEN RAISE EXCEPTION 'FAIL [11m ohne Wartepflicht]'; END IF;
+
+  -- ---------- 12) Claim markiert erholte Auftraege nur mit report:true ----------
+  DELETE FROM core.update_requests;
+  INSERT INTO core.update_requests (tag, claimed_at, from_version) VALUES ('v0.15.0', now(), 'v0.14.0') RETURNING id INTO v_id;
+  PERFORM core.fn_update_request_claim('{"installed":"v0.14.0"}');
+  IF (SELECT report_state FROM core.update_requests WHERE id = v_id) IS NOT NULL THEN RAISE EXCEPTION 'FAIL [12a alter Runner meldet selbst]'; END IF;
+  DELETE FROM core.update_requests;
+  INSERT INTO core.update_requests (tag, claimed_at, from_version) VALUES ('v0.15.0', now(), 'v0.14.0') RETURNING id INTO v_id;
+  PERFORM core.fn_update_request_claim('{"installed":"v0.14.0","report":true}');
+  IF (SELECT report_state FROM core.update_requests WHERE id = v_id) IS DISTINCT FROM 'due' THEN RAISE EXCEPTION 'FAIL [12b erholt -> due]'; END IF;
+
   RAISE NOTICE 'test_fn_update_requests: alle Faelle gruen';
 END $$;
 

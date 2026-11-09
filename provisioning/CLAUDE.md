@@ -42,7 +42,8 @@ Der Auslieferungs-Kern läuft byte-identisch im Test-Substrat (systemd-Docker-Co
 - **Brücke n8n → root = Daten-Zeile, nie Datei/sudo:** der Tap endet über die Callback-Registry in `core.update_requests`, der root-Timer `lifeagents-update-run` übernimmt sie (`flock` + `core.fn_update_request_claim`). Bei uns anders als `.path`-Unit + Spool-Datei (eine Datei bräuchte den ersten Datei-Node in n8n). Der Runner traut der Zeile nicht (installiert nur `releases/latest` > `VERSION`). Mechanik → Referenz *Update im Chat*.
 - **Ein Runner, zwei Auftragsarten:** ohne Update-Auftrag setzt der Runner die Übersicht-Knöpfe neu (`core.menu_refresh`); jede neue DB→root-Brücke = weitere Auftragsart, kein zweiter Timer.
 - **Runner-Units:** keine Abhängigkeit auf `n8n.service`; ein Re-Provision startet nur die Timer neu, nie den laufenden Runner-Service (er führt genau dieses Update aus).
-- **Ergebnis statt Exit-Code:** neue Abbruchstellen mit festem Grund → `die_because <code>`; neuer Schritt in `provision.sh main` → `ui_step <text> <stage>` (+ Key `core.update.stage.<code>` und CASE in `core.fn_update_report`). `die` zählt nur in der Haupt-Shell als gescheitertes Update.
+- **Ergebnis statt Exit-Code:** neue Abbruchstellen mit festem Grund → `die_because <code>`; neuer Schritt in `provision.sh main` → `ui_step <text> <stage>` (+ Key `core.update.stage.<code>` und Prozent in `v_stages`, `core.fn_update_report`). `die` zählt nur in der Haupt-Shell als gescheitertes Update.
+- **Fortschritt nie im Update-Pfad** (`lib/update_progress.sh`): erst das Ergebnis in die DB, dann Telegram.
 - **Release-Schlüsselbund** `/etc/lifeagents/release-signing.gpg`: einmal anlegen, nie durch ein Update überschreiben; die Prüfung lebt im gespiegelten gh-download-Block (`_release_fetch_verify`). Schlüssel nur über `scripts/new_release_key.ps1` (contract_lint 24).
 
 ## Backup/Restore

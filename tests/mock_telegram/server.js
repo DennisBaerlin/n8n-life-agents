@@ -195,8 +195,10 @@ function buildResult(method, body) {
 }
 
 // Fehler-Schalter je Bot-API-Methode (Tests fuer Fehlerwege, z. B. sendMessageDraft abgelehnt -> die Antwort muss
-// trotzdem kommen): GET /__fail?method=<m> schaltet an, /__fail?method=<m>&off=1 aus. Antwort dann HTTP 400 wie Telegram.
-const failMethods = new Set();
+// trotzdem kommen): GET /__fail?method=<m> schaltet an, /__fail?method=<m>&off=1 aus. Antwort dann HTTP 400 wie Telegram;
+// optional &code=429&retry_after=30&desc=<text>. GET /__hang?method=<m> laesst Aufrufe unbeantwortet (Zeitgrenzen), &off=1 aus.
+const failMethods = new Map();
+const hangMethods = new Set();
 
 const server = http.createServer((req, res) => {
   // Kontroll-Endpunkt fuer die Readiness-Probe des Treibers.
@@ -204,8 +206,15 @@ const server = http.createServer((req, res) => {
   if (req.url.startsWith('/__fail?')) {
     const q = new URLSearchParams(req.url.split('?')[1] || '');
     const m = q.get('method') || '';
-    if (q.get('off')) failMethods.delete(m); else if (m) failMethods.add(m);
-    res.writeHead(200, { 'Content-Type': 'text/plain' }); res.end([...failMethods].join(',')); return;
+    if (q.get('off')) failMethods.delete(m);
+    else if (m) failMethods.set(m, { code: Number(q.get('code') || 400), retry_after: q.get('retry_after'), desc: q.get('desc') });
+    res.writeHead(200, { 'Content-Type': 'text/plain' }); res.end([...failMethods.keys()].join(',')); return;
+  }
+  if (req.url.startsWith('/__hang?')) {
+    const q = new URLSearchParams(req.url.split('?')[1] || '');
+    const m = q.get('method') || '';
+    if (q.get('off')) hangMethods.delete(m); else if (m) hangMethods.add(m);
+    res.writeHead(200, { 'Content-Type': 'text/plain' }); res.end([...hangMethods].join(',')); return;
   }
   if (req.url === '/__profile' || req.url.startsWith('/__profile?')) {
     const q = new URLSearchParams(req.url.split('?')[1] || '');
@@ -289,9 +298,12 @@ const server = http.createServer((req, res) => {
     } catch (e) { /* Logging-Fehler nie den Mock-Response kippen lassen */ }
 
     // Per /__fail eingeschaltete Methode (mock_route_test [draft-fail]) -> HTTP 400 wie die echte Bot-API.
+    if (hangMethods.has(method)) return;
     if (failMethods.has(method)) {
-      res.writeHead(400, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ ok: false, error_code: 400, description: 'Bad Request: mock failure (' + method + ')' }));
+      const f = failMethods.get(method);
+      res.writeHead(f.code, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(Object.assign({ ok: false, error_code: f.code, description: f.desc || ('Bad Request: mock failure (' + method + ')') },
+        f.retry_after ? { parameters: { retry_after: Number(f.retry_after) } } : {})));
       return;
     }
     if (upload) {

@@ -113,7 +113,7 @@ BEGIN
     -- 'knock' (Pairing-Dedup unbekannter Absender) und reset-skip-Pakete bleiben.
     DELETE FROM core.notification_state
      WHERE split_part(source, ':', 1) = ANY (v_pkgs) OR split_part(source, ':', 1) = 'advisor'
-        OR source IN ('onboarding', 'onboarding_nudge', 'plan_news', 'persona_sticker', 'persona_greet');   -- Roter Faden: Einmal-Karten + Nachfass-Stufen; Plan teilen: Merker 'schon informiert'; Sticker-Bremse + Tagesgruss-Latch (Werkszustand)
+        OR source IN ('onboarding', 'onboarding_nudge', 'plan_news', 'persona_sticker', 'persona_greet', 'plan_rollout', 'plan_verb', 'plan_verb_day');   -- Roter Faden: Einmal-Karten + Nachfass-Stufen; Plan teilen: Merker 'schon informiert'; Sticker-Bremse + Tagesgruss-Latch (Werkszustand)
     FOR v_tbl IN SELECT tablename FROM pg_tables
                  WHERE schemaname = 'agent' AND tablename LIKE '%\_chat\_memory' ESCAPE '\'
     LOOP

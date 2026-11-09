@@ -7,7 +7,7 @@
 > bleibt die jeweilige SQL-Datei. Nach jeder fn-Aenderung neu generieren + committen;
 > Drift ist hartes Gate (prek-Hook `fn-catalog` -> `gen_fn_catalog.ps1 -Verify`).
 
-Umfang: 506 fn-Dateien.
+Umfang: 514 fn-Dateien.
 
 ## finance.fn_account_everyday_basis (READ, STABLE) -- Grundlage der geschaetzten Alltagsausgaben eines Kontos, je Kontoauszug
 - `finance.fn_account_everyday_basis(p_account_id int) -> TABLE(period_start date, period_end date, days int, unmatched_out numeric, unmatched_in numeric, per_day numeric, counted boolean, reason text, oneoff_out numeric, oneoff_threshold numeric)`
@@ -968,7 +968,7 @@ Umfang: 506 fn-Dateien.
 ## core.fn_handle_plan_cb
 - `core.fn_handle_plan_cb(p jsonb) -> jsonb`
 - jsonb-Keys: can_write, chat_id, chat_type, data, domain, lang, person_id, ready, role
-- core.fn_handle_plan_cb(p) — Registry-Handler des Callback-Prefix 'plan' (member_permeable, 2026-10-28) Der Knopf des Onboarding-Plan-Schritts (plan:<domain>, aus core.sub_send_onboarding_menu: Fertig-Karte, Bereichs- ansicht, Uebersicht). Owner und Mitglied kommen beide ueber core.fn_dispatch_callback hierher (kein hartkodierter 'Callback action'-Arm). Bei Erfolg {ok:true, route:'plan', domain} -> der Orchestrator ('Plan route?') startet den advisor_agent der Domaene mit festem Auftrag; sonst {ok:false, reason, toast} -> 'Answer dispatched cb'. p: { data:'plan:<domain>', chat_id (from.id), chat_type }. Regeln (Entscheid allein aus core.fn_advisor_plan_status = die eine Adresse): * nur Privatchat (die Agent-Identitaet message.chat.id muss der Tapper sein); * <domain> = Zeile der Plan-Status-Liste (plan_step + Paket aktiv), nie Caller-Text als Identifier -> sonst Toast 'nicht verfuegbar'; * can_write=false (Mitglied am Haushalts-Plan, write_permission owner_only) -> Toast "pflegt der Haushalts-Owner"; * ready=false (Mindestdaten fehlen, readiness_fn) -> Toast "fehlen noch Daten" (Schutz fuer alte Karten; das Menue zeigt dann statt des Plan-Knopfs "Zuerst: <Abschnitt>"). Verben (Plan teilen, 2026-10-28; share/explain/wish sind als Domain-Name reserviert): plan:share:<domain>:<version> -> nur Owner, Version = aktive Version des Haushalts-Plans (sonst 'nicht aktuell') plan:explain:<domain> | plan:wish:<domain> -> nur Rolle partner (Owner: Hinweis, Kind: nur Erwachsene), aktiver Haushalts-Plan (core.fn_household_plan_active); persoenliche Plaene (career) -> nicht verfuegbar. Rueckgabe {ok:true, route:'plan', verb: start|share|explain|wish, domain, version?, summary? (explain/wish)}. Nie RAISE (Dispatcher-Vertrag). Toasts aus dem Textkatalog in der Sprache des Tippenden (agent.fn_person_lang). SECURITY INVOKER (laeuft unter der Host-Cred des Dispatchers; die Plan-Status-fn ist DEFINER), search_path gepinnt. Tests: tests/db/core/test_fn_handle_plan_cb.sql
+- core.fn_handle_plan_cb(p) — Registry-Handler des Callback-Prefix 'plan' (member_permeable, 2026-10-28) Der Knopf des Onboarding-Plan-Schritts (plan:<domain>, aus core.sub_send_onboarding_menu: Fertig-Karte, Bereichs- ansicht, Uebersicht). Owner und Mitglied kommen beide ueber core.fn_dispatch_callback hierher (kein hartkodierter 'Callback action'-Arm). Bei Erfolg {ok:true, route:'plan', domain} -> der Orchestrator ('Plan route?') startet den advisor_agent der Domaene mit festem Auftrag; sonst {ok:false, reason, toast} -> 'Answer dispatched cb'. p: { data:'plan:<domain>', chat_id (from.id), chat_type }. Regeln (Entscheid allein aus core.fn_advisor_plan_status = die eine Adresse): * nur Privatchat (die Agent-Identitaet message.chat.id muss der Tapper sein); * <domain> = Zeile der Plan-Status-Liste (plan_step + Paket aktiv), nie Caller-Text als Identifier -> sonst Toast 'nicht verfuegbar'; * can_write=false (Mitglied am Haushalts-Plan, write_permission owner_only) -> Toast "pflegt der Haushalts-Owner"; * ready=false (Mindestdaten fehlen, readiness_fn) -> Toast "fehlen noch Daten" (Schutz fuer alte Karten; das Menue zeigt dann statt des Plan-Knopfs "Zuerst: <Abschnitt>"). Verben (Plan teilen, 2026-10-28; share/explain/wish sind als Domain-Name reserviert): plan:share:<domain>:<version> -> nur Owner, Version = aktive Version des Haushalts-Plans (sonst 'nicht aktuell') plan:explain:<domain> | plan:wish:<domain> -> nur Rolle partner (Owner: Hinweis, Kind: nur Erwachsene), aktiver Haushalts-Plan (core.fn_household_plan_active); persoenliche Plaene (career) -> nicht verfuegbar. Rueckgabe {ok:true, route:'plan', verb: start|share|explain|wish, domain, version?, summary? (explain/wish)}. Berater-Verben (Geführte Abfolge): plan:scan|event|alert|watch|drift:<domain>[:<version>] -> nur can_write (alert auf general: Owner); offene Karte, Doppeltipp (Sperre 10 Minuten), Tageslimit advisor.button_starts_per_day (je Haushalt) und leere Daten -> Toast. Eine alte Version bekommt den Stale-Toast, ohne das Limit zu verbrauchen. data nur aus festen Feldlisten (Art, Wert, Einheit, Datum, Domain), nie reason, action_note oder URL; event/alert/drift lesen nur, wenn die fn existiert. Nie RAISE (Dispatcher-Vertrag). Toasts aus dem Textkatalog in der Sprache des Tippenden (agent.fn_person_lang). SECURITY INVOKER (laeuft unter der Host-Cred des Dispatchers; die Plan-Status-fn ist DEFINER), search_path gepinnt. Tests: tests/db/core/test_fn_handle_plan_cb.sql
 
 ## core.fn_handle_reminder_cb
 - `core.fn_handle_reminder_cb(p jsonb) -> jsonb`
@@ -979,6 +979,16 @@ Umfang: 506 fn-Dateien.
 - `core.fn_handle_update_cb(p jsonb) -> jsonb`
 - jsonb-Keys: chat_id, data, found, lang, person_id, role
 - core.fn_handle_update_cb(p) — Registry-Handler des Callback-Prefix 'upd' (owner-only; Update-Hinweis 2026-10-24) callback_data 'upd:now|retry:<tag>' von der Release-Karte ([Jetzt aktualisieren], core.fn_release_card) bzw. der Fehler-Hilfe ([Erneut versuchen], core.fn_update_report). Legt EINEN Auftrag in core.update_requests an; ausgefuehrt wird er vom root-Runner (systemd-Timer, `lifeagents update --run-requested`), der Tag, VERSION und releases/latest selbst noch einmal prueft (diese fn ist Komfort, nie die Sicherheitsgrenze fuer root). Erreicht ueber core.fn_dispatch_callback (Member-Gate: member_permeable=false -> nur der Owner); der Handler prueft die Owner-Rolle zusaetzlich selbst (direkter Aufruf, Defense-in-Depth). * now -> nur fuer ein Tag, dessen Karte wirklich ging (Latch release_update/<tag>, core.fn_release_card_sent); * retry -> nur, wenn core.fn_update_retry_allowed(<tag>) (die eine Wiederholungs-Regel); * schon ein offener Auftrag -> Toast "laeuft schon" (Unique-Index ist das Gesetz, hier nur freundlich). p: { data, chat_id (from.id), chat_type } RUECKGABE: {ok:true, toast, request_id} | {ok:false, reason:'owner_only'|'invalid'|'unknown_release'| 'already_open'|'no_retry', toast}. Toasts in der Sprache des Tippenden (core.update.toast.*). Nie RAISE. SECURITY INVOKER (Host-Cred des Dispatchers, die core.* schreibt), search_path gepinnt. Tests: tests/db/core/test_fn_update_requests.sql
+
+## core.fn_handle_watch_cb
+- `core.fn_handle_watch_cb(p jsonb) -> jsonb`
+- jsonb-Keys: chat_id, data, lang, person_id, role
+- core.fn_handle_watch_cb(p) — Registry-Handler des Callback-Prefix 'watch' (owner-only) watch:on:<domain>:<version> schaltet drift_check und plan_review ein. Ein Knopf einer alten Version bekommt den Stale-Toast, damit er nicht gegen ein spaeteres Ausschalten wirkt. p: {data, chat_id}. Rueckgabe {ok, toast}. Nie RAISE. Tests: tests/db/core/test_fn_handle_watch_cb.sql
+
+## core.fn_handoff_overview_mark
+- `core.fn_handoff_overview_mark(p jsonb) -> jsonb`
+- jsonb-Keys: chat_id, domain, max_task_id
+- core.fn_handoff_overview_mark(p) — merkt die erfolgreich gesendete Uebergabe-Liste fuer die Abfolge Gerufen von agent.tool_send_handoff_overview nach dem Send, damit Schritt 1 sie im selben Lauf nicht noch einmal schickt. p: {domain, chat_id, max_task_id}. Schluessel wie core.fn_plan_rollout_next. RUECKGABE {ok, marked}. Nie RAISE. Tests: tests/db/core/test_fn_handoff_overview_mark.sql
 
 ## core.fn_handoff_overview
 - `core.fn_handoff_overview(p jsonb) -> jsonb`
@@ -1399,6 +1409,16 @@ Umfang: 506 fn-Dateien.
 - jsonb-Keys: --
 - core.fn_note_context_allowed(p_name text) -> boolean (Phase C, WS-2; geteilt mit WS-3; Phase A registry-getrieben) Harte Knowledge-Context-Allowlist fuer den Prosa-Lern-Pfad ("## Gelernt"): TRUE nur, wenn der Ziel-Kontext EXISTIERT, managed_by='agent' ist UND ein Prosa-Wissens-Kontext ist: der Host-Kontext 'family' ODER das Plan-Dokument (core.advisors.plan_context) einer Advisor-Domaene, die das per learn_notes=true ausdruecklich erlaubt (Manifest-advisors-Block) und deren Paket AKTIV ist. Ersetzt die Literal-Liste family/financial_planning (Core kannte einen Paket-Kontextnamen). Verhindert, dass der Lern-Loop Prosa in Instruktions-/Seed-Kontexte (managed_by='seed', Verhaltens-Korruption) ODER in reine Fakten-Kontexte (facts-strukturiert, kein Prosa-Body) schreibt. Exakter Namensvergleich -> per_user-Plan-Dokumente ('<base>__<pid>') sind nie erlaubt (contract_lint: learn_notes nur fuer household-Plan-Kontexte). EINE Quelle fuer beide Aufrufer (agent.fn_record_learn_candidates Vorfilter + core.fn_append_context_note Backstop) -> kein Drift. Roh-INVOKER (kein Secret) — der Aufrufer braucht ohnehin SELECT auf agent.core_contexts.
 
+## agent.fn_note_proactive_turn
+- `agent.fn_note_proactive_turn(p jsonb) -> jsonb`
+- jsonb-Keys: agent, chat_id, kind, msg, params, value
+- agent.fn_note_proactive_turn (traegt eine proaktive Nachricht ins Gedaechtnis nach) Crons schreiben in kein Agenten-Gedaechtnis; antwortet jemand frei auf eine Rollout-Nachricht, kennt sie sonst niemand. Nur Katalog-Schluessel mit Skalar-Parametern, nie freier Text. Router: Vier-Zeilen-Form wie agent.fn_set_router_button_turn; Agent: Paar [Proactive message] + Struktur. p: {chat_id, agent ('agent.<x>' oder 'orchestrator'), msg:[{kind:'tpl', value, params}]}. Ungueltig oder Tabelle fehlt: no-op, nie RAISE. RUECKGABE {ok:true, recorded}. Tests: tests/db/core/test_fn_note_proactive_turn.sql
+
+## core.fn_notify_commit
+- `core.fn_notify_commit(p_source text, p_key text) -> void`
+- jsonb-Keys: --
+- core.fn_notify_commit (schreibt einen beanspruchten Merker nach erfolgreichem Senden fest) Claim mit Frist (core.fn_should_notify ... '30 minutes') -> Senden -> diese fn nimmt die Frist weg, der Schritt ist erledigt. Scheitert das Senden, setzt core.fn_notify_resolve zurueck; stirbt der Lauf dazwischen, laeuft die Frist aus. Nur state='fired'. SECURITY DEFINER (Muster core.fn_notify_resolve): enge Rollen erreichen core.notification_state nur ueber dieses Fenster. Tests: tests/db/core/test_fn_notify_commit.sql
+
 ## core.fn_notify_forget_before
 - `core.fn_notify_forget_before(p_source text, p_before timestamptz) -> integer`
 - jsonb-Keys: --
@@ -1579,6 +1599,26 @@ Umfang: 506 fn-Dateien.
 - `finance.fn_plan_readiness(p_domain text, p_person_id text) -> jsonb`
 - jsonb-Keys: --
 - finance.fn_plan_readiness(p_domain, p_person_id) — Daten-Reife des Finanzplans (Onboarding-Plan-Schritt, 2026-10-28) Registry-Feld core.advisors.readiness_fn der Domain 'finance': sind die HARTEN Mindestdaten fuer einen sinnvollen Haushalts-Finanzplan erfasst? Owner-Vorgabe: der Plan-Knopf erscheint erst, wenn genug Finanzdaten da sind, sonst eine Erlaeuterung, was zuerst fehlt (und ein Knopf auf genau diesen Onboarding-Abschnitt). Pflicht (in dieser Reihenfolge, je Punkt der Abschnitt, in dem er erfasst wird): accounts -> mindestens ein aktives Geld-Konto (account_type 'cash', status 'active') [Abschnitt accounts] income -> mindestens eine LAUFENDE Einnahme (recurring_cashflow_classified 'income') [Abschnitt liabilities] expenses -> mindestens eine LAUFENDE Ausgabe (Klasse 'consumption' oder 'loan') [Abschnitt liabilities] "Laufend" + Klasse kommen allein aus finance.recurring_cashflow_classified (auch eine Zahlung, deren erster Termin innerhalb eines Rhythmus aussteht; Transfers, Sparraten, pausierte, beendete und erst spaeter startende Zahlungen zaehlen nicht). Versicherungen, Rente, Depots und Ziele sind bewusst KEINE Pflicht: ihre Luecken findet gerade das Plan-Interview (risk_protection, retirement_pension). p_domain/p_person_id = die einheitliche Registry-Signatur (wie gaps_fn); der Finanzplan ist haushaltsweit, beide werden nicht ausgewertet. RUECKGABE jsonb: { ready: bool, missing: [{key, section}, ...] } (missing leer gdw ready). STABLE/INVOKER: Aufrufer sind core.fn_advisor_plan_status (SECURITY DEFINER, Menue/Knopf) und der Berater-Knoten 'Onboarding gate read' (agent.finance_advisor, Haupt-Cred wie der Rest dieses Knotens: liest core.config). Tests: tests/db/finance/test_fn_plan_readiness.sql
+
+## core.fn_plan_rollout_claim
+- `core.fn_plan_rollout_claim(p jsonb) -> jsonb`
+- jsonb-Keys: chat_id, loser, messages, person_id, step
+- core.fn_plan_rollout_claim(p) — Eingang der geführten Abfolge je Chat (Laufende, Nachzuegler) p: {chat_id}. Guenstige Pruefungen zuerst: Chat numerisch, Schalter cron_enable.plan_rollout (core.fn_reminder_allowed), Sender aufgeloest, keine offene Karte (released_at IS NULL, expires_at in der Zukunft), kein Entwurf der letzten 2 Stunden (Bedingung wie der Interview-Pin des Orchestrators). Dann je Domain mit plan_step die erste nicht leere Antwort von core.fn_plan_rollout_next; ein Verlierer des Claims stoppt. Nie core.fn_advisor_plan_status (ruft teure gaps_fn). Nie RAISE: Fehler -> leer. Rueckgabe {messages:[...mit chat_id], step, domain}. INVOKER, search_path gepinnt. Tests: tests/db/core/test_fn_plan_rollout_claim.sql
+
+## core.fn_plan_rollout_lagging
+- `core.fn_plan_rollout_lagging() -> jsonb`
+- jsonb-Keys: --
+- core.fn_plan_rollout_lagging() (READ-ONLY — Chats fuer den taeglichen Nachzuegler-Lauf) Chats mit aktivem Plan und moeglichem offenem Schritt: noch nicht durchgesehen, offene Aufgaben, Wert-Kandidaten oder Schluss nicht festgeschrieben. Entscheidung und Claim bleiben in core.fn_plan_rollout_claim; hier nur die Vorauswahl. RUECKGABE: {chats:[chat_id,...]}. Tests: tests/db/core/test_fn_plan_rollout_claim.sql
+
+## core.fn_plan_rollout_latch
+- `core.fn_plan_rollout_latch(p_key text) -> text`
+- jsonb-Keys: --
+- core.fn_plan_rollout_latch(p_key) (READ-ONLY — Zustand eines Rollout-Schritts) 'free' = kein gueltiger Merker, 'pending' = beansprucht (Frist laeuft, ein anderer Lauf sendet gerade), 'done' = festgeschrieben. Tests: tests/db/core/test_fn_plan_rollout_next.sql
+
+## core.fn_plan_rollout_next
+- `core.fn_plan_rollout_next(p_domain text, p_person text) -> jsonb`
+- jsonb-Keys: buttons, key, messages, shareable, wait
+- core.fn_plan_rollout_next(p_domain, p_person) — der eine naechste Schritt nach dem Veroeffentlichen Leitet aus dem Bestand ab, was als Naechstes dran ist (level-triggered, kein Status). Reihenfolge: 0 [Plan durchsehen], 1 Uebergabe-Liste, 2 Warten auf Eintragen, 3 Paket-Schritt (core.advisors.rollout_fn), 4 Wert-Waechter, 5 Schluss. Die Stelle fuer die Aenderungs-Nachricht (C4) liegt vor Schritt 0. Offener Entwurf juenger als advisor.rollout_draft_stale_days: 0, 4, 5 entfallen. Haushaltsplan: nur der Owner bekommt Schritte; per_user: jede Person ihre eigenen, ohne watch:on und plan:share. Beansprucht ueber core.fn_should_notify('plan_rollout', key, '30 minutes'); festschreiben macht der Sender (core.fn_notify_commit). Rueckgabe {step, wait?, loser?, messages:[{msg:[tpl], buttons:[{text_key,data}], memory_agent?, latch:{source,key}, latches?}]}. Nachrichten ohne Knopf werden verworfen. INVOKER unter der Host-Cred. Tests: tests/db/core/test_fn_plan_rollout_next.sql
 
 ## core.fn_plan_share_mark
 - `core.fn_plan_share_mark(p jsonb) -> jsonb`

@@ -213,4 +213,14 @@ BEGIN
   RAISE NOTICE 'PASS (iii) Werkszustand-Reset: %', r;
 END $$;
 
+DO $$
+DECLARE r JSONB;
+BEGIN
+  INSERT INTO core.notification_state (source, key, state) VALUES ('plan_rollout', 'x', 'fired'), ('plan_verb_day', 'y', 'fired') ON CONFLICT DO NOTHING;
+  INSERT INTO agent.plan_reminder_declines (domain, package, label) VALUES ('d', 'core', 'x');
+  r := core.fn_reset_user_data('RESET');
+  IF EXISTS (SELECT 1 FROM core.notification_state WHERE source IN ('plan_rollout', 'plan_verb_day')) THEN RAISE EXCEPTION 'FAIL Quellen'; END IF;
+  IF EXISTS (SELECT 1 FROM agent.plan_reminder_declines) THEN RAISE EXCEPTION 'FAIL Ablehnungen'; END IF;
+END $$;
+
 ROLLBACK;

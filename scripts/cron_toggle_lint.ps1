@@ -104,8 +104,11 @@ foreach ($key in ($chatKeys | Sort-Object)) {
         Fail "Opt-in-Cron '$key' ($($declared[$key].pkg), Default AUS) hat KEINEN erreichbaren cron_off:$key-Knopf im gebauten Graph (Cron ohne Abschaltknopf -- genau das verhindert diese Phase)"
     }
 }
+$watchHandler = $null -ne (([System.IO.File]::ReadAllText((Join-Path $PSScriptRoot '..\packages\core\manifest.json'), [System.Text.Encoding]::UTF8) | ConvertFrom-Json).callback_handlers.watch)
 # --- (b) jeder OPT-IN-Key hat einen cron_on-Knopf (Setup-Aktivierung) ------------------------------------------
 foreach ($key in ($chatKeys | Sort-Object)) {
+    # watch:on aktiviert drift_check und plan_review; das Manifest fuehrt dafuer callback_handlers.watch.
+    if ($key -in @('drift_check', 'plan_review') -and $watchHandler) { continue }
     if (-not $onKeys.ContainsKey($key)) {
         Fail "Opt-in-Cron '$key' ($($declared[$key].pkg), Default AUS) hat KEINEN erreichbaren cron_on:$key-Knopf im gebauten Graph (keine Setup-Aktivierung; Opt-in-Crons starten AUS, brauchen also einen Aktivieren-Knopf)"
     }

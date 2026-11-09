@@ -127,6 +127,30 @@
                   },
                   {
                       "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "=SELECT core.fn_handoff_overview_mark($1::jsonb) AS r;",
+                                         "options":  {
+                                                         "queryReplacement":  "={{ JSON.stringify({ domain: String($(\u0027Start\u0027).item.json.domain || \u0027\u0027), chat_id: String($(\u0027Start\u0027).item.json.chat_id || \u0027\u0027), max_task_id: String(JSON.parse($(\u0027Read overview\u0027).item.json.ov || \u0027{}\u0027).max_task_id || \u0027\u0027) }) }}"
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       770,
+                                       -100
+                                   ],
+                      "id":  "ffd8b6f2-5b99-58a3-8267-ec13c399b893",
+                      "name":  "Mark overview",
+                      "onError":  "continueRegularOutput",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_WRITE__",
+                                                           "name":  "Postgres account"
+                                                       }
+                                      }
+                  },
+                  {
+                      "parameters":  {
                                          "assignments":  {
                                                              "assignments":  [
                                                                                  {
@@ -156,7 +180,7 @@
                       "type":  "n8n-nodes-base.set",
                       "typeVersion":  3.4,
                       "position":  [
-                                       880,
+                                       990,
                                        -100
                                    ],
                       "id":  "fec6102d-b8ae-5ecf-9b6a-155008b88004",
@@ -258,6 +282,17 @@
                                                         ]
                                            },
                         "Send overview":  {
+                                              "main":  [
+                                                           [
+                                                               {
+                                                                   "index":  0,
+                                                                   "node":  "Mark overview",
+                                                                   "type":  "main"
+                                                               }
+                                                           ]
+                                                       ]
+                                          },
+                        "Mark overview":  {
                                               "main":  [
                                                            [
                                                                {

@@ -185,3 +185,7 @@ Owner-Wunsch: persönlicher, ohne Mehrkosten und ohne Genauigkeitsverlust → je
 ## Plan-Durchlauf (`core.fn_plan_sync`)
 
 Gleicht beim Veröffentlichen (`fn_advisor_publish_plan`, dieselbe Transaktion) oder nachträglich (`agent.tool_sync_plan`, keine neue Version) die Termin-Erinnerungen eines Plans ab: anlegen, verschieben, per `retire` abschalten, Ablehnungen merken (`agent.plan_reminder_declines`). Eine Karte zeigt nur, was neu ist; ohne Änderung keine Karte, nur Stempel `synced_at`. Regel-Reihenfolge und Rückgabe stehen im fn-Kopf (`docs/fn_catalog.md`). Pflicht je Paket über `advisor.plan_sync_required`. Ungenaue Zeitangaben rechnet `core.fn_period_reminder_date`.
+
+## Geführte Abfolge (`core.fn_plan_rollout_next`)
+
+Nach dem Veröffentlichen kommt immer nur die Nachricht, die gerade dran ist; der Bot leitet sie aus dem Bestand ab, es gibt keinen Status. Am Ende jedes Orchestrator-Laufs ruft genau ein Knoten (`Run plan rollout`) den Sub `core.sub_plan_rollout_next`, täglich derselbe Sub aus `agent.advisor.cron_plan_rollout`. `tool_publish_plan` sendet selbst nichts mehr. Reihenfolge, Schlüssel und Sperren stehen in den fn-Köpfen (`docs/fn_catalog.md`). Pakete hängen einen eigenen Schritt über `core.advisors.rollout_fn` ein (Manifest `advisors.<domain>.rollout_fn`, Signatur `(text,text)`). Berater-Starts per Knopf laufen über `core.fn_handle_plan_cb` (Verben `scan`, `event`, `alert`, `watch`, `drift`), begrenzt durch `advisor.button_starts_per_day`.

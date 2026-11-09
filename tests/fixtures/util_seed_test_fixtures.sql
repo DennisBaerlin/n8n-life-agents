@@ -302,7 +302,7 @@ BEGIN
             'section_content','REITs: optionale Beimischung von 6 % zur Streuung. Kauf-Trigger: nur unter 30 Euro je Anteil. Bevorzugt breite ETFs, keine Einzeltitel.'));
         PERFORM pg_temp.assert_ok('Finanzplan Sektion wealth_building', v_r);
         v_r := agent.fn_advisor_publish_plan(jsonb_build_object(
-            'domain','finance', 'chat_id','test_fixture', 'check_findings','[]', 'check_passes',1,
+            'domain','finance', 'chat_id','test_fixture', 'reminders', '[]', 'check_findings','[]', 'check_passes',1,
             'plan_md', E'# Haushaltsplan (Testfixture)\n\n## REIT-Strategie\n- Optionale REIT-Beimischung: 6 % des Portfolios zur Streuung.\n- Kauf-Trigger: REITs nur unter 30 Euro je Anteil nachkaufen.\n- Form: breite ETFs, keine Einzeltitel.\n'));
         PERFORM pg_temp.assert_ok('Finanzplan Publish', v_r);
         RAISE NOTICE 'FIXTURES ANGELEGT: veroeffentlichter Finanzplan (REIT-Regeln).';
@@ -331,4 +331,6 @@ BEGIN
     RAISE NOTICE 'FIXTURES OK: Onboarding-Sektionen auf completed gesetzt.';
 END $$;
 
+-- Die gefuehrte Abfolge schickt sonst nach dem ersten Lauf eine Zusatznachricht; plan_rollout_test schaltet sie selbst ein.
+UPDATE core.config SET value = 'false' WHERE category = 'cron_enable' AND key = 'plan_rollout';
 COMMIT;

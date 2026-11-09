@@ -134,7 +134,8 @@ BEGIN
     -- Merker des Pakets und der Berater-Engine seiner Domains, sonst fragen sie nach einem Re-Install nie wieder.
     DELETE FROM core.notification_state n
      WHERE split_part(n.source, ':', 1) = v_pkg
-        OR (split_part(n.source, ':', 1) = 'advisor' AND split_part(n.source, ':', 2) = ANY (v_domains));
+        OR (split_part(n.source, ':', 1) = 'advisor' AND split_part(n.source, ':', 2) = ANY (v_domains))
+        OR (n.source = 'plan_rollout' AND split_part(n.key, ':', 1) = ANY (v_domains));
     -- Das Plan-Dokument faellt in Schritt 2 mit; ohne diese Zeile bliebe ein aktiver Plan ohne Dokument (Wuensche per CASCADE).
     DELETE FROM agent.advisor_plans WHERE domain = ANY (v_domains);
     GET DIAGNOSTICS v_plans = ROW_COUNT;

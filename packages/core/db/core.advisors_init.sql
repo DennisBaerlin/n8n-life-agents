@@ -68,6 +68,9 @@ ALTER TABLE core.advisors ADD COLUMN IF NOT EXISTS own_review_cron boolean NOT N
 -- Mindestdaten fuer einen sinnvollen Plan; ohne = reif). Beide liest NUR core.fn_advisor_plan_status (to_regprocedure-
 -- Guard, dyn. EXECUTE) — Muster review_fn; installer-geschrieben, CHECK wie review_fn.
 ALTER TABLE core.advisors ADD COLUMN IF NOT EXISTS plan_step boolean NOT NULL DEFAULT FALSE;
+ALTER TABLE core.advisors ADD COLUMN IF NOT EXISTS rollout_fn text;
+ALTER TABLE core.advisors DROP CONSTRAINT IF EXISTS advisors_rollout_fn_chk;
+ALTER TABLE core.advisors ADD CONSTRAINT advisors_rollout_fn_chk CHECK (rollout_fn IS NULL OR rollout_fn ~ '^[a-z][a-z0-9_]*\.fn_[a-z0-9_]+$');
 ALTER TABLE core.advisors ADD COLUMN IF NOT EXISTS gaps_fn text;
 ALTER TABLE core.advisors ADD COLUMN IF NOT EXISTS readiness_fn text;
 DO $$ BEGIN

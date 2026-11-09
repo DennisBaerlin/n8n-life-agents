@@ -9,7 +9,8 @@
 --   INTEREST_PAYMENT mit Wertpapier), interest (INTEREST_PAYMENT ohne Wertpapier), tax (TAX, TAX_OPTIMIZATION,
 --   PRE_DETERMINED_TAX_BASE, SEC_ACCOUNT, EARNINGS mit Abfluss), fee (FEE, CARD_ORDERING_FEE), corporate
 --   (CORPORATE_ACTION REDEMPTION/FINAL_MATURITY/WARRANT_EXERCISE: Info, das Geld kommt als eigene CASH-Zeile),
---   cash (Ein-/Auszahlungen, Karte, Ueberweisungen), unknown (alles andere, nie still verworfen).
+--   cash (Ein-/Auszahlungen, Karte, Ueberweisungen), unknown (alles andere, nie still verworfen; reason unsupported_type,
+--   dividend_correction oder no_cash_amount = Zeile ohne Betrag, Geld 0, nie gebucht). Pflicht je Zeile ist nur das Datum.
 --   DIVIDENDEN-KORREKTUR (PP-Forum): eine Dividenden-Zeile mit negativem amount storniert eine fruehere; sie und GENAU
 --   EINE gleich hohe positive Zeile derselben ISIN + Stueckzahl (die zeitlich naechste = Neu-Buchung) werden unknown (reason dividend_correction) ->
 --   nie automatisch gebucht, die Karte nennt sie. Das Geld zaehlt trotzdem (cash_amount bleibt).
@@ -69,12 +70,12 @@ BEGIN
             END IF;
         END LOOP;
         v_raw := COALESCE(v_r->>'date', left(v_r->>'datetime', 10));
-        IF v_raw IS NULL OR NOT pg_input_is_valid(v_raw, 'date') OR NOT (v_r ? 'amount') THEN
+        IF v_raw IS NULL OR NOT pg_input_is_valid(v_raw, 'date') THEN
             RETURN jsonb_build_object('ok', false, 'code', 'export_invalid', 'row_no', v_n + v_hrow,
-                'reason', 'Row ' || (v_n + v_hrow) || ' has no readable date or amount.');
+                'reason', 'Row ' || (v_n + v_hrow) || ' has no readable date.');
         END IF;
         v_d   := v_raw::date;
-        v_amt := (v_r->>'amount')::numeric;
+        v_amt := COALESCE((v_r->>'amount')::numeric, 0);
         v_fee := COALESCE((v_r->>'fee')::numeric, 0);
         v_tax := COALESCE((v_r->>'tax')::numeric, 0);
         v_sh  := abs((v_r->>'shares')::numeric);
@@ -105,6 +106,9 @@ BEGIN
             ELSE 'unknown' END;
         IF v_kind = 'unknown' THEN v_reason := 'unsupported_type'; END IF;
         IF v_kind = 'dividend' AND v_amt < 0 THEN v_kind := 'unknown'; v_reason := 'dividend_correction'; END IF;
+        -- Zeile ohne Betrag (Kapitalmassnahme, Gratis-Einbuchung, Kauf ohne Geldfluss; leere Zelle = Schluessel fehlt):
+        -- kein Geld zu buchen, daher nie buy/sell/dividend; gewinnt vor unsupported_type, damit der Grund die Ursache nennt.
+        IF NOT (v_r ? 'amount') THEN v_kind := 'unknown'; v_reason := 'no_cash_amount'; END IF;
 
         v_arr := v_arr || jsonb_build_object(
             'row_no', v_n + v_hrow, 'date', v_d, 'kind', v_kind, 'category', v_cat, 'type', v_typ,

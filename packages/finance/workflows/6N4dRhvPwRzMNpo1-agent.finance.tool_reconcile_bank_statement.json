@@ -403,90 +403,96 @@
                                                                                  },
                                                                                  {
                                                                                      "id":  "ba9cc001-6ba2-508d-9a76-09e03f3b3cc6",
+                                                                                     "name":  "row_no",
+                                                                                     "value":  "={{ $(\u0027Prepare statement\u0027).item.json.r.row_no === undefined || $(\u0027Prepare statement\u0027).item.json.r.row_no === null ? \u0027\u0027 : String($(\u0027Prepare statement\u0027).item.json.r.row_no) }}",
+                                                                                     "type":  "string"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "4ad00eae-768a-5caa-baf7-c970a3a75ab1",
                                                                                      "name":  "candidates",
                                                                                      "value":  "={{ $(\u0027Prepare statement\u0027).item.json.r.candidates || [] }}",
                                                                                      "type":  "array"
                                                                                  },
                                                                                  {
-                                                                                     "id":  "4ad00eae-768a-5caa-baf7-c970a3a75ab1",
+                                                                                     "id":  "cfe745d3-4490-5eed-b59f-fd8630a57c8b",
                                                                                      "name":  "bank",
                                                                                      "value":  "={{ $(\u0027Prepare statement\u0027).item.json.r.bank || \u0027\u0027 }}",
                                                                                      "type":  "string"
                                                                                  },
                                                                                  {
-                                                                                     "id":  "cfe745d3-4490-5eed-b59f-fd8630a57c8b",
+                                                                                     "id":  "66ea053c-758e-5b57-985d-2d7b858d9dc3",
                                                                                      "name":  "account_name",
                                                                                      "value":  "={{ $(\u0027Prepare statement\u0027).item.json.r.account_name || \u0027\u0027 }}",
                                                                                      "type":  "string"
                                                                                  },
                                                                                  {
-                                                                                     "id":  "66ea053c-758e-5b57-985d-2d7b858d9dc3",
+                                                                                     "id":  "d9a804c7-80f1-5355-b773-cf699ae4f723",
                                                                                      "name":  "account_number",
                                                                                      "value":  "={{ $(\u0027Prepare statement\u0027).item.json.r.account_number || \u0027\u0027 }}",
                                                                                      "type":  "string"
                                                                                  },
                                                                                  {
-                                                                                     "id":  "d9a804c7-80f1-5355-b773-cf699ae4f723",
+                                                                                     "id":  "da54bd2c-56a7-5fb1-85e3-5a4266c90210",
                                                                                      "name":  "difference",
                                                                                      "value":  "={{ $(\u0027Prepare statement\u0027).item.json.r.difference === undefined || $(\u0027Prepare statement\u0027).item.json.r.difference === null ? \u0027\u0027 : String($(\u0027Prepare statement\u0027).item.json.r.difference) }}",
                                                                                      "type":  "string"
                                                                                  },
                                                                                  {
-                                                                                     "id":  "da54bd2c-56a7-5fb1-85e3-5a4266c90210",
+                                                                                     "id":  "21738918-f49b-5972-adc6-b31459f94734",
                                                                                      "name":  "balance_verified",
                                                                                      "value":  "={{ $(\u0027Prepare statement\u0027).item.json.r.balance_verified === true }}",
                                                                                      "type":  "boolean"
                                                                                  },
                                                                                  {
-                                                                                     "id":  "21738918-f49b-5972-adc6-b31459f94734",
+                                                                                     "id":  "7045b497-1cbc-5aff-ae08-e64272c19292",
                                                                                      "name":  "closing_balance",
                                                                                      "value":  "={{ $(\u0027Prepare statement\u0027).item.json.r.closing_balance === undefined || $(\u0027Prepare statement\u0027).item.json.r.closing_balance === null ? \u0027\u0027 : String($(\u0027Prepare statement\u0027).item.json.r.closing_balance) }}",
                                                                                      "type":  "string"
                                                                                  },
                                                                                  {
-                                                                                     "id":  "7045b497-1cbc-5aff-ae08-e64272c19292",
+                                                                                     "id":  "2470ba7b-1f0a-5cab-97c5-cd47c530d2b2",
                                                                                      "name":  "balance_date",
                                                                                      "value":  "={{ $(\u0027Prepare statement\u0027).item.json.r.balance_date || \u0027\u0027 }}",
                                                                                      "type":  "string"
                                                                                  },
                                                                                  {
-                                                                                     "id":  "2470ba7b-1f0a-5cab-97c5-cd47c530d2b2",
+                                                                                     "id":  "aaedf5ef-fee1-5a90-ba3f-03280245ebe2",
                                                                                      "name":  "currency",
                                                                                      "value":  "={{ $(\u0027Prepare statement\u0027).item.json.r.currency || \u0027\u0027 }}",
                                                                                      "type":  "string"
                                                                                  },
                                                                                  {
-                                                                                     "id":  "aaedf5ef-fee1-5a90-ba3f-03280245ebe2",
+                                                                                     "id":  "4365a2c7-67eb-5935-a12c-ed9c672e2542",
                                                                                      "name":  "owner_person",
                                                                                      "value":  "={{ $(\u0027Prepare statement\u0027).item.json.r.owner_person || \u0027\u0027 }}",
                                                                                      "type":  "string"
                                                                                  },
                                                                                  {
-                                                                                     "id":  "4365a2c7-67eb-5935-a12c-ed9c672e2542",
+                                                                                     "id":  "9fb304f6-673e-570b-9743-cff5dbbb4e1d",
                                                                                      "name":  "owner_joint",
                                                                                      "value":  "={{ $(\u0027Prepare statement\u0027).item.json.r.owner_joint === true }}",
                                                                                      "type":  "boolean"
                                                                                  },
                                                                                  {
-                                                                                     "id":  "9fb304f6-673e-570b-9743-cff5dbbb4e1d",
+                                                                                     "id":  "3bc2c979-7d7a-5d02-9f40-71f1e5122ef6",
                                                                                      "name":  "payment_amount",
                                                                                      "value":  "={{ $(\u0027Prepare statement\u0027).item.json.r.amount === undefined || $(\u0027Prepare statement\u0027).item.json.r.amount === null ? \u0027\u0027 : String($(\u0027Prepare statement\u0027).item.json.r.amount) }}",
                                                                                      "type":  "string"
                                                                                  },
                                                                                  {
-                                                                                     "id":  "3bc2c979-7d7a-5d02-9f40-71f1e5122ef6",
+                                                                                     "id":  "16e0b411-7edc-5d01-a602-68fc1c9f287b",
                                                                                      "name":  "payment_date",
                                                                                      "value":  "={{ $(\u0027Prepare statement\u0027).item.json.r.date || \u0027\u0027 }}",
                                                                                      "type":  "string"
                                                                                  },
                                                                                  {
-                                                                                     "id":  "16e0b411-7edc-5d01-a602-68fc1c9f287b",
+                                                                                     "id":  "68a53b30-cdb0-517c-a150-37a88bfa61e7",
                                                                                      "name":  "covered_until",
                                                                                      "value":  "={{ $(\u0027Prepare statement\u0027).item.json.r.covered_until || \u0027\u0027 }}",
                                                                                      "type":  "string"
                                                                                  },
                                                                                  {
-                                                                                     "id":  "68a53b30-cdb0-517c-a150-37a88bfa61e7",
+                                                                                     "id":  "fa0ea72a-34b5-50d5-89bc-3d30cd135084",
                                                                                      "name":  "useful_from",
                                                                                      "value":  "={{ $(\u0027Prepare statement\u0027).item.json.r.useful_from || \u0027\u0027 }}",
                                                                                      "type":  "string"

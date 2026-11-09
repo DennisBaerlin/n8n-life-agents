@@ -294,18 +294,24 @@
                                                                                  },
                                                                                  {
                                                                                      "id":  "d40064c0-e6c5-5d48-b2c9-a748a7dc450c",
+                                                                                     "name":  "row_no",
+                                                                                     "value":  "={{ $(\u0027Get suggestions\u0027).item.json.r.row_no === undefined || $(\u0027Get suggestions\u0027).item.json.r.row_no === null ? \u0027\u0027 : String($(\u0027Get suggestions\u0027).item.json.r.row_no) }}",
+                                                                                     "type":  "string"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "c4653b4b-a513-565a-92fe-5fb90576ca94",
                                                                                      "name":  "candidates",
                                                                                      "value":  "={{ $(\u0027Get suggestions\u0027).item.json.r.candidates || [] }}",
                                                                                      "type":  "array"
                                                                                  },
                                                                                  {
-                                                                                     "id":  "c4653b4b-a513-565a-92fe-5fb90576ca94",
+                                                                                     "id":  "a4c88b11-cc0b-50ca-993a-a46410c7213a",
                                                                                      "name":  "bank",
                                                                                      "value":  "={{ $(\u0027Get suggestions\u0027).item.json.r.bank || \u0027\u0027 }}",
                                                                                      "type":  "string"
                                                                                  },
                                                                                  {
-                                                                                     "id":  "a4c88b11-cc0b-50ca-993a-a46410c7213a",
+                                                                                     "id":  "db7eaec6-559a-5217-88eb-cb885a141628",
                                                                                      "name":  "account_name",
                                                                                      "value":  "={{ $(\u0027Get suggestions\u0027).item.json.r.account_name || \u0027\u0027 }}",
                                                                                      "type":  "string"

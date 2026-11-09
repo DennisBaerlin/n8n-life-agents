@@ -19,13 +19,13 @@
 --     Abschnitt. EIN Zeitraum auf der Seite (Owner 2026-10-30): juengere Depots fehlen, statt „seit Beginn" neben „Seit
 --     Kauf" (Hero, Positionen) zu stellen; Fonds zeigen unter einem Jahr ebenfalls keine Wertentwicklung (ESMA Q&A zu
 --     Art. 15(4) VO 583/2010). Wert rechts = Rendite pro Jahr (Messwert, ohne Ampel-Farbe); Pille nur warn: veralteter
---     Kurs mit dem aeltesten veralteten Kurs-Datum (Zahl bleibt; „Alle Depots" ueber alle Eltern-Depots), ohne Kurs bzw.
---     Wechselkurs + gap. Kinder-Depots stehen hier nicht (ihre Rendite steht an der Zeile in „Depots der Kinder"), Zeilen
+--     Kurs, aeltestes Kurs-Datum in der Erklaerzeile (Zahl bleibt; „Alle Depots" ueber alle Eltern-Depots), ohne Kurs bzw.
+--     Wechselkurs die Pille, kein gap. Kinder-Depots stehen hier nicht (ihre Rendite steht an der Zeile in „Depots der Kinder"), Zeilen
 --     ohne Ergebnis (no_result) entfallen (eine Pille muesste sagen, was fehlt); Aufklappen: Hinweis veralteter Kurs +
 --     ein Erklaer-Satz (der Wert heute steht schon am Depot).
 --   JE ELTERN-DEPOT ein Abschnitt (nach Wert, ohne Wert zuletzt), Positionen nach Wert. Wert IMMER in EUR
 --     (market_value_eur); nur ohne Wechselkurs der Kurs-Waehrungs-Wert + gap. KEIN Untertitel (Stueck und Kurs stehen im
---     Aufklappen). Pille nur fuer ein Kurs-Problem: warn „Kurs fehlt" bzw. „Kurs veraltet ({Kurs-Datum})"; Gewinn/Verlust
+--     Aufklappen). Pille nur fuer ein Kurs-Problem: warn „Kurs fehlt" bzw. „Kurs veraltet, Kurs-Datum als Erklaerzeile + Das kannst du tun"; Gewinn/Verlust
 --     seit Kauf als trend („+x € · +y %", Pfeil, keine Ampel-Farbe; 0 -> keiner). Bekannte Grenze: book_value_eur rechnet
 --     eine Fremdwaehrungs-Kostenbasis zum heutigen Kurs um -> der Waehrungseffekt fehlt im „seit Kauf".
 --     Depot-Summe (section.value) nur ab zwei Positionen, ohne Position ohne EUR-Wert (sonst still zu niedrig) und nur bei
@@ -36,7 +36,7 @@
 --   DEPOTS DER KINDER (nur Haushalts-Sicht, nur Kind-Depots mit Positionen, zuletzt; Mini-App-UX-Gesamtkonzept P10, Owner-
 --     Entscheid D2): eine Zeile je Kind-Depot: Wert nach der Regel der Vermoegen-Seite (ohne Kurs zaehlt der Kaufwert; gap,
 --     wenn eine Position keinen EUR-Wert hat), Untertitel = Inhaber (full_name wie die Vermoegen-Seite), trend nach der
---     Regel der Hero-Note, Pille Kurs fehlt vor Kurs veraltet ({aeltestes Datum}); Zeilen mit Pille zuerst, dann nach Wert.
+--     Regel der Hero-Note, Pille Kurs fehlt vor Kurs veraltet (aeltestes Datum in der Erklaerzeile); Zeilen mit Pille zuerst, dann nach Wert.
 --     Aufklappen: „Rendite seit {Datum}" = Jahreswert aus fn_depot_performance (nur mit return_pa_pct; bei veraltetem Kurs
 --     mit dem Hinweis „vorlaeufig" wie im Rendite-Abschnitt), dann je Position
 --     „<Name>: Wert · Gewinn" (ohne EUR-Wert der native Wert, ohne Kurs „Kurs fehlt"), hoechstens 8 Zeilen (sonst
@@ -157,8 +157,7 @@ BEGIN
                        WHEN h.price_status = 'missing' THEN jsonb_build_object('state', 'warn', 'icon', 'alert',
                                                  'text', core.fn_ui_tpl('finance.app.depot.price_missing'))
                        WHEN h.price_status = 'stale' THEN jsonb_build_object('state', 'warn', 'icon', 'clock',
-                                                 'text', core.fn_ui_tpl('finance.app.depot.price_stale_date', jsonb_build_object(
-                                                     'date', core.fn_ui_date(h.price_as_of))))
+                                                 'text', core.fn_ui_tpl('finance.app.depot.price_outdated'))
                    END,
                    'trend', CASE WHEN h.has_gain AND h.unrealized_gain_eur <> 0 THEN jsonb_build_object(
                                 'direction', CASE WHEN h.unrealized_gain_eur > 0 THEN 'up' ELSE 'down' END,
@@ -167,7 +166,13 @@ BEGIN
                                             'pct', core.fn_ui_num(h.gain_pct, 1, true)))) END,
                    'progress', NULL,
                    'target', NULL,
-                   'details', (SELECT COALESCE(jsonb_agg(e ORDER BY n) FILTER (WHERE e IS NOT NULL), '[]'::jsonb)
+                   'details', CASE WHEN h.price_status = 'stale' THEN jsonb_build_array(
+                                      jsonb_build_object('label', core.fn_ui_tpl('finance.app.depot.i_price_outdated', jsonb_build_object(
+                                          'date', core.fn_ui_date(h.price_as_of))), 'value', NULL, 'kind', 'info'),
+                                      jsonb_build_object('label', core.fn_ui_tpl('finance.app.depot.todo_price_outdated'), 'value', NULL, 'kind', 'todo',
+                                          'ask', core.fn_ui_tpl('finance.app.depot.ask_price_outdated', jsonb_build_object('name', h.name))))
+                                      ELSE '[]'::jsonb END
+                              || (SELECT COALESCE(jsonb_agg(e ORDER BY n) FILTER (WHERE e IS NOT NULL), '[]'::jsonb)
                                  FROM unnest(ARRAY[
                                   jsonb_build_object(
                                       'label', core.fn_ui_tpl('finance.app.depot.d_holding'),
@@ -232,8 +237,7 @@ BEGIN
                CASE WHEN kd.missing THEN jsonb_build_object('state', 'warn', 'icon', 'alert',
                                              'text', core.fn_ui_tpl('finance.app.depot.price_missing'))
                     WHEN kd.stale_date IS NOT NULL THEN jsonb_build_object('state', 'warn', 'icon', 'clock',
-                                             'text', core.fn_ui_tpl('finance.app.depot.price_stale_date', jsonb_build_object(
-                                                 'date', core.fn_ui_date(kd.stale_date)))) END AS pill,
+                                             'text', core.fn_ui_tpl('finance.app.depot.price_outdated')) END AS pill,
                -- hoechstens 8 Detail-Zeilen: Rendite (+ Hinweis bei veraltetem Kurs, wie im Rendite-Abschnitt), der Rest
                -- Positionen bzw. „weitere"
                8 - (kp.pa_pct IS NOT NULL)::int - (kp.pa_pct IS NOT NULL AND kp.pa_stale)::int AS room
@@ -266,7 +270,13 @@ BEGIN
                     'progress', NULL,
                     'target', NULL,
                     'details',
-                        CASE WHEN kr.pa_pct IS NOT NULL THEN jsonb_build_array(jsonb_build_object(
+                        CASE WHEN NOT kr.missing AND kr.stale_date IS NOT NULL THEN jsonb_build_array(
+                            jsonb_build_object('label', core.fn_ui_tpl('finance.app.depot.i_prices_outdated', jsonb_build_object(
+                                'date', core.fn_ui_date(kr.stale_date))), 'value', NULL, 'kind', 'info'),
+                            jsonb_build_object('label', core.fn_ui_tpl('finance.app.depot.todo_price_outdated'), 'value', NULL, 'kind', 'todo',
+                                'ask', core.fn_ui_tpl('finance.app.depot.ask_price_outdated', jsonb_build_object('name', kr.depot_name))))
+                             ELSE '[]'::jsonb END
+                        || CASE WHEN kr.pa_pct IS NOT NULL THEN jsonb_build_array(jsonb_build_object(
                             'label', core.fn_ui_tpl('finance.app.depot.kid_perf', jsonb_build_object(
                                          'date', core.fn_ui_date(kr.pa_since))),
                             'value', core.fn_ui_tpl('finance.app.depot.perf_pa', jsonb_build_object(
@@ -315,13 +325,13 @@ BEGIN
                -- Wert rechts = die Rendite pro Jahr (Messwert, keine Ampel-Farbe; Mini-App UX 2026-10-30)
                'value', CASE WHEN r.pct IS NOT NULL THEN core.fn_ui_tpl('finance.app.depot.perf_pa',
                                   jsonb_build_object('pct', core.fn_ui_num(round(r.pct, 1), 1, true))) END,
-               'gap', r.x ->> 'missing_reason' IN ('no_price', 'no_fx'),
+               -- kein gap: jede Zeile ohne Ergebnis traegt die Pille „Kurs fehlt“/„Wechselkurs fehlt“, „unvollstaendig“ waere doppelt
+               'gap', false,
                'pill', CASE
-                   -- veralteter Kurs: Zahl bleibt, Pille warnt wie an der Position (mit dem Kurs-Datum)
+                   -- veralteter Kurs: Zahl bleibt, Pille warnt wie an der Position (Datum in der Erklaerzeile)
                    WHEN r.pct IS NOT NULL AND (r.x ->> 'price_stale')::boolean
                    THEN jsonb_build_object('state', 'warn', 'icon', 'clock',
-                            'text', core.fn_ui_tpl('finance.app.depot.price_stale_date', jsonb_build_object(
-                                        'date', core.fn_ui_date(r.stale_date))))
+                            'text', core.fn_ui_tpl('finance.app.depot.price_outdated'))
                    WHEN r.pct IS NOT NULL THEN NULL
                    WHEN r.x ->> 'missing_reason' = 'no_price' THEN jsonb_build_object('state', 'warn', 'icon', 'alert',
                        'text', core.fn_ui_tpl('finance.app.depot.price_missing'))
@@ -333,7 +343,11 @@ BEGIN
                'details', (SELECT COALESCE(jsonb_agg(e ORDER BY k) FILTER (WHERE e IS NOT NULL), '[]'::jsonb)
                              FROM unnest(ARRAY[
                               CASE WHEN (r.x ->> 'price_stale')::boolean AND r.pct IS NOT NULL THEN jsonb_build_object(
-                                  'label', core.fn_ui_tpl('finance.app.depot.d_perf_stale'), 'value', NULL) END,
+                                  'label', core.fn_ui_tpl('finance.app.depot.i_perf_outdated', jsonb_build_object(
+                                               'date', core.fn_ui_date(r.stale_date))), 'value', NULL, 'kind', 'info') END,
+                              CASE WHEN (r.x ->> 'price_stale')::boolean AND r.pct IS NOT NULL THEN jsonb_build_object(
+                                  'label', core.fn_ui_tpl('finance.app.depot.todo_price_outdated'), 'value', NULL, 'kind', 'todo',
+                                  'ask', core.fn_ui_tpl('finance.app.depot.ask_perf_outdated')) END,
                               jsonb_build_object('label', core.fn_ui_tpl('finance.app.depot.d_perf_how'), 'value', NULL)])
                                   WITH ORDINALITY AS d(e, k)))
              ORDER BY r.o) FILTER (WHERE NOT (r.x ->> 'is_total')::boolean OR (n.cnt >= 2 AND n.all_hh))

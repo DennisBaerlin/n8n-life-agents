@@ -8,7 +8,7 @@ Die eine Adresse für Gestaltungsregeln. Gilt für Doku-Seite, Mini-App, Wizard 
 2. **Ein Zuhause je Fakt**, über alle Reiter und Seiten hinweg. Steht ein Fakt schon woanders, wird er nicht wiederholt, höchstens als Sprungziel.
 3. **Kein Jargon.** Jedes Wort besteht den Laientest: Jemand ohne Technikwissen versteht es. Keine Markierung wie „nicht ermittelbar“ ohne Grund. Rechtsquellen gehören in die Erklärung, nicht auf den ersten Blick, und nennen die gängige Abkürzung mit („Zweite Berechnungsverordnung, II. BV“). Eingeführte Wörter bleiben („Puffer“).
 4. **Ein Zeitraum.** Eine Anzeige zeigt einen Zeitraum, keine zwei konkurrierenden Zahlen. Lieber die verwirrende zweite Zahl entfernen, als sie zu erklären. Kurzform ohne Jahr nur im Fenster [heute − 3 Monate, heute + 9 Monate).
-5. **Pille = kurze Hervorhebung, höchstens zwei Wörter** („pausiert“, „unter Puffer“), und nur, wenn hier etwas ist. Keine grünen Pillen bei „alles gut“. Betrag oder Datum stehen nur in der Pille, wenn sie die Aussage sind („fehlen 3.000 €“), sonst in der Erklärung (Regel 15).
+5. **Pille = kurze Hervorhebung, höchstens zwei Wörter** („pausiert“, „unter Puffer“), und nur, wenn hier etwas ist. Keine grünen Pillen bei „alles gut“. Beträge und Daten stehen nie in der Pille, sondern in der Erklärung (Regel 15).
 6. **Summen sichtbar als Summen beschriften** („zusammen …“), nie über einer einzelnen Zeile.
 7. **Entfernen vor Erklären.** Eine Erklärung auf dem ersten Blick ist ein Zeichen, dass die Darstellung falsch ist; Hintergrund gehört hinter ein ⓘ (Regel 15).
 8. **Lange Listen kurz halten** (aufklappbare Zeilen), Betrag rechts, Balken nur mit Zielbetrag.

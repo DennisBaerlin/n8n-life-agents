@@ -161,11 +161,14 @@
         { "title": { "kind": "tpl", "value": "finance.app.goals.section_reserves", "params": {} }, "value": { "kind": "money", "value": 10950.00, "currency": "EUR" }, "empty": { "kind": "tpl", "value": "finance.app.goals.empty", "params": {} },
           "items": [
             { "label": "Notreserve", "sub": { "kind": "tpl", "value": "finance.app.goals.emergency_sub_months", "params": { "target": { "kind": "money", "value": 12000.00, "currency": "EUR" }, "months": { "kind": "number", "value": 3, "digits": 0, "sign": false } } }, "value": { "kind": "money", "value": 9000.00, "currency": "EUR" }, "gap": false, "progress": { "pct": 75, "state": "warn" }, "target": null,
-              "pill": { "state": "warn", "icon": "alert", "text": { "kind": "tpl", "value": "finance.app.goals.missing", "params": { "gap": { "kind": "money", "value": 3000.00, "currency": "EUR" } } } },
+              "pill": { "state": "warn", "icon": "alert", "text": { "kind": "tpl", "value": "finance.app.goals.missing", "params": {} } },
               "details": [
+                { "label": { "kind": "tpl", "value": "finance.app.goals.i_emergency_missing", "params": { "gap": { "kind": "money", "value": 3000.00, "currency": "EUR" } } }, "value": null, "kind": "info" },
+                { "label": { "kind": "tpl", "value": "finance.app.goals.todo_emergency_missing", "params": {} }, "value": null, "kind": "todo", "ask": { "kind": "tpl", "value": "finance.app.goals.ask_emergency_missing", "params": { "goal": "Notreserve" } } },
                 { "label": { "kind": "tpl", "value": "finance.app.goals.d_emergency_fixed", "params": {} }, "value": { "kind": "money", "value": 2650.00, "currency": "EUR" } },
                 { "label": { "kind": "tpl", "value": "finance.app.goals.d_emergency_everyday", "params": {} }, "value": { "kind": "money", "value": 1350.00, "currency": "EUR" } },
                 { "label": { "kind": "tpl", "value": "finance.app.goals.d_emergency_monthly", "params": { "months": { "kind": "number", "value": 3, "digits": 0, "sign": false } } }, "value": { "kind": "money", "value": 4000.00, "currency": "EUR" } },
+                { "label": { "kind": "tpl", "value": "finance.app.goals.d_rate_from", "params": { "account": "Girokonto Beispielbank" } }, "value": "250,00 € · monatlich" },
                 { "label": { "kind": "tpl", "value": "finance.app.goals.d_on_account", "params": { "account": "Tagesgeld Beispielbank" } }, "value": { "kind": "money", "value": 9000.00, "currency": "EUR" } }
               ] },
             { "label": "Instandhaltungsrücklage Wohnung Beispielstadt", "sub": { "kind": "tpl", "value": "finance.app.goals.reserve_rate", "params": { "rate": { "kind": "money", "value": 120.00, "currency": "EUR" } } }, "value": { "kind": "money", "value": 1950.00, "currency": "EUR" }, "gap": false, "progress": null, "target": null,
@@ -325,12 +328,12 @@
           "items": [
             { "label": "ETF-Depot Beispielbroker", "sub": { "kind": "tpl", "value": "finance.app.depot.perf_since", "params": { "date": { "kind": "date", "value": "2022-01-15" } } }, "value": { "kind": "tpl", "value": "finance.app.depot.perf_pa", "params": { "pct": { "kind": "number", "value": 7.4, "digits": 1, "sign": true } } }, "gap": false, "progress": null, "target": null, "pill": null,
               "details": [ { "label": { "kind": "tpl", "value": "finance.app.depot.d_perf_how", "params": {} }, "value": null } ] },
-            { "label": "Krypto-Depot Beispielboerse", "sub": { "kind": "tpl", "value": "finance.app.depot.perf_since", "params": { "date": { "kind": "date", "value": "2023-08-01" } } }, "value": { "kind": "tpl", "value": "finance.app.depot.perf_pa", "params": { "pct": { "kind": "number", "value": -3.1, "digits": 1, "sign": true } } }, "gap": true, "progress": null, "target": null,
-              "pill": { "state": "warn", "icon": "clock", "text": { "kind": "tpl", "value": "finance.app.depot.price_stale_date", "params": { "date": { "kind": "date", "value": "2026-10-20" } } } },
-              "details": [ { "label": { "kind": "tpl", "value": "finance.app.depot.d_perf_stale", "params": {} }, "value": null }, { "label": { "kind": "tpl", "value": "finance.app.depot.d_perf_how", "params": {} }, "value": null } ] },
-            { "label": { "kind": "tpl", "value": "finance.app.depot.perf_total", "params": {} }, "sub": { "kind": "tpl", "value": "finance.app.depot.perf_since", "params": { "date": { "kind": "date", "value": "2022-01-15" } } }, "value": { "kind": "tpl", "value": "finance.app.depot.perf_pa", "params": { "pct": { "kind": "number", "value": 5.8, "digits": 1, "sign": true } } }, "gap": true, "progress": null, "target": null,
-              "pill": { "state": "warn", "icon": "clock", "text": { "kind": "tpl", "value": "finance.app.depot.price_stale_date", "params": { "date": { "kind": "date", "value": "2026-10-20" } } } },
-              "details": [ { "label": { "kind": "tpl", "value": "finance.app.depot.d_perf_stale", "params": {} }, "value": null }, { "label": { "kind": "tpl", "value": "finance.app.depot.d_perf_how", "params": {} }, "value": null } ] }
+            { "label": "Krypto-Depot Beispielboerse", "sub": { "kind": "tpl", "value": "finance.app.depot.perf_since", "params": { "date": { "kind": "date", "value": "2023-08-01" } } }, "value": { "kind": "tpl", "value": "finance.app.depot.perf_pa", "params": { "pct": { "kind": "number", "value": -3.1, "digits": 1, "sign": true } } }, "gap": false, "progress": null, "target": null,
+              "pill": { "state": "warn", "icon": "clock", "text": { "kind": "tpl", "value": "finance.app.depot.price_outdated", "params": {} } },
+              "details": [ { "label": { "kind": "tpl", "value": "finance.app.depot.i_perf_outdated", "params": { "date": { "kind": "date", "value": "2026-10-20" } } }, "value": null, "kind": "info" }, { "label": { "kind": "tpl", "value": "finance.app.depot.todo_price_outdated", "params": {} }, "value": null, "kind": "todo", "ask": { "kind": "tpl", "value": "finance.app.depot.ask_perf_outdated", "params": {} } }, { "label": { "kind": "tpl", "value": "finance.app.depot.d_perf_how", "params": {} }, "value": null } ] },
+            { "label": { "kind": "tpl", "value": "finance.app.depot.perf_total", "params": {} }, "sub": { "kind": "tpl", "value": "finance.app.depot.perf_since", "params": { "date": { "kind": "date", "value": "2022-01-15" } } }, "value": { "kind": "tpl", "value": "finance.app.depot.perf_pa", "params": { "pct": { "kind": "number", "value": 5.8, "digits": 1, "sign": true } } }, "gap": false, "progress": null, "target": null,
+              "pill": { "state": "warn", "icon": "clock", "text": { "kind": "tpl", "value": "finance.app.depot.price_outdated", "params": {} } },
+              "details": [ { "label": { "kind": "tpl", "value": "finance.app.depot.i_perf_outdated", "params": { "date": { "kind": "date", "value": "2026-10-20" } } }, "value": null, "kind": "info" }, { "label": { "kind": "tpl", "value": "finance.app.depot.todo_price_outdated", "params": {} }, "value": null, "kind": "todo", "ask": { "kind": "tpl", "value": "finance.app.depot.ask_perf_outdated", "params": {} } }, { "label": { "kind": "tpl", "value": "finance.app.depot.d_perf_how", "params": {} }, "value": null } ] }
           ] },
         { "title": { "kind": "tpl", "value": "finance.app.depot.section", "params": { "name": "ETF-Depot Beispielbroker" } }, "value": { "kind": "money", "value": 41650.00, "currency": "EUR" }, "empty": { "kind": "tpl", "value": "finance.app.depot.empty", "params": {} },
           "items": [
@@ -354,8 +357,10 @@
                 { "label": { "kind": "tpl", "value": "finance.app.depot.d_book_value", "params": {} }, "value": { "kind": "money", "value": 7560.00, "currency": "EUR" } }
               ] },
             { "label": "Beispiel AG", "sub": null, "value": { "kind": "money", "value": 2000.00, "currency": "EUR" }, "gap": false, "progress": null, "target": null, "trend": null,
-              "pill": { "state": "warn", "icon": "clock", "text": { "kind": "tpl", "value": "finance.app.depot.price_stale_date", "params": { "date": { "kind": "date", "value": "2026-10-20" } } } },
+              "pill": { "state": "warn", "icon": "clock", "text": { "kind": "tpl", "value": "finance.app.depot.price_outdated", "params": {} } },
               "details": [
+                { "label": { "kind": "tpl", "value": "finance.app.depot.i_price_outdated", "params": { "date": { "kind": "date", "value": "2026-10-20" } } }, "value": null, "kind": "info" },
+                { "label": { "kind": "tpl", "value": "finance.app.depot.todo_price_outdated", "params": {} }, "value": null, "kind": "todo", "ask": { "kind": "tpl", "value": "finance.app.depot.ask_price_outdated", "params": { "name": "Beispiel AG" } } },
                 { "label": { "kind": "tpl", "value": "finance.app.depot.d_holding", "params": {} }, "value": { "kind": "tpl", "value": "finance.app.depot.d_holding_value", "params": { "shares": { "kind": "number", "value": 40, "digits": 0, "sign": false }, "price": { "kind": "money", "value": 50.00, "currency": "EUR" } } } },
                 { "label": { "kind": "tpl", "value": "finance.app.depot.d_avg_price", "params": {} }, "value": { "kind": "money", "value": 47.50, "currency": "EUR" } },
                 { "label": { "kind": "tpl", "value": "finance.app.depot.d_book_value", "params": {} }, "value": { "kind": "money", "value": 1900.00, "currency": "EUR" } }
@@ -387,9 +392,11 @@
                 { "label": { "kind": "tpl", "value": "finance.app.depot.kid_perf", "params": { "date": { "kind": "date", "value": "2024-03-01" } } }, "value": { "kind": "tpl", "value": "finance.app.depot.perf_pa", "params": { "pct": { "kind": "number", "value": 6.2, "digits": 1, "sign": true } } } }
               ] },
             { "label": "Depot Paul", "sub": { "kind": "tpl", "value": "finance.app.depot.kid_owner", "params": { "name": "Paul Muster" } }, "value": { "kind": "money", "value": 1930.00, "currency": "EUR" }, "gap": false, "progress": null, "target": null,
-              "pill": { "state": "warn", "icon": "clock", "text": { "kind": "tpl", "value": "finance.app.depot.price_stale_date", "params": { "date": { "kind": "date", "value": "2026-10-20" } } } },
+              "pill": { "state": "warn", "icon": "clock", "text": { "kind": "tpl", "value": "finance.app.depot.price_outdated", "params": {} } },
               "trend": { "direction": "down", "text": { "kind": "tpl", "value": "finance.app.depot.gain", "params": { "amount": { "kind": "money", "value": -45.00, "currency": "EUR", "sign": true }, "pct": { "kind": "number", "value": -2.3, "digits": 1, "sign": true } } } },
               "details": [
+                { "label": { "kind": "tpl", "value": "finance.app.depot.i_prices_outdated", "params": { "date": { "kind": "date", "value": "2026-10-20" } } }, "value": null, "kind": "info" },
+                { "label": { "kind": "tpl", "value": "finance.app.depot.todo_price_outdated", "params": {} }, "value": null, "kind": "todo", "ask": { "kind": "tpl", "value": "finance.app.depot.ask_price_outdated", "params": { "name": "Depot Paul" } } },
                 { "label": "Welt-ETF (Acc)", "value": { "kind": "tpl", "value": "finance.app.depot.kid_position", "params": { "value": { "kind": "money", "value": 1930.00, "currency": "EUR" }, "gain": { "kind": "tpl", "value": "finance.app.depot.gain", "params": { "amount": { "kind": "money", "value": -45.00, "currency": "EUR", "sign": true }, "pct": { "kind": "number", "value": -2.3, "digits": 1, "sign": true } } } } } },
                 { "label": { "kind": "tpl", "value": "finance.app.depot.more_positions", "params": { "count": { "kind": "number", "value": 2, "digits": 0, "sign": false } } }, "value": null }
               ] }

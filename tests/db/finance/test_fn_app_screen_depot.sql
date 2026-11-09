@@ -115,10 +115,11 @@ BEGIN
           jsonb_build_object('amount', core.fn_ui_money(200, 'EUR', true), 'pct', core.fn_ui_num(20.0, 1, true)))) THEN
     RAISE EXCEPTION 'FAIL [1i] Position mit aktuellem Kurs: EUR, kein Untertitel, Gewinn als trend up (keine Pille), got %', v_it; END IF;
   v_it := v_sec->'items'->1;
-  IF v_it->'pill' <> jsonb_build_object('state', 'warn', 'icon', 'clock', 'text', core.fn_ui_tpl('finance.app.depot.price_stale_date',
-                         jsonb_build_object('date', core.fn_ui_date(current_date - 30))))
+  IF v_it->'pill' <> jsonb_build_object('state', 'warn', 'icon', 'clock', 'text', core.fn_ui_tpl('finance.app.depot.price_outdated'))
+     OR v_it->'details'->0 <> jsonb_build_object('label', core.fn_ui_tpl('finance.app.depot.i_price_outdated', jsonb_build_object('date', core.fn_ui_date(current_date - 30))), 'value', NULL, 'kind', 'info')
+     OR v_it->'details'->1->>'kind' <> 'todo'
      OR (v_it->>'gap')::boolean OR jsonb_typeof(v_it->'sub') <> 'null'
-     OR v_it->'details'->0 <> jsonb_build_object('label', core.fn_ui_tpl('finance.app.depot.d_holding'),
+     OR v_it->'details'->2 <> jsonb_build_object('label', core.fn_ui_tpl('finance.app.depot.d_holding'),
           'value', core.fn_ui_tpl('finance.app.depot.d_holding_value', jsonb_build_object(
               'shares', core.fn_ui_num(5, 0), 'price', core.fn_ui_money(60, 'EUR')))) THEN
     RAISE EXCEPTION 'FAIL [1j] veralteter Kurs: warn mit Kurs-Datum, Bestand ohne zweites Datum, got %', v_it; END IF;
@@ -310,24 +311,24 @@ BEGIN
   UPDATE finance.market_prices SET as_of = core.fn_today() - 30 WHERE symbol = 'APDPR1';
   v_it := finance.fn_app_screen_depot(jsonb_build_object('person_id', 'apdp_owner'))->'sections'->0->'items'->0;
   IF v_it->'pill'->>'state' <> 'warn' OR v_it->'pill'->>'icon' <> 'clock'
-     OR v_it->'pill'->'text' <> core.fn_ui_tpl('finance.app.depot.price_stale_date', jsonb_build_object('date', core.fn_ui_date(core.fn_today() - 30)))
+     OR v_it->'pill'->'text' <> core.fn_ui_tpl('finance.app.depot.price_outdated')
      OR v_it->'value'->>'value' <> 'finance.app.depot.perf_pa'
-     OR NOT (v_it->'details' @> jsonb_build_array(jsonb_build_object('label', core.fn_ui_tpl('finance.app.depot.d_perf_stale')))) THEN
+     OR v_it->'details'->0 <> jsonb_build_object('label', core.fn_ui_tpl('finance.app.depot.i_perf_outdated', jsonb_build_object('date', core.fn_ui_date(core.fn_today() - 30))), 'value', NULL, 'kind', 'info') THEN
     RAISE EXCEPTION 'FAIL [6f2] veralteter Kurs: warn/clock mit Kurs-Datum, Zahl + Hinweis, got %', v_it; END IF;
-  -- jede „veraltet"-Pille der Seite (auch „Alle Depots") traegt ein Datum
+  -- keine „veraltet"-Pille der Seite (auch „Alle Depots") traegt ein Datum
   IF jsonb_path_exists(finance.fn_app_screen_depot(jsonb_build_object('person_id', 'apdp_owner')),
-       'strict $.**.text ? (@.value == "finance.app.depot.price_stale_date" && !exists(@.params.date))') THEN
-    RAISE EXCEPTION 'FAIL [6f2b] veraltet-Pille ohne Datum'; END IF;
+       'strict $.**.pill ? (@.text.value == "finance.app.depot.price_outdated" && exists(@.text.params.date))') THEN
+    RAISE EXCEPTION 'FAIL [6f2b] Datum in der veraltet-Pille'; END IF;
   UPDATE finance.market_prices SET as_of = core.fn_today() WHERE symbol = 'APDPR1';
   -- altes Depot ohne Kurs: ohne Endwert-Fluss ist period_days 0, die Zeile bleibt trotzdem (Beginn vor 400 Tagen) mit
-  -- „Kurs fehlt" + gap, statt still zu verschwinden
+  -- „Kurs fehlt", statt still zu verschwinden; kein gap an der Zeile, die Pille sagt es schon
   DELETE FROM finance.market_prices WHERE symbol = 'APDPR3';
   SELECT it INTO v_it
     FROM jsonb_array_elements(finance.fn_app_screen_depot(jsonb_build_object('person_id', 'apdp_owner'))->'sections'->0->'items') it
    WHERE it->>'label' = '__apdp_perf3__';
-  IF v_it IS NULL OR (v_it->>'gap')::boolean IS NOT TRUE
+  IF v_it IS NULL OR (v_it->>'gap')::boolean
      OR v_it->'pill' <> jsonb_build_object('state', 'warn', 'icon', 'alert', 'text', core.fn_ui_tpl('finance.app.depot.price_missing')) THEN
-    RAISE EXCEPTION 'FAIL [6f3] altes Depot ohne Kurs: Zeile mit Kurs fehlt + gap, got %', v_it; END IF;
+    RAISE EXCEPTION 'FAIL [6f3] altes Depot ohne Kurs: Zeile mit Kurs fehlt ohne gap, got %', v_it; END IF;
   INSERT INTO finance.market_prices (symbol, price, currency, as_of) VALUES ('APDPR3', 110, 'EUR', core.fn_today());
   -- Partner-Depot hat keine Einzahlung, ein eigenes Kind-Depot ebenso -> Kind sieht keinen Rendite-Abschnitt
   IF finance.fn_app_screen_depot(jsonb_build_object('person_id', 'apdp_kid'))::text LIKE '%section_perf%' THEN
@@ -415,10 +416,12 @@ BEGIN
     UPDATE finance.market_prices SET as_of = core.fn_today() - 30 WHERE symbol = 'APDD1';
     v_it := finance.fn_app_screen_depot(jsonb_build_object('person_id', 'apdp_owner'))->'sections'->-1->'items'->0;
     IF v_it->'label' <> '"Delta Depot"'::jsonb
-       OR v_it->'pill'->'text' <> core.fn_ui_tpl('finance.app.depot.price_stale_date', jsonb_build_object('date', core.fn_ui_date(core.fn_today() - 30)))
-       OR v_it->'details'->0->'label'->>'value' <> 'finance.app.depot.kid_perf'
-       OR v_it->'details'->1 <> jsonb_build_object('label', core.fn_ui_tpl('finance.app.depot.d_perf_stale'), 'value', NULL)
-       OR v_it->'details'->2->'label' <> '"Delta Pos"'::jsonb THEN
+       OR v_it->'pill'->'text' <> core.fn_ui_tpl('finance.app.depot.price_outdated')
+       OR v_it->'details'->0 <> jsonb_build_object('label', core.fn_ui_tpl('finance.app.depot.i_prices_outdated', jsonb_build_object('date', core.fn_ui_date(core.fn_today() - 30))), 'value', NULL, 'kind', 'info')
+       OR v_it->'details'->1->>'kind' <> 'todo'
+       OR v_it->'details'->2->'label'->>'value' <> 'finance.app.depot.kid_perf'
+       OR v_it->'details'->3 <> jsonb_build_object('label', core.fn_ui_tpl('finance.app.depot.d_perf_stale'), 'value', NULL)
+       OR v_it->'details'->4->'label' <> '"Delta Pos"'::jsonb THEN
       RAISE EXCEPTION 'FAIL [7f2] Kind-Depot mit veraltetem Kurs: zuerst, Pille mit Datum, Rendite + vorlaeufig, got %', v_it; END IF;
     UPDATE finance.market_prices SET as_of = core.fn_today() WHERE symbol = 'APDD1';
 
@@ -434,7 +437,7 @@ BEGIN
   -- [7i] entfernte Katalog-Keys tauchen in keiner Sicht mehr auf
   v_txt := finance.fn_app_screen_depot(jsonb_build_object('person_id', 'apdp_owner'))::text
         || finance.fn_app_screen_depot(jsonb_build_object('person_id', 'apdp_kid2'))::text;
-  IF v_txt ~ 'finance\.app\.depot\.(section_child|shares|shares_price|shares_date|shares_price_date|d_gain|price_stale|perf_child|perf_none|d_perf_value)"' THEN
+  IF v_txt ~ 'finance\.app\.depot\.(section_child|shares|shares_price|shares_date|shares_price_date|d_gain|price_stale|price_stale_date|perf_child|perf_none|d_perf_value)"' THEN
     RAISE EXCEPTION 'FAIL [7i] entfernter Katalog-Key in der View'; END IF;
   IF jsonb_path_exists(finance.fn_app_screen_depot(jsonb_build_object('person_id', 'apdp_owner')), 'strict $.**.state ? (@ == "ok")') THEN
     RAISE EXCEPTION 'FAIL [7j] keine ok-Pille'; END IF;

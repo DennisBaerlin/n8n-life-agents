@@ -25,8 +25,9 @@
 --     ohne fx-Luecke (Owner-Abnahme 2026-10-31). Keine
 --     Doppelzaehlung: Instandhaltung hat per Form-CHECK keinen Zielbetrag, die Notreserve ist aus der Ziel-Liste ausgeschlossen.
 --   1 Ruecklagen (Notreserve nur fuer Haushalts-Betrachter, Zero-Trust; Reihenfolge gelb -> uebrige -> volle Notreserve):
---     Notreserve: Wert gedeckt, „Ziel x" + Balken + warn „fehlen x" solange unvollstaendig; voll -> „Ziel x erreicht",
---     keine Pille, voller Balken (wie ein erreichtes Sparziel); neutral (Ausgaben unbekannt) ohne Pille. Aufklappen = Herleitung (nur Monats-Ziel) + Geld
+--     Notreserve: Wert gedeckt, „Ziel x" + Balken + warn „nicht voll" solange unvollstaendig; voll -> „Ziel x erreicht",
+--     keine Pille, voller Balken (wie ein erreichtes Sparziel); neutral (Ausgaben unbekannt) ohne Pille. Aufklappen = bei warn
+--     Fehlbetrag + „Das kannst du tun", Herleitung (nur Monats-Ziel), Rate wie bei den Sparzielen (voll ohne Rate: keine Zeile), Geld
 --     je Konto. Instandhaltung: „x im Monat", warn „x im Monat unter Richtwert" (aktive Immobilie mit Richtwert), kein
 --     Balken; Aufklappen = Rate wie bei den Sparzielen („Rate von <Konto>" = Betrag · Rhythmus des heute gueltigen
 --     Glieds), „Richtwert nach II. BV" (Monat aus Flaeche x Satz) bzw. „fehlen Wohnflaeche oder Baujahr", Immobilie.
@@ -45,9 +46,8 @@
 --     Glied: feste Tage „n× monatlich je x · naechste", eine Ausfuehrung je Monat „naechste", sonst Betrag · Rhythmus.
 --     Summe der aktiven Plaene als section.value (der Renderer setzt „zusammen" davor) nur ab 2 aktiven Plaenen und ohne
 --     gap an einer Zeile. Pille = Spiegel des sichtbaren Abbuchungskontos (fn_funding_accounts kind 'plan'): dasselbe
---     Urteil wie die Konten-Zeile (fn_account_low_state + fn_app_low_state_pill: knapp / unter dem Puffer / reicht bis /
---     Luecke ab; Kurs fehlt -> gap); die Konten-Zeile „Reicht bis" eines Sparkontos traegt den Monat schon als Wert und
---     nennt in der Pille den Grund (p_month_row), hier steht der Monat in der Pille; sonst neutral „pausiert".
+--     Urteil wie die Konten-Zeile (fn_account_low_state + fn_app_low_state_pill: knapp / unter dem Puffer / wird knapp /
+--     Luecke; Kurs fehlt -> gap), Monat und Tag nur in der Erklaerzeile; sonst neutral „pausiert".
 --     Aufklappen: Wertpapier (Name), Depot,
 --     Abbuchung von + Fuer (nur Haushalt), Sparziel, geplante Aenderung (Betrag · Rhythmus · ab).
 --   ZERO-TRUST-SICHTBARKEIT (Rolle loest der Handler selbst auf, core.fn_app_sees_household): owner/partner sehen den
@@ -191,7 +191,7 @@ BEGIN
     WITH src AS (
         SELECT sg.id, finance.fn_savings_goal_sources(sg.id) AS s
           FROM finance.savings_goals sg
-         WHERE sg.status = 'active' AND sg.kind <> 'emergency_reserve'
+         WHERE sg.status = 'active'
            AND (v_hh OR sg.beneficiary_person_id = v_pid)
     ), pl AS (
         SELECT src.id,
@@ -375,15 +375,20 @@ BEGIN
             'value', core.fn_ui_money((v_es->>'covered_eur')::numeric, 'EUR'),
             'gap', (v_es->>'has_fx_gap')::boolean,
             'pill', CASE WHEN v_es->>'state' = 'warn' THEN jsonb_build_object('state', 'warn', 'icon', 'alert',
-                                 'text', core.fn_ui_tpl('finance.app.goals.missing', jsonb_build_object(
-                                     'gap', core.fn_ui_money((v_es->>'gap_eur')::numeric, 'EUR')))) END,
+                                 'text', core.fn_ui_tpl('finance.app.goals.missing')) END,
             -- Balken = Fortschritt zum Ziel; voll -> voller Balken (wie ein erreichtes Sparziel)
             'progress', CASE WHEN v_es->>'state' = 'ok' THEN jsonb_build_object('pct', 100, 'state', 'neutral')
                              WHEN (v_es->>'target_eur')::numeric > 0 THEN jsonb_build_object(
                             'pct', round(LEAST(100 * (v_es->>'covered_eur')::numeric / (v_es->>'target_eur')::numeric, 100), 1),
                             'state', CASE WHEN v_es->>'state' = 'warn' THEN 'warn' ELSE 'neutral' END) END,
             'target', NULL,
-            'details', CASE WHEN v_es->>'target_kind' = 'months' THEN jsonb_build_array(
+            'details', CASE WHEN v_es->>'state' = 'warn' THEN jsonb_build_array(
+                           jsonb_build_object('label', core.fn_ui_tpl('finance.app.goals.i_emergency_missing', jsonb_build_object(
+                               'gap', core.fn_ui_money((v_es->>'gap_eur')::numeric, 'EUR'))), 'value', NULL, 'kind', 'info'),
+                           jsonb_build_object('label', core.fn_ui_tpl('finance.app.goals.todo_emergency_missing'), 'value', NULL, 'kind', 'todo',
+                               'ask', core.fn_ui_tpl('finance.app.goals.ask_emergency_missing', jsonb_build_object('goal', v_es->>'name'))))
+                           ELSE '[]'::jsonb END
+                       || CASE WHEN v_es->>'target_kind' = 'months' THEN jsonb_build_array(
                            jsonb_build_object('label', core.fn_ui_tpl('finance.app.goals.d_emergency_fixed'),
                                               'value', core.fn_ui_money((v_es->'basis'->>'fixed_eur')::numeric, 'EUR')),
                            jsonb_build_object('label', core.fn_ui_tpl(CASE WHEN (v_es->'basis'->>'everyday_provisional')::boolean
@@ -394,6 +399,9 @@ BEGIN
                                                   jsonb_build_object('months', core.fn_ui_num((v_es->>'months')::numeric, 1))),
                                               'value', core.fn_ui_money((v_es->'basis'->>'monthly_eur')::numeric, 'EUR')))
                            ELSE '[]'::jsonb END
+                       -- eine volle Notreserve ohne Rate braucht keine Zeile „keine laufende Rate" (wie ein erreichtes Sparziel)
+                       || CASE WHEN v_es->>'state' = 'ok' AND (v_rates -> (v_es->>'goal_id') ->> 'none')::boolean THEN '[]'::jsonb
+                               ELSE COALESCE(v_rates -> (v_es->>'goal_id') -> 'lines', '[]'::jsonb) END
                        || COALESCE((SELECT jsonb_agg(jsonb_build_object(
                               'label', core.fn_ui_tpl('finance.app.goals.d_on_account', jsonb_build_object('account', a->>'name')),
                               'value', core.fn_ui_money((a->>'eur')::numeric, 'EUR')))

@@ -358,6 +358,38 @@ if ($isOrch -and -not $Discover -and @($cases).Count -gt 0) {
     if ($ok) { $passed++; Write-Host "    [PASS]" -ForegroundColor Green } else { $failed++; Write-Host "    [FAIL] Antwort fehlt oder Execution nicht success, wenn der Platzhalter scheitert" -ForegroundColor Red }
 }
 
+# --- Chat-Speicher ohne Denkbloecke: mehr Tool-Runden als das Memory-Fenster, der Mock prueft die Signaturen wie die API ---
+if ($isOrch -and -not $Discover -and @($cases).Count -gt 0) {
+    $extra++
+    Write-Host ""
+    Write-Host "  [memory-thinking] 7 Nachrichten mit Tool-Runde ueber das Fenster hinaus -> jede beantwortet, kein Denkblock gespeichert"
+    $ok = $false
+    try {
+        Test-ForceAbort 'memory-thinking' $ForceAbortId
+        [long]$chatId = $PairedUid
+        Clear-ChatSessionMemory -Container $Container -SessionId "$chatId"
+        Clear-MockTelegramRequests -Container $Container
+        $ok = $true
+        foreach ($turn in 1..7) {
+            $base = Get-MaxExecId -WfId $TargetWfId -BridgeUrl $N8N_URL -ApiKey $N8N_API_KEY
+            Send-TelegramIngress -IngressUrl $ingress.Url -Secret $ingress.Secret -ChatId $chatId -FromUid $PairedUid -Text '__mock_thinking_binding__' | Out-Null
+            $ex = Wait-ExecResolvingGates -WfId $TargetWfId -AfterId $base -Approve $false -Container $Container -BridgeUrl $N8N_URL -ApiKey $N8N_API_KEY -TimeoutSec $Timeout
+            if (-not $ex -or $ex.status -ne 'success') { $ok = $false; Write-Host "    FEHLER: Nachricht $turn endet mit Status $($ex.status)" -ForegroundColor Red; break }
+        }
+        $answers = @(Get-MockTelegramRequests -Container $Container | Where-Object { $_.method -eq 'sendMessage' -and [string]$_.body.chat_id -eq "$chatId" -and [string]$_.body.text -like '*Bindung ok*' }).Count
+        $rows = [int](Invoke-ScalarSql "SELECT count(*) FROM agent.orchestrator_chat_memory WHERE session_id = '$chatId';")
+        $hasType = "EXISTS (SELECT 1 FROM jsonb_array_elements(CASE WHEN jsonb_typeof(message->'content') = 'array' THEN message->'content' END) b WHERE b->>'type' IN"
+        $toolRows = [int](Invoke-ScalarSql "SELECT count(*) FROM agent.orchestrator_chat_memory WHERE session_id = '$chatId' AND $hasType ('tool_use'));")
+        $thinkRows = [int](Invoke-ScalarSql "SELECT count(*) FROM agent.orchestrator_chat_memory WHERE $hasType ('thinking', 'redacted_thinking'));")
+        if ($Verbose) { Write-Host "    Antworten=$answers  Zeilen=$rows  mitTool=$toolRows  mitDenkblock=$thinkRows" -ForegroundColor DarkGray }
+        $ok = $ok -and ($answers -eq 7) -and ($rows -gt 20) -and ($toolRows -ge 7) -and ($thinkRows -eq 0)
+    } catch {
+        $ok = $false
+        Write-CaseAbort -ErrorRecord $_ -CaseId 'memory-thinking' -Cleanup { Clear-CaseLeftovers }
+    }
+    if ($ok) { $passed++; Write-Host "    [PASS]" -ForegroundColor Green } else { $failed++; Write-Host "    [FAIL] Chat-Speicher: Antwort fehlt, Denkblock gespeichert oder Tool-Runde verloren" -ForegroundColor Red }
+}
+
 # --- Schrittlimit des Orchestrators: der Nutzer bekommt einen Hinweis, kein stilles Ende -----------------------------
 # Mock-Szenario __mock_step_limit__ laesst den Router siebenmal einen Agenten rufen (maxIterations 6). Die Agent-Node
 # wirft "Max iterations (6) reached"; ihr Fehler-Ausgang fuehrt in die normale Zustell-Kette (Hinweis core.orch.step_limit)

@@ -170,6 +170,27 @@ function fromSchema(s) {
   return null;
 }
 
+// Szenario `thinking_binding: true` bildet die API-Pruefung nach: die Signatur haelt den Gespraechsanfang fest, ein Denkblock
+// hinter einem veraenderten Anfang (Memory-Fenster) ergibt 400. Denkbloecke selbst zaehlen nicht zum Anfang (wie bei der API).
+function promptPrefixHash(messages) {
+  const shape = messages.map((m) => [m.role, typeof m.content === 'string' ? m.content
+    : (m.content || []).filter((b) => b && b.type !== 'thinking' && b.type !== 'redacted_thinking')
+      .map((b) => [b.type, b.text || b.id || b.tool_use_id || ''])]);
+  return 'bound-' + crypto.createHash('sha256').update(JSON.stringify(shape)).digest('hex').slice(0, 16);
+}
+function hasUnboundThinking(messages) {
+  return messages.some((m, i) => m && m.role === 'assistant' && Array.isArray(m.content) && m.content.some((b) => b && b.type === 'thinking'
+    && b.signature !== promptPrefixHash(messages.slice(0, i))));
+}
+// Ab der letzten echten Nutzer-Nachricht: ein Szenario ueber mehrere Nachrichten zaehlt nur die laufende Tool-Schleife.
+function currentRun(messages) {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const m = messages[i];
+    if (m && m.role === 'user' && (typeof m.content === 'string' || (m.content || []).some((p) => p && p.type === 'text'))) return messages.slice(i);
+  }
+  return messages;
+}
+
 // ---- Response-Builder ---------------------------------------------------------------------------
 // thinking (Default an, Szenario `thinking: false` schaltet ab): ein Denkblock VOR jedem tool_use, wie ihn die
 // 5.5-Modelle von sich aus senden. n8n spielt den Aufruf danach ueber einen anderen Weg zurueck (buildSteps:
@@ -177,9 +198,9 @@ function fromSchema(s) {
 // #41241 ab 2.45, Regressionswache). Default an = jeder Mock-Tier faehrt den Live-Weg.
 // calls: ein Aufruf je Turn, oder bei `parallel: true` alle Aufrufe des Szenarios als mehrere tool_use-Bloecke unter EINEM
 // gemeinsamen Denkblock (die Form, die das Modell bei zwei Buchungen in einer Nachricht ohne disable_parallel_tool_use schickt).
-function anthropicToolUse(calls, k, thinking) {
+function anthropicToolUse(calls, k, thinking, signature) {
   const blocks = calls.map((call, i) => ({ type: 'tool_use', id: 'toolu_' + k + (i ? '_' + i : ''), name: call.tool, input: call.args || {} }));
-  if (thinking) blocks.unshift({ type: 'thinking', thinking: '', signature: 'mock-signature-' + k });
+  if (thinking) blocks.unshift({ type: 'thinking', thinking: '', signature: signature || 'mock-signature-' + k });
   return { id: 'msg_' + k, type: 'message', role: 'assistant', model: 'claude-mock',
     content: blocks, stop_reason: 'tool_use', stop_sequence: null, usage: { input_tokens: 1, output_tokens: 1 } };
 }
@@ -261,8 +282,13 @@ function decide(body) {
   const messages = Array.isArray(body.messages) ? body.messages : [];
   const offered = anthropicOffered(body);
   const task = anthropicTaskText(messages);
-  const k = anthropicPriorTurns(messages);
   const scenario = pickScenario(scenarios, task);
+  const bound = !!(scenario && scenario.thinking_binding === true);
+  const run = bound ? currentRun(messages) : messages;
+  const k = anthropicPriorTurns(run);
+  if (bound && hasUnboundThinking(messages)) {
+    return { payload: anthropicText('unused'), why: 'thinking-binding-400', offered, task, http_status: 400 };
+  }
   // delay_ms (optional): Antwort erst nach dieser Zeit -> ein "langsames" LLM fuer die "Bot denkt nach"-Schleife
   // (mock_route_test [thinking-keepalive]); gilt fuer jeden Turn des Szenarios.
   const delay = (scenario && Number(scenario.delay_ms)) || 0;
@@ -278,11 +304,11 @@ function decide(body) {
   const eligible = scenario.calls.filter((c) => offered.indexOf(c.tool) !== -1);
   // parallel (Szenario-Feld): alle angebotenen Calls in EINEM Turn (ein Denkblock, mehrere tool_use-Bloecke).
   const parallel = scenario.parallel === true;
-  const replay_lost = replayLostInputs(messages, eligible, parallel).concat(replayPairing(messages, eligible, parallel));
+  const replay_lost = replayLostInputs(run, eligible, parallel).concat(replayPairing(run, eligible, parallel));
   const turns = parallel ? Math.min(eligible.length, 1) : eligible.length;
   if (k < turns) {
     const calls = parallel ? eligible : [eligible[k]];
-    return { payload: anthropicToolUse(calls, k, scenario.thinking !== false),
+    return { payload: anthropicToolUse(calls, k, scenario.thinking !== false, bound ? promptPrefixHash(messages) : null),
       why: 'tool-call:' + calls.map((c) => c.tool).join('+') + ' turn=' + k, offered, task, delay, replay_lost };
   }
   // Woertliches Weiterreichen (Orchestrator-Relay): nach einem Spezialisten-Aufruf antwortet der Router nur mit dem

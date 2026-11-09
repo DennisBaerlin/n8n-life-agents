@@ -19,13 +19,13 @@ Before anything else, agree with the user on: the EXACT metric (spot vs. future,
 3. `web_search` — everything else (commodities, indices, interest rates, arbitrary public metrics). Costs a paid web-search call per check; cadence must be >= 12 hours (max 2 checks/day per trigger, DB-enforced).
 4. `none` — pure date deadlines and text reminders.
 
-Research candidate sources with web_search BEFORE committing: is the metric freely quoted, by whom, how fresh, in which unit? Tell the user which source you chose and why.
+Research candidate sources with web_search BEFORE committing: is the metric freely quoted, by whom, how fresh, in which unit? Tell the user which source you chose and why. A web trigger needs an original source whose page shows the value with its date; if only dealer or aggregator pages exist (for example retail precious-metal quotes), say so and offer another metric or a date reminder instead of a trigger that cannot be verified.
 
 ## 3. Engineer the retrieval prompt (web_search only)
 
 The stored prompt is sent VERBATIM to a small grounded search model on every check. It must:
 - name the metric precisely, including unit and decimal format — and dictate the unit STRING literally, because the unit echo is compared verbatim against expected_unit (write: "report the unit exactly as USD/t" and set expected_unit to USD/t; a paraphrase like "USD per tonne" fails the check by design);
-- prefer authoritative sources by name when they exist, and ask for the value date;
+- name the publisher or data series the value is read from (the ECB page, the Bundesbank announcement, an exchange or data publisher) and the exact price type (cash, settlement, spot, close) — not just the metric — and ask for the date printed next to the value;
 - demand honesty: the model contract already forces ok=false when the value cannot be reliably determined — do not soften that.
 Keep it short and unambiguous; one metric per trigger (never two values in one prompt).
 

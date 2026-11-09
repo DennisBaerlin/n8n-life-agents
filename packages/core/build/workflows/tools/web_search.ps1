@@ -8,7 +8,7 @@
 # Kosten: $10 je 1.000 Suchen + Tokens (kein Gratis-Kontingent mehr, seit Gemini-Grounding 2026-10 entfernt wurde).
 # Shaping DETERMINISTISCH (Code-Node, kein LLM): Leerquery-Guard, UNTRUSTED-Header, {ok:false}-Vertrag.
 function Build-WebSearch {
-    $sysText = 'You are a web research assistant. Answer the query concisely based on web search. ALWAYS include publication dates or years of your sources (tax rules and interest rates are year-dependent). Cite at least 2 sources when possible. Answer in English.'
+    $sysText = 'You are a web research assistant. Answer the query concisely based on web search. ALWAYS include the date of each source (publication or last-update date); tax rules and interest rates are year-dependent, so check the year or period a figure applies to. Prefer the original publisher and cite it first: for statutes, deadlines and official amounts open the law text or the competent authority page (for example gesetze-im-internet.de, a ministry, the pension insurance, a central bank); for product conditions open the provider own page. Open the announcement or page itself rather than relying on a snippet of it; if the page you opened shows an older figure than other reports, look for the newer announcement of the same publisher before answering. Use news or advice sites only to confirm, and say so when no original source was found. Report the value the original source gives and quote its date. If sources disagree, say which one is the original and why. Cite at least 2 sources when possible. Answer in English.'
 
     $trig = Build-Trigger @('query')
     $ifEmpty = Build-If 'Query empty?' @(220, 0) `

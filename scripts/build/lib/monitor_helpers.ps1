@@ -8,7 +8,7 @@
 # Dot-gesourct von build.ps1 (sieht $RepoRoot + die lib-Helper im Parent-Scope).
 
 # Strikter Antwort-Vertrag der Wert-Beschaffung (EN, build-time Konstante).
-$script:MonitorSysText = 'You retrieve exactly ONE metric value via web search. Respond with ONLY a single JSON object, no prose, no markdown fences: {"ok": true|false, "value": number|null, "unit": "unit exactly as requested in the query", "as_of": "date the value refers to (YYYY-MM-DD if known)", "source_url": "best source url", "reason": "only when ok=false"}. Set ok=false with a concrete reason when the value cannot be RELIABLY determined (sources conflict, data is stale or paywalled). Never guess. value is a plain number with dot decimal, no thousands separators, no units inside value.'
+$script:MonitorSysText = 'You retrieve exactly ONE metric value via web search. Respond with ONLY a single JSON object, no prose, no markdown fences: {"ok": true|false, "value": number|null, "unit": "unit exactly as requested in the query", "as_of": "date the value refers to (YYYY-MM-DD if known)", "source_url": "best source url", "reason": "only when ok=false"}. Rules: (1) Read the original source: the publisher or data series named in the query. Open its page instead of relying on snippets; if the first search shows no original page, search again with the publisher name or its domain before giving up; use dealer, portal or aggregator pages only when no original is reachable, and then only if two independent pages agree. (2) as_of is the date printed next to the value in the source, never today and never inferred. (3) Administered rates (central bank, statutory, provider): the latest announced rate is the current value until a newer announcement exists; as_of is its effective date. (4) Market prices: use the latest quote dated within 7 days before today; if none that recent exists set ok=false; never mix values from different dates or sources; if two sources give different values for the same date set ok=false. (5) Set ok=false with a concrete reason when the value cannot be RELIABLY determined (sources conflict, data is stale or paywalled). Never guess. value is a plain number with dot decimal, no thousands separators, no units inside value.'
 
 # HTTP-Node fuer EINEN Web-Abruf (laeuft per-Item). $PromptExpr ist ein roher
 # JS-Ausdruck, der den gespeicherten Retrieval-Prompt WOERTLICH liefert (nie umformuliert).
@@ -18,7 +18,7 @@ $script:MonitorSysText = 'You retrieve exactly ONE metric value via web search. 
 function New-MonitorAcquireHttpNode {
     param([string]$Name, [int[]]$Pos, [string]$PromptExpr)
     New-AnthropicMessagesNode -Name $Name -Position $Pos -ConfigModelKey 'monitor_acquisition' -System $script:MonitorSysText `
-        -ContentJs "String($PromptExpr || '')" -Effort medium -WebSearchMaxUses 3 -TimeoutMs 120000
+        -ContentJs "'Today is ' + `$now.toISODate() + '. ' + String($PromptExpr || '')" -Effort medium -WebSearchMaxUses 2 -TimeoutMs 120000
 }
 
 # Der zugehoerige Config-Knoten (identisch in Cron + Create/Set-Tool, damit die Probe vor dem Gate exakt das

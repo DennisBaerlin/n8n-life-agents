@@ -470,7 +470,11 @@ foreach ($tc in $cases) {
                 $bookFloor = Get-MaxExecId $bookWf
             }
             Clear-MockTelegramRequests -Container $Container
-            Send-TelegramUpdate $chatId $fromUid $tc.text | Out-Null
+            # owner_lang: der Knopf-Auftrag enthaelt nur die Sprache als Variable; so trifft das Karten-Szenario nicht ri12 (ohne Karte).
+            # Szenario-match (mock_lint C2): Start or continue the household onboarding. Reply in the language with ISO code en
+            if ($tc.owner_lang) { Set-OwnerLanguage -Container $Container -Code "$($tc.owner_lang)" }
+            if ("$($tc.update)" -eq 'callback') { Send-TelegramCallback $fromUid $chatId "$($tc.callback_data)" }
+            else { Send-TelegramUpdate $chatId $fromUid $tc.text | Out-Null }
 
             # Auf die abgefangene Gate-Nachricht (sendMessage mit inline_keyboard) warten.
             $msg = $null; $start = Get-Date
@@ -481,6 +485,7 @@ foreach ($tc in $cases) {
                 if (((Get-Date) - $start).TotalSeconds -ge $Timeout) { break }
                 Start-Sleep -Milliseconds 800
             }
+            if ($tc.owner_lang) { Set-OwnerLanguage -Container $Container -Code 'de' }   # vor jedem continue: Auftrag ist hier gebaut
             if (-not $msg) {
                 Write-Host "    [FAIL] Keine abgefangene Gate-Nachricht mit Buttons (Routing bis ins Gate? Mocks aktiv?)." -ForegroundColor Red
                 $failed++; continue
@@ -598,6 +603,14 @@ foreach ($tc in $cases) {
                         if (-not $orch2 -or $orch2.status -ne 'success') { $extraOk = $false; $extraInfo += "zweiter Lauf status=$($orch2.status)" }
                     } else { $extraOk = $false; $extraInfo += 'zweiter Lauf nicht gefunden' }
                 }
+            }
+
+            # expect_answer: nach dem Tipp bekommt der Nutzer genau EINE Antwort, und die Karten-Sperre wird genau einmal geloest.
+            if ($tc.expect_answer) {
+                $answers = @(Get-MockTelegramRequests -Container $Container | Where-Object { $_.method -eq 'sendMessage' -and -not $_.body.reply_markup -and "$($_.body.text)".Contains("$($tc.expect_answer)") })
+                if ($answers.Count -ne 1) { $extraOk = $false; $extraInfo += "$($answers.Count) Antworten mit '$($tc.expect_answer)' statt genau einer" }
+                $finishRuns = @(if ($orch) { $orch.data.resultData.runData.'Finish card lock' })
+                if ($finishRuns.Count -ne 1) { $extraOk = $false; $extraInfo += "Finish card lock $($finishRuns.Count)-mal gelaufen" }
             }
 
             Write-Host "    Gate abgefangen + aufgeloest (decision=$($tc.gate_decision)); Orchestrator status=$($orch.status)"
@@ -999,6 +1012,7 @@ SELECT agent.fn_arm_pairing_challenge(jsonb_build_object('role','partner','chall
         # Sperr-Zeilen wuerden sonst den Folgefall rot machen). Gezaehlt wird hier, im selben Bereich wie $failed.
         $failed++
         Write-CaseAbort -ErrorRecord $_ -CaseId $tc.id -Cleanup {
+            if ($tc.owner_lang) { Set-OwnerLanguage -Container $Container -Code 'de' }
             if ($tc.post_sql) { [void](Invoke-TestN8nPsql -Container $Container -PsqlArgs @('-q', '-c', "$($tc.post_sql)")) }
             Clear-RunLeftovers
         }

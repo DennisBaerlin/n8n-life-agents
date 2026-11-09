@@ -184,6 +184,14 @@
     "final": "Der Guide fuehrt dich durch die Einrichtung."
   },
   {
+    "match": "Start or continue the household onboarding. Reply in the language with ISO code en",
+    "driver": "scripts/dev/real_ingress_test.ps1",
+    "calls": [
+      { "tool": "tool_set_household_facts", "args": { "household": "{\"joint_finances\": true}" } }
+    ],
+    "final": "Haushalt per Knopf fertig."
+  },
+  {
     "match": "wie bediene ich das",
     "calls": [
       { "tool": "Call_agent_guide_", "args": { "task": "Was kannst du alles und wie bediene ich das?" } }

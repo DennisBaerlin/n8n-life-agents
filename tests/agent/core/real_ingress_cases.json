@@ -171,8 +171,34 @@
     "chat_id": 880055071,
     "from_uid": 880055071,
     "callback_data": "onboarding:core:household",
-    "expected_node": "Run onboarding cb",
-    "notes": "P1 Callback-Split (Encoding onboarding:<package>:<key>): 'Callback action'[onboarding] -> 'Onboarding section?' (data.split(':')[1]='core') -> [0] 'Run onboarding cb' (agent.guide INLINE, Haushalt-Sonderfall). Unter Mock-LLM bricht der Guide ohne passendes Szenario sauber mit Text ab -> Execution success; asserted, dass die Routing-Node 'Run onboarding cb' lief."
+    "expected_node": "Finish card lock",
+    "notes": "P1 Callback-Split (Encoding onboarding:<package>:<key>): 'Callback action'[onboarding] -> 'Onboarding section?' (data.split(':')[1]='core') -> [0] 'Run onboarding cb' (agent.guide ueber agent.sub_dispatch_agent, Haushalt-Sonderfall). Unter Mock-LLM bricht der Guide ohne passendes Szenario sauber mit Text ab -> Execution success; asserted, dass der Lauf ohne Karte bis 'Finish card lock' durchkommt (Antwort gesendet, Sperre geloest)."
+  },
+  {
+    "id": "ri12h",
+    "name": "Haushalts-Knopf -> Guide oeffnet eine Freigabe-Karte, Ablehnen -> genau eine Antwort, Sperre geloest",
+    "kind": "hitl",
+    "update": "callback",
+    "chat_id": 880055071,
+    "from_uid": 880055071,
+    "owner_lang": "en",
+    "callback_data": "onboarding:core:household",
+    "gate_decision": "decline",
+    "expect_answer": "Haushalt per Knopf fertig.",
+    "notes": "Wartet ein Agent direkt unter einem executeWorkflow-Knoten auf eine Freigabe, darf der Eltern-Lauf nicht abstuerzen und die Antwort nicht verlieren."
+  },
+  {
+    "id": "ri12i",
+    "name": "Haushalts-Knopf -> Guide oeffnet eine Freigabe-Karte, Bestaetigen -> genau eine Antwort, Sperre geloest",
+    "kind": "hitl",
+    "update": "callback",
+    "chat_id": 880055071,
+    "from_uid": 880055071,
+    "owner_lang": "en",
+    "callback_data": "onboarding:core:household",
+    "gate_decision": "approve",
+    "expect_answer": "Haushalt per Knopf fertig.",
+    "notes": "Wie ri12h mit Bestaetigen; der Fakt ist idempotent (Merge-Patch)."
   },
   {
     "id": "ri13",

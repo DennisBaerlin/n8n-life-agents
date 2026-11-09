@@ -247,10 +247,11 @@ function Build-ToolCancelled {
     $ownerDeclined = "The household owner declined the confirmation card for $Action after the user had confirmed it. $stop Tell the user the owner declined it; the user did not cancel it."
     $ownerExpired  = "The household owner did not answer the confirmation card for $Action within the time limit; the user had already confirmed it. $stop Tell the user the owner did not answer in time and ask whether to send it again."
     $unknown   = "The confirmation card for $Action was not confirmed. $stop Tell the user it was not confirmed and ask whether to try again or what to change."
+    $cardFailed = "The confirmation card for $Action could not be delivered because of a technical problem. $stop Tell the user the confirmation could not be shown, nothing was changed, and to try again in a moment."
     Build-Set $Name $Pos @(
         ,@('ok','false','boolean')
         ,@('cancelled','true','boolean')
-        ,@('message', "={{ `$json.repeat_blocked === true ? '$repeat' : `$json.reason === 'owner_only' ? '$ownerOnly' : ({ declined: '$declined', expired: '$expired', owner_declined: '$ownerDeclined', owner_expired: '$ownerExpired' })[`$json.outcome] || '$unknown' }}", 'string')
+        ,@('message', "={{ `$json.error ? '$cardFailed' : `$json.repeat_blocked === true ? '$repeat' :`$json.reason === 'owner_only' ? '$ownerOnly' : ({ declined: '$declined', expired: '$expired', owner_declined: '$ownerDeclined', owner_expired: '$ownerExpired' })[`$json.outcome] || '$unknown' }}", 'string')
     )
 }
 
@@ -426,6 +427,10 @@ function Build-CallWorkflow {
     }
     # each = Sub-Workflow je Eingangs-Item, nacheinander (Default once: alle Items in EINEN Lauf).
     if ($Mode) { $node.parameters['mode'] = $Mode }
+    # Scheitert das HITL-Gate selbst (Karte nicht zustellbar), kommt {error} statt approved zurueck -> Approved? false -> Build-ToolCancelled,
+    # kein Write. Ohne das bekaeme das Modell nur "Error executing workflow ..." (ExecuteWorkflow.node.js). Der Gate-Lauf bleibt rot
+    # und alarmiert den Owner weiter ueber core.sub_error_notify.
+    if ($CachedName -eq 'agent.tool_human_approval') { $node['onError'] = 'continueRegularOutput' }
     return $node
 }
 

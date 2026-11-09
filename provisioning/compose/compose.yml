@@ -125,6 +125,12 @@ services:
         read_only: true
         volume:
           subpath: memory-all-tool-rounds
+      - type: volume
+        source: n8n_patches
+        target: /usr/local/lib/node_modules/n8n/node_modules/.pnpm/n8n-nodes-base@file++++home+runner+_work+n8n+n8n+packages+nodes-base/node_modules/n8n-nodes-base/dist/nodes/Telegram/hitl   # lint-ignore: Pfad im n8n-Image, kein Repo-Ordner
+        read_only: true
+        volume:
+          subpath: hitl-chat-no-link-fallback
 
   gateway:
     <<: *pod

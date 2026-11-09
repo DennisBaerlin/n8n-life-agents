@@ -6,7 +6,7 @@ function Build-BookStockSell {
     # WS-B0: enge Paket-Schreibrolle (finance_rw, Least-Privilege D10) statt Owner-Cred.
     # Dynamic-Scope: Build-Pg liest dieses $CRED_POSTGRES. Core-Tools nutzen die Owner-Cred.
     $CRED_POSTGRES = $CRED_FINANCE_RW
-    $trig = Build-Trigger @('depot_name','isin','symbol','shares','price_per_share','order_fee','transaction_date','savings_goal_name')
+    $trig = Build-Trigger @('depot_name','isin','symbol','shares','price_per_share','quote_currency','total_credited','order_fee','transaction_date','savings_goal_name')
 
     # S8: Position per Depot-Name + ISIN/Symbol (finance.fn_find_holding) statt holding_id-Lookup durch das Modell.
     # Liefert settlement_account_id, Depot-Name, Waehrung (WP-5: Depot-/Verrechnungs-Waehrung fuer die Karte) und die
@@ -35,6 +35,8 @@ function Build-BookStockSell {
             holding_id       = '$(''Find Holding'').item.json.r.holding_id'
             shares           = '$(''Start'').item.json.shares'
             price_per_share  = '$(''Start'').item.json.price_per_share'
+            quote_currency   = '$(''Start'').item.json.quote_currency'
+            total_credited   = '$(''Start'').item.json.total_credited'
             order_fee        = '$(''Start'').item.json.order_fee'
             transaction_date = '$(''Start'').item.json.transaction_date'
             symbol           = '$(''Find Holding'').item.json.r.symbol'   # gespeichertes Symbol (Karte == Buchungstext)
@@ -52,7 +54,7 @@ function Build-BookStockSell {
         (New-HitlLine 'finance.label.depot'         "$G.depot_name")
         (New-HitlLine 'finance.label.available'     "'finance.tpl.pieces'" -Kind tpl -Params @{ count = (New-HitlValue -Kind number -Value "$G.available_shares" -Digits -1) })
         (New-HitlLine 'finance.label.sell'          "'finance.tpl.pieces'" -Kind tpl -Params @{ count = (New-HitlValue -Kind number -Value "$S.shares" -Digits -1) })
-        (New-HitlLine 'finance.label.price'         "$S.price_per_share" -Kind money -Currency "$G.currency")
+        (New-HitlLine 'finance.label.price'         "($E.effective.price_per_share || $S.price_per_share)" -Kind money -Currency "$G.currency")
         (New-HitlLine 'finance.label.order_fee'     "$E.effective.order_fee" -Kind money -Currency "$G.currency")
         (New-HitlLine 'finance.label.proceeds_net'  "$E.proceeds" -Kind money -Currency "$G.currency")
         (New-HitlLine 'core.label.date'             "$E.effective.transaction_date" -Kind date)
@@ -91,7 +93,7 @@ function Build-BookStockSell {
 
     $stickyDry = Build-Sticky 'Probelauf vor der Karte' @(660, -220) `
         'core.fn_dry_run (DB ist das Gesetz)' `
-        'Dry run = fn_book_stock_sell mit denselben Werten, immer zurückgerollt. ok:false (zu viele Stücke, Stückzahl/Kurs nicht positiv; mit savings_goal_name: Ziel unklar, kein Ziel-Geld in diesem Depot, Währung Verrechnungskonto ≠ Depot) -> sonst bucht die fn zusätzlich das Umschichten fürs Sparziel (Journal derisk: Depot -m, Verrechnungskonto +m, m = min(Anteil, Erlös)). Bei Ablehnung -> Dry run rejected: KEINE Karte, card_sent:false + reason an den Agenten. ok:true -> Karte; Hinweis-Zeilen der fn (card_lines) hängen unten an. Echte Exception -> Abbruch + errorWorkflow-Alarm. Der echte Write nach dem Tipp prüft erneut (Write ok?).' 200 400
+        'Dry run = fn_book_stock_sell mit denselben Werten, immer zurückgerollt. ok:false (zu viele Stücke, Stückzahl/Kurs nicht positiv; Kurswaehrung abweichend price_currency_mismatch oder unbekannt price_currency_missing, Agent fragt nach der Gutschrift; mit savings_goal_name: Ziel unklar, kein Ziel-Geld in diesem Depot, Währung Verrechnungskonto ≠ Depot) -> sonst bucht die fn zusätzlich das Umschichten fürs Sparziel (Journal derisk: Depot -m, Verrechnungskonto +m, m = min(Anteil, Erlös)). Bei Ablehnung -> Dry run rejected: KEINE Karte, card_sent:false + reason an den Agenten. ok:true -> Karte; Hinweis-Zeilen der fn (card_lines) hängen unten an. Echte Exception -> Abbruch + errorWorkflow-Alarm. Der echte Write nach dem Tipp prüft erneut (Write ok?).' 200 400
 
     $stickyTriggers = Build-Sticky 'DB-Automatik shares+balance' @(1980, -220) `
         'trg_finance_update_holding_shares + trg_finance_balance_update' `

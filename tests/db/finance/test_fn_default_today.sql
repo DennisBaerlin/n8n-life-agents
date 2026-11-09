@@ -44,7 +44,7 @@ BEGIN
      OR (v_r->'effective'->>'order_fee')::numeric IS DISTINCT FROM 0 THEN
     RAISE EXCEPTION 'FAIL default_today [book_stock_buy]: % / %', v_r, v_d; END IF;
 
-  v_r := finance.fn_book_stock_sell(jsonb_build_object('settlement_id', v_a, 'holding_id', v_hold,
+  v_r := finance.fn_book_stock_sell(jsonb_build_object('price_currency_confirmed',true,'settlement_id', v_a, 'holding_id', v_hold,
            'shares', 1, 'price_per_share', 110, 'symbol', 'IWDA'));
   SELECT transaction_date INTO v_d FROM finance.transactions WHERE id = (v_r->>'sell_tx_id')::int;
   IF (v_r->>'ok')::boolean IS DISTINCT FROM true OR v_d IS DISTINCT FROM core.fn_today()

@@ -310,7 +310,8 @@ BEGIN
                 v_r := finance.fn_book_stock_sell(jsonb_build_object('settlement_id', v_acct,
                            'holding_id', v_hold, 'symbol', v_m->>'symbol',
                            'shares', (v_m->>'shares')::numeric, 'price_per_share', (v_m->>'price_per_share')::numeric,
-                           'order_fee', (v_m->>'order_fee')::numeric, 'transaction_date', v_m->>'date'));
+                           'order_fee', (v_m->>'order_fee')::numeric, 'transaction_date', v_m->>'date',
+                           'price_currency_confirmed', true));
             ELSE
                 v_r := finance.fn_book_dividend(jsonb_build_object('account_id', v_acct,
                            'holding_id', v_hold, 'amount', (v_m->>'amount')::numeric,

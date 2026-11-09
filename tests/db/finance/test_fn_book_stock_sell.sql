@@ -52,7 +52,7 @@ BEGIN
   v_exp_avg := (v_buy_shares * v_buy_price + v_buy_fee) / v_buy_shares;  -- 80.5
 
   -- TEST 1: Verkauf 4 Anteile @ 90 - 3 Gebuehr
-  SELECT finance.fn_book_stock_sell(jsonb_build_object(
+  SELECT finance.fn_book_stock_sell(jsonb_build_object('price_currency_confirmed',true,
     'settlement_id',   v_settle_id,
     'holding_id',      v_holding_id,
     'shares',          v_sell_shares,
@@ -114,7 +114,7 @@ BEGIN
   RAISE NOTICE 'PASS fn_book_stock_sell [Post-State Return korrekt]';
 
   -- TEST 2: Oversell -> {ok:false} (korrigierbar, kein RAISE) + available/requested
-  SELECT finance.fn_book_stock_sell(jsonb_build_object(
+  SELECT finance.fn_book_stock_sell(jsonb_build_object('price_currency_confirmed',true,
     'settlement_id',   v_settle_id,
     'holding_id',      v_holding_id,
     'shares',          100,
@@ -133,7 +133,7 @@ BEGIN
   RAISE NOTICE 'PASS fn_book_stock_sell [oversell -> ok:false]: %', v_result->>'reason';
 
   -- TEST 3: shares <= 0 -> {ok:false}
-  SELECT finance.fn_book_stock_sell(jsonb_build_object(
+  SELECT finance.fn_book_stock_sell(jsonb_build_object('price_currency_confirmed',true,
     'settlement_id', v_settle_id, 'holding_id', v_holding_id,
     'shares', 0, 'price_per_share', 90, 'order_fee', 0,
     'transaction_date', CURRENT_DATE::text, 'symbol', 'IUSQ'
@@ -144,7 +144,7 @@ BEGIN
   RAISE NOTICE 'PASS fn_book_stock_sell [shares<=0 -> ok:false]';
 
   -- TEST 4: price <= 0 -> {ok:false}
-  SELECT finance.fn_book_stock_sell(jsonb_build_object(
+  SELECT finance.fn_book_stock_sell(jsonb_build_object('price_currency_confirmed',true,
     'settlement_id', v_settle_id, 'holding_id', v_holding_id,
     'shares', 2, 'price_per_share', 0, 'order_fee', 0,
     'transaction_date', CURRENT_DATE::text, 'symbol', 'IUSQ'
@@ -179,7 +179,7 @@ BEGIN
     'isin','IE00B4L5Y983','symbol','AVGA','name','A','shares',10,'price_per_share',100,'order_fee',0,
     'transaction_date',CURRENT_DATE::text));
   v_h := (v_result->>'holding_id')::int;
-  PERFORM finance.fn_book_stock_sell(jsonb_build_object('settlement_id',v_settle,'holding_id',v_h,'shares',5,
+  PERFORM finance.fn_book_stock_sell(jsonb_build_object('price_currency_confirmed',true,'settlement_id',v_settle,'holding_id',v_h,'shares',5,
     'price_per_share',150,'order_fee',0,'transaction_date',CURRENT_DATE::text,'symbol','AVGA'));
   v_result := finance.fn_book_stock_buy(jsonb_build_object('price_currency_confirmed',true,'depot_id',v_depot,'settlement_id',v_settle,
     'isin','IE00B4L5Y983','symbol','AVGA','name','A','shares',5,'price_per_share',200,'order_fee',0,
@@ -194,7 +194,7 @@ BEGIN
     'isin','IE00B3RBWM25','symbol','AVGB','name','B','shares',10,'price_per_share',100,'order_fee',0,
     'transaction_date',CURRENT_DATE::text));
   v_h := (v_result->>'holding_id')::int;
-  PERFORM finance.fn_book_stock_sell(jsonb_build_object('settlement_id',v_settle,'holding_id',v_h,'shares',10,
+  PERFORM finance.fn_book_stock_sell(jsonb_build_object('price_currency_confirmed',true,'settlement_id',v_settle,'holding_id',v_h,'shares',10,
     'price_per_share',150,'order_fee',0,'transaction_date',CURRENT_DATE::text,'symbol','AVGB'));
   SELECT average_purchase_price INTO v_avg FROM finance.depot_holdings WHERE id = v_h;
   IF v_avg IS DISTINCT FROM 100 THEN
@@ -214,7 +214,7 @@ BEGIN
     'isin','DE0005190003','symbol','AVGC','name','C','shares',10,'price_per_share',100,'order_fee',0,
     'transaction_date',CURRENT_DATE::text));
   v_h := (v_result->>'holding_id')::int;
-  PERFORM finance.fn_book_stock_sell(jsonb_build_object('settlement_id',v_settle,'holding_id',v_h,'shares',5,
+  PERFORM finance.fn_book_stock_sell(jsonb_build_object('price_currency_confirmed',true,'settlement_id',v_settle,'holding_id',v_h,'shares',5,
     'price_per_share',150,'order_fee',0,'transaction_date',(CURRENT_DATE - 1)::text,'symbol','AVGC'));
   SELECT average_purchase_price INTO v_avg FROM finance.depot_holdings WHERE id = v_h;
   IF v_avg IS DISTINCT FROM 100 THEN
@@ -244,7 +244,7 @@ BEGIN
   PERFORM finance.fn_book_savings_reservation(jsonb_build_object('savings_goal_id', v_goal, 'account_id', v_depot, 'amount', 1000));
 
   -- (G1)
-  v_r := finance.fn_book_stock_sell(jsonb_build_object('settlement_id',v_settle,'holding_id',v_hold,'shares',5,'price_per_share',120,
+  v_r := finance.fn_book_stock_sell(jsonb_build_object('price_currency_confirmed',true,'settlement_id',v_settle,'holding_id',v_hold,'shares',5,'price_per_share',120,
            'order_fee',0,'symbol','IUSQ','savings_goal_name','__sg_sell Auto__'));
   v_sell := (v_r->>'sell_tx_id')::int;
   SELECT current_amount INTO v_cur FROM finance.savings_goal_progress WHERE id = v_goal;
@@ -255,7 +255,7 @@ BEGIN
   RAISE NOTICE 'PASS sell [G1: Erloes 600 vom Depot aufs Konto umgeschichtet, Ziel 1000]';
 
   -- (G2)
-  v_r := finance.fn_book_stock_sell(jsonb_build_object('settlement_id',v_settle,'holding_id',v_hold,'shares',8,'price_per_share',100,
+  v_r := finance.fn_book_stock_sell(jsonb_build_object('price_currency_confirmed',true,'settlement_id',v_settle,'holding_id',v_hold,'shares',8,'price_per_share',100,
            'order_fee',0,'symbol','IUSQ','savings_goal_name','__sg_sell Auto__'));
   IF (v_r->>'ok')::boolean IS DISTINCT FROM true OR (v_r->>'derisk_amount')::numeric IS DISTINCT FROM 400
      OR (SELECT share_eur FROM finance.savings_goal_account_share WHERE goal_id = v_goal AND account_id = v_depot) IS DISTINCT FROM 0
@@ -265,13 +265,13 @@ BEGIN
 
   -- (G3)
   SELECT count(*) INTO v_cnt FROM finance.transactions WHERE holding_id = v_hold AND category = 'sell';
-  v_r := finance.fn_book_stock_sell(jsonb_build_object('settlement_id',v_settle,'holding_id',v_hold,'shares',1,'price_per_share',100,
+  v_r := finance.fn_book_stock_sell(jsonb_build_object('price_currency_confirmed',true,'settlement_id',v_settle,'holding_id',v_hold,'shares',1,'price_per_share',100,
            'order_fee',0,'symbol','IUSQ','savings_goal_name','__sg_sell Leer__'));
   IF (v_r->>'ok')::boolean IS DISTINCT FROM false
      OR (SELECT count(*) FROM finance.transactions WHERE holding_id = v_hold AND category = 'sell') <> v_cnt THEN
     RAISE EXCEPTION 'FAIL sell [G3 kein Ziel-Geld im Depot]: %', v_r; END IF;
   -- (G4)
-  v_r := finance.fn_book_stock_sell(jsonb_build_object('settlement_id',v_settle,'holding_id',v_hold,'shares',1,'price_per_share',100,
+  v_r := finance.fn_book_stock_sell(jsonb_build_object('price_currency_confirmed',true,'settlement_id',v_settle,'holding_id',v_hold,'shares',1,'price_per_share',100,
            'order_fee',0,'symbol','IUSQ','savings_goal_name','__sg_sell Gibtsnicht__'));
   IF (v_r->>'ok')::boolean IS DISTINCT FROM false THEN RAISE EXCEPTION 'FAIL sell [G4 unbekanntes Ziel]: %', v_r; END IF;
   -- (G5)
@@ -281,7 +281,7 @@ BEGIN
   INSERT INTO finance.depot_holdings (account_id, symbol, name, shares, average_purchase_price, currency)
     VALUES (v_usd_depot, 'USDX', 'USD Test', 10, 10, 'USD') RETURNING id INTO v_usd_hold;
   INSERT INTO finance.savings_goal_reserve_entries (savings_goal_id, account_id, delta_native, currency, kind) VALUES (v_goal2, v_usd_depot, 50, 'EUR', 'manual');
-  v_r := finance.fn_book_stock_sell(jsonb_build_object('settlement_id',v_settle,'holding_id',v_usd_hold,'shares',1,'price_per_share',10,
+  v_r := finance.fn_book_stock_sell(jsonb_build_object('price_currency_confirmed',true,'settlement_id',v_settle,'holding_id',v_usd_hold,'shares',1,'price_per_share',10,
            'order_fee',0,'symbol','USDX','savings_goal_name','__sg_sell Leer__'));
   IF (v_r->>'ok')::boolean IS DISTINCT FROM false OR v_r->>'reason' NOT ILIKE '%currency%' THEN
     RAISE EXCEPTION 'FAIL sell [G5 Waehrung]: %', v_r; END IF;
@@ -301,13 +301,13 @@ BEGIN
               'transaction_date', (CURRENT_DATE - 30)::text))->>'holding_id')::int;
   INSERT INTO finance.market_prices (symbol, price, currency, as_of) VALUES ('SELLTWO', 100, 'EUR', CURRENT_DATE);
 
-  v_res := finance.fn_book_stock_sell(jsonb_build_object('settlement_id', v_settle, 'holding_id', v_hold, 'shares', 1));
+  v_res := finance.fn_book_stock_sell(jsonb_build_object('price_currency_confirmed',true,'settlement_id', v_settle, 'holding_id', v_hold, 'shares', 1));
   IF (v_res->>'ok')::boolean IS DISTINCT FROM false THEN RAISE EXCEPTION 'FAIL sell [Kurs fehlt]: %', v_res; END IF;
 
   INSERT INTO finance.savings_goals (name, target_amount, target_date, status)
     VALUES ('__test_sell2 Ziel__', 5000, CURRENT_DATE + 3000, 'active') RETURNING id INTO v_goal;
   PERFORM finance.fn_book_savings_reservation(jsonb_build_object('savings_goal_id', v_goal, 'account_id', v_depot, 'amount', 1000));
-  v_res := finance.fn_book_stock_sell(jsonb_build_object('settlement_id', v_settle, 'holding_id', v_hold, 'shares', 5,
+  v_res := finance.fn_book_stock_sell(jsonb_build_object('price_currency_confirmed',true,'settlement_id', v_settle, 'holding_id', v_hold, 'shares', 5,
              'price_per_share', 100, 'order_fee', 10, 'savings_goal_name', '__test_sell2 Ziel__'));
   IF (v_res->>'ok')::boolean IS DISTINCT FROM true OR (v_res->>'derisk_amount')::numeric IS DISTINCT FROM 490 THEN
     RAISE EXCEPTION 'FAIL sell [Ziel-Verkauf: 490 nach Gebuehr]: %', v_res; END IF;

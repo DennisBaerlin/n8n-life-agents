@@ -87,7 +87,14 @@ BEGIN
   IF NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v_det) d
                   WHERE d->>'label' = '__r2f2_chf__' AND d->'value'->>'value' = 'finance.app.overview.d_fx_missing') THEN
     RAISE EXCEPTION 'FAIL [FX1] Grund fehlt oder Zeile unter „weitere“: %', v_det; END IF;
-  IF jsonb_array_length(v_det) > 8 THEN RAISE EXCEPTION 'FAIL [FX2] mehr als 8 Zeilen: %', v_det; END IF;
+  IF (SELECT count(*) FROM jsonb_array_elements(v_det) d WHERE NOT d ? 'kind') > 8 THEN RAISE EXCEPTION 'FAIL [FX2] mehr als 8 Zeilen: %', v_det; END IF;
+  -- Erklaerung und Handlung: der Kurs kommt vom taeglichen Abruf, die Nachricht nennt das betroffene Konto
+  IF v_det->0->>'kind' IS DISTINCT FROM 'info' OR v_det->0->'label'->>'value' IS DISTINCT FROM 'finance.app.overview.i_fx_missing' THEN
+    RAISE EXCEPTION 'FAIL [FX3] Erklaerzeile: %', v_det->0; END IF;
+  IF v_det->1->>'kind' IS DISTINCT FROM 'todo' OR v_det->1->'label'->>'value' IS DISTINCT FROM 'finance.app.overview.todo_fx_missing'
+     OR v_det->1->'ask'->>'value' IS DISTINCT FROM 'finance.app.overview.ask_fx_missing'
+     OR v_det->1->'ask'->'params'->>'account' IS DISTINCT FROM '__r2f2_chf__' THEN
+    RAISE EXCEPTION 'FAIL [FX4] Das-kannst-du-tun-Zeile: %', v_det->1; END IF;
   RAISE NOTICE 'PASS [FX] Wechselkurs fehlt steht beim Konto, Zeile bleibt sichtbar';
 END $$;
 ROLLBACK;

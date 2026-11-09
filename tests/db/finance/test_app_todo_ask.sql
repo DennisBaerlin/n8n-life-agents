@@ -31,7 +31,7 @@ BEGIN
                      WHERE d->>'kind' = 'todo' LOOP
         v_n := v_n + 1;
         v_key := v_todo->'ask'->>'value';
-        IF v_key IS NULL OR v_key !~ '^finance\.app\.(accounts|goals)\.ask_' THEN RAISE EXCEPTION 'FAIL [5] todo ohne ask: %', v_todo; END IF;
+        IF v_key IS NULL OR v_key !~ '^finance\.app\.(accounts|goals|overview)\.ask_' THEN RAISE EXCEPTION 'FAIL [5] todo ohne ask: %', v_todo; END IF;
       END LOOP;
     END LOOP;
   END LOOP;

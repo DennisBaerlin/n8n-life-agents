@@ -108,7 +108,14 @@ BEGIN
     ), dd AS (
         -- groesste zuerst; mehr als acht -> sieben + „weitere n“ mit dem Rest (L5)
         SELECT d1.bucket,
-               COALESCE(jsonb_agg(jsonb_build_object('label', d1.item_name,
+               -- Kurse kommen nur aus dem taeglichen Abruf (cron_refresh_fx_rates): die Zeile sagt das, statt eine Handlung vorzutaeuschen
+               CASE WHEN bool_or(d1.val IS NULL) THEN jsonb_build_array(
+                        jsonb_build_object('label', core.fn_ui_tpl('finance.app.overview.i_fx_missing'), 'value', NULL, 'kind', 'info'),
+                        jsonb_build_object('label', core.fn_ui_tpl('finance.app.overview.todo_fx_missing'), 'value', NULL, 'kind', 'todo',
+                            'ask', core.fn_ui_tpl('finance.app.overview.ask_fx_missing', jsonb_build_object(
+                                'account', (array_agg(d1.item_name ORDER BY d1.rn) FILTER (WHERE d1.val IS NULL))[1]))))
+                    ELSE '[]'::jsonb END
+               || COALESCE(jsonb_agg(jsonb_build_object('label', d1.item_name,
                                   'value', CASE WHEN d1.val IS NULL THEN core.fn_ui_tpl('finance.app.overview.d_fx_missing')
                                                 ELSE core.fn_ui_money(round(d1.val, 2), 'EUR') END)
                                   ORDER BY d1.rn) FILTER (WHERE d1.cnt <= 8 OR d1.rn <= 7), '[]'::jsonb)

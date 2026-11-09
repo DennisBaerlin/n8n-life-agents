@@ -49,6 +49,8 @@ function Build-FetchTelegramFile {
     # Tabellen (nur mit accept='table'): n8n leitet mimeType aus der Endung des Telegram-Dateipfads ab (Telegram-Node:
     # lookup(fileName) || application/octet-stream) -> die Endung entscheidet. .csv: Inhalt muss Text sein (kein NUL-Byte).
     # .xlsx: Inhalt muss ein ZIP sein ('PK'); der Code reicht das Binary mit sheet:true weiter -> Read sheet liest es.
+    # Bei .xls entscheidet der Inhalt: ZIP mit xl/workbook = xlsx-Arbeitsmappe unter altem Namen -> wie .xlsx; echtes OLE-xls
+    # und jedes andere ZIP bleiben abgelehnt (kein BIFF-Parser).
     # Inhalts-Pruefung (Befund, PDF ohne Dateiendung): sagen weder Endung noch MIME etwas Brauchbares, entscheidet
     # sniff() ueber die ersten Bytes (Text-Tabelle nur ohne Endung und ohne Typ-Angabe); danach laufen dieselben Zweige.
     $jsB64 = @'
@@ -85,7 +87,9 @@ const sniff = () => {
 const known = ['csv', 'xlsx', 'xls'].includes(rawExt) || allowed.includes(rawMime) || rawMime === 'image/heic' || rawMime === 'image/heif';
 const found = known ? null : sniff();
 const mime = (found && found.mime) || rawMime || 'image/jpeg';
-const ext = (found && found.ext) || rawExt;
+// Anbieter-Standard (z. B. Bondora): Name .xls, Inhalt ein xlsx-Workbook (ZIP mit xl/workbook) -> der Inhalt entscheidet
+const zipBook = buf.toString('latin1', 0, 2) === 'PK' && buf.includes('xl/workbook');
+const ext = (found && found.ext) || (rawExt === 'xls' && zipBook ? 'xlsx' : rawExt);
 const accept = String($('Start').first().json.accept || '').toLowerCase();
 const csvMimes = ['text/csv', 'text/comma-separated-values', 'text/plain', 'application/vnd.ms-excel', 'application/octet-stream'];
 if (accept === 'table' && ext === 'csv' && csvMimes.includes(mime)) {
@@ -165,10 +169,10 @@ return out(true, rows, '');
 
     $sticky = Build-Sticky 'Doc: Telegram-Datei holen' @(-660, -300) -Header 'Ablauf' `
         'agent.tool_fetch_telegram_file (Baustein, KEIN LLM)' `
-        'Eingang file_id (Telegram Foto ODER Dokument/PDF) -> Get document (Download, resource=file) -> To base64 (Binär-Validierung: Größe <=10 MB, Bilder <=5 MB als base64 (~3,75 MB roh), MIME jpeg/png/webp/gif + application/pdf — die Grenzen der Claude-Vision; HEIC/HEIF freundlich abgelehnt; mit accept=table zusätzlich .csv als Text (BOM entfernt) und .xlsx als Raster; sagen weder Endung noch Telegrams Typ etwas Brauchbares, entscheidet der Inhalt: %PDF-, Bildsignaturen, ZIP mit xl/workbook, OLE mit Workbook, ohne Endung auch eine Text-Tabelle) -> Return { ok, b64, mime, text, rows, error } (text nur bei CSV, rows nur bei Excel). Leere file_id / unbrauchbare Datei -> { ok:false, error } als DATEN (inline-konsumiert, KEIN Tool-Error). REINES PLUMBING: keine Vision, kein LLM, kein API-Key -- die Bezahl-API-/Vision-Privacy lebt im Finanz-Konsumenten (tool_extract_finance_document). DUAL-USE: inline per executeWorkflow ODER als Agent-Tool bindbar.' 300 560
+        'Eingang file_id (Telegram Foto ODER Dokument/PDF) -> Get document (Download, resource=file) -> To base64 (Binär-Validierung: Größe <=10 MB, Bilder <=5 MB als base64 (~3,75 MB roh), MIME jpeg/png/webp/gif + application/pdf — die Grenzen der Claude-Vision; HEIC/HEIF freundlich abgelehnt; mit accept=table zusätzlich .csv als Text (BOM entfernt) und .xlsx als Raster (bei .xls entscheidet der Inhalt: ZIP mit xl/workbook zählt als .xlsx, echtes altes .xls bleibt abgelehnt); sagen weder Endung noch Telegrams Typ etwas Brauchbares, entscheidet der Inhalt: %PDF-, Bildsignaturen, ZIP mit xl/workbook, OLE mit Workbook, ohne Endung auch eine Text-Tabelle) -> Return { ok, b64, mime, text, rows, error } (text nur bei CSV, rows nur bei Excel). Leere file_id / unbrauchbare Datei -> { ok:false, error } als DATEN (inline-konsumiert, KEIN Tool-Error). REINES PLUMBING: keine Vision, kein LLM, kein API-Key -- die Bezahl-API-/Vision-Privacy lebt im Finanz-Konsumenten (tool_extract_finance_document). DUAL-USE: inline per executeWorkflow ODER als Agent-Tool bindbar.' 300 560
     $stickySheet = Build-Sticky 'Excel-Zweig' @(240, 320) `
         'xlsx -> Raster (nur accept=table)' `
-        'To base64 prüft Endung + ZIP-Kennung und reicht das Binary mit sheet:true weiter. Read sheet (Extract From File, erstes Blatt, headerRow aus, leere Zellen als leerer Text) liefert je Zeile ein Item; Collect rows fasst sie zu EINEM Rückgabe-Item rows[][] zusammen. Die Bedeutung (Kopfzeile, Bank) kennt dieser Baustein nicht, die erkennt der Konsument. Kaputte Datei oder leeres Blatt -> Collect rows liefert ok:false als Daten (ein Ausgang, nie zwei Rückgaben).' 400 260
+        'To base64 prüft Endung + ZIP-Kennung (bei .xls zählt ein ZIP mit xl/workbook als .xlsx) und reicht das Binary mit sheet:true weiter. Read sheet (Extract From File, erstes Blatt, headerRow aus, leere Zellen als leerer Text) liefert je Zeile ein Item; Collect rows fasst sie zu EINEM Rückgabe-Item rows[][] zusammen. Die Bedeutung (Kopfzeile, Bank) kennt dieser Baustein nicht, die erkennt der Konsument. Kaputte Datei oder leeres Blatt -> Collect rows liefert ok:false als Daten (ein Ausgang, nie zwei Rückgaben).' 400 260
 
     $nodes = @($trig, $ifEmpty, $errEmpty, $getFile, $toB64, $ifSheet, $readSheet, $collect, $ret, $sticky, $stickySheet)
 

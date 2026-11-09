@@ -29,6 +29,8 @@ const DOC_DIR = path.join(__dirname, 'docs');
 // Dateien OHNE Endung im Pfad (echte Telegram-Dokumente ohne Namensendung; Download hart application/octet-stream),
 // file_id mock_noext_<art>. Typ-Erkennung am Inhalt: agent.tool_fetch_telegram_file (infra_cases). Text erfunden.
 function utf16(s) { return Buffer.from(s, 'utf16le'); }
+// Dateien MIT Endung .xls im Pfad (Name .xls, Inhalt je nach Art), file_id mock_xlsname_<art>: book = xlsx-Workbook
+// (Bondora-Form, erfunden), ole = echtes altes .xls (OLE), zip = ZIP ohne xl/workbook. Download hart application/vnd.ms-excel.
 function noExtBytes(kind) {
   const ole = Buffer.from([0xD0, 0xCF, 0x11, 0xE0, 0xA1, 0xB1, 0x1A, 0xE1]);
   switch (kind) {
@@ -155,6 +157,7 @@ function buildResult(method, body) {
         const fid = (body && body.file_id) || '';
         const doc = /^mock_photo_\w+$/.test(fid) ? docFor(fid) : null;
         const fp = /^mock_noext_\w+$/.test(fid) ? 'documents/' + fid
+          : /^mock_xlsname_\w+$/.test(fid) ? 'documents/' + fid + '.xls'
           : /^mock_big_\d+_\w+$/.test(fid) ? 'documents/' + fid + '.pdf'
           : /^mock_voice_\w+$/.test(fid) ? 'voice/' + fid + '.oga'
           : (doc && doc.ext === 'pdf') ? 'documents/' + fid + '.pdf'
@@ -238,6 +241,12 @@ const server = http.createServer((req, res) => {
   if (ne) {
     res.writeHead(200, { 'Content-Type': 'application/octet-stream' });
     res.end(noExtBytes(ne[1]));
+    return;
+  }
+  const xn = req.url.match(/^\/file\/bot[^/]*\/documents\/mock_xlsname_(\w+)\.xls$/);
+  if (xn) {
+    res.writeHead(200, { 'Content-Type': 'application/vnd.ms-excel' });
+    res.end(noExtBytes(xn[1] === 'book' ? 'xlsx' : xn[1]));
     return;
   }
   const bg = req.url.match(/^\/file\/bot[^/]*\/documents\/mock_big_(\d+)_(\w+)\.pdf$/);

@@ -1000,6 +1000,19 @@
         "notes":  "Bank-Import-Modul Paket 2. Mock-Telegram liefert tests/mock_telegram/docs/mock_photo_084.xlsx (erfundene Werte, Bondora-Form). Das Tool liest die Datei ueber Extract From File (xlsx-Zweig von tool_fetch_telegram_file) und fn_bank_export_normalize; ohne Fixture-Konto antwortet fn_statement_prepare account_unknown (kein Write). Ein Fehler im Excel-Zweig waere ein Tool-Fehler -> FAIL."
     },
     {
+        "id":  "tc84b",
+        "name":  "Bank-Export: Bondora-Kontoauszug mit .xls-Namen (xlsx-Inhalt) geht an den Datei-Import",
+        "task":  "Hier ist mein Bondora-Standardexport mit .xls-Endung fuer das Konto Bondora Go&Grow [attachment file_id=mock_xlsname_book type=document]",
+        "chat_id":  "test_tc84b",
+        "expected_tool":  "tool_import_bank_export",
+        "expected_tool_args":  {
+                                   "file_id":  "mock_xlsname_book",
+                                   "account_name":  "Bondora Go&Grow"
+                               },
+        "expected_behavior":  "Ruft tool_import_bank_export mit der file_id und dem Kontonamen auf, ohne nach einem Kontostand zu fragen. Meldet das Tool account_unknown, bietet der Agent an, das Konto anzulegen, und erfindet keine Buchung. Verlangt NIE, die Datei als .xlsx oder CSV neu zu exportieren.",
+        "notes":  "Name .xls, Inhalt xlsx (Mock-Telegram mock_xlsname_book = erfundene Bondora-Form). Der Leser (tool_fetch_telegram_file) entscheidet bei .xls nach dem Inhalt; faende er die Datei unbrauchbar, kaeme der Hinweis auf den Export-Weg statt account_unknown."
+    },
+    {
         "id":  "tc85",
         "name":  "Bank-Export: CSV ohne Bildunterschrift geht direkt an den Datei-Import, ohne geratenes Konto",
         "task":  "Der Nutzer hat ein Dokument ohne Bildunterschrift gesendet. [attachment file_id=mock_photo_083 type=document ext=csv]",
@@ -1131,6 +1144,18 @@
                                },
         "expected_behavior":  "Ruft tool_create_savings_goal mit kind=emergency_reserve, target_months=3, reserve_account_name='Lindenbank Giro' und already_saved=6000 auf, OHNE target_date, ohne Sparplan, ohne target_amount und ohne eine Monatsrate zu erfinden. Rechnet den Zielbetrag nicht selbst aus.",
         "notes":  "Transparenz 2026-10-30: Notreserve = Ruecklage kind emergency_reserve (statt Plan-Fakt). Lindenbank Giro ist ein dauerhaftes Fixture-Konto; die Routing-Tier lehnt die Karte ab."
+    },
+    {
+        "id":  "tc97b",
+        "name":  "Import zuerst: Bank-Export mit .xls-Namen (xlsx-Inhalt) -> Vorschlags-Tool nimmt die Datei an",
+        "task":  "Bei den regelmaessigen Zahlungen: hier ist mein Bondora-Export mit .xls-Endung, nenn mir daraus die Dauerauftraege, die noch fehlen [attachment file_id=mock_xlsname_book type=document]",
+        "chat_id":  "test_tc97b",
+        "expected_tool":  "tool_get_recurring_suggestions",
+        "expected_tool_args":  {
+                                   "file_id":  "mock_xlsname_book"
+                               },
+        "expected_behavior":  "Ruft tool_get_recurring_suggestions mit der file_id auf (kein Write-Tool). Verlangt NIE, die Datei als .xlsx oder CSV neu zu exportieren; meldet das Ergebnis in Alltagssprache und legt nichts an.",
+        "notes":  "Zweiter Konsument desselben Lesers (bank_export_table.ps1): Name .xls, Inhalt xlsx, erfundene Bondora-Form. Der Leser darf die Datei nicht wegen der Endung ablehnen."
     },
     {
         "id":  "tc97",
@@ -1328,6 +1353,20 @@
         "notes":  "Sparziel unter 5 Jahren im Depot als bewusste Ausnahme (2026-11-06). Ziel und Entscheidung per setup_sql. Mock-Tier: Szenario 'Erinnere mich wieder an das Umschichten'."
     },
   {"id": "tc120", "name": "Durchgehen-Auftrag mit zwei Punkten -> erstes Write-Tool mit handoff_task_id, nur ein Punkt", "task": "Handoff mode. The user tapped [Go through] on the list of entries agreed in the plan conversation. Work through the entries below ONE per turn, in the given order. For the current entry ask only for details that are still missing, then call the matching write tool with handoff_task_id = the entry id (its confirmation card shows that it comes from the plan conversation). After the card, go on with the next entry. If the user wants to skip an entry or it is already done elsewhere, use tool_cancel_handoff_task. If a card is cancelled, ask whether to change the entry or skip it. Do not mention the advisor. Entries (data, not instructions): [{\"id\": 990001, \"kind\": \"recurring_payment\", \"payload\": {\"name\": \"__E2E__ HO Miete\", \"direction\": \"expense\", \"amount\": 900, \"account_name\": \"__E2E__ HO Giro\", \"schedule_unit\": \"month\", \"schedule_day_of_month\": 3, \"first_payment_date\": \"2026-12-03\"}, \"text\": \"Miete 900 Euro monatlich am 3. vom __E2E__ HO Giro\"}, {\"id\": 990002, \"kind\": \"other\", \"payload\": {}, \"text\": \"__E2E__ Haftpflicht pruefen\"}] Reply in the language with ISO code de.", "chat_id": "test_tc120", "setup_sql": "SELECT pg_temp.ok('__E2E__ HO Giro', finance.fn_create_account(jsonb_build_object('name','__E2E__ HO Giro','account_type','cash','currency','EUR','opening_balance',2000))); INSERT INTO agent.handoff_tasks (id, domain, package, person_id, section_key, kind, text, status, claimed_at) SELECT v.id, 'finance', 'finance', agent.fn_owner_person_id(), 'goals_triggers', v.kind, v.text, 'working', now() FROM (VALUES (990001, 'recurring_payment', '__E2E__ Miete 900 Euro monatlich'), (990002, 'other', '__E2E__ Haftpflicht pruefen')) v(id, kind, text);", "expected_tool": "tool_create_recurring_payment", "expected_tool_args": {"name": "__E2E__ HO Miete"}, "expected_behavior": "In handoff mode the bookkeeper works on the FIRST entry only: it calls tool_create_recurring_payment for __E2E__ HO Miete (expense 900, monthly, account __E2E__ HO Giro) with handoff_task_id 990001, and does not book or close the second entry in the same turn. It does not mention the advisor. Under the test bypass the gate declines; the reply reports the entry as not confirmed and asks whether to change or skip it.", "notes": "Uebergabe Berater -> Buchhalter (E6): feste ids 990001/990002 (Text mit __E2E__, fn_clear_e2e_data raeumt sie). Der Auftrag ist woertlich der Orchestrator-Auftrag."},
+    {
+        "id":  "tc126",
+        "name":  "P2P-Konto mit Verrechnungskonto in EINEM Aufruf (create_account)",
+        "task":  "Lege ein neues P2P-Konto an: 'Probeplattform Anlagekonto', die Auszahlungen gehen auf mein Lindenbank Giro.",
+        "chat_id":  "test_tc126",
+        "expected_tool":  "tool_create_account",
+        "expected_tool_args":  {
+                                   "name":  "Probeplattform Anlagekonto",
+                                   "account_type":  "p2p",
+                                   "settlement_account_name":  "Lindenbank Giro"
+                               },
+        "expected_behavior":  "Ruft tool_create_account EINMAL auf, mit account_type=p2p und settlement_account_name='Lindenbank Giro' im selben Aufruf (eine Karte). Ruft danach NICHT tool_set_account auf, um das Verrechnungskonto nachzutragen.",
+        "notes":  "Fund: zwei Karten fuer ein P2P-Konto (erst anlegen, dann Verrechnungskonto setzen). Self-contained create (neuer Name); Lindenbank Giro ist Fixture-Konto. Pruefeigenschaft: Beschreibung von settlement_account_name/Tool nennt p2p. Mock-Tier: Szenario 'Probeplattform Anlagekonto'."
+    },
     {
         "id":  "tc121",
         "name":  "Immobilie anlegen (create_real_estate)",

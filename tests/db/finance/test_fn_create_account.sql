@@ -374,6 +374,19 @@ BEGIN
   END;
   RAISE NOTICE 'PASS fn_create_account [12 Verrechnungskonto nur Depot/P2P]';
 
+  -- 12b p2p mit Verrechnungskonto und Startbetrag in EINEM Aufruf (eine Karte, kein Nachtrag per set_account)
+  DECLARE v_c INT; v_r JSONB; v_row RECORD; BEGIN
+    v_c := (finance.fn_create_account('{"name":"__test_st2_giro__","account_type":"cash","currency":"EUR"}'::jsonb)->>'account_id')::int;
+    v_r := finance.fn_create_account(jsonb_build_object('name', '__test_st2_p2p__', 'account_type', 'p2p', 'currency', 'EUR',
+        'settlement_id', v_c, 'opening_balance', 250, 'opening_balance_date', core.fn_today()::text));
+    IF (v_r->>'ok')::boolean IS DISTINCT FROM true THEN RAISE EXCEPTION 'FAIL fn_create_account [12b p2p alles in einem Aufruf]: %', v_r; END IF;
+    SELECT a.settlement_account_id, b.balance INTO v_row FROM finance.accounts a
+      JOIN finance.account_balances b ON b.account_id = a.id WHERE a.id = (v_r->>'account_id')::int;
+    IF v_row.settlement_account_id IS DISTINCT FROM v_c OR v_row.balance IS DISTINCT FROM 250 THEN
+      RAISE EXCEPTION 'FAIL fn_create_account [12b Verrechnungskonto + Startbetrag]: %', to_jsonb(v_row); END IF;
+  END;
+  RAISE NOTICE 'PASS fn_create_account [12b p2p: Verrechnungskonto + Startbetrag in einem Aufruf]';
+
   -- 13 Rueckgabe traegt die abgeleitete Kontowaehrung (die Karte liest sie aus dem Probelauf, kein Vorgabewert EUR):
   -- genannt (normalisiert), nicht genannt = EUR, Depot ohne Waehrung erbt die des Verrechnungskontos.
   DECLARE v_s INT; v_r JSONB; BEGIN

@@ -18,6 +18,7 @@
 --     * Stufe 1: Stillstand >= 3 Tage UND Latch '<pid>:1' frei. Stufe 2: Stillstand >= 10 Tage UND Stufe 1 vor
 --       >= 7 Tagen gesendet UND Latch '<pid>:2' frei. Latch source 'onboarding_nudge' (core.fn_should_notify, NULL-TTL).
 --     * hoechstens EINE Karte je Person und Lauf: der erste offene Abschnitt in p.order-Reihenfolge, dann ord.
+--   BUDGET je Person, Slot 'onboarding_nudge' normal, vor dem Merker: Ohne Platz bleibt die Stufe unverbraucht.
 --   RUECKGABE: {ok:true, nudges:[{person_id, chat_id, stage, package, section_key}]} (immer genau eine Zeile; der Cron
 --     faechert im Code-Node). VOLATILE (schreibt Latches) -> im Cron EINMAL in einer MATERIALIZED CTE aufrufen.
 --   INVOKER: laeuft unter der Core-Host-Cred des Crons (liest agent.* + ueber die DEFINER-Fenster alle Bereiche).
@@ -46,6 +47,7 @@ DECLARE
     v_s1_at     timestamptz;
     v_fired_at  timestamptz;
     v_stage     int;
+    v_want      int;
 BEGIN
     SELECT NOT EXISTS (SELECT 1 FROM agent.guide_onboarding_state WHERE status = 'unknown'),
            max(status_changed_at)
@@ -99,10 +101,14 @@ BEGIN
         SELECT ns.state, ns.last_fired_at INTO v_s1_state, v_s1_at FROM core.notification_state ns
          WHERE ns.source = v_src AND ns.key = r.person_id || ':1';
         v_stage := NULL;
-        IF v_idle >= interval '3 days' AND COALESCE(v_s1_state, 'ok') = 'ok' THEN
-            IF core.fn_should_notify(v_src, r.person_id || ':1') THEN v_stage := 1; END IF;
-        ELSIF v_idle >= interval '10 days' AND v_s1_state = 'fired' AND v_s1_at <= now() - interval '7 days' THEN
-            IF core.fn_should_notify(v_src, r.person_id || ':2') THEN v_stage := 2; END IF;
+        v_want := CASE WHEN v_idle >= interval '3 days' AND COALESCE(v_s1_state, 'ok') = 'ok' THEN 1
+                       WHEN v_idle >= interval '10 days' AND v_s1_state = 'fired' AND v_s1_at <= now() - interval '7 days' THEN 2 END;
+        -- Stufe 2 bliebe nach dem Senden taeglich wahr: erst told pruefen, sonst belegte sie einen Slot ohne Nachricht.
+        IF v_want IS NOT NULL AND NOT core.fn_notify_told(v_src, r.person_id || ':' || v_want) THEN
+            IF core.fn_proactive_claim(r.person_id, 'onboarding_nudge', 'normal')
+               AND core.fn_should_notify(v_src, r.person_id || ':' || v_want) THEN
+                v_stage := v_want;
+            END IF;
         END IF;
 
         IF v_stage IS NOT NULL THEN

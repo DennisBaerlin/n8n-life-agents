@@ -33,6 +33,9 @@
 --   TOLD_KEYS: ein alert darf told_keys:[{source,key,latch_key?}] tragen. Ist einer laut core.fn_notify_told gemeldet,
 --   wird der Merker gesetzt, der alert (bzw. mit latch_key das Element) aber nicht neu (Alertmanager inhibit_rules).
 --
+--   BUDGET: Ist etwas neu, belegt die fn VOR dem ersten Merker den Slot des Owners (die Nachricht geht in den Owner-Chat):
+--   Waechter 'advisor_drift' normal (mehrere Domains = eine Nachricht), eigener Review-Cron 'advisor:<domain>' priority.
+--   Kein Platz -> { ok, send:false, deferred:true, alerts:[], first_run:false, digest }, keine Merker.
 --   RUECKGABE jsonb: { ok, send:boolean, alerts:[…neue Breaches, je _latched:[{source,key}]…], first_run:boolean, digest:{…} }
 --     send=true gdw mindestens EIN Breach NEU ist (Latch-Uebergang) -> der Drift-Cron schickt nur dann.
 --     first_run=true beim ersten Lauf je (domain, person) mit neuen Alarmen. _latched braucht core.fn_advisor_alerts_cap.
@@ -58,13 +61,15 @@ DECLARE
     v_told       boolean;
     v_latched    jsonb;
     v_first_run  boolean := false;
+    v_needs      boolean;
+    v_own_cron   boolean;
     -- P2a: person-suffigierte Latch-source (NULL=Haushalt -> byte-gleich heute). EINE Variable, an BEIDEN
     -- Call-Sites (fn_should_notify + fn_notify_reconcile) genutzt -> sonst latcht der eine person-aware und der
     -- Reconcile raeumt person-blind -> Dauer-Stummschaltung/Leak (Opus-Review M2).
     v_source     text := 'advisor:' || p_domain || COALESCE(':' || p_person_id, '');
 BEGIN
     -- Registry-Lookup + Guard
-    SELECT review_fn INTO v_fn FROM core.advisors WHERE domain = p_domain;
+    SELECT review_fn, own_review_cron INTO v_fn, v_own_cron FROM core.advisors WHERE domain = p_domain;
     IF v_fn IS NULL THEN
         RETURN jsonb_build_object('ok', false, 'send', false, 'error', 'unknown_advisor_domain', 'alerts', '[]'::jsonb);
     END IF;
@@ -77,6 +82,31 @@ BEGIN
     EXECUTE format('SELECT %s($1, $2, $3)', v_fn) INTO v_result USING p_domain, p_person_id, p_observations;
     v_alerts := COALESCE(v_result->'alerts', '[]'::jsonb);
     v_digest := COALESCE(v_result->'digest', '{}'::jsonb);
+
+    -- Vorab-Blick ohne Schreiben: Nur eine wirklich neue Meldung belegt einen Tages-Slot. Kein Platz -> nichts gemerkt,
+    -- auch nicht der Erst-Merker; der naechste Lauf meldet. v_keys vollstaendig, sonst raeumte der Reconcile gesetzte Merker.
+    SELECT COALESCE(bool_or(NOT core.fn_notify_told(v_source, e.k)
+                            AND NOT EXISTS (SELECT 1 FROM jsonb_array_elements(COALESCE(a->'told_keys', '[]'::jsonb)) t
+                                             WHERE (e.sub IS NULL OR t->>'latch_key' IS NULL OR t->>'latch_key' = e.sub)
+                                               AND core.fn_notify_told(t->>'source', t->>'key'))), false),
+           COALESCE(array_agg(e.k), '{}')
+      INTO v_needs, v_keys
+      FROM jsonb_array_elements(v_alerts) a
+     CROSS JOIN LATERAL (
+         SELECT (a->>'metric_key') || '#' || s AS k, s AS sub
+           FROM jsonb_array_elements_text(CASE WHEN jsonb_typeof(a->'latch_keys') = 'array' THEN a->'latch_keys' ELSE '[]'::jsonb END) s
+         UNION ALL
+         SELECT a->>'metric_key', NULL
+          WHERE CASE WHEN jsonb_typeof(a->'latch_keys') = 'array' THEN jsonb_array_length(a->'latch_keys') = 0 ELSE true END
+     ) e
+     WHERE a->>'metric_key' IS NOT NULL;
+
+    IF v_needs AND NOT core.fn_proactive_claim(NULL,
+           CASE WHEN v_own_cron THEN 'advisor:' || p_domain ELSE 'advisor_drift' END,
+           CASE WHEN v_own_cron THEN 'priority' ELSE 'normal' END) THEN
+        PERFORM core.fn_notify_reconcile(v_source, v_keys || '__first_run__'::text);
+        RETURN jsonb_build_object('ok', true, 'send', false, 'deferred', true, 'alerts', '[]'::jsonb, 'first_run', false, 'digest', v_digest);
+    END IF;
 
     -- ---------- Latch je aktuellem Alert (Phase Notify: ueber die GETEILTE core.notification_state) ----------
     -- Der frueher advisor-eigene Edge-Latch (core.advisor_review_state) lebt jetzt in der geteilten Dedup-
@@ -95,7 +125,6 @@ BEGIN
         v_latched := '[]'::jsonb;
         IF jsonb_typeof(v_alert->'latch_keys') = 'array' AND jsonb_array_length(v_alert->'latch_keys') > 0 THEN
             FOR v_sub IN SELECT jsonb_array_elements_text(v_alert->'latch_keys') LOOP
-                v_keys := v_keys || (v_key || '#' || v_sub);
                 IF core.fn_should_notify(v_source, v_key || '#' || v_sub) THEN
                     SELECT EXISTS (
                         SELECT 1 FROM jsonb_array_elements(COALESCE(v_alert->'told_keys', '[]'::jsonb)) t
@@ -107,7 +136,6 @@ BEGIN
                 END IF;
             END LOOP;
         ELSE
-            v_keys := v_keys || v_key;
             IF core.fn_should_notify(v_source, v_key) THEN
                 SELECT EXISTS (
                     SELECT 1 FROM jsonb_array_elements(COALESCE(v_alert->'told_keys', '[]'::jsonb)) t

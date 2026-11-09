@@ -108,6 +108,20 @@ BEGIN
                   WHERE x->>'person_id' = '__nd_partner__' AND (x->>'stage')::int = 1 AND x->>'package' = 'career') THEN
     RAISE EXCEPTION 'FAIL [9 Mitglied: neu aktiviertes per_user-Paket re-armt -> Stufe 1 career]: %', r; END IF;
 
+  -- ---------- 10) Tagesbudget: kein Platz -> Stufe unverbraucht; Stufe 2 schon gesendet -> kein Slot ----------
+  DELETE FROM core.notification_state WHERE source = 'onboarding_nudge';
+  DELETE FROM core.proactive_budget; DELETE FROM core.proactive_deferred;
+  PERFORM core.fn_proactive_claim('__nd_owner__', 'x1', 'normal'); PERFORM core.fn_proactive_claim('__nd_owner__', 'x2', 'normal');
+  r := core.fn_onboarding_nudges_due('{"order":["core","finance","estate"]}');
+  IF EXISTS (SELECT 1 FROM jsonb_array_elements(r->'nudges') x WHERE x->>'person_id' = '__nd_owner__') THEN RAISE EXCEPTION 'FAIL [10 kein Platz]: %', r; END IF;
+  IF core.fn_notify_told('onboarding_nudge', '__nd_owner__:1') THEN RAISE EXCEPTION 'FAIL [10 Stufe verbraucht]'; END IF;
+  DELETE FROM core.proactive_budget; DELETE FROM core.proactive_deferred;
+  INSERT INTO core.notification_state (source, key, state, last_fired_at) VALUES
+    ('onboarding_nudge', '__nd_owner__:1', 'fired', now() - interval '9 days'),
+    ('onboarding_nudge', '__nd_owner__:2', 'fired', now() - interval '1 day');
+  r := core.fn_onboarding_nudges_due('{"order":["core","finance","estate"]}');
+  IF EXISTS (SELECT 1 FROM core.proactive_budget WHERE person_id = '__nd_owner__') THEN RAISE EXCEPTION 'FAIL [10 Stufe 2 belegt Slot]'; END IF;
+
   RAISE NOTICE 'PASS test_fn_onboarding_nudges_due (Stufe 1/2, Ruhe, Re-Arm bei neuem Paket, Reihenfolge, Opt-out)';
 END $$;
 

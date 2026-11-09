@@ -1710,7 +1710,7 @@ DECLARE
                               'fn_household_persons', 'fn_resolve_person', 'fn_ui_texts_for', 'fn_today',
                               'fn_resolve_date', 'fn_resolve_input_dates', 'fn_handoff_tasks_read'];
   v_published_rw text[] := ARRAY['fn_menu_refresh_request', 'fn_set_onboarding_section', 'fn_check_write_permission', 'fn_person_chat_id',
-                                 'fn_should_notify', 'fn_notify_resolve', 'fn_notify_told', 'fn_mark_told', 'fn_handoff_done_stamps', 'fn_dry_run', 'fn_reminder_allowed', 'fn_notify_forget_before',
+                                 'fn_should_notify', 'fn_notify_resolve', 'fn_notify_told', 'fn_proactive_claim', 'fn_mark_told', 'fn_handoff_done_stamps', 'fn_dry_run', 'fn_reminder_allowed', 'fn_notify_forget_before',
                                  'fn_handoff_task_check', 'fn_complete_handoff_task', 'fn_cancel_handoff_task'];
   v_n int := 0;
 BEGIN
@@ -1924,6 +1924,17 @@ BEGIN
   v_out := core.fn_period_reminder_date('next_year', DATE '2026-11-09');
   RESET ROLE;
   IF v_out IS DISTINCT FROM DATE '2027-02-01' THEN RAISE EXCEPTION 'FAIL [finance_ro -> fn_period_reminder_date] %', v_out; END IF;
+END $$;
+
+-- Budget-Weg unter der engen Paket-Rolle (Tabellen nur ueber das DEFINER-Fenster)
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM agent.persons WHERE person_id = '__rp_owner__') THEN RAISE EXCEPTION 'FAIL Fixture __rp_owner__'; END IF;
+  SET LOCAL ROLE finance_rw;
+  IF core.fn_proactive_claim('__rp_owner__', '__rp_slot__', 'priority') IS NOT TRUE THEN RAISE EXCEPTION 'FAIL [finance_rw claim]'; END IF;
+  RESET ROLE;
+  IF NOT EXISTS (SELECT 1 FROM core.proactive_budget WHERE slot = '__rp_slot__') THEN RAISE EXCEPTION 'FAIL [finance_rw claim schrieb nicht]'; END IF;
+  RAISE NOTICE 'PASS finance_rw -> core.fn_proactive_claim';
 END $$;
 
 ROLLBACK;

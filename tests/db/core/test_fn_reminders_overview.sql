@@ -60,4 +60,21 @@ BEGIN
   RAISE NOTICE 'PASS test_fn_reminders_overview (Owner/Mitglied/Pflicht/inaktiv, unter core_ro)';
 END $$;
 
+DO $$
+DECLARE r jsonb; o text; c text;
+BEGIN
+  o := agent.fn_owner_person_id();
+  c := core.fn_person_chat_id(o)::text;
+  IF o IS NULL OR c IS NULL THEN RAISE EXCEPTION 'FAIL Fixture Owner'; END IF;
+  r := core.fn_reminders_overview(c);
+  IF r->>'pause_until' IS NOT NULL THEN RAISE EXCEPTION 'FAIL [pause_until ohne Pause]: %', r; END IF;
+  INSERT INTO agent.reminder_pause (person_id, until_date) VALUES (o, core.fn_today() + 5);
+  r := core.fn_reminders_overview(c);
+  IF (r->>'pause_until')::date <> core.fn_today() + 5 THEN RAISE EXCEPTION 'FAIL [pause_until]: %', r; END IF;
+  UPDATE agent.reminder_pause SET until_date = core.fn_today() - 1 WHERE person_id = o;
+  r := core.fn_reminders_overview(c);
+  IF r->>'pause_until' IS NOT NULL THEN RAISE EXCEPTION 'FAIL [abgelaufen]: %', r; END IF;
+  RAISE NOTICE 'PASS test_fn_reminders_overview pause_until';
+END $$;
+
 ROLLBACK;

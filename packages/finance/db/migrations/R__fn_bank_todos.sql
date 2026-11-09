@@ -198,7 +198,7 @@ END $$;
 --   und nur Punkte aus der Uebergabe (created_at = closed_at einer done-Aufgabe) oder nachgeholte.
 --   Empfaenger wie fn_bank_end_claim: Owner alle (cron_enable.remind_bank_todo), Inhaber partner mit Kopplung die eigenen
 --   (remind_bank_todo_person), Kinder nie. Merker 'finance:bank_todo', Key <id>:r<runde>:owner|<person_id>, je Empfaenger:
---   Wer heute nicht darf, verliert nichts. handoff beansprucht 30 Minuten und liefert latches (Commit/Reset in R2).
+--   Wer heute nicht darf, verliert nichts; im Modus cron Budget je Empfaenger (Slot 'bank_todo' normal, ohne Platz kein Merker). handoff beansprucht 30 Minuten und liefert latches (Commit/Reset in R2).
 --   Eingaben: p_on (default heute), p_mode. Rueckgabe: [{recipient, chat_id, groups, latches}], Owner zuerst. Setzt
 --   first_sent_at. Tests: tests/db/finance/test_fn_bank_todos.sql
 -- ============================================================
@@ -223,6 +223,8 @@ DECLARE
     v_sent    boolean;
     v_person  jsonb;
     v_out     jsonb;
+    v_oroom   boolean;              -- Budget nur im Cron: handoff ist Folge einer Handlung
+    v_proom   jsonb := '{}'::jsonb;
 BEGIN
     PERFORM finance.fn_bank_todo_backfill();
     PERFORM core.fn_notify_forget_before(c_src, (p_on - 400)::timestamptz);
@@ -249,7 +251,10 @@ BEGIN
         v_pid  := v_item->>'holder_person_id';
         v_sent := false;
         v_key  := t.id || ':r' || v_round || ':owner';
-        IF v_ok AND core.fn_should_notify(c_src, v_key, v_ttl) THEN
+        IF v_ok AND p_mode = 'cron' AND v_oroom IS NULL AND NOT core.fn_notify_told(c_src, v_key) THEN
+            v_oroom := core.fn_proactive_claim(NULL, 'bank_todo', 'normal');
+        END IF;
+        IF v_ok AND (p_mode <> 'cron' OR v_oroom) AND core.fn_should_notify(c_src, v_key, v_ttl) THEN
             v_owner := v_owner || CASE WHEN v_item->>'holder_role' = 'owner'
                                        THEN jsonb_set(v_item, '{holder_name}', 'null') ELSE v_item END;
             v_olatch := v_olatch || jsonb_build_object('source', c_src, 'key', v_key);
@@ -258,7 +263,12 @@ BEGIN
         IF v_item->>'holder_role' = 'partner' THEN
             v_chat := core.fn_person_chat_id(v_pid);
             v_key  := t.id || ':r' || v_round || ':' || v_pid;
+            IF p_mode = 'cron' AND v_chat IS NOT NULL AND core.fn_reminder_allowed('remind_bank_todo_person', v_pid)
+               AND NOT v_proom ? v_pid AND NOT core.fn_notify_told(c_src, v_key) THEN
+                v_proom := v_proom || jsonb_build_object(v_pid, core.fn_proactive_claim(v_pid, 'bank_todo', 'normal'));
+            END IF;
             IF v_chat IS NOT NULL AND core.fn_reminder_allowed('remind_bank_todo_person', v_pid)
+               AND (p_mode <> 'cron' OR COALESCE((v_proom->>v_pid)::boolean, false))
                AND core.fn_should_notify(c_src, v_key, v_ttl) THEN
                 v_person := COALESCE(v_people->v_pid, jsonb_build_object('recipient', v_pid, 'chat_id', v_chat, 'items', '[]'::jsonb, 'latches', '[]'::jsonb));
                 v_people := jsonb_set(v_people, ARRAY[v_pid], v_person

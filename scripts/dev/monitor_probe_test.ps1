@@ -66,6 +66,8 @@ function Get-Sends { @(Get-MockTelegramRequests -Container $Container | Where-Ob
 function Get-WebCalls { @(Get-MockLlmRequests -Container $Container | Where-Object { @($_.offered) -contains 'web_search' }) }
 function Get-SendText { ((Get-Sends | ForEach-Object { ConvertFrom-TgEscaped ([string]$_.body.text) }) -join "`n") }
 function Clear-Logs { Clear-MockRequestLogs -Container $Container }
+# Simuliert den naechsten Tag fuer den Tages-Slot 'monitor' (nur ein Lauf je Tag sendet Vorwarnung/Info).
+function Clear-Budget { Invoke-Sql 'DELETE FROM core.proactive_budget; DELETE FROM core.proactive_deferred;' | Out-Null }
 function Set-Window([string]$Mode) {
     $from = 0; $until = 24
     if ($Mode -eq 'outside') {
@@ -132,7 +134,8 @@ $Cases = @(
     $t = New-DateTrig 'mf02' '(core.fn_today() + 5)' 30
     Invoke-Run | Out-Null; Assert-Equal @(Get-Sends).Count 1 'Lauf 1'; Assert-Equal (Get-Field $t status) 'armed' 'Lauf 1 status'
     Clear-Logs; Invoke-Run | Out-Null; Assert-Equal @(Get-Sends).Count 0 'Lauf 2 still'
-    Clear-Logs; Set-Due $t; Invoke-Run | Out-Null; Assert-Equal @(Get-Sends).Count 1 'Lauf 3'; Assert-Equal (Get-Field $t status) 'armed' 'Lauf 3 status'
+    Clear-Logs; Set-Due $t; Invoke-Run | Out-Null; Assert-Equal @(Get-Sends).Count 0 'gleicher Tag still (Tages-Slot belegt)'
+    Clear-Budget; Clear-Logs; Invoke-Run | Out-Null; Assert-Equal @(Get-Sends).Count 1 'Lauf 3 (neuer Tag)'; Assert-Equal (Get-Field $t status) 'armed' 'Lauf 3 status'
  } }
  @{ id='mf03'; name='Termin ausserhalb, dann innerhalb'; run={
     $t = New-DateTrig 'mf03'; Set-Window 'outside'
@@ -142,7 +145,8 @@ $Cases = @(
  @{ id='mf04'; name='sql recurring_info in jedem Lauf'; run={
     $t = Invoke-Sql "INSERT INTO agent.monitor_triggers (domain,label,trigger_type,acquisition_method,acquisition_spec,expected_unit,check_interval,next_check_at) VALUES ('$Domain','$(Add-Label mf04)','recurring_info','sql',jsonb_build_object('query','SELECT 42'),'Stk',interval '1 day',now()) RETURNING id;"
     Invoke-Run | Out-Null; Assert-That ((Get-SendText).Contains('42')) 'Wert fehlt'
-    Clear-Logs; Set-Due $t; Invoke-Run | Out-Null; Assert-Equal @(Get-Sends).Count 1 'zweiter Lauf'; Assert-Equal (Get-Field $t status) 'armed' 'status'
+    Clear-Logs; Set-Due $t; Invoke-Run | Out-Null; Assert-Equal @(Get-Sends).Count 0 'gleicher Tag still (Tages-Slot belegt)'
+    Clear-Budget; Clear-Logs; Invoke-Run | Out-Null; Assert-Equal @(Get-Sends).Count 1 'zweiter Lauf (neuer Tag)'; Assert-Equal (Get-Field $t status) 'armed' 'status'
  } }
  @{ id='mf05'; name='fx_rate Schwelle, Re-Arm'; run={
     $t = Invoke-Sql "INSERT INTO agent.monitor_triggers (domain,label,trigger_type,acquisition_method,acquisition_spec,comparator,threshold_value,check_interval,next_check_at) VALUES ('$Domain','$(Add-Label mf05)','threshold','fx_rate',jsonb_build_object('base','EUR','quote','CLP'),'gte',1,interval '1 day',now()) RETURNING id;"
@@ -283,6 +287,7 @@ try {
     foreach ($c in $Cases) {
         if ($Id.Count -and $Id -notcontains $c.id) { continue }
         $ran++
+        Clear-Budget
         Write-Host "[$($c.id)] $($c.name)" -ForegroundColor Cyan
         try {
             Reset-Case

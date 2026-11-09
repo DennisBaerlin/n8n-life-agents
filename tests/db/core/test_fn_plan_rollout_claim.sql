@@ -44,6 +44,13 @@ BEGIN
   IF jsonb_array_length(v->'messages') <> 0 THEN RAISE EXCEPTION 'FAIL Entwurf %', v; END IF;
   DELETE FROM agent.advisor_plans WHERE domain = '__andere__';
 
+  -- Nachzuegler ohne Platz: nichts, Merker frei (der Normalfall darunter meldet noch); ohne budget-Flag gilt kein Budget
+  DELETE FROM core.proactive_budget; DELETE FROM core.proactive_deferred;
+  PERFORM core.fn_proactive_claim('erika', 'x1', 'normal'); PERFORM core.fn_proactive_claim('erika', 'x2', 'normal');
+  v := core.fn_plan_rollout_claim('{"chat_id":"111","budget":"true"}');
+  IF jsonb_array_length(v->'messages') <> 0 THEN RAISE EXCEPTION 'FAIL Budget voll %', v; END IF;
+  IF NOT EXISTS (SELECT 1 FROM core.proactive_deferred WHERE person_id = 'erika' AND slot = 'plan_rollout') THEN RAISE EXCEPTION 'FAIL Budget Altern'; END IF;
+
   v_t0 := clock_timestamp();
   v := core.fn_plan_rollout_claim('{"chat_id":"111"}');
   IF clock_timestamp() - v_t0 > interval '200 milliseconds' THEN RAISE EXCEPTION 'FAIL Zeitbudget'; END IF;

@@ -8,7 +8,7 @@
 --     schedule = core.config schedule.<key> (Cron-Ausdruck; das Menue rendert ihn in Klartext) oder NULL.
 --   Sichtbarkeit: der Owner sieht alle Erinnerungen, ein Mitglied nur die Person-Reminder (Haushalts-Erinnerungen
 --   schaltet und bekommt der Owner). Unaufgeloester Betrachter -> leere Liste.
---   RUECKGABE: {ok:true, viewer_role, reminders:[...]} (sortiert nach package, key; die Anzeige-Reihenfolge legt der
+--   RUECKGABE: {ok:true, viewer_role, pause_until (Datum, solange die eigene Pause laeuft, sonst null), reminders:[...]} (sortiert nach package, key; die Anzeige-Reihenfolge legt der
 --   Menue-Build fest).
 --   D10 / Auth: SECURITY DEFINER (das Menue liest unter core_ro), search_path gepinnt, alles voll-qualifiziert, kein
 --   dynamisches SQL. EXECUTE nur an core_ro (util_create_core_ro.sql).
@@ -49,7 +49,8 @@ BEGIN
       FROM core.cron_labels l
      WHERE v_role = 'owner' OR l.scope = 'person';
 
-    RETURN jsonb_build_object('ok', true, 'viewer_role', v_role, 'reminders', v_list);
+    RETURN jsonb_build_object('ok', true, 'viewer_role', v_role, 'reminders', v_list,
+        'pause_until', (SELECT rp.until_date FROM agent.reminder_pause rp WHERE rp.person_id = v_pid AND rp.until_date >= core.fn_today()));
 END;
 $$;
 

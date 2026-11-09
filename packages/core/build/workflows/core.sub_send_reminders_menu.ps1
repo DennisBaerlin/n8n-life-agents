@@ -41,7 +41,7 @@ function Build-CoreSubSendRemindersMenu {
         'core.reminders.state_off', 'core.reminders.mandatory', 'core.reminders.not_installed', 'core.reminders.for_you',
         'core.reminders.window', 'core.reminders.monitor_note', 'core.reminders.empty', 'core.reminders.sched_daily',
         'core.reminders.sched_weekdays', 'core.reminders.sched_monthly', 'core.reminders.sched_quarterly',
-        'core.reminders.sched_custom', 'core.reminders.load_failed'
+        'core.reminders.sched_custom', 'core.reminders.load_failed', 'core.reminders.pause_active', 'core.reminders.pause_btn', 'core.reminders.pause_off_btn'
     )
 
     $start = [ordered]@{
@@ -59,6 +59,8 @@ function Build-CoreSubSendRemindersMenu {
     $readTexts = Build-Pg 'Read texts' @(-620, 0) `
         ("=SELECT core.fn_ui_texts(agent.fn_person_lang(agent.fn_resolve_sender(CASE WHEN (`$1::jsonb)->>'chat_id' ~ '^[0-9]{1,18}$' " +
          "THEN ((`$1::jsonb)->>'chat_id')::bigint END)->>'person_id')->>'lang', $(Get-UiKeysSql ($labelKeys + $menuKeys))) AS t, " +
+         "agent.fn_person_lang(agent.fn_resolve_sender(CASE WHEN (`$1::jsonb)->>'chat_id' ~ '^[0-9]{1,18}$' THEN ((`$1::jsonb)->>'chat_id')::bigint END)->>'person_id')->>'locale' AS locale, " +
+         "COALESCE((SELECT value FROM core.config WHERE category = 'general' AND key = 'proactive_pause_days'), '14') AS pause_days, " +
          "COALESCE((SELECT value FROM core.config WHERE category = 'general' AND key = 'reminders_from'), '10') AS win_from, " +
          "COALESCE((SELECT value FROM core.config WHERE category = 'general' AND key = 'reminders_until'), '20') AS win_until;") `
         ([ordered]@{ chat_id = "`$('Start').item.json.chat_id" })
@@ -101,6 +103,11 @@ if (ov.ok !== true) {
   return { json: { text: tx('core.reminders.title') + NL + NL + tx('core.reminders.load_failed'), failed: true, btn: {}, cb: {}, owner: false, chat_id: $('Start').item.json.chat_id } };
 }
 const lines = [tx('core.reminders.title'), '', tx(owner ? 'core.reminders.intro_owner' : 'core.reminders.intro_member'), ''];
+// Pause je Person: Zeile oben, ein Knopf, Datum im Locale des Betrachters.
+const pauseUntil = ov.pause_until ? new Date(String(ov.pause_until) + 'T12:00:00Z').toLocaleDateString(TX.locale || 'en-GB', { day: '2-digit', month: '2-digit', timeZone: 'UTC' }) : '';
+if (pauseUntil) { lines.push(tx('core.reminders.pause_active', { until: pauseUntil }), ''); }
+const pause_btn = pauseUntil ? tx('core.reminders.pause_off_btn') : tx('core.reminders.pause_btn', { days: TX.pause_days || '14' });
+const pause_cb = pauseUntil ? 'rem:pause:off:m' : 'rem:pause:on:m';
 const btn = {}, cb = {};
 let shown = 0;
 for (const it of ITEMS) {
@@ -127,7 +134,7 @@ for (const it of ITEMS) {
 if (shown === 0) { lines.push(tx('core.reminders.empty')); }
 lines.push('', tx('core.reminders.window', { from: TX.win_from || '10', until: TX.win_until || '20' }));
 if (owner) { lines.push(tx('core.reminders.monitor_note')); }
-return { json: { text: lines.join(NL), btn, cb, owner, chat_id: $('Start').item.json.chat_id } };
+return { json: { text: lines.join(NL), btn, cb, owner, pause_btn, pause_cb, chat_id: $('Start').item.json.chat_id } };
 '@
     function ConvertTo-JsArray($objs) { $objs = @($objs); if ($objs.Count -eq 0) { return '[]' }; if ($objs.Count -eq 1) { return '[' + ($objs | ConvertTo-Json -Compress) + ']' }; return ($objs | ConvertTo-Json -Compress) }
     $buildJs = $buildJs.Replace('__ITEMS_JSON__', (ConvertTo-JsArray $ITEMS))
@@ -146,14 +153,15 @@ return { json: { text: lines.join(NL), btn, cb, owner, chat_id: $('Start').item.
     $sendFailed = New-TelegramSendNode 'Send load failed' @(260, 220) '={{ $json.text }}' -ChatIdExpr $chatExpr
     $ifOwner = Build-If 'Owner view?' @(260, 0) '={{ $json.owner === true }}' 'true' 'equals' 'boolean'
     $btnFor = { param($it) @{ Text = "={{ (`$json.btn || {})['$($it.key)'] || '$($it.package).cron.$($it.key).label' }}"; Data = "={{ (`$json.cb || {})['$($it.key)'] || 'rem:on:$($it.key):m' }}" } }
-    $ownerRows = @($ITEMS | ForEach-Object { ,@( (& $btnFor $_) ) })
-    $memberRows = @($ITEMS | Where-Object { $_.scope -eq 'person' } | ForEach-Object { ,@( (& $btnFor $_) ) })
+    $pauseRow = @( ,@( @{ Text = '={{ $json.pause_btn }}'; Data = '={{ $json.pause_cb }}' } ) )
+    $ownerRows = $pauseRow + @($ITEMS | ForEach-Object { ,@( (& $btnFor $_) ) })
+    $memberRows = $pauseRow + @($ITEMS | Where-Object { $_.scope -eq 'person' } | ForEach-Object { ,@( (& $btnFor $_) ) })
     $sendOwner = New-TelegramInlineKeyboardSendNode 'Send owner menu' @(480, -120) '={{ $json.text }}' -Rows $ownerRows -ChatIdExpr $chatExpr
     $sendMember = New-TelegramInlineKeyboardSendNode 'Send member menu' @(480, 120) '={{ $json.text }}' -Rows $memberRows -ChatIdExpr $chatExpr
 
     $sticky = Build-Sticky 'Überblick' @(-860, -380) -Header 'Ablauf' `
         'core.sub_send_reminders_menu — /reminders: alle Erinnerungen mit Zeitplan und Schalter (deterministisch, kein LLM)' `
-        'Start (chat_id) -> Read texts (Texte in der Sprache des Betrachters über core.fn_ui_texts + Sprach-Kette wie das Onboarding-Menü, dazu das Erinnerungs-Fenster general.reminders_from..until; eigener Schritt, damit der Lesefehler-Hinweis lesbar bleibt) -> Read reminders (core.fn_reminders_overview = Sicht des Betrachters: Owner alle Erinnerungen, Mitglied nur die eigenen Person-Erinnerungen; enabled = Notschalter cron_enable bzw. für Person-Erinnerungen core.fn_reminder_allowed; schedule = core.config schedule.<key>); beide core_ro, fail-open -> Build menu (Zeile je Erinnerung: Glocke an/aus bzw. Schloss = Pflicht, Name aus <pkg>.cron.<key>.label, Zeitplan in Klartext aus dem Cron-Ausdruck (täglich/werktags/monatlich/vierteljährlich, sonst der Ausdruck selbst), Stand; Knopf-Callback rem:off|on:<key>:m je nach Stand) -> Load failed? (Lesefehler -> Send load failed: nur Hinweis core.reminders.load_failed) -> Owner view? -> Send owner menu (Knopf je Registry-Eintrag, build-time aus den Manifest-cron_labels list/person/mandatory) bzw. Send member menu (nur Person-Erinnerungen). Ein Tipp läuft über den Registry-Handler core.fn_handle_reminder_cb (Haushalt nur Owner -> core.fn_set_cron_enable, Person -> eigene agent.reminder_prefs, Pflicht -> Toast) und liefert route reminders -> der Orchestrator sendet dieses Menü mit dem neuen Stand erneut (bei uns anders: neu senden statt editMessageText, Muster Onboarding-Menü). Knopf-Anzahl build-time (n8n #19955): nicht installierte Pakete zeigen nicht installiert, ihr Tipp gibt einen Toast.' 400 820
+        'Start (chat_id) -> Read texts (Texte in der Sprache des Betrachters über core.fn_ui_texts + Sprach-Kette wie das Onboarding-Menü, dazu das Erinnerungs-Fenster general.reminders_from..until; eigener Schritt, damit der Lesefehler-Hinweis lesbar bleibt) -> Read reminders (core.fn_reminders_overview = Sicht des Betrachters: Owner alle Erinnerungen, Mitglied nur die eigenen Person-Erinnerungen; enabled = Notschalter cron_enable bzw. für Person-Erinnerungen core.fn_reminder_allowed; schedule = core.config schedule.<key>); beide core_ro, fail-open -> Build menu (Zeile je Erinnerung: Glocke an/aus bzw. Schloss = Pflicht, Name aus <pkg>.cron.<key>.label, Zeitplan in Klartext aus dem Cron-Ausdruck (täglich/werktags/monatlich/vierteljährlich, sonst der Ausdruck selbst), Stand; Knopf-Callback rem:off|on:<key>:m je nach Stand) -> Load failed? (Lesefehler -> Send load failed: nur Hinweis core.reminders.load_failed) -> Owner view? -> Send owner menu (Knopf je Registry-Eintrag, build-time aus den Manifest-cron_labels list/person/mandatory) bzw. Send member menu (nur Person-Erinnerungen). Ein Tipp läuft über den Registry-Handler core.fn_handle_reminder_cb (Haushalt nur Owner -> core.fn_set_cron_enable, Person -> eigene agent.reminder_prefs, Pflicht -> Toast) und liefert route reminders -> der Orchestrator sendet dieses Menü mit dem neuen Stand erneut (bei uns anders: neu senden statt editMessageText, Muster Onboarding-Menü). Knopf-Anzahl build-time (n8n #19955): nicht installierte Pakete zeigen nicht installiert, ihr Tipp gibt einen Toast. Die oberste Knopfzeile setzt oder beendet die Pause der tippenden Person (rem:pause:on|off:m -> core.fn_set_proactive_pause); pause_until zeigt die Zeile im Text.' 400 820
 
     $nodes = @($start, $readTexts, $read, $build, $ifFailed, $sendFailed, $ifOwner, $sendOwner, $sendMember, $sticky)
     $conns = [ordered]@{

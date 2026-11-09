@@ -84,7 +84,7 @@ return $input.all().map(({ json: row }) => {
 
     $stickyOverview = Build-Sticky 'Überblick' @(-920, -420) -Header 'Ablauf' `
         'Erinnerung: Auftrag bei der Bank beenden (täglich, kein LLM)' `
-        'Täglich 10:35 (schedule.remind_bank_end, im Erinnerungs-Fenster). Der Bot notiert Daueraufträge und Sparpläne nur; ohne eingetragenes Ende bucht die Bank weiter. finance.fn_bank_end_claim liefert je Empfänger eine Nachricht: fällig 3 bis 60 Tage nach der letzten Ausführung, nur aktive Aufträge bei Bank oder Broker (nie Handüberweisung, Lastschrift, Kredit-Rate). Fällig beim ersten Lauf nach dem Update: alles, was in den letzten 60 Tagen endete. Split messages -> Load texts (Sprache des Empfängers) -> Build message -> Owner oder Person -> Send.' 340 620
+        'Täglich 10:12 (schedule.remind_bank_end, im Erinnerungs-Fenster). Der Bot notiert Daueraufträge und Sparpläne nur; ohne eingetragenes Ende bucht die Bank weiter. finance.fn_bank_end_claim liefert je Empfänger eine Nachricht: fällig 3 bis 60 Tage nach der letzten Ausführung, nur aktive Aufträge bei Bank oder Broker (nie Handüberweisung, Lastschrift, Kredit-Rate). Fällig beim ersten Lauf nach dem Update: alles, was in den letzten 60 Tagen endete. Split messages -> Load texts (Sprache des Empfängers) -> Build message -> Owner oder Person -> Send.' 340 620
 
     $stickyGate = Build-Sticky 'Gate' @(-560, -420) `
         'Paket aktiv UND mindestens ein Schalter an' `

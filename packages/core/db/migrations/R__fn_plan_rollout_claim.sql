@@ -1,6 +1,6 @@
 -- ============================================================
 -- core.fn_plan_rollout_claim(p) — Eingang der geführten Abfolge je Chat (Laufende, Nachzuegler)
---   p: {chat_id}. Guenstige Pruefungen zuerst: Chat numerisch, Schalter cron_enable.plan_rollout (core.fn_reminder_allowed), Sender aufgeloest, keine
+--   p: {chat_id, budget ('true' nur vom taeglichen Nachzuegler: Slot 'plan_rollout' normal, erst wenn eine Nachricht feststeht; ohne Platz werden ihre Merker freigegeben)}. Guenstige Pruefungen zuerst: Chat numerisch, Schalter cron_enable.plan_rollout (core.fn_reminder_allowed), Sender aufgeloest, keine
 --   offene Karte (released_at IS NULL, expires_at in der Zukunft), kein Entwurf der letzten 2 Stunden (Bedingung wie der Interview-Pin des Orchestrators).
 --   Dann je Domain mit plan_step die erste nicht leere Antwort von core.fn_plan_rollout_next; ein Verlierer des Claims stoppt.
 --   Nie core.fn_advisor_plan_status (ruft teure gaps_fn). Nie RAISE: Fehler -> leer.
@@ -34,6 +34,13 @@ BEGIN
         v_res := core.fn_plan_rollout_next(v_dom, v_pid);
         IF (v_res->>'loser')::boolean IS TRUE THEN RETURN v_empty; END IF;
         IF jsonb_array_length(v_res->'messages') > 0 THEN
+            IF p->>'budget' = 'true' AND NOT core.fn_proactive_claim(v_pid, 'plan_rollout', 'normal') THEN
+                PERFORM core.fn_notify_resolve(l->>'source', l->>'key')
+                   FROM jsonb_array_elements(v_res->'messages') m
+                  CROSS JOIN LATERAL jsonb_array_elements(CASE WHEN jsonb_typeof(m->'latches') = 'array' AND m->'latches' <> '[]'::jsonb THEN m->'latches'
+                                                               WHEN m ? 'latch' THEN jsonb_build_array(m->'latch') ELSE '[]'::jsonb END) l;
+                RETURN v_empty;
+            END IF;
             RETURN jsonb_build_object('step', v_res->'step', 'domain', v_dom,
                 'messages', (SELECT jsonb_agg(m || jsonb_build_object('chat_id', v_chat)) FROM jsonb_array_elements(v_res->'messages') m));
         END IF;

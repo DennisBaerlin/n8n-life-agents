@@ -7,13 +7,13 @@
 function Build-CoreSubPlanRolloutNext {
     $start = [ordered]@{
         parameters  = [ordered]@{ workflowInputs = [ordered]@{ values = @(
-            [ordered]@{ name = 'chat_id' }, [ordered]@{ name = 'footer_key' }, [ordered]@{ name = 'skip' } ) } }
+            [ordered]@{ name = 'chat_id' }, [ordered]@{ name = 'footer_key' }, [ordered]@{ name = 'skip' }, [ordered]@{ name = 'budget' } ) } }
         type = 'n8n-nodes-base.executeWorkflowTrigger'; typeVersion = 1.1; position = @(-1100, 0); id = (New-Id); name = 'Start'
     }
     $skip = Build-If 'Run?' @(-880, 0) "={{ String(`$json.skip) !== 'true' }}" 'true' 'equals' 'boolean'
     $end = Build-NoOp 'Skipped' @(-660, 200)
     $claim = Build-Pg 'Claim' @(-660, 0) '=SELECT core.fn_plan_rollout_claim($1::jsonb)::text AS r;' `
-        ([ordered]@{ chat_id = "String(`$('Start').first().json.chat_id || '')" }) -ContinueOnError
+        ([ordered]@{ chat_id = "String(`$('Start').first().json.chat_id || '')"; budget = "String(`$('Start').first().json.budget || '')" }) -ContinueOnError
 
     $splitJs = @"
 let r = {};

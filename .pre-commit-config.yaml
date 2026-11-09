@@ -287,6 +287,13 @@ repos:
         pass_filenames: false
         files: ^scripts/dev/(case_abort_test|test_n8n_state|hitl_gate_test|mock_route_test|real_ingress_test)\.ps1$|^scripts/infra_test\.ps1$
 
+      - id: cron-toggle-lint-test
+        name: cron_toggle_lint_test (a sending cron without budget path turns rule k red; no Docker)
+        language: system
+        entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dev/cron_toggle_lint_test.ps1
+        pass_filenames: false
+        files: ^scripts/(cron_toggle_lint|dev/cron_toggle_lint_test)\.ps1$
+
       - id: docker-volume-cleanup-test
         name: docker_volume_cleanup_test (teardown of test containers leaves no anonymous Docker volume; every docker rm carries -v)
         language: system

@@ -290,6 +290,26 @@ BEGIN
   v_n := (SELECT count(*) FROM finance.bank_todos);
   PERFORM finance.fn_bank_todo_backfill();
   IF (SELECT count(*) FROM finance.bank_todos) <> v_n THEN RAISE EXCEPTION 'FAIL [zweiter Lauf]'; END IF;
+  -- Budget: nur im Cron
+  DELETE FROM finance.bank_todos; DELETE FROM core.notification_state WHERE source = 'finance:bank_todo';
+  DELETE FROM core.proactive_budget; DELETE FROM core.proactive_deferred;
+  v_rp := pg_temp.mk('bu', v_a, v_b);
+  PERFORM finance.fn_bank_note_recorded(v_rp, 'bank_setup'); PERFORM pg_temp.age_todo(v_rp, NULL); v_id := pg_temp.tid(v_rp);
+  PERFORM core.fn_proactive_claim(NULL, 'x1', 'normal'); PERFORM core.fn_proactive_claim(NULL, 'x2', 'normal');
+  r := finance.fn_bank_todo_claim();
+  IF pg_temp.claimed(r, 'owner', v_id) OR core.fn_notify_told('finance:bank_todo', v_id || ':r0:owner')
+     OR (SELECT first_sent_at FROM finance.bank_todos WHERE id = v_id) IS NOT NULL THEN RAISE EXCEPTION 'FAIL [Budget voll]: %', r; END IF;
+  UPDATE core.proactive_budget SET day = day - 1;
+  r := finance.fn_bank_todo_claim();
+  IF NOT pg_temp.claimed(r, 'owner', v_id) THEN RAISE EXCEPTION 'FAIL [Budget Folgetag]: %', r; END IF;
+  -- handoff: volles Budget bremst nicht
+  DELETE FROM core.notification_state WHERE source = 'finance:bank_todo';
+  UPDATE finance.bank_todos SET created_at = v_stamp, first_sent_at = NULL WHERE id = v_id;
+  DELETE FROM core.proactive_budget;
+  PERFORM core.fn_proactive_claim(NULL, 'x1', 'normal'); PERFORM core.fn_proactive_claim(NULL, 'x2', 'normal');
+  r := finance.fn_bank_todo_claim(core.fn_today(), 'handoff');
+  IF NOT pg_temp.claimed(r, 'owner', v_id) THEN RAISE EXCEPTION 'FAIL [Budget handoff]: %', r; END IF;
+
   RAISE NOTICE 'PASS handoff + Backfill';
 END $$;
 ROLLBACK;

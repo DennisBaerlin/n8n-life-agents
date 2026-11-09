@@ -6,6 +6,7 @@
 --                            ein Mitglied bekommt den Toast core.toast.owner_only;
 --     * mandatory         -> nie schaltbar (Pflicht-Erinnerung, z. B. Fristen im Ereignisfall): Toast core.toast.reminder_mandatory;
 --     * unbekannt/kaputt  -> Toast core.toast.reminder_unavailable.
+--   'rem:pause:on|off[:m]' = die tippende Person setzt oder beendet ihre Pause (core.fn_set_proactive_pause); falscher Text -> Toast.
 --   Suffix ':m' = Knopf aus dem /reminders-Menue -> Rueckgabe route:'reminders' (der Orchestrator sendet das Menue mit dem
 --   neuen Stand neu); ohne Suffix (Karten-Knopf, z. B. [Nicht mehr erinnern]) nur der Toast.
 --   Erreicht ueber core.fn_dispatch_callback (Member-Gate re-resolvt den Sender, member_permeable=true); der Owner
@@ -38,6 +39,21 @@ BEGIN
     END;
     v_sender := agent.fn_resolve_sender(v_chat);
     v_lang   := agent.fn_person_lang(v_sender->>'person_id')->>'lang';
+
+    IF v_verb = 'pause' THEN
+        IF v_key NOT IN ('on', 'off') THEN
+            RETURN jsonb_build_object('ok', false, 'reason', 'invalid_verb',
+                'toast', core.fn_ui_text('core.toast.reminder_unavailable', v_lang));
+        END IF;
+        v_r := core.fn_set_proactive_pause(jsonb_build_object('chat_id', p->>'chat_id', 'enabled', v_key = 'on'));
+        IF COALESCE((v_r->>'ok')::boolean, false) IS NOT TRUE THEN
+            RETURN jsonb_build_object('ok', false, 'reason', v_r->>'reason',
+                'toast', core.fn_ui_text('core.toast.reminder_unavailable', v_lang));
+        END IF;
+        RETURN jsonb_build_object('ok', true, 'enabled', v_key = 'on', 'until_date', v_r->'until_date',
+            'toast', core.fn_ui_text(CASE WHEN v_key = 'on' THEN 'core.toast.pause_on' ELSE 'core.toast.pause_off' END, v_lang))
+            || CASE WHEN v_menu THEN jsonb_build_object('route', 'reminders') ELSE '{}'::jsonb END;
+    END IF;
 
     IF v_verb NOT IN ('on', 'off') THEN
         RETURN jsonb_build_object('ok', false, 'reason', 'invalid_verb',

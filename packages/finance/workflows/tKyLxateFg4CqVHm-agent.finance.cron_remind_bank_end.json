@@ -288,7 +288,7 @@
                   },
                   {
                       "parameters":  {
-                                         "content":  "## Ablauf\n**Erinnerung: Auftrag bei der Bank beenden (täglich, kein LLM)**\n\nTäglich 10:35 (schedule.remind_bank_end, im Erinnerungs-Fenster). Der Bot notiert Daueraufträge und Sparpläne nur; ohne eingetragenes Ende bucht die Bank weiter. finance.fn_bank_end_claim liefert je Empfänger eine Nachricht: fällig 3 bis 60 Tage nach der letzten Ausführung, nur aktive Aufträge bei Bank oder Broker (nie Handüberweisung, Lastschrift, Kredit-Rate). Fällig beim ersten Lauf nach dem Update: alles, was in den letzten 60 Tagen endete. Split messages -\u003e Load texts (Sprache des Empfängers) -\u003e Build message -\u003e Owner oder Person -\u003e Send.",
+                                         "content":  "## Ablauf\n**Erinnerung: Auftrag bei der Bank beenden (täglich, kein LLM)**\n\nTäglich 10:12 (schedule.remind_bank_end, im Erinnerungs-Fenster). Der Bot notiert Daueraufträge und Sparpläne nur; ohne eingetragenes Ende bucht die Bank weiter. finance.fn_bank_end_claim liefert je Empfänger eine Nachricht: fällig 3 bis 60 Tage nach der letzten Ausführung, nur aktive Aufträge bei Bank oder Broker (nie Handüberweisung, Lastschrift, Kredit-Rate). Fällig beim ersten Lauf nach dem Update: alles, was in den letzten 60 Tagen endete. Split messages -\u003e Load texts (Sprache des Empfängers) -\u003e Build message -\u003e Owner oder Person -\u003e Send.",
                                          "height":  340,
                                          "width":  620,
                                          "color":  4

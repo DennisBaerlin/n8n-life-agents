@@ -58,7 +58,7 @@ BEGIN
   v_b1 := finance.fn_price_gap_claim(v_c::text);
   v_b2 := finance.fn_price_gap_claim(v_c::text);
   UPDATE core.notification_state SET expires_at = now() - interval '1 minute'
-   WHERE source = 'finance:prices' AND key = v_c::text;
+   WHERE source = 'finance:prices' AND key IN (v_c::text, 'card_today');
   v_b3 := finance.fn_price_gap_claim(v_c::text);
   IF NOT v_b1 OR v_b2 OR NOT v_b3 THEN
     RAISE EXCEPTION 'FAIL [2 claim]: erwartet true/false/true, got %/%/%', v_b1, v_b2, v_b3; END IF;
@@ -111,4 +111,34 @@ BEGIN
   RESET ROLE;
   RAISE NOTICE 'PASS finance_rw [fn_price_gaps + fn_price_gap_claim ausfuehrbar]';
 END $$;
+DO $$
+DECLARE o text := '__pg_o__';
+BEGIN
+  INSERT INTO agent.core_contexts (name, description, agent_name, load_strategy, content, metadata)
+  VALUES ('family', 'pg fixture', NULL, 'lazy', E'## f',
+          jsonb_build_object('managed_by','agent','facts', jsonb_build_object('persons', jsonb_build_array(
+            jsonb_build_object('person_id',o,'first_name','PG','last_name','O','role','owner','birth_date','1980-01-01','telegram_user_id',7921,'as_of','2026-11-01')))))
+  ON CONFLICT (name) DO UPDATE SET metadata = excluded.metadata;
+  DELETE FROM core.proactive_budget; DELETE FROM core.proactive_deferred; DELETE FROM core.notification_state WHERE source = 'finance:prices';
+  IF finance.fn_price_gap_claim('1001') IS NOT TRUE THEN RAISE EXCEPTION 'FAIL [PB1 erste Karte]'; END IF;
+  IF finance.fn_price_gap_claim('1002') IS NOT FALSE OR finance.fn_price_gap_claim('1003') IS NOT FALSE THEN RAISE EXCEPTION 'FAIL [PB1 nur eine je Tag]'; END IF;
+  IF EXISTS (SELECT 1 FROM core.notification_state WHERE source = 'finance:prices' AND key IN ('1002','1003') AND state='fired') THEN RAISE EXCEPTION 'FAIL [PB1 kein Merker]'; END IF;
+  -- Folgetag: naechste Luecke; die gemeldete verbraucht nichts
+  UPDATE core.proactive_budget SET day = day - 1;
+  UPDATE core.notification_state SET expires_at = now() - interval '1 minute' WHERE source = 'finance:prices' AND key = 'card_today';
+  IF finance.fn_price_gap_claim('1001') IS NOT FALSE THEN RAISE EXCEPTION 'FAIL [PB2 told]'; END IF;
+  IF EXISTS (SELECT 1 FROM core.proactive_budget WHERE day = core.fn_today()) THEN RAISE EXCEPTION 'FAIL [PB2 told belegt keinen Slot]'; END IF;
+  IF finance.fn_price_gap_claim('1002') IS NOT TRUE THEN RAISE EXCEPTION 'FAIL [PB2 naechste]'; END IF;
+  -- kein Platz -> nichts gemerkt
+  DELETE FROM core.proactive_budget; DELETE FROM core.notification_state WHERE source = 'finance:prices';
+  PERFORM core.fn_proactive_claim(o, 'a', 'normal'); PERFORM core.fn_proactive_claim(o, 'b', 'normal');
+  IF finance.fn_price_gap_claim('1004') IS NOT FALSE OR finance.fn_price_gap_claim('feed_down') IS NOT FALSE THEN RAISE EXCEPTION 'FAIL [PB3 voll]'; END IF;
+  IF EXISTS (SELECT 1 FROM core.notification_state WHERE source = 'finance:prices' AND state='fired') THEN RAISE EXCEPTION 'FAIL [PB3 Merker]'; END IF;
+  -- feed_down eigener Slot
+  DELETE FROM core.proactive_budget;
+  IF finance.fn_price_gap_claim('feed_down') IS NOT TRUE THEN RAISE EXCEPTION 'FAIL [PB4]'; END IF;
+  IF NOT EXISTS (SELECT 1 FROM core.proactive_budget WHERE slot = 'price_feed_down') THEN RAISE EXCEPTION 'FAIL [PB4 Slot]'; END IF;
+  RAISE NOTICE 'PASS test_fn_price_gaps Budget';
+END $$;
+
 ROLLBACK;

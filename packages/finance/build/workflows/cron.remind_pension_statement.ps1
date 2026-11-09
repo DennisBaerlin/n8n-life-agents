@@ -53,16 +53,19 @@ return [{ json: { message: U.t('finance.dialog.pension_statement_intro') + '\n\n
         @( @{ Text = '={{ $json.btn_off }}'; Data = 'cron_off:remind_pension_statement' } )
 
     $none = Build-NoOp 'Nothing due' @(220, 120)
+    # Budget-Gate unter finance_rw: die Lese-Cred dieses Crons darf nicht schreiben.
+    $budget = New-ProactiveBudgetGate -Pos @(0, -100) -Slot 'remind_pension_statement' -Class priority -Cred $CRED_FINANCE_RW
+    $budgetNo = Build-NoOp 'Paused' @(440, 120)
 
     $stickyOverview = Build-Sticky 'Überblick' @(-460, -300) `
         'Renteninformation-Erinnerung (monatlich geprüft, kein LLM, kein Write)' `
-        'Schedule (Cron aus core.config schedule.remind_pension_statement, Standard 15 10 5 * *). finance.fn_pension_statements_due() liefert die aktiven gesetzlichen/betrieblichen Renten, deren jüngste Renteninformation älter als 13 Monate ist oder die noch keine haben (dieselbe stale/never-Regel wie das Berater-Fenster fn_pension_outlook). IF count>0 -> Build message (Datum per Intl im Owner-Locale, Anleitung aus dem Katalog) -> EINE Nachricht mit Knopf [Erinnerung abschalten] (cron_off:remind_pension_statement; wieder an in /reminders); sonst No-Op. Monatliche Prüfung: die DRV schickt die Renteninformation zu individuellen Terminen, eine fällige Rente erscheint so spätestens einen Monat nach Ablauf.' 280 560
+        'Schedule (Cron aus core.config schedule.remind_pension_statement, Standard 15 10 5 * *). finance.fn_pension_statements_due() liefert die aktiven gesetzlichen/betrieblichen Renten, deren jüngste Renteninformation älter als 13 Monate ist oder die noch keine haben (dieselbe stale/never-Regel wie das Berater-Fenster fn_pension_outlook). IF count>0 -> Build message (Datum per Intl im Owner-Locale, Anleitung aus dem Katalog) -> EINE Nachricht mit Knopf [Erinnerung abschalten] (cron_off:remind_pension_statement; wieder an in /reminders); sonst No-Op. Monatliche Prüfung: die DRV schickt die Renteninformation zu individuellen Terminen, eine fällige Rente erscheint so spätestens einen Monat nach Ablauf. Vor dem Versand belegt Budget claim (Klasse priority, unter finance_rw) den Tages-Slot; in einer Pause entfällt die Nachricht, der nächste reguläre Lauf meldet.' 280 560
 
     $stickyDesign = Build-Sticky 'Workflow danach' @(0, 160) `
         'Ein PDF -> eine Karte -> ein atomarer Write' `
         'Kein sendAndWait hier: die Antwort ist eine Datei, und Dateien/Freitext lösen ein offenes Gate NICHT auf. Der Nutzer schickt die Renteninformation -> agent.finance -> tool_extract_finance_document (Vision: Anspruch, Hochrechnung, 1-%/2-%-Szenario, EM-Rente, Entgeltpunkte, Regelaltersrente) -> fn_import_stage (eine gesetzliche Rente je Person: der Bescheid hängt sich an die vorhandene) -> EINE Karte -> fn_import_bundle schreibt die datierte Zeile in finance.pension_statements (Historie, nie überschrieben).' 260 580
 
-    $nodes = @($trig, $gate, $gateIf, $gateOff, $find, $ifAny, $build, $notify, $none, $stickyOverview, $stickyDesign, $stickyGate)
+    $nodes = @($trig, $gate, $gateIf, $gateOff, $find, $ifAny, $budget.Pg, $budget.If, $budgetNo, $build, $notify, $none, $stickyOverview, $stickyDesign, $stickyGate)
     $conns = [ordered]@{
         'Schedule (cron from config)' = @{ main = @( ,@( E 'Cron enabled?' ) ) }
         'Cron enabled?'               = @{ main = @( ,@( E 'Cron on?' ) ) }
@@ -72,9 +75,11 @@ return [{ json: { message: U.t('finance.dialog.pension_statement_intro') + '\n\n
         ) }
         'Find due pensions'           = @{ main = @( ,@( E 'Any due?' ) ) }
         'Any due?'                    = @{ main = @(
-            @( E 'Build message' ),    # true:  count > 0
+            @( E 'Budget claim' ),     # true:  count > 0
             @( E 'Nothing due' )       # false: nichts faellig
         ) }
+        'Budget claim'                = @{ main = @( ,@( E 'Budget ok?' ) ) }
+        'Budget ok?'                  = @{ main = @( @( E 'Build message' ), @( E 'Paused' ) ) }
         'Build message'               = @{ main = @( ,@( E 'Notify due' ) ) }
     }
     return (Build-Workflow 'agent.finance.cron_remind_pension_statement' $nodes $conns)

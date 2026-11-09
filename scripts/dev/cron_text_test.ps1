@@ -5,6 +5,7 @@
 #   * expect_keys    — die festen Teilstuecke des Katalog-Texts in der Empfaenger-Sprache stehen im Send, die deutschen
 #                      (>= 4 Zeichen) NICHT (Owner ko); Kontrollfall owner_lang de prueft die Gegenrichtung.
 #   * expect_buttons — ein Knopf traegt genau den Katalog-Text.
+#   * expect_silent  — der Send traegt disable_notification (true) bzw. nicht (false).
 #   * llm_expect     — Crons mit Umformulier-/Extraktions-Modell: der Mock-LLM-Request enthaelt die festen Stuecke der
 #                      Keys (Grundtext in Empfaenger-Sprache) und die Sprachangabe '<code> (' (Mock antwortet 'done').
 #   * taps           — Bestaetigungs-Fragen: Tipp simulieren (Invoke-HitlResume), Folge-Frage/Ergebnis-Zeile pruefen.
@@ -209,6 +210,7 @@ try {
         $errs = @(); $wfId = $null; $scnBackup = $null
         try {
             Set-OwnerLanguage -Container $Container -Code $lang
+            Invoke-Sql 'DELETE FROM core.proactive_budget; DELETE FROM core.proactive_deferred;' | Out-Null   # jeder Fall mit freiem Tagesbudget
             foreach ($s in (Resolve-Sql $c.reset_sql)) { Invoke-Sql $s | Out-Null }
             foreach ($s in (Resolve-Sql $c.seed_sql))  { Invoke-Sql $s | Out-Null }
             if ($c.mock_llm_scenario) { $scnBackup = Add-MockScenario $c.mock_llm_scenario }
@@ -252,6 +254,10 @@ try {
             $sends = @(Wait-Sends $chat)
             if ($sends.Count -eq 0) { $errs += "kein Send an $($c.recipient) ($chat)" }
             $errs += @(Test-Sends $sends @($c.expect_keys) @($c.expect_buttons) $recLang)
+            if ($null -ne $c.expect_silent) {
+                $silent = @($sends | Where-Object { [string]$_.body.disable_notification -ieq 'true' }).Count -gt 0
+                if ($silent -ne [bool]$c.expect_silent) { $errs += "disable_notification: erwartet $($c.expect_silent), gesendet $silent" }
+            }
             if ($c.llm_expect) {
                 $tasks = (@(Get-MockLlmRequests -Container $Container) | ForEach-Object { [string]$_.task }) -join "`n"
                 foreach ($k in @($c.llm_expect.keys | Where-Object { $_ })) {

@@ -208,4 +208,72 @@ BEGIN
   RAISE NOTICE 'PASS [9] told_keys + erster Lauf';
 END $$;
 
+-- Tagesbudget im Waechter
+INSERT INTO core.advisors (domain, plan_context, review_fn, package, own_review_cron)
+VALUES ('__tb2__', 'x', 'finance.fn__test_advisor_review', '__test__', FALSE), ('__tbo__', 'x', 'finance.fn__test_advisor_review', '__test__', TRUE);
+DO $$
+DECLARE
+  r jsonb; o text; d date := core.fn_today();
+  a text := '[{"metric_key":"m1"}]';
+BEGIN
+  INSERT INTO agent.core_contexts (name, description, agent_name, load_strategy, content, metadata)
+  VALUES ('family', 'tb fixture', NULL, 'lazy', E'## f',
+          jsonb_build_object('managed_by','agent','facts', jsonb_build_object('persons', jsonb_build_array(
+            jsonb_build_object('person_id','__tb_o__','first_name','TB','last_name','O','role','owner','birth_date','1980-01-01','telegram_user_id',7911,'as_of','2026-11-01'),
+            jsonb_build_object('person_id','__tb_p__','first_name','TB','last_name','P','role','partner','birth_date','1982-01-01','telegram_user_id',7912,'as_of','2026-11-01')))))
+  ON CONFLICT (name) DO UPDATE SET metadata = excluded.metadata;
+  o := agent.fn_owner_person_id();
+  DELETE FROM core.proactive_budget; DELETE FROM core.proactive_deferred;
+  DELETE FROM core.notification_state WHERE source LIKE 'advisor:__t%';
+  PERFORM set_config('test.alerts', a, true);
+  -- voll -> deferred, keine Merker, Erst-Merker frei
+  PERFORM core.fn_proactive_claim(o, 'x1', 'normal'); PERFORM core.fn_proactive_claim(o, 'x2', 'normal');
+  r := core.fn_advisor_review_evaluate('__test__');
+  IF (r->>'send')::boolean OR (r->>'deferred')::boolean IS NOT TRUE OR jsonb_array_length(r->'alerts') <> 0 OR (r->>'first_run')::boolean THEN RAISE EXCEPTION 'FAIL [B1]: %', r; END IF;
+  IF EXISTS (SELECT 1 FROM core.notification_state WHERE source = 'advisor:__test__' AND state = 'fired') THEN RAISE EXCEPTION 'FAIL [B1 Merker]'; END IF;
+  IF NOT EXISTS (SELECT 1 FROM core.proactive_deferred WHERE person_id = o AND slot = 'advisor_drift') THEN RAISE EXCEPTION 'FAIL [B1 Altern]'; END IF;
+  -- naechster Tag meldet
+  UPDATE core.proactive_budget SET day = day - 1;
+  r := core.fn_advisor_review_evaluate('__test__');
+  IF NOT (r->>'send')::boolean OR (r->>'first_run')::boolean IS NOT TRUE THEN RAISE EXCEPTION 'FAIL [B2]: %', r; END IF;
+  IF NOT EXISTS (SELECT 1 FROM core.proactive_budget WHERE person_id = o AND day = d AND slot = 'advisor_drift' AND class = 'normal') THEN RAISE EXCEPTION 'FAIL [B2 Slot]'; END IF;
+  -- nichts neu (told) -> kein neuer Slot
+  DELETE FROM core.proactive_budget;
+  r := core.fn_advisor_review_evaluate('__test__');
+  IF (r->>'send')::boolean OR EXISTS (SELECT 1 FROM core.proactive_budget) THEN RAISE EXCEPTION 'FAIL [B3]: %', r; END IF;
+  -- kein Alarm -> kein Slot
+  PERFORM set_config('test.alerts', '[]', true);
+  r := core.fn_advisor_review_evaluate('__test__');
+  IF EXISTS (SELECT 1 FROM core.proactive_budget) THEN RAISE EXCEPTION 'FAIL [B4]'; END IF;
+  -- deferred reconciled: gesetzter Merker bleibt, wenn der Alert noch da ist und daneben ein neuer wartet
+  PERFORM set_config('test.alerts', a, true);
+  r := core.fn_advisor_review_evaluate('__test__');
+  DELETE FROM core.proactive_budget;
+  PERFORM core.fn_proactive_claim(o, 'x1', 'normal'); PERFORM core.fn_proactive_claim(o, 'x2', 'normal');
+  PERFORM set_config('test.alerts', '[{"metric_key":"m1"},{"metric_key":"m2"}]', true);
+  r := core.fn_advisor_review_evaluate('__test__');
+  IF (r->>'deferred')::boolean IS NOT TRUE THEN RAISE EXCEPTION 'FAIL [B5]: %', r; END IF;
+  IF NOT core.fn_notify_told('advisor:__test__', 'm1') THEN RAISE EXCEPTION 'FAIL [B5 Reconcile raeumte m1]'; END IF;
+  -- Told-Key: gesagte Lage belegt keinen Slot
+  DELETE FROM core.proactive_budget; DELETE FROM core.proactive_deferred; DELETE FROM core.notification_state WHERE source LIKE 'advisor:__t%';
+  PERFORM core.fn_should_notify('__ext__', 'k');
+  PERFORM set_config('test.alerts', '[{"metric_key":"m3","told_keys":[{"source":"__ext__","key":"k"}]}]', true);
+  r := core.fn_advisor_review_evaluate('__test__');
+  IF (r->>'send')::boolean OR EXISTS (SELECT 1 FROM core.proactive_budget) THEN RAISE EXCEPTION 'FAIL [B6]: %', r; END IF;
+  -- zwei Domains teilen advisor_drift; eigener Cron priority
+  DELETE FROM core.proactive_budget; DELETE FROM core.notification_state WHERE source LIKE 'advisor:__t%';
+  PERFORM set_config('test.alerts', a, true);
+  PERFORM core.fn_advisor_review_evaluate('__test__'); PERFORM core.fn_advisor_review_evaluate('__tb2__');
+  IF (SELECT count(*) FROM core.proactive_budget) <> 1 THEN RAISE EXCEPTION 'FAIL [B7 geteilt]'; END IF;
+  PERFORM core.fn_proactive_claim(o, 'x9', 'normal');
+  r := core.fn_advisor_review_evaluate('__tbo__');
+  IF NOT (r->>'send')::boolean OR NOT EXISTS (SELECT 1 FROM core.proactive_budget WHERE slot = 'advisor:__tbo__' AND class = 'priority') THEN RAISE EXCEPTION 'FAIL [B8 priority]: %', r; END IF;
+  -- Lauf mit Partner-pid belegt den Slot des Owners
+  DELETE FROM core.proactive_budget;
+  r := core.fn_advisor_review_evaluate('__test__', '__tb_p__');
+  IF NOT EXISTS (SELECT 1 FROM core.proactive_budget WHERE person_id = o) OR EXISTS (SELECT 1 FROM core.proactive_budget WHERE person_id <> o) THEN
+    RAISE EXCEPTION 'FAIL [B9 Owner-Slot]'; END IF;
+  RAISE NOTICE 'PASS test_fn_advisor_review_evaluate Budget';
+END $$;
+
 ROLLBACK;

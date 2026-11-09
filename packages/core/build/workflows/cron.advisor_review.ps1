@@ -56,5 +56,6 @@ return [{ json: Object.assign({ det_text: parts.join('\n\n----------\n\n'), repo
         -EvalSql       $evalSql `
         -BuildJs       $buildJs `
         -SendNodeName  'Send review' `
-        -StickyBody    $sticky
+        -StickyBody    ($sticky + ' Der Rückblick kommt immer ohne Ton und ohne Tagesbudget.') `
+        -Silent
 }

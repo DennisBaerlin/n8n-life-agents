@@ -248,6 +248,7 @@ own-schema-scoped (`review_fn` must be `<pkg>.*`; core may bind `core.*`/`agent.
 `core.notification_state` via `core.fn_should_notify`, `source='advisor:'||domain||COALESCE(':'||person_id,'')` — P2a person-suffix, NULL=household byte-equal) plus reconcile-GC; the two core crons (`agent.advisor.cron_drift_check`/`cron_review`) iterate the registry. The
 `review_fn` signature is **`fn(text,text,jsonb)→jsonb`** (domain, person_id, observations; P2a uniform 3-arg — finance ignores person_id=household, career uses it) returning `{alerts, digest}` where each alert and the digest
 carry a package-rendered `text` field (the generic crons know no package fields — they only join `text`).
+Every unsolicited message goes through `core.fn_proactive_claim` or a justified exception in `cron_toggle_lint` rule (k).
 `package` scopes the uninstall purge (`fn_pkg_purge_data` removes the advisor row, else an orphan `review_fn`
 dangles after the package's `DROP SCHEMA`). Optional per-domain flags/fns beyond the two required values: `learn_notes`,
 `own_review_cron`, `plan_step` + `gaps_fn`/`readiness_fn` (onboarding plan step, read only by

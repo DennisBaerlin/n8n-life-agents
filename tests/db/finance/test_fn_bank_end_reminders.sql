@@ -228,6 +228,23 @@ BEGIN
     RAISE EXCEPTION 'FAIL [21a GC]'; END IF;
   RAISE NOTICE 'PASS [21a] GC';
 
+  -- [Budget] kein Platz -> nichts gemerkt, Folgetag gemeldet; Owner und Partner je eigenes Budget
+  DELETE FROM finance.recurring_payments;
+  DELETE FROM core.notification_state WHERE source = 'finance:bank_end';
+  DELETE FROM core.proactive_budget; DELETE FROM core.proactive_deferred;
+  v_rp := pg_temp.mk('bu', v_a_partner, v_tgt, v_l, 'bank');
+  PERFORM core.fn_proactive_claim(NULL, 'x1', 'normal'); PERFORM core.fn_proactive_claim(NULL, 'x2', 'normal');
+  v_m := pg_temp.msgs(finance.fn_bank_end_claim(v_today));
+  IF v_m <> '__be_partner__:bu' OR pg_temp.latched(v_rp || ':' || v_l || ':owner') THEN RAISE EXCEPTION 'FAIL [Budget voll]: %', v_m; END IF;
+  UPDATE core.proactive_budget SET day = day - 1;
+  v_m := pg_temp.msgs(finance.fn_bank_end_claim(v_today));
+  IF v_m <> 'owner:bu' OR NOT pg_temp.latched(v_rp || ':' || v_l || ':owner') THEN RAISE EXCEPTION 'FAIL [Budget Folgetag]: %', v_m; END IF;
+  -- gemeldet -> kein Slot
+  DELETE FROM core.proactive_budget;
+  v_m := pg_temp.msgs(finance.fn_bank_end_claim(v_today));
+  IF v_m <> '' OR EXISTS (SELECT 1 FROM core.proactive_budget) THEN RAISE EXCEPTION 'FAIL [Budget told]: %', v_m; END IF;
+  RAISE NOTICE 'PASS [Budget]';
+
   -- [Rollen] Der Cron laeuft unter finance_rw, die Lese-fn auch unter finance_ro (Details test_role_permissions)
   SET LOCAL ROLE finance_rw;
   PERFORM finance.fn_bank_end_claim(v_today);

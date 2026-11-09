@@ -58,6 +58,7 @@ END $$;
 --   Kinderdepot fuehren die Eltern), der Owner als Inhaber bekommt nur die Sammel-Nachricht.
 --   Latch core.notification_state, Quelle 'finance:bank_end' (Reset raeumt <pkg>:<sub>), Key <head>:<L>:owner|<person_id>,
 --   ohne TTL. Wer heute nicht darf, latcht nicht: Koppeln oder Wieder-Einschalten im Fenster holt die Erinnerung nach.
+--   Budget: je Empfaenger Slot 'bank_end' normal, nur wenn etwas noch nicht gemeldet ist; ohne Platz kein Merker (Folgetag).
 --   Merker aelter als 400 Tage werden geloescht; ihr L liegt laengst ausserhalb des Fensters.
 --   Eingabe: p_on (Stichtag, default heute).
 --   Rueckgabe: jsonb-Array, Owner zuerst: [{recipient 'owner'|<person_id>, chat_id (null beim Owner = Default-Chat), items:
@@ -76,18 +77,28 @@ DECLARE
     v_pid    text;
     v_chat   bigint;
     v_out    jsonb;
+    v_oroom  boolean;              -- Budget des Owners, einmal je Lauf
+    v_proom  jsonb := '{}'::jsonb; -- Budget je Mitglied, einmal je Lauf
 BEGIN
     PERFORM core.fn_notify_forget_before(c_src, (p_on - 400)::timestamptz);
     FOR v_item IN SELECT e FROM jsonb_array_elements(finance.fn_bank_end_due(p_on)) e LOOP
         v_base := (v_item->>'head') || ':' || (v_item->>'last_due');
         v_pid  := v_item->>'holder_person_id';
-        IF v_ok AND core.fn_should_notify(c_src, v_base || ':owner', NULL) THEN
+        IF v_ok AND v_oroom IS NULL AND NOT core.fn_notify_told(c_src, v_base || ':owner') THEN
+            v_oroom := core.fn_proactive_claim(NULL, 'bank_end', 'normal');
+        END IF;
+        IF v_ok AND v_oroom AND core.fn_should_notify(c_src, v_base || ':owner', NULL) THEN
             v_owner := v_owner || CASE WHEN v_item->>'holder_role' = 'owner'
                                        THEN jsonb_set(v_item, '{holder_name}', 'null') ELSE v_item END;
         END IF;
         CONTINUE WHEN v_item->>'holder_role' IS DISTINCT FROM 'partner';
         v_chat := core.fn_person_chat_id(v_pid);
         IF v_chat IS NOT NULL AND core.fn_reminder_allowed('remind_bank_end_person', v_pid)
+           AND NOT v_proom ? v_pid AND NOT core.fn_notify_told(c_src, v_base || ':' || v_pid) THEN
+            v_proom := v_proom || jsonb_build_object(v_pid, core.fn_proactive_claim(v_pid, 'bank_end', 'normal'));
+        END IF;
+        IF COALESCE((v_proom->>v_pid)::boolean, false) AND v_chat IS NOT NULL
+           AND core.fn_reminder_allowed('remind_bank_end_person', v_pid)
            AND core.fn_should_notify(c_src, v_base || ':' || v_pid, NULL) THEN
             v_people := jsonb_set(v_people, ARRAY[v_pid], jsonb_build_object(
                 'recipient', v_pid, 'chat_id', v_chat,

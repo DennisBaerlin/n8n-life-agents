@@ -5,7 +5,6 @@
 --   p_account gesetzt: Spiegel am Sparplan, die Saetze nennen das Abbuchungskonto (der Aufrufer gibt nur sichtbare Namen).
 --   p_month_row: Konten-Zeile „Reicht bis“, Grund Netto-Abfluss wie in der Pille.
 --   p_ask_name: Kontoname fuer die Chat-Nachricht ask an der Zeile todo (am Sparplan genuegt p_account).
---   Alter Auszug: nur die Erklaerzeile, sie nennt die Handlung schon.
 --   RUECKGABE: jsonb-Array [{label, value:null, kind:'info'}, {label, value:null, kind:'todo', ask?}]; ohne Pille [].
 --   plpgsql (late-bound: core.fn_ui_* sind core-R__).
 --   Tests: tests/db/finance/test_fn_app_low_state_explain.sql
@@ -30,6 +29,7 @@ BEGIN
     END IF;
     IF p_ls ->> 'verdict' = 'stale' THEN
         v_info := core.fn_ui_tpl(CASE WHEN v_plan THEN 'finance.app.goals.i_plan_stale' ELSE 'finance.app.accounts.i_stale' END, v_acc);
+        v_todo := 'finance.app.accounts.todo_stale';
     ELSIF p_ls ->> 'verdict' = 'buffer' AND p_ls ->> 'state' = 'warn' THEN
         v_info := core.fn_ui_tpl(CASE WHEN v_plan THEN 'finance.app.goals.i_plan_tight' ELSE 'finance.app.accounts.i_tight' END,
                       v_acc || jsonb_build_object('buffer', core.fn_ui_money((p_ls ->> 'buffer')::numeric, v_cur)));
@@ -51,7 +51,7 @@ BEGIN
                       v_acc || jsonb_build_object('date', core.fn_ui_date((p_ls ->> 'on_date')::date)));
         v_todo := 'finance.app.accounts.todo_gap';
     END IF;
-    IF v_plan AND v_todo IS NOT NULL THEN
+    IF v_plan AND v_todo IS NOT NULL AND v_todo <> 'finance.app.accounts.todo_stale' THEN
         v_todo := 'finance.app.goals.todo_plan';
     END IF;
     RETURN jsonb_build_array(jsonb_build_object('label', v_info, 'value', NULL, 'kind', 'info'))
@@ -61,6 +61,7 @@ BEGIN
                              THEN jsonb_build_object('ask', core.fn_ui_tpl(CASE v_todo WHEN 'finance.app.accounts.todo_low' THEN 'finance.app.accounts.ask_low'
                                                             WHEN 'finance.app.accounts.todo_net_out' THEN 'finance.app.accounts.ask_net_out'
                                                             WHEN 'finance.app.accounts.todo_gap' THEN 'finance.app.accounts.ask_gap'
+                                                            WHEN 'finance.app.accounts.todo_stale' THEN 'finance.app.accounts.ask_stale'
                                                             ELSE 'finance.app.goals.ask_plan' END,
                                                        jsonb_build_object('account', v_name)))
                              ELSE '{}'::jsonb END)

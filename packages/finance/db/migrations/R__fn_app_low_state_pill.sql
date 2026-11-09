@@ -5,11 +5,10 @@
 --   Nur warn/alert (Handlungsbedarf), Kontowaehrung aus dem Urteil:
 --     verdict stale:  warn „neuer Kontoauszug"
 --     verdict buffer: warn „knapp ueber Puffer" · alert „unter Puffer" (Betraege: fn_app_low_state_explain)
---     verdict goals:  warn „reicht bis {Monat von on_date}"      · alert „Luecke ab {on_date}"
---   p_month_row = true: Konten-Zeile „Reicht bis" einer Quelle funding, deren WERT schon der Monat ist -> die Pille
---     wiederholt ihn nicht, sondern nennt, warum es nicht reicht: warn/alert „Monatsminus"
---     (-(monthly_out + monthly_in) > 0); ohne Netto-Abfluss (eine einzelne Abbuchung) den genauen Tag
---     „Luecke ab {on_date}" im Zustand des Urteils. Gleiches Urteil, nur die Form passt zur Zeile.
+--     verdict goals:  warn „wird knapp" · alert „Luecke" (Monat und Tag: fn_app_low_state_explain; Pille traegt keine Daten)
+--   p_month_row = true: Konten-Zeile „Reicht bis" einer Quelle funding: die Pille nennt, warum es nicht reicht:
+--     warn/alert „Monatsminus" (-(monthly_out + monthly_in) > 0); ohne Netto-Abfluss (eine einzelne Abbuchung)
+--     „Luecke" im Zustand des Urteils. Gleiches Urteil, nur die Form passt zur Zeile.
 --   ok / neutral (auch Kurs fehlt) / ohne state / {ok:false} / NULL -> NULL (keine Pille).
 --   plpgsql (late-bound: core.fn_ui_* sind core-R__).
 --   RUECKGABE: Pille {state, icon, text} | NULL
@@ -35,8 +34,7 @@ BEGIN
         RETURN jsonb_build_object('state', p_ls ->> 'state', 'icon', CASE WHEN p_ls ->> 'state' = 'alert' THEN 'alert' ELSE 'calendar' END,
                    'text', CASE WHEN v_net > 0
                                 THEN core.fn_ui_tpl('finance.app.accounts.pill_net_out')
-                                ELSE core.fn_ui_tpl('finance.app.accounts.pill_gap',
-                                         jsonb_build_object('date', core.fn_ui_date((p_ls ->> 'on_date')::date))) END);
+                                ELSE core.fn_ui_tpl('finance.app.accounts.pill_gap') END);
     END IF;
     RETURN CASE
         WHEN p_ls ->> 'verdict' = 'buffer' AND p_ls ->> 'state' = 'warn'
@@ -47,10 +45,8 @@ BEGIN
                  'text', core.fn_ui_tpl('finance.app.accounts.pill_short'))
         WHEN p_ls ->> 'state' = 'warn'
         THEN jsonb_build_object('state', 'warn', 'icon', 'calendar',
-                 'text', core.fn_ui_tpl('finance.app.accounts.pill_until',
-                             jsonb_build_object('month', core.fn_ui_month((p_ls ->> 'on_date')::date))))
+                 'text', core.fn_ui_tpl('finance.app.accounts.pill_until'))
         ELSE jsonb_build_object('state', 'alert', 'icon', 'alert',
-                 'text', core.fn_ui_tpl('finance.app.accounts.pill_gap',
-                             jsonb_build_object('date', core.fn_ui_date((p_ls ->> 'on_date')::date)))) END;
+                 'text', core.fn_ui_tpl('finance.app.accounts.pill_gap')) END;
 END;
 $$;

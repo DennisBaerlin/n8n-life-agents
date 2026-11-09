@@ -145,13 +145,19 @@ BEGIN
                                                    / l.original_amount, 1), 'state', 'neutral') END,
                'target', NULL,
                'details', (SELECT COALESCE(jsonb_agg(x.d ORDER BY x.o), '[]'::jsonb) FROM (
-                   SELECT -1 AS o, jsonb_build_object('label', core.fn_ui_tpl(CASE l.flag WHEN 'paused' THEN 'finance.app.loans.i_paused'
+                   SELECT -2 AS o, jsonb_build_object('label', core.fn_ui_tpl(CASE l.flag WHEN 'paused' THEN 'finance.app.loans.i_paused'
                                                                                      WHEN 'ends' THEN 'finance.app.loans.i_ends'
                                                                                      ELSE 'finance.app.loans.i_ended' END,
                               CASE WHEN l.flag = 'paused' THEN '{}'::jsonb
                                    ELSE jsonb_build_object('date', core.fn_ui_date(l.interest_rate_fixed_until)) END),
                               'value', NULL, 'kind', 'info') AS d
                     WHERE l.flag IS NOT NULL
+                   UNION ALL
+                   SELECT -1, jsonb_build_object('label', core.fn_ui_tpl(CASE l.flag WHEN 'ends' THEN 'finance.app.loans.todo_ends' ELSE 'finance.app.loans.todo_ended' END),
+                              'value', NULL, 'kind', 'todo',
+                              'ask', core.fn_ui_tpl(CASE l.flag WHEN 'ends' THEN 'finance.app.loans.ask_ends' ELSE 'finance.app.loans.ask_ended' END,
+                                         jsonb_build_object('name', l.name)))
+                    WHERE l.flag IN ('ends', 'ended')
                    UNION ALL
                    SELECT 0, jsonb_build_object('label', core.fn_ui_tpl('finance.app.loans.d_lender'),
                               'value', l.lender) AS d

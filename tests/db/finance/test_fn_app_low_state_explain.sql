@@ -30,7 +30,7 @@ BEGIN
   RAISE NOTICE 'PASS [2] goals';
 
   v := finance.fn_app_low_state_explain('{"ok":true,"currency":"EUR","verdict":"stale","state":"warn"}');
-  IF jsonb_array_length(v) <> 1 OR v->0->'label'->>'value' <> 'finance.app.accounts.i_stale' THEN RAISE EXCEPTION 'FAIL [3] stale, got %', v; END IF;
+  IF jsonb_array_length(v) <> 2 OR v->1->'label'->>'value' <> 'finance.app.accounts.todo_stale' OR v->0->'label'->>'value' <> 'finance.app.accounts.i_stale' THEN RAISE EXCEPTION 'FAIL [3] stale, got %', v; END IF;
   RAISE NOTICE 'PASS [3] alter Auszug';
 
   v := finance.fn_app_low_state_explain(b || '{"state":"alert"}', 'Giro');

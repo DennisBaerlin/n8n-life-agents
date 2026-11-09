@@ -270,10 +270,20 @@ BEGIN
   v_it := v_sec->'items'->0;
   IF v_it->'value' <> core.fn_ui_money(400, 'EUR')
      OR v_it->'pill' <> jsonb_build_object('state', 'warn', 'icon', 'alert', 'text', core.fn_ui_tpl(
-                          'finance.app.goals.missing', jsonb_build_object('gap', core.fn_ui_money(600, 'EUR'))))
+                          'finance.app.goals.missing'))
+     OR v_it->'details'->0 <> jsonb_build_object('label', core.fn_ui_tpl('finance.app.goals.i_emergency_missing', jsonb_build_object('gap', core.fn_ui_money(600, 'EUR'))), 'value', NULL, 'kind', 'info')
+     OR v_it->'details'->1->>'kind' <> 'todo'
+     OR NOT (v_it->'details' @> jsonb_build_array(jsonb_build_object('label', core.fn_ui_tpl('finance.app.goals.d_rate'), 'value', core.fn_ui_tpl('finance.app.goals.d_rate_none'))))
      OR v_it->'progress' <> '{"pct":40.0,"state":"warn"}'::jsonb
      OR v_it->'sub' <> core.fn_ui_tpl('finance.app.goals.emergency_sub_amount', jsonb_build_object('target', core.fn_ui_money(1000, 'EUR'))) THEN
     RAISE EXCEPTION 'FAIL [1t] Notreserve unvollstaendig: warn fehlen 600, Balken, Ziel 1000, got %', v_it; END IF;
+  -- Notreserve mit Dauerauftrag: Aufklappen nennt Herkunftskonto und Betrag, aus derselben Quelle wie die Sparziele
+  UPDATE finance.savings_goals SET recurring_payment_id = v_rp WHERE id = v_emerg;
+  v_it := finance.fn_app_screen_goals(jsonb_build_object('person_id', 'apgl_owner', 'params', '{}'::jsonb))->'sections'->0->'items'->0;
+  IF NOT jsonb_path_exists(v_it->'details', 'strict $[*] ? (@.label.value == "finance.app.goals.d_rate_from" && exists(@.label.params.account))')
+     OR NOT (v_it->'details' @> jsonb_build_array(jsonb_build_object('value', finance.fn_app_order_line(finance.fn_recurring_current(v_rp, current_date))))) THEN
+    RAISE EXCEPTION 'FAIL [1t2] Notreserve: Rate von Konto mit Betrag, got %', v_it; END IF;
+  UPDATE finance.savings_goals SET recurring_payment_id = NULL WHERE id = v_emerg;
   SELECT i INTO v_it FROM jsonb_array_elements(v_sec->'items') i WHERE i->>'label' = '__apgl_res_a__';
   IF NOT EXISTS (SELECT 1 FROM finance.maintenance_reserve_status m
                   WHERE m.goal_name = '__apgl_res_a__' AND m.recommended_monthly IS NOT NULL AND m.gap_monthly_eur > 0
@@ -324,12 +334,14 @@ BEGIN
   v_it := v_sec->'items'->0;
   -- Spiegel-Pille = dasselbe Urteil + dieselbe Pille wie die Konten-Zeile (fn_account_low_state + fn_app_low_state_pill)
   IF v_it->'pill' <> jsonb_build_object('state', 'alert', 'icon', 'alert', 'text', core.fn_ui_tpl(
-                       'finance.app.accounts.pill_gap', jsonb_build_object('date', core.fn_ui_date(current_date + 3))))
+                       'finance.app.accounts.pill_gap'))
+     OR v_it->'details'->0->'label'->'params'->'date' <> core.fn_ui_date(current_date + 3)
      OR v_it->'pill' <> finance.fn_app_low_state_pill(finance.fn_account_low_state(v_low)) THEN
     RAISE EXCEPTION 'FAIL [1z] leeres Abbuchungskonto: alert „Luecke ab" mit Datum = Konten-Pille, got %', v_it; END IF;
   SELECT i INTO v_it FROM jsonb_array_elements(v_sec->'items') i WHERE i->>'label' = '__apgl_days_plan__';
   IF v_it->'pill'->>'state' <> 'warn' OR v_it->'pill'->'text'->>'value' <> 'finance.app.accounts.pill_until'
-     OR v_it->'pill'->'text'->'params'->'month'->>'kind' <> 'month'
+     OR v_it->'pill'->'text'->'params' <> '{}'::jsonb
+     OR v_it->'details'->0->'label'->'params'->'month'->>'kind' <> 'month'
      OR v_it->'pill' <> finance.fn_app_low_state_pill(finance.fn_account_low_state(v_broker))
      OR v_it->'value' <> core.fn_ui_money(100, 'EUR')
      OR v_it->'sub' <> core.fn_ui_tpl('finance.app.goals.plan_days_next', jsonb_build_object(
@@ -599,7 +611,8 @@ BEGIN
     RAISE EXCEPTION 'FAIL [6e] Fahrrad Mira: „Rate von Girokonto Jonas", got %', v_it; END IF;
   SELECT i INTO v_it FROM jsonb_array_elements(v->'sections'->0->'items') i WHERE i->>'label' = 'Notreserve';
   IF v_it->'pill' <> jsonb_build_object('state', 'warn', 'icon', 'alert', 'text', core.fn_ui_tpl(
-                       'finance.app.goals.missing', jsonb_build_object('gap', core.fn_ui_money(5000, 'EUR')))) THEN
+                       'finance.app.goals.missing'))
+     OR NOT (v_it->'details' @> jsonb_build_array(jsonb_build_object('label', core.fn_ui_tpl('finance.app.goals.i_emergency_missing', jsonb_build_object('gap', core.fn_ui_money(5000, 'EUR')))))) THEN
     RAISE EXCEPTION 'FAIL [6f] Notreserve warn fehlen 5000, got %', v_it; END IF;
   IF EXISTS (SELECT 1 FROM jsonb_array_elements(finance.fn_app_screen_goals(jsonb_build_object(
                'person_id', 'fxh_jonas', 'params', jsonb_build_object('probe', true)))->'banners') b

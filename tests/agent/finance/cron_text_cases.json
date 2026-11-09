@@ -116,5 +116,24 @@
     ],
     "expect_keys": ["finance.dialog.bank_end_intro", "finance.dialog.bank_end_line_standing_order", "finance.dialog.bank_end_howto"],
     "expect_buttons": ["core.reminders.btn_off"]
+  },
+  {
+    "kind": "cron_text",
+    "id": "ctf_bank_todo",
+    "name": "Bank-Zettel an den Owner (ko): Kopf, Zeile, Knoepfe, ohne Modell",
+    "workflow": "agent.finance.cron_remind_bank_todo",
+    "schedule_key": "remind_bank_todo",
+    "cron_enable": "remind_bank_todo",
+    "recipient": "owner",
+    "reset_sql": [
+      "DELETE FROM core.notification_state WHERE source = 'finance:bank_todo';",
+      "DELETE FROM finance.recurring_payments WHERE name = 'CRONTEXT BT';"
+    ],
+    "seed_sql": [
+      "INSERT INTO finance.recurring_payments (name, account_id, target_account_id, amount, schedule_unit, schedule_day_of_month, first_payment_date, valid_from) SELECT 'CRONTEXT BT', a.id, b.id, -50, 'month', 5, CURRENT_DATE + 5, CURRENT_DATE + 5 FROM finance.accounts a, finance.accounts b WHERE a.name = 'Lindenbank Giro' AND b.name = 'Testbroker Cash Girokonto';",
+      "INSERT INTO finance.bank_todos (head_id, event, created_at) SELECT id, 'setup', now() - interval '1 day' FROM finance.recurring_payments WHERE name = 'CRONTEXT BT';"
+    ],
+    "expect_keys": ["finance.bank_todo.howto"],
+    "expect_buttons": ["core.reminders.btn_off"]
   }
 ]

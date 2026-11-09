@@ -174,6 +174,10 @@ $nToolDividend = New-ToolWorkflowNode 'tool_book_dividend' `
     ) @(160, 208)
 
 $beforeOpeningRule = ' A rejection whose reason says the date lies in the starting balance of an account: nothing was booked; tell the user the account, its date and the next step the reason names, and never retry with another date on your own.'
+$nToolSendBankTodos = New-ToolWorkflowNode 'tool_send_bank_todos' `
+    'SHOW WHAT IS STILL TO SET UP AT THE BANK. Use when the user asks what they have to set up at their bank, or says they finished it without tapping the button (the list comes back with the button). Sends one message per bank, reads only, shows only what this user may see. Do not repeat the list afterwards.' `
+    @() @(-16, 720)
+
 $nToolTransfer = New-ToolWorkflowNode 'tool_book_transfer' `
     ('Move money between TWO of the user''s OWN accounts. Creates two transactions (debit + credit). ONLY for own-account-to-own-account moves - for money going to or coming from an EXTERNAL party that is not one of the user''s accounts, use tool_book_transaction instead. CROSS-CURRENCY: if the two accounts use DIFFERENT currencies (e.g. a EUR account and a USD account), the legs have different native amounts - you MUST also pass to_amount (the exact amount that ARRIVES in the destination account, in the destination currency). The user states/confirms BOTH amounts; never invent a rate. For same-currency transfers omit to_amount. Inputs: from_account_name, to_account_name, amount (amount LEAVING the source, in the source currency, positive), to_amount (only for cross-currency: amount ARRIVING in the destination currency), transaction_date (optional, see its parameter), purpose (optional).' + $beforeOpeningRule) `
     @(
@@ -883,7 +887,7 @@ $allNodes = @($nTrigger) + $gate.Nodes + @(
     $nLoadConfig, $nLoadCtx, $nOnboardRead, $nBuildInput, $nAgent,
     $nMemory,
     $nToolSelect, $nToolLoad, $nToolWebSearch,
-    $nToolDividend, $nToolTransfer, $nToolStockBuy, $nToolBookTransaction,
+    $nToolSendBankTodos, $nToolDividend, $nToolTransfer, $nToolStockBuy, $nToolBookTransaction,
     $nToolCreateAccount, $nToolCreateInsurance, $nToolCreateLoan, $nToolCreateRealEstate,
     $nToolBookStockSell, $nToolBookLoanPayment, $nToolCreateSavingsGoal, $nToolBookSavingsGoalTransfer,
     $nToolBookSavingsReservation,
@@ -948,6 +952,7 @@ $connRest = [ordered]@{
     'tool_close_account'       = @{ ai_tool = @(,@( E 'Finance Agent' 'ai_tool' )) }
     'tool_create_recurring_payment' = @{ ai_tool = @(,@( E 'Finance Agent' 'ai_tool' )) }
     'tool_create_recurring_transfer' = @{ ai_tool = @(,@( E 'Finance Agent' 'ai_tool' )) }
+    'tool_send_bank_todos' = @{ ai_tool = @(,@( E 'Finance Agent' 'ai_tool' )) }
     'tool_get_recurring_suggestions' = @{ ai_tool = @(,@( E 'Finance Agent' 'ai_tool' )) }
     'tool_cancel_handoff_task' = @{ ai_tool = @(,@( E 'Finance Agent' 'ai_tool' )) }
     'tool_create_pension'      = @{ ai_tool = @(,@( E 'Finance Agent' 'ai_tool' )) }

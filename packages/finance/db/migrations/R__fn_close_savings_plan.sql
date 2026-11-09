@@ -45,7 +45,7 @@ BEGIN
 
     -- Auch vor dem Hard-DELETE beenden: Die Notiz liest die Kette, und ein laufendes kuenftiges Ende ergaebe den _until-Text.
     PERFORM finance.fn_end_recurring_chain(v_plan.recurring_payment_id, CURRENT_DATE);
-    v_note := finance.fn_bank_setup_note(v_plan.recurring_payment_id, 'bank_stop');
+    v_note := finance.fn_bank_note_recorded(v_plan.recurring_payment_id, 'bank_stop');
 
     IF v_tx_count = 0 THEN
         -- Hard-DELETE: erst Plan (FK RESTRICT plan->rp), dann alle Ketten-rps in EINEM Statement (predecessor-FK

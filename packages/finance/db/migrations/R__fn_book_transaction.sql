@@ -112,6 +112,8 @@ BEGIN
         v_breach := finance.fn_reserve_breach(v_account);
         IF v_breach IS NOT NULL AND NOT core.fn_should_notify('finance', 'reserve_breach:' || v_account) THEN
             v_breach := NULL;   -- bereits gemeldet (Latch fired) -> Note unterdruecken
+        ELSIF v_breach IS NOT NULL THEN
+            PERFORM core.fn_mark_told('finance', p->>'chat_id', 'reserve_breach:' || v_account);
         END IF;
     END IF;
 

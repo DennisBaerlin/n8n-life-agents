@@ -39,6 +39,7 @@ function Build-BookSavingsReservation {
         -WriteName 'Book earmark (atomic)' `
         -WriteSelect "(r->>'ok')::boolean AS ok, r->>'reason' AS reason, r->'depot_risk' AS depot_risk, (r->>'entry_id')::int AS entry_id, (r->>'delta')::numeric AS delta, (r->>'reserved')::numeric AS reserved, (r->>'current_amount')::numeric AS current_amount, (r->>'free_balance')::numeric AS free_balance, (r->>'market_value')::numeric AS market_value, (r->>'shortfall')::numeric AS shortfall, COALESCE(r->'savings_goal_reached'->>'note', '') AS savings_goal_reached" `
         -Params ([ordered]@{
+            chat_id = '$(''Start'').item.json.chat_id'
             savings_goal_id = '$(''Resolve Goal'').item.json.id'
             account_id      = '$(''Resolve Account'').item.json.id'
             amount          = '$(''Start'').item.json.amount'

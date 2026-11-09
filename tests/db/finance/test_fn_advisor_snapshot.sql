@@ -136,7 +136,7 @@ BEGIN
 
   -- ===== 1b) Form =====
   IF (SELECT array_agg(x ORDER BY x) FROM jsonb_object_keys(v) x)
-     IS DISTINCT FROM (SELECT array_agg(x ORDER BY x) FROM unnest(v_lists || v_objects) x) THEN
+     IS DISTINCT FROM (SELECT array_agg(x ORDER BY x) FROM unnest(v_lists || v_objects || ARRAY['open_bank_steps']) x) THEN
     RAISE EXCEPTION 'FAIL [1b] Schluessel: %', (SELECT array_agg(x ORDER BY x) FROM jsonb_object_keys(v) x); END IF;
   FOREACH k IN ARRAY v_lists LOOP
     IF jsonb_typeof(v->k) IS DISTINCT FROM 'array' THEN RAISE EXCEPTION 'FAIL [1c] % keine Liste: %', k, v->k; END IF;

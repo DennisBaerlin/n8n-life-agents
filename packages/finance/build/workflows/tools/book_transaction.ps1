@@ -29,6 +29,7 @@ function Build-BookTransaction {
         -WriteName 'Book transaction (atomic)' `
         -WriteSelect "(r->>'ok')::boolean AS ok, r->>'reason' AS reason, (r->>'tx_id')::int AS tx_id, (r->>'amount')::numeric AS amount, (r->>'account_balance')::numeric AS account_balance, COALESCE(r->'reserve_breach'->>'note', '') AS reserve_breach" `
         -Params ([ordered]@{
+            chat_id = '$(''Start'').item.json.chat_id'
             account_id       = '$(''Resolve Account'').item.json.id'
             amount           = '$(''Start'').item.json.amount'
             direction        = '$(''Start'').item.json.direction'

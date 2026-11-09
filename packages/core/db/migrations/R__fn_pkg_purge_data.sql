@@ -81,6 +81,9 @@ BEGIN
         RETURN jsonb_build_object('ok', false, 'reason', 'the privileged core host cannot be purged');
     END IF;
 
+    -- 0. Merker unter <pkg> und <pkg>:<sub> haengen an IDs, die eine Neuinstallation neu vergibt.
+    DELETE FROM core.notification_state WHERE split_part(source, ':', 1) = v_pkg;
+
     -- 1. Schutz-Registry zuerst (Finalizer loesen).
     DELETE FROM core.protected_contexts WHERE package = v_pkg;
     GET DIAGNOSTICS v_protected = ROW_COUNT;

@@ -114,7 +114,7 @@ END $$;
 CREATE OR REPLACE FUNCTION finance.fn_bank_stop_note_told(p_rp_id int, p_params jsonb DEFAULT '{}'::jsonb)
 RETURNS jsonb LANGUAGE plpgsql VOLATILE AS $$
 DECLARE
-    v_note jsonb := finance.fn_bank_setup_note(p_rp_id, 'bank_stop', p_params);
+    v_note jsonb := finance.fn_bank_note_recorded(p_rp_id, 'bank_stop', p_params);
     v_last date  := finance.fn_recurring_last_due(p_rp_id);
 BEGIN
     IF v_note <> '[]'::jsonb AND v_last <= core.fn_today() THEN

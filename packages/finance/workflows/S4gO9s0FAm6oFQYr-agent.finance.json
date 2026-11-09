@@ -553,6 +553,50 @@
                   },
                   {
                       "parameters":  {
+                                         "name":  "tool_send_bank_todos",
+                                         "description":  "SHOW WHAT IS STILL TO SET UP AT THE BANK. Use when the user asks what they have to set up at their bank, or says they finished it without tapping the button (the list comes back with the button). Sends one message per bank, reads only, shows only what this user may see. Do not repeat the list afterwards.",
+                                         "workflowId":  {
+                                                            "__rl":  true,
+                                                            "value":  "Bt0dSndTodos1aZq",
+                                                            "mode":  "list",
+                                                            "cachedResultUrl":  "/workflow/Bt0dSndTodos1aZq",
+                                                            "cachedResultName":  "agent.finance.tool_send_bank_todos"
+                                                        },
+                                         "workflowInputs":  {
+                                                                "mappingMode":  "defineBelow",
+                                                                "value":  {
+                                                                              "chat_id":  "={{ $(\u0027Start agent.finance\u0027).item.json.chat_id }}"
+                                                                          },
+                                                                "matchingColumns":  [
+
+                                                                                    ],
+                                                                "schema":  [
+                                                                               {
+                                                                                   "id":  "chat_id",
+                                                                                   "displayName":  "chat_id",
+                                                                                   "required":  false,
+                                                                                   "defaultMatch":  false,
+                                                                                   "display":  true,
+                                                                                   "canBeUsedToMatch":  true,
+                                                                                   "type":  "string",
+                                                                                   "removed":  false
+                                                                               }
+                                                                           ],
+                                                                "attemptToConvertTypes":  false,
+                                                                "convertFieldsToString":  false
+                                                            }
+                                     },
+                      "type":  "@n8n/n8n-nodes-langchain.toolWorkflow",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       -16,
+                                       720
+                                   ],
+                      "id":  "7bbaeb2e-b6b1-56cd-a741-920d92be8762",
+                      "name":  "tool_send_bank_todos"
+                  },
+                  {
+                      "parameters":  {
                                          "name":  "tool_book_dividend",
                                          "description":  "Book a dividend payment. The dividend is credited to the depot settlement account; the holding is auto-resolved from depot_name + isin (stocks/ETFs) or symbol (crypto, isin empty). Inputs: isin (ISIN for stocks/ETFs, empty for crypto), symbol (ticker or crypto symbol), depot_name, amount (positive, after withholding tax, in the settlement account currency), transaction_date (optional, see its parameter).",
                                          "workflowId":  {
@@ -8237,6 +8281,17 @@
                                                                                ]
                                                                            ]
                                                            },
+                        "tool_send_bank_todos":  {
+                                                     "ai_tool":  [
+                                                                     [
+                                                                         {
+                                                                             "index":  0,
+                                                                             "node":  "Finance Agent",
+                                                                             "type":  "ai_tool"
+                                                                         }
+                                                                     ]
+                                                                 ]
+                                                 },
                         "tool_get_recurring_suggestions":  {
                                                                "ai_tool":  [
                                                                                [

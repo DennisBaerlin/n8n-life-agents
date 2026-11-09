@@ -34,6 +34,7 @@ function Build-BookTransfer {
         -WriteName 'Create transfer (atomic)' `
         -WriteSelect "(r->>'ok')::boolean AS ok, r->>'reason' AS reason, (r->>'debit_tx_id')::int AS debit_tx_id, (r->>'credit_tx_id')::int AS credit_tx_id, (r->>'fx_rate')::numeric AS fx_rate, (r->>'from_balance')::numeric AS from_balance, (r->>'to_balance')::numeric AS to_balance, COALESCE(r->'reserve_breach'->>'note', '') AS reserve_breach" `
         -Params ([ordered]@{
+            chat_id = '$(''Start'').item.json.chat_id'
             from_account_id   = '$(''Resolve From'').item.json.id'
             to_account_id     = '$(''Resolve To'').item.json.id'
             amount            = '$(''Start'').item.json.amount'

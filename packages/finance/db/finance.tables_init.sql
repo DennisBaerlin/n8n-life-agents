@@ -2890,3 +2890,23 @@ $$;
 COMMENT ON TABLE finance.currencies    IS 'lifecycle:reference - ISO-Waehrungs-Dimension (EUR-Seed + fn_ensure_currency), keine Nutzereingabe';
 COMMENT ON TABLE finance.fx_rates      IS 'lifecycle:reference - FX-Kurs-Cache des Cron cron_refresh_fx_rates, keine Nutzereingabe';
 COMMENT ON TABLE finance.market_prices IS 'lifecycle:reference - Marktpreis-Cache (Cron), keine Nutzereingabe';
+
+-- ------------------------------------------------------------
+-- Offene Schritte bei der Bank (Bank-Zettel). Betrag, Rhythmus, Start, Ende und Erledigt-durch-Buchung liest die Anzeige
+-- aus der Kette (fn_bank_todo_visible); gespeichert wird nur, was nicht ableitbar ist.
+-- ------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS finance.bank_todos (
+    id            serial PRIMARY KEY,
+    head_id       int NOT NULL REFERENCES finance.recurring_payments (id) ON DELETE CASCADE,
+    event         text NOT NULL CHECK (event IN ('setup', 'change', 'stop')),
+    status        text NOT NULL DEFAULT 'open' CHECK (status IN ('open', 'done')),
+    source        text NOT NULL DEFAULT 'card' CHECK (source IN ('card', 'backfill')),
+    event_at      timestamptz NOT NULL DEFAULT now(),
+    created_at    timestamptz NOT NULL DEFAULT now(),
+    first_sent_at timestamptz,
+    closed_at     timestamptz,
+    CONSTRAINT bank_todos_closed_check CHECK ((status = 'done') = (closed_at IS NOT NULL))
+);
+COMMENT ON COLUMN finance.bank_todos.first_sent_at IS 'Provenienz (Ausnahme c): erste Zustellung, Basis der Nachfass-Runden.';
+COMMENT ON COLUMN finance.bank_todos.closed_at IS 'Provenienz (Ausnahme c): Tipp auf erledigt.';
+CREATE UNIQUE INDEX IF NOT EXISTS bank_todos_one_open ON finance.bank_todos (head_id) WHERE status = 'open';

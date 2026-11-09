@@ -203,7 +203,7 @@ BEGIN
         IF v_from = v_pot AND COALESCE((SELECT r.share FROM finance.fn_goal_reserve_accounts(v_goal) r WHERE r.account_id = v_from), 0) = 0 THEN
             PERFORM finance.fn_apply_goal_reserve(v_goal, v_to);
             -- die Sparrate geht jetzt auf ein anderes Konto: auch bei der Bank aendern
-            v_bank := finance.fn_bank_setup_note(
+            v_bank := finance.fn_bank_note_recorded(
                 (SELECT g.recurring_payment_id FROM finance.savings_goals g WHERE g.id = v_goal), 'bank_change');
         END IF;
     END IF;
@@ -217,6 +217,9 @@ BEGIN
     -- relocate NIE gratulieren (sonst gratuliert es beim Entnehmen aus einem noch ueber-Ziel gefuellten Topf).
     -- v_target>0-Guard (ein 0/NULL-Ziel feuert nicht). Spiegelt den periodischen savings_goal_reached-Zweig im
     -- Advisor (erreicht != ausgegeben). Nicht-blockierend; der Bookkeeper relayed die Note.
+    IF v_dir = 'deposit' AND v_target IS NOT NULL AND v_target > 0 AND v_cur IS NOT NULL AND v_cur >= v_target THEN
+        PERFORM core.fn_mark_told('finance', p->>'chat_id', 'savings_goal_reached:' || v_goal);
+    END IF;
     RETURN jsonb_build_object('ok', true,
         'debit_tx_id', v_debit, 'credit_tx_id', v_credit,
         'savings_goal_id', v_goal, 'direction', v_dir,

@@ -204,13 +204,15 @@ BEGIN
   IF NOT EXISTS (SELECT 1 FROM jsonb_array_elements(r->'advisories'->'null_price') p WHERE p->>'symbol'='NOP') THEN
     RAISE EXCEPTION 'FAIL [9]: NOP nicht als null_price gemeldet, got %', r->'advisories'->'null_price'; END IF;
   -- Kurs-Luecken 2026-10-27: null_price kommt aus fn_holding_price_status (Name + Status je Position), der
-  -- Datenqualitaets-Text nennt die Namen, und es gibt KEINEN null_price-latch_key (melden tut der Kurs-Luecken-Cron)
+  -- Digest nennt die Namen, der Alarm nicht, und es gibt KEINEN null_price-latch_key (melden tut der Kurs-Luecken-Cron)
   IF NOT EXISTS (SELECT 1 FROM jsonb_array_elements(r->'advisories'->'null_price') p
                  WHERE p->>'name' = 'Rohstoff2 (kein Kurs)' AND p->>'status' = 'missing') THEN
     RAISE EXCEPTION 'FAIL [9 null_price name/status]: got %', r->'advisories'->'null_price'; END IF;
-  IF position('Rohstoff2 (kein Kurs)' IN (SELECT (a->'msg')::text FROM jsonb_array_elements(r->'alerts') a
-                                      WHERE a->>'kind' = 'data_quality' LIMIT 1)) = 0 THEN
-    RAISE EXCEPTION 'FAIL [9 dq names]: Datenqualitaets-Text nennt die kurslose Position nicht'; END IF;
+  IF position('Rohstoff2 (kein Kurs)' IN (r->'digest'->'lines')::text) = 0 THEN
+    RAISE EXCEPTION 'FAIL [9 dq names]: Digest nennt die kurslose Position nicht'; END IF;
+  IF position('Rohstoff2 (kein Kurs)' IN COALESCE((SELECT (a->'msg')::text FROM jsonb_array_elements(r->'alerts') a
+                                      WHERE a->>'kind' = 'data_quality' LIMIT 1), '')) > 0 THEN
+    RAISE EXCEPTION 'FAIL [9 dq names]: Alarmtext darf die kurslose Position nicht nennen'; END IF;
   IF EXISTS (SELECT 1 FROM jsonb_array_elements(r->'alerts') a, jsonb_array_elements_text(COALESCE(a->'latch_keys', '[]'::jsonb)) k
              WHERE k LIKE 'null_price%') THEN
     RAISE EXCEPTION 'FAIL [9 latch]: null_price darf keinen latch_key tragen (Doppel-Meldung)'; END IF;
@@ -1391,5 +1393,30 @@ BEGIN
   RAISE NOTICE 'PASS [FX: Kurs 10 Tage alt -> fx_rate_stale:USD; frisch -> nichts; ohne Kurs -> nicht hier]';
 END $$;
 ROLLBACK TO SAVEPOINT fx_stale;
+
+
+-- Bank-Zettel: solange ein setup-Punkt laeuft, schweigt recurring_never_started; ab 21 Tagen kommt es wieder.
+DO $$
+DECLARE v_a int; v_b int; v_rp int; v_due date := core.fn_today() - 40; r jsonb;
+BEGIN
+  v_a := (finance.fn_create_account('{"name":"__adv_bt_a__","account_type":"cash","account_holder":"Test"}'::jsonb)->>'account_id')::int;
+  v_b := (finance.fn_create_account('{"name":"__adv_bt_b__","account_type":"cash","account_holder":"Test"}'::jsonb)->>'account_id')::int;
+  INSERT INTO finance.recurring_payments (name, account_id, target_account_id, amount, schedule_unit, schedule_day_of_month, first_payment_date, valid_from)
+    VALUES ('__adv_bt__', v_a, v_b, -30, 'month', 1, v_due, v_due) RETURNING id INTO v_rp;
+  INSERT INTO finance.bank_statements (account_id, period_start, period_end, opening_balance, closing_balance, currency, line_count, matched_count, unmatched_out, unmatched_in, skipped)
+    VALUES (v_a, v_due - 5, core.fn_today(), 0,
+            0, 'EUR', 0, 0, 0, 0, jsonb_build_array(jsonb_build_object('recurring_payment_id', v_rp, 'due_date', v_due),
+                                 jsonb_build_object('recurring_payment_id', v_rp, 'due_date', v_due + 30)));
+  INSERT INTO finance.recurring_payment_skips (recurring_payment_id, due_date) VALUES (v_rp, v_due), (v_rp, v_due + 30);
+  PERFORM finance.fn_bank_note_recorded(v_rp, 'bank_setup');
+  r := finance.fn_advisor_review('finance');
+  IF EXISTS (SELECT 1 FROM jsonb_array_elements(r->'alerts') a WHERE a->>'metric_key' = 'recurring_missing:' || v_rp) THEN
+    RAISE EXCEPTION 'FAIL [Bank-Punkt offen -> still]: %', r->'alerts'; END IF;
+  UPDATE finance.bank_todos SET first_sent_at = now() - interval '22 days' WHERE head_id = v_rp;
+  r := finance.fn_advisor_review('finance');
+  IF NOT EXISTS (SELECT 1 FROM jsonb_array_elements(r->'alerts') a WHERE a->>'metric_key' = 'recurring_missing:' || v_rp) THEN
+    RAISE EXCEPTION 'FAIL [nach 21 Tagen wieder]: %', r->'alerts'; END IF;
+  RAISE NOTICE 'PASS Bank-Zettel und nie gestartet';
+END $$;
 
 ROLLBACK;

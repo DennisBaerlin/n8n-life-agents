@@ -54,7 +54,7 @@ BEGIN
   PERFORM set_config('test.alerts', '[]', true);
   r := core.fn_advisor_review_evaluate('__test__');
   IF (r->>'send')::boolean THEN RAISE EXCEPTION 'FAIL [3]: in-band send=true'; END IF;
-  SELECT count(*) INTO v_cnt FROM core.notification_state WHERE source='advisor:__test__';
+  SELECT count(*) INTO v_cnt FROM core.notification_state WHERE source='advisor:__test__' AND key <> '__first_run__';
   IF v_cnt <> 0 THEN RAISE EXCEPTION 'FAIL [3b]: stale State-Zeile nicht geraeumt (%)', v_cnt; END IF;
   RAISE NOTICE 'PASS [wieder im Band -> Reconcile raeumt + Re-Arm]';
 
@@ -67,7 +67,7 @@ BEGIN
   -- (5) Reconcile-GC: A+B -> beide; dann nur A -> B weg, A bleibt
   PERFORM set_config('test.alerts', alert_ab, true);
   PERFORM core.fn_advisor_review_evaluate('__test__');
-  SELECT count(*) INTO v_cnt FROM core.notification_state WHERE source='advisor:__test__';
+  SELECT count(*) INTO v_cnt FROM core.notification_state WHERE source='advisor:__test__' AND key <> '__first_run__';
   IF v_cnt <> 2 THEN RAISE EXCEPTION 'FAIL [5a]: A+B nicht beide gelatcht (%)', v_cnt; END IF;
   PERFORM set_config('test.alerts', alert_a, true);
   PERFORM core.fn_advisor_review_evaluate('__test__');
@@ -100,9 +100,9 @@ BEGIN
   -- M2: erika wieder im Band -> Reconcile raeumt NUR erikas person-source, lena bleibt
   PERFORM set_config('test.alerts', '[]', true);
   PERFORM core.fn_advisor_review_evaluate('__test__', 'erika');
-  SELECT count(*) INTO v_cnt FROM core.notification_state WHERE source='advisor:__test__:erika';
+  SELECT count(*) INTO v_cnt FROM core.notification_state WHERE source='advisor:__test__:erika' AND key <> '__first_run__';
   IF v_cnt <> 0 THEN RAISE EXCEPTION 'FAIL [7f] erika-Reconcile raeumte die eigene person-source nicht (%)', v_cnt; END IF;
-  SELECT count(*) INTO v_cnt FROM core.notification_state WHERE source='advisor:__test__:lena';
+  SELECT count(*) INTO v_cnt FROM core.notification_state WHERE source='advisor:__test__:lena' AND key <> '__first_run__';
   IF v_cnt <> 1 THEN RAISE EXCEPTION 'FAIL [7g] lena-Zeile faelschlich vom erika-Reconcile geraeumt (%)', v_cnt; END IF;
   RAISE NOTICE 'PASS [7] Person-Faecherung: getrennte Latches je person-source + Reconcile-GC person-isoliert (M2)';
 END $$;
@@ -144,6 +144,68 @@ BEGIN
        WHERE source = 'advisor:__test__' AND key = 'data_quality') THEN
     RAISE EXCEPTION 'FAIL [8f leeres latch_keys = metric_key-Latch]: %', r; END IF;
   RAISE NOTICE 'PASS [8] latch_keys: je Element gelatcht, neues Element meldet, gleiche Menge still';
+END $$;
+
+-- (9) told_keys: Merker zuerst, gesagte Lage meldet nicht; erster Lauf.
+DO $$
+DECLARE r jsonb;
+BEGIN
+  DELETE FROM core.notification_state WHERE source LIKE 'advisor:__test__%' OR source = 'fold:told';
+
+  -- gesagt -> kein Alarm, Merker fired, send=false; Erst-Merker bleibt unverbraucht
+  PERFORM core.fn_should_notify('fold:told', 'k1', interval '3 days');
+  PERFORM set_config('test.alerts', '[{"metric_key":"m1","told_keys":[{"source":"fold:told","key":"k1"}]}]', true);
+  r := core.fn_advisor_review_evaluate('__test__');
+  IF (r->>'send')::boolean OR jsonb_array_length(r->'alerts') <> 0 THEN RAISE EXCEPTION 'FAIL [9a told -> kein Alarm]: %', r; END IF;
+  IF (SELECT state FROM core.notification_state WHERE source = 'advisor:__test__' AND key = 'm1') <> 'fired' THEN
+    RAISE EXCEPTION 'FAIL [9a Merker fired]'; END IF;
+  IF EXISTS (SELECT 1 FROM core.notification_state WHERE source = 'advisor:__test__' AND key = '__first_run__') THEN
+    RAISE EXCEPTION 'FAIL [9a alle told: Erst-Merker unverbraucht]'; END IF;
+
+  -- abgelaufener Fold-Merker -> Alarm
+  DELETE FROM core.notification_state WHERE source = 'advisor:__test__';
+  UPDATE core.notification_state SET expires_at = now() - interval '1 minute' WHERE source = 'fold:told' AND key = 'k1';
+  r := core.fn_advisor_review_evaluate('__test__');
+  IF jsonb_array_length(r->'alerts') <> 1 THEN RAISE EXCEPTION 'FAIL [9b abgelaufen -> Alarm]: %', r; END IF;
+  IF (r->>'first_run')::boolean IS NOT TRUE THEN RAISE EXCEPTION 'FAIL [9b first_run]: %', r; END IF;
+
+  -- latch_key trifft nur ein Element, das andere meldet
+  DELETE FROM core.notification_state WHERE source = 'advisor:__test__';
+  PERFORM core.fn_should_notify('fold:told', 'res:1', interval '3 days');
+  PERFORM set_config('test.alerts', '[{"metric_key":"res","latch_keys":["1","2"],"told_keys":[{"source":"fold:told","key":"res:1","latch_key":"1"}]}]', true);
+  r := core.fn_advisor_review_evaluate('__test__');
+  IF jsonb_array_length(r->'alerts') <> 1 THEN RAISE EXCEPTION 'FAIL [9c anderes Element meldet]: %', r; END IF;
+  IF r->'alerts'->0->'_latched' <> '[{"source":"advisor:__test__","key":"res#2"}]'::jsonb THEN
+    RAISE EXCEPTION 'FAIL [9c nur das nicht gesagte Element frisch]: %', r->'alerts'->0->'_latched'; END IF;
+  -- alle Elemente gesagt -> still
+  DELETE FROM core.notification_state WHERE source = 'advisor:__test__';
+  PERFORM set_config('test.alerts', '[{"metric_key":"res","latch_keys":["1"],"told_keys":[{"source":"fold:told","key":"res:1","latch_key":"1"}]}]', true);
+  r := core.fn_advisor_review_evaluate('__test__');
+  IF jsonb_array_length(r->'alerts') <> 0 THEN RAISE EXCEPTION 'FAIL [9d Element gesagt -> still]: %', r; END IF;
+
+  -- erster Lauf: alle vier, alle Merker; naechster Lauf first_run=false; leerer Lauf verbraucht nichts; Reconcile laesst Erst-Merker
+  DELETE FROM core.notification_state WHERE source = 'advisor:__test__';
+  PERFORM set_config('test.alerts', '[]', true);
+  r := core.fn_advisor_review_evaluate('__test__');
+  IF (r->>'first_run')::boolean IS NOT FALSE
+     OR EXISTS (SELECT 1 FROM core.notification_state WHERE source = 'advisor:__test__') THEN
+    RAISE EXCEPTION 'FAIL [9e leerer erster Lauf verbraucht nichts]: %', r; END IF;
+
+  PERFORM set_config('test.alerts', '[{"metric_key":"a"},{"metric_key":"b"},{"metric_key":"c"},{"metric_key":"d"}]', true);
+  r := core.fn_advisor_review_evaluate('__test__');
+  IF jsonb_array_length(r->'alerts') <> 4 OR (r->>'first_run')::boolean IS NOT TRUE THEN RAISE EXCEPTION 'FAIL [9f vier + first_run]: %', r; END IF;
+  IF (SELECT count(*) FROM core.notification_state WHERE source = 'advisor:__test__' AND state = 'fired') <> 5 THEN
+    RAISE EXCEPTION 'FAIL [9f alle Merker + Erst-Merker]'; END IF;
+
+  PERFORM set_config('test.alerts', '[]', true);
+  r := core.fn_advisor_review_evaluate('__test__');
+  IF NOT EXISTS (SELECT 1 FROM core.notification_state WHERE source = 'advisor:__test__' AND key = '__first_run__') THEN
+    RAISE EXCEPTION 'FAIL [9g Reconcile loescht Erst-Merker nicht]'; END IF;
+
+  PERFORM set_config('test.alerts', '[{"metric_key":"z"}]', true);
+  r := core.fn_advisor_review_evaluate('__test__');
+  IF (r->>'first_run')::boolean IS NOT FALSE THEN RAISE EXCEPTION 'FAIL [9h naechster Lauf first_run=false]: %', r; END IF;
+  RAISE NOTICE 'PASS [9] told_keys + erster Lauf';
 END $$;
 
 ROLLBACK;

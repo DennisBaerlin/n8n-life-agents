@@ -40,8 +40,9 @@ function Build-EstateCronReviewRegister {
     # wie der Latch (MATERIALIZED) — ein Ladefehler rollt den Latch mit zurueck.
     $keys = Get-UiKeysSql (@('estate.advisor.review_intro', 'core.reminders.btn_off') + $script:UiRenderKeys)
     $evaluate = Build-Pg 'Evaluate review' @(-440, 0) `
-        ("=WITH ev AS MATERIALIZED (SELECT core.fn_advisor_review_evaluate('estate', NULL, '{}'::jsonb) AS r) " +
-         "SELECT ev.r::text AS r, core.fn_ui_texts_for(jsonb_build_object('keys', to_jsonb($keys), 'doc', ev.r->'alerts'))::text AS ui FROM ev") `
+        ("=WITH ev AS MATERIALIZED (SELECT core.fn_advisor_review_evaluate('estate', NULL, '{}'::jsonb) AS r), " +
+         "cap AS MATERIALIZED (SELECT core.fn_advisor_alerts_cap(ev.r->'alerts', COALESCE((ev.r->>'first_run')::boolean, false)) AS c FROM ev) " +
+         "SELECT ev.r::text AS r, cap.c::text AS cap, core.fn_ui_texts_for(jsonb_build_object('keys', to_jsonb($keys), 'doc', cap.c))::text AS ui FROM ev, cap") `
         $null
 
     # Deterministischer Message-Text (Fallback + LLM-Input) — Code, kein LLM. NUR bei send=true (neuer Breach)
@@ -51,11 +52,12 @@ const r = JSON.parse($json.r || '{}');
 const ui = JSON.parse($json.ui || '{}');
 const U = uiRender(ui);
 const send = r && r.send === true;
-const alerts = (r && Array.isArray(r.alerts)) ? r.alerts : [];
+const cap = JSON.parse($json.cap || '{}');
+const alerts = Array.isArray(cap.alerts) ? cap.alerts : [];
 const parts = alerts.map(a => (a && Array.isArray(a.msg)) ? U.msg(a.msg).trim() : (a && a.text ? String(a.text).trim() : '')).filter(Boolean);
 const language_label = ui.language_label || 'en';
 if (!send || parts.length === 0) { return [{ json: { det_text: '', report: false, language_label } }]; }
-return [{ json: { det_text: U.t('estate.advisor.review_intro') + '\n\n' + parts.join('\n\n'), report: true, language_label, btn_off: U.t('core.reminders.btn_off') } }];
+return [{ json: { det_text: U.t('estate.advisor.review_intro') + '\n\n' + parts.join('\n\n') + (cap.more_line ? '\n\n' + U.msg([cap.more_line]) : ''), report: true, language_label, btn_off: U.t('core.reminders.btn_off') } }];
 '@
     $build = [ordered]@{
         parameters = [ordered]@{ jsCode = $buildJs }
@@ -81,7 +83,7 @@ return [{ json: { det_text: U.t('estate.advisor.review_intro') + '\n\n' + parts.
 
     $stickyOverview = Build-Sticky 'Überblick' @(-1140, -360) `
         'agent.estate.cron_review_register — monatlicher Jahres-Review (always-on, Latch-selbst-still)' `
-        'Schedule (schedule.review_register, Default monatlich 1./10:05) -> Cron enabled? (fn_package_active(estate) AND cron_enable.review_register; Default true always-on; der Owner schaltet per [Erinnerung abschalten] = cron_off:review_register an der Karte oder in /reminders, Roter Faden Paket B) -> Load model config (model.advisor_review bei JEDEM Lauf; VOR dem Latch-Write) -> Evaluate review (core.fn_advisor_review_evaluate(estate, NULL, {}) -> Engine dispatcht estate.fn_advisor_review + LATCHT je Alert gegen core.notification_state source=advisor:estate; send=true NUR bei NEUEM Breach) -> Build message (bei send=true die alert.msg-Struktur, gerendert in Owner-Sprache über den geteilten Renderer; sonst Quiet run) -> Anything to report? -> Phrase (model.advisor_review, warm; onError -> deterministischer Text) -> Choose text -> Send (Nudge mit [Erinnerung abschalten] = cron_off:review_register, Roter Faden Paket B). BEGRÜNDETE ABWEICHUNG (Opus-M4): estate hat kein Publish -> die geteilten Advisor-Crons (default-OFF, publish-getriggert) liefen für estate nie -> eigener dünner Cron. Cred estate: Haupt-RW (Latch-Write, Präzedenz cron.advisor_common.ps1).' 360 780
+        'Schedule (schedule.review_register, Default monatlich 1./10:05) -> Cron enabled? (fn_package_active(estate) AND cron_enable.review_register; Default true always-on; der Owner schaltet per [Erinnerung abschalten] = cron_off:review_register an der Karte oder in /reminders, Roter Faden Paket B) -> Load model config (model.advisor_review bei JEDEM Lauf; VOR dem Latch-Write) -> Evaluate review (core.fn_advisor_review_evaluate(estate, NULL, {}) -> Engine dispatcht estate.fn_advisor_review + LATCHT je Alert gegen core.notification_state source=advisor:estate; send=true NUR bei NEUEM Breach; core.fn_advisor_alerts_cap begrenzt die Punkte, Gekürztes kommt beim nächsten Lauf) -> Build message (bei send=true die alert.msg-Struktur, gerendert in Owner-Sprache über den geteilten Renderer; sonst Quiet run) -> Anything to report? -> Phrase (model.advisor_review, warm; onError -> deterministischer Text) -> Choose text -> Send (Nudge mit [Erinnerung abschalten] = cron_off:review_register, Roter Faden Paket B). BEGRÜNDETE ABWEICHUNG (Opus-M4): estate hat kein Publish -> die geteilten Advisor-Crons (default-OFF, publish-getriggert) liefen für estate nie -> eigener dünner Cron. Cred estate: Haupt-RW (Latch-Write, Präzedenz cron.advisor_common.ps1).' 360 780
 
     $stickyEngine = Build-Sticky 'Doc Engine' @(-480, -360) `
         'estate.fn_advisor_review (Registry-Dispatch + Latch, off-canvas)' `

@@ -207,8 +207,8 @@ BEGIN
             THEN jsonb_build_object('calendar_learned',
                      (SELECT string_agg(e, ', ') FROM jsonb_array_elements_text(v_sched->'calendar') e))
             ELSE '{}'::jsonb END
-    || finance.fn_savings_squeeze_fold(),  -- neuer Sparplan kann das Girokonto leeren (gelatchter Sofort-Hinweis)
+    || finance.fn_savings_squeeze_fold(p->>'chat_id'),  -- neuer Sparplan kann das Girokonto leeren (gelatchter Sofort-Hinweis)
     -- savings_funding (Kartenzeilen hinter die eigenen), dann der Bank-Hinweis als letzte Zeile
-    finance.fn_merge_fold(v_fold, jsonb_build_object('card_lines', finance.fn_bank_setup_note(v_rp_id, 'bank_setup'))));
+    finance.fn_merge_fold(v_fold, jsonb_build_object('card_lines', finance.fn_bank_note_recorded(v_rp_id, 'bank_setup'))));
 END;
 $$;

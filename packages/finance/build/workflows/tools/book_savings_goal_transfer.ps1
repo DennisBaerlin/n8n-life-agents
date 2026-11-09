@@ -30,6 +30,7 @@ function Build-BookSavingsGoalTransfer {
         -WriteName 'Book savings movement (atomic)' `
         -WriteSelect "(r->>'ok')::boolean AS ok, r->>'reason' AS reason, r->'depot_risk' AS depot_risk, (r->>'debit_tx_id')::int AS debit_tx_id, (r->>'credit_tx_id')::int AS credit_tx_id, (r->>'current_amount')::numeric AS current_amount, (r->>'from_balance')::numeric AS from_balance, (r->>'to_balance')::numeric AS to_balance, (r->>'from_share')::numeric AS from_share, (r->>'to_share')::numeric AS to_share, (r->>'shortfall')::numeric AS shortfall, COALESCE(r->'savings_goal_reached'->>'note', '') AS savings_goal_reached" `
         -Params ([ordered]@{
+            chat_id = '$(''Start'').item.json.chat_id'
             savings_goal_id  = '$(''Resolve Goal'').item.json.id'
             from_account_name = '$(''Start'').item.json.from_account_name'
             to_account_name  = '$(''Start'').item.json.to_account_name'

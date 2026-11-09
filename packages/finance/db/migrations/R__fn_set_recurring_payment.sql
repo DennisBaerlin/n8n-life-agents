@@ -163,14 +163,14 @@ BEGIN
     -- Bank-Hinweis: Aussetzen/Beenden -> bank_stop, Betrag/Tag/Fortsetzen -> bank_change; until_free_money hat seinen
     -- eigenen Schlusssatz im Workflow, Name/Notiz und unveraenderte Werte (gleicher Status/Tag) aendern bei der Bank nichts
     v_core := v_core || jsonb_build_object('card_lines', CASE
-        WHEN v_free THEN '[]'::jsonb
+        WHEN v_free THEN (SELECT '[]'::jsonb FROM finance.fn_bank_note_recorded((v_core->>'recurring_payment_id')::int, 'bank_change'))
         WHEN (v_status = 'paused' AND v_row.status <> 'paused') OR v_to IS NOT NULL
             THEN finance.fn_bank_stop_note_told((v_core->>'recurring_payment_id')::int)
         WHEN v_amount IS NOT NULL OR (v_dom IS NOT NULL AND v_dom IS DISTINCT FROM v_row.schedule_day_of_month)
              OR (v_status = 'active' AND v_row.status <> 'active')
-            THEN finance.fn_bank_setup_note((v_core->>'recurring_payment_id')::int, 'bank_change')
+            THEN finance.fn_bank_note_recorded((v_core->>'recurring_payment_id')::int, 'bank_change')
         ELSE '[]'::jsonb END);
     RETURN v_core || jsonb_build_object('effective', COALESCE(v_dates->'resolved', '{}'::jsonb) || v_end)
-                  || finance.fn_cashflow_coverage_fold();
+                  || finance.fn_cashflow_coverage_fold(p->>'chat_id');
 END;
 $$;

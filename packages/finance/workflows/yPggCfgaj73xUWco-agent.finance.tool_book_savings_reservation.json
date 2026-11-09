@@ -211,7 +211,7 @@
                                          "operation":  "executeQuery",
                                          "query":  "=SELECT core.fn_dry_run(\u0027finance.fn_book_savings_reservation(jsonb)\u0027::regprocedure, $1::jsonb) AS r;",
                                          "options":  {
-                                                         "queryReplacement":  "={{ JSON.stringify({ savings_goal_id: $(\u0027Resolve Goal\u0027).item.json.id, account_id: $(\u0027Resolve Account\u0027).item.json.id, amount: $(\u0027Start\u0027).item.json.amount }) }}"
+                                                         "queryReplacement":  "={{ JSON.stringify({ chat_id: $(\u0027Start\u0027).item.json.chat_id, savings_goal_id: $(\u0027Resolve Goal\u0027).item.json.id, account_id: $(\u0027Resolve Account\u0027).item.json.id, amount: $(\u0027Start\u0027).item.json.amount }) }}"
                                                      }
                                      },
                       "type":  "n8n-nodes-base.postgres",
@@ -317,7 +317,7 @@
                                          "operation":  "executeQuery",
                                          "query":  "=SELECT (r-\u003e\u003e\u0027ok\u0027)::boolean AS ok, r-\u003e\u003e\u0027reason\u0027 AS reason, r-\u003e\u0027depot_risk\u0027 AS depot_risk, (r-\u003e\u003e\u0027entry_id\u0027)::int AS entry_id, (r-\u003e\u003e\u0027delta\u0027)::numeric AS delta, (r-\u003e\u003e\u0027reserved\u0027)::numeric AS reserved, (r-\u003e\u003e\u0027current_amount\u0027)::numeric AS current_amount, (r-\u003e\u003e\u0027free_balance\u0027)::numeric AS free_balance, (r-\u003e\u003e\u0027market_value\u0027)::numeric AS market_value, (r-\u003e\u003e\u0027shortfall\u0027)::numeric AS shortfall, COALESCE(r-\u003e\u0027savings_goal_reached\u0027-\u003e\u003e\u0027note\u0027, \u0027\u0027) AS savings_goal_reached FROM finance.fn_book_savings_reservation(($1::jsonb - \u0027_effective\u0027) || COALESCE(NULLIF(($1::jsonb)-\u003e\u0027_effective\u0027, \u0027null\u0027::jsonb), \u0027{}\u0027::jsonb)) AS r;",
                                          "options":  {
-                                                         "queryReplacement":  "={{ JSON.stringify({ savings_goal_id: $(\u0027Resolve Goal\u0027).item.json.id, account_id: $(\u0027Resolve Account\u0027).item.json.id, amount: $(\u0027Start\u0027).item.json.amount, _effective: ($(\u0027Dry run\u0027).item.json.r.effective || null) }) }}"
+                                                         "queryReplacement":  "={{ JSON.stringify({ chat_id: $(\u0027Start\u0027).item.json.chat_id, savings_goal_id: $(\u0027Resolve Goal\u0027).item.json.id, account_id: $(\u0027Resolve Account\u0027).item.json.id, amount: $(\u0027Start\u0027).item.json.amount, _effective: ($(\u0027Dry run\u0027).item.json.r.effective || null) }) }}"
                                                      }
                                      },
                       "type":  "n8n-nodes-base.postgres",

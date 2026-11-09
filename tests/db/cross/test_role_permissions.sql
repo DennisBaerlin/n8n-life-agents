@@ -1326,6 +1326,8 @@ BEGIN
     SET LOCAL ROLE finance_rw;
     PERFORM core.fn_should_notify('__rp_test__', 'k', interval '1 hour');
     PERFORM core.fn_notify_resolve('__rp_test__', 'k');
+    PERFORM core.fn_notify_told('__rp_test__', 'k');
+    PERFORM core.fn_mark_told('__rp_test__', '1', 'k');
     RESET ROLE;
   EXCEPTION WHEN OTHERS THEN
     RESET ROLE;
@@ -1708,7 +1710,7 @@ DECLARE
                               'fn_household_persons', 'fn_resolve_person', 'fn_ui_texts_for', 'fn_today',
                               'fn_resolve_date', 'fn_resolve_input_dates', 'fn_handoff_tasks_read'];
   v_published_rw text[] := ARRAY['fn_menu_refresh_request', 'fn_set_onboarding_section', 'fn_check_write_permission', 'fn_person_chat_id',
-                                 'fn_should_notify', 'fn_notify_resolve', 'fn_dry_run', 'fn_reminder_allowed', 'fn_notify_forget_before',
+                                 'fn_should_notify', 'fn_notify_resolve', 'fn_notify_told', 'fn_mark_told', 'fn_handoff_done_stamps', 'fn_dry_run', 'fn_reminder_allowed', 'fn_notify_forget_before',
                                  'fn_handoff_task_check', 'fn_complete_handoff_task', 'fn_cancel_handoff_task'];
   v_n int := 0;
 BEGIN
@@ -1892,6 +1894,26 @@ BEGIN
     WHEN insufficient_privilege THEN RESET ROLE;
   END;
   RAISE NOTICE 'PASS [finance_ro/_rw -> Handoff-Fenster]';
+END $$;
+
+-- Bank-Zettel laeuft unter finance_rw: Recorder in den Write-Tools, Claim im Cron.
+DO $$
+DECLARE v_a int; v_b int; v_rp int;
+BEGIN
+  INSERT INTO finance.accounts (name, account_type, currency, status) VALUES ('__rp_bt_a__','cash','EUR','active') RETURNING id INTO v_a;
+  INSERT INTO finance.accounts (name, account_type, currency, status) VALUES ('__rp_bt_b__','cash','EUR','active') RETURNING id INTO v_b;
+  INSERT INTO finance.recurring_payments (name, account_id, target_account_id, amount, schedule_unit, schedule_day_of_month, first_payment_date, valid_from)
+    VALUES ('__rp_bt__', v_a, v_b, -10, 'month', 5, core.fn_today() + 5, core.fn_today() + 5) RETURNING id INTO v_rp;
+  SET LOCAL ROLE finance_rw;
+  PERFORM finance.fn_bank_note_recorded(v_rp, 'bank_setup');
+  UPDATE finance.bank_todos SET created_at = now() - interval '1 day' WHERE head_id = v_rp;
+  PERFORM finance.fn_bank_todo_claim();
+  PERFORM finance.fn_plan_rollout('finance', NULL);
+  RESET ROLE;
+  RAISE NOTICE 'PASS [finance_rw -> Bank-Zettel Recorder, Claim, Abfolge]';
+EXCEPTION WHEN OTHERS THEN
+  RESET ROLE;
+  RAISE EXCEPTION 'FAIL [finance_rw -> Bank-Zettel]: %', SQLERRM;
 END $$;
 
 ROLLBACK;

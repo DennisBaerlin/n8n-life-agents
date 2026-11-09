@@ -282,6 +282,15 @@ BEGIN
     IF to_regprocedure('core.fn_notify_resolve(text,text)') IS NOT NULL THEN
         EXECUTE format('GRANT EXECUTE ON FUNCTION core.fn_notify_resolve(text,text) TO %I', v_rw);
     END IF;
+    IF to_regprocedure('core.fn_notify_told(text,text)') IS NOT NULL THEN
+        EXECUTE format('GRANT EXECUTE ON FUNCTION core.fn_notify_told(text,text) TO %I', v_rw);
+    END IF;
+    IF to_regprocedure('core.fn_handoff_done_stamps(text)') IS NOT NULL THEN
+        EXECUTE format('GRANT EXECUTE ON FUNCTION core.fn_handoff_done_stamps(text) TO %I', v_rw);
+    END IF;
+    IF to_regprocedure('core.fn_mark_told(text,text,text)') IS NOT NULL THEN
+        EXECUTE format('GRANT EXECUTE ON FUNCTION core.fn_mark_told(text,text,text) TO %I', v_rw);
+    END IF;
     -- Crons mit Einmal-Latch ohne TTL raeumen ihre eigenen alten Merker; Person-Erinnerungen fragen die eine Pruef-Adresse.
     IF to_regprocedure('core.fn_notify_forget_before(text,timestamptz)') IS NOT NULL THEN
         EXECUTE format('GRANT EXECUTE ON FUNCTION core.fn_notify_forget_before(text,timestamptz) TO %I', v_rw);

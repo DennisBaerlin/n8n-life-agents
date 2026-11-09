@@ -14,5 +14,6 @@ BEGIN
     UPDATE finance.savings_plans SET recurring_payment_id = p_new WHERE recurring_payment_id = p_old;
     UPDATE finance.insurances    SET recurring_payment_id = p_new WHERE recurring_payment_id = p_old;
     UPDATE finance.pension       SET recurring_payment_id = p_new WHERE recurring_payment_id = p_old;
+    UPDATE finance.bank_todos    SET head_id = p_new WHERE head_id = p_old;
 END;
 $$;

@@ -270,7 +270,7 @@ BEGIN
                 END IF;
                 v_r := finance.fn_create_savings_goal(
                     (v_payload - 'account' - 'reserve_account')
-                    || jsonb_build_object('account_id', v_ref_id, 'reserve_account_id', NULLIF(v_res->>'id','')::int));
+                    || jsonb_build_object('account_id', v_ref_id, 'reserve_account_id', NULLIF(v_res->>'id','')::int, '_import', true));
                 IF (v_r ? 'ok') AND (v_r->>'ok')::boolean IS DISTINCT FROM true THEN
                     v_errors := v_errors || jsonb_build_object('row_no', v_cur_row, 'error', v_r->>'reason');
                     CONTINUE;

@@ -175,6 +175,7 @@ Eine Zeile je Write-Tool; Mechanik je Tool lebt in Tool-Description + fn-Vertrag
 | `tool_create_recurring_payment` | Standalone Dauerauftrag (Gehalt/Miete/Abo/Rente) anlegen; optional mit der Gegen-IBAN aus einem Vorschlag als Erkennungs-Schlüssel für den Monats-Check |
 | `tool_create_recurring_transfer` | Wiederkehrender interner Transfer zwischen zwei eigenen Konten (cashflow-neutral); `until_free_money` = Ende aus dem freien Geld der Quelle |
 | `tool_get_recurring_suggestions` | Lese-Tool ohne Karte: wiederkehrende Zahlungen aus einem mehrmonatigen Bank-Export erkennen, die noch kein Dauerauftrag abdeckt (Rhythmus/Betrag/Startdatum aus der DB); der Agent fragt je Vorschlag, angelegt wird über die beiden Tools oben |
+| `tool_send_bank_todos` | Lese-Tool ohne Karte: sendet je Bank, was der Fragende noch einstellen muss (`fn_bank_todo_groups`), mit Knopf `btodo`. |
 | `tool_create_pension` | Altersvorsorge (+ optional Beitrag) anlegen |
 | `tool_set_account` | Konto-Stammdaten ändern; Puffer je Konto (`min_balance`, `min_balance_default`) |
 | `tool_set_account_interest` | Kontozins setzen/ändern |

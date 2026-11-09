@@ -1,0 +1,504 @@
+{
+    "id":  "Bt0dCrnRemind2bX",
+    "name":  "agent.finance.cron_remind_bank_todo",
+    "nodes":  [
+                  {
+                      "parameters":  {
+                                         "rule":  {
+                                                      "interval":  [
+                                                                       {
+                                                                           "field":  "cronExpression",
+                                                                           "expression":  "__CFG_SCHEDULE_REMIND_BANK_TODO__"
+                                                                       }
+                                                                   ]
+                                                  }
+                                     },
+                      "type":  "n8n-nodes-base.scheduleTrigger",
+                      "typeVersion":  1.3,
+                      "position":  [
+                                       -900,
+                                       0
+                                   ],
+                      "id":  "50ad7474-c5c2-5572-b270-00b9da5f73e2",
+                      "name":  "Schedule (cron from config)"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "SELECT core.fn_package_active(\u0027finance\u0027) AND (COALESCE(core.fn_config_get(\u0027finance\u0027,\u0027cron_enable\u0027,\u0027remind_bank_todo\u0027) = \u0027true\u0027, false) OR COALESCE(core.fn_config_get(\u0027finance\u0027,\u0027cron_enable\u0027,\u0027remind_bank_todo_person\u0027) = \u0027true\u0027, false)) AS enabled",
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       -720,
+                                       0
+                                   ],
+                      "id":  "d4430e7e-da92-5962-86df-083d021e1122",
+                      "name":  "Cron enabled?",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_FINANCE_RW__",
+                                                           "name":  "Postgres finance_rw (read-write)"
+                                                       }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "36f9b472-92c1-5291-a012-e61a3a3241e1",
+                                                                                   "leftValue":  "={{ $json.enabled }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       -540,
+                                       0
+                                   ],
+                      "id":  "b76a27f5-6891-51b1-b609-bcdbba2c0613",
+                      "name":  "Cron on?"
+                  },
+                  {
+                      "parameters":  {
+
+                                     },
+                      "type":  "n8n-nodes-base.noOp",
+                      "typeVersion":  1,
+                      "position":  [
+                                       -540,
+                                       200
+                                   ],
+                      "id":  "7d88c7dc-6eed-58e2-968b-b763ea9f7712",
+                      "name":  "Disabled"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "WITH c AS MATERIALIZED (SELECT finance.fn_bank_todo_claim() AS r) SELECT c.r::text AS r FROM c;",
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       -360,
+                                       0
+                                   ],
+                      "id":  "a4411a7c-aebb-57e0-ac76-a3a398de0b48",
+                      "name":  "Claim due",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_FINANCE_RW__",
+                                                           "name":  "Postgres finance_rw (read-write)"
+                                                       }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "jsCode":  "let list = [];\ntry { list = JSON.parse($input.first().json.r || \u0027[]\u0027); } catch (e) { list = []; }\nconst out = [];\nfor (const m of (Array.isArray(list) ? list : [])) {\n  for (const g of (Array.isArray(m.groups) ? m.groups : [])) { out.push({ json: { recipient: m.recipient, chat_id: m.chat_id, group: g } }); }\n}\nreturn out;"
+                                     },
+                      "type":  "n8n-nodes-base.code",
+                      "typeVersion":  2,
+                      "position":  [
+                                       -180,
+                                       0
+                                   ],
+                      "id":  "7e322fc2-f103-574b-8f58-27c39fe72156",
+                      "name":  "Split messages"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "=SELECT core.fn_ui_texts_for(jsonb_strip_nulls(jsonb_build_object(\u0027chat_id\u0027, NULLIF(($1::jsonb)-\u003e\u003e\u0027chat_id\u0027, \u0027\u0027), \u0027keys\u0027, to_jsonb(ARRAY[\u0027finance.bank_todo.intro\u0027,\u0027finance.bank_todo.intro_generic\u0027,\u0027finance.bank_todo.nudge\u0027,\u0027finance.bank_todo.nudge_generic\u0027,\u0027finance.bank_todo.howto\u0027,\u0027finance.bank_todo.btn_done\u0027,\u0027finance.bank_todo.btn_done_generic\u0027,\u0027core.reminders.btn_off\u0027,\u0027core.fmt.empty\u0027,\u0027core.fmt.default_suffix\u0027,\u0027core.fmt.yes\u0027,\u0027core.fmt.no\u0027,\u0027core.fmt.removed\u0027]::text[]), \u0027doc\u0027, ($1::jsonb)-\u003e\u0027msg\u0027-\u003e\u0027group\u0027))) AS ui, ($1::jsonb)-\u003e\u0027msg\u0027 AS msg;",
+                                         "options":  {
+                                                         "queryReplacement":  "={{ JSON.stringify({ chat_id: (($json.chat_id === null || $json.chat_id === undefined) ? \u0027\u0027 : String($json.chat_id)), msg: $json }) }}"
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       0,
+                                       0
+                                   ],
+                      "id":  "7b3a721a-49c6-5396-8d3a-bd6ab0eed0dd",
+                      "name":  "Load texts",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_FINANCE_RW__",
+                                                           "name":  "Postgres finance_rw (read-write)"
+                                                       }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "jsCode":  "function uiRender(B, LANGS) {\n  B = B || {};\n  LANGS = LANGS || {};\n  const T = B.t || {};\n  const loc = B.locale || \u0027en-GB\u0027;\n  // fn_ui_texts liefert fuer einen fehlenden Key den Key selbst -\u003e das zaehlt hier als \"nicht vorhanden\".\n  const has = (k) =\u003e Object.prototype.hasOwnProperty.call(T, k) \u0026\u0026 T[k] !== k;\n  const t = (k) =\u003e (has(k) ? T[k] : String(k));\n  const empty = has(\u0027core.fmt.empty\u0027) ? T[\u0027core.fmt.empty\u0027] : \u0027—\u0027;\n  const isEmpty = (v) =\u003e v === null || v === undefined || v === \u0027\u0027;\n  // Platzhalter in EINEM Durchlauf: einfache Werte unveraendert (auch \u0027\u0027 fuer optionale Zusaetze wie die Einheit),\n  // nur typisierte Werte ({kind: money|date|enum|...}) laufen durch val(); null/undefined -\u003e \u0027\u0027. Ein FEHLENDER\n  // Parameter zaehlt wie undefined: n8n verwirft undefined-Felder beim Speichern des Summary-Objekts, sonst stuende\n  // Rohtext wie \"{isin}\" auf der Karte (Owner 2026-10-22). Vertippte Parameter-Namen faengt der Build\n  // (Assert-HitlTplParams in New-HitlLine/New-HitlNote/New-HitlSummary).\n  function fill(txt, params) {\n    return String(txt).replace(/\\{(\\w+)\\}/g, (m, n) =\u003e {\n      if (!params || !Object.prototype.hasOwnProperty.call(params, n)) return \u0027\u0027;\n      const p = params[n];\n      if (p === null || p === undefined) return \u0027\u0027;\n      return (typeof p === \u0027object\u0027) ? val(p) : String(p);\n    });\n  }\n  // sign = true (core.fn_ui_money p_sign): \u0027+\u0027 vor positive Betraege (Gewinn seit Kauf); negative tragen ihr Minus ohnehin.\n  // digits = 0 (core.fn_ui_money p_whole): ganze Einheiten fuer Schaetzwerte; der Wert selbst bleibt genau (gerundet nur hier).\n  function money(v, c, sign, digits) {\n    if (isEmpty(v)) return empty;\n    const n = Number(v);\n    if (!isFinite(n)) return String(v);\n    const plus = (sign === true \u0026\u0026 n \u003e 0) ? \u0027+\u0027 : \u0027\u0027;\n    // Ohne gueltigen Waehrungscode KEIN stilles EUR (ein USD-Betrag sahe sonst wie Euro aus): Zahl + Rohcode.\n    const whole = (digits === 0);\n    if (!(typeof c === \u0027string\u0027 \u0026\u0026 /^[A-Za-z]{3}$/.test(c))) return plus + num(v, whole ? 0 : 2) + (isEmpty(c) ? \u0027\u0027 : \u0027 \u0027 + String(c));\n    const cur = c.toUpperCase();\n    try { return plus + (whole ? Number(n).toLocaleString(loc,{style:\u0027currency\u0027,currency:(/^[A-Za-z]{3}$/.test(cur)?cur:\u0027EUR\u0027),currencyDisplay:\u0027narrowSymbol\u0027,minimumFractionDigits:0,maximumFractionDigits:0}) : Number(n).toLocaleString(loc,{style:\u0027currency\u0027,currency:(/^[A-Za-z]{3}$/.test(cur)?cur:\u0027EUR\u0027),currencyDisplay:\u0027narrowSymbol\u0027})); } catch (e) { return plus + String(v) + \u0027 \u0027 + cur; }\n  }\n  // B.date_short = {from, to} (nur die Mini-App, core.fn_app_screen): ein ISO-Datum im Fenster [from, to) ohne Jahr\n  // (String-Vergleich, die App rechnet kein Datum); Chat/HITL/Cron setzen es nie -\u003e dort immer mit Jahr.\n  const DS = (B.date_short \u0026\u0026 typeof B.date_short.from === \u0027string\u0027 \u0026\u0026 typeof B.date_short.to === \u0027string\u0027) ? B.date_short : null;\n  function date(v) {\n    if (isEmpty(v)) return empty;\n    const m = DS ? /^(\\d{4})-(\\d{2})-(\\d{2})$/.exec(String(v)) : null;\n    if (m \u0026\u0026 String(v) \u003e= DS.from \u0026\u0026 String(v) \u003c DS.to) {\n      try { return new Date(Date.UTC(+m[1], +m[2] - 1, +m[3])).toLocaleDateString(loc, { timeZone: \u0027UTC\u0027, month: \u00272-digit\u0027, day: \u00272-digit\u0027 }); }\n      catch (e) { /* weiter mit Jahr */ }\n    }\n    try { return ((m) =\u003e m ? new Date(Date.UTC(+m[1], +m[2] - 1, +m[3])).toLocaleDateString(loc, {timeZone:\u0027UTC\u0027, year:\u0027numeric\u0027, month:\u00272-digit\u0027, day:\u00272-digit\u0027}) : String(v))(/^(\\d{4})-(\\d{2})-(\\d{2})/.exec(String(v))); } catch (e) { return String(v); }\n  }\n  // {kind:\u0027month\u0027, value:\u0027YYYY-MM\u0027} (core.fn_ui_month): 2-stelliger Monat + Jahr im Locale (de „04.2027“), immer mit Jahr.\n  // Aus dem vollen Datum des Locales ohne den Tag gebaut: Intl liefert fuer {month, year} allein in de „04/2027“\n  // (Abnahme 2026-10-31); so folgt der Trenner dem gewohnten Datum (de „04.2027“, en-GB „04/2027“, ko „2027. 04.“).\n  // style \u0027long\u0027 (core.fn_ui_month(d, true)): Monatsname, das Jahr nur ausserhalb des Kurz-Fensters wie bei date()\n  // („Gehen ab im November“ / „… im November 2027“).\n  function month(v, style) {\n    if (isEmpty(v)) return empty;\n    const m = /^(\\d{4})-(\\d{2})$/.exec(String(v));\n    if (!m) return String(v);\n    if (style === \u0027long\u0027) {\n      const short = DS \u0026\u0026 String(v) \u003e= DS.from.slice(0, 7) \u0026\u0026 String(v) \u003c DS.to.slice(0, 7);\n      try { return new Date(Date.UTC(+m[1], +m[2] - 1, 1)).toLocaleDateString(loc, short ? { timeZone: \u0027UTC\u0027, month: \u0027long\u0027 } : { timeZone: \u0027UTC\u0027, month: \u0027long\u0027, year: \u0027numeric\u0027 }); }\n      catch (e) { return String(v); }\n    }\n    try {\n      const parts = new Intl.DateTimeFormat(loc, { timeZone: \u0027UTC\u0027, day: \u00272-digit\u0027, month: \u00272-digit\u0027, year: \u0027numeric\u0027 })\n        .formatToParts(new Date(Date.UTC(+m[1], +m[2] - 1, 1)));\n      const d = parts.findIndex((p) =\u003e p.type === \u0027day\u0027);\n      if (d \u003c 0) return String(v);\n      if (d === 0) parts.splice(0, 2); else parts.splice(d - 1, 2);\n      return parts.map((p) =\u003e p.value).join(\u0027\u0027);\n    } catch (e) { return String(v); }\n  }\n  // Nachkommastellen, die der Wert selbst traegt (ohne Null-Schwanz der DB, z. B. numeric(18,8) \"10.00000000\" -\u003e 0).\n  function decimals(v) {\n    const s = String(v).trim();\n    const e = s.match(/^-?\\d+(?:\\.(\\d+))?e-(\\d+)$/i);\n    if (e) return Math.min(20, (e[1] || \u0027\u0027).length + Number(e[2]));\n    const m = s.match(/\\.(\\d+)$/);\n    return m ? Math.min(20, m[1].replace(/0+$/, \u0027\u0027).length) : 0;\n  }\n  // digits \u003c 0 = so viele Stellen wie der Wert hat (Stueckzahlen: Krypto bis 8 Stellen, nie gerundet).\n  function num(v, digits, sign) {\n    if (isEmpty(v)) return empty;\n    const n = Number(v);\n    if (!isFinite(n)) return String(v);\n    const d = (Number(digits) \u003c 0) ? decimals(v) : Math.max(0, Math.min(6, Number(digits) || 0));\n    try { return n.toLocaleString(loc, { minimumFractionDigits: d, maximumFractionDigits: d, signDisplay: sign ? \u0027exceptZero\u0027 : \u0027auto\u0027 }); }\n    catch (e) { return String(v); }\n  }\n  function val(x) {\n    if (isEmpty(x)) return empty;\n    if (typeof x !== \u0027object\u0027) return String(x);\n    if (Array.isArray(x)) return x.length ? x.map(val).join(\u0027, \u0027) : empty;\n    const v = x.value;\n    switch (x.kind) {\n      case \u0027money\u0027: return money(v, x.currency, x.sign, x.digits);\n      case \u0027date\u0027: return date(v);\n      case \u0027month\u0027: return month(v, x.style);\n      case \u0027number\u0027: return num(v, x.digits, x.sign);\n      case \u0027enum\u0027: {\n        if (isEmpty(v)) return empty;\n        const k = String(x.enum) + \u0027.\u0027 + String(v).toLowerCase().replace(/[^a-z0-9_]+/g, \u0027_\u0027);\n        return has(k) ? T[k] : String(v);\n      }\n      case \u0027bool\u0027: return (v === true || v === \u0027true\u0027) ? t(\u0027core.fmt.yes\u0027)\n        : ((v === false || v === \u0027false\u0027) ? t(\u0027core.fmt.no\u0027) : empty);\n      case \u0027language\u0027: return isEmpty(v) ? empty : (LANGS[v] || String(v));\n      case \u0027key\u0027: return isEmpty(v) ? empty : (has(v) ? T[v] : (x.fallback || String(v)));\n      case \u0027tpl\u0027: return isEmpty(v) ? empty : fill(t(v), x.params);\n      case \u0027removed\u0027: return t(\u0027core.fmt.removed\u0027);\n      case \u0027list\u0027: return (Array.isArray(v) \u0026\u0026 v.length) ? v.map(val).join(\u0027, \u0027) : empty;\n      default: return isEmpty(v) ? empty : (Array.isArray(v) ? v.join(\u0027, \u0027) : String(v));\n    }\n  }\n  function msg(parts) {\n    return (Array.isArray(parts) ? parts : [parts]).filter((p) =\u003e !isEmpty(p)).map(val).join(\u0027 \u0027);\n  }\n  function lines(ls) {\n    return (Array.isArray(ls) ? ls : []).map((l) =\u003e (l === null || l === undefined) ? \u0027\u0027\n      : (Array.isArray(l) ? msg(l) : val(l))).join(\u0027\\n\u0027);\n  }\n  return { T, loc, has, t, empty, isEmpty, fill, money, date, num, val, msg, lines };\n}function bankTodoMessage(U, g, isOwner) {\n  const bank = g.bank || \u0027\u0027;\n  const head = g.nudge ? (bank ? \u0027finance.bank_todo.nudge\u0027 : \u0027finance.bank_todo.nudge_generic\u0027)\n                       : (bank ? \u0027finance.bank_todo.intro\u0027 : \u0027finance.bank_todo.intro_generic\u0027);\n  const holder = (isOwner \u0026\u0026 g.holder_name) ? \u0027 (\u0027 + g.holder_name + \u0027)\u0027 : \u0027\u0027;\n  const L = [U.fill(U.t(head), { bank, holder }), \u0027\u0027];\n  (Array.isArray(g.items) ? g.items : []).forEach((it, i) =\u003e L.push((i + 1) + \u0027. \u0027 + U.msg(it.line)));\n  L.push(\u0027\u0027, U.t(\u0027finance.bank_todo.howto\u0027));\n  return { message: L.join(\u0027\\n\u0027), btn_done: U.fill(U.t(bank ? \u0027finance.bank_todo.btn_done\u0027 : \u0027finance.bank_todo.btn_done_generic\u0027), { bank }),\n           data: \u0027btodo:\u0027 + g.first_id + \u0027:\u0027 + g.max_id, btn_off: U.t(\u0027core.reminders.btn_off\u0027) };\n}return $input.all().map(({ json: row }) =\u003e {\n  const U = uiRender(row.ui || {});\n  const msg = row.msg || {};\n  const isOwner = msg.recipient === \u0027owner\u0027;\n  return { json: Object.assign({ is_owner: isOwner, chat_id: msg.chat_id }, bankTodoMessage(U, msg.group || {}, isOwner)) };\n});"
+                                     },
+                      "type":  "n8n-nodes-base.code",
+                      "typeVersion":  2,
+                      "position":  [
+                                       200,
+                                       0
+                                   ],
+                      "id":  "d25c707c-be73-5e81-aa8a-e9b724721c0e",
+                      "name":  "Build message"
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "5e2bbfb3-ad8e-5348-9382-365e3831a56d",
+                                                                                   "leftValue":  "={{ $json.is_owner }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       400,
+                                       0
+                                   ],
+                      "id":  "56bc6b6d-1937-5508-a066-4f50351fb4dd",
+                      "name":  "Owner message?"
+                  },
+                  {
+                      "parameters":  {
+                                         "additionalFields":  {
+                                                                  "appendAttribution":  false
+                                                              },
+                                         "chatId":  "__OWNER_CHAT_ID__",
+                                         "text":  "={{ ($json.message).replace(/[_*`[]/g, \u0027\\\\$\u0026\u0027) }}",
+                                         "replyMarkup":  "inlineKeyboard",
+                                         "inlineKeyboard":  {
+                                                                "rows":  [
+                                                                             {
+                                                                                 "row":  {
+                                                                                             "buttons":  [
+                                                                                                             {
+                                                                                                                 "text":  "={{ $json.btn_done }}",
+                                                                                                                 "additionalFields":  {
+                                                                                                                                          "callback_data":  "={{ $json.data }}"
+                                                                                                                                      }
+                                                                                                             },
+                                                                                                             {
+                                                                                                                 "text":  "={{ $json.btn_off }}",
+                                                                                                                 "additionalFields":  {
+                                                                                                                                          "callback_data":  "cron_off:remind_bank_todo"
+                                                                                                                                      }
+                                                                                                             }
+                                                                                                         ]
+                                                                                         }
+                                                                             }
+                                                                         ]
+                                                            }
+                                     },
+                      "type":  "n8n-nodes-base.telegram",
+                      "typeVersion":  1.2,
+                      "position":  [
+                                       620,
+                                       -120
+                                   ],
+                      "id":  "e23e7bf5-f842-5d32-b56a-95bf36d86ba3",
+                      "name":  "Send owner",
+                      "retryOnFail":  true,
+                      "maxTries":  3,
+                      "waitBetweenTries":  2000,
+                      "credentials":  {
+                                          "telegramApi":  {
+                                                              "id":  "__CRED_TELEGRAM__",
+                                                              "name":  "Telegram account"
+                                                          }
+                                      },
+                      "onError":  "continueRegularOutput"
+                  },
+                  {
+                      "parameters":  {
+                                         "additionalFields":  {
+                                                                  "appendAttribution":  false
+                                                              },
+                                         "chatId":  "={{ String($json.chat_id) }}",
+                                         "text":  "={{ ($json.message).replace(/[_*`[]/g, \u0027\\\\$\u0026\u0027) }}",
+                                         "replyMarkup":  "inlineKeyboard",
+                                         "inlineKeyboard":  {
+                                                                "rows":  [
+                                                                             {
+                                                                                 "row":  {
+                                                                                             "buttons":  [
+                                                                                                             {
+                                                                                                                 "text":  "={{ $json.btn_done }}",
+                                                                                                                 "additionalFields":  {
+                                                                                                                                          "callback_data":  "={{ $json.data }}"
+                                                                                                                                      }
+                                                                                                             },
+                                                                                                             {
+                                                                                                                 "text":  "={{ $json.btn_off }}",
+                                                                                                                 "additionalFields":  {
+                                                                                                                                          "callback_data":  "rem:off:remind_bank_todo_person"
+                                                                                                                                      }
+                                                                                                             }
+                                                                                                         ]
+                                                                                         }
+                                                                             }
+                                                                         ]
+                                                            }
+                                     },
+                      "type":  "n8n-nodes-base.telegram",
+                      "typeVersion":  1.2,
+                      "position":  [
+                                       620,
+                                       120
+                                   ],
+                      "id":  "c090f1af-1752-5989-a422-2edc6b0f7b79",
+                      "name":  "Send person",
+                      "retryOnFail":  true,
+                      "maxTries":  3,
+                      "waitBetweenTries":  2000,
+                      "credentials":  {
+                                          "telegramApi":  {
+                                                              "id":  "__CRED_TELEGRAM__",
+                                                              "name":  "Telegram account"
+                                                          }
+                                      },
+                      "onError":  "continueRegularOutput"
+                  },
+                  {
+                      "parameters":  {
+                                         "content":  "## Ablauf\n**Bank-Zettel: was der Nutzer bei der Bank einstellen muss (täglich, kein LLM)**\n\nTäglich (schedule.remind_bank_todo, im Erinnerungs-Fenster). Eine Aktion im Bot wird nicht automatisch bei der Bank wirksam: Dauerauftrag und Sparplan richtet der Nutzer selbst ein. finance.fn_bank_todo_claim liefert je Empfänger die fälligen Punkte, je Bank eine Nachricht: Neues ab 20 Stunden, Nachfassen an Tag 7 und 21 (config finance.bank_todo_nudge_days). Sichtbar bleibt nur, was die Kette noch verlangt; eine gebuchte Zahlung beendet den Punkt von selbst.",
+                                         "height":  320,
+                                         "width":  520,
+                                         "color":  4
+                                     },
+                      "type":  "n8n-nodes-base.stickyNote",
+                      "typeVersion":  1,
+                      "position":  [
+                                       -920,
+                                       -420
+                                   ],
+                      "id":  "1c001f78-d286-5dfc-9e19-2b371535847d",
+                      "name":  "Überblick"
+                  },
+                  {
+                      "parameters":  {
+                                         "content":  "## DB-Automatik\n**Paket aktiv UND mindestens ein Schalter an**\n\nLäuft, solange cron_enable.remind_bank_todo (Owner) oder cron_enable.remind_bank_todo_person (Mitglieder) an ist; beide aus -\u003e No-op. Wer konkret etwas bekommt, entscheidet der Claim mit core.fn_reminder_allowed; wer heute nicht darf, bekommt den Merker nicht und verliert nichts.",
+                                         "height":  300,
+                                         "width":  320,
+                                         "color":  4
+                                     },
+                      "type":  "n8n-nodes-base.stickyNote",
+                      "typeVersion":  1,
+                      "position":  [
+                                       -560,
+                                       -420
+                                   ],
+                      "id":  "336d5a66-1c13-51b8-bed6-005eb722fde6",
+                      "name":  "Gate"
+                  },
+                  {
+                      "parameters":  {
+                                         "content":  "## DB-Automatik\n**Owner alles, Mitglied die eigenen**\n\nOwner: alle Punkte, Inhaber in Klammern, Knopf cron_off:remind_bank_todo (Default-Chat). Erwachsenes, gekoppeltes Mitglied: die eigenen, Knopf rem:off:remind_bank_todo_person. Kinder nie. Der Knopf btodo:\u003cerste-id\u003e:\u003cmax-id\u003e schließt sichtbare Punkte derselben Bank und desselben Inhabers (finance.fn_handle_bank_todo_cb).",
+                                         "height":  300,
+                                         "width":  380,
+                                         "color":  4
+                                     },
+                      "type":  "n8n-nodes-base.stickyNote",
+                      "typeVersion":  1,
+                      "position":  [
+                                       -220,
+                                       -420
+                                   ],
+                      "id":  "af79d8e4-39b0-5269-b7b5-2d4907b08339",
+                      "name":  "Empfänger und Knöpfe"
+                  },
+                  {
+                      "parameters":  {
+                                         "workflowInputs":  {
+                                                                "values":  [
+                                                                               {
+                                                                                   "name":  "chat_id"
+                                                                               }
+                                                                           ]
+                                                            }
+                                     },
+                      "type":  "n8n-nodes-base.executeWorkflowTrigger",
+                      "typeVersion":  1.1,
+                      "position":  [
+                                       -900,
+                                       180
+                                   ],
+                      "id":  "f0be8419-40f3-5b59-b6e8-40fd767f48ef",
+                      "name":  "Test run"
+                  },
+                  {
+                      "parameters":  {
+                                         "content":  "## Test\n**Test-Startpunkt (nur Tests)**\n\nZweiter Einstieg mit denselben Kanten wie der Zeitplan: der Test-Eingang core.cron_run.test_harness (nur auf Test-Instanzen) startet diesen Cron damit sofort (cron_text_test). Im Betrieb ungenutzt; nur aus n8n selbst erreichbar. Gebaut von Build-Workflow (build_helpers.ps1).",
+                                         "height":  220,
+                                         "width":  300,
+                                         "color":  4
+                                     },
+                      "type":  "n8n-nodes-base.stickyNote",
+                      "typeVersion":  1,
+                      "position":  [
+                                       -940,
+                                       300
+                                   ],
+                      "id":  "130bf187-90ef-59f6-8189-7c4c933b274a",
+                      "name":  "Test run (Doc)"
+                  }
+              ],
+    "connections":  {
+                        "Schedule (cron from config)":  {
+                                                            "main":  [
+                                                                         [
+                                                                             {
+                                                                                 "index":  0,
+                                                                                 "node":  "Cron enabled?",
+                                                                                 "type":  "main"
+                                                                             }
+                                                                         ]
+                                                                     ]
+                                                        },
+                        "Cron enabled?":  {
+                                              "main":  [
+                                                           [
+                                                               {
+                                                                   "index":  0,
+                                                                   "node":  "Cron on?",
+                                                                   "type":  "main"
+                                                               }
+                                                           ]
+                                                       ]
+                                          },
+                        "Cron on?":  {
+                                         "main":  [
+                                                      [
+                                                          {
+                                                              "index":  0,
+                                                              "node":  "Claim due",
+                                                              "type":  "main"
+                                                          }
+                                                      ],
+                                                      [
+                                                          {
+                                                              "index":  0,
+                                                              "node":  "Disabled",
+                                                              "type":  "main"
+                                                          }
+                                                      ]
+                                                  ]
+                                     },
+                        "Claim due":  {
+                                          "main":  [
+                                                       [
+                                                           {
+                                                               "index":  0,
+                                                               "node":  "Split messages",
+                                                               "type":  "main"
+                                                           }
+                                                       ]
+                                                   ]
+                                      },
+                        "Split messages":  {
+                                               "main":  [
+                                                            [
+                                                                {
+                                                                    "index":  0,
+                                                                    "node":  "Load texts",
+                                                                    "type":  "main"
+                                                                }
+                                                            ]
+                                                        ]
+                                           },
+                        "Load texts":  {
+                                           "main":  [
+                                                        [
+                                                            {
+                                                                "index":  0,
+                                                                "node":  "Build message",
+                                                                "type":  "main"
+                                                            }
+                                                        ]
+                                                    ]
+                                       },
+                        "Build message":  {
+                                              "main":  [
+                                                           [
+                                                               {
+                                                                   "index":  0,
+                                                                   "node":  "Owner message?",
+                                                                   "type":  "main"
+                                                               }
+                                                           ]
+                                                       ]
+                                          },
+                        "Owner message?":  {
+                                               "main":  [
+                                                            [
+                                                                {
+                                                                    "index":  0,
+                                                                    "node":  "Send owner",
+                                                                    "type":  "main"
+                                                                }
+                                                            ],
+                                                            [
+                                                                {
+                                                                    "index":  0,
+                                                                    "node":  "Send person",
+                                                                    "type":  "main"
+                                                                }
+                                                            ]
+                                                        ]
+                                           },
+                        "Test run":  {
+                                         "main":  [
+                                                      [
+                                                          {
+                                                              "index":  0,
+                                                              "node":  "Cron enabled?",
+                                                              "type":  "main"
+                                                          }
+                                                      ]
+                                                  ]
+                                     }
+                    },
+    "settings":  {
+                     "executionOrder":  "v1",
+                     "errorWorkflow":  "Nd3UVmUTzTLOBeba"
+                 }
+}

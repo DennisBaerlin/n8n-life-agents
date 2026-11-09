@@ -578,7 +578,7 @@ BEGIN
     -- Bank-Hinweis: neue Rate in den Topf (nicht fortgefuehrt) -> einrichten; Beitraege gestoppt ->
     -- aussetzen (Rate + verknuepfte Sparplaene); Rate, Topf oder Fortsetzen geaendert -> mitaendern
     IF v_new_rp IS NOT NULL THEN
-        v_bank := CASE WHEN v_old IS NULL THEN finance.fn_bank_setup_note(v_new_rp, 'bank_setup') ELSE '[]'::jsonb END;
+        v_bank := CASE WHEN v_old IS NULL THEN finance.fn_bank_note_recorded(v_new_rp, 'bank_setup') ELSE '[]'::jsonb END;
     ELSIF v_stop_funders THEN
         v_bank := COALESCE(finance.fn_bank_stop_note_told(v_row.recurring_payment_id), '[]'::jsonb)
                || COALESCE((
@@ -588,7 +588,7 @@ BEGIN
                        WHERE sp.savings_goal_id = v_id), '[]'::jsonb);
     ELSIF v_rate IS NOT NULL OR v_rate_change IS NOT NULL OR (v_reserve IS NOT NULL AND v_reserve IS DISTINCT FROM v_pot_before)
           OR (v_status = 'active' AND v_row.status IS DISTINCT FROM 'active') THEN
-        v_bank := COALESCE(finance.fn_bank_setup_note(v_row.recurring_payment_id, 'bank_change'), '[]'::jsonb);
+        v_bank := COALESCE(finance.fn_bank_note_recorded(v_row.recurring_payment_id, 'bank_change'), '[]'::jsonb);
     END IF;
     IF v_fold IS NOT NULL THEN
         v_ret := v_ret || jsonb_build_object(

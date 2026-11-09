@@ -35,6 +35,7 @@ DECLARE
     v_stale CONSTANT numeric := COALESCE(NULLIF(core.fn_config_get('finance', 'finance', 'statement_stale_days'), '')::numeric, 45);
 BEGIN
     RETURN jsonb_build_object(
+        'open_bank_steps', (SELECT count(*)::int FROM finance.bank_todos t WHERE t.status = 'open' AND finance.fn_bank_todo_visible(t.id)),
         'persons', (SELECT COALESCE(jsonb_agg(to_jsonb(p) ORDER BY p.person_id), '[]'::jsonb)
                       FROM core.fn_household_persons() p),
         'cashflow_summary', (SELECT to_jsonb(s) FROM finance.monthly_cashflow_summary s),

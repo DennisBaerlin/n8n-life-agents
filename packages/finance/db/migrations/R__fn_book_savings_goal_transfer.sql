@@ -203,7 +203,7 @@ BEGIN
         IF v_from = v_pot AND COALESCE((SELECT r.share FROM finance.fn_goal_reserve_accounts(v_goal) r WHERE r.account_id = v_from), 0) = 0 THEN
             PERFORM finance.fn_apply_goal_reserve(v_goal, v_to);
             -- die Sparrate geht jetzt auf ein anderes Konto: auch bei der Bank aendern
-            v_bank := finance.fn_bank_setup_note(
+            v_bank := finance.fn_bank_note_recorded(
                 (SELECT g.recurring_payment_id FROM finance.savings_goals g WHERE g.id = v_goal), 'bank_change');
         END IF;
     END IF;

@@ -380,7 +380,8 @@ BEGIN
     END IF;
     -- Neue Rate in den Topf: selbst bei der Bank einrichten (letzte Zeile); ein fortgefuehrter Dauerauftrag laeuft dort schon
     IF v_rp_id IS NOT NULL AND v_old IS NULL THEN
-        v_lines := v_lines || finance.fn_bank_setup_note(v_rp_id, 'bank_setup');
+        v_lines := v_lines || CASE WHEN COALESCE((p->>'_import')::boolean, false) THEN finance.fn_bank_setup_note(v_rp_id, 'bank_setup')
+                                   ELSE finance.fn_bank_note_recorded(v_rp_id, 'bank_setup') END;
     END IF;
 
     -- Phase L WS-4: Ueber-Spar-Sofort-Hinweis (Event-Fold, geteilter Helfer fn_savings_squeeze_fold). ERST HIER —

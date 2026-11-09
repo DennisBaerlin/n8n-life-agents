@@ -130,6 +130,6 @@ BEGIN
                            'execution', finance.fn_transfer_executed_by(v_rp_id)),
         -- Bank-Hinweis als letzte Kartenzeile; until_free_money hat seinen eigenen Bank-Satz im Workflow
         finance.fn_merge_fold(v_fold, jsonb_build_object('card_lines',
-            CASE WHEN v_free THEN '[]'::jsonb ELSE finance.fn_bank_setup_note(v_rp_id, 'bank_setup') END)));
+            CASE WHEN v_free THEN (SELECT '[]'::jsonb FROM finance.fn_bank_note_recorded(v_rp_id, 'bank_setup')) ELSE finance.fn_bank_note_recorded(v_rp_id, 'bank_setup') END)));
 END;
 $$;

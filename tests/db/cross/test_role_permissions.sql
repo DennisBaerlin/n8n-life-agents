@@ -1700,7 +1700,7 @@ DECLARE
                               'fn_household_persons', 'fn_resolve_person', 'fn_ui_texts_for', 'fn_today',
                               'fn_resolve_date', 'fn_resolve_input_dates', 'fn_handoff_tasks_read'];
   v_published_rw text[] := ARRAY['fn_set_onboarding_section', 'fn_check_write_permission', 'fn_person_chat_id',
-                                 'fn_should_notify', 'fn_notify_resolve', 'fn_notify_told', 'fn_mark_told', 'fn_dry_run', 'fn_reminder_allowed', 'fn_notify_forget_before',
+                                 'fn_should_notify', 'fn_notify_resolve', 'fn_notify_told', 'fn_mark_told', 'fn_handoff_done_stamps', 'fn_dry_run', 'fn_reminder_allowed', 'fn_notify_forget_before',
                                  'fn_handoff_task_check', 'fn_complete_handoff_task', 'fn_cancel_handoff_task'];
   v_n int := 0;
 BEGIN

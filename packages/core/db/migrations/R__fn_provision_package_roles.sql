@@ -282,6 +282,9 @@ BEGIN
     IF to_regprocedure('core.fn_notify_told(text,text)') IS NOT NULL THEN
         EXECUTE format('GRANT EXECUTE ON FUNCTION core.fn_notify_told(text,text) TO %I', v_rw);
     END IF;
+    IF to_regprocedure('core.fn_handoff_done_stamps(text)') IS NOT NULL THEN
+        EXECUTE format('GRANT EXECUTE ON FUNCTION core.fn_handoff_done_stamps(text) TO %I', v_rw);
+    END IF;
     IF to_regprocedure('core.fn_mark_told(text,text,text)') IS NOT NULL THEN
         EXECUTE format('GRANT EXECUTE ON FUNCTION core.fn_mark_told(text,text,text) TO %I', v_rw);
     END IF;

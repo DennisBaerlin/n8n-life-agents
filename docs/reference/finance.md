@@ -86,6 +86,7 @@ Propose→Review→Commit. Eine Row = eine zu erzeugende Entität als roher Payl
 Der Berater-Datenqualitäts-Alarm nennt Kurs-Lücken nur im Text, ohne eigenen Latch, damit nichts doppelt gemeldet wird.
 
 **Bank-Ende-Erinnerung.** `cron_remind_bank_end` meldet 3 bis 60 Tage nach dem letzten Termin (`fn_bank_end_due`) jeden aktiven Bank-Auftrag mit Ende; Latch je Kette, Termin und Empfänger in `fn_bank_end_claim` (source `finance:bank_end`). Der Owner bekommt alles gesammelt, ein gekoppelter `partner` als Konto-Inhaber zusätzlich seine eigenen (Person-Key `remind_bank_end_person`). Beenden im Bot mit Termin in der Vergangenheit setzt nur den Owner-Key (`fn_bank_stop_note_told`). Abgrenzung: Der Berater-Alarm `standing_order_ending` warnt vor dem Ende und nur für Zubringer, diese Erinnerung kommt danach und gilt jedem Bank-Auftrag.
+n**Bank-Zettel.** `finance.bank_todos` hält nur, was nicht ableitbar ist; `fn_bank_note_recorded` legt den offenen Punkt zur Karten-Notiz an, `fn_bank_todo_visible` leitet beim Lesen aus der Kette ab, ob er noch gilt. `cron_remind_bank_todo` sendet je Bank (Tag 7 und 21 Nachfassen, `fn_bank_todo_claim`), der Knopf `btodo` schließt. Solange ein `setup` läuft, schweigt `recurring_never_started`; nach 21 Tagen kommt es wieder.
 
 ## Views — Nicht-Offensichtliches (Logik = `R__finance_views.sql`)
 

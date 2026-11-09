@@ -564,6 +564,12 @@ BEGIN
         -- Satzwahl: ein Auftrag, den der Nutzer selbst einrichten muss und der nie lief, ist nicht "gekuendigt",
         -- sondern vermutlich nie bei der Bank angelegt (fn_bank_setup_note: Institut beim Namen, sonst _generic).
         -- Key, Schwelle und Latch bleiben gleich.
+        -- Solange der Bank-Zettel den Punkt fuehrt, schweigt die Variante "nie gestartet" (ein Fall, ein Weg); nach 21 Tagen kommt sie wieder.
+        CONTINUE WHEN finance.fn_recurring_never_ran(r.head)
+            AND finance.fn_bank_setup_note(r.head, 'recurring_never_started', '{}'::jsonb) <> '[]'::jsonb
+            AND EXISTS (SELECT 1 FROM finance.bank_todos bt WHERE bt.head_id = r.head AND bt.status = 'open' AND bt.event = 'setup'
+                          AND (bt.first_sent_at IS NULL OR bt.first_sent_at > now() - interval '21 days')
+                          AND finance.fn_bank_todo_visible(bt.id));
         v_never := CASE WHEN finance.fn_recurring_never_ran(r.head)
                         THEN finance.fn_bank_setup_note(r.head, 'recurring_never_started',
                                                         jsonb_build_object('name', r.name))->0 END;

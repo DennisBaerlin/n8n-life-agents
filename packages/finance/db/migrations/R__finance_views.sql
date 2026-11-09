@@ -141,7 +141,8 @@ SELECT
     -- Ausdruck in der SELECT-Liste, nicht als LATERAL-Join: eine nicht abgefragte Spalte rechnet die einfache View dann
     -- nicht mit (Write-fns, loan_summary, Agent-SQL lesen loan_overview ohne diese Spalten).
     (finance.fn_loan_projected_payoff(l.id, current_date)).payoff_date    AS payoff_date_projected,
-    (finance.fn_loan_projected_payoff(l.id, current_date)).interest_total AS interest_remaining_projected
+    (finance.fn_loan_projected_payoff(l.id, current_date)).interest_total AS interest_remaining_projected,
+    finance.fn_account_label(la.emoji, la.account_type, la.name) AS loan_account_label
 FROM finance.loans l
 LEFT JOIN finance.recurring_payments rc ON rc.id = finance.fn_recurring_current(l.recurring_payment_id, current_date)
 LEFT JOIN LATERAL (
@@ -187,6 +188,7 @@ CREATE VIEW finance.recurring_cashflow_classified AS
 WITH base AS (
     SELECT rp.*,
            a.name                                           AS account_name,
+           finance.fn_account_label(a.emoji, a.account_type, a.name) AS account_label,
            a.currency,
            a.owner_person_id                                AS account_owner_person_id,
            finance.fn_to_eur(rp.monthly_equivalent, a.currency) AS monthly_equivalent_eur,
@@ -258,6 +260,7 @@ SELECT c.id,
        c.monthly_equivalent,
        c.account_id,
        c.account_name,
+       c.account_label,
        c.target_account_id,
        c.account_owner_person_id,
        c.status,
@@ -291,7 +294,7 @@ FROM classed c;
 CREATE VIEW finance.monthly_cashflow_overview AS
 SELECT id, name, amount, schedule_interval, schedule_unit, schedule_days_of_month, monthly_equivalent, account_id, account_name,
        status, valid_from, valid_to, currency, monthly_equivalent_eur, last_valid_day,
-       target_account_id, cashflow_class, income_eur, consumption_eur, principal_eur, saving_eur, fx_gap, starts_on
+       target_account_id, cashflow_class, income_eur, consumption_eur, principal_eur, saving_eur, fx_gap, starts_on, account_label
 FROM finance.recurring_cashflow_classified
 WHERE cashflow_class <> 'transfer';
 
@@ -320,7 +323,8 @@ SELECT
     b.updated_at  AS balance_updated_at,
     a.notes,
     -- Multi-Waehrung (ans Ende angehaengt): Saldo in EUR-Basis fuer Roll-ups/Net-Worth.
-    finance.fn_to_eur(b.balance, a.currency) AS balance_eur
+    finance.fn_to_eur(b.balance, a.currency) AS balance_eur,
+    finance.fn_account_label(a.emoji, a.account_type, a.name) AS label
 FROM finance.accounts a
 LEFT JOIN finance.account_balances b ON b.account_id = a.id
 LEFT JOIN core.fn_household_persons() ap ON ap.person_id = a.owner_person_id;
@@ -366,11 +370,12 @@ SELECT l.goal_id,
        COALESCE(sum(l.eur) FILTER (WHERE l.is_manual), 0)             AS manual_eur,
        -- Mini-App 2026-10-28 (ans Ende angehaengt): ein Bein ohne Wechselkurs faellt sonst STILL aus share_eur (sum
        -- ignoriert NULL) -> als Luecke melden (Muster networth_by_asset_class.has_fx_gap).
-       COALESCE(bool_or(l.amount <> 0 AND l.eur IS NULL), false)      AS has_fx_gap
+       COALESCE(bool_or(l.amount <> 0 AND l.eur IS NULL), false)      AS has_fx_gap,
+       finance.fn_account_label(a.emoji, a.account_type, a.name)      AS account_label
 FROM legs_eur l
 JOIN finance.savings_goals g ON g.id = l.goal_id
 JOIN finance.accounts a ON a.id = l.account_id
-GROUP BY l.goal_id, g.status, l.account_id, a.name, a.account_type, a.currency;
+GROUP BY l.goal_id, g.status, l.account_id, a.name, a.account_type, a.currency, a.emoji;
 
 -- ============================================================
 -- VIEW: Savings goal progress  (WS-A Phase S: RESERVE-Modell, Ziel-Tag-Envelope)

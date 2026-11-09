@@ -169,6 +169,17 @@ Check 'Pflicht-Keys: Fakten-Titel je context_validators-Kontext, Bezeichnung je 
     }
 }
 
+# (7c) Konto-Zeichen: Knopf-Text entsteht aus dem Code-Punkt (finance.emoji.<hex>), Check 8 sieht zusammengesetzte Schluessel nicht, db_test laedt den Katalog nicht.
+Check 'Konto-Zeichen: jedes Zeichen aus fn_account_emoji_choices hat finance.emoji.<hex>' {
+    $init = [System.IO.File]::ReadAllText((Join-Path $RepoRoot 'packages\finance\db\finance.tables_init.sql'), $Utf8NoBom)
+    $m = [regex]::Match($init, 'fn_account_emoji_choices\(\)\s+RETURNS text\[\][\s\S]*?ARRAY\[([\s\S]*?)\]::text\[\]')
+    if (-not $m.Success) { 'Datei packages/finance/db/finance.tables_init.sql: fn_account_emoji_choices nicht gefunden' }
+    foreach ($q in [regex]::Matches($m.Groups[1].Value, "'([^']+)'")) {
+        $k = 'finance.emoji.{0:x}' -f [char]::ConvertToUtf32($q.Groups[1].Value, 0)
+        if (-not $cat['finance']['de'].Contains($k)) { "Datei packages/finance/locales: $k fehlt (Knopf-Bezeichnung in fn_account_emoji_page)" }
+    }
+}
+
 # (7b) Bot-Persona: die EINE Liste (Core-Manifest personas.list) ist wohlgeformt, core:V031 legt nur Codes aus ihr an,
 #      und jede Persona hat ihren Knopf-Namen core.persona.name.<code> (die Paritaet je Sprache sichert Check 4).
 Check 'Persona-Liste: Core-Manifest personas.list (Code/ord, eindeutig, V031 ⊆ Liste, Knopf-Name + Sticker-Set je Persona)' {

@@ -114,6 +114,8 @@ function Get-FinanceHitlLines {
             @(
                 (New-HitlLine 'core.label.name'                  "$S.name")
                 (New-HitlLine 'core.label.type'                  "$S.account_type" -Kind enum -Enum 'finance.enum.account_type')
+                # Nur im Einzel-Tool: dem Import fehlt das Feld, dort wirkt das Zeichen der Kontoart ohne Kartenzeile
+                if ($D.ContainsKey('Emoji')) { New-HitlLine 'finance.label.emoji' $D['Emoji']; New-HitlNote -Key 'finance.note.emoji_change_hint' }
                 (New-HitlLine 'finance.label.bank'               "$S.bank" -OmitEmpty)
                 (New-HitlLine 'finance.label.iban_number'        "$S.account_number" -OmitEmpty)
                 (& $own 'finance.label.owner_person' (& $need 'Person'))

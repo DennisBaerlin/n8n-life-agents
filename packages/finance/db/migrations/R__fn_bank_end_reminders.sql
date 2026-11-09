@@ -7,7 +7,7 @@
 --   frueheres Loeschen kostete die letzte gewollte Ausfuehrung. 60 Tage: keine Rueckwirkung auf laengst Beendetes.
 --   Eingabe: p_on (Stichtag, default heute).
 --   Rueckgabe: jsonb-Array nach last_due, name: {head, last_due, kind standing_order|savings_plan, execution bank|unknown,
---   name, amount (positiv), currency, bank|null, to_name, goal|null, holder_person_id|null, holder_name|null (Vorname),
+--   name, amount (positiv), currency, bank|null, to_name, to_label (Anzeige), goal|null, holder_person_id|null, holder_name|null (Vorname),
 --   holder_role|null}. Inhaber = owner_person_id des Quell-Kontos, beim Sparplan des Depots.
 --   plpgsql: fn_recurring_last_due und fn_transfer_executed_by sortieren als R__ spaeter.
 --   Tests: tests/db/finance/test_fn_bank_end_reminders.sql
@@ -31,6 +31,7 @@ BEGIN
                'name', COALESCE(sp.name, c.name), 'amount', abs(c.amount), 'currency', src.currency,
                'bank', NULLIF(btrim(CASE WHEN c.kind = 'savings_plan' THEN dep.bank ELSE src.bank END), ''),
                'to_name', CASE WHEN c.kind = 'savings_plan' THEN dep.name ELSE tgt.name END,
+               'to_label', CASE WHEN c.kind = 'savings_plan' THEN finance.fn_account_label(dep.emoji, dep.account_type, dep.name) ELSE finance.fn_account_label(tgt.emoji, tgt.account_type, tgt.name) END,
                'goal', g.name,
                'holder_person_id', p.person_id,
                'holder_name', split_part(p.full_name, ' ', 1),

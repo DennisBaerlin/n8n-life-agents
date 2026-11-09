@@ -10,7 +10,7 @@
 # Format je Eintrag: 'spalte' ODER 'spalte = Bedeutung'. Keine Apostrophe/Backticks/geschweifte Doppelklammern (Description-Parser).
 function Get-FinanceViewHints {
     [ordered]@{
-        'account_overview'               = @('id', 'name = account name', 'account_type', 'balance', 'currency', 'status', 'settlement_account_id', 'balance_eur')
+        'account_overview'               = @('id', 'name = account name', 'account_type', 'balance', 'currency', 'status', 'settlement_account_id', 'balance_eur', 'label = sign plus name, for replies only')
         'depot_holdings_overview'        = @('id = holding_id', 'account_id = the depot id', 'account_name = the DEPOT name', 'name = the position (security) name', 'isin', 'symbol', 'shares', 'book_value', 'market_value', 'market_value_eur', 'price_as_of')
         'savings_goal_progress'          = @('id', 'name = goal name', 'target_amount', 'current_amount', 'progress_percent', 'status')
         'active_recurring_payments'      = @('id', 'name', 'account_id', 'target_account_id', 'amount', 'rhythm', 'monthly_equivalent', 'last_valid_day')

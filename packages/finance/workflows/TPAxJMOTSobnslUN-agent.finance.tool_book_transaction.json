@@ -42,7 +42,7 @@
                   {
                       "parameters":  {
                                          "operation":  "executeQuery",
-                                         "query":  "=SELECT id, hit_count, candidates, currency FROM finance.fn_resolve_account(($1::jsonb)-\u003e\u003e\u0027account_name\u0027);",
+                                         "query":  "=SELECT id, hit_count, candidates, currency, label FROM finance.fn_resolve_account(($1::jsonb)-\u003e\u003e\u0027account_name\u0027);",
                                          "options":  {
                                                          "queryReplacement":  "={{ JSON.stringify({ account_name: $(\u0027Start\u0027).item.json.account_name }) }}"
                                                      }
@@ -263,7 +263,7 @@
                                                                                  {
                                                                                      "id":  "7650d494-022d-5a14-9665-e6c76b315861",
                                                                                      "name":  "summary",
-                                                                                     "value":  "={{ ({ title: \u0027finance.hitl.book_transaction\u0027, lines: [ { label: \u0027finance.label.account\u0027, kind: \u0027text\u0027, value: ($(\u0027Start\u0027).item.json.account_name) }, { label: \u0027finance.label.direction\u0027, kind: \u0027enum\u0027, value: ($(\u0027Start\u0027).item.json.direction), enum: \u0027finance.enum.direction\u0027 }, { label: \u0027core.label.amount\u0027, kind: \u0027money\u0027, value: ($(\u0027Start\u0027).item.json.amount), currency: ($(\u0027Resolve Account\u0027).item.json.currency) }, { label: \u0027finance.label.purpose\u0027, kind: \u0027text\u0027, value: ($(\u0027Start\u0027).item.json.description) }, { label: \u0027core.label.date\u0027, kind: \u0027date\u0027, value: ($(\u0027Dry run\u0027).item.json.r.effective.transaction_date) } ].concat(($(\u0027Dry run\u0027).item.json.r.card_lines || [])).filter(Boolean) }) }}",
+                                                                                     "value":  "={{ ({ title: \u0027finance.hitl.book_transaction\u0027, lines: [ { label: \u0027finance.label.account\u0027, kind: \u0027text\u0027, value: ($(\u0027Resolve Account\u0027).item.json.label) }, { label: \u0027finance.label.direction\u0027, kind: \u0027enum\u0027, value: ($(\u0027Start\u0027).item.json.direction), enum: \u0027finance.enum.direction\u0027 }, { label: \u0027core.label.amount\u0027, kind: \u0027money\u0027, value: ($(\u0027Start\u0027).item.json.amount), currency: ($(\u0027Resolve Account\u0027).item.json.currency) }, { label: \u0027finance.label.purpose\u0027, kind: \u0027text\u0027, value: ($(\u0027Start\u0027).item.json.description) }, { label: \u0027core.label.date\u0027, kind: \u0027date\u0027, value: ($(\u0027Dry run\u0027).item.json.r.effective.transaction_date) } ].concat(($(\u0027Dry run\u0027).item.json.r.card_lines || [])).filter(Boolean) }) }}",
                                                                                      "type":  "object"
                                                                                  }
                                                                              ]

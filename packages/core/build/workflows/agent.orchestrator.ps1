@@ -1054,6 +1054,15 @@ return msgs.map((m, i) => ({ json: { chunk: '(' + (i + 1) + '/' + N + ')\n' + m 
     # dasselbe Menue mit dem neuen Stand erneut an den Tippenden (neu senden statt editMessageText, Muster Onboarding-Menue).
     $nRemRoute = Build-If 'Reminders route?' @(-180, 1520) `
         "={{ ((`$('Dispatch callback').item.json.result || {}).route) === 'reminders' }}" 'true' 'equals' 'boolean'
+    # Paket-neutral: liefert ein Registry-Handler result.choice_card, geht dieselbe Knopf-Form als neue Nachricht an den Tippenden.
+    # Zweiter Ast von 'Answer dispatched cb', damit genau einmal quittiert wird.
+    $nChoiceCard = Build-If 'Choice card?' @(-180, 1640) `
+        "={{ !!((`$('Dispatch callback').item.json.result || {}).choice_card) }}" 'true' 'equals' 'boolean'
+    $nSendChoiceCard = New-TelegramChoiceCardSendNode 'Send choice card' @(40, 1640) "`$('Dispatch callback').item.json.result.choice_card" `
+        -ChatIdExpr "={{ String(`$('Trigger normalize').item.json.callback_query.from.id) }}"
+    $nChoiceSticky = Build-Sticky 'Doc Auswahl-Karte' @(-180, 1800) `
+        'Auswahl-Karte aus einem Knopf-Handler' `
+        'Liefert ein Registry-Handler result.choice_card {text, options[6], more}, sendet Send choice card sie als neue Nachricht an callback_query.from.id. Der Core kennt kein Paket-Feld. Der Toast kommt weiter aus Answer dispatched cb, also genau eine answerCallbackQuery; ohne result.toast zeigte er nur core.orch.toast_action_unavailable.' 240 420
     $nSendRemindersCb = Build-CallWorkflow 'Send reminders menu cb' @(40, 1520) $idReminders 'core.sub_send_reminders_menu' ([ordered]@{
         chat_id = "={{ String(`$('Trigger normalize').item.json.callback_query.from.id) }}"
     })
@@ -1393,7 +1402,7 @@ return [{ json: { body, memory_signal, raw_output: String(a.output ?? ''), signa
         $nReject, $nAnswerReject, $nMemberRejected, $nNotifyMemberNo,
         $nBlock, $nAnswerBlock, $nBlockDone, $nUnblock, $nAnswerUnblock, $nUnblockDone,
         $nCronOn, $nAnswerCronOn, $nCronOnDone, $nCronOff, $nAnswerCronOff, $nCronOffDone,
-        $nDispatchCb, $nOnbRoute, $nAnswerDispatch, $nPersonaSticker, $nClaimPersonaSticker, $nPersonaStickerDue, $nSendPersonaSticker,
+        $nDispatchCb, $nOnbRoute, $nAnswerDispatch, $nChoiceCard, $nSendChoiceCard, $nChoiceSticky, $nPersonaSticker, $nClaimPersonaSticker, $nPersonaStickerDue, $nSendPersonaSticker,
         $nLearnAction, $nLearnOk, $nAnswerLearnOk, $nApprovedNote, $nOfferUndo,
         $nLearnNo, $nAnswerLearnNo, $nLearnUndo, $nAnswerLearnUndo,
         $nAnswerHelpCb, $nLoadCapCb, $nSplitHelpCb, $nSendHelpCb,
@@ -1513,7 +1522,8 @@ return [{ json: { body, memory_signal, raw_output: String(a.output ?? ''), signa
             @( E $afterOnbRoute )             # [1] false: plan:-Route pruefen (Plan route?), sonst jeder andere Prefix bzw. abgelehnt -> Toast
         ) }
         # Roter Faden Paket B: nach dem Toast eines /reminders-Menue-Tipps (route reminders) das Menue neu senden
-        'Answer dispatched cb'    = @{ main = @( ,@( E 'Reminders route?' ) ) }
+        'Answer dispatched cb'    = @{ main = @( ,@( (E 'Reminders route?'), (E 'Choice card?') ) ) }
+        'Choice card?'            = @{ main = @( ,@( E 'Send choice card' ) ) }
         'Reminders route?'        = @{ main = @( ,@( E 'Send reminders menu cb' ) ) }
         # Phase C Lern-Loop-Callbacks (learn:<ok|no|undo>:<id>)
         'Learn action'            = @{ main = @(

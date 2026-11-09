@@ -178,6 +178,12 @@ $nToolSendBankTodos = New-ToolWorkflowNode 'tool_send_bank_todos' `
     'SHOW WHAT IS STILL TO SET UP AT THE BANK. Use when the user asks what they have to set up at their bank, or says they finished it without tapping the button (the list comes back with the button). Sends one message per bank, reads only, shows only what this user may see. Do not repeat the list afterwards.' `
     @() @(-16, 720)
 
+$nToolSendEmojiPicker = New-ToolWorkflowNode 'tool_send_account_emoji_picker' `
+    'SEND THE LIST OF ACCOUNT SIGNS. Use when the user wants a different sign for an account (words such as Zeichen, Symbol, Emoji, Icon) without naming a specific one, asks which signs exist, or tool_set_account answered invalid_emoji. Sends a message with buttons; further pages come from a button without you. Never write a list of emojis yourself. Inputs: account_name. ok:false -> follow the reason exactly (a household member gets the list as text from the reason).' `
+    @(
+        ,@('account_name', 'Exact name of the account (the name column, never the label)', 'string')
+    ) @(-16, 880)
+
 $nToolTransfer = New-ToolWorkflowNode 'tool_book_transfer' `
     ('Move money between TWO of the user''s OWN accounts. Creates two transactions (debit + credit). ONLY for own-account-to-own-account moves - for money going to or coming from an EXTERNAL party that is not one of the user''s accounts, use tool_book_transaction instead. CROSS-CURRENCY: if the two accounts use DIFFERENT currencies (e.g. a EUR account and a USD account), the legs have different native amounts - you MUST also pass to_amount (the exact amount that ARRIVES in the destination account, in the destination currency). The user states/confirms BOTH amounts; never invent a rate. For same-currency transfers omit to_amount. Inputs: from_account_name, to_account_name, amount (amount LEAVING the source, in the source currency, positive), to_amount (only for cross-currency: amount ARRIVING in the destination currency), transaction_date (optional, see its parameter), purpose (optional).' + $beforeOpeningRule) `
     @(
@@ -228,6 +234,7 @@ $nToolCreateAccount = New-ToolWorkflowNode 'tool_create_account' `
         ,@('interest_auto_post', 'Whether the scheduler books interest automatically without confirmation (true/false). Leave EMPTY normally - proposed from cadence (daily/weekly->true, monthly/yearly->false) and shown in the confirmation.', 'string', '')
         ,@('interest_valid_from', ('Interest valid-from date (' + (Get-DateParamHint) + ') (optional, default today)'), 'string', '')
         ,@('fixed_deposit_maturity_date', ('Maturity date (' + (Get-DateParamHint) + ') (Fälligkeitsdatum/Laufzeitende). REQUIRED for fixed_deposit; leave empty for all other account types.'), 'string', '')
+        ,@('emoji', 'The account sign, ONLY if the user explicitly names one; never set it on your own and never derive it from the name (the card already shows the sign of the account type). Pass it raw, the database checks it. Empty = the sign of the account type.', 'string', '')
         ,@('fixed_deposit_auto_renew', 'Whether the fixed deposit auto-renews at maturity (true/false) - only if the user says it, do not ask; leave empty otherwise.', 'string', '')
     ) @(640, 208)
 
@@ -509,7 +516,7 @@ $nToolCreatePension = New-ToolWorkflowNode 'tool_create_pension' `
 # --- set_* tools (update existing entities; verb class set_*) ---
 
 $nToolSetAccount = New-ToolWorkflowNode 'tool_set_account' `
-    'Update the master data (Stammdaten) of an EXISTING account: rename, bank, account number/IBAN, owner person, settlement account (depot or P2P: for a P2P account like Bondora Go&Grow the bank account it pays out to - the monthly check pairs its deposits and withdrawals with it), notes, and fixed-deposit fields (maturity date, auto-renew). Use this to assign/retag the owning household member of an existing account (owner_person). Does NOT change account_type or currency (not editable - they would corrupt history), does NOT change status (use tool_close_account to close), and never touches the balance. Only the fields you pass are changed; omit a field to leave it unchanged (you cannot clear the owner back to household here). To DELETE a wrong account number (e.g. an IBAN stored at the wrong account, so the right account can get it) pass remove_account_number=true, never together with account_number; then set it at the right account in a second call. Resolve the account by exact name; if ambiguous the tool returns candidates - ask the user which one. Required: account_name. Optional: new_name, bank, account_number, remove_account_number, owner_person, notes, fixed_deposit_maturity_date, fixed_deposit_auto_renew, min_balance, min_balance_default. min_balance = the buffer (minimum balance) the account outlook should not fall below, in the account currency, cash accounts only; without it the household default buffer applies - pass min_balance_default=true to go back to that default. OPTIONAL estate/emergency-register fields, capture ONLY if the user states them: ownership (legal account ownership), has_transmortal_poa (whether a transmortal bank power of attorney exists).' `
+    'Update the master data (Stammdaten) of an EXISTING account: rename, bank, account number/IBAN, owner person, settlement account (depot or P2P: for a P2P account like Bondora Go&Grow the bank account it pays out to - the monthly check pairs its deposits and withdrawals with it), notes, and fixed-deposit fields (maturity date, auto-renew). Use this to assign/retag the owning household member of an existing account (owner_person). Does NOT change account_type or currency (not editable - they would corrupt history), does NOT change status (use tool_close_account to close), and never touches the balance. Only the fields you pass are changed; omit a field to leave it unchanged (you cannot clear the owner back to household here). To DELETE a wrong account number (e.g. an IBAN stored at the wrong account, so the right account can get it) pass remove_account_number=true, never together with account_number; then set it at the right account in a second call. Resolve the account by exact name; if ambiguous the tool returns candidates - ask the user which one. Required: account_name. Optional: new_name, bank, account_number, remove_account_number, owner_person, notes, fixed_deposit_maturity_date, fixed_deposit_auto_renew, min_balance, min_balance_default, emoji, emoji_default. min_balance = the buffer (minimum balance) the account outlook should not fall below, in the account currency, cash accounts only; without it the household default buffer applies - pass min_balance_default=true to go back to that default. SIGN: emoji / emoji_default see their parameters; code=invalid_emoji -> call tool_send_account_emoji_picker right away, without another card; code=emoji_in_name -> pass the name without the sign. OPTIONAL estate/emergency-register fields, capture ONLY if the user states them: ownership (legal account ownership), has_transmortal_poa (whether a transmortal bank power of attorney exists).' `
     @(
         ,@('account_name', 'Exact name of the account to change', 'string')
         ,@('new_name', 'New display name (only if renaming)', 'string', '')
@@ -521,6 +528,8 @@ $nToolSetAccount = New-ToolWorkflowNode 'tool_set_account' `
         ,@('notes', 'New free-text notes', 'string', '')
         ,@('min_balance', 'Buffer (minimum balance) for this cash account in its currency, a plain number such as 400. Only if the user states it. Empty = unchanged.', 'string', '')
         ,@('min_balance_default', 'true ONLY to reset the buffer of this account to the household default; never together with min_balance. Empty = unchanged.', 'string', '')
+        ,@('emoji', 'The account sign, ONLY if the user explicitly names one in words or as an emoji (for example Sparschwein = 🐷); pass it raw, the database checks it. Never set it on your own and never derive it from the account name. A loan account is named Kredit plus the loan name: take the exact name from finance.account_overview. If the user names no specific sign use tool_send_account_emoji_picker instead. Empty = unchanged.', 'string', '')
+        ,@('emoji_default', 'true ONLY to go back to the standard sign of the account type; never together with emoji. Empty = unchanged.', 'string', '')
         ,@('fixed_deposit_maturity_date', ('New maturity date (' + (Get-DateParamHint) + ') (fixed_deposit only)'), 'string', '')
         ,@('fixed_deposit_auto_renew', 'Whether the fixed deposit auto-renews (true/false, fixed_deposit only)', 'string', '')
         ,@('ownership', 'OPTIONAL legal account ownership, exactly one of: single (Einzelkonto), joint_or (Oder-Konto - survivor keeps full access), joint_and (Und-Konto - restricted after death). Leave empty if not stated.', 'string', '')
@@ -889,7 +898,7 @@ $allNodes = @($nTrigger) + $gate.Nodes + @(
     $nLoadConfig, $nLoadCtx, $nOnboardRead, $nBuildInput, $nAgent,
     $nMemory,
     $nToolSelect, $nToolLoad, $nToolWebSearch,
-    $nToolSendBankTodos, $nToolDividend, $nToolTransfer, $nToolStockBuy, $nToolBookTransaction,
+    $nToolSendBankTodos, $nToolSendEmojiPicker, $nToolDividend, $nToolTransfer, $nToolStockBuy, $nToolBookTransaction,
     $nToolCreateAccount, $nToolCreateInsurance, $nToolCreateLoan, $nToolCreateRealEstate,
     $nToolBookStockSell, $nToolBookLoanPayment, $nToolCreateSavingsGoal, $nToolBookSavingsGoalTransfer,
     $nToolBookSavingsReservation,
@@ -955,6 +964,7 @@ $connRest = [ordered]@{
     'tool_create_recurring_payment' = @{ ai_tool = @(,@( E 'Finance Agent' 'ai_tool' )) }
     'tool_create_recurring_transfer' = @{ ai_tool = @(,@( E 'Finance Agent' 'ai_tool' )) }
     'tool_send_bank_todos' = @{ ai_tool = @(,@( E 'Finance Agent' 'ai_tool' )) }
+    'tool_send_account_emoji_picker' = @{ ai_tool = @(,@( E 'Finance Agent' 'ai_tool' )) }
     'tool_get_recurring_suggestions' = @{ ai_tool = @(,@( E 'Finance Agent' 'ai_tool' )) }
     'tool_cancel_handoff_task' = @{ ai_tool = @(,@( E 'Finance Agent' 'ai_tool' )) }
     'tool_create_pension'      = @{ ai_tool = @(,@( E 'Finance Agent' 'ai_tool' )) }

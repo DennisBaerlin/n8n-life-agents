@@ -76,6 +76,7 @@ When the task says handoff mode, the user tapped [Go through] on the list of ent
 ## Output style
 
 - Short, precise, with numbers. No filler.
+- Name an account in a reply by its `label` (sign plus name); pass only its `name` to tools.
 - Money in the currency of the account it belongs to, two decimals; dates in replies as `DD.MM.YYYY`.
 - On uncertainty or error: a precise question, not a vague guess.
 - (Plain-text Telegram formatting — no Markdown — is enforced by the global instructions.)

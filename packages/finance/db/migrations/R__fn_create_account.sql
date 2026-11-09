@@ -24,7 +24,9 @@
 --   settlement_id ist bereits im n8n-Workflow aufgeloest (Ambiguitaet/Depot-Pflicht dort).
 --   Pruefung des Verrechnungskontos: finance.fn_settlement_account_reason (nur Depot/P2P, P2P -> Girokonto).
 --   Die DB-CHECKs finance_accounts_depot_needs_settlement + _settlement_kind bleiben harter Backstop.
---   RUECKGABE-VERTRAG: Erfolg -> {ok:true, account_id, interest_added, balance, opening_balance_date, currency} (currency =
+--   emoji (optional, Listen-Zeichen, VS16 wird bereinigt; leer = Zeichen der Kontoart): sonst {ok:false, code:'invalid_emoji'};
+--   name mit fuehrendem Listen-Zeichen -> {ok:false, code:'emoji_in_name'}, vor der Namens-Dublette.
+--   RUECKGABE-VERTRAG: Erfolg -> {ok:true, account_id, interest_added, balance, opening_balance_date, currency, emoji (wirksam), label} (currency =
 --   abgeleitete Kontowaehrung: genannt, sonst die des Verrechnungskontos, sonst EUR - die Karte liest sie von hier; balance =
 --   Post-State nach dem Saldo-Trigger, in derselben Transaktion gelesen; opening_balance_date = geschriebener
 --   Stichtag oder NULL ohne Saldo — die Karte liest ihn aus dem Probelauf). Korrigierbar -> {ok:false, reason} OHNE Write:
@@ -62,6 +64,7 @@ DECLARE
     v_number     TEXT    := finance.fn_normalize_account_number(p->>'account_number');
     v_taken      TEXT;
     v_dates      JSONB;
+    v_emoji      TEXT    := finance.fn_account_emoji_clean(p->>'emoji');
 BEGIN
     -- relative Datumsangaben ("yesterday", "-3 days") -> ISO; nicht aufloesbar (auch "01.10.2026": ein
     -- DateStyle-abhaengiger Cast machte das still zum 10. Januar) -> {ok:false, code:'invalid_date'}.
@@ -117,6 +120,15 @@ BEGIN
         IF v_reason IS NOT NULL THEN
             RETURN jsonb_build_object('ok', false, 'code', 'missing_required', 'reason', v_reason);
         END IF;
+    END IF;
+    IF v_emoji IS NOT NULL AND NOT v_emoji = ANY(finance.fn_account_emoji_choices()) THEN
+        RETURN jsonb_build_object('ok', false, 'code', 'invalid_emoji',
+            'reason', 'This sign is not available. Allowed signs: ' || array_to_string(finance.fn_account_emoji_choices(), ' ')
+                   || '. Create the account without a sign, it can be changed later.');
+    END IF;
+    IF finance.fn_account_name_without_emoji(p->>'name') IS NOT NULL THEN
+        RETURN jsonb_build_object('ok', false, 'code', 'emoji_in_name',
+            'reason', 'An account name must not start with a sign - pass the name without it and the sign in the field emoji.');
     END IF;
     -- S6: Kontoname unter aktiven Konten eindeutig, ohne Gross-/Kleinschreibung und typuebergreifend (wie
     -- fn_import_validate_row): Referenzen (Verrechnungs-/Abbuchungskonto, Depot) loesen nur ueber den NAMEN auf.
@@ -229,7 +241,7 @@ BEGIN
 
     INSERT INTO finance.accounts
         (name, account_type, bank, account_number, settlement_account_id, owner_person_id, currency, status,
-         fixed_deposit_maturity_date, fixed_deposit_auto_renew, opening_balance_date)
+         fixed_deposit_maturity_date, fixed_deposit_auto_renew, opening_balance_date, emoji)
     VALUES (
         p->>'name',
         v_acct_type,
@@ -241,7 +253,8 @@ BEGIN
         'active',
         NULLIF(p->>'fixed_deposit_maturity_date', '')::date,
         NULLIF(p->>'fixed_deposit_auto_renew', '')::boolean,
-        v_open_date   -- genannter Saldo (auch 0) = Stand am Stichtag
+        v_open_date,  -- genannter Saldo (auch 0) = Stand am Stichtag
+        v_emoji
     )
     RETURNING id INTO v_account_id;
 
@@ -282,6 +295,8 @@ BEGIN
         'balance', v_balance,
         'opening_balance_date', v_open_date,
         'currency', v_currency,
+        'emoji', finance.fn_account_emoji(v_emoji, v_acct_type),
+        'label', finance.fn_account_label(v_emoji, v_acct_type, p->>'name'),
         'effective', v_dates->'resolved',
         'card_lines', COALESCE(v_similar, '[]'::jsonb)
     );

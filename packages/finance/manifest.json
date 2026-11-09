@@ -31,7 +31,7 @@
       "create_savings_plan", "set_savings_plan", "close_savings_plan", "book_savings_plan_execution",
       "book_recurring_occurrence", "book_interest",
       "import_stage_rows", "update_staging_row", "commit_import", "extract_finance_document",
-      "reconcile_bank_statement", "void_bank_statement", "import_bank_export", "send_bank_todos",
+      "reconcile_bank_statement", "void_bank_statement", "import_bank_export", "send_bank_todos", "send_account_emoji_picker",
       "set_onboarding_section"
     ],
     "crons": ["cron_refresh_fx_rates", "cron_refresh_market_prices", "cron_remind_interest", "cron_reconcile_accounts", "cron_remind_pension_statement", "cron_remind_missing_prices", "cron_remind_bank_end", "cron_remind_bank_todo"],
@@ -145,7 +145,8 @@
     }
   },
   "callback_handlers": {
-    "btodo": { "handler_fn": "finance.fn_handle_bank_todo_cb", "member_permeable": true }
+    "btodo": { "handler_fn": "finance.fn_handle_bank_todo_cb", "member_permeable": true },
+    "acem": { "handler_fn": "finance.fn_handle_account_emoji_cb", "member_permeable": false }
   },
   "app_screens": {
     "_comment": "Bildschirme der Mini-App „📊 Übersicht“ (docs/package-contract.md §3.12): DEKLARATION (Paket) vs. AUSFÜHRUNG (Host seed_data._seed_app_screens -> core.app_screens); core.fn_app_screen ruft den Handler nach der initData-Prüfung generisch auf. handler_fn MUSS ins eigene Schema (finance.*) zeigen, Signatur fn(jsonb)->jsonb, nie RAISE; die Sichtbarkeit (Allow-List owner/partner, sonst nur Eigenes) setzt der Handler selbst durch. Tab-Titel = Katalog-Key finance.app.screen.<screen>.",

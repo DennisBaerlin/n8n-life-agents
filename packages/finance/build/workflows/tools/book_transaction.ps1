@@ -11,7 +11,7 @@ function Build-BookTransaction {
     $trig = Build-Trigger @('account_name','direction','amount','transaction_date','description','category')
 
     $resAcct = Build-Pg 'Resolve Account' @(220, 0) `
-        "=SELECT id, hit_count, candidates, currency FROM finance.fn_resolve_account((`$1::jsonb)->>'account_name');" `
+        "=SELECT id, hit_count, candidates, currency, label FROM finance.fn_resolve_account((`$1::jsonb)->>'account_name');" `
         ([ordered]@{ account_name = '$(''Start'').item.json.account_name' })
 
     $ifAcct = Build-If 'Account unique?' @(440, 0) "={{ `$json.hit_count }}" '1' 'equals' 'number'
@@ -43,7 +43,7 @@ function Build-BookTransaction {
     # Betrag in der Konto-Waehrung (Resolve Account liest accounts.currency mit), nie ein festes EUR.
     $S = "`$('Start').item.json"
     $summary = New-HitlSummary -Pos @(1320, 0) -Title 'finance.hitl.book_transaction' -LinesExpr $wg.CardLinesExpr -Lines @(
-        (New-HitlLine 'finance.label.account'   "$S.account_name")
+        (New-HitlLine 'finance.label.account'   "`$('Resolve Account').item.json.label")
         (New-HitlLine 'finance.label.direction' "$S.direction" -Kind enum -Enum 'finance.enum.direction')
         (New-HitlLine 'core.label.amount'       "$S.amount" -Kind money -Currency "`$('Resolve Account').item.json.currency")
         (New-HitlLine 'finance.label.purpose'   "$S.description")

@@ -10,7 +10,7 @@ function Build-SetAccountInterest {
                            'schedule_day_of_month','day_count_convention','posting_day_of_month','auto_post','valid_from')
 
     $resAcct = Build-Pg 'Resolve Account' @(220, 0) `
-        "=SELECT id, hit_count, candidates FROM finance.fn_resolve_account((`$1::jsonb)->>'account_name', NULL, TRUE);" `
+        "=SELECT id, hit_count, candidates, label FROM finance.fn_resolve_account((`$1::jsonb)->>'account_name', NULL, TRUE);" `
         ([ordered]@{ account_name = '$(''Start'').item.json.account_name' })
 
     $ifAcct = Build-If 'Account unique?' @(440, 0) "={{ `$json.hit_count }}" '1'
@@ -61,7 +61,7 @@ function Build-SetAccountInterest {
     $S = "`$('Start').item.json"
     $D = "`$('Resolve interest defaults').item.json"
     $summary = New-HitlSummary -Pos @(1540, 0) -Title 'finance.hitl.set_account_interest' -LinesExpr $wg.CardLinesExpr -Lines @(
-        (New-HitlLine 'finance.label.account'       "$S.account_name")
+        (New-HitlLine 'finance.label.account'       "`$('Resolve Account').item.json.label")
         (New-HitlLine 'finance.label.interest_rate' "'finance.tpl.percent_pa'" -Kind tpl -Params @{ value = "$S.annual_rate" })
         (New-HitlLine 'finance.label.valid_from'    "($S.valid_from ? 'finance.tpl.plain' : 'finance.value.today')" -Kind tpl -Params @{
             value = (New-HitlValue -Kind date -Value (Get-DryEffectiveExpr 'valid_from')) })

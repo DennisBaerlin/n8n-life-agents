@@ -42,7 +42,7 @@
                   {
                       "parameters":  {
                                          "operation":  "executeQuery",
-                                         "query":  "=SELECT id, hit_count, candidates, currency FROM finance.fn_resolve_account(($1::jsonb)-\u003e\u003e\u0027from_account_name\u0027);",
+                                         "query":  "=SELECT id, hit_count, candidates, currency, label FROM finance.fn_resolve_account(($1::jsonb)-\u003e\u003e\u0027from_account_name\u0027);",
                                          "options":  {
                                                          "queryReplacement":  "={{ JSON.stringify({ from_account_name: $(\u0027Start\u0027).item.json.from_account_name }) }}"
                                                      }
@@ -130,7 +130,7 @@
                   {
                       "parameters":  {
                                          "operation":  "executeQuery",
-                                         "query":  "=SELECT id, hit_count, candidates, currency FROM finance.fn_resolve_account(($1::jsonb)-\u003e\u003e\u0027to_account_name\u0027);",
+                                         "query":  "=SELECT id, hit_count, candidates, currency, label FROM finance.fn_resolve_account(($1::jsonb)-\u003e\u003e\u0027to_account_name\u0027);",
                                          "options":  {
                                                          "queryReplacement":  "={{ JSON.stringify({ to_account_name: $(\u0027Start\u0027).item.json.to_account_name }) }}"
                                                      }
@@ -351,7 +351,7 @@
                                                                                  {
                                                                                      "id":  "d4b5c033-028e-5807-898c-d3de0591428d",
                                                                                      "name":  "summary",
-                                                                                     "value":  "={{ ({ title: \u0027finance.hitl.book_transfer\u0027, lines: [ { label: \u0027finance.label.from\u0027, kind: \u0027text\u0027, value: ($(\u0027Start\u0027).item.json.from_account_name) }, { label: \u0027finance.label.to\u0027, kind: \u0027text\u0027, value: ($(\u0027Start\u0027).item.json.to_account_name) }, { label: \u0027finance.label.amount_from\u0027, kind: \u0027money\u0027, value: ($(\u0027Start\u0027).item.json.amount), currency: ($(\u0027Resolve From\u0027).item.json.currency) }, (($(\u0027Start\u0027).item.json.to_amount) ? { label: \u0027finance.label.target_amount_after\u0027, kind: \u0027money\u0027, value: ($(\u0027Start\u0027).item.json.to_amount), currency: ($(\u0027Resolve To\u0027).item.json.currency) } : null), { label: \u0027finance.label.purpose\u0027, kind: \u0027text\u0027, value: ($(\u0027Start\u0027).item.json.purpose) }, { label: \u0027core.label.date\u0027, kind: \u0027date\u0027, value: ($(\u0027Dry run\u0027).item.json.r.effective.transaction_date) } ].concat(($(\u0027Dry run\u0027).item.json.r.card_lines || [])).filter(Boolean) }) }}",
+                                                                                     "value":  "={{ ({ title: \u0027finance.hitl.book_transfer\u0027, lines: [ { label: \u0027finance.label.from\u0027, kind: \u0027text\u0027, value: ($(\u0027Resolve From\u0027).item.json.label) }, { label: \u0027finance.label.to\u0027, kind: \u0027text\u0027, value: ($(\u0027Resolve To\u0027).item.json.label) }, { label: \u0027finance.label.amount_from\u0027, kind: \u0027money\u0027, value: ($(\u0027Start\u0027).item.json.amount), currency: ($(\u0027Resolve From\u0027).item.json.currency) }, (($(\u0027Start\u0027).item.json.to_amount) ? { label: \u0027finance.label.target_amount_after\u0027, kind: \u0027money\u0027, value: ($(\u0027Start\u0027).item.json.to_amount), currency: ($(\u0027Resolve To\u0027).item.json.currency) } : null), { label: \u0027finance.label.purpose\u0027, kind: \u0027text\u0027, value: ($(\u0027Start\u0027).item.json.purpose) }, { label: \u0027core.label.date\u0027, kind: \u0027date\u0027, value: ($(\u0027Dry run\u0027).item.json.r.effective.transaction_date) } ].concat(($(\u0027Dry run\u0027).item.json.r.card_lines || [])).filter(Boolean) }) }}",
                                                                                      "type":  "object"
                                                                                  }
                                                                              ]

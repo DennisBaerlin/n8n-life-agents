@@ -10,7 +10,7 @@ function Build-VoidTransaction {
 
     # Tx + Kontoname + Anzahl betroffener Beine (Gruppe via group_id; Fallback loan_id+Datum) fuer den HITL-Summary.
     $readTx = Build-Pg 'Read Tx' @(220, 0) `
-        "=SELECT t.amount, t.transaction_date, t.category::text AS category, t.description, a.name AS account_name, a.currency AS currency, (CASE WHEN t.group_id IS NOT NULL THEN (SELECT count(*) FROM finance.transactions x WHERE x.group_id = t.group_id) WHEN t.loan_id IS NOT NULL THEN (SELECT count(*) FROM finance.transactions x WHERE x.loan_id = t.loan_id AND x.transaction_date = t.transaction_date) ELSE 1 END)::int AS leg_count FROM finance.transactions t JOIN finance.accounts a ON a.id = t.account_id WHERE t.id = ((`$1::jsonb)->>'transaction_id')::int;" `
+        "=SELECT t.amount, t.transaction_date, t.category::text AS category, t.description, a.name AS account_name, finance.fn_account_label(a.emoji, a.account_type, a.name) AS account_label, a.currency AS currency, (CASE WHEN t.group_id IS NOT NULL THEN (SELECT count(*) FROM finance.transactions x WHERE x.group_id = t.group_id) WHEN t.loan_id IS NOT NULL THEN (SELECT count(*) FROM finance.transactions x WHERE x.loan_id = t.loan_id AND x.transaction_date = t.transaction_date) ELSE 1 END)::int AS leg_count FROM finance.transactions t JOIN finance.accounts a ON a.id = t.account_id WHERE t.id = ((`$1::jsonb)->>'transaction_id')::int;" `
         ([ordered]@{ transaction_id = '$(''Start'').item.json.transaction_id' })
     # Unbekannte transaction_id -> Tool-Fehler statt stillem Ende (New-RequiredRowGate, Mock-Tier 2026-10-24).
     $found = New-RequiredRowGate -Read $readTx -KeyField 'account_name' -IfName 'Tx found?' -ErrName 'Tx not found' `
@@ -28,7 +28,7 @@ function Build-VoidTransaction {
 
     $T = "`$('Read Tx').item.json"
     $summary = New-HitlSummary -Pos @(1100, 0) -Title 'finance.hitl.void_transaction' -LinesExpr $wg.CardLinesExpr -Lines @(
-        (New-HitlLine 'finance.label.account'      "$T.account_name")
+        (New-HitlLine 'finance.label.account'      "$T.account_label")
         (New-HitlLine 'core.label.date'            "$T.transaction_date" -Kind date)
         (New-HitlLine 'core.label.amount'          "$T.amount" -Kind money -Currency "$T.currency")
         (New-HitlLine 'finance.label.category'     "$T.category" -Kind enum -Enum 'finance.enum.category')

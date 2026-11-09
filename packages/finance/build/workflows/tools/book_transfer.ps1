@@ -9,7 +9,7 @@ function Build-BookTransfer {
     $trig = Build-Trigger @('from_account_name','to_account_name','amount','to_amount','transaction_date','purpose')
 
     $resFrom = Build-Pg 'Resolve From' @(220, 0) `
-        "=SELECT id, hit_count, candidates, currency FROM finance.fn_resolve_account((`$1::jsonb)->>'from_account_name');" `
+        "=SELECT id, hit_count, candidates, currency, label FROM finance.fn_resolve_account((`$1::jsonb)->>'from_account_name');" `
         ([ordered]@{ from_account_name = '$(''Start'').item.json.from_account_name' })
 
     $ifFrom = Build-If 'From unique?' @(440, 0) "={{ `$json.hit_count }}" '1'
@@ -18,7 +18,7 @@ function Build-BookTransfer {
         "=Source account '{{ `$('Start').item.json.from_account_name }}' resolves to {{ `$('Resolve From').item.json.hit_count }} matches. Candidates: {{ JSON.stringify(`$('Resolve From').item.json.candidates) }}. Ask the user which exact account."
 
     $resTo = Build-Pg 'Resolve To' @(660, 0) `
-        "=SELECT id, hit_count, candidates, currency FROM finance.fn_resolve_account((`$1::jsonb)->>'to_account_name');" `
+        "=SELECT id, hit_count, candidates, currency, label FROM finance.fn_resolve_account((`$1::jsonb)->>'to_account_name');" `
         ([ordered]@{ to_account_name = '$(''Start'').item.json.to_account_name' })
 
     $ifTo = Build-If 'To unique?' @(880, 0) "={{ `$json.hit_count }}" '1'
@@ -50,8 +50,8 @@ function Build-BookTransfer {
     # accounts.currency mit); to_amount nur bei Fremdwaehrung.
     $S = "`$('Start').item.json"
     $summary = New-HitlSummary -Pos @(1760, 0) -Title 'finance.hitl.book_transfer' -LinesExpr $wg.CardLinesExpr -Lines @(
-        (New-HitlLine 'finance.label.from'                "$S.from_account_name")
-        (New-HitlLine 'finance.label.to'                  "$S.to_account_name")
+        (New-HitlLine 'finance.label.from'                "`$('Resolve From').item.json.label")
+        (New-HitlLine 'finance.label.to'                  "`$('Resolve To').item.json.label")
         (New-HitlLine 'finance.label.amount_from'         "$S.amount" -Kind money -Currency "`$('Resolve From').item.json.currency")
         (New-HitlLine 'finance.label.target_amount_after' "$S.to_amount" -Kind money -Currency "`$('Resolve To').item.json.currency" -If "$S.to_amount")
         (New-HitlLine 'finance.label.purpose'             "$S.purpose")

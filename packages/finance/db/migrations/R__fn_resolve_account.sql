@@ -7,9 +7,12 @@
 --   p_active_only: wenn TRUE, nur status='active'
 --   currency: Kontowaehrung des eindeutigen Treffers (NULL bei 0/>1) — die EINE Quelle fuer HITL-Karten, die einen
 --   Betrag in der Waehrung des aufgeloesten Kontos zeigen (statt eines Subselects je Tool).
---   Namensvergleich: erst exakt, nur bei 0 Treffern ohne Gross-/Kleinschreibung (finance.fn_name_matches).
+--   label: Anzeigename mit Konto-Zeichen (fn_account_label), auch je Candidate; NULL bei 0/>1. name bleibt die Tool-Eingabe.
+--   Namensvergleich: erst exakt, nur bei 0 Treffern ohne Gross-/Kleinschreibung (finance.fn_name_matches); bei weiter 0 Treffern ein
+--   fuehrendes Listen-Zeichen abgeschnitten, weil das Modell den fertigen Anzeigenamen uebergeben kann. Nur hier: fn_name_matches
+--   bedient alle Objektarten, Nicht-Konten haben keine Zeichen.
 -- ============================================================
--- RETURNS TABLE um currency erweitert -> Rueckgabetyp aendert sich, CREATE OR REPLACE allein reicht nicht.
+-- Rueckgabetyp aendert sich mit neuen Spalten: CREATE OR REPLACE allein reicht nicht.
 DROP FUNCTION IF EXISTS finance.fn_resolve_account(text, text[], boolean);
 CREATE OR REPLACE FUNCTION finance.fn_resolve_account(
     p_name           text,
@@ -19,30 +22,36 @@ CREATE OR REPLACE FUNCTION finance.fn_resolve_account(
     id          int,
     hit_count   int,
     candidates  jsonb,
-    currency    text
+    currency    text,
+    label       text
 ) LANGUAGE plpgsql STABLE AS $$
 DECLARE
     v_candidates JSONB;
     v_count      INT;
     v_id         INT;
     v_ccy        TEXT;
-    v_exact      BOOLEAN;
+    v_label      TEXT;
+    v_pass       INT;
+    v_stripped   TEXT := NULLIF(finance.fn_account_name_without_emoji(p_name), '');
 BEGIN
-    FOREACH v_exact IN ARRAY ARRAY[TRUE, FALSE] LOOP
+    FOR v_pass IN 1..3 LOOP
+    EXIT WHEN v_pass = 3 AND v_stripped IS NULL;
     SELECT
         jsonb_agg(jsonb_build_object(
             'id',           a.id,
             'name',         a.name,
+            'label',        finance.fn_account_label(a.emoji, a.account_type, a.name),
             'bank',         a.bank,
             'account_type', a.account_type,
             'status',       a.status
         ) ORDER BY a.id),
         COUNT(*),
         MIN(a.id),
-        MIN(a.currency)
-    INTO v_candidates, v_count, v_id, v_ccy
+        MIN(a.currency),
+        MIN(finance.fn_account_label(a.emoji, a.account_type, a.name))
+    INTO v_candidates, v_count, v_id, v_ccy, v_label
     FROM finance.accounts a
-    WHERE finance.fn_name_matches(a.name, p_name, v_exact)
+    WHERE finance.fn_name_matches(a.name, CASE WHEN v_pass = 3 THEN v_stripped ELSE p_name END, v_pass = 1)
       AND (p_types IS NULL OR a.account_type::TEXT = ANY(p_types))
       AND (p_active_only = FALSE OR a.status = 'active');
     EXIT WHEN v_count > 0;
@@ -52,6 +61,7 @@ BEGIN
         CASE WHEN v_count = 1 THEN v_id ELSE NULL END,
         COALESCE(v_count, 0),
         COALESCE(v_candidates, '[]'::jsonb),
-        CASE WHEN v_count = 1 THEN v_ccy ELSE NULL END;
+        CASE WHEN v_count = 1 THEN v_ccy ELSE NULL END,
+        CASE WHEN v_count = 1 THEN v_label ELSE NULL END;
 END;
 $$;

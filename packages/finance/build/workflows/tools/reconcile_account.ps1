@@ -9,7 +9,7 @@ function Build-ReconcileAccount {
     $trig = Build-Trigger @('account_name','confirmed_balance','reconciliation_date','notes')
 
     $resAcct = Build-Pg 'Resolve Account' @(220, 0) `
-        "=SELECT id, hit_count, candidates FROM finance.fn_resolve_account((`$1::jsonb)->>'account_name');" `
+        "=SELECT id, hit_count, candidates, label FROM finance.fn_resolve_account((`$1::jsonb)->>'account_name');" `
         ([ordered]@{ account_name = '$(''Start'').item.json.account_name' })
 
     $ifAcct = Build-If 'Account unique?' @(440, 0) "={{ `$json.hit_count }}" '1'
@@ -54,7 +54,7 @@ function Build-ReconcileAccount {
     $B = "`$('Read DB Balance').item.json"
     $diff = "Number($B.diff)"
     $summary = New-HitlSummary -Pos @(1540, 0) -Title 'finance.hitl.reconcile_account' -LinesExpr $wg.CardLinesExpr -Lines @(
-        (New-HitlLine 'finance.label.account'           "$S.account_name")
+        (New-HitlLine 'finance.label.account'           "`$('Resolve Account').item.json.label")
         (New-HitlLine 'finance.label.db_balance'        "$B.db_balance" -Kind money -Currency "$B.currency")
         (New-HitlLine 'finance.label.confirmed_balance' "$B.confirmed" -Kind money -Currency "$B.currency")
         (New-HitlLine 'finance.label.difference'        "($diff !== 0 ? 'finance.tpl.diff_correction' : 'finance.tpl.diff_none')" -Kind tpl -Params @{

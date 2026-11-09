@@ -69,7 +69,8 @@ SELECT sp.id,
        -- der Bildschirm Ziele die Kette nicht ein zweites Mal ablaeuft
        c.id                                     AS current_rp_id,
        h.id                                     AS head_rp_id,
-       c.schedule_days_of_month                 AS days_of_month
+       c.schedule_days_of_month                 AS days_of_month,
+       finance.fn_account_label(s.emoji, s.account_type, s.name) AS settlement_account_label
 FROM finance.savings_plans AS sp
 INNER JOIN chain AS ch                    ON ch.plan_id = sp.id
 INNER JOIN finance.recurring_payments AS h ON h.id = ch.head_id

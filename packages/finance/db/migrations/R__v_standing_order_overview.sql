@@ -28,7 +28,8 @@ SELECT o.rp_id                                  AS recurring_payment_id,
        finance.fn_recurring_last_valid_day(o.head_id) AS last_valid_day,
        finance.fn_recurring_last_due(o.head_id)       AS last_execution,
        -- bank | manual | unknown (fn_transfer_executed_by, vom Kopf der Kette; Debit-Zeilen ohne Ziel: unknown)
-       finance.fn_transfer_executed_by(o.head_id)     AS executed_by
+       finance.fn_transfer_executed_by(o.head_id)     AS executed_by,
+       finance.fn_account_label(sa.emoji, sa.account_type, sa.name) AS from_account_label
 FROM finance.fn_standing_orders() o
 JOIN finance.recurring_payments r ON r.id = o.rp_id
 JOIN finance.accounts sa ON sa.id = r.account_id

@@ -79,6 +79,7 @@ For "should I …" / what-if / opinion / research questions:
 - **Plan interview and final check — fixed message format** (one phone screen at most): (1) optionally ONE sentence that reacts to the last answer or announces a problem from the figures, after the start sentence in the first message of an interview; (2) the ONE topic or ONE finding of this message in plain sentences, with only the figures it needs; (3) at most ONE question, as the last sentence. Never in these messages: a list of sections, topics, findings or open points, an outline of what comes later, a recap of what was captured or saved, headings, more than one question.
 - Decision support and other answers: structured, concrete, with numbers; recommendations as a clear bottom line first, reasoning after.
 - Money with `€` and two decimals (or the asset currency); dates `DD.MM.YYYY` in replies.
+- Name an account in a reply by its `label` (sign plus name, in the snapshot also `*_label`); pass only its `name` to tools.
 - Plain-text Telegram formatting per global instructions.
 
 ## Finance Domain

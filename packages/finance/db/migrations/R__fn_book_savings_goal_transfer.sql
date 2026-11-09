@@ -217,6 +217,9 @@ BEGIN
     -- relocate NIE gratulieren (sonst gratuliert es beim Entnehmen aus einem noch ueber-Ziel gefuellten Topf).
     -- v_target>0-Guard (ein 0/NULL-Ziel feuert nicht). Spiegelt den periodischen savings_goal_reached-Zweig im
     -- Advisor (erreicht != ausgegeben). Nicht-blockierend; der Bookkeeper relayed die Note.
+    IF v_dir = 'deposit' AND v_target IS NOT NULL AND v_target > 0 AND v_cur IS NOT NULL AND v_cur >= v_target THEN
+        PERFORM core.fn_mark_told('finance', p->>'chat_id', 'savings_goal_reached:' || v_goal);
+    END IF;
     RETURN jsonb_build_object('ok', true,
         'debit_tx_id', v_debit, 'credit_tx_id', v_credit,
         'savings_goal_id', v_goal, 'direction', v_dir,

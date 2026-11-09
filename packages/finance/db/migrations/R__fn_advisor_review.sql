@@ -63,7 +63,10 @@
 --   fn_ui_date). Die generischen Core-Crons kennen KEINE finance-Felder: sie rendern die Struktur in der Sprache
 --   des Empfaengers (Zahlen per Intl), das LLM formuliert um. 'label' ist englisch-technisch (keine Anzeige).
 --
---   RUECKGABE jsonb: { alerts:[{metric_key,kind,value,target,drift,label,msg}], digest:{…Rohwerte, lines},
+--   told_keys (Quelle finance:told_owner): cashflow_coverage, savings_squeeze, reserve_coverage (je Konto mit latch_keys),
+--   savings_goal_reached (je Ziel-ID) schweigen, wenn der Owner die Lage schon beim Eintragen gehoert hat.
+--
+--   RUECKGABE jsonb: { alerts:[{metric_key,kind,value,target,drift,label,msg,priority,told_keys?}], digest:{…Rohwerte, lines},
 --     net_worth_by_class:[…], rebalanceable_drift:[…], non_rebalanceable_targets:[…],
 --     advisories:{unmapped:[…], null_tag:[…], null_price:[…], price_as_of, price_stale} }
 --   Anwenden via: db_apply.ps1 -File packages\finance\db\migrations\R__fn_advisor_review.sql
@@ -120,6 +123,10 @@ DECLARE
     v_rc_cnt       int := 0;
     v_rc_eur       numeric;
     v_rc_txt       text;
+    v_rc_latch     jsonb;
+    v_rc_told      jsonb;
+    v_dq_price     jsonb;     -- Kurs-Luecken-Saetze, nur im Digest
+    v_told_cf      jsonb := '[{"source":"finance:told_owner","key":"cashflow_coverage"}]'::jsonb;
     -- WS-B Stufe 3: Reserve-Aufschluesselung Cash/Depot je Konto (Digest)
     v_reserve_bd   jsonb;
     -- Audit Paket 3
@@ -232,7 +239,7 @@ BEGIN
     -- Kurs-Luecke (2026-11-06): der Stand ist eine Untergrenze -> „mindestens“ und die Konten ohne Kurs nennen
     -- (goal_reached_fx_gap); „uebertroffen“ vs. „genau erreicht“ ist dann nicht entscheidbar.
     FOR r IN
-        SELECT p.name,
+        SELECT p.id, p.name,
                COALESCE(p.current_amount, 0) AS saved,
                p.target_amount               AS target,
                p.has_fx_gap,
@@ -252,6 +259,7 @@ BEGIN
             'label',      r.name,
             'value',      round(r.saved, 2),
             'target',     round(r.target, 2),
+            'told_keys',  jsonb_build_array(jsonb_build_object('source', 'finance:told_owner', 'key', 'savings_goal_reached:' || r.id)),
             'msg',        jsonb_build_array(CASE WHEN r.has_fx_gap AND r.gap_accounts IS NOT NULL
                               THEN core.fn_ui_tpl('finance.advisor.goal_reached_fx_gap',
                                        jsonb_build_object('name', r.name, 'saved', core.fn_ui_money(r.saved),
@@ -297,8 +305,11 @@ BEGIN
     -- nicht unterdruecken -> die EUR-Zahl ist best-effort (COALESCE), der Count ist das Gate.
     SELECT count(*)::int,
            COALESCE(sum(finance.fn_to_eur(s.shortfall, s.currency)), 0),
-           string_agg(s.account_name, ', ' ORDER BY s.account_name)
-    INTO v_rc_cnt, v_rc_eur, v_rc_txt
+           string_agg(s.account_name, ', ' ORDER BY s.account_name),
+           COALESCE(jsonb_agg(s.account_id::text ORDER BY s.account_id), '[]'::jsonb),
+           COALESCE(jsonb_agg(jsonb_build_object('source', 'finance:told_owner', 'key', 'reserve_breach:' || s.account_id,
+                                                 'latch_key', s.account_id::text) ORDER BY s.account_id), '[]'::jsonb)
+    INTO v_rc_cnt, v_rc_eur, v_rc_txt, v_rc_latch, v_rc_told
     FROM finance.account_reserve_status s WHERE s.breach;
     IF v_rc_cnt > 0 THEN
         v_alerts := v_alerts || jsonb_build_object(
@@ -306,6 +317,8 @@ BEGIN
             'kind',       'reserve_coverage',
             'label',      'reserve_coverage',
             'value',      round(v_rc_eur, 2),
+            'latch_keys', v_rc_latch,
+            'told_keys',  v_rc_told,
             'msg',        jsonb_build_array(
                               core.fn_ui_tpl('finance.advisor.reserve_coverage', jsonb_build_object('accounts', v_rc_txt)),
                               CASE WHEN v_rc_eur > 0
@@ -705,6 +718,7 @@ BEGIN
                 v_alerts := v_alerts || jsonb_build_object(
                     'metric_key', 'cashflow_coverage', 'kind', 'cashflow_coverage', 'label', 'cashflow_coverage',
                     'value', round(v_free, 2), 'target', 0, 'drift', round(abs(v_free), 2),
+                    'told_keys', v_told_cf,
                     'msg', jsonb_build_array(core.fn_ui_tpl('finance.advisor.cashflow_deficit', jsonb_build_object(
                                'deficit', core.fn_ui_money(abs(v_free)),
                                'income', core.fn_ui_money(v_cf.monthly_income),
@@ -715,6 +729,7 @@ BEGIN
                     'metric_key', 'cashflow_coverage', 'kind', 'cashflow_coverage', 'label', 'cashflow_coverage',
                     'value', round(v_free, 2), 'target', round(v_cf_buf * v_cf.monthly_income, 2),
                     'drift', round(v_cf_buf * v_cf.monthly_income - v_free, 2),
+                    'told_keys', v_told_cf,
                     'msg', jsonb_build_array(core.fn_ui_tpl('finance.advisor.cashflow_buffer', jsonb_build_object(
                                'free', core.fn_ui_money(v_free),
                                'pct', core.fn_ui_num(trunc(v_free / v_cf.monthly_income * 100, 1), 1),   -- abgerundet: unter dem Ziel nie >= Ziel anzeigen
@@ -737,6 +752,7 @@ BEGIN
                 'metric_key', 'savings_squeeze', 'kind', 'savings_squeeze', 'label', 'savings_squeeze',
                 'value', round(v_chg, 2), 'target', 0,
                 'drift', round(abs(v_chg), 2),
+                'told_keys', '[{"source":"finance:told_owner","key":"savings_squeeze"}]'::jsonb,
                 'msg', jsonb_build_array(core.fn_ui_tpl('finance.advisor.savings_squeeze', jsonb_build_object(
                            'gap', core.fn_ui_money(abs(v_chg)),
                            'saving', core.fn_ui_money(abs(v_cf.monthly_saving)),
@@ -977,10 +993,18 @@ BEGIN
         END IF;
     END IF;
 
-    -- Datenqualitaet: EIN gelatchter Sammel-Alert (stabiler key) wenn Tag-/Kurs-Luecken bestehen; der
-    -- Digest listet sie zusaetzlich unbedingt (nicht-unterdrueckbar im Quartals-Review). Kurs-Luecken allein loesen den
-    -- Alert NICHT aus (2026-10-27): die meldet agent.finance.cron_remind_missing_prices (sonst Doppel-Meldung); sie stehen
-    -- nur mit im Text, wenn der Alert aus anderem Grund kommt.
+    -- Datenqualitaet: EIN gelatchter Sammel-Alert (stabiler key) wenn Tag-/Waehrungs-Luecken bestehen; der
+    -- Digest listet sie zusaetzlich unbedingt (nicht-unterdrueckbar im Quartals-Review). Kurs-Luecken stehen nur im Digest:
+    -- sie meldet agent.finance.cron_remind_missing_prices (sonst Doppel-Meldung).
+    IF v_null_price_cnt > 0 THEN
+        v_dq_price := jsonb_build_array(
+            core.fn_ui_tpl('finance.advisor.dq_null_price',
+                 jsonb_build_object('n', core.fn_ui_num(v_null_price_cnt),
+                     'names', (SELECT string_agg(e->>'name', ', ' ORDER BY ord)
+                               FROM jsonb_array_elements(v_null_price) WITH ORDINALITY t(e, ord) WHERE ord <= 5))),
+            CASE WHEN v_null_price_cnt > 5 THEN core.fn_ui_tpl('finance.advisor.dq_null_price_more',
+                 jsonb_build_object('n', core.fn_ui_num(v_null_price_cnt - 5))) END);
+    END IF;
     IF v_null_tag_cnt > 0 OR cardinality(v_null_rate_accts) > 0 OR jsonb_array_length(v_unmapped) > 0 THEN
         v_dq_msg := jsonb_build_array(
             core.fn_ui_tpl('finance.advisor.dq_intro'),
@@ -993,12 +1017,6 @@ BEGIN
                  jsonb_build_object('n', core.fn_ui_num(v_null_tag_cnt - 5))) END,
             CASE WHEN jsonb_array_length(v_unmapped) > 0 THEN core.fn_ui_tpl('finance.advisor.dq_unmapped',
                  jsonb_build_object('n', core.fn_ui_num(jsonb_array_length(v_unmapped)))) END,
-            CASE WHEN v_null_price_cnt > 0 THEN core.fn_ui_tpl('finance.advisor.dq_null_price',
-                 jsonb_build_object('n', core.fn_ui_num(v_null_price_cnt),
-                     'names', (SELECT string_agg(e->>'name', ', ' ORDER BY ord)
-                               FROM jsonb_array_elements(v_null_price) WITH ORDINALITY t(e, ord) WHERE ord <= 5))) END,
-            CASE WHEN v_null_price_cnt > 5 THEN core.fn_ui_tpl('finance.advisor.dq_null_price_more',
-                 jsonb_build_object('n', core.fn_ui_num(v_null_price_cnt - 5))) END,
             -- Einzahl/Mehrzahl waehlt die DB (kein „(en)“ im Text); Mehrzahl-Liste nur mit Komma (Anfuehrungszeichen je Sprache)
             CASE WHEN cardinality(v_null_rate_accts) = 1 THEN core.fn_ui_tpl('finance.advisor.dq_null_rate',
                      jsonb_build_object('account', v_null_rate_accts[1]))
@@ -1134,14 +1152,31 @@ BEGIN
                WHERE c->>'class' = 'p2p' AND COALESCE((c->>'value_eur')::numeric, 0) <> 0) THEN
         v_lines := v_lines || jsonb_build_array(NULL, core.fn_ui_tpl('finance.advisor.digest_p2p'));
     END IF;
-    IF v_dq_msg IS NOT NULL THEN
-        v_lines := v_lines || jsonb_build_array(NULL, v_dq_msg);
+    IF v_dq_msg IS NOT NULL OR v_dq_price IS NOT NULL THEN
+        v_lines := v_lines || jsonb_build_array(NULL,
+            COALESCE(v_dq_msg, jsonb_build_array(core.fn_ui_tpl('finance.advisor.dq_intro'))) || COALESCE(v_dq_price, '[]'::jsonb));
     END IF;
     v_lines := v_lines || jsonb_build_array(NULL, core.fn_ui_tpl('finance.advisor.digest_triggers', jsonb_build_object(
                    'armed', core.fn_ui_num((v_digest->>'triggers_armed')::numeric),
                    'fired', core.fn_ui_num((v_digest->>'triggers_fired')::numeric))));
 
     v_digest := v_digest || jsonb_build_object('lines', v_lines);
+
+    -- Wichtigkeit je Art, die Grenze je Nachricht liest sie in core.fn_advisor_alerts_cap.
+    SELECT COALESCE(jsonb_agg(a || jsonb_build_object('priority', CASE
+               WHEN a->>'kind' IN ('cashflow_coverage', 'account_coverage') THEN 100
+               WHEN a->>'kind' IN ('reserve_coverage', 'reserve_coverage_depot', 'emergency_reserve') THEN 90
+               WHEN a->>'kind' IN ('standing_order_ending', 'recurring_missing') THEN 80
+               WHEN a->>'kind' IN ('savings_pace', 'savings_goal_derisk') THEN 70
+               WHEN a->>'kind' = 'savings_squeeze' THEN 60
+               WHEN a->>'kind' IN ('allocation_drift', 'target_portfolio') THEN 50
+               WHEN a->>'kind' LIKE 'maintenance_reserve_%' THEN 40
+               WHEN a->>'kind' IN ('savings_goal_reached', 'savings_goal_unmeasurable') THEN 30
+               WHEN a->>'kind' IN ('staleness', 'statement_stale', 'plan_staleness', 'risk_profile_staleness', 'fx_rate_stale') THEN 20
+               WHEN a->>'kind' = 'data_quality' THEN 10
+               ELSE 50 END) ORDER BY ord), '[]'::jsonb)
+      INTO v_alerts
+      FROM jsonb_array_elements(v_alerts) WITH ORDINALITY t(a, ord);
 
     RETURN jsonb_build_object(
         'alerts', v_alerts,

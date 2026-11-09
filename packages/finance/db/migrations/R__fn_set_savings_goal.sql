@@ -574,7 +574,7 @@ BEGIN
         -- nur wenn sich die Sparrate aendert (neu gerechnet, angelegt, reaktiviert, Topf gewechselt, Beitraege gestoppt);
         -- reine Stammdaten-/Notiz-/Sparplan-Link-Edits falten nichts
         || CASE WHEN v_rate IS NOT NULL OR v_rate_change IS NOT NULL OR v_status = 'active' OR v_reserve IS NOT NULL OR v_stop_funders
-                THEN finance.fn_savings_squeeze_fold() ELSE '{}'::jsonb END;
+                THEN finance.fn_savings_squeeze_fold(p->>'chat_id') ELSE '{}'::jsonb END;
     -- Bank-Hinweis: neue Rate in den Topf (nicht fortgefuehrt) -> einrichten; Beitraege gestoppt ->
     -- aussetzen (Rate + verknuepfte Sparplaene); Rate, Topf oder Fortsetzen geaendert -> mitaendern
     IF v_new_rp IS NOT NULL THEN

@@ -102,7 +102,7 @@ BEGIN
     -- Phase L WS-3: Cashflow-Sofort-Hinweis (Event-Fold). Post-State NACH dem INSERT: die soeben angelegte Zahlung
     -- ist (sofern aktiv + gestartet oder innerhalb fn_recurring_starts_within_cycle) in der Live-View. Audit Paket 3: der eine Fold-Helfer (Pflichtausgaben >
     -- Einnahmen, gelatcht, Re-Arm bei Erholung) — geteilt mit fn_set_recurring_payment.
-    v_cf := finance.fn_cashflow_coverage_fold();
+    v_cf := finance.fn_cashflow_coverage_fold(p->>'chat_id');
     -- Spar-Deckung des Kontos nach dem Write (nur ein Deckungs-Konto rechnet; sonst nur der Index-Check);
     -- „gedeckt" berichtet nur eine Einnahme (Geldeingang), eine Ausgabe nur bei einer Luecke
     v_fold := finance.fn_savings_funding_fold(ARRAY[v_account], false, false,

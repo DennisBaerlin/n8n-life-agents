@@ -4,21 +4,19 @@
 # Iteriert core.advisors und schickt je Advisor den UNBEDINGTEN Voll-Digest (kein Latch — periodischer
 # Voll-Report). Loest funktional den retired finance-Cron agent.finance_advisor.cron_plan_review ab.
 # Opt-in ueber F9 (cron_enable.plan_review, default 'false'). Geteilter Schwanz in New-AdvisorCron.
-# Nutzt denselben Eval-Pfad (core.fn_advisor_review_evaluate) und liest NUR die digest.lines — der Latch-Write
-# der fn ist hier ein harmloser Seiteneffekt (cron_drift_check 10:00 < cron_review 10:05 faengt Breaches zuerst).
+# Liest ueber core.fn_advisor_review_read: ein Rueckblick setzt nie Merker des Waechters (sonst kaemen die Punkte nie).
 function Build-CronAdvisorReview {
     # EINE Zeile: je (Advisor, Person) die paket-gelieferte digest.lines-Struktur (finance.fn_advisor_review baut sie).
     # Der Cron kennt KEINE Paket-Felder. P2b-2: per-Person-Faecherung via dem geteilten Get-AdvisorFanoutCte-Kopf ->
     # jede Person bekommt ihren eigenen Digest (person_id im build_object, damit Digests gleicher Domain NICHT
     # kollabieren). household-Domains -> person_id NULL (NULLS FIRST = stabile Reihenfolge). jsonb als ::text
-    # (n8n-Pg-Node-Quirk, Muster Monitor-Cron). Textkatalog Phase C: Texte (Owner-Sprache, alle tpl-Keys der Digests)
-    # in DERSELBEN Anweisung wie der Latch-Seiteneffekt der Eval-fn.
+    # (n8n-Pg-Node-Quirk, Muster Monitor-Cron). Textkatalog Phase C: Texte (Owner-Sprache, alle tpl-Keys der Digests).
     $cte = Get-AdvisorFanoutCte
     $keys = Get-UiKeysSql ($script:AdvisorChromeKeys + $script:UiRenderKeys)
     $evalSql = @"
 =WITH $cte,
 ev AS MATERIALIZED (
-  SELECT domain, person_id, person_name, core.fn_advisor_review_evaluate(domain, person_id, '{}'::jsonb) AS r FROM pids
+  SELECT domain, person_id, person_name, core.fn_advisor_review_read(domain, person_id, '{}'::jsonb) AS r FROM pids
 ),
 agg AS (
   SELECT COALESCE(
@@ -49,7 +47,7 @@ if (parts.length === 0) { return [{ json: Object.assign({ det_text: '', report: 
 return [{ json: Object.assign({ det_text: parts.join('\n\n----------\n\n'), report: true }, chrome) }];
 '@
 
-    $sticky = 'Quartalsweiser Voll-Review (schedule.plan_review aus core.config, EMPFOHLEN quartalsweise). Iteriert core.advisors und schickt je Advisor den UNBEDINGTEN Voll-Digest (kein Latch — periodischer Voll-Report; Build message setzt report=true, sobald die digest.lines mindestens eine Zeile ergeben; ein älteres Paket ohne lines liefert noch digest.text). Löst den retired paket-eigenen Plan-Review-Cron ab (seit WS2 generisch). F9-Gate (Cron on?): core.fn_package_active(core) AND core.fn_config_get(core,cron_enable,plan_review)=true (fail-closed; default false = opt-in). Nutzt denselben Eval-Pfad core.fn_advisor_review_evaluate und rendert NUR die digest.lines-Struktur in Owner-Sprache (geteilter Renderer, Zahlen per Intl) — der Latch-Write ist ein harmloser Seiteneffekt (cron_drift_check 10:00 < cron_review 10:05 fängt Breaches zuerst). Phrase formuliert in dieser Sprache um (model.advisor_review, jede Zahl wörtlich), onError continue -> deterministischer Fallback.'
+    $sticky = 'Quartalsweiser Voll-Review (schedule.plan_review aus core.config, EMPFOHLEN quartalsweise). Iteriert core.advisors und schickt je Advisor den UNBEDINGTEN Voll-Digest (kein Latch — periodischer Voll-Report; Build message setzt report=true, sobald die digest.lines mindestens eine Zeile ergeben; ein älteres Paket ohne lines liefert noch digest.text). Löst den retired paket-eigenen Plan-Review-Cron ab (seit WS2 generisch). F9-Gate (Cron on?): core.fn_package_active(core) AND core.fn_config_get(core,cron_enable,plan_review)=true (fail-closed; default false = opt-in). Liest über core.fn_advisor_review_read (setzt nie Merker) und rendert die digest.lines-Struktur in Owner-Sprache (geteilter Renderer, Zahlen per Intl). Phrase formuliert in dieser Sprache um (model.advisor_review, jede Zahl wörtlich), onError continue -> deterministischer Fallback.'
 
     return New-AdvisorCron `
         -WorkflowName  'agent.advisor.cron_review' `

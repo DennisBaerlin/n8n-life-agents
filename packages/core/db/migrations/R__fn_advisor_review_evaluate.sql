@@ -30,8 +30,12 @@
 --   UNIFORM an ALLE registrierten <pkg>.fn_advisor_review(text,text,jsonb) (finance ignoriert ihn = Haushalt,
 --   career nutzt ihn) — keine scope-konditionale Dispatch-Aritaet (Rule of Three, 2. Dispatcher-Konsument).
 --
---   RUECKGABE jsonb: { ok, send:boolean, alerts:[…neue Breaches…], digest:{…} }
+--   TOLD_KEYS: ein alert darf told_keys:[{source,key,latch_key?}] tragen. Ist einer laut core.fn_notify_told gemeldet,
+--   wird der Merker gesetzt, der alert (bzw. mit latch_key das Element) aber nicht neu (Alertmanager inhibit_rules).
+--
+--   RUECKGABE jsonb: { ok, send:boolean, alerts:[…neue Breaches, je _latched:[{source,key}]…], first_run:boolean, digest:{…} }
 --     send=true gdw mindestens EIN Breach NEU ist (Latch-Uebergang) -> der Drift-Cron schickt nur dann.
+--     first_run=true beim ersten Lauf je (domain, person) mit neuen Alarmen. _latched braucht core.fn_advisor_alerts_cap.
 --     digest reicht die fn unveraendert durch (der Quartals-Cron nutzt ihn ungelatcht).
 --   Anwenden via: db_apply.ps1 -File packages\core\db\migrations\R__fn_advisor_review_evaluate.sql
 -- ============================================================
@@ -51,7 +55,9 @@ DECLARE
     v_alert      jsonb;
     v_key        text;
     v_sub        text;
-    v_fresh      boolean;
+    v_told       boolean;
+    v_latched    jsonb;
+    v_first_run  boolean := false;
     -- P2a: person-suffigierte Latch-source (NULL=Haushalt -> byte-gleich heute). EINE Variable, an BEIDEN
     -- Call-Sites (fn_should_notify + fn_notify_reconcile) genutzt -> sonst latcht der eine person-aware und der
     -- Reconcile raeumt person-blind -> Dauer-Stummschaltung/Leak (Opus-Review M2).
@@ -83,27 +89,45 @@ BEGIN
         v_key  := v_alert->>'metric_key';
         CONTINUE WHEN v_key IS NULL;   -- defensiv: ein alert ohne metric_key wuerde sonst die NOT-NULL-key-
                                        -- Constraint von core.notification_state verletzen + den Cron-Lauf killen
-        -- Roter Faden: Mengen-Alarm mit latch_keys -> je Element 'metric_key#k' latchen (Alertmanager-Gruppe: ein
-        -- neues Mitglied meldet erneut). Der Alert ist NEU, sobald mind. ein Element neu ist; jedes Element wird
-        -- gelatcht (kein Kurzschluss), verschwundene raeumt der Reconcile unten. Leer/fehlend -> metric_key wie bisher.
+        -- Der Merker wird immer zuerst gesetzt, erst dann told geprueft: Eine gesagte Lage gilt so als gemeldet.
+        -- Mengen-Alarm mit latch_keys -> je Element 'metric_key#k' latchen (Alertmanager-Gruppe: ein neues Mitglied
+        -- meldet erneut); jedes Element wird gelatcht (kein Kurzschluss), verschwundene raeumt der Reconcile unten.
+        v_latched := '[]'::jsonb;
         IF jsonb_typeof(v_alert->'latch_keys') = 'array' AND jsonb_array_length(v_alert->'latch_keys') > 0 THEN
-            v_fresh := false;
             FOR v_sub IN SELECT jsonb_array_elements_text(v_alert->'latch_keys') LOOP
                 v_keys := v_keys || (v_key || '#' || v_sub);
                 IF core.fn_should_notify(v_source, v_key || '#' || v_sub) THEN
-                    v_fresh := true;
+                    SELECT EXISTS (
+                        SELECT 1 FROM jsonb_array_elements(COALESCE(v_alert->'told_keys', '[]'::jsonb)) t
+                        WHERE (t->>'latch_key' IS NULL OR t->>'latch_key' = v_sub)
+                          AND core.fn_notify_told(t->>'source', t->>'key')) INTO v_told;
+                    IF NOT v_told THEN
+                        v_latched := v_latched || jsonb_build_object('source', v_source, 'key', v_key || '#' || v_sub);
+                    END IF;
                 END IF;
             END LOOP;
-            IF v_fresh THEN
-                v_new := v_new || v_alert;
+        ELSE
+            v_keys := v_keys || v_key;
+            IF core.fn_should_notify(v_source, v_key) THEN
+                SELECT EXISTS (
+                    SELECT 1 FROM jsonb_array_elements(COALESCE(v_alert->'told_keys', '[]'::jsonb)) t
+                    WHERE core.fn_notify_told(t->>'source', t->>'key')) INTO v_told;
+                IF NOT v_told THEN
+                    v_latched := v_latched || jsonb_build_object('source', v_source, 'key', v_key);
+                END IF;
             END IF;
-            CONTINUE;
         END IF;
-        v_keys := v_keys || v_key;
-        IF core.fn_should_notify(v_source, v_key) THEN
-            v_new := v_new || v_alert;
+        IF jsonb_array_length(v_latched) > 0 THEN
+            v_new := v_new || (v_alert || jsonb_build_object('_latched', v_latched));
         END IF;
     END LOOP;
+
+    -- Erst-Merker in derselben Quelle: Reset, Personen-Purge und Restore wirken ohne weitere Stelle. Nur ein Lauf mit
+    -- neuen Alarmen verbraucht ihn; "keine Merker vorhanden" taugt nicht, das gilt auch nach einer Phase ohne Abweichung.
+    v_keys := v_keys || '__first_run__'::text;
+    IF jsonb_array_length(v_new) > 0 THEN
+        v_first_run := core.fn_should_notify(v_source, '__first_run__');
+    END IF;
 
     -- ---------- Reconcile-GC: Re-Arm wieder-im-Band + Loeschen stale Keys ----------
     -- Level-triggered: der Review-Lauf liefert das VOLLE aktuelle Alert-Set. Jede gelatchte Metrik dieser
@@ -116,6 +140,7 @@ BEGIN
         'ok',     true,
         'send',   jsonb_array_length(v_new) > 0,
         'alerts', v_new,
+        'first_run', v_first_run,
         'digest', v_digest);
 END;
 $$;

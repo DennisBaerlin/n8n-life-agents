@@ -146,6 +146,7 @@ BEGIN
 
     -- Event-Fold "Sparziel erreicht" (wie fn_book_savings_goal_transfer deposit): nur eine Erhoehung, die das Ziel deckt.
     IF v_delta > 0 AND v_target > 0 AND v_cur >= v_target THEN
+        PERFORM core.fn_mark_told('finance', p->>'chat_id', 'savings_goal_reached:' || v_goal);
         v_out := v_out || jsonb_build_object('savings_goal_reached', jsonb_build_object(
             'current_amount', round(v_cur, 2), 'target_amount', round(v_target, 2),
             'note', 'Savings goal "' || v_gname || '" is now fully covered (' || round(v_cur, 2) || ' of ' || round(v_target, 2)

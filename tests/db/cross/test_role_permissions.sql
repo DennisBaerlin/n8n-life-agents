@@ -1326,6 +1326,8 @@ BEGIN
     SET LOCAL ROLE finance_rw;
     PERFORM core.fn_should_notify('__rp_test__', 'k', interval '1 hour');
     PERFORM core.fn_notify_resolve('__rp_test__', 'k');
+    PERFORM core.fn_notify_told('__rp_test__', 'k');
+    PERFORM core.fn_mark_told('__rp_test__', '1', 'k');
     RESET ROLE;
   EXCEPTION WHEN OTHERS THEN
     RESET ROLE;
@@ -1698,7 +1700,7 @@ DECLARE
                               'fn_household_persons', 'fn_resolve_person', 'fn_ui_texts_for', 'fn_today',
                               'fn_resolve_date', 'fn_resolve_input_dates', 'fn_handoff_tasks_read'];
   v_published_rw text[] := ARRAY['fn_set_onboarding_section', 'fn_check_write_permission', 'fn_person_chat_id',
-                                 'fn_should_notify', 'fn_notify_resolve', 'fn_dry_run', 'fn_reminder_allowed', 'fn_notify_forget_before',
+                                 'fn_should_notify', 'fn_notify_resolve', 'fn_notify_told', 'fn_mark_told', 'fn_dry_run', 'fn_reminder_allowed', 'fn_notify_forget_before',
                                  'fn_handoff_task_check', 'fn_complete_handoff_task', 'fn_cancel_handoff_task'];
   v_n int := 0;
 BEGIN

@@ -204,13 +204,15 @@ BEGIN
   IF NOT EXISTS (SELECT 1 FROM jsonb_array_elements(r->'advisories'->'null_price') p WHERE p->>'symbol'='NOP') THEN
     RAISE EXCEPTION 'FAIL [9]: NOP nicht als null_price gemeldet, got %', r->'advisories'->'null_price'; END IF;
   -- Kurs-Luecken 2026-10-27: null_price kommt aus fn_holding_price_status (Name + Status je Position), der
-  -- Datenqualitaets-Text nennt die Namen, und es gibt KEINEN null_price-latch_key (melden tut der Kurs-Luecken-Cron)
+  -- Digest nennt die Namen, der Alarm nicht, und es gibt KEINEN null_price-latch_key (melden tut der Kurs-Luecken-Cron)
   IF NOT EXISTS (SELECT 1 FROM jsonb_array_elements(r->'advisories'->'null_price') p
                  WHERE p->>'name' = 'Rohstoff2 (kein Kurs)' AND p->>'status' = 'missing') THEN
     RAISE EXCEPTION 'FAIL [9 null_price name/status]: got %', r->'advisories'->'null_price'; END IF;
-  IF position('Rohstoff2 (kein Kurs)' IN (SELECT (a->'msg')::text FROM jsonb_array_elements(r->'alerts') a
-                                      WHERE a->>'kind' = 'data_quality' LIMIT 1)) = 0 THEN
-    RAISE EXCEPTION 'FAIL [9 dq names]: Datenqualitaets-Text nennt die kurslose Position nicht'; END IF;
+  IF position('Rohstoff2 (kein Kurs)' IN (r->'digest'->'lines')::text) = 0 THEN
+    RAISE EXCEPTION 'FAIL [9 dq names]: Digest nennt die kurslose Position nicht'; END IF;
+  IF position('Rohstoff2 (kein Kurs)' IN COALESCE((SELECT (a->'msg')::text FROM jsonb_array_elements(r->'alerts') a
+                                      WHERE a->>'kind' = 'data_quality' LIMIT 1), '')) > 0 THEN
+    RAISE EXCEPTION 'FAIL [9 dq names]: Alarmtext darf die kurslose Position nicht nennen'; END IF;
   IF EXISTS (SELECT 1 FROM jsonb_array_elements(r->'alerts') a, jsonb_array_elements_text(COALESCE(a->'latch_keys', '[]'::jsonb)) k
              WHERE k LIKE 'null_price%') THEN
     RAISE EXCEPTION 'FAIL [9 latch]: null_price darf keinen latch_key tragen (Doppel-Meldung)'; END IF;

@@ -171,6 +171,6 @@ BEGIN
             THEN finance.fn_bank_setup_note((v_core->>'recurring_payment_id')::int, 'bank_change')
         ELSE '[]'::jsonb END);
     RETURN v_core || jsonb_build_object('effective', COALESCE(v_dates->'resolved', '{}'::jsonb) || v_end)
-                  || finance.fn_cashflow_coverage_fold();
+                  || finance.fn_cashflow_coverage_fold(p->>'chat_id');
 END;
 $$;

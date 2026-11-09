@@ -10,9 +10,11 @@
 --   Nicht-blockierend: der Aufrufer faltet das Ergebnis in seinen {ok:true}-Return, der Bookkeeper relayed die note.
 --   Seit 2026-10-30 (Transparenz, Owner-Entscheid) rechnet „frei“ den geschaetzten Alltag ein
 --   (finance.fn_household_everyday_month, dieselbe Adresse wie fn_advisor_review); die note nennt die Basis.
+--   p_chat_id (optional) = Absender; hoerte der Owner die Notiz, merkt core.fn_mark_told das fuer den Waechter.
 --   RUECKGABE jsonb: '{}' oder {cashflow_coverage: {monthly_free, note}}.
 -- ============================================================
-CREATE OR REPLACE FUNCTION finance.fn_cashflow_coverage_fold()
+DROP FUNCTION IF EXISTS finance.fn_cashflow_coverage_fold();
+CREATE OR REPLACE FUNCTION finance.fn_cashflow_coverage_fold(p_chat_id text DEFAULT NULL)
 RETURNS jsonb LANGUAGE plpgsql AS $$
 DECLARE
     v_free NUMERIC;
@@ -27,6 +29,7 @@ BEGIN
 
     IF v_rows > 0 AND v_free < 0 THEN
         IF core.fn_should_notify('finance', 'cashflow_coverage', interval '48 hours') THEN
+            PERFORM core.fn_mark_told('finance', p_chat_id, 'cashflow_coverage');
             RETURN jsonb_build_object('cashflow_coverage', jsonb_build_object(
                 'monthly_free', round(v_free, 2),
                 'note', 'Warning: the regular obligations (spending and loan instalments, savings rates not included) '

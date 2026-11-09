@@ -12,6 +12,7 @@
       "DELETE FROM finance.savings_goals WHERE name = 'CRONTEXT G1';"
     ],
     "seed_sql": [
+      "INSERT INTO core.notification_state (source, key, state, last_fired_at) VALUES ('advisor:finance', '__first_run__', 'fired', now());",
       "INSERT INTO finance.savings_goals (name, target_amount, target_date, status, created_at) VALUES ('CRONTEXT G1', 10000, CURRENT_DATE + 30, 'active', now() - interval '300 days');"
     ],
     "expect_keys": ["core.advisor.footer_off"],
@@ -37,6 +38,25 @@
     "expect_keys": ["core.advisor.footer_off"],
     "expect_buttons": ["core.advisor.btn_off"],
     "llm_expect": { "keys": ["finance.advisor.goal_derisk", "finance.advisor.goal_derisk_keep"], "language": true }
+  },
+  {
+    "kind": "cron_text",
+    "id": "ctk21",
+    "name": "Erster Lauf des Waechters (ko): hoechstens drei Punkte, eigener Titel, Hinweis auf den Rest bleiben beim Umformulieren",
+    "workflow": "agent.advisor.cron_drift_check",
+    "schedule_key": "drift_check",
+    "cron_enable": "drift_check",
+    "recipient": "owner",
+    "reset_sql": [
+      "DELETE FROM core.notification_state WHERE source LIKE 'advisor:%';",
+      "DELETE FROM finance.savings_goals WHERE name LIKE 'CRONTEXT F_';"
+    ],
+    "seed_sql": [
+      "INSERT INTO finance.savings_goals (name, target_amount, target_date, status, created_at) SELECT 'CRONTEXT F' || n, 10000, CURRENT_DATE + 30, 'active', now() - interval '300 days' FROM generate_series(1, 5) n;"
+    ],
+    "expect_keys": ["core.advisor.footer_off"],
+    "expect_buttons": ["core.advisor.btn_off"],
+    "llm_expect": { "keys": ["core.advisor.first_run_intro", "core.advisor.more_count"], "language": true }
   },
   {
     "kind": "cron_text",

@@ -14,9 +14,11 @@
 --   der periodische Advisor-Cron bleibt der Backstop.
 --   Nicht-blockierend: der Aufrufer faltet das Ergebnis in seinen {ok:true}-Return, der Bookkeeper relayed die note.
 --   Seit 2026-10-30 (Transparenz) rechnen frei und Kontoveraenderung den geschaetzten Alltag ein (fn_household_everyday_month).
+--   p_chat_id (optional) = Absender; hoerte der Owner die Notiz, merkt core.fn_mark_told das fuer den Waechter.
 --   RUECKGABE jsonb: '{}' oder {savings_squeeze: {account_change, note}}.
 -- ============================================================
-CREATE OR REPLACE FUNCTION finance.fn_savings_squeeze_fold()
+DROP FUNCTION IF EXISTS finance.fn_savings_squeeze_fold();
+CREATE OR REPLACE FUNCTION finance.fn_savings_squeeze_fold(p_chat_id text DEFAULT NULL)
 RETURNS jsonb LANGUAGE plpgsql AS $$
 DECLARE
     v_income NUMERIC;
@@ -33,6 +35,7 @@ BEGIN
 
     IF v_income > 0 AND v_change < 0 THEN
         IF core.fn_should_notify('finance', 'savings_squeeze', interval '24 hours') THEN
+            PERFORM core.fn_mark_told('finance', p_chat_id, 'savings_squeeze');
             RETURN jsonb_build_object('savings_squeeze', jsonb_build_object(
                 'account_change', round(v_change, 2),
                 'note', CASE WHEN v_free < 0

@@ -31,6 +31,7 @@ function Build-SetRecurringPayment {
         -WriteName 'Set payment (atomic)' `
         -WriteSelect "(r->>'ok')::boolean AS ok, r->>'reason' AS reason, (r->>'recurring_payment_id')::int AS recurring_payment_id, (r->>'split')::boolean AS split, COALESCE(r->'cashflow_coverage'->>'note', '') AS cashflow_coverage" `
         -Params ([ordered]@{
+            chat_id = '$(''Start'').item.json.chat_id'
             recurring_payment_id  = '$(''Resolve Payment'').item.json.id'
             amount                = '$(''Start'').item.json.amount'
             valid_from            = '$(''Start'').item.json.valid_from'

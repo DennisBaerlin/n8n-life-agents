@@ -425,6 +425,6 @@ BEGIN
                 THEN jsonb_build_object('required_monthly_rate', v_rate, 'plan_monthly_amount', v_plan_monthly)
                 ELSE '{}'::jsonb END
         || (v_fold - 'card_lines' - 'effective')   -- card_approve_key (Probelauf) bzw. depot_risk (nach dem Stempel)
-        || finance.fn_savings_squeeze_fold();
+        || finance.fn_savings_squeeze_fold(p->>'chat_id');
 END;
 $$;

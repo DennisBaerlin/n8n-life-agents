@@ -256,7 +256,7 @@ BEGIN
             'schedule_days',        (SELECT array_to_string(r.schedule_days_of_month, ', ')
                                      FROM finance.recurring_payments r WHERE r.id = v_new_rp_id))
             -- kuenftiger Stichtag: der neue Betrag ist im Post-State noch nicht aktiv -> kein Fold (der Cron faengt es)
-            || CASE WHEN v_from <= CURRENT_DATE THEN finance.fn_savings_squeeze_fold() ELSE '{}'::jsonb END,
+            || CASE WHEN v_from <= CURRENT_DATE THEN finance.fn_savings_squeeze_fold(p->>'chat_id') ELSE '{}'::jsonb END,
             -- Bank-Hinweis als letzte Kartenzeile
             finance.fn_merge_fold(finance.fn_savings_funding_fold(ARRAY[v_rp.account_id], true, v_from > CURRENT_DATE),
                 jsonb_build_object('card_lines', finance.fn_bank_setup_note(v_new_rp_id, 'bank_change'))));
@@ -281,7 +281,7 @@ BEGIN
                 'reopened',             true)
                 -- Neustart im Fenster zaehlt sofort in der Monatsrechnung -> Hinweis sofort wie beim Anlegen, spaeter der Cron
                 || CASE WHEN finance.fn_recurring_starts_within_cycle(v_from, v_rp.schedule_interval, v_rp.schedule_unit, CURRENT_DATE)
-                        THEN finance.fn_savings_squeeze_fold() ELSE '{}'::jsonb END,
+                        THEN finance.fn_savings_squeeze_fold(p->>'chat_id') ELSE '{}'::jsonb END,
                 finance.fn_merge_fold(finance.fn_savings_funding_fold(ARRAY[v_rp.account_id], true, v_from > CURRENT_DATE),
                     jsonb_build_object('card_lines',
                         finance.fn_bank_setup_note((v_split_res->>'recurring_payment_id')::int, 'bank_change'))));
@@ -314,7 +314,7 @@ BEGIN
             'recurring_payment_id', v_plan.recurring_payment_id,
             'split',                false)
             -- nur ein Status-Wechsel aendert die laufende Sparrate; reine Notiz-/Anlageklasse-/Person-Edits falten nichts
-            || CASE WHEN v_status IS NOT NULL THEN finance.fn_savings_squeeze_fold() ELSE '{}'::jsonb END,
+            || CASE WHEN v_status IS NOT NULL THEN finance.fn_savings_squeeze_fold(p->>'chat_id') ELSE '{}'::jsonb END,
             -- Spar-Deckung + Bank-Hinweis (letzte Zeile) nur bei einem ECHTEN Status-Wechsel (derselbe Status + Notiz ist
             -- ein Notiz-Edit; Notiz/Anlageklasse/Person aendern beim Broker nichts)
             CASE WHEN v_status IS DISTINCT FROM v_plan.status AND v_status IS NOT NULL

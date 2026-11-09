@@ -30,8 +30,8 @@
 --
 --   RUECKGABE (Post-State-Vertrag): {ok:true, committed, created:[{row_no, entity_type,
 --   id, balance?, currency?}]} — ids = Handles, committed-Count = Informationsgehalt der Batch-Op,
---   balance = Konto-Saldo nach Anlage bzw. Verrechnungssaldo nach Uebernahme; currency (Konten) fuer den
---   FX-Sofort-Refresh des Tools; positions:[{holding_id, name, symbol, isin, provider_symbol, quote_currency, asset_class}] =
+--   balance = Konto-Saldo nach Anlage bzw. Verrechnungssaldo nach Uebernahme; currency (Konten);
+--   positions:[{holding_id, name, symbol, isin, provider_symbol, quote_currency, asset_class}] =
 --   Post-State der uebernommenen Depot-Positionen (Monats-Check WP-G: das Tool prueft danach, ob jede Position einen
 --   Kurs hat und eine Anlageklasse traegt, und der Agent klaert Luecken mit dem Nutzer).
 --   | {ok:false, errors:[...], reason}.
@@ -310,11 +310,14 @@ BEGIN
                         CONTINUE;
                     END IF;
                 END IF;
-                -- Kurs-Notierung in Fremdwaehrung (provider_currency, tool_commit_import): wird die native Markt-Waehrung
-                -- der EUR-Position (quote_currency, WP-3a) -> fn_active_currencies holt den FX-Kurs; ein genannter
-                -- Kaufkurs-quote_currency geht vor (der Einstand bleibt in Depot-Waehrung, nichts wird umgerechnet).
-                IF NULLIF(v_payload->>'quote_currency', '') IS NULL AND NULLIF(v_payload->>'provider_currency', '') IS NOT NULL THEN
+                -- quote_currency ist hier die Markt-Notierung (Einstand bleibt in Depot-Waehrung, nichts wird umgerechnet).
+                -- Die gepruefte Notierung (provider_currency, tool_commit_import) gewinnt; die Zeilen-Quelle kennt oft nur
+                -- die Abrechnung, und deren Waehrung sagt nichts ueber die Notierung -> dann NULL = "nicht abweichend".
+                IF NULLIF(v_payload->>'provider_currency', '') IS NOT NULL THEN
                     v_payload := v_payload || jsonb_build_object('quote_currency', v_payload->>'provider_currency');
+                ELSIF upper(btrim(v_payload->>'quote_currency')) IN
+                      (SELECT a.currency::text FROM finance.accounts a WHERE a.id IN (v_ref_id, v_settle)) THEN
+                    v_payload := v_payload - 'quote_currency';
                 END IF;
                 -- Weitere Tranche einer in DIESEM Lauf schon uebernommenen Position -> dieselbe group_id, kein zweiter Guard.
                 v_lot_key := v_ref_id || ':' || COALESCE(NULLIF(upper(btrim(v_payload->>'isin')), ''),

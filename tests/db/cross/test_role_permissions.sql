@@ -1797,6 +1797,7 @@ BEGIN
     VALUES (v_depot, 'IE00TESTRP01', 'RPPX', '__rp_px_fonds__', 1, 10, 'EUR') RETURNING id INTO v_h;
     SET LOCAL ROLE finance_rw;
     v_r := finance.fn_price_gaps();
+    PERFORM * FROM finance.fn_fx_rate_status();
     PERFORM finance.fn_price_gap_claim(v_h::text);
     v_r := finance.fn_apply_price_symbol(jsonb_build_object('holding_id', v_h, 'expected_feed_symbol', 'RPPX',
              'provider_symbol', 'RPPX.DE', 'quote_currency', 'EUR'));

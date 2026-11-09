@@ -568,4 +568,37 @@ BEGIN
   RAISE NOTICE 'PASS fn_import_bundle [LOT2 identische datierte Zeile -> Dublette an Zeile 2]';
 END $$;
 
+-- ============================================================
+-- quote_currency der Position ist die Markt-Notierung: die Abrechnungswaehrung darf sie weder setzen noch die gepruefte
+-- Notierung (provider_currency) verdraengen. Die Quelle der Zeile (Modell, Datei) kennt nur die Abrechnung.
+-- ============================================================
+DO $$
+DECLARE
+  v_result JSONB;
+BEGIN
+  SELECT finance.fn_import_stage(jsonb_build_object('source', 'csv', 'rows', jsonb_build_array(
+    jsonb_build_object('entity_type','account','name','__qc Verrechnung','account_type','cash','opening_balance',0),
+    jsonb_build_object('entity_type','account','name','__qc Depot','account_type','stocks_depot','settlement_account','__qc Verrechnung'),
+    jsonb_build_object('entity_type','stock_buy','depot','__qc Depot','isin','IE00QCTEST01','symbol','QCA',
+                       'shares',1,'price_per_share',10,'quote_currency','EUR','provider_symbol','QCA.L','provider_currency','USD'),
+    jsonb_build_object('entity_type','stock_buy','depot','__qc Depot','isin','IE00QCTEST02','symbol','QCB',
+                       'shares',1,'price_per_share',10,'quote_currency','EUR'),
+    jsonb_build_object('entity_type','stock_buy','depot','__qc Depot','isin','IE00QCTEST03','symbol','QCC',
+                       'shares',1,'price_per_share',10,'quote_currency','GBP')))) INTO v_result;
+  v_result := finance.fn_import_bundle(jsonb_build_object('batch_id', (v_result->>'batch_id')::uuid));
+  IF (v_result->>'ok')::boolean IS DISTINCT FROM true THEN RAISE EXCEPTION 'FAIL [QC Setup]: %', v_result; END IF;
+  IF (SELECT quote_currency FROM finance.depot_holdings WHERE symbol = 'QCA') IS DISTINCT FROM 'USD' THEN
+    RAISE EXCEPTION 'FAIL [QC1]: gepruefte Notierung USD muss die genannte Abrechnungswaehrung schlagen, got %',
+      (SELECT quote_currency FROM finance.depot_holdings WHERE symbol = 'QCA');
+  END IF;
+  IF (SELECT quote_currency FROM finance.depot_holdings WHERE symbol = 'QCB') IS NOT NULL THEN
+    RAISE EXCEPTION 'FAIL [QC2]: Abrechnungswaehrung darf nicht als Kurswaehrung stehen bleiben, got %',
+      (SELECT quote_currency FROM finance.depot_holdings WHERE symbol = 'QCB');
+  END IF;
+  IF (SELECT quote_currency FROM finance.depot_holdings WHERE symbol = 'QCC') IS DISTINCT FROM 'GBP' THEN
+    RAISE EXCEPTION 'FAIL [QC3]: eine abweichende genannte Notierung bleibt erhalten';
+  END IF;
+  RAISE NOTICE 'PASS fn_import_bundle [QC Kurswaehrung nicht aus der Abrechnung]';
+END $$;
+
 ROLLBACK;

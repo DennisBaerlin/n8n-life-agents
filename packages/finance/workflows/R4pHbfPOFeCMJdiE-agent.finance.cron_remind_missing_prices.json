@@ -801,41 +801,8 @@
                                    ],
                       "id":  "e495288a-5d6f-51e7-8890-d2ebd3db4f7d",
                       "name":  "Refresh market prices",
-                      "alwaysOutputData":  true
-                  },
-                  {
-                      "parameters":  {
-                                         "conditions":  {
-                                                            "options":  {
-                                                                            "caseSensitive":  true,
-                                                                            "typeValidation":  "strict",
-                                                                            "version":  2
-                                                                        },
-                                                            "conditions":  [
-                                                                               {
-                                                                                   "id":  "1d12e7f4-0039-5814-817e-2cafc0245776",
-                                                                                   "leftValue":  "={{ $(\u0027Accept?\u0027).first().json.cand_currency !== \u0027EUR\u0027 }}",
-                                                                                   "rightValue":  true,
-                                                                                   "operator":  {
-                                                                                                    "type":  "boolean",
-                                                                                                    "operation":  "equals"
-                                                                                                }
-                                                                               }
-                                                                           ],
-                                                            "combinator":  "and"
-                                                        },
-                                         "options":  {
-
-                                                     }
-                                     },
-                      "type":  "n8n-nodes-base.if",
-                      "typeVersion":  2.2,
-                      "position":  [
-                                       2620,
-                                       -380
-                                   ],
-                      "id":  "861fc9ea-20f8-577a-add2-5565a73b38ac",
-                      "name":  "Foreign quote?"
+                      "alwaysOutputData":  true,
+                      "onError":  "continueRegularOutput"
                   },
                   {
                       "parameters":  {
@@ -872,7 +839,8 @@
                                    ],
                       "id":  "361cf300-25c0-50d8-9b8b-638398684f15",
                       "name":  "Refresh FX rates",
-                      "alwaysOutputData":  true
+                      "alwaysOutputData":  true,
+                      "onError":  "continueRegularOutput"
                   },
                   {
                       "parameters":  {
@@ -1013,7 +981,7 @@
                   },
                   {
                       "parameters":  {
-                                         "content":  "## DB-Automatik\n**fn_apply_price_symbol + Sofort-Kurs**\n\nDer Tipp ist das HITL. Apply symbol = finance.fn_apply_price_symbol: Guard zuerst (Lücke noch offen, Feed-Symbol noch das der Karte, sonst code already_resolved -\u003e \"nichts überschrieben\"), dann fn_set_holding mit provider_symbol + quote_currency (immer, auch EUR). Danach Refresh market prices (+ Refresh FX rates bei Fremdwährung, beide alwaysOutputData) -\u003e Read new price (fn_holding_price_status, aggregiert -\u003e immer ein Item) -\u003e Ergebnis-Zeile mit Kurs und Datum. Nicht jetzt / kein Tipp in 8 h -\u003e nur Hinweis \"in 7 Tagen wieder\".",
+                                         "content":  "## DB-Automatik\n**fn_apply_price_symbol + Sofort-Kurs**\n\nDer Tipp ist das HITL. Apply symbol = finance.fn_apply_price_symbol: Guard zuerst (Lücke noch offen, Feed-Symbol noch das der Karte, sonst code already_resolved -\u003e \"nichts überschrieben\"), dann fn_set_holding mit provider_symbol + quote_currency (immer, auch EUR). Danach Refresh market prices -\u003e Check FX rates (fn_fx_rate_status, kennt auch die vom Abruf gelernte Währung; bei Lücke Refresh FX rates, alle alwaysOutputData) -\u003e Read new price (fn_holding_price_status, aggregiert -\u003e immer ein Item) -\u003e Ergebnis-Zeile mit Kurs und Datum. Nicht jetzt / kein Tipp in 8 h -\u003e nur Hinweis \"in 7 Tagen wieder\".",
                                          "height":  340,
                                          "width":  440,
                                          "color":  4
@@ -1058,6 +1026,65 @@
                                    ],
                       "id":  "30eaaad7-00d3-5cf8-9a14-2fadef524749",
                       "name":  "F9 Cron-Gate"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "SELECT count(*) FILTER (WHERE status \u003c\u003e \u0027ok\u0027)::int AS gaps FROM finance.fn_fx_rate_status()",
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       2520,
+                                       -560
+                                   ],
+                      "id":  "d93b08bf-e081-5402-b99c-bb87085b2585",
+                      "name":  "Check FX rates",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_FINANCE_RW__",
+                                                           "name":  "Postgres finance_rw (read-write)"
+                                                       }
+                                      },
+                      "onError":  "continueRegularOutput",
+                      "alwaysOutputData":  true
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "c78e1922-0b85-5f17-9a12-a51d78cf4910",
+                                                                                   "leftValue":  "={{ $json.gaps }}",
+                                                                                   "rightValue":  0,
+                                                                                   "operator":  {
+                                                                                                    "type":  "number",
+                                                                                                    "operation":  "gt"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       2620,
+                                       -380
+                                   ],
+                      "id":  "26cc96ca-e99d-5a4a-b5f1-b96e070de0f6",
+                      "name":  "FX refresh needed?"
                   },
                   {
                       "parameters":  {
@@ -1479,30 +1506,41 @@
                                                                    [
                                                                        {
                                                                            "index":  0,
-                                                                           "node":  "Foreign quote?",
+                                                                           "node":  "Check FX rates",
                                                                            "type":  "main"
                                                                        }
                                                                    ]
                                                                ]
                                                   },
-                        "Foreign quote?":  {
+                        "Check FX rates":  {
                                                "main":  [
                                                             [
                                                                 {
                                                                     "index":  0,
-                                                                    "node":  "Refresh FX rates",
-                                                                    "type":  "main"
-                                                                }
-                                                            ],
-                                                            [
-                                                                {
-                                                                    "index":  0,
-                                                                    "node":  "Read new price",
+                                                                    "node":  "FX refresh needed?",
                                                                     "type":  "main"
                                                                 }
                                                             ]
                                                         ]
                                            },
+                        "FX refresh needed?":  {
+                                                   "main":  [
+                                                                [
+                                                                    {
+                                                                        "index":  0,
+                                                                        "node":  "Refresh FX rates",
+                                                                        "type":  "main"
+                                                                    }
+                                                                ],
+                                                                [
+                                                                    {
+                                                                        "index":  0,
+                                                                        "node":  "Read new price",
+                                                                        "type":  "main"
+                                                                    }
+                                                                ]
+                                                            ]
+                                               },
                         "Refresh FX rates":  {
                                                  "main":  [
                                                               [

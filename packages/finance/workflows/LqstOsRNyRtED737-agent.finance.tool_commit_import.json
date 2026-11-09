@@ -606,41 +606,6 @@
                   },
                   {
                       "parameters":  {
-                                         "conditions":  {
-                                                            "options":  {
-                                                                            "caseSensitive":  true,
-                                                                            "typeValidation":  "strict",
-                                                                            "version":  2
-                                                                        },
-                                                            "conditions":  [
-                                                                               {
-                                                                                   "id":  "d2a26930-b932-5e12-a7c7-a955202459bf",
-                                                                                   "leftValue":  "={{ ($(\u0027Import bundle (atomic)\u0027).first().json.created || []).some(c =\u003e c.entity_type === \u0027account\u0027 \u0026\u0026 c.currency \u0026\u0026 c.currency !== \u0027EUR\u0027) || ($(\u0027Import bundle (atomic)\u0027).first().json.positions || []).some(p =\u003e p.quote_currency \u0026\u0026 p.quote_currency !== \u0027EUR\u0027) }}",
-                                                                                   "rightValue":  true,
-                                                                                   "operator":  {
-                                                                                                    "type":  "boolean",
-                                                                                                    "operation":  "equals"
-                                                                                                }
-                                                                               }
-                                                                           ],
-                                                            "combinator":  "and"
-                                                        },
-                                         "options":  {
-
-                                                     }
-                                     },
-                      "type":  "n8n-nodes-base.if",
-                      "typeVersion":  2.2,
-                      "position":  [
-                                       2640,
-                                       -120
-                                   ],
-                      "id":  "56808ebd-4a50-530d-bcf4-fe819f95207e",
-                      "name":  "FX refresh needed?",
-                      "executeOnce":  true
-                  },
-                  {
-                      "parameters":  {
                                          "workflowId":  {
                                                             "__rl":  true,
                                                             "value":  "OhOudXoO9SuOxnIP",
@@ -673,7 +638,9 @@
                                        -240
                                    ],
                       "id":  "7f982aaf-775f-5603-b8f9-c56bd4e83068",
-                      "name":  "Refresh FX rates"
+                      "name":  "Refresh FX rates",
+                      "onError":  "continueRegularOutput",
+                      "alwaysOutputData":  true
                   },
                   {
                       "parameters":  {
@@ -743,7 +710,9 @@
                                        -240
                                    ],
                       "id":  "c1b92028-7b67-5a56-b9b4-7682e11be4e6",
-                      "name":  "Refresh market prices"
+                      "name":  "Refresh market prices",
+                      "onError":  "continueRegularOutput",
+                      "alwaysOutputData":  true
                   },
                   {
                       "parameters":  {
@@ -852,7 +821,7 @@
                   },
                   {
                       "parameters":  {
-                                         "content":  "## DB-Automatik\n**Depot-Positionen: Kurs-Symbol vor der Karte, Lücken nach dem Write melden**\n\nMonats-Check WP-G (Befund 2026-10-22: Position mit ISIN ohne Kurs und ohne Anlageklasse). VOR der Karte: Load positions -\u003e je Position mit ISIN und ohne Feed-Symbol Resolve Yahoo symbol (derselbe Sub wie Einzelkauf/set_holding) -\u003e ein verifizierter Treffer (Börsen-Währung = Depot-Währung) ODER, wenn es keine solche Notierung gibt, eine plausible Notierung in Fremdwährung (2026-10-23, z. B. eine USD-Notierung; provider_currency kommt mit, die Karte sagt \"wird in € umgerechnet\", fn_import_bundle setzt sie als quote_currency der Position) wird per fn_import_update_row ins Staging geschrieben und steht damit auf der Karte (Owner bestätigt ihn mit). Kein Treffer -\u003e leer. NACH dem Write: Refresh market prices (Sub) -\u003e FX refresh needed? (Fremdwährungs-Konto oder -Kurs -\u003e FX-Sofort-Fetch, erst NACH den Kursen) -\u003e Check positions liefert positions_without_price (Status missing/stale aus finance.fn_holding_price_status, dieselbe Regel wie Depot-Übersicht und Kurs-Lücken-Erinnerung) / positions_without_asset_class; der Agent fragt dann nach Börse/Ticker (tool_verify_price_symbol -\u003e tool_set_holding) bzw. ordnet bei bestehendem Finanzplan die Anlageklassen mit EINER Karte zu (tool_set_asset_classes). Load positions hat alwaysOutputData: ohne Positionen läuft der Loop einmal leer durch.",
+                                         "content":  "## DB-Automatik\n**Depot-Positionen: Kurs-Symbol vor der Karte, Lücken nach dem Write melden**\n\nMonats-Check WP-G (Befund 2026-10-22: Position mit ISIN ohne Kurs und ohne Anlageklasse). VOR der Karte: Load positions -\u003e je Position mit ISIN und ohne Feed-Symbol Resolve Yahoo symbol (derselbe Sub wie Einzelkauf/set_holding) -\u003e ein verifizierter Treffer (Börsen-Währung = Depot-Währung) ODER, wenn es keine solche Notierung gibt, eine plausible Notierung in Fremdwährung (2026-10-23, z. B. eine USD-Notierung; provider_currency kommt mit, die Karte sagt \"wird in € umgerechnet\", fn_import_bundle setzt sie als quote_currency der Position) wird per fn_import_update_row ins Staging geschrieben und steht damit auf der Karte (Owner bestätigt ihn mit). Kein Treffer -\u003e leer. NACH dem Write: Refresh market prices (Sub) -\u003e Check FX rates (finance.fn_fx_rate_status, kennt die vom Kursabruf gelernte Währung; läuft auch ohne Positionen, wegen Fremdwährungs-Konten) -\u003e FX refresh needed? (fehlender oder veralteter Wechselkurs -\u003e FX-Sofort-Fetch) -\u003e Check positions liefert positions_without_price (Status missing/stale aus finance.fn_holding_price_status, dieselbe Regel wie Depot-Übersicht und Kurs-Lücken-Erinnerung) / positions_without_asset_class; der Agent fragt dann nach Börse/Ticker (tool_verify_price_symbol -\u003e tool_set_holding) bzw. ordnet bei bestehendem Finanzplan die Anlageklassen mit EINER Karte zu (tool_set_asset_classes). Load positions hat alwaysOutputData: ohne Positionen läuft der Loop einmal leer durch.",
                                          "height":  360,
                                          "width":  640,
                                          "color":  4
@@ -865,6 +834,66 @@
                                    ],
                       "id":  "bb4576a5-08e6-5454-b5f1-4769d19983a8",
                       "name":  "Kurs-Symbol und Anlageklasse"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "SELECT count(*) FILTER (WHERE status \u003c\u003e \u0027ok\u0027)::int AS gaps FROM finance.fn_fx_rate_status()",
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       2420,
+                                       -120
+                                   ],
+                      "id":  "a84c791e-080a-5966-a495-d60ae4bc9fe7",
+                      "name":  "Check FX rates",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_FINANCE_RW__",
+                                                           "name":  "Postgres finance_rw (read-write)"
+                                                       }
+                                      },
+                      "onError":  "continueRegularOutput",
+                      "alwaysOutputData":  true,
+                      "executeOnce":  true
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "d2a26930-b932-5e12-a7c7-a955202459bf",
+                                                                                   "leftValue":  "={{ $json.gaps }}",
+                                                                                   "rightValue":  0,
+                                                                                   "operator":  {
+                                                                                                    "type":  "number",
+                                                                                                    "operation":  "gt"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       2640,
+                                       -120
+                                   ],
+                      "id":  "56808ebd-4a50-530d-bcf4-fe819f95207e",
+                      "name":  "FX refresh needed?"
                   }
               ],
     "connections":  {
@@ -1087,7 +1116,7 @@
                                                                  [
                                                                      {
                                                                          "index":  0,
-                                                                         "node":  "FX refresh needed?",
+                                                                         "node":  "Check FX rates",
                                                                          "type":  "main"
                                                                      }
                                                                  ]
@@ -1098,12 +1127,23 @@
                                                                    [
                                                                        {
                                                                            "index":  0,
-                                                                           "node":  "FX refresh needed?",
+                                                                           "node":  "Check FX rates",
                                                                            "type":  "main"
                                                                        }
                                                                    ]
                                                                ]
                                                   },
+                        "Check FX rates":  {
+                                               "main":  [
+                                                            [
+                                                                {
+                                                                    "index":  0,
+                                                                    "node":  "FX refresh needed?",
+                                                                    "type":  "main"
+                                                                }
+                                                            ]
+                                                        ]
+                                           },
                         "FX refresh needed?":  {
                                                    "main":  [
                                                                 [

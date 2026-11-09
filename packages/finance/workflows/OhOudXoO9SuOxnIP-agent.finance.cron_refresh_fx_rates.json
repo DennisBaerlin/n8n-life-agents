@@ -170,6 +170,93 @@
                   },
                   {
                       "parameters":  {
+                                         "events":  [
+                                                        "init"
+                                                    ]
+                                     },
+                      "type":  "n8n-nodes-base.n8nTrigger",
+                      "typeVersion":  1,
+                      "position":  [
+                                       -1040,
+                                       -220
+                                   ],
+                      "id":  "6dd63a19-5051-5eb1-949d-ca1757a91e12",
+                      "name":  "Instance started"
+                  },
+                  {
+                      "parameters":  {
+                                         "amount":  30,
+                                         "unit":  "seconds"
+                                     },
+                      "type":  "n8n-nodes-base.wait",
+                      "typeVersion":  1.1,
+                      "position":  [
+                                       -820,
+                                       -220
+                                   ],
+                      "id":  "b795c1e0-1760-566d-8637-6426803b5037",
+                      "name":  "Wait for network",
+                      "webhookId":  "f15299da-2856-54e6-9279-999092995c94"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "SELECT core.fn_package_active(\u0027finance\u0027) AND COALESCE(core.fn_config_get(\u0027finance\u0027,\u0027cron_enable\u0027,\u0027refresh_fx_rates\u0027) = \u0027true\u0027, false) AND EXISTS (SELECT 1 FROM finance.fn_fx_rate_status() WHERE status \u003c\u003e \u0027ok\u0027) AS due",
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       -600,
+                                       -220
+                                   ],
+                      "id":  "f7cd34bf-dd68-54e9-a4ed-b6646de7a080",
+                      "name":  "Catch-up needed?",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_FINANCE_RW__",
+                                                           "name":  "Postgres finance_rw (read-write)"
+                                                       }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "6b1a0f18-a6a6-5dce-82fa-1eb372dbf7b5",
+                                                                                   "leftValue":  "={{ $json.due }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       -400,
+                                       -220
+                                   ],
+                      "id":  "4b562fbe-6998-5e71-b124-4f7ec4b5ddaf",
+                      "name":  "Catch up?"
+                  },
+                  {
+                      "parameters":  {
                                          "operation":  "executeQuery",
                                          "query":  "SELECT count(*)::int AS cnt FROM finance.fn_active_currencies()",
                                          "options":  {
@@ -269,7 +356,7 @@
                   },
                   {
                       "parameters":  {
-                                         "content":  "## DB-Automatik\n**FX-Kurs-Refresh (Dual-Trigger, kein LLM)**\n\nZWEI Eingänge, EIN Pfad: (a) Schedule täglich (Cron aus core.config schedule.refresh_fx_rates, beim Einspielen eingesetzt); (b) executeWorkflowTrigger Start — tool_create_account/tool_set_holding rufen den Workflow nach einem Fremdwährungs-Write sofort auf (eliminiert das NULL-Fenster in Roll-up-Views bis zum nächsten Schedule-Lauf). Pfad: prüfe aktive Fremdwährungs-Menge via fn_active_currencies() -\u003e IF leer: Abbruch ohne HTTP-Call. Sonst: HTTP GET open.er-api.com/v6/latest/EUR (kostenlos, KEIN Key, Basis EUR, 7 Tage/Woche) -\u003e Upsert in finance.fx_rates: eine Zeile je Fremdwährung aus aktiven Konten/Holdings — keine manuelle Pflege von finance.currencies nötig. Die Roll-up-Views konvertieren via finance.fn_to_eur (As-of-Lookup).",
+                                         "content":  "## DB-Automatik\n**FX-Kurs-Refresh (Dual-Trigger, kein LLM)**\n\nDREI Eingänge, EIN Pfad: (a) Schedule täglich (Cron aus core.config schedule.refresh_fx_rates, beim Einspielen eingesetzt); (b) executeWorkflowTrigger Start — Tools rufen den Workflow nach einem Write sofort auf (eliminiert das NULL-Fenster in Roll-up-Views bis zum nächsten Schedule-Lauf); (c) n8n-Start holt einen verpassten Lauf nach (Sticky Nachholen beim Start). Pfad: prüfe aktive Fremdwährungs-Menge via fn_active_currencies() -\u003e IF leer: Abbruch ohne HTTP-Call. Sonst: HTTP GET open.er-api.com/v6/latest/EUR (kostenlos, KEIN Key, Basis EUR, 7 Tage/Woche) -\u003e Upsert in finance.fx_rates: eine Zeile je Fremdwährung aus aktiven Konten/Holdings — keine manuelle Pflege von finance.currencies nötig. Die Roll-up-Views konvertieren via finance.fn_to_eur (As-of-Lookup).",
                                          "height":  280,
                                          "width":  640,
                                          "color":  4
@@ -333,6 +420,22 @@
                   },
                   {
                       "parameters":  {
+                                         "content":  "## DB-Automatik\n**n8n-Start: verpassten Tageslauf nachholen**\n\nDie Planzeit verfällt, wenn das Gerät aus ist; der scheduleTrigger holt nicht nach. Der n8n Trigger (Instance started) feuert bei jedem Start von n8n, unter Docker wie im LXC. Nach 30 s (Netz und DNS) prüft Catch-up needed?: Paket aktiv, cron_enable an, und finance.fn_fx_rate_status meldet eine aktive Währung ohne Kurs oder älter als finance.fx_stale_days. Sonst Ende ohne Abruf. Grenze: Aus dem Ruhezustand geweckt startet n8n nicht neu, dann greift dieser Eingang nicht.",
+                                         "height":  340,
+                                         "width":  300,
+                                         "color":  4
+                                     },
+                      "type":  "n8n-nodes-base.stickyNote",
+                      "typeVersion":  1,
+                      "position":  [
+                                       -1040,
+                                       -520
+                                   ],
+                      "id":  "32fdc9ca-1e45-5016-b819-88fd8c07bd07",
+                      "name":  "Nachholen beim Start"
+                  },
+                  {
+                      "parameters":  {
                                          "workflowInputs":  {
                                                                 "values":  [
                                                                                {
@@ -368,6 +471,57 @@
                   }
               ],
     "connections":  {
+                        "Instance started":  {
+                                                 "main":  [
+                                                              [
+                                                                  {
+                                                                      "index":  0,
+                                                                      "node":  "Wait for network",
+                                                                      "type":  "main"
+                                                                  }
+                                                              ]
+                                                          ]
+                                             },
+                        "Wait for network":  {
+                                                 "main":  [
+                                                              [
+                                                                  {
+                                                                      "index":  0,
+                                                                      "node":  "Catch-up needed?",
+                                                                      "type":  "main"
+                                                                  }
+                                                              ]
+                                                          ]
+                                             },
+                        "Catch-up needed?":  {
+                                                 "main":  [
+                                                              [
+                                                                  {
+                                                                      "index":  0,
+                                                                      "node":  "Catch up?",
+                                                                      "type":  "main"
+                                                                  }
+                                                              ]
+                                                          ]
+                                             },
+                        "Catch up?":  {
+                                          "main":  [
+                                                       [
+                                                           {
+                                                               "index":  0,
+                                                               "node":  "Check active currencies",
+                                                               "type":  "main"
+                                                           }
+                                                       ],
+                                                       [
+                                                           {
+                                                               "index":  0,
+                                                               "node":  "Disabled",
+                                                               "type":  "main"
+                                                           }
+                                                       ]
+                                                   ]
+                                      },
                         "Schedule (cron from config)":  {
                                                             "main":  [
                                                                          [

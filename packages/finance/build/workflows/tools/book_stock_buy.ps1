@@ -103,13 +103,9 @@ function Build-BookStockBuy {
     $callPriceRefresh = Build-CallWorkflow 'Refresh market prices' @(2860, -160) $MarketPricesCronId 'agent.finance.cron_refresh_market_prices' `
         ([ordered]@{ chat_id = "={{ `$('Start').item.json.chat_id }}" })
 
-    # WP-3a: wurde die Position mit einer fremden MARKT-Quote-Waehrung (quote_currency != EUR) angelegt, muss
-    # auch der FX-Kurs sofort geholt werden (sonst bleibt market_value_eur bis zum naechsten Schedule NULL ->
-    # still 0 im Net-Worth). Der Markt-Preis-Fetch oben deckt NUR den Kurs, nicht den Waehrungsumrechnungssatz.
-    # Ruft den FX-Cron als Sub (Dual-Trigger); der Cron liest fn_active_currencies (jetzt inkl. quote_currency).
-    $ifForeignQuote = Build-If 'Non-EUR quote?' @(3080, -160) `
-        "={{ (!!(`$('Start').item.json.quote_currency) && `$('Start').item.json.quote_currency !== 'EUR') || `$('Resolve Yahoo symbol').item.json.foreign_listing === true }}" `
-        'true' 'equals' 'boolean'
+    # Fehlt fuer eine aktive Waehrung der Wechselkurs, sofort holen (sonst bleibt market_value_eur bis zum naechsten
+    # Schedule NULL). Der Markt-Preis-Fetch oben deckt NUR den Kurs, nicht den Waehrungsumrechnungssatz.
+    $fxGap = New-FinanceFxGapCheck -CheckPos @(2980, -340) -IfPos @(3080, -160)
 
     $callFxRefresh = Build-CallWorkflow 'Refresh FX rates' @(3300, -280) $FxCronId 'agent.finance.cron_refresh_fx_rates' `
         ([ordered]@{ chat_id = "={{ `$('Start').item.json.chat_id }}" })
@@ -149,13 +145,13 @@ function Build-BookStockBuy {
         'Ermittelt für die ISIN das richtige Yahoo-Kurs-Symbol (Disambiguierung per genannter Preis-Währung quote_currency, Default Depot-Währung) + checkt Live-Kurs gegen den Kaufkurs (bei einer Übernahme mit Gesamtbetrag cost_basis_total den Stückpreis aus finance.fn_unit_price_from_total, gelesen in Get Settlement Account). LIEGT VOR dem HITL-Gate, AUSSERHALB der atomaren fn -> Yahoo-Ausfall/Timeout (3s) blockiert die Buchung NICHT (Sub liefert {verified:false, provider_symbol:roh}). Das aufgelöste provider_symbol fliesst (COALESCE mit dem ggf. genannten) in fn_book_stock_buy + wird im HITL angezeigt (Owner bestätigt). Krypto (ISIN leer) -> Sub gibt roh zurück.' 300 520
 
     $stickyFx = Build-Sticky 'FX-Sofort-Fetch (WP-3a)' @(3080, -480) `
-        'quote_currency != EUR -> cron_refresh_fx_rates' `
-        'Zwei UNABHÄNGIGE Post-Write-Fetches: (1) Refresh market prices = der Wertpapier-KURS; (2) NUR wenn die Position eine fremde Markt-Quote-Währung trägt (quote_currency != EUR) -> Refresh FX rates = der Währungs-Umrechnungssatz. Ohne (2) hätte eine EUR-geführte US-Position (quote USD) bis zum nächsten FX-Schedule keinen USD-Kurs -> market_value_eur NULL -> still 0 im Net-Worth. Der FX-Cron liest fn_active_currencies (jetzt inkl. quote_currency).' 240 420
+        'Wechselkurs fehlt -> cron_refresh_fx_rates' `
+        'Zwei Post-Write-Fetches: (1) Refresh market prices = der Wertpapier-KURS, liefert auch dessen echte Währung; (2) danach Check FX rates (finance.fn_fx_rate_status): nur wenn für eine aktive Währung ein Wechselkurs fehlt oder veraltet ist -> Refresh FX rates. Ohne (2) hätte eine EUR-geführte US-Position bis zum nächsten FX-Schedule keinen USD-Kurs -> market_value_eur NULL -> still 0 im Net-Worth.' 240 420
 
     $nodes = @($trig, $resDepot, $ifDepot, $errDepot, $getSettle, $resolveYahoo) + $wg.Nodes + @(
                $summary, $reqApproval, $ifApproved, $retCancelled,
-               $ifWriteOk, $errWrite, $callPriceRefresh, $ifForeignQuote, $callFxRefresh, $priceStatus, $ret,
-               $stickyDry, $stickyTriggers, $stickyOk, $stickyYahoo, $stickyFx)
+               $ifWriteOk, $errWrite, $callPriceRefresh, $callFxRefresh, $priceStatus, $ret,
+               $stickyDry, $stickyTriggers, $stickyOk, $stickyYahoo, $stickyFx) + $fxGap
 
     $conns = [ordered]@{
         'Start'                  = @{ main = @( ,@( E 'Resolve Depot' ) ) }
@@ -182,10 +178,11 @@ function Build-BookStockBuy {
             @( E 'Refresh market prices' ),   # true: Kauf gebucht -> Sofort-Preis-Fetch, dann FX-Zweig
             @( E 'Buy rejected' )             # false: korrigierbare Ablehnung
         ) }
-        'Refresh market prices'  = @{ main = @( ,@( E 'Non-EUR quote?' ) ) }
-        'Non-EUR quote?'         = @{ main = @(
-            @( E 'Refresh FX rates' ),        # true: fremde Quote-Waehrung -> FX-Sofort-Fetch
-            @( E 'Price status' )              # false: EUR-Quote -> kein FX-Call
+        'Refresh market prices'  = @{ main = @( ,@( E 'Check FX rates' ) ) }
+        'Check FX rates'         = @{ main = @( ,@( E 'FX refresh needed?' ) ) }
+        'FX refresh needed?'     = @{ main = @(
+            @( E 'Refresh FX rates' ),        # true: Wechselkurs fehlt -> FX-Sofort-Fetch
+            @( E 'Price status' )              # false: alle Kurse da -> kein FX-Call
         ) }
         'Refresh FX rates'       = @{ main = @( ,@( E 'Price status' ) ) }
         'Price status'           = @{ main = @( ,@( E 'Return' ) ) }

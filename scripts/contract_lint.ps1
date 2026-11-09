@@ -576,6 +576,21 @@ if ($null -eq $coreMf) {
         }
     }
 
+    # Ein Agent, der auf eine Freigabe wartet, liefert dem aufrufenden executeWorkflow [null]; n8n 2.45.4 scheitert dann an
+    # output.length (ExecuteWorkflow.node.ts), obwohl der Lauf schon parkt. Nur onError=continueRegularOutput laesst ihn
+    # parken; beim Tipp ersetzt n8n das Fehler-Item durch das Agent-Ergebnis. Tragfaehiger Weg: agent.sub_dispatch_agent.
+    foreach ($wid in $workflows.Keys) {
+        $callerName = $workflows[$wid].Name
+        foreach ($n in $workflows[$wid].Json.nodes) {
+            if ($n.type -ne 'n8n-nodes-base.executeWorkflow') { continue }
+            $tid = "$($n.parameters.workflowId.value)"
+            if (-not $workflows.ContainsKey($tid) -or "$($n.onError)" -eq 'continueRegularOutput') { continue }
+            if (@($workflows[$tid].Json.nodes | Where-Object { $_.type -eq '@n8n/n8n-nodes-langchain.agent' }).Count) {
+                $errors.Add("AGENT DIREKT GERUFEN: $callerName :: $($n.name) ruft den Agenten '$($workflows[$tid].Name)' ohne agent.sub_dispatch_agent -- wartet er auf eine Freigabe, stuerzt der Knoten ab.")
+            }
+        }
+    }
+
     # Referenz-Scan der Build-Defs: 'core:<alias>'-Tokens als gequotetes String-Argument. Paket-uniform:
     # gescannt werden die Engine (scripts/build/: build.ps1 nutzt core:-Aliase als Orchestrator) UND die
     # paket-eigenen Build-Defs (packages/*/build/...). Die Resolver-Definitionsdatei ausschliessen (ihre

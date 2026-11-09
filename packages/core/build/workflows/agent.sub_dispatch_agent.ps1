@@ -120,7 +120,7 @@ return out.length ? out : [{ json: { output: NO_ANSWER } }];
     )
 
     $sticky = Build-Sticky 'Doc: Überblick' @(-900, -60) 'agent.sub_dispatch_agent — Core-Vermittler zu Paket-Agenten' (@'
-Der Verteiler (agent.orchestrator.main_route) ruft Paket-Agenten NUR hierueber. Grund: n8n aktiviert einen Workflow nur, wenn alle FEST eingetragenen Execute-Workflow-Ziele existieren -> ohne installiertes Paket war der Bot taub.
+Der Verteiler (agent.orchestrator.main_route) ruft Paket-Agenten und den Haushalts-Knopf (agent.guide, package core) NUR hierueber. Der Fehler-Durchlass an Run agent ist tragend: ohne ihn stuerzt der Knoten ab, sobald der Agent auf eine Freigabe wartet. Grund: n8n aktiviert einen Workflow nur, wenn alle FEST eingetragenen Execute-Workflow-Ziele existieren -> ohne installiertes Paket war der Bot taub.
 
 **Eingaben (fest vom Aufrufer, Build-Zeit):** workflow_id, package + task, chat_id, call_depth, thinking ('loop' = Paket-Befehle/-Onboarding-Tipps ohne eigene Anzeige; leer = KI-Weg, dort zeigt der Orchestrator die Anzeige). Anzeigename + Hinweise aus dem Textkatalog in der Sprache des Absenders (Package status).
 **Ablauf:** core.fn_package_status -> aktiv? [thinking='loop' + privater Chat: Open thinking lease (agent.thinking_lease) -> Show thinking (core.sub_show_thinking, fire-and-forget, Erneuerung alle 5 s)] + Run agent (AUSDRUCKS-ID = keine Aktivierungspruefung) -> Close thinking lease (Schalter weg + Draft-Fenster abwarten, VOR der Rückgabe = vor der Antwort; ohne Schalter No-op) -> Ensure output. Sonst Not available: Owner sieht `lifeagents package install|activate <pkg>`, Mitglieder "nicht verfügbar".

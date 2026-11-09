@@ -1002,7 +1002,8 @@ function report() {
 // Einzige Log-Zeilen im Bericht: das Protokoll des Abschlusses, schon beim Schreiben gefiltert (_oc_log_scrub), hier noch einmal.
 function scrubLine(s) {
   return s.replace(/[0-9]{5,}:[A-Za-z0-9_-]{20,}/g, '<token>').replace(/sk-ant-[A-Za-z0-9_-]+/g, '<key>').replace(/eyJ[A-Za-z0-9_.-]{10,}/g, '<key>')
-    .replace(/(start=)[^ &"]+/g, '$1<code>').replace(/(x-n8n-api-key:|authorization:|token[=:])\s*\S+/gi, '$1 <key>')
+    .replace(/(start=)[^ &"]+/g, '$1<code>').replace(/(x-n8n-api-key:|authorization:)\s*\S+/gi, '$1 <key>')
+    .replace(/([a-z_]*(token|key|secret|password)=)\S+/gi, '$1<key>')
     .replace(/https?:\/\/[^\s"]+/g, '<url>').replace(/[0-9a-fA-F]{16,}/g, '<id>').replace(/[0-9]{6,}/g, '<nr>');
 }
 function finalizeLogTail() {

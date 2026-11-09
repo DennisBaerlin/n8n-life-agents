@@ -364,7 +364,7 @@ _oc_finalize() {
   deploy_workflows core || return 1
   pkgs="$(_owner_psql -tA -c "SELECT package FROM core.package_registry WHERE status='active' AND package <> 'core' ORDER BY package;" 2>/dev/null || true)"
   for p in $pkgs; do deploy_workflows "$p" || return 1; done
-  _set_bot_command_menus "$TELEGRAM_BOT_TOKEN"
+  _set_bot_command_menus "${TELEGRAM_BOT_TOKEN:-}"
 }
 
 # _oc_finalize_verified — der eine Abschluss nach dem Pairing (Terminal, Wizard, Reparatur): unter der Update-Sperre
@@ -390,7 +390,8 @@ _oc_log_scrub() {
     -e 's/sk-ant-[A-Za-z0-9_-]+/<key>/g' \
     -e 's/eyJ[A-Za-z0-9_.-]{10,}/<key>/g' \
     -e 's/(start=)[^ &"]+/\1<code>/g' \
-    -e 's/(x-n8n-api-key:|authorization:|token[=:])[[:space:]]*[^[:space:]]+/\1 <key>/Ig' \
+    -e 's/(x-n8n-api-key:|authorization:)[[:space:]]*[^[:space:]]+/\1 <key>/Ig' \
+    -e 's/([a-z_]*(token|key|secret|password)=)[^[:space:]]+/\1<key>/Ig' \
     -e 's#https?://[^[:space:]"]+#<url>#g' \
     -e 's/[0-9a-fA-F]{16,}/<id>/g' \
     -e 's/[0-9]{6,}/<nr>/g'
@@ -408,6 +409,7 @@ _oc_send_welcome() {
   local chat w rest
   chat="$(_owner_chat_id_db)"
   _oc_is_chat_id "$chat" || return 1
+  [ -n "${TELEGRAM_BOT_TOKEN:-}" ] || return 1
   w="$(_owner_psql -tA -c "SELECT core.fn_render_welcome();" 2>/dev/null || true)"
   [ "$(printf '%s' "$w" | jq -r '.ok // false' 2>/dev/null || echo false)" = "true" ] || return 1
   rest="$(printf '%s' "$w" | jq -c '{text}

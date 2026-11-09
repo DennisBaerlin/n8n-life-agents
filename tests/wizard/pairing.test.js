@@ -114,3 +114,9 @@ test('finalize: Protokoll enthält keine Token, Codes oder chat_ids', () => {
   const { log } = logged(`_oc_finalize() { echo 'bot123456789:AAbcdefghijklmnopqrstuvwxyz012345678 start=0123456789abcdef X-N8N-API-KEY: geheim123 chat 987654321 sk-ant-abc123def456'; }; ${GOOD}`);
   assert.doesNotMatch(log, /AAbcdefghij|0123456789abcdef|geheim123|987654321|sk-ant-abc/);
 });
+
+test('finalize: Filter lässt Fehlermeldungen lesbar, schwärzt aber Schlüssel=Werte', () => {
+  const { log } = logged(`_oc_finalize() { echo 'line 9: TELEGRAM_BOT_TOKEN: unbound variable'; echo 'N8N_API_KEY=geheimXYZ'; }; ${GOOD}`);
+  assert.match(log, /TELEGRAM_BOT_TOKEN: unbound variable/);
+  assert.doesNotMatch(log, /geheimXYZ/);
+});

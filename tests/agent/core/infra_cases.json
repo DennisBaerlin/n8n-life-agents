@@ -492,6 +492,70 @@
     "notes": "Fund PDF ohne Endung: Telegram-Pfad ohne Endung, Download application/octet-stream. Erfundene Bytes im Mock-Telegram."
   },
   {
+    "id": "ic44a", "name": "Excel-Name .xls mit xlsx-Inhalt, Tabellen-Modus -> ok", "requires": "mock_telegram",
+    "harness_path": "fetch-file-test", "target_name": "agent.tool_fetch_telegram_file",
+    "body": { "file_id": "mock_xlsname_book", "accept": "table" },
+    "check_node": "Return", "check_field": "ok",
+    "must_be_nonempty": null, "must_contain": "True", "must_not_contain": null, "must_equal": null,
+    "notes": "Anbieter-Standard: Dateiname .xls, Inhalt ein xlsx-Workbook (ZIP mit xl/workbook). Bei .xls entscheidet der Inhalt. Erfundene Bondora-Form aus mock_photo_084.xlsx."
+  },
+  {
+    "id": "ic44b", "name": "Excel-Name .xls mit xlsx-Inhalt, Tabellen-Modus -> keine Fehlermeldung", "requires": "mock_telegram",
+    "harness_path": "fetch-file-test", "target_name": "agent.tool_fetch_telegram_file",
+    "body": { "file_id": "mock_xlsname_book", "accept": "table" },
+    "check_node": "Return", "check_field": "error",
+    "must_be_nonempty": null, "must_contain": null, "must_not_contain": null, "must_equal": "",
+    "notes": "Golden-File der Lese-Seite (erfundene Bondora-Form, .xls-Name): kein Fehlertext. ok:true heisst, dass Read sheet Zeilen geliefert hat (Collect rows liefert sonst ok:false). Die Normalisierung des Rasters deckt tests/db/finance/test_bank_statement_bondora.sql."
+  },
+  {
+    "id": "ic44c", "name": "Excel-Name .xls mit xlsx-Inhalt ohne accept -> weiter Excel-Hinweis", "requires": "mock_telegram",
+    "harness_path": "fetch-file-test", "target_name": "agent.tool_fetch_telegram_file",
+    "body": { "file_id": "mock_xlsname_book" },
+    "check_node": "Return", "check_field": "error",
+    "must_be_nonempty": null, "must_contain": "Excel file", "must_not_contain": null, "must_equal": null,
+    "notes": "Ohne accept=table bleibt Excel ein Verweis auf den Export-Weg (kein Foto/PDF)."
+  },
+  {
+    "id": "ic44d", "name": "Echtes altes .xls (OLE) mit .xls-Namen, Tabellen-Modus -> weiter abgelehnt", "requires": "mock_telegram",
+    "harness_path": "fetch-file-test", "target_name": "agent.tool_fetch_telegram_file",
+    "body": { "file_id": "mock_xlsname_ole", "accept": "table" },
+    "check_node": "Return", "check_field": "error",
+    "must_be_nonempty": null, "must_contain": "old Excel", "must_not_contain": null, "must_equal": null,
+    "notes": "Echtes BIFF/OLE-xls bleibt abgelehnt (kein Parser dafuer)."
+  },
+  {
+    "id": "ic44e", "name": "ZIP ohne xl/workbook mit .xls-Namen, Tabellen-Modus -> weiter abgelehnt", "requires": "mock_telegram",
+    "harness_path": "fetch-file-test", "target_name": "agent.tool_fetch_telegram_file",
+    "body": { "file_id": "mock_xlsname_zip", "accept": "table" },
+    "check_node": "Return", "check_field": "error",
+    "must_be_nonempty": null, "must_contain": "old Excel", "must_not_contain": null, "must_equal": null,
+    "notes": "Nur ein ZIP MIT xl/workbook zaehlt als Arbeitsmappe; jedes andere ZIP unter .xls-Namen bleibt bei der bisherigen Ablehnung."
+  },
+  {
+    "id": "ic44f", "name": "Normales .xlsx, Tabellen-Modus -> ok", "requires": "mock_telegram",
+    "harness_path": "fetch-file-test", "target_name": "agent.tool_fetch_telegram_file",
+    "body": { "file_id": "mock_photo_084", "accept": "table" },
+    "check_node": "Return", "check_field": "ok",
+    "must_be_nonempty": null, "must_contain": "True", "must_not_contain": null, "must_equal": null,
+    "notes": "Regression: .xlsx-Name geht wie bisher durch."
+  },
+  {
+    "id": "ic44g", "name": "CSV mit .csv-Namen, Tabellen-Modus -> text/csv unveraendert", "requires": "mock_telegram",
+    "harness_path": "fetch-file-test", "target_name": "agent.tool_fetch_telegram_file",
+    "body": { "file_id": "mock_photo_083", "accept": "table" },
+    "check_node": "Return", "check_field": "mime",
+    "must_be_nonempty": null, "must_contain": null, "must_not_contain": null, "must_equal": "text/csv",
+    "notes": "Regression: CSV-Zweig unveraendert."
+  },
+  {
+    "id": "ic44h", "name": "PDF mit .pdf-Namen -> application/pdf unveraendert", "requires": "mock_telegram",
+    "harness_path": "fetch-file-test", "target_name": "agent.tool_fetch_telegram_file",
+    "body": { "file_id": "mock_photo_051" },
+    "check_node": "Return", "check_field": "mime",
+    "must_be_nonempty": null, "must_contain": null, "must_not_contain": null, "must_equal": "application/pdf",
+    "notes": "Regression: PDF-Zweig unveraendert (Fixture mock_photo_051.pdf)."
+  },
+  {
     "id": "ic43a", "name": "Mehrfach-Leser: drei Dateien, Doppelte weg -> drei verschiedene Dateien im Vision-Request", "requires": ["mock_telegram", "mock_llm"],
     "harness_path": "extract-doc-test", "target_name": "agent.finance.tool_extract_finance_document",
     "body": { "file_id": "mock_photo_001", "more_file_ids": "mock_photo_051, mock_photo_063,mock_photo_001", "doc_hint": "Leser-Test Ueberlappung", "chat_id": "880055071" },

@@ -1460,6 +1460,30 @@
     "final": "Die Karte fuer deine Notreserve (drei Monatsausgaben, 6000 Euro auf dem Lindenbank Giro) ist unterwegs."
   },
   {
+    "_comment": "tc126 P2P-Konto mit Verrechnungskonto: ein tool_create_account-Aufruf mit settlement_account_name (keine zweite Karte ueber tool_set_account).",
+    "match": "Probeplattform Anlagekonto",
+    "calls": [
+      { "tool": "tool_create_account", "args": { "name": "Probeplattform Anlagekonto", "account_type": "p2p", "settlement_account_name": "Lindenbank Giro" } }
+    ],
+    "final": "Konto angelegt."
+  },
+  {
+    "_comment": "tc84b Bondora-Standardexport mit .xls-Namen und xlsx-Inhalt -> tool_import_bank_export (Leser entscheidet nach dem Inhalt).",
+    "match": "Hier ist mein Bondora-Standardexport mit .xls-Endung",
+    "calls": [
+      { "tool": "tool_import_bank_export", "args": { "file_id": "mock_xlsname_book", "account_name": "Bondora Go&Grow" } }
+    ],
+    "final": "Ein Konto Bondora Go&Grow kenne ich noch nicht. Soll ich es anlegen?"
+  },
+  {
+    "_comment": "tc97b Bondora-Export mit .xls-Namen -> tool_get_recurring_suggestions (zweiter Konsument des Lesers).",
+    "match": "hier ist mein Bondora-Export mit .xls-Endung",
+    "calls": [
+      { "tool": "tool_get_recurring_suggestions", "args": { "file_id": "mock_xlsname_book" } }
+    ],
+    "final": "Der Export ist kurz - schick mir bitte einen Export ueber mindestens 3 Monate, dann schlage ich dir die fehlenden Dauerauftraege einzeln vor."
+  },
+  {
     "_comment": "tc97 Import zuerst: Bank-Export nur fuer fehlende Dauerauftraege -> tool_get_recurring_suggestions (fester Leser, kein Write).",
     "match": "schlag mir daraus vor, welche Dauerauftraege noch fehlen",
     "calls": [

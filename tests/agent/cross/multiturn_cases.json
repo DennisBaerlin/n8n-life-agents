@@ -22,5 +22,17 @@
     "expected_tool": "tool_book_transaction",
     "expected_tool_args": { "amount": 25 },
     "notes": "M9 Multi-Turn-Memory: Turn 1 ist ein Lese-Pfad (Lindenbank Giro). Turn 2 sagt 'dort' -> der Agent muss aus dem Memory wissen, dass 'dort' = Lindenbank Giro ist, und tool_book_transaction mit amount=25 (outflow) auf das Lindenbank Giro aufrufen. Prueft Kontext-Erhalt ueber Turns."
+  },
+  {
+    "id": "mt03",
+    "name": "Neue Export-Datei nach frueherer Ablehnung: Marker -> Tool-Aufruf, keine Bank aus dem Verlauf",
+    "chat_id": "test_mt03",
+    "turns": [
+      "Hier ist mein Export vom Konto Bondora Go&Grow [attachment file_id=mock_xlsname_ole type=document ext=xls]",
+      "Ich habe die Datei neu exportiert, bitte nochmal versuchen. [attachment file_id=mock_xlsname_book type=document ext=xls]"
+    ],
+    "expected_tool": "tool_import_bank_export",
+    "expected_tool_args": { "file_id": "mock_xlsname_book" },
+    "notes": "Der Agent urteilt eine neue Datei nie aus dem Verlauf. Turn 1: echtes altes .xls (OLE) -> der Leser lehnt ab, die Ablehnung steht im Chat-Memory. Turn 2: neue Datei (.xls-Name, xlsx-Inhalt, erfundene Bondora-Form) -> tool_import_bank_export MUSS aufgerufen werden, ohne die fruehere Ablehnung zu wiederholen. Judge: keine Bank im Text, die nicht aus einem Tool-Ergebnis stammt (kein Trade Republic); keine Bitte, die Datei als .xlsx/CSV neu zu exportieren. Braucht Mock-Telegram (mock_xlsname_*)."
   }
 ]

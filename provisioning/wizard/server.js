@@ -624,13 +624,6 @@ function connectView() {
   const c = P.notes.connect || {};
   const C = (k) => T(`core.wizard.connect.${k}`);
   const v = { kind: 'connect', title: C('title'), poll: true };
-  if (c.finalizeFailed) {
-    return Object.assign(v, { help: [{ p: C('finalize_failed') }], note: { kind: 'warn', text: C('finalize_note') },
-      poll: false, action: 'finalize_retry', next: C('finalize_retry'), report: true });
-  }
-  if (c.connected && !PAIR) {
-    return Object.assign(v, { help: [{ p: C(c.finalizeAttempts ? 'finalize_retrying' : 'connected_wait') }], wait: C('finalize_wait') });
-  }
   if (c.activating || (c.tunnel && c.tunnel.state === 'pending_activation')) {
     return Object.assign(v, { help: [{ p: C('activating') }], wait: C('activating_wait') });
   }
@@ -643,6 +636,14 @@ function connectView() {
       link: href ? { href, label: t('link'), primary: true } : null, art: R.art || null, ts: R.art && c.tunnel.host ? { host: c.tunnel.host } : null,
       wait: R.wait ? (href || !R.link ? t('wait') : T('core.wizard.reach.starting_wait')) : null,
       poll: !R.retry, action: R.retry ? 'connect_retry' : null, next: R.retry ? C('check_again') : null });
+  }
+  // Nach den Tunnel-Zuständen: steht der Tunnel nicht, läuft der Abschluss gar nicht (connectTick), dann zählt dessen Anleitung.
+  if (c.finalizeFailed) {
+    return Object.assign(v, { help: [{ p: C('finalize_failed') }], note: { kind: 'warn', text: C('finalize_note') },
+      poll: false, action: 'finalize_retry', next: C('finalize_retry'), report: true });
+  }
+  if (c.connected && !PAIR) {
+    return Object.assign(v, { help: [{ p: C(c.finalizeAttempts ? 'finalize_retrying' : 'connected_wait') }], wait: C('finalize_wait') });
   }
   if (c.problem) {
     return Object.assign(v, { help: [{ p: C('not_reaching') }], note: { kind: 'warn', text: problemText(c.problem) },

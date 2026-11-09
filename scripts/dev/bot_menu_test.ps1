@@ -161,10 +161,19 @@ function Invoke-Runner([string]$Api) {
 if ((Invoke-Sql "SELECT core.fn_menu_refresh_claim()->>'open';") -ne 'true') { Fail 'audience-Wechsel hat keinen Menü-Auftrag angelegt' }
 Clear-MockTelegramRequests -Container $Container
 # Einrichtung offen: kein Knopf, keine Ankuendigung (fn_app_button_ready). Danach gilt die Einrichtung als fertig.
+# Offen wird hier selbst hergestellt: Fruehere Suiten auf demselben Substrat setzen das Onboarding auf completed.
+$obSection = Invoke-Sql "SELECT section_key FROM agent.guide_onboarding_state ORDER BY ord LIMIT 1;"
+$obStatus = Invoke-Sql "SELECT status FROM agent.guide_onboarding_state WHERE section_key = '$obSection';"
+[void](Invoke-Sql "SELECT core.fn_notify_resolve('app_button', 'ready');")
+# Merkliste und Intro-Merker leeren (sonst gilt der Chat als Bestand, keine Ankuendigung); legacy_checked bleibt, die Bestandspruefung liefe sonst erneut.
+[void](Invoke-Sql "DELETE FROM core.notification_state WHERE source = 'app_intro' AND key <> 'legacy_checked';")
+& docker exec $Container rm -f /etc/lifeagents/app-menu-chats 2>$null | Out-Null
+[void](Invoke-Sql "UPDATE agent.guide_onboarding_state SET status = 'unknown' WHERE section_key = '$obSection';")
 Invoke-Runner "http://127.0.0.1:$MockPort"
 $req0 = @(Get-MockTelegramRequests -Container $Container)
 if (@($req0 | Where-Object { $_.method -eq 'setChatMenuButton' -and $_.body.menu_button.type -eq 'web_app' }).Count -gt 0) { Fail 'Übersicht-Knopf trotz offener Einrichtung' }
 if (@($req0 | Where-Object { $_.method -eq 'sendAnimation' }).Count -gt 0) { Fail 'Ankündigung trotz offener Einrichtung' }
+[void](Invoke-Sql "UPDATE agent.guide_onboarding_state SET status = '$obStatus' WHERE section_key = '$obSection';")
 [void](Invoke-Sql "SELECT core.fn_should_notify('app_button', 'ready');")
 [void](Invoke-Sql "SELECT core.fn_menu_refresh_request();")
 Clear-MockTelegramRequests -Container $Container

@@ -496,7 +496,7 @@ _seed_context_renderers() {
 # CORE (privilegiert) darf core.*/agent.* binden (kuenftiger Core-Advisor). Signatur UNIFORM fn(text,text,jsonb)->jsonb (domain, person_id, opts).
 # package=<pkg> -> fn_pkg_purge_data raeumt die Zeile beim Uninstall (sonst Orphan-review_fn).
 _seed_advisors() {
-  local mf pkg domain plan_ctx fn agent agent_sql learn owncron planstep gapsfn readyfn rolloutfn xfn xsql gaps_sql ready_sql
+  local mf pkg domain plan_ctx fn agent agent_sql learn owncron planstep gapsfn readyfn rolloutfn xfn xsql gaps_sql ready_sql rollout_sql
   for mf in "$REPO_ROOT"/packages/*/manifest.json; do
     [ -f "$mf" ] || continue
     _seed_skip_pkg "$(jq -r '.name // empty' "$mf")" && continue
@@ -526,18 +526,18 @@ _seed_advisors() {
       # Fehlt ein Feld, liefert jq "-" statt "": Tab ist IFS-Whitespace, read wuerde leere Felder zusammenziehen und
       # readiness_fn in gapsfn schieben.
       [ "$gapsfn" = "-" ] && gapsfn=""; [ "$readyfn" = "-" ] && readyfn=""; [ "$rolloutfn" = "-" ] && rolloutfn=""
-      gaps_sql='NULL'; ready_sql='NULL'
+      gaps_sql='NULL'; ready_sql='NULL'; rollout_sql='NULL'
       for xfn in "$gapsfn" "$readyfn" "$rolloutfn"; do
         [ -n "$xfn" ] || continue
         case "$xfn" in "$pkg".*) : ;; *) warn "advisor '$domain' -> '$xfn' zeigt nicht ins Paket-Schema '$pkg' — uebersprungen (Boundary)."; continue 2 ;; esac
       done
       [ -n "$gapsfn" ] && gaps_sql="$(_sql_str "$gapsfn")"
       [ -n "$readyfn" ] && ready_sql="$(_sql_str "$readyfn")"
-      printf 'INSERT INTO core.advisors (domain, plan_context, review_fn, advisor_agent, learn_notes, own_review_cron, plan_step, gaps_fn, readiness_fn, package, updated_at)\n'
-      printf 'VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, now())\n' \
-        "$(_sql_str "$domain")" "$(_sql_str "$plan_ctx")" "$(_sql_str "$fn")" "$agent_sql" "$learn" "$owncron" "$planstep" "$gaps_sql" "$ready_sql" "$(_sql_str "$pkg")"
-      [ -n "$rolloutfn" ] && printf 'UPDATE core.advisors SET rollout_fn=%s WHERE domain=%s;\n' "$(_sql_str "$rolloutfn")" "$(_sql_str "$domain")"
-      printf 'ON CONFLICT (domain) DO UPDATE SET plan_context=EXCLUDED.plan_context, review_fn=EXCLUDED.review_fn, advisor_agent=EXCLUDED.advisor_agent, learn_notes=EXCLUDED.learn_notes, own_review_cron=EXCLUDED.own_review_cron, plan_step=EXCLUDED.plan_step, gaps_fn=EXCLUDED.gaps_fn, readiness_fn=EXCLUDED.readiness_fn, package=EXCLUDED.package, updated_at=now();\n'
+      [ -n "$rolloutfn" ] && rollout_sql="$(_sql_str "$rolloutfn")"
+      printf 'INSERT INTO core.advisors (domain, plan_context, review_fn, advisor_agent, learn_notes, own_review_cron, plan_step, gaps_fn, readiness_fn, rollout_fn, package, updated_at)\n'
+      printf 'VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, now())\n' \
+        "$(_sql_str "$domain")" "$(_sql_str "$plan_ctx")" "$(_sql_str "$fn")" "$agent_sql" "$learn" "$owncron" "$planstep" "$gaps_sql" "$ready_sql" "$rollout_sql" "$(_sql_str "$pkg")"
+      printf 'ON CONFLICT (domain) DO UPDATE SET plan_context=EXCLUDED.plan_context, review_fn=EXCLUDED.review_fn, advisor_agent=EXCLUDED.advisor_agent, learn_notes=EXCLUDED.learn_notes, own_review_cron=EXCLUDED.own_review_cron, plan_step=EXCLUDED.plan_step, gaps_fn=EXCLUDED.gaps_fn, readiness_fn=EXCLUDED.readiness_fn, rollout_fn=EXCLUDED.rollout_fn, package=EXCLUDED.package, updated_at=now();\n'
       # shellcheck disable=SC2016  # $da$ ist ein literales SQL-Dollar-Quote-Tag, KEINE Shell-Expansion.
       for xsql in "$gapsfn" "$readyfn"; do
         [ -n "$xsql" ] || continue

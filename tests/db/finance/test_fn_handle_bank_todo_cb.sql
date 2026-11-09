@@ -50,6 +50,17 @@ BEGIN
   r := pg_temp.cb(c, c, '7601');
   IF (r->>'ok')::boolean OR r->>'reason' <> 'nothing_open' THEN RAISE EXCEPTION 'FAIL [geloescht]: %', r; END IF;
 
+  -- erster Punkt schon gebucht (unsichtbar), zweiter derselben Bank wird trotzdem erledigt
+  DECLARE v_f int; v_s int; BEGIN
+    v_f := pg_temp.mk('f', v_o, v_t); v_s := pg_temp.mk('s', v_o, v_t);
+    INSERT INTO finance.transactions (account_id, amount, transaction_date, category, recurring_payment_id, recurring_due_date, group_id)
+      SELECT r.account_id, -100, core.fn_today(), 'transfer', r.id, core.fn_today(), gen_random_uuid()
+        FROM finance.recurring_payments r JOIN finance.bank_todos t ON t.head_id = r.id WHERE t.id = v_f;
+    r := pg_temp.cb(v_f, v_s, '7601');
+    IF NOT (r->>'ok')::boolean OR (r->>'closed')::int <> 1 OR (SELECT status FROM finance.bank_todos WHERE id = v_s) <> 'done' THEN
+      RAISE EXCEPTION 'FAIL [erster schon gebucht]: %', r; END IF;
+  END;
+
   -- kaputte Daten
   r := finance.fn_handle_bank_todo_cb('{"data":"btodo:x","chat_id":"7601"}'::jsonb);
   IF (r->>'ok')::boolean THEN RAISE EXCEPTION 'FAIL [kaputt]: %', r; END IF;

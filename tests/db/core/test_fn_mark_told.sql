@@ -29,6 +29,15 @@ BEGIN
   IF EXISTS (SELECT 1 FROM core.notification_state WHERE source = '__p__:told_owner' AND key <> 'k_owner') THEN
     RAISE EXCEPTION 'FAIL [Mitglied/leer/Text/unbekannt/Ueberlauf -> kein Merker]'; END IF;
 
+  -- Owner hoerte, dann meldet der Fold einem Mitglied die neue Lage -> Merker weg; erneut Owner -> Frist neu
+  PERFORM core.fn_mark_told('__p__', '222', 'k_owner');
+  IF core.fn_notify_told('__p__:told_owner', 'k_owner') THEN RAISE EXCEPTION 'FAIL [neue Lage nur Mitglied -> Merker weg]'; END IF;
+  PERFORM core.fn_mark_told('__p__', '111', 'k_owner');
+  UPDATE core.notification_state SET expires_at = now() + interval '1 hour' WHERE source = '__p__:told_owner' AND key = 'k_owner';
+  PERFORM core.fn_mark_told('__p__', '111', 'k_owner');
+  IF (SELECT expires_at FROM core.notification_state WHERE source = '__p__:told_owner' AND key = 'k_owner') < now() + interval '2 days' THEN
+    RAISE EXCEPTION 'FAIL [Owner erneut -> Frist neu]'; END IF;
+
   RAISE NOTICE 'PASS fn_mark_told';
 END $$;
 ROLLBACK;

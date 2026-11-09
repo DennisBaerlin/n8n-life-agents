@@ -884,7 +884,7 @@ BEGIN
     -- Pflicht-Advisory: null_price = gehaltene Position ohne gueltigen Kurs (missing ODER stale je Position) aus
     -- finance.fn_holding_price_status (EINE Regel mit Depot-Uebersicht + Kurs-Luecken-Erinnerung, 2026-10-27).
     -- Bewusst KEIN latch_keys-Eintrag: gemeldet wird die Luecke von agent.finance.cron_remind_missing_prices (auch ohne
-    -- Finanzplan); hier steht sie nur im Datenqualitaets-Text (sonst Doppel-Meldung).
+    -- Finanzplan); hier steht sie nur im Digest (sonst Doppel-Meldung).
     SELECT count(*)::int,
            COALESCE(jsonb_agg(jsonb_build_object('holding_id', s.holding_id, 'symbol', s.symbol, 'name', s.name,
                                                  'status', s.status) ORDER BY s.holding_id), '[]'::jsonb)
@@ -1032,7 +1032,7 @@ BEGIN
             'metric_key', 'data_quality',
             'kind',       'data_quality',
             'label',      'data_quality',
-            'value',      v_null_tag_cnt + v_null_price_cnt + cardinality(v_null_rate_accts) + jsonb_array_length(v_unmapped),
+            'value',      v_null_tag_cnt + cardinality(v_null_rate_accts) + jsonb_array_length(v_unmapped),
             'msg',        v_dq_msg,
             -- latch_keys (2026-10-23, Engine core.fn_advisor_review_evaluate von Session 6b): je ungetaggter Position
             -- ein Latch -> eine NEUE ungetaggte Position meldet erneut; ohne Engine-Unterstuetzung ignoriert

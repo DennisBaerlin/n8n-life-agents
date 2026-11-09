@@ -32,6 +32,7 @@
       "DELETE FROM finance.savings_goals WHERE name = 'CRONTEXT DR';"
     ],
     "seed_sql": [
+      "INSERT INTO core.notification_state (source, key, state, last_fired_at) VALUES ('advisor:finance', '__first_run__', 'fired', now());",
       "INSERT INTO finance.savings_goals (name, target_amount, target_date, status) VALUES ('CRONTEXT DR', 10000, CURRENT_DATE + 400, 'active');",
       "INSERT INTO finance.savings_goal_reserve_entries (savings_goal_id, account_id, delta_native, currency, kind) SELECT g.id, a.id, 9000, 'EUR', 'manual' FROM finance.savings_goals g, finance.accounts a WHERE g.name = 'CRONTEXT DR' AND a.name = 'Testbroker Depot';"
     ],

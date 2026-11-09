@@ -4,8 +4,7 @@
 # Einspielen aus core.config eingesetzt). Iteriert core.advisors, rechnet Soll-Ist-Drift + Staleness, LATCHT (geteilte core.notification_state):
 # nur eine NEU gebreachte Metrik schickt eine Message, ein stiller Lauf bleibt stumm (kein Tages-Spam).
 # Opt-in ueber F9 (cron_enable.drift_check, default 'false' bis ein Plan publiziert ist). Geteilter Schwanz
-# in New-AdvisorCron (cron.advisor_common.ps1). Laeuft 10:00 VOR cron_review (10:05) -> Breaches werden zuerst
-# vom Drift-Cron gefangen + gelatcht, der spaetere Voll-Review verschluckt keinen Alarm.
+# in New-AdvisorCron (cron.advisor_common.ps1).
 function Build-CronAdvisorDriftCheck {
     # EINE Zeile: alle NEU gebreachten alert-Objekte (paket-gelieferte msg-Struktur) ueber ALLE Advisor x Personen.
     # P2b-2: per-Person-Faecherung via dem geteilten Get-AdvisorFanoutCte-Kopf (per_user je Person, household NULL).
@@ -52,7 +51,7 @@ L.push('', moreLine ? U.msg([moreLine]) : U.t('core.advisor.drift_cta'));
 return [{ json: Object.assign({ det_text: L.join('\n'), report: true }, chrome) }];
 '@
 
-    $sticky = 'Täglicher Drift-Wächter (schedule.drift_check 10:00, aus core.config, änderbar per lifeagents config set). Iteriert core.advisors, rechnet Soll-Ist-Drift + Staleness, LATCHT (geteilte core.notification_state, source=advisor:domain): nur eine NEU gebreachte Metrik schickt -> stiller Lauf = keine Message (kein Tages-Spam), Re-Arm wenn wieder im Band. F9-Gate (Cron on?): core.fn_package_active(core) AND core.fn_config_get(core,cron_enable,drift_check)=true (DB entscheidet, fail-closed; default false = opt-in bis ein Plan publiziert ist). Läuft 10:00 VOR cron_review (10:05) -> Breaches zuerst hier gefangen + gelatcht. Grenze je Nachricht über core.fn_advisor_alerts_cap: höchstens 5 Punkte, beim ersten Lauf 3 mit eigenem Titel; Gekürztes verliert seinen Merker und kommt an den Folgetagen, das Wichtigste zuerst. Was der Owner beim Eintragen schon gehört hat (told_keys), meldet der Wächter nicht. Build message rendert die paket-gelieferte alert.msg-Struktur in Owner-Sprache (geteilter Renderer, Zahlen per Intl; Texte aus derselben Anweisung wie der Latch); Phrase formuliert in dieser Sprache um (model.advisor_review, jede Zahl wörtlich), onError continue -> deterministischer Fallback.'
+    $sticky = 'Täglicher Drift-Wächter (schedule.drift_check 10:00, aus core.config, änderbar per lifeagents config set). Iteriert core.advisors, rechnet Soll-Ist-Drift + Staleness, LATCHT (geteilte core.notification_state, source=advisor:domain): nur eine NEU gebreachte Metrik schickt -> stiller Lauf = keine Message (kein Tages-Spam), Re-Arm wenn wieder im Band. F9-Gate (Cron on?): core.fn_package_active(core) AND core.fn_config_get(core,cron_enable,drift_check)=true (DB entscheidet, fail-closed; default false = opt-in bis ein Plan publiziert ist). Grenze je Nachricht über core.fn_advisor_alerts_cap: höchstens 5 Punkte, beim ersten Lauf 3 mit eigenem Titel; Gekürztes verliert seinen Merker und kommt an den Folgetagen, das Wichtigste zuerst. Was der Owner beim Eintragen schon gehört hat (told_keys), meldet der Wächter nicht. Build message rendert die paket-gelieferte alert.msg-Struktur in Owner-Sprache (geteilter Renderer, Zahlen per Intl; Texte aus derselben Anweisung wie der Latch); Phrase formuliert in dieser Sprache um (model.advisor_review, jede Zahl wörtlich), onError continue -> deterministischer Fallback.'
 
     return New-AdvisorCron `
         -WorkflowName  'agent.advisor.cron_drift_check' `

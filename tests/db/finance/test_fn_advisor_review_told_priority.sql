@@ -85,13 +85,11 @@ BEGIN
   SELECT id INTO v_set FROM finance.accounts WHERE name = '__tp_c__';
   INSERT INTO finance.accounts (name, account_type, currency, status, settlement_account_id) VALUES ('__tp_dep__','stocks_depot','EUR','active', v_set) RETURNING id INTO v_depot;
   INSERT INTO finance.depot_holdings (account_id, symbol, name, shares, average_purchase_price, currency, asset_class)
-    VALUES (v_depot, 'TPNOPX', 'Musterfonds', 1, 10, 'EUR', 'equity');
+    VALUES (v_depot, 'TPNOPX', 'Musterfonds', 1, 10, 'EUR', 'outside_plan');
 
   r := finance.fn_advisor_review('finance');
-  IF pg_temp.alert(r, 'data_quality') IS NOT NULL AND NOT EXISTS (SELECT 1 FROM finance.depot_holdings WHERE shares > 0 AND asset_class IS NULL) THEN
-    IF cardinality(ARRAY(SELECT 1 FROM jsonb_array_elements(r->'advisories'->'unmapped'))) = 0 THEN
-      RAISE EXCEPTION 'FAIL [nur Kurs-Luecke -> kein data_quality]: %', pg_temp.alert(r, 'data_quality'); END IF;
-  END IF;
+  IF pg_temp.alert(r, 'data_quality') IS NOT NULL THEN
+    RAISE EXCEPTION 'FAIL [nur Kurs-Luecke -> kein data_quality]: %', pg_temp.alert(r, 'data_quality'); END IF;
   IF NOT pg_temp.has_tpl(r->'digest'->'lines', 'finance.advisor.dq_null_price') THEN
     RAISE EXCEPTION 'FAIL [nur Kurs-Luecke: Digest nennt sie]'; END IF;
 

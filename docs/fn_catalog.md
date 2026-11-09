@@ -1313,7 +1313,7 @@ Umfang: 511 fn-Dateien.
 ## core.fn_mark_told
 - `core.fn_mark_told(p_pkg text, p_chat_id text, p_key text) -> void`
 - jsonb-Keys: role
-- core.fn_mark_told (Sofort-Hinweis hat der Owner gehoert) Setzt den Merker '<p_pkg>:told_owner' / p_key fuer 3 Tage, wenn p_chat_id dem Owner gehoert. Mitglied, leere, nicht-numerische oder unbekannte chat_id: kein Merker (der Waechter meldet dann lieber doppelt, als zu schweigen). Eingaben: p_pkg, p_chat_id, p_key. Rueckgabe: void. Wirft nie: ein Merker darf keine Buchung kippen. 3 Tage genuegen, weil der taegliche Waechter beim ersten Lauf danach seinen eigenen Merker setzt. SECURITY DEFINER: laeuft unter <pkg>_rw; EXECUTE in fn_provision_package_roles.
+- core.fn_mark_told (Sofort-Hinweis hat der Owner gehoert) Setzt den Merker '<p_pkg>:told_owner' / p_key fuer 3 Tage neu, wenn p_chat_id dem Owner gehoert. Mitglied, leere, nicht-numerische oder unbekannte chat_id: kein Merker, ein aelterer wird geloescht (der Fold meldet eine neue Lage, die der Owner nicht gehoert hat; der Waechter meldet dann lieber doppelt, als zu schweigen). Eingaben: p_pkg, p_chat_id, p_key. Rueckgabe: void. Wirft nie: ein Merker darf keine Buchung kippen. 3 Tage genuegen, weil der taegliche Waechter beim ersten Lauf danach seinen eigenen Merker setzt. SECURITY DEFINER: laeuft unter <pkg>_rw; EXECUTE in fn_provision_package_roles.
 
 ## career.fn_market_scope_key
 - `career.fn_market_scope_key(p_kind text, p_primary text, p_secondary text) -> text`

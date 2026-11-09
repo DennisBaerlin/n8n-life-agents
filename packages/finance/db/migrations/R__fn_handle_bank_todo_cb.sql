@@ -28,21 +28,27 @@ BEGIN
     IF v_data <> 'btodo:' || v_first || ':' || v_max OR v_first !~ '^[0-9]{1,9}$' OR v_max !~ '^[0-9]{1,9}$' THEN
         RETURN jsonb_build_object('ok', false, 'reason', 'unknown', 'toast', core.fn_ui_text('finance.bank_todo.toast_nothing', v_lang));
     END IF;
-    IF NOT finance.fn_bank_todo_visible(v_first::int) THEN
+    -- Der erste Punkt muss nur noch existieren: Er kann schon gebucht sein, waehrend andere derselben Nachricht offen sind.
+    v_item := finance.fn_bank_todo_item(v_first::int);
+    IF v_item IS NULL THEN
         RETURN jsonb_build_object('ok', false, 'reason', 'nothing_open', 'toast', core.fn_ui_text('finance.bank_todo.toast_nothing', v_lang));
     END IF;
-    v_item := finance.fn_bank_todo_item(v_first::int);
     IF v_s->>'role' <> 'owner' AND v_item->>'holder_person_id' IS DISTINCT FROM v_s->>'person_id' THEN
         RETURN jsonb_build_object('ok', false, 'reason', 'not_allowed', 'toast', core.fn_ui_text('finance.bank_todo.toast_not_yours', v_lang));
     END IF;
     WITH d AS (
         UPDATE finance.bank_todos t SET status = 'done', closed_at = now()
-         WHERE t.status = 'open' AND t.id <= v_max::int
-           AND finance.fn_bank_todo_visible(t.id)
-           AND finance.fn_bank_todo_item(t.id)->>'bank' IS NOT DISTINCT FROM v_item->>'bank'
-           AND finance.fn_bank_todo_item(t.id)->>'holder_person_id' IS NOT DISTINCT FROM v_item->>'holder_person_id'
+          FROM (SELECT o.id, finance.fn_bank_todo_item(o.id) AS item
+                  FROM finance.bank_todos o
+                 WHERE o.status = 'open' AND o.id <= v_max::int AND finance.fn_bank_todo_visible(o.id)) c
+         WHERE t.id = c.id
+           AND c.item->>'bank' IS NOT DISTINCT FROM v_item->>'bank'
+           AND c.item->>'holder_person_id' IS NOT DISTINCT FROM v_item->>'holder_person_id'
         RETURNING t.id)
     SELECT count(*) INTO v_n FROM d;
+    IF v_n = 0 THEN
+        RETURN jsonb_build_object('ok', false, 'reason', 'nothing_open', 'toast', core.fn_ui_text('finance.bank_todo.toast_nothing', v_lang));
+    END IF;
     RETURN jsonb_build_object('ok', true, 'closed', v_n, 'toast', core.fn_ui_text('finance.bank_todo.toast_done', v_lang));
 EXCEPTION WHEN OTHERS THEN
     RETURN jsonb_build_object('ok', false, 'reason', 'error', 'toast', core.fn_ui_text('finance.bank_todo.toast_nothing', v_lang));

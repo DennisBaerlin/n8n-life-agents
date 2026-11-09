@@ -155,8 +155,9 @@ DO $$
 BEGIN
   PERFORM core.fn_should_notify('prgpkg:bank_todo', '1:r0:owner');
   PERFORM core.fn_should_notify('prgpkg2:bank_todo', '1:r0:owner');
+  PERFORM core.fn_should_notify('prgpkg', 'reserve_breach:1');
   PERFORM core.fn_pkg_purge_data('{"package":"prgpkg"}'::jsonb);
-  IF EXISTS (SELECT 1 FROM core.notification_state WHERE source = 'prgpkg:bank_todo') THEN RAISE EXCEPTION 'FAIL purge [Paket-Merker]'; END IF;
+  IF EXISTS (SELECT 1 FROM core.notification_state WHERE source IN ('prgpkg:bank_todo', 'prgpkg')) THEN RAISE EXCEPTION 'FAIL purge [Paket-Merker]'; END IF;
   IF NOT EXISTS (SELECT 1 FROM core.notification_state WHERE source = 'prgpkg2:bank_todo') THEN RAISE EXCEPTION 'FAIL purge [fremde Quelle]'; END IF;
 END $$;
 ROLLBACK;

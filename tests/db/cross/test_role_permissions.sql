@@ -1886,4 +1886,24 @@ BEGIN
   RAISE NOTICE 'PASS [finance_ro/_rw -> Handoff-Fenster]';
 END $$;
 
+-- Bank-Zettel laeuft unter finance_rw: Recorder in den Write-Tools, Claim im Cron.
+DO $$
+DECLARE v_a int; v_b int; v_rp int;
+BEGIN
+  INSERT INTO finance.accounts (name, account_type, currency, status) VALUES ('__rp_bt_a__','cash','EUR','active') RETURNING id INTO v_a;
+  INSERT INTO finance.accounts (name, account_type, currency, status) VALUES ('__rp_bt_b__','cash','EUR','active') RETURNING id INTO v_b;
+  INSERT INTO finance.recurring_payments (name, account_id, target_account_id, amount, schedule_unit, schedule_day_of_month, first_payment_date, valid_from)
+    VALUES ('__rp_bt__', v_a, v_b, -10, 'month', 5, core.fn_today() + 5, core.fn_today() + 5) RETURNING id INTO v_rp;
+  SET LOCAL ROLE finance_rw;
+  PERFORM finance.fn_bank_note_recorded(v_rp, 'bank_setup');
+  UPDATE finance.bank_todos SET created_at = now() - interval '1 day' WHERE head_id = v_rp;
+  PERFORM finance.fn_bank_todo_claim();
+  PERFORM finance.fn_plan_rollout('finance', NULL);
+  RESET ROLE;
+  RAISE NOTICE 'PASS [finance_rw -> Bank-Zettel Recorder, Claim, Abfolge]';
+EXCEPTION WHEN OTHERS THEN
+  RESET ROLE;
+  RAISE EXCEPTION 'FAIL [finance_rw -> Bank-Zettel]: %', SQLERRM;
+END $$;
+
 ROLLBACK;

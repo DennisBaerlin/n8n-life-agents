@@ -1,5 +1,15 @@
 [
   {
+    "_comment": "Mehr Tool-Runden als das Memory-Fenster (mock_route_test [memory-thinking]): thinking_binding prueft die Signaturen wie die API.",
+    "match": "__mock_thinking_binding__",
+    "thinking_binding": true,
+    "driver": "scripts/dev/mock_route_test.ps1",
+    "calls": [
+      { "tool": "Call_agent_finance_", "args": { "task": "__mock_thinking_binding__" } }
+    ],
+    "final": "Bindung ok"
+  },
+  {
     "_comment": "Woertliches Weiterreichen (ri62/ri63): Router ruft agent.finance; der Spezialist antwortet mit final, der Router danach nur mit dem Signal final_router (FRAME) -> Relay compose sendet den Spezialisten-Text woertlich, bei Persona butler mit festem Katalog-Rahmensatz davor.",
     "match": "Relay-Test Sparkonto",
     "calls": [

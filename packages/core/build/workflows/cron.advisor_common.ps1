@@ -64,7 +64,9 @@ function New-AdvisorCron {
         [Parameter(Mandatory)][string]$EvalSql,         # Pg-Query: EINE Zeile, jsonb-Spalte als Build-Input
         [Parameter(Mandatory)][string]$BuildJs,         # Code-JS: return [{ json: { det_text, report:bool, language_label, footer, btn_off } }]
         [Parameter(Mandatory)][string]$SendNodeName,    # 'Send drift' | 'Send review'
-        [Parameter(Mandatory)][string]$StickyBody       # Ueberblicks-Sticky-Text (cron-spezifisch)
+        [Parameter(Mandatory)][string]$StickyBody,      # Ueberblicks-Sticky-Text (cron-spezifisch)
+        [switch]$Silent,                                # Nachricht ohne Ton (Rueckblick)
+        [switch]$WhatNow                                # Knopf [Was jetzt?] + Eintrag ins Gespraechs-Gedaechtnis (Build message liefert what_now_domain, note_msg, btn_what_now)
     )
     $trig = Build-ScheduleTrigger @(-1100, 0) -ScheduleKey $ScheduleKey
 
@@ -103,20 +105,29 @@ function New-AdvisorCron {
     # diesen Waechter-Cron mit einem Tipp ab (Orchestrator-Callback -> core.fn_set_cron_enable). Fusszeile
     # nennt das. Re-Aktivieren per /reminders (Roter Faden Paket B). Reitet nur auf echten
     # Nudges mit (Send feuert nur bei report=true). ScheduleKey = drift_check|plan_review (whitelisted).
+    $buttons = @( @{ Text = "={{ `$('Build message').first().json.btn_off }}"; Data = "cron_off:$ScheduleKey" } )
+    if ($WhatNow) { $buttons = @( @{ Text = "={{ `$('Build message').first().json.btn_what_now }}"; Data = "={{ 'plan:drift:' + `$('Build message').first().json.what_now_domain }}" } ) + $buttons }
+    $silentArg = if ($Silent) { $true } else { $null }
     $send = New-TelegramInlineKeyboardSendNode $SendNodeName @(620, 0) `
         "={{ `$json.message + '\n\n' + `$('Build message').first().json.footer }}" `
-        @( @{ Text = "={{ `$('Build message').first().json.btn_off }}"; Data = "cron_off:$ScheduleKey" } )
+        $buttons -DisableNotification $silentArg
+    # Nach dem Senden in beide Gedaechtnisse (Berater + Router), damit eine freie Antwort die Meldung kennt; nie der vom Modell umformulierte Text.
+    $note = Build-Pg 'Note turn' @(840, 0) `
+        ("=WITH t AS (SELECT core.fn_person_chat_id(agent.fn_owner_person_id())::text AS chat_id, a.advisor_agent AS agent FROM core.advisors a WHERE a.domain = (`$1::jsonb)->>'domain') " +
+         "SELECT agent.fn_note_proactive_turn(jsonb_build_object('chat_id', t.chat_id, 'agent', t.agent, 'msg', (`$1::jsonb)->'msg')) AS a, " +
+         "agent.fn_note_proactive_turn(jsonb_build_object('chat_id', t.chat_id, 'agent', 'orchestrator', 'via', t.agent, 'msg', (`$1::jsonb)->'msg')) AS b FROM t WHERE t.agent IS NOT NULL;") `
+        ([ordered]@{ domain = "`$('Build message').first().json.what_now_domain"; msg = "`$('Build message').first().json.note_msg" }) -ContinueOnError
 
     $stickyOverview = Build-Sticky 'Überblick' @(-1140, -360) `
         'Generische Core-Advisor-Engine (Latch entscheidet DB, LLM nur Phrasing)' `
-        ($StickyBody + " WS-3 Phase A: der Send trägt einen Abschalten-Inline-Button (callback_data cron_off:$ScheduleKey) -> der Owner schaltet diesen Wächter-Cron per Tipp ab (Orchestrator-Callback -> core.fn_set_cron_enable, core.config cron_enable); Re-Aktivieren per /reminders (Roter Faden Paket B).") 340 760
+        ($StickyBody + " WS-3 Phase A: der Send trägt einen Abschalten-Inline-Button (callback_data cron_off:$ScheduleKey) -> der Owner schaltet diesen Wächter-Cron per Tipp ab (Orchestrator-Callback -> core.fn_set_cron_enable, core.config cron_enable); Re-Aktivieren per /reminders (Roter Faden Paket B). Tagesbudget: Die Evaluate-fn belegt den Slot des Owners, bevor sie Merker setzt; ohne Platz bleibt der Lauf still (deferred) und meldet an einem späteren Tag.") 340 760
 
     $stickyEval = Build-Sticky 'Doc Engine' @(-480, -360) `
         'core.fn_advisor_review_evaluate (Registry-Dispatch + Latch, off-canvas)' `
         ('Evaluate advisors FÄCHERT core.advisors x Personen (P2b-2 Get-AdvisorFanoutCte: per_user-Domains wie career je Person via agent.fn_context_persons(plan_context), household-Domains wie finance mit person_id=NULL) und ruft je (Domain, Person) core.fn_advisor_review_evaluate(domain, person_id) (MATERIALIZED CTE -> die VOLATILE Eval-fn läuft EXAKT 1x je (Advisor, Person)). Der Core-Wrapper: Registry-Lookup domain->review_fn (z. B. finance.fn_advisor_review), dyn. EXECUTE, dann LATCH gegen die geteilte core.notification_state (source=advisor:domain[:person_id]) über core.fn_should_notify/fn_notify_reconcile (Erst-/Re-Breach -> send=true; bereits fired -> still; wieder im Band -> Re-Arm via Reconcile-GC räumt stale metric_keys; person_id=NULL byte-gleich heute). Läuft unter dem Haupt-RW-Credential (Build-Pg-Default) — die fn SCHREIBT Latch-State (Präzedenz cron_monitor_check_triggers). GENERIK: der Cron kennt keine Paket-Felder, er rendert die paket-gelieferte Struktur (alert.msg / digest.lines) in Owner-Sprache, die Texte kommen aus derselben Anweisung wie der Latch (core.fn_ui_texts_for); model.advisor_review formuliert in dieser Sprache um (jede Zahl wörtlich) (Load model config liest es bei JEDEM Lauf VOR Evaluate -> ein Ladefehler stoppt den Lauf, bevor ein Latch geschrieben ist; Umschalter mit einem Knoten je Claude-Modell), onError continue -> Fallback = der deterministische Text (Choose text). Build message setzt report=false -> Quiet run (keine Message).') 360 700
 
     $nodes = @($trig, $gate, $ifEnabled, $off, $tail.LoadNode, $evaluate, $build, $ifReport, $quiet) +
-             @($tail.Nodes) + @($send, $stickyOverview, $stickyEval)
+             @($tail.Nodes) + @($send, $stickyOverview, $stickyEval) + $(if ($WhatNow) { ,$note } else { @() })
     $conns = [ordered]@{
         'Schedule (cron from config)' = @{ main = @( ,@( E 'Cron enabled?' ) ) }
         'Cron enabled?'               = @{ main = @( ,@( E 'Cron on?' ) ) }
@@ -134,5 +145,6 @@ function New-AdvisorCron {
         'Choose text'                 = @{ main = @( ,@( E $SendNodeName ) ) }
     }
     foreach ($k in $tail.Connections.Keys) { $conns[$k] = $tail.Connections[$k] }
+    if ($WhatNow) { $conns[$SendNodeName] = @{ main = @( ,@( E 'Note turn' ) ) } }
     return Build-Workflow $WorkflowName $nodes $conns
 }

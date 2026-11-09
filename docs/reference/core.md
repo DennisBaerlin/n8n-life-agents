@@ -152,6 +152,13 @@ Owner-Wunsch: persönlicher, ohne Mehrkosten und ohne Genauigkeitsverlust → je
 - **Attachment-Routing ist intent-basiert:** welche Dokumentarten ein Agent annimmt, steht in seiner `router_description`; der Core-Prompt `orchestrator_agent_instructions.md` trägt nur die Reihenfolge — Caption + Gespräch → Agent, der die Art annimmt → unklar → der Agent mit `fallback_for: ["attachment"]` (heute finance) → keiner → nachfragen. Marker verbatim durchgereicht, der Empfänger liest die `file_id`. Keine MIME-Accept-Listen (der Router sieht kein MIME) und kein `router_examples[]`-Feld (das Router-Modell bekommt nur `description`). Cold-CV-Restlücke → privates Backlog.
 - **`web_search`-Tool** = Claude + Server-Tool `web_search` (`tools/web_search.ps1`, `New-AnthropicMessagesNode`): `model.web_search` Default `claude-sonnet-latest`, max 3 Suchen/Call ($10 je 1.000 Suchen + Tokens). Leerquery-Guard, UNTRUSTED-Header, Top-5-Quellen mit `page_age`, `{ok:false}`-Vertrag, `onError continue`. Die Monitor-Wertbeschaffung (`lib/monitor_helpers.ps1`, `model.monitor_acquisition`) nutzt denselben Baustein mit striktem JSON-Prompt-Vertrag.
 
+## Tagesbudget ungefragter Nachrichten (`core.fn_proactive_claim`)
+
+- Jede ungefragte Nachricht läuft über den Claim oder eine begründete Ausnahme in `scripts/cron_toggle_lint.ps1` Regel (k). Der Claim steht dort, wo die Meldung feststeht, und vor dem Merker: Ohne Platz wird nichts gemerkt, ein späterer Lauf meldet.
+- Klassen: `normal` zählt gegen `general.proactive_daily_max`, `priority` zählt mit und wird nicht abgewiesen, `deadline` gilt auch in der Pause. Ein belegter Slot gibt `true` ohne neuen Zähler. Budget und Pause gehören dem Empfänger.
+- Altern: Ein abgewiesener `normal`-Slot kommt nach `general.proactive_age_days` Tagen ununterbrochenen Wartens durch. Die Pause (`agent.reminder_pause`, `/reminders`) merkt nichts vor; die Meldung kommt beim nächsten regulären Lauf.
+- Fail-open: Eine Störung des Budgets verschluckt keine Meldung. Der Monitor sendet eine Sammelnachricht je Lauf und belegt daher einen Slot `monitor`, außerhalb des Erinnerungs-Fensters ohne Ton.
+
 ## Wiederhol-Sperre des HITL-Gates (`agent.hitl_pending.decline_key`)
 
 - **Ablauf:** Am Eingang des Gates fragt `Repeat check` `agent.fn_get_hitl_repeat_blocked`. Treffer (gleicher Ursprungs-Chat, gleicher Schlüssel, Zeile nicht abgelaufen) → `Return repeat` ohne Karte, `{approved:false, repeat_blocked:true}`; `Build-ToolCancelled` sagt dem Modell dann, dass es jetzt antworten soll. Jeder Ausgang mit Karte läuft über `Mark result (<Return>)`: nicht bestätigt (Abbrechen oder Ablauf, die Sperre behandelt beide gleich) → `agent.fn_set_hitl_pending_declined`.

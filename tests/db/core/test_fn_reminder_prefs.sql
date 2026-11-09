@@ -151,4 +151,30 @@ BEGIN
   RAISE NOTICE 'PASS test_fn_reminder_prefs B (Owner/Mitglied/Pflicht/route)';
 END $$;
 
+-- Pause je Person ueber rem:pause:on|off
+DO $$
+DECLARE r JSONB; d date := core.fn_today();
+BEGIN
+  INSERT INTO agent.core_contexts (name, description, agent_name, load_strategy, content, metadata)
+  VALUES ('family', 'pause fixture', NULL, 'lazy', E'## fam',
+          jsonb_build_object('managed_by','agent','facts', jsonb_build_object('persons', jsonb_build_array(
+            jsonb_build_object('person_id','__pa_owner__','first_name','PA','last_name','Owner','role','owner','birth_date','1980-01-01','telegram_user_id',7221,'as_of','2026-11-01'),
+            jsonb_build_object('person_id','__pa_member__','first_name','PA','last_name','Member','role','partner','birth_date','1982-01-01','telegram_user_id',7222,'as_of','2026-11-01')))))
+  ON CONFLICT (name) DO UPDATE SET metadata = excluded.metadata, content = excluded.content;
+  DELETE FROM core.config WHERE category = 'general' AND key = 'proactive_pause_days';
+
+  r := core.fn_handle_reminder_cb('{"data":"rem:pause:on:m","chat_id":"7222","chat_type":"private"}');
+  IF (r->>'ok')::boolean IS NOT TRUE OR r->>'route' <> 'reminders' OR r->>'toast' IS NULL THEN RAISE EXCEPTION 'FAIL [P1 an]: %', r; END IF;
+  IF (SELECT until_date FROM agent.reminder_pause WHERE person_id = '__pa_member__') <> d + 14 THEN RAISE EXCEPTION 'FAIL [P1 14 Tage]'; END IF;
+  IF (r->>'until_date')::date <> d + 14 THEN RAISE EXCEPTION 'FAIL [P1 Rueckgabe]: %', r; END IF;
+  IF EXISTS (SELECT 1 FROM agent.reminder_pause WHERE person_id = '__pa_owner__') THEN RAISE EXCEPTION 'FAIL [P2 nur eigene]'; END IF;
+  r := core.fn_handle_reminder_cb('{"data":"rem:pause:off:m","chat_id":"7222","chat_type":"private"}');
+  IF (r->>'ok')::boolean IS NOT TRUE OR EXISTS (SELECT 1 FROM agent.reminder_pause WHERE person_id = '__pa_member__') THEN RAISE EXCEPTION 'FAIL [P3 aus]: %', r; END IF;
+  r := core.fn_handle_reminder_cb('{"data":"rem:pause:maybe:m","chat_id":"7222","chat_type":"private"}');
+  IF (r->>'ok')::boolean IS NOT FALSE OR r->>'toast' IS NULL THEN RAISE EXCEPTION 'FAIL [P4 falscher Text]: %', r; END IF;
+  r := core.fn_handle_reminder_cb('{"data":"rem:pause:on:m","chat_id":"999999","chat_type":"private"}');
+  IF (r->>'ok')::boolean IS NOT FALSE THEN RAISE EXCEPTION 'FAIL [P5 unaufgeloest]: %', r; END IF;
+  RAISE NOTICE 'PASS test_fn_reminder_prefs Pause';
+END $$;
+
 ROLLBACK;

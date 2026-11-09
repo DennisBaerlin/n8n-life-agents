@@ -14,6 +14,9 @@
                                                                                },
                                                                                {
                                                                                    "name":  "skip"
+                                                                               },
+                                                                               {
+                                                                                   "name":  "budget"
                                                                                }
                                                                            ]
                                                             }
@@ -79,7 +82,7 @@
                                          "operation":  "executeQuery",
                                          "query":  "=SELECT core.fn_plan_rollout_claim($1::jsonb)::text AS r;",
                                          "options":  {
-                                                         "queryReplacement":  "={{ JSON.stringify({ chat_id: String($(\u0027Start\u0027).first().json.chat_id || \u0027\u0027) }) }}"
+                                                         "queryReplacement":  "={{ JSON.stringify({ chat_id: String($(\u0027Start\u0027).first().json.chat_id || \u0027\u0027), budget: String($(\u0027Start\u0027).first().json.budget || \u0027\u0027) }) }}"
                                                      }
                                      },
                       "type":  "n8n-nodes-base.postgres",

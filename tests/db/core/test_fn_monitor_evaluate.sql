@@ -578,4 +578,77 @@ BEGIN
   RAISE NOTICE 'PASS [S2.7]';
 END $$;
 
+-- Tagesbudget: ein Slot je Sammelnachricht
+DO $$
+DECLARE
+  v jsonb; o text := '__mb_o__';
+  v_now timestamptz := now(); v_today date := core.fn_today();
+  v_due int; v_warn int; v_info int; v_far int; n int;
+BEGIN
+  INSERT INTO agent.core_contexts (name, description, agent_name, load_strategy, content, metadata)
+  VALUES ('family', 'mb fixture', NULL, 'lazy', E'## f',
+          jsonb_build_object('managed_by','agent','facts', jsonb_build_object('persons', jsonb_build_array(
+            jsonb_build_object('person_id',o,'first_name','MB','last_name','O','role','owner','birth_date','1980-01-01','telegram_user_id',7941,'as_of','2026-11-01')))))
+  ON CONFLICT (name) DO UPDATE SET metadata = excluded.metadata;
+  INSERT INTO core.config (package, category, key, value) VALUES ('core', 'general', 'reminders_from', '0'), ('core', 'general', 'reminders_until', '24')
+    ON CONFLICT (category, key) DO UPDATE SET value = excluded.value;
+  UPDATE agent.monitor_triggers SET status = 'disabled' WHERE status = 'armed';
+  DELETE FROM core.proactive_budget; DELETE FROM core.proactive_deferred;
+
+  INSERT INTO agent.monitor_triggers (domain, label, trigger_type, acquisition_method, due_date, warn_days_before, check_interval, next_check_at)
+    VALUES ('__t__', 'mb warn', 'date', 'none', v_today + 2, 5, interval '1 day', v_now - interval '1 hour') RETURNING id INTO v_warn;
+  INSERT INTO agent.monitor_triggers (domain, label, trigger_type, acquisition_method, acquisition_spec, check_interval, next_check_at)
+    VALUES ('__t__', 'mb info', 'recurring_info', 'none', '{}', interval '1 hour', v_now - interval '1 hour') RETURNING id INTO v_info;
+  INSERT INTO agent.monitor_triggers (domain, label, trigger_type, acquisition_method, due_date, warn_days_before, check_interval, next_check_at)
+    VALUES ('__t__', 'mb far', 'date', 'none', v_today + 30, 5, interval '1 day', v_now - interval '1 hour') RETURNING id INTO v_far;
+
+  -- voll: Vorwarnung/Info bleiben faellig, fn_monitor_due laesst sie aus, Datum vor dem Fenster laeuft ohne Slot
+  PERFORM core.fn_proactive_claim(o, 'x1', 'normal'); PERFORM core.fn_proactive_claim(o, 'x2', 'normal');
+  IF EXISTS (SELECT 1 FROM agent.fn_monitor_due(v_now) d WHERE d.id IN (v_warn, v_info)) THEN RAISE EXCEPTION 'FAIL [MB1 due]'; END IF;
+  IF NOT EXISTS (SELECT 1 FROM agent.fn_monitor_due(v_now) d WHERE d.id = v_far) THEN RAISE EXCEPTION 'FAIL [MB1 far]'; END IF;
+  v := agent.fn_monitor_evaluate(jsonb_build_object('now', v_now));
+  IF jsonb_array_length(v->'info') <> 0 THEN RAISE EXCEPTION 'FAIL [MB1 info]: %', v; END IF;
+  IF (v->>'in_window')::boolean IS NOT TRUE THEN RAISE EXCEPTION 'FAIL [MB1 in_window]: %', v; END IF;
+  IF (SELECT next_check_at FROM agent.monitor_triggers WHERE id = v_warn) > v_now THEN RAISE EXCEPTION 'FAIL [MB1 bleibt faellig]'; END IF;
+  IF NOT EXISTS (SELECT 1 FROM core.proactive_deferred WHERE person_id = o AND slot = 'monitor') THEN RAISE EXCEPTION 'FAIL [MB1 Altern]'; END IF;
+
+  -- wartet 3 Tage -> Meldung
+  UPDATE core.proactive_deferred SET since = v_today - 3 WHERE slot = 'monitor';
+  v := agent.fn_monitor_evaluate(jsonb_build_object('now', v_now));
+  IF jsonb_array_length(v->'info') <> 2 THEN RAISE EXCEPTION 'FAIL [MB2 gealtert]: %', v; END IF;
+  SELECT count(*) INTO n FROM core.proactive_budget WHERE person_id = o AND day = v_today AND slot = 'monitor';
+  IF n <> 1 THEN RAISE EXCEPTION 'FAIL [MB2 ein Slot %]', n; END IF;
+
+  -- stuendlicher Info-Waechter: heute kein zweiter Lauf
+  UPDATE agent.monitor_triggers SET next_check_at = v_now - interval '1 minute' WHERE id = v_info;
+  IF EXISTS (SELECT 1 FROM agent.fn_monitor_due(v_now) d WHERE d.id = v_info) THEN RAISE EXCEPTION 'FAIL [MB3 due]'; END IF;
+  v := agent.fn_monitor_evaluate(jsonb_build_object('now', v_now));
+  IF jsonb_array_length(v->'info') <> 0 THEN RAISE EXCEPTION 'FAIL [MB3 zweiter Lauf]: %', v; END IF;
+
+  -- faelliges Datum: voll und in der Pause, mit Vorwarnung im selben Lauf -> ein Slot
+  DELETE FROM core.proactive_budget; DELETE FROM core.proactive_deferred;
+  UPDATE agent.monitor_triggers SET next_check_at = v_now - interval '1 minute' WHERE id = v_warn;
+  INSERT INTO agent.monitor_triggers (domain, label, trigger_type, acquisition_method, due_date, warn_days_before, check_interval, next_check_at)
+    VALUES ('__t__', 'mb due', 'date', 'none', v_today, 0, interval '1 day', v_now - interval '1 hour') RETURNING id INTO v_due;
+  v := agent.fn_monitor_evaluate(jsonb_build_object('now', v_now));
+  IF jsonb_array_length(v->'fired') <> 1 OR jsonb_array_length(v->'info') <> 2 THEN RAISE EXCEPTION 'FAIL [MB4 Lauf]: %', v; END IF;
+  SELECT count(*) INTO n FROM core.proactive_budget WHERE person_id = o AND day = v_today;
+  IF n <> 1 THEN RAISE EXCEPTION 'FAIL [MB4 ein Slot %]', n; END IF;
+
+  DELETE FROM core.proactive_budget; DELETE FROM core.proactive_deferred;
+  INSERT INTO agent.reminder_pause (person_id, until_date) VALUES (o, v_today + 3);
+  UPDATE agent.monitor_triggers SET status = 'armed', next_check_at = v_now - interval '1 minute', fired_at = NULL WHERE id = v_due;
+  UPDATE agent.monitor_triggers SET next_check_at = v_now - interval '1 minute' WHERE id = v_warn;
+  v := agent.fn_monitor_evaluate(jsonb_build_object('now', v_now));
+  IF jsonb_array_length(v->'fired') <> 1 OR jsonb_array_length(v->'info') <> 0 THEN RAISE EXCEPTION 'FAIL [MB5 Pause]: %', v; END IF;
+  IF EXISTS (SELECT 1 FROM core.proactive_deferred) THEN RAISE EXCEPTION 'FAIL [MB5 kein Eintrag]'; END IF;
+  DELETE FROM agent.reminder_pause;
+
+  -- in_window false bei engem Fenster
+  UPDATE core.config SET value = '23' WHERE category = 'general' AND key = 'reminders_from';
+  v := agent.fn_monitor_evaluate(jsonb_build_object('now', (v_today::timestamp + interval '3 hours')::timestamptz));
+  IF (v->>'in_window')::boolean IS NOT FALSE THEN RAISE EXCEPTION 'FAIL [MB6 in_window]: %', v; END IF;
+  RAISE NOTICE 'PASS test_fn_monitor_evaluate Budget';
+END $$;
+
 ROLLBACK;

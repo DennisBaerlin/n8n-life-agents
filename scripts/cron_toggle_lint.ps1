@@ -27,7 +27,7 @@
 #       (= die Registry-Membership, die die fn als Togglability liest) und hat seine vier Katalog-Texte,
 #       KEIN Always-on-Key hat einen (sonst chat-schaltbar), keine tote cron_labels-Zeile ohne cron_enable-Key.
 # Exit-Code = Anzahl Fehler (CI-/Pre-Push-tauglich). Kein LLM, kein Netz, kein Substrat.
-param([switch]$Verbose)
+param([switch]$Verbose, [string]$ExtraWorkflowDir)   # -ExtraWorkflowDir: nur fuer den Fehlfall-Test scripts/dev/cron_toggle_lint_test.ps1
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $ErrorActionPreference = 'Stop'
 $RepoRoot = git -C $PSScriptRoot rev-parse --show-toplevel
@@ -283,6 +283,45 @@ foreach ($file in (Get-ChildItem $wfDirs -Filter '*.json')) {
         Fail "Cron '$($wf.name)' schickt Telegram-Nachrichten, aber '$key' ist keine registrierte Erinnerung (cron_labels.list/.person/.mandatory) -- er fehlte in /reminders und im Erinnerungs-Fenster"
     }
 }
+
+# --- (k) Tagesbudget: jeder Cron, der ungefragt sendet (direkt oder ueber einen Sub mit Telegram-Knoten), nennt seinen
+# Budget-Weg (Text, der im gebauten Workflow stehen muss) oder eine begruendete Ausnahme. Doppel-Eintrag waere ein Widerspruch.
+$budgetWays = @{
+    drift_check = 'fn_advisor_review_evaluate'; review_register = 'fn_advisor_review_evaluate'
+    reconcile_accounts = 'fn_proactive_claim'; remind_pension_statement = 'fn_proactive_claim'
+    remind_bank_end = 'fn_bank_end_claim'; remind_bank_todo = 'fn_bank_todo_claim'
+    remind_missing_prices = 'fn_price_gap_claim'; onboarding_nudge = 'fn_onboarding_nudges_due'
+    monitor_triggers = 'fn_monitor_evaluate'; plan_rollout = '"budget"'
+}
+$budgetExempt = @{
+    plan_review = 'Quartals-Rueckblick, immer ohne Ton'
+    remind_interest = 'Bestaetigungs-Karte'
+    remind_case_tasks = 'Pflicht-Fristen im Ereignisfall'
+    learn_context = 'Opt-in; eine verworfene Karte kaeme nicht wieder'
+    score_jobs = 'Opt-in je Person, eigene Mengenbegrenzung'
+}
+$allFiles = @(Get-ChildItem $wfDirs -Filter '*.json')
+if ($ExtraWorkflowDir) { $allFiles += @(Get-ChildItem $ExtraWorkflowDir -Filter '*.json') }
+$subSends = @{}
+foreach ($file in $allFiles) {
+    $wfId = ($file.Name -split '-')[0]
+    if ([System.IO.File]::ReadAllText($file.FullName, $u8).Contains('"n8n-nodes-base.telegram"')) { $subSends[$wfId] = $true }
+}
+foreach ($file in $allFiles) {
+    $raw = [System.IO.File]::ReadAllText($file.FullName, $u8)
+    $sm = [regex]::Match($raw, '__CFG_SCHEDULE_([A-Z0-9_]+)__')
+    if (-not $sm.Success) { continue }
+    $sends = $raw.Contains('"n8n-nodes-base.telegram"')
+    if (-not $sends) {
+        foreach ($m in [regex]::Matches($raw, '"value"\s*:\s*"([A-Za-z0-9]{16})"')) { if ($subSends.ContainsKey($m.Groups[1].Value)) { $sends = $true; break } }
+    }
+    if (-not $sends) { continue }
+    $key = $sm.Groups[1].Value.ToLower()
+    if ($budgetExempt.ContainsKey($key)) { continue }
+    if (-not $budgetWays.ContainsKey($key)) { Fail "Cron-Schluessel '$key' ($($file.Name)) sendet Telegram-Nachrichten, hat aber weder Budget-Weg noch begruendete Ausnahme (Tabellen in Regel k)"; continue }
+    if (-not $raw.Contains($budgetWays[$key])) { Fail "Cron-Schluessel '$key' ($($file.Name)): Budget-Weg '$($budgetWays[$key])' fehlt im gebauten Workflow" }
+}
+foreach ($key in @($budgetWays.Keys)) { if ($budgetExempt.ContainsKey($key)) { Fail "Cron-Schluessel '$key' steht in Budget-Weg UND Ausnahme" } }
 
 if ($Verbose) {
     Write-Host "  opt-in (Chat)   = $(@($chatKeys    | Sort-Object) -join ', ')" -ForegroundColor DarkGray

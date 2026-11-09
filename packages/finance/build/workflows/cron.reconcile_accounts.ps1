@@ -89,16 +89,19 @@ return [{ json: { message: intro + '\n\n' + lines.join('\n') + howto,
         @( @{ Text = '={{ $json.btn_off }}'; Data = 'cron_off:reconcile_accounts' } )
 
     $none = Build-NoOp 'Nothing due' @(220, 120)
+    # Budget-Gate unter finance_rw: die Lese-Cred dieses Crons darf nicht schreiben.
+    $budget = New-ProactiveBudgetGate -Pos @(0, -100) -Slot 'reconcile_accounts' -Class priority -Cred $CRED_FINANCE_RW
+    $budgetNo = Build-NoOp 'Paused' @(440, 120)
 
     $stickyOverview = Build-Sticky 'Überblick' @(-460, -300) `
         'Monats-Check-Erinnerung (3. und 17. des Monats, kein LLM, kein Write)' `
-        'Schedule (Cron aus core.config schedule.reconcile_accounts, Standard 5 10 3,17 * * im Erinnerungs-Fenster: am 3. haben die meisten Banken den Monatsauszug bereitgestellt, am 17. nur noch die fehlenden Konten). Kandidaten: aktive cash-Konten mit Kontoauszug (Kontonummer bekannt, Bank angegeben oder schon ein Auszug eingespielt; Bargeld ohne Bank fällt raus). Fällig, wenn der bestätigte Stand den Stichtag (letzter Tag des Vormonats) nicht erreicht: nächstes erwartetes Auszugs-Ende = letztes Auszugs-Ende + dessen Länge in Monaten (ein Quartalsauszug fragt nur jedes Quartal). Aggregiert zu EINER Zeile (Stichtag + Konten + Texte in Owner-Sprache, core.fn_ui_texts_for). IF count>0 -> Build message (Datum per Intl im Owner-Locale, Schritt-für-Schritt-Anleitung aus dem Katalog; ein Konto einer Datei-Export-Bank laut finance.fn_bank_export_account_profile bekommt den Datei-Schritt in seiner Zeile, die PDF-Anleitung kommt nur, wenn ein PDF-Konto dabei ist) -> EINE Nachricht mit Knopf [Erinnerung abschalten] (cron_off:reconcile_accounts, Owner; wieder an in /reminders — Roter Faden Paket B); sonst No-Op.' 280 600
+        'Schedule (Cron aus core.config schedule.reconcile_accounts, Standard 5 10 3,17 * * im Erinnerungs-Fenster: am 3. haben die meisten Banken den Monatsauszug bereitgestellt, am 17. nur noch die fehlenden Konten). Kandidaten: aktive cash-Konten mit Kontoauszug (Kontonummer bekannt, Bank angegeben oder schon ein Auszug eingespielt; Bargeld ohne Bank fällt raus). Fällig, wenn der bestätigte Stand den Stichtag (letzter Tag des Vormonats) nicht erreicht: nächstes erwartetes Auszugs-Ende = letztes Auszugs-Ende + dessen Länge in Monaten (ein Quartalsauszug fragt nur jedes Quartal). Aggregiert zu EINER Zeile (Stichtag + Konten + Texte in Owner-Sprache, core.fn_ui_texts_for). IF count>0 -> Build message (Datum per Intl im Owner-Locale, Schritt-für-Schritt-Anleitung aus dem Katalog; ein Konto einer Datei-Export-Bank laut finance.fn_bank_export_account_profile bekommt den Datei-Schritt in seiner Zeile, die PDF-Anleitung kommt nur, wenn ein PDF-Konto dabei ist) -> EINE Nachricht mit Knopf [Erinnerung abschalten] (cron_off:reconcile_accounts, Owner; wieder an in /reminders — Roter Faden Paket B); sonst No-Op. Vor dem Versand belegt Budget claim (Klasse priority, unter finance_rw) den Tages-Slot; in einer Pause entfällt die Nachricht, der nächste reguläre Lauf meldet.' 280 600
 
     $stickyDesign = Build-Sticky 'Workflow danach' @(0, 160) `
         'Ein PDF -> eine Karte -> ein atomarer Write' `
         'Kein sendAndWait hier: die Antwort ist eine Datei, und Dateien/Freitext lösen ein offenes sendAndWait-Gate NICHT auf (HITL-Constraint). Der Nutzer schickt je Konto den Kontoauszug -> agent.finance ruft tool_reconcile_bank_statement -> EINE Karte (abgehakte Zahlungen, Rest als Alltagsausgaben) -> fn_apply_bank_statement bucht atomar und gleicht auf den Endstand ab. Ein Datei-Export (CSV/Excel) einer Bank mit Export-Profil -> tool_import_bank_export (fester Leser). Wer keinen Auszug hat, kann weiterhin Stände per Chat nennen (tool_reconcile_accounts_batch).' 260 580
 
-    $nodes = @($trig, $gate, $gateIf, $gateOff, $find, $ifAny, $build, $notify, $none, $stickyOverview, $stickyDesign, $stickyGate)
+    $nodes = @($trig, $gate, $gateIf, $gateOff, $find, $ifAny, $budget.Pg, $budget.If, $budgetNo, $build, $notify, $none, $stickyOverview, $stickyDesign, $stickyGate)
     $conns = [ordered]@{
         'Schedule (cron from config)' = @{ main = @( ,@( E 'Cron enabled?' ) ) }
         'Cron enabled?'               = @{ main = @( ,@( E 'Cron on?' ) ) }
@@ -108,9 +111,11 @@ return [{ json: { message: intro + '\n\n' + lines.join('\n') + howto,
         ) }
         'Find overdue accounts'       = @{ main = @( ,@( E 'Any overdue?' ) ) }
         'Any overdue?'                = @{ main = @(
-            @( E 'Build message' ),    # true:  count > 0
+            @( E 'Budget claim' ),     # true:  count > 0
             @( E 'Nothing due' )       # false: nichts faellig
         ) }
+        'Budget claim'                = @{ main = @( ,@( E 'Budget ok?' ) ) }
+        'Budget ok?'                  = @{ main = @( @( E 'Build message' ), @( E 'Paused' ) ) }
         'Build message'               = @{ main = @( ,@( E 'Notify overdue' ) ) }
     }
     return (Build-Workflow 'agent.finance.cron_reconcile_accounts' $nodes $conns)

@@ -142,7 +142,8 @@
                                                                 "value":  {
                                                                               "chat_id":  "={{ $json.chat_id }}",
                                                                               "footer_key":  "core.reminders.card_footer",
-                                                                              "skip":  "false"
+                                                                              "skip":  "false",
+                                                                              "budget":  "true"
                                                                           },
                                                                 "matchingColumns":  [
 
@@ -170,7 +171,7 @@
                   },
                   {
                       "parameters":  {
-                                         "content":  "## DB-Automatik\n**Täglicher Nachzügler der geführten Abfolge**\n\nLäuft einmal am Tag im Erinnerungs-Fenster (schedule.plan_rollout, cron_enable.plan_rollout). core.fn_plan_rollout_lagging liefert die Chats mit möglichem offenem Schritt, je Chat ruft Run rollout den Sub core.sub_plan_rollout_next. Claim und Reihenfolge entscheidet der Sub. Holt auch nach, wenn ein Lauf abgebrochen ist, und stößt für Bestandspläne einmal [Plan durchsehen] an.",
+                                         "content":  "## DB-Automatik\n**Täglicher Nachzügler der geführten Abfolge**\n\nLäuft einmal am Tag im Erinnerungs-Fenster (schedule.plan_rollout, cron_enable.plan_rollout). core.fn_plan_rollout_lagging liefert die Chats mit möglichem offenem Schritt, je Chat ruft Run rollout den Sub core.sub_plan_rollout_next. Claim und Reihenfolge entscheidet der Sub. Mit budget true belegt der Claim erst dann den Tages-Slot, wenn eine Nachricht feststeht; ohne Platz werden ihre Merker freigegeben. Holt auch nach, wenn ein Lauf abgebrochen ist, und stößt für Bestandspläne einmal [Plan durchsehen] an.",
                                          "height":  320,
                                          "width":  280,
                                          "color":  4

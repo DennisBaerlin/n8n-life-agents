@@ -64,6 +64,7 @@ BEGIN
               AND COALESCE(obj_description(c.oid, 'pg_class'), '') NOT LIKE 'lifecycle:reference%')
      AND con.conrelid NOT IN ('agent.advisor_plans'::regclass, 'agent.reminder_prefs'::regclass,
                               'agent.advisor_plan_wishes'::regclass, 'agent.handoff_tasks'::regclass, 'agent.reaction_log'::regclass,
+                              'agent.reminder_pause'::regclass, 'core.proactive_budget'::regclass, 'core.proactive_deferred'::regclass,
                               'core.update_requests'::regclass);
   IF v_bad IS NOT NULL THEN
     RAISE EXCEPTION 'FAIL (iv) FK-Referenzierer von agent.persons nicht vom Reset abgedeckt: %', v_bad;

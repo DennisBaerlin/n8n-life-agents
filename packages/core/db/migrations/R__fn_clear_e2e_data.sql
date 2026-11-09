@@ -103,6 +103,9 @@ BEGIN
     GET DIAGNOSTICS v_gln = ROW_COUNT;
     DELETE FROM agent.guide_learn_watermark;
     GET DIAGNOSTICS v_glw = ROW_COUNT;
+    -- Fluechtige Tageszaehler ohne Nutzerinhalt: Sonst fuellten die Testlaeufe eines Tages das Budget der naechsten Faelle.
+    DELETE FROM core.proactive_budget;
+    DELETE FROM core.proactive_deferred;
 
     -- GUARD 2 (agent-Teil): keine Sentinel-Zeile darf zurueckbleiben.
     IF EXISTS (SELECT 1 FROM agent.advisor_plans          WHERE plan_name LIKE v_pat OR domain ILIKE v_pat)

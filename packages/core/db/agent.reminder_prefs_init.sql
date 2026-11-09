@@ -27,5 +27,13 @@ CREATE TABLE IF NOT EXISTS agent.reminder_prefs (
     PRIMARY KEY (person_id, cron_key)
 );
 
+-- Pause aller ungefragten Nachrichten einer Person bis einschliesslich until_date; geschrieben nur ueber
+-- core.fn_set_proactive_pause, gelesen von core.fn_proactive_claim. Nutzerdaten wie reminder_prefs (Backup, Reset).
+CREATE TABLE IF NOT EXISTS agent.reminder_pause (
+    person_id  text NOT NULL PRIMARY KEY REFERENCES agent.persons (person_id) ON DELETE CASCADE,
+    until_date date NOT NULL,
+    set_at     timestamptz NOT NULL DEFAULT now()
+);
+
 -- Kein Grant an core_ro: das /reminders-Menue liest ueber das DEFINER-Fenster core.fn_reminders_overview
 -- (Erlaubnisliste in util_create_core_ro.sql).

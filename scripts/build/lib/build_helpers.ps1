@@ -1465,8 +1465,9 @@ function New-TelegramSendNode {
     param([string]$Name, [int[]]$Pos, [string]$TextExpr,
           [string]$ChatIdExpr = '__OWNER_CHAT_ID__',
           [switch]$NoEscape, [int]$MaxTries = 3, [int]$WaitBetweenTries = 2000,
-          [string]$ParseMode, [string]$OnError)
+          [string]$ParseMode, [string]$OnError, $DisableNotification = $null)
     $addl = [ordered]@{ appendAttribution = $false }
+    if ($null -ne $DisableNotification) { $addl['disable_notification'] = $DisableNotification }   # Bool oder ={{ }}-Ausdruck
     if ($PSBoundParameters.ContainsKey('ParseMode')) { $addl['parse_mode'] = $ParseMode }
     $node = [ordered]@{
         parameters = [ordered]@{
@@ -1681,13 +1682,15 @@ return { json: Object.assign({}, $input.item.json, { stale_tap: stale }) };
 function New-TelegramInlineKeyboardSendNode {
     param([string]$Name, [int[]]$Pos, [string]$TextExpr, [array]$Buttons, [array]$Rows,
           [string]$ChatIdExpr = '__OWNER_CHAT_ID__',
-          [switch]$NoEscape, [int]$MaxTries = 3, [int]$WaitBetweenTries = 2000)
+          [switch]$NoEscape, [int]$MaxTries = 3, [int]$WaitBetweenTries = 2000, $DisableNotification = $null)
     $toBtn = { param($b) [ordered]@{ text = $b.Text; additionalFields = [ordered]@{ callback_data = $b.Data } } }
     if (-not $Rows) { $Rows = @( ,@($Buttons) ) }
     $rowNodes = @($Rows | ForEach-Object { [ordered]@{ row = [ordered]@{ buttons = @($_ | ForEach-Object { & $toBtn $_ }) } } })
+    $addl = [ordered]@{ appendAttribution = $false }
+    if ($null -ne $DisableNotification) { $addl['disable_notification'] = $DisableNotification }
     [ordered]@{
         parameters = [ordered]@{
-            additionalFields = [ordered]@{ appendAttribution = $false }
+            additionalFields = $addl
             chatId      = $ChatIdExpr
             text        = (Resolve-TgTextExpr $TextExpr $NoEscape.IsPresent)
             replyMarkup = 'inlineKeyboard'
@@ -1698,6 +1701,16 @@ function New-TelegramInlineKeyboardSendNode {
         retryOnFail = $true; maxTries = $MaxTries; waitBetweenTries = $WaitBetweenTries
         credentials = @{ telegramApi = $CRED_TELEGRAM }
     }
+}
+
+# Budget-Gate eines Crons, dessen Versand nicht schon in einer fn_*-Latch-Funktion claimt: 'Budget claim' -> 'Budget ok?'
+# (true = senden). Laeuft unter der Schreib-Cred: Crons mit _ro-Lese-Cred uebergeben -Cred. Ein DB-Fehler laesst die Nachricht durch.
+function New-ProactiveBudgetGate {
+    param([Parameter(Mandatory)][int[]]$Pos, [Parameter(Mandatory)][string]$Slot,
+          [ValidateSet('normal', 'priority', 'deadline')][string]$Class = 'normal', $Cred = $null)
+    $pg = Build-Pg 'Budget claim' $Pos "=SELECT core.fn_proactive_claim(NULL, '$Slot', '$Class') AS allowed;" $null -Cred $Cred -ContinueOnError
+    $if = Build-If 'Budget ok?' @(($Pos[0] + 200), $Pos[1]) '={{ $json.allowed !== false }}' 'true' 'equals' 'boolean'
+    @{ Pg = $pg; If = $if }
 }
 
 # Telegram sendMessageDraft ("Bot denkt nach ..."): leerer Text = Platzhalter "Thinking..." (Bot API 9.5+, nur private

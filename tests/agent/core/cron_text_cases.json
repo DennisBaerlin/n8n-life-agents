@@ -15,8 +15,9 @@
       "INSERT INTO core.notification_state (source, key, state, last_fired_at) VALUES ('advisor:finance', '__first_run__', 'fired', now());",
       "INSERT INTO finance.savings_goals (name, target_amount, target_date, status, created_at) VALUES ('CRONTEXT G1', 10000, CURRENT_DATE + 30, 'active', now() - interval '300 days');"
     ],
+    "expect_silent": false,
     "expect_keys": ["core.advisor.footer_off"],
-    "expect_buttons": ["core.advisor.btn_off"],
+    "expect_buttons": ["core.advisor.btn_off", "core.advisor.btn_what_now"],
     "llm_expect": { "keys": ["core.advisor.drift_title", "finance.advisor.savings_pace"], "language": true }
   },
   {
@@ -67,6 +68,7 @@
     "schedule_key": "plan_review",
     "cron_enable": "plan_review",
     "recipient": "owner",
+    "expect_silent": true,
     "expect_keys": ["core.advisor.footer_off"],
     "expect_buttons": ["core.advisor.btn_off"],
     "llm_expect": { "keys": ["finance.advisor.digest_cashflow", "finance.advisor.digest_goals"], "language": true }
@@ -114,6 +116,7 @@
       "UPDATE core.config SET value = '24' WHERE category = 'general' AND key = 'reminders_until';",
       "INSERT INTO agent.monitor_triggers (domain, label, trigger_type, acquisition_method, acquisition_spec, due_date, check_interval, action_note) VALUES ('__e2e_monitor__', 'CRONTEXT T1', 'date', 'none', '{}'::jsonb, CURRENT_DATE, interval '1 day', 'CRONTEXT A1');"
     ],
+    "expect_silent": false,
     "expect_keys": ["core.monitor.title", "core.monitor.fired", "core.monitor.date_reached", "core.monitor.action", "core.monitor.fired_note"]
   },
   {
@@ -185,7 +188,10 @@
     "harness": "reminders-menu-test",
     "recipient": "owner",
     "harness_body": {},
-    "expect_keys": ["core.reminders.title", "core.reminders.intro_owner", "core.reminders.window", "core.reminders.monitor_note",
+    "seed_sql": ["INSERT INTO agent.reminder_pause (person_id, until_date) SELECT agent.fn_owner_person_id(), CURRENT_DATE + 5 ON CONFLICT (person_id) DO NOTHING;"],
+    "reset_sql": ["DELETE FROM agent.reminder_pause;"],
+    "expect_buttons": ["core.reminders.pause_off_btn"],
+    "expect_keys": ["core.reminders.pause_active", "core.reminders.title", "core.reminders.intro_owner", "core.reminders.window", "core.reminders.monitor_note",
                     "core.reminders.mandatory", "finance.cron.reconcile_accounts.label", "estate.cron.remind_case_tasks.label"]
   },
   {

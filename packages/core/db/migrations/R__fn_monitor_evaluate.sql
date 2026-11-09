@@ -36,7 +36,9 @@
 --   Eingabe jsonb: { now? (Test-Injektion), observations?: [{trigger_id, ok, value,
 --     unit, as_of, source_url, reason}], fail_alert_streak? (Override; Default RUNTIME aus
 --     core.config monitor.fail_alert_streak — bewusst kein Build-Time-Baking) }.
---   Rueckgabe: { ok, checked, fired:[...], info:[...], problems:[...] } — alles, was
+--   BUDGET: Die Sammelnachricht je Lauf belegt den Tages-Slot 'monitor' des Owners: faellige Daten als deadline (immer, auch in
+--   der Pause), Vorwarnungen und Info als normal und nur mit Platz. Ohne Platz bleibt die Zeile unveraendert faellig. Wert-Trigger ohne Claim.
+--   Rueckgabe: { ok, checked, in_window (false = der Cron sendet ohne Ton), fired:[...], info:[...], problems:[...] } — alles, was
 --   der deterministische Message-Builder braucht, nichts mehr (Post-State-Vertrag).
 -- ============================================================
 CREATE OR REPLACE FUNCTION agent.fn_monitor_evaluate(p jsonb DEFAULT '{}'::jsonb)
@@ -59,6 +61,7 @@ DECLARE
     v_streak     INT;
     v_first_fail TIMESTAMPTZ;
     v_window     BOOLEAN;
+    v_room       BOOLEAN;
 BEGIN
     v_today := core.fn_today(v_now);
     v_fail_alert := COALESCE(NULLIF(p->>'fail_alert_streak', '')::int,
@@ -66,6 +69,16 @@ BEGIN
           WHERE c.category = 'monitor' AND c.key = 'fail_alert_streak'), 3);
 
     v_window := core.fn_in_reminder_window(v_now);
+    -- Der Tages-Slot 'monitor' deckt die eine Sammelnachricht je Lauf. Vor dem Loop festgehalten: Der erste Claim belegt ihn,
+    -- die weiteren Treffer desselben Laufs gehoeren zur selben Nachricht.
+    v_room := core.fn_proactive_has_room(NULL, 'monitor');
+    IF v_window AND NOT v_room AND EXISTS (
+           SELECT 1 FROM agent.monitor_triggers t
+            WHERE t.status = 'armed' AND t.next_check_at <= v_now
+              AND COALESCE((agent.fn_monitor_method_status(t.acquisition_method)->>'available')::boolean, false)
+              AND agent.fn_monitor_needs_room(t.trigger_type, t.due_date, t.warn_days_before, v_today)) THEN
+        PERFORM core.fn_proactive_claim(NULL, 'monitor', 'normal');   -- vermerkt nur das Warten fuers Altern
+    END IF;
 
     FOR v_t IN
         SELECT * FROM agent.monitor_triggers t
@@ -74,6 +87,7 @@ BEGIN
           -- Roter Faden: Datums-/Info-Trigger (nicht zeitkritisch) nur im Erinnerungs-Fenster; sie bleiben faellig
           -- und laufen im ersten Lauf ab reminders_from (Spiegel in agent.fn_monitor_due).
           AND (t.trigger_type NOT IN ('date', 'recurring_info') OR v_window)
+          AND (v_room OR NOT agent.fn_monitor_needs_room(t.trigger_type, t.due_date, t.warn_days_before, v_today))
         ORDER BY t.id
         FOR UPDATE
     LOOP
@@ -143,8 +157,10 @@ BEGIN
         IF v_t.trigger_type = 'date' THEN
             IF v_today >= v_t.due_date THEN
                 v_fire := true;
+                PERFORM core.fn_proactive_claim(NULL, 'monitor', 'deadline');
             ELSIF v_t.warn_days_before > 0
                   AND v_today >= v_t.due_date - v_t.warn_days_before THEN
+                CONTINUE WHEN NOT core.fn_proactive_claim(NULL, 'monitor', 'normal');
                 v_info := v_info || jsonb_build_array(jsonb_strip_nulls(jsonb_build_object(
                     'id', v_t.id, 'label', v_t.label, 'domain', v_t.domain,
                     'kind', 'date_warning',
@@ -162,6 +178,7 @@ BEGIN
                 v_fire := v_dd >= v_t.drawdown_pct;
             END IF;
         ELSIF v_t.trigger_type = 'recurring_info' THEN
+            CONTINUE WHEN NOT core.fn_proactive_claim(NULL, 'monitor', 'normal');
             v_info := v_info || jsonb_build_array(jsonb_strip_nulls(jsonb_build_object(
                 'id', v_t.id, 'label', v_t.label, 'domain', v_t.domain,
                 'kind', 'recurring_info',
@@ -241,7 +258,7 @@ BEGIN
     END IF;
 
     RETURN jsonb_build_object(
-        'ok', true, 'checked', v_checked,
+        'ok', true, 'checked', v_checked, 'in_window', v_window,
         'fired', v_fired, 'info', v_info, 'problems', v_problems);
 END;
 $$;

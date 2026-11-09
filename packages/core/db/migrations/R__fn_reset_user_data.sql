@@ -105,6 +105,9 @@ BEGIN
     DELETE FROM agent.guide_learn_candidates;
     DELETE FROM agent.guide_learn_watermark;
     DELETE FROM agent.reminder_prefs;                         -- Roter Faden: Erinnerungs-Einstellungen je Person
+    DELETE FROM agent.reminder_pause;                         -- Pause je Person
+    DELETE FROM core.proactive_budget;                        -- Tagesbudget ungefragter Nachrichten
+    DELETE FROM core.proactive_deferred;
     DELETE FROM agent.reaction_log;                           -- Reaktions-Protokoll (Tages-Obergrenze, Verlauf)
     -- Update-Protokoll (wer hat wann aktualisiert); ein OFFENER Auftrag bleibt, sonst koennte der laufende root-Runner
     -- ihn nicht mehr abschliessen und melden. Der Release-Latch 'release_update' bleibt (Systemzustand, kein Nutzerdatum).

@@ -380,7 +380,8 @@ if ($isOrch -and -not $Discover -and @($cases).Count -gt 0) {
         $rows = [int](Invoke-ScalarSql "SELECT count(*) FROM agent.orchestrator_chat_memory WHERE session_id = '$chatId';")
         $hasType = "EXISTS (SELECT 1 FROM jsonb_array_elements(CASE WHEN jsonb_typeof(message->'content') = 'array' THEN message->'content' END) b WHERE b->>'type' IN"
         $toolRows = [int](Invoke-ScalarSql "SELECT count(*) FROM agent.orchestrator_chat_memory WHERE session_id = '$chatId' AND $hasType ('tool_use'));")
-        $thinkRows = [int](Invoke-ScalarSql "SELECT count(*) FROM agent.orchestrator_chat_memory WHERE $hasType ('thinking', 'redacted_thinking'));")
+        # Ganzer Zeilentext statt nur content: auch eine Kopie in additional_kwargs/response_metadata waere ein Fund.
+        $thinkRows = [int](Invoke-ScalarSql "SELECT (SELECT count(*) FROM agent.orchestrator_chat_memory WHERE message::text LIKE '%signature%') + (SELECT count(*) FROM agent.finance_chat_memory WHERE message::text LIKE '%signature%');")
         if ($Verbose) { Write-Host "    Antworten=$answers  Zeilen=$rows  mitTool=$toolRows  mitDenkblock=$thinkRows" -ForegroundColor DarkGray }
         $ok = $ok -and ($answers -eq 7) -and ($rows -gt 20) -and ($toolRows -ge 7) -and ($thinkRows -eq 0)
     } catch {

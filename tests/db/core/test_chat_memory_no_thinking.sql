@@ -2,10 +2,7 @@
 -- Gesetz: agent.*_chat_memory traegt keine thinking-/redacted_thinking-Bloecke. Gilt fuer zur Laufzeit angelegte Tabellen,
 -- auch unter der nicht-superuser Rolle, die der n8n-Memory-Knoten nutzt; Text und Tool-Bloecke bleiben unveraendert.
 BEGIN;
-DO $$
-BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'zz_memory_writer') THEN CREATE ROLE zz_memory_writer NOLOGIN; END IF;
-END $$;
+CREATE ROLE zz_memory_writer NOLOGIN;
 GRANT USAGE, CREATE ON SCHEMA agent TO zz_memory_writer;
 
 SET LOCAL ROLE zz_memory_writer;

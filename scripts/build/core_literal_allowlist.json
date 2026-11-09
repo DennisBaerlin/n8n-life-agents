@@ -25,6 +25,8 @@
       "reason": "fixture: Default-Ziel des Treibers (-TargetWorkflow agent.finance / -WebhookPath finance-test / -CasesFile tests\\agent\\finance\\…); jedes andere Ziel per Parameter, Paket-Eigenschaften aus Get-TestRouteAgent." },
     { "file": "scripts/n8n_test.ps1", "literal": "finance_cases", "count": 1,
       "reason": "fixture: Default-Case-Datei des Treibers (-CasesFile)." },
+    { "file": "scripts/dev/mock_route_test.ps1", "literal": "finance_chat_memory", "count": 1,
+      "reason": "fixture: [memory-thinking] prueft auch den Speicher des Fach-Agenten, den das Szenario Call_agent_finance_ aufruft." },
     { "file": "scripts/dev/mock_route_test.ps1", "literal": "finance", "count": 1,
       "reason": "fixture: Default -WebhookPath finance-test (nur relevant, wenn ein Agent-Ziel ohne -WebhookPath gewaehlt wird)." },
     { "file": "scripts/e2e_test.ps1", "literal": "finance", "count": 5,

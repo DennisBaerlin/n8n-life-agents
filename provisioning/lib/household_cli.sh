@@ -214,7 +214,8 @@ household_cmd_blocked() {
 #     arm      -> {"ok":true,"connected":false,"bot":"…","link":"https://t.me/<bot>?start=<code>","expires_at":"…"}
 #                 | {"ok":true,"connected":true} | {"ok":false,"reason":"<code>"}
 #     status   -> {"ok":true,"connected":bool}
-#     finalize -> {"ok":true,"welcome_sent":bool} | {"ok":false,"reason":"not_connected|finalize_failed"}
+#     finalize -> {"ok":true,"welcome_sent":bool} | {"ok":false,"reason":"not_connected|busy|finalize_failed|check_failed|placeholders_left","placeholders":n?}
+#                 (Ausgabe des Einspielens gefiltert in $LA_FINALIZE_LOG)
 owner_connect_machine() {
   local verb="${1:-}" chat code result bot exp
   need_cmd jq || { printf '{"ok":false,"reason":"jq_missing"}\n'; return 0; }
@@ -243,7 +244,16 @@ owner_connect_machine() {
     if _oc_is_chat_id "$chat"; then jq -nc '{ok:true, connected:true}'; else jq -nc '{ok:true, connected:false}'; fi
   elif [ "$verb" = finalize ]; then
     _oc_is_chat_id "$chat" || { jq -nc '{ok:false, reason:"not_connected"}'; return 0; }
-    if ! ( _oc_finalize ) >/dev/null 2>&1; then jq -nc '{ok:false, reason:"finalize_failed"}'; return 0; fi
+    local log="${LA_FINALIZE_LOG:-/var/log/lifeagents-finalize.log}" rc=0
+    { : >>"$log" && chmod 600 "$log"; } 2>/dev/null || log=/dev/null
+    date -u '+--- %Y-%m-%dT%H:%M:%SZ' >>"$log"
+    # Prozess-Substitution statt Pipe: _oc_finalize_verified muss in dieser Shell laufen (OC_FINALIZE_*, Update-Sperre).
+    _oc_finalize_verified > >(_oc_log_scrub >>"$log") 2>&1 || rc=$?
+    wait "$!" 2>/dev/null || true
+    if [ "$rc" -ne 0 ]; then
+      jq -nc --arg r "$OC_FINALIZE_REASON" --argjson n "$OC_FINALIZE_PLACEHOLDERS" '{ok:false, reason:$r} + (if $n > 0 then {placeholders:$n} else {} end)'
+      return 0
+    fi
     if _oc_send_welcome; then jq -nc '{ok:true, welcome_sent:true}'; else jq -nc '{ok:true, welcome_sent:false}'; fi
   else
     jq -nc '{ok:false, reason:"usage"}'
@@ -266,13 +276,21 @@ household_cmd_pair_owner() {
     owner_connect_machine "${2:-}"
     return 0
   fi
-  ui_interactive || die "pair-owner braucht ein Terminal (der Ablauf zeigt einen Link und wartet auf deine Telegram-Nachricht)."
   _pkg_resolve_env
   load_install_env
   chat="$(_owner_chat_id_db)"
   if _oc_is_chat_id "$chat"; then
+    # Reparatur (Hinweis von doctor): verbunden, aber Workflows tragen noch chat_id 0. Braucht kein Terminal.
+    local _left
+    if _left="$(owner_chat_placeholder_count)" && [ "$_left" -gt 0 ]; then
+      log "Verbunden, aber ${_left} Telegram-Schritt(e) kennen dich noch nicht — stelle den Bot jetzt auf dich ein."
+      _oc_finalize_verified || die "Das hat nicht geklappt (${OC_FINALIZE_REASON}). Details stehen oben; danach noch einmal: lifeagents household pair-owner"
+      ok "Fertig — Bestätigungen im Chat funktionieren jetzt."
+      return 0
+    fi
     die "Der Owner ist bereits mit Telegram verbunden. Für ein anderes Telegram-Konto erst 'lifeagents household unlink <owner-person-id>'."
   fi
+  ui_interactive || die "pair-owner braucht ein Terminal (der Ablauf zeigt einen Link und wartet auf deine Telegram-Nachricht)."
   ensure_gum
   owner_connect_guided
   case "$OWNER_CONNECT_RESULT" in
@@ -283,7 +301,7 @@ household_cmd_pair_owner() {
       else
         ok "Fertig — schreib deinem Bot in Telegram /start; er zeigt dir den nächsten Schritt."
       fi ;;
-    unavailable) die "Verbinden nicht möglich: ${OWNER_CONNECT_REASON:-Voraussetzung fehlt}${OWNER_CONNECT_FIX:+ — ${OWNER_CONNECT_FIX}}." ;;
+    unavailable|unfinished) die "Verbinden nicht abgeschlossen: ${OWNER_CONNECT_REASON:-Voraussetzung fehlt}${OWNER_CONNECT_FIX:+ — ${OWNER_CONNECT_FIX}}." ;;
     *)           log "Nicht verbunden${OWNER_CONNECT_REASON:+ (${OWNER_CONNECT_REASON})} — später erneut: lifeagents household pair-owner" ;;
   esac
 }

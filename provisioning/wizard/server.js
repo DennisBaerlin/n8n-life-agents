@@ -12,7 +12,7 @@
 //   - Fortschritt im Volume, Geheimnisse dort nur AES-256-GCM-verschlüsselt (Schlüssel getrennt, 0600 root);
 //   - die Antwort-Datei für den Installer entsteht erst nach der zweiten Bestätigung (Prüfliste Nr. 14), flüchtig unter
 //     /run, und wird nach dem Lauf gelöscht; ihr Format (KEY=wert roh, Positivliste) liest Paket 1 ohne Ausführen;
-//   - der Fehlerbericht entsteht nur aus festen Feldern (Positivliste), nie aus Log-Text;
+//   - der Fehlerbericht entsteht aus festen Feldern (Positivliste) und dem gefilterten Abschluss-Protokoll, nie aus anderem Log-Text;
 //   - nach „Fertig“ (`ctl.js finish`) löscht er Fortschritt und Schlüssel und beendet sich.
 // Bewusst dependency-frei (nur Node-Core) wie das LLM-Gateway: kein npm install, keine Lieferkette.
 'use strict';
@@ -61,6 +61,12 @@ const TOKEN_TTL_MS = 10 * 60 * 1000;
 const UI_DIR = path.join(__dirname, 'ui');
 const PROGRESS = path.join(STATE_DIR, 'progress.json');
 const LOG_FILE = path.join(STATE_DIR, 'provision.log');
+const FINALIZE_LOG = path.join(STATE_DIR, 'finalize.log');
+// Abschluss nach dem Pairing: ein Lauf spielt alle Workflows neu ein und braucht auf langsamen Rechnern viele Minuten.
+const FINALIZE_TIMEOUT_MS = Math.max(100, parseInt(process.env.WIZARD_FINALIZE_TIMEOUT_MS || String(20 * 60 * 1000), 10));
+const FINALIZE_RETRY_MS = Math.max(0, parseInt(process.env.WIZARD_FINALIZE_RETRY_MS || '20000', 10));
+const FINALIZE_TRIES = 3;
+const FINALIZE_BUSY_MAX = 60;   // „läuft schon“ zählt nicht als Fehlversuch, aber nicht endlos
 // Merker „Einrichtung abgeschlossen“ (ohne Inhalt): der master startet den Wizard bei jedem Hochfahren; steht der Merker,
 // endet der Server sofort, statt einen neuen Fragebogen zu beginnen (P1, compose: init + Ruhe-Prozess danach).
 const DONE = path.join(STATE_DIR, 'done');
@@ -98,8 +104,10 @@ function run(cmd, args, opts = {}) {
   return new Promise((resolve) => {
     let out = '';
     let done = false;
-    const p = spawn(cmd, args, { env: childEnv(opts.env), stdio: ['pipe', 'pipe', 'ignore'] });
-    const t = setTimeout(() => { if (!done) p.kill('SIGKILL'); }, opts.timeoutMs || 30000);
+    const p = spawn(cmd, args, { env: childEnv(opts.env), stdio: ['pipe', 'pipe', 'ignore'], detached: !!opts.group });
+    // group: die ganze Prozessgruppe beenden; ein Kill nur der CLI ließe ihre Kinder (Einspielen) unbemerkt weiterlaufen.
+    const kill = () => { try { if (opts.group) process.kill(-p.pid, 'SIGKILL'); else p.kill('SIGKILL'); } catch (_) { /* schon weg */ } };
+    const t = setTimeout(() => { if (!done) kill(); }, opts.timeoutMs || 30000);
     p.stdout.on('data', (d) => { if (out.length < 1 << 20) out += d; });
     p.on('error', () => { done = true; clearTimeout(t); resolve({ code: 127, out: '' }); });
     p.on('close', (code) => { done = true; clearTimeout(t); resolve({ code: code ?? 1, out }); });
@@ -113,6 +121,8 @@ async function runJson(cmd, args, opts) {
 }
 const bridge = (args, opts) => runJson('bash', [BRIDGE, ...args], opts);
 const laCli = (verb) => runJson(LA_CLI, ['household', 'pair-owner', '--machine', verb], { timeoutMs: 240000 });
+const laFinalize = () => runJson(LA_CLI, ['household', 'pair-owner', '--machine', 'finalize'],
+  { timeoutMs: FINALIZE_TIMEOUT_MS, group: true, env: { LA_FINALIZE_LOG: FINALIZE_LOG } });
 
 // --- Geheimnisse: AES-256-GCM, Schlüssel getrennt vom Fortschritt -----------------------------------------------
 function loadKey() {
@@ -614,6 +624,13 @@ function connectView() {
   const c = P.notes.connect || {};
   const C = (k) => T(`core.wizard.connect.${k}`);
   const v = { kind: 'connect', title: C('title'), poll: true };
+  if (c.finalizeFailed) {
+    return Object.assign(v, { help: [{ p: C('finalize_failed') }], note: { kind: 'warn', text: C('finalize_note') },
+      poll: false, action: 'finalize_retry', next: C('finalize_retry'), report: true });
+  }
+  if (c.connected && !PAIR) {
+    return Object.assign(v, { help: [{ p: C(c.finalizeAttempts ? 'finalize_retrying' : 'connected_wait') }], wait: C('finalize_wait') });
+  }
   if (c.activating || (c.tunnel && c.tunnel.state === 'pending_activation')) {
     return Object.assign(v, { help: [{ p: C('activating') }], wait: C('activating_wait') });
   }
@@ -927,19 +944,36 @@ async function connectTick(force) {
       }
     }
     if (c.connected && !c.finalized) {
-      const f = await laCli('finalize');
-      c.finalized = true;
-      P.notes.welcome_sent = !!(f && f.ok && f.welcome_sent);
-      PAIR = null;
-      P.phase = 'connected';
-      P.cursor = 'handoff';
+      if (c.finalizeFailed || Date.now() < (c.finalizeAt || 0)) return;
+      save();   // „verbunden“ muss einen Neustart mitten im Lauf überstehen
+      const f = await laFinalize();
+      if (f && f.ok) {
+        c.finalized = true;
+        P.notes.welcome_sent = !!f.welcome_sent;
+        PAIR = null;
+        P.phase = 'connected';
+        P.cursor = 'handoff';
+      } else finalizeMiss(c, f);
     }
     save();
   } finally { connectBusy = false; }
 }
+function finalizeMiss(c, f) {
+  const reason = f && /^[a-z_]{1,40}$/.test(f.reason || '') ? f.reason : 'no_answer';
+  c.finalizeReason = reason;
+  c.finalizeAt = Date.now() + FINALIZE_RETRY_MS;
+  if (reason === 'busy' && (c.finalizeBusy || 0) < FINALIZE_BUSY_MAX) { c.finalizeBusy = (c.finalizeBusy || 0) + 1; return; }
+  c.finalizeAttempts = (c.finalizeAttempts || 0) + 1;
+  if (c.finalizeAttempts >= FINALIZE_TRIES) { c.finalizeFailed = true; PAIR = null; }
+}
 async function action(name) {
   const c = P.notes.connect || {};
   switch (name) {
+    case 'finalize_retry':
+      if (!c.finalizeFailed) return { ok: true };
+      delete c.finalizeFailed; delete c.finalizeAt; c.finalizeAttempts = 0; c.finalizeBusy = 0; save();
+      connectTick(true).catch(() => {});   // nicht abwarten: der Lauf dauert Minuten und hielte alle Anfragen auf (serial)
+      return { ok: true };
     case 'connect_retry': delete c.problem; delete c.tunnel; await connectTick(true); return { ok: true };
     case 'pair_new': delete c.expired; await connectTick(true); return { ok: true };
     case 'handoff':
@@ -960,9 +994,21 @@ function report() {
     install_status: ins.status || '', install_stage: ins.stage || '', install_reason: ins.reason || '',
     install_exit: ins.exit === undefined ? '' : String(ins.exit), tunnel: (c.tunnel && c.tunnel.state) || '',
     pairing: c.connected ? 'connected' : PAIR ? 'waiting' : c.problem ? 'unreachable' : c.expired ? 'expired' : '',
+    finalize_attempts: String(c.finalizeAttempts || 0), finalize_reason: c.finalizeReason || '',
     time: new Date().toISOString(),
   };
-  return ['lifeagents-wizard-report v1', ...Object.entries(f).map(([k, v]) => `${k}: ${SAFE.test(String(v)) ? v : '?'}`)].join('\n');
+  return ['lifeagents-wizard-report v1', ...Object.entries(f).map(([k, v]) => `${k}: ${SAFE.test(String(v)) ? v : '?'}`), ...finalizeLogTail()].join('\n');
+}
+// Einzige Log-Zeilen im Bericht: das Protokoll des Abschlusses, schon beim Schreiben gefiltert (_oc_log_scrub), hier noch einmal.
+function scrubLine(s) {
+  return s.replace(/[0-9]{5,}:[A-Za-z0-9_-]{20,}/g, '<token>').replace(/sk-ant-[A-Za-z0-9_-]+/g, '<key>').replace(/eyJ[A-Za-z0-9_.-]{10,}/g, '<key>')
+    .replace(/(start=)[^ &"]+/g, '$1<code>').replace(/(x-n8n-api-key:|authorization:|token[=:])\s*\S+/gi, '$1 <key>')
+    .replace(/https?:\/\/[^\s"]+/g, '<url>').replace(/[0-9a-fA-F]{16,}/g, '<id>').replace(/[0-9]{6,}/g, '<nr>');
+}
+function finalizeLogTail() {
+  let txt;
+  try { txt = fs.readFileSync(FINALIZE_LOG, 'utf8'); } catch (_) { return []; }
+  return ['finalize_log:', ...txt.trim().split('\n').slice(-40).map((l) => scrubLine(l).slice(0, 300))];
 }
 
 // --- HTTP: Schutz ---------------------------------------------------------------------------------------------
@@ -1108,7 +1154,7 @@ function page403() {
 let httpServer = null;
 let ctlServer = null;
 function finishAll() {
-  rmQuiet(PROGRESS); rmQuiet(KEY_FILE); rmQuiet(ANSWERS); rmQuiet(RESULT); rmQuiet(LOG_FILE); rmQuiet(HINTS_FILE);
+  rmQuiet(PROGRESS); rmQuiet(KEY_FILE); rmQuiet(ANSWERS); rmQuiet(RESULT); rmQuiet(LOG_FILE); rmQuiet(FINALIZE_LOG); rmQuiet(HINTS_FILE);
   try { fs.mkdirSync(STATE_DIR, { recursive: true }); atomicWrite(DONE, ''); } catch (_) { /* Volume weg: dann gibt es auch nichts fortzusetzen */ }
   for (const k of Object.keys(SECRETS)) delete SECRETS[k];
   session = null; pending = null;

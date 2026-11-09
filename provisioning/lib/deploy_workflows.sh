@@ -45,25 +45,6 @@
 
 DB_SUPERUSER="${DB_SUPERUSER:-postgres}"
 
-# _owner_chat_id_db — Owner-chat_id NUR aus der DB (family-Facts role=owner.telegram_user_id; leer =
-#   noch nicht gepairt). Das Pairing-Warten (owner_connect.sh) braucht genau dieses Praedikat OHNE den
-#   OWNER_CHAT_ID-Env-Fallback — ein gesetzter Env-Wert (Substrat/Dev) taeuschte sonst sofort Erfolg vor.
-_owner_chat_id_db() {
-  local v=''
-  if need_su_tools && [ -n "${N8N_DB_NAME:-}" ]; then
-    v="$(pg_su_psql -tA -X -v ON_ERROR_STOP=1 -d "$N8N_DB_NAME" -c \
-      "SELECT pp->>'telegram_user_id' FROM agent.core_contexts c, jsonb_array_elements(COALESCE(c.metadata->'facts'->'persons','[]'::jsonb)) pp WHERE c.name='family' AND pp->>'role'='owner' AND jsonb_typeof(pp->'telegram_user_id') <> 'null' LIMIT 1;" \
-      2>/dev/null | head -n1 || true)"
-  fi
-  # Nur reine Ziffern (Telegram-uid): der Wert landet in einem root-sed-Ausdruck (deploy_workflows) — ein anderer
-  # DB-Inhalt wird verworfen statt ausgefuehrt (Security-Audit 2026-10).
-  if [ -n "$v" ] && ! printf '%s' "$v" | grep -qE '^[0-9]+$'; then
-    warn "Owner-chat_id in der DB ist keine Zahl — ignoriert (family-Facts pruefen)."
-    v=''
-  fi
-  printf '%s' "$v"
-}
-
 # activate_inactive_workflows — nach dem Bundle-Loop (provision.sh): Workflows, deren Aktivierung im
 #   Core-Pass an n8ns Sub-Workflow-Validierung scheiterte, jetzt nachaktivieren (Fixpunkt). Real getroffen
 #   (Install-UX-Phase 3, Substrat-Journal "Workflow activation failed sub-workflow validation"): der
@@ -221,18 +202,6 @@ _wf_deploy_context() {
   [ -n "$ver" ] || ver="${N8N_VERSION:-}"
   wh="$(read_env_value "$N8N_ENV_FILE" WEBHOOK_URL 2>/dev/null || true)"
   printf 'n8n=%s|webhook=%s|bot=%s' "$ver" "$wh" "$(owner_tg_token | sha256sum | cut -c1-64)"
-}
-
-# _wf_live_pages <query> <jq-filter> — GET /workflows?<query> ueber ALLE Seiten (limit <= 250, nextCursor), jede Seite
-#   durch <jq-filter> (auf das Seiten-Objekt). rc1 bei jedem Fehler.
-_wf_live_pages() {
-  local query="$1" filter="$2" cursor='' page
-  while :; do
-    page="$(n8n_api_curl "$N8N_API_KEY" "$N8N_URL/api/v1/workflows?${query}&limit=250${cursor:+&cursor=$cursor}" -fsS 2>/dev/null)" || return 1
-    printf '%s' "$page" | jq -r "$filter" 2>/dev/null || return 1
-    cursor="$(printf '%s' "$page" | jq -r '.nextCursor // empty | @uri' 2>/dev/null)" || return 1
-    [ -n "$cursor" ] || return 0
-  done
 }
 
 # _wf_live_versions — alle Live-Workflows als <id>|<versionId>|<activeVersionId> (leer = nicht published). '|' statt

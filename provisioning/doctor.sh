@@ -384,6 +384,18 @@ main() {
       case "$_lvl" in pass) _pass "$_txt" ;; warn) _warn "$_txt" ;; red) _red "$_txt" ;; esac
     done <<<"$(reach_cli_doctor "$N8N_PORT")"
   fi
+  # Gleiche Pruefung wie der Pairing-Abschluss: ein verbundener Owner, dessen Workflows noch chat_id 0 tragen, bekommt keine Karten.
+  if [ -n "$_apikey" ] && need_cmd jq; then
+    local _owner_chat _ph_left
+    _owner_chat="$(_owner_chat_id_db)"
+    if [ -z "$_owner_chat" ]; then _skip "Owner-chat_id in den Workflows (Owner noch nicht verbunden)"
+    elif ! _ph_left="$(N8N_API_KEY="$_apikey" N8N_URL="http://127.0.0.1:${N8N_PORT}" owner_chat_placeholder_count)"; then _skip "Owner-chat_id in den Workflows (n8n-API nicht erreichbar)"
+    elif [ "$_ph_left" -eq 0 ]; then _pass "Owner-chat_id in allen Workflows eingetragen"
+    else _red "${_ph_left} Telegram-Schritt(e) tragen noch die Platzhalter-chat_id 0 — Bestätigungen scheitern mit 'chat not found'. Abhilfe: lifeagents household pair-owner"; fi
+  else
+    _skip "Owner-chat_id in den Workflows (kein N8N_API_KEY in core.env / kein jq)"
+  fi
+
   if [ -n "$DOMAIN" ]; then
     # (1) Der EHRLICHE Kern-Check: ist der Orchestrator-Trigger aktiv? Nur dann hat n8n den Telegram-
     # Webhook registriert -> nur dann erreicht Telegram den Bot. `_apikey` wurde oben gelesen

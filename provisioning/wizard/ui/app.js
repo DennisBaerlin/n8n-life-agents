@@ -429,7 +429,7 @@ const UiNudge = {
     // Einbaustelle für Bilder und Animationen (di9, ui/art/): art.js entscheidet nach page.id, null = kein Bild.
     // Platz und Verhalten im schmalen Fenster regelt art.css; die CSP gilt auch dort (kein style=, kein Inline-Skript).
     if (art && art.el && !art.side && !artBefore) kids.push(art.el);
-    if (p.kind === 'install' && p.failed) {
+    if ((p.kind === 'install' && p.failed) || p.report) {
       kids.push(h('p', null, h('button', { type: 'button', id: 'rp', on: { click: showReport } }, T.report_show)), h('div', { id: 'rpt' }));
     }
     kids.push(h('div', { class: 'spacer' }));

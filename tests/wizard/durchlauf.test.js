@@ -495,3 +495,117 @@ test('Verbinden: ein Fehler, den Warten nicht heilt, erscheint sofort', async ()
     assert.equal(p.note.kind, 'warn');
   } finally { await w.stop(); }
 });
+
+// Abschluss nach dem Pairing: Erst eine bestätigte Antwort der CLI (Workflows tragen die echte chat_id) schließt die Seite ab.
+const FIN = { WIZARD_FINALIZE_RETRY_MS: '20' };
+const finCalls = (w) => { try { return fs.readFileSync(path.join(w.fake, 'pair_calls'), 'utf8').split('\n').filter((l) => l === 'finalize').length; } catch (_) { return 0; } };
+const failedPage = (w) => waitFor(async () => { const x = await page(w); return x.action === 'finalize_retry' ? x : null; });
+const pairNow = (w) => fs.writeFileSync(path.join(w.fake, 'paired'), '');
+const plan = (w, text) => fs.writeFileSync(path.join(w.fake, 'finalize_plan'), text);
+
+for (const [name, line] of [['ok:false', '{"ok":false,"reason":"finalize_failed"}'], ['keine Antwort', 'empty'],
+  ['Platzhalter übrig', '{"ok":false,"reason":"placeholders_left","placeholders":35}']]) {
+  test(`Abschluss: ${name} schließt nicht ab, wiederholt von selbst, dann Knopf „Erneut versuchen“`, async () => {
+    const w = await toConnect(FIN, 'paired_later');
+    try {
+      plan(w, `${line}\n${line}\n${line}\n`);
+      pairNow(w);
+      const p = await failedPage(w);
+      assert.equal(finCalls(w), 3, 'drei Versuche von selbst');
+      assert.equal(p.id, 'connect', 'bleibt auf „Verbinden“');
+      assert.equal(p.note.kind, 'warn');
+      assert.match(p.next, /Erneut versuchen/);
+      assert.equal(p.poll, false);
+      assert.equal(p.qr || null, null, 'kein alter Code mehr');
+      assert.equal(p.report, true, 'Bericht anbietbar');
+      assert.equal((await ctl(w, 'status')).phase, 'pairing', 'nicht connected');
+      assert.equal((await post(w, '/api/action', { name: 'handoff' })).status, 422, 'Weiter ist gesperrt');
+      await expectOk(await post(w, '/api/action', { name: p.action }));   // Plan leer = der nächste Versuch gelingt
+      await waitFor(async () => (await page(w)).id === 'handoff');
+      assert.equal(finCalls(w), 4);
+      assert.equal((await ctl(w, 'status')).phase, 'connected');
+    } finally { await w.stop(); }
+  });
+}
+
+test('Abschluss: ein Fehlversuch heilt von selbst, ohne Meldung', async () => {
+  const w = await toConnect(FIN, 'paired_later');
+  try {
+    plan(w, '{"ok":false,"reason":"finalize_failed"}\n');
+    pairNow(w);
+    await waitFor(async () => (await page(w)).id === 'handoff');
+    assert.equal(finCalls(w), 2);
+  } finally { await w.stop(); }
+});
+
+test('Abschluss: „läuft schon“ zählt nicht als Fehlversuch', async () => {
+  const w = await toConnect(FIN, 'paired_later');
+  try {
+    plan(w, '{"ok":false,"reason":"busy"}\n'.repeat(5));
+    pairNow(w);
+    await waitFor(async () => (await page(w)).id === 'handoff');
+    assert.equal(finCalls(w), 6);
+  } finally { await w.stop(); }
+});
+
+test('Abschluss: viele Seitenabrufe und Knopfdrücke starten keinen zweiten Lauf', async () => {
+  const w = await toConnect(FIN, 'paired_later');
+  try {
+    fs.writeFileSync(path.join(w.fake, 'finalize_sleep'), '1');
+    pairNow(w);
+    await waitFor(async () => finCalls(w) === 1);
+    for (let i = 0; i < 15; i++) {
+      await state(w);
+      await post(w, '/api/action', { name: 'finalize_retry' });
+      await new Promise((r) => setTimeout(r, 30));
+    }
+    assert.equal(finCalls(w), 1, 'während des Laufs kein zweiter');
+    fs.rmSync(path.join(w.fake, 'finalize_sleep'));
+    await waitFor(async () => (await page(w)).id === 'handoff');
+    assert.equal(finCalls(w), 1);
+  } finally { await w.stop(); }
+});
+
+test('Abschluss: Knopf antwortet sofort, auch wenn der neue Versuch dauert', async () => {
+  const w = await toConnect(FIN, 'paired_later');
+  try {
+    plan(w, '{"ok":false,"reason":"finalize_failed"}\n'.repeat(3));
+    pairNow(w);
+    await failedPage(w);
+    fs.writeFileSync(path.join(w.fake, 'finalize_sleep'), '2');
+    const t0 = Date.now();
+    const r = await post(w, '/api/action', { name: 'finalize_retry' });
+    assert.ok(Date.now() - t0 < 1000, 'Antwort wartet nicht auf den Lauf');
+    assert.equal(r.json.page.action || null, null, 'kein Knopf während des Laufs');
+    assert.ok(r.json.page.wait, 'Warte-Hinweis');
+  } finally { await w.stop(); }
+});
+
+test('Abschluss: ein hängender Lauf endet samt Kindprozessen und zählt als Fehlversuch', async () => {
+  const w = await toConnect(Object.assign({ WIZARD_FINALIZE_TIMEOUT_MS: '400' }, FIN), 'paired_later');
+  try {
+    fs.writeFileSync(path.join(w.fake, 'finalize_hang'), '');
+    pairNow(w);
+    const pid = await waitFor(() => { try { return parseInt(fs.readFileSync(path.join(w.fake, 'grandchild'), 'utf8'), 10) || null; } catch (_) { return null; } });
+    // Im Test-Container räumt kein init Waisen ab: beendet heißt weg oder Zombie.
+    await waitFor(() => { try { return /^\d+ \(.*\) Z/.test(fs.readFileSync(`/proc/${pid}/stat`, 'utf8')); } catch (_) { return true; } }, 5000);
+    await failedPage(w);
+    assert.equal(finCalls(w), 3);
+  } finally { await w.stop(); }
+});
+
+test('Abschluss: Fehlerbericht zeigt Grund und Protokoll, aber keine Geheimnisse', async () => {
+  const w = await toConnect(FIN, 'paired_later');
+  try {
+    plan(w, '{"ok":false,"reason":"placeholders_left","placeholders":35}\n'.repeat(3));
+    pairNow(w);
+    await failedPage(w);
+    fs.appendFileSync(path.join(w.dir, 'state', 'finalize.log'),
+      'curl https://api.telegram.org/bot123456789:AAbcdefghijklmnopqrstuvwxyz012345678/getMe start=0123456789abcdef chat 987654321\n');
+    const t = (await req(w, 'GET', '/api/report', { headers: { Cookie: w.cookie } })).json.text;
+    assert.match(t, /finalize_reason: placeholders_left/);
+    assert.match(t, /finalize_attempts: 3/);
+    assert.match(t, /Beispiel-Zeile aus dem Einspielen/);
+    assert.doesNotMatch(t, /AAbcdefghij|0123456789abcdef|987654321/);
+  } finally { await w.stop(); }
+});

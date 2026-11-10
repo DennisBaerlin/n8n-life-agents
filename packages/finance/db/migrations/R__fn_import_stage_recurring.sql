@@ -202,10 +202,10 @@ BEGIN
     END LOOP;
 
     -- ---------- Zusammenfassung des offenen Stapels ----------
-    SELECT count(*) FILTER (WHERE (finance.fn_recurring_suggestion_measure(s.payload)->>'confidence') = 'sure'),
-           count(*) FILTER (WHERE (finance.fn_recurring_suggestion_measure(s.payload)->>'confidence') = 'confirm')
+    SELECT count(*) FILTER (WHERE m.c = 'sure'), count(*) FILTER (WHERE m.c = 'confirm')
     INTO v_sure, v_conf
-    FROM finance.import_staging s WHERE s.batch_id = v_batch AND s.status = 'staged';
+    FROM (SELECT finance.fn_recurring_suggestion_measure(s.payload)->>'confidence' AS c
+          FROM finance.import_staging s WHERE s.batch_id = v_batch AND s.status = 'staged') m;
     IF v_mode = 'statement' AND v_pe IS NOT NULL THEN
         SELECT array_agg(DISTINCT to_char(m, 'YYYY-MM')) INTO v_seen
         FROM (SELECT (o->>'period_start')::date AS ps, (o->>'period_end')::date AS pe

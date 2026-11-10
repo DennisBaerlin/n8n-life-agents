@@ -938,12 +938,6 @@
                                                                                      "name":  "outlook",
                                                                                      "value":  "={{ $(\u0027Apply statement\u0027).item.json.r.outlook || {} }}",
                                                                                      "type":  "object"
-                                                                                 },
-                                                                                 {
-                                                                                     "id":  "096c564d-a769-5d33-ac43-7adf52e6069a",
-                                                                                     "name":  "recurring",
-                                                                                     "value":  "={{ $(\u0027Stage after check\u0027).isExecuted ? ($(\u0027Stage after check\u0027).item.json.r || {}) : {} }}",
-                                                                                     "type":  "object"
                                                                                  }
                                                                              ]
                                                          },
@@ -1015,7 +1009,8 @@
                                                            "id":  "__CRED_POSTGRES_FINANCE_RW__",
                                                            "name":  "Postgres finance_rw (read-write)"
                                                        }
-                                      }
+                                      },
+                      "onError":  "continueRegularOutput"
                   },
                   {
                       "parameters":  {
@@ -1211,7 +1206,201 @@
                                                            "id":  "__CRED_POSTGRES_FINANCE_RW__",
                                                            "name":  "Postgres finance_rw (read-write)"
                                                        }
-                                      }
+                                      },
+                      "onError":  "continueRegularOutput"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "ee776b2b-c0f6-5dc0-ad65-220107f0d435",
+                                                                                     "name":  "ok",
+                                                                                     "value":  "true",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "349f9838-4baa-506f-8fdc-a1cf4ce317c3",
+                                                                                     "name":  "account_name",
+                                                                                     "value":  "={{ $(\u0027Prepare statement\u0027).item.json.r.account_name }}",
+                                                                                     "type":  "string"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "090466b4-2226-52c9-a2de-32c3d2a00718",
+                                                                                     "name":  "period_start",
+                                                                                     "value":  "={{ $(\u0027Prepare statement\u0027).item.json.r.period_start }}",
+                                                                                     "type":  "string"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "8683e09b-3ce8-54f7-9a3d-844db6cbbda2",
+                                                                                     "name":  "period_end",
+                                                                                     "value":  "={{ $(\u0027Prepare statement\u0027).item.json.r.period_end }}",
+                                                                                     "type":  "string"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "45299784-93f0-56ca-be23-b3094a277fc6",
+                                                                                     "name":  "currency",
+                                                                                     "value":  "={{ $(\u0027Prepare statement\u0027).item.json.r.currency }}",
+                                                                                     "type":  "string"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "c74c262a-81ec-58ef-a01e-3f76658fc334",
+                                                                                     "name":  "booked_count",
+                                                                                     "value":  "={{ $(\u0027Apply statement\u0027).item.json.r.booked_count }}",
+                                                                                     "type":  "number"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "310a3fa8-2fe5-57aa-90aa-2e165db4a580",
+                                                                                     "name":  "transfers",
+                                                                                     "value":  "={{ $(\u0027Apply statement\u0027).item.json.r.transfers || [] }}",
+                                                                                     "type":  "array"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "cb452132-56f2-5959-8402-4b4ba883c778",
+                                                                                     "name":  "rest_outflow",
+                                                                                     "value":  "={{ $(\u0027Apply statement\u0027).item.json.r.rest_outflow }}",
+                                                                                     "type":  "number"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "48e53ce5-9c7b-55f8-a9fd-9439e8acf252",
+                                                                                     "name":  "rest_inflow",
+                                                                                     "value":  "={{ $(\u0027Apply statement\u0027).item.json.r.rest_inflow }}",
+                                                                                     "type":  "number"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "272d66fa-ccd5-56c3-91c3-46d79e1ad6e5",
+                                                                                     "name":  "unmatched_in",
+                                                                                     "value":  "={{ $(\u0027Apply statement\u0027).item.json.r.unmatched_in }}",
+                                                                                     "type":  "number"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "86588711-418e-5819-9736-e4c59125b721",
+                                                                                     "name":  "unmatched_out",
+                                                                                     "value":  "={{ $(\u0027Apply statement\u0027).item.json.r.unmatched_out }}",
+                                                                                     "type":  "number"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "109a6030-793c-54de-b271-cc8f45ce3e62",
+                                                                                     "name":  "rest_other",
+                                                                                     "value":  "={{ $(\u0027Apply statement\u0027).item.json.r.rest_other }}",
+                                                                                     "type":  "number"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "2b7a2118-5a6f-5cb1-a92e-02e70eb3c1f5",
+                                                                                     "name":  "rest_unexplained",
+                                                                                     "value":  "={{ $(\u0027Apply statement\u0027).item.json.r.rest_unexplained }}",
+                                                                                     "type":  "number"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "92e17405-b15b-5534-9c88-23a16d1ca58c",
+                                                                                     "name":  "rest_kind",
+                                                                                     "value":  "={{ $(\u0027Apply statement\u0027).item.json.r.rest_kind }}",
+                                                                                     "type":  "string"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "3ee723c7-fe01-591a-9154-8703fd14a69f",
+                                                                                     "name":  "export_gap",
+                                                                                     "value":  "={{ $(\u0027Apply statement\u0027).item.json.r.export_gap || 0 }}",
+                                                                                     "type":  "number"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "8e629ad7-64d3-53bb-a3d4-a05279376a30",
+                                                                                     "name":  "difference_candidates",
+                                                                                     "value":  "={{ $(\u0027Apply statement\u0027).item.json.r.difference_candidates || [] }}",
+                                                                                     "type":  "array"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "1b1b6fe7-992a-560b-8ebe-b1f5e8b0343a",
+                                                                                     "name":  "lump_offsets",
+                                                                                     "value":  "={{ $(\u0027Apply statement\u0027).item.json.r.lump_offsets || [] }}",
+                                                                                     "type":  "array"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "7a5bf128-2708-5810-b52c-f7d34a604543",
+                                                                                     "name":  "transfers_unclear",
+                                                                                     "value":  "={{ $(\u0027Apply statement\u0027).item.json.r.transfers_unclear || [] }}",
+                                                                                     "type":  "array"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "7c95bbb5-5b0f-5560-9a04-b7e84333c12e",
+                                                                                     "name":  "pending_settled",
+                                                                                     "value":  "={{ $(\u0027Apply statement\u0027).item.json.r.pending_settled || 0 }}",
+                                                                                     "type":  "number"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "69ff43eb-6633-5152-9f6b-49023d6b5173",
+                                                                                     "name":  "iban_learned",
+                                                                                     "value":  "={{ $(\u0027Apply statement\u0027).item.json.r.learned_accounts || [] }}",
+                                                                                     "type":  "array"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "085536c8-8b8e-55bc-884e-a38c3ada6083",
+                                                                                     "name":  "iban_ambiguous",
+                                                                                     "value":  "={{ $(\u0027Prepare statement\u0027).item.json.r.iban_ambiguous || [] }}",
+                                                                                     "type":  "array"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "134c6410-31bd-56ad-871a-20cc5c28c38f",
+                                                                                     "name":  "difference_before_period",
+                                                                                     "value":  "={{ $(\u0027Apply statement\u0027).item.json.r.drift_amount }}",
+                                                                                     "type":  "number"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "339fbf80-739c-516f-be65-2ebdbcff476e",
+                                                                                     "name":  "skipped_payments",
+                                                                                     "value":  "={{ $(\u0027Apply statement\u0027).item.json.r.skipped_occurrences }}",
+                                                                                     "type":  "number"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "e7543fe8-8116-5b98-baca-59d5261e88e6",
+                                                                                     "name":  "plan_adjusted",
+                                                                                     "value":  "={{ $(\u0027Apply statement\u0027).item.json.r.plan_adjusted || [] }}",
+                                                                                     "type":  "array"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "13a97114-8c58-5b1d-b6d9-1899c5360314",
+                                                                                     "name":  "savings_plan_estimated",
+                                                                                     "value":  "={{ $(\u0027Apply statement\u0027).item.json.r.savings_plan_estimated || [] }}",
+                                                                                     "type":  "array"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "997109b8-6ee2-5128-9986-e97a0c243d57",
+                                                                                     "name":  "unknown_direct_debits",
+                                                                                     "value":  "={{ $(\u0027Apply statement\u0027).item.json.r.unknown_mandates || [] }}",
+                                                                                     "type":  "array"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "b247c293-db2d-556b-bd84-c18f097e8d88",
+                                                                                     "name":  "balance_after",
+                                                                                     "value":  "={{ $(\u0027Apply statement\u0027).item.json.r.balance_after }}",
+                                                                                     "type":  "number"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "e0147948-1851-57fc-882a-a3223cf58b00",
+                                                                                     "name":  "outlook",
+                                                                                     "value":  "={{ $(\u0027Apply statement\u0027).item.json.r.outlook || {} }}",
+                                                                                     "type":  "object"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "53923630-3d37-54a9-99c7-ef83b278535f",
+                                                                                     "name":  "recurring",
+                                                                                     "value":  "={{ $(\u0027Stage after check\u0027).item.json.r || {} }}",
+                                                                                     "type":  "object"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       3960,
+                                       -240
+                                   ],
+                      "id":  "3546d759-4640-5a2f-814e-54ef4de694ea",
+                      "name":  "Return with suggestions"
                   },
                   {
                       "parameters":  {
@@ -1486,7 +1675,7 @@
                                                                [
                                                                    {
                                                                        "index":  0,
-                                                                       "node":  "Return",
+                                                                       "node":  "Return with suggestions",
                                                                        "type":  "main"
                                                                    }
                                                                ]

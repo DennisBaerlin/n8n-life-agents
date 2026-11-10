@@ -1213,7 +1213,7 @@
   "finance.recurring_suggest.toast_outdated": "지난 제안이에요 – 새 제안은 아래에 있어요",
   "finance.recurring_suggest.toast_expired": "제안이 만료됐어요",
   "finance.recurring_suggest.toast_not_allowed": "이 제안은 추가할 수 없어요",
-  "finance.recurring_suggest.owner_notice": "{member}님이 계좌 내역서에서 자동이체를 추가했어요: {name}, {amount}, {rhythm}, {date}부터 ({account}).",
+  "finance.recurring_suggest.owner_notice": "{member}님이 제안된 자동이체를 추가했어요: {name}, {amount}, {rhythm}, {date}부터 ({account}).",
   "finance.recurring_suggest.rhythm_quarterly": "분기마다",
   "finance.recurring_suggest.rhythm_half_yearly": "반년마다",
   "finance.recurring_suggest.rhythm_yearly": "매년",

@@ -322,6 +322,9 @@ foreach ($tc in $cases) {
         # Ausnahme im Fall = roter Fall, der Lauf geht weiter (Helfer in test_n8n_state.ps1, Abschnitt Fall-Abbruch).
         $failed++
         Write-CaseAbort -ErrorRecord $_ -CaseId $tc.id -Cleanup { Clear-CaseLeftovers }
+    } finally {
+        # setup_sql-Voraussetzungen nie liegen lassen: spaetere Suiten (z. B. real_ingress Plan-Mindestdaten) saehen sie sonst
+        if ($tc.setup_sql) { [void](Invoke-TestN8nPsql -Container $Container -PsqlArgs @('-q', '-c', 'SELECT agent.fn_clear_e2e_data();')) }
     }
 }
 

@@ -110,6 +110,7 @@ function New-StatementGateChain {
         $stageParams = [ordered]@{ mode = "'statement'"; account_id = "$P.account_id"; balance_verified = "$P.balance_verified === true" }
         foreach ($k in $RecurringParams.Keys) { $stageParams[$k] = $RecurringParams[$k] }
         $stage = Build-Pg 'Stage recurring' @(($X + 660), 400) "=SELECT finance.fn_import_stage_recurring(`$1::jsonb) AS r;" $stageParams
+        $stage['onError'] = 'continueRegularOutput'   # eine gescheiterte Erkennung darf die Antwort nie kippen
         $retCovered = Build-Set 'Return covered' @(($X + 880), 400) ($notReadyFields + @(
             ,@('recurring', "={{ `$('Stage recurring').item.json.r || {} }}", 'object')
         ))
@@ -118,8 +119,9 @@ function New-StatementGateChain {
         $stageAfter = [ordered]@{ mode = "'statement'"; account_id = "$P.account_id"; balance_verified = 'true' }
         foreach ($k in $RecurringParams.Keys) { $stageAfter[$k] = $RecurringParams[$k] }
         $stage2 = Build-Pg 'Stage after check' @(($X + 1760), -240) "=SELECT finance.fn_import_stage_recurring(`$1::jsonb) AS r;" $stageAfter
-        $retList += ,@('recurring', "={{ `$('Stage after check').isExecuted ? (`$('Stage after check').item.json.r || {}) : {} }}", 'object')
-        $recNodes = @($ifCovered, $stage, $retCovered, $ifCollect, $stage2)
+        $stage2['onError'] = 'continueRegularOutput'   # nach der Buchung: ein Fehler hier meldet nie eine gescheiterte Buchung
+        $retRec = Build-Return @(($X + 1980), -240) ($retList + @(,@('recurring', "={{ `$('Stage after check').item.json.r || {} }}", 'object'))) -Name 'Return with suggestions'
+        $recNodes = @($ifCovered, $stage, $retCovered, $ifCollect, $stage2, $retRec)
     }
     $ret = Build-Return @(($X + 1540), 0) $retList
 
@@ -139,7 +141,7 @@ function New-StatementGateChain {
         $conns['Stage recurring']    = @{ main = @( ,@( E 'Return covered' ) ) }
         $conns['Booked?']            = @{ main = @( @( E 'Collect recurring?' ), @( E 'Not booked' ) ) }
         $conns['Collect recurring?'] = @{ main = @( @( E 'Stage after check' ), @( E 'Return' ) ) }
-        $conns['Stage after check']  = @{ main = @( ,@( E 'Return' ) ) }
+        $conns['Stage after check']  = @{ main = @( ,@( E 'Return with suggestions' ) ) }
     }
     return @{ Nodes = $nodes; Conns = $conns; Entry = 'Prepare statement' }
 }

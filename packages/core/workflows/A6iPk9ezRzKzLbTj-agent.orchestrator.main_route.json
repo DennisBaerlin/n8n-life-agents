@@ -2479,7 +2479,7 @@
                   },
                   {
                       "parameters":  {
-                                         "content":  "## DB-Automatik\n**Registry-Handler: Owner-Hinweis und Nachricht ändern**\n\nLiefert ein Registry-Handler result.owner_notice, geht der Text an den Owner (erster Ast nach Dispatch callback, damit ein gescheiterter Toast ihn nicht verschluckt). result.edit ändert die getippte Nachricht: text = neuer Text, keep_text = alter Text bleibt; ohne Tastatur verschwinden die Knöpfe. Beide Sends sind nicht fatal. Der Handler ist eine schnelle DB-fn, darum kommt der Toast aus ihrem Ergebnis (kein answerCallbackQuery vorab). Erster Nutzer: Dauerauftrags-Vorschläge (Prefix rsug).",
+                                         "content":  "## DB-Automatik\n**Registry-Handler: Owner-Hinweis und Nachricht ändern**\n\nLiefert ein Registry-Handler result.owner_notice, geht der Text an den Owner (nach dem Toast-Ast: ein haengender Send darf die Quittung nicht ueber Telegrams Frist schieben). result.edit ändert die getippte Nachricht: text = neuer Text, keep_text = alter Text bleibt; ohne Tastatur verschwinden die Knöpfe. Beide Sends sind nicht fatal. Der Handler ist eine schnelle DB-fn, darum kommt der Toast aus ihrem Ergebnis (kein answerCallbackQuery vorab). Erster Nutzer: Dauerauftrags-Vorschläge (Prefix rsug).",
                                          "height":  300,
                                          "width":  380,
                                          "color":  4
@@ -8305,17 +8305,17 @@
                                                                [
                                                                    {
                                                                        "index":  0,
-                                                                       "node":  "Owner notice?",
-                                                                       "type":  "main"
-                                                                   },
-                                                                   {
-                                                                       "index":  0,
                                                                        "node":  "Onboarding route?",
                                                                        "type":  "main"
                                                                    },
                                                                    {
                                                                        "index":  0,
                                                                        "node":  "Persona sticker?",
+                                                                       "type":  "main"
+                                                                   },
+                                                                   {
+                                                                       "index":  0,
+                                                                       "node":  "Owner notice?",
                                                                        "type":  "main"
                                                                    },
                                                                    {

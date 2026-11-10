@@ -516,7 +516,7 @@ function Build-AgentOrchestrator {
 
     # Generische Registry-Felder (jeder Handler darf sie setzen, der Core kennt kein Paket-Feld):
     # result.owner_notice = Hinweis-Text an den Owner (Gleichstand zur HITL-Stufe owner_info, z. B. ein Mitglied hat per Knopf
-    # angelegt) - erster Ast, damit ein gescheiterter Toast ihn nicht verschluckt; result.edit = die getippte Nachricht aendern
+    # angelegt) - nach dem Toast-Ast, weil ein haengender Send die Quittung sonst ueber Telegrams Frist schoebe; result.edit = die getippte Nachricht aendern
     # ({text} neuer Text bzw. {keep_text:true} Text bleibt), ohne Tastatur -> die Knoepfe verschwinden. Beide nicht fatal.
     $RD = "((`$('Dispatch callback').item.json.result || {}))"
     $CQM = "((`$('Trigger normalize').item.json.callback_query || {}).message || {})"
@@ -528,7 +528,7 @@ function Build-AgentOrchestrator {
         -ChatIdExpr "={{ String(($CQM.chat || {}).id || '') }}" -MessageIdExpr "={{ $CQM.message_id }}" `
         -TextExpr "={{ String(($RD.edit.keep_text ? $CQM.text : $RD.edit.text) || '') }}"
     $nEditCbSticky = Build-Sticky 'Doc Registry-Felder' @(-420, 2240) 'Registry-Handler: Owner-Hinweis und Nachricht ändern' `
-        'Liefert ein Registry-Handler result.owner_notice, geht der Text an den Owner (erster Ast nach Dispatch callback, damit ein gescheiterter Toast ihn nicht verschluckt). result.edit ändert die getippte Nachricht: text = neuer Text, keep_text = alter Text bleibt; ohne Tastatur verschwinden die Knöpfe. Beide Sends sind nicht fatal. Der Handler ist eine schnelle DB-fn, darum kommt der Toast aus ihrem Ergebnis (kein answerCallbackQuery vorab). Erster Nutzer: Dauerauftrags-Vorschläge (Prefix rsug).' 300 380
+        'Liefert ein Registry-Handler result.owner_notice, geht der Text an den Owner (nach dem Toast-Ast: ein haengender Send darf die Quittung nicht ueber Telegrams Frist schieben). result.edit ändert die getippte Nachricht: text = neuer Text, keep_text = alter Text bleibt; ohne Tastatur verschwinden die Knöpfe. Beide Sends sind nicht fatal. Der Handler ist eine schnelle DB-fn, darum kommt der Toast aus ihrem Ergebnis (kein answerCallbackQuery vorab). Erster Nutzer: Dauerauftrags-Vorschläge (Prefix rsug).' 300 380
     # === LERN-LOOP-CALLBACKS (Phase C, deterministisch, KEIN LLM): learn:ok:<id> / learn:no:<id> / learn:undo:<id>
     # Owner-gegated ueber 'Callback owner?'. Learn action parst data.split(":")[1] (ok|no|undo), die candidate_id
     # ist data.split(":")[2]. ok -> agent.fn_approve_learn_candidate (dispatcht fact->fn_set_context_facts |
@@ -1531,8 +1531,8 @@ return [{ json: { body, memory_signal, raw_output: String(a.output ?? ''), signa
         'Run cron off'            = @{ main = @( ,@( E 'Answer cron off' ) ) }
         'Answer cron off'         = @{ main = @( ,@( E 'Notify cron off' ) ) }
         # WS-0c CB: generischer Callback-Dispatch (extra-Fallback -> Registry -> Toast)
-        # Owner-Hinweis vor dem Toast-Ast (ein Toast-Fehler beendet den Lauf), Nachricht aendern nach dem Toast (v1-Reihenfolge)
-        'Dispatch callback'       = @{ main = @( ,@( (E 'Owner notice?'), (E 'Onboarding route?'), (E 'Persona sticker?'), (E 'Edit tapped message?') ) ) }
+        # Toast zuerst (Telegram verwirft eine spaete Quittung; ein Send kann haengen), danach Owner-Hinweis und Nachricht aendern (v1-Reihenfolge)
+        'Dispatch callback'       = @{ main = @( ,@( (E 'Onboarding route?'), (E 'Persona sticker?'), (E 'Owner notice?'), (E 'Edit tapped message?') ) ) }
         'Owner notice?'           = @{ main = @( @( E 'Send owner notice' ), @() ) }
         'Edit tapped message?'    = @{ main = @( @( E 'Edit tapped message' ), @() ) }
         'Persona sticker?'        = @{ main = @( @( E 'Claim persona sticker' ), @() ) }

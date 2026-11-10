@@ -327,7 +327,9 @@ BEGIN
                                            ORDER BY (e->>'d')::date)
                           FROM jsonb_array_elements(v_c) e WHERE (e->>'d')::date = v_lastd);
             END IF;
-            CONTINUE WHEN v_stmt AND v_conf = 'confirm' AND NOT (v_pol->>'confirm_ok')::boolean;
+            -- other: nie mit angenommenem Rhythmus, ab zwei gemessenen Terminen schon (min_lines 2)
+            CONTINUE WHEN v_stmt AND v_conf = 'confirm' AND NOT (v_pol->>'confirm_ok')::boolean
+                          AND (v_assumed OR v_pol->>'kind' <> 'other');
             -- aktiv = gemessen am Ende der Zeilen (ein Export, der vor Wochen endete, verliert sonst still seine Zahlungen)
             CONTINUE WHEN v_last - v_last_due
                           > 1.5 * CASE v_unit WHEN 'week' THEN 7 * v_int WHEN 'month' THEN 30.44 * v_int ELSE 365 END;

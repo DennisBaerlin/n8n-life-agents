@@ -1213,7 +1213,7 @@
   "finance.recurring_suggest.toast_outdated": "Überholt – der neue Vorschlag steht weiter unten",
   "finance.recurring_suggest.toast_expired": "Vorschlag abgelaufen",
   "finance.recurring_suggest.toast_not_allowed": "Diesen Vorschlag kannst du nicht übernehmen",
-  "finance.recurring_suggest.owner_notice": "{member} hat aus einem Kontoauszug einen Dauerauftrag übernommen: {name}, {amount}, {rhythm}, ab {date} ({account}).",
+  "finance.recurring_suggest.owner_notice": "{member} hat einen vorgeschlagenen Dauerauftrag übernommen: {name}, {amount}, {rhythm}, ab {date} ({account}).",
   "finance.recurring_suggest.rhythm_quarterly": "vierteljährlich",
   "finance.recurring_suggest.rhythm_half_yearly": "halbjährlich",
   "finance.recurring_suggest.rhythm_yearly": "jährlich",

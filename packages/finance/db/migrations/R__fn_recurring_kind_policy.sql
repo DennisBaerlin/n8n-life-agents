@@ -2,8 +2,8 @@
 -- fn_recurring_kind_policy (IMMUTABLE) -- Regel je Kategorie, die das Lese-Modell einer Auszugszeile gibt (recurring_kind)
 --   Die eine Adresse, welche Kategorien als Dauerauftrag vorgeschlagen werden (statt einer Wortliste je Bank):
 --   card_purchase, cash, fee_interest nie; insurance und loan nicht als Vorschlag, sondern als Hinweis auf ihren Bereich
---   (ein Vierteljahres-Beitrag als freie Zahlung zaehlte sonst falsch); other nur ab 2 Terminen und nie "bitte pruefen"
---   ohne gemessenen Rhythmus; own_transfer wird ein Uebertrag. Unbekannt oder leer = other.
+--   (ein Vierteljahres-Beitrag als freie Zahlung zaehlte sonst falsch); other nur ab 2 Terminen mit gemessenem Rhythmus
+--   (confirm_ok false = nie mit angenommenem Rhythmus, fn_get_recurring_candidates); own_transfer wird ein Uebertrag. Unbekannt oder leer = other.
 --   RUECKGABE: {kind (kanonisch), proposable, confirm_ok, min_lines, transfer, hint_area (nur insurance|loan)}.
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_recurring_kind_policy(p_kind text)

@@ -1895,7 +1895,7 @@ Umfang: 564 fn-Dateien.
 ## finance.fn_recurring_kind_policy (IMMUTABLE) -- Regel je Kategorie, die das Lese-Modell einer Auszugszeile gibt (recurring_kind)
 - `finance.fn_recurring_kind_policy(p_kind text) -> jsonb`
 - jsonb-Keys: --
-- Die eine Adresse, welche Kategorien als Dauerauftrag vorgeschlagen werden (statt einer Wortliste je Bank): card_purchase, cash, fee_interest nie; insurance und loan nicht als Vorschlag, sondern als Hinweis auf ihren Bereich (ein Vierteljahres-Beitrag als freie Zahlung zaehlte sonst falsch); other nur ab 2 Terminen und nie "bitte pruefen" ohne gemessenen Rhythmus; own_transfer wird ein Uebertrag. Unbekannt oder leer = other. RUECKGABE: {kind (kanonisch), proposable, confirm_ok, min_lines, transfer, hint_area (nur insurance|loan)}.
+- Die eine Adresse, welche Kategorien als Dauerauftrag vorgeschlagen werden (statt einer Wortliste je Bank): card_purchase, cash, fee_interest nie; insurance und loan nicht als Vorschlag, sondern als Hinweis auf ihren Bereich (ein Vierteljahres-Beitrag als freie Zahlung zaehlte sonst falsch); other nur ab 2 Terminen mit gemessenem Rhythmus (confirm_ok false = nie mit angenommenem Rhythmus, fn_get_recurring_candidates); own_transfer wird ein Uebertrag. Unbekannt oder leer = other. RUECKGABE: {kind (kanonisch), proposable, confirm_ok, min_lines, transfer, hint_area (nur insurance|loan)}.
 
 ## finance.fn_recurring_known (READ, STABLE) -- ist eine erkannte Reihe schon ein Dauerauftrag? Die eine Adresse des Bekannt-Filters
 - `finance.fn_recurring_known(p jsonb) -> jsonb`

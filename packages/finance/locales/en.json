@@ -1213,7 +1213,7 @@
   "finance.recurring_suggest.toast_outdated": "Outdated – the new suggestion is further down",
   "finance.recurring_suggest.toast_expired": "Suggestion expired",
   "finance.recurring_suggest.toast_not_allowed": "You can't add this suggestion",
-  "finance.recurring_suggest.owner_notice": "{member} added a standing order from a bank statement: {name}, {amount}, {rhythm}, from {date} ({account}).",
+  "finance.recurring_suggest.owner_notice": "{member} added a suggested standing order: {name}, {amount}, {rhythm}, from {date} ({account}).",
   "finance.recurring_suggest.rhythm_quarterly": "quarterly",
   "finance.recurring_suggest.rhythm_half_yearly": "every six months",
   "finance.recurring_suggest.rhythm_yearly": "yearly",

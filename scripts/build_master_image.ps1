@@ -5,7 +5,8 @@
 #
 # Bau-Kontext = der Release-Baum von HEAD (git archive, Pathspec aus scripts/lib/release_images.ps1), aber mit der NEUTRALEN
 # Pin-Zeile (Begruendung im Kopf der Bibliothek). Label org.opencontainers.image.revision = HEAD; darum muss der Release-Baum
-# sauber committet sein. SOURCE_DATE_EPOCH = Commit-Zeit, Basis-Images per Digest; bit-gleich ist ein Neubau trotzdem nicht
+# sauber committet sein; fuers Standard-Register zusaetzlich HEAD = origin/main nach fetch (Test-HeadIsRemoteMain), ein eigenes
+# -Registry (Tests) prueft das nicht. SOURCE_DATE_EPOCH = Commit-Zeit, Basis-Images per Digest; bit-gleich ist ein Neubau trotzdem nicht
 # (apt laedt die jeweils aktuellen Debian-Pakete). Mehrplattform-Bau ueber den Docker-eigenen Builder (Docker Desktop mit
 # containerd-Speicher; arm64 per Emulation) — kein eigener Builder-Container. Ohne Nachweis-Eintraege (--provenance/--sbom
 # false): der Index enthaelt genau die zwei Plattformen.
@@ -39,12 +40,18 @@ function Invoke-Git { $o = & git -C $RepoRoot @args; if ($LASTEXITCODE -ne 0) { 
 $remote = (Invoke-Git remote get-url origin | Select-Object -First 1).Trim()
 if ($remote -notmatch 'github\.com[:/](?<slug>[^/]+/[^/.]+?)(\.git)?$') { throw "origin ist kein GitHub-Repo: $remote" }
 $slug = $Matches['slug']
+$releaseRegistry = -not $Registry
 if (-not $Registry) { $Registry = "ghcr.io/$($slug.ToLowerInvariant())" }
 $ref = "$($Registry.TrimEnd('/'))/$Name"
 if ($ref -cne $ref.ToLowerInvariant()) { throw "Image-Name '$ref' muss klein geschrieben sein (Register-Regel)." }
 
 $dirty = @(Invoke-Git status --porcelain -- @ReleasePathspec | Where-Object { $_ })
 if ($dirty.Count -and -not $AllowDirty) { throw "Release-Baum nicht committet ($($dirty.Count) Aenderungen, z. B. $($dirty[0])) — das Label revision waere falsch." }
+if ($releaseRegistry) {
+    Invoke-Git fetch -q origin main | Out-Null
+    $stale = Test-HeadIsRemoteMain $RepoRoot
+    if ($stale.Count) { throw "Kein Release-Bau: $($stale -join ' ')" }
+}
 $rev = (Invoke-Git rev-parse HEAD | Select-Object -First 1).Trim()
 $epoch = (Invoke-Git log -1 --format=%ct HEAD | Select-Object -First 1).Trim()
 

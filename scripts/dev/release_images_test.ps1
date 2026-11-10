@@ -67,6 +67,11 @@ try {
     Check 'compose.yml mehr als die Pin-Zeile = rot' ((Test-MasterRevision $repo $r0 't-more').Count -eq 1)
     Check 'Revision kein Vorfahr = rot' ((Test-MasterRevision $repo (TGit rev-parse t-code).Trim() 't-more').Count -eq 1)
     Check 'Revision unbekannt = rot' ((Test-MasterRevision $repo ('0' * 40) 't-ok').Count -eq 1)
+    Check 'ohne origin/main = rot' ((Test-HeadIsRemoteMain $repo).Count -eq 1)
+    TGit update-ref refs/remotes/origin/main HEAD | Out-Null
+    Check 'HEAD = origin/main = gruen' ((Test-HeadIsRemoteMain $repo).Count -eq 0)
+    TGit update-ref refs/remotes/origin/main t-code | Out-Null
+    Check 'HEAD nicht origin/main = rot' ((Test-HeadIsRemoteMain $repo).Count -eq 1)
 } finally { Remove-Item -LiteralPath $repo -Recurse -Force -ErrorAction SilentlyContinue }
 
 Write-Host 'A: SHA256SUMS (Test-ReleaseSums)' -ForegroundColor Cyan

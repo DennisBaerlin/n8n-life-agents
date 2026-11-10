@@ -3,7 +3,7 @@
 # .local/privacy_review_stamps/<hash>.json im Haupt-Checkout. Der Hash kommt aus scripts/privacy_outgoing.ps1, je Hash eine Datei:
 # parallele Sessions ueberschreiben sich nicht. Die Sperre .claude/hooks/dev_cycle_guard.ps1 und prek pre-push verlangen ihn.
 # Der Stempel enthaelt nur Hash, Commit und Zeitpunkt, nie einen Fund. Das Skript prueft, was es pruefen kann: Der Arbeitsbaum ist
-# sauber, privacy_lint und owner_fact_lint sind gruen.
+# sauber (bis auf ungestagte Vorschau-Eintraege in .claude/launch.json), privacy_lint und owner_fact_lint sind gruen.
 # Ob die Pruefung wirklich gelaufen ist, kann es nicht sehen; der Skill schreibt vor, wann es laufen darf.
 # Mit -AllTags gilt der Stempel auch fuer denselben Push ohne Tags (prek sieht --tags nicht; der Text ist eine Teilmenge des Gepruefften).
 # Usage:  .\scripts\privacy_review_stamp.ps1 [-Ref <ref>] [-Remote <name>] [-DestRef <zielname>] [-AllTags]
@@ -16,7 +16,10 @@ $MainRoot = Split-Path ([string](& git -C $RepoRoot rev-parse --path-format=abso
 
 $sha =[string](& git -C $RepoRoot rev-parse --verify "$Ref^{commit}")
 if ($LASTEXITCODE -ne 0 -or -not $sha) { Write-Host "Kein Stempel: Stand '$Ref' nicht aufloesbar." -ForegroundColor Red; exit 1 }
-if (@(& git -C $RepoRoot status --porcelain).Count -gt 0) { Write-Host 'Kein Stempel: Der Arbeitsbaum ist nicht sauber.' -ForegroundColor Red; exit 1 }
+# Ausnahme: ungestagte Vorschau-Eintraege in .claude/launch.json (Worktree-Vorschauen stehen absichtlich uncommittet im
+# Haupt-Checkout); der Push enthaelt sie nicht, privacy_lint liest die Datei im Arbeitsbaum trotzdem mit.
+$dirty = @(& git -C $RepoRoot status --porcelain | Where-Object { $_ -and $_ -cne ' M .claude/launch.json' })
+if ($dirty.Count -gt 0) { Write-Host "Kein Stempel: Der Arbeitsbaum ist nicht sauber ($($dirty[0]))." -ForegroundColor Red; exit 1 }
 foreach ($lint in 'privacy_lint.ps1', 'owner_fact_lint.ps1') {
     & (Join-Path $PSScriptRoot $lint)
     if ($LASTEXITCODE -ne 0) { Write-Host "Kein Stempel: $lint ist rot." -ForegroundColor Red; exit 1 }

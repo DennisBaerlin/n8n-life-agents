@@ -175,6 +175,23 @@ function Test-MasterRevision([string]$RepoRoot, [string]$Revision, [string]$Tag)
     return , $iss
 }
 
+# Test-HeadIsRemoteMain -RepoRoot [-RemoteRef origin/main] -> Abweichungen (leer = HEAD ist genau der Stand auf GitHub). Der
+#   Aufrufer holt vorher (git fetch). Ein Image aus einem nicht vorgezogenen Haupt-Checkout traegt eine alte Revision.
+#   Nutzer: build_master_image.ps1 (nur beim Bau fuers Standard-Register).
+function Test-HeadIsRemoteMain([string]$RepoRoot, [string]$RemoteRef = 'origin/main') {
+    $iss = New-Object System.Collections.Generic.List[string]
+    $ErrorActionPreference = 'Continue'
+    $head = [string](& git -C $RepoRoot rev-parse -q --verify 'HEAD^{commit}' 2>$null)
+    $remote = [string](& git -C $RepoRoot rev-parse -q --verify "$RemoteRef^{commit}" 2>$null)
+    if (-not $remote) { $iss.Add("$RemoteRef nicht aufloesbar (git fetch?)."); return , $iss }
+    if ($head -ne $remote) {
+        $behind = [string](& git -C $RepoRoot rev-list --count "HEAD..$RemoteRef" 2>$null)
+        $ahead = [string](& git -C $RepoRoot rev-list --count "$RemoteRef..HEAD" 2>$null)
+        $iss.Add("HEAD ist nicht $RemoteRef ($behind dahinter, $ahead voraus) — erst 'git merge --ff-only $RemoteRef', Ungepushtes erst pushen.")
+    }
+    return , $iss
+}
+
 # Test-MasterPinOffline -RepoRoot -Rev <commit/tag> -> Abweichungen (leer = Pin passt), ohne Register: die Revision ist dann
 #   nicht das Label, sondern der Elternteil des Commits, der den Digest der Pin-Zeile eingetragen hat (build_master_image.ps1
 #   baut aus HEAD, der Pin-Commit folgt direkt). Faengt einen Tag ohne Pin und einen veralteten Pin (Image aelter als der

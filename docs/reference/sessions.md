@@ -52,8 +52,8 @@ Das Parallel-Limit steht in `scripts/dev/bootstrap_test_n8n.ps1`. Die Leitung ve
 3. **Gates auf GitHub:** Integrations-Branch pushen, `gh workflow run free-gates.yml --ref <branch>`, dazu `ci` und `genericity` (laufen sonst nur auf main/PR). Warten per `gh run watch <id> --exit-status` als Hintergrund-Befehl, das weckt die Session; grüne Läufe wecken niemanden von selbst. Lokal zusätzlich `scripts/dev/run_free_gates.ps1 -Reset -Parallel` mit eigenen Containern nur bei geänderten Test-Skripten, Bot-Anschluss oder Install-Kern (dann `-Cold`) und vor einem Release; reine Doku-Merges brauchen keinen Lauf.
 4. **Bezahlte Fall-IDs sammeln:** alle Fälle, die der Gesamtstand berührt, als eine Liste (Fall-ID, Fall-Datei, Kostenrahmen) dem Owner nennen, bevor etwas nach `main` geht; der Lauf selbst im Owner-Fenster.
 5. **Push:** nur die Leitung, per Admin-Bypass der CI-Pflicht (Rulesets → `CONTRIBUTING.md` *Branch protection*); vorher `/privacy-review`. Danach `scripts/check_ci_status.ps1`. Ein gepushter Text lässt sich nicht still zurückholen; meldet `privacy_lint -Outgoing` rot, wird der Text korrigiert.
-6. **Master-Image + Pin-Commit** (`docs/reference/provisioning.md` *Docker-Verbund*).
-7. **Tag:** annotiert, englische Release-Notes (was sich geändert hat, keine Live-Werte): `git tag -a vX.Y.Z --cleanup=whitespace -F <datei>`. Ein fehlerhafter Tag wird nicht verschoben → neue Patch-Version.
+6. **Master-Image + Pin-Commit** (`docs/reference/provisioning.md` *Docker-Verbund*), im Haupt-Checkout erst nach `git merge --ff-only origin/main`; das Bau-Skript verweigert jeden anderen Stand.
+7. **Tag:** annotiert, englische Release-Notes (was sich geändert hat, keine Live-Werte): `git tag -a vX.Y.Z --cleanup=whitespace -F <datei>`. Ein fehlerhafter Tag wird nicht verschoben → neue Patch-Version. Der Tag-Push ist ein eigener Push: Tag in einem eigenen Aufruf anlegen, dann `/privacy-review` mit `-DestRef <tag>` und erst danach pushen.
 8. **Release-Nachschau:** direkt nach dem Tag eine einmalige geplante Aufgabe anlegen (`mcp__scheduled-tasks__create_scheduled_task`, `fireAt` = Tag-Zeitpunkt + 24 h). Ihr Prompt: nur lesend wie `/live-findings` Schritte 1–3, Zeitraum die letzten 24 Stunden, Bericht als privates Artefakt; nichts ändern.
 9. Alle Sessions benachrichtigen, dann Sprint-Ende (`/leitung` §4).
 
@@ -67,6 +67,7 @@ Nie auschecken, bevor der Diff gelesen ist (Hooks sehen `.env`). `gh pr diff <nr
 
 Jeder Brief enthält:
 
+- erwarteter Ausgangs-Commit (Hash; vorher `git fetch` und `git log origin/main..main`, fremde ungepushte Commits erst klären): Die Session prüft zuerst `git log -1`; steht ihr Worktree woanders (die App schneidet nicht verlässlich vom genannten Stand), zieht sie per `git merge --ff-only <hash>` nach oder meldet die Abweichung
 - Aufgabe, betroffene Dateien, woran „fertig“ erkennbar ist; passender Skill als Rahmen (`/feature`, `/test-task`, `/docs-task`, `/mini-app-task`, `/ui-task`)
 - echte Session-ID der Leitung (siehe *Sessions ansprechen*) und ihr ListAgents-Titel; die Regel *Fragen an den Owner laufen über die Leitung* (`/coordinate` §5)
 - Hinweis auf die Stand-Datei: lesen, Sperren und Merge-Reihenfolge gelten, nicht schreiben
@@ -76,7 +77,7 @@ Jeder Brief enthält:
 - bezahlte Suiten und Mini-App nur im jeweiligen Owner-Fenster
 - Bericht am Zug-Ende: Branch, Hash, Gates, offene Punkte; kein Push, kein Merge, keine Frage an den Owner
 - Berechtigungs-Karten gebündelt ans Blockende legen und den Befehl melden, statt einzeln zu blockieren
-- Notizordner als Rückfall: Sperrt die App Nachrichten nach 10 Sitzungs-Nachrichten ohne Owner-Eingabe, schreibt die Session ihren Bericht als Datei dorthin
+- bei unbeaufsichtigten Läufen alle Folgerunden: Die App sperrt Nachrichten nach 10 Sitzungs-Nachrichten ohne Owner-Eingabe; dann schreibt die Session ihren Bericht als Datei in den Notizordner
 - planende Session: Plan-Datei im eigenen Worktree, Pfad melden (siehe *Stand-Datei*)
 
 ## Plan-Freigabe

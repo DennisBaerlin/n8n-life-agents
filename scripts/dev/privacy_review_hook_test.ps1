@@ -261,6 +261,17 @@ New-SandboxCommit 'dee'
 Write-SandboxFile 'neu.txt' 'x'
 Assert-Stamp 'Baum nicht sauber: kein Stempel' $false
 Remove-Item (Join-Path $sandbox 'neu.txt')
+Write-SandboxFile '.claude\launch.json' "{}`n"
+Invoke-SandboxGit @('add', '-A')
+Invoke-SandboxGit @('commit', '-q', '-m', 'vorschau')
+Write-SandboxFile '.claude\launch.json' "{`"configurations`": []}`n"
+Assert-Stamp 'Nur launch.json geaendert: Stempel' $true
+Write-SandboxFile 'neu.txt' 'x'
+Assert-Stamp 'launch.json und weitere Datei: kein Stempel' $false
+Remove-Item (Join-Path $sandbox 'neu.txt')
+Invoke-SandboxGit @('add', '.claude/launch.json')
+Assert-Stamp 'launch.json gestagt: kein Stempel' $false
+Invoke-SandboxGit @('reset', '-q', '--hard')
 Write-SandboxFile 'adresse.txt' ('192.168.' + '178.99' + "`n")
 Invoke-SandboxGit @('add', '-A')
 Invoke-SandboxGit @('commit', '-q', '-m', 'vier')

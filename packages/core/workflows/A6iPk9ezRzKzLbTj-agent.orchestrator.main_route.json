@@ -2352,6 +2352,149 @@
                   },
                   {
                       "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "a87e9cb7-f15d-5705-92e7-bc08dfe9da12",
+                                                                                   "leftValue":  "={{ !!((($(\u0027Dispatch callback\u0027).item.json.result || {})).owner_notice) }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       -400,
+                                       1880
+                                   ],
+                      "id":  "defde471-9ae7-5172-92e2-df7a6e3a6b0d",
+                      "name":  "Owner notice?"
+                  },
+                  {
+                      "parameters":  {
+                                         "additionalFields":  {
+                                                                  "appendAttribution":  false
+                                                              },
+                                         "chatId":  "__OWNER_CHAT_ID__",
+                                         "text":  "={{ (String((($(\u0027Dispatch callback\u0027).item.json.result || {})).owner_notice || \u0027\u0027)).replace(/[_*`[]/g, \u0027\\\\$\u0026\u0027) }}"
+                                     },
+                      "type":  "n8n-nodes-base.telegram",
+                      "typeVersion":  1.2,
+                      "position":  [
+                                       -180,
+                                       1880
+                                   ],
+                      "id":  "154067b1-88b5-533c-8fe1-b549ba220dab",
+                      "name":  "Send owner notice",
+                      "retryOnFail":  true,
+                      "maxTries":  3,
+                      "waitBetweenTries":  2000,
+                      "credentials":  {
+                                          "telegramApi":  {
+                                                              "id":  "__CRED_TELEGRAM__",
+                                                              "name":  "Telegram account"
+                                                          }
+                                      },
+                      "onError":  "continueRegularOutput"
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "9c9bd61a-d9ad-5e78-82f7-711c143f81dc",
+                                                                                   "leftValue":  "={{ !!((($(\u0027Dispatch callback\u0027).item.json.result || {})).edit \u0026\u0026 ((($(\u0027Dispatch callback\u0027).item.json.result || {})).edit.text || (($(\u0027Dispatch callback\u0027).item.json.result || {})).edit.keep_text) \u0026\u0026 (($(\u0027Trigger normalize\u0027).item.json.callback_query || {}).message || {}).message_id \u0026\u0026 (($(\u0027Trigger normalize\u0027).item.json.callback_query || {}).message || {}).chat) }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       -400,
+                                       2060
+                                   ],
+                      "id":  "aa0fa534-ad7b-5560-bcb3-f146b21bdba8",
+                      "name":  "Edit tapped message?"
+                  },
+                  {
+                      "parameters":  {
+                                         "resource":  "message",
+                                         "operation":  "editMessageText",
+                                         "messageType":  "message",
+                                         "chatId":  "={{ String(((($(\u0027Trigger normalize\u0027).item.json.callback_query || {}).message || {}).chat || {}).id || \u0027\u0027) }}",
+                                         "messageId":  "={{ (($(\u0027Trigger normalize\u0027).item.json.callback_query || {}).message || {}).message_id }}",
+                                         "text":  "={{ (String(((($(\u0027Dispatch callback\u0027).item.json.result || {})).edit.keep_text ? (($(\u0027Trigger normalize\u0027).item.json.callback_query || {}).message || {}).text : (($(\u0027Dispatch callback\u0027).item.json.result || {})).edit.text) || \u0027\u0027)).replace(/[_*`[]/g, \u0027\\\\$\u0026\u0027) }}",
+                                         "additionalFields":  {
+                                                                  "appendAttribution":  false,
+                                                                  "parse_mode":  "Markdown"
+                                                              }
+                                     },
+                      "type":  "n8n-nodes-base.telegram",
+                      "typeVersion":  1.2,
+                      "position":  [
+                                       -180,
+                                       2060
+                                   ],
+                      "id":  "fd83a5b5-2034-5f3e-894e-011efac39d96",
+                      "name":  "Edit tapped message",
+                      "onError":  "continueRegularOutput",
+                      "retryOnFail":  true,
+                      "maxTries":  2,
+                      "waitBetweenTries":  1000,
+                      "credentials":  {
+                                          "telegramApi":  {
+                                                              "id":  "__CRED_TELEGRAM__",
+                                                              "name":  "Telegram account"
+                                                          }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "content":  "## DB-Automatik\n**Registry-Handler: Owner-Hinweis und Nachricht ändern**\n\nLiefert ein Registry-Handler result.owner_notice, geht der Text an den Owner (erster Ast nach Dispatch callback, damit ein gescheiterter Toast ihn nicht verschluckt). result.edit ändert die getippte Nachricht: text = neuer Text, keep_text = alter Text bleibt; ohne Tastatur verschwinden die Knöpfe. Beide Sends sind nicht fatal. Der Handler ist eine schnelle DB-fn, darum kommt der Toast aus ihrem Ergebnis (kein answerCallbackQuery vorab). Erster Nutzer: Dauerauftrags-Vorschläge (Prefix rsug).",
+                                         "height":  300,
+                                         "width":  380,
+                                         "color":  4
+                                     },
+                      "type":  "n8n-nodes-base.stickyNote",
+                      "typeVersion":  1,
+                      "position":  [
+                                       -420,
+                                       2240
+                                   ],
+                      "id":  "32958ac3-efc2-5d5e-9b49-d8f50f36a97d",
+                      "name":  "Doc Registry-Felder"
+                  },
+                  {
+                      "parameters":  {
                                          "options":  {
                                                          "fallbackOutput":  "extra"
                                                      },
@@ -8162,6 +8305,11 @@
                                                                [
                                                                    {
                                                                        "index":  0,
+                                                                       "node":  "Owner notice?",
+                                                                       "type":  "main"
+                                                                   },
+                                                                   {
+                                                                       "index":  0,
                                                                        "node":  "Onboarding route?",
                                                                        "type":  "main"
                                                                    },
@@ -8169,10 +8317,43 @@
                                                                        "index":  0,
                                                                        "node":  "Persona sticker?",
                                                                        "type":  "main"
+                                                                   },
+                                                                   {
+                                                                       "index":  0,
+                                                                       "node":  "Edit tapped message?",
+                                                                       "type":  "main"
                                                                    }
                                                                ]
                                                            ]
                                               },
+                        "Owner notice?":  {
+                                              "main":  [
+                                                           [
+                                                               {
+                                                                   "index":  0,
+                                                                   "node":  "Send owner notice",
+                                                                   "type":  "main"
+                                                               }
+                                                           ],
+                                                           [
+
+                                                           ]
+                                                       ]
+                                          },
+                        "Edit tapped message?":  {
+                                                     "main":  [
+                                                                  [
+                                                                      {
+                                                                          "index":  0,
+                                                                          "node":  "Edit tapped message",
+                                                                          "type":  "main"
+                                                                      }
+                                                                  ],
+                                                                  [
+
+                                                                  ]
+                                                              ]
+                                                 },
                         "Persona sticker?":  {
                                                  "main":  [
                                                               [

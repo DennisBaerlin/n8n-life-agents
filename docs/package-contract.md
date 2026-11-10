@@ -65,7 +65,7 @@ key='core_version')`, seeded from the `.config` block of `packages/core/manifest
 | `app_screens` | – | Screens this package contributes to the read-only Telegram Mini App (§3.12): `{ "<screen>": { handler_fn, ord, icon } }`. Host (`_seed_app_screens`) seeds them into `core.app_screens`; `core.fn_app_screen` dispatches generically. Own-schema-scoped, `(jsonb)` arity. |
 | `config` | – | Per-package central config block `config.<category>.<key> = { value, description, summary, … }`, seeded into `core.config` (§3.6). |
 | `cron_labels` | – | `{ list[], person? }` — the package's reminders: the household ones (`list`) are switched by the owner, the personal ones (`person`) by each person for themselves in `/reminders` or at the card; the texts are catalog keys `<pkg>.cron.<key>.*` (§3.11, §8). |
-| `callback_handlers` | – | **Nested** `{ "<prefix>": { handler_fn, member_permeable } }` — package button prefixes dispatched by `core.fn_dispatch_callback` (§8). |
+| `callback_handlers` | – | **Nested** `{ "<prefix>": { handler_fn, member_permeable } }` — package button prefixes dispatched by `core.fn_dispatch_callback` (§8). The handler returns `{ok, toast?, edit?, owner_notice?}`: `edit` = `{text}` or `{keep_text:true}` changes the tapped message and drops its buttons, `owner_notice` = text the orchestrator sends to the owner (e.g. a member created something by button). |
 | `protected_contexts` | – | List of the package's instruction contexts that cannot be deleted (§3.4). |
 | `read_surface` | – | Declares the package's read window for the core agents (`preferred_views` feed the SELECT-node descriptions at build time; §4.1). |
 | `migrations` | ✓ | Path to the package's `db/` migration set (own schema only; **no core/agent DDL** — DB4/R11). |

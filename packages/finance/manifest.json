@@ -26,7 +26,7 @@
       "create_pension", "set_pension", "close_pension",
       "create_real_estate", "set_real_estate", "sell_real_estate", "delete_real_estate",
       "create_recurring_payment", "set_recurring_payment", "delete_recurring_payment",
-      "create_recurring_transfer", "get_recurring_suggestions", "cancel_handoff_task",
+      "create_recurring_transfer", "import_recurring_suggestions", "send_recurring_suggestions", "cancel_handoff_task",
       "create_savings_goal", "set_savings_goal", "close_savings_goal",
       "create_savings_plan", "set_savings_plan", "close_savings_plan", "book_savings_plan_execution",
       "book_recurring_occurrence", "book_interest",
@@ -133,7 +133,8 @@
     "list": [
       { "id": "KoHdXZ9wrjctv98F", "name": "agent.finance_advisor.cron_plan_review", "since": "2026-06-21" },
       { "id": "ePuLFLmXxzcUuf9r", "name": "agent.finance.cron_remind_recurring", "since": "2026-06-08" },
-      { "id": "z0HyRoDQVzpr86KP", "name": "agent.finance.cron_remind_recurring", "since": "2026-10-22" }
+      { "id": "z0HyRoDQVzpr86KP", "name": "agent.finance.cron_remind_recurring", "since": "2026-10-22" },
+      { "id": "I6mjxvBCqg8gxFWB", "name": "agent.finance.tool_get_recurring_suggestions", "since": "2026-11-10" }
     ]
   },
   "cron_labels": {

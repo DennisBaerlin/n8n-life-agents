@@ -55,6 +55,12 @@ function Build-CronRefreshFxRates {
         "=SELECT (r->>'ok')::boolean AS ok, (r->>'upserted')::int AS upserted FROM finance.fn_upsert_fx_rates(`$1::jsonb) AS r;" `
         ([ordered]@{ rates = '$json.rates' })
 
+    # Huckepack: der taegliche Lauf raeumt auch verfallene Import- und Vorschlags-Stapel auf (finance.fn_import_sweep, 7 Tage);
+    # nicht fatal, damit ein Aufraeum-Fehler nie den Kurs-Abruf aufhaelt.
+    $sweep = Build-Pg 'Sweep import staging' @(-180, -160) 'SELECT finance.fn_import_sweep(7) AS deleted'
+    $sweep['onError'] = 'continueRegularOutput'
+    $stickySweep = Build-Sticky 'Aufräumen' @(-180, -360) 'Import-Stapel aufräumen (täglich)' 'Nur im Zeitplan-Pfad: finance.fn_import_sweep(7) löscht nicht übernommene Import-Zeilen nach 7 Tagen und Dauerauftrags-Vorschlags-Stapel 7 Tage nach ihrem letzten Ergänzen. Läuft hier, weil dieser Cron täglich und unter finance_rw läuft; ein Fehler hält den Kurs-Abruf nicht auf.' 260 200
+
     $stickyOverview = Build-Sticky 'Überblick' @(-460, -260) `
         'FX-Kurs-Refresh (Dual-Trigger, kein LLM)' `
         'DREI Eingänge, EIN Pfad: (a) Schedule täglich (Cron aus core.config schedule.refresh_fx_rates, beim Einspielen eingesetzt); (b) executeWorkflowTrigger Start — Tools rufen den Workflow nach einem Write sofort auf (eliminiert das NULL-Fenster in Roll-up-Views bis zum nächsten Schedule-Lauf); (c) n8n-Start holt einen verpassten Lauf nach (Sticky Nachholen beim Start). Pfad: prüfe aktive Fremdwährungs-Menge via fn_active_currencies() -> IF leer: Abbruch ohne HTTP-Call. Sonst: HTTP GET open.er-api.com/v6/latest/EUR (kostenlos, KEIN Key, Basis EUR, 7 Tage/Woche) -> Upsert in finance.fx_rates: eine Zeile je Fremdwährung aus aktiven Konten/Holdings — keine manuelle Pflege von finance.currencies nötig. Die Roll-up-Views konvertieren via finance.fn_to_eur (As-of-Lookup).' 280 640
@@ -78,6 +84,7 @@ function Build-CronRefreshFxRates {
     $nodes = @($trig, $subTrig, $gateSched, $ifSched, $gateStart, $ifStart, $disabled,
                $trigInit, $waitInit, $gateInit, $ifInit,
                $checkCurr, $ifCurr, $fetch, $upsert,
+               $sweep, $stickySweep,
                $stickyOverview, $stickyEarlyExit, $stickyUpsert, $stickyGate, $stickyInit)
     $conns = [ordered]@{
         'Instance started'            = @{ main = @( ,@( E 'Wait for network' ) ) }
@@ -90,7 +97,7 @@ function Build-CronRefreshFxRates {
         'Schedule (cron from config)' = @{ main = @( ,@( E 'Cron enabled?' ) ) }
         'Cron enabled?'               = @{ main = @( ,@( E 'Cron on?' ) ) }
         'Cron on?'                    = @{ main = @(
-            @( E 'Check active currencies' ),   # true: Paket aktiv UND Cron an
+            @( (E 'Check active currencies'), (E 'Sweep import staging') ),   # true: Paket aktiv UND Cron an
             @( E 'Disabled' )                    # false: aus -> No-op
         ) }
         'Start'                       = @{ main = @( ,@( E 'Package active?' ) ) }

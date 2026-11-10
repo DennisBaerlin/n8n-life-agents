@@ -8,14 +8,19 @@
 #
 # New-StatementGateChain -X <Start-x> -StmtParams <[ordered] Rohwerte fuer Build-Pg> -Title <finance.hitl.*>
 #   -CancelAction <ASCII, Build-ToolCancelled> [-ReturnExtra <@(,@(name, expr, type))> ] [-NotReadyExtra <gleiche Form, Felder auch fuer ok:false>]
+#   [-RecurringParams <[ordered] chat_id, period_start, period_end, lines fuer finance.fn_import_stage_recurring> -CollectExpr <JS: Einrichtung>]
 #   -> @{ Nodes; Conns; Entry = 'Prepare statement' }. Der Konsument verbindet seinen letzten Knoten mit Entry.
+#   Mit -RecurringParams erkennt die Kette Dauerauftraege (nichts gebucht, Vorschlags-Stapel): bei already_covered/already_imported
+#   statt der Sackgasse ('Stage recurring' -> 'Return covered', Konto und Saldo-Probe aus der Prepare) und nach der Buchung, wenn
+#   CollectExpr wahr ist ('Stage after check'; die Vorschlaege folgen der Monats-Check-Karte). Der Export-Konsument nutzt das nicht.
 function New-StatementGateChain {
     param([int]$X, [Parameter(Mandatory)]$StmtParams, [Parameter(Mandatory)][string]$Title,
-          [Parameter(Mandatory)][string]$CancelAction, [array]$ReturnExtra = @(), [array]$NotReadyExtra = @())
+          [Parameter(Mandatory)][string]$CancelAction, [array]$ReturnExtra = @(), [array]$NotReadyExtra = @(),
+          $RecurringParams = $null, [string]$CollectExpr = 'false')
     $prepare = Build-Pg 'Prepare statement' @($X, 0) "=SELECT finance.fn_statement_prepare(`$1::jsonb) AS r;" $StmtParams
     $ifPrep = Build-If 'Statement ok?' @(($X + 220), 0) "={{ `$json.r.ok }}" 'true' 'equals' 'boolean'
     $P = "`$('Prepare statement').item.json.r"
-    $errPrep = Build-Set 'Statement not ready' @(($X + 440), 200) (@(
+    $notReadyFields = @(
         ,@('ok', 'false', 'boolean')
         ,@('code', "={{ $P.code }}", 'string')
         ,@('error', "={{ $P.reason }}", 'string')
@@ -40,7 +45,8 @@ function New-StatementGateChain {
         # already_covered: bis wann bestaetigt, ab wann ein Auszug weiterhilft (Sackgasse, Befund KW 45)
         ,@('covered_until', "={{ $P.covered_until || '' }}", 'string')
         ,@('useful_from', "={{ $P.useful_from || '' }}", 'string')
-    ) + $NotReadyExtra)
+    ) + $NotReadyExtra
+    $errPrep = Build-Set 'Statement not ready' @(($X + 440), 200) $notReadyFields
 
     $summary = New-HitlSummary -Pos @(($X + 440), 0) -Title $Title `
         -TitleParams @{ account = "$P.account_name" } -LinesExpr "($P.card_lines || [])"
@@ -97,9 +103,27 @@ function New-StatementGateChain {
         ,@('balance_after', "={{ $A.balance_after }}", 'number')
         ,@('outlook', "={{ $A.outlook || {} }}", 'object')
     ) + $ReturnExtra
+    $recNodes = @()
+    if ($RecurringParams) {
+        # Erkennung, wenn der Monat schon bestaetigt ist (Sackgasse vorher: Zeilen weg, "kann nicht lesen")
+        $ifCovered = Build-If 'Covered month?' @(($X + 440), 400) "={{ ['already_covered', 'already_imported'].includes($P.code) }}" 'true' 'equals' 'boolean'
+        $stageParams = [ordered]@{ mode = "'statement'"; account_id = "$P.account_id"; balance_verified = "$P.balance_verified === true" }
+        foreach ($k in $RecurringParams.Keys) { $stageParams[$k] = $RecurringParams[$k] }
+        $stage = Build-Pg 'Stage recurring' @(($X + 660), 400) "=SELECT finance.fn_import_stage_recurring(`$1::jsonb) AS r;" $stageParams
+        $retCovered = Build-Set 'Return covered' @(($X + 880), 400) ($notReadyFields + @(
+            ,@('recurring', "={{ `$('Stage recurring').item.json.r || {} }}", 'object')
+        ))
+        # Einrichtung: nach der Buchung (Monats-Check-Karte zuerst), Saldo-Probe bestanden
+        $ifCollect = Build-If 'Collect recurring?' @(($X + 1540), -240) "={{ $CollectExpr }}" 'true' 'equals' 'boolean'
+        $stageAfter = [ordered]@{ mode = "'statement'"; account_id = "$P.account_id"; balance_verified = 'true' }
+        foreach ($k in $RecurringParams.Keys) { $stageAfter[$k] = $RecurringParams[$k] }
+        $stage2 = Build-Pg 'Stage after check' @(($X + 1760), -240) "=SELECT finance.fn_import_stage_recurring(`$1::jsonb) AS r;" $stageAfter
+        $retList += ,@('recurring', "={{ `$('Stage after check').isExecuted ? (`$('Stage after check').item.json.r || {}) : {} }}", 'object')
+        $recNodes = @($ifCovered, $stage, $retCovered, $ifCollect, $stage2)
+    }
     $ret = Build-Return @(($X + 1540), 0) $retList
 
-    $nodes = @($prepare, $ifPrep, $errPrep, $summary, $reqApproval, $ifApproved, $retCancelled, $apply, $ifApplied, $errApply, $ret)
+    $nodes = @($prepare, $ifPrep, $errPrep, $summary, $reqApproval, $ifApproved, $retCancelled, $apply, $ifApplied, $errApply, $ret) + $recNodes
     $conns = [ordered]@{
         'Prepare statement'      = @{ main = @( ,@( E 'Statement ok?' ) ) }
         'Statement ok?'          = @{ main = @( @( E 'Build Approval Summary' ), @( E 'Statement not ready' ) ) }
@@ -108,6 +132,14 @@ function New-StatementGateChain {
         'Approved?'              = @{ main = @( @( E 'Apply statement' ), @( E 'Return cancelled' ) ) }
         'Apply statement'        = @{ main = @( ,@( E 'Booked?' ) ) }
         'Booked?'                = @{ main = @( @( E 'Return' ), @( E 'Not booked' ) ) }
+    }
+    if ($RecurringParams) {
+        $conns['Statement ok?']      = @{ main = @( @( E 'Build Approval Summary' ), @( E 'Covered month?' ) ) }
+        $conns['Covered month?']     = @{ main = @( @( E 'Stage recurring' ), @( E 'Statement not ready' ) ) }
+        $conns['Stage recurring']    = @{ main = @( ,@( E 'Return covered' ) ) }
+        $conns['Booked?']            = @{ main = @( @( E 'Collect recurring?' ), @( E 'Not booked' ) ) }
+        $conns['Collect recurring?'] = @{ main = @( @( E 'Stage after check' ), @( E 'Return' ) ) }
+        $conns['Stage after check']  = @{ main = @( ,@( E 'Return' ) ) }
     }
     return @{ Nodes = $nodes; Conns = $conns; Entry = 'Prepare statement' }
 }

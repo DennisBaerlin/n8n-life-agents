@@ -1785,6 +1785,29 @@ function New-ShowThinkingCallNode {
     $n
 }
 
+# Telegram editMessageText (resource 'message'/operation 'editMessageText', messageType 'message'): aendert eine eigene
+# Bot-Nachricht nach einem Knopf-Tipp (Ergebnis-Text, Callback-Registry result.edit). Ohne replyMarkup schickt der Node kein
+# reply_markup -> Telegram entfernt die Inline-Tastatur. Eigene Nachrichten im Privatchat sind ohne 48-h-Grenze editierbar.
+# parse_mode explizit Markdown (n8n setzt es nur bei sendMessage selbst), Text zentral escapt wie jeder Send; workflow_lint
+# prueft ihn wie die Send-Helfer (Attribution-Feld, Retry, Escape). Nicht fatal: ein gescheiterter Edit kostet nur die Anzeige.
+function New-TelegramEditMessageNode {
+    param([Parameter(Mandatory)][string]$Name, [Parameter(Mandatory)][int[]]$Pos, [Parameter(Mandatory)][string]$ChatIdExpr,
+          [Parameter(Mandatory)][string]$MessageIdExpr, [Parameter(Mandatory)][string]$TextExpr,
+          [int]$MaxTries = 2, [int]$WaitBetweenTries = 1000)
+    [ordered]@{
+        parameters = [ordered]@{
+            resource = 'message'; operation = 'editMessageText'; messageType = 'message'
+            chatId = $ChatIdExpr; messageId = $MessageIdExpr
+            text = (Resolve-TgTextExpr $TextExpr $false)
+            additionalFields = [ordered]@{ appendAttribution = $false; parse_mode = 'Markdown' }
+        }
+        type = 'n8n-nodes-base.telegram'; typeVersion = 1.2; position = $Pos
+        id = (New-Id); name = $Name; onError = 'continueRegularOutput'
+        retryOnFail = $true; maxTries = $MaxTries; waitBetweenTries = $WaitBetweenTries
+        credentials = @{ telegramApi = $CRED_TELEGRAM }
+    }
+}
+
 # Telegram answerCallbackQuery (resource 'callback'/operation 'answerQuery'): quittiert den Antipp-Button
 # (entfernt den Lade-Spinner am Owner-Client; optionaler kurzer Toast $Text <=200 Zeichen, plain, KEIN
 # parse_mode -> kein Escape noetig). $QueryIdExpr = ={{ ...callback_query.id }}. Eigene Telegram-Methode,

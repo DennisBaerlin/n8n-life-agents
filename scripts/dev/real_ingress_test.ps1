@@ -872,6 +872,17 @@ foreach ($tc in $cases) {
             }
             $orch = Wait-NewExecTerminal $OrchWfId $orchBase $Timeout
             if ($tc.hitl_pending) { Clear-HitlPending -Container $Container }
+            # check_sql (optional): Wirkung in der DB, VOR post_sql; die Abfrage muss genau 't' liefern. expect_tg_method (optional):
+            # eine abgefangene Bot-API-Methode dieses Falls (z. B. editMessageText nach einem Knopf-Tipp).
+            $effectOk = $true
+            if ($tc.check_sql) {
+                $cs = Invoke-TestN8nPsql -Container $Container -PsqlArgs @('-tA', '-c', "$($tc.check_sql)")
+                $csVal = "$($cs.Output | ForEach-Object { "$_".Trim() } | Where-Object { $_ } | Select-Object -First 1)"
+                if ($cs.Code -ne 0 -or $csVal -ne 't') { $effectOk = $false; Write-Host "    check_sql lieferte '$csVal' (erwartet t)" -ForegroundColor Red }
+            }
+            if ($tc.expect_tg_method -and -not (@(Get-MockTelegramRequests -Container $Container) | Where-Object { $_.method -eq "$($tc.expect_tg_method)" })) {
+                $effectOk = $false; Write-Host "    keine abgefangene Methode $($tc.expect_tg_method)" -ForegroundColor Red
+            }
             if ($tc.post_sql) { [void](Invoke-TestN8nPsql -Container $Container -PsqlArgs @('-q', '-c', "$($tc.post_sql)")) }
             if (-not $orch) { Write-Host "    [FAIL] Keine Orchestrator-Execution gefunden (Timeout)." -ForegroundColor Red; $failed++; continue }
 
@@ -906,7 +917,7 @@ foreach ($tc in $cases) {
                 if ($tc.expected_output_contains)     { $outOk = $outOk -and $outText.Contains("$($tc.expected_output_contains)") }
                 if ($tc.expected_output_not_contains) { $outOk = $outOk -and $outText -ne '' -and -not $outText.Contains("$($tc.expected_output_not_contains)") }
             }
-            $notRanOk = -not ($tc.expected_not_node -and ($runNodes -contains "$($tc.expected_not_node)"))
+            $notRanOk = (-not ($tc.expected_not_node -and ($runNodes -contains "$($tc.expected_not_node)"))) -and $effectOk
             $txtOk = Test-CaseTexts $tc
             if ($tc.expect_system_tail) {
                 $tails = @(Get-MockLlmRequests -Container $Container | ForEach-Object { [string]$_.system_tail })

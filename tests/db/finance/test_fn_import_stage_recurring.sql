@@ -167,3 +167,74 @@ BEGIN
     RAISE NOTICE 'PASS [R1-R9 fn_import_stage_recurring]';
 END $$;
 ROLLBACK;
+
+-- ---------- B1 Ergaenzen ueber Nachrichten: Monat fuer Monat ----------
+BEGIN;
+CREATE FUNCTION pg_temp.due(p_k int, p_dom int)
+RETURNS date LANGUAGE sql STABLE AS $$
+    SELECT (date_trunc('month', core.fn_today() - 4 - (p_dom - 1)) - make_interval(months => p_k))::date + (p_dom - 1);
+$$;
+CREATE FUNCTION pg_temp.abo(p_acct int, p_k int, p_amt numeric DEFAULT -12.99) RETURNS jsonb LANGUAGE sql AS $$
+    SELECT finance.fn_import_stage_recurring(jsonb_build_object('chat_id', '7701', 'mode', 'statement', 'account_id', p_acct,
+        'balance_verified', TRUE, 'period_start', date_trunc('month', pg_temp.due(p_k, 6))::date,
+        'period_end', (date_trunc('month', pg_temp.due(p_k, 6)) + interval '1 month')::date - 1,
+        'lines', jsonb_build_array(jsonb_build_object('date', pg_temp.due(p_k, 6), 'amount', p_amt, 'counterparty', 'Videodienst Test',
+            'counterparty_iban', '', 'creditor_id', '', 'mandate_ref', '', 'purpose', 'Abo', 'recurring_kind', 'subscription',
+            'series', 'Videodienst', 'rhythm_hint', 'monthly'))));
+$$;
+DO $$
+DECLARE
+    T      DATE := core.fn_today();
+    v_a    INT;
+    v_b    INT;
+    v_res  JSONB;
+    v_row  RECORD;
+BEGIN
+    DELETE FROM finance.import_staging;
+    v_a := (finance.fn_create_account(jsonb_build_object('name', '__t_b1_a__', 'account_type', 'cash', 'currency', 'EUR',
+                 'opening_balance', 0, 'opening_balance_date', (T - 200)::text))->>'account_id')::int;
+    v_b := (finance.fn_create_account(jsonb_build_object('name', '__t_b1_b__', 'account_type', 'cash', 'currency', 'EUR',
+                 'opening_balance', 0, 'opening_balance_date', (T - 200)::text))->>'account_id')::int;
+
+    -- erster Auszug (aeltester Monat): ein Termin -> confirm, Fassung 1, als gesendet gestempelt
+    v_res := pg_temp.abo(v_a, 2);
+    UPDATE finance.import_staging SET sent_version = version;
+    SELECT * INTO v_row FROM finance.import_staging;
+    IF v_row.version <> 1 OR (finance.fn_recurring_suggestion_measure(v_row.payload)->>'confidence') <> 'confirm' THEN
+        RAISE EXCEPTION 'FAIL [B1 erster Monat confirm]: %', v_row;
+    END IF;
+    -- zweiter Monat: ergaenzt dieselbe Zeile, neue Fassung, wieder ungesendet
+    v_res := pg_temp.abo(v_a, 1);
+    SELECT * INTO v_row FROM finance.import_staging;
+    IF (SELECT count(*) FROM finance.import_staging) <> 1 OR v_row.version <> 2 OR jsonb_array_length(v_row.payload->'occurrences') <> 2
+       OR (v_res->>'unsent_count')::int <> 1 OR (v_res->>'staged')::int <> 0 OR (v_res->>'updated')::int <> 1 THEN
+        RAISE EXCEPTION 'FAIL [B1 zweiter Monat ergaenzt, version 2]: % / %', v_res, v_row;
+    END IF;
+    -- dritter Monat: sicher
+    v_res := pg_temp.abo(v_a, 0);
+    SELECT * INTO v_row FROM finance.import_staging;
+    IF v_row.version <> 3 OR (finance.fn_recurring_suggestion_measure(v_row.payload)->>'confidence') <> 'sure'
+       OR (v_res->>'sure_count')::int <> 1 OR (v_row.payload->>'schedule_day_of_month')::int <> 6 THEN
+        RAISE EXCEPTION 'FAIL [B1 drei Monate = sure]: % / %', v_res, v_row.payload;
+    END IF;
+    -- derselbe Auszug noch einmal: nichts doppelt, keine neue Fassung
+    v_res := pg_temp.abo(v_a, 0);
+    SELECT * INTO v_row FROM finance.import_staging;
+    IF v_row.version <> 3 OR jsonb_array_length(v_row.payload->'occurrences') <> 3 THEN
+        RAISE EXCEPTION 'FAIL [B1 gleicher Termin nicht doppelt]: %', v_row.payload;
+    END IF;
+    -- gleicher Zeitraum mit korrigiertem Betrag: ersetzt die Termine dieses Zeitraums
+    v_res := pg_temp.abo(v_a, 0, -13.99);
+    SELECT * INTO v_row FROM finance.import_staging;
+    IF v_row.version <> 4 OR jsonb_array_length(v_row.payload->'occurrences') <> 3 OR (v_row.payload->>'amount')::numeric <> 13.99 THEN
+        RAISE EXCEPTION 'FAIL [B1 gleicher Zeitraum ersetzt]: %', v_row.payload;
+    END IF;
+    -- anderes Konto: eigene Zeile im selben Stapel, Name eindeutig gemacht
+    v_res := pg_temp.abo(v_b, 0);
+    IF (SELECT count(*) FROM finance.import_staging) <> 2 OR (SELECT count(DISTINCT batch_id) FROM finance.import_staging) <> 1
+       OR (SELECT count(DISTINCT payload->>'name') FROM finance.import_staging) <> 2 THEN
+        RAISE EXCEPTION 'FAIL [B1 anderes Konto eigene Zeile]: %', (SELECT jsonb_agg(s.payload->'name') FROM finance.import_staging s);
+    END IF;
+    RAISE NOTICE 'PASS [B1 Ergaenzen ueber Nachrichten]';
+END $$;
+ROLLBACK;

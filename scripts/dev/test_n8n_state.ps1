@@ -1071,9 +1071,38 @@ function Send-HarnessRequest {
 
 # ===== Agent-runData lesen (n8n_test, multiturn_test, e2e_test, orch_test, mock_route_test) =====
 # Alle Tool-Calls (Read + Write) eines Agent-Nodes als @{ tool; input; inputObj }.
+# Quelle 1: die Werkzeug-Knoten im runData (Ein- oder Ausgang ai_tool, je Aufruf ein Lauf mit startTime), zeitlich sortiert.
+# Der Aktions-Log des Agent-Knotens nennt bei mehreren Aufrufen nacheinander nur den letzten (Selbsttest tool_call_order_test.ps1)
+# und bleibt Rueckfall fuer runData ohne Werkzeug-Laeufe. Ein Lauf, der auf eine HITL-Karte gewartet hat, traegt ein leeres
+# inputOverride -> Eingabe dann aus dem Aktions-Log desselben Werkzeugs.
 function Get-ToolCall([object]$RunData, [string]$AgentNodeName) {
     $out = @()
     if ($null -eq $AgentNodeName -or -not $RunData.PSObject.Properties.Name.Contains($AgentNodeName)) { return $out }
+    $logged = @{}
+    foreach ($run in $RunData.$AgentNodeName) {
+        $actions = $null; try { $actions = $run.metadata.subNodeExecutionData.actions } catch { }
+        foreach ($a in @($actions)) {
+            $nn = $null; try { $nn = $a.action.nodeName } catch { }; if (-not $nn) { try { $nn = $a.nodeName } catch { } }
+            if ($nn -and -not $logged.ContainsKey($nn)) { $logged[$nn] = $a.action.input }
+        }
+    }
+    $runs = @()
+    foreach ($p in $RunData.PSObject.Properties) {
+        foreach ($r in @($p.Value)) {
+            $in = $null; try { $in = $r.inputOverride.ai_tool[0][0].json } catch { }
+            $isTool = $null -ne $in
+            if (-not $isTool) { try { $isTool = $null -ne $r.data.ai_tool } catch { } }
+            if (-not $isTool) { continue }
+            if ($null -eq $in -and $logged.ContainsKey($p.Name)) { $in = $logged[$p.Name] }
+            $runs += [pscustomobject]@{ start = [double]$r.startTime; tool = $p.Name; inputObj = $in }
+        }
+    }
+    if ($runs.Count -gt 0) {
+        foreach ($r in ($runs | Sort-Object start)) {
+            $out += @{ tool = $r.tool; input = ($r.inputObj | ConvertTo-Json -Depth 4 -Compress); inputObj = $r.inputObj }
+        }
+        return $out
+    }
     foreach ($run in $RunData.$AgentNodeName) {
         $actions = $null; try { $actions = $run.metadata.subNodeExecutionData.actions } catch { }
         if (-not $actions) { continue }

@@ -46,18 +46,19 @@ Das Repo ist öffentlich: Stand und private Anlässe gehören nie in diesen Skil
 Diese Anleitung soll mit jedem Sprint besser werden. Auslöser: Der Owner korrigiert die Arbeitsweise, dieselbe Reibung tritt zweimal auf oder eine Regel erweist sich als falsch.
 
 1. **Festhalten:** Jede Reibung, jeder eigene Fehler und jede Owner-Korrektur kommt sofort als Zeile in die Stand-Datei unter `## Verbesserungen`: was passiert ist, die Ursache, ein Vorschlag mit Ziel-Adresse (Skill, Hook, Skript). Leitfragen: Wo stand die Arbeit still? Was musste der Owner zweimal sagen oder selbst bemerken? Was hat Kontingent gekostet, ohne zu helfen?
-2. **Vorlegen:** gebündelt über `/retro-bundle` bzw. am Sprint-Ende, höchstens drei Vorschläge je Runde, einzeln zur Entscheidung; was sich sonst im selben Sprint wiederholen würde, sofort (§2 *Entscheidungen gebündelt*).
+2. **Vorlegen:** gebündelt über `/retro-bundle` bzw. in der Prozess-Session am Sprint-Ende (§4), höchstens drei Vorschläge je Runde, einzeln zur Entscheidung; was sich sonst im selben Sprint wiederholen würde, sofort (§2 *Entscheidungen gebündelt*).
 3. **Richtige Adresse wählen (ein Fakt, eine Adresse):** Alltag der Leitung → hier; Zusammenspiel der Sessions → `/coordinate`; Mechanik und Fallgeschichten → `docs/reference/sessions.md`; Ablauf einer Aufgabenart → deren Skill; gilt für jede Session → Root-`CLAUDE.md`; hartes Verbot → Hook, nur nach ausdrücklicher Owner-Freigabe.
 4. **Umbauen statt anhängen:** Die Regel ersetzt, was ihr widerspricht. Anlass nur nennen, wenn die Regel sonst unverständlich wäre, und dann ohne Privates.
 5. **Sichern:** auf das Ja des Owners committen, unabhängig von laufenden Paketen. Laufende Unter-Sessions bekommen die Regel per `SendMessage`.
 
 ## 4. Sprint-Ende und Übergabe
 
-Ein Sprint endet mit dem Tag und der Archivierung aller Unter-Sessions, Worktrees, Branches und Container; erst dann startet die nächste Leitung.
+Ein Sprint endet mit dem Tag, der Archivierung aller Unter-Sessions, Worktrees, Branches und Container und der Prozess-Session; erst dann startet die nächste Leitung.
 
 1. **Release-Nachschau:** Direkt nach dem Tag eine einmalige geplante Aufgabe anlegen (`mcp__scheduled-tasks__create_scheduled_task`, `fireAt` = Tag-Zeitpunkt + 24 h), die nur lesend wie `/live-findings` Schritte 1–3 die letzten 24 Stunden auf dem Live-System prüft und privat berichtet.
 2. **Aufräumen:** Fertige Unter-Sessions gesammelt zum Archivieren vorschlagen und auf das Ja des Owners archivieren (`archive_session`); dann Worktrees, Branches, Container (`scripts/dev/docker_cleanup.ps1`) und `.\scripts\register_sub_session.ps1 -Clear`. Reihenfolge und Grenzen → `docs/reference/sessions.md` *Sprint-Ende*.
-3. **Übergabe:** Stand-Datei und Memory so aktualisieren, dass eine neue Session ohne dieses Gespräch weitermachen kann; auf neue Session oder `/clear` hinweisen (Root-`CLAUDE.md` *Entwicklungszyklus*). Die nächste Leitung startet der Owner mit dem einen Satz.
+3. **Prozess-Session:** Nach dem Aufräumen ist die Verbesserung der Arbeitsweise dran, nicht erst am Freitag. Die Leitung schlägt dem Owner eine eigene Session vor (`start_session`, „fresh“, eigener Worktree); sie startet auf sein getipptes Wort. Ihr Brief nennt die Verbesserungs-Zeilen des Sprints aus der Stand-Datei, die Feedback-Memorys seit dem letzten Sprint-Ende und die Fragen: Wo stand die Arbeit still? Was musste der Owner selbst bemerken? Was kostete Kontingent ohne Nutzen? Die Session bündelt nach Ursache wie `/retro-bundle`, legt höchstens drei Vorschläge mit Empfehlung und Ziel-Adresse (§3.3) als Karten vor und baut die freigegebenen Vorschläge selbst ein. Danach kommen die erledigten Zeilen aus der Stand-Datei. Merge und Push laufen nach `/coordinate` §3.
+4. **Übergabe:** Stand-Datei und Memory so aktualisieren, dass eine neue Session ohne dieses Gespräch weitermachen kann; auf neue Session oder `/clear` hinweisen (Root-`CLAUDE.md` *Entwicklungszyklus*). Die nächste Leitung startet der Owner mit dem einen Satz.
 
 Routinen daneben: `/retro-bundle` (Freitag, bündelt die Verbesserungs-Zeilen), `/session-hygiene` (Sonntag, idle Sessions, Branches, Worktrees, Docker), `/paid-run` (monatlich, bezahlten Sammel-Lauf vorbereiten).
 

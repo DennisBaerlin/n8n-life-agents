@@ -91,7 +91,8 @@ Reihenfolge nach dem Tag, erst danach startet die nächste Leitung:
 2. Worktrees (`git worktree prune`) und gemergte Branches lokal und auf GitHub entfernen; Branches auf GitHub nur auf Owner-Wort.
 3. Container: `.\scripts\dev\docker_cleanup.ps1` (Liste), dann `-Apply`; `db_test`-Container bleiben nach dem Session-Ende stehen und sind mit dabei.
 4. `.\scripts\register_sub_session.ps1 -Clear`.
-5. Stand-Datei auf das Jetzt kürzen, Memory aktualisieren, Verbesserungs-Zeilen für `/retro-bundle` stehen lassen.
+5. Prozess-Session zur Arbeitsweise vorschlagen (`/leitung` §4); Verbesserungs-Zeilen bleiben stehen, bis sie dort erledigt sind.
+6. Stand-Datei auf das Jetzt kürzen, Memory aktualisieren.
 
 Weitere Routinen übernehmen den Rest: `/retro-bundle` (Freitag) bündelt die Verbesserungs-Zeilen, `/session-hygiene` (Sonntag) räumt idle Sessions, Branches, Worktrees und Docker, `/paid-run` (monatlich) bereitet den bezahlten Sammel-Lauf vor.
 

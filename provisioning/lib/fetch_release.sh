@@ -166,6 +166,10 @@ _ensure_release_deps() {
 fetch_and_run_release() {
   local tag="${1:-latest}"; [ "$#" -gt 0 ] && shift || true
   require_root
+  # Die Sperre vor allem Lesen der VERSION (_refuse_downgrade): ein zweites Update neben einem laufenden sonst sah die alte
+  # Version und liess einen Rueckschritt durch. Der Applier erbt sie (fd 9 + LIFEAGENTS_UPDATE_LOCK_HELD, exec-fest).
+  update_lock_acquire "${LIFEAGENTS_UPDATE_LOCK_WAIT_S:-30}" \
+    || die_because locked "Gerade läuft schon ein Update oder eine Einrichtung (Sperre ${LIFEAGENTS_UPDATE_LOCK}) — danach erneut starten."
   # Ergebnis-Datei (Chat-Runner): bis zum Applier wird nichts am System geaendert.
   result_set changed false
   result_set stage download

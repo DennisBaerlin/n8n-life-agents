@@ -370,19 +370,38 @@ eq K.helfer-ohne-db-kein-abbruch weiter "$(printf '%s' "$out" | tail -n1)"
 
 # Release-Check unter der Update-Sperre: belegt = auslassen (sonst liest er mitten im Update die alte VERSION und schickt eine
 # ueberfluessige Karte), frei oder vom eigenen Lauf gehalten = prueft wie bisher. Die Sperre haelt ein echter flock-Prozess.
+# Sperr-Halter: ein Prozess, der den fd behaelt (kein `flock <cmd>`, das forkt und liess das Kind die Sperre weiter halten).
+_hold() { ( exec 8>>"$1"; flock -n 8 || exit 1; exec sleep 20 ) & }
+_unhold() { kill "$1" 2>/dev/null; wait "$1" 2>/dev/null; }
 _chk_case() ( require_root() { :; }; lifeagents_db_name() { :; }; _ur_installed() { echo v9.0.0; }
               _ur_check_in() { echo "check $2 $3" >> "$W/chk.log"; }; log() { echo "log $*" >> "$W/chk.log"; }
               LIFEAGENTS_UPDATE_LOCK="$W/chk.lock"; update_check "$@" )
 : > "$W/chk.lock"; : > "$W/chk.log"
 ( unset LIFEAGENTS_UPDATE_LOCK_HELD; _chk_case scheduled ) >/dev/null 2>&1
 eq K.check-sperre-frei-prueft "check v9.0.0 true" "$(cat "$W/chk.log")"
-: > "$W/chk.log"; flock -n "$W/chk.lock" sleep 20 & chk_holder=$!; sleep 1
+: > "$W/chk.log"; _hold "$W/chk.lock"; chk_holder=$!; sleep 1
 ( unset LIFEAGENTS_UPDATE_LOCK_HELD; _chk_case scheduled ) >/dev/null 2>&1
 case "$(cat "$W/chk.log")" in "log "*Update-Sperre*) pass K.check-sperre-belegt-ausgelassen ;; *) fail K.check-sperre-belegt-ausgelassen "$(cat "$W/chk.log")" ;; esac
 : > "$W/chk.log"
 ( LIFEAGENTS_UPDATE_LOCK_HELD=1 _chk_case scheduled ) >/dev/null 2>&1
 case "$(cat "$W/chk.log")" in "check "*) pass K.check-eigene-sperre-prueft ;; *) fail K.check-eigene-sperre-prueft "$(cat "$W/chk.log")" ;; esac
-kill "$chk_holder" 2>/dev/null; wait "$chk_holder" 2>/dev/null
+_unhold "$chk_holder"
+
+# `lifeagents update` liest VERSION (Rueckschritt-Schutz) erst unter der Sperre: ein zweites Update waehrend eines laufenden
+# sah sonst die alte VERSION. Belegt = Abbruch "locked" vor jedem Schritt; frei = laeuft los.
+# shellcheck source=/dev/null
+. "$ROOT/provisioning/lib/fetch_release.sh"
+_fetch_case() ( require_root() { :; }; result_set() { :; }; die_because() { echo "die $1" >> "$W/fr.log"; exit 1; }
+                _ensure_release_deps() { echo deps >> "$W/fr.log"; exit 0; }
+                LIFEAGENTS_UPDATE_LOCK="$W/fr.lock"; export LIFEAGENTS_UPDATE_LOCK_WAIT_S=1; fetch_and_run_release v9.1.0 )
+: > "$W/fr.lock"; : > "$W/fr.log"
+_hold "$W/fr.lock"; fr_holder=$!; sleep 1
+( unset LIFEAGENTS_UPDATE_LOCK_HELD; _fetch_case ) >/dev/null 2>&1
+eq K.update-sperre-belegt-bricht-ab "die locked" "$(cat "$W/fr.log")"
+_unhold "$fr_holder"
+: > "$W/fr.log"
+( unset LIFEAGENTS_UPDATE_LOCK_HELD; _fetch_case ) >/dev/null 2>&1
+eq K.update-sperre-frei-laeuft deps "$(cat "$W/fr.log")"
 
 # Umstieg: Ohne die Faellig-fn geht das Ergebnis direkt hinaus, im Leerlauf bleibt es still.
 out="$( _ur_lock_release() { :; }; _ur_sql() { return 1; }; _ur_bot_up() { return 0; }; _ur_report() { echo "report $*"; }; _ur_reports_flush 7 )"

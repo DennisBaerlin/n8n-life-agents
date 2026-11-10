@@ -87,6 +87,12 @@ foreach ($tc in $cases) {
     [long]$chatId = Get-TestChatId -Seed $tc.id
     # EINMAL je Case leeren (numerisch) -> Turns innerhalb des Cases bauen bewusst aufeinander auf.
     Clear-ChatSessionMemory -Container $Container -SessionId "$chatId"
+    # Voraussetzungen wie in den anderen Agent-Tiers (eine Stelle: Invoke-TestCaseSetup); vorher alte __E2E__-Reste weg
+    if ($tc.PSObject.Properties['setup_sql'] -and $tc.setup_sql) {
+        [void](Invoke-TestN8nPsql -Container $Container -PsqlArgs @('-q', '-c', 'SELECT agent.fn_clear_e2e_data();'))
+        try { Invoke-TestCaseSetup -Container $Container -Sql "$($tc.setup_sql)" }
+        catch { Write-Host "    [FAIL] $($_.Exception.Message)" -ForegroundColor Red; $failed++; continue }
+    }
     $ex = $null
     for ($i = 0; $i -lt $tc.turns.Count; $i++) {
         Write-Host "    Turn $($i+1): '$($tc.turns[$i])'"

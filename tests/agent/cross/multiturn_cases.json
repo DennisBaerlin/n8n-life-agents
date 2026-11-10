@@ -34,5 +34,22 @@
     "expected_tool": "tool_import_bank_export",
     "expected_tool_args": { "file_id": "mock_xlsname_book" },
     "notes": "Der Agent urteilt eine neue Datei nie aus dem Verlauf. Turn 1: echtes altes .xls (OLE) -> der Leser lehnt ab, die Ablehnung steht im Chat-Memory. Turn 2: neue Datei -> tool_import_bank_export startet die Ersteinrichtung, danach folgt im selben Turn die Karte tool_create_account (Test lehnt ab); gewertet wird der erste Write-Aufruf (Get-ToolCall liest die Werkzeug-Knoten in zeitlicher Reihenfolge, Selbsttest scripts/dev/tool_call_order_test.ps1). Turn 2: neue Datei (.xls-Name, xlsx-Inhalt, erfundene Bondora-Form) -> tool_import_bank_export MUSS aufgerufen werden, ohne die fruehere Ablehnung zu wiederholen. Judge: keine Bank im Text, die nicht aus einem Tool-Ergebnis stammt (kein Trade Republic); keine Bitte, die Datei als .xlsx/CSV neu zu exportieren. Braucht Mock-Telegram (mock_xlsname_*)."
+  },
+  {
+      "id":  "mt04",
+      "name":  "Drei Kontoauszuege in drei Nachrichten: der Stapel waechst, nur Neues oder Geaendertes geht raus",
+      "chat_id":  "test_mt04",
+      "setup_sql":  "SELECT pg_temp.ok('__E2E__ RZ Birke', finance.fn_create_account(jsonb_build_object('name','__E2E__ RZ Birke','account_type','cash','currency','EUR','account_number','DE02120300000000202051','opening_balance',889.03,'opening_balance_date','2000-06-30'))); DELETE FROM finance.import_staging WHERE origin = 'recurring_suggestion';",
+      "turns":  [
+                    "Hier ist mein Auszug April von der Birkenbank [attachment file_id=mock_photo_136a type=document]",
+                    "Und hier der Mai [attachment file_id=mock_photo_136b type=document]",
+                    "Und der Juni [attachment file_id=mock_photo_136c type=document]"
+                ],
+      "expected_tool":  "tool_reconcile_bank_statement",
+      "expected_tool_args":  {
+                                 "file_id":  "mock_photo_136c"
+                             },
+      "timeout_s":  240,
+      "notes":  "Plan regelmaessige-zahlungen-aus-pdf B3 (bezahlt, nicht gelaufen). Konto bis 30.06.2000 bestaetigt -> jeder Auszug endet in already_covered und ergaenzt den Stapel (fn_import_stage_recurring); jeder Turn ruft danach tool_send_recurring_suggestions. Erwartet: nach Turn 1 zwei Vorschlaege zum Pruefen (Videodienst, Sportverein), Turn 2 und 3 schicken dieselben Vorschlaege mit neuer Fassung (version 2/3, danach sicher), nie neue Zeilen fuer dieselbe Zahlung. Pruefbar nach dem Lauf: SELECT payload->>'name', version, sent_version FROM finance.import_staging WHERE origin = 'recurring_suggestion' (2 Zeilen, version 3). Fixture mock_photo_136a-c (make_doc_fixtures.ps1)."
   }
 ]

@@ -590,8 +590,8 @@
                                    "account_type":  "cash",
                                    "opening_balance":  1142
                                },
-        "expected_behavior":  "Ruft GENAU EINMAL tool_create_account mit account_type=cash, opening_balance=1142 und owner_person=Absender auf (der Absender ist die Fixture-Ownerin Erika; owner_person Erika ist also richtig). Nutzt NICHT den Bulk-Import (tool_import_stage_rows) fuer ein einzelnes Konto und plant keinen zweiten Schritt (kein set_account/reconcile_account danach). Macht die Anlage nicht von IBAN oder Bank-Details abhaengig (ein optionales Angebot, sie nachzutragen, ist in Ordnung).",
-        "notes":  "Eindeutigkeit 2026-10-21: Owner-Onboarding lief fuer genau diesen Fall ueber Import + set_account (zwei Karten). Neuer Kontoname (kein Dub). Judge: ein Tool-Aufruf, Saldo + Inhaber im selben Aufruf."
+        "expected_behavior":  "Ruft GENAU EINMAL tool_create_account mit account_type=cash, opening_balance=1142 und owner_person=Absender auf: owner_person Erika (die Fixture-Ownerin) oder der Selbstbezug ich ist richtig, das Tool loest ich auf den Absender auf; leer (= Haushalt) ist falsch. Nutzt NICHT den Bulk-Import (tool_import_stage_rows) fuer ein einzelnes Konto und plant keinen zweiten Schritt (kein set_account/reconcile_account danach). Macht die Anlage nicht von IBAN oder Bank-Details abhaengig (ein optionales Angebot, sie nachzutragen, ist in Ordnung).",
+        "notes":  "Eindeutigkeit 2026-10-21: Owner-Onboarding lief fuer genau diesen Fall ueber Import + set_account (zwei Karten). Neuer Kontoname (kein Dub). Judge: ein Tool-Aufruf, Saldo + Inhaber im selben Aufruf. Rubric erlaubt ich: Vertrag owner_person wie genannt, core.fn_resolve_person loest den Selbstbezug auf den Absender auf (test_fn_household_facts TEST 12b); der Judge sieht nur die Tool-Eingabe, nicht die Karte."
     },
     {
         "id":  "tc48",

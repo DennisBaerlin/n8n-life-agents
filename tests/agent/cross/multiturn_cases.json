@@ -33,6 +33,6 @@
     ],
     "expected_tool": "tool_import_bank_export",
     "expected_tool_args": { "file_id": "mock_xlsname_book" },
-    "notes": "Der Agent urteilt eine neue Datei nie aus dem Verlauf. Turn 1: echtes altes .xls (OLE) -> der Leser lehnt ab, die Ablehnung steht im Chat-Memory. Turn 2: neue Datei (.xls-Name, xlsx-Inhalt, erfundene Bondora-Form) -> tool_import_bank_export MUSS aufgerufen werden, ohne die fruehere Ablehnung zu wiederholen. Judge: keine Bank im Text, die nicht aus einem Tool-Ergebnis stammt (kein Trade Republic); keine Bitte, die Datei als .xlsx/CSV neu zu exportieren. Braucht Mock-Telegram (mock_xlsname_*)."
+    "notes": "Der Agent urteilt eine neue Datei nie aus dem Verlauf. Turn 1: echtes altes .xls (OLE) -> der Leser lehnt ab, die Ablehnung steht im Chat-Memory. Turn 2: neue Datei -> tool_import_bank_export startet die Ersteinrichtung, danach folgt im selben Turn die Karte tool_create_account (Test lehnt ab); gewertet wird der erste Write-Aufruf (Get-ToolCall liest die Werkzeug-Knoten in zeitlicher Reihenfolge, Selbsttest scripts/dev/tool_call_order_test.ps1). Turn 2: neue Datei (.xls-Name, xlsx-Inhalt, erfundene Bondora-Form) -> tool_import_bank_export MUSS aufgerufen werden, ohne die fruehere Ablehnung zu wiederholen. Judge: keine Bank im Text, die nicht aus einem Tool-Ergebnis stammt (kein Trade Republic); keine Bitte, die Datei als .xlsx/CSV neu zu exportieren. Braucht Mock-Telegram (mock_xlsname_*)."
   }
 ]

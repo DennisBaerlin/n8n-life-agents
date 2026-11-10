@@ -34,6 +34,18 @@ BEGIN
         WHERE p->>'interest_source' IN ('web','export','none') AND p ? 'is_broker' AND p ? 'default_account_type') <> jsonb_array_length(finance.fn_bank_export_profiles())
        THEN RAISE EXCEPTION 'FAIL [P1 Profilfelder]'; END IF;
 
+    -- zweite Datei im selben Chat bei offener Einrichtung (Karte abgelehnt, nichts bestaetigt): derselbe Lauf mit der
+    -- neuen Datei, Karte aus deren Werten; die DB entscheidet das, nicht das Modell
+    v_r := finance.fn_setup_begin(jsonb_build_object('chat_id', 'pb0', 'file_id', 'f0a', 'table', v_tbl));
+    IF v_r->>'phase' <> 'cash_account' THEN RAISE EXCEPTION 'FAIL [D1 erste Datei]: %', v_r; END IF;
+    v_r := finance.fn_setup_begin(jsonb_build_object('chat_id', 'pb0', 'file_id', 'f0b', 'table',
+        jsonb_build_object('rows', (v_tbl->'rows') || jsonb_build_array(jsonb_build_array()))));
+    IF (v_r->>'setup')::boolean IS DISTINCT FROM true OR v_r->>'phase' <> 'cash_account'
+       OR (v_r->'card'->'params'->>'opening_balance')::numeric <> 100 THEN RAISE EXCEPTION 'FAIL [D2 neue Datei]: %', v_r; END IF;
+    IF (SELECT count(*) FROM finance.setup_session WHERE chat_id = 'pb0') <> 1
+       OR (SELECT file_id FROM finance.setup_session WHERE chat_id = 'pb0') <> 'f0b' THEN RAISE EXCEPTION 'FAIL [D3 ein Lauf, neue file_id]'; END IF;
+    DELETE FROM finance.setup_session WHERE chat_id = 'pb0';
+
     -- ohne Konto: Anker aus der Datei, keine Frage nach dem Stand, keine Websuche
     v_r := finance.fn_setup_begin(jsonb_build_object('chat_id', 'pb1', 'file_id', 'f1', 'table', v_tbl));
     IF v_r->>'phase' <> 'cash_account' OR v_r ? 'ask' OR v_r->>'interest_source' <> 'export'

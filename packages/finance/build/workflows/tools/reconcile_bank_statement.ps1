@@ -108,14 +108,14 @@ return [{ json: { ok: true, account_number: txt(s.account_number), account_holde
     }
     # Dauerauftrags-Erkennung (nichts gebucht): auf einem bestaetigten Monat und nach der Einrichtung (collect_recurring)
     $recParams = [ordered]@{
-        chat_id      = "String($('Start').item.json.chat_id || '')"
+        chat_id      = "String(`$('Start').item.json.chat_id || '')"
         period_start = "$S.period_start"
         period_end   = "$S.period_end"
         lines        = "$S.lines"
     }
     $chain = New-StatementGateChain -X 1980 -StmtParams $stmtParams -Title 'finance.hitl.reconcile_bank_statement' `
         -CancelAction 'the monthly statement import (nothing was booked)' -RecurringParams $recParams `
-        -CollectExpr "String($('Start').item.json.collect_recurring || '').toLowerCase() === 'true'"
+        -CollectExpr "String(`$('Start').item.json.collect_recurring || '').toLowerCase() === 'true'"
 
     $sticky = Build-Sticky 'Überblick' @(220, -460) `
         'Monats-Check: Kontoauszug -> eine Karte -> Buchung (Einzelumsätze werden nicht gespeichert)' `

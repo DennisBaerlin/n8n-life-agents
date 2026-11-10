@@ -213,6 +213,11 @@ foreach ($tc in $cases) {
                 Set-TestPackageOnboarding -Container $Container -Sections $tc.package_onboarding
                 $pkgOnbDirty = [bool]$tc.package_onboarding
             }
+            # Voraussetzungen wie im bezahlten Tier (eine Stelle: Invoke-TestCaseSetup); vorher alte __E2E__-Reste weg
+            if ($tc.setup_sql) {
+                [void](Invoke-TestN8nPsql -Container $Container -PsqlArgs @('-q', '-c', 'SELECT agent.fn_clear_e2e_data();'))
+                Invoke-TestCaseSetup -Container $Container -Sql "$($tc.setup_sql)"
+            }
         }
         catch { Write-Host "    [FAIL] $($_.Exception.Message)" -ForegroundColor Red; $failed++; continue }
         Clear-MockRequestLogs -Container $Container

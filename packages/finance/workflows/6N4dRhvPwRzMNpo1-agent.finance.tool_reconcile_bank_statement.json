@@ -976,7 +976,7 @@
                                          "operation":  "executeQuery",
                                          "query":  "=SELECT finance.fn_import_stage_recurring($1::jsonb) AS r;",
                                          "options":  {
-                                                         "queryReplacement":  "={{ JSON.stringify({ mode: \u0027statement\u0027, account_id: $(\u0027Prepare statement\u0027).item.json.r.account_id, balance_verified: $(\u0027Prepare statement\u0027).item.json.r.balance_verified === true, chat_id: String(Start.item.json.chat_id || \u0027\u0027), period_start: $(\u0027Shape statement\u0027).item.json.period_start, period_end: $(\u0027Shape statement\u0027).item.json.period_end, lines: $(\u0027Shape statement\u0027).item.json.lines }) }}"
+                                                         "queryReplacement":  "={{ JSON.stringify({ mode: \u0027statement\u0027, account_id: $(\u0027Prepare statement\u0027).item.json.r.account_id, balance_verified: $(\u0027Prepare statement\u0027).item.json.r.balance_verified === true, chat_id: String($(\u0027Start\u0027).item.json.chat_id || \u0027\u0027), period_start: $(\u0027Shape statement\u0027).item.json.period_start, period_end: $(\u0027Shape statement\u0027).item.json.period_end, lines: $(\u0027Shape statement\u0027).item.json.lines }) }}"
                                                      }
                                      },
                       "type":  "n8n-nodes-base.postgres",
@@ -1144,7 +1144,7 @@
                                                             "conditions":  [
                                                                                {
                                                                                    "id":  "a4c828e2-0882-5632-a430-568d0f7fd2b8",
-                                                                                   "leftValue":  "={{ String(Start.item.json.collect_recurring || \u0027\u0027).toLowerCase() === \u0027true\u0027 }}",
+                                                                                   "leftValue":  "={{ String($(\u0027Start\u0027).item.json.collect_recurring || \u0027\u0027).toLowerCase() === \u0027true\u0027 }}",
                                                                                    "rightValue":  true,
                                                                                    "operator":  {
                                                                                                     "type":  "boolean",
@@ -1172,7 +1172,7 @@
                                          "operation":  "executeQuery",
                                          "query":  "=SELECT finance.fn_import_stage_recurring($1::jsonb) AS r;",
                                          "options":  {
-                                                         "queryReplacement":  "={{ JSON.stringify({ mode: \u0027statement\u0027, account_id: $(\u0027Prepare statement\u0027).item.json.r.account_id, balance_verified: true, chat_id: String(Start.item.json.chat_id || \u0027\u0027), period_start: $(\u0027Shape statement\u0027).item.json.period_start, period_end: $(\u0027Shape statement\u0027).item.json.period_end, lines: $(\u0027Shape statement\u0027).item.json.lines }) }}"
+                                                         "queryReplacement":  "={{ JSON.stringify({ mode: \u0027statement\u0027, account_id: $(\u0027Prepare statement\u0027).item.json.r.account_id, balance_verified: true, chat_id: String($(\u0027Start\u0027).item.json.chat_id || \u0027\u0027), period_start: $(\u0027Shape statement\u0027).item.json.period_start, period_end: $(\u0027Shape statement\u0027).item.json.period_end, lines: $(\u0027Shape statement\u0027).item.json.lines }) }}"
                                                      }
                                      },
                       "type":  "n8n-nodes-base.postgres",

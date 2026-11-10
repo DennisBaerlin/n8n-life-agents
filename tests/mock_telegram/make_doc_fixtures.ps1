@@ -18,7 +18,7 @@
 #                       erreichter Anspruch, Hochrechnung, 1-%/2-%-Szenario, EM-Rente, Entgeltpunkte, Regelaltersrente.
 #   mock_photo_132.pdf  Kontoauszug Erlenbank Maerz 2000, Layout 1 (tc132-tc135) = Szenario "Kontoauszug Maerz Mock-Erlenbank":
 #                       Gehalt, Miete, ein Kartenkauf; Saldo-Probe 500 + 2400 - 850 - 37,40 = 2012,60 (Startbetrag des E2E-Kontos).
-#   mock_stmt_136a/b/c.pdf  Kontoauszuege Birkenbank April-Juni 2000, Layout 2 mit S/H-Spalte (tc136) = Szenario
+#   mock_photo_136a/b/c.pdf  Kontoauszuege Birkenbank April-Juni 2000, Layout 2 mit S/H-Spalte (tc136) = Szenario
 #                       "Auszuege April bis Juni Mock-Birkenbank": Streaming-Abo und Vereins-Lastschrift je Monat; Saldenkette
 #                       1000 -> 963,01 -> 926,02 -> 889,03.
 #   mock_photo_084.xlsx Bondora-Go&Grow-Kontoauszug (tc84, Werte erfunden) = Szenario "Bondora-Export": fester Leser
@@ -110,7 +110,7 @@ Write-TextPdf 'mock_photo_132.pdf' @(
     @(50, 520,  9, 'Testdokument fuer automatisierte Tests. Alle Werte sind erfunden.')
 )
 foreach ($m in @(@('a', '04', '30', '1.000,00', '963,01'), @('b', '05', '31', '963,01', '926,02'), @('c', '06', '30', '926,02', '889,03'))) {
-    Write-TextPdf "mock_stmt_136$($m[0]).pdf" @(
+    Write-TextPdf "mock_photo_136$($m[0]).pdf" @(
         @(50, 790, 16, 'Birkenbank AG  -  Kontoauszug'),
         @(50, 768, 11, "Konto DE02 1203 0000 0000 2020 51  |  Zeitraum 01.$($m[1]).2000 - $($m[2]).$($m[1]).2000"),
         @(50, 744, 11, "Saldo alt                                                     $($m[3]) H"),

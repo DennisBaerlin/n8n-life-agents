@@ -7,7 +7,7 @@
 > bleibt die jeweilige SQL-Datei. Nach jeder fn-Aenderung neu generieren + committen;
 > Drift ist hartes Gate (prek-Hook `fn-catalog` -> `gen_fn_catalog.ps1 -Verify`).
 
-Umfang: 549 fn-Dateien.
+Umfang: 553 fn-Dateien.
 
 ## finance.fn_account_emoji_page
 - `finance.fn_account_emoji_page(p_account_id int, p_page int, p_lang text) -> jsonb`
@@ -1857,6 +1857,16 @@ Umfang: 549 fn-Dateien.
 - jsonb-Keys: --
 - Liefert (recurring_payment_id, due_date) fuer alle Vorkommen mit p_from <= due_date <= p_until, die NOCH OFFEN sind = NICHT gebucht (kein Tx mit recurring_payment_id + recurring_due_date = due_date — Monats-Check WP-A: Identitaet ist die Faelligkeit, nicht das Buchungsdatum; eine Abbuchung am Ist-Datum schliesst das Vorkommen) UND NICHT uebersprungen (kein Skip). Zwei Signaturen: (p_from, p_until) = expliziter Zeitraum (Kontoauszug-Zeitraum, Deckungs-Vorschau; ein Quartal sprengt die 90 Tage); (p_until) = Scheduler-Sicht mit 90-Tage-Rueckfenster, delegiert an die 2-arg-Form. KEINE DEFAULT-Argumente ergaenzen: (date) und (date, date DEFAULT ...) machten jeden 1-arg-Aufruf mehrdeutig. Das Raster (first_payment_date/interval/unit/day_of_month bzw. feste Monatstage) rechnet die EINE reine fn finance.fn_schedule_occurrences (Init, WP2) -- dieselbe nutzt die Restschuld-Vorschau fn_loan_balance_at. GUELTIGKEIT halboffen [valid_from, valid_to) wie alle Views/close_*/Split (Audit F2a): ein Vorkommen AM valid_to ist nicht mehr faellig (vorher inklusiv -> am Split-Stichtag alte UND neue Rate faellig); Vorkommen VOR valid_from sind nicht faellig (first_payment_date bleibt reiner Rhythmus-Anker -> Split und Eroeffnungssaldo-Stichtag blenden bereits erledigte Alt-Raten aus, ohne den Takt zu verschieben).
 
+## finance.fn_recurring_kind_policy (IMMUTABLE) -- Regel je Kategorie, die das Lese-Modell einer Auszugszeile gibt (recurring_kind)
+- `finance.fn_recurring_kind_policy(p_kind text) -> jsonb`
+- jsonb-Keys: --
+- Die eine Adresse, welche Kategorien als Dauerauftrag vorgeschlagen werden (statt einer Wortliste je Bank): card_purchase, cash, fee_interest nie; insurance und loan nicht als Vorschlag, sondern als Hinweis auf ihren Bereich (ein Vierteljahres-Beitrag als freie Zahlung zaehlte sonst falsch); other nur ab 2 Terminen und nie "bitte pruefen" ohne gemessenen Rhythmus; own_transfer wird ein Uebertrag. Unbekannt oder leer = other. RUECKGABE: {kind (kanonisch), proposable, confirm_ok, min_lines, transfer, hint_area (nur insurance|loan)}.
+
+## finance.fn_recurring_known (READ, STABLE) -- ist eine erkannte Reihe schon ein Dauerauftrag? Die eine Adresse des Bekannt-Filters
+- `finance.fn_recurring_known(p jsonb) -> jsonb`
+- jsonb-Keys: account_id, amount, dom, iban, interval, mandate, name, other_account_id, shared, sign, tol, unit
+- fuer Bank-Export (fn_get_recurring_candidates mode export) und Kontoauszug (mode statement) sowie fuer den Knopf-Tipp. Kandidaten = jede laufende Zeile (Praedikat von finance.active_recurring_payments) oder eine erst kuenftig startende (sonst kaeme ein eben angelegter Vorschlag gleich wieder), auch Versicherung/Kredit/Sparziel/Vorsorge. Auf diesem Konto (Quelle oder Ziel, gleiches Vorzeichen): (a) IBAN-Schluessel der Kette + Betrag 50-150 % (geteilte IBAN eines Zahlungsdienstes: +-7,5 %), (b) Transfer mit demselben Gegenkonto + Betrag 50-150 %, (c) exakter Betrag im gleichen Rhythmus am gleichen Tag (+-tol, Kreis-Kalender) ohne fremden IBAN-Schluessel, (d) Namens-Wort (>= 4 Zeichen, Trennzeichen wie fn_statement_match Stufe B) im Namen + Betrag +-7,5 %, (e) Mandat (Glaeubiger-ID|Mandatsreferenz) als sepa_mandate-Schluessel einer Kette (global eindeutig, jedes Konto). Bewusst nicht fn_name_matches: der vergleicht ganze Namen ("NETFLIX INTERNATIONAL B.V." gegen "Netflix"). (a)/(d) auf einem anderen Konto -> elsewhere = dessen Kontoname. Eingabe p: {account_id*, sign* (1|-1), amount* (positiv), iban, shared (bool), other_account_id, unit, interval, dom, tol (def 3), name, mandate}. RUECKGABE: {known:bool, elsewhere?:text}.
+
 ## finance.fn_recurring_last_due (READ HELPER, 2026-11-01 "Umschichtung mit Enddatum")
 - `finance.fn_recurring_last_due(p_rp_id int) -> date`
 - jsonb-Keys: --
@@ -1881,6 +1891,11 @@ Umfang: 549 fn-Dateien.
 - `finance.fn_recurring_owner(p_rp_id int) -> text`
 - jsonb-Keys: --
 - Die EINE Abfrage, ob eine recurring_payments-Zeile einer Entitaet gehoert: 'insurance' | 'loan' | 'pension' | 'savings_goal' | 'savings_plan' | NULL (freistehend). Konsumenten: fn_delete_recurring_payment (Entitaets-Zahlung nur ueber das Tool der Entitaet aenderbar), fn_set_recurring_payment (dito) + fn_recurring_name_check (Namenssperre nur fuer freistehende). Besitzer zeigen auf den KOPF der Vorgaenger-Kette -> jedes Glied wird ueber den Kopf erkannt (WP2: ein noch laufendes Vorgaenger-Glied einer Kredit-/Versicherungs-Kette galt sonst als freistehend).
+
+## finance.fn_recurring_plausible_day (IMMUTABLE) -- Monatstag eines Dauerauftrags, von dem nur EIN Termin gesehen wurde
+- `finance.fn_recurring_plausible_day(p_date date) -> int`
+- jsonb-Keys: --
+- Tag 29-31 -> -1 (Regel "der 30. = Monatsletzter"); bis zum Monatsende nur Wochenende (auch: Termin = Monatsletzter) -> -1; seit Monatsbeginn nur Wochenende -> 1 (Buchung am Montag nach einem 1. am Wochenende); sonst der gebuchte Tag. Feiertage zaehlen nicht (Fenster des Monats-Checks -5/+10 faengt sie). Ab zwei Terminen misst fn_get_recurring_candidates den Tag selbst. RUECKGABE: int in 1..28 | -1.
 
 ## finance.fn_recurring_valid_from (STABLE, read-only) — ab wann eine NEU angelegte wiederkehrende Zahlung zaehlt
 - `finance.fn_recurring_valid_from(p_account_id int, p_from date) -> date`
@@ -2546,6 +2561,11 @@ Umfang: 549 fn-Dateien.
 - `finance.fn_statement_diff_candidates(p_account int, p_targets jsonb, p_from date, p_to date, p_exclude int[] DEFAULT '{}') -> jsonb`
 - jsonb-Keys: amount, for
 - Befund KW 45: eine Abweichung entsprach auf den Cent einer vorhandenen Buchung, der Bot gab die Pruefung trotzdem an den Nutzer zurueck. Liefert die Kandidaten als Daten; ein Storno o. Ae. laeuft weiter ueber das jeweilige Tool mit Karte. Eingabe: p_account, p_targets = [{for, amount}] (Ziele mit Betrag 0 entfallen, gleicher Betrag nur beim ersten Ziel), p_from/p_to = Zeitraum des Auszugs, p_exclude = Buchungen, die der Auszug schon belegt. Gleiches Konto: |amount| = |Ziel|, Datum bis p_to+5. Andere eigene Konten: umgekehrtes Vorzeichen, Datum im Zeitraum +-5 Tage. Je Ziel hoechstens 3, gleiches Konto zuerst, juengste zuerst. RUECKGABE: [{for, transaction_id, date, amount, category, description, account_name, same_account}] (nie NULL).
+
+## finance.fn_statement_lines_merge (IMMUTABLE) -- Auszugszeilen fuer die Dauerauftrags-Erkennung bereinigen
+- `finance.fn_statement_lines_merge(p_lines jsonb) -> jsonb`
+- jsonb-Keys: amount, counterparty, counterparty_iban, date, i, l, mandate_ref, purpose
+- (1) Doppelte (gleiches Datum, Betrag, Gegenpart, IBAN, Mandat UND Verwendungszweck, z. B. zwei sich ueberlappende Auszuege) zaehlen einmal; zwei echte Zahlungen am selben Tag unterscheiden sich im Zweck und bleiben (die Kandidaten-fn summiert sie zu einem Termin). (2) Storno/Ruecklastschrift: entgegengesetzter Betrag, gleicher Gegenpart (ohne Gross-/Kleinschreibung, nicht leer), hoechstens 14 Tage auseinander -> beide Zeilen raus, jede Zeile hoechstens in einem Paar (fruehestes Gegenstueck zuerst). Nur fuer die Erkennung; der Monats-Check sieht alle Zeilen. Eingabe: jsonb-Array der Zeilen (date, amount, counterparty, counterparty_iban, mandate_ref, purpose, ...). RUECKGABE: jsonb-Array (Reihenfolge nach Datum).
 
 ## finance.fn_statement_match (READ, STABLE) -- Zuordnung der Kontoauszug-Zeilen zu erwarteten Zahlungen (Monats-Check WP-C)
 - `finance.fn_statement_match(p_account_id int, p_cut date, p_period_end date, p_lines jsonb) -> jsonb`

@@ -1977,5 +1977,26 @@ BEGIN
   RAISE NOTICE 'PASS Konto-Zeichen unter finance_ro/finance_rw';
 END $$;
 
+-- Dauerauftrags-Vorschlaege: tool_reconcile_bank_statement / tool_import_recurring_suggestions stagen unter finance_rw
+-- (Kandidaten, Bekannt-Filter, Name- und Haushalts-Pruefung, Sweep) ohne permission denied. Versand und Knopf laufen wie
+-- tool_send_bank_todos / fn_handle_bank_todo_cb unter dem Haupt-Credential (lesen agent.fn_resolve_sender).
+DO $$
+DECLARE v_id int; v_r jsonb;
+BEGIN
+  v_id := (finance.fn_create_account(jsonb_build_object('name', '__rp_rsug__', 'account_type', 'cash', 'currency', 'EUR',
+             'opening_balance', 0, 'opening_balance_date', (CURRENT_DATE - 120)::text))->>'account_id')::int;
+  SET LOCAL ROLE finance_rw;
+  v_r := finance.fn_import_stage_recurring(jsonb_build_object('chat_id', '424242', 'mode', 'statement', 'account_id', v_id,
+           'balance_verified', true, 'period_start', CURRENT_DATE - 95, 'period_end', CURRENT_DATE - 5,
+           'lines', (SELECT jsonb_agg(jsonb_build_object('date', CURRENT_DATE - 10 - 30 * g, 'amount', 1500, 'counterparty', 'Arbeitgeber Rolle',
+                        'counterparty_iban', 'DE02120300000000202051', 'recurring_kind', 'salary', 'series', 'Gehalt', 'rhythm_hint', 'monthly'))
+                     FROM generate_series(0, 2) g)));
+  RESET ROLE;
+  IF (v_r->>'ok')::boolean IS DISTINCT FROM true OR (v_r->>'staged')::int <> 1 THEN
+    RAISE EXCEPTION 'FAIL [finance_rw -> fn_import_stage_recurring]: %', v_r;
+  END IF;
+  RAISE NOTICE 'PASS finance_rw -> fn_import_stage_recurring';
+END $$;
+
 
 ROLLBACK;

@@ -56,8 +56,7 @@ CREATE TABLE IF NOT EXISTS finance.import_staging (
     row_no           int  NOT NULL,
     entity_type      text NOT NULL,
     payload          jsonb NOT NULL DEFAULT '{}'::jsonb,
-    status           text NOT NULL DEFAULT 'staged'
-                         CHECK (status IN ('staged','valid','invalid','committed')),
+    status           text NOT NULL DEFAULT 'staged',   -- CHECK benannt unten (finance_import_staging_status_chk)
     validation_error text,
     source           text NOT NULL DEFAULT 'chat' CHECK (source IN ('chat','vision','csv')),
     created_at       timestamptz NOT NULL DEFAULT now(),
@@ -71,8 +70,38 @@ ALTER TABLE finance.import_staging DROP CONSTRAINT IF EXISTS finance_import_stag
 ALTER TABLE finance.import_staging DROP CONSTRAINT IF EXISTS finance_import_staging_entity_type_chk;
 ALTER TABLE finance.import_staging ADD CONSTRAINT finance_import_staging_entity_type_chk
     CHECK (entity_type IN
-        ('account','stock_buy','insurance','pension','recurring_payment',
+        ('account','stock_buy','insurance','pension','recurring_payment','recurring_transfer',
          'real_estate','savings_goal','loan','pension_statement'));
+
+-- Dauerauftrags-Vorschlaege aus Kontoauszug/Bank-Export (fn_import_stage_recurring): ein offener Stapel je Chat,
+-- je Vorschlag eine Knopf-Nachricht (fn_get_recurring_suggestion_queue -> fn_handle_recurring_suggestion_cb). Die Regel
+-- "ein offener Stapel je Chat" setzt die Stage-fn durch (ein Stapel hat viele Zeilen, ein Index ginge nicht; Race bei
+-- Single-User hingenommen).
+ALTER TABLE finance.import_staging ADD COLUMN IF NOT EXISTS origin text;
+ALTER TABLE finance.import_staging ADD COLUMN IF NOT EXISTS chat_id text;
+ALTER TABLE finance.import_staging ADD COLUMN IF NOT EXISTS version int NOT NULL DEFAULT 1;
+ALTER TABLE finance.import_staging ADD COLUMN IF NOT EXISTS sent_version int;
+ALTER TABLE finance.import_staging ADD COLUMN IF NOT EXISTS merged_at timestamptz;
+-- Kein FK: finance.import_init.sql laeuft vor finance.tables_init.sql (alphabetisch), recurring_payments fehlt dann noch.
+ALTER TABLE finance.import_staging ADD COLUMN IF NOT EXISTS recurring_payment_id int;
+ALTER TABLE finance.import_staging DROP CONSTRAINT IF EXISTS finance_import_staging_origin_chk;
+ALTER TABLE finance.import_staging ADD CONSTRAINT finance_import_staging_origin_chk
+    CHECK (origin IS NULL OR (origin = 'recurring_suggestion' AND chat_id IS NOT NULL));
+COMMENT ON COLUMN finance.import_staging.version IS
+    'Provenienz (Ausnahme c): Fassung einer Vorschlagszeile, zaehlt jedes Ergaenzen mit neuen Terminen hoch (Knopf-Daten tragen sie; alte Knoepfe melden ueberholt).';
+COMMENT ON COLUMN finance.import_staging.sent_version IS
+    'Provenienz (Ausnahme c): welche Fassung zuletzt als Knopf-Nachricht ging (fn_record_recurring_suggestions_sent); NULL = nie.';
+COMMENT ON COLUMN finance.import_staging.merged_at IS
+    'Provenienz (Ausnahme c): letztes Ergaenzen durch fn_import_stage_recurring; Frist des Aufraeumens (fn_import_sweep, 7 Tage). Nicht updated_at: das verschiebt der Touch-Trigger bei jedem Stempeln.';
+COMMENT ON COLUMN finance.import_staging.recurring_payment_id IS
+    'Provenienz (Ausnahme c): der per Knopf angelegte Dauerauftrag einer uebernommenen Vorschlagszeile (bis zum Aufraeumen).';
+
+-- Status-CHECK benannt (stand inline ohne Namen; der Auto-Name haengt am Tabellennamen der Erstanlage)
+ALTER TABLE finance.import_staging DROP CONSTRAINT IF EXISTS finance_import_staging_status_check;
+ALTER TABLE finance.import_staging DROP CONSTRAINT IF EXISTS import_staging_status_check;
+ALTER TABLE finance.import_staging DROP CONSTRAINT IF EXISTS finance_import_staging_status_chk;
+ALTER TABLE finance.import_staging ADD CONSTRAINT finance_import_staging_status_chk
+    CHECK (status IN ('staged','valid','invalid','committed','declined'));
 
 -- Kein separater (batch_id, row_no)-Index: die UNIQUE (batch_id, row_no) oben legt bereits
 -- einen deckenden Index an (redundant entfernt -> packages/finance/db/migrations/V004__drop_redundant_import_staging_index.sql).

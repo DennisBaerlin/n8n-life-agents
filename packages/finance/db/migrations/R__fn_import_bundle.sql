@@ -84,6 +84,11 @@ BEGIN
     IF v_total = 0 THEN
         RETURN jsonb_build_object('ok', false, 'reason', 'batch not found or empty');
     END IF;
+    -- Dauerauftrags-Vorschlaege bestaetigt nur der Knopf je Vorschlag (fn_handle_recurring_suggestion_cb), nie eine Sammel-Karte
+    IF EXISTS (SELECT 1 FROM finance.import_staging WHERE batch_id = v_batch AND origin IS NOT NULL) THEN
+        RETURN jsonb_build_object('ok', false, 'reason',
+            'This batch holds recurring-payment suggestions - they are confirmed one by one with the buttons under each suggestion message (tool_send_recurring_suggestions), not with tool_commit_import.');
+    END IF;
     IF v_committed > 0 THEN
         RETURN jsonb_build_object('ok', false, 'reason', 'this batch is already committed');
     END IF;

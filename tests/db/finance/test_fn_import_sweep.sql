@@ -54,3 +54,30 @@ BEGIN
     RAISE NOTICE 'PASS [p_days]: Schwelle folgt dem Parameter, committed bleibt immer';
 END $$;
 ROLLBACK;
+
+-- ---------- Vorschlags-Stapel: Frist 7 Tage nach dem letzten Ergaenzen (merged_at), ganzer Stapel ----------
+BEGIN;
+DO $$
+DECLARE
+    v_old UUID := gen_random_uuid();
+    v_new UUID := gen_random_uuid();
+BEGIN
+    DELETE FROM finance.import_staging;
+    INSERT INTO finance.import_staging (batch_id, row_no, entity_type, status, origin, chat_id, merged_at, created_at) VALUES
+        (v_old, 1, 'recurring_payment', 'staged',    'recurring_suggestion', '1', now() - interval '8 days', now() - interval '20 days'),
+        (v_old, 2, 'recurring_payment', 'declined',  'recurring_suggestion', '1', now() - interval '9 days', now() - interval '20 days'),
+        (v_old, 3, 'recurring_payment', 'committed', 'recurring_suggestion', '1', now() - interval '10 days', now() - interval '20 days'),
+        -- juengst ergaenzt vor 2 Tagen: der ganze Stapel bleibt, auch die alte abgelehnte Zeile
+        (v_new, 1, 'recurring_payment', 'staged',    'recurring_suggestion', '2', now() - interval '2 days', now() - interval '20 days'),
+        (v_new, 2, 'recurring_payment', 'declined',  'recurring_suggestion', '2', now() - interval '12 days', now() - interval '20 days');
+    -- Stempeln/Ablehnen setzt updated_at (Touch-Trigger), verschiebt die Frist aber nicht
+    UPDATE finance.import_staging SET sent_version = 1 WHERE batch_id = v_old;
+    IF finance.fn_import_sweep() <> 3 THEN
+        RAISE EXCEPTION 'FAIL [Vorschlags-Stapel 7 Tage nach merged_at]: %', (SELECT jsonb_agg(s) FROM finance.import_staging s);
+    END IF;
+    IF (SELECT count(*) FROM finance.import_staging WHERE batch_id = v_new) <> 2 THEN
+        RAISE EXCEPTION 'FAIL [frisch ergaenzter Stapel bleibt ganz]';
+    END IF;
+    RAISE NOTICE 'PASS [Vorschlags-Stapel: Frist nach max(merged_at), Stempeln verschiebt nicht]';
+END $$;
+ROLLBACK;

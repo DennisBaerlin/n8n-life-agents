@@ -10,7 +10,8 @@
 --   Speicher-Konvention [valid_from, valid_to) exklusiv), notes (opt), counterparty_iban (opt; "Import zuerst": die
 --   Gegen-IBAN aus fn_get_recurring_suggestions -> recurring_payment_keys counterparty_iban, source user, damit der
 --   Monats-Check die Zahlung per Schluessel trifft (Stufe A, auch bei schwankendem Betrag); Kartenzeile
---   finance.note.recurring_iban_key; keine echte IBAN (fn_iban_strict) -> {ok:false} ohne Write).
+--   finance.note.recurring_iban_key; keine echte IBAN (fn_iban_strict) -> {ok:false} ohne Write). creditor_id + mandate_ref (opt,
+--   beide gedruckt, aus einem Kontoauszugs-Vorschlag) -> Schluessel sepa_mandate (Stufe A), schon vergeben -> still nicht.
 --   valid_from der Zahlung = fn_recurring_valid_from (fruehestens der Eroeffnungssaldo-Stichtag des Kontos).
 --   RUECKGABE: Erfolg -> {ok:true, recurring_payment_id, monthly_equivalent, card_lines} + optional cashflow_coverage
 --   + optional savings_funding (fn_savings_funding_fold, Bericht ohne Frage: Spar-Deckung des Kontos nach dem Write,
@@ -42,6 +43,10 @@ DECLARE
     v_dates    JSONB;
     v_fold     JSONB;
     v_iban     TEXT     := finance.fn_normalize_account_number(p->>'counterparty_iban');
+    -- Glaeubiger-ID|Mandatsreferenz wie fn_statement_match (Grossschrift, ohne Leerraum)
+    v_mand     TEXT     := CASE WHEN NULLIF(btrim(p->>'creditor_id'), '') IS NOT NULL AND NULLIF(btrim(p->>'mandate_ref'), '') IS NOT NULL
+                                THEN upper(regexp_replace(p->>'creditor_id', '\s', '', 'g')) || '|'
+                                     || upper(regexp_replace(p->>'mandate_ref', '\s', '', 'g')) END;
     v_card     JSONB;
 BEGIN
     -- Vereinbarte Plan-Aufgabe (Uebergabe Berater -> Buchhalter): pruefen, schreiben, abschliessen in einer Transaktion
@@ -97,6 +102,11 @@ BEGIN
         VALUES (v_rp_id, 'counterparty_iban', v_iban, 'user');
         v_card := v_card || jsonb_build_array(jsonb_build_object('kind', 'note', 'value', 'finance.note.recurring_iban_key',
                       'params', jsonb_build_object('iban', v_iban)));
+    END IF;
+    -- Mandat global eindeutig (Partial-UNIQUE): gehoert es schon einer anderen Kette, lernt diese Zahlung es nicht
+    IF v_mand IS NOT NULL THEN
+        INSERT INTO finance.recurring_payment_keys (recurring_payment_id, key_type, key_value, source)
+        VALUES (v_rp_id, 'sepa_mandate', v_mand, 'user') ON CONFLICT DO NOTHING;
     END IF;
 
     -- Phase L WS-3: Cashflow-Sofort-Hinweis (Event-Fold). Post-State NACH dem INSERT: die soeben angelegte Zahlung

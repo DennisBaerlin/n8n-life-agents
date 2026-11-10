@@ -213,3 +213,36 @@ BEGIN
 END $$;
 
 ROLLBACK;
+
+-- ---------- Mandat aus einem Kontoauszugs-Vorschlag -> sepa_mandate-Schluessel ----------
+BEGIN;
+DO $$
+DECLARE v_acct INT; v_r JSONB; v_r2 JSONB;
+BEGIN
+    v_acct := (finance.fn_create_account(jsonb_build_object('name', '__t_crp_mand__', 'account_type', 'cash', 'currency', 'EUR',
+                 'opening_balance', 0, 'opening_balance_date', (core.fn_today() - 30)::text))->>'account_id')::int;
+    v_r := finance.fn_create_recurring_payment(jsonb_build_object('name', 'Strom Mandat', 'account_id', v_acct, 'direction', 'expense',
+               'amount', 80, 'schedule_unit', 'month', 'schedule_day_of_month', 15, 'first_payment_date', (core.fn_today() + 5)::text,
+               'creditor_id', 'de98 zzz0 9999 9999 99', 'mandate_ref', 'm-47 11'));
+    IF NOT EXISTS (SELECT 1 FROM finance.recurring_payment_keys WHERE recurring_payment_id = (v_r->>'recurring_payment_id')::int
+                   AND key_type = 'sepa_mandate' AND key_value = 'DE98ZZZ09999999999|M-4711') THEN
+        RAISE EXCEPTION 'FAIL [sepa_mandate gelernt]: %', v_r;
+    END IF;
+    -- schon vergeben -> die zweite Zahlung lernt es still nicht (global eindeutig)
+    v_r2 := finance.fn_create_recurring_payment(jsonb_build_object('name', 'Strom Zweit', 'account_id', v_acct, 'direction', 'expense',
+               'amount', 81, 'schedule_unit', 'month', 'schedule_day_of_month', 16, 'first_payment_date', (core.fn_today() + 5)::text,
+               'creditor_id', 'DE98ZZZ09999999999', 'mandate_ref', 'M-4711'));
+    IF (v_r2->>'ok')::boolean IS DISTINCT FROM true OR EXISTS (SELECT 1 FROM finance.recurring_payment_keys
+                   WHERE recurring_payment_id = (v_r2->>'recurring_payment_id')::int AND key_type = 'sepa_mandate') THEN
+        RAISE EXCEPTION 'FAIL [Mandat schon vergeben]: %', v_r2;
+    END IF;
+    -- nur eines von beiden -> kein Schluessel
+    v_r2 := finance.fn_create_recurring_payment(jsonb_build_object('name', 'Strom Halb', 'account_id', v_acct, 'direction', 'expense',
+               'amount', 82, 'schedule_unit', 'month', 'schedule_day_of_month', 17, 'first_payment_date', (core.fn_today() + 5)::text,
+               'creditor_id', 'DE98ZZZ09999999998'));
+    IF EXISTS (SELECT 1 FROM finance.recurring_payment_keys WHERE recurring_payment_id = (v_r2->>'recurring_payment_id')::int) THEN
+        RAISE EXCEPTION 'FAIL [halbes Mandat]';
+    END IF;
+    RAISE NOTICE 'PASS [fn_create_recurring_payment lernt sepa_mandate]';
+END $$;
+ROLLBACK;

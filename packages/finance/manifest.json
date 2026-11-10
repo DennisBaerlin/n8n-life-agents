@@ -146,6 +146,7 @@
   },
   "callback_handlers": {
     "btodo": { "handler_fn": "finance.fn_handle_bank_todo_cb", "member_permeable": true },
+    "rsug": { "handler_fn": "finance.fn_handle_recurring_suggestion_cb", "member_permeable": true },
     "acem": { "handler_fn": "finance.fn_handle_account_emoji_cb", "member_permeable": false }
   },
   "app_screens": {

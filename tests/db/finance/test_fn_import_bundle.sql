@@ -602,3 +602,20 @@ BEGIN
 END $$;
 
 ROLLBACK;
+
+-- ---------- Vorschlags-Stapel nie ueber tool_commit_import ----------
+BEGIN;
+DO $$
+DECLARE v_b UUID := gen_random_uuid(); v_r JSONB;
+BEGIN
+    INSERT INTO finance.import_staging (batch_id, row_no, entity_type, payload, status, origin, chat_id, merged_at)
+    VALUES (v_b, 1, 'recurring_payment', '{"name":"Test"}', 'valid', 'recurring_suggestion', '1', now());
+    v_r := finance.fn_import_bundle(jsonb_build_object('batch_id', v_b));
+    IF (v_r->>'ok')::boolean IS DISTINCT FROM false OR position('tool_send_recurring_suggestions' IN v_r->>'reason') = 0 THEN
+        RAISE EXCEPTION 'FAIL [Vorschlags-origin abgelehnt]: %', v_r;
+    END IF;
+    v_r := finance.fn_import_bundle(jsonb_build_object('batch_id', v_b, 'dry_run', true));
+    IF (v_r->>'ok')::boolean IS DISTINCT FROM false THEN RAISE EXCEPTION 'FAIL [auch im Probelauf]: %', v_r; END IF;
+    RAISE NOTICE 'PASS [fn_import_bundle lehnt Vorschlags-Stapel ab]';
+END $$;
+ROLLBACK;

@@ -379,8 +379,8 @@ BEGIN
                                      (SELECT a.name FROM finance.accounts a WHERE a.id = CASE WHEN v_sign < 0 THEN v_acct.id ELSE v_other END) END,
                 'to_account', CASE WHEN v_kind = 'transfer' THEN
                                    (SELECT a.name FROM finance.accounts a WHERE a.id = CASE WHEN v_sign < 0 THEN v_other ELSE v_acct.id END) END,
-                'from_account_id', CASE WHEN v_kind = 'transfer' AND v_stmt THEN CASE WHEN v_sign < 0 THEN v_acct.id ELSE v_other END END,
-                'to_account_id', CASE WHEN v_kind = 'transfer' AND v_stmt THEN CASE WHEN v_sign < 0 THEN v_other ELSE v_acct.id END END,
+                'from_account_id', CASE WHEN v_kind = 'transfer' THEN CASE WHEN v_sign < 0 THEN v_acct.id ELSE v_other END END,
+                'to_account_id', CASE WHEN v_kind = 'transfer' THEN CASE WHEN v_sign < 0 THEN v_other ELSE v_acct.id END END,
                 'amount', v_amt, 'average_amount', v_avg, 'amount_varies', v_var,
                 'schedule_unit', v_unit, 'schedule_interval', v_int, 'first_payment_date', v_next,
                 'occurrences', v_occ, 'first_date', v_ds[1], 'last_date', v_lastd,

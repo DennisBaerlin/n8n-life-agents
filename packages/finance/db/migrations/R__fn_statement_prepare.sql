@@ -41,7 +41,9 @@
 --   Zeitraum abgeschlossen ist - closing_balance, balance_date (= period_end), currency: Startsaldo fuer ein NEUES Konto
 --   (fn_create_account opening_balance + opening_balance_date; derselbe Auszug ist danach already_covered).
 --   codes: invalid_statement, account_unknown (+candidates), account_ambiguous, not_bookable, currency_mismatch,
---   period_in_future, already_covered, already_imported, balance_check_failed (+difference).
+--   period_in_future, already_covered, already_imported, balance_check_failed (+difference). already_covered und
+--   already_imported tragen account_id und balance_verified (Saldo-Probe Anfang + Zeilen = Ende; Bank-Export: false):
+--   die Dauerauftrags-Erkennung (fn_import_stage_recurring) laeuft auch auf einem bestaetigten Monat und braucht beides.
 --   BANK-EXPORT-DATEI (source:'file', Bank-Import-Modul): Eingabe {source, account_name (optional), closing_balance = Kontostand laut App JETZT
 --   (Pflicht), table:{rows} = Raster des Lesers}. fn_bank_export_load liest den Export (kein LLM, Leser fn_bank_export_normalize); das Konto waehlt
 --   fn_bank_export_resolve_account (Konto-Waechter: export_account_mismatch, ohne Namen Vorauswahl nach Bank-Profil;
@@ -260,6 +262,7 @@ BEGIN
         -- vor der Saldo-Pflicht: eine Datei, die nichts Neues bringen kann, fragt nie nach dem Kontostand
         IF v_cut >= v_pe THEN
             RETURN jsonb_build_object('ok', false, 'code', 'already_covered', 'account_name', v_acct.name,
+                'account_id', v_acct.id, 'balance_verified', false,
                 'covered_until', v_cut, 'useful_from', v_cut + 1,
                 'reason', 'The balance of "' || v_acct.name || '" is already confirmed up to ' || v_cut
                        || '; only a statement reaching ' || (v_cut + 1) || ' or later helps.');
@@ -403,13 +406,15 @@ BEGIN
     END IF;
     IF v_acct.last_reconciled_at IS NOT NULL AND v_acct.last_reconciled_at >= v_pe THEN
         RETURN jsonb_build_object('ok', false, 'code', 'already_covered', 'account_name', v_acct.name,
+            'account_id', v_acct.id, 'balance_verified', v_balance_ok,
             'covered_until', v_acct.last_reconciled_at, 'useful_from', v_acct.last_reconciled_at + 1,
             'reason', 'The balance of "' || v_acct.name || '" is already confirmed up to ' || v_acct.last_reconciled_at
                    || ' - this statement adds nothing new; only a statement reaching ' || (v_acct.last_reconciled_at + 1)
                    || ' or later helps.');
     END IF;
     IF EXISTS (SELECT 1 FROM finance.bank_statements WHERE account_id = v_acct.id AND period_end = v_pe) THEN
-        RETURN jsonb_build_object('ok', false, 'code', 'already_imported',
+        RETURN jsonb_build_object('ok', false, 'code', 'already_imported', 'account_id', v_acct.id, 'account_name', v_acct.name,
+            'balance_verified', v_balance_ok,
             'reason', 'A statement for "' || v_acct.name || '" ending ' || v_pe || ' was already imported.');
     END IF;
 
@@ -424,6 +429,7 @@ BEGIN
     v_cut := GREATEST(v_ps - 1, v_acct.last_reconciled_at, v_acct.opening_balance_date);
     IF v_cut >= v_pe THEN
         RETURN jsonb_build_object('ok', false, 'code', 'already_covered', 'account_name', v_acct.name,
+            'account_id', v_acct.id, 'balance_verified', v_balance_ok,
             'covered_until', v_cut, 'useful_from', v_cut + 1,
             'reason', 'The balance of "' || v_acct.name || '" is already confirmed up to ' || v_cut
                    || '; only a statement reaching ' || (v_cut + 1) || ' or later helps.');

@@ -9,7 +9,8 @@
 --   Spanne erste-letzte Buchung < 75 Tage (~3 Monate) -> keine Vorschlaege, hint export_too_short (Plaid empfiehlt 180
 --   Tage); Dateiende aelter als 45 Tage -> hint export_stale.
 --   plpgsql (late-bound): fn_get_recurring_candidates liegt alphabetisch davor, fn_bank_export_load bleibt late-bound.
---   Eingabe jsonb: {account_name (optional), table:{rows}}. Fehlertexte nennen nie Zellinhalte.
+--   Eingabe jsonb: {account_name (optional), table:{rows}, with_dates (optional, fn_import_stage_recurring: Vorschlaege behalten
+--   dates + from/to_account_id, Ergebnis traegt account_id)}. Fehlertexte nennen nie Zellinhalte.
 --   RUECKGABE: {ok:true, account_name, period_first, period_last, span_days, hint?, suggestions:[{name (Schreibweise
 --   der juengsten Zeile), kind, direction, counterparty_iban?, from_account?, to_account?, amount (juengster Betrag,
 --   positiv), average_amount, amount_varies, schedule_unit, schedule_interval, schedule_day_of_month (NULL ausser
@@ -26,6 +27,7 @@ DECLARE
     v_last   DATE;
     v_hint   TEXT;
     v_cand   JSONB;
+    v_keep   BOOLEAN := COALESCE((p->>'with_dates')::boolean, false);
 BEGIN
     v_load := finance.fn_bank_export_load(p);
     IF (v_load->>'ok')::boolean IS DISTINCT FROM true THEN
@@ -48,10 +50,11 @@ BEGIN
     v_cand := finance.fn_get_recurring_candidates(jsonb_build_object('account_id', v_acct.id, 'mode', 'export',
                   'period_last', v_last, 'lines', v_load->'rows'));
     RETURN jsonb_strip_nulls(jsonb_build_object('ok', true, 'account_name', v_acct.name, 'period_first', v_first,
-               'period_last', v_last, 'span_days', v_last - v_first, 'hint', v_hint))
+               'period_last', v_last, 'span_days', v_last - v_first, 'hint', v_hint,
+               'account_id', CASE WHEN v_keep THEN v_acct.id END))
         || jsonb_build_object(
-               'suggestions', COALESCE((SELECT jsonb_agg(s - 'dates' ORDER BY o) FROM jsonb_array_elements(v_cand->'suggestions')
-                                        WITH ORDINALITY x(s, o)), '[]'::jsonb),
+               'suggestions', COALESCE((SELECT jsonb_agg(CASE WHEN v_keep THEN s ELSE s - 'dates' - 'from_account_id' - 'to_account_id' END ORDER BY o)
+                                        FROM jsonb_array_elements(v_cand->'suggestions') WITH ORDINALITY x(s, o)), '[]'::jsonb),
                'known_elsewhere', v_cand->'known_elsewhere');
 END;
 $$;

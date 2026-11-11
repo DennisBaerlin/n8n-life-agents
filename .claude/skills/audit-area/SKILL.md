@@ -31,7 +31,7 @@ Für das Regelwerk selbst (CLAUDE.md, Regeln, Skills) gibt es das eingebaute `/d
 **Workflows** (`packages/*/build/workflows/`, Gesetze `packages/CLAUDE.md` *Workflow-Bau*, *Build-Gotchas*)
 - Überblicks-Sticky je Workflow, Sticky an nicht-offensichtlichen Stellen, deutsch, gegen den heutigen Graphen gelesen.
 - `settings.errorWorkflow` gesetzt (außer Test-Harness und der Notify selbst); `maxIterations` an jedem Agent-Node; Depth-Gate am Agent-Eingang.
-- HITL-Gate vor jedem persistenten Write; Karte als Struktur, Beträge/Daten nur als `money`/`date`; keine festen Nutzertexte als Literal.
+- Jeder persistente Write über HITL-Karte oder Vorschlags-Knopf (Root-`CLAUDE.md` *Schreibzugriffe*); Karte als Struktur, Beträge/Daten nur als `money`/`date`; keine festen Nutzertexte als Literal.
 - Nodes nur über die Helper; Credentials nur als `__CRED_*__`; keine hartcodierten Workflow-IDs; `typeVersion`s bewusst.
 - Prompts: Tool-Spezifisches in der Tool-Description, nichts doppelt; die „Not yet available“-Liste stimmt mit den vorhandenen Tools überein; wechselnde Prompt-Teile nur am Ende (Cache).
 

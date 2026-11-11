@@ -19,7 +19,7 @@ Persönliches Multi-Agent-System auf self-hosted n8n: Telegram-Bot → `agent.or
 - Daten-Integrität: DB-Constraint/Trigger ist Gesetz → `fn_*` ist atomare Durchsetzung → Tool/Prompt sind Komfort und driften. Invariante zuerst als Constraint (`.claude/rules/sql.md` *Integritäts-Konventionen*).
 - Das LLM rechnet nicht: Tool-Inputs sind minimale Roh-Werte; jede abgeleitete Größe (Rate, Zins/Tilgung, Vorzeichen, Monats-Normalisierung) berechnet eine `fn_*`/GENERATED-Spalte, kein `$fromAI`-Feld. HITL-Preview-Werte read-only aus derselben `fn` (`packages/CLAUDE.md` *Post-State-Vertrag*).
 - Benennung folgt dem etablierten Standard (z. B. Flyway `V__`/`R__`); unklar → recherchieren. Surgical Changes, KISS; YAGNI begrenzt nur den Ausbaugrad, nicht Standards oder Bestands-Muster.
-- Generiertes nur über den Generator: `packages/<pkg>/workflows/` via `build.ps1`, `docs/site/public/` via `build_site.ps1`, `docs/fn_catalog.md` via `gen_fn_catalog.ps1`.
+- Generiertes nur per Generator: `packages/<pkg>/workflows/` via `build.ps1`, `docs/site/public/` via `build_site.ps1`, `docs/fn_catalog.md` via `gen_fn_catalog.ps1`.
 - Jeder Workflow erklärt sich über Sticky-Notes (deutsch, `Build-Sticky`: Überblick + nicht offensichtliche Stellen); bei jeder Graph-Änderung gegenlesen (`workflow_lint` prüft das Minimum).
 - Kommentare im Code: Leser sind KI-Modelle → `.claude/rules/comments.md` (lädt beim Öffnen von Code).
 - Ein Fakt, eine Adresse: ableitbare Repo-Fakten (Listen, Counts, ID-Ranges) nicht in Doku spiegeln (`doc_lint`). Eine neue Regel ersetzt, was ihr widerspricht, statt angehängt zu werden.
@@ -47,7 +47,7 @@ n8n 2.45.4 · PostgreSQL 17. Der getrackte Baum ist die Source of Truth, keine I
 ## Credentials & Privacy
 
 - Secrets nur im n8n-Credential-Store bzw. in `/etc/lifeagents/<pkg>.env`; nicht-geheime IDs direkt im Node. `.env` (gitignored; Keys → `.env.example`): `OWNER_CHAT_ID` redactet der Build zu `__OWNER_CHAT_ID__`.
-- Sensible Daten (Finanzdokumente, Lebenslauf, Sprachnachrichten, Lern-Loop, Dokumenten-Assistent) nur über bezahlte, nicht-trainierende Endpunkte: Anthropic-API; Google nur mit Bezahl-Key für die Transkription.
+- Sensible Daten (Finanzdokumente, Lebenslauf, Sprachnachrichten, Lern-Loop, Dokumenten-Assistent) nur über bezahlte, nicht-trainierende Endpunkte: Anthropic-API; Google nur mit Bezahl-Key (Transkription).
 - Das Repo ist öffentlich, auch Commit-/Tag-/PR-Texte, Site, CI-Logs: Live-Werte nur erfunden, keine Hinweise auf Lebensumstände des Owners (Wohnform, Pläne, Konten; auch nicht in Kommentaren, Triggern, Beispielen); Prompts kennen keine Fakten über den Owner. `privacy_lint` und `owner_fact_lint` prüfen beim Commit, vor jedem Push `/privacy-review`, Fund → `/privacy-incident`. Fremd-PRs → `/coordinate`.
 
 ## Scripts
@@ -60,7 +60,7 @@ n8n 2.45.4 · PostgreSQL 17. Der getrackte Baum ist die Source of Truth, keine I
 
 ## Entwicklungszyklus
 
-Ein Diff, der in einen Satz passt, braucht keinen Plan. Blast-Radius-Arbeit (Tabelle unten) → `/feature`; neue Architektur/Mechanik → vorher `/arch-challenge`; parallele Sessions → `/coordinate` (eine Leitung zur Zeit, Stand-Datei `.claude/plans/leitung-stand.md`), „du bist die Leitung“ → `/leitung`. Ein rotes Gate wird gefixt, nicht mit `--no-verify` umgangen. Neues Thema nach abgeschlossener Arbeit → Owner auf `/clear` oder neue Session hinweisen, Offenes vorher ins Memory; mitten im Sprint nicht.
+Ein Diff, der in einen Satz passt, braucht keinen Plan. Blast-Radius-Arbeit (Tabelle unten) → `/feature`; neue Architektur/Mechanik → vorher `/arch-challenge`; parallele Sessions → `/coordinate` (eine Leitung zur Zeit, Stand-Datei `.claude/plans/leitung-stand.md`), „du bist die Leitung“ → `/leitung`. Ein rotes Gate wird gefixt, nicht mit `--no-verify` umgangen. Neues Thema nach fertiger Arbeit → `/clear` oder neue Session vorschlagen (Offenes ins Memory), nicht mitten im Sprint.
 
 ## Compact Instructions
 
@@ -79,7 +79,7 @@ Neues Tool ⟹ Golden-Case in `tests/agent/<pkg>/*_cases.json` + „Not yet avai
 
 ## Schreibzugriffe: HITL & Atomarität
 
-- HITL vor jedem persistenten Write über das geteilte Gate `agent.tool_human_approval` (Maker-Checker: Owner ein Tap, Mitglieder je `approval_matrix` im Manifest). Decline → `{ok:false, cancelled:true}`. Nur Buttons: Text erreicht den suspendierten Vorgang nicht. Format → `packages/CLAUDE.md` *HITL-Bestätigungs-Format*.
+- Persistente Writes bestätigt ein Tipp: Karte über `agent.tool_human_approval` (Maker-Checker: Owner ein Tap, Mitglieder je `approval_matrix`; Decline → `{ok:false, cancelled:true}`; Text erreicht die wartende Karte nicht; Format → `packages/CLAUDE.md` *HITL-Bestätigungs-Format*) oder Knopf einer Vorschlags-Nachricht (Callback-Registry, z. B. `rsug`; Werte aus der DB → `docs/reference/packages.md` *Knopf statt Karte*).
 - Alle Writes eines Tools in einer PL/pgSQL-Function `fn_<tool>(p jsonb)` (RAISE → Rollback), auch bei 1-INSERT-Tools.
 - Nutzerkorrigierbare Fehler als Daten (`{ok:false, reason}` ohne RAISE → `Build-ToolError`), `Stop and Error` nur für echte Ausnahmen (`packages/CLAUDE.md` *Korrigierbare Ablehnung*). `maxIterations` an jedem Agent-Node cappen.
 
@@ -89,14 +89,14 @@ Strikter DAG `orchestrator → agent.<x> → tool_* → human_approval`; kein `t
 
 ## Modell-/Kosten-Politik
 
-Alle Sprachmodelle sind Claude (Register `packages/core/seed/ai_models.json`); Denk-Tiefe (`effort`) je Verbraucher bewusst: Router low, Werkzeug-Agenten medium, Berater/Panel high (Opus). Direkte Aufrufe nur über `New-AnthropicMessagesNode`; keine Sampling-Parameter (die 5.5-Generation lehnt `temperature` ab). Claude-Code-Sessions: Stufe laut Plan-Zeile *Denkstufe* (`/feature`).
+Alle Sprachmodelle sind Claude (Register `packages/core/seed/ai_models.json`); Denk-Tiefe (`effort`) je Verbraucher bewusst: Router low, Werkzeug-Agenten medium, Berater/Panel high (Opus). Direkte Aufrufe nur über `New-AnthropicMessagesNode`; keine Sampling-Parameter (5.5 lehnt `temperature` ab). Claude-Code-Sessions: Stufe laut Plan-Zeile *Denkstufe* (`/feature`).
 
 ## Agenten & Prompt-Design
 
 - Write nur über `agent.<pkg>.tool_*`, kein rohes `postgres_execute`; Read über `postgres_select` (`<pkg>_ro`) + `load_context`; kein Tool → „kein Tool für X“ (Katalog `docs/reference/packages.md` *Write-Tools-Katalog*).
 - Orchestrator-Routing kennt kein Paket: WANN welcher Agent steht allein in `provides.agents[].router_description` (`docs/package-contract.md` §2).
-- System-Prompt schlank: Tool-Spezifisches in die Tool-Description, Übergreifendes in den System-Prompt, nicht doppelt; „Not yet available"-Liste pflegen.
+- System-Prompt schlank: Tool-Spezifisches in die Tool-Description, Übergreifendes in den System-Prompt, nicht doppelt.
 
 ## Subagenten
 
-Delegieren lohnt nur für breites, paralleles Lesen oder lange Rohausgaben. Ein frischer Prüfer hilft, weil er die Herleitung nicht kennt (Plan-Reviewer, `/code-review`, `ui-review`, `/privacy-review`): ihm Artefakt und Maßstab geben, nicht die Begründung. Code-Suche → `Explore` (Sonnet im Frontmatter); Agenten-Typen ohne Modell im Frontmatter bekommen ein explizites `model`.
+Delegieren lohnt nur für breites, paralleles Lesen oder lange Rohausgaben. Ein frischer Prüfer hilft, gerade ohne Herleitung (Plan-Reviewer, `/code-review`, `ui-review`, `/privacy-review`): ihm Artefakt und Maßstab geben, nicht die Begründung. Code-Suche → `Explore` (Sonnet); Agenten-Typen ohne Modell im Frontmatter bekommen ein explizites `model`.

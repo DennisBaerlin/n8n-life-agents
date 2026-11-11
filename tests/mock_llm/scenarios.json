@@ -1661,4 +1661,7 @@
   {"_comment":"ADVISOR ac34","match":"Gleiche bitte die Erinnerungen","calls":[{"args":{"reminders":"[{\"label\":\"Versicherung pruefen\",\"remind_on\":\"2027-07-01\"}]"},"tool":"tool_sync_plan"}],"final":"Abgeglichen."},
   {"_comment": "tc130 Ersteinrichtung offen: kurze Antwort gehoert zum Lauf.", "match": "Der Stand ist gerade 1234,56 Euro", "calls": [{"tool": "tool_import_setup", "args": {"question_key": "current_balance", "answer": "1234,56"}}], "final": "Danke, ich mache weiter."},
   {"_comment": "tc131 Ersteinrichtung abbrechen.", "match": "Lass die Einrichtung, ich mag gerade nicht mehr.", "calls": [{"tool": "tool_import_setup", "args": {"action": "cancel"}}], "final": "Ich habe die Einrichtung beendet; Bestaetigtes bleibt bestehen."}
+  ,{"_comment": "tc140 Immobilie verkauft.", "match": "Wir haben die Musterimmobilie verkauft", "calls": [{"tool": "tool_sell_real_estate", "args": {"real_estate_name": "Musterimmobilie", "proceeds_account_name": "Lindenbank Giro", "sale_price": 320000}}], "final": "Verkauf gebucht."}
+  ,{"_comment": "tc141 Kredit abbezahlt.", "match": "Die Baufinanzierung Buchenbank habe ich heute komplett abbezahlt", "calls": [{"tool": "tool_settle_loan", "args": {"loan_name": "Baufinanzierung Buchenbank", "debit_account_name": "Lindenbank Giro"}}], "final": "Kredit abgeloest."}
+  ,{"_comment": "tc142 Jahresbeitrag ohne Datum: Rueckfrage, kein Tool.", "match": "Leg bitte meine Riester-Vorsorge bei der Eichenversicherung an", "final": "Wann wird der Jahresbeitrag das erste Mal abgebucht (Tag und Monat)?"}
 ]

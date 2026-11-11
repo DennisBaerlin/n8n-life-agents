@@ -1,0 +1,342 @@
+{
+    "id":  "qDNCgdxsWZjKPfoe",
+    "name":  "agent.finance.tool_send_recurring_suggestions",
+    "nodes":  [
+                  {
+                      "parameters":  {
+                                         "workflowInputs":  {
+                                                                "values":  [
+                                                                               {
+                                                                                   "name":  "chat_id"
+                                                                               }
+                                                                           ]
+                                                            }
+                                     },
+                      "type":  "n8n-nodes-base.executeWorkflowTrigger",
+                      "typeVersion":  1.1,
+                      "position":  [
+                                       0,
+                                       0
+                                   ],
+                      "id":  "d198cb67-5e76-5681-8cf8-3b297d6c76ef",
+                      "name":  "Start"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "=WITH q AS MATERIALIZED (SELECT finance.fn_get_recurring_suggestion_queue(jsonb_build_object(\u0027chat_id\u0027, ($1::jsonb)-\u003e\u003e\u0027chat_id\u0027)) AS r) SELECT q.r::text AS r FROM q;",
+                                         "options":  {
+                                                         "queryReplacement":  "={{ JSON.stringify({ chat_id: String($(\u0027Start\u0027).item.json.chat_id || \u0027\u0027) }) }}"
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       220,
+                                       0
+                                   ],
+                      "id":  "4e788b95-bda4-5d22-87bf-5e16d19c62df",
+                      "name":  "Read queue",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_WRITE__",
+                                                           "name":  "Postgres account"
+                                                       }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "jsCode":  "let q = {};\ntry { q = JSON.parse($input.first().json.r || \u0027{}\u0027); } catch (e) { q = {}; }\nconst items = Array.isArray(q.items) ? q.items : [];\nif (items.length === 0) { return [{ json: { nothing: true } }]; }\nreturn items.map((i) =\u003e ({ json: i }));"
+                                     },
+                      "type":  "n8n-nodes-base.code",
+                      "typeVersion":  2,
+                      "position":  [
+                                       440,
+                                       0
+                                   ],
+                      "id":  "12832b30-5885-576c-9340-67f5f3bc93db",
+                      "name":  "Split messages"
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "54f9e685-0eec-5949-8c01-a1e3694d610b",
+                                                                                   "leftValue":  "={{ $json.nothing === true }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       660,
+                                       0
+                                   ],
+                      "id":  "9a0290b5-9f5c-5278-8a5e-36390392bc85",
+                      "name":  "Nothing to send?"
+                  },
+                  {
+                      "parameters":  {
+                                         "additionalFields":  {
+                                                                  "appendAttribution":  false
+                                                              },
+                                         "chatId":  "={{ String($(\u0027Start\u0027).item.json.chat_id || \u0027\u0027) }}",
+                                         "text":  "={{ ($json.message).replace(/[_*`[]/g, \u0027\\\\$\u0026\u0027) }}",
+                                         "replyMarkup":  "inlineKeyboard",
+                                         "inlineKeyboard":  {
+                                                                "rows":  [
+                                                                             {
+                                                                                 "row":  {
+                                                                                             "buttons":  [
+                                                                                                             {
+                                                                                                                 "text":  "={{ $json.btn_accept }}",
+                                                                                                                 "additionalFields":  {
+                                                                                                                                          "callback_data":  "={{ $json.data_ok }}"
+                                                                                                                                      }
+                                                                                                             },
+                                                                                                             {
+                                                                                                                 "text":  "={{ $json.btn_decline }}",
+                                                                                                                 "additionalFields":  {
+                                                                                                                                          "callback_data":  "={{ $json.data_no }}"
+                                                                                                                                      }
+                                                                                                             }
+                                                                                                         ]
+                                                                                         }
+                                                                             }
+                                                                         ]
+                                                            }
+                                     },
+                      "type":  "n8n-nodes-base.telegram",
+                      "typeVersion":  1.2,
+                      "position":  [
+                                       880,
+                                       120
+                                   ],
+                      "id":  "cd0d29c1-ff04-506b-a5c8-f50c6b1a0c86",
+                      "name":  "Send suggestion",
+                      "retryOnFail":  true,
+                      "maxTries":  3,
+                      "waitBetweenTries":  2000,
+                      "credentials":  {
+                                          "telegramApi":  {
+                                                              "id":  "__CRED_TELEGRAM__",
+                                                              "name":  "Telegram account"
+                                                          }
+                                      },
+                      "onError":  "continueRegularOutput"
+                  },
+                  {
+                      "parameters":  {
+                                         "jsCode":  "let q = {};\ntry { q = JSON.parse($(\u0027Read queue\u0027).first().json.r || \u0027{}\u0027); } catch (e) { q = {}; }\nconst msgs = $(\u0027Split messages\u0027).all();\nconst sent = [];\nif ($(\u0027Send suggestion\u0027).isExecuted) {\n  for (const it of $(\u0027Send suggestion\u0027).all()) {\n    if (it.json \u0026\u0026 it.json.error) continue;\n    const p = it.pairedItem;\n    const idx = Array.isArray(p) ? (p[0] || {}).item : (p || {}).item;\n    const m = msgs[typeof idx === \u0027number\u0027 ? idx : -1];\n    if (m \u0026\u0026 m.json \u0026\u0026 m.json.id) sent.push({ id: m.json.id, version: m.json.version });\n  }\n}\nreturn [{ json: { sent, rejected: Array.isArray(q.rejected) ? q.rejected : [], more: q.more || 0,\n  open_count: q.open_count || 0, tried: msgs.filter((m) =\u003e !m.json.nothing).length } }];"
+                                     },
+                      "type":  "n8n-nodes-base.code",
+                      "typeVersion":  2,
+                      "position":  [
+                                       1100,
+                                       0
+                                   ],
+                      "id":  "6fbefc5a-f3f9-5801-902b-6e5c7ff5dfb7",
+                      "name":  "Collect results"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "=SELECT finance.fn_record_recurring_suggestions_sent($1::jsonb) AS r;",
+                                         "options":  {
+                                                         "queryReplacement":  "={{ JSON.stringify({ chat_id: String($(\u0027Start\u0027).first().json.chat_id || \u0027\u0027), sent: $(\u0027Collect results\u0027).first().json.sent, rejected: $(\u0027Collect results\u0027).first().json.rejected }) }}"
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       1320,
+                                       0
+                                   ],
+                      "id":  "f2ee51c9-ec60-542f-92ff-73ea6604c360",
+                      "name":  "Record sent",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_WRITE__",
+                                                           "name":  "Postgres account"
+                                                       }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "faed46c6-eb46-51a6-b97e-7bd863f2a736",
+                                                                                     "name":  "ok",
+                                                                                     "value":  "true",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "d9fe5271-eb44-52e1-a756-8d9b27c245e7",
+                                                                                     "name":  "sent",
+                                                                                     "value":  "={{ $(\u0027Collect results\u0027).first().json.sent.length }}",
+                                                                                     "type":  "number"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "c5bcaf69-46d4-54e6-bf03-64db6e010222",
+                                                                                     "name":  "failed",
+                                                                                     "value":  "={{ $(\u0027Collect results\u0027).first().json.tried - $(\u0027Collect results\u0027).first().json.sent.length }}",
+                                                                                     "type":  "number"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "60cae8b1-fc7d-5685-8e6e-bc3c29476c4a",
+                                                                                     "name":  "open_count",
+                                                                                     "value":  "={{ $(\u0027Collect results\u0027).first().json.open_count - $(\u0027Collect results\u0027).first().json.rejected.length }}",
+                                                                                     "type":  "number"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "9db3a460-ae5a-5389-9c5b-e90b30c4d0fb",
+                                                                                     "name":  "more",
+                                                                                     "value":  "={{ $(\u0027Collect results\u0027).first().json.more }}",
+                                                                                     "type":  "number"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "53eff624-943e-5b61-a20f-e954fb64e2ce",
+                                                                                     "name":  "note",
+                                                                                     "value":  "={{ $(\u0027Collect results\u0027).first().json.sent.length \u003e 0 ? \u0027The suggestions were already sent as separate messages with the buttons add / do not add. Do not repeat or list them; reply with at most one short sentence\u0027 + ($(\u0027Collect results\u0027).first().json.more \u003e 0 ? \u0027 and say that \u0027 + $(\u0027Collect results\u0027).first().json.more + \u0027 more follow when the user asks for the open suggestions.\u0027 : \u0027.\u0027) + ($(\u0027Collect results\u0027).first().json.tried \u003e $(\u0027Collect results\u0027).first().json.sent.length ? \u0027 Some could not be sent right now; they go out on the next call.\u0027 : \u0027\u0027) : ($(\u0027Collect results\u0027).first().json.open_count - $(\u0027Collect results\u0027).first().json.rejected.length \u003e 0 ? \u0027All open suggestions are already above in the chat with their buttons. Say so in one short sentence.\u0027 : \u0027There are no open suggestions. Say so in one short sentence.\u0027) }}",
+                                                                                     "type":  "string"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       1540,
+                                       0
+                                   ],
+                      "id":  "d4ba54f4-6438-5b98-ac71-32a110f11166",
+                      "name":  "Return"
+                  },
+                  {
+                      "parameters":  {
+                                         "content":  "## DB-Automatik\n**Dauerauftrags-Vorschläge als Knopf-Nachrichten (schreibt keine Domänen-Daten)**\n\nRead queue = finance.fn_get_recurring_suggestion_queue: offene, noch nicht gesendete Vorschläge des Chats, sichere zuerst, dann nach Betrag, höchstens 10 je Aufruf (more = Rest); Kinder bekommen nichts. Je Zeile prüft ein Probelauf der Anlege-fn (core.fn_dry_run); lehnt er ab, geht die Zeile nicht raus (rejected -\u003e declined). Der Text kommt fertig aus der DB in der Sprache des Empfängers, die Knöpfe tragen nur rsug:ok|no:\u003cid\u003e:\u003cversion\u003e. Collect results ordnet die Sende-Ergebnisse per pairedItem zu; Record sent stempelt einmal (sent_version), ein Sende-Fehler bleibt offen und geht beim nächsten Aufruf. Angelegt wird erst per Knopf (finance.fn_handle_recurring_suggestion_cb): Werte aus der DB, nie vom Modell.",
+                                         "height":  300,
+                                         "width":  560,
+                                         "color":  4
+                                     },
+                      "type":  "n8n-nodes-base.stickyNote",
+                      "typeVersion":  1,
+                      "position":  [
+                                       120,
+                                       -380
+                                   ],
+                      "id":  "7e954329-da4b-5e6a-ae1c-3181bde144e5",
+                      "name":  "Doc Vorschlags-Nachrichten"
+                  }
+              ],
+    "connections":  {
+                        "Start":  {
+                                      "main":  [
+                                                   [
+                                                       {
+                                                           "index":  0,
+                                                           "node":  "Read queue",
+                                                           "type":  "main"
+                                                       }
+                                                   ]
+                                               ]
+                                  },
+                        "Read queue":  {
+                                           "main":  [
+                                                        [
+                                                            {
+                                                                "index":  0,
+                                                                "node":  "Split messages",
+                                                                "type":  "main"
+                                                            }
+                                                        ]
+                                                    ]
+                                       },
+                        "Split messages":  {
+                                               "main":  [
+                                                            [
+                                                                {
+                                                                    "index":  0,
+                                                                    "node":  "Nothing to send?",
+                                                                    "type":  "main"
+                                                                }
+                                                            ]
+                                                        ]
+                                           },
+                        "Nothing to send?":  {
+                                                 "main":  [
+                                                              [
+                                                                  {
+                                                                      "index":  0,
+                                                                      "node":  "Collect results",
+                                                                      "type":  "main"
+                                                                  }
+                                                              ],
+                                                              [
+                                                                  {
+                                                                      "index":  0,
+                                                                      "node":  "Send suggestion",
+                                                                      "type":  "main"
+                                                                  }
+                                                              ]
+                                                          ]
+                                             },
+                        "Send suggestion":  {
+                                                "main":  [
+                                                             [
+                                                                 {
+                                                                     "index":  0,
+                                                                     "node":  "Collect results",
+                                                                     "type":  "main"
+                                                                 }
+                                                             ]
+                                                         ]
+                                            },
+                        "Collect results":  {
+                                                "main":  [
+                                                             [
+                                                                 {
+                                                                     "index":  0,
+                                                                     "node":  "Record sent",
+                                                                     "type":  "main"
+                                                                 }
+                                                             ]
+                                                         ]
+                                            },
+                        "Record sent":  {
+                                            "main":  [
+                                                         [
+                                                             {
+                                                                 "index":  0,
+                                                                 "node":  "Return",
+                                                                 "type":  "main"
+                                                             }
+                                                         ]
+                                                     ]
+                                        }
+                    },
+    "settings":  {
+                     "executionOrder":  "v1",
+                     "errorWorkflow":  "Nd3UVmUTzTLOBeba"
+                 }
+}

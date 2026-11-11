@@ -1,6 +1,6 @@
 {
-    "id":  "I6mjxvBCqg8gxFWB",
-    "name":  "agent.finance.tool_get_recurring_suggestions",
+    "id":  "QqrfsF4Cd9K3DjJW",
+    "name":  "agent.finance.tool_import_recurring_suggestions",
     "nodes":  [
                   {
                       "parameters":  {
@@ -24,7 +24,7 @@
                                        0,
                                        0
                                    ],
-                      "id":  "f94d75c7-597a-51d4-b96a-858db7505156",
+                      "id":  "941f0846-21ca-5109-806f-b67ddbb1fbc0",
                       "name":  "Start"
                   },
                   {
@@ -61,7 +61,7 @@
                                        220,
                                        0
                                    ],
-                      "id":  "389722c8-8273-5b01-9bc2-20ba0b7addb0",
+                      "id":  "8f52ede0-cf71-5645-8232-0d8b26646bc6",
                       "name":  "Fetch telegram file"
                   },
                   {
@@ -74,7 +74,7 @@
                                                                         },
                                                             "conditions":  [
                                                                                {
-                                                                                   "id":  "cef8fb37-9e40-5818-975c-1390769cd6e7",
+                                                                                   "id":  "e84dfc3b-f7b3-522c-8aab-15b68ef17654",
                                                                                    "leftValue":  "={{ $(\u0027Fetch telegram file\u0027).item.json.ok }}",
                                                                                    "rightValue":  true,
                                                                                    "operator":  {
@@ -95,7 +95,7 @@
                                        440,
                                        0
                                    ],
-                      "id":  "e41f48a7-ce21-5b0d-a693-62e22b528e5d",
+                      "id":  "9bc29217-ddf8-5204-b02d-696c0b956ac4",
                       "name":  "File ok?"
                   },
                   {
@@ -103,13 +103,13 @@
                                          "assignments":  {
                                                              "assignments":  [
                                                                                  {
-                                                                                     "id":  "bc8abea5-9250-5bc3-8ae0-74654398bed3",
+                                                                                     "id":  "045ffeeb-5c64-54cc-ac03-80a393643c0e",
                                                                                      "name":  "ok",
                                                                                      "value":  "false",
                                                                                      "type":  "boolean"
                                                                                  },
                                                                                  {
-                                                                                     "id":  "0469e885-86f4-5aef-a3d4-425a8da152c3",
+                                                                                     "id":  "e8b29469-2299-5193-a4f3-ff2645a9710c",
                                                                                      "name":  "error",
                                                                                      "value":  "={{ $(\u0027Fetch telegram file\u0027).item.json.error }}",
                                                                                      "type":  "string"
@@ -126,7 +126,7 @@
                                        660,
                                        200
                                    ],
-                      "id":  "aa130e63-9da7-560e-85ff-40fe247be73f",
+                      "id":  "0d037eea-15e2-54e3-917c-da93cf6c07a1",
                       "name":  "File unusable"
                   },
                   {
@@ -139,7 +139,7 @@
                                        660,
                                        0
                                    ],
-                      "id":  "b6829a8b-96ce-5993-9135-6fe6387c2246",
+                      "id":  "1ae77abc-8f78-5107-abd6-6c08991c0141",
                       "name":  "Read table"
                   },
                   {
@@ -152,7 +152,7 @@
                                                                         },
                                                             "conditions":  [
                                                                                {
-                                                                                   "id":  "e01cf479-6509-5e4f-8803-70fa94bf56b5",
+                                                                                   "id":  "8d7de723-9605-5568-bc1a-5b55a3ff4498",
                                                                                    "leftValue":  "={{ $json.ok }}",
                                                                                    "rightValue":  true,
                                                                                    "operator":  {
@@ -173,7 +173,7 @@
                                        880,
                                        0
                                    ],
-                      "id":  "c521fada-2a87-55e6-bdf5-6e0927a3f5ee",
+                      "id":  "7d1cc4c8-876f-5429-b3df-426ac079d717",
                       "name":  "Table read?"
                   },
                   {
@@ -181,19 +181,19 @@
                                          "assignments":  {
                                                              "assignments":  [
                                                                                  {
-                                                                                     "id":  "5063c7d6-9989-5c88-9f97-3db93ca55eb1",
+                                                                                     "id":  "887b857d-1f5e-54f1-a8c9-b5cd58737cff",
                                                                                      "name":  "ok",
                                                                                      "value":  "false",
                                                                                      "type":  "boolean"
                                                                                  },
                                                                                  {
-                                                                                     "id":  "dbb7b538-df07-5c1e-b0f8-8c209cdc712a",
+                                                                                     "id":  "284b5a42-074c-5a90-9414-024e52a61573",
                                                                                      "name":  "code",
                                                                                      "value":  "={{ $(\u0027Read table\u0027).item.json.code }}",
                                                                                      "type":  "string"
                                                                                  },
                                                                                  {
-                                                                                     "id":  "85c7b32d-9ab6-5bf3-9c99-51e4f6e0d7ab",
+                                                                                     "id":  "53742e7c-ba96-5e18-848e-17f5483023f3",
                                                                                      "name":  "error",
                                                                                      "value":  "={{ $(\u0027Read table\u0027).item.json.error }}",
                                                                                      "type":  "string"
@@ -210,15 +210,15 @@
                                        1100,
                                        200
                                    ],
-                      "id":  "c313fffe-0c3f-5cef-979f-f9a9c048aa61",
+                      "id":  "7740c7e3-c554-5ab8-be9b-11b7077e6859",
                       "name":  "Not an export"
                   },
                   {
                       "parameters":  {
                                          "operation":  "executeQuery",
-                                         "query":  "=SELECT finance.fn_get_recurring_suggestions($1::jsonb) AS r;",
+                                         "query":  "=SELECT finance.fn_import_stage_recurring($1::jsonb) AS r;",
                                          "options":  {
-                                                         "queryReplacement":  "={{ JSON.stringify({ account_name: $(\u0027Start\u0027).first().json.account_name || null, table: ({ rows: $(\u0027Read table\u0027).first().json.rows }) }) }}"
+                                                         "queryReplacement":  "={{ JSON.stringify({ mode: \u0027export\u0027, chat_id: String($(\u0027Start\u0027).first().json.chat_id || \u0027\u0027), account_name: $(\u0027Start\u0027).first().json.account_name || null, table: ({ rows: $(\u0027Read table\u0027).first().json.rows }) }) }}"
                                                      }
                                      },
                       "type":  "n8n-nodes-base.postgres",
@@ -227,12 +227,12 @@
                                        1100,
                                        0
                                    ],
-                      "id":  "2f1a579e-630a-50c3-b7e2-35eedf188dae",
-                      "name":  "Get suggestions",
+                      "id":  "8a9188b5-323b-5121-a84a-8b7afc815c7d",
+                      "name":  "Stage suggestions",
                       "credentials":  {
                                           "postgres":  {
-                                                           "id":  "__CRED_POSTGRES_FINANCE_RO__",
-                                                           "name":  "Postgres finance_ro (read-only)"
+                                                           "id":  "__CRED_POSTGRES_FINANCE_RW__",
+                                                           "name":  "Postgres finance_rw (read-write)"
                                                        }
                                       }
                   },
@@ -246,7 +246,7 @@
                                                                         },
                                                             "conditions":  [
                                                                                {
-                                                                                   "id":  "f76adb9a-1508-5947-99a5-19ddc6d0ac98",
+                                                                                   "id":  "e85ce487-e42a-50e3-9311-481f4bbdad49",
                                                                                    "leftValue":  "={{ $json.r.ok }}",
                                                                                    "rightValue":  true,
                                                                                    "operator":  {
@@ -267,7 +267,7 @@
                                        1320,
                                        0
                                    ],
-                      "id":  "d0b0642a-9514-52fe-82ba-a488c55bd583",
+                      "id":  "b36793b4-c08f-519b-bca6-b6812f1e2b14",
                       "name":  "Suggestions ok?"
                   },
                   {
@@ -275,45 +275,45 @@
                                          "assignments":  {
                                                              "assignments":  [
                                                                                  {
-                                                                                     "id":  "80e7b4fc-a90c-5d5e-8ac5-1784330f33d6",
+                                                                                     "id":  "4cfcc55b-2493-57f5-a929-04371f227231",
                                                                                      "name":  "ok",
                                                                                      "value":  "false",
                                                                                      "type":  "boolean"
                                                                                  },
                                                                                  {
-                                                                                     "id":  "b81db37e-fbfa-5988-95b7-7702582f46d9",
+                                                                                     "id":  "1712b203-5cc9-5163-916c-9b32c9e09974",
                                                                                      "name":  "code",
-                                                                                     "value":  "={{ $(\u0027Get suggestions\u0027).item.json.r.code }}",
+                                                                                     "value":  "={{ $(\u0027Stage suggestions\u0027).item.json.r.code }}",
                                                                                      "type":  "string"
                                                                                  },
                                                                                  {
-                                                                                     "id":  "c814e62f-5b1d-54d6-93a8-d65eba29efae",
+                                                                                     "id":  "6cfaf46f-76e8-5ca2-9baa-31caa9e52fa2",
                                                                                      "name":  "error",
-                                                                                     "value":  "={{ $(\u0027Get suggestions\u0027).item.json.r.reason }}",
+                                                                                     "value":  "={{ $(\u0027Stage suggestions\u0027).item.json.r.reason }}",
                                                                                      "type":  "string"
                                                                                  },
                                                                                  {
-                                                                                     "id":  "d40064c0-e6c5-5d48-b2c9-a748a7dc450c",
+                                                                                     "id":  "168544eb-7bee-5ca9-95ad-5d12a6d52526",
                                                                                      "name":  "row_no",
-                                                                                     "value":  "={{ $(\u0027Get suggestions\u0027).item.json.r.row_no === undefined || $(\u0027Get suggestions\u0027).item.json.r.row_no === null ? \u0027\u0027 : String($(\u0027Get suggestions\u0027).item.json.r.row_no) }}",
+                                                                                     "value":  "={{ $(\u0027Stage suggestions\u0027).item.json.r.row_no === undefined || $(\u0027Stage suggestions\u0027).item.json.r.row_no === null ? \u0027\u0027 : String($(\u0027Stage suggestions\u0027).item.json.r.row_no) }}",
                                                                                      "type":  "string"
                                                                                  },
                                                                                  {
-                                                                                     "id":  "c4653b4b-a513-565a-92fe-5fb90576ca94",
+                                                                                     "id":  "d901a279-6a3f-50a7-8d6c-2625fea20dcc",
                                                                                      "name":  "candidates",
-                                                                                     "value":  "={{ $(\u0027Get suggestions\u0027).item.json.r.candidates || [] }}",
+                                                                                     "value":  "={{ $(\u0027Stage suggestions\u0027).item.json.r.candidates || [] }}",
                                                                                      "type":  "array"
                                                                                  },
                                                                                  {
-                                                                                     "id":  "a4c88b11-cc0b-50ca-993a-a46410c7213a",
+                                                                                     "id":  "aec66f42-fa35-58c7-a013-c89e99113cce",
                                                                                      "name":  "bank",
-                                                                                     "value":  "={{ $(\u0027Get suggestions\u0027).item.json.r.bank || \u0027\u0027 }}",
+                                                                                     "value":  "={{ $(\u0027Stage suggestions\u0027).item.json.r.bank || \u0027\u0027 }}",
                                                                                      "type":  "string"
                                                                                  },
                                                                                  {
-                                                                                     "id":  "db7eaec6-559a-5217-88eb-cb885a141628",
+                                                                                     "id":  "cea2a858-45e6-5952-9524-7aff83eb33fa",
                                                                                      "name":  "account_name",
-                                                                                     "value":  "={{ $(\u0027Get suggestions\u0027).item.json.r.account_name || \u0027\u0027 }}",
+                                                                                     "value":  "={{ $(\u0027Stage suggestions\u0027).item.json.r.account_name || \u0027\u0027 }}",
                                                                                      "type":  "string"
                                                                                  }
                                                                              ]
@@ -328,7 +328,7 @@
                                        1540,
                                        200
                                    ],
-                      "id":  "65db3302-b580-52c6-ab1a-1f6ee84cd380",
+                      "id":  "4285cc23-8928-5d8a-9cc8-85a7e8e96f00",
                       "name":  "Export not usable"
                   },
                   {
@@ -336,57 +336,69 @@
                                          "assignments":  {
                                                              "assignments":  [
                                                                                  {
-                                                                                     "id":  "781e1742-37d3-527f-a237-75aa504bad57",
+                                                                                     "id":  "aca4ec32-550f-5fce-b379-0bd9eeef4976",
                                                                                      "name":  "ok",
                                                                                      "value":  "true",
                                                                                      "type":  "boolean"
                                                                                  },
                                                                                  {
-                                                                                     "id":  "cfdd9591-546b-5909-bffc-a65e3f7714e2",
+                                                                                     "id":  "86272bdb-f7b9-597d-b1a1-ee975bdaa554",
                                                                                      "name":  "account_name",
-                                                                                     "value":  "={{ $(\u0027Get suggestions\u0027).item.json.r.account_name }}",
+                                                                                     "value":  "={{ $(\u0027Stage suggestions\u0027).item.json.r.account_name || \u0027\u0027 }}",
                                                                                      "type":  "string"
                                                                                  },
                                                                                  {
-                                                                                     "id":  "e6b069f6-0295-5777-a7ab-d6f6597c5455",
-                                                                                     "name":  "period_first",
-                                                                                     "value":  "={{ $(\u0027Get suggestions\u0027).item.json.r.period_first }}",
+                                                                                     "id":  "5a67c78a-d167-5251-9134-e802e136de71",
+                                                                                     "name":  "hint",
+                                                                                     "value":  "={{ $(\u0027Stage suggestions\u0027).item.json.r.hint || \u0027\u0027 }}",
                                                                                      "type":  "string"
                                                                                  },
                                                                                  {
-                                                                                     "id":  "4ecb931b-7112-5e32-a995-5ea098aecec6",
-                                                                                     "name":  "period_last",
-                                                                                     "value":  "={{ $(\u0027Get suggestions\u0027).item.json.r.period_last }}",
+                                                                                     "id":  "4b96fa55-9980-5177-a14d-eea708f3e8c3",
+                                                                                     "name":  "reason",
+                                                                                     "value":  "={{ $(\u0027Stage suggestions\u0027).item.json.r.reason || \u0027\u0027 }}",
                                                                                      "type":  "string"
                                                                                  },
                                                                                  {
-                                                                                     "id":  "81264a0c-c85e-5b68-8f54-c4ba244829d1",
-                                                                                     "name":  "span_days",
-                                                                                     "value":  "={{ $(\u0027Get suggestions\u0027).item.json.r.span_days }}",
+                                                                                     "id":  "14d31f1c-affb-539f-9f66-c543c2b55a0c",
+                                                                                     "name":  "staged",
+                                                                                     "value":  "={{ $(\u0027Stage suggestions\u0027).item.json.r.staged || 0 }}",
                                                                                      "type":  "number"
                                                                                  },
                                                                                  {
-                                                                                     "id":  "d785b84d-59c8-57e6-86bd-d759309edb1f",
-                                                                                     "name":  "hint",
-                                                                                     "value":  "={{ $(\u0027Get suggestions\u0027).item.json.r.hint || \u0027\u0027 }}",
-                                                                                     "type":  "string"
+                                                                                     "id":  "b7a8730d-8335-5cca-a193-36b79b70cba0",
+                                                                                     "name":  "open_count",
+                                                                                     "value":  "={{ $(\u0027Stage suggestions\u0027).item.json.r.open_count || 0 }}",
+                                                                                     "type":  "number"
                                                                                  },
                                                                                  {
-                                                                                     "id":  "7ac725a5-59da-5939-92b7-a854e6fbde61",
-                                                                                     "name":  "reason",
-                                                                                     "value":  "={{ $(\u0027Get suggestions\u0027).item.json.r.reason || \u0027\u0027 }}",
-                                                                                     "type":  "string"
+                                                                                     "id":  "0971d669-713b-5a9e-bb20-0f8d8840b16b",
+                                                                                     "name":  "unsent_count",
+                                                                                     "value":  "={{ $(\u0027Stage suggestions\u0027).item.json.r.unsent_count || 0 }}",
+                                                                                     "type":  "number"
                                                                                  },
                                                                                  {
-                                                                                     "id":  "1b800ab4-53c8-57bf-93b9-4b1fa39a5ff6",
-                                                                                     "name":  "suggestions",
-                                                                                     "value":  "={{ $(\u0027Get suggestions\u0027).item.json.r.suggestions || [] }}",
+                                                                                     "id":  "fd08da8c-7899-5037-a8a9-4948a9c8bd2b",
+                                                                                     "name":  "names",
+                                                                                     "value":  "={{ ($(\u0027Stage suggestions\u0027).item.json.r.rows || []).map((x) =\u003e x.name) }}",
                                                                                      "type":  "array"
                                                                                  },
                                                                                  {
-                                                                                     "id":  "c7f74f65-aba7-5bb3-9764-40cb3c24f251",
+                                                                                     "id":  "0f5d2974-40e0-5306-b880-bbc34d0b1e43",
+                                                                                     "name":  "hints",
+                                                                                     "value":  "={{ $(\u0027Stage suggestions\u0027).item.json.r.hints || [] }}",
+                                                                                     "type":  "array"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "c7ec2cdd-c032-504e-a1e9-27bae47da0e8",
+                                                                                     "name":  "household",
+                                                                                     "value":  "={{ $(\u0027Stage suggestions\u0027).item.json.r.household || [] }}",
+                                                                                     "type":  "array"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "f0cfe388-03d4-57fb-ac40-dcdc2250d27c",
                                                                                      "name":  "known_elsewhere",
-                                                                                     "value":  "={{ $(\u0027Get suggestions\u0027).item.json.r.known_elsewhere || [] }}",
+                                                                                     "value":  "={{ $(\u0027Stage suggestions\u0027).item.json.r.known_elsewhere || [] }}",
                                                                                      "type":  "array"
                                                                                  }
                                                                              ]
@@ -401,14 +413,14 @@
                                        1540,
                                        0
                                    ],
-                      "id":  "7aa377b6-a34b-5f24-8036-39acbd7fedce",
+                      "id":  "08bc97ee-14dd-539c-a0a0-4ba286e60bda",
                       "name":  "Return"
                   },
                   {
                       "parameters":  {
-                                         "content":  "## DB-Automatik\n**Daueraufträge aus einem Bank-Export vorschlagen (Lese-Tool, kein Write, kein LLM)**\n\nFetch telegram file + Read table = der geteilte Leser (bank_export_table.ps1, gleich in tool_import_bank_export). Get suggestions (finance_ro) = finance.fn_get_recurring_suggestions: fn_bank_export_load (Bank-Profil, Konto-Wächter, ein Sub-Konto je Datei; kein Startpunkt nötig, es wird nichts gebucht) -\u003e Geldzeilen je Gegenkonto/IBAN/Name -\u003e Betrags-Cluster (Ausgaben ±7,5 %, Preisstufe = eine Reihe) -\u003e Rhythmus (Woche, Monat 1/3/6, Jahr; Termin ±3 Tage, 80 % Treffer, reif ab 3 bzw. 2 Terminen, noch aktiv) -\u003e Startdatum nach dem letzten Termin und nach dem Abgleich-Tag -\u003e Bekannt-Filter gegen laufende Daueraufträge (IBAN-Schlüssel, Transfer-Gegenkonto, exakter Betrag, Name + Betrag; auf einem anderen Konto -\u003e known_elsewhere). Datei unter 90 Tagen -\u003e nur hint export_too_short. Kein HITL: der Agent fragt je Vorschlag, angelegt wird über tool_create_recurring_payment (mit counterparty_iban als Schlüssel) bzw. tool_create_recurring_transfer, jeweils mit Karte.",
+                                         "content":  "## DB-Automatik\n**Daueraufträge aus einem Bank-Export vorschlagen (Stapel, kein Write in Domänen-Daten, kein LLM)**\n\nFetch telegram file + Read table = der geteilte Leser (bank_export_table.ps1, gleich in tool_import_bank_export). Stage suggestions (finance_rw) = finance.fn_import_stage_recurring mode export: fn_get_recurring_suggestions (fn_bank_export_load mit Bank-Profil, Konto- und Sub-Konto-Wächter; Datei unter 75 Tagen -\u003e nur hint export_too_short) -\u003e Erkennung fn_get_recurring_candidates (Schlüssel, Betrags-Cluster, Rhythmus, Reife, Startdatum, Bekannt-Filter) -\u003e der EINE offene Vorschlags-Stapel des Chats (import_staging, origin recurring_suggestion; ergänzt statt neu, abgelehnte bleiben abgelehnt). Kein HITL: Staging ist keine Domänen-Daten. Angelegt wird erst per Knopf unter der Vorschlags-Nachricht, die tool_send_recurring_suggestions schickt.",
                                          "height":  460,
-                                         "width":  520,
+                                         "width":  480,
                                          "color":  4
                                      },
                       "type":  "n8n-nodes-base.stickyNote",
@@ -417,12 +429,12 @@
                                        220,
                                        -520
                                    ],
-                      "id":  "83e03d58-7282-598a-8e6c-29f4b1b40ce1",
+                      "id":  "f00eec27-d96e-5dde-82d2-8c8c44184a27",
                       "name":  "Überblick"
                   },
                   {
                       "parameters":  {
-                                         "content":  "## DB-Automatik\n**Nur Aggregate an das Modell**\n\nDie Datei verlässt n8n nicht. Die Rückgabe trägt je Reihe nur Name (Gegenpart wie gedruckt; ohne Gegenpart die ersten drei Wörter ohne Ziffern des Buchungstexts), Gegen-IBAN (nicht bei einer IBAN, die sich mehrere Händler teilen), Beträge, Rhythmus und Termine – nie Export-Zeilen oder ganze Verwendungszwecke. Fehlertexte der DB zitieren keine Zellinhalte.",
+                                         "content":  "## DB-Automatik\n**Nur Aggregate an das Modell**\n\nDie Datei verlässt n8n nicht. Die Rückgabe trägt nur Anzahlen, bereinigte Namen und Hinweise, nie Export-Zeilen oder Verwendungszwecke. Im Stapel liegen je Vorschlag Name, Gegen-IBAN, Termine und Beträge, spätestens 7 Tage nach dem letzten Ergänzen gelöscht.",
                                          "height":  300,
                                          "width":  240,
                                          "color":  4
@@ -433,7 +445,7 @@
                                        1100,
                                        -300
                                    ],
-                      "id":  "71e7dd0f-49b1-5703-b3d4-8e5c00ec43b8",
+                      "id":  "8ca97ea5-e7dd-55ef-b23d-7f84bbd42776",
                       "name":  "Privacy"
                   }
               ],
@@ -494,7 +506,7 @@
                                                          [
                                                              {
                                                                  "index":  0,
-                                                                 "node":  "Get suggestions",
+                                                                 "node":  "Stage suggestions",
                                                                  "type":  "main"
                                                              }
                                                          ],
@@ -507,17 +519,17 @@
                                                          ]
                                                      ]
                                         },
-                        "Get suggestions":  {
-                                                "main":  [
-                                                             [
-                                                                 {
-                                                                     "index":  0,
-                                                                     "node":  "Suggestions ok?",
-                                                                     "type":  "main"
-                                                                 }
-                                                             ]
-                                                         ]
-                                            },
+                        "Stage suggestions":  {
+                                                  "main":  [
+                                                               [
+                                                                   {
+                                                                       "index":  0,
+                                                                       "node":  "Suggestions ok?",
+                                                                       "type":  "main"
+                                                                   }
+                                                               ]
+                                                           ]
+                                              },
                         "Suggestions ok?":  {
                                                 "main":  [
                                                              [

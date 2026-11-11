@@ -19,7 +19,9 @@ DECLARE
   -- fns, die nie ein LLM-Tool-Payload sehen (Import/Statement/Cron/Render/Validate/Review/Void) oder intern sind
   v_skip_fn text[] := ARRAY[
     'fn_import_%', 'fn_statement_%', 'fn_apply_bank_statement', 'fn_upsert_%', 'fn_monitor_%', 'fn_render_%',
-    'fn_validate_%', 'fn_advisor_%', 'fn_void_%', 'fn_skip_recurring_occurrence', 'fn_skip_interest_occurrence'];
+    'fn_validate_%', 'fn_advisor_%', 'fn_void_%', 'fn_skip_recurring_occurrence', 'fn_skip_interest_occurrence',
+    -- interne Erkennung: period_last kommt aus Prepare/Export bzw. gespeicherten Terminen, nie vom LLM
+    'fn_get_recurring_candidates'];
   -- (fn, key): Lookup-Keys aus DB-Knoten (Vorkommen-Identitaet, ON CONFLICT), nie vom LLM gefuellt
   v_skip_key text[] := ARRAY[
     'fn_book_recurring_occurrence.due_date', 'fn_book_recurring_transfer.due_date',

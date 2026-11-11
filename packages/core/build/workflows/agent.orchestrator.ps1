@@ -514,6 +514,21 @@ function Build-AgentOrchestrator {
     $nSendPersonaSticker = New-TelegramRelayNode 'Send persona sticker' @(260, 1700) -Method 'sendSticker' `
         -BodyExpr "{ chat_id: String((`$('Trigger normalize').item.json.callback_query.from || {}).id || ''), sticker: `$('Claim persona sticker').item.json.r.sticker }"
 
+    # Generische Registry-Felder (jeder Handler darf sie setzen, der Core kennt kein Paket-Feld):
+    # result.owner_notice = Hinweis-Text an den Owner (Gleichstand zur HITL-Stufe owner_info, z. B. ein Mitglied hat per Knopf
+    # angelegt) - nach dem Toast-Ast, weil ein haengender Send die Quittung sonst ueber Telegrams Frist schoebe; result.edit = die getippte Nachricht aendern
+    # ({text} neuer Text bzw. {keep_text:true} Text bleibt), ohne Tastatur -> die Knoepfe verschwinden. Beide nicht fatal.
+    $RD = "((`$('Dispatch callback').item.json.result || {}))"
+    $CQM = "((`$('Trigger normalize').item.json.callback_query || {}).message || {})"
+    $nOwnerNoticeIf = Build-If 'Owner notice?' @(-400, 1880) "={{ !!($RD.owner_notice) }}" 'true' 'equals' 'boolean'
+    $nOwnerNotice = New-TelegramSendNode 'Send owner notice' @(-180, 1880) "={{ String($RD.owner_notice || '') }}" -OnError 'continueRegularOutput'
+    $nEditCbIf = Build-If 'Edit tapped message?' @(-400, 2060) `
+        "={{ !!($RD.edit && ($RD.edit.text || $RD.edit.keep_text) && $CQM.message_id && $CQM.chat) }}" 'true' 'equals' 'boolean'
+    $nEditCb = New-TelegramEditMessageNode 'Edit tapped message' @(-180, 2060) `
+        -ChatIdExpr "={{ String(($CQM.chat || {}).id || '') }}" -MessageIdExpr "={{ $CQM.message_id }}" `
+        -TextExpr "={{ String(($RD.edit.keep_text ? $CQM.text : $RD.edit.text) || '') }}"
+    $nEditCbSticky = Build-Sticky 'Doc Registry-Felder' @(-420, 2240) 'Registry-Handler: Owner-Hinweis und Nachricht ändern' `
+        'Liefert ein Registry-Handler result.owner_notice, geht der Text an den Owner (nach dem Toast-Ast: ein haengender Send darf die Quittung nicht ueber Telegrams Frist schieben). result.edit ändert die getippte Nachricht: text = neuer Text, keep_text = alter Text bleibt; ohne Tastatur verschwinden die Knöpfe. Beide Sends sind nicht fatal. Der Handler ist eine schnelle DB-fn, darum kommt der Toast aus ihrem Ergebnis (kein answerCallbackQuery vorab). Erster Nutzer: Dauerauftrags-Vorschläge (Prefix rsug).' 300 380
     # === LERN-LOOP-CALLBACKS (Phase C, deterministisch, KEIN LLM): learn:ok:<id> / learn:no:<id> / learn:undo:<id>
     # Owner-gegated ueber 'Callback owner?'. Learn action parst data.split(":")[1] (ok|no|undo), die candidate_id
     # ist data.split(":")[2]. ok -> agent.fn_approve_learn_candidate (dispatcht fact->fn_set_context_facts |
@@ -1405,6 +1420,7 @@ return [{ json: { body, memory_signal, raw_output: String(a.output ?? ''), signa
         $nBlock, $nAnswerBlock, $nBlockDone, $nUnblock, $nAnswerUnblock, $nUnblockDone,
         $nCronOn, $nAnswerCronOn, $nCronOnDone, $nCronOff, $nAnswerCronOff, $nCronOffDone,
         $nDispatchCb, $nOnbRoute, $nAnswerDispatch, $nChoiceCard, $nSendChoiceCard, $nChoiceSticky, $nPersonaSticker, $nClaimPersonaSticker, $nPersonaStickerDue, $nSendPersonaSticker,
+        $nOwnerNoticeIf, $nOwnerNotice, $nEditCbIf, $nEditCb, $nEditCbSticky,
         $nLearnAction, $nLearnOk, $nAnswerLearnOk, $nApprovedNote, $nOfferUndo,
         $nLearnNo, $nAnswerLearnNo, $nLearnUndo, $nAnswerLearnUndo,
         $nAnswerHelpCb, $nLoadCapCb, $nSplitHelpCb, $nSendHelpCb,
@@ -1515,7 +1531,10 @@ return [{ json: { body, memory_signal, raw_output: String(a.output ?? ''), signa
         'Run cron off'            = @{ main = @( ,@( E 'Answer cron off' ) ) }
         'Answer cron off'         = @{ main = @( ,@( E 'Notify cron off' ) ) }
         # WS-0c CB: generischer Callback-Dispatch (extra-Fallback -> Registry -> Toast)
-        'Dispatch callback'       = @{ main = @( ,@( (E 'Onboarding route?'), (E 'Persona sticker?') ) ) }   # 2. Ast nach dem Toast-Ast (v1-Reihenfolge)
+        # Toast zuerst (Telegram verwirft eine spaete Quittung; ein Send kann haengen), danach Owner-Hinweis und Nachricht aendern (v1-Reihenfolge)
+        'Dispatch callback'       = @{ main = @( ,@( (E 'Onboarding route?'), (E 'Persona sticker?'), (E 'Owner notice?'), (E 'Edit tapped message?') ) ) }
+        'Owner notice?'           = @{ main = @( @( E 'Send owner notice' ), @() ) }
+        'Edit tapped message?'    = @{ main = @( @( E 'Edit tapped message' ), @() ) }
         'Persona sticker?'        = @{ main = @( @( E 'Claim persona sticker' ), @() ) }
         'Claim persona sticker'   = @{ main = @( ,@( E 'Persona sticker due?' ) ) }
         'Persona sticker due?'    = @{ main = @( @( E 'Send persona sticker' ), @() ) }

@@ -2372,6 +2372,45 @@ foreach ($sa in @(
 }
 
 # ---------------------------------------------------------------
+# (35) KNOPF-ANLAGE AN DIE FREIGABE-STUFE GEKOPPELT: Ein Registry-Prefix, der per Knopf ohne HITL-Gate anlegt, darf eine
+#     spaetere Verschaerfung der Stufe der Einzel-Werkzeuge nicht still umgehen. Solange ein Paket den Prefix traegt, muessen
+#     die gekoppelten Werkzeuge im approval_matrix-Block die Stufe haben, die der Knopf-Weg nachbildet (owner_info = der
+#     Owner bekommt bei Mitgliedern einen Hinweis, result.owner_notice). Wird die Stufe verschaerft, muss der Handler mit.
+#     Selbst-Asserts.
+# ---------------------------------------------------------------
+$knopfKopplung = @{ 'rsug' = @{ tier = 'owner_info'; tools = @('tool_create_recurring_payment', 'tool_create_recurring_transfer') } }
+function Get-ButtonTierIssues($Manifest, [string]$Pkg, [hashtable]$Coupling) {
+    $iss = New-Object System.Collections.Generic.List[string]
+    $cb = $Manifest.callback_handlers
+    if ($null -eq $cb) { return , $iss }
+    foreach ($prefix in $Coupling.Keys) {
+        if (-not $cb.PSObject.Properties[$prefix]) { continue }
+        foreach ($tool in $Coupling[$prefix].tools) {
+            $wf = "agent.$Pkg.$tool"
+            $e = if ($Manifest.approval_matrix) { $Manifest.approval_matrix.PSObject.Properties[$wf] } else { $null }
+            $tier = if ($e) { "$($e.Value.tier)" } else { '' }
+            if ($tier -ne $Coupling[$prefix].tier) {
+                $iss.Add("${Pkg}: Prefix '$prefix' legt per Knopf an, aber $wf hat Stufe '$tier' (erwartet '$($Coupling[$prefix].tier)') -- Handler und Stufe gemeinsam aendern.")
+            }
+        }
+    }
+    return , $iss
+}
+foreach ($mf in (Get-ChildItem (Join-Path $RepoRoot 'packages\*\manifest.json'))) {
+    $m = [System.IO.File]::ReadAllText($mf.FullName, $Utf8NoBom) | ConvertFrom-Json
+    foreach ($i in (Get-ButtonTierIssues $m $mf.Directory.Name $knopfKopplung)) { $errors.Add("KNOPF-STUFE: $i") }
+}
+$saMf = '{"callback_handlers":{"rsug":{}},"approval_matrix":{"agent.x.tool_create_recurring_payment":{"tier":"owner_info"},"agent.x.tool_create_recurring_transfer":{"tier":"owner_info"}}}' | ConvertFrom-Json
+foreach ($sa in @(
+    @{ n = 'gueltig'; m = $saMf; want = 0 },
+    @{ n = 'verschaerft'; m = ($saMf | ConvertTo-Json -Depth 5).Replace('"owner_info"', '"owner_approval"') | ConvertFrom-Json; want = 2 },
+    @{ n = 'ohne Prefix'; m = ('{"callback_handlers":{},"approval_matrix":{}}' | ConvertFrom-Json); want = 0 },
+    @{ n = 'Stufe fehlt'; m = ('{"callback_handlers":{"rsug":{}},"approval_matrix":{}}' | ConvertFrom-Json); want = 2 })) {
+    $got = (Get-ButtonTierIssues $sa.m 'x' $knopfKopplung).Count
+    if ($got -ne $sa.want) { $errors.Add("KNOPF-STUFE SELBST-ASSERT '$($sa.n)': erwartet $($sa.want), gefunden $got -- Check 35 ist defekt.") }
+}
+
+# ---------------------------------------------------------------
 # Report
 # ---------------------------------------------------------------
 Write-Host ""

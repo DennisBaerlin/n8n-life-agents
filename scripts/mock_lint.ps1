@@ -65,6 +65,8 @@ foreach ($cf in (Get-AgentCaseFile $RepoRoot)) {
     $fileCases = @()
     foreach ($c in $cf.Cases) {
         if ($c.PSObject.Properties['text'] -and $c.text) { $sentTexts += [string]$c.text }
+        # Ablauf-Faelle (kind sequence): jede Bildunterschrift eines Schritts ist eine gesendete Nachricht
+        if ($c.PSObject.Properties['steps']) { foreach ($s in @($c.steps)) { if ($s.PSObject.Properties['caption'] -and $s.caption) { $sentTexts += [string]$s.caption } } }
         if (-not $c.task -or $c.PSObject.Properties['kind']) { continue }
         if (-not ((Test-CaseHasKey $c 'expected_tool') -or (Test-CaseHasKey $c 'expected_route'))) { continue }
         $fileCases += @{ Id = [string]$c.id; Task = [string]$c.task; Expected = (Get-CaseExpected $c); File = $cf.Rel }

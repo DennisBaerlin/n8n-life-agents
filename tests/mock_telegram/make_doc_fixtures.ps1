@@ -16,6 +16,11 @@
 #                       Position nur ISIN + Stueck + aktueller Kurs, KEIN Ticker, KEIN Einstand (Befund 2026-10-23).
 #   mock_photo_070.pdf  Renteninformation DRV (tc75, Werte erfunden) = Szenario "Renteninformation der Testrentenkasse":
 #                       erreichter Anspruch, Hochrechnung, 1-%/2-%-Szenario, EM-Rente, Entgeltpunkte, Regelaltersrente.
+#   mock_photo_132.pdf  Kontoauszug Erlenbank Maerz 2000, Layout 1 (tc132-tc135) = Szenario "Kontoauszug Maerz Mock-Erlenbank":
+#                       Gehalt, Miete, ein Kartenkauf; Saldo-Probe 500 + 2400 - 850 - 37,40 = 2012,60 (Startbetrag des E2E-Kontos).
+#   mock_photo_136a/b/c.pdf  Kontoauszuege Birkenbank April-Juni 2000, Layout 2 mit S/H-Spalte (tc136) = Szenario
+#                       "Auszuege April bis Juni Mock-Birkenbank": Streaming-Abo und Vereins-Lastschrift je Monat; Saldenkette
+#                       1000 -> 963,01 -> 926,02 -> 889,03.
 #   mock_photo_084.xlsx Bondora-Go&Grow-Kontoauszug (tc84, Werte erfunden) = Szenario "Bondora-Export": fester Leser
 #                       (Extract From File -> fn_bank_export_normalize), kein Vision-Call.
 #
@@ -90,6 +95,33 @@ Write-TextPdf 'mock_photo_051.pdf' @(
     @(50, 540,  9, 'Testdokument fuer automatisierte Tests. Bitte pruefen Sie diesen Kontoauszug.')
 )
 
+Write-TextPdf 'mock_photo_132.pdf' @(
+    @(50, 790, 18, 'Erlenbank eG'),
+    @(50, 765, 13, 'Kontoauszug 3/2000  -  Girokonto'),
+    @(50, 740, 11, 'Kontoinhaber: Erika Mustermann'),
+    @(50, 724, 11, 'IBAN: DE89 3704 0044 0532 0130 00'),
+    @(50, 708, 11, 'Zeitraum: 01.03.2000 bis 31.03.2000'),
+    @(50, 680, 11, 'Alter Kontostand am 01.03.2000                                     500,00 EUR'),
+    @(50, 650, 11, 'Buchung    Vorgang                                                  Betrag EUR'),
+    @(50, 632, 11, '03.03.2000 Dauerauftrag Vermieter Test, Miete Maerz                    -850,00'),
+    @(50, 614, 11, '17.03.2000 Kartenzahlung Buchladen Test                                 -37,40'),
+    @(50, 596, 11, '30.03.2000 Gutschrift Musterfirma GmbH, Lohn/Gehalt 03/2000          2.400,00'),
+    @(50, 566, 11, 'Neuer Kontostand am 31.03.2000                                   2.012,60 EUR'),
+    @(50, 520,  9, 'Testdokument fuer automatisierte Tests. Alle Werte sind erfunden.')
+)
+foreach ($m in @(@('a', '04', '30', '1.000,00', '963,01'), @('b', '05', '31', '963,01', '926,02'), @('c', '06', '30', '926,02', '889,03'))) {
+    Write-TextPdf "mock_photo_136$($m[0]).pdf" @(
+        @(50, 790, 16, 'Birkenbank AG  -  Kontoauszug'),
+        @(50, 768, 11, "Konto DE02 1203 0000 0000 2020 51  |  Zeitraum 01.$($m[1]).2000 - $($m[2]).$($m[1]).2000"),
+        @(50, 744, 11, "Saldo alt                                                     $($m[3]) H"),
+        @(50, 716, 11, 'Datum   Empfaenger / Auftraggeber            Verwendungszweck              Betrag  S/H'),
+        @(50, 698, 11, "02.$($m[1]). Videodienst Test GmbH              Abo Monat                      12,99  S"),
+        @(50, 680, 11, "15.$($m[1]). Sportverein Test e.V.               SEPA-Lastschrift Beitrag       24,00  S"),
+        @(50, 662, 11, "               Glaeubiger-ID DE98ZZZ09999999999  Mandat M-4711"),
+        @(50, 632, 11, "Saldo neu                                                     $($m[4]) H"),
+        @(50, 590,  9, 'Testdokument fuer automatisierte Tests. Alle Werte sind erfunden.')
+    )
+}
 Write-TextPdf 'mock_photo_056.pdf' @(
     @(50, 790, 18, 'Trade Republic Bank GmbH'),
     @(50, 765, 13, 'Kontoauszug  -  Cash-Konto'),

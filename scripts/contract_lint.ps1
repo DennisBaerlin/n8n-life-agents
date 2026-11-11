@@ -1847,7 +1847,8 @@ Get-ChildItem -Path (Join-Path $RepoRoot 'packages') -Recurse -Filter '*.ps1' |
 #     Sektionen + ihrer Pflicht-Bloecke als Konstante (die DB meldet daraus die Luecken), der Berater-Prompt nennt
 #     dieselben Keys unter "### Interview catalog" ("N. `key` ... **-> emits the `block` ...**"). Beide muessen in
 #     Keys, Reihenfolge und Bloecken gleich sein — sonst gilt eine im Prompt umbenannte Sektion fuer immer als offen.
-#     Dazu: "gates_advisor" in onboarding/sections.json ist, falls vorhanden, ein Boolean (fehlt = sperrt).
+#     Dazu: "gates_advisor" in onboarding/sections.json ist, falls vorhanden, ein Boolean (fehlt = sperrt); "for_roles"
+#     ein nicht-leeres Array aus owner/partner/child mit Spalte im Paket-Schema; der Vorschlags-callback passt in 64 Byte.
 # ---------------------------------------------------------------
 $gapFn  = Join-Path $pkgDir 'finance\db\migrations\R__fn_plan_gaps.sql'
 $advCtx = Join-Path $pkgDir 'finance\contexts\finance_advisor_instructions.md'
@@ -1893,10 +1894,41 @@ foreach ($mf in (Get-ChildItem (Join-Path $pkgDir '*\manifest.json'))) {
     }
 }
 foreach ($sf in (Get-ChildItem (Join-Path $pkgDir '*\onboarding\sections.json') -ErrorAction SilentlyContinue)) {
-    foreach ($s in @([System.IO.File]::ReadAllText($sf.FullName, $Utf8NoBom) | ConvertFrom-Json)) {
+    # PS 5.1: ConvertFrom-Json liefert das Array als EIN Objekt -> erst zuweisen, dann ueber die Variable iterieren
+    $secList = [System.IO.File]::ReadAllText($sf.FullName, $Utf8NoBom) | ConvertFrom-Json
+    foreach ($s in $secList) {
         if ($s.PSObject.Properties.Name -contains 'gates_advisor' -and $s.gates_advisor -isnot [bool]) {
             $errors.Add("ONBOARDING gates_advisor: $($sf.Directory.Parent.Name)/onboarding/sections.json '$($s.key)' -- gates_advisor muss true/false sein (fehlt = sperrt den Berater).")
         }
+        # for_roles (fehlt = alle Rollen): nicht-leeres Array aus dem Rollen-Vorrat; derselbe Vorrat steht im CHECK der
+        # Paket-Tabelle (<pkg>.onboarding_state.for_roles), die ein Paket mit for_roles darum auch haben muss.
+        if ($s.PSObject.Properties.Name -contains 'for_roles') {
+            $fr = @($s.for_roles)
+            $bad = @($fr | Where-Object { @('owner', 'partner', 'child') -cnotcontains [string]$_ })
+            if ($fr.Count -eq 0 -or $bad.Count -gt 0) {
+                $errors.Add("ONBOARDING for_roles: $($sf.Directory.Parent.Name)/onboarding/sections.json '$($s.key)' -- for_roles muss ein nicht-leeres Array aus owner/partner/child sein (fehlt = alle Rollen).")
+            }
+            $dbDir = Join-Path $sf.Directory.Parent.FullName 'db'
+            $hasCol = @(Get-ChildItem $dbDir -Filter '*.sql' -Recurse -ErrorAction SilentlyContinue |
+                Where-Object { [System.IO.File]::ReadAllText($_.FullName, $Utf8NoBom) -match 'onboarding_state\s+ADD\s+COLUMN\s+IF\s+NOT\s+EXISTS\s+for_roles' }).Count -gt 0
+            if (-not $hasCol) {
+                $errors.Add("ONBOARDING for_roles: $($sf.Directory.Parent.Name)/onboarding/sections.json '$($s.key)' setzt for_roles, aber packages/$($sf.Directory.Parent.Name)/db legt die Spalte onboarding_state.for_roles nicht an -- der Seed scheiterte.")
+            }
+        }
+        # Vorschlags-Knopf: callback_data 'onboarding:<pkg>:<key>:next' darf Telegrams 64 Byte nicht ueberschreiten.
+        # (Paket-Beispielfrage <pkg>.fn_next_step_example: Pruefung im Block direkt nach dieser Schleife.)
+        $cb = "onboarding:$($sf.Directory.Parent.Name):$($s.key):next"
+        if ([System.Text.Encoding]::UTF8.GetByteCount($cb) -gt 64) {
+            $errors.Add("ONBOARDING callback: '$cb' ist laenger als 64 Byte (Telegram-Grenze fuer callback_data) -- kuerzeren Abschnitts-Key waehlen.")
+        }
+    }
+}
+# Paket-Beispielfrage: core.fn_get_next_step_example ruft <pkg>.fn_next_step_example(text) nur, wenn sie SECURITY DEFINER
+# mit gepinntem search_path ist (Laufzeit-Pruefung ueber pg_proc) -> eine sonst angelegte fn waere still wirkungslos.
+foreach ($ef in (Get-ChildItem (Join-Path $pkgDir '*\db\migrations\R__fn_next_step_example.sql') -ErrorAction SilentlyContinue)) {
+    $et = [System.IO.File]::ReadAllText($ef.FullName, $Utf8NoBom)
+    if ($et -notmatch '(?i)SECURITY\s+DEFINER' -or $et -notmatch '(?i)SET\s+search_path\s*=') {
+        $errors.Add("NEXT-STEP-EXAMPLE: $($ef.FullName.Substring($RepoRoot.Length + 1)) -- <pkg>.fn_next_step_example muss SECURITY DEFINER mit SET search_path sein, sonst ruft core.fn_get_next_step_example sie nie.")
     }
 }
 

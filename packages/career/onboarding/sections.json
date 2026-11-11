@@ -1,5 +1,5 @@
 [
-  { "key": "profile_basics",  "ord": 1 },
-  { "key": "skills_overview", "ord": 2 },
-  { "key": "goals_targets",   "ord": 3 }
+  { "key": "profile_basics",  "ord": 1, "for_roles": ["owner", "partner"] },
+  { "key": "skills_overview", "ord": 2, "for_roles": ["owner", "partner"] },
+  { "key": "goals_targets",   "ord": 3, "for_roles": ["owner", "partner"] }
 ]

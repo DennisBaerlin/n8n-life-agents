@@ -36,12 +36,24 @@ BEGIN
     -- Je section_key EINE Zeile fuer p_pid aus dem Katalog (DISTINCT ON: gleiche ord/label je Sektion). INSERT...
     -- SELECT auf derselben Tabelle ist erlaubt (Pre-INSERT-Snapshot); ON CONFLICT (section_key, person_id) DO
     -- NOTHING -> idempotent + greift bestehende Zeilen der Person nicht an. Leerer Katalog -> 0 Zeilen (No-Op).
-    EXECUTE format($q$
-        INSERT INTO %1$s (section_key, ord, label, person_id)
-        SELECT DISTINCT ON (section_key) section_key, ord, label, $1
-        FROM %1$s
-        ORDER BY section_key, ord
-        ON CONFLICT (section_key, person_id) DO NOTHING
-    $q$, v_rel) USING p_pid;
+    -- for_roles (optionale Spalte, aus sections.json geseedet) wandert mit, sonst haette die neue Zeile NULL = alle Rollen.
+    IF EXISTS (SELECT 1 FROM pg_catalog.pg_attribute a
+               WHERE a.attrelid = v_rel::regclass AND a.attname = 'for_roles' AND NOT a.attisdropped) THEN
+        EXECUTE format($q$
+            INSERT INTO %1$s (section_key, ord, label, for_roles, person_id)
+            SELECT DISTINCT ON (section_key) section_key, ord, label, for_roles, $1
+            FROM %1$s
+            ORDER BY section_key, ord
+            ON CONFLICT (section_key, person_id) DO NOTHING
+        $q$, v_rel) USING p_pid;
+    ELSE
+        EXECUTE format($q$
+            INSERT INTO %1$s (section_key, ord, label, person_id)
+            SELECT DISTINCT ON (section_key) section_key, ord, label, $1
+            FROM %1$s
+            ORDER BY section_key, ord
+            ON CONFLICT (section_key, person_id) DO NOTHING
+        $q$, v_rel) USING p_pid;
+    END IF;
 END;
 $$;

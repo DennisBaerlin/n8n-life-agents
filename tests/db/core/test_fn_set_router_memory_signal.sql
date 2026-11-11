@@ -50,6 +50,16 @@ BEGIN
      OR (SELECT message->>'content' FROM agent.orchestrator_chat_memory WHERE session_id = '__t_rms_2') <> 'Eigene Fassung neu' THEN
     RAISE EXCEPTION 'FAIL router_memory [fremder Text]: %', v_res; END IF;
   RAISE NOTICE 'PASS router_memory [ungueltiges Signal / leer / fremder Text -> unveraendert]';
+
+  -- TEST 3: ohne Werkzeug mit Vorschlags-Marker -> der bereinigte Text ersetzt die Router-Zeile; content = raw -> no-op
+  INSERT INTO agent.orchestrator_chat_memory (session_id, message) VALUES ('__t_rms_3', jsonb_build_object('type', 'ai', 'content', E'Hallo!\nNEXT_STEP'));
+  v_res := agent.fn_set_router_memory_signal(jsonb_build_object('chat_id', '__t_rms_3', 'raw', E'Hallo!\nNEXT_STEP', 'content', 'Hallo!'));
+  IF (v_res->>'updated')::boolean IS DISTINCT FROM true
+     OR (SELECT message->>'content' FROM agent.orchestrator_chat_memory WHERE session_id = '__t_rms_3') <> 'Hallo!' THEN
+    RAISE EXCEPTION 'FAIL router_memory [Marker bereinigt]: %', v_res; END IF;
+  v_res := agent.fn_set_router_memory_signal('{"chat_id":"__t_rms_3","raw":"Hallo!","content":"Hallo!"}'::jsonb);
+  IF (v_res->>'updated')::boolean IS DISTINCT FROM false THEN RAISE EXCEPTION 'FAIL router_memory [content = raw]: %', v_res; END IF;
+  RAISE NOTICE 'PASS router_memory [Marker-Zeile ohne Werkzeug -> bereinigter Text]';
 END $$;
 
 ROLLBACK;

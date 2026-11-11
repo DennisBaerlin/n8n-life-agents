@@ -199,7 +199,8 @@ function buildResult(method, body) {
 
 // Fehler-Schalter je Bot-API-Methode (Tests fuer Fehlerwege, z. B. sendMessageDraft abgelehnt -> die Antwort muss
 // trotzdem kommen): GET /__fail?method=<m> schaltet an, /__fail?method=<m>&off=1 aus. Antwort dann HTTP 400 wie Telegram;
-// optional &code=429&retry_after=30&desc=<text>. GET /__hang?method=<m> laesst Aufrufe unbeantwortet (Zeitgrenzen), &off=1 aus.
+// optional &code=429&retry_after=30&desc=<text>; &markup=1 = nur Aufrufe mit reply_markup (Knopf-Send scheitert, der Text-
+// Fallback ohne Knopf geht durch). GET /__hang?method=<m> laesst Aufrufe unbeantwortet (Zeitgrenzen), &off=1 aus.
 const failMethods = new Map();
 const hangMethods = new Set();
 
@@ -210,7 +211,7 @@ const server = http.createServer((req, res) => {
     const q = new URLSearchParams(req.url.split('?')[1] || '');
     const m = q.get('method') || '';
     if (q.get('off')) failMethods.delete(m);
-    else if (m) failMethods.set(m, { code: Number(q.get('code') || 400), retry_after: q.get('retry_after'), desc: q.get('desc') });
+    else if (m) failMethods.set(m, { code: Number(q.get('code') || 400), retry_after: q.get('retry_after'), desc: q.get('desc'), markup: q.get('markup') === '1' });
     res.writeHead(200, { 'Content-Type': 'text/plain' }); res.end([...failMethods.keys()].join(',')); return;
   }
   if (req.url.startsWith('/__hang?')) {
@@ -308,8 +309,9 @@ const server = http.createServer((req, res) => {
 
     // Per /__fail eingeschaltete Methode (mock_route_test [draft-fail]) -> HTTP 400 wie die echte Bot-API.
     if (hangMethods.has(method)) return;
-    if (failMethods.has(method)) {
-      const f = failMethods.get(method);
+    const fm = failMethods.get(method);
+    if (fm && (!fm.markup || (body && typeof body === 'object' && body.reply_markup))) {
+      const f = fm;
       res.writeHead(f.code, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify(Object.assign({ ok: false, error_code: f.code, description: f.desc || ('Bad Request: mock failure (' + method + ')') },
         f.retry_after ? { parameters: { retry_after: Number(f.retry_after) } } : {})));

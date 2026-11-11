@@ -809,7 +809,7 @@ _seed_onboarding_sections() {
   # ueberspringen (der Restore bringt sie); die Code-Seeds (config/ui_languages/ui_texts/contexts/validators/protected/services)
   # laufen IMMER (nie im Backup-Bundle). M4.
   [ "${SEED_SKIP_ONBOARDING:-0}" = "1" ] && { log "onboarding_state-Seed uebersprungen (--no-seed)."; return 0; }
-  local mf pkg schema sf key ord label per_user
+  local mf pkg schema sf key ord label per_user roles arr r
   for mf in "$REPO_ROOT"/packages/*/manifest.json; do
     [ -f "$mf" ] || continue
     pkg="$(jq -r '.name' "$mf")"
@@ -821,8 +821,8 @@ _seed_onboarding_sections() {
     per_user="$(jq -r '[(.context_scopes // {}) | to_entries[] | select((.value|type=="object") and .value.scope=="per_user")] | length' "$mf")"
     # Label = deutscher Katalog-Text <pkg>.onboarding.<key> (Textkatalog Phase B): die Spalte ist die Modell-Projektion
     # (Onboarding-Agenten lesen sie); das Menue holt die Labels selbst in der Sprache des Betrachters.
-    jq -r '.[] | [.key, (.ord|tostring)] | @tsv' "$sf" |
-    while IFS=$'\t' read -r key ord; do
+    jq -r '.[] | [.key, (.ord|tostring), ((.for_roles // []) | join(","))] | @tsv' "$sf" |
+    while IFS=$'\t' read -r key ord roles; do
       [ -n "$key" ] || continue
       label="$(pkg_text "$pkg" "onboarding.$key")"; label="${label:-$key}"
       if [ "${per_user:-0}" -gt 0 ]; then
@@ -839,6 +839,18 @@ _seed_onboarding_sections() {
       # (per_user: auch lazy materialisierte Personen-Zeilen). status = Nutzerdaten, bleibt unberuehrt.
       printf 'UPDATE %s.onboarding_state SET label = %s, ord = %s WHERE section_key = %s AND (label IS DISTINCT FROM %s OR ord IS DISTINCT FROM %s);\n' \
         "$schema" "$(_sql_str "$label")" "$ord" "$(_sql_str "$key")" "$(_sql_str "$label")" "$ord"
+      # for_roles (fuer welche Rollen der Abschnitt gilt) ist ebenfalls Code-Fakt aus sections.json, einzige Werte-Quelle.
+      # Gesetzt -> auf alle Zeilen; fehlt -> NULL (= alle Rollen), aber nur wo die Spalte existiert (nicht jedes Paket hat sie;
+      # contract_lint verlangt sie, sobald sections.json for_roles nennt).
+      if [ -n "$roles" ]; then
+        arr=''
+        while IFS= read -r r; do [ -n "$r" ] && arr="${arr}${arr:+, }$(_sql_str "$r")"; done <<< "${roles//,/$'\n'}"
+        printf 'UPDATE %s.onboarding_state SET for_roles = ARRAY[%s]::text[] WHERE section_key = %s AND for_roles IS DISTINCT FROM ARRAY[%s]::text[];\n' \
+          "$schema" "$arr" "$(_sql_str "$key")" "$arr"
+      else
+        printf "DO \$\$ BEGIN IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = %s AND table_name = 'onboarding_state' AND column_name = 'for_roles') THEN EXECUTE format('UPDATE %%I.onboarding_state SET for_roles = NULL WHERE section_key = %%L AND for_roles IS NOT NULL', %s, %s); END IF; END \$\$;\n" \
+          "$(_sql_str "$schema")" "$(_sql_str "$schema")" "$(_sql_str "$key")"
+      fi
     done
   done
 }

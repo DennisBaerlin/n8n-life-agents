@@ -45,6 +45,17 @@ CREATE TABLE IF NOT EXISTS career.onboarding_state (
 -- Roter Faden (Nachfassen): Zeitpunkt der letzten STATUS-Aenderung, gesetzt nur von core.fn_set_onboarding_section
 -- (Konvention jedes <pkg>.onboarding_state, s. agent.guide_init.sql).
 ALTER TABLE career.onboarding_state ADD COLUMN IF NOT EXISTS status_changed_at timestamptz NOT NULL DEFAULT now();
+-- Fuer welche Rollen der Abschnitt gilt (NULL = alle). Einzige Werte-Quelle: sections.json "for_roles" -> Host-Seeder
+-- _seed_onboarding_sections; gelesen von core.fn_onboarding_overview. Bestand: career:V008 (gleiche Spalte, gleicher CHECK).
+-- Wertevorrat wie agent.pairing_state.role und der family-Validator (agent.core_init.sql).
+ALTER TABLE career.onboarding_state ADD COLUMN IF NOT EXISTS for_roles text[];
+DO $$ BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'onboarding_state_for_roles_check'
+                   AND conrelid = 'career.onboarding_state'::regclass) THEN
+        ALTER TABLE career.onboarding_state ADD CONSTRAINT onboarding_state_for_roles_check
+            CHECK (for_roles IS NULL OR (cardinality(for_roles) > 0 AND for_roles <@ ARRAY['owner', 'partner', 'child']::text[]));
+    END IF;
+END $$;
 
 DROP TRIGGER IF EXISTS trg_onboarding_state_touch ON career.onboarding_state;
 CREATE TRIGGER trg_onboarding_state_touch BEFORE UPDATE ON career.onboarding_state

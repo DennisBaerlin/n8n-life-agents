@@ -41,6 +41,10 @@ BEGIN
   r := agent.fn_claim_persona_sticker(jsonb_build_object('chat_id', '111', 'text', 'Hallo, buch 5 Euro Kaffee',
          'tool_called', false, 'has_file', false, 'signal', '', 'run_started_at', v_now));
   IF r->>'sticker' IS NOT NULL THEN RAISE EXCEPTION 'FAIL claim_persona_sticker [Gruss mit Inhalt: %]', r; END IF;
+  -- Lebenszeichen (core.fn_smalltalk_kind = 'ping', z. B. 'Test' oder '?') ist kein Gruss -> kein Hallo-Sticker
+  r := agent.fn_claim_persona_sticker(jsonb_build_object('chat_id', '111', 'text', 'Test', 'tool_called', false,
+         'has_file', false, 'signal', '', 'run_started_at', v_now));
+  IF r->>'sticker' IS NOT NULL THEN RAISE EXCEPTION 'FAIL claim_persona_sticker [Lebenszeichen ping: %]', r; END IF;
   r := agent.fn_claim_persona_sticker(jsonb_build_object('chat_id', '111', 'text', 'Hallo', 'tool_called', true,
          'has_file', false, 'signal', 'FRAME', 'run_started_at', v_now));
   IF r->>'sticker' IS NOT NULL THEN RAISE EXCEPTION 'FAIL claim_persona_sticker [Gruss mit Werkzeug: %]', r; END IF;

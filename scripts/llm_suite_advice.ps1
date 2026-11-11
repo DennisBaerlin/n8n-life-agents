@@ -50,6 +50,7 @@ foreach ($cf in @($changed | Where-Object { $_ -match '^tests/agent/[^/]+/[^/]+_
         '^orch_cases\.json$'                 { $recs += "orch_test.ps1: Routing-Cases geaendert ($cf) -> neuen/geaenderten Golden gegenpruefen." }
         'e2e_cases\.json$'                   { $recs += "e2e_test.ps1 -CasesFile $cf : E2E-Cases geaendert -> Schreibpfad gegenpruefen." }
         '^multiturn_cases\.json$'            { $recs += "multiturn_test.ps1: Multi-Turn-Cases geaendert ($cf)." }
+        '^conversation_cases\.json$'         { $recs += "conversation_test.ps1 -Real: Durchspiel-Faelle geaendert ($cf); gratis vorher ohne -Real." }
         '^(infra|real_ingress)_cases\.json$' { }   # gratis Tiers (infra_test/real_ingress_test) -> keine LLM-Empfehlung
         default                              { $recs += "n8n_test.ps1 -CasesFile $cf (+ judge_eval.ps1): Agent-Cases geaendert -> neuen/geaenderten Golden gegenpruefen." }
     }

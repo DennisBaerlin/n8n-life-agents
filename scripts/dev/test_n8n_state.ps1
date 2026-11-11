@@ -641,6 +641,37 @@ function Send-TelegramIngress {
     return $fire
 }
 
+# Ein Knopf-Tipp (callback_query ohne top-level message) an den echten Webhook. FromUid = wer tippt (Owner oder gepairtes
+# Mitglied; sonst verwirft der Callback-Handler den Tipp), ChatId = Chat der Nachricht mit dem Knopf.
+function Send-TelegramCallbackIngress {
+    param(
+        [Parameter(Mandatory)][string]$IngressUrl, [Parameter(Mandatory)][string]$Secret,
+        [Parameter(Mandatory)][long]$ChatId, [Parameter(Mandatory)][long]$FromUid, [Parameter(Mandatory)][string]$Data
+    )
+    $update = @{
+        update_id      = New-TestUpdateId
+        callback_query = @{
+            id      = "$([int](Get-Random -Minimum 100000 -Maximum 999999))"
+            from    = @{ id = $FromUid; is_bot = $false; first_name = 'IngressTest' }
+            message = @{
+                message_id = [int](Get-Random -Minimum 1000 -Maximum 99999)
+                date       = [long][System.DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
+                chat       = @{ id = $ChatId; type = 'private' }
+                text       = 'button message'
+            }
+            data    = $Data
+        }
+    }
+    $body = $update | ConvertTo-Json -Depth 8 -Compress
+    try {
+        Invoke-RestMethod -Uri $IngressUrl -Method Post -TimeoutSec 8 `
+            -Headers @{ 'X-Telegram-Bot-Api-Secret-Token' = $Secret } `
+            -ContentType 'application/json; charset=utf-8' -Body ([System.Text.Encoding]::UTF8.GetBytes($body)) | Out-Null
+    } catch {
+        if (-not ($_.Exception -is [System.Net.WebException] -and $_.Exception.Status -eq [System.Net.WebExceptionStatus]::Timeout)) { throw }
+    }
+}
+
 # Die gepairte Telegram-uid des Fixture-Owners — EINE Adresse fuer alle Treiber-Skripte (entsteht erst zur Laufzeit
 # durchs Pairing unten, ist also keine geseedete Fixture-Entitaet in tests/fixtures/fixtures.json). Die Case-Daten
 # in tests/agent/core/real_ingress_cases.json tragen denselben Wert als chat_id/from_uid — bei Aenderung mitziehen.

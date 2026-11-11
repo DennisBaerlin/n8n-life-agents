@@ -9,7 +9,7 @@
 
 ## LLM-Test-Kosten: OWNER-ONLY
 
-- `n8n_test`, `orch_test`, `e2e_test`, `judge_eval`, `multiturn_test`, `monitor_probe` kosten API-Credits (Owner-Fenster, Root-`CLAUDE.md` *Scripts*); Claude empfiehlt die Suite mit dem exakten Kommando (Tabelle in der Referenz).
+- `n8n_test`, `orch_test`, `e2e_test`, `judge_eval`, `multiturn_test`, `monitor_probe`, `conversation_test -Real` kosten API-Credits (Owner-Fenster, Root-`CLAUDE.md` *Scripts*); Claude empfiehlt die Suite mit dem exakten Kommando (Tabelle in der Referenz).
 - Empfehlung bei: Modellwechsel, Prompt-Refactor, geänderter Tool-Description, neuem Tool (Golden), Orchestrator-Routing. Keine bei DB-Fixes, Stickies, Skript-Refactoring, Doku, Migrationen. `db_test.ps1` und `infra_test.ps1` sind gratis — immer mitlaufen lassen.
 - **Gezielt statt alles:** nur die Fälle, die der Diff berührt (gefilterte Fall-Datei für `n8n_test -CasesFile`, `judge_eval` direkt danach, der nächste Lauf überschreibt das Bundle); eine Suite, deren Oberfläche der Diff nicht ändert, läuft nicht. Vorher dem Owner Anzahl, Grund, grobe Kosten und das Ungeprüfte nennen. Volllauf nur mit begründetem Anlass und nach Rückfrage.
 

@@ -1677,5 +1677,25 @@
   ,{"_comment": "ri91 Ablauf ueber drei Nachrichten: Router -> finance, reconcile (already_covered, Stapel ergaenzt) -> Versand.", "match": "Sequenz-Test Auszug Mai Birkenbank", "calls": [{"tool": "Call_agent_finance_", "args": {"task": "Sequenz-Test Auszug Mai Birkenbank"}}, {"tool": "tool_reconcile_bank_statement", "args": {"file_id": "mock_photo_136b", "doc_hint": "Auszug Mai Birkenbank"}}, {"tool": "tool_send_recurring_suggestions", "args": {}}], "final": "Der Mai ist schon bestaetigt; die erkannten Zahlungen habe ich dir als Vorschlaege geschickt."}
   ,{"_comment": "ri91 Lesung Mai (ein Monat, Saldenkette wie make_doc_fixtures.ps1).", "match": "Auszug Mai Birkenbank", "final": "{\"groups\":[[1]],\"is_statement\":true,\"account_number\":\"DE02 1203 0000 0000 2020 51\",\"account_holder\":\"\",\"currency\":\"EUR\",\"period_start\":\"2000-05-01\",\"period_end\":\"2000-05-31\",\"opening_balance\":963.01,\"closing_balance\":926.02,\"lines\":[{\"date\":\"2000-05-02\",\"amount\":-12.99,\"counterparty\":\"Videodienst Test GmbH\",\"counterparty_iban\":\"\",\"creditor_id\":\"\",\"mandate_ref\":\"\",\"purpose\":\"Abo Monat\",\"recurring_kind\":\"subscription\",\"series\":\"Videodienst\",\"rhythm_hint\":\"monthly\"},{\"date\":\"2000-05-15\",\"amount\":-24,\"counterparty\":\"Sportverein Test e.V.\",\"counterparty_iban\":\"\",\"creditor_id\":\"DE98ZZZ09999999999\",\"mandate_ref\":\"M-4711\",\"purpose\":\"SEPA-Lastschrift Beitrag\",\"recurring_kind\":\"direct_debit\",\"series\":\"Vereinsbeitrag\",\"rhythm_hint\":\"monthly\"}]}"}
   ,{"_comment": "ri91 Ablauf ueber drei Nachrichten: Router -> finance, reconcile (already_covered, Stapel ergaenzt) -> Versand.", "match": "Sequenz-Test Auszug Juni Birkenbank", "calls": [{"tool": "Call_agent_finance_", "args": {"task": "Sequenz-Test Auszug Juni Birkenbank"}}, {"tool": "tool_reconcile_bank_statement", "args": {"file_id": "mock_photo_136c", "doc_hint": "Auszug Juni Birkenbank"}}, {"tool": "tool_send_recurring_suggestions", "args": {}}], "final": "Der Juni ist schon bestaetigt; die erkannten Zahlungen habe ich dir als Vorschlaege geschickt."}
-  ,{"_comment": "ri91 Lesung Juni (ein Monat, Saldenkette wie make_doc_fixtures.ps1).", "match": "Auszug Juni Birkenbank", "final": "{\"groups\":[[1]],\"is_statement\":true,\"account_number\":\"DE02 1203 0000 0000 2020 51\",\"account_holder\":\"\",\"currency\":\"EUR\",\"period_start\":\"2000-06-01\",\"period_end\":\"2000-06-30\",\"opening_balance\":926.02,\"closing_balance\":889.03,\"lines\":[{\"date\":\"2000-06-02\",\"amount\":-12.99,\"counterparty\":\"Videodienst Test GmbH\",\"counterparty_iban\":\"\",\"creditor_id\":\"\",\"mandate_ref\":\"\",\"purpose\":\"Abo Monat\",\"recurring_kind\":\"subscription\",\"series\":\"Videodienst\",\"rhythm_hint\":\"monthly\"},{\"date\":\"2000-06-15\",\"amount\":-24,\"counterparty\":\"Sportverein Test e.V.\",\"counterparty_iban\":\"\",\"creditor_id\":\"DE98ZZZ09999999999\",\"mandate_ref\":\"M-4711\",\"purpose\":\"SEPA-Lastschrift Beitrag\",\"recurring_kind\":\"direct_debit\",\"series\":\"Vereinsbeitrag\",\"rhythm_hint\":\"monthly\"}]}"}
+  ,{"_comment": "ri91 Lesung Juni (ein Monat, Saldenkette wie make_doc_fixtures.ps1).", "match": "Auszug Juni Birkenbank", "final": "{\"groups\":[[1]],\"is_statement\":true,\"account_number\":\"DE02 1203 0000 0000 2020 51\",\"account_holder\":\"\",\"currency\":\"EUR\",\"period_start\":\"2000-06-01\",\"period_end\":\"2000-06-30\",\"opening_balance\":926.02,\"closing_balance\":889.03,\"lines\":[{\"date\":\"2000-06-02\",\"amount\":-12.99,\"counterparty\":\"Videodienst Test GmbH\",\"counterparty_iban\":\"\",\"creditor_id\":\"\",\"mandate_ref\":\"\",\"purpose\":\"Abo Monat\",\"recurring_kind\":\"subscription\",\"series\":\"Videodienst\",\"rhythm_hint\":\"monthly\"},{\"date\":\"2000-06-15\",\"amount\":-24,\"counterparty\":\"Sportverein Test e.V.\",\"counterparty_iban\":\"\",\"creditor_id\":\"DE98ZZZ09999999999\",\"mandate_ref\":\"M-4711\",\"purpose\":\"SEPA-Lastschrift Beitrag\",\"recurring_kind\":\"direct_debit\",\"series\":\"Vereinsbeitrag\",\"rhythm_hint\":\"monthly\"}]}"},
+  {
+    "_comment": "Durchspiel (conversation_test, s2): Berater-Einstieg ohne Plan-Knopf -> Call_agent_finance_advisor_. Das Skript schickt den Task selbst.",
+    "match": "kannst du mich beraten",
+    "driver": "scripts/conversation_test.ps1",
+    "calls": [
+      { "tool": "Call_agent_finance_advisor_", "args": { "task": "kannst du mich beraten?" } }
+    ],
+    "final": "Gerne. Womit fangen wir an?",
+    "final_router": "FRAME"
+  },
+  {
+    "_comment": "Durchspiel (conversation_test, s3): Geld-Frage des Mitglieds -> Call_agent_finance_. Das Skript schickt den Task selbst.",
+    "match": "wie viel Geld haben wir",
+    "driver": "scripts/conversation_test.ps1",
+    "calls": [
+      { "tool": "Call_agent_finance_", "args": { "task": "wie viel Geld haben wir?" } }
+    ],
+    "final": "Euer Sparkonto steht bei 500,00 EUR.",
+    "final_router": "FRAME"
+  }
 ]

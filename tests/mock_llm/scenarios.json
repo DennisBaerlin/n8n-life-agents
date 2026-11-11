@@ -1697,5 +1697,33 @@
     ],
     "final": "Euer Sparkonto steht bei 500,00 EUR.",
     "final_router": "FRAME"
+  },
+  {
+    "_comment": "Durchspiel (conversation_test, s5): Konto-Angabe ohne Geldkonto -> Berater legt das Konto an (Karte, Fall nimmt an). Das Skript schickt den Task selbst.",
+    "match": "gerade 1.200 Euro drauf",
+    "_note": "Der Router-Speicher zaehlt die Spezialisten-Aufrufe frueherer Runden mit (Runde 2 startet bei k=1): darum steht der Router-Call je frueherer Runde einmal mehr vorn.",
+    "driver": "scripts/conversation_test.ps1",
+    "calls": [
+      { "tool": "Call_agent_finance_advisor_", "args": { "task": "Mein Geld liegt auf dem Girokonto __E2E__ Ahornbank Giro, 1.200 Euro" } },
+      { "tool": "Call_agent_finance_advisor_", "args": { "task": "Mein Geld liegt auf dem Girokonto __E2E__ Ahornbank Giro, 1.200 Euro" } },
+      { "tool": "tool_create_account", "args": { "name": "__E2E__ Ahornbank Giro", "account_type": "cash", "opening_balance": "1200" } }
+    ],
+    "final": "Das Konto ist angelegt. Wie viel kommt monatlich rein?",
+    "final_router": "NOFRAME"
+  },
+  {
+    "_comment": "Durchspiel (conversation_test, s5): Einkommen nennen -> Berater legt die laufende Einnahme an.",
+    "_note": "Der Mock sieht alle bisherigen Nutzer-Texte des Gespraechs; der laengste passende match gewinnt, darum muss er laenger sein als die der frueheren Runden.",
+    "match": "Gehalt sind 3000 netto, das kommt am 1",
+    "driver": "scripts/conversation_test.ps1",
+    "calls": [
+      { "tool": "Call_agent_finance_advisor_", "args": { "task": "Gehalt 3000 netto am 1." } },
+      { "tool": "Call_agent_finance_advisor_", "args": { "task": "Gehalt 3000 netto am 1." } },
+      { "tool": "Call_agent_finance_advisor_", "args": { "task": "Gehalt 3000 netto am 1." } },
+      { "tool": "tool_create_recurring_payment", "args": { "name": "Gehalt", "account_name": "__E2E__ Ahornbank Giro", "direction": "income", "amount": 3000, "schedule_unit": "month", "first_payment_date": "2026-12-01" } },
+      { "tool": "tool_create_recurring_payment", "args": { "name": "Gehalt", "account_name": "__E2E__ Ahornbank Giro", "direction": "income", "amount": 3000, "schedule_unit": "month", "first_payment_date": "2026-12-01" } }
+    ],
+    "final": "Die Einnahme ist eingetragen.",
+    "final_router": "NOFRAME"
   }
 ]

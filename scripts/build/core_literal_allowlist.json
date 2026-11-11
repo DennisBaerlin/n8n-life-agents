@@ -13,6 +13,8 @@
       "reason": "doc -- _comment des context_renderers-Blocks erklaert die Paket-Registrierung am Beispiel finance_profile." },
     { "file": "packages/core/manifest.json", "literal": "finance.market_prices", "count": 1,
       "reason": "doc -- Beschreibung der geteilten advisor-Config price_stale_days nennt die Tabelle, die der finance-Leser prueft." },
+    { "file": "scripts/conversation_test.ps1", "literal": "finance", "count": 4,
+      "reason": "fixture: der Startzustand no_cash_account schliesst die aktiven Fixture-Geldkonten (finance.accounts) und oeffnet sie danach wieder; die Berater-Domain ist die einzige, deren Einstieg ein fehlendes Geldkonto abfragt." },
     { "file": "scripts/dev/plan_rollout_test.ps1", "literal": "finance", "count": 9,
   "reason": "fixture: plan_rollout_test faehrt die Abfolge am Plan-Schritt der Domain finance aus den Test-Fixtures." },
 { "file": "scripts/dev/hitl_gate_test.ps1", "literal": "finance", "count": 23,

@@ -1,6 +1,6 @@
 [
   {
-    "_comment": "Durchspiel-Faelle fuer scripts/conversation_test.ps1 (Orchestrator-Eingang, mehrere Runden, Aufzeichnung statt Bewertung). Format im Skript-Kopf. Nur Fixture-Personen. S1-S4: erste freie Saetze, Rat ohne Plan-Knopf, frisches Mitglied, Lebenszeichen."
+    "_comment": "Durchspiel-Faelle fuer scripts/conversation_test.ps1 (Orchestrator-Eingang, mehrere Runden, Aufzeichnung statt Bewertung). Format im Skript-Kopf. Nur Fixture-Personen. S1-S4: erste freie Saetze, Rat ohne Plan-Knopf, frisches Mitglied, Lebenszeichen, Rat ohne Geldkonto."
   },
   {
     "id": "s1",
@@ -48,6 +48,18 @@
       { "text": "Test" },
       { "text": "?" },
       { "text": "hilfe" }
+    ]
+  },
+  {
+    "id": "s5",
+    "name": "S5 Owner ohne Geldkonto: Berater fragt zuerst nach dem Konto, legt es per Karte an",
+    "sender": "owner",
+    "start": "no_cash_account",
+    "hitl": "approve",
+    "turns": [
+      { "text": "kannst du mich beraten?", "expect_agent": "finance_advisor", "forbid_texts": ["Buchhalter", "neue Nachricht"] },
+      { "text": "Mein Geld liegt auf dem Girokonto __E2E__ Ahornbank Giro, da sind gerade 1.200 Euro drauf.", "expect_agent": "finance_advisor" },
+      { "text": "Das Gehalt sind 3000 netto, das kommt am 1.", "expect_agent": "finance_advisor" }
     ]
   }
 ]

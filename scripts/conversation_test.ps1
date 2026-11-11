@@ -9,15 +9,19 @@
 # Fall mehrere Runden fahren, ohne das Gedaechtnis dazwischen zu leeren (einmal je Fall), und der Lauf laeuft auch mit dem
 # echten Modell. Anders als multiturn_test trifft er den Orchestrator, nicht den Harness eines Agenten.
 #
-# Fall: { id, name, sender: owner|member, start: onboarding_done|member_confirmed, hitl: decline|approve (Default decline),
+# Fall: { id, name, sender: owner|member, start: onboarding_done|member_confirmed|no_cash_account, hitl: decline|approve (Default decline),
 #         turns: [ { text: "hallo" } | { tap: "<callback_data>" }, optional expect_texts, forbid_texts, expect_agent ] }
 # Ein /befehl ist ein Text mit fuehrendem Schraegstrich. Startzustand: alle Onboarding-Abschnitte completed, keine
 # Berater-Plaene, Owner (Fixture-Person) und Mitglied (Fixture-Person Lena) gepairt, Sprache de, Persona neutral.
+# no_cash_account = wie onboarding_done, aber ohne aktives Geldkonto (die Fixture-Konten sind nur waehrend des Falls
+# geschlossen; Wiederherstellung auch nach Abbruch, Mechanik am Kopf von Restore-ClosedAccounts). Ein Fall, der Konten
+# anlegt, nennt sie mit __E2E__-Praefix, sonst raeumt agent.fn_clear_e2e_data sie nicht weg.
 #
 # Usage:  .\scripts\conversation_test.ps1 [-Id s1,s2] [-Timeout 120] [-OutDir <Ordner>] [-Verbose]       # gratis, Mock-Modell
 #         -MaxCostUsd 2.0 (nur -Real): haelt den Lauf vor der naechsten Runde an, sobald die Summe darueber liegt
 #         .\scripts\conversation_test.ps1 -Real [-Id s2]                                                   # KOSTET LLM-Credits
-# Beispiel-Runden der Faelle: "hallo", "und jetzt?", "kannst du mich beraten?", "wie viel Geld haben wir?", "/help".
+# Beispiel-Runden der Faelle: "hallo", "und jetzt?", "kannst du mich beraten?", "wie viel Geld haben wir?", "/help",
+# "da sind gerade 1.200 Euro drauf", "Das Gehalt sind 3000 netto, das kommt am 1." (Mock-Szenarien matchen woertlich, mock_lint C2).
 # Voraussetzung: Substrat (bootstrap_test_n8n.ps1) + enable_mock_telegram.ps1; ohne -Real zusaetzlich enable_mock_llm.ps1,
 # mit -Real das Gegenteil (Assert-LlmGatewayUpstream prueft den tatsaechlichen Upstream); -Real sperrt der Owner-Fenster-Hook.
 # Ausgabe: .local/conversation_runs/<Zeit>-<mock|real>.md (lesbar) + .json (maschinenlesbar), Pfad am Ende.
@@ -71,8 +75,50 @@ if (-not $cases) { throw "Keine Faelle in $CasesFile." }
 $VisibleMethods = @('sendMessage', 'sendSticker', 'sendAnimation', 'sendPhoto', 'sendDocument', 'setMessageReaction',
                     'answerCallbackQuery', 'editMessageText', 'editMessageReplyMarkup', 'deleteMessage')
 
+# Start no_cash_account: schliesst die aktiven Fixture-Geldkonten voruebergehend. Die Merkdatei haelt id+Name der
+# geschlossenen Konten; sie wird VOR dem Schliessen geschrieben und heilt jeden Abbruch (Ctrl-C, Absturz, Kill) beim
+# naechsten Lauf. Wiederoeffnet wird nur, wenn id UND Name noch passen und das Konto geschlossen ist (ein neu
+# aufgebautes Substrat vergibt dieselben ids an andere Konten). Bis zur Heilung fehlen allen anderen Suiten dieses
+# Substrats die Geldkonten; ein Kill ohne Folgelauf bleibt daher sichtbar: Restore-ClosedAccounts laeuft zu Beginn jedes
+# Durchspiels, Hand-Heilung = einmal .\scripts\conversation_test.ps1 -Id s1.
+$ClosedAccountsFile = Join-Path $RepoRoot ".local\conversation_closed_accounts.$Container.json"
+
+# SQL mit JSON geht als Datei: docker exec verliert in -c die doppelten Anfuehrungszeichen (psql meldet dann einen Rollen-Namen als Fehler).
+function Invoke-SqlViaFile([string]$Sql) {
+    $tmp = Join-Path $RepoRoot ".local\conversation_sql.$Container.sql"
+    [System.IO.Directory]::CreateDirectory((Split-Path $tmp)) | Out-Null
+    [System.IO.File]::WriteAllText($tmp, $Sql, $Utf8NoBom)
+    try { return Invoke-TestN8nPsqlFile -Container $Container -HostFile $tmp -PsqlArgs @('-q') }
+    finally { Remove-Item -LiteralPath $tmp -Force -ErrorAction SilentlyContinue }
+}
+
+function Restore-ClosedAccounts {
+    if (-not (Test-Path $ClosedAccountsFile)) { return }
+    $saved = [System.IO.File]::ReadAllText($ClosedAccountsFile, $Utf8NoBom)
+    $json = $saved.Replace("'", "''")
+    $sql = "UPDATE finance.accounts a SET status = 'active' FROM jsonb_to_recordset('$json'::jsonb) AS x(id text, name text) WHERE a.id::text = x.id AND a.name = x.name AND a.status = 'closed'; SELECT agent.fn_clear_e2e_data();"
+    $r = Invoke-SqlViaFile $sql
+    if ($r.Code -ne 0) { throw "Geschlossene Geldkonten wieder oeffnen fehlgeschlagen (Merkdatei $ClosedAccountsFile bleibt): $($r.Output -join ' ')" }
+    Remove-Item -LiteralPath $ClosedAccountsFile -Force
+}
+
+function Close-CashAccounts {
+    $sel = Invoke-TestN8nPsql -Container $Container -PsqlArgs @('-tAc', "SELECT coalesce(json_agg(json_build_object('id', id::text, 'name', name)), '[]'::json) FROM finance.accounts WHERE account_type = 'cash' AND status = 'active' AND name NOT LIKE '\_\_E2E%';")
+    if ($sel.Code -ne 0) { throw "Geldkonten lesen fehlgeschlagen: $($sel.Output -join ' ')" }
+    $list = (@($sel.Output) -join '').Trim()
+    [System.IO.Directory]::CreateDirectory((Split-Path $ClosedAccountsFile)) | Out-Null
+    [System.IO.File]::WriteAllText($ClosedAccountsFile, $list, $Utf8NoBom)
+    $json = $list.Replace("'", "''")
+    $sql = "UPDATE finance.accounts a SET status = 'closed' FROM jsonb_to_recordset('$json'::jsonb) AS x(id text, name text) WHERE a.id::text = x.id AND a.name = x.name AND a.status = 'active';"
+    $u = Invoke-SqlViaFile $sql
+    if ($u.Code -ne 0) { throw "Geldkonten schliessen fehlgeschlagen: $($u.Output -join ' ')" }
+    $left = Invoke-TestN8nPsql -Container $Container -PsqlArgs @('-tAc', "SELECT count(*) FROM finance.accounts WHERE account_type = 'cash' AND status = 'active';")
+    if ((@($left.Output) -join '').Trim() -ne '0') { throw "Nach dem Schliessen gibt es noch aktive Geldkonten: $($left.Output -join ' ')" }
+}
+
 # Startzustand eines Falls: nur vorhandene Test-Helfer (Fixture-Seed, Pairing, Onboarding-Zustand) plus Plaene leeren.
 function Initialize-ConversationState($Tc) {
+    Restore-ClosedAccounts   # Rest eines frueheren Falls/Abbruchs, bevor der Fixture-Seed laeuft
     Initialize-AgentTestState -Container $Container -RepoRoot $RepoRoot
     $pairSql = @"
 UPDATE agent.core_contexts
@@ -86,11 +132,12 @@ WHERE name = 'family';
 "@
     $r = Invoke-TestN8nPsql -Container $Container -PsqlArgs @('-q', '-c', $pairSql)
     if ($r.Code -ne 0) { throw "Pairing (Container-DB) fehlgeschlagen: $($r.Output -join ' ')" }
-    if ("$($Tc.start)" -notin @('onboarding_done', 'member_confirmed')) { throw "Unbekannter start '$($Tc.start)' (onboarding_done|member_confirmed)." }
+    if ("$($Tc.start)" -notin @('onboarding_done', 'member_confirmed', 'no_cash_account')) { throw "Unbekannter start '$($Tc.start)' (onboarding_done|member_confirmed|no_cash_account)." }
     Set-TestHouseholdOnboarding -Container $Container -Status 'completed'
     Set-TestPackageOnboarding -Container $Container -Sections $null
     $p = Invoke-TestN8nPsql -Container $Container -PsqlArgs @('-q', '-c', 'DELETE FROM agent.advisor_plans;')
     if ($p.Code -ne 0) { throw "Berater-Plaene leeren fehlgeschlagen: $($p.Output -join ' ')" }
+    if ("$($Tc.start)" -eq 'no_cash_account') { Close-CashAccounts }
 }
 
 # Knopf-Beschriftung + callback_data/url aus einem reply_markup (n8n schickt es teils als JSON-String).
@@ -193,6 +240,8 @@ Write-Host "Durchspiel ($mode) -- $($cases.Count) Fall/Faelle  (Eingang: $($ingr
 if ($Real) { Write-Host "  KOSTET LLM-Credits." -ForegroundColor Yellow }
 Write-Host ("-" * 64)
 
+try {
+Restore-ClosedAccounts   # Rest eines frueher abgebrochenen Laufs, auch wenn dieser Lauf keinen no_cash_account-Fall hat
 foreach ($tc in $cases) {
     Write-Host ""
     Write-Host "  [$($tc.id)] $($tc.name)  ($(@($tc.turns).Count) Runden, Absender $($tc.sender))"
@@ -229,6 +278,10 @@ foreach ($tc in $cases) {
     }
     $results += [pscustomobject]$res
     if ($script:stopRun) { break }
+}
+} finally {
+    # Auch bei Ctrl-C oder Fehler: geschlossene Geldkonten wieder oeffnen, angelegte __E2E__-Konten wegraeumen.
+    try { Restore-ClosedAccounts } catch { Write-Host "    [FAIL] Wiederherstellung: $($_.Exception.Message)" -ForegroundColor Red; $failed++ }
 }
 try { (Invoke-N8nGet "executions?workflowId=$OrchWfId&status=waiting&limit=20").data | ForEach-Object { Stop-Exec $_.id } } catch { }
 Clear-HitlPending -Container $Container

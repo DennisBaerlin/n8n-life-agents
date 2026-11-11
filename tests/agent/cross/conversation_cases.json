@@ -8,11 +8,11 @@
     "sender": "owner",
     "start": "onboarding_done",
     "turns": [
-      { "text": "hallo" },
-      { "text": "und jetzt?" },
-      { "text": "was kann ich hier machen?" },
-      { "text": "ok, wie fang ich an?" },
-      { "text": "hilfe" }
+      { "text": "hallo", "forbid_texts": ["NEXT_STEP"] },
+      { "text": "und jetzt?", "forbid_texts": ["NEXT_STEP", "Paperless"] },
+      { "text": "was kann ich hier machen?", "forbid_texts": ["NEXT_STEP", "Guide", "Paperless", "Salden abgleichen"] },
+      { "text": "ok, wie fang ich an?", "forbid_texts": ["NEXT_STEP", "Guide", "/onboarding", "Lege ein neues Lindenbank"] },
+      { "text": "hilfe", "forbid_texts": ["NEXT_STEP", "Guide"] }
     ]
   },
   {
@@ -21,11 +21,11 @@
     "sender": "owner",
     "start": "onboarding_done",
     "turns": [
-      { "text": "kannst du mich beraten?" },
-      { "text": "ja" },
-      { "text": "weiß nicht genau" },
-      { "text": "so 3000 netto" },
-      { "text": "und jetzt?" }
+      { "text": "kannst du mich beraten?", "expect_agent": "finance_advisor", "forbid_texts": ["Buchhalter", "bookkeeper"] },
+      { "text": "ja", "forbid_texts": ["Buchhalter"] },
+      { "text": "weiß nicht genau", "forbid_texts": ["Buchhalter"] },
+      { "text": "so 3000 netto", "forbid_texts": ["Buchhalter", "neue Nachricht", "neue, eigene Nachricht"] },
+      { "text": "und jetzt?", "forbid_texts": ["Buchhalter", "neue, eigene Nachricht", "NEXT_STEP"] }
     ]
   },
   {
@@ -34,9 +34,9 @@
     "sender": "member",
     "start": "member_confirmed",
     "turns": [
-      { "text": "hallo" },
-      { "text": "was kann ich dich fragen?" },
-      { "text": "wie viel Geld haben wir?" }
+      { "text": "hallo", "forbid_texts": ["NEXT_STEP"] },
+      { "text": "was kann ich dich fragen?", "forbid_texts": ["NEXT_STEP", "Guide", "Familienmitglieder einladen", "Haushalt ändern"] },
+      { "text": "wie viel Geld haben wir?", "expect_agent": "finance" }
     ]
   },
   {
@@ -45,9 +45,9 @@
     "sender": "owner",
     "start": "onboarding_done",
     "turns": [
-      { "text": "Test" },
-      { "text": "?" },
-      { "text": "hilfe" }
+      { "text": "Test", "forbid_texts": ["NEXT_STEP"] },
+      { "text": "?", "forbid_texts": ["NEXT_STEP"] },
+      { "text": "hilfe", "forbid_texts": ["NEXT_STEP", "Guide"] }
     ]
   },
   {

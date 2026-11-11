@@ -1697,5 +1697,50 @@
     ],
     "final": "Euer Sparkonto steht bei 500,00 EUR.",
     "final_router": "FRAME"
+  },
+  {
+    "_comment": "UX A bis Z Paket B: Routing Rat-Bitte ohne Thema (oc68) und Gegenproben mit Thema (oc69 career, oc70 estate).",
+    "match": "Ich brauche einen Rat, wie ich das alles angehen soll",
+    "calls": [
+      { "tool": "Call_agent_finance_advisor_", "args": { "task": "Ich brauche einen Rat, wie ich das alles angehen soll." } }
+    ],
+    "final": "Gern, lass uns schauen."
+  },
+  {
+    "match": "den Job zu wechseln. Kannst du mich dazu beraten",
+    "calls": [
+      { "tool": "Call_agent_career_advisor_", "args": { "task": "Ich ueberlege, den Job zu wechseln. Kannst du mich dazu beraten?" } }
+    ],
+    "final": "Gern, erzaehl mir mehr ueber deinen Job."
+  },
+  {
+    "match": "Wo liegt eigentlich unser Testament",
+    "calls": [
+      { "tool": "Call_agent_estate_advisor_", "args": { "task": "Wo liegt eigentlich unser Testament, und welche Vollmachten brauchen wir? Berate mich bitte." } }
+    ],
+    "final": "Schauen wir in euer Vorsorge-Register."
+  },
+  {
+    "_comment": "UX A bis Z Paket B, Tor Haushalts-Sicht (ri100/ri101 Buchhalter, ri102 Berater): der Router waehlt den Agenten, das Tor entscheidet vor dem LLM.",
+    "match": "Was haben wir gerade auf den Konten",
+    "calls": [
+      { "tool": "Call_agent_finance_", "args": { "task": "Was haben wir gerade auf den Konten?" } }
+    ],
+    "final": "Euer Giro steht bei 1.234,56 EUR."
+  },
+  {
+    "match": "Kannst du mich mal zu unserem Geld beraten",
+    "calls": [
+      { "tool": "Call_agent_finance_advisor_", "args": { "task": "Kannst du mich mal zu unserem Geld beraten?" } }
+    ],
+    "final": "Gern, worum geht es dir?"
+  },
+  {
+    "_comment": "ADVISOR ac38 (UX A bis Z Station 9): fehlendes Einkommen -> tool_create_recurring_payment mit allen Pflicht-$fromAI-Feldern.",
+    "match": "3000 netto im Monat, das kommt immer am 1.",
+    "calls": [
+      { "tool": "tool_create_recurring_payment", "args": { "name": "Gehalt", "account_name": "Lindenbank Giro", "direction": "income", "amount": 3000, "schedule_unit": "month", "first_payment_date": "today", "schedule_day_of_month": "1" } }
+    ],
+    "final": "Ich habe dir die Karte zum Einkommen geschickt."
   }
 ]

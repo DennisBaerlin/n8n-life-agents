@@ -7648,7 +7648,7 @@
                   },
                   {
                       "parameters":  {
-                                         "content":  "## Ablauf\n**agent.finance — Buchhalter (Sub-Workflow)**\n\nEingang: task, chat_id, call_depth (vom Orchestrator als Tool aufgerufen).\nPipeline (y=0): Depth gate (Anti-Loop) -\u003e Package-Gate (nur wenn finance aktiv, sonst package_inactive) -\u003e Core-first-Gate (Haushalts-Onboarding offen -\u003e Hinweis statt Agent) -\u003e Load Config -\u003e Load Agent Context (System-Prompt + Lazy-Manifest) -\u003e Onboarding status read -\u003e Build Agent Input -\u003e Finance Agent.\nCQRS: Reads frei via postgres_select / load_context (+ web_search für öffentliche Produkt-Konditionen); Writes NUR über die tool_*-Sub-Workflows (jeweils HITL-Gate + atomar via agent.fn_*). Antwort geht zurück an den Orchestrator.",
+                                         "content":  "## Ablauf\n**agent.finance — Buchhalter (Sub-Workflow)**\n\nEingang: task, chat_id, call_depth (vom Orchestrator als Tool aufgerufen).\nPipeline (y=0): Depth gate (Anti-Loop) -\u003e Package-Gate (nur wenn finance aktiv, sonst package_inactive) -\u003e Core-first-Gate (Haushalts-Onboarding offen -\u003e Hinweis statt Agent) -\u003e Load Config -\u003e Haushalts-Sicht (nur owner/partner, sonst fester Hinweis) -\u003e Load Agent Context (System-Prompt + Lazy-Manifest) -\u003e Onboarding status read -\u003e Build Agent Input -\u003e Finance Agent.\nCQRS: Reads frei via postgres_select / load_context (+ web_search für öffentliche Produkt-Konditionen); Writes NUR über die tool_*-Sub-Workflows (jeweils HITL-Gate + atomar via agent.fn_*). Antwort geht zurück an den Orchestrator.",
                                          "height":  250,
                                          "width":  560,
                                          "color":  4
@@ -7757,6 +7757,110 @@
                                    ],
                       "id":  "e5797291-2c9b-5b51-a4b2-1cb2c15f9c13",
                       "name":  "Doc: Tools (CQRS)"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "=SELECT finance.fn_sender_sees_household(($1::jsonb)-\u003e\u003e\u0027chat_id\u0027) AS sees, core.fn_ui_texts_for(jsonb_build_object(\u0027chat_id\u0027, ($1::jsonb)-\u003e\u003e\u0027chat_id\u0027, \u0027keys\u0027, to_jsonb(ARRAY[\u0027finance.gate.household_only\u0027]::text[])))-\u003e\u0027t\u0027 AS t;",
+                                         "options":  {
+                                                         "queryReplacement":  "={{ JSON.stringify({ chat_id: String($(\u0027Start agent.finance\u0027).item.json.chat_id || \u0027\u0027) }) }}"
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       -1376,
+                                       -240
+                                   ],
+                      "id":  "611816dc-24ac-5961-9621-e65a1d68fa52",
+                      "name":  "Household view read",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_WRITE__",
+                                                           "name":  "Postgres account"
+                                                       }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "371927f6-e322-5180-8454-4d4cb5caf54f",
+                                                                                   "leftValue":  "={{ $(\u0027Household view read\u0027).item.json.sees === true }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       -1264,
+                                       -240
+                                   ],
+                      "id":  "41501425-5dd3-5754-960b-34543a0e5eca",
+                      "name":  "Household view gate"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "b98da51f-2b01-5da0-8949-5ba91b7a331e",
+                                                                                     "name":  "ok",
+                                                                                     "value":  "false",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "9e98cdfd-9d15-5d68-9616-968c384002cc",
+                                                                                     "name":  "output",
+                                                                                     "value":  "={{ String((($(\u0027Household view read\u0027).item.json.t) || {})[\u0027finance.gate.household_only\u0027] || \u0027finance.gate.household_only\u0027) }}",
+                                                                                     "type":  "string"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       -1152,
+                                       -400
+                                   ],
+                      "id":  "19ff2c6a-f26a-536b-9764-b1eb1ce0e1d1",
+                      "name":  "Household view denied"
+                  },
+                  {
+                      "parameters":  {
+                                         "content":  "## DB-Automatik\n**Tor Haushalts-Sicht (vor dem LLM)**\n\nHousehold view read fragt finance.fn_sender_sees_household(chat_id): owner/partner (Regel der Mini-App, core.fn_app_sees_household) oder nicht-numerische Test-chat_id -\u003e true. Household view gate: nur true laesst weiter, sonst Household view denied {ok:false, output = finance.gate.household_only in der Sprache des Absenders}; kein LLM, kein Werkzeug, keine Karte. Fail-closed: kein onError, ein Lesefehler stoppt den Lauf. Andere Wege eines Kindes zu Finanzdaten (Guide, Monitor, Kontexte anderer Pakete) deckt dieses Tor nicht ab.",
+                                         "height":  300,
+                                         "width":  380,
+                                         "color":  4
+                                     },
+                      "type":  "n8n-nodes-base.stickyNote",
+                      "typeVersion":  1,
+                      "position":  [
+                                       -1416,
+                                       -660
+                                   ],
+                      "id":  "0b1eb90b-3ad9-5b4a-a80c-e4980f8733bd",
+                      "name":  "Doc: Haushalts-Sicht"
                   },
                   {
                       "parameters":  {
@@ -8176,7 +8280,7 @@
                                                          [
                                                              {
                                                                  "index":  0,
-                                                                 "node":  "Load Agent Context",
+                                                                 "node":  "Household view read",
                                                                  "type":  "main"
                                                              }
                                                          ]
@@ -8941,6 +9045,35 @@
                                                                             ]
                                                                         ]
                                                         },
+                        "Household view read":  {
+                                                    "main":  [
+                                                                 [
+                                                                     {
+                                                                         "index":  0,
+                                                                         "node":  "Household view gate",
+                                                                         "type":  "main"
+                                                                     }
+                                                                 ]
+                                                             ]
+                                                },
+                        "Household view gate":  {
+                                                    "main":  [
+                                                                 [
+                                                                     {
+                                                                         "index":  0,
+                                                                         "node":  "Load Agent Context",
+                                                                         "type":  "main"
+                                                                     }
+                                                                 ],
+                                                                 [
+                                                                     {
+                                                                         "index":  0,
+                                                                         "node":  "Household view denied",
+                                                                         "type":  "main"
+                                                                     }
+                                                                 ]
+                                                             ]
+                                                },
                         "tool_search_documents":  {
                                                       "ai_tool":  [
                                                                       [

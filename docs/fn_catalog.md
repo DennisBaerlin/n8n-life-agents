@@ -7,7 +7,7 @@
 > bleibt die jeweilige SQL-Datei. Nach jeder fn-Aenderung neu generieren + committen;
 > Drift ist hartes Gate (prek-Hook `fn-catalog` -> `gen_fn_catalog.ps1 -Verify`).
 
-Umfang: 565 fn-Dateien.
+Umfang: 567 fn-Dateien.
 
 ## finance.fn_account_emoji_page
 - `finance.fn_account_emoji_page(p_account_id int, p_page int, p_lang text) -> jsonb`
@@ -1505,6 +1505,11 @@ Umfang: 565 fn-Dateien.
 - jsonb-Keys: --
 - Berechnet den naechsten Pruefzeitpunkt eines Monitor-Triggers: p_prev + p_interval * k mit minimalem k, sodass das Ergebnis STRIKT > p_now liegt. Eigenschaften (siehe test_fn_next_check.sql): * Anker bleibt erhalten ("jeden Tag 09:00" bleibt 09:00, Montag bleibt Montag) * Catch-up: nach Downtime werden verpasste Slots UEBERSPRUNGEN, nicht nachgefeuert (sonst wuerde ein ueberfaelliger Trigger auf jedem Heartbeat erneut feuern) * p_now exakt auf einem Slot -> naechster Slot (nie <= p_now) Die Epoch-Division ist bei Kalender-Intervallen (Monate) eine Naeherung — die While-Korrektur garantiert "strikt in der Zukunft" trotzdem hart. STABLE statt IMMUTABLE: timestamptz + Kalender-Intervall (Tag/Monat) haengt an der Sitzungs-Zeitzone (Sommerzeit).
 
+## finance.fn_next_step_example
+- `finance.fn_next_step_example(p_person_id text) -> text`
+- jsonb-Keys: key, missing
+- finance.fn_next_step_example(p_person_id text) — Beispielsatz des finance-Pakets fuer den naechsten Schritt (READ) Einziger Aufrufer: core.fn_get_next_step_example (DEFINER, Doppel-Guard fn_package_active + to_regprocedure). Core prueft zur Laufzeit ueber pg_proc: SECURITY DEFINER, search_path = pg_catalog, pg_temp, Eigentuemer = Eigentuemer von Schema core (Standard-Apply), und verwirft einen Key, den core.ui_texts nicht kennt. RUECKGABE text: 'finance.next_step.example' genau dann, wenn ein aktives Geld-Konto existiert (dieselbe Regel wie die Plan-Reife: finance.fn_plan_readiness meldet accounts nicht als fehlend) UND core.fn_app_sees_household(p_person_id); sonst NULL (Core nimmt den neutralen Key). Der Onboarding-Abschnittsstatus zaehlt nicht (Import zuerst: Konten da, Abschnitt uebersprungen). Ob finance aktiv ist, prueft Core vorher. Wirft nie. Tests: tests/db/finance/test_fn_next_step_example.sql
+
 ## finance.fn_normalize_currency
 - `finance.fn_normalize_currency(p_code text) -> text`
 - jsonb-Keys: --
@@ -2316,6 +2321,11 @@ Umfang: 565 fn-Dateien.
 - `agent.fn_sender_is_member(p_chat_id text) -> boolean`
 - jsonb-Keys: found, role
 - Geteilter DB-Guard: ist der Sender ein POSITIV aufgeloester Nicht-Owner ("Mitglied")? TRUE nur wenn chat_id NUMERISCH ∧ agent.fn_resolve_sender(chat_id) found:true ∧ role <> 'owner'. FALSE (durchlassen) bei: role='owner' · nicht in family (found:false, anomal/Bootstrap) · nicht-numerischer chat_id (E2E-Sentinel — der Resolver wird NIE mit ::bigint gerufen) · NULL/leer. Die owner_only-Schreib-fns (fn_advisor_save_section/_publish_plan/fn_set_context_facts) rufen das Pradikat VOR jedem Write und lehnen ein Mitglied mit {ok:false, reason:'owner_only'} ab (RAISE-frei, kein Owner-Alert). Identitats-Quelle = die deterministische, nicht-spoofbare chat_id (nicht LLM-Werte) — spiegelt das tool_invite_household_member-Muster. Konsistent mit dem Gate-Zweig "is_member".
+
+## finance.fn_sender_sees_household
+- `finance.fn_sender_sees_household(p_chat_id text) -> boolean`
+- jsonb-Keys: person_id
+- finance.fn_sender_sees_household(p_chat_id text) — Tor „Haushalts-Sicht“ vor agent.finance und agent.finance_advisor (READ) Sieht der Absender die Haushaltsfinanzen im Chat? Dieselbe Regel wie die Mini-App: core.fn_app_sees_household (Allow-List owner/partner). Beide Finanz-Agenten fragen hier vor jedem LLM-Lauf; false -> fester Hinweis, kein Werkzeug. Eingabe: p_chat_id = die chat_id aus dem Agent-Start (produktiv numerisch = telegram_user_id des Absenders, Gruppen enden vorher im Orchestrator). RUECKGABE boolean, nie NULL: nicht-numerische chat_id (Test-Sentinel der Agent-Tiers, z. B. test_ac01) -> true; positive Zahl -> fn_app_sees_household(person_id aus agent.fn_resolve_sender); negative (Gruppe) oder ueberlange Zahl, unbekannt, NULL, leer -> false. SECURITY DEFINER (fn_app_sees_household ist REVOKE PUBLIC, fn_resolve_sender liest agent.*), gepinnter search_path, REVOKE PUBLIC; Aufrufer ist der Gate-Knoten mit der Haupt-Credential. Tests: tests/db/finance/test_fn_sender_sees_household.sql
 
 ## finance.fn_set_account_interest (ATOMIC WRITE)
 - `finance.fn_set_account_interest(p jsonb) -> jsonb`

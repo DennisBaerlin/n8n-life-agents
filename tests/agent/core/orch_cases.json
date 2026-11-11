@@ -515,5 +515,37 @@
     "expected_mood": "FUN",
     "expected_behavior": "The reply is either empty (reaction only) or one short own sentence in German. It never contains the words REACT, FUN, FRAME or NOFRAME, has at most ONE emoji and no *asterisk stage directions*.",
     "notes": "Grammatik N1: ein reines Gefuehls-Emoji traegt die Stimmung klar; geprueft werden Stimmung und gesendeter Body (judge_eval)."
+  },
+  {
+    "id": "oc67",
+    "name": "Allgemeine Beratungs-Bitte ohne Thema -> agent.finance_advisor, keine Rueckfrage des Routers",
+    "task": "kannst du mich beraten?",
+    "chat_id": "test_orc67",
+    "expected_route": "finance_advisor",
+    "notes": "UX A bis Z Station 8 (Vorher-Lauf: der Router fragte drei Runden selbst nach dem Thema). Routing-Wissen allein in der router_description des finance-Manifests. Mock: Szenario 'kannst du mich beraten' (conversation_test) ruft schon Call_agent_finance_advisor_."
+  },
+  {
+    "id": "oc68",
+    "name": "Rat-Bitte ohne Thema, andere Worte -> agent.finance_advisor",
+    "task": "Ich brauche einen Rat, wie ich das alles angehen soll.",
+    "chat_id": "test_orc68",
+    "expected_route": "finance_advisor",
+    "notes": "UX A bis Z Station 8, zweite Formulierung ohne das Wort beraten."
+  },
+  {
+    "id": "oc69",
+    "name": "Rat-Bitte MIT Thema Jobwechsel -> agent.career_advisor (Gegenprobe zu oc67)",
+    "task": "Ich ueberlege, den Job zu wechseln. Kannst du mich dazu beraten?",
+    "chat_id": "test_orc69",
+    "expected_route": "career_advisor",
+    "notes": "Gegenprobe: ein genanntes Thema geht an den Spezialisten dieses Themas, nicht an den Finanzberater."
+  },
+  {
+    "id": "oc70",
+    "name": "Rat-Bitte MIT Thema Testament -> agent.estate_advisor (Gegenprobe zu oc67)",
+    "task": "Wo liegt eigentlich unser Testament, und welche Vollmachten brauchen wir? Berate mich bitte.",
+    "chat_id": "test_orc70",
+    "expected_route": "estate_advisor",
+    "notes": "Gegenprobe: Vorsorge-Thema geht an den Nachlass-Berater, nicht an den Finanzberater."
   }
 ]

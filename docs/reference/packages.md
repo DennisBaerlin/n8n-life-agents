@@ -158,7 +158,7 @@ Eine Zeile je Write-Tool; Mechanik je Tool lebt in Tool-Description + fn-Vertrag
 
 | Tool | Zweck |
 |---|---|
-| `tool_create_account` | Konto anlegen (cash/p2p/depot/festgeld) samt Eröffnungssaldo + Inhaber in einem Schritt; Kredite nur über `tool_create_loan` |
+| `tool_create_account` | Konto anlegen (cash/p2p/depot/festgeld) samt Eröffnungssaldo + Inhaber in einem Schritt; Kredite nur über `tool_create_loan`; auch beim Finanzberater gebunden (schmal, fest `cash`, nur für das fehlende Plan-Konto) |
 | `tool_create_insurance` | Versicherung + Prämien-Dauerauftrag anlegen |
 | `tool_create_loan` | Kredit inkl. Loan-Konto, Auszahlung, Rate anlegen |
 | `tool_create_real_estate` | Immobilie als Asset anlegen (optional Wohnfläche + Baujahr → Karte zeigt die Instandhaltungs-Empfehlung) |
@@ -174,7 +174,7 @@ Eine Zeile je Write-Tool; Mechanik je Tool lebt in Tool-Description + fn-Vertrag
 | `tool_reconcile_account` | Ein Konto-Saldo abgleichen (Korrekturbuchung) |
 | `tool_reconcile_accounts_batch` | Mehrere Konten mit einem Sammel-Approval abgleichen |
 | `tool_close_account` | Konto schliessen |
-| `tool_create_recurring_payment` | Standalone Dauerauftrag (Gehalt/Miete/Abo/Rente) anlegen; optional mit der Gegen-IBAN aus einem Vorschlag als Erkennungs-Schlüssel für den Monats-Check |
+| `tool_create_recurring_payment` | Standalone Dauerauftrag (Gehalt/Miete/Abo/Rente) anlegen; optional mit der Gegen-IBAN aus einem Vorschlag als Erkennungs-Schlüssel für den Monats-Check; auch beim Finanzberater gebunden (ohne IBAN und Plan-Aufgabe, nur für fehlende Plan-Einnahme/-Ausgabe) |
 | `tool_create_recurring_transfer` | Wiederkehrender interner Transfer zwischen zwei eigenen Konten (cashflow-neutral); `until_free_money` = Ende aus dem freien Geld der Quelle |
 | `tool_import_recurring_suggestions` | Stapel-Write ohne Karte: wiederkehrende Zahlungen aus einem mehrmonatigen Bank-Export erkennen, die noch kein Dauerauftrag abdeckt, und in den Vorschlags-Stapel des Chats legen (Rhythmus/Betrag/Startdatum aus der DB); angelegt wird nur per Knopf |
 | `tool_send_recurring_suggestions` | Ohne Karte: sendet je offenem Vorschlag eine Nachricht mit Knöpfen `rsug` (Probelauf der Anlege-fn vorab); der Tipp legt aus den gespeicherten Werten an (`fn_handle_recurring_suggestion_cb`), der Owner bekommt einen Hinweis, wenn ein Mitglied übernimmt. |

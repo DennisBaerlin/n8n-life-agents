@@ -47,7 +47,7 @@
     "chat_id": "test_ac05",
     "timeout_s": 240,
     "expected_tool": null,
-    "expected_behavior": "The advisor must START the interview, not produce a full plan: check agent.advisor_plans for an existing draft (postgres_select in read_tools), begin with the first catalog section (household_basics), pre-fill from existing data (DB views and/or family context) for ONE topic of that section and ask at most ONE question, at the end. A short message about one topic is expected: a recap block (Bisher erfasst / captured so far), a list of several topics or several questions is a FAIL. It must NOT call tool_save_plan_section in this first turn (nothing is confirmed yet).",
+    "expected_behavior": "The advisor must START the interview, not produce a full plan: check agent.advisor_plans for an existing draft (postgres_select in read_tools), begin with the first catalog section (household_basics), pre-fill from existing data (DB views and/or family context) for ONE topic of that section and ask at most ONE question, at the end. A short message about one topic is expected: a recap block (Bisher erfasst / captured so far), a list of several topics or several questions is a FAIL. One sentence that steps at the bank are still open is required by the prompt when the snapshot shows them and is not a second topic. It must NOT call tool_save_plan_section in this first turn (nothing is confirmed yet).",
     "notes": "Interview-Mechanik: Resume-Check + Pre-Fill + ein Thema mit einer Frage (seit den Plan-Themen 2026-11-07 ohne Bisher-erfasst-Block); Save erst nach Playback-OK. Einnahme per setup_sql: ohne sie sperrt fn_plan_readiness das Interview (seit 2026-10-28); die Fixtures bleiben ohne Einnahme (real_ingress ri07e)."
   },
   {

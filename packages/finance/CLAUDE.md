@@ -1,6 +1,6 @@
 # Finance-Paket — Domänen-Regeln (lädt beim Arbeiten in `packages/finance/`)
 
-Buchhalter (`agent.finance`, CQRS) + Berater (`agent.finance_advisor`, bucht nie; einzige Daten-Ausnahme `tool_set_asset_classes` = Anlageklassen im Planungs-Flow). Paket-übergreifende Gesetze → `packages/CLAUDE.md` + `.claude/rules/sql.md`, Core-Maschinen → `packages/core/CLAUDE.md`, Mechanik und View-Semantik → `docs/reference/finance.md`.
+Buchhalter (`agent.finance`, CQRS) + Berater (`agent.finance_advisor`, bucht nie; Daten-Ausnahmen im Def-Kopf). Paket-übergreifende Gesetze → `packages/CLAUDE.md` + `.claude/rules/sql.md`, Core-Maschinen → `packages/core/CLAUDE.md`, Mechanik und View-Semantik → `docs/reference/finance.md`.
 
 ## Advisor (finance-Delta zu `agent.advisor_plans`)
 

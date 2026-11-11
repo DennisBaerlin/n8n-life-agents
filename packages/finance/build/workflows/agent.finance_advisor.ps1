@@ -3,9 +3,10 @@
 # Schlanker Klon des agent.finance-Templates und Vorlage der weiteren Advisor (Clone-and-Trim, bewusst
 # KEINE Factory — build-CLAUDE.md "Agent-Generatoren sind Clone-and-Trim"); die Domaenen-Konstanten stehen
 # am Funktionskopf, Geteiltes liegt in lib/build_helpers.ps1 (New-AdvisorGateChain/-ToolNode/-PhrasingTail).
-# Der Advisor bucht nie: keine Buchungs-/Stammdaten-Tools gebunden; seine Writes sind Plan-Persistenz
-# (tool_save_plan_section/tool_publish_plan), Plan-Trigger und als einzige Daten-Ausnahme
-# tool_set_asset_classes (nur Anlageklassen, Owner 2026-10-23) - alle HITL-gegatet.
+# Der Advisor bucht nie: keine Buchungs-Tools gebunden; seine Writes sind Plan-Persistenz
+# (tool_save_plan_section/tool_publish_plan), Plan-Trigger und zwei Daten-Ausnahmen: tool_set_asset_classes (nur
+# Anlageklassen, Owner 2026-10-23) und die fehlenden Plan-Pflichtdaten (tool_create_account fest cash,
+# tool_create_recurring_payment) - alle HITL-gegatet.
 
 # New-AdvisorToolNode (CROSS-AGENT-Tool-Builder) lebt seit Phase 0 WS-0c AT geteilt in
 # scripts/build/lib/build_helpers.ps1 (loest die fruehere lokale Duplikat-Def ab; -StartNode jetzt PFLICHT).
@@ -53,6 +54,10 @@ function Build-AgentFinanceAdvisor {
 
     $nLoadConfig = Build-CallWorkflow 'Load Config' @(-1376, 0) $ID_LOAD_CFG 'core.sub_load_config' (@{})
 
+    # Tor Haushalts-Sicht (household_gate.ps1): Kind/ohne Rolle -> fester Hinweis vor dem LLM, vor allen weiteren Reads.
+    $hh = New-FinanceHouseholdGate -StartNode $START_NODE -NextNode 'Onboarding gate read' `
+        -ReadPos @(-1376, -560) -GatePos @(-1264, -560) -DenyPos @(-1152, -720)
+
     # --- Onboarding-Pflicht-Gate (Plan §1b, flag-gated feature.onboarding_gate; WS-B3 kombiniert) ---
     # Deterministisch VOR dem LLM (kein Cost): wenn das Feature an ist UND das Onboarding noch nicht
     # vollstaendig ist (core-Haushalt UND die sperrenden finance-Sektionen), antwortet der Advisor mit einem
@@ -74,6 +79,8 @@ function Build-AgentFinanceAdvisor {
     $nGateRead = Build-Pg 'Onboarding gate read' @(-1264, 0) `
         ("=SELECT ((s.st->'core'->>'complete')::boolean AND (s.st->'package'->>'ok') IS DISTINCT FROM 'false' AND jsonb_array_length(s.blk) = 0) AS complete, " +
          "s.blk AS open, COALESCE((s.st->>'viewer_is_member')::boolean, false) AS viewer_is_member, finance.fn_plan_readiness('finance', NULL) AS readiness, " +
+         "(SELECT CASE WHEN bool_or(rp.status = 'active') THEN 'published' WHEN bool_or(rp.status = 'draft') THEN 'draft' ELSE 'none' END " +
+         "FROM core.fn_advisor_read_plan(CASE WHEN (`$1::jsonb)->>'chat_id' LIKE 'test_e2e%' THEN '__e2e_finance__' ELSE 'finance' END, (`$1::jsonb)->>'chat_id') rp) AS plan_state, " +
          "COALESCE((SELECT value FROM core.config WHERE category='feature' AND key='onboarding_gate'),'false') AS gate_on, " +
          "core.fn_ui_texts_for(jsonb_build_object('chat_id', (`$1::jsonb)->>'chat_id', 'keys', to_jsonb($gateKeys), " +
          "'doc', (SELECT jsonb_agg((o->>'source') || '.onboarding.' || (o->>'key')) FROM jsonb_array_elements(s.blk) o)))->'t' AS t " +
@@ -99,10 +106,12 @@ function Build-AgentFinanceAdvisor {
 
     $nBuildInput = Build-Set 'Build Agent Input' @(-928, 0) @(
         ,@('task',          "={{ `$('$START_NODE').item.json.task }}", 'string')
-        ,@('system_prompt', ("={{ `$('Load Agent Context').item.json.system_prompt + (() => { let rd = `$('Onboarding gate read').item.json.readiness; " +
+        # Wechselnde Teile ans ENDE (Prompt-Cache): Gespraechs-Kontext (Rolle + Plan-Stand aus der DB, nie geraten) und die
+        # Plan-Reife. viewer kommt aus viewer_is_member (Test-chat_ids = owner), nicht aus can_write (dort waere die Rolle NULL).
+        ,@('system_prompt', ("={{ `$('Load Agent Context').item.json.system_prompt + '\n\n## Conversation context\nviewer: ' + (`$('Onboarding gate read').item.json.viewer_is_member === true ? 'member' : 'owner') + '\nplan: ' + String(`$('Onboarding gate read').item.json.plan_state || 'none') + (() => { let rd = `$('Onboarding gate read').item.json.readiness; " +
                              "if (typeof rd === 'string') { try { rd = JSON.parse(rd); } catch (e) { rd = null; } } " +
                              "if (!rd || rd.ready !== false || !Array.isArray(rd.missing) || !rd.missing.length) { return ''; } " +
-                             "return '\n\n## Plan readiness\nMissing for a meaningful financial plan: ' + rd.missing.map(m => String(m.key) + ' (onboarding section ' + String(m.section) + ')').join(', ') + '. When the user wants to create or continue a financial plan (or tapped the plan button), explain this first in plain words and send the user to the bookkeeper to record it; do not start or continue the interview. Other advice stays possible - name the thin data basis.'; })() }}"), 'string')
+                             "return '\n\n## Plan readiness\nMissing for a meaningful financial plan, in this order: ' + rd.missing.map(m => String(m.key)).join(', ') + '. This list is the state at the start of the conversation: an ok:true from the matching tool (accounts -> tool_create_account, income or expenses -> tool_create_recurring_payment) ticks an item off. When the user wants a financial plan, asks for advice in general or tapped the plan button, follow Missing plan data in your instructions first; do not start or continue the interview before the last item is recorded. Other advice stays possible - name the thin data basis.'; })() }}"), 'string')
         ,@('chat_id',       "={{ `$('$START_NODE').item.json.chat_id }}", 'string')
     )
 
@@ -286,19 +295,58 @@ function Build-AgentFinanceAdvisor {
         'List the EXISTING monitoring triggers for your domain (label, type, status, a compact spec line). Call this BEFORE proposing reminders or watchers: entries with status disabled or declined must not be offered again, and nothing that already exists. Read-only - changing, repairing or deleting triggers is the monitor agent''s job.' `
         @() ([ordered]@{ domain = 'finance' }) @(960, 208) -StartNode $START_NODE
 
-    # EINZIGE Daten-Schreib-Ausnahme des Beraters (Owner 2026-10-23: die Anlageklasse wird in der Finanzplanung
-    # geklaert). Paket-eigenes Tool (kein Core-Service): setzt NUR asset_class, EINE Karte fuer alle Positionen.
+    # Daten-Schreib-Ausnahme Anlageklasse (wird in der Finanzplanung geklaert). Paket-eigenes Tool (kein Core-Service):
+    # setzt nur asset_class, eine Karte fuer alle Positionen.
     # Input exakt = Build-Trigger-Liste von tools/set_asset_classes.ps1 (contract_lint); chat_id reicht der Builder durch.
     $nToolSetAssetClasses = New-AdvisorToolNode 'tool_set_asset_classes' 'agent.finance.tool_set_asset_classes' `
-        'Assign the asset class (allocation block key) of one or SEVERAL depot positions with ONE approval card - your ONLY data write; it changes nothing but the asset class (no shares, prices or bookings). Send ALL confirmed positions in ONE call. Reserved key outside_plan = deliberately outside the household plan (e.g. a child depot): visible in net worth, never reported as unmapped. Identify each position by depot_name + position (its symbol or ISIN as stored, see depot_holdings_overview). One bad row -> ok:false with reason and candidates, NO card, nothing written; fix and call again. Pass assignments as a JSON array string, e.g. [{"depot_name":"Testbroker Depot","position":"IE00B5BMR087","asset_class":"sp500"},{"depot_name":"Depot Lisa","position":"BTC","asset_class":"outside_plan"}].' `
+        'Assign the asset class (allocation block key) of one or SEVERAL depot positions with ONE approval card; it changes nothing but the asset class (no shares, prices or bookings). Send ALL confirmed positions in ONE call. Reserved key outside_plan = deliberately outside the household plan (e.g. a child depot): visible in net worth, never reported as unmapped. Identify each position by depot_name + position (its symbol or ISIN as stored, see depot_holdings_overview). One bad row -> ok:false with reason and candidates, NO card, nothing written; fix and call again. Pass assignments as a JSON array string, e.g. [{"depot_name":"Testbroker Depot","position":"IE00B5BMR087","asset_class":"sp500"},{"depot_name":"Depot Lisa","position":"BTC","asset_class":"outside_plan"}].' `
         @(
             ,@('assignments', 'JSON array string, each {depot_name, position (symbol or ISIN as stored), asset_class (lowercase block key from the plan, or outside_plan)}', 'string')
         ) $null @(1120, 208) -StartNode $START_NODE
 
+    # Fehlende Pflichtdaten des Plans (finance.fn_plan_readiness: Geld-Konto, laufende Einnahme, laufende Ausgabe) traegt
+    # der Berater selbst per Karte ein. Dieselben Paket-Tools wie beim Buchhalter (Probelauf, Dubletten-Pruefung, HITL
+    # owner_info), aber schmal gebunden: Konto fest cash ohne Zins-/Depot-/Verrechnungs-Felder, Zahlung ohne
+    # handoff_task_id und counterparty_iban - das Modell kann strukturell nichts anderes anlegen.
+    # Falle: jedes Build-Trigger-Feld des Tools muss ankommen, ein fehlendes ist nicht ''. 'Settlement provided?' in
+    # tools/create_account.ps1 vergleicht mit '' und lehnte sonst jedes Konto ab -> die ungenutzten Felder fest leer.
+    $advAccountFixed = [ordered]@{ account_type = 'cash' }
+    foreach ($f in @('settlement_account_name', 'interest_rate', 'interest_credit_unit', 'interest_credit_interval',
+                     'interest_credit_day_of_month', 'interest_day_count_convention', 'interest_posting_day_of_month',
+                     'interest_auto_post', 'interest_valid_from', 'fixed_deposit_maturity_date', 'fixed_deposit_auto_renew', 'emoji')) {
+        $advAccountFixed[$f] = ''
+    }
+    $nToolCreateAccount = New-AdvisorToolNode 'tool_create_account' 'agent.finance.tool_create_account' `
+        ('Record the missing money account of the financial plan (see Plan readiness) - ONLY for that: one current or savings account the user names, always as a plain cash account (no interest, no depot). Call it before any income or expense, which needs this account. NAME: form a short name from the bank and kind the user names (e.g. Ahornbank Giro) and call right away - the card shows it for confirmation. Pass a balance only if the user states one, the owner only if the user names one (a self-reference such as mein or ich is passed as is). An active account with the same name or number comes back ok:false with candidates - ask whether they mean that account. The tool shows the card itself; ok:true = already confirmed.') `
+        @(
+            ,@('name', 'Short account name formed from bank and kind, e.g. Ahornbank Giro', 'string')
+            ,@('opening_balance', 'Current balance only if the user states it, plain number in the account currency; empty otherwise', 'string', '')
+            ,@('opening_balance_date', ('Only when the user names the day of that balance (' + (Get-DateParamHint) + '); empty = today'), 'string', '')
+            ,@('bank', 'Bank name if the user names it (optional)', 'string', '')
+            ,@('account_number', 'IBAN exactly as the user gives it (optional, never ask for it)', 'string', '')
+            ,@('owner_person', 'Only the single household member who owns it as the user names them; empty = joint/household', 'string', '')
+            ,@('currency', 'ISO 4217 code only if not EUR (optional)', 'string', '')
+        ) $advAccountFixed @(1280, 208) -StartNode $START_NODE
+
+    $nToolCreateRecurringPayment = New-AdvisorToolNode 'tool_create_recurring_payment' 'agent.finance.tool_create_recurring_payment' `
+        ('Record a missing regular income or regular expense of the financial plan (see Plan readiness) - ONLY for that, with the figures the user named. Income: the NET amount per payment as the user says it; never convert gross, yearly or one-off figures - ask once instead. direction income or expense; amount always positive (the tool applies the sign). Rhythm: schedule_unit month and schedule_interval 1 for a monthly salary. PAYDAY: put the day of month into schedule_day_of_month and pass first_payment_date as today - the database takes the next payday from it; never compute a date yourself. account_name = the account it arrives on (or leaves from); ask only when several accounts could fit. A running payment with the same name comes back ok:false with candidates: tell the user it is already recorded, never create it twice. The tool shows the card itself; ok:true = already confirmed and recorded.') `
+        @(
+            ,@('name', 'Display name, for income with the earner first name when two earners exist, e.g. Gehalt Erika, Miete Wohnung', 'string')
+            ,@('account_name', 'Exact name of the account the money arrives on (income) or leaves from (expense)', 'string')
+            ,@('direction', 'income (money in) or expense (money out)', 'string')
+            ,@('amount', 'Amount per payment in the account currency, always positive; income = net as stated by the user', 'number')
+            ,@('schedule_unit', 'day, week, month or year (salary: month)', 'string')
+            ,@('first_payment_date', ('today when the user names only the payday, otherwise the date of the next payment the user names (' + (Get-DateParamHint) + ')'), 'string')
+            ,@('schedule_interval', 'Every N units, default 1', 'string', '')
+            ,@('schedule_day_of_month', 'Payday 1-28, -1 for the last day or -2 for the second-to-last day of the month', 'string', '')
+            ,@('valid_to', ('Only if the user names an end: last day still valid, inclusive (' + (Get-DateParamHint) + ')'), 'string', '')
+            ,@('notes', 'Free-text note (optional)', 'string', '')
+        ) ([ordered]@{ handoff_task_id = ''; counterparty_iban = '' }) @(1440, 208) -StartNode $START_NODE
+
     # --- Doku-Stickies ---
     $stickyOverview = Build-Sticky 'Doc: Überblick' @(-1640, -380) `
         'agent.finance_advisor — Finanzberater (Sub-Workflow)' `
-        'Eingang: task, chat_id, call_depth (vom Orchestrator als Tool gerufen). Pipeline (geteilte Naht New-AdvisorGateChain): Depth gate (Anti-Loop) -> Package-Gate (nur wenn finance aktiv, sonst package_inactive) -> Core-first-Gate (Haushalts-Onboarding offen -> Hinweis) -> Load Config -> Onboarding gate (feature.onboarding_gate, nur an, wenn Core und die sperrenden Finanz-Sektionen fertig sind, sonst Redirect) -> System-Prompt+Manifest (agent.tool_load_context, agent_name=finance_advisor) -> Advisor Agent. BUCHT NIE: keine Buchungs-/Stammdaten-Tools — Reads via postgres_select (finance_ro) + load_context (das Gesamtbild in einer Abfrage: finance.fn_advisor_snapshot, weil jede Abfrage eine Iteration kostet); Writes NUR tool_save_plan_section/tool_publish_plan (Plan-Persistenz) + tool_record_plan_wish (Wunsch eines erwachsenen Mitglieds an den Owner, owner_info, ändert den Plan nicht) + tool_create_monitor_trigger (Plan-Trigger in-flow anlegen, domain+package fix finance; Edits/Repair -> Monitor-Agent) + tool_set_asset_classes (einzige Daten-Ausnahme: nur die Anlageklassen der Depot-Positionen im Planungs-Flow, eine Karte), je HITL-Gate. tool_list_monitor_triggers = READ-ONLY Dedup-Fenster (bestehende Trigger lesen vor dem Vorschlagen). Beratung/Interview/Plan = hier; Buchen = agent.finance; Trigger-Mechanik = agent.monitor. ÜBERGABE an den Buchhalter (kein Agent->Agent): Vereinbartes gibt der Berater als handoff_tasks an tool_save_plan_section (auf der Abschnitts-Karte sichtbar); tool_send_handoff_overview schickt die Übersicht mit Knopf Durchgehen, der Orchestrator startet danach agent.finance über einen festen Knopf-Arm.' 300 700
+        'Eingang: task, chat_id, call_depth (vom Orchestrator als Tool gerufen). Pipeline (geteilte Naht New-AdvisorGateChain): Depth gate (Anti-Loop) -> Package-Gate (nur wenn finance aktiv, sonst package_inactive) -> Core-first-Gate (Haushalts-Onboarding offen -> Hinweis) -> Load Config -> Haushalts-Sicht (nur owner/partner, sonst fester Hinweis) -> Onboarding gate (feature.onboarding_gate, nur an, wenn Core und die sperrenden Finanz-Sektionen fertig sind, sonst Redirect) -> System-Prompt+Manifest (agent.tool_load_context, agent_name=finance_advisor) + Conversation context (viewer owner/member, plan none/draft/published) + Plan readiness -> Advisor Agent. BUCHT NIE: keine Buchungs-Tools; Stammdaten nur die fehlenden Plan-Pflichtdaten (tool_create_account fest cash, tool_create_recurring_payment, schmal gebunden, je Karte) — Reads via postgres_select (finance_ro) + load_context (das Gesamtbild in einer Abfrage: finance.fn_advisor_snapshot, weil jede Abfrage eine Iteration kostet); Writes NUR tool_save_plan_section/tool_publish_plan (Plan-Persistenz) + tool_record_plan_wish (Wunsch eines erwachsenen Mitglieds an den Owner, owner_info, ändert den Plan nicht) + tool_create_monitor_trigger (Plan-Trigger in-flow anlegen, domain+package fix finance; Edits/Repair -> Monitor-Agent) + tool_set_asset_classes (einzige Daten-Ausnahme: nur die Anlageklassen der Depot-Positionen im Planungs-Flow, eine Karte), je HITL-Gate. tool_list_monitor_triggers = READ-ONLY Dedup-Fenster (bestehende Trigger lesen vor dem Vorschlagen). Beratung/Interview/Plan = hier; Buchen = agent.finance; Trigger-Mechanik = agent.monitor. ÜBERGABE an den Buchhalter (kein Agent->Agent): Vereinbartes gibt der Berater als handoff_tasks an tool_save_plan_section (auf der Abschnitts-Karte sichtbar); tool_send_handoff_overview schickt die Übersicht mit Knopf Durchgehen, der Orchestrator startet danach agent.finance über einen festen Knopf-Arm.' 300 700
 
     $stickyDomain = Build-Sticky 'Doc: Domain-Switch' @(400, -200) `
         'domain = fixer Binding-Input (+ e2e-Sentinel)' `
@@ -324,9 +372,9 @@ function Build-AgentFinanceAdvisor {
         $nLoadConfig, $nGateRead, $nGateIf, $nGateDeny, $nLoadCtx, $nBuildInput, $nAgent,
         $nMemory,
         $nToolSelect, $nToolLoad, $nToolWebSearch, $nToolPanel, $nToolSaveSection, $nToolPublish, $nToolSyncPlan, $nToolPlanWish,
-        $nToolCreateTrigger, $nToolListTriggers, $nToolSetAssetClasses,
+        $nToolCreateTrigger, $nToolListTriggers, $nToolSetAssetClasses, $nToolCreateAccount, $nToolCreateRecurringPayment,
         $stickyOverview, $stickyDomain, $stickyModel, $stickyMemory, $stickyPkg, $stickyCore
-    ) + $mb.Nodes
+    ) + $hh.Nodes + $mb.Nodes
     if ($nToolHandoffOverview) { $nodes += $nToolHandoffOverview }
     # Paket-Werkzeuge aus consumes.services (paperless:* — Dokumente lesen) ueber den Core-Vermittler; optional.
     $svc = Add-ServiceTools -Package 'finance' -AgentNode 'Advisor Agent' -StartNode $START_NODE -Position @(-336, 840) -ExistingNodes $nodes
@@ -338,7 +386,8 @@ function Build-AgentFinanceAdvisor {
     $conns = [ordered]@{}
     foreach ($k in $gate.Connections.Keys) { $conns[$k] = $gate.Connections[$k] }
 
-    $conns['Load Config']          = @{ main = @( ,@( E 'Onboarding gate read' ) ) }
+    $conns['Load Config']          = @{ main = @( ,@( E $hh.EntryNode ) ) }
+    foreach ($k in $hh.Connections.Keys) { $conns[$k] = $hh.Connections[$k] }
     $conns['Onboarding gate read'] = @{ main = @( ,@( E 'Onboarding gate' ) ) }
     $conns['Onboarding gate']      = @{ main = @(
         @( E 'Onboarding required' ),   # true: Feature an + unvollstaendig -> Redirect (kein LLM)
@@ -362,6 +411,8 @@ function Build-AgentFinanceAdvisor {
     $conns['tool_create_monitor_trigger'] = @{ ai_tool = @( ,@( E 'Advisor Agent' 'ai_tool' ) ) }
     $conns['tool_list_monitor_triggers']  = @{ ai_tool = @( ,@( E 'Advisor Agent' 'ai_tool' ) ) }
     $conns['tool_set_asset_classes']      = @{ ai_tool = @( ,@( E 'Advisor Agent' 'ai_tool' ) ) }
+    $conns['tool_create_account']         = @{ ai_tool = @( ,@( E 'Advisor Agent' 'ai_tool' ) ) }
+    $conns['tool_create_recurring_payment'] = @{ ai_tool = @( ,@( E 'Advisor Agent' 'ai_tool' ) ) }
     foreach ($k in $svc.Connections.Keys) { $conns[$k] = $svc.Connections[$k] }
 
     foreach ($k in $mb.Connections.Keys) { $conns[$k] = $mb.Connections[$k] }

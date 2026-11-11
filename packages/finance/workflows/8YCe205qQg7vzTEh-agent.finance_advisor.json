@@ -309,7 +309,7 @@
                   {
                       "parameters":  {
                                          "operation":  "executeQuery",
-                                         "query":  "=SELECT ((s.st-\u003e\u0027core\u0027-\u003e\u003e\u0027complete\u0027)::boolean AND (s.st-\u003e\u0027package\u0027-\u003e\u003e\u0027ok\u0027) IS DISTINCT FROM \u0027false\u0027 AND jsonb_array_length(s.blk) = 0) AS complete, s.blk AS open, COALESCE((s.st-\u003e\u003e\u0027viewer_is_member\u0027)::boolean, false) AS viewer_is_member, finance.fn_plan_readiness(\u0027finance\u0027, NULL) AS readiness, COALESCE((SELECT value FROM core.config WHERE category=\u0027feature\u0027 AND key=\u0027onboarding_gate\u0027),\u0027false\u0027) AS gate_on, core.fn_ui_texts_for(jsonb_build_object(\u0027chat_id\u0027, ($1::jsonb)-\u003e\u003e\u0027chat_id\u0027, \u0027keys\u0027, to_jsonb(ARRAY[\u0027finance.gate.onboarding_required\u0027,\u0027finance.gate.onboarding_open\u0027,\u0027finance.gate.onboarding_member\u0027]::text[]), \u0027doc\u0027, (SELECT jsonb_agg((o-\u003e\u003e\u0027source\u0027) || \u0027.onboarding.\u0027 || (o-\u003e\u003e\u0027key\u0027)) FROM jsonb_array_elements(s.blk) o)))-\u003e\u0027t\u0027 AS t FROM (SELECT x.st, COALESCE((SELECT jsonb_agg(o.e ORDER BY o.n) FROM jsonb_array_elements(x.st-\u003e\u0027open\u0027) WITH ORDINALITY o(e, n) WHERE NOT (o.e-\u003e\u003e\u0027source\u0027 = \u0027finance\u0027 AND o.e-\u003e\u003e\u0027key\u0027 = ANY (ARRAY[\u0027emergency_reserve\u0027,\u0027monthly_check\u0027]::text[]))), \u0027[]\u0027::jsonb) AS blk FROM (SELECT core.fn_onboarding_status(\u0027finance\u0027, ($1::jsonb)-\u003e\u003e\u0027chat_id\u0027) AS st) x) s;",
+                                         "query":  "=SELECT ((s.st-\u003e\u0027core\u0027-\u003e\u003e\u0027complete\u0027)::boolean AND (s.st-\u003e\u0027package\u0027-\u003e\u003e\u0027ok\u0027) IS DISTINCT FROM \u0027false\u0027 AND jsonb_array_length(s.blk) = 0) AS complete, s.blk AS open, COALESCE((s.st-\u003e\u003e\u0027viewer_is_member\u0027)::boolean, false) AS viewer_is_member, finance.fn_plan_readiness(\u0027finance\u0027, NULL) AS readiness, (SELECT CASE WHEN bool_or(rp.status = \u0027active\u0027) THEN \u0027published\u0027 WHEN bool_or(rp.status = \u0027draft\u0027) THEN \u0027draft\u0027 ELSE \u0027none\u0027 END FROM core.fn_advisor_read_plan(CASE WHEN ($1::jsonb)-\u003e\u003e\u0027chat_id\u0027 LIKE \u0027test_e2e%\u0027 THEN \u0027__e2e_finance__\u0027 ELSE \u0027finance\u0027 END, ($1::jsonb)-\u003e\u003e\u0027chat_id\u0027) rp) AS plan_state, COALESCE((SELECT value FROM core.config WHERE category=\u0027feature\u0027 AND key=\u0027onboarding_gate\u0027),\u0027false\u0027) AS gate_on, core.fn_ui_texts_for(jsonb_build_object(\u0027chat_id\u0027, ($1::jsonb)-\u003e\u003e\u0027chat_id\u0027, \u0027keys\u0027, to_jsonb(ARRAY[\u0027finance.gate.onboarding_required\u0027,\u0027finance.gate.onboarding_open\u0027,\u0027finance.gate.onboarding_member\u0027]::text[]), \u0027doc\u0027, (SELECT jsonb_agg((o-\u003e\u003e\u0027source\u0027) || \u0027.onboarding.\u0027 || (o-\u003e\u003e\u0027key\u0027)) FROM jsonb_array_elements(s.blk) o)))-\u003e\u0027t\u0027 AS t FROM (SELECT x.st, COALESCE((SELECT jsonb_agg(o.e ORDER BY o.n) FROM jsonb_array_elements(x.st-\u003e\u0027open\u0027) WITH ORDINALITY o(e, n) WHERE NOT (o.e-\u003e\u003e\u0027source\u0027 = \u0027finance\u0027 AND o.e-\u003e\u003e\u0027key\u0027 = ANY (ARRAY[\u0027emergency_reserve\u0027,\u0027monthly_check\u0027]::text[]))), \u0027[]\u0027::jsonb) AS blk FROM (SELECT core.fn_onboarding_status(\u0027finance\u0027, ($1::jsonb)-\u003e\u003e\u0027chat_id\u0027) AS st) x) s;",
                                          "options":  {
                                                          "queryReplacement":  "={{ JSON.stringify({ chat_id: String($(\u0027Start agent.finance_advisor\u0027).item.json.chat_id || \u0027\u0027) }) }}"
                                                      }
@@ -444,7 +444,7 @@
                                                                                  {
                                                                                      "id":  "6f53dcdd-0189-5e76-9bda-4cb212673210",
                                                                                      "name":  "system_prompt",
-                                                                                     "value":  "={{ $(\u0027Load Agent Context\u0027).item.json.system_prompt + (() =\u003e { let rd = $(\u0027Onboarding gate read\u0027).item.json.readiness; if (typeof rd === \u0027string\u0027) { try { rd = JSON.parse(rd); } catch (e) { rd = null; } } if (!rd || rd.ready !== false || !Array.isArray(rd.missing) || !rd.missing.length) { return \u0027\u0027; } return \u0027\\n\\n## Plan readiness\\nMissing for a meaningful financial plan: \u0027 + rd.missing.map(m =\u003e String(m.key) + \u0027 (onboarding section \u0027 + String(m.section) + \u0027)\u0027).join(\u0027, \u0027) + \u0027. When the user wants to create or continue a financial plan (or tapped the plan button), explain this first in plain words and send the user to the bookkeeper to record it; do not start or continue the interview. Other advice stays possible - name the thin data basis.\u0027; })() }}",
+                                                                                     "value":  "={{ $(\u0027Load Agent Context\u0027).item.json.system_prompt + \u0027\\n\\n## Conversation context\\nviewer: \u0027 + ($(\u0027Onboarding gate read\u0027).item.json.viewer_is_member === true ? \u0027member\u0027 : \u0027owner\u0027) + \u0027\\nplan: \u0027 + String($(\u0027Onboarding gate read\u0027).item.json.plan_state || \u0027none\u0027) + (() =\u003e { let rd = $(\u0027Onboarding gate read\u0027).item.json.readiness; if (typeof rd === \u0027string\u0027) { try { rd = JSON.parse(rd); } catch (e) { rd = null; } } if (!rd || rd.ready !== false || !Array.isArray(rd.missing) || !rd.missing.length) { return \u0027\u0027; } return \u0027\\n\\n## Plan readiness\\nMissing for a meaningful financial plan, in this order: \u0027 + rd.missing.map(m =\u003e String(m.key)).join(\u0027, \u0027) + \u0027. This list is the state at the start of the conversation: an ok:true from the matching tool (accounts -\u003e tool_create_account, income or expenses -\u003e tool_create_recurring_payment) ticks an item off. When the user wants a financial plan, asks for advice in general or tapped the plan button, follow Missing plan data in your instructions first; do not start or continue the interview before the last item is recorded. Other advice stays possible - name the thin data basis.\u0027; })() }}",
                                                                                      "type":  "string"
                                                                                  },
                                                                                  {
@@ -1465,7 +1465,7 @@
                   {
                       "parameters":  {
                                          "name":  "tool_set_asset_classes",
-                                         "description":  "Assign the asset class (allocation block key) of one or SEVERAL depot positions with ONE approval card - your ONLY data write; it changes nothing but the asset class (no shares, prices or bookings). Send ALL confirmed positions in ONE call. Reserved key outside_plan = deliberately outside the household plan (e.g. a child depot): visible in net worth, never reported as unmapped. Identify each position by depot_name + position (its symbol or ISIN as stored, see depot_holdings_overview). One bad row -\u003e ok:false with reason and candidates, NO card, nothing written; fix and call again. Pass assignments as a JSON array string, e.g. [{\"depot_name\":\"Testbroker Depot\",\"position\":\"IE00B5BMR087\",\"asset_class\":\"sp500\"},{\"depot_name\":\"Depot Lisa\",\"position\":\"BTC\",\"asset_class\":\"outside_plan\"}].",
+                                         "description":  "Assign the asset class (allocation block key) of one or SEVERAL depot positions with ONE approval card; it changes nothing but the asset class (no shares, prices or bookings). Send ALL confirmed positions in ONE call. Reserved key outside_plan = deliberately outside the household plan (e.g. a child depot): visible in net worth, never reported as unmapped. Identify each position by depot_name + position (its symbol or ISIN as stored, see depot_holdings_overview). One bad row -\u003e ok:false with reason and candidates, NO card, nothing written; fix and call again. Pass assignments as a JSON array string, e.g. [{\"depot_name\":\"Testbroker Depot\",\"position\":\"IE00B5BMR087\",\"asset_class\":\"sp500\"},{\"depot_name\":\"Depot Lisa\",\"position\":\"BTC\",\"asset_class\":\"outside_plan\"}].",
                                          "workflowId":  {
                                                             "__rl":  true,
                                                             "value":  "sT3vZzfHYJ7bB4gP",
@@ -1519,7 +1519,447 @@
                   },
                   {
                       "parameters":  {
-                                         "content":  "## DB-Automatik\n**agent.finance_advisor — Finanzberater (Sub-Workflow)**\n\nEingang: task, chat_id, call_depth (vom Orchestrator als Tool gerufen). Pipeline (geteilte Naht New-AdvisorGateChain): Depth gate (Anti-Loop) -\u003e Package-Gate (nur wenn finance aktiv, sonst package_inactive) -\u003e Core-first-Gate (Haushalts-Onboarding offen -\u003e Hinweis) -\u003e Load Config -\u003e Onboarding gate (feature.onboarding_gate, nur an, wenn Core und die sperrenden Finanz-Sektionen fertig sind, sonst Redirect) -\u003e System-Prompt+Manifest (agent.tool_load_context, agent_name=finance_advisor) -\u003e Advisor Agent. BUCHT NIE: keine Buchungs-/Stammdaten-Tools — Reads via postgres_select (finance_ro) + load_context (das Gesamtbild in einer Abfrage: finance.fn_advisor_snapshot, weil jede Abfrage eine Iteration kostet); Writes NUR tool_save_plan_section/tool_publish_plan (Plan-Persistenz) + tool_record_plan_wish (Wunsch eines erwachsenen Mitglieds an den Owner, owner_info, ändert den Plan nicht) + tool_create_monitor_trigger (Plan-Trigger in-flow anlegen, domain+package fix finance; Edits/Repair -\u003e Monitor-Agent) + tool_set_asset_classes (einzige Daten-Ausnahme: nur die Anlageklassen der Depot-Positionen im Planungs-Flow, eine Karte), je HITL-Gate. tool_list_monitor_triggers = READ-ONLY Dedup-Fenster (bestehende Trigger lesen vor dem Vorschlagen). Beratung/Interview/Plan = hier; Buchen = agent.finance; Trigger-Mechanik = agent.monitor. ÜBERGABE an den Buchhalter (kein Agent-\u003eAgent): Vereinbartes gibt der Berater als handoff_tasks an tool_save_plan_section (auf der Abschnitts-Karte sichtbar); tool_send_handoff_overview schickt die Übersicht mit Knopf Durchgehen, der Orchestrator startet danach agent.finance über einen festen Knopf-Arm.",
+                                         "name":  "tool_create_account",
+                                         "description":  "Record the missing money account of the financial plan (see Plan readiness) - ONLY for that: one current or savings account the user names, always as a plain cash account (no interest, no depot). Call it before any income or expense, which needs this account. NAME: form a short name from the bank and kind the user names (e.g. Ahornbank Giro) and call right away - the card shows it for confirmation. Pass a balance only if the user states one, the owner only if the user names one (a self-reference such as mein or ich is passed as is). An active account with the same name or number comes back ok:false with candidates - ask whether they mean that account. The tool shows the card itself; ok:true = already confirmed.",
+                                         "workflowId":  {
+                                                            "__rl":  true,
+                                                            "value":  "Au90sfQSTEUMemsF",
+                                                            "mode":  "list",
+                                                            "cachedResultUrl":  "/workflow/Au90sfQSTEUMemsF",
+                                                            "cachedResultName":  "agent.finance.tool_create_account"
+                                                        },
+                                         "workflowInputs":  {
+                                                                "mappingMode":  "defineBelow",
+                                                                "value":  {
+                                                                              "name":  "={{ $fromAI(\u0027name\u0027, \u0027Short account name formed from bank and kind, e.g. Ahornbank Giro\u0027, \u0027string\u0027) }}",
+                                                                              "opening_balance":  "={{ $fromAI(\u0027opening_balance\u0027, \u0027Current balance only if the user states it, plain number in the account currency; empty otherwise\u0027, \u0027string\u0027, \u0027\u0027) }}",
+                                                                              "opening_balance_date":  "={{ $fromAI(\u0027opening_balance_date\u0027, \u0027Only when the user names the day of that balance (YYYY-MM-DD or relative to today exactly as: today, yesterday, tomorrow, in 2 weeks, -3 days, 2 months ago, next friday, last monday (counts as digits: in 1 week, not in a week) - never compute a date yourself); empty = today\u0027, \u0027string\u0027, \u0027\u0027) }}",
+                                                                              "bank":  "={{ $fromAI(\u0027bank\u0027, \u0027Bank name if the user names it (optional)\u0027, \u0027string\u0027, \u0027\u0027) }}",
+                                                                              "account_number":  "={{ $fromAI(\u0027account_number\u0027, \u0027IBAN exactly as the user gives it (optional, never ask for it)\u0027, \u0027string\u0027, \u0027\u0027) }}",
+                                                                              "owner_person":  "={{ $fromAI(\u0027owner_person\u0027, \u0027Only the single household member who owns it as the user names them; empty = joint/household\u0027, \u0027string\u0027, \u0027\u0027) }}",
+                                                                              "currency":  "={{ $fromAI(\u0027currency\u0027, \u0027ISO 4217 code only if not EUR (optional)\u0027, \u0027string\u0027, \u0027\u0027) }}",
+                                                                              "account_type":  "cash",
+                                                                              "settlement_account_name":  "",
+                                                                              "interest_rate":  "",
+                                                                              "interest_credit_unit":  "",
+                                                                              "interest_credit_interval":  "",
+                                                                              "interest_credit_day_of_month":  "",
+                                                                              "interest_day_count_convention":  "",
+                                                                              "interest_posting_day_of_month":  "",
+                                                                              "interest_auto_post":  "",
+                                                                              "interest_valid_from":  "",
+                                                                              "fixed_deposit_maturity_date":  "",
+                                                                              "fixed_deposit_auto_renew":  "",
+                                                                              "emoji":  "",
+                                                                              "chat_id":  "={{ $(\u0027Start agent.finance_advisor\u0027).item.json.chat_id }}"
+                                                                          },
+                                                                "matchingColumns":  [
+
+                                                                                    ],
+                                                                "schema":  [
+                                                                               {
+                                                                                   "id":  "name",
+                                                                                   "displayName":  "name",
+                                                                                   "required":  false,
+                                                                                   "defaultMatch":  false,
+                                                                                   "display":  true,
+                                                                                   "canBeUsedToMatch":  true,
+                                                                                   "type":  "string",
+                                                                                   "removed":  false
+                                                                               },
+                                                                               {
+                                                                                   "id":  "opening_balance",
+                                                                                   "displayName":  "opening_balance",
+                                                                                   "required":  false,
+                                                                                   "defaultMatch":  false,
+                                                                                   "display":  true,
+                                                                                   "canBeUsedToMatch":  true,
+                                                                                   "type":  "string",
+                                                                                   "removed":  false
+                                                                               },
+                                                                               {
+                                                                                   "id":  "opening_balance_date",
+                                                                                   "displayName":  "opening_balance_date",
+                                                                                   "required":  false,
+                                                                                   "defaultMatch":  false,
+                                                                                   "display":  true,
+                                                                                   "canBeUsedToMatch":  true,
+                                                                                   "type":  "string",
+                                                                                   "removed":  false
+                                                                               },
+                                                                               {
+                                                                                   "id":  "bank",
+                                                                                   "displayName":  "bank",
+                                                                                   "required":  false,
+                                                                                   "defaultMatch":  false,
+                                                                                   "display":  true,
+                                                                                   "canBeUsedToMatch":  true,
+                                                                                   "type":  "string",
+                                                                                   "removed":  false
+                                                                               },
+                                                                               {
+                                                                                   "id":  "account_number",
+                                                                                   "displayName":  "account_number",
+                                                                                   "required":  false,
+                                                                                   "defaultMatch":  false,
+                                                                                   "display":  true,
+                                                                                   "canBeUsedToMatch":  true,
+                                                                                   "type":  "string",
+                                                                                   "removed":  false
+                                                                               },
+                                                                               {
+                                                                                   "id":  "owner_person",
+                                                                                   "displayName":  "owner_person",
+                                                                                   "required":  false,
+                                                                                   "defaultMatch":  false,
+                                                                                   "display":  true,
+                                                                                   "canBeUsedToMatch":  true,
+                                                                                   "type":  "string",
+                                                                                   "removed":  false
+                                                                               },
+                                                                               {
+                                                                                   "id":  "currency",
+                                                                                   "displayName":  "currency",
+                                                                                   "required":  false,
+                                                                                   "defaultMatch":  false,
+                                                                                   "display":  true,
+                                                                                   "canBeUsedToMatch":  true,
+                                                                                   "type":  "string",
+                                                                                   "removed":  false
+                                                                               },
+                                                                               {
+                                                                                   "id":  "account_type",
+                                                                                   "displayName":  "account_type",
+                                                                                   "required":  false,
+                                                                                   "defaultMatch":  false,
+                                                                                   "display":  true,
+                                                                                   "canBeUsedToMatch":  true,
+                                                                                   "type":  "string",
+                                                                                   "removed":  false
+                                                                               },
+                                                                               {
+                                                                                   "id":  "settlement_account_name",
+                                                                                   "displayName":  "settlement_account_name",
+                                                                                   "required":  false,
+                                                                                   "defaultMatch":  false,
+                                                                                   "display":  true,
+                                                                                   "canBeUsedToMatch":  true,
+                                                                                   "type":  "string",
+                                                                                   "removed":  false
+                                                                               },
+                                                                               {
+                                                                                   "id":  "interest_rate",
+                                                                                   "displayName":  "interest_rate",
+                                                                                   "required":  false,
+                                                                                   "defaultMatch":  false,
+                                                                                   "display":  true,
+                                                                                   "canBeUsedToMatch":  true,
+                                                                                   "type":  "string",
+                                                                                   "removed":  false
+                                                                               },
+                                                                               {
+                                                                                   "id":  "interest_credit_unit",
+                                                                                   "displayName":  "interest_credit_unit",
+                                                                                   "required":  false,
+                                                                                   "defaultMatch":  false,
+                                                                                   "display":  true,
+                                                                                   "canBeUsedToMatch":  true,
+                                                                                   "type":  "string",
+                                                                                   "removed":  false
+                                                                               },
+                                                                               {
+                                                                                   "id":  "interest_credit_interval",
+                                                                                   "displayName":  "interest_credit_interval",
+                                                                                   "required":  false,
+                                                                                   "defaultMatch":  false,
+                                                                                   "display":  true,
+                                                                                   "canBeUsedToMatch":  true,
+                                                                                   "type":  "string",
+                                                                                   "removed":  false
+                                                                               },
+                                                                               {
+                                                                                   "id":  "interest_credit_day_of_month",
+                                                                                   "displayName":  "interest_credit_day_of_month",
+                                                                                   "required":  false,
+                                                                                   "defaultMatch":  false,
+                                                                                   "display":  true,
+                                                                                   "canBeUsedToMatch":  true,
+                                                                                   "type":  "string",
+                                                                                   "removed":  false
+                                                                               },
+                                                                               {
+                                                                                   "id":  "interest_day_count_convention",
+                                                                                   "displayName":  "interest_day_count_convention",
+                                                                                   "required":  false,
+                                                                                   "defaultMatch":  false,
+                                                                                   "display":  true,
+                                                                                   "canBeUsedToMatch":  true,
+                                                                                   "type":  "string",
+                                                                                   "removed":  false
+                                                                               },
+                                                                               {
+                                                                                   "id":  "interest_posting_day_of_month",
+                                                                                   "displayName":  "interest_posting_day_of_month",
+                                                                                   "required":  false,
+                                                                                   "defaultMatch":  false,
+                                                                                   "display":  true,
+                                                                                   "canBeUsedToMatch":  true,
+                                                                                   "type":  "string",
+                                                                                   "removed":  false
+                                                                               },
+                                                                               {
+                                                                                   "id":  "interest_auto_post",
+                                                                                   "displayName":  "interest_auto_post",
+                                                                                   "required":  false,
+                                                                                   "defaultMatch":  false,
+                                                                                   "display":  true,
+                                                                                   "canBeUsedToMatch":  true,
+                                                                                   "type":  "string",
+                                                                                   "removed":  false
+                                                                               },
+                                                                               {
+                                                                                   "id":  "interest_valid_from",
+                                                                                   "displayName":  "interest_valid_from",
+                                                                                   "required":  false,
+                                                                                   "defaultMatch":  false,
+                                                                                   "display":  true,
+                                                                                   "canBeUsedToMatch":  true,
+                                                                                   "type":  "string",
+                                                                                   "removed":  false
+                                                                               },
+                                                                               {
+                                                                                   "id":  "fixed_deposit_maturity_date",
+                                                                                   "displayName":  "fixed_deposit_maturity_date",
+                                                                                   "required":  false,
+                                                                                   "defaultMatch":  false,
+                                                                                   "display":  true,
+                                                                                   "canBeUsedToMatch":  true,
+                                                                                   "type":  "string",
+                                                                                   "removed":  false
+                                                                               },
+                                                                               {
+                                                                                   "id":  "fixed_deposit_auto_renew",
+                                                                                   "displayName":  "fixed_deposit_auto_renew",
+                                                                                   "required":  false,
+                                                                                   "defaultMatch":  false,
+                                                                                   "display":  true,
+                                                                                   "canBeUsedToMatch":  true,
+                                                                                   "type":  "string",
+                                                                                   "removed":  false
+                                                                               },
+                                                                               {
+                                                                                   "id":  "emoji",
+                                                                                   "displayName":  "emoji",
+                                                                                   "required":  false,
+                                                                                   "defaultMatch":  false,
+                                                                                   "display":  true,
+                                                                                   "canBeUsedToMatch":  true,
+                                                                                   "type":  "string",
+                                                                                   "removed":  false
+                                                                               },
+                                                                               {
+                                                                                   "id":  "chat_id",
+                                                                                   "displayName":  "chat_id",
+                                                                                   "required":  false,
+                                                                                   "defaultMatch":  false,
+                                                                                   "display":  true,
+                                                                                   "canBeUsedToMatch":  true,
+                                                                                   "type":  "string",
+                                                                                   "removed":  false
+                                                                               }
+                                                                           ],
+                                                                "attemptToConvertTypes":  false,
+                                                                "convertFieldsToString":  false
+                                                            }
+                                     },
+                      "type":  "@n8n/n8n-nodes-langchain.toolWorkflow",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       1280,
+                                       208
+                                   ],
+                      "id":  "fe5b89a6-8aaa-5672-b728-566ab6434a68",
+                      "name":  "tool_create_account"
+                  },
+                  {
+                      "parameters":  {
+                                         "name":  "tool_create_recurring_payment",
+                                         "description":  "Record a missing regular income or regular expense of the financial plan (see Plan readiness) - ONLY for that, with the figures the user named. Income: the NET amount per payment as the user says it; never convert gross, yearly or one-off figures - ask once instead. direction income or expense; amount always positive (the tool applies the sign). Rhythm: schedule_unit month and schedule_interval 1 for a monthly salary. PAYDAY: put the day of month into schedule_day_of_month and pass first_payment_date as today - the database takes the next payday from it; never compute a date yourself. account_name = the account it arrives on (or leaves from); ask only when several accounts could fit. A running payment with the same name comes back ok:false with candidates: tell the user it is already recorded, never create it twice. The tool shows the card itself; ok:true = already confirmed and recorded.",
+                                         "workflowId":  {
+                                                            "__rl":  true,
+                                                            "value":  "zTttsqMWVl1SYhUy",
+                                                            "mode":  "list",
+                                                            "cachedResultUrl":  "/workflow/zTttsqMWVl1SYhUy",
+                                                            "cachedResultName":  "agent.finance.tool_create_recurring_payment"
+                                                        },
+                                         "workflowInputs":  {
+                                                                "mappingMode":  "defineBelow",
+                                                                "value":  {
+                                                                              "name":  "={{ $fromAI(\u0027name\u0027, \u0027Display name, for income with the earner first name when two earners exist, e.g. Gehalt Erika, Miete Wohnung\u0027, \u0027string\u0027) }}",
+                                                                              "account_name":  "={{ $fromAI(\u0027account_name\u0027, \u0027Exact name of the account the money arrives on (income) or leaves from (expense)\u0027, \u0027string\u0027) }}",
+                                                                              "direction":  "={{ $fromAI(\u0027direction\u0027, \u0027income (money in) or expense (money out)\u0027, \u0027string\u0027) }}",
+                                                                              "amount":  "={{ $fromAI(\u0027amount\u0027, \u0027Amount per payment in the account currency, always positive; income = net as stated by the user\u0027, \u0027number\u0027) }}",
+                                                                              "schedule_unit":  "={{ $fromAI(\u0027schedule_unit\u0027, \u0027day, week, month or year (salary: month)\u0027, \u0027string\u0027) }}",
+                                                                              "first_payment_date":  "={{ $fromAI(\u0027first_payment_date\u0027, \u0027today when the user names only the payday, otherwise the date of the next payment the user names (YYYY-MM-DD or relative to today exactly as: today, yesterday, tomorrow, in 2 weeks, -3 days, 2 months ago, next friday, last monday (counts as digits: in 1 week, not in a week) - never compute a date yourself)\u0027, \u0027string\u0027) }}",
+                                                                              "schedule_interval":  "={{ $fromAI(\u0027schedule_interval\u0027, \u0027Every N units, default 1\u0027, \u0027string\u0027, \u0027\u0027) }}",
+                                                                              "schedule_day_of_month":  "={{ $fromAI(\u0027schedule_day_of_month\u0027, \u0027Payday 1-28, -1 for the last day or -2 for the second-to-last day of the month\u0027, \u0027string\u0027, \u0027\u0027) }}",
+                                                                              "valid_to":  "={{ $fromAI(\u0027valid_to\u0027, \u0027Only if the user names an end: last day still valid, inclusive (YYYY-MM-DD or relative to today exactly as: today, yesterday, tomorrow, in 2 weeks, -3 days, 2 months ago, next friday, last monday (counts as digits: in 1 week, not in a week) - never compute a date yourself)\u0027, \u0027string\u0027, \u0027\u0027) }}",
+                                                                              "notes":  "={{ $fromAI(\u0027notes\u0027, \u0027Free-text note (optional)\u0027, \u0027string\u0027, \u0027\u0027) }}",
+                                                                              "handoff_task_id":  "",
+                                                                              "counterparty_iban":  "",
+                                                                              "chat_id":  "={{ $(\u0027Start agent.finance_advisor\u0027).item.json.chat_id }}"
+                                                                          },
+                                                                "matchingColumns":  [
+
+                                                                                    ],
+                                                                "schema":  [
+                                                                               {
+                                                                                   "id":  "name",
+                                                                                   "displayName":  "name",
+                                                                                   "required":  false,
+                                                                                   "defaultMatch":  false,
+                                                                                   "display":  true,
+                                                                                   "canBeUsedToMatch":  true,
+                                                                                   "type":  "string",
+                                                                                   "removed":  false
+                                                                               },
+                                                                               {
+                                                                                   "id":  "account_name",
+                                                                                   "displayName":  "account_name",
+                                                                                   "required":  false,
+                                                                                   "defaultMatch":  false,
+                                                                                   "display":  true,
+                                                                                   "canBeUsedToMatch":  true,
+                                                                                   "type":  "string",
+                                                                                   "removed":  false
+                                                                               },
+                                                                               {
+                                                                                   "id":  "direction",
+                                                                                   "displayName":  "direction",
+                                                                                   "required":  false,
+                                                                                   "defaultMatch":  false,
+                                                                                   "display":  true,
+                                                                                   "canBeUsedToMatch":  true,
+                                                                                   "type":  "string",
+                                                                                   "removed":  false
+                                                                               },
+                                                                               {
+                                                                                   "id":  "amount",
+                                                                                   "displayName":  "amount",
+                                                                                   "required":  false,
+                                                                                   "defaultMatch":  false,
+                                                                                   "display":  true,
+                                                                                   "canBeUsedToMatch":  true,
+                                                                                   "type":  "number",
+                                                                                   "removed":  false
+                                                                               },
+                                                                               {
+                                                                                   "id":  "schedule_unit",
+                                                                                   "displayName":  "schedule_unit",
+                                                                                   "required":  false,
+                                                                                   "defaultMatch":  false,
+                                                                                   "display":  true,
+                                                                                   "canBeUsedToMatch":  true,
+                                                                                   "type":  "string",
+                                                                                   "removed":  false
+                                                                               },
+                                                                               {
+                                                                                   "id":  "first_payment_date",
+                                                                                   "displayName":  "first_payment_date",
+                                                                                   "required":  false,
+                                                                                   "defaultMatch":  false,
+                                                                                   "display":  true,
+                                                                                   "canBeUsedToMatch":  true,
+                                                                                   "type":  "string",
+                                                                                   "removed":  false
+                                                                               },
+                                                                               {
+                                                                                   "id":  "schedule_interval",
+                                                                                   "displayName":  "schedule_interval",
+                                                                                   "required":  false,
+                                                                                   "defaultMatch":  false,
+                                                                                   "display":  true,
+                                                                                   "canBeUsedToMatch":  true,
+                                                                                   "type":  "string",
+                                                                                   "removed":  false
+                                                                               },
+                                                                               {
+                                                                                   "id":  "schedule_day_of_month",
+                                                                                   "displayName":  "schedule_day_of_month",
+                                                                                   "required":  false,
+                                                                                   "defaultMatch":  false,
+                                                                                   "display":  true,
+                                                                                   "canBeUsedToMatch":  true,
+                                                                                   "type":  "string",
+                                                                                   "removed":  false
+                                                                               },
+                                                                               {
+                                                                                   "id":  "valid_to",
+                                                                                   "displayName":  "valid_to",
+                                                                                   "required":  false,
+                                                                                   "defaultMatch":  false,
+                                                                                   "display":  true,
+                                                                                   "canBeUsedToMatch":  true,
+                                                                                   "type":  "string",
+                                                                                   "removed":  false
+                                                                               },
+                                                                               {
+                                                                                   "id":  "notes",
+                                                                                   "displayName":  "notes",
+                                                                                   "required":  false,
+                                                                                   "defaultMatch":  false,
+                                                                                   "display":  true,
+                                                                                   "canBeUsedToMatch":  true,
+                                                                                   "type":  "string",
+                                                                                   "removed":  false
+                                                                               },
+                                                                               {
+                                                                                   "id":  "handoff_task_id",
+                                                                                   "displayName":  "handoff_task_id",
+                                                                                   "required":  false,
+                                                                                   "defaultMatch":  false,
+                                                                                   "display":  true,
+                                                                                   "canBeUsedToMatch":  true,
+                                                                                   "type":  "string",
+                                                                                   "removed":  false
+                                                                               },
+                                                                               {
+                                                                                   "id":  "counterparty_iban",
+                                                                                   "displayName":  "counterparty_iban",
+                                                                                   "required":  false,
+                                                                                   "defaultMatch":  false,
+                                                                                   "display":  true,
+                                                                                   "canBeUsedToMatch":  true,
+                                                                                   "type":  "string",
+                                                                                   "removed":  false
+                                                                               },
+                                                                               {
+                                                                                   "id":  "chat_id",
+                                                                                   "displayName":  "chat_id",
+                                                                                   "required":  false,
+                                                                                   "defaultMatch":  false,
+                                                                                   "display":  true,
+                                                                                   "canBeUsedToMatch":  true,
+                                                                                   "type":  "string",
+                                                                                   "removed":  false
+                                                                               }
+                                                                           ],
+                                                                "attemptToConvertTypes":  false,
+                                                                "convertFieldsToString":  false
+                                                            }
+                                     },
+                      "type":  "@n8n/n8n-nodes-langchain.toolWorkflow",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       1440,
+                                       208
+                                   ],
+                      "id":  "363a4582-7477-5581-b7d2-9952b60452ea",
+                      "name":  "tool_create_recurring_payment"
+                  },
+                  {
+                      "parameters":  {
+                                         "content":  "## DB-Automatik\n**agent.finance_advisor — Finanzberater (Sub-Workflow)**\n\nEingang: task, chat_id, call_depth (vom Orchestrator als Tool gerufen). Pipeline (geteilte Naht New-AdvisorGateChain): Depth gate (Anti-Loop) -\u003e Package-Gate (nur wenn finance aktiv, sonst package_inactive) -\u003e Core-first-Gate (Haushalts-Onboarding offen -\u003e Hinweis) -\u003e Load Config -\u003e Haushalts-Sicht (nur owner/partner, sonst fester Hinweis) -\u003e Onboarding gate (feature.onboarding_gate, nur an, wenn Core und die sperrenden Finanz-Sektionen fertig sind, sonst Redirect) -\u003e System-Prompt+Manifest (agent.tool_load_context, agent_name=finance_advisor) + Conversation context (viewer owner/member, plan none/draft/published) + Plan readiness -\u003e Advisor Agent. BUCHT NIE: keine Buchungs-Tools; Stammdaten nur die fehlenden Plan-Pflichtdaten (tool_create_account fest cash, tool_create_recurring_payment, schmal gebunden, je Karte) — Reads via postgres_select (finance_ro) + load_context (das Gesamtbild in einer Abfrage: finance.fn_advisor_snapshot, weil jede Abfrage eine Iteration kostet); Writes NUR tool_save_plan_section/tool_publish_plan (Plan-Persistenz) + tool_record_plan_wish (Wunsch eines erwachsenen Mitglieds an den Owner, owner_info, ändert den Plan nicht) + tool_create_monitor_trigger (Plan-Trigger in-flow anlegen, domain+package fix finance; Edits/Repair -\u003e Monitor-Agent) + tool_set_asset_classes (einzige Daten-Ausnahme: nur die Anlageklassen der Depot-Positionen im Planungs-Flow, eine Karte), je HITL-Gate. tool_list_monitor_triggers = READ-ONLY Dedup-Fenster (bestehende Trigger lesen vor dem Vorschlagen). Beratung/Interview/Plan = hier; Buchen = agent.finance; Trigger-Mechanik = agent.monitor. ÜBERGABE an den Buchhalter (kein Agent-\u003eAgent): Vereinbartes gibt der Berater als handoff_tasks an tool_save_plan_section (auf der Abschnitts-Karte sichtbar); tool_send_handoff_overview schickt die Übersicht mit Knopf Durchgehen, der Orchestrator startet danach agent.finance über einen festen Knopf-Arm.",
                                          "height":  300,
                                          "width":  700,
                                          "color":  4
@@ -1612,6 +2052,110 @@
                                    ],
                       "id":  "1492642e-2b49-5ca0-93fd-3cd86a7b2447",
                       "name":  "Doc: Core-first-Gate"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "=SELECT finance.fn_sender_sees_household(($1::jsonb)-\u003e\u003e\u0027chat_id\u0027) AS sees, core.fn_ui_texts_for(jsonb_build_object(\u0027chat_id\u0027, ($1::jsonb)-\u003e\u003e\u0027chat_id\u0027, \u0027keys\u0027, to_jsonb(ARRAY[\u0027finance.gate.household_only\u0027]::text[])))-\u003e\u0027t\u0027 AS t;",
+                                         "options":  {
+                                                         "queryReplacement":  "={{ JSON.stringify({ chat_id: String($(\u0027Start agent.finance_advisor\u0027).item.json.chat_id || \u0027\u0027) }) }}"
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       -1376,
+                                       -560
+                                   ],
+                      "id":  "621f23d6-faae-5827-aab0-774bfd63f519",
+                      "name":  "Household view read",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_WRITE__",
+                                                           "name":  "Postgres account"
+                                                       }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "cff287c8-c700-5a94-a07d-4d62430395fd",
+                                                                                   "leftValue":  "={{ $(\u0027Household view read\u0027).item.json.sees === true }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       -1264,
+                                       -560
+                                   ],
+                      "id":  "79d05553-ab9e-51be-9ea0-f438a5492265",
+                      "name":  "Household view gate"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "e4c4a66b-043e-51c3-b645-dbffdb57ef54",
+                                                                                     "name":  "ok",
+                                                                                     "value":  "false",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "705d9a6b-cab5-5906-850c-47da5998c197",
+                                                                                     "name":  "output",
+                                                                                     "value":  "={{ String((($(\u0027Household view read\u0027).item.json.t) || {})[\u0027finance.gate.household_only\u0027] || \u0027finance.gate.household_only\u0027) }}",
+                                                                                     "type":  "string"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       -1152,
+                                       -720
+                                   ],
+                      "id":  "d66b8260-bee0-5b45-9488-d79950306ff9",
+                      "name":  "Household view denied"
+                  },
+                  {
+                      "parameters":  {
+                                         "content":  "## DB-Automatik\n**Tor Haushalts-Sicht (vor dem LLM)**\n\nHousehold view read fragt finance.fn_sender_sees_household(chat_id): owner/partner (Regel der Mini-App, core.fn_app_sees_household) oder nicht-numerische Test-chat_id -\u003e true. Household view gate: nur true laesst weiter, sonst Household view denied {ok:false, output = finance.gate.household_only in der Sprache des Absenders}; kein LLM, kein Werkzeug, keine Karte. Fail-closed: kein onError, ein Lesefehler stoppt den Lauf. Andere Wege eines Kindes zu Finanzdaten (Guide, Monitor, Kontexte anderer Pakete) deckt dieses Tor nicht ab.",
+                                         "height":  300,
+                                         "width":  380,
+                                         "color":  4
+                                     },
+                      "type":  "n8n-nodes-base.stickyNote",
+                      "typeVersion":  1,
+                      "position":  [
+                                       -1416,
+                                       -980
+                                   ],
+                      "id":  "a714a818-5b7c-5498-beb7-86de7a3619e6",
+                      "name":  "Doc: Haushalts-Sicht"
                   },
                   {
                       "parameters":  {
@@ -2152,12 +2696,41 @@
                                                          [
                                                              {
                                                                  "index":  0,
-                                                                 "node":  "Onboarding gate read",
+                                                                 "node":  "Household view read",
                                                                  "type":  "main"
                                                              }
                                                          ]
                                                      ]
                                         },
+                        "Household view read":  {
+                                                    "main":  [
+                                                                 [
+                                                                     {
+                                                                         "index":  0,
+                                                                         "node":  "Household view gate",
+                                                                         "type":  "main"
+                                                                     }
+                                                                 ]
+                                                             ]
+                                                },
+                        "Household view gate":  {
+                                                    "main":  [
+                                                                 [
+                                                                     {
+                                                                         "index":  0,
+                                                                         "node":  "Onboarding gate read",
+                                                                         "type":  "main"
+                                                                     }
+                                                                 ],
+                                                                 [
+                                                                     {
+                                                                         "index":  0,
+                                                                         "node":  "Household view denied",
+                                                                         "type":  "main"
+                                                                     }
+                                                                 ]
+                                                             ]
+                                                },
                         "Onboarding gate read":  {
                                                      "main":  [
                                                                   [
@@ -2352,6 +2925,28 @@
                                                                        ]
                                                                    ]
                                                    },
+                        "tool_create_account":  {
+                                                    "ai_tool":  [
+                                                                    [
+                                                                        {
+                                                                            "index":  0,
+                                                                            "node":  "Advisor Agent",
+                                                                            "type":  "ai_tool"
+                                                                        }
+                                                                    ]
+                                                                ]
+                                                },
+                        "tool_create_recurring_payment":  {
+                                                              "ai_tool":  [
+                                                                              [
+                                                                                  {
+                                                                                      "index":  0,
+                                                                                      "node":  "Advisor Agent",
+                                                                                      "type":  "ai_tool"
+                                                                                  }
+                                                                              ]
+                                                                          ]
+                                                          },
                         "tool_search_documents":  {
                                                       "ai_tool":  [
                                                                       [

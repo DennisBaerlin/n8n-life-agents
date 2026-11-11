@@ -1431,5 +1431,46 @@
     "forbid_texts": ["NEXT_STEP"],
     "expect_system_tail": "next_step: none",
     "notes": "Lisa (child, Fixture) bekommt ihre Telegram-id nur fuer diesen Fall (as_child). career gilt fuer owner/partner -> kind none; Kinder sehen keine Haushaltsfinanzen (Owner-Entscheid 2026-11-11) -> Beispiel neutral."
+  },
+  {
+    "id": "ri100",
+    "name": "Kind fragt nach Haushalts-Geld -> Tor Haushalts-Sicht im Buchhalter, fester Hinweis, kein LLM",
+    "kind": "node_ran",
+    "update": "message",
+    "as_child": true,
+    "chat_id": 880055201,
+    "from_uid": 880055201,
+    "text": "Was haben wir gerade auf den Konten?",
+    "expected_sub": "agent.finance",
+    "expected_node": "Household view denied",
+    "expected_not_ran": ["Finance Agent"],
+    "expect_texts": ["nur die Erwachsenen"],
+    "notes": "Owner-Entscheid 2026-11-11: Kinder sehen im Chat keine Haushaltsfinanzen (Regel der Mini-App, core.fn_app_sees_household). Lisa (role child) nur fuer diesen Fall gepairt (as_child, Treiber von Paket A). finance.fn_sender_sees_household -> false -> Household view denied, der Finance Agent laeuft nicht. Mock: Szenario 'Was haben wir gerade auf den Konten' routet zu Call_agent_finance_."
+  },
+  {
+    "id": "ri101",
+    "name": "Partnerin fragt dasselbe -> Tor laesst durch, Finance Agent laeuft (Gegenprobe zu ri100)",
+    "kind": "node_ran",
+    "update": "message",
+    "chat_id": 880055200,
+    "from_uid": 880055200,
+    "text": "Was haben wir gerade auf den Konten?",
+    "expected_sub": "agent.finance",
+    "expected_node": "Finance Agent",
+    "notes": "Gegenprobe: Lena (role partner) sieht den Haushalt -> Household view gate true -> der Agent laeuft (Mock-LLM final)."
+  },
+  {
+    "id": "ri102",
+    "name": "Kind bittet um Beratung -> Tor Haushalts-Sicht im Berater, fester Hinweis, kein LLM",
+    "kind": "node_ran",
+    "update": "message",
+    "as_child": true,
+    "chat_id": 880055201,
+    "from_uid": 880055201,
+    "text": "Kannst du mich mal zu unserem Geld beraten?",
+    "expected_sub": "agent.finance_advisor",
+    "expected_node": "Household view denied",
+    "expected_not_ran": ["Advisor Agent"],
+    "notes": "Wie ri100 fuer den Berater: das Tor sitzt hinter Load Config, vor jedem weiteren Read. Mock: Szenario 'Kannst du mich mal zu unserem Geld beraten' routet zu Call_agent_finance_advisor_."
   }
 ]

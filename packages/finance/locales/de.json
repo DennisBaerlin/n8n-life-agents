@@ -890,6 +890,8 @@
   "finance.gate.onboarding_required": "Bevor ich dich fundiert beraten kann, brauche ich erst dein Finanzbild. Schreib mir /onboarding (oder einfach: richte mich ein).",
   "finance.gate.onboarding_open": "Noch offen: {sections}.",
   "finance.gate.onboarding_member": "Die Finanzen richtet euer Haushalts-Owner ein – sobald das erledigt ist, kann ich dich beraten.",
+  "finance.gate.household_only": "Die Finanzen eures Haushalts sehen hier nur die Erwachsenen. Frag sie gern direkt.",
+  "finance.next_step.example": "Wie viel Geld haben wir?",
   "finance.monitor_display.fx_pair": "Währungspaar: {base}/{quote}",
   "finance.advisor.savings_pace": "Sparziel „{name}“: {drift} Prozentpunkte hinter Plan (aktuell {progress} %, erwartet {expected} %).",
   "finance.advisor.savings_pace_basis": "„Erwartet“ heißt: gleichmäßiger Fortschritt von der Anlage des Ziels bis zum Zieldatum; gemeldet wird ab {tolerance} Prozentpunkten Rückstand.",

@@ -890,6 +890,8 @@
   "finance.gate.onboarding_required": "제대로 조언해 드리려면 먼저 재무 현황이 필요해요. /onboarding 을 보내 주세요 (또는 그냥 ‘설정해 줘’라고 써 주세요).",
   "finance.gate.onboarding_open": "아직 남은 항목: {sections}.",
   "finance.gate.onboarding_member": "재무 설정은 가구주가 해요 – 설정이 끝나면 상담해 드릴 수 있어요.",
+  "finance.gate.household_only": "이 가구의 재정은 여기서 어른들만 볼 수 있어요. 어른들에게 직접 물어봐 주세요.",
+  "finance.next_step.example": "우리 돈이 얼마나 있어?",
   "finance.monitor_display.fx_pair": "통화쌍: {base}/{quote}",
   "finance.advisor.savings_pace": "저축 목표 ‘{name}’: 계획보다 {drift}%p 뒤처져 있어요 (현재 {progress}%, 예상 {expected}%).",
   "finance.advisor.savings_pace_basis": "“예상”은 목표를 만든 날부터 목표일까지 고르게 진행되는 것을 뜻해요. {tolerance}%p 이상 뒤처지면 알려 드려요.",

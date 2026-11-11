@@ -46,6 +46,10 @@ $gate = New-AdvisorGateChain -StartNode 'Start agent.finance' -Package 'finance'
 
 $nLoadConfig = Build-CallWorkflow 'Load Config' @(-1376, 0) $ID_LOAD_CONFIG 'core.sub_load_config' (@{})
 
+# Tor Haushalts-Sicht (household_gate.ps1): Kind/ohne Rolle -> fester Hinweis vor dem LLM.
+$hh = New-FinanceHouseholdGate -StartNode 'Start agent.finance' -NextNode 'Load Agent Context' `
+    -ReadPos @(-1376, -240) -GatePos @(-1264, -240) -DenyPos @(-1152, -400)
+
 $nLoadCtx = Build-CallWorkflow 'Load Agent Context' @(-1152, 0) $ID_LOAD_AGENT_CONTEXT 'agent.tool_load_context' `
     ([ordered]@{ agent_name = 'finance'; include_manifest = 'true' })
 
@@ -869,7 +873,7 @@ $nToolSetOnboarding = New-ToolWorkflowNode 'tool_set_onboarding_section' `
 $stickyOverview = Build-Sticky 'Doc: Überblick' @(-1640, -340) -Header 'Ablauf' `
     'agent.finance — Buchhalter (Sub-Workflow)' `
     ("Eingang: task, chat_id, call_depth (vom Orchestrator als Tool aufgerufen).`n" +
-     "Pipeline (y=0): Depth gate (Anti-Loop) -> Package-Gate (nur wenn finance aktiv, sonst package_inactive) -> Core-first-Gate (Haushalts-Onboarding offen -> Hinweis statt Agent) -> Load Config -> Load Agent Context (System-Prompt + Lazy-Manifest) -> Onboarding status read -> Build Agent Input -> Finance Agent.`n" +
+     "Pipeline (y=0): Depth gate (Anti-Loop) -> Package-Gate (nur wenn finance aktiv, sonst package_inactive) -> Core-first-Gate (Haushalts-Onboarding offen -> Hinweis statt Agent) -> Load Config -> Haushalts-Sicht (nur owner/partner, sonst fester Hinweis) -> Load Agent Context (System-Prompt + Lazy-Manifest) -> Onboarding status read -> Build Agent Input -> Finance Agent.`n" +
      "CQRS: Reads frei via postgres_select / load_context (+ web_search für öffentliche Produkt-Konditionen); Writes NUR über die tool_*-Sub-Workflows (jeweils HITL-Gate + atomar via agent.fn_*). Antwort geht zurück an den Orchestrator.") `
     -Height 250 -Width 560
 
@@ -927,7 +931,7 @@ $allNodes = @($nTrigger) + $gate.Nodes + @(
     $nToolReconcileBankStatement, $nToolVoidBankStatement, $nToolImportBankExport,
     $nToolSetOnboarding,
     $stickyOverview, $stickyDepth, $stickyPkg, $stickyCore, $stickyModel, $stickyMemory, $stickyTools
-) + $mb.Nodes | Where-Object { $_ -ne $null }
+) + $hh.Nodes + $mb.Nodes | Where-Object { $_ -ne $null }
 
 # Paket-Werkzeuge aus consumes.services (paperless:* — Dokumente lesen) ueber den Core-Vermittler
 # agent.sub_dispatch_tool; optional (ohne das Paket antworten sie {ok:false, package_unavailable}).
@@ -940,7 +944,7 @@ $allNodes = @($allNodes) + $svc.Nodes
 
 # connections: Eingangs-Naht-Kanten des Helfers ZUERST (Schluessel-Reihenfolge = JSON-Reihenfolge), dann die finance-lokalen.
 $connRest = [ordered]@{
-    'Load Config'                       = @{ main = @(,@( E 'Load Agent Context' )) }
+    'Load Config'                       = @{ main = @(,@( E $hh.EntryNode )) }
     'Load Agent Context'                = @{ main = @(,@( E 'Onboarding status read' )) }
     'Onboarding status read'            = @{ main = @(,@( E 'Build Agent Input' )) }
     'Build Agent Input'                 = @{ main = @(,@( E 'Finance Agent' )) }
@@ -1017,6 +1021,7 @@ $connRest = [ordered]@{
 $connections = [ordered]@{}
 foreach ($k in $gate.Connections.Keys) { $connections[$k] = $gate.Connections[$k] }
 foreach ($k in $connRest.Keys) { $connections[$k] = $connRest[$k] }
+foreach ($k in $hh.Connections.Keys) { $connections[$k] = $hh.Connections[$k] }
 
 # Paket-Werkzeug-Kanten (ai_tool -> Finance Agent) mergen.
 foreach ($k in $svc.Connections.Keys) { $connections[$k] = $svc.Connections[$k] }

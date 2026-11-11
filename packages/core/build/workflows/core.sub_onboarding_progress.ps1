@@ -79,26 +79,30 @@ return chats.map(c => ({ json: { chat_id: String(c), have_areas: ev.members_have
         type = 'n8n-nodes-base.code'; typeVersion = 2; position = @(220, 0)
         id = (New-Id); name = 'Split members'
     }
-    $readyKeys = Get-UiKeysSql @('core.onboarding.ready.member', 'core.onboarding.ready.member_areas', 'core.onboarding.ready.btn_areas')
+    $readyKeys = Get-UiKeysSql @('core.onboarding.ready.member', 'core.onboarding.ready.member_areas', 'core.onboarding.ready.btn_areas', 'core.next_step.example_neutral')
+    # Beispielfrage fuer genau dieses Mitglied (core.fn_get_next_step_example: Paket gibt sie nur frei, wenn die Person die Antwort
+    # sehen darf und Daten da sind, sonst neutral); Reihenfolge wie Orchestrator und Menue (Get-NextStepOrder).
+    $nextOrder = Get-NextStepOrder $RepoRoot
     $memberTexts = Build-Pg 'Load member texts' @(440, 0) `
-        ("=SELECT core.fn_ui_texts_for(jsonb_build_object('chat_id', (`$1::jsonb)->>'chat_id', 'keys', to_jsonb($readyKeys)))->'t' AS t;") `
-        ([ordered]@{ chat_id = "String(`$json.chat_id || '')" })
+        ("=SELECT core.fn_ui_texts_for(jsonb_build_object('chat_id', (`$1::jsonb)->>'chat_id', 'keys', to_jsonb($readyKeys)))->'t' AS t, " +
+         "core.fn_get_next_step_example(agent.fn_resolve_sender(CASE WHEN (`$1::jsonb)->>'chat_id' ~ '^[0-9]{1,18}`$' THEN ((`$1::jsonb)->>'chat_id')::bigint END)->>'person_id', (`$1::jsonb)->'order') AS example;") `
+        ([ordered]@{ chat_id = "String(`$json.chat_id || '')"; order = $nextOrder.OrderJs })
     $memberTexts['onError'] = 'continueRegularOutput'
     $ifAreas = Build-If 'Has own areas?' @(660, 0) "={{ `$('Split members').item.json.have_areas === true }}" 'true' 'equals' 'boolean'
     $memberChat = "={{ String(`$('Split members').item.json.chat_id) }}"
     $sendAreas = New-TelegramInlineKeyboardSendNode 'Send member ready (areas)' @(880, -120) `
-        ("={{ " + (Get-UiTextJs "`$('Load member texts').item.json.t" 'core.onboarding.ready.member') + " + '\n\n' + " +
+        ("={{ " + (Get-UiTextJs "`$('Load member texts').item.json.t" 'core.onboarding.ready.member' @{ example = "(`$('Load member texts').item.json.example || (`$('Load member texts').item.json.t || {})['core.next_step.example_neutral'] || '')" }) + " + '\n\n' + " +
          (Get-UiTextJs "`$('Load member texts').item.json.t" 'core.onboarding.ready.member_areas') + " }}") `
         @( @{ Text = (Get-UiTextExpr "`$('Load member texts').item.json.t" 'core.onboarding.ready.btn_areas'); Data = 'onboarding:_area:' } ) `
         -ChatIdExpr $memberChat
     $sendAreas['onError'] = 'continueRegularOutput'
     $sendPlain = New-TelegramSendNode 'Send member ready' @(880, 120) `
-        (Get-UiTextExpr "`$('Load member texts').item.json.t" 'core.onboarding.ready.member') -ChatIdExpr $memberChat
+        (Get-UiTextExpr "`$('Load member texts').item.json.t" 'core.onboarding.ready.member' @{ example = "(`$('Load member texts').item.json.example || (`$('Load member texts').item.json.t || {})['core.next_step.example_neutral'] || '')" }) -ChatIdExpr $memberChat
     $sendPlain['onError'] = 'continueRegularOutput'
 
     $sticky = Build-Sticky 'Überblick' @(-1140, -400) -Header 'Ablauf' `
         'core.sub_onboarding_progress — nächste Karte nach einem Onboarding-Schritt (deterministisch, kein LLM)' `
-        'Gerufen von jedem tool_set_onboarding_section (core/finance/career/estate) über den Dienst core:onboarding_progress, fire-and-forget. Area done? = core.fn_set_onboarding_section meldete area_completed_now (der Schritt hat einen Bereich geschlossen; unter Advisory-Lock genau einmal je Übergang). Progress event = core.fn_onboarding_progress_event (DEFINER): Latches all_done:<pid> (re-armt, sobald wieder etwas offen ist) und household_ready (genau einmal überhaupt) in core.notification_state, Lern-Angebot nur Owner + Lernen aus. Send progress card = das Onboarding-Menü mit Kopfzeile (done_mode done/skipped/all) und dem Weiter-Knopf auf den nächsten offenen Abschnitt. Offer learning = cron_on:learn_context (zog aus agent.guide.tool_set_onboarding_section hierher: das Angebot kommt jetzt am Ende ALLER Bereiche und nur einmal). Members? (keine -> No members, Lauf endet mit Item) -> Split members -> je gepairtem Mitglied Es kann losgehen in seiner Sprache, mit Knopf onboarding:_area: wenn ein aktives per_user-Paket existiert. Jeder Send onError=continue: ein Telegram-Fehler darf den Onboarding-Schritt nie stören (der Agent und /onboarding bleiben der Rückweg).' 400 820
+        'Gerufen von jedem tool_set_onboarding_section (core/finance/career/estate) über den Dienst core:onboarding_progress, fire-and-forget. Area done? = core.fn_set_onboarding_section meldete area_completed_now (der Schritt hat einen Bereich geschlossen; unter Advisory-Lock genau einmal je Übergang). Progress event = core.fn_onboarding_progress_event (DEFINER): Latches all_done:<pid> (re-armt, sobald wieder etwas offen ist) und household_ready (genau einmal überhaupt) in core.notification_state, Lern-Angebot nur Owner + Lernen aus. Send progress card = das Onboarding-Menü mit Kopfzeile (done_mode done/skipped/all) und dem Weiter-Knopf auf den nächsten offenen Abschnitt. Offer learning = cron_on:learn_context (zog aus agent.guide.tool_set_onboarding_section hierher: das Angebot kommt jetzt am Ende ALLER Bereiche und nur einmal). Members? (keine -> No members, Lauf endet mit Item) -> Split members -> je gepairtem Mitglied Es kann losgehen in seiner Sprache mit einer Beispielfrage für genau diese Person (core.fn_get_next_step_example: Paket gibt sie nur bei Sichtrecht und Daten frei, sonst neutral), mit Knopf onboarding:_area: wenn ein aktives per_user-Paket existiert. Jeder Send onError=continue: ein Telegram-Fehler darf den Onboarding-Schritt nie stören (der Agent und /onboarding bleiben der Rückweg).' 400 820
 
     $nodes = @($start, $ifDone, $nothing, $event, $card, $ifLearn, $offer, $ifMembers, $noMembers, $split, $memberTexts, $ifAreas, $sendAreas, $sendPlain, $sticky)
     $conns = [ordered]@{

@@ -64,8 +64,11 @@ function Build-CoreSubSendOnboardingMenu {
         'core.onboarding.menu.wait_household', 'core.onboarding.menu.all_done', 'core.onboarding.menu.footer_not_installed',
         'core.onboarding.menu.btn_next', 'core.onboarding.menu.btn_wait', 'core.onboarding.menu.btn_all_done',
         'core.onboarding.menu.btn_overview', 'core.onboarding.menu.done_area', 'core.onboarding.menu.skipped_area',
-        'core.onboarding.menu.done_everything', 'core.onboarding.menu.setup_done_next', 'core.onboarding.menu.btn_first'
+        'core.onboarding.menu.done_everything', 'core.onboarding.menu.setup_done_next', 'core.onboarding.menu.btn_first',
+        'core.next_step.example_neutral'
     )
+    # Naechster Schritt + Beispielfrage aus der DB (core.fn_get_next_step / _example), Reihenfolge wie Orchestrator und Guide.
+    $nextOrder = Get-NextStepOrder $RepoRoot
     $textKeys = @($SECTIONS | ForEach-Object { $_.labelKey }) + @($OnboardingPackageOrder | ForEach-Object { "$($_.Package).package.name" }) + $menuKeys + $planKeys
 
     # --- Start (typisierter Sub-Eingang: chat_id) ---
@@ -87,9 +90,11 @@ function Build-CoreSubSendOnboardingMenu {
     # Person -> agent.fn_person_lang; nicht-numerische/Gruppen-chat_id -> Owner-Sprache).
     $read = Build-Pg 'Read onboarding status' @(-620, 0) `
         ("=SELECT core.fn_onboarding_overview((`$1::jsonb)->>'chat_id') AS overview, core.fn_advisor_plan_status((`$1::jsonb)->>'chat_id') AS plans, " +
+         "s.step AS step, s.step->>'example' AS example, " +
          "core.fn_ui_texts(agent.fn_person_lang(agent.fn_resolve_sender(CASE WHEN (`$1::jsonb)->>'chat_id' ~ '^[0-9]{1,18}$' " +
-         "THEN ((`$1::jsonb)->>'chat_id')::bigint END)->>'person_id')->>'lang', $(Get-UiKeysSql $textKeys)) AS t;") `
-        ([ordered]@{ chat_id = "`$('Start').item.json.chat_id" })
+         "THEN ((`$1::jsonb)->>'chat_id')::bigint END)->>'person_id')->>'lang', $(Get-UiKeysSql $textKeys)) AS t " +
+         "FROM (SELECT core.fn_get_next_step(`$1::jsonb) AS step) s;") `
+        ([ordered]@{ chat_id = "`$('Start').item.json.chat_id"; order = $nextOrder.OrderJs; plan_order = $nextOrder.PlanOrderJs; with_example = 'true' })
     $read.credentials = @{ postgres = $CRED_PG_RO }
     $read['onError'] = 'continueRegularOutput'
 
@@ -119,7 +124,8 @@ const label = (s) => tx(s.labelKey);
 const group = (a) => (a && a.groupKey) ? tx(a.groupKey) : '';
 const list = Array.isArray(ov.sections) ? ov.sections : [];
 const st = {};
-for (const s of list) { st[s.package + ':' + s.key] = s.status; }
+const fr = {};
+for (const s of list) { st[s.package + ':' + s.key] = s.status; fr[s.package + ':' + s.key] = Array.isArray(s.for_roles) ? s.for_roles : null; }
 const EMOJI = {
   completed: String.fromCharCode(0x2705),
   skipped: String.fromCharCode(0x23ED),
@@ -147,7 +153,9 @@ const NOT_INST = ' - ' + tx('core.onboarding.menu.not_installed');
 // "erst Haushalt" antworten wuerde (sonst Kreis Menue <-> Agent).
 const coreOpen = SECTIONS.some(s => s.package === 'core' && statusOf(s) === 'unknown');
 const waitOwner = member && coreOpen;
-const isOpen = (s) => !waitOwner && usable(s.package) && mine(s.package) && statusOf(s) === 'unknown';
+// for_roles (Abschnitt gilt nur fuer diese Rollen, aus sections.json geseedet): der Owner immer, sonst nur die genannte Rolle.
+const roleOk = (s) => { const r = fr[s.package + ':' + s.key]; return !member || !r || (ov.viewer_role != null && r.includes(ov.viewer_role)); };
+const isOpen = (s) => !waitOwner && usable(s.package) && mine(s.package) && roleOk(s) && statusOf(s) === 'unknown';
 const prog = (pkg) => { const ss = SECTIONS.filter(s => s.package === pkg); return { done: ss.filter(s => statusOf(s) !== 'unknown').length, total: ss.length }; };
 const nextSection = SECTIONS.find(isOpen) || null;
 // Onboarding-Plan-Schritt: Zustand aus der Read-Spalte plans (core.fn_advisor_plan_status). Verfuegbar, sobald kein sperrender
@@ -231,7 +239,7 @@ if (area) {
   // Roter Faden: Aufruf aus core.sub_onboarding_progress nach einem geschlossenen Bereich -> Kopfzeile vor der Uebersicht
   // (done_mode done|skipped|all; Bereichsname aus dem Katalog, Haushalt = Abschnitts-Label). Sonst (/onboarding) ohne.
   if (doneMode === 'all') {
-    lines.push(tx('core.onboarding.menu.done_everything'), '');
+    lines.push(tx('core.onboarding.menu.done_everything', { example: String($json.example || tx('core.next_step.example_neutral')) }), '');
   } else if (doneArea) {
     const da = AREAS.find(x => x.package === doneArea);
     const daName = da ? group(da) : (SECTIONS.filter(s => s.package === doneArea).map(label)[0] || doneArea);
@@ -278,9 +286,15 @@ if (area) {
 // Offener Plan-Schritt -> Weiter auf plan:<domain> ("Weiter: Finanzplan erstellen") bzw. bei fehlenden Mindestdaten auf
 // den ersten fehlenden Abschnitt ("Zuerst: ...").
 const nt = nextPlan ? planTarget(nextPlan) : null;
-const next_text = nt ? (POINT + ' ' + tx(nt.first ? 'core.onboarding.menu.btn_first' : 'core.onboarding.menu.btn_next', { label: nt.label }))
+let next_text = nt ? (POINT + ' ' + tx(nt.first ? 'core.onboarding.menu.btn_first' : 'core.onboarding.menu.btn_next', { label: nt.label }))
   : (next ? (POINT + ' ' + tx('core.onboarding.menu.btn_next', { label: label(next) })) : (waitOwner ? tx('core.onboarding.menu.btn_wait') : (EMOJI.completed + ' ' + tx('core.onboarding.menu.btn_all_done'))));
-const next_cb = nt ? nt.cb : (next ? ('onboarding:' + next.package + ':' + next.key) : 'onboarding:_area:');
+let next_cb = nt ? nt.cb : (next ? ('onboarding:' + next.package + ':' + next.key) : 'onboarding:_area:');
+// Weiter-Knopf der Uebersicht (ohne Fertig-Karte eines Pakets): Text + Ziel aus core.fn_get_next_step, damit Menue und
+// Gruss-Knopf nie verschiedene Schritte nennen. Fehlt der Schritt (Lesefehler) oder ist keiner offen -> die Regel oben.
+let ST = $json.step;
+if (typeof ST === 'string') { try { ST = JSON.parse(ST); } catch (e) { ST = null; } }
+const useStep = !area && !doneArea && ST && ST.ok === true && (ST.kind === 'section' || ST.kind === 'plan') && ST.button && ST.data;
+if (useStep) { next_text = ST.button; next_cb = ST.data; }
 // Plan-Knopf der Bereichsansicht je Domain (Knopf-Anzahl build-time fest): nicht pflegbar -> Hinweis (Tipp gibt den
 // Toast des Handlers); noch nicht verfuegbar / kein Status -> zurueck in den Bereich; sonst das Ziel wie oben.
 const pbtn = {};
@@ -352,7 +366,7 @@ return { json: { text: lines.join(NL), btn, abtn, next_text, next_cb, pbtn, pcb,
 
     $sticky = Build-Sticky 'Doc: Überblick' @(-860, -360) -Header 'Ablauf' `
         'core.sub_send_onboarding_menu — Onboarding-Menü in zwei Ebenen (deterministisch, KEIN LLM)' `
-        'Start (chat_id, area; optional done_area + done_mode aus core.sub_onboarding_progress = Kopfzeile <Bereich> eingerichtet / übersprungen / alles eingerichtet vor der Übersicht, Roter Faden) -> Read onboarding status (core.fn_onboarding_overview(chat_id) + Menütexte als t-Map in der Sprache des Betrachters, core_ro, fail-open) -> Build menu (Code: Status je Abschnitt U+2705 erledigt / U+23ED übersprungen / U+25FB offen, gekeyt auf <package>:<key>; nächster Schritt = erster offener, nutzbarer Abschnitt in Menü-Reihenfolge, markiert mit U+1F449) -> Which menu? (Switch auf area) -> Send overview (area leer: Weiter-Knopf auf den nächsten Abschnitt + Haushalt + ein Knopf je Bereich mit Fortschritt, callback onboarding:_area:<package>) bzw. Send area <package> (nur dessen Abschnitte, callback onboarding:<package>:<key>, plus Zur Übersicht). TEXTE aus dem Textkatalog (Phase B): Abschnitte <pkg>.onboarding.<key> (Haushalt core.onboarding.household), Bereichsnamen <pkg>.package.name, Menüsätze core.onboarding.menu.*; Sprache = die des Betrachters (Person -> Owner -> en). REIHENFOLGE build-time: Haushalt zuerst, dann $OnboardingPackageOrder (Get-OnboardingPackageOrder, lib/agent_routing.ps1: wer per consumes Daten eines anderen Onboarding-Pakets liest, kommt danach; Gleichstand haushaltsweit vor persönlich, dann Name). Aufrufer: /onboarding-Command (area leer), der Orchestrator-Callback onboarding:_area:<package> und core.sub_onboarding_progress (nach einem geschlossenen Bereich, DB-Latch: genau einmal je Übergang) -> nur deterministische Eintrittspunkte, kein Knopf-Spam. Abschnitts-Tap -> Orchestrator-Switch auf das <package>-Glied: core -> agent.guide, Paket -> sein Onboarding-Agent. per_user-Pakete (career) zeigen den Status der TAPPENDEN Person (DEFINER-fn löst sie aus chat_id auf, nie LLM). Knopf-STRUKTUR build-time (n8n-Inline-Keyboard = statische fixedCollection -> ein Send je Ansicht); Knopf-TEXT Ausdruck auf $json.btn/abtn/next_text/back_text -> nicht aktive Pakete (fn active_packages) tragen den Zusatz nicht installiert, eine Fusszeile nennt den Server-Befehl (ausblenden geht nicht, Issue #19955). MITGLIEDER: viewer_role != owner -> nur persönliche Bereiche (per_user je Sektion aus der fn) zählen als offen (Weiter/Als Nächstes/Zähler), Haushalts-Bereiche tragen (richtet der Owner ein); ihre Taps laufen über core.fn_handle_onboarding_cb (Registry, member_permeable) und geben dort einen Toast. PLAN-SCHRITT (2026-10-28): je Berater-Domäne mit advisors.<domain>.plan_step ($AdvisorPlanStepList) ein empfohlener Schritt hinter den Abschnitten ihres Pakets, KEIN Abschnitt (zählt nicht im Fortschritt und nicht im alles-eingerichtet-Latch). Zustand, Rechte und Daten-Reife aus der Read-Spalte plans (core.fn_advisor_plan_status, eigenes DEFINER-Fenster unter core_ro): verfügbar, sobald kein sperrender Abschnitt (sections.json gates_advisor, fehlt = sperrt) des Pakets offen ist; Bereichsansicht = Zeile U+1F4CB + Knopf (pbtn/pcb), Übersicht = Info-Zeile unter dem Bereich. Weiter zeigt auf den Plan, wenn die Fertig-Karte genau dieses Pakets kommt (done_area) oder kein Abschnitt mehr offen ist; der Text sagt dann freiwillig-aber-hilfreich (<pkg>.plan_step.intro). Reif -> callback plan:<domain> (Orchestrator Plan route? -> advisor_agent); Mindestdaten fehlen (readiness_fn) -> Hinweis <pkg>.plan_step.not_ready mit den fehlenden Punkten (<pkg>.plan_ready.<key>) und Knopf Zuerst: <Abschnitt> = onboarding:<pkg>:<abschnitt> (Erfass-Agent). Nicht pflegbar (Mitglied am Haushalts-Plan) -> keine Zeile, Knopf mit Hinweis (Tipp = Toast des Handlers).' 380 1040
+        'Start (chat_id, area; optional done_area + done_mode aus core.sub_onboarding_progress = Kopfzeile <Bereich> eingerichtet / übersprungen / alles eingerichtet vor der Übersicht, Roter Faden) -> Read onboarding status (core.fn_onboarding_overview(chat_id) + Menütexte als t-Map in der Sprache des Betrachters, core_ro, fail-open) -> Build menu (Code: Status je Abschnitt U+2705 erledigt / U+23ED übersprungen / U+25FB offen, gekeyt auf <package>:<key>; nächster Schritt = erster offener, nutzbarer Abschnitt in Menü-Reihenfolge, markiert mit U+1F449) -> Which menu? (Switch auf area) -> Send overview (area leer: Weiter-Knopf auf den nächsten Abschnitt + Haushalt + ein Knopf je Bereich mit Fortschritt, callback onboarding:_area:<package>) bzw. Send area <package> (nur dessen Abschnitte, callback onboarding:<package>:<key>, plus Zur Übersicht). TEXTE aus dem Textkatalog (Phase B): Abschnitte <pkg>.onboarding.<key> (Haushalt core.onboarding.household), Bereichsnamen <pkg>.package.name, Menüsätze core.onboarding.menu.*; Sprache = die des Betrachters (Person -> Owner -> en). REIHENFOLGE build-time: Haushalt zuerst, dann $OnboardingPackageOrder (Get-OnboardingPackageOrder, lib/agent_routing.ps1: wer per consumes Daten eines anderen Onboarding-Pakets liest, kommt danach; Gleichstand haushaltsweit vor persönlich, dann Name). Aufrufer: /onboarding-Command (area leer), der Orchestrator-Callback onboarding:_area:<package> und core.sub_onboarding_progress (nach einem geschlossenen Bereich, DB-Latch: genau einmal je Übergang) -> nur deterministische Eintrittspunkte, kein Knopf-Spam. Abschnitts-Tap -> Orchestrator-Switch auf das <package>-Glied: core -> agent.guide, Paket -> sein Onboarding-Agent. per_user-Pakete (career) zeigen den Status der TAPPENDEN Person (DEFINER-fn löst sie aus chat_id auf, nie LLM). Knopf-STRUKTUR build-time (n8n-Inline-Keyboard = statische fixedCollection -> ein Send je Ansicht); Knopf-TEXT Ausdruck auf $json.btn/abtn/next_text/back_text -> nicht aktive Pakete (fn active_packages) tragen den Zusatz nicht installiert, eine Fusszeile nennt den Server-Befehl (ausblenden geht nicht, Issue #19955). MITGLIEDER: viewer_role != owner -> nur persönliche Bereiche (per_user je Sektion aus der fn) zählen als offen (Weiter/Als Nächstes/Zähler), Haushalts-Bereiche tragen (richtet der Owner ein); ihre Taps laufen über core.fn_handle_onboarding_cb (Registry, member_permeable) und geben dort einen Toast. PLAN-SCHRITT (2026-10-28): je Berater-Domäne mit advisors.<domain>.plan_step ($AdvisorPlanStepList) ein empfohlener Schritt hinter den Abschnitten ihres Pakets, KEIN Abschnitt (zählt nicht im Fortschritt und nicht im alles-eingerichtet-Latch). Zustand, Rechte und Daten-Reife aus der Read-Spalte plans (core.fn_advisor_plan_status, eigenes DEFINER-Fenster unter core_ro): verfügbar, sobald kein sperrender Abschnitt (sections.json gates_advisor, fehlt = sperrt) des Pakets offen ist; Bereichsansicht = Zeile U+1F4CB + Knopf (pbtn/pcb), Übersicht = Info-Zeile unter dem Bereich. Weiter zeigt auf den Plan, wenn die Fertig-Karte genau dieses Pakets kommt (done_area) oder kein Abschnitt mehr offen ist; der Text sagt dann freiwillig-aber-hilfreich (<pkg>.plan_step.intro). Reif -> callback plan:<domain> (Orchestrator Plan route? -> advisor_agent); Mindestdaten fehlen (readiness_fn) -> Hinweis <pkg>.plan_step.not_ready mit den fehlenden Punkten (<pkg>.plan_ready.<key>) und Knopf Zuerst: <Abschnitt> = onboarding:<pkg>:<abschnitt> (Erfass-Agent). Nicht pflegbar (Mitglied am Haushalts-Plan) -> keine Zeile, Knopf mit Hinweis (Tipp = Toast des Handlers). NÄCHSTER SCHRITT: der Weiter-Knopf der Übersicht (ohne Fertig-Karte eines Pakets) kommt aus core.fn_get_next_step (dieselbe Regel und Reihenfolge wie der Gruß-Knopf im Orchestrator, Get-NextStepOrder; callback mit Suffix :next = Tipp-Prüfung core.fn_check_next_step_tap), die Fertig-Karte nennt die Beispielfrage (core.fn_get_next_step_example); Abschnitte mit for_roles zählen für Mitglieder nur bei passender Rolle.' 380 1040
 
     $nodes = @($start, $read, $build, $switch) + $sendNodes + @($sticky)
     $conns = [ordered]@{

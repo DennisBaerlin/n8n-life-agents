@@ -108,6 +108,17 @@ BEGIN
                   WHERE x->>'person_id' = '__nd_partner__' AND (x->>'stage')::int = 1 AND x->>'package' = 'career') THEN
     RAISE EXCEPTION 'FAIL [9 Mitglied: neu aktiviertes per_user-Paket re-armt -> Stufe 1 career]: %', r; END IF;
 
+  -- ---------- 9b) for_roles: gilt der Abschnitt nicht fuer die Rolle des Mitglieds, kommt keine Nachfass-Karte ----------
+  DELETE FROM core.notification_state WHERE source = 'onboarding_nudge';
+  INSERT INTO core.notification_state (source, key, state, last_fired_at) VALUES
+    ('onboarding_nudge', '__nd_partner__:1', 'fired', now() - interval '20 days'),
+    ('onboarding_nudge', '__nd_partner__:2', 'fired', now() - interval '12 days');
+  UPDATE career.onboarding_state SET for_roles = '{owner}';
+  r := core.fn_onboarding_nudges_due('{"order":["core","estate","finance","career"]}');
+  IF EXISTS (SELECT 1 FROM jsonb_array_elements(r->'nudges') x WHERE x->>'person_id' = '__nd_partner__' AND x->>'package' = 'career') THEN
+    RAISE EXCEPTION 'FAIL [9b for_roles ohne partner -> keine career-Karte]: %', r; END IF;
+  UPDATE career.onboarding_state SET for_roles = NULL;
+
   -- ---------- 10) Tagesbudget: kein Platz -> Stufe unverbraucht; Stufe 2 schon gesendet -> kein Slot ----------
   DELETE FROM core.notification_state WHERE source = 'onboarding_nudge';
   DELETE FROM core.proactive_budget; DELETE FROM core.proactive_deferred;

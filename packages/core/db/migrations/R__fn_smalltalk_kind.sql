@@ -8,7 +8,10 @@
 --   NEBEN einem Wort weg; allein zaehlen nur Herzen als Dank.
 --   Die Listen sind bewusst kurz und exakt (de/en/ko = core.ui_languages); fehlt ein Ausdruck, laeuft die
 --   Nachricht ganz normal ueber den Router (fail-safe).
---   RUECKGABE: 'thanks' | 'greeting' | NULL
+--   'ping' = reines Lebenszeichen ("Test", "ping", "?"): Grundlage der Vorschlags-Grenze (core.fn_claim_next_step_offer);
+--   der Hallo-Sticker (agent.fn_claim_persona_sticker) prueft nur 'greeting' und bleibt fuer ein Lebenszeichen aus.
+--   Fragezeichen allein werden VOR dem Satzzeichen-Strip erkannt (danach waere der Text leer).
+--   RUECKGABE: 'thanks' | 'greeting' | 'ping' | NULL
 --   Tests: tests/db/core/test_fn_smalltalk_kind.sql
 -- ============================================================
 CREATE OR REPLACE FUNCTION core.fn_smalltalk_kind(p_text text)
@@ -32,6 +35,7 @@ DECLARE
         'hallo', 'hallöchen', 'hi', 'hey', 'moin', 'moin moin', 'servus', 'guten morgen', 'guten tag', 'guten abend',
         'hello', 'good morning', 'good afternoon', 'good evening',
         '안녕', '안녕하세요', '좋은 아침', '좋은 아침이에요'];
+    c_ping   constant text[] := ARRAY['test', 'testing', 'ping', '테스트'];
     v text;
 BEGIN
     v := lower(btrim(COALESCE(p_text, '')));
@@ -42,6 +46,9 @@ BEGIN
     END IF;
     IF regexp_replace(v, '\s+', '', 'g') ~ ('^[' || c_hearts || ']+$') THEN
         RETURN 'thanks';
+    END IF;
+    IF regexp_replace(v, '\s+', '', 'g') ~ '^[?？]+$' THEN
+        RETURN 'ping';
     END IF;
     v := regexp_replace(v, '[' || c_hearts || c_deco || ']', ' ', 'g');
     v := regexp_replace(v, '[!"#$%&''()*+,./:;<=>?@\[\\\]^_`{|}~…¡¿“”„‘’«»。、！？-]', ' ', 'g');
@@ -54,6 +61,9 @@ BEGIN
     END IF;
     IF v = ANY (c_greet) THEN
         RETURN 'greeting';
+    END IF;
+    IF v = ANY (c_ping) THEN
+        RETURN 'ping';
     END IF;
     RETURN NULL;
 END;

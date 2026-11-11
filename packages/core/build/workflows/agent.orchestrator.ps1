@@ -39,6 +39,10 @@ function Build-AgentOrchestrator {
     $idGuide    = Resolve-Id 'agent.guide'
     $idVoice    = Resolve-Id 'agent.tool_transcribe_telegram_voice'
     $idMenu     = Resolve-Id 'core.sub_send_onboarding_menu'   # WS-2: /onboarding-Wiedereinstiegs-Menue (deterministisch)
+    # Reihenfolge fuer core.fn_get_next_step / core.fn_check_next_step_tap: dieselbe build-time-Quelle wie das Menue.
+    $nextOrder = Get-NextStepOrder $RepoRoot
+    $nextOrderJs     = $nextOrder.OrderJs
+    $nextPlanOrderJs = $nextOrder.PlanOrderJs
 
     # --- lokale Node-Builder (orchestrator-spezifisch; nicht template-extrahiert) ----------------
     function New-IOSchema([string]$n) {
@@ -76,7 +80,7 @@ function Build-AgentOrchestrator {
     $senderKeys = @(
         'core.orch.pairing_ok', 'core.orch.pairing_invalid', 'core.orch.voice_unavailable', 'core.orch.voice_empty', 'core.orch.agent_unavailable',
         'core.orch.card_open', 'core.orch.card_waiting', 'core.orch.relay_empty', 'core.orch.step_limit',
-        'core.welcome.member', 'core.welcome.btn_household', 'core.welcome.btn_help'
+        'core.welcome.member', 'core.welcome.btn_household', 'core.welcome.btn_help', 'core.next_step.example_neutral'
     )
     # Ersatztext, wenn der Router nur 'REACT <MOOD>' sagt, die Reaktion aber ausbleibt (Aus-Schalter, fn-Fehler): nie
     # Stille. Der Key kommt mit den Router-Regeln, die REACT erst einfuehren; Get-UiKeysSql prueft jeden Key gegen den
@@ -110,8 +114,10 @@ function Build-AgentOrchestrator {
         "SELECT x.s AS sender, y.l->>'lang' AS lang, core.fn_ui_texts(y.l->>'lang', $(Get-UiKeysSql $Keys)) AS t$owner$small$style FROM (SELECT agent.fn_resolve_sender($UidExpr) AS s) x CROSS JOIN LATERAL (SELECT agent.fn_person_lang(x.s->>'person_id') AS l) y;"
     }
     # Pairing-Ergebnis + Texte in der Sprache der eingeladenen Person (fn liefert person_id; Kette unveraendert).
-    function Get-PairingSql([string]$FnCall, [string[]]$Keys) {
-        "SELECT r.result, core.fn_ui_texts(agent.fn_person_lang(r.result->>'person_id')->>'lang', $(Get-UiKeysSql $Keys)) AS t_person FROM (SELECT $FnCall AS result) r;"
+    # -Example: dazu die Beispielfrage fuer genau diese Person (core.fn_get_next_step_example, Reihenfolge wie Get-NextStepOrder).
+    function Get-PairingSql([string]$FnCall, [string[]]$Keys, [switch]$Example) {
+        $ex = if ($Example) { ", core.fn_get_next_step_example(r.result->>'person_id', '$(($nextOrder.Order | ForEach-Object { '"' + $_ + '"' }) -join ',' | ForEach-Object { '[' + $_ + ']' })'::jsonb) AS example" } else { '' }
+        "SELECT r.result, core.fn_ui_texts(agent.fn_person_lang(r.result->>'person_id')->>'lang', $(Get-UiKeysSql $Keys)) AS t_person$ex FROM (SELECT $FnCall AS result) r;"
     }
     $tS  = "`$('Resolve sender').item.json.t"
     $tO  = "`$('Resolve sender').item.json.t_owner"
@@ -354,7 +360,7 @@ function Build-AgentOrchestrator {
         @{ Left = "={{ String(`$('Trigger normalize').item.json.callback_query.data || '').split(':')[0] }}"; Type = 'string'; Op = 'equals'; Right = 'learn';      OutputKey = 'learn' }
     )
     $nConfirm = New-OrchPg 'Run confirm pairing' @(-620, 560) `
-        (Get-PairingSql "agent.fn_confirm_pairing(`$1::jsonb)" @('core.orch.member_confirmed', 'core.orch.member_confirmed_unnamed', 'core.onboarding.ready.member_areas', 'core.onboarding.ready.btn_areas')) `
+        (Get-PairingSql "agent.fn_confirm_pairing(`$1::jsonb)" @('core.orch.member_confirmed', 'core.orch.member_confirmed_unnamed', 'core.onboarding.ready.member_areas', 'core.onboarding.ready.btn_areas', 'core.next_step.example_neutral') -Example) `
         $CRED_POSTGRES ([ordered]@{ id = "((`$('Trigger normalize').item.json.callback_query.data || '').split(':')[1] || '')" })
     $nAnswerConfirm = New-TelegramAnswerCallbackNode 'Answer confirm' @(-400, 560) `
         "={{ `$('Trigger normalize').item.json.callback_query.id }}" `
@@ -366,7 +372,7 @@ function Build-AgentOrchestrator {
     $confRes = "(`$('Run confirm pairing').item.json.result||{})"
     $tConf   = "`$('Run confirm pairing').item.json.t_person"
     $nNotifyMemberOk = New-TelegramSendNode 'Notify member confirmed' @(40, 560) `
-        ("={{ ($confRes.full_name ? " + (Get-UiTextJs $tConf 'core.orch.member_confirmed' @{ name = "$confRes.full_name" }) + ' : ' + (Get-UiTextJs $tConf 'core.orch.member_confirmed_unnamed') + ') }}') `
+        ("={{ ($confRes.full_name ? " + (Get-UiTextJs $tConf 'core.orch.member_confirmed' @{ name = "$confRes.full_name"; example = "(`$('Run confirm pairing').item.json.example || (`$('Run confirm pairing').item.json.t_person || {})['core.next_step.example_neutral'] || '')" }) + ' : ' + (Get-UiTextJs $tConf 'core.orch.member_confirmed_unnamed' @{ example = "(`$('Run confirm pairing').item.json.example || (`$('Run confirm pairing').item.json.t_person || {})['core.next_step.example_neutral'] || '')" }) + ') }}') `
         -ChatIdExpr "={{ String($confRes.member_chat_id || '') }}"
     # 2026-10-28: ist der Haushalt schon eingerichtet und gibt es persoenliche Bereiche (fn_confirm_pairing
     # members_have_areas), traegt die Bestaetigung den Knopf 'Meine Bereiche' (Muster 'Send member ready (areas)' in
@@ -374,7 +380,7 @@ function Build-AgentOrchestrator {
     $nMemberHasAreas = Build-If 'Member has areas?' @(-180, 400) `
         "={{ $confRes.members_have_areas === true }}" 'true' 'equals' 'boolean'
     $nNotifyMemberAreas = New-TelegramInlineKeyboardSendNode 'Notify member confirmed (areas)' @(40, 400) `
-        ("={{ ($confRes.full_name ? " + (Get-UiTextJs $tConf 'core.orch.member_confirmed' @{ name = "$confRes.full_name" }) + ' : ' + (Get-UiTextJs $tConf 'core.orch.member_confirmed_unnamed') + ") + '\n\n' + " + (Get-UiTextJs $tConf 'core.onboarding.ready.member_areas') + ' }}') `
+        ("={{ ($confRes.full_name ? " + (Get-UiTextJs $tConf 'core.orch.member_confirmed' @{ name = "$confRes.full_name"; example = "(`$('Run confirm pairing').item.json.example || (`$('Run confirm pairing').item.json.t_person || {})['core.next_step.example_neutral'] || '')" }) + ' : ' + (Get-UiTextJs $tConf 'core.orch.member_confirmed_unnamed' @{ example = "(`$('Run confirm pairing').item.json.example || (`$('Run confirm pairing').item.json.t_person || {})['core.next_step.example_neutral'] || '')" }) + ") + '\n\n' + " + (Get-UiTextJs $tConf 'core.onboarding.ready.member_areas') + ' }}') `
         @( @{ Text = (Get-UiTextExpr $tConf 'core.onboarding.ready.btn_areas'); Data = 'onboarding:_area:' } ) `
         -ChatIdExpr "={{ String($confRes.member_chat_id || '') }}"
     # Textkatalog Phase B: hat die frisch verbundene Person noch KEINE eigene Sprache, bekommt sie den Sprach-Picker
@@ -724,6 +730,26 @@ return msgs.map((m, i) => ({ json: { chunk: '(' + (i + 1) + '/' + N + ')\n' + m 
     # 'Discard non-owner callback'; frueher lief der Fallback ins Leere (Knopf drehte ~30 s).
     $nAnswerOnbUnknown = New-TelegramAnswerCallbackNode 'Answer unknown onboarding cb' @(-620, ($onbY + 160)) `
         "={{ `$('Trigger normalize').item.json.callback_query.id }}" (Get-UiTextExpr $tCb 'core.toast.area_unavailable')
+    # Vorschlags-Knopf (Suffix ':next', core.fn_get_next_step): Owner-Arm und Mitglieder-Weg muenden hier VOR 'Onboarding section?'.
+    # core.fn_check_next_step_tap rechnet den Schritt des Tippenden neu: noch aktuell -> weiter (der Switch liest nur Teil 2/3
+    # von callback_data, das Suffix stoert ihn nicht); veraltet (erledigt, andere Rolle) -> Toast + Uebersicht statt einen
+    # erledigten Abschnitt neu zu starten. Menue-Knoepfe ohne Suffix gehen unveraendert durch. Host-Cred (der Check setzt den
+    # Wiederholungs-Zaehler zurueck), onError continue (fail-open: Lesefehler -> wie bisher weiter).
+    $nNextTap = New-OrchPg 'Next step tap' @(-1060, 1680) `
+        "SELECT core.fn_check_next_step_tap(`$1::jsonb) AS r;" `
+        $CRED_POSTGRES ([ordered]@{
+            chat_id    = "String((`$('Trigger normalize').item.json.callback_query.from || {}).id || '')"
+            data       = "String(`$('Trigger normalize').item.json.callback_query.data || '')"
+            order      = $nextOrderJs
+            plan_order = $nextPlanOrderJs })
+    $nNextTapOk = Build-If 'Next step tap ok?' @(-950, 1840) "={{ ((`$('Next step tap').item.json.r) || {}).ok !== false }}" 'true' 'equals' 'boolean'
+    $nAnswerStaleStep = New-TelegramAnswerCallbackNode 'Answer stale step' @(-840, 2000) `
+        "={{ `$('Trigger normalize').item.json.callback_query.id }}" "={{ ((`$('Next step tap').item.json.r) || {}).toast || '' }}"
+    $nAnswerStaleStep['onError'] = 'continueRegularOutput'
+    $nSendStaleOverview = Build-CallWorkflow 'Send stale overview' @(-620, 2000) $idMenu 'core.sub_send_onboarding_menu' ([ordered]@{
+        chat_id = "={{ String(`$('Trigger normalize').item.json.callback_query.message.chat.id) }}"
+        area    = ''
+    })
     $onbPkgNodes += @($nAnswerOnbArea, $nSendOnbArea, $nAnswerOnbUnknown)
     $onbPkgConns['Answer onboarding area'] = @{ main = @( ,@( E 'Send onboarding area' ) ) }
     $nAnswerOnboardingCb['onError'] = 'continueRegularOutput'
@@ -906,6 +932,19 @@ return msgs.map((m, i) => ({ json: { chunk: '(' + (i + 1) + '/' + N + ')\n' + m 
     $nOnboardingPin = New-OrchPg 'Onboarding pin' @(-720, -320) `
         "SELECT EXISTS (SELECT 1 FROM agent.guide_onboarding_state WHERE status = 'unknown') AS onboarding_in_progress;" `
         $CRED_PG_RO
+    # Naechster Schritt (Owner-Entscheid 2026-11-11: die DB bestimmt ihn, das Modell formuliert nur): core.fn_get_next_step
+    # liefert Schritt, Beispielfrage und ob jetzt ein Vorschlag mit Knopf kommen darf (offer, nur lesend) -> Laufzeit-Flags
+    # next_step/offer/next_example am Prompt-Ende. order/plan_order = dieselbe build-time-Quelle wie das Menue
+    # (Get-NextStepOrder). core_ro, onError continue (fail-open: ohne Zeile gilt next_step none, offer no).
+    $nNextStep = New-OrchPg 'Next step' @(-720, -480) `
+        "SELECT core.fn_get_next_step(`$1::jsonb) AS step;" `
+        $CRED_PG_RO ([ordered]@{
+            chat_id    = "String(`$('Trigger normalize').item.json.message.chat.id)"
+            order      = $nextOrderJs
+            plan_order = $nextPlanOrderJs
+            smalltalk  = "String(`$('Resolve sender').item.json.smalltalk || '')"
+            # /start eines Mitglieds nennt die Beispielfrage in der Begruessung (core.welcome.member), auch bei offenem Schritt
+            with_example = "String(`$('Trigger normalize').item.json.message.text || '').startsWith('/start')" })
 
     # === MESSAGE-TYP-SWITCH (audio/voice gefixt auf verschachtelte Pfade) =======================
     # === Lebenszeichen 👀 an Foto/Dokument (agent.fn_claim_reaction event 'seen', kein LLM) =====================
@@ -1059,7 +1098,7 @@ return msgs.map((m, i) => ({ json: { chunk: '(' + (i + 1) + '/' + N + ')\n' + m 
         "={{ `$('Start onboarding read').item.json.welcome_text || '👋 /help' }}" `
         -ChatIdExpr "={{ `$('Trigger normalize').item.json.message.chat.id }}"
     $nWelcomeMember = New-TelegramSendNode 'Send welcome member' @(448, 520) `
-        (Get-UiTextExpr $tS 'core.welcome.member') `
+        (Get-UiTextExpr $tS 'core.welcome.member' @{ example = "(((`$('Next step').item.json.step) || {}).example || ($tS || {})['core.next_step.example_neutral'] || '')" }) `
         -ChatIdExpr "={{ `$('Trigger normalize').item.json.message.chat.id }}"
 
     # === /reminders + /erinnerungen (Roter Faden Paket B): das Erinnerungs-Menue des Absenders (Owner alles, Mitglied nur
@@ -1180,7 +1219,7 @@ return msgs.map((m, i) => ({ json: { chunk: '(' + (i + 1) + '/' + N + ')\n' + m 
                 # maxIterations 6: der Router waehlt meist ein Tool (Aufruf + Signal-Zeile = 2 Laeufe); bei mehreren Anliegen ruft er die Agenten nacheinander (der Gateway schaltet parallele Tool-Aufrufe ab), Reserve fuer 4 Agenten statt Puffer
                 # fuer einen Fehlgriff, nie fuer eine Tool-Kette. Eine Schleife (Retry-Sturm) soll hier abbrechen, nicht Tokens verbrennen.
                 maxIterations = 6
-                systemMessage = "={{ `$('Load Agent Context').item.json.system_prompt + '\n\n## Runtime flags\nfollowup_agent: ' + ((`$('Followup pin').item.json.followup_agent) || 'none') + '\ninterview_advisor: ' + ((`$('Interview pin').item.json.interview_advisor) || 'none') + '\nonboarding_in_progress: ' + (`$('Onboarding pin').item.json.onboarding_in_progress === true ? 'true' : 'false') + '\nCurrent user: ' + ((`$('Resolve sender').item.json.sender || {}).full_name || 'unknown') + ' (' + ((`$('Resolve sender').item.json.sender || {}).role || 'unknown') + ')' + '\npersona: ' + ((`$('Resolve sender').item.json.sender || {}).persona || 'neutral') + '\nuser_style: ' + (`$('Resolve sender').item.json.user_style || 'neutral') + '\ndaypart: ' + (`$('Resolve sender').item.json.daypart || 'day') }}"
+                systemMessage = "={{ `$('Load Agent Context').item.json.system_prompt + '\n\n## Runtime flags\nfollowup_agent: ' + ((`$('Followup pin').item.json.followup_agent) || 'none') + '\ninterview_advisor: ' + ((`$('Interview pin').item.json.interview_advisor) || 'none') + '\nonboarding_in_progress: ' + (`$('Onboarding pin').item.json.onboarding_in_progress === true ? 'true' : 'false') + '\nCurrent user: ' + ((`$('Resolve sender').item.json.sender || {}).full_name || 'unknown') + ' (' + ((`$('Resolve sender').item.json.sender || {}).role || 'unknown') + ')' + '\npersona: ' + ((`$('Resolve sender').item.json.sender || {}).persona || 'neutral') + '\nuser_style: ' + (`$('Resolve sender').item.json.user_style || 'neutral') + '\ndaypart: ' + (`$('Resolve sender').item.json.daypart || 'day') + '\nnext_step: ' + (((`$('Next step').item.json.step || {}).kind === 'section' || (`$('Next step').item.json.step || {}).kind === 'plan') ? ('`"' + String((`$('Next step').item.json.step || {}).label || '').replace(/[\r\n`"]+/g, ' ') + '`"' + ((`$('Next step').item.json.step || {}).state === 'first' ? ' (needed first, before the plan)' : ((`$('Next step').item.json.step || {}).kind === 'plan' ? ' (the plan)' : ' (setup area)'))) : ((`$('Next step').item.json.step || {}).kind || 'none')) + '\noffer: ' + ((`$('Next step').item.json.step || {}).offer === true ? 'yes' : 'no') + '\nnext_example: ' + ((`$('Next step').item.json.step || {}).example ? ('`"' + String((`$('Next step').item.json.step || {}).example).replace(/[\r\n`"]+/g, ' ') + '`"') : 'none') }}"
             }
         }
         type = '@n8n/n8n-nodes-langchain.agent'; typeVersion = 3.1
@@ -1250,7 +1289,20 @@ if (!limitHit) { try { a = $('Orchestrator agent').first().json || {}; } catch (
 const steps = Array.isArray(a.intermediateSteps) ? a.intermediateSteps : [];
 const rs = $('Resolve sender').first().json || {};
 const T = rs.t || {};
-const raw = String(a.output || '').trim();
+// Vorschlags-Marker (core.fn_get_next_step): eine Zeile NEXT_STEP wird VOR jedem Parsen entfernt; ein Knopf darf nur
+// kommen, wenn sie die letzte Zeile einer Quelle mit Marker-Recht war (Router ohne Werkzeug, Agenten aus MARK_AGENTS).
+const MARK_RE = /^\s*NEXT_STEP\s*$/i;
+const MARK_AGENTS = __MARK_AGENTS__;
+const stripMarker = (s) => {
+  const ls = String(s || '').split('\n');
+  let last = ls.length - 1;
+  while (last >= 0 && !ls[last].trim()) last--;
+  return { text: ls.filter((l) => !MARK_RE.test(l)).join('\n').trim(), marked: last >= 0 && MARK_RE.test(ls[last]) };
+};
+const markRight = (tool) => { const t = String(tool || '').replace(/[^a-z0-9]/gi, '').toLowerCase(); return MARK_AGENTS.some((m) => t.endsWith('agent' + m)); };
+const rawFull = String(a.output || '').trim();
+const rawM = stripMarker(rawFull);
+const raw = rawM.text;
 const nl = raw.indexOf('\n');
 const firstLine = (nl < 0 ? raw : raw.slice(0, nl)).trim();
 const afterFirst = (nl < 0 ? '' : raw.slice(nl + 1)).trim();
@@ -1290,14 +1342,17 @@ const textOf = (obs) => {
   return outs.join('\n\n');
 };
 const byTool = new Map();
+const markedBy = new Map();
 for (const st of steps) {
   const tool = String((st && st.action && st.action.tool) || '');
-  const txt = textOf(st && st.observation);
-  if (!txt) continue;
+  const sm = stripMarker(textOf(st && st.observation));
+  if (!sm.text) continue;
   if (byTool.has(tool)) byTool.delete(tool);
-  byTool.set(tool, txt);
+  byTool.set(tool, sm.text);
+  markedBy.set(tool, sm.marked && markRight(tool));
 }
 const parts = Array.from(byTool.values());
+const lastTool = Array.from(byTool.keys()).pop();
 let body;
 let reply_ok;
 if (parts.length) {
@@ -1320,10 +1375,18 @@ if (parts.length) {
 // der Nutzer nicht sah -- auch nicht beim festen Leer-Hinweis); ohne Werkzeug bleibt die Router-Antwort stehen (auch
 // 'REACT ...': so lernt der Router, dass reine Wertschaetzung eine Reaktion bekommt).
 const memory_signal = steps.length ? (signal === 'FRAME' ? 'FRAME' : 'NOFRAME') : '';
+// Ohne Werkzeug mit entferntem Marker: ins Gedaechtnis die bereinigte Fassung (sonst haengte der Router ihn kuenftig ueberall an).
+const memory_content = (!steps.length && rawFull !== raw) ? raw : '';
+// Knopf nur am letzten Teil einer Quelle mit Marker-Recht bzw. am eigenen Router-Satz; nie am festen Hinweis.
+const next_marker = reply_ok && body !== '' && (parts.length ? markedBy.get(lastTool) === true : (!steps.length && rawM.marked));
 // Eingaben fuer Claim expression: reply_ok=false = fester Leer-/Fehler-Hinweis -> nie Sticker/Reaktion davor.
-return [{ json: { body, memory_signal, raw_output: String(a.output ?? ''), signal, mood, tool_called: steps.length > 0,
+return [{ json: { body, memory_signal, memory_content, next_marker, raw_output: String(a.output ?? ''), signal, mood, tool_called: steps.length > 0,
   reply_ok, react_only: isReact && body === '' && mood !== '', has_text: body !== '', has_parts: parts.length > 0 } }];
 '@
+    # Marker-Recht (Vorschlag mit Knopf): heute nur der Hilfe-Agent; weitere Agenten (z. B. ein Berater) kommen hierher, nicht als
+    # Sonderfall. Abgleich ueber den bereinigten Route-Tool-Namen (Endung agent<name>), siehe markRight im Code.
+    $markAgents = @('guide')
+    $relayJs = $relayJs.Replace('__MARK_AGENTS__', ('[' + (($markAgents | ForEach-Object { "'" + ($_ -replace '[^a-z0-9]', '') + "'" }) -join ', ') + ']'))
     $nRelay = [ordered]@{
         parameters = [ordered]@{ jsCode = $relayJs }
         type = 'n8n-nodes-base.code'; typeVersion = 2
@@ -1338,7 +1401,8 @@ return [{ json: { body, memory_signal, raw_output: String(a.output ?? ''), signa
         $CRED_POSTGRES ([ordered]@{
             chat_id = "String(`$('Trigger normalize').first().json.message.chat.id)"
             raw     = "`$('Relay compose').first().json.raw_output"
-            signal  = "`$('Relay compose').first().json.memory_signal" })
+            signal  = "`$('Relay compose').first().json.memory_signal"
+            content = "`$('Relay compose').first().json.memory_content || ''" })
     $nMemSignal['executeOnce'] = $true
     # Auslieferung ueber den gemeinsamen Relay-Weg (Teile, HTML-Plain, je Teil eine Runde -> Retry ohne Duplikate).
     # Text = Rahmensatz (Claim expression, falls gewaehlt) + Leerzeile + Body; leer (reine Reaktion zugesagt, kam aber
@@ -1348,6 +1412,39 @@ return [{ json: { body, memory_signal, raw_output: String(a.output ?? ''), signa
     $relayFallbackJs = if ($reactFallbackKey) { "(`$('Resolve sender').first().json.t || {})['$reactFallbackKey']" } else { "(`$('Resolve sender').first().json.t || {})['core.orch.relay_empty']" }
     $relayChain = New-TelegramRelayChain 'Send a text message' @(1660, -160) $relayTextJs -FallbackJs $relayFallbackJs `
         -ChatIdExpr "={{ `$('Trigger normalize').first().json.message.chat.id }}" -DoneTo 'Router memory signal'
+
+    # === Vorschlag mit Knopf (naechster Schritt, Owner-Entscheid 2026-11-11) ====================================
+    # Nur wenn Relay compose den Marker NEXT_STEP an der letzten Zeile einer Quelle mit Marker-Recht fand: den Schritt am
+    # Sendepunkt NEU lesen (ein Lauf, der selbst einen Abschnitt schloss, hat schon die Fortschritts-Karte mit Weiter-Knopf
+    # bekommen -> callback anders als vor dem Lauf = kein zweiter Knopf), dann core.fn_claim_next_step_offer (1x/Tag bei
+    # Gruss/Lebenszeichen, 3x je Schritt+Lage; erst wenn alles andere passt, CASE statt AND = feste Reihenfolge).
+    # Der Sendetext muss in EINE Nachricht passen (Grenze wie New-TelegramRelayChain). Jedes Nein und der Fehler-Ausgang des
+    # Knopf-Sends -> die normale Relay-Kette ohne Knopf (Text kommt immer an). Bewusst hingenommen: meldet der Knopf-Send
+    # einen Fehler, obwohl Telegram die Nachricht schon zugestellt hat (keepAlive-Haenger), kommt der Text doppelt.
+    $nNextMarker = Build-If 'Next step marker?' @(2380, -620) "={{ `$('Relay compose').first().json.next_marker === true }}" 'true' 'equals' 'boolean'
+    $nNextAtSend = New-OrchPg 'Next step at send' @(2600, -620) `
+        ("WITH s AS (SELECT core.fn_get_next_step(`$1::jsonb) AS step) SELECT s.step, CASE WHEN s.step->>'button' IS NOT NULL " +
+         "AND s.step->>'callback' = (`$1::jsonb)->>'pre_callback' AND ((`$1::jsonb)->>'fits')::boolean THEN core.fn_claim_next_step_offer(" +
+         "jsonb_build_object('chat_id', (`$1::jsonb)->>'chat_id', 'callback', s.step->>'callback', 'state', s.step->>'state', " +
+         "'generation', s.step->'generation', 'smalltalk', (`$1::jsonb)->>'smalltalk')) ELSE false END AS show FROM s;") `
+        $CRED_POSTGRES ([ordered]@{
+            chat_id      = "String(`$('Trigger normalize').first().json.message.chat.id)"
+            order        = $nextOrderJs
+            plan_order   = $nextPlanOrderJs
+            smalltalk    = "String(`$('Resolve sender').first().json.smalltalk || '')"
+            pre_callback = "String(((`$('Next step').first().json.step) || {}).callback || '')"
+            fits         = "String($relayTextJs).length <= 3500" })
+    $nShowNext = Build-If 'Show next step?' @(2820, -620) "={{ `$('Next step at send').first().json.show === true }}" 'true' 'equals' 'boolean'
+    $stNextStep = Build-Sticky 'Doc: Naechster Schritt' @(2380, -1000) -Header 'Ablauf' `
+        'Vorschlag mit Knopf (DB bestimmt den Schritt, das Modell formuliert nur)' `
+        ('Next step (nach Onboarding pin, core_ro) liest core.fn_get_next_step: Schritt (offener Einrichtungs-Abschnitt laut Menü-Reihenfolge, für Mitglieder nur per_user-Abschnitte ihrer Rolle (for_roles), dann für den Owner der erste offene Plan, sonst none/wait), Beispielfrage und offer (darf jetzt ein Vorschlag mit Knopf kommen). Die Flags next_step/offer/next_example stehen am Ende des Router-Prompts (Regel 8). ' +
+         'Bei Gruß, Lebenszeichen und und-jetzt antwortet der Router mit einem Satz und der letzten Zeile NEXT_STEP. Relay compose entfernt die Zeile vor jedem Parsen (auch aus Spezialisten-Teilen) und setzt next_marker nur für die letzte Zeile einer Quelle mit Marker-Recht (Router ohne Werkzeug, Hilfe-Agent). Jede andere Sende-Kette entfernt die Zeile in New-TelegramRelayChain. ' +
+         'Next step marker? -> Next step at send liest den Schritt neu (hat der Lauf selbst einen Abschnitt geschlossen, kam schon die Fortschritts-Karte mit Weiter-Knopf -> anderer callback = kein zweiter Knopf) und zählt den Vorschlag über core.fn_claim_next_step_offer (1x je Tag bei Gruß/Lebenszeichen, 3x je Schritt und Lage, Werte in core.config next_step.*). Show next step? -> Send with next step (ein Knopf, HTML-Plain); jedes Nein und der Fehler-Ausgang -> normale Relay-Kette ohne Knopf. ' +
+         'Bewusst hingenommen: meldet der Knopf-Send einen Fehler, obwohl Telegram die Nachricht zugestellt hat, kommt der Text doppelt; zwei fast gleichzeitige Grüße -> der zweite Satz ohne Knopf. Ein Tipp auf einen Vorschlags-Knopf (Suffix :next) läuft über Next step tap (core.fn_check_next_step_tap): veraltet -> Toast + Übersicht statt einen erledigten Abschnitt neu zu starten.') 380 640
+    $nSendNext = New-TelegramKeyboardSendWithFallback 'Send with next step' @(3040, -620) $relayTextJs `
+        -ButtonTextExpr "={{ (`$('Next step at send').first().json.step || {}).button }}" `
+        -ButtonDataExpr "={{ (`$('Next step at send').first().json.step || {}).data }}" `
+        -ChatIdExpr "={{ `$('Trigger normalize').first().json.message.chat.id }}"
 
     # === Sticker, Reaktion, Rahmensatz (deterministisch, kein LLM) ===============================================
     # Claim expression: eine Abfrage, drei DB-Entscheidungen in fester Reihenfolge — erst agent.fn_claim_persona_sticker
@@ -1425,13 +1522,14 @@ return [{ json: { body, memory_signal, raw_output: String(a.output ?? ''), signa
         $nLearnNo, $nAnswerLearnNo, $nLearnUndo, $nAnswerLearnUndo,
         $nAnswerHelpCb, $nLoadCapCb, $nSplitHelpCb, $nSendHelpCb,
         $nOnbSection, $nRunOnboardingCb, $nAnswerOnboardingCb,
-        $nLoadCfg, $nLoadCtx, $nInterviewPin, $nOnboardingPin, $nTypeSwitch,
+        $nLoadCfg, $nLoadCtx, $nInterviewPin, $nOnboardingPin, $nNextStep, $nTypeSwitch,
         $nTransAudio, $nTransVoice, $nNorm2, $nVoiceOk, $nVoiceReply, $nVoiceOutage, $nVoiceGate, $nVoiceNotify, $nVoiceOwner,
         $nCmdRouter, $nLoadCap, $nSplitHelp, $nSendHelp,
         $nSendMenu,
         $nStartOwner, $nStartStatus, $nStartCoreDone, $nWelcomeNew, $nWelcomeBack, $nWelcomeMember, $nSendLangPicker, $nSendPersonaPicker, $nSendReminders, $nRemRoute, $nSendRemindersCb, $nSendCost,
         $nNormPhoto, $nNormDoc, $nNorm1, $nAgentInput, $nFollowupPin,
         $nAgent, $nAgentError, $nAgentErrorAlert, $nMemory, $nRelay, $nClaimExpr, $nStickerDue, $nSendSticker, $nReactionDue, $nSendReaction, $nHasText, $nMemSignal, $nThinking,
+        $nNextMarker, $nNextAtSend, $nShowNext, $nSendNext, $stNextStep, $nNextTap, $nNextTapOk, $nAnswerStaleStep, $nSendStaleOverview,
         $nClaimSeen, $nSeenDue, $nReactSeen,
         $nOpenThinking, $nCloseThinking, $nCloseThinkingVoice,
         $stOverview, $stIngress, $stSender, $stCallback, $stCommand, $stVoice, $stAgent
@@ -1516,7 +1614,7 @@ return [{ json: { body, memory_signal, raw_output: String(a.output ?? ''), signa
             @( E 'Run cron on' ),           # [4] cron_on:<key>  (WS-3 Phase A)
             @( E 'Run cron off' ),          # [5] cron_off:<key> (WS-3 Phase A)
             @( E 'Answer help cb' ),        # [6] help:overview  (WS-1/WS-5: Answer ZUERST -> Load -> Split -> Send)
-            @( E 'Onboarding section?' ),   # [7] onboarding:<key> (WS-2: split household/Finanz)
+            @( E 'Next step tap' ),         # [7] onboarding:<key> (WS-2: split household/Finanz; ':next'-Knopf erst pruefen)
             @( E 'Learn action' ),          # [8] learn:<ok|no|undo>:<id> (Phase C)
             @( E 'Dispatch callback' )      # [9] extra -> generischer Registry-Dispatch (WS-0c CB; frueher Dead-End)
         ) }
@@ -1539,7 +1637,7 @@ return [{ json: { body, memory_signal, raw_output: String(a.output ?? ''), signa
         'Claim persona sticker'   = @{ main = @( ,@( E 'Persona sticker due?' ) ) }
         'Persona sticker due?'    = @{ main = @( @( E 'Send persona sticker' ), @() ) }
         'Onboarding route?'       = @{ main = @(
-            @( E 'Onboarding section?' ),     # [0] true: Mitglied, Handler erlaubt -> dieselben Onboarding-Arme wie der Owner
+            @( E 'Next step tap' ),           # [0] true: Mitglied, Handler erlaubt -> dieselben Onboarding-Arme wie der Owner (ueber den Knopf-Check)
             @( E $afterOnbRoute )             # [1] false: plan:-Route pruefen (Plan route?), sonst jeder andere Prefix bzw. abgelehnt -> Toast
         ) }
         # Roter Faden Paket B: nach dem Toast eines /reminders-Menue-Tipps (route reminders) das Menue neu senden
@@ -1593,7 +1691,8 @@ return [{ json: { body, memory_signal, raw_output: String(a.output ?? ''), signa
         'Load core.config'    = @{ main = @( ,@( E 'Load Agent Context' ) ) }
         'Load Agent Context'  = @{ main = @( ,@( E 'Interview pin' ) ) }
         'Interview pin'       = @{ main = @( ,@( E 'Onboarding pin' ) ) }
-        'Onboarding pin'      = @{ main = @( ,@( E 'Which type of message' ) ) }
+        'Onboarding pin'      = @{ main = @( ,@( E 'Next step' ) ) }
+        'Next step'           = @{ main = @( ,@( E 'Which type of message' ) ) }
         # "Bot denkt nach": Sprache/Audio/Foto/Dokument zeigen die Anzeige SOFORT (vor Transkription/Normalisierung);
         # Text erst nach dem Command-router-Fallback (nicht bei /help usw.).
         'Which type of message' = @{ main = @(
@@ -1662,10 +1761,17 @@ return [{ json: { body, memory_signal, raw_output: String(a.output ?? ''), signa
         ) }
         'Send reaction'        = @{ main = @( ,@( E 'Has text?' ) ) }
         'Has text?'            = @{ main = @(
-            @( E $relayChain.Entry ),    # [0] Text (oder Reaktion fehlt -> Ersatztext)
+            @( E 'Next step marker?' ),  # [0] Text (oder Reaktion fehlt -> Ersatztext); erst pruefen, ob ein Vorschlags-Knopf dazugehoert
             @( E 'Router memory signal' ) # [1] reine Reaktion -> kein Text, Abschluss (Finish card lock laeuft immer)
         ) }
         'Router memory signal' = @{ main = @( ,@( E 'Finish card lock' ) ) }
+        'Next step marker?'    = @{ main = @( @( E 'Next step at send' ), @( E $relayChain.Entry ) ) }   # [0] Marker -> Schritt neu lesen + zaehlen; [1] normale Kette
+        'Next step at send'    = @{ main = @( ,@( E 'Show next step?' ) ) }
+        'Show next step?'      = @{ main = @( @( E 'Send with next step' ), @( E $relayChain.Entry ) ) }
+        'Send with next step'  = @{ main = @( @( E 'Router memory signal' ), @( E $relayChain.Entry ) ) }   # [1] Fehler-Ausgang -> Text ohne Knopf
+        'Next step tap'        = @{ main = @( ,@( E 'Next step tap ok?' ) ) }
+        'Next step tap ok?'    = @{ main = @( @( E 'Onboarding section?' ), @( E 'Answer stale step' ) ) }   # [1] veralteter ':next'-Knopf -> Toast + Uebersicht
+        'Answer stale step'    = @{ main = @( ,@( E 'Send stale overview' ) ) }
         # WP-2: Primaer main[0]=Erfolg; main[1]=Fehler-Ausgang (onError=continueErrorOutput) -> Plain-Nachsenden.
         # Fix C: beide Erfolgswege -> Finish card lock (freigegebene Karte-offen-Sperren des Chats loeschen).
         # Agent-Bindings (ai_tool / ai_memory)

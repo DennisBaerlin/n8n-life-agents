@@ -23,7 +23,11 @@ BEGIN
       ('Hallo', 'greeting'), ('hallo!', 'greeting'), ('Hi 👋', 'greeting'), ('Guten Morgen', 'greeting'),
       ('Moin', 'greeting'), ('hey', 'greeting'), ('Hello', 'greeting'), ('Good morning!', 'greeting'),
       ('안녕하세요', 'greeting'), ('안녕', 'greeting'),
-      ('Hallo, mein Vater ist gestorben', NULL), ('Hi, buch 5 € Kaffee', NULL), ('hallo danke', NULL)
+      ('Hallo, mein Vater ist gestorben', NULL), ('Hi, buch 5 € Kaffee', NULL), ('hallo danke', NULL),
+      -- Lebenszeichen (Vorschlags-Grenze, core.fn_claim_next_step_offer); kein Hallo-Sticker (der prueft nur greeting)
+      ('?', 'ping'), ('??', 'ping'), (U&'\FF1F', 'ping'), (' ? ', 'ping'), ('Test', 'ping'), ('Test.', 'ping'), ('test!', 'ping'),
+      ('ping', 'ping'), ('Testing', 'ping'), (U&'\D14C\C2A4\D2B8', 'ping'),
+      ('hallo?', 'greeting'), ('test test', NULL), ('Test, buch 5 Euro', NULL), ('?!', NULL)
     ) AS t(input, expected)
   LOOP
     v := core.fn_smalltalk_kind(r.input);

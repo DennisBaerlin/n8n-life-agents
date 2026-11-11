@@ -7,7 +7,8 @@
 --      Cron eingesetzt) -> die Karte zeigt denselben naechsten Schritt wie der 👉-Knopf des /onboarding-Menues.
 --   Je Person mit Telegram-Verbindung (agent.persons + agent.fn_person_chat_id):
 --     * relevant = die Sicht von core.fn_onboarding_overview(chat_id): Owner alle Abschnitte, Mitglied nur per_user-
---       Abschnitte und erst, wenn der Haushalt fertig ist (vorher richtet der Owner ein).
+--       Abschnitte, deren for_roles seine Rolle nennt (NULL = alle), und erst, wenn der Haushalt fertig ist (vorher
+--       richtet der Owner ein). Dieselbe Rollen-Regel wie core.fn_get_next_step.
 --     * nichts offen -> nichts. core.fn_reminder_allowed('onboarding_nudge', person) = false -> nichts (VOR jedem
 --       Latch: eine Abmeldung verbraucht keine Stufe).
 --     * Stillstand = now() - letzter Fortschritt; letzter Fortschritt = max(status_changed_at) der relevanten
@@ -72,7 +73,9 @@ BEGIN
                    ORDER BY COALESCE(array_position(v_order, s->>'package'), 999), (s->>'ord')::int), '[]'::jsonb)
           INTO v_secs
           FROM jsonb_array_elements(COALESCE(core.fn_onboarding_overview(v_chat::text)->'sections', '[]'::jsonb)) s
-         WHERE v_owner OR (s->>'per_user')::boolean;
+         WHERE v_owner OR ((s->>'per_user')::boolean
+                           -- for_roles (aus sections.json geseedet): ein Abschnitt nur fuer diese Rollen, z. B. kein Berufsprofil fuer Kinder
+                           AND (jsonb_typeof(s->'for_roles') IS DISTINCT FROM 'array' OR (r.role IS NOT NULL AND (s->'for_roles') ? r.role)));
 
         SELECT s INTO v_next FROM jsonb_array_elements(v_secs) WITH ORDINALITY AS t(s, i)
          WHERE s->>'status' = 'unknown' ORDER BY i LIMIT 1;

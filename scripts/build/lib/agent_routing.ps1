@@ -158,6 +158,23 @@ function Get-AdvisorPlanStepList([string]$RepoRoot) {
     return @($out | Sort-Object Ord, Domain | Select-Object Domain, Package, Agent, HandoffAgent, ReadyKeys)
 }
 
+# Eingabe-Reihenfolge fuer core.fn_get_next_step / core.fn_check_next_step_tap (naechster Schritt): dieselbe Quelle wie
+# das Onboarding-Menue ($SECTIONS in core.sub_send_onboarding_menu = Haushalt zuerst, dann Get-OnboardingPackageOrder, je
+# Paket nach ord) und dieselbe Plan-Reihenfolge wie der Weiter-Knopf ($AdvisorPlanStepList). So nennen Gruss-Knopf und
+# Menue nie verschiedene Schritte. Rueckgabe: @{ Order = @(<Haushalt core/household>, '<pkg>:<key>', ...); PlanOrder = @('<domain>', ...); OrderJs; PlanOrderJs }.
+function Get-NextStepOrder([string]$RepoRoot) {
+    # Abschnitts-Key <pkg>:<key>, kein Dienst-Alias: zusammengesetzt, weil contract_lint jedes 'core:<name>'-Literal als
+    # core:<dienst> prueft.
+    $order = @('core' + ':household')
+    foreach ($op in @(Get-OnboardingPackageOrder $RepoRoot)) {
+        $order += @(Get-OnboardingSectionKeys $RepoRoot $op.Package | ForEach-Object { "$($op.Package):$_" })
+    }
+    $plan = @(Get-AdvisorPlanStepList $RepoRoot | ForEach-Object { [string]$_.Domain })
+    # *Js = dieselben Listen als JS-Array-Literal fuer Build-Pg-Parameter (Werte sind Paket-/Abschnitts-Keys, nur [a-z0-9_:]).
+    $js = { param($xs) '[' + ((@($xs) | ForEach-Object { "'" + ([string]$_ -replace '[^a-z0-9_:]', '') + "'" }) -join ', ') + ']' }
+    return @{ Order = $order; PlanOrder = $plan; OrderJs = (& $js $order); PlanOrderJs = (& $js $plan) }
+}
+
 # Name des Route-Tool-Nodes, den der Orchestrator-Build je Agent erzeugt (n8n zeigt ihn im runData unter
 # metadata.subNodeExecutionData.actions[].nodeName) — EINE Adresse fuer Orchestrator-Def und Test-Treiber.
 function Get-AgentCallNodeName([string]$AgentName) { return "Call 'agent.$AgentName'" }

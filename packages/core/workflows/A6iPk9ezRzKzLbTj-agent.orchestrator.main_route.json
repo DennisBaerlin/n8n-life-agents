@@ -348,7 +348,7 @@
                   {
                       "parameters":  {
                                          "operation":  "executeQuery",
-                                         "query":  "SELECT x.s AS sender, y.l-\u003e\u003e\u0027lang\u0027 AS lang, core.fn_ui_texts(y.l-\u003e\u003e\u0027lang\u0027, ARRAY[\u0027core.orch.pairing_ok\u0027,\u0027core.orch.pairing_invalid\u0027,\u0027core.orch.voice_unavailable\u0027,\u0027core.orch.voice_empty\u0027,\u0027core.orch.agent_unavailable\u0027,\u0027core.orch.card_open\u0027,\u0027core.orch.card_waiting\u0027,\u0027core.orch.relay_empty\u0027,\u0027core.orch.step_limit\u0027,\u0027core.welcome.member\u0027,\u0027core.welcome.btn_household\u0027,\u0027core.welcome.btn_help\u0027,\u0027core.orch.react_fallback\u0027]::text[]) AS t, core.fn_ui_texts(agent.fn_person_lang(agent.fn_owner_person_id())-\u003e\u003e\u0027lang\u0027, ARRAY[\u0027core.orch.invite_request\u0027,\u0027core.orch.invite_request_unnamed\u0027,\u0027core.orch.btn_confirm\u0027,\u0027core.orch.btn_reject\u0027,\u0027core.orch.unknown_user\u0027,\u0027core.orch.btn_block\u0027,\u0027core.orch.voice_owner_note\u0027,\u0027core.orch.reason_unknown\u0027,\u0027core.orch.reason_provider_missing\u0027,\u0027core.enum.role.owner\u0027,\u0027core.enum.role.partner\u0027,\u0027core.enum.role.child\u0027]::text[]) AS t_owner, core.fn_smalltalk_kind(($1::jsonb)-\u003e\u003e\u0027text\u0027) AS smalltalk, clock_timestamp() AS run_at, agent.fn_chat_style((($1::jsonb)-\u003e\u003e\u0027uid\u0027)::bigint) AS user_style, core.fn_daypart() AS daypart FROM (SELECT agent.fn_resolve_sender((($1::jsonb)-\u003e\u003e\u0027uid\u0027)::bigint) AS s) x CROSS JOIN LATERAL (SELECT agent.fn_person_lang(x.s-\u003e\u003e\u0027person_id\u0027) AS l) y;",
+                                         "query":  "SELECT x.s AS sender, y.l-\u003e\u003e\u0027lang\u0027 AS lang, core.fn_ui_texts(y.l-\u003e\u003e\u0027lang\u0027, ARRAY[\u0027core.orch.pairing_ok\u0027,\u0027core.orch.pairing_invalid\u0027,\u0027core.orch.voice_unavailable\u0027,\u0027core.orch.voice_empty\u0027,\u0027core.orch.agent_unavailable\u0027,\u0027core.orch.card_open\u0027,\u0027core.orch.card_waiting\u0027,\u0027core.orch.relay_empty\u0027,\u0027core.orch.step_limit\u0027,\u0027core.welcome.member\u0027,\u0027core.welcome.btn_household\u0027,\u0027core.welcome.btn_help\u0027,\u0027core.next_step.example_neutral\u0027,\u0027core.orch.react_fallback\u0027]::text[]) AS t, core.fn_ui_texts(agent.fn_person_lang(agent.fn_owner_person_id())-\u003e\u003e\u0027lang\u0027, ARRAY[\u0027core.orch.invite_request\u0027,\u0027core.orch.invite_request_unnamed\u0027,\u0027core.orch.btn_confirm\u0027,\u0027core.orch.btn_reject\u0027,\u0027core.orch.unknown_user\u0027,\u0027core.orch.btn_block\u0027,\u0027core.orch.voice_owner_note\u0027,\u0027core.orch.reason_unknown\u0027,\u0027core.orch.reason_provider_missing\u0027,\u0027core.enum.role.owner\u0027,\u0027core.enum.role.partner\u0027,\u0027core.enum.role.child\u0027]::text[]) AS t_owner, core.fn_smalltalk_kind(($1::jsonb)-\u003e\u003e\u0027text\u0027) AS smalltalk, clock_timestamp() AS run_at, agent.fn_chat_style((($1::jsonb)-\u003e\u003e\u0027uid\u0027)::bigint) AS user_style, core.fn_daypart() AS daypart FROM (SELECT agent.fn_resolve_sender((($1::jsonb)-\u003e\u003e\u0027uid\u0027)::bigint) AS s) x CROSS JOIN LATERAL (SELECT agent.fn_person_lang(x.s-\u003e\u003e\u0027person_id\u0027) AS l) y;",
                                          "options":  {
                                                          "queryReplacement":  "={{ JSON.stringify({ uid: (($(\u0027Trigger normalize\u0027).item.json.message.from || {}).id), text: String($(\u0027Trigger normalize\u0027).item.json.message.text || \u0027\u0027) }) }}"
                                                      }
@@ -1284,7 +1284,7 @@
                   {
                       "parameters":  {
                                          "operation":  "executeQuery",
-                                         "query":  "SELECT r.result, core.fn_ui_texts(agent.fn_person_lang(r.result-\u003e\u003e\u0027person_id\u0027)-\u003e\u003e\u0027lang\u0027, ARRAY[\u0027core.orch.member_confirmed\u0027,\u0027core.orch.member_confirmed_unnamed\u0027,\u0027core.onboarding.ready.member_areas\u0027,\u0027core.onboarding.ready.btn_areas\u0027]::text[]) AS t_person FROM (SELECT agent.fn_confirm_pairing($1::jsonb) AS result) r;",
+                                         "query":  "SELECT r.result, core.fn_ui_texts(agent.fn_person_lang(r.result-\u003e\u003e\u0027person_id\u0027)-\u003e\u003e\u0027lang\u0027, ARRAY[\u0027core.orch.member_confirmed\u0027,\u0027core.orch.member_confirmed_unnamed\u0027,\u0027core.onboarding.ready.member_areas\u0027,\u0027core.onboarding.ready.btn_areas\u0027,\u0027core.next_step.example_neutral\u0027]::text[]) AS t_person, core.fn_get_next_step_example(r.result-\u003e\u003e\u0027person_id\u0027, \u0027[\"core:household\",\"finance:accounts\",\"finance:investments\",\"finance:liabilities\",\"finance:protection\",\"finance:emergency_reserve\",\"finance:goals\",\"finance:monthly_check\",\"estate:documents\",\"estate:insurance_check\",\"estate:contracts\",\"estate:digital_accounts\",\"estate:contacts\",\"estate:wishes\",\"estate:system_profile\",\"career:profile_basics\",\"career:skills_overview\",\"career:goals_targets\"]\u0027::jsonb) AS example FROM (SELECT agent.fn_confirm_pairing($1::jsonb) AS result) r;",
                                          "options":  {
                                                          "queryReplacement":  "={{ JSON.stringify({ id: (($(\u0027Trigger normalize\u0027).item.json.callback_query.data || \u0027\u0027).split(\u0027:\u0027)[1] || \u0027\u0027) }) }}"
                                                      }
@@ -1406,7 +1406,7 @@
                                                                   "appendAttribution":  false
                                                               },
                                          "chatId":  "={{ String(($(\u0027Run confirm pairing\u0027).item.json.result||{}).member_chat_id || \u0027\u0027) }}",
-                                         "text":  "={{ ((($(\u0027Run confirm pairing\u0027).item.json.result||{}).full_name ? String((($(\u0027Run confirm pairing\u0027).item.json.t_person) || {})[\u0027core.orch.member_confirmed\u0027] || \u0027core.orch.member_confirmed\u0027).replace(/\\{(\\w+)\\}/g, (m, k) =\u003e { const P = { \u0027name\u0027: (($(\u0027Run confirm pairing\u0027).item.json.result||{}).full_name) }; return Object.keys(P).includes(k) ? String(P[k]) : m; }) : String((($(\u0027Run confirm pairing\u0027).item.json.t_person) || {})[\u0027core.orch.member_confirmed_unnamed\u0027] || \u0027core.orch.member_confirmed_unnamed\u0027)) + \u0027\\n\\n\u0027 + String((($(\u0027Run confirm pairing\u0027).item.json.t_person) || {})[\u0027core.onboarding.ready.member_areas\u0027] || \u0027core.onboarding.ready.member_areas\u0027)).replace(/[_*`[]/g, \u0027\\\\$\u0026\u0027) }}",
+                                         "text":  "={{ ((($(\u0027Run confirm pairing\u0027).item.json.result||{}).full_name ? String((($(\u0027Run confirm pairing\u0027).item.json.t_person) || {})[\u0027core.orch.member_confirmed\u0027] || \u0027core.orch.member_confirmed\u0027).replace(/\\{(\\w+)\\}/g, (m, k) =\u003e { const P = { \u0027example\u0027: (($(\u0027Run confirm pairing\u0027).item.json.example || ($(\u0027Run confirm pairing\u0027).item.json.t_person || {})[\u0027core.next_step.example_neutral\u0027] || \u0027\u0027)), \u0027name\u0027: (($(\u0027Run confirm pairing\u0027).item.json.result||{}).full_name) }; return Object.keys(P).includes(k) ? String(P[k]) : m; }) : String((($(\u0027Run confirm pairing\u0027).item.json.t_person) || {})[\u0027core.orch.member_confirmed_unnamed\u0027] || \u0027core.orch.member_confirmed_unnamed\u0027).replace(/\\{(\\w+)\\}/g, (m, k) =\u003e { const P = { \u0027example\u0027: (($(\u0027Run confirm pairing\u0027).item.json.example || ($(\u0027Run confirm pairing\u0027).item.json.t_person || {})[\u0027core.next_step.example_neutral\u0027] || \u0027\u0027)) }; return Object.keys(P).includes(k) ? String(P[k]) : m; })) + \u0027\\n\\n\u0027 + String((($(\u0027Run confirm pairing\u0027).item.json.t_person) || {})[\u0027core.onboarding.ready.member_areas\u0027] || \u0027core.onboarding.ready.member_areas\u0027)).replace(/[_*`[]/g, \u0027\\\\$\u0026\u0027) }}",
                                          "replyMarkup":  "inlineKeyboard",
                                          "inlineKeyboard":  {
                                                                 "rows":  [
@@ -1449,7 +1449,7 @@
                                                                   "appendAttribution":  false
                                                               },
                                          "chatId":  "={{ String(($(\u0027Run confirm pairing\u0027).item.json.result||{}).member_chat_id || \u0027\u0027) }}",
-                                         "text":  "={{ ((($(\u0027Run confirm pairing\u0027).item.json.result||{}).full_name ? String((($(\u0027Run confirm pairing\u0027).item.json.t_person) || {})[\u0027core.orch.member_confirmed\u0027] || \u0027core.orch.member_confirmed\u0027).replace(/\\{(\\w+)\\}/g, (m, k) =\u003e { const P = { \u0027name\u0027: (($(\u0027Run confirm pairing\u0027).item.json.result||{}).full_name) }; return Object.keys(P).includes(k) ? String(P[k]) : m; }) : String((($(\u0027Run confirm pairing\u0027).item.json.t_person) || {})[\u0027core.orch.member_confirmed_unnamed\u0027] || \u0027core.orch.member_confirmed_unnamed\u0027))).replace(/[_*`[]/g, \u0027\\\\$\u0026\u0027) }}"
+                                         "text":  "={{ ((($(\u0027Run confirm pairing\u0027).item.json.result||{}).full_name ? String((($(\u0027Run confirm pairing\u0027).item.json.t_person) || {})[\u0027core.orch.member_confirmed\u0027] || \u0027core.orch.member_confirmed\u0027).replace(/\\{(\\w+)\\}/g, (m, k) =\u003e { const P = { \u0027example\u0027: (($(\u0027Run confirm pairing\u0027).item.json.example || ($(\u0027Run confirm pairing\u0027).item.json.t_person || {})[\u0027core.next_step.example_neutral\u0027] || \u0027\u0027)), \u0027name\u0027: (($(\u0027Run confirm pairing\u0027).item.json.result||{}).full_name) }; return Object.keys(P).includes(k) ? String(P[k]) : m; }) : String((($(\u0027Run confirm pairing\u0027).item.json.t_person) || {})[\u0027core.orch.member_confirmed_unnamed\u0027] || \u0027core.orch.member_confirmed_unnamed\u0027).replace(/\\{(\\w+)\\}/g, (m, k) =\u003e { const P = { \u0027example\u0027: (($(\u0027Run confirm pairing\u0027).item.json.example || ($(\u0027Run confirm pairing\u0027).item.json.t_person || {})[\u0027core.next_step.example_neutral\u0027] || \u0027\u0027)) }; return Object.keys(P).includes(k) ? String(P[k]) : m; }))).replace(/[_*`[]/g, \u0027\\\\$\u0026\u0027) }}"
                                      },
                       "type":  "n8n-nodes-base.telegram",
                       "typeVersion":  1.2,
@@ -3236,6 +3236,30 @@
                   },
                   {
                       "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "SELECT core.fn_get_next_step($1::jsonb) AS step;",
+                                         "options":  {
+                                                         "queryReplacement":  "={{ JSON.stringify({ chat_id: String($(\u0027Trigger normalize\u0027).item.json.message.chat.id), order: [\u0027core:household\u0027, \u0027finance:accounts\u0027, \u0027finance:investments\u0027, \u0027finance:liabilities\u0027, \u0027finance:protection\u0027, \u0027finance:emergency_reserve\u0027, \u0027finance:goals\u0027, \u0027finance:monthly_check\u0027, \u0027estate:documents\u0027, \u0027estate:insurance_check\u0027, \u0027estate:contracts\u0027, \u0027estate:digital_accounts\u0027, \u0027estate:contacts\u0027, \u0027estate:wishes\u0027, \u0027estate:system_profile\u0027, \u0027career:profile_basics\u0027, \u0027career:skills_overview\u0027, \u0027career:goals_targets\u0027], plan_order: [\u0027finance\u0027, \u0027career\u0027], smalltalk: String($(\u0027Resolve sender\u0027).item.json.smalltalk || \u0027\u0027), with_example: String($(\u0027Trigger normalize\u0027).item.json.message.text || \u0027\u0027).startsWith(\u0027/start\u0027) }) }}"
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       -720,
+                                       -480
+                                   ],
+                      "id":  "3006931c-f888-55b2-beeb-b70c23b09313",
+                      "name":  "Next step",
+                      "onError":  "continueRegularOutput",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_CORE_RO__",
+                                                           "name":  "Postgres core_ro (read-only)"
+                                                       }
+                                      }
+                  },
+                  {
+                      "parameters":  {
                                          "options":  {
                                                          "fallbackOutput":  "extra"
                                                      },
@@ -4138,7 +4162,7 @@
                                                                   "appendAttribution":  false
                                                               },
                                          "chatId":  "={{ $(\u0027Trigger normalize\u0027).item.json.message.chat.id }}",
-                                         "text":  "={{ (String((($(\u0027Resolve sender\u0027).item.json.t) || {})[\u0027core.welcome.member\u0027] || \u0027core.welcome.member\u0027)).replace(/[_*`[]/g, \u0027\\\\$\u0026\u0027) }}"
+                                         "text":  "={{ (String((($(\u0027Resolve sender\u0027).item.json.t) || {})[\u0027core.welcome.member\u0027] || \u0027core.welcome.member\u0027).replace(/\\{(\\w+)\\}/g, (m, k) =\u003e { const P = { \u0027example\u0027: (((($(\u0027Next step\u0027).item.json.step) || {}).example || ($(\u0027Resolve sender\u0027).item.json.t || {})[\u0027core.next_step.example_neutral\u0027] || \u0027\u0027)) }; return Object.keys(P).includes(k) ? String(P[k]) : m; })).replace(/[_*`[]/g, \u0027\\\\$\u0026\u0027) }}"
                                      },
                       "type":  "n8n-nodes-base.telegram",
                       "typeVersion":  1.2,
@@ -4507,7 +4531,7 @@
                                          "options":  {
                                                          "returnIntermediateSteps":  true,
                                                          "maxIterations":  6,
-                                                         "systemMessage":  "=\u003c\u003cla-wf:agent.orchestrator.main_route\u003e\u003e\n{{ $(\u0027Load Agent Context\u0027).item.json.system_prompt + \u0027\\n\\n## Runtime flags\\nfollowup_agent: \u0027 + (($(\u0027Followup pin\u0027).item.json.followup_agent) || \u0027none\u0027) + \u0027\\ninterview_advisor: \u0027 + (($(\u0027Interview pin\u0027).item.json.interview_advisor) || \u0027none\u0027) + \u0027\\nonboarding_in_progress: \u0027 + ($(\u0027Onboarding pin\u0027).item.json.onboarding_in_progress === true ? \u0027true\u0027 : \u0027false\u0027) + \u0027\\nCurrent user: \u0027 + (($(\u0027Resolve sender\u0027).item.json.sender || {}).full_name || \u0027unknown\u0027) + \u0027 (\u0027 + (($(\u0027Resolve sender\u0027).item.json.sender || {}).role || \u0027unknown\u0027) + \u0027)\u0027 + \u0027\\npersona: \u0027 + (($(\u0027Resolve sender\u0027).item.json.sender || {}).persona || \u0027neutral\u0027) + \u0027\\nuser_style: \u0027 + ($(\u0027Resolve sender\u0027).item.json.user_style || \u0027neutral\u0027) + \u0027\\ndaypart: \u0027 + ($(\u0027Resolve sender\u0027).item.json.daypart || \u0027day\u0027) }}"
+                                                         "systemMessage":  "=\u003c\u003cla-wf:agent.orchestrator.main_route\u003e\u003e\n{{ $(\u0027Load Agent Context\u0027).item.json.system_prompt + \u0027\\n\\n## Runtime flags\\nfollowup_agent: \u0027 + (($(\u0027Followup pin\u0027).item.json.followup_agent) || \u0027none\u0027) + \u0027\\ninterview_advisor: \u0027 + (($(\u0027Interview pin\u0027).item.json.interview_advisor) || \u0027none\u0027) + \u0027\\nonboarding_in_progress: \u0027 + ($(\u0027Onboarding pin\u0027).item.json.onboarding_in_progress === true ? \u0027true\u0027 : \u0027false\u0027) + \u0027\\nCurrent user: \u0027 + (($(\u0027Resolve sender\u0027).item.json.sender || {}).full_name || \u0027unknown\u0027) + \u0027 (\u0027 + (($(\u0027Resolve sender\u0027).item.json.sender || {}).role || \u0027unknown\u0027) + \u0027)\u0027 + \u0027\\npersona: \u0027 + (($(\u0027Resolve sender\u0027).item.json.sender || {}).persona || \u0027neutral\u0027) + \u0027\\nuser_style: \u0027 + ($(\u0027Resolve sender\u0027).item.json.user_style || \u0027neutral\u0027) + \u0027\\ndaypart: \u0027 + ($(\u0027Resolve sender\u0027).item.json.daypart || \u0027day\u0027) + \u0027\\nnext_step: \u0027 + ((($(\u0027Next step\u0027).item.json.step || {}).kind === \u0027section\u0027 || ($(\u0027Next step\u0027).item.json.step || {}).kind === \u0027plan\u0027) ? (\u0027\"\u0027 + String(($(\u0027Next step\u0027).item.json.step || {}).label || \u0027\u0027).replace(/[\\r\\n\"]+/g, \u0027 \u0027) + \u0027\"\u0027 + (($(\u0027Next step\u0027).item.json.step || {}).state === \u0027first\u0027 ? \u0027 (needed first, before the plan)\u0027 : (($(\u0027Next step\u0027).item.json.step || {}).kind === \u0027plan\u0027 ? \u0027 (the plan)\u0027 : \u0027 (setup area)\u0027))) : (($(\u0027Next step\u0027).item.json.step || {}).kind || \u0027none\u0027)) + \u0027\\noffer: \u0027 + (($(\u0027Next step\u0027).item.json.step || {}).offer === true ? \u0027yes\u0027 : \u0027no\u0027) + \u0027\\nnext_example: \u0027 + (($(\u0027Next step\u0027).item.json.step || {}).example ? (\u0027\"\u0027 + String(($(\u0027Next step\u0027).item.json.step || {}).example).replace(/[\\r\\n\"]+/g, \u0027 \u0027) + \u0027\"\u0027) : \u0027none\u0027) }}"
                                                      }
                                      },
                       "type":  "@n8n/n8n-nodes-langchain.agent",
@@ -4588,7 +4612,7 @@
                   },
                   {
                       "parameters":  {
-                                         "jsCode":  "// Agent-Fehler: der Fehler-Ausgang setzt \u0027Agent error reply\u0027 (step_limit = Meldung \u0027Max iterations\u0027); die Agent-Daten sind dann unbrauchbar.\nlet limitHit = false;\ntry { limitHit = $(\u0027Agent error reply\u0027).first().json.step_limit === true; } catch (e) { limitHit = false; }\nlet a = {};\nif (!limitHit) { try { a = $(\u0027Orchestrator agent\u0027).first().json || {}; } catch (e) { a = {}; } }\nconst steps = Array.isArray(a.intermediateSteps) ? a.intermediateSteps : [];\nconst rs = $(\u0027Resolve sender\u0027).first().json || {};\nconst T = rs.t || {};\nconst raw = String(a.output || \u0027\u0027).trim();\nconst nl = raw.indexOf(\u0027\\n\u0027);\nconst firstLine = (nl \u003c 0 ? raw : raw.slice(0, nl)).trim();\nconst afterFirst = (nl \u003c 0 ? \u0027\u0027 : raw.slice(nl + 1)).trim();\n// Signal = fuehrendes Wort (auch \"FRAME - und dann Prosa\" zaehlt; Review 2026-10-26).\nconst sm = raw.match(/^\\W*(NOFRAME|FRAME)\\b/i);\nconst signal = sm ? sm[1].toUpperCase() : \u0027\u0027;\n// Reine Signal-Zeile: das Signal, hoechstens gefolgt von einer Stimmung, sonst nur Satzzeichen/Markdown.\nconst MOOD_RE = /^(LOVE|CHEER|RELIEF|FUN)$/i;\nconst words = firstLine.replace(/[^A-Za-z]+/g, \u0027 \u0027).trim().split(\u0027 \u0027).filter(Boolean);\nconst signalLine = signal !== \u0027\u0027 \u0026\u0026 words.length \u003e= 1 \u0026\u0026 words[0].toUpperCase() === signal \u0026\u0026\n  (words.length === 1 || (words.length === 2 \u0026\u0026 MOOD_RE.test(words[1])));\nconst isSignal = signalLine \u0026\u0026 afterFirst === \u0027\u0027;\nconst isReact = !steps.length \u0026\u0026 /^\\W*REACT\\b/i.test(firstLine);\n// Stimmung nur aus der ersten Zeile und nur aus einer Signal-/REACT-Zeile; NOFRAME verwirft sie.\nconst mm = firstLine.match(/\\b(LOVE|CHEER|RELIEF|FUN)\\b/i);\nconst mood = (mm \u0026\u0026 (isReact || (signalLine \u0026\u0026 signal === \u0027FRAME\u0027))) ? mm[1].toUpperCase() : \u0027\u0027;\nconst textOf = (obs) =\u003e {\n  if (obs === null || obs === undefined) return \u0027\u0027;\n  let v = obs;\n  if (typeof v === \u0027string\u0027) {\n    const s = v.trim();\n    if (!s) return \u0027\u0027;\n    try { v = JSON.parse(s); } catch (e) { return \u0027\u0027; }\n  }\n  // Ein Werkzeug liefert immer JSON (\u0027[{\"output\":\"...\"}]\u0027); ein Nicht-JSON-String ist eine n8n-/Tool-Fehlermeldung\n  // (Stacktrace, Node-Namen) und gehoert nie in den Chat -\u003e verworfen.\n  if (typeof v === \u0027string\u0027) return \u0027\u0027;\n  const arr = Array.isArray(v) ? v : [v];\n  const outs = [];\n  for (const x of arr) {\n    if (typeof x === \u0027string\u0027) { if (x.trim()) outs.push(x.trim()); continue; }\n    if (x \u0026\u0026 typeof x === \u0027object\u0027) {\n      const o = (x.output !== undefined \u0026\u0026 x.output !== null) ? x.output : x.text;\n      if (typeof o === \u0027string\u0027 \u0026\u0026 o.trim()) outs.push(o.trim());\n    }\n  }\n  return outs.join(\u0027\\n\\n\u0027);\n};\nconst byTool = new Map();\nfor (const st of steps) {\n  const tool = String((st \u0026\u0026 st.action \u0026\u0026 st.action.tool) || \u0027\u0027);\n  const txt = textOf(st \u0026\u0026 st.observation);\n  if (!txt) continue;\n  if (byTool.has(tool)) byTool.delete(tool);\n  byTool.set(tool, txt);\n}\nconst parts = Array.from(byTool.values());\nlet body;\nlet reply_ok;\nif (parts.length) {\n  body = parts.join(\u0027\\n\\n\u0027);\n  reply_ok = true;\n} else if (isReact) {\n  // \u0027REACT \u003cMOOD\u003e\u0027 allein -\u003e leerer Body (die Reaktion ist die Antwort); mit Text -\u003e nur der Text.\n  body = afterFirst;\n  reply_ok = body !== \u0027\u0027 || mood !== \u0027\u0027;\n} else if (!steps.length \u0026\u0026 raw \u0026\u0026 !isSignal) {\n  body = raw;\n  reply_ok = true;\n} else {\n  // Werkzeug lief, lieferte aber nichts Brauchbares (Fehler/leer) -\u003e nie Router-Text (der koennte Daten erfinden);\n  // ohne Werkzeug nur ein Signal -\u003e ebenfalls der feste Hinweis.\n  body = limitHit ? (T[\u0027core.orch.step_limit\u0027] || \u0027core.orch.step_limit\u0027) : (T[\u0027core.orch.relay_empty\u0027] || \u0027core.orch.relay_empty\u0027);\n  reply_ok = false;\n}\n// Router memory signal: lief ein Werkzeug, gehoert ins Router-Gedaechtnis nur das Signal (nie eine eigene Fassung, die\n// der Nutzer nicht sah -- auch nicht beim festen Leer-Hinweis); ohne Werkzeug bleibt die Router-Antwort stehen (auch\n// \u0027REACT ...\u0027: so lernt der Router, dass reine Wertschaetzung eine Reaktion bekommt).\nconst memory_signal = steps.length ? (signal === \u0027FRAME\u0027 ? \u0027FRAME\u0027 : \u0027NOFRAME\u0027) : \u0027\u0027;\n// Eingaben fuer Claim expression: reply_ok=false = fester Leer-/Fehler-Hinweis -\u003e nie Sticker/Reaktion davor.\nreturn [{ json: { body, memory_signal, raw_output: String(a.output ?? \u0027\u0027), signal, mood, tool_called: steps.length \u003e 0,\n  reply_ok, react_only: isReact \u0026\u0026 body === \u0027\u0027 \u0026\u0026 mood !== \u0027\u0027, has_text: body !== \u0027\u0027, has_parts: parts.length \u003e 0 } }];"
+                                         "jsCode":  "// Agent-Fehler: der Fehler-Ausgang setzt \u0027Agent error reply\u0027 (step_limit = Meldung \u0027Max iterations\u0027); die Agent-Daten sind dann unbrauchbar.\nlet limitHit = false;\ntry { limitHit = $(\u0027Agent error reply\u0027).first().json.step_limit === true; } catch (e) { limitHit = false; }\nlet a = {};\nif (!limitHit) { try { a = $(\u0027Orchestrator agent\u0027).first().json || {}; } catch (e) { a = {}; } }\nconst steps = Array.isArray(a.intermediateSteps) ? a.intermediateSteps : [];\nconst rs = $(\u0027Resolve sender\u0027).first().json || {};\nconst T = rs.t || {};\n// Vorschlags-Marker (core.fn_get_next_step): eine Zeile NEXT_STEP wird VOR jedem Parsen entfernt; ein Knopf darf nur\n// kommen, wenn sie die letzte Zeile einer Quelle mit Marker-Recht war (Router ohne Werkzeug, Agenten aus MARK_AGENTS).\nconst MARK_RE = /^\\s*NEXT_STEP\\s*$/i;\nconst MARK_AGENTS = [\u0027guide\u0027];\nconst stripMarker = (s) =\u003e {\n  const ls = String(s || \u0027\u0027).split(\u0027\\n\u0027);\n  let last = ls.length - 1;\n  while (last \u003e= 0 \u0026\u0026 !ls[last].trim()) last--;\n  return { text: ls.filter((l) =\u003e !MARK_RE.test(l)).join(\u0027\\n\u0027).trim(), marked: last \u003e= 0 \u0026\u0026 MARK_RE.test(ls[last]) };\n};\nconst markRight = (tool) =\u003e { const t = String(tool || \u0027\u0027).replace(/[^a-z0-9]/gi, \u0027\u0027).toLowerCase(); return MARK_AGENTS.some((m) =\u003e t.endsWith(\u0027agent\u0027 + m)); };\nconst rawFull = String(a.output || \u0027\u0027).trim();\nconst rawM = stripMarker(rawFull);\nconst raw = rawM.text;\nconst nl = raw.indexOf(\u0027\\n\u0027);\nconst firstLine = (nl \u003c 0 ? raw : raw.slice(0, nl)).trim();\nconst afterFirst = (nl \u003c 0 ? \u0027\u0027 : raw.slice(nl + 1)).trim();\n// Signal = fuehrendes Wort (auch \"FRAME - und dann Prosa\" zaehlt; Review 2026-10-26).\nconst sm = raw.match(/^\\W*(NOFRAME|FRAME)\\b/i);\nconst signal = sm ? sm[1].toUpperCase() : \u0027\u0027;\n// Reine Signal-Zeile: das Signal, hoechstens gefolgt von einer Stimmung, sonst nur Satzzeichen/Markdown.\nconst MOOD_RE = /^(LOVE|CHEER|RELIEF|FUN)$/i;\nconst words = firstLine.replace(/[^A-Za-z]+/g, \u0027 \u0027).trim().split(\u0027 \u0027).filter(Boolean);\nconst signalLine = signal !== \u0027\u0027 \u0026\u0026 words.length \u003e= 1 \u0026\u0026 words[0].toUpperCase() === signal \u0026\u0026\n  (words.length === 1 || (words.length === 2 \u0026\u0026 MOOD_RE.test(words[1])));\nconst isSignal = signalLine \u0026\u0026 afterFirst === \u0027\u0027;\nconst isReact = !steps.length \u0026\u0026 /^\\W*REACT\\b/i.test(firstLine);\n// Stimmung nur aus der ersten Zeile und nur aus einer Signal-/REACT-Zeile; NOFRAME verwirft sie.\nconst mm = firstLine.match(/\\b(LOVE|CHEER|RELIEF|FUN)\\b/i);\nconst mood = (mm \u0026\u0026 (isReact || (signalLine \u0026\u0026 signal === \u0027FRAME\u0027))) ? mm[1].toUpperCase() : \u0027\u0027;\nconst textOf = (obs) =\u003e {\n  if (obs === null || obs === undefined) return \u0027\u0027;\n  let v = obs;\n  if (typeof v === \u0027string\u0027) {\n    const s = v.trim();\n    if (!s) return \u0027\u0027;\n    try { v = JSON.parse(s); } catch (e) { return \u0027\u0027; }\n  }\n  // Ein Werkzeug liefert immer JSON (\u0027[{\"output\":\"...\"}]\u0027); ein Nicht-JSON-String ist eine n8n-/Tool-Fehlermeldung\n  // (Stacktrace, Node-Namen) und gehoert nie in den Chat -\u003e verworfen.\n  if (typeof v === \u0027string\u0027) return \u0027\u0027;\n  const arr = Array.isArray(v) ? v : [v];\n  const outs = [];\n  for (const x of arr) {\n    if (typeof x === \u0027string\u0027) { if (x.trim()) outs.push(x.trim()); continue; }\n    if (x \u0026\u0026 typeof x === \u0027object\u0027) {\n      const o = (x.output !== undefined \u0026\u0026 x.output !== null) ? x.output : x.text;\n      if (typeof o === \u0027string\u0027 \u0026\u0026 o.trim()) outs.push(o.trim());\n    }\n  }\n  return outs.join(\u0027\\n\\n\u0027);\n};\nconst byTool = new Map();\nconst markedBy = new Map();\nfor (const st of steps) {\n  const tool = String((st \u0026\u0026 st.action \u0026\u0026 st.action.tool) || \u0027\u0027);\n  const sm = stripMarker(textOf(st \u0026\u0026 st.observation));\n  if (!sm.text) continue;\n  if (byTool.has(tool)) byTool.delete(tool);\n  byTool.set(tool, sm.text);\n  markedBy.set(tool, sm.marked \u0026\u0026 markRight(tool));\n}\nconst parts = Array.from(byTool.values());\nconst lastTool = Array.from(byTool.keys()).pop();\nlet body;\nlet reply_ok;\nif (parts.length) {\n  body = parts.join(\u0027\\n\\n\u0027);\n  reply_ok = true;\n} else if (isReact) {\n  // \u0027REACT \u003cMOOD\u003e\u0027 allein -\u003e leerer Body (die Reaktion ist die Antwort); mit Text -\u003e nur der Text.\n  body = afterFirst;\n  reply_ok = body !== \u0027\u0027 || mood !== \u0027\u0027;\n} else if (!steps.length \u0026\u0026 raw \u0026\u0026 !isSignal) {\n  body = raw;\n  reply_ok = true;\n} else {\n  // Werkzeug lief, lieferte aber nichts Brauchbares (Fehler/leer) -\u003e nie Router-Text (der koennte Daten erfinden);\n  // ohne Werkzeug nur ein Signal -\u003e ebenfalls der feste Hinweis.\n  body = limitHit ? (T[\u0027core.orch.step_limit\u0027] || \u0027core.orch.step_limit\u0027) : (T[\u0027core.orch.relay_empty\u0027] || \u0027core.orch.relay_empty\u0027);\n  reply_ok = false;\n}\n// Router memory signal: lief ein Werkzeug, gehoert ins Router-Gedaechtnis nur das Signal (nie eine eigene Fassung, die\n// der Nutzer nicht sah -- auch nicht beim festen Leer-Hinweis); ohne Werkzeug bleibt die Router-Antwort stehen (auch\n// \u0027REACT ...\u0027: so lernt der Router, dass reine Wertschaetzung eine Reaktion bekommt).\nconst memory_signal = steps.length ? (signal === \u0027FRAME\u0027 ? \u0027FRAME\u0027 : \u0027NOFRAME\u0027) : \u0027\u0027;\n// Ohne Werkzeug mit entferntem Marker: ins Gedaechtnis die bereinigte Fassung (sonst haengte der Router ihn kuenftig ueberall an).\nconst memory_content = (!steps.length \u0026\u0026 rawFull !== raw) ? raw : \u0027\u0027;\n// Knopf nur am letzten Teil einer Quelle mit Marker-Recht bzw. am eigenen Router-Satz; nie am festen Hinweis.\nconst next_marker = reply_ok \u0026\u0026 body !== \u0027\u0027 \u0026\u0026 (parts.length ? markedBy.get(lastTool) === true : (!steps.length \u0026\u0026 rawM.marked));\n// Eingaben fuer Claim expression: reply_ok=false = fester Leer-/Fehler-Hinweis -\u003e nie Sticker/Reaktion davor.\nreturn [{ json: { body, memory_signal, memory_content, next_marker, raw_output: String(a.output ?? \u0027\u0027), signal, mood, tool_called: steps.length \u003e 0,\n  reply_ok, react_only: isReact \u0026\u0026 body === \u0027\u0027 \u0026\u0026 mood !== \u0027\u0027, has_text: body !== \u0027\u0027, has_parts: parts.length \u003e 0 } }];"
                                      },
                       "type":  "n8n-nodes-base.code",
                       "typeVersion":  2,
@@ -4791,7 +4815,7 @@
                                          "operation":  "executeQuery",
                                          "query":  "SELECT agent.fn_set_router_memory_signal($1::jsonb) AS r;",
                                          "options":  {
-                                                         "queryReplacement":  "={{ JSON.stringify({ chat_id: String($(\u0027Trigger normalize\u0027).first().json.message.chat.id), raw: $(\u0027Relay compose\u0027).first().json.raw_output, signal: $(\u0027Relay compose\u0027).first().json.memory_signal }) }}"
+                                                         "queryReplacement":  "={{ JSON.stringify({ chat_id: String($(\u0027Trigger normalize\u0027).first().json.message.chat.id), raw: $(\u0027Relay compose\u0027).first().json.raw_output, signal: $(\u0027Relay compose\u0027).first().json.memory_signal, content: $(\u0027Relay compose\u0027).first().json.memory_content || \u0027\u0027 }) }}"
                                                      }
                                      },
                       "type":  "n8n-nodes-base.postgres",
@@ -4848,6 +4872,282 @@
                       "id":  "c0f2496f-466e-52ec-93c1-a492d7a9938c",
                       "name":  "Show thinking",
                       "onError":  "continueRegularOutput"
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "068f9222-f4e0-5e2a-95d0-c26dd173b5a3",
+                                                                                   "leftValue":  "={{ $(\u0027Relay compose\u0027).first().json.next_marker === true }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       2380,
+                                       -620
+                                   ],
+                      "id":  "a7197133-c77a-5407-951e-a5d5906a6fd4",
+                      "name":  "Next step marker?"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "WITH s AS (SELECT core.fn_get_next_step($1::jsonb) AS step) SELECT s.step, CASE WHEN s.step-\u003e\u003e\u0027button\u0027 IS NOT NULL AND s.step-\u003e\u003e\u0027callback\u0027 = ($1::jsonb)-\u003e\u003e\u0027pre_callback\u0027 AND (($1::jsonb)-\u003e\u003e\u0027fits\u0027)::boolean THEN core.fn_claim_next_step_offer(jsonb_build_object(\u0027chat_id\u0027, ($1::jsonb)-\u003e\u003e\u0027chat_id\u0027, \u0027callback\u0027, s.step-\u003e\u003e\u0027callback\u0027, \u0027state\u0027, s.step-\u003e\u003e\u0027state\u0027, \u0027generation\u0027, s.step-\u003e\u0027generation\u0027, \u0027smalltalk\u0027, ($1::jsonb)-\u003e\u003e\u0027smalltalk\u0027)) ELSE false END AS show FROM s;",
+                                         "options":  {
+                                                         "queryReplacement":  "={{ JSON.stringify({ chat_id: String($(\u0027Trigger normalize\u0027).first().json.message.chat.id), order: [\u0027core:household\u0027, \u0027finance:accounts\u0027, \u0027finance:investments\u0027, \u0027finance:liabilities\u0027, \u0027finance:protection\u0027, \u0027finance:emergency_reserve\u0027, \u0027finance:goals\u0027, \u0027finance:monthly_check\u0027, \u0027estate:documents\u0027, \u0027estate:insurance_check\u0027, \u0027estate:contracts\u0027, \u0027estate:digital_accounts\u0027, \u0027estate:contacts\u0027, \u0027estate:wishes\u0027, \u0027estate:system_profile\u0027, \u0027career:profile_basics\u0027, \u0027career:skills_overview\u0027, \u0027career:goals_targets\u0027], plan_order: [\u0027finance\u0027, \u0027career\u0027], smalltalk: String($(\u0027Resolve sender\u0027).first().json.smalltalk || \u0027\u0027), pre_callback: String((($(\u0027Next step\u0027).first().json.step) || {}).callback || \u0027\u0027), fits: String((((($(\u0027Claim expression\u0027).first().json.frame_r || {}).text || \u0027\u0027) ? (($(\u0027Claim expression\u0027).first().json.frame_r || {}).text || \u0027\u0027) + \u0027\\n\\n\u0027 : \u0027\u0027) + ($(\u0027Relay compose\u0027).first().json.body || \u0027\u0027))).length \u003c= 3500 }) }}"
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       2600,
+                                       -620
+                                   ],
+                      "id":  "2b0d93f5-a0ea-5993-9b32-414e6156ee34",
+                      "name":  "Next step at send",
+                      "onError":  "continueRegularOutput",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_WRITE__",
+                                                           "name":  "Postgres account"
+                                                       }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "7270c8d7-3655-50d5-bdc3-6835728e658e",
+                                                                                   "leftValue":  "={{ $(\u0027Next step at send\u0027).first().json.show === true }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       2820,
+                                       -620
+                                   ],
+                      "id":  "dc4bb8fe-65fd-559f-9d01-df7ff91efd4e",
+                      "name":  "Show next step?"
+                  },
+                  {
+                      "parameters":  {
+                                         "additionalFields":  {
+                                                                  "appendAttribution":  false,
+                                                                  "parse_mode":  "HTML"
+                                                              },
+                                         "chatId":  "={{ $(\u0027Trigger normalize\u0027).first().json.message.chat.id }}",
+                                         "text":  "={{ String((((($(\u0027Claim expression\u0027).first().json.frame_r || {}).text || \u0027\u0027) ? (($(\u0027Claim expression\u0027).first().json.frame_r || {}).text || \u0027\u0027) + \u0027\\n\\n\u0027 : \u0027\u0027) + ($(\u0027Relay compose\u0027).first().json.body || \u0027\u0027)) || \u0027\u0027).replace(/\u0026/g, \u0027\u0026amp;\u0027).replace(/\u003c/g, \u0027\u0026lt;\u0027).replace(/\u003e/g, \u0027\u0026gt;\u0027) }}",
+                                         "replyMarkup":  "inlineKeyboard",
+                                         "inlineKeyboard":  {
+                                                                "rows":  [
+                                                                             {
+                                                                                 "row":  {
+                                                                                             "buttons":  [
+                                                                                                             {
+                                                                                                                 "text":  "={{ ($(\u0027Next step at send\u0027).first().json.step || {}).button }}",
+                                                                                                                 "additionalFields":  {
+                                                                                                                                          "callback_data":  "={{ ($(\u0027Next step at send\u0027).first().json.step || {}).data }}"
+                                                                                                                                      }
+                                                                                                             }
+                                                                                                         ]
+                                                                                         }
+                                                                             }
+                                                                         ]
+                                                            }
+                                     },
+                      "type":  "n8n-nodes-base.telegram",
+                      "typeVersion":  1.2,
+                      "position":  [
+                                       3040,
+                                       -620
+                                   ],
+                      "id":  "91676181-b84d-532e-acd2-85083f150de6",
+                      "name":  "Send with next step",
+                      "retryOnFail":  true,
+                      "maxTries":  1,
+                      "waitBetweenTries":  2000,
+                      "credentials":  {
+                                          "telegramApi":  {
+                                                              "id":  "__CRED_TELEGRAM__",
+                                                              "name":  "Telegram account"
+                                                          }
+                                      },
+                      "onError":  "continueErrorOutput"
+                  },
+                  {
+                      "parameters":  {
+                                         "content":  "## Ablauf\n**Vorschlag mit Knopf (DB bestimmt den Schritt, das Modell formuliert nur)**\n\nNext step (nach Onboarding pin, core_ro) liest core.fn_get_next_step: Schritt (offener Einrichtungs-Abschnitt laut Menü-Reihenfolge, für Mitglieder nur per_user-Abschnitte ihrer Rolle (for_roles), dann für den Owner der erste offene Plan, sonst none/wait), Beispielfrage und offer (darf jetzt ein Vorschlag mit Knopf kommen). Die Flags next_step/offer/next_example stehen am Ende des Router-Prompts (Regel 8). Bei Gruß, Lebenszeichen und und-jetzt antwortet der Router mit einem Satz und der letzten Zeile NEXT_STEP. Relay compose entfernt die Zeile vor jedem Parsen (auch aus Spezialisten-Teilen) und setzt next_marker nur für die letzte Zeile einer Quelle mit Marker-Recht (Router ohne Werkzeug, Hilfe-Agent). Jede andere Sende-Kette entfernt die Zeile in New-TelegramRelayChain. Next step marker? -\u003e Next step at send liest den Schritt neu (hat der Lauf selbst einen Abschnitt geschlossen, kam schon die Fortschritts-Karte mit Weiter-Knopf -\u003e anderer callback = kein zweiter Knopf) und zählt den Vorschlag über core.fn_claim_next_step_offer (1x je Tag bei Gruß/Lebenszeichen, 3x je Schritt und Lage, Werte in core.config next_step.*). Show next step? -\u003e Send with next step (ein Knopf, HTML-Plain); jedes Nein und der Fehler-Ausgang -\u003e normale Relay-Kette ohne Knopf. Bewusst hingenommen: meldet der Knopf-Send einen Fehler, obwohl Telegram die Nachricht zugestellt hat, kommt der Text doppelt; zwei fast gleichzeitige Grüße -\u003e der zweite Satz ohne Knopf. Ein Tipp auf einen Vorschlags-Knopf (Suffix :next) läuft über Next step tap (core.fn_check_next_step_tap): veraltet -\u003e Toast + Übersicht statt einen erledigten Abschnitt neu zu starten.",
+                                         "height":  380,
+                                         "width":  640,
+                                         "color":  4
+                                     },
+                      "type":  "n8n-nodes-base.stickyNote",
+                      "typeVersion":  1,
+                      "position":  [
+                                       2380,
+                                       -1000
+                                   ],
+                      "id":  "5dac72b2-ef4c-5557-b0a2-cd261efc1b82",
+                      "name":  "Doc: Naechster Schritt"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "SELECT core.fn_check_next_step_tap($1::jsonb) AS r;",
+                                         "options":  {
+                                                         "queryReplacement":  "={{ JSON.stringify({ chat_id: String(($(\u0027Trigger normalize\u0027).item.json.callback_query.from || {}).id || \u0027\u0027), data: String($(\u0027Trigger normalize\u0027).item.json.callback_query.data || \u0027\u0027), order: [\u0027core:household\u0027, \u0027finance:accounts\u0027, \u0027finance:investments\u0027, \u0027finance:liabilities\u0027, \u0027finance:protection\u0027, \u0027finance:emergency_reserve\u0027, \u0027finance:goals\u0027, \u0027finance:monthly_check\u0027, \u0027estate:documents\u0027, \u0027estate:insurance_check\u0027, \u0027estate:contracts\u0027, \u0027estate:digital_accounts\u0027, \u0027estate:contacts\u0027, \u0027estate:wishes\u0027, \u0027estate:system_profile\u0027, \u0027career:profile_basics\u0027, \u0027career:skills_overview\u0027, \u0027career:goals_targets\u0027], plan_order: [\u0027finance\u0027, \u0027career\u0027] }) }}"
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       -1060,
+                                       1680
+                                   ],
+                      "id":  "327bf5dd-6a05-5dd1-a628-178088c6352a",
+                      "name":  "Next step tap",
+                      "onError":  "continueRegularOutput",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_WRITE__",
+                                                           "name":  "Postgres account"
+                                                       }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "1d2eed55-a5b7-5892-8bfc-714e4bda43a7",
+                                                                                   "leftValue":  "={{ (($(\u0027Next step tap\u0027).item.json.r) || {}).ok !== false }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       -950,
+                                       1840
+                                   ],
+                      "id":  "5fb80bf6-5806-5bdc-a32c-79c211f34ef2",
+                      "name":  "Next step tap ok?"
+                  },
+                  {
+                      "parameters":  {
+                                         "resource":  "callback",
+                                         "operation":  "answerQuery",
+                                         "queryId":  "={{ $(\u0027Trigger normalize\u0027).item.json.callback_query.id }}",
+                                         "additionalFields":  {
+                                                                  "text":  "={{ (($(\u0027Next step tap\u0027).item.json.r) || {}).toast || \u0027\u0027 }}"
+                                                              }
+                                     },
+                      "type":  "n8n-nodes-base.telegram",
+                      "typeVersion":  1.2,
+                      "position":  [
+                                       -840,
+                                       2000
+                                   ],
+                      "id":  "50ed640a-71a3-5f5d-bd56-126ef4b581e2",
+                      "name":  "Answer stale step",
+                      "retryOnFail":  true,
+                      "maxTries":  3,
+                      "waitBetweenTries":  2000,
+                      "credentials":  {
+                                          "telegramApi":  {
+                                                              "id":  "__CRED_TELEGRAM__",
+                                                              "name":  "Telegram account"
+                                                          }
+                                      },
+                      "onError":  "continueRegularOutput"
+                  },
+                  {
+                      "parameters":  {
+                                         "workflowId":  {
+                                                            "__rl":  true,
+                                                            "value":  "ro7HT6tcwiRNCBhb",
+                                                            "mode":  "list",
+                                                            "cachedResultUrl":  "/workflow/ro7HT6tcwiRNCBhb",
+                                                            "cachedResultName":  "core.sub_send_onboarding_menu"
+                                                        },
+                                         "workflowInputs":  {
+                                                                "mappingMode":  "defineBelow",
+                                                                "value":  {
+                                                                              "chat_id":  "={{ String($(\u0027Trigger normalize\u0027).item.json.callback_query.message.chat.id) }}",
+                                                                              "area":  ""
+                                                                          },
+                                                                "matchingColumns":  [
+
+                                                                                    ],
+                                                                "schema":  [
+
+                                                                           ],
+                                                                "attemptToConvertTypes":  false,
+                                                                "convertFieldsToString":  true
+                                                            },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.executeWorkflow",
+                      "typeVersion":  1.2,
+                      "position":  [
+                                       -620,
+                                       2000
+                                   ],
+                      "id":  "7e14a4e3-8b9c-51de-a943-02c3cea6b311",
+                      "name":  "Send stale overview"
                   },
                   {
                       "parameters":  {
@@ -5812,7 +6112,7 @@
                   },
                   {
                       "parameters":  {
-                                         "jsCode":  "const body = String(($(\u0027Run onboarding finance\u0027).first().json.output) || (\u0027\u0027) || \u0027\u0027);\nconst LIMIT = 3500;\nconst chunks = [];\nlet cur = \u0027\u0027;\nconst push = (s) =\u003e { if (s.trim()) chunks.push(s); };\nfor (const para of body.split(\u0027\\n\\n\u0027)) {\n  const add = cur ? cur + \u0027\\n\\n\u0027 + para : para;\n  if (add.length \u003c= LIMIT) { cur = add; continue; }\n  push(cur); cur = \u0027\u0027;\n  let rest = para;\n  while (rest.length \u003e LIMIT) {\n    let cut = rest.lastIndexOf(\u0027\\n\u0027, LIMIT);\n    if (cut \u003c LIMIT / 2) cut = rest.lastIndexOf(\u0027 \u0027, LIMIT);\n    if (cut \u003c LIMIT / 2) cut = LIMIT;\n    push(rest.slice(0, cut)); rest = rest.slice(cut).replace(/^\\s+/, \u0027\u0027);\n  }\n  cur = rest;\n}\npush(cur);\nconst esc = (s) =\u003e s.replace(/\u0026/g, \u0027\u0026amp;\u0027).replace(/\u003c/g, \u0027\u0026lt;\u0027).replace(/\u003e/g, \u0027\u0026gt;\u0027);\nreturn chunks.map((c, i) =\u003e ({ json: { text: esc(c), part: i + 1, parts: chunks.length } }));"
+                                         "jsCode":  "const body = String(($(\u0027Run onboarding finance\u0027).first().json.output) || (\u0027\u0027) || \u0027\u0027).split(\u0027\\n\u0027).filter((l) =\u003e !/^\\s*NEXT_STEP\\s*$/.test(l)).join(\u0027\\n\u0027).trim();\nconst LIMIT = 3500;\nconst chunks = [];\nlet cur = \u0027\u0027;\nconst push = (s) =\u003e { if (s.trim()) chunks.push(s); };\nfor (const para of body.split(\u0027\\n\\n\u0027)) {\n  const add = cur ? cur + \u0027\\n\\n\u0027 + para : para;\n  if (add.length \u003c= LIMIT) { cur = add; continue; }\n  push(cur); cur = \u0027\u0027;\n  let rest = para;\n  while (rest.length \u003e LIMIT) {\n    let cut = rest.lastIndexOf(\u0027\\n\u0027, LIMIT);\n    if (cut \u003c LIMIT / 2) cut = rest.lastIndexOf(\u0027 \u0027, LIMIT);\n    if (cut \u003c LIMIT / 2) cut = LIMIT;\n    push(rest.slice(0, cut)); rest = rest.slice(cut).replace(/^\\s+/, \u0027\u0027);\n  }\n  cur = rest;\n}\npush(cur);\nconst esc = (s) =\u003e s.replace(/\u0026/g, \u0027\u0026amp;\u0027).replace(/\u003c/g, \u0027\u0026lt;\u0027).replace(/\u003e/g, \u0027\u0026gt;\u0027);\nreturn chunks.map((c, i) =\u003e ({ json: { text: esc(c), part: i + 1, parts: chunks.length } }));"
                                      },
                       "type":  "n8n-nodes-base.code",
                       "typeVersion":  2,
@@ -5936,7 +6236,7 @@
                   },
                   {
                       "parameters":  {
-                                         "jsCode":  "const body = String(($(\u0027Run onboarding estate\u0027).first().json.output) || (\u0027\u0027) || \u0027\u0027);\nconst LIMIT = 3500;\nconst chunks = [];\nlet cur = \u0027\u0027;\nconst push = (s) =\u003e { if (s.trim()) chunks.push(s); };\nfor (const para of body.split(\u0027\\n\\n\u0027)) {\n  const add = cur ? cur + \u0027\\n\\n\u0027 + para : para;\n  if (add.length \u003c= LIMIT) { cur = add; continue; }\n  push(cur); cur = \u0027\u0027;\n  let rest = para;\n  while (rest.length \u003e LIMIT) {\n    let cut = rest.lastIndexOf(\u0027\\n\u0027, LIMIT);\n    if (cut \u003c LIMIT / 2) cut = rest.lastIndexOf(\u0027 \u0027, LIMIT);\n    if (cut \u003c LIMIT / 2) cut = LIMIT;\n    push(rest.slice(0, cut)); rest = rest.slice(cut).replace(/^\\s+/, \u0027\u0027);\n  }\n  cur = rest;\n}\npush(cur);\nconst esc = (s) =\u003e s.replace(/\u0026/g, \u0027\u0026amp;\u0027).replace(/\u003c/g, \u0027\u0026lt;\u0027).replace(/\u003e/g, \u0027\u0026gt;\u0027);\nreturn chunks.map((c, i) =\u003e ({ json: { text: esc(c), part: i + 1, parts: chunks.length } }));"
+                                         "jsCode":  "const body = String(($(\u0027Run onboarding estate\u0027).first().json.output) || (\u0027\u0027) || \u0027\u0027).split(\u0027\\n\u0027).filter((l) =\u003e !/^\\s*NEXT_STEP\\s*$/.test(l)).join(\u0027\\n\u0027).trim();\nconst LIMIT = 3500;\nconst chunks = [];\nlet cur = \u0027\u0027;\nconst push = (s) =\u003e { if (s.trim()) chunks.push(s); };\nfor (const para of body.split(\u0027\\n\\n\u0027)) {\n  const add = cur ? cur + \u0027\\n\\n\u0027 + para : para;\n  if (add.length \u003c= LIMIT) { cur = add; continue; }\n  push(cur); cur = \u0027\u0027;\n  let rest = para;\n  while (rest.length \u003e LIMIT) {\n    let cut = rest.lastIndexOf(\u0027\\n\u0027, LIMIT);\n    if (cut \u003c LIMIT / 2) cut = rest.lastIndexOf(\u0027 \u0027, LIMIT);\n    if (cut \u003c LIMIT / 2) cut = LIMIT;\n    push(rest.slice(0, cut)); rest = rest.slice(cut).replace(/^\\s+/, \u0027\u0027);\n  }\n  cur = rest;\n}\npush(cur);\nconst esc = (s) =\u003e s.replace(/\u0026/g, \u0027\u0026amp;\u0027).replace(/\u003c/g, \u0027\u0026lt;\u0027).replace(/\u003e/g, \u0027\u0026gt;\u0027);\nreturn chunks.map((c, i) =\u003e ({ json: { text: esc(c), part: i + 1, parts: chunks.length } }));"
                                      },
                       "type":  "n8n-nodes-base.code",
                       "typeVersion":  2,
@@ -6060,7 +6360,7 @@
                   },
                   {
                       "parameters":  {
-                                         "jsCode":  "const body = String(($(\u0027Run onboarding career\u0027).first().json.output) || (\u0027\u0027) || \u0027\u0027);\nconst LIMIT = 3500;\nconst chunks = [];\nlet cur = \u0027\u0027;\nconst push = (s) =\u003e { if (s.trim()) chunks.push(s); };\nfor (const para of body.split(\u0027\\n\\n\u0027)) {\n  const add = cur ? cur + \u0027\\n\\n\u0027 + para : para;\n  if (add.length \u003c= LIMIT) { cur = add; continue; }\n  push(cur); cur = \u0027\u0027;\n  let rest = para;\n  while (rest.length \u003e LIMIT) {\n    let cut = rest.lastIndexOf(\u0027\\n\u0027, LIMIT);\n    if (cut \u003c LIMIT / 2) cut = rest.lastIndexOf(\u0027 \u0027, LIMIT);\n    if (cut \u003c LIMIT / 2) cut = LIMIT;\n    push(rest.slice(0, cut)); rest = rest.slice(cut).replace(/^\\s+/, \u0027\u0027);\n  }\n  cur = rest;\n}\npush(cur);\nconst esc = (s) =\u003e s.replace(/\u0026/g, \u0027\u0026amp;\u0027).replace(/\u003c/g, \u0027\u0026lt;\u0027).replace(/\u003e/g, \u0027\u0026gt;\u0027);\nreturn chunks.map((c, i) =\u003e ({ json: { text: esc(c), part: i + 1, parts: chunks.length } }));"
+                                         "jsCode":  "const body = String(($(\u0027Run onboarding career\u0027).first().json.output) || (\u0027\u0027) || \u0027\u0027).split(\u0027\\n\u0027).filter((l) =\u003e !/^\\s*NEXT_STEP\\s*$/.test(l)).join(\u0027\\n\u0027).trim();\nconst LIMIT = 3500;\nconst chunks = [];\nlet cur = \u0027\u0027;\nconst push = (s) =\u003e { if (s.trim()) chunks.push(s); };\nfor (const para of body.split(\u0027\\n\\n\u0027)) {\n  const add = cur ? cur + \u0027\\n\\n\u0027 + para : para;\n  if (add.length \u003c= LIMIT) { cur = add; continue; }\n  push(cur); cur = \u0027\u0027;\n  let rest = para;\n  while (rest.length \u003e LIMIT) {\n    let cut = rest.lastIndexOf(\u0027\\n\u0027, LIMIT);\n    if (cut \u003c LIMIT / 2) cut = rest.lastIndexOf(\u0027 \u0027, LIMIT);\n    if (cut \u003c LIMIT / 2) cut = LIMIT;\n    push(rest.slice(0, cut)); rest = rest.slice(cut).replace(/^\\s+/, \u0027\u0027);\n  }\n  cur = rest;\n}\npush(cur);\nconst esc = (s) =\u003e s.replace(/\u0026/g, \u0027\u0026amp;\u0027).replace(/\u003c/g, \u0027\u0026lt;\u0027).replace(/\u003e/g, \u0027\u0026gt;\u0027);\nreturn chunks.map((c, i) =\u003e ({ json: { text: esc(c), part: i + 1, parts: chunks.length } }));"
                                      },
                       "type":  "n8n-nodes-base.code",
                       "typeVersion":  2,
@@ -6456,7 +6756,7 @@
                   },
                   {
                       "parameters":  {
-                                         "jsCode":  "const body = String(($(\u0027Run plan finance\u0027).first().json.output) || (\u0027\u0027) || \u0027\u0027);\nconst LIMIT = 3500;\nconst chunks = [];\nlet cur = \u0027\u0027;\nconst push = (s) =\u003e { if (s.trim()) chunks.push(s); };\nfor (const para of body.split(\u0027\\n\\n\u0027)) {\n  const add = cur ? cur + \u0027\\n\\n\u0027 + para : para;\n  if (add.length \u003c= LIMIT) { cur = add; continue; }\n  push(cur); cur = \u0027\u0027;\n  let rest = para;\n  while (rest.length \u003e LIMIT) {\n    let cut = rest.lastIndexOf(\u0027\\n\u0027, LIMIT);\n    if (cut \u003c LIMIT / 2) cut = rest.lastIndexOf(\u0027 \u0027, LIMIT);\n    if (cut \u003c LIMIT / 2) cut = LIMIT;\n    push(rest.slice(0, cut)); rest = rest.slice(cut).replace(/^\\s+/, \u0027\u0027);\n  }\n  cur = rest;\n}\npush(cur);\nconst esc = (s) =\u003e s.replace(/\u0026/g, \u0027\u0026amp;\u0027).replace(/\u003c/g, \u0027\u0026lt;\u0027).replace(/\u003e/g, \u0027\u0026gt;\u0027);\nreturn chunks.map((c, i) =\u003e ({ json: { text: esc(c), part: i + 1, parts: chunks.length } }));"
+                                         "jsCode":  "const body = String(($(\u0027Run plan finance\u0027).first().json.output) || (\u0027\u0027) || \u0027\u0027).split(\u0027\\n\u0027).filter((l) =\u003e !/^\\s*NEXT_STEP\\s*$/.test(l)).join(\u0027\\n\u0027).trim();\nconst LIMIT = 3500;\nconst chunks = [];\nlet cur = \u0027\u0027;\nconst push = (s) =\u003e { if (s.trim()) chunks.push(s); };\nfor (const para of body.split(\u0027\\n\\n\u0027)) {\n  const add = cur ? cur + \u0027\\n\\n\u0027 + para : para;\n  if (add.length \u003c= LIMIT) { cur = add; continue; }\n  push(cur); cur = \u0027\u0027;\n  let rest = para;\n  while (rest.length \u003e LIMIT) {\n    let cut = rest.lastIndexOf(\u0027\\n\u0027, LIMIT);\n    if (cut \u003c LIMIT / 2) cut = rest.lastIndexOf(\u0027 \u0027, LIMIT);\n    if (cut \u003c LIMIT / 2) cut = LIMIT;\n    push(rest.slice(0, cut)); rest = rest.slice(cut).replace(/^\\s+/, \u0027\u0027);\n  }\n  cur = rest;\n}\npush(cur);\nconst esc = (s) =\u003e s.replace(/\u0026/g, \u0027\u0026amp;\u0027).replace(/\u003c/g, \u0027\u0026lt;\u0027).replace(/\u003e/g, \u0027\u0026gt;\u0027);\nreturn chunks.map((c, i) =\u003e ({ json: { text: esc(c), part: i + 1, parts: chunks.length } }));"
                                      },
                       "type":  "n8n-nodes-base.code",
                       "typeVersion":  2,
@@ -6580,7 +6880,7 @@
                   },
                   {
                       "parameters":  {
-                                         "jsCode":  "const body = String(($(\u0027Run plan career\u0027).first().json.output) || (\u0027\u0027) || \u0027\u0027);\nconst LIMIT = 3500;\nconst chunks = [];\nlet cur = \u0027\u0027;\nconst push = (s) =\u003e { if (s.trim()) chunks.push(s); };\nfor (const para of body.split(\u0027\\n\\n\u0027)) {\n  const add = cur ? cur + \u0027\\n\\n\u0027 + para : para;\n  if (add.length \u003c= LIMIT) { cur = add; continue; }\n  push(cur); cur = \u0027\u0027;\n  let rest = para;\n  while (rest.length \u003e LIMIT) {\n    let cut = rest.lastIndexOf(\u0027\\n\u0027, LIMIT);\n    if (cut \u003c LIMIT / 2) cut = rest.lastIndexOf(\u0027 \u0027, LIMIT);\n    if (cut \u003c LIMIT / 2) cut = LIMIT;\n    push(rest.slice(0, cut)); rest = rest.slice(cut).replace(/^\\s+/, \u0027\u0027);\n  }\n  cur = rest;\n}\npush(cur);\nconst esc = (s) =\u003e s.replace(/\u0026/g, \u0027\u0026amp;\u0027).replace(/\u003c/g, \u0027\u0026lt;\u0027).replace(/\u003e/g, \u0027\u0026gt;\u0027);\nreturn chunks.map((c, i) =\u003e ({ json: { text: esc(c), part: i + 1, parts: chunks.length } }));"
+                                         "jsCode":  "const body = String(($(\u0027Run plan career\u0027).first().json.output) || (\u0027\u0027) || \u0027\u0027).split(\u0027\\n\u0027).filter((l) =\u003e !/^\\s*NEXT_STEP\\s*$/.test(l)).join(\u0027\\n\u0027).trim();\nconst LIMIT = 3500;\nconst chunks = [];\nlet cur = \u0027\u0027;\nconst push = (s) =\u003e { if (s.trim()) chunks.push(s); };\nfor (const para of body.split(\u0027\\n\\n\u0027)) {\n  const add = cur ? cur + \u0027\\n\\n\u0027 + para : para;\n  if (add.length \u003c= LIMIT) { cur = add; continue; }\n  push(cur); cur = \u0027\u0027;\n  let rest = para;\n  while (rest.length \u003e LIMIT) {\n    let cut = rest.lastIndexOf(\u0027\\n\u0027, LIMIT);\n    if (cut \u003c LIMIT / 2) cut = rest.lastIndexOf(\u0027 \u0027, LIMIT);\n    if (cut \u003c LIMIT / 2) cut = LIMIT;\n    push(rest.slice(0, cut)); rest = rest.slice(cut).replace(/^\\s+/, \u0027\u0027);\n  }\n  cur = rest;\n}\npush(cur);\nconst esc = (s) =\u003e s.replace(/\u0026/g, \u0027\u0026amp;\u0027).replace(/\u003c/g, \u0027\u0026lt;\u0027).replace(/\u003e/g, \u0027\u0026gt;\u0027);\nreturn chunks.map((c, i) =\u003e ({ json: { text: esc(c), part: i + 1, parts: chunks.length } }));"
                                      },
                       "type":  "n8n-nodes-base.code",
                       "typeVersion":  2,
@@ -6704,7 +7004,7 @@
                   },
                   {
                       "parameters":  {
-                                         "jsCode":  "const body = String(($(\u0027Run plan general\u0027).first().json.output) || (\u0027\u0027) || \u0027\u0027);\nconst LIMIT = 3500;\nconst chunks = [];\nlet cur = \u0027\u0027;\nconst push = (s) =\u003e { if (s.trim()) chunks.push(s); };\nfor (const para of body.split(\u0027\\n\\n\u0027)) {\n  const add = cur ? cur + \u0027\\n\\n\u0027 + para : para;\n  if (add.length \u003c= LIMIT) { cur = add; continue; }\n  push(cur); cur = \u0027\u0027;\n  let rest = para;\n  while (rest.length \u003e LIMIT) {\n    let cut = rest.lastIndexOf(\u0027\\n\u0027, LIMIT);\n    if (cut \u003c LIMIT / 2) cut = rest.lastIndexOf(\u0027 \u0027, LIMIT);\n    if (cut \u003c LIMIT / 2) cut = LIMIT;\n    push(rest.slice(0, cut)); rest = rest.slice(cut).replace(/^\\s+/, \u0027\u0027);\n  }\n  cur = rest;\n}\npush(cur);\nconst esc = (s) =\u003e s.replace(/\u0026/g, \u0027\u0026amp;\u0027).replace(/\u003c/g, \u0027\u0026lt;\u0027).replace(/\u003e/g, \u0027\u0026gt;\u0027);\nreturn chunks.map((c, i) =\u003e ({ json: { text: esc(c), part: i + 1, parts: chunks.length } }));"
+                                         "jsCode":  "const body = String(($(\u0027Run plan general\u0027).first().json.output) || (\u0027\u0027) || \u0027\u0027).split(\u0027\\n\u0027).filter((l) =\u003e !/^\\s*NEXT_STEP\\s*$/.test(l)).join(\u0027\\n\u0027).trim();\nconst LIMIT = 3500;\nconst chunks = [];\nlet cur = \u0027\u0027;\nconst push = (s) =\u003e { if (s.trim()) chunks.push(s); };\nfor (const para of body.split(\u0027\\n\\n\u0027)) {\n  const add = cur ? cur + \u0027\\n\\n\u0027 + para : para;\n  if (add.length \u003c= LIMIT) { cur = add; continue; }\n  push(cur); cur = \u0027\u0027;\n  let rest = para;\n  while (rest.length \u003e LIMIT) {\n    let cut = rest.lastIndexOf(\u0027\\n\u0027, LIMIT);\n    if (cut \u003c LIMIT / 2) cut = rest.lastIndexOf(\u0027 \u0027, LIMIT);\n    if (cut \u003c LIMIT / 2) cut = LIMIT;\n    push(rest.slice(0, cut)); rest = rest.slice(cut).replace(/^\\s+/, \u0027\u0027);\n  }\n  cur = rest;\n}\npush(cur);\nconst esc = (s) =\u003e s.replace(/\u0026/g, \u0027\u0026amp;\u0027).replace(/\u003c/g, \u0027\u0026lt;\u0027).replace(/\u003e/g, \u0027\u0026gt;\u0027);\nreturn chunks.map((c, i) =\u003e ({ json: { text: esc(c), part: i + 1, parts: chunks.length } }));"
                                      },
                       "type":  "n8n-nodes-base.code",
                       "typeVersion":  2,
@@ -7129,7 +7429,7 @@
                   },
                   {
                       "parameters":  {
-                                         "jsCode":  "const body = String(($(\u0027Run handoff finance\u0027).first().json.output) || (\u0027\u0027) || \u0027\u0027);\nconst LIMIT = 3500;\nconst chunks = [];\nlet cur = \u0027\u0027;\nconst push = (s) =\u003e { if (s.trim()) chunks.push(s); };\nfor (const para of body.split(\u0027\\n\\n\u0027)) {\n  const add = cur ? cur + \u0027\\n\\n\u0027 + para : para;\n  if (add.length \u003c= LIMIT) { cur = add; continue; }\n  push(cur); cur = \u0027\u0027;\n  let rest = para;\n  while (rest.length \u003e LIMIT) {\n    let cut = rest.lastIndexOf(\u0027\\n\u0027, LIMIT);\n    if (cut \u003c LIMIT / 2) cut = rest.lastIndexOf(\u0027 \u0027, LIMIT);\n    if (cut \u003c LIMIT / 2) cut = LIMIT;\n    push(rest.slice(0, cut)); rest = rest.slice(cut).replace(/^\\s+/, \u0027\u0027);\n  }\n  cur = rest;\n}\npush(cur);\nconst esc = (s) =\u003e s.replace(/\u0026/g, \u0027\u0026amp;\u0027).replace(/\u003c/g, \u0027\u0026lt;\u0027).replace(/\u003e/g, \u0027\u0026gt;\u0027);\nreturn chunks.map((c, i) =\u003e ({ json: { text: esc(c), part: i + 1, parts: chunks.length } }));"
+                                         "jsCode":  "const body = String(($(\u0027Run handoff finance\u0027).first().json.output) || (\u0027\u0027) || \u0027\u0027).split(\u0027\\n\u0027).filter((l) =\u003e !/^\\s*NEXT_STEP\\s*$/.test(l)).join(\u0027\\n\u0027).trim();\nconst LIMIT = 3500;\nconst chunks = [];\nlet cur = \u0027\u0027;\nconst push = (s) =\u003e { if (s.trim()) chunks.push(s); };\nfor (const para of body.split(\u0027\\n\\n\u0027)) {\n  const add = cur ? cur + \u0027\\n\\n\u0027 + para : para;\n  if (add.length \u003c= LIMIT) { cur = add; continue; }\n  push(cur); cur = \u0027\u0027;\n  let rest = para;\n  while (rest.length \u003e LIMIT) {\n    let cut = rest.lastIndexOf(\u0027\\n\u0027, LIMIT);\n    if (cut \u003c LIMIT / 2) cut = rest.lastIndexOf(\u0027 \u0027, LIMIT);\n    if (cut \u003c LIMIT / 2) cut = LIMIT;\n    push(rest.slice(0, cut)); rest = rest.slice(cut).replace(/^\\s+/, \u0027\u0027);\n  }\n  cur = rest;\n}\npush(cur);\nconst esc = (s) =\u003e s.replace(/\u0026/g, \u0027\u0026amp;\u0027).replace(/\u003c/g, \u0027\u0026lt;\u0027).replace(/\u003e/g, \u0027\u0026gt;\u0027);\nreturn chunks.map((c, i) =\u003e ({ json: { text: esc(c), part: i + 1, parts: chunks.length } }));"
                                      },
                       "type":  "n8n-nodes-base.code",
                       "typeVersion":  2,
@@ -7425,7 +7725,7 @@
                   },
                   {
                       "parameters":  {
-                                         "jsCode":  "const body = String(($(\u0027Run command notfall\u0027).first().json.output) || (String((($(\u0027Resolve sender\u0027).first().json.t) || {})[\u0027core.orch.agent_unavailable\u0027] || \u0027core.orch.agent_unavailable\u0027)) || \u0027\u0027);\nconst LIMIT = 3500;\nconst chunks = [];\nlet cur = \u0027\u0027;\nconst push = (s) =\u003e { if (s.trim()) chunks.push(s); };\nfor (const para of body.split(\u0027\\n\\n\u0027)) {\n  const add = cur ? cur + \u0027\\n\\n\u0027 + para : para;\n  if (add.length \u003c= LIMIT) { cur = add; continue; }\n  push(cur); cur = \u0027\u0027;\n  let rest = para;\n  while (rest.length \u003e LIMIT) {\n    let cut = rest.lastIndexOf(\u0027\\n\u0027, LIMIT);\n    if (cut \u003c LIMIT / 2) cut = rest.lastIndexOf(\u0027 \u0027, LIMIT);\n    if (cut \u003c LIMIT / 2) cut = LIMIT;\n    push(rest.slice(0, cut)); rest = rest.slice(cut).replace(/^\\s+/, \u0027\u0027);\n  }\n  cur = rest;\n}\npush(cur);\nconst esc = (s) =\u003e s.replace(/\u0026/g, \u0027\u0026amp;\u0027).replace(/\u003c/g, \u0027\u0026lt;\u0027).replace(/\u003e/g, \u0027\u0026gt;\u0027);\nreturn chunks.map((c, i) =\u003e ({ json: { text: esc(c), part: i + 1, parts: chunks.length } }));"
+                                         "jsCode":  "const body = String(($(\u0027Run command notfall\u0027).first().json.output) || (String((($(\u0027Resolve sender\u0027).first().json.t) || {})[\u0027core.orch.agent_unavailable\u0027] || \u0027core.orch.agent_unavailable\u0027)) || \u0027\u0027).split(\u0027\\n\u0027).filter((l) =\u003e !/^\\s*NEXT_STEP\\s*$/.test(l)).join(\u0027\\n\u0027).trim();\nconst LIMIT = 3500;\nconst chunks = [];\nlet cur = \u0027\u0027;\nconst push = (s) =\u003e { if (s.trim()) chunks.push(s); };\nfor (const para of body.split(\u0027\\n\\n\u0027)) {\n  const add = cur ? cur + \u0027\\n\\n\u0027 + para : para;\n  if (add.length \u003c= LIMIT) { cur = add; continue; }\n  push(cur); cur = \u0027\u0027;\n  let rest = para;\n  while (rest.length \u003e LIMIT) {\n    let cut = rest.lastIndexOf(\u0027\\n\u0027, LIMIT);\n    if (cut \u003c LIMIT / 2) cut = rest.lastIndexOf(\u0027 \u0027, LIMIT);\n    if (cut \u003c LIMIT / 2) cut = LIMIT;\n    push(rest.slice(0, cut)); rest = rest.slice(cut).replace(/^\\s+/, \u0027\u0027);\n  }\n  cur = rest;\n}\npush(cur);\nconst esc = (s) =\u003e s.replace(/\u0026/g, \u0027\u0026amp;\u0027).replace(/\u003c/g, \u0027\u0026lt;\u0027).replace(/\u003e/g, \u0027\u0026gt;\u0027);\nreturn chunks.map((c, i) =\u003e ({ json: { text: esc(c), part: i + 1, parts: chunks.length } }));"
                                      },
                       "type":  "n8n-nodes-base.code",
                       "typeVersion":  2,
@@ -7656,7 +7956,7 @@
                   },
                   {
                       "parameters":  {
-                                         "jsCode":  "const body = String(((((($(\u0027Claim expression\u0027).first().json.frame_r || {}).text || \u0027\u0027) ? (($(\u0027Claim expression\u0027).first().json.frame_r || {}).text || \u0027\u0027) + \u0027\\n\\n\u0027 : \u0027\u0027) + ($(\u0027Relay compose\u0027).first().json.body || \u0027\u0027))) || (($(\u0027Resolve sender\u0027).first().json.t || {})[\u0027core.orch.react_fallback\u0027]) || \u0027\u0027);\nconst LIMIT = 3500;\nconst chunks = [];\nlet cur = \u0027\u0027;\nconst push = (s) =\u003e { if (s.trim()) chunks.push(s); };\nfor (const para of body.split(\u0027\\n\\n\u0027)) {\n  const add = cur ? cur + \u0027\\n\\n\u0027 + para : para;\n  if (add.length \u003c= LIMIT) { cur = add; continue; }\n  push(cur); cur = \u0027\u0027;\n  let rest = para;\n  while (rest.length \u003e LIMIT) {\n    let cut = rest.lastIndexOf(\u0027\\n\u0027, LIMIT);\n    if (cut \u003c LIMIT / 2) cut = rest.lastIndexOf(\u0027 \u0027, LIMIT);\n    if (cut \u003c LIMIT / 2) cut = LIMIT;\n    push(rest.slice(0, cut)); rest = rest.slice(cut).replace(/^\\s+/, \u0027\u0027);\n  }\n  cur = rest;\n}\npush(cur);\nconst esc = (s) =\u003e s.replace(/\u0026/g, \u0027\u0026amp;\u0027).replace(/\u003c/g, \u0027\u0026lt;\u0027).replace(/\u003e/g, \u0027\u0026gt;\u0027);\nreturn chunks.map((c, i) =\u003e ({ json: { text: esc(c), part: i + 1, parts: chunks.length } }));"
+                                         "jsCode":  "const body = String(((((($(\u0027Claim expression\u0027).first().json.frame_r || {}).text || \u0027\u0027) ? (($(\u0027Claim expression\u0027).first().json.frame_r || {}).text || \u0027\u0027) + \u0027\\n\\n\u0027 : \u0027\u0027) + ($(\u0027Relay compose\u0027).first().json.body || \u0027\u0027))) || (($(\u0027Resolve sender\u0027).first().json.t || {})[\u0027core.orch.react_fallback\u0027]) || \u0027\u0027).split(\u0027\\n\u0027).filter((l) =\u003e !/^\\s*NEXT_STEP\\s*$/.test(l)).join(\u0027\\n\u0027).trim();\nconst LIMIT = 3500;\nconst chunks = [];\nlet cur = \u0027\u0027;\nconst push = (s) =\u003e { if (s.trim()) chunks.push(s); };\nfor (const para of body.split(\u0027\\n\\n\u0027)) {\n  const add = cur ? cur + \u0027\\n\\n\u0027 + para : para;\n  if (add.length \u003c= LIMIT) { cur = add; continue; }\n  push(cur); cur = \u0027\u0027;\n  let rest = para;\n  while (rest.length \u003e LIMIT) {\n    let cut = rest.lastIndexOf(\u0027\\n\u0027, LIMIT);\n    if (cut \u003c LIMIT / 2) cut = rest.lastIndexOf(\u0027 \u0027, LIMIT);\n    if (cut \u003c LIMIT / 2) cut = LIMIT;\n    push(rest.slice(0, cut)); rest = rest.slice(cut).replace(/^\\s+/, \u0027\u0027);\n  }\n  cur = rest;\n}\npush(cur);\nconst esc = (s) =\u003e s.replace(/\u0026/g, \u0027\u0026amp;\u0027).replace(/\u003c/g, \u0027\u0026lt;\u0027).replace(/\u003e/g, \u0027\u0026gt;\u0027);\nreturn chunks.map((c, i) =\u003e ({ json: { text: esc(c), part: i + 1, parts: chunks.length } }));"
                                      },
                       "type":  "n8n-nodes-base.code",
                       "typeVersion":  2,
@@ -7711,7 +8011,7 @@
                   },
                   {
                       "parameters":  {
-                                         "jsCode":  "const body = String(($(\u0027Run onboarding cb\u0027).first().json.output) || (\u0027\u0027) || \u0027\u0027);\nconst LIMIT = 3500;\nconst chunks = [];\nlet cur = \u0027\u0027;\nconst push = (s) =\u003e { if (s.trim()) chunks.push(s); };\nfor (const para of body.split(\u0027\\n\\n\u0027)) {\n  const add = cur ? cur + \u0027\\n\\n\u0027 + para : para;\n  if (add.length \u003c= LIMIT) { cur = add; continue; }\n  push(cur); cur = \u0027\u0027;\n  let rest = para;\n  while (rest.length \u003e LIMIT) {\n    let cut = rest.lastIndexOf(\u0027\\n\u0027, LIMIT);\n    if (cut \u003c LIMIT / 2) cut = rest.lastIndexOf(\u0027 \u0027, LIMIT);\n    if (cut \u003c LIMIT / 2) cut = LIMIT;\n    push(rest.slice(0, cut)); rest = rest.slice(cut).replace(/^\\s+/, \u0027\u0027);\n  }\n  cur = rest;\n}\npush(cur);\nconst esc = (s) =\u003e s.replace(/\u0026/g, \u0027\u0026amp;\u0027).replace(/\u003c/g, \u0027\u0026lt;\u0027).replace(/\u003e/g, \u0027\u0026gt;\u0027);\nreturn chunks.map((c, i) =\u003e ({ json: { text: esc(c), part: i + 1, parts: chunks.length } }));"
+                                         "jsCode":  "const body = String(($(\u0027Run onboarding cb\u0027).first().json.output) || (\u0027\u0027) || \u0027\u0027).split(\u0027\\n\u0027).filter((l) =\u003e !/^\\s*NEXT_STEP\\s*$/.test(l)).join(\u0027\\n\u0027).trim();\nconst LIMIT = 3500;\nconst chunks = [];\nlet cur = \u0027\u0027;\nconst push = (s) =\u003e { if (s.trim()) chunks.push(s); };\nfor (const para of body.split(\u0027\\n\\n\u0027)) {\n  const add = cur ? cur + \u0027\\n\\n\u0027 + para : para;\n  if (add.length \u003c= LIMIT) { cur = add; continue; }\n  push(cur); cur = \u0027\u0027;\n  let rest = para;\n  while (rest.length \u003e LIMIT) {\n    let cut = rest.lastIndexOf(\u0027\\n\u0027, LIMIT);\n    if (cut \u003c LIMIT / 2) cut = rest.lastIndexOf(\u0027 \u0027, LIMIT);\n    if (cut \u003c LIMIT / 2) cut = LIMIT;\n    push(rest.slice(0, cut)); rest = rest.slice(cut).replace(/^\\s+/, \u0027\u0027);\n  }\n  cur = rest;\n}\npush(cur);\nconst esc = (s) =\u003e s.replace(/\u0026/g, \u0027\u0026amp;\u0027).replace(/\u003c/g, \u0027\u0026lt;\u0027).replace(/\u003e/g, \u0027\u0026gt;\u0027);\nreturn chunks.map((c, i) =\u003e ({ json: { text: esc(c), part: i + 1, parts: chunks.length } }));"
                                      },
                       "type":  "n8n-nodes-base.code",
                       "typeVersion":  2,
@@ -8192,7 +8492,7 @@
                                                              [
                                                                  {
                                                                      "index":  0,
-                                                                     "node":  "Onboarding section?",
+                                                                     "node":  "Next step tap",
                                                                      "type":  "main"
                                                                  }
                                                              ],
@@ -8398,7 +8698,7 @@
                                                                [
                                                                    {
                                                                        "index":  0,
-                                                                       "node":  "Onboarding section?",
+                                                                       "node":  "Next step tap",
                                                                        "type":  "main"
                                                                    }
                                                                ],
@@ -8754,12 +9054,23 @@
                                                             [
                                                                 {
                                                                     "index":  0,
-                                                                    "node":  "Which type of message",
+                                                                    "node":  "Next step",
                                                                     "type":  "main"
                                                                 }
                                                             ]
                                                         ]
                                            },
+                        "Next step":  {
+                                          "main":  [
+                                                       [
+                                                           {
+                                                               "index":  0,
+                                                               "node":  "Which type of message",
+                                                               "type":  "main"
+                                                           }
+                                                       ]
+                                                   ]
+                                      },
                         "Which type of message":  {
                                                       "main":  [
                                                                    [
@@ -9230,7 +9541,7 @@
                                                        [
                                                            {
                                                                "index":  0,
-                                                               "node":  "Send a text message split",
+                                                               "node":  "Next step marker?",
                                                                "type":  "main"
                                                            }
                                                        ],
@@ -9254,6 +9565,111 @@
                                                                   ]
                                                               ]
                                                  },
+                        "Next step marker?":  {
+                                                  "main":  [
+                                                               [
+                                                                   {
+                                                                       "index":  0,
+                                                                       "node":  "Next step at send",
+                                                                       "type":  "main"
+                                                                   }
+                                                               ],
+                                                               [
+                                                                   {
+                                                                       "index":  0,
+                                                                       "node":  "Send a text message split",
+                                                                       "type":  "main"
+                                                                   }
+                                                               ]
+                                                           ]
+                                              },
+                        "Next step at send":  {
+                                                  "main":  [
+                                                               [
+                                                                   {
+                                                                       "index":  0,
+                                                                       "node":  "Show next step?",
+                                                                       "type":  "main"
+                                                                   }
+                                                               ]
+                                                           ]
+                                              },
+                        "Show next step?":  {
+                                                "main":  [
+                                                             [
+                                                                 {
+                                                                     "index":  0,
+                                                                     "node":  "Send with next step",
+                                                                     "type":  "main"
+                                                                 }
+                                                             ],
+                                                             [
+                                                                 {
+                                                                     "index":  0,
+                                                                     "node":  "Send a text message split",
+                                                                     "type":  "main"
+                                                                 }
+                                                             ]
+                                                         ]
+                                            },
+                        "Send with next step":  {
+                                                    "main":  [
+                                                                 [
+                                                                     {
+                                                                         "index":  0,
+                                                                         "node":  "Router memory signal",
+                                                                         "type":  "main"
+                                                                     }
+                                                                 ],
+                                                                 [
+                                                                     {
+                                                                         "index":  0,
+                                                                         "node":  "Send a text message split",
+                                                                         "type":  "main"
+                                                                     }
+                                                                 ]
+                                                             ]
+                                                },
+                        "Next step tap":  {
+                                              "main":  [
+                                                           [
+                                                               {
+                                                                   "index":  0,
+                                                                   "node":  "Next step tap ok?",
+                                                                   "type":  "main"
+                                                               }
+                                                           ]
+                                                       ]
+                                          },
+                        "Next step tap ok?":  {
+                                                  "main":  [
+                                                               [
+                                                                   {
+                                                                       "index":  0,
+                                                                       "node":  "Onboarding section?",
+                                                                       "type":  "main"
+                                                                   }
+                                                               ],
+                                                               [
+                                                                   {
+                                                                       "index":  0,
+                                                                       "node":  "Answer stale step",
+                                                                       "type":  "main"
+                                                                   }
+                                                               ]
+                                                           ]
+                                              },
+                        "Answer stale step":  {
+                                                  "main":  [
+                                                               [
+                                                                   {
+                                                                       "index":  0,
+                                                                       "node":  "Send stale overview",
+                                                                       "type":  "main"
+                                                                   }
+                                                               ]
+                                                           ]
+                                              },
                         "Postgres Chat Memory":  {
                                                      "ai_memory":  [
                                                                        [

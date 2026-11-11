@@ -1726,4 +1726,35 @@
     "final": "Die Einnahme ist eingetragen.",
     "final_router": "NOFRAME"
   }
+  ,
+  {
+    "_comment": "Naechster Schritt (ri92/ri97): Gruss ohne Werkzeug, der Router schlaegt den Schritt vor und endet mit der Zeile NEXT_STEP -> Relay compose entfernt sie, der Sendepunkt haengt den Knopf aus core.fn_get_next_step an (ri97: zweiter Gruss am Tag -> kein Knopf).",
+    "match": "servus",
+    "final": "Servus! Als Nächstes würde ich mit dir den Haushalt einrichten.\nNEXT_STEP"
+  },
+  {
+    "_comment": "Naechster Schritt (ri93): Gruss eines Mitglieds -> Knopf auf seinen eigenen offenen Bereich, nie ein Plan.",
+    "match": "guten abend",
+    "final": "Guten Abend! Als Nächstes kannst du dein eigenes Profil einrichten.\nNEXT_STEP"
+  },
+  {
+    "_comment": "Naechster Schritt (ri94): NEXT_STEP mitten im Text ist kein Marker -> Zeile weg, kein Knopf.",
+    "match": "Vorschlags-Test Marker mitten",
+    "final": "Gern!\nNEXT_STEP\nOder schreib mir einfach, was du brauchst."
+  },
+  {
+    "_comment": "Naechster Schritt (ri96): Knopf-Send scheitert (Mock /__fail markup=1) -> derselbe Text kommt ueber die Relay-Kette ohne Knopf.",
+    "match": "Vorschlags-Test Fehlerweg",
+    "final": "Hallo! Als Nächstes würde ich mit dir den Haushalt einrichten.\nNEXT_STEP"
+  },
+  {
+    "_comment": "Naechster Schritt (ri99): Gruss eines Kindes -> kein Abschnitt fuer seine Rolle, kein Knopf, die Zeile verschwindet trotzdem.",
+    "match": "moin",
+    "final": "Moin! Schreib mir einfach, was du wissen willst.\nNEXT_STEP"
+  },
+  {
+    "_comment": "Naechster Schritt (ri95): Haushalts-Knopf des Owners (Deutsch) -> agent.guide; dessen Antwort endet mit NEXT_STEP, der Onboarding-Relay (New-TelegramRelayChain) entfernt die Zeile.",
+    "match": "Start or continue the household onboarding. Reply in the language with ISO code de",
+    "final": "Lass uns deinen Haushalt einrichten. Wer gehört dazu?\nNEXT_STEP"
+  }
 ]

@@ -366,7 +366,7 @@
     "task": "Test",
     "chat_id": "test_orc44",
     "expected_route": null,
-    "expected_behavior": "The reply is the orchestrator's own (no specialist is called). It is one short German sentence that confirms the bot is there and offers help, addresses the user informally with 'du' if at all, does not ask any domain or onboarding question and never contains the words FRAME or NOFRAME.",
+    "expected_behavior": "The reply is the orchestrator's own (no specialist is called). It is one short German sentence that confirms the bot is there with one concrete suggestion from the system (then a separate last line NEXT_STEP) or one quoted example question, addresses the user informally with 'du' if at all, asks no question back, lists no topics and never contains the words FRAME or NOFRAME.",
     "notes": "Befund 2026-11-02: 'Test' ging ueber die Sticky-Regel an Finanzen, die daraus eine Onboarding-Frage machte. Orchestrator-Regel 2: inhaltsleere Nachricht ist keine Fortsetzung."
   },
   {
@@ -515,5 +515,81 @@
     "expected_mood": "FUN",
     "expected_behavior": "The reply is either empty (reaction only) or one short own sentence in German. It never contains the words REACT, FUN, FRAME or NOFRAME, has at most ONE emoji and no *asterisk stage directions*.",
     "notes": "Grammatik N1: ein reines Gefuehls-Emoji traegt die Stimmung klar; geprueft werden Stimmung und gesendeter Body (judge_eval)."
+  }
+  ,
+  {
+    "id": "oc59",
+    "name": "Naechster Schritt: Gruss ohne offenes Thema -> eigener Satz mit genau einem Vorschlag (oder Beispielfrage), kein Spezialist",
+    "task": "Hallo",
+    "chat_id": "test_orc59",
+    "expected_route": null,
+    "expected_behavior": "The reply is the orchestrator's own (no specialist call). It is ONE short German sentence (a greeting is fine) that either suggests exactly one concrete next step and then ends with a separate last line NEXT_STEP, or invites the user to just write and gives one example question in quotes (then no NEXT_STEP line). It asks no open question like 'Was kann ich für dich tun?', lists no topics, and names no agent.",
+    "notes": "Router-Regel 8 (Owner-Entscheid 2026-11-11). Welche Variante kommt, entscheiden die Laufzeit-Flags next_step/offer aus core.fn_get_next_step (Fixture-Stand des Substrats); die Rubric akzeptiert beide, verlangt aber Form und Kuerze."
+  },
+  {
+    "id": "oc60",
+    "name": "Naechster Schritt: Lebenszeichen 'Test' -> ein Satz, keine Themenliste, nicht weitergereicht",
+    "task": "Test",
+    "chat_id": "test_orc60",
+    "expected_route": null,
+    "expected_behavior": "The reply is the orchestrator's own (no specialist call): one short German sentence with one concrete suggestion (followed by a last line NEXT_STEP) or one quoted example question. It contains no list of topics and no question back.",
+    "notes": "Ersetzt die bisherige Ein-Satz-Regel 'Ich bin da, schreib mir einfach' (Regel 2 verweist jetzt auf Regel 8), kein Zusatz."
+  },
+  {
+    "id": "oc61",
+    "name": "Naechster Schritt: 'und jetzt?' ohne offenes Thema -> ein Vorschlag, kein Hilfe-Agent",
+    "task": "und jetzt?",
+    "chat_id": "test_orc61",
+    "expected_route": null,
+    "expected_behavior": "The reply is the orchestrator's own: one short German sentence with exactly one suggestion taken from the system (then a last line NEXT_STEP) or one quoted example question. No topic list, no command list, no '/onboarding' when nothing is open.",
+    "notes": "Regel 8; frueher improvisierte der Router eine Themenliste (Befund Station 4)."
+  },
+  {
+    "id": "oc62",
+    "name": "Naechster Schritt: Beispielfrage stammt aus next_example, nicht erfunden",
+    "task": "Hallo, ich bin wieder da",
+    "chat_id": "test_orc62",
+    "expected_route": null,
+    "expected_behavior": "The reply is the orchestrator's own, one or two short German sentences. If it gives an example question, the example is put in quotes and is a plain everyday question (for example about money or what the assistant can do), never a technical command, product name or a request to create something.",
+    "notes": "Regel 8 + Regel 5 (Ausnahme: next_step/next_example woertlich)."
+  },
+  {
+    "id": "oc63",
+    "name": "Rat-Bitte ohne Thema -> weitergereicht an den Berater, keine Rueckfrage des Routers",
+    "task": "kannst du mich beraten?",
+    "chat_id": "test_orc63",
+    "expected_route": "finance_advisor",
+    "notes": "S2b (Leitung 2026-11-11): eine Bitte um Rat geht immer an den Spezialisten, dessen router_description sie annimmt (Paket B ergaenzt die Beschreibung); der Router fragt nie selbst nach dem Thema (Befund Station 8)."
+  },
+  {
+    "id": "oc64",
+    "name": "Naechster Schritt: Gruss bei offenem Haushalt -> eigener Satz statt Hilfe-Agent (3b ohne Gruss)",
+    "task": "Guten Morgen",
+    "chat_id": "test_orc64",
+    "onboarding": "unknown",
+    "expected_route": null,
+    "expected_behavior": "The reply is the orchestrator's own (agent.guide is NOT called): one short German sentence that greets and suggests setting up the household, then a last line NEXT_STEP. No list of topics.",
+    "quarantined": true,
+    "notes": "Regel 3b nimmt Gruesse aus. Quarantaene: orch_test kennt das Feld onboarding nicht und feuert bei fertigem Haushalt -> der Fall prueft sonst einen anderen Zustand. Re-Evaluierung, sobald orch_test einen Onboarding-Vorzustand setzt; bis dahin deckt real_ingress ri92 (Mock) und das Durchspiel S1 der Leitung den Zustand."
+  },
+  {
+    "id": "oc65",
+    "name": "Naechster Schritt: zweiter Gruss am Tag (offer no) -> Beispielfrage ohne Markerzeile",
+    "task": "Hallo nochmal",
+    "chat_id": "test_orc65",
+    "expected_route": null,
+    "expected_behavior": "The reply is the orchestrator's own, one short German sentence. When the system flag offer is no it must not end with NEXT_STEP; it invites the user to write, with one quoted example question.",
+    "notes": "Laeuft sinnvoll direkt nach oc59 im selben Lauf (Tagesgrenze schon verbraucht); allein entspricht er oc62."
+  },
+  {
+    "id": "oc66",
+    "name": "Naechster Schritt: Mitglied bei offenem Haushalt (wait) -> 'der Owner richtet noch ein', keine Markerzeile",
+    "task": "Hallo",
+    "chat_id": "test_orc66",
+    "onboarding": "unknown",
+    "expected_route": null,
+    "expected_behavior": "The reply is the orchestrator's own, one short German sentence saying that the household owner is still setting things up and that the assistant can help afterwards. No NEXT_STEP line, no topic list.",
+    "quarantined": true,
+    "notes": "Quarantaene: braucht einen Mitglieds-Absender und einen offenen Haushalt; orch_test feuert als Owner ohne Onboarding-Vorzustand. Re-Evaluierung, sobald orch_test beides kann; bis dahin prueft die Leitung den Zustand im Durchspiel (conversation_test S3)."
   }
 ]

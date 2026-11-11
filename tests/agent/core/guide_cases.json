@@ -78,4 +78,42 @@
     "expected_behavior": "Textkatalog Phase A (regression): the guide adds the employment fact to the EXISTING person Lena (her existing person_id, no new person) and stores the value verbatim in the user's words - employment_status Hausfrau. Translating it (homemaker, housewife) is a FAIL: stored free text stays in the language the user used.",
     "notes": "Prueft die neue Language-Regel in global_instructions.md (stored data: free text verbatim). Rubric auf actual_tool_input.persons."
   }
+  ,
+  {
+    "id": "gc10",
+    "name": "Hilfe: 'was kann ich hier machen?' (Owner, fertig eingerichtet) -> kurz, Alltagssprache, ein Vorschlag",
+    "task": "was kann ich hier machen?",
+    "chat_id": "880055071",
+    "expected_tool": null,
+    "expected_behavior": "The reply is in German, at most about 8 short lines: about three areas in everyday words, about three example questions (from stored data or neutral), and one suggestion. It never calls itself 'Guide' or names any helper/agent, contains no command list and no technical terms like 'Paperless' or 'Salden abgleichen', and does not send the user to /onboarding to see what is still open when setup is finished. If it suggests the next step and the system flag offer is yes, the reply ends with a separate last line NEXT_STEP.",
+    "notes": "Befund Station 5/7. chat_id = gepairter Owner des Substrats (der Abschnitt 'Who is writing' erscheint nur fuer einen erkannten Absender)."
+  },
+  {
+    "id": "gc11",
+    "name": "Hilfe: Mitglied fragt 'was kann ich dich fragen?' -> nur Erlaubtes, keine dritte Person, kein Agentenname",
+    "task": "was kann ich dich fragen?",
+    "chat_id": "880055200",
+    "expected_tool": null,
+    "expected_behavior": "The reply addresses the member in the second person and never mentions them in the third person (no list of known people that includes them). It does not call itself 'Guide' or name any agent. It offers nothing only the owner may do: no inviting members, no changing the household, no working on a plan. It gives a few example questions in everyday words.",
+    "notes": "Befund Station 11. chat_id = Lena (partner) im Substrat (real_ingress pairt sie)."
+  },
+  {
+    "id": "gc12",
+    "name": "Hilfe: 'ok, wie fang ich an?' bei fertiger Einrichtung -> nennt den naechsten Schritt, schlaegt nichts Vorhandenes vor",
+    "task": "ok, wie fang ich an?",
+    "chat_id": "880055071",
+    "expected_tool": null,
+    "expected_behavior": "The reply says in one or two German sentences what the next step from the system is (for example the plan) and does NOT tell the user to type /onboarding to see what is open. It never suggests creating an account, person or entry that already exists (e.g. it does not say 'Lege ein neues Lindenbank Girokonto an').",
+    "notes": "Befund Station 6 (Guide kannte Stand und Daten nicht)."
+  },
+  {
+    "id": "gc13",
+    "name": "Hilfe: Kind fragt 'was kann ich dich fragen?' -> keine Geld- oder Haushaltsfinanz-Beispiele",
+    "task": "was kann ich dich fragen?",
+    "chat_id": "880055201",
+    "expected_tool": null,
+    "expected_behavior": "The reply is for a child without household view: it contains no money or household-finance examples (no balances, accounts, payments or plans) and offers nothing only the owner may do. It stays short and friendly.",
+    "quarantined": true,
+    "notes": "Quarantaene bis n8n_test einen Kind-Absender setzen kann (Re-Evaluierung dann). Owner-Entscheid 2026-11-11 (Kinder sehen keine Haushaltsfinanzen). Braucht die Telegram-id 880055201 an der Fixture-Person lisa (real_ingress setzt sie nur je Fall) -> vor dem Lauf im Substrat setzen, sonst erscheint der Abschnitt 'Who is writing' nicht."
+  }
 ]

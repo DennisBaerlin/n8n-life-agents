@@ -19,6 +19,12 @@
 #
 # Routing-Asserts sind DETERMINISTISCH aus dem Execution-Log (kein LLM-Judge fuers Routing).
 #
+# Fall-Felder fuer den naechsten Schritt (node_ran): expect_next_button = genau eine Tastatur an chat_id mit dem callback des
+# aktuellen Schritts (core.fn_get_next_step, Reihenfolge Get-NextStepOrder); forbid_keyboard = keine Tastatur an chat_id;
+# as_child = die Fixture-Person lisa (child) traegt nur fuer diesen Fall die Telegram-id 880055201; fail_tg {method, markup}
+# = Mock-Telegram lehnt diese Methode fuer die Dauer des Falls ab (markup = nur Aufrufe mit Knopf); expected_not_ran (Sub-
+# Zweig) = Knoten, die in der Sub-Execution nicht laufen duerfen. Die Vorschlags-Merker werden zu Beginn jedes Laufs geleert.
+#
 # Voraussetzung: laufendes Substrat + enable_mock_llm.ps1 + enable_mock_telegram.ps1 liefen.
 # Usage:  .\scripts\dev\real_ingress_test.ps1 [-Id ri01,ri02] [-Timeout 90] [-Verbose]
 #         -ForceAbortId ri01 = wirft am Anfang dieses Falls eine Ausnahme (zeigt den Abbruch-Pfad, ohne auf echte Last zu warten).
@@ -204,6 +210,37 @@ if ($pair.Code -ne 0) { throw "Owner/Lena-Pairing (Container-DB) fehlgeschlagen:
 # Route-Agenten aus den Manifesten — die Routing-Pruefungen unten nutzen Get-RoutedAgent (Node-Namensformat an EINER Adresse).
 $routeAgents = Get-TestRouteAgent
 
+# --- Naechster Schritt (Vorschlag mit Knopf, core.fn_get_next_step) ---------------------------------------------------
+# Die Vorschlags-Grenzen (1x/Tag, 3x je Schritt) sind Merker in core.notification_state: zu Beginn jedes Laufs leeren,
+# sonst haengt ein Fall vom Vorlauf desselben Tages ab. Erwarteten Knopf rechnet der Treiber mit derselben Reihenfolge
+# wie der Build (Get-NextStepOrder). Kind-Absender: die Fixture-Person lisa (role child) bekommt ihre Telegram-id NUR fuer
+# die Dauer eines Falls mit "as_child": true (gc06 und die Einladungsfaelle brauchen sie ungepairt, das Substrat ist geteilt).
+if (-not (Get-Command Get-NextStepOrder -ErrorAction SilentlyContinue)) { . "$RepoRoot\scripts\build\lib\agent_routing.ps1" }
+$NextStepOrder = Get-NextStepOrder $RepoRoot
+$ChildUid = 880055201
+[void](Invoke-TestN8nPsql -Container $Container -PsqlArgs @('-q', '-c', "DELETE FROM core.notification_state WHERE source IN ('next_step_day', 'next_step_offer');"))
+function Set-TestChildPairing([bool]$On) {
+    $val = if ($On) { "(p - 'persona') || jsonb_build_object('telegram_user_id', ${ChildUid}::bigint, 'language', 'de')" } else { "p - 'telegram_user_id'" }
+    $sql = "UPDATE agent.core_contexts SET metadata = jsonb_set(metadata, '{facts,persons}', (SELECT jsonb_agg(CASE WHEN p->>'person_id' = 'lisa' THEN $val ELSE p END) FROM jsonb_array_elements(metadata->'facts'->'persons') p)) WHERE name = 'family';"
+    $r = Invoke-TestN8nPsql -Container $Container -PsqlArgs @('-q', '-c', $sql)
+    return ($r.Code -eq 0)
+}
+# Erwarteter Vorschlags-Knopf fuer chat: {data, button} aus der DB (gleiche Funktion wie der Orchestrator am Sendepunkt).
+function Get-ExpectedNextButton([string]$Chat) {
+    # Listen als ARRAY[...] statt JSON-Text: doppelte Anfuehrungszeichen gehen beim docker-exec-Aufruf unter PS 5.1 verloren.
+    $o = (@($NextStepOrder.Order) | ForEach-Object { "'$_'" }) -join ','; $po = (@($NextStepOrder.PlanOrder) | ForEach-Object { "'$_'" }) -join ','
+    $sql = "SELECT core.fn_get_next_step(jsonb_build_object('chat_id', '$Chat', 'order', to_jsonb(ARRAY[$o]::text[]), 'plan_order', to_jsonb(ARRAY[$po]::text[])))->>'data';"
+    return "$((Invoke-TestN8nPsql -Container $Container -PsqlArgs @('-tA', '-c', $sql)).Output | Select-Object -First 1)".Trim()
+}
+# Fehlerweg: Mock-Telegram lehnt Aufrufe einer Methode ab (markup = nur solche mit Knopf), fail_tg {method, markup}.
+function Set-MockTelegramFail($Spec, [bool]$On) {
+    $mp = if ($state.mock_telegram.port) { $state.mock_telegram.port } else { 8089 }
+    $q = "method=$($Spec.method)" + $(if ($Spec.markup) { '&markup=1' } else { '' }) + $(if (-not $On) { '&off=1' } else { '' })
+    $prev = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
+    & docker exec $Container sh -c "curl -s 'http://127.0.0.1:$mp/__fail?$q'" 2>$null | Out-Null
+    $ErrorActionPreference = $prev
+}
+
 # --- Cases laden ------------------------------------------------------------------------------------
 $tcFile = Join-Path $RepoRoot 'tests\agent\core\real_ingress_cases.json'
 # Erst zuweisen, dann ueber die VARIABLE filtern: `ConvertFrom-Json` emittiert das Array in PS 5.1 als EIN
@@ -387,8 +424,24 @@ function Get-StringLeaves($Obj) {
     if ($Obj -is [psobject]) { foreach ($p in $Obj.PSObject.Properties) { Get-StringLeaves $p.Value } }
 }
 function Test-CaseTexts($Tc) {
-    if (-not $Tc.expect_texts -and -not $Tc.forbid_texts -and -not $Tc.expect_keyboard -and $null -eq $Tc.expect_answer_callbacks) { return $true }
+    if (-not $Tc.expect_texts -and -not $Tc.forbid_texts -and -not $Tc.expect_keyboard -and $null -eq $Tc.expect_answer_callbacks -and
+        -not $Tc.forbid_keyboard -and -not $Tc.expect_next_button) { return $true }
     $reqs = @(Get-MockTelegramRequests -Container $Container)
+    # forbid_keyboard: keine Nachricht mit Inline-Tastatur an den Fall-Chat; expect_next_button: genau eine Tastatur, deren
+    # einziger Knopf das callback_data des aktuellen naechsten Schritts traegt (Get-ExpectedNextButton, nach dem Lauf gelesen).
+    $kbReqs = @(foreach ($r in $reqs) {
+        $rm = $r.body.reply_markup
+        if ($rm -is [string]) { try { $rm = $rm | ConvertFrom-Json } catch { $rm = $null } }
+        if ($rm.inline_keyboard -and "$($r.body.chat_id)" -eq "$($Tc.chat_id)") { $rm }
+    })
+    if ($Tc.forbid_keyboard -and $kbReqs.Count -gt 0) { Write-Host "    unerwartete Tastatur an $($Tc.chat_id)" -ForegroundColor Red; return $false }
+    if ($Tc.expect_next_button) {
+        $want = Get-ExpectedNextButton "$($Tc.chat_id)"
+        $got = @($kbReqs | ForEach-Object { @($_.inline_keyboard | ForEach-Object { @($_) }) } | ForEach-Object { "$($_.callback_data)" })
+        if (-not $want -or $kbReqs.Count -ne 1 -or $got.Count -ne 1 -or $got[0] -ne $want) {
+            Write-Host "    Vorschlags-Knopf: erwartet '$want', gesendet $($kbReqs.Count) Tastatur(en) mit '$($got -join ',')'" -ForegroundColor Red; return $false
+        }
+    }
     # expect_keyboard {chat, buttons}: genau eine Nachricht mit Inline-Tastatur an chat, in Summe buttons Knoepfe.
     # expect_answer_callbacks: so viele answerCallbackQuery im Fall (doppelt quittieren wirft Telegram als Fehler zurueck).
     $shapeOk = $true
@@ -907,15 +960,22 @@ foreach ($tc in $cases) {
             }
             if ($tc.expect_system_tail) { Save-ReplayLost; Clear-MockLlmRequests -Container $Container }
 
-            $orchBase = Get-MaxExecId $OrchWfId
-            if ("$($tc.update)" -eq 'callback') {
-                # callback_query.from.id MUSS der gepairte Owner sein (sonst verwirft 'Callback owner?'); chat_id
-                # = callback_query.message.chat.id (die Welcome-Buttons sitzen in der Owner-Nachricht).
-                Send-TelegramCallback $fromUid $chatId "$($tc.callback_data)"
-            } else {
-                Send-TelegramUpdate $chatId $fromUid $tc.text "$($tc.voice_file_id)" | Out-Null
+            if ($tc.as_child -and -not (Set-TestChildPairing $true)) { Write-Host "    [FAIL] Kind-Pairing (as_child) fehlgeschlagen" -ForegroundColor Red; $failed++; continue }
+            if ($tc.fail_tg) { Set-MockTelegramFail $tc.fail_tg $true }
+            try {
+                $orchBase = Get-MaxExecId $OrchWfId
+                if ("$($tc.update)" -eq 'callback') {
+                    # callback_query.from.id MUSS der gepairte Owner sein (sonst verwirft 'Callback owner?'); chat_id
+                    # = callback_query.message.chat.id (die Welcome-Buttons sitzen in der Owner-Nachricht).
+                    Send-TelegramCallback $fromUid $chatId "$($tc.callback_data)"
+                } else {
+                    Send-TelegramUpdate $chatId $fromUid $tc.text "$($tc.voice_file_id)" | Out-Null
+                }
+                $orch = Wait-NewExecTerminal $OrchWfId $orchBase $Timeout
+            } finally {
+                if ($tc.fail_tg) { Set-MockTelegramFail $tc.fail_tg $false }
+                if ($tc.as_child) { [void](Set-TestChildPairing $false) }
             }
-            $orch = Wait-NewExecTerminal $OrchWfId $orchBase $Timeout
             if ($tc.hitl_pending) { Clear-HitlPending -Container $Container }
             # check_sql (optional): Wirkung in der DB, VOR post_sql; die Abfrage muss genau 't' liefern. expect_tg_method (optional):
             # eine abgefangene Bot-API-Methode dieses Falls (z. B. editMessageText nach einem Knopf-Tipp).
@@ -934,10 +994,15 @@ foreach ($tc in $cases) {
             if ($subWfId) {
                 $sub = Wait-NewExecTerminal $subWfId $subBase $Timeout
                 if (-not $sub) { Write-Host "    [FAIL] Keine $($tc.expected_sub)-Sub-Execution gefunden (Timeout)." -ForegroundColor Red; $failed++; continue }
-                $ranNode = (Get-RunNodes $sub) -contains "$($tc.expected_node)"
+                $subNodes = Get-RunNodes $sub
+                $ranNode = $subNodes -contains "$($tc.expected_node)"
                 # Optional: die Knoten-Ausgabe muss einen Text enthalten bzw. darf ihn NICHT enthalten (z. B. einen
                 # deterministisch angehaengten Prompt-Abschnitt; das Gegenstueck belegt, dass er nicht immer erscheint).
+                # expected_not_ran = Knoten, die in der Sub-Execution NICHT laufen duerfen (z. B. der Agent hinter einem Tor).
                 $outOk = $true
+                foreach ($nr in @($tc.expected_not_ran)) {
+                    if ($nr -and ($subNodes -contains "$nr")) { $outOk = $false; Write-Host "    Sub-Knoten '$nr' lief, darf aber nicht" -ForegroundColor Red }
+                }
                 if ($tc.expected_output_contains -or $tc.expected_output_not_contains) {
                     $outText = Get-NodeOutputText $sub "$($tc.expected_node)"
                     if ($tc.expected_output_contains)     { $outOk = $outOk -and $outText.Contains("$($tc.expected_output_contains)") }

@@ -186,6 +186,17 @@ DO $$ BEGIN
     END IF;
 END $$;
 
+-- Naechster Schritt (UX A bis Z, 2026-11-11): Orchestrator, Guide und Menue lesen den einen naechsten Schritt bzw. die
+-- Beispielfrage unter core_ro ueber die DEFINER-Fenster. Grant am Rollen-Ort (die R__ re-REVOKEn PUBLIC). KEINE Paket-Rollen.
+DO $$ BEGIN
+    IF to_regprocedure('core.fn_get_next_step(jsonb)') IS NOT NULL THEN
+        GRANT EXECUTE ON FUNCTION core.fn_get_next_step(jsonb) TO core_ro;
+    END IF;
+    IF to_regprocedure('core.fn_get_next_step_example(text,jsonb)') IS NOT NULL THEN
+        GRANT EXECUTE ON FUNCTION core.fn_get_next_step_example(text, jsonb) TO core_ro;
+    END IF;
+END $$;
+
 -- Roter Faden Paket B: das /reminders-Menue (core.sub_send_reminders_menu, unter __CRED_POSTGRES_CORE_RO__) liest sein
 -- Datenmodell ueber das DEFINER-Fenster core.fn_reminders_overview(text). Grant am Rollen-Ort (die R__ re-REVOKEt PUBLIC).
 DO $$ BEGIN

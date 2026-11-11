@@ -7,7 +7,10 @@
 --   (loest core_literal #5 ab). Loest das Thema "Menue-Labels DB-getrieben (fn_onboarding_overview),
 --   sobald ein 2. Paket existiert" ein (career = das 2. Onboarding-Paket).
 --
---   RUECKGABE jsonb: { ok:true, sections:[ {package, key, label, status, ord, per_user, changed_at}, ... ], viewer_role, active_packages }
+--   RUECKGABE jsonb: { ok:true, sections:[ {package, key, label, status, ord, per_user, changed_at, for_roles}, ... ], viewer_role, active_packages }
+--     for_roles = Rollen, fuer die der Abschnitt gilt (Spalte <pkg>.onboarding_state.for_roles, aus sections.json geseedet);
+--     null = alle Rollen, auch wenn das Paket die Spalte nicht hat. Die eine Lese-Adresse fuer core.fn_get_next_step,
+--     das Menue und core.fn_onboarding_nudges_due.
 --     changed_at = status_changed_at der Zeile (NULL bei noch nicht materialisierter per_user-Zeile) — Stillstands-Uhr
 --     von core.fn_onboarding_nudges_due (Roter Faden); das Menue ignoriert das Feld.
 --     per_user = core.fn_package_is_per_user(package) (core: false); viewer_role = Rolle des Tappers aus
@@ -58,6 +61,7 @@ DECLARE
     v_per_user boolean;
     v_pid      text;
     v_role     text;
+    v_roles    text;
 BEGIN
     -- Person EINMAL aus der chat_id aufloesen (p_chat_id konstant ueber alle Pakete); nicht-numerisch/NULL -> NULL.
     IF p_chat_id ~ '^[0-9]+$' THEN
@@ -68,7 +72,8 @@ BEGIN
     -- ---- CORE-Bein (immer zuerst): Host-Sonderfall agent.guide_onboarding_state, package='core' (household) ----
     SELECT COALESCE(
         jsonb_agg(jsonb_build_object(
-            'package', 'core', 'key', section_key, 'label', label, 'status', status, 'ord', ord, 'per_user', false, 'changed_at', status_changed_at
+            'package', 'core', 'key', section_key, 'label', label, 'status', status, 'ord', ord, 'per_user', false, 'changed_at', status_changed_at,
+            'for_roles', NULL
         ) ORDER BY ord), '[]'::jsonb)
     INTO v_sections
     FROM agent.guide_onboarding_state;
@@ -84,23 +89,29 @@ BEGIN
         CONTINUE WHEN v_rel IS NULL;                                         -- Paket ohne onboarding_state-Tabelle
 
         v_per_user := core.fn_package_is_per_user(v_pkg);   -- die eine Regel (R__fn_package_is_per_user)
+        -- for_roles ist optional je Paket-Tabelle: Spalte vorhanden -> ihr Wert, sonst NULL (Ausdruck ist Literal, kein Caller-Text).
+        v_roles := CASE WHEN EXISTS (SELECT 1 FROM pg_catalog.pg_attribute a
+                                     WHERE a.attrelid = v_rel::regclass AND a.attname = 'for_roles' AND NOT a.attisdropped)
+                        THEN 'for_roles' ELSE 'NULL::text[]' END;
         IF v_per_user THEN
             -- per_user: Katalog (DISTINCT je Sektion) LEFT JOIN die Zeile des Tappers; fehlt sie -> 'unknown'.
             EXECUTE format($q$
-                WITH cat AS (SELECT DISTINCT ON (section_key) section_key, ord, label FROM %1$s ORDER BY section_key, ord)
+                WITH cat AS (SELECT DISTINCT ON (section_key) section_key, ord, label, %4$s AS for_roles FROM %1$s ORDER BY section_key, ord)
                 SELECT COALESCE(jsonb_agg(jsonb_build_object(
                            'package', %2$L, 'key', cat.section_key, 'label', cat.label,
-                           'status', COALESCE(r.status, 'unknown'), 'ord', cat.ord, 'per_user', true, 'changed_at', r.status_changed_at) ORDER BY cat.ord), '[]'::jsonb)
+                           'status', COALESCE(r.status, 'unknown'), 'ord', cat.ord, 'per_user', true, 'changed_at', r.status_changed_at,
+                           'for_roles', to_jsonb(cat.for_roles)) ORDER BY cat.ord), '[]'::jsonb)
                 FROM cat LEFT JOIN %1$s r ON r.section_key = cat.section_key AND r.person_id = %3$L
-            $q$, v_rel, v_pkg, v_pid) INTO v_pkg_secs;
+            $q$, v_rel, v_pkg, v_pid, v_roles) INTO v_pkg_secs;
         ELSE
             EXECUTE format($q$
                 SELECT COALESCE(
                     jsonb_agg(jsonb_build_object(
-                        'package', %L, 'key', section_key, 'label', label, 'status', status, 'ord', ord, 'per_user', false, 'changed_at', status_changed_at
+                        'package', %L, 'key', section_key, 'label', label, 'status', status, 'ord', ord, 'per_user', false, 'changed_at', status_changed_at,
+                        'for_roles', to_jsonb(%s)
                     ) ORDER BY ord), '[]'::jsonb)
                 FROM %s
-            $q$, v_pkg, v_rel) INTO v_pkg_secs;
+            $q$, v_pkg, v_roles, v_rel) INTO v_pkg_secs;
         END IF;
 
         v_sections := v_sections || v_pkg_secs;   -- leeres onboarding_state -> '[]' -> kein Beitrag, kein Fehler

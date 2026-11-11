@@ -714,6 +714,22 @@ BEGIN
     RAISE EXCEPTION 'FAIL [core_ro -> core.fn_advisor_plan_status]: erwartet Plan-Zustand, got %', COALESCE(v_out, '<null>'); END IF;
   RAISE NOTICE 'PASS [core_ro -> core.fn_advisor_plan_status (gaps_fn/readiness_fn ueber das DEFINER-Fenster)]';
 
+  -- ===== (3e-NEXT) Naechster Schritt: core_ro -> core.fn_get_next_step + core.fn_get_next_step_example (Orchestrator,
+  -- Guide, Menue). fn_get_next_step faengt intern jeden Fehler ab -> geprueft wird, dass der Absender aufgeloest wurde
+  -- (role owner kommt nur aus dem Body, ein abgewiesener Aufruf wirft schon vor dem Body).
+  BEGIN
+    SET LOCAL ROLE core_ro;
+    v_out := core.fn_get_next_step(jsonb_build_object('chat_id', '777', 'order', '["core:household"]'::jsonb))->>'role';
+    IF core.fn_get_next_step_example('owner', '[]'::jsonb) IS NULL THEN v_out := 'example-null'; END IF;
+    RESET ROLE;
+  EXCEPTION WHEN OTHERS THEN
+    RESET ROLE;
+    RAISE EXCEPTION 'FAIL [core_ro -> core.fn_get_next_step/_example]: %', SQLERRM;
+  END;
+  IF v_out IS DISTINCT FROM 'owner' THEN
+    RAISE EXCEPTION 'FAIL [core_ro -> core.fn_get_next_step]: erwartet role owner, got %', COALESCE(v_out, '<null>'); END IF;
+  RAISE NOTICE 'PASS [core_ro -> core.fn_get_next_step + core.fn_get_next_step_example (DEFINER-Fenster)]';
+
   -- ===== (3e) P1 (Generisches Paket-Onboarding): core_ro -> core.fn_onboarding_overview =====
   -- core.sub_send_onboarding_menu (laeuft unter core_ro) liest das DB-getriebene Menue-Modell ueber dieses
   -- DEFINER-Fenster (P2b-1: Arity (text DEFAULT NULL); no-arg-Call resolved via Default = alle per_user-Sektionen

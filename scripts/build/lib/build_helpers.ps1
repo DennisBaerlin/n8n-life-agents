@@ -1521,8 +1521,10 @@ function New-TelegramSendWithPlainFallback {
 function New-TelegramRelayChain {
     param([Parameter(Mandatory)][string]$Name, [Parameter(Mandatory)][int[]]$Pos, [Parameter(Mandatory)][string]$TextJs,
           [Parameter(Mandatory)][string]$ChatIdExpr, [string]$FallbackJs = "''", [string]$DoneTo)
+    # Vorschlags-Markerzeile NEXT_STEP (Router-/Hilfe-Agent-Grammatik, core.fn_get_next_step) nie roh senden: jeder Sendeweg
+    # laeuft hier durch, auch die, deren Text 'Relay compose' nie sieht (Onboarding-Tipp, Befehle, Paket-Arme).
     $js = @"
-const body = String(($TextJs) || ($FallbackJs) || '');
+const body = String(($TextJs) || ($FallbackJs) || '').split('\n').filter((l) => !/^\s*NEXT_STEP\s*`$/.test(l)).join('\n').trim();
 const LIMIT = 3500;
 const chunks = [];
 let cur = '';
@@ -1687,13 +1689,15 @@ return { json: Object.assign({}, $input.item.json, { stale_tap: stale }) };
 function New-TelegramInlineKeyboardSendNode {
     param([string]$Name, [int[]]$Pos, [string]$TextExpr, [array]$Buttons, [array]$Rows,
           [string]$ChatIdExpr = '__OWNER_CHAT_ID__',
-          [switch]$NoEscape, [int]$MaxTries = 3, [int]$WaitBetweenTries = 2000, $DisableNotification = $null)
+          [switch]$NoEscape, [int]$MaxTries = 3, [int]$WaitBetweenTries = 2000, $DisableNotification = $null,
+          [string]$ParseMode = '', [string]$OnError = '')
     $toBtn = { param($b) [ordered]@{ text = $b.Text; additionalFields = [ordered]@{ callback_data = $b.Data } } }
     if (-not $Rows) { $Rows = @( ,@($Buttons) ) }
     $rowNodes = @($Rows | ForEach-Object { [ordered]@{ row = [ordered]@{ buttons = @($_ | ForEach-Object { & $toBtn $_ }) } } })
     $addl = [ordered]@{ appendAttribution = $false }
     if ($null -ne $DisableNotification) { $addl['disable_notification'] = $DisableNotification }
-    [ordered]@{
+    if ($ParseMode) { $addl['parse_mode'] = $ParseMode }
+    $node = [ordered]@{
         parameters = [ordered]@{
             additionalFields = $addl
             chatId      = $ChatIdExpr
@@ -1706,6 +1710,22 @@ function New-TelegramInlineKeyboardSendNode {
         retryOnFail = $true; maxTries = $MaxTries; waitBetweenTries = $WaitBetweenTries
         credentials = @{ telegramApi = $CRED_TELEGRAM }
     }
+    if ($OnError) { $node['onError'] = $OnError }
+    $node
+}
+
+# Vorschlag mit EINEM Knopf (naechster Schritt, core.fn_get_next_step) — Gegenstueck zu New-TelegramSendWithPlainFallback:
+# Text als HTML-Plain (& < > escapt wie die Relay-Kette; parse_mode HTML, weil n8n ein leeres parse_mode still zu Markdown
+# macht), Primary retryOnFail:true + maxTries:1 + onError continueErrorOutput (Retry x onError=Continue ist defekt, GH #10763).
+# Der Fehler-Ausgang [1] gehoert dem Aufrufer: dort die normale Relay-Kette ohne Knopf, damit der Text immer ankommt.
+# -TextJs = JS-Ausdruck (nur .first()), -ButtonTextExpr/-ButtonDataExpr = ={{ }}-Ausdruecke fuer Beschriftung und callback_data.
+function New-TelegramKeyboardSendWithFallback {
+    param([Parameter(Mandatory)][string]$Name, [Parameter(Mandatory)][int[]]$Pos, [Parameter(Mandatory)][string]$TextJs,
+          [Parameter(Mandatory)][string]$ButtonTextExpr, [Parameter(Mandatory)][string]$ButtonDataExpr,
+          [Parameter(Mandatory)][string]$ChatIdExpr)
+    $textExpr = "={{ String($TextJs || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;') }}"
+    New-TelegramInlineKeyboardSendNode $Name $Pos $textExpr -ChatIdExpr $ChatIdExpr -NoEscape -MaxTries 1 `
+        -ParseMode 'HTML' -OnError 'continueErrorOutput' -Buttons @( @{ Text = $ButtonTextExpr; Data = $ButtonDataExpr } )
 }
 
 # Auswahl-Nachricht aus einer choice_card {text, options:[6 x {text,data}], more:{text,data}}: Tastaturen sind in n8n statisch,

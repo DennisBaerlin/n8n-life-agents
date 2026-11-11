@@ -12,6 +12,8 @@
 --     * 'core:household' bzw. '<pkg>:<key>': Paket aus core.package_registry (aktiv, nie Caller-Text als Identifier),
 --       <pkg>.onboarding_state per to_regclass (Suffix literal), section_key im Katalog (nur als USING-Parameter);
 --       Nicht-Owner nur fuer persoenliche Pakete (core.fn_package_is_per_user) — core/Haushalt -> Toast;
+--       und nur fuer Abschnitte, deren for_roles die eigene Rolle nennt (NULL = alle) -> sonst Toast not_for_role;
+--     * ein 4. Teil (':next' am Vorschlags-Knopf, core.fn_check_next_step_tap) aendert nichts: gelesen werden Teil 2 und 3;
 --     * alles andere -> Toast 'Bereich nicht verfuegbar'. Nie RAISE (der Dispatcher-Vertrag).
 --   Toasts aus dem Textkatalog (core.toast.*) in der Sprache des Tippenden (agent.fn_person_lang).
 --   SECURITY INVOKER (laeuft unter der Host-Cred des Dispatchers, die agent/core/<pkg> liest), search_path gepinnt.
@@ -95,6 +97,17 @@ BEGIN
     IF NOT v_owner AND NOT core.fn_package_is_per_user(v_pkg) THEN
         RETURN jsonb_build_object('ok', false, 'reason', 'owner_only',
             'toast', core.fn_ui_text('core.toast.owner_sets_up', v_lang));
+    END IF;
+    -- for_roles (optionale Spalte, aus sections.json geseedet): der Abschnitt gilt nur fuer diese Rollen; der Owner immer.
+    IF NOT v_owner AND EXISTS (SELECT 1 FROM pg_catalog.pg_attribute a
+                               WHERE a.attrelid = v_rel::regclass AND a.attname = 'for_roles' AND NOT a.attisdropped) THEN
+        EXECUTE format('SELECT EXISTS (SELECT 1 FROM %s WHERE section_key = $1 AND for_roles IS NOT NULL
+                                       AND NOT (COALESCE($2, '''') = ANY (for_roles)))', v_rel)
+            USING v_key, v_sender->>'role' INTO v_found;
+        IF v_found THEN
+            RETURN jsonb_build_object('ok', false, 'reason', 'not_for_role',
+                'toast', core.fn_ui_text('core.toast.not_for_role', v_lang));
+        END IF;
     END IF;
     RETURN jsonb_build_object('ok', true, 'route', 'onboarding');
 END;

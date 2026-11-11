@@ -445,6 +445,51 @@ foreach ($tc in $cases) {
         Clear-ChatSessionMemory -Container $Container -SessionId "$chatId"
         Clear-MockTelegramRequests -Container $Container   # Text-Asserts sehen nur die Sends DIESES Falls
 
+        # ================= SEQUENCE: mehrere Nachrichten/Tipps nacheinander, je Schritt eine DB-Pruefung =================
+        # steps[]: {doc, caption} = Dokument mit Bildunterschrift an den echten Eingang, {tap_sql} = Knopf-Tipp mit den
+        # callback_data, die tap_sql liefert (z. B. aus dem Stapel), optional expect_toast (Teiltext der Quittung). Nach
+        # jedem Schritt muss die Orchestrator-Execution success sein und check_sql (optional) genau 't' liefern.
+        # pre_sql/post_sql wie bei node_ran.
+        if ($tc.kind -eq 'sequence') {
+            if ($tc.pre_sql) {
+                $ps = Invoke-TestN8nPsql -Container $Container -PsqlArgs @('-q', '-c', "$($tc.pre_sql)")
+                if ($ps.Code -ne 0) { Write-Host "    [FAIL] pre_sql fehlgeschlagen: $($ps.Output -join "`n")" -ForegroundColor Red; $failed++; continue }
+            }
+            $seqOk = $true; $n = 0
+            foreach ($st in @($tc.steps)) {
+                $n++
+                # Der Mock-LLM zaehlt fruehere Werkzeug-Runden im Gedaechtnis mit (ein zweites Dokument riefe dann kein Werkzeug)
+                # -> je Schritt leeren; der Fall prueft die Datenbank, nicht das Gedaechtnis.
+                Clear-ChatSessionMemory -Container $Container -SessionId "$chatId"
+                Clear-MockTelegramRequests -Container $Container
+                $orchBase = Get-MaxExecId $OrchWfId
+                if ($st.doc) {
+                    $bodies = Build-BurstUpdates ([pscustomobject]@{ updates = @([pscustomobject]@{ type = 'doc'; file_id = "$($st.doc)"; caption = "$($st.caption)" }) }) $chatId $fromUid
+                    Send-TelegramBurst $bodies
+                } else {
+                    $q = Invoke-TestN8nPsql -Container $Container -PsqlArgs @('-tA', '-c', "$($st.tap_sql)")
+                    $data = "$($q.Output | ForEach-Object { "$_".Trim() } | Where-Object { $_ } | Select-Object -First 1)"
+                    if (-not $data) { Write-Host "    Schritt ${n}: tap_sql lieferte keine callback_data" -ForegroundColor Red; $seqOk = $false; break }
+                    Send-TelegramCallback $fromUid $chatId $data
+                }
+                $orch = Wait-NewExecTerminal $OrchWfId $orchBase $Timeout
+                $stepOk = [bool]$orch -and $orch.status -eq 'success'
+                if ($stepOk -and $st.expect_toast) {
+                    $stepOk = [bool](@(Get-MockTelegramRequests -Container $Container) | Where-Object { $_.method -eq 'answerCallbackQuery' -and "$($_.body.text)".Contains("$($st.expect_toast)") })
+                }
+                if ($stepOk -and $st.check_sql) {
+                    $cs = Invoke-TestN8nPsql -Container $Container -PsqlArgs @('-tA', '-c', "$($st.check_sql)")
+                    $stepOk = ($cs.Code -eq 0) -and ("$($cs.Output | ForEach-Object { "$_".Trim() } | Where-Object { $_ } | Select-Object -First 1)" -eq 't')
+                }
+                Write-Host "    Schritt ${n}: $(if ($st.doc) { "Dokument $($st.doc)" } else { 'Tipp' }) status=$($orch.status) ok=$stepOk"
+                if (-not $stepOk) { $seqOk = $false; break }
+            }
+            if ($tc.post_sql) { [void](Invoke-TestN8nPsql -Container $Container -PsqlArgs @('-q', '-c', "$($tc.post_sql)")) }
+            if ($seqOk) { $passed++; Write-Host "    [PASS]" -ForegroundColor Green }
+            else { $failed++; Write-Host "    [FAIL] Ablauf bricht bei Schritt $n ab" -ForegroundColor Red }
+            continue
+        }
+
         # ================= ROUTE: chat_id number->string + Routing-Entscheidung =================
         if ($tc.kind -eq 'route') {
             $orchBase = Get-MaxExecId $OrchWfId

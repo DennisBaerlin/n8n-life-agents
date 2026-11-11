@@ -275,12 +275,18 @@ foreach ($tc in $cases) {
             # Rueckgabe des Werkzeugs: ohne sie wertete der Bewerter belegte Aussagen als unbelegt (tc65: complete).
             $wOutput = (@($wRuns | ForEach-Object { Get-ToolRunOutput $_.execId } | Where-Object { $_ }) -join "`n")
         }
+        # Weitere Schreib-Werkzeuge desselben Laufs mit Rueckgabe, aeltestes zuerst: ohne sie wertete der Bewerter einen
+        # Folge-Aufruf (Versand nach dem Lesen) als unbelegt, obwohl die Execution ihn zeigt.
+        $otherRuns = @($execWrite | Where-Object { $_.tool -ne $calledTool })
+        [array]::Reverse($otherRuns)
+        $otherTools = (@($otherRuns | ForEach-Object { "$($_.tool): $(Get-ToolRunOutput $_.execId)" }) -join "`n")
         $readTools = ($allCalls | Where-Object { -not (Test-IsWriteTool $_.tool) } | ForEach-Object { $_.tool } | Select-Object -Unique) -join ', '
         $judgeBundle += [ordered]@{
             id = $tc.id; name = $tc.name; task = $tc.task
             expected_behavior = $tc.expected_behavior; expected_tool = $tc.expected_tool
             det_pass = $pass; actual_tool = $calledTool
             actual_tool_input = $wInput; actual_tool_output = $wOutput
+            other_write_tools = $otherTools
             read_tools = $readTools; actual_output = (Get-AgentOutput $runData $AgentNodeName)
         }
         Write-Host "    [JUDGE] Verhalten zur AI-Bewertung vorgemerkt" -ForegroundColor Cyan

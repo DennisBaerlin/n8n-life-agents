@@ -101,6 +101,7 @@ ACTUAL_TOOL: $($Entry.actual_tool)
 ACTUAL_TOOL_INPUT: $($Entry.actual_tool_input)
 ACTUAL_TOOL_OUTPUT: $($Entry.actual_tool_output)
 READ_TOOLS: $($Entry.read_tools)
+$(if ($Entry.other_write_tools) { "OTHER_WRITE_TOOLS (further write tools called in the same run, oldest first, tool: output):`n$($Entry.other_write_tools)`n" })
 $(if ($Entry.specialist_output) { "`nSPECIALIST_OUTPUT (the specialist's reply the orchestrator relayed):`n$($Entry.specialist_output)`n" })
 ACTUAL_OUTPUT:
 $($Entry.actual_output)

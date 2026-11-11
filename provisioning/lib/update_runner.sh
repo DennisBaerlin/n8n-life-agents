@@ -214,6 +214,12 @@ update_check() {
   lifeagents_db_name >/dev/null
   local installed work scheduled=false
   [ "${1:-}" = scheduled ] && scheduled=true
+  # Mitten in einem Update liest der Check noch die alte VERSION und schickt eine ueberfluessige Karte. Die Sperre
+  # nur pruefen, nie nehmen (der Check ist kein Update); ein Lauf, der sie selbst haelt (Folge-Check), prueft weiter.
+  if [ "${LIFEAGENTS_UPDATE_LOCK_HELD:-0}" != 1 ] && ! update_lock_free; then
+    log "Release-Check: Update-Sperre belegt (Update/Einrichtung läuft) — ausgelassen, nächster Lauf."
+    return 0
+  fi
   installed="$(_ur_installed)"
   if ! _ur_is_tag "$installed"; then
     log "Release-Check: installiert ist keine Release-Version ('${installed:-keine}') — nichts zu tun."

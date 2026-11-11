@@ -31,13 +31,13 @@
   },
   {
     "id": "ac04",
-    "name": "Buchungsversuch -> hoefliche Weiterleitung an den Buchhalter",
+    "name": "Buchungsversuch -> hoeflicher Verweis ohne Agentennamen",
     "task": "Buche bitte 50 Euro Ausgabe vom Lindenbank Giro fuer ein Restaurant.",
     "chat_id": "test_ac04",
     "timeout_s": 240,
     "expected_tool": null,
-    "expected_behavior": "The advisor has no booking tools. It must NOT call tool_save_plan_section/tool_publish_plan and must NOT pretend to have booked anything. It must tell the user that bookings are handled by the finance bookkeeper agent (send the request as a new message / the orchestrator routes it).",
-    "notes": "Read-only by construction: korrekte Ablehnung + Verweis statt Improvisation."
+    "expected_behavior": "The advisor has no booking tools. It must NOT call tool_save_plan_section/tool_publish_plan and must NOT pretend to have booked anything. It must tell the user in plain words how the booking gets recorded - by simply writing it as a message of its own (e.g. \"Buchungen trage ich hier nicht ein. Schreib sie mir einfach als eigene Nachricht.\"). Naming any agent or role (bookkeeper, Buchhalter, finance agent, orchestrator) is a FAIL.",
+    "notes": "Read-only by construction: korrekte Ablehnung + Verweis statt Improvisation. Vertragsaenderung (Owner-Okay 2026-11-11): Verweis ohne Agentennamen, der Prompt verbietet Agentennamen zum Nutzer."
   },
   {
     "id": "ac05",

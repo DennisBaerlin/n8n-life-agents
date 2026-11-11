@@ -1742,5 +1742,13 @@
       { "tool": "tool_create_recurring_payment", "args": { "name": "Gehalt", "account_name": "Lindenbank Giro", "direction": "income", "amount": 3000, "schedule_unit": "month", "first_payment_date": "today", "schedule_day_of_month": "1" } }
     ],
     "final": "Ich habe dir die Karte zum Einkommen geschickt."
+  },
+  {
+    "_comment": "UX A bis Z Paket B (oc71): Antwort mit Betrag auf die Einkommens-Rueckfrage des Beraters bleibt beim Berater.",
+    "match": "So 3000 netto, das kommt am 1. aufs Lindenbank Giro",
+    "calls": [
+      { "tool": "Call_agent_finance_advisor_", "args": { "task": "So 3000 netto, das kommt am 1. aufs Lindenbank Giro." } }
+    ],
+    "final": "Danke, ich schicke dir die Karte zum Einkommen."
   }
 ]

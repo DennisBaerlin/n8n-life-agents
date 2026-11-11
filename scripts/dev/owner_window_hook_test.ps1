@@ -88,7 +88,8 @@ try {
     }
     Assert-Case 'Gratis-Suite monitor_probe_test frei' $false $wt  'PowerShell' @{ command = '.\scripts\dev\monitor_probe_test.ps1' }
     Assert-Case 'Durchspiel -Real gesperrt'           $true  $wt   'PowerShell' @{ command = '.\scripts\conversation_test.ps1 -Id s2 -Real' }
-    Assert-Case 'Durchspiel gratis (Mock) frei'       $false $wt   'PowerShell' @{ command = '.\scripts\conversation_test.ps1 -Id s2' }
+    Assert-Case 'Durchspiel -Rea (Kurzform) gesperrt' $true  $wt   'PowerShell' @{ command = '.\scripts\conversation_test.ps1 -Rea -Id s2' }
+    Assert-Case 'Durchspiel gratis (Mock) frei'      $false $wt   'PowerShell' @{ command = '.\scripts\conversation_test.ps1 -Id s2' }
     Assert-Case 'Suite im Haupt-Checkout gesperrt'    $true  $main 'PowerShell' $suite
     Assert-Case 'Dev-Reset gesperrt'                  $true  $wt   'PowerShell' @{ command = '.\scripts\reset_dev_instance.ps1' }
     Assert-Case 'Dev-Reset -KeepInstance frei'        $false $wt   'PowerShell' @{ command = '.\scripts\reset_dev_instance.ps1 -KeepInstance' }

@@ -1,6 +1,6 @@
 [
   {
-    "_comment": "Durchspiel-Faelle fuer scripts/conversation_test.ps1 (Orchestrator-Eingang, mehrere Runden, Aufzeichnung statt Bewertung). Format im Skript-Kopf. Nur Fixture-Personen. Sprint UX A bis Z: Szenarien S1-S4 laut Owner-Entscheid 2026-11-11."
+    "_comment": "Durchspiel-Faelle fuer scripts/conversation_test.ps1 (Orchestrator-Eingang, mehrere Runden, Aufzeichnung statt Bewertung). Format im Skript-Kopf. Nur Fixture-Personen. S1-S4: erste freie Saetze, Rat ohne Plan-Knopf, frisches Mitglied, Lebenszeichen."
   },
   {
     "id": "s1",

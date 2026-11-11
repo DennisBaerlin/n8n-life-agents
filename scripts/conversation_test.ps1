@@ -15,6 +15,7 @@
 # Berater-Plaene, Owner (Fixture-Person) und Mitglied (Fixture-Person Lena) gepairt, Sprache de, Persona neutral.
 #
 # Usage:  .\scripts\conversation_test.ps1 [-Id s1,s2] [-Timeout 120] [-OutDir <Ordner>] [-Verbose]       # gratis, Mock-Modell
+#         -MaxCostUsd 2.0 (nur -Real): haelt den Lauf vor der naechsten Runde an, sobald die Summe darueber liegt
 #         .\scripts\conversation_test.ps1 -Real [-Id s2]                                                   # KOSTET LLM-Credits
 # Beispiel-Runden der Faelle: "hallo", "und jetzt?", "kannst du mich beraten?", "wie viel Geld haben wir?", "/help".
 # Voraussetzung: Substrat (bootstrap_test_n8n.ps1) + enable_mock_telegram.ps1; ohne -Real zusaetzlich enable_mock_llm.ps1,
@@ -25,6 +26,7 @@ param(
     [string[]]$Id,
     [switch]$Real,
     [int]$Timeout = 120,
+    [double]$MaxCostUsd = 2.0,
     [string]$CasesFile,
     [string]$OutDir,
     [switch]$Verbose
@@ -184,6 +186,7 @@ $runStart = Get-Date
 $runCursor = Get-LlmUsageCursor -Container $Container
 $failed = 0
 $results = @()
+$script:runCost = 0.0; $script:stopRun = $false
 
 Write-Host ""
 Write-Host "Durchspiel ($mode) -- $($cases.Count) Fall/Faelle  (Eingang: $($ingress.Url))"
@@ -202,18 +205,30 @@ foreach ($tc in $cases) {
         Write-Host "    [FAIL] Setup: $($_.Exception.Message)" -ForegroundColor Red
         $res.setup_error = $_.Exception.Message; $failed++; $results += [pscustomobject]$res; continue
     }
-    $n = 0
+    $n = 0; $abortCase = $false
     foreach ($turn in @($tc.turns)) {
         $n++
+        if ($Real -and $script:runCost -gt $MaxCostUsd) {
+            Write-Host "    [FAIL] Kostengrenze $MaxCostUsd USD ueberschritten ($([Math]::Round($script:runCost, 3)) USD) - Lauf angehalten." -ForegroundColor Red
+            $failed++; $script:stopRun = $true; break
+        }
         try { $rd = Invoke-Round $tc $turn $n $uid }
         catch { Write-Host "    [FAIL] Runde ${n}: $($_.Exception.Message)" -ForegroundColor Red; $failed++; break }
         $res.rounds += $rd
-        $line = "    Runde ${n}: '$($rd.input)' -> $($rd.status), Agent: $(if ($rd.agents.Count) { $rd.agents -join '+' } else { '(Router direkt)' }), $(@($rd.outputs).Count) Ausgabe(n), $($rd.usage.requests) Anfr., $($rd.usage.cost_usd) USD"
+        $script:runCost += $rd.usage.cost_usd
+        # Zeitueberschreitung: die Execution laeuft evtl. weiter und wuerde die naechste Runde mit ihren Ausgaben vermischen.
+        if ($rd.status -in @('timeout', 'running', 'new', 'waiting')) {
+            try { if ($rd.execution) { Stop-Exec $rd.execution } } catch { }
+            $abortCase = $true   # der Status-Fehler selbst steht in $rd.failures und wird unten gezaehlt
+        }
+        $line ="    Runde ${n}: '$($rd.input)' -> $($rd.status), Agent: $(if ($rd.agents.Count) { $rd.agents -join '+' } else { '(Router direkt)' }), $(@($rd.outputs).Count) Ausgabe(n), $($rd.usage.requests) Anfr., $($rd.usage.cost_usd) USD"
         if ($rd.failures.Count) { Write-Host $line -ForegroundColor Red; foreach ($f in $rd.failures) { Write-Host "      - $f" -ForegroundColor Red }; $failed += $rd.failures.Count }
         else { Write-Host $line -ForegroundColor Green }
         if ($Verbose) { foreach ($o in $rd.outputs) { Write-Host "      > [$($o.method)] $($o.text)" -ForegroundColor DarkGray } }
+        if ($abortCase) { break }
     }
     $results += [pscustomobject]$res
+    if ($script:stopRun) { break }
 }
 try { (Invoke-N8nGet "executions?workflowId=$OrchWfId&status=waiting&limit=20").data | ForEach-Object { Stop-Exec $_.id } } catch { }
 Clear-HitlPending -Container $Container

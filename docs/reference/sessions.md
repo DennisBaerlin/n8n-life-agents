@@ -47,15 +47,16 @@ Das Parallel-Limit steht in `scripts/dev/bootstrap_test_n8n.ps1`. Die Leitung ve
 
 ## Release-Ablauf
 
-1. **Vor jedem Merge `git fetch origin`:** `main` hinter `origin/main` → erst nachziehen; Branch-Inhalt gegen `origin/main` zählen, sonst wirken veröffentlichte Commits fremd.
-2. **Merge-Kette** auf den einen Integrations-Branch; `build.ps1` ohne Diff.
-3. **Gates auf GitHub:** Integrations-Branch pushen, `gh workflow run free-gates.yml --ref <branch>`, dazu `ci` und `genericity` (laufen sonst nur auf main/PR). Warten per `gh run watch <id> --exit-status` als Hintergrund-Befehl, das weckt die Session; grüne Läufe wecken niemanden von selbst. Lokal zusätzlich `scripts/dev/run_free_gates.ps1 -Reset -Parallel` mit eigenen Containern nur bei geänderten Test-Skripten, Bot-Anschluss oder Install-Kern (dann `-Cold`) und vor einem Release; reine Doku-Merges brauchen keinen Lauf.
-4. **Bezahlte Fall-IDs sammeln:** alle Fälle, die der Gesamtstand berührt, als eine Liste (Fall-ID, Fall-Datei, Kostenrahmen) dem Owner nennen, bevor etwas nach `main` geht; der Lauf selbst im Owner-Fenster.
-5. **Push:** nur die Leitung, per Admin-Bypass der CI-Pflicht (Rulesets → `CONTRIBUTING.md` *Branch protection*); vorher `/privacy-review`. Danach `scripts/check_ci_status.ps1`. Ein gepushter Text lässt sich nicht still zurückholen; meldet `privacy_lint -Outgoing` rot, wird der Text korrigiert.
-6. **Master-Image + Pin-Commit** (`docs/reference/provisioning.md` *Docker-Verbund*), im Haupt-Checkout erst nach `git merge --ff-only origin/main`; das Bau-Skript verweigert jeden anderen Stand.
-7. **Tag:** annotiert, englische Release-Notes (was sich geändert hat, keine Live-Werte): `git tag -a vX.Y.Z --cleanup=whitespace -F <datei>`. Ein fehlerhafter Tag wird nicht verschoben → neue Patch-Version. Der Tag-Push ist ein eigener Push: Tag in einem eigenen Aufruf anlegen, dann `/privacy-review` mit `-DestRef <tag>` und erst danach pushen.
-8. **Release-Nachschau:** direkt nach dem Tag eine einmalige geplante Aufgabe anlegen (`mcp__scheduled-tasks__create_scheduled_task`, `fireAt` = Tag-Zeitpunkt + 24 h). Ihr Prompt: nur lesend wie `/live-findings` Schritte 1–3, Zeitraum die letzten 24 Stunden, Bericht als privates Artefakt; nichts ändern.
-9. Alle Sessions benachrichtigen, dann Sprint-Ende (`/leitung` §4).
+1. **Pflichten und Sperren gegenprüfen:** Jede Release-Pflicht und Sperre der Stand-Datei gegen git prüfen (`git tag --contains <fix-commit>`); erledigte streicht die Leitung, bevor sie etwas blockieren.
+2. **Vor jedem Merge `git fetch origin`:** `main` hinter `origin/main` → erst nachziehen; Branch-Inhalt gegen `origin/main` zählen, sonst wirken veröffentlichte Commits fremd.
+3. **Merge-Kette** auf den einen Integrations-Branch; `build.ps1` ohne Diff.
+4. **Gates auf GitHub:** Integrations-Branch pushen, `gh workflow run free-gates.yml --ref <branch>`, dazu `ci` und `genericity` (laufen sonst nur auf main/PR). Warten per `gh run watch <id> --exit-status` als Hintergrund-Befehl, das weckt die Session; grüne Läufe wecken niemanden von selbst. Lokal zusätzlich `scripts/dev/run_free_gates.ps1 -Reset -Parallel` mit eigenen Containern nur bei geänderten Test-Skripten, Bot-Anschluss oder Install-Kern (dann `-Cold`) und vor einem Release; reine Doku-Merges brauchen keinen Lauf.
+5. **Bezahlte Fall-IDs sammeln:** alle Fälle, die der Gesamtstand berührt, als eine Liste (Fall-ID, Fall-Datei, Kostenrahmen) dem Owner nennen, bevor etwas nach `main` geht; der Lauf selbst im Owner-Fenster.
+6. **Push:** nur die Leitung, per Admin-Bypass der CI-Pflicht (Rulesets → `CONTRIBUTING.md` *Branch protection*); vorher `/privacy-review`. Danach `scripts/check_ci_status.ps1`. Ein gepushter Text lässt sich nicht still zurückholen; meldet `privacy_lint -Outgoing` rot, wird der Text korrigiert.
+7. **Master-Image + Pin-Commit** (`docs/reference/provisioning.md` *Docker-Verbund*), im Haupt-Checkout erst nach `git merge --ff-only origin/main`; das Bau-Skript verweigert jeden anderen Stand.
+8. **Tag:** annotiert, englische Release-Notes (was sich geändert hat, keine Live-Werte): `git tag -a vX.Y.Z --cleanup=whitespace -F <datei>`, nie im selben Befehl wie der Pin-Commit (die Pin-Sperre prüft beim Taggen, ob der Pin schon committet ist). Ein fehlerhafter Tag wird nicht verschoben → neue Patch-Version. Der Tag-Push ist ein eigener Push: Tag in einem eigenen Aufruf anlegen, dann `/privacy-review` mit `-DestRef <tag>` und erst danach pushen.
+9. **Release-Nachschau:** direkt nach dem Tag eine einmalige geplante Aufgabe anlegen (`mcp__scheduled-tasks__create_scheduled_task`, `fireAt` = Tag-Zeitpunkt + 24 h). Ihr Prompt: nur lesend wie `/live-findings` Schritte 1–3, Zeitraum die letzten 24 Stunden, Bericht als privates Artefakt; nichts ändern.
+10. Alle Sessions benachrichtigen, dann Sprint-Ende (`/leitung` §4).
 
 **Push-Sperre:** Soll nichts nach GitHub, setzt die Leitung `.\scripts\set_no_push.ps1 -On`, noch bevor ein Brief das Pushen erwähnt; aufheben kann nur der Owner im Terminal (`-Off`).
 

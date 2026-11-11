@@ -65,7 +65,7 @@ return [{ json: { sent, rejected: Array.isArray(q.rejected) ? q.rejected : [], m
         ,@('failed', "={{ $C.tried - $C.sent.length }}", 'number')
         ,@('open_count', "={{ $C.open_count - $C.rejected.length }}", 'number')
         ,@('more', "={{ $C.more }}", 'number')
-        ,@('note', "={{ $C.sent.length > 0 ? 'The suggestions were already sent as separate messages with the buttons add / do not add. Do not repeat or list them; reply with at most one short sentence' + ($C.more > 0 ? ' and say that ' + $C.more + ' more follow when the user asks for the open suggestions.' : '.') + ($C.tried > $C.sent.length ? ' Some could not be sent right now; they go out on the next call.' : '') : ($C.open_count - $C.rejected.length > 0 ? 'All open suggestions are already above in the chat with their buttons. Say so in one short sentence.' : 'There are no open suggestions. Say so in one short sentence.') }}", 'string')
+        ,@('note', "={{ $C.sent.length > 0 ? 'The suggestions were already sent as separate messages with the buttons add / do not add. Do not repeat or list them; reply with at most one short sentence, no offer and no question' + ($C.more > 0 ? ' and say that ' + $C.more + ' more follow when the user asks for the open suggestions.' : '.') + ($C.tried > $C.sent.length ? ' Some could not be sent right now; they go out on the next call.' : '') : ($C.open_count - $C.rejected.length > 0 ? 'All open suggestions are already above in the chat with their buttons. Reply with exactly one short sentence saying so, no offer and no question.' : 'There are no open suggestions. Reply with exactly one short sentence saying so, no offer and no question.') }}", 'string')
     )
 
     $sticky = Build-Sticky 'Doc Vorschlags-Nachrichten' @(120, -380) `

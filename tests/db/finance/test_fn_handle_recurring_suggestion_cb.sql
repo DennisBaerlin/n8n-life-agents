@@ -158,6 +158,16 @@ BEGIN
             WHERE r.id = (v_r->>'recurring_payment_id')::int AND r.account_id = v_acct AND r.target_account_id = v_tg AND r.amount = -100) THEN
         RAISE EXCEPTION 'FAIL [H11 Uebertrag]: %', v_r;
     END IF;
-    RAISE NOTICE 'PASS [H1-H11 fn_handle_recurring_suggestion_cb]';
+    -- H12 Stapel seit mehr als 7 Tagen nicht ergaenzt, aber nicht geloescht -> abgelaufen, nichts angelegt
+    v_e := pg_temp.row('7601', v_acct, 'Alt Test', 44, '{"counterparty_iban":"DE02120300000000202051"}');
+    UPDATE finance.import_staging SET merged_at = now() - interval '8 days' WHERE id = v_e;
+    SELECT count(*) INTO v_cnt FROM finance.recurring_payments;
+    v_r := pg_temp.cb('ok', v_e, 1, '7601');
+    IF v_r->>'reason' <> 'expired' OR NOT (v_r->'edit'->>'keep_text')::boolean
+       OR (SELECT count(*) FROM finance.recurring_payments) <> v_cnt
+       OR (SELECT status FROM finance.import_staging WHERE id = v_e) <> 'staged' THEN
+        RAISE EXCEPTION 'FAIL [H12 abgelaufener Stapel]: %', v_r;
+    END IF;
+    RAISE NOTICE 'PASS [H1-H12 fn_handle_recurring_suggestion_cb]';
 END $$;
 ROLLBACK;

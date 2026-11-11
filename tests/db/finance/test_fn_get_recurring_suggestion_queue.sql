@@ -101,6 +101,13 @@ BEGIN
     IF NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v_q->'items') i WHERE (i->>'id')::int = v_ids[1] AND i->>'data_ok' LIKE '%:2') THEN
         RAISE EXCEPTION 'FAIL [Q6 neue Fassung kommt neu]: %', v_q;
     END IF;
-    RAISE NOTICE 'PASS [Q1-Q6 fn_get_recurring_suggestion_queue]';
+    -- Q7 Stapel seit mehr als 7 Tagen nicht ergaenzt, aber (noch) nicht geloescht -> abgelaufen, nichts mehr senden
+    UPDATE finance.import_staging SET merged_at = now() - interval '8 days' WHERE batch_id = v_b;
+    v_q := finance.fn_get_recurring_suggestion_queue('{"chat_id":"7801"}');
+    IF jsonb_array_length(v_q->'items') <> 0 OR jsonb_array_length(v_q->'rejected') <> 0 OR (v_q->>'more')::int <> 0
+       OR (v_q->>'open_count')::int <> 0 OR NOT EXISTS (SELECT 1 FROM finance.import_staging WHERE batch_id = v_b) THEN
+        RAISE EXCEPTION 'FAIL [Q7 abgelaufener Stapel wird nicht gesendet]: %', v_q;
+    END IF;
+    RAISE NOTICE 'PASS [Q1-Q7 fn_get_recurring_suggestion_queue]';
 END $$;
 ROLLBACK;

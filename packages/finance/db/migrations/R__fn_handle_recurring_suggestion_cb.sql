@@ -4,7 +4,7 @@
 --   Bestaetigung (kein HITL-Gate): angelegt wird allein aus dem gespeicherten Payload (fn_recurring_suggestion_args), die
 --   Anlege-fn bleibt das Gesetz (Dubletten, IBAN), dazu fn_recurring_known gegen inzwischen Angelegtes.
 --   Nur Privatchat; Sender selbst aufgeloest: Owner alle Vorschlaege, erwachsenes Mitglied (partner) nur die aus dem
---   eigenen Chat, Kind nichts. Zeile FOR UPDATE gesperrt: fehlt -> "abgelaufen", committed -> "schon uebernommen",
+--   eigenen Chat, Kind nichts. Zeile FOR UPDATE gesperrt: fehlt oder Stapel abgelaufen (fn_recurring_suggestion_expired) -> "abgelaufen", committed -> "schon uebernommen",
 --   declined -> "schon abgelehnt", andere Fassung -> "ueberholt"; jeweils edit {keep_text} (Knoepfe weg, Text bleibt),
 --   nichts angelegt. ok: Anlage mit chat_id des Tippenden, Zeile committed (+ recurring_payment_id, Payload auf Name
 --   gekuerzt), Text aus der angelegten Zeile (Name, Betrag, Rhythmus, Start, Konto); Ablehnung der Anlege-fn oder schon
@@ -51,7 +51,8 @@ BEGIN
     END IF;
     SELECT * INTO v_row FROM finance.import_staging
     WHERE id = v_id::int AND origin = 'recurring_suggestion' FOR UPDATE;
-    IF v_row.id IS NULL THEN
+    -- fehlt die Zeile oder ist ihr Stapel laenger als 7 Tage nicht ergaenzt (O6), gilt der Vorschlag als abgelaufen
+    IF v_row.id IS NULL OR (v_row.status = 'staged' AND finance.fn_recurring_suggestion_expired(v_row.batch_id)) THEN
         RETURN jsonb_build_object('ok', false, 'reason', 'expired', 'edit', v_keep,
             'toast', core.fn_ui_text('finance.recurring_suggest.toast_expired', v_lang));
     END IF;

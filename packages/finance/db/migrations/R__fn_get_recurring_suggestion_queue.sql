@@ -1,6 +1,6 @@
 -- ============================================================
 -- fn_get_recurring_suggestion_queue (VOLATILE: Probelauf) -- welche Dauerauftrags-Vorschlaege gehen jetzt als Knopf-Nachricht
---   Fuer tool_send_recurring_suggestions. Offene Zeilen des Vorschlags-Stapels dieses Chats, deren aktuelle Fassung noch
+--   Fuer tool_send_recurring_suggestions. Offene Zeilen des nicht abgelaufenen (fn_recurring_suggestion_expired) Vorschlags-Stapels dieses Chats, deren aktuelle Fassung noch
 --   nicht geschickt wurde (sent_version <> version), zuerst sure, dann confirm, je nach Betrag absteigend; hoechstens 10
 --   je Aufruf (Rest = more). Kinder und Unbekannte bekommen nichts. Je Zeile: Sicherheit neu aus den Terminen
 --   (fn_recurring_suggestion_measure; NULL = inzwischen bekannt -> rejected), dann der Probelauf derselben Anlege-fn
@@ -43,6 +43,7 @@ BEGIN
             SELECT s.id, s.version, s.entity_type, s.payload, finance.fn_recurring_suggestion_measure(s.payload) AS m
             FROM finance.import_staging s
             WHERE s.origin = 'recurring_suggestion' AND s.chat_id = v_chat AND s.status = 'staged'
+              AND NOT finance.fn_recurring_suggestion_expired(s.batch_id)
               AND s.sent_version IS DISTINCT FROM s.version) q
         ORDER BY (q.m->>'confidence' = 'sure') DESC NULLS LAST, (q.payload->>'amount')::numeric DESC, q.id
     LOOP
@@ -82,9 +83,11 @@ BEGIN
 
     RETURN jsonb_build_object('ok', true, 'items', v_items, 'rejected', v_rej, 'more', v_left,
         'open_count', (SELECT count(*) FROM finance.import_staging s
-                       WHERE s.origin = 'recurring_suggestion' AND s.chat_id = v_chat AND s.status = 'staged'),
+                       WHERE s.origin = 'recurring_suggestion' AND s.chat_id = v_chat AND s.status = 'staged'
+              AND NOT finance.fn_recurring_suggestion_expired(s.batch_id)),
         'sent_before', (SELECT count(*) FROM finance.import_staging s
                         WHERE s.origin = 'recurring_suggestion' AND s.chat_id = v_chat AND s.status = 'staged'
+              AND NOT finance.fn_recurring_suggestion_expired(s.batch_id)
                           AND s.sent_version = s.version));
 END;
 $$;

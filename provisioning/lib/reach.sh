@@ -480,7 +480,7 @@ reach_converge() {
 REACH_LAN_TRIES="${REACH_LAN_TRIES:-10}"
 REACH_LAN_SLEEP="${REACH_LAN_SLEEP:-1}"
 reach_lan_doctor() {
-  local addr via i
+  local addr via i rc
   [ "$(reach_mode)" = fritzbox ] && [ -s "$REACH_CONF_DIR/domain" ] || return 0
   if ! rt_edge_active wan; then
     if [ -e "$REACH_CONF_DIR/ports-busy" ]; then
@@ -490,19 +490,29 @@ reach_lan_doctor() {
     fi
     return 0
   fi
+  # Erst auf einen ruhig laufenden wan warten (frisch gestartet, z. B. am Installer-Ende, oder in einer Neustart-Schleife).
+  if ! rt_edge_settle wan; then
+    printf 'red\tFritzBox-Weg: wan läuft nicht stabil (startet ständig neu oder kommt nicht hoch) — nicht gemessen (%s)\n' "$(rt_edge_logs_hint wan)"
+    return 0
+  fi
   addr="$(_reach_hint LA_HOST_IP)"
   if printf '%s' "$addr" | grep -qE '^[0-9]+(\.[0-9]+){3}$'; then via='die LAN-Adresse des Rechners'
   else addr="$(rt_host_gateway || true)"; via='den Docker-Zugang des Rechners'; fi
   [ -n "$addr" ] || { printf 'warn\tFritzBox-Weg: Adresse des Rechners nicht ermittelbar, Antwort über LAN nicht gemessen\n'; return 0; }
-  if rt_probe_host "$addr" 443; then
-    printf 'pass\tFritzBox-Weg antwortet auf Port 443 über %s (gemessen)\n' "$via"; return 0
-  fi
+  # rc 2 = die Probe lief selbst nicht: nie als "antwortet nicht" werten, wan bleibt unberuehrt.
+  rc=0; rt_probe_host "$addr" 443 || rc=$?
+  case "$rc" in
+    0) printf 'pass\tFritzBox-Weg antwortet auf Port 443 über %s (gemessen)\n' "$via"; return 0 ;;
+    2) printf 'warn\tFritzBox-Weg: nicht gemessen — der Prüf-Container ließ sich nicht starten (Docker und Prüf-Image kontrollieren), wan bleibt unverändert\n'; return 0 ;;
+  esac
   printf 'warn\tFritzBox-Weg antwortet über %s nicht (127.0.0.1 allein reicht nicht) — der Rand wird neu gestartet\n' "$via"
   rt_edge_restart wan || { printf 'red\tFritzBox-Weg: wan ließ sich nicht neu starten (%s)\n' "$(rt_edge_logs_hint wan)"; return 0; }
   for ((i = 0; i < REACH_LAN_TRIES; i++)); do
-    if rt_probe_host "$addr" 443; then
-      printf 'pass\tFritzBox-Weg antwortet nach dem Neustart wieder über %s\n' "$via"; return 0
-    fi
+    rc=0; rt_probe_host "$addr" 443 || rc=$?
+    case "$rc" in
+      0) printf 'pass\tFritzBox-Weg antwortet nach dem Neustart wieder über %s\n' "$via"; return 0 ;;
+      2) printf 'warn\tFritzBox-Weg: nach dem Neustart nicht gemessen — der Prüf-Container ließ sich nicht starten (Docker und Prüf-Image kontrollieren)\n'; return 0 ;;
+    esac
     [ "$REACH_LAN_SLEEP" = 0 ] || sleep "$REACH_LAN_SLEEP"
   done
   printf 'red\tFritzBox-Weg antwortet auch nach dem Neustart nicht über %s — Port-Weiterleitung 80/443 in der FritzBox und Docker prüfen (%s)\n' "$via" "$(rt_edge_logs_hint wan)"

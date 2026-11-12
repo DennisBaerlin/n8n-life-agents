@@ -390,15 +390,17 @@ eq N_status_hostname_unset ''   "$(unset LA_TS_HOSTNAME; reach_status_json | jq 
 # --- L: LAN-Antwort des FritzBox-Wegs (doctor, reach_lan_doctor) ------------------------------------------------------
 # Antwortet wan am Rechner nicht (Docker-Neustart, Port-Weiterleitung weg), merkt es sonst nur der Nutzer. doctor misst
 # TCP 443 ueber die LAN-Adresse (Hinweis der Start-App) bzw. den Docker-Zugang des Rechners, startet bei Ausbleiben wan
-# einmal neu und misst erneut. Attrappen: Messfolge A_LAN_SEQ (eine 0/1 je Messung, danach bleibt der letzte Wert).
+# einmal neu und misst erneut. Attrappen: Messfolge in L_SEQ (1 = antwortet, 0 = Port zu, E = Probe lief nicht; danach bleibt der letzte Wert).
 L_SEQ="$W/lan.seq"
 rt_host_gateway() { printf '172.30.0.1'; }
 rt_probe_host() {
   local v; printf 'probe %s %s\n' "$1" "$2" >> "$LOG"
   v="$(head -n1 "$L_SEQ" 2>/dev/null)"; [ -n "$v" ] || v=1
   [ "$(wc -l < "$L_SEQ")" -gt 1 ] && sed -i 1d "$L_SEQ"
-  [ "$v" = 1 ]
+  case "$v" in 1) return 0 ;; E) return 2 ;; *) return 1 ;; esac
 }
+A_SETTLE=1
+rt_edge_settle() { printf 'settle %s\n' "$1" >> "$LOG"; [ "$A_SETTLE" = 1 ]; }
 REACH_HINTS_FILE="$W/hints.env"; REACH_LAN_TRIES=3; REACH_LAN_SLEEP=0
 lan() { : > "$LOG"; printf '%s\n' "${1:-1}" | tr ' ' '\n' > "$L_SEQ"; reach_lan_doctor; }
 lvl() { printf '%s' "$1" | cut -f1 | paste -sd,; }
@@ -438,5 +440,35 @@ rt_edge_restart() { printf 'restart %s\n' "$1" >> "$LOG"; }
 # ASCII-Zeilen der Matrix duerfen kein rohes Tab im Text tragen (Format <stufe>\t<text>).
 eq L_one_tab_per_line 1 "$(printf '%s\n' "$(lan 0)" | awk -F'\t' 'NF!=2{bad=1} END{print bad?0:1}')"
 
+
+# Probe, die nicht laufen kann (Image fehlt, Docker-Fehler): eigener Zustand, nie "antwortet nicht", kein Neustart.
+out="$(lan E)"; eq L_probe_error_levels warn "$(lvl "$out")"
+grep -q '^restart' "$LOG" && fail L_probe_error_no_restart "Neustart trotz nicht gelaufener Probe" || pass L_probe_error_no_restart
+printf '%s' "$out" | grep -q 'nicht gemessen' && pass L_probe_error_wording || fail L_probe_error_wording "$out"
+out="$(lan '0 E')"; eq L_probe_error_after_restart warn,warn "$(lvl "$out")"
+eq L_probe_error_after_restart_once 1 "$(grep -c '^restart wan$' "$LOG")"
+
+# Zeitpuffer: erst auf einen ruhig laufenden wan warten, dann messen; ein nie ruhig laufender wan = ROT, nicht gemessen.
+lan 1 >/dev/null; eq L_settle_first "settle wan" "$(grep -nE '^(settle|probe)' "$LOG" | head -n1 | cut -d: -f2)"
+A_SETTLE=0; out="$(lan 1)"; eq L_unsettled_red red "$(lvl "$out")"
+grep -q '^probe' "$LOG" && fail L_unsettled_no_probe "gemessen, obwohl wan nicht ruhig laeuft" || pass L_unsettled_no_probe
+A_SETTLE=1
+
+# doctor.sh-Verdrahtung (echter Code, Teilschale): Stufen -> [ OK ]/[WARN]/[FAIL]; nur ROT zaehlt in den Exit-Wert.
+dr() {   # dr <messfolge> -> Ausgabe der Zeilen von _doctor_compose_pod + "fail=<n>" (nur FritzBox-Zeilen)
+  : > "$LOG"; printf '%s\n' "$1" | tr ' ' '\n' > "$L_SEQ"
+  ( . "$ROOT/provisioning/doctor.sh" >/dev/null 2>&1
+    LA_PROJECT=t; N8N_PORT=5678; _fail=0
+    rt_netns() { echo net:1; }; rt_container_running() { return 0; }; rt_probe_internal() { [ "$1" = 5678 ]; }
+    rt_host_gateway() { printf '172.30.0.1'; }
+    rt_probe_host() { local v; v="$(head -n1 "$L_SEQ")"; [ "$(wc -l < "$L_SEQ")" -gt 1 ] && sed -i 1d "$L_SEQ"; case "$v" in 1) return 0 ;; E) return 2 ;; *) return 1 ;; esac; }
+    rt_edge_active() { [ "$1" = wan ]; }; rt_edge_restart() { :; }; rt_edge_settle() { :; }; rt_edge_logs_hint() { printf 'logs'; }
+    REACH_LAN_TRIES=2; REACH_LAN_SLEEP=0
+    _doctor_compose_pod 0.0.0.0 > "$W/dp.out"; grep FritzBox "$W/dp.out"; echo "fail=$_fail" )
+}
+out="$(dr 1)";     printf '%s' "$out" | grep -q '^  \[ OK \] FritzBox-Weg' && eq L_doctor_ok_fail 'fail=0' "$(printf '%s' "$out" | tail -n1)" || fail L_doctor_ok "$out"
+out="$(dr '0 1')"; printf '%s' "$out" | grep -q '^  \[WARN\] FritzBox-Weg' && printf '%s' "$out" | grep -q '^  \[ OK \] FritzBox-Weg antwortet nach' && eq L_doctor_recovered_fail 'fail=0' "$(printf '%s' "$out" | tail -n1)" || fail L_doctor_recovered "$out"
+out="$(dr '0 0')"; eq L_doctor_dead_fail 'fail=1' "$(printf '%s' "$out" | tail -n1)"
+out="$(dr E)";     printf '%s' "$out" | grep -q '^  \[WARN\] FritzBox-Weg.*nicht gemessen' && eq L_doctor_notmeasured_fail 'fail=0' "$(printf '%s' "$out" | tail -n1)" || fail L_doctor_notmeasured "$out"
 printf 'compose_cases: %s Fehler\n' "$fails"
 exit "$fails"

@@ -484,4 +484,4 @@ main() {
   return "$_fail"
 }
 
-main "$@"
+if [ "${BASH_SOURCE[0]}" = "$0" ]; then main "$@"; fi

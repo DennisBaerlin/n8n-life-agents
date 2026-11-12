@@ -58,6 +58,9 @@ BEGIN
     IF finance.fn_schedule_dom_reason(v_dom) IS NOT NULL THEN
         RETURN jsonb_build_object('ok', false, 'reason', finance.fn_schedule_dom_reason(v_dom));
     END IF;
+    -- Anker auf den ersten echten Termin (Datum passt nicht zum festen Monatstag -> naechster solche Tag); ohne
+    -- Vertragsbeginn folgt valid_from ihm. effective meldet beide wie gespeichert (Karte = Write).
+    v_first := finance.fn_schedule_first_occurrence(v_first, v_interval, v_unit, v_dom, NULL);
     v_from := COALESCE(NULLIF(p->>'valid_from', '')::date, v_first);
 
     -- Korrigierbar: ein Beitrag ist Pflicht (je Abbuchung oder als Jahresbeitrag).
@@ -111,7 +114,9 @@ BEGIN
         'premium_amount', v_per,
         'annual_premium', v_annual,
         'monthly_equivalent', (SELECT -monthly_equivalent FROM finance.recurring_payments WHERE id = v_rp_id),
-        'effective', v_dates->'resolved'
+        'effective', COALESCE(v_dates->'resolved', '{}'::jsonb)
+                     || jsonb_build_object('first_payment_date', to_char(v_first, 'YYYY-MM-DD'),
+                                           'valid_from', to_char(v_from, 'YYYY-MM-DD'))
     );
 END;
 $$;

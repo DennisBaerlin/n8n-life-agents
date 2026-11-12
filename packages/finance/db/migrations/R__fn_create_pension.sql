@@ -98,12 +98,15 @@ BEGIN
     END IF;
 
     -- Optional: Beitrag je Abbuchung als recurring_payment (expense) via Helper.
+    -- Anker auf den ersten echten Termin (Datum passt nicht zum festen Monatstag -> naechster solche Tag); effective
+    -- meldet ihn wie gespeichert (Karte = Write).
     IF v_contrib IS NOT NULL AND v_contrib > 0 THEN
+        v_first := finance.fn_schedule_first_occurrence(COALESCE(v_first, core.fn_today()), v_interval, v_unit, v_dom, NULL);
         v_rp_id := finance.fn_add_recurring_payment(
             v_debit, -v_contrib, left('AV-Beitrag ' || (p->>'name'), 100),
             v_interval, v_unit, v_dom,
-            COALESCE(v_first, core.fn_today()),
-            finance.fn_recurring_valid_from(v_debit, COALESCE(v_first, core.fn_today())), NULL, NULL, NULL);
+            v_first,
+            finance.fn_recurring_valid_from(v_debit, v_first), NULL, NULL, NULL);
     END IF;
 
     INSERT INTO finance.pension
@@ -126,6 +129,9 @@ BEGIN
     RETURNING id INTO v_pension_id;
 
     RETURN jsonb_build_object('ok', true, 'pension_id', v_pension_id, 'recurring_payment_id', v_rp_id,
-        'effective', v_dates->'resolved');
+        'effective', COALESCE(v_dates->'resolved', '{}'::jsonb)
+                     || CASE WHEN v_rp_id IS NOT NULL
+                             THEN jsonb_build_object('first_payment_date', to_char(v_first, 'YYYY-MM-DD'))
+                             ELSE '{}'::jsonb END);
 END;
 $$;

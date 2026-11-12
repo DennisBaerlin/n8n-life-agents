@@ -33,7 +33,13 @@ function Build-CronRefreshFxRates {
     # Nachholen: n8n-Start (nach 30 s fuer Netz/DNS) und stuendlicher Check (Ruhezustand startet n8n nicht neu) ueber den
     # gemeinsamen Eingang; der Tagesplan haengt unten am selben Gate 'Catch-up needed?'.
     $catchUp = New-CatchUpEntry -Package 'finance' -Feed 'fx' -CronKey 'refresh_fx_rates' `
-        -OnDue @('Check active currencies', 'Sweep import staging') -Origin @(-1040, -220)
+        -OnDue @('Check active currencies') -Origin @(-1040, -220)
+
+    # Das Aufraeumen haengt NICHT an der Faelligkeit: ohne Fremdwaehrung ist der Abruf nie faellig, der Tagesplan soll
+    # trotzdem taeglich aufraeumen. Eigenes Gate (Paket aktiv AND cron_enable), nur vom Tagesplan.
+    $gateSweep = Build-Pg 'Cron enabled?' @(-600, -100) `
+        "SELECT core.fn_package_active('finance') AND COALESCE(core.fn_config_get('finance','cron_enable','refresh_fx_rates') = 'true', false) AS enabled"
+    $ifSweep = Build-If 'Cron on?' @(-400, -100) "={{ `$json.enabled }}" 'true' 'equals' 'boolean'
 
     # Early-Exit: fn_active_currencies() zaehlt Fremdwaehrungs-Objekte. Bei cnt=0 kein HTTP-Call.
     $checkCurr = Build-Pg 'Check active currencies' @(-180, 0) `
@@ -57,7 +63,7 @@ function Build-CronRefreshFxRates {
     # nicht fatal, damit ein Aufraeum-Fehler nie den Kurs-Abruf aufhaelt.
     $sweep = Build-Pg 'Sweep import staging' @(-180, -160) 'SELECT finance.fn_import_sweep(7) AS deleted'
     $sweep['onError'] = 'continueRegularOutput'
-    $stickySweep = Build-Sticky 'Aufräumen' @(-180, -360) 'Import-Stapel aufräumen (täglich)' 'Nur im Zeitplan- und Nachhol-Pfad (nicht beim Sofort-Abruf nach einem Write): finance.fn_import_sweep(7) löscht nicht übernommene Import-Zeilen nach 7 Tagen und Dauerauftrags-Vorschlags-Stapel 7 Tage nach ihrem letzten Ergänzen. Läuft hier, weil dieser Cron täglich und unter finance_rw läuft; ein Fehler hält den Kurs-Abruf nicht auf.' 260 200
+    $stickySweep = Build-Sticky 'Aufräumen' @(-180, -360) 'Import-Stapel aufräumen (täglich)' 'Nur im Tagesplan-Pfad hinter eigenem Gate Cron enabled? (Paket aktiv, cron_enable), unabhängig davon, ob der Kurs-Abruf fällig ist (ohne Fremdwährung ist er nie fällig): finance.fn_import_sweep(7) löscht nicht übernommene Import-Zeilen nach 7 Tagen und Dauerauftrags-Vorschlags-Stapel 7 Tage nach ihrem letzten Ergänzen. Läuft hier, weil dieser Cron täglich und unter finance_rw läuft; ein Fehler hält den Kurs-Abruf nicht auf.' 260 200
 
     $stickyOverview = Build-Sticky 'Überblick' @(-460, -260) `
         'FX-Kurs-Refresh (Dual-Trigger, kein LLM)' `
@@ -79,14 +85,19 @@ function Build-CronRefreshFxRates {
         'Verpassten Tageslauf nachholen (n8n-Start und jede Stunde)' `
         'Die Planzeit verfällt, wenn das Gerät aus ist oder schläft; der scheduleTrigger holt nicht nach. Drei Eingänge fragen deshalb dieselbe Prüfung: der Tagesplan, der n8n Trigger (Instance started, nach 30 s für Netz und DNS) und ein stündlicher Check (schedule.refresh_catchup, deckt auch das Aufwachen aus dem Ruhezustand, bei dem n8n nicht neu startet). Catch-up needed?: Paket aktiv, cron_enable an, und finance.fn_feed_refresh_due(''fx'') meldet, dass heute noch kein Kurs geholt wurde (jüngster Stand vor Beginn des heutigen Kalendertags der Haushalts-Zeitzone; ohne jeden Kurs ebenfalls). Sonst Ende ohne Abruf: ein Abruf je Kalendertag, wer zuerst kommt, Wochenende kostet nichts extra. Der Stunden-Check startet erst ab 03:15 (Manifest-Default), weil open.er-api.com seine Tageskurse um ca. 00:02 bis 00:26 UTC veröffentlicht. Fällt der Feed aus, bleibt der Lauf stumm (Fetch EUR rates: onError weiter) und wiederholt stündlich; die Lücke meldet einmal der Berater (fx_rate_stale, finance.fx_stale_days). Unabhängig von fx_stale_days entscheidet nur die Kalendertag-Regel.' 340 340
 
-    $nodes = @($trig, $subTrig, $gateStart, $ifStart, $disabled) + @($catchUp.Nodes) +
+    $nodes = @($trig, $subTrig, $gateStart, $ifStart, $disabled, $gateSweep, $ifSweep) + @($catchUp.Nodes) +
              @($checkCurr, $ifCurr, $fetch, $upsert,
                $sweep, $stickySweep,
                $stickyOverview, $stickyEarlyExit, $stickyUpsert, $stickyGate, $stickyInit)
     $conns = [ordered]@{}
     foreach ($k in $catchUp.Connections.Keys) { $conns[$k] = $catchUp.Connections[$k] }
-    $conns['Schedule (cron from config)'] = @{ main = @( ,@( E 'Catch-up needed?' ) ) }   # Tagesplan: dasselbe Gate
+    $conns['Schedule (cron from config)'] = @{ main = @( ,@( (E 'Catch-up needed?'), (E 'Cron enabled?') ) ) }   # Tagesplan: Abruf-Gate + Aufraeum-Gate
     $conns2 = [ordered]@{
+        'Cron enabled?'               = @{ main = @( ,@( E 'Cron on?' ) ) }
+        'Cron on?'                    = @{ main = @(
+            @( E 'Sweep import staging' ),   # true: Paket aktiv UND Cron an
+            @( E 'Disabled' )
+        ) }
         'Start'                      = @{ main = @( ,@( E 'Package active?' ) ) }
         'Package active?'             = @{ main = @( ,@( E 'Package on?' ) ) }
         'Package on?'                 = @{ main = @(

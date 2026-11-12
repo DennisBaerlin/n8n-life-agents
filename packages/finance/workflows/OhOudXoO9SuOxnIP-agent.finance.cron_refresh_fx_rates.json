@@ -113,6 +113,63 @@
                   },
                   {
                       "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "SELECT core.fn_package_active(\u0027finance\u0027) AND COALESCE(core.fn_config_get(\u0027finance\u0027,\u0027cron_enable\u0027,\u0027refresh_fx_rates\u0027) = \u0027true\u0027, false) AS enabled",
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       -600,
+                                       -100
+                                   ],
+                      "id":  "047693aa-7110-562b-8c19-deb96220ff8b",
+                      "name":  "Cron enabled?",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_FINANCE_RW__",
+                                                           "name":  "Postgres finance_rw (read-write)"
+                                                       }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "a033d59a-22ca-53df-ac80-812ad226ca51",
+                                                                                   "leftValue":  "={{ $json.enabled }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       -400,
+                                       -100
+                                   ],
+                      "id":  "e363d014-c823-55f9-b198-0b95bf415709",
+                      "name":  "Cron on?"
+                  },
+                  {
+                      "parameters":  {
                                          "events":  [
                                                         "init"
                                                     ]
@@ -344,7 +401,7 @@
                   },
                   {
                       "parameters":  {
-                                         "content":  "## DB-Automatik\n**Import-Stapel aufräumen (täglich)**\n\nNur im Zeitplan- und Nachhol-Pfad (nicht beim Sofort-Abruf nach einem Write): finance.fn_import_sweep(7) löscht nicht übernommene Import-Zeilen nach 7 Tagen und Dauerauftrags-Vorschlags-Stapel 7 Tage nach ihrem letzten Ergänzen. Läuft hier, weil dieser Cron täglich und unter finance_rw läuft; ein Fehler hält den Kurs-Abruf nicht auf.",
+                                         "content":  "## DB-Automatik\n**Import-Stapel aufräumen (täglich)**\n\nNur im Tagesplan-Pfad hinter eigenem Gate Cron enabled? (Paket aktiv, cron_enable), unabhängig davon, ob der Kurs-Abruf fällig ist (ohne Fremdwährung ist er nie fällig): finance.fn_import_sweep(7) löscht nicht übernommene Import-Zeilen nach 7 Tagen und Dauerauftrags-Vorschlags-Stapel 7 Tage nach ihrem letzten Ergänzen. Läuft hier, weil dieser Cron täglich und unter finance_rw läuft; ein Fehler hält den Kurs-Abruf nicht auf.",
                                          "height":  260,
                                          "width":  200,
                                          "color":  4
@@ -526,11 +583,6 @@
                                                                "index":  0,
                                                                "node":  "Check active currencies",
                                                                "type":  "main"
-                                                           },
-                                                           {
-                                                               "index":  0,
-                                                               "node":  "Sweep import staging",
-                                                               "type":  "main"
                                                            }
                                                        ],
                                                        [
@@ -549,10 +601,44 @@
                                                                                  "index":  0,
                                                                                  "node":  "Catch-up needed?",
                                                                                  "type":  "main"
+                                                                             },
+                                                                             {
+                                                                                 "index":  0,
+                                                                                 "node":  "Cron enabled?",
+                                                                                 "type":  "main"
                                                                              }
                                                                          ]
                                                                      ]
                                                         },
+                        "Cron enabled?":  {
+                                              "main":  [
+                                                           [
+                                                               {
+                                                                   "index":  0,
+                                                                   "node":  "Cron on?",
+                                                                   "type":  "main"
+                                                               }
+                                                           ]
+                                                       ]
+                                          },
+                        "Cron on?":  {
+                                         "main":  [
+                                                      [
+                                                          {
+                                                              "index":  0,
+                                                              "node":  "Sweep import staging",
+                                                              "type":  "main"
+                                                          }
+                                                      ],
+                                                      [
+                                                          {
+                                                              "index":  0,
+                                                              "node":  "Disabled",
+                                                              "type":  "main"
+                                                          }
+                                                      ]
+                                                  ]
+                                     },
                         "Start":  {
                                       "main":  [
                                                    [
@@ -635,6 +721,11 @@
                                                           {
                                                               "index":  0,
                                                               "node":  "Catch-up needed?",
+                                                              "type":  "main"
+                                                          },
+                                                          {
+                                                              "index":  0,
+                                                              "node":  "Cron enabled?",
                                                               "type":  "main"
                                                           }
                                                       ]

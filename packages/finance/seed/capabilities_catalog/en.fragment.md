@@ -43,7 +43,7 @@ Savings goals with a target amount/date and an automatically calculated savings 
 - "Create a new savings goal 'Emergency fund': target 10,000 euros by the end of 2027, from the Lindenbank Giro into Tagesgeld Plus, debit day 1, first booking on 1 Jul 2026."
 
 ## Standing orders
-Manage recurring payments (salary, rent, subscriptions, pension); from a bank export the bot suggests missing standing orders. The bot only records standing orders and savings plans; you set them up at your bank yourself.
+Manage recurring payments (salary, rent, subscriptions, pension); from a bank statement (PDF) or a bank export the bot suggests missing standing orders, each as its own message with a button to add it. The bot only records standing orders and savings plans; you set up new ones at your bank yourself.
 - "Add a recurring expense: Netflix subscription, 13.99 euros monthly from the Lindenbank Giro, debit day 5, first payment on 5 Jul 2026."
 - "Record my monthly standing order: 200 euros from the Lindenbank Giro to the Testbroker Cash current account, from 1 Jul 2026, on the 1st of the month."
 - "Which subscriptions and standing orders am I still missing?"

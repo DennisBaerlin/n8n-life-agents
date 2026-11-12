@@ -45,7 +45,7 @@ Sparziele mit Zielbetrag/-datum und automatisch berechneter Sparrate; dauerhafte
 - "Lege ein neues Sparziel 'Notfallfonds' an: Zielbetrag 10000 Euro, bis Ende 2027, vom Lindenbank Giro aufs Tagesgeld Plus, Abbuchungstag 1., erste Buchung am 01.07.2026."
 
 ## Daueraufträge
-Wiederkehrende Zahlungen (Gehalt, Miete, Abos, Rente) verwalten; aus einem Bank-Export schlägt der Bot fehlende Daueraufträge vor. Der Bot notiert Daueraufträge und Sparpläne nur; einrichten musst du sie bei deiner Bank.
+Wiederkehrende Zahlungen (Gehalt, Miete, Abos, Rente) verwalten; aus einem Kontoauszug (PDF) oder Bank-Export schlägt der Bot fehlende Daueraufträge vor, jeden als eigene Nachricht mit Knopf zum Übernehmen. Der Bot notiert Daueraufträge und Sparpläne nur; neue richtest du selbst bei deiner Bank ein.
 - "Lege eine wiederkehrende Ausgabe an: Netflix-Abo, 13,99 Euro monatlich vom Lindenbank Giro, Abbuchungstag 5, erste Zahlung am 05.07.2026."
 - "Notiere meinen monatlichen Dauerauftrag: 200 Euro vom Lindenbank Giro auf das Testbroker Cash Girokonto, ab dem 01.07.2026, am 1. des Monats."
 - "Welche Abos und Daueraufträge fehlen mir eigentlich noch?"

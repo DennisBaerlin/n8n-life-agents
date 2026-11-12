@@ -7,7 +7,8 @@
 --   eigenen Chat, Kind nichts. Zeile FOR UPDATE gesperrt: fehlt oder Stapel abgelaufen (fn_recurring_suggestion_expired) -> "abgelaufen", committed -> "schon uebernommen",
 --   declined -> "schon abgelehnt", andere Fassung -> "ueberholt"; jeweils edit {keep_text} (Knoepfe weg, Text bleibt),
 --   nichts angelegt. ok: Anlage mit chat_id des Tippenden, Zeile committed (+ recurring_payment_id, Payload auf Name
---   gekuerzt), Text aus der angelegten Zeile (Name, Betrag, Rhythmus, Start, Konto); Ablehnung der Anlege-fn oder schon
+--   gekuerzt), Text aus der angelegten Zeile (Name, Betrag, Rhythmus, Start, Konto) plus je Event-Fold der Anlege-fn
+--   eine Zeile (cashflow_coverage -> note_cashflow, Kartenzeilen mit fold-Herkunft); Ablehnung der Anlege-fn oder schon
 --   bekannt -> declined + Text mit Grund. no: declined. Uebernimmt ein Mitglied, liefert owner_notice den Hinweis in
 --   Owner-Sprache (Gleichstand zur Stufe owner_info der Einzelanlage). Die fn ist schnell, deshalb kommt der Toast aus
 --   ihrem Ergebnis (kein answerCallbackQuery vorab).
@@ -36,6 +37,7 @@ DECLARE
     v_known jsonb;
     v_rpid  int;
     v_owner text;
+    v_text  text;
     v_keep  jsonb := jsonb_build_object('keep_text', true);
 BEGIN
     IF v_chat ~ '^[0-9]{1,18}$' THEN v_s := agent.fn_resolve_sender(v_chat::bigint); END IF;
@@ -127,17 +129,27 @@ BEGIN
     UPDATE finance.import_staging SET status = 'committed', recurring_payment_id = v_rpid,
            payload = jsonb_build_object('name', v_rp.name, 'account_id', v_row.payload->'account_id')
     WHERE id = v_row.id;
+    -- Event-Folds der Anlege-fn: hier liest kein Buchhalter die englischen Notes vor, darum als Zeilen unter dem ✓-Text.
+    -- Der Cashflow-Fold hat schon gelatcht und "gesagt" gemerkt; fiele die Zeile weg, kaeme die Warnung nie an.
+    -- Von den Kartenzeilen nur die Fold-Zeilen: IBAN-Schluessel ("Falls falsch, abbrechen") gilt nur vor dem Tipp.
+    v_text := concat_ws(E'\n', finance.fn_recurring_suggestion_text('accepted', v_info, v_lang),
+        CASE WHEN v_res ? 'cashflow_coverage' THEN core.fn_ui_text('finance.recurring_suggest.note_cashflow', v_lang,
+            jsonb_build_object('deficit', core.fn_ui_money(abs((v_res->'cashflow_coverage'->>'monthly_free')::numeric), 'EUR'))) END,
+        (SELECT string_agg(core.fn_ui_text(l->>'value', v_lang, COALESCE(l->'params', '{}'::jsonb)), E'\n' ORDER BY o)
+         FROM jsonb_array_elements(CASE WHEN jsonb_typeof(v_res->'card_lines') = 'array' THEN v_res->'card_lines' ELSE '[]'::jsonb END)
+              WITH ORDINALITY AS x(l, o)
+         WHERE l ? 'fold'));
     IF v_s->>'role' <> 'owner' THEN
         v_owner := agent.fn_person_lang(agent.fn_owner_person_id())->>'lang';
         RETURN jsonb_build_object('ok', true, 'recurring_payment_id', v_rpid,
             'toast', core.fn_ui_text('finance.recurring_suggest.toast_accepted', v_lang),
-            'edit', jsonb_build_object('text', finance.fn_recurring_suggestion_text('accepted', v_info, v_lang)),
+            'edit', jsonb_build_object('text', v_text),
             'owner_notice', finance.fn_recurring_suggestion_text('owner_notice',
                                 v_info || jsonb_build_object('member', v_s->>'first_name'), v_owner));
     END IF;
     RETURN jsonb_build_object('ok', true, 'recurring_payment_id', v_rpid,
         'toast', core.fn_ui_text('finance.recurring_suggest.toast_accepted', v_lang),
-        'edit', jsonb_build_object('text', finance.fn_recurring_suggestion_text('accepted', v_info, v_lang)));
+        'edit', jsonb_build_object('text', v_text));
 EXCEPTION WHEN OTHERS THEN
     RETURN jsonb_build_object('ok', false, 'reason', 'error',
         'toast', core.fn_ui_text('finance.recurring_suggest.toast_expired', v_lang));

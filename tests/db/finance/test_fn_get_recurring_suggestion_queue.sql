@@ -2,7 +2,7 @@
 -- test_fn_get_recurring_suggestion_queue -- Versandliste der Vorschlags-Nachrichten (erfundene Werte)
 --   Q1 Kind und Unbekannte bekommen nichts; Q2 12 offene -> 10 Nachrichten + more 2, sure zuerst, dann Betrag;
 --   Q3 Vorschau = Probelauf der Anlege-fn, danach nichts in der DB; Q4 Knopf-Daten <= 64 Bytes; Q5 Probelauf lehnt ab
---   (gleichnamige Zahlung) -> rejected; Q6 nur Ungesendetes, eine neue Fassung kommt wieder; Q7 fremder Chat nie.
+--   (gleichnamige Zahlung) -> rejected; Q6 nur Ungesendetes, eine neue Fassung kommt wieder; Q7 fremder Chat nie; Q8 fn_recurring_suggestion_counts (Prompt-Zahl).
 --   Zusammen mit test_fn_record_recurring_suggestions_sent (Stempel) und dem Handler-Test.
 -- ============================================================
 BEGIN;
@@ -96,6 +96,12 @@ BEGIN
     IF jsonb_array_length(v_q->'items') <> 1 OR (v_q->>'sent_before')::int <> 10 OR (v_q->>'open_count')::int <> 11 THEN
         RAISE EXCEPTION 'FAIL [Q6 nur Ungesendetes]: %', v_q;
     END IF;
+    -- Q8 Zaehlung fuer den Buchhalter-Prompt: dieselben Zahlen wie die Queue, fremder und leerer Chat 0
+    IF finance.fn_recurring_suggestion_counts('7801') IS DISTINCT FROM '{"open":11,"sent":10,"unsent":1}'::jsonb
+       OR (finance.fn_recurring_suggestion_counts('7802')->>'open')::int <> 0
+       OR (finance.fn_recurring_suggestion_counts(NULL)->>'open')::int <> 0 THEN
+        RAISE EXCEPTION 'FAIL [Q8 fn_recurring_suggestion_counts]: %', finance.fn_recurring_suggestion_counts('7801');
+    END IF;
     UPDATE finance.import_staging SET version = version + 1 WHERE id = v_ids[1];
     v_q := finance.fn_get_recurring_suggestion_queue('{"chat_id":"7801"}');
     IF NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v_q->'items') i WHERE (i->>'id')::int = v_ids[1] AND i->>'data_ok' LIKE '%:2') THEN
@@ -108,6 +114,6 @@ BEGIN
        OR (v_q->>'open_count')::int <> 0 OR NOT EXISTS (SELECT 1 FROM finance.import_staging WHERE batch_id = v_b) THEN
         RAISE EXCEPTION 'FAIL [Q7 abgelaufener Stapel wird nicht gesendet]: %', v_q;
     END IF;
-    RAISE NOTICE 'PASS [Q1-Q7 fn_get_recurring_suggestion_queue]';
+    RAISE NOTICE 'PASS [Q1-Q8 fn_get_recurring_suggestion_queue]';
 END $$;
 ROLLBACK;

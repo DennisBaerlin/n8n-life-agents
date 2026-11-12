@@ -47,6 +47,7 @@ BEGIN
   v := finance.fn_savings_funding_fold(ARRAY[v_kid], true);
   a := v->'savings_funding'->'accounts'->0;
   IF v->'card_lines'->0->>'value' <> 'finance.note.funding_gap'
+     OR v->'card_lines'->0->>'fold' IS DISTINCT FROM 'savings_funding'
      OR (v->'card_lines'->0->'params'->'in'->>'value')::numeric <> 0
      OR (v->'card_lines'->0->'params'->'out'->>'value')::numeric <> 200
      OR (v->'card_lines'->0->'params'->'date'->>'value')::date <> t + 2

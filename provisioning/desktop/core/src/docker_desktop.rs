@@ -210,6 +210,55 @@ pub fn start(host: &dyn Host) -> Result<(), String> {
     }
 }
 
+/// Läuft der Prozess von Docker Desktop? `None` = unklar (Befehl nicht ausführbar oder unerwartete Antwort), nie „aus“.
+/// Windows: `tasklist` antwortet je nach Sprache verschieden, darum zählt nur, ob der Programmname in der Ausgabe steht.
+pub fn desktop_running(host: &dyn Host) -> Option<bool> {
+    match host.os() {
+        Os::Mac => {
+            let out = host.run("/usr/bin/pgrep", &args(&["-x", "Docker Desktop"])).ok()?;
+            match out.code {
+                0 => Some(true),
+                1 => Some(false),
+                _ => None,
+            }
+        }
+        Os::Windows => {
+            let out = host
+                .run("C:\\Windows\\System32\\tasklist.exe", &args(&["/FI", "IMAGENAME eq Docker Desktop.exe", "/NH", "/FO", "CSV"]))
+                .ok()?;
+            out.success().then(|| out.stdout.contains("Docker Desktop.exe"))
+        }
+    }
+}
+
+/// Beobachtet nach dem Start, ob Docker Desktop sich wieder schließt (ein abgelehntes Lizenzfenster beendet das
+/// Programm, die Engine antwortet dann nie). „Geschlossen“ heißt: der Prozess war einmal da und fehlt dann mehrere
+/// Abfragen in Folge. Ohne gesehenen Prozess nie: Stimmt der Programmname auf einem Rechner nicht, würde sonst jeder
+/// langsame Start (Mac: oft über 30 s bis zur Engine) fälschlich als geschlossen gelten. Unklare Antworten und ein
+/// laufender Prozess setzen den Zähler zurück.
+#[derive(Debug, Default)]
+pub struct StartWatch {
+    seen: bool,
+    gone: u32,
+}
+
+impl StartWatch {
+    /// Abfragen in Folge (die App fragt alle 3 s: gut 15 s).
+    pub const GRACE_POLLS: u32 = 5;
+
+    pub fn closed(&mut self, host: &dyn Host) -> bool {
+        match desktop_running(host) {
+            Some(true) => {
+                self.seen = true;
+                self.gone = 0;
+            }
+            Some(false) => self.gone += 1,
+            None => self.gone = 0,
+        }
+        self.seen && self.gone >= Self::GRACE_POLLS
+    }
+}
+
 /// Entfernen (Nr. 17, nur wenn das Journal sagt, dass die App Docker installiert hat, und nach eigener Frage):
 /// Docker-eigener Deinstaller.
 pub fn uninstall(host: &dyn Host) -> Result<(), FetchError> {
@@ -406,6 +455,70 @@ mod tests {
             CmdOut::ok(""),
         );
         assert_eq!(install_windows(&h, WIN_EXE), Ok(()));
+    }
+
+    const PGREP: &str = "/usr/bin/pgrep -x Docker Desktop";
+    const TASKLIST: &str = "C:\\Windows\\System32\\tasklist.exe /FI IMAGENAME eq Docker Desktop.exe /NH /FO CSV";
+
+    #[test]
+    fn desktop_process_is_found_on_both_systems() {
+        assert_eq!(desktop_running(&FakeHost::mac().on(PGREP, CmdOut::ok("4711\n"))), Some(true));
+        assert_eq!(desktop_running(&FakeHost::mac().on(PGREP, CmdOut::fail(1, ""))), Some(false));
+        let win = |out: &str| FakeHost::windows().on(TASKLIST, CmdOut::ok(out));
+        assert_eq!(desktop_running(&win("\"Docker Desktop.exe\",\"1234\",\"Console\",\"1\",\"100.000 K\"\r\n")), Some(true));
+        // Windows antwortet je nach Sprache anders, aber ohne den Programmnamen.
+        assert_eq!(
+            desktop_running(&win("INFO: Es werden keine Aufgaben ausgeführt, die den angegebenen Kriterien entsprechen.\r\n")),
+            Some(false)
+        );
+        // Befehl nicht ausführbar: unklar, nie „geschlossen“.
+        assert_eq!(desktop_running(&FakeHost::mac()), None);
+        assert_eq!(desktop_running(&FakeHost::mac().on(PGREP, CmdOut::fail(2, "usage"))), None);
+    }
+
+    /// Docker Desktop schließt sich nach einem abgelehnten Lizenzfenster; dann ist es nach dem Start nie in der Prozessliste.
+    #[test]
+    fn closed_docker_desktop_is_noticed_after_a_grace_period() {
+        let h = FakeHost::mac().on_seq(PGREP, vec![CmdOut::ok("1\n"), CmdOut::fail(1, "")]);
+        let mut w = StartWatch::default();
+        assert!(!w.closed(&h), "läuft noch");
+        for _ in 0..(StartWatch::GRACE_POLLS - 1) {
+            assert!(!w.closed(&h), "zu früh");
+        }
+        assert!(w.closed(&h));
+    }
+
+    /// Falscher Programmname auf einem Rechner: ohne je gesehenen Prozess nie „geschlossen“, der langsame Start läuft weiter.
+    #[test]
+    fn a_process_never_seen_is_never_reported_closed() {
+        let h = FakeHost::mac().on(PGREP, CmdOut::fail(1, ""));
+        let mut w = StartWatch::default();
+        for _ in 0..(10 * StartWatch::GRACE_POLLS) {
+            assert!(!w.closed(&h));
+        }
+    }
+
+    #[test]
+    fn a_running_or_unclear_process_resets_the_watch() {
+        let g = StartWatch::GRACE_POLLS as usize;
+        let mut seq = vec![CmdOut::ok("1\n")];
+        seq.extend(vec![CmdOut::fail(1, ""); g - 1]);
+        seq.push(CmdOut::ok("1\n"));
+        seq.push(CmdOut::fail(1, ""));
+        let h = FakeHost::mac().on_seq(PGREP, seq);
+        let mut w = StartWatch::default();
+        for _ in 0..g {
+            assert!(!w.closed(&h), "läuft zwischendurch wieder: Zähler beginnt neu");
+        }
+        for _ in 0..g {
+            assert!(!w.closed(&h));
+        }
+        assert!(w.closed(&h));
+        // Unklare Antwort (Befehl fehlt) zählt nie als geschlossen, auch nach beliebig vielen Abfragen.
+        let mut w = StartWatch::default();
+        for _ in 0..(3 * g) {
+            assert!(!w.closed(&FakeHost::mac()));
+        }
     }
 
     #[test]

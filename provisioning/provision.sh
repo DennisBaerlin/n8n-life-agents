@@ -627,6 +627,7 @@ main() {
   fi
 
   display_install_recap   # NUR Release: End-Recap (Status + generierte Zugaenge + offene Schritte)
+  _recap_backup_kit
   if [ "${UI_QUIET:-0}" = 1 ]; then
     { printf '  Protokoll dieser Installation: %s\n\n' "$UI_LOG_FILE" >&3; } 2>/dev/null || true
   fi
@@ -816,6 +817,30 @@ ${_todo}
 }So geht's weiter
 ${_next}
 EOF
+}
+
+# _recap_backup_kit — nach der Erstinstallation, die den Sicherungs-Schluessel gerade erzeugt hat (BACKUP_KEY_NEW):
+#   das Notfallblatt einmal zeigen, aber nur auf einem Kanal ohne Log — Quiet-Modus fd3 (Terminal), sonst direkt /dev/tty
+#   (an `| tee` vorbei). Ohne Terminal (unattended, Wizard, Pipe) nur der Hinweis-Befehl; im Docker-Verbund speichert die
+#   Start-App das Blatt. Plain statt ui_box: Rahmenzeichen vor den Schluesselzeilen stoerten beim Abtippen/Kopieren.
+_recap_backup_kit() {
+  [ "$PROFILE" = "release" ] && [ "${BACKUP_KEY_NEW:-0}" = 1 ] || return 0
+  local kit='' lang sep='============================================================'
+  lang="$(backup_kit_lang)"
+  if { [ "${UI_QUIET:-0}" = 1 ] || ui_interactive; } && kit="$(backup_kit_text 2>/dev/null)" && [ -n "$kit" ]; then
+    kit="$(printf '%s\n%s\n\n%s\n%s' "$sep" "$(pkg_text core backup.kit.recap_once "$lang")" "$kit" "$sep")"
+    if [ "${UI_QUIET:-0}" = 1 ]; then
+      _ui_spin_stop
+      { printf '\n%s\n\n' "$kit" >&3; } 2>/dev/null || true
+    else
+      { printf '\n%s\n\n' "$kit" > /dev/tty; } 2>/dev/null || true
+    fi
+    return 0
+  fi
+  local line
+  if rt_is_compose; then line="$(pkg_text core backup.kit.recap_line_app "$lang")"; else line="$(pkg_text core backup.kit.recap_line "$lang")"; fi
+  printf '\n  %s\n\n' "$line"
+  if [ "${UI_QUIET:-0}" = 1 ]; then { printf '\n  %s\n\n' "$line" >&3; } 2>/dev/null || true; fi
 }
 
 # install_cli — die `lifeagents`-Admin-CLI nach /usr/local/bin legen (Verbund: <Baum>/bin im Volume rt_tree) + den

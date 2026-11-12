@@ -1,20 +1,22 @@
 -- ============================================================
 -- core.backup_key — DB-residenter Backup-Verschluesselungs-Schluessel (Phase 5: aus core.secret
---   zweck-umbenannt). Haelt GENAU EINEN nie-rotieren Wert (die gpg-Passphrase der CLI, AES256).
+--   zweck-umbenannt). Zeile 'backup_encryption_key' = der aktive Wert (gpg-Passphrase der CLI, AES256);
+--   'backup_encryption_key_prev_<UTC>'-Zeilen = fruehere, die nur noch entschluesseln. Eine prev-Zeile
+--   entsteht einzig beim Restore mit einem mitgebrachten Schluessel vom Notfallblatt (backup_cli.sh).
 -- Zweck:   Ablage des Backup-Schluessels OHNE Repo-Beruehrung (diese Tabelle wird NIE geseedet —
 --          seed_data.sh fasst nur core.config + agent.ai_models + Contexts an) und OHNE n8n-Env-
 --          Oeffnung. Der Schluessel ist KATEGORISCH anders als die Rollen-Passwoerter (die liegen in
---          /etc/lifeagents/<pkg>.env, frei neu-wuerfelbar): er darf NIE rotieren (Rotation macht
---          bereits erstellte Backups unentschluesselbar) -> eigene, schwer-versehentlich-ueber-
---          schreibbare DB-Heimat (ON CONFLICT DO NOTHING), getrennt vom Datei-Secret-Lebenszyklus.
+--          /etc/lifeagents/<pkg>.env, frei neu-wuerfelbar): der Installer ueberschreibt ihn NIE (sonst
+--          waeren bereits erstellte Backups und das Notfallblatt wertlos) -> eigene, schwer-versehentlich-
+--          ueberschreibbare DB-Heimat (ON CONFLICT DO NOTHING), getrennt vom Datei-Secret-Lebenszyklus.
 -- ACL:     NUR der Haupt-Credential-Owner (postgres/Write-Pfad) liest sie. finance_ro/context_ro/
 --          core_ro bekommen explizit REVOKE — ein prompt-injizierter Agent erreicht den Schluessel
 --          strukturell nicht. Der Schluessel ist STRUKTURELL nicht im Backup-Bundle (Schema `core`
 --          steht in keinem manifest.json-`backup`-Block; contract_lint erzwingt das).
 -- SETZEN (einmalig, out-of-band — NIE durch den Telegram-Chat): der Installer erzeugt den Schluessel
 --   beim Provisioning (provision.sh -> bootstrap_owner.sh _ensure_backup_secret, `openssl rand`,
---   ON CONFLICT DO NOTHING = nie rotieren). Schluessel OFFLINE separat notieren — die DB-Kopie ist
---   nur die operative; ohne Offline-Kopie kein Restore nach Totalverlust (DR-Pflicht).
+--   ON CONFLICT DO NOTHING). Die Offline-Kopie ist das Notfallblatt (`lifeagents backup key`) —
+--   die DB-Kopie ist nur die operative; ohne Blatt kein Restore nach Totalverlust (DR-Pflicht).
 -- Usage:   db_apply.ps1 -File packages\core\db\core.backup_key_init.sql
 -- Tests:   tests/db/core/test_core_backup_key_acl.sql
 -- ============================================================

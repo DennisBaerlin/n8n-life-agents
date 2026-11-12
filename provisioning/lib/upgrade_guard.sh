@@ -415,6 +415,31 @@ ${reinstall}
   if [ "$(ui_fd)" = 3 ]; then { printf '%s\n' "$txt" >&3; } 2>/dev/null || true; fi
 }
 
+# _upg_carry_backup_keys <beiseite-db> — nach `pg_restore --create` traegt die Datenbank die Schluessel-Zeilen von VOR dem
+#   Update. Hat seither ein Restore einen Schluessel vom Notfallblatt uebernommen, galte sonst wieder der alte und das Blatt
+#   waere falsch. Darum: alle Zeilen der beiseitegelegten DB uebernehmen, ihr aktiver bleibt der aktive; ein abweichender
+#   aktiver der hergestellten DB wird prev-Zeile (nichts geht verloren). Werte laufen nur ueber stdin (\set), nie argv.
+#   rc 0 auch, wenn eine der beiden DBs keine core.backup_key hat (v0.1.0-Bestand: core.secret, nichts zu tun).
+_upg_carry_backup_keys() {
+  local from="$1" rows k v i=0 drv=''
+  [ "$(pg_su_psql -X -tA -d "$from" -c "SELECT to_regclass('core.backup_key') IS NOT NULL" 2>/dev/null)" = t ] || return 0
+  [ "$(pg_su_psql -X -tA -d "$N8N_DB_NAME" -c "SELECT to_regclass('core.backup_key') IS NOT NULL" 2>/dev/null)" = t ] || return 0
+  rows="$(pg_su_psql -v ON_ERROR_STOP=1 -X -tA -F $'\t' -d "$from" -c \
+    "SELECT key, value FROM core.backup_key WHERE value !~ '[[:space:]]' AND value <> '' ORDER BY key")" || return 1
+  [ -n "$rows" ] || return 0
+  while IFS=$'\t' read -r k v; do
+    [ -n "$k" ] || continue
+    drv="${drv}$(psql_setvar "ck$i" "$k")"$'\n'"$(psql_setvar "cv$i" "$v")"$'\n'
+    if [ "$k" = "$BACKUP_KEY_NAME" ]; then
+      drv="${drv}$(psql_setvar ca "$v")"$'\n'
+      drv="${drv}INSERT INTO core.backup_key(key, value) SELECT '${BACKUP_KEY_PREV_PREFIX}' || to_char(clock_timestamp() AT TIME ZONE 'UTC', 'YYYYMMDD\"T\"HH24MISSUS'), value FROM core.backup_key WHERE key = '${BACKUP_KEY_NAME}' AND value <> :'ca' AND NOT EXISTS (SELECT 1 FROM core.backup_key x WHERE x.value = core.backup_key.value AND x.key <> '${BACKUP_KEY_NAME}');"$'\n'
+    fi
+    drv="${drv}INSERT INTO core.backup_key(key, value) VALUES (:'ck$i', :'cv$i') ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = now() WHERE core.backup_key.key = '${BACKUP_KEY_NAME}';"$'\n'
+    i=$((i + 1))
+  done <<<"$rows"
+  printf 'BEGIN;\n%sCOMMIT;\n' "$drv" | psql_superuser_driver -q >/dev/null
+}
+
 # upgrade_rollback — `lifeagents rollback`: der GEFUEHRTE Rueckweg (fuehrt aus, was upgrade_rollback_hint druckt).
 #   Quelle: der Merkzettel eines unvollendeten Updates, sonst die juengste pre-upgrade-Sicherung samt Begleitdatei .meta
 #   (upgrade_prepare). Zeigt, was passiert, fragt nach (nur mit Terminal: Daten seit der Sicherung gehen verloren -> nie
@@ -464,10 +489,12 @@ upgrade_rollback() {
 
   update_lock_acquire 30 || die_because locked "Gerade läuft ein Update oder eine Einrichtung — danach erneut starten."
   case "$ktab" in core.secret) ;; *) ktab=core.backup_key ;; esac
-  key="$(backup_key_read "$ktab" 2>/dev/null || true)"
-  [ -n "$key" ] || die "Sicherungsschlüssel nicht lesbar (${ktab}) — Rückweg abgebrochen, es wurde nichts geändert."
-  gpg_sym_decrypt "$key" "$backup" >/dev/null \
-    || die "Die Sicherung lässt sich mit dem Schlüssel nicht öffnen (beschädigt?) — Rückweg abgebrochen, es wurde nichts geändert."
+  [ -n "$(backup_key_read "$ktab" 2>/dev/null || true)" ] || die "Sicherungsschlüssel nicht lesbar (${ktab}) — Rückweg abgebrochen, es wurde nichts geändert."
+  # Alle gespeicherten Schluessel: hat seit dem Update ein Restore einen Schluessel vom Notfallblatt uebernommen, ist der
+  # Schluessel dieser Sicherung jetzt eine prev-Zeile.
+  gpg_sym_decrypt_any "$backup" /dev/null "$ktab" \
+    || die "Die Sicherung lässt sich mit keinem gespeicherten Schlüssel öffnen (beschädigt?) — Rückweg abgebrochen, es wurde nichts geändert."
+  key="$_BK_HIT_KEY"
 
   # Vorab das install.sh des Vorgaengers holen UND pruefen — Netz- oder Signaturfehler fallen so auf, bevor irgendetwas
   # geaendert ist. Mit Schluesselbund: Unterschrift + exakte Zeile in SHA256SUMS (gh-download-Block). Ein unsigniertes
@@ -504,6 +531,8 @@ upgrade_rollback() {
     _rb_resume
     die "Herstellen der Sicherung fehlgeschlagen — die bisherige Datenbank ist unverändert zurück. Diagnose: journalctl -u postgresql -n 50"
   fi
+  _upg_carry_backup_keys "$keep" \
+    || warn "Die Sicherungs-Schlüssel von vor dem Rückweg ließen sich nicht übernehmen (die beiseitegelegte Datenbank ${keep} hat sie noch) — Notfallblatt danach mit 'lifeagents backup key' prüfen."
   rm -f "$UPGRADE_MARKER"
   ok "Daten vom ${when} wiederhergestellt."
 

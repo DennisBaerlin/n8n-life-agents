@@ -335,6 +335,59 @@ esac
 case "$(last)" in *"type=bind,src=/Users/erika/Sicherung,dst=/in,readonly|"*) pass R.lesen-nur-lesend ;; *) fail R.lesen-nur-lesend "$(last)" ;; esac
 if grep -qE '\|-v\||prune' "$STUB_LOG"; then fail R.kein-breiter-schalter "$(cat "$STUB_LOG")"; else pass R.kein-breiter-schalter; fi
 
+# ---------------------------------------------------------------------------- B: Sicherungs-Schluessel (Notfallblatt)
+# Erfundene Schluessel, nie ein echter Wert (Repo oeffentlich).
+K1="$(printf '0123456789abcdef%.0s' 1 2 3 4)"
+K2="$(printf 'fedcba9876543210%.0s' 1 2 3 4)"
+_paper="$(printf '%s' "$K1" | backup_key_paper)"
+eq B.blatt-vier-zeilen 4 "$(printf '%s\n' "$_paper" | grep -cE '^[1-4]:  [0-9a-f]{4}(-[0-9a-f]{4}){3}  [0-9a-f]{2}$')"
+eq B.blatt-rundweg "key:$K1" "$(printf '%s\n' "$_paper" | backup_key_parse)"
+eq B.gross-und-ohne-praefix "key:$K1" "$(printf '%s\n' "$_paper" | sed -E 's/^[1-4]:  //' | tr 'a-f' 'A-F' | backup_key_parse)"
+eq B.roh-ohne-pruefzeichen "key:$K1" "$(printf '  %s\n' "$K1" | backup_key_parse)"
+eq B.zeile-ohne-pruefzeichen 0123456789abcdef "$(printf '1: 0123-4567-89AB-cdef' | backup_key_line 1)"
+_bad="$(printf '%s\n' "$_paper" | sed -E '3s/^(3:  )./\1f/')"
+[ "$_bad" != "$_paper" ] || _bad="$(printf '%s\n' "$_paper" | sed -E '3s/^(3:  )./\1e/')"
+eq B.tippfehler-zeile3 err:line3 "$(printf '%s\n' "$_bad" | backup_key_parse)"
+# Zeile 2 unter Zeile 1 abgetippt (ohne Nummern): die Pruefzeichen haengen an der Zeilennummer.
+_swap="$(printf '%s\n' "$_paper" | sed -E 's/^[1-4]:  //' | awk 'NR==1{a=$0;next} NR==2{print; print a; next} {print}')"
+eq B.vertauschte-zeilen err:line1 "$(printf '%s\n' "$_swap" | backup_key_parse)"
+eq B.zu-kurz err:length "$(printf 'abc123' | backup_key_parse)"
+eq B.fremde-zeichen err:chars "$(printf 'kein schluessel!' | backup_key_parse)"
+eq B.fehlende-zeile err:line4 "$(printf '%s\n' "$_paper" | sed '4d' | backup_key_parse)"
+# Die ganze Notfallblatt-Datei: aktueller + aelterer Schluessel, dazwischen Text und eine Schritt-Liste.
+_kit="$(printf 'Notfallblatt\n%s\n\nFuer aeltere Sicherungen:\n%s\n- 1. Schritt\nDatum 12.11.2026\n' "$_paper" "$(printf '%s' "$K2" | backup_key_paper)")"
+eq B.datei-zwei-schluessel "key:$K1 key:$K2" "$(printf '%s\n' "$_kit" | backup_key_parse | tr '\n' ' ' | sed 's/ $//')"
+eq B.datei-tippfehler-im-ersten "err:line3 key:$K2" "$(printf '%s\n%s\n' "$_bad" "$(printf '%s' "$K2" | backup_key_paper)" | backup_key_parse | tr '\n' ' ' | sed 's/ $//')"
+_id1="$(printf '%s' "$K1" | backup_key_id)"; _id2="$(printf '%s' "$K2" | backup_key_id)"
+if [[ "$_id1" =~ ^k[0-9a-f]{8}$ ]] && [ "$_id1" != "$_id2" ]; then pass B.kennung-form; else fail B.kennung-form "$_id1/$_id2"; fi
+# Entschluesseln mit allen gespeicherten Schluesseln (die DB-Abfrage ist hier eine Attrappe; gpg ist echt).
+printf 'klartext' > "$W/plain"
+gpg_sym_encrypt "$K1" "$W/c.gpg" "$W/plain" 2>/dev/null
+if ( backup_key_candidates() { printf '%s\n' "$K2" "$K1"; }
+     gpg_sym_decrypt_any "$W/c.gpg" "$W/out" && [ "$_BK_HIT_INDEX" = 1 ] && [ "$_BK_HIT_KEY" = "$K1" ] && [ "$(cat "$W/out")" = klartext ] ); then
+  pass B.alle-schluessel-probieren; else fail B.alle-schluessel-probieren "kein Treffer mit dem zweiten"; fi
+printf 'rest' > "$W/out"
+if ( backup_key_candidates() { printf '%s\n' "$K2"; }; gpg_sym_decrypt_any "$W/c.gpg" "$W/out" ); then fail B.kein-treffer "Treffer"
+elif [ -s "$W/out" ]; then fail B.kein-treffer "Ausgabe nicht geleert"; else pass B.kein-treffer; fi
+# Aufraeumen im Rechner-Ordner: nur eigene Kennung, die neuesten 14 bleiben; fremde Kennung und alte Namen nie.
+_names="$( for i in $(seq 10 25); do printf 'lifeagents-backup-202611%02d033000-%s-v0.44.0.nla.enc\n' "$i" "$_id1"; done
+           for i in 1 2 3; do printf 'lifeagents-backup-2026100%d033000-k0000000%d-v0.43.0.nla.enc\n' "$i" "$i"; done
+           printf 'lifeagents-backup-20261001033000.nla.enc\nlifeagents-backup-20261002033000.nla.enc\n' )"
+eq B.aufraeumen-nur-eigene "lifeagents-backup-20261111033000-${_id1}-v0.44.0.nla.enc lifeagents-backup-20261110033000-${_id1}-v0.44.0.nla.enc" \
+  "$(printf '%s\n' "$_names" | _bkp_rotate_victims 14 "$_id1" | tr '\n' ' ' | sed 's/ $//')"
+eq B.aufraeumen-fremde-kennung '' "$(printf '%s\n' "$_names" | _bkp_rotate_victims 14 k00000001)"
+: > "$STUB_LOG"
+if rt_host_rm /Users/erika/Sicherung ok.nla.enc ../weg 2>/dev/null; then fail B.loeschen-nur-namen "Pfad angenommen"
+elif [ -s "$STUB_LOG" ]; then fail B.loeschen-nur-namen "Container trotzdem gestartet"; else pass B.loeschen-nur-namen; fi
+rt_host_rm /Users/erika/Sicherung a.nla.enc b.nla.enc
+case "$(last)" in *"src=/Users/erika/Sicherung,dst=/out|"*"|_|a.nla.enc|b.nla.enc|stdin=") pass B.loeschen-genau-diese ;; *) fail B.loeschen-genau-diese "$(last)" ;; esac
+eq B.dateiname "lifeagents-backup-20261112033000-${_id1}-v0.44.0.nla.enc" "$(_bkp_file_name 20261112033000 "$_id1" v0.44.0)"
+eq B.dateiname-dev "lifeagents-backup-20261112033000-${_id1}-vdev.nla.enc" "$(_bkp_file_name 20261112033000 "$_id1" 'main-1a2b/x')"
+eq B.kennung-aus-name "$_id1" "$(_bkp_file_key_id "/x/lifeagents-backup-20261112033000-${_id1}-v0.44.0.nla.enc")"
+eq B.kennung-umbenannte-kopie "$_id1" "$(_bkp_file_key_id "Kopie von lifeagents-backup-20261112033000-${_id1}-v0.44.0 (1).nla.enc")"
+eq B.aufraeumen-nie-umbenannte '' "$(printf 'Kopie von lifeagents-backup-20261112033000-%s-v0.44.0.nla.enc\n' "$_id1" | _bkp_rotate_victims 0 "$_id1")"
+eq B.kennung-alter-name '' "$(_bkp_file_key_id lifeagents-backup-20261001033000.nla.enc)"
+
 # ---------------------------------------------------------------------------- D: Entfernen (Pruefliste Nr. 17, stack.sh)
 unset LIFEAGENTS_RUNTIME
 dst() { : > "$STUB_LOG"; ( cd "$W" && LA_PROJECT=lifeagents bash "$ROOT/provisioning/compose/stack.sh" uninstall "$@" ) >/dev/null 2>&1; }

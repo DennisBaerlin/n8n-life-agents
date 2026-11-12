@@ -817,10 +817,14 @@ wait_n8n_health() {
 
 # --- Sicherungs-Verschluesselung (EINE Adresse: `lifeagents backup` + Upgrade-Sicherung) -----------------------
 # Schluessel = core.backup_key('backup_encryption_key') — der Installer setzt ihn out-of-band
-# (bootstrap_owner _ensure_backup_secret), nie rotiert. gpg --symmetric AES256; die Passphrase laeuft ueber fd 3
-# (nie argv), damit stdin fuer den Klartext frei bleibt (Upgrade-Sicherung streamt pg_dump direkt hinein ->
-# kein Klartext-Dump auf der Platte).
+# (bootstrap_owner _ensure_backup_secret) und ueberschreibt ihn nie. Einzige Aenderung: ein Restore mit einem
+# mitgebrachten, unbekannten Schluessel (Notfallblatt) macht diesen zum aktiven; der bisherige bleibt als
+# backup_encryption_key_prev_<UTC> lesbar (backup_cli.sh). Verschluesselt wird immer mit dem aktiven, entschluesselt
+# mit allen (gpg_sym_decrypt_any). gpg --symmetric AES256; die Passphrase laeuft ueber fd 3 (nie argv), damit stdin
+# fuer den Klartext frei bleibt (Upgrade-Sicherung streamt pg_dump direkt hinein -> kein Klartext-Dump auf der Platte).
+# Der Schluessel erreicht Hilfsprogramme nur ueber stdin/fd (printf ist eingebaut -> nie in /proc/*/cmdline).
 BACKUP_KEY_NAME="backup_encryption_key"
+BACKUP_KEY_PREV_PREFIX="backup_encryption_key_prev_"
 # backup_key_read [tabelle] -> Schluessel auf stdout (leer, wenn keiner gesetzt; rc!=0, wenn die Tabelle fehlt).
 #   Tabelle Standard core.backup_key; upgrade_guard.sh liest auf v0.1.0-Bestand auch core.secret (vor core:V006).
 #   Reads globals: N8N_DB_NAME, DB_SUPERUSER.
@@ -840,6 +844,166 @@ gpg_sym_encrypt() {
 gpg_sym_decrypt() {
   local key="$1" in="$2"
   gpg --batch --pinentry-mode loopback --passphrase-fd 3 -d "$in" 3< <(printf '%s' "$key") 2>/dev/null
+}
+# backup_key_candidates [tabelle] -> alle gespeicherten Schluessel, einer je Zeile: der aktive zuerst, dann die
+#   prev-Zeilen, neueste zuerst. Werte mit Leerraum fallen weg (sonst zerfiele die Zeilenliste).
+backup_key_candidates() {
+  local tab="${1:-core.backup_key}"
+  case "$tab" in core.backup_key|core.secret) ;; *) return 1 ;; esac   # fester Satz -> kein SQL-Einschleusen
+  pg_su_psql -v ON_ERROR_STOP=1 -X -tA -d "${N8N_DB_NAME:-n8n}" -c \
+    "SELECT value FROM ${tab} WHERE (key = '${BACKUP_KEY_NAME}' OR starts_with(key, '${BACKUP_KEY_PREV_PREFIX}'))
+       AND value !~ '[[:space:]]' AND value <> '' ORDER BY key = '${BACKUP_KEY_NAME}' DESC, key DESC"
+}
+# gpg_sym_decrypt_any <in> <out> [tabelle] — <in> mit jedem gespeicherten Schluessel versuchen (aktiver zuerst),
+#   Klartext nach <out>. Treffer: rc 0, _BK_HIT_INDEX (0 = aktiver) und _BK_HIT_KEY gesetzt. Direkt rufen, nicht in
+#   $(…), sonst kommen die Globals nicht an. Ein Fehlversuch leert eine regulaere <out>-Datei (gpg schreibt Teil-Klartext);
+#   /dev/null o. Ae. bleibt unberuehrt.
+_BK_HIT_INDEX=-1
+_BK_HIT_KEY=''
+gpg_sym_decrypt_any() {
+  local in="$1" out="$2" tab="${3:-core.backup_key}" k i=0 cands=()
+  _BK_HIT_INDEX=-1; _BK_HIT_KEY=''
+  mapfile -t cands < <(backup_key_candidates "$tab" 2>/dev/null || true)
+  for k in "${cands[@]}"; do
+    if [ -n "$k" ] && gpg_sym_decrypt "$k" "$in" > "$out"; then _BK_HIT_INDEX=$i; _BK_HIT_KEY="$k"; return 0; fi
+    if [ -f "$out" ]; then : > "$out"; fi
+    i=$((i + 1))
+  done
+  return 1
+}
+# backup_key_normalize (stdin -> stdout) — Eingabe vom Notfallblatt: Leerraum und Bindestriche weg; reines Hex klein.
+backup_key_normalize() {
+  local v; v="$(tr -d '[:space:]-')"
+  case "$v" in
+    *[!0-9A-Fa-f]*) printf '%s' "$v" ;;
+    *) printf '%s' "$v" | tr 'A-F' 'a-f' ;;
+  esac
+}
+# backup_key_id (stdin) -> k + erste 8 Hex von SHA-256 des Schluessels. Steht auf dem Notfallblatt und im Dateinamen
+#   jeder Sicherung (Diagnose "falscher Schluessel" vs. "beschaedigt", Aufraeumen nur eigener Sicherungen); 32 Bit eines
+#   Hashs verraten nichts ueber einen 256-Bit-Schluessel.
+backup_key_id() { printf 'k%s' "$(sha256sum | cut -c1-8)"; }
+# _backup_key_check <zeilennummer> <16 hex> -> 2 Hex Pruefzeichen der Zeile (Borg-Paper-Key-Muster; die Nummer geht mit
+#   ein, damit vertauschte Zeilen auffallen).
+_backup_key_check() { printf '%s:%s' "$1" "$2" | sha256sum | cut -c1-2; }
+# backup_key_paper (stdin) -> der Schluessel als 4 Zeilen "n:  xxxx-xxxx-xxxx-xxxx  pp" (pp = Pruefzeichen). Kein
+#   64-Hex-Schluessel (nie vom Installer erzeugt) -> unveraendert in einer Zeile.
+backup_key_paper() {
+  local k n d; k="$(cat)"
+  case "$k" in
+    *[!0-9a-f]*) printf '%s\n' "$k"; return 0 ;;
+  esac
+  [ "${#k}" -eq 64 ] || { printf '%s\n' "$k"; return 0; }
+  for n in 1 2 3 4; do
+    d="${k:$(( (n - 1) * 16 )):16}"
+    printf '%s:  %s-%s-%s-%s  %s\n' "$n" "${d:0:4}" "${d:4:4}" "${d:8:4}" "${d:12:4}" "$(_backup_key_check "$n" "$d")"
+  done
+}
+# backup_key_line <n> (stdin: eine abgetippte Zeile) -> 16 Hex auf stdout. Nimmt "n:"-Praefix, Leerzeichen, Bindestriche,
+#   Grossbuchstaben; mit Pruefzeichen (18 Hex) wird geprueft, ohne (16 Hex) nicht. rc 1 = Pruefzeichen falsch, rc 2 = Form.
+backup_key_line() {
+  local n="$1" v
+  v="$(sed -E 's/^[[:space:]]*[1-4][[:space:]]*://' | backup_key_normalize)"
+  case "$v" in *[!0-9a-f]*|'') return 2 ;; esac
+  case "${#v}" in
+    16) printf '%s' "$v" ;;
+    18) [ "${v:16:2}" = "$(_backup_key_check "$n" "${v:0:16}")" ] || return 1; printf '%s' "${v:0:16}" ;;
+    *) return 2 ;;
+  esac
+}
+# backup_kit_lang -> Sprache des Owners fuer feste Texte (family-Fakt language), Standard de. Immer rc 0.
+backup_kit_lang() {
+  local l=''
+  l="$(pg_su_psql -X -tA -d "${N8N_DB_NAME:-n8n}" -c \
+    "SELECT pp->>'language' FROM agent.core_contexts c, jsonb_array_elements(COALESCE(c.metadata->'facts'->'persons','[]'::jsonb)) pp WHERE c.name='family' AND pp->>'role'='owner' LIMIT 1" \
+    2>/dev/null | head -n1 || true)"
+  [[ "$l" =~ ^[a-z]{2}$ ]] || l=de
+  printf '%s' "$l"
+}
+# backup_text <key-suffix> [<platzhalter> <wert>]… -> Katalog-Text core.backup.<key-suffix> in der Owner-Sprache, {platzhalter}
+#   ersetzt. Alles rund um das Notfallblatt folgt der Sprache des Blatts (sonst passte "Zeile 1 vom Notfallblatt" nicht zum
+#   englischen Ausdruck); die uebrige CLI bleibt deutsch. Der Ersatzwert steht in Quotes: bash 5.2 setzt sonst fuer '&' den
+#   Treffer ein (patsub_replacement).
+_BACKUP_LANG=''
+backup_text() {
+  local t
+  [ -n "$_BACKUP_LANG" ] || _BACKUP_LANG="$(backup_kit_lang)"
+  t="$(pkg_text core "backup.$1" "$_BACKUP_LANG")"; shift
+  while [ "$#" -ge 2 ]; do t="${t//"{$1}"/"$2"}"; shift 2; done
+  printf '%s' "$t"
+}
+# backup_kit_text -> das Notfallblatt (Klartext, erste Zeile = Titel): aktueller Schluessel als Papier-Schluessel mit
+#   ID und Datum (seit wann er gilt, nicht Druckdatum: zwei Ausdrucke desselben Schluessels sollen gleich aussehen),
+#   aeltere (prev) darunter, wo die Sicherungen liegen, wie man auf einem neuen Rechner wiederherstellt. Keine Personen-
+#   oder Haushaltsnamen. rc 1 = kein Schluessel. Ausgabe nur an Kanaele ohne Log (Terminal, --file, Start-App-Pipe).
+backup_kit_text() {
+  local keys=() k i kid folder ver since
+  mapfile -t keys < <(backup_key_candidates 2>/dev/null || true)
+  [ "${#keys[@]}" -gt 0 ] && [ -n "${keys[0]}" ] || return 1
+  kid="$(printf '%s' "${keys[0]}" | backup_key_id)"
+  since="$(pg_su_psql -X -tA -d "${N8N_DB_NAME:-n8n}" -c \
+    "SELECT to_char(updated_at, 'YYYY-MM-DD') FROM core.backup_key WHERE key = '${BACKUP_KEY_NAME}'" 2>/dev/null | head -n1 || true)"
+  ver="$(cat "$(lifeagents_version_marker)" 2>/dev/null | head -n1 | tr -d '[:space:]' || true)"
+  [[ "$ver" =~ ^v[0-9] ]] || ver='v0.0.0'
+  folder="$(read_env_value "$(lifeagents_env_file core)" BACKUP_HOST_DIR 2>/dev/null || true)"
+  printf '%s\n%s\n\n%s\n\n%s\n' "$(backup_text kit.title)" "$(backup_text kit.meta id "$kid" date "${since:-?}")" \
+    "$(backup_text kit.intro)" "$(backup_text kit.key_title)"
+  printf '%s' "${keys[0]}" | backup_key_paper | sed 's/^/  /'
+  printf '%s\n' "$(backup_text kit.check_hint)"
+  for ((i = 1; i < ${#keys[@]}; i++)); do
+    printf '\n%s\n' "$(backup_text kit.older_title id "$(printf '%s' "${keys[$i]}" | backup_key_id)")"
+    printf '%s' "${keys[$i]}" | backup_key_paper | sed 's/^/  /'
+  done
+  if [ -n "$folder" ]; then k="$(backup_text kit.where_folder folder "$folder")"
+  elif rt_is_compose; then k="$(backup_text kit.where_none)"
+  else k="$(backup_text kit.where_local)"; fi
+  printf '\n%s\n\n%s\n' "$k" "$(backup_text kit.restore_title)"
+  printf -- '- %s\n- %s\n- %s\n\n' "$(backup_text kit.restore_1 version "$ver")" "$(backup_text kit.restore_2)" "$(backup_text kit.restore_3)"
+  if rt_is_compose; then k="$(backup_text kit.again_app)"; else k="$(backup_text kit.again)"; fi
+  printf '%s\n%s\n' "$(backup_text kit.guide url "$BACKUP_GUIDE_URL")" "$k"
+}
+BACKUP_GUIDE_URL="https://dennisbaerlin.github.io/n8n-life-agents/docs/sicherung.html"
+# backup_key_parse (stdin: Text vom Notfallblatt oder die ganze Notfallblatt-Datei) -> je gefundenem Schluessel eine
+#   Zeile "key:<64 hex>" und je fehlerhaftem Block eine Zeile "err:<code>" (line<n> = Pruefzeichen/Form dieser Zeile,
+#   length, chars); der Aufrufer waehlt den Schluessel, der zur Sicherung passt. Zeilen "1:" … "4:" bilden je einen Block
+#   (die Datei traegt den aktuellen und aeltere Schluessel); ohne solche Zeilen zaehlt der ganze Text: 64 Hex = Schluessel
+#   ohne Pruefung, 72 Hex = 4 Zeilen mit Pruefzeichen. Nur "n:" ist Zeilen-Praefix (die Schritte auf dem Blatt tragen keins).
+backup_key_parse() {
+  local txt line n acc='' want=1 rc d all out='' i re='^[[:space:]]*([1-4])[[:space:]]*:'
+  txt="$(cat)"
+  if printf '%s\n' "$txt" | grep -qE '^[[:space:]]*[1-4][[:space:]]*:'; then
+    while IFS= read -r line; do
+      [[ "$line" =~ $re ]] || continue
+      n="${BASH_REMATCH[1]}"
+      if [ "$n" != "$want" ]; then
+        [ "$want" -le 1 ] || out="${out}err:line${want}"$'\n'   # Block brach ab (Zeile fehlt); 0 = schon gemeldet
+        acc=''; want=1
+        [ "$n" = 1 ] || continue
+      fi
+      rc=0; d="$(printf '%s' "$line" | backup_key_line "$n")" || rc=$?
+      if [ "$rc" -ne 0 ]; then out="${out}err:line${n}"$'\n'; acc=''; want=0; continue; fi
+      acc="${acc}${d}"; want=$((n + 1))
+      if [ "$n" = 4 ]; then out="${out}key:${acc}"$'\n'; acc=''; want=1; fi
+    done <<<"$txt"
+    [ "$want" = 1 ] || [ "$want" = 0 ] || out="${out}err:line${want}"$'\n'
+    [ -n "$out" ] || out=$'err:length\n'
+    printf '%s' "$out"
+    return 0
+  fi
+  all="$(printf '%s' "$txt" | backup_key_normalize)"
+  case "$all" in *[!0-9a-f]*|'') printf 'err:chars\n'; return 0 ;; esac
+  case "${#all}" in
+    64) printf 'key:%s\n' "$all" ;;
+    72)
+      acc=''
+      for i in 1 2 3 4; do
+        d="${all:$(( (i - 1) * 18 )):18}"
+        [ "${d:16:2}" = "$(_backup_key_check "$i" "${d:0:16}")" ] || { printf 'err:line%s\n' "$i"; return 0; }
+        acc="${acc}${d:0:16}"
+      done
+      printf 'key:%s\n' "$acc" ;;
+    *) printf 'err:length\n' ;;
+  esac
 }
 # n8n_api_curl <api-key> <url> [curl-args...] — REST-Call gegen n8n mit X-N8N-API-KEY im curl-Config-
 # Kanal (stdin) statt im argv. Ersetzt das bisherige `curl … -H "X-N8N-API-KEY: $KEY"`-Muster.

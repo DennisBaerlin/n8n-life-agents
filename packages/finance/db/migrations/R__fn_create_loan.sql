@@ -82,6 +82,10 @@ BEGIN
     IF finance.fn_schedule_dom_reason(v_dom) IS NOT NULL THEN
         RETURN jsonb_build_object('ok', false, 'reason', finance.fn_schedule_dom_reason(v_dom));
     END IF;
+    -- Anker der Raten-Kette auf den ersten echten Termin (Datum passt nicht zum festen Monatstag -> naechster solche Tag);
+    -- effective meldet ihn (Karte "Erste Rate" = gespeichert). Zins/Tilgung haengen nicht am Anker: fn_loan_simulate rechnet
+    -- je Rastertermin mit fn_period_months, der Anker ist nur die Untergrenze des Rasters (test_fn_create_loan_anchor).
+    v_first := finance.fn_schedule_first_occurrence(v_first, 1, 'month'::finance.schedule_unit, v_dom, NULL);
     -- Korrigierbare Input-Pruefungen -> {ok:false} (kein RAISE).
     IF v_irate IS NULL OR v_irate < 0 THEN
         RETURN jsonb_build_object('ok', false,
@@ -224,7 +228,10 @@ BEGIN
         'initial_principal_rate', v_ov.initial_principal_rate,
         'balance_at_fixed_until', v_ov.balance_at_fixed_until_projected,
         'balance_at_term_end', v_ov.balance_at_term_end_projected,
-        'effective', v_dates->'resolved'
+        'effective', COALESCE(v_dates->'resolved', '{}'::jsonb)
+                     || CASE WHEN v_first IS NOT NULL
+                             THEN jsonb_build_object('first_payment_date', to_char(v_first, 'YYYY-MM-DD'))
+                             ELSE '{}'::jsonb END
     );
 END;
 $$;

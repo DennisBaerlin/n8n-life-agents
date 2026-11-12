@@ -50,8 +50,8 @@ BEGIN
   VALUES (v_depot, 'IE00FRDTEST1', 'FRDA', '__frd_a__', 1, 10, 'EUR'),
          (v_depot, 'IE00FRDTEST2', 'FRDB', '__frd_b__', 1, 10, 'EUR'),
          (v_depot, 'IE00FRDTEST3', 'FRDC', '__frd_c__', 0, 10, 'EUR');
-  IF finance.fn_feed_refresh_due('prices') THEN
-    RAISE EXCEPTION 'FAIL [prices nie bepreist]: Position ohne jeden Kurs loest keinen Dauer-Abruf aus';
+  IF NOT finance.fn_feed_refresh_due('prices') THEN
+    RAISE EXCEPTION 'FAIL [prices nie bepreist]: ohne jeden Kurs ist der Abruf faellig (Tagesplan muss holen)';
   END IF;
   INSERT INTO finance.market_prices (symbol, price, currency, as_of, source, updated_at)
   VALUES ('FRDA', 11, 'EUR', current_date - 1, 'test', v_start - interval '1 minute'),
@@ -59,6 +59,7 @@ BEGIN
   IF NOT finance.fn_feed_refresh_due('prices') THEN
     RAISE EXCEPTION 'FAIL [prices gestern]: Stand vor Tagesbeginn ist faellig';
   END IF;
+  -- FRDB nie bepreist, FRDA gestern: ein einzelnes nie bepreistes Symbol aendert nichts (nur Alter von FRDA zaehlt)
   -- FRDC ist verkauft (shares 0): ein frischer Kurs dort zaehlt nicht
   INSERT INTO finance.market_prices (symbol, price, currency, as_of, source, updated_at)
   VALUES ('FRDC', 12, 'EUR', current_date, 'test', v_start);

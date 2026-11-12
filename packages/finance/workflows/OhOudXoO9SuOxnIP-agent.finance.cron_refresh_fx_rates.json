@@ -44,63 +44,6 @@
                   {
                       "parameters":  {
                                          "operation":  "executeQuery",
-                                         "query":  "SELECT core.fn_package_active(\u0027finance\u0027) AND COALESCE(core.fn_config_get(\u0027finance\u0027,\u0027cron_enable\u0027,\u0027refresh_fx_rates\u0027) = \u0027true\u0027, false) AS enabled",
-                                         "options":  {
-
-                                                     }
-                                     },
-                      "type":  "n8n-nodes-base.postgres",
-                      "typeVersion":  2.6,
-                      "position":  [
-                                       -600,
-                                       0
-                                   ],
-                      "id":  "047693aa-7110-562b-8c19-deb96220ff8b",
-                      "name":  "Cron enabled?",
-                      "credentials":  {
-                                          "postgres":  {
-                                                           "id":  "__CRED_POSTGRES_FINANCE_RW__",
-                                                           "name":  "Postgres finance_rw (read-write)"
-                                                       }
-                                      }
-                  },
-                  {
-                      "parameters":  {
-                                         "conditions":  {
-                                                            "options":  {
-                                                                            "caseSensitive":  true,
-                                                                            "typeValidation":  "strict",
-                                                                            "version":  2
-                                                                        },
-                                                            "conditions":  [
-                                                                               {
-                                                                                   "id":  "a033d59a-22ca-53df-ac80-812ad226ca51",
-                                                                                   "leftValue":  "={{ $json.enabled }}",
-                                                                                   "rightValue":  true,
-                                                                                   "operator":  {
-                                                                                                    "type":  "boolean",
-                                                                                                    "operation":  "equals"
-                                                                                                }
-                                                                               }
-                                                                           ],
-                                                            "combinator":  "and"
-                                                        },
-                                         "options":  {
-
-                                                     }
-                                     },
-                      "type":  "n8n-nodes-base.if",
-                      "typeVersion":  2.2,
-                      "position":  [
-                                       -400,
-                                       -40
-                                   ],
-                      "id":  "e363d014-c823-55f9-b198-0b95bf415709",
-                      "name":  "Cron on?"
-                  },
-                  {
-                      "parameters":  {
-                                         "operation":  "executeQuery",
                                          "query":  "SELECT core.fn_package_active(\u0027finance\u0027) AS active",
                                          "options":  {
 
@@ -269,7 +212,7 @@
                       "type":  "n8n-nodes-base.if",
                       "typeVersion":  2.2,
                       "position":  [
-                                       -400,
+                                       -380,
                                        -220
                                    ],
                       "id":  "4b562fbe-6998-5e71-b124-4f7ec4b5ddaf",
@@ -349,7 +292,8 @@
                       "name":  "Fetch EUR rates",
                       "retryOnFail":  true,
                       "maxTries":  3,
-                      "waitBetweenTries":  2000
+                      "waitBetweenTries":  2000,
+                      "onError":  "continueRegularOutput"
                   },
                   {
                       "parameters":  {
@@ -416,7 +360,7 @@
                   },
                   {
                       "parameters":  {
-                                         "content":  "## DB-Automatik\n**FX-Kurs-Refresh (Dual-Trigger, kein LLM)**\n\nVIER Eingänge, EIN Pfad: (a) Schedule täglich (Cron aus core.config schedule.refresh_fx_rates, beim Einspielen eingesetzt); (b) executeWorkflowTrigger Start — Tools rufen den Workflow nach einem Write sofort auf (eliminiert das NULL-Fenster in Roll-up-Views bis zum nächsten Schedule-Lauf); (c) n8n-Start und (d) stündlicher Check holen einen verpassten Lauf nach (Sticky Nachholen). Pfad: prüfe aktive Fremdwährungs-Menge via fn_active_currencies() -\u003e IF leer: Abbruch ohne HTTP-Call. Sonst: HTTP GET open.er-api.com/v6/latest/EUR (kostenlos, KEIN Key, Basis EUR, 7 Tage/Woche) -\u003e Upsert in finance.fx_rates: eine Zeile je Fremdwährung aus aktiven Konten/Holdings — keine manuelle Pflege von finance.currencies nötig. Die Roll-up-Views konvertieren via finance.fn_to_eur (As-of-Lookup).",
+                                         "content":  "## DB-Automatik\n**FX-Kurs-Refresh (Dual-Trigger, kein LLM)**\n\nVIER Eingänge, EIN Pfad: (a) Schedule täglich (Cron aus core.config schedule.refresh_fx_rates, beim Einspielen eingesetzt; läuft durch dieselbe Fälligkeits-Prüfung wie das Nachholen); (b) executeWorkflowTrigger Start — Tools rufen den Workflow nach einem Write sofort auf (eliminiert das NULL-Fenster in Roll-up-Views bis zum nächsten Schedule-Lauf); (c) n8n-Start und (d) stündlicher Check holen einen verpassten Lauf nach (Sticky Nachholen). Pfad: prüfe aktive Fremdwährungs-Menge via fn_active_currencies() -\u003e IF leer: Abbruch ohne HTTP-Call. Sonst: HTTP GET open.er-api.com/v6/latest/EUR (kostenlos, KEIN Key, Basis EUR, 7 Tage/Woche) -\u003e Upsert in finance.fx_rates: eine Zeile je Fremdwährung aus aktiven Konten/Holdings — keine manuelle Pflege von finance.currencies nötig. Die Roll-up-Views konvertieren via finance.fn_to_eur (As-of-Lookup).",
                                          "height":  280,
                                          "width":  640,
                                          "color":  4
@@ -464,7 +408,7 @@
                   },
                   {
                       "parameters":  {
-                                         "content":  "## DB-Automatik\n**Paket-aktiv (beide) + cron_enable (nur Schedule)**\n\nLäuft unter finance_ro? Nein: WRITE-Cron -\u003e finance_rw. Gate liest core.fn_package_active(\u0027finance\u0027) AND core.fn_config_get(\u0027finance\u0027,\u0027cron_enable\u0027,\u0027refresh_fx_rates\u0027)=\u0027true\u0027 (DB entscheidet, fail-closed: fehlende/false-Zeile -\u003e aus). Toggle zur Laufzeit: lifeagents config set cron_enable refresh_fx_rates false. DUAL-TRIGGER: der Start-Pfad (Sofort-Fetch nach erlaubtem Write) prüft NUR Paket-aktiv (kein cron_enable) -\u003e ein abgeschalteter Schedule blockt den approvten Sofort-Fetch nicht.",
+                                         "content":  "## DB-Automatik\n**Paket-aktiv (beide) + cron_enable und fällig (Tagesplan/Nachholen)**\n\nLäuft unter finance_ro? Nein: WRITE-Cron -\u003e finance_rw. Das Gate Catch-up needed? liest core.fn_package_active(\u0027finance\u0027) AND core.fn_config_get(\u0027finance\u0027,\u0027cron_enable\u0027,\u0027refresh_fx_rates\u0027)=\u0027true\u0027 AND finance.fn_feed_refresh_due(\u0027fx\u0027) (DB entscheidet, fail-closed: fehlende/false-Zeile -\u003e aus). Toggle zur Laufzeit: lifeagents config set cron_enable refresh_fx_rates false. DUAL-TRIGGER: der Start-Pfad (Sofort-Fetch nach erlaubtem Write) prüft NUR Paket-aktiv (kein cron_enable, keine Fälligkeit) -\u003e ein abgeschalteter Schedule blockt den approvten Sofort-Fetch nicht.",
                                          "height":  300,
                                          "width":  440,
                                          "color":  4
@@ -480,7 +424,7 @@
                   },
                   {
                       "parameters":  {
-                                         "content":  "## DB-Automatik\n**Verpassten Tageslauf nachholen (n8n-Start und jede Stunde)**\n\nDie Planzeit verfällt, wenn das Gerät aus ist oder schläft; der scheduleTrigger holt nicht nach. Zwei Eingänge fragen deshalb dieselbe Prüfung: der n8n Trigger (Instance started, nach 30 s für Netz und DNS) und ein stündlicher Check (schedule.refresh_catchup, deckt auch das Aufwachen aus dem Ruhezustand, bei dem n8n nicht neu startet). Catch-up needed?: Paket aktiv, cron_enable an, und finance.fn_feed_refresh_due(\u0027fx\u0027) meldet, dass heute noch kein Kurs geholt wurde (jüngster Stand vor Beginn des heutigen Kalendertags der Haushalts-Zeitzone; ohne jeden Kurs ebenfalls). Sonst Ende ohne Abruf: ein Abruf je Kalendertag, Wochenende kostet nichts extra. Unabhängig von finance.fx_stale_days (Anzeige/Berater).",
+                                         "content":  "## DB-Automatik\n**Verpassten Tageslauf nachholen (n8n-Start und jede Stunde)**\n\nDie Planzeit verfällt, wenn das Gerät aus ist oder schläft; der scheduleTrigger holt nicht nach. Drei Eingänge fragen deshalb dieselbe Prüfung: der Tagesplan, der n8n Trigger (Instance started, nach 30 s für Netz und DNS) und ein stündlicher Check (schedule.refresh_catchup, deckt auch das Aufwachen aus dem Ruhezustand, bei dem n8n nicht neu startet). Catch-up needed?: Paket aktiv, cron_enable an, und finance.fn_feed_refresh_due(\u0027fx\u0027) meldet, dass heute noch kein Kurs geholt wurde (jüngster Stand vor Beginn des heutigen Kalendertags der Haushalts-Zeitzone; ohne jeden Kurs ebenfalls). Sonst Ende ohne Abruf: ein Abruf je Kalendertag, wer zuerst kommt, Wochenende kostet nichts extra. Der Stunden-Check startet erst ab 03:15 (Manifest-Default), weil open.er-api.com seine Tageskurse um ca. 00:02 bis 00:26 UTC veröffentlicht. Fällt der Feed aus, bleibt der Lauf stumm (Fetch EUR rates: onError weiter) und wiederholt stündlich; die Lücke meldet einmal der Berater (fx_rate_stale, finance.fx_stale_days). Unabhängig von fx_stale_days entscheidet nur die Kalendertag-Regel.",
                                          "height":  340,
                                          "width":  340,
                                          "color":  4
@@ -603,46 +547,12 @@
                                                                          [
                                                                              {
                                                                                  "index":  0,
-                                                                                 "node":  "Cron enabled?",
+                                                                                 "node":  "Catch-up needed?",
                                                                                  "type":  "main"
                                                                              }
                                                                          ]
                                                                      ]
                                                         },
-                        "Cron enabled?":  {
-                                              "main":  [
-                                                           [
-                                                               {
-                                                                   "index":  0,
-                                                                   "node":  "Cron on?",
-                                                                   "type":  "main"
-                                                               }
-                                                           ]
-                                                       ]
-                                          },
-                        "Cron on?":  {
-                                         "main":  [
-                                                      [
-                                                          {
-                                                              "index":  0,
-                                                              "node":  "Check active currencies",
-                                                              "type":  "main"
-                                                          },
-                                                          {
-                                                              "index":  0,
-                                                              "node":  "Sweep import staging",
-                                                              "type":  "main"
-                                                          }
-                                                      ],
-                                                      [
-                                                          {
-                                                              "index":  0,
-                                                              "node":  "Disabled",
-                                                              "type":  "main"
-                                                          }
-                                                      ]
-                                                  ]
-                                     },
                         "Start":  {
                                       "main":  [
                                                    [
@@ -724,7 +634,7 @@
                                                       [
                                                           {
                                                               "index":  0,
-                                                              "node":  "Cron enabled?",
+                                                              "node":  "Catch-up needed?",
                                                               "type":  "main"
                                                           }
                                                       ]

@@ -7,6 +7,7 @@
 #   W  Betriebsart-Wrapper: systemd-Zweig ruft runuser/systemctl genau wie vorher; compose-Zweig ruft docker exec mit
 #      festem Container, -i nur, wenn psql stdin liest (Probelauf-Fund: `docker exec -i` frass die Paket-Schleife).
 #   V  rt_volumes_ensure: legt fehlende Volumes mit Label an, bricht bei fremdem Volume gleichen Namens ab.
+#   N  PG-Minor-Neustart (install_pg.sh): laufende Minor != Paket-Minor -> gezielter Neustart, Zweitlauf/Verbund no-op.
 #   T  Telegram-Pruefung (Pruefliste Nr. 10): frei / unser Webhook / fremder Webhook / 409 Long-Polling / nicht pruefbar;
 #      unattended Erstinstallation bricht ohne TELEGRAM_WEBHOOK_TAKEOVER=1 ab, nie mit offset/drop_pending_updates.
 # Braucht kein n8n, kein Docker und kein Netz.
@@ -491,5 +492,24 @@ out="$(STUB_FAIL='|ps|' rt_published_ports_json paperless-ngx 8000)"; rc=$?
 eq O.ohne-docker " rc=1" "$out rc=$rc"
 out="$(STUB_PS='kein json' rt_published_ports_json paperless-ngx 8000)"; rc=$?
 eq O.kaputte-ausgabe " rc=1" "$out rc=$rc"
+
+# ---------------------------------------------------------------------------- N: PG-Minor-Neustart (install_pg.sh)
+# Paket-Skripte duerfen im Substrat nicht starten (policy-rc.d) -> der Server laeuft nach --only-upgrade mit alter Minor.
+# Letzter Block der Datei: die Attrappen unten ueberschreiben echte Funktionen (kein Subshell, sonst gingen FAILs verloren).
+# shellcheck source=/dev/null
+. "$ROOT/provisioning/lib/install_pg.sh"
+pg_minor_stale "17.11 (Debian 17.11-1.pgdg12+1)" "17.12-1.pgdg12+1"; eq N.alt-gegen-neu-veraltet 0 $?
+pg_minor_stale "17.12 (Debian 17.12-1.pgdg12+1)" "17.12-1.pgdg12+1"; eq N.gleich-nicht-veraltet 1 $?
+pg_minor_stale "" "17.12-1.pgdg12+1"; eq N.laufend-unbekannt-nicht-veraltet 1 $?
+pg_minor_stale "17.11" ""; eq N.paket-unbekannt-nicht-veraltet 1 $?
+PG_VERSION=17; LIFEAGENTS_RUNTIME=systemd; RUN_VER="17.11 (Debian 17.11-1.pgdg12+1)"; RESTARTS=0
+pg_ready() { return 0; }; pg_wait_ready() { return 0; }
+pg_su_psql() { printf '%s\n' "$RUN_VER"; }
+dpkg-query() { printf '17.12-1.pgdg12+1'; }
+svc_restart() { RESTARTS=$((RESTARTS + 1)); RUN_VER="17.12 (Debian 17.12-1.pgdg12+1)"; }
+pg_restart_if_stale 2>/dev/null; eq N.veraltet-startet-neu 1 "$RESTARTS"
+pg_restart_if_stale 2>/dev/null; eq N.zweitlauf-no-op 1 "$RESTARTS"
+pg_ready() { return 1; }; RUN_VER="17.11"; pg_restart_if_stale 2>/dev/null; eq N.server-steht-kein-neustart 1 "$RESTARTS"
+pg_ready() { return 0; }; LIFEAGENTS_RUNTIME=compose; pg_restart_if_stale 2>/dev/null; eq N.verbund-nie-neustart 1 "$RESTARTS"
 
 exit "$fails"

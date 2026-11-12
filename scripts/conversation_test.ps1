@@ -135,6 +135,7 @@ WHERE name = 'family';
     if ("$($Tc.start)" -notin @('onboarding_done', 'member_confirmed', 'no_cash_account')) { throw "Unbekannter start '$($Tc.start)' (onboarding_done|member_confirmed|no_cash_account)." }
     Set-TestHouseholdOnboarding -Container $Container -Status 'completed'
     Set-TestPackageOnboarding -Container $Container -Sections $null
+    Clear-TestNextStepOffers -Container $Container   # Gruss-/Lebenszeichen-Knopf je Fall frisch (fruehere Suiten verbrauchen den Tagesmerker)
     $p = Invoke-TestN8nPsql -Container $Container -PsqlArgs @('-q', '-c', 'DELETE FROM agent.advisor_plans;')
     if ($p.Code -ne 0) { throw "Berater-Plaene leeren fehlgeschlagen: $($p.Output -join ' ')" }
     if ("$($Tc.start)" -eq 'no_cash_account') { Close-CashAccounts }

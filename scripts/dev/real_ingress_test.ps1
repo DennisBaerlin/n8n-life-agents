@@ -218,7 +218,7 @@ $routeAgents = Get-TestRouteAgent
 if (-not (Get-Command Get-NextStepOrder -ErrorAction SilentlyContinue)) { . "$RepoRoot\scripts\build\lib\agent_routing.ps1" }
 $NextStepOrder = Get-NextStepOrder $RepoRoot
 $ChildUid = 880055201
-[void](Invoke-TestN8nPsql -Container $Container -PsqlArgs @('-q', '-c', "DELETE FROM core.notification_state WHERE source IN ('next_step_day', 'next_step_offer');"))
+Clear-TestNextStepOffers -Container $Container
 function Set-TestChildPairing([bool]$On) {
     $val = if ($On) { "(p - 'persona') || jsonb_build_object('telegram_user_id', ${ChildUid}::bigint, 'language', 'de')" } else { "p - 'telegram_user_id'" }
     $sql = "UPDATE agent.core_contexts SET metadata = jsonb_set(metadata, '{facts,persons}', (SELECT jsonb_agg(CASE WHEN p->>'person_id' = 'lisa' THEN $val ELSE p END) FROM jsonb_array_elements(metadata->'facts'->'persons') p)) WHERE name = 'family';"

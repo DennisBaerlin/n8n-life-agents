@@ -748,6 +748,14 @@ function Clear-ChatSessionMemory {
     if ($r.Code -ne 0) { throw "Session-Memory-Clear fehlgeschlagen: $($r.Output -join "`n")" }
 }
 
+# Vorschlags-Merker des naechsten Schritts leeren (core.fn_claim_next_step_offer: 1x je Tag, nach 3x Ruhe). Sonst verbrauchen
+# fruehere Faelle oder Suiten den Tagesmerker, und ein Gruss-Fall zeigt nur die Beispielfrage ohne Knopf (Knopf unbewiesen).
+function Clear-TestNextStepOffers {
+    param([Parameter(Mandatory)][string]$Container)
+    $r = Invoke-TestN8nPsql -Container $Container -PsqlArgs @('-q', '-c', "DELETE FROM core.notification_state WHERE source IN ('next_step_day', 'next_step_offer');")
+    if ($r.Code -ne 0) { throw "Vorschlags-Merker leeren fehlgeschlagen: $($r.Output -join "`n")" }
+}
+
 # Case-Feld "chat_history" {table, messages[]}: legt eine fruehere Unterhaltung ins Chat-Gedaechtnis, auch mit Tool-Runden, die
 # ein Case sonst nicht herstellen kann. messages[] traegt nur type + content (ai darf content als Block-Array mit tool_use haben,
 # tool zusaetzlich name + tool_call_id); die Pflichtfelder ergaenzt der Helfer, Form wie n8n sie selbst schreibt.

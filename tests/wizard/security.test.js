@@ -57,6 +57,27 @@ test('Einmal-Wert: falsch, wiederverwendet, ersetzt; Cookie-Attribute', async ()
   assert.equal((await req(w, 'GET', b.pathname + b.search, { headers: { 'Sec-Fetch-Site': 'cross-site' } })).status, 403);
 });
 
+// Fehlendes oder fremdes Cookie auf `/` ist eine verlorene Sitzung, kein verbrauchter Link: eigene Meldung, Status bleibt 403.
+test('verlorene Sitzung: eigene Meldung statt „Link gilt nur einmal“, ein falscher Einmal-Wert bleibt bei der alten', async () => {
+  const loc = (l) => JSON.parse(fs.readFileSync(path.join(WIZ, '..', '..', 'packages', 'core', 'locales', l + '.json'), 'utf8'));
+  const texts = ['de', 'en', 'ko'].map(loc);
+  const has = (body, key) => texts.some((t) => t[key] && body.includes(t[key].replace(/&/g, '&#38;').replace(/'/g, '&#39;')) || body.includes(t[key]));
+  for (const t of texts) { assert.ok(t['core.wizard.ui.no_session_title'], 'Schlüssel fehlt'); assert.ok(t['core.wizard.ui.no_session']); }
+  const noCookie = await req(w, 'GET', '/');
+  assert.equal(noCookie.status, 403);
+  const body = noCookie.buf.toString('utf8');
+  assert.ok(has(body, 'core.wizard.ui.no_session'), 'eigene Meldung');
+  assert.ok(!has(body, 'core.wizard.ui.link_once'), 'nicht die Einmal-Link-Meldung');
+  const stale = await req(w, 'GET', '/', { headers: { Cookie: 'la_wizard=' + 'A'.repeat(43) } });
+  assert.equal(stale.status, 403);
+  assert.ok(has(stale.buf.toString('utf8'), 'core.wizard.ui.no_session'), 'abgelaufenes Cookie = verlorene Sitzung');
+  const badToken = await req(w, 'GET', '/start?t=' + 'A'.repeat(43));
+  assert.equal(badToken.status, 403);
+  assert.ok(has(badToken.buf.toString('utf8'), 'core.wizard.ui.link_once'), 'verbrauchter Link bleibt bei der alten Meldung');
+  assert.ok(!/<(a|form|button)[ >]/.test(badToken.buf.toString('utf8')),'kein Weg zu einem neuen Link ohne App (kein Sicherheits-Abbau)');
+  assert.equal((await req(w, 'POST', '/api/answer', { body: {}, headers: { Origin: w.origin, 'Content-Type': 'application/json' } })).status, 401);
+});
+
 test('Startseite: Projekt-Zeichen eingesetzt, Bild-Bausteine nur als eigene Datei (CSP)', async () => {
   await login(w);
   const r = await req(w, 'GET', '/', { headers: { Cookie: w.cookie } });

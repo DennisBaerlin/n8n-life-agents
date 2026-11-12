@@ -411,3 +411,35 @@ rt_edge_exec() {
 }
 # rt_edge_logs_hint <dienst> -> Diagnose-Befehl als Text (wird nicht ausgefuehrt).
 rt_edge_logs_hint() { printf 'docker logs --tail 100 %s-%s' "$LA_PROJECT" "$1"; }
+# rt_probe_host <adresse> <port> — antwortet <adresse>:<port> einem Kurzlauf-Container im Netz edge_public (dort haengt wan)?
+#   Misst den Weg ueber den Rechner (veroeffentlichter Port), nicht den Namensraum des Rands.
+#   rc 0 = erreichbar, 1 = Port antwortet nicht, 2 = die Probe selbst lief nicht (docker-Fehler 125-127: Image fehlt,
+#   Daemon, Netz) — nie als "antwortet nicht" werten.
+rt_probe_host() {
+  local rc=0
+  docker run --rm --label "${LA_LABEL}=${LA_PROJECT}" --network "${LA_PROJECT}_edge_public" \
+    "${LA_PROBE_IMAGE:?LA_PROBE_IMAGE nicht gesetzt}" nc -z -w 3 "$1" "$2" >/dev/null 2>&1 || rc=$?
+  case "$rc" in 0) return 0 ;; 125|126|127) return 2 ;; *) return 1 ;; esac
+}
+# rt_edge_settle <dienst> [sekunden] — der Rand-Container laeuft, startet nicht gerade neu und ist mindestens 2 s oben
+#   (wan hat keinen Healthcheck; Caddy bindet den Port binnen einer Sekunde). 0 = ruhig, 1 = nicht innerhalb der Zeit.
+rt_edge_settle() {
+  local c n="${2:-10}" _ row up started now
+  c="$(_rt_edge_container "$1")" || return 2
+  for _ in $(seq 1 "$n"); do
+    row="$(docker inspect -f '{{.State.Running}} {{.State.Restarting}} {{.State.StartedAt}}' "$c" 2>/dev/null || true)"
+    if [ "${row%% *}" = true ]; then
+      up="${row#* }"; started="${up#* }"; now="$(date +%s)"
+      started="$(date -d "$started" +%s 2>/dev/null || echo 0)"
+      [ "${up%% *}" = false ] && [ $((now - started)) -ge 2 ] && return 0
+    fi
+    sleep 1
+  done
+  return 1
+}
+# rt_host_gateway -> Adresse des Rechners aus Sicht von edge_public (Gateway des Netzes laut Container wan), leer wenn unbekannt.
+#   Ueber `docker inspect` des Containers: `docker network` steht nicht auf der Positivliste (contract_lint 32).
+rt_host_gateway() {
+  docker inspect -f "{{(index .NetworkSettings.Networks \"${LA_PROJECT}_edge_public\").Gateway}}" "${LA_PROJECT}-wan" 2>/dev/null \
+    | grep -E '^[0-9]+(\.[0-9]+){3}$' | head -n1
+}

@@ -5,7 +5,7 @@
 -- estate-Paket-Rollen erreichen NUR das Schema `estate`; agent.*/core.*/finance.*-Tabellen scheitern
 -- PHYSISCH ("permission denied"). Core-Daten nur ueber publizierte SECURITY-DEFINER-Read-fns. Die
 -- CORE-HOST-Leserolle core_ro liest dagegen auch `estate` (das vom Paket geoeffnete Aufsichts-Fenster,
--- read_surface.host_read_role=core_ro). Der RW-Roundtrip (INSERT+UPDATE auf estate.onboarding_state,
+-- core.fn_provision_package_roles grantet core_ro SELECT). Der RW-Roundtrip (INSERT+UPDATE auf estate.onboarding_state,
 -- household-Form OHNE person_id) beweist, dass die Isolation echte Writes + den updated_at-Trigger
 -- NICHT bricht.
 --

@@ -173,6 +173,20 @@ impl Journal {
         self.save(host)
     }
 
+    /// Schließt alle noch begonnenen Einträge dieser Art ab (`done`) oder verwirft sie (sonst). Für Schritte, deren Ergebnis
+    /// erst später feststeht (Docker gestartet: erst wenn es antwortet); ohne begonnenen Eintrag geschieht nichts.
+    pub fn settle(&mut self, host: &dyn Host, pred: impl Fn(&Step) -> bool, done: bool) -> Result<(), String> {
+        let seqs: Vec<u32> = self.entries.iter().filter(|e| e.state == State::Begun && pred(&e.step)).map(|e| e.seq).collect();
+        for seq in seqs {
+            if done {
+                self.done(host, seq, None)?;
+            } else {
+                self.abandon(host, seq)?;
+            }
+        }
+        Ok(())
+    }
+
     pub fn mark_undone(&mut self, host: &dyn Host, seq: u32) -> Result<(), String> {
         let e = self.entries.iter_mut().find(|e| e.seq == seq).ok_or("unbekannter Eintrag")?;
         e.state = State::Undone;
@@ -305,6 +319,23 @@ mod tests {
         assert_eq!(on_disk.status(), Status::Interrupted { step: Step::DockerStarted });
         j.done(&h, seq, None).unwrap();
         assert_eq!(Journal::load(&h).unwrap().status(), Status::InProgress);
+    }
+
+    /// Docker gestartet gilt erst, wenn es antwortet: bis dahin begonnen, danach erledigt oder (nicht zustande gekommen) verworfen.
+    #[test]
+    fn docker_started_settles_once_the_answer_is_known() {
+        let h = FakeHost::mac();
+        let is_start = |s: &Step| *s == Step::DockerStarted;
+        let mut j = Journal::load(&h).unwrap();
+        j.begin(&h, Step::DockerStarted).unwrap();
+        j.settle(&h, is_start, true).unwrap();
+        assert!(j.has_done(is_start));
+        assert_eq!(j.status(), Status::InProgress);
+        let mut j = Journal::load(&FakeHost::mac()).unwrap();
+        j.begin(&h, Step::DockerStarted).unwrap();
+        j.settle(&h, is_start, false).unwrap();
+        assert!(j.entries.iter().all(|e| e.step != Step::DockerStarted), "nicht zustande gekommen: kein Eintrag bleibt");
+        j.settle(&h, is_start, true).unwrap();
     }
 
     #[test]

@@ -104,6 +104,49 @@ pub fn probe_image(images: &[String]) -> Option<String> {
     images.iter().find(|i| i.starts_with("busybox")).cloned()
 }
 
+/// Ursache eines fehlgeschlagenen Docker-Aufrufs aus dessen Fehlertext. Nur diese festen Wörter verlassen die Funktion,
+/// nie der Text selbst (er enthält Pfade und Namen; `report.rs` nimmt nur feste Codes). Die Muster sind Dockers eigene
+/// Meldungen; was nicht passt, bleibt ohne Ursache.
+fn probe_cause(stderr: &str) -> Option<&'static str> {
+    let s = stderr.to_ascii_lowercase();
+    let has = |needles: &[&str]| needles.iter().any(|n| s.contains(n));
+    // Nur „Programm nicht gefunden“: Dieselbe Meldung „error getting credentials“ kommt auch bei gesperrtem Schlüsselbund.
+    if has(&["error getting credentials", "docker-credential-"]) && has(&["executable file not found", "not found in $path"]) {
+        Some("credentials")
+    } else if has(&["no space left on device"]) {
+        Some("disk")
+    } else if has(&["cannot connect to the docker daemon", "error during connect", "dockerdesktoplinuxengine"]) {
+        Some("daemon")
+    } else if has(&["no such host", "tls handshake timeout", "i/o timeout", "network is unreachable", "dial tcp"]) {
+        Some("network")
+    } else {
+        None
+    }
+}
+
+/// `probe-<schritt>` mit angehängter Ursache (`probe-write:network`), sonst nur der Schritt.
+fn probe_error(step: &str, stderr: &str) -> String {
+    match probe_cause(stderr) {
+        Some(c) => format!("{step}:{c}"),
+        None => step.to_string(),
+    }
+}
+
+/// Fester Fehler-Code (`report::ERROR_CODES`) für einen Fehler aus `start_first`; die Meldungen der Texte-Seite hängen daran.
+pub fn error_code(e: &str) -> &'static str {
+    if e.starts_with("foreign-volume:") {
+        return "foreign-objects";
+    }
+    match e.strip_prefix("probe-").map(|r| r.split_once(':').map(|(_, c)| c)) {
+        Some(Some("credentials")) => "docker-credentials",
+        Some(Some("network")) => "docker-network",
+        Some(Some("disk")) => "docker-disk",
+        Some(Some("daemon")) => "docker-start-timeout",
+        Some(_) => "docker-capability",
+        None => "start-failed",
+    }
+}
+
 /// Fähigkeits-Prüfung (Plan Nr. 9, etwa 3 s): Verzeichnis-Unterpfad aus einem Volume einhängen und Docker-Zugang im
 /// Container. Läuft im eigenen Probe-Volume mit unserem Label, das danach immer wieder entfernt wird.
 pub fn capability_probe(host: &dyn Host, d: &Docker, image: &str) -> Result<(), String> {
@@ -114,19 +157,22 @@ pub fn capability_probe(host: &dyn Host, d: &Docker, image: &str) -> Result<(), 
         }
         let _ = d.call(host, DockerCall::VolumeRemove(PROBE_VOLUME));
     }
-    if !d.call(host, DockerCall::VolumeCreate(PROBE_VOLUME))?.success() {
-        return Err("probe-volume".into());
+    let created = d.call(host, DockerCall::VolumeCreate(PROBE_VOLUME))?;
+    if !created.success() {
+        return Err(probe_error("probe-volume", &created.stderr));
     }
     let result = (|| {
-        if !d.call(host, DockerCall::ProbeWrite { image })?.success() {
-            return Err("probe-write".to_string());
+        let w = d.call(host, DockerCall::ProbeWrite { image })?;
+        if !w.success() {
+            return Err(probe_error("probe-write", &w.stderr));
         }
         let read = d.call(host, DockerCall::ProbeRead { image })?;
         if !read.success() || read.stdout.trim() != "ok" {
-            return Err("probe-subpath".to_string());
+            return Err(probe_error("probe-subpath", &read.stderr));
         }
-        if !d.call(host, DockerCall::ProbeSocket { image })?.success() {
-            return Err("probe-socket".to_string());
+        let s = d.call(host, DockerCall::ProbeSocket { image })?;
+        if !s.success() {
+            return Err(probe_error("probe-socket", &s.stderr));
         }
         Ok(())
     })();
@@ -617,6 +663,66 @@ mod tests {
         assert!(!h.calls.borrow().iter().any(|c| c.contains("volume create") && c.ends_with("lifeagents_pgdata")));
         // Ein evtl. geladenes Image steht als begonnen im Journal und fällt beim Rückweg wieder weg.
         assert!(matches!(j.status(), journal::Status::Interrupted { step: Step::ImagesPulled { .. } }));
+    }
+
+    /// Eine Meldung von Docker mit erfundenen Pfaden; der Fehler-Code nennt nur die Ursache, nie den Text.
+    #[test]
+    fn probe_failure_names_its_cause_without_the_message() {
+        let cases = [
+            (
+                "error getting credentials - err: exec: \"docker-credential-desktop\": executable file not found in $PATH, out: ``",
+                "probe-write:credentials",
+            ),
+            (
+                "docker: Error response from daemon: Get \"https://registry-1.docker.io/v2/\": dial tcp: lookup registry-1.docker.io: no such host",
+                "probe-write:network",
+            ),
+            ("docker: Error response from daemon: net/http: TLS handshake timeout", "probe-write:network"),
+            ("write /var/lib/docker/tmp/x: no space left on device", "probe-write:disk"),
+            ("Cannot connect to the Docker daemon at unix:///Users/erika/.docker/run/docker.sock. Is the docker daemon running?", "probe-write:daemon"),
+            ("error during connect: open //./pipe/dockerDesktopLinuxEngine: The system cannot find the file specified.", "probe-write:daemon"),
+            // Schlüsselbund gesperrt: dieselbe Einleitung, aber kein fehlendes Programm.
+            ("error getting credentials - err: exit status 1, out: `User interaction is not allowed.`", "probe-write"),
+            ("something nobody has seen", "probe-write"),
+        ];
+        for (stderr, want) in cases {
+            let h = FakeHost::mac();
+            let p = paths(&h, "/x/compose.yml");
+            fresh(&h, &p);
+            h.set(&cmd(DockerCall::ProbeWrite { image: BB }), CmdOut::fail(125, stderr));
+            let e = capability_probe(&h, &d(), BB).unwrap_err();
+            assert_eq!(e, want, "{stderr}");
+            assert!(!e.contains("erika") && !e.contains("registry"), "Meldungstext im Code: {e}");
+        }
+    }
+
+    #[test]
+    fn probe_cause_also_comes_from_the_other_probe_steps() {
+        let h = FakeHost::mac();
+        probe_ok(&h);
+        h.set(&cmd(DockerCall::ProbeSocket { image: BB }), CmdOut::fail(125, "no space left on device"));
+        assert_eq!(capability_probe(&h, &d(), BB).unwrap_err(), "probe-socket:disk");
+        let h = FakeHost::mac();
+        probe_ok(&h);
+        h.set(&cmd(DockerCall::VolumeCreate(PROBE_VOLUME)), CmdOut::fail(1, "no space left on device"));
+        assert_eq!(capability_probe(&h, &d(), BB).unwrap_err(), "probe-volume:disk");
+    }
+
+    #[test]
+    fn start_errors_map_to_one_fixed_code() {
+        for (e, code) in [
+            ("foreign-volume:lifeagents_pgdata", "foreign-objects"),
+            ("probe-write:credentials", "docker-credentials"),
+            ("probe-write:network", "docker-network"),
+            ("probe-subpath:disk", "docker-disk"),
+            ("probe-socket:daemon", "docker-start-timeout"),
+            ("probe-write", "docker-capability"),
+            ("probe-subpath", "docker-capability"),
+            ("Start scheiterte: Bind for 127.0.0.1:5880 failed", "start-failed"),
+        ] {
+            assert_eq!(error_code(e), code, "{e}");
+            assert!(crate::report::ERROR_CODES.contains(&error_code(e)), "{e}: Code fehlt in ERROR_CODES");
+        }
     }
 
     #[test]

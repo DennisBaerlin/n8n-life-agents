@@ -471,6 +471,53 @@ reach_converge() {
   rt_stack_up --no-deps wan >/dev/null 2>&1 || warn "FritzBox-Weg: wan ließ sich nicht starten ($(rt_edge_logs_hint wan))."
 }
 
+# reach_lan_doctor — doctor im Verbund, nur FritzBox-Weg: antwortet wan (TCP 443) ueber die Adresse des Rechners?
+#   Ausgabe: Zeilen "<pass|warn|red>\t<text>". Adresse: LA_HOST_IP aus den Hinweisen der Start-App (echte LAN-Adresse),
+#   sonst das Gateway von edge_public (Docker-Zugang des Rechners; auf Docker Desktop kennt der Container die LAN-Adresse
+#   nicht). Bleibt die Antwort aus: einmal `rt_edge_restart wan`, dann bis REACH_LAN_TRIES mal messen. Einzige Stelle,
+#   an der doctor etwas veraendert, denn nach einem Docker-Neustart blieb 127.0.0.1 erreichbar,
+#   LAN und Internet nicht. Tunnel-Weg hat keinen veroeffentlichten Port: nichts zu messen.
+REACH_LAN_TRIES="${REACH_LAN_TRIES:-10}"
+REACH_LAN_SLEEP="${REACH_LAN_SLEEP:-1}"
+reach_lan_doctor() {
+  local addr via i rc
+  [ "$(reach_mode)" = fritzbox ] && [ -s "$REACH_CONF_DIR/domain" ] || return 0
+  if ! rt_edge_active wan; then
+    if [ -e "$REACH_CONF_DIR/ports-busy" ]; then
+      printf 'warn\tFritzBox-Weg: Port 80/443 ist auf diesem Rechner belegt, wan wurde nicht gestartet — Empfehlung: der Tunnel\n'
+    else
+      printf 'red\tFritzBox-Weg: der Container wan läuft nicht — Telegram erreicht den Bot nicht (Start-App: Neu starten; %s)\n' "$(rt_edge_logs_hint wan)"
+    fi
+    return 0
+  fi
+  # Erst auf einen ruhig laufenden wan warten (frisch gestartet, z. B. am Installer-Ende, oder in einer Neustart-Schleife).
+  if ! rt_edge_settle wan; then
+    printf 'red\tFritzBox-Weg: wan läuft nicht stabil (startet ständig neu oder kommt nicht hoch) — nicht gemessen (%s)\n' "$(rt_edge_logs_hint wan)"
+    return 0
+  fi
+  addr="$(_reach_hint LA_HOST_IP)"
+  if printf '%s' "$addr" | grep -qE '^[0-9]+(\.[0-9]+){3}$'; then via='die LAN-Adresse des Rechners'
+  else addr="$(rt_host_gateway || true)"; via='den Docker-Zugang des Rechners'; fi
+  [ -n "$addr" ] || { printf 'warn\tFritzBox-Weg: Adresse des Rechners nicht ermittelbar, Antwort über LAN nicht gemessen\n'; return 0; }
+  # rc 2 = die Probe lief selbst nicht: nie als "antwortet nicht" werten, wan bleibt unberuehrt.
+  rc=0; rt_probe_host "$addr" 443 || rc=$?
+  case "$rc" in
+    0) printf 'pass\tFritzBox-Weg antwortet auf Port 443 über %s (gemessen)\n' "$via"; return 0 ;;
+    2) printf 'warn\tFritzBox-Weg: nicht gemessen — der Prüf-Container ließ sich nicht starten (Docker und Prüf-Image kontrollieren), wan bleibt unverändert\n'; return 0 ;;
+  esac
+  printf 'warn\tFritzBox-Weg antwortet über %s nicht (127.0.0.1 allein reicht nicht) — der Rand wird neu gestartet\n' "$via"
+  rt_edge_restart wan || { printf 'red\tFritzBox-Weg: wan ließ sich nicht neu starten (%s)\n' "$(rt_edge_logs_hint wan)"; return 0; }
+  for ((i = 0; i < REACH_LAN_TRIES; i++)); do
+    rc=0; rt_probe_host "$addr" 443 || rc=$?
+    case "$rc" in
+      0) printf 'pass\tFritzBox-Weg antwortet nach dem Neustart wieder über %s\n' "$via"; return 0 ;;
+      2) printf 'warn\tFritzBox-Weg: nach dem Neustart nicht gemessen — der Prüf-Container ließ sich nicht starten (Docker und Prüf-Image kontrollieren)\n'; return 0 ;;
+    esac
+    [ "$REACH_LAN_SLEEP" = 0 ] || sleep "$REACH_LAN_SLEEP"
+  done
+  printf 'red\tFritzBox-Weg antwortet auch nach dem Neustart nicht über %s — Port-Weiterleitung 80/443 in der FritzBox und Docker prüfen (%s)\n' "$via" "$(rt_edge_logs_hint wan)"
+}
+
 # reach_ingress_help — was der Nutzer fuer seinen Weg tun muss (Ersatz fuer das Caddyfile der CLI, emit_ingress_help).
 reach_ingress_help() {
   case "$(reach_mode)" in

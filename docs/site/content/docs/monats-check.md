@@ -30,6 +30,10 @@ Ein Dokument kannst du auch ohne Text schicken. Der Bot liest es zuerst selbst u
 
 Beim ersten Mal am Betrag, am Datum und am Namen des Empfängers. Danach merkt er sich die Kennung der Lastschrift (Gläubiger-ID und Mandatsreferenz) bzw. die IBAN des Empfängers. Ab dann erkennt er die Zahlung sicher, auch wenn sich der Betrag ändert. Wechselst du den Anbieter, ist das eine neue Kennung. Der Bot zeigt die Zahlung dann zuerst als „unbekannt" und fragt nach.
 
+## Neue regelmäßige Zahlungen übernehmen
+
+Fehlen dir noch Daueraufträge, frag „welche Daueraufträge fehlen noch?“ und schick dazu den Auszug, gern auch zwei oder drei Monate. Schickst du den Auszug eines Monats, der schon geprüft ist, sucht der Buchhalter von selbst. Gebucht wird dabei nichts. Jede erkannte regelmäßige Zahlung, die noch nicht erfasst ist (Gehalt, Miete, Abo, Lastschrift), kommt als eigene Nachricht mit **Übernehmen** und **Nicht übernehmen**. Wie das genau läuft, steht beim [Buchhalter](buchhalter.html).
+
 ## Überträge zwischen deinen Konten
 
 Steht als Gegenkonto die IBAN eines deiner eigenen Konten, bucht der Bot einen **Übertrag**: Das Geld verschwindet nicht als Ausgabe, sondern kommt beim anderen Konto an. Es ist egal, welchen Auszug du zuerst schickst. Der zweite erkennt den Übertrag wieder und bucht ihn nicht noch einmal. Nach der Buchung nennt dir der Bot jeden erkannten Übertrag mit Gegenkonto, Betrag und Gebühr.

@@ -240,8 +240,19 @@ pub fn fetch_docker(app: AppHandle) -> Result<(), String> {
 fn start_docker_inner(app: &AppHandle, j: &mut Journal) -> Result<(), String> {
     let h = RealHost;
     let seq = j.begin(&h, Step::DockerStarted).map_err(|_| fail(app, "journal-unreadable"))?;
-    docker_desktop::start(&h).map_err(|_| fail(app, "docker-start-timeout"))?;
-    j.done(&h, seq, None).map_err(|_| fail(app, "journal-unreadable"))
+    // `done` setzt erst `wait_docker`, wenn Docker antwortet: Ein beendetes Docker Desktop hat nichts gestartet.
+    if docker_desktop::start(&h).is_err() {
+        let _ = j.abandon(&h, seq);
+        return Err(fail(app, "docker-start-timeout"));
+    }
+    Ok(())
+}
+
+fn settle_docker_started(done: bool) {
+    let h = RealHost;
+    if let Ok(mut j) = Journal::load(&h) {
+        let _ = j.settle(&h, |s| *s == Step::DockerStarted, done);
+    }
 }
 
 /// Docker Desktop war aus: nach dem Ja starten (nichts installieren).
@@ -259,12 +270,19 @@ pub fn start_docker(app: AppHandle) -> Result<(), String> {
 #[tauri::command(async)]
 pub fn wait_docker(app: AppHandle) -> Result<Finding, String> {
     let start = Instant::now();
+    let mut watch = docker_desktop::StartWatch::default();
     loop {
         let f = detect::detect(&RealHost);
         if !matches!(f.verdict, Verdict::DesktopStopped | Verdict::Missing) {
+            settle_docker_started(true);
             return Ok(f);
         }
+        if watch.closed(&RealHost) {
+            settle_docker_started(false);
+            return Err(fail(&app, "docker-closed"));
+        }
         if start.elapsed() > DOCKER_WAIT {
+            settle_docker_started(false);
             return Err(fail(&app, "docker-start-timeout"));
         }
         std::thread::sleep(Duration::from_secs(3));
@@ -303,16 +321,7 @@ pub fn start_core(app: AppHandle) -> Result<u16, String> {
             _ => None,
         })
         .ok_or_else(|| fail(&app, "no-free-port"))?;
-    core_start::start_first(&h, &mut j, &d, &paths, ports).map_err(|e| {
-        let code = if e.starts_with("foreign-volume:") {
-            "foreign-objects"
-        } else if e.starts_with("probe-") {
-            "docker-capability"
-        } else {
-            "start-failed"
-        };
-        fail(&app, code)
-    })?;
+    core_start::start_first(&h, &mut j, &d, &paths, ports).map_err(|e| fail(&app, core_start::error_code(&e)))?;
     Ok(ports.edge)
 }
 

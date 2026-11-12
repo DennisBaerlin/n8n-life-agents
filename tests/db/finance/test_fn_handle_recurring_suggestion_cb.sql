@@ -4,7 +4,9 @@
 --   Zeile; H2 Doppeltipp -> schon uebernommen, kein zweiter; H3 Mitglied eigener Chat -> angelegt + owner_notice;
 --   H4 Mitglied fremder Chat / Kind / Gruppenchat -> not_allowed, nichts; H5 abgelaufen -> keep_text; H6 alte Fassung ->
 --   ueberholt; H7 nein -> declined; H8 Anlege-fn lehnt ab -> declined + Text; H9 inzwischen bekannt -> declined;
---   H10 Unsinn in data -> nie RAISE; H11 Uebertrag zwischen eigenen Konten.
+--   H10 Unsinn in data -> nie RAISE; H11 Uebertrag zwischen eigenen Konten (executed_by bank, kein Bank-Punkt);
+--   H12 abgelaufener Stapel; H13/H14 Cashflow-Hinweis unter dem ✓-Text, nur einmal (Latch), beim Mitglied auch im
+--   owner_notice (H3); H15 Spar-Deckungs-Zeile.
 -- ============================================================
 BEGIN;
 INSERT INTO agent.core_contexts (name, description, agent_name, load_strategy, content, metadata)
@@ -20,7 +22,10 @@ SELECT v.k, x.l, v.t, 'finance' FROM (VALUES
     ('finance.recurring_suggest.msg_accepted', 'ok {name} {amount} {rhythm} {date} {account}'),
     ('finance.recurring_suggest.msg_declined', 'no {name}'),
     ('finance.recurring_suggest.msg_failed', 'fail {name} {reason}'),
-    ('finance.recurring_suggest.owner_notice', '{member}: {name} {amount}')) v(k, t)
+    ('finance.recurring_suggest.owner_notice', '{member}: {name} {amount}'),
+    ('finance.recurring_suggest.note_cashflow', 'cf {deficit}'),
+    ('finance.note.funding_ok', 'sf {account} {in}'),
+    ('finance.note.funding_ok_drain', 'sf {account} {drain}')) v(k, t)
 CROSS JOIN (VALUES ('de'), ('en')) x(l)
 ON CONFLICT DO NOTHING;
 
@@ -46,11 +51,12 @@ DO $$
 DECLARE
     T      DATE := core.fn_today();
     v_acct INT; v_tg INT;
-    v_a INT; v_b INT; v_c INT; v_d INT; v_e INT; v_f INT;
+    v_a INT; v_b INT; v_c INT; v_d INT; v_e INT; v_f INT; v_g INT; v_sp INT; v_dep INT;
     v_r    JSONB;
     v_cnt  INT;
 BEGIN
     DELETE FROM finance.import_staging;
+    DELETE FROM core.notification_state WHERE source = 'finance' AND key = 'cashflow_coverage';
     v_acct := (finance.fn_create_account(jsonb_build_object('name', '__t_rh_giro__', 'account_type', 'cash', 'currency', 'EUR',
                  'bank', 'Testbank', 'opening_balance', 1000, 'opening_balance_date', (T - 200)::text))->>'account_id')::int;
     v_tg := (finance.fn_create_account(jsonb_build_object('name', '__t_rh_tg__', 'account_type', 'cash', 'currency', 'EUR',
@@ -73,6 +79,12 @@ BEGIN
        OR position('Miete Test' IN v_r->'edit'->>'text') = 0 OR position('850' IN v_r->'edit'->>'text') = 0 THEN
         RAISE EXCEPTION 'FAIL [H1 Rueckgabe]: %', v_r;
     END IF;
+    -- H13 Event-Fold Cashflow: ohne Einnahme uebersteigt die Miete die Einnahmen -> Hinweis-Zeile mit dem Fehlbetrag
+    -- unter dem ✓-Text (der Fold latcht; ohne die Zeile hiesse die Warnung "gesagt", obwohl niemand sie sah)
+    IF split_part(v_r->'edit'->>'text', E'\n', 2) !~ '^cf .*850[.,]00'
+       OR NOT EXISTS (SELECT 1 FROM core.notification_state WHERE source = 'finance' AND key = 'cashflow_coverage') THEN
+        RAISE EXCEPTION 'FAIL [H13 Cashflow-Hinweis im ✓-Text]: %', v_r;
+    END IF;
     IF NOT EXISTS (SELECT 1 FROM finance.recurring_payments r
                    WHERE r.id = (v_r->>'recurring_payment_id')::int AND r.name = 'Miete Test' AND r.amount = -850 AND r.account_id = v_acct
                      AND r.schedule_day_of_month = 3 AND r.first_payment_date = (date_trunc('month', T) + interval '1 month 2 days')::date)
@@ -94,11 +106,15 @@ BEGIN
         RAISE EXCEPTION 'FAIL [H2 Doppeltipp]: %', v_r;
     END IF;
 
-    -- H3 Mitglied eigener Chat -> angelegt + Owner-Hinweis
+    -- H3 Mitglied eigener Chat -> angelegt + Owner-Hinweis; die Haushalts-Warnung (Latch neu scharf) geht an beide
+    DELETE FROM core.notification_state WHERE source = 'finance' AND key = 'cashflow_coverage';
     v_r := pg_temp.cb('ok', v_b, 1, '7602');
     IF (v_r->>'ok')::boolean IS DISTINCT FROM true OR NULLIF(v_r->>'owner_notice', '') IS NULL
        OR position('Petra' IN v_r->>'owner_notice') = 0 OR position('Kita Test' IN v_r->>'owner_notice') = 0 THEN
         RAISE EXCEPTION 'FAIL [H3 Mitglied + owner_notice]: %', v_r;
+    END IF;
+    IF split_part(v_r->'edit'->>'text', E'\n', 2) !~ '^cf ' OR split_part(v_r->>'owner_notice', E'\n', 2) !~ '^cf ' THEN
+        RAISE EXCEPTION 'FAIL [H3 Cashflow-Hinweis an Mitglied und Owner]: %', v_r;
     END IF;
 
     -- H6 alte Fassung
@@ -158,6 +174,33 @@ BEGIN
             WHERE r.id = (v_r->>'recurring_payment_id')::int AND r.account_id = v_acct AND r.target_account_id = v_tg AND r.amount = -100) THEN
         RAISE EXCEPTION 'FAIL [H11 Uebertrag]: %', v_r;
     END IF;
+    -- H11b im Auszug gesehen = laeuft bei der Bank: kein offener Bank-Punkt "bei der Bank einrichten"
+    IF (SELECT executed_by FROM finance.recurring_payments WHERE id = (v_r->>'recurring_payment_id')::int) IS DISTINCT FROM 'bank'
+       OR EXISTS (SELECT 1 FROM finance.bank_todos b WHERE b.head_id = (v_r->>'recurring_payment_id')::int AND b.status = 'open')
+       OR position('bank_setup' IN v_r->'edit'->>'text') > 0 THEN
+        RAISE EXCEPTION 'FAIL [H11b Uebertrag ohne Bank-Punkt]: %', v_r;
+    END IF;
+
+    -- H15 Event-Fold Spar-Deckung: Einnahme auf ein Konto, das einen Sparplan bezahlt -> "Danach ..."-Zeile mit
+    -- formatiertem Betrag; Kartenzeilen ohne Fold-Herkunft (IBAN-Schluessel "Falls falsch, abbrechen") fehlen
+    v_sp := (finance.fn_create_account(jsonb_build_object('name', '__t_rh_sp__', 'account_type', 'cash', 'currency', 'EUR',
+                 'bank', 'Testbank', 'opening_balance', 1000, 'opening_balance_date', (T - 200)::text))->>'account_id')::int;
+    INSERT INTO finance.accounts (name, account_type, currency, status, settlement_account_id)
+    VALUES ('__t_rh_dep__', 'stocks_depot', 'EUR', 'active', v_sp) RETURNING id INTO v_dep;
+    INSERT INTO finance.recurring_payments (name, account_id, amount, schedule_unit, first_payment_date, valid_from)
+    VALUES ('rh Plan', v_sp, -200, 'month', T + 2, T + 2) RETURNING id INTO v_cnt;
+    INSERT INTO finance.savings_plans (name, depot_id, symbol, security_name, recurring_payment_id)
+    VALUES ('rh Plan', v_dep, 'RHX', 'Welt ETF', v_cnt);
+    v_g := pg_temp.row('7601', v_sp, 'Zuschuss Test', 500, '{"direction":"income","recurring_kind":"benefit","counterparty_iban":"DE75512108001245126199"}');
+    v_r := pg_temp.cb('ok', v_g, 1, '7601');
+    IF (v_r->>'ok')::boolean IS DISTINCT FROM true OR v_r->'edit'->>'text' !~ E'\nsf __t_rh_sp__ \\S*500[.,]00'
+       OR position('recurring_iban_key' IN v_r->'edit'->>'text') > 0 OR position('{' IN v_r->'edit'->>'text') > 0 THEN
+        RAISE EXCEPTION 'FAIL [H15 Spar-Deckungs-Hinweis im ✓-Text]: %', v_r;
+    END IF;
+    -- H14 Lage bleibt negativ binnen 48 h (Latch) -> kein zweiter Cashflow-Hinweis
+    IF v_r->'edit'->>'text' ~ E'\ncf ' THEN
+        RAISE EXCEPTION 'FAIL [H14 Cashflow-Hinweis nur einmal]: %', v_r;
+    END IF;
     -- H12 Stapel seit mehr als 7 Tagen nicht ergaenzt, aber nicht geloescht -> abgelaufen, nichts angelegt
     v_e := pg_temp.row('7601', v_acct, 'Alt Test', 44, '{"counterparty_iban":"DE02120300000000202051"}');
     UPDATE finance.import_staging SET merged_at = now() - interval '8 days' WHERE id = v_e;
@@ -168,6 +211,6 @@ BEGIN
        OR (SELECT status FROM finance.import_staging WHERE id = v_e) <> 'staged' THEN
         RAISE EXCEPTION 'FAIL [H12 abgelaufener Stapel]: %', v_r;
     END IF;
-    RAISE NOTICE 'PASS [H1-H12 fn_handle_recurring_suggestion_cb]';
+    RAISE NOTICE 'PASS [H1-H15 fn_handle_recurring_suggestion_cb]';
 END $$;
 ROLLBACK;

@@ -7,6 +7,7 @@
 #   W  Betriebsart-Wrapper: systemd-Zweig ruft runuser/systemctl genau wie vorher; compose-Zweig ruft docker exec mit
 #      festem Container, -i nur, wenn psql stdin liest (Probelauf-Fund: `docker exec -i` frass die Paket-Schleife).
 #   V  rt_volumes_ensure: legt fehlende Volumes mit Label an, bricht bei fremdem Volume gleichen Namens ab.
+#   N  PG-Minor-Neustart (install_pg.sh): laufende Minor != Paket-Minor -> gezielter Neustart, Zweitlauf/Verbund no-op.
 #   T  Telegram-Pruefung (Pruefliste Nr. 10): frei / unser Webhook / fremder Webhook / 409 Long-Polling / nicht pruefbar;
 #      unattended Erstinstallation bricht ohne TELEGRAM_WEBHOOK_TAKEOVER=1 ab, nie mit offset/drop_pending_updates.
 # Braucht kein n8n, kein Docker und kein Netz.
@@ -544,5 +545,39 @@ out="$(STUB_FAIL='|ps|' rt_published_ports_json paperless-ngx 8000)"; rc=$?
 eq O.ohne-docker " rc=1" "$out rc=$rc"
 out="$(STUB_PS='kein json' rt_published_ports_json paperless-ngx 8000)"; rc=$?
 eq O.kaputte-ausgabe " rc=1" "$out rc=$rc"
+
+# ---------------------------------------------------------------------------- N: PG-Minor-Neustart (install_pg.sh)
+# Paket-Skripte duerfen im Substrat nicht starten (policy-rc.d) -> der Server laeuft nach --only-upgrade mit alter Minor.
+# shellcheck source=/dev/null
+. "$ROOT/provisioning/lib/install_pg.sh"
+pg_minor_stale "17.11 (Debian 17.11-1.pgdg12+1)" "17.12-1.pgdg12+1"; eq N.alt-gegen-neu-veraltet 0 $?
+pg_minor_stale "17.12 (Debian 17.12-1.pgdg12+1)" "17.12-1.pgdg12+1"; eq N.gleich-nicht-veraltet 1 $?
+pg_minor_stale "" "17.12-1.pgdg12+1"; eq N.laufend-unbekannt-nicht-veraltet 1 $?
+pg_minor_stale "17.11" ""; eq N.paket-unbekannt-nicht-veraltet 1 $?
+# pg_n_run <laufend> <ready:0|1> <runtime> — fuehrt install_postgres mit Attrappen in einem SUBSHELL aus (Attrappen
+# bleiben lokal) und gibt die Zahl der Neustarts aus; `die` am Ende (kein N8N_DB_PASSWORD) beendet nur den Subshell.
+pg_n_run() {
+  local cnt="$W/pg_restarts"; : > "$cnt"
+  (
+    PG_VERSION=17; LIFEAGENTS_RUNTIME="$3"; RUN_VER="$1"; PG_READY="$2"; unset N8N_DB_PASSWORD
+    need_su_tools() { return 0; }
+    pg_ready() { [ "$PG_READY" = 0 ]; }
+    pg_wait_ready() { return 0; }
+    pg_su_psql() { printf '%s\n' "$RUN_VER"; }
+    dpkg-query() { printf '17.12-1.pgdg12+1'; }
+    install_pg_packages() { :; }
+    svc_up() { :; }
+    rt_wait_healthy() { return 0; }
+    _pg_super() { return 0; }
+    svc_restart() { echo x >> "$cnt"; RUN_VER="17.12 (Debian 17.12-1.pgdg12+1)"; }
+    install_postgres
+    install_postgres
+  ) >/dev/null 2>&1 || true
+  wc -l < "$cnt" | tr -d ' '
+}
+eq N.install_postgres-veraltet-startet-neu-einmal 1 "$(pg_n_run '17.11 (Debian 17.11-1.pgdg12+1)' 0 systemd)"
+eq N.install_postgres-aktuell-kein-neustart 0 "$(pg_n_run '17.12 (Debian 17.12-1.pgdg12+1)' 0 systemd)"
+eq N.install_postgres-server-steht-kein-neustart 0 "$(pg_n_run '17.11' 1 systemd)"
+eq N.install_postgres-verbund-kein-neustart 0 "$(pg_n_run '17.11' 0 compose)"
 
 exit "$fails"

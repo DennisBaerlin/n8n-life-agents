@@ -141,7 +141,7 @@ CREATE TRIGGER trg_job_matches_touch BEFORE UPDATE ON career.job_matches
 --     Upsert; Trend = Vergleich gegen den juengsten prior row desselben scope_key. Ort steckt im scope_key.
 --   * KEIN Touch-Trigger (Paritaet finance.market_prices): updated_at via DEFAULT now() + NOW() im
 --     ON CONFLICT DO UPDATE der fn_upsert (eine Logik-Stelle; die Tabelle wird NUR von der fn geschrieben).
---   Purge: faellt via DROP SCHEMA career CASCADE. core_ro-Aufsicht via read_surface.tables_readable.
+--   Purge: faellt via DROP SCHEMA career CASCADE. core_ro-Aufsicht: core.fn_provision_package_roles grantet SELECT aufs ganze Schema.
 -- ============================================================
 CREATE TABLE IF NOT EXISTS career.market_signals (
     scope_key         text NOT NULL,                                    -- postings:<slug(rolle)>:<slug(ort)> (career.fn_market_scope_key)

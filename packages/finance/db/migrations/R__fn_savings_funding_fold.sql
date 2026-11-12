@@ -29,7 +29,7 @@
 --   VOLATILE (schreibt den Latch); im Probelauf (core.fn_dry_run) rollt der Savepoint den Latch mit zurueck.
 --   Aufrufer: fn_create_savings_plan, fn_set_savings_plan (ask), fn_create_recurring_transfer (Quelle + Ziel, ok-Bericht
 --   fuers Ziel), fn_create_recurring_payment (ok-Bericht nur bei Einnahme); card_lines fuegt fn_merge_fold zusammen.
---   RUECKGABE jsonb: '{}' oder {card_lines:[...]} + optional savings_funding {note, accounts:[{account_id, state,
+--   RUECKGABE jsonb: '{}' oder {card_lines:[{kind:'note', value, params, fold:'savings_funding'}]} + optional savings_funding {note, accounts:[{account_id, state,
 --   monthly_in, monthly_out, monthly_gap, balance, min_projected, min_date, runs_out_on, asked, reserved, min_free}]}.
 --   Tests: tests/db/finance/test_fn_savings_funding_fold.sql
 -- ============================================================
@@ -179,7 +179,8 @@ BEGIN
             END IF;
         END IF;
 
-        v_lines := v_lines || jsonb_build_array(v_line);
+        -- fold = Herkunft: wer Kartenzeilen ohne Karte zeigt (Knopf-Handler rsug), nimmt nur die Fold-Zeilen
+        v_lines := v_lines || jsonb_build_array(v_line || jsonb_build_object('fold', 'savings_funding'));
         IF v_note IS NOT NULL THEN
             v_notes := v_notes || v_note;
             v_accts := v_accts || jsonb_build_array(jsonb_build_object(

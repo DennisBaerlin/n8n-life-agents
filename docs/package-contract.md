@@ -908,7 +908,7 @@ before saving it as a trigger). The narrow package role `<pkg>_ro` cannot serve 
 - **The package only DECLARES, the host EXECUTES.** Package SQL contains **no** `GRANT`/`CREATE|ALTER ROLE`
   and references no foreign schema (only `EXECUTE` on published core read-fns). The sole privilege authority
   is `core.fn_provision_package_roles` (always own-schema-scoped). The manifest `read_surface` field declares
-  the package's read window (host role + preferred views) as **data**. Enforcement: structural (the host fn
+  the package's preferred views as **data**; the host role is always `core_ro` (granted unconditionally). Enforcement: structural (the host fn
   cannot target a foreign schema) + a boundary lint (package SQL has no role-DDL / foreign grant) as
   defense-in-depth.
 - **Read-surface descriptions are package-contributed (built, Phase B):** the SELECT-node descriptions of the
@@ -1277,10 +1277,9 @@ wird unten als „bei uns anders"-Notiz festgehalten (damit sie nicht je Paket r
   `<pkg>_rw/_ro` sind nur für die Agent-/Tool-Workflows). Schema-qualifizierte Aufrufe (kein search_path-Verlass).
 - **career-Asymmetrien (gewollt):** 1 Instruktions-Datei (`career_advisor_instructions.md`) · Domänen-Crons nur für Stellen-Scan und Marktsignale (`provides.crons` in `packages/career/manifest.json`), die Advisor-Crons erbt es über die `core.advisors`-Registrierung ·
   Validator/Renderer-Asymmetrie (`career_planning` ist raw-authored → validiert; der finance-Plan ist derivativ).
-- **career `read_surface`/`catalog` (Phase 0 WS-0d — Paritaet + WS-1-Scaffold):** `read_surface.host_read_role` =
-  `core_ro` **wie finance** (Paritaet, **nicht** „bei uns anders") — das ist das unbedingte Core-Host-Aufsichtsfenster
-  (`core.fn_provision_package_roles` grantet `core_ro` SELECT auf `career`, §4.1), **nicht** die enge `career_ro`-
-  Isolationsrolle; `preferred_views` = `[]` (die Job-Treffer sind person-privat, §4.1 — der Advisor liest die eigenen
+- **career `read_surface`/`catalog` (Phase 0 WS-0d — Paritaet + WS-1-Scaffold):** die Aufsicht liest
+  `core_ro` **wie bei finance** — `core.fn_provision_package_roles` grantet `core_ro` SELECT auf `career` (§4.1),
+  **nicht** die enge `career_ro`-Isolationsrolle; `read_surface.preferred_views` = `[]` (die Job-Treffer sind person-privat, §4.1 — der Advisor liest die eigenen
   über `read_job_matches` → `career.fn_read_job_matches`). Der `catalog`-Block (`ord` 200)
   rendert die Tail-Sektion „Karriere-Beratung & Planung" **und** seit WS-2 die Kategorie „Jobsuche & Matching" (sie trägt
   jetzt `tool_record_job_match`). **WS-2-Konsumenten der §8-Nähte:** career-Prefix `job:` ist der erste echte

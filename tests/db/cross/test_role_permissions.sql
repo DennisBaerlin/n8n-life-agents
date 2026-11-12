@@ -310,6 +310,9 @@ BEGIN
     RESET ROLE;
     SET LOCAL ROLE finance_ro;
     PERFORM * FROM finance.fn_resolve_account_by_number('DE02100100100006820101');
+    -- agent.finance Onboarding status read: Zahl offener Dauerauftrags-Vorschlaege fuer den Prompt-Abschnitt
+    IF (finance.fn_recurring_suggestion_counts('7999')->>'open')::int IS DISTINCT FROM 0 THEN
+      RESET ROLE; RAISE EXCEPTION 'FAIL [finance_ro -> fn_recurring_suggestion_counts]'; END IF;
     RESET ROLE;
     -- (2-mc-csv) Bank-Export-Datei (Broker-CSV Paket B): tool_import_bank_export laeuft unter finance_rw (Probelauf der Lots-Ersetzung,
     -- Vorschau + Buchung inkl. statement_seen_refs); die Monats-Erinnerung liest das Konto-Profil unter finance_ro.
@@ -2026,6 +2029,19 @@ BEGIN
     RAISE EXCEPTION 'FAIL [finance_rw -> fn_import_stage_recurring]: %', v_r;
   END IF;
   RAISE NOTICE 'PASS finance_rw -> fn_import_stage_recurring';
+END $$;
+
+-- Nachhol-Gate der Kurs-Crons (cron_refresh_fx_rates / cron_refresh_market_prices): Gate-Knoten laufen unter finance_rw.
+DO $$
+BEGIN
+  SET LOCAL ROLE finance_rw;
+  PERFORM finance.fn_feed_refresh_due('fx');
+  PERFORM finance.fn_feed_refresh_due('prices');
+  RESET ROLE;
+  RAISE NOTICE 'PASS finance_rw -> fn_feed_refresh_due';
+EXCEPTION WHEN OTHERS THEN
+  RESET ROLE;
+  RAISE EXCEPTION 'FAIL [finance_rw -> fn_feed_refresh_due]: %', SQLERRM;
 END $$;
 
 

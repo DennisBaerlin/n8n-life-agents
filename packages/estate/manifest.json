@@ -110,10 +110,8 @@
   },
   "protected_contexts": ["estate_advisor_instructions", "estate_overview"],
   "read_surface": {
-    "_comment": "Paket-Lese-Vertrag (docs/package-contract.md §4.1): das Aufsichts-Lesefenster für den privilegierten Core-Host - core.fn_provision_package_roles('estate') grantet core_ro UNBEDINGT SELECT auf Schema estate (System-Invariante, verifiziert in tests/db/estate/test_estate_isolation.sql B1). host_read_role = core_ro WIE finance/career (Parität) - NICHT estate_ro (das ist die ENGE Paket-Isolationsrolle). preferred_views folgt mit den Gap-/Overview-Views (WS-2).",
-    "host_read_role": "core_ro",
-    "preferred_views": [],
-    "tables_readable": true
+    "_comment": "Paket-Lese-Vertrag (docs/package-contract.md §4.1): core.fn_provision_package_roles('estate') grantet core_ro UNBEDINGT SELECT auf Schema estate (System-Invariante, verifiziert in tests/db/estate/test_estate_isolation.sql B1). Einziges Feld preferred_views (build.ps1 -> SELECT-Knoten-Beschreibungen der Core-Agenten); folgt mit den Gap-/Overview-Views (WS-2).",
+    "preferred_views": []
   },
   "backup": {
     "_comment": "Paket-Backup-Oberfläche (docs/package-contract.md §3.7): schema_dump=true sichert das GANZE Paket-Schema estate via pg_dump - das Register IST hochsensible Nutzer-Eingabe (Kundennummern, Steuer-ID, Fundorte) und existiert nirgends sonst. directive_types ist zwar code-geseedet, aber ON CONFLICT DO UPDATE beim Re-Seed konvergiert sie nach jedem Restore wieder auf den Code-Stand (kein M4-Konflikt: der Seed überschreibt den Dump-Stand, nicht umgekehrt). Die PII-losen Instruktions-/Overview-Contexts des Pakets leben in agent.core_contexts (managed_by='seed') und kommen aus dem Baum - NICHT hier.",

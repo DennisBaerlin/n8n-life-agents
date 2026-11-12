@@ -73,7 +73,7 @@ Propose→Review→Commit. Eine Row = eine zu erzeugende Entität als roher Payl
 | `finance.savings_goal_risk_decisions` | append-only Protokoll der bewussten Risiko-Entscheidung je Ziel (`event` `accept\|revoke`, Snapshot `target_date`/`limit_eur`/`allowed_eur` nur bei `accept`, Shape-CHECK); einzige Schreiber `fn_goal_depot_risk_fold`, `fn_set_savings_goal` (revoke), `fn_close_savings_goal` (revoke); CASCADE mit dem Ziel |
 | `finance.savings_plans` | `savings_goal_id` (SET NULL) bindet an ein Ziel; `asset_class` wird an `fn_book_stock_buy` vererbt |
 | `finance.transactions` | `order_fee` hält die in `amount` gefaltete Gebühr; `savings_goal_id` markiert das Reserve-Bein; `interest_period_end` Scheduler-Key |
-| `finance.currencies` / `finance.fx_rates` | nur EUR geseedet, Rest auto-registriert (`fn_ensure_currency`); FX-Cron `cron_refresh_fx_rates` (open.er-api.com) mit drei Eingängen (Schedule, Sub-Call nach einem Write, Nachholen beim Start von n8n), Währungsmenge `fn_active_currencies()`, Stand je Währung `fn_fx_rate_status()` |
+| `finance.currencies` / `finance.fx_rates` | nur EUR geseedet, Rest auto-registriert (`fn_ensure_currency`); FX-Cron `cron_refresh_fx_rates` (open.er-api.com) mit vier Eingängen (Schedule, Sub-Call nach einem Write, Nachholen beim Start von n8n und stündlich), Währungsmenge `fn_active_currencies()`, Stand je Währung `fn_fx_rate_status()`; Nachholen (auch `cron_refresh_market_prices`) entscheidet `fn_feed_refresh_due('fx'\|'prices')`: ein Abruf je Kalendertag der Haushalts-Zeitzone |
 | `finance.transaction_audit` | Void-Audit (gelöschtes Tx-Payload je `fn_void_transaction`) |
 | `finance.onboarding_state` | Finanz-Sektionen, geseedet aus `packages/finance/onboarding/sections.json` |
 

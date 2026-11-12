@@ -96,10 +96,8 @@
   },
   "protected_contexts": ["paperless_assistant_instructions"],
   "read_surface": {
-    "_comment": "Paket-Lese-Vertrag (docs/package-contract.md §4.1): das Aufsichts-Lesefenster für den privilegierten Core-Host - core.fn_provision_package_roles('paperless') grantet core_ro UNBEDINGT SELECT auf Schema paperless (System-Invariante, verifiziert in tests/db/paperless/test_paperless_isolation.sql D). host_read_role = core_ro WIE finance/career/estate (Parität). Das Schema ist leer (das Paket hält keine Daten).",
-    "host_read_role": "core_ro",
-    "preferred_views": [],
-    "tables_readable": true
+    "_comment": "Paket-Lese-Vertrag (docs/package-contract.md §4.1): core.fn_provision_package_roles('paperless') grantet core_ro UNBEDINGT SELECT auf Schema paperless (System-Invariante, verifiziert in tests/db/paperless/test_paperless_isolation.sql D). Einziges Feld preferred_views (build.ps1 -> SELECT-Knoten-Beschreibungen der Core-Agenten); leer, das Schema hält keine Daten.",
+    "preferred_views": []
   },
   "catalog": {
     "_comment": "Per-Fragment-Katalog (docs/package-contract.md §3.5): ord 400 = nach finance(100)/career(200)/estate(300), vor dem Core-Host-Chrome(900). Die drei Werkzeuge tragen die Kategorie 'documents' (Texte + Beispiele im Textkatalog paperless.help.documents.*, die deutschen Beispiele = verbatim Case-Tasks, -VerifyCatalog-geprüft).",

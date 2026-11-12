@@ -117,6 +117,9 @@ BEGIN
   r := core.fn_handoff_overview('{"domain":"finance","chat_id":"111"}');
   IF (r->>'count')::int <> 2 OR (r->>'max_task_id')::int <> v_id3 OR r->'items'->>0 <> 'Sparziel Notgroschen 5.000 €'
      OR r->'items'->>1 <> 'Dauerauftrag 100 € aufs Tagesgeld' THEN RAISE EXCEPTION 'FAIL [4 Uebersicht]: %', r; END IF;
+  -- fertige Text-Struktur fuer beide Sender (Abfolge und Berater-Tool)
+  IF r->'msg'->>'kind' <> 'tpl' OR r->'msg'->>'value' <> 'core.handoff.overview'
+     OR r->'msg'->'params'->>'list' <> E'1. Sparziel Notgroschen 5.000 €\n2. Dauerauftrag 100 € aufs Tagesgeld' THEN RAISE EXCEPTION 'FAIL [4 msg]: %', r; END IF;
   r := core.fn_handoff_overview('{"domain":"finance","chat_id":"222"}');
   IF (r->>'count')::int <> 0 OR r->'max_task_id' <> 'null'::jsonb THEN RAISE EXCEPTION 'FAIL [4 andere Person]: %', r; END IF;
   -- ein abgelaufener working-Claim (Lauf abgebrochen) erscheint wieder in der Uebersicht

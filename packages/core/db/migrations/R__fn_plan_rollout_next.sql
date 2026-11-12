@@ -2,7 +2,8 @@
 -- core.fn_plan_rollout_next(p_domain, p_person) — der eine naechste Schritt nach dem Veroeffentlichen
 --   Leitet aus dem Bestand ab, was als Naechstes dran ist (level-triggered, kein Status). Reihenfolge: 0 [Plan durchsehen],
 --   1 Uebergabe-Liste, 2 Warten auf Eintragen, 3 Paket-Schritt (core.advisors.rollout_fn), 4 Wert-Waechter, 5 Schluss. Die Stelle fuer die
---   Aenderungs-Nachricht (C4) liegt vor Schritt 0. Offener Entwurf juenger als advisor.rollout_draft_stale_days: 0, 4, 5 entfallen.
+--   Aenderungs-Nachricht (C4) liegt vor Schritt 0. Offener Entwurf (je Domain und Person) juenger als advisor.rollout_draft_stale_days:
+--   0, 4, 5 entfallen, 1 wartet (step 1, wait).
 --   Haushaltsplan: nur der Owner bekommt Schritte; per_user: jede Person ihre eigenen, ohne watch:on und plan:share.
 --   Beansprucht ueber core.fn_should_notify('plan_rollout', key, '30 minutes'); festschreiben macht der Sender (core.fn_notify_commit).
 --   Rueckgabe {step, wait?, loser?, messages:[{msg:[tpl], buttons:[{text_key,data}], memory_agent?, latch:{source,key}, latches?}]}.
@@ -89,21 +90,25 @@ BEGIN
     END IF;
 
     -- Schritt 1: Uebergabe-Liste, einmal je hoechster Aufgabe (ohne Version: Re-Publish derselben Liste fragt nicht neu)
-    SELECT count(*), max(t.id), max(t.created_at), COALESCE(jsonb_agg(t.text ORDER BY t.id), '[]'::jsonb)
-      INTO v_cnt, v_max, v_young, v_items
+    -- Warten zaehlt auch laufende Claims (sonst liefe die Abfolge waehrend des Durchgehens weiter); Liste, Knopf und
+    -- Schluessel kommen aus core.fn_handoff_overview wie beim Berater-Tool, damit dessen Merker denselben Schluessel trifft.
+    SELECT count(*), max(t.created_at) INTO v_cnt, v_young
       FROM agent.handoff_tasks t
      WHERE t.domain = p_domain AND t.person_id = p_person AND t.status IN ('open', 'working');
     IF v_cnt > 0 THEN
+        -- Offener Entwurf: das Gespraech laeuft noch, die Liste kommt an dessen Ende (Publish oder tool_send_handoff_overview).
+        IF v_draft THEN RETURN jsonb_build_object('step', 1, 'wait', true, 'messages', '[]'::jsonb); END IF;
+        v_res := core.fn_handoff_overview(jsonb_build_object('domain', p_domain, 'chat_id', core.fn_person_chat_id(p_person)::text));
+        v_max := NULLIF(v_res->>'max_task_id', '')::int;
         v_key := p_domain || ':' || v_who || ':handoff:' || v_max;
-        v_state := core.fn_plan_rollout_latch(v_key);
+        v_state := CASE WHEN v_max IS NULL THEN 'done' ELSE core.fn_plan_rollout_latch(v_key) END;
         IF v_state = 'pending' THEN RETURN jsonb_build_object('step', 1, 'loser', true, 'messages', '[]'::jsonb); END IF;
         IF v_state = 'free' THEN
             IF NOT core.fn_should_notify('plan_rollout', v_key, interval '30 minutes') THEN
                 RETURN jsonb_build_object('step', 1, 'loser', true, 'messages', '[]'::jsonb);
             END IF;
             RETURN jsonb_build_object('step', 1, 'messages', jsonb_build_array(jsonb_build_object(
-                'msg', jsonb_build_array(jsonb_build_object('kind', 'tpl', 'value', 'core.handoff.overview', 'params', jsonb_build_object(
-                    'list', (SELECT string_agg(i || '. ' || (x #>> '{}'), E'\n' ORDER BY i) FROM jsonb_array_elements(v_items) WITH ORDINALITY AS e(x, i))))),
+                'msg', jsonb_build_array(v_res->'msg'),
                 'buttons', jsonb_build_array(jsonb_build_object('text_key', 'core.handoff.btn_go', 'data', 'handoff:' || p_domain || ':' || v_max)),
                 'latch', jsonb_build_object('source', 'plan_rollout', 'key', v_key))));
         END IF;

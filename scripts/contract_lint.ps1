@@ -1923,6 +1923,14 @@ foreach ($sf in (Get-ChildItem (Join-Path $pkgDir '*\onboarding\sections.json') 
         }
     }
 }
+# LOAD-CONTEXT-CHAT (Kinder-Sicht): core.fn_fetch_context sperrt Paket-Kontexte nur, wenn sie die chat_id des Absenders
+# bekommt; ohne sie gilt der Systempfad (voller Inhalt). Jedes Agenten-Werkzeug ruft darum die 2-Arg-Form.
+foreach ($bf in (Get-ChildItem (Join-Path $pkgDir '*\build\workflows') -Recurse -Filter '*.ps1' -ErrorAction SilentlyContinue)) {
+    $bt = [System.IO.File]::ReadAllText($bf.FullName, $Utf8NoBom)
+    if ($bt -match "fn_fetch_context\(\(``?\`$1::jsonb\)->>'name'\)") {
+        $errors.Add("LOAD-CONTEXT-CHAT: $($bf.Name) ruft core.fn_fetch_context ohne chat_id -- Kinder-Sicht wuerde umgangen; zweites Argument (`$1::jsonb)->>'chat_id' aus dem Start-Knoten uebergeben.")
+    }
+}
 # Paket-Beispielfrage: core.fn_get_next_step_example ruft <pkg>.fn_next_step_example(text) nur, wenn sie SECURITY DEFINER
 # mit gepinntem search_path ist (Laufzeit-Pruefung ueber pg_proc) -> eine sonst angelegte fn waere still wirkungslos.
 foreach ($ef in (Get-ChildItem (Join-Path $pkgDir '*\db\migrations\R__fn_next_step_example.sql') -ErrorAction SilentlyContinue)) {

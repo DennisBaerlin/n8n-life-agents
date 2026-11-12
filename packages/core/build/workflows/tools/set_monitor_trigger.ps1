@@ -143,6 +143,7 @@ function Build-SetMonitorTrigger {
         -WriteName 'Set trigger (atomic)' `
         -WriteSelect "(r->>'ok')::boolean AS ok, r->>'reason' AS reason, (r->>'trigger_id')::int AS trigger_id, r->>'status' AS status, r->>'next_check_at' AS next_check_at, r->>'check_interval' AS check_interval, (r->>'reference_value')::numeric AS reference_value" `
         -Params ([ordered]@{
+            chat_id            = '$(''Start'').item.json.chat_id'
             domain             = '$(''Resolve domain'').item.json.domain'
             label              = '$(''Start'').item.json.label'
             new_label          = '$(''Start'').item.json.new_label'

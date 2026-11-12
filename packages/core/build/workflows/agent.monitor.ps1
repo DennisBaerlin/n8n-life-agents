@@ -45,6 +45,23 @@ function Build-AgentMonitor {
         "={{ Number(`$json.call_depth) || 0 }}" '2' 'largerEqual' 'number'
     $nDepthDeny = Build-ToolError 'Max call depth' @(-1300, 200) 'max_call_depth'
 
+    # Kinder-Sicht (Paket C): der Monitor beschafft per SQL Werte aus allen Paket-Schemata und zeigt den Probewert sofort ->
+    # fuer einen Absender ohne Haushalts-Sicht (core.fn_sender_sees_household) ein fester Satz statt eines Agent-Laufs.
+    # Fail-closed: nur sees === true laesst weiter (der Router ruft den Monitor direkt, nicht ueber den Vermittler).
+    $hhKeys = Get-UiKeysSql @('core.dispatch.household_only')
+    $nHouseholdRead = Build-Pg 'Household view read' @(-1430, -200) `
+        ("=SELECT core.fn_sender_sees_household((`$1::jsonb)->>'chat_id') AS sees, " +
+         "core.fn_ui_texts_for(jsonb_build_object('chat_id', (`$1::jsonb)->>'chat_id', 'keys', to_jsonb($hhKeys)))->'t' AS t;") `
+        ([ordered]@{ chat_id = "String(`$('$START_NODE').item.json.chat_id || '')" })
+    # Haupt-Credential (wie das Finanz-Tor bisher): core.fn_ui_texts_for ist fuer core_ro nicht freigegeben.
+    $nHouseholdRead['onError'] = 'continueRegularOutput'
+    $nHouseholdGate = Build-If 'Household view gate' @(-1410, -60) "={{ `$('Household view read').item.json.sees === true }}" 'true' 'equals' 'boolean'
+    $nHouseholdDeny = Build-Set 'Household only' @(-1300, 360) @(
+        ,@('ok', 'false', 'boolean')
+        ,@('error', 'household_only', 'string')
+        ,@('output', ('={{ ' + (Get-UiTextJs "`$('Household view read').item.json.t" 'core.dispatch.household_only') + ' }}'), 'string')
+    )
+
     $nLoadConfig = Build-CallWorkflow 'Load Config' @(-1376, 0) $ID_LOAD_CFG 'core.sub_load_config' (@{})
 
     $nLoadCtx = Build-CallWorkflow 'Load Agent Context' @(-1152, 0) $ID_LOAD_CTX 'agent.tool_load_context' `
@@ -109,8 +126,8 @@ function Build-AgentMonitor {
     # core.context_renderers werden zur Ladezeit mit berechneten Ableitungen gerendert; sonst stored content).
     # jsonb-Param (Build-Gotcha-Standard, kein String-Splice) + onError: ein halluzinierter
     # Context-Name killt nicht die Execution, sondern geht als korrigierbarer Tool-Fehler zurueck.
-    $loadQuery = "=SELECT content FROM core.fn_fetch_context((`$1::jsonb)->>'name');"
-    $loadParams = "={{ JSON.stringify({ name: `$fromAI('context_name', 'Name of the lazy context document to load (must match an entry in the manifest)', 'string') }) }}"
+    $loadQuery = "=SELECT content FROM core.fn_fetch_context((`$1::jsonb)->>'name', (`$1::jsonb)->>'chat_id');"
+    $loadParams = "={{ JSON.stringify({ name: `$fromAI('context_name', 'Name of the lazy context document to load (must match an entry in the manifest)', 'string'), chat_id: String(`$('$START_NODE').item.json.chat_id || '') }) }}"
     $nToolLoad = [ordered]@{
         parameters = [ordered]@{
             descriptionType = 'manual'
@@ -194,7 +211,7 @@ function Build-AgentMonitor {
     # --- Doku-Stickies ---
     $stickyOverview = Build-Sticky 'Doc: Überblick' @(-1640, -380) `
         'agent.monitor — Watchdog des Trigger-Monitorings (Sub-Workflow)' `
-        'Eingang: task, chat_id, call_depth (vom Orchestrator als Tool gerufen). Pipeline: Depth gate (Anti-Loop) -> Load Config -> System-Prompt+Manifest (agent.tool_load_context, agent_name=monitor) -> Monitor Agent. OWNERSHIP: Mechanik-Fragen (Trigger anlegen/ändern/löschen/auflisten, Repair, "warum feuerte der Alert") = HIER; Wert-/Beratungs-Fragen ("Ölpreis ist gerissen - was tun?") = Fach-Advisor. Writes NUR via tool_create_monitor_trigger/tool_set_monitor_trigger/tool_delete_monitor_trigger (je HITL-Gate + Probe vor dem Gate). Co-Design-Protokoll lebt EINMAL im lazy Context trigger_design (Henne-Ei gelöst per Pointer in der create-Tool-Description). Der Monitor-Agent setzt package fix core; ein Fach-Advisor bindet zusätzlich NUR tool_create_monitor_trigger (+ read-only tool_list_monitor_triggers), domain+package fix = sein Paket. PAKET-WISSEN (Phase B) kommt build-time aus den Manifesten: bevorzugte Views (read_surface), Paket-Beschaffungs-Methoden (monitor_acquisition_methods, Parameter als acquisition_params) und Advisor-Domänen (advisors) — der Core nennt kein Paket selbst.' 300 680
+        'Eingang: task, chat_id, call_depth (vom Orchestrator als Tool gerufen). Pipeline: Depth gate (Anti-Loop) -> Household view read/gate (Kinder-Sicht: core.fn_sender_sees_household, fail-closed; nein -> Household only = core.dispatch.household_only, kein Agent-Lauf; die Trigger-fns lehnen mit chat_id zusätzlich ab) -> Load Config -> System-Prompt+Manifest (agent.tool_load_context, agent_name=monitor) -> Monitor Agent. OWNERSHIP: Mechanik-Fragen (Trigger anlegen/ändern/löschen/auflisten, Repair, "warum feuerte der Alert") = HIER; Wert-/Beratungs-Fragen ("Ölpreis ist gerissen - was tun?") = Fach-Advisor. Writes NUR via tool_create_monitor_trigger/tool_set_monitor_trigger/tool_delete_monitor_trigger (je HITL-Gate + Probe vor dem Gate). Co-Design-Protokoll lebt EINMAL im lazy Context trigger_design (Henne-Ei gelöst per Pointer in der create-Tool-Description). Der Monitor-Agent setzt package fix core; ein Fach-Advisor bindet zusätzlich NUR tool_create_monitor_trigger (+ read-only tool_list_monitor_triggers), domain+package fix = sein Paket. PAKET-WISSEN (Phase B) kommt build-time aus den Manifesten: bevorzugte Views (read_surface), Paket-Beschaffungs-Methoden (monitor_acquisition_methods, Parameter als acquisition_params) und Advisor-Domänen (advisors) — der Core nennt kein Paket selbst.' 300 680
 
     $stickyModel = Build-Sticky 'Doc: Modellwahl' @(-900, 600) `
         'Modellwahl (Config-gesteuert)' `
@@ -204,7 +221,7 @@ function Build-AgentMonitor {
         'Chat-Memory (Fenster 10)' `
         'Eigene Tabelle agent.monitor_chat_memory (sessionKey=chat_id, auto vom Node). Fenster 10: Co-Design-Dialoge sind mehrturnig (Metrik klären -> Quelle recherchieren -> Prompt engineeren -> Playback -> Gate), aber kürzer als Advisor-Interviews (15).' 200 380
 
-    $nodes = @(
+    $nodes = @( $nHouseholdRead, $nHouseholdGate, $nHouseholdDeny,
         $nTrigger, $nDepthGate, $nDepthDeny, $nLoadConfig, $nLoadCtx, $nBuildInput, $nAgent,
         $nMemory,
         $nToolSelect, $nToolLoad, $nToolWebSearch, $nToolCreate, $nToolSet, $nToolDelete,
@@ -215,8 +232,10 @@ function Build-AgentMonitor {
         $START_NODE           = @{ main = @( ,@( E 'Depth gate' ) ) }
         'Depth gate'          = @{ main = @(
             @( E 'Max call depth' ),
-            @( E 'Load Config' )
+            @( E 'Household view read' )
         ) }
+        'Household view read' = @{ main = @( ,@( E 'Household view gate' ) ) }
+        'Household view gate' = @{ main = @( @( E 'Load Config' ), @( E 'Household only' ) ) }
         'Load Config'         = @{ main = @( ,@( E 'Load Agent Context' ) ) }
         'Load Agent Context'  = @{ main = @( ,@( E 'Build Agent Input' ) ) }
         'Build Agent Input'   = @{ main = @( ,@( E 'Monitor Agent' ) ) }

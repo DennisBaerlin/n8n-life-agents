@@ -54,9 +54,7 @@ function Build-AgentFinanceAdvisor {
 
     $nLoadConfig = Build-CallWorkflow 'Load Config' @(-1376, 0) $ID_LOAD_CFG 'core.sub_load_config' (@{})
 
-    # Tor Haushalts-Sicht (household_gate.ps1): Kind/ohne Rolle -> fester Hinweis vor dem LLM, vor allen weiteren Reads.
-    $hh = New-FinanceHouseholdGate -StartNode $START_NODE -NextNode 'Onboarding gate read' `
-        -ReadPos @(-1376, -560) -GatePos @(-1264, -560) -DenyPos @(-1152, -720)
+    # Kinder-Sicht: das Tor sitzt zentral im Vermittler (agent.sub_dispatch_agent, core.fn_sender_sees_household).
 
     # --- Onboarding-Pflicht-Gate (Plan §1b, flag-gated feature.onboarding_gate; WS-B3 kombiniert) ---
     # Deterministisch VOR dem LLM (kein Cost): wenn das Feature an ist UND das Onboarding noch nicht
@@ -163,8 +161,8 @@ function Build-AgentFinanceAdvisor {
     # werden zur Ladezeit mit berechneten Ableitungen gerendert; sonst stored content).
     # jsonb-Param (Build-Gotcha-Standard, kein String-Splice) + onError: ein halluzinierter
     # Context-Name killt nicht die Execution, sondern geht als korrigierbarer Tool-Fehler zurueck.
-    $loadQuery = "=SELECT content FROM core.fn_fetch_context((`$1::jsonb)->>'name');"
-    $loadParams = "={{ JSON.stringify({ name: `$fromAI('context_name', 'Name of the lazy context document to load (must match an entry in the manifest)', 'string') }) }}"
+    $loadQuery = "=SELECT content FROM core.fn_fetch_context((`$1::jsonb)->>'name', (`$1::jsonb)->>'chat_id');"
+    $loadParams = "={{ JSON.stringify({ name: `$fromAI('context_name', 'Name of the lazy context document to load (must match an entry in the manifest)', 'string'), chat_id: String(`$('$START_NODE').item.json.chat_id || '') }) }}"
     $nToolLoad = [ordered]@{
         parameters = [ordered]@{
             descriptionType = 'manual'
@@ -374,7 +372,7 @@ function Build-AgentFinanceAdvisor {
         $nToolSelect, $nToolLoad, $nToolWebSearch, $nToolPanel, $nToolSaveSection, $nToolPublish, $nToolSyncPlan, $nToolPlanWish,
         $nToolCreateTrigger, $nToolListTriggers, $nToolSetAssetClasses, $nToolCreateAccount, $nToolCreateRecurringPayment,
         $stickyOverview, $stickyDomain, $stickyModel, $stickyMemory, $stickyPkg, $stickyCore
-    ) + $hh.Nodes + $mb.Nodes
+    ) + $mb.Nodes
     if ($nToolHandoffOverview) { $nodes += $nToolHandoffOverview }
     # Paket-Werkzeuge aus consumes.services (paperless:* — Dokumente lesen) ueber den Core-Vermittler; optional.
     $svc = Add-ServiceTools -Package 'finance' -AgentNode 'Advisor Agent' -StartNode $START_NODE -Position @(-336, 840) -ExistingNodes $nodes
@@ -386,8 +384,7 @@ function Build-AgentFinanceAdvisor {
     $conns = [ordered]@{}
     foreach ($k in $gate.Connections.Keys) { $conns[$k] = $gate.Connections[$k] }
 
-    $conns['Load Config']          = @{ main = @( ,@( E $hh.EntryNode ) ) }
-    foreach ($k in $hh.Connections.Keys) { $conns[$k] = $hh.Connections[$k] }
+    $conns['Load Config']          = @{ main = @( ,@( E 'Onboarding gate read' ) ) }
     $conns['Onboarding gate read'] = @{ main = @( ,@( E 'Onboarding gate' ) ) }
     $conns['Onboarding gate']      = @{ main = @(
         @( E 'Onboarding required' ),   # true: Feature an + unvollstaendig -> Redirect (kein LLM)

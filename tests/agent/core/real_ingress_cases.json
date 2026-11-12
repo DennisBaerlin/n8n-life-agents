@@ -1403,7 +1403,7 @@
   },
   {
     "id": "ri98",
-    "name": "Naechster Schritt: alter Vorschlags-Knopf eines erledigten Abschnitts -> Toast 'schon erledigt' + Uebersicht, kein Agent-Lauf",
+    "name": "Naechster Schritt: alter Vorschlags-Knopf eines erledigten Abschnitts -> Toast 'nicht mehr aktuell' + Uebersicht, kein Agent-Lauf",
     "kind": "node_ran",
     "update": "callback",
     "chat_id": 880055071,
@@ -1412,7 +1412,7 @@
     "pre_sql": "UPDATE agent.guide_onboarding_state SET status = 'completed' WHERE section_key = 'household';",
     "expected_node": "Send stale overview",
     "expected_not_node": "Run onboarding cb",
-    "expect_texts": ["Das ist schon erledigt."],
+    "expect_texts": ["Dieser Knopf ist nicht mehr aktuell."],
     "notes": "core.fn_check_next_step_tap rechnet den Schritt des Tippenden neu; callback ungleich -> {ok:false, toast} -> Answer stale step -> core.sub_send_onboarding_menu."
   },
   {
@@ -1441,11 +1441,11 @@
     "chat_id": 880055201,
     "from_uid": 880055201,
     "text": "Was haben wir gerade auf den Konten?",
-    "expected_sub": "agent.finance",
-    "expected_node": "Household view denied",
-    "expected_not_ran": ["Finance Agent"],
-    "expect_texts": ["nur die Erwachsenen"],
-    "notes": "Owner-Entscheid 2026-11-11: Kinder sehen im Chat keine Haushaltsfinanzen (Regel der Mini-App, core.fn_app_sees_household). Lisa (role child) nur fuer diesen Fall gepairt (as_child, Treiber von Paket A). finance.fn_sender_sees_household -> false -> Household view denied, der Finance Agent laeuft nicht. Mock: Szenario 'Was haben wir gerade auf den Konten' routet zu Call_agent_finance_."
+    "expected_sub": "agent.sub_dispatch_agent",
+    "expected_node": "Household only",
+    "expected_not_ran": ["Run agent"],
+    "expect_texts": ["nur den Erwachsenen"],
+    "notes": "Owner-Entscheid 2026-11-11: Kinder sehen im Chat keine Haushaltsfinanzen (Regel der Mini-App, core.fn_app_sees_household). Lisa (role child) nur fuer diesen Fall gepairt (as_child, Treiber von Paket A). Tor im Vermittler (Paket C): core.fn_sender_sees_household -> false -> Household only, Run agent laeuft nicht (der Buchhalter startet gar nicht). Mock: Szenario 'Was haben wir gerade auf den Konten' routet zu Call_agent_finance_."
   },
   {
     "id": "ri101",
@@ -1457,7 +1457,7 @@
     "text": "Was haben wir gerade auf den Konten?",
     "expected_sub": "agent.finance",
     "expected_node": "Finance Agent",
-    "notes": "Gegenprobe: Lena (role partner) sieht den Haushalt -> Household view gate true -> der Agent laeuft (Mock-LLM final)."
+    "notes": "Gegenprobe: Lena (role partner) sieht den Haushalt -> Audience ok? true im Vermittler -> der Agent laeuft (Mock-LLM final)."
   },
   {
     "id": "ri102",
@@ -1468,9 +1468,80 @@
     "chat_id": 880055201,
     "from_uid": 880055201,
     "text": "Kannst du mich mal zu unserem Geld beraten?",
-    "expected_sub": "agent.finance_advisor",
-    "expected_node": "Household view denied",
-    "expected_not_ran": ["Advisor Agent"],
-    "notes": "Wie ri100 fuer den Berater: das Tor sitzt hinter Load Config, vor jedem weiteren Read. Mock: Szenario 'Kannst du mich mal zu unserem Geld beraten' routet zu Call_agent_finance_advisor_."
+    "expected_sub": "agent.sub_dispatch_agent",
+    "expected_node": "Household only",
+    "expected_not_ran": ["Run agent"],
+    "notes": "Wie ri100 fuer den Berater: das Tor im Vermittler sperrt vor dem Agenten-Start. Mock: Szenario 'Kannst du mich mal zu unserem Geld beraten' routet zu Call_agent_finance_advisor_."
+  }
+  ,
+  {
+    "id": "ri103",
+    "name": "Kinder-Sicht: Kind tippt /notfall -> Tor im Vermittler, fester Satz, kein Notfall-Agent",
+    "kind": "node_ran",
+    "update": "message",
+    "as_child": true,
+    "chat_id": 880055201,
+    "from_uid": 880055201,
+    "text": "/notfall",
+    "expected_sub": "agent.sub_dispatch_agent",
+    "expected_node": "Household only",
+    "expected_not_ran": ["Run agent"],
+    "expect_texts": ["nur den Erwachsenen"],
+    "notes": "Owner-Entscheid 2026-11-11 (Notfall fuer Rolle Kind: vorerst nein): der Befehls-Arm laeuft ueber agent.sub_dispatch_agent mit audience adults (estate_advisor ohne audience im Manifest) -> core.fn_sender_sees_household false -> Household only."
+  },
+  {
+    "id": "ri104",
+    "name": "Kinder-Sicht: Kind will eine Erinnerung auf einen Haushaltswert -> Monitor-Gate, kein Agent-Lauf",
+    "kind": "node_ran",
+    "update": "message",
+    "as_child": true,
+    "chat_id": 880055201,
+    "from_uid": 880055201,
+    "text": "Kinder-Test Erinnerung Kontostand",
+    "expected_sub": "agent.monitor",
+    "expected_node": "Household only",
+    "expected_not_ran": ["Monitor Agent"],
+    "expect_texts": ["nur den Erwachsenen"],
+    "notes": "Der Router ruft den Monitor direkt (Core-Agent, nicht ueber den Vermittler) -> Eingangs-Gate Household view gate (core.fn_sender_sees_household, fail-closed)."
+  },
+  {
+    "id": "ri105",
+    "name": "Kinder-Sicht: Kind fragt den Hilfe-Agenten -> Knoten ohne Datenbank-Abfrage",
+    "kind": "node_ran",
+    "update": "message",
+    "as_child": true,
+    "chat_id": 880055201,
+    "from_uid": 880055201,
+    "text": "Kinder-Test was kann ich hier fragen",
+    "expected_sub": "agent.guide",
+    "expected_node": "Guide Agent (personal)",
+    "expected_not_ran": ["Guide Agent", "postgres_select"],
+    "notes": "Sees household? false -> Guide Agent (personal): gebunden ist nur load_context (sperrt Paket-Kontexte selbst)."
+  },
+  {
+    "id": "ri107",
+    "name": "Kinder-Sicht: Partnerin fragt den Hilfe-Agenten -> voller Knoten (Gegenprobe zu ri105)",
+    "kind": "node_ran",
+    "update": "message",
+    "chat_id": 880055200,
+    "from_uid": 880055200,
+    "text": "Kinder-Test was kann ich hier fragen",
+    "expected_sub": "agent.guide",
+    "expected_node": "Guide Agent",
+    "expected_not_ran": ["Guide Agent (personal)"],
+    "notes": "Lena (partner) sieht den Haushalt -> Sees household? true."
+  },
+  {
+    "id": "ri109",
+    "name": "Kinder-Sicht: Kind tippt im Menue einen Bereich, der nicht fuer seine Rolle ist -> Toast, kein Agent",
+    "kind": "node_ran",
+    "update": "callback",
+    "as_child": true,
+    "chat_id": 880055201,
+    "from_uid": 880055201,
+    "callback_data": "onboarding:career:profile_basics",
+    "expected_node": "Answer dispatched cb",
+    "expect_texts": ["nicht für dich"],
+    "notes": "core.fn_handle_onboarding_cb prueft for_roles (career: owner/partner) -> {ok:false, reason not_for_role, toast core.toast.not_for_role}."
   }
 ]

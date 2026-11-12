@@ -29,6 +29,7 @@ function Build-DeleteMonitorTrigger {
         -WriteName 'Delete trigger (atomic)' `
         -WriteSelect "(r->>'ok')::boolean AS ok, r->>'reason' AS reason, (r->>'trigger_id')::int AS trigger_id, (r->>'observations_deleted')::int AS observations_deleted" `
         -Params ([ordered]@{
+            chat_id            = '$(''Start'').item.json.chat_id'
             domain = '$(''Resolve domain'').item.json.domain'
             label  = '$(''Start'').item.json.label'
         })

@@ -24,12 +24,12 @@
 # Laufzeit in der Sprache des Absenders (chat_id -> Person -> agent.fn_person_lang; unbekannt -> Owner-Sprache) — der
 # Aufrufer reicht nur noch die Paket-id durch (kein build-time deutscher Anzeigename mehr).
 function Build-AgentSubDispatchAgent {
-    $start = Build-Trigger @('workflow_id', 'package', 'task', 'call_depth', 'thinking') @(-900, 300)
+    $start = Build-Trigger @('workflow_id', 'package', 'task', 'call_depth', 'thinking', 'audience') @(-900, 300)
 
     $dispatchKeys = @('core.dispatch.no_answer', 'core.dispatch.unavailable', 'core.dispatch.inactive',
-                      'core.dispatch.incomplete', 'core.dispatch.not_installed')
+                      'core.dispatch.incomplete', 'core.dispatch.not_installed', 'core.dispatch.household_only')
     $status = Build-Pg 'Package status' @(-680, 300) `
-        ("SELECT core.fn_package_status(`$1::jsonb) AS r, core.fn_ui_texts(y.lang, $(Get-UiKeysSql $dispatchKeys)) AS t, " +
+        ("SELECT core.fn_package_status(`$1::jsonb) AS r, core.fn_sender_sees_household((`$1::jsonb)->>'chat_id') AS sees, core.fn_ui_texts(y.lang, $(Get-UiKeysSql $dispatchKeys)) AS t, " +
          "COALESCE(NULLIF(core.fn_ui_text((`$1::jsonb)->>'package' || '.package.name', y.lang), (`$1::jsonb)->>'package' || '.package.name'), (`$1::jsonb)->>'package') AS pkg_name " +
          "FROM (SELECT agent.fn_person_lang(agent.fn_resolve_sender(CASE WHEN (`$1::jsonb)->>'chat_id' ~ '^[0-9]{1,18}$' " +
          "THEN ((`$1::jsonb)->>'chat_id')::bigint END)->>'person_id')->>'lang' AS lang) y;") ([ordered]@{
@@ -37,6 +37,16 @@ function Build-AgentSubDispatchAgent {
         chat_id = "String(`$('Start').item.json.chat_id || '')"
     })
     $status['onError'] = 'continueRegularOutput'
+
+    # Kinder-Sicht (Paket C): audience 'all' laesst jeden durch, sonst nur einen Absender mit Haushalts-Sicht (core.fn_sender_sees_household,
+    # Regel der Mini-App). Fail-closed: fehlt 'sees' (DB-Fehler), sperrt das Tor auch Erwachsene (Privatsphaere vor Verfuegbarkeit).
+    $audienceOk = Build-If 'Audience ok?' @(-460, 140) `
+        "={{ String(`$('Start').item.json.audience || 'adults') === 'all' || `$('Package status').item.json.sees === true }}" 'true' 'equals' 'boolean'
+    $householdOnly = Build-Set 'Household only' @(-220, 560) @(
+        ,@('ok', 'false', 'boolean')
+        ,@('error', 'household_only', 'string')
+        ,@('output', "={{ String(((`$('Package status').item.json.t) || {})['core.dispatch.household_only'] || 'core.dispatch.household_only') }}", 'string')
+    )
 
     $usable = Build-If 'Package usable?' @(-460, 300) `
         "={{ !`$json.r || `$json.r.ok === true }}" 'true' 'equals' 'boolean'
@@ -124,15 +134,17 @@ Der Verteiler (agent.orchestrator.main_route) ruft Paket-Agenten und den Haushal
 
 **Eingaben (fest vom Aufrufer, Build-Zeit):** workflow_id, package + task, chat_id, call_depth, thinking ('loop' = Paket-Befehle/-Onboarding-Tipps ohne eigene Anzeige; leer = KI-Weg, dort zeigt der Orchestrator die Anzeige). Anzeigename + Hinweise aus dem Textkatalog in der Sprache des Absenders (Package status).
 **Ablauf:** core.fn_package_status -> aktiv? [thinking='loop' + privater Chat: Open thinking lease (agent.thinking_lease) -> Show thinking (core.sub_show_thinking, fire-and-forget, Erneuerung alle 5 s)] + Run agent (AUSDRUCKS-ID = keine Aktivierungspruefung) -> Close thinking lease (Schalter weg + Draft-Fenster abwarten, VOR der Rückgabe = vor der Antwort; ohne Schalter No-op) -> Ensure output. Sonst Not available: Owner sieht `lifeagents package install|activate <pkg>`, Mitglieder "nicht verfügbar".
+**Kinder-Sicht:** feste Eingabe audience (Manifest provides.agents[].audience, fehlt = adults). Audience ok? laesst bei all jeden durch, sonst nur, wenn core.fn_sender_sees_household(chat_id) true ist (owner/partner, Regel der Mini-App); sonst Household only = {ok:false, error:household_only, output = core.dispatch.household_only} ohne Agent-Lauf. Fail-closed: ein DB-Fehler im Package status sperrt hier auch Erwachsene.
 **Rueckgabe:** immer ein Item mit .output (Relays + Router-Modell lesen es).
 **Anti-Loop:** Sub, kein Agent; call_depth nur durchgereicht. Naht-Lint: kein Core-Workflow traegt eine literale Paket-Workflow-ID.
 '@) 300 520 'Ablauf'
 
-    $nodes = @($start, $status, $usable, $thinkingGate, $openThinking, $thinking, $run, $closeThinking, $ensure, $notAvail, $sticky)
+    $nodes = @($start, $status, $usable, $audienceOk, $householdOnly, $thinkingGate, $openThinking, $thinking, $run, $closeThinking, $ensure, $notAvail, $sticky)
     $conns = [ordered]@{
         'Start'               = @{ main = @( ,@( E 'Package status' ) ) }
         'Package status'      = @{ main = @( ,@( E 'Package usable?' ) ) }
-        'Package usable?'     = @{ main = @( @( (E 'Thinking private?'), (E 'Run agent') ), @( E 'Not available' ) ) }
+        'Package usable?'     = @{ main = @( @( E 'Audience ok?' ), @( E 'Not available' ) ) }
+        'Audience ok?'        = @{ main = @( @( (E 'Thinking private?'), (E 'Run agent') ), @( E 'Household only' ) ) }
         'Thinking private?'   = @{ main = @( ,@( E 'Open thinking lease' ) ) }   # [0] Schleife; [1] KI-Weg/Gruppe -> nichts
         'Open thinking lease' = @{ main = @( ,@( E 'Show thinking' ) ) }
         'Run agent'           = @{ main = @( ,@( E 'Close thinking lease' ) ) }

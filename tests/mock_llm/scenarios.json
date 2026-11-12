@@ -1810,4 +1810,23 @@
     ],
     "final": "Danke, ich schicke dir die Karte zum Einkommen."
   }
+  ,
+  {
+    "_comment": "Kinder-Sicht (ri104): Kind bittet um eine Erinnerung auf einen Haushaltswert -> Router ruft agent.monitor, dessen Eingangs-Gate (core.fn_sender_sees_household) sperrt vor dem Agent-Lauf.",
+    "match": "Kinder-Test Erinnerung Kontostand",
+    "calls": [
+      { "tool": "Call_agent_monitor_", "args": { "task": "Kinder-Test Erinnerung Kontostand" } }
+    ],
+    "final": "Ich lege die Erinnerung an.",
+    "final_router": "FRAME"
+  },
+  {
+    "_comment": "Kinder-Sicht (ri105/ri107): Hilfe-Frage -> agent.guide; Kind -> Knoten Guide Agent (personal), Partner -> Guide Agent.",
+    "match": "Kinder-Test was kann ich hier fragen",
+    "calls": [
+      { "tool": "Call_agent_guide_", "args": { "task": "Kinder-Test was kann ich hier fragen" } }
+    ],
+    "final": "Du kannst mich zum Beispiel fragen, was ich alles kann.",
+    "final_router": "FRAME"
+  }
 ]

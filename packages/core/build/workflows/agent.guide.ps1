@@ -63,14 +63,14 @@ function Build-AgentGuide {
     # onError=continue -> ein Lese-Hiccup bricht den Guide nicht; dann fehlt household_status und der Block wird
     # GANZ weggelassen (Muster finance: bei Fehler nichts anhaengen — nie faelschlich "niemand gespeichert").
     $nHouseholdRead = Build-Pg 'Household status read' @(-1040, 0) `
-        "=SELECT core.fn_get_next_step(`$1::jsonb) AS step, agent.fn_resolve_sender(CASE WHEN (`$1::jsonb)->>'chat_id' ~ '^[0-9]{1,18}`$' THEN ((`$1::jsonb)->>'chat_id')::bigint END) AS sender, COALESCE((SELECT status FROM agent.guide_onboarding_state WHERE section_key = 'household'), 'unknown') AS household_status, COALESCE((SELECT string_agg(format('- %s %s (person_id %s; role %s; birth date %s%s)', pp->>'first_name', pp->>'last_name', pp->>'person_id', pp->>'role', CASE WHEN NULLIF(pp->>'birth_date', '') IS NULL THEN 'missing' ELSE 'stored' END, COALESCE('; also stored: ' || (SELECT string_agg(k, ', ' ORDER BY k) FROM jsonb_object_keys(pp) AS k WHERE k NOT IN ('person_id','first_name','last_name','role','birth_date','as_of','telegram_user_id','aliases')), '')), E'\n' ORDER BY x.ord) FROM agent.core_contexts c, jsonb_array_elements(COALESCE(c.metadata->'facts'->'persons', '[]'::jsonb)) WITH ORDINALITY AS x(pp, ord) WHERE c.name = 'family'), '') AS persons;" `
+        "=SELECT core.fn_sender_sees_household((`$1::jsonb)->>'chat_id') AS sees, core.fn_get_next_step(`$1::jsonb) AS step, agent.fn_resolve_sender(CASE WHEN (`$1::jsonb)->>'chat_id' ~ '^[0-9]{1,18}`$' THEN ((`$1::jsonb)->>'chat_id')::bigint END) AS sender, COALESCE((SELECT status FROM agent.guide_onboarding_state WHERE section_key = 'household'), 'unknown') AS household_status, COALESCE((SELECT string_agg(CASE WHEN core.fn_sender_sees_household((`$1::jsonb)->>'chat_id') THEN format('- %s %s (person_id %s; role %s; birth date %s%s)', pp->>'first_name', pp->>'last_name', pp->>'person_id', pp->>'role', CASE WHEN NULLIF(pp->>'birth_date', '') IS NULL THEN 'missing' ELSE 'stored' END, COALESCE('; also stored: ' || (SELECT string_agg(k, ', ' ORDER BY k) FROM jsonb_object_keys(pp) AS k WHERE k NOT IN ('person_id','first_name','last_name','role','birth_date','as_of','telegram_user_id','aliases')), '')) ELSE format('- %s (role %s)', pp->>'first_name', pp->>'role') END, E'\n' ORDER BY x.ord) FROM agent.core_contexts c, jsonb_array_elements(COALESCE(c.metadata->'facts'->'persons', '[]'::jsonb)) WITH ORDINALITY AS x(pp, ord) WHERE c.name = 'family'), '') AS persons;" `
         ([ordered]@{ chat_id = "String(`$('$START_NODE').item.json.chat_id || '')"; order = $nextOrderJs; plan_order = $nextPlanOrderJs; with_example = 'true' })
     $nHouseholdRead.credentials = @{ postgres = $CRED_PG_RO }
     $nHouseholdRead.onError = 'continueRegularOutput'
 
     $nBuildInput = Build-Set 'Build Agent Input' @(-928, 0) @(
         ,@('task',          "={{ `$('$START_NODE').item.json.task }}", 'string')
-        ,@('system_prompt', "={{ `$('Load Agent Context').item.json.system_prompt + (`$('Household status read').item.json.household_status ? ('\n\n## Household so far (from the installation and earlier onboarding - authoritative)\n' + (`$('Household status read').item.json.persons ? (`$('Household status read').item.json.persons + '\nDo NOT ask again for the name or birth date of anyone listed here - confirm briefly instead (e.g. Dich kenne ich schon aus der Installation). Ask only for what is still missing (e.g. partner, children, employment).') : 'No household members stored yet.') + '\nHousehold onboarding status: ' + `$('Household status read').item.json.household_status) : '') + (((`$('Household status read').item.json.sender || {}).found === true) ? ('\n\n## Who is writing and the next step (from the system - authoritative)\nCurrent user: ' + String((`$('Household status read').item.json.sender || {}).first_name || 'unknown').replace(/[\r\n`"]+/g, ' ') + ' (role ' + String((`$('Household status read').item.json.sender || {}).role || 'unknown') + ')\nsees_household: ' + ((`$('Household status read').item.json.step || {}).sees_household === true ? 'yes' : 'no') + '\nnext_step: ' + (((`$('Household status read').item.json.step || {}).kind === 'section' || (`$('Household status read').item.json.step || {}).kind === 'plan') ? ('`"' + String((`$('Household status read').item.json.step || {}).label || '').replace(/[\r\n`"]+/g, ' ') + '`"' + ((`$('Household status read').item.json.step || {}).state === 'first' ? ' (needed first, before the plan)' : ((`$('Household status read').item.json.step || {}).kind === 'plan' ? ' (the plan)' : ' (setup area)'))) : ((`$('Household status read').item.json.step || {}).kind || 'none')) + '\noffer: ' + ((`$('Household status read').item.json.step || {}).offer === true ? 'yes' : 'no') + '\nnext_example: ' + ((`$('Household status read').item.json.step || {}).example ? ('`"' + String((`$('Household status read').item.json.step || {}).example).replace(/[\r\n`"]+/g, ' ') + '`"') : 'none')) : '') }}", 'string')
+        ,@('system_prompt', "={{ `$('Load Agent Context').item.json.system_prompt + (`$('Household status read').item.json.household_status ? ('\n\n## Household so far (from the installation and earlier onboarding - authoritative)\n' + (`$('Household status read').item.json.persons ? (`$('Household status read').item.json.persons + '\nDo NOT ask again for the name or birth date of anyone listed here - confirm briefly instead (e.g. Dich kenne ich schon aus der Installation). Ask only for what is still missing (e.g. partner, children, employment).') : 'No household members stored yet.') + '\nHousehold onboarding status: ' + `$('Household status read').item.json.household_status) : '') + (((`$('Household status read').item.json.sender || {}).found === true) ? ('\n\n## Who is writing and the next step (from the system - authoritative)\nCurrent user: ' + String((`$('Household status read').item.json.sender || {}).first_name || 'unknown').replace(/[\r\n`"]+/g, ' ') + ' (role ' + String((`$('Household status read').item.json.sender || {}).role || 'unknown') + ')\nsees_household: ' + (`$('Household status read').item.json.sees === true ? 'yes' : 'no') + '\nnext_step: ' + (((`$('Household status read').item.json.step || {}).kind === 'section' || (`$('Household status read').item.json.step || {}).kind === 'plan') ? ('`"' + String((`$('Household status read').item.json.step || {}).label || '').replace(/[\r\n`"]+/g, ' ') + '`"' + ((`$('Household status read').item.json.step || {}).state === 'first' ? ' (needed first, before the plan)' : ((`$('Household status read').item.json.step || {}).kind === 'plan' ? ' (the plan)' : ' (setup area)'))) : ((`$('Household status read').item.json.step || {}).kind || 'none')) + '\noffer: ' + ((`$('Household status read').item.json.step || {}).offer === true ? 'yes' : 'no') + '\nnext_example: ' + ((`$('Household status read').item.json.step || {}).example ? ('`"' + String((`$('Household status read').item.json.step || {}).example).replace(/[\r\n`"]+/g, ' ') + '`"') : 'none')) : '') }}", 'string')
         ,@('chat_id',       "={{ `$('$START_NODE').item.json.chat_id }}", 'string')
     )
 
@@ -88,8 +88,28 @@ function Build-AgentGuide {
         name = 'Guide Agent'
     }
 
+    # Kinder-Sicht (Paket C): ein Absender ohne Haushalts-Sicht (core.fn_sender_sees_household, Spalte sees im Household status
+    # read) bekommt einen eigenen Agent-Knoten OHNE postgres_select (core_ro liest alle Paket-Schemata; ein Schutz im SQL-Text
+    # liesse sich per Klammer + Kommentar aufbrechen). Gleicher Prompt, gleiches Modell, gleiches Gedaechtnis; gebunden sind nur
+    # load_context (sperrt Paket-Kontexte selbst) und kein Schreib-Werkzeug. Fail-closed: nur sees === true geht zum vollen Knoten.
+    $nSeesSwitch = Build-If 'Sees household?' @(-760, 0) "={{ `$('Household status read').item.json.sees === true }}" 'true' 'equals' 'boolean'
+    $nAgentPersonal = [ordered]@{
+        parameters = [ordered]@{
+            promptType = 'define'
+            text = '={{ $json.task }}'
+            options = [ordered]@{ systemMessage = '={{ $json.system_prompt }}'; maxIterations = 6 }
+        }
+        type = '@n8n/n8n-nodes-langchain.agent'
+        typeVersion = 3.1
+        position = @(-560, -260)
+        id = (New-Id)
+        name = 'Guide Agent (personal)'
+    }
+
     $mb = New-ModelSelectorBundle -ConfigField $CONFIG_FIELD -ConfigNodeName 'Load Config' `
         -AgentNodeName 'Guide Agent' -SelectorPos @(-688, 208) -ModelRowPos @(-848, 416) -Effort medium
+    $mbP = New-ModelSelectorBundle -ConfigField $CONFIG_FIELD -ConfigNodeName 'Load Config' `
+        -AgentNodeName 'Guide Agent (personal)' -SelectorPos @(-688, -460) -ModelRowPos @(-848, -640) -Effort medium -NamePrefix 'Personal '
 
     # Chat-Memory: eigene Tabelle, Fenster 15 (Onboarding ist ein langer Dialog wie das Interview)
     $nMemory = [ordered]@{
@@ -112,8 +132,8 @@ function Build-AgentGuide {
     # Frei-SQL-Lesewerkzeug: geteilter Builder (Guard gegen fehlendes query-Argument, onError continue).
     $nToolSelect = New-PostgresSelectToolNode -Description $descSelect -Cred $CRED_PG_RO
 
-    $loadQuery = "=SELECT content FROM core.fn_fetch_context((`$1::jsonb)->>'name');"
-    $loadParams = "={{ JSON.stringify({ name: `$fromAI('context_name', 'Name of the lazy context document to load (e.g. family, capabilities_catalog)', 'string') }) }}"
+    $loadQuery = "=SELECT content FROM core.fn_fetch_context((`$1::jsonb)->>'name', (`$1::jsonb)->>'chat_id');"
+    $loadParams = "={{ JSON.stringify({ name: `$fromAI('context_name', 'Name of the lazy context document to load (e.g. family, capabilities_catalog)', 'string'), chat_id: String(`$('$START_NODE').item.json.chat_id || '') }) }}"
     $nToolLoad = [ordered]@{
         parameters = [ordered]@{
             descriptionType = 'manual'
@@ -175,10 +195,10 @@ function Build-AgentGuide {
         'Gemeinsamer Builder New-ModelSelectorBundle: je Claude-Modell ein Node (Haiku/Sonnet/Opus), Selector liest core.config model.guide. Default claude-sonnet-latest, Denk-Tiefe medium (Onboarding ist tool-lastig -> zuverlässiges Function-Calling). Wechsel: lifeagents config set model guide <key>, kein Build.' 220 460
 
     $nodes = @(
-        $nTrigger, $nDepthGate, $nDepthDeny, $nLoadConfig, $nLoadCtx, $nHouseholdRead, $nBuildInput, $nAgent, $nMemory,
+        $nTrigger, $nDepthGate, $nDepthDeny, $nLoadConfig, $nLoadCtx, $nHouseholdRead, $nBuildInput, $nSeesSwitch, $nAgent, $nAgentPersonal, $nMemory,
         $nToolSelect, $nToolLoad, $nToolHousehold, $nToolMarkSection, $nToolInvite,
         $stickyOverview, $stickyModel
-    ) + $mb.Nodes
+    ) + $mb.Nodes + $mbP.Nodes
 
     $conns = [ordered]@{
         $START_NODE          = @{ main = @( ,@( E 'Depth gate' ) ) }
@@ -189,15 +209,17 @@ function Build-AgentGuide {
         'Load Config'        = @{ main = @( ,@( E 'Load Agent Context' ) ) }
         'Load Agent Context' = @{ main = @( ,@( E 'Household status read' ) ) }
         'Household status read' = @{ main = @( ,@( E 'Build Agent Input' ) ) }
-        'Build Agent Input'  = @{ main = @( ,@( E 'Guide Agent' ) ) }
-        'Postgres Chat Memory' = @{ ai_memory = @( ,@( E 'Guide Agent' 'ai_memory' ) ) }
+        'Build Agent Input'  = @{ main = @( ,@( E 'Sees household?' ) ) }
+        'Sees household?'    = @{ main = @( @( E 'Guide Agent' ), @( E 'Guide Agent (personal)' ) ) }
+        'Postgres Chat Memory' = @{ ai_memory = @( ,@( (E 'Guide Agent' 'ai_memory'), (E 'Guide Agent (personal)' 'ai_memory') ) ) }
         'postgres_select'        = @{ ai_tool = @( ,@( E 'Guide Agent' 'ai_tool' ) ) }
-        'load_context'           = @{ ai_tool = @( ,@( E 'Guide Agent' 'ai_tool' ) ) }
+        'load_context'           = @{ ai_tool = @( ,@( (E 'Guide Agent' 'ai_tool'), (E 'Guide Agent (personal)' 'ai_tool') ) ) }
         'tool_set_household_facts'     = @{ ai_tool = @( ,@( E 'Guide Agent' 'ai_tool' ) ) }
         'tool_set_onboarding_section'  = @{ ai_tool = @( ,@( E 'Guide Agent' 'ai_tool' ) ) }
         'tool_invite_household_member' = @{ ai_tool = @( ,@( E 'Guide Agent' 'ai_tool' ) ) }
     }
     foreach ($k in $mb.Connections.Keys) { $conns[$k] = $mb.Connections[$k] }
+    foreach ($k in $mbP.Connections.Keys) { $conns[$k] = $mbP.Connections[$k] }
 
     return Build-Workflow $WF_NAME $nodes $conns
 }

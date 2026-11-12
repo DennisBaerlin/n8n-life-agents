@@ -195,6 +195,10 @@ DO $$ BEGIN
     IF to_regprocedure('core.fn_get_next_step_example(text,jsonb)') IS NOT NULL THEN
         GRANT EXECUTE ON FUNCTION core.fn_get_next_step_example(text, jsonb) TO core_ro;
     END IF;
+    -- Kinder-Sicht (Paket C): Hilfe-Agent (Knotenwahl) und Monitor-Eingang fragen die eine Regel unter core_ro.
+    IF to_regprocedure('core.fn_sender_sees_household(text)') IS NOT NULL THEN
+        GRANT EXECUTE ON FUNCTION core.fn_sender_sees_household(text) TO core_ro;
+    END IF;
 END $$;
 
 -- Roter Faden Paket B: das /reminders-Menue (core.sub_send_reminders_menu, unter __CRED_POSTGRES_CORE_RO__) liest sein

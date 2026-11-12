@@ -67,8 +67,13 @@ function Build-AgentOrchestrator {
     $idPersona   = Resolve-Id 'core.sub_send_persona_picker'    # Bot-Persona: /persona (Rahmen-Flag persona, persona_styles.md)
     # -Thinking: der Arm hat keine eigene "Bot denkt nach"-Anzeige (Paket-Befehl, Paket-Onboarding-Tipp) -> der
     # Vermittler fuehrt die Schleife selbst ('loop'); der KI-Weg hat die Schleife dieses Laufs -> leer.
-    function Get-DispatchInputs([string]$Package, [string]$TargetId, [switch]$Thinking) {
-        [ordered]@{ workflow_id = $TargetId; package = $Package; thinking = $(if ($Thinking) { 'loop' } else { '' }) }
+    # audience (Kinder-Sicht, Tor im Vermittler): aus provides.agents[].audience des Ziel-Agenten (Get-AgentRouting, fehlt = adults).
+    $audienceOf = @{}
+    foreach ($ra in $AgentRoutingList) { $audienceOf[[string]$ra.Name] = [string]$ra.Audience }
+    function Get-DispatchInputs([string]$Package, [string]$TargetId, [string]$Agent, [switch]$Thinking) {
+        $bare = $Agent -replace '^agent\.', ''
+        $aud = if ($audienceOf.ContainsKey($bare)) { $audienceOf[$bare] } else { 'adults' }
+        [ordered]@{ workflow_id = $TargetId; package = $Package; thinking = $(if ($Thinking) { 'loop' } else { '' }); audience = $aud }
     }
 
     # === FESTE TEXTE (Textkatalog Phase B, docs/package-contract.md §3.11) =====================================
@@ -145,8 +150,8 @@ function Build-AgentOrchestrator {
             task       = "={{ `$('Agent input').first().json.chat_message }}"
         }
         if ($viaDispatch) {
-            $schema += @( (New-IOSchema 'workflow_id'), (New-IOSchema 'package'), (New-IOSchema 'thinking') )
-            foreach ($kv in (Get-DispatchInputs $Package $AgentId).GetEnumerator()) { $value[$kv.Key] = $kv.Value }
+            $schema += @( (New-IOSchema 'workflow_id'), (New-IOSchema 'package'), (New-IOSchema 'thinking'), (New-IOSchema 'audience') )
+            foreach ($kv in (Get-DispatchInputs $Package $AgentId $AgentName).GetEnumerator()) { $value[$kv.Key] = $kv.Value }
         }
         $p['workflowInputs'] = [ordered]@{
             attemptToConvertTypes = $false; convertFieldsToString = $false; mappingMode = 'defineBelow'
@@ -662,7 +667,9 @@ return msgs.map((m, i) => ({ json: { chunk: '(' + (i + 1) + '/' + N + ')\n' + m 
             "SELECT agent.fn_set_dispatch_followup(`$1::jsonb) AS r, agent.fn_set_router_button_turn(`$1::jsonb) AS m;" `
             $CRED_POSTGRES ([ordered]@{
                 chat_id = "String((`$('Trigger normalize').first().json.callback_query.message || {}).chat?.id || '')"
-                agent   = "'$Agent'"
+                # Kinder-Sicht: hat der Vermittler gesperrt (error household_only), keine Bindung an den gesperrten Agenten
+                # (fn_set_dispatch_followup lehnt den leeren Namen ab, die naechste Nachricht routet frei).
+                agent   = "((`$('$RunNode').first().json.error === 'household_only') ? '' : '$Agent')"
                 output  = "String(`$('$RunNode').first().json.output || '')" })
         $n['executeOnce'] = $true
         [void]$followupNodes.Add($n)
@@ -674,7 +681,7 @@ return msgs.map((m, i) => ({ json: { chunk: '(' + (i + 1) + '/' + N + ')\n' + m 
         chat_id    = "={{ String(`$('Trigger normalize').item.json.callback_query.message.chat.id) }}"
         call_depth = '1'
     }
-    foreach ($kv in (Get-DispatchInputs 'core' $idGuide -Thinking).GetEnumerator()) { $cbInputs[$kv.Key] = $kv.Value }
+    foreach ($kv in (Get-DispatchInputs 'core' $idGuide 'guide' -Thinking).GetEnumerator()) { $cbInputs[$kv.Key] = $kv.Value }
     $nRunOnboardingCb = Build-CallWorkflow 'Run onboarding cb' @(-620, 1680) $idDispatch 'agent.sub_dispatch_agent' $cbInputs
     $nAnswerOnboardingCb = New-TelegramAnswerCallbackNode 'Answer onboarding cb' @(-400, 1680) `
         "={{ `$('Trigger normalize').item.json.callback_query.id }}" (Get-UiTextExpr $tCb 'core.orch.toast_onboarding')
@@ -704,7 +711,7 @@ return msgs.map((m, i) => ({ json: { chunk: '(' + (i + 1) + '/' + N + ')\n' + m 
             chat_id    = "={{ String(`$('Trigger normalize').item.json.callback_query.message.chat.id) }}"
             call_depth = '1'
         }
-        foreach ($kv in (Get-DispatchInputs $od.Package (Resolve-Id $odWf) -Thinking).GetEnumerator()) { $odInputs[$kv.Key] = $kv.Value }
+        foreach ($kv in (Get-DispatchInputs $od.Package (Resolve-Id $odWf) $odWf -Thinking).GetEnumerator()) { $odInputs[$kv.Key] = $kv.Value }
         $nOdRun = Build-CallWorkflow $odRun @(-620, $onbY) $idDispatch 'agent.sub_dispatch_agent' $odInputs
         $nOdAns = New-TelegramAnswerCallbackNode $odAns @(-400, $onbY) "={{ `$('Trigger normalize').item.json.callback_query.id }}" (Get-UiTextExpr $tCb 'core.orch.toast_area')
         $nOdAns['onError'] = 'continueRegularOutput'   # ein abgelaufener Callback (langer Agent-Lauf) darf den Relay nie verhindern
@@ -801,7 +808,7 @@ return msgs.map((m, i) => ({ json: { chunk: '(' + (i + 1) + '/' + N + ')\n' + m 
                 chat_id    = "={{ String(`$('Trigger normalize').item.json.callback_query.message.chat.id) }}"
                 call_depth = '1'
             }
-            foreach ($kv in (Get-DispatchInputs $pd.Package (Resolve-Id $pd.Agent) -Thinking).GetEnumerator()) { $pInputs[$kv.Key] = $kv.Value }
+            foreach ($kv in (Get-DispatchInputs $pd.Package (Resolve-Id $pd.Agent) $pd.Agent -Thinking).GetEnumerator()) { $pInputs[$kv.Key] = $kv.Value }
             $nPRun = Build-CallWorkflow $pRun @(-400, $planY) $idDispatch 'agent.sub_dispatch_agent' $pInputs
             $pChain = New-TelegramRelayChain $pRel @(-180, $planY) "`$('$pRun').first().json.output" `
                 -ChatIdExpr "={{ String(`$('Trigger normalize').first().json.callback_query.message.chat.id) }}" -DoneTo (Add-FollowupSet "Set followup plan $($pd.Domain)" @(40, $planY) $pd.Agent $pRun)
@@ -880,7 +887,7 @@ return msgs.map((m, i) => ({ json: { chunk: '(' + (i + 1) + '/' + N + ')\n' + m 
                 chat_id    = "={{ String(`$('Trigger normalize').item.json.callback_query.message.chat.id) }}"
                 call_depth = '1'
             }
-            foreach ($kv in (Get-DispatchInputs $hd.Package (Resolve-Id $hd.HandoffAgent) -Thinking).GetEnumerator()) { $hInputs[$kv.Key] = $kv.Value }
+            foreach ($kv in (Get-DispatchInputs $hd.Package (Resolve-Id $hd.HandoffAgent) $hd.HandoffAgent -Thinking).GetEnumerator()) { $hInputs[$kv.Key] = $kv.Value }
             $nHRun = Build-CallWorkflow $hRun @(-400, $hY) $idDispatch 'agent.sub_dispatch_agent' $hInputs
             $nHRun['onError'] = 'continueErrorOutput'   # main[1] = Fehler -> Claims freigeben, sonst blieben die Punkte bis zur TTL gesperrt
             $hChain = New-TelegramRelayChain $hRel @(-180, $hY) "`$('$hRun').first().json.output" `
@@ -1040,7 +1047,7 @@ return msgs.map((m, i) => ({ json: { chunk: '(' + (i + 1) + '/' + N + ')\n' + m 
             chat_id    = "={{ String(`$('Trigger normalize').item.json.message.chat.id) }}"
             call_depth = '1'
         }
-        foreach ($kv in (Get-DispatchInputs $cd.Package (Resolve-Id $cmdWf) -Thinking).GetEnumerator()) { $cmdInputs[$kv.Key] = $kv.Value }
+        foreach ($kv in (Get-DispatchInputs $cd.Package (Resolve-Id $cmdWf) $cmdWf -Thinking).GetEnumerator()) { $cmdInputs[$kv.Key] = $kv.Value }
         $nCmdRun = Build-CallWorkflow $cmdRun @(224, $cmdY) $idDispatch 'agent.sub_dispatch_agent' $cmdInputs
         $cmdChain = New-TelegramRelayChain $cmdRel @(448, $cmdY) "`$('$cmdRun').first().json.output" `
             -FallbackJs (Get-UiTextJs "`$('Resolve sender').first().json.t" 'core.orch.agent_unavailable') `

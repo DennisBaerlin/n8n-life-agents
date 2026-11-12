@@ -13,7 +13,7 @@
 # Braucht kein n8n, kein Docker und kein Netz.
 #
 # Usage: bash cases.sh <root>      Ausgabe je Fall "PASS <fall>" / "FAIL <fall>: <grund>"; Exit = Anzahl FAIL.
-# shellcheck disable=SC2016,SC2329  # Pruef-Ausdruecke stehen bewusst in einfachen Quotes (eval im Fall); Attrappen-Funktionen ruft der Lib-Code
+# shellcheck disable=SC2016,SC2329,SC1003,SC2034  # Windows-Pfade mit Backslash am Ende; Env-Prefixe fuer Funktionen; Pruef-Ausdruecke stehen bewusst in einfachen Quotes (eval im Fall); Attrappen-Funktionen ruft der Lib-Code
 set -uo pipefail
 ROOT="$1"
 export LANG=C.UTF-8 LC_ALL=C.UTF-8 GUM_DISABLE=1
@@ -387,6 +387,49 @@ eq B.dateiname-dev "lifeagents-backup-20261112033000-${_id1}-vdev.nla.enc" "$(_b
 eq B.kennung-aus-name "$_id1" "$(_bkp_file_key_id "/x/lifeagents-backup-20261112033000-${_id1}-v0.44.0.nla.enc")"
 eq B.kennung-umbenannte-kopie "$_id1" "$(_bkp_file_key_id "Kopie von lifeagents-backup-20261112033000-${_id1}-v0.44.0 (1).nla.enc")"
 eq B.aufraeumen-nie-umbenannte '' "$(printf 'Kopie von lifeagents-backup-20261112033000-%s-v0.44.0.nla.enc\n' "$_id1" | _bkp_rotate_victims 0 "$_id1")"
+# Rechner-Pfade: Windows-Schreibweise geht als Docker-Form an Docker (Docker Desktop/WSL2), Anzeige bleibt beim Nutzer.
+eq B.windows-pfad-docker '/run/desktop/mnt/host/c/Daten/OneDrive/Life Agents Sicherungen' "$(_bkp_hd 'C:\Daten\OneDrive\Life Agents Sicherungen\')"
+eq B.windows-schraegstrich '/run/desktop/mnt/host/d/Sicherung' "$(_bkp_hd 'D:/Sicherung')"
+eq B.mac-pfad-unveraendert '/Users/erika/Library/Mobile Documents/com~apple~CloudDocs' "$(_bkp_hd '/Users/erika/Library/Mobile Documents/com~apple~CloudDocs/')"
+eq B.join-windows 'C:\Daten\Life Agents Sicherungen' "$(_bkp_join 'C:\Daten' 'Life Agents Sicherungen')"
+eq B.join-mac '/Users/erika/Life Agents Sicherungen' "$(_bkp_join '/Users/erika/' 'Life Agents Sicherungen')"
+for d in 'C:\Daten' 'c:/Daten'; do if _bkp_host_dir_valid "$d"; then pass "B.windows-gueltig:$d"; else fail "B.windows-gueltig:$d" abgelehnt; fi; done
+for d in 'C:relativ' 'C:\a,b' '\\server\freigabe'; do if _bkp_host_dir_valid "$d"; then fail "B.windows-ungueltig:$d" angenommen; else pass "B.windows-ungueltig:$d"; fi; done
+: > "$STUB_LOG"
+if rt_host_mkdir /Users/erika 'a/b'; then fail B.unterordner-nur-name "Pfad angenommen"; elif [ -s "$STUB_LOG" ]; then fail B.unterordner-nur-name "Container gestartet"; else pass B.unterordner-nur-name; fi
+# Chat-Hinweis: erst nach 2 Tagen ohne gelungene Sicherung, dann hoechstens alle 20 h.
+(
+  BACKUP_STATE_FILE="$W/bstate"; : > "$BACKUP_STATE_FILE"; BACKUP_NOTIFY_HOURS=00-23
+  notify_owner_telegram() { printf 'x\n' >> "$W/notified"; }
+  : > "$W/notified"
+  env_upsert "$BACKUP_STATE_FILE" LAST_OK "$(( $(date +%s) - 3600 ))"; _bkp_stale_notify
+  a="$(wc -l < "$W/notified")"
+  env_upsert "$BACKUP_STATE_FILE" LAST_OK "$(( $(date +%s) - 3 * 86400 ))"; env_upsert "$BACKUP_STATE_FILE" LAST_FAIL_REASON folder
+  _bkp_stale_notify; b="$(wc -l < "$W/notified")"
+  _bkp_stale_notify; c="$(wc -l < "$W/notified")"
+  env_upsert "$BACKUP_STATE_FILE" LAST_NOTIFY "$(( $(date +%s) - 21 * 3600 ))"; _bkp_stale_notify; d="$(wc -l < "$W/notified")"
+  printf '%s %s %s %s\n' "$a" "$b" "$c" "$d"
+) > "$W/notify.out" 2>&1
+eq B.hinweis-nach-2-tagen-alle-20h '0 1 1 2' "$(tail -n1 "$W/notify.out")"
+# Nachts kein Hinweis (Takt 03:30), ohne Ordner nur woechentlich; Eingabe-Bereinigung; Grund-Code je Ordner-Problem.
+(
+  BACKUP_STATE_FILE="$W/bstate2"; : > "$BACKUP_STATE_FILE"
+  notify_owner_telegram() { printf 'x\n' >> "$W/notified2"; }
+  : > "$W/notified2"
+  env_upsert "$BACKUP_STATE_FILE" LAST_OK "$(( $(date +%s) - 3 * 86400 ))"
+  h="$(TZ=Europe/Berlin date +%H)"; nh="$(printf '%02d-%02d' $(( (10#$h + 1) % 24 )) $(( (10#$h + 1) % 24 )))"
+  BACKUP_NOTIFY_HOURS="$nh" _bkp_stale_notify; a="$(wc -l < "$W/notified2")"
+  env_upsert "$BACKUP_STATE_FILE" LAST_FAIL_REASON nofolder
+  env_upsert "$BACKUP_STATE_FILE" LAST_NOTIFY "$(( $(date +%s) - 2 * 86400 ))"
+  BACKUP_NOTIFY_HOURS=00-23 _bkp_stale_notify; b="$(wc -l < "$W/notified2")"
+  env_upsert "$BACKUP_STATE_FILE" LAST_NOTIFY "$(( $(date +%s) - 8 * 86400 ))"
+  BACKUP_NOTIFY_HOURS=00-23 _bkp_stale_notify; c="$(wc -l < "$W/notified2")"
+  printf '%s %s %s\n' "$a" "$b" "$c"
+) > "$W/notify2.out" 2>&1
+eq B.hinweis-nur-tagsueber-ohne-ordner-woechentlich '0 0 1' "$(tail -n1 "$W/notify2.out")"
+eq B.pfad-anfuehrungszeichen 'C:\Daten\OneDrive' "$(_bkp_path_clean '  "C:\Daten\OneDrive"  ')"
+eq B.pfad-leerzeichen '/Users/erika/Meine Sicherung' "$(_bkp_path_clean ' /Users/erika/Meine Sicherung ')"
+eq B.grund-je-problem 'folder folder write' "$(_bkp_reason_of missing) $(_bkp_reason_of access) $(_bkp_reason_of readonly)"
 eq B.kennung-alter-name '' "$(_bkp_file_key_id lifeagents-backup-20261001033000.nla.enc)"
 
 # ---------------------------------------------------------------------------- D: Entfernen (Pruefliste Nr. 17, stack.sh)
@@ -519,6 +562,17 @@ eq K.frisch-geprueft-nur-auftraege 'run' "$(tr '\n' ' ' < "$W/tick.log" | sed 's
 env_upsert "$UPDATE_TICK_STATE" LAST_CHECK "$(( $(date -u +%s) - 7300 ))"; : > "$W/tick.log"
 ( BACKUP_AUTO_AT=2400 update_tick )
 eq K.intervall-abgelaufen-prueft-wieder 'run check' "$(tr '\n' ' ' < "$W/tick.log" | sed 's/ $//')"
+# Sicherung heute gescheitert -> stuendlich neuer Versuch; danach gelungen -> keiner mehr.
+_bst="$W/tickb.state"; rm -f "$_bst"
+env_upsert "$UPDATE_TICK_STATE" LAST_BACKUP "$(TZ=UTC date +%Y-%m-%d)"; env_upsert "$UPDATE_TICK_STATE" LAST_BACKUP_TRY "$(( $(date -u +%s) - 3700 ))"
+env_upsert "$_bst" LAST_OK 100; env_upsert "$_bst" LAST_FAIL 200
+: > "$W/tick.log"; ( BACKUP_STATE_FILE="$_bst" BACKUP_AUTO_AT=0000 update_tick )
+eq K.fehlschlag-neuer-versuch 'run cli backup auto' "$(tr '\n' ' ' < "$W/tick.log" | sed 's/ $//')"
+: > "$W/tick.log"; ( BACKUP_STATE_FILE="$_bst" BACKUP_AUTO_AT=0000 update_tick )
+eq K.neuer-versuch-erst-nach-einer-stunde 'run' "$(tr '\n' ' ' < "$W/tick.log" | sed 's/ $//')"
+env_upsert "$_bst" LAST_OK 300; env_upsert "$UPDATE_TICK_STATE" LAST_BACKUP_TRY "$(( $(date -u +%s) - 3700 ))"
+: > "$W/tick.log"; ( BACKUP_STATE_FILE="$_bst" BACKUP_AUTO_AT=0000 update_tick )
+eq K.nach-erfolg-kein-versuch 'run' "$(tr '\n' ' ' < "$W/tick.log" | sed 's/ $//')"
 env_upsert "$UPDATE_TICK_STATE" LAST_CHECK 2026-11-08; : > "$W/tick.log"
 ( BACKUP_AUTO_AT=2400 update_tick )
 eq K.alter-datumswert-prueft 'run check' "$(tr '\n' ' ' < "$W/tick.log" | sed 's/ $//')"

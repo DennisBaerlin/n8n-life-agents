@@ -180,19 +180,34 @@ _bkp_require_pg() { if rt_is_compose; then require_cmd docker; else require_cmd 
 
 # --- Sicherungs-Ordner auf dem Rechner (Docker-Verbund, Plan-Pruefung Fund 7) ------------------------------------------
 # Die Docker-Platte kann mit allen Volumes verschwinden ("Clean up data", defekte VM-Platte) -> Sicherungen gehen in einen
-# vom Nutzer gewaehlten Ordner AUF DEM RECHNER. Gemerkt als BACKUP_HOST_DIR in core.env (nicht geheim). Nur absolute
-# Pfade ohne Komma (Trenner der --mount-Angabe) und ohne Zeilenumbruch.
+# vom Nutzer gewaehlten Ordner AUF DEM RECHNER. Gemerkt als BACKUP_HOST_DIR in core.env (nicht geheim) in der Schreibweise des
+# Nutzers (Mac/Linux /…, Windows C:\…); an Docker geht immer die Docker-Form (_bkp_hd). Kein Komma (Trenner der --mount-
+# Angabe), kein Anfuehrungszeichen, kein Zeilenumbruch.
 BACKUP_HOST_KEEP="${BACKUP_HOST_KEEP:-14}"   # so viele automatische Sicherungen bleiben im Ordner (aelteste gehen zuerst)
 _bkp_host_dir() { read_env_value "$(lifeagents_env_file core)" BACKUP_HOST_DIR 2>/dev/null || true; }
 _bkp_host_dir_valid() {
   case "$1" in
-    /*) ;; *) return 1 ;;
+    /*|[A-Za-z]:\\*|[A-Za-z]:/*) ;; *) return 1 ;;
   esac
   case "$1" in *,*|*$'\n'*|*$'\r'*|*'"'*) return 1 ;; esac
   return 0
 }
-# _bkp_host_dir_ok <ordner> — gueltig UND auf dem Rechner beschreibbar (Probe-Datei anlegen und wieder loeschen).
-_bkp_host_dir_ok() { _bkp_host_dir_valid "$1" && rt_host_check "$1"; }
+# _bkp_hd <pfad> -> Docker-Form eines Rechner-Pfads: Windows "C:\Daten\x" -> "/run/desktop/mnt/host/c/Daten/x" (so muss ein
+#   Container, der ueber den Docker-Socket einen weiteren startet, Laufwerke unter Docker Desktop/WSL2 angeben; "/C/Users/…"
+#   scheitert mit "bind source path does not exist" — nur Erfahrungsberichte, Abnahme auf echtem Windows). Sonst unveraendert;
+#   ein abschliessender Trenner faellt weg.
+_bkp_hd() {
+  local p="$1" d
+  if [[ "$p" =~ ^([A-Za-z]):[\\/](.*)$ ]]; then
+    d="${BASH_REMATCH[1],,}"
+    p="${BASH_REMATCH[2]//\\//}"
+    p="/run/desktop/mnt/host/${d}/${p}"
+  fi
+  [ "$p" = / ] || p="${p%/}"
+  printf '%s' "$p"
+}
+# _bkp_join <ordner> <name> -> Pfad in der Schreibweise des Ordners (Windows mit "\", sonst "/").
+_bkp_join() { case "$1" in *\\*|[A-Za-z]:) printf '%s\\%s' "${1%\\}" "$2" ;; *) printf '%s/%s' "${1%/}" "$2" ;; esac; }
 # _bkp_rotate_victims <behalten> <schluessel-id> (stdin: Dateinamen) -> die zu loeschenden: nur Sicherungen mit DIESER
 #   Schluessel-ID jenseits der neuesten <behalten>. Fremde IDs (ein alter Rechner im selben Ordner) und Namen ohne ID
 #   bleiben immer liegen — sonst loeschte der neue Rechner nach 14 Tagen genau die Sicherungen, aus denen er herkommt.
@@ -201,10 +216,10 @@ _bkp_rotate_victims() {
 }
 # _bkp_host_rotate <ordner> <schluessel-id> — eigene alte Sicherungen im Rechner-Ordner entfernen. Fehler = nur Warnung.
 _bkp_host_rotate() {
-  local v=()
-  mapfile -t v < <(rt_host_ls "$1" | _bkp_rotate_victims "$BACKUP_HOST_KEEP" "$2" || true)
+  local v=() hd; hd="$(_bkp_hd "$1")"
+  mapfile -t v < <(rt_host_ls "$hd" | _bkp_rotate_victims "$BACKUP_HOST_KEEP" "$2" || true)
   [ "${#v[@]}" -gt 0 ] && [ -n "${v[0]}" ] || return 0
-  rt_host_rm "$1" "${v[@]}" || warn "Alte Sicherungen im Ordner '$1' ließen sich nicht aufräumen."
+  rt_host_rm "$hd" "${v[@]}" || warn "Alte Sicherungen im Ordner '$1' ließen sich nicht aufräumen."
 }
 # _bkp_release_tag -> Release der laufenden CLI (VERSION), sonst "dev" — fuer den Dateinamen.
 _bkp_release_tag() { cat "$(lifeagents_version_marker)" 2>/dev/null | head -n1 | tr -d '[:space:]' || true; }
@@ -231,12 +246,60 @@ _bkp_key_ids() {
 # LAST_OK / LAST_FAIL (Epoch) + LAST_FAIL_REASON (fester Code folder|key|dump|encrypt|write) — doctor und der Chat-Hinweis
 # lesen nur hier. Liegt im Verbund auf dem Volume var_la (uebersteht Neuanlage des master). Der Tick-Marker LAST_BACKUP
 # (update_runner.sh) ist etwas anderes: der Zeitplan ("heute schon versucht").
-BACKUP_STATE_FILE="${BACKUP_STATE_FILE:-/var/lib/lifeagents/backup.state}"
 _bkp_state_set() { { env_upsert "$BACKUP_STATE_FILE" "$1" "$2" && chmod 0600 "$BACKUP_STATE_FILE"; } 2>/dev/null || true; }
 # _bkp_fail <code> <meldung> — Fehlschlag einer Sicherung mit festem Grund festhalten, dann abbrechen.
 _bkp_fail() { _bkp_state_set LAST_FAIL "$(date +%s)"; _bkp_state_set LAST_FAIL_REASON "$1"; shift; die "$@"; }
 
-# backup_cmd_host_dir [<ordner>] — Sicherungs-Ordner auf dem Rechner zeigen bzw. setzen (Wizard/Start-App, Terminal).
+# _bkp_path_clean <pfad> -> Eingabe bereinigt: Leerraum und umschliessende Anfuehrungszeichen am Rand weg ("Als Pfad
+#   kopieren" unter Windows liefert "C:\…" in Anfuehrungszeichen, der Finder-Pfad kommt oft mit Leerzeichen).
+_bkp_path_clean() {
+  local p="$1"
+  p="${p#"${p%%[![:space:]]*}"}"; p="${p%"${p##*[![:space:]]}"}"
+  case "$p" in \"*\"|\'*\') p="${p:1:${#p}-2}" ;; esac
+  printf '%s' "$p"
+}
+# _bkp_folder_problem <ordner> -> fester Code, warum der Ordner nicht taugt (leer = taugt): invalid | missing | access |
+#   readonly. Eine Adresse fuer CLI (host-dir), Fragebogen (bridge.sh backup-dir) und jede Sicherung (Grund in backup.state).
+#   "missing" vs. "access" trennt Docker Desktop nicht verlaesslich (beides scheitert als Bind-Pfad) -> Texte nennen beides.
+_bkp_folder_problem() {
+  _bkp_host_dir_valid "$1" || { printf invalid; return 0; }
+  local hd; hd="$(_bkp_hd "$1")"
+  rt_host_exists "$hd" || { printf missing; return 0; }
+  rt_host_readable "$hd" || { printf access; return 0; }
+  rt_host_check "$hd" || { printf readonly; return 0; }
+  return 0
+}
+# _bkp_reason_of <problem> -> Grund-Code fuer backup.state (folder = nicht erreichbar, write = nicht beschreibbar).
+_bkp_reason_of() { case "$1" in readonly) printf write ;; *) printf folder ;; esac; }
+# _bkp_folder_target <eltern-ordner> -> der Ordner, in den gesichert wird (Schreibweise des Nutzers): liegen im gewaehlten Ordner
+#   schon Sicherungen, dieser selbst (sonst entstuende ".../Life Agents Sicherungen/Life Agents Sicherungen"); gibt es darin einen
+#   Unterordner mit dem Namen aus IRGENDEINER Katalog-Sprache (alter Rechner auf Deutsch, neuer auf Englisch), dieser; sonst der
+#   Name in der Owner-Sprache (Owner-Entscheid F4). Legt nichts an.
+_bkp_folder_target() {
+  local dir="$1" n f
+  if rt_host_ls "$(_bkp_hd "$dir")" 2>/dev/null | grep -q .; then printf '%s' "$dir"; return 0; fi
+  for f in "$(_pkg_dir)"/core/locales/*.json; do
+    n="$(jq -r '.["core.backup.folder_name"] // empty' "$f" 2>/dev/null || true)"
+    [ -n "$n" ] || continue
+    if rt_host_exists "$(_bkp_hd "$(_bkp_join "$dir" "$n")")"; then _bkp_join "$dir" "$n"; return 0; fi
+  done
+  n="$(backup_text folder_name)"
+  _bkp_join "$dir" "${n:-Life Agents Sicherungen}"
+}
+# _bkp_foreign_ids <ordner> -> Schluessel-IDs der Sicherungen im Ordner, die zu keinem gespeicherten Schluessel gehoeren.
+_bkp_foreign_ids() {
+  local ids b k out=''
+  ids=$'\n'"$(_bkp_key_ids)"$'\n'
+  while IFS= read -r b; do
+    k="$(_bkp_file_key_id "$b")"
+    [ -n "$k" ] && [[ "$ids" != *$'\n'"$k"$'\n'* ]] && [[ " $out " != *" $k "* ]] && out="${out:+$out }$k"
+  done < <(rt_host_ls "$(_bkp_hd "$1")" 2>/dev/null || true)
+  printf '%s' "$out"
+}
+
+# backup_cmd_host_dir [<ordner> [--create]] — Sicherungs-Ordner auf dem Rechner zeigen bzw. setzen (Fragebogen, Terminal).
+#   --create: <ordner> ist der Eltern-Ordner (z. B. iCloud Drive); Ziel nach _bkp_folder_target, fehlt es, wird es angelegt,
+#   die Schreibprobe laeuft dort, erst dann wird es gemerkt. Sicherungen eines anderen Schluessels bleiben, es gibt einen Hinweis.
 backup_cmd_host_dir() {
   rt_is_compose || die "Der Sicherungs-Ordner auf dem Rechner gibt es nur im Docker-Verbund."
   if [ "$#" -eq 0 ]; then
@@ -244,19 +307,79 @@ backup_cmd_host_dir() {
     if [ -n "$d" ]; then printf '%s\n' "$d"; else log "Noch kein Sicherungs-Ordner gewählt."; fi
     return 0
   fi
-  _bkp_host_dir_valid "$1" || die "Ungültiger Ordner '$1' (absoluter Pfad auf dem Rechner, ohne Komma)."
-  rt_host_check "$1" || die "Ordner '$1' ist auf dem Rechner nicht vorhanden oder nicht beschreibbar (bei Docker Desktop: Ordner unter Einstellungen > Ressourcen > Dateifreigabe)."
-  env_upsert "$(lifeagents_env_file core)" BACKUP_HOST_DIR "$1"
-  ok "Sicherungen gehen ab jetzt nach '$1' (auf dem Rechner, verschlüsselt)."
+  local dir create=0 prob target foreign
+  dir="$(_bkp_path_clean "$1")"
+  [ "${2:-}" = --create ] && create=1
+  if [ "$#" -gt 2 ] || { [ "$#" -eq 2 ] && [ "$create" != 1 ]; }; then die "Usage: lifeagents backup host-dir [<ordner> [--create]]"; fi
+  prob="$(_bkp_folder_problem "$dir")"
+  case "$prob" in
+    '') ;;
+    invalid)  die "Ungültiger Ordner '${dir}' (voller Pfad auf dem Rechner, z. B. /Users/… oder C:\\Users\\…, ohne Komma)." ;;
+    readonly) die "In den Ordner '${dir}' lässt sich nicht schreiben (schreibgeschützt oder voll)." ;;
+    *)        die "Ordner '${dir}' ist für Docker nicht erreichbar (gibt es ihn? Mac: Systemeinstellungen > Datenschutz & Sicherheit > Dateien und Ordner > Docker erlauben; Windows: Laufwerk und Schreibweise prüfen)." ;;
+  esac
+  target="$dir"
+  if [ "$create" = 1 ]; then
+    target="$(_bkp_folder_target "$dir")"
+    if [ "$target" != "$dir" ]; then
+      rt_host_mkdir "$(_bkp_hd "$dir")" "${target##*[\\/]}" || die "Konnte in '${dir}' den Ordner '${target##*[\\/]}' nicht anlegen."
+    fi
+    rt_host_check "$(_bkp_hd "$target")" || die "In den Ordner '${target}' lässt sich nicht schreiben."
+  fi
+  env_upsert "$(lifeagents_env_file core)" BACKUP_HOST_DIR "$target"
+  ok "Sicherungen gehen ab jetzt nach '${target}' (auf dem Rechner, verschlüsselt)."
+  foreign="$(_bkp_foreign_ids "$target")"
+  if [ -n "$foreign" ]; then
+    log "Hier liegen Sicherungen eines anderen Rechners (${foreign}). Sie bleiben erhalten; wiederherstellen: ${BACKUP_GUIDE_URL}"
+  fi
 }
 
-# backup_cmd_auto — taegliche Sicherung in den Rechner-Ordner (Tick im master, update_runner.sh). Ohne gemerkten Ordner
-#   still (der Wizard fragt ihn ab); jeder Fehler nur als Warnung, damit der Tick weiterlaeuft.
-backup_cmd_auto() {
-  [ -n "$(_bkp_host_dir)" ] || return 0
-  ( backup_cmd_export --to-host ) || warn "Tägliche Sicherung in den Rechner-Ordner fehlgeschlagen — nächster Versuch morgen."
+# _bkp_stale_notify — Docker-Verbund: ist die Bezugszeit (backup_ref_epoch) aelter als BACKUP_STALE_S, bekommt der Owner eine
+#   Telegram-Nachricht mit dem festen Grund als Alltagssatz (Ordnername ja, Pfad und Schluessel nie). Nur tagsueber
+#   (BACKUP_NOTIFY_HOURS, Haushalts-Zeitzone; der Takt laeuft um 03:30 und danach stuendlich bis zum Erfolg), hoechstens alle
+#   20 h, ohne gewaehlten Ordner nur woechentlich (dort hilft taegliches Erinnern nicht, Owner-Entscheid F1). Sperre LAST_NOTIFY.
+#   Best-effort, immer rc 0.
+BACKUP_NOTIFY_EVERY_S="${BACKUP_NOTIFY_EVERY_S:-72000}"          # 20 h
+BACKUP_NOTIFY_NOFOLDER_S="${BACKUP_NOTIFY_NOFOLDER_S:-604800}"   # 7 Tage
+BACKUP_NOTIFY_HOURS="${BACKUP_NOTIFY_HOURS:-09-20}"               # HH-HH, beide einschliesslich
+_bkp_stale_notify() {
+  local now ref ok_at last_n reason days folder txt every tz h from to
+  now="$(date +%s)"
+  ref="$(backup_ref_epoch)"; case "$ref" in ''|*[!0-9]*) ref=0 ;; esac
+  [ $((now - ref)) -gt "$BACKUP_STALE_S" ] || return 0
+  tz="$(read_env_value "$(lifeagents_env_file core)" HOUSEHOLD_TIMEZONE 2>/dev/null || true)"
+  h="$(TZ="${tz:-Europe/Berlin}" date +%H)"; from="${BACKUP_NOTIFY_HOURS%-*}"; to="${BACKUP_NOTIFY_HOURS#*-}"
+  [ "$((10#$h))" -ge "$((10#$from))" ] && [ "$((10#$h))" -le "$((10#$to))" ] || return 0
+  reason="$(read_env_value "$BACKUP_STATE_FILE" LAST_FAIL_REASON 2>/dev/null || true)"
+  case "$reason" in folder|nofolder|key|dump|encrypt|write) ;; *) reason=dump ;; esac
+  every="$BACKUP_NOTIFY_EVERY_S"; [ "$reason" = nofolder ] && every="$BACKUP_NOTIFY_NOFOLDER_S"
+  last_n="$(read_env_value "$BACKUP_STATE_FILE" LAST_NOTIFY 2>/dev/null || true)"; case "$last_n" in ''|*[!0-9]*) last_n=0 ;; esac
+  [ "$last_n" -le "$now" ] || last_n=0   # Uhr zurueckgestellt
+  [ $((now - last_n)) -ge "$every" ] || return 0
+  ok_at="$(read_env_value "$BACKUP_STATE_FILE" LAST_OK 2>/dev/null || true)"; case "$ok_at" in ''|*[!0-9]*) ok_at=0 ;; esac
+  folder="$(_bkp_host_dir)"; folder="${folder//\\//}"; folder="${folder##*/}"
+  if [ "$ok_at" -gt 0 ]; then days=$(( (now - ok_at) / 86400 )); txt="$(backup_text notify.stale_since days "$days")"
+  else txt="$(backup_text notify.stale_never)"; fi
+  txt="${txt} $(backup_text "notify.reason.${reason}" folder "${folder:-?}")"$'\n'"$(backup_text notify.guide url "$BACKUP_GUIDE_URL")"
+  notify_owner_telegram "$txt" >/dev/null 2>&1 || return 0
+  _bkp_state_set LAST_NOTIFY "$now"
   return 0
 }
+
+# backup_cmd_auto — taegliche Sicherung in den Rechner-Ordner (Tick im master, update_runner.sh: 03:30, nach einem Fehlschlag
+#   stuendlich). Ohne gemerkten Ordner nur der Vermerk "nofolder" (Bestand ohne Ordner, Owner-Entscheid F1: doctor ROT +
+#   Chat-Hinweis statt Dialog); jeder Fehler nur als Warnung, damit der Tick weiterlaeuft. Danach ggf. der Chat-Hinweis.
+backup_cmd_auto() {
+  if [ -z "$(_bkp_host_dir)" ]; then
+    _bkp_state_set LAST_FAIL "$(date +%s)"; _bkp_state_set LAST_FAIL_REASON nofolder
+  else
+    ( backup_cmd_export --to-host ) || warn "Tägliche Sicherung in den Rechner-Ordner fehlgeschlagen — nächster Versuch in einer Stunde."
+  fi
+  _bkp_resolve_db
+  _bkp_stale_notify
+  return 0
+}
+
 
 # ============================================================
 # export
@@ -273,7 +396,7 @@ backup_cmd_export() {
     # --to-host [<ordner>]: ein folgender ABSOLUTER Pfad ist der Ordner; sonst gilt der gemerkte (backup auto).
     if [ "$prev" = --to-host ]; then
       prev=""
-      case "$a" in /*) host="$a"; continue ;; esac
+      case "$a" in /*|[A-Za-z]:\\*|[A-Za-z]:/*) host="$a"; continue ;; esac
     fi
     case "$a" in
       --notify-telegram) notify=1 ;;
@@ -288,7 +411,8 @@ backup_cmd_export() {
     rt_is_compose || die "--to-host gibt es nur im Docker-Verbund."
     [ -n "$host" ] || host="$(_bkp_host_dir)"
     [ -n "$host" ] || _bkp_fail folder "Kein Sicherungs-Ordner auf dem Rechner gewählt — einmalig: lifeagents backup host-dir <ordner>"
-    _bkp_host_dir_ok "$host" || _bkp_fail folder "Ordner '${host}' ist kein gültiger, beschreibbarer Ordner auf dem Rechner."
+    local hprob; hprob="$(_bkp_folder_problem "$host")"
+    [ -z "$hprob" ] || _bkp_fail "$(_bkp_reason_of "$hprob")" "Ordner '${host}' ist auf dem Rechner nicht erreichbar oder nicht beschreibbar (${hprob})."
   fi
 
   local key; key="$(_bkp_key)"
@@ -373,9 +497,9 @@ backup_cmd_export() {
   fi
   chmod 0600 "$out"
   if [ "$want_host" -eq 1 ]; then
-    rt_host_put "$host" "$name" < "$out" || _bkp_fail write "Sicherung ließ sich nicht in den Ordner '${host}' auf dem Rechner schreiben."
+    rt_host_put "$(_bkp_hd "$host")" "$name" < "$out" || _bkp_fail write "Sicherung ließ sich nicht in den Ordner '${host}' auf dem Rechner schreiben."
     _bkp_host_rotate "$host" "$kid"
-    ok "Backup geschrieben: ${host}/${name} (Ordner auf dem Rechner)"
+    ok "Backup geschrieben: $(_bkp_join "$host" "$name") (Ordner auf dem Rechner)"
   else
     ok "Backup geschrieben: $out"
   fi
@@ -491,7 +615,7 @@ _bkp_brought_key() {
     return 0
   fi
   if ! ui_interactive; then
-    if rt_is_compose; then cmd="docker exec -i ${LA_PROJECT:-lifeagents}-master lifeagents backup restore <datei> --key-stdin < Notfallblatt.txt"
+    if rt_is_compose; then cmd="$(rt_master_cli_hint) backup restore <datei> --key-stdin < Notfallblatt.txt"
     else cmd="lifeagents backup restore <datei> --key-stdin < notfallblatt.txt"; fi
     die "$(backup_text msg.no_tty cmd "$cmd") ${un}"
   fi
@@ -507,7 +631,7 @@ _bkp_brought_key() {
 }
 
 # _bkp_pick_lines (stdin: Dateinamen im Rechner-Ordner) -> Auswahl-Zeilen "Datum · Version · was sie braucht<TAB>name":
-#   Sicherungen, die ein gespeicherter Schluessel oeffnet, zuerst, je neueste zuerst. Zeit in UTC wie im Dateinamen.
+#   je neueste zuerst, die eines anderen Schluessels vorn (Grund unten). Zeit in UTC wie im Dateinamen.
 _bkp_pick_lines() {
   local ids b kid ts ver own='' other='' lbl
   ids=$'\n'"$(_bkp_key_ids)"$'\n'
@@ -525,7 +649,9 @@ _bkp_pick_lines() {
       lbl="${ts:-$b} · $(backup_text pick.legacy)"; other="${other}${b}"$'\t'"${lbl}"$'\n'
     fi
   done
-  { printf '%s' "$own" | sort -r; printf '%s' "$other" | sort -r; } | while IFS=$'\t' read -r b lbl; do
+  # Fremde zuerst: auf einem neuen Rechner im geteilten Ordner ist die eigene, neueste Sicherung die fast leere der
+  # Neuinstallation — gesucht ist die des alten Rechners. Auf einem gewohnten Rechner gibt es keine fremden.
+  { printf '%s' "$other" | sort -r; printf '%s' "$own" | sort -r; } | while IFS=$'\t' read -r b lbl; do
     [ -n "$b" ] && printf '%s\t%s\n' "$lbl" "$b"
   done
 }
@@ -561,7 +687,7 @@ backup_cmd_restore() {
     local _hd _hpick
     _hd="$(_bkp_host_dir)"
     [ -n "$_hd" ] || die "Kein Sicherungs-Ordner auf dem Rechner gewählt — Datei mit vollem Pfad angeben: lifeagents backup restore --from-host <ordner>/<datei>"
-    _hpick="$(rt_host_ls "$_hd" | _bkp_pick_lines | ui_choose 'Backup wiederherstellen (Wipe-Uebersicht + Bestaetigung folgen):' 0 || true)"
+    _hpick="$(rt_host_ls "$(_bkp_hd "$_hd")" | _bkp_pick_lines | ui_choose 'Backup wiederherstellen (Wipe-Uebersicht + Bestaetigung folgen):' 0 || true)"
     [ -n "$_hpick" ] && enc="$_hpick"
   elif [ -z "$enc" ] && ui_interactive; then
     ensure_gum
@@ -578,9 +704,9 @@ backup_cmd_restore() {
   local host_src=""
   if [ "$from_host" -eq 1 ]; then
     case "$enc" in
-      /*) host_src="$enc" ;;
-      */*) die "Datei als Name im gemerkten Ordner oder mit vollem Pfad angeben: $enc" ;;
-      *) host_src="$(_bkp_host_dir)"; [ -n "$host_src" ] || die "Kein Sicherungs-Ordner auf dem Rechner gewählt — Datei mit vollem Pfad angeben."; host_src="${host_src%/}/$enc" ;;
+      /*|[A-Za-z]:\\*|[A-Za-z]:/*) host_src="$enc" ;;
+      */*|*\\*) die "Datei als Name im gemerkten Ordner oder mit vollem Pfad angeben: $enc" ;;
+      *) host_src="$(_bkp_host_dir)"; [ -n "$host_src" ] || die "Kein Sicherungs-Ordner auf dem Rechner gewählt — Datei mit vollem Pfad angeben."; host_src="$(_bkp_join "$host_src" "$enc")" ;;
     esac
   else
     [ -r "$enc" ] || die "Backup-Datei nicht lesbar: $enc"
@@ -597,7 +723,8 @@ backup_cmd_restore() {
   # --- (1) Entschluesseln + Header lesen (VOR jedem Wipe) ---
   # Rechner-Ordner: das Chiffrat zuerst in den tmpfs holen (nur lesend gemountet, genau dieser eine Ordner).
   if [ -n "$host_src" ]; then
-    rt_host_get "$(dirname "$host_src")" "$(basename "$host_src")" > "$tmp/in.nla.enc" && [ -s "$tmp/in.nla.enc" ] \
+    local hs; hs="$(_bkp_hd "$host_src")"
+    rt_host_get "$(dirname "$hs")" "$(basename "$hs")" > "$tmp/in.nla.enc" && [ -s "$tmp/in.nla.enc" ] \
       || die "Sicherung '${host_src}' auf dem Rechner nicht lesbar. Es wurde NICHTS geaendert."
     enc="$tmp/in.nla.enc"
   fi
@@ -762,7 +889,7 @@ backup_cmd_restore() {
 # ============================================================
 # backup_cmd_key [--file <pfad>|-] — Notfallblatt ausgeben: ohne --file nur aufs Terminal (/dev/tty, nie in eine Pipe oder
 #   ein Log); --file <pfad> legt eine neue 0600-Datei an (vorhandene wird nie ueberschrieben); --file - schreibt auf stdout
-#   (Start-App: `docker exec … lifeagents backup key --file -`, Ausgabe nur in deren Datei).
+#   (Start-App, MasterCmd::BackupKit: `lifeagents backup key --file -` im master, Ausgabe nur in deren Datei).
 backup_cmd_key() {
   local file='' a want=0 kit
   for a in "$@"; do

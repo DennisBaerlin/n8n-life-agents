@@ -845,6 +845,18 @@ wait_n8n_health() {
 # Der Schluessel erreicht Hilfsprogramme nur ueber stdin/fd (printf ist eingebaut -> nie in /proc/*/cmdline).
 BACKUP_KEY_NAME="backup_encryption_key"
 BACKUP_KEY_PREV_PREFIX="backup_encryption_key_prev_"
+# Ergebnis jeder Sicherung (backup_cli.sh schreibt, doctor und der Chat-Hinweis lesen): LAST_OK, LAST_FAIL, LAST_FAIL_REASON
+# (folder|nofolder|key|dump|encrypt|write), LAST_NOTIFY. Im Verbund auf dem Volume var_la. Ab BACKUP_STALE_S ohne gelungene
+# Sicherung gilt sie als veraltet.
+BACKUP_STATE_FILE="${BACKUP_STATE_FILE:-/var/lib/lifeagents/backup.state}"
+BACKUP_STALE_S="${BACKUP_STALE_S:-172800}"   # 2 Tage
+# backup_ref_epoch -> Bezugszeit fuer "wie alt ist die Sicherung": LAST_OK, ohne gelungene Sicherung die Installation bzw. das
+#   letzte Update (VERSION) — sonst gaelte eine frische Installation oder ein Bestand vor backup.state sofort als veraltet.
+backup_ref_epoch() {
+  local v; v="$(read_env_value "$BACKUP_STATE_FILE" LAST_OK 2>/dev/null || true)"
+  case "$v" in ''|*[!0-9]*|0) v="$(stat -c %Y "$(lifeagents_version_marker)" 2>/dev/null || printf 0)" ;; esac
+  printf '%s' "$v"
+}
 # backup_key_read [tabelle] -> Schluessel auf stdout (leer, wenn keiner gesetzt; rc!=0, wenn die Tabelle fehlt).
 #   Tabelle Standard core.backup_key; upgrade_guard.sh liest auf v0.1.0-Bestand auch core.secret (vor core:V006).
 #   Reads globals: N8N_DB_NAME, DB_SUPERUSER.

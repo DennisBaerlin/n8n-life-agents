@@ -578,7 +578,7 @@ const STAGE_GROUPS = [
   ['programs', ['base', 'n8n', 'gateway']],
   ['database', ['backup', 'postgres', 'schema']],
   ['access', ['access']],
-  ['bot', ['workflows', 'packages', 'cli']],
+  ['bot', ['workflows', 'packages', 'cli', 'backup']],   // backup = Sicherungsordner + erste Sicherung (provision.sh)
   ['final', ['final']],
 ];
 function installView() {

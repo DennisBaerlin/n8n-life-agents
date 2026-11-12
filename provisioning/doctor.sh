@@ -90,6 +90,43 @@ _doctor_compose_tick() {
   fi
 }
 
+# _doctor_backup — Alter der letzten gelungenen Sicherung (backup.state). Verbund: ROT ab BACKUP_STALE_S (dort gibt es nur
+#   die taegliche Sicherung in den Rechner-Ordner, fehlt sie, merkt es sonst niemand); LXC: WARN (Sicherung per export/crontab
+#   ist dort Sache des Owners). Eine frische Installation (VERSION juenger als die Frist) ist noch nicht veraltet.
+_doctor_backup() {
+  local ok_at age days reason folder fix
+  if [ "$(id -u)" -ne 0 ]; then _skip "Letzte Sicherung (braucht root)"; return 0; fi
+  ok_at="$(read_env_value "$BACKUP_STATE_FILE" LAST_OK 2>/dev/null || true)"; case "$ok_at" in ''|*[!0-9]*) ok_at=0 ;; esac
+  reason="$(read_env_value "$BACKUP_STATE_FILE" LAST_FAIL_REASON 2>/dev/null || true)"
+  folder="$(read_env_value "$(lifeagents_env_file core)" BACKUP_HOST_DIR 2>/dev/null || true)"
+  age=$(( $(date +%s) - ok_at )); days=$(( age / 86400 ))
+  if [ "$ok_at" -gt 0 ] && [ "$age" -le "$BACKUP_STALE_S" ]; then
+    if [ "$days" -eq 0 ]; then _pass "Letzte Sicherung: heute${folder:+ (Ordner auf dem Rechner)}"; else _pass "Letzte Sicherung: vor ${days} Tag(en)"; fi
+    return 0
+  fi
+  # Frische Installation (VERSION juenger als die Frist): noch nicht veraltet. Im Verbund ohne Ordner (nur ueber eine
+  # unbeaufsichtigte Installation ohne Fragebogen erreichbar, z. B. CI) nur WARN — ROT erst nach der Frist (Bestand, F1).
+  if [ "$ok_at" -eq 0 ] && [ -n "$(find "$(lifeagents_version_marker)" -mmin -"$(( BACKUP_STALE_S / 60 ))" 2>/dev/null)" ]; then
+    if rt_is_compose && [ -z "$folder" ]; then _warn "Letzte Sicherung: noch keine — kein Sicherungsordner gewählt: lifeagents backup host-dir <ordner>"
+    else _pass "Letzte Sicherung: noch keine erfasst (Installation oder Update ist frisch)"; fi
+    return 0
+  fi
+  local when; if [ "$ok_at" -gt 0 ]; then when="vor ${days} Tagen"; else when="noch keine"; fi
+  if rt_is_compose; then
+    case "$reason" in
+      nofolder|'') [ -n "$folder" ] || { _red "Letzte Sicherung: ${when} — kein Sicherungsordner gewählt: lifeagents backup host-dir <ordner> (Anleitung: ${BACKUP_GUIDE_URL})"; return 0; } ;;
+    esac
+    case "$reason" in
+      folder) fix="der Ordner ist nicht erreichbar — prüfen oder neu wählen: lifeagents backup host-dir <ordner>" ;;
+      write)  fix="in den Ordner lässt sich nicht schreiben (voll oder schreibgeschützt)" ;;
+      *)      fix="Verlauf: docker logs ${LA_PROJECT}-master" ;;
+    esac
+    _red "Letzte Sicherung: ${when} — ${fix}"
+  else
+    _warn "Letzte Sicherung: ${when} — lifeagents backup export (Anleitung: ${BACKUP_GUIDE_URL})"
+  fi
+}
+
 # _doctor_compose_pod <bind> — Docker-Verbund: (1) alle Pod-Container im Netz-Namensraum des anchor (nach einem
 #   `docker restart` des anchor haengen sie sonst an einem toten Namensraum, Einwand 17), (2) Netz-Grenze von aussen.
 _doctor_compose_pod() {
@@ -211,6 +248,7 @@ main() {
     svc_active lifeagents-update-check.timer "Release-Check alle 2 Stunden"
     svc_active lifeagents-update-run.timer "Update-Aufträge aus dem Chat"
   fi
+  _doctor_backup
   if [ "$(id -u)" -eq 0 ] && need_su_tools; then
     local _stuck _lastfail _help _runner_log="journalctl -u lifeagents-update-run -n 50"
     if rt_is_compose; then _runner_log="docker logs ${LA_PROJECT}-master"; fi

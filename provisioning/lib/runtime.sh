@@ -363,6 +363,19 @@ rt_host_ls() { _rt_host_run "type=bind,src=$1,dst=/in,readonly" sh -c 'cd /in &&
 # rt_host_check <rechner-ordner> — gibt es den Ordner und ist er beschreibbar? (Probe anlegen + loeschen)
 # shellcheck disable=SC2016  # $$/$p werden erst in der Container-Shell ausgewertet
 rt_host_check() { _rt_host_run "type=bind,src=$1,dst=/out" sh -c 'p=/out/.lifeagents-probe.$$; : > "$p" && rm -f "$p"' >/dev/null 2>&1; }
+# rt_master_cli_hint -> Befehlsanfang, mit dem man auf dem Rechner die CLI im master aufruft (fuer Meldungen mit Beispiel).
+rt_master_cli_hint() { printf 'docker exec -i %s-master lifeagents' "${LA_PROJECT:-lifeagents}"; }
+# rt_host_exists <rechner-ordner> — laesst Docker den Ordner einbinden? (fehlt er oder darf Docker nicht hinein, scheitert der
+#   Mount; Docker Desktop unterscheidet beides nicht verlaesslich). rt_host_readable: zusaetzlich auflistbar (macOS-
+#   Datenschutz kann den Mount erlauben und das Lesen verbieten).
+rt_host_exists()   { _rt_host_run "type=bind,src=$1,dst=/in,readonly" true >/dev/null 2>&1; }
+rt_host_readable() { _rt_host_run "type=bind,src=$1,dst=/in,readonly" ls -A /in >/dev/null 2>&1; }
+# rt_host_mkdir <rechner-ordner> <name> — Unterordner <name> darin anlegen (vorhanden = ok); nur ein Name ohne Schraegstrich.
+# shellcheck disable=SC2016  # $1 wird erst in der Container-Shell ausgewertet
+rt_host_mkdir() {
+  case "$2" in */*|''|.|..) return 1 ;; esac
+  _rt_host_run "type=bind,src=$1,dst=/out" sh -c 'mkdir -p "/out/$1"' _ "$2" >/dev/null 2>&1
+}
 # rt_host_rm <rechner-ordner> <dateiname…> — genau diese Dateien dort loeschen (Auswahl: backup_cli.sh _bkp_rotate_victims;
 #   nur Namen ohne Schraegstrich, sonst Abbruch vor dem Container).
 # shellcheck disable=SC2016  # "$@" wird erst in der Container-Shell ausgewertet

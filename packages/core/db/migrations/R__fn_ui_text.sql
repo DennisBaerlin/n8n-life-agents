@@ -8,7 +8,7 @@
 --   Typisierte Werte (core.fn_ui_money/_date/_num/_tpl) rendert die fn selbst in p_lang, damit eine DB-fn
 --   Kartenzeilen ({kind:'note', value:<key>, params}) fertig als Text bauen kann: money -> core.fn_fmt_money (sign:true
 --   setzt '+' vor positive Betraege; digits:0 ignoriert, SQL zeigt immer zwei Stellen), date -> core.fn_fmt_date,
---   number -> Zahl mit den Nachkommastellen des Werts und dem Dezimalzeichen der Sprache, tpl -> verschachtelter
+--   number -> Zahl mit den Nachkommastellen des Werts, Tausender- und Dezimalzeichen wie fn_fmt_money, tpl -> verschachtelter
 --   Text; NULL-Wert -> '—' (wie der Workflow-Renderer). Andere Arten (month) -> der Rohwert. Strings unveraendert.
 --   RUECKGABE: text
 --   Tests: tests/db/core/test_ui_texts.sql
@@ -44,8 +44,11 @@ BEGIN
                 WHEN v_v->>'kind' = 'date' THEN core.fn_fmt_date((v_v->>'value')::date, p_lang)
                 WHEN v_v->>'kind' = 'number' THEN
                     CASE WHEN (v_v->>'sign')::boolean AND (v_v->>'value')::numeric > 0 THEN '+' ELSE '' END
-                    || CASE WHEN COALESCE((SELECT l.locale FROM core.ui_languages l WHERE l.code = p_lang), 'en') ILIKE 'de%'
-                            THEN replace(v_v->>'value', '.', ',') ELSE v_v->>'value' END
+                    || (SELECT CASE WHEN COALESCE((SELECT l.locale FROM core.ui_languages l WHERE l.code = p_lang), 'en') ILIKE 'de%'
+                                    THEN replace(replace(replace(n, ',', '#'), '.', ','), '#', '.') ELSE n END
+                        FROM (SELECT to_char((v_v->>'value')::numeric, 'FM999,999,999,990'
+                                     || CASE WHEN scale((v_v->>'value')::numeric) > 0
+                                             THEN '.' || repeat('0', scale((v_v->>'value')::numeric)) ELSE '' END) AS n) x)
                 ELSE v_v->>'value' END;
         ELSE
             v_txt := COALESCE(p_params ->> v_m[1], '');

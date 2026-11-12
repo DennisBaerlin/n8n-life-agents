@@ -5,7 +5,8 @@
 --   H4 Mitglied fremder Chat / Kind / Gruppenchat -> not_allowed, nichts; H5 abgelaufen -> keep_text; H6 alte Fassung ->
 --   ueberholt; H7 nein -> declined; H8 Anlege-fn lehnt ab -> declined + Text; H9 inzwischen bekannt -> declined;
 --   H10 Unsinn in data -> nie RAISE; H11 Uebertrag zwischen eigenen Konten (executed_by bank, kein Bank-Punkt);
---   H12 abgelaufener Stapel; H13/H14 Cashflow-Hinweis unter dem ✓-Text, nur einmal (Latch); H15 Spar-Deckungs-Zeile.
+--   H12 abgelaufener Stapel; H13/H14 Cashflow-Hinweis unter dem ✓-Text, nur einmal (Latch), beim Mitglied auch im
+--   owner_notice (H3); H15 Spar-Deckungs-Zeile.
 -- ============================================================
 BEGIN;
 INSERT INTO agent.core_contexts (name, description, agent_name, load_strategy, content, metadata)
@@ -105,15 +106,15 @@ BEGIN
         RAISE EXCEPTION 'FAIL [H2 Doppeltipp]: %', v_r;
     END IF;
 
-    -- H3 Mitglied eigener Chat -> angelegt + Owner-Hinweis
+    -- H3 Mitglied eigener Chat -> angelegt + Owner-Hinweis; die Haushalts-Warnung (Latch neu scharf) geht an beide
+    DELETE FROM core.notification_state WHERE source = 'finance' AND key = 'cashflow_coverage';
     v_r := pg_temp.cb('ok', v_b, 1, '7602');
     IF (v_r->>'ok')::boolean IS DISTINCT FROM true OR NULLIF(v_r->>'owner_notice', '') IS NULL
        OR position('Petra' IN v_r->>'owner_notice') = 0 OR position('Kita Test' IN v_r->>'owner_notice') = 0 THEN
         RAISE EXCEPTION 'FAIL [H3 Mitglied + owner_notice]: %', v_r;
     END IF;
-    -- H14 dieselbe Lage binnen 48 h (Latch) -> kein zweiter Hinweis, ✓-Text einzeilig
-    IF position(E'\n' IN v_r->'edit'->>'text') > 0 THEN
-        RAISE EXCEPTION 'FAIL [H14 Cashflow-Hinweis nur einmal]: %', v_r;
+    IF split_part(v_r->'edit'->>'text', E'\n', 2) !~ '^cf ' OR split_part(v_r->>'owner_notice', E'\n', 2) !~ '^cf ' THEN
+        RAISE EXCEPTION 'FAIL [H3 Cashflow-Hinweis an Mitglied und Owner]: %', v_r;
     END IF;
 
     -- H6 alte Fassung
@@ -195,6 +196,10 @@ BEGIN
     IF (v_r->>'ok')::boolean IS DISTINCT FROM true OR v_r->'edit'->>'text' !~ E'\nsf __t_rh_sp__ \\S*500[.,]00'
        OR position('recurring_iban_key' IN v_r->'edit'->>'text') > 0 OR position('{' IN v_r->'edit'->>'text') > 0 THEN
         RAISE EXCEPTION 'FAIL [H15 Spar-Deckungs-Hinweis im ✓-Text]: %', v_r;
+    END IF;
+    -- H14 Lage bleibt negativ binnen 48 h (Latch) -> kein zweiter Cashflow-Hinweis
+    IF v_r->'edit'->>'text' ~ E'\ncf ' THEN
+        RAISE EXCEPTION 'FAIL [H14 Cashflow-Hinweis nur einmal]: %', v_r;
     END IF;
     -- H12 Stapel seit mehr als 7 Tagen nicht ergaenzt, aber nicht geloescht -> abgelaufen, nichts angelegt
     v_e := pg_temp.row('7601', v_acct, 'Alt Test', 44, '{"counterparty_iban":"DE02120300000000202051"}');

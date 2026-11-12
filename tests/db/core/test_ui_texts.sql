@@ -87,6 +87,10 @@ BEGIN
          'date', core.fn_ui_date(NULL), 'inner', core.fn_ui_num(3), 'plain', core.fn_ui_money(5, 'USD', true)));
   IF t IS DISTINCT FROM '-€20.00 from — (3) +USD 5.00' THEN
     RAISE EXCEPTION 'FAIL ui_texts [typisierte Werte en, NULL-Datum, Zahl, Vorzeichen: %]', t; END IF;
+  t := core.fn_ui_text('core.test_typed', 'de', jsonb_build_object('amount', core.fn_ui_num(12345.5, 1, true),
+         'date', 'd', 'inner', core.fn_ui_num(1234567), 'plain', core.fn_ui_num(-0.25, 2)));
+  IF t IS DISTINCT FROM '+12.345,5 ab d (1.234.567) -0,25' THEN
+    RAISE EXCEPTION 'FAIL ui_texts [Zahlen de: Tausender, Dezimalkomma, Vorzeichen: %]', t; END IF;
 
   -- ---------- fn_ui_texts (Bundle) ----------
   r := core.fn_ui_texts('ko', ARRAY['core.test_greet', 'core.test_only_en', 'core.test_missing']);

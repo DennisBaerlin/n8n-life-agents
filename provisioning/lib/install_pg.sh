@@ -102,28 +102,16 @@ install_pg_packages() {
   apt-mark hold "postgresql-${PG_VERSION}" "postgresql-client-${PG_VERSION}" >/dev/null
 }
 
-# pg_minor_stale <laufend> <paket> — 0, wenn der laufende Server eine andere Minor als das installierte Paket hat.
-# <laufend> = `SHOW server_version` ("17.11 (Debian 17.11-1.pgdg12+1)"), <paket> = dpkg-Version ("17.12-1.pgdg12+1");
-# verglichen wird nur "17.11" gegen "17.12". Leere Seite = unbekannt = nicht veraltet (nie auf Verdacht neu starten).
-pg_minor_stale() {
-  local run="${1%% *}" inst="${2%%-*}"
-  [ -n "$run" ] && [ -n "$inst" ] && [ "$run" != "$inst" ]
-}
-
 # pg_restart_if_stale — ein laufender Server mit alter Minor laedt nach `--only-upgrade` die NEUE Bibliothek
 # (plpgsql.so: "undefined symbol") und bricht beim naechsten Backend ab. Auf einem echten LXC startet das Paket den
 # Cluster selbst (prerm stop_version, postinst `invoke-rc.d postgresql start`); wo die Paket-Skripte nicht starten
 # duerfen (policy-rc.d exit 101, Substrat/Container) bleibt der alte Postmaster stehen. Darum hier ausdruecklich pruefen
-# und gezielt neu starten — n8n steht zu diesem Zeitpunkt (upgrade_guard.sh). Zweitlauf: Versionen gleich = no-op.
-# Verbund: eigener postgres-Container, kein Paket -> nichts zu tun.
+# und gezielt neu starten. Voraussetzung: n8n steht (upgrade_guard.sh, PG-Minor zaehlt als Versionswechsel) — das prueft
+# diese Funktion bewusst nicht selbst. Zweitlauf: Versionen gleich = no-op. Verbund: kein Paket -> leer -> no-op.
 pg_restart_if_stale() {
-  rt_is_compose && return 0
-  pg_ready 2>/dev/null || return 0
-  local run inst
-  run="$(pg_su_psql -X -tAc 'SHOW server_version' 2>/dev/null || true)"
-  inst="$(dpkg-query -W -f='${Version}' "postgresql-${PG_VERSION}" 2>/dev/null || true)"
+  local v run="" inst=""; v="$(pg_server_versions)"; read -r run inst <<<"$v"
   pg_minor_stale "$run" "$inst" || return 0
-  log "PostgreSQL laeuft noch als ${run%% *}, installiert ist ${inst%%-*} -> Cluster neu starten ..."
+  log "PostgreSQL laeuft noch als ${run}, installiert ist ${inst} -> Cluster neu starten ..."
   svc_restart postgresql
   pg_wait_ready 60 || die "PostgreSQL-Cluster nimmt nach dem Neustart keine Verbindungen an (journalctl -u postgresql -n 50)."
 }

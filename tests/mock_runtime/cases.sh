@@ -495,21 +495,36 @@ eq O.kaputte-ausgabe " rc=1" "$out rc=$rc"
 
 # ---------------------------------------------------------------------------- N: PG-Minor-Neustart (install_pg.sh)
 # Paket-Skripte duerfen im Substrat nicht starten (policy-rc.d) -> der Server laeuft nach --only-upgrade mit alter Minor.
-# Letzter Block der Datei: die Attrappen unten ueberschreiben echte Funktionen (kein Subshell, sonst gingen FAILs verloren).
 # shellcheck source=/dev/null
 . "$ROOT/provisioning/lib/install_pg.sh"
 pg_minor_stale "17.11 (Debian 17.11-1.pgdg12+1)" "17.12-1.pgdg12+1"; eq N.alt-gegen-neu-veraltet 0 $?
 pg_minor_stale "17.12 (Debian 17.12-1.pgdg12+1)" "17.12-1.pgdg12+1"; eq N.gleich-nicht-veraltet 1 $?
 pg_minor_stale "" "17.12-1.pgdg12+1"; eq N.laufend-unbekannt-nicht-veraltet 1 $?
 pg_minor_stale "17.11" ""; eq N.paket-unbekannt-nicht-veraltet 1 $?
-PG_VERSION=17; LIFEAGENTS_RUNTIME=systemd; RUN_VER="17.11 (Debian 17.11-1.pgdg12+1)"; RESTARTS=0
-pg_ready() { return 0; }; pg_wait_ready() { return 0; }
-pg_su_psql() { printf '%s\n' "$RUN_VER"; }
-dpkg-query() { printf '17.12-1.pgdg12+1'; }
-svc_restart() { RESTARTS=$((RESTARTS + 1)); RUN_VER="17.12 (Debian 17.12-1.pgdg12+1)"; }
-pg_restart_if_stale 2>/dev/null; eq N.veraltet-startet-neu 1 "$RESTARTS"
-pg_restart_if_stale 2>/dev/null; eq N.zweitlauf-no-op 1 "$RESTARTS"
-pg_ready() { return 1; }; RUN_VER="17.11"; pg_restart_if_stale 2>/dev/null; eq N.server-steht-kein-neustart 1 "$RESTARTS"
-pg_ready() { return 0; }; LIFEAGENTS_RUNTIME=compose; pg_restart_if_stale 2>/dev/null; eq N.verbund-nie-neustart 1 "$RESTARTS"
+# pg_n_run <laufend> <ready:0|1> <runtime> — fuehrt install_postgres mit Attrappen in einem SUBSHELL aus (Attrappen
+# bleiben lokal) und gibt die Zahl der Neustarts aus; `die` am Ende (kein N8N_DB_PASSWORD) beendet nur den Subshell.
+pg_n_run() {
+  local cnt="$W/pg_restarts"; : > "$cnt"
+  (
+    PG_VERSION=17; LIFEAGENTS_RUNTIME="$3"; RUN_VER="$1"; PG_READY="$2"; unset N8N_DB_PASSWORD
+    need_su_tools() { return 0; }
+    pg_ready() { [ "$PG_READY" = 0 ]; }
+    pg_wait_ready() { return 0; }
+    pg_su_psql() { printf '%s\n' "$RUN_VER"; }
+    dpkg-query() { printf '17.12-1.pgdg12+1'; }
+    install_pg_packages() { :; }
+    svc_up() { :; }
+    rt_wait_healthy() { return 0; }
+    _pg_super() { return 0; }
+    svc_restart() { echo x >> "$cnt"; RUN_VER="17.12 (Debian 17.12-1.pgdg12+1)"; }
+    install_postgres
+    install_postgres
+  ) >/dev/null 2>&1 || true
+  wc -l < "$cnt" | tr -d ' '
+}
+eq N.install_postgres-veraltet-startet-neu-einmal 1 "$(pg_n_run '17.11 (Debian 17.11-1.pgdg12+1)' 0 systemd)"
+eq N.install_postgres-aktuell-kein-neustart 0 "$(pg_n_run '17.12 (Debian 17.12-1.pgdg12+1)' 0 systemd)"
+eq N.install_postgres-server-steht-kein-neustart 0 "$(pg_n_run '17.11' 1 systemd)"
+eq N.install_postgres-verbund-kein-neustart 0 "$(pg_n_run '17.11' 0 compose)"
 
 exit "$fails"

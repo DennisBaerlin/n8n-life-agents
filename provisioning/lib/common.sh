@@ -79,6 +79,26 @@ pg_db_encoding() {
   pg_su_psql -X -tA -c "SELECT pg_encoding_to_char(encoding) FROM pg_database WHERE datname='$1'" 2>/dev/null || true
 }
 
+# pg_minor_stale <laufend> <paket> — 0, wenn der laufende Server eine andere Minor als das installierte Paket hat.
+# <laufend> = `SHOW server_version` ("17.11 (Debian 17.11-1.pgdg12+1)"), <paket> = dpkg-Version ("17.12-1.pgdg12+1");
+# verglichen wird nur "17.11" gegen "17.12". Leere Seite = unbekannt = nicht veraltet (nie auf Verdacht handeln).
+pg_minor_stale() {
+  local run="${1%% *}" inst="${2%%-*}"
+  [ -n "$run" ] && [ -n "$inst" ] && [ "$run" != "$inst" ]
+}
+# pg_server_versions — "<laufend> <installiert>" (z. B. "17.11 17.12"); leer im Verbund (eigener postgres-Container, kein
+# Paket), ohne Superuser-Zugriff oder wenn der Server steht. Eine Quelle fuer Installer (pg_restart_if_stale) + doctor.
+pg_server_versions() {
+  rt_is_compose && return 0
+  need_su_tools || return 0
+  pg_ready 2>/dev/null || return 0
+  local run inst
+  run="$(pg_su_psql -X -tAc 'SHOW server_version' 2>/dev/null || true)"
+  inst="$(dpkg-query -W -f='${Version}' "postgresql-${PG_VERSION:-17}" 2>/dev/null || true)"
+  [ -n "$run" ] && [ -n "$inst" ] || return 0
+  printf '%s %s' "${run%% *}" "${inst%%-*}"
+}
+
 # --- Betriebsart (systemd | compose): alle runuser/systemctl/docker-Aufrufe leben in lib/runtime.sh ------------------
 # shellcheck source=runtime.sh
 . "$(dirname "${BASH_SOURCE[0]}")/runtime.sh"

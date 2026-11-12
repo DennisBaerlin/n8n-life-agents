@@ -1147,6 +1147,9 @@
   "core.hitl.plan_legacy_replaced": "Replaces the previous full text of this section.",
   "core.toast.handoff_nothing_open": "Already done or in progress.",
   "core.orch.toast_handoff": "The first item is on its way …",
-  "core.handoff.overview": "Still to enter from the plan conversation:\n{list}\n\nTap “Go through” and each item comes to you on its own to confirm. You can also do this later.",
+  "core.handoff.overview": "Still to enter from your plan conversation (open since {since}):\n{list}\n\n{why} Tap “Go through” and each item comes to you on its own to confirm. You can also do this later.",
+  "core.handoff.since_today": "today",
+  "core.handoff.why_rollout": "I'm reminding you because this is still open.",
+  "core.handoff.why_advisor": "Here's the list to enter.",
   "core.handoff.btn_go": "Go through"
 }

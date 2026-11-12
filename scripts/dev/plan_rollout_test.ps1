@@ -61,6 +61,13 @@ function Send-Text([string]$Text) {
 }
 function Get-Sends { @(Get-MockTelegramRequests -Container $Container | Where-Object { $_.method -eq 'sendMessage' -and -not [string]::IsNullOrEmpty([string]$_.body.text) }) }
 function Get-Rollout { @(Get-Sends | Where-Object { $_.body.reply_markup -and ($_.body.reply_markup | ConvertTo-Json -Depth 8 -Compress) -match 'plan:scan:finance' }) }
+# Aktiver, durchgesehener Plan plus eine offene Uebergabe-Aufgabe des Owners; Rueckgabe = Aufgaben-id.
+function New-OpenHandoff {
+    New-ActivePlan
+    Invoke-Sql "UPDATE agent.advisor_plans SET synced_at = now() WHERE domain = 'finance' AND status = 'active';" | Out-Null
+    $p = Invoke-Sql "SELECT agent.fn_owner_person_id();"
+    Invoke-Sql "INSERT INTO agent.handoff_tasks (domain, package, person_id, section_key, kind, text) VALUES ('finance', 'finance', '$p', 's', 'other', '__E2E__ Aufgabe') RETURNING id;"
+}
 function Has-Answer([string]$T) { @(Get-Sends | Where-Object { [string]$_.body.text -match [regex]::Escape($T) }).Count -ge 1 }
 
 $Cases = @(
@@ -94,13 +101,18 @@ $Cases = @(
     Assert-Equal @(Get-Sends | Where-Object { [string]$_.body.text -match 'core.sub_plan_rollout_next' }).Count 0 'Owner-Alarm'
  } }
  @{ id = 'rr5'; name = 'Uebergabe-Liste schon gesendet: kein Doppel'; run = {
-    New-ActivePlan
-    Invoke-Sql "UPDATE agent.advisor_plans SET synced_at = now() WHERE domain = 'finance' AND status = 'active';" | Out-Null
-    $pid2 = Invoke-Sql "SELECT agent.fn_owner_person_id();"
-    $tid = Invoke-Sql "INSERT INTO agent.handoff_tasks (domain, package, person_id, section_key, kind, text) VALUES ('finance', 'finance', '$pid2', 's', 'other', '__E2E__ Aufgabe') RETURNING id;"
+    $tid = New-OpenHandoff
     Invoke-Sql "SELECT core.fn_handoff_overview_mark(jsonb_build_object('domain','finance','chat_id','$Owner','max_task_id','$tid'));" | Out-Null
     Send-Text 'ROLLOUTPING fuenf'
     Assert-Equal @(Get-Sends | Where-Object { [string]$_.body.text -match '__E2E__ Aufgabe' }).Count 0 'Uebergabe doppelt'
+ } }
+ @{ id = 'rr6'; name = 'Uebergabe-Liste als Erinnerung: offen seit, Grund, verschachtelte Texte aufgeloest'; run = {
+    $null = New-OpenHandoff
+    Send-Text 'ROLLOUTPING sechs'
+    $list = @(Get-Sends | Where-Object { [string]$_.body.text -match 'E2E' -and ($_.body.reply_markup | ConvertTo-Json -Depth 8 -Compress) -match '"handoff:' })
+    Assert-Equal $list.Count 1 'Uebergabe-Liste'
+    $txt = [string]$list[0].body.text
+    if ($txt -notmatch '\(offen seit heute\)' -or $txt -notmatch 'Ich erinnere dich, weil das noch offen ist\.' -or $txt -match 'core\.handoff\.') { throw "Text unerwartet: $txt" }
  } }
 )
 $failed = 0; $ran = 0

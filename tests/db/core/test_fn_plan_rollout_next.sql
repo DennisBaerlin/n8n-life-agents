@@ -50,6 +50,20 @@ BEGIN
 
   -- Schritt 1 und 2
   INSERT INTO agent.handoff_tasks (domain, package, person_id, section_key, kind, text) VALUES (d, 'core', 'erika', 's', 'other', 'Aufgabe A');
+  -- offener Entwurf: Schritt 1 wartet (die Liste kommt am Ende des Gespraechs, ausser der Berater schickt sie selbst)
+  INSERT INTO agent.advisor_plans (domain, plan_name, status, version) VALUES (d, 'p', 'draft', 2);
+  v := core.fn_plan_rollout_next(d, 'erika');
+  IF (v->>'step')::int IS DISTINCT FROM 1 OR (v->>'wait')::boolean IS NOT TRUE OR jsonb_array_length(v->'messages') <> 0 THEN RAISE EXCEPTION 'FAIL s1 Entwurf %', v; END IF;
+  IF EXISTS (SELECT 1 FROM core.notification_state WHERE source = 'plan_rollout' AND key LIKE d || ':%:handoff:%') THEN RAISE EXCEPTION 'FAIL s1 Entwurf Merker'; END IF;
+  DELETE FROM agent.advisor_plans WHERE domain = d AND status = 'draft';
+  -- gerade beanspruchte Aufgabe (Durchgehen laeuft) steht nicht in der Liste, wie beim Berater-Tool (core.fn_handoff_overview)
+  INSERT INTO agent.handoff_tasks (domain, package, person_id, section_key, kind, text, status, claimed_at) VALUES (d, 'core', 'erika', 's', 'other', 'Aufgabe W', 'working', now());
+  v := core.fn_plan_rollout_next(d, 'erika');
+  IF v->'messages'->0->'msg'->0->'params'->>'list' IS DISTINCT FROM '1. Aufgabe A' THEN RAISE EXCEPTION 'FAIL s1 working %', v; END IF;
+  IF v->'messages'->0->'msg'->0->'params'->'why'->>'value' IS DISTINCT FROM 'core.handoff.why_rollout' THEN RAISE EXCEPTION 'FAIL s1 why %', v; END IF;
+  IF v->'messages'->0->'buttons'->0->>'data' IS DISTINCT FROM 'handoff:' || d || ':' || (SELECT min(id) FROM agent.handoff_tasks WHERE domain = d) THEN RAISE EXCEPTION 'FAIL s1 max ohne working %', v; END IF;
+  PERFORM core.fn_notify_resolve('plan_rollout', v->'messages'->0->'latch'->>'key');
+  DELETE FROM agent.handoff_tasks WHERE domain = d AND text = 'Aufgabe W';
   v := core.fn_plan_rollout_next(d, 'erika');
   IF (v->>'step')::int IS DISTINCT FROM 1 OR v->'messages'->0->'buttons'->0->>'data' NOT LIKE 'handoff:' || d || ':%' THEN RAISE EXCEPTION 'FAIL s1 %', v; END IF;
   v_key := v->'messages'->0->'latch'->>'key';
@@ -133,5 +147,13 @@ BEGIN
   UPDATE agent.advisor_plans SET synced_at = now() WHERE domain = '__rollp__';
   v := core.fn_plan_rollout_next('__rollp__', 'erika');
   IF jsonb_array_length(v->'messages') <> 0 THEN RAISE EXCEPTION 'FAIL per_user kein Schluss %', v; END IF;
+  -- Entwurf je Person: Lenas offener Entwurf haelt Erikas Uebergabe-Liste nicht an, ihren eigenen Entwurf schon
+  UPDATE core.config SET value = '30' WHERE category = 'advisor' AND key = 'rollout_draft_stale_days';
+  INSERT INTO agent.advisor_plans (domain, person_id, plan_name, status, version) VALUES ('__rollp__', 'lena', 'p', 'draft', 2);
+  INSERT INTO agent.handoff_tasks (domain, package, person_id, section_key, kind, text) VALUES ('__rollp__', 'core', 'erika', 's', 'other', 'Aufgabe E'), ('__rollp__', 'core', 'lena', 's', 'other', 'Aufgabe L');
+  v := core.fn_plan_rollout_next('__rollp__', 'erika');
+  IF (v->>'step')::int IS DISTINCT FROM 1 OR jsonb_array_length(v->'messages') <> 1 THEN RAISE EXCEPTION 'FAIL per_user fremder Entwurf %', v; END IF;
+  v := core.fn_plan_rollout_next('__rollp__', 'lena');
+  IF (v->>'wait')::boolean IS NOT TRUE OR jsonb_array_length(v->'messages') <> 0 THEN RAISE EXCEPTION 'FAIL per_user eigener Entwurf %', v; END IF;
 END $$;
 ROLLBACK;

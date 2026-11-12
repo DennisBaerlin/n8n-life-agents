@@ -117,6 +117,18 @@ BEGIN
   r := core.fn_handoff_overview('{"domain":"finance","chat_id":"111"}');
   IF (r->>'count')::int <> 2 OR (r->>'max_task_id')::int <> v_id3 OR r->'items'->>0 <> 'Sparziel Notgroschen 5.000 €'
      OR r->'items'->>1 <> 'Dauerauftrag 100 € aufs Tagesgeld' THEN RAISE EXCEPTION 'FAIL [4 Uebersicht]: %', r; END IF;
+  -- fertige Text-Struktur fuer beide Sender (Abfolge und Berater-Tool)
+  IF r->'msg'->>'kind' IS DISTINCT FROM 'tpl' OR r->'msg'->>'value' IS DISTINCT FROM 'core.handoff.overview'
+     OR r->'msg'->'params'->>'list' IS DISTINCT FROM E'1. Sparziel Notgroschen 5.000 €\n2. Dauerauftrag 100 € aufs Tagesgeld' THEN RAISE EXCEPTION 'FAIL [4 msg]: %', r; END IF;
+  -- offen seit heute, ohne via spricht der Berater
+  IF r->'msg'->'params'->'since'->>'value' IS DISTINCT FROM 'core.handoff.since_today' OR r->'msg'->'params'->'why'->>'value' IS DISTINCT FROM 'core.handoff.why_advisor' THEN
+    RAISE EXCEPTION 'FAIL [4 since/why]: %', r; END IF;
+  -- aeltester offener Punkt bestimmt das Datum (Tag des Haushalts); via rollout = Erinnerung
+  UPDATE agent.handoff_tasks SET created_at = now() - interval '23 days' WHERE id = v_id1;
+  r := core.fn_handoff_overview('{"domain":"finance","chat_id":"111","via":"rollout"}');
+  IF r->'msg'->'params'->'since' IS DISTINCT FROM core.fn_ui_date(core.fn_today(now() - interval '23 days')) OR r->'msg'->'params'->'why'->>'value' IS DISTINCT FROM 'core.handoff.why_rollout' THEN
+    RAISE EXCEPTION 'FAIL [4 since alt]: %', r; END IF;
+  UPDATE agent.handoff_tasks SET created_at = now() WHERE id = v_id1;
   r := core.fn_handoff_overview('{"domain":"finance","chat_id":"222"}');
   IF (r->>'count')::int <> 0 OR r->'max_task_id' <> 'null'::jsonb THEN RAISE EXCEPTION 'FAIL [4 andere Person]: %', r; END IF;
   -- ein abgelaufener working-Claim (Lauf abgebrochen) erscheint wieder in der Uebersicht

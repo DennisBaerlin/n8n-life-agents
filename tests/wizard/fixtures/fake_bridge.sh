@@ -35,5 +35,13 @@ case "${1:-}" in
     jq -nc --arg d "$(cat "$D/dslite" 2>/dev/null || echo unknown)" '{dslite:$d, source:"none"}' ;;
   reach-ports)
     jq -nc --arg s "$(cat "$D/ports" 2>/dev/null || echo unknown)" '{state:$s}' ;;
+  # Ordner-Prüfung (echte: rt_host_* per Docker): $D/backup_problem = Code, $D/backup_foreign = fremde Sicherungen dort.
+  backup-dir)
+    dir="$(head -n1)"
+    p="$(cat "$D/backup_problem" 2>/dev/null || true)"
+    printf '%s|%s\n' "$dir" "${OWNER_LANGUAGE:-}" >> "$D/backup_dir_calls"
+    f=''; [ -n "$p" ] || f="${dir%/}/Life Agents Sicherungen"
+    jq -nc --arg p "$p" --arg d "$dir" --arg f "$f" --argjson x "$([ -e "$D/backup_foreign" ] && echo true || echo false)" \
+      '{problem:$p, dir:$d, folder:$f, foreign:$x}' ;;
   *) exec bash "$REAL" "$@" ;;
 esac

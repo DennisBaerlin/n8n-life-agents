@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-save-backup-kit"
+description = "Enables the save_backup_kit command without any pre-configured scope."
+commands.allow = ["save_backup_kit"]
+
+[[permission]]
+identifier = "deny-save-backup-kit"
+description = "Denies the save_backup_kit command without any pre-configured scope."
+commands.deny = ["save_backup_kit"]

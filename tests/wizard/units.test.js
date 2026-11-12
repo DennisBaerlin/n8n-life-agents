@@ -221,3 +221,31 @@ test('Texte der Einrichtung: jeder feste Katalog-Key im Code steht in allen Spra
   assert.ok(keys.size > 100, 'Keys gefunden');
   for (const k of keys) for (const l of ['de', 'en', 'ko']) assert.ok(typeof cat[l][k] === 'string' && cat[l][k], `${k} fehlt in ${l}.json`);
 });
+
+test('Wohin sichern?: Seite vor der Zusammenfassung, Textseite nur bei „Anderer Ordner“, Antwort BACKUP_PARENT_DIR', () => {
+  let s = flow.steps(Q, {});
+  assert.equal(s[s.indexOf('review') - 1], 'backup_dir', 'direkt vor der Zusammenfassung');
+  assert.ok(!s.includes('backup_dir_custom'));
+  s = flow.steps(Q, { __backup_choice: 'other' });
+  assert.deepEqual(s.slice(s.indexOf('backup_dir'), s.indexOf('review')), ['backup_dir', 'backup_dir_custom']);
+  assert.equal(flow.answered(Q, { __backup_choice: 'icloud' }, 'backup_dir'), false, 'ohne geprüften Ordner offen');
+  assert.equal(flow.answered(Q, { __backup_choice: 'icloud', __backup_dir: '/Users/x/iCloud' }, 'backup_dir'), true);
+  assert.equal(flow.answered(Q, { __backup_choice: 'other' }, 'backup_dir'), true);
+  assert.equal(flow.answered(Q, { __backup_choice: 'other' }, 'backup_dir_custom'), false);
+  const m = flow.parseAnswers(flow.renderAnswers(Q, flow.answerLines(Q, { __backup_choice: 'other', __backup_dir: 'D:\\Sicherungen' }, {})));
+  assert.equal(m.get('BACKUP_PARENT_DIR'), 'D:\\Sicherungen');
+  assert.ok(!flow.parseAnswers(flow.renderAnswers(Q, flow.answerLines(Q, {}, {}))).has('BACKUP_PARENT_DIR'));
+  assert.deepEqual(flow.backupSteps({}), ['backup_dir', 'backup_result']);
+  assert.deepEqual(flow.backupSteps({ __backup_choice: 'other' }), ['backup_dir', 'backup_dir_custom', 'backup_result']);
+});
+
+test('Wohin sichern?: Vorschläge der Start-App streng gelesen', () => {
+  const v = 'icloud|/Users/x/Library/Mobile Documents/com~apple~CloudDocs;documents|/Users/x/Documents;onedrive|D:\\OneDrive';
+  assert.deepEqual(flow.backupCandidates(v).map((c) => c.kind), ['icloud', 'documents', 'onedrive']);
+  for (const bad of ['icloud|relativ', 'dropbox|/a,b', 'dropbox|/a"b', 'other|/x', 'dropbox|/a\tb', 'icloud', '|/x']) {
+    assert.deepEqual(flow.backupCandidates(bad), [], bad);
+  }
+  assert.deepEqual(flow.backupCandidates('icloud|/a;icloud|/b').map((c) => c.path), ['/a'], 'jede Art einmal');
+  assert.deepEqual(flow.backupCandidates(undefined), []);
+  assert.ok(flow.parseHints('LA_BACKUP_CANDIDATES=icloud|/x\n').LA_BACKUP_CANDIDATES);
+});

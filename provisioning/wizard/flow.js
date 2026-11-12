@@ -57,6 +57,9 @@ function steps(Q, A) {
       else s.push('fb_guide', 'h:DOMAIN');
     }
   }
+  // Wohin sichern? (Docker-Weg, Owner-Entscheid F2: nicht überspringbar) — Antwort BACKUP_PARENT_DIR, provision.sh legt den Ordner an.
+  s.push('backup_dir');
+  if (A.__backup_choice === 'other') s.push('backup_dir_custom');
   s.push('review', 'confirm', 'install', 'connect', 'handoff');
   return s;
 }
@@ -79,6 +82,9 @@ function answered(Q, A, id) {
     case 'reach': return !!A.__reach;
     case 'fb_dslite': return !!A.__dslite;
     case 'fb_guide': return !!A.__fb_guide;
+    case 'backup_dir': return !!A.__backup_choice && (A.__backup_choice === 'other' || !!A.__backup_dir);
+    case 'backup_dir_custom': return !!A.__backup_dir;
+    case 'backup_result': return false;
     default: return false;
   }
 }
@@ -133,7 +139,7 @@ function stepOf(id) {
   if (id.startsWith('h:')) sub = HOST_SUB[id.slice(2)] || 'about';
   else if (id.startsWith('s:') || id.startsWith('c:') || id === 'packages') sub = 'modules';
   else sub = ({ tg_why: 'access', tg_phone: 'access', tg_pc: 'access', tg_busy: 'access', voice: 'access', reach: 'reach', fb_dslite: 'reach', fb_ports_busy: 'reach', fb_guide: 'reach',
-    review: 'check', confirm: 'check' })[id] || 'about';
+    review: 'check', confirm: 'check', backup_dir: 'check', backup_dir_custom: 'check' })[id] || 'about';
   return { current: 'questions', sub };
 }
 
@@ -178,7 +184,7 @@ function valueProblem(v) {
 
 // allowedKeys(Q) -> Positivliste aller Schlüssel, die der Wizard schreiben darf.
 function allowedKeys(Q) {
-  const k = new Set(['REACH_MODE', 'DOMAIN', 'TELEGRAM_WEBHOOK_TAKEOVER']);
+  const k = new Set(['REACH_MODE', 'DOMAIN', 'TELEGRAM_WEBHOOK_TAKEOVER', 'BACKUP_PARENT_DIR']);
   for (const h of Q.host) k.add(h.key);
   for (const p of Q.packages) {
     for (const st of p.settings) k.add(st.env);
@@ -209,6 +215,7 @@ function answerLines(Q, A, secrets) {
   // Prüfliste Nr. 10: der Nutzer hat einen schon anderswo verbundenen Bot ausdrücklich übernommen (sonst bricht der
   // Installer die unbeaufsichtigte Erstinstallation ab, telegram_webhook_preflight in Paket 1).
   if (A.__tg_conflict && A.__tg_choice === 'take') add('TELEGRAM_WEBHOOK_TAKEOVER', '1');
+  if (typeof A.__backup_dir === 'string' && A.__backup_dir) add('BACKUP_PARENT_DIR', A.__backup_dir);
   return out;
 }
 
@@ -315,7 +322,7 @@ function userName(full) {
 //   der Leitung: keine Umgebungsvariablen, die stünden dauerhaft in `docker inspect`). Gelesen, nie ausgeführt, nach den
 //   Regeln der Antwort-Datei ohne Kopfzeile: KEY=wert roh, kein doppelter Schlüssel, keine Steuerzeichen (ein CR am
 //   Zeilenende wird geduldet). Eine verletzte Regel = gar kein Vorschlag; unbekannte Schlüssel und leere Werte zählen nicht.
-const HINT_KEYS = ['LA_HOST_IP', 'LA_MYFRITZ_ZONE', 'LA_HOST_NAME_FRITZ', 'LA_HOST_NAME_CANDIDATES', 'LA_USER_FULLNAME', 'LA_USER_LANG'];
+const HINT_KEYS = ['LA_HOST_IP', 'LA_MYFRITZ_ZONE', 'LA_HOST_NAME_FRITZ', 'LA_HOST_NAME_CANDIDATES', 'LA_USER_FULLNAME', 'LA_USER_LANG', 'LA_BACKUP_CANDIDATES'];
 function parseHints(text) {
   if (typeof text !== 'string' || text.length > 8192) return {};
   const lines = text.split('\n');
@@ -343,6 +350,32 @@ function webhookFailing(r, nowSec) {
   return true;
 }
 
+// backupCandidates(v) -> [{kind, path}]: Ordner-Vorschläge der Start-App (hints.env LA_BACKUP_CANDIDATES = "<art>|<pfad>;…",
+//   art icloud|onedrive|dropbox|documents). Nur volle Pfade (Mac/Linux "/…", Windows "X:\…"); ein Pfad mit Trennzeichen
+//   (, | ; ") oder Steuerzeichen fällt weg (Komma trennt die --mount-Angabe, " bricht die Antwort-Datei), jede Art einmal.
+const BACKUP_KINDS = ['icloud', 'onedrive', 'dropbox', 'documents'];
+function backupCandidates(v) {
+  if (typeof v !== 'string' || v.length > 4096) return [];
+  const out = []; const seen = new Set();
+  for (const part of v.split(';')) {
+    const i = part.indexOf('|');
+    if (i < 1) continue;
+    const kind = part.slice(0, i); const p = part.slice(i + 1);
+    if (!BACKUP_KINDS.includes(kind) || seen.has(kind)) continue;
+    if (!p || p.length > 512 || /[,|;"]/.test(p) || CTRL_RE.test(p) || !/^(\/|[A-Za-z]:[\\/])/.test(p)) continue;
+    seen.add(kind); out.push({ kind, path: p });
+  }
+  return out;
+}
+// backupSteps(A) -> Seiten des Änderungs-Modus (`server.js --backup-dir`, Menüpunkt der Start-App): dieselben Seiten wie in
+//   der Einrichtung, danach das Ergebnis.
+function backupSteps(A) {
+  const s = ['backup_dir'];
+  if (A.__backup_choice === 'other') s.push('backup_dir_custom');
+  s.push('backup_result');
+  return s;
+}
+
 // packagesArg(Q, A) -> Wert für `provision.sh --packages` (der bestehende Weg der CLI): Komma-Liste oder none.
 function packagesArg(Q, A) {
   const p = (A.__packages || []).filter((x) => pkgDef(Q, x));
@@ -351,4 +384,4 @@ function packagesArg(Q, A) {
 
 module.exports = { steps, reachMode, answered, envOf, question, stepOf, helpBlocks, valueProblem,
   allowedKeys, answerLines, renderAnswers, parseAnswers, packagesArg, paperlessGuess, myfritzZone, myfritzCandidates, domainCheck, myfritzGuess,
-  userLanguage, userName, parseHints, webhookFailing, hostDef, pkgDef };
+  userLanguage, userName, parseHints, webhookFailing, hostDef, pkgDef, backupCandidates, backupSteps };

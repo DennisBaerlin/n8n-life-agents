@@ -42,6 +42,8 @@ fn show(app: &AppHandle, screen: &str) {
 struct Tray {
     status: MenuItem<Wry>,
     items: Vec<(MenuItem<Wry>, &'static str)>,
+    /// Notfallblatt und Sicherungsordner gibt es erst nach der Einrichtung (vorher kein Schlüssel, kein Ordner).
+    after_setup: Vec<MenuItem<Wry>>,
 }
 
 impl Tray {
@@ -49,6 +51,10 @@ impl Tray {
     fn relabel(&self, lang: &str, running: bool) {
         for (item, key) in &self.items {
             let _ = item.set_text(texts::text(lang, key));
+        }
+        let ready = commands::setup_done();
+        for item in &self.after_setup {
+            let _ = item.set_enabled(ready);
         }
         let key = if running { "core.desktop.tray.running" } else { "core.desktop.tray.stopped" };
         let _ = self.status.set_text(texts::text(lang, key));
@@ -63,11 +69,14 @@ fn build_tray(app: &AppHandle) -> tauri::Result<Tray> {
     let telegram = item("telegram", "core.desktop.tray.telegram", true)?;
     let power = item("power-restore", "core.desktop.tray.power_restore", true)?;
     let report = item("report", "core.desktop.tray.report", true)?;
+    let ready = commands::setup_done();
+    let kit = item("backup-kit", "core.desktop.tray.backup_kit", ready)?;
+    let folder = item("backup-dir", "core.desktop.tray.backup_dir", ready)?;
     let uninstall = item("uninstall", "core.desktop.tray.uninstall", true)?;
     let quit = item("quit", "core.desktop.tray.quit", true)?;
     let sep1 = PredefinedMenuItem::separator(app)?;
     let sep2 = PredefinedMenuItem::separator(app)?;
-    let menu = Menu::with_items(app, &[&status, &sep1, &open, &telegram, &power, &report, &sep2, &uninstall, &quit])?;
+    let menu = Menu::with_items(app, &[&status, &sep1, &open, &telegram, &power, &report, &kit, &folder, &sep2, &uninstall, &quit])?;
     let mut tray =
         TrayIconBuilder::with_id("main").menu(&menu).tooltip("lifeagents").show_menu_on_left_click(true).on_menu_event(|app, event| {
             match event.id.as_ref() {
@@ -77,6 +86,8 @@ fn build_tray(app: &AppHandle) -> tauri::Result<Tray> {
                 }
                 "power-restore" => show(app, "power-restore"),
                 "report" => show(app, "report"),
+                "backup-kit" => show(app, "backup-kit"),
+                "backup-dir" => show(app, "backup-dir"),
                 "uninstall" => show(app, "uninstall"),
                 "quit" => app.exit(0),
                 _ => {}
@@ -93,9 +104,12 @@ fn build_tray(app: &AppHandle) -> tauri::Result<Tray> {
             (telegram, "core.desktop.tray.telegram"),
             (power, "core.desktop.tray.power_restore"),
             (report, "core.desktop.tray.report"),
+            (kit.clone(), "core.desktop.tray.backup_kit"),
+            (folder.clone(), "core.desktop.tray.backup_dir"),
             (uninstall, "core.desktop.tray.uninstall"),
             (quit, "core.desktop.tray.quit"),
         ],
+        after_setup: vec![kit, folder],
     })
 }
 
@@ -139,6 +153,10 @@ fn main() {
             commands::start_core,
             commands::open_wizard,
             commands::wizard_status,
+            commands::save_backup_kit,
+            commands::kit_status,
+            commands::confirm_kit,
+            commands::change_backup_folder,
             commands::power_info,
             commands::power_apply,
             commands::power_answer,

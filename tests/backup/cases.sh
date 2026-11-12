@@ -36,7 +36,8 @@ set_active() { sqlk "$1" "UPDATE core.backup_key SET value = :'k' WHERE key = '$
 active_is() { [ "$(sqlk "$1" "SELECT value = :'k' FROM core.backup_key WHERE key = '${BACKUP_KEY_NAME}';")" = t ]; }
 prev_has() { [ "$(sqlk "$1" "SELECT count(*) > 0 FROM core.backup_key WHERE starts_with(key, '${BACKUP_KEY_PREV_PREFIX}') AND value = :'k';")" = t ]; }
 prev_n() { pg_su_psql -X -tA -d "$N8N_DB_NAME" -c "SELECT count(*) FROM core.backup_key WHERE starts_with(key, '${BACKUP_KEY_PREV_PREFIX}')"; }
-rows() { pg_su_psql -X -tA -d "$N8N_DB_NAME" -c "SELECT count(*) FROM finance.accounts"; }
+# Daten-Fingerabdruck: die vom Agenten gepflegten Kontexte stehen in jeder Sicherung (filtered_tables), auch ohne Fixtures.
+rows() { pg_su_psql -X -tA -d "$N8N_DB_NAME" -c "SELECT count(*) FROM agent.core_contexts WHERE managed_by = 'agent'"; }
 n=0
 cli() { n=$((n + 1)); "$CLI" "$@" > "$W/out.$n" 2>&1 < /dev/null; }
 cli_in() { local f="$1"; shift; n=$((n + 1)); "$CLI" "$@" > "$W/out.$n" 2>&1 < "$f"; }
@@ -54,7 +55,7 @@ restore_orig() {
     done <<<"$ORIG"
     printf 'COMMIT;\n'; } | psql_superuser_driver -q >/dev/null 2>&1
 }
-cleanup() { restore_orig; pg_su_psql -X -q -d "$N8N_DB_NAME" -c "ALTER TABLE finance.accounts DROP CONSTRAINT IF EXISTS bk_test_fail" >/dev/null 2>&1; pg_su_exec dropdb --if-exists bk_carry >/dev/null 2>&1; rm -rf "$W"; }
+cleanup() { restore_orig; pg_su_psql -X -q -d "$N8N_DB_NAME" -c "ALTER TABLE agent.core_contexts DROP CONSTRAINT IF EXISTS bk_test_fail" >/dev/null 2>&1; pg_su_exec dropdb --if-exists bk_carry >/dev/null 2>&1; rm -rf "$W"; }
 trap cleanup EXIT
 if [ "${#KA}" -ne 64 ]; then fail setup "Substrat-Schluessel fehlt oder ist kein 64-Hex"; exit "$fails"; fi
 # Erfundene Schluessel (Repo oeffentlich): "frische Installation" und "falsch".
@@ -96,14 +97,14 @@ ok_if R.tippfehler-zeile3 '[ "$rc" -ne 0 ] && said "Zeile 3 stimmt nicht" && act
 mkdir -p "$W/kaputt"; head -c "$(( $(stat -c %s "$A") / 2 ))" "$A" > "$W/kaputt/$fa"
 paper "$KA" > "$W/ka"; cli_in "$W/ka" backup restore "$W/kaputt/$fa" --key-stdin --yes; rc=$?
 ok_if R.beschaedigt '[ "$rc" -ne 0 ] && said "beschädigt" && active_is "$KB" && [ "$(prev_n)" = 0 ]' "rc=$rc"
-# Gescheiterte TX (Constraint lehnt die wiederhergestellten Zeilen ab): Uebernahme rollt mit zurueck.
+# Gescheiterte TX (Constraint lehnt die wiederhergestellten Kontext-Zeilen ab): Uebernahme rollt mit zurueck.
 if [ "${N0:-0}" -gt 0 ]; then
-  pg_su_psql -X -q -d "$N8N_DB_NAME" -c "ALTER TABLE finance.accounts ADD CONSTRAINT bk_test_fail CHECK (false) NOT VALID" >/dev/null 2>&1
+  pg_su_psql -X -q -d "$N8N_DB_NAME" -c "ALTER TABLE agent.core_contexts ADD CONSTRAINT bk_test_fail CHECK (false) NOT VALID" >/dev/null 2>&1
   cli_in "$W/ka" backup restore "$A" --key-stdin --yes; rc=$?
-  pg_su_psql -X -q -d "$N8N_DB_NAME" -c "ALTER TABLE finance.accounts DROP CONSTRAINT IF EXISTS bk_test_fail" >/dev/null 2>&1
+  pg_su_psql -X -q -d "$N8N_DB_NAME" -c "ALTER TABLE agent.core_contexts DROP CONSTRAINT IF EXISTS bk_test_fail" >/dev/null 2>&1
   ok_if R.tx-fehler-nichts-geaendert '[ "$rc" -ne 0 ] && active_is "$KB" && [ "$(prev_n)" = 0 ] && [ "$(rows)" = "$N0" ]' "rc=$rc"
 else
-  fail R.tx-fehler-nichts-geaendert "finance.accounts im Substrat leer — Fixture fehlt"
+  fail R.tx-fehler-nichts-geaendert "keine Agenten-Kontexte im Substrat"
 fi
 # Mit dem Blatt (Grossbuchstaben, Bindestriche) — dabei /proc beobachten (Leck-Probe L).
 paper "$KA" | tr 'a-f' 'A-F' > "$W/kaU"

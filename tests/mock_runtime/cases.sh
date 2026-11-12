@@ -382,6 +382,11 @@ if rt_host_rm /Users/erika/Sicherung ok.nla.enc ../weg 2>/dev/null; then fail B.
 elif [ -s "$STUB_LOG" ]; then fail B.loeschen-nur-namen "Container trotzdem gestartet"; else pass B.loeschen-nur-namen; fi
 rt_host_rm /Users/erika/Sicherung a.nla.enc b.nla.enc
 case "$(last)" in *"src=/Users/erika/Sicherung,dst=/out|"*"|_|a.nla.enc|b.nla.enc|stdin=") pass B.loeschen-genau-diese ;; *) fail B.loeschen-genau-diese "$(last)" ;; esac
+# Mehr als 50 Tabellen: jsonb_build_object nimmt hoechstens 100 Argumente -> Bloecke zu 50 Paaren (Export brach sonst ab).
+_pairs=(); for i in $(seq 1 120); do _pairs+=("'t$i', $i"); done
+_obj="$(_bkp_jsonb_obj "${_pairs[@]}")"
+eq B.json-bloecke-zu-50 '3 0' "$(printf '%s' "$_obj" | grep -o 'jsonb_build_object(' | wc -l) $(printf '%s' "$_obj" | grep -o "'t[0-9]*'" | sort | uniq -d | wc -l)"
+eq B.json-leer "'{}'::jsonb" "$(_bkp_jsonb_obj)"
 eq B.dateiname "lifeagents-backup-20261112033000-${_id1}-v0.44.0.nla.enc" "$(_bkp_file_name 20261112033000 "$_id1" v0.44.0)"
 eq B.dateiname-dev "lifeagents-backup-20261112033000-${_id1}-vdev.nla.enc" "$(_bkp_file_name 20261112033000 "$_id1" 'main-1a2b/x')"
 eq B.kennung-aus-name "$_id1" "$(_bkp_file_key_id "/x/lifeagents-backup-20261112033000-${_id1}-v0.44.0.nla.enc")"

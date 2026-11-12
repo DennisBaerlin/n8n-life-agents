@@ -70,6 +70,10 @@ pub fn hints_text(host: &dyn Host) -> String {
     if let Some(lang) = crate::suggest::user_lang(host) {
         lines.push((USER_LANG_VAR, lang));
     }
+    let backup: Vec<String> = crate::suggest::backup_candidates(host).into_iter().map(|(k, p)| format!("{k}|{p}")).collect();
+    if !backup.is_empty() {
+        lines.push((crate::contract::BACKUP_CANDIDATES_VAR, backup.join(";")));
+    }
     lines.into_iter().map(|(k, v)| format!("{k}={}\n", v.chars().filter(|c| !c.is_control()).collect::<String>())).collect()
 }
 
@@ -354,7 +358,8 @@ pub fn wizard_status(host: &dyn Host, d: &Docker) -> WizardStatus {
     };
     let lang = v.get("lang").and_then(|l| l.as_str()).and_then(crate::lang::parse);
     let phase = match v.get("phase").and_then(|p| p.as_str()) {
-        Some("questions" | "installing" | "failed" | "pairing" | "connected") => WizardPhase::Running,
+        // backup_dir | backup_done: Änderungs-Modus (Menüpunkt „Sicherungsordner ändern …“), läuft, bis er sich selbst beendet.
+        Some("questions" | "installing" | "failed" | "pairing" | "connected" | "backup_dir" | "backup_done") => WizardPhase::Running,
         Some("handoff") => WizardPhase::Handoff,
         _ => WizardPhase::Unavailable,
     };

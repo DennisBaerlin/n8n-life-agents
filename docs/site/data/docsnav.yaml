@@ -48,6 +48,8 @@
       title: Tunnel einrichten
     - slug: fritzbox
       title: FritzBox einrichten
+    - slug: sicherung
+      title: Sicherung & neuer Rechner
     - slug: update-hilfe
       title: Wenn ein Update fehlschlägt
     - slug: pakete

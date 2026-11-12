@@ -97,6 +97,8 @@ Nach der Einrichtung sitzt ein kleines Symbol in der Menüleiste (Mac) bzw. nebe
 
 Updates kommen wie bei jeder Installation als Karte im Chat; ein Tipp auf **Jetzt aktualisieren** sichert vorher deine Daten ([mehr zu Updates](installation.html#funktionen-hinzufügen)). Eine neue Fassung der Start-App selbst meldet der Bot im Chat, sie lädst du dann wie in Schritt 1.
 
+Deine Daten sichert der Assistent jede Nacht in den Ordner, den du im Fragebogen gewählt hast. Den Schlüssel dazu holst du im Symbol über **Notfallblatt speichern**. Wie du alles auf einem neuen Rechner zurückholst, steht unter [Sicherung & neuer Rechner](sicherung.html).
+
 ## Wenn etwas nicht klappt
 
 Der Knopf **Fehlerbericht** im Symbol erstellt einen Bericht aus festen Angaben (zum Beispiel Version und welcher Schritt hakt). Chat-Inhalte und Schlüssel stehen nie darin. Schick ihn an die Person, die dir beim Einrichten hilft.

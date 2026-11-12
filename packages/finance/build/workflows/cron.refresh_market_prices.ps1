@@ -1,9 +1,10 @@
 ﻿#Requires -Version 5.1
 # Definition agent.finance.cron_refresh_market_prices -> Build-CronRefreshMarketPrices. Dot-gesourct von build.ps1.
-# Deterministisch, KEIN LLM. DUAL-TRIGGER (Muster cron_refresh_fx_rates): (a) Schedule (taeglich, Cron
-# aus core.config schedule.refresh_market_prices, beim Einspielen eingesetzt) und
+# Deterministisch, KEIN LLM. VIER EINGAENGE (Muster cron_refresh_fx_rates): (a) Schedule (taeglich, Cron
+# aus core.config schedule.refresh_market_prices, beim Einspielen eingesetzt),
 # (b) executeWorkflowTrigger 'Start' fuer den Sofort-Fetch aus tool_book_stock_buy/tool_set_holding nach
-# einem Depot-Write (kein NULL-Preis-Fenster bis zum naechsten Schedule). Beide muenden in denselben Pfad:
+# einem Depot-Write (kein NULL-Preis-Fenster bis zum naechsten Schedule), (c) n8n-Start und (d) stuendlicher
+# Schedule als Nachholen (fn_feed_refresh_due). Alle muenden in denselben Pfad:
 # gehaltene Symbole holen -> EIN Code-Node fetcht ALLE Kurse via Yahoo Finance v8/chart PER Symbol (WP-4:
 # Aktien/ETF UND Krypto als TICKER-FIAT; kollisionsfrei, CoinGecko retired) -> finance.fn_upsert_market_prices. Laeuft unter finance_rw (schreibt
 # finance.market_prices). Nutzt aus dem Orchestrator-Scope: $RepoRoot, $CRED_FINANCE_RW + build_helpers.
@@ -30,6 +31,17 @@ function Build-CronRefreshMarketPrices {
     $ifStart = Build-If 'Package on?' @(-460, 240) "={{ `$json.active }}" 'true' 'equals' 'boolean'
 
     $disabled = Build-NoOp 'Disabled' @(-460, 440)
+
+    # Dritter/vierter Eingang: n8n-Start und stuendlicher Check holen den verpassten Tageslauf nach (Geraet aus oder im
+    # Ruhezustand um die Planzeit). Gleiches Gate wie der Schedule, zusaetzlich nur, wenn fn_feed_refresh_due('prices')
+    # meldet, dass heute noch kein Kurs geholt wurde. Die Pause gibt Netz und DNS nach dem Hochfahren Zeit (sonst Fehlalarm).
+    $trigInit = Build-InstanceStartTrigger @(-1120, -240)
+    $waitInit = Build-WaitSeconds 'Wait for network' @(-900, -240) 30
+    $trigHour = Build-ScheduleTrigger @(-1120, -100) -ScheduleKey 'refresh_catchup'
+    $trigHour['name'] = 'Schedule (hourly catch-up)'
+    $gateInit = Build-Pg 'Catch-up needed?' @(-680, -240) `
+        "SELECT core.fn_package_active('finance') AND COALESCE(core.fn_config_get('finance','cron_enable','refresh_market_prices') = 'true', false) AND finance.fn_feed_refresh_due('prices') AS due"
+    $ifInit = Build-If 'Catch up?' @(-460, -240) "={{ `$json.due }}" 'true' 'equals' 'boolean'
 
     # Gehaltene Symbole (WP-4: EIN Feed = Yahoo Finance fuer ALLES). cnt > 0 = Early-Exit-Gate (kein Fetch ohne
     # Holdings). Je Holding ein PAAR { q, s }: s = symbol = der fn_upsert-Join-Key; q = das anzufragende Yahoo-
@@ -103,7 +115,7 @@ return [{ json: { prices, currencies, source: 'yahoo' } }];
 
     $stickyOverview = Build-Sticky 'Überblick' @(-540, -300) `
         'Markt-Preis-Refresh (Dual-Trigger, kein LLM)' `
-        'ZWEI Eingänge, EIN Pfad: (a) Schedule täglich (Cron aus core.config schedule.refresh_market_prices, beim Einspielen eingesetzt); (b) executeWorkflowTrigger Start — tool_book_stock_buy/tool_set_holding rufen den Workflow nach einem Depot-Write sofort auf (eliminiert das NULL-Preis-Fenster bis zum nächsten Schedule). Pfad: gehaltene Symbole holen (depot_holdings shares>0) -> IF cnt=0: Abbruch ohne Fetch. Sonst: EIN Code-Node holt ALLE Kurse über Yahoo Finance v8/chart PER Symbol (WP-4: Aktien/ETF UND Krypto als TICKER-FIAT wie BTC-EUR; key-frei, kollisionsfrei; CoinGecko retired) -> finance.fn_upsert_market_prices. Die Allokations-Drift (fn_advisor_review) liest den jüngsten Kurs via finance.networth_by_asset_class.' 300 700
+        'VIER Eingänge, EIN Pfad: (a) Schedule täglich (Cron aus core.config schedule.refresh_market_prices, beim Einspielen eingesetzt); (b) executeWorkflowTrigger Start — tool_book_stock_buy/tool_set_holding rufen den Workflow nach einem Depot-Write sofort auf (eliminiert das NULL-Preis-Fenster bis zum nächsten Schedule); (c) n8n-Start und (d) stündlicher Check holen einen verpassten Lauf nach (Sticky Nachholen). Pfad: gehaltene Symbole holen (depot_holdings shares>0) -> IF cnt=0: Abbruch ohne Fetch. Sonst: EIN Code-Node holt ALLE Kurse über Yahoo Finance v8/chart PER Symbol (WP-4: Aktien/ETF UND Krypto als TICKER-FIAT wie BTC-EUR; key-frei, kollisionsfrei; CoinGecko retired) -> finance.fn_upsert_market_prices. Die Allokations-Drift (fn_advisor_review) liest den jüngsten Kurs via finance.networth_by_asset_class.' 300 700
 
     $stickyEarlyExit = Build-Sticky 'Early-Exit' @(-20, 200) `
         'cnt=0 -> kein Fetch' `
@@ -117,10 +129,23 @@ return [{ json: { prices, currencies, source: 'yahoo' } }];
         'Paket-aktiv (beide) + cron_enable (nur Schedule)' `
         'WRITE-Cron -> finance_rw. Gate: core.fn_package_active(''finance'') AND core.fn_config_get(''finance'',''cron_enable'',''refresh_market_prices'')=''true'' (DB entscheidet, fail-closed). Toggle: lifeagents config set cron_enable refresh_market_prices false. DUAL-TRIGGER: der Start-Pfad (Sofort-Fetch nach erlaubtem Depot-Write) prüft NUR Paket-aktiv (kein cron_enable).' 300 440
 
+    $stickyInit = Build-Sticky 'Nachholen (Start + stündlich)' @(-1120, -540) `
+        'Verpassten Tageslauf nachholen (n8n-Start und jede Stunde)' `
+        'Die Planzeit verfällt, wenn das Gerät aus ist oder schläft; der scheduleTrigger holt nicht nach. Zwei Eingänge fragen deshalb dieselbe Prüfung: der n8n Trigger (Instance started, nach 30 s für Netz und DNS) und ein stündlicher Check (schedule.refresh_catchup, deckt auch das Aufwachen aus dem Ruhezustand, bei dem n8n nicht neu startet). Catch-up needed?: Paket aktiv, cron_enable an, und finance.fn_feed_refresh_due(''prices'') meldet, dass heute noch kein Kurs einer gehaltenen Position geholt wurde (jüngster Stand vor Beginn des heutigen Kalendertags der Haushalts-Zeitzone). Sonst Ende ohne Abruf: ein Abruf je Kalendertag, Wochenende und Feiertag kosten nichts extra, die Yahoo-Last bleibt klein. Nie bepreiste Positionen lösen keinen Dauer-Abruf aus (das meldet cron_remind_missing_prices).' 340 320
+
     $nodes = @($trig, $subTrig, $gateSched, $ifSched, $gateStart, $ifStart, $disabled,
+               $trigInit, $waitInit, $trigHour, $gateInit, $ifInit,
                $getSyms, $ifHold, $fetch, $upsert,
-               $stickyOverview, $stickyEarlyExit, $stickyFetch, $stickyGate)
+               $stickyOverview, $stickyEarlyExit, $stickyFetch, $stickyGate, $stickyInit)
     $conns = [ordered]@{
+        'Instance started'            = @{ main = @( ,@( E 'Wait for network' ) ) }
+        'Wait for network'            = @{ main = @( ,@( E 'Catch-up needed?' ) ) }
+        'Schedule (hourly catch-up)'  = @{ main = @( ,@( E 'Catch-up needed?' ) ) }
+        'Catch-up needed?'            = @{ main = @( ,@( E 'Catch up?' ) ) }
+        'Catch up?'                   = @{ main = @(
+            @( E 'Get held symbols' ),   # true: heute noch kein Abruf -> nachholen
+            @( E 'Disabled' )
+        ) }
         'Schedule (cron from config)' = @{ main = @( ,@( E 'Cron enabled?' ) ) }
         'Cron enabled?'               = @{ main = @( ,@( E 'Cron on?' ) ) }
         'Cron on?'                    = @{ main = @(

@@ -65,7 +65,7 @@ function Build-CronRefreshFxRates {
     # nicht fatal, damit ein Aufraeum-Fehler nie den Kurs-Abruf aufhaelt.
     $sweep = Build-Pg 'Sweep import staging' @(-180, -160) 'SELECT finance.fn_import_sweep(7) AS deleted'
     $sweep['onError'] = 'continueRegularOutput'
-    $stickySweep = Build-Sticky 'Aufräumen' @(-180, -360) 'Import-Stapel aufräumen (täglich)' 'Nur im Zeitplan-Pfad: finance.fn_import_sweep(7) löscht nicht übernommene Import-Zeilen nach 7 Tagen und Dauerauftrags-Vorschlags-Stapel 7 Tage nach ihrem letzten Ergänzen. Läuft hier, weil dieser Cron täglich und unter finance_rw läuft; ein Fehler hält den Kurs-Abruf nicht auf.' 260 200
+    $stickySweep = Build-Sticky 'Aufräumen' @(-180, -360) 'Import-Stapel aufräumen (täglich)' 'Nur im Zeitplan- und Nachhol-Pfad (nicht beim Sofort-Abruf nach einem Write): finance.fn_import_sweep(7) löscht nicht übernommene Import-Zeilen nach 7 Tagen und Dauerauftrags-Vorschlags-Stapel 7 Tage nach ihrem letzten Ergänzen. Läuft hier, weil dieser Cron täglich und unter finance_rw läuft; ein Fehler hält den Kurs-Abruf nicht auf.' 260 200
 
     $stickyOverview = Build-Sticky 'Überblick' @(-460, -260) `
         'FX-Kurs-Refresh (Dual-Trigger, kein LLM)' `
@@ -98,7 +98,7 @@ function Build-CronRefreshFxRates {
         'Schedule (hourly catch-up)'  = @{ main = @( ,@( E 'Catch-up needed?' ) ) }
         'Catch-up needed?'            = @{ main = @( ,@( E 'Catch up?' ) ) }
         'Catch up?'                   = @{ main = @(
-            @( E 'Check active currencies' ),   # true: Luecke -> nachholen
+            @( (E 'Check active currencies'), (E 'Sweep import staging') ),   # true: Luecke -> nachholen (Aufraeumen wie im Tagesplan)
             @( E 'Disabled' )
         ) }
         'Schedule (cron from config)' = @{ main = @( ,@( E 'Cron enabled?' ) ) }

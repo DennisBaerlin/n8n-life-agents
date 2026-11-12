@@ -400,7 +400,7 @@
                   },
                   {
                       "parameters":  {
-                                         "content":  "## DB-Automatik\n**Import-Stapel aufräumen (täglich)**\n\nNur im Zeitplan-Pfad: finance.fn_import_sweep(7) löscht nicht übernommene Import-Zeilen nach 7 Tagen und Dauerauftrags-Vorschlags-Stapel 7 Tage nach ihrem letzten Ergänzen. Läuft hier, weil dieser Cron täglich und unter finance_rw läuft; ein Fehler hält den Kurs-Abruf nicht auf.",
+                                         "content":  "## DB-Automatik\n**Import-Stapel aufräumen (täglich)**\n\nNur im Zeitplan- und Nachhol-Pfad (nicht beim Sofort-Abruf nach einem Write): finance.fn_import_sweep(7) löscht nicht übernommene Import-Zeilen nach 7 Tagen und Dauerauftrags-Vorschlags-Stapel 7 Tage nach ihrem letzten Ergänzen. Läuft hier, weil dieser Cron täglich und unter finance_rw läuft; ein Fehler hält den Kurs-Abruf nicht auf.",
                                          "height":  260,
                                          "width":  200,
                                          "color":  4
@@ -581,6 +581,11 @@
                                                            {
                                                                "index":  0,
                                                                "node":  "Check active currencies",
+                                                               "type":  "main"
+                                                           },
+                                                           {
+                                                               "index":  0,
+                                                               "node":  "Sweep import staging",
                                                                "type":  "main"
                                                            }
                                                        ],

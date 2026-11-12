@@ -19,14 +19,10 @@ DECLARE
   v_last timestamptz;
 BEGIN
   IF p_feed = 'fx' THEN
-    SELECT count(*) INTO v_n FROM finance.fn_active_currencies();
-    IF v_n = 0 THEN
-      RETURN false;
-    END IF;
-    SELECT max(fxr.updated_at) INTO v_last
+    SELECT count(ac.code), max(fxr.updated_at) INTO v_n, v_last
     FROM finance.fn_active_currencies() ac
-    JOIN finance.fx_rates fxr ON fxr.base_currency = 'EUR' AND fxr.quote_currency = ac.code;
-    RETURN v_last IS NULL OR core.fn_today(v_last) < core.fn_today();
+    LEFT JOIN finance.fx_rates fxr ON fxr.base_currency = 'EUR' AND fxr.quote_currency = ac.code;
+    RETURN v_n > 0 AND (v_last IS NULL OR core.fn_today(v_last) < core.fn_today());
   ELSIF p_feed = 'prices' THEN
     SELECT max(mp.updated_at) INTO v_last
     FROM finance.market_prices mp

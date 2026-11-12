@@ -11,10 +11,11 @@
 function Build-SendHandoffOverview {
     $trig = Build-Trigger @('domain')
 
+    # Text-Schluessel aus der Struktur selbst (auch verschachtelte tpl wie since/why), wie Split messages in core.sub_plan_rollout_next.
     $read = Build-Pg 'Read overview' @(220, 0) `
-        ("=SELECT core.fn_handoff_overview(jsonb_build_object('domain', (`$1::jsonb)->>'domain', 'chat_id', (`$1::jsonb)->>'chat_id'))::text AS ov, " +
-         "core.fn_ui_texts_for(jsonb_build_object('chat_id', (`$1::jsonb)->>'chat_id', 'keys', to_jsonb(" +
-         (Get-UiKeysSql (@('core.handoff.overview', 'core.handoff.btn_go') + $script:UiRenderKeys)) + ")))::text AS ui;") `
+        ("=WITH o AS (SELECT core.fn_handoff_overview(jsonb_build_object('domain', (`$1::jsonb)->>'domain', 'chat_id', (`$1::jsonb)->>'chat_id', 'via', 'advisor')) AS ov) " +
+         "SELECT o.ov::text AS ov, core.fn_ui_texts_for(jsonb_build_object('chat_id', (`$1::jsonb)->>'chat_id', 'keys', to_jsonb(" +
+         (Get-UiKeysSql (@('core.handoff.btn_go') + $script:UiRenderKeys)) + ") || jsonb_path_query_array(o.ov->'msg', 'strict `$.** ? (@.kind == ""tpl"").value')))::text AS ui FROM o;") `
         ([ordered]@{
             domain  = "String(`$('Start').item.json.domain || '')"
             chat_id = "String(`$('Start').item.json.chat_id || '')"

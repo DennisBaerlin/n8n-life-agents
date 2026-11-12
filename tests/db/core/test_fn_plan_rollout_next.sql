@@ -59,8 +59,9 @@ BEGIN
   -- gerade beanspruchte Aufgabe (Durchgehen laeuft) steht nicht in der Liste, wie beim Berater-Tool (core.fn_handoff_overview)
   INSERT INTO agent.handoff_tasks (domain, package, person_id, section_key, kind, text, status, claimed_at) VALUES (d, 'core', 'erika', 's', 'other', 'Aufgabe W', 'working', now());
   v := core.fn_plan_rollout_next(d, 'erika');
-  IF v->'messages'->0->'msg'->0->'params'->>'list' <> '1. Aufgabe A' THEN RAISE EXCEPTION 'FAIL s1 working %', v; END IF;
-  IF v->'messages'->0->'buttons'->0->>'data' <> 'handoff:' || d || ':' || (SELECT min(id) FROM agent.handoff_tasks WHERE domain = d) THEN RAISE EXCEPTION 'FAIL s1 max ohne working %', v; END IF;
+  IF v->'messages'->0->'msg'->0->'params'->>'list' IS DISTINCT FROM '1. Aufgabe A' THEN RAISE EXCEPTION 'FAIL s1 working %', v; END IF;
+  IF v->'messages'->0->'msg'->0->'params'->'why'->>'value' IS DISTINCT FROM 'core.handoff.why_rollout' THEN RAISE EXCEPTION 'FAIL s1 why %', v; END IF;
+  IF v->'messages'->0->'buttons'->0->>'data' IS DISTINCT FROM 'handoff:' || d || ':' || (SELECT min(id) FROM agent.handoff_tasks WHERE domain = d) THEN RAISE EXCEPTION 'FAIL s1 max ohne working %', v; END IF;
   PERFORM core.fn_notify_resolve('plan_rollout', v->'messages'->0->'latch'->>'key');
   DELETE FROM agent.handoff_tasks WHERE domain = d AND text = 'Aufgabe W';
   v := core.fn_plan_rollout_next(d, 'erika');

@@ -1141,6 +1141,9 @@
   "core.hitl.plan_legacy_replaced": "이 섹션의 기존 전체 텍스트를 대체합니다.",
   "core.toast.handoff_nothing_open": "이미 끝났거나 진행 중이에요.",
   "core.orch.toast_handoff": "첫 번째 항목이 곧 나와요 …",
-  "core.handoff.overview": "계획 상담에서 아직 입력할 항목:\n{list}\n\n'하나씩 보기'를 누르면 항목마다 따로 확인할 수 있어요. 나중에 해도 괜찮아요.",
+  "core.handoff.overview": "계획 상담에서 아직 입력할 항목 ({since}부터):\n{list}\n\n{why} '하나씩 보기'를 누르면 항목마다 따로 확인할 수 있어요. 나중에 해도 괜찮아요.",
+  "core.handoff.since_today": "오늘",
+  "core.handoff.why_rollout": "아직 입력되지 않아서 알려드려요.",
+  "core.handoff.why_advisor": "입력할 목록이에요.",
   "core.handoff.btn_go": "하나씩 보기"
 }

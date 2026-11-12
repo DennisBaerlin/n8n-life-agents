@@ -98,7 +98,7 @@ BEGIN
     IF v_cnt > 0 THEN
         -- Offener Entwurf: das Gespraech laeuft noch, die Liste kommt an dessen Ende (Publish oder tool_send_handoff_overview).
         IF v_draft THEN RETURN jsonb_build_object('step', 1, 'wait', true, 'messages', '[]'::jsonb); END IF;
-        v_res := core.fn_handoff_overview(jsonb_build_object('domain', p_domain, 'chat_id', core.fn_person_chat_id(p_person)::text));
+        v_res := core.fn_handoff_overview(jsonb_build_object('domain', p_domain, 'chat_id', core.fn_person_chat_id(p_person)::text, 'via', 'rollout'));
         v_max := NULLIF(v_res->>'max_task_id', '')::int;
         v_key := p_domain || ':' || v_who || ':handoff:' || v_max;
         v_state := CASE WHEN v_max IS NULL THEN 'done' ELSE core.fn_plan_rollout_latch(v_key) END;

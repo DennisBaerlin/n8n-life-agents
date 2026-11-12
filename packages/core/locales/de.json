@@ -1141,6 +1141,9 @@
   "core.hitl.plan_legacy_replaced": "Ersetzt den bisherigen Gesamttext dieses Abschnitts.",
   "core.toast.handoff_nothing_open": "Schon erledigt oder läuft gerade.",
   "core.orch.toast_handoff": "Der erste Punkt kommt gleich …",
-  "core.handoff.overview": "Aus dem Plan-Gespräch noch einzutragen:\n{list}\n\nMit „Durchgehen“ kommt jeder Punkt einzeln zum Bestätigen. Das geht auch später noch.",
+  "core.handoff.overview": "Aus dem Plan-Gespräch noch einzutragen (offen seit {since}):\n{list}\n\n{why} Mit „Durchgehen“ kommt jeder Punkt einzeln zum Bestätigen. Das geht auch später noch.",
+  "core.handoff.since_today": "heute",
+  "core.handoff.why_rollout": "Ich erinnere dich, weil das noch offen ist.",
+  "core.handoff.why_advisor": "Hier ist die Liste zum Eintragen.",
   "core.handoff.btn_go": "Durchgehen"
 }

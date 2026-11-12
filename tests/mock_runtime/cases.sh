@@ -13,7 +13,7 @@
 # Braucht kein n8n, kein Docker und kein Netz.
 #
 # Usage: bash cases.sh <root>      Ausgabe je Fall "PASS <fall>" / "FAIL <fall>: <grund>"; Exit = Anzahl FAIL.
-# shellcheck disable=SC2016,SC2329  # Pruef-Ausdruecke stehen bewusst in einfachen Quotes (eval im Fall); Attrappen-Funktionen ruft der Lib-Code
+# shellcheck disable=SC2016,SC2329,SC1003,SC2034  # Windows-Pfade mit Backslash am Ende; Env-Prefixe fuer Funktionen; Pruef-Ausdruecke stehen bewusst in einfachen Quotes (eval im Fall); Attrappen-Funktionen ruft der Lib-Code
 set -uo pipefail
 ROOT="$1"
 export LANG=C.UTF-8 LC_ALL=C.UTF-8 GUM_DISABLE=1
@@ -335,6 +335,107 @@ esac
 : > "$STUB_LOG"; rt_host_get /Users/erika/Sicherung x.nla.enc >/dev/null
 case "$(last)" in *"type=bind,src=/Users/erika/Sicherung,dst=/in,readonly|"*) pass R.lesen-nur-lesend ;; *) fail R.lesen-nur-lesend "$(last)" ;; esac
 if grep -qE '\|-v\||prune' "$STUB_LOG"; then fail R.kein-breiter-schalter "$(cat "$STUB_LOG")"; else pass R.kein-breiter-schalter; fi
+# Mehr als 50 Tabellen: jsonb_build_object nimmt hoechstens 100 Argumente -> Bloecke zu 50 Paaren (Export brach sonst ab).
+_pairs=(); for i in $(seq 1 120); do _pairs+=("'t$i', $i"); done
+_obj="$( { _bkp_jsonb_obj "${_pairs[@]}"; } 2>/dev/null || true)"
+eq R.json-bloecke-zu-50 '3 0 120' "$(printf '%s' "$_obj" | grep -o 'jsonb_build_object(' | wc -l) $(printf '%s' "$_obj" | grep -o "'t[0-9]*'" | sort | uniq -d | wc -l) $(printf '%s' "$_obj" | grep -o "'t[0-9]*'" | wc -l)"
+eq R.json-leer "'{}'::jsonb" "$( { _bkp_jsonb_obj; } 2>/dev/null || true)"
+
+# ---------------------------------------------------------------------------- B: Sicherungs-Schluessel (Notfallblatt)
+# Erfundene Schluessel, nie ein echter Wert (Repo oeffentlich).
+K1="$(printf '0123456789abcdef%.0s' 1 2 3 4)"
+K2="$(printf 'fedcba9876543210%.0s' 1 2 3 4)"
+_paper="$(printf '%s' "$K1" | backup_key_paper)"
+eq B.blatt-vier-zeilen 4 "$(printf '%s\n' "$_paper" | grep -cE '^[1-4]:  [0-9a-f]{4}(-[0-9a-f]{4}){3}  [0-9a-f]{2}$')"
+eq B.blatt-rundweg "key:$K1" "$(printf '%s\n' "$_paper" | backup_key_parse)"
+eq B.gross-und-ohne-praefix "key:$K1" "$(printf '%s\n' "$_paper" | sed -E 's/^[1-4]:  //' | tr 'a-f' 'A-F' | backup_key_parse)"
+eq B.roh-ohne-pruefzeichen "key:$K1" "$(printf '  %s\n' "$K1" | backup_key_parse)"
+eq B.zeile-ohne-pruefzeichen 0123456789abcdef "$(printf '1: 0123-4567-89AB-cdef' | backup_key_line 1)"
+_bad="$(printf '%s\n' "$_paper" | sed -E '3s/^(3:  )./\1f/')"
+[ "$_bad" != "$_paper" ] || _bad="$(printf '%s\n' "$_paper" | sed -E '3s/^(3:  )./\1e/')"
+eq B.tippfehler-zeile3 err:line3 "$(printf '%s\n' "$_bad" | backup_key_parse)"
+# Zeile 2 unter Zeile 1 abgetippt (ohne Nummern): die Pruefzeichen haengen an der Zeilennummer.
+_swap="$(printf '%s\n' "$_paper" | sed -E 's/^[1-4]:  //' | awk 'NR==1{a=$0;next} NR==2{print; print a; next} {print}')"
+eq B.vertauschte-zeilen err:line1 "$(printf '%s\n' "$_swap" | backup_key_parse)"
+eq B.zu-kurz err:length "$(printf 'abc123' | backup_key_parse)"
+eq B.fremde-zeichen err:chars "$(printf 'kein schluessel!' | backup_key_parse)"
+eq B.fehlende-zeile err:line4 "$(printf '%s\n' "$_paper" | sed '4d' | backup_key_parse)"
+# Die ganze Notfallblatt-Datei: aktueller + aelterer Schluessel, dazwischen Text und eine Schritt-Liste.
+_kit="$(printf 'Notfallblatt\n%s\n\nFuer aeltere Sicherungen:\n%s\n- 1. Schritt\nDatum 12.11.2026\n' "$_paper" "$(printf '%s' "$K2" | backup_key_paper)")"
+eq B.datei-zwei-schluessel "key:$K1 key:$K2" "$(printf '%s\n' "$_kit" | backup_key_parse | tr '\n' ' ' | sed 's/ $//')"
+eq B.datei-tippfehler-im-ersten "err:line3 key:$K2" "$(printf '%s\n%s\n' "$_bad" "$(printf '%s' "$K2" | backup_key_paper)" | backup_key_parse | tr '\n' ' ' | sed 's/ $//')"
+_id1="$(printf '%s' "$K1" | backup_key_id)"; _id2="$(printf '%s' "$K2" | backup_key_id)"
+if [[ "$_id1" =~ ^k[0-9a-f]{8}$ ]] && [ "$_id1" != "$_id2" ]; then pass B.kennung-form; else fail B.kennung-form "$_id1/$_id2"; fi
+# Entschluesseln mit allen gespeicherten Schluesseln (die DB-Abfrage ist hier eine Attrappe; gpg ist echt).
+printf 'klartext' > "$W/plain"
+gpg_sym_encrypt "$K1" "$W/c.gpg" "$W/plain" 2>/dev/null
+if ( backup_key_candidates() { printf '%s\n' "$K2" "$K1"; }
+     gpg_sym_decrypt_any "$W/c.gpg" "$W/out" && [ "$_BK_HIT_INDEX" = 1 ] && [ "$_BK_HIT_KEY" = "$K1" ] && [ "$(cat "$W/out")" = klartext ] ); then
+  pass B.alle-schluessel-probieren; else fail B.alle-schluessel-probieren "kein Treffer mit dem zweiten"; fi
+printf 'rest' > "$W/out"
+if ( backup_key_candidates() { printf '%s\n' "$K2"; }; gpg_sym_decrypt_any "$W/c.gpg" "$W/out" ); then fail B.kein-treffer "Treffer"
+elif [ -s "$W/out" ]; then fail B.kein-treffer "Ausgabe nicht geleert"; else pass B.kein-treffer; fi
+# Aufraeumen im Rechner-Ordner: nur eigene Kennung, die neuesten 14 bleiben; fremde Kennung und alte Namen nie.
+_names="$( for i in $(seq 10 25); do printf 'lifeagents-backup-202611%02d033000-%s-v0.44.0.nla.enc\n' "$i" "$_id1"; done
+           for i in 1 2 3; do printf 'lifeagents-backup-2026100%d033000-k0000000%d-v0.43.0.nla.enc\n' "$i" "$i"; done
+           printf 'lifeagents-backup-20261001033000.nla.enc\nlifeagents-backup-20261002033000.nla.enc\n' )"
+eq B.aufraeumen-nur-eigene "lifeagents-backup-20261111033000-${_id1}-v0.44.0.nla.enc lifeagents-backup-20261110033000-${_id1}-v0.44.0.nla.enc" \
+  "$(printf '%s\n' "$_names" | _bkp_rotate_victims 14 "$_id1" | tr '\n' ' ' | sed 's/ $//')"
+eq B.aufraeumen-fremde-kennung '' "$(printf '%s\n' "$_names" | _bkp_rotate_victims 14 k00000001)"
+: > "$STUB_LOG"
+if rt_host_rm /Users/erika/Sicherung ok.nla.enc ../weg 2>/dev/null; then fail B.loeschen-nur-namen "Pfad angenommen"
+elif [ -s "$STUB_LOG" ]; then fail B.loeschen-nur-namen "Container trotzdem gestartet"; else pass B.loeschen-nur-namen; fi
+rt_host_rm /Users/erika/Sicherung a.nla.enc b.nla.enc
+case "$(last)" in *"src=/Users/erika/Sicherung,dst=/out|"*"|_|a.nla.enc|b.nla.enc|stdin=") pass B.loeschen-genau-diese ;; *) fail B.loeschen-genau-diese "$(last)" ;; esac
+eq B.dateiname "lifeagents-backup-20261112033000-${_id1}-v0.44.0.nla.enc" "$(_bkp_file_name 20261112033000 "$_id1" v0.44.0)"
+eq B.dateiname-dev "lifeagents-backup-20261112033000-${_id1}-vdev.nla.enc" "$(_bkp_file_name 20261112033000 "$_id1" 'main-1a2b/x')"
+eq B.kennung-aus-name "$_id1" "$(_bkp_file_key_id "/x/lifeagents-backup-20261112033000-${_id1}-v0.44.0.nla.enc")"
+eq B.kennung-umbenannte-kopie "$_id1" "$(_bkp_file_key_id "Kopie von lifeagents-backup-20261112033000-${_id1}-v0.44.0 (1).nla.enc")"
+eq B.aufraeumen-nie-umbenannte '' "$(printf 'Kopie von lifeagents-backup-20261112033000-%s-v0.44.0.nla.enc\n' "$_id1" | _bkp_rotate_victims 0 "$_id1")"
+# Rechner-Pfade: Windows-Schreibweise geht als Docker-Form an Docker (Docker Desktop/WSL2), Anzeige bleibt beim Nutzer.
+eq B.windows-pfad-docker '/run/desktop/mnt/host/c/Daten/OneDrive/Life Agents Sicherungen' "$(_bkp_hd 'C:\Daten\OneDrive\Life Agents Sicherungen\')"
+eq B.windows-schraegstrich '/run/desktop/mnt/host/d/Sicherung' "$(_bkp_hd 'D:/Sicherung')"
+eq B.mac-pfad-unveraendert '/Users/erika/Library/Mobile Documents/com~apple~CloudDocs' "$(_bkp_hd '/Users/erika/Library/Mobile Documents/com~apple~CloudDocs/')"
+eq B.join-windows 'C:\Daten\Life Agents Sicherungen' "$(_bkp_join 'C:\Daten' 'Life Agents Sicherungen')"
+eq B.join-mac '/Users/erika/Life Agents Sicherungen' "$(_bkp_join '/Users/erika/' 'Life Agents Sicherungen')"
+for d in 'C:\Daten' 'c:/Daten'; do if _bkp_host_dir_valid "$d"; then pass "B.windows-gueltig:$d"; else fail "B.windows-gueltig:$d" abgelehnt; fi; done
+for d in 'C:relativ' 'C:\a,b' '\\server\freigabe'; do if _bkp_host_dir_valid "$d"; then fail "B.windows-ungueltig:$d" angenommen; else pass "B.windows-ungueltig:$d"; fi; done
+: > "$STUB_LOG"
+if rt_host_mkdir /Users/erika 'a/b'; then fail B.unterordner-nur-name "Pfad angenommen"; elif [ -s "$STUB_LOG" ]; then fail B.unterordner-nur-name "Container gestartet"; else pass B.unterordner-nur-name; fi
+# Chat-Hinweis: erst nach 2 Tagen ohne gelungene Sicherung, dann hoechstens alle 20 h.
+(
+  BACKUP_STATE_FILE="$W/bstate"; : > "$BACKUP_STATE_FILE"; BACKUP_NOTIFY_HOURS=00-23
+  notify_owner_telegram() { printf 'x\n' >> "$W/notified"; }
+  : > "$W/notified"
+  env_upsert "$BACKUP_STATE_FILE" LAST_OK "$(( $(date +%s) - 3600 ))"; _bkp_stale_notify
+  a="$(wc -l < "$W/notified")"
+  env_upsert "$BACKUP_STATE_FILE" LAST_OK "$(( $(date +%s) - 3 * 86400 ))"; env_upsert "$BACKUP_STATE_FILE" LAST_FAIL_REASON folder
+  _bkp_stale_notify; b="$(wc -l < "$W/notified")"
+  _bkp_stale_notify; c="$(wc -l < "$W/notified")"
+  env_upsert "$BACKUP_STATE_FILE" LAST_NOTIFY "$(( $(date +%s) - 21 * 3600 ))"; _bkp_stale_notify; d="$(wc -l < "$W/notified")"
+  printf '%s %s %s %s\n' "$a" "$b" "$c" "$d"
+) > "$W/notify.out" 2>&1
+eq B.hinweis-nach-2-tagen-alle-20h '0 1 1 2' "$(tail -n1 "$W/notify.out")"
+# Nachts kein Hinweis (Takt 03:30), ohne Ordner nur woechentlich; Eingabe-Bereinigung; Grund-Code je Ordner-Problem.
+(
+  BACKUP_STATE_FILE="$W/bstate2"; : > "$BACKUP_STATE_FILE"
+  notify_owner_telegram() { printf 'x\n' >> "$W/notified2"; }
+  : > "$W/notified2"
+  env_upsert "$BACKUP_STATE_FILE" LAST_OK "$(( $(date +%s) - 3 * 86400 ))"
+  h="$(TZ=Europe/Berlin date +%H)"; nh="$(printf '%02d-%02d' $(( (10#$h + 1) % 24 )) $(( (10#$h + 1) % 24 )))"
+  BACKUP_NOTIFY_HOURS="$nh" _bkp_stale_notify; a="$(wc -l < "$W/notified2")"
+  env_upsert "$BACKUP_STATE_FILE" LAST_FAIL_REASON nofolder
+  env_upsert "$BACKUP_STATE_FILE" LAST_NOTIFY "$(( $(date +%s) - 2 * 86400 ))"
+  BACKUP_NOTIFY_HOURS=00-23 _bkp_stale_notify; b="$(wc -l < "$W/notified2")"
+  env_upsert "$BACKUP_STATE_FILE" LAST_NOTIFY "$(( $(date +%s) - 8 * 86400 ))"
+  BACKUP_NOTIFY_HOURS=00-23 _bkp_stale_notify; c="$(wc -l < "$W/notified2")"
+  printf '%s %s %s\n' "$a" "$b" "$c"
+) > "$W/notify2.out" 2>&1
+eq B.hinweis-nur-tagsueber-ohne-ordner-woechentlich '0 0 1' "$(tail -n1 "$W/notify2.out")"
+eq B.pfad-anfuehrungszeichen 'C:\Daten\OneDrive' "$(_bkp_path_clean '  "C:\Daten\OneDrive"  ')"
+eq B.pfad-leerzeichen '/Users/erika/Meine Sicherung' "$(_bkp_path_clean ' /Users/erika/Meine Sicherung ')"
+eq B.grund-je-problem 'folder folder write' "$(_bkp_reason_of missing) $(_bkp_reason_of access) $(_bkp_reason_of readonly)"
+eq B.kennung-alter-name '' "$(_bkp_file_key_id lifeagents-backup-20261001033000.nla.enc)"
 
 # ---------------------------------------------------------------------------- D: Entfernen (Pruefliste Nr. 17, stack.sh)
 unset LIFEAGENTS_RUNTIME
@@ -466,6 +567,22 @@ eq K.frisch-geprueft-nur-auftraege 'run' "$(tr '\n' ' ' < "$W/tick.log" | sed 's
 env_upsert "$UPDATE_TICK_STATE" LAST_CHECK "$(( $(date -u +%s) - 7300 ))"; : > "$W/tick.log"
 ( BACKUP_AUTO_AT=2400 update_tick )
 eq K.intervall-abgelaufen-prueft-wieder 'run check' "$(tr '\n' ' ' < "$W/tick.log" | sed 's/ $//')"
+# Sicherung heute gescheitert -> stuendlich neuer Versuch; danach gelungen -> keiner mehr.
+_bst="$W/tickb.state"; rm -f "$_bst"
+env_upsert "$UPDATE_TICK_STATE" LAST_BACKUP "$(TZ=UTC date +%Y-%m-%d)"; env_upsert "$UPDATE_TICK_STATE" LAST_BACKUP_TRY "$(( $(date -u +%s) - 3700 ))"
+env_upsert "$_bst" LAST_OK 100; env_upsert "$_bst" LAST_FAIL 200
+: > "$W/tick.log"; ( BACKUP_STATE_FILE="$_bst" BACKUP_AUTO_AT=0000 update_tick )
+eq K.fehlschlag-neuer-versuch 'run cli backup auto' "$(tr '\n' ' ' < "$W/tick.log" | sed 's/ $//')"
+: > "$W/tick.log"; ( BACKUP_STATE_FILE="$_bst" BACKUP_AUTO_AT=0000 update_tick )
+eq K.neuer-versuch-erst-nach-einer-stunde 'run' "$(tr '\n' ' ' < "$W/tick.log" | sed 's/ $//')"
+env_upsert "$_bst" LAST_OK 300; env_upsert "$UPDATE_TICK_STATE" LAST_BACKUP_TRY "$(( $(date -u +%s) - 3700 ))"
+: > "$W/tick.log"; ( BACKUP_STATE_FILE="$_bst" BACKUP_AUTO_AT=0000 update_tick )
+eq K.nach-erfolg-kein-versuch 'run' "$(tr '\n' ' ' < "$W/tick.log" | sed 's/ $//')"
+# Ohne gewaehlten Ordner hilft kein neuer Versuch (der Menuepunkt sichert beim Waehlen selbst) -> nicht stuendlich.
+env_upsert "$_bst" LAST_FAIL 400; env_upsert "$_bst" LAST_FAIL_REASON nofolder
+env_upsert "$UPDATE_TICK_STATE" LAST_BACKUP_TRY "$(( $(date -u +%s) - 3700 ))"
+: > "$W/tick.log"; ( BACKUP_STATE_FILE="$_bst" BACKUP_AUTO_AT=0000 update_tick )
+eq K.ohne-ordner-kein-versuch 'run' "$(tr '\n' ' ' < "$W/tick.log" | sed 's/ $//')"
 env_upsert "$UPDATE_TICK_STATE" LAST_CHECK 2026-11-08; : > "$W/tick.log"
 ( BACKUP_AUTO_AT=2400 update_tick )
 eq K.alter-datumswert-prueft 'run check' "$(tr '\n' ' ' < "$W/tick.log" | sed 's/ $//')"

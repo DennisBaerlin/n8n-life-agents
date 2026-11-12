@@ -44,6 +44,11 @@ pub const HOST_NAMES_VAR: &str = "LA_HOST_NAME_CANDIDATES";
 /// vollständiger Name des angemeldeten Nutzers und Sprache des Systems (zwei Buchstaben).
 pub const USER_FULLNAME_VAR: &str = "LA_USER_FULLNAME";
 pub const USER_LANG_VAR: &str = "LA_USER_LANG";
+/// Ordner-Vorschläge für „Wohin sichern?“: `<art>|<pfad>;…` mit art `icloud|onedrive|dropbox|documents` (`suggest.rs`).
+pub const BACKUP_CANDIDATES_VAR: &str = "LA_BACKUP_CANDIDATES";
+/// Fragebogen im Änderungs-Modus (Menüpunkt „Sicherungsordner ändern …“): `node <WIZARD_SERVER> --backup-dir`, danach wie
+/// bei der Einrichtung `WizardUrl`/`WizardStatus` (Phasen `backup_dir`, `backup_done`); er endet nach „Fertig“ selbst.
+pub const WIZARD_SERVER: &str = "/opt/lifeagents/provisioning/wizard/server.js";
 /// Zweiter freier Port auf 127.0.0.1, nur für den Wizard (veröffentlicht vom Dienst `edge`).
 pub const WIZARD_PORT_VAR: &str = "LA_WIZARD_PORT";
 /// Suchbereich für den freien Port (wie im Testpaket).
@@ -66,6 +71,9 @@ pub enum MasterCmd {
     PowerDone,
     /// Vor dem Entfernen (Nr. 17): Telegram-Webhook zurücksetzen. Exit 0 = erledigt. Gehört zu Paket 2.
     ReleaseWebhook,
+    /// Notfallblatt (Sicherungs-Schlüssel) auf stdout. Geheim: die Ausgabe geht nur in die Datei in Downloads, nie in
+    /// Fehlerbericht, Journal oder Log (`backup.rs`).
+    BackupKit,
 }
 
 impl MasterCmd {
@@ -75,6 +83,7 @@ impl MasterCmd {
             MasterCmd::WizardStatus => vec!["node", WIZARD_CTL, "status"],
             MasterCmd::PowerDone => vec!["node", WIZARD_CTL, "power-done"],
             MasterCmd::ReleaseWebhook => vec!["lifeagents", "telegram", "release-webhook"],
+            MasterCmd::BackupKit => vec!["lifeagents", "backup", "key", "--file", "-"],
         };
         v.into_iter().map(String::from).collect()
     }

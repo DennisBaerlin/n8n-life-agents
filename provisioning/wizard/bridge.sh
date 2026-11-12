@@ -17,6 +17,7 @@
 #   bash bridge.sh reach-status                  -> Zustand des Tunnels (Schnittstelle zu Paket 3, s. reach_status_json)
 #   bash bridge.sh public-ip                     -> öffentliche IPv4 des Anschlusses (Paket 3, reach_public_ipv4)
 #   bash bridge.sh dslite                        -> eigene öffentliche IPv4? {"dslite":"yes|no|unknown"} (Paket 3, reach_dslite_json)
+#   bash bridge.sh backup-dir                    -> stdin: Eltern-Ordner der Sicherungen; {"problem":…,"folder":…,"foreign":…}
 #
 # Geheimnisse nur über stdin/Env, nie im argv (die Prozessliste ist für jeden lesbar). Ausgabe immer genau eine JSON-Zeile
 # auf stdout; Meldungen der Bibliotheken gehen nach stderr, die der Wizard verwirft. Exit 0, ausser bei falschem Aufruf (64).
@@ -271,8 +272,30 @@ br_dslite() {
   if [ -n "$d" ]; then printf '%s\n' "$d"; else jq -nc '{dslite:"unknown", source:"none"}'; fi
 }
 
+# backup-dir — Eltern-Ordner der Sicherungen (stdin, Schreibweise des Nutzers) pruefen, wie `backup host-dir --create`:
+#   {"problem":"invalid|missing|access|readonly"|"", "folder":"<Ordner, der angelegt wird>", "foreign":true|false}
+#   (foreign = darin liegen schon Sicherungen eines anderen Schluessels). Unterordner-Name in OWNER_LANGUAGE (Env, F4).
+br_backup_dir() {
+  local dir prob target foreign=false b
+  dir="$(head -c 1024 | tr -d '\r')"; dir="${dir%$'\n'}"
+  # shellcheck source=/dev/null
+  . "$_BR_PROV/lib/backup_cli.sh"
+  # Vor der Installation gibt es keine DB mit der Owner-Sprache -> die Sprache des Fragebogens kommt per Env.
+  _BACKUP_LANG="${OWNER_LANGUAGE:-de}"; [[ "$_BACKUP_LANG" =~ ^[a-z]{2}$ ]] || _BACKUP_LANG=de
+  dir="$(_bkp_path_clean "$dir")"
+  prob="$(_bkp_folder_problem "$dir" 2>/dev/null || printf access)"
+  target=''
+  if [ -z "$prob" ]; then
+    target="$(_bkp_folder_target "$dir")"
+    # Vor der Installation gibt es keinen eigenen Schluessel: jede Sicherung mit Kennung stammt von einem anderen Rechner.
+    while IFS= read -r b; do [ -n "$(_bkp_file_key_id "$b")" ] && foreign=true; done < <(rt_host_ls "$(_bkp_hd "$target")" 2>/dev/null || true)
+  fi
+  jq -nc --arg p "$prob" --arg d "$dir" --arg f "$target" --argjson x "$foreign" '{problem:$p, dir:$d, folder:$f, foreign:$x}'
+}
+
 case "${1:-}" in
   questions)       br_questions ;;
+  backup-dir)      br_backup_dir ;;
   dslite)          br_dslite ;;
   paperless-ports) br_paperless_ports ;;
   reach-ports)     br_reach_ports ;;
@@ -281,5 +304,5 @@ case "${1:-}" in
   tg-check)        br_tg_check ;;
   reach-status)    br_reach_status ;;
   public-ip)       br_public_ip ;;
-  *) printf 'Aufruf: bridge.sh questions|validate <ref>|paperless-check|tg-check|reach-status|reach-ports|paperless-ports|public-ip|dslite\n' >&2; exit 64 ;;
+  *) printf 'Aufruf: bridge.sh questions|backup-dir|validate <ref>|paperless-check|tg-check|reach-status|reach-ports|paperless-ports|public-ip|dslite\n' >&2; exit 64 ;;
 esac

@@ -58,7 +58,7 @@ Usage: lifeagents <befehl> [optionen]
               anderen Rechner: n8n nur für diese Adresse öffnen; 127.0.0.1 = dieser Rechner). Braucht root.
   household   Owner-Lifecycle am Haushalt: list/add/remove/unlink/pair-owner (Personen) + block/unblock/
               blocked (unbekannte Anklopfer sperren). `lifeagents household help` für Details. Braucht root.
-  backup      Nutzerdaten sichern/wiederherstellen: export/restore (verschluesselt, paket-bewusst,
+  backup      Nutzerdaten sichern/wiederherstellen: export/restore/key (verschluesselt, paket-bewusst,
               atomar); im Docker-Verbund außerdem host-dir/auto (Sicherungs-Ordner auf dem Rechner).
               `lifeagents backup help` für Details. Braucht root.
   doctor      Diagnose (Dienste/Schema/Routen; read-only). Exit = Anzahl ROT.

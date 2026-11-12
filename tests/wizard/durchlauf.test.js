@@ -27,6 +27,11 @@ function paperlessMock() {
 
 async function page(w) { return (await state(w)).json.page; }
 async function expectOk(r) { assert.equal(r.status, 200, JSON.stringify(r.json && (r.json.error || r.json))); return r.json; }
+// backupPage(w) -> „Wohin sichern?“ mit einem eigenen Ordner beantworten (Pflichtseite vor der Zusammenfassung).
+async function backupPage(w) {
+  await expectOk(await answer(w, 'backup_dir', 'other'));
+  await expectOk(await answer(w, 'backup_dir_custom', '/daten/sicherung'));
+}
 
 test('Durchlauf FritzBox mit drei Modulen: Antwort-Datei, Installation, Pairing, Übergabe', async () => {
   const pl = await paperlessMock();
@@ -153,6 +158,16 @@ test('Durchlauf FritzBox mit drei Modulen: Antwort-Datei, Installation, Pairing,
     assert.equal(box.status, 422);
     assert.match(box.json.error, /FritzBox selbst/);
     await expectOk(await answer(w, 'h:DOMAIN', 'meinrechner'));
+    // Wohin sichern? Ohne Vorschläge der App nur „Anderer Ordner“; die Prüfung läuft über die Brücke, mit Fragebogen-Sprache.
+    const bk = await page(w);
+    assert.equal(bk.id, 'backup_dir');
+    assert.deepEqual(bk.options.map((o) => o.value), ['other']);
+    await expectOk(await answer(w, 'backup_dir', 'other'));
+    fs.writeFileSync(path.join(w.fake, 'backup_problem'), 'missing');
+    assert.match((await answer(w, 'backup_dir_custom', '/daten/fehlt')).json.error, /gibt es auf dem Rechner nicht/);
+    fs.rmSync(path.join(w.fake, 'backup_problem'));
+    await expectOk(await answer(w, 'backup_dir_custom', '  /daten/sicherung  '));
+    assert.match(fs.readFileSync(path.join(w.fake, 'backup_dir_calls'), 'utf8'), /^\/daten\/sicherung\|de$/m);
 
     // Übersicht: Ändern springt zur Seite und zurück zur Übersicht.
     let rv = await page(w);
@@ -166,6 +181,7 @@ test('Durchlauf FritzBox mit drei Modulen: Antwort-Datei, Installation, Pairing,
     assert.ok(!('Google-Schlüssel' in rows), 'eine Zeile je Fakt');
     assert.equal(rows['Funktionen'], 'Grundsystem, Karriere, Nachlass & Vorsorge, Dokumente');
     assert.equal(rows['Erreichbarkeit'], 'FritzBox');
+    assert.equal(rows['Sicherungen'], '/daten/sicherung/Life Agents Sicherungen');
     assert.ok(!JSON.stringify(rv).includes('beispiel-token'), 'kein Geheimnis in der Übersicht');
     await expectOk(await post(w, '/api/goto', { id: 'h:OWNER_LAST_NAME' }));
     await expectOk(await answer(w, 'h:OWNER_LAST_NAME', 'Beispiel-Neu'));
@@ -188,7 +204,8 @@ test('Durchlauf FritzBox mit drei Modulen: Antwort-Datei, Installation, Pairing,
       OWNER_PERSONA: 'butler', TELEGRAM_BOT_TOKEN: '123456789:ABC-beispiel-token', ANTHROPIC_API_KEY: 'sk-ant-offline-beispiel',
       GOOGLE_API_KEY: 'AIza-beispiel', ADZUNA_APP_ID: 'beispiel-id', ADZUNA_APP_KEY: 'beispiel-key', JSEARCH_API_KEY: '',
       CONFIG_GENERAL_BUNDESLAND: 'thueringen', CONFIG_GENERAL_PAPERLESS_URL: plUrl + '/', PAPERLESS_API_TOKEN: 'beispieltoken0123',
-      DOMAIN: 'meinrechner.deine-domain.myfritz.net', REACH_MODE: 'fritzbox', __packages: 'career,estate,paperless',
+      DOMAIN: 'meinrechner.deine-domain.myfritz.net', REACH_MODE: 'fritzbox', BACKUP_PARENT_DIR: '/daten/sicherung',
+      __packages: 'career,estate,paperless',
     });
 
     // Verbinden: QR-Code, dann Telegram-/start (Attrappe), dann Übergabe.
@@ -253,6 +270,7 @@ test('Durchlauf Tunnel: belegter Bot, Fehlschlag + neuer Versuch, Neustart, Tail
     assert.equal((await page(w)).id, 'fb_guide', 'frei gemessen, DS-Lite-Antwort bleibt');
     await post(w, '/api/back', {});
     await expectOk(await answer(w, 'fb_dslite', 'yes'));   // DS-Lite führt zum Tunnel
+    await backupPage(w);
     assert.equal((await page(w)).id, 'review');
     assert.equal((await page(w)).rows.find((r) => r.label === 'Erreichbarkeit').value, 'Tunnel (Anmeldung bei Tailscale nach der Installation)');
     await expectOk(await answer(w, 'review', null));
@@ -347,6 +365,7 @@ test('DS-Lite automatisch: „keine eigene IPv4“ = Bestätigung, „eigene“ 
     assert.match(yes.title, /^Geprüft/);
     assert.ok(!yes.art, 'Bild nur bei der Handfrage');
     await expectOk(await answer(w, 'fb_dslite', null));
+    await backupPage(w);
     const rv = await page(w);
     assert.equal(rv.id, 'review');
     assert.match(rv.rows.find((r) => r.label === 'Erreichbarkeit').value, /^Tunnel/);
@@ -381,7 +400,7 @@ test('MyFRITZ: Name der FritzBox zeigt auf diesen Anschluss -> geprüft eingetra
     assert.ok(!dom.suffix && !dom.live);
     assert.match(dom.note.text, /Geprüft/);
     await expectOk(await answer(w, 'h:DOMAIN', dom.value));
-    assert.equal((await page(w)).id, 'review');
+    assert.equal((await page(w)).id, 'backup_dir', 'danach: Wohin sichern?');
   } finally { await w.stop(); }
 });
 
@@ -463,7 +482,8 @@ async function toConnect(env, signal) {
   fs.writeFileSync(path.join(w.fake, signal), '');
   for (const [id, v] of [['h:OWNER_LANGUAGE', 'de'], ['h:OWNER_FIRST_NAME', 'Erika'], ['h:OWNER_LAST_NAME', 'Muster'],
     ['h:OWNER_BIRTH_DATE', '1980-01-01'], ['h:OWNER_PERSONA', 'neutral'], ['tg_why', 'both'], ['h:TELEGRAM_BOT_TOKEN', '1:beispiel'],
-    ['h:ANTHROPIC_API_KEY', 'sk-ant-beispiel'], ['voice', 'no'], ['packages', []], ['reach', 'tunnel'], ['review', null], ['confirm', null]]) await expectOk(await answer(w, id, v));
+    ['h:ANTHROPIC_API_KEY', 'sk-ant-beispiel'], ['voice', 'no'], ['packages', []], ['reach', 'tunnel'], ['backup_dir', 'other'],
+    ['backup_dir_custom', '/daten/sicherung'], ['review', null], ['confirm', null]]) await expectOk(await answer(w, id, v));
   await waitFor(async () => (await page(w)).id === 'connect');
   return w;
 }
@@ -607,5 +627,86 @@ test('Abschluss: Fehlerbericht zeigt Grund und Protokoll, aber keine Geheimnisse
     assert.match(t, /finalize_attempts: 3/);
     assert.match(t, /Beispiel-Zeile aus dem Einspielen/);
     assert.doesNotMatch(t, /AAbcdefghij|0123456789abcdef|987654321/);
+  } finally { await w.stop(); }
+});
+
+test('Sicherungsordner ändern (--backup-dir): nur die Ordner-Seiten, Ergebnis, Fertig beendet, nichts im Volume', async () => {
+  const w = await startWizard({ args: ['--backup-dir'], hints: { LA_BACKUP_CANDIDATES: 'icloud|/Users/erika/iCloud;documents|/Users/erika/Documents', LA_USER_LANG: 'de' } });
+  try {
+    await login(w);
+    let p = await page(w);
+    assert.equal(p.id, 'backup_dir');
+    assert.match(p.title, /Sicherungsordner ändern/);
+    assert.deepEqual(p.options.map((o) => o.value), ['icloud', 'documents', 'other']);
+    assert.equal(p.value, 'icloud', 'Cloud vorausgewählt');
+    assert.ok(p.options[0].tag && !p.options[1].tag, 'nur die Cloud empfohlen');
+    assert.equal((await ctl(w, 'status')).phase, 'backup_dir');
+    fs.writeFileSync(path.join(w.fake, 'backup_fail'), '');
+    await expectOk(await answer(w, 'backup_dir', 'icloud'));
+    p = await page(w);
+    assert.equal(p.id, 'backup_result');
+    assert.match(p.title, /nicht geklappt/);
+    fs.rmSync(path.join(w.fake, 'backup_fail'));
+    await expectOk(await answer(w, 'backup_result', null));   // „Noch einmal“
+    assert.equal((await page(w)).id, 'backup_dir');
+    await expectOk(await answer(w, 'backup_dir', 'icloud'));
+    p = await page(w);
+    assert.equal(p.id, 'backup_result');
+    assert.match(p.help[0].p, /Life Agents Sicherungen/);
+    assert.equal((await ctl(w, 'status')).phase, 'backup_done');
+    assert.match(fs.readFileSync(path.join(w.fake, 'backup_calls'), 'utf8'), /backup host-dir \/Users\/erika\/iCloud --create\nbackup export\n$/);
+    await expectOk(await answer(w, 'backup_result', null));   // „Fertig“
+    w.proc.ref();
+    assert.equal(await w.exited, 0, 'endet nach Fertig');
+    assert.ok(!fs.existsSync(path.join(w.dir, 'state', 'progress.json')), 'kein Fortschritt im Volume');
+  } finally { await w.stop(); }
+});
+
+test('Sicherungsordner ändern: Zurück vom Ergebnis + neuer Ordner legt neu an; Fertig löscht hints.env; zweiter Start lässt den ersten', async () => {
+  const w = await startWizard({ args: ['--backup-dir'], hints: { LA_BACKUP_CANDIDATES: 'icloud|/Users/erika/iCloud;documents|/Users/erika/Documents' } });
+  try {
+    await login(w);
+    await expectOk(await answer(w, 'backup_dir', 'icloud'));
+    assert.equal((await page(w)).id, 'backup_result');
+    // Menüpunkt ein zweites Mal: die neue Instanz endet, die laufende behält Steuerkanal und Sitzung.
+    await assert.rejects(startWizard({ dir: w.dir, args: ['--backup-dir'] }), /wizard exited 0/);
+    assert.equal((await ctl(w, 'status')).phase, 'backup_done');
+    await post(w, '/api/back', {});
+    await expectOk(await answer(w, 'backup_dir', 'documents'));
+    const p = await page(w);
+    assert.equal(p.id, 'backup_result');
+    assert.match(fs.readFileSync(path.join(w.fake, 'backup_calls'), 'utf8'), /backup host-dir \/Users\/erika\/Documents --create\nbackup export\n$/,
+      'der neue Ordner wird wirklich angelegt, nicht nur angezeigt');
+    await expectOk(await answer(w, 'backup_result', null));
+    w.proc.ref();
+    assert.equal(await w.exited, 0);
+    assert.ok(!fs.existsSync(path.join(w.dir, 'run', 'hints.env')), 'Vorschläge (privat) nach Fertig weg');
+  } finally { await w.stop(); }
+});
+
+test('Wohin sichern: erst Vorschlag, dann „Anderer Ordner“ zeigt die Textseite (kein alter Pfad als Antwort)', async () => {
+  const w = await startWizard({ args: ['--backup-dir'], hints: { LA_BACKUP_CANDIDATES: 'icloud|/Users/erika/iCloud' } });
+  try {
+    await login(w);
+    fs.writeFileSync(path.join(w.fake, 'backup_fail'), '');   // Ergebnis „nicht geklappt“ -> Noch einmal, Wahl bleibt offen
+    await expectOk(await answer(w, 'backup_dir', 'icloud'));
+    await post(w, '/api/back', {});
+    await expectOk(await answer(w, 'backup_dir', 'other'));
+    const p = await page(w);
+    assert.equal(p.id, 'backup_dir_custom');
+    assert.equal(p.value, '', 'kein Vorschlags-Pfad im Feld');
+  } finally { await w.stop(); }
+});
+
+test('Sicherungsordner ändern: läuft auch nach fertiger Einrichtung, endet nach Leerlauf', async () => {
+  const dir = fs.mkdtempSync(path.join(require('os').tmpdir(), 'wiz-'));
+  fs.mkdirSync(path.join(dir, 'state'), { recursive: true });
+  fs.writeFileSync(path.join(dir, 'state', 'done'), '');
+  const w = await startWizard({ dir, args: ['--backup-dir'], hints: {}, env: { WIZARD_BACKUP_IDLE_MS: '1500' } });
+  try {
+    await login(w);
+    assert.equal((await page(w)).id, 'backup_dir');
+    w.proc.ref();
+    assert.equal(await w.exited, 0, 'Leerlauf beendet ihn');
   } finally { await w.stop(); }
 });

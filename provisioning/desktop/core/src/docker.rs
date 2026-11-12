@@ -75,6 +75,8 @@ pub enum DockerCall<'a> {
     Master(MasterCmd),
     /// Hinweise für den Fragebogen als flüchtige Datei im `master` (0600, nur root); Inhalt über stdin (`call_stdin`).
     MasterHints,
+    /// Fragebogen im Änderungs-Modus im Hintergrund starten (`contract::WIZARD_SERVER --backup-dir`).
+    MasterBackupDir,
 }
 
 /// Alle Zustände einzeln als Filter: listet auch gestoppte Container, ohne den „alle“-Schalter, den der
@@ -183,6 +185,9 @@ impl Docker {
                 p(&mut a, &["exec", MASTER_CONTAINER]);
                 a.extend(cmd.args());
             }
+            DockerCall::MasterBackupDir => {
+                p(&mut a, &["exec", "--detach", MASTER_CONTAINER, "node", crate::contract::WIZARD_SERVER, "--backup-dir"]);
+            }
         }
         a
     }
@@ -261,7 +266,9 @@ mod tests {
             DockerCall::ProbeRead { image: "busybox:1.37" },
             DockerCall::ProbeSocket { image: "busybox:1.37" },
             DockerCall::Master(MasterCmd::ReleaseWebhook),
+            DockerCall::Master(MasterCmd::BackupKit),
             DockerCall::MasterHints,
+            DockerCall::MasterBackupDir,
         ]
     }
 

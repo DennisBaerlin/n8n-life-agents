@@ -49,7 +49,7 @@ async function startWizard(opts = {}) {
     const t = typeof opts.hints === 'string' ? opts.hints : Object.entries(opts.hints).map(([k, v]) => `${k}=${v}\n`).join('');
     fs.writeFileSync(path.join(dir, 'run', 'hints.env'), t, { mode: 0o600 });
   }
-  const proc = spawn(process.execPath, [path.join(WIZ, 'server.js')], { env, stdio: ['ignore', 'pipe', 'pipe'] });
+  const proc = spawn(process.execPath, [path.join(WIZ, 'server.js'), ...(opts.args || [])], { env, stdio: ['ignore', 'pipe', 'pipe'] });
   let errOut = '';
   proc.stderr.on('data', (d) => { errOut += d; });
   await new Promise((resolve, reject) => {

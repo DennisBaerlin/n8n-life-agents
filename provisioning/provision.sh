@@ -593,6 +593,8 @@ main() {
   # Docker-Verbund: erst jetzt die oeffentlichen Pfade am Rand freigeben; beim FritzBox-Weg wan (80/443, Zertifikat)
   # starten, nachdem 80/443 als frei geprueft sind (lib/reach.sh).
   if rt_is_compose; then reach_converge; fi
+  # Docker-Verbund: Sicherungsordner aus dem Fragebogen anlegen + erste Sicherung (braucht die CLI von install_cli).
+  if rt_is_compose && [ -n "${BACKUP_PARENT_DIR:-}" ]; then _setup_backup_folder; fi
 
   # Gefuehrtes Ende (interaktiv): Erreichbarkeit pruefen (ggf. Caddyfile + "Erneut pruefen/Spaeter"),
   # Pairing-Code als Deep-Link, auf /start warten, danach den Bot fertig einstellen. Ohne TTY / ohne
@@ -627,6 +629,7 @@ main() {
   fi
 
   display_install_recap   # NUR Release: End-Recap (Status + generierte Zugaenge + offene Schritte)
+  _recap_backup_kit
   if [ "${UI_QUIET:-0}" = 1 ]; then
     { printf '  Protokoll dieser Installation: %s\n\n' "$UI_LOG_FILE" >&3; } 2>/dev/null || true
   fi
@@ -816,6 +819,44 @@ ${_todo}
 }So geht's weiter
 ${_next}
 EOF
+}
+
+# _setup_backup_folder — Antwort BACKUP_PARENT_DIR des Fragebogens (der Eltern-Ordner, z. B. iCloud Drive; eigener Name, weil
+#   core.env unter BACKUP_HOST_DIR den angelegten Unterordner fuehrt — ein Wiederholungslauf legte sonst einen Ordner im
+#   Ordner an): Unterordner anlegen, merken, sofort die erste Sicherung. Fehler = Warnung, kein Abbruch (der Tick versucht es
+#   erneut, doctor und der Chat-Hinweis melden es).
+_setup_backup_folder() {
+  local cli="${LIFEAGENTS_BIN:-/usr/local/bin/lifeagents}"
+  ui_step 'Sicherung einrichten' backup
+  if "$cli" backup host-dir "$BACKUP_PARENT_DIR" --create </dev/null && "$cli" backup export </dev/null; then
+    ui_step_done
+  else
+    ui_step_bad 'erste Sicherung nicht geschrieben — sie wird von selbst erneut versucht (lifeagents doctor)'
+  fi
+}
+
+# _recap_backup_kit — nach der Erstinstallation, die den Sicherungs-Schluessel gerade erzeugt hat (BACKUP_KEY_NEW):
+#   das Notfallblatt einmal zeigen, aber nur auf einem Kanal ohne Log — Quiet-Modus fd3 (Terminal), sonst direkt /dev/tty
+#   (an `| tee` vorbei). Ohne Terminal (unattended, Wizard, Pipe) nur der Hinweis-Befehl; im Docker-Verbund speichert die
+#   Start-App das Blatt. Plain statt ui_box: Rahmenzeichen vor den Schluesselzeilen stoerten beim Abtippen/Kopieren.
+_recap_backup_kit() {
+  [ "$PROFILE" = "release" ] && [ "${BACKUP_KEY_NEW:-0}" = 1 ] || return 0
+  local kit='' lang sep='============================================================'
+  lang="$(backup_kit_lang)"
+  if { [ "${UI_QUIET:-0}" = 1 ] || ui_interactive; } && kit="$(backup_kit_text 2>/dev/null)" && [ -n "$kit" ]; then
+    kit="$(printf '%s\n%s\n\n%s\n%s' "$sep" "$(pkg_text core backup.kit.recap_once "$lang")" "$kit" "$sep")"
+    if [ "${UI_QUIET:-0}" = 1 ]; then
+      _ui_spin_stop
+      { printf '\n%s\n\n' "$kit" >&3; } 2>/dev/null || true
+    else
+      { printf '\n%s\n\n' "$kit" > /dev/tty; } 2>/dev/null || true
+    fi
+    return 0
+  fi
+  local line
+  if rt_is_compose; then line="$(pkg_text core backup.kit.recap_line_app "$lang")"; else line="$(pkg_text core backup.kit.recap_line "$lang")"; fi
+  printf '\n  %s\n\n' "$line"
+  if [ "${UI_QUIET:-0}" = 1 ]; then { printf '\n  %s\n\n' "$line" >&3; } 2>/dev/null || true; fi
 }
 
 # install_cli — die `lifeagents`-Admin-CLI nach /usr/local/bin legen (Verbund: <Baum>/bin im Volume rt_tree) + den

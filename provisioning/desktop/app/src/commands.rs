@@ -17,7 +17,7 @@ use lifeagents_desktop_core::journal::{self, Journal, Status, Step};
 use lifeagents_desktop_core::power::{self, FileVault, PowerError, PowerResult};
 use lifeagents_desktop_core::system::{self, Location, SystemReport};
 use lifeagents_desktop_core::uninstall::{self, Choices, Outcome, Plan};
-use lifeagents_desktop_core::{autostart, cleanup, lang, report};
+use lifeagents_desktop_core::{autostart, backup, cleanup, lang, report, texts};
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager};
 use tauri_plugin_opener::OpenerExt;
@@ -521,6 +521,77 @@ fn compare_with_before(j: &Journal) -> Option<Vec<Deviation>> {
         .flatten()
         .collect();
     Some(inventory::compare(&before, &after, &ignore))
+}
+
+// ------------------------------------------------------------------------------- Sicherung (core/src/backup.rs)
+
+#[derive(Serialize)]
+pub struct KitSaved {
+    /// Dateiname in Downloads (der Schlüssel selbst geht nie ans Fenster).
+    file: String,
+}
+
+pub fn setup_done() -> bool {
+    Journal::load(&RealHost).map(|j| j.has_done(|s| *s == Step::SetupComplete)).unwrap_or(false)
+}
+
+/// Notfallblatt als neue Datei in Downloads (Fertig-Seite, Startseite, Menüpunkt). Fehler nur als fester Code.
+#[tauri::command(async)]
+pub fn save_backup_kit(app: AppHandle) -> Result<KitSaved, String> {
+    let d = docker_if_ready().ok_or_else(|| fail(&app, backup::KIT_UNAVAILABLE))?;
+    let base = texts::text(lang::current(&RealHost), "core.desktop.kit.file_name");
+    let path = backup::save_kit(&RealHost, &d, &base).map_err(|c| fail(&app, c))?;
+    let file = path.rsplit(['/', '\\']).next().unwrap_or_default().to_string();
+    Ok(KitSaved { file })
+}
+
+/// Haken „ausgedruckt oder sicher gespeichert“ (bis dahin zeigt die Startseite den Schritt weiter).
+#[tauri::command]
+pub fn kit_status() -> serde_json::Value {
+    serde_json::json!({ "setup": setup_done(), "confirmed": backup::kit_confirmed(&RealHost) })
+}
+
+#[tauri::command]
+pub fn confirm_kit(app: AppHandle) -> Result<(), String> {
+    backup::confirm_kit(&RealHost).map_err(|_| fail(&app, "journal-unreadable"))
+}
+
+/// Menüpunkt „Sicherungsordner ändern …“: dieselbe Fragebogen-Seite im Änderungs-Modus im App-Fenster; nach „Fertig“
+/// beendet sich der Fragebogen, dann holt dieser Faden die Startseite zurück.
+#[tauri::command(async)]
+pub fn change_backup_folder(app: AppHandle) -> Result<bool, String> {
+    if !setup_done() {
+        // Kein Fehler (kein Bericht-Code): das Menü war nur noch nicht neu eingefärbt, die UI zeigt die Startseite.
+        return Err("setup-incomplete".into());
+    }
+    let d = docker_if_ready().ok_or_else(|| fail(&app, "backup-dir-unavailable"))?;
+    let paths = core_paths(&app).ok_or_else(|| fail(&app, "compose-missing"))?;
+    let ports = core_start::saved_ports(&RealHost, &paths).ok_or_else(|| fail(&app, "backup-dir-unavailable"))?;
+    let url = backup::open_backup_dir(&RealHost, &d, ports.wizard, 20).map_err(|_| fail(&app, "backup-dir-unavailable"))?;
+    let parsed: tauri::Url = url.parse().map_err(|_| fail(&app, "backup-dir-unavailable"))?;
+    let w = app.get_webview_window("main").ok_or_else(|| fail(&app, "backup-dir-unavailable"))?;
+    let back = app.state::<AppState>().app_url.lock().unwrap().clone().or_else(|| w.url().ok());
+    w.navigate(parsed).map_err(|_| fail(&app, "backup-dir-unavailable"))?;
+    if let Some(back) = back {
+        let handle = app.clone();
+        std::thread::spawn(move || watch_backup_dir(handle, d, back));
+    }
+    Ok(true)
+}
+
+/// Solange der Änderungs-Modus antwortet, wartet die App; endet er (Fertig oder Leerlauf), lädt sie ihre Startseite.
+fn watch_backup_dir(app: AppHandle, d: Docker, mut back: tauri::Url) {
+    let start = Instant::now();
+    while start.elapsed() < Duration::from_secs(3600) {
+        std::thread::sleep(Duration::from_secs(2));
+        if core_start::wizard_status(&RealHost, &d).phase == WizardPhase::Unavailable {
+            break;
+        }
+    }
+    back.set_fragment(None);
+    if let Some(w) = app.get_webview_window("main") {
+        let _ = w.navigate(back);
+    }
 }
 
 // ---------------------------------------------------------------------------------- Rückweg und Entfernen

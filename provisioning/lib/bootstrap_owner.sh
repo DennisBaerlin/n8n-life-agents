@@ -384,12 +384,17 @@ _arm_owner_challenge() {
 # da ist (ON CONFLICT DO NOTHING — NIE rotieren, sonst werden bereits erstellte Export-Backups
 # unentschluesselbar). Lebt sync-frei in der DB (packages/core/CLAUDE.md Backup/Restore), ACL-gefenct gegen
 # die Leserollen. Generiert via openssl rand; Wert NUR ueber den 600-Treiber (Secret, kein argv-Leak).
+# BACKUP_KEY_NEW=1, wenn DIESER Lauf den Schluessel angelegt hat (RETURNING liefert nur dann eine Zeile) -> der End-Recap
+# zeigt einmal das Notfallblatt (provision.sh _recap_backup_kit). Prozess-Variable, nie exportiert.
+# shellcheck disable=SC2034  # gelesen von provision.sh _recap_backup_kit (im selben Prozess gesourct)
+BACKUP_KEY_NEW=0
 _ensure_backup_secret() {
-  local val; val="$(rand_hex 32)"
-  # shellcheck disable=SC2119  # psql_superuser_driver bewusst ohne extra psql-Args
-  if { psql_setvar bkey "$val"
-       printf "INSERT INTO core.backup_key(key, value) VALUES ('backup_encryption_key', :'bkey') ON CONFLICT (key) DO NOTHING;\n"
-     } | psql_superuser_driver >/dev/null 2>&1; then
+  local val out; val="$(rand_hex 32)"
+  if out="$( { psql_setvar bkey "$val"
+       printf "INSERT INTO core.backup_key(key, value) VALUES ('backup_encryption_key', :'bkey') ON CONFLICT (key) DO NOTHING RETURNING 1;\n"
+     } | psql_superuser_driver -tA -q 2>/dev/null)"; then
+    # shellcheck disable=SC2034  # gelesen von provision.sh _recap_backup_kit
+    if [ "$out" = 1 ]; then BACKUP_KEY_NEW=1; fi
     ok "core.backup_key backup_encryption_key sichergestellt (generiert, falls fehlend; bestehender unberuehrt)."
   else
     warn "core.backup_key backup_encryption_key konnte nicht gesetzt werden — provision.sh erneut laufen lassen (bzw. den Key als Credential-Owner direkt per psql in core.backup_key eintragen); Export/Restore bleibt bis dahin ungenutzt."
@@ -416,7 +421,7 @@ bootstrap_owner() {
   _load_owner_env_state    # Reuse bestehender Secrets (API-Key + RO-Passwoerter) aus core.env
   _resolve_owner_creds
   _provision_ro_secrets    # RO-Rollen-Passwoerter setzen + fuer inject_credentials exportieren
-  _ensure_backup_secret    # core.backup_key Backup-Key (idempotent, nie rotieren)
+  _ensure_backup_secret    # core.backup_key Backup-Key (idempotent, nie ueberschrieben)
   _mint_api_key || true
   _persist_owner_env       # kohaerent persistieren (API-Key + RO-Passwoerter)
   _ensure_ingress_id_key   # geheime Telegram-Eingangs-ids je Instanz (deploy_workflows)

@@ -19,8 +19,13 @@
 # pg_dump ignoriert -n (Schema), sobald -t gesetzt ist -> wir enumerieren ALLE bulk-Tabellen explizit per -t.
 #
 # BUNDLE = verschluesseltes Tarball {manifest.json (Header: bundle_format/packages/versions/verify_counts),
-#   data.dump (pg_dump -Fc), shared.json (gefilterte Zeilen)}, gpg --symmetric AES256, Passphrase aus
-#   core.backup_key('backup_encryption_key') (nie rotieren). Klartext nur transient in /dev/shm (tmpfs).
+#   data.dump (pg_dump -Fc), shared.json (gefilterte Zeilen)}, gpg --symmetric AES256, Passphrase = aktiver Schluessel
+#   aus core.backup_key (Lebenszyklus: common.sh *Sicherungs-Verschluesselung*). Klartext nur transient in /dev/shm.
+#   Dateiname lifeagents-backup-<ts>-k<schluessel-id>-v<release>.nla.enc: die ID trennt "falscher Schluessel" von
+#   "beschaedigt" und begrenzt das Aufraeumen auf eigene Sicherungen, die Version sagt, was ein Restore braucht.
+# NOTFALLBLATT: `backup key` zeigt den Schluessel (common.sh backup_kit_text); ein Restore, den kein gespeicherter
+#   Schluessel oeffnet, nimmt ihn vom Blatt an (TTY verdeckt oder --key-stdin, nie argv) und macht ihn in derselben
+#   Restore-TX zum aktiven.
 #
 # RESTORE ist ATOMAR (Opus B1): pg_restore -f - erzeugt SQL-TEXT (kein eigener DB-Connect); TRUNCATE +
 #   Restore-SQL + fn_backup_restore_filtered + Count-Verify laufen als EIN `psql -1`-Skript (eine TX) ->
@@ -38,6 +43,20 @@ _bkp_resolve_db() { lifeagents_db_name >/dev/null; }
 _bkp_psql_scalar() {
   _bkp_resolve_db
   pg_su_psql -v ON_ERROR_STOP=1 -X -tA -d "$N8N_DB_NAME" -c "$1"
+}
+
+# _bkp_jsonb_obj <"'key', wert">… -> SQL-Ausdruck fuer ein jsonb-Objekt aus beliebig vielen Paaren: PostgreSQL nimmt hoechstens
+#   100 Argumente je Funktion ("cannot pass more than 100 arguments"), jsonb_build_object also hoechstens 50 Paare -> Bloecke
+#   zu 50, mit || verbunden. Ohne Paare '{}'.
+_bkp_jsonb_obj() {
+  local out='' chunk='' i=0 p
+  [ "$#" -gt 0 ] || { printf "'{}'::jsonb"; return 0; }
+  for p in "$@"; do
+    chunk="${chunk:+$chunk, }$p"; i=$((i + 1))
+    if [ "$i" -eq 50 ]; then out="${out:+$out || }jsonb_build_object($chunk)"; chunk=''; i=0; fi
+  done
+  [ -z "$chunk" ] || out="${out:+$out || }jsonb_build_object($chunk)"
+  printf '%s' "$out"
 }
 
 # _bkp_qual_ok <schema.table> -> 0 wenn beide Teile ^[a-z][a-z0-9_]*$ (Injection-Schutz vor Interpolation).
@@ -175,24 +194,126 @@ _bkp_require_pg() { if rt_is_compose; then require_cmd docker; else require_cmd 
 
 # --- Sicherungs-Ordner auf dem Rechner (Docker-Verbund, Plan-Pruefung Fund 7) ------------------------------------------
 # Die Docker-Platte kann mit allen Volumes verschwinden ("Clean up data", defekte VM-Platte) -> Sicherungen gehen in einen
-# vom Nutzer gewaehlten Ordner AUF DEM RECHNER. Gemerkt als BACKUP_HOST_DIR in core.env (nicht geheim). Nur absolute
-# Pfade ohne Komma (Trenner der --mount-Angabe) und ohne Zeilenumbruch.
+# vom Nutzer gewaehlten Ordner AUF DEM RECHNER. Gemerkt als BACKUP_HOST_DIR in core.env (nicht geheim) in der Schreibweise des
+# Nutzers (Mac/Linux /…, Windows C:\…); an Docker geht immer die Docker-Form (_bkp_hd). Kein Komma (Trenner der --mount-
+# Angabe), kein Anfuehrungszeichen, kein Zeilenumbruch.
 BACKUP_HOST_KEEP="${BACKUP_HOST_KEEP:-14}"   # so viele automatische Sicherungen bleiben im Ordner (aelteste gehen zuerst)
 _bkp_host_dir() { read_env_value "$(lifeagents_env_file core)" BACKUP_HOST_DIR 2>/dev/null || true; }
 _bkp_host_dir_valid() {
   case "$1" in
-    /*) ;; *) return 1 ;;
+    /*|[A-Za-z]:\\*|[A-Za-z]:/*) ;; *) return 1 ;;
   esac
   case "$1" in *,*|*$'\n'*|*$'\r'*|*'"'*) return 1 ;; esac
   return 0
 }
-# _bkp_host_dir_ok <ordner> — gueltig UND auf dem Rechner beschreibbar (Probe-Datei anlegen und wieder loeschen).
-_bkp_host_dir_ok() { _bkp_host_dir_valid "$1" && rt_host_check "$1"; }
-# _bkp_host_rotate <ordner> — nur unsere eigenen Sicherungen (lifeagents-backup-*.nla.enc) jenseits der neuesten
-#   BACKUP_HOST_KEEP entfernen; alles andere im Ordner bleibt unberuehrt. Fehler = nur Warnung.
-_bkp_host_rotate() { rt_host_rotate "$1" "$BACKUP_HOST_KEEP" || warn "Alte Sicherungen im Ordner '$1' ließen sich nicht aufräumen."; }
+# _bkp_hd <pfad> -> Docker-Form eines Rechner-Pfads: Windows "C:\Daten\x" -> "/run/desktop/mnt/host/c/Daten/x" (so muss ein
+#   Container, der ueber den Docker-Socket einen weiteren startet, Laufwerke unter Docker Desktop/WSL2 angeben; "/C/Users/…"
+#   scheitert mit "bind source path does not exist" — nur Erfahrungsberichte, Abnahme auf echtem Windows). Sonst unveraendert;
+#   ein abschliessender Trenner faellt weg.
+_bkp_hd() {
+  local p="$1" d
+  if [[ "$p" =~ ^([A-Za-z]):[\\/](.*)$ ]]; then
+    d="${BASH_REMATCH[1],,}"
+    p="${BASH_REMATCH[2]//\\//}"
+    p="/run/desktop/mnt/host/${d}/${p}"
+  fi
+  [ "$p" = / ] || p="${p%/}"
+  printf '%s' "$p"
+}
+# _bkp_join <ordner> <name> -> Pfad in der Schreibweise des Ordners (Windows mit "\", sonst "/").
+_bkp_join() { case "$1" in *\\*|[A-Za-z]:) printf '%s\\%s' "${1%\\}" "$2" ;; *) printf '%s/%s' "${1%/}" "$2" ;; esac; }
+# _bkp_rotate_victims <behalten> <schluessel-id> (stdin: Dateinamen) -> die zu loeschenden: nur Sicherungen mit DIESER
+#   Schluessel-ID jenseits der neuesten <behalten>. Fremde IDs (ein alter Rechner im selben Ordner) und Namen ohne ID
+#   bleiben immer liegen — sonst loeschte der neue Rechner nach 14 Tagen genau die Sicherungen, aus denen er herkommt.
+_bkp_rotate_victims() {
+  grep -E "^lifeagents-backup-[0-9]{14}-${2}-v[0-9A-Za-z.-]+\.nla\.enc\$" | sort -r | tail -n +$(( $1 + 1 ))
+}
+# _bkp_host_rotate <ordner> <schluessel-id> — eigene alte Sicherungen im Rechner-Ordner entfernen. Fehler = nur Warnung.
+_bkp_host_rotate() {
+  local v=() hd; hd="$(_bkp_hd "$1")"
+  mapfile -t v < <(rt_host_ls "$hd" | _bkp_rotate_victims "$BACKUP_HOST_KEEP" "$2" || true)
+  [ "${#v[@]}" -gt 0 ] && [ -n "${v[0]}" ] || return 0
+  rt_host_rm "$hd" "${v[@]}" || warn "Alte Sicherungen im Ordner '$1' ließen sich nicht aufräumen."
+}
+# _bkp_release_tag -> Release der laufenden CLI (VERSION), sonst "dev" — fuer den Dateinamen.
+_bkp_release_tag() { cat "$(lifeagents_version_marker)" 2>/dev/null | head -n1 | tr -d '[:space:]' || true; }
+# _bkp_file_name <ts> <schluessel-id> <release> -> Dateiname einer Sicherung; kein stabiles Release -> "vdev".
+_bkp_file_name() {
+  local v="$3"
+  [[ "$v" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$ ]] || v=vdev
+  printf 'lifeagents-backup-%s-%s-%s.nla.enc' "$1" "$2" "$v"
+}
+# _bkp_file_key_id <pfad|name> -> Schluessel-ID aus dem Dateinamen (leer bei Namen ohne ID).
+_bkp_file_key_id() {
+  local b; b="${1##*/}"
+  # Nicht am Anfang verankert: umbenannte Kopien ("Kopie von …", "… (1).nla.enc", Cloud-Konfliktkopie) behalten ihre ID.
+  [[ "$b" =~ lifeagents-backup-[0-9]{14}-(k[0-9a-f]{8})-v ]] && printf '%s' "${BASH_REMATCH[1]}"
+  return 0
+}
+# _bkp_key_ids -> IDs aller gespeicherten Schluessel (aktiver zuerst), eine je Zeile.
+_bkp_key_ids() {
+  local k
+  while IFS= read -r k; do [ -n "$k" ] && printf '%s' "$k" | backup_key_id && printf '\n'; done < <(backup_key_candidates 2>/dev/null || true)
+}
 
-# backup_cmd_host_dir [<ordner>] — Sicherungs-Ordner auf dem Rechner zeigen bzw. setzen (Wizard/Start-App, Terminal).
+# --- Ergebnis der Sicherungen (backup.state) ------------------------------------------------------------------------
+# LAST_OK / LAST_FAIL (Epoch) + LAST_FAIL_REASON (fester Code folder|key|dump|encrypt|write) — doctor und der Chat-Hinweis
+# lesen nur hier. Liegt im Verbund auf dem Volume var_la (uebersteht Neuanlage des master). Der Tick-Marker LAST_BACKUP
+# (update_runner.sh) ist etwas anderes: der Zeitplan ("heute schon versucht").
+_bkp_state_set() { { env_upsert "$BACKUP_STATE_FILE" "$1" "$2" && chmod 0600 "$BACKUP_STATE_FILE"; } 2>/dev/null || true; }
+# _bkp_fail <code> <meldung> — Fehlschlag einer Sicherung mit festem Grund festhalten, dann abbrechen.
+_bkp_fail() { _bkp_state_set LAST_FAIL "$(date +%s)"; _bkp_state_set LAST_FAIL_REASON "$1"; shift; die "$@"; }
+
+# _bkp_path_clean <pfad> -> Eingabe bereinigt: Leerraum und umschliessende Anfuehrungszeichen am Rand weg ("Als Pfad
+#   kopieren" unter Windows liefert "C:\…" in Anfuehrungszeichen, der Finder-Pfad kommt oft mit Leerzeichen).
+_bkp_path_clean() {
+  local p="$1"
+  p="${p#"${p%%[![:space:]]*}"}"; p="${p%"${p##*[![:space:]]}"}"
+  case "$p" in \"*\"|\'*\') p="${p:1:${#p}-2}" ;; esac
+  printf '%s' "$p"
+}
+# _bkp_folder_problem <ordner> -> fester Code, warum der Ordner nicht taugt (leer = taugt): invalid | missing | access |
+#   readonly. Eine Adresse fuer CLI (host-dir), Fragebogen (bridge.sh backup-dir) und jede Sicherung (Grund in backup.state).
+#   "missing" vs. "access" trennt Docker Desktop nicht verlaesslich (beides scheitert als Bind-Pfad) -> Texte nennen beides.
+_bkp_folder_problem() {
+  _bkp_host_dir_valid "$1" || { printf invalid; return 0; }
+  local hd; hd="$(_bkp_hd "$1")"
+  rt_host_exists "$hd" || { printf missing; return 0; }
+  rt_host_readable "$hd" || { printf access; return 0; }
+  rt_host_check "$hd" || { printf readonly; return 0; }
+  return 0
+}
+# _bkp_reason_of <problem> -> Grund-Code fuer backup.state (folder = nicht erreichbar, write = nicht beschreibbar).
+_bkp_reason_of() { case "$1" in readonly) printf write ;; *) printf folder ;; esac; }
+# _bkp_folder_target <eltern-ordner> -> der Ordner, in den gesichert wird (Schreibweise des Nutzers): liegen im gewaehlten Ordner
+#   schon Sicherungen, dieser selbst (sonst entstuende ".../Life Agents Sicherungen/Life Agents Sicherungen"); gibt es darin einen
+#   Unterordner mit dem Namen aus IRGENDEINER Katalog-Sprache (alter Rechner auf Deutsch, neuer auf Englisch), dieser; sonst der
+#   Name in der Owner-Sprache (Owner-Entscheid F4). Legt nichts an.
+_bkp_folder_target() {
+  local dir="$1" n f
+  if rt_host_ls "$(_bkp_hd "$dir")" 2>/dev/null | grep -q .; then printf '%s' "$dir"; return 0; fi
+  for f in "$(_pkg_dir)"/core/locales/*.json; do
+    n="$(jq -r '.["core.backup.folder_name"] // empty' "$f" 2>/dev/null || true)"
+    [ -n "$n" ] || continue
+    if rt_host_exists "$(_bkp_hd "$(_bkp_join "$dir" "$n")")"; then _bkp_join "$dir" "$n"; return 0; fi
+  done
+  n="$(backup_text folder_name)"
+  _bkp_join "$dir" "${n:-Life Agents Sicherungen}"
+}
+# _bkp_foreign_ids <ordner> -> Schluessel-IDs der Sicherungen im Ordner, die zu keinem gespeicherten Schluessel gehoeren.
+_bkp_foreign_ids() {
+  local ids b k out=''
+  ids=$'\n'"$(_bkp_key_ids)"$'\n'
+  while IFS= read -r b; do
+    k="$(_bkp_file_key_id "$b")"
+    [ -n "$k" ] && [[ "$ids" != *$'\n'"$k"$'\n'* ]] && [[ " $out " != *" $k "* ]] && out="${out:+$out }$k"
+  done < <(rt_host_ls "$(_bkp_hd "$1")" 2>/dev/null || true)
+  printf '%s' "$out"
+}
+
+# backup_cmd_host_dir [<ordner> [--create]] — Sicherungs-Ordner auf dem Rechner zeigen bzw. setzen (Fragebogen, Terminal).
+#   --create: <ordner> ist der Eltern-Ordner (z. B. iCloud Drive); Ziel nach _bkp_folder_target, fehlt es, wird es angelegt,
+#   die Schreibprobe laeuft dort, erst dann wird es gemerkt. Sicherungen eines anderen Schluessels bleiben, es gibt einen Hinweis.
 backup_cmd_host_dir() {
   rt_is_compose || die "Der Sicherungs-Ordner auf dem Rechner gibt es nur im Docker-Verbund."
   if [ "$#" -eq 0 ]; then
@@ -200,19 +321,79 @@ backup_cmd_host_dir() {
     if [ -n "$d" ]; then printf '%s\n' "$d"; else log "Noch kein Sicherungs-Ordner gewählt."; fi
     return 0
   fi
-  _bkp_host_dir_valid "$1" || die "Ungültiger Ordner '$1' (absoluter Pfad auf dem Rechner, ohne Komma)."
-  rt_host_check "$1" || die "Ordner '$1' ist auf dem Rechner nicht vorhanden oder nicht beschreibbar (bei Docker Desktop: Ordner unter Einstellungen > Ressourcen > Dateifreigabe)."
-  env_upsert "$(lifeagents_env_file core)" BACKUP_HOST_DIR "$1"
-  ok "Sicherungen gehen ab jetzt nach '$1' (auf dem Rechner, verschlüsselt)."
+  local dir create=0 prob target foreign
+  dir="$(_bkp_path_clean "$1")"
+  [ "${2:-}" = --create ] && create=1
+  if [ "$#" -gt 2 ] || { [ "$#" -eq 2 ] && [ "$create" != 1 ]; }; then die "Usage: lifeagents backup host-dir [<ordner> [--create]]"; fi
+  prob="$(_bkp_folder_problem "$dir")"
+  case "$prob" in
+    '') ;;
+    invalid)  die "Ungültiger Ordner '${dir}' (voller Pfad auf dem Rechner, z. B. /Users/… oder C:\\Users\\…, ohne Komma)." ;;
+    readonly) die "In den Ordner '${dir}' lässt sich nicht schreiben (schreibgeschützt oder voll)." ;;
+    *)        die "Ordner '${dir}' ist für Docker nicht erreichbar (gibt es ihn? Mac: Systemeinstellungen > Datenschutz & Sicherheit > Dateien und Ordner > Docker erlauben; Windows: Laufwerk und Schreibweise prüfen)." ;;
+  esac
+  target="$dir"
+  if [ "$create" = 1 ]; then
+    target="$(_bkp_folder_target "$dir")"
+    if [ "$target" != "$dir" ]; then
+      rt_host_mkdir "$(_bkp_hd "$dir")" "${target##*[\\/]}" || die "Konnte in '${dir}' den Ordner '${target##*[\\/]}' nicht anlegen."
+    fi
+    rt_host_check "$(_bkp_hd "$target")" || die "In den Ordner '${target}' lässt sich nicht schreiben."
+  fi
+  env_upsert "$(lifeagents_env_file core)" BACKUP_HOST_DIR "$target"
+  ok "Sicherungen gehen ab jetzt nach '${target}' (auf dem Rechner, verschlüsselt)."
+  foreign="$(_bkp_foreign_ids "$target")"
+  if [ -n "$foreign" ]; then
+    log "Hier liegen Sicherungen eines anderen Rechners (${foreign}). Sie bleiben erhalten; wiederherstellen: ${BACKUP_GUIDE_URL}"
+  fi
 }
 
-# backup_cmd_auto — taegliche Sicherung in den Rechner-Ordner (Tick im master, update_runner.sh). Ohne gemerkten Ordner
-#   still (der Wizard fragt ihn ab); jeder Fehler nur als Warnung, damit der Tick weiterlaeuft.
-backup_cmd_auto() {
-  [ -n "$(_bkp_host_dir)" ] || return 0
-  ( backup_cmd_export --to-host ) || warn "Tägliche Sicherung in den Rechner-Ordner fehlgeschlagen — nächster Versuch morgen."
+# _bkp_stale_notify — Docker-Verbund: ist die Bezugszeit (backup_ref_epoch) aelter als BACKUP_STALE_S, bekommt der Owner eine
+#   Telegram-Nachricht mit dem festen Grund als Alltagssatz (Ordnername ja, Pfad und Schluessel nie). Nur tagsueber
+#   (BACKUP_NOTIFY_HOURS, Haushalts-Zeitzone; der Takt laeuft um 03:30 und danach stuendlich bis zum Erfolg), hoechstens alle
+#   20 h, ohne gewaehlten Ordner nur woechentlich (dort hilft taegliches Erinnern nicht, Owner-Entscheid F1). Sperre LAST_NOTIFY.
+#   Best-effort, immer rc 0.
+BACKUP_NOTIFY_EVERY_S="${BACKUP_NOTIFY_EVERY_S:-72000}"          # 20 h
+BACKUP_NOTIFY_NOFOLDER_S="${BACKUP_NOTIFY_NOFOLDER_S:-604800}"   # 7 Tage
+BACKUP_NOTIFY_HOURS="${BACKUP_NOTIFY_HOURS:-09-20}"               # HH-HH, beide einschliesslich
+_bkp_stale_notify() {
+  local now ref ok_at last_n reason days folder txt every tz h from to
+  now="$(date +%s)"
+  ref="$(backup_ref_epoch)"; case "$ref" in ''|*[!0-9]*) ref=0 ;; esac
+  [ $((now - ref)) -gt "$BACKUP_STALE_S" ] || return 0
+  tz="$(read_env_value "$(lifeagents_env_file core)" HOUSEHOLD_TIMEZONE 2>/dev/null || true)"
+  h="$(TZ="${tz:-Europe/Berlin}" date +%H)"; from="${BACKUP_NOTIFY_HOURS%-*}"; to="${BACKUP_NOTIFY_HOURS#*-}"
+  [ "$((10#$h))" -ge "$((10#$from))" ] && [ "$((10#$h))" -le "$((10#$to))" ] || return 0
+  reason="$(read_env_value "$BACKUP_STATE_FILE" LAST_FAIL_REASON 2>/dev/null || true)"
+  case "$reason" in folder|nofolder|key|dump|encrypt|write) ;; *) reason=dump ;; esac
+  every="$BACKUP_NOTIFY_EVERY_S"; [ "$reason" = nofolder ] && every="$BACKUP_NOTIFY_NOFOLDER_S"
+  last_n="$(read_env_value "$BACKUP_STATE_FILE" LAST_NOTIFY 2>/dev/null || true)"; case "$last_n" in ''|*[!0-9]*) last_n=0 ;; esac
+  [ "$last_n" -le "$now" ] || last_n=0   # Uhr zurueckgestellt
+  [ $((now - last_n)) -ge "$every" ] || return 0
+  ok_at="$(read_env_value "$BACKUP_STATE_FILE" LAST_OK 2>/dev/null || true)"; case "$ok_at" in ''|*[!0-9]*) ok_at=0 ;; esac
+  folder="$(_bkp_host_dir)"; folder="${folder//\\//}"; folder="${folder##*/}"
+  if [ "$ok_at" -gt 0 ]; then days=$(( (now - ok_at) / 86400 )); txt="$(backup_text notify.stale_since days "$days")"
+  else txt="$(backup_text notify.stale_never)"; fi
+  txt="${txt} $(backup_text "notify.reason.${reason}" folder "${folder:-?}")"$'\n'"$(backup_text notify.guide url "$BACKUP_GUIDE_URL")"
+  notify_owner_telegram "$txt" >/dev/null 2>&1 || return 0
+  _bkp_state_set LAST_NOTIFY "$now"
   return 0
 }
+
+# backup_cmd_auto — taegliche Sicherung in den Rechner-Ordner (Tick im master, update_runner.sh: 03:30, nach einem Fehlschlag
+#   stuendlich). Ohne gemerkten Ordner nur der Vermerk "nofolder" (Bestand ohne Ordner, Owner-Entscheid F1: doctor ROT +
+#   Chat-Hinweis statt Dialog); jeder Fehler nur als Warnung, damit der Tick weiterlaeuft. Danach ggf. der Chat-Hinweis.
+backup_cmd_auto() {
+  if [ -z "$(_bkp_host_dir)" ]; then
+    _bkp_state_set LAST_FAIL "$(date +%s)"; _bkp_state_set LAST_FAIL_REASON nofolder
+  else
+    ( backup_cmd_export --to-host ) || warn "Tägliche Sicherung in den Rechner-Ordner fehlgeschlagen — nächster Versuch in einer Stunde."
+  fi
+  _bkp_resolve_db
+  _bkp_stale_notify
+  return 0
+}
+
 
 # ============================================================
 # export
@@ -229,7 +410,7 @@ backup_cmd_export() {
     # --to-host [<ordner>]: ein folgender ABSOLUTER Pfad ist der Ordner; sonst gilt der gemerkte (backup auto).
     if [ "$prev" = --to-host ]; then
       prev=""
-      case "$a" in /*) host="$a"; continue ;; esac
+      case "$a" in /*|[A-Za-z]:\\*|[A-Za-z]:/*) host="$a"; continue ;; esac
     fi
     case "$a" in
       --notify-telegram) notify=1 ;;
@@ -243,17 +424,19 @@ backup_cmd_export() {
   if [ "$want_host" -eq 1 ]; then
     rt_is_compose || die "--to-host gibt es nur im Docker-Verbund."
     [ -n "$host" ] || host="$(_bkp_host_dir)"
-    [ -n "$host" ] || die "Kein Sicherungs-Ordner auf dem Rechner gewählt — einmalig: lifeagents backup host-dir <ordner>"
-    _bkp_host_dir_ok "$host" || die "Ordner '${host}' ist kein gültiger, beschreibbarer Ordner auf dem Rechner."
+    [ -n "$host" ] || _bkp_fail folder "Kein Sicherungs-Ordner auf dem Rechner gewählt — einmalig: lifeagents backup host-dir <ordner>"
+    local hprob; hprob="$(_bkp_folder_problem "$host")"
+    [ -z "$hprob" ] || _bkp_fail "$(_bkp_reason_of "$hprob")" "Ordner '${host}' ist auf dem Rechner nicht erreichbar oder nicht beschreibbar (${hprob})."
   fi
-  local name; name="lifeagents-backup-$(date -u +%Y%m%d%H%M%S).nla.enc"
-  if [ -z "$out" ]; then out="$(pwd)/${name}"; fi
 
   local key; key="$(_bkp_key)"
-  [ -n "$key" ] && [ "${#key}" -ge 16 ] || die "Backup-Schluessel fehlt/zu kurz (core.backup_key '${BACKUP_KEY_NAME}', >=16 Zeichen). Der Installer setzt ihn out-of-band (bootstrap_owner _ensure_backup_secret)."
+  [ -n "$key" ] && [ "${#key}" -ge 16 ] || _bkp_fail key "Backup-Schluessel fehlt/zu kurz (core.backup_key '${BACKUP_KEY_NAME}', >=16 Zeichen). Der Installer setzt ihn out-of-band (bootstrap_owner _ensure_backup_secret)."
+  local kid; kid="$(printf '%s' "$key" | backup_key_id)"
+  local name; name="$(_bkp_file_name "$(date -u +%Y%m%d%H%M%S)" "$kid" "$(_bkp_release_tag)")"
+  if [ -z "$out" ]; then out="$(pwd)/${name}"; fi
 
   local bulk; bulk="$(_bkp_bulk_tables)"
-  [ -n "$bulk" ] || die "Keine zu sichernden Tabellen gefunden (aktive Pakete + backup-Block pruefen)."
+  [ -n "$bulk" ] || _bkp_fail dump "Keine zu sichernden Tabellen gefunden (aktive Pakete + backup-Block pruefen)."
 
   local tmp; tmp="$(_bkp_tmpdir)" || die "Konnte Arbeitsverzeichnis nicht anlegen."
   # Klartext-Reste IMMER aufraeumen (auch bei `die`->exit; RETURN feuert bei exit NICHT). Die CLI
@@ -275,36 +458,33 @@ backup_cmd_export() {
   # pg_dump laeuft als postgres (runuser/Peer-Auth) und darf das root-eigene 0700-tmpfs NICHT beschreiben
   # -> Ausgabe auf stdout, die root-Shell leitet in die Datei um (postgres fasst das Verzeichnis nie an).
   if ! pg_su_exec pg_dump -d "$N8N_DB_NAME" -a --disable-triggers -Fc "${dump_args[@]}" > "$tmp/data.dump"; then
-    die "pg_dump fehlgeschlagen."
+    _bkp_fail dump "pg_dump fehlgeschlagen."
   fi
 
   # --- (2) shared.json: gefilterte Tabellen als jsonb (pg_dump kann nicht zeilen-filtern) ---
-  local sel="" qual cond
+  local sel=() qual cond
   while IFS=$'\t' read -r qual cond; do
     [ -n "$qual" ] || continue
     _bkp_qual_ok "$qual" || { warn "Ueberspringe ungueltige filtered-Tabelle: $qual"; continue; }
-    [ -n "$sel" ] && sel+=", "
-    sel+="$(printf "'%s', COALESCE((SELECT jsonb_agg(x) FROM %s x WHERE %s), '[]'::jsonb)" "$qual" "$qual" "$cond")"
+    sel+=("$(printf "'%s', COALESCE((SELECT jsonb_agg(x) FROM %s x WHERE %s), '[]'::jsonb)" "$qual" "$qual" "$cond")")
   done < <(_bkp_filtered)
-  if [ -n "$sel" ]; then
-    _bkp_psql_scalar "SELECT jsonb_build_object($sel)" > "$tmp/shared.json" || die "shared.json-Export fehlgeschlagen."
+  if [ "${#sel[@]}" -gt 0 ]; then
+    _bkp_psql_scalar "SELECT $(_bkp_jsonb_obj "${sel[@]}")" > "$tmp/shared.json" || _bkp_fail dump "shared.json-Export fehlgeschlagen."
   else
     printf '{}' > "$tmp/shared.json"
   fi
 
   # --- (3) verify_counts: count(*) je bulk- + filtered-Tabelle (Korruptions-Versicherung, Opus B3) ---
-  local vsel="" n
+  local vsel=() n
   while IFS= read -r t; do
     [ -n "$t" ] || continue; _bkp_qual_ok "$t" || continue
-    [ -n "$vsel" ] && vsel+=", "
-    vsel+="$(printf "'%s', (SELECT count(*) FROM %s)" "$t" "$t")"
+    vsel+=("$(printf "'%s', (SELECT count(*) FROM %s)" "$t" "$t")")
   done <<< "$bulk"
   while IFS=$'\t' read -r qual cond; do
     [ -n "$qual" ] || continue; _bkp_qual_ok "$qual" || continue
-    [ -n "$vsel" ] && vsel+=", "
-    vsel+="$(printf "'%s', (SELECT count(*) FROM %s WHERE %s)" "$qual" "$qual" "$cond")"
+    vsel+=("$(printf "'%s', (SELECT count(*) FROM %s WHERE %s)" "$qual" "$qual" "$cond")")
   done < <(_bkp_filtered)
-  local verify_json; verify_json="$(_bkp_psql_scalar "SELECT jsonb_build_object($vsel)")" || die "verify_counts-Berechnung fehlgeschlagen."
+  local verify_json; verify_json="$(_bkp_psql_scalar "SELECT $(_bkp_jsonb_obj "${vsel[@]}")")" || _bkp_fail dump "verify_counts-Berechnung fehlgeschlagen."
 
   # --- (4) manifest.json (Header) ---
   local core_ver pkgs_json
@@ -317,30 +497,174 @@ backup_cmd_export() {
   jq -n --arg ts "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --arg cv "$core_ver" \
         --argjson pkgs "$pkgs_json" --argjson vc "$verify_json" \
         '{bundle_format:2, created_at:$ts, core_version:$cv, packages:$pkgs, verify_counts:$vc}' \
-        > "$tmp/manifest.json" || die "manifest.json-Bau fehlgeschlagen."
+        > "$tmp/manifest.json" || _bkp_fail dump "manifest.json-Bau fehlgeschlagen."
 
   # --- (5) Tarball -> gpg (Passphrase via fd, nie argv) ---
   local tarf="$tmp/bundle.tar.gz"
-  tar -czf "$tarf" -C "$tmp" manifest.json data.dump shared.json || die "tar fehlgeschlagen."
+  tar -czf "$tarf" -C "$tmp" manifest.json data.dump shared.json || _bkp_fail dump "tar fehlgeschlagen."
   # umask in der Teilschale: gpg legt die Datei dann nie weltlesbar an; chmod danach deckt eine vorhandene Zieldatei ab.
   if ! ( umask 077; gpg_sym_encrypt "$key" "$out" "$tarf" ); then
-    die "gpg-Verschluesselung fehlgeschlagen."
+    _bkp_fail encrypt "gpg-Verschluesselung fehlgeschlagen."
   fi
   chmod 0600 "$out"
   if [ "$want_host" -eq 1 ]; then
-    rt_host_put "$host" "$name" < "$out" || die "Sicherung ließ sich nicht in den Ordner '${host}' auf dem Rechner schreiben."
-    _bkp_host_rotate "$host"
-    ok "Backup geschrieben: ${host}/${name} (Ordner auf dem Rechner)"
+    rt_host_put "$(_bkp_hd "$host")" "$name" < "$out" || _bkp_fail write "Sicherung ließ sich nicht in den Ordner '${host}' auf dem Rechner schreiben."
+    _bkp_host_rotate "$host" "$kid"
+    ok "Backup geschrieben: $(_bkp_join "$host" "$name") (Ordner auf dem Rechner)"
   else
     ok "Backup geschrieben: $out"
   fi
-  log "Inhalt: $(printf '%s' "$bulk" | grep -c .) bulk-Tabelle(n) + $(_bkp_filtered | grep -c .) gefilterte; aktive Pakete: ${pkgs_json}"
+  _bkp_state_set LAST_OK "$(date +%s)"
+  log "Inhalt:$(printf '%s' "$bulk" | grep -c .) bulk-Tabelle(n) + $(_bkp_filtered | grep -c .) gefilterte; aktive Pakete: ${pkgs_json}"
   # Off-Site: optional verschluesselt an den Telegram-Owner-Chat (best-effort, kippt den fertigen Export nie).
   if [ "$notify" -eq 1 ]; then
     _bkp_notify_telegram "$out" || true
   elif [ "$want_host" -eq 0 ]; then
     log "Off-Site-Hinweis: liegt auf der VM — per scp/Backup wegkopieren (der Schluessel liegt OFFLINE separat). Tipp: 'lifeagents backup export --notify-telegram' schickt eine verschluesselte Kopie an deinen Telegram-Chat."
   fi
+}
+
+# ============================================================
+# restore — Schluessel vom Notfallblatt
+# ============================================================
+# _bkp_adopt_sql -> SQL fuer den Anfang der Restore-TX (braucht :'bk_new', je weiterem Blatt-Schluessel :'bk_o<j>'): der
+#   bisher aktive Schluessel wird prev-Zeile, der zur Sicherung passende der aktive; weitere Schluessel vom selben Blatt
+#   (die Datei traegt aktuellen + aeltere) kommen als prev dazu, damit ein spaeter gedrucktes Blatt alle kennt. Namen mit
+#   Mikrosekunden + Laufnummer -> keine PK-Kollision. Schlaegt die TX spaeter fehl, rollt alles mit zurueck.
+_bkp_adopt_sql() {
+  local j="${1:-0}" i
+  cat <<SQL
+INSERT INTO core.backup_key(key, value)
+  SELECT '${BACKUP_KEY_PREV_PREFIX}' || to_char(clock_timestamp() AT TIME ZONE 'UTC', 'YYYYMMDD"T"HH24MISSUS'), value
+  FROM core.backup_key WHERE key = '${BACKUP_KEY_NAME}' AND value <> :'bk_new'
+    AND NOT EXISTS (SELECT 1 FROM core.backup_key WHERE value = :'bk_new' AND key <> '${BACKUP_KEY_NAME}');
+INSERT INTO core.backup_key(key, value) VALUES ('${BACKUP_KEY_NAME}', :'bk_new')
+  ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = now();
+SQL
+  for ((i = 0; i < j; i++)); do
+    cat <<SQL
+INSERT INTO core.backup_key(key, value)
+  SELECT '${BACKUP_KEY_PREV_PREFIX}' || to_char(clock_timestamp() AT TIME ZONE 'UTC', 'YYYYMMDD"T"HH24MISSUS') || '_${i}', :'bk_o${i}'
+  WHERE NOT EXISTS (SELECT 1 FROM core.backup_key WHERE value = :'bk_o${i}');
+SQL
+  done
+}
+
+# _bkp_try_parsed <parse-ausgabe> <chiffrat> <klartext-ziel> <datei-id> — waehlt aus den eingegebenen Schluesseln den zur
+#   Sicherung passenden (per ID im Dateinamen, ohne ID der Reihe nach) und entschluesselt. Erfolg: rc 0, _BKP_BROUGHT und
+#   _BKP_OTHERS (die uebrigen Blatt-Schluessel, je Zeile). Sonst _BKP_TRY_MSG (Alltagssatz), _BKP_TRY_ERR (Form-Code aus der
+#   Eingabe) und _BKP_TRY_FINAL=1, wenn ein neuer Versuch nichts bringt (passende ID, Datei beschaedigt). Direkt rufen.
+_BKP_BROUGHT=''; _BKP_OTHERS=''; _BKP_TRY_MSG=''; _BKP_TRY_ERR=''; _BKP_TRY_FINAL=0
+_bkp_try_parsed() {
+  local parsed="$1" enc="$2" out="$3" fkid="$4" l k kid ids='' tried=0 all=''
+  _BKP_TRY_MSG=''; _BKP_TRY_ERR=''; _BKP_TRY_FINAL=0; _BKP_BROUGHT=''; _BKP_OTHERS=''
+  while IFS= read -r l; do
+    case "$l" in
+      err:*) [ -n "$_BKP_TRY_ERR" ] || _BKP_TRY_ERR="${l#err:}" ;;
+      key:*) all="${all}${l#key:}"$'\n' ;;
+    esac
+  done <<<"$parsed"
+  while IFS= read -r k; do
+    [ -n "$k" ] || continue
+    kid="$(printf '%s' "$k" | backup_key_id)"
+    if [ -n "$fkid" ] && [ "$kid" != "$fkid" ]; then ids="${ids:+$ids, }$kid"; continue; fi
+    tried=1
+    if gpg_sym_decrypt "$k" "$enc" > "$out" < /dev/null; then
+      _BKP_BROUGHT="$k"
+      while IFS= read -r l; do [ -n "$l" ] && [ "$l" != "$k" ] && _BKP_OTHERS="${_BKP_OTHERS}${l}"$'\n'; done <<<"$all"
+      return 0
+    fi
+    : > "$out"
+    if [ -n "$fkid" ]; then _BKP_TRY_FINAL=1; _BKP_TRY_MSG="$(backup_text msg.corrupt id "$fkid")"; return 1; fi
+  done <<<"$all"
+  case "$_BKP_TRY_ERR" in
+    line[1-4]) _BKP_TRY_MSG="$(backup_text msg.line n "${_BKP_TRY_ERR#line}")" ;;
+    length)    _BKP_TRY_MSG="$(backup_text msg.length)" ;;
+    chars)     _BKP_TRY_MSG="$(backup_text msg.chars)" ;;
+  esac
+  if [ -n "$ids" ] && [ -z "$_BKP_TRY_MSG" ]; then _BKP_TRY_MSG="$(backup_text msg.other_key ids "$ids" id "$fkid")"
+  elif [ "$tried" = 1 ] && [ -z "$_BKP_TRY_MSG" ]; then _BKP_TRY_MSG="$(backup_text msg.no_open)"; fi
+  [ -n "$_BKP_TRY_MSG" ] || _BKP_TRY_MSG="$(backup_text msg.none)"
+  return 1
+}
+
+# _bkp_ask_key_tty -> Eingabe vom Notfallblatt am Terminal (verdeckt) im Format von backup_key_parse. Zeile fuer Zeile mit
+#   sofortiger Pruefung und eigener Meldung je Ursache (Pruefzeichen vs. Form), bis zu 3 Versuche je Zeile, danach
+#   "err:line<n>"; wer in Zeile 1 den ganzen Schluessel eingibt, ist sofort fertig.
+_bkp_ask_key_tty() {
+  local n line d acc='' rc tries msg
+  for n in 1 2 3 4; do
+    tries=0
+    while :; do
+      tries=$((tries + 1))
+      if [ "$n" = 1 ]; then line="$(ui_input "$(backup_text ask.line1)" 1)"
+      else line="$(ui_input "$(backup_text ask.line n "$n")" 1)"; fi
+      if [ "$n" = 1 ] && [ "$(printf '%s' "$line" | backup_key_normalize | wc -c)" -ge 64 ]; then
+        printf '%s' "$line" | backup_key_parse; return 0
+      fi
+      rc=0; d="$(printf '%s' "$line" | backup_key_line "$n")" || rc=$?
+      [ "$rc" -eq 0 ] && break
+      if [ "$tries" -ge 3 ]; then printf 'err:line%s\n' "$n"; return 0; fi
+      if [ "$rc" -eq 1 ]; then msg="$(backup_text ask.retry_check n "$n")"; else msg="$(backup_text ask.retry_form n "$n")"; fi
+      { printf '  %s\n' "$msg" > /dev/tty; } 2>/dev/null || true
+    done
+    acc="${acc}${d}"
+  done
+  printf 'key:%s\n' "$acc"
+}
+
+# _bkp_brought_key <chiffrat> <klartext-ziel> <datei-id> <von-stdin:0|1> — kein gespeicherter Schluessel oeffnet die
+#   Sicherung: Schluessel vom Notfallblatt holen (stdin bzw. Terminal) -> _BKP_BROUGHT/_BKP_OTHERS. Am Terminal bis zu drei
+#   ganze Schluessel (falsches Blatt); ein Zeilenfehler nach drei Versuchen oder eine beschaedigte Datei bricht sofort ab.
+#   Jeder Abbruch: nichts geaendert.
+_bkp_brought_key() {
+  local enc="$1" out="$2" fkid="$3" from_stdin="$4" parsed n un cmd
+  un="$(backup_text msg.unchanged)"
+  if [ "$from_stdin" = 1 ]; then
+    parsed="$(backup_key_parse)"
+    _bkp_try_parsed "$parsed" "$enc" "$out" "$fkid" || die "${_BKP_TRY_MSG} ${un}"
+    return 0
+  fi
+  if ! ui_interactive; then
+    if rt_is_compose; then cmd="$(rt_master_cli_hint) backup restore <datei> --key-stdin < Notfallblatt.txt"
+    else cmd="lifeagents backup restore <datei> --key-stdin < notfallblatt.txt"; fi
+    die "$(backup_text msg.no_tty cmd "$cmd") ${un}"
+  fi
+  if [ -n "$fkid" ]; then parsed="$(backup_text ask.intro_id id "$fkid")"; else parsed="$(backup_text ask.intro)"; fi
+  { printf '\n  %s\n\n' "$parsed" > /dev/tty; } 2>/dev/null || true
+  for n in 1 2 3; do
+    parsed="$(_bkp_ask_key_tty)"
+    if _bkp_try_parsed "$parsed" "$enc" "$out" "$fkid"; then return 0; fi
+    if [ "$_BKP_TRY_FINAL" = 1 ] || [ -n "$_BKP_TRY_ERR" ]; then die "${_BKP_TRY_MSG} ${un}"; fi
+    { printf '  %s\n' "$_BKP_TRY_MSG" > /dev/tty; } 2>/dev/null || true
+  done
+  die "$(backup_text msg.wrong_3) ${un}"
+}
+
+# _bkp_pick_lines (stdin: Dateinamen im Rechner-Ordner) -> Auswahl-Zeilen "Datum · Version · was sie braucht<TAB>name":
+#   je neueste zuerst, die eines anderen Schluessels vorn (Grund unten). Zeit in UTC wie im Dateinamen.
+_bkp_pick_lines() {
+  local ids b kid ts ver own='' other='' lbl
+  ids=$'\n'"$(_bkp_key_ids)"$'\n'
+  while IFS= read -r b; do
+    [ -n "$b" ] || continue
+    kid="$(_bkp_file_key_id "$b")"; ts=''; ver=''
+    [[ "$b" =~ lifeagents-backup-([0-9]{4})([0-9]{2})([0-9]{2})([0-9]{2})([0-9]{2}) ]] \
+      && ts="${BASH_REMATCH[1]}-${BASH_REMATCH[2]}-${BASH_REMATCH[3]} ${BASH_REMATCH[4]}:${BASH_REMATCH[5]} UTC"
+    [[ "$b" =~ -(v[0-9][0-9A-Za-z.-]*|vdev)[^/]*\.nla\.enc$ ]] && ver="${BASH_REMATCH[1]}"
+    if [ -n "$kid" ] && [[ "$ids" == *$'\n'"$kid"$'\n'* ]]; then
+      lbl="${ts:-$b} · ${ver:-?} · $(backup_text pick.own)"; own="${own}${b}"$'\t'"${lbl}"$'\n'
+    elif [ -n "$kid" ]; then
+      lbl="${ts:-$b} · ${ver:-?} · $(backup_text pick.other id "$kid")"; other="${other}${b}"$'\t'"${lbl}"$'\n'
+    else
+      lbl="${ts:-$b} · $(backup_text pick.legacy)"; other="${other}${b}"$'\t'"${lbl}"$'\n'
+    fi
+  done
+  # Fremde zuerst: auf einem neuen Rechner im geteilten Ordner ist die eigene, neueste Sicherung die fast leere der
+  # Neuinstallation — gesucht ist die des alten Rechners. Auf einem gewohnten Rechner gibt es keine fremden.
+  { printf '%s' "$other" | sort -r; printf '%s' "$own" | sort -r; } | while IFS=$'\t' read -r b lbl; do
+    [ -n "$b" ] && printf '%s\t%s\n' "$lbl" "$b"
+  done
 }
 
 # ============================================================
@@ -351,11 +675,14 @@ backup_cmd_restore() {
   _bkp_resolve_db
   # --from-host (Docker-Verbund): <datei> liegt in einem Ordner AUF DEM RECHNER — als voller Pfad oder als Name im gemerkten
   # Ordner (BACKUP_HOST_DIR). Im Verbund ist das ohne Pfad der Normalfall (die Auswahl listet den gemerkten Ordner).
-  local enc="" force=0 a from_host=0
+  # --key-stdin: Schluessel vom Notfallblatt aus stdin (Text oder die ganze Notfallblatt-Datei), nur gelesen, wenn kein
+  # gespeicherter Schluessel die Datei oeffnet. Nie als Argument (Prozessliste).
+  local enc="" force=0 a from_host=0 key_stdin=0
   for a in "$@"; do
     case "$a" in
       --yes|-y) force=1 ;;
       --from-host) from_host=1 ;;
+      --key-stdin) key_stdin=1 ;;
       --*)      die "Unbekannte Option: $a" ;;
       *)        enc="$a" ;;
     esac
@@ -371,8 +698,7 @@ backup_cmd_restore() {
     local _hd _hpick
     _hd="$(_bkp_host_dir)"
     [ -n "$_hd" ] || die "Kein Sicherungs-Ordner auf dem Rechner gewählt — Datei mit vollem Pfad angeben: lifeagents backup restore --from-host <ordner>/<datei>"
-    _hpick="$(rt_host_ls "$_hd" | sort -r | while IFS= read -r b; do printf '%s\t%s\n' "$b" "$b"; done \
-      | ui_choose 'Backup wiederherstellen (Wipe-Uebersicht + Bestaetigung folgen):' 0 || true)"
+    _hpick="$(rt_host_ls "$(_bkp_hd "$_hd")" | _bkp_pick_lines | ui_choose 'Backup wiederherstellen (Wipe-Uebersicht + Bestaetigung folgen):' 0 || true)"
     [ -n "$_hpick" ] && enc="$_hpick"
   elif [ -z "$enc" ] && ui_interactive; then
     ensure_gum
@@ -385,20 +711,19 @@ backup_cmd_restore() {
       | ui_choose 'Backup wiederherstellen (Wipe-Uebersicht + Bestaetigung folgen):' 0 || true)"
     [ -n "$_pick" ] && enc="$_pick"
   fi
-  [ -n "$enc" ] || die "Usage: lifeagents backup restore <datei.nla.enc> [--from-host] [--yes]"
+  [ -n "$enc" ] || die "Usage: lifeagents backup restore <datei.nla.enc> [--from-host] [--key-stdin] [--yes]"
   local host_src=""
   if [ "$from_host" -eq 1 ]; then
     case "$enc" in
-      /*) host_src="$enc" ;;
-      */*) die "Datei als Name im gemerkten Ordner oder mit vollem Pfad angeben: $enc" ;;
-      *) host_src="$(_bkp_host_dir)"; [ -n "$host_src" ] || die "Kein Sicherungs-Ordner auf dem Rechner gewählt — Datei mit vollem Pfad angeben."; host_src="${host_src%/}/$enc" ;;
+      /*|[A-Za-z]:\\*|[A-Za-z]:/*) host_src="$enc" ;;
+      */*|*\\*) die "Datei als Name im gemerkten Ordner oder mit vollem Pfad angeben: $enc" ;;
+      *) host_src="$(_bkp_host_dir)"; [ -n "$host_src" ] || die "Kein Sicherungs-Ordner auf dem Rechner gewählt — Datei mit vollem Pfad angeben."; host_src="$(_bkp_join "$host_src" "$enc")" ;;
     esac
   else
     [ -r "$enc" ] || die "Backup-Datei nicht lesbar: $enc"
   fi
 
-  local key; key="$(_bkp_key)"
-  [ -n "$key" ] && [ "${#key}" -ge 16 ] || die "Backup-Schluessel fehlt/zu kurz (core.backup_key '${BACKUP_KEY_NAME}')."
+  local src_name; src_name="${host_src:-$enc}"; src_name="${src_name##*/}"
 
   local tmp; tmp="$(_bkp_tmpdir)" || die "Konnte Arbeitsverzeichnis nicht anlegen."
   # Pfad JETZT in den Trap-String expandieren (s. export): $tmp ist local -> bei der global feuernden
@@ -409,12 +734,21 @@ backup_cmd_restore() {
   # --- (1) Entschluesseln + Header lesen (VOR jedem Wipe) ---
   # Rechner-Ordner: das Chiffrat zuerst in den tmpfs holen (nur lesend gemountet, genau dieser eine Ordner).
   if [ -n "$host_src" ]; then
-    rt_host_get "$(dirname "$host_src")" "$(basename "$host_src")" > "$tmp/in.nla.enc" && [ -s "$tmp/in.nla.enc" ] \
+    local hs; hs="$(_bkp_hd "$host_src")"
+    rt_host_get "$(dirname "$hs")" "$(basename "$hs")" > "$tmp/in.nla.enc" && [ -s "$tmp/in.nla.enc" ] \
       || die "Sicherung '${host_src}' auf dem Rechner nicht lesbar. Es wurde NICHTS geaendert."
     enc="$tmp/in.nla.enc"
   fi
-  if ! gpg_sym_decrypt "$key" "$enc" > "$tmp/bundle.tar.gz"; then
-    die "Entschluesselung fehlgeschlagen — falscher Backup-Schluessel oder beschaedigte Datei. Es wurde NICHTS geaendert."
+  # Erst alle gespeicherten Schluessel (aktiver zuerst); oeffnet keiner die Datei, kommt der Schluessel vom Notfallblatt.
+  # Ein gespeicherter Schluessel mit der ID aus dem Dateinamen, der trotzdem scheitert = Datei beschaedigt (nicht fragen).
+  local brought='' others='' file_kid; file_kid="$(_bkp_file_key_id "$src_name")"
+  if ! gpg_sym_decrypt_any "$enc" "$tmp/bundle.tar.gz"; then
+    local known; known=$'\n'"$(_bkp_key_ids)"$'\n'
+    if [ -n "$file_kid" ] && [[ "$known" == *$'\n'"$file_kid"$'\n'* ]]; then
+      die "$(backup_text msg.corrupt_stored id "$file_kid") (${src_name}) $(backup_text msg.unchanged)"
+    fi
+    _bkp_brought_key "$enc" "$tmp/bundle.tar.gz" "$file_kid" "$key_stdin"
+    brought="$_BKP_BROUGHT"; others="$_BKP_OTHERS"; _BKP_BROUGHT=''; _BKP_OTHERS=''
   fi
   tar -xzf "$tmp/bundle.tar.gz" -C "$tmp" || die "Tarball beschaedigt (kein gueltiges Bundle). Nichts geaendert."
   [ -r "$tmp/manifest.json" ] && [ -r "$tmp/data.dump" ] || die "Bundle unvollstaendig (manifest.json/data.dump fehlt). Nichts geaendert."
@@ -457,7 +791,13 @@ backup_cmd_restore() {
       # veraendertes Ziel-Schema an -> bewusst KEIN Cross-Version-Restore (Branchen-Standard: pg_restore/
       # Borg/restic verweigern Cross-Version ebenso). Echtes Forward-Migrate braeuchte eine Migrationskette
       # zwischen >=2 Versionen (vertagt, Trigger: ein Restore scheitert real an der Versionssperre).
-      die "Versions-Konflikt fuer '$pkg': Bundle=$ver, installiert=$inst_ver. Versions-uebergreifender Restore wird (wie pg_restore/Borg/restic) bewusst NICHT unterstuetzt — installierte Version an die Bundle-Version angleichen ('lifeagents update'), dann erneut restoren."
+      # Aelteres Bundle: ein Update hilft nicht (es geht nur vorwaerts) -> die Version aus dem Dateinamen nennen.
+      local rel_hint=''
+      [[ "$src_name" =~ -(v[0-9]+\.[0-9]+\.[0-9]+[0-9A-Za-z.-]*)\.nla\.enc$ ]] && rel_hint="${BASH_REMATCH[1]}"
+      if [ "$(printf '%s\n%s\n' "$ver" "$inst_ver" | sort -V | head -n1)" = "$ver" ]; then
+        die "Versions-Konflikt fuer '$pkg': die Sicherung ist älter (Bundle=$ver, installiert=$inst_ver). Ein Update hilft hier nicht — die Sicherung lässt sich nur in genau ihre Version zurückspielen: Life Agents ${rel_hint:-in der Version der Sicherung} neu installieren, dann erneut restoren (Anleitung: ${BACKUP_GUIDE_URL}). Es wurde NICHTS geaendert."
+      fi
+      die "Versions-Konflikt fuer '$pkg': die Sicherung ist neuer (Bundle=$ver, installiert=$inst_ver) — erst 'lifeagents update'${rel_hint:+ (mindestens ${rel_hint})}, dann erneut restoren. Versions-uebergreifender Restore wird (wie pg_restore/Borg/restic) bewusst NICHT unterstuetzt. Es wurde NICHTS geaendert."
     fi
   done < <(jq -r '.packages[]? | [.name, .version] | @tsv' "$tmp/manifest.json")
 
@@ -482,6 +822,9 @@ backup_cmd_restore() {
   log "  Pakete (Bundle): ${pkg_summary:-?}"
   log "  Voll-Wipe (TRUNCATE), $(printf '%s' "$bulk" | grep -c .) Tabelle(n): ${bulk_disp}"
   log "  Zeilen-gefiltert, ${filt_n} Tabelle(n): ${filt_disp:-(keine)}"
+  if [ -n "$brought" ]; then
+    log "  $(backup_text msg.adopt id "$(printf '%s' "$brought" | backup_key_id)")"
+  fi
 
   # --- (3b) TTY-Bestaetigung (destruktiv) ---
   if [ "$force" -ne 1 ]; then
@@ -535,12 +878,56 @@ backup_cmd_restore() {
     printf 'END $verify$;\n'
   } >> "$restore_sql"
 
-  # psql (postgres via runuser) liest das Skript per stdin-Redirect (root oeffnet die Datei) — nicht -f
-  # (das root-eigene 0700-tmpfs ist fuer postgres nicht traversierbar). -1 = eine TX ueber den ganzen Strom.
-  if pg_su_psql -v ON_ERROR_STOP=1 -1 -X -q -d "$N8N_DB_NAME" < "$restore_sql"; then
+  # psql (postgres via runuser) liest das Skript ueber stdin (`-f -`; root oeffnet die Datei) — kein Dateipfad (das root-eigene
+  # 0700-tmpfs ist fuer postgres nicht traversierbar). -1 = eine TX ueber den ganzen Strom; `-f -` statt nacktem stdin, weil
+  # psql -1 nur fuer -c/-f zusagt. Ein mitgebrachter Schluessel steht vorn im Strom (\set), nie in restore.sql.
+  if { if [ -n "$brought" ]; then
+         local o j=0
+         psql_setvar bk_new "$brought"
+         while IFS= read -r o; do [ -n "$o" ] || continue; psql_setvar "bk_o$j" "$o"; j=$((j + 1)); done <<<"$others"
+         _bkp_adopt_sql "$j"
+       fi
+       cat "$restore_sql"; } \
+       | pg_su_psql -v ON_ERROR_STOP=1 -1 -X -q -d "$N8N_DB_NAME" -f -; then
     ok "Restore abgeschlossen (atomar, Count-Verify gruen): $(printf '%s' "$bulk" | grep -c .) bulk-Tabelle(n) + gefilterte Zeilen wiederhergestellt."
   else
     die "Restore fehlgeschlagen — Transaktion zurueckgerollt, die alte Welt ist intakt."
+  fi
+}
+
+# ============================================================
+# key — Notfallblatt
+# ============================================================
+# backup_cmd_key [--file <pfad>|-] — Notfallblatt ausgeben: ohne --file nur aufs Terminal (/dev/tty, nie in eine Pipe oder
+#   ein Log); --file <pfad> legt eine neue 0600-Datei an (vorhandene wird nie ueberschrieben); --file - schreibt auf stdout
+#   (Start-App, MasterCmd::BackupKit: `lifeagents backup key --file -` im master, Ausgabe nur in deren Datei).
+backup_cmd_key() {
+  local file='' a want=0 kit
+  for a in "$@"; do
+    if [ "$want" = 1 ]; then file="$a"; want=0; continue; fi
+    case "$a" in
+      --file)   want=1 ;;
+      --file=*) file="${a#--file=}" ;;
+      *)        die "Unbekannte Option: $a (erlaubt: --file <pfad> oder --file -)" ;;
+    esac
+  done
+  [ "$want" = 0 ] || die "--file braucht einen Pfad (oder - für die Ausgabe auf stdout)."
+  if [ -z "$file" ]; then
+    tty_usable || die "Kein Terminal: das Notfallblatt erscheint nur im Terminal oder mit --file <pfad> (neue Datei, nur für root lesbar)."
+  elif [ "$file" != - ] && { [ -e "$file" ] || [ -L "$file" ]; }; then
+    die "'${file}' gibt es schon — einen anderen Namen wählen (das Notfallblatt überschreibt nichts)."
+  fi
+  _bkp_resolve_db
+  kit="$(backup_kit_text)" || die "Kein Sicherungs-Schlüssel gespeichert (core.backup_key) — die Installation ist nicht fertig; 'lifeagents doctor' zeigt, was fehlt."
+  if [ -z "$file" ]; then
+    printf '\n%s\n\n' "$kit" > /dev/tty
+  elif [ "$file" = - ]; then
+    printf '%s\n' "$kit"
+  else
+    ( umask 077; set -o noclobber; printf '%s\n' "$kit" > "$file" ) 2>/dev/null \
+      || die "Konnte '${file}' nicht anlegen (Ordner vorhanden und beschreibbar?)."
+    chmod 0600 "$file"
+    ok "Notfallblatt gespeichert: ${file} (nur für root lesbar). Ausdrucken oder im Passwort-Manager ablegen, nicht im Sicherungsordner."
   fi
 }
 
@@ -556,6 +943,7 @@ backup_cli() {
     _menu_verb="$(ui_choose 'lifeagents backup — was tun?' 0 <<'MENU'
 export — Verschluesseltes Backup schreiben	export
 restore — Backup wiederherstellen (Auswahl-Liste, fragt nach)	restore
+key — Notfallblatt mit dem Sicherungs-Schlüssel anzeigen	key
 help — Hilfe anzeigen	help
 MENU
 )"
@@ -567,26 +955,36 @@ MENU
     host-dir) backup_cmd_host_dir "$@" ;;
     auto)    backup_cmd_auto ;;
     restore) backup_cmd_restore "$@" ;;
+    key)     backup_cmd_key "$@" ;;
     help|--help|-h)
       cat >&2 <<'EOF'
 lifeagents backup <verb> — Backup/Restore der Nutzerdaten (verschluesselt, paket-bewusst).
 
   export [pfad] [--notify-telegram]
-                           Verschluesseltes Backup der Nutzerdaten schreiben (Default: ./lifeagents-backup-<ts>.nla.enc).
+                           Verschluesseltes Backup der Nutzerdaten schreiben (Default:
+                           ./lifeagents-backup-<ts>-k<schlüssel-id>-v<version>.nla.enc).
                            Sichert NUR echte Nutzerdaten (Finanzen/Profil/Trigger/Plaene/Onboarding) via pg_dump —
                            NICHT Code/Workflows/Geheimnisse (die stellt der Installer wieder her).
                            --notify-telegram schickt die fertige .nla.enc zusätzlich als Off-Site-Kopie an den
                            Owner-Telegram-Chat (best-effort: schlaegt der Versand fehl, bleibt das lokale Backup gueltig).
-  restore <datei> [--yes]  Backup wiederherstellen (ATOMAR: alles-oder-nichts). UEBERSCHREIBT alle Nutzerdaten;
+  restore <datei> [--key-stdin] [--yes]
+                           Backup wiederherstellen (ATOMAR: alles-oder-nichts). UEBERSCHREIBT alle Nutzerdaten;
                            zeigt VOR der Rückfrage die betroffenen Pakete + Tabellen. Fehlt ein Bundle-Paket ->
                            Angebot, es zu installieren (--no-seed); dann versionsgleich restoren (sonst sauberer
                            Abbruch). --yes überspringt Rückfrage + nimmt Auto-Install an.
+                           Öffnet kein gespeicherter Schlüssel die Datei (neuer Rechner), fragt restore verdeckt nach
+                           dem Schlüssel vom Notfallblatt; --key-stdin liest ihn (oder die Notfallblatt-Datei) aus stdin.
+                           Danach gilt dieser Schlüssel, der bisherige bleibt für ältere Sicherungen gespeichert.
+  key [--file <pfad>|-]    Notfallblatt mit dem Sicherungs-Schlüssel: ohne Option nur aufs Terminal; --file legt eine
+                           neue Datei an (nur für root lesbar), --file - schreibt auf stdout. Ausdrucken oder im
+                           Passwort-Manager ablegen — ohne den Schlüssel lässt sich keine Sicherung öffnen.
 
 Nur im Docker-Verbund (Mac/Windows-App) — Sicherungen liegen in einem Ordner AUF DEM RECHNER, nicht auf der Docker-Platte:
   host-dir [<ordner>]      Sicherungs-Ordner auf dem Rechner zeigen bzw. setzen (absoluter Pfad, wird auf Schreibrecht geprüft).
   export [--to-host [<ordner>]]
-                           Ohne Pfad schreibt der Verbund immer in den Rechner-Ordner (behält die letzten 14 Sicherungen).
-  restore [<name>|<pfad>] [--from-host] [--yes]
+                           Ohne Pfad schreibt der Verbund immer in den Rechner-Ordner (behält die letzten 14 Sicherungen
+                           mit dem eigenen Schlüssel; Sicherungen eines anderen Rechners im Ordner bleiben liegen).
+  restore [<name>|<pfad>] [--from-host] [--key-stdin] [--yes]
                            Ohne Datei: Auswahl aus dem Rechner-Ordner; <name> = Datei im gewählten Ordner.
   auto                     Tägliche Sicherung in den Rechner-Ordner (läuft von selbst um 03:30 im master; ohne Ordner still).
 
@@ -594,7 +992,8 @@ Automatisch (Off-Site, taeglich 03:30) — eine Zeile in die root-crontab ('cron
   30 3 * * * cd /root && lifeagents backup export --notify-telegram >> /var/log/lifeagents-backup.log 2>&1
   (lokale Dateien sammeln sich an — keine Auto-Rotation; regelmaessig aufraeumen oder die Telegram-Historie als Generationen nutzen.)
 
-Schlüssel: liegt in core.backup_key (gpg-Passphrase, AES256). OFFLINE separat sichern — ohne ihn kein Restore.
+Schlüssel: liegt in core.backup_key (gpg-Passphrase, AES256). OFFLINE separat sichern (lifeagents backup key) — ohne
+ihn kein Restore auf einem neuen Rechner.
 EOF
       ;;
     *) err "lifeagents backup: unbekannter Verb: $verb"; backup_cli help; return 1 ;;

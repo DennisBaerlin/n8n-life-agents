@@ -35,6 +35,8 @@ const UI_TEXT = {
     "core.art.greeting.alt": "Dein Assistent meldet sich auf dem Handy von selbst mit einem Hinweis und fragt, bevor er etwas speichert. Er läuft auf deinem eigenen Rechner zu Hause, deine Daten liegen bei dir, und er hilft der ganzen Familie bei Finanzen, Karriere, Nachlass und Dokumenten.",
     "core.desktop.apply.busy_text": "Dein {machine} fragt dich gleich, ob die App die Energie-Einstellungen ändern darf.",
     "core.desktop.apply.busy_title": "Bestätige die Änderung",
+    "core.desktop.backup_dir.busy_title": "Sicherungsordner wird geöffnet …",
+    "core.desktop.backup_dir.title": "Sicherungsordner ändern",
     "core.desktop.changes.install_docker": "Docker kommt dazu (rund {size} MB, direkt vom Hersteller)",
     "core.desktop.changes.journal": "Eine kleine Datei, in der sich die App ihre Schritte merkt, damit sie alles zurücknehmen kann",
     "core.desktop.changes.keep_docker": "Docker selbst: keine neue Version, kein Neustart",
@@ -73,7 +75,7 @@ const UI_TEXT = {
     "core.desktop.core.busy_title": "Der Fragebogen wird vorbereitet",
     "core.desktop.docker.busy_text": "Ist Docker auf diesem {machine} schon da, und läuft es?",
     "core.desktop.docker.busy_title": "Docker wird geprüft",
-    "core.desktop.done.backup": "Deine Datenbank liegt nur auf diesem Rechner. Mach ab und zu eine Sicherung, dein Assistent erklärt dir, wie.",
+    "core.desktop.done.backup": "Deine Daten werden ab jetzt jeden Tag in den gewählten Ordner gesichert.",
     "core.desktop.done.deviations": "Bei anderen Programmen in Docker hat sich während der Einrichtung etwas verändert ({n} Stellen). Schick bitte den Fehlerbericht.",
     "core.desktop.done.lead": "Dein Assistent läuft jetzt auf diesem Rechner.",
     "core.desktop.done.title": "Fertig. Schreib deinem Assistenten in Telegram",
@@ -128,6 +130,18 @@ const UI_TEXT = {
     "core.desktop.home.lead_mac": "Oben in der Menüleiste siehst du am Symbol der App, ob alles läuft. Dieses Fenster kannst du schließen.",
     "core.desktop.home.lead_win": "Unten neben der Uhr siehst du am Symbol der App, ob alles läuft. Dieses Fenster kannst du schließen.",
     "core.desktop.home.title": "Dein Assistent ist eingerichtet",
+    "core.desktop.kit.busy_title": "Notfallblatt wird gespeichert …",
+    "core.desktop.kit.button": "Notfallblatt speichern",
+    "core.desktop.kit.check": "Ich habe das Notfallblatt ausgedruckt oder sicher gespeichert.",
+    "core.desktop.kit.close": "Fertig",
+    "core.desktop.kit.file_name": "Life-Agents-Notfallblatt",
+    "core.desktop.kit.lead": "Auf einem neuen Rechner öffnet sich eine Sicherung nur mit dem Schlüssel auf diesem Blatt. Drucke es aus oder lege es in deinen Passwort-Manager. Leg es nicht in den Sicherungsordner.",
+    "core.desktop.kit.menu_title": "Notfallblatt",
+    "core.desktop.kit.next_hint": "„{button}“ geht, sobald du das abgehakt hast.",
+    "core.desktop.kit.saved": "Gespeichert in Downloads: {file}. Lösche diese Datei, sobald das Blatt ausgedruckt oder sicher gespeichert ist.",
+    "core.desktop.kit.title": "Noch ein Schritt: Notfallblatt speichern",
+    "core.desktop.kit.unavailable": "Docker läuft gerade nicht. Starte Docker und versuche es noch einmal.",
+    "core.desktop.kit.write_failed": "Das Notfallblatt ließ sich nicht in „Downloads“ speichern.",
     "core.desktop.machine.mac": "Mac",
     "core.desktop.machine.pc": "PC",
     "core.desktop.memory.lead": "Frei sind {free} GB, der Assistent braucht {need} GB. Die App ändert daran nichts, weil sich die anderen Programme in Docker den Speicher teilen.",
@@ -231,6 +245,8 @@ const UI_TEXT = {
     "core.desktop.tidy.done_title": "Aufgeräumt",
     "core.desktop.tidy.text": "Die geladene Datei {file} brauchst du nicht mehr. Die App legt sie in den Papierkorb.",
     "core.desktop.tidy.title": "Zum Schluss: aufräumen",
+    "core.desktop.tray.backup_dir": "Sicherungsordner ändern …",
+    "core.desktop.tray.backup_kit": "Notfallblatt speichern …",
     "core.desktop.tray.checking": "Wird geprüft …",
     "core.desktop.tray.open": "Fenster öffnen",
     "core.desktop.tray.power_restore": "Dauerbetrieb zurückstellen",
@@ -298,6 +314,8 @@ const UI_TEXT = {
     "core.art.greeting.alt": "Your assistant gets in touch on your phone by itself and asks before it saves anything. It runs on your own computer at home, your data lives with you, and it helps the whole family with finances, career, inheritance and documents.",
     "core.desktop.apply.busy_text": "Your {machine} will ask you in a moment whether the app may change the energy settings.",
     "core.desktop.apply.busy_title": "Confirm the change",
+    "core.desktop.backup_dir.busy_title": "Opening the backup folder setting …",
+    "core.desktop.backup_dir.title": "Change backup folder",
     "core.desktop.changes.install_docker": "Docker is added (about {size} MB, directly from the maker)",
     "core.desktop.changes.journal": "A small file in which the app notes its steps so it can undo everything",
     "core.desktop.changes.keep_docker": "Docker itself: no new version, no restart",
@@ -336,7 +354,7 @@ const UI_TEXT = {
     "core.desktop.core.busy_title": "Preparing the questionnaire",
     "core.desktop.docker.busy_text": "Is Docker already on this {machine}, and is it running?",
     "core.desktop.docker.busy_title": "Checking Docker",
-    "core.desktop.done.backup": "Your database is only on this computer. Make a backup now and then, your assistant explains how.",
+    "core.desktop.done.backup": "From now on your data is backed up every day to the folder you chose.",
     "core.desktop.done.deviations": "Something changed in other programs in Docker during the setup ({n} places). Please send the error report.",
     "core.desktop.done.lead": "Your assistant is now running on this computer.",
     "core.desktop.done.title": "All done. Message your assistant in Telegram",
@@ -391,6 +409,18 @@ const UI_TEXT = {
     "core.desktop.home.lead_mac": "The app's icon at the top in the menu bar shows whether everything is running. You can close this window.",
     "core.desktop.home.lead_win": "The app's icon at the bottom next to the clock shows whether everything is running. You can close this window.",
     "core.desktop.home.title": "Your assistant is set up",
+    "core.desktop.kit.busy_title": "Saving the emergency sheet …",
+    "core.desktop.kit.button": "Save emergency sheet",
+    "core.desktop.kit.check": "I have printed the emergency sheet or stored it safely.",
+    "core.desktop.kit.close": "Done",
+    "core.desktop.kit.file_name": "Life-Agents-Emergency-Sheet",
+    "core.desktop.kit.lead": "On a new computer a backup only opens with the key on this sheet. Print it or put it in your password manager. Don't put it in the backup folder.",
+    "core.desktop.kit.menu_title": "Emergency sheet",
+    "core.desktop.kit.next_hint": "“{button}” works once you have ticked this.",
+    "core.desktop.kit.saved": "Saved in Downloads: {file}. Delete this file once the sheet is printed or stored safely.",
+    "core.desktop.kit.title": "One more step: save the emergency sheet",
+    "core.desktop.kit.unavailable": "Docker is not running right now. Start Docker and try again.",
+    "core.desktop.kit.write_failed": "The emergency sheet could not be saved in “Downloads”.",
     "core.desktop.machine.mac": "Mac",
     "core.desktop.machine.pc": "PC",
     "core.desktop.memory.lead": "{free} GB are free, the assistant needs {need} GB. The app does not change this, because the other programs in Docker share the memory.",
@@ -494,6 +524,8 @@ const UI_TEXT = {
     "core.desktop.tidy.done_title": "Tidied up",
     "core.desktop.tidy.text": "You no longer need the downloaded file {file}. The app moves it to the trash.",
     "core.desktop.tidy.title": "Last step: tidy up",
+    "core.desktop.tray.backup_dir": "Change backup folder …",
+    "core.desktop.tray.backup_kit": "Save emergency sheet …",
     "core.desktop.tray.checking": "Checking …",
     "core.desktop.tray.open": "Open window",
     "core.desktop.tray.power_restore": "Turn off always-on mode",
@@ -561,6 +593,8 @@ const UI_TEXT = {
     "core.art.greeting.alt": "어시스턴트가 휴대폰으로 먼저 알려 주고, 저장하기 전에 물어봐요. 집에 있는 내 컴퓨터에서 실행되고 데이터는 내 컴퓨터에 보관되며, 재무·커리어·상속·문서 분야에서 온 가족을 도와요.",
     "core.desktop.apply.busy_text": "곧 {machine}에서 앱이 에너지 설정을 바꿔도 되는지 물어볼 거예요.",
     "core.desktop.apply.busy_title": "변경을 확인해 주세요",
+    "core.desktop.backup_dir.busy_title": "백업 폴더 설정을 여는 중 …",
+    "core.desktop.backup_dir.title": "백업 폴더 변경",
     "core.desktop.changes.install_docker": "Docker 추가 (약 {size} MB, 제조사에서 직접)",
     "core.desktop.changes.journal": "앱이 모든 것을 되돌릴 수 있도록 진행 단계를 적어 두는 작은 파일",
     "core.desktop.changes.keep_docker": "Docker 자체: 새 버전도, 다시 시작도 없어요",
@@ -599,7 +633,7 @@ const UI_TEXT = {
     "core.desktop.core.busy_title": "설정 질문을 준비하는 중",
     "core.desktop.docker.busy_text": "이 {machine}에 Docker가 이미 있고 실행 중인지 확인해요",
     "core.desktop.docker.busy_title": "Docker 확인 중",
-    "core.desktop.done.backup": "데이터베이스는 이 컴퓨터에만 있어요. 가끔 백업해 주세요. 방법은 어시스턴트가 알려 줘요.",
+    "core.desktop.done.backup": "이제부터 데이터가 매일 고른 폴더에 백업돼요.",
     "core.desktop.done.deviations": "설정하는 동안 Docker 안의 다른 프로그램에서 바뀐 것이 있어요({n}곳). 오류 보고서를 보내 주세요.",
     "core.desktop.done.lead": "이제 어시스턴트가 이 컴퓨터에서 실행되고 있어요.",
     "core.desktop.done.title": "끝났어요. 텔레그램에서 어시스턴트에게 말을 걸어 보세요",
@@ -654,6 +688,18 @@ const UI_TEXT = {
     "core.desktop.home.lead_mac": "위쪽 메뉴 막대의 앱 아이콘에서 모든 것이 잘 실행되는지 볼 수 있어요. 이 창은 닫아도 돼요.",
     "core.desktop.home.lead_win": "아래쪽 시계 옆 앱 아이콘에서 모든 것이 잘 실행되는지 볼 수 있어요. 이 창은 닫아도 돼요.",
     "core.desktop.home.title": "어시스턴트 설정이 끝났어요",
+    "core.desktop.kit.busy_title": "비상 시트를 저장하는 중 …",
+    "core.desktop.kit.button": "비상 시트 저장",
+    "core.desktop.kit.check": "비상 시트를 인쇄했거나 안전하게 보관했어요.",
+    "core.desktop.kit.close": "완료",
+    "core.desktop.kit.file_name": "Life-Agents-Emergency-Sheet",
+    "core.desktop.kit.lead": "새 컴퓨터에서는 이 시트의 키가 있어야 백업을 열 수 있어요. 인쇄하거나 비밀번호 관리자에 넣어 주세요. 백업 폴더에는 넣지 마세요.",
+    "core.desktop.kit.menu_title": "비상 시트",
+    "core.desktop.kit.next_hint": "체크하면 “{button}”을 누를 수 있어요.",
+    "core.desktop.kit.saved": "다운로드에 저장했어요: {file}. 시트를 인쇄하거나 안전하게 보관한 뒤 이 파일은 지워 주세요.",
+    "core.desktop.kit.title": "한 단계 더: 비상 시트 저장",
+    "core.desktop.kit.unavailable": "지금 Docker가 실행 중이 아니에요. Docker를 켜고 다시 시도해 주세요.",
+    "core.desktop.kit.write_failed": "비상 시트를 “다운로드”에 저장할 수 없었어요.",
     "core.desktop.machine.mac": "Mac",
     "core.desktop.machine.pc": "PC",
     "core.desktop.memory.lead": "남은 메모리는 {free} GB인데, 어시스턴트에는 {need} GB가 필요해요. Docker 안의 다른 프로그램과 메모리를 나눠 쓰고 있어서 앱이 바꾸지는 않아요.",
@@ -757,6 +803,8 @@ const UI_TEXT = {
     "core.desktop.tidy.done_title": "정리했어요",
     "core.desktop.tidy.text": "내려받은 파일({file})은 더 이상 필요 없어요. 앱이 휴지통으로 옮겨요.",
     "core.desktop.tidy.title": "마지막으로 정리하기",
+    "core.desktop.tray.backup_dir": "백업 폴더 변경 …",
+    "core.desktop.tray.backup_kit": "비상 시트 저장 …",
     "core.desktop.tray.checking": "확인 중 …",
     "core.desktop.tray.open": "창 열기",
     "core.desktop.tray.power_restore": "상시 실행 끄기",
@@ -1414,19 +1462,55 @@ const SCREENS = {
         h('p', { class: 'lead' }, t('core.desktop.done.lead')),
         h('ul', {}, h('li', {}, tb('core.desktop.done.updates')), h('li', {}, t('core.desktop.done.backup'))),
         f.deviations.length ? note('bad', t('core.desktop.done.deviations', { n: f.deviations.length })) : null,
+        // Pflichtschritt: „Telegram öffnen“ erst nach dem Haken (die Begrüßung im Chat kam schon; der Schritt bleibt auf der
+        // Startseite, bis er abgehakt ist).
+        kitCard(() => { $('next').disabled = false; }, true),
         tidyCard(),
       ],
       next: { label: t('core.desktop.common.open_telegram'), run: () => invoke('open_link', { target: 'telegram' }) },
       alt: f.deviations.length ? report() : null,
     });
+    const k = await invoke('kit_status').catch(() => ({ confirmed: false }));
+    if (!k.confirmed) $('next').disabled = true;
+    else document.querySelectorAll('.kit-hint').forEach((n) => n.remove());
   },
 
-  home() {
+  async home() {
+    const k = await invoke('kit_status').catch(() => ({ confirmed: true }));
     show('home', {
       title: t('core.desktop.home.title'),
-      body: [h('p', { class: 'lead' }, t(mac() ? 'core.desktop.home.lead_mac' : 'core.desktop.home.lead_win'))],
+      body: [h('p', { class: 'lead' }, t(mac() ? 'core.desktop.home.lead_mac' : 'core.desktop.home.lead_win')),
+        k.confirmed ? null : kitCard(() => SCREENS.home())],
       next: { label: t('core.desktop.common.open_telegram'), run: () => invoke('open_link', { target: 'telegram' }) },
     });
+  },
+
+  // Symbol-Menü „Notfallblatt speichern …“: speichert sofort und zeigt das Ergebnis mit demselben Hinweis.
+  async backupKit() {
+    busy('done', t('core.desktop.kit.busy_title'), '');
+    let text;
+    try {
+      const r = await invoke('save_backup_kit');
+      text = [h('p', { class: 'lead' }, t('core.desktop.kit.saved', { file: r.file })), h('p', {}, t('core.desktop.kit.lead'))];
+    } catch (e) {
+      text = [note('bad', t(String(e) === 'kit-write' ? 'core.desktop.kit.write_failed' : 'core.desktop.kit.unavailable'))];
+    }
+    show('kit', { title: t('core.desktop.kit.menu_title'), body: text, next: { label: t('core.desktop.kit.close'), run: () => SCREENS.home() } });
+  },
+
+  // Symbol-Menü „Sicherungsordner ändern …“: die Fragebogen-Seite „Wohin sichern?“ öffnet sich im Fenster (commands.rs).
+  async backupDir() {
+    busy('done', t('core.desktop.backup_dir.busy_title'), '');
+    let ok = false;
+    try { ok = await invoke('change_backup_folder'); } catch (e) {
+      // Einrichtung noch nicht fertig (Menü vor der nächsten Minuten-Prüfung): kein Docker-Hinweis, normaler Start.
+      if (String(e) === 'setup-incomplete') { history.replaceState(null, '', location.pathname + location.search); return location.reload(); }
+      ok = false;
+    }
+    if (!ok) {
+      show('kit', { title: t('core.desktop.backup_dir.title'), body: [note('bad', t('core.desktop.kit.unavailable'))],
+        next: { label: t('core.desktop.kit.close'), run: () => SCREENS.home() } });
+    }
   },
 
   async report() {
@@ -1508,6 +1592,40 @@ const SCREENS = {
  * Letzter Schritt auf der Fertig-Seite: die geladene Datei auf Wunsch in den Papierkorb (Owner: am Ende, nicht am Anfang;
  * nie ungefragt, nur bei genau einem Treffer). Das Auswerfen der DMG macht die App schon beim Start.
  */
+// kitCard(onDone, nextHint) -> Schritt „Notfallblatt speichern“ (Fertig- und Startseite): Knopf legt eine neue Datei in
+//   Downloads ab, der Haken wird erst danach frei und bleibt gemerkt (confirm_kit). Der Schlüssel erscheint nie im Fenster.
+//   warn, solange offen: ohne den Schlüssel lassen sich Sicherungen auf einem neuen Rechner nicht öffnen. nextHint = die
+//   Seite sperrt ihren Hauptknopf bis zum Haken und sagt das.
+function kitCard(onDone, nextHint) {
+  const card = h('div', { class: 'note warn kit' });
+  const hint = nextHint ? h('p', { class: 'kit-hint' }, t('core.desktop.kit.next_hint', { button: t('core.desktop.common.open_telegram') })) : null;
+  const msg = h('p', { class: 'kit-msg' });
+  const box = h('input', { type: 'checkbox', id: 'kit-check', disabled: true });
+  const save = async () => {
+    try {
+      const r = await invoke('save_backup_kit');
+      msg.textContent = t('core.desktop.kit.saved', { file: r.file });
+      box.disabled = false;
+    } catch (e) {
+      msg.textContent = t(String(e) === 'kit-write' ? 'core.desktop.kit.write_failed' : 'core.desktop.kit.unavailable');
+    }
+  };
+  box.addEventListener('change', async () => {
+    if (!box.checked) return;
+    await invoke('confirm_kit');
+    if (hint) hint.remove();
+    if (onDone) onDone();
+  });
+  card.append(...[
+    h('h2', {}, t('core.desktop.kit.title')),
+    h('p', {}, t('core.desktop.kit.lead')),
+    h('button', { type: 'button', id: 'kit-save', onclick: (e) => run(e.currentTarget, save) }, t('core.desktop.kit.button')),
+    msg,
+    h('label', { class: 'kit-check' }, box, ' ', t('core.desktop.kit.check')),
+    hint].filter(Boolean));
+  return card;
+}
+
 function tidyCard() {
   const file = state.startup && state.startup.download;
   if (!file) return null;
@@ -1602,7 +1720,7 @@ function checkLine(c) {
 
 async function boot() {
   listen('show-screen', (id) => {
-    const go = { report: SCREENS.report, uninstall: SCREENS.uninstall, 'power-restore': SCREENS.powerRestore }[id];
+    const go = { report: SCREENS.report, uninstall: SCREENS.uninstall, 'power-restore': SCREENS.powerRestore, 'backup-kit': SCREENS.backupKit, 'backup-dir': SCREENS.backupDir }[id];
     if (go) go();
   });
   const s = await invoke('startup');
@@ -1615,7 +1733,7 @@ async function boot() {
   // Zurück aus dem Fragebogen (main.rs lädt die App mit `#power`): weiter mit dem Dauerbetrieb.
   if (location.hash === '#power') return SCREENS.power();
   // Aus dem Menü des Symbols, während der Fragebogen im Fenster stand (main.rs lädt dann mit `#…` neu).
-  const fromTray = { '#report': SCREENS.report, '#uninstall': SCREENS.uninstall, '#power-restore': SCREENS.powerRestore }[location.hash];
+  const fromTray = { '#report': SCREENS.report, '#uninstall': SCREENS.uninstall, '#power-restore': SCREENS.powerRestore, '#backup-kit': SCREENS.backupKit, '#backup-dir': SCREENS.backupDir }[location.hash];
   if (fromTray) return fromTray();
   if (!s.journal) return failed('journal-unreadable');
   const k = s.journal.kind;

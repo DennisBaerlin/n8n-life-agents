@@ -34,7 +34,8 @@ async function step(w, id, value, opt) {
   await new Promise((r) => pl.listen(0, '0.0.0.0', r));
   const plUrl = `http://${lanIp()}:${pl.address().port}`;
   const w = await startWizard({ hints: { LA_HOST_IP: '192.0.2.10', LA_USER_LANG: 'de-DE', LA_USER_FULLNAME: 'Erika Mustermann',
-    LA_MYFRITZ_ZONE: 'deine-domain.myfritz.net', LA_HOST_NAME_FRITZ: 'mein-mac', LA_HOST_NAME_CANDIDATES: 'mac-mini' }, env: { WIZARD_FAKE_DNS: '' } });
+    LA_MYFRITZ_ZONE: 'deine-domain.myfritz.net', LA_HOST_NAME_FRITZ: 'mein-mac', LA_HOST_NAME_CANDIDATES: 'mac-mini',
+    LA_BACKUP_CANDIDATES: 'icloud|/Users/erika/Library/Mobile Documents/com~apple~CloudDocs;documents|/Users/erika/Documents' }, env: { WIZARD_FAKE_DNS: '' } });
   try {
     await login(w);
     // Sprach-Seite: Antippen stellt die Einrichtung sofort um (Auswahl bleibt in Eigenschreibweise).
@@ -81,6 +82,18 @@ async function step(w, id, value, opt) {
     await waitFor(async () => !(await state(w)).json.page.poll);   // MyFRITZ: nichts geprüft -> Endung fest, Bild statt Vorschlag
     await shot(w, 'h_DOMAIN-tippen', { value: 'meinrechner', live: (await post(w, '/api/check', { id: 'h:DOMAIN', value: 'meinrechner' })).json.live });
     await step(w, 'h:DOMAIN', 'meinrechner');
+    // Wohin sichern?: Vorschläge der App, „Anderer Ordner“ mit Textseite und einer Meldung, fremde Sicherungen.
+    await langShots(w, 'backup_dir');
+    await step(w, 'backup_dir', 'other');
+    fs.writeFileSync(path.join(w.fake, 'backup_problem'), 'access');
+    await answer(w, 'backup_dir_custom', '/Users/erika/Sicherung');
+    await shot(w, 'backup_dir_custom-fehler');
+    fs.rmSync(path.join(w.fake, 'backup_problem'));
+    fs.writeFileSync(path.join(w.fake, 'backup_foreign'), '');
+    await answer(w, 'backup_dir_custom', '/Users/erika/Sicherung');
+    await shot(w, 'backup_dir_custom-fremde');
+    fs.rmSync(path.join(w.fake, 'backup_foreign'));
+    await step(w, 'backup_dir_custom', '/Users/erika/Sicherung');
     await step(w, 'review', null);
     await shot(w, 'confirm');
     fs.writeFileSync(path.join(w.fake, 'hold_stage'), 'workflows');
@@ -151,6 +164,8 @@ async function step(w, id, value, opt) {
       await answer(t, 'fb_dslite', 'no');
       if (!sfx) await shot(t, 'fb_ports_busy');
       await answer(t, 'fb_ports_busy', null);
+      await answer(t, 'backup_dir', 'other');
+      await answer(t, 'backup_dir_custom', '/Users/erika/Sicherung');
       if (!sfx) await shot(t, 'review-tunnel');
       await answer(t, 'review', null);
       fs.writeFileSync(path.join(t.fake, 'reach'), 'needs_login');
@@ -184,6 +199,19 @@ async function step(w, id, value, opt) {
     await waitFor(async () => !(await state(s2)).json.page.poll, 120000);
     await shot(s2, 'paperless-keiner');
   } finally { await s2.stop(); }
+  // Sicherungsordner ändern (Menüpunkt der App, server.js --backup-dir): Seite mit eigenem Titel, Fehlschlag, Erfolg.
+  const b = await startWizard({ args: ['--backup-dir'], hints: { LA_BACKUP_CANDIDATES: 'icloud|/Users/erika/Library/Mobile Documents/com~apple~CloudDocs;documents|/Users/erika/Documents' } });
+  try {
+    await login(b);
+    await shot(b, 'backup_change');
+    fs.writeFileSync(path.join(b.fake, 'backup_fail'), '');
+    await answer(b, 'backup_dir', 'icloud');
+    await shot(b, 'backup_change-fehler');
+    fs.rmSync(path.join(b.fake, 'backup_fail'));
+    await answer(b, 'backup_result', null);
+    await answer(b, 'backup_dir', 'icloud');
+    await shot(b, 'backup_change-fertig');
+  } finally { await b.stop(); }
   // Varianten (<seite>-<zusatz>) direkt hinter ihre Seite, damit die Liste der Vorschau z. B. MyFRITZ „nicht gefunden“ und
   // „gefunden“ nebeneinander zeigt.
   const baseOf = (o) => out.find((b) => b !== o && o.name.startsWith(b.name + '-'));

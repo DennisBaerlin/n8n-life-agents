@@ -74,6 +74,10 @@ const ANSWERS = path.join(RUN_DIR, 'answers.env');
 const RESULT = path.join(RUN_DIR, 'result.env');
 const HINTS_FILE = path.join(RUN_DIR, 'hints.env');   // Vorschläge der Start-App, flow.parseHints
 const CTL_SOCK = path.join(RUN_DIR, 'ctl.sock');
+// Änderungs-Modus (Menüpunkt „Sicherungsordner ändern …“ der Start-App, nach der Einrichtung per docker exec -d gestartet):
+//   nur die Seiten „Wohin sichern?“ + Ergebnis, kein Fortschritt im Volume, endet nach „Fertig“ oder BACKUP_IDLE_MS ohne Eingabe.
+const MODE_BACKUP = process.argv.includes('--backup-dir');
+const BACKUP_IDLE_MS = Math.max(1000, parseInt(process.env.WIZARD_BACKUP_IDLE_MS || String(15 * 60 * 1000), 10));
 
 // --- Hilfen ----------------------------------------------------------------------------------------------------
 function atomicWrite(file, data) {
@@ -171,6 +175,7 @@ function loadProgress() {
   return freshProgress();
 }
 function save() {
+  if (MODE_BACKUP) return;   // Änderungs-Modus: nichts im Volume (die fertige Einrichtung bleibt unberührt)
   fs.mkdirSync(STATE_DIR, { recursive: true });
   atomicWrite(PROGRESS, JSON.stringify(P));
 }
@@ -185,15 +190,16 @@ function setAnswer(q, value) {
   }
 }
 
-function list() { return flow.steps(Q, P.A); }
-// Erste offene Frage-Seite vor der Übersicht, sonst die Übersicht.
+function list() { return MODE_BACKUP ? flow.backupSteps(P.A) : flow.steps(Q, P.A); }
+// Erste offene Frage-Seite vor der Übersicht, sonst die Übersicht (Änderungs-Modus: das Ergebnis).
 function firstOpen() {
   const s = list();
+  const end = MODE_BACKUP ? 'backup_result' : 'review';
   for (const id of s) {
-    if (id === 'review') return 'review';
+    if (id === end) return end;
     if (!flow.answered(Q, P.A, id)) return id;
   }
-  return 'review';
+  return end;
 }
 function cursor() {
   const s = list();
@@ -230,7 +236,7 @@ function loadCatalog() {
       const t = CAT[m[1]] || (CAT[m[1]] = {});
       for (const [k, v] of Object.entries(o || {})) {
         if (typeof v === 'string' && (k.includes('.wizard.') || /\.package\.(name|summary)$/.test(k) || /^core\.persona\.(name\.[a-z_]+|frame\.[a-z_]+\.1)$/.test(k)
-          || /^core\.art\.[a-z_]+\.alt(\.[a-z_]+)?$/.test(k))) t[k] = v;   // core.art.*.alt: Alt-Text der Erklär-Bilder (explainOf)
+          || /^core\.art\.[a-z_]+\.alt(\.[a-z_]+)?$/.test(k) || k === 'core.backup.folder_name')) t[k] = v;   // core.art.*.alt: Alt-Text der Erklär-Bilder (explainOf); Ordnername wie backup_cli.sh
       }
     }
   }
@@ -318,6 +324,12 @@ function optionsFor(id) {
     case 'reach': return [o('tunnel', 'reach_tunnel', true), o('fritzbox', 'reach_fritzbox')];
     case 'fb_dslite': return [o('no', 'dslite_no'), o('yes', 'dslite_yes')];
     case 'packages': return Q.packages.map((p) => ({ value: p.id, label: pkgName(p), desc: pkgSummary(p) }));
+    // Gefundene Ordner der Start-App (nur, was es gibt), der erste Cloud-Ordner empfohlen; „Anderer Ordner“ führt zur Textseite.
+    case 'backup_dir': {
+      const c = backupCandidates();
+      const cloud = c.find((x) => x.kind !== 'documents');
+      return c.map((x) => o(x.kind, `backup_${x.kind}`, cloud && x.kind === cloud.kind)).concat([o('other', 'backup_other')]);
+    }
     default: return null;
   }
 }
@@ -405,6 +417,26 @@ function pageFor(id) {
     case 'fb_guide': return Object.assign(base, { kind: 'info', title: T('core.wizard.page.fb_guide_title'), help: P1('core.wizard.page.fb_guide_help'),
       note: { kind: 'warn', text: T('core.wizard.page.fb_guide_note') },
       link: { href: GUIDE_URL, label: T('core.wizard.page.fb_guide_link') }, fbHost: fbHostName(), next: T('core.wizard.page.fb_guide_next') });
+    case 'backup_dir': {
+      const c = backupCandidates();
+      const pre = P.A.__backup_choice || ((c.find((x) => x.kind !== 'documents') || c[0] || { kind: 'other' }).kind);
+      return Object.assign(base, { kind: 'choice', title: T(MODE_BACKUP ? 'core.wizard.page.backup_change_title' : 'core.wizard.page.backup_title'),
+        help: [{ p: T('core.wizard.page.backup_help') }, { p: T('core.wizard.page.backup_note', { name: T('core.backup.folder_name') }) }],
+        note: backupNote(), options: optionsFor(id), value: pre, next });
+    }
+    case 'backup_dir_custom': return Object.assign(base, { kind: 'text', title: T('core.wizard.page.backup_custom_title'),
+      help: [{ p: T('core.wizard.page.backup_custom_help') }], value: P.A.__backup_choice === 'other' ? (P.A.__backup_dir || P.notes.backup_custom_prev || '') : '',
+      placeholder: T('core.wizard.page.backup_custom_placeholder'), note: backupNote(), optional: false, next });
+    case 'backup_result': {
+      const r = P.notes.backup || {};
+      if (r.ok) {
+        return Object.assign(base, { kind: 'info', title: T('core.wizard.page.backup_done_title'),
+          help: [{ p: T('core.wizard.page.backup_done_help', { folder: r.folder || '' }) }], next: T('core.wizard.page.backup_done_next') });
+      }
+      return Object.assign(base, { kind: 'info', title: T('core.wizard.page.backup_fail_title'),
+        help: [{ p: T('core.wizard.page.backup_fail_help') }], note: { kind: 'bad', text: T('core.wizard.page.backup_fail_note') },
+        next: T('core.wizard.page.backup_retry') });
+    }
     case 'review': return Object.assign(base, { kind: 'review', title: T('core.wizard.page.review_title'), rows: reviewRows(),
       next: T('core.wizard.page.review_next') });
     case 'confirm': return Object.assign(base, { kind: 'confirm', title: T('core.wizard.page.confirm_title'), help: P1('core.wizard.page.confirm_help'),
@@ -463,6 +495,60 @@ function hints() {
   return v;
 }
 function myfritzZone() { return flow.myfritzZone(hints().LA_MYFRITZ_ZONE); }
+
+// --- Wohin sichern? -------------------------------------------------------------------------------------------
+function backupCandidates() { return flow.backupCandidates(hints().LA_BACKUP_CANDIDATES); }
+// backupNote -> Meldung der letzten Prüfung (P.notes.backup_check: Problem-Code bzw. „fremde Sicherungen“), sonst null.
+function backupNote() {
+  const c = P.notes.backup_check;
+  if (!c) return null;
+  if (c.problem) return { kind: 'bad', text: T(`core.wizard.backup.problem.${c.problem}`) };
+  if (c.foreign) return { kind: 'warn', text: T('core.wizard.backup.foreign') };
+  return null;
+}
+// backupProblemCode(code, dir) -> Katalog-Suffix: "access" je Rechner (Windows-Pfad = Windows-Text).
+function backupProblemCode(code, dir) {
+  if (code === 'access') return /^[A-Za-z]:[\\/]/.test(dir) ? 'access_win' : 'access_mac';
+  return ['invalid', 'missing', 'readonly'].includes(code) ? code : 'missing';
+}
+// checkBackupDir(dir) -> {ok, dir, folder, foreign} bzw. {ok:false, problem}: dieselbe Prüfung wie `backup host-dir --create`
+//   (bridge.sh backup-dir), Unterordner-Name in der Sprache des Fragebogens.
+async function checkBackupDir(dir) {
+  const r = await bridge(['backup-dir'], { input: dir + '\n', env: { OWNER_LANGUAGE: uiLang() }, timeoutMs: 60000 });
+  if (!r || typeof r.problem !== 'string') return { ok: false, problem: 'missing' };
+  if (r.problem) return { ok: false, problem: backupProblemCode(r.problem, dir) };
+  return { ok: true, dir: String(r.dir || dir), folder: String(r.folder || ''), foreign: r.foreign === true };
+}
+// setBackupDir(choice, dir) -> prüfen und merken; {error} = Meldung bleibt auf der Seite stehen.
+async function setBackupDir(choice, dir) {
+  const c = await checkBackupDir(dir);
+  P.notes.backup_check = c.ok ? { foreign: c.foreign } : { problem: c.problem };
+  if (!c.ok) { delete P.A.__backup_dir; save(); return { error: T(`core.wizard.backup.problem.${c.problem}`) }; }
+  P.A.__backup_choice = choice; P.A.__backup_dir = c.dir; P.A.__backup_folder = c.folder;
+  return { ok: true, stay: c.foreign };
+}
+// applyBackupDir -> Änderungs-Modus: Ordner anlegen + merken, sofort eine Sicherung (dieselben CLI-Befehle wie provision.sh).
+async function applyBackupDir() {
+  const a = await run(LA_CLI, ['backup', 'host-dir', P.A.__backup_dir, '--create'], { timeoutMs: 120000 });
+  const b = a.code === 0 ? await run(LA_CLI, ['backup', 'export'], { timeoutMs: 600000 }) : { code: 1 };
+  P.notes.backup = { ok: a.code === 0 && b.code === 0, folder: P.A.__backup_folder || P.A.__backup_dir };
+}
+let backupIdle = null;
+function touchBackupIdle() {
+  if (!MODE_BACKUP) return;
+  if (backupIdle) clearTimeout(backupIdle);
+  backupIdle = setTimeout(finishBackupMode, BACKUP_IDLE_MS);
+  backupIdle.unref();
+}
+// finishBackupMode -> Änderungs-Modus beenden: nichts im Volume schreiben (die Einrichtung ist längst fertig).
+function finishBackupMode() {
+  rmQuiet(HINTS_FILE);   // Vorschläge der App (Name, Adresse, Ordner) gehören nur zur laufenden Sitzung, wie bei finishAll
+  session = null; pending = null;
+  const bye = () => process.exit(0);
+  if (httpServer) httpServer.close();
+  if (ctlServer) ctlServer.close(() => { rmQuiet(CTL_SOCK); bye(); }); else bye();
+  setTimeout(bye, 1000).unref();
+}
 let domainSearching = null;
 // dnsLookup — öffentliche Auflösung (nicht der Resolver des Heimnetzes, der eine MyFRITZ-Adresse auf die Box selbst biegen
 //   kann): WIZARD_DNS_SERVERS, sonst zwei öffentliche Resolver. Fehler = keine Adresse.
@@ -558,6 +644,8 @@ function reviewRows() {
       rows.push({ label: T('core.wizard.review.packages'), value: n.length ? T('core.wizard.review.base_plus', { list: n.join(', ') }) : T('core.wizard.review.base_only'), goto: id });
     } else if (id === 'reach') {
       rows.push({ label: T('core.wizard.review.reach'), value: T(flow.reachMode(P.A) === 'fritzbox' ? 'core.wizard.review.reach_fritzbox' : 'core.wizard.review.reach_tunnel'), goto: id });
+    } else if (id === 'backup_dir') {
+      rows.push({ label: T('core.wizard.review.backup'), value: P.A.__backup_folder || P.A.__backup_dir || '—', goto: id });
     }
   }
   return rows;
@@ -578,7 +666,7 @@ const STAGE_GROUPS = [
   ['programs', ['base', 'n8n', 'gateway']],
   ['database', ['backup', 'postgres', 'schema']],
   ['access', ['access']],
-  ['bot', ['workflows', 'packages', 'cli']],
+  ['bot', ['workflows', 'packages', 'cli', 'backup']],   // backup = Sicherungsordner + erste Sicherung (provision.sh)
   ['final', ['final']],
 ];
 function installView() {
@@ -788,10 +876,48 @@ async function answer(id, raw, skip) {
     case 'tg_pc': P.A.__tg_pc = true; break;
     case 'fb_guide': P.A.__fb_guide = true; break;
     case 'fb_ports_busy': P.A.__reach = 'tunnel'; break;
-    case 'review': P.cursor = 'confirm'; save(); return { ok: true };
+    case 'backup_dir': {
+      // Neue Wahl = neues Ergebnis: im Änderungs-Modus legt erst die nächste Antwort wieder an (Zeile vor P.cursor).
+      delete P.notes.backup;
+      if (raw === 'other') {
+        // Alter Ordner fort, sonst gälte die Textseite als beantwortet und würde übersprungen; ein eigener Pfad bleibt als Vorbelegung.
+        if (P.A.__backup_choice === 'other' && P.A.__backup_dir) P.notes.backup_custom_prev = P.A.__backup_dir;
+        delete P.A.__backup_dir; delete P.A.__backup_folder; delete P.notes.backup_check;
+        P.A.__backup_choice = 'other'; break;
+      }
+      const c = backupCandidates().find((x) => x.kind === raw);
+      if (!c) return { error: T('core.wizard.msg.choose') };
+      const r = await setBackupDir(raw, c.path);
+      if (r.error) return r;
+      if (r.stay && P.notes.backup_seen !== c.path) { P.notes.backup_seen = c.path; save(); return { ok: true }; }   // Hinweis „fremde Sicherungen“ einmal zeigen
+      break;
+    }
+    case 'backup_dir_custom': {
+      if (typeof raw !== 'string' || /[\r\n]/.test(raw) || flow.valueProblem(raw.trim()) === 'control') return { error: T('core.wizard.msg.line') };
+      if (!raw.trim()) return { error: T('core.wizard.msg.empty') };
+      delete P.notes.backup;
+      const r = await setBackupDir('other', raw.trim());
+      if (r.error) return r;
+      if (r.stay && P.notes.backup_seen !== P.A.__backup_dir) { P.notes.backup_seen = P.A.__backup_dir; save(); return { ok: true }; }
+      break;
+    }
+    case 'backup_result':
+      // Erst antworten, dann beenden (die Antwort braucht noch die Sitzung).
+      if (P.notes.backup && P.notes.backup.ok) { setTimeout(finishBackupMode, 300); return { ok: true, done: true }; }
+      delete P.notes.backup; delete P.A.__backup_choice; delete P.A.__backup_dir; delete P.notes.backup_check;
+      break;
+    case 'review': {
+      // Fragebogen wieder geöffnet (Tage später, Platte abgezogen?): den gemerkten Ordner vor dem Start erneut prüfen.
+      if (P.A.__backup_dir) {
+        const r = await setBackupDir(P.A.__backup_choice || 'other', P.A.__backup_dir);
+        if (r.error) { delete P.A.__backup_dir; P.cursor = firstOpen(); save(); return r; }
+      }
+      P.cursor = 'confirm'; save(); return { ok: true };
+    }
     case 'confirm': return startInstall();
     default: return { error: T('core.wizard.msg.unknown_page') };
   }
+  if (MODE_BACKUP && firstOpen() === 'backup_result' && !P.notes.backup) await applyBackupDir();
   P.cursor = firstOpen();
   save();
   return { ok: true, check: swCheck };
@@ -1066,6 +1192,7 @@ function readBody(req) {
 async function handle(req, res) {
   const host = String(req.headers.host || '').toLowerCase();
   if (!HOSTS.has(host)) return deny(res, 421);
+  touchBackupIdle();
   const url = new URL(req.url, 'http://x');
   const sfs = req.headers['sec-fetch-site'];
   if (req.method === 'GET' && url.pathname === '/start') {
@@ -1181,8 +1308,11 @@ function startCtl() {
       const cmd = buf.split('\n')[0].trim();
       if (cmd === 'issue') s.end(JSON.stringify({ url: issueToken() }) + '\n');
       // bot = Benutzername aus getMe (öffentlich, kein Geheimnis): die App braucht ihn für „Telegram öffnen“.
+      else if (cmd === 'status' && MODE_BACKUP) {
+        s.end(JSON.stringify({ phase: P.notes.backup && P.notes.backup.ok ? 'backup_done' : 'backup_dir', step: Q ? cursor() : '', lang: uiLang() }) + '\n');
+      }
       else if (cmd === 'status') s.end(JSON.stringify(Object.assign({ phase: P.phase, step: Q ? cursor() : '', lang: uiLang() }, P.notes.bot ? { bot: P.notes.bot } : {})) + '\n');
-      else if (cmd === 'finish') { s.end(JSON.stringify({ ok: true }) + '\n', finishAll); }
+      else if (cmd === 'finish') { s.end(JSON.stringify({ ok: true }) + '\n', MODE_BACKUP ? finishBackupMode : finishAll); }
       else s.end(JSON.stringify({ error: 'unknown' }) + '\n');
     });
     s.on('error', () => {});
@@ -1203,12 +1333,33 @@ function loadQuestions() {
   return questionsLoading;
 }
 
+// ctlAlive -> true, wenn schon eine Instanz am Steuerkanal antwortet (startCtl würde ihr den Socket wegnehmen).
+function ctlAlive() {
+  return new Promise((resolve) => {
+    const c = net.connect(CTL_SOCK);
+    const done = (v) => { c.destroy(); resolve(v); };
+    c.once('connect', () => done(true));
+    c.once('error', () => done(false));
+    setTimeout(() => done(false), 2000).unref();
+  });
+}
+
 async function main() {
+  if (MODE_BACKUP) {
+    // Menüpunkt zweimal geklickt: die laufende Instanz bleibt, diese endet still (die App fragt deren Status ab).
+    if (await ctlAlive()) { process.stdout.write(JSON.stringify({ ev: 'wizard_running' }) + '\n'); process.exit(0); }
+    // Nach der Einrichtung (DONE steht): eigener, flüchtiger Fortschritt; kein Schlüssel, keine Geheimnisse.
+    loadCatalog();
+    P = freshProgress();
+    await loadQuestions();
+    touchBackupIdle();
+  } else {
   if (fs.existsSync(DONE)) { process.stdout.write(JSON.stringify({ ev: 'wizard_done' }) + '\n'); process.exit(0); }
   KEY = loadKey();
   loadCatalog();
   P = loadProgress();
   await loadQuestions();
+  }
   startCtl();
   httpServer = http.createServer((req, res) => {
     handle(req, res).catch(() => { try { send(res, 500, { error: 'internal' }); } catch (_) { /* weg */ } });

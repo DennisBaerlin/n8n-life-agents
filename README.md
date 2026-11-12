@@ -97,7 +97,7 @@ lifeagents reconfigure [core|<pkg>]  # change or add settings (address, bot toke
 lifeagents config list|set|reset …   # central runtime config
 lifeagents proxy show|set …          # reverse proxy status + configuration
 lifeagents household …               # invite/pair/remove/block members
-lifeagents backup export|restore …   # encrypted backup of your user data, optionally to Telegram
+lifeagents backup export|restore|key # encrypted backup of your user data; key = emergency sheet
 lifeagents rollback                  # after a failed update: back to the previous version (asks first)
 lifeagents doctor                    # read-only health check
 lifeagents uninstall [--purge-data]  # clean removal
@@ -130,7 +130,7 @@ Whenever the bot needs a decision, you get **buttons**: ✅/❌ to confirm or ca
 - **Nothing is saved without asking.** Every booking, change or deletion shows all values first, including automatically added ones. In a household, members approve harmless things themselves, sensitive ones additionally need the owner (four-eyes principle), and some (financial plan, identity) only the owner may change.
 - **All or nothing.** Every write runs in one database transaction — never half a booking.
 - **Documents only via paid AI endpoints.** All agents use Claude through the paid Anthropic API, including reading statements, CVs and Paperless documents. Only voice messages are transcribed by Google Gemini, and only on the paid tier. Both providers state that they do not train on data from paid access.
-- **No secrets in the code.** Keys live in the n8n credential store or on the server, never in the repository; the backup key is created in the database during installation.
+- **No secrets in the code.** Keys live in the n8n credential store or on the server, never in the repository; the backup key is created in the database during installation and handed to you once on an emergency sheet, so a backup can be restored on a new computer ([Backup & new computer](https://dennisbaerlin.github.io/n8n-life-agents/docs/sicherung.html), German).
 - **Strangers do not get in.** The bot only reacts to Telegram accounts that were explicitly admitted. Backups can be sent encrypted to your own Telegram chat.
 - **Signed releases.** Updates are only applied with a valid project signature (`gpgv`, offline key).
 

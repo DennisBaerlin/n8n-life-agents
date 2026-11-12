@@ -6,6 +6,7 @@
 //   ?os=win         Windows statt Mac      ?screen=<name>  direkt zu einem Bildschirm (z. B. power, report, uninstall)
 //   ?hold=1         Laden bzw. Starten bleibt stehen (Fortschritt aufnehmen)   ?fail=<code>  Docker holen scheitert
 //   ?waitfail=<code>  Warten auf Docker scheitert (z. B. docker-closed)   ?corefail=<code>  Start des Verbunds scheitert (z. B. docker-network)
+//   ?kit=1         Notfallblatt schon abgehakt   ?kitfail=kit-write|kit-unavailable  Speichern scheitert (Bildschirme backupKit, backupDir)
 //   ?click=<id>    nach dem Bildschirm einmal den Knopf mit dieser id drücken, z. B. next (Hauptknopf) oder trash
 //                   (Download wegräumen auf der Fertig-Seite), um Ergebnis-Seiten aufzunehmen
 'use strict';
@@ -75,6 +76,15 @@
       lang: q.get('lang') || 'de',
     }),
     trash_download: async () => wait(300),
+    // Notfallblatt (?kit=1 = schon abgehakt, ?kitfail=kit-write|kit-unavailable = Speichern scheitert); erfundener Dateiname.
+    kit_status: async () => ({ setup: true, confirmed: q.get('kit') === '1' }),
+    save_backup_kit: async () => {
+      await wait(400);
+      if (q.get('kitfail')) throw q.get('kitfail');
+      return { file: ((q.get('lang') || 'de') === 'de' ? 'Life-Agents-Notfallblatt' : 'Life-Agents-Emergency-Sheet') + '-2026-11-12.txt' };
+    },
+    confirm_kit: async () => wait(100),
+    change_backup_folder: async () => (await wait(600), q.get('kitfail') !== 'kit-unavailable'),
     check_system: async () => (await wait(500), sys),
     check_docker: async () => {
       await wait(500);

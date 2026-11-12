@@ -171,9 +171,57 @@ pub fn user_lang(host: &dyn Host) -> Option<String> {
     (lang.len() == 2).then_some(lang)
 }
 
+/// Ordner-Vorschläge für „Wohin sichern?“ (`contract::BACKUP_CANDIDATES_VAR`): nur `exists` auf feste Pfade, nie ein
+/// Ordner auflisten (macOS fragt sonst nach Erlaubnis für die App). Cloud zuerst. Mac: iCloud Drive, Dropbox, Dokumente
+/// (OneDrive/Google Drive liegen unter `~/Library/CloudStorage/<Anbieter>-<Konto>`, der Name ist ohne Auflisten nicht
+/// bekannt -> „Anderer Ordner“). Windows: OneDrive (`%OneDrive%`), Dropbox, Dokumente. Pfade mit Trennzeichen fallen weg.
+pub fn backup_candidates(host: &dyn Host) -> Vec<(&'static str, String)> {
+    let home = host.home();
+    let join = |rel: &str| match host.os() {
+        Os::Mac => format!("{}/{rel}", home.trim_end_matches('/')),
+        Os::Windows => format!("{}\\{rel}", home.trim_end_matches('\\')),
+    };
+    let mut c: Vec<(&'static str, String)> = match host.os() {
+        Os::Mac => vec![
+            ("icloud", join("Library/Mobile Documents/com~apple~CloudDocs")),
+            ("dropbox", join("Dropbox")),
+            ("documents", join("Documents")),
+        ],
+        Os::Windows => {
+            let mut v = Vec::new();
+            if let Some(od) = host.env("OneDrive").filter(|s| !s.is_empty()) {
+                v.push(("onedrive", od));
+            }
+            v.push(("dropbox", join("Dropbox")));
+            v.push(("documents", join("Documents")));
+            v
+        }
+    };
+    c.retain(|(_, p)| host.exists(p) && !p.chars().any(|ch| matches!(ch, ',' | '|' | ';' | '"') || ch.is_control()));
+    c
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn backup_candidates_only_existing_folders_cloud_first() {
+        let h = crate::host::FakeHost::mac()
+            .with_path("/Users/erika/Library/Mobile Documents/com~apple~CloudDocs")
+            .with_path("/Users/erika/Documents");
+        let k: Vec<&str> = backup_candidates(&h).iter().map(|(k, _)| *k).collect();
+        assert_eq!(k, vec!["icloud", "documents"]);
+        let w = crate::host::FakeHost::windows()
+            .with_env("OneDrive", "D:\\Profiles\\erika\\OneDrive")
+            .with_path("D:\\Profiles\\erika\\OneDrive")
+            .with_path("D:\\Profiles\\erika\\Dropbox")
+            .with_path("D:\\Profiles\\erika\\Documents");
+        let k: Vec<&str> = backup_candidates(&w).iter().map(|(k, _)| *k).collect();
+        assert_eq!(k, vec!["onedrive", "dropbox", "documents"]);
+        let bad = crate::host::FakeHost::windows().with_env("OneDrive", "D:\\Profiles\\a;b").with_path("D:\\Profiles\\a;b");
+        assert!(backup_candidates(&bad).is_empty(), "Trennzeichen im Pfad");
+    }
 
     /// `<name>.fritz.box` zur Laufzeit zusammengesetzt: privacy_lint weist jeden solchen Namen als Literal ab.
     fn fb(name: &str) -> String {

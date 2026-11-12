@@ -234,6 +234,8 @@ recipient's language, ~3 min in total) run against the mock Telegram/LLM in your
 needed), `reachability_test.ps1` the installer/doctor reachability check (IPv4/IPv6, FritzBox trap) against mock
 endpoints in a container, `runtime_test.ps1` the installer's runtime seam (systemd vs. Docker stack wrappers, the
 `--unattended` answer reader that never executes, the Telegram webhook check) against stubs in a container,
+`backup_test.ps1` backup and restore with the emergency sheet (key adoption, nothing changed on any failure, no key
+in output or the process list) against the substrate's real PostgreSQL,
 `bot_profile_photo_test.ps1` the installer step for the bot's profile photo against the mock
 Telegram in a container. They are not
 gates either (they need the substrate); run the one matching the surface you touched, or all of them at once with `scripts/dev/run_free_gates.ps1` (merge/release state; `-Parallel` splits them across two substrates; `-ListSuites` prints the complete list, the suites above are only the most common ones).

@@ -2031,5 +2031,18 @@ BEGIN
   RAISE NOTICE 'PASS finance_rw -> fn_import_stage_recurring';
 END $$;
 
+-- Nachhol-Gate der Kurs-Crons (cron_refresh_fx_rates / cron_refresh_market_prices): Gate-Knoten laufen unter finance_rw.
+DO $$
+BEGIN
+  SET LOCAL ROLE finance_rw;
+  PERFORM finance.fn_feed_refresh_due('fx');
+  PERFORM finance.fn_feed_refresh_due('prices');
+  RESET ROLE;
+  RAISE NOTICE 'PASS finance_rw -> fn_feed_refresh_due';
+EXCEPTION WHEN OTHERS THEN
+  RESET ROLE;
+  RAISE EXCEPTION 'FAIL [finance_rw -> fn_feed_refresh_due]: %', SQLERRM;
+END $$;
+
 
 ROLLBACK;

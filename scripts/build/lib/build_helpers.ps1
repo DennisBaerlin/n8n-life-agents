@@ -1915,6 +1915,41 @@ function Build-InstanceStartTrigger {
     }
 }
 
+# Nachhol-Eingang der Kurs-Abruf-Crons eines Pakets (<pkg>.fn_feed_refresh_due): n8n-Start (nach 30 s fuer
+# Netz/DNS) und stuendlicher Check muenden in EIN Gate; der Aufrufer haengt zusaetzlich den Tagesplan-Schedule an
+# 'Catch-up needed?'. Das Gate = Paket aktiv AND cron_enable AND <pkg>.fn_feed_refresh_due(<Feed>): die DB
+# entscheidet, ein Abruf je Kalendertag, wer zuerst kommt. Nutzt $CRED_POSTGRES der aufrufenden Funktion (Dynamic Scope).
+# Liefert @{ Nodes; Connections }; Ziel der true-Kante = -OnDue (Knotennamen), false -> 'Disabled' (No-op des Aufrufers).
+function New-CatchUpEntry {
+    param(
+        [Parameter(Mandatory)][ValidateSet('fx', 'prices')][string]$Feed,
+        [Parameter(Mandatory)][string]$CronKey,
+        [Parameter(Mandatory)][string[]]$OnDue,
+        [int[]]$Origin = @(-1040, -220),
+        [Parameter(Mandatory)][string]$Package
+    )
+    $x = $Origin[0]; $y = $Origin[1]
+    $trigInit = Build-InstanceStartTrigger @($x, $y)
+    $waitInit = Build-WaitSeconds 'Wait for network' @(($x + 220), $y) 30
+    # Eigener Name, weil 'Schedule (cron from config)' der Tagesplan bleibt (workflow_lint, Test run).
+    $trigHour = Build-ScheduleTrigger @($x, ($y + 140)) -ScheduleKey 'refresh_catchup'
+    $trigHour['name'] = 'Schedule (hourly catch-up)'
+    $gate = Build-Pg 'Catch-up needed?' @(($x + 440), $y) `
+        "SELECT core.fn_package_active('$Package') AND COALESCE(core.fn_config_get('$Package','cron_enable','$CronKey') = 'true', false) AND $Package.fn_feed_refresh_due('$Feed') AS due"
+    $if = Build-If 'Catch up?' @(($x + 660), $y) "={{ `$json.due }}" 'true' 'equals' 'boolean'
+    $conns = [ordered]@{
+        'Instance started'           = @{ main = @( ,@( E 'Wait for network' ) ) }
+        'Wait for network'           = @{ main = @( ,@( E 'Catch-up needed?' ) ) }
+        'Schedule (hourly catch-up)' = @{ main = @( ,@( E 'Catch-up needed?' ) ) }
+        'Catch-up needed?'           = @{ main = @( ,@( E 'Catch up?' ) ) }
+        'Catch up?'                  = @{ main = @(
+            @( $OnDue | ForEach-Object { E $_ } ),
+            @( E 'Disabled' )
+        ) }
+    }
+    @{ Nodes = @($trigInit, $waitInit, $trigHour, $gate, $if); Connections = $conns }
+}
+
 function Build-NoOp {
     param([string]$Name, [int[]]$Pos)
     [ordered]@{ parameters = @{}; type = 'n8n-nodes-base.noOp'; typeVersion = 1; position = $Pos

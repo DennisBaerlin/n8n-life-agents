@@ -44,63 +44,6 @@
                   {
                       "parameters":  {
                                          "operation":  "executeQuery",
-                                         "query":  "SELECT core.fn_package_active(\u0027finance\u0027) AND COALESCE(core.fn_config_get(\u0027finance\u0027,\u0027cron_enable\u0027,\u0027refresh_market_prices\u0027) = \u0027true\u0027, false) AS enabled",
-                                         "options":  {
-
-                                                     }
-                                     },
-                      "type":  "n8n-nodes-base.postgres",
-                      "typeVersion":  2.6,
-                      "position":  [
-                                       -680,
-                                       0
-                                   ],
-                      "id":  "0e655b03-fe82-5eff-bb02-141ab5eecfb7",
-                      "name":  "Cron enabled?",
-                      "credentials":  {
-                                          "postgres":  {
-                                                           "id":  "__CRED_POSTGRES_FINANCE_RW__",
-                                                           "name":  "Postgres finance_rw (read-write)"
-                                                       }
-                                      }
-                  },
-                  {
-                      "parameters":  {
-                                         "conditions":  {
-                                                            "options":  {
-                                                                            "caseSensitive":  true,
-                                                                            "typeValidation":  "strict",
-                                                                            "version":  2
-                                                                        },
-                                                            "conditions":  [
-                                                                               {
-                                                                                   "id":  "cf82c1d1-bbcb-5519-abc0-8894b3af004d",
-                                                                                   "leftValue":  "={{ $json.enabled }}",
-                                                                                   "rightValue":  true,
-                                                                                   "operator":  {
-                                                                                                    "type":  "boolean",
-                                                                                                    "operation":  "equals"
-                                                                                                }
-                                                                               }
-                                                                           ],
-                                                            "combinator":  "and"
-                                                        },
-                                         "options":  {
-
-                                                     }
-                                     },
-                      "type":  "n8n-nodes-base.if",
-                      "typeVersion":  2.2,
-                      "position":  [
-                                       -460,
-                                       -40
-                                   ],
-                      "id":  "cc5cfd02-e31e-5b0a-bd11-a04e390afcb4",
-                      "name":  "Cron on?"
-                  },
-                  {
-                      "parameters":  {
-                                         "operation":  "executeQuery",
                                          "query":  "SELECT core.fn_package_active(\u0027finance\u0027) AS active",
                                          "options":  {
 
@@ -167,6 +110,113 @@
                                    ],
                       "id":  "6c60c8e7-b5ca-5137-85b6-a7c3bee812e0",
                       "name":  "Disabled"
+                  },
+                  {
+                      "parameters":  {
+                                         "events":  [
+                                                        "init"
+                                                    ]
+                                     },
+                      "type":  "n8n-nodes-base.n8nTrigger",
+                      "typeVersion":  1,
+                      "position":  [
+                                       -1120,
+                                       -240
+                                   ],
+                      "id":  "f3413211-81fc-5feb-af9e-94e73cb9b0ff",
+                      "name":  "Instance started"
+                  },
+                  {
+                      "parameters":  {
+                                         "amount":  30,
+                                         "unit":  "seconds"
+                                     },
+                      "type":  "n8n-nodes-base.wait",
+                      "typeVersion":  1.1,
+                      "position":  [
+                                       -900,
+                                       -240
+                                   ],
+                      "id":  "21d7ed4a-b892-56be-9dd8-10ac69e97a82",
+                      "name":  "Wait for network",
+                      "webhookId":  "368835eb-303c-53a7-9dc1-50a61bbc6a10"
+                  },
+                  {
+                      "parameters":  {
+                                         "rule":  {
+                                                      "interval":  [
+                                                                       {
+                                                                           "field":  "cronExpression",
+                                                                           "expression":  "__CFG_SCHEDULE_REFRESH_CATCHUP__"
+                                                                       }
+                                                                   ]
+                                                  }
+                                     },
+                      "type":  "n8n-nodes-base.scheduleTrigger",
+                      "typeVersion":  1.3,
+                      "position":  [
+                                       -1120,
+                                       -100
+                                   ],
+                      "id":  "1cca10ef-e440-5f91-8491-be1a04ca1188",
+                      "name":  "Schedule (hourly catch-up)"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "SELECT core.fn_package_active(\u0027finance\u0027) AND COALESCE(core.fn_config_get(\u0027finance\u0027,\u0027cron_enable\u0027,\u0027refresh_market_prices\u0027) = \u0027true\u0027, false) AND finance.fn_feed_refresh_due(\u0027prices\u0027) AS due",
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       -680,
+                                       -240
+                                   ],
+                      "id":  "b7a3b282-7831-5999-adda-9f2f1f2aada4",
+                      "name":  "Catch-up needed?",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_FINANCE_RW__",
+                                                           "name":  "Postgres finance_rw (read-write)"
+                                                       }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "963c9a47-3e36-5704-9c59-cb8c00c3f67f",
+                                                                                   "leftValue":  "={{ $json.due }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       -460,
+                                       -240
+                                   ],
+                      "id":  "c795d270-79d9-5046-8ff5-0b2523a3be06",
+                      "name":  "Catch up?"
                   },
                   {
                       "parameters":  {
@@ -267,7 +317,7 @@
                   },
                   {
                       "parameters":  {
-                                         "content":  "## DB-Automatik\n**Markt-Preis-Refresh (Dual-Trigger, kein LLM)**\n\nZWEI Eingänge, EIN Pfad: (a) Schedule täglich (Cron aus core.config schedule.refresh_market_prices, beim Einspielen eingesetzt); (b) executeWorkflowTrigger Start — tool_book_stock_buy/tool_set_holding rufen den Workflow nach einem Depot-Write sofort auf (eliminiert das NULL-Preis-Fenster bis zum nächsten Schedule). Pfad: gehaltene Symbole holen (depot_holdings shares\u003e0) -\u003e IF cnt=0: Abbruch ohne Fetch. Sonst: EIN Code-Node holt ALLE Kurse über Yahoo Finance v8/chart PER Symbol (WP-4: Aktien/ETF UND Krypto als TICKER-FIAT wie BTC-EUR; key-frei, kollisionsfrei; CoinGecko retired) -\u003e finance.fn_upsert_market_prices. Die Allokations-Drift (fn_advisor_review) liest den jüngsten Kurs via finance.networth_by_asset_class.",
+                                         "content":  "## DB-Automatik\n**Markt-Preis-Refresh (Dual-Trigger, kein LLM)**\n\nVIER Eingänge, EIN Pfad: (a) Schedule täglich (Cron aus core.config schedule.refresh_market_prices, beim Einspielen eingesetzt; läuft durch dieselbe Fälligkeits-Prüfung wie das Nachholen); (b) executeWorkflowTrigger Start — tool_book_stock_buy/tool_set_holding rufen den Workflow nach einem Depot-Write sofort auf (eliminiert das NULL-Preis-Fenster bis zum nächsten Schedule); (c) n8n-Start und (d) stündlicher Check holen einen verpassten Lauf nach (Sticky Nachholen). Pfad: gehaltene Symbole holen (depot_holdings shares\u003e0) -\u003e IF cnt=0: Abbruch ohne Fetch. Sonst: EIN Code-Node holt ALLE Kurse über Yahoo Finance v8/chart PER Symbol (WP-4: Aktien/ETF UND Krypto als TICKER-FIAT wie BTC-EUR; key-frei, kollisionsfrei; CoinGecko retired) -\u003e finance.fn_upsert_market_prices. Die Allokations-Drift (fn_advisor_review) liest den jüngsten Kurs via finance.networth_by_asset_class.",
                                          "height":  300,
                                          "width":  700,
                                          "color":  4
@@ -315,7 +365,7 @@
                   },
                   {
                       "parameters":  {
-                                         "content":  "## DB-Automatik\n**Paket-aktiv (beide) + cron_enable (nur Schedule)**\n\nWRITE-Cron -\u003e finance_rw. Gate: core.fn_package_active(\u0027finance\u0027) AND core.fn_config_get(\u0027finance\u0027,\u0027cron_enable\u0027,\u0027refresh_market_prices\u0027)=\u0027true\u0027 (DB entscheidet, fail-closed). Toggle: lifeagents config set cron_enable refresh_market_prices false. DUAL-TRIGGER: der Start-Pfad (Sofort-Fetch nach erlaubtem Depot-Write) prüft NUR Paket-aktiv (kein cron_enable).",
+                                         "content":  "## DB-Automatik\n**Paket-aktiv (beide) + cron_enable und fällig (Tagesplan/Nachholen)**\n\nWRITE-Cron -\u003e finance_rw. Das Gate Catch-up needed? liest core.fn_package_active(\u0027finance\u0027) AND core.fn_config_get(\u0027finance\u0027,\u0027cron_enable\u0027,\u0027refresh_market_prices\u0027)=\u0027true\u0027 AND finance.fn_feed_refresh_due(\u0027prices\u0027) (DB entscheidet, fail-closed). Toggle: lifeagents config set cron_enable refresh_market_prices false. DUAL-TRIGGER: der Start-Pfad (Sofort-Fetch nach erlaubtem Depot-Write) prüft NUR Paket-aktiv (kein cron_enable, keine Fälligkeit).",
                                          "height":  300,
                                          "width":  440,
                                          "color":  4
@@ -328,6 +378,22 @@
                                    ],
                       "id":  "5c5f5277-b946-5e61-b5cd-b09016b57563",
                       "name":  "F9 Cron-Gate"
+                  },
+                  {
+                      "parameters":  {
+                                         "content":  "## DB-Automatik\n**Verpassten Tageslauf nachholen (n8n-Start und jede Stunde)**\n\nDie Planzeit verfällt, wenn das Gerät aus ist oder schläft; der scheduleTrigger holt nicht nach. Drei Eingänge fragen deshalb dieselbe Prüfung: der Tagesplan, der n8n Trigger (Instance started, nach 30 s für Netz und DNS) und ein stündlicher Check (schedule.refresh_catchup, deckt auch das Aufwachen aus dem Ruhezustand, bei dem n8n nicht neu startet). Catch-up needed?: Paket aktiv, cron_enable an, und finance.fn_feed_refresh_due(\u0027prices\u0027) meldet, dass heute noch kein Kurs einer gehaltenen Position geholt wurde (jüngster Stand vor Beginn des heutigen Kalendertags der Haushalts-Zeitzone). Sonst Ende ohne Abruf: ein Abruf je Kalendertag, Wochenende und Feiertag kosten nichts extra, die Yahoo-Last bleibt klein. Der Stunden-Check startet erst ab 03:15 (Manifest-Default). Ist keine gehaltene Position je bepreist worden, gilt der Lauf als fällig und wiederholt stündlich (wenige Symbole, Yahoo-Last klein); fehlen nur einzelne Symbole, löst das keinen Abruf aus, die Lücke meldet cron_remind_missing_prices. Fällt der Feed ganz aus, bleibt der Lauf stumm (Fetch prices: onError weiter).",
+                                         "height":  340,
+                                         "width":  320,
+                                         "color":  4
+                                     },
+                      "type":  "n8n-nodes-base.stickyNote",
+                      "typeVersion":  1,
+                      "position":  [
+                                       -1120,
+                                       -540
+                                   ],
+                      "id":  "b383a33b-4219-580a-bd61-a794a5a5748d",
+                      "name":  "Nachholen (Start + stündlich)"
                   },
                   {
                       "parameters":  {
@@ -366,46 +432,79 @@
                   }
               ],
     "connections":  {
+                        "Instance started":  {
+                                                 "main":  [
+                                                              [
+                                                                  {
+                                                                      "index":  0,
+                                                                      "node":  "Wait for network",
+                                                                      "type":  "main"
+                                                                  }
+                                                              ]
+                                                          ]
+                                             },
+                        "Wait for network":  {
+                                                 "main":  [
+                                                              [
+                                                                  {
+                                                                      "index":  0,
+                                                                      "node":  "Catch-up needed?",
+                                                                      "type":  "main"
+                                                                  }
+                                                              ]
+                                                          ]
+                                             },
+                        "Schedule (hourly catch-up)":  {
+                                                           "main":  [
+                                                                        [
+                                                                            {
+                                                                                "index":  0,
+                                                                                "node":  "Catch-up needed?",
+                                                                                "type":  "main"
+                                                                            }
+                                                                        ]
+                                                                    ]
+                                                       },
+                        "Catch-up needed?":  {
+                                                 "main":  [
+                                                              [
+                                                                  {
+                                                                      "index":  0,
+                                                                      "node":  "Catch up?",
+                                                                      "type":  "main"
+                                                                  }
+                                                              ]
+                                                          ]
+                                             },
+                        "Catch up?":  {
+                                          "main":  [
+                                                       [
+                                                           {
+                                                               "index":  0,
+                                                               "node":  "Get held symbols",
+                                                               "type":  "main"
+                                                           }
+                                                       ],
+                                                       [
+                                                           {
+                                                               "index":  0,
+                                                               "node":  "Disabled",
+                                                               "type":  "main"
+                                                           }
+                                                       ]
+                                                   ]
+                                      },
                         "Schedule (cron from config)":  {
                                                             "main":  [
                                                                          [
                                                                              {
                                                                                  "index":  0,
-                                                                                 "node":  "Cron enabled?",
+                                                                                 "node":  "Catch-up needed?",
                                                                                  "type":  "main"
                                                                              }
                                                                          ]
                                                                      ]
                                                         },
-                        "Cron enabled?":  {
-                                              "main":  [
-                                                           [
-                                                               {
-                                                                   "index":  0,
-                                                                   "node":  "Cron on?",
-                                                                   "type":  "main"
-                                                               }
-                                                           ]
-                                                       ]
-                                          },
-                        "Cron on?":  {
-                                         "main":  [
-                                                      [
-                                                          {
-                                                              "index":  0,
-                                                              "node":  "Get held symbols",
-                                                              "type":  "main"
-                                                          }
-                                                      ],
-                                                      [
-                                                          {
-                                                              "index":  0,
-                                                              "node":  "Disabled",
-                                                              "type":  "main"
-                                                          }
-                                                      ]
-                                                  ]
-                                     },
                         "Start":  {
                                       "main":  [
                                                    [
@@ -487,7 +586,7 @@
                                                       [
                                                           {
                                                               "index":  0,
-                                                              "node":  "Cron enabled?",
+                                                              "node":  "Catch-up needed?",
                                                               "type":  "main"
                                                           }
                                                       ]

@@ -107,17 +107,17 @@ _doctor_backup() {
   # Frische Installation (VERSION juenger als die Frist): noch nicht veraltet. Im Verbund ohne Ordner (nur ueber eine
   # unbeaufsichtigte Installation ohne Fragebogen erreichbar, z. B. CI) nur WARN — ROT erst nach der Frist (Bestand, F1).
   if [ "$ok_at" -eq 0 ] && [ -n "$(find "$(lifeagents_version_marker)" -mmin -"$(( BACKUP_STALE_S / 60 ))" 2>/dev/null)" ]; then
-    if rt_is_compose && [ -z "$folder" ]; then _warn "Letzte Sicherung: noch keine — kein Sicherungsordner gewählt: lifeagents backup host-dir <ordner>"
+    if rt_is_compose && [ -z "$folder" ]; then _warn "Letzte Sicherung: noch keine — kein Sicherungsordner gewählt: Start-App › Sicherungsordner ändern … (oder lifeagents backup host-dir <ordner> --create)"
     else _pass "Letzte Sicherung: noch keine erfasst (Installation oder Update ist frisch)"; fi
     return 0
   fi
   local when; if [ "$ok_at" -gt 0 ]; then when="vor ${days} Tagen"; else when="noch keine"; fi
   if rt_is_compose; then
     case "$reason" in
-      nofolder|'') [ -n "$folder" ] || { _red "Letzte Sicherung: ${when} — kein Sicherungsordner gewählt: lifeagents backup host-dir <ordner> (Anleitung: ${BACKUP_GUIDE_URL})"; return 0; } ;;
+      nofolder|'') [ -n "$folder" ] || { _red "Letzte Sicherung: ${when} — kein Sicherungsordner gewählt: Start-App › Sicherungsordner ändern … (oder lifeagents backup host-dir <ordner> --create; Anleitung: ${BACKUP_GUIDE_URL})"; return 0; } ;;
     esac
     case "$reason" in
-      folder) fix="der Ordner ist nicht erreichbar — prüfen oder neu wählen: lifeagents backup host-dir <ordner>" ;;
+      folder) fix="der Ordner ist nicht erreichbar — prüfen oder neu wählen: Start-App › Sicherungsordner ändern …" ;;
       write)  fix="in den Ordner lässt sich nicht schreiben (voll oder schreibgeschützt)" ;;
       *)      fix="Verlauf: docker logs ${LA_PROJECT}-master" ;;
     esac

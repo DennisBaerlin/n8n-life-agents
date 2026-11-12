@@ -26,7 +26,7 @@ Jede Sicherung ist mit einem Schlüssel verschlossen, der nur in deiner Datenban
 
 Bei der Einrichtung fragt der Fragebogen, **wohin gesichert werden soll**. Am besten wählst du einen Ordner in deiner Cloud (iCloud Drive, OneDrive, Dropbox): Dann liegt die Sicherung auch dann noch vor, wenn der Rechner kaputtgeht. Darin entsteht der Ordner „Life Agents Sicherungen“. Jede Nacht um halb vier legt dein Assistent dort eine neue Sicherung ab und behält die letzten 14. Klappt das nicht (Platte abgezogen, Ordner verschoben), versucht er es jede Stunde wieder und schreibt dir nach zwei Tagen im Chat.
 
-**Ordner ändern:** Öffne ein Terminal (Mac: Programm „Terminal“, Windows: „PowerShell“) und gib ein, mit deinem Ordner statt des Beispiels:
+**Ordner ändern:** Im Symbol der Start-App **Sicherungsordner ändern …** wählen. Es öffnet sich dieselbe Seite „Wohin sichern?“ wie bei der Einrichtung; danach gehen neue Sicherungen in den neuen Ordner, die bisherigen bleiben im alten Ordner liegen. Ohne Start-App geht es auch im Terminal (Mac: Programm „Terminal“, Windows: „PowerShell“), mit deinem Ordner statt des Beispiels:
 
 ```bash
 docker exec -it lifeagents-master lifeagents backup host-dir "/Users/erika/Library/Mobile Documents/com~apple~CloudDocs" --create

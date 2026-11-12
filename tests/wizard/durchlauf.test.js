@@ -662,6 +662,42 @@ test('Sicherungsordner ändern (--backup-dir): nur die Ordner-Seiten, Ergebnis, 
   } finally { await w.stop(); }
 });
 
+test('Sicherungsordner ändern: Zurück vom Ergebnis + neuer Ordner legt neu an; Fertig löscht hints.env; zweiter Start lässt den ersten', async () => {
+  const w = await startWizard({ args: ['--backup-dir'], hints: { LA_BACKUP_CANDIDATES: 'icloud|/Users/erika/iCloud;documents|/Users/erika/Documents' } });
+  try {
+    await login(w);
+    await expectOk(await answer(w, 'backup_dir', 'icloud'));
+    assert.equal((await page(w)).id, 'backup_result');
+    // Menüpunkt ein zweites Mal: die neue Instanz endet, die laufende behält Steuerkanal und Sitzung.
+    await assert.rejects(startWizard({ dir: w.dir, args: ['--backup-dir'] }), /wizard exited 0/);
+    assert.equal((await ctl(w, 'status')).phase, 'backup_done');
+    await post(w, '/api/back', {});
+    await expectOk(await answer(w, 'backup_dir', 'documents'));
+    const p = await page(w);
+    assert.equal(p.id, 'backup_result');
+    assert.match(fs.readFileSync(path.join(w.fake, 'backup_calls'), 'utf8'), /backup host-dir \/Users\/erika\/Documents --create\nbackup export\n$/,
+      'der neue Ordner wird wirklich angelegt, nicht nur angezeigt');
+    await expectOk(await answer(w, 'backup_result', null));
+    w.proc.ref();
+    assert.equal(await w.exited, 0);
+    assert.ok(!fs.existsSync(path.join(w.dir, 'run', 'hints.env')), 'Vorschläge (privat) nach Fertig weg');
+  } finally { await w.stop(); }
+});
+
+test('Wohin sichern: erst Vorschlag, dann „Anderer Ordner“ zeigt die Textseite (kein alter Pfad als Antwort)', async () => {
+  const w = await startWizard({ args: ['--backup-dir'], hints: { LA_BACKUP_CANDIDATES: 'icloud|/Users/erika/iCloud' } });
+  try {
+    await login(w);
+    fs.writeFileSync(path.join(w.fake, 'backup_fail'), '');   // Ergebnis „nicht geklappt“ -> Noch einmal, Wahl bleibt offen
+    await expectOk(await answer(w, 'backup_dir', 'icloud'));
+    await post(w, '/api/back', {});
+    await expectOk(await answer(w, 'backup_dir', 'other'));
+    const p = await page(w);
+    assert.equal(p.id, 'backup_dir_custom');
+    assert.equal(p.value, '', 'kein Vorschlags-Pfad im Feld');
+  } finally { await w.stop(); }
+});
+
 test('Sicherungsordner ändern: läuft auch nach fertiger Einrichtung, endet nach Leerlauf', async () => {
   const dir = fs.mkdtempSync(path.join(require('os').tmpdir(), 'wiz-'));
   fs.mkdirSync(path.join(dir, 'state'), { recursive: true });

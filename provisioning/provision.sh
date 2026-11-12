@@ -824,17 +824,15 @@ EOF
 # _setup_backup_folder — Antwort BACKUP_PARENT_DIR des Fragebogens (der Eltern-Ordner, z. B. iCloud Drive; eigener Name, weil
 #   core.env unter BACKUP_HOST_DIR den angelegten Unterordner fuehrt — ein Wiederholungslauf legte sonst einen Ordner im
 #   Ordner an): Unterordner anlegen, merken, sofort die erste Sicherung. Fehler = Warnung, kein Abbruch (der Tick versucht es
-#   um 03:30 erneut, doctor und der Chat-Hinweis melden es). Ergebnis BACKUP_FIRST_OK fuer die Ergebnis-Datei der Start-App.
-BACKUP_FIRST_OK=0
+#   erneut, doctor und der Chat-Hinweis melden es).
 _setup_backup_folder() {
   local cli="${LIFEAGENTS_BIN:-/usr/local/bin/lifeagents}"
   ui_step 'Sicherung einrichten' backup
   if "$cli" backup host-dir "$BACKUP_PARENT_DIR" --create </dev/null && "$cli" backup export </dev/null; then
-    BACKUP_FIRST_OK=1; ui_step_done
+    ui_step_done
   else
-    ui_step_bad 'erste Sicherung nicht geschrieben — nächster Versuch heute Nacht (lifeagents doctor)'
+    ui_step_bad 'erste Sicherung nicht geschrieben — sie wird von selbst erneut versucht (lifeagents doctor)'
   fi
-  result_set backup_first "$( [ "$BACKUP_FIRST_OK" = 1 ] && printf ok || printf failed )"
 }
 
 # _recap_backup_kit — nach der Erstinstallation, die den Sicherungs-Schluessel gerade erzeugt hat (BACKUP_KEY_NEW):

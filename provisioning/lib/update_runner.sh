@@ -500,7 +500,7 @@ update_tick() {
   # Taegliche Sicherung in den Ordner auf dem Rechner (Verbund, Fund 7; ohne gewaehlten Ordner still) als eigener Prozess —
   # die backup-Arm-Bibliotheken laedt nur die CLI.
   # Scheiterte der heutige Versuch (backup.state: LAST_FAIL nach LAST_OK), stuendlich neu versuchen — eine externe Platte, die
-  # nur tagsueber steckt, oder ein spaeter gewaehlter Ordner sollen nicht bis morgen warten. Der Chat-Hinweis kommt aus
+  # nur tagsueber steckt, soll nicht bis morgen warten. Der Chat-Hinweis kommt aus
   # `backup auto` nur tagsueber (backup_cli.sh).
   last="$(read_env_value "$UPDATE_TICK_STATE" LAST_BACKUP 2>/dev/null || true)"
   local try okb flb run_bk=0
@@ -510,7 +510,8 @@ update_tick() {
   elif rt_is_compose && [ "$last" = "$today" ] && [ "$((nowe - try))" -ge "$BACKUP_RETRY_EVERY_S" ]; then
     okb="$(read_env_value "$BACKUP_STATE_FILE" LAST_OK 2>/dev/null || true)"; [[ $okb =~ ^[0-9]+$ ]] || okb=0
     flb="$(read_env_value "$BACKUP_STATE_FILE" LAST_FAIL 2>/dev/null || true)"; [[ $flb =~ ^[0-9]+$ ]] || flb=0
-    [ "$flb" -gt "$okb" ] && run_bk=1
+    # nofolder: ein neuer Versuch kann nicht gelingen; das Waehlen im Menuepunkt sichert selbst sofort.
+    [ "$flb" -gt "$okb" ] && [ "$(read_env_value "$BACKUP_STATE_FILE" LAST_FAIL_REASON 2>/dev/null || true)" != nofolder ] && run_bk=1
   fi
   if [ "$run_bk" = 1 ]; then
     env_upsert "$UPDATE_TICK_STATE" LAST_BACKUP_TRY "$nowe"

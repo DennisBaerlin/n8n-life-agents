@@ -425,7 +425,7 @@ function pageFor(id) {
         note: backupNote(), options: optionsFor(id), value: pre, next });
     }
     case 'backup_dir_custom': return Object.assign(base, { kind: 'text', title: T('core.wizard.page.backup_custom_title'),
-      help: [{ p: T('core.wizard.page.backup_custom_help') }], value: P.A.__backup_choice === 'other' ? (P.A.__backup_dir || '') : '',
+      help: [{ p: T('core.wizard.page.backup_custom_help') }], value: P.A.__backup_choice === 'other' ? (P.A.__backup_dir || P.notes.backup_custom_prev || '') : '',
       placeholder: T('core.wizard.page.backup_custom_placeholder'), note: backupNote(), optional: false, next });
     case 'backup_result': {
       const r = P.notes.backup || {};
@@ -542,6 +542,7 @@ function touchBackupIdle() {
 }
 // finishBackupMode -> Änderungs-Modus beenden: nichts im Volume schreiben (die Einrichtung ist längst fertig).
 function finishBackupMode() {
+  rmQuiet(HINTS_FILE);   // Vorschläge der App (Name, Adresse, Ordner) gehören nur zur laufenden Sitzung, wie bei finishAll
   session = null; pending = null;
   const bye = () => process.exit(0);
   if (httpServer) httpServer.close();
@@ -876,7 +877,14 @@ async function answer(id, raw, skip) {
     case 'fb_guide': P.A.__fb_guide = true; break;
     case 'fb_ports_busy': P.A.__reach = 'tunnel'; break;
     case 'backup_dir': {
-      if (raw === 'other') { P.A.__backup_choice = 'other'; delete P.notes.backup_check; break; }
+      // Neue Wahl = neues Ergebnis: im Änderungs-Modus legt erst die nächste Antwort wieder an (Zeile vor P.cursor).
+      delete P.notes.backup;
+      if (raw === 'other') {
+        // Alter Ordner fort, sonst gälte die Textseite als beantwortet und würde übersprungen; ein eigener Pfad bleibt als Vorbelegung.
+        if (P.A.__backup_choice === 'other' && P.A.__backup_dir) P.notes.backup_custom_prev = P.A.__backup_dir;
+        delete P.A.__backup_dir; delete P.A.__backup_folder; delete P.notes.backup_check;
+        P.A.__backup_choice = 'other'; break;
+      }
       const c = backupCandidates().find((x) => x.kind === raw);
       if (!c) return { error: T('core.wizard.msg.choose') };
       const r = await setBackupDir(raw, c.path);
@@ -887,6 +895,7 @@ async function answer(id, raw, skip) {
     case 'backup_dir_custom': {
       if (typeof raw !== 'string' || /[\r\n]/.test(raw) || flow.valueProblem(raw.trim()) === 'control') return { error: T('core.wizard.msg.line') };
       if (!raw.trim()) return { error: T('core.wizard.msg.empty') };
+      delete P.notes.backup;
       const r = await setBackupDir('other', raw.trim());
       if (r.error) return r;
       if (r.stay && P.notes.backup_seen !== P.A.__backup_dir) { P.notes.backup_seen = P.A.__backup_dir; save(); return { ok: true }; }
@@ -1324,8 +1333,21 @@ function loadQuestions() {
   return questionsLoading;
 }
 
+// ctlAlive -> true, wenn schon eine Instanz am Steuerkanal antwortet (startCtl würde ihr den Socket wegnehmen).
+function ctlAlive() {
+  return new Promise((resolve) => {
+    const c = net.connect(CTL_SOCK);
+    const done = (v) => { c.destroy(); resolve(v); };
+    c.once('connect', () => done(true));
+    c.once('error', () => done(false));
+    setTimeout(() => done(false), 2000).unref();
+  });
+}
+
 async function main() {
   if (MODE_BACKUP) {
+    // Menüpunkt zweimal geklickt: die laufende Instanz bleibt, diese endet still (die App fragt deren Status ab).
+    if (await ctlAlive()) { process.stdout.write(JSON.stringify({ ev: 'wizard_running' }) + '\n'); process.exit(0); }
     // Nach der Einrichtung (DONE steht): eigener, flüchtiger Fortschritt; kein Schlüssel, keine Geheimnisse.
     loadCatalog();
     P = freshProgress();

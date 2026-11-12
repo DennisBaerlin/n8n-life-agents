@@ -578,6 +578,11 @@ eq K.neuer-versuch-erst-nach-einer-stunde 'run' "$(tr '\n' ' ' < "$W/tick.log" |
 env_upsert "$_bst" LAST_OK 300; env_upsert "$UPDATE_TICK_STATE" LAST_BACKUP_TRY "$(( $(date -u +%s) - 3700 ))"
 : > "$W/tick.log"; ( BACKUP_STATE_FILE="$_bst" BACKUP_AUTO_AT=0000 update_tick )
 eq K.nach-erfolg-kein-versuch 'run' "$(tr '\n' ' ' < "$W/tick.log" | sed 's/ $//')"
+# Ohne gewaehlten Ordner hilft kein neuer Versuch (der Menuepunkt sichert beim Waehlen selbst) -> nicht stuendlich.
+env_upsert "$_bst" LAST_FAIL 400; env_upsert "$_bst" LAST_FAIL_REASON nofolder
+env_upsert "$UPDATE_TICK_STATE" LAST_BACKUP_TRY "$(( $(date -u +%s) - 3700 ))"
+: > "$W/tick.log"; ( BACKUP_STATE_FILE="$_bst" BACKUP_AUTO_AT=0000 update_tick )
+eq K.ohne-ordner-kein-versuch 'run' "$(tr '\n' ' ' < "$W/tick.log" | sed 's/ $//')"
 env_upsert "$UPDATE_TICK_STATE" LAST_CHECK 2026-11-08; : > "$W/tick.log"
 ( BACKUP_AUTO_AT=2400 update_tick )
 eq K.alter-datumswert-prueft 'run check' "$(tr '\n' ' ' < "$W/tick.log" | sed 's/ $//')"

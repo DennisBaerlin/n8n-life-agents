@@ -135,9 +135,10 @@ const UI_TEXT = {
     "core.desktop.kit.check": "Ich habe das Notfallblatt ausgedruckt oder sicher gespeichert.",
     "core.desktop.kit.close": "Fertig",
     "core.desktop.kit.file_name": "Life-Agents-Notfallblatt",
-    "core.desktop.kit.lead": "Auf einem neuen Rechner öffnet sich eine Sicherung nur mit dem Schlüssel auf diesem Blatt. Drucke es aus oder lege es in deinen Passwort-Manager, danach die Datei aus „Downloads“ löschen. Nicht in den Sicherungsordner.",
+    "core.desktop.kit.lead": "Auf einem neuen Rechner öffnet sich eine Sicherung nur mit dem Schlüssel auf diesem Blatt. Drucke es aus oder lege es in deinen Passwort-Manager. Leg es nicht in den Sicherungsordner.",
     "core.desktop.kit.menu_title": "Notfallblatt",
-    "core.desktop.kit.saved": "Gespeichert in Downloads: {file}",
+    "core.desktop.kit.next_hint": "„{button}“ geht, sobald du das abgehakt hast.",
+    "core.desktop.kit.saved": "Gespeichert in Downloads: {file}. Lösche diese Datei, sobald das Blatt ausgedruckt oder sicher gespeichert ist.",
     "core.desktop.kit.title": "Noch ein Schritt: Notfallblatt speichern",
     "core.desktop.kit.unavailable": "Docker läuft gerade nicht. Starte Docker und versuche es noch einmal.",
     "core.desktop.kit.write_failed": "Das Notfallblatt ließ sich nicht in „Downloads“ speichern.",
@@ -413,9 +414,10 @@ const UI_TEXT = {
     "core.desktop.kit.check": "I have printed the emergency sheet or stored it safely.",
     "core.desktop.kit.close": "Done",
     "core.desktop.kit.file_name": "Life-Agents-Emergency-Sheet",
-    "core.desktop.kit.lead": "On a new computer a backup only opens with the key on this sheet. Print it or put it in your password manager, then delete the file from “Downloads”. Not into the backup folder.",
+    "core.desktop.kit.lead": "On a new computer a backup only opens with the key on this sheet. Print it or put it in your password manager. Don't put it in the backup folder.",
     "core.desktop.kit.menu_title": "Emergency sheet",
-    "core.desktop.kit.saved": "Saved in Downloads: {file}",
+    "core.desktop.kit.next_hint": "“{button}” works once you have ticked this.",
+    "core.desktop.kit.saved": "Saved in Downloads: {file}. Delete this file once the sheet is printed or stored safely.",
     "core.desktop.kit.title": "One more step: save the emergency sheet",
     "core.desktop.kit.unavailable": "Docker is not running right now. Start Docker and try again.",
     "core.desktop.kit.write_failed": "The emergency sheet could not be saved in “Downloads”.",
@@ -691,9 +693,10 @@ const UI_TEXT = {
     "core.desktop.kit.check": "비상 시트를 인쇄했거나 안전하게 보관했어요.",
     "core.desktop.kit.close": "완료",
     "core.desktop.kit.file_name": "Life-Agents-Emergency-Sheet",
-    "core.desktop.kit.lead": "새 컴퓨터에서는 이 시트의 키가 있어야 백업을 열 수 있어요. 인쇄하거나 비밀번호 관리자에 넣은 뒤 “다운로드”의 파일은 지워 주세요. 백업 폴더에는 넣지 마세요.",
+    "core.desktop.kit.lead": "새 컴퓨터에서는 이 시트의 키가 있어야 백업을 열 수 있어요. 인쇄하거나 비밀번호 관리자에 넣어 주세요. 백업 폴더에는 넣지 마세요.",
     "core.desktop.kit.menu_title": "비상 시트",
-    "core.desktop.kit.saved": "다운로드에 저장했어요: {file}",
+    "core.desktop.kit.next_hint": "체크하면 “{button}”을 누를 수 있어요.",
+    "core.desktop.kit.saved": "다운로드에 저장했어요: {file}. 시트를 인쇄하거나 안전하게 보관한 뒤 이 파일은 지워 주세요.",
     "core.desktop.kit.title": "한 단계 더: 비상 시트 저장",
     "core.desktop.kit.unavailable": "지금 Docker가 실행 중이 아니에요. Docker를 켜고 다시 시도해 주세요.",
     "core.desktop.kit.write_failed": "비상 시트를 “다운로드”에 저장할 수 없었어요.",
@@ -1461,7 +1464,7 @@ const SCREENS = {
         f.deviations.length ? note('bad', t('core.desktop.done.deviations', { n: f.deviations.length })) : null,
         // Pflichtschritt: „Telegram öffnen“ erst nach dem Haken (die Begrüßung im Chat kam schon; der Schritt bleibt auf der
         // Startseite, bis er abgehakt ist).
-        kitCard(() => { $('next').disabled = false; }),
+        kitCard(() => { $('next').disabled = false; }, true),
         tidyCard(),
       ],
       next: { label: t('core.desktop.common.open_telegram'), run: () => invoke('open_link', { target: 'telegram' }) },
@@ -1469,6 +1472,7 @@ const SCREENS = {
     });
     const k = await invoke('kit_status').catch(() => ({ confirmed: false }));
     if (!k.confirmed) $('next').disabled = true;
+    else document.querySelectorAll('.kit-hint').forEach((n) => n.remove());
   },
 
   async home() {
@@ -1498,7 +1502,11 @@ const SCREENS = {
   async backupDir() {
     busy('done', t('core.desktop.backup_dir.busy_title'), '');
     let ok = false;
-    try { ok = await invoke('change_backup_folder'); } catch (_) { ok = false; }
+    try { ok = await invoke('change_backup_folder'); } catch (e) {
+      // Einrichtung noch nicht fertig (Menü vor der nächsten Minuten-Prüfung): kein Docker-Hinweis, normaler Start.
+      if (String(e) === 'setup-incomplete') { history.replaceState(null, '', location.pathname + location.search); return location.reload(); }
+      ok = false;
+    }
     if (!ok) {
       show('kit', { title: t('core.desktop.backup_dir.title'), body: [note('bad', t('core.desktop.kit.unavailable'))],
         next: { label: t('core.desktop.kit.close'), run: () => SCREENS.home() } });
@@ -1584,10 +1592,13 @@ const SCREENS = {
  * Letzter Schritt auf der Fertig-Seite: die geladene Datei auf Wunsch in den Papierkorb (Owner: am Ende, nicht am Anfang;
  * nie ungefragt, nur bei genau einem Treffer). Das Auswerfen der DMG macht die App schon beim Start.
  */
-// kitCard(onDone) -> Schritt „Notfallblatt speichern“ (Fertig- und Startseite): Knopf legt eine neue Datei in Downloads
-//   ab, der Haken wird erst danach frei und bleibt gemerkt (confirm_kit). Der Schlüssel erscheint nie im Fenster.
-function kitCard(onDone) {
-  const card = h('div', { class: 'note kit' });
+// kitCard(onDone, nextHint) -> Schritt „Notfallblatt speichern“ (Fertig- und Startseite): Knopf legt eine neue Datei in
+//   Downloads ab, der Haken wird erst danach frei und bleibt gemerkt (confirm_kit). Der Schlüssel erscheint nie im Fenster.
+//   warn, solange offen: ohne den Schlüssel lassen sich Sicherungen auf einem neuen Rechner nicht öffnen. nextHint = die
+//   Seite sperrt ihren Hauptknopf bis zum Haken und sagt das.
+function kitCard(onDone, nextHint) {
+  const card = h('div', { class: 'note warn kit' });
+  const hint = nextHint ? h('p', { class: 'kit-hint' }, t('core.desktop.kit.next_hint', { button: t('core.desktop.common.open_telegram') })) : null;
   const msg = h('p', { class: 'kit-msg' });
   const box = h('input', { type: 'checkbox', id: 'kit-check', disabled: true });
   const save = async () => {
@@ -1602,14 +1613,16 @@ function kitCard(onDone) {
   box.addEventListener('change', async () => {
     if (!box.checked) return;
     await invoke('confirm_kit');
+    if (hint) hint.remove();
     if (onDone) onDone();
   });
-  card.append(
+  card.append(...[
     h('h2', {}, t('core.desktop.kit.title')),
     h('p', {}, t('core.desktop.kit.lead')),
     h('button', { type: 'button', id: 'kit-save', onclick: (e) => run(e.currentTarget, save) }, t('core.desktop.kit.button')),
     msg,
-    h('label', { class: 'kit-check' }, box, ' ', t('core.desktop.kit.check')));
+    h('label', { class: 'kit-check' }, box, ' ', t('core.desktop.kit.check')),
+    hint].filter(Boolean));
   return card;
 }
 

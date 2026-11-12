@@ -561,7 +561,8 @@ pub fn confirm_kit(app: AppHandle) -> Result<(), String> {
 #[tauri::command(async)]
 pub fn change_backup_folder(app: AppHandle) -> Result<bool, String> {
     if !setup_done() {
-        return Ok(false);
+        // Kein Fehler (kein Bericht-Code): das Menü war nur noch nicht neu eingefärbt, die UI zeigt die Startseite.
+        return Err("setup-incomplete".into());
     }
     let d = docker_if_ready().ok_or_else(|| fail(&app, "backup-dir-unavailable"))?;
     let paths = core_paths(&app).ok_or_else(|| fail(&app, "compose-missing"))?;

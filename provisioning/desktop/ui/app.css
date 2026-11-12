@@ -202,6 +202,10 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); ou
 .note.tidy { margin-top: 18px; }
 .note.tidy h2 { margin-top: 0; }
 .note.tidy p { margin-bottom: 10px; }
+/* Haken im Notfallblatt-Schritt: Rand mit 3:1 auf der warn-Fläche (der native Rand verschwindet hell). */
+.kit-check input { width: 18px; height: 18px; accent-color: var(--accent); outline: 2px solid var(--gray); outline-offset: 0; border-radius: 3px; vertical-align: -3px; }
+.kit-check input:focus-visible { outline-color: var(--accent); }
+.kit-hint { color: var(--gray); font-size: 14px; margin: 8px 0 0; }
 
 .steps { list-style: none; padding: 0; margin: 6px 0 12px; }
 .steps li { display: flex; gap: 12px; align-items: flex-start; padding: 5px 0; margin: 0; color: var(--gray); }

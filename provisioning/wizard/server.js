@@ -1101,7 +1101,7 @@ async function handle(req, res) {
     return send(res, 200, body, 'image/webp');
   }
   if (req.method === 'GET' && url.pathname === '/') {
-    if (!hasSession(req)) return send(res, 403, page403(), 'text/html; charset=utf-8');
+    if (!hasSession(req)) return send(res, 403, pageNoSession(), 'text/html; charset=utf-8');   // kein Einmal-Wert im Spiel: Sitzung fehlt
     return send(res, 200, indexHtml(), 'text/html; charset=utf-8');
   }
   if (!url.pathname.startsWith('/api/')) return deny(res, 404);
@@ -1147,10 +1147,14 @@ function serial(fn) {
 }
 
 function esc(s) { return String(s).replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`); }
-function page403() {
+function soloPage(titleKey, leadKey) {
   return `<!DOCTYPE html><html lang="${esc(uiLang())}"><head><meta charset="utf-8"><title>${esc(T('core.wizard.ui.doc_title'))}</title><link rel="stylesheet" href="/app.css"></head>`
-    + `<body><main class="solo"><h1>${esc(T('core.wizard.ui.open_via_app'))}</h1><p class="lead">${esc(T('core.wizard.ui.link_once'))}</p></main></body></html>`;
+    + `<body><main class="solo"><h1>${esc(T(titleKey))}</h1><p class="lead">${esc(T(leadKey))}</p></main></body></html>`;
 }
+// Falscher oder verbrauchter Einmal-Wert auf /start. Bewusst ohne Weg zu einem neuen Link: den stellt nur die App aus (ctl.js issue).
+function page403() { return soloPage('core.wizard.ui.open_via_app', 'core.wizard.ui.link_once'); }
+// Startseite ohne gültiges Cookie: Der Link war in Ordnung, das Fenster hat die Sitzung nicht behalten (Cookie fehlt, Wizard neu gestartet).
+function pageNoSession() { return soloPage('core.wizard.ui.no_session_title', 'core.wizard.ui.no_session'); }
 
 // --- Steuerkanal (nur root im master: `node ctl.js issue|status|finish`) ------------------------------------------
 let httpServer = null;

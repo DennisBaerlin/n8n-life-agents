@@ -5,7 +5,8 @@
 //   ?lang=en|ko     Sprache der Seiten (Standard de)
 //   ?os=win         Windows statt Mac      ?screen=<name>  direkt zu einem Bildschirm (z. B. power, report, uninstall)
 //   ?hold=1         Laden bzw. Starten bleibt stehen (Fortschritt aufnehmen)   ?fail=<code>  Docker holen scheitert
-//   ?click=<id>     nach dem Bildschirm einmal den Knopf mit dieser id drücken, z. B. next (Hauptknopf) oder trash
+//   ?waitfail=<code>  Warten auf Docker scheitert (z. B. docker-closed)   ?corefail=<code>  Start des Verbunds scheitert (z. B. docker-network)
+//   ?click=<id>    nach dem Bildschirm einmal den Knopf mit dieser id drücken, z. B. next (Hauptknopf) oder trash
 //                   (Download wegräumen auf der Fertig-Seite), um Ergebnis-Seiten aufzunehmen
 'use strict';
 (function () {
@@ -100,10 +101,15 @@
       dockerUp = true;
     },
     start_docker: async () => { await wait(300); dockerUp = true; },
-    wait_docker: async () => (await wait(800), { verdict: verdict() }),
+    wait_docker: async () => {
+      await wait(800);
+      if (q.get('waitfail')) throw q.get('waitfail');
+      return { verdict: verdict() };
+    },
     start_core: async () => {
       await wait(700);
       if (q.get('hold')) await new Promise(() => {});
+      if (q.get('corefail')) throw q.get('corefail');
       if (fall !== 'wizard') throw 'compose-missing';
       return 5881;
     },

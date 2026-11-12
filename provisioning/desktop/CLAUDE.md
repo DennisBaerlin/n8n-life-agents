@@ -46,6 +46,7 @@ CI baut, signiert ad hoc, startet die App kurz und prüft lesend gegen das echte
 2. Erster Start: Sperre, *Systemeinstellungen → Datenschutz und Sicherheit → Dennoch öffnen*; erscheint der Knopf, wie lange dauert es, fragt er nach dem Passwort?
 3. Docker an, Paperless läuft: „Docker ist schon da“, Programmname stimmt, kein Passwort, keine Installation.
 4. Docker Desktop beendet: „Docker ist da, aber gerade aus“; nach Ja startet Docker, nichts wird installiert, Version unverändert (`docker version` vorher/nachher).
+4a. Docker Desktop startet, das Lizenzfenster abgelehnt (Docker beendet sich): Meldet die App nach rund 15 s „hat sich wieder geschlossen“ (`docker-closed`, Erkennung `pgrep -x "Docker Desktop"`)? Stimmt der Programmname in `desktop_running`? Journal danach ohne „Docker gestartet“-Rest (unbelegt auf echtem Mac/Windows).
 5. Rechner ohne Docker: Download, Prüfung Team-ID, ein Passwort-Dialog, Docker läuft danach; Abbruch des Passwort-Dialogs ändert nichts.
 6. Fragebogen lädt im App-Fenster nur `http://127.0.0.1:<port>`; nach „Verbinden“ kommt die App von selbst mit „Dauerbetrieb“ zurück. Nach dem Start aus Programme ist die DMG ausgeworfen; „Download wegräumen“ auf der Fertig-Seite legt die Datei in den Papierkorb (Finder: „Zurücklegen“ geht).
 7. Dauerbetrieb Ja: `pmset -g custom` vorher/nachher (nur AC-Bereich geändert), Ergebnis-Seite zeigt nur, was gilt; `fdesetup status` unverändert.

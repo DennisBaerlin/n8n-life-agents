@@ -148,6 +148,14 @@ main() {
   svc_active postgresql "PostgreSQL"
   if pg_ready 2>/dev/null; then _pass "PostgreSQL nimmt Verbindungen an"
   else _red "PostgreSQL pg_isready negativ"; fi
+  # Laufende Minor != installierte Minor: der alte Server haelt noch die alte Bibliothek, das Paket brachte die neue
+  # (Neustart blieb aus, install_pg.sh pg_restart_if_stale). Nur LXC + root (Peer-Auth); sonst still.
+  if [ "$(id -u)" -eq 0 ]; then
+    local _pgv _pgrun="" _pginst=""; _pgv="$(pg_server_versions)"; read -r _pgrun _pginst <<<"$_pgv"
+    if pg_minor_stale "$_pgrun" "$_pginst"; then
+      _warn "PostgreSQL läuft noch in Version ${_pgrun}, installiert ist ${_pginst} — ein Neustart steht aus (Abhilfe: 'lifeagents update' oder 'systemctl restart postgresql')"
+    fi
+  fi
   # UTF-8 ist Gesetz (provisioning/CLAUDE.md): in einer SQL_ASCII-DB sind Umlaute nur Bytes (Proxmox-Vorlage LANG="C"
   # + Installer <= v0.4.0). Lesen braucht root (Peer-Auth als postgres) -> sonst SKIP statt Fehl-ROT.
   if [ "$(id -u)" -eq 0 ]; then

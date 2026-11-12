@@ -653,4 +653,47 @@
     "must_be_nonempty": null, "must_contain": null, "must_not_contain": null, "must_equal": "mock_photo_051",
     "notes": "Eine Datei, die nicht zum Lebenslauf gehoert, faellt nie still weg."
   }
+  ,
+  {
+    "id": "ic45a",
+    "name": "dispatcher: Absender ohne Haushalts-Sicht (unbekannte Zahl) + audience adults -> fester Satz ohne Agent-Call",
+    "harness_path": "dispatch-test",
+    "target_name": "agent.sub_dispatch_agent",
+    "body": {
+      "workflow_id": "S4gO9s0FAm6oFQYr",
+      "package": "finance",
+      "task": "Tier-4-Infra-Test Kinder-Sicht - bitte ignorieren",
+      "chat_id": "880055299",
+      "call_depth": 1,
+      "audience": "adults"
+    },
+    "check_node": "Household only",
+    "check_field": "error",
+    "must_be_nonempty": null,
+    "must_contain": null,
+    "must_not_contain": null,
+    "must_equal": "household_only",
+    "notes": "Paket C Kinder-Sicht: core.fn_sender_sees_household('880055299') = false (niemand mit dieser Telegram-id) -> Audience ok? false -> Household only {ok:false, error, output = core.dispatch.household_only}; Run agent laeuft nicht."
+  },
+  {
+    "id": "ic45b",
+    "name": "dispatcher: audience all laesst denselben Absender durch (Gegenprobe, Paket nicht installiert -> Not available statt Household only)",
+    "harness_path": "dispatch-test",
+    "target_name": "agent.sub_dispatch_agent",
+    "body": {
+      "workflow_id": "S4gO9s0FAm6oFQYr",
+      "package": "zz_not_installed",
+      "task": "Tier-4-Infra-Test Kinder-Sicht all - bitte ignorieren",
+      "chat_id": "880055299",
+      "call_depth": 1,
+      "audience": "all"
+    },
+    "check_node": "Not available",
+    "check_field": "error",
+    "must_be_nonempty": null,
+    "must_contain": null,
+    "must_not_contain": null,
+    "must_equal": "not_installed",
+    "notes": "Reihenfolge: erst Paketstatus, dann audience; mit audience all greift das Kinder-Tor nie (Agenten fuer alle, z. B. der Haushalt-Knopf zum Hilfe-Agenten)."
+  }
 ]

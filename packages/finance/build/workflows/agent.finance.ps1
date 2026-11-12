@@ -46,9 +46,7 @@ $gate = New-AdvisorGateChain -StartNode 'Start agent.finance' -Package 'finance'
 
 $nLoadConfig = Build-CallWorkflow 'Load Config' @(-1376, 0) $ID_LOAD_CONFIG 'core.sub_load_config' (@{})
 
-# Tor Haushalts-Sicht (household_gate.ps1): Kind/ohne Rolle -> fester Hinweis vor dem LLM.
-$hh = New-FinanceHouseholdGate -StartNode 'Start agent.finance' -NextNode 'Load Agent Context' `
-    -ReadPos @(-1376, -240) -GatePos @(-1264, -240) -DenyPos @(-1152, -400)
+# Kinder-Sicht: das Tor sitzt zentral im Vermittler (agent.sub_dispatch_agent, core.fn_sender_sees_household).
 
 $nLoadCtx = Build-CallWorkflow 'Load Agent Context' @(-1152, 0) $ID_LOAD_AGENT_CONTEXT 'agent.tool_load_context' `
     ([ordered]@{ agent_name = 'finance'; include_manifest = 'true' })
@@ -136,8 +134,8 @@ $nToolSelect = New-PostgresSelectToolNode -Description $descSelect -Cred $CRED_P
 # werden zur Ladezeit mit berechneten Ableitungen gerendert; sonst stored content).
 # jsonb-Param (Build-Gotcha-Standard, kein String-Splice) + onError: ein halluzinierter
 # Context-Name killt nicht die Execution, sondern geht als korrigierbarer Tool-Fehler zurueck.
-$loadQuery = "=SELECT content FROM core.fn_fetch_context((`$1::jsonb)->>'name');"
-$loadParams = "={{ JSON.stringify({ name: `$fromAI('context_name', 'Name of the lazy context document to load (must match an entry in the manifest)', 'string') }) }}"
+$loadQuery = "=SELECT content FROM core.fn_fetch_context((`$1::jsonb)->>'name', (`$1::jsonb)->>'chat_id');"
+$loadParams = "={{ JSON.stringify({ name: `$fromAI('context_name', 'Name of the lazy context document to load (must match an entry in the manifest)', 'string'), chat_id: String(`$('Start agent.finance').item.json.chat_id || '') }) }}"
 $nToolLoad = [ordered]@{
     parameters = [ordered]@{
         descriptionType = 'manual'
@@ -931,7 +929,7 @@ $allNodes = @($nTrigger) + $gate.Nodes + @(
     $nToolReconcileBankStatement, $nToolVoidBankStatement, $nToolImportBankExport,
     $nToolSetOnboarding,
     $stickyOverview, $stickyDepth, $stickyPkg, $stickyCore, $stickyModel, $stickyMemory, $stickyTools
-) + $hh.Nodes + $mb.Nodes | Where-Object { $_ -ne $null }
+) + $mb.Nodes | Where-Object { $_ -ne $null }
 
 # Paket-Werkzeuge aus consumes.services (paperless:* — Dokumente lesen) ueber den Core-Vermittler
 # agent.sub_dispatch_tool; optional (ohne das Paket antworten sie {ok:false, package_unavailable}).
@@ -944,7 +942,7 @@ $allNodes = @($allNodes) + $svc.Nodes
 
 # connections: Eingangs-Naht-Kanten des Helfers ZUERST (Schluessel-Reihenfolge = JSON-Reihenfolge), dann die finance-lokalen.
 $connRest = [ordered]@{
-    'Load Config'                       = @{ main = @(,@( E $hh.EntryNode )) }
+    'Load Config'                       = @{ main = @(,@( E 'Load Agent Context' )) }
     'Load Agent Context'                = @{ main = @(,@( E 'Onboarding status read' )) }
     'Onboarding status read'            = @{ main = @(,@( E 'Build Agent Input' )) }
     'Build Agent Input'                 = @{ main = @(,@( E 'Finance Agent' )) }
@@ -1021,7 +1019,6 @@ $connRest = [ordered]@{
 $connections = [ordered]@{}
 foreach ($k in $gate.Connections.Keys) { $connections[$k] = $gate.Connections[$k] }
 foreach ($k in $connRest.Keys) { $connections[$k] = $connRest[$k] }
-foreach ($k in $hh.Connections.Keys) { $connections[$k] = $hh.Connections[$k] }
 
 # Paket-Werkzeug-Kanten (ai_tool -> Finance Agent) mergen.
 foreach ($k in $svc.Connections.Keys) { $connections[$k] = $svc.Connections[$k] }

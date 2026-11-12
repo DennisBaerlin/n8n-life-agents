@@ -3061,7 +3061,8 @@
                                                                               "call_depth":  "1",
                                                                               "workflow_id":  "XoSQPFWjY70o6llv",
                                                                               "package":  "core",
-                                                                              "thinking":  "loop"
+                                                                              "thinking":  "loop",
+                                                                              "audience":  "all"
                                                                           },
                                                                 "matchingColumns":  [
 
@@ -5498,6 +5499,16 @@
                                                                                    "removed":  false,
                                                                                    "required":  false,
                                                                                    "type":  "string"
+                                                                               },
+                                                                               {
+                                                                                   "canBeUsedToMatch":  true,
+                                                                                   "defaultMatch":  false,
+                                                                                   "display":  true,
+                                                                                   "displayName":  "audience",
+                                                                                   "id":  "audience",
+                                                                                   "removed":  false,
+                                                                                   "required":  false,
+                                                                                   "type":  "string"
                                                                                }
                                                                            ],
                                                                 "value":  {
@@ -5506,7 +5517,8 @@
                                                                               "task":  "={{ $(\u0027Agent input\u0027).first().json.chat_message }}",
                                                                               "workflow_id":  "S4gO9s0FAm6oFQYr",
                                                                               "package":  "finance",
-                                                                              "thinking":  ""
+                                                                              "thinking":  "",
+                                                                              "audience":  "adults"
                                                                           }
                                                             }
                                      },
@@ -5596,6 +5608,16 @@
                                                                                    "removed":  false,
                                                                                    "required":  false,
                                                                                    "type":  "string"
+                                                                               },
+                                                                               {
+                                                                                   "canBeUsedToMatch":  true,
+                                                                                   "defaultMatch":  false,
+                                                                                   "display":  true,
+                                                                                   "displayName":  "audience",
+                                                                                   "id":  "audience",
+                                                                                   "removed":  false,
+                                                                                   "required":  false,
+                                                                                   "type":  "string"
                                                                                }
                                                                            ],
                                                                 "value":  {
@@ -5604,7 +5626,8 @@
                                                                               "task":  "={{ $(\u0027Agent input\u0027).first().json.chat_message }}",
                                                                               "workflow_id":  "8YCe205qQg7vzTEh",
                                                                               "package":  "finance",
-                                                                              "thinking":  ""
+                                                                              "thinking":  "",
+                                                                              "audience":  "adults"
                                                                           }
                                                             }
                                      },
@@ -5824,6 +5847,16 @@
                                                                                    "removed":  false,
                                                                                    "required":  false,
                                                                                    "type":  "string"
+                                                                               },
+                                                                               {
+                                                                                   "canBeUsedToMatch":  true,
+                                                                                   "defaultMatch":  false,
+                                                                                   "display":  true,
+                                                                                   "displayName":  "audience",
+                                                                                   "id":  "audience",
+                                                                                   "removed":  false,
+                                                                                   "required":  false,
+                                                                                   "type":  "string"
                                                                                }
                                                                            ],
                                                                 "value":  {
@@ -5832,7 +5865,8 @@
                                                                               "task":  "={{ $(\u0027Agent input\u0027).first().json.chat_message }}",
                                                                               "workflow_id":  "PlIL7Ut6tQDSBzyw",
                                                                               "package":  "career",
-                                                                              "thinking":  ""
+                                                                              "thinking":  "",
+                                                                              "audience":  "adults"
                                                                           }
                                                             }
                                      },
@@ -5922,6 +5956,16 @@
                                                                                    "removed":  false,
                                                                                    "required":  false,
                                                                                    "type":  "string"
+                                                                               },
+                                                                               {
+                                                                                   "canBeUsedToMatch":  true,
+                                                                                   "defaultMatch":  false,
+                                                                                   "display":  true,
+                                                                                   "displayName":  "audience",
+                                                                                   "id":  "audience",
+                                                                                   "removed":  false,
+                                                                                   "required":  false,
+                                                                                   "type":  "string"
                                                                                }
                                                                            ],
                                                                 "value":  {
@@ -5930,7 +5974,8 @@
                                                                               "task":  "={{ $(\u0027Agent input\u0027).first().json.chat_message }}",
                                                                               "workflow_id":  "TgeDJsFxMvotKCrr",
                                                                               "package":  "estate",
-                                                                              "thinking":  ""
+                                                                              "thinking":  "",
+                                                                              "audience":  "adults"
                                                                           }
                                                             }
                                      },
@@ -6020,6 +6065,16 @@
                                                                                    "removed":  false,
                                                                                    "required":  false,
                                                                                    "type":  "string"
+                                                                               },
+                                                                               {
+                                                                                   "canBeUsedToMatch":  true,
+                                                                                   "defaultMatch":  false,
+                                                                                   "display":  true,
+                                                                                   "displayName":  "audience",
+                                                                                   "id":  "audience",
+                                                                                   "removed":  false,
+                                                                                   "required":  false,
+                                                                                   "type":  "string"
                                                                                }
                                                                            ],
                                                                 "value":  {
@@ -6028,7 +6083,8 @@
                                                                               "task":  "={{ $(\u0027Agent input\u0027).first().json.chat_message }}",
                                                                               "workflow_id":  "2qHMZcgET92ljlzG",
                                                                               "package":  "paperless",
-                                                                              "thinking":  ""
+                                                                              "thinking":  "",
+                                                                              "audience":  "adults"
                                                                           }
                                                             }
                                      },
@@ -6058,7 +6114,8 @@
                                                                               "call_depth":  "1",
                                                                               "workflow_id":  "S4gO9s0FAm6oFQYr",
                                                                               "package":  "finance",
-                                                                              "thinking":  "loop"
+                                                                              "thinking":  "loop",
+                                                                              "audience":  "adults"
                                                                           },
                                                                 "matchingColumns":  [
 
@@ -6182,7 +6239,8 @@
                                                                               "call_depth":  "1",
                                                                               "workflow_id":  "TgeDJsFxMvotKCrr",
                                                                               "package":  "estate",
-                                                                              "thinking":  "loop"
+                                                                              "thinking":  "loop",
+                                                                              "audience":  "adults"
                                                                           },
                                                                 "matchingColumns":  [
 
@@ -6306,7 +6364,8 @@
                                                                               "call_depth":  "1",
                                                                               "workflow_id":  "PlIL7Ut6tQDSBzyw",
                                                                               "package":  "career",
-                                                                              "thinking":  "loop"
+                                                                              "thinking":  "loop",
+                                                                              "audience":  "adults"
                                                                           },
                                                                 "matchingColumns":  [
 
@@ -6730,7 +6789,8 @@
                                                                               "call_depth":  "1",
                                                                               "workflow_id":  "8YCe205qQg7vzTEh",
                                                                               "package":  "finance",
-                                                                              "thinking":  "loop"
+                                                                              "thinking":  "loop",
+                                                                              "audience":  "adults"
                                                                           },
                                                                 "matchingColumns":  [
 
@@ -6854,7 +6914,8 @@
                                                                               "call_depth":  "1",
                                                                               "workflow_id":  "PlIL7Ut6tQDSBzyw",
                                                                               "package":  "career",
-                                                                              "thinking":  "loop"
+                                                                              "thinking":  "loop",
+                                                                              "audience":  "adults"
                                                                           },
                                                                 "matchingColumns":  [
 
@@ -6978,7 +7039,8 @@
                                                                               "call_depth":  "1",
                                                                               "workflow_id":  "QUUjeLfcepLQwpPS",
                                                                               "package":  "core",
-                                                                              "thinking":  "loop"
+                                                                              "thinking":  "loop",
+                                                                              "audience":  "adults"
                                                                           },
                                                                 "matchingColumns":  [
 
@@ -7316,7 +7378,8 @@
                                                                               "call_depth":  "1",
                                                                               "workflow_id":  "S4gO9s0FAm6oFQYr",
                                                                               "package":  "finance",
-                                                                              "thinking":  "loop"
+                                                                              "thinking":  "loop",
+                                                                              "audience":  "adults"
                                                                           },
                                                                 "matchingColumns":  [
 
@@ -7487,7 +7550,7 @@
                                          "operation":  "executeQuery",
                                          "query":  "SELECT agent.fn_set_dispatch_followup($1::jsonb) AS r, agent.fn_set_router_button_turn($1::jsonb) AS m;",
                                          "options":  {
-                                                         "queryReplacement":  "={{ JSON.stringify({ chat_id: String(($(\u0027Trigger normalize\u0027).first().json.callback_query.message || {}).chat?.id || \u0027\u0027), agent: \u0027agent.guide\u0027, output: String($(\u0027Run onboarding cb\u0027).first().json.output || \u0027\u0027) }) }}"
+                                                         "queryReplacement":  "={{ JSON.stringify({ chat_id: String(($(\u0027Trigger normalize\u0027).first().json.callback_query.message || {}).chat?.id || \u0027\u0027), agent: (($(\u0027Run onboarding cb\u0027).first().json.error === \u0027household_only\u0027) ? \u0027\u0027 : \u0027agent.guide\u0027), output: String($(\u0027Run onboarding cb\u0027).first().json.output || \u0027\u0027) }) }}"
                                                      }
                                      },
                       "type":  "n8n-nodes-base.postgres",
@@ -7512,7 +7575,7 @@
                                          "operation":  "executeQuery",
                                          "query":  "SELECT agent.fn_set_dispatch_followup($1::jsonb) AS r, agent.fn_set_router_button_turn($1::jsonb) AS m;",
                                          "options":  {
-                                                         "queryReplacement":  "={{ JSON.stringify({ chat_id: String(($(\u0027Trigger normalize\u0027).first().json.callback_query.message || {}).chat?.id || \u0027\u0027), agent: \u0027agent.finance\u0027, output: String($(\u0027Run onboarding finance\u0027).first().json.output || \u0027\u0027) }) }}"
+                                                         "queryReplacement":  "={{ JSON.stringify({ chat_id: String(($(\u0027Trigger normalize\u0027).first().json.callback_query.message || {}).chat?.id || \u0027\u0027), agent: (($(\u0027Run onboarding finance\u0027).first().json.error === \u0027household_only\u0027) ? \u0027\u0027 : \u0027agent.finance\u0027), output: String($(\u0027Run onboarding finance\u0027).first().json.output || \u0027\u0027) }) }}"
                                                      }
                                      },
                       "type":  "n8n-nodes-base.postgres",
@@ -7537,7 +7600,7 @@
                                          "operation":  "executeQuery",
                                          "query":  "SELECT agent.fn_set_dispatch_followup($1::jsonb) AS r, agent.fn_set_router_button_turn($1::jsonb) AS m;",
                                          "options":  {
-                                                         "queryReplacement":  "={{ JSON.stringify({ chat_id: String(($(\u0027Trigger normalize\u0027).first().json.callback_query.message || {}).chat?.id || \u0027\u0027), agent: \u0027agent.estate_advisor\u0027, output: String($(\u0027Run onboarding estate\u0027).first().json.output || \u0027\u0027) }) }}"
+                                                         "queryReplacement":  "={{ JSON.stringify({ chat_id: String(($(\u0027Trigger normalize\u0027).first().json.callback_query.message || {}).chat?.id || \u0027\u0027), agent: (($(\u0027Run onboarding estate\u0027).first().json.error === \u0027household_only\u0027) ? \u0027\u0027 : \u0027agent.estate_advisor\u0027), output: String($(\u0027Run onboarding estate\u0027).first().json.output || \u0027\u0027) }) }}"
                                                      }
                                      },
                       "type":  "n8n-nodes-base.postgres",
@@ -7562,7 +7625,7 @@
                                          "operation":  "executeQuery",
                                          "query":  "SELECT agent.fn_set_dispatch_followup($1::jsonb) AS r, agent.fn_set_router_button_turn($1::jsonb) AS m;",
                                          "options":  {
-                                                         "queryReplacement":  "={{ JSON.stringify({ chat_id: String(($(\u0027Trigger normalize\u0027).first().json.callback_query.message || {}).chat?.id || \u0027\u0027), agent: \u0027agent.career_advisor\u0027, output: String($(\u0027Run onboarding career\u0027).first().json.output || \u0027\u0027) }) }}"
+                                                         "queryReplacement":  "={{ JSON.stringify({ chat_id: String(($(\u0027Trigger normalize\u0027).first().json.callback_query.message || {}).chat?.id || \u0027\u0027), agent: (($(\u0027Run onboarding career\u0027).first().json.error === \u0027household_only\u0027) ? \u0027\u0027 : \u0027agent.career_advisor\u0027), output: String($(\u0027Run onboarding career\u0027).first().json.output || \u0027\u0027) }) }}"
                                                      }
                                      },
                       "type":  "n8n-nodes-base.postgres",
@@ -7587,7 +7650,7 @@
                                          "operation":  "executeQuery",
                                          "query":  "SELECT agent.fn_set_dispatch_followup($1::jsonb) AS r, agent.fn_set_router_button_turn($1::jsonb) AS m;",
                                          "options":  {
-                                                         "queryReplacement":  "={{ JSON.stringify({ chat_id: String(($(\u0027Trigger normalize\u0027).first().json.callback_query.message || {}).chat?.id || \u0027\u0027), agent: \u0027agent.finance_advisor\u0027, output: String($(\u0027Run plan finance\u0027).first().json.output || \u0027\u0027) }) }}"
+                                                         "queryReplacement":  "={{ JSON.stringify({ chat_id: String(($(\u0027Trigger normalize\u0027).first().json.callback_query.message || {}).chat?.id || \u0027\u0027), agent: (($(\u0027Run plan finance\u0027).first().json.error === \u0027household_only\u0027) ? \u0027\u0027 : \u0027agent.finance_advisor\u0027), output: String($(\u0027Run plan finance\u0027).first().json.output || \u0027\u0027) }) }}"
                                                      }
                                      },
                       "type":  "n8n-nodes-base.postgres",
@@ -7612,7 +7675,7 @@
                                          "operation":  "executeQuery",
                                          "query":  "SELECT agent.fn_set_dispatch_followup($1::jsonb) AS r, agent.fn_set_router_button_turn($1::jsonb) AS m;",
                                          "options":  {
-                                                         "queryReplacement":  "={{ JSON.stringify({ chat_id: String(($(\u0027Trigger normalize\u0027).first().json.callback_query.message || {}).chat?.id || \u0027\u0027), agent: \u0027agent.career_advisor\u0027, output: String($(\u0027Run plan career\u0027).first().json.output || \u0027\u0027) }) }}"
+                                                         "queryReplacement":  "={{ JSON.stringify({ chat_id: String(($(\u0027Trigger normalize\u0027).first().json.callback_query.message || {}).chat?.id || \u0027\u0027), agent: (($(\u0027Run plan career\u0027).first().json.error === \u0027household_only\u0027) ? \u0027\u0027 : \u0027agent.career_advisor\u0027), output: String($(\u0027Run plan career\u0027).first().json.output || \u0027\u0027) }) }}"
                                                      }
                                      },
                       "type":  "n8n-nodes-base.postgres",
@@ -7637,7 +7700,7 @@
                                          "operation":  "executeQuery",
                                          "query":  "SELECT agent.fn_set_dispatch_followup($1::jsonb) AS r, agent.fn_set_router_button_turn($1::jsonb) AS m;",
                                          "options":  {
-                                                         "queryReplacement":  "={{ JSON.stringify({ chat_id: String(($(\u0027Trigger normalize\u0027).first().json.callback_query.message || {}).chat?.id || \u0027\u0027), agent: \u0027agent.monitor\u0027, output: String($(\u0027Run plan general\u0027).first().json.output || \u0027\u0027) }) }}"
+                                                         "queryReplacement":  "={{ JSON.stringify({ chat_id: String(($(\u0027Trigger normalize\u0027).first().json.callback_query.message || {}).chat?.id || \u0027\u0027), agent: (($(\u0027Run plan general\u0027).first().json.error === \u0027household_only\u0027) ? \u0027\u0027 : \u0027agent.monitor\u0027), output: String($(\u0027Run plan general\u0027).first().json.output || \u0027\u0027) }) }}"
                                                      }
                                      },
                       "type":  "n8n-nodes-base.postgres",
@@ -7662,7 +7725,7 @@
                                          "operation":  "executeQuery",
                                          "query":  "SELECT agent.fn_set_dispatch_followup($1::jsonb) AS r, agent.fn_set_router_button_turn($1::jsonb) AS m;",
                                          "options":  {
-                                                         "queryReplacement":  "={{ JSON.stringify({ chat_id: String(($(\u0027Trigger normalize\u0027).first().json.callback_query.message || {}).chat?.id || \u0027\u0027), agent: \u0027agent.finance\u0027, output: String($(\u0027Run handoff finance\u0027).first().json.output || \u0027\u0027) }) }}"
+                                                         "queryReplacement":  "={{ JSON.stringify({ chat_id: String(($(\u0027Trigger normalize\u0027).first().json.callback_query.message || {}).chat?.id || \u0027\u0027), agent: (($(\u0027Run handoff finance\u0027).first().json.error === \u0027household_only\u0027) ? \u0027\u0027 : \u0027agent.finance\u0027), output: String($(\u0027Run handoff finance\u0027).first().json.output || \u0027\u0027) }) }}"
                                                      }
                                      },
                       "type":  "n8n-nodes-base.postgres",
@@ -7699,7 +7762,8 @@
                                                                               "call_depth":  "1",
                                                                               "workflow_id":  "TgeDJsFxMvotKCrr",
                                                                               "package":  "estate",
-                                                                              "thinking":  "loop"
+                                                                              "thinking":  "loop",
+                                                                              "audience":  "adults"
                                                                           },
                                                                 "matchingColumns":  [
 

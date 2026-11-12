@@ -58,6 +58,7 @@ function Build-CreateMonitorTrigger {
     $probe = Build-Pg 'Probe (validate)' @(1260, 0) `
         "=SELECT (r->>'ok')::boolean AND d.err IS NULL AS probe_ok, (r->>'value')::numeric AS probe_value, r->>'unit' AS probe_unit, r->>'as_of' AS probe_as_of, r->>'source_url' AS probe_source, COALESCE(d.err, r->>'reason') AS probe_reason, r->'display' AS probe_display, r::text AS probe_json, d.chk->>'due_date' AS due_resolved, d.fchk->>'due_date' AS first_resolved FROM agent.fn_monitor_probe(`$1::jsonb) AS r, LATERAL (SELECT x.chk, x.fchk, COALESCE(CASE WHEN NOT (x.chk->>'ok')::boolean THEN x.chk->>'reason' END, CASE WHEN NOT (x.fchk->>'ok')::boolean THEN 'first_check: ' || replace(x.fchk->>'reason', 'due_date', 'the start date') END) AS err FROM (SELECT CASE WHEN (`$1::jsonb)->>'trigger_type' = 'date' THEN agent.fn_resolve_monitor_due((`$1::jsonb)->>'due_date') ELSE jsonb_build_object('ok', true) END AS chk, CASE WHEN NULLIF(btrim(COALESCE((`$1::jsonb)->>'first_check', '')), '') IS NOT NULL THEN agent.fn_resolve_monitor_due((`$1::jsonb)->>'first_check') ELSE jsonb_build_object('ok', true) END AS fchk) x) d;" `
         ([ordered]@{
+            chat_id            = '$(''Start'').item.json.chat_id'
             trigger_type       = '$(''Start'').item.json.trigger_type'
             due_date           = '$(''Start'').item.json.due_date'
             first_check        = '$(''Start'').item.json.first_check'
@@ -135,6 +136,7 @@ function Build-CreateMonitorTrigger {
         -WriteName 'Create trigger (atomic)' `
         -WriteSelect "(r->>'ok')::boolean AS ok, r->>'reason' AS reason, (r->>'trigger_id')::int AS trigger_id, r->>'status' AS status, r->>'next_check_at' AS next_check_at, r->>'check_interval' AS check_interval, (r->>'armed_count')::int AS armed_count" `
         -Params ([ordered]@{
+            chat_id            = '$(''Start'').item.json.chat_id'
             domain             = '$(''Resolve domain'').item.json.domain'
             package            = '$(''Start'').item.json.package'
             label              = '$(''Start'').item.json.label'

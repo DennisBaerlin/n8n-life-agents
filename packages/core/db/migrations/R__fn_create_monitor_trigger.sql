@@ -58,6 +58,11 @@ DECLARE
     v_key      TEXT;
     v_first    DATE;
 BEGIN
+    -- Kinder-Sicht (Paket C): eine bekannte Person ohne Haushalts-Sicht (Kind) legt keine Erinnerung auf Haushaltswerte an,
+    -- aendert oder loescht keine; ohne chat_id (Cron, Systempfad) unveraendert. Vor jedem Probelauf und Write.
+    IF core.fn_sender_is_household_restricted(p->>'chat_id') THEN
+        RETURN jsonb_build_object('ok', false, 'reason', 'household_only: only the adults of the household can set up or change reminders here');
+    END IF;
     -- Basis-Guards
     IF v_label = '' THEN
         RETURN jsonb_build_object('ok', false, 'reason', 'label must be non-empty');

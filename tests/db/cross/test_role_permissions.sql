@@ -730,6 +730,20 @@ BEGIN
     RAISE EXCEPTION 'FAIL [core_ro -> core.fn_get_next_step]: erwartet role owner, got %', COALESCE(v_out, '<null>'); END IF;
   RAISE NOTICE 'PASS [core_ro -> core.fn_get_next_step + core.fn_get_next_step_example (DEFINER-Fenster)]';
 
+  -- ===== (3e-CHILD) Kinder-Sicht: core_ro -> core.fn_sender_sees_household (Hilfe-Agent Household status read). Der
+  -- Datei-Fixture-Owner (telegram_user_id 777) sieht den Haushalt; ein abgewiesener Aufruf wuerde vor dem Body werfen.
+  BEGIN
+    SET LOCAL ROLE core_ro;
+    v_out := core.fn_sender_sees_household('777')::text;
+    RESET ROLE;
+  EXCEPTION WHEN OTHERS THEN
+    RESET ROLE;
+    RAISE EXCEPTION 'FAIL [core_ro -> core.fn_sender_sees_household]: %', SQLERRM;
+  END;
+  IF v_out IS DISTINCT FROM 'true' THEN
+    RAISE EXCEPTION 'FAIL [core_ro -> core.fn_sender_sees_household]: erwartet true fuer den Owner, got %', COALESCE(v_out, '<null>'); END IF;
+  RAISE NOTICE 'PASS [core_ro -> core.fn_sender_sees_household (DEFINER-Fenster)]';
+
   -- ===== (3e) P1 (Generisches Paket-Onboarding): core_ro -> core.fn_onboarding_overview =====
   -- core.sub_send_onboarding_menu (laeuft unter core_ro) liest das DB-getriebene Menue-Modell ueber dieses
   -- DEFINER-Fenster (P2b-1: Arity (text DEFAULT NULL); no-arg-Call resolved via Default = alle per_user-Sektionen

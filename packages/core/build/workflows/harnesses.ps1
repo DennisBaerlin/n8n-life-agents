@@ -16,7 +16,7 @@ $script:Harnesses += @(
     [ordered]@{ name='agent.monitor.test_harness';              targetName='agent.monitor';              path='monitor-test';     inputMap=$null }
     [ordered]@{ name='agent.guide.test_harness';                targetName='agent.guide';                path='guide-test';       inputMap=$null }
     # Install-UX-Phase 4: Core-Verteiler zu Paket-Agenten (infra_cases ic16/ic17: Tiefen-Schutz durchgereicht + nicht installiert).
-    [ordered]@{ name='agent.sub_dispatch_agent.test_harness';   targetName='agent.sub_dispatch_agent';   path='dispatch-test';    inputMap=[ordered]@{ workflow_id='body.workflow_id'; package='body.package'; task='body.task'; chat_id='body.chat_id'; call_depth='body.call_depth' } }
+    [ordered]@{ name='agent.sub_dispatch_agent.test_harness';   targetName='agent.sub_dispatch_agent';   path='dispatch-test';    inputMap=[ordered]@{ workflow_id='body.workflow_id'; package='body.package'; task='body.task'; chat_id='body.chat_id'; call_depth='body.call_depth'; audience='body.audience' } }
     # paperless Phase 2: Core-Vermittler zu Paket-WERKZEUGEN (infra_cases: Durchreichen, package_unavailable, unknown_service, not_permitted).
     [ordered]@{ name='agent.sub_dispatch_tool.test_harness';    targetName='agent.sub_dispatch_tool';    path='dispatch-tool-test'; inputMap=[ordered]@{ service='body.service'; args='body.args'; chat_id='body.chat_id' } }
     # Phase A: der EINE Fakten-Schreibweg — hitl_gate_test fuehrt den APPROVE-Zweig bis in die DB (Schema-Fidelity

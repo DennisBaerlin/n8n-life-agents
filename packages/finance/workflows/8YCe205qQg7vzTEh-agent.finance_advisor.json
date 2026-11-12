@@ -539,9 +539,9 @@
                                          "descriptionType":  "manual",
                                          "toolDescription":  "Fetch the full content of a lazy context document by name (see manifest in your system prompt). PLAN-FIRST: load financial_planning (your published plan, if it exists) BEFORE giving any recommendation; load family to resolve household members.",
                                          "operation":  "executeQuery",
-                                         "query":  "=SELECT content FROM core.fn_fetch_context(($1::jsonb)-\u003e\u003e\u0027name\u0027);",
+                                         "query":  "=SELECT content FROM core.fn_fetch_context(($1::jsonb)-\u003e\u003e\u0027name\u0027, ($1::jsonb)-\u003e\u003e\u0027chat_id\u0027);",
                                          "options":  {
-                                                         "queryReplacement":  "={{ JSON.stringify({ name: $fromAI(\u0027context_name\u0027, \u0027Name of the lazy context document to load (must match an entry in the manifest)\u0027, \u0027string\u0027) }) }}"
+                                                         "queryReplacement":  "={{ JSON.stringify({ name: $fromAI(\u0027context_name\u0027, \u0027Name of the lazy context document to load (must match an entry in the manifest)\u0027, \u0027string\u0027), chat_id: String($(\u0027Start agent.finance_advisor\u0027).item.json.chat_id || \u0027\u0027) }) }}"
                                                      }
                                      },
                       "type":  "n8n-nodes-base.postgresTool",
@@ -2055,110 +2055,6 @@
                   },
                   {
                       "parameters":  {
-                                         "operation":  "executeQuery",
-                                         "query":  "=SELECT finance.fn_sender_sees_household(($1::jsonb)-\u003e\u003e\u0027chat_id\u0027) AS sees, core.fn_ui_texts_for(jsonb_build_object(\u0027chat_id\u0027, ($1::jsonb)-\u003e\u003e\u0027chat_id\u0027, \u0027keys\u0027, to_jsonb(ARRAY[\u0027finance.gate.household_only\u0027]::text[])))-\u003e\u0027t\u0027 AS t;",
-                                         "options":  {
-                                                         "queryReplacement":  "={{ JSON.stringify({ chat_id: String($(\u0027Start agent.finance_advisor\u0027).item.json.chat_id || \u0027\u0027) }) }}"
-                                                     }
-                                     },
-                      "type":  "n8n-nodes-base.postgres",
-                      "typeVersion":  2.6,
-                      "position":  [
-                                       -1376,
-                                       -560
-                                   ],
-                      "id":  "621f23d6-faae-5827-aab0-774bfd63f519",
-                      "name":  "Household view read",
-                      "credentials":  {
-                                          "postgres":  {
-                                                           "id":  "__CRED_POSTGRES_WRITE__",
-                                                           "name":  "Postgres account"
-                                                       }
-                                      }
-                  },
-                  {
-                      "parameters":  {
-                                         "conditions":  {
-                                                            "options":  {
-                                                                            "caseSensitive":  true,
-                                                                            "typeValidation":  "strict",
-                                                                            "version":  2
-                                                                        },
-                                                            "conditions":  [
-                                                                               {
-                                                                                   "id":  "cff287c8-c700-5a94-a07d-4d62430395fd",
-                                                                                   "leftValue":  "={{ $(\u0027Household view read\u0027).item.json.sees === true }}",
-                                                                                   "rightValue":  true,
-                                                                                   "operator":  {
-                                                                                                    "type":  "boolean",
-                                                                                                    "operation":  "equals"
-                                                                                                }
-                                                                               }
-                                                                           ],
-                                                            "combinator":  "and"
-                                                        },
-                                         "options":  {
-
-                                                     }
-                                     },
-                      "type":  "n8n-nodes-base.if",
-                      "typeVersion":  2.2,
-                      "position":  [
-                                       -1264,
-                                       -560
-                                   ],
-                      "id":  "79d05553-ab9e-51be-9ea0-f438a5492265",
-                      "name":  "Household view gate"
-                  },
-                  {
-                      "parameters":  {
-                                         "assignments":  {
-                                                             "assignments":  [
-                                                                                 {
-                                                                                     "id":  "e4c4a66b-043e-51c3-b645-dbffdb57ef54",
-                                                                                     "name":  "ok",
-                                                                                     "value":  "false",
-                                                                                     "type":  "boolean"
-                                                                                 },
-                                                                                 {
-                                                                                     "id":  "705d9a6b-cab5-5906-850c-47da5998c197",
-                                                                                     "name":  "output",
-                                                                                     "value":  "={{ String((($(\u0027Household view read\u0027).item.json.t) || {})[\u0027finance.gate.household_only\u0027] || \u0027finance.gate.household_only\u0027) }}",
-                                                                                     "type":  "string"
-                                                                                 }
-                                                                             ]
-                                                         },
-                                         "options":  {
-
-                                                     }
-                                     },
-                      "type":  "n8n-nodes-base.set",
-                      "typeVersion":  3.4,
-                      "position":  [
-                                       -1152,
-                                       -720
-                                   ],
-                      "id":  "d66b8260-bee0-5b45-9488-d79950306ff9",
-                      "name":  "Household view denied"
-                  },
-                  {
-                      "parameters":  {
-                                         "content":  "## DB-Automatik\n**Tor Haushalts-Sicht (vor dem LLM)**\n\nHousehold view read fragt finance.fn_sender_sees_household(chat_id): owner/partner (Regel der Mini-App, core.fn_app_sees_household) oder nicht-numerische Test-chat_id -\u003e true. Household view gate: nur true laesst weiter, sonst Household view denied {ok:false, output = finance.gate.household_only in der Sprache des Absenders}; kein LLM, kein Werkzeug, keine Karte. Fail-closed: kein onError, ein Lesefehler stoppt den Lauf. Andere Wege eines Kindes zu Finanzdaten (Guide, Monitor, Kontexte anderer Pakete) deckt dieses Tor nicht ab.",
-                                         "height":  300,
-                                         "width":  380,
-                                         "color":  4
-                                     },
-                      "type":  "n8n-nodes-base.stickyNote",
-                      "typeVersion":  1,
-                      "position":  [
-                                       -1416,
-                                       -980
-                                   ],
-                      "id":  "a714a818-5b7c-5498-beb7-86de7a3619e6",
-                      "name":  "Doc: Haushalts-Sicht"
-                  },
-                  {
-                      "parameters":  {
                                          "model":  {
                                                        "__rl":  true,
                                                        "mode":  "list",
@@ -2696,41 +2592,12 @@
                                                          [
                                                              {
                                                                  "index":  0,
-                                                                 "node":  "Household view read",
+                                                                 "node":  "Onboarding gate read",
                                                                  "type":  "main"
                                                              }
                                                          ]
                                                      ]
                                         },
-                        "Household view read":  {
-                                                    "main":  [
-                                                                 [
-                                                                     {
-                                                                         "index":  0,
-                                                                         "node":  "Household view gate",
-                                                                         "type":  "main"
-                                                                     }
-                                                                 ]
-                                                             ]
-                                                },
-                        "Household view gate":  {
-                                                    "main":  [
-                                                                 [
-                                                                     {
-                                                                         "index":  0,
-                                                                         "node":  "Onboarding gate read",
-                                                                         "type":  "main"
-                                                                     }
-                                                                 ],
-                                                                 [
-                                                                     {
-                                                                         "index":  0,
-                                                                         "node":  "Household view denied",
-                                                                         "type":  "main"
-                                                                     }
-                                                                 ]
-                                                             ]
-                                                },
                         "Onboarding gate read":  {
                                                      "main":  [
                                                                   [

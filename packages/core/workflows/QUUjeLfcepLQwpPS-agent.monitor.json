@@ -4,6 +4,101 @@
     "nodes":  [
                   {
                       "parameters":  {
+                                         "operation":  "executeQuery",
+                                         "query":  "=SELECT core.fn_sender_sees_household(($1::jsonb)-\u003e\u003e\u0027chat_id\u0027) AS sees, core.fn_ui_texts_for(jsonb_build_object(\u0027chat_id\u0027, ($1::jsonb)-\u003e\u003e\u0027chat_id\u0027, \u0027keys\u0027, to_jsonb(ARRAY[\u0027core.dispatch.household_only\u0027]::text[])))-\u003e\u0027t\u0027 AS t;",
+                                         "options":  {
+                                                         "queryReplacement":  "={{ JSON.stringify({ chat_id: String($(\u0027Start agent.monitor\u0027).item.json.chat_id || \u0027\u0027) }) }}"
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       -1430,
+                                       -200
+                                   ],
+                      "id":  "4802c59d-a742-587b-8174-4b545dc73059",
+                      "name":  "Household view read",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_WRITE__",
+                                                           "name":  "Postgres account"
+                                                       }
+                                      },
+                      "onError":  "continueRegularOutput"
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "bcc546d7-98ea-5e63-910a-3b32908f610b",
+                                                                                   "leftValue":  "={{ $(\u0027Household view read\u0027).item.json.sees === true }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       -1410,
+                                       -60
+                                   ],
+                      "id":  "ea7cad86-0dd3-59f0-b649-c266ad9304b3",
+                      "name":  "Household view gate"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "7564ea95-4f95-5eb8-982c-2ba5d6eb25d1",
+                                                                                     "name":  "ok",
+                                                                                     "value":  "false",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "028eaf7c-51b6-5c54-8f66-a5d624545b13",
+                                                                                     "name":  "error",
+                                                                                     "value":  "household_only",
+                                                                                     "type":  "string"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "8021eb81-09ad-5618-b20d-1cecf551c8ed",
+                                                                                     "name":  "output",
+                                                                                     "value":  "={{ String((($(\u0027Household view read\u0027).item.json.t) || {})[\u0027core.dispatch.household_only\u0027] || \u0027core.dispatch.household_only\u0027) }}",
+                                                                                     "type":  "string"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       -1300,
+                                       360
+                                   ],
+                      "id":  "4de10c7e-2a56-566a-a4d7-bb9c0f1d4ba0",
+                      "name":  "Household only"
+                  },
+                  {
+                      "parameters":  {
                                          "workflowInputs":  {
                                                                 "values":  [
                                                                                {
@@ -273,9 +368,9 @@
                                          "descriptionType":  "manual",
                                          "toolDescription":  "Fetch the full content of a lazy context document by name (see manifest in your system prompt). ALWAYS load trigger_design BEFORE designing or repairing any trigger acquisition - it is the binding co-design protocol (source hierarchy, prompt engineering rules, probe procedure, cadence guidance).",
                                          "operation":  "executeQuery",
-                                         "query":  "=SELECT content FROM core.fn_fetch_context(($1::jsonb)-\u003e\u003e\u0027name\u0027);",
+                                         "query":  "=SELECT content FROM core.fn_fetch_context(($1::jsonb)-\u003e\u003e\u0027name\u0027, ($1::jsonb)-\u003e\u003e\u0027chat_id\u0027);",
                                          "options":  {
-                                                         "queryReplacement":  "={{ JSON.stringify({ name: $fromAI(\u0027context_name\u0027, \u0027Name of the lazy context document to load (must match an entry in the manifest)\u0027, \u0027string\u0027) }) }}"
+                                                         "queryReplacement":  "={{ JSON.stringify({ name: $fromAI(\u0027context_name\u0027, \u0027Name of the lazy context document to load (must match an entry in the manifest)\u0027, \u0027string\u0027), chat_id: String($(\u0027Start agent.monitor\u0027).item.json.chat_id || \u0027\u0027) }) }}"
                                                      }
                                      },
                       "type":  "n8n-nodes-base.postgresTool",
@@ -934,7 +1029,7 @@
                   },
                   {
                       "parameters":  {
-                                         "content":  "## DB-Automatik\n**agent.monitor — Watchdog des Trigger-Monitorings (Sub-Workflow)**\n\nEingang: task, chat_id, call_depth (vom Orchestrator als Tool gerufen). Pipeline: Depth gate (Anti-Loop) -\u003e Load Config -\u003e System-Prompt+Manifest (agent.tool_load_context, agent_name=monitor) -\u003e Monitor Agent. OWNERSHIP: Mechanik-Fragen (Trigger anlegen/ändern/löschen/auflisten, Repair, \"warum feuerte der Alert\") = HIER; Wert-/Beratungs-Fragen (\"Ölpreis ist gerissen - was tun?\") = Fach-Advisor. Writes NUR via tool_create_monitor_trigger/tool_set_monitor_trigger/tool_delete_monitor_trigger (je HITL-Gate + Probe vor dem Gate). Co-Design-Protokoll lebt EINMAL im lazy Context trigger_design (Henne-Ei gelöst per Pointer in der create-Tool-Description). Der Monitor-Agent setzt package fix core; ein Fach-Advisor bindet zusätzlich NUR tool_create_monitor_trigger (+ read-only tool_list_monitor_triggers), domain+package fix = sein Paket. PAKET-WISSEN (Phase B) kommt build-time aus den Manifesten: bevorzugte Views (read_surface), Paket-Beschaffungs-Methoden (monitor_acquisition_methods, Parameter als acquisition_params) und Advisor-Domänen (advisors) — der Core nennt kein Paket selbst.",
+                                         "content":  "## DB-Automatik\n**agent.monitor — Watchdog des Trigger-Monitorings (Sub-Workflow)**\n\nEingang: task, chat_id, call_depth (vom Orchestrator als Tool gerufen). Pipeline: Depth gate (Anti-Loop) -\u003e Household view read/gate (Kinder-Sicht: core.fn_sender_sees_household, fail-closed; nein -\u003e Household only = core.dispatch.household_only, kein Agent-Lauf; die Trigger-fns lehnen mit chat_id zusätzlich ab) -\u003e Load Config -\u003e System-Prompt+Manifest (agent.tool_load_context, agent_name=monitor) -\u003e Monitor Agent. OWNERSHIP: Mechanik-Fragen (Trigger anlegen/ändern/löschen/auflisten, Repair, \"warum feuerte der Alert\") = HIER; Wert-/Beratungs-Fragen (\"Ölpreis ist gerissen - was tun?\") = Fach-Advisor. Writes NUR via tool_create_monitor_trigger/tool_set_monitor_trigger/tool_delete_monitor_trigger (je HITL-Gate + Probe vor dem Gate). Co-Design-Protokoll lebt EINMAL im lazy Context trigger_design (Henne-Ei gelöst per Pointer in der create-Tool-Description). Der Monitor-Agent setzt package fix core; ein Fach-Advisor bindet zusätzlich NUR tool_create_monitor_trigger (+ read-only tool_list_monitor_triggers), domain+package fix = sein Paket. PAKET-WISSEN (Phase B) kommt build-time aus den Manifesten: bevorzugte Views (read_surface), Paket-Beschaffungs-Methoden (monitor_acquisition_methods, Parameter als acquisition_params) und Advisor-Domänen (advisors) — der Core nennt kein Paket selbst.",
                                          "height":  300,
                                          "width":  680,
                                          "color":  4
@@ -1181,12 +1276,41 @@
                                                         [
                                                             {
                                                                 "index":  0,
-                                                                "node":  "Load Config",
+                                                                "node":  "Household view read",
                                                                 "type":  "main"
                                                             }
                                                         ]
                                                     ]
                                        },
+                        "Household view read":  {
+                                                    "main":  [
+                                                                 [
+                                                                     {
+                                                                         "index":  0,
+                                                                         "node":  "Household view gate",
+                                                                         "type":  "main"
+                                                                     }
+                                                                 ]
+                                                             ]
+                                                },
+                        "Household view gate":  {
+                                                    "main":  [
+                                                                 [
+                                                                     {
+                                                                         "index":  0,
+                                                                         "node":  "Load Config",
+                                                                         "type":  "main"
+                                                                     }
+                                                                 ],
+                                                                 [
+                                                                     {
+                                                                         "index":  0,
+                                                                         "node":  "Household only",
+                                                                         "type":  "main"
+                                                                     }
+                                                                 ]
+                                                             ]
+                                                },
                         "Load Config":  {
                                             "main":  [
                                                          [

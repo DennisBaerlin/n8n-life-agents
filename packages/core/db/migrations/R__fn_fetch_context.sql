@@ -28,6 +28,10 @@
 --   der DEFINER (owner=superuser) ruft agent.fn_resolve_sender ohne neuen Grant; der context_ro-Aufrufer
 --   braeuchte sonst selbst EXECUTE darauf (CVE-2018-1058-Anti-Pattern). arch-challenge ADOPT Option B.
 --
+--   KINDER-SICHT (Paket C): mit p_chat_id prueft die fn core.fn_sender_sees_household; ohne Haushalts-Sicht liefert sie
+--   fuer Paket-Kontexte (package <> 'core', Scope nicht per_user) eine feste Hinweiszeile und fuer family nur Vornamen
+--   und Rollen. p_chat_id NULL bleibt der Systempfad (voller Inhalt); Agenten-Werkzeuge uebergeben immer die chat_id.
+--
 --   WS1b: family/finance_profile laufen jetzt ueber DIESELBE generische Registry-Engine (Header-only
 --   fn(text), via core.context_renderers) — der frueher name-gebundene Legacy-Whitelist-Zweig +
 --   das mutable metadata.render_fn-Flag sind ENTFERNT (EIN Render-Pfad fuer alle Contexts).
@@ -59,6 +63,8 @@ DECLARE
     v_scope    TEXT;
     v_pid      TEXT;
     v_physical TEXT;
+    v_pkg      TEXT;
+    v_sees     BOOLEAN;
 BEGIN
     -- Physische per_user-Zeile '<base>__<pid>' direkt angefragt (der Name kommt vom LLM) -> leere Menge: eine Person
     -- liest per_user-Inhalte NUR ueber den Basisnamen + ihre eigene chat_id (sonst laese B A's Zeile per Namen).
@@ -76,13 +82,39 @@ BEGIN
     v_physical := CASE WHEN v_scope = 'per_user' AND v_pid IS NOT NULL
                        THEN p_name || '__' || v_pid ELSE p_name END;
 
-    SELECT c.content, c.metadata INTO v_content, v_meta
+    SELECT c.content, c.metadata, c.package INTO v_content, v_meta, v_pkg
     FROM agent.core_contexts c
     WHERE c.name = v_physical
       AND c.load_strategy = 'lazy';
 
     IF NOT FOUND THEN
         RETURN;  -- keine lazy-Zeile (inkl. per_user fail-closed: leere/fehlende Basis-Zeile) -> leere Menge
+    END IF;
+
+    -- Kinder-Sicht (core.fn_sender_sees_household): ein Absender ohne Haushalts-Sicht bekommt keine Paket-Kontexte
+    -- (Haushalts-Inhalt; eigene per_user-Kontexte ausgenommen, keine Scope-Zeile = Haushalt) und von family nur Vornamen
+    -- und Rollen. p_chat_id NULL = Systempfad ohne Absender (Tests, Renderer) -> voller Inhalt; jedes Agenten-Werkzeug
+    -- uebergibt die build-fixe chat_id (contract_lint LOAD-CONTEXT-CHAT).
+    IF p_chat_id IS NOT NULL THEN
+        v_sees := core.fn_sender_sees_household(p_chat_id);
+        -- Besitzendes Paket auch dann, wenn die Zeile 'core' traegt (restauriertes Alt-Bundle): Plan-Kontext eines Paket-
+        -- Beraters bzw. Renderer eines Pakets zaehlen als Paket-Inhalt.
+        IF v_pkg IS NOT DISTINCT FROM 'core' THEN
+            v_pkg := COALESCE((SELECT a.package FROM core.advisors a WHERE a.plan_context = p_name AND a.package <> 'core' LIMIT 1),
+                              (SELECT r.package FROM core.context_renderers r WHERE r.context_name = p_name AND r.package <> 'core'),
+                              v_pkg);
+        END IF;
+        IF NOT v_sees AND v_pkg IS DISTINCT FROM 'core' AND v_scope IS DISTINCT FROM 'per_user' THEN
+            RETURN QUERY SELECT 'This document is only available to the adults of the household. Do not guess its content.'::text;
+            RETURN;
+        END IF;
+        IF NOT v_sees AND p_name = 'family' THEN
+            RETURN QUERY SELECT 'Household members (first name, role): ' || COALESCE((
+                SELECT string_agg(COALESCE(pp->>'first_name', '?') || ' (' || COALESCE(pp->>'role', '?') || ')', ', ' ORDER BY x.ord)
+                FROM jsonb_array_elements(COALESCE(v_meta->'facts'->'persons', '[]'::jsonb)) WITH ORDINALITY AS x(pp, ord)), '-')
+                || E'.\nOther household details are only available to the adults of the household.';
+            RETURN;
+        END IF;
     END IF;
 
     -- Generische Render-Engine: Registry-Eintrag (BASIS-Name) -> render_fn(PHYSISCHER Name) liefert NUR den Header.

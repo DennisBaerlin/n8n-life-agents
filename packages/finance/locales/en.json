@@ -890,7 +890,6 @@
   "finance.gate.onboarding_required": "Before I can give you sound advice, I need your financial picture first. Send me /onboarding (or simply: set me up).",
   "finance.gate.onboarding_open": "Still open: {sections}.",
   "finance.gate.onboarding_member": "Your household owner sets up the finances – once that is done, I can advise you.",
-  "finance.gate.household_only": "Only the adults of your household can see its finances here. Feel free to ask them directly.",
   "finance.next_step.example": "How much money do we have?",
   "finance.monitor_display.fx_pair": "Currency pair: {base}/{quote}",
   "finance.advisor.savings_pace": "Savings goal “{name}”: {drift} percentage points behind plan (currently {progress} %, expected {expected} %).",

@@ -15,6 +15,11 @@ DECLARE
     v_obs    INT;
     v_avail  JSONB;
 BEGIN
+    -- Kinder-Sicht (Paket C): eine bekannte Person ohne Haushalts-Sicht (Kind) legt keine Erinnerung auf Haushaltswerte an,
+    -- aendert oder loescht keine; ohne chat_id (Cron, Systempfad) unveraendert. Vor jedem Probelauf und Write.
+    IF core.fn_sender_is_household_restricted(p->>'chat_id') THEN
+        RETURN jsonb_build_object('ok', false, 'reason', 'household_only: only the adults of the household can set up or change reminders here');
+    END IF;
     SELECT * INTO v_r FROM agent.fn_resolve_monitor_trigger(p->>'label', v_domain, FALSE);
     IF v_r.hit_count = 0 THEN
         SELECT COALESCE(jsonb_agg(t.label ORDER BY t.label), '[]'::jsonb) INTO v_avail

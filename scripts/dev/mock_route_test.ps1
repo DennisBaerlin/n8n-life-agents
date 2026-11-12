@@ -328,6 +328,13 @@ foreach ($tc in $cases) {
     }
 }
 
+# Die Zusatzfaelle unten setzen keinen Onboarding-Vorzustand: ohne Ruecksetzen erbten sie den des letzten Falls (ein Fall mit
+# "onboarding": "unknown" am Ende -> der Buchhalter antwortet mit "erst Haushalt", memory-thinking sah 0 Antworten).
+if (@($cases).Count -gt 0 -and -not $Discover) {
+    Set-TestHouseholdOnboarding -Container $Container -Status 'completed'
+    Set-TestPackageOnboarding -Container $Container -Sections $null
+}
+
 # --- Fehlerweg "Bot denkt nach": Telegram lehnt den Platzhalter ab (Mock-Schalter /__fail) -> die Antwort muss trotzdem
 # kommen, die Execution ist success (kein Fehler-Alarm). Einmal je Orchestrator-Lauf; Mock-Szenario mit 3 s Verzoegerung
 # (__mock_slow_answer_short__), damit die Schleife sicher mindestens einen Draft versucht.

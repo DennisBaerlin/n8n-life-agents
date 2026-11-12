@@ -135,7 +135,7 @@ BEGIN
   IF v_c1 IS NULL OR v_c1 NOT LIKE '%Authoritative facts%' OR v_c1 NOT LIKE '%prose-body%'
      OR v_c1 NOT LIKE '%Erika Beispiel%Testament%' THEN
     RAISE EXCEPTION 'FAIL [6 fetch-Dispatch (Banner+Header+Prosa)]: %', left(COALESCE(v_c1, 'NULL'), 200); END IF;
-  SELECT content INTO v_c2 FROM core.fn_fetch_context('estate_overview', '999123');
+  SELECT content INTO v_c2 FROM core.fn_fetch_context('estate_overview', 'test_eo1');  -- Test-Sentinel: eine unbekannte Zahl waere seit der Kinder-Sicht gesperrt
   IF v_c2 IS DISTINCT FROM v_c1 THEN
     RAISE EXCEPTION 'FAIL [6 household: chat_id darf NICHT suffigieren/fail-closen]'; END IF;
   IF EXISTS (SELECT 1 FROM agent.fn_context_persons('estate_overview')) THEN

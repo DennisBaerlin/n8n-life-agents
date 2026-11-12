@@ -259,9 +259,16 @@ function Get-AgentRouting($Manifests) {
                 }
             }
 
+            # (d) audience (Kinder-Sicht, Tor im Vermittler agent.sub_dispatch_agent): adults (Default, fail-closed) | all
+            $aud = if ($a.PSObject.Properties.Name -contains 'audience' -and $null -ne $a.audience) { [string]$a.audience } else { 'adults' }
+            if (@('adults', 'all') -cnotcontains $aud) {
+                $errors.Add("$($m.Path): agent '$name' audience '$aud' unbekannt (erlaubt: adults, all; fehlt = adults).")
+                $aud = 'adults'
+            }
+
             $entries += [pscustomobject]@{
                 Name = $name; Description = $desc; Order = [int]$a.order
-                Package = $pkg; FallbackFor = $kinds
+                Package = $pkg; FallbackFor = $kinds; Audience = $aud
             }
         }
     }

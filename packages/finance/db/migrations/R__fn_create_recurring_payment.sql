@@ -12,7 +12,9 @@
 --   Monats-Check die Zahlung per Schluessel trifft (Stufe A, auch bei schwankendem Betrag); Kartenzeile
 --   finance.note.recurring_iban_key; keine echte IBAN (fn_iban_strict) -> {ok:false} ohne Write). creditor_id + mandate_ref (opt,
 --   beide gedruckt, aus einem Kontoauszugs-Vorschlag) -> Schluessel sepa_mandate (Stufe A), schon vergeben -> still nicht.
---   valid_from der Zahlung = fn_recurring_valid_from (fruehestens der Eroeffnungssaldo-Stichtag des Kontos).
+--   first_payment_date wird auf den ersten Termin >= Eingabe im Raster verankert (fn_schedule_first_occurrence: passt das
+--   Datum nicht zum festen Monatstag, gilt der naechste solche Tag); valid_from ohne Angabe = dieser Termin, dann
+--   fn_recurring_valid_from (fruehestens der Eroeffnungssaldo-Stichtag des Kontos). effective meldet beide wie gespeichert.
 --   RUECKGABE: Erfolg -> {ok:true, recurring_payment_id, monthly_equivalent, card_lines} + optional cashflow_coverage
 --   + optional savings_funding (fn_savings_funding_fold, Bericht ohne Frage: Spar-Deckung des Kontos nach dem Write,
 --   Einnahme wie Ausgabe, z. B. eine Zuwendung von aussen auf das Konto eines Sparplans). Korrigierbar
@@ -89,9 +91,17 @@ BEGIN
 
     v_signed := CASE v_dir WHEN 'expense' THEN -v_amount ELSE v_amount END;
 
+    -- Anker auf den ersten echten Termin ("today" + Zahltag 1 -> naechster 1.); ohne eigenes valid_from folgt es ihm.
+    -- Karte und Write lesen beides aus effective (Probelauf = Write).
+    v_first := finance.fn_schedule_first_occurrence(v_first, v_interval, v_unit, v_dom, NULL);
+    IF NULLIF(p->>'valid_from', '') IS NULL THEN
+        v_from := v_first;
+    END IF;
+    v_from := finance.fn_recurring_valid_from(v_account, v_from);
+
     v_rp_id := finance.fn_add_recurring_payment(
         v_account, v_signed, p->>'name',
-        v_interval, v_unit, v_dom, v_first, finance.fn_recurring_valid_from(v_account, v_from), v_to, NULL, NULLIF(p->>'notes',''));
+        v_interval, v_unit, v_dom, v_first, v_from, v_to, NULL, NULLIF(p->>'notes',''));
 
     SELECT monthly_equivalent INTO v_me FROM finance.recurring_payments WHERE id = v_rp_id;
 
@@ -120,7 +130,10 @@ BEGIN
 
     RETURN finance.fn_merge_fold(
         jsonb_build_object('ok', true, 'recurring_payment_id', v_rp_id, 'monthly_equivalent', v_me,
-                           'card_lines', v_card, 'effective', v_dates->'resolved') || v_cf,
+                           'card_lines', v_card,
+                           'effective', COALESCE(v_dates->'resolved', '{}'::jsonb)
+                                        || jsonb_build_object('first_payment_date', to_char(v_first, 'YYYY-MM-DD'),
+                                                              'valid_from', to_char(v_from, 'YYYY-MM-DD'))) || v_cf,
         v_fold);
 END;
 $$;

@@ -131,6 +131,10 @@ BEGIN
     v_dom      := (v_sched->>'schedule_day_of_month')::smallint;
     v_days     := finance.fn_jsonb_smallint_array(v_sched->'schedule_days_of_month');
     v_benef    := finance.fn_default_beneficiary(p->>'beneficiary_person_id', v_depot_id);
+    -- Anker auf den ersten echten Termin im abgeleiteten Rhythmus: fester Monatstag -> naechster solche Tag; feste
+    -- Ausfuehrungstage deckt dasselbe Raster ab (ein Datum ausserhalb des Kalenders lehnt fn_resolve_plan_schedule
+    -- vorher mit off_calendar ab, dort ist der Anker also schon ein Termin). effective meldet ihn wie gespeichert.
+    v_first    := finance.fn_schedule_first_occurrence(v_first, v_interval, v_unit, v_dom, v_days);
 
     -- Uniqueness-Guard (UNIQUE INDEX ist Backstop; hier freundliche Meldung)
     IF EXISTS (
@@ -201,7 +205,8 @@ BEGIN
         'schedule_interval',     v_interval,
         'schedule_day_of_month', v_dom,
         'schedule_days',         array_to_string(v_days, ', '),
-        'effective',             (v_dates->'resolved') || jsonb_build_object('beneficiary_person_id', v_benef)
+        'effective',             (v_dates->'resolved') || jsonb_build_object('beneficiary_person_id', v_benef,
+                                                                             'first_payment_date', to_char(v_first, 'YYYY-MM-DD'))
     )
     || CASE WHEN (v_sched->>'calendar_changed')::boolean AND jsonb_array_length(v_sched->'calendar') > 0
             THEN jsonb_build_object('calendar_learned',

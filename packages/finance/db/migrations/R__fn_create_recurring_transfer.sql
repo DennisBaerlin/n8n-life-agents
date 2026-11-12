@@ -97,6 +97,13 @@ BEGIN
             'reason', 'executed_by must be "bank" (standing order at the bank) or "manual" (the user transfers it themselves), got "' || v_exec || '". Leave it empty when the user did not say.');
     END IF;
 
+    -- Anker auf den ersten echten Termin (Datum passt nicht zum festen Monatstag -> naechster solche Tag); ohne
+    -- eigenes valid_from folgt es ihm. effective meldet beide wie gespeichert (Karte = Write).
+    v_first := finance.fn_schedule_first_occurrence(v_first, v_interval, v_unit, v_dom, NULL);
+    IF NULLIF(p->>'valid_from', '') IS NULL THEN
+        v_from_dt := v_first;
+    END IF;
+
     -- INSERT via gemeinsamen Helper (single source), amount Quell-seitig negativ; target via Folge-UPDATE.
     -- until_free_money: das Ende braucht die Zeile schon (Projektion MIT ihr) -> Savepoint, Ablehnung rollt zurueck.
     BEGIN
@@ -126,7 +133,12 @@ BEGIN
 
     RETURN finance.fn_merge_fold(
         jsonb_build_object('ok', true, 'recurring_payment_id', v_rp_id, 'monthly_equivalent', v_me,
-                           'card_lines', v_nc->'card_lines', 'effective', COALESCE(v_dates->'resolved', '{}'::jsonb) || v_end,
+                           'card_lines', v_nc->'card_lines',
+                           'effective', COALESCE(v_dates->'resolved', '{}'::jsonb)
+                                        || (SELECT jsonb_build_object('first_payment_date', to_char(r.first_payment_date, 'YYYY-MM-DD'),
+                                                                      'valid_from', to_char(r.valid_from, 'YYYY-MM-DD'))
+                                              FROM finance.recurring_payments r WHERE r.id = v_rp_id)
+                                        || COALESCE(v_end, '{}'::jsonb),
                            'execution', finance.fn_transfer_executed_by(v_rp_id)),
         -- Bank-Hinweis als letzte Kartenzeile; until_free_money hat seinen eigenen Bank-Satz im Workflow
         finance.fn_merge_fold(v_fold, jsonb_build_object('card_lines',

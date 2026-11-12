@@ -12,6 +12,7 @@ Es gibt genau eine leitende Session mit Merge-Hoheit (`/leitung`); alle anderen 
 - **Bypass-Modus:** Eine Session mit „Bypass permissions“ kann sich mit den übrigen nicht austauschen → anhalten und den Owner bitten, auf „Auto“ zu wechseln, danach die Anmeldung wiederholen (`docs/reference/sessions.md` *Bypass-Modus*).
 - **Stand-Datei lesen:** `.claude/plans/leitung-stand.md` im Haupt-Checkout (gitignored) ist die eine Datei für alle Sessions. Jede Session liest sie beim Start und hält sich an `## Sperren` und `## Merge-Reihenfolge`; schreiben darf nur die Leitung. Zusagen zwischen Sessions gelten erst, wenn sie dort stehen. Fehlt die Datei, gibt es keine Leitung (§2).
 - `ListAgents` (deferred → per `ToolSearch` laden) + `ReadNotifications`.
+- **Geplante Aufgaben** (Routine-Skills wie `/backlog-care`, `/live-findings`, `/retro-bundle`) laufen als eigene Sessions und folgen diesem Abschnitt: Ihr erster Schritt ist die Anmeldung bei der Leitung (Aufgabe, berührte Dateien), bevor sie eine Datei berühren; Tag-Auftrag und Routine am selben Tag ließen sonst zwei Sessions an einer Datei arbeiten.
 - **Keine anderen Sessions** → du bist Leitung, sobald eine dazukommt. Weiter mit deiner Aufgabe.
 - **Andere Sessions laufen** → bei der Leitung anmelden: Aufgabe, berührte Dateien, Worktree und Branch (Titel `[Leitung] <Thema>` in `ListAgents`). Ohne Leitung per `SendMessage` an alle: „Wer leitet? Woran arbeitest du, welche Dateien fasst du an?“ (Antwortpflicht §4).
 

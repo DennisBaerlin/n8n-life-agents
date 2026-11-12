@@ -72,7 +72,7 @@ Jeder Brief enthält:
 - Aufgabe, betroffene Dateien, woran „fertig“ erkennbar ist; passender Skill als Rahmen (`/feature`, `/test-task`, `/docs-task`, `/mini-app-task`, `/ui-task`)
 - echte Session-ID der Leitung (siehe *Sessions ansprechen*) und ihr ListAgents-Titel; die Regel *Fragen an den Owner laufen über die Leitung* (`/coordinate` §5)
 - Hinweis auf die Stand-Datei: lesen, Sperren und Merge-Reihenfolge gelten, nicht schreiben
-- eigene Container mit Session-Kürzel, freie Ports nach `docker ps`; n8n-Substrat nur nach Reservierung durch die Leitung
+- eigene Container **mit konkreten Namen und Ports im Brief** (`<kürzel>-dbtest`, `<kürzel>-n8ntest`, freie Ports nach `docker ps`) und der Auftrag, `DBTEST_*`/`N8NTEST_*` in jedem Aufruf zu setzen, auch bei `git push`; ohne sie trifft der Pre-Push-`db_test` den geteilten `lifeagents-dbtest` und bricht ab. n8n-Substrat nur nach Reservierung durch die Leitung
 - Repo öffentlich: nur erfundene Werte, auch in Commits und Kommentaren
 - Testfälle nie ändern, nur damit sie grün werden; Streichen erst nach Owner-Freigabe
 - bezahlte Suiten und Mini-App nur im jeweiligen Owner-Fenster

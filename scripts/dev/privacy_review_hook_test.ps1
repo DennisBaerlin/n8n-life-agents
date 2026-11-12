@@ -181,6 +181,8 @@ Write-Host 'Tags:'
 Invoke-SandboxGit @('tag', '-a', 'v1.0.0', '-m', 'Text-eins')
 Assert-Case 'Tag-Push gesperrt'               $true  "$publish v1.0.0"
 Add-Stamp @('-Ref', 'v1.0.0')
+$tagTip = [string](& git -C $sandbox rev-parse 'v1.0.0^{commit}')
+Assert-True 'Tag-Stempel: Ref als Tag-Name = Commit-Hash mit -DestRef' ((Invoke-Outgoing @('-Ref', 'v1.0.0')).hash -eq (Invoke-Outgoing @('-Ref', $tagTip, '-DestRef', 'v1.0.0')).hash)
 Assert-Case 'Tag-Push gestempelt frei'        $false "$publish v1.0.0"
 Assert-True 'Tag-Text im Pruef-Text'          ((Get-ReviewText 'v1.0.0' $text) -match 'Text-eins')
 Invoke-SandboxGit @('tag', '-f', '-a', 'v1.0.0', '-m', 'Text-zwei')

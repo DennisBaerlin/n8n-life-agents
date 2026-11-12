@@ -40,6 +40,20 @@ _bkp_psql_scalar() {
   pg_su_psql -v ON_ERROR_STOP=1 -X -tA -d "$N8N_DB_NAME" -c "$1"
 }
 
+# _bkp_jsonb_obj <"'key', wert">… -> SQL-Ausdruck fuer ein jsonb-Objekt aus beliebig vielen Paaren: PostgreSQL nimmt hoechstens
+#   100 Argumente je Funktion ("cannot pass more than 100 arguments"), jsonb_build_object also hoechstens 50 Paare -> Bloecke
+#   zu 50, mit || verbunden. Ohne Paare '{}'.
+_bkp_jsonb_obj() {
+  local out='' chunk='' i=0 p
+  [ "$#" -gt 0 ] || { printf "'{}'::jsonb"; return 0; }
+  for p in "$@"; do
+    chunk="${chunk:+$chunk, }$p"; i=$((i + 1))
+    if [ "$i" -eq 50 ]; then out="${out:+$out || }jsonb_build_object($chunk)"; chunk=''; i=0; fi
+  done
+  [ -z "$chunk" ] || out="${out:+$out || }jsonb_build_object($chunk)"
+  printf '%s' "$out"
+}
+
 # _bkp_qual_ok <schema.table> -> 0 wenn beide Teile ^[a-z][a-z0-9_]*$ (Injection-Schutz vor Interpolation).
 _bkp_qual_ok() { printf '%s' "$1" | grep -qE '^[a-z][a-z0-9_]*\.[a-z][a-z0-9_]*$'; }
 
@@ -279,32 +293,29 @@ backup_cmd_export() {
   fi
 
   # --- (2) shared.json: gefilterte Tabellen als jsonb (pg_dump kann nicht zeilen-filtern) ---
-  local sel="" qual cond
+  local sel=() qual cond
   while IFS=$'\t' read -r qual cond; do
     [ -n "$qual" ] || continue
     _bkp_qual_ok "$qual" || { warn "Ueberspringe ungueltige filtered-Tabelle: $qual"; continue; }
-    [ -n "$sel" ] && sel+=", "
-    sel+="$(printf "'%s', COALESCE((SELECT jsonb_agg(x) FROM %s x WHERE %s), '[]'::jsonb)" "$qual" "$qual" "$cond")"
+    sel+=("$(printf "'%s', COALESCE((SELECT jsonb_agg(x) FROM %s x WHERE %s), '[]'::jsonb)" "$qual" "$qual" "$cond")")
   done < <(_bkp_filtered)
-  if [ -n "$sel" ]; then
-    _bkp_psql_scalar "SELECT jsonb_build_object($sel)" > "$tmp/shared.json" || die "shared.json-Export fehlgeschlagen."
+  if [ "${#sel[@]}" -gt 0 ]; then
+    _bkp_psql_scalar "SELECT $(_bkp_jsonb_obj "${sel[@]}")" > "$tmp/shared.json" || die "shared.json-Export fehlgeschlagen."
   else
     printf '{}' > "$tmp/shared.json"
   fi
 
   # --- (3) verify_counts: count(*) je bulk- + filtered-Tabelle (Korruptions-Versicherung, Opus B3) ---
-  local vsel="" n
+  local vsel=() n
   while IFS= read -r t; do
     [ -n "$t" ] || continue; _bkp_qual_ok "$t" || continue
-    [ -n "$vsel" ] && vsel+=", "
-    vsel+="$(printf "'%s', (SELECT count(*) FROM %s)" "$t" "$t")"
+    vsel+=("$(printf "'%s', (SELECT count(*) FROM %s)" "$t" "$t")")
   done <<< "$bulk"
   while IFS=$'\t' read -r qual cond; do
     [ -n "$qual" ] || continue; _bkp_qual_ok "$qual" || continue
-    [ -n "$vsel" ] && vsel+=", "
-    vsel+="$(printf "'%s', (SELECT count(*) FROM %s WHERE %s)" "$qual" "$qual" "$cond")"
+    vsel+=("$(printf "'%s', (SELECT count(*) FROM %s WHERE %s)" "$qual" "$qual" "$cond")")
   done < <(_bkp_filtered)
-  local verify_json; verify_json="$(_bkp_psql_scalar "SELECT jsonb_build_object($vsel)")" || die "verify_counts-Berechnung fehlgeschlagen."
+  local verify_json; verify_json="$(_bkp_psql_scalar "SELECT $(_bkp_jsonb_obj "${vsel[@]}")")" || die "verify_counts-Berechnung fehlgeschlagen."
 
   # --- (4) manifest.json (Header) ---
   local core_ver pkgs_json

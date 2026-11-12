@@ -334,6 +334,11 @@ esac
 : > "$STUB_LOG"; rt_host_get /Users/erika/Sicherung x.nla.enc >/dev/null
 case "$(last)" in *"type=bind,src=/Users/erika/Sicherung,dst=/in,readonly|"*) pass R.lesen-nur-lesend ;; *) fail R.lesen-nur-lesend "$(last)" ;; esac
 if grep -qE '\|-v\||prune' "$STUB_LOG"; then fail R.kein-breiter-schalter "$(cat "$STUB_LOG")"; else pass R.kein-breiter-schalter; fi
+# Mehr als 50 Tabellen: jsonb_build_object nimmt hoechstens 100 Argumente -> Bloecke zu 50 Paaren (Export brach sonst ab).
+_pairs=(); for i in $(seq 1 120); do _pairs+=("'t$i', $i"); done
+_obj="$( { _bkp_jsonb_obj "${_pairs[@]}"; } 2>/dev/null || true)"
+eq R.json-bloecke-zu-50 '3 0 120' "$(printf '%s' "$_obj" | grep -o 'jsonb_build_object(' | wc -l) $(printf '%s' "$_obj" | grep -o "'t[0-9]*'" | sort | uniq -d | wc -l) $(printf '%s' "$_obj" | grep -o "'t[0-9]*'" | wc -l)"
+eq R.json-leer "'{}'::jsonb" "$( { _bkp_jsonb_obj; } 2>/dev/null || true)"
 
 # ---------------------------------------------------------------------------- D: Entfernen (Pruefliste Nr. 17, stack.sh)
 unset LIFEAGENTS_RUNTIME

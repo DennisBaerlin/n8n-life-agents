@@ -164,6 +164,8 @@ async function step(w, id, value, opt) {
       await answer(t, 'fb_dslite', 'no');
       if (!sfx) await shot(t, 'fb_ports_busy');
       await answer(t, 'fb_ports_busy', null);
+      await answer(t, 'backup_dir', 'other');
+      await answer(t, 'backup_dir_custom', '/Users/erika/Sicherung');
       if (!sfx) await shot(t, 'review-tunnel');
       await answer(t, 'review', null);
       fs.writeFileSync(path.join(t.fake, 'reach'), 'needs_login');
@@ -197,6 +199,19 @@ async function step(w, id, value, opt) {
     await waitFor(async () => !(await state(s2)).json.page.poll, 120000);
     await shot(s2, 'paperless-keiner');
   } finally { await s2.stop(); }
+  // Sicherungsordner ändern (Menüpunkt der App, server.js --backup-dir): Seite mit eigenem Titel, Fehlschlag, Erfolg.
+  const b = await startWizard({ args: ['--backup-dir'], hints: { LA_BACKUP_CANDIDATES: 'icloud|/Users/erika/Library/Mobile Documents/com~apple~CloudDocs;documents|/Users/erika/Documents' } });
+  try {
+    await login(b);
+    await shot(b, 'backup_change');
+    fs.writeFileSync(path.join(b.fake, 'backup_fail'), '');
+    await answer(b, 'backup_dir', 'icloud');
+    await shot(b, 'backup_change-fehler');
+    fs.rmSync(path.join(b.fake, 'backup_fail'));
+    await answer(b, 'backup_result', null);
+    await answer(b, 'backup_dir', 'icloud');
+    await shot(b, 'backup_change-fertig');
+  } finally { await b.stop(); }
   // Varianten (<seite>-<zusatz>) direkt hinter ihre Seite, damit die Liste der Vorschau z. B. MyFRITZ „nicht gefunden“ und
   // „gefunden“ nebeneinander zeigt.
   const baseOf = (o) => out.find((b) => b !== o && o.name.startsWith(b.name + '-'));

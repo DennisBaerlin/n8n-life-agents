@@ -386,5 +386,57 @@ eq N_status_hostname calm-otter "$(LA_TS_HOSTNAME=calm-otter reach_status_json |
 eq N_status_hostname_bad ''     "$(LA_TS_HOSTNAME='x;rm -rf /' reach_status_json | jq -r .ts_hostname)"
 eq N_status_hostname_unset ''   "$(unset LA_TS_HOSTNAME; reach_status_json | jq -r .ts_hostname)"
 
+
+# --- L: LAN-Antwort des FritzBox-Wegs (doctor, reach_lan_doctor) ------------------------------------------------------
+# Antwortet wan am Rechner nicht (Docker-Neustart, Port-Weiterleitung weg), merkt es sonst nur der Nutzer. doctor misst
+# TCP 443 ueber die LAN-Adresse (Hinweis der Start-App) bzw. den Docker-Zugang des Rechners, startet bei Ausbleiben wan
+# einmal neu und misst erneut. Attrappen: Messfolge A_LAN_SEQ (eine 0/1 je Messung, danach bleibt der letzte Wert).
+L_SEQ="$W/lan.seq"
+rt_host_gateway() { printf '172.30.0.1'; }
+rt_probe_host() {
+  local v; printf 'probe %s %s\n' "$1" "$2" >> "$LOG"
+  v="$(head -n1 "$L_SEQ" 2>/dev/null)"; [ -n "$v" ] || v=1
+  [ "$(wc -l < "$L_SEQ")" -gt 1 ] && sed -i 1d "$L_SEQ"
+  [ "$v" = 1 ]
+}
+REACH_HINTS_FILE="$W/hints.env"; REACH_LAN_TRIES=3; REACH_LAN_SLEEP=0
+lan() { : > "$LOG"; printf '%s\n' "${1:-1}" | tr ' ' '\n' > "$L_SEQ"; reach_lan_doctor; }
+lvl() { printf '%s' "$1" | cut -f1 | paste -sd,; }
+mkdir -p "$REACH_CONF_DIR"; rm -f "$REACH_CONF_DIR/ports-busy"; printf 'bot.example.org\n' > "$REACH_CONF_DIR/domain"
+rm -f "$REACH_HINTS_FILE"; A_WAN_UP=1
+
+cfg REACH_MODE=tunnel; eq L_tunnel_silent '' "$(lan 0)"
+cfg REACH_MODE=fritzbox; rm -f "$REACH_CONF_DIR/domain"; eq L_no_domain_silent '' "$(lan 0)"
+printf 'bot.example.org\n' > "$REACH_CONF_DIR/domain"
+
+A_WAN_UP=0; out="$(lan 1)"; eq L_wan_down_red red "$(lvl "$out")"
+: > "$REACH_CONF_DIR/ports-busy"; out="$(lan 1)"; eq L_ports_busy_warn warn "$(lvl "$out")"; rm -f "$REACH_CONF_DIR/ports-busy"
+A_WAN_UP=1
+
+out="$(lan 1)"; eq L_ok_gateway_level pass "$(lvl "$out")"
+grep -q '^probe 172.30.0.1 443$' "$LOG" && pass L_ok_gateway_target || fail L_ok_gateway_target "$(tr '\n' ';' < "$LOG")"
+grep -q '^restart' "$LOG" && fail L_ok_no_restart "Neustart trotz Antwort" || pass L_ok_no_restart
+printf '%s' "$out" | grep -q 'Docker' && pass L_gateway_wording || fail L_gateway_wording "$out"
+
+printf 'LA_HOST_IP=192.0.2.20\n' > "$REACH_HINTS_FILE"
+out="$(lan 1)"; grep -q '^probe 192.0.2.20 443$' "$LOG" && pass L_hint_target || fail L_hint_target "$(tr '\n' ';' < "$LOG")"
+printf '%s' "$out" | grep -q 'LAN' && pass L_hint_wording || fail L_hint_wording "$out"
+printf 'LA_HOST_IP=evil;rm\n' > "$REACH_HINTS_FILE"
+lan 1 >/dev/null; grep -q '^probe 172.30.0.1 443$' "$LOG" && pass L_bad_hint_ignored || fail L_bad_hint_ignored "$(tr '\n' ';' < "$LOG")"
+rm -f "$REACH_HINTS_FILE"
+
+out="$(lan '0 1')"; eq L_fail_then_ok_levels warn,pass "$(lvl "$out")"
+eq L_fail_then_ok_restart_once 1 "$(grep -c '^restart wan$' "$LOG")"
+printf '%s' "$out" | grep -q 'Neustart' && pass L_fail_wording || fail L_fail_wording "$out"
+out="$(lan '0 0 0 0')"; eq L_fail_twice_levels warn,red "$(lvl "$out")"
+eq L_fail_twice_restart_once 1 "$(grep -c '^restart wan$' "$LOG")"
+eq L_fail_twice_measures_again 4 "$(grep -c '^probe' "$LOG")"
+rt_edge_restart() { printf 'restart %s\n' "$1" >> "$LOG"; return 1; }
+out="$(lan 0)"; eq L_restart_fails_levels warn,red "$(lvl "$out")"
+rt_edge_restart() { printf 'restart %s\n' "$1" >> "$LOG"; }
+
+# ASCII-Zeilen der Matrix duerfen kein rohes Tab im Text tragen (Format <stufe>\t<text>).
+eq L_one_tab_per_line 1 "$(printf '%s\n' "$(lan 0)" | awk -F'\t' 'NF!=2{bad=1} END{print bad?0:1}')"
+
 printf 'compose_cases: %s Fehler\n' "$fails"
 exit "$fails"

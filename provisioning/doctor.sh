@@ -128,6 +128,11 @@ _doctor_compose_pod() {
     fi
   done
   [ "$open" -eq 1 ] || _pass "PostgreSQL und LLM-Gateway von außen nicht erreichbar (gemessen)"
+  # FritzBox-Weg: Antwort über die Adresse des Rechners; bei Ausbleiben startet reach_lan_doctor wan einmal neu.
+  local lvl txt
+  while IFS=$'\t' read -r lvl txt; do
+    case "$lvl" in pass) _pass "$txt" ;; warn) _warn "$txt" ;; red) _red "$txt" ;; esac
+  done <<<"$(reach_lan_doctor)"
 }
 
 main() {

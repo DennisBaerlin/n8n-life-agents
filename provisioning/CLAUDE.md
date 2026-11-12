@@ -16,9 +16,9 @@ Der Auslieferungs-Kern läuft byte-identisch im Test-Substrat (systemd-Docker-Co
 - **`N8N_ENCRYPTION_KEY` wird einmal erzeugt und nie überschrieben** (`prepare_n8n_env` liest die bestehende Env zuerst); analog DB-Passwort. Secrets = `rand_hex`. `core.backup_key` nie rotieren.
 - **Secrets nie im argv:** nur `/etc/n8n/n8n.env` (640 root:n8n) bzw. `/etc/lifeagents/<pkg>.env`; First-Init-Overrides aus Prozess-Env. HTTP mit Secrets nur über `curl_secret` (`curl -K -`) bzw. `n8n_api_curl`/`tg_api_curl` (`/proc/<pid>/cmdline` ist für jeden lesbar).
 - **Templates statt Heredocs** (`render_template <tpl> KEY=VAL …`); Werte sind Hex/Codenames/Pfade.
-- **UTF-8 unabhängig von der System-Locale:** Top-Scripts exportieren `LANG/LC_ALL=C.UTF-8`; `postgresql-common` legt den Cluster aber mit der System-Locale aus `/etc/default/locale` an (Proxmox-Vorlagen: `LANG="C"` → SQL_ASCII) → Drop-in `createcluster.d/lifeagents-utf8.conf` vor dem Paket-Install, App-DB per `createdb -E UTF8 --locale=C.UTF-8 -T template0`, `require_utf8_db` bricht schon im Preflight ab. Durchgesetzt von `contract_lint` 20, doctor, Substrat (`LANG="C"`) und `test_db_encoding.sql`.
-- **Doctor read-only**, Exit = Anzahl ROT; der Ingress-Check misst das Outcome (Trigger aktiv + HTTPS erreichbar), nicht welcher Proxy läuft. Proxy-Allowlist → Referenz *Release-Ingress*.
-- Skripte stets per `bash "<script>"` rufen (Exec-Bit-unabhängig, Win-authored). `provisioning/** text eol=lf` in `.gitattributes` — neue Dateien LF.
+- **UTF-8 unabhängig von der System-Locale:** Top-Scripts exportieren `LANG/LC_ALL=C.UTF-8`; `postgresql-common` legt den Cluster aber mit der System-Locale aus `/etc/default/locale` an (Proxmox-Vorlagen: `LANG="C"` → SQL_ASCII) → Drop-in `createcluster.d/lifeagents-utf8.conf` vor dem Paket-Install, App-DB per `createdb -E UTF8 --locale=C.UTF-8 -T template0`, `require_utf8_db` bricht schon im Preflight ab. Durchgesetzt von `contract_lint` 20, doctor, Substrat und `test_db_encoding.sql`.
+- **Doctor read-only** (Ausnahme: `wan`-Neustart), Exit = Anzahl ROT; der Ingress-Check misst das Outcome (Trigger aktiv + HTTPS erreichbar), nicht welcher Proxy läuft. Proxy-Allowlist → Referenz *Release-Ingress*.
+- Skripte per `bash "<script>"` rufen (Exec-Bit-unabhängig). `provisioning/** text eol=lf` in `.gitattributes` — neue Dateien LF.
 
 ## Install-Ablauf (Regeln je Schritt)
 

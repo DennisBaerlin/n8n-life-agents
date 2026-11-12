@@ -407,3 +407,15 @@ rt_edge_exec() {
 }
 # rt_edge_logs_hint <dienst> -> Diagnose-Befehl als Text (wird nicht ausgefuehrt).
 rt_edge_logs_hint() { printf 'docker logs --tail 100 %s-%s' "$LA_PROJECT" "$1"; }
+# rt_probe_host <adresse> <port> — antwortet <adresse>:<port> einem Kurzlauf-Container im Netz edge_public (dort haengt wan)?
+#   Misst den Weg ueber den Rechner (veroeffentlichter Port), nicht den Namensraum des Rands. 0 = erreichbar.
+rt_probe_host() {
+  docker run --rm --label "${LA_LABEL}=${LA_PROJECT}" --network "${LA_PROJECT}_edge_public" \
+    "${LA_PROBE_IMAGE:?LA_PROBE_IMAGE nicht gesetzt}" nc -z -w 3 "$1" "$2" >/dev/null 2>&1
+}
+# rt_host_gateway -> Adresse des Rechners aus Sicht von edge_public (Gateway des Netzes laut Container wan), leer wenn unbekannt.
+#   Ueber `docker inspect` des Containers: `docker network` steht nicht auf der Positivliste (contract_lint 32).
+rt_host_gateway() {
+  docker inspect -f "{{(index .NetworkSettings.Networks \"${LA_PROJECT}_edge_public\").Gateway}}" "${LA_PROJECT}-wan" 2>/dev/null \
+    | grep -E '^[0-9]+(\.[0-9]+){3}$' | head -n1
+}

@@ -310,6 +310,9 @@ BEGIN
     RESET ROLE;
     SET LOCAL ROLE finance_ro;
     PERFORM * FROM finance.fn_resolve_account_by_number('DE02100100100006820101');
+    -- agent.finance Onboarding status read: Zahl offener Dauerauftrags-Vorschlaege fuer den Prompt-Abschnitt
+    IF (finance.fn_recurring_suggestion_counts('7999')->>'open')::int IS DISTINCT FROM 0 THEN
+      RESET ROLE; RAISE EXCEPTION 'FAIL [finance_ro -> fn_recurring_suggestion_counts]'; END IF;
     RESET ROLE;
     -- (2-mc-csv) Bank-Export-Datei (Broker-CSV Paket B): tool_import_bank_export laeuft unter finance_rw (Probelauf der Lots-Ersetzung,
     -- Vorschau + Buchung inkl. statement_seen_refs); die Monats-Erinnerung liest das Konto-Profil unter finance_ro.

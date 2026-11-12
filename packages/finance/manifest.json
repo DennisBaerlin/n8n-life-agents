@@ -187,16 +187,14 @@
     }
   },
   "read_surface": {
-    "_comment": "Paket-Lese-Vertrag (Owner-Lock 2026-06-18): das Lesefenster, das dieses Paket dem privilegierten Core-Host (Leserolle core_ro) bei der Provisionierung öffnet (core.fn_provision_package_roles grantet core_ro SELECT auf Schema finance). Deklarativ — der GRANT ist host-kontrolliert (Deklaration vs. Ausführung). Die SELECT-Knoten-Beschreibungen der Core-Agenten werden hieraus erst in Phase 4/5 build-time zusammengesetzt (Install erweitert / Uninstall verkleinert); in 3a gebacken-aber-korrekt.",
-    "host_read_role": "core_ro",
+    "_comment": "Paket-Lese-Vertrag (docs/package-contract.md §4.1): core.fn_provision_package_roles('finance') grantet core_ro UNBEDINGT SELECT auf Schema finance (System-Invariante, kein Manifest-Opt-in). Einziges Feld preferred_views: build.ps1 setzt daraus die SELECT-Knoten-Beschreibungen der Core-Agenten zusammen (agent.monitor listet die Views je Paket).",
     "preferred_views": [
       "finance.account_overview", "finance.loan_overview", "finance.loan_summary",
       "finance.monthly_cashflow_overview", "finance.monthly_cashflow_summary",
       "finance.savings_goal_progress", "finance.real_estate_overview", "finance.maintenance_reserve_status",
       "finance.pension_overview", "finance.depot_holdings_overview",
       "finance.active_recurring_payments", "finance.upcoming_recurring_payments", "finance.active_insurances"
-    ],
-    "tables_readable": true
+    ]
   },
   "backup": {
     "_comment": "Paket-Backup-Oberfläche (Phase 4b, docs/package-contract.md): rein deklarativ, was die CLI (lifeagents backup export|restore) sichert. schema_dump=true -> das GANZE Paket-Schema (finance) wird via pg_dump -a --disable-triggers gesichert (inkl. materialisierter Tabellen wie account_balances + currencies/fx_rates: 1:1-Restore, kein Trigger-Recompute), exclude_tables fallen raus (Arbeitskopien). Domänen-Pakete besitzen ihr Schema voll -> kein zeilen-Filter nötig (das ist nur für die geteilten agent-Tabellen in core).",

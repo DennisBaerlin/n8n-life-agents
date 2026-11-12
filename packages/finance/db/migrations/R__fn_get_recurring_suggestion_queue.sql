@@ -26,6 +26,7 @@ DECLARE
     v_args   JSONB;
     v_cur    TEXT;
     v_left   INT := 0;
+    v_cnt    JSONB;
     v_empty  JSONB := jsonb_build_object('ok', true, 'items', '[]'::jsonb, 'rejected', '[]'::jsonb, 'more', 0,
                                          'open_count', 0, 'sent_before', 0);
 BEGIN
@@ -81,13 +82,8 @@ BEGIN
             'data_no', 'rsug:no:' || v_row.id || ':' || v_row.version));
     END LOOP;
 
+    v_cnt := finance.fn_recurring_suggestion_counts(v_chat);
     RETURN jsonb_build_object('ok', true, 'items', v_items, 'rejected', v_rej, 'more', v_left,
-        'open_count', (SELECT count(*) FROM finance.import_staging s
-                       WHERE s.origin = 'recurring_suggestion' AND s.chat_id = v_chat AND s.status = 'staged'
-              AND NOT finance.fn_recurring_suggestion_expired(s.batch_id)),
-        'sent_before', (SELECT count(*) FROM finance.import_staging s
-                        WHERE s.origin = 'recurring_suggestion' AND s.chat_id = v_chat AND s.status = 'staged'
-              AND NOT finance.fn_recurring_suggestion_expired(s.batch_id)
-                          AND s.sent_version = s.version));
+        'open_count', (v_cnt->>'open')::int, 'sent_before', (v_cnt->>'sent')::int);
 END;
 $$;

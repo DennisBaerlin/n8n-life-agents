@@ -72,6 +72,26 @@ BEGIN
   IF t IS DISTINCT FROM '{name}=x' THEN
     RAISE EXCEPTION 'FAIL ui_texts [fehlender Parameter muss als {name} stehen bleiben: %]', t; END IF;
 
+  -- typisierte Werte (core.fn_ui_money/_date/_num/_tpl) rendert die fn selbst in der Sprache; Strings bleiben unveraendert
+  UPDATE core.ui_languages SET date_pattern = 'DD.MM.YYYY' WHERE code = 'de';
+  INSERT INTO core.ui_texts (key, lang, text, package) VALUES
+    ('core.test_typed', 'de', '{amount} ab {date} ({inner}) {plain}', 'core'),
+    ('core.test_typed', 'en', '{amount} from {date} ({inner}) {plain}', 'core'),
+    ('core.test_inner', 'de', 'innen {name}', 'core');
+  t := core.fn_ui_text('core.test_typed', 'de', jsonb_build_object('amount', core.fn_ui_money(1234.5, 'EUR'),
+         'date', core.fn_ui_date('2026-12-03'::date), 'inner', core.fn_ui_tpl('core.test_inner', '{"name":"Nora"}'),
+         'plain', 'x'));
+  IF t IS DISTINCT FROM '1.234,50 € ab 03.12.2026 (innen Nora) x' THEN
+    RAISE EXCEPTION 'FAIL ui_texts [typisierte Werte de: %]', t; END IF;
+  t := core.fn_ui_text('core.test_typed', 'en', jsonb_build_object('amount', core.fn_ui_money(-20, 'EUR'),
+         'date', core.fn_ui_date(NULL), 'inner', core.fn_ui_num(3), 'plain', core.fn_ui_money(5, 'USD', true)));
+  IF t IS DISTINCT FROM '-€20.00 from — (3) +USD 5.00' THEN
+    RAISE EXCEPTION 'FAIL ui_texts [typisierte Werte en, NULL-Datum, Zahl, Vorzeichen: %]', t; END IF;
+  t := core.fn_ui_text('core.test_typed', 'de', jsonb_build_object('amount', core.fn_ui_num(12345.5, 1, true),
+         'date', 'd', 'inner', core.fn_ui_num(1234567), 'plain', core.fn_ui_num(-0.25, 2)));
+  IF t IS DISTINCT FROM '+12.345,5 ab d (1.234.567) -0,25' THEN
+    RAISE EXCEPTION 'FAIL ui_texts [Zahlen de: Tausender, Dezimalkomma, Vorzeichen: %]', t; END IF;
+
   -- ---------- fn_ui_texts (Bundle) ----------
   r := core.fn_ui_texts('ko', ARRAY['core.test_greet', 'core.test_only_en', 'core.test_missing']);
   IF r->>'core.test_greet' IS DISTINCT FROM '{name} 님 안녕하세요'

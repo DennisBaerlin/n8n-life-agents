@@ -86,7 +86,7 @@
     confirm_kit: async () => wait(100),
     change_backup_folder: async () => (await wait(600), q.get('kitfail') !== 'kit-unavailable'),
     // Wiederherstellen (?restore=<fall>): own | foreign (Standard) | empty | nofolder | folder | keyline | keyformat |
-    //   keyforeign | expired | older | newer | needs_setup | corrupt | busy | install | data | fail | unfinished | running |
+    //   keyforeign | expired | older | newer | needs_setup | corrupt | busy | install | data | fail | unfinished | running | done |
     //   card (Karte auf Fertig/Start). Namen, Datum und IDs erfunden.
     ...(() => {
       const rf = q.get('restore') || 'foreign';
@@ -126,6 +126,7 @@
         restore_status: async () => {
           if (rf === 'running') return { status: { state: 'running', started: 1 }, seen: false };
           if (rf === 'unfinished' || rf === 'fail') return { status: { state: rf === 'fail' ? 'fail' : 'unfinished', code: rf === 'fail' ? 'safety' : null, started: 1 }, seen: false };
+          if (rf === 'done') return { status: { state: 'ok', created: '2026-11-10T03:30:00Z', foreign: true, started: 1 }, seen: false };
           if (!started) return { status: { state: 'idle', started: 0 }, seen: true };
           await wait(200);
           return { status: { state: 'ok', created: '2026-11-10T03:30:00Z', foreign: rf !== 'own' && rf !== 'data', started }, seen: false };

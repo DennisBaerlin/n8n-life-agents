@@ -87,7 +87,8 @@ fn build_tray(app: &AppHandle) -> tauri::Result<Tray> {
     let quit = item("quit", "core.desktop.tray.quit", true)?;
     let sep1 = PredefinedMenuItem::separator(app)?;
     let sep2 = PredefinedMenuItem::separator(app)?;
-    let menu = Menu::with_items(app, &[&status, &sep1, &open, &telegram, &power, &report, &kit, &folder, &restore, &sep2, &uninstall, &quit])?;
+    let menu =
+        Menu::with_items(app, &[&status, &sep1, &open, &telegram, &power, &report, &kit, &folder, &restore, &sep2, &uninstall, &quit])?;
     let mut tray =
         TrayIconBuilder::with_id("main").menu(&menu).tooltip("lifeagents").show_menu_on_left_click(true).on_menu_event(|app, event| {
             match event.id.as_ref() {

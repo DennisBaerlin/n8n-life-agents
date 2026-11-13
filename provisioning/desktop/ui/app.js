@@ -44,7 +44,7 @@ const UI_TEXT = {
     "core.desktop.backup_restore.area.paperless": "Dokumente",
     "core.desktop.backup_restore.busy_check": "Sicherung wird geprüft …",
     "core.desktop.backup_restore.busy_list": "Sicherungen werden gesucht …",
-    "core.desktop.backup_restore.card_dismiss": "Nicht nötig",
+    "core.desktop.backup_restore.card_dismiss": "Ausblenden",
     "core.desktop.backup_restore.card_go": "Sicherung wählen",
     "core.desktop.backup_restore.card_text": "Im Sicherungsordner liegen Sicherungen eines anderen Rechners. Hol deine Daten von dort zurück, bevor du neu anfängst.",
     "core.desktop.backup_restore.card_title": "Sicherung vom alten Rechner zurückholen",
@@ -89,12 +89,13 @@ const UI_TEXT = {
     "core.desktop.backup_restore.list_folder": "Der Sicherungsordner ist gerade nicht erreichbar. Prüfe, ob er noch da ist, oder wähle die Datei direkt.",
     "core.desktop.backup_restore.list_lead": "Wähle die Sicherung, die du zurückholen willst.",
     "core.desktop.backup_restore.list_nofolder": "Es ist noch kein Sicherungsordner gewählt. Wähle die Sicherungs-Datei direkt.",
-    "core.desktop.backup_restore.ok_foreign": "Ab jetzt gilt das Notfallblatt vom alten Rechner. Speichere gleich das neue Blatt, es enthält beide Schlüssel.",
+    "core.desktop.backup_restore.ok_foreign": "Ab jetzt öffnen sich deine Sicherungen mit dem Schlüssel vom alten Rechner. Das neue Notfallblatt unten enthält beide Schlüssel.",
     "core.desktop.backup_restore.ok_lead": "Die Daten vom {date} sind wiederhergestellt.",
     "core.desktop.backup_restore.ok_old_machine": "Lass den alten Rechner nicht mehr in diesen Ordner sichern, sonst räumen sich beide gegenseitig alte Sicherungen weg.",
     "core.desktop.backup_restore.ok_safety": "Die Daten von vorher liegen als Sicherung im Sicherungsordner.",
     "core.desktop.backup_restore.ok_title": "Deine Daten sind zurück",
     "core.desktop.backup_restore.other_file": "Andere Datei wählen …",
+    "core.desktop.backup_restore.pick_file": "Sicherungsdatei wählen …",
     "core.desktop.backup_restore.pkg_activate": "wird wieder eingeschaltet",
     "core.desktop.backup_restore.pkg_install": "wird dazu eingerichtet",
     "core.desktop.backup_restore.preview_areas": "Diese Bereiche kommen zurück:",
@@ -108,6 +109,7 @@ const UI_TEXT = {
     "core.desktop.backup_restore.running_title": "Wird wiederhergestellt …",
     "core.desktop.backup_restore.tag_other": "vom alten Rechner",
     "core.desktop.backup_restore.tag_version": "andere Version",
+    "core.desktop.backup_restore.tag_version_text": "Passt nicht zu dieser Installation, das Zurückholen klappt vermutlich nicht.",
     "core.desktop.backup_restore.title": "Sicherung wiederherstellen",
     "core.desktop.backup_restore.unchanged": "Deine Daten sind unverändert.",
     "core.desktop.backup_restore.version": "Version {release}",
@@ -400,7 +402,7 @@ const UI_TEXT = {
     "core.desktop.backup_restore.area.paperless": "Documents",
     "core.desktop.backup_restore.busy_check": "Checking the backup …",
     "core.desktop.backup_restore.busy_list": "Looking for backups …",
-    "core.desktop.backup_restore.card_dismiss": "Not needed",
+    "core.desktop.backup_restore.card_dismiss": "Hide",
     "core.desktop.backup_restore.card_go": "Choose backup",
     "core.desktop.backup_restore.card_text": "The backup folder contains backups from another computer. Bring your data back from there before you start afresh.",
     "core.desktop.backup_restore.card_title": "Bring back the backup from your old computer",
@@ -445,12 +447,13 @@ const UI_TEXT = {
     "core.desktop.backup_restore.list_folder": "The backup folder cannot be reached right now. Check that it is still there, or choose the file directly.",
     "core.desktop.backup_restore.list_lead": "Choose the backup you want to bring back.",
     "core.desktop.backup_restore.list_nofolder": "No backup folder is chosen yet. Choose the backup file directly.",
-    "core.desktop.backup_restore.ok_foreign": "From now on the emergency sheet of the old computer applies. Save the new sheet right away, it contains both keys.",
+    "core.desktop.backup_restore.ok_foreign": "From now on your backups open with the key of the old computer. The new emergency sheet below contains both keys.",
     "core.desktop.backup_restore.ok_lead": "The data from {date} has been restored.",
     "core.desktop.backup_restore.ok_old_machine": "Don't let the old computer back up into this folder any more, otherwise both remove each other's old backups.",
     "core.desktop.backup_restore.ok_safety": "The data from before is in the backup folder as a backup.",
     "core.desktop.backup_restore.ok_title": "Your data is back",
     "core.desktop.backup_restore.other_file": "Choose another file …",
+    "core.desktop.backup_restore.pick_file": "Choose backup file …",
     "core.desktop.backup_restore.pkg_activate": "will be switched on again",
     "core.desktop.backup_restore.pkg_install": "will be set up as well",
     "core.desktop.backup_restore.preview_areas": "These areas come back:",
@@ -464,6 +467,7 @@ const UI_TEXT = {
     "core.desktop.backup_restore.running_title": "Restoring …",
     "core.desktop.backup_restore.tag_other": "from the old computer",
     "core.desktop.backup_restore.tag_version": "different version",
+    "core.desktop.backup_restore.tag_version_text": "Does not match this installation, restoring will probably not work.",
     "core.desktop.backup_restore.title": "Restore a backup",
     "core.desktop.backup_restore.unchanged": "Your data is unchanged.",
     "core.desktop.backup_restore.version": "Version {release}",
@@ -756,7 +760,7 @@ const UI_TEXT = {
     "core.desktop.backup_restore.area.paperless": "문서",
     "core.desktop.backup_restore.busy_check": "백업을 확인하는 중 …",
     "core.desktop.backup_restore.busy_list": "백업을 찾는 중 …",
-    "core.desktop.backup_restore.card_dismiss": "필요 없어요",
+    "core.desktop.backup_restore.card_dismiss": "숨기기",
     "core.desktop.backup_restore.card_go": "백업 선택",
     "core.desktop.backup_restore.card_text": "백업 폴더에 다른 컴퓨터의 백업이 있어요. 새로 시작하기 전에 거기서 데이터를 되살리세요.",
     "core.desktop.backup_restore.card_title": "이전 컴퓨터의 백업 되살리기",
@@ -801,12 +805,13 @@ const UI_TEXT = {
     "core.desktop.backup_restore.list_folder": "지금은 백업 폴더에 접근할 수 없어요. 폴더가 그대로 있는지 확인하거나 파일을 직접 고르세요.",
     "core.desktop.backup_restore.list_lead": "되살릴 백업을 고르세요.",
     "core.desktop.backup_restore.list_nofolder": "아직 백업 폴더를 고르지 않았어요. 백업 파일을 직접 고르세요.",
-    "core.desktop.backup_restore.ok_foreign": "이제부터는 이전 컴퓨터의 비상 시트가 적용돼요. 두 키가 모두 들어 있는 새 시트를 바로 저장하세요.",
+    "core.desktop.backup_restore.ok_foreign": "이제부터 백업은 이전 컴퓨터의 키로 열려요. 아래의 새 비상 시트에는 두 키가 모두 들어 있어요.",
     "core.desktop.backup_restore.ok_lead": "{date}의 데이터가 복원되었어요.",
     "core.desktop.backup_restore.ok_old_machine": "이전 컴퓨터가 더 이상 이 폴더에 백업하지 않게 하세요. 그렇지 않으면 서로의 오래된 백업을 지워요.",
     "core.desktop.backup_restore.ok_safety": "이전 데이터는 백업 폴더에 백업으로 남아 있어요.",
     "core.desktop.backup_restore.ok_title": "데이터가 돌아왔어요",
     "core.desktop.backup_restore.other_file": "다른 파일 선택 …",
+    "core.desktop.backup_restore.pick_file": "백업 파일 선택 …",
     "core.desktop.backup_restore.pkg_activate": "다시 켜져요",
     "core.desktop.backup_restore.pkg_install": "함께 설정돼요",
     "core.desktop.backup_restore.preview_areas": "다음 영역이 되살아나요:",
@@ -820,6 +825,7 @@ const UI_TEXT = {
     "core.desktop.backup_restore.running_title": "복원하는 중 …",
     "core.desktop.backup_restore.tag_other": "이전 컴퓨터",
     "core.desktop.backup_restore.tag_version": "다른 버전",
+    "core.desktop.backup_restore.tag_version_text": "이 설치와 맞지 않아 복원이 안 될 가능성이 커요.",
     "core.desktop.backup_restore.title": "백업 복원",
     "core.desktop.backup_restore.unchanged": "데이터는 그대로예요.",
     "core.desktop.backup_restore.version": "버전 {release}",
@@ -1773,7 +1779,7 @@ const SCREENS = {
     } };
     if (!l.ok) {
       const key = { nofolder: 'core.desktop.backup_restore.list_nofolder', folder: 'core.desktop.backup_restore.list_folder', docker: 'core.desktop.kit.unavailable' }[l.code] || 'core.desktop.backup_restore.list_folder';
-      return show('restore', { title: t('core.desktop.backup_restore.title'), body: [note(l.code === 'nofolder' ? '' : 'bad', t(key))], next: pickFile, back: () => SCREENS.home() });
+      return show('restore', { title: t('core.desktop.backup_restore.title'), body: [note(l.code === 'nofolder' ? '' : 'warn', t(key))], next: Object.assign({}, pickFile, { label: t('core.desktop.backup_restore.pick_file') }), back: () => SCREENS.home() });
     }
     const own = (l.backups || []).find((b) => b.own);
     const current = own && own.release;
@@ -1781,13 +1787,15 @@ const SCREENS = {
     const items = (l.backups || []).map((b) => {
       const tags = [];
       if (!b.own) tags.push(t('core.desktop.backup_restore.tag_other'));
-      if (current && b.release && b.release !== current) tags.push(t('core.desktop.backup_restore.tag_version'));
+      const otherVersion = current && b.release && b.release !== current;
+      if (otherVersion) tags.push(t('core.desktop.backup_restore.tag_version'));
       const btn = h('button', { type: 'button', class: 'choice', 'aria-pressed': 'false', onclick: () => {
         chosen = b.name;
         document.querySelectorAll('.restore-list .choice').forEach((n) => { n.classList.toggle('sel', n === btn); n.setAttribute('aria-pressed', String(n === btn)); });
         $('next').disabled = false;
       } }, h('b', {}, b.date ? dateText(b.date) : b.name, ...tags.map((x) => h('span', { class: 'tag' }, x))),
-      h('small', {}, b.release ? t('core.desktop.backup_restore.version', { release: b.release }) : t('core.desktop.backup_restore.version_unknown')));
+      h('small', {}, b.release ? t('core.desktop.backup_restore.version', { release: b.release }) : t('core.desktop.backup_restore.version_unknown'),
+        otherVersion ? [' · ', t('core.desktop.backup_restore.tag_version_text')] : null));
       return btn;
     });
     show('restore', {
@@ -1797,7 +1805,7 @@ const SCREENS = {
       next: items.length ? { label: t('core.desktop.common.next'), run: async () => {
         try { await invoke('restore_select', { name: chosen }); } catch (e) { return SCREENS.restoreProblem(e); }
         return SCREENS.restorePlan();
-      } } : pickFile,
+      } } : Object.assign({}, pickFile, { label: t('core.desktop.backup_restore.pick_file') }),
       alt: items.length ? pickFile : null,
       back: () => SCREENS.home(),
     });
@@ -1890,7 +1898,8 @@ const SCREENS = {
     const again = ['busy', 'unfinished', 'docker', 'folder', 'safety', 'nofolder'].includes(c);
     show('restore', {
       title: t('core.desktop.backup_restore.fail_title'),
-      body: [note('bad', restoreText(c, p || {})), h('p', {}, t('core.desktop.backup_restore.unchanged')),
+      // Gelb, nicht rot: es ist nichts kaputtgegangen, die Daten sind unverändert (rot nur bei akutem Schaden).
+      body: [note('warn', restoreText(c, p || {})), h('p', {}, t('core.desktop.backup_restore.unchanged')),
         c === 'version_older' ? h('p', {}, link(t('core.desktop.backup_restore.guide'), 'backup-guide')) : null],
       next: again ? { label: t('core.desktop.common.retry'), run: () => SCREENS.restoreList() } : { label: t('core.desktop.backup_restore.choose_other'), run: () => SCREENS.restoreList() },
       alt: { label: t('core.desktop.kit.close'), run: () => SCREENS.home() },

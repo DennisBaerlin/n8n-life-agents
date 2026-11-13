@@ -56,7 +56,8 @@ impl Sheet {
         let b = Zeroizing::new(bytes.to_vec());
         // Jeder Zwischenwert gleich in Zeroizing: die Klartext-Kopien werden beim Fallenlassen überschrieben.
         let decoded = Zeroizing::new(if b.starts_with(&[0xFE, 0xFF]) {
-            let units = Zeroizing::new(b[2..].chunks(2).filter(|c| c.len() == 2).map(|c| u16::from_be_bytes([c[0], c[1]])).collect::<Vec<u16>>());
+            let units =
+                Zeroizing::new(b[2..].chunks(2).filter(|c| c.len() == 2).map(|c| u16::from_be_bytes([c[0], c[1]])).collect::<Vec<u16>>());
             String::from_utf16_lossy(&units)
         } else {
             crate::host::decode(&b)

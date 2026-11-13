@@ -39,7 +39,7 @@ x-images:
   # Das eigene Image. Zwei erlaubte Formen (scripts/lib/release_images.ps1, contract_lint 33): neutral im Bau-Kontext und auf
   # Branches, `${LA_MASTER_IMAGE:-<register>/master@sha256:…}` als Release-Pin (scripts/build_master_image.ps1 traegt ihn ein).
   # Das Image selbst enthaelt immer die neutrale Form, sonst aenderte das Eintragen seinen eigenen Digest.
-  master: &img_master ${LA_MASTER_IMAGE:-ghcr.io/dennisbaerlin/n8n-life-agents/master@sha256:1963112cd101b034ad074bc5a25d1d9a95d6d591968f8165069d51544d908a80}
+  master: &img_master ${LA_MASTER_IMAGE:-ghcr.io/dennisbaerlin/n8n-life-agents/master@sha256:7df91e0cec4eaf7f231c50f227892b98fd7dfa2825ba3db482b1dcd04fa1c730}
 
 x-labels: &labels
   io.lifeagents.install: ${LA_PROJECT:-lifeagents}

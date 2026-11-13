@@ -488,7 +488,7 @@ function forward(req, res, buf, meta, retryBuf, staleRetry = true) {
 }
 
 // ---- Telegram-Relay (Bot mit Gesicht 2026-10-30) ---------------------------------------------------------------
-// WARUM hier: n8n 2.45.4 kann keine Reaktion setzen (kein Node-Op), der telegramApi-Credential hat kein authenticate
+// WARUM hier: n8n 2.45.7 kann keine Reaktion setzen (kein Node-Op), der telegramApi-Credential hat kein authenticate
 // (Token im URL-Pfad) -> ein HTTP-Knoten kaeme nicht an das Token; Telegram-Node-Sends haben kein Zeitlimit (bekannter
 // 3-5-Min-Haenger) -> ein Sticker VOR der Antwort darf nicht ueber den Node laufen. arch-challenge 2026-10-30.
 // POST /__telegram/<methode>, exakte Allowlist, Token im Header TG_TOKEN_HEADER (Form geprueft, nie geloggt, nie an

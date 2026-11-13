@@ -32,10 +32,10 @@ name: lifeagents
 x-images:
   busybox: &img_busybox busybox:1.37@sha256:a7dbc319b1438115a207e11930dc4bb3e643dcb3ec0bdd694bb36cd8fad289ec
   postgres: &img_postgres postgres:17@sha256:3b0cda93be7c8dba2ed484d19393d93845dc3dafb88973e248ba8e6d99d784e1
-  n8n: &img_n8n n8nio/n8n:2.45.4@sha256:80e23ced901f0e22597d4f3464e3aaf9d835372262ea6f08ef760d8ca35df25c
+  n8n: &img_n8n n8nio/n8n:2.45.7@sha256:9a8d8dcea75667496695d7810d7e1fe018a65efb36cc499d347f3931b3957b5d
   node: &img_node node:24-alpine@sha256:8a32c8cf649a49915a66e81e7a609223c708d0adabf288ee3f4077d765542f85
-  caddy: &img_caddy caddy:2.10-alpine@sha256:4c6e91c6ed0e2fa03efd5b44747b625fec79bc9cd06ac5235a779726618e530d
-  tailscale: &img_tailscale tailscale/tailscale:stable@sha256:ed6480b33c6eb67c9cbd203ed42b9fb57e361986725b6856def71b7a3d9e276c
+  caddy: &img_caddy caddy:2.11-alpine@sha256:003a97808e781aa9f7e75cc2f43d34d461099031faf5e20faefb9f61126836f0
+  tailscale: &img_tailscale tailscale/tailscale:stable@sha256:72c1e19e0aedca96b8533bbb0b4368564410ff20b17e53b804eb6c1f04a31be4
   # Das eigene Image. Zwei erlaubte Formen (scripts/lib/release_images.ps1, contract_lint 33): neutral im Bau-Kontext und auf
   # Branches, `${LA_MASTER_IMAGE:-<register>/master@sha256:…}` als Release-Pin (scripts/build_master_image.ps1 traegt ihn ein).
   # Das Image selbst enthaelt immer die neutrale Form, sonst aenderte das Eintragen seinen eigenen Digest.

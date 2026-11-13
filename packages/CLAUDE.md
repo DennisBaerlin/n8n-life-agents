@@ -21,7 +21,7 @@ Autoren-Regeln für jeden Workflow/Def; Engine-Mechanik → `scripts/build/CLAUD
 - **Feste Nutzertexte nie als Literal:** Katalog-Key + `t`-Map (`Get-UiTextExpr`) bzw. `core.fn_ui_text` mit der Empfänger-Sprache; `ui_literal_lint` (Ratchet, §3.11).
 - **Command-Registry:** Slash-Befehle leben im `commands`-Block des Manifests; `dispatch:{agent,task}` = Code-Pfad-Command (Build-Zeit-Switch), reiner Text-/Callback-Prefix = Laufzeit-`core.callback_handlers`. Switch-Fallback zuletzt dynamisch verdrahten (sonst bleibt Chat-Text still).
 
-## n8n-Versionshinweise (2.45.4)
+## n8n-Versionshinweise (2.45.7)
 
 - **Typed Sub-Workflow Inputs** im Start-Node des Sub-Workflows deklarieren (`executeWorkflowTrigger` → `workflowInputs.values`), nicht im Aufrufer; immer `inputSource: "workflowInputs"` — `passthrough` unterdrückt jede Schema-Deklaration still.
 - **Node-`typeVersion`s bleiben beim n8n-Update stehen**: neuere ändern Verhalten still (z. B. `scheduleTrigger` 1.4 Nachholen, `lmChatAnthropic` 1.6 eigenes Caching); ein Bump ist ein eigenes, getestetes Feature. Ein Postgres-SELECT liefert bei 0 Zeilen kein Item (auch mit `WITH`/Kommentar vorn) → aggregieren (`count`/`jsonb_agg`), wenn der Folge-Node laufen muss; Tool-Read per id/Name → `New-RequiredRowGate`.

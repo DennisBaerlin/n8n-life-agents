@@ -23,7 +23,7 @@ N8N_PATCHES=(
 )
 
 # _n8n_patch_pairs <id> -> JSON-Array der Ersatz-Paare
-#   memory-all-tool-rounds (n8n 2.44.4 / langchain 2.44.2; in n8n 2.45.4 / langchain 2.45.3 byte-gleiche Datei):
+#   memory-all-tool-rounds (n8n 2.44.4 / langchain 2.44.2; in n8n 2.45.7 / langchain 2.45.6 byte-gleiche Datei):
 #   (1) saveToMemory schneidet die Tool-Runden einer Nachricht nicht mehr bis auf die letzte ab (= Upstream-PR #41577);
 #   (2) buildMessagesFromSteps: fruehere Runden kommen ueber die Ausfuehrungs-Metadaten serialisiert zurueck
 #       ({lc, kwargs} statt AIMessage) -> wieder zur AIMessage machen, sonst bricht die Postgres-Chat-Memory mit
@@ -39,7 +39,7 @@ _n8n_patch_pairs() {
 ]
 JSON
       ;;
-    # hitl-chat-no-link-fallback (n8n 2.45.4 / nodes-base 2.45.3), getestet in tests/mock_n8n_patch/:
+    # hitl-chat-no-link-fallback (n8n 2.45.7 / nodes-base 2.45.6), getestet in tests/mock_n8n_patch/:
     #   beide Telegram-Aufrufe der Vorpruefung (idempotent) je 3 Versuche; danach und bei nicht oeffentlicher Adresse Stopp
     #   statt Link-Knoepfen. chatApproval=false endet schon vorher in n8ns eigenem `return false`, bleibt also beim Link.
     hitl-chat-no-link-fallback) cat <<'JSON'

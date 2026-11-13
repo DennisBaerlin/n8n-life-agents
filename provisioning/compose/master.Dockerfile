@@ -6,8 +6,8 @@
 #   git archive --format=tar HEAD provisioning packages .gitattributes | docker build -f provisioning/compose/master.Dockerfile -t <name> -
 # Bau fuer amd64 + arm64, Veroeffentlichung und Digest in compose.yml: Paket 5 (Auslieferung der Images).
 FROM node:24-bookworm-slim@sha256:c86ecead9e55a5210ac1727de38a4ca840bf03dcaf34dc9749addbf383b1920c AS node
-FROM docker:cli@sha256:4d742ab934c2149b628bf26369ac3ec51cb91e2e28fe6722a0e86a6d6efc4bd5 AS dockercli
-FROM debian:12-slim@sha256:99c0b25c46d0214d5a2091092e7908907dcaecd6a962cde0ac700acee222b6f3
+FROM docker:cli@sha256:5a7af0dcb0e46c803efe9b45371dd21cb500e5b4453250394ac6f06d49b6e6f1 AS dockercli
+FROM debian:12-slim@sha256:734a72b3d6142a71993b4bc580ca01d8ca687f77a2c422d96a961d3376b179bc
 RUN apt-get update \
  && apt-get install -y --no-install-recommends bash jq curl gnupg ca-certificates openssl util-linux procps iproute2 \
  && rm -rf /var/lib/apt/lists/*

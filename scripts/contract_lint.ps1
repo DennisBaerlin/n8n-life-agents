@@ -576,7 +576,7 @@ if ($null -eq $coreMf) {
         }
     }
 
-    # Ein Agent, der auf eine Freigabe wartet, liefert dem aufrufenden executeWorkflow [null]; n8n 2.45.4 scheitert dann an
+    # Ein Agent, der auf eine Freigabe wartet, liefert dem aufrufenden executeWorkflow [null]; n8n 2.45.7 scheitert dann an
     # output.length (ExecuteWorkflow.node.ts), obwohl der Lauf schon parkt. Nur onError=continueRegularOutput laesst ihn
     # parken; beim Tipp ersetzt n8n das Fehler-Item durch das Agent-Ergebnis. Tragfaehiger Weg: agent.sub_dispatch_agent.
     foreach ($wid in $workflows.Keys) {
@@ -2334,9 +2334,9 @@ if (Test-Path $masterDf) {
         if ($img -match '^node:(\d+)' -and $cPin.NODE_MAJOR -and $Matches[1] -ne $cPin.NODE_MAJOR) { $errors.Add("COMPOSE-PINS: master.Dockerfile Node $($Matches[1]) != NODE_MAJOR=$($cPin.NODE_MAJOR).") }
     }
 }
-$saPin = @{ N8N_VERSION = '2.45.4'; PG_VERSION = '17'; NODE_MAJOR = '24' }
+$saPin = @{ N8N_VERSION = '2.45.7'; PG_VERSION = '17'; NODE_MAJOR = '24' }
 $saD = '@sha256:' + ('a' * 64)
-$saOk = "x-images:`n  busybox: &img_busybox busybox:1$saD`n  postgres: &img_postgres postgres:17$saD`n  n8n: &img_n8n n8nio/n8n:2.45.4$saD`n  node: &img_node node:24-alpine$saD`n  master: &img_master $MasterPinNeutral`n" +
+$saOk = "x-images:`n  busybox: &img_busybox busybox:1$saD`n  postgres: &img_postgres postgres:17$saD`n  n8n: &img_n8n n8nio/n8n:2.45.7$saD`n  node: &img_node node:24-alpine$saD`n  master: &img_master $MasterPinNeutral`n" +
         "services:`n" + ((@('sa', 'sb', 'sc', 'sd', 'se') | ForEach-Object { "  ${_}:`n    image: *img_busybox`n    container_name: `${LA_PROJECT:-lifeagents}-$_`n    labels: *labels`n    mem_limit: 8m`n" }) -join '') +
         "  master:`n    image: *img_master`n    container_name: `${LA_PROJECT:-lifeagents}-master`n    labels: *labels`n    mem_limit: 8m`n    environment:`n      LA_MASTER_IMAGE: *img_master`n" +
         "  n8n:`n    image: *img_n8n`n    container_name: `${LA_PROJECT:-lifeagents}-n8n`n    labels: *labels`n    mem_limit: 1g`n    volumes:`n      - type: volume`n        target: /x/node_modules/@n8n/p`n        read_only: true`n        volume:`n          subpath: fix-a`n" +
@@ -2345,7 +2345,7 @@ $saP = @(@{ Id = 'fix-a'; Path = 'pkg/node_modules/@n8n/p/f.js' })
 foreach ($sa in @(
     @{ n = 'gueltig';          t = $saOk;                                              want = 0 },
     @{ n = 'ohne Digest';      t = $saOk -replace 'busybox:1@sha256:a+', 'busybox:1';  want = 1 },
-    @{ n = 'n8n-Pin';          t = $saOk -replace 'n8n:2\.45\.4', 'n8n:2.44.4';        want = 1 },
+    @{ n = 'n8n-Pin';          t = $saOk -replace 'n8n:2\.45\.7', 'n8n:2.44.4';        want = 1 },
     @{ n = 'ohne mem_limit';   t = $saOk -replace '    mem_limit: 1g\n', '';           want = 1 },
     @{ n = 'Bind-Mount';       t = $saOk -replace '      - type: volume', "      - /srv/x:/y`n      - type: volume"; want = 1 },
     @{ n = 'Volume-Liste';     t = $saOk -replace 'pgdata', 'pgdatax';                 want = 1 },

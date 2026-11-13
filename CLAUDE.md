@@ -42,7 +42,7 @@ Ausgabesprache zentral in `packages/core/contexts/global_instructions.md` *Langu
 
 ## Versionen & Deploy-Modell
 
-n8n 2.45.4 · PostgreSQL 17. Der getrackte Baum ist die Source of Truth, keine Instanz ist Sync-Ziel. Dev/Test = ephemeres Docker-Substrat; Dev-Instanz = realer LXC für den Install-Test des Owners, nur per `/reset-dev`; Prod = Deploy-Ziel (`provision.sh`, `lifeagents update`) → `scripts/CLAUDE.md` *Deploy-Modell*. Instruktions-Contexts sind getrackt, PII-Contexts entstehen nur per Onboarding; Modellwechsel = Manifest-Wert oder `lifeagents config set model <key> <wert>` (`packages/core/CLAUDE.md` *Zentral-Config*).
+n8n 2.45.7 · PostgreSQL 17. Der getrackte Baum ist die Source of Truth, keine Instanz ist Sync-Ziel. Dev/Test = ephemeres Docker-Substrat; Dev-Instanz = realer LXC für den Install-Test des Owners, nur per `/reset-dev`; Prod = Deploy-Ziel (`provision.sh`, `lifeagents update`) → `scripts/CLAUDE.md` *Deploy-Modell*. Instruktions-Contexts sind getrackt, PII-Contexts entstehen nur per Onboarding; Modellwechsel = Manifest-Wert oder `lifeagents config set model <key> <wert>` (`packages/core/CLAUDE.md` *Zentral-Config*).
 
 ## Credentials & Privacy
 

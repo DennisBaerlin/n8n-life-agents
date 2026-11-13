@@ -118,7 +118,8 @@ BEGIN
   -- Versicherung: Rate je Abbuchung aus fn_insurance_period_amount, Versicherungsnehmer
   v_r := v_rows->4;
   IF (v_r->'x'->>'period_amount')::numeric IS DISTINCT FROM finance.fn_insurance_period_amount(120, 1, 'month')
-     OR v_r->'x'->>'person' IS DISTINCT FROM 'Icra Kartentest' OR v_r->'x'->>'ccy' IS DISTINCT FROM 'EUR' THEN
+     OR v_r->'x'->>'person' IS DISTINCT FROM 'Icra Kartentest' OR v_r->'x'->>'ccy' IS DISTINCT FROM 'EUR'
+     OR v_r->'x'->>'valid_from' IS DISTINCT FROM '2026-02-01' THEN   -- Vertragsbeginn faellt auf die erste Abbuchung zurueck
     RAISE EXCEPTION 'FAIL [insurance]: %', v_r;
   END IF;
   -- Sparziel: Plan aus fn_savings_goal_funding (dieselbe Ableitung wie fn_create_savings_goal; ohne Sparplan und

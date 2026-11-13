@@ -78,6 +78,8 @@
 --   "Ungeklaerter Abgang"; Rest < 0 ohne offene Abgaenge, aber mit erklaertem Teil oder Eingang "Rest"; offene Abgaenge plus Teil neben
 --   der Export-Luecke "Rest"; sonst "Alltagsausgaben". Unter der Rest-Zeile flache "darin"-Zeilen (offene Eingaenge, offene Ausgaenge, noch vorgemerkt, Uebriges), die zusammen genau den Rest ergeben (ab zwei Teilen); after_period als Zeile unter dem App-Stand. Luecke < 0 ohne offene Abgaenge: Hinweis
 --   statement_export_gap_unexplained (statement_export_starts_late hat Vorrang).
+--   Haushaltsweiter Hinweis: aktive Versicherungen ohne Beitrag (finance.note.statement_insurance_premium_missing mit
+--   den Namen), ausserhalb des fingerprint.
 --   STARTBETRAG DES GEGENKONTOS (fn_opening_balance_reason, Befund 2026-11-03): Stufe T/P/L mit Zeile im Startbetrag des Gegenkontos ->
 --   matched.other_in_opening (kein partner_lump, kein partner_fee, im fingerprint), apply bucht nur das Bein dieses Kontos, Gebuehr
 --   auf diesem Konto bleibt in der Gruppe; Karte statement_transfer_in_opening. Dauerauftrag -> blocked.reason partner_in_opening
@@ -1350,6 +1352,14 @@ BEGIN
                                                 'accounts', (SELECT string_agg(c, ', ' ORDER BY c) FROM jsonb_array_elements_text(x->'candidates') c))) END
                          ORDER BY x->>'account_number')
                      FROM jsonb_array_elements(v_learn_amb) x), '[]'::jsonb);
+    -- Versicherungen ohne Beitrag (haushaltsweit, unabhaengig vom Konto): der Auszug zeigt den Beitrag oft. Nur Hinweis,
+    -- bucht nichts -> nicht im fingerprint.
+    v_card := v_card
+        || COALESCE((SELECT jsonb_build_array(jsonb_build_object('kind', 'note',
+                         'value', 'finance.note.statement_insurance_premium_missing',
+                         'params', jsonb_build_object('names', string_agg(i.name, ', ' ORDER BY i.name))))
+                     FROM finance.active_insurances i WHERE i.recurring_payment_id IS NULL
+                     HAVING count(*) > 0), '[]'::jsonb);
 
     v_fp := md5(jsonb_build_object('a', v_acct.id, 'c', v_cut, 'd', v_drift, 's', v_s_end, 'l', v_lump,
                   'b', (SELECT jsonb_agg(jsonb_build_array(m->>'kind', m->>'recurring_payment_id', m->>'due_date',

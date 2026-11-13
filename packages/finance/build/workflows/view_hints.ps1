@@ -26,7 +26,7 @@ function Get-FinanceViewHints {
         'depot_performance'              = @('depot_name', 'is_total', 'return_pa_pct', 'return_since_start_pct', 'takeover_start_date', 'price_stale', 'missing_reason')
         'account_everyday_spending'      = @('account_id', 'account_name', 'has_history', 'everyday_per_day', 'everyday_per_month')
         'loan_overview'                  = @('id', 'name', 'lender', 'current_remaining_debt', 'monthly_annuity', 'status')
-        'active_insurances'              = @('id', 'name', 'insurance_company', 'annual_premium', 'account_name', 'last_valid_day')
+        'active_insurances'              = @('id', 'name', 'insurance_company', 'annual_premium = empty when the premium is still missing (say so, never guess it)', 'account_name', 'last_valid_day')
         'real_estate_overview'           = @('id', 'name', 'current_value', 'associated_debt', 'net_equity')
     }
 }

@@ -9,7 +9,7 @@ function Build-CreateInsurance {
     $trig = Build-Trigger @('name','insurance_company','policy_number','policyholder_person','premium_amount','annual_premium',
                            'schedule_interval','schedule_unit','schedule_day_of_month','valid_from',
                            'first_payment_date','debit_account_name',
-                           'insurance_type','beneficiary','coverage_amount','claim_deadline_hours')  # WS-0b estate
+                           'insurance_type','beneficiary','coverage_amount','claim_deadline_hours','notes')  # WS-0b estate
 
     # Dedup-Guard (Name, aktive Versicherungen) — Block vor dem Gate
     $checkDup = Build-Pg 'Check duplicate name' @(220, -200) `
@@ -26,7 +26,9 @@ function Build-CreateInsurance {
         "=SELECT id, hit_count, candidates FROM finance.fn_resolve_account((`$1::jsonb)->>'debit_account_name');" `
         ([ordered]@{ debit_account_name = '$(''Start'').item.json.debit_account_name' })
 
-    $ifAcc = Build-If 'Debit unique?' @(440, 0) "={{ `$json.hit_count }}" '1'
+    # Ohne Kontonamen weiter (Beitrag unbekannt -> keine Kette); nennt das Modell trotzdem einen Beitrag, lehnt der
+    # Probelauf ab (Beitrag ohne Konto).
+    $ifAcc = Build-If 'Debit unique?' @(440, 0) "={{ `$json.hit_count === 1 || !`$('Start').item.json.debit_account_name }}" 'true' 'equals' 'boolean'
 
     $errAcc = Build-ToolError 'Debit ambiguous' @(660, 200) `
         "=Debit account '{{ `$('Start').item.json.debit_account_name }}' resolves to {{ `$('Resolve Debit Account').item.json.hit_count }} matches. Ask the user which exact account to use."
@@ -53,7 +55,7 @@ function Build-CreateInsurance {
     # derselbe Param-Satz geht nach dem Gate in den echten Write.
     $wg = New-FnWriteGate -Fn 'finance.fn_create_insurance' -DryPos @(1100, 0) -WritePos @(2420, 0) `
         -WriteName 'Create insurance (atomic)' `
-        -WriteSelect "(r->>'ok')::boolean AS ok, r->>'reason' AS reason, r->>'insurance_id' AS insurance_id, r->>'recurring_payment_id' AS recurring_payment_id, (r->>'monthly_equivalent')::numeric AS monthly_equivalent, (r->>'annual_premium')::numeric AS annual_premium" `
+        -WriteSelect "(r->>'ok')::boolean AS ok, r->>'reason' AS reason, r->>'insurance_id' AS insurance_id, r->>'recurring_payment_id' AS recurring_payment_id, (r->>'monthly_equivalent')::numeric AS monthly_equivalent, (r->>'annual_premium')::numeric AS annual_premium, (r->>'premium_missing')::boolean AS premium_missing" `
         -Params ([ordered]@{
             name                  = '$(''Start'').item.json.name'
             insurance_company     = '$(''Start'').item.json.insurance_company'
@@ -71,6 +73,7 @@ function Build-CreateInsurance {
             beneficiary           = '$(''Start'').item.json.beneficiary'
             coverage_amount       = '$(''Start'').item.json.coverage_amount'
             claim_deadline_hours  = '$(''Start'').item.json.claim_deadline_hours'
+            notes                 = '$(''Start'').item.json.notes'
         })
 
     # --- HITL approval gate (before the write) ---
@@ -80,7 +83,7 @@ function Build-CreateInsurance {
     $S = "(Object.assign({}, `$('Start').item.json, { coverage_amount: `$('Preview Rate').item.json.coverage_amount }))"
     $P = "`$('Resolve Person').item.json"
     $summary = New-HitlSummary -Pos @(1760, 0) -Title 'finance.hitl.create_insurance' -LinesExpr $wg.CardLinesExpr -Lines (Get-FinanceHitlLines -Entity insurance -S (Get-WritePayloadExpr) -D @{
-        Person = "$P.full_name"; PeriodAmount = "`$('Preview Rate').item.json.period_amount"; Annual = "`$('Preview Rate').item.json.annual_premium" })
+        Person = "$P.full_name"; PeriodAmount = "`$('Preview Rate').item.json.period_amount"; Annual = "`$('Preview Rate').item.json.annual_premium"; ValidFrom = "($(Get-WritePayloadExpr).valid_from || $(Get-WritePayloadExpr).first_payment_date)" })
 
     $gateId = $GateId
     $reqApproval = Build-CallWorkflow 'Request Approval' @(1980, 0) $gateId 'agent.tool_human_approval' `
@@ -105,11 +108,12 @@ function Build-CreateInsurance {
         ,@('recurring_payment_id', "={{ `$('Create insurance (atomic)').item.json.recurring_payment_id }}", 'number')
         ,@('monthly_equivalent', "={{ `$('Create insurance (atomic)').item.json.monthly_equivalent }}", 'number')
         ,@('annual_premium', "={{ `$('Create insurance (atomic)').item.json.annual_premium }}", 'number')
+        ,@('premium_missing', "={{ `$('Create insurance (atomic)').item.json.premium_missing }}", 'boolean')
     )
 
     $stickyGenerated = Build-Sticky 'DB-Automatik Beitrag' @(2420, -260) `
         'Eine Quelle: Beitrags-Zeile (WP2)' `
-        'Beitrag je Abbuchung, Rhythmus, Tag und Konto stehen nur an der Beitrags-Zeile (recurring_payment); den Jahreswert leitet fn_annual_equivalent ab, den Monatswert die GENERATED-Spalte monthly_equivalent (read-only). Die Versicherung erscheint über das recurring_payment automatisch im Cashflow. Schreibt finance.fn_create_insurance atomar (recurring_payment + insurance + FK in einer Transaktion). WS-0b (estate): die optionalen Nachlass-Felder insurance_type (geschlossene Liste, CHECK=Backstop) / beneficiary / coverage_amount / claim_deadline_hours werden mitgeschrieben und vom estate-Paket über finance.fn_insurance_register() (Oberfläche A) für Gap-Analyse + Todesfall-Checkliste gelesen.' 220 460
+        'Beitrag je Abbuchung, Rhythmus, Tag und Konto stehen nur an der Beitrags-Zeile (recurring_payment); den Jahreswert leitet fn_annual_equivalent ab, den Monatswert die GENERATED-Spalte monthly_equivalent (read-only). Die Versicherung erscheint über das recurring_payment automatisch im Cashflow. Ohne Beitrag (unbekannt, der Agent erfindet keinen): keine Beitrags-Zeile, Konto und erste Abbuchung entfallen; die Police gilt als „Beitrag fehlt noch“, der Monats-Check nennt sie, tool_set_insurance trägt den Beitrag nach. Schreibt finance.fn_create_insurance atomar (recurring_payment + insurance + FK in einer Transaktion). WS-0b (estate): die optionalen Nachlass-Felder insurance_type (geschlossene Liste, CHECK=Backstop) / beneficiary / coverage_amount / claim_deadline_hours werden mitgeschrieben und vom estate-Paket über finance.fn_insurance_register() (Oberfläche A) für Gap-Analyse + Todesfall-Checkliste gelesen.' 220 460
 
     $stickyOk = Build-Sticky 'Write ok? (korrigierbare Ablehnung)' @(2860, -220) `
         'fn-Rückgabe {ok:false, reason}' `

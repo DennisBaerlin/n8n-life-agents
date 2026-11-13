@@ -412,6 +412,14 @@
     "final": "Dauerauftrag angelegt."
   },
   {
+    "_comment": "tc138 Versicherung ohne bekannten Beitrag: ohne Beitrag anlegen.",
+    "match": "Leg meine Rechtsschutzversicherung bei der Ahornversicherung an",
+    "calls": [
+      { "tool": "tool_create_insurance", "args": { "name": "Rechtsschutz Ahornversicherung", "insurance_company": "Ahornversicherung", "insurance_type": "legal" } }
+    ],
+    "final": "Versicherung ohne Beitrag angelegt."
+  },
+  {
     "_comment": "tc58 Versicherung fuer Kind per Vorname.",
     "match": "Lege eine Unfallversicherung 'Kinder-Unfall Lisa'",
     "calls": [

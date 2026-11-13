@@ -1626,7 +1626,7 @@ CREATE TABLE IF NOT EXISTS finance.insurances (
     schedule_day_of_month smallint,
     valid_from            date NOT NULL,                 -- Vertragsbeginn
     status                finance.insurance_status NOT NULL DEFAULT 'active',
-    recurring_payment_id  int REFERENCES finance.recurring_payments(id),   -- Kopf der Beitrags-Kette (NULL nur Altbestand)
+    recurring_payment_id  int REFERENCES finance.recurring_payments(id),   -- Kopf der Beitrags-Kette (NULL = Beitrag fehlt noch)
     -- WS-0b (estate): Nachlass-relevante Policen-Attribute (additiv nullable, Init-only, KEIN V).
     -- insurance_type = grobe Policen-Klasse (geschlossene Liste, s. CHECK; life/accident tragen Todesfall-
     --   Meldefristen); beneficiary = benannter Bezugsberechtigter (schlaegt das Testament, Bezugsrecht-Falle);

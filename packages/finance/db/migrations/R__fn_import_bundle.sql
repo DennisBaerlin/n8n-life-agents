@@ -198,15 +198,20 @@ BEGIN
                     'entity_type', 'loan', 'id', (v_r->>'loan_id')::int);
 
             ELSIF v_row.entity_type = 'insurance' THEN
-                v_res    := finance.fn_import_resolve_account(v_payload->>'debit_account', v_acct_map);
-                v_ref_id := NULLIF(v_res->>'id','')::int;
-                v_err    := v_res->>'error';
-                IF v_err IS NOT NULL THEN
-                    v_errors := v_errors || jsonb_build_object('row_no', v_cur_row, 'error', v_err);
-                    CONTINUE;
+                v_ref_id := NULL;   -- ohne Beitrag ohne Konto (wie pension)
+                IF NULLIF(v_payload->>'debit_account','') IS NOT NULL THEN
+                    v_res    := finance.fn_import_resolve_account(v_payload->>'debit_account', v_acct_map);
+                    v_ref_id := NULLIF(v_res->>'id','')::int;
+                    v_err    := v_res->>'error';
+                    IF v_err IS NOT NULL THEN
+                        v_errors := v_errors || jsonb_build_object('row_no', v_cur_row, 'error', v_err);
+                        CONTINUE;
+                    END IF;
                 END IF;
                 v_r := finance.fn_create_insurance(
-                    (v_payload - 'debit_account') || jsonb_build_object('debit_account_id', v_ref_id));
+                    (v_payload - 'debit_account')
+                    || CASE WHEN v_ref_id IS NULL THEN '{}'::jsonb
+                            ELSE jsonb_build_object('debit_account_id', v_ref_id) END);
                 IF (v_r ? 'ok') AND (v_r->>'ok')::boolean IS DISTINCT FROM true THEN
                     v_errors := v_errors || jsonb_build_object('row_no', v_cur_row, 'error', v_r->>'reason');
                     CONTINUE;

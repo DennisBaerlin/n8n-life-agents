@@ -2,8 +2,9 @@
 -- fn_interest_day_fraction (READ — Tageszaehl-Anteil eines Jahres je Konvention; DB rechnet, nie das LLM)
 --   Liefert den Jahres-Bruchteil zwischen zwei Daten nach der gewaehlten day-count-Konvention. Reine
 --   Datums-Arithmetik -> IMMUTABLE (in anderen fns/Ausdruecken nutzbar, kein Tabellenzugriff).
+--   Eingabe: p_from, p_to, p_convention (unbekannte Konvention -> NULL).
 --     '30E/360' = deutsche kaufmaennische Methode: tage = 360*(y2-y1) + 30*(m2-m1) + (d2'-d1'), wobei
---                 Tag 31 -> 30 UND der letzte Februartag (28/29) -> 30; anteil = tage/360.
+--                 Tag 31 -> 30 und der letzte Februartag (28/29) -> 30; anteil = tage/360.
 --     'ACT/365' = echte Kalendertage / 365 (Tagesgeld-Standard; im Schaltjahr ergibt ein volles Jahr >1).
 --     'ACT/360' = echte Kalendertage / 360.
 --   (ACT/ACT vertagt.) Quellen: zinsen-berechnen.de (deutsche/euro Zinsmethode), Wikipedia Day count
@@ -20,7 +21,7 @@ CREATE OR REPLACE FUNCTION finance.fn_interest_day_fraction(
             EXTRACT(YEAR  FROM p_to)::int   AS y2,
             EXTRACT(MONTH FROM p_to)::int   AS m2,
             EXTRACT(DAY   FROM p_to)::int   AS d2,
-            -- letzter Februartag? (Monat=2 UND der Folgetag liegt nicht mehr im Februar)
+            -- letzter Februartag? (Monat=2 und der Folgetag liegt nicht mehr im Februar)
             (EXTRACT(MONTH FROM p_from)=2 AND EXTRACT(MONTH FROM p_from + 1)<>2) AS feb1,
             (EXTRACT(MONTH FROM p_to)=2   AND EXTRACT(MONTH FROM p_to + 1)<>2)   AS feb2
     ),

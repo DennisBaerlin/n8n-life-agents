@@ -2,12 +2,11 @@
 # Dot-gesourct von build.ps1 (Helper + Script-Scope-Creds im Parent-Scope).
 
 # --- tool_reconcile_accounts_batch -------------------------
-# Mehrere Konten in EINEM Vorgang abgleichen: eine Nutzer-Antwort (alle Staende) -> EIN Sammel-Approval
-# -> EIN atomarer Write (fn_reconcile_accounts, delegiert je Konto an fn_reconcile_account).
+# Mehrere Konten in einem Vorgang abgleichen: eine Nutzer-Antwort (alle Staende) -> ein Sammel-Approval
+# -> ein atomarer Write (fn_reconcile_accounts, delegiert je Konto an fn_reconcile_account).
 # Read/Resolve (fn_reconcile_accounts_preview, read-only) -> Build Summary -> Gate -> atomarer Write.
 function Build-ReconcileAccountsBatch {
-    # WS-B0: enge Paket-Schreibrolle (finance_rw, Least-Privilege D10) statt Owner-Cred.
-    # Dynamic-Scope: Build-Pg liest dieses $CRED_POSTGRES. Core-Tools nutzen die Owner-Cred.
+    # Enge Paket-Schreibrolle (finance_rw) statt Owner-Cred; Build-Pg liest $CRED_POSTGRES per Dynamic-Scope.
     $CRED_POSTGRES = $CRED_FINANCE_RW
     $trig = Build-Trigger @('accounts')
 
@@ -22,7 +21,7 @@ function Build-ReconcileAccountsBatch {
     $errPreview = Build-ToolError 'Preview failed' @(660, 200) `
         "={{ `$('Preview reconcile').item.json.reason }}"
 
-    # EINE Approval-Summary (Textkatalog) fuer alle Konten (native Waehrung je Zeile): je Konto eine Zeile, Label =
+    # Eine Approval-Summary fuer alle Konten (native Waehrung je Zeile): je Konto eine Zeile, Label =
     # Kontoname (kein Katalog-Key -> das Gate zeigt ihn unveraendert), Wert = Vorlage mit Stichtag (aufgeloest von
     # fn_reconcile_accounts_preview, relativ wie "yesterday" erlaubt) und typisierten Betraegen.
     $linesExpr = "`$('Preview reconcile').item.json.rows.map(r => ({ label: r.name, kind: 'tpl', " +
@@ -32,9 +31,8 @@ function Build-ReconcileAccountsBatch {
         # Vorkommen <= Stichtag-10 als erledigt markiert (skip_count aus fn_reconcile_open_due, dieselbe Menge wie der Write).
         ".concat(`$('Preview reconcile').item.json.rows.filter(r => Number(r.skip_count) > 0).map(r => ({ kind: 'note', " +
         "value: 'finance.note.reconcile_closes_due_account', params: { name: r.name, n: r.skip_count, date: { kind: 'date', value: r.skip_until } } })))"
-    # "DB ist das Gesetz": fn_reconcile_accounts laeuft als Probelauf VOR der Karte (nach der Read-only-Vorschau);
-    # derselbe Param-Satz geht nach dem Gate in den echten Write.
-    # Atomarer Batch-Write ($wg.Write): re-resolved jeden Namen, loopt fn_reconcile_account in EINER Transaktion.
+    # Der Probelauf laeuft nach der Read-only-Vorschau. Batch-Write ($wg.Write): re-resolved jeden Namen,
+    # loopt fn_reconcile_account in einer Transaktion.
     $wg = New-FnWriteGate -Fn 'finance.fn_reconcile_accounts' -DryPos @(660, 0) -WritePos @(1980, 0) `
         -WriteName 'Reconcile batch (atomic)' `
         -WriteSelect "(r->>'ok')::boolean AS ok, r->>'reason' AS reason, (r->>'count')::int AS count, r->'results' AS results" `
@@ -49,8 +47,8 @@ function Build-ReconcileAccountsBatch {
 
     $retCancelled = Build-ToolCancelled 'Return cancelled' @(1980, 200) 'the reconcile_accounts_batch action'
 
-    # Bestand kann sich zwischen Karte und Tipp aendern -> eine Ablehnung des echten Writes ist KEIN Erfolg (vorher fehlte
-    # dieser Knoten: ein {ok:false} nach dem Tipp ging als ok:true an den Agenten).
+    # Bestand kann sich zwischen Karte und Tipp aendern -> eine Ablehnung des echten Writes ist kein Erfolg (sonst ginge
+    # ein {ok:false} nach dem Tipp als ok:true an den Agenten).
     $ifWriteOk = Build-If 'Write ok?' @(2200, 0) "={{ `$json.ok }}" 'true' 'equals' 'boolean'
     $errWrite = Build-ToolError 'Batch rejected' @(2420, 200) "={{ `$('Reconcile batch (atomic)').item.json.reason }}"
 

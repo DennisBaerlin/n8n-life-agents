@@ -1,6 +1,6 @@
 -- ============================================================
 -- fn_bank_export_profiles (READ, IMMUTABLE) -- welche Bank kann ihren Umsatz-Export als Datei liefern (Bank-Import-Modul)
---   Die EINE Adresse fuer "welche Bank kann Datei-Import": fn_bank_export_normalize erkennt das Profil per Kopfzeilen-
+--   Die eine Adresse fuer "welche Bank kann Datei-Import": fn_bank_export_normalize erkennt das Profil per Kopfzeilen-
 --   Signatur (alle required-Spalten in einer der ersten 20 Zeilen; Muster Portfolio Performance Extractor / beangulp
 --   identify()), fn_bank_export_account_profile ordnet ein Konto per bank_pattern zu (Monats-Erinnerung, Onboarding).
 --   Das Dateiformat (CSV/xlsx) kennt das Profil nicht: der Leser im Workflow liefert ein rohes Raster.
@@ -12,7 +12,7 @@
 --   header_aliases: Kopfzeilen-Namen einer anderen Export-Sprache -> kanonischer Spaltenname aus required (Bondora
 --   exportiert in der Sprache des Nutzerkontos, gleicher Aufbau). Der Dispatcher setzt
 --   sie vor Erkennung und Spalten-Index ein; sprachige Zellen jenseits der Kopfzeile uebersetzt die Profil-fn.
---   RUECKGABE: [{key, bank, bank_pattern (POSIX-Regex, case-insensitiv gegen accounts.bank bzw. name), required[],
+--   Keine Eingabe. Rueckgabe: [{key, bank, bank_pattern (POSIX-Regex, case-insensitiv gegen accounts.bank bzw. name), required[],
 --   header_aliases?, printed_balance, interest_source, is_broker, default_account_type, withdrawal_fee?, small_inflow_max?, legacy_return_label?, counterparty_pattern?}]
 --   interest_source: Quelle der Zinsen eines neuen Kontos: web (Konditionen nachschlagen), export (echte Zinszeilen der Datei), none.
 --   is_broker: Datei kann Wertpapierzeilen tragen (Ersteinrichtung mit Depot); default_account_type: Typ eines neuen Kontos.

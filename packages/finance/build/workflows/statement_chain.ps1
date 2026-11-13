@@ -1,5 +1,5 @@
 ﻿#Requires -Version 5.1
-# Die geteilte Monats-Check-Kette (Broker-CSV Paket B: 2. Konsument -> vereinheitlicht): Prepare statement
+# Die geteilte Monats-Check-Kette: Prepare statement
 # (finance.fn_statement_prepare) -> Karte -> Gate -> Apply statement (finance.fn_apply_bank_statement, fingerprint aus der
 # Karte) -> Return. Konsumenten: tool_reconcile_bank_statement (gedruckter Auszug per Vision) und tool_import_bank_export
 # (Bank-Export-Datei per festem Leser). Die Rohwerte ($StmtParams) liefert der Konsument; alles Rechnen + die Kartenzeilen
@@ -36,13 +36,13 @@ function New-StatementGateChain {
         ,@('closing_balance', "={{ $P.closing_balance === undefined || $P.closing_balance === null ? '' : String($P.closing_balance) }}", 'string')
         ,@('balance_date', "={{ $P.balance_date || '' }}", 'string')
         ,@('currency', "={{ $P.currency || '' }}", 'string')
-        # Import zuerst: gedruckter Kontoinhaber eines unbekannten Kontos als Inhaber-Vorschlag (aus der DB)
+        # gedruckter Kontoinhaber eines unbekannten Kontos als Inhaber-Vorschlag (aus der DB)
         ,@('owner_person', "={{ $P.owner_person || '' }}", 'string')
         ,@('owner_joint', "={{ $P.owner_joint === true }}", 'boolean')
-        # Pool-Regel (transfer_choice_required): die EINE unklare Zahlung, damit der Agent sie beim Nachfragen nennt
+        # Pool-Regel (transfer_choice_required): die eine unklare Zahlung, damit der Agent sie beim Nachfragen nennt
         ,@('payment_amount', "={{ $P.amount === undefined || $P.amount === null ? '' : String($P.amount) }}", 'string')
         ,@('payment_date', "={{ $P.date || '' }}", 'string')
-        # already_covered: bis wann bestaetigt, ab wann ein Auszug weiterhilft (Sackgasse, Befund KW 45)
+        # already_covered: bis wann bestaetigt, ab wann ein Auszug weiterhilft (sonst Sackgasse)
         ,@('covered_until', "={{ $P.covered_until || '' }}", 'string')
         ,@('useful_from', "={{ $P.useful_from || '' }}", 'string')
     ) + $NotReadyExtra
@@ -73,11 +73,11 @@ function New-StatementGateChain {
         ,@('period_end', "={{ $P.period_end }}", 'string')
         ,@('currency', "={{ $P.currency }}", 'string')
         ,@('booked_count', "={{ $A.booked_count }}", 'number')
-        # Befund 2026-10-30: Uebertraege einzeln, Rest nach Richtung (alle Zahlen aus fn_apply_bank_statement)
+        # Uebertraege einzeln, Rest nach Richtung (alle Zahlen aus fn_apply_bank_statement)
         ,@('transfers', "={{ $A.transfers || [] }}", 'array')
         ,@('rest_outflow', "={{ $A.rest_outflow }}", 'number')
         ,@('rest_inflow', "={{ $A.rest_inflow }}", 'number')
-        # Befund KW 45: der Rest ist ein Saldo -> offene Ein-/Ausgaenge getrennt, dazu alles andere im Rest
+        # Der Rest ist ein Saldo -> offene Ein-/Ausgaenge getrennt, dazu alles andere im Rest
         ,@('unmatched_in', "={{ $A.unmatched_in }}", 'number')
         ,@('unmatched_out', "={{ $A.unmatched_out }}", 'number')
         ,@('rest_other', "={{ $A.rest_other }}", 'number')
@@ -92,7 +92,7 @@ function New-StatementGateChain {
         ,@('transfers_unclear', "={{ $A.transfers_unclear || [] }}", 'array')
         # Vormerkungen des letzten Exports, die dessen Rest jetzt ausgleichen (nie Einnahme/Ausgabe)
         ,@('pending_settled', "={{ $A.pending_settled || 0 }}", 'number')
-        # Import zuerst: IBANs eigener Konten, die dieser Abgleich gespeichert hat bzw. die mehrdeutig blieben
+        # IBANs eigener Konten, die dieser Abgleich gespeichert hat bzw. die mehrdeutig blieben
         ,@('iban_learned', "={{ $A.learned_accounts || [] }}", 'array')
         ,@('iban_ambiguous', "={{ $P.iban_ambiguous || [] }}", 'array')
         ,@('difference_before_period', "={{ $A.drift_amount }}", 'number')
@@ -105,7 +105,7 @@ function New-StatementGateChain {
     ) + $ReturnExtra
     $recNodes = @()
     if ($RecurringParams) {
-        # Erkennung, wenn der Monat schon bestaetigt ist (Sackgasse vorher: Zeilen weg, "kann nicht lesen")
+        # Erkennung, wenn der Monat schon bestaetigt ist (sonst Sackgasse: Zeilen weg, "kann nicht lesen")
         $ifCovered = Build-If 'Covered month?' @(($X + 440), 400) "={{ ['already_covered', 'already_imported'].includes($P.code) }}" 'true' 'equals' 'boolean'
         $stageParams = [ordered]@{ mode = "'statement'"; account_id = "$P.account_id"; balance_verified = "$P.balance_verified === true" }
         foreach ($k in $RecurringParams.Keys) { $stageParams[$k] = $RecurringParams[$k] }

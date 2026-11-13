@@ -3,16 +3,15 @@
 
 # --- tool_set_holding (set_*: Depot-Position-Metadaten aendern) ---
 function Build-SetHolding {
-    # WS-B0: enge Paket-Schreibrolle (finance_rw, Least-Privilege D10) statt Owner-Cred.
-    # Dynamic-Scope: Build-Pg liest dieses $CRED_POSTGRES. Core-Tools nutzen die Owner-Cred.
+    # Enge Paket-Schreibrolle (finance_rw) statt Owner-Cred; Build-Pg liest $CRED_POSTGRES per Dynamic-Scope.
     $CRED_POSTGRES = $CRED_FINANCE_RW
-    # Paket-interne Cross-Refs (Phase D: hier statt in der Engine). Yahoo-Sub + Preis-Cron SOFT (2-Pass-Bootstrap).
+    # Paket-interne Cross-Refs; Yahoo-Sub + Preis-Cron -Soft (2-Pass-Bootstrap).
     $ResolveYahooSymbolId = Get-RequiredWorkflowId 'agent.finance.sub_resolve_yahoo_symbol' 'Build-SetHolding' -Soft
     $MarketPricesCronId   = Get-RequiredWorkflowId 'agent.finance.cron_refresh_market_prices' 'Build-SetHolding' -Soft
     $FxCronId             = Get-RequiredWorkflowId 'agent.finance.cron_refresh_fx_rates' 'Build-SetHolding'
     $trig = Build-Trigger @('depot_name','position','new_name','symbol','isin','currency','asset_class','provider_symbol','quote_currency')
 
-    # S8: Position per Depot-Name + aktuellem Symbol/ISIN (finance.fn_find_holding, wie book_stock_sell) statt
+    # Position per Depot-Name + aktuellem Symbol/ISIN (finance.fn_find_holding, wie book_stock_sell) statt
     # holding_id-Lookup durch das Modell. symbol/isin im Input sind die NEUEN Werte -> Identifikation ueber 'position'.
     $readCur = Build-Pg 'Find Holding' @(220, 0) `
         "=SELECT finance.fn_find_holding(`$1::jsonb) AS r;" `
@@ -28,11 +27,11 @@ function Build-SetHolding {
         ,@('candidates', "={{ $H.candidates || [] }}", 'array')
     )
 
-    # Kauf-Zeit-Symbol-Validierung (WS-2, DRY mit book_stock_buy): laeuft IMMER (ISIN leer/Krypto -> Sub gibt sofort
+    # Kauf-Zeit-Symbol-Validierung (wie book_stock_buy): laeuft immer (ISIN leer/Krypto -> Sub gibt sofort
     # roh zurueck, kein Yahoo-Call), damit der nachgelagerte fn-Node den Output sicher referenzieren kann (ein
-    # IF-gegateter Sub wuerde am unausgefuehrten Zweig "node not executed" werfen). GENUTZT wird der Vorschlag aber
+    # IF-gegateter Sub wuerde am unausgefuehrten Zweig "node not executed" werfen). Genutzt wird der Vorschlag aber
     # nur, wenn symbol/isin/provider_symbol geaendert wird (s. Set-holding-Payload). Effektive Werte = neu || aktuell.
-    # Plausi-Referenz (Owner 2026-10-27: Plausi-Pflicht fuer jeden Treffer): letzter Kurs der Position (enges Band),
+    # Plausi-Referenz (Plausi-Pflicht fuer jeden Treffer): letzter Kurs der Position (enges Band),
     # sonst Einstand (grobes Band) + FX-Karte fuer Fremdwaehrungs-Notierungen. Aggregiert -> immer ein Item.
     $loadRef = Build-Pg 'Load price reference' @(440, -420) `
         "=SELECT (SELECT jsonb_build_object('price', s.price, 'price_currency', s.price_currency, 'avg', s.avg_price, 'currency', s.currency) FROM finance.fn_holding_price_status(ARRAY[((`$1::jsonb)->>'holding_id')::int]) s) AS ref, finance.fn_fx_rate_map() AS fx;" `
@@ -50,10 +49,8 @@ function Build-SetHolding {
     foreach ($k in $refIn.Keys) { $resolveInputs[$k] = $refIn[$k] }
     $resolveYahoo = Build-CallWorkflow 'Resolve Yahoo symbol' @(660, -220) $ResolveYahooSymbolId 'agent.finance.sub_resolve_yahoo_symbol' $resolveInputs
 
-    # Strukturiertes Summary (Textkatalog). Kurs-Symbol-Zeile = Yahoo-Validierung; die Warnung "nicht verifiziert"
+    # Kurs-Symbol-Zeile = Yahoo-Validierung; die Warnung "nicht verifiziert"
     # steht als Hinweis unter den Zeilen. Preis in der Yahoo-/Kurs-/Positions-Waehrung (Default EUR).
-    # "DB ist das Gesetz": fn_set_holding laeuft als Probelauf VOR der Karte (Identitaets-Dublette ISIN/Symbol im Depot,
-    # ungueltiges asset_class-/quote_currency-Format -> {ok:false} ohne Karte); derselbe Param-Satz geht in den Write.
     $wg = New-FnWriteGate -Fn 'finance.fn_set_holding' -DryPos @(660, 0) -WritePos @(1760, 0) `
         -WriteName 'Set holding (atomic)' `
         -WriteSelect "(r->>'ok')::boolean AS ok, r->>'reason' AS reason, (r->>'holding_id')::int AS holding_id" `
@@ -65,7 +62,7 @@ function Build-SetHolding {
             currency        = '$(''Start'').item.json.currency'
             asset_class     = '$(''Start'').item.json.asset_class'
             # Ein ausdruecklich genanntes provider_symbol gilt (die Karte warnt, wenn es nicht verifiziert ist). Nach einer
-            # symbol-/ISIN-Aenderung: der Yahoo-Vorschlag, wenn er adoptable ist (Plausi-Pflicht 2026-10-27), sonst das
+            # symbol-/ISIN-Aenderung: der Yahoo-Vorschlag, wenn er adoptable ist (Plausi-Pflicht), sonst das
             # Standard-Feed-Symbol des NEUEN Tickers (fn_feed_symbol-Regel: Aktie = symbol, Krypto = symbol-EUR) — ein altes
             # Override darf nicht stehen bleiben (fn_set_holding kann nicht auf NULL setzen, '' hiesse "unveraendert").
             provider_symbol = '$(''Start'').item.json.provider_symbol ? $(''Start'').item.json.provider_symbol : (($(''Start'').item.json.symbol || $(''Start'').item.json.isin) ? ($(''Resolve Yahoo symbol'').item.json.adoptable === true ? $(''Resolve Yahoo symbol'').item.json.provider_symbol : (($(''Start'').item.json.isin || $(''Find Holding'').item.json.r.isin) ? ($(''Start'').item.json.symbol || $(''Find Holding'').item.json.r.symbol) : ($(''Start'').item.json.symbol || $(''Find Holding'').item.json.r.symbol) + "-EUR")) : "")'
@@ -101,14 +98,14 @@ function Build-SetHolding {
 
     $retCancelled = Build-ToolCancelled 'Return cancelled' @(1760, 240) 'the set_holding action'
 
-    # Atomarer Write via fn_set_holding ($wg.Write): nur Metadaten; shares/avg sind Trigger-gepflegt.
+    # Der Write setzt nur Metadaten; shares/avg sind Trigger-gepflegt.
     $ifWriteOk = Build-If 'Write ok?' @(1980, 0) "={{ `$json.ok }}" 'true' 'equals' 'boolean'
 
     $errWrite = Build-ToolError 'Update rejected' @(2200, 240) `
         "={{ `$('Set holding (atomic)').item.json.reason }}"
 
-    # Phase M (Item 3): Sofort-Preis-Fetch nach einer Symbol-/Feed-Symbol-Aenderung — ein neuer (oder
-    # umgemappter) Ticker hat sonst bis zum naechsten 07:00-Lauf keinen Kurs. Bedingung = symbol ODER
+    # Sofort-Preis-Fetch nach einer Symbol-/Feed-Symbol-Aenderung — ein neuer (oder
+    # umgemappter) Ticker hat sonst bis zum naechsten 07:00-Lauf keinen Kurs. Bedingung = symbol oder
     # provider_symbol gesetzt (ein reiner provider_symbol-Override aendert auch den Feed-Key). Ruft denselben
     # Markt-Preis-Cron als Sub auf wie book_stock_buy (Dual-Trigger 'Start'). Unabhaengig vom FX-Zweig unten.
     $ifSymChanged = Build-If 'Symbol/Provider changed?' @(2200, -40) `
@@ -119,13 +116,13 @@ function Build-SetHolding {
         ([ordered]@{ chat_id = "={{ `$('Start').item.json.chat_id }}" })
 
     # Fehlt fuer eine aktive Waehrung der Wechselkurs, sofort holen (sonst bleibt market_value_eur bis zum naechsten
-    # Schedule NULL). Ruft den FX-Cron als Sub — EINE Logik-Adresse fuer Check/Fetch/Upsert.
+    # Schedule NULL). Ruft den FX-Cron als Sub — eine Logik-Adresse fuer Check/Fetch/Upsert.
     $fxGap = New-FinanceFxGapCheck -CheckPos @(2540, 160) -IfPos @(2640, 0)
 
     $callFxRefresh = Build-CallWorkflow 'Refresh FX rates' @(2860, -120) $FxCronId 'agent.finance.cron_refresh_fx_rates' `
         ([ordered]@{ chat_id = "={{ `$('Start').item.json.chat_id }}" })
 
-    # Kurs-Status NACH den Sofort-Abrufen (Owner 2026-10-27: die Antwort sagt, ob ein Kurs gefunden wurde).
+    # Kurs-Status nach den Sofort-Abrufen: die Antwort sagt, ob ein Kurs gefunden wurde.
     $priceStatus = New-FinancePriceStatusNode -Pos @(3080, -160) -HoldingIdExpr '$(''Set holding (atomic)'').item.json.holding_id'
     # Die Aenderung ist schon gespeichert: ein Fehler im Kurs-/FX-Abruf darf sie nie als Fehler melden.
     foreach ($n in @($callPriceRefresh, $callFxRefresh)) { $n['onError'] = 'continueRegularOutput'; $n['alwaysOutputData'] = $true }

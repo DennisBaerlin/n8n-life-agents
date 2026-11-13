@@ -1,15 +1,14 @@
 ﻿#Requires -Version 5.1
 # Dot-gesourct von build.ps1 (Helper + Script-Scope-Creds im Parent-Scope).
 
-# --- tool_book_interest (WS-5c-B: faellige Zinsgutschrift buchen, berechnet ODER angepasst) ---
-# Der Stichtags-Cron (cron_remind_interest) bucht den von der DB BERECHNETEN Zins per Approve. Dieses Tool
+# --- tool_book_interest (faellige Zinsgutschrift buchen, berechnet oder angepasst) ---
+# Der Stichtags-Cron (cron_remind_interest) bucht den von der DB berechneten Zins per Approve. Dieses Tool
 # ist der Chat-Pfad: zum Anpassen (oder manuell) nennt der Nutzer das Konto + optional den Ist-Betrag.
-# Resolve (Konto) + offene Faelligkeit (fn_interest_due_open) + Vorschlag (fn_interest_amount_due) in n8n,
-# Buchung via fn_book_interest_occurrence (amount fehlt -> DB-berechnet; gesetzt -> Override).
+# amount fehlt -> DB-berechnet; gesetzt -> Override (fn_book_interest_occurrence).
 function Build-BookInterest {
-    # Enge Paket-Schreibrolle (finance_rw, Least-Privilege D10) statt Owner-Cred.
+    # Enge Paket-Schreibrolle (finance_rw) statt Owner-Cred.
     $CRED_POSTGRES = $CRED_FINANCE_RW
-    # actual_amount OPTIONAL (Default '' -> DB berechnet den Zins selbst).
+    # actual_amount optional (leer -> DB berechnet den Zins selbst).
     $trig = Build-Trigger @('account_name', 'actual_amount')
 
     $resAcct = Build-Pg 'Resolve Account' @(220, 0) `
@@ -32,10 +31,7 @@ function Build-BookInterest {
     $errOcc = Build-ToolError 'No open occurrence' @(1100, 220) `
         "=No open interest occurrence for '{{ `$('Start').item.json.account_name }}'. Either already credited for this period or not yet due (90-day window)."
 
-    # "DB ist das Gesetz": fn_book_interest_occurrence laeuft als Probelauf VOR der Karte (amount<=0, auch ein
-    # berechneter 0-Vorschlag, bereits gebucht -> {ok:false} ohne Karte); derselbe Param-Satz geht nach dem Gate
-    # in den echten Write. transaction_date=value_date (Gutschrift-Datum), interest_period_end=period_end
-    # (Idempotenz-/booked-Key); amount leer -> DB-berechnet, gesetzt -> Override.
+    # transaction_date=value_date (Gutschrift-Datum), interest_period_end=period_end (Idempotenz-/booked-Key).
     $wg = New-FnWriteGate -Fn 'finance.fn_book_interest_occurrence' -DryPos @(1100, 0) -WritePos @(2420, 0) `
         -WriteName 'Book interest (atomic)' `
         -WriteSelect "(r->>'ok')::boolean AS ok, r->>'reason' AS reason, (r->>'transaction_id')::int AS transaction_id, (r->>'amount')::numeric AS amount, (r->>'account_balance')::numeric AS account_balance" `
@@ -46,8 +42,7 @@ function Build-BookInterest {
             amount     = '$(''Start'').item.json.actual_amount'
         })
 
-    # HITL-Summary (Textkatalog): Gutschrift-Datum (value_date) + abgedeckte Periode (period_end) + berechneter
-    # Vorschlag + tatsaechlich gebuchter Betrag (Override falls genannt, sonst Vorschlag); Waehrung = Konto-Waehrung.
+    # Gebuchter Betrag = Override falls genannt, sonst Vorschlag; Waehrung = Konto-Waehrung.
     $S = "`$('Start').item.json"
     $O = "`$('Find occurrence').item.json"
     $summary = New-HitlSummary -Pos @(1760, 0) -Title 'finance.hitl.book_interest' -TitleParams @{ account = "$O.account_name" } -LinesExpr $wg.CardLinesExpr -Lines @(
@@ -65,7 +60,6 @@ function Build-BookInterest {
 
     $retCancelled = Build-ToolCancelled 'Return cancelled' @(2420, 240) 'the book_interest action'
 
-    # Atomarer Write via fn_book_interest_occurrence ($wg.Write, Params siehe oben).
     $ifWriteOk = Build-If 'Write ok?' @(2640, 0) "={{ `$json.ok }}" 'true' 'equals' 'boolean'
 
     $errWrite = Build-ToolError 'Interest rejected' @(2860, 240) `

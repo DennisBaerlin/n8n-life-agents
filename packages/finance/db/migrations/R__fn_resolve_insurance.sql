@@ -1,7 +1,8 @@
 -- ============================================================
--- fn_resolve_insurance
+-- fn_resolve_insurance (READ, STABLE)
 --   Loest Versicherungs-Name in ID auf (Vorbild: fn_resolve_account).
 --   Liefert Mehrdeutigkeits-Info (hit_count/candidates).
+--   Rueckgabe: TABLE(id, hit_count, candidates); id nur bei genau einem Treffer.
 --   p_active_only: wenn TRUE, nur status='active'.
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_resolve_insurance(

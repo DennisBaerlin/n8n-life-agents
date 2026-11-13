@@ -1,8 +1,8 @@
 -- ============================================================
--- finance.fn_account_emoji_page(p_account_id, p_page, p_lang) -- eine Seite der Knopf-Liste fuer das Konto-Zeichen
+-- fn_account_emoji_page (READ, STABLE) -- eine Seite der Knopf-Liste fuer das Konto-Zeichen
 --   Die eine Stelle fuer Reihenfolge und Seiten: erst die sechs der Kontoart (erstes = Ersatz-Zeichen), dann die uebrigen
 --   in Listen-Reihenfolge; 24 Zeichen = vier Seiten zu je sechs (n8n-Tastaturen sind statisch, Telegram lehnt leere Knoepfe ab).
---   Rueckgabe core-neutrale choice_card {text, options:[6 x {text, data}], more:{text, data}}, more zeigt nach Seite 3 auf 0.
+--   Eingabe: p_account_id, p_page (0-3), p_lang. Rueckgabe core-neutrale choice_card {text, options:[6 x {text, data}], more:{text, data}}, more zeigt nach Seite 3 auf 0.
 --   data = acem:<id>:<zeichen> bzw. acem:<id>:more:<seite> (finance.fn_handle_account_emoji_cb). NULL: Konto unbekannt oder Seite ausserhalb 0-3.
 --   Tests: tests/db/finance/test_fn_account_emoji_page.sql
 -- ============================================================

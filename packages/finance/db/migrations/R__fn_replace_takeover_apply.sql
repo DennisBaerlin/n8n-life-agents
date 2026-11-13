@@ -1,19 +1,19 @@
 -- ============================================================
 -- fn_replace_takeover_apply (INTERNER WRITE-BAUSTEIN, kein Tool) -- Uebernahme-Gruppen durch datierte Lots ersetzen
---   Die EINE Stelle, die "neue Lots buchen -> alte Uebernahme-Gruppe(n) voiden -> Audit stempeln" ausfuehrt.
+--   Die eine Stelle, die "neue Lots buchen -> alte Uebernahme-Gruppe(n) voiden -> Audit stempeln" ausfuehrt.
 --   Aufrufer: fn_replace_takeover_with_lots (CSV-/Export-Weg, eine alte Gruppe je Position) und fn_replace_holding_lots
 --   (eingetippte Liste, alle Uebernahme-Gruppen einer Position). Plan, Fingerabdruck, Pruefungen und Karte bleiben beim
 --   Aufrufer; dieser Baustein bekommt schon geprueft-berechnete Lots und schreibt nur.
---   Bewusst POSITIONALE Argumente, kein jsonb-Payload (kein LLM-/Staging-Zugang, wie fn_book_takeover_pair).
+--   Bewusst positionale Argumente, kein jsonb-Payload (kein LLM-/Staging-Zugang, wie fn_book_takeover_pair).
 --   Eingabe: p_holding, p_settle (Verrechnungskonto des Depots), p_lots = jsonb-Array [{date, shares, price, fee, cash}]
---   (cash=true: echter Kauf OHNE Gegenbuchung = Cash-Abfluss, nur der Export-Weg fuer Kaeufe nach dem bestaetigten
+--   (cash=true: echter Kauf ohne Gegenbuchung = Cash-Abfluss, nur der Export-Weg fuer Kaeufe nach dem bestaetigten
 --   Kontostand-Tag; false: cash-neutrales Uebernahme-Paar), p_old_group_ids = die alten Uebernahme-Gruppen, die vorher
---   ermittelt wurden (VOR dem ersten Write, sonst fiele die neue Gruppe mit hinein), p_label = Kennung fuer den Buchungstext.
---   Ablauf: alle Lots in EINER neuen group_id (ein Write = eine group_id = ein Void) ueber fn_book_takeover_pair; danach
+--   ermittelt wurden (vor dem ersten Write, sonst fiele die neue Gruppe mit hinein), p_label = Kennung fuer den Buchungstext.
+--   Ablauf: alle Lots in einer neuen group_id (ein Write = eine group_id = ein Void) ueber fn_book_takeover_pair; danach
 --   je alte Gruppe fn_void_transaction (Audit, Oversell-/Reserve-Guards) und transaction_audit.reason = 'replaced_by_lots',
 --   replaced_by_group = neue group_id. Ein Lot, das der Aufrufer nicht vorab geprueft hat, oder ein abgelehntes Void ist
 --   ein echter Defekt -> RAISE (Rollback der ganzen Transaktion).
---   RUECKGABE: {group_id, cash_lots_count}
+--   Rueckgabe: {group_id, cash_lots_count}
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_replace_takeover_apply(
     p_holding int, p_settle int, p_lots jsonb, p_old_group_ids uuid[], p_label text)

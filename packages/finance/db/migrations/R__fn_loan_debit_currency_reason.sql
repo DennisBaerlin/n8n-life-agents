@@ -1,10 +1,10 @@
 -- ============================================================
 -- fn_loan_debit_currency_reason (READ, STABLE) -- Waehrungs-Guard fuer Kredit-Zahlungen
 --   Rate und Abloesung sind Betraege in Kreditwaehrung (Waehrung des Kreditkontos); zahlt ein Konto anderer
---   Waehrung, wuerde derselbe Betrag still als Fremdwaehrung abgebucht. Eine Adresse fuer fn_book_loan_payment
---   und fn_settle_loan (Anlage: fn_create_loan haelt Kredite in EUR).
---   EINGANG: p_debit_account_id (zahlendes Konto), p_loan_account_id (Kreditkonto).
---   RUECKGABE: NULL = gleiche Waehrung (oder ein Konto unbekannt -> die Aufrufer-Guards greifen) |
+--   Waehrung, wuerde derselbe Betrag still als Fremdwaehrung abgebucht. Die eine Adresse fuer fn_book_loan_payment
+--   und fn_settle_loan (fn_create_loan haelt Kredite in EUR).
+--   Eingabe: p_debit_account_id (zahlendes Konto), p_loan_account_id (Kreditkonto), beide Pflicht.
+--   Rueckgabe: NULL = gleiche Waehrung (oder ein Konto unbekannt -> die Aufrufer-Guards greifen) |
 --   englischer reason-Text fuer {ok:false, reason}.
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_loan_debit_currency_reason(p_debit_account_id int, p_loan_account_id int)

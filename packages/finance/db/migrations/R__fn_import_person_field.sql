@@ -1,5 +1,5 @@
 -- ============================================================
--- fn_import_person_field (READ, IMMUTABLE) -- das EINE Personen-Feld je entity_type (NULL = Typ ohne Person):
+-- fn_import_person_field (READ, IMMUTABLE) -- das eine Personen-Feld je entity_type (NULL = Typ ohne Person):
 --   account/real_estate/pension -> owner_person, insurance -> policyholder_person, loan -> borrower_person,
 --   savings_goal -> beneficiary_person (gleiche Namen wie die create_*-Tools). Genutzt von fn_import_resolve_persons
 --   (Aufloesung zum Slug), fn_import_card_rows (Personenname auf der Karte) und dem Build-Abgleich der Kartenfelder

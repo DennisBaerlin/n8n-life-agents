@@ -1,11 +1,12 @@
 -- ============================================================
--- fn_resolve_account
+-- fn_resolve_account (READ, STABLE)
 --   Loest Account-Name in ID auf. Liefert Mehrdeutigkeits-Info,
 --   damit Helper bei hit_count > 1 dem Nutzer die Treffer praesentieren koennen.
+--   Rueckgabe: TABLE(id, hit_count, candidates, currency, label); id nur bei genau einem Treffer.
 --   p_types: optional Filter als TEXT[], z. B. ARRAY['stocks_depot','crypto_depot']
 --            (intern auf finance.account_type gecastet)
 --   p_active_only: wenn TRUE, nur status='active'
---   currency: Kontowaehrung des eindeutigen Treffers (NULL bei 0/>1) — die EINE Quelle fuer HITL-Karten, die einen
+--   currency: Kontowaehrung des eindeutigen Treffers (NULL bei 0/>1) — die eine Quelle fuer HITL-Karten, die einen
 --   Betrag in der Waehrung des aufgeloesten Kontos zeigen (statt eines Subselects je Tool).
 --   label: Anzeigename mit Konto-Zeichen (fn_account_label), auch je Candidate; NULL bei 0/>1. name bleibt die Tool-Eingabe.
 --   Namensvergleich: erst exakt, nur bei 0 Treffern ohne Gross-/Kleinschreibung (finance.fn_name_matches); bei weiter 0 Treffern ein

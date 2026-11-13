@@ -3,8 +3,7 @@
 
 # --- tool_set_savings_goal (set_*: Sparziel aendern, Rate neu rechnen) ---
 function Build-SetSavingsGoal {
-    # WS-B0: enge Paket-Schreibrolle (finance_rw, Least-Privilege D10) statt Owner-Cred.
-    # Dynamic-Scope: Build-Pg liest dieses $CRED_POSTGRES. Core-Tools nutzen die Owner-Cred.
+    # Enge Paket-Schreibrolle (finance_rw) statt Owner-Cred; Build-Pg liest $CRED_POSTGRES per Dynamic-Scope.
     $CRED_POSTGRES = $CRED_FINANCE_RW
     $trig = Build-Trigger @('goal_name','new_name','target_amount','target_date','status','notes','beneficiary_person','reserve_account_name','priority','link_savings_plan_name','unlink_savings_plan_name','stop_funders','account_name','replace_transfer','monthly_savings_rate','kind','target_months','depot_risk_accepted','handoff_task_id')
 
@@ -21,7 +20,7 @@ function Build-SetSavingsGoal {
         "=SELECT target_amount, target_date, status::text AS status FROM finance.savings_goals WHERE id = ((`$1::jsonb)->>'id')::int;" `
         ([ordered]@{ id = '$(''Resolve Goal'').item.json.id' })
 
-    # WS-4: optionale beguenstigte Person aufloesen (Name -> Slug; leer = unveraendert).
+    # Optionale beguenstigte Person aufloesen (Name -> Slug; leer = unveraendert).
     $resPerson = Build-ResolvePerson 'Resolve Person' @(880, 360) 'beneficiary_person'
 
     $ifPersonBad = Build-If 'Person invalid?' @(1100, 360) `
@@ -30,9 +29,9 @@ function Build-SetSavingsGoal {
     $errPerson = Build-ToolError 'Person unresolved' @(1320, 480) `
         "=The beneficiary '{{ `$('Start').item.json.beneficiary_person }}' could not be uniquely resolved ({{ `$('Resolve Person').item.json.hit_count }} match(es)). Candidates: {{ JSON.stringify(`$('Resolve Person').item.json.candidates) }}. Ask which household member."
 
-    # WS-A: optionaler Reserve-Topf (Name -> id, saldo-basiert: finance.fn_goal_pot_account_types) — OPTIONAL wie beneficiary_person.
+    # Optionaler Reserve-Topf (Name -> id, saldo-basiert: finance.fn_goal_pot_account_types), optional wie beneficiary_person.
     # Leer -> id NULL -> fn laesst den Topf unveraendert. Gesetzt -> rate.target_account_id zieht mit (Rate wird Umbuchung);
-    # ALTE getaggte Buchungen bleiben dem Ziel zugeordnet (nur kuenftiges Routing aendert sich).
+    # alte getaggte Buchungen bleiben dem Ziel zugeordnet (nur kuenftiges Routing aendert sich).
     $resReserve = Build-Pg 'Resolve Reserve' @(880, 600) `
         "=SELECT id, hit_count, candidates FROM finance.fn_resolve_account(NULLIF((`$1::jsonb)->>'reserve_account_name', ''), finance.fn_goal_pot_account_types()::text[]);" `
         ([ordered]@{ reserve_account_name = '$(''Start'').item.json.reserve_account_name' })
@@ -43,7 +42,7 @@ function Build-SetSavingsGoal {
     $errReserve = Build-ToolError 'Reserve unresolved' @(1320, 720) `
         "=The reserve account '{{ `$('Start').item.json.reserve_account_name }}' could not be uniquely resolved ({{ `$('Resolve Reserve').item.json.hit_count }} match(es)). Candidates: {{ JSON.stringify(`$('Resolve Reserve').item.json.candidates) }}. Ask which exact cash/Tagesgeld, fixed-deposit or P2P account."
 
-    # Sparziel-Zweckbindung 2026-10-27: optionales Abbuchungskonto, um fuer ein Ziel OHNE laufende Rate eine Rate auf dem
+    # Optionales Abbuchungskonto, um fuer ein Ziel ohne laufende Rate eine Rate auf dem
     # Rest anzulegen (fn_set_savings_goal entscheidet; leer = keine neue Rate).
     $resFund = Build-Pg 'Resolve Funding' @(1320, 0) `
         "=SELECT id, hit_count, candidates FROM finance.fn_resolve_account(NULLIF((`$1::jsonb)->>'account_name', ''), ARRAY['cash','p2p']);" `
@@ -55,9 +54,7 @@ function Build-SetSavingsGoal {
     $errFund = Build-ToolError 'Funding unresolved' @(1760, 200) `
         "=The debit account '{{ `$('Start').item.json.account_name }}' could not be uniquely resolved ({{ `$('Resolve Funding').item.json.hit_count }} match(es)). Candidates: {{ JSON.stringify(`$('Resolve Funding').item.json.candidates) }}. Ask which exact account."
 
-    # "DB ist das Gesetz": fn_set_savings_goal laeuft als Probelauf VOR der Karte (kein Topf fuer eine neue Rate, Zieldatum
-    # Vergangenheit, Sparplan-Link-Konflikte usw. -> {ok:false} ohne Karte); derselbe Param-Satz geht nach dem Gate in
-    # den echten Write (Rate aus Rest-Betrag/Rest-Zeit + Recurring-Sync + Status-Kaskade).
+    # Im Write: Rate aus Rest-Betrag/Rest-Zeit + Recurring-Sync + Status-Kaskade.
     $wg = New-FnWriteGate -Fn 'finance.fn_set_savings_goal' -DryPos @(1760, 0) -WritePos @(3080, 0) `
         -WriteName 'Set goal (atomic)' `
         -WriteSelect "(r->>'ok')::boolean AS ok, r->>'reason' AS reason, r->'depot_risk' AS depot_risk, (r->>'goal_id')::int AS goal_id, (r->>'recurring_payment_id')::int AS recurring_payment_id, (r->>'new_monthly_rate')::numeric AS new_monthly_rate, COALESCE((r->>'covered')::boolean, false) AS covered, (r->>'required_monthly_rate')::numeric AS required_monthly_rate, COALESCE(r->>'note', '') AS rate_note, (r->>'linked_savings_plan_id')::int AS linked_savings_plan_id, (r->>'paused_cash_rate')::boolean AS paused_cash_rate, (r->>'paused_plan_count')::int AS paused_plan_count, (r->>'replaced_transfer_id')::int AS replaced_transfer_id, COALESCE(r->'savings_squeeze'->>'note', '') AS savings_squeeze" `
@@ -81,11 +78,10 @@ function Build-SetSavingsGoal {
             monthly_savings_rate     = '$(''Start'').item.json.monthly_savings_rate'
             kind                     = '$(''Start'').item.json.kind'                  # Notreserve: Umwidmung goal -> emergency_reserve
             target_months            = '$(''Start'').item.json.target_months'
-            depot_risk_accepted      = '$(''Start'').item.json.depot_risk_accepted'   # 2026-11-06: das bleibt so (true) | erinnere mich wieder (false)
+            depot_risk_accepted      = '$(''Start'').item.json.depot_risk_accepted'   # das bleibt so (true) | erinnere mich wieder (false)
         })
 
-    # Strukturiertes Summary (Textkatalog): nur gelieferte Felder (-If je Zeile). Zielbetrag alt/neu in EUR-Konvention,
-    # Zieldatum alt/neu als Datum.
+    # Nur gelieferte Felder (-If je Zeile). Zielbetrag alt/neu in EUR-Konvention, Zieldatum alt/neu als Datum.
     $S = "`$('Start').item.json"
     $R = "`$('Read Current').item.json"
     $P = "`$('Resolve Person').item.json"
@@ -127,7 +123,6 @@ function Build-SetSavingsGoal {
 
     $retCancelled = Build-ToolCancelled 'Return cancelled' @(3080, 240) 'the set_savings_goal action'
 
-    # Atomarer Write via fn_set_savings_goal ($wg.Write, 'Set goal (atomic)').
     $ifWriteOk = Build-If 'Write ok?' @(3300, 0) "={{ `$json.ok }}" 'true' 'equals' 'boolean'
 
     $errWrite = Build-ToolError 'Update rejected' @(3520, 240) `
@@ -135,7 +130,7 @@ function Build-SetSavingsGoal {
 
     $ret = Build-Return @(3520, 0) @(
         ,@('ok','true','boolean')
-        # Sparziel kurz vor dem Termin im Depot (2026-11-06): nach "Risiko eingehen" festgehalten + Monat des letzten Checks
+        # Sparziel kurz vor dem Termin im Depot: nach "Risiko eingehen" festgehalten + Monat des letzten Checks
         ,@('depot_risk_recorded', "={{ !!`$('Set goal (atomic)').item.json.depot_risk }}", 'boolean')
         ,@('depot_risk_reminder_month', "={{ (`$('Set goal (atomic)').item.json.depot_risk || {}).reminder_month || '' }}", 'string')
         ,@('goal_id', "={{ `$('Set goal (atomic)').item.json.goal_id }}", 'number')

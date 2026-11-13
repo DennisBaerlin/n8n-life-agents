@@ -1,8 +1,8 @@
 -- ============================================================
--- fn_possible_duplicate_note (KARTEN-HINWEIS "MOEGLICHE DOPPELBUCHUNG", Paket DB-ist-das-Gesetz S6)
---   Ersetzt die Prompt-Regel "vor jeder Buchung 15 Tage per ILIKE durchsuchen und nachfragen" durch eine
---   deterministische, hohe Schwelle: auf p_account existiert schon eine Buchung mit GENAU diesem Betrag (mit
---   Vorzeichen) innerhalb von +-3 Tagen um p_date. Ergebnis = card_lines-Array (leer oder eine Note):
+-- fn_possible_duplicate_note (READ, STABLE — Karten-Hinweis "moegliche Doppelbuchung")
+--   Deterministische, hohe Schwelle statt Prompt-Suche: auf p_account existiert schon eine Buchung mit genau diesem
+--   Betrag (mit Vorzeichen) innerhalb von +-3 Tagen um p_date.
+--   Eingabe: p_account, p_signed_amount, p_date. Rueckgabe = card_lines-Array (leer oder eine Note):
 --     [{kind:'note', value:'finance.note.possible_duplicate', params:{date, amount}}]
 --   Kein Block: legitime Wiederholungen (Tankstelle, Abo) bleiben buchbar, der Nutzer sieht den Hinweis auf der Karte.
 --   Konsumenten: fn_book_transaction, fn_book_transfer (Abgangskonto).

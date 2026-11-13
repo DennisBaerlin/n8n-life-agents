@@ -1,6 +1,6 @@
 -- ============================================================
 -- fn_settlement_account_reason (READ, STABLE) -- warum ein Konto nicht Verrechnungskonto sein kann, sonst NULL
---   Die EINE Pruefung fuer fn_create_account und fn_set_account (Bank-Import-Modul Paket 2). Ein Verrechnungskonto
+--   Die eine Pruefung fuer fn_create_account und fn_set_account (Bank-Import-Modul). Ein Verrechnungskonto
 --   haben nur Depots (dort laufen Kaeufe/Verkaeufe) und P2P-Konten (das verifizierte Auszahlungskonto, z. B. Bondora:
 --   der Monats-Check paart Ein-/Auszahlungen ohne Gegen-IBAN damit); CHECK finance_accounts_settlement_kind = Backstop.
 --   Das Verrechnungskonto muss Geld tragen koennen (fn_bookable_account_reason), darf nicht das Konto selbst sein, bei

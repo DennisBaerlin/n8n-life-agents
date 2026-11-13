@@ -1,13 +1,13 @@
 -- ============================================================
--- fn_emergency_reserve_covered (READ, STABLE) -- gedecktes Notreserve-Geld je Konto in EUR (2026-10-30)
---   Die EINE Adresse fuer „wie viel der Notreserve ist wirklich da“: je zulaessigem Konto
+-- fn_emergency_reserve_covered (READ, STABLE) -- gedecktes Notreserve-Geld je Konto in EUR
+--   Die eine Adresse fuer „wie viel der Notreserve ist wirklich da“: je zulaessigem Konto
 --   (fn_emergency_reserve_account_ok: aktiv, Geld-Konto, kein Kinderkonto) der Anteil der aktiven Notreserve
---   (savings_goal_account_share), hoechstens der positive Saldo NACH den Anteilen der anderen aktiven Ziele auf demselben
+--   (savings_goal_account_share), hoechstens der positive Saldo nach den Anteilen der anderen aktiven Ziele auf demselben
 --   Konto. Die Notreserve steht im Rang nach den normalen Zielen (konservativ, kein Saldo zaehlt doppelt); fliesst Geld
---   ab, schrumpft die Deckung von selbst (Monarch „Allocated vs. Available“, arch-challenge 2026-10-30).
+--   ab, schrumpft die Deckung von selbst.
 --   Konsumenten: fn_emergency_reserve_status (Deckung, Konten), fn_liquidity_snapshot (emergency_eur; Runway zaehlt sie
---   als verfuegbar).
---   RUECKGABE: (account_id, account_name, share_eur, covered_eur, fx_gap) je Konto mit Notreserve-Anteil > 0 oder mit einem
+--   als verfuegbar). Keine Eingabe.
+--   Rueckgabe: (account_id, account_name, share_eur, covered_eur, fx_gap) je Konto mit Notreserve-Anteil > 0 oder mit einem
 --   Notreserve-Anteil ohne Wechselkurs (fx_gap; sonst fiele das Konto still heraus und der Status meldete warn statt neutral)
 --   Tests: tests/db/finance/test_fn_emergency_reserve_status.sql
 -- ============================================================

@@ -1,29 +1,30 @@
 -- ============================================================
 -- fn_create_insurance (ATOMIC WRITE)
---   Legt die Beitrags-Kette (recurring_payment, negativer Betrag JE ABBUCHUNG) + insurance an und verknuepft sie
---   (recurring_payment_id), beides in EINER Transaktion. Eingabe als jsonb:
+--   Legt die Beitrags-Kette (recurring_payment, negativer Betrag je Abbuchung) + insurance an und verknuepft sie
+--   (recurring_payment_id), beides in einer Transaktion. Eingabe als jsonb:
 --     name, insurance_company, policy_number, policyholder_person_id (Slug, NULL=Haushalt), notes,
---     premium_amount (Betrag je Abbuchung; dann schedule_unit Pflicht) ODER annual_premium (Jahresbeitrag; Rhythmus-Default
+--     premium_amount (Betrag je Abbuchung; dann schedule_unit Pflicht) oder annual_premium (Jahresbeitrag; Rhythmus-Default
 --     jaehrlich), schedule_interval (-> 1), schedule_unit, schedule_day_of_month, valid_from (Vertragsbeginn),
 --     first_payment_date, debit_account_id (im Tool bzw. Import aufgeloest),
---     insurance_type/beneficiary/coverage_amount/claim_deadline_hours (WS-0b estate: optionale Nachlass-
+--     insurance_type/beneficiary/coverage_amount/claim_deadline_hours (optionale Nachlass-
 --     Felder, geschlossene insurance_type-Liste per CHECK; leer=NULL)
---   OHNE BEITRAG (Beitrag unbekannt; der Agent fragt einmal nach, sonst ohne): keine Beitrags-Kette
+--   Ohne Beitrag (Beitrag unbekannt; der Agent fragt einmal nach, sonst ohne): keine Beitrags-Kette
 --     (recurring_payment_id NULL = "Beitrag fehlt noch", der Monats-Check nennt die Police), Konto/erste Abbuchung/
 --     Rhythmus entfallen, valid_from ohne Angabe = heute. Nachtragen per fn_set_insurance (Beitrag + effective_from +
 --     Konto). Ein Platzhalter-Betrag ist fuer die DB ein normaler Beitrag; das Verbot steht in der Tool-Description.
---   EINE QUELLE (WP2 "Finanzen schlank", finance:V027): Beitrag, Rhythmus, Tag, Vertragsende und Konto stehen nur an der
+--   Eine Quelle (finance:V027): Beitrag, Rhythmus, Tag, Vertragsende und Konto stehen nur an der
 --   Beitrags-Kette; die Police traegt keine Kopie. Rohwerte liest + prueft fn_insurance_fields (dieselbe fn speist die
 --   Karten-Vorschau); den Jahres-/Monatswert leitet active_insurances ab -- das LLM rechnet nie um.
 --   first_payment_date = echtes erstes Abbuchungsdatum (Anker fuer den Faelligkeits-Scheduler; traegt bei
---   jaehrlich/quartalsweise den Monat+Tag). PFLICHT mit Beitrag (Owner-Entscheid 2026-10-23, wie Import und Kredit);
+--   jaehrlich/quartalsweise den Monat+Tag). Pflicht mit Beitrag (wie Import und Kredit);
 --   valid_from faellt auf first_payment_date zurueck, nicht umgekehrt.
 --   Beitrag/Versicherungssumme sind EUR nach Modell -> ein Abbuchungskonto in Fremdwaehrung wird abgelehnt (sonst liefe
 --   eine EUR-Rate still als Fremdwaehrungs-Betrag).
---   RUECKGABE: {ok:true, insurance_id, recurring_payment_id, premium_amount, annual_premium, monthly_equivalent (positiv,
---   aus der Beitrags-Zeile; alle drei NULL ohne Beitrag), premium_missing, card_lines} | {ok:false, reason} (Buchungstag,
---   Rhythmus/insurance_type unbekannt, Beitrag <= 0 oder unstimmig, Betrag unlesbar, Beitrag ohne Rhythmus oder ohne Konto, Versicherungssumme < 0, Meldefrist keine positive ganze Zahl,
---   erste Abbuchung fehlt, Konto nicht EUR oder nicht buchbar [Depot/Kredit]) OHNE Write.
+--   Rueckgabe: {ok:true, insurance_id, recurring_payment_id, premium_amount, annual_premium, monthly_equivalent (positiv,
+--   aus der Beitrags-Zeile; alle drei NULL ohne Beitrag), premium_missing, card_lines, effective} | {ok:false, reason}
+--   (Buchungstag, Rhythmus/insurance_type unbekannt, Beitrag <= 0 oder unstimmig, Betrag unlesbar, Beitrag ohne Rhythmus
+--   oder ohne Konto, Versicherungssumme < 0, Meldefrist keine positive ganze Zahl, erste Abbuchung fehlt, Konto nicht EUR
+--   oder nicht buchbar [Depot/Kredit]; code invalid_date bei unaufloesbarem Datum) ohne Write.
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_create_insurance(p jsonb)
 RETURNS jsonb LANGUAGE plpgsql AS $$
@@ -49,7 +50,7 @@ BEGIN
     IF NOT (v_dates->>'ok')::boolean THEN RETURN v_dates; END IF;
     p := v_dates->'p';
     v_first := NULLIF(p->>'first_payment_date', '')::date;
-    -- Rohwerte lesen + pruefen: EINE Adresse mit fn_set_insurance und der Karten-Vorschau (fn_insurance_fields).
+    -- Rohwerte lesen + pruefen: eine Adresse mit fn_set_insurance und der Karten-Vorschau (fn_insurance_fields).
     v_fields := finance.fn_insurance_fields(p);
     IF (v_fields->>'ok')::boolean IS DISTINCT FROM true THEN
         RETURN v_fields;
@@ -58,7 +59,7 @@ BEGIN
     v_annual   := (v_fields->>'annual_premium')::numeric;
     v_interval := (v_fields->>'schedule_interval')::smallint;
     v_unit     := (v_fields->>'schedule_unit')::finance.schedule_unit;
-    -- WP-2b: fester Buchungstag 1-28, -1 (Monatsletzter) oder -2 (vorletzter Tag); 29/30/31 overflowen kurze Monate.
+    -- Fester Buchungstag 1-28, -1 (Monatsletzter) oder -2 (vorletzter Tag); 29/30/31 overflowen kurze Monate.
     IF finance.fn_schedule_dom_reason(v_dom) IS NOT NULL THEN
         RETURN jsonb_build_object('ok', false, 'reason', finance.fn_schedule_dom_reason(v_dom));
     END IF;
@@ -92,7 +93,7 @@ BEGIN
         RETURN jsonb_build_object('ok', false, 'reason', v_reason);
     END IF;
 
-    -- Beitrags-Kette via gemeinsamen Helper (Teil 0: eine Quelle fuer den Insert); Betrag je Abbuchung roh.
+    -- Beitrags-Kette via gemeinsamen Helper (eine Quelle fuer den Insert); Betrag je Abbuchung roh.
     IF v_per IS NOT NULL THEN
         v_rp_id := finance.fn_add_recurring_payment(
             v_acct, -v_per, left('Versicherung ' || (p->>'name'), 100),
@@ -108,9 +109,9 @@ BEGIN
 
     INSERT INTO finance.insurances
         (name, insurance_company, policy_number, policyholder_person_id, valid_from, recurring_payment_id, status,
-         insurance_type, beneficiary, coverage_amount, claim_deadline_hours, notes)  -- WS-0b: estate-Nachlass-Felder
+         insurance_type, beneficiary, coverage_amount, claim_deadline_hours, notes)  -- estate-Nachlass-Felder
     VALUES (p->>'name', NULLIF(p->>'insurance_company', ''), NULLIF(p->>'policy_number', ''),
-            NULLIF(p->>'policyholder_person_id', ''),   -- WS-4: typisierter Versicherungsnehmer (Slug); NULL=Haushalt.
+            NULLIF(p->>'policyholder_person_id', ''),   -- typisierter Versicherungsnehmer (Slug); NULL=Haushalt.
             v_from, v_rp_id, 'active',
             NULLIF(p->>'insurance_type', ''), NULLIF(p->>'beneficiary', ''),
             (v_fields->>'coverage_amount')::numeric, (v_fields->>'claim_deadline_hours')::int, NULLIF(btrim(p->>'notes'), ''))

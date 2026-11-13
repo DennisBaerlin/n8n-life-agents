@@ -1,16 +1,16 @@
 -- ============================================================
--- finance.fn_price_gaps() — Kurs-Luecken fuer die taegliche Erinnerung (Kurs-Luecken 2026-10-27)
---   Liefert die gehaltenen Positionen ohne gueltigen Kurs (status missing|stale aus fn_holding_price_status) samt den
+-- fn_price_gaps (READ with side effect, VOLATILE — Kurs-Luecken fuer die taegliche Erinnerung)
+--   Eingabe: keine. Liefert die gehaltenen Positionen ohne gueltigen Kurs (status missing|stale aus fn_holding_price_status) samt den
 --   Plausi-Referenzen eines Symbol-Kandidaten (letzter Kurs price/price_currency, Einstand avg_price in currency) und
 --   die EUR-FX-Saetze (fn_fx_rate_map; Kandidat in anderer Waehrung -> Vergleich in EUR).
---   FEED-AUSFALL: hat keine gehaltene Position einen gueltigen Kurs, aber >= 2 hatten schon einen (stale), liefert
---   Yahoo offenbar gar nichts -> feed_down=true, stale_since = juengster Kurs; der Cron sendet dann EINE Meldung statt
+--   Feed-Ausfall: hat keine gehaltene Position einen gueltigen Kurs, aber >= 2 hatten schon einen (stale), liefert
+--   Yahoo offenbar gar nichts -> feed_down=true, stale_since = juengster Kurs; der Cron sendet dann eine Meldung statt
 --   einer Karte je Position (die Symbol-Suche fiele ohnehin aus).
---   RE-ARM (Seiteneffekt, darum VOLATILE): jede Position OHNE Luecke (auch verkaufte) bekommt
+--   Re-Arm (Seiteneffekt, darum VOLATILE): jede Position ohne Luecke (auch verkaufte) bekommt
 --   core.fn_notify_resolve('finance:prices', <id>), ohne Feed-Ausfall auch der Key 'feed_down' -> eine spaeter neu
---   entstehende Luecke meldet sofort. Bewusst NICHT core.fn_notify_reconcile: das ist advisor-only (kein Paket-Grant,
+--   entstehende Luecke meldet sofort. Bewusst nicht core.fn_notify_reconcile: das ist advisor-only (kein Paket-Grant,
 --   R__fn_provision_package_roles). Gemeldet (gelatcht) wird erst im Cron je Karte via fn_price_gap_claim.
---   RUECKGABE jsonb: { feed_down, stale_since, fx:{CCY: rate EUR->CCY, EUR:1},
+--   Rueckgabe: jsonb { feed_down, stale_since, fx:{CCY: rate EUR->CCY, EUR:1},
 --     gaps:[{holding_id, name, isin, symbol, feed_symbol, account_name, account_label, currency, status, price, price_currency,
 --            price_as_of, avg_price}] }
 --   Tests: tests/db/finance/test_fn_price_gaps.sql

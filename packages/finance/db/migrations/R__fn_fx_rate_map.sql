@@ -1,9 +1,9 @@
 -- ============================================================
--- finance.fn_fx_rate_map() — juengster EUR-Kurs je Fremdwaehrung als jsonb {CCY: rate, EUR: 1} (READ, 2026-10-27)
+-- fn_fx_rate_map (READ) -- juengster EUR-Kurs je Fremdwaehrung als jsonb {CCY: rate, EUR: 1}
 --   Fuer den Plausi-Check eines Kurs-Symbol-Kandidaten in Fremdwaehrung (agent.finance.sub_resolve_yahoo_symbol,
 --   Input fx_rates): Kandidaten-Kurs und Referenzkurs werden in EUR verglichen. rate = Einheiten der Waehrung je 1 EUR
---   (finance.fx_rates base EUR), wie fn_to_eur. EINE Adresse fuer fn_price_gaps (Kurs-Luecken-Erinnerung) und
---   tool_set_holding/tool_verify_price_symbol.
+--   (finance.fx_rates base EUR), wie fn_to_eur. Die eine Adresse fuer fn_price_gaps (Kurs-Luecken-Erinnerung) und
+--   tool_set_holding/tool_verify_price_symbol. Keine Eingabe.
 --   Tests: tests/db/finance/test_fn_price_gaps.sql
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_fx_rate_map()

@@ -1,15 +1,16 @@
 -- ============================================================
 -- fn_import_resolve_persons (read-only) — Personen-Feld einer Import-Zeile wie im Einzel-Tool aufloesen
---   Je entity_type genau EIN Personen-Feld (gleiche Namen wie die create_*-Tools):
+--   Je entity_type genau ein Personen-Feld (gleiche Namen wie die create_*-Tools):
 --     account/real_estate/pension -> owner_person, insurance -> policyholder_person,
 --     loan -> borrower_person, savings_goal -> beneficiary_person; alle anderen Typen: keins.
 --   Der Name wird ueber core.fn_resolve_person (publiziertes DEFINER-Fenster, unter finance_rw aufrufbar)
 --   zum Slug aufgeloest und als <feld>_id in den Payload gelegt — genau das Feld, das die fn_create_* lesen.
 --   Leer = Haushalt (kein Feld). Fremde/alte Personen-Keys (owner, account_holder, policyholder, borrower,
---   holder, *_person_id, ein *_person-Feld eines anderen Typs) wurden frueher still verworfen -> jetzt ein
---   klarer Zeilenfehler. Genutzt von fn_import_validate_row (Fehler frueh, vor dem Gate) UND fn_import_bundle
+--   holder, *_person_id, ein *_person-Feld eines anderen Typs) ergeben einen klaren Zeilenfehler (statt still
+--   verworfen zu werden). Genutzt von fn_import_validate_row (Fehler frueh, vor dem Gate) und fn_import_bundle
 --   (erneute Aufloesung beim Commit: kein TOCTOU zwischen Validate und Write).
---   RUECKGABE: {payload: <aufgeloester Payload>, error: <EN-Text|null>}
+--   Eingabe: p_type (entity_type), p (Zeilen-Payload).
+--   Rueckgabe: {payload: <aufgeloester Payload>, error: <EN-Text|null>}
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_import_resolve_persons(p_type text, p jsonb)
 RETURNS jsonb LANGUAGE plpgsql STABLE AS $$

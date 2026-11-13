@@ -6,8 +6,8 @@
 --   Historie vorhanden -> Soft-Close: pension.status='paused'; RP.status='paused' +
 --     valid_to=CURRENT_DATE (Beitrag endet im Cashflow, Historie bleibt).
 --   Eingabe jsonb: pension_name.
---   RUECKGABE: {ok:true, action:'deleted'|'closed', tx_count}. RAISE fuer echte
---   Ausnahmen (nicht gefunden / mehrdeutig).
+--   Rueckgabe: {ok:true, action:'deleted'|'closed', tx_count} | {ok:false, code:'not_found'|'ambiguous', reason,
+--   candidates}.
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_close_pension(p jsonb)
 RETURNS jsonb LANGUAGE plpgsql AS $$

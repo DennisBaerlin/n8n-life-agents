@@ -1,9 +1,10 @@
 -- ============================================================
--- fn_real_estate_facts_reason (VALIDIERUNG, Instandhaltungsruecklage 2026-10-27)
---   Die EINE Pruefung der Gebaeude-Fakten einer Immobilie fuer fn_create_real_estate, fn_set_real_estate und die
+-- fn_real_estate_facts_reason (READ, STABLE — Validierung der Gebaeude-Fakten einer Immobilie)
+--   Die eine Pruefung der Gebaeude-Fakten einer Immobilie fuer fn_create_real_estate, fn_set_real_estate und die
 --   Import-Validierung: living_area_m2 (Zahl > 0, Punkt als Dezimaltrenner) und year_built (vierstelliges Jahr,
 --   1800 bis heute; "nicht in der Zukunft" kann der CHECK nicht, er haelt nur 1800-2200). Leer = nicht gesetzt.
---   RUECKGABE: NULL (ok) oder ein englischer Grund fuer {ok:false, reason}.
+--   Eingabe: p (jsonb mit optional living_area_m2, year_built).
+--   Rueckgabe: NULL (ok) oder ein englischer Grund fuer {ok:false, reason}.
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_real_estate_facts_reason(p jsonb)
 RETURNS text LANGUAGE plpgsql STABLE AS $$

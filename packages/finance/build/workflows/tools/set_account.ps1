@@ -3,8 +3,7 @@
 
 # --- tool_set_account (set_*: Konto-Stammdaten aendern) -----
 function Build-SetAccount {
-    # WS-B0: enge Paket-Schreibrolle (finance_rw, Least-Privilege D10) statt Owner-Cred.
-    # Dynamic-Scope: Build-Pg liest dieses $CRED_POSTGRES. Core-Tools nutzen die Owner-Cred.
+    # Enge Paket-Schreibrolle (finance_rw) statt Owner-Cred; Build-Pg liest $CRED_POSTGRES per Dynamic-Scope.
     $CRED_POSTGRES = $CRED_FINANCE_RW
     $trig = Build-Trigger @('account_name','new_name','bank','account_number','remove_account_number','owner_person','settlement_account',
                            'notes','fixed_deposit_maturity_date','fixed_deposit_auto_renew',
@@ -22,7 +21,7 @@ function Build-SetAccount {
     $errAcct = Build-ToolError 'Account ambiguous' @(660, 200) `
         "=Account '{{ `$('Start').item.json.account_name }}' resolves to {{ `$('Resolve Account').item.json.hit_count }} matches. Candidates: {{ JSON.stringify(`$('Resolve Account').item.json.candidates) }}. Ask the user which exact account."
 
-    # WS-4: optionalen Eigentuemer-Wechsel aufloesen (Name -> Slug; leer = unveraendert).
+    # Optionalen Eigentuemer-Wechsel aufloesen (Name -> Slug; leer = unveraendert).
     $resPerson = Build-ResolvePerson 'Resolve Person' @(660, 360) 'owner_person'
 
     $ifPersonBad = Build-If 'Person invalid?' @(880, 360) `
@@ -31,7 +30,7 @@ function Build-SetAccount {
     $errPerson = Build-ToolError 'Person unresolved' @(1100, 480) `
         "=The owner person '{{ `$('Start').item.json.owner_person }}' could not be uniquely resolved ({{ `$('Resolve Person').item.json.hit_count }} match(es)). Candidates: {{ JSON.stringify(`$('Resolve Person').item.json.candidates) }}. Ask which household member."
 
-    # Bank-Import-Modul: optionales Verrechnungskonto (Name -> id; leer = unveraendert). Muster tool_create_account
+    # Optionales Verrechnungskonto (Name -> id; leer = unveraendert). Muster tool_create_account
     # (Resolve Settlement); ob die Kontoart eins haben darf, prueft die DB (fn_settlement_account_reason) im Probelauf.
     $resSettle = Build-Pg 'Resolve Settlement' @(1100, 360) `
         "=SELECT id, hit_count, candidates FROM finance.fn_resolve_account(NULLIF((`$1::jsonb)->>'settlement_account', ''), NULL, TRUE);" `
@@ -41,8 +40,6 @@ function Build-SetAccount {
     $errSettle = Build-ToolError 'Settlement unresolved' @(1540, 480) `
         "=Settlement account '{{ `$('Start').item.json.settlement_account }}' resolves to {{ `$('Resolve Settlement').item.json.hit_count }} matches. Candidates: {{ JSON.stringify(`$('Resolve Settlement').item.json.candidates) }}. Ask the user which exact account."
 
-    # "DB ist das Gesetz": fn_set_account laeuft als Probelauf VOR der Karte; derselbe Param-Satz geht nach dem Gate
-    # in den echten Write (partielles UPDATE der Stammdaten).
     $wg = New-FnWriteGate -Fn 'finance.fn_set_account' -DryPos @(880, 0) -WritePos @(2200, 0) `
         -WriteName 'Set account (atomic)' `
         -WriteSelect "(r->>'ok')::boolean AS ok, r->>'reason' AS reason, (r->>'account_id')::int AS account_id, r->>'label' AS label" `
@@ -51,13 +48,13 @@ function Build-SetAccount {
             name                        = '$(''Start'').item.json.new_name'
             bank                        = '$(''Start'').item.json.bank'
             account_number              = '$(''Start'').item.json.account_number'
-            remove_account_number       = '$(''Start'').item.json.remove_account_number'   # Import zuerst: falsche IBAN entfernen
+            remove_account_number       = '$(''Start'').item.json.remove_account_number'   # falsche IBAN entfernen
             owner_person_id            = '$(''Resolve Person'').item.json.person_id'
             settlement_id               = '($(''Start'').item.json.settlement_account ? $(''Resolve Settlement'').item.json.id : null)'
             notes                       = '$(''Start'').item.json.notes'
             fixed_deposit_maturity_date = '$(''Start'').item.json.fixed_deposit_maturity_date'
             fixed_deposit_auto_renew    = '$(''Start'').item.json.fixed_deposit_auto_renew'
-            ownership                   = '$(''Start'').item.json.ownership'              # WS-0b estate
+            ownership                   = '$(''Start'').item.json.ownership'              # Nachlass-Feld
             has_transmortal_poa         = '$(''Start'').item.json.has_transmortal_poa'
             min_balance                 = '$(''Start'').item.json.min_balance'            # Puffer je Konto
             min_balance_default         = '$(''Start'').item.json.min_balance_default'
@@ -65,7 +62,7 @@ function Build-SetAccount {
             emoji_default               = '$(''Start'').item.json.emoji_default'
         })
 
-    # HITL: nur die tatsaechlich gelieferten Felder anzeigen (-If je Zeile). Strukturiertes Summary (Textkatalog).
+    # HITL: nur die tatsaechlich gelieferten Felder anzeigen (-If je Zeile).
     # Einziger Geldbetrag: der Puffer (min_balance) in Kontowaehrung.
     $S = "`$('Start').item.json"
     $P = "`$('Resolve Person').item.json"
@@ -97,7 +94,6 @@ function Build-SetAccount {
 
     $retCancelled = Build-ToolCancelled 'Return cancelled' @(2200, 240) 'the set_account action'
 
-    # Atomarer Write via fn_set_account ($wg.Write, 'Set account (atomic)'): partielles UPDATE der Stammdaten.
     # Korrigierbare Ablehnung nach dem Tipp (z. B. Kontonummer inzwischen vergeben) -> reason an den Agenten.
     $ifWriteOk = Build-If 'Write ok?' @(2420, 0) "={{ `$json.ok }}" 'true' 'equals' 'boolean'
     $errWrite = Build-ToolError 'Account not changed' @(2640, 200) `

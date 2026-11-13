@@ -1,6 +1,5 @@
 ﻿#Requires -Version 5.1
-# Shared InputSpecs der 4 Bulk-Import-Tools des finance-Pakets (Review A5, Hardening-Phase Session 1;
-# Phase D: aus der Engine scripts/build/lib/ ins besitzende Paket gezogen). Helper-Datei ohne Build-*
+# Shared InputSpecs der 4 Bulk-Import-Tools des finance-Pakets. Helper-Datei ohne Build-*
 # (die Builder-Discovery liefert hier 0 Builder); gelesen nur in Funktionskoerpern -> Ladereihenfolge egal.
 #
 # Die FELDNAMEN-Listen sind eine harte Kopplung an den Start-Trigger des jeweiligen Tool-Sub-Workflows:

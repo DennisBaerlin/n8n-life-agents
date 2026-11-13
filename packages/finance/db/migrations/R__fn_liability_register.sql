@@ -1,23 +1,23 @@
 -- ============================================================
--- finance.fn_liability_register (WS-0b estate — Provider-Lesefenster fuers Nachlass-Register)
---   Publizierte, provider-eigene Lese-fn (docs/package-contract.md "Cross-package reads / provides.reads",
---   Oberflaeche A): liefert die OFFENEN Kredite (finance.fn_loan_is_outstanding = active ODER paused, die EINE
---   Schulden-Definition, Audit Paket 2) mit der Restschuld (EUR-Basis), aus denen der estate-Agent (WS-1/2) die im
---   Todes-/Vorsorgefall fortbestehenden Verbindlichkeiten (wer schuldet wem wie viel) ableitet. Abgeloeste/
---   refinanzierte Kredite (paid_off/refinanced) sind irrelevant und fallen raus. finance BESITZT die Berechnung
+-- fn_liability_register (READ, STABLE — Provider-Lesefenster fuers Nachlass-Register)
+--   Publizierte, provider-eigene Lese-fn (docs/package-contract.md "Cross-package reads / provides.reads"):
+--   liefert die offenen Kredite (finance.fn_loan_is_outstanding = active oder paused) mit der Restschuld (EUR-Basis),
+--   aus denen der estate-Agent die im Todes-/Vorsorgefall fortbestehenden Verbindlichkeiten (wer schuldet wem wie viel)
+--   ableitet. Abgeloeste/refinanzierte Kredite (paid_off/refinanced) fallen raus. finance besitzt die Berechnung
 --   (Restschuld = negativer Saldo im Loan-Konto), estate referenziert.
 --
---   PLAIN STABLE, KEIN SECURITY DEFINER, KEIN Grant: gelesen render-at-fetch IM core.fn_fetch_context-
---   DEFINER (Owner=Superuser) -> kein neuer Grant. Call-Site doppel-guardet (fn_package_active('finance')
---   + to_regprocedure) -> finance absent = graceful NULL.
+--   Eingabe: keine.
+--   Plain STABLE, kein SECURITY DEFINER, kein Grant: gelesen render-at-fetch im core.fn_fetch_context-DEFINER
+--   (Owner=Superuser). Call-Site doppel-guardet (fn_package_active('finance') + to_regprocedure) -> finance absent =
+--   graceful NULL.
 --
---   RAISE-FREI + COALESCE'd (laeuft IM Render-Fetch). Keine offenen Kredite -> '[]'::jsonb (nie NULL).
+--   RAISE-frei und COALESCE'd (laeuft im Render-Fetch). Keine offenen Kredite -> '[]'::jsonb (nie NULL).
 --   Liest finance.loan_overview (current_remaining_debt_eur = fn_to_eur der Restschuld -> Multi-Waehrung).
 --
---   RUECKGABE jsonb-ARRAY je offenem Kredit: { id, name, lender, borrower_person_id, original_amount,
---   current_remaining_debt_eur, currency, status }. current_remaining_debt_eur ist der BETRAG der Schuld (positiv,
---   Audit Paket 2 -- vorher -200000 -> estate rendert "Restschuld ~-200000 EUR"); loan_overview bleibt
---   vorzeichenbehaftet (negativer Saldo). NULL = Restschuld in Fremdwaehrung ohne Kurs (estate laesst die Zahl weg).
+--   Rueckgabe: jsonb-Array je offenem Kredit, sortiert nach name: { id, name, lender, borrower_person_id,
+--   original_amount, current_remaining_debt_eur, currency, status }. current_remaining_debt_eur ist der Betrag der
+--   Schuld (positiv; loan_overview bleibt vorzeichenbehaftet, negativer Saldo). NULL = Restschuld in Fremdwaehrung
+--   ohne Kurs (estate laesst die Zahl weg).
 --   Anwenden via: db_apply.ps1 -File packages\finance\db\migrations\R__fn_liability_register.sql
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_liability_register()

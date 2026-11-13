@@ -1,10 +1,9 @@
 ﻿#Requires -Version 5.1
 # Dot-gesourct von build_finance_tools.ps1 (Helper + Script-Scope-Creds im Parent-Scope).
 
-# --- 5. tool_book_loan_payment (Playbook 5.7) ---------------
+# --- tool_book_loan_payment ---
 function Build-BookLoanPayment {
-    # WS-B0: enge Paket-Schreibrolle (finance_rw, Least-Privilege D10) statt Owner-Cred.
-    # Dynamic-Scope: Build-Pg liest dieses $CRED_POSTGRES. Core-Tools nutzen die Owner-Cred.
+    # Enge Paket-Schreibrolle (finance_rw) statt Owner-Cred; Build-Pg liest $CRED_POSTGRES per Dynamic-Scope.
     $CRED_POSTGRES = $CRED_FINANCE_RW
     $trig = Build-Trigger @('loan_name','payment_amount','payment_date','principal_amount')
 
@@ -23,10 +22,9 @@ function Build-BookLoanPayment {
         "=SELECT name, currency FROM finance.loan_overview WHERE id = ((`$1::jsonb)->>'loan_id')::int;" `
         ([ordered]@{ loan_id = '$(''Resolve Loan'').item.json.loan_id' })
 
-    # Zins/Tilgung + Buchungsdatum aus DERSELBEN fn, die fn_book_loan_payment intern nutzt (Audit F7: vorher
-    # rechnete dieser Graph mit der negativen Restschuld -> Karte "Zins -600 / Tilgung 1.600", gebucht 600/400).
-    # WP2: ohne genannten Betrag liefert die fn die faellige Rate (payment_amount); genau dieser Betrag geht in den Write
-    # (Karte = Buchung, auch wenn zwischen Karte und Tipp ein Tag wechselt).
+    # Zins/Tilgung + Buchungsdatum aus derselben fn, die fn_book_loan_payment intern nutzt (die View-Restschuld
+    # waere negativ und gaebe eine falsche Karte). Ohne genannten Betrag liefert die fn die faellige Rate
+    # (payment_amount); genau dieser Betrag geht in den Write (Karte = Buchung, auch wenn zwischen Karte und Tipp ein Tag wechselt).
     $preview = Build-Pg 'Preview Loan Payment' @(880, 0) `
         "=SELECT (r->>'ok')::boolean AS ok, r->>'reason' AS reason, (r->>'payment_amount')::numeric AS payment_amount, (r->>'remaining_debt')::numeric AS remaining_debt, (r->>'interest_portion')::numeric AS interest_portion, (r->>'principal_amount')::numeric AS principal_amount, r->>'booking_date' AS booking_date FROM finance.fn_get_loan_payment_split(`$1::jsonb) AS r;" `
         ([ordered]@{
@@ -42,9 +40,7 @@ function Build-BookLoanPayment {
     $errPreview = Build-ToolError 'Payment not possible' @(1320, 240) `
         "={{ `$('Preview Loan Payment').item.json.reason }}"
 
-    # "DB ist das Gesetz": nach der Vorschau laeuft fn_book_loan_payment selbst als Probelauf VOR der Karte
-    # (Ueber-/Unterzahlung, payment<=0 -> {ok:false} ohne Karte); derselbe Param-Satz geht nach dem Gate in den
-    # echten Write. Die Vorschau bleibt: sie liefert die Kartenwerte (Restschuld/Zins/Tilgung).
+    # Die Vorschau bleibt neben dem Probelauf: sie liefert die Kartenwerte (Restschuld/Zins/Tilgung).
     $wg = New-FnWriteGate -Fn 'finance.fn_book_loan_payment' -DryPos @(1320, 0) -WritePos @(2640, 0) `
         -WriteName 'Create loan payment (atomic)' `
         -WriteSelect "(r->>'ok')::boolean AS ok, r->>'reason' AS reason, (r->>'loan_payment_tx_id')::int AS loan_payment_tx_id, (r->>'principal_tx_id')::int AS principal_tx_id, (r->>'interest_portion')::numeric AS interest_portion, (r->>'principal_amount')::numeric AS principal_amount, (r->>'remaining_debt')::numeric AS remaining_debt, r->>'matched_due_date' AS matched_due_date" `
@@ -58,7 +54,7 @@ function Build-BookLoanPayment {
         })
 
     # --- HITL approval gate ---
-    # Strukturiertes Summary (Textkatalog); Betraege in der Loan-Konto-Waehrung (Read Loan Overview).
+    # Betraege in der Loan-Konto-Waehrung (Read Loan Overview).
     $S = "`$('Start').item.json"
     $L = "`$('Read Loan Overview').item.json"
     $I = "`$('Preview Loan Payment').item.json"
@@ -79,11 +75,8 @@ function Build-BookLoanPayment {
 
     $retCancelled = Build-ToolCancelled 'Return cancelled' @(2640, 240) 'the book_loan_payment action'
 
-    # Atomarer Write via fn_book_loan_payment ($wg.Write):
-    # 1. Abbuchung vom Girokonto (-payment_amount, category=loan_payment, loan_id gesetzt)
-    # 2. Tilgungsanteil auf Kreditkonto (+principal, category=principal, loan_id gesetzt)
-    # fn liefert ok/reason: Ueberzahlung (mit payoff_amount) / Unterzahlung / payment<=0 -> {ok:false}.
-    # Korrigierbare Ablehnung aus der fn -> weiche Rueckfrage (kein Owner-Alert).
+    # Write ($wg.Write): 1. Abbuchung vom Girokonto (-payment_amount, category=loan_payment, loan_id gesetzt),
+    # 2. Tilgungsanteil auf Kreditkonto (+principal, category=principal, loan_id gesetzt).
     $ifWriteOk = Build-If 'Write ok?' @(2860, 0) "={{ `$json.ok }}" 'true' 'equals' 'boolean'
 
     $errWrite = Build-ToolError 'Payment rejected' @(3080, 240) `

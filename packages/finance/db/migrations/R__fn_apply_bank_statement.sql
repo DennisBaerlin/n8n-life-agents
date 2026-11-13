@@ -1,39 +1,39 @@
 -- ============================================================
--- fn_apply_bank_statement (ATOMIC WRITE) -- Kontoauszug buchen (Monats-Check WP-C)
+-- fn_apply_bank_statement (ATOMIC WRITE) -- Kontoauszug buchen (Monats-Check)
 --   Eingabe: dieselben Rohwerte wie fn_statement_prepare + fingerprint (aus der bestaetigten Vorschau).
---   Ablauf in EINER Transaktion: Salden der beteiligten Konten sperren -> fn_statement_prepare erneut (unter Lock;
+--   Ablauf in einer Transaktion: Salden der beteiligten Konten sperren -> fn_statement_prepare erneut (unter Lock;
 --   anderer fingerprint -> {ok:false, code:'stale_preview'} ohne Write: zwischen Karte und Tipp hat sich etwas
 --   geaendert) -> gelernte Kontonummer -> Abweichung vor dem Zeitraum als Abgleich am Schnitt-Tag -> je Treffer die
 --   bestehende Buch-fn mit Ist-Betrag und Ist-Datum (Dauerauftrag/Transfer/Kredit ueber fn_book_recurring_occurrence,
 --   Sparplan ueber fn_book_savings_plan_execution mit geschaetzten Stueck -> shares_estimated, Zins ueber
 --   fn_book_interest_occurrence) -> Schluessel lernen -> Plan-Anpassungen (fn_split_recurring_payment) -> schon
 --   gebuchte Zahlungen mit Buchungsdatum nach period_end aufs Zeilendatum verschieben (redated_count) -> Abgleich auf
---   den Endsaldo am period_end (bucht den Rest als EINE Abgleichsbuchung und ueberspringt die fehlenden Vorkommen) ->
+--   den Endsaldo am period_end (bucht den Rest als eine Abgleichsbuchung und ueberspringt die fehlenden Vorkommen) ->
 --   Aggregat in finance.bank_statements, Herkunft bank_statement_id an jeder hier entstandenen Buchung.
 --   Ein {ok:false} einer inneren Buch-fn wird zu RAISE SQLSTATE 'FN001' -> Rollback des Blocks -> {ok:false, reason}
 --   (kein Teilzustand, kein Owner-Alarm).
---   Bank-Export-Datei (source:'file', Broker-CSV Paket B): Sparplan-Treffer mit exakter Stueckzahl ohne shares_estimated; prepare.trades
+--   Bank-Export-Datei (source:'file', Broker-CSV): Sparplan-Treffer mit exakter Stueckzahl ohne shares_estimated; prepare.trades
 --   ueber fn_book_stock_buy / fn_book_stock_sell / fn_book_dividend (Herkunft bank_statement_id wie jede Buchung hier);
 --   balance_source aus der Prepare; seen_refs -> finance.statement_seen_refs (faellt mit dem Auszug per CASCADE weg).
 --   Bank-Import-Modul: matched kind transfer -> fn_book_transfer (beide Beine am Zeilendatum); Stufe-0-Treffer einer
---   Transfer-Gruppe (group_id) mit Buchungsdatum nach period_end -> nur die Beine DIESES Kontos aufs Zeilendatum;
+--   Transfer-Gruppe (group_id) mit Buchungsdatum nach period_end -> nur die Beine dieses Kontos aufs Zeilendatum;
 --   prepare.moved_legs -> period_end+1. Gesperrt werden zusaetzlich alle Gegenkonten aus matched/blocked/already_booked.
---   Auszahlung mit Gebuehr (matched.fee): Transfer = Betrag - Gebuehr, die Gebuehr als Bein (category fee) DIESES Kontos
+--   Auszahlung mit Gebuehr (matched.fee): Transfer = Betrag - Gebuehr, die Gebuehr als Bein (category fee) dieses Kontos
 --   in derselben group_id. Pool-Regel (matched.partner_fee): das Gebuehr-Bein liegt beim auszahlenden P2P-Konto (am
 --   Zeilendatum bzw. partner_date), ebenfalls in derselben group_id. Eine Gruppe, die das Partnerkonto ohne Gebuehr gebucht hat (already_booked.fee_add), bekommt die
 --   Gebuehr als eigene Buchung dieses Auszugs (nie in die fremde Gruppe). Datei mit gedrucktem Endstand: interest_correction (category interest, ohne
---   interest_period_end) und legacy_returns (category other, Profil-Label) je EINE Buchung am period_end;
+--   interest_period_end) und legacy_returns (category other, Profil-Label) je eine Buchung am period_end;
 --   interest_skips -> fn_skip_interest_occurrence (in skipped, der Void holt sie zurueck).
---   Rueckgabe-Vertrag (Befund 2026-10-30): booked_count = neue Buchungs-VORGAENGE dieses Abgleichs, je einer:
+--   Rueckgabe-Vertrag: booked_count = neue Buchungs-Vorgaenge dieses Abgleichs, je einer:
 --   jeder matched-Treffer (Dauerauftrag, Sparplan, Zins, Transfer inkl. seines Gebuehr-Beins), jede nachgebuchte Gebuehr
 --   (fee_add), Zinskorrektur, Altkredit-Rueckfluesse; nicht: Trades (trades_booked), Drift, Rest, Trade-Steuern,
---   Umdatierungen. transfers[] = jede neu ODER schon gebuchte Transfer-Gruppe dieses Auszugs {account_name (Gegenkonto),
---   amount (Transfer-Bein DIESES Kontos, signiert), fee (Gebuehr-Beine der Gruppe + fee_add, 0 = keine), fee_account
+--   Umdatierungen. transfers[] = jede neu oder schon gebuchte Transfer-Gruppe dieses Auszugs {account_name (Gegenkonto),
+--   amount (Transfer-Bein dieses Kontos, signiert), fee (Gebuehr-Beine der Gruppe + fee_add, 0 = keine), fee_account
 --   (this|partner|null), date (Zeilendatum), already_booked}. rest_outflow/rest_inflow = der Rest (lump) ohne
 --   pending_settled nach Richtung, Netto-Differenz (eines ist 0) - ein positiver Rest ist ein ungeklaerter Eingang, nie
 --   Ausgaben. pending_settled (aus der Prepare, >= 0) = Teil des Rests, der vorgemerkte Zahlungen des vorigen
 --   Export-Abgleichs ausgleicht (weder Eingang noch Ausgabe); lump_amount = die ganze Rest-Buchung.
---   Rest getrennt (Befund KW 45, ein Saldo ist kein einzelner Eingang): unmatched_in/unmatched_out = offene Ein-/Ausgaenge,
+--   Rest getrennt (ein Saldo ist kein einzelner Eingang): unmatched_in/unmatched_out = offene Ein-/Ausgaenge,
 --   rest_other = Rest ohne pending_settled - beide (blockierte Zeilen, Vormerkungen, Fremdbuchungen), rest_unexplained = der Teil
 --   davon, den weder eine Zeile noch die Karte erklaert. difference_candidates = Buchungen mit gleichem Betrag wie eine Abweichung
 --   (fn_statement_diff_candidates).
@@ -45,10 +45,12 @@
 --   Startbetrag des Gegenkontos (Prepare, matched.other_in_opening): fn_book_transfer mit skip_opening_leg bucht nur das Bein dieses
 --   Kontos, die Gruppe haengt daran (auch die Gebuehr), transfers[].account_name kommt dann aus der Zuordnung, transfers[].other_in_opening = true. export_gap = Luecke
 --   App-Stand/Export (nur Datei mit App-Stand, sonst NULL).
---   RUECKGABE: {ok:true, statement_id, booked_count, transfers[], rest_outflow, rest_inflow, unmatched_in, unmatched_out, rest_other, rest_unexplained, rest_kind, export_gap, difference_candidates[], lump_offsets[], transfers_unclear[], pending_settled, trades_booked, trades_blocked[], export_unknown[], booked_tx_ids[], drift_amount, lump_amount, skipped_occurrences, redated_count,
+--   Rueckgabe: {ok:true, statement_id, booked_count, transfers[], rest_outflow, rest_inflow, unmatched_in, unmatched_out, rest_other, rest_unexplained, rest_kind, export_gap, difference_candidates[], lump_offsets[], transfers_unclear[], pending_settled, trades_booked, trades_blocked[], export_unknown[], booked_tx_ids[], drift_amount, lump_amount, skipped_occurrences, redated_count,
 --   learned_keys, learned_accounts[{account_id, account_name, account_number}] (IBAN-Lernen der Prepare, per fn_set_account
 --   gespeichert; gesperrt wie die Transfer-Gegenkonten), plan_adjusted[], savings_plan_estimated[], unknown_mandates[], balance_after,
 --   outlook (= finance.fn_account_outlook, Deckungs-Vorschau bis zum naechsten Geldeingang)} | {ok:false, code?, reason}
+--   (code stale_preview | booking_failed, sonst ok:false der Prepare unveraendert)
+--   Tests: tests/db/finance/test_bank_statement.sql
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_apply_bank_statement(p jsonb)
 RETURNS jsonb LANGUAGE plpgsql AS $$
@@ -249,7 +251,7 @@ BEGIN
             END IF;
         END LOOP;
 
-        -- Datei mit gedrucktem Endstand: Zinskorrektur + Kleinbetraege je als EINE Buchung am period_end, offene
+        -- Datei mit gedrucktem Endstand: Zinskorrektur + Kleinbetraege je als eine Buchung am period_end, offene
         -- Scheduler-Zins-Vorkommen bis period_end ueberspringen (in skipped -> der Void holt sie zurueck)
         IF COALESCE((v_prep->>'interest_correction')::numeric, 0) <> 0 THEN
             v_r := finance.fn_book_transaction(jsonb_build_object('account_id', v_acct,
@@ -273,7 +275,7 @@ BEGIN
             END IF;
             v_ids := v_ids || (v_r->>'tx_id')::int;
         END IF;
-        -- Gebuehr zu einem schon gebuchten Transfer (fee_add, Partnerkonto zuerst importiert): eigene Buchung OHNE die
+        -- Gebuehr zu einem schon gebuchten Transfer (fee_add, Partnerkonto zuerst importiert): eigene Buchung ohne die
         -- Gruppe des Partner-Auszugs (sonst stempelte/loeschte dieser Auszug fremde Beine mit)
         FOR v_m IN SELECT e FROM jsonb_array_elements(v_prep->'already_booked') e WHERE e ? 'fee_add' LOOP
             v_r := finance.fn_book_transaction(jsonb_build_object('account_id', v_acct,
@@ -410,7 +412,7 @@ BEGIN
         RETURN jsonb_build_object('ok', false, 'code', 'booking_failed', 'reason', SQLERRM);
     END;
 
-    -- Erkannte Uebertraege (Befund 2026-10-30: der Agent kannte sie nicht): neu gebuchte + schon gebuchte
+    -- Erkannte Uebertraege (der Agent soll sie kennen): neu gebuchte + schon gebuchte
     -- Transfer-Gruppen; Zahlen aus den gebuchten Beinen (Bein DIESES Kontos signiert, Gebuehr-Beine der Gruppe + fee_add).
     SELECT v_tg || COALESCE(jsonb_agg(jsonb_build_object(
                'g', COALESCE(e->>'group_id', (SELECT x.group_id::text FROM finance.transactions x WHERE x.id = (e->>'transaction_id')::int)),
@@ -428,7 +430,7 @@ BEGIN
                'other_in_opening', COALESCE((g->>'o')::boolean, false),
                'already_booked', (g->>'b')::boolean) ORDER BY (g->>'d')::date, (g->>'b')::boolean), '[]'::jsonb)
     INTO v_transfers
-    -- je Gruppe EIN Eintrag (eine Gruppe kann nie zweimal als Uebertrag erscheinen; neu gebucht geht vor)
+    -- je Gruppe ein Eintrag (eine Gruppe kann nie zweimal als Uebertrag erscheinen; neu gebucht geht vor)
     FROM (SELECT DISTINCT ON (x->>'g') x AS g FROM jsonb_array_elements(v_tg) x
           WHERE x->>'g' IS NOT NULL ORDER BY x->>'g', (x->>'b')::boolean) d
     CROSS JOIN LATERAL (SELECT sum(t.amount) FILTER (WHERE t.account_id = v_acct AND t.category::text = 'transfer') AS amt,

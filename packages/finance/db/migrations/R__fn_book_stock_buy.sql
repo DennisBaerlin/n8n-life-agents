@@ -1,58 +1,60 @@
 -- ============================================================
 -- fn_book_stock_buy (ATOMIC WRITE)
---   Holding suchen ODER anlegen + EINE Kauf-Transaktion, in EINER Transaktion. Order-Gebuehr
---   wird in amount gefaltet (Anschaffungskosten) UND separat in order_fee gespeichert; shares
---   und average_purchase_price pflegt die DB per Trigger (avg nur aus buy-Zeilen). Eingabe jsonb:
---   depot_id, settlement_id (im n8n aufgeloest), isin, symbol (opt bei ISIN -- fn_holding_symbol: ohne Ticker ist die
---   ISIN die Kennung), name (opt, Default = Kennung), shares, price_per_share,
---   order_fee, transaction_date (ISO oder relativ, leer = heute), asset_class (opt -- Allokations-Block-key, lowercase snake; Auto-Tag,
---   nur beim ANLEGEN der Holding gesetzt, Format-Verstoss -> {ok:false}),
---   provider_symbol (opt -- Phase M: Markt-Daten-Feed-Symbol-Override, z. B. VWCE.DE; nur beim ANLEGEN),
---   quote_currency (opt -- Phase M: native Quote-Waehrung; via fn_ensure_currency validiert -> {ok:false}; nur beim ANLEGEN),
---   listing_currency (opt -- Notierung des Papiers aus der Kurs-Pruefung, wenn es keine in Depot-Waehrung gibt; beim ANLEGEN die Markt-Waehrung),
---   price_currency_confirmed (opt bool -- Kurs belegt in Kontowaehrung: Kontoauszug/Broker-Datei),
---   recurring_payment_id (opt -- verknuepft den Kauf mit einem Sparplan), due_date (opt, nur mit
---   recurring_payment_id -- Monats-Check WP-A: die Faelligkeit, die der Kauf erledigt = recurring_due_date;
+--   Holding suchen oder anlegen + eine Kauf-Transaktion, in einer Transaktion. Order-Gebuehr
+--   wird in amount gefaltet (Anschaffungskosten) und separat in order_fee gespeichert; shares
+--   und average_purchase_price pflegt die DB per Trigger (gleitender Durchschnitt, fn_holding_avg_cost).
+--   Eingabe jsonb:
+--   depot_id, settlement_id (im n8n aufgeloest), isin, symbol (optional bei ISIN -- fn_holding_symbol: ohne Ticker ist die
+--   ISIN die Kennung), name (optional, Default = Kennung), shares, price_per_share,
+--   order_fee, transaction_date (ISO oder relativ, leer = heute), asset_class (optional -- Allokations-Block-key, lowercase snake; Auto-Tag,
+--   nur beim Anlegen der Holding gesetzt, Format-Verstoss -> {ok:false}),
+--   provider_symbol (optional -- Markt-Daten-Feed-Symbol-Override, z. B. VWCE.DE; nur beim Anlegen),
+--   quote_currency (optional -- native Quote-Waehrung; via fn_ensure_currency validiert -> {ok:false}; nur beim Anlegen),
+--   listing_currency (optional -- Notierung des Papiers aus der Kurs-Pruefung, wenn es keine in Depot-Waehrung gibt; beim Anlegen die Markt-Waehrung),
+--   price_currency_confirmed (optional bool -- Kurs belegt in Kontowaehrung: Kontoauszug/Broker-Datei),
+--   recurring_payment_id (optional -- verknuepft den Kauf mit einem Sparplan), due_date (optional, nur mit
+--   recurring_payment_id -- die Faelligkeit, die der Kauf erledigt = recurring_due_date;
 --   Default transaction_date; Abgleich-Sperre auf dem Verrechnungskonto -> {ok:false, code:'reconciled'}),
---   cost_origin (opt, nur Bestandsuebernahme): export | estimated -> transactions.cost_origin.
---   existing_position (opt bool, Default false -- BESTANDSUEBERNAHME einer bereits gehaltenen Position,
---   z. B. beim Onboarding/Depotauszug-Import): der Kauf wird wie gewohnt gebucht (shares/avg korrekt aus
---   der 'buy'-Zeile), dazu EINE Gegenbuchung category='position_takeover' (+Betrag, gleiches Datum, gleiche
+--   cost_origin (optional, nur Bestandsuebernahme): export | estimated -> transactions.cost_origin.
+--   existing_position (optional bool, Default false -- Bestandsuebernahme einer bereits gehaltenen Position,
+--   z. B. beim Onboarding/Depotauszug-Import): der Kauf wird wie gewohnt gebucht (shares/avg aus
+--   der 'buy'-Zeile), dazu eine Gegenbuchung category='position_takeover' (+Betrag, gleiches Datum, gleiche
 --   group_id) auf dem Verrechnungskonto -> dessen Saldo bleibt unveraendert (der genannte Kontostand ist
---   schon der heutige). Ein Void entfernt beide Zeilen. Korrigierbar {ok:false}: zusammen mit
+--   schon der heutige). Ein Void entfernt beide Zeilen. {ok:false}: zusammen mit
 --   recurring_payment_id (Sparplan-Ausfuehrung ist echter Geldfluss); Holding hat bereits Stueck > 0 (ein
 --   erneuter Depotauszug wuerde die Position verdoppeln -> Korrektur ueber fn_replace_holding_lots / tool_replace_holding_lots).
---   CHECK finance_transactions_position_takeover_shape ist der Backstop der Gegenbuchungs-Form. Das Paar schreibt allein
---   fn_book_takeover_pair (eine Adresse mit den Import-Tranchen). cost_basis_total (opt, ohne price_per_share): bei Uebernahme
+--   Backstop der Gegenbuchungs-Form: CHECK finance_transactions_position_takeover_shape. Das Paar schreibt allein
+--   fn_book_takeover_pair (eine Adresse mit den Import-Tranchen). cost_basis_total (optional, ohne price_per_share): bei Uebernahme
 --   der Gesamt-Einstand, beim echten Kauf der abgebuchte Betrag inkl. Gebuehr (= Buchungsbetrag) -> Stueckpreis rechnet
 --   fn_unit_price_from_total (das LLM teilt nie selbst).
 --   Kurswaehrung (genannt, sonst gespeicherte Notierung der Position, sonst listing_currency) != Verrechnungskonto bei echtem Kauf
 --   ohne Betrag -> {ok:false, code:'price_currency_mismatch', price_currency, settlement_currency}; keine davon bekannt ->
 --   {ok:false, code:'price_currency_missing'}. effective.total_debited = abgebuchter Betrag (Karte).
---   WS-B Stufe 2 (Phase S) — AUTO-JOURNAL: ist dieser Kauf die Ausfuehrung eines GOAL-VERKNUEPFTEN Sparplans
---   (recurring_payment_id -> savings_plans.savings_goal_id IS NOT NULL), dann ATOMAR in derselben Tx append-only
+--   Auto-Journal: ist dieser Kauf die Ausfuehrung eines goal-verknuepften Sparplans
+--   (recurring_payment_id -> savings_plans.savings_goal_id IS NOT NULL), dann atomar in derselben Tx append-only
 --   savings_goal_reserve_entries-Zeilen kind='sparplan_buy', value_date = transaction_date, source_tx_id = Kauf-Tx:
 --     * Depot +X (X = shares*price + fee, volle Cash-Abfluss-Magnitude inkl. Gebuehr, Depot-Waehrung),
 --     * Verrechnungskonto -c, c = min(Ziel-Anteil auf dem Verrechnungskonto, X), nur wenn c > 0.
---   KONSERVIERUNG NUR FUER ZIEL-GELD (Sparziel-Zweckbindung 2026-10-27): Geld, das dem Ziel schon gehoerte, wird nur
---   umgeschichtet (Fortschritt unveraendert); der Rest (X - c) ist frisches Geld und zaehlt als neu gespart. Vorher
---   wurde das Cash-Bein selbst mit -X getaggt -> ein Sparplan, der nicht aus Ziel-Geld bezahlt wurde, brachte NIE
---   Fortschritt. Der Kauf traegt kein Ziel-Tag mehr. WP-3b Guard: Settlement-Waehrung != Depot-Waehrung bei goal-Kauf
+--   Konservierung nur fuer Ziel-Geld: Geld, das dem Ziel schon gehoerte, wird nur umgeschichtet (Fortschritt
+--   unveraendert); der Rest (X - c) ist frisches Geld und zaehlt als neu gespart. Der Kauf traegt kein Ziel-Tag
+--   (ein getaggtes Cash-Bein mit -X brachte einem nicht aus Ziel-Geld bezahlten Sparplan nie Fortschritt).
+--   Guard: Settlement-Waehrung != Depot-Waehrung bei goal-Kauf
 --   -> {ok:false} (Cross-Currency-Settlement out-of-scope; beide Zeilen tragen dieselbe Waehrung).
---   Manueller Kauf (recurring_payment_id NULL) ODER nicht-goal-Sparplan -> KEINE Wirkung (kein Journal).
+--   Manueller Kauf (recurring_payment_id NULL) oder nicht-goal-Sparplan -> keine Wirkung (kein Journal).
 --   Idempotenz erbt vom Buy (die Journal-Zeilen teilen die Buy-Tx -> re-run kein Doppel-Insert).
---   RUECKGABE-VERTRAG: Erfolg -> {ok:true, holding_id, buy_tx_id, settlement_balance, settlement_change,
---   total_shares, avg_purchase_price} (Post-State aus der fn: Trigger-gepflegte shares/avg +
---   neuer Verrechnungskonto-Saldo, in derselben Transaktion gelesen; group_id = Handle der Uebernahme-Gruppe (sonst NULL); settlement_change = Saldo nachher - vorher, DB-Delta:
---   Bestandsuebernahme 0, normaler Kauf -Kaufbetrag -- Befund 2026-10-28: ohne die Zahl erfand das Modell
---   eine Kontobewegung). Korrigierbar
---   (Depot-Typ-Mismatch, negative order_fee, > 8 Stueck-Nachkommastellen oder Betrag < 1 Cent via
---   fn_trade_amount_reason) -> {ok:false, reason, depot_type} OHNE Write (kein RAISE -> kein
---   Owner-Alert; das Tool reicht reason an den Agenten).
---   Phase L WS-6: ist die RESULTIERENDE Holding ungetaggt (asset_class IS NULL — neu ohne Tag ODER bestehend
---   untagged), faltet die fn eine null_tag-Fallback-Note in den {ok:true}-Envelope (0 Extra-SQL, der Post-State-
+--   Rueckgabe: ok:true -> {ok:true, holding_id, buy_tx_id, settlement_balance, settlement_change,
+--   total_shares, avg_purchase_price, group_id, effective} (Post-State: Trigger-gepflegte shares/avg +
+--   neuer Verrechnungskonto-Saldo, nach den Triggern gelesen; group_id = Handle der Uebernahme-Gruppe (sonst NULL);
+--   settlement_change = Saldo nachher - vorher, DB-Delta: Bestandsuebernahme 0, normaler Kauf -Kaufbetrag; ohne die
+--   Zahl erfand das Modell eine Kontobewegung).
+--   ok:false ohne Write und ohne RAISE ({reason}; das Tool reicht reason an den Agenten): Depot-Typ-Mismatch (mit
+--   depot_type), nicht-positive Werte, negative order_fee, > 8 Stueck-Nachkommastellen oder Betrag < 1 Cent via
+--   fn_trade_amount_reason, Kurswaehrung (s. o.), {code:'already_booked'} (Sparplan-Ausfuehrung schon gebucht),
+--   {code:'reconciled'}, {code:'invalid_date'}.
+--   Ist die resultierende Holding ungetaggt (asset_class IS NULL -- neu ohne Tag oder bestehend
+--   untagged), faltet die fn eine null_tag-Fallback-Note in den {ok:true}-Envelope (kein Extra-SQL, der Post-State-
 --   SELECT liest asset_class mit). Nur der interaktive Agent surfaced sie (Sparplan-Ausfuehrung/Import bauen
---   ihren eigenen Return, reichen die Note NICHT durch); ein getaggter (manuell ODER per Sparplan vererbter)
+--   ihren eigenen Return, reichen die Note nicht durch); ein getaggter (manuell oder per Sparplan vererbter)
 --   Kauf -> keine Note.
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_book_stock_buy(p jsonb)
@@ -71,22 +73,22 @@ DECLARE
     v_date       DATE;
     v_due        DATE;
     v_reason     TEXT;
-    v_asset_cls  TEXT              := NULLIF(p->>'asset_class', '');  -- WS2b: Allokations-Block-key (Auto-Tag, optional)
-    v_provider_sym TEXT            := NULLIF(p->>'provider_symbol', '');  -- Phase M: optionaler Feed-Symbol-Override (nur beim Anlegen)
-    v_quote_ccy  TEXT              := finance.fn_normalize_currency(NULLIF(p->>'quote_currency', ''));   -- Phase M: optionale native Quote-Waehrung (roh normalisiert 'usd'->'USD'; nur beim Anlegen)
+    v_asset_cls  TEXT              := NULLIF(p->>'asset_class', '');  -- Allokations-Block-key (Auto-Tag, optional)
+    v_provider_sym TEXT            := NULLIF(p->>'provider_symbol', '');  -- optionaler Feed-Symbol-Override (nur beim Anlegen)
+    v_quote_ccy  TEXT              := finance.fn_normalize_currency(NULLIF(p->>'quote_currency', ''));   -- optionale native Quote-Waehrung (roh normalisiert 'usd'->'USD'; nur beim Anlegen)
     v_ccy_result JSONB;
     v_depot_type finance.account_type;
     v_depot_ccy  CHAR(3);
-    v_settle_ccy CHAR(3);          -- WP-3b: Settlement-Konto-Waehrung (Konservierungs-Guard bei goal-Kauf)
+    v_settle_ccy CHAR(3);          -- Settlement-Konto-Waehrung (Konservierungs-Guard bei goal-Kauf)
     v_rp_id      INT               := NULLIF(p->>'recurring_payment_id', '')::int;
-    v_goal       INT;              -- WS-B Stufe 2: Ziel des goal-verknuepften Sparplans (NULL = manueller/freier Kauf)
-    v_goal_cash  NUMERIC;          -- 2026-10-27: Ziel-Geld auf dem Verrechnungskonto, das der Kauf umschichtet (c)
+    v_goal       INT;              -- Ziel des goal-verknuepften Sparplans (NULL = manueller/freier Kauf)
+    v_goal_cash  NUMERIC;          -- Ziel-Geld auf dem Verrechnungskonto, das der Kauf umschichtet (c)
     v_holding    INT;
     v_buy        INT;
     v_bal        NUMERIC;
     v_shares_tot NUMERIC;
     v_avg        NUMERIC;
-    v_holding_cls TEXT;            -- Phase L WS-6: asset_class der resultierenden Holding (NULL = ungetaggt -> Fallback-Note)
+    v_holding_cls TEXT;            -- asset_class der resultierenden Holding (NULL = ungetaggt -> Fallback-Note)
     v_existing   BOOLEAN           := COALESCE(NULLIF(p->>'existing_position', '')::boolean, false);
     v_held       NUMERIC;
     v_dates      JSONB;
@@ -99,14 +101,12 @@ DECLARE
     v_total      NUMERIC;          -- cost_basis_total (Gesamt-Einstand einer Uebernahme), geparst
     v_group      UUID;             -- Handle der Uebernahme-Gruppe (Import haengt weitere Tranchen an)
 BEGIN
-    -- relative Datumsangaben ("yesterday", "-3 days") -> ISO; nicht aufloesbar -> {ok:false, code:'invalid_date'}
     v_dates := core.fn_resolve_input_dates(p, ARRAY['transaction_date', 'due_date']);
     IF NOT (v_dates->>'ok')::boolean THEN RETURN v_dates; END IF;
     p := v_dates->'p';
     v_date := COALESCE(NULLIF(p->>'transaction_date', '')::date, core.fn_today());   -- leer = heute (DB-Default)
     v_due  := COALESCE(NULLIF(p->>'due_date', '')::date, v_date);
-    -- Korrigierbare Input-Pruefungen -> {ok:false} (analog fn_book_stock_sell).
-    -- Kennung: Ticker ODER ISIN (fn_holding_symbol); ohne beides -> {ok:false} statt NOT-NULL-RAISE (Backstop bleibt).
+    -- Kennung: Ticker oder ISIN (fn_holding_symbol); ohne beides -> {ok:false} statt NOT-NULL-RAISE (Backstop bleibt).
     IF v_symbol IS NULL THEN
         RETURN jsonb_build_object('ok', false,
             'reason', 'A position needs a ticker symbol or an ISIN (crypto: the coin symbol, e.g. BTC).');
@@ -115,11 +115,11 @@ BEGIN
         RETURN jsonb_build_object('ok', false,
             'reason', 'Share count must be a positive number, got ' || COALESCE(v_shares::text, 'null') || '.');
     END IF;
-    -- Uebernahme mit Gesamtbetrag ("10 Stueck fuer insgesamt 1.000 EUR"): Stueckpreis rechnet die DB.
-    -- Der Probelauf gibt den Stueckpreis als effective.price_per_share an Karte UND echten Write weiter; der Write
+    -- Mit Gesamtbetrag ("10 Stueck fuer insgesamt 1.000 EUR"): Stueckpreis rechnet die DB.
+    -- Der Probelauf gibt den Stueckpreis als effective.price_per_share an Karte und echten Write weiter; der Write
     -- traegt dann beide Felder -> gleich = ok (Karte = Buchung), abweichend = {ok:false}.
     IF NULLIF(p->>'cost_basis_total', '') IS NOT NULL THEN
-        -- freie Tool-Eingabe: "1.000,50" / "1000 EUR" -> fn_parse_de_numeric; nicht lesbar = korrigierbar, kein Cast-RAISE
+        -- freie Tool-Eingabe: "1.000,50" / "1000 EUR" -> fn_parse_numeric_or_null; nicht lesbar = {ok:false}, kein Cast-RAISE
         v_total := finance.fn_parse_numeric_or_null(p->>'cost_basis_total', true);
         IF v_total IS NULL OR v_total <= 0 THEN
             RETURN jsonb_build_object('ok', false,
@@ -137,8 +137,8 @@ BEGIN
         END IF;
         v_price := v_derived;
     END IF;
-    -- Rundungs-Paket 2026-10-23: Kurs auf die Spaltenpraezision (8 Stellen), Gebuehr auf Cent (order_fee numeric(12,2)) —
-    -- VOR den Pruefungen, damit Betrag, order_fee und unit_price aus denselben Werten entstehen (CHECK
+    -- Kurs auf die Spaltenpraezision (8 Stellen), Gebuehr auf Cent (order_fee numeric(12,2)) — vor den
+    -- Pruefungen, damit Betrag, order_fee und unit_price aus denselben Werten entstehen (CHECK
     -- finance_transactions_unit_price_chk) und ein Kurs < 5e-9 nicht als 0 durchrutscht.
     v_price := round(v_price, 8);
     v_fee   := round(v_fee, 2);
@@ -148,16 +148,16 @@ BEGIN
                    || COALESCE(NULLIF(p->>'price_per_share', ''), v_price::text, 'null')
                    || CASE WHEN v_total IS NOT NULL THEN ' (derived from cost_basis_total ' || v_total || ')' ELSE '' END || '.');
     END IF;
-    -- Korrigierbar: negative Gebuehr senkte die Anschaffungskosten still (Spiegel: CHECK finance_transactions_order_fee_chk).
+    -- Eine negative Gebuehr senkte die Anschaffungskosten still (Spiegel: CHECK finance_transactions_order_fee_chk).
     IF v_fee < 0 THEN
         RETURN jsonb_build_object('ok', false, 'reason', 'Order fee must not be negative, got ' || v_fee || '.');
     END IF;
-    -- > 8 Stueck-Stellen / Betrag < 1 Cent -> {ok:false} (EINE Adresse mit fn_book_stock_sell).
+    -- > 8 Stueck-Stellen / Betrag < 1 Cent -> {ok:false} (eine Adresse mit fn_book_stock_sell).
     v_reason := finance.fn_trade_amount_reason(v_shares, v_shares * v_price + v_fee);
     IF v_reason IS NOT NULL THEN
         RETURN jsonb_build_object('ok', false, 'reason', v_reason);
     END IF;
-    -- Korrigierbar: das Anlageklasse-Etikett muss das Block-key-Format treffen (lowercase snake) -> {ok:false}
+    -- Das Anlageklasse-Etikett muss das Block-key-Format treffen (lowercase snake) -> {ok:false}
     -- statt hartem CHECK-RAISE/Owner-Alert (das LLM nennt das Label, es ist nutzer-korrigierbar).
     IF v_asset_cls IS NOT NULL AND v_asset_cls !~ '^[a-z0-9_]+$' THEN
         RETURN jsonb_build_object('ok', false,
@@ -168,8 +168,8 @@ BEGIN
         RETURN jsonb_build_object('ok', false,
             'reason', 'An existing position cannot be a savings-plan execution - book the execution as a normal buy.');
     END IF;
-    -- Phase M: optionale Quote-Waehrung (falls gesetzt) registrieren/validieren -> {ok:false} bei ungueltigem
-    -- ISO-Code (kein FK-RAISE/Owner-Alert; mirror des currency-Pfads in fn_set_holding). Wird nur beim ANLEGEN
+    -- Optionale Quote-Waehrung (falls gesetzt) registrieren/validieren -> {ok:false} bei ungueltigem
+    -- ISO-Code (kein FK-RAISE/Owner-Alert; wie der currency-Pfad in fn_set_holding). Wird nur beim Anlegen
     -- der Holding geschrieben (s. u.) -> der FK auf depot_holdings.quote_currency kann dann nicht feuern.
     IF v_quote_ccy IS NOT NULL THEN
         v_ccy_result := finance.fn_ensure_currency(v_quote_ccy);
@@ -185,7 +185,7 @@ BEGIN
         END IF;
     END IF;
 
-    -- Korrigierbar: Depot-Typ muss zur ISIN-Praesenz passen -> {ok:false} (kein RAISE).
+    -- Depot-Typ muss zur ISIN-Praesenz passen.
     SELECT account_type, currency INTO v_depot_type, v_depot_ccy
     FROM finance.accounts WHERE id = v_depot;
     IF v_isin IS NOT NULL AND v_depot_type <> 'stocks_depot' THEN
@@ -226,11 +226,11 @@ BEGIN
         END IF;
     END IF;
 
-    -- WS-B Stufe 2: Ableitungs-Kette — ist dieser Kauf die Ausfuehrung eines GOAL-verknuepften Sparplans?
+    -- Ableitungs-Kette: ist dieser Kauf die Ausfuehrung eines goal-verknuepften Sparplans?
     -- recurring_payment_id -> savings_plans.savings_goal_id (nur wenn die rp einer goal-verknuepften
     -- Sparplan-Zeile gehoert). Manueller Kauf (v_rp_id NULL) -> v_goal bleibt NULL -> keine Reserve-Wirkung.
-    -- VOR den Writes bestimmt (der Konservierungs-Guard darf keinen partiellen Holding-Insert hinterlassen).
-    -- Audit Paket 2: der Sparplan zeigt auf den KOPF der Vorgaenger-Kette; eine Ausfuehrung zu alten Konditionen
+    -- Vor den Writes bestimmt (der Konservierungs-Guard darf keinen partiellen Holding-Insert hinterlassen).
+    -- Der Sparplan zeigt auf den Kopf der Vorgaenger-Kette; eine Ausfuehrung zu alten Konditionen
     -- stempelt die alte rp -> ueber den Kopf aufloesen, sonst fiele die Reserve-Gutschrift still weg.
     IF v_rp_id IS NOT NULL THEN
         SELECT savings_goal_id INTO v_goal
@@ -238,11 +238,11 @@ BEGIN
         WHERE recurring_payment_id = finance.fn_recurring_lineage_head(v_rp_id) AND savings_goal_id IS NOT NULL;
     END IF;
 
-    -- WP-3b Konservierungs-Guard: bei einem goal-verknuepften Kauf muss das Cash-Soll-Bein (Settlement-Konto,
-    -- native) und die Depot-Reserve-Zeile (Depot-Waehrung, native) DIESELBE Waehrung tragen, sonst kuerzen sie
-    -- sich nach der EUR-Umrechnung in savings_goal_progress NICHT weg -> current_amount driftet still. Der
-    -- Cross-Currency-Settlement-Fall (z. B. EUR-Konto finanziert CLP-Depot) ist bewusst OUT-of-scope -> {ok:false}
-    -- (korrigierbar, kein RAISE) statt still falsch. VOR jedem Write.
+    -- Konservierungs-Guard: bei einem goal-verknuepften Kauf muss das Cash-Soll-Bein (Settlement-Konto,
+    -- native) und die Depot-Reserve-Zeile (Depot-Waehrung, native) dieselbe Waehrung tragen, sonst kuerzen sie
+    -- sich nach der EUR-Umrechnung in savings_goal_progress nicht weg -> current_amount driftet still. Der
+    -- Cross-Currency-Settlement-Fall (z. B. EUR-Konto finanziert CLP-Depot) ist bewusst out-of-scope -> {ok:false}
+    -- statt still falsch. Vor jedem Write.
     IF v_goal IS NOT NULL THEN
         SELECT currency INTO v_settle_ccy FROM finance.accounts WHERE id = v_settle;
         IF v_settle_ccy IS DISTINCT FROM v_depot_ccy THEN
@@ -253,16 +253,16 @@ BEGIN
         END IF;
     END IF;
 
-    -- WP-1: ein Sparplan-Kauf ist ein wiederkehrendes Vorkommen (recurring_payment_id gesetzt) -> Idempotenz-Guard
-    -- je (rp, Datum, Settlement-Konto) VOR dem Holding-Upsert (freundliche Schnellbahn; manueller Kauf v_rp_id NULL
-    -- unberuehrt). Der ON CONFLICT auf der Kauf-Tx unten ist der Race-Backstop (partieller UNIQUE-Index).
+    -- Ein Sparplan-Kauf ist ein wiederkehrendes Vorkommen (recurring_payment_id gesetzt) -> Idempotenz-Guard
+    -- je (rp, Faelligkeit, Settlement-Konto) vor dem Holding-Upsert (freundliche Schnellbahn; manueller Kauf
+    -- v_rp_id NULL unberuehrt). Der ON CONFLICT auf der Kauf-Tx unten ist der Race-Backstop (partieller UNIQUE-Index).
     IF v_rp_id IS NOT NULL AND EXISTS (
         SELECT 1 FROM finance.transactions
         WHERE recurring_payment_id = v_rp_id AND recurring_due_date = v_due AND account_id = v_settle) THEN
         RETURN jsonb_build_object('ok', false, 'code', 'already_booked',
             'reason', 'This savings-plan execution (payment ' || v_rp_id || ' due ' || v_due || ') is already booked.');
     END IF;
-    -- Abgleich-Sperre (Monats-Check WP-A): eine Sparplan-Ausfuehrung ist ein wiederkehrender Geldfluss vom
+    -- Abgleich-Sperre: eine Sparplan-Ausfuehrung ist ein wiederkehrender Geldfluss vom
     -- Verrechnungskonto; dessen Saldo-Abgleich enthaelt sie schon.
     IF v_rp_id IS NOT NULL THEN
         v_reason := finance.fn_reconciled_reason(v_settle, v_date);
@@ -271,7 +271,7 @@ BEGIN
         END IF;
     END IF;
 
-    -- ISIN-based lookup for stocks/ETFs; symbol-based for crypto (v_isin IS NULL).
+    -- ISIN-Lookup fuer Aktien/ETFs; Symbol-Lookup fuer Krypto (v_isin IS NULL).
     SELECT id INTO v_holding
     FROM finance.depot_holdings
     WHERE account_id = v_depot
@@ -296,7 +296,7 @@ BEGIN
 
     IF v_holding IS NULL THEN
         -- Holding-Waehrung = Depot-Waehrung (CLP-Depot -> CLP-Holding), nicht hartkodiert EUR.
-        -- asset_class/provider_symbol/quote_currency werden beim ANLEGEN gesetzt; eine bestehende Position
+        -- asset_class/provider_symbol/quote_currency werden beim Anlegen gesetzt; eine bestehende Position
         -- behaelt ihre Werte (Korrektur via set_holding) -> ein wiederholter Kauf ueberschreibt sie nie.
         INSERT INTO finance.depot_holdings
             (account_id, isin, symbol, name, shares, average_purchase_price, currency, asset_class,
@@ -310,19 +310,18 @@ BEGIN
 
     SELECT balance INTO v_bal_before FROM finance.account_balances WHERE account_id = v_settle;
 
-    -- Bestandsuebernahme: Kauf + Gegenbuchung (Verrechnungskonto-Saldo unveraendert) ueber den EINEN Paar-Baustein.
+    -- Bestandsuebernahme: Kauf + Gegenbuchung (Verrechnungskonto-Saldo unveraendert) ueber den einen Paar-Baustein.
     IF v_existing THEN
         v_group := gen_random_uuid();
         v_pair := finance.fn_book_takeover_pair(v_holding, v_settle, v_shares, v_price, v_fee, v_date, v_group, v_symbol, TRUE, NULLIF(p->>'cost_origin', ''));
-        -- Dieselben Eingaben sind oben schon geprueft -> ein ok:false hier ist ein echter Defekt; RAISE rollt auch eine
+        -- Dieselben Eingaben sind oben schon geprueft -> ein ok:false hier ist ein Defekt; RAISE rollt auch eine
         -- eben angelegte Holding zurueck (kein 0-Stueck-Waisen-Eintrag).
         IF NOT (v_pair->>'ok')::boolean THEN
             RAISE EXCEPTION 'fn_book_takeover_pair rejected pre-validated input: %', v_pair->>'reason';
         END IF;
         v_buy := (v_pair->>'buy_tx_id')::int;
     ELSE
-    -- EINE Kauf-Transaktion (Gebuehr in amount gefaltet + separat in order_fee). Kein Ziel-Tag (2026-10-27): die
-    -- Ziel-Wirkung eines goal-verknuepften Kaufs laeuft komplett ueber das Journal (unten).
+    -- Kein Ziel-Tag: die Ziel-Wirkung eines goal-verknuepften Kaufs laeuft komplett ueber das Journal (unten).
     INSERT INTO finance.transactions
         (account_id, amount, transaction_date, category, holding_id, shares, order_fee, unit_price,
          recurring_payment_id, recurring_due_date, savings_goal_id, description, group_id)
@@ -337,8 +336,8 @@ BEGIN
     RETURNING id INTO v_buy;
     END IF;
 
-    -- WP-1 Race-Backstop (nur der Sparplan-Pfad wird vom Index gedeckt; manueller Kauf traegt rp NULL -> kein
-    -- Konflikt): leeres RETURNING = Doppel-Ausfuehrung verlor das Race -> {ok:false} VOR dem Reserve-Journal.
+    -- Race-Backstop (nur der Sparplan-Pfad wird vom Index gedeckt; manueller Kauf traegt rp NULL -> kein
+    -- Konflikt): leeres RETURNING = Doppel-Ausfuehrung verlor das Race -> {ok:false} vor dem Reserve-Journal.
     -- Ein Konflikt impliziert einen frueheren Buy dieser rp -> die Holding existierte schon (Lookup fand sie,
     -- kein Neu-Insert) -> kein Orphan-Holding.
     IF v_buy IS NULL THEN
@@ -346,9 +345,9 @@ BEGIN
             'reason', 'This savings-plan execution (payment ' || v_rp_id || ' due ' || v_due || ') is already booked.');
     END IF;
 
-    -- WS-B Stufe 2: Ziel-Reserve fortschreiben — append-only Journal-Zeilen (source_tx_id = Kauf, Idempotenz erbt vom
+    -- Ziel-Reserve fortschreiben — append-only Journal-Zeilen (source_tx_id = Kauf, Idempotenz erbt vom
     -- Buy). Depot +X; soweit Ziel-Geld auf dem Verrechnungskonto lag, dort -c (Umschichten, konserviert), der Rest ist
-    -- frisch. WP-3b: delta_native = roher Nativ-Betrag in der Depot- (= per Guard Settlement-)Waehrung, value_date =
+    -- frisch. delta_native = roher Nativ-Betrag in der Depot- (= per Guard Settlement-)Waehrung, value_date =
     -- transaction_date -> die VIEW konvertiert beide Zeilen mit demselben Kurs/Datum nach EUR (kein fn_to_eur am Insert).
     IF v_goal IS NOT NULL THEN
         SELECT LEAST(GREATEST(COALESCE(s.share_native, 0), 0), v_shares * v_price + v_fee) INTO v_goal_cash
@@ -364,15 +363,15 @@ BEGIN
         END IF;
     END IF;
 
-    -- Post-State (Trigger haben gefeuert): Verrechnungskonto-Saldo + Holding shares/avg + Anlageklasse (WS-6).
+    -- Post-State nach den Triggern: Verrechnungskonto-Saldo + Holding shares/avg + Anlageklasse.
     SELECT balance INTO v_bal
     FROM finance.account_balances WHERE account_id = v_settle;
     SELECT shares, average_purchase_price, asset_class INTO v_shares_tot, v_avg, v_holding_cls
     FROM finance.depot_holdings WHERE id = v_holding;
 
-    -- Phase L WS-6: Fallback-Note, wenn die RESULTIERENDE Holding ungetaggt ist (asset_class IS NULL — am ENDE,
-    -- nicht v_asset_cls IS NULL: ein Re-Buy einer bereits getaggten Position uebergibt asset_class NULL, soll aber
-    -- NICHT nagen). Nicht-blockierend (advisory); der Bookkeeper relayed die Note (nur interaktiv).
+    -- Fallback-Note, wenn die resultierende Holding ungetaggt ist (asset_class IS NULL am Ende, nicht
+    -- v_asset_cls IS NULL: ein Re-Buy einer bereits getaggten Position uebergibt asset_class NULL, soll aber
+    -- nicht nagen). Nicht-blockierend (advisory); der Bookkeeper relayed die Note (nur interaktiv).
     RETURN jsonb_build_object('ok', true, 'holding_id', v_holding, 'buy_tx_id', v_buy,
         'settlement_balance', v_bal, 'settlement_change', v_bal - COALESCE(v_bal_before, 0), 'group_id', v_group,
         'total_shares', v_shares_tot, 'avg_purchase_price', v_avg,

@@ -1,10 +1,11 @@
 -- ============================================================
 -- fn_monitor_validate_fx_rate (READ-ONLY — validate_fn der Monitor-Methode 'fx_rate')
---   Registriert ueber den manifest-Block monitor_acquisition_methods (Phase B, docs/package-contract.md §3.9);
+--   Registriert ueber den manifest-Block monitor_acquisition_methods (docs/package-contract.md §3.9);
 --   der Core dispatcht via agent.fn_monitor_validate_params (Anlage/Aenderung/Probe + BEFORE-Trigger).
 --   Prueft + normalisiert das Waehrungspaar: beide Codes Grossbuchstaben, beide in finance.currencies.
 --   p: {params: {base, quote}}  (params = Tool-Input acquisition_params bzw. die gespeicherte Spec)
---   RUECKGABE: {ok:true, spec:{base, quote}, display:{kind:'tpl', value:'finance.monitor_display.fx_pair', params}} | {ok:false, reason}
+--   Rueckgabe: {ok:true, spec:{base, quote}, display:{kind:'tpl', value:'finance.monitor_display.fx_pair', params}} |
+--   {ok:false, reason} (fehlendes base/quote oder unbekannte Waehrung)
 --   Tests: tests/db/finance/test_fn_monitor_validate_fx_rate.sql (+ End-to-end in test_fn_monitor_acquire_fx_rate.sql)
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_monitor_validate_fx_rate(p jsonb)
@@ -24,7 +25,7 @@ BEGIN
     END IF;
     RETURN jsonb_build_object('ok', true,
         'spec', jsonb_build_object('base', v_base, 'quote', v_quote),
-        -- Bestaetigungszeile als typisierter Text-Verweis (Textkatalog Phase C): das HITL-Gate rendert sie in der
+        -- Bestaetigungszeile als typisierter Text-Verweis (Textkatalog): das HITL-Gate rendert sie in der
         -- Sprache des Bestaetigers (finance.monitor_display.fx_pair)
         'display', core.fn_ui_tpl('finance.monitor_display.fx_pair', jsonb_build_object('base', v_base, 'quote', v_quote)));
 END;

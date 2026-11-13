@@ -1,14 +1,15 @@
 -- ============================================================
--- fn_interest_terms_reason (READ HELPER) -- Guard der Zins-Konditionen (Import-Haertung 2026-10-22)
---   EINE Adresse fuer fn_create_account (erste Zinszeile) und fn_interest_rate_preview (set_account_interest + Karte):
---   NULL = Konditionen gueltig, sonst der korrigierbare Grund (EN). Spiegel der CHECKs auf account_interest_rates:
+-- fn_interest_terms_reason (READ HELPER) -- Guard der Zins-Konditionen
+--   Die eine Adresse fuer fn_create_account (erste Zinszeile) und fn_interest_rate_preview (set_account_interest + Karte).
+--   Eingabe: p_unit, p_dom, p_pdom (posting_day_of_month), p_conv.
+--   Rueckgabe: NULL = Konditionen gueltig, sonst der korrigierbare Grund (EN). Spiegel der CHECKs auf account_interest_rates:
 --     * schedule_unit = Enum finance.schedule_unit (fn_enum_reason)
 --     * Buchungstag 1-28 | -1 (finance_air_schedule_dom_chk): -2 (vorletzter Tag) gilt nur fuer Zahlungen und wird hier
 --       eigens abgelehnt (das Zins-Raster fn_interest_grid_* kennt nur -1); sonst Text aus fn_schedule_dom_reason
---     * Gutschrift-Tag (posting_day_of_month) NUR 1-28 (finance_air_posting_dom_chk, V018): Arrears bucht am n-ten
+--     * Gutschrift-Tag (posting_day_of_month) nur 1-28 (finance_air_posting_dom_chk, V018): Arrears bucht am n-ten
 --       des Folgemonats (fn_interest_due_open); -1 laege dort VOR dem Periodenende und rechnete still falsch
 --     * Day-Count-Konvention in finance_air_day_count_chk (30E/360, ACT/365, ACT/360)
---   plpgsql statt sql: der Body referenziert fn_schedule_dom_reason (alphabetisch SPAETERES R__) -> bei Frisch-Install
+--   plpgsql statt sql: der Body referenziert fn_schedule_dom_reason (alphabetisch spaeteres R__) -> bei Frisch-Install
 --   wuerde eine sql-Function beim CREATE validiert und scheitern; plpgsql loest erst beim Aufruf auf.
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_interest_terms_reason(p_unit text, p_dom smallint, p_pdom smallint, p_conv text)

@@ -1,7 +1,7 @@
 -- ============================================================
 -- fn_statement_diff_candidates (READ, STABLE) -- Buchungen mit gleichem Betrag wie eine Abweichung des Monats-Checks
---   Befund KW 45: eine Abweichung entsprach auf den Cent einer vorhandenen Buchung, der Bot gab die Pruefung trotzdem an
---   den Nutzer zurueck. Liefert die Kandidaten als Daten; ein Storno o. Ae. laeuft weiter ueber das jeweilige Tool mit Karte.
+--   Eine Abweichung kann auf den Cent einer vorhandenen Buchung entsprechen; statt die Pruefung an den Nutzer zurueckzugeben,
+--   liefert die fn die Kandidaten als Daten; ein Storno o. Ae. laeuft weiter ueber das jeweilige Tool mit Karte.
 --   Eingabe: p_account, p_targets = [{for, amount}] (Ziele mit Betrag 0 entfallen, gleicher Betrag nur beim ersten Ziel),
 --   p_from/p_to = Zeitraum des Auszugs, p_exclude = Buchungen, die der Auszug schon belegt. Gleiches Konto: |amount| = |Ziel|,
 --   Datum bis p_to+5. Andere eigene Konten: umgekehrtes Vorzeichen, Datum im Zeitraum +-5 Tage. Je Ziel hoechstens 3, gleiches

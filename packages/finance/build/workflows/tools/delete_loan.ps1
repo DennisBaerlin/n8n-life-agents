@@ -3,27 +3,24 @@
 
 # --- tool_delete_loan (Kredit-Fehlanlage loeschen: Hard-DELETE, Inverse von create_loan) ---
 function Build-DeleteLoan {
-    # WS-B0: enge Paket-Schreibrolle (finance_rw, Least-Privilege D10) statt Owner-Cred.
-    # Dynamic-Scope: Build-Pg liest dieses $CRED_POSTGRES. Core-Tools nutzen die Owner-Cred.
+    # Enge Paket-Schreibrolle (finance_rw) statt Owner-Cred; Build-Pg liest $CRED_POSTGRES per Dynamic-Scope.
     $CRED_POSTGRES = $CRED_FINANCE_RW
     $trig = Build-Trigger @('loan_name')
 
     $readLoan = Build-Pg 'Read Loan' @(220, 0) `
         "=SELECT l.lender, l.status::text AS loan_status, l.original_amount, GREATEST(-COALESCE(bal.balance,0),0) AS remaining_debt, (SELECT COUNT(*)::int FROM finance.transactions t WHERE t.loan_id = l.id AND t.category IN ('loan_payment','principal','settlement')) AS repayment_count FROM finance.loans l LEFT JOIN finance.account_balances bal ON bal.account_id = l.loan_account_id WHERE l.name = ((`$1::jsonb)->>'loan_name') ORDER BY l.id LIMIT 1;" `
         ([ordered]@{ loan_name = '$(''Start'').item.json.loan_name' })
-    # Unbekannter Name -> Tool-Fehler statt stillem Ende (New-RequiredRowGate, 2026-10-24).
+    # Unbekannter Name -> Tool-Fehler statt stillem Ende (New-RequiredRowGate).
     $found = New-RequiredRowGate -Read $readLoan -KeyField 'loan_status' -IfName 'Loan found?' -ErrName 'Loan not found' `
         -IfPos @(330, -160) -ErrPos @(440, 240) `
         -NotFoundExpr "=No loan named '{{ `$('Start').item.json.loan_name }}' exists. List them via postgres_select on finance.loan_overview and ask the user which one is meant."
 
-    # "DB ist das Gesetz": fn_delete_loan laeuft als Probelauf VOR der Karte (gebuchte Raten -> {ok:false} ohne Karte);
-    # derselbe Param-Satz geht nach dem Gate in den echten Write.
     $wg = New-FnWriteGate -Fn 'finance.fn_delete_loan' -DryPos @(440, 0) -WritePos @(1760, 0) `
         -WriteName 'Delete loan (atomic)' `
         -WriteSelect "(r->>'ok')::boolean AS ok, r->>'reason' AS reason, r->>'action' AS action, (r->>'loan_id')::int AS loan_id, (r->>'loan_account_id')::int AS loan_account_id" `
         -Params ([ordered]@{ loan_name = '$(''Start'').item.json.loan_name' })
 
-    # Strukturiertes Summary (Textkatalog): Betraege in EUR-Konvention (vorher hart " €" an der Rohzahl).
+    # Betraege in EUR-Konvention.
     $S = "`$('Start').item.json"
     $L = "`$('Read Loan').item.json"
     $summary = New-HitlSummary -Pos @(1100, 0) -Title 'finance.hitl.delete_loan' -LinesExpr $wg.CardLinesExpr -Lines @(
@@ -44,7 +41,7 @@ function Build-DeleteLoan {
 
     $retCancelled = Build-ToolCancelled 'Return cancelled' @(1760, 240) 'the delete_loan action'
 
-    # Atomarer Write ($wg.Write, 'Delete loan (atomic)'): prueft erneut, falls sich seit dem Probelauf etwas geaendert hat.
+    # Der Write prueft erneut, falls sich seit dem Probelauf etwas geaendert hat.
     $ifWriteOk = Build-If 'Write ok?' @(1980, 0) "={{ `$json.ok }}" 'true' 'equals' 'boolean'
 
     $errWrite = Build-ToolError 'Delete rejected' @(2200, 240) `

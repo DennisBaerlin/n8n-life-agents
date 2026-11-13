@@ -1,19 +1,19 @@
 -- ============================================================
--- fn_replace_takeover_with_lots (ATOMIC WRITE) -- Bestandsuebernahme durch die echten Einzelkaeufe ersetzen (Paket B)
---   Befund 2026-10-28: eine Position wurde als EINE Uebernahme erfasst, der Broker-Export kennt die Einzelkaeufe.
+-- fn_replace_takeover_with_lots (ATOMIC WRITE) -- Bestandsuebernahme durch die echten Einzelkaeufe ersetzen
+--   Eine Position ist als eine Uebernahme erfasst, der Broker-Export kennt die Einzelkaeufe.
 --   Eingabe jsonb: account_name (opt; Verrechnungskonto = das Cashkonto des Exports), table:{rows} (Raster des Lesers),
 --   fingerprint (opt, aus dem Probelauf). Datei + Konto ueber fn_bank_export_load (Leser, derselbe Konto-Waechter wie der
 --   Monats-Check: export_account_mismatch, ohne Namen Vorauswahl nach Bank-Profil; mehrere Sub-Konten -> multiple_sub_accounts).
---   Je Position eines Depots mit diesem Verrechnungskonto, die GENAU EIN Uebernahme-Paar hat (eine group_id mit einem
+--   Je Position eines Depots mit diesem Verrechnungskonto, die genau ein Uebernahme-Paar hat (eine group_id mit einem
 --   Kauf + einer position_takeover-Gegenbuchung) und im Export Kaeufe bis zum Uebernahme-Datum:
 --     Lots = Export-Kaeufe minus -Verkaeufe (FIFO) seit dem letzten Bestand 0, bis einschliesslich Uebernahme-Datum;
 --     Export-Zeilen, die schon als eigene Buchung der Position existieren (gleiche Art + Stueck, +-5 Tage), zaehlen nicht.
---     Summe der Lot-Stueck = Uebernahme-Stueck EXAKT (8 Stellen) -> ersetzen; sonst mismatched (code lots_mismatch,
+--     Summe der Lot-Stueck = Uebernahme-Stueck exakt (8 Stellen) -> ersetzen; sonst mismatched (code lots_mismatch,
 --     difference = Uebernahme - Export), nichts an dieser Position geaendert.
---   Ersetzen: alle Lots in EINER neuen group_id ueber fn_replace_takeover_apply (fn_book_takeover_pair; ein Write = eine group_id = ein Void).
+--   Ersetzen: alle Lots in einer neuen group_id ueber fn_replace_takeover_apply (fn_book_takeover_pair; ein Write = eine group_id = ein Void).
 --     Lot-Datum <= bestaetigter Kontostand-Tag des Verrechnungskontos (GREATEST(last_reconciled_at,
 --     opening_balance_date); keiner gesetzt = alle) -> cash-neutrales Uebernahme-Paar (der Stand enthaelt den Kauf schon);
---     spaeter -> echter Kauf (Cash-Abfluss, der Stand enthaelt ihn noch nicht; Leitungs-Entscheid 2026-10-28) -- der
+--     spaeter -> echter Kauf (Cash-Abfluss, der Stand enthaelt ihn noch nicht) -- der
 --     Monats-Check erkennt ihn danach in Stufe 0 als schon gebucht, ein Kauf bis zum Uebernahme-Datum wird dort nie
 --     gebucht (covered_by_takeover) -> nie doppelt.
 --     Danach das alte Paar ueber fn_void_transaction (Audit, Oversell-/Reserve-Guards) -> transaction_audit.reason =
@@ -23,7 +23,7 @@
 --   dem Tipp bekommt ihn mit und bucht nur bei gleichem Plan (sonst stale_preview, kein Write; Muster fn_apply_bank_statement).
 --   Eine Gruppe aus einer frueheren Ersetzung (transaction_audit.replaced_by_group) ist nie wieder Kandidat.
 --   Ein nicht buchbares Lot (fn_trade_amount_reason, z. B. FIFO-Rest unter 1 Cent) -> mismatched code lots_not_bookable.
---   RUECKGABE: {ok:true, account_id, account_name, replaced:[{holding_id, name, lots_count, shares, avg_purchase_price, avg_before,
+--   Rueckgabe: {ok:true, account_id, account_name, replaced:[{holding_id, name, lots_count, shares, avg_purchase_price, avg_before,
 --   cash_lots_count}], mismatched:[{holding_id, name, code:'lots_mismatch'|'lots_not_bookable', takeover_shares, export_shares, difference, reason?}],
 --   settlement_balance, settlement_change (Saldo nachher - vorher, DB-Delta), card_lines, fingerprint}
 --   | {ok:false, code (export_profile_unknown|export_invalid|account_unknown|account_ambiguous|not_bookable|

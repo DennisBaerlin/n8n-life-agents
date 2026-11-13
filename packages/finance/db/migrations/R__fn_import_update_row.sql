@@ -1,11 +1,12 @@
 -- ============================================================
--- fn_import_update_row (Korrektur VOR dem Gate — KEIN HITL: Staging ist keine Domaenen-Daten)
+-- fn_import_update_row (Korrektur vor dem Gate — kein HITL: Staging ist keine Domaenen-Daten)
 --   "Zeile 7: Saldo 5.230" -> Key-Merge in den Row-Payload + Revalidate des Batches.
 --   Payload p: { batch_id, row_no, payload_merge (opt: Keys mergen; null-Wert = Key entfernen),
 --                delete_row (opt true: Row entfernen) }
---   RUECKGABE: {ok:true, row_no, status, validation_error, valid, invalid} |
---              {ok:false, reason} (Row fehlt, Batch committed, nichts zu tun, Phase B: batch_id/row_no/
---              payload_merge formal ungueltig — Modell-Eingabe, vorher RAISEte der DECLARE-Cast)
+--   Rueckgabe: {ok:true, row_no, status, validation_error, valid, invalid} |
+--              {ok:true, deleted_row, valid, invalid} bei delete_row |
+--              {ok:false, reason} (Row fehlt, Batch committed, nichts zu tun, batch_id/row_no/
+--              payload_merge formal ungueltig — Modell-Eingabe, ein Cast im DECLARE wuerde sonst RAISEn)
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_import_update_row(p jsonb)
 RETURNS jsonb LANGUAGE plpgsql AS $$
@@ -63,7 +64,7 @@ BEGIN
         END IF;
     END LOOP;
 
-    -- Zahl-Felder wieder kanonisieren (gleiche EINE Stelle wie beim Stage-Insert; eine Korrektur
+    -- Zahl-Felder wieder kanonisieren (dieselbe Stelle wie beim Stage-Insert; eine Korrektur
     -- "Zeile 7: Saldo 5.230,50" wird genauso normalisiert wie der Erst-Import).
     v_payload := finance.fn_import_normalize_payload(v_row.entity_type, v_payload);
 

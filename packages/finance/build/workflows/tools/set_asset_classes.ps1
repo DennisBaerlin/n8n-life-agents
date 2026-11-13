@@ -1,20 +1,18 @@
 ﻿#Requires -Version 5.1
 # Dot-gesourct von build.ps1 (Helper + Script-Scope-Creds im Parent-Scope).
 
-# --- tool_set_asset_classes (set_*: Anlageklassen mehrerer Depot-Positionen, EINE Karte) ---
-# Owner-Entscheid 2026-10-23: die Anlageklasse wird in der Finanzplanung geklaert -> der Finanzberater (und der
-# Buchhalter) ordnet alle offenen Positionen mit EINER Karte zu. Setzt NUR asset_class; die Pruef-/Write-Logik
+# --- tool_set_asset_classes (set_*: Anlageklassen mehrerer Depot-Positionen, eine Karte) ---
+# Die Anlageklasse wird in der Finanzplanung geklaert: der Finanzberater (und der Buchhalter) ordnet alle
+# offenen Positionen mit einer Karte zu. Setzt nur asset_class; die Pruef-/Write-Logik
 # liegt allein in finance.fn_set_asset_classes (je Zeile fn_find_holding + fn_set_holding).
 function Build-SetAssetClasses {
-    # WS-B0: enge Paket-Schreibrolle (finance_rw, Least-Privilege D10) statt Owner-Cred.
-    # Dynamic-Scope: Build-Pg liest dieses $CRED_POSTGRES. Core-Tools nutzen die Owner-Cred.
+    # Enge Paket-Schreibrolle (finance_rw) statt Owner-Cred; Build-Pg liest $CRED_POSTGRES per Dynamic-Scope.
     $CRED_POSTGRES = $CRED_FINANCE_RW
     $trig = Build-Trigger @('assignments')
 
     # assignments kommt vom Agenten als JSON-String -> geschuetztes JSON.parse (ungueltig -> Sentinel -> die fn lehnt
-    # mit {ok:false} ab, kein Execution-Abbruch). "DB ist das Gesetz": fn_set_asset_classes laeuft als Probelauf VOR
-    # der Karte (Position unbekannt/mehrdeutig, Key-Format, doppelte Position -> {ok:false} ohne Karte) und liefert
-    # die Kartenzeilen (Name, Depot, alt -> neu); derselbe Param-Satz geht nach dem Gate in den echten Write.
+    # mit {ok:false} ab, kein Execution-Abbruch). Der Probelauf lehnt unbekannte/mehrdeutige/doppelte Positionen
+    # und falsches Key-Format ohne Karte ab und liefert die Kartenzeilen (Name, Depot, alt -> neu).
     $wg = New-FnWriteGate -Fn 'finance.fn_set_asset_classes' -DryPos @(220, 0) -WritePos @(1320, 0) `
         -WriteName 'Set asset classes (atomic)' `
         -WriteSelect "(r->>'ok')::boolean AS ok, r->>'reason' AS reason, r->'updated' AS updated" `
@@ -30,7 +28,7 @@ function Build-SetAssetClasses {
     $retCancelled = Build-ToolCancelled 'Return cancelled' @(1320, 200) 'the set_asset_classes action'
 
     # Bestand kann sich zwischen Karte und Tipp aendern (Position verkauft/geloescht) -> ein {ok:false} des echten
-    # Writes ist KEIN Erfolg.
+    # Writes ist kein Erfolg.
     $ifWriteOk = Build-If 'Write ok?' @(1540, 0) "={{ `$json.ok }}" 'true' 'equals' 'boolean'
     $errWrite = Build-ToolError 'Update rejected' @(1760, 200) "={{ `$('Set asset classes (atomic)').item.json.reason }}"
 

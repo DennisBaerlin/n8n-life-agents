@@ -1,15 +1,15 @@
 ﻿#Requires -Version 5.1
 # Definition agent.finance.cron_refresh_market_prices -> Build-CronRefreshMarketPrices. Dot-gesourct von build.ps1.
-# Deterministisch, KEIN LLM. VIER EINGAENGE (Muster cron_refresh_fx_rates): (a) Schedule (taeglich, Cron
+# Deterministisch, kein LLM. Vier Eingaenge (Muster cron_refresh_fx_rates): (a) Schedule (taeglich, Cron
 # aus core.config schedule.refresh_market_prices, beim Einspielen eingesetzt),
 # (b) executeWorkflowTrigger 'Start' fuer den Sofort-Fetch aus tool_book_stock_buy/tool_set_holding nach
 # einem Depot-Write (kein NULL-Preis-Fenster bis zum naechsten Schedule), (c) n8n-Start und (d) stuendlicher
 # Schedule als Nachholen (fn_feed_refresh_due). Alle muenden in denselben Pfad:
-# gehaltene Symbole holen -> EIN Code-Node fetcht ALLE Kurse via Yahoo Finance v8/chart PER Symbol (WP-4:
-# Aktien/ETF UND Krypto als TICKER-FIAT; kollisionsfrei, CoinGecko retired) -> finance.fn_upsert_market_prices. Laeuft unter finance_rw (schreibt
+# gehaltene Symbole holen -> ein Code-Node fetcht alle Kurse via Yahoo Finance v8/chart je Symbol
+# (Aktien/ETF und Krypto als TICKER-FIAT; kollisionsfrei) -> finance.fn_upsert_market_prices. Laeuft unter finance_rw (schreibt
 # finance.market_prices). Nutzt aus dem Orchestrator-Scope: $RepoRoot, $CRED_FINANCE_RW + build_helpers.
 function Build-CronRefreshMarketPrices {
-    # Schreibt finance.market_prices -> enge Paket-Schreibrolle finance_rw (Least-Privilege, D10);
+    # Schreibt finance.market_prices -> enge Paket-Schreibrolle finance_rw;
     # funktions-lokaler Override (Dynamic-Scope -> Build-Pg sieht es), inkl. der Gate-Reads.
     $CRED_POSTGRES = $CRED_FINANCE_RW
 
@@ -19,9 +19,9 @@ function Build-CronRefreshMarketPrices {
     # vom Aufrufer mitgegeben, hier ignoriert — der Cron beschafft nur Kurse).
     $subTrig = Build-Trigger @() @(-900, 200)
 
-    # F9 Cron-Gating: Tagesplan, n8n-Start und stuendlicher Check laufen durch EIN Gate (New-CatchUpEntry: Paket aktiv AND
+    # F9 Cron-Gating: Tagesplan, n8n-Start und stuendlicher Check laufen durch ein Gate (New-CatchUpEntry: Paket aktiv AND
     # cron_enable AND fn_feed_refresh_due('prices'); die DB entscheidet, ein Abruf je Kalendertag, wer zuerst kommt). Der Start-
-    # Sofort-Fetch ist Folge eines bereits erlaubten/HITL-approvten Depot-Writes und prueft NUR Paket aktiv.
+    # Sofort-Fetch ist Folge eines bereits erlaubten/HITL-approvten Depot-Writes und prueft nur Paket aktiv.
     $gateStart = Build-Pg 'Package active?' @(-680, 200) `
         "SELECT core.fn_package_active('finance') AS active"
     $ifStart = Build-If 'Package on?' @(-460, 240) "={{ `$json.active }}" 'true' 'equals' 'boolean'
@@ -33,14 +33,14 @@ function Build-CronRefreshMarketPrices {
     $catchUp = New-CatchUpEntry -Package 'finance' -Feed 'prices' -CronKey 'refresh_market_prices' `
         -OnDue @('Get held symbols') -Origin @(-1120, -240)
 
-    # Gehaltene Symbole (WP-4: EIN Feed = Yahoo Finance fuer ALLES). cnt > 0 = Early-Exit-Gate (kein Fetch ohne
-    # Holdings). Je Holding ein PAAR { q, s }: s = symbol = der fn_upsert-Join-Key; q = das anzufragende Yahoo-
+    # Gehaltene Symbole (ein Feed = Yahoo Finance fuer alles). cnt > 0 = Early-Exit-Gate (kein Fetch ohne
+    # Holdings). Je Holding ein Paar { q, s }: s = symbol = der fn_upsert-Join-Key; q = das anzufragende Yahoo-
     # Feed-Symbol. Aktie/ETF (ISIN vorhanden): q = COALESCE(provider_symbol, symbol) = Yahoo-Ticker mit Boersen-
     # Suffix (VWCE.DE). Krypto (ISIN NULL): q = COALESCE(provider_symbol, symbol || '-EUR') = Yahoos Krypto-
-    # Konvention TICKER-FIAT (BTC-EUR liefert direkt EUR; ein mehrdeutiges Ticker wie UNI setzt der Owner explizit
-    # via provider_symbol = UNI7083-USD). CoinGecko entfaellt (Symbol-Batch war kollisionsanfaellig -> Rate-
+    # Konvention TICKER-FIAT (BTC-EUR liefert direkt EUR; ein mehrdeutiges Ticker wie UNI setzt der Nutzer explizit
+    # via provider_symbol = UNI7083-USD). Ein CoinGecko-Symbol-Batch waere kollisionsanfaellig (Rate-
     # Roulette); Yahoo-Per-Symbol ist kollisionsfrei wie der Aktien-Zweig. Yahoo fehlt ein Coin -> null_price.
-    # Die q-Regel lebt in finance.fn_feed_symbol (Init-Helfer, EINE Adresse mit der Kurs-Status-Anzeige 2026-10-27).
+    # Die q-Regel lebt in finance.fn_feed_symbol (Init-Helfer, eine Adresse mit der Kurs-Status-Anzeige).
     $getSyms = Build-Pg 'Get held symbols' @(-240, 0) @'
 WITH held AS (
   SELECT DISTINCT symbol AS s, finance.fn_feed_symbol(isin, symbol, provider_symbol) AS q
@@ -53,14 +53,14 @@ FROM held
 
     $ifHold = Build-If 'Any holdings?' @(-20, 0) "={{ `$json.cnt }}" '0' 'larger' 'number'
 
-    # EIN Code-Node (kein LLM, deterministisch): Yahoo-Finance v8/finance/chart PER Symbol fuer ALLES — Aktien/
-    # ETF UND Krypto (WP-4: CoinGecko entfaellt, sein Symbol-Batch war kollisionsanfaellig). key-/auth-frei.
+    # Ein Code-Node (kein LLM, deterministisch): Yahoo-Finance v8/finance/chart je Symbol fuer alles — Aktien/
+    # ETF und Krypto. key-/auth-frei.
     # try/catch je Symbol -> ein Ausfall killt die anderen nicht; fehlt ein Kurs, faellt das Symbol hier raus und
-    # agent.finance.cron_remind_missing_prices meldet die Luecke (Owner 2026-10-27: nie unentdeckt). Rueckgabe { prices: { SYM: kurs } }, GESCHLUESSELT auf das
-    # Holding-symbol (s). q->s ist direkt bekannt (Per-Symbol-Call, kollisionsfrei -> KEIN Rate-Roulette wie beim
-    # frueheren CoinGecko-Symbol-Batch). Yahoo liefert in meta.currency die echte Quote-Waehrung (EUR bei
+    # agent.finance.cron_remind_missing_prices meldet die Luecke (nie unentdeckt). Rueckgabe { prices: { SYM: kurs } }, geschluesselt auf das
+    # Holding-symbol (s). q->s ist direkt bekannt (Per-Symbol-Call, kollisionsfrei, kein Rate-Roulette wie bei einem
+    # Symbol-Batch). Yahoo liefert in meta.currency die echte Quote-Waehrung (EUR bei
     # BTC-EUR, USD bei UNI7083-USD) -> je Symbol durchgereicht (currencies{}), fn_upsert setzt sie autoritativ
-    # (GBp/Pence HIER normalisiert: GBp = GBP/100). (Stooq + CoinGecko retired — nicht erneut einbauen.)
+    # (GBp/Pence hier normalisiert: GBp = GBP/100). Stooq und ein CoinGecko-Batch sind verworfen, nicht erneut einbauen.
     $fetchJs = @'
 const symbols = ($('Get held symbols').first().json.symbols || []);
 const prices = {};

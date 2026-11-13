@@ -1,21 +1,21 @@
 -- ============================================================
 -- fn_book_savings_plan_execution (ATOMIC WRITE)
 --   Bucht eine Sparplan-Ausfuehrung: liest das offene Vorkommen aus fn_savings_plan_next_execution (dieselbe fn
---   speist die HITL-Karte -> Karte = Buchung; ueber die ganze Vorgaenger-Kette, Audit Paket 2 Punkt 3: eine noch
---   anstehende Ausfuehrung zu alten Konditionen bucht auf die ALTE rp mit deren Betrag),
+--   speist die HITL-Karte -> Karte = Buchung; ueber die ganze Vorgaenger-Kette: eine noch anstehende Ausfuehrung zu
+--   alten Konditionen bucht auf die alte rp mit deren Betrag),
 --   setzt transaction_date=due_date + recurring_payment_id (dieses Ketten-Glied) auf die Kauf-Transaktion ->
 --   Vorkommen verschwindet automatisch aus der offenen Liste (kein Write an fn_recurring_due_open).
 --   Ruft fn_book_stock_buy intern auf (Depot, Settlement, Holding/Trigger werden daraus bedient).
---   Eingabe jsonb: savings_plan_name, shares, price_per_share, order_fee (opt, default 0).
---   ODER (Monats-Check WP-A, Kontoauszug-Pfad): recurring_payment_id + due_date (das konkrete Vorkommen, das der
---   Auszug zugeordnet hat) + transaction_date (Ist-Datum, Default due_date) statt savings_plan_name -> kein
---   "fruehestes offenes Vorkommen" (das koennte ein aelteres, noch offenes treffen); Plan ueber den Kettenkopf.
---   RUECKGABE-VERTRAG: Erfolg -> {ok:true, holding_id, buy_tx_id, due_date, total_cost,
---   plan_amount, variance}. Korrigierbar (Plan nicht aktiv, kein offenes Vorkommen, shares<=0,
---   price<=0) -> {ok:false, reason} OHNE Write.
---   WS-6: die null_tag-Note aus fn_book_stock_buy wird NICHT durchgereicht (diese fn baut ihren eigenen
---   Return; der Sparplan-Cron surfaced keine Envelope-Notes — der Plan-asset_class vererbt sich ohnehin
---   an die Holding, sodass eine getaggte Plan-Ausfuehrung gar keine Note erzeugte).
+--   Eingabe jsonb: shares, price_per_share (Pflicht, > 0); order_fee (optional, Default 0); entweder
+--   savings_plan_name (fruehestes offenes Vorkommen) oder (Kontoauszug-Pfad) recurring_payment_id + due_date (das
+--   konkrete Vorkommen, das der Auszug zugeordnet hat) + transaction_date (Ist-Datum, Default due_date); der
+--   Kontoauszug-Pfad vermeidet, dass ein aelteres, noch offenes Vorkommen getroffen wird; Plan ueber den Kettenkopf.
+--   Rueckgabe: ok:true -> {ok:true, holding_id, buy_tx_id, due_date, total_cost, plan_amount, variance (Abweichung in %
+--   zum Planbetrag, informativ), effective}. ok:false ohne Write: {reason} bei shares/price <= 0, rp ohne Sparplan,
+--   Plan nicht gefunden/mehrdeutig/nicht aktiv, kein offenes Vorkommen (aus fn_savings_plan_next_execution
+--   durchgereicht), oder jede Ablehnung von fn_book_stock_buy (z. B. Depot-Typ-Mismatch); {code:'invalid_date'}.
+--   Die null_tag-Note aus fn_book_stock_buy wird nicht durchgereicht (diese fn baut ihren eigenen Return; der
+--   Sparplan-Cron surfaced keine Envelope-Notes, und der Plan-asset_class vererbt sich an die Holding).
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_book_savings_plan_execution(p jsonb)
 RETURNS jsonb LANGUAGE plpgsql AS $$
@@ -36,12 +36,10 @@ DECLARE
     v_tx_date   DATE;
     v_dates     JSONB;
 BEGIN
-    -- relative Ist-Datumsangabe ("yesterday") -> ISO; nicht aufloesbar -> {ok:false, code:'invalid_date'}.
     -- due_date kommt aus dem DB-Lookup (Vorkommen-Identitaet), nie vom LLM -> nicht aufgeloest.
     v_dates := core.fn_resolve_input_dates(p, ARRAY['transaction_date']);
     IF NOT (v_dates->>'ok')::boolean THEN RETURN v_dates; END IF;
     p := v_dates->'p';
-    -- Input-Pruefungen
     IF v_shares IS NULL OR v_shares <= 0 THEN
         RETURN jsonb_build_object('ok', false,
             'reason', 'Shares must be a positive number, got ' || COALESCE(v_shares::text, 'null') || '.');
@@ -51,8 +49,8 @@ BEGIN
             'reason', 'Price per share must be a positive number, got ' || COALESCE(v_price::text, 'null') || '.');
     END IF;
 
-    -- Plan aufloesen + offenes Vorkommen ueber die Kette (eine Quelle mit der HITL-Karte; {ok:false} durchreichen:
-    -- nicht gefunden, mehrdeutig, nicht aktiv, kein offenes Vorkommen).
+    -- Plan aufloesen + offenes Vorkommen ueber die Kette (eine Quelle mit der HITL-Karte; {ok:false} wird
+    -- durchgereicht).
     IF v_rp_in IS NOT NULL THEN
         -- Kontoauszug-Pfad: das zugeordnete Vorkommen direkt (Idempotenz/Sperre erledigt fn_book_stock_buy).
         SELECT * INTO v_plan FROM finance.savings_plans
@@ -77,14 +75,14 @@ BEGIN
     END IF;
     v_tx_date := COALESCE(NULLIF(p->>'transaction_date', '')::date, v_due_date);
 
-    -- Abweichungs-Berechnung (informativ; kein harter Block — Gate ist Safeguard), gegen den Betrag GENAU der
-    -- rp, deren Vorkommen gebucht wird.
+    -- Abweichung informativ (kein harter Block; das Gate ist der Safeguard), gegen den Betrag genau der rp, deren
+    -- Vorkommen gebucht wird.
     v_total    := v_shares * v_price + v_fee;
     v_variance := ROUND(ABS(v_total - v_plan_amt) / NULLIF(v_plan_amt, 0) * 100, 2);
 
-    -- fn_book_stock_buy aufrufen mit recurring_payment_id + due_date. WS-6: die Anlageklasse des Plans wird
-    -- vererbt -> eine vom Sparplan ANGELEGTE Position traegt den Tag, nie leer (fn_book_stock_buy taggt nur beim
-    -- Anlegen; NULL = Plan ungetaggt -> wie zuvor untagged, periodische null_tag-Meldung faengt es).
+    -- Die Anlageklasse des Plans wird vererbt -> eine vom Sparplan angelegte Position traegt den Tag, nie leer
+    -- (fn_book_stock_buy taggt nur beim Anlegen; NULL = Plan ungetaggt -> Position untagged, die periodische
+    -- null_tag-Meldung faengt es).
     v_buy_json := jsonb_build_object(
         'depot_id',              v_plan.depot_id,
         'settlement_id',         (v_next->>'settlement_account_id')::int,

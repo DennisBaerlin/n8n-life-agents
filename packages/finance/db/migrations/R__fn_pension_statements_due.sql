@@ -1,11 +1,12 @@
 -- ============================================================
--- fn_pension_statements_due (READ, STABLE) -- welche Renteninformation faellig ist (Erinnerung, Plan 2026-10-26)
+-- fn_pension_statements_due (READ, STABLE) -- welche Renteninformation faellig ist (Erinnerung)
 --   Aktive gesetzliche/betriebliche Renten, deren juengste Renteninformation aelter als 13 Monate ist (stale) -- dieselbe
---   Regel wie finance.fn_pension_outlook (eine Adresse). Ohne Information (never) nur die GESETZLICHE Rente: die DRV
---   schickt sie jaehrlich, viele Arbeitgeber eine bAV-Standmitteilung dagegen nicht (Review 2026-10-26: sonst kaeme
---   jeden Monat eine nicht abschaltbare bAV-Zeile). Konsument: der deterministische Cron
+--   Regel wie finance.fn_pension_outlook (eine Adresse). Ohne Information (never) nur die gesetzliche Rente: die DRV
+--   schickt sie jaehrlich, viele Arbeitgeber eine bAV-Standmitteilung dagegen nicht (sonst kaeme jeden Monat eine
+--   nicht abschaltbare bAV-Zeile). Konsument: der deterministische Cron
 --   agent.finance.cron_remind_pension_statement (finance_ro, kein LLM).
---   RUECKGABE jsonb-Array (leer = '[]'): [{name, owner, owner_person_id, last_statement_date | null, never}].
+--   Eingabe: keine.
+--   Rueckgabe: jsonb-Array (leer = '[]'): [{name, owner, owner_person_id, last_statement_date | null, never}].
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_pension_statements_due()
 RETURNS jsonb LANGUAGE sql STABLE AS $$

@@ -1,13 +1,15 @@
 -- ============================================================
--- finance.fn_savings_goal_pace(p_goal_id int) — die EINE Ampel-Regel eines Sparziels (2026-10-28)
+-- fn_savings_goal_pace (READ, STABLE) — die eine Ampel-Regel eines Sparziels
 --   Konsumenten: Mini-App-Bildschirm „Ziele" (finance.fn_app_screen_goals: Pill, Balken, Banner), der Berater
 --   (finance.fn_advisor_review, Pace-Alert) und sein Schnappschuss (finance.fn_advisor_snapshot, goal_status).
 --   Fakten aus finance.savings_goal_progress (DB rechnet, kein Aufrufer).
---   Zustand eines AKTIVEN Ziels, erste passende Regel gewinnt:
+--   Eingabe: p_goal_id int (Pflicht). Rueckgabe: text (unmeasurable | behind | unknown | reached | paused | on_track)
+--   oder NULL; keine ok-Huelle, keine Seiteneffekte.
+--   Zustand eines aktiven Ziels, erste passende Regel gewinnt:
 --     1. unmeasurable  NOT progress_measurable (laufende Rate ohne Topf; gilt auch fuer eine Ruecklage)
 --     2. NULL          Instandhaltungsruecklage (target_amount NULL, Form-CHECK finance_savings_goals_shape)
 --     3. behind        pace_drift_pp > core.config core/advisor/drift_pace_pp (Default 10), ohne Kurs-Luecke
---        unknown       dieselbe Bedingung MIT has_fx_gap (2026-11-06): ein Anteil liegt auf einem Konto in einer Waehrung
+--        unknown       dieselbe Bedingung mit has_fx_gap: ein Anteil liegt auf einem Konto in einer Waehrung
 --                      ohne jeden Wechselkurs. Der gemessene Stand ist dann nur eine Untergrenze; eine Aussage bleibt
 --                      nur gueltig, wenn sie nicht vom Fehlenden abhaengt (SQL-Dreiwertlogik). reached/paused/on_track
 --                      haengen nicht davon ab (mehr Geld aendert sie nicht), behind schon -> nicht beurteilbar.
@@ -19,10 +21,10 @@
 --     5. paused        das Ziel hat eine Spar-Quelle (Raten-Kette recurring_payment_id oder verknuepfter Sparplan) und
 --                      keine davon ist aktiv und nicht beendet (Glied der Kette: status active, valid_to offen/kuenftig;
 --                      Sparplan: status active). Ein noch laufender Vorgaenger oder eine erst kuenftig startende Rate
---                      ist NICHT pausiert.
+--                      ist nicht pausiert.
 --     6. on_track      sonst
 --   Nicht aktives oder unbekanntes Ziel -> NULL.
---   Reihenfolge bewusst: behind/unknown VOR reached/paused, damit (behind OR unknown) <=> (aktiv AND pace_drift_pp >
+--   Reihenfolge bewusst: behind/unknown vor reached/paused, damit (behind OR unknown) <=> (aktiv AND pace_drift_pp >
 --   Toleranz) exakt gilt (auch bei negativer Toleranz), unknown <=> zusaetzlich has_fx_gap;
 --   unmeasurable <=> NOT progress_measurable. unknown meldet nie einen Alert (die Luecke meldet data_quality).
 --   plpgsql (late-bound wie finance.fn_price_status): core.fn_config_get ist eine core-R__.

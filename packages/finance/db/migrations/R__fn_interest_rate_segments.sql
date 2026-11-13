@@ -1,20 +1,21 @@
 -- ============================================================
 -- fn_interest_rate_segments (READ — taggenaue Satz-Segmente einer Zins-Periode; DB rechnet, nie das LLM)
---   Zerschneidet die Periode [p_period_start, p_period_end) an JEDEM Satzwechsel (account_interest_rates.
---   valid_from STRIKT innerhalb der Periode) und liefert je Teil-Segment (seg_start, seg_end, annual_rate,
---   day_count_convention). Etabliertes Muster (OpenGamma Strata RateAccrualPeriod / deutsche Zinsstaffel):
+--   Zerschneidet die Periode [p_period_start, p_period_end) an jedem Satzwechsel (account_interest_rates.
+--   valid_from strikt innerhalb der Periode) und liefert je Teil-Segment (seg_start, seg_end, annual_rate,
+--   day_count_convention). Eingabe: p_account_id, p_period_start, p_period_end.
+--   Etabliertes Muster (OpenGamma Strata RateAccrualPeriod / deutsche Zinsstaffel):
 --   pro Segment der eigene Jahres-Bruchteil, der Aufrufer summiert.
 --
---   Satz je Segment = die Rate-Zeile, deren halb-offenes Gueltigkeits-Intervall das GANZE Segment ENTHAELT —
---     RANGE-CONTAINMENT-Join (range @> range) auf EXAKT die daterange-Expression der EXCLUDE-gist-Constraint
---     (Sentinel '9999-12-31', '[)') -> EINE autoritative Tiling-Quelle, kein zweiter GREATEST(valid_from)-Max-
+--   Satz je Segment = die Rate-Zeile, deren halb-offenes Gueltigkeits-Intervall das ganze Segment enthaelt —
+--     Range-Containment-Join (range @> range) auf exakt die daterange-Expression der EXCLUDE-gist-Constraint
+--     (Sentinel '9999-12-31', '[)') -> eine autoritative Tiling-Quelle, kein zweiter GREATEST(valid_from)-Max-
 --     Scan. valid_from ist inklusiv (neuer Satz "gilt ab" -> gehoert ins rechte Segment). Da die Zeilen
 --     ueberlappungsfrei (EXCLUDE) + lueckenlos historisiert sind (Close-then-Insert), liegt jedes Segment voll
 --     in genau einer Zeile. (Range-Containment statt Punkt-`@> seg_start`: eine Luecke zwischen valid_to und
---     dem naechsten valid_from liegt INNERHALB eines Segments — Punkt-Containment auf den seg_start wuerde sie
+--     dem naechsten valid_from liegt innerhalb eines Segments — Punkt-Containment auf den seg_start wuerde sie
 --     nicht sehen, Range-Containment schon.)
 --
---   LUECKEN-Robustheit: ein nicht voll gedecktes Segment (Datenkorruption) faellt hier per INNER JOIN raus;
+--   Luecken-Robustheit: ein nicht voll gedecktes Segment (Datenkorruption) faellt hier per INNER JOIN raus;
 --     der Aufrufer fn_interest_amount_due faengt das fail-closed ab (Summe der Segment-Tage muss die Periode
 --     decken, sonst RAISE) statt still zu unterverzinsen.
 -- ============================================================

@@ -1,11 +1,12 @@
 -- ============================================================
--- fn_recurring_name_check (NAMENSSPERRE NEUER DAUERZAHLUNGEN, Paket DB-ist-das-Gesetz S6)
---   Gerufen NUR von den oeffentlichen fn_create_recurring_payment / fn_create_recurring_transfer — NICHT von der
+-- fn_recurring_name_check (READ, STABLE — Namenssperre neuer Dauerzahlungen)
+--   Gerufen nur von den oeffentlichen fn_create_recurring_payment / fn_create_recurring_transfer — nicht von der
 --   geteilten fn_add_recurring_payment (Versicherung, Kredit, Sparziel, Rente, Sparplan, Split, Reopen legen dort
 --   legitim gleichnamige Zeilen an). Praedikat "gibt es schon" = finance.active_recurring_payments (laeuft) plus
---   finance.upcoming_recurring_payments (startet noch, Befund 2026-11-02: sonst Dublette, solange der erste Termin aussteht).
+--   finance.upcoming_recurring_payments (startet noch: sonst Dublette, solange der erste Termin aussteht).
+--   Eingabe: p_name (text).
 --   Rueckgabe:
---     {ok:false, code:'duplicate_name', reason, candidates}  FREISTEHENDE Zahlung gleichen Namens, laufend oder startend
+--     {ok:false, code:'duplicate_name', reason, candidates}  freistehende Zahlung gleichen Namens, laufend oder startend
 --                                                            (ohne Gross-/Kleinschreibung, fn_name_matches); noch nicht
 --                                                            gestartet: starts_on im Kandidaten + Weg im reason, weil
 --                                                            fn_set_recurring_payment vor dem Start keinen Betrag aendert

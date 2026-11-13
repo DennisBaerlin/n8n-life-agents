@@ -2,8 +2,9 @@
 -- fn_emergency_reserve_card_lines (READ, STABLE) -- Karten-Hinweise zur Notreserve aus fn_emergency_reserve_status
 --   Fuer die HITL-Karten von tool_create_savings_goal / tool_set_savings_goal (card_lines, typisierte Notes; die Karte
 --   rendert sie in der Sprache des Empfaengers): Ziel (bei Monaten mit Monatsbasis: feste Zahlungen + geschaetzter
---   Alltag, als Schaetzwert in ganzen Einheiten angezeigt, Wert cent-genau) und bisher gedeckt. Keine eigene Rechnung — nur Darstellung des Status-jsonb.
---   RUECKGABE: jsonb-Array von {kind:'note', value:<key>, params}; ohne Notreserve leer.
+--   Alltag, als Schaetzwert in ganzen Einheiten angezeigt, Wert cent-genau) und bisher gedeckt.
+--   Eingabe: p_status (jsonb von fn_emergency_reserve_status). Nur Darstellung, keine eigene Rechnung.
+--   Rueckgabe: jsonb-Array von {kind:'note', value:<key>, params}; ohne Notreserve (exists nicht true) leer.
 --   Tests: tests/db/finance/test_fn_emergency_reserve_status.sql
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_emergency_reserve_card_lines(p_status jsonb)

@@ -1,11 +1,11 @@
 -- ============================================================
--- fn_find_holding (POSITION PER DEPOT-NAME + ISIN/SYMBOL, Paket DB-ist-das-Gesetz S8)
---   Ersetzt die Prompt-Regel "holding_id vorher per postgres_select aus depot_holdings_overview holen". Eingabe jsonb:
---   depot_name, isin (optional), symbol (optional; eins von beiden) ODER position (aktuelles Symbol oder ISIN in einem
---   Feld, ISIN an der Form erkannt; fuer set_holding, wo symbol/isin die NEUEN Werte sind). Depot ueber fn_resolve_account (nur Depot-Typen,
---   erst exakt, dann ohne Gross-/Kleinschreibung); Position: ISIN (ohne Gross-/Kleinschreibung), ohne ISIN-Treffer
---   das Symbol ohne Gross-/Kleinschreibung (auch bei Aktien mit ISIN). Die EINE Positionssuche der Tools; fn_resolve_holding
---   bleibt nur die Identitaets-Pruefung beim Kauf (neue Position anlegen oder bestehende fortschreiben).
+-- fn_find_holding (READ — Position per Depot-Name + ISIN/Symbol)
+--   Eingabe jsonb: depot_name (Pflicht), isin (optional), symbol (optional; eins von beiden) oder position (aktuelles
+--   Symbol oder ISIN in einem Feld, ISIN an der Form erkannt; fuer set_holding, wo symbol/isin die neuen Werte sind).
+--   Depot ueber fn_resolve_account (nur Depot-Typen, erst exakt, dann ohne Gross-/Kleinschreibung); Position: ISIN
+--   (ohne Gross-/Kleinschreibung), ohne ISIN-Treffer das Symbol ohne Gross-/Kleinschreibung (auch bei Aktien mit ISIN).
+--   Die eine Positionssuche der Tools; fn_resolve_holding bleibt nur die Identitaets-Pruefung beim Kauf (neue Position
+--   anlegen oder bestehende fortschreiben).
 --   Rueckgabe:
 --     {ok:true, holding_id, depot_id, depot_name, settlement_account_id, currency (Depot), available_shares, symbol, isin,
 --      name, holding_currency}
@@ -19,7 +19,7 @@ LANGUAGE plpgsql
 STABLE
 AS $$
 DECLARE
-    v_pos    TEXT := NULLIF(btrim(p->>'position'), '');   -- set_holding: aktuelles Symbol ODER ISIN in einem Feld
+    v_pos    TEXT := NULLIF(btrim(p->>'position'), '');   -- set_holding: aktuelles Symbol oder ISIN in einem Feld
     v_isin   TEXT := COALESCE(NULLIF(upper(btrim(p->>'isin')), ''),
                               CASE WHEN upper(v_pos) ~ '^[A-Z]{2}[A-Z0-9]{9}[0-9]$' THEN upper(v_pos) END);
     v_symbol TEXT := COALESCE(NULLIF(btrim(p->>'symbol'), ''),

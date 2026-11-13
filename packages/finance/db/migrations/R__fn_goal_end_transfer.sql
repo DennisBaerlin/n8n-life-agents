@@ -1,11 +1,12 @@
 -- ============================================================
--- fn_goal_end_transfer (INTERNAL HELPER — Befund 2026-10-27, nicht tool-facing)
---   Beendet einen Dauerauftrag, den eine Ziel-Rate ab p_first fortfuehrt (fn_create_savings_goal, fn_set_savings_goal):
+-- fn_goal_end_transfer (INTERNAL HELPER — nicht tool-facing)
+--   Beendet einen Dauerauftrag, den eine Ziel-Rate ab p_first fortfuehrt (fn_create_savings_goal, fn_set_savings_goal);
+--   Eingabe: p_rp_id (Dauerauftrag, ein Glied seiner Kette), p_first (erster Tag der Ziel-Rate):
 --   alle noch laufenden Glieder seiner Kette bekommen valid_to = p_first (exklusiv), der Status bleibt 'active' -> ein
 --   noch nicht gebuchter, faelliger Termin VOR p_first bleibt offen (Erinnerung/Monats-Check buchen ihn wie sonst);
 --   ab p_first zaehlt nur die Ziel-Rate (nichts doppelt). Hat er nie gegolten (p_first <= valid_from) und keine Buchung
 --   in der Kette, wird er geloescht (keine leere Zeile).
---   RUECKGABE: 'deleted' | 'ended'.
+--   Rueckgabe: 'deleted' | 'ended'.
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_goal_end_transfer(p_rp_id int, p_first date)
 RETURNS text LANGUAGE plpgsql AS $$

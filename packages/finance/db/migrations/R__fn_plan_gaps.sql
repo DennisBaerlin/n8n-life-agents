@@ -1,23 +1,24 @@
 -- ============================================================
--- finance.fn_plan_gaps (Plan-Luecken, 2026-10-27 — DB rechnet, was am Haushalts-Finanzplan noch fehlt)
---   Anlass: ein importierter Plan war veroeffentlicht, aber nur 3 von 9 Interview-Sektionen waren je im Gespraech
---   bestaetigt und das Notreserve-Ziel fehlte; der Berater erkannte das nur zufaellig aus der Prosa.
---   Gilt nur bei AKTIVEM Plan (ohne aktiven Plan laeuft das Fresh-/Resume-Interview, keine Meldung).
+-- fn_plan_gaps (READ, STABLE — Plan-Luecken: was am Haushalts-Finanzplan noch fehlt)
+--   Die DB rechnet, welche Interview-Sektionen und Pflicht-Bloecke des Haushalts-Finanzplans fehlen.
+--   Gilt nur bei aktivem Plan (ohne aktiven Plan laeuft das Fresh-/Resume-Interview, keine Meldung).
+--   Eingabe: p_facts (jsonb, Sidecar financial_planning.metadata.facts; kein Objekt -> wie '{}').
 --
---   KATALOG = die Interview-Sektionen (Reihenfolge = DIN-77230-Prioritaet) und ihre Pflicht-Bloecke; der Prompt
+--   Katalog = die Interview-Sektionen (Reihenfolge = DIN-77230-Prioritaet) und ihre Pflicht-Bloecke; der Prompt
 --   (finance_advisor_instructions.md "Interview catalog") muss dieselben Keys/Pfeil-Bloecke nennen — contract_lint 28
---   prueft die Gleichheit. Umbenannte Alt-Keys frueherer Versionen werden ignoriert.
---   BESTAETIGT = die Sektion steht im interview_state IRGENDEINER veroeffentlichten Version (active/superseded) der
+--   prueft die Gleichheit. Keys ausserhalb des Katalogs (z. B. umbenannte Alt-Keys) werden ignoriert.
+--   Bestaetigt = die Sektion steht im interview_state irgendeiner veroeffentlichten Version (active/superseded) der
 --   Haushalts-Domain 'finance' (person_id NULL): ein neuer Draft startet leer, ohne die Union verschwaenden fruehere
 --   Bestaetigungen nach dem naechsten Publish. Der E2E-Sentinel '__e2e_finance__' zaehlt nicht. Eine Sektion, die den
 --   Haushalt nicht betrifft, bestaetigt der Berater mit einem kurzen "trifft nicht zu"-Save (Prompt).
---   VERWERTBAR (Pflicht-Block in p_facts = Sidecar financial_planning.metadata.facts, vom Renderer uebergeben):
---   die Bloecke = Objekt vorhanden. NOTRESERVE (2026-10-30): kein Plan-Block mehr — sie ist eine Ruecklage (Sparziel
---   kind emergency_reserve, fn_emergency_reserve_status); ist die Sektion bestaetigt und keine aktive Notreserve angelegt,
---   steht {section:'emergency_reserve', block:'emergency_reserve'} in missing_blocks (der Buchhalter legt sie an). interview_state ohne Objekt-Form (Altlast) zaehlt als leer (RAISE-frei:
---   die fn laeuft im Render-Pfad von core.fn_fetch_context, ein Fehler kostete den ganzen Plan).
+--   Verwertbar (Pflicht-Block in p_facts, vom Renderer uebergeben): die Bloecke = Objekt vorhanden. Notreserve ist
+--   kein Plan-Block — sie ist eine Ruecklage (Sparziel kind emergency_reserve, fn_emergency_reserve_status); ist die
+--   Sektion bestaetigt und keine aktive Notreserve angelegt, steht {section:'emergency_reserve',
+--   block:'emergency_reserve'} in missing_blocks (der Buchhalter legt sie an). interview_state ohne Objekt-Form
+--   (Altlast) zaehlt als leer (RAISE-frei: die fn laeuft im Render-Pfad von core.fn_fetch_context, ein Fehler kostete
+--   den ganzen Plan).
 --
---   RUECKGABE jsonb: { has_active_plan,
+--   Rueckgabe: jsonb { has_active_plan,
 --     open_sections:       [key…]  -- weder veroeffentlicht bestaetigt noch im Draft (Katalog-Reihenfolge)
 --     draft_only_sections: [key…]  -- im offenen Draft gespeichert, noch nicht veroeffentlicht (-> publizieren)
 --     missing_blocks:      [{section, block}…] }  -- bestaetigte Sektion ohne verwertbaren Block (keine Doppelnennung)

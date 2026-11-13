@@ -1,24 +1,27 @@
 -- ============================================================
 -- fn_reconcile_accounts (ATOMIC BATCH WRITE)
---   Gleicht MEHRERE Konten in EINER Transaktion ab (alles-oder-nichts): ein HITL-Gate
+--   Gleicht mehrere Konten in einer Transaktion ab (alles-oder-nichts): ein HITL-Gate
 --   im Tool deckt den ganzen Batch ab (analog Multi-Leg = ein logischer Write).
 --   Eingabe jsonb: { accounts: [{account_name, confirmed_balance, reconciliation_date?, notes?}, ...] }
---   ZWEI Paesse fuer echte Atomaritaet:
---     Pass 1: ALLE Namen aufloesen. Faellt einer (0/>1) -> RETURN {ok:false} BEVOR irgendetwas
+--   Zwei Paesse fuer echte Atomaritaet:
+--     Pass 1: alle Namen aufloesen. Faellt einer (0/>1) -> RETURN {ok:false} bevor irgendetwas
 --             geschrieben wurde (RETURN ohne RAISE committed den bisherigen TX-Stand -> ein
 --             Schreiben-dann-Abbrechen waere ein Teilzustand; darum vor dem ersten Write pruefen).
---     Pass 2: je Konto an finance.fn_reconcile_account delegieren -> EINE Quelle der Reconcile-Logik (DRY).
+--     Pass 2: je Konto an finance.fn_reconcile_account delegieren -> eine Quelle der Reconcile-Logik.
 --             Ein RAISE dort (echte Ausnahme) rollt die ganze TX zurueck.
---   Phase B: Eingaben kommen vom Modell -> Form-Guards in Pass 1 als {ok:false} statt Cast-RAISE (Absturz +
---     Owner-Alert): accounts muss ein Array sein (NULL-sicher — vorher lieferte ein fehlender Key still
---     ok:true/count 0), confirmed_balance eine schlichte Zahl, reconciliation_date ISO oder relativ ("yesterday";
---     core.fn_resolve_input_dates je Zeile, leer = heute). effective.accounts = die Liste mit aufgeloestem Stichtag
---     (der Gate-Write mischt sie ueber die Roh-Liste -> Karte und Abgleich zeigen denselben Tag).
---   Audit Paket 2: Pass 1 lehnt zusaetzlich ein doppeltes Konto im Batch und die Gruende aus
+--   Eingaben kommen vom Modell -> Form-Guards in Pass 1 als {ok:false} statt Cast-RAISE (Absturz +
+--     Owner-Alert): accounts muss ein nicht leeres Array sein, confirmed_balance eine schlichte Zahl,
+--     reconciliation_date ISO oder relativ ("yesterday"; core.fn_resolve_input_dates je Zeile, leer = heute).
+--     effective.accounts = die Liste mit aufgeloestem Stichtag (der Gate-Write mischt sie ueber die Roh-Liste ->
+--     Karte und Abgleich zeigen denselben Tag).
+--   Pass 1 lehnt zusaetzlich ein doppeltes Konto im Batch und die Gruende aus
 --     finance.fn_reconcile_blocker ab (Depot-/Kreditkonto, Stichtag Zukunft / vor letztem Abgleich) -- identisch
 --     mit fn_reconcile_accounts_preview -> Vorschau = Buchung.
---   Rueckgabe: { ok:false, reason } | { ok:true, count, results:[{ok, account_id, account_name,
---              currency, db_balance_before, confirmed_balance, difference, reconciliation_tx_id, balance_after}] }
+--   Rueckgabe: { ok:false, reason (bei Pass-2-Ablehnung zusaetzlich account_name) } | { ok:true, count,
+--              results:[{ok, account_id, account_name, currency, db_balance_before, confirmed_balance, difference,
+--              reconciliation_tx_id, balance_after, skipped_occurrences, skipped, effective}],
+--              effective:{accounts} }
+--   Seiteneffekte: die von fn_reconcile_account je Konto (Korrekturbuchung, last_reconciled_*, Skips).
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_reconcile_accounts(p jsonb)
 RETURNS jsonb LANGUAGE plpgsql AS $$
@@ -38,15 +41,15 @@ BEGIN
         RETURN jsonb_build_object('ok', false, 'reason', 'No accounts provided to reconcile (accounts must be a JSON array).');
     END IF;
 
-    -- Pass 1: alles aufloesen + Form pruefen, NICHTS schreiben.
+    -- Pass 1: alles aufloesen + Form pruefen, nichts schreiben.
     FOR v_acct IN SELECT * FROM jsonb_array_elements(p->'accounts') LOOP
         IF COALESCE(v_acct->>'confirmed_balance', '') !~ '^\s*[+-]?[0-9]+(\.[0-9]+)?\s*$' THEN
             RETURN jsonb_build_object('ok', false, 'reason', format(
                 'confirmed_balance for %L must be a plain number like 1234.56, got %L',
                 v_acct->>'account_name', v_acct->>'confirmed_balance'));
         END IF;
-        -- Stichtag je Zeile: ISO oder relativ ("yesterday") -> ISO; leer = heute (Haushalts-Zeitzone, vorher
-        -- CURRENT_DATE). Der aufgeloeste Tag geht ueber effective.accounts fest in den Write nach der Karte.
+        -- Stichtag je Zeile: ISO oder relativ ("yesterday") -> ISO; leer = heute (Haushalts-Zeitzone).
+        -- Der aufgeloeste Tag geht ueber effective.accounts fest in den Write nach der Karte.
         v_dates := core.fn_resolve_input_dates(v_acct, ARRAY['reconciliation_date']);
         IF NOT (v_dates->>'ok')::boolean THEN
             RETURN v_dates || jsonb_build_object('reason', format('Account %L: %s',
@@ -64,7 +67,7 @@ BEGIN
                 'reason', format('Account %L resolves to %s matches.', v_acct->>'account_name', v_hit));
         END IF;
 
-        -- Audit Paket 2: ein Konto nur EINMAL je Batch (sonst wiche die Vorschau -- je Zeile gegen den DB-Stand --
+        -- Ein Konto nur einmal je Batch (sonst wiche die Vorschau -- je Zeile gegen den DB-Stand --
         -- von der Buchung ab, die nacheinander korrigiert); Kontotyp/Stichtag wie im Einzel-Abgleich.
         IF v_resolved @> jsonb_build_array(jsonb_build_object('account_id', v_id)) THEN
             RETURN jsonb_build_object('ok', false, 'reason', format(
@@ -83,8 +86,8 @@ BEGIN
             'notes',               v_acct->>'notes'));
     END LOOP;
 
-    -- Pass 2: jetzt schreiben. Pass 1 hat gegen den ALTSTAND geprueft; ein Konto kann im selben Stapel doppelt stehen
-    -- oder sich seitdem geaendert haben -> eine Ablehnung hier rollt den GANZEN Stapel zurueck (Block-Savepoint,
+    -- Pass 2: jetzt schreiben. Pass 1 hat gegen den Altstand geprueft; ein Konto kann im selben Stapel doppelt stehen
+    -- oder sich seitdem geaendert haben -> eine Ablehnung hier rollt den ganzen Stapel zurueck (Block-Savepoint,
     -- Sentinel LA002, Muster fn_import_bundle) und kommt als {ok:false, reason, account_name} zurueck, kein Teilzustand
     -- und kein Owner-Alarm. Echte Exceptions der delegierten fn werden nicht abgefangen.
     BEGIN

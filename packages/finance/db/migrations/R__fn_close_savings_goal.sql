@@ -1,18 +1,18 @@
 -- ============================================================
 -- fn_close_savings_goal (ATOMIC WRITE) -- Smart-Close (analog fn_close_savings_plan)
---   WS-B Stufe 3 (Phase S, Owner-Korrektur "erreicht != ausgegeben"): zwei DISTINKTE Abschluss-Ausgaenge,
---   gesteuert ueber den Input `outcome` ('completed' | 'cancelled', Default 'cancelled'):
---     * ERFUELLT  (outcome='completed'): das Geld wurde AUSGEGEBEN -> die Reserve ist real entnommen.
---       GUARD: completed nur wenn die Reserve ~0 ist (savings_goal_progress.current_amount, |.| <= 0.01)
---       ODER `force`=true ("trotz Restbetrag schliessen"). Completion gibt die Reserve NICHT selbst frei
+--   Zwei distinkte Abschluss-Ausgaenge (erreicht != ausgegeben), gesteuert ueber den Input `outcome`
+--   ('completed' | 'cancelled', Default 'cancelled'):
+--     * erfuellt (outcome='completed'): das Geld wurde ausgegeben -> die Reserve ist real entnommen.
+--       Guard: completed nur wenn die Reserve ~0 ist (savings_goal_progress.current_amount, |.| <= 0.01)
+--       oder `force`=true ("trotz Restbetrag schliessen"). Completion gibt die Reserve nicht selbst frei
 --       (sie ist da schon ausgegeben). Sonst {ok:false} (kein stilles Auto-Freigeben zweckgebundenen Gelds).
---     * ABGEBROCHEN (outcome='cancelled'): das Ziel wird verworfen -> die ZUORDNUNGEN werden FREI, der
---       freigewordene Betrag ist reassignbar. Bestand bleibt IMMER (RESTRICT, hier nie beruehrt).
+--     * abgebrochen (outcome='cancelled'): das Ziel wird verworfen -> die Zuordnungen werden frei, der
+--       freigewordene Betrag ist reassignbar. Bestand bleibt immer (RESTRICT, hier nie beruehrt).
 --
---   Zaehlt Transaktionen mit recurring_payment_id in der Vorgaenger-Kette der Rate (Audit Paket 2: nach einer
---   Reaktivierung liegt die Historie auf der alten rp) ODER savings_goal_id = goal.id
---   (WS-A: getaggte Einmal-/Entnahme-/Umschicht-Tx ohne Rate-rp zaehlen ebenfalls) ODER Journal-Zeilen echter
---   Geldbewegungen (sparplan_buy/derisk/void); bei outcome='completed' auch reine Zuordnungen (manual, 2026-10-27:
+--   Zaehlt Transaktionen mit recurring_payment_id in der Vorgaenger-Kette der Rate (nach einer
+--   Reaktivierung liegt die Historie auf der alten rp) oder savings_goal_id = goal.id
+--   (getaggte Einmal-/Entnahme-/Umschicht-Tx ohne Rate-rp zaehlen ebenfalls) oder Journal-Zeilen echter
+--   Geldbewegungen (sparplan_buy/derisk/void); bei outcome='completed' auch reine Zuordnungen (manual,
 --   Erfuellungs-Historie). Ohne jede Tx/Zeile -> Hard-DELETE.
 --   v_tx_count = 0 -> Hard-DELETE: Sparziel + ggf. verknuepfte RP. Das Reserve-Journal geht per ON DELETE
 --     CASCADE (savings_goal_id) automatisch mit; transactions.savings_goal_id + savings_plans.savings_goal_id
@@ -23,13 +23,13 @@
 --     werden freigegeben (transactions.savings_goal_id SET NULL = Historie bleibt, Euros reassignbar) und die
 --     verknuepften Sparplaene entkoppelt (savings_plans.savings_goal_id SET NULL). Bei outcome='completed'
 --     bleiben Tags/Sparplaene als Erfuellungs-Historie ("dahin ging das Geld"). Das append-only Reserve-Journal
---     wird bei Soft-Close NICHT mutiert (append-only-Invariante); der status<>'active'-Filter der Deckungs-Views
+--     wird bei Soft-Close nicht mutiert (append-only-Invariante); der status<>'active'-Filter der Deckungs-Views
 --     schliesst die Reserve eines geschlossenen Ziels ohnehin aus.
 --     Soft-Close haengt an eine offene Risiko-Entscheidung (letzter Eintrag accept in savings_goal_risk_decisions) einen
---     revoke an (2026-11-06); Hard-DELETE nimmt die Eintraege per CASCADE mit.
+--     revoke an; Hard-DELETE nimmt die Eintraege per CASCADE mit.
 --   Eingabe jsonb: savings_goal_name, outcome (opt, Default 'cancelled'; anderer Wert -> {ok:false}), force (opt bool, Default false).
---   RUECKGABE: {ok:true, action:'deleted'|'closed', status, tx_count} ODER {ok:false, reason, current_amount}.
---   RAISE fuer echte Ausnahmen (nicht gefunden / mehrdeutig).
+--   Rueckgabe: {ok:true, action:'deleted'|'closed', status, tx_count} | {ok:false, reason, current_amount} (Restreserve)
+--   | {ok:false, code:'not_found'|'ambiguous', reason, candidates}.
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_close_savings_goal(p jsonb)
 RETURNS jsonb LANGUAGE plpgsql AS $$
@@ -64,7 +64,7 @@ BEGIN
     SELECT * INTO v_goal FROM finance.savings_goals WHERE id = v_resolve.id;
     v_status := CASE WHEN v_completed THEN 'completed' ELSE 'cancelled' END::finance.goal_status;
 
-    -- ERFUELLT-Gate: completed nur wenn die Reserve ~0 ist (real ausgegeben) ODER force. Sonst {ok:false}
+    -- Erfuellt-Gate: completed nur wenn die Reserve ~0 ist (real ausgegeben) oder force. Sonst {ok:false}
     -- (kein stilles Auto-Freigeben des reservierten, aber noch nicht verwendeten Betrags).
     IF v_completed AND NOT v_force THEN
         SELECT current_amount INTO v_current FROM finance.savings_goal_progress WHERE id = v_goal.id;
@@ -78,14 +78,13 @@ BEGIN
         END IF;
     END IF;
 
-    -- WS-A: Rate-Tx UND getaggte Reserve-Bewegungen zaehlen. NULL-rp explizit behandelt (Finding #6):
-    -- bei recurring_payment_id IS NULL faellt der erste Zweig auf false -> nur der savings_goal_id-Zweig zaehlt.
-    -- COUNT zaehlt ZEILEN: die Raten-Haben-Tx traegt beide Felder -> wird einmal gezaehlt (keine Doppelzaehlung).
-    -- Audit Paket 2: Rate-Tx ueber die GANZE Vorgaenger-Kette (nach Reaktivierung liegt die Historie auf der alten rp).
-    -- Sparziel-Zweckbindung 2026-10-27: Journal-Zeilen echter Geldbewegungen (sparplan_buy/derisk/void — Sparplan-Kaeufe
-    -- tragen seit 2026-10-27 kein Ziel-Tag mehr) sind immer Historie; bei ERFUELLT auch reine Zuordnungen (manual) ->
-    -- weich schliessen statt verschwinden. Ein ABGEBROCHENES Ziel nur mit Zuordnungen bleibt Hard-DELETE (es floss kein
-    -- Geld; die Zuordnung faellt per CASCADE).
+    -- Rate-Tx und getaggte Reserve-Bewegungen zaehlen. Bei recurring_payment_id IS NULL faellt der erste Zweig auf
+    -- false -> nur der savings_goal_id-Zweig zaehlt.
+    -- COUNT zaehlt Zeilen: die Raten-Haben-Tx traegt beide Felder -> wird einmal gezaehlt (keine Doppelzaehlung).
+    -- Rate-Tx ueber die ganze Vorgaenger-Kette (nach Reaktivierung liegt die Historie auf der alten rp).
+    -- Journal-Zeilen echter Geldbewegungen (sparplan_buy/derisk/void; Sparplan-Kaeufe tragen kein Ziel-Tag) sind
+    -- immer Historie; bei erfuellt auch reine Zuordnungen (manual) -> weich schliessen statt verschwinden. Ein
+    -- abgebrochenes Ziel nur mit Zuordnungen bleibt Hard-DELETE (es floss kein Geld; die Zuordnung faellt per CASCADE).
     v_chain := ARRAY(SELECT finance.fn_recurring_lineage(v_goal.recurring_payment_id));
     SELECT COUNT(*) INTO v_tx_count
     FROM finance.transactions
@@ -110,7 +109,7 @@ BEGIN
             PERFORM finance.fn_end_recurring_chain(v_goal.recurring_payment_id, CURRENT_DATE);
         END IF;
 
-        -- ABGEBROCHEN: Zuordnungen freigeben (Historie bleibt) -> der Betrag ist reassignbar. Bei ERFUELLT
+        -- Abgebrochen: Zuordnungen freigeben (Historie bleibt) -> der Betrag ist reassignbar. Bei erfuellt
         -- bleiben Tags/Sparplaene als Erfuellungs-Historie. Das append-only Journal wird nicht mutiert (der
         -- status<>'active'-Filter der Deckungs-Views entkoppelt die Depot-Reserve ohnehin).
         IF NOT v_completed THEN
@@ -118,7 +117,7 @@ BEGIN
             UPDATE finance.savings_plans SET savings_goal_id = NULL WHERE savings_goal_id = v_goal.id;
         END IF;
 
-        -- Bewusste Risiko-Entscheidung (2026-11-06) endet mit dem Ziel: ein offener accept bekommt einen revoke, damit ein
+        -- Bewusste Risiko-Entscheidung endet mit dem Ziel: ein offener accept bekommt einen revoke, damit ein
         -- wieder geoeffnetes Ziel neu fragt (append-only, nie loeschen).
         IF (SELECT d.event FROM finance.savings_goal_risk_decisions d WHERE d.savings_goal_id = v_goal.id
              ORDER BY d.decided_at DESC, d.id DESC LIMIT 1) = 'accept' THEN

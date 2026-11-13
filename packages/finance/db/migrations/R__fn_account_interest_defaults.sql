@@ -1,18 +1,18 @@
 -- ============================================================
 -- fn_account_interest_defaults (READ, STABLE) -- die vorgeschlagenen Zins-Werte eines NEUEN Kontos
---   EINE Quelle fuer die HITL-Karte (tool_create_account 'Resolve interest defaults', Import-Karte ueber
---   fn_import_card_rows) UND fn_create_account (Karte = Write; Praezedenz fn_interest_rate_preview).
---   Regeln: unit = interest_credit_unit, sonst NULL -- KEIN erfundener Rhythmus (Befund 2026-10-24: vorher 'year';
---   fn_create_account lehnt einen Satz ohne Rhythmus ueber fn_interest_schedule_reason ab); interval =
+--   Eine Quelle fuer die HITL-Karte (tool_create_account 'Resolve interest defaults', Import-Karte ueber
+--   fn_import_card_rows) und fn_create_account (Karte = Write; Praezedenz fn_interest_rate_preview).
+--   Regeln: unit = interest_credit_unit, sonst NULL -- kein erfundener Rhythmus
+--   (fn_create_account lehnt einen Satz ohne Rhythmus ueber fn_interest_schedule_reason ab); interval =
 --   interest_credit_interval > 1; dom / pdom = interest_credit_day_of_month / interest_posting_day_of_month;
 --   conv = interest_day_count_convention > fn_interest_default_convention (Kontotyp); auto_post = interest_auto_post >
 --   fn_interest_auto_post_default(unit); conv_reason = manual | default_cash | default_fixed | default (Begruendung auf
 --   der Karte); valid_from = interest_valid_from > heute.
---   first_period_end / first_credit_date = erstes Periodenende bzw. Gutschrift-Datum ab valid_from aus DEMSELBEN Raster
+--   first_period_end / first_credit_date = erstes Periodenende bzw. Gutschrift-Datum ab valid_from aus demselben Raster
 --   wie die Faelligkeit (fn_interest_next_period_end / fn_interest_value_date) -- die Karte zeigt "Erste Gutschrift"
 --   und macht so das Kalender-Raster sichtbar; NULL ohne Rhythmus.
 --   Leere Strings = nicht genannt (Einzel-Tool). Eingabe jsonb wie fn_create_account.
---   RUECKGABE {unit, interval, dom, pdom, conv, conv_reason, auto_post, valid_from, first_period_end, first_credit_date}.
+--   Rueckgabe {unit, interval, dom, pdom, conv, conv_reason, auto_post, valid_from, first_period_end, first_credit_date}.
 --   STABLE (core.fn_today(): Karte und Write lesen "heute" je zu ihrem Zeitpunkt — eine Karte vor Mitternacht,
 --   bestaetigt danach, bekommt den neuen Tag; bewusst, Wartegrenze 10 Min).
 --   Tests: tests/db/finance/test_fn_account_interest_defaults.sql
@@ -22,8 +22,8 @@ RETURNS jsonb LANGUAGE plpgsql STABLE AS $$
 DECLARE
     v_type finance.account_type  := NULLIF(p->>'account_type', '')::finance.account_type;
     v_unit finance.schedule_unit := NULLIF(p->>'interest_credit_unit', '')::finance.schedule_unit;
-    -- Einlesen ueber fn_parse_small_int (EINE Adresse mit dem Check in fn_create_account): 'Resolve interest defaults'
-    -- laeuft bei JEDEM create_account, auch ohne Zinssatz; ein unlesbarer Wert (z. B. "last") wirft hier nicht --
+    -- Einlesen ueber fn_parse_small_int (gleiche Adresse wie der Check in fn_create_account): 'Resolve interest defaults'
+    -- laeuft bei jedem create_account, auch ohne Zinssatz; ein unlesbarer Wert (z. B. "last") wirft hier nicht --
     -- fn_create_account lehnt ihn bei gesetztem Satz ab.
     v_n    INT      := COALESCE(finance.fn_parse_small_int(p->>'interest_credit_interval'), 1);
     v_dom  INT      := finance.fn_parse_small_int(p->>'interest_credit_day_of_month');

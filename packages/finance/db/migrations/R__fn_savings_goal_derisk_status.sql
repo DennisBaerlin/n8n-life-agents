@@ -1,8 +1,8 @@
 -- ============================================================
 -- fn_savings_goal_derisk_status (READ, STABLE) — Glide Path + bewusste Risiko-Entscheidung je Sparziel
---   Umschicht-Hilfe vor dem Zieldatum (Sparziel-Zweckbindung 2026-10-27; Muster Zieldatum-Fonds "Glide Path" bzw.
---   Ablaufmanagement von Rentenvertraegen): je AKTIVEM Sparziel (kind='goal'; Ruecklagen haben eigene, harte
---   Konto-Regeln) mit Depot-Anteil (savings_goal_account_share, Depot-Typen, EUR) ODER aktivem Sparplan darf im Fenster
+--   Umschicht-Hilfe vor dem Zieldatum (Muster Zieldatum-Fonds "Glide Path" bzw.
+--   Ablaufmanagement von Rentenvertraegen): je aktivem Sparziel (kind='goal'; Ruecklagen haben eigene, harte
+--   Konto-Regeln) mit Depot-Anteil (savings_goal_account_share, Depot-Typen, EUR) oder aktivem Sparplan darf im Fenster
 --   vor dem Zieldatum linear immer weniger im Depot liegen, am Zieldatum 0:
 --     months_left       = Kalendermonate von heute bis zum Zieldatum (>= 0)
 --     allowed_depot_eur = Ziel * min(months_left / Fenster, 1)
@@ -10,18 +10,18 @@
 --     in_window         = Zieldatum in der Zukunft und fn_goal_in_derisk_window (die eine Adresse der Fenster-Regel)
 --     breach            = in_window und Depot-Anteil > erlaubt + Toleranz (pp des Ziels)
 --     active_plan       = ein aktiver Sparplan finanziert das Ziel (kauft weiter ins Depot)
---   BEWUSSTE AUSNAHME (2026-11-06, Tabelle finance.savings_goal_risk_decisions, letzter Eintrag zaehlt):
+--   Bewusste Ausnahme (Tabelle finance.savings_goal_risk_decisions, letzter Eintrag zaehlt):
 --     final_check_date   = Zieldatum - advisor.derisk_accepted_final_months (12): Ablauf einer Entscheidung = der
 --                          letzte Check (eine Erinnerung im letzten Jahr, kein zweiter Mechanismus)
---     accepted           = letzter Eintrag 'accept' UND Zieldatum >= Snapshot-Datum UND Depot-Anteil <= limit_eur
---                          (eingezahlte EUR, nie Marktwert: Kurse heben die Entscheidung nie auf) UND (heute vor dem
---                          Ablauf ODER entschieden erst nach dem Ablauf-Stichtag -> gilt bis zum Termin)
+--     accepted           = letzter Eintrag 'accept' und Zieldatum >= Snapshot-Datum und Depot-Anteil <= limit_eur
+--                          (eingezahlte EUR, nie Marktwert: Kurse heben die Entscheidung nie auf) und (heute vor dem
+--                          Ablauf oder entschieden erst nach dem Ablauf-Stichtag -> gilt bis zum Termin)
 --     acceptance_expired = letzter Eintrag 'accept', Lage nicht schlechter, nur der Ablauf greift
 --     accepted_on/limit_eur = Datum bzw. Grenze des letzten 'accept' (NULL sonst)
---     needs_acceptance   = breach UND NOT accepted UND NOT fx_gap (die Schwelle des Beraters, Leitung 2026-11-06)
---     headroom_eur       = max(erlaubt - Anteil, 0), Cent-genau; headroom_eur_whole = floor(headroom_eur): der EINE
+--     needs_acceptance   = breach und NOT accepted und NOT fx_gap (die Schwelle des Beraters)
+--     headroom_eur       = max(erlaubt - Anteil, 0), Cent-genau; headroom_eur_whole = floor(headroom_eur): der eine
 --                          Betrag, den der Buchhalter nach "Abbrechen" anbietet (abgerundet landet ein befolgter Rat
---                          nie ueber dem Rat; Rundung nur hier bewusst, Leitung 2026-11-06)
+--                          nie ueber dem Rat; Rundung nur hier bewusst)
 --     stress_loss_eur    = Anteil * stress_pct / 100 (Beispiel-Verlust, Cent wie jede _eur-Groesse); stress_pct =
 --                          advisor.derisk_stress_pct (die eine Adresse des Prozentsatzes fuer Karte und Text)
 --     fx_gap             = ein Depot-Bein des Ziels ohne Wechselkurs (der Anteil waere zu niedrig) -> keine

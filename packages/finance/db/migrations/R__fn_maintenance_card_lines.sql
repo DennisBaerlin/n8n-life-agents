@@ -1,11 +1,12 @@
 -- ============================================================
--- fn_maintenance_card_lines (KARTEN-HINWEIS Instandhaltungsruecklage, 2026-10-27)
---   Die EINE Form der Hinweis-Zeilen an der Immobilien-Karte (fn_create_real_estate / fn_set_real_estate):
+-- fn_maintenance_card_lines (READ, STABLE — Karten-Hinweis Instandhaltungsruecklage)
+--   Die eine Form der Hinweis-Zeilen an der Immobilien-Karte (fn_create_real_estate / fn_set_real_estate):
 --   (1) sind Wohnflaeche und Baujahr bekannt -> finance.note.maintenance_recommendation mit der Monatsrate aus
 --       fn_maintenance_reserve_rate (Untergrenze nach II. BV; params monthly/rate/area/age);
---   (2) hat die AKTIVE Immobilie dazu keine aktive Ruecklage -> finance.note.maintenance_reserve_missing (Angebot).
---   Ohne Flaeche/Baujahr -> [] (z. B. ein Grundstueck; der Agent fragt die Daten im Onboarding ab). Liest die Zeile
---   NACH dem Write (dieselbe Transaktion; Probelauf = Karte).
+--   (2) hat die aktive Immobilie dazu keine aktive Ruecklage -> finance.note.maintenance_reserve_missing (Angebot).
+--   Eingabe: p_real_estate_id. Rueckgabe: jsonb-Array von {kind:'note', value, params?}; ohne Flaeche/Baujahr,
+--   unbekannte oder nicht aktive Immobilie -> [] (z. B. ein Grundstueck; der Agent fragt die Daten im Onboarding ab).
+--   Liest die Zeile nach dem Write (dieselbe Transaktion; Probelauf = Karte).
 --   Haupt-Kanal fuer den Hinweis, weil der Advisor-Review nur mit veroeffentlichtem Plan laeuft.
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_maintenance_card_lines(p_real_estate_id int)

@@ -3,8 +3,7 @@
 
 # --- tool_close_savings_goal (Sparziel beenden: Smart-Close wie close_savings_plan) ---
 function Build-CloseSavingsGoal {
-    # WS-B0: enge Paket-Schreibrolle (finance_rw, Least-Privilege D10) statt Owner-Cred.
-    # Dynamic-Scope: Build-Pg liest dieses $CRED_POSTGRES. Core-Tools nutzen die Owner-Cred.
+    # Enge Paket-Schreibrolle (finance_rw) statt Owner-Cred; Build-Pg liest $CRED_POSTGRES per Dynamic-Scope.
     $CRED_POSTGRES = $CRED_FINANCE_RW
     $trig = Build-Trigger @('savings_goal_name','outcome','force')
 
@@ -13,13 +12,11 @@ function Build-CloseSavingsGoal {
     $readGoal = Build-Pg 'Read Goal' @(220, 0) `
         "=SELECT g.target_amount, g.target_date::text AS target_date, g.status::text AS goal_status, COALESCE((SELECT current_amount FROM finance.savings_goal_progress p WHERE p.id = g.id), 0) AS current_amount, (SELECT COUNT(*)::int FROM finance.transactions t WHERE (g.recurring_payment_id IS NOT NULL AND t.recurring_payment_id = g.recurring_payment_id) OR t.savings_goal_id = g.id) AS tx_count FROM finance.savings_goals g WHERE g.name ILIKE ((`$1::jsonb)->>'savings_goal_name') LIMIT 1;" `
         ([ordered]@{ savings_goal_name = '$(''Start'').item.json.savings_goal_name' })
-    # Unbekannter Name -> Tool-Fehler statt stillem Ende (New-RequiredRowGate, 2026-10-24).
+    # Unbekannter Name -> Tool-Fehler statt stillem Ende (New-RequiredRowGate).
     $found = New-RequiredRowGate -Read $readGoal -KeyField 'goal_status' -IfName 'Savings Goal found?' -ErrName 'Savings Goal not found' `
         -IfPos @(330, -160) -ErrPos @(440, 240) `
         -NotFoundExpr "=No savings goal named '{{ `$('Start').item.json.savings_goal_name }}' exists. List them via postgres_select on finance.savings_goal_progress and ask the user which one is meant."
 
-    # "DB ist das Gesetz": fn_close_savings_goal laeuft als Probelauf VOR der Karte (korrigierbare Ablehnungen -> {ok:false} ohne Karte);
-    # derselbe Param-Satz geht nach dem Gate in den echten Write.
     $wg = New-FnWriteGate -Fn 'finance.fn_close_savings_goal' -DryPos @(440, 0) -WritePos @(1760, 0) `
         -WriteName 'Close goal (atomic)' `
         -WriteSelect "(r->>'ok')::boolean AS ok, r->>'reason' AS reason, r->>'action' AS action, r->>'status' AS status, (r->>'tx_count')::int AS tx_count" `
@@ -31,7 +28,7 @@ function Build-CloseSavingsGoal {
 
     # Outcome steuert Titel + Aktionszeile: completed (erfuellt, Reserve verbraucht) vs cancelled (abgebrochen,
     # Zuordnungen frei) vs Hard-DELETE (keine Buchungen). Bei completed + Restreserve ein Achtung-Hinweis.
-    # Strukturiertes Summary (Textkatalog): Zielbetrag/Reservebestand (EUR-Konvention), Zieldatum ISO aus dem SELECT.
+    # Zielbetrag/Reservebestand (EUR-Konvention), Zieldatum ISO aus dem SELECT.
     $S = "`$('Start').item.json"
     $G = "`$('Read Goal').item.json"
     $done = "(($S.outcome || 'cancelled') === 'completed')"

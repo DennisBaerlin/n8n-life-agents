@@ -1,36 +1,37 @@
 -- ============================================================
--- fn_interest_amount_due (READ — Zins-Betrag am Perioden-Ende, DB rechnet, NIE das LLM)
---   Liefert den vorgeschlagenen Zinsbetrag fuer (Konto, period_end):
---     SUMME ueber alle Satz-Segmente: basis x (annual_rate/100) x fn_interest_day_fraction(seg_start, seg_end,
---     day_count_convention) — EINMAL um die Summe gerundet (nie Σ ROUND -> kein Cent-Drift).
+-- fn_interest_amount_due (READ — Zins-Betrag am Perioden-Ende, DB rechnet, nie das LLM)
+--   Eingabe: p_account_id, p_period_end. Rueckgabe: numeric (0 ohne gueltigen Satz am letzten Periodentag oder ohne
+--   Habensaldo). Liefert den vorgeschlagenen Zinsbetrag fuer (Konto, period_end):
+--     Summe ueber alle Satz-Segmente: basis x (annual_rate/100) x fn_interest_day_fraction(seg_start, seg_end,
+--     day_count_convention) — einmal um die Summe gerundet (nie Σ ROUND -> kein Cent-Drift).
 --
---   period_start liefert finance.fn_interest_effective_period_start (EINE Regel mit fn_interest_due_open): Raster-Beginn
+--   period_start liefert finance.fn_interest_effective_period_start (eine Regel mit fn_interest_due_open): Raster-Beginn
 --     im Regime des letzten Periodentags (fn_interest_period_start, groesste Rastergrenze < period_end, nie
---     period_end MINUS Kadenz-Schritt -- das doppelt-zaehlte den dom=-1-Monatsletzten-Tail); die erste Periode nach einem
---     Rhythmuswechsel reicht bis zum letzten Rasterpunkt des alten Regimes zurueck (keine Gutschrift am Wechseltag,
---     Befund 2026-10-24); nie vor der juengsten erledigten Periode (Schutz vor Doppelverzinsung).
+--     period_end minus Kadenz-Schritt -- das doppelt-zaehlte den dom=-1-Monatsletzten-Tail); die erste Periode nach einem
+--     Rhythmuswechsel reicht bis zum letzten Rasterpunkt des alten Regimes zurueck (keine Gutschrift am Wechseltag);
+--     nie vor der juengsten erledigten Periode (Schutz vor Doppelverzinsung).
 --
---   Taggenaue Satz-Mischung (Phase Z WS-Z3): bei unterjaehrigem Satzwechsel wird die Periode an jedem
---     account_interest_rates.valid_from zerschnitten und jeder Satz nur auf SEINE Tage gerechnet (deutsche
---     Banken-Norm / Zinsstaffel; vorher galt der period_end-Satz fuer die ganze Periode). Segmentierung +
+--   Taggenaue Satz-Mischung: bei unterjaehrigem Satzwechsel wird die Periode an jedem
+--     account_interest_rates.valid_from zerschnitten und jeder Satz nur auf seine Tage gerechnet (deutsche
+--     Banken-Norm / Zinsstaffel). Segmentierung +
 --     Satz-/Konvention-Zuordnung liefert fn_interest_rate_segments (Containment-Join auf die EXCLUDE-gist-
---     Tiling-Semantik). FAIL-CLOSED: die Segment-Tage muessen [period_start, period_end) lueckenlos decken
+--     Tiling-Semantik). Fail-closed: die Segment-Tage muessen [period_start, period_end) lueckenlos decken
 --     (Tiling-Garantie EXCLUDE-gist + Close-then-Insert) — eine Luecke = Datenkorruption -> RAISE statt
---     stiller Unterverzinsung. Jedes Segment nutzt SEINE eigene day_count_convention.
+--     stiller Unterverzinsung. Jedes Segment nutzt seine eigene day_count_convention.
 --
---   basis (B2, re-eval-robust): Saldo zum period_end (Summe aller Tx mit transaction_date <= period_end)
---     OHNE jede SCHEDULER-Zins-Tx mit interest_period_end >= period_end -> die eigene + jede spaetere
+--   basis (re-eval-robust): Saldo zum period_end (Summe aller Tx mit transaction_date <= period_end)
+--     ohne jede Scheduler-Zins-Tx mit interest_period_end >= period_end -> die eigene + jede spaetere
 --     Gutschrift zaehlt nie in die eigene Basis (Re-Eval nach dem Buchen liefert denselben Betrag);
---     FRUEHERE Gutschriften zaehlen -> emergenter Zinseszins ueber den Saldo. Generische Zinseinnahmen
+--     fruehere Gutschriften zaehlen -> emergenter Zinseszins ueber den Saldo. Generische Zinseinnahmen
 --     (interest_period_end IS NULL, z. B. via fn_book_transaction) zaehlen normal in die Basis.
---     basis ist KONSTANT ueber alle Segmente (Z3 segmentiert die SATZ-, nicht die Saldo-Dimension; intra-
+--     basis ist konstant ueber alle Segmente (segmentiert wird die Satz-, nicht die Saldo-Dimension; intra-
 --     period Ein-/Auszahlungen = bewusst out-of-scope, kein daily-balance-Staffelzins).
---     Nur Habensaldo (<=0 -> 0; Negativ-/Kreditzins = Gebuehr (category='fee'), bewusst NICHT auf dem
+--     Nur Habensaldo (<=0 -> 0; Negativ-/Kreditzins = Gebuehr (category='fee'), bewusst nicht auf dem
 --     Zins-Pfad -> BGH 04.02.2025, s. packages/finance/CLAUDE.md Zins-Block).
 -- ============================================================
--- Param-Umbenennung gegenueber WS-5c (p_due_date -> p_period_end): CREATE OR REPLACE kann Parameter nicht
--- umbenennen -> alte Signatur zuerst droppen. Idempotent (IF EXISTS); plpgsql-Caller (fn_book_interest_
--- occurrence) resolven den Namen zur Laufzeit neu, kein harter Abhaengigkeits-Bruch.
+-- CREATE OR REPLACE kann Parameter nicht umbenennen (p_due_date -> p_period_end) -> alte Signatur zuerst droppen.
+-- Idempotent (IF EXISTS); plpgsql-Caller (fn_book_interest_occurrence) resolven den Namen zur Laufzeit neu,
+-- kein harter Abhaengigkeits-Bruch.
 DROP FUNCTION IF EXISTS finance.fn_interest_amount_due(integer, date);
 CREATE OR REPLACE FUNCTION finance.fn_interest_amount_due(p_account_id int, p_period_end date)
 RETURNS numeric LANGUAGE plpgsql STABLE AS $$
@@ -41,7 +42,7 @@ DECLARE
     v_covered_days INT;
     v_interest     NUMERIC;
 BEGIN
-    -- Gibt es ein Regime am LETZTEN Periodentag (period_end - 1)? Sonst kein Zins. Der SATZ kommt je Segment
+    -- Gibt es ein Regime am letzten Periodentag (period_end - 1)? Sonst kein Zins. Der SATZ kommt je Segment
     -- (taggenaue Satz-Mischung, fn_interest_rate_segments), der Beginn aus fn_interest_effective_period_start.
     SELECT * INTO v_reg
       FROM finance.fn_interest_regimes(p_account_id) r
@@ -70,7 +71,7 @@ BEGIN
         RETURN 0;   -- nur Habensaldo verzinst
     END IF;
 
-    -- Taggenaue Satz-Mischung: basis KONSTANT, Satz + Konvention je Segment; EINMAL um die Summe runden.
+    -- Taggenaue Satz-Mischung: basis konstant, Satz + Konvention je Segment; einmal um die Summe runden.
     -- Zugleich die Roh-Tage je Segment summieren -> Fail-closed-Deckungspruefung (Luecke -> RAISE).
     SELECT COALESCE(SUM(s.seg_end - s.seg_start), 0),
            ROUND(SUM(v_basis * (s.annual_rate / 100.0)

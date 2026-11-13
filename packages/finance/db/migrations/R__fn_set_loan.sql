@@ -1,30 +1,31 @@
 -- ============================================================
 -- fn_set_loan (ATOMIC WRITE)
 --   Aendert Konditionen/Status eines bestehenden Kredits. Partielles Update (leer = unveraendert; Leeren geht nicht).
---   Zins/Tilgung je Rate liefert finance.loan_overview LIVE aus der Restschuld.
---   RATE / ABBUCHUNGSTAG (WP2 "Finanzen schlank"): stehen nur an der Raten-Kette. Eine Aenderung laeuft ueber
+--   Zins/Tilgung je Rate liefert finance.loan_overview live aus der Restschuld.
+--   Rate / Abbuchungstag: stehen nur an der Raten-Kette. Eine Aenderung laeuft ueber
 --   fn_change_owned_recurring: Korrektur direkt nach der Anlage in place, sonst ein neues Glied ab effective_from
---   (Default: naechster noch nicht erledigter Termin) -- die alte Rate bleibt Historie (vorher in place ueberschrieben;
---   ein neuer Tag verschob sogar das Raster gebuchter Termine). Kredit OHNE Raten-Kette + Rate -> neue Kette ab
+--   (Default: naechster noch nicht erledigter Termin) -- die alte Rate bleibt Historie (in place ueberschrieben
+--   verschoebe ein neuer Tag das Raster gebuchter Termine). Kredit ohne Raten-Kette + Rate -> neue Kette ab
 --   effective_from (Pflicht: Termin der ersten Rate); ohne genannten Status wird der Kredit dabei aktiv.
---   URSPRUNGSWERTE: original_amount / disbursement_date nur bei einem Kredit, der zum Stichtag eroeffnet wurde
+--   Ursprungswerte: original_amount / disbursement_date nur bei einem Kredit, der zum Stichtag eroeffnet wurde
 --   (Kreditkonto mit opening_balance_date, ohne eigenes Auszahlungskonto) -- dort haengt keine Buchung daran. Bei einem
 --   frischen Kredit stecken sie in der Eroeffnungs-/Auszahlungsbuchung -> {ok:false}. Guards: Datum nicht in der Zukunft
 --   und nicht nach dem Eroeffnungs-Stichtag, Betrag nicht unter der Eroeffnungs-Restschuld.
---   LAUFZEIT: term_end_date (Laufzeitende), interest_rate_fixed_until; Spiegel von CHECK finance_loans_term_end_chk.
---   NAMEN: eine Umbenennung fuehrt 'Kreditrate <Name>' (Raten-Kette, fn_rename_owned_recurring) und das Kreditkonto
+--   Laufzeit: term_end_date (Laufzeitende), interest_rate_fixed_until; Spiegel von CHECK finance_loans_term_end_chk.
+--   Namen: eine Umbenennung fuehrt 'Kreditrate <Name>' (Raten-Kette, fn_rename_owned_recurring) und das Kreditkonto
 --   'Kredit <Name>' mit.
---   STATUS-KASKADE: paused/paid_off/refinanced -> alle noch laufenden Glieder der Kette 'paused'; active -> 'active'.
---   NICHT abgebildet: der mehrschrittige Umschuldungs-Flow (neues Konto + Settlement-Buchung + neuer Kredit).
+--   Status-Kaskade: paused/paid_off/refinanced -> alle noch laufenden Glieder der Kette 'paused'; active -> 'active'.
+--   Nicht abgebildet: der mehrschrittige Umschuldungs-Flow (neues Konto + Settlement-Buchung + neuer Kredit).
 --   Eingabe jsonb: loan_id (im n8n aufgeloest), name, lender, borrower_person_id (Slug; leer=unveraendert),
 --   interest_rate, interest_rate_fixed_until, term_end_date, monthly_annuity, schedule_day_of_month, effective_from,
 --   original_amount, disbursement_date, status, notes.
 --   RUECKGABE: {ok:true, loan_id, recurring_payment_id (Kopf), split, previous_id (nur bei Split), effective_from (nur
---   bei Raten-/Tagesaenderung), balance_at_fixed_until, balance_at_term_end (voraussichtliche Restschuld, loan_overview)}.
---   Korrigierbar (neg. Zins, Rate<=0, aktiv ohne Rate, Rate ohne ersten Termin, unbekannter status, paid_off mit Restschuld -> code use_settle_tool (tool_settle_loan bucht die Abloese), wirksame Rate unter
+--   bei Raten-/Tagesaenderung), balance_at_fixed_until, balance_at_term_end (voraussichtliche Restschuld, loan_overview),
+--   effective (aufgeloeste relative Daten)}.
+--   Korrigierbar (nicht aufloesbares Datum -> code invalid_date, neg. Zins, Rate<=0, aktiv ohne Rate, Rate ohne ersten Termin, unbekannter status, paid_off mit Restschuld -> code use_settle_tool (tool_settle_loan bucht die Abloese), wirksame Rate unter
 --   dem Monatszins der Restschuld -> {interest, payment}, Ursprungswerte bei frischem Kredit / Datum in der Zukunft /
 --   Betrag unter der Eroeffnungs-Restschuld, Laufzeit-Widerspruch, Split-Guards, kein Wert weicht vom Bestand ab ->
---   {no_change:true}) -> {ok:false} OHNE Write.
+--   {no_change:true}) -> {ok:false} ohne Write.
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_set_loan(p jsonb)
 RETURNS jsonb LANGUAGE plpgsql AS $$
@@ -36,7 +37,7 @@ DECLARE
     v_eff_from    DATE;
     v_amount      NUMERIC  := NULLIF(p->>'original_amount', '')::numeric;
     v_disb        DATE;
-    v_status      finance.loan_status;   -- Cast erst nach dem Enum-Guard (Import-Haertung)
+    v_status      finance.loan_status;   -- Cast erst nach dem Enum-Guard
     v_reason      TEXT     := finance.fn_enum_reason('finance.loan_status'::regtype, p->>'status', 'status');
     v_today       DATE     := core.fn_today();
     v_loan        finance.loans%ROWTYPE;
@@ -66,7 +67,7 @@ BEGIN
         RETURN jsonb_build_object('ok', false, 'reason', v_reason);
     END IF;
     v_status := NULLIF(p->>'status', '')::finance.loan_status;
-    -- WP-2b: fester Buchungstag 1-28, -1 (Monatsletzter) oder -2 (vorletzter Tag); 29/30/31 overflowen kurze Monate.
+    -- fester Buchungstag 1-28, -1 (Monatsletzter) oder -2 (vorletzter Tag); 29/30/31 overflowen kurze Monate
     IF finance.fn_schedule_dom_reason(v_dom) IS NOT NULL THEN
         RETURN jsonb_build_object('ok', false, 'reason', finance.fn_schedule_dom_reason(v_dom));
     END IF;
@@ -90,7 +91,7 @@ BEGIN
     IF v_irate IS NOT NULL AND v_irate < 0 THEN
         RETURN jsonb_build_object('ok', false, 'reason', 'Interest rate must not be negative, got ' || v_irate || '.');
     END IF;
-    -- numeric(6,4) kuerzte > 4 Nachkommastellen still bzw. warf ab 100 Overflow (Rundungs-Paket 2026-10-23)
+    -- numeric(6,4) kuerzte > 4 Nachkommastellen still bzw. warf ab 100 Overflow
     v_reason := finance.fn_rate_precision_reason(v_irate, 'Interest rate');
     IF v_reason IS NOT NULL THEN
         RETURN jsonb_build_object('ok', false, 'reason', v_reason);
@@ -153,7 +154,7 @@ BEGIN
         RETURN jsonb_build_object('ok', false,
             'reason', 'An active loan needs a monthly annuity. Provide monthly_annuity (with effective_from) or set the loan to paused.');
     END IF;
-    -- Korrigierbar (Befund 2026-10-24): neue Rate bzw. neuer Zins -> die wirksame Rate muss den Monatszins der
+    -- Korrigierbar: neue Rate bzw. neuer Zins -> die wirksame Rate muss den Monatszins der
     -- Restschuld je Raten-Periode decken (dieselbe Formel + derselbe Perioden-Faktor wie jede Buchung).
     IF (v_annuity IS NOT NULL OR v_irate IS NOT NULL) AND v_eff_annuity IS NOT NULL THEN
         SELECT finance.fn_loan_monthly_interest(-balance, COALESCE(v_irate, v_loan.interest_rate),
@@ -167,7 +168,7 @@ BEGIN
         END IF;
     END IF;
 
-    -- Korrigierbar (Befund 2026-10-26): nichts weicht vom Bestand ab -> {ok:false, no_change} OHNE Write. Der
+    -- Korrigierbar: nichts weicht vom Bestand ab -> {ok:false, no_change} ohne Write. Der
     -- Probelauf meldet das vor der Karte; ein wiederholter Aufruf mit denselben Werten zeigt keine zweite Karte.
     IF NOT (COALESCE(NULLIF(p->>'name', ''), v_loan.name) IS DISTINCT FROM v_loan.name
          OR COALESCE(NULLIF(p->>'lender', ''), v_loan.lender) IS DISTINCT FROM v_loan.lender
@@ -208,7 +209,7 @@ BEGIN
     UPDATE finance.loans SET
         name                      = v_name,
         lender                    = COALESCE(NULLIF(p->>'lender', ''), lender),
-        borrower_person_id        = COALESCE(NULLIF(p->>'borrower_person_id', ''), borrower_person_id),  -- WS-4: typisierter Kreditnehmer (Slug); leer=unveraendert
+        borrower_person_id        = COALESCE(NULLIF(p->>'borrower_person_id', ''), borrower_person_id),  -- Slug; leer=unveraendert
         interest_rate             = COALESCE(v_irate, interest_rate),
         interest_rate_fixed_until = v_fixed,
         term_end_date             = v_term_end,

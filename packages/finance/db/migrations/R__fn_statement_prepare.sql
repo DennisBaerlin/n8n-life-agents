@@ -1,9 +1,9 @@
 -- ============================================================
--- fn_statement_prepare (READ, STABLE) -- Vorschau eines Kontoauszugs (Monats-Check WP-C)
---   Die EINE Rechen-Adresse fuer Karte UND Buchung: fn_apply_bank_statement ruft sie unter Lock erneut auf und bucht
+-- fn_statement_prepare (READ, STABLE) -- Vorschau eines Kontoauszugs (Monats-Check)
+--   Die eine Rechen-Adresse fuer Karte und Buchung: fn_apply_bank_statement ruft sie unter Lock erneut auf und bucht
 --   nur, wenn der fingerprint gleich ist (Plan/Apply-Muster; sonst stale_preview). Rechnet alles in der DB — das LLM
 --   liefert nur die gedruckten Rohwerte.
---   Eingabe jsonb: account_number (gedruckt, Leerzeichen egal) ODER account_name (Nutzer-Zuordnung nach
+--   Eingabe jsonb: account_number (gedruckt, Leerzeichen egal) oder account_name (Nutzer-Zuordnung nach
 --   account_unknown; dann wird die gedruckte Nummer gelernt), currency, period_start, period_end, opening_balance,
 --   closing_balance, lines:[{date, amount (signiert), counterparty, counterparty_iban, creditor_id, mandate_ref, purpose}].
 --   Ablauf:
@@ -12,39 +12,43 @@
 --        Auszug weiterhilft), Saldo-Probe Anfang + Summe = Ende (0,00).
 --     2. Schnitt cut = spaetester bestaetigter Tag: GREATEST(period_start-1, last_reconciled_at, opening_balance_date).
 --        Zeilen bis cut stecken im bestaetigten Saldo und werden ignoriert (Ueberlappung ok). drift = Stand laut
---        Auszug am cut - Systemstand am cut (Abweichung VOR dem Zeitraum, separat gebucht und auf der Karte gewarnt;
---        Datei mit Owner-Saldo: s. BANK-EXPORT-DATEI).
+--        Auszug am cut - Systemstand am cut (Abweichung vor dem Zeitraum, separat gebucht und auf der Karte gewarnt;
+--        Datei mit Owner-Saldo: s. Bank-Export-Datei).
 --     3. fn_statement_match; Anreicherung: Sparplan -> Stueck = Betrag / Kurs (market_prices +-3 Tage, Depot-Waehrung;
 --        sonst pending = Rest), Kredit -> fn_get_loan_payment_split muss ok sein, Transfer -> Gegenkonto darf am
 --        Zeilendatum nicht abgeglichen sein (sonst blocked = Rest), Plan-Anpassung nur fuer einfache Dauerauftraege
 --        (ohne Kredit/Sparplan/Sparziel/Versicherung/Vorsorge) beim 2. gleichen Ist-Betrag (eff_from = Faelligkeit+1).
 --        Plan-Anpassung hoechstens einmal je Kette (spaeteste Faelligkeit; Vorgaenger auch aus diesem Auszug).
---     4. missing = ALLE offenen Vorkommen mit Faelligkeit <= period_end-10 ohne Zeile = exakt das, was der Abgleich
+--     4. missing = alle offenen Vorkommen mit Faelligkeit <= period_end-10 ohne Zeile = exakt das, was der Abgleich
 --        ueberspringt (auch vor dem Zeitraum oder aus einer Luecke; juengere bleiben offen — eine Abbuchung am 30. kann
 --        am 2. kommen). Teil des fingerprint. never_seen:true (nur dann gesetzt) = erstes Fehlen eines Auftrags, den der
 --        Nutzer selbst einrichten muss (fn_bank_setup_kind), der nie lief (fn_recurring_never_ran) und den noch kein
 --        Auszug uebersprungen hat; die Karte fragt je solcher Kette einmal, ob er bei der Bank eingerichtet ist.
 --     5. lump = Endsaldo - (Systemstand am period_end + drift + Summe der neuen Buchungen auf diesem Konto + schon
---        gebuchte Stufe-0-Treffer mit Buchungsdatum nach period_end, die apply aufs Zeilendatum verschiebt) = die EINE
+--        gebuchte Stufe-0-Treffer mit Buchungsdatum nach period_end, die apply aufs Zeilendatum verschiebt) = die eine
 --        Abgleichsbuchung (DB-Differenz, nicht Summe der Restzeilen: deckt auch Fremdbuchungen ab; Name s. Rest-Label).
 --     6. card_lines = die Kartenzeilen als Struktur (core.fn_ui_tpl/money/date; das Gate rendert je Empfaenger).
---   unmatched_out/_in = Summe der NICHT erkannten Geldzeilen (Alltags-Schaetzung); erkannte, nur nicht buchbare Zeilen
---   (blocked[], savings_plan_pending[]) zaehlen dort nie (2026-10-30), stecken aber im Rest. oneoff_out = Teil von
+--   unmatched_out/_in = Summe der nicht erkannten Geldzeilen (Alltags-Schaetzung); erkannte, nur nicht buchbare Zeilen
+--   (blocked[], savings_plan_pending[]) zaehlen dort nie, stecken aber im Rest. oneoff_out = Teil von
 --   unmatched_out aus Einzelzeilen mit |Betrag| >= oneoff_threshold (core.config finance.everyday_oneoff_eur, Default 250,
 --   in Kontowaehrung zum period_end; ohne Kurs NULL und oneoff_out 0).
 --   RUECKGABE: {ok:true, account_id, account_name, currency, period_start, period_end, opening_balance, closing_balance,
 --   cut, stmt_at_cut, drift, gap, matched[], already_booked[], blocked[], savings_plan_pending[], missing[],
 --   unknown_mandates[], plan_adjustments[], learn[], learned_account_number, line_count, matched_count, unmatched_out,
 --   unmatched_in, oneoff_out, oneoff_threshold, lump, pending_settled, export_gap, card_lines[], fingerprint}
+--   plus moved_legs, learned_accounts, iban_ambiguous, rest_other, rest_unexplained, rest_kind, difference_candidates,
+--   interest_correction, interest_lines, interest_booked, interest_skips, legacy_returns, legacy_return_label,
+--   pool_unassigned (je s. u.)
 --   | {ok:false, code, reason, ...}
 --   account_unknown (Nummern-Pfad) traegt zusaetzlich balance_verified und - nur wenn die Saldo-Probe stimmt und der
---   Zeitraum abgeschlossen ist - closing_balance, balance_date (= period_end), currency: Startsaldo fuer ein NEUES Konto
+--   Zeitraum abgeschlossen ist - closing_balance, balance_date (= period_end), currency: Startsaldo fuer ein neues Konto
 --   (fn_create_account opening_balance + opening_balance_date; derselbe Auszug ist danach already_covered).
 --   codes: invalid_statement, account_unknown (+candidates), account_ambiguous, not_bookable, currency_mismatch,
---   period_in_future, already_covered, already_imported, balance_check_failed (+difference). already_covered und
+--   period_in_future, already_covered, already_imported, balance_check_failed (+difference), unreadable (IBAN-foermige
+--   Kopf-Nummer mit falscher Pruefziffer: verlesen, nie ein neues Konto). already_covered und
 --   already_imported tragen account_id und balance_verified (Saldo-Probe Anfang + Zeilen = Ende; Bank-Export: false):
 --   die Dauerauftrags-Erkennung (fn_import_stage_recurring) laeuft auch auf einem bestaetigten Monat und braucht beides.
---   BANK-EXPORT-DATEI (source:'file', Bank-Import-Modul): Eingabe {source, account_name (optional), closing_balance = Kontostand laut App JETZT
+--   Bank-Export-Datei (source:'file', Bank-Import-Modul): Eingabe {source, account_name (optional), closing_balance = Kontostand laut App jetzt
 --   (Pflicht), table:{rows} = Raster des Lesers}. fn_bank_export_load liest den Export (kein LLM, Leser fn_bank_export_normalize); das Konto waehlt
 --   fn_bank_export_resolve_account (Konto-Waechter: export_account_mismatch, ohne Namen Vorauswahl nach Bank-Profil;
 --   closing_balance_required/no_starting_point tragen account_name); Zeitraum =
@@ -60,32 +64,32 @@
 --   Schnitt+1. Sparplan-Treffer mit exakter Stueckzahl (shares_estimated false). Wertpapier-Zeilen ohne Treffer: Stufe 0
 --   gegen gebuchte Trades, sonst trades[] (apply bucht fn_book_stock_buy/_sell/fn_book_dividend), nicht buchbar ->
 --   trades_blocked[] (covered_by_takeover, oversell, security_unknown); unknown-Zeilen des Exports -> export_unknown[].
---   Review 2026-10-28: Steuer auf Kauf/Verkauf = eigene Buchung (trades[].tax, nie im Rest); Verkaufs-Check zaehlt
---   Sparplan-Kaeufe und Kaeufe DIESES Exports mit; Verkauf/Dividende einer erst im Export gekauften Position wird gebucht;
---   neue Position nur ins EINE Depot der passenden Art (Krypto ohne ISIN -> crypto_depot); Stufe 0 auch gegen eine von
+--   Steuer auf Kauf/Verkauf = eigene Buchung (trades[].tax, nie im Rest); Verkaufs-Check zaehlt
+--   Sparplan-Kaeufe und Kaeufe dieses Exports mit; Verkauf/Dividende einer erst im Export gekauften Position wird gebucht;
+--   neue Position nur ins eine Depot der passenden Art (Krypto ohne ISIN -> crypto_depot); Stufe 0 auch gegen eine von
 --   Hand vor dem Schnitt datierte Buchung (+-5 Tage, nie doppelt); App-Kontostand ueber fn_parse_numeric_or_null.
 --   Zusaetzliche codes: export_profile_unknown, export_invalid, closing_balance_required (keine Karte), no_starting_point,
 --   multiple_sub_accounts, export_account_mismatch (+bank, account_name, candidates). Zusaetzliche Rueckgabe: source, balance_source (printed|owner), owner_balance, after_period,
 --   trades, trades_blocked, export_unknown, late_count, seen_refs (Hashes fuer finance.statement_seen_refs).
---   BANK-IMPORT-MODUL (Transfers zwischen eigenen Konten, alle Wege): matched kind transfer (Stufe T, other_account_id)
+--   Bank-Import-Modul (Transfers zwischen eigenen Konten, alle Wege): matched kind transfer (Stufe T, other_account_id)
 --   -> apply bucht fn_book_transfer; nicht buchbar -> blocked[].reason not_bookable | currency_mismatch | pending_pair
 --   (offener Transfer mit dem Gegenkonto +-5 Tage, den keine Zeile trifft: nie ein zweiter) | partner_reconciled (Gegenkonto
 --   mehr als 5 Tage nach dem Zeilendatum abgeglichen); bis 5 Tage -> matched.partner_date = dessen Abgleich+1 (unterwegs).
---   moved_legs[] = Transfer-Beine dieses Kontos, die der Auszug eines ANDEREN Kontos in den letzten 5 Tagen gebucht
+--   moved_legs[] = Transfer-Beine dieses Kontos, die der Auszug eines anderen Kontos in den letzten 5 Tagen gebucht
 --   hat und die hier keine Zeile haben (unterwegs) -> zaehlen nicht zum Stand am period_end, apply setzt period_end+1.
---   Beides steht auf der Karte (Abschnitt "Unterwegs"). Rest-Label (Befund 2026-11-03): nicht cash "Sonstige Abweichung"; mit offenen
---   Ein- UND Ausgaengen "Rest"; Rest > 0 "Ungeklaerter Eingang"; Rest < 0 ohne Zeile und gesperrten Posten
+--   Beides steht auf der Karte (Abschnitt "Unterwegs"). Rest-Label: nicht cash "Sonstige Abweichung"; mit offenen
+--   Ein- und Ausgaengen "Rest"; Rest > 0 "Ungeklaerter Eingang"; Rest < 0 ohne Zeile und gesperrten Posten
 --   "Ungeklaerter Abgang"; Rest < 0 ohne offene Abgaenge, aber mit erklaertem Teil oder Eingang "Rest"; offene Abgaenge plus Teil neben
 --   der Export-Luecke "Rest"; sonst "Alltagsausgaben". Unter der Rest-Zeile flache "darin"-Zeilen (offene Eingaenge, offene Ausgaenge, noch vorgemerkt, Uebriges), die zusammen genau den Rest ergeben (ab zwei Teilen); after_period als Zeile unter dem App-Stand. Luecke < 0 ohne offene Abgaenge: Hinweis
 --   statement_export_gap_unexplained (statement_export_starts_late hat Vorrang).
 --   Haushaltsweiter Hinweis: aktive Versicherungen ohne Beitrag (finance.note.statement_insurance_premium_missing mit
 --   den Namen), ausserhalb des fingerprint.
---   STARTBETRAG DES GEGENKONTOS (fn_opening_balance_reason, Befund 2026-11-03): Stufe T/P/L mit Zeile im Startbetrag des Gegenkontos ->
+--   Startbetrag des Gegenkontos (fn_opening_balance_reason): Stufe T/P/L mit Zeile im Startbetrag des Gegenkontos ->
 --   matched.other_in_opening (kein partner_lump, kein partner_fee, im fingerprint), apply bucht nur das Bein dieses Kontos, Gebuehr
 --   auf diesem Konto bleibt in der Gruppe; Karte statement_transfer_in_opening. Dauerauftrag -> blocked.reason partner_in_opening
 --   (+ other_account_id, other_account_name), Karte statement_partner_in_opening. pending_pair auch fuer ein Einzelbein auf dem
 --   Gegenkonto (gleiches Bein +-5 Tage, kein weiteres Transfer-Bein der Gruppe): Abgang am Stichtag, Ankunft danach zaehlt je Konto einmal.
---   SAMMELBETRAG DES GEGENKONTOS (Befund KW 45, fn_statement_partner_lump): vor jedem Transfer die Rest-Aggregate des
+--   Sammelbetrag des Gegenkontos (fn_statement_partner_lump): vor jedem Transfer die Rest-Aggregate des
 --   Gegenkontos pruefen. exact -> matched.partner_lump (+ leg, book_date), Karte statement_lump_offset, apply verrechnet.
 --   possible -> blocked.reason partner_lump_possible (+ partner_lump), Karte statement_partner_lump_possible, kein Transfer: beide
 --   Staende bleiben wie auf ihren Auszuegen. pending_pair auch fuer ein Bein <= Schnitt mit gleichem Betrag +-5 Tage, das der
@@ -95,15 +99,15 @@
 --   rest_kind = die Bezeichnung des Rests auf der Karte (everyday|rest_net|unexplained_in|unexplained_out|other_diff); der Agent liest sie.
 --   difference_candidates = fn_statement_diff_candidates fuer rest_unexplained, drift, Rest, export_gap (ohne die Stufe-0-Treffer
 --   dieses Auszugs, nicht im fingerprint).
---   POOL-REGEL (Profil counterparty_pattern, Bondora): Geldzeile an/von einem Anbieter-Sammelkonto -> P2P-Konto des Profils,
+--   Pool-Regel (Profil counterparty_pattern, Bondora): Geldzeile an/von einem Anbieter-Sammelkonto -> P2P-Konto des Profils,
 --   nur buchbar und am Zeilendatum nicht abgeglichen (Eingang: Verrechnungskonto bzw. gleicher Inhaber ohne anderes
 --   Verrechnungskonto, Gebuehr-Bein partner_fee beim P2P-Konto; Ausgang: Referenz = Kontonummer als ganzes Wort im
---   Verwendungszweck). GENAU eine Zeile mit zwei Kandidaten: Eingabe transfer_account (Kontoname laut Nutzer, 'none' =
+--   Verwendungszweck). Genau eine Zeile mit zwei Kandidaten: Eingabe transfer_account (Kontoname laut Nutzer, 'none' =
 --   keins); fehlt sie oder passt sie zu keinem -> {ok:false, code:'transfer_choice_required', candidates[2] (Namen, nach
 --   id), amount, date} ohne Karte (der Agent fragt, Muster account_ambiguous; die Karte zeigt danach die Zuordnung).
 --   Sonst (mehrere solche Zeilen, 0 oder 3+ Kandidaten, 'none') Rest + Hinweis (pool_unassigned = Anzahl).
---   IBAN-LERNEN ("Import zuerst", Abschnitt 3a2): eine lernbare Gegen-IBAN (fn_iban_strict, keinem Konto gehoerend, kein
---   Dauerauftrags-Schluessel, nicht die eigene) wird GENAU einem eigenen cash-Konto ohne Nummer zugeordnet - ueber einen
+--   IBAN-Lernen (Abschnitt 3a2): eine lernbare Gegen-IBAN (fn_iban_strict, keinem Konto gehoerend, kein
+--   Dauerauftrags-Schluessel, nicht die eigene) wird genau einem eigenen cash-Konto ohne Nummer zugeordnet - ueber einen
 --   getroffenen Dauerauftrags-Transfer an dieses Konto (Regel 2) oder ueber den Gegenpart-Namen (fn_match_household_holder,
 --   Regel 1: eine Person -> nur ihre Konten, mehrere -> nur Haushaltskonten). Offene Zeilen dieser IBAN -> matched kind
 --   transfer stage L. RUECKGABE learned_accounts[{account_id, account_name, account_number}] (Apply speichert per
@@ -159,7 +163,7 @@ DECLARE
     v_lump     NUMERIC;
     v_card     JSONB := '[]'::jsonb;
     v_fp       TEXT;
-    -- Bank-Export-Datei (Broker-CSV Paket B, Bank-Import-Modul)
+    -- Bank-Export-Datei
     v_file      BOOLEAN := COALESCE(p->>'source', '') = 'file';
     v_norm     JSONB;
     v_owner    NUMERIC;
@@ -192,8 +196,8 @@ DECLARE
     v_export_from DATE;                -- fruehestes Datum im Export (beginnt er nach Schnitt+1, fehlen evtl. Zeilen)
     v_int_lines NUMERIC := 0;          -- Summe der Zinszeilen (interest_line) im Zeitraum
     v_int_booked NUMERIC := 0;         -- Summe der Scheduler-Zinsbuchungen im Zeitraum
-    v_int_corr NUMERIC := 0;           -- Zinskorrektur = Zeilen - gebucht (EINE Buchung)
-    v_legacy   NUMERIC := 0;           -- Summe der Kleinbetraege (legacy_return, EINE Buchung)
+    v_int_corr NUMERIC := 0;           -- Zinskorrektur = Zeilen - gebucht (eine Buchung)
+    v_legacy   NUMERIC := 0;           -- Summe der Kleinbetraege (legacy_return, eine Buchung)
     v_int_skips JSONB := '[]'::jsonb;  -- offene Zins-Vorkommen <= period_end (apply ueberspringt sie)
     v_legacy_label TEXT;
     v_pool_pr  JSONB;                  -- Profil mit counterparty_pattern (Pool-Regel)
@@ -209,7 +213,7 @@ DECLARE
     v_leg      NUMERIC;                 -- erwartetes Bein auf dem Gegenkonto (signiert)
     v_plump    JSONB;                   -- fn_statement_partner_lump je Transfer-Zeile
     v_lump_used JSONB := '{}'::jsonb;   -- in dieser Vorschau schon Verrechnetes je Gegen-Auszug und Quelle
-    v_rest_other NUMERIC;               -- Rest ohne offene Ein-/Ausgaenge (Fund KW 45, Rueckgabe)
+    v_rest_other NUMERIC;               -- Rest ohne offene Ein-/Ausgaenge (Rueckgabe)
     v_rest_pend  NUMERIC := 0;          -- Rest-Teil "noch vorgemerkt" (Export-Luecke mit offenen Abgaengen, nur Karte)
     v_rest_parts JSONB := '[]'::jsonb;  -- "darin …"-Zeilen: Teile, die zusammen genau v_rest ergeben
     v_unexplained NUMERIC;              -- Teil davon, den weder eine Zeile noch die Karte erklaert (Rueckgabe + Kandidaten)
@@ -225,7 +229,7 @@ BEGIN
     --   = bestaetigter Stand am Schnitt (s. u.), die Saldo-Probe entfaellt (fester Leser, keine Lesefehler).
     --   Spaete Zeilen: Datum im Zeitraum des letzten CSV-Abgleichs, Referenz dort nicht gesehen -> Datum = Schnitt+1.
     IF v_file THEN
-        -- die geteilte Lade-Sequenz (fn_bank_export_load): Leser, Konto-Waechter (Befund 2026-10-30: Datei-Profil
+        -- die geteilte Lade-Sequenz (fn_bank_export_load): Leser, Konto-Waechter (Datei-Profil
         -- gegen Konto-Profil, ohne Namen Vorauswahl nach Bank), ein Sub-Konto je Datei (multiple_sub_accounts)
         v_norm := finance.fn_bank_export_load(p);
         IF (v_norm->>'ok')::boolean IS DISTINCT FROM true THEN
@@ -235,7 +239,7 @@ BEGIN
         IF (v_norm->>'printed_balance')::boolean THEN
         -- Profil mit gedrucktem Endstand (Bondora): Zeitraum + Anfangs-/Endstand aus der Datei = gedruckter Auszug
         -- (balance_source printed, kein Owner-Saldo). Zinszeilen (interest_line) und Kleinbetraege (legacy_return)
-        -- laufen nicht durch die Zuordnung: sie werden je als EINE Summe gebucht (Schritt 3c).
+        -- laufen nicht durch die Zuordnung: sie werden je als eine Summe gebucht (Schritt 3c).
         v_printed_file := true;
         v_ps    := (v_norm->'statement'->>'period_start')::date;
         v_pe    := (v_norm->'statement'->>'period_end')::date;
@@ -299,7 +303,7 @@ BEGIN
         FROM jsonb_array_elements(v_norm->'rows') r WHERE (r->>'date')::date > v_pe;
         SELECT COALESCE(sum((l->>'amount')::numeric), 0) INTO v_sum FROM jsonb_array_elements(v_lines) l;
         v_close := v_owner - v_after;
-        -- Anfang = BESTAETIGTER Stand am Schnitt (Befund 2026-10-30), nie aus App-Stand - Zeilen zurueckgerechnet:
+        -- Anfang = bestaetigter Stand am Schnitt, nie aus App-Stand - Zeilen zurueckgerechnet:
         -- der drift (Schritt 2) zeigt dann nur noch, was im System seit der Bestaetigung vor dem Schnitt dazukam. Die
         -- Luecke App-Stand - (Anfang + Exportzeilen) (meist vorgemerkte Kartenzahlungen: die App zieht sie schon ab, der
         -- Export enthaelt sie erst nach der Buchung) faellt in den Rest am period_end, nie an den bestaetigten Schnitt
@@ -338,12 +342,12 @@ BEGIN
         RETURN jsonb_build_object('ok', false, 'code', 'invalid_statement',
             'reason', 'The statement data is incomplete (period, opening/closing balance, or a line outside the period).');
     END IF;
-    -- Saldo-Probe EINMAL rechnen: Gate fuer den Startsaldo eines neuen Kontos (account_unknown) und balance_check_failed.
+    -- Saldo-Probe einmal rechnen: Gate fuer den Startsaldo eines neuen Kontos (account_unknown) und balance_check_failed.
     SELECT COALESCE(sum(round((l->>'amount')::numeric, 2)), 0) INTO v_sum FROM jsonb_array_elements(v_lines) l;
     v_balance_ok := (v_open + v_sum = v_close);
 
-    -- S7 (Owner-Frage 2026-10-23 "im Auszug stehen viele IBANs"): eine IBAN-foermige Kopf-Nummer mit falscher
-    -- Pruefziffer ist VERLESEN, kein neues Konto -> unreadable statt account_unknown (nie ein Konto mit falscher IBAN).
+    -- eine IBAN-foermige Kopf-Nummer mit falscher
+    -- Pruefziffer ist verlesen, kein neues Konto -> unreadable statt account_unknown (nie ein Konto mit falscher IBAN).
     IF NOT finance.fn_iban_valid(p->>'account_number') THEN
         RETURN jsonb_build_object('ok', false, 'code', 'unreadable',
             'reason', 'The account IBAN on the statement could not be read reliably (check digits do not match) - ask the user for the PDF from online banking.');
@@ -365,11 +369,11 @@ BEGIN
     ELSE
         SELECT * INTO v_res FROM finance.fn_resolve_account_by_number(p->>'account_number');
         IF v_res.id IS NULL THEN
-            -- Neues Konto (Befund 2026-10-23): den gedruckten Endsaldo + Stichtag mitgeben, damit das Konto in
-            -- EINEM Schritt mit Saldo angelegt wird - aber nur, wenn die Saldo-Probe stimmt und der Zeitraum
+            -- Neues Konto: den gedruckten Endsaldo + Stichtag mitgeben, damit das Konto in
+            -- einem Schritt mit Saldo angelegt wird - aber nur, wenn die Saldo-Probe stimmt und der Zeitraum
             -- abgeschlossen ist (nie einen verlesenen oder vorlaeufigen Saldo als Startsaldo anbieten).
             v_balance_ok := v_balance_ok AND v_pe <= core.fn_today();   -- gleiche Grenze wie fn_create_account
-            -- "Import zuerst": gedruckter Kontoinhaber -> Vorschlag fuer den Inhaber des neuen Kontos (die Karte von
+            -- gedruckter Kontoinhaber -> Vorschlag fuer den Inhaber des neuen Kontos (die Karte von
             -- tool_create_account zeigt ihn zur Bestaetigung; Banken drucken bei Gemeinschaftskonten oft nur einen Namen)
             v_holder := finance.fn_match_household_holder(p->>'account_holder');
             RETURN jsonb_build_object('ok', false,
@@ -443,16 +447,16 @@ BEGIN
 
     -- ---------- 3. Zuordnung + Anreicherung ----------
     v_match := finance.fn_statement_match(v_acct.id, v_cut, v_pe, v_lines);
-    -- unmatched_out/in + oneoff_out rechnet EIN SELECT am Ende (Abschnitt 3d) aus der finalen unmatched-Liste
+    -- unmatched_out/in + oneoff_out rechnet ein SELECT am Ende (Abschnitt 3d) aus der finalen unmatched-Liste
 
     -- ---------- 3a. Pool-Regel (Anbieter mit Sammelkonto, z. B. Bondora) ----------
     --   Eine noch offene Geldzeile, deren Gegenpart-Name zum counterparty_pattern eines Profils passt. Kandidaten = aktive,
     --   buchbare P2P-Konten dieses Profils (fn_bank_export_account_profile) in der Kontowaehrung, die am Zeilendatum noch
-    --   NICHT abgeglichen sind (deren eigener Auszug haette die Bewegung schon gepaart oder im Rest - nie doppelt).
+    --   nicht abgeglichen sind (deren eigener Auszug haette die Bewegung schon gepaart oder im Rest - nie doppelt).
     --   Eingang (Auszahlung, Bondora zahlt nur auf das verifizierte Konto): das P2P-Konto, dessen Verrechnungskonto dieses
-    --   Konto ist, sonst eines desselben Inhabers (nie Haushalt) OHNE anderes Verrechnungskonto -> Transfer + Gebuehr-Bein
+    --   Konto ist, sonst eines desselben Inhabers (nie Haushalt) ohne anderes Verrechnungskonto -> Transfer + Gebuehr-Bein
     --   (Profil withdrawal_fee) beim P2P-Konto. Ausgang (Einzahlung): Referenz = Kontonummer als ganzes Wort im
-    --   Verwendungszweck, sonst alle Kandidaten. Genau ein Kandidat -> Transfer. GENAU eine Zeile mit zwei Kandidaten:
+    --   Verwendungszweck, sonst alle Kandidaten. Genau ein Kandidat -> Transfer. Genau eine Zeile mit zwei Kandidaten:
     --   ohne transfer_account -> code transfer_choice_required (der Agent fragt, Muster account_ambiguous); mit Namen eines
     --   der beiden -> Transfer; 'none' -> Rest; anderer Name -> erneut transfer_choice_required. Mehrere solche Zeilen oder
     --   0/3+ Kandidaten (bei vorhandenen Profil-Konten): Rest + Hinweis (pool_unassigned). Die Zeilen laufen danach durch
@@ -499,7 +503,7 @@ BEGIN
                                                            'date', v_line->>'date', 'line', v_line, 'candidates', v_pool_pick);
         END IF;
     END LOOP;
-    -- Wahl des Nutzers: nur bei GENAU einer Zeile mit zwei Kandidaten (nie eine Antwort fuer mehrere Zahlungen)
+    -- Wahl des Nutzers: nur bei genau einer Zeile mit zwei Kandidaten (nie eine Antwort fuer mehrere Zahlungen)
     IF (SELECT count(*) FROM jsonb_array_elements(v_pool_amb) a WHERE jsonb_array_length(a->'candidates') = 2) = 1 THEN
         SELECT a INTO v_m FROM jsonb_array_elements(v_pool_amb) a WHERE jsonb_array_length(a->'candidates') = 2;
         IF lower(btrim(COALESCE(p->>'transfer_account', ''))) <> 'none' THEN
@@ -538,17 +542,17 @@ BEGIN
                    COALESCE((SELECT jsonb_agg(u) FROM jsonb_array_elements(v_match->'unmatched') u
                              WHERE NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v_pool) x WHERE (x->>'line_idx')::int = (u #>> '{}')::int)), '[]'::jsonb));
 
-    -- ---------- 3a2. IBAN-LERNEN ("Import zuerst"): eigenes Konto ohne IBAN aus einer Ueberweisung erkennen ----------
+    -- ---------- 3a2. IBAN-Lernen: eigenes Konto ohne IBAN aus einer Ueberweisung erkennen ----------
     --   Lernbar = fn_iban_strict, gehoert keinem Konto (jeder Status), kein Dauerauftrags-Schluessel und keine Zeile an einen
     --   Dauerauftrag an Dritte, nicht die Kopf-IBAN bzw. Nummer des Auszugskontos. Kandidat = aktives, buchbares cash-Konto ohne Nummer, gleiche Waehrung, nicht dieses.
-    --   Regel 2 (Vorlauf): Zeile trifft einen Dauerauftrags-TRANSFER an einen Kandidaten und ihr Gegenpart passt zu dessen
+    --   Regel 2 (Vorlauf): Zeile trifft einen Dauerauftrags-Transfer an einen Kandidaten und ihr Gegenpart passt zu dessen
     --   Inhaber (Haushaltskonto: beliebige Mitglieder) -> Paar (IBAN, Konto). Regel 1: offene Geldzeilen je IBAN, alle
     --   Gegenparts = dieselben Mitglieder (fn_match_household_holder); eine Person -> nur ihre Konten, mehrere ->
-    --   nur Haushaltskonten; genau EIN Kandidat -> Paar. Konflikt (eine IBAN -> zwei Konten, ein Konto <- zwei IBANs) ->
+    --   nur Haushaltskonten; genau ein Kandidat -> Paar. Konflikt (eine IBAN -> zwei Konten, ein Konto <- zwei IBANs) ->
     --   kein Paar, Hinweis; 2+ Kandidaten -> Hinweis; 0 / fremder Name -> nichts. Offene Zeilen mit einer Paar-IBAN ->
     --   matched kind transfer, stage L (danach dieselben Pruefungen wie Stufe T; gelernt wird auch, wenn sie blockiert).
     --   Gelernt wird nur im Apply (fn_set_account), der fingerprint deckt die Paare ab.
-    --   arch-challenge 2026-10-30: der Name waehlt nur den VORSCHLAG, die IBAN bleibt der Schluessel (Stufe T); kein
+    --   Der Name waehlt nur den Vorschlag, die IBAN bleibt der Schluessel (Stufe T); kein
     --   Gegenbuchungs-Beleg (Actual/YNAB), weil Einzelumsaetze nicht gespeichert werden; Bestaetigung = die Karte.
     WITH ll AS (
         SELECT (o.ord)::int AS idx, n.iban, o.l->>'counterparty' AS cp, (o.l->>'amount')::numeric AS amt,
@@ -564,14 +568,14 @@ BEGIN
           AND n.iban IS DISTINCT FROM finance.fn_normalize_account_number(p->>'account_number')
           AND NOT EXISTS (SELECT 1 FROM finance.accounts a WHERE a.account_number = n.iban)
           AND NOT EXISTS (SELECT 1 FROM finance.recurring_payment_keys k WHERE k.key_type = 'counterparty_iban' AND k.key_value = n.iban)
-          -- IBAN einer Zeile, die einen Dauerauftrag an einen DRITTEN trifft (lernt sie evtl. gerade als Schluessel): nie
-          -- ein eigenes Konto (sonst beanspruchten spaeter Stufe A und Stufe T dieselbe Zeile, Code-Review 2026-10-30)
+          -- IBAN einer Zeile, die einen Dauerauftrag an einen Dritten trifft (lernt sie evtl. gerade als Schluessel): nie
+          -- ein eigenes Konto (sonst beanspruchten spaeter Stufe A und Stufe T dieselbe Zeile)
           AND NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v_match->'matched') m
                           JOIN finance.recurring_payments r ON r.id = (m->>'recurring_payment_id')::int AND r.target_account_id IS NULL
                           WHERE m->>'kind' = 'recurring'
                             AND finance.fn_normalize_account_number(v_lines->((m->>'line_idx')::int - 1)->>'counterparty_iban') = n.iban)
     ),
-    hm AS (   -- Namensabgleich je Gegenpart EINMAL
+    hm AS (   -- Namensabgleich je Gegenpart einmal
         SELECT DISTINCT ON (cp) cp, finance.fn_match_household_holder(cp) AS h FROM ll ORDER BY cp
     ),
     cand AS (
@@ -596,8 +600,8 @@ BEGIN
         GROUP BY ll.iban
     ),
     c1 AS (
-        -- eine Person -> nur IHRE Konten (nie ein Haushaltskonto: ihr eigenes, nicht erfasstes Konto bekaeme sonst dessen
-        -- Platz, Code-Review 2026-10-30); mehrere Namen -> nur Haushaltskonten
+        -- eine Person -> nur ihre Konten (nie ein Haushaltskonto: ihr eigenes, nicht erfasstes Konto bekaeme sonst dessen
+        -- Platz); mehrere Namen -> nur Haushaltskonten
         SELECT g.iban, jsonb_agg(jsonb_build_object('id', c.id, 'name', c.name) ORDER BY c.id) AS cands
         FROM g1 g JOIN cand c
           ON (jsonb_array_length(g.pids) = 1 AND c.owner_person_id = g.pids->>0)
@@ -700,8 +704,8 @@ BEGIN
                      AND v_partner_at - (v_m->>'line_date')::date > 5 THEN 'partner_reconciled'
             END;
             IF v_reason IS NOT NULL THEN
-                -- erkannt, nur nicht buchbar -> Rest, aber nie Alltag (Befund 2026-10-30: ein Uebertrag an ein spaeter angelegtes
-                -- eigenes Konto blaehte die Alltags-Schaetzung auf); gilt fuer alle blocked/pending
+                -- erkannt, nur nicht buchbar -> Rest, aber nie Alltag (ein Uebertrag an ein spaeter angelegtes
+                -- eigenes Konto blaehte sonst die Alltags-Schaetzung auf); gilt fuer alle blocked/pending
                 v_blocked := v_blocked || (v_m || jsonb_build_object('reason', v_reason)
                              || CASE WHEN v_reason = 'partner_lump_possible' THEN jsonb_build_object('partner_lump', v_plump) ELSE '{}'::jsonb END);
                 CONTINUE;
@@ -802,7 +806,7 @@ BEGIN
         v_book_sum := v_book_sum + (v_m->>'amount')::numeric;
     END LOOP;
 
-    -- ---------- 3c. Datei mit gedrucktem Endstand: Zins + Kleinbetraege als je EINE Summe ----------
+    -- ---------- 3c. Datei mit gedrucktem Endstand: Zins + Kleinbetraege als je eine Summe ----------
     --   Zins: Korrektur = Summe der Zinszeilen - Summe der Scheduler-Zinsbuchungen im Zeitraum (Stufe 0 je Tag waere
     --   falsch sortiert und liesse Tage ohne Zeile offen); die offenen Scheduler-Vorkommen bis period_end werden
     --   uebersprungen (der Auszug kennt den echten Zins, sonst buchte der Cron sie spaeter zusaetzlich).
@@ -870,7 +874,7 @@ BEGIN
 
             v_reason := NULL;
             v_depot := v_hold.depot_id;
-            -- frueherer Kauf DERSELBEN Position in diesem Export (gebuchter Sparplan-Treffer oder Kauf aus trades[]):
+            -- frueherer Kauf derselben Position in diesem Export (gebuchter Sparplan-Treffer oder Kauf aus trades[]):
             -- Stueck fuer den Verkaufs-Check; ohne Holding bucht apply Verkauf/Dividende auf die dann angelegte Position
             SELECT COALESCE(sum((v_lines->((m->>'line_idx')::int - 1)->>'shares')::numeric), 0) INTO v_avail
             FROM jsonb_array_elements(v_to_book) m
@@ -889,7 +893,7 @@ BEGIN
                 v_reason := 'security_unknown';
             ELSIF v_line->>'kind' = 'buy' THEN
                 IF v_hcount = 0 THEN
-                    -- neue Position: das EINE aktive Depot dieses Verrechnungskontos der passenden Art (Krypto ohne ISIN)
+                    -- neue Position: das eine aktive Depot dieses Verrechnungskontos der passenden Art (Krypto ohne ISIN)
                     SELECT CASE WHEN count(*) = 1 THEN min(d.id) END INTO v_depot
                     FROM finance.accounts d WHERE d.settlement_account_id = v_acct.id AND d.status = 'active'
                       AND d.account_type::text = CASE WHEN v_line->>'isin' IS NULL THEN 'crypto_depot' ELSE 'stocks_depot' END;
@@ -935,9 +939,9 @@ BEGIN
         END LOOP;
     END IF;
 
-    -- Plan-Anpassung beim 2. gleichen Ist-Betrag: Vorgaenger = juengere Buchung der Kette ODER ein frueheres Vorkommen
-    -- derselben Kette in DIESEM Auszug. Je Kette hoechstens EINE Anpassung (die spaeteste Faelligkeit): sonst laege eine
-    -- in diesem Auszug gebuchte Faelligkeit hinter eff_from und fn_split_recurring_payment lehnte ab (Review-Befund).
+    -- Plan-Anpassung beim 2. gleichen Ist-Betrag: Vorgaenger = juengere Buchung der Kette oder ein frueheres Vorkommen
+    -- derselben Kette in diesem Auszug. Je Kette hoechstens eine Anpassung (die spaeteste Faelligkeit): sonst laege eine
+    -- in diesem Auszug gebuchte Faelligkeit hinter eff_from und fn_split_recurring_payment lehnte ab.
     FOR v_m IN SELECT e FROM jsonb_array_elements(v_to_book) e WHERE e ? 'adjust_head'
                ORDER BY (e->>'due_date')::date DESC LOOP
         CONTINUE WHEN EXISTS (SELECT 1 FROM jsonb_array_elements(v_adjust) a WHERE (a->>'head')::int = (v_m->>'adjust_head')::int);
@@ -958,12 +962,12 @@ BEGIN
         v_last_amt := NULL;
     END LOOP;
 
-    -- Schon gebuchte Zahlung mit Buchungsdatum NACH dem Auszugsende (z. B. am 02.10. bestaetigt, laut Auszug am 30.09.
+    -- Schon gebuchte Zahlung mit Buchungsdatum nach dem Auszugsende (z. B. am 02.10. bestaetigt, laut Auszug am 30.09.
     -- abgegangen): apply verschiebt sie auf das Zeilendatum; hier zaehlt sie schon zum Stand am period_end, sonst landete
     -- sie zusaetzlich im Rest (doppelt). fn_statement_match liefert nur verschiebbare (kein Bein-Konto abgeglichen).
     SELECT COALESCE(sum(COALESCE(b->>'expected', b->>'amount')::numeric), 0) INTO v_redate_sum   -- gebuchter Betrag (ohne nachgebuchte Gebuehr)
     FROM jsonb_array_elements(v_booked) b WHERE (b->>'tx_date')::date > v_pe;
-    -- Monatsgrenze (Spiegelbild): ein Transfer-Bein dieses Kontos, das der Auszug eines ANDEREN Kontos in den letzten
+    -- Monatsgrenze (Spiegelbild): ein Transfer-Bein dieses Kontos, das der Auszug eines anderen Kontos in den letzten
     -- 5 Tagen des Zeitraums gebucht hat und zu dem dieser Auszug keine Zeile hat, ist unterwegs (z. B. am 30.09. bei
     -- Bondora abgegangen, am 02.10. bei der Bank angekommen) -> apply verschiebt es auf period_end+1; es zaehlt nicht
     -- zum Stand am period_end (sonst Rest jetzt + zweiter Transfer im Folgemonat).
@@ -984,11 +988,11 @@ BEGIN
                                     AND o.account_id = (b->>'other_account_id')::int));
     SELECT v_redate_sum - COALESCE(sum((x->>'amount')::numeric), 0) INTO v_redate_sum FROM jsonb_array_elements(v_moved) x;
 
-    -- ---------- 3d. Alltags-Aggregat: unmatched_out/in + einmalige Grossausgaben (EIN SELECT, eine Zeilenmenge) ----------
+    -- ---------- 3d. Alltags-Aggregat: unmatched_out/in + einmalige Grossausgaben (ein SELECT, eine Zeilenmenge) ----------
     --   Zeilen = finale unmatched-Liste (Pool-/Lern-Treffer sind dort schon raus; blocked/pending waren nie drin: erkannt,
     --   nur nicht buchbar -> Rest, aber kein Alltag), ohne Wertpapier-Geldfluesse (Datei) und ohne Zins-/Kleinbetrags-
     --   Zeilen der gedruckten Datei. Je Zeile auf Cent gerundet (wie fn_statement_match) -> oneoff_out >= unmatched_out.
-    --   Grenze (Owner-Entscheid 2026-10-30): core.config finance.everyday_oneoff_eur (fehlt/unlesbar/negativ -> 250) in
+    --   Grenze: core.config finance.everyday_oneoff_eur (fehlt/unlesbar/negativ -> 250) in
     --   Kontowaehrung zum period_end per fn_config_eur_in_currency; ohne Kurs oder 0 keine Grenze -> nichts einmalig.
     v_oo_thr := finance.fn_config_eur_in_currency('everyday_oneoff_eur', 250, v_acct.currency, v_pe);
     IF v_oo_thr <= 0 THEN v_oo_thr := NULL; END IF;   -- 0 (bzw. auf 0,00 gerundet) waere "alles einmalig" -> keine Regel
@@ -1055,7 +1059,7 @@ BEGIN
                          AND (l->>'date')::date > v_cut AND COALESCE(l->>'kind', '') IN ('tax', 'corporate')), 0)
     INTO v_explained;
     v_unexplained := v_rest_other - (v_export_gap - v_settled) - v_explained;
-    -- Bezeichnung des Rests (Befund 2026-11-03): Alltagsausgaben nur, wenn offene Abgaenge (mit Export-Luecke) ihn erklaeren.
+    -- Bezeichnung des Rests: Alltagsausgaben nur, wenn offene Abgaenge (mit Export-Luecke) ihn erklaeren.
     -- Toleranz wegen ungerundeter Summen.
     v_rest_label := CASE
         WHEN v_acct.account_type::text <> 'cash' THEN 'finance.label.statement_other_diff'
@@ -1309,8 +1313,8 @@ BEGIN
              AND o.l->>'sub_kind' IN ('deposit', 'withdrawal')) THEN
         v_card := v_card || jsonb_build_array(jsonb_build_object('kind', 'note', 'value', 'finance.note.statement_no_settlement'));
     END IF;
-    -- Teile des Rests: offene Eingaenge, offene Ausgaenge, noch vorgemerkt (Export-Luecke < 0 bei offenen Abgaengen; frueher
-    -- Hinweis statement_export_gap), Uebriges = Rest minus diese (nicht gebucht oder nicht erklaerbar). Nur Teile <> 0 und
+    -- Teile des Rests: offene Eingaenge, offene Ausgaenge, noch vorgemerkt (Export-Luecke < 0 bei offenen Abgaengen),
+    -- Uebriges = Rest minus diese (nicht gebucht oder nicht erklaerbar). Nur Teile <> 0 und
     -- nur bei mindestens zwei Teilen (sonst ist die Rest-Zeile selbst der eine Teil).
     IF v_file AND NOT v_printed_file AND NOT v_starts_late AND v_export_gap < 0 AND v_out < 0 THEN
         v_rest_pend := v_export_gap;
@@ -1322,17 +1326,17 @@ BEGIN
                    (3, 'finance.label.statement_rest_pending', v_rest_pend),
                    (4, 'finance.label.statement_rest_other', v_rest - v_in - v_out - v_rest_pend)) AS x(ord, lbl, amt)
      WHERE abs(x.amt) >= 0.005;
-    -- Rest = EINE Buchung; die Karte zeigt den Ausgleich vorgemerkter Zahlungen (v_settled) getrennt vom echten Rest
+    -- Rest = eine Buchung; die Karte zeigt den Ausgleich vorgemerkter Zahlungen (v_settled) getrennt vom echten Rest
     v_card := v_card
         || CASE WHEN v_settled > 0 THEN jsonb_build_array(core.fn_ui_money(v_settled, v_acct.currency)
                || jsonb_build_object('label', 'finance.label.statement_pending_settled')) ELSE '[]'::jsonb END
-        -- Bezeichnung s. v_rest_label (Alltagsausgaben, Ungeklaerter Eingang ...); aus mehreren Teilen (Befund KW 45) folgen
-        -- flache "darin"-Zeilen, die zusammen GENAU v_rest ergeben (Zeilen statt Hinweis-Absatz)
+        -- Bezeichnung s. v_rest_label (Alltagsausgaben, Ungeklaerter Eingang ...); aus mehreren Teilen folgen
+        -- flache "darin"-Zeilen, die zusammen genau v_rest ergeben (Zeilen statt Hinweis-Absatz)
         || CASE WHEN v_settled = 0 OR v_rest <> 0 THEN jsonb_build_array(
                core.fn_ui_money(v_rest, v_acct.currency) || jsonb_build_object('label', v_rest_label)) || v_rest_parts
            ELSE '[]'::jsonb END
         || jsonb_build_array(jsonb_build_object('kind', 'note', 'value', 'finance.note.statement_lump'));
-    -- S7: die IBAN, die dieser Auszug dem Konto beibringt, steht sichtbar auf der Karte (Kontrolle durch den Nutzer)
+    -- die IBAN, die dieser Auszug dem Konto beibringt, steht sichtbar auf der Karte (Kontrolle durch den Nutzer)
     IF v_learn_no IS NOT NULL THEN
         v_card := v_card || jsonb_build_array(jsonb_build_object('kind', 'note', 'value', 'finance.note.iban_learned',
                       'params', jsonb_build_object('iban', v_learn_no)));

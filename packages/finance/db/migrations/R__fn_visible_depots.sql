@@ -1,6 +1,7 @@
 -- ============================================================
--- finance.fn_visible_depots(p_household boolean, p_person_id text) — die sichtbaren Depots einer Sicht (READ)
---   EINE Adresse fuer „welche Depots zeigt eine Sicht, welche davon sind Kinder-Depots": aktive stocks_depot/crypto_depot;
+-- fn_visible_depots (READ, STABLE) — die sichtbaren Depots einer Sicht
+--   Eingabe: p_household boolean, p_person_id text. Rueckgabe: (id, name, owner_person_id, kid).
+--   Eine Adresse fuer „welche Depots zeigt eine Sicht, welche davon sind Kinder-Depots": aktive stocks_depot/crypto_depot;
 --   p_household = true (Haushalts-Sicht, core.fn_app_sees_household) -> alle, kid = Inhaber hat role 'child'
 --   (core.fn_household_persons); sonst nur Depots mit owner_person_id = p_person_id, kid immer false (der Betrachter
 --   sieht seine eigene Summe). Konsumenten: finance.fn_app_screen_depot (Hero, Abschnitte, probe) und

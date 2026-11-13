@@ -1,20 +1,21 @@
 -- ============================================================
--- finance.fn_render_plan_facts (WS1a — paket-gefuetterter Plan-Fakten-RENDER, Header-only)
---   Liefert NUR den autoritativen Fakten-HEADER des 'financial_planning'-Sidecars (Ziel-Kennzahlen,
---   Risikoprofil [Phase A: Bereitschaft/Tragfaehigkeit + Stand], Ziel-Allokation+Korridore, Glidepath).
+-- fn_render_plan_facts (READ, STABLE — paket-gefuetterter Plan-Fakten-Render, Header-only)
+--   Liefert nur den autoritativen Fakten-Header des 'financial_planning'-Sidecars (Ziel-Kennzahlen,
+--   Risikoprofil [Bereitschaft/Tragfaehigkeit + Stand], Ziel-Allokation+Korridore, Glidepath, Notreserve, Renten).
 --   Die generische Core-Engine core.fn_fetch_context wrappt
 --   Banner + diesen Header + _meta-Stempel + Prosa-Body (so wie die Validator-Registry die Domaenen-
 --   Struktur fuettert, fuettert die Render-Registry core.context_renderers die Domaenen-Darstellung).
---   UNIFORME Signatur fn(text)->text (Context-Name als Argument — die Engine ruft render_fn(name)).
+--   Einheitliche Signatur fn(text)->text (Context-Name als Argument — die Engine ruft render_fn(name)).
 --
---   ABLEITUNGEN rechnet SQL, NIE gespeichert (Root-CLAUDE.md "LLM rechnet nicht"): das Glidepath-START-
---   JAHR aus glidepath.start_age + dem Geburtsdatum der OWNER-Person (Join family, role='owner';
---   Muster finance.fn_render_finance_profile). Fehlt family/owner -> Phase ohne Jahr (defensiv, kein Crash).
+--   Ableitungen rechnet SQL, nie gespeichert: das Glidepath-Startjahr aus glidepath.start_age + dem Geburtsdatum
+--   der Owner-Person (Join family, role='owner'; Muster finance.fn_render_finance_profile). Fehlt family/owner ->
+--   Phase ohne Jahr (defensiv, kein Crash).
 --
---   PLAN-LUECKEN (2026-10-27): bei aktivem Plan die englische Zeile "Plan gaps: …" aus finance.fn_plan_gaps
+--   Plan-Luecken: bei aktivem Plan die englische Zeile "Plan gaps: …" aus finance.fn_plan_gaps
 --   (nie bestaetigte Sektionen, fehlende Plan-Zahlen, nur im Draft) — auch bei leerem Sidecar.
 --
---   RUECKGABE: Header-Text (mehrzeilig) ODER NULL, wenn die Zeile keinen facts-Sidecar und keine Luecken traegt
+--   Eingabe: p_name (Name der Context-Zeile).
+--   Rueckgabe: Header-Text (mehrzeilig) oder NULL, wenn die Zeile keinen facts-Sidecar und keine Luecken traegt
 --   (dann rendert die Engine nur die Prosa). Anwenden via:
 --     db_apply.ps1 -File packages\finance\db\migrations\R__fn_render_plan_facts.sql
 -- ============================================================
@@ -52,7 +53,7 @@ BEGIN
     FROM agent.core_contexts c
     WHERE c.name = p_name;
 
-    -- Plan-Luecken (2026-10-27): finance.fn_plan_gaps rechnet, welche Interview-Sektionen nie bestaetigt wurden und
+    -- Plan-Luecken: finance.fn_plan_gaps rechnet, welche Interview-Sektionen nie bestaetigt wurden und
     -- welche Plan-Zahlen fehlen (nur bei aktivem Plan). Englisch = Modell-Instruktions-Schicht; der Berater-Prompt
     -- liest die Zeile ("Plan gaps") und bietet das Schliessen an. Auch bei leerem Sidecar (Import-Plan ohne Fakten).
     v_gaps := finance.fn_plan_gaps(v_facts);
@@ -86,9 +87,9 @@ BEGIN
     WHERE cf.name = 'family' AND pp->>'role' = 'owner'
     LIMIT 1;
 
-    -- Wunsch-Renteneintrittsalter (= Beginn der Auszahlungsphase, NICHT die gesetzliche Regelaltersgrenze)
+    -- Wunsch-Renteneintrittsalter (= Beginn der Auszahlungsphase, nicht die gesetzliche Regelaltersgrenze)
     -- des Owners aus finance_profile (Single-Writer-Referenz; fehlt -> NULL). Treibt die Nominal-Projektion
-    -- (Jahre bis zum Auszahlungsbeginn) — wird NIE gespeichert, hier render-at-fetch gerechnet.
+    -- (Jahre bis zum Auszahlungsbeginn) — wird nie gespeichert, hier render-at-fetch gerechnet.
     IF v_owner_id IS NOT NULL THEN
         SELECT (fp->>'planned_retirement_age')::numeric INTO v_ret_age
         FROM agent.core_contexts c2,
@@ -98,7 +99,7 @@ BEGIN
     END IF;
 
     -- ---------- Ziel ----------
-    -- WP2: gespeichert sind zwei von Einkommen/Entnahmerate/Zielportfolio, den dritten leitet fn_plan_goal_resolved ab
+    -- Gespeichert sind zwei von Einkommen/Entnahmerate/Zielportfolio, den dritten leitet fn_plan_goal_resolved ab
     -- (Anzeige "(abgeleitet)"; nie gespeichert).
     v_goal := finance.fn_plan_goal_resolved(v_facts->'goal');
     IF jsonb_typeof(v_goal) = 'object' THEN
@@ -119,9 +120,8 @@ BEGIN
             || CASE WHEN v_goal ? 'withdrawal_rate_pct' THEN ', Entnahme ' || (v_goal->>'withdrawal_rate_pct') || ' %'
                          || CASE WHEN v_goal->>'derived_key' = 'withdrawal_rate_pct' THEN ' (abgeleitet)' ELSE '' END
                     ELSE '' END);
-            -- Phase A: die fruehere goal-interne ', Risiko <tolerance>'-Klausel ist nach risk_profile umgezogen (s. u.).
 
-        -- real/Inflation-Marker an die Ziel-Zeile (FPA: alle Geld-Ziele REAL, EINE Inflations-Annahme)
+        -- real/Inflation-Marker an die Ziel-Zeile (FPA: alle Geld-Ziele real, eine Inflations-Annahme)
         v_infl   := NULLIF(v_goal->>'inflation_pct', '')::numeric;
         v_income := NULLIF(v_goal->>'target_income_eur_month', '')::numeric;
         IF (v_goal ? 'terms') OR v_infl IS NOT NULL THEN
@@ -131,7 +131,7 @@ BEGIN
                 || ')';
         END IF;
         -- Nominal-Projektion bei Beginn der Auszahlungsphase: real × (1+i)^Jahre; Jahre = Wunsch-Rentenalter − Alter.
-        -- ABLEITUNG (nie gespeichert, render-at-fetch): defensiv bei fehlendem Profil/Geburtsdatum -> ausgelassen.
+        -- Ableitung (nie gespeichert, render-at-fetch): defensiv bei fehlendem Profil/Geburtsdatum -> ausgelassen.
         IF v_income IS NOT NULL AND v_infl IS NOT NULL AND v_birth IS NOT NULL AND v_ret_age IS NOT NULL THEN
             v_years := v_ret_age - date_part('year', age(v_birth));
             IF v_years > 0 THEN
@@ -147,9 +147,9 @@ BEGIN
         END IF;
     END IF;
 
-    -- ---------- Risikoprofil (Phase A: risk_tolerance zog aus goal hierher; + Tragfaehigkeit + Stand) ----------
-    -- Eigene Header-Zeile statt der goal-internen Klausel (one-fact-one-home). Partial-tolerant: nur
-    -- gesetzte Felder werden gerendert; ohne tolerance UND capacity entfaellt die Zeile ganz.
+    -- ---------- Risikoprofil (Bereitschaft + Tragfaehigkeit + Stand) ----------
+    -- Eigene Header-Zeile (one-fact-one-home). Partial-tolerant: nur
+    -- gesetzte Felder werden gerendert; ohne tolerance und capacity entfaellt die Zeile ganz.
     v_rp := v_facts->'risk_profile';
     IF jsonb_typeof(v_rp) = 'object'
        AND ((v_rp ? 'risk_tolerance') OR (v_rp ? 'risk_capacity')) THEN
@@ -169,7 +169,7 @@ BEGIN
                 COALESCE(v_blk->>'name','?') || ' ' || COALESCE(v_blk->>'target_pct','?') || '%'
                 || CASE WHEN jsonb_typeof(v_blk->'corridor') = 'array'
                         THEN ' (' || (v_blk->'corridor'->>0) || '–' || (v_blk->'corridor'->>1) || ')' ELSE '' END
-                -- 2026-10-23: der Block-key ist das Kuerzel, mit dem der Buchhalter Positionen zuordnet (asset_class)
+                -- der Block-key ist das Kuerzel, mit dem der Buchhalter Positionen zuordnet (asset_class)
                 || CASE WHEN NULLIF(v_blk->>'key', '') IS NOT NULL THEN ' [' || (v_blk->>'key') || ']' ELSE '' END);
         END LOOP;
         v_lines := v_lines || (
@@ -205,7 +205,7 @@ BEGIN
             || CASE WHEN array_length(v_phases,1) > 0 THEN ' — Phasen: ' || array_to_string(v_phases, '; ') ELSE '' END);
     END IF;
 
-    -- ---------- Notreserve (2026-10-30: Ruecklage, nicht mehr Plan-Fakt) ----------
+    -- ---------- Notreserve (eine Ruecklage, kein Plan-Fakt) ----------
     -- Ziel, Basis und Deckung aus finance.fn_emergency_reserve_status (eine Adresse mit Review und App)
     v_er := finance.fn_emergency_reserve_status();
     IF (v_er->>'exists')::boolean THEN
@@ -224,8 +224,8 @@ BEGIN
                     ELSE '' END);
     END IF;   -- keine Notreserve: meldet die Luecken-Zeile (fn_plan_gaps), nicht doppelt
 
-    -- ---------- Renten (Renteninformation-Plan 2026-10-26) ----------
-    -- Je aktiver Altersvorsorge die juengste Renteninformation aus finance.fn_pension_outlook (EINE Rechen-Adresse),
+    -- ---------- Renten ----------
+    -- Je aktiver Altersvorsorge die juengste Renteninformation aus finance.fn_pension_outlook (die eine Rechen-Adresse),
     -- mit der Plan-Inflation fuer die Kaufkraft der DRV-Szenarien. Der Berater zitiert diese Werte als Spanne.
     FOR v_ph IN SELECT * FROM jsonb_array_elements(
                     finance.fn_pension_outlook(jsonb_build_object('inflation_pct', to_jsonb(v_infl)))->'pensions') LOOP

@@ -1,14 +1,15 @@
 -- ============================================================
 -- fn_import_depot_conflict (READ, STABLE) -- widerspricht das gewaehlte Depot einer stock_buy-Zeile den gedruckten
 --   Angaben? Genutzt von fn_import_validate_row (Zeilenfehler vor der Karte), fn_import_bundle (erneut beim Commit,
---   kein TOCTOU) und fn_import_resolve_depot (ein widerspruchsfreies extrahiertes Depot bleibt). Kein Widerspruch:
+--   kein TOCTOU) und fn_import_resolve_depot (ein widerspruchsfreies extrahiertes Depot bleibt).
+--   Eingabe: p_batch_id, p (Zeilen-Payload: depot, depot_number, depot_holder). Kein Widerspruch:
 --     - depot_number fehlt bzw. depot_holder fehlt / loest nicht eindeutig auf (weicher Hinweis, nie ein Fehler)
 --     - ein Haushalts-Depot (owner_person_id NULL) gegen einen gedruckten Inhaber
 --   Widerspruch:
---     - die gedruckte Nummer gehoert einem ANDEREN aktiven Konto (Bestand oder Konto-Zeile dieses Batches)
---     - das gewaehlte Depot hat eine ANDERE gespeicherte Nummer
+--     - die gedruckte Nummer gehoert einem anderen aktiven Konto (Bestand oder Konto-Zeile dieses Batches)
+--     - das gewaehlte Depot hat eine andere gespeicherte Nummer
 --     - der gedruckte Inhaber ist eindeutig eine Person, das gewaehlte Depot gehoert einer anderen Person
---   RUECKGABE text (EN, Layer 1) | NULL.
+--   Rueckgabe: text (EN, fuer den Zeilenfehler) | NULL (kein Widerspruch).
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_import_depot_conflict(p_batch_id uuid, p jsonb)
 RETURNS text LANGUAGE plpgsql STABLE AS $$

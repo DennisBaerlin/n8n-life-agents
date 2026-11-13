@@ -1,10 +1,10 @@
 ﻿#Requires -Version 5.1
-# Kurs-Quelle einer Depot-Position (Kurs-Luecken 2026-10-27): geteilte Bausteine fuer Kauf, Korrektur, Sparplan-
+# Kurs-Quelle einer Depot-Position: geteilte Bausteine fuer Kauf, Korrektur, Sparplan-
 # Ausfuehrung, Kurs-Symbol-Pruefung und die Kurs-Luecken-Erinnerung. Helper-Datei ohne Build-* (die Builder-Discovery
 # liefert hier 0 Builder); gelesen nur in Funktionskoerpern -> Ladereihenfolge egal.
 
-# 'Price status' (Postgres): Kurs-Status EINER Position nach dem Sofort-Kursabruf -> Feld st {status ok|stale|missing,
-# price, price_currency, price_as_of, feed_symbol}. EINE Regel finance.fn_holding_price_status. Aggregiert -> immer ein
+# 'Price status' (Postgres): Kurs-Status einer Position nach dem Sofort-Kursabruf -> Feld st {status ok|stale|missing,
+# price, price_currency, price_as_of, feed_symbol}. Die eine Regel ist finance.fn_holding_price_status. Aggregiert -> immer ein
 # Item; onError continue + alwaysOutputData: ein Lesefehler darf eine schon gebuchte Aenderung nie als Fehler melden.
 # Bewusster Read nach dem HTTP-Abruf (der Kurs kommt erst nach der Write-fn; Vorbild commit_import 'Check positions').
 function New-FinancePriceStatusNode {

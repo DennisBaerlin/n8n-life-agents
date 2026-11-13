@@ -1,22 +1,22 @@
 -- ============================================================
--- fn_account_low_state (READ, STABLE, RAISE-frei) -- das EINE Urteil „Tiefster Stand“ eines Geld-Kontos
---   UX-Gesamtkonzept 2026-10-31 (5.2, P12): dieselbe Antwort fuer die Konten-Zeile „Tiefster Stand“, den Konten-Banner
---   der Startseite und die Spiegel-Pille am Sparplan (Ziele) — beide Tabs koennen sich so nicht widersprechen.
+-- fn_account_low_state (READ, STABLE, RAISE-frei) -- das eine Urteil „Tiefster Stand“ eines Geld-Kontos
+--   Dieselbe Antwort fuer die Konten-Zeile „Tiefster Stand“, den Konten-Banner der Startseite und die Spiegel-Pille
+--   am Sparplan (Ziele) — beide Tabs koennen sich so nicht widersprechen.
 --   Auszug aelter als finance.statement_stale_days -> state warn, verdict stale, statement_date, keine Zahl (amount null).
 --   Quelle:
 --     outlook  Konto mit Kontoauszug (finance.fn_coverage_accounts, cash): finance.fn_account_outlook bis zum naechsten
 --              Geldeingang mit Puffer; Zustand wie die Berater-Warnung (Kurs fehlt -> neutral, shortfall > 0 -> alert,
 --              tiefster Stand < finance.coverage_warn_factor x Puffer -> warn). Ist das Konto zugleich Deckungs-Konto
 --              (finance.fn_funding_accounts), rechnet zusaetzlich finance.fn_account_funding (Ziel-Geld, 24 Monate) und
---              das SCHLECHTERE Urteil gilt (verdict sagt welches: 'buffer' oder 'goals').
+--              das schlechtere Urteil gilt (verdict sagt welches: 'buffer' oder 'goals').
 --     funding  sonst Deckungs-Konto mit bekannten Alltagsausgaben (everyday <> 'unknown': Sparkonto, Broker-Cash,
---              Taschengeldkonto, P2P mit Lastschrift): finance.fn_account_funding, Wert = tiefster FREIER Stand.
+--              Taschengeldkonto, P2P mit Lastschrift): finance.fn_account_funding, Wert = tiefster freier Stand.
 --     none     alles andere (Alltagskonto ohne Auszug, Topf/Festgeld ohne Abfluesse): kein Urteil (state neutral).
 --   has_outflow = im Horizont geht etwas ab (Zahlung oder geschaetzter Alltag); sonst zeigt die App keine Zeile
 --   (sie waere = „Stand heute“). gap = Kurs der Kontowaehrung fehlt (Zeile markiert, keine Pille).
 --   p_alert_only = true (probe beim App-Start): fn_account_funding rechnet nur das alert-Fenster.
 --   Liefert keine Namen (next_income_name, Vorschlag): die Sichtbarkeit je Person bleibt im Handler.
---   RUECKGABE: {ok, account_id, currency, source, state, verdict, amount, low_date, on_date, month, buffer,
+--   Rueckgabe: {ok, account_id, currency, source, state, verdict, amount, low_date, on_date, month, buffer,
 --   has_outflow, gap, monthly_in, monthly_out, short_by, horizon_end} | {ok:false} (unbekannt, Kredit-/Depotkonto)
 --   on_date = Datum zum Urteil (buffer: Tag des Tiefs, goals: erster Tag unter dem Ziel-Geld), month = dessen Monat.
 --   horizon_end = letzter gerechneter Tag der Spar-Deckung (nur source funding): die Konten-Zeile „Reicht bis" sagt

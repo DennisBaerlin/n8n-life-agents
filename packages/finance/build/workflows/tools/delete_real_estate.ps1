@@ -3,23 +3,19 @@
 
 # --- tool_delete_real_estate (Immobilie loeschen: Hard-DELETE einer Fehlanlage) ---
 function Build-DeleteRealEstate {
-    # WS-B0: enge Paket-Schreibrolle (finance_rw, Least-Privilege D10) statt Owner-Cred.
-    # Dynamic-Scope: Build-Pg liest dieses $CRED_POSTGRES. Core-Tools nutzen die Owner-Cred.
+    # Enge Paket-Schreibrolle (finance_rw) statt Owner-Cred; Build-Pg liest $CRED_POSTGRES per Dynamic-Scope.
     $CRED_POSTGRES = $CRED_FINANCE_RW
     $trig = Build-Trigger @('real_estate_name')
 
     $readRe = Build-Pg 'Read Property' @(220, 0) `
         "=SELECT re.current_value, rep.full_name AS owner, re.status::text AS re_status, (SELECT COUNT(*)::int FROM finance.loans l WHERE l.real_estate_id = re.id) AS loan_count FROM finance.real_estate re LEFT JOIN core.fn_household_persons() rep ON rep.person_id = re.owner_person_id WHERE re.name ILIKE ((`$1::jsonb)->>'real_estate_name') LIMIT 1;" `
         ([ordered]@{ real_estate_name = '$(''Start'').item.json.real_estate_name' })
-    # Unbekannter Name -> Tool-Fehler statt stillem Ende (New-RequiredRowGate, 2026-10-24).
+    # Unbekannter Name -> Tool-Fehler statt stillem Ende (New-RequiredRowGate).
     $found = New-RequiredRowGate -Read $readRe -KeyField 're_status' -IfName 'Property found?' -ErrName 'Property not found' `
         -IfPos @(330, -160) -ErrPos @(440, 240) `
         -NotFoundExpr "=No property named '{{ `$('Start').item.json.real_estate_name }}' exists. List them via postgres_select on finance.real_estate_overview and ask the user which one is meant."
 
-    # Strukturiertes Summary (Textkatalog): Wert in EUR-Konvention (vorher hart " €" an der Rohzahl); Haushalts-
-    # Eigentuemer-Fallback kommt aus dem Katalog (SQL liefert NULL).
-    # "DB ist das Gesetz": fn_delete_real_estate laeuft als Probelauf VOR der Karte (verknuepfte Kredite -> {ok:false}
-    # ohne Karte); derselbe Param-Satz geht nach dem Gate in den echten Write.
+    # Wert in EUR-Konvention; Haushalts-Eigentuemer-Fallback kommt aus dem Katalog (SQL liefert NULL).
     $wg = New-FnWriteGate -Fn 'finance.fn_delete_real_estate' -DryPos @(440, 0) -WritePos @(1760, 0) `
         -WriteName 'Delete property (atomic)' `
         -WriteSelect "(r->>'ok')::boolean AS ok, r->>'reason' AS reason, r->>'action' AS action, (r->>'real_estate_id')::int AS real_estate_id" `
@@ -44,7 +40,7 @@ function Build-DeleteRealEstate {
 
     $retCancelled = Build-ToolCancelled 'Return cancelled' @(1760, 240) 'the delete_real_estate action'
 
-    # Atomarer Write ($wg.Write, 'Delete property (atomic)'): prueft erneut, falls sich seit dem Probelauf etwas geaendert hat.
+    # Der Write prueft erneut, falls sich seit dem Probelauf etwas geaendert hat.
     $ifWriteOk = Build-If 'Write ok?' @(1980, 0) "={{ `$json.ok }}" 'true' 'equals' 'boolean'
 
     $errWrite = Build-ToolError 'Delete rejected' @(2200, 240) `

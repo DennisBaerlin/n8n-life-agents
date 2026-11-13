@@ -1,13 +1,12 @@
 ﻿#Requires -Version 5.1
 # Dot-gesourct von build_finance_tools.ps1 (Helper + Script-Scope-Creds im Parent-Scope).
 
-# --- 9. tool_create_recurring_payment ---------------
+# --- tool_create_recurring_payment ---
 # Standalone wiederkehrende Einnahme/Ausgabe (Gehalt, Miete, Abo, Rentenzahlung, Mitgliedschaft).
-# KEIN harter Namens-Dedup: gleichnamige Zeilen sind legitim (Betragswechsel ueber valid_from/valid_to,
+# Kein harter Namens-Dedup: gleichnamige Zeilen sind legitim (Betragswechsel ueber valid_from/valid_to,
 # z.B. Gehalt -> Elterngeld -> Gehalt). Der Agent prueft per Description und fragt nach.
 function Build-CreateRecurringPayment {
-    # WS-B0: enge Paket-Schreibrolle (finance_rw, Least-Privilege D10) statt Owner-Cred.
-    # Dynamic-Scope: Build-Pg liest dieses $CRED_POSTGRES. Core-Tools nutzen die Owner-Cred.
+    # Enge Paket-Schreibrolle (finance_rw) statt Owner-Cred; Build-Pg liest $CRED_POSTGRES per Dynamic-Scope.
     $CRED_POSTGRES = $CRED_FINANCE_RW
     $trig = Build-Trigger @('name','account_name','direction','amount','schedule_interval','schedule_unit',
                            'schedule_day_of_month','first_payment_date','valid_from','valid_to','notes','counterparty_iban','handoff_task_id')
@@ -21,8 +20,6 @@ function Build-CreateRecurringPayment {
     $errAcct = Build-ToolError 'Account ambiguous' @(660, 200) `
         "=Account '{{ `$('Start').item.json.account_name }}' resolves to {{ `$('Resolve Account').item.json.hit_count }} matches. Candidates: {{ JSON.stringify(`$('Resolve Account').item.json.candidates) }}. Ask the user which exact account."
 
-    # "DB ist das Gesetz": fn_create_recurring_payment laeuft als Probelauf VOR der Karte (korrigierbare Ablehnungen -> {ok:false} ohne Karte);
-    # derselbe Param-Satz geht nach dem Gate in den echten Write.
     $wg = New-FnWriteGate -Fn 'finance.fn_create_recurring_payment' -DryPos @(660, 0) -WritePos @(1980, 0) `
         -WriteName 'Create recurring payment (atomic)' `
         -WriteSelect "(r->>'ok')::boolean AS ok, r->>'reason' AS reason, (r->>'recurring_payment_id')::int AS recurring_payment_id, (r->>'monthly_equivalent')::numeric AS monthly_equivalent, COALESCE(r->'cashflow_coverage'->>'note', '') AS cashflow_coverage, COALESCE(r->'savings_funding'->>'note', '') AS savings_funding" `
@@ -44,7 +41,7 @@ function Build-CreateRecurringPayment {
         })
 
     # --- HITL approval gate ---
-    # Strukturiertes Summary (Textkatalog): Rate in der Konto-Waehrung (Resolve Account liest accounts.currency mit).
+    # Rate in der Konto-Waehrung (Resolve Account liest accounts.currency mit).
     # Zeilen aus der geteilten Felddefinition (../hitl_lines.ps1, dieselbe wie die Import-Karte).
     $S = "`$('Start').item.json"
     $summary = New-HitlSummary -Pos @(1320, 0) -Title 'finance.hitl.create_recurring_payment' -LinesExpr $wg.CardLinesExpr -Lines (Get-FinanceHitlLines -Entity recurring_payment -S (Get-WritePayloadExpr) -D @{
@@ -58,8 +55,7 @@ function Build-CreateRecurringPayment {
 
     $retCancelled = Build-ToolCancelled 'Return cancelled' @(1980, 240) 'the create_recurring_payment action'
 
-    # Atomarer Write via fn_create_recurring_payment (Vorzeichen aus direction; INSERT via Helper).
-    # fn liefert ok/reason: direction ungueltig / amount<=0 -> {ok:false}.
+    # Write: Vorzeichen aus direction; INSERT via Helper.
 
     $ifWriteOk = Build-If 'Write ok?' @(2200, 0) "={{ `$json.ok }}" 'true' 'equals' 'boolean'
 

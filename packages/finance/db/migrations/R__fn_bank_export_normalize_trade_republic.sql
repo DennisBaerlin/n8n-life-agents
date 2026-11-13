@@ -1,6 +1,6 @@
 -- ============================================================
 -- fn_bank_export_normalize_trade_republic (READ, IMMUTABLE) -- Profil trade_republic_v1 des Bank-Import-Moduls
---   Fester Leser in Code, kein LLM (die Datei geht nicht an Anthropic). Aufruf NUR ueber den Dispatcher
+--   Fester Leser in Code, kein LLM (die Datei geht nicht an Anthropic). Aufruf nur ueber den Dispatcher
 --   fn_bank_export_normalize (erkennt Profil + Kopfzeile): Eingabe {columns (Spaltenname -> Index), rows:[[text]]
 --   (Zeilen nach der Kopfzeile), header_row_no}. Zuordnung nach Portfolio Performance TradeRepublicCSVExtractor: Datum = Spalte date (Buchungstag), sonst die
 --   ersten 10 Zeichen von datetime; cash_amount = amount + fee + tax (alle signiert, gerundet auf Cent) = Wirkung aufs
@@ -11,10 +11,10 @@
 --   (CORPORATE_ACTION REDEMPTION/FINAL_MATURITY/WARRANT_EXERCISE: Info, das Geld kommt als eigene CASH-Zeile),
 --   cash (Ein-/Auszahlungen, Karte, Ueberweisungen), unknown (alles andere, nie still verworfen; reason unsupported_type,
 --   dividend_correction oder no_cash_amount = Zeile ohne Betrag, Geld 0, nie gebucht). Pflicht je Zeile ist nur das Datum.
---   DIVIDENDEN-KORREKTUR (PP-Forum): eine Dividenden-Zeile mit negativem amount storniert eine fruehere; sie und GENAU
---   EINE gleich hohe positive Zeile derselben ISIN + Stueckzahl (die zeitlich naechste = Neu-Buchung) werden unknown (reason dividend_correction) ->
+--   Dividenden-Korrektur (PP-Forum): eine Dividenden-Zeile mit negativem amount storniert eine fruehere; sie und genau
+--   eine gleich hohe positive Zeile derselben ISIN + Stueckzahl (die zeitlich naechste = Neu-Buchung) werden unknown (reason dividend_correction) ->
 --   nie automatisch gebucht, die Karte nennt sie. Das Geld zaehlt trotzdem (cash_amount bleibt).
---   RUECKGABE: {ok:true, rows:[{row_no, date, kind, category, type, cash_amount, isin, symbol, name,
+--   Rueckgabe: {ok:true, rows:[{row_no, date, kind, category, type, cash_amount, isin, symbol, name,
 --   asset_class, shares (Betrag), shares_signed (roh, Fusion: alt negativ, neu positiv), price, gross (|amount|), fee (Betrag), tax (signiert), currency, account_type,
 --   counterparty, counterparty_iban, purpose, ext_ref (md5 der transaction_id), reason}], unknown_rows:[{row_no, date,
 --   category, type, cash_amount, name, reason}], account_types[], currencies[]}
@@ -125,9 +125,9 @@ BEGIN
 
     v_out := to_jsonb(v_arr);
 
-    -- Dividenden-Korrektur: je Storno-Zeile genau EINE gleich hohe positive Zeile derselben ISIN + Stueck (die zeitlich
+    -- Dividenden-Korrektur: je Storno-Zeile genau eine gleich hohe positive Zeile derselben ISIN + Stueck (die zeitlich
     -- naechste, bei Gleichstand die spaetere = Neu-Buchung) wird ebenfalls nicht gebucht; weitere gleich hohe Dividenden
-    -- (z. B. jedes Quartal derselbe Betrag) bleiben Dividenden (Review 2026-10-28).
+    -- (z. B. jedes Quartal derselbe Betrag) bleiben Dividenden.
     FOR v_corr IN SELECT r FROM jsonb_array_elements(v_out) r WHERE r->>'reason' = 'dividend_correction' LOOP
         SELECT (o)::int - 1 INTO v_pos
         FROM jsonb_array_elements(v_out) WITH ORDINALITY AS x(r, o)

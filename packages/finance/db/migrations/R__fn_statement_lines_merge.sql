@@ -1,6 +1,6 @@
 -- ============================================================
 -- fn_statement_lines_merge (IMMUTABLE) -- Auszugszeilen fuer die Dauerauftrags-Erkennung bereinigen
---   (1) Doppelte (gleiches Datum, Betrag, Gegenpart, IBAN, Mandat UND Verwendungszweck, z. B. zwei sich ueberlappende
+--   (1) Doppelte (gleiches Datum, Betrag, Gegenpart, IBAN, Mandat und Verwendungszweck, z. B. zwei sich ueberlappende
 --   Auszuege) zaehlen einmal; zwei echte Zahlungen am selben Tag unterscheiden sich im Zweck und bleiben (die
 --   Kandidaten-fn summiert sie zu einem Termin). (2) Storno/Ruecklastschrift: entgegengesetzter Betrag, gleicher
 --   Gegenpart (ohne Gross-/Kleinschreibung, nicht leer), hoechstens 14 Tage auseinander -> beide Zeilen raus, jede Zeile

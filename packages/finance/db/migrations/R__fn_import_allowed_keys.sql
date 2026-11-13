@@ -1,14 +1,14 @@
 -- ============================================================
 -- fn_import_allowed_keys (READ, IMMUTABLE) -- die Felder, die eine Import-Zeile je entity_type tragen darf
---   = genau die Felder, die die Bestaetigungskarte dieser Art zeigt (Owner 2026-10-22: was nicht auf der Karte
---   steht, wird nicht gespeichert). fn_import_bundle reicht den Payload sonst ungesehen an fn_create_*/fn_book_*
---   weiter. provider_symbol einer Depot-Position setzt tool_commit_import aus der Yahoo-Aufloesung der ISIN und die
---   Karte zeigt es (Monats-Check WP-G). depot_number/depot_holder sind die GEDRUCKTEN Depot-Angaben
+--   = genau die Felder, die die Bestaetigungskarte dieser Art zeigt (was nicht auf der Karte steht, wird nicht
+--   gespeichert). fn_import_bundle reicht den Payload sonst ungesehen an fn_create_*/fn_book_* weiter.
+--   provider_symbol einer Depot-Position setzt tool_commit_import aus der Yahoo-Aufloesung der ISIN, die
+--   Karte zeigt es. depot_number/depot_holder sind die gedruckten Depot-Angaben
 --   (fn_import_resolve_depot/fn_import_depot_conflict; die Nummer speichert der Commit an einem Depot ohne Nummer,
 --   die Karte zeigt das). fn_import_validate_row macht jedes andere Feld
 --   zum Zeilenfehler. Der Build gleicht diese Listen mit den Kartenzeilen ab (packages/finance/build/workflows/
---   hitl_lines.ps1, Test-FinanceImportKeysCovered) -> EINE Zeile je Typ im Format WHEN '<typ>' THEN ARRAY[...].
---   RUECKGABE text[] (NULL = unbekannter Typ).
+--   hitl_lines.ps1, Test-FinanceImportKeysCovered) -> eine Zeile je Typ im Format WHEN '<typ>' THEN ARRAY[...].
+--   Eingabe: p_type (entity_type). Rueckgabe: text[] (NULL = unbekannter Typ).
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_import_allowed_keys(p_type text)
 RETURNS text[] LANGUAGE sql IMMUTABLE AS $$

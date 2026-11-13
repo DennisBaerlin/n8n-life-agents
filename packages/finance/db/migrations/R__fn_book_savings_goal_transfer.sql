@@ -1,37 +1,36 @@
 -- ============================================================
--- fn_book_savings_goal_transfer (ATOMIC WRITE) — Phase S WS-A (D1)
---   Die EINE Sparziel-Geldbewegung. Physisch immer ein Transfer zwischen zwei eigenen Konten
+-- fn_book_savings_goal_transfer (ATOMIC WRITE)
+--   Die eine Sparziel-Geldbewegung. Physisch immer ein Transfer zwischen zwei eigenen Konten
 --   (intern via fn_book_transfer wiederverwendet — atomar, group_id, Multi-Waehrung, Saldo-Trigger);
---   das dedizierte Tool/diese fn ergaenzen NUR die Ziel-Tag-Zuordnung. PFLICHT-direction bestimmt,
+--   das dedizierte Tool/diese fn ergaenzen nur die Ziel-Tag-Zuordnung. Die Pflicht-direction bestimmt,
 --   welche(s) Bein(e) das savings_goal_id-Tag tragen -> savings_goal_progress (= signed SUM der getaggten
 --   Tx) bewegt sich entsprechend:
 --     deposit    : external -> reserve, Haben (to, +) getaggt   -> +amount   (einzahlen / "extra sparen")
 --     withdrawal : reserve -> external, Soll  (from, -) getaggt  -> -amount   (entnehmen / "anderweitig gebraucht")
---     relocate   : reserveA -> reserveB, BEIDE Beine getaggt     ->  0        (umschichten, nur Umzug)
---     reassign   : KEINE Geldbewegung, nur die Zuordnung zieht um (auch ins Depot) -> fn_book_savings_goal_reassign
---                  (eigene Eingaben/Rueckgabe, dort dokumentiert; 2026-11-01 "Sparziel umziehen")
---   WARUM dedizierte fn statt Tag-Option am generischen Transfer (Established-Pattern-Challenge 2026-06-25):
---   Monzo Pots/Firefly piggy-bank = dedizierte Operation; sauberer {ok}-Vertrag, klarer HITL-Preview,
---   kein stilles Falschtagging. direction ist EXPLIZIT (kein emergentes from/to-Vorzeichen).
---   Eingabe jsonb: savings_goal_id, from_account_id|from_account_name, to_account_id|to_account_name (je optional),
---     amount (>0, roh), direction (deposit|withdrawal|relocate), transaction_date (leer = heute), purpose (opt),
---     to_amount (opt, Cross-Currency).
---   KONTEN (Nachtrag D, "DB ist das Gesetz"): Namen loest die fn auf (fn_resolve_cash_account: nur cash/Festgeld,
---     Depot -> depot_not_allowed). Reserve = Topf (Zielkonto der Sparrate) + jedes Konto mit getaggtem Geld des Ziels
+--     relocate   : reserveA -> reserveB, beide Beine getaggt     ->  0        (umschichten, nur Umzug)
+--     reassign   : keine Geldbewegung, nur die Zuordnung zieht um (auch ins Depot) -> fn_book_savings_goal_reassign
+--                  (eigene Eingaben/Rueckgabe, dort dokumentiert)
+--   Warum dedizierte fn statt Tag-Option am generischen Transfer: sauberer {ok}-Vertrag, klarer HITL-Preview,
+--   kein stilles Falschtagging; direction ist explizit (kein emergentes from/to-Vorzeichen).
+--   Eingabe jsonb: savings_goal_id, direction (deposit|withdrawal|relocate|reassign), amount (> 0, roh) (Pflicht);
+--     from_account_id|from_account_name, to_account_id|to_account_name (je optional), transaction_date (leer =
+--     heute), purpose (optional), to_amount (optional, Cross-Currency).
+--   Konten: Namen loest die fn auf (fn_resolve_cash_account: nur cash/Festgeld, Depot -> depot_not_allowed).
+--     Reserve = Topf (Zielkonto der Sparrate) + jedes Konto mit getaggtem Geld des Ziels
 --     (fn_goal_reserve_accounts). Fehlende Konten leitet sie ab: deposit An = Topf (Altziel ohne Rate: das eine
 --     Reserve-Konto), Von = Abbuchungskonto der Rate; withdrawal/relocate Von = Topf bzw. groesster Anteil.
 --     Geld zwischen zwei Reserve-Konten ist immer ein relocate (use_relocate). Ein relocate, der den Anteil am Topf
 --     leert, verlegt den Topf (fn_apply_goal_reserve).
---   RUECKGABE: Erfolg -> {ok:true, debit_tx_id, credit_tx_id, savings_goal_id, direction, current_amount
---     (neuer Ziel-Stand, Post-State), from_balance, to_balance, effective (Konten id/Name/Waehrung + Datum fuer die
+--   Rueckgabe: ok:true -> {ok:true, debit_tx_id, credit_tx_id, savings_goal_id, direction, current_amount
+--     (neuer Ziel-Stand), from_balance, to_balance, effective (Konten id/Name/Waehrung + Datum fuer die
 --     Karte), card_lines (Hinweise aus fn_book_transfer, z. B. moegliche Doppelbuchung; zieht der Topf um, der Bank-Hinweis
 --     fn_bank_setup_note 'bank_change' fuer die Sparrate), savings_goal_reached?}.
---   Korrigierbar -> {ok:false, code?, reason, candidates?} OHNE Write (kein RAISE): amount<=0, direction nicht im Enum,
+--   ok:false ohne Write und ohne RAISE: {code?, reason, candidates?} bei amount <= 0, direction nicht im Enum,
 --     Ziel nicht gefunden, not_found/ambiguous/depot_not_allowed (Kontoname), no_reserve, not_reserve,
---     insufficient_share, missing_from/missing_to, use_relocate, invalid_reserve, from==to, interner Transfer {ok:false}
---     (z. B. Cross-Currency ohne to_amount).
---   ATOMARITAET + Finding #10: schlaegt der interne fn_book_transfer fehl, wird NICHT gestempelt
---     (sonst stiller no-op UPDATE WHERE id=NULL -> ok=true ohne Tag). Erst ok pruefen, dann stempeln.
+--     insufficient_share, missing_from/missing_to, use_relocate, invalid_reserve, from==to, oder einer Ablehnung des
+--     internen fn_book_transfer (z. B. Cross-Currency ohne to_amount).
+--   Atomaritaet: schlaegt der interne fn_book_transfer fehl, wird nicht gestempelt (sonst stiller no-op
+--     UPDATE WHERE id=NULL -> ok=true ohne Tag). Erst ok pruefen, dann stempeln.
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_book_savings_goal_transfer(p jsonb)
 RETURNS jsonb LANGUAGE plpgsql AS $$
@@ -49,9 +48,9 @@ DECLARE
     v_debit   INT;
     v_credit  INT;
     v_cur     NUMERIC;
-    v_target  NUMERIC;   -- Phase L WS-5: Zielbetrag fuer den "Sparziel erreicht"-Sofort-Hinweis
+    v_target  NUMERIC;   -- Zielbetrag fuer den "Sparziel erreicht"-Sofort-Hinweis
     v_rp      INT;       -- Sparrate des Ziels (NULL = Altziel ohne Rate)
-    v_pot     INT;       -- Nachtrag D: Topf = target_account_id der Sparrate
+    v_pot     INT;       -- Topf = target_account_id der Sparrate
     v_rs      JSONB;     -- Reserve-Konten [{account_id, name, share, is_pot}] (einmal gelesen)
     v_cands   JSONB;     -- davon die mit Geld des Ziels (share > 0)
     v_funding INT;       -- Abbuchungskonto der Sparrate
@@ -65,7 +64,6 @@ BEGIN
     IF v_dir = 'reassign' THEN
         RETURN finance.fn_book_savings_goal_reassign(p);
     END IF;
-    -- Korrigierbare Input-Pruefungen -> {ok:false} (kein RAISE -> kein Owner-Alert).
     IF v_amount IS NULL OR v_amount <= 0 THEN
         RETURN jsonb_build_object('ok', false,
             'reason', 'Amount must be a positive number, got ' || COALESCE(v_amount::text, 'null') || '.');
@@ -80,7 +78,7 @@ BEGIN
         RETURN jsonb_build_object('ok', false, 'reason', 'Savings goal ' || COALESCE(v_goal::text, 'null') || ' not found.');
     END IF;
 
-    -- Nachtrag D: Kontonamen loest die fn selbst auf (nur cash/Festgeld; Depot -> Verweis auf die Reservierung).
+    -- Kontonamen loest die fn selbst auf (nur cash/Festgeld; Depot -> Verweis auf die Reservierung).
     IF v_from IS NULL AND NULLIF(btrim(p->>'from_account_name'), '') IS NOT NULL THEN
         v_res := finance.fn_resolve_cash_account(btrim(p->>'from_account_name'));
         IF (v_res->>'ok')::boolean IS DISTINCT FROM true THEN RETURN v_res; END IF;
@@ -92,7 +90,7 @@ BEGIN
         v_to := (v_res->>'id')::int;
     END IF;
 
-    -- Nachtrag D: Konten aus dem Ziel ableiten und gegen die Reserve pruefen. Die Reserve (fn_goal_reserve_accounts)
+    -- Konten aus dem Ziel ableiten und gegen die Reserve pruefen. Die Reserve (fn_goal_reserve_accounts)
     -- einmal lesen; v_cands = Reserve-Konten mit Geld des Ziels (Rueckfrage-Kandidaten).
     SELECT g.recurring_payment_id, rp.target_account_id, rp.account_id INTO v_rp, v_pot, v_funding
       FROM finance.savings_goals g LEFT JOIN finance.recurring_payments rp ON rp.id = g.recurring_payment_id
@@ -176,13 +174,13 @@ BEGIN
         'from_account_name', v_fname,
         'to_account_name',   v_tname,
         'purpose', COALESCE(NULLIF(p->>'purpose', ''), 'Sparziel ' || v_gname || ' (' || v_dir || ')'),
-        -- Phase Notify: getaggte Sparziel-Bewegung = gewolltes Eingreifen -> weder reserve_breach falten noch
-        -- den geteilten Latch beruehren (sonst verbrennt der interne Call die Flanke fuer einen spaeteren
-        -- echten un-getaggten Breach). Der Re-Arm laeuft unabhaengig trigger-getrieben.
+        -- Getaggte Sparziel-Bewegung = gewolltes Eingreifen -> weder reserve_breach falten noch den geteilten
+        -- Latch beruehren (sonst verbrennt der interne Call die Flanke fuer einen spaeteren echten un-getaggten
+        -- Breach). Der Re-Arm laeuft unabhaengig trigger-getrieben.
         'suppress_breach', 'true'
     ));
 
-    -- Finding #10: nur bei Erfolg stempeln (sonst kein debit/credit_tx_id -> stiller no-op).
+    -- Nur bei Erfolg stempeln (sonst kein debit/credit_tx_id -> stiller no-op).
     IF (v_r->>'ok')::boolean IS DISTINCT FROM true THEN
         RETURN v_r;
     END IF;
@@ -190,7 +188,7 @@ BEGIN
     v_debit  := (v_r->>'debit_tx_id')::int;    -- Soll-Bein (from, -)
     v_credit := (v_r->>'credit_tx_id')::int;   -- Haben-Bein (to, +)
 
-    -- Tag-Zuordnung je Richtung. NUR das/die Reserve-Bein(e) (deposit/withdrawal: ein Bein; relocate: beide ->
+    -- Tag-Zuordnung je Richtung: nur das/die Reserve-Bein(e) (deposit/withdrawal: ein Bein; relocate: beide ->
     -- Netto-0 gewollt). Das jeweils ungetaggte Bein bleibt aus dem Ziel-Saldo (sonst stille Doppel-/Null-Wirkung).
     IF v_dir = 'deposit' THEN
         UPDATE finance.transactions SET savings_goal_id = v_goal WHERE id = v_credit;
@@ -198,7 +196,7 @@ BEGIN
         UPDATE finance.transactions SET savings_goal_id = v_goal WHERE id = v_debit;
     ELSE  -- relocate: beide Beine (Umzug innerhalb des Ziels, Gesamt unveraendert)
         UPDATE finance.transactions SET savings_goal_id = v_goal WHERE id IN (v_debit, v_credit);
-        -- Nachtrag D: leert das Umschichten den Topf vollstaendig, zieht der Topf um (Sparrate fliesst kuenftig dorthin,
+        -- Leert das Umschichten den Topf vollstaendig, zieht der Topf um (Sparrate fliesst kuenftig dorthin,
         -- alle laufenden Zeilen der Raten-Kette). Ein Teil-Umschichten laesst den Topf, der Rest bleibt Teil der Reserve.
         IF v_from = v_pot AND COALESCE((SELECT r.share FROM finance.fn_goal_reserve_accounts(v_goal) r WHERE r.account_id = v_from), 0) = 0 THEN
             PERFORM finance.fn_apply_goal_reserve(v_goal, v_to);
@@ -208,13 +206,12 @@ BEGIN
         END IF;
     END IF;
 
-    -- Post-State: neuer Ziel-Stand + Zielbetrag (in derselben Transaktion gelesen) fuer den HITL-Preview-Vertrag
-    -- und den WS-5-Fold.
+    -- Post-State: neuer Ziel-Stand + Zielbetrag fuer den HITL-Preview-Vertrag und den Sofort-Hinweis.
     SELECT current_amount, target_amount INTO v_cur, v_target FROM finance.savings_goal_progress WHERE id = v_goal;
 
-    -- Phase L WS-5: "Sparziel erreicht"-Sofort-Hinweis (Event-Fold, 0 Extra-SQL — v_cur/v_target schon gelesen).
-    -- NUR bei direction='deposit' (B1): eine Einzahlung kann ein Ziel ueber die Linie bringen. Bei withdrawal/
-    -- relocate NIE gratulieren (sonst gratuliert es beim Entnehmen aus einem noch ueber-Ziel gefuellten Topf).
+    -- "Sparziel erreicht"-Sofort-Hinweis (Event-Fold ohne Extra-SQL, v_cur/v_target schon gelesen).
+    -- Nur bei direction='deposit': eine Einzahlung kann ein Ziel ueber die Linie bringen. Bei withdrawal/
+    -- relocate nie gratulieren (sonst gratuliert es beim Entnehmen aus einem noch ueber-Ziel gefuellten Topf).
     -- v_target>0-Guard (ein 0/NULL-Ziel feuert nicht). Spiegelt den periodischen savings_goal_reached-Zweig im
     -- Advisor (erreicht != ausgegeben). Nicht-blockierend; der Bookkeeper relayed die Note.
     IF v_dir = 'deposit' AND v_target IS NOT NULL AND v_target > 0 AND v_cur IS NOT NULL AND v_cur >= v_target THEN

@@ -3,7 +3,8 @@
 --   Eingabe: chat_id, table:{rows}. Je verbliebenem Kauf eine datierte Zeile mit cost_origin (Tranchen in fn_import_bundle), Depot
 --   des Verrechnungskontos nach Art (Aktie/ETF oder Krypto). Ein unbestaetigter Stapel desselben Laufs wird ersetzt.
 --   Karte und Write sind danach tool_commit_import.
---   RUECKGABE: {ok:true, batch_id, staged, invalid, errors, positions (Anzahl)} | {ok:false, reason}.
+--   Rueckgabe: {ok:true, batch_id, staged, invalid, errors, positions (Anzahl)} | {ok:false, reason} (Setup ohne Phase
+--   'positions' oder Fehler aus fn_import_stage).
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_import_positions_from_export(p jsonb)
 RETURNS jsonb LANGUAGE plpgsql AS $$

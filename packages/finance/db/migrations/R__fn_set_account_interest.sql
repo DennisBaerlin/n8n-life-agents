@@ -1,20 +1,20 @@
 -- ============================================================
 -- fn_set_account_interest (ATOMIC WRITE)
---   Setzt/aendert den Zinssatz eines BESTEHENDEN Kontos. fn_create_account legt nur die
---   ERSTE Zinszeile an; dies ist der Nachtrag-/Aenderungs-Pfad.
---   ZWINGENDE Reihenfolge wegen finance_account_interest_rates_no_overlap (EXCLUDE gist):
+--   Setzt/aendert den Zinssatz eines bestehenden Kontos. fn_create_account legt nur die
+--   erste Zinszeile an; dies ist der Nachtrag-/Aenderungs-Pfad.
+--   Zwingende Reihenfolge wegen finance_account_interest_rates_no_overlap (EXCLUDE gist):
 --     1. aktuell offene Zeile (valid_to IS NULL) per valid_to = neues valid_from schliessen
 --        (nur falls vorhanden -- Konto kann zinslos sein),
 --     2. neue Zeile INSERTen. Das half-offene daterange '[)' verhindert dann Overlap.
 --   Eingabe jsonb: account_id (im n8n aufgeloest), annual_rate (% p.a.), schedule_interval, schedule_unit,
---   schedule_day_of_month, valid_from (opt, ISO oder relativ -> fn_interest_rate_preview; leer = heute), day_count_convention, posting_day_of_month (gesetzt =
---   Arrears), auto_post -- alle optional.
---   WIRKSAME WERTE + Pruefungen kommen aus finance.fn_interest_rate_preview (dieselbe fn speist die HITL-Karte ->
---   Karte = Buchung). Audit Paket 2, Punkt 5: ein reiner Satzwechsel ERBT Kadenz, Abbuchungstag, posting_day_of_month
---   und auto_post der offenen Zeile (vorher Default 'year' -> Doppelverzinsung); ein Kadenzwechsel verankert das Raster
+--   schedule_day_of_month, valid_from (opt, ISO oder relativ -> fn_interest_rate_preview; leer = heute),
+--   day_count_convention, posting_day_of_month (gesetzt = Arrears), auto_post -- alle optional.
+--   Wirksame Werte und Pruefungen kommen aus finance.fn_interest_rate_preview (dieselbe fn speist die HITL-Karte ->
+--   Karte = Buchung). Ein reiner Satzwechsel erbt Kadenz, Abbuchungstag, posting_day_of_month
+--   und auto_post der offenen Zeile (ein Default 'year' verzinste doppelt); ein Kadenzwechsel verankert das Raster
 --   neu (finance.fn_interest_regimes); rueckdatieren vor die juengste verzinste Periode ist korrigierbar abgelehnt.
---   RUECKGABE: Erfolg -> {ok:true, interest_rate_id, closed_previous}. Korrigierbar (s. fn_interest_rate_preview,
---   Overlap mit einer historischen Periode) -> {ok:false, reason} OHNE Write.
+--   RUECKGABE: Erfolg -> {ok:true, interest_rate_id, closed_previous, effective:{valid_from}}. Korrigierbar
+--   (s. fn_interest_rate_preview, Overlap mit einer historischen Periode) -> {ok:false, reason} ohne Write.
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_set_account_interest(p jsonb)
 RETURNS jsonb LANGUAGE plpgsql AS $$
@@ -34,7 +34,7 @@ BEGIN
     v_closed := (v_pre->>'closes_previous')::boolean;
 
     -- Close (offene Zeile) + Insert (neue Zeile) im selben Sub-Block: ein Overlap mit einer
-    -- HISTORISCHEN (geschlossenen) Periode (Backdating) wuerde sonst als harter exclusion_violation
+    -- historischen (geschlossenen) Periode (Backdating) wuerde sonst als harter exclusion_violation
     -- RAISE + Owner-Alert feuern. Korrigierbar -> abfangen und {ok:false}; beide Writes rollen
     -- dabei zusammen zurueck (Savepoint am inneren BEGIN), kein Teilzustand (offene Zeile bliebe sonst zu).
     BEGIN

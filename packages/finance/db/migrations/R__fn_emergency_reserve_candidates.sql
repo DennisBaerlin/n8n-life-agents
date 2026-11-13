@@ -1,15 +1,15 @@
 -- ============================================================
 -- fn_emergency_reserve_candidates (READ, STABLE) -- Konten, die Notreserve-Geld aufnehmen koennen, mit freiem Betrag
---   Fuer das Onboarding/Zuordnen im Buchhalter (Befund 2026-10-30: er bot Kinderkonten an und merkte das ganze
---   Guthaben eines Kontos vor, ueber das ein Sparplan laeuft — der Stand sank danach jeden Monat unter die Vormerkung).
---   Konten = fn_emergency_reserve_account_ok (aktiv, Geld-Konto, kein Kinderkonto), nach Name.
+--   Fuer das Onboarding/Zuordnen im Buchhalter: das ganze Guthaben eines Kontos vorzumerken, ueber das ein Sparplan
+--   laeuft, waere falsch (der Stand sinke danach monatlich unter die Vormerkung).
+--   Konten = fn_emergency_reserve_account_ok (aktiv, Geld-Konto, kein Kinderkonto), nach Name. Keine Eingabe.
 --   free_eur = das Kleinere aus
 --     (a) heute frei: fn_account_free_balance (derselbe Guard wie fn_book_savings_reservation) und
 --     (b) frei am tiefsten vorausgesagten Stand: fn_account_outlook.min_projected minus die schon vorgemerkten Anteile
 --         (Saldo - freier Saldo) — Sparplan-/Dauerauftrags-Abgaenge bis zum naechsten Geldeingang sind kein Notgroschen;
 --   nie unter 0, in EUR (fn_to_eur, heute); ohne Kurs NULL. low_date = Tag des tiefsten Stands, nur wenn (b) begrenzt.
 --   Eigene fn (nicht in fn_emergency_reserve_status): die Vorschau je Konto braucht nur der Buchhalter.
---   RUECKGABE jsonb: [{name, free_eur, low_date}]
+--   Rueckgabe jsonb: [{name, free_eur, low_date}]
 --   Tests: tests/db/finance/test_fn_emergency_reserve_status.sql
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_emergency_reserve_candidates()

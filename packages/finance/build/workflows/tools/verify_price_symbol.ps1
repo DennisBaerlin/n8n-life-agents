@@ -2,12 +2,12 @@
 # Dot-gesourct von build.ps1 (Helper + Script-Scope-Creds im Parent-Scope).
 
 # --- tool_verify_price_symbol (Lese-Tool, kein HITL) ---
-# Monats-Check WP-G (Befund 2026-10-22: Position mit ISIN ohne Kurs — der Agent soll mit Rueckfragen die Kursabfrage zum
-# Laufen bringen). Schlaegt fuer eine ISIN die Boersen-Notierungen bei Yahoo nach bzw. prueft ein vom Nutzer
+# Fuer Positionen mit ISIN ohne Kurs: der Agent bringt mit Rueckfragen die Kursabfrage zum
+# Laufen. Schlaegt fuer eine ISIN die Boersen-Notierungen bei Yahoo nach bzw. prueft ein vom Nutzer
 # genanntes Feed-Symbol (derselbe Sub wie Kauf/set_holding/Import: agent.finance.sub_resolve_yahoo_symbol) und gibt
 # die Kandidaten zurueck. Schreibt nichts: der Agent nennt dem Nutzer die Kandidaten (Boerse, Waehrung, Kurs), und der
 # gewaehlte Eintrag laeuft ueber tool_set_holding (provider_symbol/quote_currency, mit Bestaetigungs-Karte).
-# Plausi-Pflicht (Owner 2026-10-27): verified nur mit passender Kurs-Groessenordnung. Referenz = die gehaltene Position
+# Plausi-Pflicht: verified nur mit passender Kurs-Groessenordnung. Referenz = die gehaltene Position
 # mit dieser ISIN (letzter Kurs oder Einstand); ohne Position kein verified (der Agent nennt dann Kandidaten mit Kurs).
 function Build-VerifyPriceSymbol {
     $CRED_POSTGRES = $CRED_FINANCE_RO

@@ -1,7 +1,9 @@
 -- ============================================================
--- fn_resolve_holding
+-- fn_resolve_holding (READ, STABLE)
 --   Holding im konkreten Depot finden. Liefert found=FALSE wenn nicht vorhanden
 --   (Helper weiss dann: erst INSERT, dann buchen).
+--   Eingabe: p_depot_id, p_isin (Stocks/ETFs; NULL oder '' fuer Crypto), p_symbol (Crypto-Suche).
+--   Rueckgabe: TABLE(id, shares, avg_price, found); genau eine Zeile.
 -- ============================================================
 -- Drop the old 2-arg overload so the 3-arg version is unambiguous.
 DROP FUNCTION IF EXISTS finance.fn_resolve_holding(int, text);

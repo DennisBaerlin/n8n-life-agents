@@ -1,9 +1,9 @@
 -- ============================================================
--- fn_emergency_reserve_account_ok (READ, STABLE) -- darf dieses Konto Notreserve-Geld halten? (2026-10-30)
---   Die EINE Adresse der Konto-Regel der Notreserve: aktiv, Kontotyp aus fn_emergency_reserve_account_types (Geld-Konto:
---   sofort verfuegbar, einlagengesichert) und KEIN Kinderkonto (Haushalts-Notreserve, Eltern-Blick wie
---   fn_liquidity_snapshot). Befund 2026-10-30: der Buchhalter bot Kinderkonten an — der Prompt ist nur Komfort,
---   das Gesetz steht hier und in jeder Write-fn, die es fragt.
+-- fn_emergency_reserve_account_ok (READ, STABLE) -- darf dieses Konto Notreserve-Geld halten?
+--   Die eine Adresse der Konto-Regel der Notreserve: aktiv, Kontotyp aus fn_emergency_reserve_account_types (Geld-Konto:
+--   sofort verfuegbar, einlagengesichert) und kein Kinderkonto (Haushalts-Notreserve, Eltern-Blick wie
+--   fn_liquidity_snapshot). Der Buchhalter-Prompt ist nur Komfort, das Gesetz steht hier und in jeder Write-fn, die es fragt.
+--   Eingabe: p_account_id. Rueckgabe: boolean (unbekanntes Konto -> false).
 --   Konsumenten: fn_emergency_reserve_covered (Deckung), fn_emergency_reserve_status (candidates),
 --   fn_create_savings_goal / fn_set_savings_goal / fn_book_savings_reservation (Ablehnung als {ok:false}).
 --   Tests: tests/db/finance/test_fn_emergency_reserve_status.sql

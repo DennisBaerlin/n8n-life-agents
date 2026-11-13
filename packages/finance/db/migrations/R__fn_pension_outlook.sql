@@ -1,22 +1,24 @@
 -- ============================================================
--- fn_pension_outlook (READ, STABLE) -- Berater-Fenster auf die Renteninformationen (Plan 2026-10-26)
---   Je aktiver Altersvorsorge (finance.pension_overview) die JUENGSTE Renteninformation (finance.pension_statements,
+-- fn_pension_outlook (READ, STABLE) -- Berater-Fenster auf die Renteninformationen
+--   Je aktiver Altersvorsorge (finance.pension_overview) die juengste Renteninformation (finance.pension_statements,
 --   Zeitreihe) mit Alter und den gedruckten Werten, dazu die DRV-Szenarien in Kaufkraft zum Stand der Information.
---   Das LLM rechnet nichts davon (Root-CLAUDE.md); der Berater zitiert diese Felder als Spanne.
+--   Das LLM rechnet nichts davon; der Berater zitiert diese Felder als Spanne.
 --     age_months   volle Monate seit statement_date (core.fn_today)
---     stale        juengste Information aelter als 13 Monate (DRV schickt jaehrlich) -- EINE Regel, auch fuer die
+--     stale        juengste Information aelter als 13 Monate (DRV schickt jaehrlich) -- die eine Regel, auch fuer die
 --                  Erinnerung (fn_pension_statements_due)
 --     never        es gibt noch keine Information
 --     years_to_start  Jahre bis Rentenbeginn: pension.retirement_start_date (Plan des Nutzers), sonst die gedruckte
 --                  regular_retirement_date
 --     scenario_*_real  nominal / (1 + inflation)^n, n = (regular_retirement_date - statement_date) / 365.25 --
---                  der Zeitraum, ueber den die DRV ihre Szenarien hochrechnet (Review 2026-10-26: nicht ab heute,
---                  nicht bis zu einem frueheren Wunsch-Rentenbeginn)
+--                  der Zeitraum, ueber den die DRV ihre Szenarien hochrechnet (nicht ab heute, nicht bis zu einem
+--                  frueheren Wunsch-Rentenbeginn)
 --   p: { person_id (opt, nur diese Person), inflation_pct (opt, Zahl -- die Plan-Annahme; der Aufrufer reicht sie
 --        herein, damit finance_ro keine agent.*-Tabelle lesen muss) }
---   RUECKGABE: {ok:true, pensions:[{name, pension_type, provider, owner, owner_person_id, statement_date, age_months,
---   stale, never, regular_retirement_date, years_to_start, earning_points, reached_claim, projection, scenario_1pct,
---   scenario_2pct, em_monthly, scenario_1pct_real, scenario_2pct_real | real_note, basis}]}
+--   Rueckgabe: {ok:true, pensions:[{name, pension_type, provider, owner, owner_person_id, never, statement_date,
+--   age_months, stale, regular_retirement_date, years_to_start, earning_points, reached_claim, projection,
+--   scenario_1pct, scenario_2pct, em_monthly, basis, scenario_1pct_real, scenario_2pct_real, inflation_pct | real_note}]};
+--   Schluessel ohne Wert fehlen (jsonb_strip_nulls); ohne Renteninformation nur die Stammfelder + never=true.
+--   Kein ok:false-Pfad.
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_pension_outlook(p jsonb)
 RETURNS jsonb LANGUAGE plpgsql STABLE AS $$

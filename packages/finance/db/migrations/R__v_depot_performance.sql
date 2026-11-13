@@ -1,11 +1,10 @@
 -- ============================================================
 -- finance.depot_performance (Lese-View, Depot-Rendite)
---   EINE Zeile je aktivem Depot + EINE Gesamt-Zeile (is_total, ohne Kinder-Depots) aus finance.fn_depot_performance
+--   Eine Zeile je aktivem Depot + eine Gesamt-Zeile (is_total, ohne Kinder-Depots) aus finance.fn_depot_performance
 --   (Haushalts-Sicht, Stichtag heute): Wert, Beginn, geldgewichtete Rendite (XIRR) — return_pa_pct ab 365 Tagen,
 --   darunter nur return_since_start_pct (nicht annualisiert), price_stale (Zahl auf veraltetem Kurs), missing_reason
---   statt einer erfundenen Zahl. Der Agent
---   liest die Depot-Rendite hier und rechnet nie selbst.
---   Bewusst EIGENE Datei (R__v_*, sortiert nach R__fn_*): die View braucht die fn, die alphabetisch nach
+--   statt einer erfundenen Zahl. Der Agent liest die Depot-Rendite hier und rechnet nie selbst.
+--   Bewusst eigene Datei (R__v_*, sortiert nach R__fn_*): die View braucht die fn, die alphabetisch nach
 --   R__finance_views liegt; Muster R__v_savings_plan_overview.sql.
 --   Rechte: finance_ro per GRANT SELECT ON ALL TABLES (core.fn_provision_package_roles); die fn ist INVOKER mit
 --   PUBLIC-EXECUTE und liest nur, was finance_ro lesen darf (+ core.fn_household_persons).

@@ -1,13 +1,13 @@
 -- ============================================================
--- fn_import_validate (Dry-Run je Row — schreibt NUR status/validation_error im Staging)
+-- fn_import_validate (Dry-Run je Row — schreibt nur status/validation_error im Staging)
 --   Prueft jede nicht-committete Row eines Batches via fn_import_validate_row (per-Row-Logik:
 --   Pflichtfelder je entity_type, Enum-/Zahlen-/Datums-Casts, Dubletten-Backstop, Referenzen).
---   Domaenen-Writes passieren hier NIE; die tiefen Wert-Guards der fn_create_*/fn_book_*
+--   Domaenen-Writes passieren hier nie; die tiefen Wert-Guards der fn_create_*/fn_book_*
 --   greifen zusaetzlich beim Commit (fn_import_bundle sammelt deren {ok:false} und rollt
---   alles zurueck).
---   RUECKGABE: {ok:true, total, valid, invalid, errors:[{row_no, entity_type, error, row}]}
+--   alles zurueck). Eingabe: p_batch_id.
+--   Rueckgabe: {ok:true, total, valid, invalid, errors:[{row_no, entity_type, error, row}]}
 --   row = die Kennfelder der ungueltigen Zeile (Allow-List, nicht der volle Payload: Dokument-Text ist untrusted),
---   damit der Agent gezielt nach dem Fehlenden fragt statt nach Werten, die im Dokument stehen (Owner 2026-10-23).
+--   damit der Agent gezielt nach dem Fehlenden fragt statt nach Werten, die im Dokument stehen.
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_import_validate(p_batch_id uuid)
 RETURNS jsonb LANGUAGE plpgsql AS $$

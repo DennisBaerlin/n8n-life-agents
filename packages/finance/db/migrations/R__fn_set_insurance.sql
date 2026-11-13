@@ -2,28 +2,29 @@
 -- fn_set_insurance (ATOMIC WRITE)
 --   Aendert eine bestehende Versicherung (Beitrag/Rhythmus/Kuendigung/Police). Partielles Update (leer = unveraendert;
 --   Leeren geht nicht).
---   EINE QUELLE (WP2 "Finanzen schlank", finance:V027): Beitrag je Abbuchung, Rhythmus, Tag, Vertragsende und Konto
+--   Eine Quelle (finance:V027): Beitrag je Abbuchung, Rhythmus, Tag, Vertragsende und Konto
 --   stehen nur an der Beitrags-Kette.
---     - Beitrag (premium_amount je Abbuchung ODER annual_premium; fn_insurance_fields, bisheriger Rhythmus als Default),
+--     - Beitrag (premium_amount je Abbuchung oder annual_premium; fn_insurance_fields, bisheriger Rhythmus als Default),
 --       Rhythmus oder Tag geaendert -> fn_change_owned_recurring: Korrektur direkt nach der Anlage in place, sonst neues
 --       Glied ab effective_from (Default: naechster noch nicht erledigter Termin) -- der alte Beitrag bleibt Historie.
---       Ein neuer Rhythmus OHNE neuen Betrag -> {ok:false} (Versicherer berechnen Ratenzuschlaege; das LLM rechnet nicht um).
---     - Police OHNE Beitrag (recurring_payment_id NULL): ein Beitrag legt die Kette an, wie fn_set_loan beim Kredit ohne
+--       Ein neuer Rhythmus ohne neuen Betrag -> {ok:false} (Versicherer berechnen Ratenzuschlaege; das LLM rechnet nicht um).
+--     - Police ohne Beitrag (recurring_payment_id NULL): ein Beitrag legt die Kette an, wie fn_set_loan beim Kredit ohne
 --       Rate -- effective_from = erste Abbuchung und debit_account_id sind dann Pflicht; Tag/Vertragsende ohne Beitrag
 --       -> {ok:false}.
---     - valid_to kommt als LETZTER Vertragstag (inklusiv) und wird als exklusives Ende (Folgetag) an der Kette gespeichert
+--     - valid_to kommt als letzter Vertragstag (inklusiv) und wird als exklusives Ende (Folgetag) an der Kette gespeichert
 --       (Kopf = Vertragsende; fruehere Glieder werden nur gekuerzt).
 --     - status in ('cancelled','expired') -> Kette endet zum Kuendigungsdatum (Fallback bisheriges Ende / heute); 'paused'
---       NUR, wenn dieses Datum erreicht ist -- eine Kuendigung zum kuenftigen Vertragsende laesst die Beitraege bis dahin
+--       nur, wenn dieses Datum erreicht ist -- eine Kuendigung zum kuenftigen Vertragsende laesst die Beitraege bis dahin
 --       laufen. status='active' -> noch laufende Glieder wieder 'active'.
 --     - Umbenennung fuehrt 'Versicherung <Name>' an allen Gliedern mit (fn_rename_owned_recurring).
 --   Eingabe jsonb: insurance_id (im n8n via fn_resolve_insurance aufgeloest), name, insurance_company, policy_number,
 --   policyholder_person_id (Slug; leer=unveraendert), premium_amount, annual_premium, schedule_interval, schedule_unit,
 --   schedule_day_of_month, effective_from, valid_to, status, notes, debit_account_id (nur beim Nachtragen), insurance_type/beneficiary/coverage_amount/
---   claim_deadline_hours (WS-0b estate: partielles Update der Nachlass-Felder; leer=unveraendert).
+--   claim_deadline_hours (Nachlass-Felder; leer=unveraendert).
 --   RUECKGABE: {ok:true, insurance_id, recurring_payment_id (Kopf), split/previous_id (nur bei Beitragsaenderung), effective_from (erste
---   Abbuchung des neuen bzw. nachgetragenen Beitrags), premium_amount + annual_premium (wirksam ab dem Stichtag, nur bei Beitragsaenderung)}.
---   Korrigierbar (Konto ausser beim Nachtragen, Beitrag <= 0/unstimmig/unlesbar, Rhythmus ohne Betrag, Tag/Ende an einer Police ohne Beitrag, Beitrag
+--   Abbuchung des neuen bzw. nachgetragenen Beitrags), premium_amount + annual_premium (wirksam ab dem Stichtag, nur bei Beitragsaenderung),
+--   effective (aufgeloeste relative Daten)}.
+--   Korrigierbar (nicht aufloesbares Datum -> code invalid_date, Konto ausser beim Nachtragen, Beitrag <= 0/unstimmig/unlesbar, Rhythmus ohne Betrag, Tag/Ende an einer Police ohne Beitrag, Beitrag
 --   nachtragen an einer nicht aktiven Police, ohne effective_from oder Konto bzw. auf ein Nicht-EUR- oder nicht buchbares Konto,
 --   status/schedule_unit/insurance_type unbekannt, coverage_amount<0, Meldefrist ungueltig, Ende vor Vertragsbeginn,
 --   Split-Guards) -> {ok:false}.
@@ -37,7 +38,7 @@ DECLARE
     v_head     INT;
     v_fields   JSONB;
     v_reason   TEXT;
-    v_status   finance.insurance_status;   -- Casts erst nach dem Enum-Guard (Import-Haertung)
+    v_status   finance.insurance_status;   -- Casts erst nach dem Enum-Guard
     v_valid_to DATE;
     v_interval SMALLINT := NULLIF(p->>'schedule_interval', '')::smallint;
     v_unit     finance.schedule_unit;
@@ -63,7 +64,7 @@ BEGIN
     END IF;
     v_status := NULLIF(p->>'status', '')::finance.insurance_status;
     v_unit   := NULLIF(p->>'schedule_unit', '')::finance.schedule_unit;
-    -- WP-2b: fester Buchungstag 1-28, -1 (Monatsletzter) oder -2 (vorletzter Tag); 29/30/31 overflowen kurze Monate.
+    -- fester Buchungstag 1-28, -1 (Monatsletzter) oder -2 (vorletzter Tag); 29/30/31 overflowen kurze Monate
     IF finance.fn_schedule_dom_reason(v_dom) IS NOT NULL THEN
         RETURN jsonb_build_object('ok', false, 'reason', finance.fn_schedule_dom_reason(v_dom));
     END IF;
@@ -75,7 +76,7 @@ BEGIN
     SELECT * INTO v_cur FROM finance.recurring_payments
      WHERE id = finance.fn_recurring_current(v_ins.recurring_payment_id, v_today);
 
-    -- Rohwerte lesen + pruefen: EINE Adresse mit fn_create_insurance und der Karten-Vorschau; ohne neuen Rhythmus gilt
+    -- Rohwerte lesen + pruefen: eine Adresse mit fn_create_insurance und der Karten-Vorschau; ohne neuen Rhythmus gilt
     -- der bisherige (ein reiner Beitrag "jetzt 15" ist je Abbuchung im bisherigen Rhythmus gemeint).
     v_fields := finance.fn_insurance_fields(p || jsonb_strip_nulls(jsonb_build_object(
                     'schedule_interval', COALESCE(v_interval, v_cur.schedule_interval),
@@ -132,7 +133,7 @@ BEGIN
             'reason', 'valid_to (' || v_valid_to || ') must not be before the policy start valid_from (' || v_ins.valid_from || ').',
             'valid_from', v_ins.valid_from);
     END IF;
-    -- Eingabe = LETZTER Vertragstag (inklusiv, wie vom Nutzer genannt); gespeichert wird das exklusive Ende
+    -- Eingabe = letzter Vertragstag (inklusiv, wie vom Nutzer genannt); gespeichert wird das exklusive Ende
     -- (Konvention [valid_from, valid_to) aller Views/close_*/Split) — die fn rechnet um, nicht das LLM.
     v_valid_to := v_valid_to + 1;
 
@@ -166,10 +167,10 @@ BEGIN
         name                  = COALESCE(NULLIF(p->>'name', ''), name),
         insurance_company     = COALESCE(NULLIF(p->>'insurance_company', ''), insurance_company),
         policy_number         = COALESCE(NULLIF(p->>'policy_number', ''), policy_number),
-        policyholder_person_id = COALESCE(NULLIF(p->>'policyholder_person_id', ''), policyholder_person_id),  -- WS-4: typisierter Versicherungsnehmer (Slug); leer=unveraendert
+        policyholder_person_id = COALESCE(NULLIF(p->>'policyholder_person_id', ''), policyholder_person_id),  -- Slug; leer=unveraendert
         status                = COALESCE(v_status, status),
         notes                 = COALESCE(NULLIF(p->>'notes', ''), notes),
-        -- WS-0b (estate): partielles Update der Nachlass-Felder (leer=unveraendert; type-CHECK = Backstop).
+        -- Nachlass-Felder (leer=unveraendert; type-CHECK = Backstop)
         insurance_type        = COALESCE(NULLIF(p->>'insurance_type', ''), insurance_type),
         beneficiary           = COALESCE(NULLIF(p->>'beneficiary', ''), beneficiary),
         coverage_amount       = COALESCE((v_fields->>'coverage_amount')::numeric, coverage_amount),

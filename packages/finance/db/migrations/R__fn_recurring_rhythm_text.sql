@@ -2,7 +2,7 @@
 -- fn_recurring_rhythm_text (STABLE) -- Rhythmus eines Dauerauftrags als Nutzertext in einer Sprache
 --   Fuer Texte, die eine DB-fn fertig baut (Knopf-Nachrichten der Dauerauftrags-Vorschlaege); Workflows rendern den
 --   Rhythmus selbst. Monatlich ueber die Bank-Zettel-Keys (gleicher Wortlaut wie dort), sonst eigene Keys.
---   RUECKGABE: text.
+--   Eingabe: p_unit, p_interval, p_dom (Monatstag, -1 = Monatsletzter, -2 = vorletzter), p_lang. Rueckgabe: text.
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_recurring_rhythm_text(p_unit text, p_interval int, p_dom int, p_lang text)
 RETURNS text LANGUAGE sql STABLE AS $$

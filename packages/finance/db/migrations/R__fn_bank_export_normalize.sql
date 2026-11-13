@@ -5,14 +5,14 @@
 --   die alle required-Spalten eines Profils aus fn_bank_export_profiles traegt (Kleinschreibung, getrimmt, header_aliases
 --   des Profils -> kanonischer Name), und ruft die
 --   Profil-fn per festem CASE (kein dynamisches EXECUTE) mit {columns (Spaltenname der Kopfzeile, bereinigt wie bei der
---   Erkennung -> 0-basierter Index, erste Fundstelle; die EINE Bereinigung, Leser bauen keine eigene), rows (danach),
+--   Erkennung -> 0-basierter Index, erste Fundstelle; die eine Bereinigung, Leser bauen keine eigene), rows (danach),
 --   preamble (davor), header_row_no}.
---   KANONISCHE IMPORTZEILE (Vertrag fuer fn_statement_prepare; der gedruckte Auszug liefert dieselben Felder als lines):
+--   Kanonische Importzeile (Vertrag fuer fn_statement_prepare; der gedruckte Auszug liefert dieselben Felder als lines):
 --   {row_no, date, kind, cash_amount (signiert, Cent), counterparty, counterparty_iban, purpose, name, ext_ref, reason,
 --   + Wertpapier-Felder isin/symbol/shares/price/gross/fee/tax (TR)}; kind cash|fee|interest|buy|sell|dividend|tax|
 --   corporate|unknown, unknown nie still verworfen (unknown_rows).
 --   plpgsql (late-bound): die Profil-fns und fn_bank_export_profiles liegen alphabetisch spaeter.
---   RUECKGABE: Profil-Rueckgabe || {profile, printed_balance (Registry; dann traegt die Profil-Rueckgabe statement)}
+--   Rueckgabe: Profil-Rueckgabe || {profile, printed_balance (Registry; dann traegt die Profil-Rueckgabe statement)}
 --   | {ok:false, code:'export_profile_unknown'|'export_invalid', reason, row_no?}.
 --   Fehlertexte nennen nie Zellinhalte des Vorspanns (dort kann der Inhabername stehen).
 -- ============================================================

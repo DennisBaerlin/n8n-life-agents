@@ -2,14 +2,13 @@
 # Dot-gesourct von build.ps1 (Helper + Script-Scope-Creds im Parent-Scope).
 
 # --- tool_replace_holding_lots -----------------------------
-# Eine uebernommene Position (Bestand) durch die einzeln eingetippten Kaeufe ersetzen: Probelauf der DB -> EINE Karte ->
-# Gate -> EIN atomarer Write (fn_replace_holding_lots). Befund KW 45: der Agent stornierte vorher die Position und
-# pruefte die Liste erst danach; jetzt prueft die DB zuerst und tauscht alles in einer Transaktion.
-# Position per Depot-Name + Symbol/ISIN wird in der fn gesucht (fn_find_holding, EINE Adresse); 0/mehrdeutig kommt als
+# Eine uebernommene Position (Bestand) durch die einzeln eingetippten Kaeufe ersetzen: Probelauf der DB -> eine Karte ->
+# Gate -> ein atomarer Write (fn_replace_holding_lots). Die DB prueft zuerst und tauscht alles in einer Transaktion
+# (die Position vorher zu stornieren und die Liste erst danach zu pruefen, ist nicht atomar).
+# Position per Depot-Name + Symbol/ISIN wird in der fn gesucht (fn_find_holding, eine Adresse); 0/mehrdeutig kommt als
 # {ok:false, code, candidates} aus dem Probelauf (Dry run rejected, keine Karte).
 function Build-ReplaceHoldingLots {
-    # WS-B0: enge Paket-Schreibrolle (finance_rw, Least-Privilege D10) statt Owner-Cred.
-    # Dynamic-Scope: Build-Pg liest dieses $CRED_POSTGRES. Core-Tools nutzen die Owner-Cred.
+    # Enge Paket-Schreibrolle (finance_rw) statt Owner-Cred; Build-Pg liest $CRED_POSTGRES per Dynamic-Scope.
     $CRED_POSTGRES = $CRED_FINANCE_RW
     $trig = Build-Trigger @('depot_name','position','lots')
 
@@ -34,7 +33,7 @@ function Build-ReplaceHoldingLots {
 
     $retCancelled = Build-ToolCancelled 'Return cancelled' @(1540, 200) 'the replace_holding_lots action'
 
-    # Bestand kann sich zwischen Karte und Tipp aendern -> eine Ablehnung des echten Writes ist KEIN Erfolg.
+    # Bestand kann sich zwischen Karte und Tipp aendern -> eine Ablehnung des echten Writes ist kein Erfolg.
     $ifWriteOk = Build-If 'Write ok?' @(1760, 0) "={{ `$json.ok }}" 'true' 'equals' 'boolean'
     $errWrite = Build-ToolError 'Replace rejected' @(1980, 200) "={{ `$('Replace lots (atomic)').item.json.reason }}"
 

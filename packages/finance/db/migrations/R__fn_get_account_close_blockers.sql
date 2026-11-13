@@ -1,16 +1,17 @@
 -- ============================================================
--- fn_get_account_close_blockers (READ) -- was das Schliessen eines Kontos verhindert (Audit F6)
---   EINE Adresse fuer die HITL-Vorpruefung in tool_close_account (read-only, Tool-Cred finance_rw; auch unter
---   finance_ro lesbar; VOR der Bestaetigungskarte) UND den Guard in fn_close_account. Vorher liess sich ein Konto mit Guthaben schliessen
---   (das Geld verschwand aus dem Vermoegen: Views zaehlen nur aktive Konten) und laufende Dauerauftraege feuerten
---   danach taeglich den Closed-Konto-Trigger (Owner-Alarm).
+-- fn_get_account_close_blockers (READ) -- was das Schliessen eines Kontos verhindert
+--   Die eine Adresse fuer die HITL-Vorpruefung in tool_close_account (read-only, Tool-Cred finance_rw; auch unter
+--   finance_ro lesbar; vor der Bestaetigungskarte) und den Guard in fn_close_account. Ein Konto mit Guthaben
+--   schliessen liesse das Geld aus dem Vermoegen verschwinden (Views zaehlen nur aktive Konten), und laufende
+--   Dauerauftraege feuerten danach taeglich den Closed-Konto-Trigger (Owner-Alarm).
+--   Eingabe: p_account_id.
 --   Blocker-Arten (kind): balance (Saldo <> 0) · settlement_for_depot (Verrechnungskonto aktiver Depots bzw. P2P-Konten) ·
 --   depot_holdings (Depot mit Bestand; ein Depot-Saldo ist immer 0) · savings_plans (aktive/pausierte Sparplaene
 --   auf dem Depot) · loans (aktiver/pausierter Kredit mit diesem Konto als Kredit- oder Belastungskonto) ·
 --   recurring_payments (Dauerauftraege mit diesem Konto als Quelle/Ziel, die noch laufen koennen -- status
---   active/paused und valid_to offen oder in der Zukunft, auch kuenftige und pausierte -- ODER schon beendet
+--   active/paused und valid_to offen oder in der Zukunft, auch kuenftige und pausierte -- oder schon beendet
 --   sind, aber noch eine offene Rate im Erinnerungsfenster haben; sonst greift spaeter der Closed-Konto-Trigger).
---   RUECKGABE: {blocked, blockers:[{kind, ...details}], reason (EN, fuer den Nutzer erklaerbar)}.
+--   Rueckgabe: {blocked, blockers:[{kind, ...details}], reason (EN, fuer den Nutzer erklaerbar; NULL ohne Blocker)}.
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_get_account_close_blockers(p_account_id int)
 RETURNS jsonb LANGUAGE plpgsql STABLE AS $$

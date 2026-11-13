@@ -3,8 +3,7 @@
 
 # --- tool_set_insurance (set_*: Versicherung aendern, mit Recurring-Sync) ---
 function Build-SetInsurance {
-    # WS-B0: enge Paket-Schreibrolle (finance_rw, Least-Privilege D10) statt Owner-Cred.
-    # Dynamic-Scope: Build-Pg liest dieses $CRED_POSTGRES. Core-Tools nutzen die Owner-Cred.
+    # Enge Paket-Schreibrolle (finance_rw) statt Owner-Cred; Build-Pg liest $CRED_POSTGRES per Dynamic-Scope.
     $CRED_POSTGRES = $CRED_FINANCE_RW
     $trig = Build-Trigger @('insurance_name','new_name','insurance_company','policy_number','policyholder_person',
                            'premium_amount','annual_premium','schedule_interval','schedule_unit','schedule_day_of_month',
@@ -20,13 +19,13 @@ function Build-SetInsurance {
     $errIns = Build-ToolError 'Insurance ambiguous' @(660, 200) `
         "=Insurance '{{ `$('Start').item.json.insurance_name }}' resolves to {{ `$('Resolve Insurance').item.json.hit_count }} matches. Candidates: {{ JSON.stringify(`$('Resolve Insurance').item.json.candidates) }}. Ask the user which exact policy."
 
-    # Aktuelle Werte fuer die Karte (alt->neu): Beitrag/Rhythmus aus dem heute gueltigen Glied der Beitrags-Kette (WP2: die
+    # Aktuelle Werte fuer die Karte (alt->neu): Beitrag/Rhythmus aus dem heute gueltigen Glied der Beitrags-Kette (die
     # Police traegt keine Kopie), Jahreswert abgeleitet (fn_annual_equivalent), Status von der Police.
     $readCur = Build-Pg 'Read Current' @(660, 0) `
         "=SELECT finance.fn_annual_equivalent(abs(rc.amount), rc.schedule_interval, rc.schedule_unit, COALESCE(cardinality(rc.schedule_days_of_month), 1)) AS annual_premium, abs(rc.amount) AS premium_amount, rc.schedule_interval, rc.schedule_unit::text AS schedule_unit, i.status::text AS status FROM finance.insurances i LEFT JOIN finance.recurring_payments rc ON rc.id = finance.fn_recurring_current(i.recurring_payment_id, current_date) WHERE i.id = ((`$1::jsonb)->>'id')::int;" `
         ([ordered]@{ id = '$(''Resolve Insurance'').item.json.id' })
 
-    # Read-only Vorschau fuer die Karte: Rohwerte aus DERSELBEN fn wie der Write (fn_insurance_fields: "1.200" -> 1200,
+    # Read-only Vorschau fuer die Karte: Rohwerte aus derselben fn wie der Write (fn_insurance_fields: "1.200" -> 1200,
     # Meldefrist, Typ, Beitrag; Status per fn_enum_reason). Ohne genannten Rhythmus gilt der bisherige (wie fn_set_insurance).
     # Den wirksamen Beitrag je Abbuchung + Jahreswert + Stichtag zeigt die Karte aus dem Probelauf (r.*).
     $preview = Build-Pg 'Preview Rate' @(880, 0) `
@@ -35,7 +34,7 @@ function Build-SetInsurance {
     $ifFields = Build-If 'Fields ok?' @(1100, -120) "={{ `$('Preview Rate').item.json.ok }}" 'true' 'equals' 'boolean'
     $errFields = Build-ToolError 'Invalid values' @(1320, -240) "={{ `$('Preview Rate').item.json.reason }}"
 
-    # WS-4: optionalen Versicherungsnehmer-Wechsel aufloesen (Name -> Slug; leer = unveraendert).
+    # Optionalen Versicherungsnehmer-Wechsel aufloesen (Name -> Slug; leer = unveraendert).
     $resPerson = Build-ResolvePerson 'Resolve Person' @(1100, 360) 'policyholder_person'
 
     $ifPersonBad = Build-If 'Person invalid?' @(1320, 360) `
@@ -53,8 +52,7 @@ function Build-SetInsurance {
     $errAcc = Build-ToolError 'Debit ambiguous' @(1760, 720) `
         "=Debit account '{{ `$('Start').item.json.debit_account_name }}' resolves to {{ `$('Resolve Debit Account').item.json.hit_count }} matches. Ask the user which exact account to use."
 
-    # "DB ist das Gesetz": fn_set_insurance laeuft als Probelauf VOR der Karte (nach Preview Rate / Fields ok?); derselbe
-    # Param-Satz geht nach dem Gate in den echten Write (partielles UPDATE + Recurring-Sync + Kuendigungs-Kaskade).
+    # Der Probelauf laeuft nach Preview Rate / Fields ok?.
     $wg = New-FnWriteGate -Fn 'finance.fn_set_insurance' -DryPos @(1100, 0) -WritePos @(2420, 0) `
         -WriteName 'Set insurance (atomic)' `
         -WriteSelect "(r->>'ok')::boolean AS ok, r->>'reason' AS reason, (r->>'insurance_id')::int AS insurance_id, (r->>'recurring_payment_id')::int AS recurring_payment_id" `
@@ -74,14 +72,14 @@ function Build-SetInsurance {
             status                = '$(''Start'').item.json.status'
             notes                 = '$(''Start'').item.json.notes'
             debit_account_id      = '$(''Resolve Debit Account'').item.json.id'
-            insurance_type        = '$(''Start'').item.json.insurance_type'          # WS-0b estate
+            insurance_type        = '$(''Start'').item.json.insurance_type'          # Nachlass-Feld
             beneficiary           = '$(''Start'').item.json.beneficiary'
             coverage_amount       = '$(''Start'').item.json.coverage_amount'
             claim_deadline_hours  = '$(''Start'').item.json.claim_deadline_hours'
         })
 
-    # Strukturiertes Summary (Textkatalog): nur gelieferte Felder (-If je Zeile). Jahresbeitrag/Versicherungssumme in
-    # EUR-Konvention; Nachlass-Felder (WS-0b estate) optional.
+    # Nur gelieferte Felder (-If je Zeile). Jahresbeitrag/Versicherungssumme in
+    # EUR-Konvention; Nachlass-Felder optional.
     $S = "`$('Start').item.json"
     $R = "`$('Read Current').item.json"
     $D = "`$('Dry run').item.json.r"
@@ -123,8 +121,7 @@ function Build-SetInsurance {
 
     $retCancelled = Build-ToolCancelled 'Return cancelled' @(2420, 240) 'the set_insurance action'
 
-    # Atomarer Write via fn_set_insurance ($wg.Write, 'Set insurance (atomic)'): partielles UPDATE + Recurring-Sync
-    # (Betrag/Schedule) + Kuendigungs-Kaskade.
+    # Der Write macht partielles UPDATE + Recurring-Sync (Betrag/Schedule) + Kuendigungs-Kaskade.
     $ifWriteOk = Build-If 'Write ok?' @(2640, 0) "={{ `$json.ok }}" 'true' 'equals' 'boolean'
 
     $errWrite = Build-ToolError 'Update rejected' @(2860, 240) `

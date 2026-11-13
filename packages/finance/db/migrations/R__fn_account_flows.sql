@@ -3,11 +3,11 @@
 --   Je Kette, die das Konto beruehrt (Quelle oder Uebertrags-Ziel), das massgebliche Glied (fn_recurring_effective),
 --   Praedikat wie finance.active_recurring_payments ohne den Start-Filter (status active, valid_to leer oder kuenftig):
 --   die Spar-Deckung braucht gerade die erst kommenden Zahlungen. Befristete Zahlungen zaehlen mit.
---   side 'in'  = Eingang ohne Quellkonto (Gehalt, externe Zuwendung) oder Uebertrag AUF das Konto
+--   side 'in'  = Eingang ohne Quellkonto (Gehalt, externe Zuwendung) oder Uebertrag auf das Konto
 --   side 'out' = Abgang vom Konto (Sparplan, Uebertrag, Lastschrift)
---   monthly = monthly_equivalent signiert in KONTOwaehrung (Uebertrags-Ziel ueber den Kurs; ohne Kurs NULL).
+--   monthly = monthly_equivalent signiert in Kontowaehrung (Uebertrags-Ziel ueber den Kurs; ohne Kurs NULL).
 --   Konsument: fn_account_funding (rein/raus je Monat).
---   RUECKGABE: (rp_id, side, monthly)
+--   Rueckgabe: (rp_id, side, monthly)
 --   Tests: tests/db/finance/test_fn_account_funding.sql
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_account_flows(p_account_id int)

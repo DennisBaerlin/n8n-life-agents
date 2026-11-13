@@ -1,19 +1,20 @@
 -- ============================================================
 -- fn_book_takeover_pair (INTERNER WRITE-BAUSTEIN, kein Tool) -- eine Tranche einer Bestandsuebernahme
---   Die EINE Stelle, die ein Uebernahme-Paar schreibt: Kauf (category buy, unit_price = genannter Einstand) +
+--   Die eine Stelle, die ein Uebernahme-Paar schreibt: Kauf (category buy, unit_price = genannter Einstand) +
 --   Gegenbuchung position_takeover in gleicher Hoehe auf dem Verrechnungskonto -> dessen Saldo bleibt unveraendert.
 --   Aufrufer: fn_book_stock_buy (existing_position, nach seinem "Position haelt schon Stueck"-Guard) und
---   fn_import_bundle (2. und weitere Zeilen DERSELBEN Position in einem Batch = datierte Tranchen, Befund
---   2026-10-28: 20 Sparplan-Ausfuehrungen sollten als echte Kaeufe uebernommen werden).
---   Bewusst POSITIONALE Argumente, kein jsonb: kein LLM-/Staging-Payload kann diesen Pfad an einem Guard vorbei
---   erreichen (Plan-Review 2026-10-28). Alle Tranchen eines Writes teilen p_group (ein Write = eine group_id = ein Void).
---   Eingabe: holding_id, settlement_id, shares, unit_price, fee, date, group_id, label (Kennung fuer den Buchungstext).
---   RUECKGABE: {ok:true, buy_tx_id} | {ok:false, reason} (nicht-positive Stueck/Kurs, negative Gebuehr, > 8 Stueck-
---   Stellen / Betrag < 1 Cent via fn_trade_amount_reason). Kurs auf 8, Gebuehr auf 2 Stellen gerundet (Rundungs-Paket).
---   p_cost_origin (opt): Herkunft des Einstands am Kauf (transactions.cost_origin).
---   CHECK finance_transactions_position_takeover_shape bleibt der Backstop der Gegenbuchungs-Form.
---   p_with_counter (Default true): false = ECHTER Kauf ohne Gegenbuchung (Cash-Abfluss) -- nur fn_replace_takeover_with_lots (ueber fn_replace_takeover_apply)
---   fuer Einzelkaeufe NACH dem bestaetigten Kontostand-Tag (der Stand davon enthaelt sie noch nicht, Paket B 2026-10-28).
+--   fn_import_bundle (2. und weitere Zeilen derselben Position in einem Batch = datierte Tranchen, z. B. 20
+--   Sparplan-Ausfuehrungen als echte Kaeufe).
+--   Bewusst positionale Argumente, kein jsonb: kein LLM-/Staging-Payload kann diesen Pfad an einem Guard vorbei
+--   erreichen. Alle Tranchen eines Writes teilen p_group (ein Write = eine group_id = ein Void).
+--   Eingabe: p_holding, p_settle (Verrechnungskonto), p_shares, p_unit_price, p_fee, p_date, p_group, p_label
+--   (Kennung fuer den Buchungstext); optional p_with_counter (Default true), p_cost_origin (Herkunft des Einstands
+--   am Kauf, transactions.cost_origin). p_with_counter=false = echter Kauf ohne Gegenbuchung (Cash-Abfluss), nur
+--   fn_replace_takeover_with_lots (ueber fn_replace_takeover_apply) fuer Einzelkaeufe nach dem bestaetigten
+--   Kontostand-Tag (der Stand davon enthaelt sie noch nicht).
+--   Rueckgabe: {ok:true, buy_tx_id} | {ok:false, reason} (nicht-positive Stueck/Kurs, negative Gebuehr, > 8 Stueck-
+--   Stellen / Betrag < 1 Cent via fn_trade_amount_reason). Kurs auf 8, Gebuehr auf 2 Stellen gerundet.
+--   Backstop der Gegenbuchungs-Form: CHECK finance_transactions_position_takeover_shape.
 -- ============================================================
 DROP FUNCTION IF EXISTS finance.fn_book_takeover_pair(int, int, numeric, numeric, numeric, date, uuid, text);
 DROP FUNCTION IF EXISTS finance.fn_book_takeover_pair(int, int, numeric, numeric, numeric, date, uuid, text, boolean);

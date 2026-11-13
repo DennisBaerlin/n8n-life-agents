@@ -1,24 +1,26 @@
 -- ============================================================
 -- fn_savings_rate_schedule (READ-ONLY HELPER, STABLE)
---   Berechnet die fehlende Groesse eines Sparplans DETERMINISTISCH -- damit das LLM
---   NICHT rechnet (Root-CLAUDE.md *Das LLM rechnet NICHT*). Zwei Richtungen:
+--   Berechnet die fehlende Groesse eines Sparziels deterministisch, damit das LLM nicht rechnet. Zwei Richtungen:
 --     - Ziel-getrieben: target_amount + target_date gegeben -> monthly_rate = Ziel / Anzahl Abbuchungstermine bis einschliesslich
 --       Zieldatum (kein Termin -> {ok:false}); months = diese Anzahl.
 --     - Raten-getrieben: target_amount + monthly_savings_rate gegeben -> target_date = first + ceil(Ziel/Rate) Monate.
---   Die Rate wird auf den Cent AUFGERUNDET (Audit Paket 2, Punkt 15): 1000 / 3 = 333.34, damit die Raten das Ziel
+--   Die Rate wird auf den Cent aufgerundet: 1000 / 3 = 333.34, damit die Raten das Ziel
 --   erreichen (gerundet 333.33 -> 999.99, "erreicht" feuerte nie). Sparziele sind EUR -> Cent.
---   Anker der Monatszaehlung ist first_payment_date. Wird VOM TOOL read-only fuer den HITL-Preview
---   UND von fn_create_savings_goal (autoritativ, im Write) aufgerufen -> eine Quelle, kein Drift.
---   ERSTE RATE (WP2 "Finanzen schlank", weniger Rueckfragen): first_payment_date leer = der naechste Termin des
+--   Anker der Monatszaehlung ist first_payment_date. Wird vom Tool read-only fuer den HITL-Preview
+--   und von fn_create_savings_goal (autoritativ, im Write) aufgerufen -> eine Quelle, kein Drift.
+--   Erste Rate: first_payment_date leer = der naechste Termin des
 --   Abbuchungstags ab heute (schedule_day_of_month; ohne Tag: heute) -- dasselbe Raster wie der Scheduler
---   (fn_schedule_occurrences). Deshalb STABLE (heute), nicht mehr IMMUTABLE.
---   REST STATT GESAMT (Sparziel-Zweckbindung 2026-10-27): already_saved (opt, EUR, z. B. ein Startbestand, der schon
+--   (fn_schedule_occurrences). Deshalb STABLE (heute), nicht IMMUTABLE.
+--   Rest statt Gesamt: already_saved (opt, EUR, z. B. ein Startbestand, der schon
 --   auf dem Topf liegt) wird vom Ziel abgezogen; gerechnet wird auf dem Rest. Rest <= 0 -> das Ziel ist gedeckt:
 --   {ok:true, monthly_rate:0, months:0}; dann ist target_date Pflicht und muss in der Zukunft liegen (ein Ziel ohne
 --   Datum gibt es nicht, eine Rate gibt es nicht mehr abzuleiten).
---   Eingabe jsonb: target_amount, already_saved (opt), first_payment_date (opt), schedule_day_of_month (opt), plus GENAU
---   EINES von {target_date, monthly_savings_rate}.
---   Rueckgabe: {ok:true, monthly_rate, target_date, months, first_payment_date (wirksam)} ODER {ok:false, reason}.
+--   Eingabe jsonb: target_amount (Pflicht, > 0), already_saved (opt), first_payment_date (opt), schedule_day_of_month
+--   (opt), plus genau eines von {target_date, monthly_savings_rate}; relative Datumsangaben loest
+--   core.fn_resolve_input_dates auf.
+--   Rueckgabe: {ok:true, monthly_rate, target_date, months, first_payment_date (wirksam)} oder {ok:false, reason}:
+--   Ziel <= 0, Zieldatum fehlt bei gedecktem Ziel, Zieldatum nicht in der Zukunft bzw. nicht nach dem ersten Termin,
+--   kein Termin im Zeitraum, Rate <= 0, weder Datum noch Rate; nicht aufloesbares Datum -> code:'invalid_date'.
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_savings_rate_schedule(p jsonb)
 RETURNS jsonb LANGUAGE plpgsql STABLE AS $$

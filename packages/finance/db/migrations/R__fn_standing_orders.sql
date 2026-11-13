@@ -1,6 +1,6 @@
 -- ============================================================
 -- fn_standing_orders (READ, STABLE) -- die wiederkehrenden Ueberweisungen des Haushalts, die der Nutzer selbst einrichtet
---   (Dauerauftrag bei der Bank ODER Auszahlung von Hand: ob das eine oder das andere gilt, sagt finance.fn_transfer_executed_by;
+--   (Dauerauftrag bei der Bank oder Auszahlung von Hand: ob das eine oder das andere gilt, sagt finance.fn_transfer_executed_by;
 --   hier bleibt die Auswahl bewusst unveraendert, weil auch eine von Hand ueberwiesene Rate eine Spar-Deckung speist;
 --   Konsumenten fn_funding_accounts, standing_order_overview). Je Kette das massgebliche Glied
 --   (fn_recurring_effective: laufend oder erst kommend), status active, valid_to leer oder kuenftig.

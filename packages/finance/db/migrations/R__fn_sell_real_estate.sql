@@ -3,16 +3,17 @@
 --   Bucht den Verkaufserloes (einbeinig: externer Kaeufer nicht getrackt) auf ein Konto und setzt
 --   die Immobilie auf status='sold' (current_value = Verkaufspreis, value_updated_at = Verkaufsdatum,
 --   sale_tx_id = Erloes-Tx -> fn_void_transaction dieser Tx setzt die Immobilie zurueck auf 'active').
---   ALLOW+HINWEIS bei offenem Kredit: verknuepfte AKTIVE Kredite werden NICHT automatisch abgeloest;
---   sie bleiben bestehen und das Tool gibt eine kompakte linked_loans-Liste (Name + aktuelle Restschuld)
+--   Allow+Hinweis bei offenem Kredit: verknuepfte offene Kredite (active oder paused) werden nicht automatisch
+--   abgeloest; sie bleiben bestehen und das Tool gibt eine kompakte linked_loans-Liste (Name + aktuelle Restschuld)
 --   zurueck, damit das LLM dem Nutzer einen konkreten Hinweis geben kann (separat via settle_loan abloesen).
---   KORRIGIERBAR (kein RAISE): bereits verkauft / sale_price <= 0 / Erloes-Konto ist Depot- oder Kreditkonto
---   (fn_bookable_account_reason) -> {ok:false, reason}.
---   Eingabe jsonb: real_estate_name, proceeds_account_id (n8n-resolved), sale_date, sale_price.
+--   Korrigierbar (kein RAISE): nicht gefunden / mehrdeutig (code not_found | ambiguous, candidates), bereits
+--   verkauft, sale_price <= 0, Erloes-Konto ist Depot- oder Kreditkonto (fn_bookable_account_reason),
+--   nicht aufloesbares Datum (code invalid_date) -> {ok:false, reason}.
+--   Eingabe jsonb: real_estate_name, proceeds_account_id (n8n-resolved), sale_date (optional, leer = heute; auch relativ),
+--   sale_price.
 --   Resolve findet auch sold (p_active_only=FALSE) -> freundliches {ok:false} statt RAISE.
 --   RUECKGABE: {ok:true, real_estate_id, proceeds_tx_id, sale_price, linked_loan_count, linked_loans, note,
---   linked_reserve ({goal_id, name, current_amount} der weiterlaufenden Instandhaltungsruecklage oder null)}.
---   RAISE nur bei not-found / mehrdeutig.
+--   linked_reserve ({goal_id, name, current_amount} der weiterlaufenden Instandhaltungsruecklage oder null), effective}.
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_sell_real_estate(p jsonb)
 RETURNS jsonb LANGUAGE plpgsql AS $$
@@ -49,7 +50,6 @@ BEGIN
 
     SELECT * INTO v_re FROM finance.real_estate WHERE id = v_resolve.id;
 
-    -- Korrigierbar: bereits verkauft / nicht-positiver Preis.
     IF v_re.status = 'sold' THEN
         RETURN jsonb_build_object('ok', false,
             'reason', 'Property "' || v_re.name || '" is already marked as sold.');
@@ -58,7 +58,7 @@ BEGIN
         RETURN jsonb_build_object('ok', false,
             'reason', 'Sale price must be a positive number, got ' || COALESCE(v_price::text, 'null') || '.');
     END IF;
-    -- Korrigierbar (Audit Paket 2, Kontotyp): der Erloes geht auf ein Geld-Konto, nie auf ein Depot-/Kreditkonto.
+    -- der Erloes geht auf ein Geld-Konto, nie auf ein Depot-/Kreditkonto
     v_note := finance.fn_bookable_account_reason(v_acct);
     IF v_note IS NOT NULL THEN
         RETURN jsonb_build_object('ok', false, 'reason', v_note);
@@ -70,12 +70,12 @@ BEGIN
     VALUES (v_acct, v_price, v_date, 'other', 'Verkaufserlös ' || v_re.name)
     RETURNING id INTO v_tx;
 
-    -- 2. Immobilie als verkauft markieren; sale_tx_id = Erloes-Tx (Audit F5: Void dieser Tx setzt zurueck)
+    -- 2. Immobilie als verkauft markieren; sale_tx_id = Erloes-Tx (Void dieser Tx setzt zurueck)
     UPDATE finance.real_estate
     SET status = 'sold', current_value = v_price, value_updated_at = v_date, sale_tx_id = v_tx
     WHERE id = v_re.id;
 
-    -- 3. Allow+Hinweis: noch OFFENE verknuepfte Kredite (active ODER paused = fn_loan_is_outstanding, Audit Paket 2;
+    -- 3. Allow+Hinweis: noch offene verknuepfte Kredite (active oder paused = fn_loan_is_outstanding;
     --    Name + aktuelle Restschuld)
     SELECT COALESCE(jsonb_agg(jsonb_build_object('name', l.name,
                'remaining_debt', GREATEST(-b.balance, 0)) ORDER BY l.id), '[]'::jsonb),

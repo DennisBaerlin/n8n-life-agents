@@ -1,17 +1,17 @@
 -- ============================================================
 -- fn_match_household_holder (READ, STABLE) -- gehoert ein gedruckter Name (Gegenpart einer Buchung, Kontoinhaber eines
---   Auszugs) zu Haushaltsmitgliedern? ("Import zuerst": IBAN-Lernen, Inhaber aus dem PDF, Dauerauftrags-Erkennung)
---   Die EINE Adresse fuer Bank-Drucke ("ZWEISTEIN, MAXIMILIAN", "Max und Erika Zweistein", "MUELLER"/"MULLER"). Anders als
+--   Auszugs) zu Haushaltsmitgliedern? (IBAN-Lernen, Inhaber aus dem PDF, Dauerauftrags-Erkennung)
+--   Die eine Adresse fuer Bank-Drucke ("ZWEISTEIN, MAXIMILIAN", "Max und Erika Zweistein", "MUELLER"/"MULLER"). Anders als
 --   core.fn_resolve_person (ein vom Nutzer genannter Bezug: Vorname/Alias/Selbstbezug, exakt) wird token-weise verglichen:
 --   fn_holder_tokens je Variante (1 = ae/oe/ue, 2 = a/o/u; die erste eindeutige gewinnt) gegen
 --   core.fn_household_persons().full_name (publiziertes Fenster, Grant an finance_rw/_ro; kein DEFINER noetig).
---   Regeln (konservativ, Plan-Review 2026-10-30):
---     * eine Person trifft, wenn ALLE ihre Tokens im Namen stehen; Personen mit weniger als 2 Tokens (nur Vorname) nie;
+--   Eingabe: p_name (gedruckter Name).
+--   Regeln (konservativ):
+--     * eine Person trifft, wenn alle ihre Tokens im Namen stehen; Personen mit weniger als 2 Tokens (nur Vorname) nie;
 --     * zwei getroffene Personen, deren Tokens gleich sind oder ineinander stecken ("Ida Quell" in "Greta Ida Quell") ->
---       kein Treffer (mehrdeutig: "Greta Ida Quell" allein und "Greta Ida Quell und Ida Quell" sind token-gleich;
---       Code-Review 2026-10-30);
+--       kein Treffer (mehrdeutig: "Greta Ida Quell" allein und "Greta Ida Quell und Ida Quell" sind token-gleich);
 --     * bleibt ein Token des Namens, das zu keiner getroffenen Person gehoert ("GmbH", ein fremder Name) -> kein Treffer.
---   RUECKGABE: {matched, person_ids[] (sortiert), owner_person_id (genau eine Person, sonst NULL), joint (>= 2 Personen)}.
+--   Rueckgabe: {matched, person_ids[] (sortiert), owner_person_id (genau eine Person, sonst NULL), joint (>= 2 Personen)}.
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_match_household_holder(p_name text)
 RETURNS jsonb LANGUAGE plpgsql STABLE AS $$

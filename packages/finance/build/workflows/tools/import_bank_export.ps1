@@ -1,8 +1,8 @@
 ﻿#Requires -Version 5.1
 # Dot-gesourct von build.ps1 (Helper + Script-Scope-Creds im Parent-Scope).
 
-# --- tool_import_bank_export (Bank-Import-Modul; aus Broker-CSV Paket B) ---
-# Umsatz-Export einer Bank als Datei (CSV oder Excel; Profile in finance.fn_bank_export_profiles) -> Monats-Check OHNE
+# --- tool_import_bank_export (Bank-Import-Modul) ---
+# Umsatz-Export einer Bank als Datei (CSV oder Excel; Profile in finance.fn_bank_export_profiles) -> Monats-Check ohne
 # Sprachmodell (die Datei geht nicht an Anthropic): Core-Baustein holt die Datei (accept=table: CSV als Text, xlsx als
 # Raster ueber Extract From File) -> Leser (Code: CSV-Tokenizer RFC 4180 bzw. xlsx-Raster als Text, kennt keine
 # Bedeutung; die Kopfzeile bleibt im Raster) -> finance.fn_replace_takeover_with_lots im Probelauf (core.fn_dry_run):
@@ -19,16 +19,16 @@ function Build-ImportBankExport {
     $reader = New-BankExportTableReader -FetchId $idFetch -OnTable 'Setup begin'
     $tableExpr = $reader.TableExpr
     # account_name optional: ohne Namen waehlt finance.fn_bank_export_resolve_account das Konto nach Bank-Profil
-    # (Konto-Waechter, Befund 2026-10-30); der Kartentitel kommt daher aus der DB-Antwort, nie aus dem Start-Input.
+    # (Konto-Waechter); der Kartentitel kommt daher aus der DB-Antwort, nie aus dem Start-Input.
     $lotsParams = [ordered]@{
         account_name = "`$('Start').first().json.account_name || null"
         table        = $tableExpr
     }
-    # Pool-Regel (Bank-Import-Modul Paket 3): passt GENAU eine Zahlung an/von einem Anbieter-Sammelkonto (Bondora) zu
+    # Pool-Regel: passt genau eine Zahlung an/von einem Anbieter-Sammelkonto (Bondora) zu
     # zwei Konten, antwortet die Prepare transfer_choice_required (Kandidaten als Daten, keine Karte); der Agent fragt den
     # Nutzer (Muster account_ambiguous) und ruft erneut mit transfer_account (Kontoname bzw. 'none'). Die Karte zeigt die
     # Zuordnung vor dem Buchen. Bewusst keine wartende Knopf-Frage mitten im Tool (ohne Karte-offen-Sperre liefen sonst
-    # parallele Agenten-Laeufe, Vorfall 2026-10-22).
+    # parallele Agenten-Laeufe).
     $stmtParams = [ordered]@{
         source           = "'file'"
         account_name     = "`$('Start').first().json.account_name || null"
@@ -36,7 +36,7 @@ function Build-ImportBankExport {
         table            = $tableExpr
         transfer_account = "`$('Start').first().json.transfer_account || null"
     }
-    # Vorpruefung (Review 2026-10-30): Karte 1 nur, wenn der Monats-Check danach laufen kann. Jede Rueckfrage der Prepare
+    # Vorpruefung: Karte 1 nur, wenn der Monats-Check danach laufen kann. Jede Rueckfrage der Prepare
     # (closing_balance_required, transfer_choice_required, Konto-Waechter ...) kommt VOR Karte 1 -> der Folgeaufruf mit
     # der Antwort zeigt Karte 1 genau einmal, nie doppelt und nie eine bestaetigte Ersetzung ohne Rueckmeldung. Nicht ok ->
     # direkt in die Kette: deren Prepare meldet denselben Grund als Daten (Statement not ready, eine Adresse).

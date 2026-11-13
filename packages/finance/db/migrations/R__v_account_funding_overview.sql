@@ -1,16 +1,16 @@
 -- ============================================================
--- finance.account_funding_overview (Lese-View, Berater-Nachruestung 2026-10-30)
---   „Reicht das Geld fuer meine Sparplaene?" — EINE Zeile je Deckungs-Konto (finance.fn_funding_accounts, dieselbe
+-- finance.account_funding_overview (Lese-View)
+--   „Reicht das Geld fuer meine Sparplaene?" — eine Zeile je Deckungs-Konto (finance.fn_funding_accounts, dieselbe
 --   Regel wie der Konten-Tab der Uebersicht) mit der Spar-Deckung aus finance.fn_account_funding (die eine Rechnung, Horizont
 --   finance.funding_horizon_months, Ende = horizon_end). roles = die Rollen des Kontos als Liste (plan = zahlt einen Sparplan, order_source = Absender eines
---   Dauerauftrags): ein Konto mit beiden Rollen steht EINMAL da (sonst lief die Projektion doppelt und der Berater
+--   Dauerauftrags): ein Konto mit beiden Rollen steht einmal da (sonst lief die Projektion doppelt und der Berater
 --   meldete dasselbe Konto zweimal). Haushalts-Sicht ohne Personen-Filter (die Sichtbarkeit je Person macht nur die App).
 --   Der Berater liest die Deckung hier und projiziert nie selbst.
 --   drawdown_* = gewollter Abbau durch endende Uebertraege (Umschichtung mit Enddatum, fasst kein Ziel-Geld an: letzter
 --   Termin, Betrag je Monat, Ziel-Konto); inflow_ends = letzter Termin eines endenden Zubringers, danach reicht es nicht.
---   Bewusst EIGENE Datei (R__v_*, sortiert nach R__fn_*) und nur Tabellen + Funktionen (Muster R__v_savings_plan_overview).
+--   Bewusst eigene Datei (R__v_*, sortiert nach R__fn_*) und nur Tabellen + Funktionen (Muster R__v_savings_plan_overview).
 --   Rechte: finance_ro per GRANT SELECT ON ALL TABLES (core.fn_provision_package_roles); die fns sind INVOKER.
---   Kosten: je Konto EINE Projektion (~0,1 s) — fn_account_funding als Funktions-Scan im FROM; eine Unterabfrage ohne FROM
+--   Kosten: je Konto eine Projektion (~0,1 s) — fn_account_funding als Funktions-Scan im FROM; eine Unterabfrage ohne FROM
 --   zoege der Planer hoch (STABLE) und riefe die Projektion je referenzierter Spalte neu. Nur auf Nachfrage gelesen.
 -- ============================================================
 DROP VIEW IF EXISTS finance.account_funding_overview CASCADE;

@@ -1,5 +1,5 @@
 -- ============================================================
--- finance.fn_handle_recurring_suggestion_cb(p) -- Registry-Handler des Callback-Prefix 'rsug' (member_permeable)
+-- fn_handle_recurring_suggestion_cb (CALLBACK HANDLER) -- Registry-Handler des Callback-Prefix 'rsug' (member_permeable)
 --   Knopf rsug:ok:<id>:<version> bzw. rsug:no:<id>:<version> unter einer Vorschlags-Nachricht. Der Tipp ist die
 --   Bestaetigung (kein HITL-Gate): angelegt wird allein aus dem gespeicherten Payload (fn_recurring_suggestion_args), die
 --   Anlege-fn bleibt das Gesetz (Dubletten, IBAN), dazu fn_recurring_known gegen inzwischen Angelegtes.
@@ -13,7 +13,8 @@
 --   Owner-Sprache (Gleichstand zur Stufe owner_info der Einzelanlage), samt Cashflow-Warnung. Die fn ist schnell, deshalb kommt der Toast aus
 --   ihrem Ergebnis (kein answerCallbackQuery vorab).
 --   p: {data, chat_id, chat_type}. Rueckgabe {ok, toast, edit?:{text}|{keep_text:true}, owner_notice?} | {ok:false, reason,
---   toast}. Nie RAISE.
+--   toast}; reason: not_allowed | unknown | expired | already_committed | already_declined | outdated | already_known |
+--   create_rejected | error. Nie RAISE (EXCEPTION WHEN OTHERS).
 --   Tests: tests/db/finance/test_fn_handle_recurring_suggestion_cb.sql
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_handle_recurring_suggestion_cb(p jsonb)
@@ -55,7 +56,7 @@ BEGIN
     END IF;
     SELECT * INTO v_row FROM finance.import_staging
     WHERE id = v_id::int AND origin = 'recurring_suggestion' FOR UPDATE;
-    -- fehlt die Zeile oder ist ihr Stapel laenger als 7 Tage nicht ergaenzt (O6), gilt der Vorschlag als abgelaufen
+    -- fehlt die Zeile oder ist ihr Stapel laenger als 7 Tage nicht ergaenzt, gilt der Vorschlag als abgelaufen
     IF v_row.id IS NULL OR (v_row.status = 'staged' AND finance.fn_recurring_suggestion_expired(v_row.batch_id)) THEN
         RETURN jsonb_build_object('ok', false, 'reason', 'expired', 'edit', v_keep,
             'toast', core.fn_ui_text('finance.recurring_suggest.toast_expired', v_lang));
@@ -116,7 +117,7 @@ BEGIN
     END IF;
 
     v_rpid := (v_res->>'recurring_payment_id')::int;
-    -- Post-State-Vertrag: die Anlege-fn gibt keine Eingaben zurueck -> die angelegte Zeile selbst lesen
+    -- die Anlege-fn gibt keine Eingaben zurueck (Post-State-Vertrag) -> die angelegte Zeile selbst lesen
     SELECT r.name, abs(r.amount) AS amount, r.schedule_unit::text AS unit, r.schedule_interval AS iv, r.schedule_day_of_month AS dom,
            GREATEST(r.first_payment_date, r.valid_from) AS start, a.name AS account, a.currency, t.name AS to_account
     INTO v_rp

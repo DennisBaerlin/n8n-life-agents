@@ -1,16 +1,16 @@
 -- ============================================================
--- finance.fn_render_finance_profile (read-only Render — joint BEIDE Sidecars) — WS1b: HEADER-ONLY
---   Phase A: aus dem Core (vormals agent.fn_finance_profile_context; core:V019 droppt sie) ins finance-Paket
---   gezogen — Registrierung im finance-Manifest context_renderers (Core kennt kein Paket). Laeuft im DEFINER
+-- fn_render_finance_profile (READ, STABLE — Header-Render, joint beide Sidecars)
+--   Registrierung im finance-Manifest context_renderers (Core kennt kein Paket). Laeuft im DEFINER
 --   core.fn_fetch_context (Owner=Superuser) -> liest family + ruft agent.fn_regelaltersgrenze ohne eigenen
 --   Grant (Praezedenz finance.fn_render_plan_facts, docs/reference/packages.md Cross-Paket-Read Oberflaeche A).
---   Liefert NUR den autoritativen Fakten-HEADER der 'finance_profile'-Zeile (advisor-scoped):
+--   Liefert nur den autoritativen Fakten-Header der 'finance_profile'-Zeile (advisor-scoped):
 --   Wunsch-Rentenjahr (Join family.birth_date x fp.planned_retirement_age), Delta zur Regelaltersgrenze,
---   Vorsorgesystem/Steuerklasse/.... Banner, _meta-Stempel, '---' und der Prosa-Body kommen seit WS1b
---   von der generischen Engine core.fn_fetch_context. UNIFORME Signatur fn(text)->text.
---   Single-Writer-Prinzip: Geburtsdaten leben NUR in family — diese Fn joint, dupliziert nie.
+--   Vorsorgesystem/Steuerklasse/.... Banner, _meta-Stempel, '---' und der Prosa-Body kommen
+--   von der generischen Engine core.fn_fetch_context. Einheitliche Signatur fn(text)->text.
+--   Single-Writer-Prinzip: Geburtsdaten leben nur in family — diese fn joint, dupliziert nie.
 --
---   RUECKGABE: Header-Text ODER NULL (kein finance_profile / leere Zeile ohne Personen UND ohne Prosa)
+--   Eingabe: p_name (Name der Context-Zeile).
+--   Rueckgabe: Header-Text oder NULL (kein finance_profile / leere Zeile ohne Personen und ohne Prosa)
 --   -> die Engine rendert dann nur den rohen content. Leere persons mit Prosa -> Fallback-Zeile.
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_render_finance_profile(p_name text)
@@ -44,7 +44,7 @@ BEGIN
                      THEN format(' (Stand: %s)', fp->>'as_of') ELSE '' END
             ),
             E'\n' ORDER BY fp->>'person_id')
-            FILTER (WHERE fp IS NOT NULL),   -- leeres persons-Array: LEFT JOIN liefert 1 NULL-Zeile -> ohne Filter ein Junk-"- "-Bullet (Review A3)
+            FILTER (WHERE fp IS NOT NULL),   -- leeres persons-Array: LEFT JOIN liefert 1 NULL-Zeile -> ohne Filter ein Junk-"- "-Bullet
         c.content
     INTO v_header, v_body
     FROM agent.core_contexts c

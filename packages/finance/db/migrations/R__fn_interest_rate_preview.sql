@@ -1,9 +1,8 @@
 -- ============================================================
--- fn_interest_rate_preview (READ) -- die wirksamen Werte einer neuen Zinszeile, BEVOR sie geschrieben wird
---   EINE Quelle fuer die HITL-Karte von tool_set_account_interest UND fn_set_account_interest (Karte = Buchung,
---   Audit Paket 2 Review). Regeln (Audit Paket 2, Punkt 5 -- vorher Default 'year' bei reinem Satzwechsel ->
---   Doppelverzinsung):
---     unit     = Eingabe > offene Zeile (KEIN 'year'-Rueckfall mehr, Befund 2026-10-24)
+-- fn_interest_rate_preview (READ) -- die wirksamen Werte einer neuen Zinszeile, bevor sie geschrieben wird
+--   Eine Quelle fuer die HITL-Karte von tool_set_account_interest und fn_set_account_interest (Karte = Buchung).
+--   Regeln (ein 'year'-Default bei reinem Satzwechsel fuehrte zu Doppelverzinsung):
+--     unit     = Eingabe > offene Zeile (kein 'year'-Rueckfall)
 --     interval = Eingabe > offene Zeile (nur bei unveraenderter unit) > 1
 --     dom / posting_day_of_month = Eingabe > offene Zeile (nur bei unveraenderter unit)
 --     Beginnt ein neues Raster (keine offene Zeile oder anderer Rhythmus/Intervall/Tag), gilt die Pflicht-Kadenz
@@ -14,10 +13,11 @@
 --     day_count_convention = Eingabe > offene Zeile > fn_interest_default_convention(Kontotyp); conv_reason =
 --       manual | previous | default_cash | default_fixed | default
 --     valid_from = Eingabe > heute
---   KORRIGIERBAR -> {ok:false, reason}: ungueltiger Abbuchungstag; Kontotyp nicht zins-faehig; Satz fehlt/negativ;
---   valid_from nicht nach der offenen Zeile; valid_from VOR dem Ende der juengsten gebuchten/uebersprungenen
---   Zinsperiode (Review: ein rueckdatierter Kadenzwechsel verankerte ein Raster ueber schon verzinste Tage).
---   Eingabe jsonb wie fn_set_account_interest. RUECKGABE {ok:true, schedule_interval, schedule_unit,
+--   Korrigierbar -> {ok:false, reason}: ungueltiger Abbuchungstag; Kontotyp nicht zins-faehig; Satz fehlt/negativ;
+--   valid_from nicht nach der offenen Zeile; valid_from vor dem Ende der juengsten gebuchten/uebersprungenen
+--   Zinsperiode (ein rueckdatierter Kadenzwechsel verankerte ein Raster ueber schon verzinste Tage); ungueltiges
+--   valid_from -> code 'invalid_date'.
+--   Eingabe jsonb wie fn_set_account_interest. Rueckgabe {ok:true, schedule_interval, schedule_unit,
 --   schedule_day_of_month, posting_day_of_month, auto_post, day_count_convention, conv_reason, valid_from,
 --   closes_previous, first_period_end, first_credit_date}. RAISE nur bei unbekanntem Konto.
 --   Tests: tests/db/finance/test_fn_set_account_interest.sql
@@ -28,7 +28,7 @@ DECLARE
     v_acct      INT      := (p->>'account_id')::int;
     v_rate      NUMERIC  := NULLIF(p->>'annual_rate', '')::numeric;
     v_interval  SMALLINT := NULLIF(p->>'schedule_interval', '')::smallint;
-    v_unit      finance.schedule_unit;   -- Cast erst nach dem Guard (Import-Haertung)
+    v_unit      finance.schedule_unit;   -- Cast erst nach dem Guard
     v_dom       SMALLINT := NULLIF(p->>'schedule_day_of_month', '')::smallint;
     v_pdom      SMALLINT := NULLIF(p->>'posting_day_of_month', '')::smallint;
     v_from      DATE;
@@ -44,12 +44,12 @@ DECLARE
     v_dates     JSONB;
 BEGIN
     -- relative Datumsangabe ("next monday") -> ISO; nicht aufloesbar -> {ok:false, code:'invalid_date'}.
-    -- Leer = heute in der Haushalts-Zeitzone (vorher CURRENT_DATE = Server-Zeitzone, Drift zu core.fn_today).
+    -- Leer = heute in der Haushalts-Zeitzone (core.fn_today, nicht CURRENT_DATE = Server-Zeitzone).
     v_dates := core.fn_resolve_input_dates(p, ARRAY['valid_from']);
     IF NOT (v_dates->>'ok')::boolean THEN RETURN v_dates; END IF;
     p := v_dates->'p';
     v_from := COALESCE(NULLIF(p->>'valid_from', '')::date, core.fn_today());
-    -- Rhythmus, Buchungs-/Gutschrift-Tag, Konvention: EIN Guard mit fn_create_account (fn_interest_terms_reason).
+    -- Rhythmus, Buchungs-/Gutschrift-Tag, Konvention: ein Guard mit fn_create_account (fn_interest_terms_reason).
     v_reason := finance.fn_interest_terms_reason(p->>'schedule_unit', v_dom, v_pdom, p->>'day_count_convention');
     IF v_reason IS NOT NULL THEN
         RETURN jsonb_build_object('ok', false, 'reason', v_reason);
@@ -67,7 +67,7 @@ BEGIN
         RETURN jsonb_build_object('ok', false,
             'reason', 'Annual rate must be a non-negative number, got ' || COALESCE(v_rate::text, 'null') || '.');
     END IF;
-    v_reason := finance.fn_rate_precision_reason(v_rate, 'Annual rate');   -- numeric(6,4) kuerzte still (Rundungs-Paket)
+    v_reason := finance.fn_rate_precision_reason(v_rate, 'Annual rate');   -- numeric(6,4) kuerzte sonst still
     IF v_reason IS NOT NULL THEN
         RETURN jsonb_build_object('ok', false, 'reason', v_reason);
     END IF;
@@ -92,14 +92,14 @@ BEGIN
             'credited_until', v_last_done);
     END IF;
 
-    v_unit     := COALESCE(v_unit, v_open.schedule_unit);   -- kein erfundenes 'year' (Befund 2026-10-24)
+    v_unit     := COALESCE(v_unit, v_open.schedule_unit);   -- kein erfundenes 'year'
     v_interval := COALESCE(v_interval, CASE WHEN v_unit = v_open.schedule_unit THEN v_open.schedule_interval END, 1);
     v_same     := v_open.id IS NOT NULL AND v_unit = v_open.schedule_unit AND v_interval = v_open.schedule_interval;
-    -- Tag/Arrears nur bei GLEICHER Einheit erben: ein Wechsel month/-1 -> year truege sonst still "31.12." statt
+    -- Tag/Arrears nur bei gleicher Einheit erben: ein Wechsel month/-1 -> year truege sonst still "31.12." statt
     -- Jahrestag mit (seit dem Kalender-Raster wirkt dom auch bei year).
     v_dom      := COALESCE(v_dom, CASE WHEN v_unit = v_open.schedule_unit THEN v_open.schedule_day_of_month END);
     v_pdom     := COALESCE(v_pdom, CASE WHEN v_unit = v_open.schedule_unit THEN v_open.posting_day_of_month END);
-    -- Pflicht-Kadenz auf den WIRKSAMEN Werten, sobald ein neues Raster beginnt (keine offene Zeile oder anderer
+    -- Pflicht-Kadenz auf den wirksamen Werten, sobald ein neues Raster beginnt (keine offene Zeile oder anderer
     -- Rhythmus/Intervall/Tag). Ein reiner Satzwechsel auf einer Altzeile (z. B. month ohne Tag) bleibt erlaubt.
     v_regime_same := v_same AND v_dom IS NOT DISTINCT FROM v_open.schedule_day_of_month;
     IF NOT v_regime_same THEN

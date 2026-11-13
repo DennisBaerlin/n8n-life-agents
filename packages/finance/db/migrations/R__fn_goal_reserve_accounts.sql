@@ -1,12 +1,13 @@
 -- ============================================================
--- fn_goal_reserve_accounts (RESERVE-KONTEN EINES SPARZIELS)
---   Der Topf eines Sparziels ist das Zielkonto seiner Sparrate (recurring_payments.target_account_id). Die RESERVE ist
+-- fn_goal_reserve_accounts (READ HELPER — Reserve-Konten eines Sparziels)
+--   Der Topf eines Sparziels ist das Zielkonto seiner Sparrate (recurring_payments.target_account_id). Die Reserve ist
 --   der Topf plus jedes saldo-basierte Konto (fn_goal_pot_account_types), auf dem noch Geld des Ziels liegt — getaggt
---   ODER zugeordnet (savings_goal_account_share, Sparziel-Zweckbindung 2026-10-27). Depot-Anteile gehoeren NICHT dazu:
+--   oder zugeordnet (savings_goal_account_share). Depot-Anteile gehoeren nicht dazu:
 --   aus einem Depot kann keine Geldbewegung abgehen (Umschichten = Verkauf mit Ziel).
 --   Familie: fn_goal_reserve_accounts / fn_goal_reserve_reason / fn_apply_goal_reserve; Konsumenten:
 --   fn_book_savings_goal_transfer, fn_set_savings_goal.
---   -> (account_id, share, is_pot): Topf (auch mit Anteil 0) + Konten mit Anteil > 0; share = Anteil in Kontowaehrung.
+--   Eingabe: p_goal (Ziel-id).
+--   Rueckgabe: (account_id, share, is_pot): Topf (auch mit Anteil 0) + Konten mit Anteil > 0; share = Anteil in Kontowaehrung.
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_goal_reserve_accounts(p_goal int)
 RETURNS TABLE (account_id int, share numeric, is_pot boolean)

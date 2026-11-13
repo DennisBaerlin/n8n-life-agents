@@ -1,10 +1,9 @@
 ﻿#Requires -Version 5.1
 # Dot-gesourct von build_finance_tools.ps1 (Helper + Script-Scope-Creds im Parent-Scope).
 
-# --- 6. tool_create_loan (Playbook 5.2) -----------------------
+# --- tool_create_loan ---
 function Build-CreateLoan {
-    # WS-B0: enge Paket-Schreibrolle (finance_rw, Least-Privilege D10) statt Owner-Cred.
-    # Dynamic-Scope: Build-Pg liest dieses $CRED_POSTGRES. Core-Tools nutzen die Owner-Cred.
+    # Enge Paket-Schreibrolle (finance_rw) statt Owner-Cred; Build-Pg liest $CRED_POSTGRES per Dynamic-Scope.
     $CRED_POSTGRES = $CRED_FINANCE_RW
     $trig = Build-Trigger @('name','lender','borrower_person','original_amount','current_balance','disbursement_date',
                            'interest_rate','interest_rate_fixed_until','term_end_date',
@@ -48,7 +47,7 @@ FROM finance.fn_resolve_account(NULLIF((`$1::jsonb)->>'disbursement_account_name
     $errDisbursement = Build-ToolError 'Disbursement ambiguous' @(880, 200) `
         "=Disbursement account '{{ `$('Start').item.json.disbursement_account_name }}' resolves to {{ `$('Resolve Disbursement Account').item.json.disbursement_hits }} matches. Candidates: {{ JSON.stringify(`$('Resolve Disbursement Account').item.json.disbursement_candidates) }}. Ask the user the exact account (or confirm the loan was NOT paid into one of their own accounts)."
 
-    # WS-4: typisierten Kreditnehmer aufloesen (Name -> Slug via core.fn_resolve_person; leer=Haushalt).
+    # Typisierten Kreditnehmer aufloesen (Name -> Slug via core.fn_resolve_person; leer=Haushalt).
     $resPerson = Build-ResolvePerson 'Resolve Person' @(880, 360) 'borrower_person'
 
     $ifPersonBad = Build-If 'Person invalid?' @(1100, 360) `
@@ -57,8 +56,6 @@ FROM finance.fn_resolve_account(NULLIF((`$1::jsonb)->>'disbursement_account_name
     $errPerson = Build-ToolError 'Person unresolved' @(1320, 480) `
         "=The borrower '{{ `$('Start').item.json.borrower_person }}' could not be uniquely resolved ({{ `$('Resolve Person').item.json.hit_count }} match(es)). Candidates: {{ JSON.stringify(`$('Resolve Person').item.json.candidates) }}. Ask which household member, or leave empty for a joint/household loan."
 
-    # "DB ist das Gesetz": fn_create_loan laeuft als Probelauf VOR der Karte (korrigierbare Ablehnungen -> {ok:false} ohne Karte);
-    # derselbe Param-Satz geht nach dem Gate in den echten Write.
     $wg = New-FnWriteGate -Fn 'finance.fn_create_loan' -DryPos @(1100, 0) -WritePos @(2420, 0) `
         -WriteName 'Create loan (atomic)' `
         -WriteSelect "(r->>'ok')::boolean AS ok, r->>'reason' AS reason, r->>'loan_id' AS loan_id, r->>'loan_account_id' AS loan_account_id, r->>'debit_account_id' AS debit_account_id, r->>'recurring_payment_id' AS recurring_payment_id, (r->>'balance_at_fixed_until')::numeric AS balance_at_fixed_until, (r->>'balance_at_term_end')::numeric AS balance_at_term_end" `
@@ -82,7 +79,7 @@ FROM finance.fn_resolve_account(NULLIF((`$1::jsonb)->>'disbursement_account_name
         })
 
     # --- HITL approval gate (before the atomic write) ---
-    # Strukturiertes Summary (Textkatalog): Betraege in EUR-Konvention (Kredit-Stammwerte werden in EUR erfasst);
+    # Betraege in EUR-Konvention (Kredit-Stammwerte werden in EUR erfasst);
     # leere Daten -> '—' uebernimmt das Gate.
     # Zeilen aus der geteilten Felddefinition (../hitl_lines.ps1, dieselbe wie die Import-Karte).
     $S = "`$('Start').item.json"
@@ -101,10 +98,8 @@ FROM finance.fn_resolve_account(NULLIF((`$1::jsonb)->>'disbursement_account_name
 
     $retCancelled = Build-ToolCancelled 'Return cancelled' @(2420, 200) 'the create_loan action'
 
-    # Atomarer Write via Function: Loan-Konto + Loan + optional Rate-recurring_payment + 2 Auszahlungen.
-    # fn liefert ok/reason: original_amount<=0 oder monthly_annuity<=0 -> {ok:false}.
+    # Write: Loan-Konto + Loan + optional Rate-recurring_payment + 2 Auszahlungen.
 
-    # Korrigierbare Ablehnung aus der fn -> weiche Rueckfrage (kein Owner-Alert).
     $ifWriteOk = Build-If 'Write ok?' @(2640, 0) "={{ `$json.ok }}" 'true' 'equals' 'boolean'
 
     $errWrite = Build-ToolError 'Loan rejected' @(2860, 200) `

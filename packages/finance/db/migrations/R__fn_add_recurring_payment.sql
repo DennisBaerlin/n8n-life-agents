@@ -1,10 +1,11 @@
 -- ============================================================
 -- fn_add_recurring_payment (INTERNAL HELPER — not tool-facing)
---   Eine Quelle fuer den finance_recurring_payments-INSERT. Wird aus den Entity-Create-/Set-fns
---   (insurance/loan/savings_goal/pension/savings_plan + den set_*-Validity-Splits) UND dem oeffentlichen fn_create_recurring_payment
---   gerufen. Positionale Args (kein jsonb, da nur fn-intern).
---   p_amount ist VORZEICHENBEHAFTET (+ Einnahme / - Ausgabe). monthly_equivalent ist GENERATED.
+--   Eine Quelle fuer den INSERT in finance.recurring_payments. Wird aus den Entity-Create-/Set-fns
+--   (insurance/loan/savings_goal/pension/savings_plan + den set_*-Validity-Splits) und dem oeffentlichen fn_create_recurring_payment
+--   gerufen. Positionale Args (kein jsonb, da nur fn-intern). Rueckgabe: id der neuen Zeile.
+--   p_amount ist vorzeichenbehaftet (+ Einnahme / - Ausgabe). monthly_equivalent ist GENERATED.
 --   Defaults: p_interval NULL -> 1, p_valid_from NULL -> p_first, p_status NULL -> 'active'.
+--   Tests: tests/db/finance/test_fn_add_recurring_payment.sql
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_add_recurring_payment(
     p_account_id  int,

@@ -2,7 +2,9 @@
 -- fn_setup_reanchor_plan (READ, STABLE) -- darf ein Konto auf den Anfang einer Datei mit gedrucktem Stand umgestellt werden?
 --   Nur wenn die Datei sonst nichts bringt (Stichtag >= Zeitraumende) und das Konto unberuehrt ist: kein Abgleich, kein Auszug,
 --   keine Buchung ausser dem Eroeffnungssaldo.
---   RUECKGABE: {ok:true, opening_balance, opening_balance_date, current_date, opening_tx_id?} | {ok:false, reason}.
+--   Eingabe: p_account_id, p_norm (Ergebnis von fn_bank_export_normalize).
+--   RUECKGABE: {ok:true, opening_balance, opening_balance_date (Tag vor Zeitraumbeginn), opening_tx_id (null ohne
+--   Eroeffnungsbuchung), previous_balance, previous_date, account_name, currency} | {ok:false, reason}.
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_setup_reanchor_plan(p_account_id int, p_norm jsonb)
 RETURNS jsonb LANGUAGE plpgsql STABLE AS $$

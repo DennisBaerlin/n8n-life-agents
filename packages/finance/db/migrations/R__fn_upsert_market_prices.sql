@@ -1,8 +1,9 @@
 -- packages/finance/db/migrations/R__fn_upsert_market_prices.sql
--- Atomarer Markt-Preis-Upsert (WS2b). Vom Cron agent.finance.cron_refresh_market_prices aufgerufen
--- (Yahoo Finance fuer Aktien/ETF und Krypto -> diese fn, KEIN LLM; der Cron uebergibt source='yahoo').
--- Extrahiert wie fn_upsert_fx_rates, damit die Upsert-Invarianten deterministisch testbar sind
--- (tests/db/finance/test_fn_upsert_market_prices.sql) statt nur im Cron-Node zu leben. Provider-agnostisch.
+-- fn_upsert_market_prices (ATOMIC WRITE)
+-- Atomarer Markt-Preis-Upsert. Vom Cron agent.finance.cron_refresh_market_prices aufgerufen
+-- (Yahoo Finance fuer Aktien/ETF und Krypto -> diese fn, kein LLM; der Cron uebergibt source='yahoo').
+-- Wie fn_upsert_fx_rates eine eigene fn, damit die Upsert-Invarianten deterministisch testbar sind
+-- (tests/db/finance/test_fn_upsert_market_prices.sql). Provider-agnostisch.
 --
 -- p = { "prices": { "VWCE": 110.50, "BTC": 60000, ... },  (Pflicht: { symbol -> Kurs })
 --       "currencies": { "VWCE": "EUR", "AAPL": "USD" },    (optional: { symbol -> Yahoo-meta.currency }; gewinnt
@@ -12,16 +13,17 @@
 --       "source": "yahoo" }                                (optional, default 'yahoo' = aktueller Provider-Fallback)
 --
 -- Symbol-Menge = DISTINCT symbol aus depot_holdings WHERE shares > 0 (objekt-getrieben wie
--- fn_active_currencies — kein Eintrag fuer nicht (mehr) gehaltene Ticker). Preis-Waehrung: die GEFETCHTE
+-- fn_active_currencies — kein Eintrag fuer nicht (mehr) gehaltene Ticker). Preis-Waehrung: die gefetchte
 -- Yahoo-Waehrung (currencies{}-Key im Payload, ^[A-Z]{3}$-Backstop) gewinnt per COALESCE-Praezedenz; Fallback
--- = die Holding-Waehrung COALESCE(quote_currency, currency) (Phase M: ein Symbol = eine Waehrung; bei theoretischer
--- Mehrfach-Waehrung deterministisch min() — der COALESCE liegt INNERHALB von min(), Aufloesung PRO ZEILE, kein
--- Mischen ueber Zeilen). Join-Key ist SYMBOL (immer vorhanden); isin nur als sekundaerer Hint mitgeschrieben.
+-- = die Holding-Waehrung COALESCE(quote_currency, currency) (ein Symbol = eine Waehrung; bei theoretischer
+-- Mehrfach-Waehrung deterministisch min() — der COALESCE liegt innerhalb von min(), Aufloesung pro Zeile, kein
+-- Mischen ueber Zeilen). Join-Key ist symbol (immer vorhanden); isin nur als sekundaerer Hint mitgeschrieben.
 --
 -- Guards (alle still -> kein RAISE, kein Owner-Alert; ein kaputter Kurs darf den Tages-Refresh der
--- anderen nicht killen): Symbol muss im prices-Objekt existieren; Wert numerisch UND > 0 (faengt
+-- anderen nicht killen): Symbol muss im prices-Objekt existieren; Wert numerisch und > 0 (faengt
 -- 0/Negativ/"n/a"-Kurse ab -> sonst CHECK(price>0)-RAISE). ON CONFLICT (symbol, as_of) -> idempotenter
 -- Tages-Upsert.
+-- RUECKGABE: {ok:true, upserted, as_of} | {ok:false, reason, upserted:0} (kein prices-Objekt im Payload).
 CREATE OR REPLACE FUNCTION finance.fn_upsert_market_prices(p jsonb)
 RETURNS jsonb LANGUAGE plpgsql AS $$
 DECLARE
@@ -34,7 +36,7 @@ BEGIN
   END IF;
 
   -- Yahoo-Robustheit: der Cron liefert je Symbol die echte Quote-Waehrung mit (p->'currencies'). Vor dem INSERT
-  -- jede DISTINCT VALIDE (^[A-Z]{3}$) gefetchte Waehrung registrieren -> FK-Schutz fuer market_prices.currency
+  -- jede distinkte valide (^[A-Z]{3}$) gefetchte Waehrung registrieren -> FK-Schutz fuer market_prices.currency
   -- (idempotent, ON CONFLICT DO NOTHING in fn_ensure_currency). Pence ('GBp') normalisiert bereits der Cron.
   PERFORM finance.fn_ensure_currency(c)
   FROM (SELECT DISTINCT value AS c
@@ -49,7 +51,7 @@ BEGIN
   ),
   upserted AS (
     INSERT INTO finance.market_prices (symbol, isin, price, currency, as_of, source)
-    -- currency-Praezedenz: GEFETCHTE Yahoo-Waehrung gewinnt (der Preis IST in dieser Waehrung), mit ^[A-Z]{3}$-
+    -- currency-Praezedenz: gefetchte Yahoo-Waehrung gewinnt (der Preis IST in dieser Waehrung), mit ^[A-Z]{3}$-
     -- Regex-Backstop (invalider/leerer Fetch -> NULL -> Fallback h.currency = COALESCE(quote_currency,currency)).
     SELECT h.symbol, h.isin, ((p->'prices')->>h.symbol)::numeric,
            COALESCE(

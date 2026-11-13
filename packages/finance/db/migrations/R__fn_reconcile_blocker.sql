@@ -1,10 +1,11 @@
 -- ============================================================
--- fn_reconcile_blocker (READ HELPER) -- korrigierbare Gruende gegen einen Saldo-Abgleich (Audit Paket 2, Punkt 6/7)
---   EINE Adresse fuer fn_reconcile_account, fn_reconcile_accounts (Pass 1) und fn_reconcile_accounts_preview ->
---   Vorschau und Buchung lehnen identisch ab. NULL = abgleichbar, sonst der Grund (EN, fuers {ok:false}):
+-- fn_reconcile_blocker (READ HELPER, STABLE) -- korrigierbare Gruende gegen einen Saldo-Abgleich
+--   Die eine Adresse fuer fn_reconcile_account, fn_reconcile_accounts (Pass 1) und fn_reconcile_accounts_preview ->
+--   Vorschau und Buchung lehnen identisch ab. Eingabe: p_account_id, p_date (Stichtag).
+--   Rueckgabe: NULL = abgleichbar, sonst der Grund (EN, fuers {ok:false}):
 --     * Depot-/Kreditkonto (fn_bookable_account_reason),
 --     * Stichtag in der Zukunft,
---     * Stichtag VOR dem letzten Abgleich (eine Korrektur dort verschoebe einen schon bestaetigten Saldo).
+--     * Stichtag vor dem letzten Abgleich (eine Korrektur dort verschoebe einen schon bestaetigten Saldo).
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_reconcile_blocker(p_account_id int, p_date date)
 RETURNS text LANGUAGE sql STABLE AS $$

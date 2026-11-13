@@ -1,5 +1,6 @@
 -- ============================================================
--- finance.fn_account_emoji_picker(p_chat_id, p_account_id) -- Lesepfad von tool_send_account_emoji_picker, entscheidet nach Rolle
+-- fn_account_emoji_picker (READ, STABLE) -- Lesepfad von tool_send_account_emoji_picker, entscheidet nach Rolle
+--   Eingabe: p_chat_id (Telegram-Chat des Absenders), p_account_id.
 --   Owner: {ok:true, card} = Seite 0 (fn_account_emoji_page) in seiner Sprache. Mitglied: {ok:false, reason} mit den Zeichen samt
 --   Bezeichnung, weil der Tipp direkt speichert, tool_set_account aber fuer Mitglieder eine Owner-Karte verlangt: Das Mitglied nennt
 --   ein Zeichen, tool_set_account schickt die Karte an den Owner. Unbekannter Absender oder fehlendes Konto: {ok:false, reason}.

@@ -1,9 +1,9 @@
 ﻿#Requires -Version 5.1
 # Dot-gesourct von build_finance_tools.ps1 (Helper + Script-Scope-Creds im Parent-Scope).
 
-# --- tool_book_savings_goal_transfer (D1 Phase S: Einzahlen / Entnehmen / Umschichten) ---
+# --- tool_book_savings_goal_transfer (Einzahlen / Entnehmen / Umschichten) ---
 function Build-BookSavingsGoalTransfer {
-    # WS-B0: enge Paket-Schreibrolle (finance_rw, Least-Privilege D10) statt Owner-Cred.
+    # Enge Paket-Schreibrolle (finance_rw) statt Owner-Cred.
     $CRED_POSTGRES = $CRED_FINANCE_RW
     $trig = Build-Trigger @('savings_goal_name','from_account_name','to_account_name','amount','direction','transaction_date','purpose','to_amount')
 
@@ -20,12 +20,9 @@ function Build-BookSavingsGoalTransfer {
     $errGoal = Build-ToolError 'Goal ambiguous' @(660, 200) `
         "=Savings goal '{{ `$('Start').item.json.savings_goal_name }}' resolves to {{ `$('Resolve Goal').item.json.hit_count }} matches. Candidates: {{ JSON.stringify(`$('Resolve Goal').item.json.candidates) }}. Ask the user which exact goal."
 
-    # Nachtrag D (DB ist das Gesetz): Von/An loest die fn selbst auf (Namen; nur cash/Festgeld, Depot -> Verweis auf
-    # die Reservierung) und leitet fehlende aus dem Sparziel ab (Topf = Zielkonto der Sparrate, Von = Abbuchungskonto
-    # bzw. Reserve-Konto). Kein eigener Resolve-Knoten mehr; Kartenwerte aus dem Probelauf (effective).
-    # "DB ist das Gesetz": fn_book_savings_goal_transfer laeuft als Probelauf VOR der Karte (Betrag, Richtung, falsches
-    # Konto not_reserve, zu kleiner Anteil insufficient_share, interner Transfer {ok:false} -> keine Karte); derselbe
-    # Param-Satz geht nach dem Gate in den echten Write.
+    # Von/An loest die fn selbst auf (Namen; nur cash/Festgeld, Depot -> Verweis auf die Reservierung) und leitet
+    # fehlende aus dem Sparziel ab (Topf = Zielkonto der Sparrate, Von = Abbuchungskonto bzw. Reserve-Konto);
+    # darum kein Resolve-Knoten, Kartenwerte aus dem Probelauf (effective).
     $wg = New-FnWriteGate -Fn 'finance.fn_book_savings_goal_transfer' -DryPos @(660, 0) -WritePos @(1980, 0) `
         -WriteName 'Book savings movement (atomic)' `
         -WriteSelect "(r->>'ok')::boolean AS ok, r->>'reason' AS reason, r->'depot_risk' AS depot_risk, (r->>'debit_tx_id')::int AS debit_tx_id, (r->>'credit_tx_id')::int AS credit_tx_id, (r->>'current_amount')::numeric AS current_amount, (r->>'from_balance')::numeric AS from_balance, (r->>'to_balance')::numeric AS to_balance, (r->>'from_share')::numeric AS from_share, (r->>'to_share')::numeric AS to_share, (r->>'shortfall')::numeric AS shortfall, COALESCE(r->'savings_goal_reached'->>'note', '') AS savings_goal_reached" `
@@ -41,8 +38,8 @@ function Build-BookSavingsGoalTransfer {
             to_amount        = '$(''Start'').item.json.to_amount'
         })
 
-    # Strukturiertes Summary (Textkatalog). Konten, Waehrungen und Datum aus dem Probelauf (effective = von der fn
-    # eingesetzt/abgeleitet): Betrag in der Waehrung des Quellkontos, to_amount (nur bei Fremdwaehrung) in der des Ziels.
+    # Konten, Waehrungen und Datum aus dem Probelauf (effective = von der fn eingesetzt/abgeleitet): Betrag in der
+    # Waehrung des Quellkontos, to_amount (nur bei Fremdwaehrung) in der des Ziels.
     $S = "`$('Start').item.json"
     $E = "`$('Dry run').item.json.r.effective"
     $D = "`$('Dry run').item.json.r"
@@ -69,7 +66,7 @@ function Build-BookSavingsGoalTransfer {
 
     $retCancelled = Build-ToolCancelled 'Return cancelled' @(1980, 200) 'the book_savings_goal_transfer action'
 
-    # Atomarer Write via fn_book_savings_goal_transfer ($wg.Write): intern fn_book_transfer (zwei Beine) + Tag-Zuordnung je direction.
+    # Write: intern fn_book_transfer (zwei Beine) + Tag-Zuordnung je direction.
     $ifWriteOk = Build-If 'Write ok?' @(2200, 0) "={{ `$json.ok }}" 'true' 'equals' 'boolean'
 
     $errWrite = Build-ToolError 'Movement rejected' @(2420, 200) `
@@ -78,7 +75,7 @@ function Build-BookSavingsGoalTransfer {
     # Post-State: neuer Ziel-Stand + Salden beider Konten (von der fn berechnet).
     $ret = Build-Return @(2420, 0) @(
         ,@('ok','true','boolean')
-        # Sparziel kurz vor dem Termin im Depot (2026-11-06): nach "Risiko eingehen" festgehalten + Monat des letzten Checks
+        # Sparziel kurz vor dem Termin im Depot: nach "Risiko eingehen" festgehalten + Monat des letzten Checks
         ,@('depot_risk_recorded', "={{ !!`$('Book savings movement (atomic)').item.json.depot_risk }}", 'boolean')
         ,@('depot_risk_reminder_month', "={{ (`$('Book savings movement (atomic)').item.json.depot_risk || {}).reminder_month || '' }}", 'string')
         ,@('debit_tx_id', "={{ `$('Book savings movement (atomic)').item.json.debit_tx_id }}", 'number')
@@ -133,9 +130,9 @@ function Build-BookSavingsGoalTransfer {
         ) }
     }
 
-    # Kein /help-Beispiel (finance.help.savings_goals.exN): kein Routing-Golden (operiert auf bestehendem Ziel; keine dauerhafte Fixture -> Agent
-    # wuerde sonst nachfragen statt zu rufen, tier-Wahl wie set_savings_goal/set_holding). Abdeckung = db_test
-    # (test_fn_book_savings_goal_transfer) + E2E. Category-Beschreibung 'Sparziele' traegt die Bedeutung.
+    # Kein /help-Beispiel (finance.help.savings_goals.exN): kein Routing-Golden, weil das Tool auf einem bestehenden Ziel
+    # arbeitet und es keine dauerhafte Fixture gibt (der Agent wuerde nachfragen statt zu rufen). Abdeckung = db_test
+    # (test_fn_book_savings_goal_transfer) + E2E.
     return Build-Workflow 'agent.finance.tool_book_savings_goal_transfer' $nodes $conns `
         @{ Category = 'savings_goals' }
 }

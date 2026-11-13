@@ -1,24 +1,28 @@
 -- ============================================================
 -- fn_reconcile_account (ATOMIC WRITE)
---   Gleicht den Saldo eines Kontos ZUM STICHTAG ab (Audit Paket 2, Punkt 6): vergleicht den bestaetigten Saldo mit
---   fn_get_balance_as_of(Konto, Stichtag) -- vorher mit dem HEUTIGEN Saldo, sodass eine spaetere Buchung als Differenz
---   galt -- und legt bei Differenz eine Korrekturbuchung (category='reconciliation') AM Stichtag an; aktualisiert
+--   Gleicht den Saldo eines Kontos zum Stichtag ab: vergleicht den bestaetigten Saldo mit
+--   fn_get_balance_as_of(Konto, Stichtag) -- nicht mit dem heutigen Saldo, sonst galt eine spaetere Buchung als
+--   Differenz -- und legt bei Differenz eine Korrekturbuchung (category='reconciliation') am Stichtag an; aktualisiert
 --   last_reconciled_balance/last_reconciled_at. Der bestaetigte Saldo wird auf die Waehrungseinheit des Kontos
 --   gerundet (currencies.minor_unit), bevor verglichen/gespeichert wird.
---   Eingabe jsonb: account_id, confirmed_balance, reconciliation_date (opt -> heute), notes.
---   Betraege NATIV in der Kontowaehrung (currency im Return fuer Tool/Approval).
---   KORRIGIERBAR (kein Write) -> {ok:false, reason} ueber finance.fn_reconcile_blocker (eine Adresse mit Batch +
---   Vorschau): Depot-/Kreditkonto; Stichtag in der Zukunft; Stichtag VOR dem letzten Abgleich; vorher (ohne Sperre)
---   fehlender/leerer confirmed_balance.
---   OFFENE VORKOMMEN (Monats-Check WP-A): der bestaetigte Saldo enthaelt alle Bewegungen bis zum Stichtag. Offene
+--   Eingabe jsonb: account_id, confirmed_balance (Pflicht), reconciliation_date (opt -> heute; relativ wie "yesterday"
+--   erlaubt), notes (opt).
+--   Betraege nativ in der Kontowaehrung (currency im Return fuer Tool/Approval).
+--   Korrigierbar (kein Write) -> {ok:false, reason} ueber finance.fn_reconcile_blocker (eine Adresse mit Batch +
+--   Vorschau): Depot-/Kreditkonto; Stichtag in der Zukunft; Stichtag vor dem letzten Abgleich; vorher (ohne Sperre)
+--   fehlender/leerer confirmed_balance; nicht aufloesbares Datum -> {ok:false, code:'invalid_date'}.
+--   Offene Vorkommen: der bestaetigte Saldo enthaelt alle Bewegungen bis zum Stichtag. Offene
 --   Dauerauftrags-Vorkommen dieses Kontos (Quelle oder Transfer-Ziel) mit Faelligkeit <= Stichtag - 10 Tage und offene
 --   Zins-Vorkommen mit value_date <= Stichtag - 10 sind damit erledigt (passiert oder ausgefallen, der Saldo sagt es)
 --   -> als Skip materialisiert ("gebucht" bleibt abgeleitet, nur "uebersprungen" materialisiert). Die 10 Tage
 --   Karenz lassen eine spaet abgebuchte Faelligkeit (30.09. -> 02.10.) fuer den naechsten Auszug offen.
---   RUECKGABE: {ok:true, db_balance_before (Saldo zum Stichtag), confirmed_balance, difference, reconciliation_tx_id,
---   currency, balance_after (heutiger Saldo nach der Korrektur), skipped_occurrences (Anzahl so geschlossener
---   Vorkommen), skipped (Handles: [{recurring_payment_id, due_date} | {interest_period_end}] — die Ruecknahme eines
---   Kontoauszugs hebt genau diese wieder auf)}.
+--   Rueckgabe: {ok:true, db_balance_before (Saldo zum Stichtag), confirmed_balance, difference, reconciliation_tx_id
+--   (NULL ohne Differenz), currency, balance_after (heutiger Saldo nach der Korrektur), skipped_occurrences (Anzahl so
+--   geschlossener Vorkommen), skipped (Handles: [{recurring_payment_id, due_date} | {interest_period_end}] — die
+--   Ruecknahme eines Kontoauszugs hebt genau diese wieder auf), effective (aufgeloeste relative Datumsangaben +
+--   reconciliation_date)}.
+--   Seiteneffekte: sperrt die Saldo-Zeile; setzt last_reconciled_*; Korrekturbuchung (Trigger pflegt den Saldo);
+--   Skip-Zeilen in recurring_payment_skips/interest_skips.
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_reconcile_account(p jsonb)
 RETURNS jsonb LANGUAGE plpgsql AS $$
@@ -90,8 +94,8 @@ BEGIN
     SELECT balance INTO v_after FROM finance.account_balances WHERE account_id = v_account;
 
     -- Offene Vorkommen <= Stichtag-10 sind im bestaetigten Saldo enthalten -> Skip (s. Kopf); die Menge liefert
-    -- fn_reconcile_open_due (EINE Adresse mit der Karten-Vorschau von tool_reconcile_account).
-    -- Die Menge wird EINMAL berechnet (MATERIALIZED) und speist beide Skip-INSERTs.
+    -- fn_reconcile_open_due (die eine Adresse mit der Karten-Vorschau von tool_reconcile_account).
+    -- Die Menge wird einmal berechnet (MATERIALIZED) und speist beide Skip-INSERTs.
     WITH due AS MATERIALIZED (
         SELECT * FROM finance.fn_reconcile_open_due(v_account, v_date)),
     ins_r AS (

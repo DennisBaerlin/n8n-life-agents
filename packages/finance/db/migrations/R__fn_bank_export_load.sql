@@ -1,12 +1,12 @@
 -- ============================================================
 -- fn_bank_export_load (READ, STABLE) -- Bank-Export-Datei laden: Leser + Konto-Waechter + Sub-Konto-Waechter
---   Die EINE Lade-Sequenz fuer Export-Dateien (Bank-Import-Modul): fn_bank_export_normalize (Profil + kanonische
+--   Die eine Lade-Sequenz fuer Export-Dateien (Bank-Import-Modul): fn_bank_export_normalize (Profil + kanonische
 --   Zeilen) -> fn_bank_export_resolve_account (Konto nach Datei-Profil, Waehrungen der Datei) -> mehrere Sub-Konten in
 --   einer Datei (N26-Spaces, account_types) -> multiple_sub_accounts. Konsumenten: fn_get_recurring_suggestions,
 --   fn_replace_takeover_with_lots, fn_statement_prepare (Datei-Zweig).
 --   plpgsql (late-bound): fn_bank_export_normalize/_resolve_account liegen alphabetisch spaeter.
 --   Eingabe jsonb: {account_name (optional), table:{rows}}.
---   RUECKGABE: Leser-Rueckgabe (rows, unknown_rows, account_types, currencies, profile, printed_balance, statement?)
+--   Rueckgabe: Leser-Rueckgabe (rows, unknown_rows, account_types, currencies, profile, printed_balance, statement?)
 --   || {account_id, account_name} | {ok:false, code, reason, ...} (Codes des Lesers bzw. des Konto-Waechters,
 --   multiple_sub_accounts + account_types). account_unknown bei printed_balance traegt opening_anchor
 --   {opening_balance, opening_balance_date, balance_verified}.

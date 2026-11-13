@@ -1,10 +1,9 @@
 -- ============================================================
 -- fn_create_real_estate (ATOMIC WRITE)
---   Ein INSERT — als Function gefuehrt fuer Einheitlichkeit (jedes Write-Tool ruft fn_*),
---   damit spaetere Zusatz-Schritte (z. B. verknuepfte Zeilen) nahtlos in dieselbe Transaktion
---   passen. Eingabe jsonb: name, current_value (Betrag, auch deutsch geschrieben: "350.000"), value_updated_at, owner_person_id (Slug, NULL=Haushalt),
---   status, notes, living_area_m2, year_built (Instandhaltungsruecklage 2026-10-27, beide optional).
---   RUECKGABE: {ok:true, real_estate_id, card_lines (aehnlicher Eintrag + fn_maintenance_card_lines: Empfehlung nach
+--   Ein INSERT — als Function gefuehrt, weil jedes Write-Tool fn_* ruft.
+--   Eingabe jsonb: name, current_value (Betrag, auch deutsch geschrieben: "350.000"), value_updated_at, owner_person_id (Slug, NULL=Haushalt),
+--   status, notes, living_area_m2, year_built (beide optional, fuer die Instandhaltungsruecklage).
+--   Rueckgabe: {ok:true, real_estate_id, card_lines (aehnlicher Eintrag + fn_maintenance_card_lines: Empfehlung nach
 --   II. BV / "noch keine Ruecklage")}. Korrigierbar (Wert unlesbar, unbekannter status, Flaeche <= 0, Baujahr in der Zukunft oder
 --   ausserhalb 1800-2200) -> {ok:false, reason}.
 --   Ungueltiger owner_person_id-Slug -> FK-Backstop (RAISE); der Normalfall ist im Tool-Resolve
@@ -45,7 +44,7 @@ BEGIN
     INSERT INTO finance.real_estate
         (name, current_value, value_updated_at, owner_person_id, status, notes, living_area_m2, year_built)
     VALUES (p->>'name', v_cv, NULLIF(p->>'value_updated_at', '')::date,
-            NULLIF(p->>'owner_person_id', ''),   -- WS-4: typisierter Eigentuemer (Slug, im Tool aufgeloest); NULL=Haushalt.
+            NULLIF(p->>'owner_person_id', ''),   -- typisierter Eigentuemer (Slug, im Tool aufgeloest); NULL=Haushalt.
             COALESCE(NULLIF(p->>'status', ''), 'active')::finance.property_status,
             NULLIF(p->>'notes', ''),
             NULLIF(p->>'living_area_m2', '')::numeric, NULLIF(p->>'year_built', '')::smallint)

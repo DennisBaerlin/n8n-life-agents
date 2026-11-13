@@ -1,11 +1,12 @@
 -- ============================================================
 -- fn_goal_in_derisk_window (READ, STABLE) — "dieses Ziel ist zu kurzfristig fuers Depot"
---   Die EINE Adresse der Fenster-Regel des Glide Path (Owner-Entscheid 60 Monate, core.config
---   advisor.derisk_window_months): Kalendermonate von heute bis zum Zieldatum <= Fenster -> true, auch ein schon
+--   Die eine Adresse der Fenster-Regel des Glide Path (Fenster aus core.config advisor.derisk_window_months,
+--   Default 60, mindestens 1): Kalendermonate von heute bis zum Zieldatum <= Fenster -> true, auch ein schon
 --   verstrichenes Datum (Restmonate 0, das Geld wird jetzt gebraucht). Ohne Zieldatum (Ruecklagen) oder unbekanntes
 --   Ziel -> NULL; der Aufrufer entscheidet (die Ruecklagen-Arten haben eigene Konto-Regeln).
---   Konsumenten: fn_savings_goal_derisk_status (in_window = Zieldatum in der Zukunft UND diese Regel; daraus die bewusste
---   Ausnahme fn_goal_depot_risk_fold, 2026-11-06), Alert standing_order_ending.
+--   Eingabe: p_goal (Ziel-id).
+--   Konsumenten: fn_savings_goal_derisk_status (in_window = Zieldatum in der Zukunft und diese Regel; daraus die bewusste
+--   Ausnahme fn_goal_depot_risk_fold), Alert standing_order_ending.
 --   plpgsql (late-bound): core.fn_config_get gehoert einem anderen Paket.
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_goal_in_derisk_window(p_goal int)

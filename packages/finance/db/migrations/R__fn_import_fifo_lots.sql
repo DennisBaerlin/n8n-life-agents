@@ -4,7 +4,7 @@
 --   Eingabe: Zeilen einer Position [{date, kind buy|sell, shares (Betrag), gross, fee, row_no, ...}] in beliebiger Folge; je
 --   Tag zuerst Kaeufe. Jede Stueckzahl wird auf die Spaltenpraezision (8 Stellen) gerundet, Exporte liefern mehr.
 --   Ein Bestand 0 setzt neu an (fruehere Kaeufe sind vollstaendig verkauft).
---   RUECKGABE: {lots:[Zeile || {shares (Rest), orig (urspruengliche Stueck)}], unmatched_sell_shares}.
+--   Rueckgabe: {lots:[Zeile || {shares (Rest), orig (urspruengliche Stueck)}], unmatched_sell_shares}.
 --   unmatched_sell_shares > 0 = es wurde mehr verkauft als die Zeilen belegen (Datei unvollstaendig).
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_import_fifo_lots(p_rows jsonb)

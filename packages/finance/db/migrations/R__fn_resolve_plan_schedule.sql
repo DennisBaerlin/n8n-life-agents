@@ -1,11 +1,12 @@
 -- ============================================================
 -- fn_resolve_plan_schedule (READ — gespeicherter Sparplan-Rhythmus aus Nutzer-Rhythmus + Depot-Kalender)
 --   Der Nutzer nennt den Rhythmus wie in der Bank-App ("woechentlich", "zweimal im Monat", "monatlich"); die DB
---   leitet daraus den gespeicherten Rhythmus ab (Das LLM rechnet nicht). Genutzt von fn_create_savings_plan und
---   fn_set_savings_plan (EINE Ableitung).
+--   leitet daraus den gespeicherten Rhythmus ab. Genutzt von fn_create_savings_plan und
+--   fn_set_savings_plan (eine Ableitung).
+--   Eingabe: p_depot_id, p_unit, p_interval, p_dom, p_first (erste Ausfuehrung), p_days_input (roher Nutzer-Fakt).
 --   Kalender K = Nutzer-Antwort p_days_input (falls genannt) > accounts.plan_execution_days > fn_broker_plan_days(bank).
 --     p_days_input = roher Nutzer-Fakt nach needs_calendar: Monatstage ("2,9,16,23", "20., 5.", "2, 9, 16 und 23")
---     oder 'none' = kein fester Kalender. Pruefung per Regex VOR dem Cast -> {ok:false} statt RAISE.
+--     oder 'none' = kein fester Kalender. Pruefung per Regex vor dem Cast -> {ok:false} statt RAISE.
 --   Ableitung:
 --     month/n          -> Einzeltag = schedule_day_of_month bzw. Tag der ersten Ausfuehrung; bei festem K muss er
 --                         in K liegen. Nie eine Nachfrage (monatlich ist eindeutig), auch bei unbekanntem K.
@@ -15,7 +16,7 @@
 --                         K unbekannt -> {ok:false, needs_calendar:true} (der Agent fragt einmal nach den Terminen).
 --     sonst (day, week/>=3, year) bei festem K -> {ok:false}; ohne festes K unveraendert.
 --     Erste Ausfuehrung nicht auf einem Tag von K -> {ok:false, next_possible_date}.
---   RUECKGABE {ok, schedule_unit, schedule_interval, schedule_day_of_month, schedule_days_of_month (Array|null),
+--   Rueckgabe {ok, schedule_unit, schedule_interval, schedule_day_of_month, schedule_days_of_month (Array|null),
 --     calendar (Array|null = K), calendar_changed (K ist am Depot zu speichern)} bzw. {ok:false, reason,
 --     code (needs_calendar | off_calendar | rhythm_not_offered | -), needs_calendar?, next_possible_date?}. STABLE, schreibt nie (der Aufrufer speichert K im selben Write).
 -- ============================================================

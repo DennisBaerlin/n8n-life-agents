@@ -1,13 +1,16 @@
 -- ============================================================
--- finance.fn_apply_price_symbol(p jsonb) — Kurs-Symbol aus der Luecken-Karte uebernehmen (ATOMIC WRITE, 2026-10-27)
+-- fn_apply_price_symbol (ATOMIC WRITE) — Kurs-Symbol aus der Luecken-Karte uebernehmen
 --   Laeuft hinter dem [Uebernehmen]-Tipp der Karte aus agent.finance.cron_remind_missing_prices (der Tipp ist das
---   HITL). Zwischen Karte und Tipp koennen Stunden liegen -> Guard ZUERST: die Position ist noch gehalten, ihre
+--   HITL). Zwischen Karte und Tipp koennen Stunden liegen -> Guard zuerst: die Position ist noch gehalten, ihre
 --   Kurs-Luecke besteht noch (fn_holding_price_status <> ok) und ihr Feed-Symbol ist noch das der Karte
 --   (expected_feed_symbol). Sonst {ok:false, code:'already_resolved'} (der Owner hat inzwischen selbst korrigiert)
 --   bzw. code:'not_found'. Dann Delegation an fn_set_holding (Waehrungs-Validierung, Dubletten-Abfang).
---   quote_currency wird IMMER gesetzt (auch EUR): fn_set_holding kann sie nicht leeren, ein altes USD bliebe sonst.
---   Eingabe: holding_id, expected_feed_symbol, provider_symbol (Yahoo-Ticker, wird gross geschrieben), quote_currency.
---   RUECKGABE ok:true: { holding_id, feed_symbol } (Post-State: das jetzt angefragte Symbol).
+--   quote_currency wird immer gesetzt (auch EUR): fn_set_holding kann sie nicht leeren, ein altes USD bliebe sonst.
+--   Eingabe: holding_id, expected_feed_symbol, provider_symbol (Yahoo-Ticker, wird gross geschrieben), quote_currency;
+--   provider_symbol und quote_currency sind Pflicht (sonst {ok:false, reason}).
+--   Rueckgabe ok:true: { holding_id, feed_symbol } (Post-State: das jetzt angefragte Symbol); ok:false: reason,
+--   code already_resolved | not_found, oder die Ablehnung von fn_set_holding unveraendert.
+--   Seiteneffekt: sperrt die Position (FOR UPDATE), schreibt ueber fn_set_holding.
 --   Tests: tests/db/finance/test_fn_apply_price_symbol.sql
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_apply_price_symbol(p jsonb)

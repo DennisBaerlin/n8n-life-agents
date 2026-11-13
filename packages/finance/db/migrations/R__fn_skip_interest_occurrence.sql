@@ -1,11 +1,11 @@
 -- ============================================================
 -- fn_skip_interest_occurrence (ATOMIC WRITE — Spiegel zu fn_skip_recurring_occurrence)
 --   Materialisiert ein uebersprungenes Zins-Vorkommen (account_id, period_end) in interest_skips
---   -> fn_interest_due_open blendet es danach aus. Skip ist ERSATZLOS (kein Nachholen im Folgemonat;
+--   -> fn_interest_due_open blendet es danach aus. Skip ist ersatzlos (kein Nachholen im Folgemonat;
 --   period_start der Folgeperiode bleibt ihr regulaerer Schedule-Schritt). Idempotent (ON CONFLICT DO NOTHING).
 --   interest_skips.period_end ist der stabile Perioden-Identitaets-Key (kongruent zu
 --   fn_book_interest_occurrence; PK (account_id, period_end)). Eingabe jsonb: account_id, period_end.
---   RUECKGABE: {ok:true}.
+--   RUECKGABE: {ok:true}. RAISE bei unbekanntem Konto oder fehlendem period_end.
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_skip_interest_occurrence(p jsonb)
 RETURNS jsonb LANGUAGE plpgsql AS $$

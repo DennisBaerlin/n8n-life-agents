@@ -1,8 +1,8 @@
 -- ============================================================
 -- fn_statement_partner_lump (READ, STABLE) -- steckt eine eigene Ueberweisung schon im Rest des Gegenkontos? (Monats-Check)
---   Befund KW 45: der zuerst eingelesene Auszug kennt das andere Konto noch nicht und bucht die Zeile in seinen Rest; der
---   spaetere Auszug des anderen Kontos erkennt den Transfer und buchte ihn ein zweites Mal. Einzelzeilen sind nicht
---   gespeichert (Owner-Vorgabe), die Suche arbeitet nur auf den Aggregaten des Auszugs und seiner Rest-Buchung.
+--   Der zuerst eingelesene Auszug kennt das andere Konto noch nicht und bucht die Zeile in seinen Rest; der
+--   spaetere Auszug des anderen Kontos erkennt den Transfer und wuerde ihn ein zweites Mal buchen. Einzelzeilen sind nicht
+--   gespeichert, die Suche arbeitet nur auf den Aggregaten des Auszugs und seiner Rest-Buchung.
 --   Eingabe: p_other = Gegenkonto, p_line_date = Zeilendatum, p_leg = erwartetes Bein auf dem Gegenkonto (signiert),
 --   p_used = in dieser Vorschau schon Verrechnetes {"<statement_id>":{"open":n,"other":n}} (je Auszug + Quelle).
 --   Fenster je Auszug: Bein positiv (Zeile geht hier ab, kommt dort spaeter an) [period_start-5, period_end+1], Bein negativ
@@ -10,7 +10,7 @@
 --   so eine normale Ueberweisung, auch wenn dort offene Betraege liegen.
 --   Groessen: open = unmatched_in (Bein > 0) bzw. unmatched_out (Bein < 0); other = Rest - unmatched_in - unmatched_out
 --   - export_gap (blockierte Zeilen, Fremdbuchungen; anders als das Rueckgabefeld rest_other nie Vormerkungen).
---   exact: Rest-Buchung vorhanden UND (open = Bein ODER other = Bein), source open|other. Der Netto-Rest allein ist nie
+--   exact: Rest-Buchung vorhanden und (open = Bein oder other = Bein), source open|other. Der Netto-Rest allein ist nie
 --   exact: +900/-800 ergibt 100, ohne dass es eine solche Zeile gibt. possible: Zeile <= letzter Abgleich des Gegenkontos und
 --   |Bein| <= |open|; oder other mit passendem Vorzeichen und |Bein| <= |other|; oder Saldo-Abgleich per Chat
 --   (source chat, ohne Auszug: kein Zeitraum, nicht ruecknehmbar, daher nie exact) mit passendem Vorzeichen, |Bein| <= |Buchung|,

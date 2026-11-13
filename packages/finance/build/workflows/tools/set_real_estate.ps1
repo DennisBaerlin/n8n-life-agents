@@ -3,8 +3,7 @@
 
 # --- tool_set_real_estate (set_*: Immobilie aktualisieren/neubewerten) ---
 function Build-SetRealEstate {
-    # WS-B0: enge Paket-Schreibrolle (finance_rw, Least-Privilege D10) statt Owner-Cred.
-    # Dynamic-Scope: Build-Pg liest dieses $CRED_POSTGRES. Core-Tools nutzen die Owner-Cred.
+    # Enge Paket-Schreibrolle (finance_rw) statt Owner-Cred; Build-Pg liest $CRED_POSTGRES per Dynamic-Scope.
     $CRED_POSTGRES = $CRED_FINANCE_RW
     $trig = Build-Trigger @('real_estate_name','new_name','current_value','value_updated_at',
                            'owner_person','status','notes','living_area_m2','year_built')
@@ -23,7 +22,7 @@ function Build-SetRealEstate {
         "=SELECT current_value, status::text AS status, living_area_m2, year_built FROM finance.real_estate WHERE id = ((`$1::jsonb)->>'id')::int;" `
         ([ordered]@{ id = '$(''Resolve Real Estate'').item.json.id' })
 
-    # WS-4: optionalen Eigentuemer-Wechsel aufloesen (Name -> Slug; leer = unveraendert).
+    # Optionalen Eigentuemer-Wechsel aufloesen (Name -> Slug; leer = unveraendert).
     $resPerson = Build-ResolvePerson 'Resolve Person' @(880, 360) 'owner_person'
 
     $ifPersonBad = Build-If 'Person invalid?' @(1100, 360) `
@@ -32,8 +31,7 @@ function Build-SetRealEstate {
     $errPerson = Build-ToolError 'Person unresolved' @(1320, 480) `
         "=The owner person '{{ `$('Start').item.json.owner_person }}' could not be uniquely resolved ({{ `$('Resolve Person').item.json.hit_count }} match(es)). Candidates: {{ JSON.stringify(`$('Resolve Person').item.json.candidates) }}. Ask which household member."
 
-    # "DB ist das Gesetz": fn_set_real_estate laeuft als Probelauf VOR der Karte; derselbe Param-Satz geht nach dem Gate
-    # in den echten Write (partielles UPDATE; current_value ohne Datum -> heute).
+    # current_value ohne Datum -> heute (in fn_set_real_estate).
     $wg = New-FnWriteGate -Fn 'finance.fn_set_real_estate' -DryPos @(880, 0) -WritePos @(2200, 0) `
         -WriteName 'Set real estate (atomic)' `
         -WriteSelect "(r->>'ok')::boolean AS ok, r->>'reason' AS reason, (r->>'real_estate_id')::int AS real_estate_id" `
@@ -49,8 +47,7 @@ function Build-SetRealEstate {
             year_built       = '$(''Start'').item.json.year_built'
         })
 
-    # Strukturiertes Summary (Textkatalog): nur gelieferte Felder (-If je Zeile). Wert in EUR-Konvention
-    # (vorher hart " €" an Rohzahlen), Bewertungsdatum formatiert.
+    # Nur gelieferte Felder (-If je Zeile). Wert in EUR-Konvention, Bewertungsdatum formatiert.
     $S = "`$('Start').item.json"
     $R = "`$('Read Current').item.json"
     $P = "`$('Resolve Person').item.json"
@@ -66,7 +63,7 @@ function Build-SetRealEstate {
             from = (New-HitlValue -Kind enum -Value "$R.status" -Enum 'finance.enum.status')
             to   = (New-HitlValue -Kind enum -Value "$S.status" -Enum 'finance.enum.status') })
         (New-HitlLine 'core.label.note'              "$S.notes" -If "$S.notes")
-        # Instandhaltungsruecklage (2026-10-27): Gebaeude-Fakten alt -> neu; die Empfehlung nach II. BV haengt die fn an
+        # Instandhaltungsruecklage: Gebaeude-Fakten alt -> neu; die Empfehlung nach II. BV haengt die fn an
         (New-HitlLine 'finance.label.living_area'    "'finance.tpl.change'" -Kind tpl -If "$S.living_area_m2" -Params @{
             from = "($R.living_area_m2 ?? null)"
             to   = "$S.living_area_m2" })
@@ -83,7 +80,6 @@ function Build-SetRealEstate {
 
     $retCancelled = Build-ToolCancelled 'Return cancelled' @(2200, 240) 'the set_real_estate action'
 
-    # Atomarer Write via fn_set_real_estate ($wg.Write, 'Set real estate (atomic)').
     $ifWriteOk = Build-If 'Write ok?' @(2420, 0) "={{ `$json.ok }}" 'true' 'equals' 'boolean'
 
     $errWrite = Build-ToolError 'Update rejected' @(2640, 240) `

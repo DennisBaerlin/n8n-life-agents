@@ -1,9 +1,9 @@
 -- ============================================================
--- fn_enum_reason (READ HELPER) -- Enum-Guard fuer Write-fns (Import-Haertung 2026-10-22)
---   EINE Adresse fuer "unbekannter ENUM-Wert": liefert NULL, wenn p_value leer ist oder ein gueltiges Label von
---   p_enum, sonst den korrigierbaren Grund (EN, fuers {ok:false}) mit Feldname und erlaubten Werten. Vorher warf
---   ein Cast wie 'owned'::finance.property_status einen RAISE -> Owner-Alert (Einzel-Tool) bzw. Rohfehler nach der
---   Freigabe (Import). Aufrufer pruefen den ROHEN Text und casten erst danach (nie im DECLARE, der laeuft vor
+-- fn_enum_reason (READ HELPER) -- Enum-Guard fuer Write-fns
+--   Die eine Adresse fuer "unbekannter ENUM-Wert": liefert NULL, wenn p_value leer ist oder ein gueltiges Label von
+--   p_enum, sonst den korrigierbaren Grund (EN, fuers {ok:false}) mit Feldname p_field und erlaubten Werten. Ein
+--   Cast wie 'owned'::finance.property_status wirft dagegen RAISE -> Owner-Alert (Einzel-Tool) bzw. Rohfehler nach
+--   der Freigabe (Import). Aufrufer pruefen den rohen Text und casten erst danach (nie im DECLARE, der laeuft vor
 --   jedem Guard). Kein Trim: der Cast trimmt auch nicht.
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_enum_reason(p_enum regtype, p_value text, p_field text)

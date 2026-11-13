@@ -1,15 +1,13 @@
 -- ============================================================
 -- fn_delete_real_estate (ATOMIC WRITE) -- Hard-DELETE einer Fehlanlage
---   Immobilien haben keine recurring_payment und keine direkten Buchungen; ihre einzige
---   "Historie" sind verknuepfte Kredite (real_estate_id, FK RESTRICT). Daher reines
---   Delete-if-empty (kein Soft-Close-Status -- 'sold' braucht eine Verkaufsbuchung,
---   vertagt: sell_real_estate).
---   KORRIGIERBAR (kein RAISE -> kein Owner-Alert):
---     - von >=1 Kredit referenziert -> {ok:false, reason, loan_count}.
---     - von >=1 Instandhaltungsruecklage referenziert (jeder Status) -> {ok:false, reason, reserve_count}.
---   Eingabe jsonb: real_estate_name.
---   RUECKGABE: {ok:true, action:'deleted', real_estate_id}. RAISE nur fuer echte
---   Ausnahmen (nicht gefunden / mehrdeutig -> vorher aufloesen).
+--   Delete-if-empty: Immobilien haben keine recurring_payment und keine direkten Buchungen, ihre
+--   Historie sind verknuepfte Kredite und Ruecklagen (real_estate_id, FK RESTRICT). Kein Soft-Close-Status
+--   ('sold' braucht eine Verkaufsbuchung, siehe sell_real_estate).
+--   Eingabe jsonb: real_estate_name (Pflicht).
+--   Rueckgabe: {ok:true, action:'deleted', real_estate_id}.
+--   {ok:false} (kein RAISE -> kein Owner-Alert): code 'not_found' (candidates []) / 'ambiguous' (candidates);
+--   von >=1 Kredit referenziert -> reason + loan_count;
+--   von >=1 Instandhaltungsruecklage referenziert (jeder Status) -> reason + reserve_count.
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_delete_real_estate(p jsonb)
 RETURNS jsonb LANGUAGE plpgsql AS $$
@@ -33,7 +31,7 @@ BEGIN
     END IF;
     v_re_id := v_resolve.id;
 
-    -- Korrigierbar: von Krediten referenziert (FK RESTRICT wuerde sonst hart scheitern).
+    -- Von Krediten referenziert: als Daten statt hartem FK-Fehler.
     SELECT COUNT(*) INTO v_loan_count
     FROM finance.loans WHERE real_estate_id = v_re_id;
     IF v_loan_count > 0 THEN
@@ -44,8 +42,8 @@ BEGIN
             'loan_count', v_loan_count);
     END IF;
 
-    -- Korrigierbar: Instandhaltungsruecklage(n) verknuepft (jeder Status: auch eine geschlossene behaelt ihre
-    -- real_estate_id, Form-CHECK; FK RESTRICT wie bei Krediten). Verkaufen statt loeschen.
+    -- Instandhaltungsruecklage(n) verknuepft, jeder Status: auch eine geschlossene behaelt ihre real_estate_id
+    -- (Form-CHECK; FK RESTRICT wie bei Krediten).
     SELECT COUNT(*) INTO v_reserve_count
     FROM finance.savings_goals WHERE real_estate_id = v_re_id;
     IF v_reserve_count > 0 THEN

@@ -1,20 +1,21 @@
 -- ============================================================
 -- fn_settle_loan (ATOMIC WRITE) -- vorzeitige Abloesung / Sondertilgung auf Null
---   Bucht die komplette Abloesung in EINER Transaktion (2 Beine, gemeinsame group_id):
+--   Bucht die komplette Abloesung in einer Transaktion (2 Beine, gemeinsame group_id):
 --   (1) Abbuchung vom Giro (-settlement_amount, category='settlement'),
 --   (2) Tilgung der Restschuld auf das Kreditkonto (+remaining_debt, category='settlement') -> Saldo 0.
 --   Implizit interest = settlement_amount - remaining_debt (Vorfaelligkeits-/Restzins). Danach
---   loan.status='paid_off' und die Rate-rp wird BEENDET (status='paused' + valid_to=settlement_date;
+--   loan.status='paid_off' und die Rate-rp wird beendet (status='paused' + valid_to=settlement_date;
 --   das valid_to nimmt sie aus dem Cashflow -- payment_status hat keinen eigenen 'ended'-Wert) ueber den
 --   gemeinsamen Helfer fn_mark_loan_paid_off. Der Zustand davor (Kredit-Status, Raten-rp/-Status/-Ende) landet in
 --   loans.settled_from -> fn_void_transaction stellt ihn exakt her.
---   KORRIGIERBAR (kein RAISE): keine Restschuld (already settled) bzw. settlement_amount < Restschuld
+--   Korrigierbar (kein RAISE): keine Restschuld (already settled) bzw. settlement_amount < Restschuld
 --     (Teilzahlung -> book_loan_payment) -> {ok:false, reason, remaining_debt}; Belastungskonto in anderer Waehrung als
---     das Kreditkonto (fn_loan_debit_currency_reason) -> {ok:false, reason}.
---   Eingabe jsonb: loan_name, debit_account_id (n8n-resolved), settlement_date,
+--     das Kreditkonto (fn_loan_debit_currency_reason) oder Depot-/Kreditkonto (fn_bookable_account_reason) ->
+--     {ok:false, reason}; Kredit nicht gefunden / mehrdeutig -> {ok:false, code:'not_found'|'ambiguous', candidates};
+--     nicht aufloesbares Datum -> code invalid_date.
+--   Eingabe jsonb: loan_name, debit_account_id (n8n-resolved), settlement_date (optional; leer = heute, auch relativ),
 --     settlement_amount (optional; default = Restschuld).
---   RUECKGABE: {ok:true, settlement_tx_id, principal_tx_id, remaining_debt, interest}.
---   RAISE nur bei not-found / mehrdeutig.
+--   RUECKGABE: {ok:true, settlement_tx_id, principal_tx_id, remaining_debt, interest, effective}.
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_settle_loan(p jsonb)
 RETURNS jsonb LANGUAGE plpgsql AS $$
@@ -34,7 +35,7 @@ DECLARE
     v_dates    JSONB;
 BEGIN
     -- relative Datumsangabe ("yesterday") -> ISO; nicht aufloesbar -> {ok:false, code:'invalid_date'}.
-    -- Leer = heute in der Haushalts-Zeitzone (vorher CURRENT_DATE = Server-Zeitzone, Drift zu core.fn_today).
+    -- Leer = heute in der Haushalts-Zeitzone (core.fn_today, nicht CURRENT_DATE = Server-Zeitzone).
     v_dates := core.fn_resolve_input_dates(p, ARRAY['settlement_date']);
     IF NOT (v_dates->>'ok')::boolean THEN RETURN v_dates; END IF;
     p := v_dates->'p';
@@ -53,7 +54,7 @@ BEGIN
 
     SELECT * INTO v_loan FROM finance.loans WHERE id = v_resolve.loan_id;
 
-    -- Korrigierbar (Audit Paket 2, Kontotyp): die Abloesung zahlt ein Geld-Konto, nie ein Depot oder Kreditkonto.
+    -- Korrigierbar: die Abloesung zahlt ein Geld-Konto, nie ein Depot oder Kreditkonto.
     v_reason := COALESCE(finance.fn_bookable_account_reason(v_debit),
                          -- die Abloesesumme ist in Kreditwaehrung
                          finance.fn_loan_debit_currency_reason(v_debit, v_loan.loan_account_id));
@@ -99,7 +100,7 @@ BEGIN
             'Ablösung Tilgung ' || v_loan.name, v_group)
     RETURNING id INTO v_prin_tx;
 
-    -- 3. Kredit beendet + Rate beenden ueber den gemeinsamen Helfer (Audit Paket 2; vorheriger Zustand in
+    -- 3. Kredit beendet + Rate beenden ueber den gemeinsamen Helfer (vorheriger Zustand in
     --    settled_from -> Void stellt ihn exakt wieder her, inkl. vorher pausiert und vertraglichem Raten-Ende).
     PERFORM finance.fn_mark_loan_paid_off(v_loan.id, v_date);
 

@@ -1,6 +1,6 @@
 -- ============================================================
 -- fn_bank_export_normalize_bondora (READ, IMMUTABLE) -- Profil bondora_go_grow_v1 des Bank-Import-Moduls
---   Fester Leser in Code, kein LLM. Aufruf NUR ueber den Dispatcher fn_bank_export_normalize: Eingabe {columns
+--   Fester Leser in Code, kein LLM. Aufruf nur ueber den Dispatcher fn_bank_export_normalize: Eingabe {columns
 --   (Spaltenname -> Index), rows (nach der Kopfzeile Date|Payment type|In|Out|Balance), preamble (Kopfblock davor), header_row_no}.
 --   Kopfblock (Bondora-Kontoauszug, Blatt "Data"): Labels Opening / Payments in / Payments out / Closing mit dem Wert
 --   in der naechsten nicht leeren Zelle rechts daneben, Zeitraum M/D/YYYY-M/D/YYYY (US-Format) -> statement
@@ -18,7 +18,7 @@
 --   Pruefungen (sonst export_invalid mit row_no): laufender Saldo je Zeile (vorige Balance bzw. Opening + cash = Balance;
 --   Info-Zeile: Balance unveraendert), Opening + Summe = Closing, Summe In/Out = Payments in/out. Absteigend sortierte
 --   Dateien werden in Datumsfolge geprueft.
---   RUECKGABE: {ok:true, rows:[{row_no, date, kind, sub_kind, cash_amount, transfer_fee, name, purpose, type, reason}],
+--   Rueckgabe: {ok:true, rows:[{row_no, date, kind, sub_kind, cash_amount, transfer_fee, name, purpose, type, reason}],
 --   unknown_rows:[{row_no, date, type, cash_amount, name, reason}], info_count, statement:{period_start, period_end,
 --   opening_balance, closing_balance}, legacy_return_label, account_types:[], currencies:[]}
 --   | {ok:false, code:'export_invalid', reason, row_no?} (auch: Zeile ausserhalb des gedruckten Zeitraums, Zeitraum verkehrt).

@@ -1,9 +1,9 @@
 -- ============================================================
--- fn_advisor_snapshot (READ, STABLE) -- das Gesamtbild des Finanzberaters in EINER Abfrage (2026-11-02)
---   Befund 2026-11-01: der Plan-Knopf riss maxIterations, weil der Gateway parallele Tool-Aufrufe abschaltet und jede
---   Lese-Abfrage damit eine Iteration kostet. Der Berater liest das Bild beim ersten Pre-Fill eines Gespraechs, beim
---   Plan-Knopf und beim Plan-Review einmal hier (postgres_select, finance_ro); enge Fragen bleiben bei den Einzel-Views.
---   Die fn rechnet NICHTS: sie fasst nur zusammen, was die Views und Funktionen schon liefern.
+-- fn_advisor_snapshot (READ, STABLE) -- das Gesamtbild des Finanzberaters in einer Abfrage
+--   Der Gateway schaltet parallele Tool-Aufrufe ab, jede Lese-Abfrage kostet damit eine Iteration (maxIterations).
+--   Der Berater liest das Bild beim ersten Pre-Fill eines Gespraechs, beim Plan-Knopf und beim Plan-Review einmal
+--   hier (postgres_select, finance_ro); enge Fragen bleiben bei den Einzel-Views. Keine Eingabe.
+--   Die fn rechnet nichts: sie fasst nur zusammen, was die Views und Funktionen schon liefern.
 --   Zeilen = to_jsonb(view) minus feste Entfernliste: Vertrags-/Kontonummern und notes (Freitext ohne Laengengrenze; wer
 --   sie braucht, liest die Einzel-View) plus rein technische Spalten. Neue fachliche View-Spalten kommen so automatisch
 --   mit; eine neue Nummern-Spalte oder eine neue finance-View faellt im Test auf (Drift-Waechter, Ausschlussliste dort).
@@ -16,9 +16,9 @@
 --   Kaufkraftwerte der Rente fehlen hier: sie brauchen die Plan-Inflation (eigener Aufruf von fn_pension_outlook). Darum
 --   entfaellt auch real_note: der Satz „keine Inflationsannahme im Plan“ stimmt nur, wenn der Aufrufer sie kennt.
 --   plpgsql: liest R__v_*-Views und alphabetisch spaetere fns (late-bound). INVOKER (finance_ro liest alle Quellen).
---   Erfasstes ist nie unsichtbar (Befund 2026-11-02): recurring traegt auch Zahlungen, deren erster Termin innerhalb eines
+--   Erfasstes ist nie unsichtbar: recurring traegt auch Zahlungen, deren erster Termin innerhalb eines
 --   Rhythmus aussteht (starts_on, sie zaehlen), planned_recurring die, die spaeter starten (zaehlen noch nicht).
---   RUECKGABE jsonb, Listen (leer = []): persons, recurring, planned_recurring, accounts (+ has_history, everyday_per_day, everyday_per_month,
+--   Rueckgabe jsonb, Listen (leer = []): persons, recurring, planned_recurring, accounts (+ has_history, everyday_per_day, everyday_per_month,
 --   everyday_provisional nur an Geld-Konten), networth, savings_plans, standing_orders, loans, insurances, pensions,
 --   pension_outlook, real_estate, goals (+ goal_status), depot_risk (fn_savings_goal_derisk_status je Ziel im Fenster:
 --   Rat, Entscheidung accepted/acceptance_expired, letzter Check), depot_holdings, depot_performance, warnings (je Konto:
@@ -84,7 +84,7 @@ BEGIN
                     FROM finance.savings_goal_progress v
                    WHERE v.status = 'active'),
         'emergency_reserve', finance.fn_emergency_reserve_status(),
-        -- Sparziel kurz vor dem Termin im Depot (2026-11-06): Glide Path + bewusste Entscheidung je Ziel im Fenster
+        -- Sparziel kurz vor dem Termin im Depot: Glide Path + bewusste Entscheidung je Ziel im Fenster
         -- (accepted = der Nutzer hat das Risiko bewusst angenommen -> hoechstens ein Satz, kein Vorschlag)
         'depot_risk', (SELECT COALESCE(jsonb_agg(to_jsonb(d) ORDER BY d.goal_id), '[]'::jsonb)
                          FROM finance.fn_savings_goal_derisk_status() d WHERE d.in_window),

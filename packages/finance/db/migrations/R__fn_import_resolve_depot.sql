@@ -1,20 +1,21 @@
 -- ============================================================
--- fn_import_resolve_depot (READ, STABLE) -- Depot einer stock_buy-Import-Zeile aus GEDRUCKTEN Angaben bestimmen
---   Befund 2026-10-23: die Vision-Extraktion riet den Depot-Namen und ordnete die Positionen einer
---   Vermoegensuebersicht einem falschen Depot zu, obwohl Depotnummer und Inhaber gedruckt waren.
+-- fn_import_resolve_depot (READ, STABLE) -- Depot einer stock_buy-Import-Zeile aus gedruckten Angaben bestimmen
+--   Die Vision-Extraktion raet den Depot-Namen; Depotnummer und Inhaber stehen aber gedruckt im Dokument und
+--   ordnen die Positionen einer Vermoegensuebersicht deterministisch dem richtigen Depot zu.
+--   Eingabe: p_batch_id, p (Zeilen-Payload: depot, depot_number, depot_holder, isin, symbol).
 --   Reihenfolge (deterministisch, kein LLM):
---     1. depot_number (normalisiert, fn_normalize_account_number) = Kontonummer GENAU EINES aktiven Depots passenden
+--     1. depot_number (normalisiert, fn_normalize_account_number) = Kontonummer genau eines aktiven Depots passenden
 --        Typs (ISIN -> stocks_depot, nur Symbol -> crypto_depot, weder noch = Cash-Zeile -> jeder) im Bestand oder einer Konto-Zeile dieses Batches
 --        -> dieses Depot (die Nummer ist eine Identitaet, sie schlaegt jeden Namen)
 --     2. das extrahierte Depot existiert (Bestand oder Batch, passender Typ) und widerspricht den gedruckten
 --        Angaben nicht (fn_import_depot_conflict) -> bleibt (auch ein Haushalts-Depot oder ein neues Batch-Depot)
---     3. depot_holder (gedruckter Inhaber, weicher Hinweis) -> core.fn_resolve_person genau 1 Person -> genau EIN
+--     3. depot_holder (gedruckter Inhaber, weicher Hinweis) -> core.fn_resolve_person genau 1 Person -> genau ein
 --        aktives Depot passenden Typs dieser Person im Bestand, dessen gespeicherte Nummer fehlt oder zur gedruckten
 --        passt (ein Depot mit anderer Nummer waere sofort ein Widerspruch)
 --     4. sonst NULL (der extrahierte bzw. vom Nutzer genannte Name bleibt)
 --   Nur fn_import_stage ruft sie (beim Einlesen), nie fn_import_update_row: eine Depot-Korrektur des Nutzers wird
 --   nicht still zurueckgedreht. Widersprueche meldet fn_import_depot_conflict als Zeilenfehler.
---   RUECKGABE jsonb {depot, source: number|holder} | NULL (= Name bleibt).
+--   Rueckgabe: jsonb {depot, source: number|holder} | NULL (= Name bleibt).
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_import_resolve_depot(p_batch_id uuid, p jsonb)
 RETURNS jsonb LANGUAGE plpgsql STABLE AS $$

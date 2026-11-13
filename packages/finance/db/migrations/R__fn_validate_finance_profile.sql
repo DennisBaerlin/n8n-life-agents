@@ -1,18 +1,20 @@
 -- ============================================================
--- finance.fn_validate_finance_profile (WS-B1 / D12 — Validator-Stub-Split)
+-- fn_validate_finance_profile (READ HELPER, STABLE)
 --   Strukturvalidierung des paket-besessenen 'finance_profile'-Sidecars (Steuerklasse/
 --   Vorsorgesystem/geplantes Renteneintrittsalter + Single-Writer-Referenz auf family).
---   Ausgelagert aus dem Core-Validator agent.fn_validate_household_facts: Core kennt die
---   finance_profile-Strukturregeln nicht mehr; der Core-Trigger trg_core_contexts_validate_facts_fn
---   dispatcht GENERISCH ueber die Registry core.context_validators hierher (WS-B1: NEW.name ->
---   validate_fn -> dyn. EXECUTE, kein hartkodierter finance-Name im Core) -> fehlt die Registry-Zeile
---   (Paket nicht installiert/deinstalliert), validiert Core 'family' weiter und die finance_profile-
---   Strukturregeln entfallen still (graceful degradation).
+--   Der Core-Trigger trg_core_contexts_validate_facts_fn dispatcht generisch ueber die Registry
+--   core.context_validators hierher (NEW.name -> validate_fn -> dyn. EXECUTE, kein hartkodierter
+--   finance-Name im Core) -> fehlt die Registry-Zeile (Paket nicht installiert/deinstalliert),
+--   validiert Core 'family' weiter und die finance_profile-Strukturregeln entfallen still
+--   (graceful degradation).
 --
 --   Form + Referenz der persons[] (Array von Objekten, eindeutiges person_id, jede person_id existiert in
---   family) prueft seit Phase A GENERISCH der Core-Validator agent.fn_validate_household_facts (reservierte
---   Core-Form-Keys) -> hier NICHT wiederholt, ebenso die Derived-Value-Denylist. Diese fn prueft nur die
---   finance-eigenen Felder.
+--   family) prueft generisch der Core-Validator agent.fn_validate_household_facts (reservierte
+--   Core-Form-Keys) -> hier nicht wiederholt, ebenso die Derived-Value-Denylist. Diese fn prueft nur die
+--   finance-eigenen Felder je persons[]-Eintrag: planned_retirement_age (Ganzzahl 40..80), steuerklasse
+--   (Ganzzahl 1..6), vorsorgesystem (grv|versorgungswerk|beamtenversorgung|none), as_of (gueltiges Datum, nicht
+--   in der Zukunft); null-Werte sind erlaubt.
+--   Eingabe: p_facts jsonb.
 --
 --   RUECKGABE: NULL = gueltig; sonst eine englische Fehlermeldung (Layer 1), die der Core-Trigger
 --   in eine RAISE EXCEPTION uebersetzt (Backstop; der freundliche {ok:false}-Pfad liegt im HITL-Tool).

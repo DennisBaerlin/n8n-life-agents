@@ -198,7 +198,7 @@ END $$;
 --   und nur Punkte aus der Uebergabe (created_at = closed_at einer done-Aufgabe) oder nachgeholte.
 --   Empfaenger wie fn_bank_end_claim: Owner alle (cron_enable.remind_bank_todo), Inhaber partner mit Kopplung die eigenen
 --   (remind_bank_todo_person), Kinder nie. Merker 'finance:bank_todo', Key <id>:r<runde>:owner|<person_id>, je Empfaenger:
---   Wer heute nicht darf, verliert nichts; im Modus cron Budget je Empfaenger (Slot 'bank_todo' normal, ohne Platz kein Merker). handoff beansprucht 30 Minuten und liefert latches (Commit/Reset in R2).
+--   Wer heute nicht darf, verliert nichts; im Modus cron Budget je Empfaenger (Slot 'bank_todo' normal, ohne Platz kein Merker). handoff beansprucht 30 Minuten und liefert latches (Commit/Reset macht core.sub_plan_rollout_next via finance.fn_plan_rollout ueber core.fn_notify_commit/core.fn_notify_resolve).
 --   Eingaben: p_on (default heute), p_mode. Rueckgabe: [{recipient, chat_id, groups, latches}], Owner zuerst. Setzt
 --   first_sent_at. Tests: tests/db/finance/test_fn_bank_todos.sql
 -- ============================================================

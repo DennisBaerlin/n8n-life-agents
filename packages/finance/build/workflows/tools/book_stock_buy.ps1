@@ -1,12 +1,11 @@
 ﻿#Requires -Version 5.1
 # Dot-gesourct von build_finance_tools.ps1 (Helper + Script-Scope-Creds im Parent-Scope).
 
-# --- 3. tool_book_stock_buy (Playbook 5.3) ---------------
+# --- tool_book_stock_buy ---
 function Build-BookStockBuy {
-    # WS-B0: enge Paket-Schreibrolle (finance_rw, Least-Privilege D10) statt Owner-Cred.
-    # Dynamic-Scope: Build-Pg liest dieses $CRED_POSTGRES. Core-Tools nutzen die Owner-Cred.
+    # Enge Paket-Schreibrolle (finance_rw) statt Owner-Cred; Build-Pg liest $CRED_POSTGRES per Dynamic-Scope.
     $CRED_POSTGRES = $CRED_FINANCE_RW
-    # Paket-interne Cross-Refs (Phase D: hier statt in der Engine). Beide SOFT — 2-Pass-Bootstrap beim Erst-Build.
+    # Paket-interne Cross-Refs; die ersten beiden -Soft (2-Pass-Bootstrap beim Erst-Build).
     $ResolveYahooSymbolId = Get-RequiredWorkflowId 'agent.finance.sub_resolve_yahoo_symbol' 'Build-BookStockBuy' -Soft
     $MarketPricesCronId   = Get-RequiredWorkflowId 'agent.finance.cron_refresh_market_prices' 'Build-BookStockBuy' -Soft
     $FxCronId             = Get-RequiredWorkflowId 'agent.finance.cron_refresh_fx_rates' 'Build-BookStockBuy'
@@ -25,9 +24,9 @@ function Build-BookStockBuy {
         "=SELECT d.settlement_account_id, d.currency, s.name AS settlement_name, finance.fn_unit_price_from_total(finance.fn_parse_numeric_or_null((`$1::jsonb)->>'cost_basis_total', true) - CASE WHEN NULLIF((`$1::jsonb)->>'existing_position', '')::boolean IS TRUE THEN 0 ELSE COALESCE(finance.fn_parse_numeric_or_null((`$1::jsonb)->>'order_fee', false), 0) END, finance.fn_parse_numeric_or_null((`$1::jsonb)->>'shares', false)) AS derived_price FROM finance.accounts d LEFT JOIN finance.accounts s ON s.id = d.settlement_account_id WHERE d.id = ((`$1::jsonb)->>'depot_id')::int;" `
         ([ordered]@{ depot_id = '$(''Resolve Depot'').item.json.id'; cost_basis_total = '$(''Start'').item.json.cost_basis_total'; shares = '$(''Start'').item.json.shares'; order_fee = '$(''Start'').item.json.order_fee'; existing_position = '$(''Start'').item.json.existing_position' })
 
-    # Kauf-Zeit-Symbol-Validierung (WS-2): Yahoo-Symbol fuer die ISIN ermitteln, gegen die genannte Preis-
-    # Waehrung (quote_currency, Default Depot-Waehrung) + Kaufkurs gegenchecken. Deterministisch, non-blocking
-    # (Sub faengt Yahoo-Ausfall -> {verified:false, provider_symbol:raw}). LIEGT VOR dem HITL-Gate, NICHT in der
+    # Kauf-Zeit-Symbol-Validierung: Yahoo-Symbol fuer die ISIN ermitteln, gegen die genannte Preis-
+    # Waehrung (quote_currency, Default Depot-Waehrung) + Kaufkurs gegenchecken. Non-blocking
+    # (Sub faengt Yahoo-Ausfall -> {verified:false, provider_symbol:raw}); liegt vor dem HITL-Gate, nicht in der
     # atomaren fn. Ergebnis -> HITL-Anzeige + vorgeschlagenes provider_symbol in die Buchung.
     $resolveYahoo = Build-CallWorkflow 'Resolve Yahoo symbol' @(880, -200) $ResolveYahooSymbolId 'agent.finance.sub_resolve_yahoo_symbol' `
         ([ordered]@{
@@ -42,10 +41,8 @@ function Build-BookStockBuy {
             chat_id         = "={{ `$('Start').item.json.chat_id }}"
         })
 
-    # "DB ist das Gesetz": fn_book_stock_buy laeuft als Probelauf VOR der Karte (Depot-Typ-Mismatch, nicht-positive
-    # Werte -> {ok:false} ohne Karte); derselbe Param-Satz geht nach dem Gate in den echten Write. Der Probelauf
-    # liegt NACH dem Yahoo-Sub (dessen provider_symbol steckt in den Params) und VOR den Post-Write-Subs.
-    # Holding suchen/anlegen + EINE Kauf-Transaktion in EINER Transaktion; Order-Gebuehr in amount gefaltet +
+    # Der Probelauf liegt nach dem Yahoo-Sub (dessen provider_symbol steckt in den Params) und vor den Post-Write-Subs.
+    # Write: Holding suchen/anlegen + eine Kauf-Transaktion in einer Transaktion; Order-Gebuehr in amount gefaltet +
     # separat in order_fee; shares/avg pflegt der Trigger (avg nur aus buy).
     $wg = New-FnWriteGate -Fn 'finance.fn_book_stock_buy' -DryPos @(880, 0) -WritePos @(2200, 0) `
         -WriteName 'Create buy (atomic)' `
@@ -61,7 +58,7 @@ function Build-BookStockBuy {
             order_fee        = '$(''Start'').item.json.order_fee'
             transaction_date = '$(''Start'').item.json.transaction_date'
             asset_class      = '$(''Start'').item.json.asset_class'
-            # Plausi-Pflicht (2026-10-27): ein Yahoo-Vorschlag wird nur gespeichert, wenn er verifiziert (Waehrung +
+            # Plausi-Pflicht: ein Yahoo-Vorschlag wird nur gespeichert, wenn er verifiziert (Waehrung +
             # Kurs-Groessenordnung) oder eine plausible Fremdwaehrungs-Notierung ist; sonst nur ein vom Nutzer genanntes.
             provider_symbol  = '$(''Resolve Yahoo symbol'').item.json.adoptable === true ? $(''Resolve Yahoo symbol'').item.json.provider_symbol : ($(''Start'').item.json.provider_symbol || "")'
             quote_currency   = '$(''Start'').item.json.quote_currency'
@@ -71,7 +68,7 @@ function Build-BookStockBuy {
         })
 
     # --- HITL approval gate (before the atomic write) ---
-    # Strukturiertes Summary (Textkatalog). Preis-Anzeige in der genannten Waehrung (quote_currency, sonst Depot-Waehrung);
+    # Preis-Anzeige in der genannten Waehrung (quote_currency, sonst Depot-Waehrung);
     # Kurs-Symbol-Zeile = Yahoo-Validierung (Warnung "nicht verifiziert" steht als Hinweis unter den Zeilen).
     # Verrechnungskonto = das belastete Konto; bei existing_position (Bestandsuebernahme) bleibt es unveraendert -> Hinweis.
     $S = "`$('Start').item.json"
@@ -89,33 +86,29 @@ function Build-BookStockBuy {
 
     $retCancelled = Build-ToolCancelled 'Return cancelled' @(2200, 200) 'the book_stock_buy action'
 
-    # Atomarer Write via Function ($wg.Write, Params siehe oben).
-    # fn liefert ok/reason: Depot-Typ-Mismatch (ISIN auf crypto / Crypto auf stocks) -> {ok:false}.
-    # Korrigierbare Ablehnung aus der fn -> weiche Rueckfrage (kein Owner-Alert).
     $ifWriteOk = Build-If 'Write ok?' @(2420, 0) "={{ `$json.ok }}" 'true' 'equals' 'boolean'
 
     $errWrite = Build-ToolError 'Buy rejected' @(2640, 240) `
         "={{ `$('Create buy (atomic)').item.json.reason }}"
 
     # Sofort-Preis-Fetch (Dual-Trigger): nach erfolgreichem Kauf den Markt-Preis-Cron als Sub aufrufen, damit
-    # eine NEU angelegte Position sofort einen Kurs hat (kein null_price-Fenster bis zum naechsten 07:00-Lauf).
-    # EINE Logik-Adresse fuer Symbol-Split/Fetch/Upsert (analog set_holding -> FX-Cron).
+    # eine neu angelegte Position sofort einen Kurs hat (kein null_price-Fenster bis zum naechsten 07:00-Lauf).
+    # Eine Logik-Adresse fuer Symbol-Split/Fetch/Upsert.
     $callPriceRefresh = Build-CallWorkflow 'Refresh market prices' @(2860, -160) $MarketPricesCronId 'agent.finance.cron_refresh_market_prices' `
         ([ordered]@{ chat_id = "={{ `$('Start').item.json.chat_id }}" })
 
     # Fehlt fuer eine aktive Waehrung der Wechselkurs, sofort holen (sonst bleibt market_value_eur bis zum naechsten
-    # Schedule NULL). Der Markt-Preis-Fetch oben deckt NUR den Kurs, nicht den Waehrungsumrechnungssatz.
+    # Schedule NULL). Der Markt-Preis-Fetch oben deckt nur den Kurs, nicht den Waehrungsumrechnungssatz.
     $fxGap = New-FinanceFxGapCheck -CheckPos @(2980, -340) -IfPos @(3080, -160)
 
     $callFxRefresh = Build-CallWorkflow 'Refresh FX rates' @(3300, -280) $FxCronId 'agent.finance.cron_refresh_fx_rates' `
         ([ordered]@{ chat_id = "={{ `$('Start').item.json.chat_id }}" })
 
-    # Kurs-Status NACH dem Sofort-Abruf (Owner 2026-10-27: die Antwort sagt, ob ein Kurs gefunden wurde).
+    # Kurs-Status nach dem Sofort-Abruf: die Antwort sagt, ob ein Kurs gefunden wurde.
     $priceStatus = New-FinancePriceStatusNode -Pos @(3520, -160) -HoldingIdExpr '$(''Create buy (atomic)'').item.json.holding_id'
     # Der Kauf ist schon gebucht: ein Fehler im Kurs-/FX-Abruf darf ihn nie als Fehler melden (weiter zum Kurs-Status).
     foreach ($n in @($callPriceRefresh, $callFxRefresh)) { $n['onError'] = 'continueRegularOutput'; $n['alwaysOutputData'] = $true }
 
-    # Post-State kommt aus der fn (settlement_balance/total_shares/avg) — kein separater Read-back noetig.
     $ret = Build-Return @(3740, 0) @(
         ,@('ok','true','boolean')
         ,@('holding_id', "={{ `$('Create buy (atomic)').item.json.holding_id }}", 'number')

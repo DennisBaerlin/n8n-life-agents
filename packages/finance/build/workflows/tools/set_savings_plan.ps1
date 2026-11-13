@@ -3,8 +3,7 @@
 
 # --- tool_set_savings_plan (Sparplan aendern: Betrag-Split, Pause, Resume, Notiz) ---
 function Build-SetSavingsPlan {
-    # WS-B0: enge Paket-Schreibrolle (finance_rw, Least-Privilege D10) statt Owner-Cred.
-    # Dynamic-Scope: Build-Pg liest dieses $CRED_POSTGRES. Core-Tools nutzen die Owner-Cred.
+    # Enge Paket-Schreibrolle (finance_rw) statt Owner-Cred; Build-Pg liest $CRED_POSTGRES per Dynamic-Scope.
     $CRED_POSTGRES = $CRED_FINANCE_RW
     $trig = Build-Trigger @('savings_plan_name','new_amount','schedule_unit','schedule_interval','status','valid_from','notes','beneficiary_person','asset_class','depot_execution_days','handoff_task_id')
 
@@ -17,7 +16,7 @@ function Build-SetSavingsPlan {
         -IfPos @(330, -160) -ErrPos @(440, -320) `
         -NotFoundExpr "=No savings plan named '{{ `$('Start').item.json.savings_plan_name }}' exists. List them via postgres_select on finance.savings_plans and ask the user which one is meant."
 
-    # WS-4: optionale beguenstigte Person aufloesen (Name -> Slug; leer = unveraendert).
+    # Optionale beguenstigte Person aufloesen (Name -> Slug; leer = unveraendert).
     $resPerson = Build-ResolvePerson 'Resolve Person' @(220, 360) 'beneficiary_person'
 
     $ifPersonBad = Build-If 'Person invalid?' @(440, 360) `
@@ -26,8 +25,7 @@ function Build-SetSavingsPlan {
     $errPerson = Build-ToolError 'Person unresolved' @(660, 480) `
         "=The beneficiary '{{ `$('Start').item.json.beneficiary_person }}' could not be uniquely resolved ({{ `$('Resolve Person').item.json.hit_count }} match(es)). Candidates: {{ JSON.stringify(`$('Resolve Person').item.json.candidates) }}. Ask which household member."
 
-    # "DB ist das Gesetz": fn_set_savings_plan laeuft als Probelauf VOR der Karte (Betrag <= 0, Stichtag <= valid_from,
-    # Anlageklassen-Format -> {ok:false} ohne Karte); derselbe Param-Satz geht nach dem Gate in den echten Write:
+    # Der Write unterscheidet:
     # - new_amount gesetzt: Validity-Split (alte RP valid_to=v_from, neue RP ab v_from;
     #   plan.recurring_payment_id zeigt auf neue RP)
     # - status gesetzt: IN-PLACE (plan.status + rp.status kaskadiert)
@@ -50,7 +48,7 @@ function Build-SetSavingsPlan {
             depot_execution_days = '$(''Start'').item.json.depot_execution_days'
         })
 
-    # Strukturiertes Summary (Textkatalog): nur gelieferte Felder (-If je Zeile). Sparrate in der Konto-Waehrung (Read Current);
+    # Nur gelieferte Felder (-If je Zeile). Sparrate in der Konto-Waehrung (Read Current);
     # valid_from als Datum unter Erhalt des "heute"-Fallbacks bei leerem Feld.
     $S = "`$('Start').item.json"
     $R = "`$('Read Current').item.json"
@@ -86,7 +84,6 @@ function Build-SetSavingsPlan {
 
     $retCancelled = Build-ToolCancelled 'Return cancelled' @(1760, 240) 'the set_savings_plan action'
 
-    # Atomarer Write via fn_set_savings_plan ($wg.Write, 'Set plan (atomic)').
     $ifWriteOk = Build-If 'Write ok?' @(1980, 0) "={{ `$json.ok }}" 'true' 'equals' 'boolean'
 
     $errWrite = Build-ToolError 'Update rejected' @(2200, 240) `

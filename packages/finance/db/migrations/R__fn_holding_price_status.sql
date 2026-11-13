@@ -1,13 +1,13 @@
 -- ============================================================
--- finance.fn_holding_price_status(p_holding_ids) — Kurs-Status je gehaltener Position (READ, Kurs-Luecken 2026-10-27)
---   EINE Adresse fuer "hat diese Position einen Kurs?": Kurs-Luecken-Erinnerung (fn_price_gaps), Tool-Antworten
+-- fn_holding_price_status (READ) — Kurs-Status je gehaltener Position
+--   Die eine Adresse fuer "hat diese Position einen Kurs?": Kurs-Luecken-Erinnerung (fn_price_gaps), Tool-Antworten
 --   nach dem Sofort-Kursabruf (book_stock_buy/set_holding/commit_import/book_savings_plan_execution),
 --   fn_apply_price_symbol (Guard) und fn_advisor_review (null_price). Status-Regel = finance.fn_price_status
 --   (Init-Helfer; missing | stale | ok), angefragtes Symbol = finance.fn_feed_symbol.
---   Nur gehaltene Positionen (shares > 0); p_holding_ids NULL = alle.
---   RUECKGABE je Zeile: holding_id, name, symbol, isin, feed_symbol, account_name, currency (Holding/Buchwert),
+--   Eingabe: p_holding_ids (int[], optional; NULL = alle). Nur gehaltene Positionen (shares > 0).
+--   Rueckgabe je Zeile: holding_id, name, symbol, isin, feed_symbol, account_name, currency (Holding/Buchwert),
 --     avg_price, price (juengster market_prices-Kurs, NULL ohne Kurs), price_currency, price_as_of, status.
---   plpgsql (late-bound, Muster R__-Reihenfolge), STABLE, INVOKER: liest nur finance.* (+ core.fn_config_get
+--   plpgsql (late-bound, R__-Reihenfolge), STABLE, SECURITY INVOKER: liest nur finance.* (+ core.fn_config_get
 --   ueber fn_price_status, beide Paket-Rollen haben den Grant).
 --   Tests: tests/db/finance/test_fn_holding_price_status.sql
 -- ============================================================

@@ -3,8 +3,7 @@
 
 # --- tool_settle_loan (vorzeitige Abloesung buchen: Restschuld -> 0, paid_off, Rate beendet) ---
 function Build-SettleLoan {
-    # WS-B0: enge Paket-Schreibrolle (finance_rw, Least-Privilege D10) statt Owner-Cred.
-    # Dynamic-Scope: Build-Pg liest dieses $CRED_POSTGRES. Core-Tools nutzen die Owner-Cred.
+    # Enge Paket-Schreibrolle (finance_rw) statt Owner-Cred; Build-Pg liest $CRED_POSTGRES per Dynamic-Scope.
     $CRED_POSTGRES = $CRED_FINANCE_RW
     $trig = Build-Trigger @('loan_name','debit_account_name','settlement_date','settlement_amount')
 
@@ -20,13 +19,12 @@ function Build-SettleLoan {
     $readLoan = Build-Pg 'Read Loan' @(660, 0) `
         "=SELECT l.lender, l.status::text AS loan_status, GREATEST(-COALESCE(bal.balance,0),0) AS remaining_debt FROM finance.loans l LEFT JOIN finance.account_balances bal ON bal.account_id = l.loan_account_id WHERE l.name = ((`$1::jsonb)->>'loan_name') ORDER BY l.id LIMIT 1;" `
         ([ordered]@{ loan_name = '$(''Start'').item.json.loan_name' })
-    # Unbekannter Name -> Tool-Fehler statt stillem Ende (New-RequiredRowGate, 2026-10-24).
+    # Unbekannter Name -> Tool-Fehler statt stillem Ende (New-RequiredRowGate).
     $found = New-RequiredRowGate -Read $readLoan -KeyField 'loan_status' -IfName 'Loan found?' -ErrName 'Loan not found' `
         -IfPos @(770, -160) -ErrPos @(880, 240) `
         -NotFoundExpr "=No loan named '{{ `$('Start').item.json.loan_name }}' exists. List them via postgres_select on finance.loan_overview and ask the user which one is meant."
 
-    # "DB ist das Gesetz": fn_settle_loan laeuft als Probelauf VOR der Karte (keine Restschuld, Abloesesumme < Restschuld
-    # -> {ok:false} ohne Karte); derselbe Param-Satz geht nach dem Gate in den echten Write (2-Bein-Abloesung).
+    # Der Write ist eine 2-Bein-Abloesung.
     $wg = New-FnWriteGate -Fn 'finance.fn_settle_loan' -DryPos @(880, 0) -WritePos @(2200, 0) `
         -WriteName 'Settle loan (atomic)' `
         -WriteSelect "(r->>'ok')::boolean AS ok, r->>'reason' AS reason, (r->>'settlement_tx_id')::int AS settlement_tx_id, (r->>'principal_tx_id')::int AS principal_tx_id, (r->>'remaining_debt')::numeric AS remaining_debt, (r->>'interest')::numeric AS interest" `
@@ -37,7 +35,7 @@ function Build-SettleLoan {
             settlement_amount = '$(''Start'').item.json.settlement_amount'
         })
 
-    # Strukturiertes Summary (Textkatalog): Restschuld/Abloesesumme/Zins-Anteil in EUR-Konvention (Kredit-Werte in EUR).
+    # Restschuld/Abloesesumme/Zins-Anteil in EUR-Konvention (Kredit-Werte in EUR).
     $S = "`$('Start').item.json"
     $L = "`$('Read Loan').item.json"
     $withInt = "($S.settlement_amount && Number($S.settlement_amount) > Number($L.remaining_debt))"
@@ -61,7 +59,7 @@ function Build-SettleLoan {
 
     $retCancelled = Build-ToolCancelled 'Return cancelled' @(2200, 240) 'the settle_loan action'
 
-    # Atomarer Write ($wg.Write, 'Settle loan (atomic)'): prueft erneut, falls sich seit dem Probelauf etwas geaendert hat.
+    # Der Write prueft erneut, falls sich seit dem Probelauf etwas geaendert hat.
     $ifWriteOk = Build-If 'Write ok?' @(2420, 0) "={{ `$json.ok }}" 'true' 'equals' 'boolean'
 
     $errWrite = Build-ToolError 'Settle rejected' @(2640, 240) `

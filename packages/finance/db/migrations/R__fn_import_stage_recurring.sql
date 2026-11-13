@@ -1,12 +1,12 @@
 -- ============================================================
--- fn_import_stage_recurring (Staging-Write, KEIN HITL: Staging ist keine Domaenen-Daten) -- Dauerauftrags-Vorschlaege
---   eines Kontoauszugs oder Bank-Exports in den EINEN offenen Vorschlags-Stapel des Chats legen
+-- fn_import_stage_recurring (Staging-Write, kein HITL: Staging ist keine Domaenen-Daten) -- Dauerauftrags-Vorschlaege
+--   eines Kontoauszugs oder Bank-Exports in den einen offenen Vorschlags-Stapel des Chats legen
 --   Bucht nichts und legt keinen Dauerauftrag an; angelegt wird nur per Knopf (fn_handle_recurring_suggestion_cb).
 --   mode statement (tool_reconcile_bank_statement): Konto und Saldo-Probe kommen aus fn_statement_prepare (eine Adresse);
 --   balance_verified false -> nichts erkannt, hint balance_check_failed (Lesefehler kommen nie auf eine Nachricht).
 --   Erkennung fn_get_recurring_candidates mode statement. mode export (tool_import_recurring_suggestions):
 --   fn_get_recurring_suggestions (with_dates); dessen Codes und hint export_too_short gehen unveraendert zurueck.
---   Stapel: alle Zeilen mit origin recurring_suggestion und dieser chat_id (vorher fn_import_sweep). Je Vorschlag:
+--   Stapel: alle Zeilen mit origin recurring_suggestion und dieser chat_id (zuvor laeuft fn_import_sweep). Je Vorschlag:
 --   Haushaltsmitglied ohne eigenes Konto -> household[] (der Agent fragt einzeln); gleichnamige laufende Zahlung
 --   (fn_recurring_name_check) -> hints name_taken. Zuordnung zu einer Stapelzeile desselben Kontos und derselben Art:
 --   Gegen-IBAN, dann Mandat, dann gleicher series- bzw. Name (zwei verschiedene IBANs nie). Getroffen: Termine anhaengen
@@ -18,12 +18,13 @@
 --   (Konto des Auszugs), counterparty_iban, creditor_id, mandate_ref, recurring_kind, series, rhythm_hint,
 --   origin_kind, occurrences:[{date, amount (mit Vorzeichen), account_id, period_start, period_end}]; die Sicherheit
 --   wird nicht gespeichert (beim Anzeigen aus den Terminen). Im Stapel liegen keine Verwendungszwecke, keine uebrigen Zeilen.
---   Eingabe p: {chat_id*, mode (statement|export), statement: account_id*, balance_verified*, period_start, period_end,
---   lines*[] (mit recurring_kind, series, rhythm_hint); export: account_name, table}.
---   RUECKGABE: {ok:true, account_name, staged, updated, open_count, unsent_count, rows:[{nr, name}], sure_count,
+--   Eingabe p: {chat_id (Pflicht), mode (statement|export, Default statement); statement: account_id (Pflicht),
+--   balance_verified (ohne true: nichts erkannt), period_start, period_end, lines[] (mit recurring_kind, series, rhythm_hint);
+--   export: account_name, table}.
+--   Rueckgabe: {ok:true, account_name, staged, updated, open_count, unsent_count, rows:[{nr, name}], sure_count,
 --   confirm_count, hints:[{kind:'area'|'name_taken', area?, name}], household:[{name, amount}], known_elsewhere,
 --   months_seen, months_missing (YYYY-MM, nur statement: die drei Monate bis zum juengsten Auszug), hint?}
---   | {ok:false, reason} (ohne chat_id/Konto) | Codes von fn_bank_export_load.
+--   | {ok:false, reason} (ohne chat_id/Konto, unbekannter mode) | Codes von fn_bank_export_load.
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_import_stage_recurring(p jsonb)
 RETURNS jsonb LANGUAGE plpgsql VOLATILE AS $$

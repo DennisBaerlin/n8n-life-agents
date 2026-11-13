@@ -3,13 +3,12 @@
 
 # --- tool_set_recurring_payment (set_*: standalone wiederkehrende Zahlung aendern) ---
 function Build-SetRecurringPayment {
-    # WS-B0: enge Paket-Schreibrolle (finance_rw, Least-Privilege D10) statt Owner-Cred.
-    # Dynamic-Scope: Build-Pg liest dieses $CRED_POSTGRES. Core-Tools nutzen die Owner-Cred.
+    # Enge Paket-Schreibrolle (finance_rw) statt Owner-Cred; Build-Pg liest $CRED_POSTGRES per Dynamic-Scope.
     $CRED_POSTGRES = $CRED_FINANCE_RW
     $trig = Build-Trigger @('payment_name','new_name','amount','valid_from','status','valid_to',
                            'schedule_day_of_month','notes','until_free_money','executed_by')
 
-    # Resolve ueber ALLE Status (active_only=false): findet auch pausierte (resume) und nach Split
+    # Resolve ueber alle Status (active_only=false): findet auch pausierte (resume) und nach Split
     # mehrere gleichnamige -> Ambiguitaet zeigt Kandidaten (status/valid_from/valid_to) zum Auswaehlen.
     $resRp = Build-Pg 'Resolve Payment' @(220, 0) `
         "=SELECT id, hit_count, candidates FROM finance.fn_resolve_recurring_payment((`$1::jsonb)->>'payment_name', FALSE);" `
@@ -24,9 +23,7 @@ function Build-SetRecurringPayment {
         "=SELECT rp.amount, rp.valid_from, rp.status::text AS status, a.currency, a.name AS account_name FROM finance.recurring_payments rp JOIN finance.accounts a ON a.id = rp.account_id WHERE rp.id = ((`$1::jsonb)->>'id')::int;" `
         ([ordered]@{ id = '$(''Resolve Payment'').item.json.id' })
 
-    # "DB ist das Gesetz": fn_set_recurring_payment laeuft als Probelauf VOR der Karte (Standalone-Guard, Stichtag nach
-    # der letzten gebuchten Rate usw. -> {ok:false} ohne Karte); derselbe Param-Satz geht nach dem Gate in den echten
-    # Write (Betrag -> Validity-Split; sonst In-Place).
+    # Im Write fuehrt ein neuer Betrag zum Validity-Split, alles andere aendert in place.
     $wg = New-FnWriteGate -Fn 'finance.fn_set_recurring_payment' -DryPos @(880, 0) -WritePos @(2200, 0) `
         -WriteName 'Set payment (atomic)' `
         -WriteSelect "(r->>'ok')::boolean AS ok, r->>'reason' AS reason, (r->>'recurring_payment_id')::int AS recurring_payment_id, (r->>'split')::boolean AS split, COALESCE(r->'cashflow_coverage'->>'note', '') AS cashflow_coverage" `
@@ -44,7 +41,7 @@ function Build-SetRecurringPayment {
             executed_by           = '$(''Start'').item.json.executed_by'
         })
 
-    # Strukturiertes Summary (Textkatalog): nur gelieferte Felder (-If je Zeile). Betrag in der Konto-Waehrung (Read Current).
+    # Nur gelieferte Felder (-If je Zeile). Betrag in der Konto-Waehrung (Read Current).
     # until_free_money: das Ende setzt die DB (Probelauf: effective.last_execution / free_after) -> eigene Zeile + Hinweis.
     $S = "`$('Start').item.json"
     $R = "`$('Read Current').item.json"
@@ -64,7 +61,7 @@ function Build-SetRecurringPayment {
             from = (New-HitlValue -Kind enum -Value "$R.status" -Enum 'finance.enum.status')
             to   = (New-HitlValue -Kind enum -Value "$S.status" -Enum 'finance.enum.status') })
         (New-HitlLine 'finance.label.valid_to'   (Get-DryEffectiveExpr 'valid_to') -Kind date -If "$S.valid_to")
-        # Nutzerangabe zum Uebertrag: ohne diese Zeile zeigte die Karte bei "nur executed_by" keine Aenderung (Review-Fund)
+        # Nutzerangabe zum Uebertrag: ohne diese Zeile zeigte die Karte bei "nur executed_by" keine Aenderung
         (New-HitlLine 'finance.label.executed_by' "$S.executed_by" -Kind enum -Enum 'finance.enum.executed_by' -If "$S.executed_by")
         (New-HitlLine 'finance.label.last_transfer' (Get-DryEffectiveExpr 'last_execution') -Kind date -If $free)
         (New-HitlLine 'finance.label.debit_day'  $dom -Kind tpl -Params @{ day = "$S.schedule_day_of_month" } -If "$S.schedule_day_of_month")
@@ -86,7 +83,6 @@ function Build-SetRecurringPayment {
 
     $retCancelled = Build-ToolCancelled 'Return cancelled' @(2200, 240) 'the set_recurring_payment action'
 
-    # Atomarer Write via fn_set_recurring_payment ($wg.Write, 'Set payment (atomic)').
     $ifWriteOk = Build-If 'Write ok?' @(2420, 0) "={{ `$json.ok }}" 'true' 'equals' 'boolean'
 
     $errWrite = Build-ToolError 'Update rejected' @(2640, 240) `

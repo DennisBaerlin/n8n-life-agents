@@ -3,27 +3,24 @@
 
 # --- tool_delete_account (Konto loeschen: Hard-DELETE einer leeren Fehlanlage) ---
 function Build-DeleteAccount {
-    # WS-B0: enge Paket-Schreibrolle (finance_rw, Least-Privilege D10) statt Owner-Cred.
-    # Dynamic-Scope: Build-Pg liest dieses $CRED_POSTGRES. Core-Tools nutzen die Owner-Cred.
+    # Enge Paket-Schreibrolle (finance_rw) statt Owner-Cred; Build-Pg liest $CRED_POSTGRES per Dynamic-Scope.
     $CRED_POSTGRES = $CRED_FINANCE_RW
     $trig = Build-Trigger @('account_name')
 
     $readAcc = Build-Pg 'Read Account' @(220, 0) `
         "=SELECT a.account_type::text AS account_type, a.bank, a.currency, a.status::text AS acc_status, COALESCE(bal.balance,0) AS balance, ( (SELECT COUNT(*) FROM finance.transactions WHERE account_id=a.id) + (SELECT COUNT(*) FROM finance.depot_holdings WHERE account_id=a.id) + (SELECT COUNT(*) FROM finance.recurring_payments WHERE account_id=a.id) + (SELECT COUNT(*) FROM finance.insurances WHERE account_id=a.id) + (SELECT COUNT(*) FROM finance.savings_goal_reserve_entries WHERE account_id=a.id) + (SELECT COUNT(*) FROM finance.savings_plans WHERE depot_id=a.id) + (SELECT COUNT(*) FROM finance.loans WHERE loan_account_id=a.id OR debit_account_id=a.id OR disbursement_account_id=a.id)+ (SELECT COUNT(*) FROM finance.accounts o WHERE o.settlement_account_id=a.id) )::int AS ref_count FROM finance.accounts a LEFT JOIN finance.account_balances bal ON bal.account_id=a.id WHERE a.name ILIKE ((`$1::jsonb)->>'account_name') LIMIT 1;" `
         ([ordered]@{ account_name = '$(''Start'').item.json.account_name' })
-    # Unbekannter Name -> Tool-Fehler statt stillem Ende (New-RequiredRowGate, 2026-10-24).
+    # Unbekannter Name -> Tool-Fehler statt stillem Ende (New-RequiredRowGate).
     $found = New-RequiredRowGate -Read $readAcc -KeyField 'acc_status' -IfName 'Account found?' -ErrName 'Account not found' `
         -IfPos @(330, -160) -ErrPos @(440, 240) `
         -NotFoundExpr "=No account named '{{ `$('Start').item.json.account_name }}' exists. List them via postgres_select on finance.account_overview and ask the user which one is meant."
 
-    # "DB ist das Gesetz": fn_delete_account laeuft als Probelauf VOR der Karte (Referenzen -> {ok:false} ohne Karte);
-    # derselbe Param-Satz geht nach dem Gate in den echten Write.
     $wg = New-FnWriteGate -Fn 'finance.fn_delete_account' -DryPos @(440, 0) -WritePos @(1760, 0) `
         -WriteName 'Delete account (atomic)' `
         -WriteSelect "(r->>'ok')::boolean AS ok, r->>'reason' AS reason, r->>'action' AS action, (r->>'account_id')::int AS account_id" `
         -Params ([ordered]@{ account_name = '$(''Start'').item.json.account_name' })
 
-    # Strukturiertes Summary (Textkatalog): Saldo in der Konto-Waehrung (Read Account). Keine Datumsfelder.
+    # Saldo in der Konto-Waehrung (Read Account). Keine Datumsfelder.
     $S = "`$('Start').item.json"
     $A = "`$('Read Account').item.json"
     $summary = New-HitlSummary -Pos @(1100, 0) -Title 'finance.hitl.delete_account' -LinesExpr $wg.CardLinesExpr -Lines @(
@@ -43,7 +40,7 @@ function Build-DeleteAccount {
 
     $retCancelled = Build-ToolCancelled 'Return cancelled' @(1760, 240) 'the delete_account action'
 
-    # Atomarer Write ($wg.Write, 'Delete account (atomic)'): prueft erneut, falls sich seit dem Probelauf etwas geaendert hat.
+    # Der Write prueft erneut, falls sich seit dem Probelauf etwas geaendert hat.
     $ifWriteOk = Build-If 'Write ok?' @(1980, 0) "={{ `$json.ok }}" 'true' 'equals' 'boolean'
 
     $errWrite = Build-ToolError 'Delete rejected' @(2200, 240) `

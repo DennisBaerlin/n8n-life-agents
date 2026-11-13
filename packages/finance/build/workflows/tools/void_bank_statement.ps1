@@ -1,8 +1,8 @@
 ﻿#Requires -Version 5.1
 # Dot-gesourct von build.ps1 (Helper + Script-Scope-Creds im Parent-Scope).
 
-# --- tool_void_bank_statement (Monats-Check WP-C) ---
-# Nimmt den LETZTEN eingespielten Kontoauszug eines Kontos zurueck (finance.fn_void_bank_statement): alle Buchungen
+# --- tool_void_bank_statement (Monats-Check) ---
+# Nimmt den letzten eingespielten Kontoauszug eines Kontos zurueck (finance.fn_void_bank_statement): alle Buchungen
 # dieses Auszugs, die beim Abgleich uebersprungenen Termine, die gelernten Kennungen und den Abgleichsstand. Danach
 # kann der Auszug (z. B. nach falscher Konto-Zuordnung) neu geschickt werden.
 function Build-VoidBankStatement {
@@ -17,8 +17,6 @@ function Build-VoidBankStatement {
         "={{ `$('Read statement').item.json.hit_count !== 1 ? 'No unique active account with this name - ask which account is meant.' : 'No imported statement exists for this account.' }}"
 
     $R = "`$('Read statement').item.json"
-    # "DB ist das Gesetz": fn_void_bank_statement laeuft als Probelauf VOR der Karte (spaeterer Abgleich blockiert,
-    # nicht der juengste Auszug -> {ok:false} ohne Karte); derselbe Param-Satz geht nach dem Gate in den Write.
     $wg = New-FnWriteGate -Fn 'finance.fn_void_bank_statement' -DryPos @(660, 0) -WritePos @(1980, 0) `
         -WriteName 'Void statement' -WriteSelect 'r' `
         -Params ([ordered]@{ account_id = "$R.account_id" })

@@ -1,13 +1,14 @@
 -- ============================================================
--- fn_trade_amount_reason (READ HELPER) -- Kauf/Verkauf: gebuchter Betrag und Stueckzahl (Rundungs-Paket 2026-10-23)
---   EINE Adresse fuer fn_book_stock_buy und fn_book_stock_sell. Liefert NULL, wenn die Buchung so moeglich ist, sonst den
+-- fn_trade_amount_reason (READ HELPER) -- Kauf/Verkauf: gebuchter Betrag und Stueckzahl
+--   Die eine Adresse fuer fn_book_stock_buy und fn_book_stock_sell. Liefert NULL, wenn die Buchung so moeglich ist, sonst den
 --   korrigierbaren Grund (EN, fuers {ok:false}):
 --     * Stueckzahl mit mehr als 8 Nachkommastellen: transactions.shares/depot_holdings.shares sind numeric(18,8) und
 --       wuerden still kuerzen.
 --     * gebuchter Betrag (auf Cent gerundet) <= 0: Mini-Kauf unter einem halben Cent bzw. Verkauf, dessen Gebuehr den
---       Erloes erreicht. Vorher brach das am CHECK finance_transactions_category_consistency (buy amount<0 /
+--       Erloes erreicht. Sonst brach das am CHECK finance_transactions_category_consistency (buy amount<0 /
 --       sell amount>0) mit RAISE + Owner-Alert ab.
---   p_net = Betrag aus Sicht des Kontos VOR der Cent-Rundung: Kauf shares*price+fee (wird abgebucht), Verkauf
+--   Eingabe: p_shares (NULL = nicht pruefen), p_net (NULL = nicht pruefen).
+--   p_net = Betrag aus Sicht des Kontos vor der Cent-Rundung: Kauf shares*price+fee (wird abgebucht), Verkauf
 --   shares*price-fee (wird gutgeschrieben); beide muessen nach der Rundung > 0 sein.
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_trade_amount_reason(p_shares numeric, p_net numeric)

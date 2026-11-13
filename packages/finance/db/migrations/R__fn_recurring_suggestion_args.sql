@@ -5,7 +5,8 @@
 --   counterparty_iban, creditor_id, mandate_ref als Schluessel fuer den Monats-Check); recurring_transfer ->
 --   fn_create_recurring_transfer mit executed_by 'bank': der Uebertrag stand im Auszug, laeuft also schon (sonst legte die
 --   Anlage einen Bank-Punkt "bei der Bank einrichten" an). Termine, Kategorie und Anzeige-Namen fallen weg.
---   RUECKGABE: jsonb.
+--   Eingabe: p_payload (Payload der Vorschlagszeile; 'from_account_id' vorhanden = Uebertrag).
+--   Rueckgabe: jsonb (Eingabe der Anlege-fn, NULL-Felder entfernt).
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_recurring_suggestion_args(p_payload jsonb)
 RETURNS jsonb LANGUAGE sql IMMUTABLE AS $$

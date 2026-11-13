@@ -1,16 +1,17 @@
 -- ============================================================
 -- fn_bank_export_resolve_account (READ, STABLE) -- Konto einer Bank-Export-Datei (Konto-Waechter)
---   Befund 2026-10-30: der Agent riet zu einer Export-Datei ein Konto einer anderen Bank. Die EINE Konto-Aufloesung
+--   Ohne Waechter riet der Agent zu einer Export-Datei ein Konto einer anderen Bank. Die eine Konto-Aufloesung
 --   fuer Bank-Export-Dateien (fn_statement_prepare source:'file', fn_replace_takeover_with_lots) - nie der Prompt.
 --   Kandidaten = aktive, buchbare Konten (fn_bookable_account_reason NULL: nie Depot/Kredit) mit dem Datei-Profil
 --   (fn_bank_export_account_profile = p_profile) in einer Waehrung des Exports (p_currencies leer = jede), nach id.
 --   Ohne account_name: genau 1 Kandidat -> dieses Konto; mehrere -> account_ambiguous; keiner -> account_unknown.
---   Mit account_name: fn_resolve_account (account_unknown/account_ambiguous wie bisher), nicht buchbar -> not_bookable,
---   andere Waehrung als der Export -> currency_mismatch, anderes Profil -> export_account_mismatch. Ein Konto OHNE Profil gilt nur, wenn sein Bank-Feld leer ist UND kein
+--   Mit account_name: fn_resolve_account (account_unknown/account_ambiguous), nicht buchbar -> not_bookable,
+--   andere Waehrung als der Export -> currency_mismatch, anderes Profil -> export_account_mismatch. Ein Konto ohne Profil gilt nur, wenn sein Bank-Feld leer ist und kein
 --   Kandidat existiert (sonst waere ein geratenes Konto wieder buchbar); eine eingetragene andere Bank weist immer ab.
 --   Nur Datei-Wege: der gedruckte Auszug (IBAN/Name) laeuft nie hier durch.
 --   plpgsql (late-bound): fn_bookable_account_reason / fn_resolve_account liegen alphabetisch spaeter.
---   RUECKGABE: {ok:true, account_id, account_name}
+--   Eingabe: p_account_name (optional), p_profile (Profil-key), p_currencies (Waehrungen der Datei, jsonb-Array).
+--   Rueckgabe: {ok:true, account_id, account_name}
 --   | {ok:false, code, reason, bank (Bank der Datei), account_name?, candidates[{id,name,bank,account_type,status}]};
 --   account_unknown ohne Kandidaten traegt profile, is_broker, interest_source.
 -- ============================================================
@@ -72,7 +73,7 @@ BEGIN
                                        THEN ' This ' || v_bank || ' export belongs to ' || v_names || '.' ELSE '' END);
     END IF;
 
-    -- Waehrung wie bei den Kandidaten (Review 2026-10-30): sonst ersetzte der Lots-Weg EUR-Kaeufe gegen ein USD-Konto,
+    -- Waehrung wie bei den Kandidaten: sonst ersetzte der Lots-Weg EUR-Kaeufe gegen ein USD-Konto,
     -- bevor die Prepare die Waehrung prueft
     IF jsonb_array_length(COALESCE(p_currencies, '[]'::jsonb)) > 0
        AND v_acct.currency NOT IN (SELECT jsonb_array_elements_text(p_currencies)) THEN

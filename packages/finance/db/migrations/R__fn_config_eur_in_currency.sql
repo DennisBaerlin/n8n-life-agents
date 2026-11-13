@@ -1,11 +1,11 @@
 -- ============================================================
 -- fn_config_eur_in_currency (READ, STABLE) -- EUR-Betrag aus core.config (Kategorie finance) in einer Kontowaehrung
---   Die EINE Adresse der Regel „Euro-Einstellung -> Kontowaehrung“ (vorher je Konsument kopiert):
+--   Die eine Adresse der Regel „Euro-Einstellung -> Kontowaehrung“:
 --   Wert = core.fn_config_get('finance', 'finance', p_key), gelesen ohne Cast-RAISE (fn_parse_numeric_or_null);
 --   fehlt/unlesbar/negativ -> p_default; 0 bleibt 0 (z. B. Puffer 0). EUR -> unveraendert. Sonst Wert / EUR-Wert einer
---   Einheit zum Stichtag p_as_of (fn_to_eur_unrounded: juengster Kurs <= Stichtag, sonst juengster ueberhaupt), UNGERUNDET
+--   Einheit zum Stichtag p_as_of (fn_to_eur_unrounded: juengster Kurs <= Stichtag, sonst juengster ueberhaupt), ungerundet
 --   geteilt (1 CLP = 0.00069 EUR wurde mit Cent-Rundung 0.00 -> Betrag still wirkungslos), Ergebnis auf Cent.
---   Ohne Kurs NULL — nie den rohen EUR-Wert; der Konsument entscheidet die Rueckfallebene.
+--   Ohne Kurs NULL, nie der rohe EUR-Wert; der Konsument entscheidet die Rueckfallebene.
 --   Konsumenten: fn_account_outlook (coverage_buffer_eur, ohne Kurs EUR-Wert), fn_statement_prepare (everyday_oneoff_eur,
 --   ohne Kurs keine Grenze).
 --   Tests: tests/db/finance/test_fn_config_eur_in_currency.sql

@@ -1,10 +1,9 @@
 ﻿#Requires -Version 5.1
 # Dot-gesourct von build_finance_tools.ps1 (Helper + Script-Scope-Creds im Parent-Scope).
 
-# --- 2. tool_book_transfer (Playbook 5.6) ----------------
+# --- tool_book_transfer ---
 function Build-BookTransfer {
-    # WS-B0: enge Paket-Schreibrolle (finance_rw, Least-Privilege D10) statt Owner-Cred.
-    # Dynamic-Scope: Build-Pg liest dieses $CRED_POSTGRES. Core-Tools nutzen die Owner-Cred.
+    # Enge Paket-Schreibrolle (finance_rw) statt Owner-Cred; Build-Pg liest $CRED_POSTGRES per Dynamic-Scope.
     $CRED_POSTGRES = $CRED_FINANCE_RW
     $trig = Build-Trigger @('from_account_name','to_account_name','amount','to_amount','transaction_date','purpose')
 
@@ -26,10 +25,8 @@ function Build-BookTransfer {
     $errTo = Build-ToolError 'To ambiguous' @(1100, 200) `
         "=Target account '{{ `$('Start').item.json.to_account_name }}' resolves to {{ `$('Resolve To').item.json.hit_count }} matches. Candidates: {{ JSON.stringify(`$('Resolve To').item.json.candidates) }}. Ask the user which exact account."
 
-    # "DB ist das Gesetz": fn_book_transfer laeuft als Probelauf VOR der Karte (gleiches Konto, amount<=0,
-    # Cross-Currency ohne gueltiges to_amount -> {ok:false} ohne Karte); derselbe Param-Satz geht nach dem Gate in
-    # den echten Write: Soll- + Haben-Buchung in EINER Transaktion.
-    # WS-C2: reserve_breach (Soll-/from-Bein) als DB-gerenderte NOTE durchreichen (COALESCE -> nie NULL, null-sicher).
+    # Der Write bucht Soll- + Haben-Buchung in einer Transaktion.
+    # reserve_breach (Soll-/from-Bein) als DB-gerenderte NOTE durchreichen (COALESCE -> nie NULL, null-sicher).
     $wg = New-FnWriteGate -Fn 'finance.fn_book_transfer' -DryPos @(1100, 0) -WritePos @(2420, 0) `
         -WriteName 'Create transfer (atomic)' `
         -WriteSelect "(r->>'ok')::boolean AS ok, r->>'reason' AS reason, (r->>'debit_tx_id')::int AS debit_tx_id, (r->>'credit_tx_id')::int AS credit_tx_id, (r->>'fx_rate')::numeric AS fx_rate, (r->>'from_balance')::numeric AS from_balance, (r->>'to_balance')::numeric AS to_balance, COALESCE(r->'reserve_breach'->>'note', '') AS reserve_breach" `
@@ -46,7 +43,7 @@ function Build-BookTransfer {
         })
 
     # --- HITL approval gate (before the atomic write) ---
-    # Strukturiertes Summary (Textkatalog). Jedes Bein in der Waehrung SEINES Kontos (die Resolve-Nodes lesen
+    # Jedes Bein in der Waehrung seines Kontos (die Resolve-Nodes lesen
     # accounts.currency mit); to_amount nur bei Fremdwaehrung.
     $S = "`$('Start').item.json"
     $summary = New-HitlSummary -Pos @(1760, 0) -Title 'finance.hitl.book_transfer' -LinesExpr $wg.CardLinesExpr -Lines @(
@@ -66,9 +63,6 @@ function Build-BookTransfer {
 
     $retCancelled = Build-ToolCancelled 'Return cancelled' @(2420, 200) 'the book_transfer action'
 
-    # Atomarer Write via fn_book_transfer ($wg.Write, Params siehe oben).
-    # fn liefert ok/reason: gleiches Konto / amount<=0 -> {ok:false}.
-    # Korrigierbare Ablehnung aus der fn -> weiche Rueckfrage (kein Owner-Alert).
     $ifWriteOk = Build-If 'Write ok?' @(2640, 0) "={{ `$json.ok }}" 'true' 'equals' 'boolean'
 
     $errWrite = Build-ToolError 'Transfer rejected' @(2860, 200) `

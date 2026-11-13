@@ -2,23 +2,24 @@
 -- fn_book_recurring_occurrence (ATOMIC WRITE)
 --   Bucht ein faelliges Vorkommen einer recurring_payment als echte Transaktion auf ihr Konto (signed amount),
 --   verknuepft via recurring_payment_id + recurring_due_date (= Faelligkeit, die Identitaet des Vorkommens).
---   "gebucht" ist damit aus finance_transactions ableitbar (keine eigene Status-Tabelle).
---   Eingabe jsonb: recurring_payment_id, due_date, amount (opt), transaction_date (opt, Ist-Datum; Default due_date).
---   IST-DATUM (Monats-Check WP-A): der Kontoauszug bucht die Abbuchung an ihrem echten Tag (Miete faellig 01.10.,
---   abgebucht 02.10.); die Identitaet bleibt die Faelligkeit -> das Vorkommen ist erledigt, egal an welchem Tag.
---   ABGLEICH-SPERRE: Buchungsdatum <= letzter Saldo-Abgleich des Kontos -> {ok:false, code:'reconciled'}
---   (fn_reconciled_reason; der Abgleich enthaelt die Bewegung schon -> sonst Doppelzaehlung).
---   Idempotenz-Guard: schon ein Tx fuer (rp_id, Faelligkeit) -> {ok:false, code:'already_booked'}.
---   TRANSFER-DELEGATION (WS-2): ist die rp ein interner Transfer (target_account_id gesetzt), delegiert die fn an
+--   "gebucht" ist damit aus finance.transactions ableitbar (keine eigene Status-Tabelle).
+--   Eingabe jsonb: recurring_payment_id, due_date (Pflicht); amount (optional), transaction_date (optional,
+--   Ist-Datum, Default due_date).
+--   Ist-Datum: der Kontoauszug bucht die Abbuchung an ihrem echten Tag (Miete faellig 01.10., abgebucht 02.10.);
+--   die Identitaet bleibt die Faelligkeit -> das Vorkommen ist erledigt, egal an welchem Tag.
+--   Betrags-Anpassung: `amount` ist die Magnitude des Ist-Betrags. Vorhanden -> bucht sign(rp.amount)*abs(amount)
+--   (Einnahme/Ausgabe-Richtung bleibt), Abweichung in der description. Fehlt -> der fixe rp.amount.
+--   Transfer-Delegation: ist die rp ein interner Transfer (target_account_id gesetzt), delegiert die fn an
 --   fn_book_recurring_transfer (zwei Beine; nimmt amount + transaction_date mit).
---   KREDIT-DELEGATION (Audit F1a): gehoert die rp einem Kredit (loans.recurring_payment_id), bucht die fn ueber
---   fn_book_loan_payment (Giro-Abbuchung + Tilgung, rp-Stempel auf dem Giro-Bein); Rueckgabe zusaetzlich
---   interest_portion, principal_amount, remaining_debt (transaction_id = Giro-Bein).
---   WS-5c-A BETRAGS-ANPASSUNG: optionaler Input `amount` (Magnitude, Ist-Betrag). Vorhanden -> bucht
---   sign(rp.amount)*abs(amount) (Einnahme/Ausgabe-Richtung bleibt), Abweichung in der description. Fehlt -> FIXER
---   rp.amount. amount<=0 -> {ok:false} (transactions hat keinen amount<>0-CHECK).
---   RUECKGABE: {ok:true, transaction_id, amount, plan_amount} (Kredit: + interest_portion, principal_amount,
---   remaining_debt, loan_status; Transfer: Return von fn_book_recurring_transfer).
+--   Kredit-Delegation: gehoert die rp-Kette einem Kredit (loans.recurring_payment_id), bucht die fn ueber
+--   fn_book_loan_payment (Giro-Abbuchung + Tilgung, rp-Stempel auf dem Giro-Bein).
+--   Rueckgabe: ok:true -> {ok:true, transaction_id, amount, plan_amount, effective}; Kredit zusaetzlich
+--   interest_portion, principal_amount, remaining_debt, loan_status (transaction_id = Giro-Bein); Transfer: Return
+--   von fn_book_recurring_transfer.
+--   ok:false ohne RAISE: {code:'already_booked'} (schon ein Tx fuer (rp_id, Faelligkeit)); {code:'reconciled'}
+--   (Buchungsdatum <= letzter Saldo-Abgleich des Kontos, fn_reconciled_reason; der Abgleich enthaelt die Bewegung
+--   schon -> sonst Doppelzaehlung); {code:'invalid_date'}; {reason} bei amount <= 0 oder Konto ohne freie Buchung
+--   (fn_bookable_account_reason). RAISE bei unbekannter rp.
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_book_recurring_occurrence(p jsonb)
 RETURNS jsonb LANGUAGE plpgsql AS $$
@@ -39,7 +40,6 @@ DECLARE
     v_reason   TEXT;
     v_dates    JSONB;
 BEGIN
-    -- relative Ist-Datumsangabe ("yesterday") -> ISO; nicht aufloesbar -> {ok:false, code:'invalid_date'}.
     -- due_date kommt aus dem DB-Lookup (Vorkommen-Identitaet), nie vom LLM -> nicht aufgeloest.
     v_dates := core.fn_resolve_input_dates(p, ARRAY['transaction_date']);
     IF NOT (v_dates->>'ok')::boolean THEN RETURN v_dates; END IF;
@@ -56,8 +56,8 @@ BEGIN
         RETURN finance.fn_book_recurring_transfer(p);
     END IF;
 
-    -- Idempotenz: bereits gebucht fuer diese Faelligkeit? (VOR dem amount-Guard, damit ein bereits
-    -- gebuchtes Vorkommen die korrekte "already booked"-Meldung liefert, nicht "amount must be positive".)
+    -- Idempotenz vor dem amount-Guard, damit ein bereits gebuchtes Vorkommen die "already booked"-Meldung
+    -- liefert, nicht "amount must be positive".
     IF EXISTS (SELECT 1 FROM finance.transactions
                WHERE recurring_payment_id = v_rp_id AND recurring_due_date = v_due) THEN
         RETURN jsonb_build_object('ok', false, 'code', 'already_booked',
@@ -65,17 +65,17 @@ BEGIN
                    || ' is already booked.');
     END IF;
 
-    -- Korrigierbar: angepasster Betrag muss eine positive Magnitude sein -> {ok:false} (kein RAISE).
+    -- transactions hat keinen amount<>0-CHECK -> der angepasste Betrag muss hier eine positive Magnitude sein.
     IF v_override IS NOT NULL AND v_override <= 0 THEN
         RETURN jsonb_build_object('ok', false,
             'reason', 'Adjusted amount must be a positive magnitude, got ' || COALESCE(v_override::text, 'null') || '.');
     END IF;
 
-    -- KREDIT-DELEGATION (Audit F1a): gehoert die rp-Kette einem Kredit (Besitzer zeigt auf den Kopf, Audit Paket 2
-    -- A0 -> auch ein altes Vorkommen einer gesplitteten Rate), ist das Vorkommen eine Kreditrate -> zweibeinig ueber
-    -- fn_book_loan_payment (Giro-Abbuchung + Tilgung aufs Kreditkonto; dort auch die Abgleich-Sperre). Ohne Override
-    -- bucht die Rate den Betrag aus fn_recurring_occurrence_amount (= was die Erinnerung zeigt; letzte, kleinere
-    -- Rate = Abloesebetrag, Audit Paket 2). Ein Nutzer-Betrag (Override) wird nie still geaendert.
+    -- Kredit-Delegation: gehoert die rp-Kette einem Kredit (Besitzer zeigt auf den Kopf -> auch ein altes Vorkommen
+    -- einer gesplitteten Rate), ist das Vorkommen eine Kreditrate -> zweibeinig ueber fn_book_loan_payment
+    -- (Giro-Abbuchung + Tilgung aufs Kreditkonto; dort auch die Abgleich-Sperre). Ohne Override bucht die Rate den
+    -- Betrag aus fn_recurring_occurrence_amount (= was die Erinnerung zeigt; letzte, kleinere Rate = Abloesebetrag).
+    -- Ein Nutzer-Betrag (Override) wird nie still geaendert.
     SELECT id, loan_account_id INTO v_loan_id, v_loan_acc
     FROM finance.loans WHERE recurring_payment_id = finance.fn_recurring_lineage_head(v_rp_id);
     IF v_loan_id IS NOT NULL THEN
@@ -103,13 +103,12 @@ BEGIN
             'effective',        v_dates->'resolved');
     END IF;
 
-    -- Korrigierbar (Audit Paket 2, Kontotyp): ein Dauerauftrag auf einem Depot-/Kreditkonto bucht nie frei
-    -- (sonst Backstop-RAISE mit Owner-Alarm).
+    -- Ein Dauerauftrag auf einem Depot-/Kreditkonto bucht nie frei (sonst Backstop-RAISE mit Owner-Alarm).
     v_reason := finance.fn_bookable_account_reason(v_acct);
     IF v_reason IS NOT NULL THEN
         RETURN jsonb_build_object('ok', false, 'reason', v_reason);
     END IF;
-    -- Abgleich-Sperre (Monats-Check WP-A): der Saldo-Abgleich enthaelt diese Bewegung schon.
+    -- Abgleich-Sperre: der Saldo-Abgleich enthaelt diese Bewegung schon.
     v_reason := finance.fn_reconciled_reason(v_acct, v_date);
     IF v_reason IS NOT NULL THEN
         RETURN jsonb_build_object('ok', false, 'code', 'reconciled', 'reason', v_reason);
@@ -130,8 +129,8 @@ BEGIN
     DO NOTHING
     RETURNING id INTO v_tx;
 
-    -- WP-1 Race-Backstop: der EXISTS-Guard oben ist die freundliche Schnellbahn; verliert ein gleichzeitiger
-    -- Bucher das Rennen (TOCTOU), faengt der partielle UNIQUE-Index es hier (leeres RETURNING) -> {ok:false}.
+    -- Race-Backstop: der EXISTS-Guard oben ist die freundliche Schnellbahn; ein gleichzeitiger Bucher (TOCTOU)
+    -- scheitert am partiellen UNIQUE-Index (leeres RETURNING).
     IF v_tx IS NULL THEN
         RETURN jsonb_build_object('ok', false, 'code', 'already_booked',
             'reason', 'Recurring occurrence for payment ' || v_rp_id || ' due ' || v_due || ' is already booked.');

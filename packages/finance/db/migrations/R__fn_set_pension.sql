@@ -1,16 +1,17 @@
 -- ============================================================
 -- fn_set_pension (ATOMIC WRITE)
 --   Aendert eine bestehende Altersvorsorge (Wert/Status/Stammdaten). Partielles Update
---   ("nicht gesendet = unveraendert"). Wert/Status sicher; der Beitrags-BETRAG wird hier
---   bewusst NICHT geaendert (Scope schlank; gehoert zum set_recurring_payment-Thema).
---   Wird current_value gesetzt OHNE value_updated_at -> value_updated_at = CURRENT_DATE.
---   STATUS-KASKADE: status in ('paused','paid_out') + verknuepfte recurring_payment ->
+--   ("nicht gesendet = unveraendert"). Wert/Status sicher; der Beitrags-Betrag wird hier
+--   bewusst nicht geaendert (gehoert zum set_recurring_payment-Thema).
+--   Wird current_value gesetzt ohne value_updated_at -> value_updated_at = heute (core.fn_today).
+--   Status-Kaskade: status in ('paused','paid_out') + verknuepfte recurring_payment ->
 --   diese auf 'paused' (Beitrag verlaesst den Cashflow); status='active' -> recurring 'active'.
---   NAMEN (WP2): eine Umbenennung fuehrt 'AV-Beitrag <Name>' an der Beitrags-Kette mit.
+--   Namen: eine Umbenennung fuehrt 'AV-Beitrag <Name>' an der Beitrags-Kette mit.
 --   Eingabe jsonb: pension_id (im n8n via fn_resolve_pension aufgeloest), name, provider,
 --   contract_number, owner_person_id (Slug; leer=unveraendert), current_value, value_updated_at, guaranteed_monthly_pension,
 --   retirement_start_date, status ('active'|'paused'|'paid_out'), notes.
---   RUECKGABE: {ok:true, pension_id, recurring_payment_id}. Korrigierbar (current_value<0, unbekannter status,
+--   RUECKGABE: {ok:true, pension_id, recurring_payment_id, effective}. Korrigierbar (nicht aufloesbares Datum -> code
+--   invalid_date, current_value<0, unbekannter status,
 --   gesetzliche Rente mit Monatsrente/Wert oder als zweite aktive der Person) -> {ok:false}.
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_set_pension(p jsonb)
@@ -18,7 +19,7 @@ RETURNS jsonb LANGUAGE plpgsql AS $$
 DECLARE
     v_id     INT     := (p->>'pension_id')::int;
     v_cv     NUMERIC := NULLIF(p->>'current_value', '')::numeric;
-    v_status finance.pension_status;   -- Cast erst nach dem Enum-Guard (Import-Haertung)
+    v_status finance.pension_status;   -- Cast erst nach dem Enum-Guard
     v_reason TEXT    := finance.fn_enum_reason('finance.pension_status'::regtype, p->>'status', 'status');
     v_rp     INT;
     v_old    TEXT;
@@ -63,7 +64,7 @@ BEGIN
         name                       = COALESCE(NULLIF(p->>'name', ''), name),
         provider                   = COALESCE(NULLIF(p->>'provider', ''), provider),
         contract_number            = COALESCE(NULLIF(p->>'contract_number', ''), contract_number),
-        owner_person_id            = COALESCE(NULLIF(p->>'owner_person_id', ''), owner_person_id),  -- WS-4: typisierter Eigentuemer (Slug); leer=unveraendert
+        owner_person_id            = COALESCE(NULLIF(p->>'owner_person_id', ''), owner_person_id),  -- Slug; leer=unveraendert
 
         current_value              = COALESCE(v_cv, current_value),
         value_updated_at           = CASE
@@ -77,7 +78,7 @@ BEGIN
         notes                      = COALESCE(NULLIF(p->>'notes', ''), notes)
     WHERE id = v_id;
 
-    -- Namenskopie 'AV-Beitrag <Name>' an der Beitrags-Kette mitfuehren (WP2, fn_rename_owned_recurring).
+    -- Namenskopie 'AV-Beitrag <Name>' an der Beitrags-Kette mitfuehren (fn_rename_owned_recurring)
     PERFORM finance.fn_rename_owned_recurring(v_rp, 'AV-Beitrag', v_old, NULLIF(p->>'name', ''));
 
     -- Status-Kaskade auf den verknuepften Beitrag (recurring_payment).

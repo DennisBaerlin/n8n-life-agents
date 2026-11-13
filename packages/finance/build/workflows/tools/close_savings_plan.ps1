@@ -3,8 +3,7 @@
 
 # --- tool_close_savings_plan (Sparplan schliessen: Hard-DELETE ohne Buchungen, Soft-Close mit Buchungen) ---
 function Build-CloseSavingsPlan {
-    # WS-B0: enge Paket-Schreibrolle (finance_rw, Least-Privilege D10) statt Owner-Cred.
-    # Dynamic-Scope: Build-Pg liest dieses $CRED_POSTGRES. Core-Tools nutzen die Owner-Cred.
+    # Enge Paket-Schreibrolle (finance_rw) statt Owner-Cred; Build-Pg liest $CRED_POSTGRES per Dynamic-Scope.
     $CRED_POSTGRES = $CRED_FINANCE_RW
     $trig = Build-Trigger @('savings_plan_name')
 
@@ -12,19 +11,17 @@ function Build-CloseSavingsPlan {
     $readPlan = Build-Pg 'Read Plan' @(220, 0) `
         "=SELECT sp.symbol, sp.security_name, sp.status::text AS plan_status, ABS(rp.amount) AS plan_amount, (SELECT a.currency FROM finance.accounts a WHERE a.id = rp.account_id) AS currency, (SELECT COUNT(*)::int FROM finance.transactions t WHERE t.recurring_payment_id IN (SELECT finance.fn_recurring_lineage(sp.recurring_payment_id))) AS tx_count FROM finance.savings_plans sp JOIN finance.recurring_payments rp ON rp.id = sp.recurring_payment_id WHERE sp.name ILIKE ((`$1::jsonb)->>'savings_plan_name') LIMIT 1;" `
         ([ordered]@{ savings_plan_name = '$(''Start'').item.json.savings_plan_name' })
-    # Unbekannter Name -> Tool-Fehler statt stillem Ende (New-RequiredRowGate, 2026-10-24).
+    # Unbekannter Name -> Tool-Fehler statt stillem Ende (New-RequiredRowGate).
     $found = New-RequiredRowGate -Read $readPlan -KeyField 'plan_status' -IfName 'Savings Plan found?' -ErrName 'Savings Plan not found' `
         -IfPos @(330, -160) -ErrPos @(440, 240) `
         -NotFoundExpr "=No savings plan named '{{ `$('Start').item.json.savings_plan_name }}' exists. List them via postgres_select on finance.savings_plans and ask the user which one is meant."
 
-    # "DB ist das Gesetz": fn_close_savings_plan laeuft als Probelauf VOR der Karte (korrigierbare Ablehnungen -> {ok:false} ohne Karte);
-    # derselbe Param-Satz geht nach dem Gate in den echten Write.
     $wg = New-FnWriteGate -Fn 'finance.fn_close_savings_plan' -DryPos @(440, 0) -WritePos @(1760, 0) `
         -WriteName 'Close plan (atomic)' `
         -WriteSelect "(r->>'ok')::boolean AS ok, r->>'reason' AS reason, r->>'action' AS action, (r->>'tx_count')::int AS tx_count" `
         -Params ([ordered]@{ savings_plan_name = '$(''Start'').item.json.savings_plan_name' })
 
-    # Strukturiertes Summary (Textkatalog): tx_count=0 -> Hard-DELETE-Warnung; tx_count>0 -> Soft-Close-Info.
+    # tx_count=0 -> Hard-DELETE-Warnung; tx_count>0 -> Soft-Close-Info.
     # Sparrate in der Waehrung des Verrechnungskontos (Read Plan liest accounts.currency mit). Keine Datumsfelder.
     $S = "`$('Start').item.json"
     $P = "`$('Read Plan').item.json"
@@ -46,10 +43,10 @@ function Build-CloseSavingsPlan {
 
     $retCancelled = Build-ToolCancelled 'Return cancelled' @(1760, 240) 'the close_savings_plan action'
 
-    # Atomarer Write via fn_close_savings_plan:
+    # Write (fn_close_savings_plan):
     # - tx_count=0: Hard-DELETE (finance.savings_plans zuerst, dann finance.recurring_payments; FK-Reihenfolge)
     # - tx_count>0: Soft-Close (alle laufenden Ketten-rps valid_to=CURRENT_DATE + status=paused; plan.status=paused)
-    # RAISE EXCEPTION wenn Plan nicht gefunden (kein {ok:false} -- nach Approval nicht mehr nutzerkorrigierbar)
+    # Plan nicht gefunden -> RAISE statt {ok:false}: nach der Approval nicht mehr nutzerkorrigierbar.
 
     $ifWriteOk = Build-If 'Write ok?' @(1980, 0) "={{ `$json.ok }}" 'true' 'equals' 'boolean'
 

@@ -1,10 +1,11 @@
 -- ============================================================
--- fn_resolve_recurring_payment
---   Loest den Namen einer STANDALONE wiederkehrenden Zahlung in ID auf (Vorbild fn_resolve_account).
+-- fn_resolve_recurring_payment (READ, STABLE)
+--   Loest den Namen einer freistehenden wiederkehrenden Zahlung in ID auf (Vorbild fn_resolve_account).
 --   p_active_only: default TRUE -> nur status='active' (die aktuell laufende Zeile, die man aendert).
 --   Mehrdeutigkeit (hit_count/candidates) -> Tool fragt nach.
---   Abgeloeste Glieder einer Vorgaenger-Kette (Zeile mit Nachfolger, Audit Paket 2 A0) sind KEINE Kandidaten:
+--   Abgeloeste Glieder einer Vorgaenger-Kette (Zeile mit Nachfolger) sind keine Kandidaten:
 --   nach einem Split traegt die alte Zeile denselben Namen; geaendert wird immer der Kopf.
+--   Rueckgabe: TABLE(id, hit_count, candidates); id nur bei genau einem Treffer.
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_resolve_recurring_payment(
     p_name        text,

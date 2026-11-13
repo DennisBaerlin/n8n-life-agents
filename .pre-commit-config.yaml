@@ -1,6 +1,6 @@
 # Single source of enforcement — run by `prek` (Rust binary, no Python needed).
 #   Install runner:  winget install --id j178.Prek
-#   Install hooks:   prek install --hook-type pre-commit --hook-type pre-push --hook-type commit-msg --hook-type post-merge
+#   Install hooks:   prek install --hook-type pre-commit --hook-type pre-push --hook-type commit-msg --hook-type post-merge --hook-type post-commit
 #   Run manually:    prek run --all-files
 # Our domain linters live as `local` system hooks below (same commands as CI). The remote
 # hooks are the recognizable OSS-standard layer. EOL is governed by .gitattributes, so no
@@ -330,7 +330,9 @@ repos:
         files: ^scripts/(post_merge_regenerate|dev/post_merge_regenerate_test)\.ps1$
 
       # Nach Merge/Pull: erzeugte UI-Tokens und Site neu bauen, wenn deren Quellen im Merge geaendert wurden. Ergebnis bleibt
-      # unkommittet im Arbeitsbaum (kein Auto-Commit). Braucht `prek install --hook-type post-merge` (install_git_hooks.ps1).
+      # unkommittet im Arbeitsbaum (kein Auto-Commit). Braucht `prek install --hook-type post-merge --hook-type post-commit`
+      # (install_git_hooks.ps1). Git ruft post-merge nicht, wenn ein Konflikt-Merge von Hand per `git commit` abgeschlossen wird;
+      # dafuer die post-commit-Variante (-Commit: laeuft nur, wenn HEAD ein Merge-Commit ist).
       - id: post-merge-regenerate
         name: post_merge_regenerate (rebuild generated UI token blocks and site when their sources changed in the merge)
         language: system
@@ -338,6 +340,14 @@ repos:
         pass_filenames: false
         always_run: true
         stages: [post-merge]
+
+      - id: post-commit-regenerate
+        name: post_merge_regenerate -Commit (same rebuild after a hand-resolved conflict merge commit; no-op for other commits)
+        language: system
+        entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/post_merge_regenerate.ps1 -Commit
+        pass_filenames: false
+        always_run: true
+        stages: [post-commit]
 
       - id: release-images-test
         name: release_images_test (master image pin forms, image provenance in git, SHA256SUMS check; no Docker, no network)

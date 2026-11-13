@@ -58,7 +58,7 @@ isolation). The exceptions are the PowerShell linter (a module) and the three pr
 
 ```powershell
 winget install --id j178.Prek        # the hook runner (a single Rust binary)
-scripts/install_git_hooks.ps1        # wire up all four hook stages (pre-commit, commit-msg, pre-push, post-merge)
+scripts/install_git_hooks.ps1        # wire up all five hook stages (pre-commit, commit-msg, pre-push, post-merge, post-commit)
 ```
 
 ### Required for editing `*.ps1`: `PSScriptAnalyzer`
@@ -216,7 +216,7 @@ CI runs the *same* commit-stage hooks via the same runner OS (Windows), so there
 | **pre-push** | every push | `privacy-outgoing` (`privacy_lint -Outgoing`: messages + identities of every outgoing commit and every new annotated tag, i.e. the release notes) + `privacy-review-stamp` (`privacy_outgoing -Check`: a model reviewed exactly this push; owner's machine only, contributors and CI do not need the private lists or a stamp and get the generic privacy rules) + `release-pin` (`release_pin_guard`: a pushed release tag `v*.*.*` must carry a master image pin built from its own release tree, checked offline; owner's machine only, branch pushes never) + `db_test` (Tier 1, deterministic DB/`fn_*` suite against an ephemeral Docker test DB) | **Hard.** |
 | **pre-push (site)** | pushes touching `docs/site/` or `scripts/build_site.ps1` | `site-verify` (`build_site.ps1 -Verify`: fresh Hugo build byte-compared against the tracked `docs/site/public/`; needs the pinned Hugo binary — see Setup) | **Hard** (fires only for site-touching pushes). |
 | **pre-push (soft)** | every push | `infra_softcheck` + `llm_suite_advice` (warns on touched behaviour surfaces; flags a new package surface for the parity checklist + owed README/site when the diff adds a new package-surface) — warnings only, never block | **Soft** (exit 0). |
-| **post-merge** | after a merge/pull | `post-merge-regenerate` (rebuilds the generated UI token blocks and the site when their sources changed in the merge; the result stays uncommitted) | **Soft** (never commits). |
+| **post-merge / post-commit** | after a merge/pull; after a hand-resolved conflict merge commit (git skips post-merge there) | `post-merge-regenerate` / `post-commit-regenerate` (rebuild the generated UI token blocks and the site when their sources changed in the merge; the result stays uncommitted; a failing generator prints a warning with the command to rerun) | **Soft** (never commits). |
 
 The Docker-substrate and slow hooks are pre-push only and are **excluded from `ci.yml`** (no test substrate
 there). The **LLM-cost test suites** (`n8n_test`, `orch_test`, `e2e_test`, `judge_eval`,

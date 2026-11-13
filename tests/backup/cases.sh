@@ -85,6 +85,46 @@ ok_if E.state-last-ok 'grep -qE "^LAST_OK=[0-9]+$" "$BACKUP_STATE_FILE"' "backup
 ok_if E.schluessel-unveraendert 'active_is "$KA" && [ "$(prev_n)" = 0 ]'
 A="$W/$fa"
 
+# Vollstaendigkeit: Der Export traegt jedes aktive Paket mit backup-Block. Soll = Manifest + information_schema (nicht
+# _bkp_bulk_tables, sonst pruefte der Test den Code mit sich selbst); Ist = manifest.json im Bundle (Kopf, verify_counts)
+# und das Inhaltsverzeichnis von data.dump. Ein Paket OHNE Block darf keine eigene Tabelle haben (z. B. Paperless: leeres
+# Schema, kein Block) - sonst fehlten seine Daten still in der Sicherung.
+EX="$W/ex"; mkdir -p "$EX"
+gpg_sym_decrypt_any "$A" "$EX/bundle.tar.gz" && tar -xzf "$EX/bundle.tar.gz" -C "$EX"
+pg_su_exec pg_restore -l < "$EX/data.dump" 2>/dev/null | awk '/ TABLE DATA / { print $(NF-2) "." $(NF-1) }' | sort -u > "$EX/toc"
+act="$(pg_su_psql -X -tA -d "$N8N_DB_NAME" -c "SELECT package FROM core.package_registry WHERE status = 'active' ORDER BY package" | sort)"
+miss=''; blockless=''; checked=0
+for pkg in $act; do
+  mf="$ROOT/packages/$pkg/manifest.json"
+  [ -r "$mf" ] || { miss+="$pkg(ohne Manifest) "; continue; }
+  schema="$(jq -r '.schema // empty' "$mf")"
+  ntab=0
+  [ -z "$schema" ] || ntab="$(pg_su_psql -X -tA -d "$N8N_DB_NAME" -c "SELECT count(*) FROM information_schema.tables WHERE table_schema = '$schema' AND table_type = 'BASE TABLE'")"
+  if [ "$(jq -r 'has("backup")' "$mf")" != true ]; then
+    [ "$ntab" = 0 ] || blockless+="$pkg($ntab Tabellen) "
+    continue
+  fi
+  checked=$((checked + 1))
+  want="$(jq -r '.backup.full_tables[]?' "$mf")"
+  if [ "$(jq -r '.backup.schema_dump // false' "$mf")" = true ]; then
+    want+=$'\n'"$(pg_su_psql -X -tA -d "$N8N_DB_NAME" -c "SELECT table_schema || '.' || table_name FROM information_schema.tables WHERE table_schema = '$schema' AND table_type = 'BASE TABLE'" \
+      | grep -vxF -f <(jq -r --arg s "$schema" '.backup.exclude_tables[]? | $s + "." + .' "$mf") || true)"
+  fi
+  while IFS= read -r t; do
+    [ -n "$t" ] || continue
+    grep -qxF "$t" "$EX/toc" || miss+="$t(nicht im Dump) "
+    [ "$(jq -r --arg t "$t" '.verify_counts | has($t)' "$EX/manifest.json")" = true ] || miss+="$t(nicht in verify_counts) "
+  done <<< "$want"
+  while IFS= read -r t; do
+    [ -n "$t" ] || continue
+    [ "$(jq -r --arg t "$t" 'has($t)' "$EX/shared.json")" = true ] || miss+="$t(nicht in shared.json) "
+  done < <(jq -r '.backup.filtered_tables // {} | keys[]' "$mf")
+done
+ok_if E.kopf-nennt-alle-aktiven-pakete '[ -n "$act" ] && [ "$(jq -r ".packages[].name" "$EX/manifest.json" | sort)" = "$act" ]' "aktiv: ${act//$'\n'/ } / Kopf: $(jq -r '.packages[].name' "$EX/manifest.json" 2>/dev/null | sort | tr '\n' ' ')"
+ok_if E.alle-bloecke-im-export '[ "$checked" -gt 0 ] && [ -z "$miss" ]' "geprueft=$checked, fehlt: $miss"
+ok_if E.paket-ohne-block-hat-keine-tabellen '[ -z "$blockless" ]' "Paket ohne backup-Block, aber mit eigenen Tabellen (landet nicht im Export): $blockless"
+ok_if E.export-ohne-core-schluessel '[ "$(jq -r "[.verify_counts | keys[] | select(startswith(\"core.\"))] | length" "$EX/manifest.json")" = 0 ] && ! grep -q "^core\." "$EX/toc"' "core.* im Export"
+
 # Sicherung mit dem "frischen" Schluessel KB (fuer den prev-Fall), dann ist KB aktiv wie auf einem neuen Rechner.
 set_active "$KB"
 ( mkdir -p "$W/b" && cd "$W/b" && "$CLI" backup export > "$W/out.eb" 2>&1 < /dev/null )

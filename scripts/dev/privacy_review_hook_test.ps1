@@ -279,6 +279,45 @@ Invoke-SandboxGit @('add', '-A')
 Invoke-SandboxGit @('commit', '-q', '-m', 'vier')
 Assert-Stamp 'Lint rot: kein Stempel' $false
 
+# --- Echter Release-Ablauf: Pin-Commit, main-Push, Tag-Push mit echtem git push gegen das Wegwerf-Remote ---------------------
+# Der Stempel haengt am Ausgehenden gegen den Remote-Stand. Ein Tag-Stempel VOR dem main-Push enthaelt den Pin-Commit noch;
+# nach dem main-Push ist er veraltet (anderer Hash), erst ein neuer Stempel gibt den Tag-Push frei (docs/reference/sessions.md
+# *Release-Ablauf* Schritt 8). Der git pre-push-Hook ist der echte von prek (Gate privacy_outgoing -Check), fehlt prek, entfaellt der Teil.
+Write-Host 'Echter Release-Ablauf (git push gegen das Wegwerf-Remote):'
+. (Join-Path $repo 'scripts\lib\devenv.ps1')
+$prek = Resolve-Prek
+if (-not $prek) {
+    Write-Host '  [skip] prek nicht gefunden -> kein echter pre-push-Hook' -ForegroundColor DarkGray
+} else {
+    function Invoke-SandboxPush([string[]]$PushArgs) {
+        $prev = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
+        try { & git -C $sandbox -c user.name=Test -c user.email=test@example.com @('push', '-q') @PushArgs *> $null; return $LASTEXITCODE } finally { $ErrorActionPreference = $prev }
+    }
+    Write-SandboxFile '.pre-commit-config.yaml' ("repos:`n  - repo: local`n    hooks:`n      - id: stamp`n        name: stamp`n        language: system`n" +
+        "        entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/privacy_outgoing.ps1 -Check`n        pass_filenames: false`n        always_run: true`n        stages: [pre-push]`n")
+    Invoke-SandboxGit @('checkout', '-q', 'main')
+    # Die Konfig bleibt ungetrackt (kein Commit noetig); das Remote kennt den Stand von main bis hierher.
+    $prevEap = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
+    try { & $prek -C $sandbox install --hook-type pre-push *> $null } finally { $ErrorActionPreference = $prevEap }
+    Assert-True 'echter Hook verdrahtet' (Test-Path (Join-Path $sandbox '.git\hooks\pre-push'))
+    if (Test-Path $stampDir) { Remove-Item $stampDir -Recurse -Force }
+    New-SandboxCommit 'pin-commit'
+    Invoke-SandboxGit @('tag', '-a', 'v3.0.0', '-m', 'Release drei')
+    Assert-True 'main-Push ohne Stempel: echter Hook lehnt ab' ((Invoke-SandboxPush @('origin', 'main')) -ne 0)
+    # Falsche Reihenfolge: Tag-Stempel zuerst (Text enthaelt den Pin-Commit), dann main-Stempel und main-Push.
+    Add-Stamp @('-Ref', 'v3.0.0')
+    $staleTagHash = (Invoke-Outgoing @('-Ref', 'v3.0.0')).hash
+    Add-Stamp @('-Ref', 'main')
+    Assert-True 'main-Push mit Stempel: frei' ((Invoke-SandboxPush @('origin', 'main')) -eq 0)
+    Assert-True 'Tag-Stempel von vorher gilt nicht mehr' ((Invoke-Outgoing @('-Ref', 'v3.0.0')).hash -ne $staleTagHash)
+    Assert-Case 'Tag-Push mit veraltetem Stempel gesperrt' $true "$publish v3.0.0"
+    Add-Stamp @('-Ref', 'v3.0.0')
+    Assert-Case 'Tag-Push nach neuem Stempel frei' $false "$publish v3.0.0"
+    Assert-True 'echter Tag-Push gelingt' ((Invoke-SandboxPush @('origin', 'v3.0.0')) -eq 0)
+    Assert-True 'Tag liegt im Remote' ([bool](& git -C $sandbox ls-remote --tags origin 'refs/tags/v3.0.0'))
+    Assert-True 'danach nichts mehr ausgehend' (-not (Invoke-Outgoing @('-Ref', 'v3.0.0')).hash)
+}
+
 Remove-Item $sandbox, $bare -Recurse -Force -ErrorAction SilentlyContinue
 Write-Host "privacy_review_hook_test: $failed Fehler."
 exit $failed

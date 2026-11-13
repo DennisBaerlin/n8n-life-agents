@@ -238,12 +238,39 @@ BEGIN
   IF (v_result->>'ok')::boolean IS DISTINCT FROM true
      OR (SELECT amount FROM finance.recurring_payments WHERE id = (v_result->>'recurring_payment_id')::int) IS DISTINCT FROM -83.34 THEN
     RAISE EXCEPTION 'FAIL fn_create_insurance [Rundung]: got %', v_result; END IF;
-  -- ohne Beitrag -> ok:false (der Beitrag ist Pflicht)
+  RAISE NOTICE 'PASS fn_create_insurance [WP2: 30 monatlich roh -> 360/30 abgeleitet; ohne Rhythmus/unstimmig ok:false; Rundung 0,01 ok]';
+
+  -- Beitrag unbekannt (Owner-Entscheid „nachfragen, sonst ohne"): Police ohne Beitrags-Kette ist gueltig; Konto, erste
+  -- Abbuchung und Rhythmus braucht sie dann nicht. Vertragsbeginn ohne Angabe = heute; die Notiz wird gespeichert.
   SELECT finance.fn_create_insurance(jsonb_build_object('name','__test_ins_free__','insurance_type','life',
-    'first_payment_date','2026-01-01','debit_account_id',v_acct_id)) INTO v_result;
-  IF (v_result->>'ok')::boolean IS DISTINCT FROM false OR EXISTS (SELECT 1 FROM finance.insurances WHERE name = '__test_ins_free__') THEN
-    RAISE EXCEPTION 'FAIL fn_create_insurance [ohne Beitrag]: ok:false erwartet, got %', v_result; END IF;
-  RAISE NOTICE 'PASS fn_create_insurance [WP2: 30 monatlich roh -> 360/30 abgeleitet; ohne Rhythmus/unstimmig/ohne Beitrag ok:false; Rundung 0,01 ok]';
+    'notes','Beitrag laut Police nachsehen')) INTO v_result;
+  IF (v_result->>'ok')::boolean IS DISTINCT FROM true OR v_result->>'recurring_payment_id' IS NOT NULL
+     OR v_result->>'premium_amount' IS NOT NULL OR v_result->>'annual_premium' IS NOT NULL
+     OR (v_result->>'premium_missing')::boolean IS DISTINCT FROM true THEN
+    RAISE EXCEPTION 'FAIL fn_create_insurance [ohne Beitrag]: ok:true ohne Kette, premium_missing erwartet, got %', v_result; END IF;
+  IF (SELECT coalesce(recurring_payment_id::text, '-') || '|' || valid_from || '|' || notes FROM finance.insurances
+      WHERE id = (v_result->>'insurance_id')::int) IS DISTINCT FROM '-|' || core.fn_today() || '|Beitrag laut Police nachsehen' THEN
+    RAISE EXCEPTION 'FAIL fn_create_insurance [ohne Beitrag]: Police ohne Kette, valid_from heute, Notiz erwartet'; END IF;
+  IF (SELECT coalesce(premium_amount::text, '-') || '|' || coalesce(annual_premium::text, '-') FROM finance.active_insurances
+      WHERE id = (v_result->>'insurance_id')::int) IS DISTINCT FROM '-|-' THEN
+    RAISE EXCEPTION 'FAIL fn_create_insurance [ohne Beitrag]: active_insurances muss die Police ohne Beitrag zeigen'; END IF;
+  -- Ein Platzhalter-Betrag ist kein Sonderfall der DB: 1,00 bleibt ein gueltiger Beitrag (kein Hack-Verbot)
+  IF (finance.fn_create_insurance(jsonb_build_object('name','__test_ins_one__','annual_premium',1,
+        'first_payment_date','2026-01-01','debit_account_id',v_acct_id))->>'ok')::boolean IS DISTINCT FROM true THEN
+    RAISE EXCEPTION 'FAIL fn_create_insurance [1,00]: gueltiger Beitrag erwartet'; END IF;
+  -- Beitrag genannt, aber kein Abbuchungskonto -> ok:false ohne Write (vorher scheiterte der Insert der Kette)
+  SELECT finance.fn_create_insurance(jsonb_build_object('name','__test_ins_noacct__','annual_premium',100,
+    'first_payment_date','2026-01-01')) INTO v_result;
+  IF (v_result->>'ok')::boolean IS DISTINCT FROM false OR v_result->>'reason' NOT LIKE '%debit account%'
+     OR EXISTS (SELECT 1 FROM finance.insurances WHERE name = '__test_ins_noacct__') THEN
+    RAISE EXCEPTION 'FAIL fn_create_insurance [Beitrag ohne Konto]: ok:false ohne Write erwartet, got %', v_result; END IF;
+  -- Notiz auch auf dem Normalweg
+  SELECT finance.fn_create_insurance(jsonb_build_object('name','__test_ins_note__','annual_premium',50,
+    'first_payment_date','2026-01-01','debit_account_id',v_acct_id,'notes','Tarif Basis')) INTO v_result;
+  IF (SELECT notes FROM finance.insurances WHERE id = (v_result->>'insurance_id')::int) IS DISTINCT FROM 'Tarif Basis'
+     OR (v_result->>'premium_missing')::boolean IS DISTINCT FROM false THEN
+    RAISE EXCEPTION 'FAIL fn_create_insurance [notes]: Notiz und premium_missing=false erwartet, got %', v_result; END IF;
+  RAISE NOTICE 'PASS fn_create_insurance [ohne Beitrag gueltig (keine Kette, heute, Notiz), 1,00 gueltig, Beitrag ohne Konto ok:false, notes]';
 
 END $$;
 

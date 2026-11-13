@@ -347,6 +347,27 @@ BEGIN
   END IF;
   RAISE NOTICE 'PASS fn_import_validate_row [EUR-Pflicht Versicherung/Kredit vor dem Gate, Depot erbt Verrechnungs-Waehrung]';
 
+  -- Versicherung ohne bekannten Beitrag (Spiegel fn_create_insurance): ohne Beitrag, Konto und Datum gueltig und angelegt;
+  -- mit Beitrag bleibt das Konto Pflicht.
+  SELECT finance.fn_import_stage(jsonb_build_object(
+    'rows', jsonb_build_array(
+      jsonb_build_object('entity_type','insurance','name','__test_imp Ohne Beitrag','insurance_company','Lindenversicherung'),
+      jsonb_build_object('entity_type','insurance','name','__test_imp Ohne Konto','annual_premium',100,'first_payment_date','2026-01-01')
+    ))) INTO v_result;
+  v_batch := (v_result->>'batch_id')::uuid;
+  SELECT string_agg(row_no || ':' || COALESCE(validation_error, 'VALID'), ' | ' ORDER BY row_no) INTO v_err
+  FROM finance.import_staging WHERE batch_id = v_batch;
+  IF v_err NOT LIKE '1:VALID | 2:%debit_account%required%' THEN
+    RAISE EXCEPTION 'FAIL fn_import_validate_row [ohne Beitrag]: %', v_err;
+  END IF;
+  DELETE FROM finance.import_staging WHERE batch_id = v_batch AND row_no = 2;
+  SELECT finance.fn_import_bundle(jsonb_build_object('batch_id', v_batch)) INTO v_result;
+  IF (v_result->>'ok')::boolean IS DISTINCT FROM true
+     OR NOT EXISTS (SELECT 1 FROM finance.insurances WHERE name = '__test_imp Ohne Beitrag' AND recurring_payment_id IS NULL) THEN
+    RAISE EXCEPTION 'FAIL fn_import_bundle [ohne Beitrag]: Police ohne Kette erwartet, got %', v_result;
+  END IF;
+  RAISE NOTICE 'PASS fn_import_validate_row/bundle [Versicherung ohne Beitrag gueltig und angelegt, mit Beitrag Konto Pflicht]';
+
   -- ---------- TEST 5: unbekannter Batch -> {ok:false} ----------
   SELECT finance.fn_import_bundle(jsonb_build_object('batch_id', gen_random_uuid())) INTO v_result;
   IF (v_result->>'ok')::boolean IS DISTINCT FROM false THEN

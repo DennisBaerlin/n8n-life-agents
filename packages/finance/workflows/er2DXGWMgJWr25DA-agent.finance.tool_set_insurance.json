@@ -49,6 +49,9 @@
                                                                                    "name":  "notes"
                                                                                },
                                                                                {
+                                                                                   "name":  "debit_account_name"
+                                                                               },
+                                                                               {
                                                                                    "name":  "insurance_type"
                                                                                },
                                                                                {
@@ -365,9 +368,97 @@
                   {
                       "parameters":  {
                                          "operation":  "executeQuery",
+                                         "query":  "=SELECT id, hit_count, candidates FROM finance.fn_resolve_account(($1::jsonb)-\u003e\u003e\u0027debit_account_name\u0027);",
+                                         "options":  {
+                                                         "queryReplacement":  "={{ JSON.stringify({ debit_account_name: $(\u0027Start\u0027).item.json.debit_account_name }) }}"
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.postgres",
+                      "typeVersion":  2.6,
+                      "position":  [
+                                       1320,
+                                       600
+                                   ],
+                      "id":  "87b6318e-fcb3-5da5-be0a-bb8f9ab5a0d1",
+                      "name":  "Resolve Debit Account",
+                      "credentials":  {
+                                          "postgres":  {
+                                                           "id":  "__CRED_POSTGRES_FINANCE_RW__",
+                                                           "name":  "Postgres finance_rw (read-write)"
+                                                       }
+                                      }
+                  },
+                  {
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "caseSensitive":  true,
+                                                                            "typeValidation":  "strict",
+                                                                            "version":  2
+                                                                        },
+                                                            "conditions":  [
+                                                                               {
+                                                                                   "id":  "e11cb9a4-7d0e-5160-ba3a-42d3cfa4fdf5",
+                                                                                   "leftValue":  "={{ $json.hit_count === 1 || !$(\u0027Start\u0027).item.json.debit_account_name }}",
+                                                                                   "rightValue":  true,
+                                                                                   "operator":  {
+                                                                                                    "type":  "boolean",
+                                                                                                    "operation":  "equals"
+                                                                                                }
+                                                                               }
+                                                                           ],
+                                                            "combinator":  "and"
+                                                        },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.if",
+                      "typeVersion":  2.2,
+                      "position":  [
+                                       1540,
+                                       600
+                                   ],
+                      "id":  "d26df869-b171-5065-a36f-5a19f70ad4c7",
+                      "name":  "Debit ok?"
+                  },
+                  {
+                      "parameters":  {
+                                         "assignments":  {
+                                                             "assignments":  [
+                                                                                 {
+                                                                                     "id":  "923dcb45-5864-54d0-95d0-eb30d4dbfba6",
+                                                                                     "name":  "ok",
+                                                                                     "value":  "false",
+                                                                                     "type":  "boolean"
+                                                                                 },
+                                                                                 {
+                                                                                     "id":  "dd121bdd-b833-594e-a533-5405cf8bef64",
+                                                                                     "name":  "error",
+                                                                                     "value":  "=Debit account \u0027{{ $(\u0027Start\u0027).item.json.debit_account_name }}\u0027 resolves to {{ $(\u0027Resolve Debit Account\u0027).item.json.hit_count }} matches. Ask the user which exact account to use.",
+                                                                                     "type":  "string"
+                                                                                 }
+                                                                             ]
+                                                         },
+                                         "options":  {
+
+                                                     }
+                                     },
+                      "type":  "n8n-nodes-base.set",
+                      "typeVersion":  3.4,
+                      "position":  [
+                                       1760,
+                                       720
+                                   ],
+                      "id":  "649821be-21ec-52f3-a386-27223486c5bf",
+                      "name":  "Debit ambiguous"
+                  },
+                  {
+                      "parameters":  {
+                                         "operation":  "executeQuery",
                                          "query":  "=SELECT core.fn_dry_run(\u0027finance.fn_set_insurance(jsonb)\u0027::regprocedure, $1::jsonb) AS r;",
                                          "options":  {
-                                                         "queryReplacement":  "={{ JSON.stringify({ insurance_id: $(\u0027Resolve Insurance\u0027).item.json.id, name: $(\u0027Start\u0027).item.json.new_name, insurance_company: $(\u0027Start\u0027).item.json.insurance_company, policy_number: $(\u0027Start\u0027).item.json.policy_number, policyholder_person_id: $(\u0027Resolve Person\u0027).item.json.person_id, premium_amount: $(\u0027Start\u0027).item.json.premium_amount, annual_premium: $(\u0027Start\u0027).item.json.annual_premium, effective_from: $(\u0027Start\u0027).item.json.effective_from, schedule_interval: $(\u0027Start\u0027).item.json.schedule_interval, schedule_unit: $(\u0027Start\u0027).item.json.schedule_unit, schedule_day_of_month: $(\u0027Start\u0027).item.json.schedule_day_of_month, valid_to: $(\u0027Start\u0027).item.json.valid_to, status: $(\u0027Start\u0027).item.json.status, notes: $(\u0027Start\u0027).item.json.notes, insurance_type: $(\u0027Start\u0027).item.json.insurance_type, beneficiary: $(\u0027Start\u0027).item.json.beneficiary, coverage_amount: $(\u0027Start\u0027).item.json.coverage_amount, claim_deadline_hours: $(\u0027Start\u0027).item.json.claim_deadline_hours }) }}"
+                                                         "queryReplacement":  "={{ JSON.stringify({ insurance_id: $(\u0027Resolve Insurance\u0027).item.json.id, name: $(\u0027Start\u0027).item.json.new_name, insurance_company: $(\u0027Start\u0027).item.json.insurance_company, policy_number: $(\u0027Start\u0027).item.json.policy_number, policyholder_person_id: $(\u0027Resolve Person\u0027).item.json.person_id, premium_amount: $(\u0027Start\u0027).item.json.premium_amount, annual_premium: $(\u0027Start\u0027).item.json.annual_premium, effective_from: $(\u0027Start\u0027).item.json.effective_from, schedule_interval: $(\u0027Start\u0027).item.json.schedule_interval, schedule_unit: $(\u0027Start\u0027).item.json.schedule_unit, schedule_day_of_month: $(\u0027Start\u0027).item.json.schedule_day_of_month, valid_to: $(\u0027Start\u0027).item.json.valid_to, status: $(\u0027Start\u0027).item.json.status, notes: $(\u0027Start\u0027).item.json.notes, debit_account_id: $(\u0027Resolve Debit Account\u0027).item.json.id, insurance_type: $(\u0027Start\u0027).item.json.insurance_type, beneficiary: $(\u0027Start\u0027).item.json.beneficiary, coverage_amount: $(\u0027Start\u0027).item.json.coverage_amount, claim_deadline_hours: $(\u0027Start\u0027).item.json.claim_deadline_hours }) }}"
                                                      }
                                      },
                       "type":  "n8n-nodes-base.postgres",
@@ -473,7 +564,7 @@
                                          "operation":  "executeQuery",
                                          "query":  "=SELECT (r-\u003e\u003e\u0027ok\u0027)::boolean AS ok, r-\u003e\u003e\u0027reason\u0027 AS reason, (r-\u003e\u003e\u0027insurance_id\u0027)::int AS insurance_id, (r-\u003e\u003e\u0027recurring_payment_id\u0027)::int AS recurring_payment_id FROM finance.fn_set_insurance(($1::jsonb - \u0027_effective\u0027) || COALESCE(NULLIF(($1::jsonb)-\u003e\u0027_effective\u0027, \u0027null\u0027::jsonb), \u0027{}\u0027::jsonb)) AS r;",
                                          "options":  {
-                                                         "queryReplacement":  "={{ JSON.stringify({ insurance_id: $(\u0027Resolve Insurance\u0027).item.json.id, name: $(\u0027Start\u0027).item.json.new_name, insurance_company: $(\u0027Start\u0027).item.json.insurance_company, policy_number: $(\u0027Start\u0027).item.json.policy_number, policyholder_person_id: $(\u0027Resolve Person\u0027).item.json.person_id, premium_amount: $(\u0027Start\u0027).item.json.premium_amount, annual_premium: $(\u0027Start\u0027).item.json.annual_premium, effective_from: $(\u0027Start\u0027).item.json.effective_from, schedule_interval: $(\u0027Start\u0027).item.json.schedule_interval, schedule_unit: $(\u0027Start\u0027).item.json.schedule_unit, schedule_day_of_month: $(\u0027Start\u0027).item.json.schedule_day_of_month, valid_to: $(\u0027Start\u0027).item.json.valid_to, status: $(\u0027Start\u0027).item.json.status, notes: $(\u0027Start\u0027).item.json.notes, insurance_type: $(\u0027Start\u0027).item.json.insurance_type, beneficiary: $(\u0027Start\u0027).item.json.beneficiary, coverage_amount: $(\u0027Start\u0027).item.json.coverage_amount, claim_deadline_hours: $(\u0027Start\u0027).item.json.claim_deadline_hours, _effective: ($(\u0027Dry run\u0027).item.json.r.effective || null) }) }}"
+                                                         "queryReplacement":  "={{ JSON.stringify({ insurance_id: $(\u0027Resolve Insurance\u0027).item.json.id, name: $(\u0027Start\u0027).item.json.new_name, insurance_company: $(\u0027Start\u0027).item.json.insurance_company, policy_number: $(\u0027Start\u0027).item.json.policy_number, policyholder_person_id: $(\u0027Resolve Person\u0027).item.json.person_id, premium_amount: $(\u0027Start\u0027).item.json.premium_amount, annual_premium: $(\u0027Start\u0027).item.json.annual_premium, effective_from: $(\u0027Start\u0027).item.json.effective_from, schedule_interval: $(\u0027Start\u0027).item.json.schedule_interval, schedule_unit: $(\u0027Start\u0027).item.json.schedule_unit, schedule_day_of_month: $(\u0027Start\u0027).item.json.schedule_day_of_month, valid_to: $(\u0027Start\u0027).item.json.valid_to, status: $(\u0027Start\u0027).item.json.status, notes: $(\u0027Start\u0027).item.json.notes, debit_account_id: $(\u0027Resolve Debit Account\u0027).item.json.id, insurance_type: $(\u0027Start\u0027).item.json.insurance_type, beneficiary: $(\u0027Start\u0027).item.json.beneficiary, coverage_amount: $(\u0027Start\u0027).item.json.coverage_amount, claim_deadline_hours: $(\u0027Start\u0027).item.json.claim_deadline_hours, _effective: ($(\u0027Dry run\u0027).item.json.r.effective || null) }) }}"
                                                      }
                                      },
                       "type":  "n8n-nodes-base.postgres",
@@ -498,7 +589,7 @@
                                                                                  {
                                                                                      "id":  "99a31518-c62d-5f8c-9af0-5cced57f3b64",
                                                                                      "name":  "summary",
-                                                                                     "value":  "={{ ({ title: \u0027finance.hitl.set_insurance\u0027, lines: [ { label: \u0027finance.label.insurance\u0027, kind: \u0027text\u0027, value: ($(\u0027Start\u0027).item.json.insurance_name) }, (($(\u0027Start\u0027).item.json.new_name) ? { label: \u0027finance.label.new_name\u0027, kind: \u0027text\u0027, value: ($(\u0027Start\u0027).item.json.new_name) } : null), ((($(\u0027Start\u0027).item.json.premium_amount || $(\u0027Start\u0027).item.json.annual_premium)) ? { label: \u0027finance.label.rate_per_debit\u0027, kind: \u0027tpl\u0027, value: (\u0027finance.tpl.change\u0027), params: { from: ({ kind: \u0027money\u0027, value: ($(\u0027Read Current\u0027).item.json.premium_amount), currency: (\u0027EUR\u0027) }), to: ({ kind: \u0027money\u0027, value: ($(\u0027Dry run\u0027).item.json.r.premium_amount), currency: (\u0027EUR\u0027) }) } } : null), (($(\u0027Start\u0027).item.json.schedule_unit) ? { label: \u0027finance.label.payment_mode\u0027, kind: \u0027tpl\u0027, value: (((Number(($(\u0027Start\u0027).item.json.schedule_interval || $(\u0027Read Current\u0027).item.json.schedule_interval) || 1) === 1 || (String($(\u0027Start\u0027).item.json.schedule_unit || \u0027\u0027) === \u0027month\u0027 \u0026\u0026 [3, 6, 12].includes(Number(($(\u0027Start\u0027).item.json.schedule_interval || $(\u0027Read Current\u0027).item.json.schedule_interval) || 1)))) ? \u0027finance.tpl.plain\u0027 : \u0027finance.tpl.every_unit\u0027)), params: { interval: (Number(($(\u0027Start\u0027).item.json.schedule_interval || $(\u0027Read Current\u0027).item.json.schedule_interval) || 1)), unit: ({ kind: \u0027enum\u0027, value: (String($(\u0027Start\u0027).item.json.schedule_unit || \u0027\u0027)), enum: \u0027finance.enum.schedule_unit\u0027 }), value: ({ kind: \u0027enum\u0027, value: ((Number(($(\u0027Start\u0027).item.json.schedule_interval || $(\u0027Read Current\u0027).item.json.schedule_interval) || 1) === 1 ? String($(\u0027Start\u0027).item.json.schedule_unit || \u0027\u0027) : (String($(\u0027Start\u0027).item.json.schedule_unit || \u0027\u0027) === \u0027month\u0027 \u0026\u0026 Number(($(\u0027Start\u0027).item.json.schedule_interval || $(\u0027Read Current\u0027).item.json.schedule_interval) || 1) === 3 ? \u0027quarter\u0027 : (String($(\u0027Start\u0027).item.json.schedule_unit || \u0027\u0027) === \u0027month\u0027 \u0026\u0026 Number(($(\u0027Start\u0027).item.json.schedule_interval || $(\u0027Read Current\u0027).item.json.schedule_interval) || 1) === 6 ? \u0027half_year\u0027 : (String($(\u0027Start\u0027).item.json.schedule_unit || \u0027\u0027) === \u0027month\u0027 \u0026\u0026 Number(($(\u0027Start\u0027).item.json.schedule_interval || $(\u0027Read Current\u0027).item.json.schedule_interval) || 1) === 12 ? \u0027year\u0027 : String($(\u0027Start\u0027).item.json.schedule_unit || \u0027\u0027)))))), enum: \u0027finance.enum.credit_rhythm\u0027 }) } } : null), ((($(\u0027Start\u0027).item.json.premium_amount || $(\u0027Start\u0027).item.json.annual_premium)) ? { label: \u0027finance.label.annual_contribution\u0027, kind: \u0027tpl\u0027, value: (\u0027finance.tpl.change\u0027), params: { from: ({ kind: \u0027money\u0027, value: ($(\u0027Read Current\u0027).item.json.annual_premium), currency: (\u0027EUR\u0027) }), to: ({ kind: \u0027money\u0027, value: ($(\u0027Dry run\u0027).item.json.r.annual_premium), currency: (\u0027EUR\u0027) }) } } : null), ((((($(\u0027Start\u0027).item.json.premium_amount || $(\u0027Start\u0027).item.json.annual_premium) || $(\u0027Start\u0027).item.json.schedule_day_of_month)) \u0026\u0026 (!((x) =\u003e x === null || x === undefined || x === \"\" || (Array.isArray(x) \u0026\u0026 x.length === 0))($(\u0027Dry run\u0027).item.json.r.effective_from))) ? { label: \u0027finance.label.effective_from\u0027, kind: \u0027date\u0027, value: ($(\u0027Dry run\u0027).item.json.r.effective_from) } : null), (($(\u0027Start\u0027).item.json.policyholder_person) ? { label: \u0027finance.label.policyholder_person\u0027, kind: \u0027text\u0027, value: (($(\u0027Resolve Person\u0027).item.json.full_name || $(\u0027Start\u0027).item.json.policyholder_person)) } : null), (($(\u0027Start\u0027).item.json.insurance_company) ? { label: \u0027finance.label.company\u0027, kind: \u0027text\u0027, value: ($(\u0027Start\u0027).item.json.insurance_company) } : null), (($(\u0027Start\u0027).item.json.policy_number) ? { label: \u0027finance.label.policy_number\u0027, kind: \u0027text\u0027, value: ($(\u0027Start\u0027).item.json.policy_number) } : null), (($(\u0027Start\u0027).item.json.insurance_type) ? { label: \u0027finance.label.insurance_type\u0027, kind: \u0027enum\u0027, value: ($(\u0027Start\u0027).item.json.insurance_type), enum: \u0027finance.enum.insurance_type\u0027 } : null), (($(\u0027Start\u0027).item.json.coverage_amount) ? { label: \u0027finance.label.coverage_amount\u0027, kind: \u0027money\u0027, value: ($(\u0027Preview Rate\u0027).item.json.coverage_amount), currency: (\u0027EUR\u0027) } : null), (($(\u0027Start\u0027).item.json.beneficiary) ? { label: \u0027finance.label.beneficiary\u0027, kind: \u0027text\u0027, value: ($(\u0027Start\u0027).item.json.beneficiary) } : null), (($(\u0027Start\u0027).item.json.claim_deadline_hours) ? { label: \u0027finance.label.claim_deadline\u0027, kind: \u0027tpl\u0027, value: (\u0027finance.tpl.hours\u0027), params: { value: ($(\u0027Start\u0027).item.json.claim_deadline_hours) } } : null), (($(\u0027Start\u0027).item.json.status) ? { label: \u0027core.label.status\u0027, kind: \u0027tpl\u0027, value: (\u0027finance.tpl.change\u0027), params: { from: ({ kind: \u0027enum\u0027, value: ($(\u0027Read Current\u0027).item.json.status), enum: \u0027finance.enum.insurance_status\u0027 }), to: ({ kind: \u0027enum\u0027, value: ($(\u0027Start\u0027).item.json.status), enum: \u0027finance.enum.insurance_status\u0027 }) } } : null), (($(\u0027Start\u0027).item.json.valid_to) ? { label: \u0027finance.label.valid_to\u0027, kind: \u0027date\u0027, value: ((($(\u0027Dry run\u0027).item.json.r.effective || {}).valid_to || $(\u0027Start\u0027).item.json.valid_to)) } : null), (($(\u0027Start\u0027).item.json.notes) ? { label: \u0027core.label.note\u0027, kind: \u0027text\u0027, value: ($(\u0027Start\u0027).item.json.notes) } : null), ((($(\u0027Start\u0027).item.json.status == \u0027cancelled\u0027 || $(\u0027Start\u0027).item.json.status == \u0027expired\u0027)) ? { kind: \u0027note\u0027, value: \u0027finance.note.set_insurance_pause\u0027 } : null) ].concat(($(\u0027Dry run\u0027).item.json.r.card_lines || [])).filter(Boolean) }) }}",
+                                                                                     "value":  "={{ ({ title: \u0027finance.hitl.set_insurance\u0027, lines: [ { label: \u0027finance.label.insurance\u0027, kind: \u0027text\u0027, value: ($(\u0027Start\u0027).item.json.insurance_name) }, (($(\u0027Start\u0027).item.json.new_name) ? { label: \u0027finance.label.new_name\u0027, kind: \u0027text\u0027, value: ($(\u0027Start\u0027).item.json.new_name) } : null), ((($(\u0027Start\u0027).item.json.premium_amount || $(\u0027Start\u0027).item.json.annual_premium)) ? { label: \u0027finance.label.rate_per_debit\u0027, kind: \u0027tpl\u0027, value: (\u0027finance.tpl.change\u0027), params: { from: ({ kind: \u0027money\u0027, value: ($(\u0027Read Current\u0027).item.json.premium_amount), currency: (\u0027EUR\u0027) }), to: ({ kind: \u0027money\u0027, value: ($(\u0027Dry run\u0027).item.json.r.premium_amount), currency: (\u0027EUR\u0027) }) } } : null), (($(\u0027Start\u0027).item.json.schedule_unit) ? { label: \u0027finance.label.payment_mode\u0027, kind: \u0027tpl\u0027, value: (((Number(($(\u0027Start\u0027).item.json.schedule_interval || $(\u0027Read Current\u0027).item.json.schedule_interval) || 1) === 1 || (String($(\u0027Start\u0027).item.json.schedule_unit || \u0027\u0027) === \u0027month\u0027 \u0026\u0026 [3, 6, 12].includes(Number(($(\u0027Start\u0027).item.json.schedule_interval || $(\u0027Read Current\u0027).item.json.schedule_interval) || 1)))) ? \u0027finance.tpl.plain\u0027 : \u0027finance.tpl.every_unit\u0027)), params: { interval: (Number(($(\u0027Start\u0027).item.json.schedule_interval || $(\u0027Read Current\u0027).item.json.schedule_interval) || 1)), unit: ({ kind: \u0027enum\u0027, value: (String($(\u0027Start\u0027).item.json.schedule_unit || \u0027\u0027)), enum: \u0027finance.enum.schedule_unit\u0027 }), value: ({ kind: \u0027enum\u0027, value: ((Number(($(\u0027Start\u0027).item.json.schedule_interval || $(\u0027Read Current\u0027).item.json.schedule_interval) || 1) === 1 ? String($(\u0027Start\u0027).item.json.schedule_unit || \u0027\u0027) : (String($(\u0027Start\u0027).item.json.schedule_unit || \u0027\u0027) === \u0027month\u0027 \u0026\u0026 Number(($(\u0027Start\u0027).item.json.schedule_interval || $(\u0027Read Current\u0027).item.json.schedule_interval) || 1) === 3 ? \u0027quarter\u0027 : (String($(\u0027Start\u0027).item.json.schedule_unit || \u0027\u0027) === \u0027month\u0027 \u0026\u0026 Number(($(\u0027Start\u0027).item.json.schedule_interval || $(\u0027Read Current\u0027).item.json.schedule_interval) || 1) === 6 ? \u0027half_year\u0027 : (String($(\u0027Start\u0027).item.json.schedule_unit || \u0027\u0027) === \u0027month\u0027 \u0026\u0026 Number(($(\u0027Start\u0027).item.json.schedule_interval || $(\u0027Read Current\u0027).item.json.schedule_interval) || 1) === 12 ? \u0027year\u0027 : String($(\u0027Start\u0027).item.json.schedule_unit || \u0027\u0027)))))), enum: \u0027finance.enum.credit_rhythm\u0027 }) } } : null), ((($(\u0027Start\u0027).item.json.premium_amount || $(\u0027Start\u0027).item.json.annual_premium)) ? { label: \u0027finance.label.annual_contribution\u0027, kind: \u0027tpl\u0027, value: (\u0027finance.tpl.change\u0027), params: { from: ({ kind: \u0027money\u0027, value: ($(\u0027Read Current\u0027).item.json.annual_premium), currency: (\u0027EUR\u0027) }), to: ({ kind: \u0027money\u0027, value: ($(\u0027Dry run\u0027).item.json.r.annual_premium), currency: (\u0027EUR\u0027) }) } } : null), ((((($(\u0027Start\u0027).item.json.premium_amount || $(\u0027Start\u0027).item.json.annual_premium) || $(\u0027Start\u0027).item.json.schedule_day_of_month)) \u0026\u0026 (!((x) =\u003e x === null || x === undefined || x === \"\" || (Array.isArray(x) \u0026\u0026 x.length === 0))($(\u0027Dry run\u0027).item.json.r.effective_from))) ? { label: \u0027finance.label.effective_from\u0027, kind: \u0027date\u0027, value: ($(\u0027Dry run\u0027).item.json.r.effective_from) } : null), (($(\u0027Start\u0027).item.json.debit_account_name) ? { label: \u0027finance.label.debit_account\u0027, kind: \u0027text\u0027, value: ($(\u0027Start\u0027).item.json.debit_account_name) } : null), (($(\u0027Start\u0027).item.json.policyholder_person) ? { label: \u0027finance.label.policyholder_person\u0027, kind: \u0027text\u0027, value: (($(\u0027Resolve Person\u0027).item.json.full_name || $(\u0027Start\u0027).item.json.policyholder_person)) } : null), (($(\u0027Start\u0027).item.json.insurance_company) ? { label: \u0027finance.label.company\u0027, kind: \u0027text\u0027, value: ($(\u0027Start\u0027).item.json.insurance_company) } : null), (($(\u0027Start\u0027).item.json.policy_number) ? { label: \u0027finance.label.policy_number\u0027, kind: \u0027text\u0027, value: ($(\u0027Start\u0027).item.json.policy_number) } : null), (($(\u0027Start\u0027).item.json.insurance_type) ? { label: \u0027finance.label.insurance_type\u0027, kind: \u0027enum\u0027, value: ($(\u0027Start\u0027).item.json.insurance_type), enum: \u0027finance.enum.insurance_type\u0027 } : null), (($(\u0027Start\u0027).item.json.coverage_amount) ? { label: \u0027finance.label.coverage_amount\u0027, kind: \u0027money\u0027, value: ($(\u0027Preview Rate\u0027).item.json.coverage_amount), currency: (\u0027EUR\u0027) } : null), (($(\u0027Start\u0027).item.json.beneficiary) ? { label: \u0027finance.label.beneficiary\u0027, kind: \u0027text\u0027, value: ($(\u0027Start\u0027).item.json.beneficiary) } : null), (($(\u0027Start\u0027).item.json.claim_deadline_hours) ? { label: \u0027finance.label.claim_deadline\u0027, kind: \u0027tpl\u0027, value: (\u0027finance.tpl.hours\u0027), params: { value: ($(\u0027Start\u0027).item.json.claim_deadline_hours) } } : null), (($(\u0027Start\u0027).item.json.status) ? { label: \u0027core.label.status\u0027, kind: \u0027tpl\u0027, value: (\u0027finance.tpl.change\u0027), params: { from: ({ kind: \u0027enum\u0027, value: ($(\u0027Read Current\u0027).item.json.status), enum: \u0027finance.enum.insurance_status\u0027 }), to: ({ kind: \u0027enum\u0027, value: ($(\u0027Start\u0027).item.json.status), enum: \u0027finance.enum.insurance_status\u0027 }) } } : null), (($(\u0027Start\u0027).item.json.valid_to) ? { label: \u0027finance.label.valid_to\u0027, kind: \u0027date\u0027, value: ((($(\u0027Dry run\u0027).item.json.r.effective || {}).valid_to || $(\u0027Start\u0027).item.json.valid_to)) } : null), (($(\u0027Start\u0027).item.json.notes) ? { label: \u0027core.label.note\u0027, kind: \u0027text\u0027, value: ($(\u0027Start\u0027).item.json.notes) } : null), ((($(\u0027Start\u0027).item.json.status == \u0027cancelled\u0027 || $(\u0027Start\u0027).item.json.status == \u0027expired\u0027)) ? { kind: \u0027note\u0027, value: \u0027finance.note.set_insurance_pause\u0027 } : null) ].concat(($(\u0027Dry run\u0027).item.json.r.card_lines || [])).filter(Boolean) }) }}",
                                                                                      "type":  "object"
                                                                                  }
                                                                              ]
@@ -746,7 +837,7 @@
                   },
                   {
                       "parameters":  {
-                                         "content":  "## DB-Automatik\n**Eine Quelle: Beitrags-Kette (WP2)**\n\nBeitrag, Rhythmus, Tag und Vertragsende stehen nur an der Beitrags-Kette. Neuer Beitrag/Rhythmus/Tag -\u003e fn_change_owned_recurring: Korrektur direkt nach der Anlage in place, sonst neues Glied ab effective_from (Default nächster offener Termin), der alte Beitrag bleibt Historie. status=cancelled/expired -\u003e Kette endet zum Vertragsende (paused erst, wenn erreicht). Umbenennung führt Versicherung \u003cName\u003e an allen Gliedern mit. WS-0b (estate): die optionalen Nachlass-Felder insurance_type (geschlossene Liste, CHECK=Backstop) / beneficiary / coverage_amount / claim_deadline_hours werden partiell mitgesetzt (leer=unverändert) und vom estate-Paket über finance.fn_insurance_register() (Oberfläche A) gelesen.",
+                                         "content":  "## DB-Automatik\n**Eine Quelle: Beitrags-Kette (WP2)**\n\nBeitrag, Rhythmus, Tag und Vertragsende stehen nur an der Beitrags-Kette. Neuer Beitrag/Rhythmus/Tag -\u003e fn_change_owned_recurring: Korrektur direkt nach der Anlage in place, sonst neues Glied ab effective_from (Default nächster offener Termin), der alte Beitrag bleibt Historie. status=cancelled/expired -\u003e Kette endet zum Vertragsende (paused erst, wenn erreicht). Umbenennung führt Versicherung \u003cName\u003e an allen Gliedern mit. Police ohne Beitrag: ein Beitrag legt die Kette neu an (effective_from = erste Abbuchung, Konto aus Resolve Debit Account), wie beim Kredit ohne Rate. WS-0b (estate): die optionalen Nachlass-Felder insurance_type (geschlossene Liste, CHECK=Backstop) / beneficiary / coverage_amount / claim_deadline_hours werden partiell mitgesetzt (leer=unverändert) und vom estate-Paket über finance.fn_insurance_register() (Oberfläche A) gelesen.",
                                          "height":  220,
                                          "width":  480,
                                          "color":  4
@@ -881,12 +972,41 @@
                                                              [
                                                                  {
                                                                      "index":  0,
-                                                                     "node":  "Dry run",
+                                                                     "node":  "Resolve Debit Account",
                                                                      "type":  "main"
                                                                  }
                                                              ]
                                                          ]
                                             },
+                        "Resolve Debit Account":  {
+                                                      "main":  [
+                                                                   [
+                                                                       {
+                                                                           "index":  0,
+                                                                           "node":  "Debit ok?",
+                                                                           "type":  "main"
+                                                                       }
+                                                                   ]
+                                                               ]
+                                                  },
+                        "Debit ok?":  {
+                                          "main":  [
+                                                       [
+                                                           {
+                                                               "index":  0,
+                                                               "node":  "Dry run",
+                                                               "type":  "main"
+                                                           }
+                                                       ],
+                                                       [
+                                                           {
+                                                               "index":  0,
+                                                               "node":  "Debit ambiguous",
+                                                               "type":  "main"
+                                                           }
+                                                       ]
+                                                   ]
+                                      },
                         "Dry run":  {
                                         "main":  [
                                                      [

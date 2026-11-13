@@ -195,6 +195,9 @@ function Get-FinanceHitlLines {
             $lines
         }
         'insurance' {
+            # Ohne Beitrag (unbekannt) legt die fn keine Beitrags-Kette an: Rhythmus, Konto, Tag und erste Abbuchung werden
+            # nicht geschrieben und entfallen auf der Karte; der Beitrag zeigt "fehlt noch".
+            $hasP = Get-FinanceNumSetJs (& $need 'PeriodAmount')
             @(
                 (New-HitlLine 'core.label.name'                    "$S.name")
                 (New-HitlLine 'finance.label.company'              "$S.insurance_company" -OmitEmpty)
@@ -202,17 +205,20 @@ function Get-FinanceHitlLines {
                 (& $own 'finance.label.policyholder_person' (& $need 'Person'))
                 # WP2: Beitrag je Abbuchung (genannt oder aus dem Jahresbeitrag) und Jahreswert kommen aus fn_insurance_fields
                 # (Einzel-Tool: Vorschau-Knoten, Import: fn_import_card_rows) -- die Karte rechnet nichts.
-                (New-HitlLine 'finance.label.rate_per_debit'       (& $need 'PeriodAmount') -Kind money -EurByModel)
-                (Get-FinanceRhythmLine -Label 'finance.label.payment_mode' -Interval "$S.schedule_interval" -Unit "($S.schedule_unit || 'year')")
-                (New-HitlLine 'finance.label.annual_contribution'  (& $need 'Annual') -Kind money -EurByModel)
-                (New-HitlLine 'finance.label.debit_day'            $dom -Kind tpl -Params @{ day = "$S.schedule_day_of_month" })
-                (New-HitlLine 'finance.label.debit_account'        "$S.debit_account_name")
+                (New-HitlLine 'finance.label.rate_per_debit'       "($hasP ? 'finance.tpl.plain' : 'finance.value.premium_missing')" -Kind tpl -Params @{
+                    value = (New-HitlValue -Kind money -Value (& $need 'PeriodAmount') -EurByModel) })
+                (Get-FinanceRhythmLine -Label 'finance.label.payment_mode' -Interval "$S.schedule_interval" -Unit "($S.schedule_unit || 'year')" -If $hasP)
+                (New-HitlLine 'finance.label.annual_contribution'  (& $need 'Annual') -Kind money -EurByModel -If $hasP)
+                (New-HitlLine 'finance.label.debit_day'            $dom -Kind tpl -Params @{ day = "$S.schedule_day_of_month" } -If $hasP)
+                (New-HitlLine 'finance.label.debit_account'        "$S.debit_account_name" -If $hasP)
                 (New-HitlLine 'finance.label.valid_from_contract'  "($S.valid_from || $S.first_payment_date)" -Kind date)
-                (New-HitlLine 'finance.label.first_debit'          "$S.first_payment_date" -Kind date)
+                (New-HitlLine 'finance.label.first_debit'          "$S.first_payment_date" -Kind date -If $hasP)
                 (New-HitlLine 'finance.label.insurance_type'       "$S.insurance_type" -Kind enum -Enum 'finance.enum.insurance_type' -OmitEmpty)
                 (New-HitlLine 'finance.label.coverage_amount'      "$S.coverage_amount" -Kind money -EurByModel -OmitEmpty)
                 (New-HitlLine 'finance.label.beneficiary'          "$S.beneficiary" -OmitEmpty)
                 (New-HitlLine 'finance.label.claim_deadline'       "($S.claim_deadline_hours ? 'finance.tpl.hours' : null)" -Kind tpl -Params @{ value = "$S.claim_deadline_hours" } -OmitEmpty)
+                (New-HitlLine 'core.label.note'                    "$S.notes" -OmitEmpty)
+                (New-HitlNote -Key 'finance.note.insurance_premium_missing' -If "!$hasP")
             )
         }
         'pension' {

@@ -8,7 +8,7 @@ function Build-SetInsurance {
     $CRED_POSTGRES = $CRED_FINANCE_RW
     $trig = Build-Trigger @('insurance_name','new_name','insurance_company','policy_number','policyholder_person',
                            'premium_amount','annual_premium','schedule_interval','schedule_unit','schedule_day_of_month',
-                           'effective_from','valid_to','status','notes',
+                           'effective_from','valid_to','status','notes','debit_account_name',
                            'insurance_type','beneficiary','coverage_amount','claim_deadline_hours')  # WS-0b estate
 
     $resIns = Build-Pg 'Resolve Insurance' @(220, 0) `
@@ -44,6 +44,15 @@ function Build-SetInsurance {
     $errPerson = Build-ToolError 'Person unresolved' @(1540, 480) `
         "=The policyholder '{{ `$('Start').item.json.policyholder_person }}' could not be uniquely resolved ({{ `$('Resolve Person').item.json.hit_count }} match(es)). Candidates: {{ JSON.stringify(`$('Resolve Person').item.json.candidates) }}. Ask which household member."
 
+    # Abbuchungskonto nur zum Nachtragen eines Beitrags an einer Police ohne Beitrag (leer = kein Konto; ob es gebraucht
+    # wird, entscheidet der Probelauf).
+    $resAcc = Build-Pg 'Resolve Debit Account' @(1320, 600) `
+        "=SELECT id, hit_count, candidates FROM finance.fn_resolve_account((`$1::jsonb)->>'debit_account_name');" `
+        ([ordered]@{ debit_account_name = '$(''Start'').item.json.debit_account_name' })
+    $ifAcc = Build-If 'Debit ok?' @(1540, 600) "={{ `$json.hit_count === 1 || !`$('Start').item.json.debit_account_name }}" 'true' 'equals' 'boolean'
+    $errAcc = Build-ToolError 'Debit ambiguous' @(1760, 720) `
+        "=Debit account '{{ `$('Start').item.json.debit_account_name }}' resolves to {{ `$('Resolve Debit Account').item.json.hit_count }} matches. Ask the user which exact account to use."
+
     # "DB ist das Gesetz": fn_set_insurance laeuft als Probelauf VOR der Karte (nach Preview Rate / Fields ok?); derselbe
     # Param-Satz geht nach dem Gate in den echten Write (partielles UPDATE + Recurring-Sync + Kuendigungs-Kaskade).
     $wg = New-FnWriteGate -Fn 'finance.fn_set_insurance' -DryPos @(1100, 0) -WritePos @(2420, 0) `
@@ -64,6 +73,7 @@ function Build-SetInsurance {
             valid_to              = '$(''Start'').item.json.valid_to'
             status                = '$(''Start'').item.json.status'
             notes                 = '$(''Start'').item.json.notes'
+            debit_account_id      = '$(''Resolve Debit Account'').item.json.id'
             insurance_type        = '$(''Start'').item.json.insurance_type'          # WS-0b estate
             beneficiary           = '$(''Start'').item.json.beneficiary'
             coverage_amount       = '$(''Start'').item.json.coverage_amount'
@@ -89,6 +99,7 @@ function Build-SetInsurance {
             from = (New-HitlValue -Kind money -Value "$R.annual_premium" -EurByModel)
             to   = (New-HitlValue -Kind money -Value "$D.annual_premium" -EurByModel) })
         (New-HitlLine 'finance.label.effective_from'      "$D.effective_from" -Kind date -If "($hasPrem || $S.schedule_day_of_month)" -OmitEmpty)
+        (New-HitlLine 'finance.label.debit_account'       "$S.debit_account_name" -If "$S.debit_account_name")
         (New-HitlLine 'finance.label.policyholder_person' "($P.full_name || $S.policyholder_person)" -If "$S.policyholder_person")
         (New-HitlLine 'finance.label.company'             "$S.insurance_company" -If "$S.insurance_company")
         (New-HitlLine 'finance.label.policy_number'       "$S.policy_number" -If "$S.policy_number")
@@ -131,13 +142,13 @@ function Build-SetInsurance {
 
     $stickyGen = Build-Sticky 'DB-Automatik Beitrags-Kette' @(2420, -280) `
         'Eine Quelle: Beitrags-Kette (WP2)' `
-        'Beitrag, Rhythmus, Tag und Vertragsende stehen nur an der Beitrags-Kette. Neuer Beitrag/Rhythmus/Tag -> fn_change_owned_recurring: Korrektur direkt nach der Anlage in place, sonst neues Glied ab effective_from (Default nächster offener Termin), der alte Beitrag bleibt Historie. status=cancelled/expired -> Kette endet zum Vertragsende (paused erst, wenn erreicht). Umbenennung führt Versicherung <Name> an allen Gliedern mit. WS-0b (estate): die optionalen Nachlass-Felder insurance_type (geschlossene Liste, CHECK=Backstop) / beneficiary / coverage_amount / claim_deadline_hours werden partiell mitgesetzt (leer=unverändert) und vom estate-Paket über finance.fn_insurance_register() (Oberfläche A) gelesen.' 220 480
+        'Beitrag, Rhythmus, Tag und Vertragsende stehen nur an der Beitrags-Kette. Neuer Beitrag/Rhythmus/Tag -> fn_change_owned_recurring: Korrektur direkt nach der Anlage in place, sonst neues Glied ab effective_from (Default nächster offener Termin), der alte Beitrag bleibt Historie. status=cancelled/expired -> Kette endet zum Vertragsende (paused erst, wenn erreicht). Umbenennung führt Versicherung <Name> an allen Gliedern mit. Police ohne Beitrag: ein Beitrag legt die Kette neu an (effective_from = erste Abbuchung, Konto aus Resolve Debit Account), wie beim Kredit ohne Rate. WS-0b (estate): die optionalen Nachlass-Felder insurance_type (geschlossene Liste, CHECK=Backstop) / beneficiary / coverage_amount / claim_deadline_hours werden partiell mitgesetzt (leer=unverändert) und vom estate-Paket über finance.fn_insurance_register() (Oberfläche A) gelesen.' 220 480
 
     $stickyOk = Build-Sticky 'Write ok? (korrigierbare Ablehnung)' @(2860, -240) `
         'fn-Rückgabe {ok:false, reason}' `
         'Nicht-positiver/unstimmiger Beitrag, Rhythmus ohne Betrag, Split-Guards -> {ok:false, reason} -> Update rejected reicht reason an den Agenten (weiche Rückfrage, kein RAISE/Owner-Alert). Nur ok=true ändert wirklich. Normalerweise fängt schon der Probelauf diese Fälle vor der Karte ab; hier landet nur, was sich zwischen Karte und Tipp geändert hat.' 200 400
 
-    $nodes = @($trig, $resIns, $ifIns, $errIns, $readCur, $preview, $ifFields, $errFields, $resPerson, $ifPersonBad, $errPerson) + $wg.Nodes + @($summary, $reqApproval,
+    $nodes = @($trig, $resIns, $ifIns, $errIns, $readCur, $preview, $ifFields, $errFields, $resPerson, $ifPersonBad, $errPerson, $resAcc, $ifAcc, $errAcc) + $wg.Nodes + @($summary, $reqApproval,
                $ifApproved, $retCancelled, $ifWriteOk, $errWrite, $ret, $stickyDry, $stickyGen, $stickyOk)
 
     $conns = [ordered]@{
@@ -156,7 +167,12 @@ function Build-SetInsurance {
         'Resolve Person'            = @{ main = @( ,@( E 'Person invalid?' ) ) }
         'Person invalid?'           = @{ main = @(
             @( E 'Person unresolved' ),
-            @( E 'Dry run' )
+            @( E 'Resolve Debit Account' )
+        ) }
+        'Resolve Debit Account'     = @{ main = @( ,@( E 'Debit ok?' ) ) }
+        'Debit ok?'                 = @{ main = @(
+            @( E 'Dry run' ),
+            @( E 'Debit ambiguous' )
         ) }
         'Dry run'                   = @{ main = @( ,@( E 'Dry run ok?' ) ) }
         'Dry run ok?'               = @{ main = @(

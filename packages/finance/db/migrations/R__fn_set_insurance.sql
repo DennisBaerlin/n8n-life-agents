@@ -8,6 +8,9 @@
 --       Rhythmus oder Tag geaendert -> fn_change_owned_recurring: Korrektur direkt nach der Anlage in place, sonst neues
 --       Glied ab effective_from (Default: naechster noch nicht erledigter Termin) -- der alte Beitrag bleibt Historie.
 --       Ein neuer Rhythmus OHNE neuen Betrag -> {ok:false} (Versicherer berechnen Ratenzuschlaege; das LLM rechnet nicht um).
+--     - Police OHNE Beitrag (recurring_payment_id NULL): ein Beitrag legt die Kette an, wie fn_set_loan beim Kredit ohne
+--       Rate -- effective_from = erste Abbuchung und debit_account_id sind dann Pflicht; Tag/Vertragsende ohne Beitrag
+--       -> {ok:false}.
 --     - valid_to kommt als LETZTER Vertragstag (inklusiv) und wird als exklusives Ende (Folgetag) an der Kette gespeichert
 --       (Kopf = Vertragsende; fruehere Glieder werden nur gekuerzt).
 --     - status in ('cancelled','expired') -> Kette endet zum Kuendigungsdatum (Fallback bisheriges Ende / heute); 'paused'
@@ -16,11 +19,12 @@
 --     - Umbenennung fuehrt 'Versicherung <Name>' an allen Gliedern mit (fn_rename_owned_recurring).
 --   Eingabe jsonb: insurance_id (im n8n via fn_resolve_insurance aufgeloest), name, insurance_company, policy_number,
 --   policyholder_person_id (Slug; leer=unveraendert), premium_amount, annual_premium, schedule_interval, schedule_unit,
---   schedule_day_of_month, effective_from, valid_to, status, notes, insurance_type/beneficiary/coverage_amount/
+--   schedule_day_of_month, effective_from, valid_to, status, notes, debit_account_id (nur beim Nachtragen), insurance_type/beneficiary/coverage_amount/
 --   claim_deadline_hours (WS-0b estate: partielles Update der Nachlass-Felder; leer=unveraendert).
---   RUECKGABE: {ok:true, insurance_id, recurring_payment_id (Kopf), split/previous_id/effective_from (nur bei
---   Beitragsaenderung), premium_amount + annual_premium (wirksam ab dem Stichtag, nur bei Beitragsaenderung)}.
---   Korrigierbar (Beitrag <= 0/unstimmig/unlesbar, Rhythmus ohne Betrag, Beitrag an einer beitragsfreien Police,
+--   RUECKGABE: {ok:true, insurance_id, recurring_payment_id (Kopf), split/previous_id (nur bei Beitragsaenderung), effective_from (erste
+--   Abbuchung des neuen bzw. nachgetragenen Beitrags), premium_amount + annual_premium (wirksam ab dem Stichtag, nur bei Beitragsaenderung)}.
+--   Korrigierbar (Beitrag <= 0/unstimmig/unlesbar, Rhythmus ohne Betrag, Tag/Ende an einer Police ohne Beitrag, Beitrag
+--   nachtragen ohne effective_from oder Konto bzw. auf ein Nicht-EUR- oder nicht buchbares Konto,
 --   status/schedule_unit/insurance_type unbekannt, coverage_amount<0, Meldefrist ungueltig, Ende vor Vertragsbeginn,
 --   Split-Guards) -> {ok:false}.
 -- ============================================================
@@ -43,6 +47,9 @@ DECLARE
     v_today    DATE    := core.fn_today();
     v_chg      JSONB   := '{}'::jsonb;
     v_dates    JSONB;
+    v_acct     INT     := NULLIF(p->>'debit_account_id', '')::int;   -- nur zum Nachtragen eines Beitrags
+    v_first    DATE;
+    v_added    BOOLEAN := false;
 BEGIN
     -- relative Datumsangaben ("in 1 month") -> ISO; nicht aufloesbar -> {ok:false, code:'invalid_date'}
     v_dates := core.fn_resolve_input_dates(p, ARRAY['valid_to', 'effective_from']);
@@ -83,10 +90,31 @@ BEGIN
             'reason', 'A new payment rhythm usually changes the amount per debit - ask the user for the new amount per debit '
                    || '(premium_amount) or the annual premium.');
     END IF;
-    IF v_head IS NULL AND (v_per IS NOT NULL OR v_dom IS NOT NULL OR v_valid_to IS NOT NULL) THEN
+    IF v_head IS NULL AND v_per IS NULL AND (v_dom IS NOT NULL OR v_valid_to IS NOT NULL) THEN
         RETURN jsonb_build_object('ok', false,
-            'reason', 'This policy has no premium debit recorded (old entry) - premium, debit day and contract end cannot be stored; '
-                   || 'set status cancelled/expired to end it, or close it and record it again with its premium.');
+            'reason', 'This policy has no premium recorded yet - a debit day or contract end needs the premium first '
+                   || '(premium with effective_from = first debit and the debit account); to end it without a premium set status cancelled/expired.');
+    END IF;
+    -- Beitrag nachtragen (Police ohne Kette, wie fn_set_loan beim Kredit ohne Rate): effective_from = erste Abbuchung
+    IF v_head IS NULL AND v_per IS NOT NULL THEN
+        v_first := NULLIF(p->>'effective_from', '')::date;
+        IF v_first IS NULL THEN
+            RETURN jsonb_build_object('ok', false,
+                'reason', 'This policy has no premium yet: adding one needs the date of its first debit (effective_from) - ask the user.');
+        END IF;
+        IF v_acct IS NULL THEN
+            RETURN jsonb_build_object('ok', false,
+                'reason', 'This policy has no premium yet: adding one needs the debit account it is paid from - ask the user.');
+        END IF;
+        IF (SELECT currency FROM finance.accounts WHERE id = v_acct) IS DISTINCT FROM 'EUR' THEN
+            RETURN jsonb_build_object('ok', false,
+                'reason', 'Insurance premiums are kept in EUR - choose a EUR account for the debit.');
+        END IF;
+        v_reason := finance.fn_bookable_account_reason(v_acct);
+        IF v_reason IS NOT NULL THEN
+            RETURN jsonb_build_object('ok', false, 'reason', v_reason);
+        END IF;
+        v_added := true;
     END IF;
 
     -- Korrigierbar: Kuendigungs-/Enddatum darf nicht vor dem Vertragsbeginn liegen.
@@ -99,12 +127,23 @@ BEGIN
     -- (Konvention [valid_from, valid_to) aller Views/close_*/Split) — die fn rechnet um, nicht das LLM.
     v_valid_to := v_valid_to + 1;
 
+    -- Erst nach allen korrigierbaren Ablehnungen schreiben (ein spaeteres ok:false rollte die Kette nicht zurueck)
+    IF v_added THEN
+        v_first := finance.fn_schedule_first_occurrence(v_first, (v_fields->>'schedule_interval')::smallint,
+                       (v_fields->>'schedule_unit')::finance.schedule_unit, v_dom, NULL);
+        v_head := finance.fn_add_recurring_payment(
+            v_acct, -v_per, left('Versicherung ' || v_ins.name, 100),
+            (v_fields->>'schedule_interval')::smallint, (v_fields->>'schedule_unit')::finance.schedule_unit, v_dom, v_first,
+            finance.fn_recurring_valid_from(v_acct, v_ins.valid_from), NULL, NULL, NULL);
+        UPDATE finance.insurances SET recurring_payment_id = v_head WHERE id = v_id;
+    END IF;
+
     -- Beitrag / Rhythmus / Tag ueber die Kette (Historie); unveraenderter Beitrag im selben Rhythmus = keine Aenderung
     IF v_per = abs(v_cur.amount) AND (v_fields->>'schedule_interval')::smallint = v_cur.schedule_interval
        AND (v_fields->>'schedule_unit')::finance.schedule_unit = v_cur.schedule_unit THEN
         v_per := NULL;
     END IF;
-    IF v_head IS NOT NULL AND (v_per IS NOT NULL OR v_dom IS NOT NULL) THEN
+    IF v_head IS NOT NULL AND NOT v_added AND (v_per IS NOT NULL OR v_dom IS NOT NULL) THEN
         v_chg := finance.fn_change_owned_recurring(v_head, NULLIF(p->>'effective_from', '')::date, -v_per,
                      CASE WHEN v_per IS NOT NULL THEN (v_fields->>'schedule_interval')::smallint END,
                      CASE WHEN v_per IS NOT NULL THEN (v_fields->>'schedule_unit')::finance.schedule_unit END, v_dom);
@@ -154,7 +193,7 @@ BEGIN
 
     RETURN jsonb_build_object('ok', true, 'insurance_id', v_id, 'recurring_payment_id', v_head)
         || jsonb_strip_nulls(jsonb_build_object(
-               'split', v_chg->'split', 'previous_id', v_chg->'previous_id', 'effective_from', v_chg->'effective_from',
+               'split', v_chg->'split', 'previous_id', v_chg->'previous_id', 'effective_from', COALESCE(v_chg->'effective_from', CASE WHEN v_added THEN to_jsonb(v_first) END),
                'premium_amount', v_per, 'annual_premium', CASE WHEN v_per IS NOT NULL THEN v_fields->'annual_premium' END))
         || jsonb_build_object('effective', v_dates->'resolved');
 END;

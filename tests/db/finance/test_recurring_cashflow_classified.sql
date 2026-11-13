@@ -1,5 +1,5 @@
 -- tests/db/finance/test_recurring_cashflow_classified.sql
--- Audit Paket 3 P2: EINE Klassifikations-Quelle fuer den Cashflow (finance.recurring_cashflow_classified)
+-- Eine Klassifikations-Quelle fuer den Cashflow (finance.recurring_cashflow_classified)
 -- + die Summen-Spalten von monthly_cashflow_summary. Konsum, Tilgung, Sparen getrennt:
 --   income (>0) -> loan (Kredit-rp: Zins = Konsum, Rest = Tilgung) -> saving (Sparplan/Sparziel/Vorsorge,
 --   negativ) bzw. saving_internal (Spar-rp auf einem Konto, das selbst eine laufende Spar-Ueberweisung
@@ -20,7 +20,7 @@ BEGIN
   INSERT INTO finance.accounts (name, account_type, currency, status, settlement_account_id)
     VALUES ('__cfc_depot__','stocks_depot','EUR','active', v_giro) RETURNING id INTO v_depot;
 
-  -- ---------- Schritt 1 (Auftrags-Beispiel): Einnahmen 3000, Konsum 2500, ETF-Sparplan 600 ----------
+  -- ---------- Schritt 1: Einnahmen 3000, Konsum 2500, ETF-Sparplan 600 ----------
   INSERT INTO finance.recurring_payments (name, account_id, amount, schedule_interval, schedule_unit, first_payment_date, valid_from, status)
     VALUES ('__cfc_salary__', v_giro, 3000, 1, 'month', current_date, current_date, 'active');
   INSERT INTO finance.recurring_payments (name, account_id, amount, schedule_interval, schedule_unit, first_payment_date, valid_from, status)
@@ -69,7 +69,7 @@ BEGIN
     RAISE EXCEPTION 'FAIL [2 helper]: fn_loan_monthly_interest(120000,6) erwartet 600, got %', finance.fn_loan_monthly_interest(120000, 6); END IF;
   RAISE NOTICE 'PASS [2: Kreditrate 1000 -> Zins 600 Konsum, Tilgung 400 Pflicht]';
 
-  -- ---------- Schritt 3: Sparziel MIT Topf (Giro -> Tagesgeld 300) = Sparen, steht in der Overview ----------
+  -- ---------- Schritt 3: Sparziel mit Topf (Giro -> Tagesgeld 300) = Sparen, steht in der Overview ----------
   INSERT INTO finance.recurring_payments (name, account_id, target_account_id, amount, schedule_interval, schedule_unit, first_payment_date, valid_from, status)
     VALUES ('__cfc_goal_rate__', v_giro, v_tg, -300, 1, 'month', current_date, current_date, 'active') RETURNING id INTO v_rp_goal;
   INSERT INTO finance.savings_goals (name, target_amount, target_date, status, recurring_payment_id)
@@ -81,7 +81,7 @@ BEGIN
     RAISE EXCEPTION 'FAIL [3 summary]: erwartet Sparen -900 / Konto -1400, got %', row_to_json(s); END IF;
   RAISE NOTICE 'PASS [3: Sparziel-Ueberweisung zaehlt als Sparen]';
 
-  -- ---------- Schritt 4 (Review #3): Sparplan kauft AUS dem Topf -> saving_internal (0, nicht doppelt) ----------
+  -- ---------- Schritt 4: Sparplan kauft aus dem Topf -> saving_internal (0, nicht doppelt) ----------
   INSERT INTO finance.recurring_payments (name, account_id, amount, schedule_interval, schedule_unit, first_payment_date, valid_from, status)
     VALUES ('__cfc_etf_from_pot__', v_tg, -300, 1, 'month', current_date, current_date, 'active') RETURNING id INTO v_rp;
   INSERT INTO finance.savings_plans (name, depot_id, symbol, security_name, recurring_payment_id)
@@ -94,12 +94,12 @@ BEGIN
     RAISE EXCEPTION 'FAIL [4 summary]: Sparen bleibt -900 (kein Doppel-Sparen), got %', s.monthly_saving; END IF;
   RAISE NOTICE 'PASS [4: Sparplan aus dem Sparziel-Topf zaehlt nicht doppelt]';
 
-  -- ---------- Schritt 5: Alt-Sparziel OHNE Topf (nackte Abbuchung 100) = Sparen, nicht Konsum ----------
+  -- ---------- Schritt 5: Alt-Sparziel ohne Topf (nackte Abbuchung 100) = Sparen, nicht Konsum ----------
   INSERT INTO finance.recurring_payments (name, account_id, amount, schedule_interval, schedule_unit, first_payment_date, valid_from, status)
     VALUES ('__cfc_old_goal_rate__', v_giro, -100, 1, 'month', current_date, current_date, 'active') RETURNING id INTO v_rp;
   INSERT INTO finance.savings_goals (name, target_amount, target_date, status, recurring_payment_id)
     VALUES ('__cfc_old_goal__', 1200, current_date + 365, 'active', v_rp);
-  -- ---------- Schritt 6: Vorsorge-Beitrag 200 = Sparen; Vorsorge-AUSZAHLUNG +500 = Einnahme ----------
+  -- ---------- Schritt 6: Vorsorge-Beitrag 200 = Sparen; Vorsorge-Auszahlung +500 = Einnahme ----------
   INSERT INTO finance.recurring_payments (name, account_id, amount, schedule_interval, schedule_unit, first_payment_date, valid_from, status)
     VALUES ('__cfc_pension_contrib__', v_giro, -200, 1, 'month', current_date, current_date, 'active') RETURNING id INTO v_rp;
   INSERT INTO finance.pension (name, pension_type, recurring_payment_id) VALUES ('__cfc_pension__', 'private', v_rp);
@@ -108,7 +108,7 @@ BEGIN
   INSERT INTO finance.pension (name, pension_type, recurring_payment_id) VALUES ('__cfc_pension2__', 'private', v_rp);
   IF (SELECT cashflow_class FROM finance.recurring_cashflow_classified WHERE name = '__cfc_pension_payout__') IS DISTINCT FROM 'income' THEN
     RAISE EXCEPTION 'FAIL [6]: Vorsorge-Auszahlung (+) muss income sein (Reihenfolge income vor saving)'; END IF;
-  -- ---------- Schritt 7: own<->own-Transfer 150 (kein Ziel) -> transfer, NICHT in der Overview ----------
+  -- ---------- Schritt 7: own<->own-Transfer 150 (kein Ziel) -> transfer, nicht in der Overview ----------
   INSERT INTO finance.recurring_payments (name, account_id, target_account_id, amount, schedule_interval, schedule_unit, first_payment_date, valid_from, status)
     VALUES ('__cfc_own__', v_giro, v_other, -150, 1, 'month', current_date, current_date, 'active');
   IF (SELECT cashflow_class FROM finance.recurring_cashflow_classified WHERE name = '__cfc_own__') IS DISTINCT FROM 'transfer' THEN
@@ -140,7 +140,7 @@ BEGIN
     RAISE EXCEPTION 'FAIL [fx0]: has_fx_gap muss false sein, solange alles EUR ist'; END IF;
 END $$;
 
--- ---------- Schritt 9 (Review #10): fehlender Wechselkurs wird sichtbar, nie still 0 ----------
+-- ---------- Schritt 9: fehlender Wechselkurs wird sichtbar, nie still 0 ----------
 DO $$
 DECLARE
   v_chf INT; v_giro INT; v_loan_chf INT; v_rp INT;
@@ -173,7 +173,7 @@ BEGIN
   RAISE NOTICE 'PASS [9: fehlender Wechselkurs -> fx_gap sichtbar, Kreditrate faellt nicht still heraus]';
 END $$;
 
--- ---------- Code-Review: TEILWEISE Gegenfinanzierung -> nur der gedeckte Anteil faellt heraus ----------
+-- ---------- teilweise Gegenfinanzierung -> nur der gedeckte Anteil faellt heraus ----------
 DO $$
 DECLARE
   v_giro INT; v_pot2 INT; v_depot INT; v_rp INT; v_before numeric; v_after numeric;
@@ -201,7 +201,7 @@ BEGIN
   RAISE NOTICE 'PASS [partial: nur der gegenfinanzierte Anteil faellt aus dem Sparen]';
 END $$;
 
--- ---------- Plan-Review #4: in die Zukunft geaenderter Sparplan -> die alte, noch laufende Zeile bleibt Sparen ----------
+-- ---------- in die Zukunft geaenderter Sparplan -> die alte, noch laufende Zeile bleibt Sparen ----------
 DO $$
 DECLARE
   v_giro INT; v_depot INT; v_old INT; v_new INT;
@@ -239,8 +239,8 @@ BEGIN
     RAISE NOTICE 'PASS [lineage loan: alte Kreditrate bleibt Zins + Tilgung]';
   END;
 
-  -- Code-Review: Sparziel, dessen alte Rate (ohne Topf) noch laeuft, waehrend der Kopf (mit Topf) erst spaeter gilt
-  -- -> noch NICHT messbar (sonst Pace gegen eine unverfolgte Abbuchung)
+  -- Sparziel, dessen alte Rate (ohne Topf) noch laeuft, waehrend der Kopf (mit Topf) erst spaeter gilt
+  -- -> noch nicht messbar (sonst Pace gegen eine unverfolgte Abbuchung)
   DECLARE v_gold int; v_gnew int; v_pot int; BEGIN
     INSERT INTO finance.accounts (name, account_type, currency, status) VALUES ('__cfc_split_pot__','cash','EUR','active') RETURNING id INTO v_pot;
     INSERT INTO finance.recurring_payments (name, account_id, amount, schedule_interval, schedule_unit, first_payment_date, valid_from, valid_to, status)
@@ -255,7 +255,7 @@ BEGIN
   END;
 END $$;
 
--- ---------- Eltern-Scope (Review #14): dieselbe Klassifikation, Kind-Konten raus ----------
+-- ---------- Eltern-Scope: dieselbe Klassifikation, Kind-Konten raus ----------
 DO $$
 DECLARE
   v_kid INT; v_giro INT; v_rp INT; v_depot INT;
@@ -269,7 +269,7 @@ BEGIN
     VALUES ('__cfc_kid__','cash','EUR','active','cfc_kid') RETURNING id INTO v_kid;
   SELECT monthly_saving INTO v_before FROM finance.monthly_cashflow_summary;
 
-  -- Eltern->Kind-Sparziel-Ueberweisung 100 + Kind-Sparplan 100 vom Kindkonto: in der FAMILIE nur einmal Sparen
+  -- Eltern->Kind-Sparziel-Ueberweisung 100 + Kind-Sparplan 100 vom Kindkonto: in der Familie nur einmal Sparen
   INSERT INTO finance.recurring_payments (name, account_id, target_account_id, amount, schedule_interval, schedule_unit, first_payment_date, valid_from, status)
     VALUES ('__cfc_kid_goal_rate__', v_giro, v_kid, -100, 1, 'month', current_date, current_date, 'active') RETURNING id INTO v_rp;
   INSERT INTO finance.savings_goals (name, target_amount, target_date, status, recurring_payment_id, beneficiary_person_id)

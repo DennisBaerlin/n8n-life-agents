@@ -1,9 +1,9 @@
 -- tests/db/finance/test_v026_loan_rate_single_source.sql
--- finance:V026 (WP2 "Finanzen schlank") auf einem Bestand wie v0.15.0: die Kopien monthly_annuity/schedule_*/
--- principal_rate am Kredit fallen, die Raten-Kette bleibt die eine Quelle. Der Test baut den Zustand VOR V026 nach
+-- finance:V026 auf einem Bestand wie v0.15.0: die Kopien monthly_annuity/schedule_*/
+-- principal_rate am Kredit fallen, die Raten-Kette bleibt die eine Quelle. Der Test baut den Zustand vor V026 nach
 -- (Alt-Spalten + alter CHECK), fuehrt die ECHTE Migrationsdatei zweimal aus (\ir; 2. Lauf = No-op) und prueft:
 --   (1) Kopie = Raten-Zeile -> Rate/Tag unveraendert an der Kette, Alt-Spalten weg
---   (2) Rate OHNE Raten-Zeile (Altbestand) -> kein Abbruch: Betrag in notes, Kredit pausiert
+--   (2) Rate ohne Raten-Zeile (Altbestand) -> kein Abbruch: Betrag in notes, Kredit pausiert
 --   (3) neuer CHECK aktiv <=> Raten-Kette
 -- Den Abbruch bei abweichender Kopie (Pre-flight RAISE) kann db_test nicht als PASS werten (jedes ERROR = FAIL);
 -- er ist per Code-Review + Upgrade-Probe abgenommen. BEGIN...ROLLBACK -> kein Residual-State.

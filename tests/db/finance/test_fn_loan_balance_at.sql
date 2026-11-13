@@ -1,7 +1,7 @@
 -- tests/db/finance/test_fn_loan_balance_at.sql
--- fn_loan_balance_at = reine Restschuld-Vorschau (WP2 "Finanzen schlank", Anzeige "voraussichtlich, bei gleichem Zins,
+-- fn_loan_balance_at = reine Restschuld-Vorschau (Anzeige "voraussichtlich, bei gleichem Zins,
 -- ohne Sondertilgung"). Handgerechnet: 10.000 zu 6 % mit 500/Monat -> Zins 50,00 / 47,75 -> 9.550,00 / 9.097,75.
---   (1) zwei Raten ab dem ersten Termin = valid_from (Reviewer: der Termin AM valid_from zaehlt mit)
+--   (1) zwei Raten ab dem ersten Termin = valid_from (der Termin am valid_from zaehlt mit)
 --   (2) Start nach dem letzten erledigten Termin (p_after): nur spaetere Raten
 --   (3) Quartalsrate traegt drei Monatszinsen (wie fn_get_loan_payment_split)
 --   (4) Split in der Zukunft: zwei Segmente, Betrag wechselt am Stichtag
@@ -62,7 +62,7 @@ BEGIN
   RAISE NOTICE 'PASS fn_loan_balance_at (handgerechnet, Start nach Buchung, Quartal, Split, Abloese, NULL-Faelle, IMMUTABLE)';
 END $$;
 
--- fn_loan_simulate (Uebersicht R3): derselbe Kern liefert Tilgungsende + Zinsen bis dahin.
+-- fn_loan_simulate: derselbe Kern liefert Tilgungsende + Zinsen bis dahin.
 --   (8) 1.000 zu 12 %/Jahr (1 %/Monat), Rate 300: Zins 10,00 / 7,10 / 4,17 / 1,21 -> 4. Rate tilgt (Rest 121,21 + 1,21
 --       Zins < 300) -> payoff = 4. Termin, interest_total = 22,48, balance 0.
 --   (9) Rate <= Zins (1.000 zu 12 %, Rate 10) -> nie getilgt: payoff NULL, balance bleibt 1.000 bis zum Ziel.

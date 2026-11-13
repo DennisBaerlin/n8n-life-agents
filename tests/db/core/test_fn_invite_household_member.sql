@@ -1,12 +1,12 @@
 -- tests/db/core/test_fn_invite_household_member.sql
--- WS-5a — Owner-initiierte Member-Einladung (Chat, owner-only). Sicherheits-Invarianten von
+-- Owner-initiierte Member-Einladung (Chat, owner-only). Sicherheits-Invarianten von
 -- agent.fn_check_household_invite (Pre-Gate-Validierung) + agent.fn_invite_household_member (Write = armt):
---   * Owner-Gate: nur der GEPAIRTE Owner darf einladen; Nicht-Owner-chat_id -> {ok:false}, KEIN INSERT
+--   * Owner-Gate: nur der gepairte Owner darf einladen; Nicht-Owner-chat_id -> {ok:false}, kein INSERT
 --   * Person-Check: unbekannter/mehrdeutiger Name -> {ok:false}; der Owner selbst nicht einladbar;
 --     bereits gepairte Person -> {ok:false}
 --   * Erfolg: ungepairtes Kind -> {ok:true, challenge>=8 alphanum, person_id/role/full_name} +
 --     pairing_state-Zeile mit person_id armiert (vom fn_arm); deterministisch ueber fn_claim einloesbar
--- Fixture: family (powner owner GEPAIRT an 111, pchild child ungepairt, ptwin1/ptwin2 Namensgleichheit),
+-- Fixture: family (powner owner gepairt an 111, pchild child ungepairt, ptwin1/ptwin2 Namensgleichheit),
 -- in BEGIN...ROLLBACK -> kein Residual-State.
 BEGIN;
 
@@ -41,7 +41,7 @@ BEGIN
     SET description = EXCLUDED.description, content = EXCLUDED.content, metadata = EXCLUDED.metadata;
   RAISE NOTICE 'PASS invite fixture [owner gepairt(111) + Kind ungepairt + zwei Max (Namensgleichheit)]';
 
-  -- ---------- Owner-Gate: Nicht-Owner-chat_id -> {ok:false}, KEIN pairing_state-Write ----------
+  -- ---------- Owner-Gate: Nicht-Owner-chat_id -> {ok:false}, kein pairing_state-Write ----------
   SELECT count(*) INTO v_before FROM agent.pairing_state;
   r := agent.fn_invite_household_member('{"chat_id":"999999","person_name":"Lisa"}'::jsonb);
   IF (r->>'ok')::boolean THEN RAISE EXCEPTION 'FAIL invite [Nicht-Owner durfte einladen: %]', r; END IF;
@@ -99,7 +99,7 @@ BEGIN
   -- pchild wurde oben gerade gepairt (claim->stage genuegt NICHT; binden via confirm). Daher hier
   -- die direkte family-Bindung simulieren: powner ist schon gepairt -> Re-Invite muss scheitern.
   -- (Owner ist zugleich gepairt; der Owner-Branch faengt ihn bereits -> wir testen eine gepairte
-  --  NICHT-Owner-Person: pchild explizit an eine uid heften.)
+  --  Nicht-Owner-Person: pchild explizit an eine uid heften.)
   PERFORM agent.fn_set_context_facts(jsonb_build_object('context_name','family','facts', jsonb_build_object('persons', jsonb_build_array(
     jsonb_build_object('person_id','pchild','telegram_user_id', 4242)))));
   r := agent.fn_invite_household_member('{"chat_id":"111","person_name":"Lisa"}'::jsonb);

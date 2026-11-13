@@ -1,9 +1,9 @@
 -- ============================================================
--- test_fn_replace_holding_lots -- eingetippte Einzelkaeufe ersetzen eine Bestandsuebernahme atomar (Befund KW 45, Fund 7)
+-- test_fn_replace_holding_lots -- eingetippte Einzelkaeufe ersetzen eine Bestandsuebernahme atomar
 --   Werte erfunden, Daten relativ zu core.fn_today(). Cashkonto 1000 (Stichtag heute-20), Depot daran.
 --   A: Uebernahme 10 @ 25 (heute-5) -> 3 Lots 4 (Kurswert 80 + Gebuehr 1) + 3 @ 22 + 3 (Kurswert 90) = 10 Stueck, Einstand 23.70,
 --      Verrechnungskonto bleibt 1000. B: Uebernahme 5 @ 10, Lots zusammen 4 -> Stueckzahl 5 -> 4 (Karte zeigt alt -> neu).
---   C/D/E/F/G: Ablehnungen und Sonderfaelle (siehe Marker). Ablehnungen aendern NICHTS (Zeilenzahl vorher = nachher).
+--   C/D/E/F/G: Ablehnungen und Sonderfaelle (siehe Marker). Ablehnungen aendern nichts (Zeilenzahl vorher = nachher).
 -- ============================================================
 BEGIN;
 DO $$
@@ -41,7 +41,7 @@ BEGIN
                  'symbol', 'HLC', 'name', 'HL C ETF', 'shares', 2, 'price_per_share', 10, 'order_fee', 0,
                  'transaction_date', (T - 3)::text));
     v_c := (v_res->>'holding_id')::int;
-    -- D: Uebernahme-Gruppe mit einem ECHTEN Kauf ohne Gegenbuchung (so sieht eine per Export ersetzte Position mit Kauf nach dem Stichtag aus)
+    -- D: Uebernahme-Gruppe mit einem echten Kauf ohne Gegenbuchung (so sieht eine per Export ersetzte Position mit Kauf nach dem Stichtag aus)
     v_res := finance.fn_book_stock_buy(jsonb_build_object('price_currency_confirmed',true,'depot_id', v_depot, 'settlement_id', v_cash, 'isin', 'IE00HLOTD001',
                  'symbol', 'HLD', 'name', 'HL D ETF', 'shares', 2, 'price_per_share', 10, 'order_fee', 0,
                  'transaction_date', (T - 5)::text, 'existing_position', true));
@@ -64,7 +64,7 @@ BEGIN
     v_res := finance.fn_book_stock_buy(jsonb_build_object('price_currency_confirmed',true,'depot_id', v_depot, 'settlement_id', v_cash, 'isin', 'IE00HLOTF001',
                  'symbol', 'HLF', 'shares', 2, 'price_per_share', 12, 'order_fee', 0, 'transaction_date', (T - 1)::text));
     IF (v_res->>'ok')::boolean IS DISTINCT FROM true THEN RAISE EXCEPTION 'SETUP F buy: %', v_res; END IF;
-    -- G: Import-Tranchen = EINE Gruppe mit zwei Paaren
+    -- G: Import-Tranchen = eine Gruppe mit zwei Paaren
     v_res := finance.fn_book_stock_buy(jsonb_build_object('price_currency_confirmed',true,'depot_id', v_depot, 'settlement_id', v_cash, 'isin', 'IE00HLOTG001',
                  'symbol', 'HLG', 'name', 'HL G ETF', 'shares', 2, 'price_per_share', 10, 'order_fee', 0,
                  'transaction_date', (T - 30)::text, 'existing_position', true));
@@ -240,7 +240,7 @@ BEGIN
 END $$;
 
 -- ---------- W: Grenzen ----------
---   W1 Lot am Uebernahme-Tag + spaeterer Verkauf ALLER Stuecke (Bestand danach genau 0) -> gueltig
+--   W1 Lot am Uebernahme-Tag + spaeterer Verkauf aller Stuecke (Bestand danach genau 0) -> gueltig
 --   W2 Lot mit Kurswert unter einem Cent -> lot_invalid
 --   W3 Uebernahme-Gruppe, deren Betraege sich nicht aufheben -> keine reine Uebernahme, Ablehnung
 DO $$

@@ -1,9 +1,9 @@
 -- tests/db/estate/test_fn_case_template_rows.sql
--- WS-3: der Soll-Task-Satz — Condition-Matrix (adult_subject/finance_absent/minor_children/flags),
+-- Der Soll-Task-Satz — Condition-Matrix (adult_subject/finance_absent/minor_children/flags),
 --   fan_out je special_asset, event- vs knowledge-Anker, Snapshot-Titel. Self-contained.
 BEGIN;
 
--- Helper: Status EINES Templates aus dem Soll-Satz holen.
+-- Helper: Status eines Templates aus dem Soll-Satz holen.
 DO $$
 DECLARE
   v_st TEXT;
@@ -28,7 +28,7 @@ BEGIN
     WHERE template_key = 'death_certificate';
   IF v_st <> 'open' THEN RAISE EXCEPTION 'FAIL [unconditional death_certificate <> open: %]', v_st; END IF;
 
-  -- ---- finance_absent: finance NICHT registriert -> open ----
+  -- ---- finance_absent: finance nicht registriert -> open ----
   DELETE FROM core.package_registry WHERE package = 'finance';
   SELECT status INTO v_st FROM estate.fn_case_template_rows('death','hans','{}'::jsonb,'2024-05-10','2024-05-10','bayern')
     WHERE template_key = 'finance_absent_death';
@@ -99,7 +99,7 @@ BEGIN
         '[{"asset_type":"firearm","description":"Beispiel-Waffe"}]'::jsonb)
       WHERE template_key = 'secure_firearms' AND subject_ref = 'new:1' AND title LIKE '%Beispiel-Waffe%') THEN
     RAISE EXCEPTION 'FAIL [Extra-Stub: Ref new:1 + Titel um Beschreibung ergaenzt]'; END IF;
-  -- Ohne Extras (NULL oder 6 Argumente) identisch zu vorher; Extras eines Typs ohne Vorlage im Falltyp liefern nichts.
+  -- Ohne Extras (NULL oder 6 Argumente) wie ohne den 7. Parameter; Extras eines Typs ohne Vorlage im Falltyp liefern nichts.
   IF (SELECT count(*) FROM estate.fn_case_template_rows('death','hans','{}'::jsonb,'2024-05-10','2024-05-10','bayern', NULL))
      <> (SELECT count(*) FROM estate.fn_case_template_rows('death','hans','{}'::jsonb,'2024-05-10','2024-05-10','bayern')) THEN
     RAISE EXCEPTION 'FAIL [NULL-Extras = 6-Argument-Aufruf]'; END IF;

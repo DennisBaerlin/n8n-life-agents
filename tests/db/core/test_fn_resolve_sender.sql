@@ -1,11 +1,11 @@
 -- tests/db/core/test_fn_resolve_sender.sql
--- Deterministische Sender-Aufloesung des Orchestrator-Pre-Routers (Phase 4 Multi-User-Wiring):
---   fn_resolve_sender(from.id) ist der read-only Schritt VOR dem LLM, der eine numerische
+-- Deterministische Sender-Aufloesung des Orchestrator-Pre-Routers:
+--   fn_resolve_sender(from.id) ist der read-only Schritt vor dem LLM, der eine numerische
 --   Telegram-Identitaet auf ein Haushaltsmitglied abbildet (sender_member-Injektion) bzw.
 --   bei Unbekannten den Pairing-/Owner-Notify-Pfad ausloest.
 --   * unbekannte ID            -> {found:false}            (Knock-/Owner-Notify-Pfad)
 --   * bekannte (gepairte) ID   -> {found:true, person_id, full_name, role, language}
---   * NULL-telegram_user_id einer Person matcht NIE (Skelett vor dem Pairing bleibt "unbekannt")
+--   * NULL-telegram_user_id einer Person matcht nie (Skelett vor dem Pairing bleibt "unbekannt")
 -- Fixture: family mit owner (gepairt, tg=111, language=de) + child-Skelett (ohne telegram_user_id),
 -- BEGIN...ROLLBACK -> kein Residual-State.
 BEGIN;
@@ -41,11 +41,11 @@ BEGIN
      OR r->>'full_name' IS DISTINCT FROM 'Owner Person'
      OR r->>'first_name' IS DISTINCT FROM 'Owner'
      OR r->>'language'  IS DISTINCT FROM 'de'
-     OR (r->>'chat_id')::bigint IS DISTINCT FROM 111 THEN   -- WP-5c: kanonische chat_id = telegram_user_id
+     OR (r->>'chat_id')::bigint IS DISTINCT FROM 111 THEN   -- kanonische chat_id = telegram_user_id
     RAISE EXCEPTION 'FAIL resolve_sender [gepairte ID falsch aufgeloest: %]', r; END IF;
 
   -- ---------- Skelett ohne telegram_user_id bleibt "unbekannt" (kein NULL-Match) ----------
-  -- pchild traegt KEINE telegram_user_id -> eine Anfrage einer beliebigen fremden ID darf ihn nie
+  -- pchild traegt keine telegram_user_id -> eine Anfrage einer beliebigen fremden ID darf ihn nie
   -- treffen (der NULL-Guard in fn_resolve_sender). Wir pruefen das ueber eine ID, die niemand traegt.
   r := agent.fn_resolve_sender(0);
   IF (r->>'found')::boolean IS DISTINCT FROM false THEN

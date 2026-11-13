@@ -1,16 +1,16 @@
 -- test_schema_version.sql — core.schema_version Migrations-Ledger (Flyway-Single-Table)
---   Vertrag VERSIONED (V{NNN}): erste Anwendung einer Version => TRUE + Eintrag; zweite
+--   Vertrag versioned (V{NNN}): erste Anwendung einer Version => TRUE + Eintrag; zweite
 --   Anwendung derselben Version => FALSE (kein Doppellauf); geaenderte Checksumme einer
---   angewandten Version => Drift-EXCEPTION (unveraenderlich).
---   Vertrag REPEATABLE (R__): erste Anwendung => TRUE + Eintrag (kind='repeatable'); gleiche
---   Checksumme => FALSE (unveraendert, nicht neu fahren); GEAENDERTE Checksumme => TRUE
---   (Inhalt geaendert -> neu fahren; mutabel, KEINE Drift-Exception — das ist der bewusste
+--   angewandten Version => Drift-Exception (unveraenderlich).
+--   Vertrag repeatable (R__): erste Anwendung => TRUE + Eintrag (kind='repeatable'); gleiche
+--   Checksumme => FALSE (unveraendert, nicht neu fahren); geaenderte Checksumme => TRUE
+--   (Inhalt geaendert -> neu fahren; mutabel, keine Drift-Exception — das ist der bewusste
 --   Gegensatz zum unveraenderlichen versioned-Pfad).
 -- Self-contained: BEGIN ... ROLLBACK, kein Residual-State.
 
 BEGIN;
 
--- 1) Idempotenz: zweiter Lauf fuehrt die V-Datei NICHT erneut aus.
+-- 1) Idempotenz: zweiter Lauf fuehrt die V-Datei nicht erneut aus.
 DO $$
 DECLARE r boolean;
 BEGIN
@@ -64,7 +64,7 @@ BEGIN
 END $$;
 
 -- 4) Repeatable: erste Anwendung => TRUE + Eintrag (kind='repeatable'); gleiche Checksumme
---    => FALSE (unveraendert); geaenderte Checksumme => TRUE (neu fahren, KEINE Exception).
+--    => FALSE (unveraendert); geaenderte Checksumme => TRUE (neu fahren, keine Exception).
 DO $$
 DECLARE r boolean;
 BEGIN
@@ -95,7 +95,7 @@ BEGIN
     RAISE NOTICE 'PASS: schema_version Repeatable (unveraendert=skip, geaendert=re-apply, mutabel)';
 END $$;
 
--- 5) Paket-Eigentum (B1): die Session-GUC lifeagents.package steuert core.schema_version.package
+-- 5) Paket-Eigentum: die Session-GUC lifeagents.package steuert core.schema_version.package
 --    (der paket-bewusste Apply-Treiber setzt sie pro Quell-Verzeichnis-Batch). Leer/ungesetzt -> 'core'.
 DO $$
 DECLARE pkg text;
@@ -123,7 +123,7 @@ BEGIN
     RAISE NOTICE 'PASS: schema_version Paket-Eigentum (GUC lifeagents.package -> package-Spalte, B1)';
 END $$;
 
--- 6) Paket-Prefix verhindert Kollision (arch-challenge C): core V500 und finance V500 sind ZWEI
+-- 6) Paket-Prefix verhindert Kollision: core V500 und finance V500 sind zwei
 --    getrennte Ledger-Zeilen (core:V500 / finance:V500), beide laufen, keine faelscht uebersprungen.
 DO $$
 DECLARE r boolean;
@@ -145,10 +145,10 @@ BEGIN
     RAISE NOTICE 'PASS: schema_version Paket-Prefix (core:V500 + finance:V500 koexistieren, keine Kollision)';
 END $$;
 
--- 7) Bestands-Fall (M2): eine UNPREFIXED Altzeile ('V951', package='finance') aus der Vor-Prefix-Zeit
+-- 7) Bestands-Fall: eine unprefixed Altzeile ('V951', package='finance') aus der Vor-Prefix-Zeit
 --    (V951 = ungenutzte Testnummer, kollidiert nicht mit echten finance-Migrationen) wird vom
 --    idempotenten Backfill auf 'finance:V951' gehoben -> migration_should_apply('V951') unter
---    GUC=finance liefert dann FALSE (KEIN Re-Run der nicht-idempotenten Migration). Re-Backfill = no-op.
+--    GUC=finance liefert dann FALSE (kein Re-Run der nicht-idempotenten Migration). Re-Backfill = no-op.
 DO $$
 DECLARE r boolean; v_cnt int;
 BEGIN

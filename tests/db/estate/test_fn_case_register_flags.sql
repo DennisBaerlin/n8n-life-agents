@@ -1,5 +1,5 @@
 -- tests/db/estate/test_fn_case_register_flags.sql
--- WP3: Fall-Merkmale (has_will/no_poa/employed/pension_relevant/tenant) leitet die DB aus dem Vorsorge-Register ab
+-- Fall-Merkmale (has_will/no_poa/employed/pension_relevant/tenant) leitet die DB aus dem Vorsorge-Register ab
 --   (true | false | null = Register weiss es nicht). Eine Haushalts-Urkunde (owner_person_id NULL) zaehlt nur fuer
 --   ein erwachsenes Subjekt; fuer ein Kind sind employed/pension_relevant/tenant/no_poa abgeleitet false.
 --   Wirksame Flags in fn_case_template_rows = Register, ueberstimmt von einer expliziten Fall-Angabe.

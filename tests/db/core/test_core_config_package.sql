@@ -1,5 +1,5 @@
 -- tests/db/core/test_core_config_package.sql
--- WS4a: core.config bekommt eine `package`-Spalte (Ownership/Uninstall-Scope; Info, NICHT Teil der Uniqueness).
+-- core.config traegt eine `package`-Spalte (Ownership/Uninstall-Scope; Info, nicht Teil der Uniqueness).
 --   Prueft: Default 'core', explizites Paket bleibt, UNIQUE(category,key) bleibt global (paket-uebergreifend),
 --   und der bestehende category='model'->agent.ai_models-Validierungstrigger greift weiter (Spalte bricht ihn nicht).
 --   Muster: BEGIN…ROLLBACK. db_test hat kein seed_data -> ai_models/config sind leer, wir seeden selbst.
@@ -26,7 +26,7 @@ DECLARE v_conflict boolean := false;
 BEGIN
   INSERT INTO core.config (category, key, value, package) VALUES ('__t_uniq__', 'k', 'a', 'core');
   BEGIN
-    -- gleiche (category,key), anderes Paket -> MUSS am UNIQUE scheitern (Schluessel global eindeutig,
+    -- gleiche (category,key), anderes Paket -> muss am UNIQUE scheitern (Schluessel global eindeutig,
     -- damit die CLI eine Zeile ohne Paket-Wissen adressiert).
     INSERT INTO core.config (category, key, value, package) VALUES ('__t_uniq__', 'k', 'b', 'finance');
   EXCEPTION WHEN unique_violation THEN v_conflict := true;

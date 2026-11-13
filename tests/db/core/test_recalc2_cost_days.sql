@@ -1,5 +1,5 @@
 -- tests/db/core/test_recalc2_cost_days.sql
--- Zweitrechnung Runde 2 (Randfaelle), KI-Kosten: Kalendertage in der Haushalts-Zeitzone an den Fenstergrenzen.
+-- Zweitrechnung (Randfaelle), KI-Kosten: Kalendertage in der Haushalts-Zeitzone an den Fenstergrenzen.
 -- Regel (fn-Kopf core.fn_get_llm_cost_report): 7 Tage = heute + 6 zurueck, Vorwoche = heute-13 .. heute-7,
 -- 30 Tage = heute + 29 zurueck, Tage in der Sitzungs-Zeitzone. Sonnet 5.5 Output = 10 USD je Mio (Preisseite).
 --   Zeilen (nur Output, Berliner Ortszeit): heute 00:30 1.000 = 0,01; heute-6 00:00 2.000 = 0,02;

@@ -1,5 +1,5 @@
 -- tests/db/finance/test_recalc2_coverage.sql
--- Zweitrechnung Runde 2, Deckung: Depot-Deckung (fn_depot_cover_state), Spar-Deckung eines Kontos (fn_account_funding),
+-- Zweitrechnung Deckung: Depot-Deckung (fn_depot_cover_state), Spar-Deckung eines Kontos (fn_account_funding),
 -- Plan-Luecken (fn_plan_gap_count). Erwartungen von Hand hergeleitet. Werte erfunden.
 -- Fachregeln (aus dem fn-Kopf als Spezifikation, Rechnung selbst):
 --   * Depot: Fehlbetrag = Reserve - Marktwert; Kursdelle, wenn Fehlbetrag < 10 % der Reserve, sonst Luecke.

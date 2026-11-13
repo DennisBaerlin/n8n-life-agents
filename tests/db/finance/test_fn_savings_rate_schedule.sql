@@ -80,8 +80,8 @@ BEGIN
   END IF;
   RAISE NOTICE 'PASS schedule [target<=0 -> ok:false]';
 
-  -- TEST 7 (Audit Paket 2, Punkt 15): 1000 EUR in 3 Monaten -> Rate auf den Cent AUFGERUNDET (333.34, nicht
-  -- 333.33): 3 Raten = 1000.02 >= Ziel -> "erreicht" feuert (vorher 999.99, nie erreicht).
+  -- TEST 7: 1000 EUR in 3 Monaten -> Rate auf den Cent aufgerundet (333.34, nicht
+  -- 333.33): 3 Raten = 1000.02 >= Ziel -> "erreicht" feuert (abgerundet waeren es 999.99, nie erreicht).
   SELECT finance.fn_savings_rate_schedule(jsonb_build_object(
     'target_amount', 1000, 'target_date', '2027-03-01', 'first_payment_date', '2027-01-01'
   )) INTO v_result;
@@ -95,7 +95,7 @@ BEGIN
 
 END $$;
 
--- WP2 (weniger Rueckfragen): ohne first_payment_date gilt der naechste Termin des Abbuchungstags ab heute, ohne Tag heute.
+-- Ohne first_payment_date gilt der naechste Termin des Abbuchungstags ab heute, ohne Tag heute.
 DO $$
 DECLARE v JSONB; v_exp DATE;
 BEGIN
@@ -111,7 +111,7 @@ BEGIN
   RAISE NOTICE 'PASS schedule [erste Rate ohne Datum: heute bzw. naechster 15.]';
 END $$;
 
--- already_saved (Sparziel-Zweckbindung 2026-10-27): gerechnet wird auf dem REST.
+-- already_saved: gerechnet wird auf dem REST.
 --  (A1) Ziel 3000, schon 1200, Datum: Rate = 1800 / Monate
 --  (A2) Ziel 3000, schon 3000, Datum in der Zukunft: Rate 0, months 0, ok
 --  (A3) gedeckt, aber kein Datum -> ok:false (Zieldatum ist Pflicht)

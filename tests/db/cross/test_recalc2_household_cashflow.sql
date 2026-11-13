@@ -1,6 +1,6 @@
 -- tests/db/cross/test_recalc2_household_cashflow.sql
--- Zweitrechnung Runde 2, Haushalts-Aggregate: Monats-Cashflow (Familie und Eltern), freies Geld, Runway (career).
--- Erwartungswerte schriftlich hergeleitet, nicht aus den Views abgeschrieben. Werte erfunden.
+-- Zweitrechnung, Haushalts-Aggregate: Monats-Cashflow (Familie und Eltern), freies Geld, Runway (career).
+-- Erwartungswerte schriftlich hergeleitet, nicht aus den Views abgeschrieben, Werte erfunden.
 -- Fachregeln:
 --   * Monatswert eines Rhythmus = Betrag x (365,25 / 12) / Tage je Periode (Woche 7, Jahr 365,25), auf Cent.
 --     -25 je Woche -> -25 x 30,4375 / 7 = -108,705 -> -108,71; -480 je Jahr -> -40,00.

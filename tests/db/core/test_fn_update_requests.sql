@@ -1,11 +1,11 @@
 -- tests/db/core/test_fn_update_requests.sql
--- Update-Hinweis (2026-10-24): Auftrags-Bruecke n8n -> root-Runner + Fehler-Hilfe.
+-- Update-Hinweis: Auftrags-Bruecke n8n -> root-Runner + Fehler-Hilfe.
 --   core.fn_handle_update_cb(p)       = Registry-Handler 'upd' (owner-only): upd:now|retry:<tag> -> Auftrag + Toast.
---   core.fn_update_retry_allowed(tag) = EINE Regel fuer [Erneut versuchen] (Handler + Hilfe-Knopf).
+--   core.fn_update_retry_allowed(tag) = eine Regel fuer [Erneut versuchen] (Handler + Hilfe-Knopf).
 --   core.fn_update_request_claim(p)   = Runner (unter der Sperre): Haengende schliessen, offenen Auftrag uebernehmen.
 --   core.fn_update_request_finish(p)  = Runner: Ergebnis festhalten (nie RAISE).
 --   core.fn_update_report(p)          = Text + Knoepfe jeder Runner-Meldung (Fehlerklassen -> Hilfe), Owner-Sprache.
--- db_test hat KEIN seed_data -> family + Registry-Zeile self-seeden; Texte fallen auf den Key zurueck. BEGIN..ROLLBACK.
+-- db_test hat kein seed_data -> family + Registry-Zeile self-seeden; Texte fallen auf den Key zurueck. BEGIN..ROLLBACK.
 BEGIN;
 
 INSERT INTO agent.core_contexts (name, description, agent_name, load_strategy, content, metadata)
@@ -79,7 +79,7 @@ BEGIN
   INSERT INTO core.update_requests (tag, claimed_at, from_version) VALUES ('v0.15.0', now(), 'v0.14.0');
   r := core.fn_update_request_claim('{"installed":"v0.15.0"}');
   IF r#>>'{recovered,0,outcome}' IS DISTINCT FROM 'succeeded' THEN RAISE EXCEPTION 'FAIL [4c recovery succeeded]: %', r; END IF;
-  -- Wiederholung nach partial: VERSION war schon beim Start = Tag -> ein Abbruch ist NICHT "fertig" (Code-Review)
+  -- Wiederholung nach partial: VERSION war schon beim Start = Tag -> ein Abbruch ist nicht "fertig"
   INSERT INTO core.update_requests (kind, tag, claimed_at, from_version) VALUES ('retry', 'v0.15.0', now(), 'v0.15.0');
   r := core.fn_update_request_claim('{"installed":"v0.15.0"}');
   IF r#>>'{recovered,0,outcome}' IS DISTINCT FROM 'interrupted' THEN RAISE EXCEPTION 'FAIL [4d retry-Abbruch -> interrupted]: %', r; END IF;

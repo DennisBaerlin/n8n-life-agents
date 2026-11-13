@@ -1,13 +1,13 @@
 -- tests/db/finance/test_fn_validate_finance_profile.sql
--- WS-B1 (Phase 3b): Validator-Stub-Split + generische Validator-Registry. Der finance_profile-
--- Strukturzweig liegt PAKET-besessen in finance.fn_validate_finance_profile(jsonb) (D12). Der Core-
--- Trigger behaelt 'family' inline + dispatcht paket-besessene Sidecars GENERISCH ueber die Registry
--- core.context_validators (NEW.name -> validate_fn -> dyn. EXECUTE) — der Core nennt KEIN Paket mehr
+-- Validator-Split + generische Validator-Registry. Der finance_profile-
+-- Strukturzweig liegt paket-besessen in finance.fn_validate_finance_profile(jsonb). Der Core-
+-- Trigger behaelt 'family' inline + dispatcht paket-besessene Sidecars generisch ueber die Registry
+-- core.context_validators (NEW.name -> validate_fn -> dyn. EXECUTE) — der Core nennt kein Paket
 -- hartkodiert. Fehlt die Registry-Zeile (Paket nicht installiert/deinstalliert), validiert Core 'family'
 -- weiter, finance_profile-Strukturregeln entfallen still (graceful degradation).
 -- Tests: (1) Unit der finance-fn (gueltig/Feld-Fehler/Referenz), (2) Trigger-Dispatch ueber die Registry,
 -- (3) Guard-Absence (Registry-Zeile entfernt -> Core-family bleibt, finance_profile-Struktur nicht erzwungen).
--- HINWEIS: db_test seedet core.context_validators NICHT (kein seed_data im Container) -> der Test seedet die
+-- Hinweis: db_test seedet core.context_validators NICHT (kein seed_data im Container) -> der Test seedet die
 -- Registry-Zeile selbst (self-seedend, BEGIN..ROLLBACK), wie es seed_data.sh im Installer aus dem Manifest tut.
 BEGIN;
 
@@ -71,7 +71,7 @@ BEGIN
   RAISE NOTICE 'PASS [vorsorgesystem riester abgewiesen]';
 
   -- ---------- TEST 6: person_id nicht in family (Single-Writer-Referenz) -> Fehler ----------
-  -- Phase A: die Referenz prueft GENERISCH der Core-Validator (reservierter Form-Key persons[]), nicht mehr
+  -- Die Referenz prueft generisch der Core-Validator (reservierter Form-Key persons[]), nicht
   -- die finance-fn — die liefert dafuer NULL (keine Doppel-Pruefung).
   v_err := agent.fn_validate_household_facts(jsonb_build_object('persons', jsonb_build_array(
              jsonb_build_object('person_id','ghost'))), 'finance_profile');
@@ -85,7 +85,7 @@ BEGIN
   RAISE NOTICE 'PASS [finance_profile referenziert nur family-Personen — Core-Pruefung]';
 
   -- ---------- TEST 7 (Trigger-Integration): kaputtes finance_profile via Direkt-INSERT -> Exception ----------
-  -- Beweist, dass der Core-Trigger die finance-fn ueber die REGISTRY dispatcht (Backstop, auch gegen Direkt-psql).
+  -- Beweist, dass der Core-Trigger die finance-fn ueber die Registry dispatcht (Backstop, auch gegen Direkt-psql).
   BEGIN
     INSERT INTO agent.core_contexts (name, description, agent_name, load_strategy, content, metadata)
     VALUES ('finance_profile', 'x', 'finance_advisor', 'lazy', E'## x',
@@ -103,8 +103,8 @@ END $$;
 -- ---------- TEST 8 (Guard-Absence): Finance-Paket "deinstalliert" = Registry-Zeile entfernt
 --            -> Core validiert family weiter, finance_profile-Struktur wird nicht mehr erzwungen
 --            (graceful degradation: kein Registry-Eintrag -> kein Dispatch) ----------
--- Owner-Modell (WS-B1-Redesign): "deinstalliert" heisst Registry-Zeile weg (seed_data/Uninstall),
--- NICHT die fn droppen — der Core kennt das Paket nur ueber die Registry. Eigener DO-Block danach.
+-- "deinstalliert" heisst Registry-Zeile weg (seed_data/Uninstall),
+-- nicht die fn droppen — der Core kennt das Paket nur ueber die Registry. Eigener DO-Block danach.
 DELETE FROM core.context_validators WHERE context_name = 'finance_profile';
 
 DO $$
@@ -120,8 +120,8 @@ BEGIN
     RAISE NOTICE 'PASS [Core validiert family weiter ohne Finance-Paket: %]', SQLERRM;
   END;
 
-  -- finance_profile-Struktur NICHT mehr erzwungen (kaputte Steuerklasse geht durch, kein Dispatch-Ziel).
-  -- Die Personen-Referenz bleibt Core-Gesetz (Phase A) -> eine gueltige family-Person verwenden.
+  -- finance_profile-Struktur nicht mehr erzwungen (kaputte Steuerklasse geht durch, kein Dispatch-Ziel).
+  -- Die Personen-Referenz bleibt Core-Gesetz -> eine gueltige family-Person verwenden.
   INSERT INTO agent.core_contexts (name, description, agent_name, load_strategy, content, metadata)
   VALUES ('finance_profile', 'x', 'finance_advisor', 'lazy', E'## x',
           jsonb_build_object('managed_by','agent','facts', jsonb_build_object('persons',

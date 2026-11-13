@@ -1,13 +1,13 @@
 -- tests/db/core/test_fn_register_knock.sql
--- Owner-Notify-Anti-Spam (Phase 4, Phase Notify migriert): fn_register_knock drosselt die Owner-
--- Benachrichtigung ueber unbekannte Absender ueber die GETEILTE core.notification_state (source='knock').
--- Invarianten (Cooldown-Vertrag unveraendert; nur die State-Quelle wechselte von agent.knock_log):
+-- Owner-Notify-Anti-Spam: fn_register_knock drosselt die Owner-
+-- Benachrichtigung ueber unbekannte Absender ueber die geteilte core.notification_state (source='knock').
+-- Invarianten:
 --   * erster Knock einer Identitaet            -> notify=true (Latch-Zeile fired)
 --   * sofortiger zweiter Knock (im Cooldown)   -> notify=false (kein Spam)
 --   * Knock nach Ablauf des Cooldown-Fensters  -> notify=true wieder
 --   * expliziter Cooldown-Parameter wirkt
 --   * NULL-uid (Testpfad ohne from.id)         -> notify=false (kein Write/Spam)
---   * gesperrte uid                            -> notify=false, blocked=true, KEINE Latch-Zeile
+--   * gesperrte uid                            -> notify=false, blocked=true, keine Latch-Zeile
 -- BEGIN...ROLLBACK -> kein Residual-State.
 BEGIN;
 
@@ -47,7 +47,7 @@ BEGIN
   IF (r->>'notify')::boolean IS DISTINCT FROM false THEN
     RAISE EXCEPTION 'FAIL knock [NULL-uid muss notify=false: %]', r; END IF;
 
-  -- ---------- WS-5d: gesperrte uid -> notify=false, blocked=true UND KEINE Latch-Zeile ----------
+  -- ---------- gesperrte uid -> notify=false, blocked=true und keine Latch-Zeile ----------
   PERFORM agent.fn_block_knocker('{"telegram_user_id":555555}'::jsonb);
   r := agent.fn_register_knock(555555);
   IF (r->>'notify')::boolean IS DISTINCT FROM false OR (r->>'blocked')::boolean IS DISTINCT FROM true THEN

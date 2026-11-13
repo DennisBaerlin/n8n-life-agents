@@ -1,8 +1,8 @@
 -- tests/db/core/test_fn_fetch_context.sql
--- WS1a (Core-Advisor-Engine): generische Render-Engine in core.fn_fetch_context + paket-gefuetterte
--- finance.fn_render_plan_facts (Header-only). Prueft die DREI Output-Zustaende (P1-3), die Glidepath-
--- Jahr-Ableitung aus owner-birth_date, den Sicherheits-Dispatch (nur Registry-Wert) und die WS1a-
--- Koexistenz (Legacy-family-Renderer unveraendert). db_test seedet die Registry NICHT -> self-seedend.
+-- Generische Render-Engine in core.fn_fetch_context + paket-gefuetterte
+-- finance.fn_render_plan_facts (Header-only). Prueft die drei Output-Zustaende, die Glidepath-
+-- Jahr-Ableitung aus owner-birth_date und den Sicherheits-Dispatch (nur Registry-Wert).
+-- db_test seedet die Registry nicht -> self-seedend.
 BEGIN;
 
 DO $$
@@ -75,17 +75,17 @@ BEGIN
   END IF;
   RAISE NOTICE 'PASS [Glidepath-Startjahr 2038 aus owner-birth_date gerechnet (nie gespeichert)]';
 
-  -- ---------- Phase A: Risikoprofil als eigene Header-Zeile (risk_tolerance zog aus goal hierher) ----------
+  -- ---------- Risikoprofil als eigene Header-Zeile (risk_tolerance liegt nicht in goal) ----------
   IF v_out NOT LIKE '%Risiko: Bereitschaft medium, Tragfähigkeit high (Stand 2026-06-01)%' THEN
     RAISE EXCEPTION 'FAIL [risk_profile render]: erwartet risk_profile-Header-Zeile. got: %', v_out;
   END IF;
-  -- die ALTE goal-interne "Risiko <tolerance>"-Klausel an der Ziel-Zeile darf NICHT mehr erscheinen
+  -- eine goal-interne "Risiko <tolerance>"-Klausel an der Ziel-Zeile darf nicht erscheinen
   IF v_out LIKE '%/Monat real%, Risiko %' THEN
     RAISE EXCEPTION 'FAIL [risk render moved]: altes goal.risk_tolerance noch in der Ziel-Zeile';
   END IF;
   RAISE NOTICE 'PASS [risk_profile eigene Header-Zeile; goal-interne Risiko-Klausel entfernt]';
 
-  -- ---------- Renteninformation (Plan 2026-10-26): eine Zeile je Rente aus fn_pension_outlook mit Plan-Inflation ----------
+  -- ---------- Renteninformation: eine Zeile je Rente aus fn_pension_outlook mit Plan-Inflation ----------
   INSERT INTO finance.pension (name, pension_type) VALUES ('__t_fc DRV', 'statutory');
   INSERT INTO finance.pension_statements (pension_id, statement_date, reached_claim, projection, scenario_1pct, scenario_2pct,
       em_monthly, regular_retirement_date)
@@ -134,7 +134,7 @@ BEGIN
   RAISE NOTICE 'PASS [Registry da, leere facts -> Header NULL -> roher content (3. Zustand)]';
 END $$;
 
--- ---------- TEST 6 (WS1b): family laeuft jetzt ueber DIESELBE generische Registry-Engine ----------
+-- ---------- TEST 6: family laeuft ueber dieselbe generische Registry-Engine ----------
 DO $$
 DECLARE v_out TEXT;
 BEGIN
@@ -157,11 +157,11 @@ BEGIN
   RAISE NOTICE 'PASS [WS1b: family ueber die generische Registry-Engine gerendert]';
 END $$;
 
--- ---------- TEST 7 (WS3-Fix): load_context-Pfad unter context_ro ----------
+-- ---------- TEST 7: load_context-Pfad unter context_ro ----------
 -- fn_fetch_context liest core.context_renderers (Registry-Dispatch). Die Agenten binden load_context
--- unter der ENGEN Rolle context_ro, die per D10 KEINEN Zugriff auf Schema core hat. Ohne SECURITY DEFINER
--- bricht JEDER load_context-Call mit "permission denied for schema core" ab (real-LLM-Abnahme 2026-06-22
--- gefunden: der Agent meldete "kann nicht auf den Familienkontext zugreifen"). Die Function ist das
+-- unter der engen Rolle context_ro, die per D10 keinen Zugriff auf Schema core hat. Ohne SECURITY DEFINER
+-- bricht jeder load_context-Call mit "permission denied for schema core" ab (der Agent meldete dann
+-- "kann nicht auf den Familienkontext zugreifen"). Die Function ist das
 -- publizierte Lesefenster (Muster fn_advisor_read_plan) -> SECURITY DEFINER + gepinnter search_path.
 -- (family + Registry-Zeile stammen aus TEST 6, dieselbe Transaktion.)
 DO $$
@@ -185,14 +185,14 @@ BEGIN
   RAISE NOTICE 'PASS [WS3: fn_fetch_context unter context_ro = load_context-Rolle (SECURITY DEFINER)]';
 END $$;
 
--- ---------- TEST 8 (P0b PER-USER): Suffix-Aufloesung + Isolation A != B + fail-closed ----------
+-- ---------- TEST 8 (per_user): Suffix-Aufloesung + Isolation A != B + fail-closed ----------
 -- fn_fetch_context(p_name, p_chat_id): traegt der Basis-Name scope='per_user', liegt der Inhalt suffigiert
--- '<base>__<person_id>'. person_id DETERMINISTISCH aus der chat_id via fn_resolve_sender (NIE LLM). Isolation:
+-- '<base>__<person_id>'. person_id deterministisch aus der chat_id via fn_resolve_sender (nie LLM). Isolation:
 -- A liest A, B liest B; unaufgeloeste/Sentinel-chat_id -> Basis-Name (leer) -> fail-closed.
 DO $$
 DECLARE v_out TEXT;
 BEGIN
-  -- Stub-Renderer (self-contained, kein career-Schema noetig): liefert den current_title-Header der ZEILE,
+  -- Stub-Renderer (self-contained, kein career-Schema noetig): liefert den current_title-Header der Zeile,
   -- die fn_fetch_context ihm als (physischen) Namen uebergibt -> beweist, dass der SUFFIGIERTE Name ankommt.
   CREATE OR REPLACE FUNCTION agent.fn_test_render_profile(p_name text) RETURNS text
     LANGUAGE sql STABLE AS $f$
@@ -245,8 +245,8 @@ BEGIN
   END IF;
   RAISE NOTICE 'PASS [P0b per_user fail-closed: unaufgeloester/Sentinel-Sender -> leere Menge (Basis-Name leer)]';
 
-  -- household-Kontext mit chat_id -> KEIN Suffix (scope=household -> chat_id ignoriert). Synthetischer
-  -- household-Name (P0c: career_planning ist jetzt per_user -> kein gutes household-Beispiel mehr).
+  -- household-Kontext mit chat_id -> kein Suffix (scope=household -> chat_id ignoriert). Synthetischer
+  -- household-Name (career_planning ist per_user, taugt hier nicht als household-Beispiel).
   INSERT INTO core.context_scopes (context_name, scope, write_permission, package)
   VALUES ('__test_hh_plan__', 'household', 'owner_only', 'finance')
   ON CONFLICT (context_name) DO UPDATE SET scope='household', write_permission='owner_only';
@@ -260,9 +260,9 @@ BEGIN
   RAISE NOTICE 'PASS [P0b household: scope=household ignoriert chat_id -> kein Suffix]';
 END $$;
 
--- ---------- TEST 9 (MANDATORY, P0b): 2-Arg-Form unter context_ro mit Aufloesung ----------
--- Genau der load_context-Monatebug-Pfad: der DEFINER ruft INTERN agent.fn_resolve_sender (liest family),
--- das context_ro NICHT direkt sehen darf. Muss unter context_ro mit non-NULL chat_id den richtigen
+-- ---------- TEST 9: 2-Arg-Form unter context_ro mit Aufloesung ----------
+-- Genau der load_context-Pfad: der DEFINER ruft intern agent.fn_resolve_sender (liest family),
+-- das context_ro nicht direkt sehen darf. Muss unter context_ro mit non-NULL chat_id den richtigen
 -- per_user-Header liefern -> beweist DEFINER + search_path-Pin halten. (family/scope/Zeilen aus TEST 8.)
 DO $$
 DECLARE v_out TEXT;
@@ -285,7 +285,7 @@ BEGIN
   RAISE NOTICE 'PASS [P0b: 2-Arg fn_fetch_context loest person_id unter context_ro auf (interner fn_resolve_sender im DEFINER)]';
 END $$;
 
--- ---------- TEST 10 (Security-Audit 2026-10): physischer per_user-Name per LLM -> leere Menge ----------
+-- ---------- TEST 10: physischer per_user-Name per LLM -> leere Menge ----------
 -- Der Kontextname kommt vom LLM ($fromAI). B (lena, 222) darf A's Zeile nicht ueber ihren physischen Namen lesen —
 -- weder mit eigener noch ohne chat_id. Die Regel lebt in agent.fn_is_per_user_row (eine Adresse). (Fixtures aus TEST 8.)
 DO $$
@@ -306,9 +306,9 @@ BEGIN
   RAISE NOTICE 'PASS [Audit: physischer per_user-Name -> leere Menge; fn_is_per_user_row klassifiziert]';
 END $$;
 
--- ---------- TEST 11 (Security-Audit 2026-10): RLS — core_ro sieht keine per_user-Zeilen ----------
+-- ---------- TEST 11: RLS — core_ro sieht keine per_user-Zeilen ----------
 -- core_ro (Frei-SQL guide/monitor) sieht family + Basis-Zeilen, aber keine '<base>__<pid>'-Zeile. Eine Rolle, die
--- core_ro nur ERBT (wie die App-Rolle), sieht weiterhin alles (Policy auf current_user, nicht auf Mitgliedschaft).
+-- core_ro nur erbt (wie die App-Rolle), sieht weiterhin alles (Policy auf current_user, nicht auf Mitgliedschaft).
 -- context_ro hat kein direktes SELECT mehr (nur das DEFINER-Fenster). (Fixtures aus TEST 8.)
 DO $$
 DECLARE v_cnt INT; v_denied BOOLEAN := FALSE;

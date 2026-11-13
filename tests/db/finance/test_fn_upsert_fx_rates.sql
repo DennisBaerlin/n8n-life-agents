@@ -1,5 +1,5 @@
 -- tests/db/finance/test_fn_upsert_fx_rates.sql
--- fn_upsert_fx_rates: Kurs-Upsert NUR fuer Waehrungen aus fn_active_currencies()
+-- fn_upsert_fx_rates: Kurs-Upsert nur fuer Waehrungen aus fn_active_currencies()
 -- (Objekt-Fixtures statt Currency-Seed-Fixtures — testet die fn_active_currencies-Integration).
 -- Guards: Key-Existenz, numerisch+>0, Tages-Idempotenz, leeres rates-Objekt -> ok:false.
 BEGIN;
@@ -15,7 +15,7 @@ BEGIN
   -- Setup: USD FK-Eintrag noetig fuer account.currency-FK
   INSERT INTO finance.currencies (code, minor_unit) VALUES ('USD', 2) ON CONFLICT (code) DO NOTHING;
 
-  -- TEST 1: Kein USD-Objekt -> USD-Kurs wird NICHT upserted (Early-Scope-Guard)
+  -- TEST 1: Kein USD-Objekt -> USD-Kurs wird nicht upserted (Early-Scope-Guard)
   SELECT finance.fn_upsert_fx_rates(jsonb_build_object(
     'as_of', v_as_of::text,
     'rates', jsonb_build_object('USD', 1.08)
@@ -42,7 +42,7 @@ BEGIN
                  WHERE base_currency = 'EUR' AND quote_currency = 'USD' AND as_of = v_as_of) THEN
     RAISE EXCEPTION 'FAIL upsert [mit Objekt, USD-Kurs]: USD-Kurs wurde nicht geschrieben';
   END IF;
-  -- XXX/BAD/ZER duerfen NICHT geschrieben worden sein
+  -- XXX/BAD/ZER duerfen nicht geschrieben worden sein
   IF EXISTS (SELECT 1 FROM finance.fx_rates
              WHERE quote_currency IN ('XXX','BAD','ZER') AND as_of = v_as_of) THEN
     RAISE EXCEPTION 'FAIL upsert [skip untracked/0/non-numeric]: ungueltige Kurse wurden geschrieben';

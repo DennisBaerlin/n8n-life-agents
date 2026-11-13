@@ -1,10 +1,10 @@
 -- tests/db/core/test_fn_merge_member_identity.sql
--- WS-5a: der geteilte Identitaets-Merge-Kern (fn_merge_member_identity), den fn_consume (Owner-Bootstrap)
+-- Der geteilte Identitaets-Merge-Kern (fn_merge_member_identity), den fn_consume (Owner-Bootstrap)
 -- und fn_confirm_pairing (Member-Einladung) beide rufen. Prueft:
---   * Erfolg: telegram_user_id+role in eine UNVERKNUEPFTE Person mergen; as_of der Person BEWAHRT (kein
+--   * Erfolg: telegram_user_id+role in eine unverknuepfte Person mergen; as_of der Person bewahrt (kein
 --             Staleness-Sprung) -> fn_resolve_sender findet sie danach
---   * Doppel-Bind-Backstop (B1): Zielperson schon mit ANDERER uid gepairt -> {ok:false, already paired}
---   * Idempotenz: Zielperson schon mit DERSELBEN uid -> {ok:true, already:true}, KEIN Re-Write
+--   * Doppel-Bind-Backstop: Zielperson schon mit anderer uid gepairt -> {ok:false, already paired}
+--   * Idempotenz: Zielperson schon mit derselben uid -> {ok:true, already:true}, kein Re-Write
 --   * Person fehlt -> RAISE (system-aufgeloeste person_id -> Aufrufer rollt zurueck)
 -- Fixture in der Transaktion (BEGIN...ROLLBACK -> kein Residual-State).
 BEGIN;

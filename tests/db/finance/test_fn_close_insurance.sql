@@ -1,5 +1,5 @@
 -- tests/db/finance/test_fn_close_insurance.sql
--- Testet fn_close_insurance: Hard-DELETE (keine Buchungen), Soft-Close (Buchungen vorhanden), not-found und (WP2)
+-- Testet fn_close_insurance: Hard-DELETE (keine Buchungen), Soft-Close (Buchungen vorhanden), not-found und
 -- Ketten-Festigkeit nach einer Beitragsaenderung: Buchungen ueber die ganze Kette, Loeschen/Beenden aller Glieder.
 BEGIN;
 
@@ -56,7 +56,7 @@ BEGIN
     RAISE EXCEPTION 'FAIL close_insurance [soft-close rp]: status=% valid_to=%', v_rp_status, v_valid_to; END IF;
   RAISE NOTICE 'PASS close_insurance [Soft-Close: cancelled + RP paused, Historie bleibt]';
 
-  -- TEST 2b (WP2): Beitragsaenderung mit kuenftigem Stichtag -> zwei Glieder; Buchung nur am ALTEN Glied ->
+  -- TEST 2b: Beitragsaenderung mit kuenftigem Stichtag -> zwei Glieder; Buchung nur am alten Glied ->
   --   Soft-Close (nicht Hard-DELETE) und beide Glieder enden; ohne Buchung -> beide Glieder geloescht.
   DECLARE v_ins_c INT; v_rp_c INT; v_ins_d INT; v_rp_d INT;
   BEGIN
@@ -86,7 +86,7 @@ BEGIN
   END;
   RAISE NOTICE 'PASS close_insurance [Kette: Buchung am alten Glied -> Soft-Close aller Glieder; ohne Buchung -> ganze Kette geloescht]';
 
-  -- TEST 3: not-found -> {ok:false, reason, candidates} als Daten (Vertragsaenderung DB-ist-das-Gesetz: Probelauf vor der Karte)
+  -- TEST 3: not-found -> {ok:false, reason, candidates} als Daten (Probelauf vor der Karte)
   SELECT finance.fn_close_insurance('{"insurance_name":"__test_ci_missing__"}'::jsonb) INTO v_res;
   IF (v_res->>'ok')::boolean IS DISTINCT FROM false OR v_res->>'reason' NOT LIKE '%not found%' OR NOT (v_res ? 'candidates') THEN
     RAISE EXCEPTION 'FAIL close_insurance [not-found -> ok:false]: %', v_res; END IF;

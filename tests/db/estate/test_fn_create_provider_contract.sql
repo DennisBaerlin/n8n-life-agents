@@ -1,5 +1,5 @@
 -- tests/db/estate/test_fn_create_provider_contract.sql
--- WS-2: Vertrag-Anlage — Happy Path (Person-Zuordnung), Enum-Guards (category/death_action),
+-- Vertrag-Anlage — Happy Path (Person-Zuordnung), Enum-Guards (category/death_action),
 -- Pflichtfeld provider, Kind-Reject (adults_only). Self-contained; BEGIN..ROLLBACK.
 BEGIN;
 
@@ -18,7 +18,7 @@ BEGIN
                                  'role','child','birth_date','2012-03-10','telegram_user_id',333)))))
   ON CONFLICT (name) DO UPDATE SET metadata = EXCLUDED.metadata;
 
-  -- Kind-Reject (VOR jedem Write):
+  -- Kind-Reject (vor jedem Write):
   v_r := estate.fn_create_provider_contract(jsonb_build_object(
       'chat_id','333', 'provider','Stadtwerke', 'category','utilities'));
   IF (v_r->>'ok')::boolean OR v_r->>'reason' NOT LIKE '%adults_only%' THEN

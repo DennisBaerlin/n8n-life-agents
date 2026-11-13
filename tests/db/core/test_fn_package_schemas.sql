@@ -1,7 +1,7 @@
 -- ============================================================
 -- test_fn_package_schemas -- die eine Paket-Menge der Lebenszyklus-fns (Reset/Cleanup)
 --   Gesetz: Quelle = package_registry UNION schema_version (faengt --keep-data deinstallierte Pakete), ohne 'core',
---   Namens-Regex ^[a-z][a-z0-9_]*$, nur wenn das Schema existiert, NICHT nach status gefiltert, alphabetisch.
+--   Namens-Regex ^[a-z][a-z0-9_]*$, nur wenn das Schema existiert, nicht nach status gefiltert, alphabetisch.
 --   Stub-Schemas zz_*: BEGIN...ROLLBACK -> kein Residual-State.
 -- ============================================================
 BEGIN;

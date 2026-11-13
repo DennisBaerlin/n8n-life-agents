@@ -1,9 +1,9 @@
 -- tests/db/finance/test_fn_savings_goal_sources.sql
--- finance.fn_savings_goal_sources(p_goal_id int) — woher kommt die Rate eines bestehenden Ziels (Mini-App UX 2026-10-31).
+-- finance.fn_savings_goal_sources(p_goal_id int) — woher kommt die Rate eines bestehenden Ziels.
 --   1) Paritaet: zwei Sparplaene, Monatsbetrag wie fn_savings_goal_funding.plan_monthly (vor dem Verknuepfen gerechnet);
 --      ein pausierter Plan zaehlt nicht; Plaene nach Monatsbetrag absteigend, mit Depot-Besitzer + Beguenstigtem.
 --   2) Raten-Kette: laufend -> transfer; kuenftig startend -> transfer (Pace-Regel 5); beendet -> null.
---   3) Ziel mit Plaenen UND Kette -> beides; nur pausierter Plan -> keine Quelle.
+--   3) Ziel mit Plaenen und Kette -> beides; nur pausierter Plan -> keine Quelle.
 --   4) Plan in Fremdwaehrung ohne Kurs -> plans_fx_gap, Betrag null (nie still zu niedrig).
 --   5) unbekanntes Ziel -> {ok:false}; keine Zeile ohne ok.
 -- Self-contained (BEGIN..ROLLBACK).
@@ -95,7 +95,7 @@ BEGIN
     RAISE EXCEPTION 'FAIL [2d] pausierte Rate ist keine Quelle'; END IF;
   RAISE NOTICE 'PASS [2] Raten-Kette laufend / kuenftig / beendet / pausiert';
 
-  -- ===== 3) Plaene UND Kette; nur pausierter Plan =====
+  -- ===== 3) Plaene und Kette; nur pausierter Plan =====
   UPDATE finance.recurring_payments SET status = 'active' WHERE id = v_rp2;
   UPDATE finance.savings_goals SET recurring_payment_id = NULL WHERE id = v_g2;   -- eine Kette gehoert einem Ziel (UNIQUE)
   UPDATE finance.savings_goals SET recurring_payment_id = v_rp2 WHERE id = v_g;

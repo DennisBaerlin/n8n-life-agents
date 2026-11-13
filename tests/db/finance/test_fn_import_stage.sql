@@ -1,5 +1,5 @@
 -- tests/db/finance/test_fn_import_stage.sql
--- Testet die Staging-Schicht der Bulk-Import-Pipeline (Phase 2 Onboarding-Plan):
+-- Testet die Staging-Schicht der Bulk-Import-Pipeline:
 --   * fn_import_stage      (Batch anlegen/erweitern + Auto-Validate; {ok:false} fuer Korrigierbares)
 --   * fn_import_validate   (per-Row: Pflichtfelder, Enum-/Datums-/Zahlen-Casts, Dubletten-Backstop,
 --                           Referenz-Aufloesung inkl. In-Batch-Konten)
@@ -16,7 +16,7 @@ DECLARE
   v_acct_id INT;
 BEGIN
 
-  -- Fixture: ein BESTEHENDES Konto fuer den Dubletten-Backstop
+  -- Fixture: ein bestehendes Konto fuer den Dubletten-Backstop
   INSERT INTO finance.accounts (name, account_type)
   VALUES ('__test_imp Bestandskonto', 'cash')
   RETURNING id INTO v_acct_id;
@@ -80,13 +80,13 @@ BEGIN
                          'amount',100,'account','__test_imp Giro','schedule_unit','month',
                          'first_payment_date','2026-01-01')                                           -- direction-Enum kaputt
     ))) INTO v_result;
-  -- Summary ist BATCH-weit: 3 neue invalid + die Dublette aus TEST 3 = 4
+  -- Summary ist batch-weit: 3 neue invalid + die Dublette aus TEST 3 = 4
   IF (v_result->>'invalid')::int IS DISTINCT FROM 4 THEN
     RAISE EXCEPTION 'FAIL Pflichtfeld-/Referenz-Validierung: erwartet 4 invalid (3 neu + Dublette), got %', v_result;
   END IF;
   RAISE NOTICE 'PASS fn_import_validate [Pflichtfelder/Referenz/Enum -> invalid je Row, Summary batch-weit]';
 
-  -- ---------- TEST 5: savings_goal braucht GENAU EINES von target_date/monthly_savings_rate ----------
+  -- ---------- TEST 5: savings_goal braucht genau eines von target_date/monthly_savings_rate ----------
   SELECT finance.fn_import_stage(jsonb_build_object(
     'batch_id', v_batch,
     'rows', jsonb_build_array(
@@ -100,7 +100,7 @@ BEGIN
   END IF;
   RAISE NOTICE 'PASS fn_import_validate [savings_goal ohne Datum/Rate -> invalid]';
 
-  -- ---------- TEST 5b (Audit Paket 3): savings_goal ohne reserve_account bleibt invalid (Sparkonto ist Pflicht) ----------
+  -- ---------- TEST 5b: savings_goal ohne reserve_account bleibt invalid (Sparkonto ist Pflicht) ----------
   SELECT finance.fn_import_update_row(jsonb_build_object(
     'batch_id', v_batch, 'row_no', 8,
     'payload_merge', jsonb_build_object('target_date','2027-12-31')
@@ -111,7 +111,7 @@ BEGIN
   END IF;
   RAISE NOTICE 'PASS fn_import_validate [savings_goal ohne Sparkonto -> invalid]';
 
-  -- ---------- TEST 5c (Sparziel-Zweckbindung 2026-10-27): Depot als Topf ohne Startbestand/Sparplan -> invalid ----------
+  -- ---------- TEST 5c (Sparziel-Zweckbindung): Depot als Topf ohne Startbestand/Sparplan -> invalid ----------
   INSERT INTO finance.accounts (name, account_type, currency, status) VALUES ('__test_imp Settle5c', 'cash', 'EUR', 'active');
   INSERT INTO finance.accounts (name, account_type, currency, status, settlement_account_id)
     VALUES ('__test_imp Depot5c', 'stocks_depot', 'EUR', 'active', (SELECT max(id) FROM finance.accounts WHERE name = '__test_imp Settle5c'));
@@ -125,7 +125,7 @@ BEGIN
   END IF;
   RAISE NOTICE 'PASS fn_import_validate [Depot-Topf ohne Startbestand/Sparplan -> invalid]';   -- TEST 6 setzt den Topf neu
 
-  -- ---------- TEST 5d (Befund 2026-10-27): Topf mit bestehendem Dauerauftrag -> replace_transfer noetig ----------
+  -- ---------- TEST 5d: Topf mit bestehendem Dauerauftrag -> replace_transfer noetig ----------
   INSERT INTO finance.accounts (name, account_type, currency, status) VALUES ('__test_imp Quelle5d', 'cash', 'EUR', 'active');
   INSERT INTO finance.accounts (name, account_type, currency, status) VALUES ('__test_imp Topf5d', 'cash', 'EUR', 'active');
   PERFORM finance.fn_create_recurring_transfer(jsonb_build_object('name','__test_imp Uebertrag5d',
@@ -212,7 +212,7 @@ BEGIN
 END $$;
 
 -- ============================================================
--- Phase B: Modell-Eingaben -> {ok:false} statt Absturz (Build-Sentinel statt rows-Array, kaputte batch_id /
+-- Modell-Eingaben -> {ok:false} statt Absturz (Build-Sentinel statt rows-Array, kaputte batch_id /
 -- row_no, Sentinel statt payload_merge-Objekt).
 -- ============================================================
 DO $$
@@ -234,9 +234,9 @@ BEGIN
 END $$;
 
 -- ============================================================
--- Phase C: Feld-Allow-List — eine Zeile traegt nur Felder, die die Bestaetigungskarte ihrer Art zeigt
+-- Feld-Allow-List — eine Zeile traegt nur Felder, die die Bestaetigungskarte ihrer Art zeigt
 -- (fn_import_bundle reicht den Payload sonst ungesehen an fn_create_*/fn_book_* weiter, z. B. order_fee_eur).
--- provider_symbol ist seit Monats-Check WP-G erlaubt: tool_commit_import setzt es aus der Yahoo-Aufloesung der ISIN
+-- provider_symbol ist erlaubt: tool_commit_import setzt es aus der Yahoo-Aufloesung der ISIN
 -- und die Karte zeigt es.
 -- ============================================================
 DO $$

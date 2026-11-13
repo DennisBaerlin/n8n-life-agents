@@ -1,5 +1,5 @@
 -- tests/db/finance/test_fn_create_insurance.sql
--- Testet fn_create_insurance: recurring_payment anlegen + insurance verknüpfen, atomar; WP2: Beitrag je Abbuchung roh,
+-- Testet fn_create_insurance: recurring_payment anlegen + insurance verknüpfen, atomar; Beitrag je Abbuchung roh,
 -- Jahres-/Monatswert abgeleitet (keine Kopie an der Police), Beitrag Pflicht, Rundungs-Toleranz
 BEGIN;
 
@@ -57,7 +57,7 @@ BEGIN
     RAISE EXCEPTION 'FAIL fn_create_insurance: insurance.recurring_payment_id nicht gesetzt (ins_id=%)', v_ins_id;
   END IF;
 
-  -- Assert: Monats-/Jahreswert ABGELEITET aus der Beitrags-Zeile (WP2: keine Kopie an der Police)
+  -- Assert: Monats-/Jahreswert abgeleitet aus der Beitrags-Zeile (keine Kopie an der Police)
   SELECT monthly_equivalent INTO v_monthly
   FROM finance.active_insurances WHERE id = v_ins_id;
   IF (SELECT annual_premium FROM finance.active_insurances WHERE id = v_ins_id) IS DISTINCT FROM 1200.00
@@ -70,7 +70,7 @@ BEGIN
 
   RAISE NOTICE 'PASS fn_create_insurance: ins_id=%, rp_id=%, monthly=%', v_ins_id, v_rp_id, v_monthly;
 
-  -- Assert (WS-4): die obige Police ohne policyholder_person_id -> NULL = Haushalt.
+  -- Assert: die obige Police ohne policyholder_person_id -> NULL = Haushalt.
   IF NOT EXISTS (SELECT 1 FROM finance.insurances WHERE id = v_ins_id AND policyholder_person_id IS NULL) THEN
     RAISE EXCEPTION 'FAIL fn_create_insurance [ph]: ohne policyholder_person_id muss NULL=Haushalt sein';
   END IF;
@@ -88,7 +88,7 @@ BEGIN
   END IF;
   RAISE NOTICE 'PASS fn_create_insurance [policyholder_person_id Slug gesetzt + NULL=Haushalt]';
 
-  -- WS-0b (estate): die additiven Nachlass-Felder persistieren via fn_create_insurance.
+  -- estate: die additiven Nachlass-Felder persistieren via fn_create_insurance.
   SELECT finance.fn_create_insurance(jsonb_build_object(
     'name','__test_haftpflicht_estate__','insurance_type','accident','beneficiary','Kinder',
     'coverage_amount','150000','claim_deadline_hours','48','annual_premium','240','schedule_unit','year',
@@ -105,7 +105,7 @@ BEGIN
   END IF;
   RAISE NOTICE 'PASS fn_create_insurance [estate-Felder insurance_type/beneficiary/coverage_amount/claim_deadline_hours persistiert]';
 
-  -- Import-Haertung 2026-10-22: ungueltiger insurance_type -> {ok:false} OHNE Write (vorher CHECK-RAISE/Owner-Alert);
+  -- Import-Haertung: ungueltiger insurance_type -> {ok:false} ohne Write (kein CHECK-RAISE/Owner-Alert);
   -- der CHECK bleibt der strukturelle Backstop (Direkt-UPDATE unten).
   SELECT finance.fn_create_insurance(jsonb_build_object(
     'name','__test_bad_type__','insurance_type','not_a_type','annual_premium','120','schedule_unit','year',
@@ -154,7 +154,7 @@ BEGIN
   END;
   RAISE NOTICE 'PASS fn_create_insurance [Guards Summe/Frist/Rhythmus/Depot -> ok:false; "50.000" -> 50000, Zahl 50.000 -> 50]';
 
-  -- Eindeutigkeit 2026-10-21: ein mitgeliefertes (falsches, POSITIVES) recurring_amount wird ignoriert;
+  -- ein mitgeliefertes (falsches, positives) recurring_amount wird ignoriert;
   -- ohne schedule_unit gilt 'year', ohne valid_from gilt first_payment_date.
   SELECT finance.fn_create_insurance(jsonb_build_object(
     'name','__test_ins_derive__','annual_premium','89.50','first_payment_date','2026-01-03',
@@ -175,8 +175,8 @@ BEGIN
     RAISE EXCEPTION 'FAIL fn_create_insurance [nodate]: ok=false erwartet, got %', v_result;
   END IF;
 
-  -- Nur Vertragsbeginn, kein erstes Abbuchungsdatum -> ok:false (Owner-Entscheid 2026-10-23: nachfragen; der stille
-  -- Rueckfall auf valid_from verschob die Faelligkeit bei abweichender Abbuchung -> falsche Liquiditaetsvorschau)
+  -- Nur Vertragsbeginn, kein erstes Abbuchungsdatum -> ok:false (nachfragen; ein stiller
+  -- Rueckfall auf valid_from verschoebe die Faelligkeit bei abweichender Abbuchung -> falsche Liquiditaetsvorschau)
   SELECT finance.fn_create_insurance(jsonb_build_object('name','__test_ins_startonly__','annual_premium','100',
     'valid_from','2026-01-01','debit_account_id',v_acct_id)) INTO v_result;
   IF (v_result->>'ok')::boolean IS DISTINCT FROM false OR v_result->>'reason' NOT LIKE '%first_payment_date%' THEN
@@ -208,7 +208,7 @@ BEGIN
   END;
   RAISE NOTICE 'PASS fn_create_insurance [laufender Vertrag auf Konto mit Eroeffnungssaldo -> Rate ab Stichtag]';
 
-  -- WP2 (das LLM rechnet nicht): "30 EUR monatlich" = Betrag je Abbuchung roh; Jahres-/Monatswert leitet die DB ab.
+  -- Das LLM rechnet nicht: "30 EUR monatlich" = Betrag je Abbuchung roh; Jahres-/Monatswert leitet die DB ab.
   SELECT finance.fn_create_insurance(jsonb_build_object('name','__test_ins_30m__','premium_amount',30,
     'schedule_unit','month','first_payment_date','2026-01-01','debit_account_id',v_acct_id)) INTO v_result;
   IF (v_result->>'ok')::boolean IS DISTINCT FROM true
@@ -240,7 +240,7 @@ BEGIN
     RAISE EXCEPTION 'FAIL fn_create_insurance [Rundung]: got %', v_result; END IF;
   RAISE NOTICE 'PASS fn_create_insurance [WP2: 30 monatlich roh -> 360/30 abgeleitet; ohne Rhythmus/unstimmig ok:false; Rundung 0,01 ok]';
 
-  -- Beitrag unbekannt (Owner-Entscheid „nachfragen, sonst ohne"): Police ohne Beitrags-Kette ist gueltig; Konto, erste
+  -- Beitrag unbekannt („nachfragen, sonst ohne"): Police ohne Beitrags-Kette ist gueltig; Konto, erste
   -- Abbuchung und Rhythmus braucht sie dann nicht. Vertragsbeginn ohne Angabe = heute; die Notiz wird gespeichert.
   SELECT finance.fn_create_insurance(jsonb_build_object('name','__test_ins_free__','insurance_type','life',
     'notes','Beitrag laut Police nachsehen')) INTO v_result;
@@ -258,7 +258,7 @@ BEGIN
   IF (finance.fn_create_insurance(jsonb_build_object('name','__test_ins_one__','annual_premium',1,
         'first_payment_date','2026-01-01','debit_account_id',v_acct_id))->>'ok')::boolean IS DISTINCT FROM true THEN
     RAISE EXCEPTION 'FAIL fn_create_insurance [1,00]: gueltiger Beitrag erwartet'; END IF;
-  -- Beitrag genannt, aber kein Abbuchungskonto -> ok:false ohne Write (vorher scheiterte der Insert der Kette)
+  -- Beitrag genannt, aber kein Abbuchungskonto -> ok:false ohne Write
   SELECT finance.fn_create_insurance(jsonb_build_object('name','__test_ins_noacct__','annual_premium',100,
     'first_payment_date','2026-01-01')) INTO v_result;
   IF (v_result->>'ok')::boolean IS DISTINCT FROM false OR v_result->>'reason' NOT LIKE '%debit account%'

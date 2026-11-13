@@ -1,5 +1,5 @@
 -- tests/db/finance/test_fn_holding_price_status.sql
--- Kurs-Luecken (2026-10-27): EINE Adresse fuer "hat diese Position einen Kurs?". Prueft:
+-- Kurs-Luecken: eine Adresse fuer "hat diese Position einen Kurs?". Prueft:
 --   (1) fn_feed_symbol: Aktie = provider_symbol sonst symbol; Krypto = provider_symbol sonst symbol||'-EUR';
 --   (2) fn_price_status: NULL -> missing; genau an der Schwelle -> ok; einen Tag darueber -> stale ('>');
 --   (3) fn_holding_price_status: je gehaltener Position Status/letzter Kurs/feed_symbol, Filter auf ids,

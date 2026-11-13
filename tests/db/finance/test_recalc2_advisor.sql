@@ -1,5 +1,5 @@
 -- tests/db/finance/test_recalc2_advisor.sql
--- Zweitrechnung Runde 2, Berater (finance.fn_advisor_review): Alert-Schwellen an ihren Grenzen. Erwartungen von Hand
+-- Zweitrechnung Berater (finance.fn_advisor_review): Alert-Schwellen an ihren Grenzen. Erwartungen von Hand
 -- hergeleitet. Werte erfunden.
 -- Fachregeln:
 --   * Zielmix (Rebalancing mit Toleranzband, z. B. https://www.bogleheads.org/wiki/Rebalancing "5/25-Regel" als absolute

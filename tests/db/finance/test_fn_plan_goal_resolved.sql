@@ -1,5 +1,5 @@
 -- tests/db/finance/test_fn_plan_goal_resolved.sql
--- WP2 "Finanzen schlank": vom Finanzplan-Ziel (Einkommen, Entnahmerate, Zielportfolio) werden nur ZWEI gespeichert; der
+-- Vom Finanzplan-Ziel (Einkommen, Entnahmerate, Zielportfolio) werden nur zwei gespeichert; der
 -- Validator lehnt alle drei ab, fn_plan_goal_resolved leitet den dritten ab (Anzeige + Drift; nie gespeichert).
 BEGIN;
 

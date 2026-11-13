@@ -1,6 +1,6 @@
 -- tests/db/finance/test_recalc_savings_goal.sql
 -- Zweitrechnung Sparziel und Notreserve: Erwartungswerte schriftlich hergeleitet, nicht aus den fns abgeschrieben.
--- Sparrate, Fachregel: Rest = Ziel - schon gespart; Rate = Rest / Anzahl Raten, auf den Cent AUFgerundet (sonst
+-- Sparrate, Fachregel: Rest = Ziel - schon gespart; Rate = Rest / Anzahl Raten, auf den Cent aufgerundet (sonst
 --   bleibt das Ziel um Cent unerreicht); Laufzeit aus einer Rate = ceil(Rest / Rate) Raten.
 --   (1) Raten-getrieben: Ziel 12.000, gespart 2.000, 400 je Monat ab 10.02.2027 -> 25 Raten, die 25. am 10.02.2029,
 --       Ziel erreicht -> Zieldatum 10.03.2029 (ein Monat nach der letzten Rate, Konvention "Raten vor dem Zieldatum")

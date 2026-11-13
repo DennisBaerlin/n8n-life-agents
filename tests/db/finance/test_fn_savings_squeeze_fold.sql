@@ -1,5 +1,5 @@
 -- tests/db/finance/test_fn_savings_squeeze_fold.sql
--- finance.fn_savings_squeeze_fold: der EINE savings_squeeze-Sofort-Hinweis der Sparraten-Write-fns
+-- finance.fn_savings_squeeze_fold: der eine savings_squeeze-Sofort-Hinweis der Sparraten-Write-fns
 -- (fn_create_savings_goal / fn_set_savings_goal / fn_set_savings_plan). Feuert bei monthly_income > 0 und
 -- monthly_account_change < 0 (Sparraten leeren das Girokonto). Gelatcht ueber core.fn_should_notify (TTL 24h),
 -- Re-Arm bei Erholung (account_change >= 0). Ohne Einnahmen: weder Hinweis noch Re-Arm (das meldet cashflow_coverage).
@@ -40,7 +40,7 @@ BEGIN
     RAISE EXCEPTION 'FAIL [2]: gelatcht, zweiter Aufruf darf nicht erneut melden'; END IF;
   RAISE NOTICE 'PASS [2] Latch';
 
-  -- (3) ohne Einnahmen: kein Hinweis UND kein Re-Arm (Latch bleibt -> nach Rueckkehr des Gehalts weiter still)
+  -- (3) ohne Einnahmen: kein Hinweis und kein Re-Arm (Latch bleibt -> nach Rueckkehr des Gehalts weiter still)
   UPDATE finance.recurring_payments SET status = 'paused' WHERE name = '__ssf_salary__';
   IF finance.fn_savings_squeeze_fold() <> '{}'::jsonb THEN
     RAISE EXCEPTION 'FAIL [3a]: ohne Einnahmen kein savings_squeeze'; END IF;
@@ -69,7 +69,7 @@ BEGIN
 END $$;
 
 -- Grenzen und Alltag: Einnahmen 0 / Kontoveraenderung genau 0 melden nie; die geschaetzten Alltagsausgaben
--- (Kontoauszug) senken frei UND Kontoveraenderung, der Text nennt den Betrag positiv.
+-- (Kontoauszug) senken frei und Kontoveraenderung, der Text nennt den Betrag positiv.
 DO $$
 DECLARE
   t DATE := CURRENT_DATE;

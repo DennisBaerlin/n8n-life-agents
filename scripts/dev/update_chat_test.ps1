@@ -1,8 +1,8 @@
 ﻿#Requires -Version 5.1
-# update_chat_test.ps1 — DETERMINISTISCHER, GRATIS Test des Updates im Chat (Release-Karte, root-Runner, Fehler-Hilfe,
+# update_chat_test.ps1 — deterministischer, gratis Test des Updates im Chat (Release-Karte, root-Runner, Fehler-Hilfe,
 # Release-Signatur, Downgrade-Sperre) im laufenden Substrat — ohne GitHub, ohne echtes Telegram, ohne LLM.
 #
-# Ablauf: den Provisioning-Baum DIESES Checkouts in die Runtime des Containers spiegeln (/usr/local/lib/lifeagents/
+# Ablauf: den Provisioning-Baum dieses Checkouts in die Runtime des Containers spiegeln (/usr/local/lib/lifeagents/
 # provisioning + die CLI /usr/local/bin/lifeagents neu rendern — genau das, was install_cli tut), den GitHub-Mock dazu
 # kopieren und tests/mock_github/update_cases.sh fahren: Fake-Releases mit Stub-provision.sh (Ergebnis je Szenario),
 # Telegram ueber den Mock (Aufzeichnung /tmp/mock_telegram.jsonl). Die echten Update-Timer des Substrats ruhen waehrend

@@ -1,11 +1,11 @@
 -- tests/db/finance/test_fn_book_savings_goal_transfer_reassign.sql
--- finance.fn_book_savings_goal_transfer direction='reassign' ("Sparziel umziehen", 2026-11-01): die Zuordnung eines
--- Ziels wechselt das Konto OHNE Geldbewegung (zwei Journal-Zeilen kind='manual', Netto-EUR 0 -> Fortschritt
+-- finance.fn_book_savings_goal_transfer direction='reassign' ("Sparziel umziehen"): die Zuordnung eines
+-- Ziels wechselt das Konto ohne Geldbewegung (zwei Journal-Zeilen kind='manual', Netto-EUR 0 -> Fortschritt
 -- unveraendert). Ziel darf ein Depot sein (Deckung = Marktwert, kein harter Block, shortfall auf der Karte);
 -- saldo-basierte Ziele behalten den Freier-Saldo-Guard (eine Regel mit fn_book_savings_reservation).
 --   (1) P2P -> Depot, amount leer = ganzer Anteil: Anteile, Netto 0, Post-State (free/market_value/shortfall)
 --   (2) Teil-Umzug zurueck Depot -> P2P (Rueckgaengig-Weg)
---   (3) kurzfristiges Ziel -> Depot (2026-11-06: bewusste Ausnahme statt goal_too_short_term): ok + Warnkarte,
+--   (3) kurzfristiges Ziel -> Depot (bewusste Ausnahme statt goal_too_short_term): ok + Warnkarte,
 --       ohne gezeigte Lage kein Stempel; (3b) mit depot_risk_shown aus dem Probelauf -> Eintrag accept mit genau den
 --       gezeigten Werten + reminder_month
 --   (4) Depot ohne Kurs: no_price
@@ -193,7 +193,7 @@ BEGIN
     RAISE EXCEPTION 'FAIL [11 Quelle abgeleitet]: %', v_res; END IF;
   RAISE NOTICE 'PASS [11 Quelle abgeleitet]';
 
-  -- (12) Geld des Ziels auf P2P UND Depot, Ziel-Konto cash, Quelle offen -> missing_from + 2 Kandidaten
+  -- (12) Geld des Ziels auf P2P und Depot, Ziel-Konto cash, Quelle offen -> missing_from + 2 Kandidaten
   SELECT finance.fn_book_savings_goal_transfer(jsonb_build_object(
     'savings_goal_id', v_one, 'to_account_id', v_cash, 'direction', 'reassign')) INTO v_res;
   IF v_res->>'code' IS DISTINCT FROM 'missing_from' OR jsonb_array_length(v_res->'candidates') <> 2 THEN

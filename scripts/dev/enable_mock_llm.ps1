@@ -1,21 +1,21 @@
 ﻿#Requires -Version 5.1
 # enable_mock_llm.ps1 — den Mock-LLM-Server in der laufenden Test-n8n-Instanz scharf schalten
-# (Teststrategie Phase 6). Operiert auf einem BEREITS hochgefahrenen Substrat
-# (scripts/dev/bootstrap_test_n8n.ps1) — kein Provisioning-Eingriff, kleiner Blast-Radius.
+# (Aufruf: .\scripts\dev\enable_mock_llm.ps1 [-Down] [-UpdateScenarios] [-Verbose]). Operiert auf einem bereits
+# hochgefahrenen Substrat (scripts/dev/bootstrap_test_n8n.ps1) — kein Provisioning-Eingriff, kleiner Blast-Radius.
 #
 # Was es tut (idempotent):
 #   1) tests/mock_llm/{server.js,scenarios.json} in den Container kopieren (-> /opt/mock_llm/).
 #   2) Den Mock als transiente systemd-unit `n8ntest-mock-llm` starten (127.0.0.1:<port>, Node ist
 #      durch n8n garantiert) + Health-Probe.
-#   3a) Den UPSTREAM des LLM-Gateways (provisioning/llm_gateway) auf den Stub biegen: die Anthropic-Credential
-#      zeigt fest auf den Gateway (inject_credentials.sh) -> ein systemd-LAUFZEIT-Drop-in
-#      (/run/systemd/system/<unit>.d/mock.conf, LLM_GATEWAY_UPSTREAM=<stub>) + Neustart. Damit sprechen ALLE
-#      Claude-Aufrufe (Chat-Agenten UND die direkten HTTP-Knoten: Websuche, Monitor, Scorer, Vision) mit dem Stub,
+#   3a) Den Upstream des LLM-Gateways (provisioning/llm_gateway) auf den Stub biegen: die Anthropic-Credential
+#      zeigt fest auf den Gateway (inject_credentials.sh) -> ein systemd-Laufzeit-Drop-in
+#      (/run/systemd/system/<unit>.d/mock.conf, LLM_GATEWAY_UPSTREAM=<stub>) + Neustart. Damit sprechen alle
+#      Claude-Aufrufe (Chat-Agenten und die direkten HTTP-Knoten: Websuche, Monitor, Scorer, Vision) mit dem Stub,
 #      und der Gratis-Tier testet den Gateway (Haltepunkte, Messung) gleich mit. /run ist fluechtig -> ein
 #      Container-Neustart faellt sicher auf die echte API zurueck; die Suiten pruefen den Upstream
 #      (Assert-LlmGatewayUpstream), bevor sie feuern.
-#   3b) OPTIONAL den `host` der Credential 'Google Gemini(PaLM) Api account' (googlePalmApi) auf den Stub
-#      biegen — nur die Sprach-Transkription nutzt sie noch. Der Stub transkribiert nur die markierten Test-Dateien
+#   3b) Optional den `host` der Credential 'Google Gemini(PaLM) Api account' (googlePalmApi) auf den Stub
+#      biegen — nur die Sprach-Transkription nutzt sie. Der Stub transkribiert nur die markierten Test-Dateien
 #      (Marker-Liste GEMINI_FILES in tests/mock_llm/server.js) und beantwortet alles andere mit 404 -> eine
 #      versehentliche Transkription im Test landet im Fehlerweg (voice_unavailable) statt bei Google.
 #      Fehlt TEST_GOOGLE_API_KEY, existiert die Credential nicht -> uebersprungen (der Fehlerweg greift ohnehin).
@@ -23,9 +23,10 @@
 #
 # -Down: Mock-Unit stoppen + Drop-in entfernen (Gateway-Upstream zurueck auf https://api.anthropic.com) +
 #   (falls gepatcht) Gemini-host zurueck auf https://generativelanguage.googleapis.com + State-Block entfernen.
-# -UpdateScenarios: NUR scenarios.json neu kopieren (der Stub liest sie pro Request frisch -> kein Neustart).
+# -UpdateScenarios: nur scenarios.json neu kopieren (der Stub liest sie pro Request frisch -> kein Neustart).
 #
 # Vorbedingung: laufendes Substrat (.local/n8ntest_state.<container>.json). TEST_GOOGLE_API_KEY ist optional (nur fuer 3b).
+# Exit-Code: 0 = ok; jeder Fehler wirft ($ErrorActionPreference = 'Stop') und bricht das Skript ab (Exit ungleich 0).
 param(
     [switch]$Down,
     [switch]$UpdateScenarios,
@@ -137,7 +138,7 @@ function Copy-Scenarios {
     if ($r.Code -ne 0) { throw "docker cp scenarios.json fehlgeschlagen: $($r.Output -join "`n")" }
 }
 
-# Gemini-Credential optional (nur Transkription): nur wenn Key da UND Credential vorhanden.
+# Gemini-Credential optional (nur Transkription): nur wenn Key da und Credential vorhanden.
 $credId = $null
 if ($GoogleKey) { $credId = Get-GeminiCredId }
 

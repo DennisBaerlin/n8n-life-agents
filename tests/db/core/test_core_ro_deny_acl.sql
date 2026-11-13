@@ -1,7 +1,7 @@
 -- tests/db/core/test_core_ro_deny_acl.sql
--- Security-Audit 2026-10 (Owner "strikt privat"): die Deny-Liste in util_create_core_ro.sql haelt den Frei-SQL-Pfad
+-- Die Deny-Liste in util_create_core_ro.sql haelt den Frei-SQL-Pfad
 -- (core_ro: guide/monitor-LLM, Monitor-Specs) von fremden Gespraechen, Einmal-Codes, rohen Eingaengen und offenen
--- Auftragstexten fern; context_ro liest agent.core_contexts nicht mehr direkt (nur ueber core.fn_fetch_context).
+-- Auftragstexten fern; context_ro liest agent.core_contexts nicht direkt (nur ueber core.fn_fetch_context).
 -- Faengt die Drift-Klasse "ein Rollen-Re-Apply re-grantet still" (Muster test_core_backup_key_acl.sql).
 BEGIN;
 
@@ -21,7 +21,7 @@ BEGIN
      OR to_regclass('agent.dispatch_followup') IS NULL OR to_regclass('agent.handoff_tasks') IS NULL THEN
     RAISE EXCEPTION 'FAIL acl [Deny-Listen-Tabelle fehlt — Test prueft ins Leere]';
   END IF;
-  -- /kosten: die KI-Nutzung je Workflow (Tagesablauf des Owners) nur ueber core.fn_get_llm_cost_report (Owner-Gate)
+  -- /kosten: die KI-Nutzung je Workflow (verraet den Tagesablauf) nur ueber core.fn_get_llm_cost_report (Owner-Gate)
   IF to_regclass('core.llm_usage') IS NULL OR has_table_privilege('core_ro', 'core.llm_usage', 'SELECT') THEN
     RAISE EXCEPTION 'FAIL acl [core_ro liest core.llm_usage direkt (oder Tabelle fehlt) — Deny-Liste pruefen]';
   END IF;

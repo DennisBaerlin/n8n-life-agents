@@ -1,6 +1,6 @@
 -- tests/db/finance/test_fn_set_loan.sql
 -- Testet fn_set_loan: Konditionen, Rate-unter-Zins-Guard, Status-Kaskade, active-ohne-Rate-Guard, neg-Zins-Guard und
--- (WP2 "Finanzen schlank") die eine Quelle der Rate: Rate/Abbuchungstag aendern ueber die Raten-Kette mit Historie
+-- die eine Quelle der Rate: Rate/Abbuchungstag aendern ueber die Raten-Kette mit Historie
 -- (Split, Default-Stichtag, Korrektur in place), neue Kette fuer einen Kredit ohne Rate, Namenskopien, nachtragbare
 -- Ursprungswerte nur bei zum Stichtag eroeffneten Krediten, Laufzeitende + Restschuld-Vorschau.
 BEGIN;
@@ -31,7 +31,7 @@ BEGIN
     RAISE EXCEPTION 'FAIL set_loan [interest]: interest=% res=%', v_irate, v_res; END IF;
   RAISE NOTICE 'PASS set_loan [interest 3.5]';
 
-  -- TEST 1b (Befund 2026-10-24): Rate unter dem Monatszins aus der Restschuld -> ok:false ohne Write
+  -- TEST 1b: Rate unter dem Monatszins aus der Restschuld -> ok:false ohne Write
   --   (100.000 * 3,5 % / 12 = 291,67)
   SELECT finance.fn_set_loan(jsonb_build_object('loan_id', v_loan, 'monthly_annuity', 200)) INTO v_res;
   IF (v_res->>'ok')::boolean IS DISTINCT FROM false OR (v_res->>'interest')::numeric IS DISTINCT FROM 291.67
@@ -49,7 +49,7 @@ BEGIN
   UPDATE finance.recurring_payments SET schedule_interval = 1 WHERE id = v_rp;
   RAISE NOTICE 'PASS set_loan [Rate < Monatszins -> ok:false, auch je Quartal]';
 
-  -- TEST 2 (WP2): neuer Abbuchungstag -2 OHNE Stichtag -> Split zum naechsten noch nicht erledigten Termin ab heute;
+  -- TEST 2: neuer Abbuchungstag -2 ohne Stichtag -> Split zum naechsten noch nicht erledigten Termin ab heute;
   --   die Raten seit Februar (faellig, ungebucht) bleiben am alten Tag (Historie), der Kredit zeigt auf den neuen Kopf.
   v_expect := finance.fn_recurring_next_due(v_rp, core.fn_today());
   SELECT finance.fn_set_loan(jsonb_build_object('loan_id', v_loan, 'schedule_day_of_month', -2)) INTO v_res;
@@ -65,7 +65,7 @@ BEGIN
     RAISE EXCEPTION 'FAIL set_loan [dom -2 split]: got %', v_res; END IF;
   RAISE NOTICE 'PASS set_loan [Abbuchungstag -2 -> neues Glied ab naechstem Termin, alte Termine bleiben am 1.]';
 
-  -- TEST 3 (WP2): Rate 1200 -> 1000 ab 2027-01-01 (expliziter Stichtag) -> neues Glied; heute gilt noch 1.200
+  -- TEST 3: Rate 1200 -> 1000 ab 2027-01-01 (expliziter Stichtag) -> neues Glied; heute gilt noch 1.200
   SELECT finance.fn_set_loan(jsonb_build_object('loan_id', v_loan, 'monthly_annuity', 1000, 'effective_from', '2027-01-01')) INTO v_res;
   IF (v_res->>'ok')::boolean IS DISTINCT FROM true OR (v_res->>'effective_from')::date IS DISTINCT FROM '2027-01-01'
      OR (SELECT amount::text || '|' || valid_from FROM finance.recurring_payments
@@ -167,7 +167,7 @@ BEGIN
     RAISE EXCEPTION 'FAIL set_loan [Korrektur in place]: got %', v_res; END IF;
   RAISE NOTICE 'PASS set_loan [Korrektur ohne faellige Rate -> in place]';
 
-  -- TEST 11 (Befund 2026-10-26): dieselben Werte noch einmal -> ok:false no_change ohne Write (keine zweite Karte);
+  -- TEST 11: dieselben Werte noch einmal -> ok:false no_change ohne Write (keine zweite Karte);
   --   ein leerer Aufruf ebenso. Ein echter Unterschied in nur einem Feld bleibt ein Write.
   SELECT finance.fn_set_loan(jsonb_build_object('loan_id', v_run, 'interest_rate_fixed_until', (core.fn_today() + 365)::text,
     'term_end_date', (core.fn_today() + 3650)::text, 'disbursement_date', '2019-03-01', 'original_amount', '60000',

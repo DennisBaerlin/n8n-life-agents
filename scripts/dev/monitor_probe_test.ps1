@@ -1,5 +1,5 @@
 ﻿#Requires -Version 5.1
-# monitor_probe_test.ps1 - GRATIS Ende-zu-Ende-Pruefung des Waechter-Heartbeats (agent.monitor.cron_check_triggers) auf dem Substrat.
+# monitor_probe_test.ps1 - kostenlose Ende-zu-Ende-Pruefung des Waechter-Heartbeats (agent.monitor.cron_check_triggers) auf dem Substrat.
 # Jeder Fall spielt erfundene Sentinel-Waechter (Domain __e2e_monitor__) ein, startet den Cron echt ueber Start-TestCron und prueft
 # Mock-Telegram, DB und runData. Web-Antworten kommen aus Laufzeit-Szenarien (Mock-LLM; die Repo-scenarios.json bleibt unberuehrt,
 # Muster cron_text_test). Faelle laufen nacheinander und nie um Minute 10 oder zum Stundenwechsel (echter Zeitplan, Fenster).

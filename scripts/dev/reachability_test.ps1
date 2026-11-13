@@ -1,12 +1,12 @@
 ﻿#Requires -Version 5.1
-# reachability_test.ps1 — DETERMINISTISCHER, GRATIS Test der Geraete-Erreichbarkeit (Installer + doctor, IPv4/IPv6).
-# Kopiert provisioning/ DIESES Checkouts + den Mock (tests/mock_reach/) in den laufenden Substrat-Container und faehrt
+# reachability_test.ps1 — deterministischer, gratis Test der Geraete-Erreichbarkeit (Installer + doctor, IPv4/IPv6).
+# Kopiert provisioning/ dieses Checkouts + den Mock (tests/mock_reach/) in den laufenden Substrat-Container und faehrt
 # dort tests/mock_reach/cases.sh gegen den echten Lib-Code (common.sh, release_inputs.sh, owner_connect.sh):
 #   - Domain-Normalisierung (https://, :443, Pfad, Rand-Leerzeichen, Schluss-Punkt) + Meldung bei anderem Port;
 #   - Box-Namen-Regel <kennung>.myfritz.net (ohne Netz);
 #   - Abruf je Adresse per --resolve gegen Mock-Gegenstellen (n8n / FRITZ!Box / fremder Dienst / aus / selbstsigniert);
 #   - Einstufung fuer den Installer (Hairpin neutral, IPv6-Zertifikatsfehler = IPv6 woanders, Server ohne IPv6);
-#   - Hinweis-Text (MyFRITZ!-Freigabe statt des alten Portfreigabe-Wegs), /etc/hosts-Pin aufraeumen, Check ohne TTY;
+#   - Hinweis-Text (MyFRITZ!-Freigabe), /etc/hosts-Pin aufraeumen, Check ohne TTY;
 #   - zweiter Runner tests/mock_reach/compose_cases.sh: Weg nach aussen im Docker-Verbund (lib/reach.sh: Tailscale-Status,
 #     Funnel, reach_status_json, Installer-Haken, Rand-Konfiguration) gegen Attrappen;
 #   - dritter Runner tests/mock_reach/cli_cases.sh: Weg nach aussen der CLI-Installation (lib/reach_cli.sh: Wahl des Wegs,

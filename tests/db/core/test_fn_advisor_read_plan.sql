@@ -1,13 +1,13 @@
 -- tests/db/core/test_fn_advisor_read_plan.sql
--- core.fn_advisor_read_plan(domain, chat_id) PERSON-SCOPE (P0c + P2b-2 Isolations-Verschluss + Security-Audit 2026-10):
---   per_user-Domain (career) -> der Plan-Read ist PRO PERSON. chat_id numerisch -> fn_resolve_sender -> dessen
---   person_id -> dessen Plan. KEIN/nicht-numerischer/unaufgeloester chat_id -> leere Menge (fail-closed, kein
---   Owner-Fallback mehr). Aufruf aus einer Frei-SQL-Sitzung (Login-Rolle *_ro) -> leere Menge (chat_id dort
---   LLM-gesteuert). Die zentrale Isolations-Aussage: Person B (222 -> lena) bekommt B's Plan, NIE A's (erika).
+-- core.fn_advisor_read_plan(domain, chat_id), Person-Scope:
+--   per_user-Domain (career) -> der Plan-Read ist pro Person. chat_id numerisch -> fn_resolve_sender -> dessen
+--   person_id -> dessen Plan. Kein/nicht-numerischer/unaufgeloester chat_id -> leere Menge (fail-closed, kein
+--   Owner-Fallback). Aufruf aus einer Frei-SQL-Sitzung (Login-Rolle *_ro) -> leere Menge (chat_id dort
+--   LLM-gesteuert). Die zentrale Isolations-Aussage: Person B (222 -> lena) bekommt B's Plan, nie A's (erika).
 --   core_ro (Frei-SQL guide/monitor) liest agent.advisor_plans nicht; die RLS dahinter laesst nur Haushalts-Plaene
 --   (person_id NULL) durch.
---   (Das gebundene read_plan-Tool des career_advisor ruft GENAU diese fn mit der build-fixen chat_id.)
--- db_test seedet KEIN context_scopes -> die per_user-Zeile career_planning wird hier selbst geseedet (sonst
+--   (Das gebundene read_plan-Tool des career_advisor ruft genau diese fn mit der build-fixen chat_id.)
+-- db_test seedet kein context_scopes -> die per_user-Zeile career_planning wird hier selbst geseedet (sonst
 --   COALESCE -> household -> person_id NULL -> kein Person-Scope). core.advisors leer -> plan_context-Fallback
 --   '<domain>_planning' = 'career_planning'. BEGIN..ROLLBACK -> kein Residual-State.
 BEGIN;
@@ -23,12 +23,12 @@ BEGIN
     'agent','core')
   ON CONFLICT (name) DO UPDATE SET metadata = EXCLUDED.metadata;
 
-  -- career_planning ist per_user (P0c) — in db_test selbst seeden.
+  -- career_planning ist per_user — in db_test selbst seeden.
   INSERT INTO core.context_scopes (context_name, scope, write_permission, package)
   VALUES ('career_planning','per_user','own_user_only','career')
   ON CONFLICT (context_name) DO UPDATE SET scope='per_user', write_permission='own_user_only';
 
-  -- Je Person ein DISTINKTER aktiver Plan (verschiedenes plan_md -> die Isolation ist am Inhalt pruefbar) + ein
+  -- Je Person ein distinkter aktiver Plan (verschiedenes plan_md -> die Isolation ist am Inhalt pruefbar) + ein
   -- Haushalts-Plan (person_id NULL) fuer die RLS-Gegenprobe.
   INSERT INTO agent.advisor_plans (domain, person_id, plan_name, status, version, interview_state, plan_md)
   VALUES
@@ -41,15 +41,15 @@ BEGIN
   IF v_md IS DISTINCT FROM 'ERIKA PLAN MD' THEN RAISE EXCEPTION 'FAIL [1] chat_id 111 (erika) erwartet ERIKA, got %', v_md; END IF;
   RAISE NOTICE 'PASS [1] Person A (chat_id) -> A''s Plan';
 
-  -- TEST 2: chat_id 222 -> lena -> LENAS Plan, NIE erikas (DAS Isolations-Leck, das P2b-2 schliesst)
+  -- TEST 2: chat_id 222 -> lena -> lenas Plan, nie erikas (Isolations-Leck zwischen Personen)
   SELECT plan_md INTO v_md FROM core.fn_advisor_read_plan('career','222');
   IF v_md IS DISTINCT FROM 'LENA PLAN MD' THEN RAISE EXCEPTION 'FAIL [2] chat_id 222 (lena) erwartet LENA, got % (ISOLATIONS-LECK: B sieht A!)', v_md; END IF;
-  -- haerter: lena darf erikas Plan unter KEINEN Umstaenden im Result haben
+  -- haerter: lena darf erikas Plan unter keinen Umstaenden im Result haben
   SELECT count(*) INTO v_cnt FROM core.fn_advisor_read_plan('career','222') WHERE plan_md = 'ERIKA PLAN MD';
   IF v_cnt <> 0 THEN RAISE EXCEPTION 'FAIL [2b] lena-Read enthaelt erikas Plan (Leck)'; END IF;
   RAISE NOTICE 'PASS [2] Person B -> B''s Plan, NIE A''s (Isolation)';
 
-  -- TEST 3: kein chat_id -> leere Menge (fail-closed; frueher Owner-Fallback = Leck an jeden Frei-SQL-Aufrufer)
+  -- TEST 3: kein chat_id -> leere Menge (fail-closed; ein Owner-Fallback waere ein Leck an jeden Frei-SQL-Aufrufer)
   SELECT count(*) INTO v_cnt FROM core.fn_advisor_read_plan('career', NULL);
   IF v_cnt <> 0 THEN RAISE EXCEPTION 'FAIL [3] NULL chat_id erwartet leere Menge, got % Zeile(n)', v_cnt; END IF;
   RAISE NOTICE 'PASS [3] kein chat_id -> leere Menge (fail-closed)';

@@ -1,11 +1,11 @@
 -- tests/db/core/test_fn_household_facts.sql
 -- Testet die Haushalts-Fakten-Schicht auf agent.core_contexts (md-first + metadata.facts-Sidecar):
 --   * trg_validate_household_facts (DB-Gesetz: Skelett-Felder, Datums-Casts, Eindeutigkeit)
---   * trg_core_contexts_protect    (registriert in core.protected_contexts -> DELETE unmoeglich, WS-B2b)
+--   * trg_core_contexts_protect    (registriert in core.protected_contexts -> DELETE unmoeglich)
 --   * fn_set_context_facts       (HITL-Write: atomarer Key-Merge, {ok:false} fuer Korrigierbares)
 --   * fn_resolve_person            (Resolver-Muster: name/alias -> person_id, hit_count, candidates)
 --   * fn_resolve_sender            (telegram_user_id -> Person; Identity-Link)
--- Fixture: die ECHTEN Zeilen 'family'/'finance_profile' werden in der Transaktion ge-upsertet
+-- Fixture: die echten Zeilen 'family'/'finance_profile' werden in der Transaktion ge-upsertet
 -- (BEGIN...ROLLBACK -> kein Residual-State).
 BEGIN;
 
@@ -53,13 +53,13 @@ BEGIN
     SET description = EXCLUDED.description, content = EXCLUDED.content, metadata = EXCLUDED.metadata;
 
   -- Registry-Zeile (Host-Seed-Aequivalent aus packages/finance/manifest.json): der Core-Trigger
-  -- dispatcht finance_profile-Strukturregeln GENERISCH ueber core.context_validators (WS-B1/D12).
+  -- dispatcht finance_profile-Strukturregeln generisch ueber core.context_validators.
   -- db_test seedet die Registry nicht (kein seed_data im Container) -> der Test seedet sie selbst,
   -- damit die finance_profile-Dispatch-Tests (TEST 4/5/...) greifen.
   INSERT INTO core.context_validators (context_name, validate_fn, package)
   VALUES ('finance_profile', 'finance.fn_validate_finance_profile', 'finance')
   ON CONFLICT (context_name) DO UPDATE SET validate_fn = EXCLUDED.validate_fn, package = EXCLUDED.package;
-  -- Install-UX-Phase 6: finance_profile ist nur beschreibbar, solange finance AKTIV installiert ist
+  -- finance_profile ist nur beschreibbar, solange finance aktiv installiert ist
   -- (core.fn_facts_context_allowed) -> die Registry-Zeile gehoert zur Fixture.
   INSERT INTO core.package_registry (package, status) VALUES ('finance', 'active')
   ON CONFLICT (package) DO UPDATE SET status = 'active';
@@ -88,7 +88,7 @@ BEGIN
     RAISE NOTICE 'PASS trg_validate_household_facts [doppelte telegram_user_id abgewiesen]';
   END;
 
-  -- ---------- TEST 3 (Trigger): person ohne last_name -> Exception (Owner-Vorgabe Vor+Nachname) ----------
+  -- ---------- TEST 3 (Trigger): person ohne last_name -> Exception (Vor- und Nachname Pflicht) ----------
   BEGIN
     UPDATE agent.core_contexts
     SET metadata = jsonb_set(metadata, '{facts,persons,0,last_name}', '" "')
@@ -122,7 +122,7 @@ BEGIN
   END;
 
   -- ---------- TEST 6 (Protect): DELETE auf geschuetzte Zeile -> Exception, selbst via SQL ----------
-  -- WS-B2b: Schutz via core.protected_contexts (db_test hat kein seed_data -> Registry-Zeile self-seeden).
+  -- Schutz via core.protected_contexts (db_test hat kein seed_data -> Registry-Zeile self-seeden).
   INSERT INTO core.protected_contexts (context_name, package) VALUES ('family', 'core') ON CONFLICT DO NOTHING;
   BEGIN
     DELETE FROM agent.core_contexts WHERE name = 'family';
@@ -245,7 +245,7 @@ BEGIN
   END IF;
   RAISE NOTICE 'PASS fn_set_context_facts [Context-Allowlist family/finance_profile]';
 
-  -- ---------- TEST 10b (Install-UX-Phase 6): finance_profile nur bei AKTIVEM finance ----------
+  -- ---------- TEST 10b: finance_profile nur bei aktivem finance ----------
   SELECT agent.fn_set_context_facts(jsonb_build_object(
     'context_name','finance_profile',
     'facts', jsonb_build_object('persons', jsonb_build_array(jsonb_build_object('person_id','erika','steuerklasse',4)))
@@ -280,9 +280,9 @@ BEGIN
   END IF;
   RAISE NOTICE 'PASS fn_set_context_facts [Prosa-Replace im selben Gate]';
 
-  -- ---------- TEST 11b (WS-5b owner_only-Backstop): gepairter Nicht-Owner darf Haushalts-Fakten NICHT aendern ----------
+  -- ---------- TEST 11b (owner_only-Backstop): gepairter Nicht-Owner darf Haushalts-Fakten nicht aendern ----------
   -- set_household_facts mergt role/telegram_user_id = die Identitaets-Quelle selbst -> ein Mitglied
-  -- koennte sich sonst zum Owner eskalieren. chat_id=222 (lena, partner) -> {ok:false, owner_only}, KEIN Write.
+  -- koennte sich sonst zum Owner eskalieren. chat_id=222 (lena, partner) -> {ok:false, owner_only}, kein Write.
   SELECT jsonb_array_length(metadata->'facts'->'persons') INTO v_cnt FROM agent.core_contexts WHERE name = 'family';
   SELECT agent.fn_set_context_facts(jsonb_build_object(
     'context_name','family', 'chat_id','222',
@@ -340,7 +340,7 @@ BEGIN
   IF v_cnt IS DISTINCT FROM 0 THEN
     RAISE EXCEPTION 'FAIL fn_resolve_person [no hit]: erwartet 0, got %', v_cnt;
   END IF;
-  -- 0 Treffer -> ALLE Haushaltsmitglieder als candidates (Auswahl statt Nachname-Rueckfrage, Befund 2026-10-23)
+  -- 0 Treffer -> alle Haushaltsmitglieder als candidates (Auswahl statt Nachname-Rueckfrage)
   SELECT jsonb_array_length(candidates) INTO v_cnt FROM core.fn_resolve_person('Unbekannt');
   IF v_cnt < 3 OR NOT EXISTS (SELECT 1 FROM core.fn_resolve_person('Unbekannt') r, jsonb_array_elements(r.candidates) c
                               WHERE c->>'person_id' = 'lena' AND c->>'full_name' = 'Lena Beispiel' AND c ? 'role') THEN
@@ -352,7 +352,7 @@ BEGIN
   END IF;
   RAISE NOTICE 'PASS fn_resolve_person [vorname/alias/fullname/ambig/none + Haushalt-Kandidaten]';
 
-  -- ---------- TEST 12b (Renteninformation-Plan 2026-10-26): Selbstbezug = wer gerade chattet ----------
+  -- ---------- TEST 12b (Renteninformation): Selbstbezug = wer gerade chattet ----------
   SELECT person_id INTO v_id FROM core.fn_resolve_person('ich', '111');          -- Owner erika chattet
   IF v_id IS DISTINCT FROM 'erika' THEN RAISE EXCEPTION 'FAIL fn_resolve_person [ich @111]: got %', v_id; END IF;
   SELECT person_id INTO v_id FROM core.fn_resolve_person(' Mein ', '222');       -- lena chattet
@@ -361,7 +361,7 @@ BEGIN
   IF v_id IS DISTINCT FROM 'lena' THEN RAISE EXCEPTION 'FAIL fn_resolve_person [myself @222]: got %', v_id; END IF;
   SELECT person_id INTO v_id FROM core.fn_resolve_person('나', '111');
   IF v_id IS DISTINCT FROM 'erika' THEN RAISE EXCEPTION 'FAIL fn_resolve_person [나 @111]: got %', v_id; END IF;
-  -- nur der GANZE Wert: "meine Frau" bleibt der Alias von lena, auch wenn erika chattet
+  -- nur der ganze Wert: "meine Frau" bleibt der Alias von lena, auch wenn erika chattet
   SELECT person_id INTO v_id FROM core.fn_resolve_person('meine Frau', '111');
   IF v_id IS DISTINCT FROM 'lena' THEN RAISE EXCEPTION 'FAIL fn_resolve_person [meine Frau @111]: got %', v_id; END IF;
   -- ohne/kaputte/unbekannte chat_id: Selbstbezug bleibt unaufgeloest (0 Treffer, kein Fehler)
@@ -390,7 +390,7 @@ BEGIN
   END IF;
   RAISE NOTICE 'PASS fn_resolve_sender [Identity-Link known/unknown]';
 
-  -- ---------- TEST 14 (Review: Derived-Key-Denylist): age statt birth_date -> {ok:false}, kein Write ----------
+  -- ---------- TEST 14 (Derived-Key-Denylist): age statt birth_date -> {ok:false}, kein Write ----------
   SELECT agent.fn_set_context_facts(jsonb_build_object(
     'context_name','family',
     'facts', jsonb_build_object('persons', jsonb_build_array(jsonb_build_object('person_id','erika','age',36)))
@@ -405,7 +405,7 @@ BEGIN
   END IF;
   RAISE NOTICE 'PASS denylist [abgeleiteter Key age -> ok:false ohne Write; open-world fuer echte Fakten bleibt]';
 
-  -- Gegenprobe open-world (Owner-R5): ein NEUER echter Fakten-Key (pflegegrad) geht durch
+  -- Gegenprobe open-world: ein neuer echter Fakten-Key (pflegegrad) geht durch
   SELECT agent.fn_set_context_facts(jsonb_build_object(
     'context_name','family',
     'facts', jsonb_build_object('persons', jsonb_build_array(jsonb_build_object('person_id','erika','pflegegrad','keiner')))
@@ -415,7 +415,7 @@ BEGIN
   END IF;
   RAISE NOTICE 'PASS denylist [open-world: neuer Rohfakt-Key pflegegrad erlaubt]';
 
-  -- ---------- TEST 15 (Review: as_of-Clamp): Zukunfts-Datum -> {ok:false} ----------
+  -- ---------- TEST 15 (as_of-Clamp): Zukunfts-Datum -> {ok:false} ----------
   SELECT agent.fn_set_context_facts(jsonb_build_object(
     'context_name','family',
     'facts', jsonb_build_object('persons', jsonb_build_array(jsonb_build_object(
@@ -426,7 +426,7 @@ BEGIN
   END IF;
   RAISE NOTICE 'PASS as_of-Clamp [Zukunfts-Datum -> ok:false]';
 
-  -- ---------- TEST 16 (Review: bidirektionaler Single-Writer): family-Write darf fp-Refs nicht verwaisen ----------
+  -- ---------- TEST 16 (bidirektionaler Single-Writer): family-Write darf fp-Refs nicht verwaisen ----------
   -- fp-Fixture referenziert erika+lena; family auf nur erika+lisa+tom reduzieren -> lena verwaist -> Exception
   BEGIN
     UPDATE agent.core_contexts
@@ -440,7 +440,7 @@ BEGIN
     RAISE NOTICE 'PASS bidirektional [family-Write blockt verwaiste finance_profile-Referenz: %]', SQLERRM;
   END;
 
-  -- ---------- TEST 16b (Phase A, E8): Referenz + Waise GENERISCH fuer JEDEN persons[]-Kontext ----------
+  -- ---------- TEST 16b: Referenz + Waise generisch fuer jeden persons[]-Kontext ----------
   -- Ein beliebiger (auch nicht registrierter) Kontext mit facts.persons[] referenziert family-Personen:
   -- unbekannte person_id -> Trigger-RAISE; family-Write, der eine referenzierte Person entfernt -> RAISE.
   INSERT INTO agent.core_contexts (name, description, load_strategy, content, managed_by, package, metadata)
@@ -498,7 +498,7 @@ BEGIN
   WHERE name = '__test_persons_ctx__';
   RAISE NOTICE 'PASS legacy null [gespeichertes JSON-null weiter akzeptiert]';
 
-  -- ---------- TEST 17 (Review: TRUNCATE-Backstop) ----------
+  -- ---------- TEST 17 (TRUNCATE-Backstop) ----------
   BEGIN
     TRUNCATE agent.core_contexts;
     RAISE EXCEPTION 'FAIL TRUNCATE-Backstop: core_contexts truncated';
@@ -508,9 +508,9 @@ BEGIN
   END;
 
 
-  -- ---------- TEST 18 (Bugfix-Runde B5: per_user-Validator-Dispatch + wertfreie Meldung) ----------
-  -- Eine per_user-Zeile '<base>__<pid>' muss den Paket-Validator ihres BASIS-Namens laufen lassen (vorher exakter
-  -- NEW.name -> nie). Die Meldung traegt keinen Wert (sie erreicht ueber sub_error_notify den Owner).
+  -- ---------- TEST 18 (per_user-Validator-Dispatch + wertfreie Meldung) ----------
+  -- Eine per_user-Zeile '<base>__<pid>' muss den Paket-Validator ihres BASIS-Namens laufen lassen (ein exakter
+  -- NEW.name-Treffer liefe nie). Die Meldung traegt keinen Wert (sie erreicht ueber sub_error_notify den Owner).
   CREATE FUNCTION agent.zz_test_pv_validator(p jsonb) RETURNS text LANGUAGE sql IMMUTABLE AS $f$
     SELECT CASE WHEN (p->>'salary_floor')::numeric < 0 THEN format('salary_floor %s must be >= 0', p->>'salary_floor') END
   $f$;
@@ -544,7 +544,7 @@ BEGIN
   VALUES ('__test_pw____sub__p1', 'x', 'lazy', 'x', 'agent', 'core',
           jsonb_build_object('facts', jsonb_build_object('note_key', 'v')));
   RAISE NOTICE 'PASS per_user prefix [laengster Basis-Name gewinnt]';
-  -- Altbestand: facts aus der Zeit VOR einer Regel blockieren keinen content-Write (unveraenderte facts werden nicht
+  -- Altbestand: facts aus der Zeit vor einer Regel blockieren keinen content-Write (unveraenderte facts werden nicht
   -- neu geprueft), ein facts-Write wird dagegen geprueft.
   INSERT INTO core.context_scopes (context_name, scope, write_permission, package)
   VALUES ('__test_px__', 'per_user', 'own_user_only', 'core');
@@ -573,7 +573,7 @@ BEGIN
     RAISE NOTICE 'PASS household message [Grund bleibt in der Meldung]';
   END;
 
-  -- WP3 Denylist-Muster: Kalenderjahr / Alter / Minderjaehrig-Flag / years_since_ gesperrt, geplante Roh-Alter erlaubt
+  -- Denylist-Muster: Kalenderjahr / Alter / Minderjaehrig-Flag / years_since_ gesperrt, geplante Roh-Alter erlaubt
   DECLARE
     k text;
   BEGIN

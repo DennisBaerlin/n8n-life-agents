@@ -1,5 +1,5 @@
 -- tests/db/finance/test_account_number_identity.sql
--- Monats-Check WP-B: eindeutige Zuordnung per Kontonummer/IBAN + Schluessel je Dauerauftrag.
+-- Eindeutige Zuordnung per Kontonummer/IBAN + Schluessel je Dauerauftrag.
 --   (1) fn_normalize_account_number: Leerzeichen raus, Grossbuchstaben, leer -> NULL
 --   (2) fn_create_account speichert normalisiert; gleiche Nummer bei aktivem Konto -> {ok:false}, kein Write
 --   (3) DB-Backstop: CHECK "normalisiert" + partieller UNIQUE (aktive Konten) -> Direkt-DML scheitert
@@ -60,7 +60,7 @@ BEGIN
   IF r.id IS DISTINCT FROM v_c THEN RAISE EXCEPTION 'FAIL (5) letzte 4: %', r; END IF;
   SELECT * INTO r FROM finance.fn_resolve_account_by_number('DE36 0000 0000 0000 0000 00');
   IF r.id IS NOT NULL OR r.hit_count <> 0 THEN RAISE EXCEPTION 'FAIL (5) unbekannt: %', r; END IF;
-  -- vollstaendige fremde IBAN mit denselben Endziffern -> kein Endziffern-Treffer (Review-Befund)
+  -- vollstaendige fremde IBAN mit denselben Endziffern -> kein Endziffern-Treffer
   SELECT * INTO r FROM finance.fn_resolve_account_by_number('DE94 5001 0517 0000 0047 11');
   IF r.id IS NOT NULL OR r.hit_count <> 0 THEN RAISE EXCEPTION 'FAIL (5) volle IBAN darf nicht per Endziffern treffen: %', r; END IF;
   RAISE NOTICE 'PASS (5) Aufloesung exakt + letzte 4 Stellen (nur maskiert) + unbekannt';

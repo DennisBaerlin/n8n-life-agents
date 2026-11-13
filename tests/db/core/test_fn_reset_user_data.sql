@@ -1,5 +1,5 @@
 -- tests/db/core/test_fn_reset_user_data.sql
--- Phase B: core.fn_reset_user_data (Werkszustand, deny-by-default ueber Tabellen-Marker) +
+-- core.fn_reset_user_data (Werkszustand, deny-by-default ueber Tabellen-Marker) +
 -- core.fn_reset_onboarding_state (generische <pkg>.onboarding_state-Konvention).
 --   (i)   Marker-Menge == woertliche Soll-Menge (jede Marker-Aenderung ist ein reviewter Test-Diff)
 --   (ii)  jede bei Teststart (= frischer Init-Stand) nicht-leere Paket-Tabelle ist markiert -> eine neue,
@@ -7,8 +7,8 @@
 --   (iii) Zwei-Personen-Haushalt -> Reset: unmarkierte Paket-Tabellen leer, markierte + reset-skip-Paket unveraendert,
 --         Identitaeten laufen weiter, nur der Owner bleibt, Plan-/per-user-/Laufzeit-Kontexte weg, Skelette +
 --         Instruktionen + Kontexte des reset-skip-Pakets bleiben, Loeschschutz unveraendert, Latches je Quelle.
---         Das reset-skip-Paket ist ein test-lokales Schema zzskip (seit paperless v0.3.0 nutzt kein echtes Paket
---         den Marker mehr; der Core-Mechanismus bleibt Vertrag, docs/package-contract.md Abschnitt 6)
+--         Das reset-skip-Paket ist ein test-lokales Schema zzskip (kein echtes Paket nutzt den Marker;
+--         der Core-Mechanismus bleibt Vertrag, docs/package-contract.md Abschnitt 6)
 --   (iv)  jeder FK-Referenzierer von agent.persons ist vom Reset abgedeckt
 --   (v)   falscher Bestaetigungs-Token -> {ok:false}, nichts geloescht
 -- Persona fiktiv (Mustermann). BEGIN...ROLLBACK -> kein Residual-State.

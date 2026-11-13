@@ -1,18 +1,18 @@
 -- tests/db/core/test_core_services.sql
--- WS-B6: core.services traegt eine package-Spalte (Sibling-Konsistenz mit core.context_validators/
+-- core.services traegt eine package-Spalte (Sibling-Konsistenz mit core.context_validators/
 -- core.protected_contexts: Audit/Uninstall-Scope) und wird vom generischen _seed_services materialisiert.
 -- Deckt das deterministisch testbare SCHEMA (die bash-Seeder-Logik deckt die Substrat-Reset-Verifikation):
 --   (1) Tabellen-Form: PK(name) + Spalten name/workflow_id/description/package/updated_at;
 --   (2) package NOT NULL DEFAULT 'core' (Default greift; expliziter NULL bricht);
 --   (3) trg_services_touch schreibt updated_at bei UPDATE fort (Trigger feuert, anders als die beiden
---       Geschwister-Registries, deren Touch-fn alphabetisch spaeter definiert wird -> bewusst KEIN Trigger);
---   (4) Paket-Tool-Services (paperless Phase 2): permission NOT NULL DEFAULT 'owner_only' (fail-closed) + CHECK
---       auf die drei Stufen; Namens-Praefix-CHECK — Core-Zeilen unqualifiziert, Nicht-Core-Zeilen MUESSEN
+--       Geschwister-Registries, deren Touch-fn alphabetisch spaeter definiert wird -> bewusst kein Trigger);
+--   (4) Paket-Tool-Services: permission NOT NULL DEFAULT 'owner_only' (fail-closed) + CHECK
+--       auf die drei Stufen; Namens-Praefix-CHECK — Core-Zeilen unqualifiziert, Nicht-Core-Zeilen muessen
 --       '<package>:<alias>' heissen (der Vermittler trifft nie ein fremdes Paket-Ziel unter falschem Praefix).
--- db_test hat KEIN seed_data -> self-contained: BEGIN ... ROLLBACK.
+-- db_test hat kein seed_data -> self-contained: BEGIN ... ROLLBACK.
 BEGIN;
 
--- 1) Tabellen-Form: PK(name) + die fuenf Spalten (insb. die neue package-Spalte)
+-- 1) Tabellen-Form: PK(name) + die fuenf Spalten (insb. die package-Spalte)
 DO $$
 DECLARE
   missing text;
@@ -61,7 +61,7 @@ BEGIN
 END $$;
 
 -- 3) trg_services_touch: UPDATE schreibt updated_at fort (Trigger ueberschreibt einen alten Wert mit now()).
---    Innerhalb EINER Transaktion ist now()=transaction_timestamp() konstant -> wir setzen updated_at
+--    Innerhalb einer Transaktion ist now()=transaction_timestamp() konstant -> wir setzen updated_at
 --    kuenstlich in die Vergangenheit und pruefen, dass der Trigger es bei UPDATE auf die Txn-Zeit hebt.
 DO $$
 DECLARE

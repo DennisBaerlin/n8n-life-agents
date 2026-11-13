@@ -1,12 +1,12 @@
 -- tests/db/career/test_fn_advisor_review.sql
--- career.fn_advisor_review: Engine-Vertrag fn(text,jsonb)->{alerts,digest}; WS-1 minimal (Plan-Staleness
--- + Digest). KRITISCH: darf NIE RAISEn (der Drift-Cron wertet alle Advisor in EINER CTE aus).
+-- career.fn_advisor_review: Engine-Vertrag fn(text,jsonb)->{alerts,digest} (Plan-Staleness, Skill-Gap
+-- + Digest). Darf nie RAISEn (der Drift-Cron wertet alle Advisor in einer CTE aus).
 BEGIN;
 DO $$
 DECLARE v_res JSONB; v_digest TEXT;
 BEGIN
   -- ---------- TEST 1 (no-RAISE bei fehlendem Plan/Profil): {alerts:[], digest.text} ----------
-  v_res := career.fn_advisor_review('career');   -- person NULL -> Owner-Fallback (byte-gleiches P0c-Verhalten)
+  v_res := career.fn_advisor_review('career');   -- person NULL -> Owner-Fallback
   IF (v_res->>'ok')::boolean IS DISTINCT FROM true THEN RAISE EXCEPTION 'FAIL [1] ok: %', v_res; END IF;
   IF jsonb_typeof(v_res->'alerts') <> 'array' OR jsonb_array_length(v_res->'alerts') <> 0 THEN
     RAISE EXCEPTION 'FAIL [1] erwartet leere alerts ohne Plan, got %', v_res->'alerts';
@@ -17,7 +17,7 @@ BEGIN
   END IF;
   RAISE NOTICE 'PASS [1] no-RAISE ohne Plan/Profil [alerts leer, digest.text gesetzt]';
 
-  -- ---------- Fixtures: Profil + STALE Plan ----------
+  -- ---------- Fixtures: Profil + veralteter Plan ----------
   INSERT INTO agent.core_contexts (name, description, agent_name, load_strategy, content, managed_by, package, metadata)
   VALUES ('career_profile','t',NULL,'lazy','p','agent','career',
     jsonb_build_object('facts', jsonb_build_object('current_title','Vertriebsleiter')))
@@ -33,7 +33,7 @@ BEGIN
   ON CONFLICT (name) DO UPDATE SET metadata = EXCLUDED.metadata;
 
   -- ---------- TEST 2 (Staleness-Alert + Digest aus Plan/Profil) ----------
-  v_res := career.fn_advisor_review('career');   -- person NULL -> Owner-Fallback (byte-gleiches P0c-Verhalten)
+  v_res := career.fn_advisor_review('career');   -- person NULL -> Owner-Fallback
   IF NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v_res->'alerts') a
                  WHERE a->>'metric_key' = 'plan_staleness') THEN
     RAISE EXCEPTION 'FAIL [2] erwartet plan_staleness alert, got %', v_res->'alerts';
@@ -55,22 +55,22 @@ BEGIN
   SET metadata = jsonb_set(metadata, '{facts,_meta,last_confirmed_at}',
       to_jsonb(to_char(CURRENT_DATE - 10, 'YYYY-MM-DD')))
   WHERE name = 'career_planning';
-  v_res := career.fn_advisor_review('career');   -- person NULL -> Owner-Fallback (byte-gleiches P0c-Verhalten)
+  v_res := career.fn_advisor_review('career');   -- person NULL -> Owner-Fallback
   IF EXISTS (SELECT 1 FROM jsonb_array_elements(v_res->'alerts') a
              WHERE a->>'metric_key' = 'plan_staleness') THEN
     RAISE EXCEPTION 'FAIL [3] frischer Plan darf keinen Staleness-Alert erzeugen, got %', v_res->'alerts';
   END IF;
   RAISE NOTICE 'PASS [3] frischer Plan (10d) -> kein Staleness-Alert';
 
-  -- ---------- TEST 4 (WS-3 Skill-Gap-Alert: required_skills ohne Match -> skill_gaps) ----------
-  -- Primaere Rolle Data Analyst bekommt required_skills; das Profil hat current_title aber KEINE skills
+  -- ---------- TEST 4 (Skill-Gap-Alert: required_skills ohne Match -> skill_gaps) ----------
+  -- Primaere Rolle Data Analyst bekommt required_skills; das Profil hat current_title aber keine skills
   -- -> Statistik + Python beide missing -> gap_count 2, blocker 1 (Statistik). Plan bleibt frisch (kein Staleness).
   UPDATE agent.core_contexts SET metadata = jsonb_set(metadata, '{facts,target_roles}', jsonb_build_array(
       jsonb_build_object('title','Data Analyst','required_skills', jsonb_build_array(
         jsonb_build_object('name','Statistik','min_level','advanced','is_blocker',true),
         jsonb_build_object('name','Python','min_level','intermediate')))))
     WHERE name = 'career_planning';
-  v_res := career.fn_advisor_review('career');   -- person NULL -> Owner-Fallback (byte-gleiches P0c-Verhalten)
+  v_res := career.fn_advisor_review('career');   -- person NULL -> Owner-Fallback
   IF NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v_res->'alerts') a
                  WHERE a->>'metric_key' = 'skill_gaps' AND (a->>'value')::int = 2) THEN
     RAISE EXCEPTION 'FAIL [4] erwartet skill_gaps alert value=2, got %', v_res->'alerts';
@@ -90,7 +90,7 @@ BEGIN
       jsonb_build_object('name','Statistik','level','expert'),
       jsonb_build_object('name','Python','level','expert')))
     WHERE name = 'career_profile';
-  v_res := career.fn_advisor_review('career');   -- person NULL -> Owner-Fallback (byte-gleiches P0c-Verhalten)
+  v_res := career.fn_advisor_review('career');   -- person NULL -> Owner-Fallback
   IF EXISTS (SELECT 1 FROM jsonb_array_elements(v_res->'alerts') a WHERE a->>'metric_key' = 'skill_gaps') THEN
     RAISE EXCEPTION 'FAIL [5] erfuellte Skills dürfen keinen Skill-Gap-Alert erzeugen, got %', v_res->'alerts';
   END IF;
@@ -99,9 +99,9 @@ BEGIN
   END IF;
   RAISE NOTICE 'PASS [5] alle Skills erfuellt -> kein skill_gaps Alert';
 
-  -- ---------- TEST 6 (A1: primaere Rolle OHNE required_skills, Gap nur in sekundaerer Rolle) ----------
+  -- ---------- TEST 6 (primaere Rolle ohne required_skills, Gap nur in sekundaerer Rolle) ----------
   -- target_roles[0]='Generalist' (keine required_skills) -> nicht in fn_skill_gap.roles[]; die Luecke steckt in
-  -- der sekundaeren Rolle. Der Alert darf dann NICHT "weitere Ziele" doppelzaehlen (Hauptsatz nennt die Gesamtzahl).
+  -- der sekundaeren Rolle. Der Alert darf dann nicht "weitere Ziele" doppelzaehlen (Hauptsatz nennt die Gesamtzahl).
   UPDATE agent.core_contexts SET metadata = jsonb_set(metadata, '{facts,target_roles}', jsonb_build_array(
       jsonb_build_object('title','Generalist'),
       jsonb_build_object('title','Data Analyst','required_skills', jsonb_build_array(
@@ -109,7 +109,7 @@ BEGIN
     WHERE name = 'career_planning';
   UPDATE agent.core_contexts SET metadata = jsonb_set(metadata, '{facts,skills}', '[]'::jsonb)
     WHERE name = 'career_profile';
-  v_res := career.fn_advisor_review('career');   -- person NULL -> Owner-Fallback (byte-gleiches P0c-Verhalten)
+  v_res := career.fn_advisor_review('career');   -- person NULL -> Owner-Fallback
   IF NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v_res->'alerts') a
                  WHERE a->>'metric_key' = 'skill_gaps' AND (a->>'value')::int = 1) THEN
     RAISE EXCEPTION 'FAIL [6] erwartet skill_gaps value=1, got %', v_res->'alerts';
@@ -168,11 +168,11 @@ BEGIN
   END IF;
   RAISE NOTICE 'PASS [6d] gemeinsame Luecke zaehlt im Berater-Satz einmal';
 
-  -- ---------- TEST 7 (P0c per-Person): career_planning + career_profile per_user am OWNER-Suffix ----------
-  -- P0c entfernt den P0b-Suspend-Guard: die Review liest jetzt den OWNER-Plan am Suffix (agent.fn_owner_person_id),
-  -- der geteilte Wrapper hat keine Person-Dimension (P2 = Faecherung). Beweis: family(owner=erika) +
-  -- career_planning__erika/career_profile__erika mit echter Luecke -> der Skill-Gap WIRKT (Alert + Digest-Zeile),
-  -- NICHT suspendiert. Die scope-Registry steht auf per_user (P0c-Zustand) — die fn liest dennoch ueber den Suffix.
+  -- ---------- TEST 7 (per-Person): career_planning + career_profile per_user am Owner-Suffix ----------
+  -- Ohne Person-Argument (der geteilte Wrapper hat keine Person-Dimension) liest die Review den Owner-Plan am Suffix (agent.fn_owner_person_id).
+  -- Beweis: family(owner=erika) +
+  -- career_planning__erika/career_profile__erika mit echter Luecke -> der Skill-Gap wirkt (Alert + Digest-Zeile),
+  -- nicht suspendiert. Die scope-Registry steht auf per_user — die fn liest dennoch ueber den Suffix.
   INSERT INTO agent.core_contexts (name, description, agent_name, load_strategy, content, metadata)
   VALUES ('family','fam',NULL,'lazy','f',
     jsonb_build_object('managed_by','agent','protected', true,
@@ -184,7 +184,7 @@ BEGIN
     ('career_profile','per_user','own_user_only','career'),
     ('career_planning','per_user','own_user_only','career')
   ON CONFLICT (context_name) DO UPDATE SET scope='per_user';
-  -- Owner-Suffix-Contexts: Plan mit required_skills (Data Analyst), Profil OHNE die Skills -> echte Luecke.
+  -- Owner-Suffix-Contexts: Plan mit required_skills (Data Analyst), Profil ohne die Skills -> echte Luecke.
   INSERT INTO agent.core_contexts (name, description, agent_name, load_strategy, content, managed_by, package, metadata)
   VALUES ('career_planning__erika','t',NULL,'lazy','p','agent','career',
     jsonb_build_object('facts', jsonb_build_object(
@@ -195,7 +195,7 @@ BEGIN
    ('career_profile__erika','t',NULL,'lazy','p','agent','career',
     jsonb_build_object('facts', jsonb_build_object('current_title','Vertriebsleiter','skills','[]'::jsonb)))
   ON CONFLICT (name) DO UPDATE SET metadata = EXCLUDED.metadata;
-  v_res := career.fn_advisor_review('career');   -- person NULL -> Owner-Fallback (byte-gleiches P0c-Verhalten)
+  v_res := career.fn_advisor_review('career');   -- person NULL -> Owner-Fallback
   IF (v_res->>'ok')::boolean IS DISTINCT FROM true THEN RAISE EXCEPTION 'FAIL [7] kein RAISE-Schutz: %', v_res; END IF;
   IF NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v_res->'alerts') a WHERE a->>'metric_key' = 'skill_gaps') THEN
     RAISE EXCEPTION 'FAIL [7] kein skill_gaps-Alert trotz Owner-Suffix-Lücke (per-Person-Read greift nicht): %', v_res->'alerts';
@@ -205,10 +205,10 @@ BEGIN
   END IF;
   RAISE NOTICE 'PASS [7] P0c per-Person [Owner-Suffix-Read -> skill_gaps wirkt, Suspend-Guard weg]';
 
-  -- ---------- TEST 8 (P2a explicit person path): p_person_id liest die EIGENEN Fakten der Person ----------
-  -- erika hat (Test 7) eine echte Skill-Luecke. lena bekommt einen EIGENEN Plan OHNE Luecke (Profil deckt Soll).
-  -- fn_advisor_review('career','erika') -> Luecke; ('career','lena') -> KEINE Luecke -> beweist Person-Threading
-  -- (der geteilte Wrapper reicht p_person_id jetzt uniform durch; P0c las pauschal den Owner).
+  -- ---------- TEST 8 (expliziter Personen-Pfad): p_person_id liest die eigenen Fakten der Person ----------
+  -- erika hat (Test 7) eine echte Skill-Luecke. lena bekommt einen eigenen Plan ohne Luecke (Profil deckt Soll).
+  -- fn_advisor_review('career','erika') -> Luecke; ('career','lena') -> keine Luecke -> beweist Person-Threading
+  -- (der geteilte Wrapper reicht p_person_id uniform durch, nicht pauschal den Owner).
   UPDATE agent.core_contexts SET metadata = jsonb_set(metadata, '{facts,persons}', jsonb_build_array(
       jsonb_build_object('person_id','erika','first_name','Erika','last_name','M','role','owner',
                          'birth_date','1980-05-20','telegram_user_id',111,'as_of','2026-06-11'),
@@ -229,7 +229,7 @@ BEGIN
   v_res := career.fn_advisor_review('career', 'erika');   -- explizit erika -> Luecke wirkt
   IF NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v_res->'alerts') a WHERE a->>'metric_key' = 'skill_gaps') THEN
     RAISE EXCEPTION 'FAIL [8a] erika-Pfad: erwartet Skill-Gap, got %', v_res->'alerts'; END IF;
-  v_res := career.fn_advisor_review('career', 'lena');    -- explizit lena -> KEINE Luecke (eigenes Profil deckt Soll)
+  v_res := career.fn_advisor_review('career', 'lena');    -- explizit lena -> keine Luecke (eigenes Profil deckt Soll)
   IF EXISTS (SELECT 1 FROM jsonb_array_elements(v_res->'alerts') a WHERE a->>'metric_key' = 'skill_gaps') THEN
     RAISE EXCEPTION 'FAIL [8b] lena-Pfad las nicht lenas Fakten (fälschlich Skill-Gap): %', v_res->'alerts'; END IF;
   IF ((v_res->'digest'->'lines')::text) NOT LIKE '%Agile Coach%' THEN

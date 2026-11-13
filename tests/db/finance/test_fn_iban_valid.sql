@@ -1,6 +1,5 @@
 -- tests/db/finance/test_fn_iban_valid.sql
--- IBAN-Pruefziffer (ISO 13616, mod 97) als DB-Gesetz (Paket DB-ist-das-Gesetz S7, Owner-Frage 2026-10-23: "im Auszug
--- stehen viele IBANs" -> eine verlesene IBAN darf nie als "neues Konto" durchgehen):
+-- IBAN-Pruefziffer (ISO 13616, mod 97) als DB-Gesetz (eine verlesene IBAN darf nie als "neues Konto" durchgehen):
 --   (1) finance.fn_iban_valid: gueltig / eine Ziffer falsch / keine IBAN-Form (Depotnummer, maskierte Karte) = TRUE.
 --   (2) fn_create_account + fn_set_account lehnen eine IBAN mit falscher Pruefziffer ab ({ok:false}).
 --   (3) CHECK finance_accounts_iban_chk haelt auch an fns vorbei.

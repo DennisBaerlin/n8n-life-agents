@@ -1,6 +1,6 @@
 -- tests/db/core/test_fn_dispatch_followup.sql
--- Folge-Bindung nach einem Knopf-Tipp (2026-10-28): agent.fn_set_dispatch_followup(p) setzt je Chat den Agenten, der
--- gerade per Knopf geantwortet hat (last write wins); agent.fn_take_dispatch_followup(p) liest UND loescht (einmalig),
+-- Folge-Bindung nach einem Knopf-Tipp: agent.fn_set_dispatch_followup(p) setzt je Chat den Agenten, der
+-- gerade per Knopf geantwortet hat (last write wins); agent.fn_take_dispatch_followup(p) liest und loescht (einmalig),
 -- nur innerhalb von 30 Minuten (TTL beim Lesen).
 BEGIN;
 

@@ -119,9 +119,9 @@ BEGIN
   END IF;
   RAISE NOTICE 'PASS fn_create_account [3c Methoden-/auto_post-Override schlaegt Default]';
 
-  -- TEST 4 (WP-1 Crash-Schutz): Fremdwaehrung in KLEINSCHREIBUNG ('usd') -> Roh-Input wird normalisiert
-  -- ('USD'), registriert, Konto currency='USD'. VOR dem Fix war das der Crash-Pfad: fn_ensure_currency('usd')
-  -- gab {ok:false} (verworfen via PERFORM) -> INSERT currency='usd' -> FK-RAISE + Owner-Alert.
+  -- TEST 4 (Crash-Schutz): Fremdwaehrung in Kleinschreibung ('usd') -> Roh-Input wird normalisiert
+  -- ('USD'), registriert, Konto currency='USD'. Ohne Normalisierung gaebe fn_ensure_currency('usd')
+  -- {ok:false} (verworfen via PERFORM) -> INSERT currency='usd' -> FK-RAISE + Owner-Alert.
   DECLARE v_acc_ccy TEXT; BEGIN
     DELETE FROM finance.currencies WHERE code = 'USD';
     SELECT finance.fn_create_account(
@@ -141,7 +141,7 @@ BEGIN
     RAISE NOTICE 'PASS fn_create_account [4 lowercase usd -> normalisiert USD, registriert, kein Crash]';
   END;
 
-  -- TEST 4b (WP-1): echt-ungueltiger Code ('DOLLAR') -> {ok:false} (kein Konto, kein FK-RAISE/Owner-Alert).
+  -- TEST 4b: echt-ungueltiger Code ('DOLLAR') -> {ok:false} (kein Konto, kein FK-RAISE/Owner-Alert).
   DECLARE v_cnt_before INT; v_cnt_after INT; BEGIN
     SELECT count(*) INTO v_cnt_before FROM finance.accounts WHERE name = '__test_bad_ccy_acct__';
     SELECT finance.fn_create_account(
@@ -157,7 +157,7 @@ BEGIN
     RAISE NOTICE 'PASS fn_create_account [4b ungueltiger Code DOLLAR -> ok:false, kein Write]';
   END;
 
-  -- TEST 5 (WS-4): owner_person_id ist das EINZIGE Inhaber-Feld (account_holder abgeloest).
+  -- TEST 5: owner_person_id ist das einzige Inhaber-Feld.
   -- Fixture: eine projizierte Person (FK-Ziel). Kind-Custodial-Depot-Szenario.
   INSERT INTO agent.persons (person_id, full_name, role)
   VALUES ('__test_acc_kid', 'Test Kind', 'child') ON CONFLICT (person_id) DO NOTHING;
@@ -170,7 +170,7 @@ BEGIN
   IF NOT EXISTS (SELECT 1 FROM finance.accounts WHERE id = v_id AND owner_person_id = '__test_acc_kid') THEN
     RAISE EXCEPTION 'FAIL fn_create_account [5]: owner_person_id nicht gesetzt (id=%)', v_id;
   END IF;
-  -- Konto OHNE owner_person_id -> NULL = Haushalt (TEST 1 oben).
+  -- Konto ohne owner_person_id -> NULL = Haushalt (TEST 1 oben).
   SELECT account_id::int INTO v_id FROM (SELECT (finance.fn_create_account(
     '{"name":"__test_hh_acct__","account_type":"cash","currency":"EUR"}'::jsonb)->>'account_id') AS account_id) s;
   IF NOT EXISTS (SELECT 1 FROM finance.accounts WHERE id = v_id AND owner_person_id IS NULL) THEN
@@ -178,7 +178,7 @@ BEGIN
   END IF;
   RAISE NOTICE 'PASS fn_create_account [5 owner_person_id Slug gesetzt + NULL=Haushalt]';
 
-  -- TEST 6 (Eindeutigkeit 2026-10-21): Konto + Eroeffnungssaldo in EINEM Schritt, Post-State balance.
+  -- TEST 6: Konto + Eroeffnungssaldo in einem Schritt, Post-State balance.
   SELECT finance.fn_create_account(jsonb_build_object(
     'name','__test_open_acct__','account_type','cash','currency','EUR','opening_balance','1142.00',
     'owner_person_id','__test_acc_kid')) INTO v_result;
@@ -236,7 +236,7 @@ BEGIN
   END IF;
   RAISE NOTICE 'PASS fn_create_account [8 account_type loan -> ok:false]';
 
-  -- TEST 9 (DB-ist-das-Gesetz S4): Festgeld braucht Zinssatz UND Faelligkeit (vorher nur im Prompt)
+  -- TEST 9: Festgeld braucht Zinssatz und Faelligkeit
   DECLARE v_fd jsonb; BEGIN
     v_fd := finance.fn_create_account('{"name":"__test_fd_norate__","account_type":"fixed_deposit","fixed_deposit_maturity_date":"2027-06-30"}'::jsonb);
     IF (v_fd->>'ok')::boolean IS DISTINCT FROM false OR v_fd->>'reason' NOT LIKE '%interest_rate%' THEN
@@ -250,8 +250,8 @@ BEGIN
   END;
   RAISE NOTICE 'PASS fn_create_account [9 Festgeld: Zins + Faelligkeit Pflicht]';
 
-  -- TEST 9b (Befund 2026-10-24): kein still erfundener Zins-Rhythmus. Satz ohne Rhythmus, monatlich ohne Tag,
-  -- jaehrlich mit festem Tag, taeglich mit Tag, Monatsende mit nicht-kalendertauglichem Intervall -> ok:false OHNE Konto.
+  -- TEST 9b: kein still erfundener Zins-Rhythmus. Satz ohne Rhythmus, monatlich ohne Tag,
+  -- jaehrlich mit festem Tag, taeglich mit Tag, Monatsende mit nicht-kalendertauglichem Intervall -> ok:false ohne Konto.
   DECLARE v_t jsonb; BEGIN
     v_t := finance.fn_create_account('{"name":"__test_int_nounit__","account_type":"cash","interest_rate":"2.5"}'::jsonb);
     IF (v_t->>'ok')::boolean IS DISTINCT FROM false OR v_t->>'reason' NOT LIKE '%interest_credit_unit%' THEN
@@ -281,7 +281,7 @@ BEGIN
     IF (v_t->>'ok')::boolean IS DISTINCT FROM true THEN RAISE EXCEPTION 'FAIL fn_create_account [9b Jahresende]: %', v_t; END IF;
     v_t := finance.fn_create_account('{"name":"__test_int_ya__","account_type":"cash","interest_rate":"2.5","interest_credit_unit":"year"}'::jsonb);
     IF (v_t->>'ok')::boolean IS DISTINCT FROM true THEN RAISE EXCEPTION 'FAIL fn_create_account [9b Jahrestag]: %', v_t; END IF;
-    -- Pruefung = Write (Review 2026-10-24): "+3" ist 3 (vierteljaehrlich gespeichert), "3.0"/"last" werden abgelehnt
+    -- Pruefung = Write: "+3" ist 3 (vierteljaehrlich gespeichert), "3.0"/"last" werden abgelehnt
     v_t := finance.fn_create_account('{"name":"__test_int_plus__","account_type":"cash","interest_rate":"2.5","interest_credit_unit":"month","interest_credit_interval":"+3","interest_credit_day_of_month":"-1"}'::jsonb);
     IF (v_t->>'ok')::boolean IS DISTINCT FROM true
        OR (SELECT schedule_interval FROM finance.account_interest_rates WHERE account_id = (v_t->>'account_id')::int) IS DISTINCT FROM 3 THEN
@@ -295,7 +295,7 @@ BEGIN
   END;
   RAISE NOTICE 'PASS fn_create_account [9b Zins-Rhythmus Pflicht, Tag passend zum Rhythmus]';
 
-  -- TEST 10 (S6): Kontoname unter aktiven Konten eindeutig, ohne Gross-/Kleinschreibung und typuebergreifend
+  -- TEST 10: Kontoname unter aktiven Konten eindeutig, ohne Gross-/Kleinschreibung und typuebergreifend
   -- (wie die Import-Pruefung; Referenzen loesen nur ueber den Namen auf). candidates = das bestehende Konto.
   DECLARE v_dup jsonb; BEGIN
     PERFORM finance.fn_create_account('{"name":"__test_dup Cash__","account_type":"cash"}'::jsonb);
@@ -306,7 +306,7 @@ BEGIN
   END;
   RAISE NOTICE 'PASS fn_create_account [10 Namens-Dublette -> ok:false duplicate_name + candidates]';
 
-  -- TEST 11 (Befund 2026-10-23, neues Konto per Kontoauszug): opening_balance_date = Stichtag des gedruckten
+  -- TEST 11 (neues Konto per Kontoauszug): opening_balance_date = Stichtag des gedruckten
   -- Endsaldos. Eroeffnungsbuchung + accounts.opening_balance_date auf diesen Tag; ohne Datum bleibt es heute.
   DECLARE v_r jsonb; v_d date := core.fn_today() - 1; v_acc int; v_tx_date date; v_tx_amt numeric; BEGIN
     v_r := finance.fn_create_account(jsonb_build_object('name', '__test_obd_ok__', 'account_type', 'cash',
@@ -351,7 +351,7 @@ BEGIN
                'settlement_id', v_settle_id, 'opening_balance', '0', 'opening_balance_date', to_char(v_d, 'YYYY-MM-DD')));
     IF (v_r->>'ok')::boolean IS DISTINCT FROM false THEN
       RAISE EXCEPTION 'FAIL fn_create_account [11g Depot + Datum]: %', v_r; END IF;
-    -- Depot + Datum OHNE Saldo: Depot-Grund (nicht "Saldo fehlt" - das schickte den Agenten zum naechsten Fehler)
+    -- Depot + Datum ohne Saldo: Depot-Grund (nicht "Saldo fehlt" - das schickte den Agenten zum naechsten Fehler)
     v_r := finance.fn_create_account(jsonb_build_object('name', '__test_obd_depot2__', 'account_type', 'stocks_depot',
                'settlement_id', v_settle_id, 'opening_balance_date', to_char(v_d, 'YYYY-MM-DD')));
     IF (v_r->>'ok')::boolean IS DISTINCT FROM false OR v_r->>'reason' NOT LIKE '%depot%' THEN
@@ -361,7 +361,7 @@ BEGIN
   END;
   RAISE NOTICE 'PASS fn_create_account [11 opening_balance_date: Stichtag, heute-Default, 0, Ablehnungen]';
 
-  -- 12 Verrechnungskonto (Bank-Import-Modul): p2p -> Girokonto ok; ein Girokonto bekommt keins (vorher still angenommen)
+  -- 12 Verrechnungskonto (Bank-Import-Modul): p2p -> Girokonto ok; ein Girokonto bekommt keins
   DECLARE v_c INT; v_r JSONB; BEGIN
     v_c := (finance.fn_create_account('{"name":"__test_st_giro__","account_type":"cash","currency":"EUR"}'::jsonb)->>'account_id')::int;
     v_r := finance.fn_create_account(jsonb_build_object('name', '__test_st_p2p__', 'account_type', 'p2p', 'currency', 'EUR', 'settlement_id', v_c));
@@ -374,7 +374,7 @@ BEGIN
   END;
   RAISE NOTICE 'PASS fn_create_account [12 Verrechnungskonto nur Depot/P2P]';
 
-  -- 12b p2p mit Verrechnungskonto und Startbetrag in EINEM Aufruf (eine Karte, kein Nachtrag per set_account)
+  -- 12b p2p mit Verrechnungskonto und Startbetrag in einem Aufruf (eine Karte, kein Nachtrag per set_account)
   DECLARE v_c INT; v_r JSONB; v_row RECORD; BEGIN
     v_c := (finance.fn_create_account('{"name":"__test_st2_giro__","account_type":"cash","currency":"EUR"}'::jsonb)->>'account_id')::int;
     v_r := finance.fn_create_account(jsonb_build_object('name', '__test_st2_p2p__', 'account_type', 'p2p', 'currency', 'EUR',

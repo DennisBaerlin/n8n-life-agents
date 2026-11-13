@@ -1,17 +1,17 @@
 -- tests/db/finance/test_savings_goal_progress_beneficiary.sql
--- Multi-Member WS-3b: finance.savings_goal_progress traegt jetzt beneficiary_person_id
+-- finance.savings_goal_progress traegt beneficiary_person_id
 -- (beguenstigte Person je Ziel, Slug aus family; NULL = Haushalt). Macht den Pro-Kind-Ziel-
 -- Fortschritt isolierbar (der Advisor schluesselt je beguenstigtem Kind auf). Die Spalte ist
 -- grain-neutral: g.id ist PK -> beneficiary_person_id ist funktional von der Gruppierung abhaengig
--- -> weiterhin GENAU EINE Zeile je Ziel.
+-- -> weiterhin genau eine Zeile je Ziel.
 --
--- WICHTIG (orthogonale Dimensionen): die View leitet current_amount jetzt LEDGER-basiert ab
--- (Summe gebuchter Beitraege per recurring_payment_id, WS-1) und hat KEINE Konto-Owner-Spalte. Ein
--- kind-beguenstigtes Ziel, dessen Beitraege ueber ein ELTERN-Konto laufen ("reserviert-aber-Eltern-
--- besessen", Custodial-Fall), zaehlt am Ziel (beneficiary=Kind) — der Fortschritt haengt am Ziel-rp,
--- NICHT am finanzierenden Konto.
+-- Orthogonale Dimensionen: die View leitet current_amount aus finance.savings_goal_account_share ab (markierte
+-- Buchungen transactions.savings_goal_id + Zuordnungs-Journal) und hat keine Konto-Owner-Spalte. Ein
+-- kind-beguenstigtes Ziel, dessen Beitraege ueber ein Eltern-Konto laufen ("reserviert-aber-Eltern-
+-- besessen", Custodial-Fall), zaehlt am Ziel (beneficiary=Kind) — der Fortschritt haengt am Ziel,
+-- nicht am finanzierenden Konto.
 BEGIN;
--- Audit Paket 3: ein Sparziel braucht ein Sparkonto -> Fixture-Topf fuer fn_create_savings_goal.
+-- Fixture: ein Sparziel braucht ein Sparkonto (Topf) fuer fn_create_savings_goal.
 INSERT INTO finance.accounts (name, account_type, currency, status) VALUES ('__sg_fixture_pot__','cash','EUR','active');
 
 DO $$
@@ -36,9 +36,9 @@ BEGIN
     VALUES ('__sgp_parent_cash__','cash','EUR','active', NULL) RETURNING id INTO v_parent_acct;
   UPDATE finance.account_balances SET balance = 5000 WHERE account_id = v_parent_acct;
 
-  -- ---------- Ziel 1: kind-beguenstigt, Reserve-Zufluss 1500 (markiert) ueber das ELTERN-Konto ----------
+  -- ---------- Ziel 1: kind-beguenstigt, Reserve-Zufluss 1500 (markiert) ueber das Eltern-Konto ----------
   -- target 3000, markierter Reserve-Zufluss 1500 -> current 1500, remaining 1500, progress 50 %.
-  -- WS-A: Fortschritt = markierte Bewegungen (savings_goal_id), konto-owner-unabhaengig (haengt am Ziel).
+  -- Fortschritt = markierte Bewegungen (savings_goal_id), konto-owner-unabhaengig (haengt am Ziel).
   SELECT finance.fn_create_savings_goal(jsonb_build_object(
     'name','__sgp_kid_goal__','target_amount',3000,'target_date',(current_date + 365)::text,
     'reserve_account_id',(SELECT max(id) FROM finance.accounts WHERE name='__sg_fixture_pot__'),'account_id',v_parent_acct,'schedule_day_of_month',1,'first_payment_date',(current_date - 30)::text,
@@ -67,8 +67,8 @@ BEGIN
     RAISE EXCEPTION 'FAIL [no beneficiary]: erwartet NULL (Haushalt), got %', v_beneficiary; END IF;
   RAISE NOTICE 'PASS [Ziel ohne Beguenstigten -> beneficiary_person_id IS NULL]';
 
-  -- ===== TEST 3: Edge — Kind-Ziel ueber ELTERN-Konto: Fortschritt haengt am Ziel-rp, nicht am Konto =====
-  -- current_amount = Summe gebuchter Beitraege (1500) UNABHAENGIG vom finanzierenden Konto (Eltern-Konto).
+  -- ===== TEST 3: Edge — Kind-Ziel ueber Eltern-Konto: Fortschritt haengt am Ziel, nicht am Konto =====
+  -- current_amount = Summe markierter Buchungen (1500) unabhaengig vom finanzierenden Konto (Eltern-Konto).
   -- Die View hat keine Konto-Owner-Spalte -> beide Dimensionen orthogonal (reserviert-aber-Eltern-besessen).
   SELECT current_amount, remaining_amount, progress_percent INTO v_current, v_remaining, v_progress
   FROM finance.savings_goal_progress WHERE id = v_kid_goal;
@@ -80,7 +80,7 @@ BEGIN
     RAISE EXCEPTION 'FAIL [edge progress_percent]: erwartet 50, got %', v_progress; END IF;
   RAISE NOTICE 'PASS [Kind-Ziel auf Eltern-Konto: current=1500, remaining=1500, progress=50%% (Ziel-bezogen, konto-owner-unabhaengig)]';
 
-  -- ===== TEST 4: Grain-Pin — genau EINE Zeile je Ziel trotz neuer GROUP-BY-Spalte =====
+  -- ===== TEST 4: Grain-Pin — genau eine Zeile je Ziel trotz neuer GROUP-BY-Spalte =====
   SELECT count(*) INTO v_rowcount FROM finance.savings_goal_progress WHERE id = v_kid_goal;
   IF v_rowcount IS DISTINCT FROM 1 THEN
     RAISE EXCEPTION 'FAIL [grain]: erwartet genau 1 Zeile je Ziel, got %', v_rowcount; END IF;

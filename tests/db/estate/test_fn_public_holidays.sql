@@ -1,5 +1,5 @@
 -- tests/db/estate/test_fn_public_holidays.sql
--- WS-3 Fristen-Engine: Gauss-Osterformel + bundesweite/landesspezifische Feiertage. Self-contained.
+-- Fristen-Engine: Gauss-Osterformel + bundesweite/landesspezifische Feiertage. Self-contained.
 BEGIN;
 
 DO $$
@@ -8,7 +8,7 @@ DECLARE
   v_be DATE[] := estate.fn_public_holidays(2024, 'berlin');
   v_sn DATE[] := estate.fn_public_holidays(2024, 'sachsen');
 BEGIN
-  -- Osterberechnung (Ostersonntag SELBST ist kein Feiertag; Karfreitag=Ostern-2, Ostermontag=Ostern+1).
+  -- Osterberechnung (Ostersonntag selbst ist kein Feiertag; Karfreitag=Ostern-2, Ostermontag=Ostern+1).
   IF make_date(2024,3,31) = ANY(v_by) THEN RAISE EXCEPTION 'FAIL [Ostersonntag ist kein Feiertag]'; END IF;
   IF NOT (make_date(2024,3,29) = ANY(v_by)) THEN RAISE EXCEPTION 'FAIL [Karfreitag 2024=29.03. fehlt]'; END IF;
   IF NOT (make_date(2024,4,1)  = ANY(v_by)) THEN RAISE EXCEPTION 'FAIL [Ostermontag 2024=01.04. fehlt]'; END IF;
@@ -47,7 +47,7 @@ BEGIN
   IF     (make_date(2024,11,20)= ANY(v_by)) THEN RAISE EXCEPTION 'FAIL [Buss- und Bettag faelschlich BY]'; END IF;
   RAISE NOTICE 'PASS [landesspezifische Feiertage]';
 
-  -- Unbekannter/leerer Slug -> nur bundesweite (kein Wurf, Frauentag NICHT dabei).
+  -- Unbekannter/leerer Slug -> nur bundesweite (kein Wurf, Frauentag nicht dabei).
   IF (make_date(2024,3,8) = ANY(estate.fn_public_holidays(2024,'gibtsnicht'))) THEN
     RAISE EXCEPTION 'FAIL [unbekannter Slug bekommt Landesfeiertag]';
   END IF;

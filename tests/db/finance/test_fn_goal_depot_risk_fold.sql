@@ -1,5 +1,5 @@
 -- tests/db/finance/test_fn_goal_depot_risk_fold.sql
--- finance.fn_goal_depot_risk_fold(p_goal, p_shown, p_force) + fn_savings_goal_derisk_status (2026-11-06): ein Sparziel
+-- finance.fn_goal_depot_risk_fold(p_goal, p_shown, p_force) + fn_savings_goal_derisk_status: ein Sparziel
 -- kurz vor dem Termin im Depot ist eine bewusste, festgehaltene Ausnahme statt eines Verbots.
 --   (F1) ueber dem Pfad -> Warnkarte mit Zahlen (Rat abgerundet, Beispiel-Verlust genau, digits 0), Knopf-Key,
 --        effective.depot_risk_shown Cent-genau; ohne gezeigte Lage kein Eintrag
@@ -13,7 +13,7 @@
 --   (F8) im Fenster, im Pfad -> weicher Hinweis, kein Merkmal; (F9) ausserhalb des Fensters -> []
 --   (F10) Kurs-Luecke -> nur Hinweis, kein needs_acceptance
 --   (F11) Shape-CHECK als Backstop (auch NULL in limit_eur/allowed_eur)
---   (F12) Rat befolgen loest keine Karte aus (Leitung 2026-11-06): Umzug von genau headroom_eur_whole ins Depot ->
+--   (F12) Rat befolgen loest keine Karte aus: Umzug von genau headroom_eur_whole ins Depot ->
 --         needs_acceptance false, keine Warnzeile, kein Eintrag; Verkauf des abgerundeten Vorschlags -> breach false
 --   (F13) Ablauf: Entscheidung vor dem Stichtag (Termin - 12 Monate) laeuft ab, nach dem Stichtag gilt sie bis zum Termin
 BEGIN;
@@ -133,7 +133,7 @@ BEGIN
   v_r := finance.fn_goal_depot_risk_fold(v_g4, NULL);
   IF NOT s.fx_gap OR s.needs_acceptance OR v_r->'card_lines'->0->>'value' IS DISTINCT FROM 'finance.note.goal_depot_risk_fx' OR v_r ? 'effective' THEN
     RAISE EXCEPTION 'FAIL [F10 Kurs-Luecke]: % / %', row_to_json(s), v_r; END IF;
-  -- (F10b) nur ein Bein ohne Kurs (Anteil faellt ganz aus der Summe) -> die Zeile bleibt, der Hinweis kommt (Code-Review)
+  -- (F10b) nur ein Bein ohne Kurs (Anteil faellt ganz aus der Summe) -> die Zeile bleibt, der Hinweis kommt
   INSERT INTO finance.savings_goals (name, target_amount, target_date, status)
     VALUES ('__drf Franken nur__', 6000, (date_trunc('month', current_date) + interval '24 months' + interval '10 days')::date, 'active')
     RETURNING id INTO v_g5;

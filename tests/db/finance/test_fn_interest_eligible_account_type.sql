@@ -1,8 +1,8 @@
 -- tests/db/finance/test_fn_interest_eligible_account_type.sql
--- WS-Z4: zins-faehige Kontotypen (Allowlist cash/fixed_deposit/p2p) + struktureller Backstop-Trigger.
+-- Zins-faehige Kontotypen (Allowlist cash/fixed_deposit/p2p) + struktureller Backstop-Trigger.
 --   (1) fn_interest_eligible_account_type-Matrix; (2) trg_finance_reject_interest_rate_ineligible sperrt
 --   eine Zinszeile auf Depot/Kredit hart (RAISE); (3) fn_create_account mit Zins auf Nicht-Eligible lehnt
---   korrigierbar ab (Import-Haertung 2026-10-22: {ok:false} VOR dem Write statt Trigger-RAISE/Owner-Alert; der
+--   korrigierbar ab ({ok:false} vor dem Write statt Trigger-RAISE/Owner-Alert; der
 --   Trigger aus (2) bleibt der strukturelle Backstop).
 BEGIN;
 
@@ -36,7 +36,7 @@ BEGIN
   IF NOT v_blocked THEN RAISE EXCEPTION 'FAIL [trigger]: Zinszeile auf loan haette abgelehnt werden muessen'; END IF;
   RAISE NOTICE 'PASS [Trigger: Direkt-Insert einer Zinszeile auf Kredit-Konto -> RAISE]';
 
-  -- ===== (3) fn_create_account mit Zins auf Nicht-Eligible -> {ok:false} OHNE Write =====
+  -- ===== (3) fn_create_account mit Zins auf Nicht-Eligible -> {ok:false} ohne Write =====
   -- (Depot statt Kredit: account_type loan lehnt fn_create_account schon vorher mit ok:false ab)
   DECLARE v_settle INT; BEGIN
     INSERT INTO finance.accounts (name, account_type) VALUES ('__test_elig_settle__', 'cash') RETURNING id INTO v_settle;

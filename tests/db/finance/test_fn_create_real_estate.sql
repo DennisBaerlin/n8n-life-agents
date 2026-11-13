@@ -18,7 +18,7 @@ BEGIN
   END IF;
   v_id := (v_result->>'real_estate_id')::int;
 
-  -- WS-4: ohne owner_person_id -> NULL = Haushalt (kein Freitext-Inhaber mehr).
+  -- Ohne owner_person_id -> NULL = Haushalt (kein Freitext-Inhaber).
   IF NOT EXISTS (
     SELECT 1 FROM finance.real_estate
     WHERE id = v_id AND name = '__test_immo__' AND status = 'active' AND owner_person_id IS NULL
@@ -28,7 +28,7 @@ BEGIN
 
   RAISE NOTICE 'PASS fn_create_real_estate [1 minimal, owner_person_id NULL=Haushalt]: id=%', v_id;
 
-  -- WS-4 Fixture: eine projizierte Person (direkt in agent.persons; FK-Ziel fuer owner_person_id).
+  -- Fixture: eine projizierte Person (direkt in agent.persons; FK-Ziel fuer owner_person_id).
   INSERT INTO agent.persons (person_id, full_name, role)
   VALUES ('__test_re_owner', 'Test Eigentuemer', 'owner')
   ON CONFLICT (person_id) DO NOTHING;

@@ -1,9 +1,8 @@
 -- tests/db/core/test_fn_package_status.sql
--- Install-UX-Phase 4 (Schritt 2): core.fn_package_status — die Laufzeit-Weiche des Core-Vermittlers
+-- core.fn_package_status — die Laufzeit-Weiche des Core-Vermittlers
 --   agent.sub_dispatch_agent ("ist das Ziel-Paket nutzbar?"). Status-Matrix: keine Registry-Zeile -> not_installed;
 --   installing/installed -> incomplete; inactive -> inactive; active -> ok. is_owner = der Absender ist der Owner
 --   (fn_resolve_sender role='owner'); nicht-numerische/fehlende chat_id -> false (nie Exception).
---   Muster: BEGIN…ROLLBACK, eigene Zeilen; RAISE EXCEPTION 'FAIL …' = Test rot.
 BEGIN;
 
 DO $$

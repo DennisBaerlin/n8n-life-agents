@@ -1,5 +1,5 @@
 -- tests/db/finance/test_fn_recurring_owner.sql
--- fn_recurring_owner erkennt den Besitzer ueber den KOPF der Vorgaenger-Kette (WP2): nach einer Ratenaenderung mit
+-- fn_recurring_owner erkennt den Besitzer ueber den Kopf der Vorgaenger-Kette: nach einer Ratenaenderung mit
 -- kuenftigem Stichtag laeuft das alte Glied noch -- es darf weder als freistehende Zahlung aenderbar (set_recurring_payment)
 -- noch loeschbar sein. Freistehende Zahlungen bleiben NULL.
 BEGIN;

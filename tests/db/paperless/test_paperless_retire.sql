@@ -1,8 +1,8 @@
 -- tests/db/paperless/test_paperless_retire.sql
--- Phase 1 (Plan quiet-watching-meadow): paperless:V001 baut die alte Dokumenten-Pipeline auf Bestands-
--- Installationen zurueck. Der Test baut den v0.2.0-Altbestand minimal nach (Tabellen inkl. halfvec-Spalte,
--- die 10 Pipeline-fns, Config-Zeilen, geschuetzte Prompt-Contexts, Alert-Latches, reset-skip-Marker,
--- R__-Ledger-Zeilen), fuehrt die ECHTE Migrationsdatei aus (\ir, keine Kopie -> kein Drift) und prueft:
+-- paperless:V001 baut die alte Dokumenten-Pipeline auf Bestands-Installationen zurueck. Der Test baut den
+-- Altbestand minimal nach (Tabellen inkl. halfvec-Spalte, Pipeline-fns, Config-Zeilen, geschuetzte
+-- Prompt-Contexts, Alert-Latches, reset-skip-Marker, R__-Ledger-Zeilen), fuehrt die echte Migrationsdatei aus
+-- (\ir, keine Kopie -> kein Drift) und prueft:
 --   (1) alles Pipeline-Eigene ist weg (inkl. pgvector im Paket-Schema),
 --   (2) Bleibendes bleibt: general.paperless_url, fremde Config/Contexts/Latches, fn_clear_e2e_data, Schema,
 --   (3) ein zweiter Lauf ist ein No-op (idempotent).
@@ -54,7 +54,7 @@ BEGIN
     ('general', 'correspondent_blacklist', '', 'paperless'), ('general', 'remove_content_regex', '', 'paperless'),
     ('general', 'tag_skip', 'paperless-skip', 'paperless'), ('general', 'tag_failed', 'paperless-failed', 'paperless'),
     ('general', 'paperless_url', 'http://paperless.lan:8000', 'paperless'),
-    ('model', 'paperless_assistant', 'claude-haiku-latest', 'paperless'),   -- lebende v0.4.0-Config: muss bleiben
+    ('model', 'paperless_assistant', 'claude-haiku-latest', 'paperless'),   -- lebende Config: muss bleiben
     ('general', 'zz_retire_foreign', 'bleibt', 'finance')
   ON CONFLICT (category, key) DO UPDATE SET value = EXCLUDED.value, package = EXCLUDED.package;
 
@@ -78,7 +78,7 @@ BEGIN
     ('paperless:pipeline', '42'), ('paperless:auth', 'token'), ('finance', 'zz_retire')
   ON CONFLICT (source, key) DO NOTHING;
 
-  -- Ledger-Form EXAKT wie der Treiber sie schreibt (core.repeatable_should_apply: version = filename = relativer Pfad)
+  -- Ledger-Form exakt wie der Treiber sie schreibt (core.repeatable_should_apply: version = filename = relativer Pfad)
   INSERT INTO core.schema_version (version, filename, kind, package) VALUES
     ('packages/paperless/db/migrations/R__fn_claim_document.sql', 'packages/paperless/db/migrations/R__fn_claim_document.sql', 'repeatable', 'paperless'),
     ('packages/paperless/db/migrations/R__fn_search_chunks.sql', 'packages/paperless/db/migrations/R__fn_search_chunks.sql', 'repeatable', 'paperless'),
@@ -86,7 +86,7 @@ BEGIN
   ON CONFLICT (version) DO NOTHING;
 END $$;
 
--- ---------- die ECHTE Migration (zweimal: Idempotenz) ----------
+-- ---------- die echte Migration (zweimal: Idempotenz) ----------
 \ir ../../../packages/paperless/db/migrations/V001__retire_pipeline.sql
 \ir ../../../packages/paperless/db/migrations/V001__retire_pipeline.sql
 
@@ -106,8 +106,8 @@ BEGIN
               WHERE e.extname = 'vector' AND n.nspname = 'paperless') THEN
     RAISE EXCEPTION 'FAIL (1) pgvector im Paket-Schema noch da';
   END IF;
-  -- Genau die zurueckgebauten Pipeline-Keys (dieselbe explizite Liste wie V001); seit v0.4.0 lebt daneben legitim
-  -- neue paperless-Config (model.paperless_assistant), die V001 NIE anfassen darf (Pruefung unter (2)).
+  -- Genau die zurueckgebauten Pipeline-Keys (dieselbe explizite Liste wie V001); daneben lebt legitime
+  -- paperless-Config (model.paperless_assistant), die V001 nie anfassen darf (Pruefung unter (2)).
   IF EXISTS (SELECT 1 FROM core.config WHERE package = 'paperless' AND (category, key) IN (
                ('model', 'doc_metadata'), ('schedule', 'reconcile'), ('cron_enable', 'reconcile'),
                ('general', 'gcp_project_id'), ('general', 'gcp_location'), ('general', 'docai_processor_id'),
@@ -142,7 +142,7 @@ BEGIN
      OR NOT EXISTS (SELECT 1 FROM core.config WHERE key = 'zz_retire_foreign') THEN
     RAISE EXCEPTION 'FAIL (2) paperless_url/fremde Config angefasst';
   END IF;
-  -- Lebende v0.4.0-Config (oben im Altbestand mit angelegt) ueberlebt den Rueckbau (explizite Liste in V001).
+  -- Lebende Config (oben im Altbestand mit angelegt) ueberlebt den Rueckbau (explizite Liste in V001).
   IF NOT EXISTS (SELECT 1 FROM core.config WHERE package = 'paperless' AND category = 'model' AND key = 'paperless_assistant') THEN
     RAISE EXCEPTION 'FAIL (2) lebende Config model.paperless_assistant mitentfernt';
   END IF;

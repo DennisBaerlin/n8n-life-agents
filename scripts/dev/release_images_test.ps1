@@ -1,7 +1,7 @@
 ﻿#Requires -Version 5.1
 # release_images_test.ps1 -- Regressionstest fuer scripts/lib/release_images.ps1 (Pin-Zeile, Herkunft im Git, Blick ins Register).
 # Teil A (immer, ohne Netz/Docker): Get-MasterPin/Set-MasterPin, Test-MasterRevision in einem Wegwerf-Repo.
-# Teil B (nur mit -Registry): kleine Test-Images in ein LOKALES Register (registry:2 auf 127.0.0.1) und Get-MasterImageReport
+# Teil B (nur mit -Registry): kleine Test-Images in ein lokales Register (registry:2 auf 127.0.0.1) und Get-MasterImageReport
 #   dagegen: Multi-Arch mit Label = gruen; eine Plattform, ohne Label, falscher Digest = rot. Das Register startet der Aufrufer
 #   (Docker nur mit eigenem Vorsatz), z. B.:
 #     docker run -d --name di5-registry -p 127.0.0.1:5099:5000 registry:2

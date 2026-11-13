@@ -1,5 +1,5 @@
 -- tests/db/core/test_fn_notify_resolve.sql
--- Phase Notify (WS-1): expliziter Re-Arm der geteilten Dedup-Schicht.
+-- Expliziter Re-Arm der geteilten Dedup-Schicht.
 -- core.fn_notify_resolve(source, key) setzt state='ok', expires_at=NULL (No-op ohne Zeile).
 BEGIN;
 

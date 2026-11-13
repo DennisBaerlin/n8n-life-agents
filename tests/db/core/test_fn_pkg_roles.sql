@@ -1,12 +1,11 @@
 -- tests/db/core/test_fn_pkg_roles.sql
--- Testet das per-Paket-Rollen-/Privileg-Modell (Core-Paket-Framework, Phase 1, D10):
+-- Testet das per-Paket-Rollen-/Privileg-Modell (D10):
 --   core.fn_provision_package_roles / core.fn_drop_package_roles +
 --   das SECURITY-DEFINER-Read-fn-Muster (core.fn_core_api_version).
--- KERNAUSSAGE (VF3): eine Paket-Rolle erreicht NUR ihr eigenes Schema; agent.*/core.*-
---   Tabellen scheitern PHYSISCH ("permission denied"), Core-Daten nur ueber die
+-- Kernaussage (VF3): eine Paket-Rolle erreicht nur ihr eigenes Schema; agent.*/core.*-
+--   Tabellen scheitern physisch ("permission denied"), Core-Daten nur ueber die
 --   publizierten SECURITY-DEFINER-Read-fns. Rollen sind cluster-global, aber CREATE/DROP
 --   ROLE ist transaktional -> BEGIN…ROLLBACK raeumt sie restlos weg.
--- Pattern: BEGIN…ROLLBACK; RAISE EXCEPTION 'FAIL …' = Test fehlgeschlagen (ON_ERROR_STOP -> Exit 1).
 BEGIN;
 
 DO $$
@@ -43,12 +42,12 @@ BEGIN
   v_res := core.fn_provision_package_roles(jsonb_build_object('package', '__no_such_schema__'));
   IF (v_res->>'ok')::bool THEN RAISE EXCEPTION 'FAIL: fehlendes Schema akzeptiert (%)', v_res; END IF;
 
-  -- (5) ro DARF das EIGENE Schema lesen.
+  -- (5) ro darf das eigene Schema lesen.
   SET LOCAL ROLE test_pkg_ro;
   PERFORM 1 FROM test_pkg.thing;
   RESET ROLE;
 
-  -- (6) ro kann agent.* NICHT erreichen (VF3 — permission denied for schema agent).
+  -- (6) ro kann agent.* nicht erreichen (VF3 — permission denied for schema agent).
   SET LOCAL ROLE test_pkg_ro;
   v_denied := FALSE;
   BEGIN PERFORM 1 FROM agent.core_contexts LIMIT 1;
@@ -56,7 +55,7 @@ BEGIN
   RESET ROLE;
   IF NOT v_denied THEN RAISE EXCEPTION 'FAIL VF3: test_pkg_ro erreichte agent.core_contexts'; END IF;
 
-  -- (7) ro kann core-Tabellen NICHT direkt lesen (USAGE on core ja, aber kein Tabellen-GRANT).
+  -- (7) ro kann core-Tabellen nicht direkt lesen (USAGE on core ja, aber kein Tabellen-GRANT).
   SET LOCAL ROLE test_pkg_ro;
   v_denied := FALSE;
   BEGIN PERFORM 1 FROM core.config LIMIT 1;
@@ -64,7 +63,7 @@ BEGIN
   RESET ROLE;
   IF NOT v_denied THEN RAISE EXCEPTION 'FAIL: test_pkg_ro las core.config direkt'; END IF;
 
-  -- (8) ro erreicht CORE_API_VERSION NUR ueber die SECURITY-DEFINER-Read-fn.
+  -- (8) ro erreicht CORE_API_VERSION nur ueber die SECURITY-DEFINER-Read-fn.
   SET LOCAL ROLE test_pkg_ro;
   v_api := core.fn_core_api_version();
   RESET ROLE;
@@ -78,7 +77,7 @@ BEGIN
   RESET ROLE;
   IF NOT v_denied THEN RAISE EXCEPTION 'FAIL: test_pkg_ro konnte schreiben'; END IF;
 
-  -- (10) rw DARF das eigene Schema beschreiben, erreicht agent.* aber NICHT.
+  -- (10) rw darf das eigene Schema beschreiben, erreicht agent.* aber nicht.
   SET LOCAL ROLE test_pkg_rw;
   INSERT INTO test_pkg.thing VALUES (3, 'rw-wrote');
   v_denied := FALSE;
@@ -87,7 +86,7 @@ BEGIN
   RESET ROLE;
   IF NOT v_denied THEN RAISE EXCEPTION 'FAIL VF3: test_pkg_rw erreichte agent.core_contexts'; END IF;
 
-  -- (11) rw darf KEINE Objekte im Schema anlegen (R11 — kein Schema-/Core-DDL).
+  -- (11) rw darf keine Objekte im Schema anlegen (kein Schema-/Core-DDL).
   SET LOCAL ROLE test_pkg_rw;
   v_denied := FALSE;
   BEGIN EXECUTE 'CREATE TABLE test_pkg.evil (id int)';

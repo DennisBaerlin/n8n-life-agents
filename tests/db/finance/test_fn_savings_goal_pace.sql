@@ -1,11 +1,11 @@
 -- tests/db/finance/test_fn_savings_goal_pace.sql
--- finance.fn_savings_goal_pace(goal_id) — die EINE Ampel-Regel eines Sparziels (Mini-App „Ziele" + Berater-Pace-Alert).
+-- finance.fn_savings_goal_pace(goal_id) — die eine Ampel-Regel eines Sparziels (Mini-App „Ziele" + Berater-Pace-Alert).
 --   1) je ein Zustand: on_track / behind / reached / paused (Rate bzw. Sparplan) / unmeasurable; Ruecklage -> NULL,
 --      nicht messbare Ruecklage -> unmeasurable, abgeschlossenes und unbekanntes Ziel -> NULL.
 --   2) Grenzfaelle: Zieldatum nicht nach created_at (drift NULL), pausierter Kopf mit laufendem Vorgaenger und Rate mit
---      kuenftigem Start sind NICHT paused.
---   3) Aequivalenz ueber alle aktiven Ziele: behind ODER unknown <=> pace_drift_pp > Toleranz, unknown <=> zusaetzlich
---      has_fx_gap, unmeasurable <=> NOT progress_measurable — mit Default-Toleranz UND negativer Toleranz (behind vor reached).
+--      kuenftigem Start sind nicht paused.
+--   3) Aequivalenz ueber alle aktiven Ziele: behind oder unknown <=> pace_drift_pp > Toleranz, unknown <=> zusaetzlich
+--      has_fx_gap, unmeasurable <=> NOT progress_measurable — mit Default-Toleranz und negativer Toleranz (behind vor reached).
 --   4) has_fx_gap in savings_goal_account_share + savings_goal_progress: CHF-Topf ohne Kurs; [4c-4e] mit Luecke kippt
 --      nur behind (-> unknown), on_track/reached/paused bleiben (gemessener Stand = Untergrenze).
 -- Self-contained (BEGIN..ROLLBACK).
@@ -43,7 +43,7 @@ BEGIN
     (g_behind, v_pot, 1000, 'manual'),    -- 10.00 % -> drift 17.40 > 10
     (g_reached, v_pot, 10000, 'manual');
 
-  -- nicht messbar: laufende Rate OHNE Topf
+  -- nicht messbar: laufende Rate ohne Topf
   INSERT INTO finance.recurring_payments (name, account_id, amount, schedule_unit, first_payment_date, valid_from)
     VALUES ('__pace_rp_open__', v_giro, -100, 'month', current_date - 30, current_date - 30) RETURNING id INTO v_rp_open;
   INSERT INTO finance.savings_goals (name, target_amount, target_date, created_at, recurring_payment_id)
@@ -63,14 +63,14 @@ BEGIN
   INSERT INTO finance.savings_goal_reserve_entries (savings_goal_id, account_id, delta_native, kind) VALUES
     (g_paused_rp, v_pot2, 2000, 'manual'), (g_paused_plan, v_pot, 2000, 'manual');
 
-  -- Kette: alter Glied laeuft noch 30 Tage, der Kopf (ab dann) ist pausiert -> NICHT paused
+  -- Kette: alter Glied laeuft noch 30 Tage, der Kopf (ab dann) ist pausiert -> nicht paused
   INSERT INTO finance.recurring_payments (name, account_id, target_account_id, amount, schedule_unit, first_payment_date, valid_from, valid_to)
     VALUES ('__pace_rp_old__', v_giro, v_pot, -100, 'month', current_date - 60, current_date - 60, current_date + 30) RETURNING id INTO v_rp_old;
   INSERT INTO finance.recurring_payments (name, account_id, target_account_id, amount, schedule_unit, first_payment_date, valid_from, status, predecessor_id)
     VALUES ('__pace_rp_new__', v_giro, v_pot, -200, 'month', current_date + 30, current_date + 30, 'paused', v_rp_old) RETURNING id INTO v_rp_new;
   INSERT INTO finance.savings_goals (name, target_amount, target_date, created_at, recurring_payment_id)
     VALUES ('__pace_chain__', 10000, v_td, v_old, v_rp_new) RETURNING id INTO g_chain;
-  -- Rate startet erst kuenftig (aktiv) -> NICHT paused
+  -- Rate startet erst kuenftig (aktiv) -> nicht paused
   INSERT INTO finance.recurring_payments (name, account_id, target_account_id, amount, schedule_unit, first_payment_date, valid_from)
     VALUES ('__pace_rp_future__', v_giro, v_pot, -100, 'month', current_date + 10, current_date + 10) RETURNING id INTO v_rp_future;
   INSERT INTO finance.savings_goals (name, target_amount, target_date, created_at, recurring_payment_id)
@@ -145,7 +145,7 @@ BEGIN
   RAISE NOTICE 'PASS [2] Grenzfaelle Kette/kuenftige Rate/drift NULL/Zieldatum heute';
 
   -- ===== 3) Aequivalenz (Default 10 und -5) =====
-  -- Vertrag seit 2026-11-06: behind ODER unknown <=> drift > Toleranz; unknown <=> drift > Toleranz UND has_fx_gap
+  -- Vertrag: behind oder unknown <=> drift > Toleranz; unknown <=> drift > Toleranz und has_fx_gap
   -- (gemessener Stand ist bei einer Kurs-Luecke nur eine Untergrenze, ein Rueckstand ist dann nicht beurteilbar).
   SELECT count(*) INTO v_n FROM finance.savings_goal_progress p
    WHERE p.status = 'active'

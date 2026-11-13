@@ -1,7 +1,7 @@
 -- tests/db/core/test_fn_owner_person_id.sql
--- agent.fn_owner_person_id (P0c): die EINE deterministische Owner-Anker-Quelle (family.facts WHERE role='owner'
--- LIMIT 1). MUSS deterministisch + RAISE-frei sein (Konsumenten: read_plan-Fallback, career.fn_advisor_review,
--- cron.refresh_market_signals, V002 — die Review-fn darf NIE RAISEn). Kein Owner -> NULL.
+-- agent.fn_owner_person_id: die eine deterministische Owner-Anker-Quelle (family.facts WHERE role='owner'
+-- LIMIT 1). Muss deterministisch + RAISE-frei sein (Konsumenten: read_plan-Fallback, career.fn_advisor_review,
+-- cron.refresh_market_signals, V002 — die Review-fn darf nie RAISEn). Kein Owner -> NULL.
 BEGIN;
 DO $$
 DECLARE v_owner TEXT;
@@ -26,8 +26,8 @@ BEGIN
   IF v_owner IS DISTINCT FROM 'erika' THEN RAISE EXCEPTION 'FAIL [2] erwartet erika, got %', v_owner; END IF;
   RAISE NOTICE 'PASS [2] Owner-Slug aus family (role=owner) -> erika';
 
-  -- ---------- TEST 3 (RAISE-Schutz): zwei owner-Zeilen -> LIMIT 1, KEIN "more than one row" ----------
-  -- agent.persons/der family-Validator erzwingen KEINE owner-Eindeutigkeit -> ohne LIMIT 1 wuerfe ein
+  -- ---------- TEST 3 (RAISE-Schutz): zwei owner-Zeilen -> LIMIT 1, kein "more than one row" ----------
+  -- agent.persons/der family-Validator erzwingen keine owner-Eindeutigkeit -> ohne LIMIT 1 wuerfe ein
   -- Scalar-Subquery hier "more than one row" und kippte die RAISE-verbotene career.fn_advisor_review.
   UPDATE agent.core_contexts SET metadata = jsonb_set(metadata, '{facts,persons}', jsonb_build_array(
       jsonb_build_object('person_id','erika','first_name','Erika','last_name','M','role','owner',

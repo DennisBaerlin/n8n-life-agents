@@ -1,8 +1,8 @@
 -- tests/db/core/test_fn_approve_learn_candidate.sql
--- agent.fn_approve_learn_candidate(p {candidate_id, chat_id}) — owner-gegateter EINZIGE core_contexts-
---   Schreibpfad des Lern-Loops (Phase C, WS-3): dispatcht nach target_kind: fact -> fn_set_context_facts
+-- agent.fn_approve_learn_candidate(p {candidate_id, chat_id}) — owner-gegateter einziger core_contexts-
+--   Schreibpfad des Lern-Loops: dispatcht nach target_kind: fact -> fn_set_context_facts
 --   (metadata.facts-Merge), note -> core.fn_append_context_note (Prosa). Markiert den Kandidaten approved
---   NUR bei erfolgreichem Write. owner_only-Backstop (fn_sender_is_member). Self-seedend, BEGIN..ROLLBACK.
+--   nur bei erfolgreichem Write. owner_only-Backstop (fn_sender_is_member). Self-seedend, BEGIN..ROLLBACK.
 BEGIN;
 
 INSERT INTO agent.core_contexts (name, description, agent_name, load_strategy, content, managed_by, package, metadata)
@@ -15,7 +15,7 @@ ON CONFLICT (name) DO UPDATE SET content=excluded.content, managed_by=excluded.m
 INSERT INTO agent.core_contexts (name, description, agent_name, load_strategy, content, managed_by, package, metadata)
 VALUES ('financial_planning', 'fixture', 'finance_advisor', 'lazy', E'# Plan\n', 'agent', 'finance', '{}'::jsonb)
 ON CONFLICT (name) DO UPDATE SET content=excluded.content, managed_by=excluded.managed_by, metadata=excluded.metadata;
--- Phase A: Notiz-Freigabe registry-getrieben (core.advisors.learn_notes + aktives Paket statt Literal-Liste).
+-- Notiz-Freigabe registry-getrieben (core.advisors.learn_notes + aktives Paket statt Literal-Liste).
 INSERT INTO core.package_registry (package, status) VALUES ('finance', 'active')
 ON CONFLICT (package) DO UPDATE SET status = 'active';
 INSERT INTO core.advisors (domain, plan_context, review_fn, package, learn_notes)

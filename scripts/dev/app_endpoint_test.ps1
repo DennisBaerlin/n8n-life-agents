@@ -1,8 +1,8 @@
 ﻿#Requires -Version 5.1
-# app_endpoint_test.ps1 — DETERMINISTISCHER, GRATIS Test des Mini-App-Eingangs (docs/package-contract.md §3.12).
+# app_endpoint_test.ps1 — deterministischer, kostenloser Test des Mini-App-Eingangs (docs/package-contract.md §3.12).
 # Feuert echte HTTP-Anfragen an den produktiven Webhook von core.main_app_serve im laufenden Substrat:
-#   (1) GET  -> 200, text/html, n8n-CSP-Sandkasten-Header, Renderer eingesetzt (kein /*__UI_RENDER_LIB__*/ mehr);
-#   (2) POST Muell (text/plain) -> {ok:false, code:malformed} als JSON, KEIN Fehler-Alert (Mock-Telegram leer);
+#   (1) GET  -> 200, text/html, n8n-CSP-Sandkasten-Header, Renderer eingesetzt (Platzhalter /*__UI_RENDER_LIB__*/ ersetzt);
+#   (2) POST Muell (text/plain) -> {ok:false, code:malformed} als JSON, kein Fehler-Alert (Mock-Telegram leer);
 #   (3) POST mit gefaelschter initData -> {ok:false, code:bad_signature};
 #   (4) POST mit gueltiger initData des Owners (hier signiert mit dem Substrat-Schluessel aus core.app_secret)
 #       -> Navigation ok:true mit ui.lang + jeder Bildschirm aus core.app_screens ok:true mit view; (4b) Startseite:
@@ -96,7 +96,7 @@ else {
     $j = Get-Json $r
     if ($j.ok -ne $true -or -not $j.ui.lang) { Fail "Navigation: $($j | ConvertTo-Json -Compress -Depth 6)" }
     else { Pass "Navigation ok (Sprache $($j.ui.lang), Bildschirme: $(@($j.screens | ForEach-Object { $_.screen }) -join ', '))" }
-    # (4b) Startseiten-Banner (UX-Gesamtkonzept P4): ok-Banner „Alles in Ordnung“ genau dann, wenn kein alert/warn da ist;
+    # (4b) Startseiten-Banner: ok-Banner „Alles in Ordnung“ genau dann, wenn kein alert/warn da ist;
     #      sein Text kommt als echter Katalog-Text mit. Ohne Bildschirm mit Daten (leeres Substrat) gibt es keine Startseite.
     if (@($j.screens).Count -gt 0) {
         if ($null -eq $j.first -or $null -eq $j.first.view) { Fail 'Startseite: first fehlt trotz Bildschirmen (erster Bildschirm wird nicht mitgeliefert)' }

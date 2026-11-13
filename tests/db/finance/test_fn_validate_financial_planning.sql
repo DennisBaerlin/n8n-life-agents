@@ -1,5 +1,5 @@
 -- tests/db/finance/test_fn_validate_financial_planning.sql
--- WS1a (Core-Advisor-Engine): Plan-Fakten-Validator (partial-tolerant + rekursiver Derived-Guard),
+-- Plan-Fakten-Validator (partial-tolerant + rekursiver Derived-Guard),
 -- paket-besessen in finance.fn_validate_financial_planning(jsonb), via core.context_validators-Registry
 -- vom Core-Trigger generisch dispatcht. db_test seedet die Registry NICHT -> der Test seedet die Zeile
 -- selbst (self-seedend, BEGIN..ROLLBACK), wie seed_data.sh es aus dem Manifest tut.
@@ -9,8 +9,7 @@ DO $$
 DECLARE
   v_err  TEXT;
   v_full JSONB := jsonb_build_object(
-    -- Phase A: risk_tolerance ist aus dem goal-Block in risk_profile UMGEZOGEN (one-fact-one-home);
-    -- der goal-Block traegt es nicht mehr (n4).
+    -- risk_tolerance liegt in risk_profile, nicht im goal-Block (one-fact-one-home).
     'goal', jsonb_build_object('target_income_eur_month',2000,'horizon_years',30,'withdrawal_rate_pct',4),
     'risk_profile', jsonb_build_object('risk_tolerance','medium','risk_capacity','high','as_of','2026-06-01'),
     'target_allocation', jsonb_build_object(
@@ -30,13 +29,13 @@ BEGIN
   IF v_err IS NOT NULL THEN RAISE EXCEPTION 'FAIL [valid full]: erwartet NULL, got %', v_err; END IF;
   RAISE NOTICE 'PASS [vollstaendiges Plan-facts akzeptiert]';
 
-  -- TEST 1b (2026-10-30): emergency_reserve ist kein Plan-Block mehr (Notreserve = Ruecklage kind emergency_reserve)
+  -- TEST 1b: emergency_reserve ist kein Plan-Block (Notreserve = Ruecklage kind emergency_reserve)
   v_err := finance.fn_validate_financial_planning(v_full || jsonb_build_object('emergency_reserve', jsonb_build_object('target_months', 6)));
   IF v_err IS NULL OR v_err NOT LIKE '%emergency_reserve is no longer a plan block%' THEN
     RAISE EXCEPTION 'FAIL [emergency_reserve-Block]: erwartet Ablehnung, got %', v_err; END IF;
   RAISE NOTICE 'PASS [emergency_reserve-Block abgewiesen]';
 
-  -- TEST 2: PARTIAL — nur goal (target_allocation/glidepath fehlen) -> NULL (partial-tolerant)
+  -- TEST 2: partial — nur goal (target_allocation/glidepath fehlen) -> NULL (partial-tolerant)
   v_err := finance.fn_validate_financial_planning(jsonb_build_object('goal',
              jsonb_build_object('withdrawal_rate_pct',4)));
   IF v_err IS NOT NULL THEN RAISE EXCEPTION 'FAIL [partial goal]: erwartet NULL (partial-tolerant), got %', v_err; END IF;
@@ -57,7 +56,7 @@ BEGIN
   IF v_err IS NULL OR v_err NOT ILIKE '%outside its corridor%' THEN RAISE EXCEPTION 'FAIL [corridor]: erwartet Korridor-Fehler, got %', v_err; END IF;
   RAISE NOTICE 'PASS [target_pct ausserhalb Korridor abgewiesen]';
 
-  -- TEST 4b (2026-10-23): reservierter Block-key outside_plan -> Fehler
+  -- TEST 4b: reservierter Block-key outside_plan -> Fehler
   v_err := finance.fn_validate_financial_planning(jsonb_set(v_full,
              '{target_allocation,blocks}', jsonb_build_array(
                jsonb_build_object('key','outside_plan','name','A','target_pct',60),
@@ -78,15 +77,15 @@ BEGIN
   IF v_err IS NULL OR v_err NOT ILIKE '%withdrawal_rate_pct%' THEN RAISE EXCEPTION 'FAIL [rate]: erwartet Rate-Fehler, got %', v_err; END IF;
   RAISE NOTICE 'PASS [withdrawal_rate 15 abgewiesen]';
 
-  -- TEST 7: REKURSIVER Derived-Guard — seit WS1b GENERISCH im Core-Validator (agent.fn_validate_household_facts),
-  -- der vom selben Trigger VOR der finance-fn laeuft (jeder facts-Sidecar). Hier direkt gegen den Core getestet
+  -- TEST 7: rekursiver Derived-Guard — generisch im Core-Validator (agent.fn_validate_household_facts),
+  -- der vom selben Trigger vor der finance-fn laeuft (jeder facts-Sidecar). Hier direkt gegen den Core getestet
   -- mit p_name='financial_planning': gebackenes glidepath.start_year (nested) -> Fehler.
   v_err := agent.fn_validate_household_facts(jsonb_build_object('glidepath',
              jsonb_build_object('start_age',58,'start_year',2038)), 'financial_planning');
   IF v_err IS NULL OR v_err NOT ILIKE '%DERIVED%' THEN RAISE EXCEPTION 'FAIL [derived start_year]: erwartet Derived-Reject, got %', v_err; END IF;
   RAISE NOTICE 'PASS [Core-Denylist: nested glidepath.start_year (abgeleitet) abgewiesen]';
 
-  -- TEST 8: Core-Denylist — gebackenes goal.income -> Fehler; ABER horizon_years (Roh) bleibt erlaubt.
+  -- TEST 8: Core-Denylist — gebackenes goal.income -> Fehler; aber horizon_years (Roh) bleibt erlaubt.
   v_err := agent.fn_validate_household_facts(jsonb_build_object('goal',
              jsonb_build_object('horizon_years',25,'income',36000)), 'financial_planning');
   IF v_err IS NULL OR v_err NOT ILIKE '%DERIVED%' THEN RAISE EXCEPTION 'FAIL [derived income]: erwartet Derived-Reject, got %', v_err; END IF;
@@ -106,26 +105,26 @@ BEGIN
   IF v_err IS NULL OR v_err NOT ILIKE '%inflation_pct%' THEN RAISE EXCEPTION 'FAIL [inflation range]: got %', v_err; END IF;
   RAISE NOTICE 'PASS [inflation_pct 15 abgewiesen]';
 
-  -- TEST 12: gebackener Nominalwert -> Derived-Reject (Nominal ist IMMER aus real abgeleitet); Core-Denylist.
+  -- TEST 12: gebackener Nominalwert -> Derived-Reject (Nominal ist immer aus real abgeleitet); Core-Denylist.
   v_err := agent.fn_validate_household_facts(jsonb_build_object('goal', jsonb_build_object('nominal_income',4500)), 'financial_planning');
   IF v_err IS NULL OR v_err NOT ILIKE '%DERIVED%' THEN RAISE EXCEPTION 'FAIL [nominal key]: got %', v_err; END IF;
   RAISE NOTICE 'PASS [Core-Denylist: goal.nominal_income (abgeleitet) abgewiesen]';
 
-  -- TEST 13 (WS2b): Block OHNE key -> Fehler (key Pflicht je Block; arch-challenge Candidate 1)
+  -- TEST 13: Block ohne key -> Fehler (key Pflicht je Block)
   v_err := finance.fn_validate_financial_planning(jsonb_set(v_full,
              '{target_allocation,blocks}', jsonb_build_array(
                jsonb_build_object('name','A','target_pct',100))));
   IF v_err IS NULL OR v_err NOT ILIKE '%needs a key%' THEN RAISE EXCEPTION 'FAIL [block no key]: erwartet key-Fehler, got %', v_err; END IF;
   RAISE NOTICE 'PASS [Block ohne key abgewiesen]';
 
-  -- TEST 14 (WS2b): Block-key falsches Format (Grossbuchstaben/Leerzeichen/&) -> Fehler
+  -- TEST 14: Block-key falsches Format (Grossbuchstaben/Leerzeichen/&) -> Fehler
   v_err := finance.fn_validate_financial_planning(jsonb_set(v_full,
              '{target_allocation,blocks}', jsonb_build_array(
                jsonb_build_object('key','S&P 500','name','A','target_pct',100))));
   IF v_err IS NULL OR v_err NOT ILIKE '%needs a key%' THEN RAISE EXCEPTION 'FAIL [block key format]: erwartet Format-Fehler, got %', v_err; END IF;
   RAISE NOTICE 'PASS [Block-key falsches Format abgewiesen]';
 
-  -- TEST 15 (WS2b): doppelter Block-key -> Fehler (Eindeutigkeit = stabiler Join-Key)
+  -- TEST 15: doppelter Block-key -> Fehler (Eindeutigkeit = stabiler Join-Key)
   v_err := finance.fn_validate_financial_planning(jsonb_set(v_full,
              '{target_allocation,blocks}', jsonb_build_array(
                jsonb_build_object('key','dup','name','A','target_pct',50,'corridor', jsonb_build_array(0,100)),
@@ -133,7 +132,7 @@ BEGIN
   IF v_err IS NULL OR v_err NOT ILIKE '%duplicated%' THEN RAISE EXCEPTION 'FAIL [block key dup]: erwartet Dup-Fehler, got %', v_err; END IF;
   RAISE NOTICE 'PASS [doppelter Block-key abgewiesen]';
 
-  -- TEST 16 (WS3): goal.target_portfolio_basis 'investment'/'net_worth' -> akzeptiert (NULL)
+  -- TEST 16: goal.target_portfolio_basis 'investment'/'net_worth' -> akzeptiert (NULL)
   v_err := finance.fn_validate_financial_planning(jsonb_build_object('goal',
              jsonb_build_object('target_portfolio_basis','investment')));
   IF v_err IS NOT NULL THEN RAISE EXCEPTION 'FAIL [basis investment]: erwartet NULL, got %', v_err; END IF;
@@ -142,13 +141,13 @@ BEGIN
   IF v_err IS NOT NULL THEN RAISE EXCEPTION 'FAIL [basis net_worth]: erwartet NULL, got %', v_err; END IF;
   RAISE NOTICE 'PASS [target_portfolio_basis investment/net_worth akzeptiert]';
 
-  -- TEST 17 (WS3): ungueltige target_portfolio_basis -> Fehler
+  -- TEST 17: ungueltige target_portfolio_basis -> Fehler
   v_err := finance.fn_validate_financial_planning(jsonb_build_object('goal',
              jsonb_build_object('target_portfolio_basis','gross')));
   IF v_err IS NULL OR v_err NOT ILIKE '%target_portfolio_basis%' THEN RAISE EXCEPTION 'FAIL [basis invalid]: erwartet Fehler, got %', v_err; END IF;
   RAISE NOTICE 'PASS [target_portfolio_basis ungueltig (gross) abgewiesen]';
 
-  -- ===== Phase A (risk_profile): MiFID-Dimensionen tolerance/capacity + as_of-Stempel =====
+  -- ===== risk_profile: MiFID-Dimensionen tolerance/capacity + as_of-Stempel =====
   -- TEST 18: vollstaendiges risk_profile-Trio (im v_full enthalten) -> NULL (akzeptiert)
   v_err := finance.fn_validate_financial_planning(jsonb_build_object('risk_profile',
              jsonb_build_object('risk_tolerance','low','risk_capacity','medium','as_of','2026-01-15')));
@@ -174,7 +173,7 @@ BEGIN
   IF v_err IS NULL OR v_err NOT ILIKE '%valid DATE%' THEN RAISE EXCEPTION 'FAIL [risk_profile as_of garbage]: erwartet DATE-Fehler, got %', v_err; END IF;
   RAISE NOTICE 'PASS [risk_profile as_of Zukunft + kaputter String abgewiesen]';
 
-  -- TEST 21: partial-tolerant — risk_profile ganz fehlend -> NULL; Block OHNE as_of -> NULL (kein Crash)
+  -- TEST 21: partial-tolerant — risk_profile ganz fehlend -> NULL; Block ohne as_of -> NULL (kein Crash)
   v_err := finance.fn_validate_financial_planning(jsonb_build_object('goal', jsonb_build_object('withdrawal_rate_pct',4)));
   IF v_err IS NOT NULL THEN RAISE EXCEPTION 'FAIL [no risk_profile]: erwartet NULL (partial), got %', v_err; END IF;
   v_err := finance.fn_validate_financial_planning(jsonb_build_object('risk_profile',

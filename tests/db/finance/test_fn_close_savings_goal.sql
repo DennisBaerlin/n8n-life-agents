@@ -1,7 +1,7 @@
 -- tests/db/finance/test_fn_close_savings_goal.sql
 -- Testet fn_close_savings_goal: Hard-DELETE (+ Reserve-Journal CASCADE), Soft-Close, not-found
 BEGIN;
--- Audit Paket 3: ein Sparziel braucht ein Sparkonto -> Fixture-Topf fuer fn_create_savings_goal.
+-- Ein Sparziel braucht ein Sparkonto -> Fixture-Topf fuer fn_create_savings_goal.
 INSERT INTO finance.accounts (name, account_type, currency, status) VALUES ('__sg_fixture_pot__','cash','EUR','active');
 
 DO $$
@@ -16,7 +16,7 @@ BEGIN
   SELECT finance.fn_create_account('{"name":"__test_csg_acct__","account_type":"cash","account_holder":"Test"}'::jsonb) INTO v_res;
   v_acct := (v_res->>'account_id')::int;
 
-  -- Goal A: RP + Depot-Reserve-Journal-Zeile, KEINE getaggte Buchung -> Hard-DELETE (Journal muss CASCADE mitgehen)
+  -- Goal A: RP + Depot-Reserve-Journal-Zeile, keine getaggte Buchung -> Hard-DELETE (Journal muss CASCADE mitgehen)
   SELECT finance.fn_create_savings_goal(jsonb_build_object(
     'name','__test_csg_a__','target_amount',5000,'target_date',(CURRENT_DATE + 365)::text,
     'monthly_savings_rate',100,'reserve_account_id',(SELECT max(id) FROM finance.accounts WHERE name='__sg_fixture_pot__'),'account_id',v_acct,'first_payment_date',CURRENT_DATE::text)) INTO v_res;
@@ -32,9 +32,9 @@ BEGIN
   INSERT INTO finance.transactions (account_id, amount, transaction_date, category, recurring_payment_id, description)
   VALUES (v_acct, -150, CURRENT_DATE - 30, 'other', v_rp_b, 'Test-Sparrate');
 
-  -- Goal C (WS-A Regressionsfall): RP existiert, aber KEINE Rate-Tx — nur eine getaggte manuelle
-  -- Reserve-Bewegung (savings_goal_id gesetzt, recurring_payment_id NULL). Unter dem ALTEN Zaehler (nur
-  -- recurring_payment_id) waere das 0 -> faelschlich Hard-DELETE; der WS-A-Zaehler sieht den Tag -> Soft-Close.
+  -- Goal C: RP existiert, aber keine Rate-Tx — nur eine getaggte manuelle
+  -- Reserve-Bewegung (savings_goal_id gesetzt, recurring_payment_id NULL). Ein Zaehler nur ueber
+  -- recurring_payment_id saehe 0 -> faelschlich Hard-DELETE; der Zaehler sieht auch den Tag -> Soft-Close.
   SELECT finance.fn_create_savings_goal(jsonb_build_object(
     'name','__test_csg_c__','target_amount',3000,'target_date',(CURRENT_DATE + 365)::text,
     'monthly_savings_rate',100,'reserve_account_id',(SELECT max(id) FROM finance.accounts WHERE name='__sg_fixture_pot__'),'account_id',v_acct,'first_payment_date',CURRENT_DATE::text)) INTO v_res;
@@ -65,7 +65,7 @@ BEGIN
     RAISE EXCEPTION 'FAIL close_savings_goal [soft-close rp]: status=% valid_to=%', v_rp_status, v_valid_to; END IF;
   RAISE NOTICE 'PASS close_savings_goal [Soft-Close: cancelled + RP beendet]';
 
-  -- TEST 2b (WS-A): Ziel mit NUR getaggter manueller Tx (kein Rate-Tx) -> Soft-Close (nicht Hard-DELETE)
+  -- TEST 2b: Ziel mit nur getaggter manueller Tx (kein Rate-Tx) -> Soft-Close (nicht Hard-DELETE)
   SELECT finance.fn_close_savings_goal('{"savings_goal_name":"__test_csg_c__"}'::jsonb) INTO v_res;
   IF (v_res->>'ok')::boolean IS DISTINCT FROM true OR v_res->>'action' IS DISTINCT FROM 'closed' THEN
     RAISE EXCEPTION 'FAIL close_savings_goal [tagged soft-close]: erwartet action=closed, got % (getaggte Tx uebersehen?)', v_res; END IF;
@@ -73,7 +73,7 @@ BEGIN
   IF v_status IS DISTINCT FROM 'cancelled' THEN RAISE EXCEPTION 'FAIL close_savings_goal [tagged status]: %', v_status; END IF;
   RAISE NOTICE 'PASS close_savings_goal [getaggte Einmal-Tx ohne Rate-Tx -> Soft-Close (WS-A Regressionsfall)]';
 
-  -- TEST 3: not-found -> {ok:false, reason, candidates} als Daten (Vertragsaenderung DB-ist-das-Gesetz: Probelauf vor der Karte)
+  -- TEST 3: not-found -> {ok:false, reason, candidates} als Daten (Probelauf vor der Karte)
   SELECT finance.fn_close_savings_goal('{"savings_goal_name":"__test_csg_missing__"}'::jsonb) INTO v_res;
   IF (v_res->>'ok')::boolean IS DISTINCT FROM false OR v_res->>'reason' NOT LIKE '%not found%' OR NOT (v_res ? 'candidates') THEN
     RAISE EXCEPTION 'FAIL close_savings_goal [not-found -> ok:false]: %', v_res; END IF;
@@ -81,12 +81,12 @@ BEGIN
 END $$;
 
 -- ============================================================
--- WS-B Stufe 3 (Phase S): Lebenszyklus "erreicht != ausgegeben" — drei distinkte Ereignisse.
---   (4) ERFUELLT -> outcome='completed' nur wenn Reserve ~0 (current_amount); sonst {ok:false} (kein Auto-
+-- Lebenszyklus "erreicht != ausgegeben" — drei distinkte Ereignisse.
+--   (4) erfuellt -> outcome='completed' nur wenn Reserve ~0 (current_amount); sonst {ok:false} (kein Auto-
 --       Freigeben). force=true ueberstimmt ("trotz Restbetrag schliessen").
---   (5) ABGEBROCHEN -> outcome='cancelled' Hard-DELETE (tx_count=0): Journal CASCADE weg, savings_plan
---       entkoppelt (savings_goal_id SET NULL), der Plan selbst BLEIBT (RESTRICT).
---   (6) ABGEBROCHEN soft (tx_count>0): status='cancelled' + Cash-Tag savings_goal_id SET NULL (Zuordnung frei,
+--   (5) abgebrochen -> outcome='cancelled' Hard-DELETE (tx_count=0): Journal CASCADE weg, savings_plan
+--       entkoppelt (savings_goal_id SET NULL), der Plan selbst bleibt (RESTRICT).
+--   (6) abgebrochen soft (tx_count>0): status='cancelled' + Cash-Tag savings_goal_id SET NULL (Zuordnung frei,
 --       Buchung als Historie bleibt) -> die Euros sind reassignbar.
 -- ============================================================
 DO $$
@@ -138,7 +138,7 @@ BEGIN
   IF v_status IS DISTINCT FROM 'completed' THEN RAISE EXCEPTION 'FAIL close [4b]: Status erwartet completed, got %', v_status; END IF;
   RAISE NOTICE 'PASS close [4b: force=true schliesst trotz Restreserve als completed]';
 
-  -- (5) cancelled Hard-DELETE (tx_count=0): Ziel F mit verknuepftem Sparplan + Journal, KEINE tx.
+  -- (5) cancelled Hard-DELETE (tx_count=0): Ziel F mit verknuepftem Sparplan + Journal, keine tx.
   SELECT finance.fn_create_savings_goal(jsonb_build_object(
     'name','__test_csg_f__','target_amount',3000,'target_date',(CURRENT_DATE + 200)::text,
     'monthly_savings_rate',100,'reserve_account_id',(SELECT max(id) FROM finance.accounts WHERE name='__sg_fixture_pot__'),'account_id',v_acct,'first_payment_date',CURRENT_DATE::text)) INTO v_res;
@@ -184,8 +184,8 @@ BEGIN
   RAISE NOTICE 'PASS close [6: cancelled soft -> status=cancelled + Cash-Tag SET NULL (reassignbar, Historie bleibt)]';
 END $$;
 
--- (7) Ziel nur mit Zuordnung (Journal, keine Buchung; Sparziel-Zweckbindung 2026-10-27): completed mit force schliesst
---     WEICH (Erfuellungs-Historie bleibt sichtbar); cancelled bleibt Hard-DELETE (kein Geld floss, Journal CASCADE).
+-- (7) Ziel nur mit Zuordnung (Journal, keine Buchung): completed mit force schliesst
+--     weich (Erfuellungs-Historie bleibt sichtbar); cancelled bleibt Hard-DELETE (kein Geld floss, Journal CASCADE).
 --     Beide Zuordnungen zaehlen danach nicht mehr gegen den Saldo.
 DO $$
 DECLARE v_p2p int; v_ga int; v_gb int; v_r jsonb; v_res numeric;
@@ -209,8 +209,8 @@ BEGIN
   RAISE NOTICE 'PASS close [7: nur Zuordnung -> erfuellt weich, abgebrochen hart; Saldo wieder frei]';
 END $$;
 
--- (8) Ziel nur ueber Sparplan-Kaeufe finanziert (Journal sparplan_buy, keine getaggte Buchung; Code-Review 2026-10-27):
---     auch abgebrochen WEICH schliessen — echte Geldbewegungen sind Historie, kein referenzfreier Fehlanlage-Fall.
+-- (8) Ziel nur ueber Sparplan-Kaeufe finanziert (Journal sparplan_buy, keine getaggte Buchung):
+--     auch abgebrochen weich schliessen — echte Geldbewegungen sind Historie, kein referenzfreier Fehlanlage-Fall.
 DO $$
 DECLARE v_settle int; v_depot int; v_goal int; v_r jsonb;
 BEGIN
@@ -227,7 +227,7 @@ END $$;
 
 ROLLBACK;
 
--- Sparziel kurz vor dem Termin im Depot (2026-11-06): Soft-Close haengt an eine offene Entscheidung einen revoke an,
+-- Sparziel kurz vor dem Termin im Depot: Soft-Close haengt an eine offene Entscheidung einen revoke an,
 -- damit ein wieder geoeffnetes Ziel neu fragt.
 BEGIN;
 DO $$
@@ -252,7 +252,7 @@ BEGIN
   RAISE NOTICE 'PASS close [9: Soft-Close haengt revoke an, wieder geoeffnet gilt nichts mehr]';
 END $$;
 
--- (10) Historie zaehlt Buchungen UND Zuordnungen zusammen: eine getaggte Buchung + eine Zuordnung schliessen weich
+-- (10) Historie zaehlt Buchungen und Zuordnungen zusammen: eine getaggte Buchung + eine Zuordnung schliessen weich
 --      (nie Hard-DELETE der Erfuellungs-Historie); (11) Rest genau 1 Cent liegt in der Toleranz.
 DO $$
 DECLARE v_res JSONB; v_pot INT; v_other INT; v_g INT;

@@ -1,5 +1,5 @@
 -- tests/db/estate/test_fn_set_case_task.sql
--- WS-3: Task-Status setzen (Fortschritts-Flag, kein HITL) — adults_only, nur Tasks offener Faelle,
+-- Task-Status setzen (Fortschritts-Flag, kein HITL) — adults_only, nur Tasks offener Faelle,
 --   done_at, Auto-Complete des Falls, invalider Status.
 BEGIN;
 
@@ -35,7 +35,7 @@ BEGIN
   IF (SELECT done_at FROM estate.case_tasks WHERE id=v_task) IS NOT NULL THEN RAISE EXCEPTION 'FAIL [done_at nicht geleert]'; END IF;
   RAISE NOTICE 'PASS [set_case_task: Kind/invalid/done/open + done_at]';
 
-  -- Auto-Complete: ALLE offenen Tasks abarbeiten -> Fall completed (der letzte Call meldet case_completed).
+  -- Auto-Complete: alle offenen Tasks abarbeiten -> Fall completed (der letzte Call meldet case_completed).
   FOR v_id IN SELECT id FROM estate.case_tasks WHERE case_id=v_case AND status='open' ORDER BY id LOOP
     v_r := estate.fn_set_case_task(jsonb_build_object('chat_id','111','case_task_id', v_id, 'status','done'));
     IF NOT (v_r->>'ok')::boolean THEN RAISE EXCEPTION 'FAIL [Abarbeiten Task %]: %', v_id, v_r; END IF;

@@ -4,7 +4,7 @@
 # Skill /feature) oder "Plan-Reviewer: nicht noetig - <Grund>". Fehlt die Zeile -> deny: Claude bekommt
 # den Grund als Tool-Fehler, ergaenzt die Zeile ehrlich und legt erneut vor.
 # deny statt ask: ein Hook-'ask' wird in der VS-Code-Erweiterung unter bypassPermissions still
-# durchgewinkt (GH #77212, hier 2026-10-20 reproduziert); 'deny' gilt laut Doku in jedem Modus.
+# durchgewinkt (GH #77212); 'deny' gilt laut Doku in jedem Modus.
 # Zusaetzlich eine Zeile "Denkstufe: medium|high - <Grund>" (high nur mit Grund).
 # Plan-Quelle: Claude Code speist den Plan-Text vor dem Hook-Aufruf als tool_input.plan ein (+ planFilePath).
 # Fehlt plan, liest der Hook planFilePath; fehlt beides -> deny (Waechter stirbt nie still - Muster doc_lint

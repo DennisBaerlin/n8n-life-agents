@@ -1,10 +1,10 @@
 -- tests/db/finance/test_savings_goal_progress.sql
--- WS-A (Phase S): finance.savings_goal_progress.current_amount = aktuelle RESERVE = vorzeichen-rohe Summe
--- ALLER mit dem Ziel markierten Buchungen (transactions.savings_goal_id), ueber BELIEBIG viele Konten.
--- Reserve-Zufluss +, Entnahme/Abfluss - => Entnahme SENKT den Fortschritt (Kern-Regressionsfall, der den
--- frueheren Raten-Zaehler als latenten Fehler entlarvt hat). Erkenntnis-Fakten (expected/pace/projected/
--- catchup) unveraendert aus current_amount + Daten. Erzeuger-Pfad: create mit Reserve-Topf -> Rate ist
--- Transfer -> fn_book_recurring_transfer stempelt savings_goal_id NUR aufs Haben-(Reserve-)Bein.
+-- finance.savings_goal_progress.current_amount = aktuelle Reserve = vorzeichen-rohe Summe
+-- aller mit dem Ziel markierten Buchungen (transactions.savings_goal_id), ueber beliebig viele Konten.
+-- Reserve-Zufluss +, Entnahme/Abfluss - => Entnahme senkt den Fortschritt (Kern-Regressionsfall: ein
+-- Raten-Zaehler waere ein latenter Fehler). Erkenntnis-Fakten (expected/pace/projected/
+-- catchup) aus current_amount + Daten. Erzeuger-Pfad: create mit Reserve-Topf -> Rate ist
+-- Transfer -> fn_book_recurring_transfer stempelt savings_goal_id nur aufs Haben-(Reserve-)Bein.
 BEGIN;
 
 DO $$
@@ -21,8 +21,8 @@ BEGIN
   SELECT finance.fn_create_account('{"name":"__sgp3_topf2__","account_type":"cash","account_holder":"Test"}'::jsonb) INTO v_res;  v_topf2 := (v_res->>'account_id')::int;
 
   -- ===================================================================================
-  -- Ziel A: Reserve ueber ZWEI Konten verteilt (+300 Topf1, +400 Topf2) + eine ENTNAHME (-100 Topf1)
-  --   + eine NICHT markierte Buchung (+999, kein Tag) -> ausgeschlossen.  -> current = 600.
+  -- Ziel A: Reserve ueber zwei Konten verteilt (+300 Topf1, +400 Topf2) + eine Entnahme (-100 Topf1)
+  --   + eine nicht markierte Buchung (+999, kein Tag) -> ausgeschlossen.  -> current = 600.
   -- created vor 180 T, Zieldatum +180 T, Ziel 2000 -> progress 30 %, expected ~50 % (hinter Plan).
   -- ===================================================================================
   INSERT INTO finance.savings_goals (name, target_amount, target_date, status, created_at)
@@ -30,7 +30,7 @@ BEGIN
   INSERT INTO finance.transactions (account_id, amount, transaction_date, category, savings_goal_id, group_id) VALUES
     (v_topf1,  300, current_date - 150, 'transfer', v_gA, gen_random_uuid()),   -- Reserve-Zufluss (Konto 1)
     (v_topf2,  400, current_date - 120, 'transfer', v_gA, gen_random_uuid()),   -- Reserve-Zufluss (Konto 2 -> Multi-Konto)
-    (v_topf1, -100, current_date -  60, 'transfer', v_gA, gen_random_uuid()),   -- ENTNAHME -> senkt den Fortschritt
+    (v_topf1, -100, current_date -  60, 'transfer', v_gA, gen_random_uuid()),   -- Entnahme -> senkt den Fortschritt
     (v_topf1,  999, current_date -  30, 'other',    NULL, NULL);   -- nicht markiert -> ausgeschlossen
 
   SELECT current_amount, remaining_amount, progress_percent, expected_percent, pace_drift_pp,
@@ -53,7 +53,7 @@ BEGIN
   RAISE NOTICE 'PASS [A: Erkenntnis-Fakten expected=% drift=% catchup=% projected=%]', v_exp, v_drift, v_catch, v_proj;
 
   -- ===================================================================================
-  -- Ziel B (EXPLIZIT Entnahme-senkt): +500 Zufluss, dann -300 Entnahme -> current = 200.
+  -- Ziel B (explizit Entnahme-senkt): +500 Zufluss, dann -300 Entnahme -> current = 200.
   -- ===================================================================================
   INSERT INTO finance.savings_goals (name, target_amount, target_date, status)
     VALUES ('__sgp3_gB__', 1000, current_date + 365, 'active') RETURNING id INTO v_gB;
@@ -87,7 +87,7 @@ BEGIN
   RAISE NOTICE 'PASS [D: uebererfuellt -> projected/catchup NULL]';
 
   -- ===================================================================================
-  -- Ziel E (ERZEUGER-PFAD): create mit Reserve-Topf -> Rate ist Transfer; book stempelt NUR das Haben-Bein.
+  -- Ziel E (Erzeuger-Pfad): create mit Reserve-Topf -> Rate ist Transfer; book stempelt nur das Haben-Bein.
   -- ===================================================================================
   SELECT finance.fn_create_savings_goal(jsonb_build_object(
     'name','__sgp3_gE__','target_amount',1200,'monthly_savings_rate',100,
@@ -106,10 +106,10 @@ BEGIN
   RAISE NOTICE 'PASS [E: create+Reserve -> Transfer-Rate; book stempelt nur das Haben-Bein -> progress 100]';
 
   -- ===================================================================================
-  -- Ziel F (WS-B Reserve-Journal): Cash-Tag +300 PLUS Depot-Anteil = Σ savings_goal_reserve_entries.delta_native.
-  --   Zwei APPEND-Zeilen (+600, +100) -> Depot-Reserve 700. current = 300 (Cash) + 700 (Journal) = 1000.
-  --   Der MARKTWERT zaehlt NICHT in den Fortschritt (nur Deckung, depot_reserve_status) -> Kurs-Explosion
-  --   blaeht current_amount nicht auf (Owner-Einwand, WS-B). Dann CASCADE-Probe (Ziel-DELETE -> Journal weg).
+  -- Ziel F (Reserve-Journal): Cash-Tag +300 plus Depot-Anteil = Σ savings_goal_reserve_entries.delta_native.
+  --   Zwei append-Zeilen (+600, +100) -> Depot-Reserve 700. current = 300 (Cash) + 700 (Journal) = 1000.
+  --   Der Marktwert zaehlt nicht in den Fortschritt (nur Deckung, depot_reserve_status) -> Kurs-Explosion
+  --   blaeht current_amount nicht auf. Dann CASCADE-Probe (Ziel-DELETE -> Journal weg).
   -- ===================================================================================
   SELECT finance.fn_create_account('{"name":"__sgp3_settle__","account_type":"cash","account_holder":"Test"}'::jsonb) INTO v_res; v_settle := (v_res->>'account_id')::int;
   SELECT finance.fn_create_account(jsonb_build_object('name','__sgp3_depot__','account_type','stocks_depot','settlement_id',v_settle,'account_holder','Test')) INTO v_res; v_depot := (v_res->>'account_id')::int;
@@ -134,8 +134,8 @@ BEGIN
   RAISE NOTICE 'PASS [F: DELETE Ziel -> savings_goal_reserve_entries cascadet (0 Zeilen)]';
 
   -- ===================================================================================
-  -- Ziel G (NEGATIVER Reserve-Stand, Cold-Eyes A#4/A#6): +100 Zufluss, dann -300 Entnahme -> saved = -200.
-  --   current_amount darf NEGATIV werden (Reserve-Modell), aber observed_monthly_rate MUSS NULL sein
+  -- Ziel G (negativer Reserve-Stand): +100 Zufluss, dann -300 Entnahme -> saved = -200.
+  --   current_amount darf negativ werden (Reserve-Modell), aber observed_monthly_rate muss NULL sein
   --   (kein negatives "Spartempo" -> saved>0-Guard, analog projected_completion_date).
   -- ===================================================================================
   INSERT INTO finance.savings_goals (name, target_amount, target_date, status, created_at)
@@ -149,7 +149,7 @@ BEGIN
   RAISE NOTICE 'PASS [G: negativer Reserve-Stand -200 -> observed_monthly_rate NULL (kein negatives Tempo)]';
 END $$;
 
--- (H) Hand-Zuordnung ist kein Spartempo (Sparziel-Zweckbindung 2026-10-27): Ziel 6000 seit 2 Monaten, 2000 als
+-- (H) Hand-Zuordnung ist kein Spartempo: Ziel 6000 seit 2 Monaten, 2000 als
 --     Startbestand zugeordnet + 400 gespart (getaggt) -> current 2400, observed_monthly_rate = 400 / (60 / 30,4375) = 202,92 (nicht 1200),
 --     projected aus dem Tempo: 3600 / 400 x 60 Tage = 540 Tage. Nur Zuordnung -> observed NULL (kein Tempo).
 DO $$
@@ -172,7 +172,7 @@ BEGIN
   IF (SELECT observed_monthly_rate FROM finance.savings_goal_progress WHERE id = v_g2) IS NOT NULL THEN
     RAISE EXCEPTION 'FAIL [H nur Zuordnung -> kein Tempo]'; END IF;
   -- (H3) Zuordnung UNTER schon eingezahltes Geld gesenkt (manual netto negativ): Tempo nicht hoeher als der Stand,
-  --      earmarked_amount nie negativ (Code-Review 2026-10-27)
+  --      earmarked_amount nie negativ
   INSERT INTO finance.transactions (account_id, amount, transaction_date, category, savings_goal_id, group_id)
     VALUES (v_p2p, 1200, current_date - 5, 'transfer', v_g2, gen_random_uuid());
   PERFORM finance.fn_book_savings_reservation(jsonb_build_object('savings_goal_id', v_g2, 'account_id', v_p2p, 'amount', 1000));
@@ -183,7 +183,7 @@ BEGIN
   RAISE NOTICE 'PASS [H: Hand-Zuordnung zaehlt zum Stand, nicht zum Spartempo; negative Zuordnung kein Tempo]';
 END $$;
 
--- (I) behind_amount (Mini-App UX 2026-10-30): Soll-Stand heute minus Gespartes in EUR, >= 0, aus den UNGERUNDETEN
+-- (I) behind_amount: Soll-Stand heute minus Gespartes in EUR, >= 0, aus den ungerundeten
 --     Termen von pace_drift_pp; NULL ohne Messbarkeit oder bei Ziel-Anteil ohne Wechselkurs (sonst zu hoch).
 --     Ziel 2000, 180 von 360 Tagen vergangen, 600 gespart -> Soll 1000 -> behind 400; vorne -> 0.
 DO $$

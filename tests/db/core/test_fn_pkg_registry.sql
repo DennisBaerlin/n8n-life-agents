@@ -1,8 +1,7 @@
 -- tests/db/core/test_fn_pkg_registry.sql
--- Testet die PackageRegistry-Schicht (Core-Paket-Framework, Phase 1):
+-- Testet die PackageRegistry-Schicht:
 --   core.package_registry (Tabelle/CHECKs) + core.fn_pkg_register/set_status/check_deps/remove.
--- Pattern: BEGIN…ROLLBACK, erwartete Blockaden in inneren BEGIN/EXCEPTION-Bloecken.
---   RAISE EXCEPTION 'FAIL …' = Test fehlgeschlagen (ON_ERROR_STOP -> Exit 1).
+-- Erwartete Blockaden laufen in inneren BEGIN/EXCEPTION-Bloecken.
 BEGIN;
 
 DO $$
@@ -26,8 +25,8 @@ BEGIN
   IF (SELECT status FROM core.package_registry WHERE package = '__test_pkg__') <> 'installing'
      THEN RAISE EXCEPTION 'FAIL register: status != installing'; END IF;
 
-  -- (1b) display_name (Install-UX-Phase 6): fehlt in der Nutzlast -> '' (Default), wird bei Re-Register
-  --   mit Wert gesetzt und bei Re-Register OHNE Wert bewahrt (COALESCE-Muster wie description).
+  -- (1b) display_name: fehlt in der Nutzlast -> '' (Default), wird bei Re-Register
+  --   mit Wert gesetzt und bei Re-Register ohne Wert bewahrt (COALESCE-Muster wie description).
   IF (SELECT display_name FROM core.package_registry WHERE package = '__test_pkg__') <> ''
      THEN RAISE EXCEPTION 'FAIL register: display_name-Default != leer'; END IF;
   PERFORM core.fn_pkg_register(jsonb_build_object('package', '__test_pkg__', 'display_name', 'Testpaket DE'));
@@ -62,7 +61,7 @@ BEGIN
   IF (SELECT activated_at FROM core.package_registry WHERE package = '__test_pkg__') IS NULL
      THEN RAISE EXCEPTION 'FAIL set_status: activated_at nicht gesetzt bei ->active'; END IF;
 
-  -- (5) set_status auf unbekanntes Paket -> {ok:false}, KEIN RAISE (korrigierbar).
+  -- (5) set_status auf unbekanntes Paket -> {ok:false}, kein RAISE (korrigierbar).
   v_res := core.fn_pkg_set_status(jsonb_build_object('package', '__does_not_exist__', 'status', 'active'));
   IF (v_res->>'ok')::bool THEN RAISE EXCEPTION 'FAIL set_status: unbekanntes Paket gab ok=true (%)', v_res; END IF;
 

@@ -109,7 +109,7 @@ BEGIN
   END IF;
   RAISE NOTICE 'PASS fn_close_account [settlement_dep -> ok:false, depot_count=%]', v_result->>'depot_count';
 
-  -- TEST 6 (Audit F6): Konto mit Guthaben -> {ok:false} + blockers, Konto bleibt aktiv (vorher verschwanden 3.000 EUR
+  -- TEST 6: Konto mit Guthaben -> {ok:false} + blockers, Konto bleibt aktiv (sonst verschwaenden 3.000 EUR
   --   still aus dem Vermoegen). Details der Blocker-Arten -> test_fn_get_account_close_blockers.sql.
   DECLARE v_money INT; BEGIN
     SELECT (finance.fn_create_account('{"name":"__test_close_money__","account_type":"cash","account_holder":"Test","currency":"EUR"}'::jsonb)->>'account_id')::int INTO v_money;

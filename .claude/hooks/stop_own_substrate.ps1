@@ -14,8 +14,8 @@ try {
     if (-not $repo) { exit 0 }
     $repo = "$repo".Trim()
     # Nur in einem eigenen Worktree aufraeumen: den Haupt-Checkout teilen sich mehrere Sessions (die Leitung faehrt
-    # dort nach dem Worktree-Abbau die Schluss-Gates). 2026-10-23 loeschte das Session-Ende einer fertigen Session
-    # so das laufende Substrat der Leitung. Im Haupt-Checkout raeumt jede Session ihr Substrat selbst ab (-Down).
+    # dort nach dem Worktree-Abbau die Schluss-Gates). Sonst loescht das Session-Ende einer fertigen Session
+    # das laufende Substrat der Leitung. Im Haupt-Checkout raeumt jede Session ihr Substrat selbst ab (-Down).
     $gitDir = "$(git -C $cwd rev-parse --absolute-git-dir 2>$null)".Trim()
     $common = "$(git -C $cwd rev-parse --path-format=absolute --git-common-dir 2>$null)".Trim()
     if (-not $gitDir -or $gitDir -eq $common) { exit 0 }
@@ -24,7 +24,7 @@ try {
     # -v: das Image deklariert VOLUME; ohne -v bliebe je Container ein namenloses Volume verwaist liegen.
     foreach ($id in ($ids | Where-Object { $_ })) { docker rm -fv $id 2>$null | Out-Null }
     if ($ids.Count -gt 0) {
-        # Zustandsdateien je Container (.local/n8ntest_state.<container>.json) + die alte gemeinsame Datei
+        # Zustandsdateien je Container (.local/n8ntest_state.<container>.json) und eine verbliebene gemeinsame n8ntest_state.json (Altlast, wird nicht mehr geschrieben)
         Get-ChildItem (Join-Path $repo '.local') -Filter 'n8ntest_state*.json' -ErrorAction SilentlyContinue |
             Remove-Item -Force -ErrorAction SilentlyContinue
     }

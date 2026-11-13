@@ -1,11 +1,11 @@
 -- ============================================================
--- test_bank_statement_bondora -- Monats-Check aus dem Bondora-Export (Bank-Import-Modul Paket 2)
+-- test_bank_statement_bondora -- Monats-Check aus dem Bondora-Export
 --   fn_statement_prepare (source:'file', gedruckter Auszug aus der Datei) + fn_apply_bank_statement +
 --   fn_void_bank_statement, fn_set_account (Verrechnungskonto fuer p2p). Werte erfunden, Daten relativ zu heute.
 --   Szenario: TR-Girokonto (1000) = Verrechnungskonto des Go&Grow-Kontos (100), taeglicher Zins mit zwei vom
 --   Scheduler gebuchten Tagen (0.03 / 8.00, Bondora sagt 0.02 / 8.71), Dauerauftrag TR->Go&Grow 50.
 --   Export: Zins, Kleinbetrag (Altkredit), Info-Zeile, Einzahlung 500, Zins, Dauerauftrag 50, Auszahlung 201 (1 Gebuehr).
---   Erwartet: kein Owner-Saldo noetig, Rest 0, EINE Zinskorrektur 0.70, EINE Altkredit-Buchung 0.15, offene
+--   Erwartet: kein Owner-Saldo noetig, Rest 0, eine Zinskorrektur 0.70, eine Altkredit-Buchung 0.15, offene
 --   Zins-Vorkommen uebersprungen, Transfers mit dem Verrechnungskonto (Auszahlung 200 + Gebuehr 1 in einer Gruppe),
 --   danach erkennt der TR-Auszug alles als gebucht; ohne Verrechnungskonto -> Rest + Hinweis.
 -- ============================================================
@@ -164,7 +164,7 @@ BEGIN
     v_res := finance.fn_void_bank_statement(jsonb_build_object('account_id', v_gg));
     IF v_res->>'code' IS DISTINCT FROM 'partner_reconciled' THEN RAISE EXCEPTION 'FAIL [V1 Void-Schutz]: %', v_res; END IF;
     PERFORM finance.fn_void_bank_statement(jsonb_build_object('account_id', v_tr));
-    -- ein Zins-Skip eines ANDEREN Kontos mit derselben Periode bleibt stehen
+    -- ein Zins-Skip eines anderen Kontos mit derselben Periode bleibt stehen
     INSERT INTO finance.interest_skips (account_id, period_end)
     SELECT v_tr, max(period_end) FROM finance.interest_skips WHERE account_id = v_gg;
     v_res := finance.fn_void_bank_statement(jsonb_build_object('account_id', v_gg));

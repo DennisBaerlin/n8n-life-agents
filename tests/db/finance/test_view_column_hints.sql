@@ -1,6 +1,5 @@
 -- ============================================================
--- test_view_column_hints -- der Spalten-Spickzettel von postgres_select nennt nur echte Spalten (Befunde KW 45, Fund 10)
---   Die Description von postgres_select (agent.finance + agent.finance_advisor) enthaelt aus
+-- test_view_column_hints -- der Spalten-Spickzettel von postgres_select nennt nur echte Spalten--   Die Description von postgres_select (agent.finance + agent.finance_advisor) enthaelt aus
 --   packages/finance/build/workflows/view_hints.ps1 je Ansicht die exakten Spaltennamen. Dieser Test prueft jede dort
 --   genannte Ansicht/Spalte gegen information_schema -- wird eine Spalte umbenannt, ist er rot. Die Zeilen zwischen
 --   view-hints:begin/end sind eine Kopie der Liste (der Test kann die PS-Datei nicht lesen); scripts/contract_lint.ps1

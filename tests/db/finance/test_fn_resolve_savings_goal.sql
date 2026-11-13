@@ -1,7 +1,7 @@
 -- tests/db/finance/test_fn_resolve_savings_goal.sql
 -- Testet fn_resolve_savings_goal: 1 / 0 / >1 Treffer
 BEGIN;
--- Audit Paket 3: ein Sparziel braucht ein Sparkonto -> Fixture-Topf fuer fn_create_savings_goal.
+-- Fixture: ein Sparziel braucht ein Sparkonto (Topf) fuer fn_create_savings_goal.
 INSERT INTO finance.accounts (name, account_type, currency, status) VALUES ('__sg_fixture_pot__','cash','EUR','active');
 
 DO $$

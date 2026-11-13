@@ -1,7 +1,7 @@
 -- tests/db/finance/test_fn_interest_day_fraction.sql
 -- Tageszaehl-Anteil (Jahresbruchteil) je Konvention. IMMUTABLE, reine Datums-Arithmetik. Die Erwartungen
--- sind EXTERN von Hand berechnet (NICHT aus der fn selbst abgeleitet -> kein Zirkelschluss):
---   30E/360 (deutsche Methode): tage = 360*(y2-y1) + 30*(m2-m1) + (d2'-d1'), wobei Tag 31 -> 30 UND der
+-- sind extern von Hand berechnet (nicht aus der fn selbst abgeleitet -> kein Zirkelschluss):
+--   30E/360 (deutsche Methode): tage = 360*(y2-y1) + 30*(m2-m1) + (d2'-d1'), wobei Tag 31 -> 30 und der
 --     letzte Februartag (28/29) -> 30; anteil = tage/360.
 --   ACT/365: echte Kalendertage / 365.   ACT/360: echte Kalendertage / 360.
 BEGIN;

@@ -1,5 +1,5 @@
 -- tests/db/estate/test_fn_set_contact.sql
--- WS-2: partielles Kontakt-Update — Rename via new_name, Rollen-Guard, Kind-Reject.
+-- Partielles Kontakt-Update — Rename via new_name, Rollen-Guard, Kind-Reject.
 -- Self-contained; BEGIN..ROLLBACK.
 BEGIN;
 

@@ -87,7 +87,7 @@ BEGIN
     RAISE EXCEPTION 'FAIL settle_loan [no-debt]: erwartet ok=false, got %', v_res; END IF;
   RAISE NOTICE 'PASS settle_loan [no-debt: ok=false]';
 
-  -- TEST 5: not-found -> {ok:false, reason, candidates} als Daten (Vertragsaenderung DB-ist-das-Gesetz: Probelauf vor der Karte)
+  -- TEST 5: not-found -> {ok:false, reason, candidates} als Daten (Probelauf vor der Karte)
   SELECT finance.fn_settle_loan(jsonb_build_object('loan_name','__test_sl_missing__','debit_account_id',v_debit,'settlement_date',CURRENT_DATE::text)) INTO v_res;
   IF (v_res->>'ok')::boolean IS DISTINCT FROM false OR v_res->>'reason' NOT LIKE '%not found%' OR NOT (v_res ? 'candidates') THEN
     RAISE EXCEPTION 'FAIL settle_loan [not-found -> ok:false]: %', v_res; END IF;

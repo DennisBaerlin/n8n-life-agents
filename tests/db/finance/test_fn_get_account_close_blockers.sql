@@ -1,7 +1,7 @@
 -- tests/db/finance/test_fn_get_account_close_blockers.sql
--- Testet fn_get_account_close_blockers (Audit F6): was das Schliessen eines Kontos verhindert. Vorher liess sich
---   ein Konto mit 3.000 EUR Guthaben schliessen -> das Geld verschwand aus dem Vermoegen; laufende Dauerauftraege
---   auf dem Konto feuerten danach taeglich einen Closed-Konto-Alarm.
+-- Testet fn_get_account_close_blockers: was das Schliessen eines Kontos verhindert (Guthaben, laufende Dauerauftraege,
+--   Depot-Bestand, Kredit-Belastungskonto, offene Raten). Sonst verschwaende Geld aus dem Vermoegen bzw. ein
+--   Dauerauftrag feuerte taeglich einen Closed-Konto-Alarm.
 BEGIN;
 
 DO $$
@@ -74,7 +74,7 @@ BEGIN
     RAISE EXCEPTION 'FAIL blockers [Kredit]: erwartet loans mit __test_cb_kredit__, got %', v_b; END IF;
   RAISE NOTICE 'PASS blockers [Belastungskonto eines aktiven Kredits -> blockiert]';
 
-  -- TEST 6 (Review): beendeter Dauerauftrag mit noch OFFENER (ungebuchter) Rate im Erinnerungsfenster -> blockiert
+  -- TEST 6: beendeter Dauerauftrag mit noch offener (ungebuchter) Rate im Erinnerungsfenster -> blockiert
   --   (sonst bietet die Erinnerung die Rate nach dem Schliessen an -> Closed-Konto-Trigger + Owner-Alarm)
   DECLARE v_end_acc INT; BEGIN
     SELECT (finance.fn_create_account('{"name":"__test_cb_ended__","account_type":"cash","account_holder":"T","currency":"EUR"}'::jsonb)->>'account_id')::int INTO v_end_acc;

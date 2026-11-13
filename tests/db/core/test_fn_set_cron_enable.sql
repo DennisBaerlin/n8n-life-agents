@@ -1,16 +1,14 @@
 -- tests/db/core/test_fn_set_cron_enable.sql
--- WS-3 (Phase A) / Phase D Rename / Phase 0 WS-0c #2/#3: core.fn_set_cron_enable schaltet das F9-Enable-Flag
--- EINES Crons in core.config (category 'cron_enable'). NEU (WS-0c): UPDATE-only + die Togglability-Sicherung
--- ist die MITGLIEDSCHAFT in core.cron_labels (ersetzt die hartkodierte Whitelist) — ein Key ist genau dann
+-- core.fn_set_cron_enable schaltet das Enable-Flag eines Crons in core.config (category 'cron_enable').
+-- UPDATE-only; die Togglability-Sicherung ist die Mitgliedschaft in core.cron_labels — ein Key ist genau dann
 -- chat-schaltbar, wenn er dort eine Zeile hat. always-on Crons (Default 'true', keine cron_labels-Zeile) +
 -- unbekannte Keys werden abgelehnt = die Sicherung gegen beliebige Config-Writes aus dem Chat. Die fn bleibt
--- rein {ok,key,enabled} (keine Label-Rueckgabe — arch-challenge E3). Owner-Auth liegt am Orchestrator-Callback.
+-- rein {ok,key,enabled} (keine Label-Rueckgabe). Owner-Auth liegt am Orchestrator-Callback.
 BEGIN;
 
 -- Setup (self-contained, BEGIN..ROLLBACK): die cron_enable-Config-Zeilen (UPDATE-only braucht Existenz) +
--- die cron_labels-Registry. 'test_alwayson' = always-on-Probe (Default 'true', KEINE cron_labels-Zeile ->
--- nicht chat-togglable). 'wf2_probe' = frischer opt-in-Key (in der Registry, in KEINER alten Whitelist ->
--- der RED-Beweis: die alte Whitelist-fn lehnte ihn ab, die Registry-fn akzeptiert ihn).
+-- die cron_labels-Registry. 'test_alwayson' = always-on-Probe (Default 'true', keine cron_labels-Zeile ->
+-- nicht chat-togglable). 'wf2_probe' = frischer opt-in-Key, der nur in der Registry steht.
 INSERT INTO core.config (category, key, value, package) VALUES
   ('cron_enable', 'drift_check',   'true',  'core'),
   ('cron_enable', 'plan_review',   'true',  'core'),
@@ -54,7 +52,7 @@ BEGIN
     RAISE EXCEPTION 'FAIL [3]: plan_review nicht geschaltet (r=%, val=%)', r, v_val; END IF;
   RAISE NOTICE 'PASS [plan_review schaltbar]';
 
-  -- TEST 4: unbekannter Key (keine cron_labels-Zeile, keine Config-Zeile) -> {ok:false}, KEIN Write
+  -- TEST 4: unbekannter Key (keine cron_labels-Zeile, keine Config-Zeile) -> {ok:false}, kein Write
   r := core.fn_set_cron_enable(jsonb_build_object('key', 'monitor_triggers', 'enabled', false));
   IF (r->>'ok')::boolean IS DISTINCT FROM false OR r->>'reason' NOT ILIKE '%cron key%' THEN
     RAISE EXCEPTION 'FAIL [4]: unbekannter Key nicht abgewiesen (%)', r; END IF;
@@ -67,15 +65,15 @@ BEGIN
   IF (r->>'ok')::boolean IS DISTINCT FROM false THEN RAISE EXCEPTION 'FAIL [5]: nicht-bool enabled akzeptiert (%)', r; END IF;
   RAISE NOTICE 'PASS [nicht-boolescher enabled -> ok:false]';
 
-  -- TEST 6: learn_context schaltbar (dritter Registry-Key, Anschalt-Wiederverwendung Phase C)
+  -- TEST 6: learn_context schaltbar (dritter Registry-Key)
   r := core.fn_set_cron_enable(jsonb_build_object('key', 'learn_context', 'enabled', true));
   SELECT value INTO v_val FROM core.config WHERE category = 'cron_enable' AND key = 'learn_context';
   IF (r->>'ok')::boolean IS DISTINCT FROM true OR v_val IS DISTINCT FROM 'true' THEN
     RAISE EXCEPTION 'FAIL [6]: learn_context nicht geschaltet (r=%, val=%)', r, v_val; END IF;
   RAISE NOTICE 'PASS [learn_context schaltbar]';
 
-  -- TEST 7: always-on-Key (Config-Zeile existiert mit value 'true', aber KEINE cron_labels-Zeile)
-  --   -> {ok:false} + KEIN Write (die Registry-Membership ist die Togglability-Sicherung; das ist die
+  -- TEST 7: always-on-Key (Config-Zeile existiert mit value 'true', aber keine cron_labels-Zeile)
+  --   -> {ok:false} + kein Write (die Registry-Membership ist die Togglability-Sicherung; das ist die
   --   strukturelle Garantie "always-on Crons sind nicht aus dem Chat schaltbar")
   r := core.fn_set_cron_enable(jsonb_build_object('key', 'test_alwayson', 'enabled', false));
   IF (r->>'ok')::boolean IS DISTINCT FROM false THEN RAISE EXCEPTION 'FAIL [7]: always-on-Key (nicht in Registry) wurde akzeptiert (%)', r; END IF;
@@ -83,16 +81,16 @@ BEGIN
   IF v_val IS DISTINCT FROM 'true' THEN RAISE EXCEPTION 'FAIL [7]: always-on-Key wurde geschaltet (value=% statt true) -- Chat-Toggle eines always-on-Crons!', v_val; END IF;
   RAISE NOTICE 'PASS [always-on-Key nicht in Registry -> ok:false, kein Write]';
 
-  -- TEST 8: frischer opt-in-Key 'wf2_probe' (in der Registry, in KEINER alten Whitelist) -> ok:true
-  --   = der generische Beweis: ein neues Paket macht seinen opt-in-Cron schaltbar, indem es NUR eine
-  --   cron_labels-Zeile deklariert -- ohne Edit an der fn (die alte Whitelist-fn haette ihn abgelehnt).
+  -- TEST 8: frischer opt-in-Key 'wf2_probe' (nur in der Registry) -> ok:true
+  --   = der generische Beweis: ein neues Paket macht seinen opt-in-Cron schaltbar, indem es nur eine
+  --   cron_labels-Zeile deklariert -- ohne Edit an der fn.
   r := core.fn_set_cron_enable(jsonb_build_object('key', 'wf2_probe', 'enabled', true));
   SELECT value INTO v_val FROM core.config WHERE category = 'cron_enable' AND key = 'wf2_probe';
   IF (r->>'ok')::boolean IS DISTINCT FROM true OR v_val IS DISTINCT FROM 'true' THEN
     RAISE EXCEPTION 'FAIL [8]: frischer Registry-Key wf2_probe nicht geschaltet (r=%, val=%) -- generischer Pfad gebrochen', r, v_val; END IF;
   RAISE NOTICE 'PASS [frischer Registry-Key wf2_probe schaltbar -> generisch, kein fn-Edit]';
 
-  -- TEST 9: package der Config-Zeile bleibt unveraendert (UPDATE-only beruehrt package NICHT; nie 'core' hartkodieren)
+  -- TEST 9: package der Config-Zeile bleibt unveraendert (UPDATE-only beruehrt package nicht; nie 'core' hartkodieren)
   SELECT package INTO v_pkg FROM core.config WHERE category = 'cron_enable' AND key = 'wf2_probe';
   IF v_pkg IS DISTINCT FROM 'career' THEN RAISE EXCEPTION 'FAIL [9]: package der wf2_probe-Zeile = % (erwartet career, unveraendert) -- die fn hat package ueberschrieben', v_pkg; END IF;
   RAISE NOTICE 'PASS [package der Config-Zeile unveraendert (career)]';

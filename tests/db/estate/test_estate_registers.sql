@@ -1,12 +1,12 @@
 -- tests/db/estate/test_estate_registers.sql
--- Estate WS-0a — CHECK-/PK-Backstops der uebrigen Register-Tabellen (provider_contracts,
+-- CHECK-/PK-Backstops der Register-Tabellen (provider_contracts,
 -- digital_accounts, contacts, person_records, funeral_preferences, storage_places, special_assets).
 --
--- Die Write-fns kommen erst WS-2 — hier wird bewiesen, dass die INVARIANTEN bereits DB-strukturell
--- gelten (Constraint = Gesetz, fn = spaeter nur freundliche {ok:false}-Meldung). Nicht-offensichtlich:
--- (a) digital_accounts.seed_backup_location ist CHECK-GEKOPPELT an category='crypto' (ein Seed-Fundort
---     an einem Nicht-Krypto-Konto ist ein Datenfehler); die Spalte haelt NUR den FUNDORT-Verweis,
---     nie die Seed-Phrase selbst (Owner-Entscheid 2: Geheimnisse NIE im System).
+-- Bewiesen wird, dass die Invarianten DB-strukturell gelten (Constraint = Gesetz, die fn liefert nur die
+-- freundliche {ok:false}-Meldung). Nicht-offensichtlich:
+-- (a) digital_accounts.seed_backup_location ist CHECK-gekoppelt an category='crypto' (ein Seed-Fundort
+--     an einem Nicht-Krypto-Konto ist ein Datenfehler); die Spalte haelt nur den Fundort-Verweis,
+--     nie die Seed-Phrase selbst (Geheimnisse nie im System).
 -- (b) person_records erzwingt die deutschen Stammdaten-Formate (Steuer-ID ^\d{11}$,
 --     RV-Nr ^\d{8}[A-Z]\d{3}$) als CHECK — das LLM validiert nie selbst.
 --
@@ -43,10 +43,10 @@ BEGIN
   RAISE NOTICE 'PASS [1] provider_contracts (category/death_action, NULL-Gap erlaubt)';
 
   -- TEST 2: digital_accounts — Krypto-Seed-Kopplung + Enums.
-  -- (2a) seed_backup_location an category='crypto' -> ok (nur der FUNDORT, nie die Phrase).
+  -- (2a) seed_backup_location an category='crypto' -> ok (nur der Fundort, nie die Phrase).
   INSERT INTO estate.digital_accounts (owner_person_id, category, provider, seed_backup_location)
   VALUES ('erika', 'crypto', 'Ledger', 'Metallplatte im Bankschliessfach');
-  -- (2b) seed_backup_location an einem NICHT-Krypto-Konto -> CHECK blockt (Kopplung).
+  -- (2b) seed_backup_location an einem Nicht-Krypto-Konto -> CHECK blockt (Kopplung).
   v_denied := false;
   BEGIN
     INSERT INTO estate.digital_accounts (owner_person_id, category, provider, seed_backup_location)

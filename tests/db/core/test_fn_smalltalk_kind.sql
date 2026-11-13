@@ -1,5 +1,5 @@
 -- tests/db/core/test_fn_smalltalk_kind.sql
--- core.fn_smalltalk_kind(text): 'thanks' | 'greeting' | NULL — EXAKTER Abgleich nach Normalisierung.
+-- core.fn_smalltalk_kind(text): 'thanks' | 'greeting' | NULL — exakter Abgleich nach Normalisierung.
 --   * reiner Dank (de/en/ko, Herz allein, Dank + Deko-Emoji/Satzzeichen) -> 'thanks'
 --   * jedes weitere Wort -> NULL (nein danke / ja danke / gerne danke sind Antworten, kein Dank)
 --   * 👍 / ok allein sind nie Dank (moegliches Ja auf eine Rueckfrage)

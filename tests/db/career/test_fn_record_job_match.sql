@@ -1,14 +1,14 @@
 -- tests/db/career/test_fn_record_job_match.sql
 -- career.fn_record_job_match: Multi-Source-UPSERT (partial-unique (source, external_id, person_id)),
 -- forwarded-INSERT, korrigierbare Ablehnung, Post-State, board-Speicherung. Self-contained (BEGIN..ROLLBACK).
--- V005: refnr->external_id, source-skopierte Identitaet, +board, source-Whitelist {bundesagentur,adzuna,jsearch,forwarded}.
+-- Identitaet ist source-skopiert (external_id), dazu board; source-Whitelist {bundesagentur,adzuna,jsearch,forwarded}.
 BEGIN;
 DO $$
 DECLARE
   r jsonb; r2 jsonb;
   v_id bigint; v_cnt int; v_title text; v_pid text; v_board text;
 BEGIN
-  -- P2a-Fixture: family owner(erika 111) + partner(lena 222) -> agent.persons (FK-Ziel) + Owner-Fallback.
+  -- Fixture: family owner(erika 111) + partner(lena 222) -> agent.persons (FK-Ziel) + Owner-Fallback.
   INSERT INTO agent.core_contexts (name, description, agent_name, load_strategy, content, metadata)
   VALUES ('family','t',NULL,'lazy','f',
     jsonb_build_object('managed_by','agent','protected', true,
@@ -33,7 +33,7 @@ BEGIN
   IF v_board IS NOT NULL THEN RAISE EXCEPTION 'FAIL [1] bundesagentur board should be NULL, got %', v_board; END IF;
   RAISE NOTICE 'PASS [1] bundesagentur INSERT (created, score, id, board NULL)';
 
-  -- TEST 2: UPSERT derselben (source, external_id) (Re-Scan, score 4, neuer Titel) -> created=false, score=4, EINE Zeile
+  -- TEST 2: UPSERT derselben (source, external_id) (Re-Scan, score 4, neuer Titel) -> created=false, score=4, eine Zeile
   r2 := career.fn_record_job_match(jsonb_build_object(
     'source','bundesagentur','external_id','10000-ABC-S','title','Data Analyst (m/w/d)','score',4));
   IF (r2->>'created')::boolean IS DISTINCT FROM false THEN RAISE EXCEPTION 'FAIL [2] created should be false: %', r2; END IF;
@@ -44,7 +44,7 @@ BEGIN
   IF v_title <> 'Data Analyst (m/w/d)' THEN RAISE EXCEPTION 'FAIL [2] title not updated: %', v_title; END IF;
   RAISE NOTICE 'PASS [2] UPSERT on (source, external_id) (idempotent, score+title updated)';
 
-  -- TEST 3: forwarded OHNE external_id -> created=true, kein score; zwei Inserts = zwei Zeilen (kein Dedup-Key)
+  -- TEST 3: forwarded ohne external_id -> created=true, kein score; zwei Inserts = zwei Zeilen (kein Dedup-Key)
   r := career.fn_record_job_match(jsonb_build_object('source','forwarded','title','Agile Coach'));
   IF (r->>'created')::boolean IS DISTINCT FROM true THEN RAISE EXCEPTION 'FAIL [3a]: %', r; END IF;
   IF r ? 'score' THEN RAISE EXCEPTION 'FAIL [3a] forwarded score should be absent (stripped): %', r; END IF;
@@ -53,23 +53,23 @@ BEGIN
   IF v_cnt <> 2 THEN RAISE EXCEPTION 'FAIL [3b] expected 2 forwarded rows (no dedup), got %', v_cnt; END IF;
   RAISE NOTICE 'PASS [3] forwarded INSERT (no external_id -> no dedup)';
 
-  -- TEST 4: korrigierbare Ablehnung -> {ok:false}, KEIN Write, kein RAISE
+  -- TEST 4: korrigierbare Ablehnung -> {ok:false}, kein Write, kein RAISE
   r := career.fn_record_job_match(jsonb_build_object('source','forwarded','title','   '));
   IF (r->>'ok')::boolean IS DISTINCT FROM false THEN RAISE EXCEPTION 'FAIL [4 empty title]: %', r; END IF;
-  -- 'linkedin' ist ein BOARD, keine Ingestion-QUELLE -> weiter abgelehnt (source-Whitelist unveraendert streng)
+  -- 'linkedin' ist ein Board, keine Ingestion-Quelle -> abgelehnt (source-Whitelist streng)
   r := career.fn_record_job_match(jsonb_build_object('source','linkedin','title','X'));
   IF (r->>'ok')::boolean IS DISTINCT FROM false THEN RAISE EXCEPTION 'FAIL [4 bad source linkedin]: %', r; END IF;
   r := career.fn_record_job_match(jsonb_build_object('source','bundesagentur','external_id','Z','title','X','score',7));
   IF (r->>'ok')::boolean IS DISTINCT FROM false THEN RAISE EXCEPTION 'FAIL [4 score range]: %', r; END IF;
   SELECT count(*) INTO v_cnt FROM career.job_matches WHERE external_id='Z';
   IF v_cnt <> 0 THEN RAISE EXCEPTION 'FAIL [4] rejected score wrote a row'; END IF;
-  -- Nicht-Zahl-Score-STRING -> graceful IGNORIERT (kein RAISE, recorded ohne score), Reviewer A1/A8
+  -- Nicht-Zahl-Score-String -> graceful ignoriert (kein RAISE, recorded ohne score)
   r := career.fn_record_job_match(jsonb_build_object('source','bundesagentur','external_id','SBAD','title','Bad Score Job','score','bad'));
   IF (r->>'ok')::boolean IS DISTINCT FROM true THEN RAISE EXCEPTION 'FAIL [4 string score should be ignored, not RAISE]: %', r; END IF;
   IF r ? 'score' THEN RAISE EXCEPTION 'FAIL [4 string score should be dropped (NULL)]: %', r; END IF;
   RAISE NOTICE 'PASS [4] korrigierbare Ablehnung (title/source/score-range -> ok:false) + Nicht-Zahl-Score graceful ignoriert';
 
-  -- TEST 4b: die NEUEN Aggregator-Quellen adzuna + jsearch werden AKZEPTIERT (Whitelist erweitert)
+  -- TEST 4b: die Aggregator-Quellen adzuna + jsearch werden akzeptiert
   r := career.fn_record_job_match(jsonb_build_object('source','adzuna','external_id','ADZ-1','title','Product Owner'));
   IF (r->>'ok')::boolean IS DISTINCT FROM true THEN RAISE EXCEPTION 'FAIL [4b adzuna accepted]: %', r; END IF;
   r := career.fn_record_job_match(jsonb_build_object('source','jsearch','external_id','JS-1','title','Data Engineer','board','LinkedIn'));
@@ -78,8 +78,8 @@ BEGIN
   IF v_board IS DISTINCT FROM 'LinkedIn' THEN RAISE EXCEPTION 'FAIL [4b jsearch board=% (erwartet LinkedIn)]', v_board; END IF;
   RAISE NOTICE 'PASS [4b] adzuna/jsearch akzeptiert + board=job_publisher gespeichert';
 
-  -- TEST 6: Cross-Source-NICHT-Kollision: gleiche external_id, VERSCHIEDENE source, gleiche Person -> ZWEI Zeilen,
-  --         BEIDE created=true (beweist: Dedup-Key ist source-skopiert; v_existing/created-Flag source-aware).
+  -- TEST 6: Cross-Source-Nicht-Kollision: gleiche external_id, verschiedene source, gleiche Person -> zwei Zeilen,
+  --         beide created=true (beweist: Dedup-Key ist source-skopiert; v_existing/created-Flag source-aware).
   r  := career.fn_record_job_match(jsonb_build_object('source','bundesagentur','external_id','DUP1','title','Same Job BA'));
   r2 := career.fn_record_job_match(jsonb_build_object('source','jsearch','external_id','DUP1','title','Same Job JS','board','LinkedIn'));
   IF (r->>'created')::boolean IS DISTINCT FROM true THEN RAISE EXCEPTION 'FAIL [6 BA created]: %', r; END IF;
@@ -88,7 +88,7 @@ BEGIN
   IF v_cnt <> 2 THEN RAISE EXCEPTION 'FAIL [6] expected 2 rows (source-scoped), got %', v_cnt; END IF;
   RAISE NOTICE 'PASS [6] Cross-Source keine Kollision (gleiche external_id, andere source -> 2 Zeilen, beide created)';
 
-  -- TEST 7: gleiche (source, external_id, person) -> genau EIN UPSERT (Verhalten erhalten, jetzt jsearch)
+  -- TEST 7: gleiche (source, external_id, person) -> genau ein UPSERT (jsearch)
   PERFORM career.fn_record_job_match(jsonb_build_object('source','jsearch','external_id','JS-1','title','Data Engineer 2','board','LinkedIn'));
   SELECT count(*) INTO v_cnt FROM career.job_matches WHERE external_id='JS-1' AND source='jsearch';
   IF v_cnt <> 1 THEN RAISE EXCEPTION 'FAIL [7] expected 1 jsearch row on re-record, got %', v_cnt; END IF;
@@ -100,7 +100,7 @@ BEGIN
   IF v_board IS DISTINCT FROM 'LinkedIn' THEN RAISE EXCEPTION 'FAIL [8] board merged away to % (erwartet LinkedIn bewahrt)', v_board; END IF;
   RAISE NOTICE 'PASS [8] board COALESCE-Merge (Re-Record ohne board bewahrt LinkedIn)';
 
-  -- TEST 5 (P2a Person-Praezedenz: explicit person_id > chat_id-resolved > Owner-Fallback)
+  -- TEST 5 (Person-Praezedenz: explicit person_id > chat_id-resolved > Owner-Fallback)
   -- (5a) Owner-Fallback (kein person_id/chat_id) -> erika
   r := career.fn_record_job_match(jsonb_build_object('source','forwarded','title','P5 Owner'));
   SELECT person_id INTO v_pid FROM career.job_matches WHERE id = (r->>'job_match_id')::bigint;

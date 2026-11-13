@@ -1,12 +1,12 @@
 ﻿#Requires -Version 5.1
-# app_preview.ps1 -- baut die Mini-App-Seite (packages/core/build/app/index.html) OHNE Server als eigenstaendige HTML-Seite:
+# app_preview.ps1 -- baut die Mini-App-Seite (packages/core/build/app/index.html) ohne Server als eigenstaendige HTML-Seite:
 # echter Renderer (Get-UiRenderLibJs), Texte aus dem Katalog (packages/*/locales/de.json), fetch-Stub, der wie
-# core.fn_app_screen antwortet (Navigation + Startseite, dann jeder Bildschirm einzeln) -- aus dem ERFUNDENEN Datenmodell
+# core.fn_app_screen antwortet (Navigation + Startseite, dann jeder Bildschirm einzeln) -- aus dem erfundenen Datenmodell
 # scripts/dev/lib/app_preview_data.json (Form der echten Handler-Antworten, alle Zustaende, nie echte Daten; Repo
 # oeffentlich). Das Telegram-Skript entfaellt (window.Telegram wird gestubbt). Kein Netz, keine DB, kein Container.
-# Zwei Verbraucher, eine Adresse (2026-11-02): render_app_screenshots.ps1 (Doku-Bilder) und serve_app_preview.ps1
-# (Live-Vorschau im Browser der Claude-Desktop-App). Dot-sourcen NACH build_helpers.ps1 (Get-UiRenderLibJs);
-# $RepoRoot muss gesetzt sein. Katalog, Datenmodell und Seite werden bei JEDEM Aufruf frisch gelesen.
+# Verbraucher: render_app_screenshots.ps1 (Doku-Bilder) und serve_app_preview.ps1
+# (Live-Vorschau im Browser der Claude-Desktop-App). Dot-sourcen nach build_helpers.ps1 (Get-UiRenderLibJs);
+# $RepoRoot muss gesetzt sein. Katalog, Datenmodell und Seite werden bei jedem Aufruf frisch gelesen.
 # Die Text-Map (ui.t) entsteht wie in agent.fn_ui_texts_for: jeder {kind:'tpl'}-Key im Dokument + jeder Enum-Wert-Key
 # <enum>.<wert> + die Shell-Keys des Dispatchers; ein Key, den der Katalog nicht kennt, bricht ab (Tippfehler im Modell).
 #   Get-AppPreviewPage -Scheme light|dark [-Width 390] [-ExpandKids] [-NoTransitions]  -> HTML-String
@@ -17,7 +17,7 @@
 #     -Screen        oeffnet diesen Reiter (Name aus screens im Datenmodell) statt der Startseite
 #     -FullHeight    Tab-Leiste fliesst am Seitenende statt fixiert (Aufnahme ganzer Bildschirme)
 # Dunkel gilt unabhaengig vom Geraet: ohne Telegram-Theme haengen die Flaechen an prefers-color-scheme, auf einem hell
-# eingestellten Geraet waere sonst nur der Akzent dunkel (Fund 2026-11-05). Der Stub schaltet die Media-Query dauerhaft ein,
+# eingestellten Geraet waere sonst nur der Akzent dunkel. Der Stub schaltet die Media-Query dauerhaft ein,
 # ohne Farbwerte zu kopieren.
 
 $script:AppPreviewUtf8NoBom = [System.Text.UTF8Encoding]::new($false)

@@ -1,5 +1,5 @@
 -- tests/db/finance/test_fn_import_balance_targets.sql
--- fn_import_balance_targets: Cash-Stand einer Depot-Uebersicht -> Verrechnungskonto des Depots (Fall 2026-10-23)
+-- fn_import_balance_targets: Cash-Stand einer Depot-Uebersicht -> Verrechnungskonto des Depots
 --   (1) Depot per Nummer -> Verrechnungskonto, Saldo zum Druckdatum, Differenz, deutsche Zahl
 --   (2) Fehler: Datum fehlt, Datum in der Zukunft, unbekanntes Depot, zweite Zeile fuer dasselbe Konto,
 --       Depot erst im Batch (opening_balance-Hinweis), Nummern-Widerspruch

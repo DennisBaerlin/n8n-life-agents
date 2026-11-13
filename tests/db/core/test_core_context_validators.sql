@@ -1,10 +1,10 @@
 -- tests/db/core/test_core_context_validators.sql
--- WS-B1 (Phase 3b): generische Validator-Registry core.context_validators. Sichert die strukturellen
+-- Generische Validator-Registry core.context_validators. Sichert die strukturellen
 -- Invarianten der Host-Tabelle (DB ist Gesetz), unabhaengig vom Dispatch-Verhalten (das deckt
 -- test_fn_validate_finance_profile / test_fn_household_facts ab):
 --   (1) gueltige schema-qualifizierte Bindung wird akzeptiert,
 --   (2) CHECK weist nicht-qualifizierte / nicht-konforme Bezeichner ab (Injection-Schutz),
---   (3) PRIMARY KEY erzwingt EIN Validator je Context (erstes Paket gewinnt, Zweit-Bindung kollidiert).
+--   (3) PRIMARY KEY erzwingt ein Validator je Context (erstes Paket gewinnt, Zweit-Bindung kollidiert).
 BEGIN;
 
 DO $$

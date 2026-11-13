@@ -2,12 +2,12 @@
 -- "Denkt nach"-Schalter (agent.thinking_lease): fn_create_thinking_lease / fn_claim_thinking_draft /
 -- fn_delete_thinking_lease + das Draft-Fenster in fn_create_hitl_pending.
 -- Invarianten:
---   * create: je Chat EIN Schalter (Telegram zeigt je Chat eine Blase) -> loescht andere Schalter des Chats (auch
+--   * create: je Chat ein Schalter (Telegram zeigt je Chat eine Blase) -> loescht andere Schalter des Chats (auch
 --     liegengebliebene abgebrochener Laeufe) und Abgelaufene; expires_at = now() + ttl; Upsert je execution
 --   * claim: keine/abgelaufene/fehlende execution -> stop (auch bei offener Karte); offene Karte im Chat -> pause
 --     + expires_at >= now()+5min; sonst show + drafting_until ~ clock_timestamp()+1s. Fremde/freigegebene/abgelaufene
 --     Karten pausieren nicht.
---   * delete: per execution_id ODER chat_id (alle Schalter des Chats); wait_for_draft wartet ein laufendes Fenster ab
+--   * delete: per execution_id oder chat_id (alle Schalter des Chats); wait_for_draft wartet ein laufendes Fenster ab
 --     (<= 1 s), sonst nie; idempotent, leer = no-op
 --   * fn_create_hitl_pending wartet ein laufendes Draft-Fenster des Chats ab (<= 1 s) -> kein Draft nach der Karte
 --   * nicht-numerische chat_id (Test-Sentinel) -> {ok:false}; fehlende Pflichtfelder (Bau-Fehler) -> RAISE

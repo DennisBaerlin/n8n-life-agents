@@ -1,9 +1,9 @@
 -- tests/db/core/test_fn_onboarding_nudges_due.sql
--- core.fn_onboarding_nudges_due (Roter Faden): sanftes Nachfassen bei liegengebliebenem Einrichten.
+-- core.fn_onboarding_nudges_due: sanftes Nachfassen bei liegengebliebenem Einrichten.
 --   Stufe 1 nach >= 3 Tagen ohne Fortschritt, Stufe 2 ("letzte") nach >= 10 Tagen UND >= 7 Tagen nach Stufe 1,
 --   danach Ruhe — bis neue offene Abschnitte entstehen (Paket installiert: status_changed_at juenger als die letzte
 --   Nachricht -> Re-Arm). Je Person hoechstens EINE Karte pro Lauf, fuer den ersten offenen Bereich in Menue-
---   Reihenfolge (p.order). Gefiltert ueber core.fn_reminder_allowed('onboarding_nudge', person) ([Nicht mehr erinnern]).
+--   Reihenfolge (p.order). Gefiltert ueber core.fn_reminder_allowed('onboarding_nudge', person) (Knopf "Nicht mehr erinnern").
 --   Mitglieder erst nach fertigem Haushalt und nur fuer persoenliche (per_user) Bereiche.
 -- db_test hat KEIN seed_data -> family/registry/sections self-seeden. BEGIN..ROLLBACK.
 BEGIN;
@@ -88,7 +88,7 @@ BEGIN
   r := core.fn_onboarding_nudges_due('{"order":["core","estate","finance"]}');
   IF jsonb_array_length(r->'nudges') <> 0 THEN RAISE EXCEPTION 'FAIL [8 alles erledigt -> nichts]: %', r; END IF;
 
-  -- ---------- 9) Review-Fund: Mitglied, dessen Nachfass-Stufen verbraucht sind; ein per_user-Paket wird (neu) aktiviert,
+  -- ---------- 9) Mitglied, dessen Nachfass-Stufen verbraucht sind; ein per_user-Paket wird (neu) aktiviert,
   --            seine Abschnitte sind fuer das Mitglied noch nicht materialisiert (changed_at NULL) -> Aktivierungszeit
   --            zaehlt als Oeffnung -> Re-Arm -> Stufe 1 fuer das Mitglied ----------
   INSERT INTO core.context_scopes (context_name, scope, write_permission, package)

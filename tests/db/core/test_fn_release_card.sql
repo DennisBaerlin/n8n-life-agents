@@ -1,11 +1,11 @@
 -- tests/db/core/test_fn_release_card.sql
--- Update-Hinweis (2026-10-24): Release-Karte fuer den Owner.
---   core.fn_semver_cmp(a,b)      = die EINE SemVer-Logik (nur stabile vX.Y.Z, sonst NULL).
+-- Update-Hinweis: Release-Karte fuer den Owner.
+--   core.fn_semver_cmp(a,b)      = die eine SemVer-Logik (nur stabile vX.Y.Z, sonst NULL).
 --   core.fn_release_intro(body)  = Kurzfassung = Einleitungsabsatz der Tag-Nachricht (bis Leerzeile/##/---),
 --                                  Markdown-Zeichen raus, <= 300 Zeichen.
---   core.fn_release_card(p)      = faellig? + Text + Knoepfe in Owner-Sprache; MERKT NICHTS.
+--   core.fn_release_card(p)      = faellig? + Text + Knoepfe in Owner-Sprache; merkt nichts.
 --   core.fn_release_card_sent(t) = Latch erst nach erfolgreichem Senden (core.fn_should_notify).
--- db_test hat KEIN seed_data -> family + Config self-seeden; Texte fallen auf den Key zurueck (Assertions auf Keys).
+-- db_test hat kein seed_data -> family + Config self-seeden; Texte fallen auf den Key zurueck (Assertions auf Keys).
 BEGIN;
 SET LOCAL TimeZone = 'Europe/Berlin';
 

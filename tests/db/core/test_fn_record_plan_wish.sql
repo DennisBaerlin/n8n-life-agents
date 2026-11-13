@@ -1,6 +1,6 @@
 -- tests/db/core/test_fn_record_plan_wish.sql
--- agent.fn_record_plan_wish(p): "Wunsch an den Owner" (2026-10-28) — ein erwachsenes Mitglied (partner) speichert einen
--- Aenderungswunsch zum AKTIVEN Haushalts-Plan der Domain, Wortlaut in Originalsprache. Probelauf (dry_run) vor der
+-- agent.fn_record_plan_wish(p): "Wunsch an den Owner" — ein erwachsenes Mitglied (partner) speichert einen
+-- Aenderungswunsch zum aktiven Haushalts-Plan der Domain, Wortlaut in Originalsprache. Probelauf (dry_run) vor der
 -- HITL-Karte ueber core.fn_dry_run (zurueckgerollt); Ablehnungen als {ok:false, reason} ohne RAISE.
 BEGIN;
 

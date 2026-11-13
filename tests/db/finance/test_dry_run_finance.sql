@@ -1,6 +1,6 @@
 -- tests/db/finance/test_dry_run_finance.sql
 -- Probelauf vor der Karte (core.fn_dry_run) gegen echte finance-Write-fns:
---   (1) Guard: finance hat KEINE deferrable Constraints/Constraint-Trigger. Die feuern erst beim COMMIT, ein
+--   (1) Guard: finance hat keine deferrable Constraints/Constraint-Trigger. Die feuern erst beim COMMIT, ein
 --       Probelauf (Savepoint-Rollback) wuerde sie verpassen -> wer so etwas einfuehrt, muss den Probelauf ueberdenken.
 --   (2) fn_create_account mit Saldo: Ergebnis kommt zurueck (balance), Konto + Eroeffnungsbuchung + Saldo-Trigger-Effekt
 --       sind danach weg.

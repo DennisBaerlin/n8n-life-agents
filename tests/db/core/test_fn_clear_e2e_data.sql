@@ -1,5 +1,5 @@
 -- tests/db/core/test_fn_clear_e2e_data.sql
--- Testet agent.fn_clear_e2e_data: loescht NUR Sentinel-Zeilen ('__E2E__'), laesst Nicht-Sentinel
+-- Testet agent.fn_clear_e2e_data: loescht nur Sentinel-Zeilen ('__E2E__'), laesst Nicht-Sentinel
 -- vollstaendig unberuehrt (verifiziert den Guard). Self-contained, BEGIN/ROLLBACK -> kein Residual.
 BEGIN;
 
@@ -39,7 +39,7 @@ BEGIN
   INSERT INTO finance.pension (name, pension_type, status)
   VALUES ('__keep__ DRV gesetzlich', 'statutory', 'active') RETURNING id INTO v_keep_pen;
 
-  -- Sentinel-Kredit: erzeugt ein Loan-Konto 'Kredit __E2E__ ...' (Marker NICHT am Anfang).
+  -- Sentinel-Kredit: erzeugt ein Loan-Konto 'Kredit __E2E__ ...' (Marker nicht am Anfang).
   -- settle_loan wuerde dieses Konto nicht loeschen -> fn_clear_e2e_data muss es einsammeln.
   PERFORM finance.fn_create_loan(jsonb_build_object(
     'name','__E2E__ CL Kredit','lender','TB','borrower','T','original_amount','5000','current_balance','5000',
@@ -64,14 +64,14 @@ BEGIN
     RAISE EXCEPTION 'FAIL: Sentinel-RP des Sparplans nicht geloescht';
   END IF;
 
-  -- Assert: Sentinel-Pension + dessen Beitrags-RP geloescht (neue pension-Abdeckung)
+  -- Assert: Sentinel-Pension + dessen Beitrags-RP geloescht
   IF EXISTS (SELECT 1 FROM finance.pension WHERE name LIKE '\_\_E2E\_\_%') THEN
     RAISE EXCEPTION 'FAIL: Sentinel-Pension nicht geloescht';
   END IF;
   IF EXISTS (SELECT 1 FROM finance.recurring_payments WHERE id = v_pen_rp) THEN
     RAISE EXCEPTION 'FAIL: Sentinel-Pension-Beitrags-RP nicht geloescht';
   END IF;
-  -- Assert: Nicht-Sentinel-Pension UNBERUEHRT
+  -- Assert: Nicht-Sentinel-Pension unberuehrt
   IF NOT EXISTS (SELECT 1 FROM finance.pension WHERE id = v_keep_pen) THEN
     RAISE EXCEPTION 'FAIL: Nicht-Sentinel-Pension % faelschlich geloescht', v_keep_pen;
   END IF;
@@ -95,7 +95,7 @@ BEGIN
     RAISE EXCEPTION 'FAIL: Loan-Konto % des Sentinel-Kredits nicht geloescht (Orphan-Leak)', v_loan_acc;
   END IF;
 
-  -- Assert: Nicht-Sentinel-Konto + dessen Daten UNBERUEHRT (Guard wirkt)
+  -- Assert: Nicht-Sentinel-Konto + dessen Daten unberuehrt (Guard wirkt)
   IF NOT EXISTS (SELECT 1 FROM finance.accounts WHERE id = v_k_id) THEN
     RAISE EXCEPTION 'FAIL: Nicht-Sentinel-Konto % faelschlich geloescht', v_k_id;
   END IF;
@@ -115,9 +115,9 @@ BEGIN
 END $$;
 
 -- ============================================================
--- Advisor-Scope: Sentinel-advisor_plans (Match via domain ODER plan_name) und
+-- Advisor-Scope: Sentinel-advisor_plans (Match via domain oder plan_name) und
 -- agent-publizierte Sentinel-Context-Docs werden geraeumt; Nicht-Sentinel und
--- sentinel-benannte, aber NICHT-managed Contexts bleiben (managed_by-Bedingung).
+-- sentinel-benannte, aber nicht-managed Contexts bleiben (managed_by-Bedingung).
 -- ============================================================
 DO $$
 DECLARE
@@ -133,13 +133,13 @@ BEGIN
   INSERT INTO agent.advisor_plans (domain, plan_name, status, version)
   VALUES ('__keepdom__', '__keep__ Plan', 'draft', 2);
 
-  -- Agent-publiziertes Sentinel-Context-Doc -> loeschen (managed_by ist D14/WS-B2 typisierte Spalte)
+  -- Agent-publiziertes Sentinel-Context-Doc -> loeschen (managed_by ist eine typisierte Spalte)
   INSERT INTO agent.core_contexts (name, description, load_strategy, content, managed_by)
   VALUES ('__e2e_fin___plan_current', 'e2e plan doc', 'lazy', '# plan', 'agent');
-  -- Keep: managed, aber NICHT sentinel-benannt
+  -- Keep: managed, aber nicht sentinel-benannt
   INSERT INTO agent.core_contexts (name, description, load_strategy, content, managed_by)
   VALUES ('__keepctx_plan_current', 'keep doc', 'lazy', '# keep', 'agent');
-  -- Keep: sentinel-benannt, aber NICHT managed (Default managed_by='seed' != 'agent' -> nur managed Docs loeschbar)
+  -- Keep: sentinel-benannt, aber nicht managed (Default managed_by='seed' != 'agent' -> nur managed Docs loeschbar)
   INSERT INTO agent.core_contexts (name, description, load_strategy, content)
   VALUES ('__e2e_unmanaged__', 'unmanaged doc', 'lazy', '# unmanaged');
 
@@ -170,7 +170,7 @@ BEGIN
 END $$;
 
 -- ============================================================
--- Monitor-Scope: Sentinel-monitor_triggers (Match via domain ODER label) werden geraeumt
+-- Monitor-Scope: Sentinel-monitor_triggers (Match via domain oder label) werden geraeumt
 -- (Observations gehen per FK-CASCADE mit); Nicht-Sentinel-Trigger bleiben.
 -- ============================================================
 DO $$
@@ -211,7 +211,7 @@ BEGIN
 END $$;
 
 -- ============================================================
--- Phase C Lern-Loop-Scope: Sentinel-Kandidaten (Marker im proposed_value) + die per approve angehaengten
+-- Lern-Loop-Scope: Sentinel-Kandidaten (Marker im proposed_value) + die per approve angehaengten
 -- "## Gelernt"-Sentinel-Zeilen aus agent-managed Kontexten + der Watermark werden geraeumt; Nicht-Sentinel-
 -- Kandidaten und -Notizzeilen bleiben (Zeilen-genauer Strip, kein Kontext-Loeschen).
 -- ============================================================
@@ -258,7 +258,7 @@ BEGIN
 END $$;
 
 -- ============================================================
--- A5: Run-Scoping — fn_clear_e2e_data(p_runid) loescht NUR den eigenen Lauf;
+-- Run-Scoping — fn_clear_e2e_data(p_runid) loescht nur den eigenen Lauf;
 -- generischer Aufruf (NULL) faengt fix + run-scoped Marker.
 -- ============================================================
 DO $$
@@ -309,13 +309,13 @@ BEGIN
 END $$;
 
 -- ============================================================
--- WS-2 career.job_matches-Scope: Sentinel-Treffer (title '__E2E__ ...') geraeumt (to_regclass-geguardet,
+-- career.job_matches-Scope: Sentinel-Treffer (title '__E2E__ ...') geraeumt (to_regclass-geguardet,
 -- eigenstaendiger title-scoped DELETE), Nicht-Sentinel-Treffer bleibt.
 -- ============================================================
 DO $$
 DECLARE v_res jsonb; v_keep bigint;
 BEGIN
-  -- P2a: career.job_matches.person_id ist NOT NULL + FK -> agent.persons. Eine Person als Fixture (direkter
+  -- career.job_matches.person_id ist NOT NULL + FK -> agent.persons. Eine Person als Fixture (direkter
   -- agent.persons-INSERT genuegt fuer den FK; das Projektions-Modell wird hier nicht geprueft).
   INSERT INTO agent.persons (person_id, full_name, role) VALUES ('e2e_owner', 'E2E Owner', 'owner')
     ON CONFLICT (person_id) DO NOTHING;
@@ -338,9 +338,9 @@ BEGIN
 END $$;
 
 -- ============================================================
--- estate WS-2-Scope: Sentinel-Zeilen aller estate-Register (provider/name/description/notes/
--- wishes/location_note ODER via referenzierte Sentinel-Fundstelle) geraeumt (to_regclass-
--- geguardet); Nicht-Sentinel-Zeilen bleiben. Deckt die FK-sichere Reihenfolge (directives VOR
+-- estate-Scope: Sentinel-Zeilen aller estate-Register (provider/name/description/notes/
+-- wishes/location_note oder via referenzierte Sentinel-Fundstelle) geraeumt (to_regclass-
+-- geguardet); Nicht-Sentinel-Zeilen bleiben. Deckt die FK-sichere Reihenfolge (directives vor
 -- storage_places, FK RESTRICT).
 -- ============================================================
 DO $$
@@ -384,8 +384,8 @@ BEGIN
 END $$;
 
 -- ============================================================
--- Phase B: Paket mit eigenem Schema OHNE Konventions-Hook <pkg>.fn_clear_e2e_data(text) -> RAISE
--- (Vertragsbruch laut, nicht still uebersprungen); ein registriertes Paket OHNE Schema wird uebersprungen.
+-- Paket mit eigenem Schema ohne Konventions-Hook <pkg>.fn_clear_e2e_data(text) -> RAISE
+-- (Vertragsbruch laut, nicht still uebersprungen); ein registriertes Paket ohne Schema wird uebersprungen.
 -- ============================================================
 DO $$
 DECLARE v_ok boolean := false; v_res jsonb;

@@ -1,10 +1,10 @@
 -- tests/db/finance/test_networth_per_person.sql
--- Multi-Member WS-3a (Custodial-Scope): finance.networth_by_asset_class traegt jetzt die
--- owner_person_id-Dimension (je UNION-Zweig). Drei Sichten auf EINE Datenbasis:
---   T1 Gesamt-Familie (alle Owner, inkl. Kind) · T2 Eltern-/FIRE-Pool (role='child' RAUS,
---   Haushalt-NULL + partner DRIN) · T3 Pro-Kind (owner_person_id = Kind-Slug).
--- Kind-Erkennung ROLLEN-basiert ueber core.fn_household_persons() (DEFINER-Fenster) — keine
--- neue Spalte. Pin: mehrere Owner je asset_class -> per-Klasse-Read MUSS summieren (kein LIMIT 1).
+-- Custodial-Scope: finance.networth_by_asset_class traegt die
+-- owner_person_id-Dimension (je UNION-Zweig). Drei Sichten auf eine Datenbasis:
+--   T1 Gesamt-Familie (alle Owner, inkl. Kind) · T2 Eltern-/FIRE-Pool (role='child' raus,
+--   Haushalt-NULL + partner drin) · T3 Pro-Kind (owner_person_id = Kind-Slug).
+-- Kind-Erkennung rollen-basiert ueber core.fn_household_persons() (DEFINER-Fenster) — keine
+-- neue Spalte. Pin: mehrere Owner je asset_class -> per-Klasse-Read muss summieren (kein LIMIT 1).
 BEGIN;
 
 DO $$
@@ -20,7 +20,7 @@ BEGIN
     ('nwp_partner', 'Partner Beispiel', 'partner');
 
   -- ---------- Konten ----------
-  -- Haushalts-Cash (owner NULL = gemeinsam), Earmark 2000 -> netto 8000
+  -- Haushalts-Cash (owner NULL = gemeinsam), Saldo 10000
   INSERT INTO finance.accounts (name, account_type, currency, status, owner_person_id)
     VALUES ('__nwp_hh_cash__','cash','EUR','active', NULL) RETURNING id INTO v_hh_cash;
   UPDATE finance.account_balances SET balance = 10000 WHERE account_id = v_hh_cash;
@@ -45,15 +45,15 @@ BEGIN
   INSERT INTO finance.depot_holdings (account_id, isin, symbol, name, shares, average_purchase_price, currency, asset_class)
     VALUES (v_kid_depot,'NWP00000002','NWPKID','Kind ETF', 10, 100, 'EUR', 'sp500');
 
-  -- WS-B: Earmark-Netting (savings_goal_allocations) entfallen -> Haushalts-Cash = BRUTTO-Saldo 10000.
+  -- Kein Earmark-Netting: Haushalts-Cash = Brutto-Saldo 10000.
 
-  -- ===== T1: Gesamt-Familie (alle Owner kollabiert) — Kind IST drin =====
+  -- ===== T1: Gesamt-Familie (alle Owner kollabiert) — Kind ist drin =====
   SELECT COALESCE(sum(value_eur),0) INTO v_t1 FROM finance.networth_by_asset_class WHERE tradeable;
   IF v_t1 IS DISTINCT FROM 15500 THEN
     RAISE EXCEPTION 'FAIL [T1]: erwartet 15500 (hh_cash 10000 + partner 4000 + hh_depot 500 + kid_depot 1000), got %', v_t1; END IF;
   RAISE NOTICE 'PASS [T1 Gesamt-Familie inkl. Kind-Depot = 15500]';
 
-  -- ===== T2: Eltern-/FIRE-Pool (role='child' RAUS, NULL+partner DRIN) =====
+  -- ===== T2: Eltern-/FIRE-Pool (role='child' raus, NULL+partner drin) =====
   SELECT COALESCE(sum(n.value_eur),0) INTO v_fire
   FROM finance.networth_by_asset_class n
   LEFT JOIN core.fn_household_persons() p ON p.person_id = n.owner_person_id
@@ -67,7 +67,7 @@ BEGIN
   IF v_kid IS DISTINCT FROM 1000 THEN RAISE EXCEPTION 'FAIL [T3 Kind]: erwartet 1000, got %', v_kid; END IF;
   RAISE NOTICE 'PASS [T3 Pro-Kind-Sub-Portfolio = 1000]';
 
-  -- Partner-Vermoegen bleibt im Pool (role=partner, NICHT child)
+  -- Partner-Vermoegen bleibt im Pool (role=partner, nicht child)
   SELECT COALESCE(sum(value_eur),0) INTO v_partner FROM finance.networth_by_asset_class WHERE owner_person_id = 'nwp_partner';
   IF v_partner IS DISTINCT FROM 4000 THEN RAISE EXCEPTION 'FAIL [Partner]: erwartet 4000, got %', v_partner; END IF;
   RAISE NOTICE 'PASS [Partner-Vermoegen 4000 (bleibt im FIRE-Pool)]';
@@ -83,7 +83,7 @@ BEGIN
   IF v_sp500_fire IS DISTINCT FROM 500 THEN RAISE EXCEPTION 'FAIL [sp500 FIRE]: erwartet 500 (nur Haushalt, Kind raus), got %', v_sp500_fire; END IF;
   RAISE NOTICE 'PASS [Pin: sp500 mehrere Owner — T1=1500, FIRE=500 (per-Klasse summiert, nicht LIMIT 1)]';
 
-  -- ===== Owner-Vererbung: Haushalts-Cash brutto 10000 unter owner NULL (WS-B: kein Earmark-Netting mehr) =====
+  -- ===== Owner-Vererbung: Haushalts-Cash brutto 10000 unter owner NULL =====
   SELECT value_eur INTO v_val FROM finance.networth_by_asset_class WHERE bucket = 'cash' AND owner_person_id IS NULL;
   IF v_val IS DISTINCT FROM 10000 THEN RAISE EXCEPTION 'FAIL [Owner/Cash]: Haushalts-Cash brutto erwartet 10000, got %', v_val; END IF;
   SELECT value_eur INTO v_val FROM finance.networth_by_asset_class WHERE bucket = 'cash' AND owner_person_id = 'nwp_partner';

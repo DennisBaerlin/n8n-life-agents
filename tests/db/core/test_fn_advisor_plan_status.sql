@@ -1,10 +1,10 @@
 -- tests/db/core/test_fn_advisor_plan_status.sql
--- core.fn_advisor_plan_status(chat_id) — Plan-Zustand je Berater-Domaene mit Onboarding-Plan-Schritt (2026-10-28):
+-- core.fn_advisor_plan_status(chat_id) — Plan-Zustand je Berater-Domaene mit Onboarding-Plan-Schritt:
 -- je core.advisors-Zeile mit plan_step=true und aktivem Paket {domain, package, state, open, ready, missing, per_user,
 -- can_write} aus der Sicht des Betrachters:
 --   * state: Entwurf vorhanden -> draft; aktiver Plan -> gaps (open = gaps_fn > 0) bzw. complete; sonst none;
 --   * Scope aus core.context_scopes des plan_context: household -> person_id NULL, per_user -> die eigene Person;
---   * can_write = Owner (Plan-Tools owner_only) UND write_permission, ready/missing aus readiness_fn (ohne = reif);
+--   * can_write = Owner (Plan-Tools owner_only) und write_permission, ready/missing aus readiness_fn (ohne = reif);
 --   * unaufgeloester Betrachter -> [] (fail-closed); eine werfende Paket-fn -> neutral; die Overview bleibt ohne Plan-Zustand.
 BEGIN;
 
@@ -69,12 +69,12 @@ BEGIN
       'risk_profile', '{}'::jsonb,
       'target_allocation', '{}'::jsonb, 'glidepath', '{}'::jsonb, 'goal', '{}'::jsonb))
    WHERE name = 'financial_planning';
-  -- Notreserve = Ruecklage (finance, 2026-10-30), kein Plan-Block mehr
+  -- Notreserve = Ruecklage (finance), kein Plan-Block
   INSERT INTO finance.savings_goals (name, kind, target_months, status) VALUES ('__aps_er__', 'emergency_reserve', 6, 'active');
   SELECT e INTO f FROM jsonb_array_elements(core.fn_advisor_plan_status('111')) e WHERE e->>'domain' = 'finance';
   IF f->>'state' <> 'complete' OR (f->>'open')::int <> 0 THEN RAISE EXCEPTION 'FAIL [4 complete]: %', f; END IF;
 
-  -- ---------- (5) Mitglied: Haushalts-Plan sichtbar, aber nicht schreibbar; career = SEIN Scope, ebenfalls owner-only ----------
+  -- ---------- (5) Mitglied: Haushalts-Plan sichtbar, aber nicht schreibbar; career = sein Scope, ebenfalls owner-only ----------
   INSERT INTO agent.advisor_plans (domain, person_id, plan_name, status, version, interview_state, plan_md)
   VALUES ('career', 'erika', 'Karriere Erika', 'active', 1, '{}', 'e');
   SELECT e INTO f FROM jsonb_array_elements(core.fn_advisor_plan_status('222')) e WHERE e->>'domain' = 'finance';
@@ -102,7 +102,7 @@ BEGIN
   IF f->>'state' <> 'complete' THEN RAISE EXCEPTION 'FAIL [7 gaps_fn fehlt]: %', f; END IF;
   UPDATE core.advisors SET gaps_fn = 'finance.fn_plan_gap_count' WHERE domain = 'finance';
 
-  -- ---------- (8) eine WERFENDE Paket-fn bricht weder Menue noch Knopf-Handler: neutral (reif / 0 Luecken) ----------
+  -- ---------- (8) eine werfende Paket-fn bricht weder Menue noch Knopf-Handler: neutral (reif / 0 Luecken) ----------
   CREATE FUNCTION finance.fn_t_plan_raise(text, text) RETURNS jsonb LANGUAGE plpgsql AS $f$ BEGIN RAISE EXCEPTION 'boom'; END $f$;
   CREATE FUNCTION finance.fn_t_plan_raise_int(text, text) RETURNS int LANGUAGE plpgsql AS $f$ BEGIN RAISE EXCEPTION 'boom'; END $f$;
   UPDATE core.advisors SET readiness_fn = 'finance.fn_t_plan_raise', gaps_fn = 'finance.fn_t_plan_raise_int' WHERE domain = 'finance';
@@ -111,7 +111,7 @@ BEGIN
     RAISE EXCEPTION 'FAIL [8 werfende Paket-fn]: %', f; END IF;
   UPDATE core.advisors SET readiness_fn = 'finance.fn_plan_readiness', gaps_fn = 'finance.fn_plan_gap_count' WHERE domain = 'finance';
 
-  -- ---------- (9) die Overview traegt KEINEN Plan-Zustand (ihre Cron-/Karten-Aufrufer brauchen nur Abschnitte) ----------
+  -- ---------- (9) die Overview traegt keinen Plan-Zustand (ihre Cron-/Karten-Aufrufer brauchen nur Abschnitte) ----------
   IF core.fn_onboarding_overview('111') ? 'plans' THEN RAISE EXCEPTION 'FAIL [9 overview ohne plans]'; END IF;
 
   RAISE NOTICE 'PASS test_fn_advisor_plan_status (none/draft/gaps/complete, Haushalt vs. persoenlich, Mitglied, inaktiv, fail-closed, werfende Paket-fn neutral, Overview ohne plans)';

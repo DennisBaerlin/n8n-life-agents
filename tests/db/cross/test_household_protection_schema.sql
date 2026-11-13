@@ -1,5 +1,5 @@
 -- tests/db/cross/test_household_protection_schema.sql
--- Testet die Phase-1-Schema-Erweiterungen ausserhalb von core_contexts:
+-- Testet Schema-Eigenschaften ausserhalb von core_contexts:
 --   * finance.pension_statements (Child-Tabelle: UNIQUE je (pension_id, statement_date), CASCADE)
 --   * agent.monitor_triggers.origin    (core nie loeschbar, immer deaktivierbar; fn-Guard + Trigger-Backstop)
 --   * Core-Seed household_facts_freshness (idempotent in monitor_init, origin='core')
@@ -96,7 +96,7 @@ BEGIN
   END IF;
   RAISE NOTICE 'PASS fn_delete_monitor_trigger [user-Trigger weiterhin loeschbar]';
 
-  -- ---------- TEST 6 (Review: TRUNCATE-Backstop auf monitor_triggers) ----------
+  -- ---------- TEST 6 (TRUNCATE-Backstop auf monitor_triggers) ----------
   BEGIN
     TRUNCATE agent.monitor_triggers CASCADE;
     RAISE EXCEPTION 'FAIL TRUNCATE-Backstop: monitor_triggers truncated';
@@ -105,8 +105,7 @@ BEGIN
     RAISE NOTICE 'PASS TRUNCATE-Backstop [monitor_triggers: %]', SQLERRM;
   END;
 
-  -- core_contexts-Löschschutz (registry-getrieben, WS-B2b) wird in test_core_protected_contexts.sql
-  -- getestet (frueher hier TEST 7-9 ueber metadata.protected/autoprotect — beide retired).
+  -- core_contexts-Loeschschutz (registry-getrieben) testet test_core_protected_contexts.sql.
 
 END $$;
 

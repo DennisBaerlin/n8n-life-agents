@@ -12,7 +12,7 @@ DECLARE
   v_notes  TEXT;
 BEGIN
 
-  -- Setup: Konto mit Bank (owner_person_id startet NULL = Haushalt; WS-4: kein Freitext-Inhaber mehr)
+  -- Setup: Konto mit Bank (owner_person_id startet NULL = Haushalt)
   SELECT finance.fn_create_account(
     '{"name":"__test_set_acct__","account_type":"cash","bank":"AltBank","currency":"EUR"}'::jsonb
   ) INTO v_res;
@@ -39,7 +39,7 @@ BEGIN
   END IF;
   RAISE NOTICE 'PASS set_account [partielles Update: bank+notes geaendert, name/owner_person unveraendert NULL]';
 
-  -- TEST 2 (WS-4): owner_person_id setzen (Nachtag Bestand) -> bank bleibt NeuBank
+  -- TEST 2: owner_person_id setzen (Nachtag Bestand) -> bank bleibt NeuBank
   INSERT INTO agent.persons (person_id, full_name, role)
   VALUES ('__test_setacc_p', 'Test Person', 'partner') ON CONFLICT (person_id) DO NOTHING;
   SELECT finance.fn_set_account(jsonb_build_object('account_id', v_id, 'owner_person_id', '__test_setacc_p')) INTO v_res;
@@ -47,7 +47,7 @@ BEGIN
   IF v_person IS DISTINCT FROM '__test_setacc_p' OR v_bank IS DISTINCT FROM 'NeuBank' THEN
     RAISE EXCEPTION 'FAIL set_account [owner_person]: owner=% bank=%', v_person, v_bank;
   END IF;
-  -- leeres Feld = unveraendert (Un-Tag vertagt): erneutes set ohne owner_person_id laesst Slug bestehen
+  -- leeres Feld = unveraendert: erneutes set ohne owner_person_id laesst Slug bestehen
   SELECT finance.fn_set_account(jsonb_build_object('account_id', v_id, 'notes', 'x')) INTO v_res;
   SELECT owner_person_id INTO v_person FROM finance.accounts WHERE id = v_id;
   IF v_person IS DISTINCT FROM '__test_setacc_p' THEN
@@ -55,7 +55,7 @@ BEGIN
   END IF;
   RAISE NOTICE 'PASS set_account [owner_person_id gesetzt + leer=unveraendert, bank stabil]';
 
-  -- TEST 3 (WS-0b estate): ownership + transmortale Bankvollmacht setzen -> persistiert, partiell.
+  -- TEST 3: ownership + transmortale Bankvollmacht setzen -> persistiert, partiell.
   SELECT finance.fn_set_account(jsonb_build_object(
     'account_id', v_id, 'ownership', 'joint_and', 'has_transmortal_poa', 'true'
   )) INTO v_res;
@@ -75,7 +75,7 @@ BEGIN
   END IF;
   RAISE NOTICE 'PASS set_account [ownership + has_transmortal_poa gesetzt + leer=unveraendert]';
 
-  -- TEST 4 (WS-0b): der ownership-CHECK ist der Backstop (geschlossene Liste) -> ungueltiger Wert RAISEt.
+  -- TEST 4: der ownership-CHECK ist der Backstop (geschlossene Liste) -> ungueltiger Wert RAISEt.
   BEGIN
     PERFORM finance.fn_set_account(jsonb_build_object('account_id', v_id, 'ownership', 'invalid'));
     RAISE EXCEPTION 'FAIL set_account [ownership-CHECK]: ungueltiger Wert haette RAISEn muessen';
@@ -139,7 +139,7 @@ BEGIN
     RAISE NOTICE 'PASS fn_set_account [Verrechnungskonto nur Depot/P2P]';
   END;
 
-  -- "Import zuerst": falsch zugeordnete IBAN entfernen und beim richtigen Konto eintragen (sonst Dublette)
+  -- Falsch zugeordnete IBAN entfernen und beim richtigen Konto eintragen (sonst Dublette)
   DECLARE v_x INT; v_y INT; v_r JSONB; BEGIN
     INSERT INTO finance.accounts (name, account_type, currency, status, account_number)
     VALUES ('__sa_rm_x__', 'cash', 'EUR', 'active', 'DE66500105174400000002') RETURNING id INTO v_x;
@@ -173,7 +173,7 @@ BEGIN
     RAISE NOTICE 'PASS fn_set_account [IBAN entfernen + verschieben]';
   END;
 
-  -- Puffer je Konto (Transparenz 2026-10-30): min_balance setzen, leer = unveraendert, min_balance_default = zurueck auf
+  -- Puffer je Konto: min_balance setzen, leer = unveraendert, min_balance_default = zurueck auf
   -- den Standard (NULL); negativ / Nicht-Geld-Konto / beides zugleich -> {ok:false}; CHECK als Backstop
   DECLARE v_c INT; v_d INT; v_r JSONB; BEGIN
     INSERT INTO finance.accounts (name, account_type, currency, status) VALUES ('__sa_mb_c__', 'cash', 'EUR', 'active') RETURNING id INTO v_c;

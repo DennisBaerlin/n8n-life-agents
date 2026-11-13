@@ -1,8 +1,8 @@
 -- tests/db/core/test_fn_facts_context_allowed.sql
--- Testet core.fn_facts_context_allowed (Install-UX-Phase 6, Naht finance_profile): welche Fakten-Kontexte
+-- Testet core.fn_facts_context_allowed (Naht finance_profile): welche Fakten-Kontexte
 -- der Haushalts-Schreibpfad (fn_set_context_facts + Lern-Loop-Vorfilter) beschreiben darf.
---   family immer; sonst nur ein in core.context_validators registrierter HAUSHALTS-Kontext (scope household
---   bzw. ohne Scope-Zeile) eines AKTIVEN Pakets. per_user-Kontexte (career_profile) gehoeren dem
+--   family immer; sonst nur ein in core.context_validators registrierter Haushalts-Kontext (scope household
+--   bzw. ohne Scope-Zeile) eines aktiven Pakets. per_user-Kontexte (career_profile) gehoeren dem
 --   person-skopierten fn_set_context_facts — nie diesem Pfad (sonst fehlte der Personen-Suffix).
 -- Pattern: BEGIN…ROLLBACK, RAISE EXCEPTION 'FAIL …' = Test fehlgeschlagen.
 BEGIN;
@@ -42,7 +42,7 @@ BEGIN
     RAISE EXCEPTION 'FAIL: Kontext eines nicht installierten Pakets erlaubt';
   END IF;
 
-  -- (5) per_user-Kontext eines aktiven Pakets -> NICHT erlaubt (gehoert fn_set_context_facts).
+  -- (5) per_user-Kontext eines aktiven Pakets -> nicht erlaubt (gehoert fn_set_context_facts).
   IF core.fn_facts_context_allowed('__t_pu_profile__') THEN
     RAISE EXCEPTION 'FAIL: per_user-Kontext ueber den Haushalts-Pfad erlaubt';
   END IF;

@@ -165,8 +165,8 @@ BEGIN
 END $$;
 
 -- ============================================================
--- WS-C2 Reserve-Waechter: ein Transfer raus aus einem Reserve-haltenden Konto drueckt dessen Saldo unter die
--- getaggte Reserve -> fn faltet reserve_breach NUR fuers Soll-(from-)Bein (das Haben-Bein erhoeht das Zielkonto).
+-- Reserve-Waechter: ein Transfer raus aus einem Reserve-haltenden Konto drueckt dessen Saldo unter die
+-- getaggte Reserve -> fn faltet reserve_breach nur fuers Soll-(from-)Bein (das Haben-Bein erhoeht das Zielkonto).
 -- ============================================================
 DO $$
 DECLARE
@@ -190,7 +190,7 @@ BEGIN
   RAISE NOTICE 'PASS fn_book_transfer [reserve_breach: Transfer raus aus Reserve-Konto -> from-Breach shortfall 500]';
 END $$;
 
--- ---------- Befund 2026-11-03: Bein im Startbetrag eines Kontos: Ablehnung ohne Write; internes Flag bucht nur das andere Bein ----------
+-- ---------- Bein im Startbetrag eines Kontos: Ablehnung ohne Write; internes Flag bucht nur das andere Bein ----------
 DO $$
 DECLARE
   T DATE := core.fn_today();

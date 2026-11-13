@@ -1,7 +1,6 @@
 -- tests/db/core/test_fn_note_context_allowed.sql
--- Phase A: core.fn_note_context_allowed(name) — Prosa-Lern-Notizen nur in 'family' ODER im Plan-Dokument einer
--- Advisor-Domaene mit core.advisors.learn_notes=true und AKTIVEM Paket; immer nur managed_by='agent'. Ersetzt die
--- Literal-Liste family/financial_planning.
+-- core.fn_note_context_allowed(name): Prosa-Lern-Notizen nur in 'family' oder im Plan-Dokument einer
+-- Advisor-Domaene mit core.advisors.learn_notes=true und aktivem Paket; immer nur managed_by='agent'.
 BEGIN;
 
 DO $$

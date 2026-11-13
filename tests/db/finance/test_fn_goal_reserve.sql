@@ -1,5 +1,5 @@
 -- tests/db/finance/test_fn_goal_reserve.sql
--- Sparziel mit festem Reserve-Topf (Owner-Entscheid 2026-10-23, Paket DB-ist-das-Gesetz Nachtrag D):
+-- Sparziel mit festem Reserve-Topf:
 --   Der Topf ist recurring_payments.target_account_id der Sparrate; die Reserve = Topf + jedes Konto, auf dem noch
 --   getaggtes Geld des Ziels liegt (teilweises Umschichten). fn_book_savings_goal_transfer leitet Von/An ab und prueft:
 --   (1) deposit ohne Konten -> An = Topf, Von = Abbuchungskonto der Rate; effective nennt beide Konten
@@ -68,7 +68,7 @@ BEGIN
   RAISE NOTICE 'PASS goal_reserve [Ableitung je Richtung, not_reserve, insufficient_share, relocate verlegt Topf, Depot-Hinweis]';
 END $$;
 
--- Randfaelle (Code-Review 2026-10-23):
+-- Randfaelle:
 --   (7) Geld zwischen zwei Reserve-Konten desselben Ziels ist ein relocate: withdrawal/deposit -> ok:false use_relocate
 --   (8) gleiche Einzahlung zweimal -> der Doppelbuchungs-Hinweis aus fn_book_transfer kommt auf die Karte (card_lines)
 --   (9) beendete Rate: voller relocate verlegt den Topf trotzdem (naechste Einzahlung landet im neuen Topf)
@@ -106,7 +106,7 @@ BEGIN
   IF jsonb_array_length(COALESCE(v_r->'card_lines', '[]'::jsonb)) = 0 THEN
     RAISE EXCEPTION 'FAIL goal_reserve [8 Doppelbuchungs-Hinweis fehlt]: %', v_r; END IF;
 
-  -- (9) Rate endet heute; voller relocate vom Topf A (1000 auf A) nach C=giro? nein: nach einem neuen Konto
+  -- (9) Rate endet heute; voller relocate vom Topf A (1000 auf A) auf ein neues Konto
   UPDATE finance.recurring_payments SET valid_to = core.fn_today() WHERE id = v_rp;
   v_r := finance.fn_book_savings_goal_transfer(jsonb_build_object('savings_goal_id', v_goal, 'amount', 1000, 'direction', 'relocate',
            'from_account_id', v_a, 'to_account_id', v_b));
@@ -136,7 +136,7 @@ BEGIN
   RAISE NOTICE 'PASS goal_reserve [use_relocate, Doppelbuchungs-Hinweis, beendete Rate, Wiedereroeffnen, Altziel ohne Rate]';
 END $$;
 
--- Saldo-basierte Topf-Typen + Zuordnung (Sparziel-Zweckbindung 2026-10-27):
+-- Saldo-basierte Topf-Typen + Zuordnung (Sparziel-Zweckbindung):
 --  (12) P2P ist ein erlaubter Topf (Anlegen mit Rate in den P2P-Topf); Namensaufloesung findet P2P-Konten
 --  (13) nur zugeordnetes Geld (Journal, kein Transfer) auf einem P2P-Konto kann entnommen werden (Anteil = Tags + Journal)
 --  (14) Depot-Zuordnungen sind kein Reserve-Konto fuer Geldbewegungen (fn_goal_reserve_accounts nur Topf-Typen)

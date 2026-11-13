@@ -1,6 +1,6 @@
 -- tests/db/core/test_fn_stale_facts_count.sql
--- Phase A: core.fn_stale_facts_count() — der Aktualitaets-Waechter household_facts_freshness zaehlt veraltete
--- (as_of > 12 Monate oder fehlend) persons[]-Eintraege ueber family + household-Fakten-Kontexte AKTIVER Pakete
+-- core.fn_stale_facts_count() — der Aktualitaets-Waechter household_facts_freshness zaehlt veraltete
+-- (as_of > 12 Monate oder fehlend) persons[]-Eintraege ueber family + household-Fakten-Kontexte aktiver Pakete
 -- (core.fn_facts_context_allowed). Kein Paket-Literal; Fakten inaktiver Pakete / unregistrierter Kontexte zaehlen
 -- nicht. Laeuft unter core_ro (fn_monitor_acquire SET LOCAL ROLE core_ro) -> Perspektiv-Test.
 BEGIN;
@@ -29,7 +29,7 @@ BEGIN
   VALUES ('finance_profile', 'fixture', 'finance_advisor', 'lazy', 'x', 'agent', 'finance',
           jsonb_build_object('facts', jsonb_build_object('persons', jsonb_build_array(jsonb_build_object('person_id','erika','steuerklasse',3)))))
   ON CONFLICT (name) DO UPDATE SET metadata = EXCLUDED.metadata;
-  -- unregistrierter persons-Kontext mit veraltetem Eintrag -> zaehlt NICHT
+  -- unregistrierter persons-Kontext mit veraltetem Eintrag -> zaehlt nicht
   INSERT INTO agent.core_contexts (name, description, load_strategy, content, managed_by, package, metadata)
   VALUES ('__test_unreg_persons__', 'x', 'lazy', 'x', 'agent', 'core',
           jsonb_build_object('facts', jsonb_build_object('persons', jsonb_build_array(jsonb_build_object('person_id','lisa','as_of', v_old)))));

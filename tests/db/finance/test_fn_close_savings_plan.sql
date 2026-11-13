@@ -155,8 +155,8 @@ BEGIN
   END IF;
   RAISE NOTICE 'PASS fn_close_savings_plan [Plan B bleibt in DB (Soft-Close)]';
 
-  -- TEST 3: Plan nicht gefunden -> {ok:false, reason, candidates} als Daten (Vertragsaenderung DB-ist-das-Gesetz:
-  -- ein unbekannter Name ist nutzer-korrigierbar und kommt im Probelauf VOR der Karte zurueck, kein Owner-Alarm)
+  -- TEST 3: Plan nicht gefunden -> {ok:false, reason, candidates} als Daten (ein unbekannter
+  -- Name ist nutzer-korrigierbar und kommt im Probelauf vor der Karte zurueck, kein Owner-Alarm)
   SELECT finance.fn_close_savings_plan(
     jsonb_build_object('savings_plan_name', '__test_csp_plan_notfound__')
   ) INTO v_result;

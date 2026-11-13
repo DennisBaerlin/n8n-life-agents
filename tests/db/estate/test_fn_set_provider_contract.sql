@@ -1,5 +1,5 @@
 -- tests/db/estate/test_fn_set_provider_contract.sql
--- WS-2: partielles Vertrags-Update — COALESCE-Idiom ("nicht gesendet = unveraendert"),
+-- Partielles Vertrags-Update — COALESCE-Idiom ("nicht gesendet = unveraendert"),
 -- Enum-Guards, Kind-Reject, not-found = RAISE (echte Ausnahme hinter dem Tool-Resolve).
 -- Self-contained; BEGIN..ROLLBACK.
 BEGIN;

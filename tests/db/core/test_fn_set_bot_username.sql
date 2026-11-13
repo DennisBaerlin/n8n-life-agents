@@ -1,4 +1,6 @@
 -- tests/db/core/test_fn_set_bot_username.sql
+-- core.fn_set_bot_username: Platzhalter und Namenswechsel, Ablehnungen als Daten, Seed ueberschreibt den Namen nicht;
+-- core.fn_app_bot_username liefert nur einen gueltigen, nicht-Platzhalter-Namen.
 BEGIN;
 
 DO $$

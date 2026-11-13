@@ -1,10 +1,10 @@
 -- tests/db/core/test_fn_onboarding_overview.sql
--- P1 (Generisches Paket-Onboarding; P2b-1: +p_chat_id): core.fn_onboarding_overview(text DEFAULT NULL) —
---   DAS DB-getriebene Menue-Modell. Dieser Test deckt die GENERISCHE Mechanik (no-arg-Call via Default);
---   die PRO-PERSON-Rendering-Korrektheit (per_user career) deckt test_career_onboarding_person_scoping (TEST 7).
---   DEFINER-Lesefenster, liefert EINE flache, bereits sortierte Sektions-Liste ueber den
---   Core-Haushalt + alle AKTIVEN Pakete (package_registry.status='active') mit <pkg>.onboarding_state.
---   JSON-Shape-Vertrag (TDD-Anker, exakt assertiert): { ok:true, sections:[{package,key,label,status,ord}] }
+-- core.fn_onboarding_overview(text DEFAULT NULL) — das DB-getriebene Menue-Modell. Dieser Test deckt die
+--   generische Mechanik (no-arg-Call via Default); die Pro-Person-Rendering-Korrektheit (per_user career)
+--   deckt test_career_onboarding_person_scoping (TEST 7).
+--   DEFINER-Lesefenster, liefert eine flache, bereits sortierte Sektions-Liste ueber den
+--   Core-Haushalt + alle aktiven Pakete (package_registry.status='active') mit <pkg>.onboarding_state.
+--   JSON-Shape-Vertrag (exakt assertiert): { ok:true, sections:[{package,key,label,status,ord}] }
 --   Sortierung: Core-Haushalt zuerst (package='core'), dann Pakete alphabetisch, je Paket nach ord.
 --   Der Menue-Builder (core.sub_send_onboarding_menu) liest daraus nur den Status je <package>:<key>; die
 --   Anzeige-Reihenfolge legt der Build fest (Get-OnboardingPackageOrder), nicht diese fn.
@@ -29,10 +29,9 @@ BEGIN
   INSERT INTO agent.guide_onboarding_state (section_key, ord, label, status)
     VALUES ('household', 1, 'Haushalt & Personen', 'completed') ON CONFLICT (section_key) DO NOTHING;
 
-  -- P2b-1: career.onboarding_state ist pro Person (person_id NOT NULL + FK -> agent.persons). Owner-Fixture +
-  -- context_scopes(career=per_user; in db_test NICHT geseedet). Dieser Test prueft die GENERISCHE Overview-Mechanik
-  -- (Shape/core-first/Multi-Paket/Reihenfolge/inaktiv/leer/core_ro) mit dem no-arg-Aufruf (career-Katalog als
-  -- 'unknown' gerendert -> 3 Sektionen); die PRO-PERSON-Rendering-Korrektheit deckt test_career_onboarding_person_scoping.
+  -- career.onboarding_state ist pro Person (person_id NOT NULL + FK -> agent.persons). Owner-Fixture +
+  -- context_scopes(career=per_user; in db_test nicht geseedet). Der no-arg-Aufruf rendert den career-Katalog als
+  -- 'unknown' -> 3 Sektionen; die Pro-Person-Korrektheit deckt test_career_onboarding_person_scoping.
   INSERT INTO agent.core_contexts (name, description, agent_name, load_strategy, content, metadata)
   VALUES ('family','t',NULL,'lazy','f',
     jsonb_build_object('managed_by','agent','protected', true,
@@ -72,7 +71,7 @@ BEGIN
       RAISE EXCEPTION 'FAIL [(1) Eintrag ohne package/key/label/status/ord]: %', v_el; END IF;
   END LOOP;
 
-  -- ---------- (2) Core-Haushalt ZUERST (package='core', key='household') ----------
+  -- ---------- (2) Core-Haushalt zuerst (package='core', key='household') ----------
   v_first := v_secs->0;
   IF (v_first->>'package') IS DISTINCT FROM 'core' OR (v_first->>'key') IS DISTINCT FROM 'household' THEN
     RAISE EXCEPTION 'FAIL [(2) erstes Element nicht core/household]: %', v_first; END IF;
@@ -85,7 +84,7 @@ BEGIN
   IF (SELECT count(*) FROM jsonb_array_elements(v_secs) e WHERE e->>'package'='career') <> 3 THEN
     RAISE EXCEPTION 'FAIL [(3) career<>3]: %', v_secs; END IF;
 
-  -- ---------- (4) Paket-Reihenfolge: career VOR finance (alphabetisch, beide nach core) ----------
+  -- ---------- (4) Paket-Reihenfolge: career vor finance (alphabetisch, beide nach core) ----------
   SELECT min(ord) - 1 INTO v_idx_career  FROM (SELECT row_number() OVER () AS ord, e FROM jsonb_array_elements(v_secs) e) s WHERE e->>'package'='career';
   SELECT min(ord) - 1 INTO v_idx_finance FROM (SELECT row_number() OVER () AS ord, e FROM jsonb_array_elements(v_secs) e) s WHERE e->>'package'='finance';
   IF v_idx_career >= v_idx_finance THEN
@@ -109,7 +108,7 @@ BEGIN
     RAISE EXCEPTION 'FAIL [(6) career fehlt, Schleife abgebrochen?]: %', r; END IF;
   IF NOT EXISTS (SELECT 1 FROM jsonb_array_elements(r->'sections') e WHERE e->>'package'='core') THEN
     RAISE EXCEPTION 'FAIL [(6) core fehlt]: %', r; END IF;
-  -- (6b) Install-UX-Phase 4: active_packages = die aktiven Paketnamen (≠core, sortiert) -> der Menue-Builder
+  -- (6b) active_packages = die aktiven Paketnamen (≠core, sortiert) -> der Menue-Builder
   --      beschriftet Knoepfe nicht aktiver Pakete ("nicht installiert") statt sie still ins Leere zeigen zu lassen.
   IF jsonb_typeof(r->'active_packages') IS DISTINCT FROM 'array' THEN
     RAISE EXCEPTION 'FAIL [(6b) active_packages kein Array]: %', r; END IF;
@@ -120,7 +119,7 @@ BEGIN
   IF (r->'active_packages') IS DISTINCT FROM '["career","finance"]'::jsonb THEN
     RAISE EXCEPTION 'FAIL [(6b) active_packages nicht ["career","finance"]]: %', r->'active_packages'; END IF;
 
-  -- ---------- (7) Leeres onboarding_state (career 0 Zeilen) -> kein Beitrag, KEIN Fehler ----------
+  -- ---------- (7) Leeres onboarding_state (career 0 Zeilen) -> kein Beitrag, kein Fehler ----------
   DELETE FROM career.onboarding_state;
   r := core.fn_onboarding_overview();
   IF (r->>'ok')::boolean IS DISTINCT FROM true THEN RAISE EXCEPTION 'FAIL [(7) ok<>true bei leerer Tabelle]: %', r; END IF;
@@ -148,7 +147,7 @@ BEGIN
   r := core.fn_onboarding_overview('999');
   IF r ? 'viewer_role' AND r->'viewer_role' <> 'null'::jsonb THEN RAISE EXCEPTION 'FAIL [(7b) viewer_role unbekannt muss null sein]: %', r->'viewer_role'; END IF;
 
-  -- ---------- (8) M3: EXECUTE unter core_ro (der Menue-Read-Pfad, mit chat_id wie im Menue-Sub) ----------
+  -- ---------- (8) EXECUTE unter core_ro (der Menue-Read-Pfad, mit chat_id wie im Menue-Sub) ----------
   SET LOCAL ROLE core_ro;
   r := core.fn_onboarding_overview();
   IF (r->>'ok')::boolean IS DISTINCT FROM true THEN RAISE EXCEPTION 'FAIL [(8) core_ro ok<>true]: %', r; END IF;

@@ -1,5 +1,5 @@
 -- tests/db/finance/test_recalc2_loan_special.sql
--- Zweitrechnung Runde 2, Kredit-Sonderfaelle: laufender Kredit (ohne Ursprungswerte), Restschuld zum Zinsbindungsende,
+-- Zweitrechnung Kredit-Sonderfaelle: laufender Kredit (ohne Ursprungswerte), Restschuld zum Zinsbindungsende,
 -- Tilgungsende, anfaengliche Tilgung, pausierter Kredit in der Summe, Dispo (ueberzogenes Konto) in der Vermoegens-Sicht.
 -- Erwartungen mit eigener PowerShell-Decimal-Schleife hergeleitet (Monatszins = Rest x Satz / 12 auf Cent, Tilgung =
 -- Rate - Zins), Gegenprobe geschlossene Formel. Werte erfunden.

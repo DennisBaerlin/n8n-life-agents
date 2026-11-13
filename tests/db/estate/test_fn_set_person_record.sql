@@ -1,5 +1,5 @@
 -- tests/db/estate/test_fn_set_person_record.sql
--- WS-2: Stammdaten-UPSERT (1 Zeile je Person) — Format-NORMALISIERUNG (Steuer-ID/RV-Nr.
+-- Stammdaten-UPSERT (1 Zeile je Person) — Format-Normalisierung (Steuer-ID/RV-Nr.
 -- leerzeichen-bereinigt, RV upper) + freundliche Regex-Spiegelung der Gesetz-CHECKs,
 -- partielles Update, unbekannte Person, Kind-Reject. Self-contained; BEGIN..ROLLBACK.
 BEGIN;
@@ -68,7 +68,7 @@ BEGIN
 
   -- Unbekannte Person (kein Haushaltsmitglied): der Tool-Resolve ist der Guard; erreicht ein bogus
   -- person_id die fn direkt, faengt die FK person_id -> agent.persons(person_id) sie ab (echte
-  -- Ausnahme, kein {ok:false}) — KEIN expliziter agent.persons-Read (der crashte unter estate_rw).
+  -- Ausnahme, kein {ok:false}) — kein expliziter agent.persons-Read (der crasht unter estate_rw).
   BEGIN
     v_r := estate.fn_set_person_record(jsonb_build_object(
         'chat_id','111', 'person_id','fremder', 'employer','X'));

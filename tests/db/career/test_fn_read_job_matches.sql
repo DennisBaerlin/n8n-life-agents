@@ -1,6 +1,6 @@
 -- tests/db/career/test_fn_read_job_matches.sql
--- career.fn_read_job_matches(chat_id, limit) — gebundenes Lesefenster der EIGENEN Job-Treffer (Security-Audit 2026-10,
--- Owner "strikt privat") + die Host-abgeleitete Sperre person-privater Tabellen in core.fn_provision_package_roles.
+-- career.fn_read_job_matches(chat_id, limit) — gebundenes Lesefenster der eigenen Job-Treffer
+-- (strikt privat) + die Host-abgeleitete Sperre person-privater Tabellen in core.fn_provision_package_roles.
 --   1) chat_id 111 (erika) -> nur erikas Treffer, neueste Bewertung zuerst; 222 (lena) -> nur lenas.
 --   2) NULL / nicht-numerisch / unaufgeloest -> leere Menge (fail-closed, kein RAISE).
 --   3) EXECUTE nur fuer career_rw; eine Frei-SQL-Sitzung (Login-Rolle *_ro) bekaeme selbst mit EXECUTE nichts.
@@ -52,7 +52,7 @@ BEGIN
   IF has_table_privilege('career_ro', 'career.job_matches', 'SELECT') OR has_table_privilege('core_ro', 'career.v_job_matches', 'SELECT') THEN
     RAISE EXCEPTION 'FAIL [4a] per_user-Flag aus dem Manifest sperrt die person-privaten Tabellen nicht';
   END IF;
-  -- (4b) Registry-Weg: Grant zuruecksetzen, Scope seeden, Aufruf OHNE Flag (spaeteres Re-Provisioning).
+  -- (4b) Registry-Weg: Grant zuruecksetzen, Scope seeden, Aufruf ohne Flag (spaeteres Re-Provisioning).
   GRANT SELECT ON career.job_matches, career.onboarding_state, career.v_job_matches TO career_ro, core_ro;
   INSERT INTO core.context_scopes (context_name, scope, write_permission, package)
   VALUES ('career_profile','per_user','own_user_only','career')
@@ -78,7 +78,7 @@ BEGIN
 END $$;
 
 -- 3) Frei-SQL-Rollen: kein EXECUTE (career_ro/core_ro), nur career_rw (das read_job_matches-Werkzeug). Defense in
--- depth: selbst MIT EXECUTE liefert eine Frei-SQL-Sitzung nichts — dafuer EXECUTE hier kurz an career_ro geben.
+-- depth: selbst mit EXECUTE liefert eine Frei-SQL-Sitzung nichts — dafuer EXECUTE hier kurz an career_ro geben.
 -- SET SESSION AUTHORIZATION aendert session_user (SET ROLE nicht) — genau das prueft core.fn_is_free_sql_session.
 DO $$
 BEGIN

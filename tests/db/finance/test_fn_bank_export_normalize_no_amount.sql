@@ -34,7 +34,7 @@ BEGIN
                   WHERE u->>'reason' IS DISTINCT FROM 'no_cash_amount' OR (u->>'cash_amount')::numeric <> 0) THEN
         RAISE EXCEPTION 'FAIL [A2 fuenf unknown, no_cash_amount, Geld 0]: %', v_res->'unknown_rows';
     END IF;
-    -- der Kauf ohne Betrag wird NICHT als Kauf gebucht (kind unknown, nie buy)
+    -- der Kauf ohne Betrag wird nicht als Kauf gebucht (kind unknown, nie buy)
     SELECT r INTO v_r FROM jsonb_array_elements(v_res->'rows') r WHERE (r->>'row_no')::int = 5;
     IF v_r->>'kind' <> 'unknown' OR v_r->>'reason' <> 'no_cash_amount' THEN
         RAISE EXCEPTION 'FAIL [A3 Kauf ohne Betrag = unknown]: %', v_r;

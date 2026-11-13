@@ -83,7 +83,7 @@ BEGIN
   g := pg_temp.gen();
   c := core.fn_menu_refresh_claim();
   IF (c->>'open')::boolean IS NOT TRUE OR (c->>'gen')::bigint <> g THEN RAISE EXCEPTION 'FAIL [3a] offen mit gen % erwartet: %', g, c; END IF;
-  PERFORM pg_temp.set_person('amr_owner', 'language', '"en"');           -- Auftrag WAEHREND des Laufs
+  PERFORM pg_temp.set_person('amr_owner', 'language', '"en"');           -- Auftrag waehrend des Laufs
   PERFORM core.fn_menu_refresh_finish((c->>'gen')::bigint, true);
   c := core.fn_menu_refresh_claim();
   IF (c->>'open')::boolean IS NOT TRUE OR (c->>'gen')::bigint <> g + 1 THEN

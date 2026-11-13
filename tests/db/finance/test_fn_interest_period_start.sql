@@ -1,9 +1,9 @@
 -- tests/db/finance/test_fn_interest_period_start.sql
--- WP-2: die geteilte Tiling-Quelle fn_interest_period_start (dom-aware period_start). Beweist:
---   (1) direkte Werte: dom=-1 rekonstruiert den Monatsletzten der Vorperiode (behebt den Overlap), erste
+-- Die geteilte Tiling-Quelle fn_interest_period_start (dom-aware period_start). Beweist:
+--   (1) direkte Werte: dom=-1 rekonstruiert den Monatsletzten der Vorperiode (kein Overlap), erste
 --       Periode clamped auf den Anker; fester dom / NULL-dom(Monatsend-Anker) / day / year korrekt,
 --   (2) Kachel-Invariante + 365-Tage-Partition: 12 dom=-1-Monatsperioden eines Nicht-Schaltjahres kacheln
---       lueckenlos (period_start(k) == period_end(k-1)) und decken EXAKT 365 Tage (kein Overlap, keine Luecke).
+--       lueckenlos (period_start(k) == period_end(k-1)) und decken exakt 365 Tage (kein Overlap, keine Luecke).
 BEGIN;
 DO $$
 DECLARE r RECORD; v_prev_end DATE; v_days INT; v_ps DATE;
@@ -46,8 +46,8 @@ BEGIN
     RAISE EXCEPTION 'FAIL [Partition]: Summe Deckungstage erwartet EXAKT 365 (kein Overlap/keine Luecke), got %', v_days; END IF;
   RAISE NOTICE 'PASS [(2) dom=-1 Kachel-Invariante + 365-Tage-Partition]';
 
-  -- ===== (3) Kalender-Raster bei dom=-1 (Befund 2026-10-24): Quartals-/Halbjahres-/Jahresende = Kalender-Ende =====
-  -- vierteljaehrlich, Start 24.10.: erste Teilperiode 24.10.-31.12., dann 31.12.-31.03. (vorher am Anker: 31.10./31.01.)
+  -- ===== (3) Kalender-Raster bei dom=-1: Quartals-/Halbjahres-/Jahresende = Kalender-Ende =====
+  -- vierteljaehrlich, Start 24.10.: erste Teilperiode 24.10.-31.12., dann 31.12.-31.03. (nicht am Anker: 31.10./31.01.)
   IF finance.fn_interest_period_start(DATE '2026-10-24', DATE '2026-12-31', 3, 'month', -1) <> DATE '2026-10-24' THEN
     RAISE EXCEPTION 'FAIL [Quartal Teilperiode]: erwartet Anker 2026-10-24, got %',
       finance.fn_interest_period_start(DATE '2026-10-24', DATE '2026-12-31', 3, 'month', -1); END IF;

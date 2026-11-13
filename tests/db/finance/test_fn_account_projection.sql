@@ -1,5 +1,5 @@
 -- tests/db/finance/test_fn_account_projection.sql
--- finance.fn_account_projection(acct, from, until, per_day) — der EINE Rechenkern der Kontovorschau (fn_account_outlook)
+-- finance.fn_account_projection(acct, from, until, per_day) — der eine Rechenkern der Kontovorschau (fn_account_outlook)
 -- und der Spar-Deckung (fn_account_funding): Tagesreihe = Stand zum Vortag + Buchungen + offene Dauerauftrags-Vorkommen
 -- (Quell-Seite signiert, Ziel-Seite eines Uebertrags in ZIELwaehrung) + Alltagsausgaben je Tag.
 --   1) Reihe auch an Tagen ohne Fluss, Zu-/Abfluss am selben Tag getrennt, Uebertrag aufs Konto zaehlt, per_day je Tag.
@@ -52,7 +52,7 @@ BEGIN
     RAISE EXCEPTION 'FAIL [2b] CHF-Ziel ohne Kurs -> Rohbetrag 100 + fx_gap, got %', r; END IF;
   RAISE NOTICE 'PASS [2] Ziel-Seite in Zielwaehrung, ohne Kurs Rohbetrag + fx_gap';
 
-  -- 3) Bruecke (Transparenz 2026-10-30): je Tag Buchungen (booked) getrennt von Dauerauftrags-Vorkommen
+  -- 3) Bruecke: je Tag Buchungen (booked) getrennt von Dauerauftrags-Vorkommen
   --    (planned_in / planned_out); inflow + outflow = booked + planned_in + planned_out
   INSERT INTO finance.transactions (account_id, amount, transaction_date, category) VALUES (v_a, -7, t + 2, 'other');
   SELECT * INTO r FROM finance.fn_account_projection(v_a, t, t + 10, 0) p WHERE p.day = t + 2;

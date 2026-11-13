@@ -1,15 +1,15 @@
 -- tests/db/cross/test_recalc2_edges.sql
--- Zweitrechnung Runde 2, Randfaelle quer: Notreserve im freien Geld (Runway), beendete Ruecklagen-Rate.
--- Erwartungen von Hand hergeleitet. Werte erfunden.
+-- Zweitrechnung, Randfaelle quer: Notreserve im freien Geld (Runway), beendete Ruecklagen-Rate.
+-- Erwartungen von Hand hergeleitet, Werte erfunden.
 -- Fachregeln:
 --   * Notreserve ist im Notfall verfuegbar (Verbraucherzentrale/Finanztip: Notgroschen auf dem Tagesgeld) und zaehlt
---     deshalb zum freien Geld der Runway; gedeckt ist sie nur mit dem Saldo, der NACH den anderen Zielen auf demselben
+--     deshalb zum freien Geld der Runway; gedeckt ist sie nur mit dem Saldo, der nach den anderen Zielen auf demselben
 --     Konto uebrig bleibt (kein Euro doppelt).
 --     Topf 2.500, darauf Urlaubsziel 1.000 und Notreserve 2.000 -> gedeckte Notreserve min(2.000, 2.500 - 1.000) = 1.500;
 --     Giro 4.000 ohne Ziel.
 --     (1) freies Geld = 4.000 + 1.500 = 5.500; zurueckgelegt (nicht frei) = 2.500 - 1.500 = 1.000; Notreserve 1.500.
 --     (2) Runway bei Pflicht 1.100/Monat: 5.500 / 1.100 = 5,0 -> genau 5 Monate.
---   * Ruecklagen-Rate gilt bis zum letzten Gueltigkeitstag; valid_to ist das erste NICHT mehr gueltige Datum.
+--   * Ruecklagen-Rate gilt bis zum letzten Gueltigkeitstag; valid_to ist das erste nicht mehr gueltige Datum.
 --     (3) Rate 100/Monat, valid_to = morgen -> laeuft heute noch: 100; valid_to = heute -> beendet: 0, Luecke = Empfehlung.
 --         Empfehlung 50 m2, Alter 10 Jahre: 50 x 11,50 / 12 = 47,92 -> 48.
 BEGIN;

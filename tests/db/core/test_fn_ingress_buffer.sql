@@ -5,12 +5,12 @@
 --     Payload nur text/file (action wait); solo = selbst-beansprucht, action process
 --   * claim: fehlende Zeile -> process ohne update (fail-open); fremde exec_id -> drop (Duplikat); schon beansprucht -> drop
 --   * solo (Befehl, auch nach fuehrendem Zeilenumbruch, Sprache) wird nie gebuendelt und wartet nie
---   * Weiterleiten mit Kommentar: Text + Datei -> EIN process mit zusammengefuehrtem Update (Datei primaer,
+--   * Weiterleiten mit Kommentar: Text + Datei -> ein process mit zusammengefuehrtem Update (Datei primaer,
 --     Texte als caption in message_id-Reihenfolge), der andere Lauf -> drop; Reihenfolge der Ankunft egal
 --   * mehrere Dateien: ein Lauf nimmt alle Dateien + Texte, frueheste primaer, weitere als message.extra_files;
 --     eine Spanne ueber 2 s kann zwei Laeufe ergeben, nie Verlust oder Doppel-Verarbeitung
 --   * gleitendes Fenster: juengste Ankunft < 1 s und eigene < 5 s -> wait; Obergrenze 5 s bzw. final -> process
---   * Buendel relativ zur EIGENEN Ankunft (2 s davor bis 10 s danach), nie relativ zur Uhr -> eine verspaetete
+--   * Buendel relativ zur eigenen Ankunft (2 s davor bis 10 s danach), nie relativ zur Uhr -> eine verspaetete
 --     Zeile verliert sich nie; eine aeltere unbeanspruchte Zeile (fail-open schon allein gelaufen) kommt nicht nochmal
 --   * zusammengefuehrtes Update ohne entities (Offsets passten nicht mehr)
 --   * anderer Absender im selben Chat (Gruppe) wird nie verschmolzen; beanspruchte Zeilen verlieren ihren Payload
@@ -105,7 +105,7 @@ BEGIN
   IF pg_temp.claim(1102, 'b')->>'action' IS DISTINCT FROM 'drop' THEN RAISE EXCEPTION 'FAIL reverse [Foto-Lauf nicht drop]'; END IF;
   RAISE NOTICE 'PASS reverse [Kommentar zuerst -> Datei primaer, Texte in message_id-Reihenfolge]';
 
-  -- ---------- mehrere Dateien + Kommentar: EIN Lauf nimmt alles, egal wer zuerst zugreift ----------
+  -- ---------- mehrere Dateien + Kommentar: ein Lauf nimmt alles, egal wer zuerst zugreift ----------
   -- spaete Datei greift zuerst zu
   r := pg_temp.rec(pg_temp.upd(1201, 900203, 900203, 400, 'doc', NULL), 'f1');
   r := pg_temp.rec(pg_temp.upd(1202, 900203, 900203, 401, 'doc', NULL), 'f2');

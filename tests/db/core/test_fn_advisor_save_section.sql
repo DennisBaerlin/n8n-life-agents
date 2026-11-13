@@ -2,7 +2,7 @@
 -- Testet fn_advisor_save_section: Draft-Anlage + Sektions-Upsert in interview_state.
 -- Vertrag: {ok:true, plan_id, version, status, sections, section_count} |
 --          korrigierbar (leerer section_key/content, invalides section_data-JSON) -> {ok:false, reason}.
--- Invarianten (DB-Gesetz): genau EIN draft pro domain (Partial-UNIQUE), UNIQUE(domain, version).
+-- Invarianten (DB-Gesetz): genau ein draft pro domain (Partial-UNIQUE), UNIQUE(domain, version).
 BEGIN;
 
 DO $$
@@ -59,7 +59,7 @@ BEGIN
   RAISE NOTICE 'PASS fn_advisor_save_section [zweite Sektion, section_count=2]';
 
   -- TEST 2b: reine Textsektion: leeres section_data (das Tool-Binding liefert beim Weglassen '') zaehlt als nicht angegeben
-  -- (Befund 2026-11-02: die Ablehnung kam erst nach der bestaetigten Karte).
+  -- (sonst kaeme die Ablehnung erst nach der bestaetigten Karte).
   SELECT agent.fn_advisor_save_section(jsonb_build_object(
     'domain', '__test_domain__', 'section_key', 'prose_empty',
     'section_content', 'Nur Text.', 'section_data', ''
@@ -112,7 +112,7 @@ BEGIN
   END IF;
   RAISE NOTICE 'PASS fn_advisor_save_section [section_data JSON-String geparst]';
 
-  -- TEST 5: invalides section_data-JSON -> {ok:false}, KEIN Write (Korrigierbare Ablehnung)
+  -- TEST 5: invalides section_data-JSON -> {ok:false}, kein Write (korrigierbare Ablehnung)
   SELECT agent.fn_advisor_save_section(jsonb_build_object(
     'domain',          '__test_domain__',
     'section_key',     'broken',
@@ -146,8 +146,8 @@ BEGIN
   END IF;
   RAISE NOTICE 'PASS fn_advisor_save_section [leerer section_content -> ok:false]';
 
-  -- TEST 8 (Phase B): domain ist Pflicht — kein domain im Payload -> {ok:false}, KEIN Draft (vorher landete
-  -- der Write still unter 'finance'; Core kennt kein Paket)
+  -- TEST 8: domain ist Pflicht — kein domain im Payload -> {ok:false}, kein Draft (ein stiller Default
+  -- 'finance' waere falsch; Core kennt kein Paket)
   SELECT agent.fn_advisor_save_section(jsonb_build_object(
     'plan_name', '__test_default_domain__', 'section_key', 's1', 'section_content', 'x'
   )) INTO v_result;
@@ -162,8 +162,8 @@ BEGIN
   END IF;
   RAISE NOTICE 'PASS fn_advisor_save_section/publish_plan [domain Pflicht -> ok:false ohne Write]';
 
-  -- TEST 8b (WS-5b owner_only-Backstop): gepairter Nicht-Owner darf KEINE Plaene schreiben (Owner-Vorgabe 6).
-  -- family-Fixture (erika owner@111, lena partner@222). chat_id=222 -> {ok:false, owner_only}, KEIN Draft.
+  -- TEST 8b (owner_only-Backstop): gepairter Nicht-Owner darf keine Plaene schreiben.
+  -- family-Fixture (erika owner@111, lena partner@222). chat_id=222 -> {ok:false, owner_only}, kein Draft.
   INSERT INTO agent.core_contexts (name, description, agent_name, load_strategy, content, metadata)
   VALUES ('family', 'save_section owner-check fixture', NULL, 'lazy', E'## fam',
           jsonb_build_object('managed_by','agent','protected', true,
@@ -222,7 +222,7 @@ BEGIN
 
 END $$;
 
--- TEST 11 (WP3): as_of stempelt die fn, relative Daten rechnet die DB
+-- TEST 11: as_of stempelt die fn, relative Daten rechnet die DB
 DO $$
 DECLARE
   v_result JSONB;
@@ -249,7 +249,7 @@ BEGIN
   RAISE NOTICE 'PASS save_section [as_of je Objekt-Block von der fn, LLM-Wert ueberschrieben, +2 years -> YYYY]';
 END $$;
 
--- TEST 12 (S2.11): unbekannter section_key -> {ok:false, code, valid_keys} OHNE Write, sobald der Textkatalog des
+-- TEST 12: unbekannter section_key -> {ok:false, code, valid_keys} ohne Write, sobald der Textkatalog des
 -- Pakets Abschnitts-Keys fuehrt; ohne Katalog-Keys (Test-DB, Paket ohne Plan) bleibt der Key frei.
 DO $$
 DECLARE

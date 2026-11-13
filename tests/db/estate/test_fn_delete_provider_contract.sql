@@ -1,6 +1,6 @@
 -- tests/db/estate/test_fn_delete_provider_contract.sql
--- WS-2: Vertrags-Loeschung — Kategorie-Filter disambiguiert, Ambiguitaet/not-found = RAISE
--- (Backstop hinter dem Tool-Resolve), Kind-Reject VOR dem Resolve. Self-contained.
+-- Vertrags-Loeschung — Kategorie-Filter disambiguiert, Ambiguitaet/not-found = RAISE
+-- (Backstop hinter dem Tool-Resolve), Kind-Reject vor dem Resolve. Self-contained.
 BEGIN;
 
 DO $$
@@ -22,7 +22,7 @@ BEGIN
   INSERT INTO estate.provider_contracts (provider, category) VALUES
       ('Telekom', 'telecom'), ('Telekom', 'media');
 
-  -- Kind-Reject (VOR Resolve/Delete):
+  -- Kind-Reject (vor Resolve/Delete):
   v_r := estate.fn_delete_provider_contract(jsonb_build_object('chat_id','333', 'provider','Telekom'));
   IF (v_r->>'ok')::boolean OR v_r->>'reason' NOT LIKE '%adults_only%' THEN
     RAISE EXCEPTION 'FAIL [child reject]: %', v_r;
@@ -37,7 +37,7 @@ BEGIN
     RAISE EXCEPTION 'FAIL [ambiguous -> ok:false]: %', v_r; END IF;
   RAISE NOTICE 'PASS [ambig ohne Filter -> ok:false (Probelauf vor der Karte)]';
 
-  -- Kategorie-Filter disambiguiert -> genau EINE Zeile weg:
+  -- Kategorie-Filter disambiguiert -> genau eine Zeile weg:
   v_r := estate.fn_delete_provider_contract(jsonb_build_object(
       'chat_id','111', 'provider','Telekom', 'category','media'));
   IF NOT (v_r->>'ok')::boolean OR v_r->>'action' <> 'deleted' THEN

@@ -1,6 +1,6 @@
 ﻿#Requires -Version 5.1
 # render_stickers.ps1 -- erzeugt die Persona-Sticker packages/core/build/stickers/<code>_<ausdruck>.webp (512 x 512 px)
-# aus der Quelle packages/core/build/stickers/stickers.js (Bot mit Gesicht, 2026-10-30). Die WebP-Dateien sind
+# aus der Quelle packages/core/build/stickers/stickers.js. Die WebP-Dateien sind
 # committet: der Release-Tarball bringt sie nach /usr/local/lib/lifeagents/packages/core/build/stickers/, der lokale
 # Gateway (provisioning/llm_gateway, Route /__telegram/sendSticker) laedt sie von dort hoch.
 # Nach jeder Aenderung an stickers.js neu laufen lassen und die Dateien mit-committen.

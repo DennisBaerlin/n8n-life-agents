@@ -1,6 +1,6 @@
 -- tests/db/finance/test_fn_next_step_example.sql
 -- finance.fn_next_step_example(p_person_id text) — Beispielsatz fuer den naechsten Schritt (Aufrufer: core.fn_get_next_step_example).
--- Key 'finance.next_step.example' genau dann, wenn ein Geld-Konto nach der Regel der Plan-Reife existiert UND die Person
+-- Key 'finance.next_step.example' genau dann, wenn ein Geld-Konto nach der Regel der Plan-Reife existiert und die Person
 -- den Haushalt sieht (owner/partner); sonst NULL. Der Onboarding-Abschnittsstatus zaehlt nicht.
 --   1) kein Konto / nur Depot / geschlossenes Geld-Konto -> NULL
 --   2) Geld-Konto da: owner/partner -> Key; child, unbekannt, NULL -> NULL; Abschnitt accounts uebersprungen -> Key

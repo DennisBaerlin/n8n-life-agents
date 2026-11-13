@@ -1,10 +1,10 @@
 -- tests/db/core/test_core_only.sql
--- Phase B Pflicht-Testfall: der Core laeuft OHNE jedes Domaenen-Paket (Core-only-Install bzw. nach einer
+-- Der Core laeuft ohne jedes Domaenen-Paket (Core-only-Install bzw. nach einer
 -- `--keep-data`-Deinstallation, bei der Registry-/Monitor-Zeilen auf ein fehlendes Paket zeigen).
--- Im Test-TX werden ALLE Paket-Schemas gedroppt (DDL ist transaktional und kommt per
+-- Im Test-TX werden alle Paket-Schemas gedroppt (DDL ist transaktional und kommt per
 -- ROLLBACK zurueck); die Registry-Zeilen bleiben stehen (= der verwaiste Zustand). Danach muessen alle
--- generisch umgebauten Core-Pfade fehlerfrei laufen:
---   Monitor-Heartbeat (verwaister fx-Trigger wird GEPARKT, kein RAISE, kein fail_streak), Probe + Anlage einer
+-- generischen Core-Pfade fehlerfrei laufen:
+--   Monitor-Heartbeat (verwaister fx-Trigger wird geparkt, kein RAISE, kein fail_streak), Probe + Anlage einer
 --   fehlenden Paket-Methode ({ok:false}), Lern-Sammler, E2E-Cleanup, Onboarding-Reset, Werkszustand-Reset.
 -- BEGIN...ROLLBACK -> kein Residual-State.
 BEGIN;
@@ -31,7 +31,7 @@ DECLARE
   r     jsonb;
   v_row agent.monitor_triggers%ROWTYPE;
 BEGIN
-  -- Monitor-Heartbeat: verwaister fx-Trigger geparkt (vorher: undefined_table -> ganzer Lauf tot)
+  -- Monitor-Heartbeat: verwaister fx-Trigger geparkt (sonst undefined_table -> ganzer Lauf tot)
   r := agent.fn_monitor_evaluate('{}'::jsonb);
   SELECT * INTO v_row FROM agent.monitor_triggers WHERE label = 'zz orphan fx';
   IF (r->>'ok')::boolean IS DISTINCT FROM true OR v_row.fail_streak <> 0 OR v_row.last_checked_at IS NOT NULL THEN

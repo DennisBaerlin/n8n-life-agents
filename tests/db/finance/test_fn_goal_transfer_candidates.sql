@@ -1,6 +1,6 @@
 -- tests/db/finance/test_fn_goal_transfer_candidates.sql
--- Testet finance.fn_goal_transfer_candidates: freistehende Dauerauftraege in einen Sparziel-Topf (Befund
---   2026-10-27: ein bestehender Uebertrag wurde geloescht und als Ziel-Rate ohne Tag neu angelegt).
+-- Testet finance.fn_goal_transfer_candidates: freistehende Dauerauftraege in einen Sparziel-Topf (ein bestehender
+--   Uebertrag darf nicht geloescht und als Ziel-Rate ohne Tag neu angelegt werden).
 BEGIN;
 
 DO $$

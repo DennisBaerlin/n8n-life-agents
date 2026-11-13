@@ -1,9 +1,9 @@
 -- tests/db/core/test_fn_advisor_publish_plan.sql
--- Testet fn_advisor_publish_plan: Draft -> active (+ Vorgaenger superseded) UND Upsert des
--- Domaenen-Plan-Doc (finance->'financial_planning', WS-B2c; Test-Domain->'<domain>_planning';
+-- Testet fn_advisor_publish_plan: Draft -> active (+ Vorgaenger superseded) und Upsert des
+-- Domaenen-Plan-Doc (finance->'financial_planning'; Test-Domain->'<domain>_planning';
 -- lazy, agent_name=NULL, managed_by='agent' [Spalte], package=Domain)
--- in EINER Transaktion. Korrigierbar (kein Draft, leeres plan_md) -> {ok:false, reason}.
--- Invariante (DB-Gesetz): genau EIN aktiver Plan pro Domain (Partial-UNIQUE).
+-- in einer Transaktion. Korrigierbar (kein Draft, leeres plan_md) -> {ok:false, reason}.
+-- Invariante (DB-Gesetz): genau ein aktiver Plan pro Domain (Partial-UNIQUE).
 -- Negativ-Test: finance_ro darf advisor_plans lesen, aber nicht schreiben.
 BEGIN;
 
@@ -24,7 +24,7 @@ BEGIN
   )) INTO v_result;
   v_plan_v1 := (v_result->>'plan_id')::int;
 
-  -- TEST 0 (WS-5b owner_only-Backstop): gepairter Nicht-Owner darf KEINEN Plan publizieren (Owner-Vorgabe 6).
+  -- TEST 0 (owner_only-Backstop): gepairter Nicht-Owner darf keinen Plan publizieren.
   -- family-Fixture (erika owner@111, lena partner@222). Owner-Check laeuft VOR dem Draft-/plan_md-Check.
   INSERT INTO agent.core_contexts (name, description, agent_name, load_strategy, content, metadata)
   VALUES ('family', 'publish owner-check fixture', NULL, 'lazy', E'## fam',
@@ -82,7 +82,7 @@ BEGIN
     RAISE EXCEPTION 'FAIL fn_advisor_publish_plan [v1]: Plan-Zeile nicht active/plan_md fehlt';
   END IF;
   RAISE NOTICE 'PASS fn_advisor_publish_plan [v1 -> active]';
-  -- Plan teilen (2026-10-28): change_summary + Sprache des Owners als Provenienz der Version gespeichert
+  -- Plan teilen: change_summary + Sprache des Owners als Provenienz der Version gespeichert
   IF (SELECT change_summary FROM agent.advisor_plans WHERE id = v_plan_v1) IS DISTINCT FROM 'Erste Fassung: Notgroschen festgelegt'
      OR (SELECT change_summary_lang FROM agent.advisor_plans WHERE id = v_plan_v1)
         IS DISTINCT FROM (agent.fn_person_lang(agent.fn_owner_person_id())->>'lang') THEN
@@ -165,15 +165,15 @@ BEGIN
     RAISE NOTICE 'PASS advisor_plans [Partial-UNIQUE: ein aktiver Plan pro Domain]';
   END;
 
-  -- TEST 6 (Paket-Isolation, O1): nach der Finance-Extraktion ist finance_ro ENG auf `finance`
-  -- skopiert → ein DIREKTER SELECT auf agent.advisor_plans MUSS scheitern (Isolation); der Advisor
-  -- liest die Plaene nur noch ueber die publizierte SECURITY-DEFINER-Read-fn core.fn_advisor_read_plan
+  -- TEST 6 (Paket-Isolation): finance_ro ist eng auf `finance` skopiert → ein direkter SELECT auf
+  -- agent.advisor_plans muss scheitern (Isolation); der Advisor liest die Plaene nur ueber die
+  -- publizierte SECURITY-DEFINER-Read-fn core.fn_advisor_read_plan
   -- (EXECUTE-GRANT via core.fn_provision_package_roles). Schreiben bleibt verwehrt.
-  -- (Nur sinnvoll, wenn finance_ro PAKET-PROVISIONIERT ist — sonst SKIP.)
+  -- (Nur sinnvoll, wenn finance_ro paket-provisioniert ist, sonst SKIP.)
   IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'finance_ro')
      AND has_function_privilege('finance_ro', 'core.fn_advisor_read_plan(text, text)', 'EXECUTE') THEN
     SET LOCAL ROLE finance_ro;
-    -- (a) DIREKTER Tabellenzugriff scheitert physisch (VF3 fuer advisor_plans)
+    -- (a) direkter Tabellenzugriff scheitert physisch
     BEGIN
       PERFORM count(*) FROM agent.advisor_plans;
       RESET ROLE;
@@ -195,7 +195,7 @@ BEGIN
     RAISE NOTICE 'SKIP advisor_plans [finance_ro nicht paket-provisioniert auf dieser DB]';
   END IF;
 
-  -- ===== WS1a: Compose-on-Publish (section_data -> metadata.facts; Facts-Key-Merge) =====
+  -- ===== Compose-on-Publish (section_data -> metadata.facts; Facts-Key-Merge) =====
   -- 7a: neuer Draft mit strukturiertem section_data (goal-Block) -> Publish -> facts.goal + _meta-Stempel.
   PERFORM agent.fn_advisor_save_section(jsonb_build_object('domain','__test_pubdom__','section_key','objectives',
     'section_content','Ziele.','section_data', jsonb_build_object('goal', jsonb_build_object('horizon_years',25))));
@@ -207,7 +207,7 @@ BEGIN
     RAISE EXCEPTION 'FAIL [compose 7a]: _meta.last_confirmed_at nicht gesetzt: %', v_facts; END IF;
   RAISE NOTICE 'PASS [compose 7a: section_data.goal -> metadata.facts + _meta-Stempel]';
 
-  -- 7b (P1-A): neuer Draft mit ANDEREM Block (target_allocation) -> Publish -> goal BEWAHRT + neuer Block dazu.
+  -- 7b: neuer Draft mit anderem Block (target_allocation) -> Publish -> goal bewahrt + neuer Block dazu.
   PERFORM agent.fn_advisor_save_section(jsonb_build_object('domain','__test_pubdom__','section_key','wealth',
     'section_content','x','section_data', jsonb_build_object('target_allocation', jsonb_build_object('rebalance_drift_pp',5))));
   PERFORM agent.fn_advisor_publish_plan(jsonb_build_object('domain','__test_pubdom__','plan_md','# Plan v4'));
@@ -218,7 +218,7 @@ BEGIN
     RAISE EXCEPTION 'FAIL [compose 7b P1-A]: neuer Block fehlt: %', v_facts; END IF;
   RAISE NOTICE 'PASS [compose 7b: Facts-Key-Merge bewahrt ungetouchte Bloecke (P1-A)]';
 
-  -- 7c (P1-C): Draft OHNE section_data -> Publish -> geseedete facts BEWAHRT, nur _meta-Stempel frisch.
+  -- 7c: Draft ohne section_data -> Publish -> geseedete facts bewahrt, nur _meta-Stempel frisch.
   PERFORM agent.fn_advisor_save_section(jsonb_build_object('domain','__test_pubdom__','section_key','note','section_content','just prose'));
   PERFORM agent.fn_advisor_publish_plan(jsonb_build_object('domain','__test_pubdom__','plan_md','# Plan v5'));
   SELECT metadata->'facts' INTO v_facts FROM agent.core_contexts WHERE name='__test_pubdom___planning';
@@ -227,9 +227,9 @@ BEGIN
     RAISE EXCEPTION 'FAIL [compose 7c P1-C]: Leer-Compose hat geseedete facts nukliert: %', v_facts; END IF;
   RAISE NOTICE 'PASS [compose 7c: Leer-Compose bewahrt geseedete facts (P1-C)]';
 
-  -- ===== WS3: Naht-Backstop — deterministischer Block-Kollisions-Guard =====
-  -- 8a: zwei VERSCHIEDENE Sektionen emittieren beide den Top-Block 'goal' -> Publish {ok:false, reason}
-  --     OHNE Write (nicht-deterministischer jsonb_each-Merge wuerde sonst still eine Haelfte verlieren).
+  -- ===== Naht-Backstop — deterministischer Block-Kollisions-Guard =====
+  -- 8a: zwei verschiedene Sektionen emittieren beide den Top-Block 'goal' -> Publish {ok:false, reason}
+  --     ohne Write (nicht-deterministischer jsonb_each-Merge wuerde sonst still eine Haelfte verlieren).
   --     Frischer Draft (nach 7c gibt es keinen) mit zwei kollidierenden Sektionen.
   PERFORM agent.fn_advisor_save_section(jsonb_build_object('domain','__test_pubdom__','section_key','sec_a',
     'section_content','a','section_data', jsonb_build_object('goal', jsonb_build_object('withdrawal_rate_pct',4))));
@@ -243,8 +243,8 @@ BEGIN
     RAISE EXCEPTION 'FAIL [8a collision]: Draft wurde trotz Kollision konsumiert (Write trotz ok:false)'; END IF;
   RAISE NOTICE 'PASS [8a: Block-Kollision -> ok:false, kein Write (Draft bleibt)]';
 
-  -- 8b: kein false-positive — eine Sektion mit ZWEI Bloecken (target_allocation + glidepath) ist erlaubt.
-  --     Kollision aufloesen: sec_b auf andere Bloecke umstellen -> nur EINE 'goal'-Quelle bleibt (sec_a).
+  -- 8b: kein false-positive — eine Sektion mit zwei Bloecken (target_allocation + glidepath) ist erlaubt.
+  --     Kollision aufloesen: sec_b auf andere Bloecke umstellen -> nur eine 'goal'-Quelle bleibt (sec_a).
   PERFORM agent.fn_advisor_save_section(jsonb_build_object('domain','__test_pubdom__','section_key','sec_b',
     'section_content','b','section_data', jsonb_build_object(
       'target_allocation', jsonb_build_object('rebalance_drift_pp',5),
@@ -256,8 +256,8 @@ BEGIN
 
 END $$;
 
--- ===== Phase A Bugfix (E10): "## Gelernt" ist ein system-verwalteter Block =====
--- Vorher ersetzte jeder Publish content = plan_md und loeschte still alle bestaetigten Lern-Notizen.
+-- ===== "## Gelernt" ist ein system-verwalteter Block =====
+-- Ein Publish darf die bestaetigten Lern-Notizen nicht ueberschreiben (content = plan_md loeschte sie sonst still).
 DO $$
 DECLARE
   v_result JSONB;
@@ -299,9 +299,9 @@ BEGIN
 END $$;
 
 
--- ===== Bugfix-Runde (B5): freundliche Vorpruefung der Plan-Fakten VOR jedem Write =====
--- Vorher pruefte nur der Trigger (RAISE -> Owner-Alarm; fuer per_user lief der Paket-Validator dort gar nicht).
--- Jetzt: Core-Form + Paket-Validator des BASIS-Namens -> {ok:false, reason}, Draft bleibt Draft, kein Doc-Write.
+-- ===== Freundliche Vorpruefung der Plan-Fakten vor jedem Write =====
+-- Der Trigger allein loest RAISE -> Owner-Alarm aus (fuer per_user lief der Paket-Validator dort gar nicht);
+-- daher prueft die fn vorab Core-Form + Paket-Validator des Basis-Namens -> {ok:false, reason}, Draft bleibt Draft, kein Doc-Write.
 DO $$
 DECLARE
   v_result JSONB;

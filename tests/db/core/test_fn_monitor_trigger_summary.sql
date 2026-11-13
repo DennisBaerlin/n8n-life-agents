@@ -1,7 +1,7 @@
 -- tests/db/core/test_fn_monitor_trigger_summary.sql
--- WS4a: core.fn_monitor_trigger_summary(domain) -> (armed int, fired int) — publiziertes Lesefenster (D10),
+-- core.fn_monitor_trigger_summary(domain) -> (armed int, fired int) — publiziertes Lesefenster (D10),
 --   damit der Advisor-Cron unter finance_ro die armed/fired-Zaehler aus agent.monitor_triggers lesen kann.
---   Prueft: Zaehlung je Domain (disabled zaehlt nirgends), leere/unbekannte Domain -> 0, + VF3 (finance_ro).
+--   Prueft: Zaehlung je Domain (disabled zaehlt nirgends), leere/unbekannte Domain -> 0, + Rollen-Pfad (finance_ro).
 --   Muster: BEGIN…ROLLBACK; db_test hat kein seed_data -> monitor_triggers ist leer, wir seeden selbst.
 BEGIN;
 
@@ -27,7 +27,7 @@ BEGIN
   RAISE NOTICE 'PASS core.fn_monitor_trigger_summary [armed/fired je Domain, disabled exkludiert, leer->0]';
 END $$;
 
--- ---------- VF3 (D10): finance_ro liest ueber das Fenster, NICHT direkt agent.monitor_triggers ----------
+-- ---------- Cross-Schema-Read-Regel (D10): finance_ro liest ueber das Fenster, nicht direkt agent.monitor_triggers ----------
 DO $$
 DECLARE v_armed int; v_blocked boolean := false;
 BEGIN

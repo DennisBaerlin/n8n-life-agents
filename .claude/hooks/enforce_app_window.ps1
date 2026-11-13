@@ -1,5 +1,5 @@
 # PreToolUse-Hook (Edit|Write|NotebookEdit|Bash|PowerShell): die Mini-App aendert sich nur mit Zustimmung des Owners
-# (Owner-Regel 2026-11-01: die Darstellung ist immer ein eigener Plan). Hart per 'deny' (Hook-'ask' wird in der
+# (Owner-Regel: die Darstellung ist immer ein eigener Plan). Hart per 'deny' (Hook-'ask' wird in der
 # VS-Code-Erweiterung still durchgewinkt, siehe enforce_owner_window.ps1).
 #
 # APP-FENSTER: scripts/grant_app_window.ps1 (nur der Owner, im Terminal) schreibt .claude/app_grant.txt im Haupt-Checkout

@@ -1,7 +1,7 @@
 -- tests/db/finance/test_fn_book_interest_occurrence.sql
 -- Bucht eine Zinsgutschrift: transaction_date=value_date, interest_period_end=period_end (Idempotenz-/booked-Key);
--- Betrag DB-berechnet (fn_interest_amount_due am period_end) ODER Override; amount<=0 -> {ok:false}.
--- Inkl. Arrears-Zinseszins ueber 2 Perioden in EINEM Backfill (period_end ASC -> Periode 2 sieht die Gutschrift 1).
+-- Betrag DB-berechnet (fn_interest_amount_due am period_end) oder Override; amount<=0 -> {ok:false}.
+-- Inkl. Arrears-Zinseszins ueber 2 Perioden in einem Backfill (period_end ASC -> Periode 2 sieht die Gutschrift 1).
 BEGIN;
 
 DO $$
@@ -10,7 +10,7 @@ DECLARE
   v_acct INT;
   v_tx   INT;
 BEGIN
-  -- ===== Buchen OHNE Override: DB-berechnet (4% jaehrlich, 10000, period_end = echtes Jahres-Ende) =====
+  -- ===== Buchen ohne Override: DB-berechnet (4% jaehrlich, 10000, period_end = echtes Jahres-Ende) =====
   SELECT finance.fn_create_account(
     '{"name":"__test_int_book__","account_type":"cash","currency":"EUR","interest_rate":4,"interest_credit_unit":"year","interest_valid_from":"2026-01-01"}'::jsonb
   ) INTO v_res;
@@ -77,7 +77,7 @@ BEGIN
   END IF;
   RAISE NOTICE 'PASS [amount=0 -> ok:false, kein Write]';
 
-  -- ===== Arrears-Zinseszins ueber 2 Perioden in EINEM Backfill (B2) =====
+  -- ===== Arrears-Zinseszins ueber 2 Perioden in einem Backfill (B2) =====
   -- 12% monatlich auf 10000, 30E/360, Arrears (value_date im Folgemonat). period_end ASC gebucht ->
   -- Periode 2 sieht die Gutschrift aus Periode 1 (transaction_date <= period_end_2), kompoundiert.
   SELECT finance.fn_create_account(
@@ -98,8 +98,8 @@ BEGIN
   IF (v_res->>'amount')::numeric IS DISTINCT FROM 101.00 THEN RAISE EXCEPTION 'FAIL [backfill p2 compound]: erwartet 101.00, got %', v_res->>'amount'; END IF;
   RAISE NOTICE 'PASS [Arrears-Zinseszins 2 Perioden im Backfill: 100.00 -> 101.00]';
 
-  -- ===== WS-Z4: Buchung auf einen nicht-zins-faehigen Kontotyp (Kredit) -> {ok:false}, kein Write =====
-  -- (schliesst das manuelle Buchungs-Loch; der Eligibility-Guard greift VOR der Betragsberechnung)
+  -- ===== Buchung auf einen nicht-zins-faehigen Kontotyp (Kredit) -> {ok:false}, kein Write =====
+  -- (der Eligibility-Guard greift vor der Betragsberechnung)
   -- loan-Konto direkt (fn_create_account lehnt loan ab; Kredit-Konten legt nur fn_create_loan an)
   WITH i AS (INSERT INTO finance.accounts (name, account_type, currency) VALUES ('__test_int_loan_book__', 'loan', 'EUR') RETURNING id)
     SELECT jsonb_build_object('account_id', id) INTO v_res FROM i;

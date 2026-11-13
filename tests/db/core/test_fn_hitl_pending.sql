@@ -3,10 +3,10 @@
 -- fn_delete_hitl_pending / fn_get_hitl_pending_state.
 -- Invarianten:
 --   * create legt eine Zeile (Ursprungs-Chat, execution, own_card) mit expires_at = now() + ttl an -> state 'own'
---   * zweite Karte im selben Chat = zweite Zeile (live lagen 3 Karten gleichzeitig offen); Upsert je execution
+--   * zweite Karte im selben Chat = zweite Zeile (mehrere Karten koennen gleichzeitig offen sein); Upsert je execution
 --   * own_card=false (Freigabe durch jemand anderen) -> state 'other'; eine eigene Karte hat Vorrang ('own')
 --   * released: nur die eigene execution, Sperre bleibt bis zur Gnadenfrist (Kette antwortet noch); grace 0 = sofort frei
---   * delete (Orchestrator nach seiner Antwort) loescht NUR freigegebene Zeilen des Chats, nie offene Karten
+--   * delete (Orchestrator nach seiner Antwort) loescht nur freigegebene Zeilen des Chats, nie offene Karten
 --   * abgelaufene Zeile zaehlt nicht (expires_at ist die Wahrheit); create raeumt Abgelaufene weg
 --   * nicht-numerische chat_id (Test-Sentinel) -> {ok:false}, keine Zeile; fehlende Pflichtfelder (Bau-Fehler) -> RAISE
 --   * leere execution_id beim Freigeben (Error-Trigger ohne execution) -> no-op statt RAISE; state(NULL) -> NULL

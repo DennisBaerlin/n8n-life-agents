@@ -1,9 +1,9 @@
 -- tests/db/finance/test_fn_card_hints.sql
--- Weiche Warnungen als Karten-Hinweis statt Chat-Rueckfrage (Paket DB-ist-das-Gesetz S2/S6). Die Write-fn liefert
+-- Weiche Warnungen als Karten-Hinweis statt Chat-Rueckfrage. Die Write-fn liefert
 -- card_lines [{kind:'note', value:'finance.note.*', params}] im Ergebnis; der Probelauf haengt sie an die Karte.
 -- Hohe Schwelle (NN/g: zu viele Warnungen werden ueberlesen):
 --   (1) fn_create_account: aehnliches Konto = gleicher Typ + gleiche Bank (ohne Gross-/Kleinschreibung) + gleicher
---       Inhaber, und KEINE zwei verschiedenen bekannten Kontonummern -> finance.note.similar_account {name}.
+--       Inhaber, und keine zwei verschiedenen bekannten Kontonummern -> finance.note.similar_account {name}.
 --       Anderer Typ / beide IBANs bekannt und verschieden -> kein Hinweis.
 --   (2) fn_book_transaction: gleiches Konto + gleicher Betrag (mit Vorzeichen) + Datum +-3 Tage
 --       -> finance.note.possible_duplicate {date, amount}; anderer Betrag -> kein Hinweis.
@@ -55,7 +55,7 @@ BEGIN
   RAISE NOTICE 'PASS card_hints [aehnliches Konto, moegliche Doppelbuchung bei Buchung + Umbuchung, hohe Schwelle]';
 END $$;
 
--- (4) Owner-Entscheid 2026-10-23 (Rest): aehnliche Versicherung/Kredit/Immobilie/Sparziel/Sparplan als Karten-Hinweis
+-- (4) aehnliche Versicherung/Kredit/Immobilie/Sparziel/Sparplan als Karten-Hinweis
 --     finance.note.similar_entry {name}; hohe Schwelle je Typ. Gegenprobe: abweichender Wert -> kein Hinweis.
 DO $$
 DECLARE r jsonb; v_acct int; v_pot int; v_settle int; v_depot int;

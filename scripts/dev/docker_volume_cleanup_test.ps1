@@ -2,7 +2,7 @@
 # Selbsttest: der Abbau der Test-Container (-Down, -Reset, SessionEnd-Hook) laesst kein anonymes Docker-Volume zurueck.
 # Hintergrund: Die Images der Test-Substrate deklarieren VOLUME (Postgres: /var/lib/postgresql/data); Docker legt dafuer beim Anlegen des
 # Containers ein namenloses Volume (64-Hex-Name) an. `docker rm -f` entfernt nur den Container, das Volume bleibt verwaist liegen
-# (2026-11-06: 201 Stueck, ~17 GB). Erst `docker rm -fv` raeumt es mit weg. Benannte Volumes fasst `-v` nie an.
+# (Symptom: viele GB Plattenplatz). Erst `docker rm -fv` raeumt es mit weg. Benannte Volumes fasst `-v` nie an.
 #
 # Zwei Teile:
 #   1) statisch (immer): kein `docker rm` ohne -v in scripts/, .claude/hooks/ und .github/workflows/ (faengt auch -Reset und neue Abbau-Stellen).

@@ -14,7 +14,7 @@ BEGIN
   INSERT INTO finance.depot_holdings (account_id, isin, symbol, name, shares, average_purchase_price, currency)
     VALUES (v_depot, 'CCISIN', 'CC', 'CC ETF', 0, NULL, 'EUR') RETURNING id INTO v_holding;
 
-  -- (1) buy OHNE holding_id -> verletzt 'buy ⟹ holding_id NOT NULL'
+  -- (1) buy ohne holding_id -> verletzt 'buy ⟹ holding_id NOT NULL'
   v_blocked := FALSE;
   BEGIN
     INSERT INTO finance.transactions (account_id, amount, transaction_date, category, holding_id, shares)
@@ -22,7 +22,7 @@ BEGIN
   EXCEPTION WHEN OTHERS THEN v_blocked := TRUE; END;
   IF NOT v_blocked THEN RAISE EXCEPTION 'FAIL category [buy ohne holding_id nicht blockiert]'; END IF;
 
-  -- (2) fee mit POSITIVEM Betrag -> verletzt 'fee ⟹ amount < 0'
+  -- (2) fee mit positivem Betrag -> verletzt 'fee ⟹ amount < 0'
   v_blocked := FALSE;
   BEGIN
     INSERT INTO finance.transactions (account_id, amount, transaction_date, category)
@@ -30,7 +30,7 @@ BEGIN
   EXCEPTION WHEN OTHERS THEN v_blocked := TRUE; END;
   IF NOT v_blocked THEN RAISE EXCEPTION 'FAIL category [fee mit positivem Betrag nicht blockiert]'; END IF;
 
-  -- (3) dividend MIT shares -> verletzt 'dividend ⟹ shares IS NULL'
+  -- (3) dividend mit shares -> verletzt 'dividend ⟹ shares IS NULL'
   v_blocked := FALSE;
   BEGIN
     INSERT INTO finance.transactions (account_id, amount, transaction_date, category, holding_id, shares)
@@ -38,7 +38,7 @@ BEGIN
   EXCEPTION WHEN OTHERS THEN v_blocked := TRUE; END;
   IF NOT v_blocked THEN RAISE EXCEPTION 'FAIL category [dividend mit shares nicht blockiert]'; END IF;
 
-  -- (4) loan_payment OHNE loan_id -> verletzt 'loan_payment ⟹ loan_id NOT NULL'
+  -- (4) loan_payment ohne loan_id -> verletzt 'loan_payment ⟹ loan_id NOT NULL'
   v_blocked := FALSE;
   BEGIN
     INSERT INTO finance.transactions (account_id, amount, transaction_date, category, loan_id)

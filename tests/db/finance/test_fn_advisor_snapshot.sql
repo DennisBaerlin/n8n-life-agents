@@ -1,5 +1,5 @@
 -- tests/db/finance/test_fn_advisor_snapshot.sql
--- finance.fn_advisor_snapshot() — das Gesamtbild des Beraters in EINER Abfrage (Befund 2026-11-01: Plan-Knopf riss maxIterations).
+-- finance.fn_advisor_snapshot() — das Gesamtbild des Beraters in einer Abfrage (sonst riss der Plan-Knopf maxIterations).
 --   0) Drift-Waechter: jede finance-View steht in genau einer Liste; "enthalten" kommt wirklich in der fn vor.
 --   1) Form: genau diese Schluessel, Listen als Liste, Objekte als Objekt; gefilterte Listen leer = [].
 --   2) Wertgleich zu den Quellen (Kontosaldo + Alltag, Cashflow, Kredite, Notreserve, Ziel-Ampel, Rente).
@@ -194,12 +194,12 @@ BEGIN
      OR (SELECT count(*) FROM jsonb_array_elements(v->'insurances')) <> (SELECT count(*) FROM finance.active_insurances)
      OR (SELECT count(*) FROM jsonb_array_elements(v->'persons')) <> (SELECT count(*) FROM core.fn_household_persons()) THEN
     RAISE EXCEPTION 'FAIL [2l] ungefilterte Listen vollstaendig'; END IF;
-  -- depot_risk (2026-11-06): genau die Ziele im Fenster aus fn_savings_goal_derisk_status, mit der Entscheidung
+  -- depot_risk: genau die Ziele im Fenster aus fn_savings_goal_derisk_status, mit der Entscheidung
   IF (SELECT count(*) FROM jsonb_array_elements(v->'depot_risk')) <> (SELECT count(*) FROM finance.fn_savings_goal_derisk_status() WHERE in_window)
      OR EXISTS (SELECT 1 FROM jsonb_array_elements(v->'depot_risk') e WHERE NOT (e ? 'accepted' AND e ? 'acceptance_expired' AND e ? 'final_check_date')) THEN
     RAISE EXCEPTION 'FAIL [2r] depot_risk: %', v->'depot_risk'; END IF;
 
-  -- Befund 2026-11-02: Erfasstes ist nie unsichtbar. Startet es bald, steht es mit starts_on in recurring (zaehlt);
+  -- Erfasstes ist nie unsichtbar. Startet es bald, steht es mit starts_on in recurring (zaehlt);
   -- startet es spaeter, steht es in planned_recurring (zaehlt noch nicht), Vertragsdaten bleiben draussen
   INSERT INTO finance.recurring_payments (name, account_id, amount, schedule_unit, first_payment_date, valid_from, notes)
     VALUES ('__snap_soon__', v_giro, 75, 'month', t + 10, t + 10, 'Notiz'),

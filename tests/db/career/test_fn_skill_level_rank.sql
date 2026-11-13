@@ -1,5 +1,5 @@
 -- tests/db/career/test_fn_skill_level_rank.sql
--- career.fn_skill_level_rank: Ordinal-Map der Kompetenz-Skala (EINE Quelle der 4 Werte).
+-- career.fn_skill_level_rank: Ordinal-Map der Kompetenz-Skala (eine Quelle der 4 Werte).
 -- Monoton 1<2<3<4, case-insensitiv, unbekannt/NULL -> 0 (RAISE-frei).
 BEGIN;
 DO $$

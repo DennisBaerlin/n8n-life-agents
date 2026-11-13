@@ -156,8 +156,8 @@ BEGIN
 
 END $$;
 
--- TEST 5-7 (Audit F3): gleitender Durchschnitt (Durchschnittskostenmethode) bei Nachkauf nach Verkauf.
---   Vorher summierte der Trigger ALLE Kaeufe aller Zeiten (2000/15 = 133.33 statt 150).
+-- TEST 5-7: gleitender Durchschnitt (Durchschnittskostenmethode) bei Nachkauf nach Verkauf.
+--   Der Trigger summiert nicht alle Kaeufe aller Zeiten (2000/15 = 133.33 statt 150).
 DO $$
 DECLARE
   v_result  JSONB;
@@ -208,7 +208,7 @@ BEGIN
   END IF;
   RAISE NOTICE 'PASS avg [Vollverkauf+Nachkauf -> 200]';
 
-  -- TEST 7: rueckdatierter Verkauf VOR dem Kauf (Bestand chronologisch negativ) -> kein Division-durch-0,
+  -- TEST 7: rueckdatierter Verkauf vor dem Kauf (Bestand chronologisch negativ) -> kein Division-durch-0,
   --   der Kauf startet die Kostenbasis neu: avg = 100
   v_result := finance.fn_book_stock_buy(jsonb_build_object('price_currency_confirmed',true,'depot_id',v_depot,'settlement_id',v_settle,
     'isin','DE0005190003','symbol','AVGC','name','C','shares',10,'price_per_share',100,'order_fee',0,
@@ -223,7 +223,7 @@ BEGIN
   RAISE NOTICE 'PASS avg [rueckdatierter Verkauf vor Kauf -> 100, kein Fehler]';
 END $$;
 
--- Verkauf mit Sparziel (Umschichten Depot -> Konto, Sparziel-Zweckbindung 2026-10-27):
+-- Verkauf mit Sparziel (Umschichten Depot -> Konto, Sparziel-Zweckbindung):
 --  (G1) Ziel hat 1000 EUR im Depot zugeordnet; Verkauf mit Erloes 600 und savings_goal_name -> derisk: Depot -600,
 --       Verrechnungskonto +600 (source_tx_id = Verkauf), Fortschritt unveraendert 1000, derisk_amount 600
 --  (G2) zweiter Verkauf mit Erloes 800 -> nur der Rest 400 wird umgeschichtet (m = min(Anteil, Erloes))
@@ -289,7 +289,7 @@ BEGIN
 END $$;
 
 -- Kurs fehlt -> ok:false; beim Verkauf fuer ein Sparziel zieht der umgeschichtete
--- Betrag den Erloes NACH Gebuehr heran (5 x 100 - 10 = 490), nie mehr.
+-- Betrag den Erloes nach Gebuehr heran (5 x 100 - 10 = 490), nie mehr.
 DO $$
 DECLARE v_settle INT; v_depot INT; v_hold INT; v_goal INT; v_res JSONB;
 BEGIN

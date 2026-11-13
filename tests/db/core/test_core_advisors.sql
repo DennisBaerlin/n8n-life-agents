@@ -1,12 +1,11 @@
 -- tests/db/core/test_core_advisors.sql
--- WS2 (Core-Advisor-Engine): die Registry-Host-Tabelle core.advisors. Sichert die strukturellen
--- Invarianten (DB ist Gesetz), unabhaengig vom Dispatch-/Latch-Verhalten (das deckt
--- test_fn_advisor_review_evaluate ab):
+-- Registry-Host-Tabelle core.advisors. Sichert die strukturellen Invarianten (DB ist Gesetz),
+-- unabhaengig vom Dispatch-/Latch-Verhalten (das deckt test_fn_advisor_review_evaluate ab):
 --   (1) gueltige schema-qualifizierte review_fn-Bindung akzeptiert,
 --   (2) CHECK weist nicht-qualifizierte / Injection-/Mixed-Case-Bezeichner ab,
 --   (3) PRIMARY KEY domain -> eine Zeile je Advisor-Domain.
--- (Phase Notify: der frueher hier mitgetestete Latch-State core.advisor_review_state ist auf die
---  GETEILTE core.notification_state migriert; deren PK/CHECK testet test_fn_should_notify.sql.)
+-- (Der Latch-State liegt in der geteilten core.notification_state; deren PK/CHECK testet
+--  test_fn_should_notify.sql.)
 BEGIN;
 
 DO $$
@@ -34,7 +33,7 @@ BEGIN
     RAISE NOTICE 'PASS [CHECK: unqualifizierte review_fn abgewiesen]';
   END;
 
-  -- ---------- TEST 3c/3d: dieselbe CHECK-Regel fuer die Plan-Schritt-Felder gaps_fn / readiness_fn (2026-10-28) ----------
+  -- ---------- TEST 3c/3d: dieselbe CHECK-Regel fuer die Plan-Schritt-Felder gaps_fn / readiness_fn ----------
   BEGIN
     INSERT INTO core.advisors (domain, plan_context, review_fn, plan_step, gaps_fn)
     VALUES ('gapsx', 'x', 'finance.fn_x', true, 'fn_no_schema');

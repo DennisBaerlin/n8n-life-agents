@@ -1,7 +1,7 @@
 -- tests/db/finance/test_write_guards.sql
--- Import-Haertung 2026-10-22: Werte, die vorher erst an Enum-Cast/CHECK/Trigger scheiterten (RAISE -> Owner-Alert bzw.
--- Rohfehler nach der Import-Freigabe), lehnen die Write-fns jetzt VOR dem ersten Write als {ok:false} ab.
--- Je Fall: ok:false + nichts geschrieben. Dazu die zwei neuen CHECK-Backstops aus V018 (Direkt-Write -> check_violation).
+-- Werte, die sonst erst an Enum-Cast/CHECK/Trigger scheitern (RAISE -> Owner-Alert bzw.
+-- Rohfehler nach der Import-Freigabe), lehnen die Write-fns vor dem ersten Write als {ok:false} ab.
+-- Je Fall: ok:false + nichts geschrieben. Dazu die zwei CHECK-Backstops aus V018 (Direkt-Write -> check_violation).
 BEGIN;
 
 DO $$
@@ -133,8 +133,8 @@ BEGIN
   IF NOT v_ok THEN RAISE EXCEPTION 'FAIL [9 CHECK]: posting_day_of_month -1 haette finance_air_posting_dom_chk verletzen muessen'; END IF;
   RAISE NOTICE 'PASS [9 CHECK-Backstop Gutschrift-Tag 1-28]';
 
-  -- [10] Rundungs-Paket 2026-10-23: Zinssatz mit > 4 Nachkommastellen oder >= 100 -> ok:false (numeric(6,4)
-  -- kuerzte still bzw. warf Overflow); 3.5 und 3.50000 bleiben gueltig.
+  -- [10] Zinssatz mit > 4 Nachkommastellen oder >= 100 -> ok:false (numeric(6,4)
+  -- kuerzt sonst still bzw. wirft Overflow); 3.5 und 3.50000 bleiben gueltig.
   SELECT finance.fn_create_account('{"name":"__wg r1__","account_type":"cash","interest_rate":3.12345}'::jsonb) INTO v_res;
   IF (v_res->>'ok')::boolean IS DISTINCT FROM false THEN RAISE EXCEPTION 'FAIL [10 konto]: %', v_res; END IF;
   SELECT finance.fn_create_account('{"name":"__wg r2__","account_type":"cash","interest_rate":"3.50000","interest_credit_unit":"day"}'::jsonb) INTO v_res;
@@ -148,7 +148,7 @@ BEGIN
   IF (v_res->>'ok')::boolean IS DISTINCT FROM false THEN RAISE EXCEPTION 'FAIL [10 kredit set]: %', v_res; END IF;
   SELECT finance.fn_set_loan(jsonb_build_object('loan_id', v_loan, 'interest_rate', 100)) INTO v_res;
   IF (v_res->>'ok')::boolean IS DISTINCT FROM false THEN RAISE EXCEPTION 'FAIL [10 kredit set 100]: %', v_res; END IF;
-  -- (WP2: die "anfaengliche Tilgung" wird nicht mehr erfasst -- loan_overview.initial_principal_rate leitet sie ab.)
+  -- (die "anfaengliche Tilgung" wird nicht erfasst --loan_overview.initial_principal_rate leitet sie ab.)
   RAISE NOTICE 'PASS [10 Zinssatz-Praezision: > 4 Stellen / >= 100 -> ok:false, 3.50000 ok]';
 END $$;
 

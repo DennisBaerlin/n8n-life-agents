@@ -1,6 +1,6 @@
 -- tests/db/core/test_v032_derived_keys_cleanup.sql
--- core:V032 (ECHTE Datei, zweimal): Bestand mit nun gesperrten abgeleiteten Keys (*_year, Alter, is_minor …)
---   wird bereinigt — Keys rekursiv aus metadata.facts entfernt, Wert als Zeile in die Prosa VOR "## Gelernt";
+-- core:V032 (echte Datei, zweimal): Bestand mit nun gesperrten abgeleiteten Keys (*_year, Alter, is_minor …)
+--   wird bereinigt — Keys rekursiv aus metadata.facts entfernt, Wert als Zeile in die Prosa vor "## Gelernt";
 --   erlaubte Roh-Keys (start_age, age_from) und saubere Kontexte bleiben unberuehrt; zweiter Lauf = no-op.
 --   Der Fixture-Insert umgeht den Fakten-Trigger (er wuerde die gesperrten Keys heute abweisen = Altbestand).
 BEGIN;

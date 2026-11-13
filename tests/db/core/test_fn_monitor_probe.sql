@@ -1,11 +1,11 @@
 -- tests/db/core/test_fn_monitor_probe.sql
--- Testet fn_monitor_probe: der read-only Test-Abruf VOR dem HITL-Gate (create/set-Tools).
+-- Testet fn_monitor_probe: der read-only Test-Abruf vor dem HITL-Gate (create/set-Tools).
 -- Vertrag: fuehrt die Beschaffung exakt wie der Cron aus — sql: EXECUTE unter
---   SET LOCAL ROLE core_ro (Scalar-Subquery-Wrap, Shape-Guard); Paket-Methode (Phase B): Registry-Dispatch
+--   SET LOCAL ROLE core_ro (Scalar-Subquery-Wrap, Shape-Guard); Paket-Methode: Registry-Dispatch
 --   ueber validate_fn + acquire_fn (hier eine Test-Methode zz_test mit Stub-fns — die echte finance-fx_rate
 --   testet tests/db/finance/test_fn_monitor_acquire_fx_rate.sql); web_search: nimmt die im Workflow beschaffte
 --   Observation entgegen; none: ok ohne Wert. Danach Validierungs-Kaskade
---   (fn_validate_observation). KEIN Write (Probe laeuft vor dem Gate).
+--   (fn_validate_observation). Kein Write (Probe laeuft vor dem Gate).
 --   Eingabe jsonb: acquisition_method, acquisition_sql|acquisition_params|observation,
 --     expected_unit, min_plausible, max_plausible, as_of (Test-Injektion).
 --   Rueckgabe: {ok, value, unit, as_of, source_url, reason, display?}
@@ -30,7 +30,7 @@ DECLARE
 BEGIN
 
   -- TEST 1: sql happy path — Wert kommt, Rolle ist core_ro (current_user-Echo beweist
-  -- den SET LOCAL ROLE-Switch strukturell; B3: core_ro = Core-Host-Leserolle agent+core+finance)
+  -- den SET LOCAL ROLE-Switch strukturell; core_ro = Core-Host-Leserolle agent+core+finance)
   v := agent.fn_monitor_probe(jsonb_build_object(
     'acquisition_method', 'sql',
     'acquisition_sql', 'SELECT 42.5'

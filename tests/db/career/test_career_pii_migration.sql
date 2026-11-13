@@ -1,5 +1,5 @@
 -- tests/db/career/test_career_pii_migration.sql
--- P0b: prueft die EINMALIGE Daten-Migration career:V001 (Bestands-Career-PII haushaltsweit -> per_user-Suffix).
+-- Prueft die einmalige Daten-Migration career:V001 (Bestands-Career-PII haushaltsweit -> per_user-Suffix).
 -- Da V-Migrationen gegated laufen (nicht im BEGIN/ROLLBACK-Testpfad), repliziert dieser Test die V001-RENAME-
 -- Logik 1:1 (Owner-pid aus family.facts.persons[] WHERE role='owner', UPDATE name, per-Kontext-Skip) und
 -- assertet: (1) Basis -> '<base>__<owner>', Basis weg, managed_by/package erhalten; (2) no-op ohne Owner;

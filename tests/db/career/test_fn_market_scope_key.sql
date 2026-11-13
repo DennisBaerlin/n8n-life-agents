@@ -1,5 +1,5 @@
 -- tests/db/career/test_fn_market_scope_key.sql
--- career.fn_market_scope_key: EINE Quelle des Markt-Cache-Schluessel-Formats (Write==Read).
+-- career.fn_market_scope_key: eine Quelle des Markt-Cache-Schluessel-Formats (Write==Read).
 -- Format <kind>:<slug(primary)>:<slug(secondary)>; Slug lower/trim + Nicht-Alphanum->'-' (am Rand gestrippt).
 BEGIN;
 DO $$

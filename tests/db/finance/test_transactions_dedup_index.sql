@@ -1,10 +1,10 @@
 -- tests/db/finance/test_transactions_dedup_index.sql
--- WP-1 Doppelbuchungs-Riegel: die 2 partiellen UNIQUE-Indizes auf finance.transactions sind das Gesetz
+-- Doppelbuchungs-Riegel: die 2 partiellen UNIQUE-Indizes auf finance.transactions sind das Gesetz
 -- (struktureller Backstop gegen das TOCTOU-Race der EXISTS-vor-INSERT-Idempotenz). Beweist:
 --   (a) beide Indizes existieren, sind UNIQUE + partiell (korrektes Praedikat/Spalten),
 --   (b) direktes Doppel-DML auf den Key -> unique_violation (recurring + interest),
 --   (c) das Praedikat schliesst legitime Faelle korrekt aus/ein: generische Zins-Tx (period_end NULL) ->
---       kein Konflikt; die ZWEI Transfer-Beine (gleiche rp/date, versch. account_id) -> kein Konflikt (3-spaltig),
+--       kein Konflikt; die zwei Transfer-Beine (gleiche rp/date, versch. account_id) -> kein Konflikt (3-spaltig),
 --   (d) fn_book_stock_buy (Sparplan-Pfad) idempotent: Doppel-Ausfuehrung -> 2. {ok:false}, kein Orphan/Doppel.
 BEGIN;
 DO $$
@@ -21,7 +21,7 @@ BEGIN
   IF NOT v_uniq THEN RAISE EXCEPTION 'FAIL: recurring_due_uq ist nicht UNIQUE'; END IF;
   IF v_pred IS NULL OR v_pred NOT LIKE '%recurring_payment_id IS NOT NULL%' THEN
     RAISE EXCEPTION 'FAIL: recurring_due_uq ohne Partial-Praedikat (recurring_payment_id IS NOT NULL), got %', COALESCE(v_pred,'<null>'); END IF;
-  -- Monats-Check WP-A: der Vorgaenger auf transaction_date ist weg (finance:V015)
+  -- kein Index mehr auf transaction_date (finance:V015)
   IF EXISTS (SELECT 1 FROM pg_class WHERE relname = 'finance_transactions_recurring_occurrence_uq') THEN
     RAISE EXCEPTION 'FAIL: alter Index recurring_occurrence_uq (transaction_date) existiert noch'; END IF;
 
@@ -65,7 +65,7 @@ BEGIN
   INSERT INTO finance.transactions (account_id, amount, transaction_date, category, interest_period_end)
     VALUES (v_acct, 3, DATE '2026-03-01', 'interest', NULL);
   INSERT INTO finance.transactions (account_id, amount, transaction_date, category, interest_period_end)
-    VALUES (v_acct, 3, DATE '2026-03-01', 'interest', NULL);   -- MUSS durchgehen (period_end NULL != Arbiter)
+    VALUES (v_acct, 3, DATE '2026-03-01', 'interest', NULL);   -- muss durchgehen (period_end NULL != Arbiter)
   RAISE NOTICE 'PASS [(c1) generische Zins-Tx period_end NULL: kein Konflikt, bookbar]';
 
   -- ===== (c2) zwei Transfer-Beine (gleiche rp/date, versch. account_id) -> kein Konflikt (3-spaltiger Key) =====
@@ -74,7 +74,7 @@ BEGIN
   INSERT INTO finance.transactions (account_id, amount, transaction_date, category, recurring_payment_id, group_id)
     VALUES (v_acct, -50, DATE '2026-04-15', 'transfer', v_rp, gen_random_uuid());
   INSERT INTO finance.transactions (account_id, amount, transaction_date, category, recurring_payment_id, group_id)
-    VALUES (v_depot, 50, DATE '2026-04-15', 'transfer', v_rp, gen_random_uuid());   -- MUSS durchgehen (anderes account_id)
+    VALUES (v_depot, 50, DATE '2026-04-15', 'transfer', v_rp, gen_random_uuid());   -- muss durchgehen (anderes account_id)
   RAISE NOTICE 'PASS [(c2) zwei Transfer-Beine (rp,date gleich, account versch.): kein Konflikt]';
 
   -- ===== (d) fn_book_stock_buy Sparplan-Pfad: Doppel-Ausfuehrung -> 2. {ok:false}, kein Orphan/Doppel =====

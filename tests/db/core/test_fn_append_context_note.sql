@@ -1,9 +1,9 @@
 -- tests/db/core/test_fn_append_context_note.sql
--- core.fn_append_context_note(p {context_name, note, chat_id}) — Prosa-Lern-Schreibpfad (Phase C, WS-3):
---   append-only unter "## Gelernt" mit Provenienz "gelernt am <DATE> aus Chat" (R5-B). HARTER
+-- core.fn_append_context_note(p {context_name, note, chat_id}) — Prosa-Lern-Schreibpfad:
+--   append-only unter "## Gelernt" mit Provenienz "gelernt am <DATE> aus Chat". Harter
 --   Allowlist-Guard core.fn_note_context_allowed (managed_by='agent' + kuratierte Liste) — der protect-
---   Trigger blockt nur DELETE, NICHT content-UPDATE, also ist DIESER Guard die Sicherung gegen
---   Verhaltens-Korruption von Instruktions-/Seed-Kontexten (R5-A). owner_only-Backstop (fn_sender_is_member).
+--   Trigger blockt nur DELETE, nicht content-UPDATE, also ist dieser Guard die Sicherung gegen
+--   Verhaltens-Korruption von Instruktions-/Seed-Kontexten. owner_only-Backstop (fn_sender_is_member).
 -- Self-seedend, BEGIN..ROLLBACK.
 BEGIN;
 
@@ -18,13 +18,13 @@ ON CONFLICT (name) DO UPDATE SET content=excluded.content, managed_by=excluded.m
 INSERT INTO agent.core_contexts (name, description, agent_name, load_strategy, content, managed_by, package, metadata)
 VALUES ('financial_planning', 'fixture', 'finance_advisor', 'lazy', E'# Finanzplan\n\nProsa-Body.\n', 'agent', 'finance', '{}'::jsonb)
 ON CONFLICT (name) DO UPDATE SET content=excluded.content, managed_by=excluded.managed_by, metadata=excluded.metadata;
--- Phase A: Notiz-Freigabe registry-getrieben (core.advisors.learn_notes + aktives Paket statt Literal-Liste).
+-- Notiz-Freigabe registry-getrieben (core.advisors.learn_notes + aktives Paket statt Literal-Liste).
 INSERT INTO core.package_registry (package, status) VALUES ('finance', 'active')
 ON CONFLICT (package) DO UPDATE SET status = 'active';
 INSERT INTO core.advisors (domain, plan_context, review_fn, package, learn_notes)
 VALUES ('finance', 'financial_planning', 'finance.fn_advisor_review', 'finance', TRUE)
 ON CONFLICT (domain) DO UPDATE SET plan_context = excluded.plan_context, learn_notes = TRUE;
--- finance_profile (managed_by=agent, aber NICHT in der Knowledge-Allowlist) + ein seed-Kontext
+-- finance_profile (managed_by=agent, aber nicht in der Knowledge-Allowlist) + ein seed-Kontext
 INSERT INTO agent.core_contexts (name, description, agent_name, load_strategy, content, managed_by, package, metadata)
 VALUES ('finance_profile', 'fixture', NULL, 'lazy', E'## fp', 'agent', 'finance', '{}'::jsonb),
        ('finance_agent_instructions', 'fixture', 'finance', 'static', E'rules', 'seed', 'finance', '{}'::jsonb)

@@ -1,6 +1,6 @@
 -- tests/db/finance/test_schedule_days_lineage.sql
 -- Feste Monatstage (recurring_payments.schedule_days_of_month) ueber die Vorgaenger-Kette: Validity-Split und
--- Reaktivieren erben die Tage (vorher kam ein 4-Tage-Plan still als 1x/Monat zurueck = falsche Rate), ein
+-- Reaktivieren erben die Tage (sonst kaeme ein 4-Tage-Plan still als 1x/Monat zurueck = falsche Rate), ein
 -- Einzeltag oder eine andere Einheit leert sie (Tage + Einzeltag waere ein CHECK-RAISE = Owner-Alarm).
 BEGIN;
 

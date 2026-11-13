@@ -1,7 +1,7 @@
 -- tests/db/core/test_fn_dispatch_callback.sql
--- Phase 0 WS-0c CB + Member-Permeabilitaet: core.fn_dispatch_callback — generischer Callback-Prefix-Dispatcher
--- mit fail-closed MEMBER-GATE. Schlaegt das callback_data-Prefix (vor dem ersten ":") in core.callback_handlers
--- nach, RE-RESOLVT den Sender selbst (Zero-Trust) und laesst VOR dem EXECUTE nur durch: Owner immer, aufgeloestes
+-- core.fn_dispatch_callback — generischer Callback-Prefix-Dispatcher mit Member-Permeabilitaet
+-- und fail-closed Member-Gate. Schlaegt das callback_data-Prefix (vor dem ersten ":") in core.callback_handlers
+-- nach, re-resolvt den Sender selbst (Zero-Trust) und laesst vor dem EXECUTE nur durch: Owner immer, aufgeloestes
 -- Mitglied nur bei member_permeable, sonst {ok:false}. Self-contained: family-Kontext (Owner/Partner/Kind mit
 -- telegram_user_id) + Fake-Handler + Registry-Zeilen, alles in BEGIN..ROLLBACK.
 BEGIN;
@@ -13,7 +13,7 @@ RETURNS jsonb LANGUAGE sql AS $f$
 $f$;
 
 -- Registry: ein member_permeable=true-Prefix + ein owner-only-Prefix (false, macht den Deny-Zweig erreichbar —
--- beide PROD-Prefixe job/est sind permeable) + eine Zeile mit fehlender Handler-fn.
+-- beide Prod-Prefixe job/est sind permeable) + eine Zeile mit fehlender Handler-fn.
 INSERT INTO core.callback_handlers (prefix, handler_fn, package, member_permeable) VALUES
   ('tcb',    'core.fn_test_cb_echo',    'core', TRUE),
   ('tcbown', 'core.fn_test_cb_echo',    'core', FALSE),
@@ -57,7 +57,7 @@ BEGIN
   IF (r->>'ok')::boolean IS DISTINCT FROM true OR r->>'toast' IS DISTINCT FROM 'echo' THEN RAISE EXCEPTION 'FAIL [3] Partner+permeable nicht EXECUTEt: %', r; END IF;
   RAISE NOTICE 'PASS [3] Partner + permeable -> EXECUTE';
 
-  -- TEST 4: Partner + member_permeable=false -> owner_only_callback, KEIN EXECUTE
+  -- TEST 4: Partner + member_permeable=false -> owner_only_callback, kein EXECUTE
   r := core.fn_dispatch_callback(jsonb_build_object('data','tcbown:x','chat_id',222));
   IF (r->>'ok')::boolean IS DISTINCT FROM false OR r->>'reason' IS DISTINCT FROM 'owner_only_callback' THEN RAISE EXCEPTION 'FAIL [4] Partner+owner-only nicht geblockt: %', r; END IF;
   IF (r->>'got') IS NOT NULL OR r->>'toast' = 'echo' THEN RAISE EXCEPTION 'FAIL [4] Handler lief trotz owner_only_callback: %', r; END IF;
@@ -65,7 +65,7 @@ BEGIN
   RAISE NOTICE 'PASS [4] Partner + owner-only -> owner_only_callback, KEIN EXECUTE';
 
   -- TEST 5: Kind (Mitglied) + member_permeable=true -> EXECUTE (Dispatcher-Grob-Gate laesst durch; feine
-  -- adults_only-Auth ist Sache des HANDLERs, hier bewusst der Echo ohne adults_only -> laeuft)
+  -- adults_only-Auth ist Sache des Handlers, hier bewusst der Echo ohne adults_only -> laeuft)
   r := core.fn_dispatch_callback(jsonb_build_object('data','tcb:up:1','chat_id',333));
   IF (r->>'ok')::boolean IS DISTINCT FROM true OR r->>'toast' IS DISTINCT FROM 'echo' THEN RAISE EXCEPTION 'FAIL [5] Kind+permeable nicht EXECUTEt (Grob-Gate): %', r; END IF;
   RAISE NOTICE 'PASS [5] Kind + permeable -> EXECUTE (feine adults_only-Auth ist Handler-Sache)';
@@ -77,7 +77,7 @@ BEGIN
   IF r->>'toast' IS DISTINCT FROM 'DE:core.toast.unresolved_sender' THEN RAISE EXCEPTION 'FAIL [6] unaufgeloest -> Toast in Owner-Sprache (de): %', r; END IF;
   RAISE NOTICE 'PASS [6] unaufgeloester Sender -> unresolved_sender, KEIN EXECUTE';
 
-  -- TEST 7: leere / nicht-numerische chat_id -> RAISE-frei -> found:false -> unresolved_sender (KEIN Crash)
+  -- TEST 7: leere / nicht-numerische chat_id -> RAISE-frei -> found:false -> unresolved_sender (kein Crash)
   r := core.fn_dispatch_callback(jsonb_build_object('data','tcb:up:1','chat_id',''));
   IF (r->>'ok')::boolean IS DISTINCT FROM false OR r->>'reason' IS DISTINCT FROM 'unresolved_sender' THEN RAISE EXCEPTION 'FAIL [7a] leere chat_id nicht RAISE-frei geblockt: %', r; END IF;
   r := core.fn_dispatch_callback(jsonb_build_object('data','tcb:up:1','chat_id','abc'));

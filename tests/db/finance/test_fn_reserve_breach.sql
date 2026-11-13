@@ -1,9 +1,9 @@
 -- tests/db/finance/test_fn_reserve_breach.sql
--- WS-C2 (Phase S): proaktiver Reserve-Waechter. finance.account_reserve_status (per-Konto balance/reserved/
+-- Proaktiver Reserve-Waechter. finance.account_reserve_status (per-Konto balance/reserved/
 -- shortfall/breach) + finance.fn_reserve_breach(account_id)->jsonb (NULL bei kein-Breach).
--- Reserviert je Konto = SUM(transactions.amount WHERE savings_goal_id) ueber AKTIVE Ziele, in Konto-Native-
--- Waehrung. Breach = reserved>0 AND balance<reserved. Selbst-korrigierend: eine GETAGGTE Entnahme senkt Saldo
--- UND reserviert gleich -> kein Breach; nur eine UN-getaggte Belastung drueckt den Saldo unter die Reserve.
+-- Reserviert je Konto = SUM(transactions.amount WHERE savings_goal_id) ueber aktive Ziele, in Konto-Native-
+-- Waehrung. Breach = reserved>0 AND balance<reserved. Selbst-korrigierend: eine getaggte Entnahme senkt Saldo
+-- und reserviert gleich -> kein Breach; nur eine un-getaggte Belastung drueckt den Saldo unter die Reserve.
 BEGIN;
 
 DO $$
@@ -14,7 +14,7 @@ DECLARE
   v_br JSONB;
 BEGIN
   -- ===================================================================================
-  -- Konto A — NICHT im Breach: Reserve +500 (getaggt) + Einnahme +1000 (un-getaggt) -> Saldo 1500, reserviert 500.
+  -- Konto A — nicht im Breach: Reserve +500 (getaggt) + Einnahme +1000 (un-getaggt) -> Saldo 1500, reserviert 500.
   -- ===================================================================================
   SELECT finance.fn_create_account('{"name":"__rb_a__","account_type":"cash","account_holder":"Test"}'::jsonb) INTO v_res; v_a := (v_res->>'account_id')::int;
   INSERT INTO finance.savings_goals (name, target_amount, target_date, status) VALUES ('__rb_gA__', 5000, current_date + 365, 'active') RETURNING id INTO v_gA;
@@ -33,7 +33,7 @@ BEGIN
   RAISE NOTICE 'PASS [A: Saldo 1500 >= reserviert 500 -> kein Breach, fn NULL]';
 
   -- ===================================================================================
-  -- Konto B — IM Breach: Reserve +500 (getaggt) + Ausgabe -300 (un-getaggt) -> Saldo 200, reserviert 500,
+  -- Konto B — im Breach: Reserve +500 (getaggt) + Ausgabe -300 (un-getaggt) -> Saldo 200, reserviert 500,
   --   Fehlbetrag 300. fn liefert das Objekt mit korrektem shortfall + native Waehrung im note.
   -- ===================================================================================
   SELECT finance.fn_create_account('{"name":"__rb_b__","account_type":"cash","account_holder":"Test"}'::jsonb) INTO v_res; v_b := (v_res->>'account_id')::int;
@@ -54,7 +54,7 @@ BEGIN
   RAISE NOTICE 'PASS [B: un-getaggte Ausgabe drueckt Saldo 200 unter Reserve 500 -> Breach, Fehlbetrag 300]';
 
   -- ===================================================================================
-  -- Konto C — reserved=0-Guard: nur un-getaggte Buchungen, Saldo sogar NEGATIV -> KEIN Breach (reserved>0-Guard).
+  -- Konto C — reserved=0-Guard: nur un-getaggte Buchungen, Saldo sogar negativ -> kein Breach (reserved>0-Guard).
   -- ===================================================================================
   SELECT finance.fn_create_account('{"name":"__rb_c__","account_type":"cash","account_holder":"Test"}'::jsonb) INTO v_res; v_c := (v_res->>'account_id')::int;
   INSERT INTO finance.transactions (account_id, amount, transaction_date, category, savings_goal_id) VALUES
@@ -72,11 +72,10 @@ BEGIN
   RAISE NOTICE 'PASS [Isolation: nur Konto B im Breach, A/C unberuehrt]';
 
   -- ===================================================================================
-  -- Selbst-korrigierend: GETAGGTE Entnahme senkt Saldo UND reserviert gleich -> kein Breach; eine UN-getaggte
-  --   Belastung danach erzeugt ihn. (Konto A wiederverwendet: +500 reserviert, +1000 frei = Saldo 1500.)
-  --   getaggte Entnahme -1000 (Ziel A): Saldo 500, reserviert -500? NEIN -> eigenes Konto, sauber aufgebaut.
+  -- Selbst-korrigierend: getaggte Entnahme senkt Saldo und reserviert gleich -> kein Breach; eine un-getaggte
+  --   Belastung danach erzeugt ihn. Dafuer ein eigenes, sauber aufgebautes Konto.
   -- ===================================================================================
-  -- frisches Konto: Reserve +400 (getaggt), getaggte Entnahme -150 (getaggt, selbes Ziel) -> Saldo 250, reserviert 250 -> KEIN Breach (gleich).
+  -- frisches Konto: Reserve +400 (getaggt), getaggte Entnahme -150 (getaggt, selbes Ziel) -> Saldo 250, reserviert 250 -> kein Breach (gleich).
   SELECT finance.fn_create_account('{"name":"__rb_sc__","account_type":"cash","account_holder":"Test"}'::jsonb) INTO v_res; v_a := (v_res->>'account_id')::int;
   INSERT INTO finance.savings_goals (name, target_amount, target_date, status) VALUES ('__rb_gSC__', 5000, current_date + 365, 'active') RETURNING id INTO v_gA;
   INSERT INTO finance.transactions (account_id, amount, transaction_date, category, savings_goal_id, group_id) VALUES
@@ -85,7 +84,7 @@ BEGIN
   SELECT balance, reserved, breach INTO v_bal, v_rsv, v_breach FROM finance.account_reserve_status WHERE account_id = v_a;
   IF v_bal IS DISTINCT FROM 250 OR v_rsv IS DISTINCT FROM 250 OR v_breach IS DISTINCT FROM false THEN
     RAISE EXCEPTION 'FAIL [SC getaggt]: balance=% reserved=% breach=% (getaggte Entnahme ist neutral -> kein Breach)', v_bal, v_rsv, v_breach; END IF;
-  -- jetzt eine UN-getaggte Belastung -50 -> Saldo 200 < reserviert 250 -> Breach 50
+  -- jetzt eine un-getaggte Belastung -50 -> Saldo 200 < reserviert 250 -> Breach 50
   INSERT INTO finance.transactions (account_id, amount, transaction_date, category, savings_goal_id) VALUES (v_a, -50, current_date - 5, 'other', NULL);
   SELECT shortfall, breach INTO v_short, v_breach FROM finance.account_reserve_status WHERE account_id = v_a;
   IF v_breach IS DISTINCT FROM true OR v_short IS DISTINCT FROM 50 THEN
@@ -93,8 +92,8 @@ BEGIN
   RAISE NOTICE 'PASS [Selbst-korrigierend: getaggte Entnahme neutral; erst un-getaggte Belastung erzeugt Breach]';
 
   -- ===================================================================================
-  -- AKTIVE Ziele only: Reserve +500 (getaggt), un-getaggte -400 -> Saldo 100 < 500 -> Breach. Ziel completed ->
-  --   reserviert 0 -> KEIN Breach mehr (das Ziel gibt seine Reserve frei).
+  -- Nur aktive Ziele: Reserve +500 (getaggt), un-getaggte -400 -> Saldo 100 < 500 -> Breach. Ziel completed ->
+  --   reserviert 0 -> kein Breach mehr (das Ziel gibt seine Reserve frei).
   -- ===================================================================================
   SELECT finance.fn_create_account('{"name":"__rb_comp__","account_type":"cash","account_holder":"Test"}'::jsonb) INTO v_res; v_c := (v_res->>'account_id')::int;
   INSERT INTO finance.savings_goals (name, target_amount, target_date, status) VALUES ('__rb_gComp__', 500, current_date + 365, 'active') RETURNING id INTO v_gComp;
@@ -111,7 +110,7 @@ BEGIN
 
   -- ===================================================================================
   -- Multi-Waehrung native: USD-Konto, Reserve +500 USD (getaggt) + un-getaggt -300 USD -> Saldo 200, reserviert
-  --   500, Fehlbetrag 300 (alles USD, KEIN FX). note traegt die native Waehrung USD.
+  --   500, Fehlbetrag 300 (alles USD, kein FX). note traegt die native Waehrung USD.
   -- ===================================================================================
   PERFORM finance.fn_ensure_currency('USD');   -- USD in finance.currencies registrieren (FK accounts.currency)
   SELECT finance.fn_create_account('{"name":"__rb_usd__","account_type":"cash","account_holder":"Test"}'::jsonb) INTO v_res; v_usd := (v_res->>'account_id')::int;
@@ -129,8 +128,7 @@ BEGIN
   RAISE NOTICE 'PASS [Multi-Waehrung: USD-Konto Breach 300 USD, note native USD (kein FX/EUR)]';
 
   -- ===================================================================================
-  -- WP-5a: fn_reserve_breach auf ein DEPOT-Konto -> NULL. Der fruehere Depot-Zweig war write-time unerreichbarer
-  --   toter Code (kein Aufrufer uebergibt je ein Depot); die Cash-Branch matcht keine Depots -> NULL, auch wenn
+  -- fn_reserve_breach auf ein Depot-Konto -> NULL (kein Aufrufer uebergibt ein Depot). Die Cash-Branch matcht keine Depots -> NULL, auch wenn
   --   depot_reserve_status breacht (der Depot-Deckungs-Dialog laeuft ueber fn_advisor_review, nicht hier).
   -- ===================================================================================
   DECLARE v_set INT; v_dep INT; v_gD INT; BEGIN

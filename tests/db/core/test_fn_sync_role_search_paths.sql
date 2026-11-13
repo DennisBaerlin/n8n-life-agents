@@ -1,13 +1,12 @@
 -- tests/db/core/test_fn_sync_role_search_paths.sql
 -- Testet core.fn_sync_role_search_paths(role): Desired-State-FULL-REPLACE des Rollen-
 --   search_path = Basis (pg_catalog, agent, core) + ein Tail-Eintrag je registriertem Paket,
---   DESSEN SCHEMA EXISTIERT (to_regnamespace NOT NULL — NICHT status='active', sonst faellt
---   das gerade installierende Paket raus), sortiert. Generisch statt finance-Hardcode (B).
--- Nur eine WEGWERF-Rolle wird synchronisiert (nie das echte core_ro/owner in der TX).
--- ISOLATION: `DELETE FROM core.package_registry` zu Beginn der TX -> die Assertions sehen NUR
+--   dessen Schema existiert (to_regnamespace NOT NULL — nicht status='active', sonst faellt
+--   das gerade installierende Paket raus), sortiert. Generisch, kein Paket-Literal.
+-- Nur eine Wegwerf-Rolle wird synchronisiert (nie das echte core_ro/owner in der TX).
+-- Isolation: `DELETE FROM core.package_registry` zu Beginn der TX -> die Assertions sehen nur
 --   die Wegwerf-Pakete (die echten core/finance/career-Zeilen kommen beim ROLLBACK zurueck;
---   package_registry hat KEINE eingehenden FKs + nur einen BEFORE-UPDATE-Touch-Trigger).
--- Pattern: BEGIN…ROLLBACK; RAISE EXCEPTION 'FAIL …' = Test fehlgeschlagen (ON_ERROR_STOP -> Exit 1).
+--   package_registry hat keine eingehenden FKs + nur einen BEFORE-UPDATE-Touch-Trigger).
 BEGIN;
 
 DO $$
@@ -26,9 +25,9 @@ BEGIN
 
   INSERT INTO core.package_registry (package, status) VALUES
     ('tst_sp_a', 'active'),        -- Schema existiert
-    ('tst_sp_b', 'installing'),    -- (6) NICHT active, aber Schema existiert -> MUSS inkludiert sein
-    ('tst_sp_c', 'active'),        -- (2) KEIN Schema -> MUSS ausgelassen werden
-    ('core',     'active');        -- (5) core ist in der Basis -> NIE im Tail (sonst doppelt)
+    ('tst_sp_b', 'installing'),    -- (6) nicht active, aber Schema existiert -> muss inkludiert sein
+    ('tst_sp_c', 'active'),        -- (2) kein Schema -> muss ausgelassen werden
+    ('core',     'active');        -- (5) core ist in der Basis -> nie im Tail (sonst doppelt)
 
   -- (1) Basis + Tail, sortiert, nur existierende Nicht-core-Schemas. Der exakte Match beweist
   --     zugleich (2) kein tst_sp_c, (5) kein doppeltes core, (6) installing-b ist dabei.
@@ -39,7 +38,7 @@ BEGIN
   IF position('tst_sp_c' in v_path) > 0 THEN RAISE EXCEPTION 'FAIL (2): tst_sp_c (kein Schema) im Pfad'; END IF;
   IF position('tst_sp_b' in v_path) = 0 THEN RAISE EXCEPTION 'FAIL (6): tst_sp_b (installing) fehlt im Pfad'; END IF;
 
-  -- Der ALTER ROLE hat GEGRIFFEN: rolconfig traegt exakt denselben Pfad.
+  -- Der ALTER ROLE hat gegriffen: rolconfig traegt exakt denselben Pfad.
   SELECT s INTO v_cfg
   FROM pg_roles r, unnest(r.rolconfig) AS s
   WHERE r.rolname = 'tst_sp_role' AND s LIKE 'search_path=%';

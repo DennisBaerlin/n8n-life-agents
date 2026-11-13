@@ -1,6 +1,6 @@
 ﻿#Requires -Version 5.1
 # build_ui_review.ps1 -- Aufnahme einer Oberflaechen-Aenderung fuer die Freigabe des Owners (Skill /ui-task): Bilder in
-# Handybreite, hell und dunkel, vorher und nachher (fuer Chat und Pruef-Agent). Mit -Page zusaetzlich EINE Seite ohne Server,
+# Handybreite, hell und dunkel, vorher und nachher (fuer Chat und Pruef-Agent). Mit -Page zusaetzlich eine Seite ohne Server,
 # die eine Session als privates Artefakt veroeffentlicht, wenn der Owner am Handy ist und localhost nicht sieht (Reserve; das
 # Markieren dort ist ungeprueft). Am Rechner markiert der Owner direkt im Browser-Bereich. Nur erfundene Werte: die Mini-App kommt
 # aus scripts/dev/lib/app_preview_data.json, die Doku-Seite aus ihrem gebauten Output. Alles liegt unter .local/ (nicht im Repo).

@@ -5,6 +5,8 @@
 # Owner = der fiktive Golden-Owner (Assert-GoldenHousehold in test_n8n_state.ps1).
 # TEST_ANTHROPIC_API_KEY=ci-dummy-key: ohne Wert legt inject_credentials die Credential nicht an; llm_gateway_test
 # ueberspringt bei genau diesem Wert seinen Fall gegen die echte API.
+# Usage:  $env:CI = '1'; .\scripts\dev\new_ci_env.ps1   (schreibt <Repo>\.env; kein Container noetig)
+# Exit-Code: 0 = .env angelegt; Abbruch per throw (kein $env:CI oder .env existiert schon) = ungleich 0.
 $ErrorActionPreference = 'Stop'
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 if (-not $env:CI) { throw 'new_ci_env.ps1 laeuft nur in CI ($env:CI fehlt).' }

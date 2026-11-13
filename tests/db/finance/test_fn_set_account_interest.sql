@@ -12,7 +12,7 @@ DECLARE
   v_new_rate  NUMERIC;
 BEGIN
 
-  -- Setup: Konto OHNE Zinszeile
+  -- Setup: Konto ohne Zinszeile
   SELECT finance.fn_create_account('{"name":"__test_int_acct__","account_type":"cash","account_holder":"Test"}'::jsonb) INTO v_res;
   v_acct := (v_res->>'account_id')::int;
 
@@ -79,14 +79,14 @@ BEGIN
   END IF;
   RAISE NOTICE 'PASS set_account_interest [valid_from <= offene -> ok:false]';
 
-  -- TEST 5: Backdating in eine HISTORISCHE (geschlossene) Periode ohne offene Zeile
+  -- TEST 5: Backdating in eine historische (geschlossene) Periode ohne offene Zeile
   -- -> exclusion_violation wird abgefangen -> {ok:false} (kein harter RAISE/Owner-Alert).
   DECLARE
     v_acct2 INT;
   BEGIN
     SELECT finance.fn_create_account('{"name":"__test_int_hist__","account_type":"cash","account_holder":"Test"}'::jsonb) INTO v_res;
     v_acct2 := (v_res->>'account_id')::int;
-    -- Geschlossene historische Zinszeile [2026-01-01, 2026-07-01); KEINE offene Zeile.
+    -- Geschlossene historische Zinszeile [2026-01-01, 2026-07-01); keine offene Zeile.
     INSERT INTO finance.account_interest_rates
         (account_id, annual_rate, schedule_interval, schedule_unit, valid_from, valid_to)
     VALUES (v_acct2, 1.0, 1, 'year', '2026-01-01', '2026-07-01');
@@ -100,7 +100,7 @@ BEGIN
     RAISE NOTICE 'PASS set_account_interest [backdate in historische Periode -> exclusion abgefangen -> ok:false]';
   END;
 
-  -- TEST 6 (Zins-Ausbau): Methoden-Override + Carry-forward, auto_post-Default, posting_day_of_month
+  -- TEST 6: Methoden-Override + Carry-forward, auto_post-Default, posting_day_of_month
   DECLARE
     v_acct3 INT;
     v_acct4 INT;
@@ -122,7 +122,7 @@ BEGIN
     IF v_pd IS DISTINCT FROM 5 THEN RAISE EXCEPTION 'FAIL [posting]: erwartet 5, got %', v_pd; END IF;
     RAISE NOTICE 'PASS [Override 30E/360 + auto_post monthly=false + posting=5]';
 
-    -- Folge-Zeile OHNE day_count-Override -> Carry-forward der Vorgaengerzeile (30E/360, NICHT cash-Default ACT/365)
+    -- Folge-Zeile ohne day_count-Override -> Carry-forward der Vorgaengerzeile (30E/360, nicht cash-Default ACT/365)
     SELECT finance.fn_set_account_interest(jsonb_build_object(
       'account_id', v_acct3, 'annual_rate', 3.0, 'schedule_unit', 'month', 'valid_from', '2026-07-01')) INTO v_res;
     SELECT day_count_convention INTO v_dc FROM finance.account_interest_rates WHERE account_id = v_acct3 AND valid_to IS NULL;
@@ -141,7 +141,7 @@ BEGIN
     RAISE NOTICE 'PASS [cash-Default ACT/365 + auto_post daily=true]';
   END;
 
-  -- TEST 7 (WS-Z4): Zins auf einen nicht-zins-faehigen Kontotyp (Kredit) -> {ok:false}, kein Write
+  -- TEST 7: Zins auf einen nicht-zins-faehigen Kontotyp (Kredit) -> {ok:false}, kein Write
   DECLARE
     v_loan INT;
   BEGIN
@@ -160,7 +160,7 @@ BEGIN
     RAISE NOTICE 'PASS set_account_interest [Kredit nicht zins-faehig -> ok:false, kein Write]';
   END;
 
-  -- TEST 8 (Befund 2026-10-24): kein erfundener Rhythmus; Pflicht-Pruefung auf den WIRKSAMEN Werten;
+  -- TEST 8: kein erfundener Rhythmus; Pflicht-Pruefung auf den wirksamen Werten;
   -- Tag nur bei gleicher Einheit geerbt; Vorschau liefert die erste Gutschrift (Karte).
   DECLARE
     v_a INT;
@@ -194,13 +194,13 @@ BEGIN
     IF (v_p->>'ok')::boolean IS DISTINCT FROM true OR v_p->>'schedule_unit' IS DISTINCT FROM 'month'
        OR (v_p->>'schedule_day_of_month')::int IS DISTINCT FROM -1 OR v_p->>'first_period_end' IS DISTINCT FROM '2026-11-30' THEN
       RAISE EXCEPTION 'FAIL [8d reiner Satzwechsel]: %', v_p; END IF;
-    -- (e) Einheitswechsel month/-1 -> year ohne Tag: Tag wird NICHT geerbt -> Jahrestag
+    -- (e) Einheitswechsel month/-1 -> year ohne Tag: Tag wird nicht geerbt -> Jahrestag
     v_p := finance.fn_interest_rate_preview(jsonb_build_object('account_id', v_a, 'annual_rate', 2.75, 'schedule_unit', 'year', 'valid_from', '2026-11-10'));
     IF (v_p->>'ok')::boolean IS DISTINCT FROM true OR v_p->>'schedule_day_of_month' IS NOT NULL
        OR v_p->>'posting_day_of_month' IS NOT NULL OR v_p->>'first_period_end' IS DISTINCT FROM '2027-11-10' THEN
       RAISE EXCEPTION 'FAIL [8e Einheitswechsel -> Jahrestag]: %', v_p; END IF;
   END;
-  -- (f) Altzeile monatlich OHNE Tag (vor dem Gesetz geschrieben): reiner Satzwechsel bleibt erlaubt
+  -- (f) Altzeile monatlich ohne Tag: reiner Satzwechsel bleibt erlaubt
   DECLARE
     v_b INT;
     v_p JSONB;

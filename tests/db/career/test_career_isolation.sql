@@ -1,15 +1,15 @@
 -- tests/db/career/test_career_isolation.sql
--- Career-Paket WS-0 (D10) — strukturelle Isolation des ZWEITEN Domaenen-Pakets + Core-Host-Lesefenster.
+-- Strukturelle Isolation des Pakets career + Core-Host-Lesefenster.
 --
--- Beweist, dass der Paket-Vertrag GENERISCH ist (nicht finance-geformt): die engen career-Paket-Rollen
--- erreichen NUR das Schema `career`; agent.*/core.*/finance.*-Tabellen scheitern PHYSISCH
--- ("permission denied"). Core-Daten nur ueber publizierte SECURITY-DEFINER-Read-fns. Die CORE-HOST-
+-- Beweist, dass der Paket-Vertrag generisch ist (nicht finance-geformt): die engen career-Paket-Rollen
+-- erreichen nur das Schema `career`; agent.*/core.*/finance.*-Tabellen scheitern physisch
+-- ("permission denied"). Core-Daten nur ueber publizierte SECURITY-DEFINER-Read-fns. Die Core-Host-
 -- Leserolle core_ro liest dagegen auch `career` (das vom Paket geoeffnete Aufsichts-Fenster). Der RW-
 -- Roundtrip (INSERT+UPDATE auf career.onboarding_state) beweist, dass die Isolation echte Writes +
--- den updated_at-Trigger NICHT bricht.
+-- den updated_at-Trigger nicht bricht.
 --
--- Voraussetzung: career_rw/career_ro/core_ro sind PERSISTENT provisioniert (bootstrap_test_db ruft
--- core.fn_provision_package_roles('career') NACH dem career-Schema-Apply; Prod: pkg_cmd_install Stage 3).
+-- Voraussetzung: career_rw/career_ro/core_ro sind persistent provisioniert (bootstrap_test_db ruft
+-- core.fn_provision_package_roles('career') nach dem career-Schema-Apply; Prod: pkg_cmd_install Stage 3).
 -- Laeuft als Superuser -> SET LOCAL ROLE braucht keine Membership; BEGIN...ROLLBACK raeumt alles weg.
 -- Pattern: RAISE EXCEPTION 'FAIL ...' = Test fehlgeschlagen (ON_ERROR_STOP -> Exit 1).
 BEGIN;
@@ -20,16 +20,16 @@ DECLARE
   v_have   BOOLEAN;
 BEGIN
   -- Die Paket-Rollen muessen existieren (sonst ist die Isolation nicht provisioniert -> harter FAIL,
-  -- nicht SKIP: dieser Test IST der WS-0-Generizitaets-Nachweis fuer das 2. Paket).
+  -- nicht SKIP: dieser Test ist der Generizitaets-Nachweis des Paket-Vertrags fuer ein zweites Paket).
   IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'career_ro')
      OR NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'career_rw')
      OR NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'core_ro') THEN
     RAISE EXCEPTION 'FAIL setup: career_rw/career_ro/core_ro nicht provisioniert (bootstrap_test_db / pkg_cmd_install Stage 3 pruefen)';
   END IF;
 
-  -- Fixture (P2b-1): career.onboarding_state.person_id ist NOT NULL + FK -> agent.persons. Eine Owner-Person
+  -- Fixture: career.onboarding_state.person_id ist NOT NULL + FK -> agent.persons. Eine Owner-Person
   -- seeden (via family -> Projektions-Trigger fuellt agent.persons), damit die RW-Roundtrip-INSERTs unten einen
-  -- gueltigen FK-Wert haben. Als Superuser VOR den SET-LOCAL-ROLE-Bloecken.
+  -- gueltigen FK-Wert haben. Als Superuser vor den SET-LOCAL-ROLE-Bloecken.
   INSERT INTO agent.core_contexts (name, description, agent_name, load_strategy, content, metadata)
   VALUES ('family','t',NULL,'lazy','f',
     jsonb_build_object('managed_by','agent','protected', true,
@@ -39,14 +39,14 @@ BEGIN
   ON CONFLICT (name) DO UPDATE SET metadata = EXCLUDED.metadata;
 
   -- ==========================================================
-  -- A) career_ro: liest das EIGENE Schema, NICHTS anderes (VF3)
+  -- A) career_ro: liest das eigene Schema, nichts anderes
   -- ==========================================================
-  -- (A1) eigenes Schema lesen DARF
+  -- (A1) eigenes Schema lesen darf
   SET LOCAL ROLE career_ro;
   PERFORM 1 FROM career.market_signals LIMIT 1;            -- kein Fehler erwartet (leer ok). Person-private Tabellen
   RESET ROLE;                                              -- (job_matches/onboarding_state) sperrt der Host: test_fn_read_job_matches
 
-  -- (A2) JOIN career.x agent.y -> permission denied for schema agent (die Kern-VF3-Aussage)
+  -- (A2) JOIN career.x agent.y -> permission denied for schema agent (die Kern-Aussage)
   SET LOCAL ROLE career_ro;
   v_denied := FALSE;
   BEGIN PERFORM 1 FROM career.onboarding_state o LEFT JOIN agent.core_contexts c ON true LIMIT 1;
@@ -88,10 +88,10 @@ BEGIN
   -- ==========================================================
   -- B) core_ro: Core-Host-Leserolle liest auch `career` (das geoeffnete Aufsichts-Fenster)
   -- ==========================================================
-  -- (B1) career lesen DARF (Paket-Lesefenster, von fn_provision_package_roles unbedingt geoeffnet)
+  -- (B1) career lesen darf (Paket-Lesefenster, von fn_provision_package_roles unbedingt geoeffnet)
   SET LOCAL ROLE core_ro;
   PERFORM 1 FROM career.market_signals LIMIT 1;            -- Aufsichtsfenster (person-private Tabellen: test_fn_read_job_matches)
-  -- (B2) agent + core lesen DARF (eigene Host-Daten)
+  -- (B2) agent + core lesen darf (eigene Host-Daten)
   PERFORM 1 FROM agent.core_contexts LIMIT 1;
   PERFORM 1 FROM core.config LIMIT 1;
   RESET ROLE;
@@ -116,14 +116,14 @@ BEGIN
   RAISE NOTICE 'PASS isolation [core_ro: career read-only sichtbar, backup_key nein, kein Write]';
 
   -- ==========================================================
-  -- C) career_rw: Write-Roundtrip beweist, dass die Isolation echte Writes + Trigger NICHT bricht
+  -- C) career_rw: Write-Roundtrip beweist, dass die Isolation echte Writes + Trigger nicht bricht
   -- ==========================================================
   -- search_path wie die Prod-Rolle (fn_provision_package_roles pinnt sie; SET ROLE traegt GUCs nicht).
   SET LOCAL search_path = pg_catalog, career, agent, core;
   SET LOCAL ROLE career_rw;
 
   -- INSERT + UPDATE auf career.onboarding_state (der updated_at-Touch-Trigger feuert beim UPDATE; person_id=erika
-  -- erfuellt NOT NULL + FK -> agent.persons, P2b-1; FK-RI-Check laeuft privilegiert, career_rw braucht kein agent-SELECT).
+  -- erfuellt NOT NULL + FK -> agent.persons; FK-RI-Check laeuft privilegiert, career_rw braucht kein agent-SELECT).
   INSERT INTO career.onboarding_state (section_key, ord, label, person_id) VALUES ('__iso_rw__', 1, 'Iso RW', 'erika');
   UPDATE career.onboarding_state SET status = 'completed' WHERE section_key = '__iso_rw__' AND person_id = 'erika';
   SELECT EXISTS (
@@ -131,7 +131,7 @@ BEGIN
   ) INTO v_have;
   IF NOT v_have THEN RAISE EXCEPTION 'FAIL rw [career.onboarding_state Write-Roundtrip]'; END IF;
 
-  -- career_rw bleibt isoliert: agent.* unerreichbar (VF3 auch fuer die Schreibrolle)
+  -- career_rw bleibt isoliert: agent.* unerreichbar (auch fuer die Schreibrolle)
   v_denied := FALSE;
   BEGIN PERFORM 1 FROM agent.core_contexts LIMIT 1;
   EXCEPTION WHEN insufficient_privilege THEN v_denied := TRUE; END;

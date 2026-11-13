@@ -1,6 +1,6 @@
 -- ============================================================
 -- test_fn_monthly_equivalent — zentrale Monats-Normalisierung (Single Source of Truth)
---   Deckt Praezision UND Richtung ab (die alte Formel invertierte day/week).
+--   Deckt Praezision und Richtung ab (day/week duerfen nicht invertiert sein).
 --   dpm = 30.4375. Erwartet: month=amount, year=amount/12, week=amount*dpm/7, day=amount*dpm.
 --   Plus: die GENERATED-Spalte finance_recurring_payments.monthly_equivalent nutzt die fn.
 --   BEGIN/ROLLBACK -> kein Residual-State.
@@ -24,7 +24,7 @@ BEGIN
     IF finance.fn_monthly_equivalent(1200, 1, 'year') <> 100.00 THEN
         RAISE EXCEPTION 'FAIL: year 1200 -> %, erwartet 100.00', finance.fn_monthly_equivalent(1200, 1, 'year');
     END IF;
-    -- week: amount*30.4375/7 (RICHTUNG: groesser als amount, nicht kleiner!)
+    -- week: amount*30.4375/7 (Richtung: groesser als amount, nicht kleiner!)
     IF finance.fn_monthly_equivalent(100, 1, 'week') <> ROUND(100 * 30.4375 / 7, 2) THEN
         RAISE EXCEPTION 'FAIL: week 100 -> %, erwartet %', finance.fn_monthly_equivalent(100, 1, 'week'), ROUND(100*30.4375/7, 2);
     END IF;

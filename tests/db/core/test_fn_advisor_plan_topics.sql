@@ -1,5 +1,5 @@
 -- tests/db/core/test_fn_advisor_plan_topics.sql
--- Finanzplan in kleinen Themen + Gesamtcheck (2026-11-07):
+-- Finanzplan in kleinen Themen + Gesamtcheck:
 --   * agent.fn_advisor_save_section mit topic: Upsert in interview_state[key].topics[] (Reihenfolge der ersten Speicherung,
 --     gleiche Bezeichnung ohne Gross-/Kleinschreibung ersetzt), data je Thema (Abschnitts-data = Alt-data || Themen-data,
 --     derselbe Block in zwei Themen -> block_in_two_topics), Alt-content -> legacy_content + Kartennotiz, Save ohne topic
@@ -109,7 +109,7 @@ BEGIN
     RAISE EXCEPTION 'FAIL [3 Block mit dem Thema entfernt]: %', v_state->'wealth_building'; END IF;
   RAISE NOTICE 'PASS [3 data je Thema + Kollision]';
 
-  -- ---------- 4) Alt-Abschnitt (vor diesem Release) -> legacy_content + Kartennotiz ----------
+  -- ---------- 4) Alt-Abschnitt (ohne Themen gespeichert) -> legacy_content + Kartennotiz ----------
   UPDATE agent.advisor_plans
      SET interview_state = interview_state || jsonb_build_object('debts_loans', jsonb_build_object(
            'content','Alter Gesamttext zu allen Krediten.', 'data', jsonb_build_object('goal', jsonb_build_object('x', 1)),

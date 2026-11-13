@@ -1,5 +1,5 @@
 -- tests/db/finance/test_fn_import_depot_conflict.sql
--- fn_import_depot_conflict: gedruckte Depotnummer/Inhaber gegen das gewaehlte Depot (Befund 2026-10-23).
+-- fn_import_depot_conflict: gedruckte Depotnummer/Inhaber gegen das gewaehlte Depot.
 --   Widerspruch: Nummer gehoert einem anderen Konto, Depot hat andere gespeicherte Nummer, Depot gehoert einer
 --   anderen Person. Kein Widerspruch: Haushalts-Depot, nicht aufloesbarer Inhaber, Depot ohne Nummer, Batch-Depot.
 BEGIN;

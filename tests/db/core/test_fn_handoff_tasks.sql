@@ -1,5 +1,5 @@
 -- tests/db/core/test_fn_handoff_tasks.sql
--- Uebergabe Berater -> Buchhalter (agent.handoff_tasks, 2026-11-07):
+-- Uebergabe Berater -> Buchhalter (agent.handoff_tasks):
 --   * agent.fn_advisor_save_section legt handoff_tasks mit dem Abschnitt an (Karte: card_lines), Neu-Speichern ersetzt nur
 --     die offenen Aufgaben dieses Abschnitts; korrigierbare Eingaben -> {ok:false} ohne Write;
 --   * core.fn_handoff_overview: offene Aufgaben der Person + max_task_id;

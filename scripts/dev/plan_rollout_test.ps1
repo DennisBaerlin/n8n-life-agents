@@ -1,5 +1,5 @@
 ﻿#Requires -Version 5.1
-# plan_rollout_test.ps1 — GRATIS: geführte Abfolge am Laufende echter Orchestrator-Läufe (Mock-LLM, Mock-Telegram).
+# plan_rollout_test.ps1 — gratis: geführte Abfolge am Laufende echter Orchestrator-Läufe (Mock-LLM, Mock-Telegram).
 # Prüft: genau eine Rollout-Nachricht nach der Antwort, keine bei offener Karte oder Rückfrage, Antwort kommt auch bei Fehler im Sub,
 # Übergabe-Liste nicht doppelt, Bestandsplan bekommt Schritt 0. Laufzeit-Szenarien (Repo-scenarios bleibt unberührt).
 # Voraussetzung: Substrat + enable_mock_llm.ps1 + enable_mock_telegram.ps1. Usage: .\scripts\dev\plan_rollout_test.ps1 [-Id rr1] [-ForceAbortId rr1]. Exit = Anzahl roter Fälle.

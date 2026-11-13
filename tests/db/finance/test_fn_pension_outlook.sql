@@ -1,5 +1,5 @@
 -- tests/db/finance/test_fn_pension_outlook.sql
--- Testet finance.fn_pension_outlook (Berater-Fenster, Renteninformation-Plan 2026-10-26, Werte erfunden) und
+-- Testet finance.fn_pension_outlook (Berater-Fenster, Werte erfunden) und
 -- finance.fn_pension_statements_due (Erinnerung): juengste Renteninformation je Rente, Alter/stale/never,
 -- Szenarien in Kaufkraft zum Stand (nominal / (1+i)^n, n = Regelaltersrente - Stand), ohne Inflation keine Realwerte.
 BEGIN;
@@ -39,7 +39,7 @@ BEGIN
     RAISE EXCEPTION 'FAIL pension_outlook [ohne Inflation]: %', v_r; END IF;
   RAISE NOTICE 'PASS pension_outlook [ohne Inflation keine Realwerte]';
 
-  -- TEST 3: bAV ohne Information -> never im Fenster, aber KEINE Erinnerung (viele Arbeitgeber schicken keine);
+  -- TEST 3: bAV ohne Information -> never im Fenster, aber keine Erinnerung (viele Arbeitgeber schicken keine);
   --         die frische DRV ist nicht faellig
   SELECT e INTO v_r FROM jsonb_array_elements(v->'pensions') e WHERE e->>'name' = '__t_po bAV';
   IF (v_r->>'never')::boolean IS DISTINCT FROM true THEN RAISE EXCEPTION 'FAIL pension_outlook [never]: %', v_r; END IF;

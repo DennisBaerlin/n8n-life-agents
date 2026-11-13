@@ -1,5 +1,5 @@
 -- tests/db/finance/test_maintenance_reserve.sql
--- Instandhaltungsruecklage (Feature 2026-10-27): Immobilie mit Wohnflaeche + Baujahr, offenes Sparziel mit
+-- Instandhaltungsruecklage: Immobilie mit Wohnflaeche + Baujahr, offenes Sparziel mit
 -- real_estate_id (ohne Zielbetrag/-datum), Rate = genannt / fortgefuehrter Dauerauftrag / Empfehlung nach II. BV
 -- (finance.fn_maintenance_reserve_rate), Sperren, Loeschen/Verkaufen, View maintenance_reserve_status, E2E-Cleanup.
 -- Erfundene Musterwerte (Repo oeffentlich).
@@ -278,7 +278,7 @@ BEGIN
     RAISE EXCEPTION 'FAIL [D5 Rate aus Empfehlung anlegen]: %', r; END IF;
   RAISE NOTICE 'PASS [D5 Ruecklage ohne Rate: Startbestand ok, Rate spaeter = Empfehlung 94]';
 
-  -- (D6, Review) gestoppte Rate (stop_funders) mit monthly_savings_rate wieder starten -> Folge-Zeile ab heute, aktiv
+  -- (D6) gestoppte Rate (stop_funders) mit monthly_savings_rate wieder starten -> Folge-Zeile ab heute, aktiv
   r := finance.fn_set_savings_goal(jsonb_build_object('goal_id', v_goal, 'stop_funders', 'true'));
   IF (r->>'paused_cash_rate')::boolean IS DISTINCT FROM true THEN RAISE EXCEPTION 'FAIL [D6 Vorbedingung stop]: %', r; END IF;
   r := finance.fn_set_savings_goal(jsonb_build_object('goal_id', v_goal, 'monthly_savings_rate', '120'));
@@ -289,7 +289,7 @@ BEGIN
     RAISE EXCEPTION 'FAIL [D6 Neustart nach stop_funders]: %', r; END IF;
   RAISE NOTICE 'PASS [D6 gestoppte Ruecklagen-Rate wieder gestartet (aktiv, 120, Status-View 120)]';
 
-  -- (D7, Review) Default-Name kollidiert mit einem bestehenden Ziel -> name_exists statt Dublette
+  -- (D7) Default-Name kollidiert mit einem bestehenden Ziel -> name_exists statt Dublette
   PERFORM finance.fn_create_real_estate(jsonb_build_object('name','__mr_laube__','living_area_m2','40','year_built',y - 12));
   v_pot4 := (finance.fn_create_account('{"name":"__mr_topf5__","account_type":"cash"}'::jsonb)->>'account_id')::int;
   PERFORM finance.fn_create_savings_goal(jsonb_build_object('name','Instandhaltungsrücklage __mr_laube__','target_amount',500,
@@ -299,7 +299,7 @@ BEGIN
     RAISE EXCEPTION 'FAIL [D7 name_exists]: %', r; END IF;
   RAISE NOTICE 'PASS [D7 Default-Name einer Ruecklage kollidiert -> name_exists]';
 
-  -- (D8, Review) Freitext statt Zahl -> korrigierbar (kein Cast-RAISE)
+  -- (D8) Freitext statt Zahl -> korrigierbar (kein Cast-RAISE)
   r := finance.fn_create_real_estate(jsonb_build_object('name','__mr_text__','living_area_m2','ca. 100','year_built','1990er'));
   IF (r->>'ok')::boolean IS DISTINCT FROM false THEN RAISE EXCEPTION 'FAIL [D8 Freitext]: %', r; END IF;
   r := finance.fn_create_real_estate(jsonb_build_object('name','__mr_text__','living_area_m2','100','year_built','1990er'));
@@ -334,7 +334,7 @@ BEGIN
   r := finance.fn_delete_real_estate('{"real_estate_name":"__mr_wohnung__"}'::jsonb);
   IF (r->>'ok')::boolean IS DISTINCT FROM false OR (r->>'reserve_count')::int IS DISTINCT FROM 1 THEN
     RAISE EXCEPTION 'FAIL [F1 Loeschen blockiert]: %', r; END IF;
-  -- auch eine GESCHLOSSENE Ruecklage (Soft-Close, Status cancelled) haelt den Link -> weiter blockiert
+  -- auch eine geschlossene Ruecklage (Soft-Close, Status cancelled) haelt den Link -> weiter blockiert
   UPDATE finance.savings_goals SET status = 'cancelled' WHERE name = 'Instandhaltungsrücklage __mr_wohnung__';
   r := finance.fn_delete_real_estate('{"real_estate_name":"__mr_wohnung__"}'::jsonb);
   IF (r->>'ok')::boolean IS DISTINCT FROM false OR (r->>'reserve_count')::int IS DISTINCT FROM 1 THEN
@@ -344,7 +344,7 @@ BEGIN
          'sale_date',core.fn_today()::text,'sale_price',300000));
   IF (r->>'ok')::boolean IS DISTINCT FROM true OR r->'linked_reserve'->>'name' IS DISTINCT FROM 'Instandhaltungsrücklage __mr_haus__' THEN
     RAISE EXCEPTION 'FAIL [F2 Verkauf Hinweis]: %', r; END IF;
-  -- (Review) verkauftes Haus mit weiterlaufender Ruecklage bleibt in der Status-View (Digest zeigt die echte Rate)
+  -- verkauftes Haus mit weiterlaufender Ruecklage bleibt in der Status-View (Digest zeigt die echte Rate)
   IF NOT EXISTS (SELECT 1 FROM finance.maintenance_reserve_status
                  WHERE real_estate_name = '__mr_haus__' AND property_status = 'sold' AND running_monthly_eur = 180) THEN
     RAISE EXCEPTION 'FAIL [F2 verkauft in Status-View]'; END IF;

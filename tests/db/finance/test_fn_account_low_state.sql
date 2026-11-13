@@ -1,5 +1,5 @@
 -- tests/db/finance/test_fn_account_low_state.sql
--- finance.fn_account_low_state(acct, alert_only) — das EINE Urteil „Tiefster Stand“ (Konten-Tab, Konten-Banner,
+-- finance.fn_account_low_state(acct, alert_only) — das eine Urteil „Tiefster Stand“ (Konten-Tab, Konten-Banner,
 --   Spiegel-Pille am Sparplan), auf dem Fixture-Haushalt tests/util/util_app_household.sql:
 --   [1] Sparkonto Zins (Deckungs-Konto ohne Auszug): funding, Ziel-Geld ist nicht frei -> warn mit Datum/Monat, Wert =
 --       tiefster freier Stand (negativ), Zahlen = fn_account_funding

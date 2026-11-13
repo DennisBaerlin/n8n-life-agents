@@ -1,5 +1,5 @@
 -- tests/db/estate/test_fn_set_digital_account.sql
--- WS-2: partielles Digital-Konto-Update — crypto-Kopplung gegen die EFFEKTIVE Kategorie
+-- Partielles Digital-Konto-Update — crypto-Kopplung gegen die effektive Kategorie
 -- (bestehend + Kategorie-Wechsel im selben Call), toleranter Bool, Kind-Reject.
 -- Self-contained; BEGIN..ROLLBACK.
 BEGIN;
@@ -41,7 +41,7 @@ BEGIN
   IF NOT FOUND THEN RAISE EXCEPTION 'FAIL [partial update]: Felder nicht wie erwartet'; END IF;
   RAISE NOTICE 'PASS [partielles Update + toleranter Bool-Parse]';
 
-  -- crypto-Kopplung gegen die EFFEKTIVE Kategorie:
+  -- crypto-Kopplung gegen die effektive Kategorie:
   v_r := estate.fn_set_digital_account(jsonb_build_object(
       'chat_id','111', 'digital_account_id',v_id, 'seed_backup_location','Schliessfach'));
   IF (v_r->>'ok')::boolean OR v_r->>'reason' NOT LIKE '%crypto%' THEN

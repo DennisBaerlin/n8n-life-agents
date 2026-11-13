@@ -172,8 +172,8 @@ BEGIN
 
 END $$;
 
--- TEST 6-9 (Audit F1b): regulaere Rate schliesst das passende Vorkommen der Kredit-rp (sonst bot die Erinnerung
---   die schon bezahlte Rate erneut an -> Doppelbuchung). Nur das NAECHSTGELEGENE Vorkommen innerhalb eines Monats,
+-- TEST 6-9: regulaere Rate schliesst das passende Vorkommen der Kredit-rp (sonst bot die Erinnerung
+--   die schon bezahlte Rate erneut an -> Doppelbuchung). Nur das naechstgelegene Vorkommen innerhalb eines Monats,
 --   nie still um Monate rueckdatiert; abweichende Betraege (Sondertilgung) bleiben ungestempelt.
 DO $$
 DECLARE
@@ -213,7 +213,7 @@ BEGIN
   RAISE NOTICE 'PASS loan [regulaere Rate schliesst naechstgelegenes Vorkommen, Tilgung 400]';
 
   -- TEST 7: noch eine regulaere Rate heute -> das naechste offene Vorkommen (v_d2) liegt > 1 Monat zurueck ->
-  --   KEIN stilles Rueckdatieren: ungestempelt am payment_date
+  --   kein stilles Rueckdatieren: ungestempelt am payment_date
   SELECT finance.fn_book_loan_payment(jsonb_build_object('loan_id',v_loan,'loan_account_id',v_lacc,'debit_account_id',v_giro,
     'payment_amount',1000,'payment_date',CURRENT_DATE::text)) INTO v_res;
   SELECT recurring_payment_id, transaction_date INTO v_rpid, v_date FROM finance.transactions WHERE id = (v_res->>'loan_payment_tx_id')::int;
@@ -239,7 +239,7 @@ BEGIN
   IF c <> 1 THEN RAISE EXCEPTION 'FAIL loan [explizit]: erwartet 1 offenes Vorkommen (%), got %', v_f, c; END IF;
   RAISE NOTICE 'PASS loan [explizite Faelligkeit stempelt genau dieses Vorkommen]';
 
-  -- TEST 10 (Review): explizite, schon gebuchte Faelligkeit -> ok:false (Race-Backstop nach dem Lock, unabhaengig
+  -- TEST 10: explizite, schon gebuchte Faelligkeit -> ok:false (Race-Backstop nach dem Lock, unabhaengig
   --   vom Belastungskonto -- der Unique-Index greift nur bei gleichem account_id)
   SELECT finance.fn_book_loan_payment(jsonb_build_object('loan_id',v_loan,'loan_account_id',v_lacc,
     'debit_account_id',(finance.fn_create_account('{"name":"__test_lp2_giro2__","account_type":"cash","account_holder":"T","currency":"EUR"}'::jsonb)->>'account_id')::int,
@@ -249,7 +249,7 @@ BEGIN
   RAISE NOTICE 'PASS loan [explizite, schon gebuchte Faelligkeit -> ok:false]';
 END $$;
 
--- TEST 11 (Review): regulaere Rate ein paar Tage VOR der Faelligkeit bezahlt -> trotzdem dem Vorkommen zugeordnet
+-- TEST 11: regulaere Rate ein paar Tage vor der Faelligkeit bezahlt -> trotzdem dem Vorkommen zugeordnet
 --   (sonst fragt die Erinnerung am Faelligkeitstag erneut -> Doppelbuchung)
 DO $$
 DECLARE
@@ -272,7 +272,7 @@ BEGIN
   RAISE NOTICE 'PASS loan [3 Tage vor Faelligkeit bezahlt -> Vorkommen geschlossen]';
 END $$;
 
--- WP2 (weniger Rueckfragen): ohne Betrag bucht die fn die faellige Rate (Betrag des naechstgelegenen offenen Vorkommens);
+-- Ohne Betrag bucht die fn die faellige Rate (Betrag des naechstgelegenen offenen Vorkommens);
 -- der Return nennt sie (payment_amount). Ohne Raten-Kette -> ok:false (Betrag nennen).
 DO $$
 DECLARE v_res JSONB; v_giro INT; v_loan INT; v_lacc INT; v_fam JSONB; v_due DATE := CURRENT_DATE - 2;
@@ -295,7 +295,7 @@ BEGIN
     RAISE EXCEPTION 'FAIL loan [ohne Betrag, ohne Rate]: ok:false erwartet, got %', v_res; END IF;
   RAISE NOTICE 'PASS loan [ohne Betrag -> faellige Rate 600 (60/540) gebucht; ohne Raten-Kette ok:false]';
 END $$;
--- Review WP2: ohne Betrag, aber mit explizitem (altem) Faelligkeitstermin ausserhalb des 90-Tage-Fensters -> dessen Rate
+-- Ohne Betrag, aber mit explizitem (altem) Faelligkeitstermin ausserhalb des 90-Tage-Fensters -> dessen Rate
 DO $$
 DECLARE v_res JSONB; v_giro INT; v_loan INT; v_lacc INT; v_due DATE := (date_trunc('month', CURRENT_DATE) - interval '5 months')::date;
 BEGIN

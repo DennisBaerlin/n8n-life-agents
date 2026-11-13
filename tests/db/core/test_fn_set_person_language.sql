@@ -3,7 +3,7 @@
 --   core.callback_handlers member_permeable=true). Zero-Trust: re-resolvt den Absender selbst.
 --   * Owner setzt jede Person; Mitglied nur sich selbst; fremde Person durch Mitglied -> abgelehnt
 --   * unbekannte Person / ungueltiger Code / unaufgeloester Absender -> {ok:false, toast}, kein Write
---   * schreibt genau language der Zielperson; Toast in der Sprache des TIPPENDEN
+--   * schreibt genau language der Zielperson; Toast in der Sprache des Tippenden
 -- Ueber den Dispatcher (core.fn_dispatch_callback) mitgeprueft: der Prefix ist registriert und member-permeabel.
 BEGIN;
 
@@ -42,7 +42,7 @@ BEGIN
        WHERE c.name = 'family' AND pp->>'person_id' = 'nora') IS DISTINCT FROM 'en' THEN
     RAISE EXCEPTION 'FAIL set_person_language [en nicht gespeichert]'; END IF;
 
-  -- ---------- Mitglied setzt sich selbst (Toast in der NEUEN eigenen Sprache) ----------
+  -- ---------- Mitglied setzt sich selbst (Toast in der neuen eigenen Sprache) ----------
   r := core.fn_dispatch_callback(jsonb_build_object('data', 'lang:nora:de', 'chat_id', '222'));
   IF (r->>'ok')::boolean IS DISTINCT FROM true OR r->>'toast' IS DISTINCT FROM 'DE Nora=Deutsch' THEN
     RAISE EXCEPTION 'FAIL set_person_language [Mitglied selbst: %]', r; END IF;

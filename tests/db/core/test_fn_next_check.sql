@@ -1,6 +1,6 @@
 -- tests/db/core/test_fn_next_check.sql
 -- Testet fn_next_check(prev, interval, now): anker-erhaltender Cadence-Advance.
--- Vertrag: Ergebnis = prev + interval * k (k minimal), IMMER strikt > now (kein Sofort-Re-Fire),
+-- Vertrag: Ergebnis = prev + interval * k (k minimal), immer strikt > now (kein Sofort-Re-Fire),
 --          Anker (Uhrzeit/Wochentag) bleibt erhalten, Catch-up nach Downtime ueberspringt
 --          verpasste Slots statt sie nachzufeuern.
 BEGIN;
@@ -37,7 +37,7 @@ BEGIN
   END IF;
   RAISE NOTICE 'PASS fn_next_check [exakter Slot -> strikt naechster Slot]';
 
-  -- TEST 4: now VOR prev (Trigger frisch angelegt, next_check in der Zukunft) -> prev + 1 Intervall
+  -- TEST 4: now vor prev (Trigger frisch angelegt, next_check in der Zukunft) -> prev + 1 Intervall
   v_next := agent.fn_next_check('2026-06-10 09:00+02'::timestamptz, INTERVAL '1 day',
                                 '2026-06-08 12:00+02'::timestamptz);
   IF v_next IS DISTINCT FROM '2026-06-11 09:00+02'::timestamptz THEN
@@ -64,7 +64,7 @@ BEGIN
   -- Monats-Arithmetik haengt an der Sitzungs-Zeitzone (Sommerzeit) -> fuer die Monats-Faelle fest UTC
   PERFORM set_config('TimeZone', 'UTC', true);
 
-  -- TEST 7: Monats-Intervall nach langer Pause â€” die Epoch-Naeherung (Monat = 30 Tage) darf nicht ueberschiessen:
+  -- TEST 7: Monats-Intervall nach langer Pause - die Epoch-Naeherung (Monat = 30 Tage) darf nicht ueberschiessen:
   -- prev 01.01., now 31.12. -> der naechste Slot ist der 01.01. des Folgejahres (k = 12), nicht der 01.02. (k = 13)
   v_next := agent.fn_next_check('2026-01-01 12:00+01'::timestamptz, INTERVAL '1 month',
                                 '2026-12-31 12:00+01'::timestamptz);
@@ -73,7 +73,7 @@ BEGIN
   END IF;
   RAISE NOTICE 'PASS fn_next_check [Monats-Intervall: minimales k nach langer Pause]';
 
-  -- TEST 7b: Gegenrichtung - die Naeherung schiesst zu KURZ (Februar hat 28 Tage): prev 01.02., now genau 01.03.
+  -- TEST 7b: Gegenrichtung - die Naeherung schiesst zu kurz (Februar hat 28 Tage): prev 01.02., now genau 01.03.
   -- -> der Slot 01.03. ist nicht strikt > now, also 01.04.
   v_next := agent.fn_next_check('2026-02-01 11:00+00'::timestamptz, INTERVAL '1 month',
                                 '2026-03-01 11:00+00'::timestamptz);

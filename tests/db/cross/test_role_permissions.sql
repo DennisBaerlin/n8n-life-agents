@@ -1,16 +1,16 @@
 -- tests/db/cross/test_role_permissions.sql
--- ROLLEN-PERSPEKTIV-Smoke (Post-WS3-Härtung): jede publizierte Brücken-/Lesefenster-Funktion wird unter
--- der ECHTEN Laufzeit-Rolle aufgerufen, die die Agenten zur Laufzeit binden — NICHT als Superuser. Genau
--- die Klasse, die in der WS3-Abnahme bracht (agent.fn_fetch_context war INVOKER → context_ro kein core-
--- Zugriff → "permission denied for schema core"; db_test als Superuser sah es nie).
+-- Rollen-Perspektiv-Smoke: jede publizierte Brücken-/Lesefenster-Funktion wird unter der echten
+-- Laufzeit-Rolle aufgerufen, die die Agenten zur Laufzeit binden, nicht als Superuser. Faengt die Klasse
+-- "INVOKER-fn liest cross-schema" (z. B. agent.fn_fetch_context als INVOKER → context_ro ohne core-Zugriff →
+-- "permission denied for schema core"); db_test als Superuser sieht sie nie.
 --
 -- Pattern: Superuser-Session + SET LOCAL ROLE <rolle> im DO-Block (wie test_finance_isolation.sql). Ein
 -- permission-denied unter der Rolle = harter FAIL. db_test provisioniert context_ro/core_ro (util) +
 -- finance_ro (fn_provision_package_roles('finance'), bootstrap_test_db) -> fehlt eine Rolle: harter FAIL
 -- (das Substrat ist dann kaputt, kein stiller SKIP).
 --
--- WICHTIG (L6): core.fn_fetch_context kehrt bei fehlender lazy-Zeile ZURÜCK, BEVOR es core.context_renderers
--- liest -> ohne eine lazy-Fixture bewiese der Test das core-USAGE/EXECUTE-Grant NICHT (False-Positive). Daher
+-- Falle: core.fn_fetch_context kehrt bei fehlender lazy-Zeile zurück, bevor es core.context_renderers
+-- liest -> ohne eine lazy-Fixture bewiese der Test das core-USAGE/EXECUTE-Grant nicht (False-Positive). Daher
 -- erst eine lazy-Zeile seeden. Die core.*-DEFINER-Fenster erreichen den cross-schema-Read auch leer.
 BEGIN;
 
@@ -19,23 +19,23 @@ INSERT INTO agent.core_contexts (name, description, agent_name, load_strategy, c
 VALUES ('__rp_lazy__', 'role-perm fixture', NULL, 'lazy', 'plain content', '{}'::jsonb)
 ON CONFLICT (name) DO NOTHING;
 
--- Fixture: ein finance-Trigger, damit der finance_ro-Test BEWEIST, dass das Lesefenster
+-- Fixture: ein finance-Trigger, damit der finance_ro-Test beweist, dass das Lesefenster
 -- tatsaechlich Daten liefert (nicht nur "kein permission denied" auf leerem Set).
 INSERT INTO agent.monitor_triggers (domain, label, trigger_type, acquisition_method, due_date, check_interval)
 VALUES ('finance', '__rp_trig__', 'date', 'none', '2099-01-01', interval '7 days')
 ON CONFLICT (domain, lower(label)) DO NOTHING;
 
--- Fixture (WS-1 Multi-Member): eine projizierte Person, damit der core_ro-Read echte Daten
+-- Fixture: eine projizierte Person, damit der core_ro-Read echte Daten
 -- liefert und der finance_rw-FK-Test einen gueltigen Eigentuemer referenzieren kann.
 INSERT INTO agent.persons (person_id, full_name, role)
 VALUES ('__rp_person__', 'RP Person', 'child') ON CONFLICT (person_id) DO NOTHING;
 
--- Fixture (WS-5b): family-Context mit gepairtem Owner, damit der core_ro -> agent.fn_resolve_sender-Pin
+-- Fixture: family-Context mit gepairtem Owner, damit der core_ro -> agent.fn_resolve_sender-Pin
 -- echte Daten liefert (das Gate loest den Sender unter core_ro auf). Der AFTER-Trigger trg_project_persons
--- spiegelt diese family-persons full-replace nach agent.persons -> deshalb traegt die Fixture AUCH
+-- spiegelt diese family-persons full-replace nach agent.persons -> deshalb traegt die Fixture auch
 -- '__rp_person__' (sonst loescht der Reconcile den oben direkt eingefuegten Kind-Datensatz -> FK-Test bricht).
--- WS-5 (Member-Pfad-Absicherung): zusaetzlich ein gepairter PARTNER (779) — der ueberlebende Partner ist
--- Erwachsener und MUSS den adults_only-Riegel passieren (Notfallmappe/Break-Glass, Owner-Entscheid 8).
+-- Dazu ein gepairter Partner (779): der ueberlebende Partner ist Erwachsener und muss den adults_only-Riegel
+-- passieren (Notfallmappe/Break-Glass).
 INSERT INTO agent.core_contexts (name, description, agent_name, load_strategy, content, metadata)
 VALUES ('family', 'role-perm sender fixture', NULL, 'lazy', E'## fam',
         jsonb_build_object('managed_by','agent','facts', jsonb_build_object('persons', jsonb_build_array(
@@ -47,12 +47,12 @@ VALUES ('family', 'role-perm sender fixture', NULL, 'lazy', E'## fam',
                              'role','child','birth_date','2015-01-01','telegram_user_id',778,'as_of','2026-06-11')))))
 ON CONFLICT (name) DO UPDATE SET metadata = excluded.metadata, content = excluded.content;
 
--- Fixture (WS-5d): eine Sperr-Zeile, damit der core_ro-Read echte Daten liefert.
+-- Fixture: eine Sperr-Zeile, damit der core_ro-Read echte Daten liefert.
 INSERT INTO agent.access_blocks (telegram_user_id, reason)
 VALUES (424242, 'role-perm fixture') ON CONFLICT (telegram_user_id) DO NOTHING;
 
--- Fixture (estate WS-1 / P2b-1-Regression): je eine household-Onboarding-Sektion, damit der
--- INVOKER-Write-Pfad core.fn_set_onboarding_section unter der ENGEN Paket-RW-Rolle einen echten
+-- Fixture: je eine household-Onboarding-Sektion, damit der
+-- INVOKER-Write-Pfad core.fn_set_onboarding_section unter der engen Paket-RW-Rolle einen echten
 -- UPDATE beweist (die Sektionen seedet sonst nur der Installer, nicht bootstrap_test_db).
 INSERT INTO finance.onboarding_state (section_key, ord, label)
 VALUES ('__rp_sec__', 999, 'RP Fixture') ON CONFLICT (section_key) DO NOTHING;
@@ -67,7 +67,7 @@ DECLARE
   v_bool BOOLEAN;
   v_cnt  INT;
 BEGIN
-  -- Alle drei Laufzeit-Rollen MÜSSEN existieren (Pflicht-Provisionierung von bootstrap_test_db).
+  -- Alle drei Laufzeit-Rollen müssen existieren (Pflicht-Provisionierung von bootstrap_test_db).
   IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'context_ro') THEN
     RAISE EXCEPTION 'FAIL [role_perms]: Rolle context_ro nicht provisioniert (Substrat kaputt)'; END IF;
   IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'core_ro') THEN
@@ -88,8 +88,8 @@ BEGIN
     RAISE EXCEPTION 'FAIL [context_ro -> core.fn_fetch_context]: erwartet "plain content", got %', COALESCE(v_out,'<null>'); END IF;
   RAISE NOTICE 'PASS [context_ro -> core.fn_fetch_context: kein permission denied]';
 
-  -- ===== (1b) NEGATIV-ASSERT (M2): context_ro darf KEINE core-Tabelle direkt lesen =====
-  -- USAGE auf Schema core (für die Fenster) erlaubt KEIN SELECT auf core-Tabellen -> D10 bleibt dicht.
+  -- ===== (1b) Negativ-Assert: context_ro darf keine core-Tabelle direkt lesen =====
+  -- USAGE auf Schema core (für die Fenster) erlaubt kein SELECT auf core-Tabellen -> Rollen-Zaun bleibt dicht.
   BEGIN
     SET LOCAL ROLE context_ro;
     PERFORM 1 FROM core.config LIMIT 1;
@@ -114,7 +114,7 @@ BEGIN
     v_out  := core.fn_config_get('core', 'api', 'core_version');
     v_out  := core.fn_core_api_version();  -- publiziertes Versions-Brueckenfenster (v_rw,v_ro granted) -> role_test_lint-Deckung
     PERFORM core.fn_onboarding_status('finance');
-    PERFORM core.fn_ui_texts_for('{"keys":["core.hitl.hint"]}'::jsonb);   -- Textkatalog Phase C: Cron-/Gate-Texte
+    PERFORM core.fn_ui_texts_for('{"keys":["core.hitl.hint"]}'::jsonb);   -- Textkatalog: Cron-/Gate-Texte
     RESET ROLE;
   EXCEPTION WHEN OTHERS THEN
     RESET ROLE;
@@ -125,7 +125,7 @@ BEGIN
     RAISE EXCEPTION 'FAIL [finance_ro -> fn_list_monitor_triggers]: Fenster lieferte 0 Zeilen trotz Fixture (Grant ok, aber Read defekt?)'; END IF;
   RAISE NOTICE 'PASS [finance_ro -> read_plan/trigger_summary/list_triggers(% rows)/package_active/config_get/onboarding_status: kein permission denied]', v_cnt;
 
-  -- ===== (2-audit) HITL-Vorpruef-fns der Tools (Audit F6/F7) lesen ohne permission denied =====
+  -- ===== (2-audit) HITL-Vorpruef-fns der Tools lesen ohne permission denied =====
   -- tool_book_loan_payment / tool_close_account lesen fn_get_loan_payment_split / fn_get_account_close_blockers
   -- (inkl. fn_recurring_due_open) VOR der Bestaetigungskarte unter ihrer Tool-Cred finance_rw (Prod-Pfad); finance_ro
   -- (Frei-SQL des Agenten) liest sie ebenfalls. Ein Kredit, den es nicht gibt, RAISEt 'not found' NACH dem
@@ -154,7 +154,7 @@ BEGIN
   END;
   RAISE NOTICE 'PASS [finance_rw/finance_ro -> fn_get_account_close_blockers/fn_get_loan_payment_split/fn_recurring_due_open: kein permission denied]';
 
-  -- ===== (2-adv) Berater-Lesepfade (2026-10-30): Spar-Deckung, Dauerauftraege, Alltagsausgaben, Ziel-Ampel, Konto-Vorschau =====
+  -- ===== (2-adv) Berater-Lesepfade: Spar-Deckung, Dauerauftraege, Alltagsausgaben, Ziel-Ampel, Konto-Vorschau =====
   -- Fixture als Superuser: ein Deckungs-Konto (Absender eines Dauerauftrags) + ein knappes Konto mit einer Quelle, damit unter
   -- finance_ro die echten Pfade laufen: fn_account_funding (Spalten referenziert -> die Projektion wird ausgewertet) und der
   -- Vorschlags-Zweig von fn_account_outlook (liest core.fn_household_persons fuer den Kinderkonto-Filter).
@@ -183,7 +183,7 @@ BEGIN
     PERFORM finance.fn_create_loan(jsonb_build_object('name', '__rp_adv_kredit__', 'lender', 'Bank', 'original_amount', 10000, 'current_balance', 8000,
               'interest_rate', 3.5, 'monthly_annuity', 300, 'first_payment_date', (CURRENT_DATE + 5)::text, 'debit_account_id', v_src));
     INSERT INTO finance.savings_goals (name, target_amount, target_date) VALUES ('__rp_adv_ziel__', 2000, CURRENT_DATE + 300);
-    -- Sparziel kurz vor dem Termin im Depot (2026-11-06): depot_risk-Liste + Status-fn unter finance_ro
+    -- Sparziel kurz vor dem Termin im Depot: depot_risk-Liste + Status-fn unter finance_ro
     INSERT INTO finance.savings_goal_reserve_entries (savings_goal_id, account_id, delta_native, currency, kind)
       SELECT id, v_depot, 1500, 'EUR', 'manual' FROM finance.savings_goals WHERE name = '__rp_adv_ziel__';
     INSERT INTO finance.pension (name, pension_type) VALUES ('__rp_adv_rente__', 'statutory') RETURNING id INTO v_pen;
@@ -197,7 +197,7 @@ BEGIN
       PERFORM account_name, everyday_per_day, everyday_per_month, provisional FROM finance.account_everyday_spending;
       PERFORM finance.fn_savings_goal_pace(id) FROM finance.savings_goal_progress WHERE status = 'active';
       v_res := finance.fn_account_outlook(v_short);
-      -- Transparenz 2026-10-30: Notreserve-Status, Haushalts-Alltag, Liquiditaet (Berater + Buchhalter lesen sie per Frei-SQL)
+      -- Transparenz: Notreserve-Status, Haushalts-Alltag, Liquiditaet (Berater + Buchhalter lesen sie per Frei-SQL)
       PERFORM finance.fn_emergency_reserve_status();
       PERFORM * FROM finance.fn_household_everyday_month();
       PERFORM finance.fn_liquidity_snapshot();
@@ -237,7 +237,7 @@ BEGIN
   END;
   RAISE NOTICE 'PASS [finance_ro -> account_funding_overview/standing_order_overview/account_everyday_spending/fn_savings_goal_pace/fn_account_outlook-Vorschlag/fn_advisor_snapshot: kein permission denied]';
 
-  -- ===== (2-mr) Instandhaltungsruecklage (2026-10-27): Empfehlung liest core.fn_config_get =====
+  -- ===== (2-mr) Instandhaltungsruecklage: Empfehlung liest core.fn_config_get =====
   -- finance_rw (Tools: create/set_real_estate, create/set_savings_goal), finance_ro (Agent-Frei-SQL) und core_ro
   -- (Monitor-Frei-SQL / Trigger-Auswertung ueber read_surface) lesen die View + die Helfer ohne permission denied.
   DECLARE v_role TEXT; BEGIN
@@ -314,7 +314,7 @@ BEGIN
     IF (finance.fn_recurring_suggestion_counts('7999')->>'open')::int IS DISTINCT FROM 0 THEN
       RESET ROLE; RAISE EXCEPTION 'FAIL [finance_ro -> fn_recurring_suggestion_counts]'; END IF;
     RESET ROLE;
-    -- (2-mc-csv) Bank-Export-Datei (Broker-CSV Paket B): tool_import_bank_export laeuft unter finance_rw (Probelauf der Lots-Ersetzung,
+    -- (2-mc-csv) Bank-Export-Datei: tool_import_bank_export laeuft unter finance_rw (Probelauf der Lots-Ersetzung,
     -- Vorschau + Buchung inkl. statement_seen_refs); die Monats-Erinnerung liest das Konto-Profil unter finance_ro.
     v_a := (finance.fn_create_account(jsonb_build_object('name', '__t_role_csv__', 'account_type', 'cash', 'currency', 'EUR',
               'bank', 'Trade Republic', 'opening_balance', 0, 'opening_balance_date', (CURRENT_DATE - 10)::text))->>'account_id')::int;
@@ -370,7 +370,7 @@ BEGIN
        OR NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v_res->'suggestions') s WHERE s->>'kind' = 'household') THEN
       RESET ROLE; RAISE EXCEPTION 'FAIL [finance_ro -> fn_get_recurring_suggestions household]: %', v_res; END IF;
     RESET ROLE;
-    -- Rundungs-Paket 2026-10-23: ungerundete Kurs-Umrechnung (fn_statement_prepare/fn_account_outlook/Transfer) und die
+    -- Ungerundete Kurs-Umrechnung (fn_statement_prepare/fn_account_outlook/Transfer) und die
     -- darauf gebaute fn_to_eur (Views) unter beiden Rollen mit einem echten Fremdwaehrungs-Kurs
     PERFORM finance.fn_ensure_currency('USD');
     INSERT INTO finance.fx_rates (base_currency, quote_currency, rate, as_of) VALUES ('EUR','USD', 1.08, CURRENT_DATE)
@@ -387,7 +387,7 @@ BEGIN
     PERFORM return_pa_pct, return_since_start_pct, missing_reason FROM finance.depot_performance;
     IF abs(finance.fn_xirr(ARRAY['2021-01-01', '2022-01-01']::date[], ARRAY[-100, 110]::numeric[]) - 0.1) > 1e-9 THEN
       RESET ROLE; RAISE EXCEPTION 'FAIL [finance_ro -> fn_xirr]'; END IF;
-    -- Uebersicht R3: loan_overview ruft fn_loan_projected_payoff -> fn_loan_simulate (EXECUTE gegen den Aufrufer)
+    -- loan_overview ruft fn_loan_projected_payoff -> fn_loan_simulate (EXECUTE gegen den Aufrufer)
     PERFORM payoff_date_projected, interest_remaining_projected FROM finance.loan_overview;
     RESET ROLE;
   END;
@@ -395,7 +395,7 @@ BEGIN
 
   -- ===== (1c) finance_rw: Probelauf vor der Karte (core.fn_dry_run) + core.fn_today =====
   -- Der Probelauf laeuft im Tool unter finance_rw: EXECUTE auf core.fn_dry_run + die aufgerufene finance-fn,
-  -- inkl. Saldo-Trigger; danach darf nichts geblieben sein. finance_ro darf fn_dry_run NICHT ausfuehren.
+  -- inkl. Saldo-Trigger; danach darf nichts geblieben sein. finance_ro darf fn_dry_run nicht ausfuehren.
   DECLARE
     v_dry jsonb;
     v_cnt int;
@@ -444,7 +444,7 @@ BEGIN
   RESET ROLE;
   RAISE NOTICE 'PASS [finance_rw/estate_rw -> core.fn_resolve_input_dates]';
 
-  -- ===== (2a) finance_rw: Modell zur Laufzeit (Festwert-Phase 2) =====
+  -- ===== (2a) finance_rw: Modell zur Laufzeit =====
   -- agent.finance.tool_extract_finance_document laeuft unter finance_rw; sein Knoten 'Load model config' liest
   -- model.vision_extract ueber core.fn_config_get -> das Fenster muss unter finance_rw greifen und den Wert liefern.
   BEGIN
@@ -459,8 +459,8 @@ BEGIN
     RAISE EXCEPTION 'FAIL [finance_rw -> fn_config_get]: model.vision_extract leer (Seed-Zeile fehlt oder Fenster liefert nichts)'; END IF;
   RAISE NOTICE 'PASS [finance_rw -> fn_config_get(model.vision_extract) = %]', v_out;
 
-  -- ===== (2b) NEGATIV-ASSERT: finance_ro darf agent.monitor_triggers NICHT direkt lesen =====
-  -- Beweist, dass core.fn_list_monitor_triggers das EINZIGE Fenster ist (kein stilles Breit-Grant; D10 dicht).
+  -- ===== (2b) Negativ-Assert: finance_ro darf agent.monitor_triggers nicht direkt lesen =====
+  -- Beweist, dass core.fn_list_monitor_triggers das einzige Fenster ist (kein stilles Breit-Grant; Rollen-Zaun dicht).
   BEGIN
     SET LOCAL ROLE finance_ro;
     PERFORM 1 FROM agent.monitor_triggers LIMIT 1;
@@ -476,7 +476,7 @@ BEGIN
   RAISE NOTICE 'PASS [finance_ro NEGATIV: kein direkter agent.monitor_triggers-Read (D10 dicht)]';
 
   -- ===== (3) core_ro: Leserolle der Core-Agenten (monitor/guide, freies postgres_select) =====
-  -- core_ro liest die Erlaubnisliste in agent+core DIREKT (util_create_core_ro; Vollstaendigkeit: test_core_ro_allowlist).
+  -- core_ro liest die Erlaubnisliste in agent+core direkt (util_create_core_ro; Vollstaendigkeit: test_core_ro_allowlist).
   -- Der Test bestaetigt, dass der Read-Pfad auf zwei Listen-Tabellen funktioniert.
   BEGIN
     SET LOCAL ROLE core_ro;
@@ -489,10 +489,10 @@ BEGIN
   END;
   RAISE NOTICE 'PASS [core_ro -> direkter agent.core_contexts + core.config-Read (Erlaubnisliste)]';
 
-  -- ===== (3b) WS-5b (M2): core_ro -> agent.fn_resolve_sender =====
-  -- Das HITL-Gate (agent.tool_human_approval) loest den Sender unter core_ro auf (Resolve-Node). Bisher nur
-  -- IMPLIZIT ueber den agent.*-SELECT-Grant + PUBLIC-EXECUTE-Default abgesichert; das Gate haengt jetzt hart
-  -- davon ab -> deterministisch verankern (sonst faellt jeder numerische Sender ins fail-closed-B0).
+  -- ===== (3b) core_ro -> agent.fn_resolve_sender =====
+  -- Das HITL-Gate (agent.tool_human_approval) loest den Sender unter core_ro auf (Resolve-Node). Das Gate haengt
+  -- hart davon ab, daher deterministisch verankern statt nur implizit ueber den agent.*-SELECT-Grant +
+  -- PUBLIC-EXECUTE-Default (sonst faellt jeder numerische Sender ins fail-closed-B0).
   BEGIN
     SET LOCAL ROLE core_ro;
     SELECT (agent.fn_resolve_sender(777)->>'found') INTO v_out;
@@ -528,7 +528,7 @@ BEGIN
   RAISE NOTICE 'PASS [core_ro -> agent.fn_chat_style (DEFINER-Fenster) + core.fn_daypart]';
 
   -- ===== (3b2) Textkatalog: core_ro -> core.fn_hitl_texts / core.fn_ui_texts =====
-  -- Das HITL-Gate holt seine Texte ('Render texts') unter core_ro; ein fehlender Grant blockte JEDEN Write
+  -- Das HITL-Gate holt seine Texte ('Render texts') unter core_ro; ein fehlender Grant blockte jeden Write
   -- (fail-closed). Plain-INVOKER-fns -> role_test_lint sieht sie nicht, daher hier ausdruecklich verankert.
   BEGIN
     SET LOCAL ROLE core_ro;
@@ -576,7 +576,7 @@ BEGIN
     RAISE EXCEPTION 'FAIL [core_ro -> Persona-Picker-Text]: kein Text geliefert'; END IF;
   RAISE NOTICE 'PASS [core_ro -> Persona-Picker (fn_ui_text + fn_ui_texts + fn_person_lang + family)]';
 
-  -- ===== (3b4) Textkatalog Phase C: jede Paket-Rolle -> core.fn_ui_texts_for (Crons/Gates/Angebots-Karten) =====
+  -- ===== (3b4) Textkatalog: jede Paket-Rolle -> core.fn_ui_texts_for (Crons/Gates/Angebots-Karten) =====
   -- Paket-Crons (finance_rw/_ro, estate_rw) und Agent-Eingangs-Gates (<pkg>_ro, auch paperless_ro) laden ihre
   -- Empfaenger-Texte ueber das publizierte DEFINER-Fenster; ohne Grant fiele jeder Cron-Send aus.
   FOR v_out IN
@@ -597,7 +597,7 @@ BEGIN
   END LOOP;
   RAISE NOTICE 'PASS [Paket-Rollen -> core.fn_ui_texts_for (Empfaenger-Texte der Crons/Gates)]';
 
-  -- ===== (3c) WS-2 (Onboarding-UX): core_ro -> core.fn_onboarding_status =====
+  -- ===== (3c) core_ro -> core.fn_onboarding_status =====
   -- Der Guide zeigt die frische Onboarding-Checkliste ueber die kombinierte Core-fn (statt eines rohen
   -- UNION ueber agent.guide_onboarding_state + finance.onboarding_state) -> „ein Fakt, eine Adresse".
   -- Sein postgres_select laeuft unter core_ro; das publizierte DEFINER-Fenster REVOKEt PUBLIC in seiner
@@ -614,7 +614,7 @@ BEGIN
     RAISE EXCEPTION 'FAIL [core_ro -> core.fn_onboarding_status]: erwartet ok=true, got %', COALESCE(v_out,'<null>'); END IF;
   RAISE NOTICE 'PASS [core_ro -> core.fn_onboarding_status (Onboarding-Checkliste lesbar)]';
 
-  -- (3c-b) Roter Faden Paket B: das /reminders-Menue liest sein Datenmodell unter core_ro ueber das DEFINER-Fenster
+  -- (3c-b) das /reminders-Menue liest sein Datenmodell unter core_ro ueber das DEFINER-Fenster
   -- core.fn_reminders_overview (Grant in util_create_core_ro.sql). Unbekannter Betrachter -> ok, leere Liste.
   BEGIN
     SET LOCAL ROLE core_ro;
@@ -629,8 +629,8 @@ BEGIN
   RAISE NOTICE 'PASS [core_ro -> core.fn_reminders_overview (Erinnerungs-Menue lesbar)]';
 
   -- (3c-c) Derselbe Workflow holt seine Texte + das Erinnerungs-Fenster im Schritt 'Read texts' unter core_ro. Genau
-  -- diese Abfrage: der Erst-Bau nutzte core.fn_ui_texts_for (fuer core_ro nicht freigegeben) -> permission denied,
-  -- das Menue zeigte nur rohe Keys (Substrat-Befund 2026-10-23, db_test als Superuser sah es nicht).
+  -- diese Abfrage: core.fn_ui_texts_for ist fuer core_ro nicht freigegeben -> permission denied,
+  -- das Menue zeigte nur rohe Keys (db_test als Superuser sieht es nicht).
   BEGIN
     SET LOCAL ROLE core_ro;
     SELECT core.fn_ui_texts(agent.fn_person_lang(agent.fn_resolve_sender(777)->>'person_id')->>'lang',
@@ -660,9 +660,9 @@ BEGIN
     RAISE EXCEPTION 'FAIL [core_ro -> core.fn_get_llm_cost_report]: erwartet owner_only, got %', COALESCE(v_out,'<null>'); END IF;
   RAISE NOTICE 'PASS [core_ro -> core.fn_get_llm_cost_report (Kosten-Report lesbar)]';
 
-  -- ===== (3d) WS-3 (Onboarding-Sequenzierung): core_ro -> core.fn_onboarding_pending_packages =====
+  -- ===== (3d) core_ro -> core.fn_onboarding_pending_packages =====
   -- Der Guide bietet nach Haushalts-Abschluss generisch die offenen Paket-Onboardings an -> liest die
-  -- Discovery-fn unter core_ro. Das DEFINER-Fenster REVOKEt PUBLIC + grantet NUR core_ro (util_create_core_ro);
+  -- Discovery-fn unter core_ro. Das DEFINER-Fenster REVOKEt PUBLIC + grantet nur core_ro (util_create_core_ro);
   -- kein Paket-Agent konsumiert sie -> finance_ro bleibt bewusst gesperrt (Negativ-Assert unten).
   BEGIN
     SET LOCAL ROLE core_ro;
@@ -676,7 +676,7 @@ BEGIN
     RAISE EXCEPTION 'FAIL [core_ro -> core.fn_onboarding_pending_packages]: erwartet ok=true, got %', COALESCE(v_out,'<null>'); END IF;
   RAISE NOTICE 'PASS [core_ro -> core.fn_onboarding_pending_packages (Discovery-Fenster lesbar)]';
 
-  -- (3d-NEG) finance_ro hat KEINEN EXECUTE-Grant auf die Discovery-fn (REVOKE PUBLIC, nur core_ro) -> denied.
+  -- (3d-NEG) finance_ro hat keinen EXECUTE-Grant auf die Discovery-fn (REVOKE PUBLIC, nur core_ro) -> denied.
   BEGIN
     SET LOCAL ROLE finance_ro;
     PERFORM core.fn_onboarding_pending_packages();
@@ -747,11 +747,11 @@ BEGIN
     RAISE EXCEPTION 'FAIL [core_ro -> core.fn_sender_sees_household]: erwartet true fuer den Owner, got %', COALESCE(v_out, '<null>'); END IF;
   RAISE NOTICE 'PASS [core_ro -> core.fn_sender_sees_household (DEFINER-Fenster)]';
 
-  -- ===== (3e) P1 (Generisches Paket-Onboarding): core_ro -> core.fn_onboarding_overview =====
+  -- ===== (3e) core_ro -> core.fn_onboarding_overview =====
   -- core.sub_send_onboarding_menu (laeuft unter core_ro) liest das DB-getriebene Menue-Modell ueber dieses
-  -- DEFINER-Fenster (P2b-1: Arity (text DEFAULT NULL); no-arg-Call resolved via Default = alle per_user-Sektionen
+  -- DEFINER-Fenster (Arity (text DEFAULT NULL); no-arg-Call resolved via Default = alle per_user-Sektionen
   -- 'unknown'). REVOKE PUBLIC in der R__, EXECUTE-Grant nur core_ro (util_create_core_ro) ->
-  -- sonst stiller permission denied zur Laufzeit (Opus-Plan-Review M3).
+  -- sonst stiller permission denied zur Laufzeit.
   BEGIN
     SET LOCAL ROLE core_ro;
     SELECT (core.fn_onboarding_overview()->>'ok') INTO v_out;
@@ -764,7 +764,7 @@ BEGIN
     RAISE EXCEPTION 'FAIL [core_ro -> core.fn_onboarding_overview]: erwartet ok=true, got %', COALESCE(v_out,'<null>'); END IF;
   RAISE NOTICE 'PASS [core_ro -> core.fn_onboarding_overview (Menue-Modell lesbar)]';
 
-  -- (3e-NEG) finance_ro hat KEINEN EXECUTE-Grant (REVOKE PUBLIC, nur core_ro) -> denied.
+  -- (3e-NEG) finance_ro hat keinen EXECUTE-Grant (REVOKE PUBLIC, nur core_ro) -> denied.
   BEGIN
     SET LOCAL ROLE finance_ro;
     PERFORM core.fn_onboarding_overview();
@@ -780,7 +780,7 @@ BEGIN
       RAISE EXCEPTION 'FAIL [finance_ro NEGATIV]: unerwarteter Fehler statt insufficient_privilege: %', SQLERRM;
   END;
 
-  -- ===== (3e2) Install-UX-Phase 6 + Textkatalog Phase B: core_ro -> core.fn_render_welcome(text) + core.help_catalog =====
+  -- ===== (3e2) core_ro -> core.fn_render_welcome(text) + core.help_catalog =====
   -- Der Orchestrator liest die Owner-Begruessung im /start-Zweig ('Start onboarding read') und die /help-Uebersicht
   -- ('Load capabilities', core.help_catalog) unter core_ro. REVOKE PUBLIC in der R__, Grant am Rollen-Ort
   -- util_create_core_ro -> ohne ihn stiller permission denied.
@@ -797,7 +797,7 @@ BEGIN
     RAISE EXCEPTION 'FAIL [core_ro -> core.fn_render_welcome]: erwartet ok=true, got %', COALESCE(v_out,'<null>'); END IF;
   RAISE NOTICE 'PASS [core_ro -> core.fn_render_welcome (Owner-Begruessung lesbar)]';
 
-  -- (3e2-NEG) finance_ro hat KEINEN EXECUTE-Grant (REVOKE PUBLIC, nur core_ro) -> denied.
+  -- (3e2-NEG) finance_ro hat keinen EXECUTE-Grant (REVOKE PUBLIC, nur core_ro) -> denied.
   BEGIN
     SET LOCAL ROLE finance_ro;
     PERFORM core.fn_render_welcome('de');
@@ -813,7 +813,7 @@ BEGIN
       RAISE EXCEPTION 'FAIL [finance_ro NEGATIV]: unerwarteter Fehler statt insufficient_privilege: %', SQLERRM;
   END;
 
-  -- ===== (3e2b) Fix C: core_ro -> agent.fn_get_hitl_pending_state(bigint) =====
+  -- ===== (3e2b) core_ro -> agent.fn_get_hitl_pending_state(bigint) =====
   -- Der Orchestrator-Pre-Router ('Card open check') liest die Karte-offen-Sperre unter core_ro. REVOKE PUBLIC in
   -- der R__, Grant am Rollen-Ort util_create_core_ro; INVOKER liest agent.hitl_pending ueber den agent.*-SELECT.
   INSERT INTO agent.hitl_pending (chat_id, execution_id, expires_at) VALUES (900199, 'role-test', now() + interval '5 minutes');
@@ -849,7 +849,7 @@ BEGIN
     RAISE EXCEPTION 'FAIL [Gate-Rolle -> Wiederhol-Sperre]: erwartet true, got %', COALESCE(v_out,'<null>'); END IF;
   RAISE NOTICE 'PASS [Gate-Rolle -> Wiederhol-Sperre (Eintrag + Abfrage)]';
 
-  -- ===== (3e3) Phase A: core_ro -> core.fn_stale_facts_count() =====
+  -- ===== (3e3) core_ro -> core.fn_stale_facts_count() =====
   -- fn_monitor_acquire fuehrt die gespeicherte Spec des Core-Triggers household_facts_freshness unter
   -- SET LOCAL ROLE core_ro aus; die fn liest agent.core_contexts + core.context_validators/_scopes/package_registry.
   BEGIN
@@ -864,13 +864,13 @@ BEGIN
     RAISE EXCEPTION 'FAIL [core_ro -> core.fn_stale_facts_count]: kein Zaehler geliefert'; END IF;
   RAISE NOTICE 'PASS [core_ro -> core.fn_stale_facts_count (Aktualitaets-Waechter ausfuehrbar)]';
 
-  -- ===== (3f) P2b-1 (Career-Onboarding pro Person): career_ro -> core.fn_onboarding_status(text, text) =====
-  -- BLOCKER-Verifikation: P2b-1 aenderte die Arity (text)->(text, text DEFAULT NULL); core:V016 droppt die alte
-  -- Form, util_create_core_ro + fn_provision_package_roles re-pinnen die EXECUTE-Grants auf die NEUE Arity. Ein
-  -- arity-pinned Grant, der nach dem DROP verwaist, faellt unter Superuser-db_test NICHT auf (Rollen-Perspektiv-
-  -- Pflicht) -> hier explizit unter career_ro (das publizierte Onboarding-Lesefenster bekommt EXECUTE via
-  -- fn_provision_package_roles('career')). Die Calls oben (Zeile ~101/165 finance_ro/core_ro 'finance', ~213
-  -- core_ro overview) binden via DEFAULT-Arg ebenfalls an die neue Arity -> decken finance_ro/core_ro mit ab.
+  -- ===== (3f) career_ro -> core.fn_onboarding_status(text, text) =====
+  -- Die Arity ist (text, text DEFAULT NULL); core:V016 droppt die alte Form (text), util_create_core_ro +
+  -- fn_provision_package_roles pinnen die EXECUTE-Grants auf die neue Arity. Ein arity-pinned Grant, der nach
+  -- dem DROP verwaist, faellt unter Superuser-db_test nicht auf (Rollen-Perspektiv-Pflicht) -> hier explizit
+  -- unter career_ro (das publizierte Onboarding-Lesefenster bekommt EXECUTE via
+  -- fn_provision_package_roles('career')). Die Calls oben (finance_ro/core_ro mit 'finance', core_ro overview)
+  -- binden via DEFAULT-Arg ebenfalls an die neue Arity -> decken finance_ro/core_ro mit ab.
   BEGIN
     SET LOCAL ROLE career_ro;
     SELECT (core.fn_onboarding_status('career', '111')->>'ok') INTO v_out;   -- 2-arg (per_user); DEFINER -> career_ro braucht nur EXECUTE
@@ -883,10 +883,10 @@ BEGIN
     RAISE EXCEPTION 'FAIL [career_ro -> core.fn_onboarding_status(text,text)]: erwartet ok=true, got %', COALESCE(v_out,'<null>'); END IF;
   RAISE NOTICE 'PASS [career_ro -> core.fn_onboarding_status(text,text) (P2b-1 per_user-Arity, Grant migriert)]';
 
-  -- ===== (3g) WP-4: career_ro erreicht die Core-DEFINER-Fenster des career_advisor (Spiegel §2 finance_ro) =====
-  -- BLOCKER-Klasse wie finance_ro: der career_advisor laeuft unter career_ro und bindet dieselben Core-Fenster
+  -- ===== (3g) career_ro erreicht die Core-DEFINER-Fenster des career_advisor (Spiegel von finance_ro, (2)) =====
+  -- Der career_advisor laeuft unter career_ro und bindet dieselben Core-Fenster
   -- (fn_advisor_read_plan / fn_package_active / fn_config_get, alle EXECUTE via fn_provision_package_roles('career')).
-  -- Ein unter career_ro nicht aufrufbares Fenster faellt unter Superuser-db_test NICHT auf (Rollen-Perspektiv-Pflicht).
+  -- Ein unter career_ro nicht aufrufbares Fenster faellt unter Superuser-db_test nicht auf (Rollen-Perspektiv-Pflicht).
   -- read_plan ist per_user -> 2-arg (domain, chat_id); '111' unaufgeloest -> Owner-Fallback (kein permission denied
   -- ist das Pruefobjekt, nicht der Inhalt).
   BEGIN
@@ -901,7 +901,7 @@ BEGIN
   END;
   RAISE NOTICE 'PASS [career_ro -> fn_advisor_read_plan/package_active/config_get: kein permission denied]';
 
-  -- (3g-NEG) career_ro darf agent.core_contexts NICHT direkt lesen (D10 dicht, wie finance_ro fuer agent.*)
+  -- (3g-NEG) career_ro darf agent.core_contexts nicht direkt lesen (Rollen-Zaun dicht, wie finance_ro fuer agent.*)
   BEGIN
     SET LOCAL ROLE career_ro;
     PERFORM 1 FROM agent.core_contexts LIMIT 1;
@@ -917,7 +917,7 @@ BEGIN
       RAISE EXCEPTION 'FAIL [career_ro NEGATIV]: unerwarteter Fehler statt insufficient_privilege: %', SQLERRM;
   END;
 
-  -- ===== (4) WS-1 Multi-Member: agent.persons-Lesepfad + Cross-Schema-FK unter engen Rollen =====
+  -- ===== (4) Multi-Member: agent.persons-Lesepfad + Cross-Schema-FK unter engen Rollen =====
   IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'finance_rw') THEN
     RAISE EXCEPTION 'FAIL [role_perms]: Rolle finance_rw nicht provisioniert'; END IF;
 
@@ -933,8 +933,8 @@ BEGIN
       RAISE NOTICE 'PASS [core_ro NEGATIV: kein direkter agent.persons-Read (Erlaubnisliste)]';
   END;
 
-  -- (4b) finance_rw bucht ein Konto mit GUELTIGEM owner_person_id -> der Cross-Schema-FK greift
-  --      OHNE dass finance_rw SELECT auf agent.persons hat (RI-Check ist intern).
+  -- (4b) finance_rw bucht ein Konto mit gueltigem owner_person_id -> der Cross-Schema-FK greift
+  --      ohne dass finance_rw SELECT auf agent.persons hat (RI-Check ist intern).
   BEGIN
     SET LOCAL ROLE finance_rw;
     INSERT INTO finance.accounts (name, account_type, owner_person_id)
@@ -946,7 +946,7 @@ BEGIN
   END;
   RAISE NOTICE 'PASS [finance_rw -> Konto mit gueltigem owner_person_id (FK intern erzwungen)]';
 
-  -- (4c) NEGATIV: finance_rw mit NICHT-existenter Person -> foreign_key_violation
+  -- (4c) NEGATIV: finance_rw mit nicht-existenter Person -> foreign_key_violation
   BEGIN
     SET LOCAL ROLE finance_rw;
     INSERT INTO finance.accounts (name, account_type, owner_person_id)
@@ -962,7 +962,7 @@ BEGIN
   END;
   RAISE NOTICE 'PASS [finance_rw -> FK NEGATIV: nicht-existente Person abgelehnt]';
 
-  -- (4c2) WS-5c-B: der Zins-Cron laeuft unter finance_rw -> die Zins-Scheduler-fns muessen unter dieser
+  -- (4c2) der Zins-Cron laeuft unter finance_rw -> die Zins-Scheduler-fns muessen unter dieser
   --       Rolle aufrufbar sein (Blanket ALL TABLES + EXECUTE via fn_provision_package_roles; v_cnt = Konto-id).
   BEGIN
     SET LOCAL ROLE finance_rw;
@@ -982,8 +982,8 @@ BEGIN
   END;
   RAISE NOTICE 'PASS [finance_rw -> fn_interest_due_open/_amount_due/_book_interest_occurrence aufrufbar]';
 
-  -- (4c3) tool_create_savings_plan laeuft unter finance_rw: Begünstigter = Depot-Inhaber, der NAME fuer die Karte
-  --       kommt ueber das Core-Fenster core.fn_household_persons() (kein Direkt-Read auf agent.persons, D10);
+  -- (4c3) tool_create_savings_plan laeuft unter finance_rw: Begünstigter = Depot-Inhaber, der Name fuer die Karte
+  --       kommt ueber das Core-Fenster core.fn_household_persons() (kein Direkt-Read auf agent.persons);
   --       der Depot-Kalender (fn_resolve_plan_schedule) wird im selben Write am Depot gespeichert.
   DECLARE v_res JSONB; v_set INT; BEGIN
     SET LOCAL ROLE finance_rw;
@@ -1035,10 +1035,10 @@ BEGIN
   END;
   RAISE NOTICE 'PASS [finance_rw -> fn_create_savings_plan mit Geldquellen-Frage (Alltagsausgaben + Latch)]';
 
-  -- ===== (4d) WS-3a: finance_ro erreicht die Personen-Rolle NUR ueber das Core-DEFINER-Fenster =====
+  -- ===== (4d) finance_ro erreicht die Personen-Rolle nur ueber das Core-DEFINER-Fenster =====
   -- core.fn_household_persons() ist das publizierte Lesefenster (Rollen-Aufloesung fuer den FIRE-Pool-
-  -- Ausschluss + Eltern-Scope-Cashflow). finance_ro hat EXECUTE (fn_provision_package_roles), aber KEIN
-  -- direktes SELECT auf agent.persons (D10).
+  -- Ausschluss + Eltern-Scope-Cashflow). finance_ro hat EXECUTE (fn_provision_package_roles), aber kein
+  -- direktes SELECT auf agent.persons.
   BEGIN
     SET LOCAL ROLE finance_ro;
     SELECT count(*) INTO v_cnt FROM core.fn_household_persons();
@@ -1084,7 +1084,7 @@ BEGIN
   END;
   RAISE NOTICE 'PASS [finance_ro -> parent_cashflow_overview/_summary (View ueber DEFINER-Fenster lesbar)]';
 
-  -- (4e2) WS-B: finance_ro liest savings_goal_progress (Depot-Anteil jetzt aus savings_goal_reserve_entries-Journal).
+  -- (4e2) finance_ro liest savings_goal_progress (Depot-Anteil aus dem savings_goal_reserve_entries-Journal).
   -- View laeuft mit Owner-Rechten -> finance_ro braucht nur SELECT auf die View, nicht auf die Journal-Basistabelle.
   BEGIN
     SET LOCAL ROLE finance_ro;
@@ -1096,7 +1096,7 @@ BEGIN
   END;
   RAISE NOTICE 'PASS [finance_ro -> savings_goal_progress (Depot-Reserve-Journal-Term lesbar)]';
 
-  -- (4e2b) WS-B: finance_ro liest die neuen Reserve-Views depot_reserve_status (Deckungs-Waechter) +
+  -- (4e2b) finance_ro liest die Reserve-Views depot_reserve_status (Deckungs-Waechter) +
   -- savings_goal_reserve_breakdown (Cash-/Depot-Aufschluesselung je Ziel). Schema-weiter finance-GRANT.
   BEGIN
     SET LOCAL ROLE finance_ro;
@@ -1109,14 +1109,14 @@ BEGIN
   END;
   RAISE NOTICE 'PASS [finance_ro -> depot_reserve_status + savings_goal_reserve_breakdown (Deckung + Aufschluesselung lesbar)]';
 
-  -- (4e2c) Befund 2026-10-27: finance_ro (postgres_select des Buchhalters/Beraters) liest die Sparplan-Uebersicht
+  -- (4e2c) finance_ro (postgres_select des Buchhalters/Beraters) liest die Sparplan-Uebersicht
   -- (Rhythmus in Klartext, fn_schedule_label + fn_recurring_* in der View) und active_recurring_payments.rhythm;
   -- finance_rw ruft fn_goal_transfer_candidates (aus fn_create/set_savings_goal unter der Tool-Rolle).
   BEGIN
     SET LOCAL ROLE finance_ro;
     PERFORM rhythm, next_execution FROM finance.savings_plan_overview LIMIT 1;
     PERFORM rhythm FROM finance.active_recurring_payments LIMIT 1;
-    -- Befund 2026-11-02: noch nicht Gestartetes (fn_recurring_effective + fn_recurring_starts_within_cycle in der View)
+    -- noch nicht Gestartetes (fn_recurring_effective + fn_recurring_starts_within_cycle in der View)
     PERFORM rhythm, starts_on, counted_in_cashflow FROM finance.upcoming_recurring_payments LIMIT 1;
     PERFORM starts_on FROM finance.monthly_cashflow_overview LIMIT 1;
     PERFORM starts_on FROM finance.parent_cashflow_overview LIMIT 1;
@@ -1158,8 +1158,8 @@ BEGIN
   END;
   RAISE NOTICE 'PASS [finance_ro -> savings_plan_overview + rhythm; finance_rw -> fn_goal_transfer_candidates]';
 
-  -- (4e3) WS-C2: finance_ro liest die neue account_reserve_status-View (Drill-down „welche Ziele liegen auf
-  -- dem Konto?"). Gedeckt vom schema-weiten finance-GRANT (kein per-View-GRANT) -> Backstop fuer Opus-Review #3.
+  -- (4e3) finance_ro liest die account_reserve_status-View (Drill-down „welche Ziele liegen auf
+  -- dem Konto?"). Gedeckt vom schema-weiten finance-GRANT (kein per-View-GRANT) -> Backstop.
   BEGIN
     SET LOCAL ROLE finance_ro;
     PERFORM 1 FROM finance.account_reserve_status LIMIT 1;
@@ -1170,7 +1170,7 @@ BEGIN
   END;
   RAISE NOTICE 'PASS [finance_ro -> account_reserve_status (Reserve-Waechter-Drill-down lesbar)]';
 
-  -- (4e4) Phase L / Audit Paket 3: finance_ro liest die Cashflow-Klassifikation (recurring_cashflow_classified) +
+  -- (4e4) finance_ro liest die Cashflow-Klassifikation (recurring_cashflow_classified) +
   -- beide Summen (Familie monthly_cashflow_summary, Eltern parent_cashflow_summary; Konsum/Tilgung/Sparen getrennt).
   -- Gedeckt vom schema-weiten finance-GRANT (kein per-View-GRANT) -> Backstop, dass der Advisor sie via
   -- postgres_select referenzieren kann. parent_* liest core.fn_household_persons() (DEFINER-Fenster).
@@ -1186,7 +1186,7 @@ BEGIN
   END;
   RAISE NOTICE 'PASS [finance_ro -> recurring_cashflow_classified + monthly_/parent_cashflow_summary lesbar]';
 
-  -- (4f) NEGATIV: finance_ro darf agent.persons NICHT direkt lesen (D10 dicht — wie agent.monitor_triggers)
+  -- (4f) NEGATIV: finance_ro darf agent.persons nicht direkt lesen (Rollen-Zaun dicht, wie agent.monitor_triggers)
   BEGIN
     SET LOCAL ROLE finance_ro;
     PERFORM 1 FROM agent.persons LIMIT 1;
@@ -1202,10 +1202,10 @@ BEGIN
       RAISE EXCEPTION 'FAIL [finance_ro NEGATIV]: unerwarteter Fehler statt insufficient_privilege: %', SQLERRM;
   END;
 
-  -- ===== (4g) WS-4: core.fn_resolve_person ist unter BEIDEN engen Paket-Rollen aufrufbar =====
-  -- Der Personen-Resolver der create_*/set_*-Tools liegt in CORE (nicht agent), weil finance_rw/ro
-  -- KEIN USAGE auf agent haben (D10) — agent.* waere unaufrufbar. Hier: EXECUTE-Erreichbarkeit unter
-  -- finance_rw (Write-Pfad) UND finance_ro. (Resolve-Logik selbst -> test_fn_household_facts mit family-Fixture.)
+  -- ===== (4g) core.fn_resolve_person ist unter beiden engen Paket-Rollen aufrufbar =====
+  -- Der Personen-Resolver der create_*/set_*-Tools liegt in core (nicht agent), weil finance_rw/ro
+  -- kein USAGE auf agent haben — agent.* waere unaufrufbar. Hier: EXECUTE-Erreichbarkeit unter
+  -- finance_rw (Write-Pfad) und finance_ro. (Resolve-Logik selbst -> test_fn_household_facts mit family-Fixture.)
   BEGIN
     SET LOCAL ROLE finance_rw;
     PERFORM hit_count FROM core.fn_resolve_person('__rp_irgendwer__');
@@ -1219,7 +1219,7 @@ BEGIN
   BEGIN
     SET LOCAL ROLE finance_ro;
     PERFORM hit_count FROM core.fn_resolve_person('__rp_irgendwer__');
-    -- Renteninformation (Plan 2026-10-26): Berater-Fenster + Erinnerungs-Faelligkeit laufen unter finance_ro
+    -- Renteninformation: Berater-Fenster + Erinnerungs-Faelligkeit laufen unter finance_ro
     -- (Advisor-postgres_select, cron_remind_pension_statement) -- ohne agent.*-Zugriff (Inflation kommt als Argument).
     PERFORM finance.fn_pension_outlook('{"inflation_pct":2}'::jsonb);
     PERFORM finance.fn_pension_statements_due();
@@ -1248,8 +1248,8 @@ BEGIN
   RAISE NOTICE 'PASS [finance_rw/finance_ro -> fn_setup_*]';
 
   -- ===== (4g2) Import mit Personen-Feld unter finance_rw (stage -> bundle) =====
-  -- fn_import_validate_row faengt JEDEN Fehler als Row-Fehler (EXCEPTION WHEN OTHERS) -> ein Rechte-Fehler
-  -- des Personen-Resolvers wuerde als "invalid payload" verschluckt. Hier: die Zeile muss VALID sein und
+  -- fn_import_validate_row faengt jeden Fehler als Row-Fehler (EXCEPTION WHEN OTHERS) -> ein Rechte-Fehler
+  -- des Personen-Resolvers wuerde als "invalid payload" verschluckt. Hier: die Zeile muss valid sein und
   -- der Commit den Slug setzen — beides unter der Tool-Rolle.
   INSERT INTO agent.core_contexts (name, description, agent_name, load_strategy, content, metadata)
   VALUES ('family', 'test fixture', NULL, 'lazy', E'## Prosa',
@@ -1257,7 +1257,7 @@ BEGIN
             'facts', jsonb_build_object('persons', jsonb_build_array(
               jsonb_build_object('person_id','__rp_imp_p','first_name','Rolli','last_name','Rechtetest',
                                  'role','owner','birth_date','1980-01-01','as_of','2026-10-21')))))
-  ON CONFLICT (name) DO UPDATE   -- Person ANHAENGEN (Ersetzen wuerde Fixture-Personen frueherer Bloecke entprojizieren)
+  ON CONFLICT (name) DO UPDATE   -- Person anhaengen (Ersetzen wuerde Fixture-Personen frueherer Bloecke entprojizieren)
     SET metadata = jsonb_set(agent.core_contexts.metadata, '{facts,persons}',
           COALESCE(agent.core_contexts.metadata->'facts'->'persons', '[]'::jsonb) || (EXCLUDED.metadata->'facts'->'persons'));
   DECLARE v_imp JSONB; BEGIN
@@ -1279,7 +1279,7 @@ BEGIN
       RESET ROLE;
       RAISE EXCEPTION 'FAIL [finance_rw fn_import_depot_currency]: EUR erwartet';
     END IF;
-    -- Probelauf vor der Karte (Import-Haertung 2026-10-22) unter derselben Rolle: ok, nichts geschrieben
+    -- Probelauf vor der Karte unter derselben Rolle: ok, nichts geschrieben
     IF (finance.fn_import_bundle(jsonb_build_object('batch_id', v_imp->>'batch_id', 'dry_run', true))->>'ok')::boolean IS DISTINCT FROM true
        OR EXISTS (SELECT 1 FROM finance.accounts WHERE name = '__rp_imp_acct') THEN
       RESET ROLE;
@@ -1298,7 +1298,7 @@ BEGIN
   END;
   RAISE NOTICE 'PASS [finance_rw: Import stage -> card_rows -> bundle mit owner_person (Resolver + Bestandsuebernahme-Pfad)]';
 
-  -- ===== (4g3) Depot-Position nur mit ISIN + gedruckter Depotnummer/Inhaber unter finance_rw (2026-10-23) =====
+  -- ===== (4g3) Depot-Position nur mit ISIN + gedruckter Depotnummer/Inhaber unter finance_rw =====
   -- fn_import_resolve_depot (Inhaber ueber das core.fn_resolve_person-Fenster), fn_import_depot_conflict,
   -- fn_holding_symbol, fn_import_depot_number_to_store und fn_set_account im Bundle laufen unter der Tool-Rolle.
   DECLARE v_imp JSONB; v_cash INT; BEGIN
@@ -1329,7 +1329,7 @@ BEGIN
   END;
   RAISE NOTICE 'PASS [finance_rw: Import ISIN-only -> Depot per Inhaber, Nummer gespeichert, Kennung = ISIN]';
 
-  -- ===== (4g4) Cash-Stand einer Depot-Uebersicht unter finance_rw (2026-10-23): fn_import_balance_targets (Depot per
+  -- ===== (4g4) Cash-Stand einer Depot-Uebersicht unter finance_rw: fn_import_balance_targets (Depot per
   -- Inhaber ueber das core.fn_resolve_person-Fenster, Saldo zum Datum, fn_reconcile_open_due) ohne Rechtefehler.
   DECLARE v_bt JSONB; BEGIN
     SET LOCAL ROLE finance_rw;
@@ -1346,7 +1346,7 @@ BEGIN
   END;
   RAISE NOTICE 'PASS [finance_rw: Cash-Stand -> Verrechnungskonto (fn_import_balance_targets)]';
 
-  -- ===== (4g5) Anlageklassen-Zuordnung unter finance_rw (2026-10-23): fn_set_asset_classes (fn_find_holding,
+  -- ===== (4g5) Anlageklassen-Zuordnung unter finance_rw: fn_set_asset_classes (fn_find_holding,
   -- fn_set_holding, core.fn_ui_tpl fuer die Kartenzeilen) ueber core.fn_dry_run wie im Tool-Gate, dann der Write.
   DECLARE v_sa JSONB; BEGIN
     SET LOCAL ROLE finance_rw;
@@ -1369,9 +1369,9 @@ BEGIN
   END;
   RAISE NOTICE 'PASS [finance_rw: Anlageklassen-Zuordnung (fn_set_asset_classes, Probelauf + Write)]';
 
-  -- ===== (4h) Phase Notify: geteilte Notify-Schicht-Schreibfenster + Cross-Schema-Saldo-Trigger =====
-  -- finance_rw erreicht core.notification_state NUR ueber die DEFINER-Fenster fn_should_notify/fn_notify_resolve
-  -- (kein direktes Tabellenrecht, D10). Positiv: beide Fenster unter finance_rw aufrufbar.
+  -- ===== (4h) geteilte Notify-Schicht-Schreibfenster + Cross-Schema-Saldo-Trigger =====
+  -- finance_rw erreicht core.notification_state nur ueber die DEFINER-Fenster fn_should_notify/fn_notify_resolve
+  -- (kein direktes Tabellenrecht). Positiv: beide Fenster unter finance_rw aufrufbar.
   BEGIN
     SET LOCAL ROLE finance_rw;
     PERFORM core.fn_should_notify('__rp_test__', 'k', interval '1 hour');
@@ -1398,8 +1398,8 @@ BEGIN
   END;
   RAISE NOTICE 'PASS [finance_rw -> Notify-Fenster aufrufbar; direkter notification_state-Read verwehrt (D10)]';
 
-  -- Cross-Schema-Trigger (Plan-Trap 2): ein echter finance.transactions-INSERT unter finance_rw feuert den
-  -- Saldo-Trigger, der core.fn_notify_resolve (DEFINER) ruft -> muss OHNE permission denied laufen UND den
+  -- Cross-Schema-Trigger: ein echter finance.transactions-INSERT unter finance_rw feuert den
+  -- Saldo-Trigger, der core.fn_notify_resolve (DEFINER) ruft -> muss ohne permission denied laufen und den
   -- Latch re-armen, wenn das Konto nicht (mehr) breached. Beweist die Cross-Schema-Callability aus dem Trigger-Body.
   DECLARE v_acct INT;
   BEGIN
@@ -1419,7 +1419,7 @@ BEGIN
     RAISE EXCEPTION 'FAIL [Cross-Schema-Trigger]: %', SQLERRM;
   END;
 
-  -- ===== (5) WS-5d: agent.access_blocks-Lesepfad unter den engen Rollen =====
+  -- ===== (5) agent.access_blocks-Lesepfad unter den engen Rollen =====
   -- (5a) NEGATIV: core_ro liest die Sperrliste nicht (Erlaubnisliste util_create_core_ro; kein Lesepfad unter core_ro)
   BEGIN
     SET LOCAL ROLE core_ro;
@@ -1432,7 +1432,7 @@ BEGIN
       RAISE NOTICE 'PASS [core_ro NEGATIV: kein direkter agent.access_blocks-Read (Erlaubnisliste)]';
   END;
 
-  -- (5b) NEGATIV: finance_ro darf agent.access_blocks NICHT direkt lesen (D10 dicht, wie agent.persons)
+  -- (5b) NEGATIV: finance_ro darf agent.access_blocks nicht direkt lesen (Rollen-Zaun dicht, wie agent.persons)
   BEGIN
     SET LOCAL ROLE finance_ro;
     PERFORM 1 FROM agent.access_blocks LIMIT 1;
@@ -1458,11 +1458,11 @@ BEGIN
     RAISE EXCEPTION 'FAIL [finance_rw -> fn_menu_refresh_request]: % (Grant in fn_provision_package_roles fehlt?)', SQLERRM;
   END;
 
-  -- ===== (6) INVOKER-Write-Pfad fn_set_onboarding_section unter der ENGEN Paket-RW-Rolle =====
-  -- P2b-1-Regression (gefunden estate WS-1): die fn leitet den per_user-Scope aus core.context_scopes ab
-  -- (SECURITY INVOKER) -> ohne SELECT-Grant an <pkg>_rw crasht der Onboarding-Marker JEDES Paket-Tools
-  -- ('permission denied for table context_scopes'; finance war latent betroffen, der Superuser-db_test sah
-  -- es nie). Grant lebt generisch in fn_provision_package_roles; hier je RW-Rolle der ECHTE Write-Beweis.
+  -- ===== (6) INVOKER-Write-Pfad fn_set_onboarding_section unter der engen Paket-RW-Rolle =====
+  -- Regression: die fn leitet den per_user-Scope aus core.context_scopes ab
+  -- (SECURITY INVOKER) -> ohne SELECT-Grant an <pkg>_rw crasht der Onboarding-Marker jedes Paket-Tools
+  -- ('permission denied for table context_scopes'; der Superuser-db_test sieht es nie).
+  -- Grant lebt generisch in fn_provision_package_roles; hier je RW-Rolle der echte Write-Beweis.
   BEGIN
     SET LOCAL ROLE finance_rw;
     PERFORM core.fn_set_onboarding_section(jsonb_build_object(
@@ -1475,7 +1475,7 @@ BEGIN
   SELECT count(*) INTO v_cnt FROM finance.onboarding_state WHERE section_key = '__rp_sec__' AND status = 'completed';
   IF v_cnt <> 1 THEN RAISE EXCEPTION 'FAIL [finance_rw -> fn_set_onboarding_section]: Write kam nicht an (ok:false?)'; END IF;
   RAISE NOTICE 'PASS [finance_rw -> fn_set_onboarding_section (INVOKER-Write inkl. context_scopes-Read)]';
-  -- (6b) owner_only-Riegel fuer Haushalts-Sektionen unter der ENGEN Rolle: das Mitglied (Partner 779) wird ueber
+  -- (6b) owner_only-Riegel fuer Haushalts-Sektionen unter der engen Rolle: das Mitglied (Partner 779) wird ueber
   -- das DEFINER-Fenster core.fn_check_write_permission abgelehnt, ohne 'permission denied for schema agent'.
   BEGIN
     SET LOCAL ROLE finance_rw;
@@ -1507,12 +1507,12 @@ BEGIN
   IF v_cnt <> 1 THEN RAISE EXCEPTION 'FAIL [estate_rw -> fn_set_onboarding_section]: Write kam nicht an (ok:false?)'; END IF;
   RAISE NOTICE 'PASS [estate_rw -> fn_set_onboarding_section (INVOKER-Write inkl. context_scopes-Read)]';
 
-  -- ===== (7) estate WS-2: publiziertes Permission-Fenster + Register-Write unter estate_rw =====
+  -- ===== (7) estate: publiziertes Permission-Fenster + Register-Write unter estate_rw =====
   -- Die estate-Write-fns laufen unter estate_rw und pruefen den adults_only-Backstop ueber das
-  -- NEUE DEFINER-Fenster core.fn_check_write_permission (das agent-Primitiv ist per D10 gesperrt).
-  -- Superuser-db_test saehe einen fehlenden Grant NIE (Rollen-Perspektiv-Pflicht + Lektion (d):
-  -- neue core-Registry/Fenster ⟹ SOFORT Perspektiv-Test unter der engen Rolle).
-  -- (7a) Fenster liefert unter estate_rw ECHTE Verdikte (liest family via DEFINER): Kind 778 -> reject, Owner 777 -> ok.
+  -- DEFINER-Fenster core.fn_check_write_permission (das agent-Primitiv ist gesperrt).
+  -- Superuser-db_test saehe einen fehlenden Grant nie (Rollen-Perspektiv-Pflicht: neues
+  -- core-Fenster braucht sofort einen Perspektiv-Test unter der engen Rolle).
+  -- (7a) Fenster liefert unter estate_rw echte Verdikte (liest family via DEFINER): Kind 778 -> reject, Owner 777 -> ok.
   BEGIN
     SET LOCAL ROLE estate_rw;
     SELECT core.fn_check_write_permission('adults_only', '778', NULL) INTO v_out;
@@ -1533,8 +1533,8 @@ BEGIN
   END;
   IF v_out IS NOT NULL THEN
     RAISE EXCEPTION 'FAIL [estate_rw -> check_write_permission/owner]: erwartet NULL (erlaubt), got %', v_out; END IF;
-  -- WS-5 Member-Pfad: der ueberlebende PARTNER (779) ist Erwachsener -> MUSS passieren (NULL). Der Kern
-  -- des Break-Glass (Owner-Entscheid 8): nicht nur der Owner, auch der gepairte Partner zieht die Mappe.
+  -- Member-Pfad: der ueberlebende Partner (779) ist Erwachsener -> muss passieren (NULL). Der Kern
+  -- des Break-Glass: nicht nur der Owner, auch der gepairte Partner zieht die Mappe.
   BEGIN
     SET LOCAL ROLE estate_rw;
     SELECT core.fn_check_write_permission('adults_only', '779', NULL) INTO v_out;
@@ -1547,7 +1547,7 @@ BEGIN
     RAISE EXCEPTION 'FAIL [estate_rw -> check_write_permission/partner]: erwartet NULL (Partner=Erwachsener erlaubt), got %', v_out; END IF;
   RAISE NOTICE 'PASS [estate_rw -> core.fn_check_write_permission (Kind reject, Owner ok, Partner ok = Break-Glass)]';
 
-  -- (7b) ECHTER Register-Write unter estate_rw: die ganze Kette (Fenster + INSERT + Sequenz + Touch-Trigger).
+  -- (7b) Echter Register-Write unter estate_rw: die ganze Kette (Fenster + INSERT + Sequenz + Touch-Trigger).
   BEGIN
     SET LOCAL ROLE estate_rw;
     SELECT (estate.fn_create_contact(jsonb_build_object(
@@ -1563,12 +1563,12 @@ BEGIN
   IF v_cnt <> 1 THEN RAISE EXCEPTION 'FAIL [estate_rw -> fn_create_contact]: Zeile fehlt'; END IF;
   RAISE NOTICE 'PASS [estate_rw -> estate.fn_create_contact (voller Write-Pfad unter der engen Rolle)]';
 
-  -- (7b2) BLOCKER-Regression (Cold-Eyes WS-2): die PERSON-skopierten Write-fns (set_person_record/
-  -- set_funeral_preferences/confirm_review) sind SECURITY INVOKER und liefen frueher gegen agent.persons
-  -- ('SELECT 1 FROM agent.persons') — unter estate_rw ohne agent-USAGE (D10) crasht das mit
-  -- 'permission denied for schema agent' auf JEDEN gueltigen Aufruf. Der Superuser-db_test + der 7b-
-  -- Contact-Test (der agent.persons NICHT liest) sahen es nie. Hier explizit unter estate_rw fuer eine
-  -- REALE Person (__rp_owner__, via family projiziert): MUSS ok:true liefern (FK statt Schema-Read).
+  -- (7b2) Regression: die person-skopierten Write-fns (set_person_record/
+  -- set_funeral_preferences/confirm_review) sind SECURITY INVOKER und duerfen nicht gegen agent.persons lesen
+  -- ('SELECT 1 FROM agent.persons') — unter estate_rw ohne agent-USAGE crasht das mit
+  -- 'permission denied for schema agent' auf jeden gueltigen Aufruf. Der Superuser-db_test + der 7b-
+  -- Contact-Test (der agent.persons nicht liest) sehen es nie. Hier explizit unter estate_rw fuer eine
+  -- reale Person (__rp_owner__, via family projiziert): muss ok:true liefern (FK statt Schema-Read).
   BEGIN
     SET LOCAL ROLE estate_rw;
     SELECT (estate.fn_set_person_record(jsonb_build_object(
@@ -1592,12 +1592,12 @@ BEGIN
     RAISE EXCEPTION 'FAIL [estate_rw -> fn_confirm_review]: erwartet ok=true, got %', COALESCE(v_out, '<null>'); END IF;
   RAISE NOTICE 'PASS [estate_rw -> fn_set_person_record/fn_confirm_review (FK-Backstop statt agent.persons-Read, D10)]';
 
-  -- (7b3) WS-3: der GANZE Ereignisfall-Write-Pfad unter estate_rw. fn_create_case ruft NEBEN
-  -- core.fn_check_write_permission das NEUE Fenster core.fn_person_chat_id (subject_is_sender-Guard),
+  -- (7b3) der ganze Ereignisfall-Write-Pfad unter estate_rw. fn_create_case ruft neben
+  -- core.fn_check_write_permission das Fenster core.fn_person_chat_id (subject_is_sender-Guard),
   -- core.fn_household_persons, core.fn_config_get, core.fn_package_active + die estate-Fristen-fns.
-  -- Ein fehlender EXECUTE-Grant auf EINES dieser Fenster crasht unter estate_rw ('permission denied ...')
-  -- — der Superuser-db_test saehe es NIE (Rollen-Perspektiv-Pflicht + Lektion (a)/(d): neue person-/
-  -- cross-schema-lesende Write-fn ⟹ SOFORT unter der engen Rolle exerzieren). Subjekt = __rp_person__
+  -- Ein fehlender EXECUTE-Grant auf eines dieser Fenster crasht unter estate_rw ('permission denied ...')
+  -- — der Superuser-db_test sieht es nie (Rollen-Perspektiv-Pflicht: neue person-/
+  -- cross-schema-lesende Write-fn sofort unter der engen Rolle exerzieren). Subjekt = __rp_person__
   -- (nicht der Sender 777), bundesland als Parameter (fail-closed-Pfad wird separat db-getestet).
   BEGIN
     SET LOCAL ROLE estate_rw;
@@ -1649,12 +1649,12 @@ BEGIN
     RAISE EXCEPTION 'FAIL [estate_rw -> fn_create_case mit special_assets]: erwartet Stub + offene Waffen-Aufgabe, got %', v_rp_case; END IF;
   RAISE NOTICE 'PASS [estate_rw -> fn_create_case mit Sonderfaellen (special_assets-Insert + Fan-out)]';
 
-  -- (7b4) WS-5: der gegatete Read-EGRESS + der System-Steckbrief unter estate_rw. Das Export-Tool laeuft
+  -- (7b4) der gegatete Read-Egress + der System-Steckbrief unter estate_rw. Das Export-Tool laeuft
   -- unter estate_rw und ruft die DEFINER-Binder-fn estate.fn_render_emergency_binder (Blanket-EXECUTE-Grant
-  -- aus fn_provision_package_roles Phase 4 — belt-and-suspenders, NICHT role_test_lint-erzwungen, da Blanket
-  -- + _rw). Die Binder-fn traegt den adults_only-Backstop SELBST (Kind -> RAISE). set_system_profile ist
-  -- INVOKER (adults_only + Singleton-UPSERT, KEIN agent.*-Read). Ein fehlender Grant/Crash saehe der
-  -- Superuser-db_test NIE (Lektion (d): neue estate-fn unter der engen Rolle SOFORT exerzieren).
+  -- aus fn_provision_package_roles Phase 4 — belt-and-suspenders, nicht role_test_lint-erzwungen, da Blanket
+  -- + _rw). Die Binder-fn traegt den adults_only-Backstop selbst (Kind -> RAISE). set_system_profile ist
+  -- INVOKER (adults_only + Singleton-UPSERT, kein agent.*-Read). Ein fehlender Grant/Crash faellt im
+  -- Superuser-db_test nie auf (neue estate-fn sofort unter der engen Rolle exerzieren).
   BEGIN
     SET LOCAL ROLE estate_rw;
     v_out := estate.fn_render_emergency_binder(jsonb_build_object('chat_id','777', 'mask_sensitive', true));
@@ -1666,7 +1666,7 @@ BEGIN
   END;
   IF v_out IS NULL OR v_out NOT LIKE '%estate.binder.title%' THEN
     RAISE EXCEPTION 'FAIL [estate_rw -> fn_render_emergency_binder/owner]: erwartet Mappe, got %', left(COALESCE(v_out,'<null>'),80); END IF;
-  -- WS-5 Break-Glass-KERN: der ueberlebende PARTNER (779) exportiert die VOLLE Mappe (mask aus = Default;
+  -- Break-Glass-Kern: der ueberlebende Partner (779) exportiert die volle Mappe (mask aus = Default;
   -- die Mappe soll fuer den Partner vollstaendig sein). Nicht nur der Owner-Pfad — sonst blockte der
   -- adults_only-Backstop den eigentlichen Notfall-Nutzer. Die fn traegt den Kind-Riegel, nicht den Partner.
   BEGIN
@@ -1703,7 +1703,7 @@ BEGIN
     RAISE EXCEPTION 'FAIL [estate_rw -> fn_set_system_profile]: erwartet ok=true, got %', COALESCE(v_out,'<null>'); END IF;
   RAISE NOTICE 'PASS [estate_rw -> fn_render_emergency_binder (Owner ok / Partner ok / Kind RAISE) + fn_set_system_profile (WS-5 Egress + Singleton)]';
 
-  -- (7c) NEGATIV: das agent-PRIMITIV ist unter estate_rw NICHT direkt aufrufbar (Schema agent D10-gesperrt)
+  -- (7c) NEGATIV: das agent-Primitiv ist unter estate_rw nicht direkt aufrufbar (Schema agent gesperrt)
   -- -> beweist, dass das core-Fenster notwendig ist (kein stilles Breit-Grant).
   BEGIN
     SET LOCAL ROLE estate_rw;
@@ -1721,7 +1721,7 @@ BEGIN
   END;
 
   -- (7d) estate_ro: Gap-Views lesbar (View-Owner-Rechte decken das fn_household_persons-Fenster) +
-  -- fn_gap_report degradiert auf dem Frei-SQL-Pfad EHRLICH (finance D10-gesperrt -> Pfad-Marker, kein Crash).
+  -- fn_gap_report degradiert auf dem Frei-SQL-Pfad ehrlich (finance gesperrt -> Pfad-Marker, kein Crash).
   IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'estate_ro') THEN
     RAISE EXCEPTION 'FAIL [role_perms]: Rolle estate_ro nicht provisioniert'; END IF;
   INSERT INTO core.package_registry (package, status) VALUES ('finance', 'active')
@@ -1742,12 +1742,11 @@ BEGIN
 END $$;
 
 -- ============================================================
--- Phase B: GENERISCHER Rollen-Zaun fuer JEDE Paket-Rolle (<pkg>_ro/<pkg>_rw aus core.package_registry ∪
--- core.schema_version) — ersetzt die frueheren `REVOKE ... FROM finance_ro` in den Core-fns (die nur EINE
--- Rolle meinten; core:V022 nimmt die Alt-Grants der retirten breiten finance_ro zurueck).
---   (a) kein USAGE auf Schema agent (D10: agent ist Host-Raum)
+-- Generischer Rollen-Zaun fuer jede Paket-Rolle (<pkg>_ro/<pkg>_rw aus core.package_registry ∪
+-- core.schema_version); core:V022 nimmt die Alt-Grants der frueheren breiten finance_ro zurueck.
+--   (a) kein USAGE auf Schema agent (agent ist Host-Raum)
 --   (b) keine Tabellen-Rechte auf agent/core — einzige Ausnahme: SELECT core.context_scopes fuer <pkg>_rw
---   (c) EXECUTE auf eine PUBLIC-gesperrte core-fn NUR fuer die publizierten Fenster (Liste = die Grants in
+--   (c) EXECUTE auf eine PUBLIC-gesperrte core-fn nur fuer die publizierten Fenster (Liste = die Grants in
 --       core.fn_provision_package_roles; ein neuer Grant ist ein bewusster Test-Diff)
 -- ============================================================
 DO $$
@@ -1814,10 +1813,10 @@ BEGIN
   RAISE NOTICE 'PASS [Mini-App: Eingang + initData-Pruefung fuer keine Leser-/Paket-Rolle ausfuehrbar]';
 END $$;
 
--- ===== Security-Audit 2026-10: gebundene Fenster unter der echten Rolle =====
+-- ===== Gebundene Fenster unter der echten Rolle =====
 --   career.fn_read_job_matches (read_job_matches unter career_rw) -> kein permission denied
 --   agent.fn_monitor_ro_eval   (Monitor-Specs; DEFINER, Eigentuemer core_ro_eval) -> die Frei-SQL-Rolle core_ro
---                              hat KEIN EXECUTE (nur die App-Rolle per Sammel-Grant in apply_schema.sh)
+--                              hat kein EXECUTE (nur die App-Rolle per Sammel-Grant in apply_schema.sh)
 DO $$
 DECLARE v_cnt int;
 BEGIN
@@ -1834,7 +1833,7 @@ BEGIN
   END IF;
   RAISE NOTICE 'PASS [career_rw -> fn_read_job_matches: kein permission denied; core_ro ohne EXECUTE auf fn_monitor_ro_eval]';
 
-  -- ===== Kurs-Luecken (2026-10-27): die Kurs-Luecken-Erinnerung + Tools laufen unter finance_rw (Latch ueber
+  -- ===== Kurs-Luecken: die Kurs-Luecken-Erinnerung + Tools laufen unter finance_rw (Latch ueber
   -- core.fn_should_notify/fn_notify_resolve, fn_apply_price_symbol), die Kurs-Symbol-Pruefung unter finance_ro
   -- (fn_holding_price_status, fn_fx_rate_map; core.fn_config_get ueber fn_price_status). =====
   DECLARE
@@ -1879,7 +1878,7 @@ BEGIN
   RAISE NOTICE 'PASS [finance_rw -> fn_price_gaps/fn_price_gap_claim/fn_apply_price_symbol, finance_ro -> fn_holding_price_status/fn_fx_rate_map/price_status]';
 END $$;
 
--- Plan-Luecken (2026-10-27): load_context('financial_planning') unter context_ro -> Renderer -> finance.fn_plan_gaps liest
+-- Plan-Luecken: load_context('financial_planning') unter context_ro -> Renderer -> finance.fn_plan_gaps liest
 -- agent.advisor_plans im DEFINER-Kontext von core.fn_fetch_context; die Luecken-Zeile muss unter der echten Rolle ankommen.
 DO $$
 DECLARE v_out text;

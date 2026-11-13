@@ -1,5 +1,5 @@
 -- tests/db/estate/test_fn_create_digital_account.sql
--- WS-2: Digitaler-Nachlass-Anlage — Schluesselkonto-Flag (toleranter Bool-Parse), crypto-
+-- Digitaler-Nachlass-Anlage — Schluesselkonto-Flag (toleranter Bool-Parse), crypto-
 -- Kopplung des Seed-Fundorts (freundliche CHECK-Spiegelung), Enum-Guards, Kind-Reject.
 -- Self-contained; BEGIN..ROLLBACK.
 BEGIN;

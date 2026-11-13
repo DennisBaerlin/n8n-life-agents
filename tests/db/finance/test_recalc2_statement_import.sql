@@ -1,9 +1,9 @@
 -- tests/db/finance/test_recalc2_statement_import.sql
--- Zweitrechnung Runde 2, Kontoauszugs-Import: Saldo-Abgleich nach dem Import, Zuordnungs-Fenster an den Grenzen,
+-- Zweitrechnung Kontoauszugs-Import: Saldo-Abgleich nach dem Import, Zuordnungs-Fenster an den Grenzen,
 -- Dubletten-Hinweis ueber Monats- und Jahresgrenzen. Erwartungen von Hand hergeleitet. Werte erfunden.
 -- Fachregeln (fn-Kopf als Spezifikation, Rechnung selbst):
 --   * Saldo-Probe: Anfangssaldo + Summe der Zeilen = Endsaldo. Nach dem Import steht das Konto am Zeitraum-Ende auf dem
---     Endsaldo; was keiner erwarteten Zahlung zugeordnet ist, wird EINE Rest-Buchung (lump).
+--     Endsaldo; was keiner erwarteten Zahlung zugeordnet ist, wird eine Rest-Buchung (lump).
 --   * Zuordnung Stufe B: Zeile 5 Tage vor bis 10 Tage nach der Faelligkeit, Betrag exakt.
 --   * Dubletten-Hinweis: gleiches Konto, gleicher Betrag mit Vorzeichen, hoechstens 3 Kalendertage Abstand.
 --   Auszug Januar 2026, bestaetigter Stand 2.000,00 am 31.12.2025. Miete -900 am 1., Versicherung -120 am 15.

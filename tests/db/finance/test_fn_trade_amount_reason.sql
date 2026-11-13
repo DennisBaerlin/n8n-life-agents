@@ -1,6 +1,6 @@
 -- tests/db/finance/test_fn_trade_amount_reason.sql
--- Rundungs-Paket 2026-10-23: EIN Guard fuer Kauf/Verkauf — Stueckzahl max. 8 Nachkommastellen (numeric(18,8) kuerzte
--- still), gebuchter Cent-Betrag > 0 (Mini-Kauf / Gebuehr frisst Erloes brach vorher am CHECK mit RAISE ab).
+-- Ein Guard fuer Kauf/Verkauf — Stueckzahl max. 8 Nachkommastellen (numeric(18,8) kuerzt sonst
+-- still), gebuchter Cent-Betrag > 0 (Mini-Kauf / Gebuehr frisst Erloes bricht sonst am CHECK mit RAISE ab).
 BEGIN;
 
 DO $$

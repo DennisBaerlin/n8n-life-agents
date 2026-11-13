@@ -1,7 +1,7 @@
 -- tests/db/finance/test_recurring_due_identity.sql
--- Monats-Check WP-A: Identitaet eines Dauerauftrags-Vorkommens = recurring_due_date (Faelligkeit), entkoppelt vom
--- Buchungsdatum (Ist-Datum laut Kontoauszug), + Doppelzaehlungs-Fix gegen den Saldo-Abgleich:
---   (1) Default: rp-Buchung ohne Faelligkeit -> recurring_due_date = transaction_date (Alt-Semantik)
+-- Identitaet eines Dauerauftrags-Vorkommens = recurring_due_date (Faelligkeit), entkoppelt vom
+-- Buchungsdatum (Ist-Datum laut Kontoauszug), + Doppelzaehlungs-Schutz gegen den Saldo-Abgleich:
+--   (1) Default: rp-Buchung ohne Faelligkeit -> recurring_due_date = transaction_date
 --   (2) Buchung am Ist-Datum (!= Faelligkeit) schliesst das Vorkommen; 2-arg fn_recurring_due_open
 --   (3) Buchungsdatum <= last_reconciled_at des Kontos -> {ok:false, code:'reconciled'}, kein Write
 --   (4) Transfer mit Ist-Betrag (zwei Beine) + Guard auch auf dem Ziel-Konto

@@ -1,9 +1,9 @@
 -- tests/db/finance/test_fn_recurring_lineage.sql
--- Audit Paket 2 (A0): Vorgaenger-Kette der recurring_payments.
---   * Split stempelt predecessor_id, Besitzer (Kredit) zeigen danach auf den KOPF (vorher blieb der Kredit auf der
---     alten rp -> die Erinnerung erkannte die neue Rate nicht als Kreditrate).
+-- Vorgaenger-Kette der recurring_payments.
+--   * Split stempelt predecessor_id, Besitzer (Kredit) zeigen danach auf den Kopf (sonst bliebe der Kredit auf der
+--     alten rp und die Erinnerung erkaennte die neue Rate nicht als Kreditrate).
 --   * fn_recurring_lineage liefert alle Glieder (beide Richtungen), fn_recurring_lineage_head den Kopf.
---   * ein altes Vorkommen der Vorgaengerin bucht weiter als Kreditrate (Tilgung) und stempelt SEINE rp.
+--   * ein altes Vorkommen der Vorgaengerin bucht weiter als Kreditrate (Tilgung) und stempelt seine rp.
 --   * Resolver: ein abgeloestes Glied (mit Nachfolger) ist kein Kandidat mehr -> Name eindeutig.
 --   * DB-Gesetz: hoechstens ein Nachfolger (partieller UNIQUE), kein Mittelglied loeschbar (FK).
 BEGIN;

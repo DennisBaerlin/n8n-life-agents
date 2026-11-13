@@ -1,6 +1,6 @@
 -- tests/db/finance/test_fn_account_register.sql
--- WS-0b (estate): finance.fn_account_register() = Oberflaeche-A-Lesefenster fuer das estate-Paket
--- (plain STABLE, kein Grant). Prueft: aktive NICHT-Loan-Konten mit den estate-relevanten Feldern
+-- finance.fn_account_register() = Oberflaeche-A-Lesefenster fuer das estate-Paket
+-- (plain STABLE, kein Grant). Prueft: aktive Nicht-Loan-Konten mit den estate-relevanten Feldern
 -- (ownership/has_transmortal_poa), Loan-Konten ausgeschlossen (die deckt fn_liability_register),
 -- Rueckgabe ist ein JSON-Array.
 BEGIN;
@@ -39,7 +39,7 @@ BEGIN
     RAISE EXCEPTION 'FAIL fn_account_register: estate-Felder falsch, got %', v_row;
   END IF;
 
-  -- Loan-Konto darf NICHT erscheinen (Trennung Konten-Register <-> Verbindlichkeiten-Register).
+  -- Loan-Konto darf nicht erscheinen (Trennung Konten-Register <-> Verbindlichkeiten-Register).
   -- loan-Konto direkt (fn_create_account lehnt loan ab; Kredit-Konten legt nur fn_create_loan an)
   INSERT INTO finance.accounts (name, account_type, currency) VALUES ('__test_accreg_loanacct__', 'loan', 'EUR');
   IF EXISTS (

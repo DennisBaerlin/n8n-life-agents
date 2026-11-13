@@ -1,7 +1,7 @@
 -- tests/db/finance/test_fn_account_outlook.sql
--- Monats-Check WP-E: Deckungs-Vorschau je Konto + Berater-Warnungen.
+-- Deckungs-Vorschau je Konto + Berater-Warnungen.
 --   fn_account_outlook: Start = bestaetigter Stand, geplante Zahlungen ab dem Tag danach, Alltagsausgaben je Tag aus den
---     letzten Auszuegen (unmatched_out / Tage), Horizont = naechster Geldeingang auf DIESES Konto; tiefster Stand + Tag,
+--     letzten Auszuegen (unmatched_out / Tage), Horizont = naechster Geldeingang auf dieses Konto; tiefster Stand + Tag,
 --     Puffer, Fehlbetrag und Vorschlag (Umbuchung von einem anderen Konto, auf 50 aufgerundet, 2 Tage vor dem Tief).
 --   fn_advisor_review: account_coverage:<konto> bei Unterschreitung; recurring_missing:<kette> nach zwei uebersprungenen
 --     Terminen in Folge.
@@ -45,7 +45,7 @@ BEGIN
   INSERT INTO finance.recurring_payment_skips (recurring_payment_id, due_date)
   VALUES (v_handy, (t - interval '2 months')::date), (v_handy, (t - interval '1 month')::date);
 
-  -- nur Skips aus einem Saldo-Abgleich per Chat (kein Auszug hat sie festgestellt) -> KEINE Warnung
+  -- nur Skips aus einem Saldo-Abgleich per Chat (kein Auszug hat sie festgestellt) -> keine Warnung
   v_alerts := finance.fn_advisor_review('finance')->'alerts';
   IF EXISTS (SELECT 1 FROM jsonb_array_elements(v_alerts) a WHERE a->>'metric_key' = 'recurring_missing:' || v_handy) THEN
     RAISE EXCEPTION 'FAIL advisor recurring_missing aus Chat-Abgleich-Skips: %', v_alerts; END IF;
@@ -58,7 +58,7 @@ BEGIN
   v_alerts := finance.fn_advisor_review('finance')->'alerts';
   IF NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v_alerts) a WHERE a->>'metric_key' = 'account_coverage:' || v_giro) THEN
     RAISE EXCEPTION 'FAIL advisor account_coverage fehlt: %', v_alerts; END IF;
-  -- Transparenz 2026-10-30: die Warnung nennt die Alltags-Schaetzung je Tag und dass der Puffer der Standard ist
+  -- die Warnung nennt die Alltags-Schaetzung je Tag und dass der Puffer der Standard ist
   IF NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v_alerts) a WHERE a->>'metric_key' = 'account_coverage:' || v_giro
                    AND a->'msg'->0->'params'->'per_day' = core.fn_ui_money(10, 'EUR')
                    AND a->'msg' @> jsonb_build_array(core.fn_ui_tpl('finance.advisor.account_coverage_default_buffer'))) THEN
@@ -96,8 +96,8 @@ BEGIN
   RAISE NOTICE 'PASS advisor: nie gelaufener Dauerauftrag -> never_started mit Bank/_generic, Lastschrift recurring_missing';
 END $$;
 
--- Rundungs-Paket 2026-10-23: Puffer (250 EUR) in Kontowaehrung ungerundet umgerechnet. Vorher: fn_to_eur(1, 'CLP') =
--- round(1/1450, 2) = 0.00 -> Puffer blieb still 250 CLP; JPY (160) -> 0.01 -> 25000 statt 40000 JPY.
+-- Puffer (250 EUR) wird in Kontowaehrung ungerundet umgerechnet; ueber fn_to_eur(1, 'CLP') =
+-- round(1/1450, 2) = 0.00 bliebe der Puffer still 250 CLP; JPY (160) -> 0.01 -> 25000 statt 40000 JPY.
 DO $$
 DECLARE v_clp INT; v_jpy INT; v_res JSONB;
 BEGIN
@@ -114,11 +114,10 @@ BEGIN
   RAISE NOTICE 'PASS outlook Puffer in Fremdwaehrung: 362500 CLP / 40000 JPY';
 END $$;
 
--- Ueberbrueckung 2026-10-28 (Dauerauftrags-Fluesse kommen aus finance.fn_upcoming_payments): Randfaelle, die VOR dem
--- Umbau so gerechnet wurden und danach identisch bleiben muessen.
+-- Randfaelle der Dauerauftrags-Fluesse (kommen aus finance.fn_upcoming_payments):
 --   * offenes Vorkommen zwischen bestaetigtem Stand und heute (d0 < heute) zaehlt in den Stand heute
---   * Uebertrag AUF das Konto mit POSITIVEM Betrag in der Zeile (kein CHECK erzwingt das Minus) -> Ziel-Seite +abs()
---   * Uebertrag VOM Konto -> Quell-Seite mit Vorzeichen; der Uebertrag aufs Konto ist zugleich der Horizont (Einnahme)
+--   * Uebertrag auf das Konto mit positivem Betrag in der Zeile (kein CHECK erzwingt das Minus) -> Ziel-Seite +abs()
+--   * Uebertrag vom Konto -> Quell-Seite mit Vorzeichen; der Uebertrag aufs Konto ist zugleich der Horizont (Einnahme)
 DO $$
 DECLARE
   t DATE := CURRENT_DATE;
@@ -146,9 +145,9 @@ BEGIN
   RAISE NOTICE 'PASS outlook Randfaelle: Vorkommen vor heute, positiver Uebertrag aufs Konto, Uebertrag vom Konto';
 END $$;
 
--- Rechenkern-Umbau 2026-10-29 (fn_account_projection, geteilt mit fn_account_funding):
---   * Ein- und Ausgang am SELBEN Tag zaehlen getrennt in planned_in / planned_out (nicht je Tag verrechnet)
---   * Bugfix: Ziel-Seite eines Uebertrags aus einer anderen Waehrung in ZIELwaehrung (vorher Quellbetrag roh)
+-- Rechenkern (fn_account_projection, geteilt mit fn_account_funding):
+--   * Ein- und Ausgang am selben Tag zaehlen getrennt in planned_in / planned_out (nicht je Tag verrechnet)
+--   * Ziel-Seite eines Uebertrags aus einer anderen Waehrung in Zielwaehrung (nicht der Quellbetrag roh)
 DO $$
 DECLARE
   t DATE := CURRENT_DATE;
@@ -176,7 +175,7 @@ BEGIN
   RAISE NOTICE 'PASS outlook: Zu-/Abgang am selben Tag getrennt, Uebertrag EUR -> USD als 110 USD';
 END $$;
 
--- Berater-Nachruestung 2026-10-30 (Code-Review): der Umbuchungs-Vorschlag nennt nie ein Kinderkonto als Quelle, auch
+-- Der Umbuchungs-Vorschlag nennt nie ein Kinderkonto als Quelle, auch
 -- wenn es den groessten freien Saldo hat (der Vorschlag geht ohne LLM in die Karte/den Alert). Werte erfunden.
 DO $$
 DECLARE
@@ -202,7 +201,7 @@ BEGIN
   RAISE NOTICE 'PASS outlook: Umbuchungs-Vorschlag nie von einem Kinderkonto';
 END $$;
 
--- Transparenz 2026-10-30: Bruecke bis zum Tief summiert EXAKT auf min_projected (start = Saldo zum Vortag von d0, inkl.
+-- Bruecke bis zum Tief summiert exakt auf min_projected (start = Saldo zum Vortag von d0, inkl.
 -- einer rueckdatierten Buchung vor dem Abgleich -> Korrektur gegen den bestaetigten Stand), Puffer je Konto
 -- (accounts.min_balance) vor dem Standard, buffer_source, provisional, naechster Geldeingang mit Betrag. Werte erfunden.
 DO $$

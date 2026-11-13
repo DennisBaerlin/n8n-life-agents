@@ -1,5 +1,5 @@
 -- tests/db/finance/test_fn_set_insurance.sql
--- Testet fn_set_insurance: Beitragsaenderung ueber die Beitrags-Kette mit Historie (WP2, eine Quelle: Jahres-/Monatswert
+-- Testet fn_set_insurance: Beitragsaenderung ueber die Beitrags-Kette mit Historie (eine Quelle: Jahres-/Monatswert
 -- abgeleitet), Kuendigungs-Kaskade (Kopf paused + valid_to), neg-Praemie, Rhythmus nur mit Betrag, Namenskopie
 BEGIN;
 
@@ -80,7 +80,7 @@ BEGIN
   END IF;
   RAISE NOTICE 'PASS set_insurance [valid_to vor valid_from -> ok:false]';
 
-  -- TEST 5 (WS-0b estate): additive Nachlass-Felder partiell setzen -> persistiert, nur gelieferte Felder.
+  -- TEST 5: additive Nachlass-Felder partiell setzen -> persistiert, nur gelieferte Felder.
   SELECT finance.fn_set_insurance(jsonb_build_object(
     'insurance_id', v_id, 'insurance_type', 'life', 'beneficiary', 'Ehepartner',
     'coverage_amount', '300000', 'claim_deadline_hours', '72'
@@ -97,7 +97,7 @@ BEGIN
   END IF;
   RAISE NOTICE 'PASS set_insurance [estate-Felder partiell gesetzt]';
 
-  -- TEST 6 (Import-Haertung 2026-10-22): ungueltige Werte -> {ok:false} OHNE Write (vorher CHECK-/Cast-RAISE);
+  -- TEST 6: ungueltige Werte -> {ok:false} ohne Write (kein CHECK-/Cast-RAISE);
   -- Text "75.000" wird 75000 (Tausenderpunkt).
   DECLARE v_case JSONB; BEGIN
     FOREACH v_case IN ARRAY ARRAY[
@@ -122,7 +122,7 @@ BEGIN
   END;
   RAISE NOTICE 'PASS set_insurance [Typ/Status/Rhythmus/Summe/Frist -> ok:false ohne Write; "75.000" -> 75000]';
 
-  -- TEST 7 (Audit-Fund F): Vertragsende wird in die Rate gespiegelt; Kuendigung zum KUENFTIGEN Ende pausiert
+  -- TEST 7: Vertragsende wird in die Rate gespiegelt; Kuendigung zum kuenftigen Ende pausiert
   -- nicht sofort (Beitraege laufen bis dahin), Rhythmus-Wechsel leitet die Rate aus der bestehenden Praemie ab.
   SELECT finance.fn_create_insurance(jsonb_build_object(
     'name','__test_set_ins_end__','annual_premium',120,'schedule_unit','month','valid_from','2026-01-01','first_payment_date','2026-01-01',
@@ -140,7 +140,7 @@ BEGIN
   IF v_rpstat IS DISTINCT FROM 'active' OR v_rpto IS DISTINCT FROM CURRENT_DATE + 61 THEN
     RAISE EXCEPTION 'FAIL set_insurance [kuenftige Kuendigung]: rp status=% valid_to=% (erwartet active/+61 exklusiv)', v_rpstat, v_rpto;
   END IF;
-  -- Rhythmus OHNE neuen Betrag -> ok:false (Ratenzuschlag; das LLM rechnet nicht um); mit Betrag je Abbuchung -> neues Glied
+  -- Rhythmus ohne neuen Betrag -> ok:false (Ratenzuschlag; das LLM rechnet nicht um); mit Betrag je Abbuchung -> neues Glied
   SELECT finance.fn_set_insurance(jsonb_build_object('insurance_id', v_id, 'schedule_unit', 'year')) INTO v_res;
   IF (v_res->>'ok')::boolean IS DISTINCT FROM false THEN
     RAISE EXCEPTION 'FAIL set_insurance [rhythmus ohne betrag]: ok:false erwartet, got %', v_res; END IF;
@@ -158,7 +158,7 @@ BEGIN
 
 END $$;
 
--- Review WP2: Altbestand ohne Beitrags-Kette -- Vertragsende/Beitrag haben keinen Speicherort -> ok:false statt still
+-- Altbestand ohne Beitrags-Kette -- Vertragsende/Beitrag haben keinen Speicherort -> ok:false statt still
 -- verworfen; Status-Kuendigung bleibt moeglich.
 DO $$
 DECLARE v_id INT; v_res JSONB;

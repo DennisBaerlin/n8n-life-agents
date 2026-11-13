@@ -1,5 +1,5 @@
 -- tests/db/finance/test_fn_annual_equivalent.sql
--- fn_annual_equivalent = Jahreswert eines Betrags je Abbuchung ohne Zwischenrundung (WP2: der Jahresbeitrag einer
+-- fn_annual_equivalent = Jahreswert eines Betrags je Abbuchung ohne Zwischenrundung (der Jahresbeitrag einer
 -- Versicherung wird aus der echten Abbuchung abgeleitet, nie gespeichert). Dazu fn_period_months (Monate je Periode,
 -- die eine Adresse fuer Zins-Faktor und Jahreswert).
 BEGIN;

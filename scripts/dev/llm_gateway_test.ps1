@@ -1,12 +1,12 @@
 ﻿#Requires -Version 5.1
-# llm_gateway_test.ps1 -- GRATIS-Tier fuer den lokalen LLM-Gateway (provisioning/llm_gateway/server.js).
+# llm_gateway_test.ps1 -- Gratis-Tier fuer den lokalen LLM-Gateway (provisioning/llm_gateway/server.js).
 #
-# Prueft die Gateway-Logik deterministisch IM laufenden Substrat (bootstrap_test_n8n.ps1), ohne den
+# Prueft die Gateway-Logik deterministisch im laufenden Substrat (bootstrap_test_n8n.ps1), ohne den
 # produktiven Gateway anzufassen: eigene transiente systemd-Units (Muster enable_mock_llm.ps1):
 #   n8ntest-gwt-mock  = tests/mock_llm/server.js auf 127.0.0.1:8096 (Upstream-Stub, zeichnet `markers` auf)
 #   n8ntest-gwt       = der installierte Gateway-Code auf 127.0.0.1:8095, Upstream = der Stub
 #   n8ntest-gwt-dead  = Gateway auf 127.0.0.1:8097, Upstream = toter Port (Ausfallverhalten)
-#   n8ntest-gwt-real  = Gateway auf 127.0.0.1:8098, Upstream = api.anthropic.com (nur Fall h, count_tokens = GRATIS)
+#   n8ntest-gwt-real  = Gateway auf 127.0.0.1:8098, Upstream = api.anthropic.com (nur Fall h, count_tokens = gratis)
 #
 # Faelle: (a) Agenten-Anfrage -> 3 Haltepunkte (Werkzeug+System 1h, oben 5m) · (b1) eigene Block-Marker -> keine
 # statischen · (b2) nur oberer Marker -> statische trotzdem, oben unveraendert · (c) ohne eigene Werkzeuge (auch nur
@@ -19,7 +19,7 @@
 # (Kosten-Report): Kennzeile `<<la-wf:NAME>>` (String-/Block-System, Kette nur mit Kennzeile, 400-Wiederholung) und Header
 # x-lifeagents-workflow erreichen upstream nie, wf steht in der usage-Zeile + usage.jsonl, GET /__usage blaettert,
 # Keep-Alive-Schluessel mit/ohne Kennzeile gleich · (h) echter Upstream: POST /v1/messages/count_tokens (kostenlos)
-# mit TEST_ANTHROPIC_API_KEY (fehlt er -> SKIP). (m) Telegram-Relay (Bot mit Gesicht; eigene Units: Mock-Telegram 8103, Gateway 8102):
+# mit TEST_ANTHROPIC_API_KEY (fehlt er -> SKIP). (m) Telegram-Relay (eigene Units: Mock-Telegram 8103, Gateway 8102):
 # Reaktion durchgereicht (❤ ohne VS16, dazu 👀 🙏 😁), Methoden-Allowlist (404, kein Anthropic-Forward), Pfad mit Query -> 404, kaputtes Token -> 400,
 # Sticker erst Upload (multipart, Dateiname) dann file_id, Sticker-Name ausserhalb des Musters -> 400, Token nie im Journal.
 #
@@ -30,7 +30,7 @@ $ErrorActionPreference = 'Stop'
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $Utf8NoBom = New-Object System.Text.UTF8Encoding($false)
 # PS 5.1 stellt beim Pipen in ein natives Programm (docker exec -i) sonst eine BOM vor die erste Zeile -> curl
-# verwirft die erste Config-Zeile (real getroffen: der x-api-key-Header fehlte). Beide Encodings BOM-frei setzen.
+# verwirft die erste Config-Zeile (Symptom: der x-api-key-Header fehlt). Beide Encodings BOM-frei setzen.
 $OutputEncoding = $Utf8NoBom
 [Console]::InputEncoding = $Utf8NoBom
 $RepoRoot = git -C $PSScriptRoot rev-parse --show-toplevel

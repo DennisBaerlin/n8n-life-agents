@@ -28,7 +28,7 @@ BEGIN
   INSERT INTO finance.transactions (account_id, amount, transaction_date, category, recurring_payment_id, description)
   VALUES (v_acct, -200, CURRENT_DATE - 30, 'other', v_rp_b, 'Test-Beitrag');
 
-  -- Pension C: OHNE Beitrag (rp NULL) -> Hard-DELETE
+  -- Pension C: ohne Beitrag (rp NULL) -> Hard-DELETE
   SELECT finance.fn_create_pension('{"name":"__test_cp_c__","pension_type":"statutory"}'::jsonb) INTO v_res;
   v_p_c := (v_res->>'pension_id')::int;
 
@@ -61,7 +61,7 @@ BEGIN
   IF v_cnt <> 0 THEN RAISE EXCEPTION 'FAIL close_pension [pension C noch da]'; END IF;
   RAISE NOTICE 'PASS close_pension [Hard-DELETE ohne RP]';
 
-  -- TEST 4: not-found -> {ok:false, reason, candidates} als Daten (Vertragsaenderung DB-ist-das-Gesetz: Probelauf vor der Karte)
+  -- TEST 4: not-found -> {ok:false, reason, candidates} als Daten (Probelauf vor der Karte)
   SELECT finance.fn_close_pension('{"pension_name":"__test_cp_missing__"}'::jsonb) INTO v_res;
   IF (v_res->>'ok')::boolean IS DISTINCT FROM false OR v_res->>'reason' NOT LIKE '%not found%' OR NOT (v_res ? 'candidates') THEN
     RAISE EXCEPTION 'FAIL close_pension [not-found -> ok:false]: %', v_res; END IF;

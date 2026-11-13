@@ -1,7 +1,7 @@
 -- tests/db/finance/test_fn_book_stock_buy.sql
 -- Testet fn_book_stock_buy: Holding anlegen + Kauf-Txn + Trigger für shares/avg_price/balance
 BEGIN;
--- Audit Paket 3: ein Sparziel braucht ein Sparkonto -> Fixture-Topf fuer fn_create_savings_goal.
+-- Ein Sparziel braucht ein Sparkonto -> Fixture-Topf fuer fn_create_savings_goal.
 INSERT INTO finance.accounts (name, account_type, currency, status) VALUES ('__sg_fixture_pot__','cash','EUR','active');
 
 DO $$
@@ -183,7 +183,7 @@ BEGIN
   END IF;
   RAISE NOTICE 'PASS fn_book_stock_buy [price<=0 -> ok:false]';
 
-  -- TEST 6 (WS2b): asset_class-Auto-Tag wird beim ANLEGEN der Holding gesetzt
+  -- TEST 6: asset_class-Auto-Tag wird beim Anlegen der Holding gesetzt
   DECLARE v_tag TEXT; v_h6 INT; BEGIN
     SELECT finance.fn_book_stock_buy(jsonb_build_object('price_currency_confirmed',true,
       'depot_id', v_depot_id, 'settlement_id', v_settle_id,
@@ -199,7 +199,7 @@ BEGIN
       RAISE EXCEPTION 'FAIL fn_book_stock_buy [asset_class set]: erwartet sp500, got %', v_tag; END IF;
     RAISE NOTICE 'PASS fn_book_stock_buy [asset_class Auto-Tag beim Anlegen gesetzt]';
 
-    -- 6b: ein zweiter Kauf derselben Position ueberschreibt den Tag NICHT (Korrektur nur via set_holding)
+    -- 6b: ein zweiter Kauf derselben Position ueberschreibt den Tag nicht (Korrektur nur via set_holding)
     SELECT finance.fn_book_stock_buy(jsonb_build_object('price_currency_confirmed',true,
       'depot_id', v_depot_id, 'settlement_id', v_settle_id,
       'isin', 'IE00BK5BQT80', 'symbol', 'VWCE', 'name', 'Vanguard FTSE All-World',
@@ -212,7 +212,7 @@ BEGIN
     RAISE NOTICE 'PASS fn_book_stock_buy [wiederholter Kauf ueberschreibt asset_class nicht]';
   END;
 
-  -- TEST 7 (WS2b): ungueltiges asset_class-Format -> {ok:false}, kein Write
+  -- TEST 7: ungueltiges asset_class-Format -> {ok:false}, kein Write
   SELECT finance.fn_book_stock_buy(jsonb_build_object('price_currency_confirmed',true,
     'depot_id', v_depot_id, 'settlement_id', v_settle_id,
     'isin', 'IE00B0M62Q58', 'symbol', 'VWRL2', 'name', 'Test',
@@ -227,7 +227,7 @@ BEGIN
   END IF;
   RAISE NOTICE 'PASS fn_book_stock_buy [ungueltiges asset_class-Format -> ok:false, kein Write]';
 
-  -- TEST 8 (Phase M): provider_symbol + quote_currency beim ANLEGEN gesetzt; Wiederkauf ueberschreibt nicht.
+  -- TEST 8: provider_symbol + quote_currency beim Anlegen gesetzt; Wiederkauf ueberschreibt nicht.
   DECLARE v_ps TEXT; v_qc CHAR(3); v_h8 INT; BEGIN
     SELECT finance.fn_book_stock_buy(jsonb_build_object('price_currency_confirmed',true,
       'depot_id', v_depot_id, 'settlement_id', v_settle_id,
@@ -243,7 +243,7 @@ BEGIN
       RAISE EXCEPTION 'FAIL fn_book_stock_buy [provider/quote set]: provider_symbol=% quote_currency=%', v_ps, v_qc; END IF;
     RAISE NOTICE 'PASS fn_book_stock_buy [provider_symbol + quote_currency beim Anlegen gesetzt]';
 
-    -- 8b: Wiederkauf mit anderen Werten ueberschreibt provider_symbol/quote_currency NICHT (wie asset_class)
+    -- 8b: Wiederkauf mit anderen Werten ueberschreibt provider_symbol/quote_currency nicht (wie asset_class)
     SELECT finance.fn_book_stock_buy(jsonb_build_object('price_currency_confirmed',true,
       'depot_id', v_depot_id, 'settlement_id', v_settle_id,
       'isin', 'IE00BFMXXD54', 'symbol', 'VUSA', 'name', 'Vanguard S&P 500',
@@ -256,8 +256,8 @@ BEGIN
     RAISE NOTICE 'PASS fn_book_stock_buy [Wiederkauf ueberschreibt provider_symbol/quote_currency nicht]';
   END;
 
-  -- TEST 9 (WP-1 Crash-Schutz): quote_currency in KLEINSCHREIBUNG ('usd') -> normalisiert 'USD', Holding
-  -- angelegt mit quote_currency='USD' (VOR dem Fix: {ok:false} = Ablehnung statt Normalisierung).
+  -- TEST 9 (Crash-Schutz): quote_currency in Kleinschreibung ('usd') -> normalisiert 'USD', Holding
+  -- angelegt mit quote_currency='USD' (keine Ablehnung statt Normalisierung).
   DECLARE v_qc9 CHAR(3); v_h9 INT; BEGIN
     SELECT finance.fn_book_stock_buy(jsonb_build_object('price_currency_confirmed',true,
       'depot_id', v_depot_id, 'settlement_id', v_settle_id,
@@ -274,7 +274,7 @@ BEGIN
     RAISE NOTICE 'PASS fn_book_stock_buy [lowercase quote_currency usd -> normalisiert USD]';
   END;
 
-  -- TEST 9b (WP-1): echt-ungueltiger quote_currency-Code ('DOLLAR') -> {ok:false}, kein Write.
+  -- TEST 9b: echt-ungueltiger quote_currency-Code ('DOLLAR') -> {ok:false}, kein Write.
   SELECT finance.fn_book_stock_buy(jsonb_build_object('price_currency_confirmed',true,
     'depot_id', v_depot_id, 'settlement_id', v_settle_id,
     'isin', 'IE00BADQC998', 'symbol', 'BADQC', 'name', 'Bad Quote Ccy',
@@ -290,11 +290,11 @@ BEGIN
   RAISE NOTICE 'PASS fn_book_stock_buy [ungueltige quote_currency DOLLAR -> ok:false, kein Write]';
 
   -- ============================================================
-  -- TEST 10-13 (WS-B Stufe 2, Vertragsaenderung Sparziel-Zweckbindung 2026-10-27): ein goal-verknuepfter Sparplan-Kauf
+  -- TEST 10-13 (Sparziel-Zweckbindung): ein goal-verknuepfter Sparplan-Kauf
   --   schreibt Journal-Zeilen (kind sparplan_buy, source_tx_id = Kauf): Depot +X und — soweit Ziel-Geld auf dem
-  --   Verrechnungskonto liegt — Verrechnungskonto -c (c = min(Anteil, X)). Der Kauf selbst traegt KEIN Tag mehr.
+  --   Verrechnungskonto liegt — Verrechnungskonto -c (c = min(Anteil, X)). Der Kauf selbst traegt kein Tag.
   --   Ziel-Geld wird nur umgeschichtet (konserviert), frisches Geld (X - c) zaehlt als neu gespart.
-  --   Manueller Kauf (kein rp) -> KEINE Wirkung.
+  --   Manueller Kauf (kein rp) -> keine Wirkung.
   -- ============================================================
   DECLARE
     v_goal_id    INT;
@@ -369,7 +369,7 @@ BEGIN
       RAISE EXCEPTION 'FAIL fn_book_stock_buy [sparplan_buy ok]: %', v_result; END IF;
     v_buy_tx := (v_result->>'buy_tx_id')::int;
 
-    -- (a) der Kauf traegt kein Ziel-Tag mehr (die Umschichtung laeuft komplett im Journal)
+    -- (a) der Kauf traegt kein Ziel-Tag (die Umschichtung laeuft komplett im Journal)
     SELECT savings_goal_id INTO v_tag FROM finance.transactions WHERE id = v_buy_tx;
     IF v_tag IS NOT NULL THEN
       RAISE EXCEPTION 'FAIL fn_book_stock_buy [kein Kauf-Tag]: erwartet NULL, got %', v_tag; END IF;
@@ -386,13 +386,13 @@ BEGIN
     IF v_jrnl_cnt IS DISTINCT FROM 1 OR v_jrnl_delta IS DISTINCT FROM -50 THEN
       RAISE EXCEPTION 'FAIL fn_book_stock_buy [Verrechnungskonto-Zeile]: cnt % delta %', v_jrnl_cnt, v_jrnl_delta; END IF;
 
-    -- (c) KONSERVIERUNG: Ziel-Geld umgeschichtet -> current_amount = 200 - 50 + 50 = 200 UNVERAENDERT
+    -- (c) Konservierung: Ziel-Geld umgeschichtet -> current_amount = 200 - 50 + 50 = 200 unveraendert
     SELECT current_amount INTO v_curr FROM finance.savings_goal_progress WHERE id = v_goal_id;
     IF v_curr IS DISTINCT FROM 200 THEN
       RAISE EXCEPTION 'FAIL fn_book_stock_buy [Konservierung]: current_amount erwartet 200 (nur Feed), got % (Kauf doppelt gezaehlt?)', v_curr; END IF;
     RAISE NOTICE 'PASS fn_book_stock_buy [sparplan_buy aus Ziel-Geld: Depot +50, Verrechnungskonto -50, Konservierung 200]';
 
-    -- TEST 11: manueller Kauf (kein recurring_payment_id) -> KEINE Wirkung (kein Tag, kein Journal).
+    -- TEST 11: manueller Kauf (kein recurring_payment_id) -> keine Wirkung (kein Tag, kein Journal).
     SELECT count(*) INTO v_cnt_before FROM finance.savings_goal_reserve_entries WHERE savings_goal_id = v_goal_id;
     SELECT finance.fn_book_stock_buy(jsonb_build_object('price_currency_confirmed',true,
       'depot_id',        v_depot_id, 'settlement_id', v_settle_id,
@@ -418,7 +418,7 @@ BEGIN
       'depot_id',        v_depot_id, 'settlement_id', v_settle_id,
       'isin',            'IE00B4L5Y983', 'symbol', 'IUSQ', 'name', 'iShares MSCI World',
       'shares',          1, 'price_per_share', 100, 'order_fee', 5,
-      'transaction_date', (CURRENT_DATE - 1)::text,   -- WP-1: distinktes Datum (Sparplan-Kauf ist je (rp,date) idempotent)
+      'transaction_date', (CURRENT_DATE - 1)::text,   -- distinktes Datum (Sparplan-Kauf ist je (rp,date) idempotent)
       'recurring_payment_id', v_plan_rp
     )) INTO v_result;
     v_buy_tx := (v_result->>'buy_tx_id')::int;
@@ -467,7 +467,7 @@ BEGIN
       FROM finance.savings_goal_reserve_entries WHERE source_tx_id = v_buy_tx AND account_id = v_crypto_dep;
     IF v_jrnl_delta IS DISTINCT FROM 500 THEN
       RAISE EXCEPTION 'FAIL fn_book_stock_buy [crypto Journal-delta]: erwartet 500 (0.01*50000), got %', v_jrnl_delta; END IF;
-    -- TEILWEISE aus Ziel-Geld: auf dem Verrechnungskonto liegen nur noch 200-50-105 = 45 des Ziels -> -45 dort,
+    -- teilweise aus Ziel-Geld: auf dem Verrechnungskonto liegen nur noch 200-50-105 = 45 des Ziels -> -45 dort,
     -- 455 frisches Geld -> current_amount 200 + 455 = 655.
     SELECT delta_native INTO v_jrnl_delta
       FROM finance.savings_goal_reserve_entries WHERE source_tx_id = v_buy_tx AND account_id = v_settle_id;
@@ -480,12 +480,12 @@ BEGIN
   END;
 
   -- ============================================================
-  -- TEST 14 (Phase L WS-6): null_tag-Fallback-Note, wenn die RESULTIERENDE Holding ungetaggt ist. Basiert auf
-  --   dem END-Zustand (asset_class der Holding), NICHT auf dem Input -> ein Re-Buy einer bereits getaggten
-  --   Position nagt NICHT.
+  -- TEST 14: null_tag-Fallback-Note, wenn die resultierende Holding ungetaggt ist. Basiert auf
+  --   dem End-Zustand (asset_class der Holding), nicht auf dem Input -> ein Re-Buy einer bereits getaggten
+  --   Position nagt nicht.
   -- ============================================================
   DECLARE v_h14 INT; BEGIN
-    -- (14a) Neuer manueller Kauf OHNE asset_class -> Holding untagged -> null_tag-Note im {ok:true}
+    -- (14a) Neuer manueller Kauf ohne asset_class -> Holding untagged -> null_tag-Note im {ok:true}
     SELECT finance.fn_book_stock_buy(jsonb_build_object('price_currency_confirmed',true,
       'depot_id', v_depot_id, 'settlement_id', v_settle_id,
       'isin','IE00NT000001','symbol','NTAG','name','Untagged ETF',
@@ -494,7 +494,7 @@ BEGIN
       RAISE EXCEPTION 'FAIL [14a]: kein null_tag-Fold mit note bei ungetaggter neuer Position, got %', v_result; END IF;
     RAISE NOTICE 'PASS [14a WS-6: neue untagged Position -> null_tag-Fallback-Note]';
 
-    -- (14b) Neuer manueller Kauf MIT asset_class -> Holding getaggt -> KEINE Note
+    -- (14b) Neuer manueller Kauf mit asset_class -> Holding getaggt -> keine Note
     SELECT finance.fn_book_stock_buy(jsonb_build_object('price_currency_confirmed',true,
       'depot_id', v_depot_id, 'settlement_id', v_settle_id,
       'isin','IE00TG000001','symbol','TG14','name','Tagged ETF',
@@ -505,8 +505,8 @@ BEGIN
       RAISE EXCEPTION 'FAIL [14b]: null_tag-Fold trotz gesetzter asset_class, got %', v_result; END IF;
     RAISE NOTICE 'PASS [14b WS-6: getaggte neue Position -> keine Note]';
 
-    -- (14c) Re-Buy DERSELBEN getaggten Position OHNE asset_class -> Holding bleibt getaggt -> KEINE Note
-    --   (Note haengt am END-Zustand, nicht am Input -> kein falsches Nagen beim Nachkauf).
+    -- (14c) Re-Buy derselben getaggten Position ohne asset_class -> Holding bleibt getaggt -> keine Note
+    --   (Note haengt am End-Zustand, nicht am Input -> kein falsches Nagen beim Nachkauf).
     SELECT finance.fn_book_stock_buy(jsonb_build_object('price_currency_confirmed',true,
       'depot_id', v_depot_id, 'settlement_id', v_settle_id,
       'isin','IE00TG000001','symbol','TG14','name','Tagged ETF',
@@ -517,9 +517,9 @@ BEGIN
   END;
 
   -- ============================================================
-  -- TEST 15 (WP-3b): FREMDWAEHRUNG — goal-verknuepfter Kauf auf einem CLP-Depot (CLP-Settlement). Der Reserve-
-  --   Journal-Eintrag speichert den ROHEN CLP-Betrag + currency='CLP' + value_date (KEIN fn_to_eur am Insert ->
-  --   kein NULL-Crash); die VIEW konvertiert nach EUR. depot_reserve_status.reserved = 1000 EUR (NICHT roh
+  -- TEST 15: Fremdwaehrung — goal-verknuepfter Kauf auf einem CLP-Depot (CLP-Settlement). Der Reserve-
+  --   Journal-Eintrag speichert den rohen CLP-Betrag + currency='CLP' + value_date (kein fn_to_eur am Insert ->
+  --   kein NULL-Crash); die VIEW konvertiert nach EUR. depot_reserve_status.reserved = 1000 EUR (nicht roh
   --   1450000), current_amount bleibt konserviert (Cash-Bein und Depot-Journal kuerzen sich in EUR).
   -- ============================================================
   DECLARE
@@ -555,24 +555,24 @@ BEGIN
     IF (v_result->>'ok')::boolean IS DISTINCT FROM true THEN RAISE EXCEPTION 'FAIL [15 clp buy]: %', v_result; END IF;
     v_kbuy := (v_result->>'buy_tx_id')::int;
 
-    -- (a) Journal-Zeile: ROHER CLP-Betrag + currency='CLP' + value_date=heute (kein fn_to_eur am Insert).
+    -- (a) Journal-Zeile: roher CLP-Betrag + currency='CLP' + value_date=heute (kein fn_to_eur am Insert).
     SELECT delta_native, currency, value_date INTO v_dn, v_dccy, v_vd
       FROM finance.savings_goal_reserve_entries WHERE source_tx_id = v_kbuy;
     IF v_dn IS DISTINCT FROM 1450000 THEN RAISE EXCEPTION 'FAIL [15 delta_native]: erwartet roh 1450000 CLP, got %', v_dn; END IF;
     IF v_dccy IS DISTINCT FROM 'CLP' THEN RAISE EXCEPTION 'FAIL [15 currency]: erwartet CLP, got %', v_dccy; END IF;
     IF v_vd IS DISTINCT FROM CURRENT_DATE THEN RAISE EXCEPTION 'FAIL [15 value_date]: erwartet heute, got %', v_vd; END IF;
 
-    -- (b) VIEW konvertiert nach EUR: reserved = 1450000/1450 = 1000 EUR (NICHT der rohe CLP-Betrag).
+    -- (b) VIEW konvertiert nach EUR: reserved = 1450000/1450 = 1000 EUR (nicht der rohe CLP-Betrag).
     SELECT reserved INTO v_reserved FROM finance.depot_reserve_status WHERE account_id = v_clp_depot;
     IF v_reserved IS DISTINCT FROM 1000 THEN RAISE EXCEPTION 'FAIL [15 reserved EUR]: erwartet 1000 EUR (1450000 CLP / 1450), got % (View nicht konvertiert?)', v_reserved; END IF;
 
-    -- (c) FRISCHES GELD in EUR (2026-10-27): auf dem CLP-Verrechnungskonto lag kein Ziel-Geld -> keine Gegenzeile,
+    -- (c) frisches Geld in EUR: auf dem CLP-Verrechnungskonto lag kein Ziel-Geld -> keine Gegenzeile,
     --     der Kauf zaehlt voll: current_amount = 1000 EUR.
     SELECT current_amount INTO v_kcur FROM finance.savings_goal_progress WHERE id = v_clp_goal;
     IF v_kcur IS DISTINCT FROM 1000 THEN RAISE EXCEPTION 'FAIL [15 frisch]: erwartet 1000 EUR (frisches Geld), got %', v_kcur; END IF;
     RAISE NOTICE 'PASS [15 WP-3b: CLP-Kauf -> delta_native roh CLP + currency + EUR-Umrechnung in der View (reserved 1000), frisch +1000]';
 
-    -- (d) value_date FOLGT dem transaction_date (nicht hardcoded CURRENT_DATE) — RUECKDATIERTER Kauf.
+    -- (d) value_date folgt dem transaction_date (nicht hardcoded CURRENT_DATE) — rueckdatierter Kauf.
     DECLARE v_bkbuy INT; v_bkvd DATE; BEGIN
       SELECT finance.fn_book_stock_buy(jsonb_build_object('price_currency_confirmed',true,
         'depot_id', v_clp_depot, 'settlement_id', v_clp_settle,
@@ -590,7 +590,7 @@ BEGIN
   END;
 
   -- ============================================================
-  -- TEST 16 (WP-3b Guard): goal-verknuepfter Kauf mit Settlement-Waehrung != Depot-Waehrung -> {ok:false},
+  -- TEST 16 (Guard): goal-verknuepfter Kauf mit Settlement-Waehrung != Depot-Waehrung -> {ok:false},
   --   kein partieller Write (Cross-Currency-Settlement out-of-scope; sonst kuerzen sich die Legs in EUR nicht).
   -- ============================================================
   DECLARE
@@ -627,8 +627,8 @@ BEGIN
 END $$;
 
 -- ============================================================
--- Bestandsuebernahme (existing_position, Eindeutigkeit 2026-10-21): eine bereits gehaltene Position
--- erfassen, OHNE den (schon heutigen) Saldo des Verrechnungskontos zu veraendern.
+-- Bestandsuebernahme (existing_position): eine bereits gehaltene Position
+-- erfassen, ohne den (schon heutigen) Saldo des Verrechnungskontos zu veraendern.
 -- ============================================================
 DO $$
 DECLARE
@@ -710,7 +710,7 @@ BEGIN
   IF NOT v_ok THEN RAISE EXCEPTION 'FAIL takeover [5]: position_takeover ohne group_id haette der CHECK ablehnen muessen'; END IF;
   RAISE NOTICE 'PASS takeover [5 CHECK finance_transactions_position_takeover_shape greift]';
 
-  -- TEST 6: Void der Uebernahme entfernt Kauf UND Gegenbuchung (eine group_id = ein Void)
+  -- TEST 6: Void der Uebernahme entfernt Kauf und Gegenbuchung (eine group_id = ein Void)
   SELECT finance.fn_void_transaction(jsonb_build_object('transaction_id', v_buy)) INTO v_res;
   IF (v_res->>'ok')::boolean IS DISTINCT FROM true
      OR EXISTS (SELECT 1 FROM finance.transactions WHERE group_id = v_group) THEN
@@ -722,8 +722,8 @@ BEGIN
   END IF;
   RAISE NOTICE 'PASS takeover [6 Void entfernt Kauf + Gegenbuchung, Saldo 2279]';
 
-  -- TEST 7: Krypto-Uebernahme OHNE name (Import 2026-10-22: "Bezeichnung: —") -> ok, Name = Symbol.
-  -- Vorher schrieb die fn NULL in depot_holdings.name (NOT NULL) -> RAISE -> ganzer Import zurueckgerollt.
+  -- TEST 7: Krypto-Uebernahme ohne name (Import mit "Bezeichnung: —") -> ok, Name = Symbol
+  -- (depot_holdings.name ist NOT NULL; ein NULL-Write rollte sonst den ganzen Import zurueck).
   SELECT (finance.fn_create_account(jsonb_build_object('name','__test_take_crypto__','account_type','crypto_depot',
     'settlement_id', v_settle))->>'account_id')::int INTO v_depot;
   SELECT finance.fn_book_stock_buy(jsonb_build_object('price_currency_confirmed',true,'depot_id', v_depot, 'settlement_id', v_settle,
@@ -740,7 +740,7 @@ BEGIN
 END $$;
 
 -- ============================================================
--- Befund 2026-10-28: settlement_change (DB-Delta statt vom Modell hergeleitet), Uebernahme mit Gesamtbetrag
+-- settlement_change (DB-Delta statt vom Modell hergeleitet), Uebernahme mit Gesamtbetrag
 -- (cost_basis_total, Stueckpreis rechnet die DB) und eine Doppel-Uebernahme-Meldung ohne "normaler Kauf"-Empfehlung.
 -- ============================================================
 DO $$

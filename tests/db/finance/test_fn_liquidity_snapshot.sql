@@ -1,8 +1,8 @@
 -- tests/db/finance/test_fn_liquidity_snapshot.sql
--- finance.fn_liquidity_snapshot (WS-5 Runway-Bruecke, Provider-Seite): cash-only liquide Mittel +
--- Monats-Ausgaben/-Einnahmen fuer die career-Runway. PLAIN STABLE, KEIN DEFINER, KEIN Grant — wird vom
+-- finance.fn_liquidity_snapshot (Provider-Seite der career-Runway): cash-only liquide Mittel +
+-- Monats-Ausgaben/-Einnahmen fuer die career-Runway. Plain STABLE, kein DEFINER, kein Grant — wird vom
 -- career-Renderer im fn_fetch_context-DEFINER-Kontext gelesen. RAISE-frei (laeuft im Render-Fetch:
--- ein RAISE braeche load_context ab), alles COALESCE'd. Liest NUR finance.*-Views (kein financial_planning).
+-- ein RAISE braeche load_context ab), alles COALESCE'd. Liest nur finance.*-Views (kein financial_planning).
 -- Differenz-basierte Assertions (robust gegen Bestands-Fixtures der db_test-DB).
 BEGIN;
 DO $$
@@ -27,7 +27,7 @@ BEGIN
   IF round(v_cash1 - v_cash0, 2) <> 5000 THEN RAISE EXCEPTION 'FAIL [1 cash delta]: % - % <> 5000', v_cash1, v_cash0; END IF;
   RAISE NOTICE 'PASS [1] Cash-Konto -> cash_eur +5000';
 
-  -- ---------- TEST 2: Nicht-Cash-Konto (fixed_deposit) zaehlt NICHT in cash_eur ----------
+  -- ---------- TEST 2: Nicht-Cash-Konto (fixed_deposit) zaehlt nicht in cash_eur ----------
   INSERT INTO finance.accounts (name, account_type, currency, status, fixed_deposit_maturity_date) VALUES ('__liq_fd__','fixed_deposit','EUR','active','2030-12-31') RETURNING id INTO v_fd;
   UPDATE finance.account_balances SET balance = 99999 WHERE account_id = v_fd;
   IF (finance.fn_liquidity_snapshot()->>'cash_eur')::numeric IS DISTINCT FROM v_cash1 THEN
@@ -47,12 +47,12 @@ BEGIN
   IF (s2->>'has_data')::boolean IS DISTINCT FROM true THEN RAISE EXCEPTION 'FAIL [4 has_data]: %', s2; END IF;
   RAISE NOTICE 'PASS [4] has_data=true bei Cash/Ausgaben';
 
-  -- ---------- TEST 5 (WP-3c): Fremdwaehrungs-Cash-Konto OHNE FX-Kurs -> has_fx_gap=true, still NICHT in cash_eur ----------
+  -- ---------- TEST 5: Fremdwaehrungs-Cash-Konto ohne FX-Kurs -> has_fx_gap=true, still nicht in cash_eur ----------
   DECLARE v_clp int; s5 jsonb; v_cash_before numeric; BEGIN
     v_cash_before := (finance.fn_liquidity_snapshot()->>'cash_eur')::numeric;
     INSERT INTO finance.currencies (code, minor_unit) VALUES ('CLP', 0) ON CONFLICT (code) DO NOTHING;
     INSERT INTO finance.accounts (name, account_type, currency, status) VALUES ('__liq_clp__','cash','CLP','active') RETURNING id INTO v_clp;
-    UPDATE finance.account_balances SET balance = 1450000 WHERE account_id = v_clp;   -- CLP-Guthaben, KEIN fx_rate
+    UPDATE finance.account_balances SET balance = 1450000 WHERE account_id = v_clp;   -- CLP-Guthaben, kein fx_rate
     s5 := finance.fn_liquidity_snapshot();
     IF (s5->>'has_fx_gap')::boolean IS DISTINCT FROM true THEN
       RAISE EXCEPTION 'FAIL [5 has_fx_gap]: erwartet true (CLP-Konto ohne Kurs), got %', s5->>'has_fx_gap'; END IF;
@@ -70,12 +70,12 @@ BEGIN
     RAISE NOTICE 'PASS [5b] mit CLP-Kurs -> has_fx_gap=false, cash_eur +1000';
   END;
 
-  -- ---------- Audit Paket 3: Pflicht-Basis + freies Cash ----------
+  -- ---------- Pflicht-Basis + freies Cash ----------
   DECLARE
     v_depot int; v_rp int; v_loan int; v_kid int; v_pot int; v_goal int; v_chf int;
     sa jsonb; sb jsonb; v_e numeric; v_c numeric;
   BEGIN
-    -- (6) ETF-Sparplan 600 ist KEINE Pflichtausgabe -> monthly_expenses_eur unveraendert
+    -- (6) ETF-Sparplan 600 ist keine Pflichtausgabe -> monthly_expenses_eur unveraendert
     v_e := (finance.fn_liquidity_snapshot()->>'monthly_expenses_eur')::numeric;
     INSERT INTO finance.accounts (name, account_type, currency, status, settlement_account_id)
       VALUES ('__liq_depot__','stocks_depot','EUR','active', v_cash) RETURNING id INTO v_depot;
@@ -88,7 +88,7 @@ BEGIN
         finance.fn_liquidity_snapshot()->>'monthly_expenses_eur'; END IF;
     RAISE NOTICE 'PASS [6] Sparplan ist keine Pflichtausgabe';
 
-    -- (7) Kreditrate 1000 (Zins 600 + Tilgung 400) IST Pflicht -> +1000
+    -- (7) Kreditrate 1000 (Zins 600 + Tilgung 400) ist Pflicht -> +1000
     INSERT INTO finance.accounts (name, account_type, currency, status) VALUES ('__liq_loan__','loan','EUR','active') RETURNING id INTO v_loan;
     UPDATE finance.account_balances SET balance = -120000 WHERE account_id = v_loan;
     INSERT INTO finance.recurring_payments (name, account_id, amount, schedule_unit, first_payment_date, valid_from)
@@ -124,7 +124,7 @@ BEGIN
       RAISE EXCEPTION 'FAIL [9 earmarked]: earmarked_eur erwartet +1500, got %', sb->>'earmarked_eur'; END IF;
     RAISE NOTICE 'PASS [9] Sparziel-Ruecklage ist kein freies Cash (earmarked 1500)';
 
-    -- (10) Review #2: NEGATIVE Reserve-Markierung (Cash-Bein eines Ziel-Sparplan-Kaufs auf dem Giro) blaeht nichts auf
+    -- (10) negative Reserve-Markierung (Cash-Bein eines Ziel-Sparplan-Kaufs auf dem Giro) blaeht nichts auf
     --      (eigenes Giro: der Saldo-Trigger rechnet aus den Buchungen neu -> 1000 Gehalt - 200 Kauf = 800 frei)
     v_c := (finance.fn_liquidity_snapshot()->>'cash_eur')::numeric;
     INSERT INTO finance.accounts (name, account_type, currency, status) VALUES ('__liq_giro2__','cash','EUR','active') RETURNING id INTO v_rp;
@@ -135,7 +135,7 @@ BEGIN
         (finance.fn_liquidity_snapshot()->>'cash_eur')::numeric - v_c; END IF;
     RAISE NOTICE 'PASS [10] negative Reserve-Tags erhoehen das freie Cash nicht';
 
-    -- (11) 63-Punkt 11a: Fremdwaehrungs-Dauerauftrag ohne Kurs -> has_fx_gap (Pflicht-Basis unvollstaendig)
+    -- (11) Fremdwaehrungs-Dauerauftrag ohne Kurs -> has_fx_gap (Pflicht-Basis unvollstaendig)
     PERFORM finance.fn_ensure_currency('CHF');
     DELETE FROM finance.fx_rates WHERE quote_currency = 'CHF';
     INSERT INTO finance.accounts (name, account_type, currency, status, fixed_deposit_maturity_date) VALUES ('__liq_chf__','fixed_deposit','CHF','active','2030-12-31') RETURNING id INTO v_chf;

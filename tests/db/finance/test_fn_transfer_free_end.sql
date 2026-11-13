@@ -1,7 +1,7 @@
 -- tests/db/finance/test_fn_transfer_free_end.sql
--- Umschichtung mit Enddatum (2026-11-01): until_free_money an fn_create_recurring_transfer / fn_set_recurring_payment
+-- Umschichtung mit Enddatum: until_free_money an fn_create_recurring_transfer / fn_set_recurring_payment
 -- setzt das Ende ueber fn_transfer_free_end (letzter Termin, bevor Ziel-Geld der Quelle angefasst wird; Rechnung =
--- fn_account_funding MIT der Zahlung). Dazu fn_recurring_last_due und die Felder drawdown / inflow_ends von
+-- fn_account_funding mit der Zahlung). Dazu fn_recurring_last_due und die Felder drawdown / inflow_ends von
 -- fn_account_funding. Werte erfunden.
 --   (1) create until_free_money: P2P 20000, Ziel-Geld 8000, 5000/Monat -> zwei Termine, Ende nach dem zweiten
 --   (2) Quelle: drawdown {last_date, monthly 5000, target, to_plan}, state ok, kein runs_out_on

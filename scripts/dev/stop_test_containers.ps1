@@ -1,14 +1,13 @@
 ﻿#Requires -Version 5.1
-# stop_test_containers.ps1 -- faehrt BEIDE ephemeren Docker-Test-Substrate herunter, um RAM
-# freizugeben, wenn die Test-Arbeit fuer die Phase/Session erledigt ist. Ruft die -Down-Pfade der
+# stop_test_containers.ps1 -- faehrt beide ephemeren Docker-Test-Substrate herunter, um RAM
+# freizugeben, wenn die Test-Arbeit der Session erledigt ist. Ruft die -Down-Pfade der
 # beiden Bootstraps (jeder raeumt seinen Container + Teardown idempotent):
 #   * scripts/bootstrap_test_db.ps1 -Down       (db_test-Substrat: lifeagents-dbtest-Container)
 #   * scripts/dev/bootstrap_test_n8n.ps1 -Down  (Integrations-Tier-Substrat: n8n-systemd-Container + Bruecken)
 #
-# BEWUSST KEIN Auto-Stop nach jedem Testlauf: die Substrate werden absichtlich WIEDERVERWENDET
-# (Staleness-Gate -> schnelle Re-Runs; s. Memory feedback-substrate-no-reset). Dieser Helfer ist der
-# PHASEN-ENDE-Aufraeumer (Dev-Cycle Schritt 9 / Session-Ende), NICHT Teil des Inner-Loops. Der naechste
-# Testlauf baut das jeweilige Substrat wieder frisch auf.
+# Kein Auto-Stop nach jedem Testlauf: die Substrate werden absichtlich wiederverwendet
+# (Staleness-Gate -> schnelle Re-Runs). Dieser Helfer ist der Aufraeumer fuers Session-Ende,
+# nicht Teil des Inner-Loops. Der naechste Testlauf baut das jeweilige Substrat wieder frisch auf.
 #
 # Tolerant: laeuft ein Teardown ins Leere (kein Container / Docker-Daemon aus), fahrt der andere trotzdem.
 # Kein LLM, kein Netz-Ziel ausser dem lokalen Docker-Daemon. Exit 0 (reines Aufraeum-Werkzeug).

@@ -1,6 +1,6 @@
 -- tests/db/core/test_fn_plan_share_targets.sql
--- Plan teilen (2026-10-28): erwachsene Mitglieder ueber einen neuen Haushalts-Plan informieren.
---   core.fn_plan_adult_recipients(domain)          = die EINE Empfaenger-Regel (partner, Chat, plan_news erlaubt)
+-- Plan teilen: erwachsene Mitglieder ueber einen neuen Haushalts-Plan informieren.
+--   core.fn_plan_adult_recipients(domain)          = die eine Empfaenger-Regel (partner, Chat, plan_news erlaubt)
 --   core.fn_plan_share_preview(domain, version, chat) = Owner-Karte nach dem Publish (shareable + Namen)
 --   core.fn_plan_share_targets(p)                  = Versand-Liste (read-only, schon Informierte = already)
 --   core.fn_plan_share_mark(p)                     = zugestellte Sends merken (einmal je Person und Plan-Version)

@@ -1,10 +1,10 @@
 -- tests/db/core/test_fn_onboarding_progress_event.sql
--- core.fn_onboarding_progress_event (Roter Faden): die Einmal-Ereignisse NACH einem Onboarding-Schritt.
---   * send_all_done   — der Schritt hat den letzten fuer die Person offenen Bereich geschlossen; genau EINMAL je
+-- core.fn_onboarding_progress_event: die Einmal-Ereignisse nach einem Onboarding-Schritt.
+--   * send_all_done   — der Schritt hat den letzten fuer die Person offenen Bereich geschlossen; genau einmal je
 --                       Person (Latch 'onboarding'/'all_done:<pid>'), re-armt, sobald wieder etwas offen ist.
 --   * send_learn_offer — nur fuer den Owner, nur zusammen mit send_all_done, nur wenn learn_context AUS ist.
 --   * member_chats    — "Es kann losgehen": der Haushalt (core) ist gerade fertig geworden -> die gepairten
---                       Mitglieder; genau EINMAL ueberhaupt (Latch 'household_ready', kein Re-Arm).
+--                       Mitglieder; genau einmal ueberhaupt (Latch 'household_ready', kein Re-Arm).
 --   Ohne area_completed_now (blosses Markieren) sendet die fn nie etwas (kein Ueberraschungs-Send auf Bestands-
 --   installationen, deren Onboarding schon lange fertig ist).
 -- db_test hat KEIN seed_data -> family/registry/sections self-seeden. BEGIN..ROLLBACK.
@@ -84,7 +84,7 @@ BEGIN
   IF (r->>'send_all_done')::boolean IS NOT TRUE OR (r->>'send_learn_offer')::boolean IS NOT FALSE THEN
     RAISE EXCEPTION 'FAIL [6b re-armed all_done ja, learn schon an -> kein Angebot]: %', r; END IF;
 
-  -- ---------- 6c) Review-Fund: neues Paket oeffnet EINEN Bereich, der direkt wieder geschlossen wird, ohne dass je
+  -- ---------- 6c) neues Paket oeffnet einen Bereich, der direkt wieder geschlossen wird, ohne dass je
   --            ein Aufruf mit offenem Stand kam -> trotzdem erneut "alles eingerichtet" (Abschnitt juenger als Latch) ----------
   UPDATE core.notification_state SET last_fired_at = now() - interval '1 hour'
    WHERE source = 'onboarding' AND key = 'all_done:__pe_owner__';

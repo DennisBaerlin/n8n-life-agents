@@ -40,7 +40,7 @@ BEGIN
         RAISE EXCEPTION 'FAIL [H6 zwei Namen = gemeinsam]: %', v;
     END IF;
     -- Teilmenge: "Greta Ida Quell" (eine Person) und "Greta Ida Quell und Ida Quell" (beide) haben dieselben Tokens
-    -- -> nicht unterscheidbar -> kein Treffer (Code-Review 2026-10-30, nie raten)
+    -- -> nicht unterscheidbar -> kein Treffer (nie raten)
     v := finance.fn_match_household_holder('Greta Ida Quell');
     IF (v->>'matched')::boolean THEN RAISE EXCEPTION 'FAIL [H7 Teilmenge = mehrdeutig]: %', v; END IF;
     v := finance.fn_match_household_holder('Ida Quell');

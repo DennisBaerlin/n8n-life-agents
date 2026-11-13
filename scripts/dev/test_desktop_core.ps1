@@ -7,6 +7,7 @@
 #   .\scripts\dev\test_desktop_core.ps1 -Lint               zusaetzlich cargo fmt --check und clippy -D warnings
 # Container- und Volume-Namen pro Session: $env:DESKTOPTEST_PREFIX (Standard 'di6'); Volumes <prefix>-cargo/-target
 # bleiben fuer schnelle Folgelaeufe stehen, Abbau mit -Down.
+# Voraussetzung: Docker (Image rust:1-slim-bookworm wird bei Bedarf geladen). Exit-Code = der von cargo bzw. clippy; -Down: 0.
 param([string]$Filter = '', [switch]$Lint, [switch]$Down)
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $ErrorActionPreference = 'Stop'

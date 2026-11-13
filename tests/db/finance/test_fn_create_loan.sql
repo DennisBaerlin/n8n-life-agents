@@ -60,7 +60,7 @@ BEGIN
     RAISE EXCEPTION 'FAIL fn_create_loan [1]: Loan-Konto nicht angelegt (id=%)', v_loan_acc;
   END IF;
 
-  -- Assert 1b: der Abbuchungstag steht nur an der Raten-Kette (WP2, finance:V026: keine Kopie am Kredit)
+  -- Assert 1b: der Abbuchungstag steht nur an der Raten-Kette (finance:V026: keine Kopie am Kredit)
   IF NOT EXISTS (
     SELECT 1 FROM finance.recurring_payments WHERE id = v_rp_id AND schedule_day_of_month = 15
   ) OR EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'finance' AND table_name = 'loans'
@@ -103,7 +103,7 @@ BEGIN
   RAISE NOTICE 'PASS fn_create_loan: loan_id=%, loan_acc=%, rp_id=%, txns=%',
     v_loan_id, v_loan_acc, v_rp_id, v_txn_count;
 
-  -- Assert 6 (WS-4): der bisher OHNE borrower_person_id angelegte Kredit -> NULL = Haushalt.
+  -- Assert 6: der ohne borrower_person_id angelegte Kredit -> NULL = Haushalt.
   IF NOT EXISTS (SELECT 1 FROM finance.loans WHERE id = v_loan_id AND borrower_person_id IS NULL) THEN
     RAISE EXCEPTION 'FAIL fn_create_loan [6]: ohne borrower_person_id muss NULL=Haushalt sein';
   END IF;
@@ -124,7 +124,7 @@ BEGIN
 END $$;
 
 -- ============================================================
--- Eindeutigkeit/Audit 2026-10-21: korrigierbare Ablehnungen VOR dem Write + Raten-Stichtag
+-- Korrigierbare Ablehnungen vor dem Write + Raten-Stichtag
 -- ============================================================
 DO $$
 DECLARE
@@ -169,7 +169,7 @@ BEGIN
 END $$;
 
 -- ============================================================
--- Befund 2026-10-24 (erfundene Werte): laufender Kredit = Restschuld HEUTE + Zins + Rate + naechste Faelligkeit
+-- Laufender Kredit (erfundene Werte): = Restschuld HEUTE + Zins + Rate + naechste Faelligkeit
 --   (A) Eroeffnung zum Stichtag heute (nicht zum Auszahlungsdatum), Kreditkonto mit opening_balance_date;
 --   (C) Ursprungswerte optional, Aufteilung der 1. Rate aus der Restschuld, Rate < Monatszins abgelehnt.
 -- ============================================================
@@ -215,7 +215,7 @@ BEGIN
     RAISE EXCEPTION 'FAIL [laufend minimal]: Ursprungswerte nicht NULL'; END IF;
   RAISE NOTICE 'PASS [laufend minimal: Eroeffnung heute, opening_balance_date, rp ab heute, -2, Aufteilung 70/530]';
 
-  -- laufend MIT Ursprungswerten + Laufzeit (WP2): Eroeffnung trotzdem heute, Werte gespeichert; die anfaengliche
+  -- laufend mit Ursprungswerten + Laufzeit: Eroeffnung trotzdem heute, Werte gespeichert; die anfaengliche
   -- Tilgung wird abgeleitet (600 x 12 / 150.000 = 4,8 % - 1,2 % Zins = 3,60 %), nie gespeichert; Restschuld-Vorschau
   -- zum Zinsbindungsende vorhanden und plausibel, ohne Laufzeitende NULL.
   v_res := finance.fn_create_loan(v_base || jsonb_build_object('name','__test_lr_full__','original_amount',150000,
@@ -236,7 +236,7 @@ BEGIN
     RAISE EXCEPTION 'FAIL [Vorschau ohne Datum]: NULL erwartet'; END IF;
   RAISE NOTICE 'PASS [laufend mit Ursprungswerten + Laufzeit: Werte gespeichert, Tilgung 3,60 abgeleitet, Vorschau]';
 
-  -- frisch OHNE Datum (Auszahlung an Dritte, WP2): Eroeffnung zum Stichtag heute, Datum spaeter nachtragbar
+  -- frisch ohne Datum (Auszahlung an Dritte): Eroeffnung zum Stichtag heute, Datum spaeter nachtragbar
   v_res := finance.fn_create_loan(v_base || '{"name":"__test_lr_nodate__","current_balance":"","original_amount":50000}'::jsonb);
   v_acc := (v_res->>'loan_account_id')::int;
   IF (v_res->>'ok')::boolean IS DISTINCT FROM true

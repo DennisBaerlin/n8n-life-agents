@@ -1,6 +1,6 @@
 -- tests/db/finance/test_fn_recurring_last_valid_day.sql
--- Der letzte gueltige Tag einer Raten-Kette, aus der DB gelesen statt aus valid_to abgeleitet (Eigenschaft aus dem Live-Test:
--- das halboffene valid_to wurde als letzter Termin gelesen und einen Tag zu spaet genannt).
+-- Der letzte gueltige Tag einer Raten-Kette, aus der DB gelesen statt aus valid_to abgeleitet (das halboffene valid_to
+-- darf nicht als letzter Termin gelesen werden, sonst wird das Ende einen Tag zu spaet genannt).
 --   1) fn_recurring_last_valid_day: offen NULL, Ende D, geerbtes Ende nach Split, nur geplante Aenderung NULL, leerer Kopf
 --   2) standing_order_overview: last_valid_day + last_execution vom Kopf der Kette, kein valid_to; Ende ausserhalb des Rasters
 --   3) active_recurring_payments, monthly_cashflow_overview: Eingabe D -> D, geplante Aenderung ist kein Ende

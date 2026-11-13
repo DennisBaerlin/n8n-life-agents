@@ -2,8 +2,8 @@
 -- Bestands-Trigger update_holding_shares / update_holding_avg_price — Race Cron || Chat.
 --   Ohne Sperre rechnet UPDATE ... SET shares = (SELECT SUM ...) mit dem Snapshot VOR dem Warten auf die Zeilensperre:
 --   zwei parallele Buchungen auf dieselbe Position schreiben je eine Summe ohne die andere (Lost Update). Deshalb:
---   Holding-Zeile zuerst sperren (FOR UPDATE), DANN rechnen — Muster Saldo-Trigger (test_balance_trigger_lock.sql).
---   TESTGRENZE: keine zweite Verbindung im Framework -> struktureller Test (Sperre vor der Rechnung, in beiden Zweigen);
+--   Holding-Zeile zuerst sperren (FOR UPDATE), dann rechnen — Muster Saldo-Trigger (test_balance_trigger_lock.sql).
+--   Testgrenze: keine zweite Verbindung im Framework -> struktureller Test (Sperre vor der Rechnung, in beiden Zweigen);
 --   das funktionale Verhalten decken test_fn_book_stock_buy/_sell und test_holding_avg_precision ab.
 BEGIN;
 

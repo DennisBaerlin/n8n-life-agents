@@ -1,6 +1,6 @@
 -- tests/db/finance/test_fn_find_holding.sql
--- finance.fn_find_holding (Paket DB-ist-das-Gesetz S8): Position per Depot-NAME + ISIN oder Symbol, statt dass das Modell
---   vorher holding_id per postgres_select nachschlaegt. Konsumenten: tool_book_stock_sell, tool_set_holding.
+-- finance.fn_find_holding: Position per Depot-NAME + ISIN oder Symbol, damit das Modell holding_id nicht selbst per
+--   postgres_select nachschlaegt. Konsumenten: tool_book_stock_sell, tool_set_holding.
 --   (1) per Symbol ohne Gross-/Kleinschreibung (auch bei Aktie mit ISIN) -> ok + holding_id, depot, settlement, Stueck
 --   (2) per ISIN -> ok
 --   (3) unbekannte Position -> ok:false holding_not_found, candidates = Positionen des Depots
@@ -33,7 +33,7 @@ BEGIN
   IF (v_r->>'holding_id')::int IS DISTINCT FROM v_hold THEN RAISE EXCEPTION 'FAIL find_holding [ISIN ci]: %', v_r; END IF;
   UPDATE finance.depot_holdings SET isin = upper(isin) WHERE id = v_hold;
 
-  -- position = aktuelles Symbol ODER ISIN in einem Feld (set_holding)
+  -- position = aktuelles Symbol oder ISIN in einem Feld (set_holding)
   v_r := finance.fn_find_holding(jsonb_build_object('depot_name', '__fh Depot__', 'position', 'ie00b4l5y983'));
   IF (v_r->>'holding_id')::int IS DISTINCT FROM v_hold OR v_r->>'name' IS DISTINCT FROM 'iShares MSCI World' THEN
     RAISE EXCEPTION 'FAIL find_holding [position = ISIN]: %', v_r; END IF;

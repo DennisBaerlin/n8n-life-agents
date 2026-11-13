@@ -4,7 +4,7 @@
 --   * Owner setzt jede Person; Mitglied nur sich selbst; fremde Person durch Mitglied -> abgelehnt
 --   * unbekannte Person / ungueltiger Code / unaufgeloester Absender -> {ok:false, toast}, kein Write
 --   * schreibt genau persona der Zielperson; 'neutral' = Key entfernt (eine Darstellung fuer "keine Persona")
---   * Toast in der Sprache des TIPPENDEN mit dem Persona-Namen aus dem Katalog
+--   * Toast in der Sprache des Tippenden mit dem Persona-Namen aus dem Katalog
 --   * fn_resolve_sender liefert persona (fehlt -> 'neutral')
 -- Ueber den Dispatcher (core.fn_dispatch_callback) mitgeprueft: der Prefix ist registriert und member-permeabel.
 BEGIN;
@@ -64,7 +64,7 @@ BEGIN
   IF (r->>'ok')::boolean IS DISTINCT FROM true OR r ? 'sticker_event' THEN
     RAISE EXCEPTION 'FAIL set_person_persona [gleiche Persona erneut mit sticker_event: %]', r; END IF;
 
-  -- ---------- Owner setzt Nora (Toast in Owner-Sprache, NICHT Noras; kein Sticker im Owner-Chat) ----------
+  -- ---------- Owner setzt Nora (Toast in Owner-Sprache, nicht Noras; kein Sticker im Owner-Chat) ----------
   r := core.fn_dispatch_callback(jsonb_build_object('data', 'persona:nora:butler', 'chat_id', '111'));
   IF (r->>'ok')::boolean IS DISTINCT FROM true OR r->>'toast' IS DISTINCT FROM 'DE Nora=Butler-de' THEN
     RAISE EXCEPTION 'FAIL set_person_persona [Owner setzt Nora: %]', r; END IF;

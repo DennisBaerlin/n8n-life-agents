@@ -1,9 +1,9 @@
 -- tests/db/career/test_career_v007_migration.sql
--- career:V007 (ECHTE Datei, zweimal): Jahresspannen im Bestand -> Roh-Daten gegen den Anker (_meta.last_confirmed_at
+-- career:V007 (echte Datei, zweimal): Jahresspannen im Bestand -> Roh-Daten gegen den Anker (_meta.last_confirmed_at
 --   bzw. saved_at): experience_years 7.5 -> career_start_date Ankerjahr-7, skills years_experience -> since,
 --   timeline_years 1.5 -> target_date Ankerjahr+2, Nicht-Zahl "5+" -> Key weg + Zeile in der Prosa, vorhandenes
 --   Roh-Feld gewinnt, Draft-Sektion umgerechnet, _meta unveraendert, zweiter Lauf = no-op.
---   Der Fixture-Insert umgeht den Fakten-Trigger (die neuen Validatoren lehnen die Alt-Keys heute ab = Altbestand).
+--   Der Fixture-Insert umgeht den Fakten-Trigger (die Validatoren lehnen die Alt-Keys ab = Altbestand).
 BEGIN;
 
 ALTER TABLE agent.core_contexts DISABLE TRIGGER trg_validate_household_facts;

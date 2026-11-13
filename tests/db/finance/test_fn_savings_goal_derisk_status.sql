@@ -1,6 +1,6 @@
 -- tests/db/finance/test_fn_savings_goal_derisk_status.sql
--- finance.fn_savings_goal_derisk_status(): Glide Path je aktivem Sparziel mit Depot-Anteil (Sparziel-Zweckbindung
--- 2026-10-27). erlaubt = Ziel * min(Restmonate / Fenster, 1); Ueberschuss = Depot-Anteil - erlaubt; breach nur im
+-- finance.fn_savings_goal_derisk_status(): Glide Path je aktivem Sparziel mit Depot-Anteil.
+-- erlaubt = Ziel * min(Restmonate / Fenster, 1); Ueberschuss = Depot-Anteil - erlaubt; breach nur im
 -- Fenster (Zieldatum in der Zukunft, Restmonate <= Fenster) und ueber der Toleranz (pp des Ziels).
 --   (1) Ziel 6000 in 24 Monaten, 6000 im Depot, Fenster 60 -> erlaubt 2400, Ueberschuss 3600, breach
 --   (2) Ziel in 10 Jahren -> nicht im Fenster, kein breach (erlaubt = Ziel)
@@ -54,7 +54,7 @@ BEGIN
   IF NOT (SELECT active_plan FROM finance.fn_savings_goal_derisk_status() WHERE goal_id = v_g1) THEN RAISE EXCEPTION 'FAIL derisk [6 active_plan]'; END IF;
   RAISE NOTICE 'PASS fn_savings_goal_derisk_status [Fenster, erlaubt/Ueberschuss, Restmonate 0, vergangen, abgebrochen, Sparplan]';
 
-  -- (7) bewusste Ausnahme 2026-11-06: p_goal liefert genau eine Zeile; Ruecklagen (kind) fehlen; ein Ziel nur mit
+  -- (7) bewusste Ausnahme: p_goal liefert genau eine Zeile; Ruecklagen (kind) fehlen; ein Ziel nur mit
   --     Sparplan (Anteil 0) erscheint ohne breach; Zahlen fuer Rat, Spielraum und Beispiel-Verlust
   IF (SELECT count(*) FROM finance.fn_savings_goal_derisk_status(v_g1)) <> 1 THEN RAISE EXCEPTION 'FAIL derisk [7 p_goal]'; END IF;
   SELECT * INTO r FROM finance.fn_savings_goal_derisk_status(v_g1);

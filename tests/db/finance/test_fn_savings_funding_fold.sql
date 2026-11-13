@@ -78,7 +78,7 @@ BEGIN
     RAISE EXCEPTION 'FAIL [c] Zubringer -> gedeckt, got %', v; END IF;
   RAISE NOTICE 'PASS [c] Zubringer-Bericht: gedeckt, Quellkonto ohne Zeile';
   -- [c2] „gedeckt" ohne p_report_ok und ohne Frage (z. B. eine Abbuchung, die die Deckung nicht bricht) -> nichts
-  --      (UX-Gesamtkonzept 2026-10-31: sonst stuende bei jedem Dauerauftrag eine gedeckt-Zeile zum Absender)
+  --      (sonst stuende bei jedem Dauerauftrag eine gedeckt-Zeile zum Absender)
   v := finance.fn_savings_funding_fold(ARRAY[v_kid], false);
   IF v <> '{}'::jsonb THEN
     RAISE EXCEPTION 'FAIL [c2] gedeckt ohne Bericht -> {}, got %', v; END IF;
@@ -170,7 +170,7 @@ BEGIN
   RAISE NOTICE 'PASS [j] Probelauf verbraucht den Latch nicht';
 
   -- [k] Ziel-Geld ist nicht frei: Konto 10000, davon 6000 fuer ein Ziel, Sparplan -1000/Monat ab t+2 -> warn; die Note
-  --     nennt den FREIEN Stand 4000 + das Ziel-Geld, die Zahlen im Bericht tragen reserved/min_free
+  --     nennt den freien Stand 4000 + das Ziel-Geld, die Zahlen im Bericht tragen reserved/min_free
   DECLARE v_res INT; v_g INT; BEGIN
     INSERT INTO finance.accounts (name, account_type, currency, status) VALUES ('__t_sf_res__', 'p2p', 'EUR', 'active') RETURNING id INTO v_res;
     INSERT INTO finance.transactions (account_id, amount, transaction_date, category) VALUES (v_res, 10000, t - 40, 'other');

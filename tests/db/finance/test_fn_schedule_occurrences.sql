@@ -1,7 +1,7 @@
 -- tests/db/finance/test_fn_schedule_occurrences.sql
--- fn_schedule_occurrences = das EINE Faelligkeitsraster (WP2 "Finanzen schlank"): fn_recurring_due_open und die
--- Restschuld-Vorschau fn_loan_balance_at rechnen ueber dieselbe reine fn. Faelle (Reviewer-Matrix):
---   (1) Monat, Tag aus dem Anker 31. -> Monatsend-Clamping gegen den ANKER, nicht schrittweise (31.01. -> 28.02. -> 31.03.)
+-- fn_schedule_occurrences = das eine Faelligkeitsraster: fn_recurring_due_open und die
+-- Restschuld-Vorschau fn_loan_balance_at rechnen ueber dieselbe reine fn. Faelle:
+--   (1) Monat, Tag aus dem Anker 31. -> Monatsend-Clamping gegen den Anker, nicht schrittweise (31.01. -> 28.02. -> 31.03.)
 --   (2) Monatsletzter (-1) und vorletzter Tag (-2)
 --   (3) fester Tag 15, interval 3 (Quartal)
 --   (4) feste Monatstage {2,16}; leere Liste '{}' -> keine Termine

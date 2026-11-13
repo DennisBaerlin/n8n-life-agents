@@ -1,6 +1,6 @@
 -- tests/db/core/test_fn_onboarding_pending_packages.sql
--- WS-3 (Onboarding-UX): core.fn_onboarding_pending_packages() — generische Entdeckung der AKTIVEN Pakete
---   (status='active', package<>'core'), deren <pkg>.onboarding_state-Tabelle existiert UND >=1 offene
+-- core.fn_onboarding_pending_packages() — generische Entdeckung der aktiven Pakete
+--   (status='active', package<>'core'), deren <pkg>.onboarding_state-Tabelle existiert und >=1 offene
 --   Sektion (status='unknown') hat. Rueckgabe {ok:true, pending:[{package, open:[{key,label}]}]}.
 --   'completed'/'skipped' zaehlen als bewusst aufgeloest (wie fn_onboarding_status: complete = kein unknown).
 -- db_test hat KEIN seed_data -> finance-Sektionen + package_registry-Zeilen self-seeden. BEGIN..ROLLBACK.
@@ -36,7 +36,7 @@ BEGIN
   IF EXISTS (SELECT 1 FROM jsonb_array_elements(r->'pending') e WHERE e->>'package'='core') THEN
     RAISE EXCEPTION 'FAIL [(iii) core in pending]: %', r; END IF;
 
-  -- ---------- (ii) alle completed/skipped -> finance NICHT in pending ----------
+  -- ---------- (ii) alle completed/skipped -> finance nicht in pending ----------
   UPDATE finance.onboarding_state SET status='completed';
   UPDATE finance.onboarding_state SET status='skipped' WHERE section_key='goals';
   r := core.fn_onboarding_pending_packages();
@@ -54,7 +54,7 @@ BEGIN
     RAISE EXCEPTION 'FAIL [(v) nicht-aktives Paket in pending]: %', r; END IF;
   UPDATE core.package_registry SET status='active' WHERE package='finance';
 
-  -- ---------- (iv) aktives Paket OHNE onboarding_state-Tabelle -> uebersprungen (kein Fehler) ----------
+  -- ---------- (iv) aktives Paket ohne onboarding_state-Tabelle -> uebersprungen (kein Fehler) ----------
   INSERT INTO core.package_registry (package, version, status) VALUES ('testpkg','0.1.0','active')
     ON CONFLICT (package) DO UPDATE SET status='active';
   r := core.fn_onboarding_pending_packages();

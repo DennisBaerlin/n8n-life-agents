@@ -1,9 +1,8 @@
 -- tests/db/core/test_fn_pkg_reverse_deps.sql
--- WS-2 (Phase 4a): core.fn_pkg_reverse_deps — Reverse-Dependency-Guard fuer den Uninstall.
---   Liefert die AKTIVEN Pakete, die <pkg> in ihrem `requires` fuehren (der CLI verweigert sonst
---   die Deinstallation). READ-ONLY, kein RAISE; `dependents` ist immer ein jsonb-Array (nie null).
--- db_test hat KEIN seed_data -> der Test registriert die Pakete SELBST (fn_pkg_register/set_status).
--- Self-contained: BEGIN ... ROLLBACK.
+-- core.fn_pkg_reverse_deps — Reverse-Dependency-Guard fuer den Uninstall.
+--   Liefert die aktiven Pakete, die <pkg> in ihrem `requires` fuehren (der CLI verweigert sonst
+--   die Deinstallation). Read-only, kein RAISE; `dependents` ist immer ein jsonb-Array (nie null).
+-- db_test hat kein seed_data -> der Test registriert die Pakete selbst (fn_pkg_register/set_status).
 BEGIN;
 
 DO $$
@@ -18,7 +17,7 @@ BEGIN
   PERFORM core.fn_pkg_register(jsonb_build_object('package', '__rd_c__', 'requires', jsonb_build_array('__rd_a__')));
   PERFORM core.fn_pkg_set_status(jsonb_build_object('package', '__rd_c__', 'status', 'inactive'));
 
-  -- (1) reverse_deps(A): nur das AKTIVE B haengt ab; das inaktive C NICHT.
+  -- (1) reverse_deps(A): nur das aktive B haengt ab; das inaktive C nicht.
   v_res := core.fn_pkg_reverse_deps(jsonb_build_object('package', '__rd_a__'));
   IF NOT (v_res->>'ok')::bool THEN RAISE EXCEPTION 'FAIL reverse_deps: ok=false (%)', v_res; END IF;
   IF jsonb_typeof(v_res->'dependents') IS DISTINCT FROM 'array'
@@ -28,7 +27,7 @@ BEGIN
   IF (v_res->'dependents' ? '__rd_c__')
      THEN RAISE EXCEPTION 'FAIL reverse_deps: inaktiver Abhaengiger __rd_c__ faelschlich gelistet (%)', v_res; END IF;
 
-  -- (2) reverse_deps(B): nichts haengt von B ab -> leeres Array (NICHT null).
+  -- (2) reverse_deps(B): nichts haengt von B ab -> leeres Array (nicht null).
   v_res := core.fn_pkg_reverse_deps(jsonb_build_object('package', '__rd_b__'));
   IF jsonb_typeof(v_res->'dependents') IS DISTINCT FROM 'array'
      THEN RAISE EXCEPTION 'FAIL reverse_deps [leer]: dependents ist kein Array (%)', v_res; END IF;

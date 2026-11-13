@@ -1,23 +1,23 @@
 ﻿#Requires -Version 5.1
-# real_ingress_test.ps1 — DETERMINISTISCHER, GRATIS Real-Ingress-Test (Teststrategie Phase 7).
-# Anders als die uebrigen Tier-Harnesses (orch/finance/... feuern an einem TEST-Webhook vorbei am
-# echten Eingang) feuert dieser Treiber eine TELEGRAM-FOERMIGE Update mit NUMERISCHER chat_id an den
-# ECHTEN Telegram-Trigger-Webhook des Orchestrators (Produktivpfad) und prueft die Execution.
+# real_ingress_test.ps1 — deterministischer, gratis Real-Ingress-Test.
+# Anders als die uebrigen Tier-Harnesses (orch/finance/... feuern an einem Test-Webhook vorbei am
+# echten Eingang) feuert dieser Treiber ein Telegram-foermiges Update mit numerischer chat_id an den
+# echten Telegram-Trigger-Webhook des Orchestrators (Produktivpfad) und prueft die Execution.
 #
-# Damit fallen die zwei bekannten, bisher nie ueber den echten Eingang bewiesenen Vertraege:
-#   (1) chat_id number->string: produktiv kommt eine ZAHL; das String()-Wrapping im Orchestrator ist
-#       verankert, war aber nie ueber den echten Eingang geprueft -> ri01 verifiziert, dass die
-#       Sub-Agent-Execution (agent.finance) chat_id als JSON-STRING erhaelt (PowerShell-Typ-Check).
+# Damit sind diese Vertraege ueber den echten Eingang bewiesen:
+#   (1) chat_id number->string: produktiv kommt eine Zahl; das String()-Wrapping im Orchestrator
+#       ist verankert; ri01 verifiziert, dass die
+#       Sub-Agent-Execution (agent.finance) chat_id als JSON-String erhaelt (PowerShell-Typ-Check).
 #   (2) HITL-Format-Vertrag: ri02 treibt ueber den echten Eingang ein finance-Write-Tool bis ins
 #       echte Send-and-Wait-Gate, faengt die Nachricht im Mock-Telegram ab und loest sie ueber die
 #       signierte Resume-URL auf (= Format-/Signatur-Vertrag).
-#   (3) Sender-Gate: ri03 (ungepairter Sender) muss in den Knock/Ack-Pfad laufen, NICHT zum Agenten.
+#   (3) Sender-Gate: ri03 (ungepairter Sender) muss in den Knock/Ack-Pfad laufen, nicht zum Agenten.
 #
-# GRATIS + deterministisch: kombiniert mit enable_mock_llm (Claude-Stub) + enable_mock_telegram
+# Gratis + deterministisch: kombiniert mit enable_mock_llm (Claude-Stub) + enable_mock_telegram
 # spricht der ganze Real-Ingress-Pfad mit Mocks (kein echtes Modell, kein echtes Telegram) -> eigener
-# Tier wie mock_route_test, NICHT vom PreToolUse-deny-Hook erfasst.
+# Tier wie mock_route_test, nicht vom PreToolUse-deny-Hook erfasst.
 #
-# Routing-Asserts sind DETERMINISTISCH aus dem Execution-Log (kein LLM-Judge fuers Routing).
+# Routing-Asserts sind deterministisch aus dem Execution-Log (kein LLM-Judge fuers Routing).
 #
 # Fall-Felder fuer den naechsten Schritt (node_ran): expect_next_button = genau eine Tastatur an chat_id mit dem callback des
 # aktuellen Schritts (core.fn_get_next_step, Reihenfolge Get-NextStepOrder); forbid_keyboard = keine Tastatur an chat_id;
@@ -41,7 +41,7 @@ $ErrorActionPreference = 'Stop'
 $Utf8NoBom = New-Object System.Text.UTF8Encoding($false)
 $RepoRoot = git -C $PSScriptRoot rev-parse --show-toplevel
 
-# Kein .env-Load (anders als hitl_gate_test/mock_route_test): der ECHTE Telegram-Ingress nimmt KEINE
+# Kein .env-Load (anders als hitl_gate_test/mock_route_test): der echte Telegram-Ingress nimmt keine
 # .env-Werte (kein TEST_HARNESS_SECRET) — die Webhook-URL + der Secret-Token werden zur Laufzeit aus dem
 # Orchestrator-Workflow abgeleitet; Verbindung kommt aus dem Substrat-State.
 . "$PSScriptRoot\test_n8n_state.ps1"
@@ -64,8 +64,8 @@ Assert-LlmGatewayUpstream -Container $Container -Expect mock
 
 # Takt der Wait-*Exec*-Schleifen: reiner HTTP-Abruf (ms) -> kurz; Polls ueber docker exec (~0,2 s) bleiben langsamer.
 $ApiPollMs = 300
-# Auf die NEUE Execution (id > $AfterId) warten und dann auf einen Terminalstatus (success/error).
-# Nur fuer Faelle mit GENAU EINER neuen Execution des Workflows: die Listen-API blendet laufende Executions aus
+# Auf die neue Execution (id > $AfterId) warten und dann auf einen Terminalstatus (success/error).
+# Nur fuer Faelle mit genau einer neuen Execution des Workflows: die Listen-API blendet laufende Executions aus
 # (n8n executions.public.controller: excludeRunning, solange kein status=running gefiltert wird) -> "kleinste
 # sichtbare id" waere sonst eine spaetere, schon fertige (Ausreisser ri02: die Probe statt des Hauptlaufs).
 # Mehrere neue Executions -> die eigene per id bestimmen und Wait-ExecTerminal nutzen.
@@ -85,7 +85,7 @@ function Wait-NewExecTerminal([string]$WfId, [int]$AfterId, [int]$TimeoutSec) {
         Start-Sleep -Milliseconds $ApiPollMs
     }
 }
-# Auf eine BEKANNTE Execution warten (Einzel-GET sieht auch laufende); liefert das Detail (bei Timeout den letzten Stand).
+# Auf eine bekannte Execution warten (Einzel-GET sieht auch laufende); liefert das Detail (bei Timeout den letzten Stand).
 function Wait-ExecTerminal([string]$ExecId, [int]$TimeoutSec) {
     $start = Get-Date
     while ($true) {
@@ -129,7 +129,7 @@ $orchWf = $wfList.data | Where-Object { $_.name -eq 'agent.orchestrator.main_rou
 if (-not $orchWf) { throw "Workflow 'agent.orchestrator.main_route' nicht gefunden (Substrat deployt?)." }
 $OrchWfId = $orchWf.id
 $dispatchWfId = ($wfList.data | Where-Object { $_.name -eq 'agent.sub_dispatch_agent' } | Select-Object -First 1).id
-# Fix C: Reste der Karte-offen-Sperre (gestoppte Laeufe frueherer Suiten) wuerden jeden Fall in 'Reply card open'
+# Reste der Karte-offen-Sperre (gestoppte Laeufe frueherer Suiten) wuerden jeden Fall in 'Reply card open'
 # laufen lassen -> vorab leeren (und am Ende erneut).
 Clear-HitlPending -Container $Container
 Clear-ThinkingLease -Container $Container
@@ -144,7 +144,7 @@ $IngressUrl = "$N8nUrl/webhook/$($tgTrigger.webhookId)/webhook"
 $IngressSecret = ("{0}_{1}" -f $OrchWfId, $tgTrigger.id) -replace '[^a-zA-Z0-9_\-]+', ''
 if ($Verbose) { Write-Host "  Ingress: $IngressUrl" -ForegroundColor DarkGray }
 
-# --- Eingangs-Geheimnis je Instanz (Security-Audit 2026-10) -------------------------------------------------------
+# --- Eingangs-Geheimnis je Instanz -------------------------------------------------------
 # Der Deploy ersetzt id + webhookId des Triggers aus INGRESS_ID_KEY (deploy_workflows.sh). Die Repo-Werte sind
 # oeffentlich -> sie duerfen live nicht gelten: alte Route = 404 (nicht registriert), echte Route mit dem aus dem Repo
 # ableitbaren Secret = 403. Ein Treffer hier = Update-Faelschung von aussen moeglich -> harter Abbruch.
@@ -178,22 +178,22 @@ $finTrigger = $finDetail.nodes | Where-Object { $_.type -eq 'n8n-nodes-base.exec
 $FinTriggerName = if ($finTrigger) { $finTrigger.name } else { 'Start agent.finance' }
 
 # --- Routing-Fixtures in die Container-DB seeden (idempotent) ---------------------------------------
-# Der HITL-Case (ri02) treibt ein finance-Write-Tool, das eine BESTEHENDE Entitaet (Lindenbank Giro) aufloesen
-# muss, um ins Gate zu gelangen — ohne Fixtures faellt der Tool-Call mit {ok:false} VOR dem Gate. Dasselbe
+# Der HITL-Case (ri02) treibt ein finance-Write-Tool, das eine bestehende Entitaet (Lindenbank Giro) aufloesen
+# muss, um ins Gate zu gelangen — ohne Fixtures faellt der Tool-Call mit {ok:false} vor dem Gate. Dasselbe
 # Seed nutzt n8n_test (Tier 2). Haengt Lena an + legt Lindenbank Giro & Co. an; beruehrt die Owner-Person nicht.
 $seed = Invoke-TestN8nPsqlFile -Container $Container -HostFile "$RepoRoot\tests\fixtures\util_seed_test_fixtures.sql"
 if ($seed.Code -ne 0) { throw "Fixture-Seed (Container-DB) fehlgeschlagen: $($seed.Output -join "`n")" }
 
-# --- Owner + (P2b-2) 2. Person Lena deterministisch pairen: telegram_user_id in die family-Facts ----
+# --- Owner + 2. Person Lena deterministisch pairen: telegram_user_id in die family-Facts ----
 # Ohne gepairten Sender laeuft der numerische Pfad in den Knock/Pairing-Zweig (fn_resolve_sender
 # liefert found=false). Idempotent; der Validierungs-Trigger akzeptiert numerisch+unique — das Fixture-Seed
-# vergibt KEINE telegram_user_id (haengt Lena ohne tg-id an), daher kein Unique-Konflikt.
-# P2b-2: Lena (person_id=lena, partner) bekommt eine EIGENE tg-id (880055200) -> der per-Person-Isolations-Case
-# (ri16) feuert als Lena; sie ist career-NICHT-onboarded (ihre career.onboarding_state-Zeilen existieren nicht),
-# der Owner IST career-onboarded (util_seed_test_fixtures) -> das Gate greift PRO PERSON.
+# vergibt keine telegram_user_id (haengt Lena ohne tg-id an), daher kein Unique-Konflikt.
+# Lena (person_id=lena, partner) bekommt eine eigene tg-id (880055200) -> der per-Person-Isolations-Case
+# (ri16) feuert als Lena; sie ist career-nicht-onboarded (ihre career.onboarding_state-Zeilen existieren nicht),
+# der Owner ist career-onboarded (util_seed_test_fixtures) -> das Gate greift pro Person.
 $PairedUid     = $TestOwnerTelegramUid
 $PairedUidLena = 880055200
-# Textkatalog Phase B: feste Sprachen je Person (Owner = de, Lena = en) -> die Text-Asserts (expect_texts) pruefen,
+# Textkatalog: feste Sprachen je Person (Owner = de, Lena = en) -> die Text-Asserts (expect_texts) pruefen,
 # dass jeder Empfaenger seine Sprache bekommt. Bot-Persona: beide starten neutral (Key entfernt; Faelle setzen sie selbst).
 $pairSql = @"
 UPDATE agent.core_contexts
@@ -207,13 +207,13 @@ WHERE name = 'family';
 "@
 $pair = Invoke-TestN8nPsql -Container $Container -PsqlArgs @('-q', '-c', $pairSql)
 if ($pair.Code -ne 0) { throw "Owner/Lena-Pairing (Container-DB) fehlgeschlagen: $($pair.Output -join "`n")" }
-# Route-Agenten aus den Manifesten — die Routing-Pruefungen unten nutzen Get-RoutedAgent (Node-Namensformat an EINER Adresse).
+# Route-Agenten aus den Manifesten — die Routing-Pruefungen unten nutzen Get-RoutedAgent (Node-Namensformat an einer Adresse).
 $routeAgents = Get-TestRouteAgent
 
 # --- Naechster Schritt (Vorschlag mit Knopf, core.fn_get_next_step) ---------------------------------------------------
 # Die Vorschlags-Grenzen (1x/Tag, 3x je Schritt) sind Merker in core.notification_state: zu Beginn jedes Laufs leeren,
 # sonst haengt ein Fall vom Vorlauf desselben Tages ab. Erwarteten Knopf rechnet der Treiber mit derselben Reihenfolge
-# wie der Build (Get-NextStepOrder). Kind-Absender: die Fixture-Person lisa (role child) bekommt ihre Telegram-id NUR fuer
+# wie der Build (Get-NextStepOrder). Kind-Absender: die Fixture-Person lisa (role child) bekommt ihre Telegram-id nur fuer
 # die Dauer eines Falls mit "as_child": true (gc06 und die Einladungsfaelle brauchen sie ungepairt, das Substrat ist geteilt).
 if (-not (Get-Command Get-NextStepOrder -ErrorAction SilentlyContinue)) { . "$RepoRoot\scripts\build\lib\agent_routing.ps1" }
 $NextStepOrder = Get-NextStepOrder $RepoRoot
@@ -243,7 +243,7 @@ function Set-MockTelegramFail($Spec, [bool]$On) {
 
 # --- Cases laden ------------------------------------------------------------------------------------
 $tcFile = Join-Path $RepoRoot 'tests\agent\core\real_ingress_cases.json'
-# Erst zuweisen, dann ueber die VARIABLE filtern: `ConvertFrom-Json` emittiert das Array in PS 5.1 als EIN
+# Erst zuweisen, dann ueber die Variable filtern: `ConvertFrom-Json` emittiert das Array in PS 5.1 als ein
 # Pipeline-Objekt -> `| Where-Object` in derselben Pipeline filtert das ganze Array als ein Item; ueber die
 # Variable enumeriert PowerShell hingegen elementweise (wie die Geschwister-Skripte). Das fuehrende
 # _comment-Objekt (ohne id-Property) faellt ueber den expliziten Property-Check raus.
@@ -259,7 +259,7 @@ if ($ForceAbortId -and $ForceAbortId -notin @($cases.id)) { throw "-ForceAbortId
 # Telegram-Update-Form bauen + an den echten Webhook POSTen. Liefert die Fire-Zeit (UTC).
 function Send-TelegramUpdate([long]$ChatId, [long]$FromUid, [string]$Text, [string]$VoiceFileId = '', [string]$LanguageCode = '') {
     $from = @{ id = $FromUid; is_bot = $false; first_name = 'IngressTest' }
-    if ($LanguageCode) { $from['language_code'] = $LanguageCode }   # Telegram-App-Sprache (Pairing-Vorschlag, Phase B)
+    if ($LanguageCode) { $from['language_code'] = $LanguageCode }   # Telegram-App-Sprache (Pairing-Vorschlag)
     $msg = @{
         message_id = [int](Get-Random -Minimum 1000 -Maximum 99999)
         date       = [long][System.DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
@@ -280,7 +280,7 @@ function Send-TelegramUpdate([long]$ChatId, [long]$FromUid, [string]$Text, [stri
             -Headers @{ 'X-Telegram-Bot-Api-Secret-Token' = $IngressSecret } `
             -ContentType 'application/json; charset=utf-8' -Body ([System.Text.Encoding]::UTF8.GetBytes($body)) | Out-Null
     } catch {
-        # Telegram-Trigger antwortet i. d. R. sofort; ein Client-Timeout ist KEIN Fehler (Execution
+        # Telegram-Trigger antwortet i. d. R. sofort; ein Client-Timeout ist kein Fehler (Execution
         # laeuft serverseitig weiter, wie bei den uebrigen Harnesses).
         if (-not ($_.Exception -is [System.Net.WebException] -and $_.Exception.Status -eq [System.Net.WebExceptionStatus]::Timeout)) {
             throw
@@ -288,9 +288,9 @@ function Send-TelegramUpdate([long]$ChatId, [long]$FromUid, [string]$Text, [stri
     }
     return $fire
 }
-# callback_query-Update bauen + an den echten Webhook POSTen (WS-5d Block/Unblock-Buttons). Anders als
-# Send-TelegramUpdate traegt es KEIN top-level message -> der Orchestrator-Pre-Router 'Update type' routet
-# es in den deterministischen Callback-Handler. from.id MUSS der gepairte Owner sein (sonst verwirft der
+# callback_query-Update bauen + an den echten Webhook POSTen (Block/Unblock-Buttons). Anders als
+# Send-TelegramUpdate traegt es kein top-level message -> der Orchestrator-Pre-Router 'Update type' routet
+# es in den deterministischen Callback-Handler. from.id muss der gepairte Owner sein (sonst verwirft der
 # 'Callback owner?'-Gate).
 function Send-TelegramCallback([long]$FromUid, [long]$OwnerChatId, [string]$Data) {
     $update = @{
@@ -320,7 +320,7 @@ function Send-TelegramCallback([long]$FromUid, [long]$OwnerChatId, [string]$Data
 # --- Burst-Helfer (Eingangs-Buendelung) -----------------------------------------------------------------------
 # Updates eines burst-Falls bauen: je Eintrag type text|doc|photo (+ text/caption/file_id, forward=true ->
 # forward_origin wie eine weitergeleitete Datei, from_uid = anderer Absender, same_as = Index eines Eintrags,
-# dessen Update UNVERAENDERT erneut geschickt wird = Webhook-Retry). message_id/update_id aufsteigend in
+# dessen Update unveraendert erneut geschickt wird = Webhook-Retry). message_id/update_id aufsteigend in
 # Listenreihenfolge, gleiches date (wie Telegram bei Weiterleiten mit Kommentar).
 function Build-BurstUpdates($Tc, [long]$ChatId, [long]$FromUid) {
     $baseMsg = [int](Get-Random -Minimum 100000 -Maximum 900000)
@@ -355,7 +355,7 @@ function Build-BurstUpdates($Tc, [long]$ChatId, [long]$FromUid) {
     }
     return ,$out.ToArray()
 }
-# Alle Updates GLEICHZEITIG an den echten Webhook (HttpClient.SendAsync, dann auf alle warten) — sequentielle
+# Alle Updates gleichzeitig an den echten Webhook (HttpClient.SendAsync, dann auf alle warten) — sequentielle
 # Invoke-RestMethod-Aufrufe laegen > 0,4 s auseinander und testeten das Rennen nicht.
 function Send-TelegramBurst([string[]]$Bodies) {
     Add-Type -AssemblyName System.Net.Http
@@ -385,7 +385,7 @@ function Wait-NewExecsTerminal([string]$WfId, [int]$AfterId, [int]$Count, [int]$
         Start-Sleep -Milliseconds $ApiPollMs
     }
 }
-# fail-open-Probe: die DIREKTEN EXECUTE-Grants der claim-fn (ACL, nicht has_function_privilege: geerbte Rechte liessen
+# fail-open-Probe: die direkten EXECUTE-Grants der claim-fn (ACL, nicht has_function_privilege: geerbte Rechte liessen
 # sich so nicht entziehen) den Nicht-Superusern entziehen (der Claim-Knoten scheitert dann wie bei einem echten
 # DB-Fehler) und danach exakt diesen Rollen zurueckgeben.
 function Revoke-IngressClaim([string]$Container) {
@@ -408,9 +408,9 @@ function Grant-IngressClaim([string]$Container, [string[]]$Roles) {
 # Chat-Memory der numerischen Session leeren -> geteilter Helfer Clear-ChatSessionMemory
 # (test_n8n_state.ps1; findet die lazy entstehenden <agent>_chat_memory-Tabellen per pg_tables).
 
-# --- Text-Asserts (Textkatalog Phase B): was hat die Telegram-Attrappe in DIESEM Fall gesendet? ----------------
-# Case-Felder (alle optional): expect_texts = Teilstrings, die in einem gesendeten Text/Knopf/Toast vorkommen MUESSEN;
-# forbid_texts = duerfen in KEINEM vorkommen; text_chat = nur Sends an diese chat_id betrachten (Empfaenger-Sprache).
+# --- Text-Asserts (Textkatalog): was hat die Telegram-Attrappe in diesem Fall gesendet? ----------------
+# Case-Felder (alle optional): expect_texts = Teilstrings, die in einem gesendeten Text/Knopf/Toast vorkommen muessen;
+# forbid_texts = duerfen in keinem vorkommen; text_chat = nur Sends an diese chat_id betrachten (Empfaenger-Sprache).
 # Die Attrappe wird zu Beginn jedes Falls geleert; Texte = alle String-Blaetter der Request-Bodies (inkl. reply_markup,
 # auch wenn n8n es als JSON-String schickt).
 function Get-StringLeaves($Obj) {
@@ -496,7 +496,7 @@ foreach ($tc in $cases) {
         [long]$chatId = [long]$tc.chat_id
         [long]$fromUid = [long]$tc.from_uid
         Clear-ChatSessionMemory -Container $Container -SessionId "$chatId"
-        Clear-MockTelegramRequests -Container $Container   # Text-Asserts sehen nur die Sends DIESES Falls
+        Clear-MockTelegramRequests -Container $Container   # Text-Asserts sehen nur die Sends dieses Falls
 
         # ================= SEQUENCE: mehrere Nachrichten/Tipps nacheinander, je Schritt eine DB-Pruefung =================
         # steps[]: {doc, caption} = Dokument mit Bildunterschrift an den echten Eingang, {tap_sql} = Knopf-Tipp mit den
@@ -574,8 +574,8 @@ foreach ($tc in $cases) {
         # ================= HITL: echtes Gate ueber abgefangene, signierte Resume-URL =================
         if ($tc.kind -eq 'hitl') {
             $orchBase = Get-MaxExecId $OrchWfId
-            $dispBase = if ($dispatchWfId) { Get-MaxExecId $dispatchWfId } else { 0 }   # Fix C: Vermittler-Lauf DIESES Falls (ids sind global)
-            # Wiederhol-Sperre: Gate- und Tool-Laeufe DIESES Falls (eine andere Suite auf demselben Substrat liegt ueber orchBase).
+            $dispBase = if ($dispatchWfId) { Get-MaxExecId $dispatchWfId } else { 0 }   # Vermittler-Lauf dieses Falls (ids sind global)
+            # Wiederhol-Sperre: Gate- und Tool-Laeufe dieses Falls (eine andere Suite auf demselben Substrat liegt ueber orchBase).
             $gateWf = $null; $bookWf = $null; $gateFloor = 0; $bookFloor = 0
             if ($tc.expect_repeat_block) {
                 $gateWf = ($wfList.data | Where-Object { $_.name -eq 'agent.tool_human_approval' } | Select-Object -First 1).id
@@ -616,7 +616,7 @@ foreach ($tc in $cases) {
                 $failed++; continue
             }
             # Korrelation: die Gate-Execution-id steckt im Resume-Pfad (/webhook-waiting/{execId}/{nodeId}). Sie
-            # MUSS > orchBase sein -> beweist, dass die abgefangene Nachricht zu einer in DIESEM Fall erzeugten
+            # muss > orchBase sein -> beweist, dass die abgefangene Nachricht zu einer in diesem Fall erzeugten
             # (Gate-)Execution gehoert, nicht zu einem alten reply_markup-Send (Schutz gegen False-PASS).
             $gateExecId = Get-HitlExecId -Url $resumeUrl
             if ($gateExecId -le $orchBase) {
@@ -633,9 +633,9 @@ foreach ($tc in $cases) {
             }
             $mainId = $root.Id
 
-            # Fix C (Karte-offen-Sperre): solange die Karte offen ist, traegt agent.hitl_pending eine Zeile fuer den
-            # Ursprungs-Chat; probe_card_open schickt dann eine ZWEITE Nachricht in denselben Chat -> fester Hinweis
-            # ('Reply card open'), KEIN Agent-Lauf (der echte Vorfall vom 2026-10-22, End-to-End ueber den Webhook).
+            # Karte-offen-Sperre: solange die Karte offen ist, traegt agent.hitl_pending eine Zeile fuer den
+            # Ursprungs-Chat; probe_card_open schickt dann eine zweite Nachricht in denselben Chat -> fester Hinweis
+            # ('Reply card open'), kein Agent-Lauf (End-to-End ueber den Webhook).
             $extraOk = $true; $extraInfo = @()
             $pr = Invoke-TestN8nPsql -Container $Container -PsqlArgs @('-tAc', "SELECT chat_id FROM agent.hitl_pending WHERE execution_id = '$gateExecId' AND expires_at > now();")
             $pendChat = ($pr.Output | ForEach-Object { "$_".Trim() } | Where-Object { $_ } | Select-Object -First 1)
@@ -653,11 +653,11 @@ foreach ($tc in $cases) {
             try { Invoke-HitlResume -Url $resumeUrl | Out-Null }
             catch { Write-Host "    [FAIL] HITL-Resume-GET fehlgeschlagen: $_" -ForegroundColor Red; $failed++; continue }
 
-            # Nach dem Resume muss DER Hauptlauf (nicht irgendeine neue Execution, s. o.) sauber durchlaufen (success).
+            # Nach dem Resume muss der Hauptlauf (nicht irgendeine neue Execution, s. o.) sauber durchlaufen (success).
             $orch = Wait-ExecTerminal "$mainId" $Timeout
 
-            # Fix C (woertlicher task): der Vermittler agent.sub_dispatch_agent muss die Nutzernachricht UNVERAENDERT
-            # bekommen (kein LLM-formulierter task mehr); danach keine Sperr-Zeile mehr fuer die Gate-Execution.
+            # Woertlicher task: der Vermittler agent.sub_dispatch_agent muss die Nutzernachricht unveraendert
+            # bekommen (kein LLM-formulierter task); danach keine Sperr-Zeile mehr fuer die Gate-Execution.
             if ($tc.expect_task_verbatim -and $dispatchWfId) {
                 $dx = (Invoke-N8nGet "executions?workflowId=$dispatchWfId&limit=5").data | Where-Object { [int]$_.id -gt $dispBase } | Sort-Object { [int]$_.id } | Select-Object -First 1
                 $task = $null; if ($dx) { try { $task = [string](Get-ExecDetail $dx.id).data.resultData.runData.'Start'[0].data.main[0][0].json.task } catch { } }
@@ -665,7 +665,7 @@ foreach ($tc in $cases) {
             }
             $pr = Invoke-TestN8nPsql -Container $Container -PsqlArgs @('-tAc', "SELECT count(*) FROM agent.hitl_pending WHERE execution_id = '$gateExecId';")
             if ((($pr.Output -join '').Trim()) -ne '0') {
-                # Diagnose (Ausreisser ri02 2026-10-29): Zeilen-Zustand + wann Gate-Freigabe und Orchestrator-Loeschen liefen.
+                # Diagnose (Ausreisser ri02): Zeilen-Zustand + wann Gate-Freigabe und Orchestrator-Loeschen liefen.
                 $extraOk = $false
                 $row = Invoke-TestN8nPsql -Container $Container -PsqlArgs @('-tAc', "SELECT opened_at, released_at, expires_at, clock_timestamp() FROM agent.hitl_pending WHERE execution_id = '$gateExecId';")
                 $gateExec = try { Get-ExecDetail $gateExecId } catch { $null }
@@ -719,7 +719,7 @@ foreach ($tc in $cases) {
                 }
             }
 
-            # expect_answer: nach dem Tipp bekommt der Nutzer genau EINE Antwort, und die Karten-Sperre wird genau einmal geloest.
+            # expect_answer: nach dem Tipp bekommt der Nutzer genau eine Antwort, und die Karten-Sperre wird genau einmal geloest.
             if ($tc.expect_answer) {
                 $answers = @(Get-MockTelegramRequests -Container $Container | Where-Object { $_.method -eq 'sendMessage' -and -not $_.body.reply_markup -and "$($_.body.text)".Contains("$($tc.expect_answer)") })
                 if ($answers.Count -ne 1) { $extraOk = $false; $extraInfo += "$($answers.Count) Antworten mit '$($tc.expect_answer)' statt genau einer" }
@@ -743,8 +743,8 @@ foreach ($tc in $cases) {
             $orch = Wait-NewExecTerminal $OrchWfId $orchBase $Timeout
             if (-not $orch) { Write-Host "    [FAIL] Keine Orchestrator-Execution gefunden (Timeout)." -ForegroundColor Red; $failed++; continue }
             $nodes = Get-RunNodes $orch
-            # WS-5a: der fruehere 'Ack unknown sender'-Send ist entfernt (Fremder = STUMM); der Knock-Pfad
-            # laeuft jetzt direkt Pairing router[1] -> Knock throttle (Anti-Spam) -> Owner-Notiz.
+            # Fremder = stumm (kein Ack-Send); der Knock-Pfad
+            # laeuft direkt Pairing router[1] -> Knock throttle (Anti-Spam) -> Owner-Notiz.
             $knockRan = $nodes -contains 'Knock throttle'
             $routedAny = @(Get-RoutedAgent -Tools $nodes -RouteAgents $routeAgents).Count -gt 0
             Write-Host "    Orchestrator: id=$($orch.id) status=$($orch.status) knock=$knockRan routedAny=$routedAny"
@@ -757,11 +757,11 @@ foreach ($tc in $cases) {
         }
 
         # ================= CALLBACK: Owner-Tap -> deterministischer Callback-Handler =================
-        #   block/unblock:<uid> -> agent.access_blocks (WS-5d); cron_on/cron_off:<key> -> core.config cron_enable (WS-3).
+        #   block/unblock:<uid> -> agent.access_blocks; cron_on/cron_off:<key> -> core.config cron_enable.
         if ($tc.kind -eq 'callback') {
             $action = "$($tc.action)"
 
-            # WS-3 Phase A: Waechter-Cron an/aus per Button. target = der Cron-Key (drift_check|plan_review).
+            # Waechter-Cron an/aus per Button. target = der Cron-Key (drift_check|plan_review).
             if ($action -like 'cron_*') {
                 $key        = "$($tc.cron_key)"
                 $expectNode = if ($action -eq 'cron_on') { 'Run cron on' } else { 'Run cron off' }
@@ -792,12 +792,12 @@ foreach ($tc in $cases) {
                 continue
             }
 
-            # WS-2: job:<up|down>:<id> -> generischer extra-Dispatch (core.fn_dispatch_callback -> career.fn_handle_job_feedback).
-            # ERSTER echter Konsument der Phase-0-Callback-Registry -> beweist die extra-Dispatch-Naht end-to-end.
+            # job:<up|down>:<id> -> generischer extra-Dispatch (core.fn_dispatch_callback -> career.fn_handle_job_feedback);
+            # belegt die extra-Dispatch-Naht der Callback-Registry end-to-end.
             if ($action -eq 'job_feedback') {
                 # Self-contained: einen job_match (sentinel external_id) seeden, id holen, status auf 'new' zuruecksetzen.
-                # P2a/career:V005: job_matches.person_id ist NOT NULL + der UPSERT-Key ist (source, external_id, person_id)
-                # (Multi-Source-Umbenennung refnr -> external_id). Owner-Zeile seeden (agent.fn_owner_person_id = der Sender
+                # job_matches.person_id ist NOT NULL + der UPSERT-Key ist (source, external_id, person_id).
+                # Owner-Zeile seeden (agent.fn_owner_person_id = der Sender
                 # des job:up-Callbacks -> fn_handle_job_feedback matcht den Eigentuemer-Check person_id=sender).
                 $seed = "INSERT INTO career.job_matches (source, external_id, person_id, title, score) VALUES ('bundesagentur','RI_JOB_FEEDBACK', agent.fn_owner_person_id(), 'RI Data Analyst',3) ON CONFLICT (source, external_id, person_id) WHERE external_id IS NOT NULL DO UPDATE SET status='new', feedback_at=NULL RETURNING id;"
                 $s = Invoke-TestN8nPsql -Container $Container -PsqlArgs @('-tA', '-c', $seed)
@@ -823,11 +823,11 @@ foreach ($tc in $cases) {
                 continue
             }
 
-            # Member-Callback-Permeabilitaet + Owner-Admin-Lock + Fremd-Discard: ein NICHT-Owner tappt. sender_uid =
-            # die Tapper-uid (gepairte Partnerin 880055200 ODER ungepairter Fremder). expect_node = die Node, die laufen
-            # MUSS ('Dispatch callback' fuer ein aufgeloestes Mitglied | 'Discard non-owner callback' fuer unbekannt).
-            # forbid_node (optional) = ein Owner-Admin-Node, der NICHT laufen darf (Lock). cron_key (optional) =
-            # cron_enable.<key> wird auf 'true' vorgesetzt + MUSS unveraendert bleiben (Member kann nicht togglen).
+            # Member-Callback-Permeabilitaet + Owner-Admin-Lock + Fremd-Discard: ein Nicht-Owner tappt. sender_uid =
+            # die Tapper-uid (gepairte Partnerin 880055200 oder ungepairter Fremder). expect_node = die Node, die laufen
+            # muss ('Dispatch callback' fuer ein aufgeloestes Mitglied | 'Discard non-owner callback' fuer unbekannt).
+            # forbid_node (optional) = ein Owner-Admin-Node, der nicht laufen darf (Lock). cron_key (optional) =
+            # cron_enable.<key> wird auf 'true' vorgesetzt + muss unveraendert bleiben (Member kann nicht togglen).
             if ($action -eq 'member_route') {
                 [long]$sender = [long]$tc.sender_uid
                 $expectNode = "$($tc.expect_node)"
@@ -837,13 +837,13 @@ foreach ($tc in $cases) {
                     if ($p.Code -ne 0) { Write-Host "    [FAIL] DB-Vorbereitung (cron_enable) fehlgeschlagen: $($p.Output -join "`n")" -ForegroundColor Red; $failed++; continue }
                 }
                 # Textkatalog (lang:-Picker): lang_person (optional) = deren family-Sprache vorab auf lang_before setzen, danach
-                # MUSS sie expect_lang sein (eigene Sprache gesetzt bzw. fremde Person unveraendert).
+                # muss sie expect_lang sein (eigene Sprache gesetzt bzw. fremde Person unveraendert).
                 if ($tc.lang_person) {
                     $prep = "UPDATE agent.core_contexts SET metadata = jsonb_set(metadata, '{facts,persons}', (SELECT jsonb_agg(CASE WHEN p->>'person_id' = '$($tc.lang_person)' THEN p || jsonb_build_object('language', '$($tc.lang_before)') ELSE p END) FROM jsonb_array_elements(metadata->'facts'->'persons') p)) WHERE name = 'family';"
                     $p = Invoke-TestN8nPsql -Container $Container -PsqlArgs @('-q', '-c', $prep)
                     if ($p.Code -ne 0) { Write-Host "    [FAIL] DB-Vorbereitung (language) fehlgeschlagen: $($p.Output -join "`n")" -ForegroundColor Red; $failed++; continue }
                 }
-                # Bot-Persona (persona:-Picker): persona_person vorab auf persona_before, danach MUSS sie expect_persona sein.
+                # Bot-Persona (persona:-Picker): persona_person vorab auf persona_before, danach muss sie expect_persona sein.
                 if ($tc.persona_person -and -not (Set-TestPersonaFact -Container $Container -PersonId "$($tc.persona_person)" -Code "$($tc.persona_before)")) {
                     Write-Host "    [FAIL] DB-Vorbereitung (persona) fehlgeschlagen" -ForegroundColor Red; $failed++; continue
                 }
@@ -868,7 +868,7 @@ foreach ($tc in $cases) {
                 if ($tc.cron_key) {
                     $q = Invoke-TestN8nPsql -Container $Container -PsqlArgs @('-tA', '-c', "SELECT value FROM core.config WHERE category='cron_enable' AND key='$($tc.cron_key)';")
                     $cronVal = ($q.Output | ForEach-Object { "$_".Trim() } | Where-Object { $_ -in @('true', 'false') } | Select-Object -First 1)
-                    $cronOk = ($cronVal -eq 'true')   # unveraendert -> das Mitglied konnte den Owner-Cron NICHT umschalten
+                    $cronOk = ($cronVal -eq 'true')   # unveraendert -> das Mitglied konnte den Owner-Cron nicht umschalten
                 }
                 $txtOk = Test-CaseTexts $tc
                 Write-Host "    Orchestrator: id=$($orch.id) status=$($orch.status) ranNode($expectNode)=$ranExpect forbid($($tc.forbid_node))_absent=$forbidAbsent cron_unchanged=$cronOk($cronVal) texts=$txtOk"
@@ -883,7 +883,7 @@ foreach ($tc in $cases) {
             [long]$target = [long]$tc.target_uid
             # 'block' | 'unblock'
             $expectNode = if ($action -eq 'block') { 'Run block knocker' } else { 'Run unblock knocker' }
-            # Self-contained: block-Fall -> Ziel vorher ENT-sperren; unblock-Fall -> vorher sperren.
+            # Self-contained: block-Fall -> Ziel vorher entsperren; unblock-Fall -> vorher sperren.
             $prep = if ($action -eq 'block') {
                 "DELETE FROM agent.access_blocks WHERE telegram_user_id = $target;"
             } else {
@@ -913,12 +913,12 @@ foreach ($tc in $cases) {
             continue
         }
 
-        # ================= NODE_RAN: feuert message ODER callback -> asserted welcher Top-Level-Knoten lief ====
-        # Generischer Zweig fuer deterministische Orchestrator-Knoten OHNE eigene route/hitl/knock/callback-
-        # Semantik (WS-1 Welcome/Help-Callback-Zweige): optional einen Onboarding-Vorzustand seeden -> Update
-        # feuern (message ODER callback je `update`) -> pruefen, dass `expected_node` im runData steht UND die
-        # Execution success ist. Damit fallen die deterministischen WS-1-Zweige, die kein Routing/keinen Write
-        # haben (Send welcome back/new, Send help cb), ueber den ECHTEN Eingang.
+        # ================= NODE_RAN: feuert message oder callback -> asserted welcher Top-Level-Knoten lief ====
+        # Generischer Zweig fuer deterministische Orchestrator-Knoten ohne eigene route/hitl/knock/callback-
+        # Semantik (z. B. Welcome/Help-Callback-Zweige): optional einen Onboarding-Vorzustand seeden -> Update
+        # feuern (message oder callback je `update`) -> pruefen, dass `expected_node` im runData steht und die
+        # Execution success ist. Damit laufen die deterministischen Zweige, die kein Routing/keinen Write
+        # haben (Send welcome back/new, Send help cb), ueber den echten Eingang.
         if ($tc.kind -eq 'node_ran') {
             # Optional: Onboarding-Vorzustand setzen (Welcome zurueck = completed; Welcome neu = unknown).
             # Self-contained je Case (wie die callback-Faelle ihre Sperre/Config vorbereiten).
@@ -926,7 +926,7 @@ foreach ($tc in $cases) {
                 try { Set-TestHouseholdOnboarding -Container $Container -Status "$($tc.onboarding)" }
                 catch { Write-Host "    [FAIL] $($_.Exception.Message)" -ForegroundColor Red; $failed++; continue }
             }
-            # Fix C: optionale Karte-offen-Sperr-Zeile seeden (hitl_pending.chat = Chat der Zeile, Default der Fall-Chat;
+            # Optionale Karte-offen-Sperr-Zeile seeden (hitl_pending.chat = Chat der Zeile, Default der Fall-Chat;
             # expired=true -> bereits abgelaufen). Self-contained: die Zeile wird nach dem Fall wieder entfernt.
             if ($tc.hitl_pending) {
                 $hpChat = if ($tc.hitl_pending.chat) { "$($tc.hitl_pending.chat)" } else { "$chatId" }
@@ -942,8 +942,8 @@ foreach ($tc in $cases) {
                 if ($ps.Code -ne 0) { Write-Host "    [FAIL] pre_sql fehlgeschlagen: $($ps.Output -join "`n")" -ForegroundColor Red; $failed++; continue }
             }
 
-            # WS-3: optionale SUB-Execution-Assertion. Der Core-first-Gate-Redirect ('Core onboarding required')
-            # bzw. der durchgelassene 'Finance Agent' laufen in der finance/advisor-SUB, NICHT im Orchestrator-
+            # Optionale Sub-Execution-Assertion. Der Core-first-Gate-Redirect ('Core onboarding required')
+            # bzw. der durchgelassene 'Finance Agent' laufen in der finance/advisor-Sub, nicht im Orchestrator-
             # runData (Get-RunNodes prueft Top-Level-Orchestrator-Knoten). expected_sub = Sub-Workflow-Name ->
             # dort wird expected_node geprueft (der route-Kind erreicht die Sub-Execution analog).
             $subWfId = $null; $subBase = 0
@@ -954,7 +954,7 @@ foreach ($tc in $cases) {
             }
 
             # Bot-Persona: persona_person vorab auf persona_before setzen; expect_system_tail = Teilstring, der im Ende des
-            # System-Prompts eines Mock-LLM-Aufrufs stehen MUSS (Runtime-Flag erreicht das Modell; Mock loggt system_tail).
+            # System-Prompts eines Mock-LLM-Aufrufs stehen muss (Runtime-Flag erreicht das Modell; Mock loggt system_tail).
             if ($tc.persona_person -and -not (Set-TestPersonaFact -Container $Container -PersonId "$($tc.persona_person)" -Code "$($tc.persona_before)")) {
                 Write-Host "    [FAIL] DB-Vorbereitung (persona) fehlgeschlagen" -ForegroundColor Red; $failed++; continue
             }
@@ -965,7 +965,7 @@ foreach ($tc in $cases) {
             try {
                 $orchBase = Get-MaxExecId $OrchWfId
                 if ("$($tc.update)" -eq 'callback') {
-                    # callback_query.from.id MUSS der gepairte Owner sein (sonst verwirft 'Callback owner?'); chat_id
+                    # callback_query.from.id muss der gepairte Owner sein (sonst verwirft 'Callback owner?'); chat_id
                     # = callback_query.message.chat.id (die Welcome-Buttons sitzen in der Owner-Nachricht).
                     Send-TelegramCallback $fromUid $chatId "$($tc.callback_data)"
                 } else {
@@ -996,9 +996,9 @@ foreach ($tc in $cases) {
                 if (-not $sub) { Write-Host "    [FAIL] Keine $($tc.expected_sub)-Sub-Execution gefunden (Timeout)." -ForegroundColor Red; $failed++; continue }
                 $subNodes = Get-RunNodes $sub
                 $ranNode = $subNodes -contains "$($tc.expected_node)"
-                # Optional: die Knoten-Ausgabe muss einen Text enthalten bzw. darf ihn NICHT enthalten (z. B. einen
+                # Optional: die Knoten-Ausgabe muss einen Text enthalten bzw. darf ihn nicht enthalten (z. B. einen
                 # deterministisch angehaengten Prompt-Abschnitt; das Gegenstueck belegt, dass er nicht immer erscheint).
-                # expected_not_ran = Knoten, die in der Sub-Execution NICHT laufen duerfen (z. B. der Agent hinter einem Tor).
+                # expected_not_ran = Knoten, die in der Sub-Execution nicht laufen duerfen (z. B. der Agent hinter einem Tor).
                 $outOk = $true
                 foreach ($nr in @($tc.expected_not_ran)) {
                     if ($nr -and ($subNodes -contains "$nr")) { $outOk = $false; Write-Host "    Sub-Knoten '$nr' lief, darf aber nicht" -ForegroundColor Red }
@@ -1020,7 +1020,7 @@ foreach ($tc in $cases) {
 
             $runNodes = Get-RunNodes $orch
             $ranNode = $runNodes -contains "$($tc.expected_node)"
-            # Optional wie im Sub-Zweig: Ausgabe-Text des Knotens; dazu expected_not_node = ein Knoten, der NICHT laufen darf.
+            # Optional wie im Sub-Zweig: Ausgabe-Text des Knotens; dazu expected_not_node = ein Knoten, der nicht laufen darf.
             $outOk = $true
             if ($tc.expected_output_contains -or $tc.expected_output_not_contains) {
                 $outText = Get-NodeOutputText $orch "$($tc.expected_node)"
@@ -1054,9 +1054,9 @@ foreach ($tc in $cases) {
             continue
         }
 
-        # ================= PAIRING_LANG (Textkatalog Phase B): Einladung -> Einloesen mit Telegram-language_code ->
+        # ================= PAIRING_LANG (Textkatalog): Einladung -> Einloesen mit Telegram-language_code ->
         # Owner bestaetigt -> das neue Mitglied (noch ohne eigene Sprache) bekommt den Sprach-Picker, die App-Sprache als
-        # 👉-Vorschlag markiert; family bleibt OHNE language (nie still gesetzt). Self-contained: eigene Person
+        # 👉-Vorschlag markiert; family bleibt ohne language (nie still gesetzt). Self-contained: eigene Person
         # (person_id/first_name aus dem Case), ihre telegram_user_id/language werden vorab entfernt, frischer Code je Lauf.
         if ($tc.kind -eq 'pairing_lang') {
             $pairPerson = "$($tc.person_id)"
@@ -1101,11 +1101,11 @@ SELECT agent.fn_arm_pairing_challenge(jsonb_build_object('role','partner','chall
             continue
         }
 
-        # ================= BURST (Eingangs-Buendelung, agent.ingress_buffer): mehrere Updates GLEICHZEITIG =================
+        # ================= BURST (Eingangs-Buendelung, agent.ingress_buffer): mehrere Updates gleichzeitig =================
         # Wie Telegram "Weiterleiten mit Kommentar" (zwei Updates ~0,4 s) bzw. Alben liefert: alle Updates des Falls
         # parallel an den echten Webhook. Assert: genau expect_processed Laeufe erreichen 'Trigger normalize' (die
         # anderen enden nach 'Ingress action' still), alle success; expect_together = Teiltexte, die gemeinsam in der
-        # Ausgabe EINES verarbeiteten Laufs stehen (das zusammengefuehrte Update; together_node = anderer Node, z. B. die
+        # Ausgabe eines verarbeiteten Laufs stehen (das zusammengefuehrte Update; together_node = anderer Node, z. B. die
         # Marker-Normalisierung; forbid_together = Teiltexte, die dort nie stehen duerfen). revoke_claim = fail-open-Probe.
         if ($tc.kind -eq 'burst') {
             $burstUpdates = Build-BurstUpdates $tc $chatId $fromUid
@@ -1123,7 +1123,7 @@ SELECT agent.fn_arm_pairing_challenge(jsonb_build_object('role','partner','chall
             $togetherOk = $true
             if ($tc.expect_together) {
                 $togetherNode = if ($tc.together_node) { "$($tc.together_node)" } else { 'Trigger normalize' }
-                # forbid_together = Teiltexte, die in der Ausgabe desselben Nodes NIE stehen duerfen (z. B. der Dateiname)
+                # forbid_together = Teiltexte, die in der Ausgabe desselben Nodes nie stehen duerfen (z. B. der Dateiname)
                 $togetherOk = [bool]($processed | Where-Object {
                     $o = Get-NodeOutputText $_ $togetherNode
                     -not (@($tc.expect_together) | Where-Object { -not $o.Contains("$_") }) -and
@@ -1143,7 +1143,7 @@ SELECT agent.fn_arm_pairing_challenge(jsonb_build_object('role','partner','chall
 
         Write-Host "    [FAIL] Unbekannter Case-kind '$($tc.kind)'." -ForegroundColor Red; $failed++
     } catch {
-        # Jede unerwartete Ausnahme im Fall ist ein ROTER Fall, kein Ende des Laufs: die uebrigen Faelle laufen weiter, der
+        # Jede unerwartete Ausnahme im Fall ist ein roter Fall, kein Ende des Laufs: die uebrigen Faelle laufen weiter, der
         # Exit-Code bleibt ungleich 0. Haeufigster Anlass: HTTP 500 vom Eingang unter Last (docs/reference/tests.md, Flakiness-Mechanik).
         # Gemeinsamer Helfer (test_n8n_state.ps1, Fall-Abbruch): Grund, Skriptzeile, Hinweis, geschuetztes Aufraeumen (offene Karten und
         # Sperr-Zeilen wuerden sonst den Folgefall rot machen). Gezaehlt wird hier, im selben Bereich wie $failed.

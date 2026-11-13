@@ -39,7 +39,7 @@ BEGIN
         'debit_account_id',          999999   -- nicht existent → FK-Verletzung → Rollback
       )
     ) INTO v_result;
-    -- Wenn wir hier ankommen, wurde KEIN Fehler geworfen → Test schlägt fehl
+    -- Wenn wir hier ankommen, wurde kein Fehler geworfen → Test schlägt fehl
     RAISE EXCEPTION 'FAIL atomicity [1]: fn_create_loan hätte FK-Exception werfen sollen';
   EXCEPTION WHEN OTHERS THEN
     NULL;  -- erwarteter Fehler gecatcht (Savepoint rollt Partial-Inserts zurück)

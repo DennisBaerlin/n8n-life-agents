@@ -1,6 +1,6 @@
 -- tests/db/finance/test_v028_plan_goal_two_of_three.sql
--- finance:V028 (WP2): ein Finanzplan-Ziel mit Einkommen + Entnahmerate + Zielportfolio verliert das ableitbare
--- Zielportfolio (Owner-Entscheid: Einkommen + Rate bleiben); fehlt einer der beiden, bleibt alles stehen. Der Test
+-- finance:V028: ein Finanzplan-Ziel mit Einkommen + Entnahmerate + Zielportfolio verliert das ableitbare
+-- Zielportfolio (Einkommen + Rate bleiben); fehlt einer der beiden, bleibt alles stehen. Der Test
 -- fuehrt die ECHTE Migrationsdatei zweimal aus. Der neue Validator wuerde den Altbestand ablehnen -> der Test schaltet
 -- den Fakten-Trigger fuer den Aufbau ab (der Altbestand entstand vor der Regel).
 BEGIN;

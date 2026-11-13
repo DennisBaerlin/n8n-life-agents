@@ -1,11 +1,11 @@
 -- tests/db/estate/test_fn_render_estate_overview.sql
--- estate.fn_render_estate_overview: render-at-fetch des EINEN estate-Lese-Kontexts estate_overview
--- (WS-1, Plan groovy-watching-wave). Prueft: leeres Register -> ehrlicher Leer-Hinweis; befuellte
--- Register-Sektionen (Personen-Aufloesung, Gap-Marker OFFEN, Schluesselkonto, Seed-Backup-FUNDORT);
+-- estate.fn_render_estate_overview: render-at-fetch des einen estate-Lese-Kontexts estate_overview.
+-- Prueft: leeres Register -> ehrlicher Leer-Hinweis; befuellte
+-- Register-Sektionen (Personen-Aufloesung, Gap-Marker OFFEN, Schluesselkonto, Seed-Backup-Fundort);
 -- finance-Doppel-Guard (fn_package_active + to_regprocedure) beide Halben; DEFINER-Pin-Lauf;
--- Registry-Dispatch via core.fn_fetch_context INKL. der empirischen Scope-Aufloesung (Opus-M5):
--- estate_overview hat KEINE core.context_scopes-Zeile -> household, chat_id suffigiert NIE,
--- agent.fn_context_persons faechert NICHT (leere Menge -> Crons liefen person_id NULL).
+-- Registry-Dispatch via core.fn_fetch_context inkl. der empirischen Scope-Aufloesung:
+-- estate_overview hat keine core.context_scopes-Zeile -> household, chat_id suffigiert nie,
+-- agent.fn_context_persons faechert nicht (leere Menge -> Crons liefen person_id NULL).
 BEGIN;
 DO $$
 DECLARE
@@ -25,7 +25,7 @@ BEGIN
   IF v_hdr IS NULL THEN RAISE EXCEPTION 'FAIL [1 leer -> NULL statt Leer-Hinweis]'; END IF;
   IF v_hdr NOT LIKE '%estate.register.empty%' THEN
     RAISE EXCEPTION 'FAIL [1 Leer-Hinweis fehlt]: %', v_hdr; END IF;
-  -- finance ist im db_test-Substrat NICHT registriert (package_registry leer) -> Absenz-Zeile (Guard-Halbe 1)
+  -- finance ist im db_test-Substrat nicht registriert (package_registry leer) -> Absenz-Zeile (Guard-Halbe 1)
   IF v_hdr NOT LIKE '%estate.register.fin_absent%' THEN
     RAISE EXCEPTION 'FAIL [1 finance-Absenz-Zeile fehlt]: %', v_hdr; END IF;
   RAISE NOTICE 'PASS [1] leeres Register -> Leer-Hinweis + finance-Absenz-Zeile';
@@ -34,7 +34,7 @@ BEGIN
   INSERT INTO estate.storage_places (owner_person_id, name, kind, location, access_hint)
   VALUES (NULL, 'Tresor Büro', 'safe', 'Arbeitszimmer', 'Schlüssel im Sekretär');
   INSERT INTO estate.storage_places (owner_person_id, name, kind)
-  VALUES ('max', 'Schliessfach Arbeit', 'bank_deposit_box');   -- person-skopierte Fundstelle (Cold-Eyes A m3)
+  VALUES ('max', 'Schliessfach Arbeit', 'bank_deposit_box');   -- person-skopierte Fundstelle
   SELECT id INTO v_sp FROM estate.storage_places WHERE name = 'Tresor Büro';
 
   INSERT INTO estate.directives (owner_person_id, doc_type, doc_status, form, registry, storage_place_id, authorized_person)
@@ -86,7 +86,7 @@ BEGIN
   IF v_hdr NOT LIKE '%estate.register.asset_vehicle%BMW 3er%' THEN RAISE EXCEPTION 'FAIL [2 Sonderfall-Sektion]: %', v_hdr; END IF;
   RAISE NOTICE 'PASS [2] Register-Sektionen + Personen-Auflösung + Gap-/Schlüssel-Marker';
 
-  -- ---------- TEST 3: finance aktiv -> Register-Zeilen aus den WS-0b-Lese-fns ----------
+  -- ---------- TEST 3: finance aktiv -> Register-Zeilen aus den finance-Lese-fns ----------
   INSERT INTO core.package_registry (package, status) VALUES ('finance', 'active')
   ON CONFLICT (package) DO UPDATE SET status = 'active';
   INSERT INTO finance.accounts (name, account_type, bank, ownership, has_transmortal_poa)
@@ -121,10 +121,10 @@ BEGIN
   RESET search_path;
   RAISE NOTICE 'PASS [5] alle Referenzen schema-qualifiziert (DEFINER-Pin-Lauf)';
 
-  -- ---------- TEST 6: Registry-Dispatch + Scope-Fan-out (Opus-M5, empirisch) ----------
-  -- estate_overview hat KEINE core.context_scopes-Zeile -> household: fn_fetch_context darf mit
-  -- numerischer chat_id NIE suffigieren (identischer Content wie ohne chat_id), fn_context_persons
-  -- faechert NICHT (leere Menge -> die kuenftigen WS-4-Crons liefen person_id NULL).
+  -- ---------- TEST 6: Registry-Dispatch + Scope-Fan-out (empirisch) ----------
+  -- estate_overview hat keine core.context_scopes-Zeile -> household: fn_fetch_context darf mit
+  -- numerischer chat_id nie suffigieren (identischer Content wie ohne chat_id), fn_context_persons
+  -- faechert nicht (leere Menge -> die Crons liefen person_id NULL).
   INSERT INTO agent.core_contexts (name, description, agent_name, load_strategy, content, managed_by, package)
   VALUES ('estate_overview', 't', 'estate_advisor', 'lazy', 'prose-body', 'seed', 'estate');
   INSERT INTO core.context_renderers (context_name, render_fn, package)
@@ -135,7 +135,7 @@ BEGIN
   IF v_c1 IS NULL OR v_c1 NOT LIKE '%Authoritative facts%' OR v_c1 NOT LIKE '%prose-body%'
      OR v_c1 NOT LIKE '%Erika Beispiel%Testament%' THEN
     RAISE EXCEPTION 'FAIL [6 fetch-Dispatch (Banner+Header+Prosa)]: %', left(COALESCE(v_c1, 'NULL'), 200); END IF;
-  SELECT content INTO v_c2 FROM core.fn_fetch_context('estate_overview', 'test_eo1');  -- Test-Sentinel: eine unbekannte Zahl waere seit der Kinder-Sicht gesperrt
+  SELECT content INTO v_c2 FROM core.fn_fetch_context('estate_overview', 'test_eo1');  -- Test-Sentinel: eine unbekannte Zahl waere durch die Kinder-Sicht gesperrt
   IF v_c2 IS DISTINCT FROM v_c1 THEN
     RAISE EXCEPTION 'FAIL [6 household: chat_id darf NICHT suffigieren/fail-closen]'; END IF;
   IF EXISTS (SELECT 1 FROM agent.fn_context_persons('estate_overview')) THEN

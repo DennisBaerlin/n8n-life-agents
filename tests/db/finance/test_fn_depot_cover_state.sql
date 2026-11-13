@@ -1,6 +1,6 @@
 -- tests/db/finance/test_fn_depot_cover_state.sql
--- finance.fn_depot_cover_state(account_id) — die EINE Regel „deckt der Marktwert eines Depots das Ziel-Geld darin?"
--- (Mini-App Ziele/Konten + Berater-Alert reserve_coverage_depot, 2026-10-30):
+-- finance.fn_depot_cover_state(account_id) — die eine Regel „deckt der Marktwert eines Depots das Ziel-Geld darin?"
+-- (Mini-App Ziele/Konten + Berater-Alert reserve_coverage_depot):
 --   unknown = Kurs/Wechselkurs fehlt (ganzes Depot, eine Position oder ein Ziel-Anteil ohne Kurs) -> nie gruen
 --   dip     = Marktwert unter der Reserve, Fehlbetrag < finance.depot_cover_warn_pct % der Reserve (Kursdelle)
 --   short   = Fehlbetrag ab der Schwelle (echte Luecke)
@@ -64,7 +64,7 @@ BEGIN
   r := finance.fn_depot_cover_state(v_ok);
   IF r->>'state' <> 'ok' OR (r->>'gap')::numeric IS DISTINCT FROM 0 THEN RAISE EXCEPTION 'FAIL [6] gedeckt -> ok/0, got %', r; END IF;
   IF finance.fn_depot_cover_state(v_settle)->>'state' <> 'ok' THEN RAISE EXCEPTION 'FAIL [7] ohne Reserve -> ok'; END IF;
-  -- Depot ohne Ziel-Geld mit einer Position ohne Kurs: nichts zu decken -> ok, nicht „unbekannt" (Code-Review 2026-10-30)
+  -- Depot ohne Ziel-Geld mit einer Position ohne Kurs: nichts zu decken -> ok, nicht „unbekannt"
   DELETE FROM finance.savings_goal_reserve_entries WHERE account_id = v_noprice;
   IF finance.fn_depot_cover_state(v_noprice)->>'state' <> 'ok' THEN RAISE EXCEPTION 'FAIL [7b] ohne Ziel-Geld, Kurs fehlt -> ok'; END IF;
   RAISE NOTICE 'PASS [1-7] dip / short / unknown (kein Kurs, Teilkurs, fx-Anteil) / ok';

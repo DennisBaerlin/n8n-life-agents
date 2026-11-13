@@ -1,9 +1,8 @@
 ﻿#Requires -Version 5.1
 # render_app_screenshots.ps1 -- erzeugt die Beispielbilder der Mini-App fuer die Doku-Site
-# (docs/site/static/img/app-uebersicht-{hell,dunkel}.png) aus der ECHTEN Seite packages/core/build/app/index.html mit
-# dem echten Renderer (Get-UiRenderLibJs) und den Texten aus dem Katalog (packages/*/locales/de.json). Anlass
-# (Uebersicht R3, 2026-10-28): die Bilder waren von Hand gemacht und zeigten nach einer Text-Aenderung die alte
-# Ueberschrift -> jetzt reproduzierbar, nach jeder sichtbaren Aenderung am Bildschirm Vermoegen neu laufen lassen.
+# (docs/site/static/img/app-uebersicht-{hell,dunkel}.png) aus der echten Seite packages/core/build/app/index.html mit
+# dem echten Renderer (Get-UiRenderLibJs) und den Texten aus dem Katalog (packages/*/locales/de.json).
+# Nach jeder sichtbaren Aenderung am Bildschirm Vermoegen neu laufen lassen.
 #
 # Die Seite (fetch-Stub mit dem erfundenen Datenmodell lib/app_preview_data.json, ohne Telegram-Skript) baut
 # scripts/dev/lib/app_preview.ps1 (geteilt mit serve_app_preview.ps1); die Startseite zeigt im Bild den Sollzustand

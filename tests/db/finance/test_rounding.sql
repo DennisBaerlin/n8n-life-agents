@@ -1,10 +1,10 @@
 -- tests/db/finance/test_rounding.sql
--- Rundungs-Paket 2026-10-23 (eine Bestandsuebernahme zeigte den Einstand nachgerechnet statt genannt, z. B. 30000.06 statt 30000).
+-- Rundung bei Bestandsuebernahme, Kauf und Verkauf: der genannte Einstand wird nicht nachgerechnet.
 --   [R1] Bestandsuebernahme speichert den genannten Stueckpreis (unit_price) -> Einstand exakt; normaler Kauf bleibt
 --        Broker-Konvention (Cent-Betrag inkl. Gebuehr / Stueck).
 --   [R2] Mini-Kauf / Verkauf mit Gebuehr >= Erloes / > 8 Stueck-Nachkommastellen -> {ok:false} statt CHECK-RAISE.
 --   [R3] CHECK finance_transactions_unit_price_chk (V019): unit_price muss zum gebuchten Betrag passen.
---   [R4] V019-Backfill (Logik-KOPIE der Migration, Muster test_core_contexts_provenance): Preis aus der eigenen
+--   [R4] V019-Backfill (Logik-Kopie der Migration, Muster test_core_contexts_provenance): Preis aus der eigenen
 --        Buchungsbeschreibung, nur bei exakter Uebereinstimmung mit dem Betrag; "Gebuehr"/"Gebühr", leere Gebuehr.
 --   [R5] fn_to_eur_unrounded: ungerundete Kurs-Umrechnung; fn_to_eur unveraendert (EUR ungerundet, sonst Cent).
 BEGIN;
@@ -70,7 +70,7 @@ BEGIN
   SELECT finance.fn_book_stock_sell(jsonb_build_object('price_currency_confirmed',true,'settlement_id', v_cash, 'holding_id', v_hold, 'shares', 0.0000000001,
     'price_per_share', 30, 'transaction_date', CURRENT_DATE::text)) INTO v_res;
   IF (v_res->>'ok')::boolean IS DISTINCT FROM false THEN RAISE EXCEPTION 'FAIL [R2 sell stueck]: ok:false erwartet, got %', v_res; END IF;
-  -- Erloes-Rueckgabe = GEBUCHTER Cent-Betrag (vorher ungerundet 99.999999 bei gebuchten 100.00)
+  -- Erloes-Rueckgabe = gebuchter Cent-Betrag (nicht ungerundet 99.999999 bei gebuchten 100.00)
   SELECT finance.fn_book_stock_sell(jsonb_build_object('price_currency_confirmed',true,'settlement_id', v_cash, 'holding_id', v_hold, 'shares', 3,
     'price_per_share', 33.333333, 'transaction_date', CURRENT_DATE::text)) INTO v_res;
   IF (v_res->>'proceeds')::numeric IS DISTINCT FROM 100.00
@@ -104,7 +104,7 @@ BEGIN
   RAISE NOTICE 'PASS [R5 fn_to_eur_unrounded ungerundet, fn_to_eur unveraendert]';
 END $$;
 
--- [R4] V019-Backfill-Logik (KOPIE von packages/finance/db/migrations/V019__takeover_unit_price.sql, Schritt 1)
+-- [R4] V019-Backfill-Logik (Kopie von packages/finance/db/migrations/V019__takeover_unit_price.sql, Schritt 1)
 DO $$
 DECLARE
   v_cash INT; v_depot INT; v_h INT; v_g UUID; v_t1 INT; v_t2 INT; v_t3 INT; v_t4 INT;
@@ -113,7 +113,7 @@ BEGIN
   INSERT INTO finance.accounts (name, account_type) VALUES ('__r4 cash__','cash') RETURNING id INTO v_cash;
   INSERT INTO finance.accounts (name, account_type, settlement_account_id) VALUES ('__r4 dep__','crypto_depot', v_cash) RETURNING id INTO v_depot;
   INSERT INTO finance.depot_holdings (account_id, symbol, name) VALUES (v_depot, 'BTC', 'BTC') RETURNING id INTO v_h;
-  -- Altzeilen wie vor dem Rundungs-Paket (unit_price NULL), je mit Gegenbuchung in derselben group_id
+  -- Altzeilen ohne unit_price (NULL), je mit Gegenbuchung in derselben group_id
   v_g := gen_random_uuid();
   INSERT INTO finance.transactions (account_id, amount, transaction_date, category, holding_id, shares, order_fee, description, group_id)
   VALUES (v_cash, -1537.04, CURRENT_DATE, 'buy', v_h, 0.05123456, 0, 'Kauf 0.05123456 BTC @ 30000 (Gebühr 0)', v_g) RETURNING id INTO v_t1;
@@ -126,7 +126,7 @@ BEGIN
   INSERT INTO finance.transactions (account_id, amount, transaction_date, category, holding_id, shares, order_fee, description, group_id)
   VALUES (v_cash, -50.00, CURRENT_DATE, 'buy', v_h, 2, NULL, 'Kauf 2 BTC @ 25 (Gebühr )', v_g) RETURNING id INTO v_t3;
   INSERT INTO finance.transactions (account_id, amount, transaction_date, category, group_id) VALUES (v_cash, 50.00, CURRENT_DATE, 'position_takeover', v_g);
-  v_g := gen_random_uuid();   -- Beschreibung passt NICHT zum Betrag -> bleibt NULL
+  v_g := gen_random_uuid();   -- Beschreibung passt nicht zum Betrag -> bleibt NULL
   INSERT INTO finance.transactions (account_id, amount, transaction_date, category, holding_id, shares, order_fee, description, group_id)
   VALUES (v_cash, -70.00, CURRENT_DATE, 'buy', v_h, 1, 0, 'Kauf 1 BTC @ 60 (Gebühr 0)', v_g) RETURNING id INTO v_t4;
   INSERT INTO finance.transactions (account_id, amount, transaction_date, category, group_id) VALUES (v_cash, 70.00, CURRENT_DATE, 'position_takeover', v_g);

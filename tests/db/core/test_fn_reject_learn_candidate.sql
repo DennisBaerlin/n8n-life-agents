@@ -1,6 +1,6 @@
 -- tests/db/core/test_fn_reject_learn_candidate.sql
--- agent.fn_reject_learn_candidate(p {candidate_id, chat_id}) — owner-gegatet (Phase C, WS-3): setzt einen
---   pending-Kandidaten auf 'rejected' (DURABLE Rejection-Memory: bleibt liegen, NICHT vom TTL-Cleanup
+-- agent.fn_reject_learn_candidate(p {candidate_id, chat_id}) — owner-gegatet: setzt einen
+--   pending-Kandidaten auf 'rejected' (durable Rejection-Memory: bleibt liegen, nicht vom TTL-Cleanup
 --   geraeumt -> der Lern-Loop schlaegt denselben Slot < expiry_days nicht erneut vor). owner_only-Backstop.
 -- Self-seedend, BEGIN..ROLLBACK.
 BEGIN;

@@ -1,5 +1,5 @@
 -- tests/db/estate/test_fn_set_case.sql
--- WS-3: Fall aendern (knowledge/bundesland/flags) -> Fristen-Recompute + Reconcile; WP3: in beide Richtungen,
+-- Fall aendern (knowledge/bundesland/flags) -> Fristen-Recompute + Reconcile in beide Richtungen,
 --   aber nur fuer System-Status (done und Nutzer-"trifft nicht zu" bleiben). adults_only, nur offen.
 BEGIN;
 
@@ -22,7 +22,7 @@ BEGIN
     RAISE EXCEPTION 'FAIL [tenancy vor set nicht n.a.]'; END IF;
   -- knowledge-anker-Frist vor der Aenderung (inheritance_refusal = knowledge + 42).
   SELECT due_date INTO v_due0 FROM estate.case_tasks WHERE case_id=v_case AND template_key='inheritance_refusal';
-  -- eine Task done markieren (darf beim Reconcile NICHT zurueckgesetzt werden).
+  -- eine Task done markieren (darf beim Reconcile nicht zurueckgesetzt werden).
   SELECT id INTO v_task FROM estate.case_tasks WHERE case_id=v_case AND template_key='death_certificate';
   PERFORM estate.fn_set_case_task(jsonb_build_object('chat_id','111','case_task_id', v_task, 'status','done'));
 
@@ -45,7 +45,7 @@ BEGIN
     RAISE EXCEPTION 'FAIL [done-Task durch Reconcile zurueckgesetzt]'; END IF;
   RAISE NOTICE 'PASS [set_case: Reconcile n.a.->open + Recompute + done bleibt done]';
 
-  -- ---- WP3: Reconcile in beide Richtungen, nur fuer System-Status ----
+  -- ---- Reconcile in beide Richtungen, nur fuer System-Status ----
   -- Nutzer hakt eine bedingungslose Task als "trifft nicht zu" ab -> bleibt n.a. bei jedem weiteren set_case
   SELECT id INTO v_task FROM estate.case_tasks WHERE case_id=v_case AND template_key='manage_contracts';
   PERFORM estate.fn_set_case_task(jsonb_build_object('chat_id','111','case_task_id', v_task, 'status','not_applicable'));

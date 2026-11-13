@@ -1,14 +1,14 @@
 -- tests/db/finance/test_fn_savings_plan_goal_link.sql
--- WS-B Stufe 2 (Phase S): Quellen-Verknuepfung. Ein Sparplan gehoert zu EINEM Sparziel
+-- Quellen-Verknuepfung: Ein Sparplan gehoert zu einem Sparziel
 --   (savings_plans.savings_goal_id, FK ON DELETE SET NULL). fn_set_savings_goal traegt den
 --   link/unlink-Pfad (Sparplan einem Ziel zuordnen/loesen). Geprueft:
 --     1. link  -> savings_plans.savings_goal_id = goal.id
 --     2. unlink -> savings_goal_id NULL
 --     3. unlink-Guard: ein an Ziel A gebundener Plan laesst sich nicht ueber Ziel B loesen
 --     4. link not-found / ambiguous -> {ok:false}, kein Write
---     5. Ziel-Hard-Delete mit verknuepftem Plan -> Plan UEBERLEBT entkoppelt (ON DELETE SET NULL)
+--     5. Ziel-Hard-Delete mit verknuepftem Plan -> Plan ueberlebt entkoppelt (ON DELETE SET NULL)
 BEGIN;
--- Audit Paket 3: ein Sparziel braucht ein Sparkonto -> Fixture-Topf fuer fn_create_savings_goal.
+-- Fixture: ein Sparziel braucht ein Sparkonto (Topf) fuer fn_create_savings_goal.
 INSERT INTO finance.accounts (name, account_type, currency, status) VALUES ('__sg_fixture_pot__','cash','EUR','active');
 
 DO $$
@@ -67,7 +67,7 @@ BEGIN
     RAISE EXCEPTION 'FAIL link [savings_goal_id]: erwartet %, got %', v_goal_a, v_linked; END IF;
   RAISE NOTICE 'PASS fn_set_savings_goal [link -> savings_goal_id=goal_a]';
 
-  -- TEST 1b: re-link-Guard — ein an A gebundener Plan wird NICHT stillschweigend an B umgehaengt
+  -- TEST 1b: re-link-Guard — ein an A gebundener Plan wird nicht stillschweigend an B umgehaengt
   SELECT finance.fn_set_savings_goal(jsonb_build_object(
     'goal_id', v_goal_b, 'link_savings_plan_name', '__test_link_plan__'
   )) INTO v_result;
@@ -78,7 +78,7 @@ BEGIN
     RAISE EXCEPTION 'FAIL re-link-Guard [Bindung umgehaengt]: erwartet weiterhin %, got %', v_goal_a, v_linked; END IF;
   RAISE NOTICE 'PASS fn_set_savings_goal [re-link an fremdes Ziel -> ok:false, Bindung bleibt A]';
 
-  -- TEST 1c: erneutes link an DASSELBE Ziel A ist ein harmloser No-op (kein Guard-Treffer)
+  -- TEST 1c: erneutes link an dasselbe Ziel A ist ein harmloser No-op (kein Guard-Treffer)
   SELECT finance.fn_set_savings_goal(jsonb_build_object(
     'goal_id', v_goal_a, 'link_savings_plan_name', '__test_link_plan__'
   )) INTO v_result;
@@ -119,7 +119,7 @@ BEGIN
     RAISE EXCEPTION 'FAIL link not-found [kein Write]: savings_goal_id wurde gesetzt: %', v_linked; END IF;
   RAISE NOTICE 'PASS fn_set_savings_goal [link not-found -> ok:false, kein Write]';
 
-  -- TEST 5: Ziel-Hard-Delete mit verknuepftem Plan -> Plan UEBERLEBT entkoppelt (ON DELETE SET NULL).
+  -- TEST 5: Ziel-Hard-Delete mit verknuepftem Plan -> Plan ueberlebt entkoppelt (ON DELETE SET NULL).
   --   Re-link an A, dann Ziel A hart loeschen (kein getaggter Tx -> fn_close = Hard-DELETE).
   SELECT finance.fn_set_savings_goal(jsonb_build_object(
     'goal_id', v_goal_a, 'link_savings_plan_name', '__test_link_plan__'

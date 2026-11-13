@@ -1,5 +1,5 @@
 -- tests/db/finance/test_fn_import_depot_number_to_store.sql
--- fn_import_depot_number_to_store: gedruckte Depotnummer nur fuer ein BESTANDS-Depot ohne Nummer (Owner 2026-10-23);
+-- fn_import_depot_number_to_store: gedruckte Depotnummer nur fuer ein Bestands-Depot ohne Nummer;
 -- Depot mit Nummer, Batch-Depot-Zeile, Nicht-Depot oder fehlende Nummer -> NULL.
 BEGIN;
 

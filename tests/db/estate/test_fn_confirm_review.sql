@@ -1,5 +1,5 @@
 -- tests/db/estate/test_fn_confirm_review.sql
--- WS-2: Review-Bestaetigung (Fortschritts-Flag-Klasse, kein HITL am Tool — der adults_only-
+-- Review-Bestaetigung (Fortschritts-Flag-Klasse, kein HITL am Tool — der adults_only-
 -- Backstop bleibt) — UPSERT-Stempel last_reviewed_at (Zeile entsteht bei Bedarf), Re-Stempel,
 -- unbekannte Person, Kind-Reject. Self-contained; BEGIN..ROLLBACK.
 BEGIN;
@@ -20,7 +20,7 @@ BEGIN
                                  'role','child','birth_date','2012-03-10','telegram_user_id',333)))))
   ON CONFLICT (name) DO UPDATE SET metadata = EXCLUDED.metadata;
 
-  -- Kind-Reject (der Fortschritts-Flag-Klasse fehlt das Gate — der fn-Backstop MUSS tragen):
+  -- Kind-Reject (der Fortschritts-Flag-Klasse fehlt das Gate — der fn-Backstop muss tragen):
   v_r := estate.fn_confirm_review(jsonb_build_object('chat_id','333', 'person_id','erika'));
   IF (v_r->>'ok')::boolean OR v_r->>'reason' NOT LIKE '%adults_only%' THEN
     RAISE EXCEPTION 'FAIL [child reject]: %', v_r;

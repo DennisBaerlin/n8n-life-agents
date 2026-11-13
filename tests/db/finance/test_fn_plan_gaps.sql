@@ -1,8 +1,8 @@
 -- tests/db/finance/test_fn_plan_gaps.sql
--- Plan-Luecken (2026-10-27): finance.fn_plan_gaps meldet bei AKTIVEM Haushalts-Plan die nie im Interview bestaetigten
+-- Plan-Luecken: finance.fn_plan_gaps meldet bei aktivem Haushalts-Plan die nie im Interview bestaetigten
 -- Katalog-Sektionen (Union ueber active + superseded), die bestaetigten Sektionen ohne verwertbaren Fakten-Block und
 -- die nur im offenen Draft gespeicherten Sektionen; finance.fn_render_plan_facts zeigt daraus die Header-Zeile
--- "Plan gaps:" (auch bei leerem Sidecar). Befund 2026-10-27: nur 3 von 9 Sektionen bestaetigt, kein Notreserve-Ziel.
+-- "Plan gaps:" (auch bei leerem Sidecar). Nachgebaut: nur 3 von 9 Sektionen bestaetigt, kein Notreserve-Ziel.
 BEGIN;
 
 DO $$
@@ -47,12 +47,12 @@ BEGIN
       'glidepath', jsonb_build_object('start_age',58)))
    WHERE name = 'financial_planning';
   v := finance.fn_plan_gaps((SELECT c.metadata->'facts' FROM agent.core_contexts c WHERE c.name = 'financial_planning'));
-  -- Katalog-Reihenfolge, emergency_reserve nur EINMAL (als offene Sektion, nicht zusaetzlich als fehlender Block)
+  -- Katalog-Reihenfolge, emergency_reserve nur einmal (als offene Sektion, nicht zusaetzlich als fehlender Block)
   IF v->'open_sections' <> '["household_basics","risk_protection","emergency_reserve","debts_loans","retirement_pension","crossborder"]'::jsonb
      OR v->'missing_blocks' <> '[]'::jsonb OR NOT (v->>'has_active_plan')::boolean THEN
     RAISE EXCEPTION 'FAIL [Live-Form]: %', v; END IF;
 
-  -- ---------- (4) Union: eine Sektion aus einer FRUEHEREN Version zaehlt als bestaetigt ----------
+  -- ---------- (4) Union: eine Sektion aus einer frueheren Version zaehlt als bestaetigt ----------
   UPDATE agent.advisor_plans SET interview_state = '{"risk_protection":{"content":"x"},"household_basics":{"content":"x"}}'
    WHERE domain = 'finance' AND version = 1;
   v := finance.fn_plan_gaps((SELECT c.metadata->'facts' FROM agent.core_contexts c WHERE c.name = 'financial_planning'));
@@ -65,7 +65,7 @@ BEGIN
   IF v->'open_sections' <> '["emergency_reserve","debts_loans","retirement_pension","crossborder"]'::jsonb THEN
     RAISE EXCEPTION 'FAIL [Altlast skalar]: %', v; END IF;
 
-  -- ---------- (5) bestaetigt, aber Block fehlt; Notreserve-Sektion bestaetigt ohne angelegte Ruecklage (2026-10-30) ----------
+  -- ---------- (5) bestaetigt, aber Block fehlt; Notreserve-Sektion bestaetigt ohne angelegte Ruecklage ----------
   UPDATE agent.advisor_plans
      SET interview_state = interview_state || '{"emergency_reserve":{"content":"x"}}'
    WHERE domain = 'finance' AND status = 'active';
@@ -114,7 +114,7 @@ BEGIN
   IF finance.fn_render_plan_facts('financial_planning') LIKE '%Plan gaps%' THEN
     RAISE EXCEPTION 'FAIL [vollstaendig, Header]'; END IF;
 
-  -- ---------- (10) leerer Sidecar + aktiver Plan -> NUR die Luecken-Zeile (keine Renten-/Fakten-Zeilen) ----------
+  -- ---------- (10) leerer Sidecar + aktiver Plan -> nur die Luecken-Zeile (keine Renten-/Fakten-Zeilen) ----------
   UPDATE agent.advisor_plans SET interview_state = '{}' WHERE domain = 'finance';
   DELETE FROM finance.savings_goals WHERE name = '__pg_er__';   -- angelegte Notreserve haette eine eigene Fakten-Zeile
   UPDATE agent.core_contexts SET metadata = jsonb_build_object('managed_by','agent','facts','{}'::jsonb)

@@ -1,5 +1,5 @@
 -- tests/db/core/test_monitor_acquisition_methods.sql
--- Phase B: core.monitor_acquisition_methods (Registry der Monitor-Beschaffungs-Methoden) + ihre DB-Gesetze.
+-- core.monitor_acquisition_methods (Registry der Monitor-Beschaffungs-Methoden) + ihre DB-Gesetze.
 --   (1) FK agent.monitor_triggers.acquisition_method -> Registry existiert + ist validiert; unbekannte Methode
 --       per Direkt-INSERT -> foreign_key_violation; Builtins vorhanden; Registry-CHECKs
 --   (2) Spec-Validierungs-Trigger: ungueltige Spec einer verfuegbaren Paket-Methode -> check_violation;
@@ -68,7 +68,7 @@ BEGIN
   VALUES ('__test__', 'good spec', 'threshold', 'zz_test', '{"v": 5}', 'gte', 1, INTERVAL '1 day')
   RETURNING id INTO v_id;
 
-  -- validate_fn wird ab jetzt alles ablehnen: ein Heartbeat-UPDATE darf den Trigger NICHT feuern ...
+  -- validate_fn wird ab jetzt alles ablehnen: ein Heartbeat-UPDATE darf den Trigger nicht feuern ...
   CREATE OR REPLACE FUNCTION zz_pkg.fn_validate(p jsonb) RETURNS jsonb LANGUAGE sql AS $f$
     SELECT jsonb_build_object('ok', false, 'reason', 'rejects everything') $f$;
   UPDATE agent.monitor_triggers SET last_value = 6, fail_streak = 0, next_check_at = now() WHERE id = v_id;

@@ -14,7 +14,7 @@ DECLARE
   v_rpstat TEXT;
 BEGIN
 
-  -- Setup: Konto + Rente MIT monatlichem Beitrag (-> verknuepfte recurring_payment)
+  -- Setup: Konto + Rente mit monatlichem Beitrag (-> verknuepfte recurring_payment)
   SELECT finance.fn_create_account('{"name":"__test_pen_acct__","account_type":"cash","account_holder":"Test"}'::jsonb) INTO v_res;
   v_acct := (v_res->>'account_id')::int;
 

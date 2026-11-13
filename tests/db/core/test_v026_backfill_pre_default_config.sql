@@ -2,7 +2,7 @@
 -- core:V026: Releases bis v0.2.0 kannten core.config.default_value noch nicht -> Bestandszeilen haben default_value
 -- NULL und gelten fuer core.fn_config_seed als "vom Owner gesetzt". V026 traegt fuer nie geaenderte Zeilen den
 -- damals ausgelieferten Standard nach (Liste aller v0.2.0-Standards, Modelle nach der V024-Owner-Regel). Prueft
--- (ECHTE Datei, zweimal):
+-- (echte Datei, zweimal):
 --   (1) panel_b sonnet + default NULL -> default_value = sonnet; der Seed setzt dann value = opus (der Fund)
 --   (2) eine andere Listen-Zeile mit unveraendertem Wert (panel_a sonnet) wird ebenfalls nachgetragen (generisch)
 --   (3) Owner-Wert (Wert != damaliger Standard) + default NULL -> unberuehrt; der Seed behaelt ihn

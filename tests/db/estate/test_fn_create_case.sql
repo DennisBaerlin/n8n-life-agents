@@ -1,5 +1,5 @@
 -- tests/db/estate/test_fn_create_case.sql
--- WS-3: Fall-Anlage — adults_only, subject_is_sender, bundesland fail-closed, Datums-Guards, Dublette,
+-- Fall-Anlage — adults_only, subject_is_sender, bundesland fail-closed, Datums-Guards, Dublette,
 --   incapacity-ueber-death-Reject, Auto-Supersede incapacity->death, Task-Instanziierung (kein NULL-Ref).
 BEGIN;
 
@@ -58,7 +58,7 @@ BEGIN
     INTO v_open, v_na FROM estate.case_tasks WHERE case_id=v_case;
   IF v_open = 0 THEN RAISE EXCEPTION 'FAIL [keine offenen Tasks instanziiert]'; END IF;
   IF v_na = 0 THEN RAISE EXCEPTION 'FAIL [keine sichtbaren n.a.-Tasks (Condition-false erwartet)]'; END IF;
-  -- KEIN NULL-subject_ref (NULL-UNIQUE-Falle vermieden).
+  -- Kein NULL-subject_ref (NULL-UNIQUE-Falle vermieden).
   SELECT count(*) INTO v_nullref FROM estate.case_tasks WHERE case_id=v_case AND subject_ref IS NULL;
   IF v_nullref <> 0 THEN RAISE EXCEPTION 'FAIL [NULL subject_ref: %]', v_nullref; END IF;
   -- tenant-Flag -> tenancy open (Condition ueber flags).

@@ -1,12 +1,12 @@
 -- tests/db/core/test_fn_set_onboarding_section.sql
 -- core.fn_set_onboarding_section: Haushalts-Sektionen (core/household-Pakete, kein per_user-Scope) setzt nur der
--- Owner. Ein positiv aufgeloestes Mitglied bekommt {ok:false, code:'owner_only', reason=Satz} OHNE Write — sonst koennte es
+-- Owner. Ein positiv aufgeloestes Mitglied bekommt {ok:false, code:'owner_only', reason=Satz} ohne Write — sonst koennte es
 -- z. B. den Haushalt auf 'unknown' zuruecksetzen und damit per Core-first-Gate alle Paket-Agenten fuer den
 -- ganzen Haushalt sperren. Pruefung ueber das publizierte Fenster core.fn_check_write_permission('owner_only')
 -- (Pass-Through bei fehlender/nicht-numerischer chat_id = CLI/Test/Sentinel, wie alle owner_only-fns).
 -- per_user-Pakete (career) bleiben pro Person (eigene Zeile, eigener Test test_career_onboarding_person_scoping).
 -- Rollen-Perspektive (finance_rw/estate_rw) zusaetzlich in tests/db/cross/test_role_permissions.sql (6).
--- db_test hat KEIN seed_data -> family + finance-Sektion self-seeden. BEGIN..ROLLBACK.
+-- db_test hat kein seed_data -> family + finance-Sektion self-seeden. BEGIN..ROLLBACK.
 BEGIN;
 
 DO $$
@@ -55,8 +55,8 @@ BEGIN
   RAISE NOTICE 'PASS test_fn_set_onboarding_section (owner_only fuer Haushalts-Sektionen, Owner + Pass-Through ok)';
 END $$;
 
--- ---------- Roter Faden: area_completed_now / area_all_skipped / status_changed_at ----------
--- Der Bereich (hier finance mit genau ZWEI Fixture-Sektionen) kippt von offen -> aufgeloest genau EINMAL;
+-- ---------- area_completed_now / area_all_skipped / status_changed_at ----------
+-- Der Bereich (hier finance mit genau zwei Fixture-Sektionen) kippt von offen -> aufgeloest genau einmal;
 -- erneutes Markieren eines schon aufgeloesten Bereichs liefert false (keine zweite Weiter-Karte).
 -- status_changed_at bewegt sich nur bei echter Status-Aenderung (Label-Resync/Gleich-Status nicht).
 DO $$

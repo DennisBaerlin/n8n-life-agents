@@ -1,12 +1,11 @@
 -- tests/db/core/test_fn_set_context_facts.sql
--- Testet den EINEN Fakten-Schreibweg agent.fn_set_context_facts(p jsonb) (Phase A Fakten-Konsolidierung;
--- loest fn_set_context_facts + fn_set_context_facts ab). Eigenschaften:
---   * household-Zweig (family + household-Kontexte aktiver Pakete): Zeile MUSS existieren (Installer-Skelett)
---     -> fehlt sie: {ok:false}, KEIN Insert (Sichtbarkeit agent_name bleibt paket-deklariert).
---   * per_user-Zweig: Suffix '<base>__<pid>' + INSERT-on-first-write + fail-closed (unveraendert seit P0b).
+-- Testet den einen Fakten-Schreibweg agent.fn_set_context_facts(p jsonb). Eigenschaften:
+--   * household-Zweig (family + household-Kontexte aktiver Pakete): Zeile muss existieren (Installer-Skelett)
+--     -> fehlt sie: {ok:false}, kein Insert (Sichtbarkeit agent_name bleibt paket-deklariert).
+--   * per_user-Zweig: Suffix '<base>__<pid>' + INSERT-on-first-write + fail-closed.
 --   * Merge: reservierte Core-Form-Keys persons (Merge-Key person_id) + household; sonst Top-Level-Replace;
 --     null loescht den Key; persons:null / household:null / person_id:null / _meta -> {ok:false}.
---   * Gates: family hart owner_only (ZUERST), Paket aktiv (beide Zweige), fester Binding-scope.
+--   * Gates: family hart owner_only (zuerst), Paket aktiv (beide Zweige), fester Binding-scope.
 --   * Freundliche Pre-Validation (Core-Validator + registrierter Paket-Validator) -> {ok:false} ohne Write.
 -- Self-contained (BEGIN..ROLLBACK): Stub-Validator + Test-Registry-Zeilen + family-Fixture in der Transaktion.
 BEGIN;
@@ -27,7 +26,7 @@ BEGIN
       RETURN NULL;
     END $f$;
 
-  -- E5: das besitzende Paket muss AKTIV sein (beide Zweige).
+  -- das besitzende Paket muss aktiv sein (beide Zweige).
   INSERT INTO core.package_registry (package, status) VALUES ('career', 'active')
   ON CONFLICT (package) DO UPDATE SET status = 'active';
 
@@ -35,7 +34,7 @@ BEGIN
   VALUES ('__test_profile__', 'agent.fn_test_profile_validator', 'career')
   ON CONFLICT (context_name) DO UPDATE SET validate_fn = EXCLUDED.validate_fn, package = EXCLUDED.package;
 
-  -- '__test_profile__' = household/owner_only; '__test_noscope__' bekommt BEWUSST KEINE Scope-Zeile (nur einen
+  -- '__test_profile__' = household/owner_only; '__test_noscope__' bekommt bewusst keine Scope-Zeile (nur einen
   -- Validator) -> Test 8 prueft den defensiven missing-scope->household/owner_only-Backstop.
   INSERT INTO core.context_scopes (context_name, scope, write_permission, package)
   VALUES ('__test_profile__', 'household', 'owner_only', 'career')
@@ -56,7 +55,7 @@ BEGIN
   ON CONFLICT (name) DO UPDATE SET metadata = EXCLUDED.metadata;
   RAISE NOTICE 'PASS fixtures [stub validator + registry rows + active package + family]';
 
-  -- ---------- TEST 1 (E4): household-Kontext OHNE Zeile -> {ok:false}, KEIN Insert ----------
+  -- ---------- TEST 1: household-Kontext ohne Zeile -> {ok:false}, kein Insert ----------
   SELECT agent.fn_set_context_facts(jsonb_build_object(
     'context_name','__test_profile__','chat_id','111',
     'facts', jsonb_build_object('current_title','Senior Developer','industry','tech')
@@ -69,7 +68,7 @@ BEGIN
   END IF;
   RAISE NOTICE 'PASS [1] household-Kontext ohne Skelett -> ok:false, kein Insert';
 
-  -- Installer-Skelett (Muster _seed_context_skeletons): agent_name ist paket-deklariert und MUSS den Write ueberleben.
+  -- Installer-Skelett (Muster _seed_context_skeletons): agent_name ist paket-deklariert und muss den Write ueberleben.
   INSERT INTO agent.core_contexts (name, description, agent_name, load_strategy, content, managed_by, package, metadata)
   VALUES ('__test_profile__', 'skeleton', 'finance_advisor', 'lazy', '(leer)', 'agent', 'career',
           jsonb_build_object('facts', '{}'::jsonb));
@@ -106,7 +105,7 @@ BEGIN
   END IF;
   RAISE NOTICE 'PASS [2] Top-Level-Key-Merge [current_title bleibt + experience_years dazu]';
 
-  -- ---------- TEST 2b (E2): Top-Level-null loescht genau diesen Key ----------
+  -- ---------- TEST 2b: Top-Level-null loescht genau diesen Key ----------
   SELECT agent.fn_set_context_facts(jsonb_build_object(
     'context_name','__test_profile__',
     'facts', jsonb_build_object('industry', NULL)
@@ -205,7 +204,7 @@ BEGIN
   END IF;
   RAISE NOTICE 'PASS [8] missing-scope-Backstop [Member 222 -> owner_only; Owner 111 schreibt]';
 
-  -- ---------- TEST 10 (E5): Paket inaktiv -> {ok:false} (household-Zweig) ----------
+  -- ---------- TEST 10: Paket inaktiv -> {ok:false} (household-Zweig) ----------
   UPDATE core.package_registry SET status = 'inactive' WHERE package = 'career';
   SELECT agent.fn_set_context_facts(jsonb_build_object(
     'context_name','__test_profile__','chat_id','111',
@@ -218,7 +217,7 @@ BEGIN
   END IF;
   RAISE NOTICE 'PASS [10] Paket inaktiv -> household-Write abgelehnt';
 
-  -- ---------- TEST 11 (E3): reservierte Keys / _meta -> {ok:false} ----------
+  -- ---------- TEST 11: reservierte Keys / _meta -> {ok:false} ----------
   SELECT agent.fn_set_context_facts(jsonb_build_object('context_name','family',
     'facts', jsonb_build_object('persons', NULL))) INTO v_result;
   IF (v_result->>'ok')::boolean IS DISTINCT FROM false THEN
@@ -258,7 +257,7 @@ BEGIN
   END IF;
   RAISE NOTICE 'PASS [11] E3 [persons/household/person_id null, _meta, Typ-Guards, leerer Write -> ok:false]';
 
-  -- ---------- TEST 12 (E6): family = hart owner_only, unabhaengig von einer Registry-Zeile ----------
+  -- ---------- TEST 12: family = hart owner_only, unabhaengig von einer Registry-Zeile ----------
   -- Selbst eine (lint-verbotene) adults_only-Scope-Zeile fuer family darf den Owner-Riegel nicht lockern.
   INSERT INTO core.context_scopes (context_name, scope, write_permission, package)
   VALUES ('family', 'household', 'adults_only', 'core')
@@ -285,7 +284,7 @@ BEGIN
      OR NOT (v_result->'updated_persons' @> '["lena","tom"]'::jsonb) THEN
     RAISE EXCEPTION 'FAIL [13] persons merge/append: erwartet ok, persons_count=3, updated_persons lena+tom, got %', v_result;
   END IF;
-  -- language_missing = NUR die in diesem Write neu angehaengten Personen ohne Sprache (tom), nicht lena (Merge)
+  -- language_missing = nur die in diesem Write neu angehaengten Personen ohne Sprache (tom), nicht lena (Merge)
   IF v_result->'language_missing' IS DISTINCT FROM '["tom"]'::jsonb THEN
     RAISE EXCEPTION 'FAIL [13] language_missing: erwartet ["tom"], got %', v_result->'language_missing';
   END IF;
@@ -295,7 +294,7 @@ BEGIN
      OR (v_meta->'facts'->'persons'->1->>'as_of')::date IS DISTINCT FROM CURRENT_DATE THEN
     RAISE EXCEPTION 'FAIL [13] persons merge: Key-Merge/as_of falsch, got %', v_meta->'facts'->'persons'->1;
   END IF;
-  -- null in einer Person loescht nur diesen Key; as_of:null wird NACH der Loeschung frisch gestempelt
+  -- null in einer Person loescht nur diesen Key; as_of:null wird nach der Loeschung frisch gestempelt
   SELECT agent.fn_set_context_facts(jsonb_build_object('context_name','family',
     'facts', jsonb_build_object('persons', jsonb_build_array(
       jsonb_build_object('person_id','lena','language', NULL, 'as_of', NULL))))) INTO v_result;
@@ -354,7 +353,7 @@ BEGIN
   END IF;
   RAISE NOTICE 'PASS [13e] Prosa-Replace erhaelt den Gelernt-Block, verwirft einen mitgeschickten';
 
-  -- ---------- TEST 14 (E7): fester Binding-scope ----------
+  -- ---------- TEST 14: fester Binding-scope ----------
   SELECT agent.fn_set_context_facts(jsonb_build_object('context_name','family','scope','per_user',
     'facts', jsonb_build_object('household', jsonb_build_object('care_flag', false)))) INTO v_result;
   IF (v_result->>'ok')::boolean IS DISTINCT FROM false THEN
@@ -363,7 +362,7 @@ BEGIN
   RAISE NOTICE 'PASS [14] fester Binding-scope [Mismatch -> ok:false]';
 END $$;
 
--- ---------- TEST 9 (P0b PER-USER): own_user_only Suffix-Speicher + fail-closed + neue Gates ----------
+-- ---------- TEST 9 (per_user): own_user_only Suffix-Speicher + fail-closed + neue Gates ----------
 DO $$
 DECLARE
   v_result JSONB;
@@ -375,7 +374,7 @@ BEGIN
   VALUES ('test_peruser_ctx', 'per_user', 'own_user_only', 'career')
   ON CONFLICT (context_name) DO UPDATE SET scope='per_user', write_permission='own_user_only';
 
-  -- Owner(111) schreibt -> suffigierte Zeile 'test_peruser_ctx__erika' (INSERT-on-first-write), KEINE Basis-Zeile
+  -- Owner(111) schreibt -> suffigierte Zeile 'test_peruser_ctx__erika' (INSERT-on-first-write), keine Basis-Zeile
   SELECT agent.fn_set_context_facts(jsonb_build_object(
     'context_name','test_peruser_ctx','chat_id','111','scope','per_user',
     'facts', jsonb_build_object('current_title','Erika Dev'))) INTO v_result;
@@ -413,7 +412,7 @@ BEGIN
   END IF;
   RAISE NOTICE 'PASS [9c] per_user fail-closed [numerisch-nicht-in-family -> ok:false, KEINE Basis-Zeile]';
 
-  -- E8: per_user-Kontexte tragen KEIN persons (Haushalts-Form)
+  -- per_user-Kontexte tragen kein persons (Haushalts-Form)
   SELECT agent.fn_set_context_facts(jsonb_build_object(
     'context_name','test_peruser_ctx','chat_id','111',
     'facts', jsonb_build_object('persons', jsonb_build_array(jsonb_build_object('person_id','erika'))))) INTO v_result;
@@ -422,7 +421,7 @@ BEGIN
   END IF;
   RAISE NOTICE 'PASS [9d] per_user-Kontext lehnt persons ab';
 
-  -- E7: household-Bindung (Guide) darf keinen per_user-Kontext schreiben
+  -- household-Bindung (Guide) darf keinen per_user-Kontext schreiben
   SELECT agent.fn_set_context_facts(jsonb_build_object(
     'context_name','test_peruser_ctx','chat_id','111','scope','household',
     'facts', jsonb_build_object('current_title','Via Guide'))) INTO v_result;
@@ -433,7 +432,7 @@ BEGIN
   END IF;
   RAISE NOTICE 'PASS [9e] household-Bindung kann keinen per_user-Kontext schreiben';
 
-  -- E5: Paket inaktiv -> auch per_user abgelehnt
+  -- Paket inaktiv -> auch per_user abgelehnt
   UPDATE core.package_registry SET status = 'inactive' WHERE package = 'career';
   SELECT agent.fn_set_context_facts(jsonb_build_object(
     'context_name','test_peruser_ctx','chat_id','111',
@@ -448,7 +447,7 @@ END $$;
 -- ---------- TEST 16 (Mitglieder-Selbstpflege): Suffix-Trick + Plan-Kontexte gesperrt ----------
 -- Vorbedingung fuer die Stufe self (agent.tool_set_own_context_facts): ein Mitglied darf ueber den per_user-Weg
 -- (a) keinen fremden Personen-Kontext per Suffix-Namen adressieren und (b) kein Plan-Dokument (core.advisors.
--- plan_context) direkt schreiben — Plaene laufen nur ueber fn_advisor_publish_plan (owner_only). Gilt fuer ALLE.
+-- plan_context) direkt schreiben — Plaene laufen nur ueber fn_advisor_publish_plan (owner_only). Gilt fuer alle.
 DO $$
 DECLARE
   v_result JSONB;
@@ -464,7 +463,7 @@ BEGIN
   END IF;
   RAISE NOTICE 'PASS [16a] Suffix-Name eines fremden Kontexts -> abgelehnt';
 
-  -- (b) Plan-Kontext (per_user, own_user_only, als plan_context registriert) -> fuer Mitglied UND Owner abgelehnt
+  -- (b) Plan-Kontext (per_user, own_user_only, als plan_context registriert) -> fuer Mitglied und Owner abgelehnt
   INSERT INTO core.context_validators (context_name, validate_fn, package)
   VALUES ('test_plan_ctx', 'agent.fn_test_profile_validator', 'career')
   ON CONFLICT (context_name) DO UPDATE SET validate_fn = EXCLUDED.validate_fn;
@@ -500,7 +499,7 @@ BEGIN
   RAISE NOTICE 'PASS [16c] family ueber per_user-Weg durch Mitglied -> owner_only';
 END $$;
 
--- ---------- TEST 17 (WP3 Chat-Pfad): Slug + as_of vergibt die fn, relative Daten rechnet die DB ----------
+-- ---------- TEST 17 (Chat-Pfad): Slug + as_of vergibt die fn, relative Daten rechnet die DB ----------
 -- family traegt hier erika (Owner 111), lena (222), tom (Kind, aus TEST 13).
 DO $$
 DECLARE
@@ -508,7 +507,7 @@ DECLARE
   v_meta   JSONB;
   v_n      INT;
 BEGIN
-  -- (a) neue Person OHNE person_id -> Slug von der fn (Umlaut transliteriert)
+  -- (a) neue Person ohne person_id -> Slug von der fn (Umlaut transliteriert)
   SELECT agent.fn_set_context_facts(jsonb_build_object('context_name','family','chat_id','111',
     'facts', jsonb_build_object('persons', jsonb_build_array(jsonb_build_object(
       'first_name','Jörn','last_name','Mustermann','birth_date','2023-01-02','role','child'))))) INTO v_result;
@@ -580,7 +579,7 @@ BEGIN
   RAISE NOTICE 'PASS [17] Chat-Pfad [Slug von der fn, Merge per Name, anderes Geburtsdatum/mehrdeutig/unbekannt/unvollstaendig abgelehnt, as_of-Stempel, relative Daten]';
 END $$;
 
--- ---------- TEST 15 (E1): die abgeloesten fns existieren nicht mehr ----------
+-- ---------- TEST 15: die entfernten fns existieren nicht mehr ----------
 DO $$
 BEGIN
   IF to_regprocedure('agent.fn_set_household_facts(jsonb)') IS NOT NULL

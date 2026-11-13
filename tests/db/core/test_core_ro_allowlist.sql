@@ -1,5 +1,5 @@
 -- tests/db/core/test_core_ro_allowlist.sql
--- Owner-Entscheid 2026-11-07 "Nur Freigegebenes lesen": core_ro (Frei-SQL von Guide/Monitor, Monitor-Specs ueber
+-- Nur Freigegebenes lesen: core_ro (Frei-SQL von Guide/Monitor, Monitor-Specs ueber
 -- core_ro_eval) liest in agent/core genau die Erlaubnisliste aus util_create_core_ro.sql. Die Soll-Liste steht hier
 -- bewusst ein zweites Mal: wer die Liste erweitert, muss den Test mitziehen (Gegenprobe). Eine neue, nicht eingeordnete
 -- Tabelle oder View in agent/core macht den Test rot, sobald ein Grant sie fuer core_ro lesbar macht; ebenso ein

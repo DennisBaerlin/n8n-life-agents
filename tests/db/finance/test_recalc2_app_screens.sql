@@ -1,6 +1,6 @@
 -- tests/db/finance/test_recalc2_app_screens.sql
--- Zweitrechnung Runde 2, Mini-App: die Zahlen der Bildschirme nur LESEND aufgerufen und gegen von Hand summierte
--- Einzelwerte geprueft (keine Mini-App-Datei geaendert). Werte erfunden.
+-- Zweitrechnung Mini-App: die Zahlen der Bildschirme nur lesend aufgerufen und gegen von Hand summierte
+-- Einzelwerte geprueft. Werte erfunden.
 -- Regel des Bildschirms "Vermoegen" (fn-Kopf): Besitz = alle nicht-negativen Anlagearten, Schulden = Kredite,
 --   Netto (Hero) = Besitz - Schulden; "Schnell verfuegbar" = Konten + P2P + Depot, "Langfristig gebunden" = Festgeld +
 --   Immobilie + Vorsorge; Anteil je Anlageart = Wert / Besitz x 100, eine Nachkommastelle; die Teile ergeben die Zeile.

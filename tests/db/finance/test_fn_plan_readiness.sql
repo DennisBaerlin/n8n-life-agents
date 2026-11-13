@@ -1,5 +1,5 @@
 -- tests/db/finance/test_fn_plan_readiness.sql
--- Daten-Reife des Finanzplans (Onboarding-Plan-Schritt, 2026-10-28): finance.fn_plan_readiness(domain, person_id)
+-- Daten-Reife des Finanzplans (Onboarding-Plan-Schritt): finance.fn_plan_readiness(domain, person_id)
 -- meldet, ob die harten Mindestdaten fuer einen sinnvollen Plan erfasst sind — ein aktives Geld-Konto, eine laufende
 -- Einnahme und eine laufende Ausgabe (Klassen aus finance.recurring_cashflow_classified) — und sonst je fehlendem Punkt
 -- den Onboarding-Abschnitt, in dem er erfasst wird. Versicherungen/Rente/Depots/Ziele sind bewusst keine Pflicht.

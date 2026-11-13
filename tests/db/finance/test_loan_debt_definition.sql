@@ -1,9 +1,9 @@
 -- tests/db/finance/test_loan_debt_definition.sql
--- Audit Paket 2, Punkte 10 + 11.
---   10: EINE Schulden-Definition (finance.fn_loan_is_outstanding: Kredit active ODER paused). Ein pausierter Kredit
---       zaehlte im Vermoegen (networth, Kreditkonto-Saldo), fehlte aber in loan_summary (-> Advisor debt_total) und in
+-- Schulden-Definition (10) und Fremdwaehrungs-Luecke (11).
+--   10: eine Schulden-Definition (finance.fn_loan_is_outstanding: Kredit active oder paused). Ein pausierter Kredit
+--       zaehlt gleich in networth (Kreditkonto-Saldo), loan_summary (-> Advisor debt_total) und
 --       real_estate_overview.net_equity. Beispiel: Kredit A aktiv 100.000, Kredit B pausiert 50.000 auf derselben
---       Immobilie (Wert 400.000) -> total_debt -150.000, net_equity 250.000 (vorher -100.000 / 300.000).
+--       Immobilie (Wert 400.000) -> total_debt -150.000, net_equity 250.000.
 --   11: fehlender Wechselkurs = Luecke als Flag (has_fx_gap), nicht still als 0 aus der Summe.
 BEGIN;
 

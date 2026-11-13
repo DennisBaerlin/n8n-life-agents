@@ -32,7 +32,7 @@ BEGIN
     RAISE EXCEPTION 'FAIL [3 count aktualisiert]'; END IF;
   RAISE NOTICE 'PASS [3] idempotenter Tages-Upsert (ON CONFLICT UPDATE)';
 
-  -- ---------- TEST 4: nicht-ganzzahliger count -> still NULL, kein RAISE (EARS-7) ----------
+  -- ---------- TEST 4: nicht-ganzzahliger count -> still NULL, kein RAISE ----------
   v_res := career.fn_upsert_market_signals(jsonb_build_object(
     'signals', jsonb_build_array(jsonb_build_object('kind','postings','primary','Data Scientist','secondary','Berlin','postings_count','n/a'))));
   IF (v_res->>'ok')::boolean IS DISTINCT FROM true THEN RAISE EXCEPTION 'FAIL [4 ok trotz junk]: %', v_res; END IF;

@@ -1,11 +1,11 @@
 -- tests/db/finance/test_balance_trigger_lock.sql
--- Audit Paket 2, Punkt 12: Saldo-Trigger update_finance_balance — Race Cron || Chat.
---   Vorher summierte der Trigger VOR dem Konflikt-Lock (INSERT ... ON CONFLICT DO UPDATE): zwei parallele Buchungen
---   auf dasselbe Konto lasen je einen Snapshot ohne die andere -> der zweite Upsert ueberschrieb den Saldo mit einer
---   Summe ohne die erste Buchung (Lost Update). Jetzt: Saldo-Zeile zuerst sperren (FOR UPDATE), DANN summieren —
---   in READ COMMITTED nimmt die folgende Anweisung einen neuen Snapshot und sieht die committete Parallel-Buchung.
---   TESTGRENZE: das Framework hat keine zweite Verbindung (kein dblink; jede Datei endet mit ROLLBACK) -> die Race
---   selbst ist hier nicht nachstellbar. Deshalb (a) struktureller Test: in BEIDEN Zweigen steht die Sperre vor der
+-- Saldo-Trigger update_finance_balance, Race Cron || Chat: Die Saldo-Zeile wird zuerst gesperrt (FOR UPDATE), dann
+--   summiert. Summierte der Trigger vor dem Konflikt-Lock (INSERT ... ON CONFLICT DO UPDATE), laesen zwei parallele
+--   Buchungen auf dasselbe Konto je einen Snapshot ohne die andere und der zweite Upsert ueberschriebe den Saldo
+--   (Lost Update). In READ COMMITTED nimmt die folgende Anweisung einen neuen Snapshot und sieht die committete
+--   Parallel-Buchung.
+--   Testgrenze: das Framework hat keine zweite Verbindung (kein dblink; jede Datei endet mit ROLLBACK) -> die Race
+--   selbst ist hier nicht nachstellbar. Deshalb (a) struktureller Test: in beiden Zweigen steht die Sperre vor der
 --   Summe, (b) funktionaler Test: der Saldo stimmt nach INSERT / UPDATE (Kontowechsel) / DELETE.
 BEGIN;
 

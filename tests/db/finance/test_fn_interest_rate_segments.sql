@@ -1,5 +1,5 @@
 -- tests/db/finance/test_fn_interest_rate_segments.sql
--- WS-Z3: der Satz-Segmenter zerschneidet [period_start, period_end) an jedem valid_from STRIKT innerhalb und
+-- Der Satz-Segmenter zerschneidet [period_start, period_end) an jedem valid_from strikt innerhalb und
 -- ordnet je Segment den deckenden Satz/Konvention per Containment-Join zu (valid_from inklusiv, half-open '[)').
 BEGIN;
 
@@ -32,7 +32,7 @@ BEGIN
   RAISE NOTICE 'PASS [Single-Segment: voller Satz 6%% 30E/360]';
 
   -- ===== Zwei Segmente: Schnitt am inneren valid_from 2026-01-15; Satz/Konvention je Segment =====
-  -- [2026-01-01,2026-02-01): Boundary {01-01, 01-15, 02-01} (02-10 liegt NICHT < 02-01 -> ignoriert).
+  -- [2026-01-01,2026-02-01): Boundary {01-01, 01-15, 02-01} (02-10 liegt nicht < 02-01 -> ignoriert).
   SELECT count(*) INTO v_cnt FROM finance.fn_interest_rate_segments(v_acct, '2026-01-01', '2026-02-01');
   IF v_cnt <> 2 THEN RAISE EXCEPTION 'FAIL [two seg count]: erwartet 2, got %', v_cnt; END IF;
   -- Seg 1: [2026-01-01, 2026-01-15), 4%, 30E/360 (Satz deckt seg_start 2026-01-01)
@@ -49,7 +49,7 @@ BEGIN
   IF v_days <> (DATE '2026-02-01' - DATE '2026-01-01') THEN RAISE EXCEPTION 'FAIL [coverage]: Segment-Tage % <> Spanne %', v_days, (DATE '2026-02-01' - DATE '2026-01-01'); END IF;
   RAISE NOTICE 'PASS [Deckung: Segment-Tage = Perioden-Spanne (lueckenlos)]';
 
-  -- ===== period_start == valid_from: kein Extra-Boundary (nicht STRIKT innerhalb), aber gedeckt =====
+  -- ===== period_start == valid_from: kein Extra-Boundary (nicht strikt innerhalb), aber gedeckt =====
   SELECT count(*) INTO v_cnt FROM finance.fn_interest_rate_segments(v_acct, '2026-01-15', '2026-02-01');
   IF v_cnt <> 1 THEN RAISE EXCEPTION 'FAIL [pstart==valid_from]: erwartet 1 Segment, got %', v_cnt; END IF;
   SELECT annual_rate INTO v_rate FROM finance.fn_interest_rate_segments(v_acct, '2026-01-15', '2026-02-01');

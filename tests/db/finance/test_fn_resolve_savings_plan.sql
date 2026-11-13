@@ -37,7 +37,7 @@ BEGIN
     RAISE EXCEPTION 'FAIL resolve_savings_plan [none]: count=% id=%', v_count, v_id; END IF;
   RAISE NOTICE 'PASS resolve_savings_plan [none]';
 
-  -- TEST 3 (Vertragsaenderung DB-ist-das-Gesetz S3): erst exakt, sonst ohne Gross-/Kleinschreibung; KEIN Pattern mehr
+  -- TEST 3: erst exakt, sonst ohne Gross-/Kleinschreibung; kein Pattern
   -- (ILIKE machte '_'/'%' im Namen zu Platzhaltern). Namen sind unique lower(name) -> ci-Treffer ist eindeutig.
   SELECT id, hit_count INTO v_id, v_count FROM finance.fn_resolve_savings_plan(' __TEST_RSP_ONE__ ');
   IF v_count IS DISTINCT FROM 1 OR v_id IS DISTINCT FROM v_id1 THEN

@@ -1,6 +1,7 @@
 -- tests/db/finance/test_cashflow_regular_payments.sql
--- Befund 2026-11-02: regelmaessige Zahlungen zaehlten in der Monatsrechnung erst ab ihrem ersten Termin; der Berater
--- meldete Erfasstes als „nicht erfasst“. Invariante: die Rechnung zeigt, was REGULAER laeuft, je Kette hoechstens einmal.
+-- Eine regelmaessige Zahlung zaehlt in der Monatsrechnung schon vor ihrem ersten Termin, wenn ihr Glied heute gilt
+-- oder im Zyklus startet (siehe zaehlt/geplant), sonst meldete der Berater
+-- Erfasstes als „nicht erfasst“. Invariante: die Rechnung zeigt, was regulaer laeuft, je Kette hoechstens einmal.
 --   zaehlt   = heute gueltiges Glied, sonst das naechste aktive, wenn es innerhalb von fn_recurring_starts_within_cycle startet
 --   geplant  = startet spaeter: zaehlt nicht, steht in finance.upcoming_recurring_payments (counted_in_cashflow = false)
 --   Stichtag = finance.active_recurring_payments bleibt unveraendert „laeuft heute“

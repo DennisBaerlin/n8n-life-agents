@@ -1,5 +1,5 @@
 -- tests/db/finance/test_fn_import_pension_statement.sql
--- Renteninformation-Import (Plan 2026-10-26, Werte erfunden): neue Rohwert-Felder (Entgeltpunkte, Szenarien 1 %/2 %,
+-- Renteninformation-Import (Werte erfunden): neue Rohwert-Felder (Entgeltpunkte, Szenarien 1 %/2 %,
 -- Regelaltersrenten-Beginn) laufen Stage -> Validate -> Bundle durch; ein Selbstbezug ("ich") im Personenfeld wird
 -- beim Staging zum vollen Namen der Person, die gerade chattet; hat diese Person schon eine aktive gesetzliche
 -- Rente, entfaellt die neue Renten-Zeile und die Renteninformation haengt sich an die vorhandene.
@@ -81,7 +81,7 @@ BEGIN
   IF (v->>'invalid')::int <> 1 THEN RAISE EXCEPTION 'FAIL import_pension [ich ohne chat_id]: %', v; END IF;
   RAISE NOTICE 'PASS import_pension [ich ohne chat_id -> Zeilenfehler]';
 
-  -- TEST 5 (Review 2026-10-26): Rente frueher OHNE Person erfasst (Haushalt), der Bescheid nennt die Person ->
+  -- TEST 5: Rente frueher ohne Person erfasst (Haushalt), der Bescheid nennt die Person ->
   --         haengt sich an die Haushalts-Rente, keine zweite gesetzliche Rente
   INSERT INTO finance.pension (name, pension_type) VALUES ('Gesetzliche Rente', 'statutory');
   v := finance.fn_import_stage(jsonb_build_object('source','vision','chat_id','7700001','rows', jsonb_build_array(

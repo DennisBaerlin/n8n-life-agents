@@ -3,7 +3,7 @@
 --   * owner: Sprache des Owners, t = Gate-Chrome-Keys + alle Keys des strukturierten Summary
 --     (title, note, lines[].label, Enum-Keys <enum>.<wert> lower/normalisiert)
 --   * member: nur fuer eine numerische chat_id, die zu einem Nicht-Owner aufloest (Sprache + Name)
---   * liefert NIE eine chat_id (Texte entscheiden nie ueber Empfaenger)
+--   * liefert nie eine chat_id (Texte entscheiden nie ueber Empfaenger)
 --   * kaputtes/String-Summary wirft nicht (Chrome-Keys bleiben, Summary-Keys entfallen)
 --   * languages = Code -> Eigenname (fuer kind=language)
 BEGIN;
@@ -48,7 +48,7 @@ BEGIN
   IF r->'owner'->'t'->>'core.hitl.approve' IS DISTINCT FROM 'Bestaetigen-DE'
      OR r->'member'->'t'->>'core.hitl.approve' IS DISTINCT FROM 'Confirm-EN' THEN
     RAISE EXCEPTION 'FAIL hitl_texts [Chrome-Key fehlt: %]', r; END IF;
-  -- eigener Knopf-Text (2026-11-06, New-HitlSummary -ApproveKeyExpr): summary.approve_key kommt ins Buendel
+  -- eigener Knopf-Text (New-HitlSummary -ApproveKeyExpr): summary.approve_key kommt ins Buendel
   INSERT INTO core.ui_texts (key, lang, text, package) VALUES ('core.test_approve', 'de', 'Risiko-DE', 'core')
   ON CONFLICT (key, lang) DO UPDATE SET text = EXCLUDED.text;
   IF core.fn_hitl_texts(jsonb_build_object('summary', s || '{"approve_key":"core.test_approve"}'::jsonb, 'chat_id', '111'))

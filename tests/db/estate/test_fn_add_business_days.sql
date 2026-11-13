@@ -1,5 +1,5 @@
 -- tests/db/estate/test_fn_add_business_days.sql
--- WS-3 Fristen-Engine: § 28 PStG-Werktage (Sa/So/Feiertage zaehlen nicht). Self-contained.
+-- Fristen-Engine: § 28 PStG-Werktage (Sa/So/Feiertage zaehlen nicht). Self-contained.
 BEGIN;
 
 DO $$

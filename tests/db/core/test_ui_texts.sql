@@ -63,7 +63,7 @@ BEGIN
   t := core.fn_ui_text('core.test_greet', NULL, '{"name":"X"}');
   IF t IS DISTINCT FROM 'Hello X' THEN
     RAISE EXCEPTION 'FAIL ui_texts [lang NULL faellt nicht auf en: %]', t; END IF;
-  -- ein Wert, der selbst wie ein Platzhalter aussieht, wird NICHT erneut ersetzt (ein Durchlauf, wie der JS-Renderer)
+  -- ein Wert, der selbst wie ein Platzhalter aussieht, wird nicht erneut ersetzt (ein Durchlauf, wie der JS-Renderer)
   INSERT INTO core.ui_texts (key, lang, text, package) VALUES ('core.test_two', 'de', '{name}={language}', 'core');
   t := core.fn_ui_text('core.test_two', 'de', '{"name":"{language}","language":"한국어"}');
   IF t IS DISTINCT FROM '{language}=한국어' THEN

@@ -1,6 +1,6 @@
 ﻿#Requires -Version 5.1
-# bot_profile_photo_test.ps1 — DETERMINISTISCHER, GRATIS Test des Bot-Profilbilds beim Installieren und Aktualisieren.
-# Kopiert provisioning/ DIESES Checkouts + den Mock (tests/mock_telegram/) in den Container und faehrt dort
+# bot_profile_photo_test.ps1 — deterministischer, kostenloser Test des Bot-Profilbilds beim Installieren und Aktualisieren.
+# Kopiert provisioning/ dieses Checkouts + den Mock (tests/mock_telegram/) in den Container und faehrt dort
 # tests/mock_telegram/profile_photo_cases.sh gegen den echten Lib-Code (bootstrap_owner.sh _ensure_bot_profile_photo):
 #   - ein vorhandenes Bild bleibt, eine unklare Antwort aendert nichts, ein Fehler ist nur eine Warnung;
 #   - ohne Bild genau ein gueltiger Upload (static, attach://, JPEG), einmal je Bot; ein selbst geloeschtes Bild bleibt weg;
@@ -8,7 +8,7 @@
 #   - das committete Bild (JPEG, 640 x 640) und, im Substrat, die mitgelieferte Datei im installierten Baum.
 # Faehrt zusaetzlich tests/mock_telegram/bot_username_cases.sh (_sync_bot_username, Bot-Name aus getMe) und
 # app_intro_cases.sh (_app_intro_announce, einmalige Ankuendigung der Uebersicht).
-# Belegt NICHT das Verhalten des echten Telegram (Bot API: setMyProfilePhoto, getUserProfilePhotos mit eigener Kennung).
+# Belegt nicht das Verhalten des echten Telegram (Bot API: setMyProfilePhoto, getUserProfilePhotos mit eigener Kennung).
 # Dazu prueft es, dass das Test-Substrat den Schritt abschaltet: es installiert mit einem echten Test-Bot-Schluessel.
 # Braucht kein n8n, kein Netz und keine enable_mock_*: nur einen laufenden Container mit bash, curl, jq und node.
 # Usage:  .\scripts\dev\bot_profile_photo_test.ps1 [-Container <name>] [-Port 8082] [-Verbose]   (ohne -Container: das Substrat)
@@ -43,7 +43,7 @@ if ($bootstrap -notmatch "envLines\.Add\('BOT_PROFILE_PHOTO=0'\)") {
     Write-Host "    [FAIL] bootstrap_test_n8n.ps1 setzt BOT_PROFILE_PHOTO=0 nicht" -ForegroundColor Red
 }
 
-# Frischer Stand im Container: alten Test-Baum leeren (docker cp MERGT sonst), dann provisioning/ + Mock kopieren.
+# Frischer Stand im Container: alten Test-Baum leeren (docker cp mergt sonst), dann provisioning/ + Mock kopieren.
 $root = '/opt/bot_profile_photo_test'
 $r = Invoke-Native docker @('exec', $Container, 'sh', '-c', "rm -rf $root && mkdir -p $root")
 if ($r.Code -ne 0) { throw "Test-Verzeichnis im Container nicht anlegbar: $($r.Output -join ' | ')" }

@@ -1,5 +1,5 @@
 -- tests/db/finance/test_fn_recurring_effective.sql
--- finance.fn_recurring_effective(rp, on) — massgebliches Glied einer Raten-Kette: heute gueltig; sonst das NAECHSTE
+-- finance.fn_recurring_effective(rp, on) — massgebliches Glied einer Raten-Kette: heute gueltig; sonst das naechste
 -- startende Glied (auch bei einer Luecke zwischen zwei Gliedern), nicht der Kopf; beendete Kette -> Kopf.
 BEGIN;
 DO $$

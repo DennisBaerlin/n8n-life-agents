@@ -75,7 +75,7 @@ BEGIN
   r := core.fn_dispatch_callback('{"data":"plan:career","chat_id":"222","chat_type":"private"}');
   IF r ? 'route' OR r->>'toast' IS DISTINCT FROM 'EN:core.toast.plan_owner_only' THEN RAISE EXCEPTION 'FAIL [7 Dispatcher Mitglied]: %', r; END IF;
 
-  -- ---------- 8) Verben (Plan teilen, 2026-10-28): share / explain / wish ----------
+  -- ---------- 8) Verben (Plan teilen): share / explain / wish ----------
   UPDATE finance.recurring_payments SET status = 'active' WHERE name IN ('__t_plancb_gehalt', '__t_plancb_miete');
   DELETE FROM agent.advisor_plans WHERE domain IN ('finance', 'career');
   -- ohne aktiven Plan: explain/wish/share -> 'nicht aktuell'

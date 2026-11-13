@@ -1,11 +1,11 @@
 -- tests/db/finance/test_fn_import_bundle.sql
--- Testet den atomaren Commit der Bulk-Import-Pipeline (Phase 2):
+-- Testet den atomaren Commit der Bulk-Import-Pipeline:
 --   * Happy path: ein Batch (Konten inkl. Eroeffnungssaldo + Depot + Bestands-Buy + Dauerauftrag
---     + Versicherung + Immobilie + Vorsorge + Sparziel) -> ALLE Entitaeten in einem Rutsch,
+--     + Versicherung + Immobilie + Vorsorge + Sparziel) -> alle Entitaeten in einem Rutsch,
 --     In-Batch-Referenzen aufgeloest, Trigger-Post-State korrekt.
---   * Atomaritaet: EIN fauler Row (nach Validate manipuliert = TOCTOU-Simulation) ->
---     {ok:false, errors[]} als DATEN (kein RAISE nach aussen -> kein Owner-Alert),
---     NICHTS committed, Staging bleibt intakt (Re-Approval = 1 Button).
+--   * Atomaritaet: ein fauler Row (nach Validate manipuliert = TOCTOU-Simulation) ->
+--     {ok:false, errors[]} als Daten (kein RAISE nach aussen -> kein Owner-Alert),
+--     nichts committed, Staging bleibt intakt (Re-Approval = 1 Button).
 --   * Guards: invalid/staged Rows -> {ok:false}; unbekannter Batch -> {ok:false};
 --     Doppel-Commit -> {ok:false}.
 BEGIN;
@@ -29,11 +29,11 @@ BEGIN
                                  'role','owner','birth_date','1980-01-01','as_of','2026-10-21'),
               jsonb_build_object('person_id','__imp_kid','first_name','Impi','last_name','Testfrau',
                                  'role','child','birth_date','2015-01-01','as_of','2026-10-21')))))
-  ON CONFLICT (name) DO UPDATE   -- Personen ANHAENGEN (Bestands-Fixture-Personen bleiben projiziert)
+  ON CONFLICT (name) DO UPDATE   -- Personen anhaengen (Bestands-Fixture-Personen bleiben projiziert)
     SET metadata = jsonb_set(agent.core_contexts.metadata, '{facts,persons}',
           COALESCE(agent.core_contexts.metadata->'facts'->'persons', '[]'::jsonb) || (EXCLUDED.metadata->'facts'->'persons'));
 
-  -- Audit Paket 3: Sparziel braucht ein Sparkonto -> ein BESTEHENDES Tagesgeld als reserve_account
+  -- Sparziel braucht ein Sparkonto -> ein bestehendes Tagesgeld als reserve_account
   -- (Name ausserhalb des '__test_imp %'-Musters, damit die Konten-Zaehlung unten unveraendert bleibt).
   INSERT INTO finance.accounts (name, account_type, currency, status) VALUES ('__imp_pot__','cash','EUR','active');
 
@@ -97,7 +97,7 @@ BEGIN
   END IF;
 
   -- Post-State: Giro = genannter Saldo 2500 — die importierte Depot-Position ist eine Bestandsuebernahme
-  -- (Gegenbuchung), kein Geldabfluss (frueher still 2500 - 1000 = 1500, Audit-Fund 2026-10-21).
+  -- (Gegenbuchung), kein Geldabfluss (nicht 2500 - 1000 = 1500).
   SELECT b.balance INTO v_bal
   FROM finance.account_balances b JOIN finance.accounts a ON a.id = b.account_id
   WHERE a.name = '__test_imp Giro';
@@ -130,7 +130,7 @@ BEGIN
   END IF;
   RAISE NOTICE 'PASS fn_import_bundle [Saldo 2500 + Gegenbuchung, Personen je Typ, Versicherungs-Rate abgeleitet, Stichtag]';
 
-  -- Review A3: Eroeffnungsbuchung ist category='other' (NICHT 'reconciliation'), und
+  -- Eroeffnungsbuchung ist category='other' (nicht 'reconciliation'), und
   -- last_reconciled_* bleibt unberuehrt (kein verfaelschter erster Reconcile-Reminder).
   IF NOT EXISTS (
     SELECT 1 FROM finance.transactions t JOIN finance.accounts a ON a.id = t.account_id
@@ -183,7 +183,7 @@ BEGIN
   END IF;
   RAISE NOTICE 'PASS fn_import_bundle [Doppel-Commit -> ok:false]';
 
-  -- ---------- TEST 3: Atomaritaet — 1 fauler Row rollt ALLES zurueck, {ok:false} als Daten ----------
+  -- ---------- TEST 3: Atomaritaet — 1 fauler Row rollt alles zurueck, {ok:false} als Daten ----------
   SELECT finance.fn_import_stage(jsonb_build_object(
     'rows', jsonb_build_array(
       jsonb_build_object('entity_type','account','name','__test_imp Tagesgeld','account_type','cash',
@@ -208,7 +208,7 @@ BEGIN
   IF v_result->'errors'->0->>'row_no' IS NULL THEN
     RAISE EXCEPTION 'FAIL fn_import_bundle [atomicity]: errors[] ohne row_no, got %', v_result;
   END IF;
-  -- NICHTS wurde committed: Konto existiert nicht, Staging-Rows unveraendert (kein committed)
+  -- nichts wurde committed: Konto existiert nicht, Staging-Rows unveraendert (kein committed)
   IF EXISTS (SELECT 1 FROM finance.accounts WHERE name = '__test_imp Tagesgeld') THEN
     RAISE EXCEPTION 'FAIL fn_import_bundle [atomicity]: Konto trotz Fehler angelegt (kein Voll-Rollback)';
   END IF;
@@ -222,7 +222,7 @@ BEGIN
   END IF;
   RAISE NOTICE 'PASS fn_import_bundle [Atomarität: 1 fauler Row -> Voll-Rollback + errors[row_no] + error_summary]';
 
-  -- ---------- TEST 3b: loan-Happy-Path (Reihenfolge-Index 2, vorher ungetestet) ----------
+  -- ---------- TEST 3b: loan-Happy-Path (Reihenfolge-Index 2) ----------
   SELECT finance.fn_import_stage(jsonb_build_object(
     'rows', jsonb_build_array(
       jsonb_build_object('entity_type','account','name','__test_imp Girokredit','account_type','cash',
@@ -245,7 +245,7 @@ BEGIN
   END IF;
   RAISE NOTICE 'PASS fn_import_bundle [loan-Happy-Path: Kredit + debit_account-Referenz aufgelöst]';
 
-  -- ---------- TEST 3b2: laufender Kredit nur mit Restschuld/Zins/Rate (Ursprungswerte optional, Befund 2026-10-24) ----------
+  -- ---------- TEST 3b2: laufender Kredit nur mit Restschuld/Zins/Rate (Ursprungswerte optional) ----------
   SELECT finance.fn_import_stage(jsonb_build_object(
     'rows', jsonb_build_array(
       jsonb_build_object('entity_type','loan','name','__test_imp Laufkredit','current_balance',8000,'interest_rate',2.5,
@@ -254,7 +254,7 @@ BEGIN
       -- frischer Kredit ohne Betrag bleibt ungueltig
       jsonb_build_object('entity_type','loan','name','__test_imp Frisch ohne Betrag','interest_rate',2.5,
                          'debit_account','__test_imp Girokredit','disbursement_date','2026-01-02'),
-      -- frisch OHNE Auszahlungsdatum (WP2): gueltig -- eroeffnet zum Stichtag heute, Datum spaeter nachtragbar
+      -- frisch ohne Auszahlungsdatum: gueltig -- eroeffnet zum Stichtag heute, Datum spaeter nachtragbar
       jsonb_build_object('entity_type','loan','name','__test_imp Frisch gleich','original_amount',9000,'current_balance',9000,
                          'interest_rate',2.5,'debit_account','__test_imp Girokredit'),
       -- Rate unter dem Monatszins (8000 * 2,5 % / 12 = 16,67) -> ungueltig vor der Karte
@@ -380,8 +380,8 @@ BEGIN
 END $$;
 
 -- ============================================================
--- PROBELAUF (Import-Haertung 2026-10-22): dry_run:true laeuft durch denselben Write-Loop und rollt IMMER zurueck.
--- Befund: die Karte sah gut aus, der Fehler kam erst nach dem Bestaetigen (Krypto ohne Bezeichnung).
+-- PROBELAUF: dry_run:true laeuft durch denselben Write-Loop und rollt immer zurueck.
+-- Fehler (z. B. Krypto ohne Bezeichnung) sollen vor dem Bestaetigen der Karte auffallen, nicht danach.
 -- ============================================================
 DO $$
 DECLARE
@@ -389,7 +389,7 @@ DECLARE
   v_batch  UUID;
   v_cnt    INT;
 BEGIN
-  -- [DR1] gueltiger Krypto-Batch (Bestandsuebernahme OHNE Bezeichnung) -> ok:true, dry_run:true, NICHTS geschrieben
+  -- [DR1] gueltiger Krypto-Batch (Bestandsuebernahme ohne Bezeichnung) -> ok:true, dry_run:true, nichts geschrieben
   SELECT finance.fn_import_stage(jsonb_build_object('source', 'chat', 'rows', jsonb_build_array(
     jsonb_build_object('entity_type','account','name','__dr Verrechnung','account_type','cash','opening_balance',0),
     jsonb_build_object('entity_type','account','name','__dr Krypto','account_type','crypto_depot',
@@ -417,7 +417,7 @@ BEGIN
   END IF;
   RAISE NOTICE 'PASS fn_import_bundle [DR1 Probelauf gueltig -> ok, nichts geschrieben, Staging unveraendert]';
 
-  -- [DR2] danach der ECHTE Commit desselben Batches -> ok, 4 committed, Name = Symbol (kein Rest des Probelaufs)
+  -- [DR2] danach der echte Commit desselben Batches -> ok, 4 committed, Name = Symbol (kein Rest des Probelaufs)
   SELECT finance.fn_import_bundle(jsonb_build_object('batch_id', v_batch)) INTO v_result;
   IF (v_result->>'ok')::boolean IS DISTINCT FROM true OR (v_result->>'committed')::int IS DISTINCT FROM 4 THEN
     RAISE EXCEPTION 'FAIL [DR2]: echter Commit nach dem Probelauf muss 4 Zeilen committen, got %', v_result;
@@ -446,7 +446,7 @@ BEGIN
   END IF;
   RAISE NOTICE 'PASS fn_import_bundle [DR3 Zins auf Depot -> Fehler Zeile 2 vor der Karte]';
 
-  -- [DR3b] Befund 2026-10-24: verzinstes Konto ohne Gutschrift-Rhythmus -> korrigierbarer Fehler der Zeile
+  -- [DR3b] verzinstes Konto ohne Gutschrift-Rhythmus -> korrigierbarer Fehler der Zeile
   -- (kein still erfundenes "jaehrlich"); die gueltige Zeile davor bleibt unberuehrt, nichts geschrieben.
   SELECT finance.fn_import_stage(jsonb_build_object('source', 'chat', 'rows', jsonb_build_array(
     jsonb_build_object('entity_type','account','name','__dr3b Giro','account_type','cash','opening_balance',100),
@@ -494,7 +494,7 @@ BEGIN
   END IF;
   RAISE NOTICE 'PASS fn_import_bundle [DR5 gleicher ETF-Name in zwei Depots -> valide]';
 
-  -- [DR6] abgelehnte Immobilie (unbekannter Status) gilt nicht mehr als "angelegt"
+  -- [DR6] abgelehnte Immobilie (unbekannter Status) gilt nicht als "angelegt"
   SELECT finance.fn_import_stage(jsonb_build_object('source', 'chat', 'rows', jsonb_build_array(
     jsonb_build_object('entity_type','real_estate','name','__dr6 ETW','current_value',300000,'status','owned')
   ))) INTO v_result;
@@ -524,7 +524,7 @@ BEGIN
       finance.fn_import_depot_currency(v_batch, '__dr7 ibkr depot'), finance.fn_import_depot_currency(v_batch, '__dr7 Bestand CHF'),
       finance.fn_import_depot_currency(v_batch, '__dr7 gibt es nicht');
   END IF;
-  -- Verrechnungskonto ist eine Batch-Zeile OHNE Waehrung (= EUR) -> EUR, kein Durchfall auf ein gleichnamiges USD-Bestandskonto
+  -- Verrechnungskonto ist eine Batch-Zeile ohne Waehrung (= EUR) -> EUR, kein Durchfall auf ein gleichnamiges USD-Bestandskonto
   INSERT INTO finance.accounts (name, account_type, currency, status) VALUES ('__dr7 Giro','cash','USD','active');
   SELECT finance.fn_import_stage(jsonb_build_object('source', 'chat', 'rows', jsonb_build_array(
     jsonb_build_object('entity_type','account','name','__dr7 Giro','account_type','cash','opening_balance',0),
@@ -537,9 +537,9 @@ BEGIN
 END $$;
 
 -- ============================================================
--- TRANCHEN (Befund 2026-10-28): mehrere stock_buy-Zeilen DERSELBEN Position in einem Batch = datierte Kaeufe
--- einer Uebernahme -> eine group_id, Verrechnungskonto netto 0, Einstand = Summe/Summe; vorher scheiterte ab der
--- zweiten Zeile die Doppel-Uebernahme-Sperre und das Modell schlug "normale Kaeufe" vor (Cash-Abfluss).
+-- TRANCHEN: mehrere stock_buy-Zeilen derselben Position in einem Batch = datierte Kaeufe
+-- einer Uebernahme -> eine group_id, Verrechnungskonto netto 0, Einstand = Summe/Summe; die Doppel-Uebernahme-Sperre
+-- darf ab der zweiten Zeile nicht greifen (sonst wuerden "normale Kaeufe" mit Cash-Abfluss vorgeschlagen).
 -- ============================================================
 DO $$
 DECLARE

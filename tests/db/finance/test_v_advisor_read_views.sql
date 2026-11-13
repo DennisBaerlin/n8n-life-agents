@@ -1,6 +1,6 @@
 -- tests/db/finance/test_v_advisor_read_views.sql
--- Lese-Views fuer den Finanzberater (Berater-Nachruestung 2026-10-30): die DB rechnet, der Berater liest nur.
---   finance.account_funding_overview   EINE Zeile je Deckungs-Konto (fn_funding_accounts, Rollen als Liste) mit der
+-- Lese-Views fuer den Finanzberater: die DB rechnet, der Berater liest nur.
+--   finance.account_funding_overview   eine Zeile je Deckungs-Konto (fn_funding_accounts, Rollen als Liste) mit der
 --                                      Spar-Deckung aus fn_account_funding
 --   finance.standing_order_overview    die Dauerauftraege aus fn_standing_orders mit Konto-Namen, Rhythmus, Monatsbetrag
 --   finance.account_everyday_spending  geschaetzte Alltagsausgaben je aktivem Geld-Konto, je Tag und je Monat
@@ -33,8 +33,8 @@ BEGIN
     'amount',100,'schedule_interval',1,'schedule_unit','month','first_payment_date',v_first));
   IF (v_res->>'ok')::boolean IS DISTINCT FROM true THEN RAISE EXCEPTION 'SETUP FAIL fn_create_savings_plan: %', v_res; END IF;
 
-  -- (1) Spar-Deckung: der Topf zahlt den Sparplan UND schickt selbst einen Dauerauftrag -> EINE Zeile, beide Rollen;
-  --     das Giro ist Absender des Zubringers -> Rolle order_source (UX-Gesamtkonzept 2026-10-31: Absender statt Empfaenger)
+  -- (1) Spar-Deckung: der Topf zahlt den Sparplan und schickt selbst einen Dauerauftrag -> eine Zeile, beide Rollen;
+  --     das Giro ist Absender des Zubringers -> Rolle order_source (Absender statt Empfaenger)
   INSERT INTO finance.recurring_payments (name, account_id, target_account_id, amount, schedule_unit, first_payment_date, valid_from)
     VALUES ('arv Rueckfluss', v_pot, v_giro, -20, 'month', t + 3, t + 3);
   SELECT count(*) INTO n FROM finance.account_funding_overview WHERE account_id = v_pot;
@@ -54,7 +54,7 @@ BEGIN
   IF v_row.kind IS DISTINCT FROM 'transfer' OR v_row.from_account IS DISTINCT FROM '__t_arv_giro__'
      OR v_row.to_account IS DISTINCT FROM '__t_arv_pot__' OR v_row.amount_per_execution IS DISTINCT FROM 150
      OR v_row.monthly_amount IS DISTINCT FROM 150 OR v_row.rhythm IS NULL OR v_row.starts_on IS DISTINCT FROM t + 1
-     -- „Bank-Hinweis nur, wo er passt": aufgeloeste Ausfuehrung (Giro-Quelle ohne Angabe = unknown), damit der Berater
+     -- aufgeloeste Ausfuehrung (Giro-Quelle ohne Angabe = unknown), damit der Berater
      -- ein selbst ueberwiesenes Konto nicht als Bank-To-do nennt
      OR v_row.executed_by IS DISTINCT FROM 'unknown' THEN
     RAISE EXCEPTION 'FAIL standing_order Zeile: %', row_to_json(v_row); END IF;

@@ -1,5 +1,5 @@
 -- tests/db/estate/test_fn_set_system_profile.sql
--- WS-5: System-Steckbrief-UPSERT (Haushalts-Singleton). Prueft: Kind-Reject (adults_only-Backstop),
+-- System-Steckbrief-UPSERT (Haushalts-Singleton). Prueft: Kind-Reject (adults_only-Backstop),
 -- Happy-Create + Post-State, partielles UPSERT-Update (nicht gesendet = unveraendert), Singleton-
 -- Invariante (CHECK verbietet 2. scope-Wert; PK verbietet 2. Zeile). Self-contained; BEGIN..ROLLBACK.
 BEGIN;

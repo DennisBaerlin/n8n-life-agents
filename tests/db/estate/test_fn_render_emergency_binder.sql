@@ -1,6 +1,6 @@
 -- tests/db/estate/test_fn_render_emergency_binder.sql
--- WS-5: die druckbare Notfallmappe (groesster PII-Egress). Prueft: adults_only-Backstop IN der fn
--- (Kind -> RAISE, auch bei Direkt-Aufruf), Druck-Header, Maskierung AN/AUS (Steuer-ID + RV-Nr.),
+-- Die druckbare Notfallmappe (groesster PII-Egress). Prueft: adults_only-Backstop in der fn
+-- (Kind -> RAISE, auch bei Direkt-Aufruf), Druck-Header, Maskierung an/aus (Steuer-ID + RV-Nr.),
 -- System-Steckbrief-Sektion, finance-Absenz graceful. Self-contained; BEGIN..ROLLBACK.
 BEGIN;
 
@@ -24,7 +24,7 @@ BEGIN
   INSERT INTO estate.system_profile (scope, backup_key_location, system_location)
   VALUES ('household', 'Umschlag im Tresor Büro', 'Debian-LXC im Keller');
 
-  -- ---------- TEST 1: adults_only-Backstop IN der fn (Kind -> RAISE) ----------
+  -- ---------- TEST 1: adults_only-Backstop in der fn (Kind -> RAISE) ----------
   BEGIN
     v_txt := estate.fn_render_emergency_binder(jsonb_build_object('chat_id','333'));
   EXCEPTION WHEN insufficient_privilege THEN v_raised := TRUE;
@@ -43,7 +43,7 @@ BEGIN
     RAISE EXCEPTION 'FAIL [2 unmaskiert: Steuer-ID/RV-Nr. fehlen]: %', v_txt; END IF;
   RAISE NOTICE 'PASS [2] Header + unmaskierte Kennnummern (Default für den Partner)';
 
-  -- ---------- TEST 3: Maskierung AN -> Steuer-ID + RV-Nr. redigiert ----------
+  -- ---------- TEST 3: Maskierung an -> Steuer-ID + RV-Nr. redigiert ----------
   v_txt := estate.fn_render_emergency_binder(jsonb_build_object('chat_id','111', 'mask_sensitive', true));
   IF v_txt LIKE '%12345678901%' OR v_txt LIKE '%12345678A123%' THEN
     RAISE EXCEPTION 'FAIL [3 Maskierung liess Kennnummern durch]: %', v_txt; END IF;
@@ -70,7 +70,7 @@ BEGIN
     RAISE EXCEPTION 'FAIL [6 mask_sensitive='''' crasht/maskiert statt Default false]: %', left(COALESCE(v_txt,'NULL'),80); END IF;
   RAISE NOTICE 'PASS [6] mask_sensitive='''' -> Default false (NULLIF-Guard, kein boolean-Cast-Crash)';
 
-  -- ---------- TEST 7 (Textkatalog Phase C): Sprache der ANFORDERNDEN Person, Datum im Sprachmuster ----------
+  -- ---------- TEST 7 (Textkatalog): Sprache der anfordernden Person, Datum im Sprachmuster ----------
   -- Erwachsene Nora (en) fordert an -> englischer Kopf + Datum DD/MM/YYYY; der Owner (de) bekommt deutsch.
   UPDATE agent.core_contexts SET metadata = jsonb_set(metadata, '{facts,persons}',
          (metadata->'facts'->'persons') || jsonb_build_array(jsonb_build_object('person_id','nora','first_name','Nora',

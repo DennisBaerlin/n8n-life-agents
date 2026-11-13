@@ -1,22 +1,22 @@
 -- tests/db/estate/test_fn_advisor_review.sql
--- WS-4 (Plan groovy-watching-wave): estate.fn_advisor_review — der paket-besessene Jahres-Review der
+-- estate.fn_advisor_review — der paket-besessene Jahres-Review der
 -- generischen Core-Advisor-Engine (Registry-Dispatch via core.fn_advisor_review_evaluate). estate ist
--- HAUSHALT (p_person_id ignoriert, NULL byte-gleich; NICHT per_user wie career). Prueft:
---   (A) STALENESS je Erwachsenem: person_records.last_reviewed_at > advisor.estate_review_days (365)
+-- Haushalt (p_person_id ignoriert, NULL byte-gleich; nicht per_user wie career). Prueft:
+--   (A) Staleness je Erwachsenem: person_records.last_reviewed_at > advisor.estate_review_days (365)
 --       -> ein Alert je ueberfaelligem Erwachsenen (metric_key review_staleness:<pid>); frischer
---       Review -> KEIN Alert; NULL last_reviewed_at (nie bestaetigt) -> KEIN Alert (Analog-treu: keine
+--       Review -> kein Alert; NULL last_reviewed_at (nie bestaetigt) -> kein Alert (keine
 --       "Frist gerissen"-Basis; die Register-Luecke deckt Unvollstaendigkeit ab).
---   (B) FEHLENDE Vorsorge-Dokumente je Erwachsenem (aus v_directive_gaps, essential+recommended) ->
+--   (B) Fehlende Vorsorge-Dokumente je Erwachsenem (aus v_directive_gaps, essential+recommended) ->
 --       ein Alert je Erwachsenem mit Luecken (metric_key directive_gaps:<pid>); alle gedeckt -> 0.
---   (C) finance-Nachlass-Feld-Gaps GUARDED (aus estate.fn_gap_report -> doppel-guardet): finance aktiv +
+--   (C) finance-Nachlass-Feld-Gaps guarded (aus estate.fn_gap_report -> doppel-guardet): finance aktiv +
 --       Police/Konto mit offenen Nachlass-Feldern -> ein Singleton-Alert finance_gaps;
---       finance ABSENT -> KEIN Alert, KEIN Crash (graceful degradation).
---   (D) DIGEST-Paritaet zum Analog: der digest traegt seinen VOLLEN Satz strukturierter Felder (estate-
---       spezifisch, NICHT finance's 12) + das paket-gerenderte 'text'-Feld (Generik-Vertrag) — voller
---       Regressionsnetz-Assert wie der finance-Digest-Test. RAISE-FREI (der ganze DO-Block laeuft durch).
---   (E) EMPIRISCHER Scope-Fan-out (Opus-M5): estate_overview hat KEINE core.context_scopes-Zeile ->
---       agent.fn_context_persons('estate_overview') ist LEER -> die Eval-Faecherung laeuft household
---       (person_id NULL), NIE per_user-suffigiert. PLUS Kern-Engine-Latch: core.fn_advisor_review_evaluate
+--       finance absent -> kein Alert, kein Crash (graceful degradation).
+--   (D) Digest-Paritaet zum finance-Advisor: der digest traegt seinen vollen Satz strukturierter Felder (estate-
+--       spezifisch) + das paket-gerenderte 'text'-Feld (Generik-Vertrag) — voller
+--       Regressionsnetz-Assert wie der finance-Digest-Test. RAISE-frei (der ganze DO-Block laeuft durch).
+--   (E) Empirischer Scope-Fan-out: estate_overview hat keine core.context_scopes-Zeile ->
+--       agent.fn_context_persons('estate_overview') ist leer -> die Eval-Faecherung laeuft household
+--       (person_id NULL), nie per_user-suffigiert. Dazu Kern-Engine-Latch: core.fn_advisor_review_evaluate
 --       ('estate', NULL, '{}') dispatcht -> send-once (Erst-Breach) -> still (gelatcht).
 -- Self-contained; BEGIN..ROLLBACK.
 BEGIN;
@@ -43,7 +43,7 @@ BEGIN
   ON CONFLICT (name) DO UPDATE SET metadata = EXCLUDED.metadata;
 
   -- ============================================================
-  -- (0) Roter Faden "erst einladen, dann mahnen": estate nicht begonnen (kein Abschnitt completed) -> 0 Alerts,
+  -- (0) "Erst einladen, dann mahnen": estate nicht begonnen (kein Abschnitt completed) -> 0 Alerts,
   --     auch wenn Luecken bestehen; nur 'skipped' zaehlt ebenfalls nicht als begonnen. Danach: begonnen.
   -- ============================================================
   INSERT INTO estate.person_records (person_id, last_reviewed_at) VALUES
@@ -60,7 +60,7 @@ BEGIN
   RAISE NOTICE 'PASS [0] nicht begonnen -> keine Mahnung; Digest bleibt';
 
   -- ============================================================
-  -- (A) STALENESS je Erwachsenem
+  -- (A) Staleness je Erwachsenem
   -- ============================================================
   r := estate.fn_advisor_review('estate');
 
@@ -82,7 +82,7 @@ BEGIN
   DELETE FROM estate.person_records WHERE person_id = 'kid';
   RAISE NOTICE 'PASS [A] Staleness feuert per ueberfaelligem Erwachsenen, nicht bei frischem Review';
 
-  -- Grenze: NULL last_reviewed_at (nie bestaetigt) feuert KEINE Staleness (keine gerissene Frist).
+  -- Grenze: NULL last_reviewed_at (nie bestaetigt) feuert keine Staleness (keine gerissene Frist).
   UPDATE estate.person_records SET last_reviewed_at = NULL WHERE person_id = 'erika';
   r := estate.fn_advisor_review('estate');
   SELECT count(*) INTO v_n FROM jsonb_array_elements(r->'alerts') a WHERE a->>'kind' = 'staleness';
@@ -90,7 +90,7 @@ BEGIN
   RAISE NOTICE 'PASS [A] NULL last_reviewed_at feuert keine Staleness (Analog-treu)';
 
   -- ============================================================
-  -- (B) FEHLENDE Vorsorge-Dokumente je Erwachsenem
+  -- (B) Fehlende Vorsorge-Dokumente je Erwachsenem
   -- ============================================================
   -- Register leer -> beide Erwachsene haben Dokument-Luecken (essential+recommended = 5 je Person).
   r := estate.fn_advisor_review('estate');
@@ -118,9 +118,9 @@ BEGIN
   RAISE NOTICE 'PASS [B] vollstaendige Erwartungsmenge -> 0 Dokument-Luecken-Alerts (Re-Arm-Pfad)';
 
   -- ============================================================
-  -- (C) finance-Nachlass-Gaps GUARDED + graceful ohne finance
+  -- (C) finance-Nachlass-Gaps guarded + graceful ohne finance
   -- ============================================================
-  -- finance NICHT registriert -> fn_gap_report finance.status='absent' -> KEIN Alert, KEIN Crash.
+  -- finance nicht registriert -> fn_gap_report finance.status='absent' -> kein Alert, kein Crash.
   r := estate.fn_advisor_review('estate');
   SELECT count(*) INTO v_n FROM jsonb_array_elements(r->'alerts') a WHERE a->>'kind' = 'finance_gap';
   IF v_n <> 0 THEN RAISE EXCEPTION 'FAIL [C graceful ohne finance]: finance_gap-Alert trotz absentem finance (%)', v_n; END IF;
@@ -144,12 +144,12 @@ BEGIN
   RAISE NOTICE 'PASS [C] finance aktiv + offene Nachlass-Felder -> Singleton finance_gaps (guarded)';
 
   -- ============================================================
-  -- (D) DIGEST-Paritaet + RAISE-frei
+  -- (D) Digest-Paritaet + RAISE-frei
   -- ============================================================
   v_dig := r->'digest';
   IF jsonb_typeof(v_dig) <> 'object' THEN RAISE EXCEPTION 'FAIL [D digest kein Objekt]: %', v_dig; END IF;
   IF COALESCE((v_dig->'lines')::text,'') = '' THEN RAISE EXCEPTION 'FAIL [D digest.text leer]: %', v_dig; END IF;
-  -- Voller strukturierter Feld-Satz (Regressionsnetz wie der finance-12-Feld-Assert; estate-spezifisch):
+  -- Voller strukturierter Feld-Satz (Regressionsnetz wie der finance-Digest-Assert; estate-spezifisch):
   FOR v_key IN SELECT unnest(ARRAY['adults_total','reviews_recorded','stale_review_count',
                                    'directive_gap_count','register_gap_count','finance_gap_count',
                                    'finance_status','lines'])
@@ -157,8 +157,8 @@ BEGIN
     IF NOT (v_dig ? v_key) THEN RAISE EXCEPTION 'FAIL [D digest-Feld % fehlt]: %', v_key, v_dig; END IF;
   END LOOP;
   IF (v_dig->>'adults_total')::int <> 2 THEN RAISE EXCEPTION 'FAIL [D adults_total]: % statt 2', v_dig->>'adults_total'; END IF;
-  -- finance_gap_count zaehlt die betroffenen finance-EINTRAEGE (Police + Konto = 2), NICHT die Alerts
-  -- (der finance_gaps-Alert ist EIN Singleton mit value=2 — Section C oben).
+  -- finance_gap_count zaehlt die betroffenen finance-Eintraege (Police + Konto = 2), nicht die Alerts
+  -- (der finance_gaps-Alert ist ein Singleton mit value=2 — Abschnitt (C) oben).
   IF (v_dig->>'finance_gap_count')::int <> 2 THEN RAISE EXCEPTION 'FAIL [D finance_gap_count]: % statt 2 (Police+Konto)', v_dig->>'finance_gap_count'; END IF;
   IF (v_dig->>'finance_status') <> 'ok' THEN RAISE EXCEPTION 'FAIL [D finance_status ok]: %', v_dig->>'finance_status'; END IF;
   RAISE NOTICE 'PASS [D] Digest traegt vollen strukturierten Feld-Satz + gerenderten text';
@@ -182,11 +182,11 @@ BEGIN
   RAISE NOTICE 'PASS [E] household-Fan-out (person_id NULL) + Engine-Latch send-once (Opus-M5)';
 
   -- ============================================================
-  -- (F) Digest-Vollstaendigkeit ehrt AUCH register_gaps (Cold-Eyes WS-4)
+  -- (F) Digest-Vollstaendigkeit ehrt auch register_gaps
   -- ============================================================
-  -- Nur REGISTER-Luecken offen (Bestattungswuensche fehlen beiden Erwachsenen): staleness=0 (erika NULL,
-  -- lena frisch), directive=0 (Haushalts-Urkunden decken beide), finance INAKTIV -> finance_gap=0. register_gaps
-  -- emittieren KEINEN Alert (nur Digest-Zaehler) -> der Schluss-Satz darf dann NICHT "vollstaendig/nichts zu tun"
+  -- Nur Register-Luecken offen (Bestattungswuensche fehlen beiden Erwachsenen): staleness=0 (erika NULL,
+  -- lena frisch), directive=0 (Haushalts-Urkunden decken beide), finance inaktiv -> finance_gap=0. register_gaps
+  -- emittieren keinen Alert (nur Digest-Zaehler) -> der Schluss-Satz darf dann nicht "vollstaendig/nichts zu tun"
   -- behaupten, obwohl er "Offene Register-Luecken: N" listet.
   UPDATE core.package_registry SET status = 'inactive' WHERE package = 'finance';
   r := estate.fn_advisor_review('estate');

@@ -1,8 +1,8 @@
 -- tests/db/core/test_fn_package_active.sql
--- WS-B8 R4: core.fn_package_active(text) -> boolean (publiziertes SECURITY-DEFINER-Read-Window).
---   Pass-Bedingung = status='active' EXAKT; installing/installed/inactive/unbekannt/NULL -> false; 'core' -> true.
---   Muster: BEGIN…ROLLBACK, eigene Zeilen seeden (db_test hat kein seed_data). RAISE EXCEPTION 'FAIL …' = Test rot.
--- VF3 (Auth, D10): finance_ro ruft die DEFINER-fn ueber den EXECUTE-Grant, hat aber KEIN direktes
+-- core.fn_package_active(text) -> boolean (publiziertes SECURITY-DEFINER-Read-Window).
+--   Pass-Bedingung = status='active' exakt; installing/installed/inactive/unbekannt/NULL -> false; 'core' -> true.
+--   Eigene Zeilen seeden (db_test hat kein seed_data).
+-- VF3 (Auth, D10): finance_ro ruft die DEFINER-fn ueber den EXECUTE-Grant, hat aber kein direktes
 --   SELECT auf core.package_registry (Isolation haelt) — beweist die kontrollierte Grenz-Ueberschreitung.
 BEGIN;
 
@@ -35,7 +35,7 @@ BEGIN
   RAISE NOTICE 'PASS core.fn_package_active [Status-Matrix + NULL/unknown/core]';
 END $$;
 
--- ---------- VF3 (D10): finance_ro via DEFINER-Fenster; KEIN direkter Tabellen-Read ----------
+-- ---------- VF3 (D10): finance_ro via DEFINER-Fenster; kein direkter Tabellen-Read ----------
 -- Voraussetzung: EXECUTE-Grant aus fn_provision_package_roles (bootstrap_test_db). Superuser -> SET LOCAL ROLE.
 DO $$
 DECLARE v_active boolean; v_blocked boolean := false;

@@ -1,12 +1,12 @@
 -- tests/db/estate/test_recalc2_deadlines.sql
--- Zweitrechnung Runde 2, Nachlass: Fristen und Feiertage. Erwartungen von Hand am Kalender hergeleitet
+-- Zweitrechnung, Nachlass: Fristen und Feiertage. Erwartungen von Hand am Kalender hergeleitet
 -- (Wochentag ueber Tag-im-Jahr: 01.01.2027 = Freitag), nicht aus der fn abgeschrieben. Werte erfunden.
 -- Fachregeln:
 --   * § 28 PStG: Sterbefall "spaetestens am dritten auf den Tod folgenden Werktag"; Todestag zaehlt nicht (§ 187 Abs. 1
 --     BGB); Samstag gilt in der Standesamts-Praxis nicht als Werktag (z. B. https://www.stuttgart.de/organigramm/leistungen/sterbefall-anzeigen).
 --   * § 1944 Abs. 1 BGB Ausschlagung 6 Wochen ab Kenntnis; § 188 Abs. 2 BGB: Ende am gleichnamigen Wochentag.
 --   * § 30 ErbStG Anzeige 3 Monate ab Kenntnis; § 188 Abs. 3 BGB: fehlt der Tag im Zielmonat, letzter Tag des Monats.
---   * § 193 BGB (Verschiebung auf den naechsten Werktag) laut fn-Kopf bewusst NICHT angewandt (fruehere Frist).
+--   * § 193 BGB (Verschiebung auf den naechsten Werktag) laut fn-Kopf bewusst nicht angewandt (fruehere Frist).
 --   * Ostersonntag (Tabellenwerte): 1981-04-19, 2027-03-28, 2038-04-25 (spaetestmoeglich), 2049-04-18 (Sonderfall der
 --     Gauss-Formel); Karfreitag = Ostern - 2, Ostermontag + 1, Himmelfahrt + 39, Pfingstmontag + 50, Fronleichnam + 60.
 --   * Buss- und Bettag (nur Sachsen) = Mittwoch vor dem 23.11.: 2027 -> 17.11. (22.11.2027 ist ein Montag),

@@ -1,5 +1,5 @@
 -- tests/db/core/test_fn_config_get.sql
--- WS4a: core.fn_config_get(package, category, key) -> text (generisches read-all-Config-Fenster)
+-- core.fn_config_get(package, category, key) -> text (generisches read-all-Config-Fenster)
 --   + die Cron-Gate-Expression core.fn_package_active(p) AND COALESCE(fn_config_get(p,'cron_enable',c)='true', false).
 --   Muster: BEGIN…ROLLBACK, eigene Zeilen seeden (db_test hat kein seed_data). RAISE EXCEPTION 'FAIL …' = rot.
 BEGIN;
@@ -14,7 +14,7 @@ BEGIN
 
   IF core.fn_config_get('__pkgA__','cron_enable','__t_always__') IS DISTINCT FROM 'true' THEN
     RAISE EXCEPTION 'FAIL [read own pkg value]'; END IF;
-  -- read-all: jede Rolle/jeder Aufruf liest JEDE Zeile, egal welches Paket (hier nur Wert-Read, Rolle s. VF3)
+  -- read-all: jede Rolle/jeder Aufruf liest jede Zeile, egal welches Paket (hier nur Wert-Read, Rolle s. unten)
   IF core.fn_config_get('__pkgB__','schedule','__t_sched__') IS DISTINCT FROM '0 6 * * *' THEN
     RAISE EXCEPTION 'FAIL [read other pkg value]'; END IF;
   -- fehlende Zeile -> NULL (treibt fail-closed im Gate)
@@ -57,7 +57,7 @@ BEGIN
   RAISE NOTICE 'PASS Gate-Expression [active×flag×inactive, fail-closed]';
 END $$;
 
--- ---------- VF3 (D10): finance_ro liest ueber das DEFINER-Fenster, NICHT direkt core.config ----------
+-- ---------- Cross-Schema-Read-Regel (D10): finance_ro liest ueber das DEFINER-Fenster, nicht direkt core.config ----------
 DO $$
 DECLARE v_val text; v_blocked boolean := false;
 BEGIN

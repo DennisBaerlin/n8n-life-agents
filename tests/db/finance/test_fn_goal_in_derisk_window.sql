@@ -1,5 +1,5 @@
 -- tests/db/finance/test_fn_goal_in_derisk_window.sql
--- finance.fn_goal_in_derisk_window(goal): die EINE Adresse der Regel "dieses Ziel ist zu kurzfristig fuers Depot"
+-- finance.fn_goal_in_derisk_window(goal): die eine Adresse der Regel "dieses Ziel ist zu kurzfristig fuers Depot"
 -- (Fenster advisor.derisk_window_months, Default 60). Kalendermonate bis zum Zieldatum <= Fenster -> true, auch ein
 -- schon verstrichenes Datum (Restmonate 0). Ohne Zieldatum -> NULL (der Aufrufer entscheidet, z. B. goal_no_target_date).
 --   (1) Zieldatum in 24 Monaten -> true

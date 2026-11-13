@@ -1,7 +1,7 @@
 -- tests/db/finance/test_v027_insurance_premium_single_source.sql
--- finance:V027 (WP2 "Finanzen schlank") auf einem Bestand wie v0.15.0: die Kopien annual_premium/monthly_equivalent/
+-- finance:V027 auf einem Bestand wie v0.15.0: die Kopien annual_premium/monthly_equivalent/
 -- schedule_*/valid_to/account_id an der Versicherung fallen, die Beitrags-Kette bleibt die eine Quelle. Der Test baut
--- den Zustand VOR V027 nach, fuehrt die ECHTE Migrationsdatei zweimal aus (\ir) und prueft:
+-- den Zustand vor V027 nach, fuehrt die ECHTE Migrationsdatei zweimal aus (\ir) und prueft:
 --   (1) Kopie passt -> Beitrag je Abbuchung unveraendert; abgeleiteter Jahreswert in active_insurances (nach R__) folgt
 --   (2) Rundungs-Cent (alter n8n-Rechenweg) -> kein Abbruch, die gebuchte rp gilt
 --   (3) Vertragsende nur an der Police -> in die rp uebernommen

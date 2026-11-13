@@ -67,9 +67,9 @@ BEGIN
 
 END $$;
 
--- TEST 5 (Phase L WS-3): Cashflow-Sofort-Hinweis (Event-Fold). Die fn liest monthly_cashflow_summary (GLOBALE
+-- TEST 5: Cashflow-Sofort-Hinweis (Event-Fold). Die fn liest monthly_cashflow_summary (globale
 -- Single-Row-View) -> SAVEPOINT + bestehende rp (Tests 1-4 + evtl. Seed) neutralisieren, kontrollierten Cashflow
--- setzen, danach ROLLBACK TO SAVEPOINT. (5a) Einnahmen-Anlage -> net>0 -> KEINE Note (Kontrolle). (5b) Ausgabe >
+-- setzen, danach ROLLBACK TO SAVEPOINT. (5a) Einnahmen-Anlage -> net>0 -> keine Note (Kontrolle). (5b) Ausgabe >
 -- Einnahmen -> net<0 -> cashflow_coverage-Note im {ok:true}-Return.
 SAVEPOINT crp_fold;
 UPDATE finance.recurring_payments SET status = 'paused';   -- nur im Savepoint; FK-frei
@@ -80,7 +80,7 @@ BEGIN
   SELECT finance.fn_create_account('{"name":"__crp_fold_acct__","account_type":"cash","account_holder":"T","currency":"EUR"}'::jsonb) INTO v_res;
   v_acct := (v_res->>'account_id')::int;
 
-  -- (5a) Einkommen +2000 (nur diese rp aktiv) -> net +2000 -> KEINE Note
+  -- (5a) Einkommen +2000 (nur diese rp aktiv) -> net +2000 -> keine Note
   SELECT finance.fn_create_recurring_payment(jsonb_build_object(
     'name','__crp_fold_inc__','account_id',v_acct,'direction','income','amount',2000,
     'schedule_unit','month','first_payment_date',current_date::text)) INTO v_res;
@@ -100,7 +100,7 @@ BEGIN
 END $$;
 ROLLBACK TO SAVEPOINT crp_fold;
 
--- TEST 6 (DB-ist-das-Gesetz S6): Namenssperre nur in der oeffentlichen create-fn, Praedikat = active_recurring_payments.
+-- TEST 6: Namenssperre nur in der oeffentlichen create-fn, Praedikat = active_recurring_payments.
 --   (a) laufende, freistehende Zahlung gleichen Namens (ohne Gross-/Kleinschreibung) -> ok:false duplicate_name + candidates
 --   (b) gleichnamige Zahlung einer Entitaet (Versicherung) blockiert nicht -> ok:true + Hinweis-Zeile auf der Karte
 DO $$
@@ -129,7 +129,7 @@ BEGIN
     RAISE EXCEPTION 'FAIL [6b Entitaets-Zahlung gleichen Namens -> nur Hinweis]: %', v_r; END IF;
   RAISE NOTICE 'PASS [6 Namenssperre: laufend frei -> ok:false, Entitaets-Zahlung -> Karten-Hinweis]';
 
-  -- (c) Befund 2026-11-02: noch nicht gestartete Zahlung gleichen Namens sperrt ebenfalls und nennt ihr Startdatum
+  -- (c) noch nicht gestartete Zahlung gleichen Namens sperrt ebenfalls und nennt ihr Startdatum
   v_r := finance.fn_create_recurring_payment(jsonb_build_object('name','__RPDUP Beitrag__','account_id',v_acct,
            'direction','income','amount',50,'schedule_unit','month','first_payment_date',to_char(CURRENT_DATE + 10, 'YYYY-MM-DD')));
   IF (v_r->>'ok')::boolean IS DISTINCT FROM true THEN RAISE EXCEPTION 'FAIL [6c Setup]: %', v_r; END IF;
@@ -182,7 +182,7 @@ BEGIN
   END;
 
   -- TEST 8 ("Import zuerst"): optionale Gegen-IBAN aus dem Vorschlag -> Schluessel fuer den Monats-Check (Stufe A),
-  --   sichtbar auf der Karte; keine echte IBAN -> ok:false ohne Write; leer -> wie bisher ohne Schluessel.
+  --   sichtbar auf der Karte; keine echte IBAN -> ok:false ohne Write; leer -> ohne Schluessel.
   DECLARE
     v_r  JSONB;
   BEGIN

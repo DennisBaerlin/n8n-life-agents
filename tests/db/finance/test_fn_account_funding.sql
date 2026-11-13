@@ -77,7 +77,7 @@ BEGIN
   IF (v->>'state') <> 'alert' OR (v->>'runs_out_on')::date <> t + 10 THEN RAISE EXCEPTION 'FAIL [d] alert, got %', v; END IF;
   RAISE NOTICE 'PASS [d] alert';
 
-  -- [e] Zubringer kommt NACH der Abbuchung (t+20 nach t+2): erster Monat lebt vom Guthaben -> Tief 500 am t+2, ok
+  -- [e] Zubringer kommt nach der Abbuchung (t+20 nach t+2): erster Monat lebt vom Guthaben -> Tief 500 am t+2, ok
   v := finance.fn_account_funding(v_feed);
   IF (v->>'state') <> 'ok' OR (v->>'min_projected')::numeric <> 500 OR (v->>'min_date')::date <> t + 2 THEN
     RAISE EXCEPTION 'FAIL [e] Erster-Monat-Effekt, got %', v; END IF;
@@ -104,7 +104,7 @@ BEGIN
   IF (v->>'monthly_out')::numeric <> -110 THEN RAISE EXCEPTION 'FAIL [f2] kommende Kette = erstes Glied, got %', v; END IF;
   RAISE NOTICE 'PASS [f] Ketten: massgebliches Glied, nicht doppelt';
 
-  -- [g] Abgleich vor 21 Tagen (Stand 1000), danach ein Tief unter 0 VOR heute -> zaehlt nicht, ok
+  -- [g] Abgleich vor 21 Tagen (Stand 1000), danach ein Tief unter 0 vor heute -> zaehlt nicht, ok
   INSERT INTO finance.transactions (account_id, amount, transaction_date, category) VALUES (v_rec, 1000, t - 40, 'other');
   PERFORM finance.fn_reconcile_account(jsonb_build_object('account_id', v_rec, 'confirmed_balance', 1000,
                                                           'reconciliation_date', (t - 21)::text));
@@ -150,7 +150,7 @@ BEGIN
     RAISE EXCEPTION 'FAIL [k2] Ausgabenkonto mit Auszug -> netto -10 je Tag eingerechnet, got %', v; END IF;
   RAISE NOTICE 'PASS [k] Alltagsausgaben: unbekannt -> neutral, mit Auszug netto eingerechnet';
 
-  -- ===== Schwelle = Ziel-Geld des Kontos (UX-Gesamtkonzept 2026-10-31 Bug B1: Ziel-Geld ist nicht frei), je Tag =====
+  -- ===== Schwelle = Ziel-Geld des Kontos (Ziel-Geld ist nicht frei), je Tag =====
   -- [l] 10000 Saldo, 6000 fuer ein Ziel zurueckgelegt, Sparplan -1000/Monat ab t+3 (nicht ziel-verknuepft): frei 4000 ->
   --     der 5. Abzug (t+3 + 4 Monate) geht unter das Ziel-Geld -> warn; frueher (Schwelle 0) erst der 11.
   DECLARE v_res INT; v_g INT; v_pot INT; v_over INT; BEGIN
@@ -181,7 +181,7 @@ BEGIN
       RAISE EXCEPTION 'FAIL [m] Ziel-Sparplan aus Ziel-Geld ist gedeckt, got %', v; END IF;
     RAISE NOTICE 'PASS [m] Ziel-Sparplan verbraucht eigenes Ziel-Geld -> ok';
 
-    -- [n] eine Ziel-Rate HINEIN zaehlt nicht als frei: Topf 1000 frei, +200 Ziel-Rate am t+1, -250 Sparplan am t+2
+    -- [n] eine Ziel-Rate hinein zaehlt nicht als frei: Topf 1000 frei, +200 Ziel-Rate am t+1, -250 Sparplan am t+2
     --     -> frei sinkt 250 je Monat -> der 5. Abzug (t+2 + 4 Monate) unterschreitet; als frei gezaehlt erst nach 20 Monaten
     INSERT INTO finance.accounts (name, account_type, currency, status) VALUES ('__t_fu_pot__', 'p2p', 'EUR', 'active') RETURNING id INTO v_pot;
     INSERT INTO finance.transactions (account_id, amount, transaction_date, category) VALUES (v_pot, 1000, t - 40, 'other');

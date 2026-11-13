@@ -1,6 +1,6 @@
 -- tests/db/core/test_fn_sender_is_member.sql
--- WS-5b — geteilter owner_only-Guard agent.fn_sender_is_member(chat_id text) -> boolean.
--- Semantik (konsistent mit dem Gate-„is_member"): TRUE nur bei POSITIV aufgeloestem Nicht-Owner
+-- Geteilter owner_only-Guard agent.fn_sender_is_member(chat_id text) -> boolean.
+-- Semantik (konsistent mit dem Gate-„is_member"): TRUE nur bei positiv aufgeloestem Nicht-Owner
 --   (chat_id numerisch ∧ fn_resolve_sender found:true ∧ role <> 'owner').
 -- FALSE (durchlassen) bei: Owner · nicht in family (found:false) · nicht-numerisch (Test/Sentinel) · NULL.
 -- Das ist der DB-Backstop, den die owner_only-Schreib-fns vorab aufrufen (RAISE-frei -> {ok:false}).

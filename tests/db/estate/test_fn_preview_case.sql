@@ -1,5 +1,5 @@
 -- tests/db/estate/test_fn_preview_case.sql
--- WP3: die HITL-Preview eines Ereignisfalls loest relative Daten EINMAL auf (die Rueckgabe traegt das Datum, das der
+-- Die HITL-Preview eines Ereignisfalls loest relative Daten einmal auf (die Rueckgabe traegt das Datum, das der
 --   Tool-Write uebernimmt) und meldet die Intake-Merkmale des Falltyps: intake_facts = wirksam true (Register oder
 --   Angabe), unknown_flags = weder Register noch Angabe (genau das fragt der Agent). Self-contained.
 BEGIN;

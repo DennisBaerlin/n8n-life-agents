@@ -1,11 +1,11 @@
 -- tests/db/finance/test_fn_interest_amount_due.sql
--- Die DB rechnet den Zins (NIE das LLM): basis x (annual_rate/100) x fn_interest_day_fraction(period_start, period_end, conv).
---   period_start ist SCHEDULE-abgeleitet (period_end - 1 Kadenz-Schritt, clamp auf den Zins-Start MIN(valid_from)) -
---     NIE aus gebuchten/uebersprungenen Tx (sonst Doppelverzinsung bei Luecke/Skip).
---   basis = Saldo zum period_end OHNE jede Zins-Tx mit interest_period_end >= period_end (eigene + spaetere
---     Gutschrift zaehlt nie in die eigene Basis -> re-eval-robust; FRUEHERE Gutschriften zaehlen -> Zinseszins).
---   Taggenaue Satz-Mischung (WS-Z3): bei unterjaehrigem Satzwechsel je Satz nur SEINE Tage (Segment-Summe),
---     EINMAL gerundet; basis konstant. Additivitaet der deutschen 30E/360 (symmetrische Februar-/31er-Klammer)
+-- Die DB rechnet den Zins (nie das LLM): basis x (annual_rate/100) x fn_interest_day_fraction(period_start, period_end, conv).
+--   period_start ist schedule-abgeleitet (period_end - 1 Kadenz-Schritt, clamp auf den Zins-Start MIN(valid_from)) -
+--     nie aus gebuchten/uebersprungenen Tx (sonst Doppelverzinsung bei Luecke/Skip).
+--   basis = Saldo zum period_end ohne jede Zins-Tx mit interest_period_end >= period_end (eigene + spaetere
+--     Gutschrift zaehlt nie in die eigene Basis -> re-eval-robust; fruehere Gutschriften zaehlen -> Zinseszins).
+--   Taggenaue Satz-Mischung: bei unterjaehrigem Satzwechsel je Satz nur seine Tage (Segment-Summe),
+--     einmal gerundet; basis konstant. Additivitaet der deutschen 30E/360 (symmetrische Februar-/31er-Klammer)
 --     an inneren Grenzen geprueft. Fail-closed: Luecke in der Zinshistorie -> RAISE.
 -- Signatur: fn_interest_amount_due(account_id, period_end).
 BEGIN;
@@ -68,11 +68,11 @@ BEGIN
     INTO v_amt
     FROM generate_series(0, 11) AS k;
   -- ROUND(.,10): 1/12 ist dezimal nicht endlich (12 x 0.08333... = 0.99999...96 = reines Numeric-Rauschen);
-  -- eine ECHTE Drift (ein Tag doppelt/fehlt) waere +/- 1/360 ~ 0.0028, also um Groessenordnungen groesser.
+  -- eine echte Drift (ein Tag doppelt/fehlt) waere +/- 1/360 ~ 0.0028, also um Groessenordnungen groesser.
   IF ROUND(v_amt, 10) IS DISTINCT FROM 1.0 THEN RAISE EXCEPTION 'FAIL [12-month drift 30E/360]: erwartet 1.0, got %', v_amt; END IF;
   RAISE NOTICE 'PASS [12-Monats-Drift 30E/360 -> 1.0 (kein Tag verloren/doppelt)]';
 
-  -- ============ Taggenaue Satz-Mischung: Satzanstieg MITTEN in der Periode (WS-Z3, vorher 41.67) ============
+  -- ============ Taggenaue Satz-Mischung: Satzanstieg mitten in der Periode ============
   -- 4% ab 2026-01-01, dann 5% ab 2026-01-15. period_end 2026-02-01, 30E/360. Seg1 [01-01,01-15)=14/360 @4%,
   -- Seg2 [01-15,02-01)=16/360 @5% (14+16=30). ROUND(10000*(0.04*14 + 0.05*16)/360, 2) = 13600/360 = 37.78.
   SELECT finance.fn_create_account(
@@ -90,7 +90,7 @@ BEGIN
   IF v_amt IS DISTINCT FROM 37.78 THEN RAISE EXCEPTION 'FAIL [rate rise in period]: erwartet 37.78 (14d@4%% + 16d@5%%), got %', v_amt; END IF;
   RAISE NOTICE 'PASS [Satzanstieg-in-Periode taggenau gemischt -> 37.78]';
 
-  -- ============ Taggenaue Satz-Mischung: Satzsenkung MITTEN in der Periode (WS-Z3) ============
+  -- ============ Taggenaue Satz-Mischung: Satzsenkung mitten in der Periode ============
   -- 6% ab 2026-01-01, dann 4% ab 2026-01-15. Seg1 14/360 @6%, Seg2 16/360 @4%.
   -- ROUND(10000*(0.06*14 + 0.04*16)/360, 2) = 14800/360 = 41.11.
   SELECT finance.fn_create_account(
@@ -134,7 +134,7 @@ BEGIN
   IF v_amt IS DISTINCT FROM 101.00 THEN RAISE EXCEPTION 'FAIL [compound re-eval]: erwartet weiterhin 101.00, got %', v_amt; END IF;
   RAISE NOTICE 'PASS [Zinseszins 100->101 + re-eval-robust]';
 
-  -- generische Zins-Tx (interest_period_end NULL) zaehlt in die Basis (kein Scheduler-Credit) und wird NICHT
+  -- generische Zins-Tx (interest_period_end NULL) zaehlt in die Basis (kein Scheduler-Credit) und wird nicht
   -- ausgeschlossen: +50 generischer Zins -> Periode-2-Basis 10150, aber period_end 2026-03-01 ist bereits
   -- gebucht; pruefe stattdessen Periode 3 (2026-03-01..2026-04-01): basis = 10000+100+101+50 = 10251.
   INSERT INTO finance.transactions (account_id, amount, transaction_date, category, description)
@@ -145,9 +145,9 @@ BEGIN
   END IF;
   RAISE NOTICE 'PASS [generische Zins-Tx (period_end NULL) zaehlt in die Basis]';
 
-  -- ============ Luecke/Skip in der Mitte: Folgeperiode verzinst NUR ihren Schritt (B1) ============
-  -- 12% monatlich auf 10000; Periode 1 NICHT gebucht (Luecke). Periode 2 period_start = period_end - 1 Monat
-  --   = 2026-02-01 (NICHT zurueck bis valid_from) -> 10000 * 12% * 1/12 = 100.00 (ein Monat, NICHT zwei).
+  -- ============ Luecke/Skip in der Mitte: Folgeperiode verzinst nur ihren Schritt (B1) ============
+  -- 12% monatlich auf 10000; Periode 1 nicht gebucht (Luecke). Periode 2 period_start = period_end - 1 Monat
+  --   = 2026-02-01 (nicht zurueck bis valid_from) -> 10000 * 12% * 1/12 = 100.00 (ein Monat, nicht zwei).
   SELECT finance.fn_create_account(
     '{"name":"__test_int_gap__","account_type":"cash","currency":"EUR","interest_rate":12,"interest_credit_unit":"month","interest_credit_day_of_month":1,"interest_day_count_convention":"30E/360","interest_valid_from":"2026-01-01"}'::jsonb
   ) INTO v_res;
@@ -183,8 +183,8 @@ BEGIN
   END IF;
   RAISE NOTICE 'PASS [zero balance -> 0]';
 
-  -- ============ Additivitaets-Regression (WS-Z3): Same-Rate-Split == ungeteilt ============
-  -- Ein Satzwechsel auf DENSELBEN Satz mitten in der Periode darf den Betrag NICHT aendern (Segment-Summe ==
+  -- ============ Additivitaets-Regression: Same-Rate-Split == ungeteilt ============
+  -- Ein Satzwechsel auf denselben Satz mitten in der Periode darf den Betrag nicht aendern (Segment-Summe ==
   -- ungeteilter Einzel-Satz-Betrag). Kritisch fuer die deutsche 30E/360 an inneren Grenzen 31. + 28./29. Feb
   -- (symmetrische Klammer -> Teleskop-Summe kuerzt sich; bei ISDA-30E/360 wuerde das brechen).
   -- (a) 30E/360, innere Grenze am 31. (Jan-Periode 2026-01-01..2026-02-01); ungeteilt 100.00.
@@ -239,8 +239,8 @@ BEGIN
   IF v_amt2 IS DISTINCT FROM v_amt THEN RAISE EXCEPTION 'FAIL [additivity ACT/360]: ungeteilt % vs split %', v_amt, v_amt2; END IF;
   RAISE NOTICE 'PASS [Additivitaet ACT/360 Split mitten im Monat -> unveraendert]';
 
-  -- ============ Fail-closed: Luecke in der Zinshistorie -> RAISE (WS-Z3) ============
-  -- Direkt zwei Rate-Zeilen mit einer Luecke [2026-01-10, 2026-01-20) (NICHT via fn_set, die schliesst lueckenlos).
+  -- ============ Fail-closed: Luecke in der Zinshistorie -> RAISE ============
+  -- Direkt zwei Rate-Zeilen mit einer Luecke [2026-01-10, 2026-01-20) (nicht via fn_set, die schliesst lueckenlos).
   SELECT finance.fn_create_account('{"name":"__test_int_gap_fc__","account_type":"cash","currency":"EUR"}'::jsonb) INTO v_res;
   v_acct := (v_res->>'account_id')::int;
   INSERT INTO finance.account_interest_rates (account_id, annual_rate, schedule_interval, schedule_unit, day_count_convention, valid_from, valid_to)

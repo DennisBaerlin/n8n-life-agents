@@ -1,10 +1,10 @@
 -- tests/db/core/test_fn_monitor_due.sql
 -- Testet fn_monitor_due(p_now): Due-Selection des Heartbeat-Crons.
--- Vertrag: liefert NUR status='armed' mit next_check_at <= p_now; fired/disabled nie;
+-- Vertrag: liefert nur status='armed' mit next_check_at <= p_now; fired/disabled nie;
 --          run_ts = p_now (eine Uhr fuer den ganzen Lauf); Spalten fuer den Acquisition-
 --          Branch (acquisition_method, acquisition_spec, prompt) sind dabei.
 BEGIN;
--- Roter Faden: die Bestandsfaelle laufen mit fester Uhr (07:10) -> Erinnerungs-Fenster hier auf den ganzen Tag;
+-- Die Bestandsfaelle laufen mit fester Uhr (07:10) -> Erinnerungs-Fenster hier auf den ganzen Tag;
 -- das Fenster-Verhalten selbst prueft test_fn_monitor_evaluate (Block "Erinnerungs-Fenster").
 INSERT INTO core.config (package, category, key, value) VALUES
   ('core', 'general', 'reminders_from', '0'), ('core', 'general', 'reminders_until', '24')

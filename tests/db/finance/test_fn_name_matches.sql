@@ -1,5 +1,5 @@
 -- tests/db/finance/test_fn_name_matches.sql
--- Namens-Aufloesung "erst exakt, nur bei 0 Treffern ohne Gross-/Kleinschreibung + getrimmt" (Paket DB-ist-das-Gesetz S3):
+-- Namens-Aufloesung "erst exakt, nur bei 0 Treffern ohne Gross-/Kleinschreibung + getrimmt":
 --   (1) finance.fn_name_matches: exakt-Modus vs. ci-Modus.
 --   (2) fn_resolve_account: "lindenbank giro " findet "Lindenbank Giro" (ci-Pass); ein Bestandspaar "Tagesgeld"/"tagesgeld" bleibt bei
 --       exakter Eingabe eindeutig (keine neue Mehrdeutigkeit), nur eine dritte Schreibweise ist mehrdeutig (2 Treffer).

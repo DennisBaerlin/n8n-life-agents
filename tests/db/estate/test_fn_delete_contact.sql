@@ -1,5 +1,5 @@
 -- tests/db/estate/test_fn_delete_contact.sql
--- WS-2: Kontakt-Loeschung — Rollen-Filter disambiguiert, not-found = RAISE, Kind-Reject.
+-- Kontakt-Loeschung — Rollen-Filter disambiguiert, not-found = RAISE, Kind-Reject.
 -- Self-contained; BEGIN..ROLLBACK.
 BEGIN;
 

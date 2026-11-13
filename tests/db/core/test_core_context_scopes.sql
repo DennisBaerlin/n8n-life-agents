@@ -1,11 +1,11 @@
 -- tests/db/core/test_core_context_scopes.sql
--- P0a: deklarative Scope-/Permission-Registry core.context_scopes. Sichert die strukturellen Invarianten der
+-- Deklarative Scope-/Permission-Registry core.context_scopes. Sichert die strukturellen Invarianten der
 -- Host-Tabelle (DB ist Gesetz), unabhaengig von der Durchsetzung (die deckt test_fn_check_write_permission ab):
 --   (1) gueltige Zeile akzeptiert,
 --   (2) scope-CHECK weist Fremdwert ab,
 --   (3) write_permission-CHECK weist Fremdwert ab,
 --   (4) Cross-CHECK: own_user_only setzt per_user voraus (own_user_only+household abgewiesen, +per_user ok),
---   (5) PRIMARY KEY erzwingt EINE Zeile je Context (erstes Paket gewinnt, Zweit-Bindung kollidiert).
+--   (5) PRIMARY KEY erzwingt eine Zeile je Context (erstes Paket gewinnt, Zweit-Bindung kollidiert).
 BEGIN;
 
 DO $$

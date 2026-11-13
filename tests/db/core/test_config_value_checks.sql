@@ -70,7 +70,7 @@ BEGIN
 END $$;
 
 -- (3) + (4): Bestandswert, der zum (neuen) Typ nicht passt. Pflanzen mit abgeschaltetem Pruef-Trigger (Superuser,
---     nur in dieser Test-Transaktion) = der Zustand einer Instanz von vor der Typisierung.
+--     nur in dieser Test-Transaktion) = Zustand einer Bestandsinstanz mit altem, ungeprueftem Wert.
 ALTER TABLE core.config DISABLE TRIGGER trg_config_check_value_type;
 INSERT INTO core.config (category, key, value, package, value_type, minimum, default_value)
 VALUES ('__tcat', '__t_legacy_int', 'abc', '__tpkg', 'integer', 1, '30');

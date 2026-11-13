@@ -1,6 +1,6 @@
 -- tests/db/core/test_fn_person_chat_id.sql
--- agent.fn_person_chat_id (P2a): person_id -> telegram_user_id (= private chat_id), Umkehrung von fn_resolve_sender.
---   bekannt+gepairt -> chat_id; bekannt+UNGEPAIRT (kein telegram_user_id, Skelett) -> NULL; unbekannt -> NULL.
+-- agent.fn_person_chat_id: person_id -> telegram_user_id (= private chat_id), Umkehrung von fn_resolve_sender.
+--   bekannt+gepairt -> chat_id; bekannt+ungepairt (kein telegram_user_id, Skelett) -> NULL; unbekannt -> NULL.
 --   RAISE-frei (Caller skippt den Send bei NULL). Fixture: family owner(gepairt 111) + partner(gepairt 222) +
 --   child(Skelett ohne telegram_user_id). BEGIN..ROLLBACK -> kein Residual-State.
 BEGIN;
@@ -24,12 +24,12 @@ BEGIN
   IF v_chat IS DISTINCT FROM 111 THEN RAISE EXCEPTION 'FAIL [1] erika chat_id erwartet 111, got %', v_chat; END IF;
   RAISE NOTICE 'PASS [1] owner -> eigene private chat_id (111)';
 
-  -- TEST 2: 2. Person (partner) -> 222 (eigene, NICHT owner)
+  -- TEST 2: 2. Person (partner) -> 222 (eigene, nicht owner)
   v_chat := agent.fn_person_chat_id('lena');
   IF v_chat IS DISTINCT FROM 222 THEN RAISE EXCEPTION 'FAIL [2] lena chat_id erwartet 222, got %', v_chat; END IF;
   RAISE NOTICE 'PASS [2] 2. Person -> eigene chat_id (222)';
 
-  -- TEST 3: bekannt aber UNGEPAIRT (Skelett ohne telegram_user_id) -> NULL (Caller skippt Send graceful)
+  -- TEST 3: bekannt aber ungepairt (Skelett ohne telegram_user_id) -> NULL (Caller skippt Send graceful)
   v_chat := agent.fn_person_chat_id('kid');
   IF v_chat IS NOT NULL THEN RAISE EXCEPTION 'FAIL [3] ungepairtes Skelett erwartet NULL, got %', v_chat; END IF;
   RAISE NOTICE 'PASS [3] bekannt+ungepairt -> NULL (kein RAISE)';

@@ -15,13 +15,13 @@ DECLARE
   v_ap   BOOLEAN;
 BEGIN
   -- ===== Basis: monatlich, dom NULL (Anker-Tag) =====
-  -- Altzeile (vor dem Pflicht-Tag 2026-10-24 geschrieben): fn_create_account lehnt monatlich ohne Tag ab -> direkt anlegen.
+  -- Altzeile (ohne Tag, vor dessen Pflicht geschrieben): fn_create_account lehnt monatlich ohne Tag ab -> direkt anlegen.
   SELECT finance.fn_create_account('{"name":"__test_int_due__","account_type":"cash","currency":"EUR"}'::jsonb) INTO v_res;
   v_acct := (v_res->>'account_id')::int;
   INSERT INTO finance.account_interest_rates (account_id, annual_rate, schedule_interval, schedule_unit, day_count_convention, valid_from)
   VALUES (v_acct, 4, 1, 'month', 'ACT/365', '2026-01-01');
 
-  -- p_until 2026-03-15 -> period_end 2026-02-01 & 2026-03-01 (k>=1; Anker 2026-01-01 ist KEIN Ende)
+  -- p_until 2026-03-15 -> period_end 2026-02-01 & 2026-03-01 (k>=1; Anker 2026-01-01 ist kein Ende)
   SELECT count(*) INTO v_cnt FROM finance.fn_interest_due_open('2026-03-15') WHERE account_id = v_acct;
   IF v_cnt <> 2 THEN RAISE EXCEPTION 'FAIL [monthly count]: erwartet 2, got %', v_cnt; END IF;
   IF EXISTS (SELECT 1 FROM finance.fn_interest_due_open('2026-03-15')
@@ -42,7 +42,7 @@ BEGIN
   IF v_cnt <> 1 THEN RAISE EXCEPTION 'FAIL [booked on period_end]: erwartet 1, got %', v_cnt; END IF;
   RAISE NOTICE 'PASS [gebucht (interest_period_end=period_end) faellt raus -> 1]';
 
-  -- generische Zins-Tx (interest_period_end NULL) markiert KEINE Periode als gebucht
+  -- generische Zins-Tx (interest_period_end NULL) markiert keine Periode als gebucht
   INSERT INTO finance.transactions (account_id, amount, transaction_date, category, description)
   VALUES (v_acct, 9, '2026-03-01', 'interest', 'Bonuszins');   -- interest_period_end NULL
   SELECT count(*) INTO v_cnt FROM finance.fn_interest_due_open('2026-03-15') WHERE account_id = v_acct;
@@ -87,7 +87,7 @@ BEGIN
   v_acct := (v_res->>'account_id')::int;
 
   -- period_end 2026-01-31 -> value_date 2026-02-05 (5. des Folgemonats), value_date <> period_end.
-  -- p_until 2026-02-10: 01-31/02-05 sichtbar; das Ende 2026-02-28 (value_date 2026-03-05) noch NICHT faellig.
+  -- p_until 2026-02-10: 01-31/02-05 sichtbar; das Ende 2026-02-28 (value_date 2026-03-05) noch nicht faellig.
   SELECT value_date, period_end INTO v_vd, v_pe FROM finance.fn_interest_due_open('2026-02-10')
     WHERE account_id = v_acct AND period_end = '2026-01-31';
   IF v_vd IS DISTINCT FROM DATE '2026-02-05' THEN RAISE EXCEPTION 'FAIL [arrears vd]: erwartet 2026-02-05, got %', v_vd; END IF;
@@ -126,20 +126,20 @@ BEGIN
   END IF;
   RAISE NOTICE 'PASS [daily: 4 Enden, auto_post default false, ORDER BY period_end ASC]';
 
-  -- ===== p2p ist zins-faehig (WS-Z4, Bondora Go & Grow: taeglich) -> erscheint in due_open =====
+  -- ===== p2p ist zins-faehig (taeglich) -> erscheint in due_open =====
   SELECT finance.fn_create_account(
     '{"name":"__test_int_p2p__","account_type":"p2p","currency":"EUR","interest_rate":6,"interest_credit_unit":"day","interest_valid_from":"2026-01-01"}'::jsonb
   ) INTO v_res;
   v_acct := (v_res->>'account_id')::int;
-  -- p_until 2026-01-04 -> Enden 2026-01-02,03,04 (3; Anker 01-01 kein Ende). Frueher war p2p ausgeschlossen.
+  -- p_until 2026-01-04 -> Enden 2026-01-02,03,04 (3; Anker 01-01 kein Ende).
   SELECT count(*) INTO v_cnt FROM finance.fn_interest_due_open('2026-01-04') WHERE account_id = v_acct;
   IF v_cnt <> 3 THEN RAISE EXCEPTION 'FAIL [p2p eligible]: erwartet 3 Enden, got %', v_cnt; END IF;
   RAISE NOTICE 'PASS [p2p zins-faehig: erscheint in due_open]';
 
-  -- ===== nur Einlagen-Konten: due_open-FILTER schliesst Depot aus (Defense-in-Depth, WS-Z4) =====
+  -- ===== nur Einlagen-Konten: due_open-Filter schliesst Depot aus (Defense-in-Depth) =====
   -- Das Anlegen einer Depot-Zinszeile sperrt der Trigger trg_finance_reject_interest_rate_ineligible
   -- (geprueft in test_fn_interest_eligible_account_type). Hier wird der due_open-Filter geprueft: selbst
-  -- eine (per Trigger-Disable simulierte) Alt-/Korrupt-Zeile auf einem Depot darf NIE als Stichtag erscheinen.
+  -- eine (per Trigger-Disable simulierte) Alt-/Korrupt-Zeile auf einem Depot darf nie als Stichtag erscheinen.
   SELECT finance.fn_create_account(
     jsonb_build_object('name','__test_int_depot__','account_type','stocks_depot','currency','EUR','settlement_id',v_acct)
   ) INTO v_res;
@@ -168,7 +168,7 @@ BEGIN
   END IF;
   RAISE NOTICE 'PASS [90-Tage-Fenster auf value_date]';
 
-  -- ===== Kalender-Raster (Befund 2026-10-24): vierteljaehrlich zum Quartalsende, Start 24.10. =====
+  -- ===== Kalender-Raster: vierteljaehrlich zum Quartalsende, Start 24.10. =====
   SELECT finance.fn_create_account(
     '{"name":"__test_int_quarter__","account_type":"cash","currency":"EUR","interest_rate":2,"interest_credit_unit":"month","interest_credit_interval":3,"interest_credit_day_of_month":-1,"interest_valid_from":"2026-10-24"}'::jsonb
   ) INTO v_res;
@@ -198,9 +198,9 @@ BEGIN
     RAISE EXCEPTION 'FAIL [Jahrestag]: erwartet 2026-10-24..2027-10-24'; END IF;
   RAISE NOTICE 'PASS [jaehrlich: Jahresende kalendergerecht, ohne Tag am Jahrestag]';
 
-  -- ===== Schutz vor Doppelverzinsung: Bestandsbuchung nach ALTEM Anker-Raster (31.01.) vor dem neuen Quartal =====
+  -- ===== Schutz vor Doppelverzinsung: Bestandsbuchung nach altem Anker-Raster (31.01.) vor dem neuen Quartal =====
   -- Simuliert ein Konto, das vor der Kalender-Korrektur bis 31.01. verzinst wurde: die naechste Periode (bis 31.03.)
-  -- beginnt am 31.01. (juengste erledigte Periode), NICHT am Rasterpunkt 31.12. (sonst Januar doppelt).
+  -- beginnt am 31.01. (juengste erledigte Periode), nicht am Rasterpunkt 31.12. (sonst Januar doppelt).
   SELECT finance.fn_create_account(
     '{"name":"__test_int_legacygrid__","account_type":"cash","currency":"EUR","interest_rate":2,"interest_credit_unit":"month","interest_credit_interval":3,"interest_credit_day_of_month":-1,"interest_valid_from":"2026-10-24"}'::jsonb
   ) INTO v_res;

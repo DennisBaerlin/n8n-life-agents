@@ -1,5 +1,5 @@
 -- tests/db/core/test_fn_monitor_ro_eval.sql
--- agent.fn_monitor_ro_eval (Security-Audit 2026-10): gespeicherte Monitor-sql-Specs laufen strukturell als core_ro —
+-- agent.fn_monitor_ro_eval: gespeicherte Monitor-sql-Specs laufen strukturell als core_ro —
 -- ohne Ausweg ueber einen eingebetteten Rollenwechsel. Ueber agent.fn_monitor_acquire (den einzigen Aufrufer):
 --   1) Eigentuemer = core_ro_eval (NOLOGIN, erbt core_ro), SECURITY DEFINER, EXECUTE nicht an PUBLIC; core_ro darf sie nicht droppen.
 --   2) Normale Spec -> Wert, current_user = core_ro_eval.

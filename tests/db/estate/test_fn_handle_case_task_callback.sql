@@ -1,7 +1,7 @@
 -- tests/db/estate/test_fn_handle_case_task_callback.sql
--- WS-3 + Member-Permeabilitaet: est:-Callback-Handler — done/skip delegiert an fn_set_case_task; unresolved
---   sender, unbekannte Aktion, stale id, Kind (adults_only via Delegat), **Partner-Actor** (member-permeabel:
---   ein Nicht-Owner-Erwachsener handelt an einem subject-fremden Fall = Break-Glass). NIE RAISE (Dispatcher-Vertrag).
+-- est:-Callback-Handler — done/skip delegiert an fn_set_case_task; unresolved
+--   sender, unbekannte Aktion, stale id, Kind (adults_only via Delegat), Partner-Actor (member-permeabel:
+--   ein Nicht-Owner-Erwachsener handelt an einem subject-fremden Fall = Break-Glass). Nie RAISE (Dispatcher-Vertrag).
 BEGIN;
 
 DO $$
@@ -54,10 +54,10 @@ BEGIN
   IF NOT (v_r->>'ok')::boolean OR v_r->>'toast' <> 'DE:estate.toast.task_not_applicable' THEN RAISE EXCEPTION 'FAIL [skip happy]: %', v_r; END IF;
   IF (SELECT status FROM estate.case_tasks WHERE id=v_task) <> 'not_applicable' THEN RAISE EXCEPTION 'FAIL [Task nicht n.a.]'; END IF;
 
-  -- PARTNER-Actor (D4 Haushalts-Policy, Member-Callback-Permeabilitaet): der EXAKTE Break-Glass-Fall — die
-  -- Ownerin erika wird handlungsunfaehig, der Partner hans (222 = Nicht-Owner-Erwachsener) OEFFNET den Fall
-  -- (subject=erika, sender=hans, subject<>sender ok) UND handelt an dessen Tasks -> ok. Beweist: adults_only
-  -- ist HAUSHALTS-skopiert, KEIN Per-Item-Eigentum -> der handelnde Partner arbeitet an der Mappe der/des
+  -- Partner-Actor (Haushalts-Policy, Member-Callback-Permeabilitaet): der exakte Break-Glass-Fall — die
+  -- Ownerin erika wird handlungsunfaehig, der Partner hans (222 = Nicht-Owner-Erwachsener) oeffnet den Fall
+  -- (subject=erika, sender=hans, subject<>sender ok) und handelt an dessen Tasks -> ok. Beweist: adults_only
+  -- ist haushalts-skopiert, kein Per-Item-Eigentum -> der handelnde Partner arbeitet an der Mappe der/des
   -- Betroffenen (ein Per-Item-Check wuerde genau ihn aussperren).
   v_r := estate.fn_create_case(jsonb_build_object('chat_id','222','case_type','incapacity','subject_person_id','erika','event_date','2024-02-01','bundesland','bayern'));
   v_case := (v_r->>'case_id')::bigint;

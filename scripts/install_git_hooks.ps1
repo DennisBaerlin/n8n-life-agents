@@ -29,5 +29,5 @@ try {
     Pop-Location
 }
 
-Write-Host "Installiert: pre-commit + pre-push + commit-msg Hooks via prek." -ForegroundColor Green
+Write-Host "Installiert: pre-commit + pre-push + commit-msg + post-merge Hooks via prek." -ForegroundColor Green
 Write-Host "Voll-Lauf jederzeit: prek run --all-files . Notfall-Bypass: git push --no-verify." -ForegroundColor Cyan

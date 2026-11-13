@@ -322,9 +322,14 @@ if ($prek) {
         Push-Location $RepoRoot
         try {
             $r = Invoke-Native $prek @('install', '--overwrite', '--hook-type', 'pre-commit', '--hook-type', 'pre-push', '--hook-type', 'commit-msg', '--hook-type', 'post-merge')
-            if ($r.Code -eq 0) { Write-Ok "Git-Hooks verdrahtet (pre-commit + pre-push + commit-msg)" }
+            if ($r.Code -eq 0) { Write-Ok "Git-Hooks verdrahtet (pre-commit + pre-push + commit-msg + post-merge)" }
             else { Write-SoftWarn "prek install ergab Exit $($r.Code) -- scripts/install_git_hooks.ps1 pruefen." }
         } finally { Pop-Location }
+    } else {
+        # Ein Clone, der vor dem post-merge-Hook verdrahtet wurde, hat ihn nie: die Site wird nach Merges nicht neu gebaut.
+        $hooksDir = (git -C $RepoRoot rev-parse --path-format=absolute --git-path hooks 2>$null)
+        $absent = @('pre-commit', 'pre-push', 'commit-msg', 'post-merge') | Where-Object { -not (Test-Path (Join-Path $hooksDir $_)) }
+        if ($absent) { Write-Miss 'git-hooks' ("Git-Hook(s) nicht verdrahtet: {0} -> scripts/install_git_hooks.ps1." -f ($absent -join ', ')) }
     }
 } else {
     $script:versions['prek'] = 'fehlt'

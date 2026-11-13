@@ -104,7 +104,12 @@ if ($Capture) {
             'en-welcome:missing:welcome:lang=en', 'en-dk-missing:missing:docker:lang=en', 'en-power:laptop:power:lang=en', 'en-power-result:missing:powerApply:lang=en',
             'en-done:missing:finish:lang=en', 'en-uninstall:missing:uninstall:lang=en', 'ko-welcome:missing:welcome:lang=ko', 'ko-need:missing:need:lang=ko',
             'ko-sys-hint:hints:sys:lang=ko', 'ko-dk-ready:ready:docker:lang=ko', 'ko-dk-memory:memory:docker:lang=ko', 'ko-power:laptop:power:lang=ko',
-            'ko-power-result:missing:powerApply:lang=ko', 'ko-done:missing:finish:lang=ko', 'ko-uninstalled:missing:uninstall:click=next&lang=ko', 'ko-win-power:missing:power:os=win&lang=ko')
+            'ko-power-result:missing:powerApply:lang=ko', 'ko-done:missing:finish:lang=ko', 'ko-uninstalled:missing:uninstall:click=next&lang=ko', 'ko-win-power:missing:power:os=win&lang=ko',
+            # Wiederherstellen (Faelle per restore=, preview/mock.js)
+            'restore-card:complete:home:restore=foreign', 'restore-list:complete:restoreList:restore=foreign', 'restore-list-nofolder:complete:restoreList:restore=nofolder',
+            'restore-key:complete:restorePlan:restore=foreign', 'restore-preview:complete:restorePlan:restore=own', 'restore-preview-data:complete:restorePlan:restore=data',
+            'restore-older:complete:restorePlan:restore=older', 'restore-running:complete:home:restore=running', 'restore-done:complete:home:restore=done',
+            'restore-unfinished:complete:home:restore=unfinished', 'en-restore-preview-data:complete:restorePlan:restore=data&lang=en', 'ko-restore-key:complete:restorePlan:restore=foreign&lang=ko')
         if ($Screens.Count) { $cases = @($cases | Where-Object { $Screens -contains ($_ -split ':')[0] }) }
         $deskHtml = {
             param([string]$Params, [bool]$Full)

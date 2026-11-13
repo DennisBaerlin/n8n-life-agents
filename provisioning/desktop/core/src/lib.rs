@@ -22,6 +22,7 @@ pub mod lang;
 pub mod network;
 pub mod power;
 pub mod report;
+pub mod restore;
 pub mod suggest;
 pub mod system;
 pub mod texts;
@@ -35,6 +36,7 @@ pub(crate) fn all_sources() -> Vec<(&'static str, &'static str)> {
         ("admin.rs", include_str!("admin.rs")),
         ("autostart.rs", include_str!("autostart.rs")),
         ("backup.rs", include_str!("backup.rs")),
+        ("restore.rs", include_str!("restore.rs")),
         ("changes.rs", include_str!("changes.rs")),
         ("cleanup.rs", include_str!("cleanup.rs")),
         ("contract.rs", include_str!("contract.rs")),

@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-restore-status"
+description = "Enables the restore_status command without any pre-configured scope."
+commands.allow = ["restore_status"]
+
+[[permission]]
+identifier = "deny-restore-status"
+description = "Denies the restore_status command without any pre-configured scope."
+commands.deny = ["restore_status"]

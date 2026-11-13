@@ -40,7 +40,16 @@ impl CmdOut {
     pub fn success(&self) -> bool {
         self.code == 0
     }
+    /// Testhilfe: dieselbe Antwort mit Text auf stdout (ein Fehler-Exit kann trotzdem JSON melden).
+    pub fn with_stdout(mut self, stdout: &str) -> Self {
+        self.stdout = stdout.to_string();
+        self
+    }
 }
+
+/// Fehler von `read_capped`.
+pub const TOO_BIG: &str = "too-big";
+pub const UNREADABLE_FILE: &str = "unreadable";
 
 pub trait Host {
     fn os(&self) -> Os;
@@ -57,6 +66,8 @@ pub trait Host {
     /// Programm starten, ohne zu warten (Docker Desktop öffnen).
     fn spawn(&self, program: &str, args: &[String]) -> Result<(), String>;
     fn read_file(&self, path: &str) -> Option<String>;
+    /// Datei als Bytes, höchstens `max` Bytes (`Err(TOO_BIG)`), sonst `Err(UNREADABLE_FILE)` (fehlt, keine Rechte).
+    fn read_capped(&self, path: &str, max: u64) -> Result<Vec<u8>, &'static str>;
     /// Schreibt atomar (temporäre Datei + Umbenennen) und legt fehlende Ordner an.
     fn write_file(&self, path: &str, content: &str) -> Result<(), String>;
     fn remove_file(&self, path: &str) -> Result<(), String>;
@@ -224,7 +235,12 @@ impl Host for RealHost {
         prepare_child(&mut cmd);
         let mut child = cmd.spawn().map_err(|e| format!("{program}: {e}"))?;
         if let Some(mut stdin) = child.stdin.take() {
-            stdin.write_all(input.as_bytes()).map_err(|e| e.to_string())?;
+            // Endet das Gegenüber vor dem Lesen (z. B. „belegt“), zählt seine Antwort, nicht die geschlossene Leitung.
+            if let Err(e) = stdin.write_all(input.as_bytes()) {
+                if e.kind() != std::io::ErrorKind::BrokenPipe {
+                    return Err(e.to_string());
+                }
+            }
         }
         let out = child.wait_with_output().map_err(|e| e.to_string())?;
         Ok(CmdOut { code: out.status.code().unwrap_or(-1), stdout: decode(&out.stdout), stderr: decode(&out.stderr) })
@@ -237,6 +253,13 @@ impl Host for RealHost {
     }
     fn read_file(&self, path: &str) -> Option<String> {
         std::fs::read_to_string(path).ok()
+    }
+    fn read_capped(&self, path: &str, max: u64) -> Result<Vec<u8>, &'static str> {
+        let len = std::fs::metadata(path).map_err(|_| UNREADABLE_FILE)?.len();
+        if len > max {
+            return Err(TOO_BIG);
+        }
+        std::fs::read(path).map_err(|_| UNREADABLE_FILE)
     }
     fn write_file(&self, path: &str, content: &str) -> Result<(), String> {
         let p = std::path::Path::new(path);
@@ -473,6 +496,14 @@ impl Host for FakeHost {
     }
     fn read_file(&self, path: &str) -> Option<String> {
         self.files.borrow().get(path).cloned()
+    }
+    fn read_capped(&self, path: &str, max: u64) -> Result<Vec<u8>, &'static str> {
+        let f = self.files.borrow();
+        let c = f.get(path).ok_or(UNREADABLE_FILE)?;
+        if c.len() as u64 > max {
+            return Err(TOO_BIG);
+        }
+        Ok(c.as_bytes().to_vec())
     }
     fn write_file(&self, path: &str, content: &str) -> Result<(), String> {
         self.files.borrow_mut().insert(path.to_string(), content.to_string());

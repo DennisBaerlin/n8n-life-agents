@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-restore-list"
+description = "Enables the restore_list command without any pre-configured scope."
+commands.allow = ["restore_list"]
+
+[[permission]]
+identifier = "deny-restore-list"
+description = "Denies the restore_list command without any pre-configured scope."
+commands.deny = ["restore_list"]

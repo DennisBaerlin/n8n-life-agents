@@ -45,10 +45,11 @@ fn version_only(s: &str) -> String {
 }
 
 /// Die festen Fehler-Codes der App. Alles andere wird zu `other`, so kann kein Meldungstext durchrutschen.
-pub const ERROR_CODES: [&str; 27] = [
+pub const ERROR_CODES: [&str; 28] = [
     "kit-unavailable",
     "kit-write",
     "backup-dir-unavailable",
+    "restore-unavailable",
     "docker-capability",
     "docker-credentials",
     "docker-network",

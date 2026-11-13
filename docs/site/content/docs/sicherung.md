@@ -47,13 +47,18 @@ Das legt die Sicherung in den aktuellen Ordner und schickt eine verschlüsselte 
 ## Neuer Rechner: Schritt für Schritt {#neuer-rechner}
 
 1. **Die Version aus dem Dateinamen installieren.** Eine Sicherung lässt sich nur in genau die Version zurückspielen, mit der sie geschrieben wurde (sie steht am Ende des Dateinamens, z. B. `v0.44.0`).
-   - Start-App: Lade die App dieser Version, `https://github.com/DennisBaerlin/n8n-life-agents/releases/download/v0.44.0/lifeagents.dmg` (Mac) bzw. `…/lifeagents-setup.exe` (Windows), Version im Link anpassen. Richte sie ein wie beim ersten Mal und wähle im Fragebogen bei „Wohin sichern?“ den Ordner mit deinen alten Sicherungen. Das Notfallblatt der Neuinstallation brauchst du danach nicht.
+   - Start-App: Lade die App dieser Version, `https://github.com/DennisBaerlin/n8n-life-agents/releases/download/v0.44.0/lifeagents.dmg` (Mac) bzw. `…/lifeagents-setup.exe` (Windows), Version im Link anpassen. Richte sie ein wie beim ersten Mal und wähle im Fragebogen bei „Wohin sichern?“ den Ordner mit deinen alten Sicherungen.
    - Server: `curl -fsSL https://github.com/DennisBaerlin/n8n-life-agents/releases/latest/download/install.sh -o install.sh && bash install.sh --version v0.44.0`, dann die Sicherungsdatei auf den Server kopieren.
 2. **Wiederherstellen starten.**
-   - Start-App: Terminal bzw. PowerShell öffnen und `docker exec -it lifeagents-master lifeagents backup restore` eingeben. Die Liste zeigt die Sicherungen im Ordner, die deines alten Rechners stehen oben („braucht das Notfallblatt eines anderen Rechners“). Wähle die mit dem Datum deines alten Rechners.
+   - Start-App: Liegen im Sicherungsordner Sicherungen deines alten Rechners, zeigt die Fertig-Seite gleich die Karte **Sicherung vom alten Rechner zurückholen**. Sonst im Symbol **Sicherung wiederherstellen …** wählen. Die Liste zeigt die Sicherungen im Ordner, die deines alten Rechners stehen oben. Liegt die Sicherung woanders (USB-Stick, Downloads), nimm **Andere Datei wählen …**.
    - Server: `lifeagents backup restore` (Auswahl aus dem aktuellen Ordner) oder `lifeagents backup restore <datei>`.
-3. **Schlüssel vom Notfallblatt eintippen.** Die Eingabe bleibt unsichtbar; Leerzeichen und Bindestriche sind egal. Stimmt eine Zeile nicht, sagt der Assistent sofort, welche. Statt zu tippen kannst du die gespeicherte Notfallblatt-Datei mitgeben: `docker exec -i lifeagents-master lifeagents backup restore <datei> --key-stdin < Notfallblatt.txt` (Server: ohne `docker exec -i lifeagents-master`).
-4. **Bestätigen.** Vorher zeigt der Assistent, was überschrieben wird, und fragt nach. Danach sind deine Daten zurück, und dein Notfallblatt gilt weiter.
+3. **Notfallblatt geben.**
+   - Start-App: **Notfallblatt-Datei wählen …** oder die vier Zeilen vom Papier abtippen. Leerzeichen und Bindestriche sind egal; stimmt eine Zeile nicht, sagt die App, welche. Das Blatt geht nur an deinen Assistenten auf diesem Rechner, nie ins Internet.
+   - Server: Die Eingabe im Terminal bleibt unsichtbar. Statt zu tippen kannst du die Notfallblatt-Datei mitgeben: `lifeagents backup restore <datei> --key-stdin < Notfallblatt.txt`.
+4. **Bestätigen.** Vorher siehst du, von wann die Sicherung ist und was zurückkommt. Hast du auf diesem Rechner schon eigene Daten, legt der Assistent vorher eine Sicherung davon an und du bestätigst mit einem Haken, dass sie ersetzt werden. Danach sind deine Daten zurück; in der Start-App läuft das weiter, auch wenn du das Fenster schließt.
+5. **Danach.** Ab jetzt gilt das Notfallblatt deines alten Rechners. Speichere in der Start-App gleich das neue Blatt (es enthält beide Schlüssel). Lass den alten Rechner nicht mehr in denselben Ordner sichern, sonst räumen sich beide gegenseitig alte Sicherungen weg. Nutzt du einen neuen Telegram-Bot, starten die anderen im Haushalt ihn einmal selbst.
+
+Ohne Start-App geht es auch im Terminal: `docker exec -it lifeagents-master lifeagents backup restore` (Mac: Programm „Terminal“, Windows: „PowerShell“).
 
 ## Wenn es nicht klappt {#hilfe}
 

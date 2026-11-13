@@ -411,6 +411,42 @@ eq B.dateiname-dev "lifeagents-backup-20261112033000-${_id1}-vdev.nla.enc" "$(_b
 eq B.kennung-aus-name "$_id1" "$(_bkp_file_key_id "/x/lifeagents-backup-20261112033000-${_id1}-v0.44.0.nla.enc")"
 eq B.kennung-umbenannte-kopie "$_id1" "$(_bkp_file_key_id "Kopie von lifeagents-backup-20261112033000-${_id1}-v0.44.0 (1).nla.enc")"
 eq B.aufraeumen-nie-umbenannte '' "$(printf 'Kopie von lifeagents-backup-20261112033000-%s-v0.44.0.nla.enc\n' "$_id1" | _bkp_rotate_victims 0 "$_id1")"
+# Eigen/fremd an einer Stelle (_bkp_classify): Terminal-Auswahl, Fragebogen-Hinweis und App-Liste. Fremde und alte zuerst,
+# darin neueste zuerst; fremde Dateien ohne .nla.enc fallen weg.
+_cls_in="$(printf '%s\n' "lifeagents-backup-20261110033000-${_id1}-v0.44.0.nla.enc" "lifeagents-backup-20261112033000-${_id1}-v0.44.0.nla.enc" \
+  "lifeagents-backup-20261101033000-k0000000a-v0.43.0.nla.enc" "lifeagents-backup-20261102033000-k0000000a-v0.43.0.nla.enc" \
+  "lifeagents-backup-20261001033000.nla.enc" "notizen.txt")"
+_cls="$( ( _bkp_key_ids() { printf '%s\n' "$_id1"; }; printf '%s\n' "$_cls_in" | _bkp_classify | _bkp_sorted | cut -f1,3 | tr '\t\n' ': ' ) )"
+eq B.einteilung-reihenfolge "lifeagents-backup-20261102033000-k0000000a-v0.43.0.nla.enc:other lifeagents-backup-20261101033000-k0000000a-v0.43.0.nla.enc:other lifeagents-backup-20261001033000.nla.enc:legacy lifeagents-backup-20261112033000-${_id1}-v0.44.0.nla.enc:own lifeagents-backup-20261110033000-${_id1}-v0.44.0.nla.enc:own " "$_cls"
+eq B.einteilung-version-zeit "20261102033000 v0.43.0" "$( ( _bkp_key_ids() { :; }; printf '%s\n' "$_cls_in" | _bkp_classify | grep 20261102 | cut -f4,5 | tr '\t' ' ' ) )"
+eq B.fremde-ids "k0000000a" "$( ( _bkp_key_ids() { printf '%s\n' "$_id1"; }; rt_host_ls() { printf '%s\n' "$_cls_in"; }; _bkp_foreign_ids /x ) )"
+eq B.auswahl-fremde-zuerst "lifeagents-backup-20261102033000-k0000000a-v0.43.0.nla.enc" \
+  "$( ( _bkp_key_ids() { printf '%s\n' "$_id1"; }; printf '%s\n' "$_cls_in" | _bkp_pick_lines | head -n1 | cut -f2 ) )"
+# Start-App: Sicherung + Blatt ueber stdin (erste Zeile "sheet <base64>", danach die Datei bytegenau, auch mit UTF-8-Blatt).
+printf 'Blatt mit Umlaut äö und 한글\n1:  abcd\n' > "$W/blatt.in"; printf 'BINAER\001\002ende' > "$W/datei.in"
+{ printf 'sheet %s\n' "$(base64 -w0 < "$W/blatt.in")"; base64 < "$W/datei.in"; } > "$W/rahmen.in"
+( _bkp_read_in_stdin "$W/rahmen.out" < "$W/rahmen.in"; printf '%s' "$_BKP_SHEET" > "$W/blatt.out"; printf '%s' "$_BKP_SHEET_SET" > "$W/gesetzt.out" ) 2>/dev/null
+if cmp -s "$W/datei.in" "$W/rahmen.out" && [ "$(cat "$W/blatt.out")" = "$(cat "$W/blatt.in")" ] && [ "$(cat "$W/gesetzt.out")" = 1 ]; then
+  pass B.rahmen-blatt-und-datei; else fail B.rahmen-blatt-und-datei "Datei oder Blatt verändert"; fi
+{ printf 'sheet\n'; base64 < "$W/datei.in"; } > "$W/rahmen2.in"
+if ( _bkp_read_in_stdin "$W/rahmen2.out" < "$W/rahmen2.in"; [ -z "$_BKP_SHEET" ] && [ "$_BKP_SHEET_SET" = 1 ] && cmp -s "$W/datei.in" "$W/rahmen2.out" ) 2>/dev/null; then
+  pass B.rahmen-ohne-blatt; else fail B.rahmen-ohne-blatt "leeres Blatt nicht erkannt"; fi
+eq B.rahmen-falsche-form '{"ok":false,"code":"unreadable"}' "$( ( _BKP_JSON=1; printf 'kaputt\n' | _bkp_read_in_stdin "$W/x.out" ) 2>/dev/null )"
+# Feste Codes: JSON-Modus = genau ein Objekt auf stdout, weitere Felder; Hintergrund-Lauf merkt den Grund in backup.state.
+eq B.code-json '{"ok":false,"code":"key_line","line":3}' "$( ( _BKP_JSON=1; _bkp_rdie key_line 'Zeile 3' --argjson line 3 ) 2>/dev/null )"
+_bst2="$W/rs.state"; rm -f "$_bst2"
+( BACKUP_STATE_FILE="$_bst2"; _BKP_CHILD=1; _BKP_JSON=0; _bkp_rdie busy 'belegt' ) >/dev/null 2>&1
+eq B.code-im-hintergrund busy "$(read_env_value "$_bst2" LAST_RESTORE_REASON)"
+# Stand des Hintergrund-Laufs: ok/fail nach dem Start, running solange die Restore-Sperre gehalten wird, sonst unfinished.
+_rs() { ( BACKUP_STATE_FILE="$_bst2"; BACKUP_RESTORE_LOCK="$W/restore.lock"; backup_cmd_restore_status --json ) 2>/dev/null | jq -r '.state + ":" + (.code // "")'; }
+rm -f "$_bst2"; eq B.stand-leer 'idle:' "$(_rs)"
+env_upsert "$_bst2" LAST_RESTORE_START 200; env_upsert "$_bst2" LAST_RESTORE_FAIL 150
+eq B.stand-abgebrochen 'unfinished:' "$(_rs)"
+_lauf="$( exec 8>>"$W/restore.lock"; flock -n 8; _rs )"; eq B.stand-laeuft 'running:' "$_lauf"
+env_upsert "$_bst2" LAST_RESTORE_FAIL 210; env_upsert "$_bst2" LAST_RESTORE_REASON version_older
+eq B.stand-fehler 'fail:version_older' "$(_rs)"
+env_upsert "$_bst2" LAST_RESTORE_OK 220
+eq B.stand-ok 'ok:' "$(_rs)"
 # Rechner-Pfade: Windows-Schreibweise geht als Docker-Form an Docker (Docker Desktop/WSL2), Anzeige bleibt beim Nutzer.
 eq B.windows-pfad-docker '/run/desktop/mnt/host/c/Daten/OneDrive/Life Agents Sicherungen' "$(_bkp_hd 'C:\Daten\OneDrive\Life Agents Sicherungen\')"
 eq B.windows-schraegstrich '/run/desktop/mnt/host/d/Sicherung' "$(_bkp_hd 'D:/Sicherung')"
@@ -602,6 +638,11 @@ env_upsert "$_bst" LAST_FAIL 400; env_upsert "$_bst" LAST_FAIL_REASON nofolder
 env_upsert "$UPDATE_TICK_STATE" LAST_BACKUP_TRY "$(( $(date -u +%s) - 3700 ))"
 : > "$W/tick.log"; ( BACKUP_STATE_FILE="$_bst" BACKUP_AUTO_AT=0000 update_tick )
 eq K.ohne-ordner-kein-versuch 'run' "$(tr '\n' ' ' < "$W/tick.log" | sed 's/ $//')"
+# Sperre belegt (Wiederherstellung oder Update lief): Grund busy, kein Alarm, der naechste Takt holt die Sicherung nach.
+env_upsert "$_bst" LAST_FAIL 500; env_upsert "$_bst" LAST_FAIL_REASON busy
+env_upsert "$UPDATE_TICK_STATE" LAST_BACKUP_TRY "$(( $(date -u +%s) - 3700 ))"
+: > "$W/tick.log"; ( BACKUP_STATE_FILE="$_bst" BACKUP_AUTO_AT=0000 update_tick )
+eq K.belegt-holt-nach 'run cli backup auto' "$(tr '\n' ' ' < "$W/tick.log" | sed 's/ $//')"
 env_upsert "$UPDATE_TICK_STATE" LAST_CHECK 2026-11-08; : > "$W/tick.log"
 ( BACKUP_AUTO_AT=2400 update_tick )
 eq K.alter-datumswert-prueft 'run check' "$(tr '\n' ' ' < "$W/tick.log" | sed 's/ $//')"

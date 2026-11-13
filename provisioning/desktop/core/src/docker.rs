@@ -73,6 +73,8 @@ pub enum DockerCall<'a> {
     ImageRemove(&'a str),
     /// Befehl im `master` (Schnittstelle zu Paket 4).
     Master(MasterCmd),
+    /// Wie `Master`, mit stdin (`--interactive`): das Notfallblatt bzw. die gewählte Sicherung (`restore.rs`), nie im argv.
+    MasterIn(MasterCmd),
     /// Hinweise für den Fragebogen als flüchtige Datei im `master` (0600, nur root); Inhalt über stdin (`call_stdin`).
     MasterHints,
     /// Fragebogen im Änderungs-Modus im Hintergrund starten (`contract::WIZARD_SERVER --backup-dir`).
@@ -185,6 +187,10 @@ impl Docker {
                 p(&mut a, &["exec", MASTER_CONTAINER]);
                 a.extend(cmd.args());
             }
+            DockerCall::MasterIn(cmd) => {
+                p(&mut a, &["exec", "--interactive", MASTER_CONTAINER]);
+                a.extend(cmd.args());
+            }
             DockerCall::MasterBackupDir => {
                 p(&mut a, &["exec", "--detach", MASTER_CONTAINER, "node", crate::contract::WIZARD_SERVER, "--backup-dir"]);
             }
@@ -269,6 +275,11 @@ mod tests {
             DockerCall::Master(MasterCmd::BackupKit),
             DockerCall::MasterHints,
             DockerCall::MasterBackupDir,
+            DockerCall::Master(MasterCmd::BackupList),
+            DockerCall::Master(MasterCmd::RestoreStatus),
+            DockerCall::Master(MasterCmd::RestorePlan { name: "x.nla.enc".into(), file: false, key: false }),
+            DockerCall::MasterIn(MasterCmd::RestorePlan { name: "x.nla.enc".into(), file: true, key: true }),
+            DockerCall::MasterIn(MasterCmd::Restore { name: "x.nla.enc".into(), file: false, key: true }),
         ]
     }
 

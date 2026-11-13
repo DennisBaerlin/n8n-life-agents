@@ -990,7 +990,9 @@ backup_kit_text() {
   elif rt_is_compose; then k="$(backup_text kit.where_none)"
   else k="$(backup_text kit.where_local)"; fi
   printf '\n%s\n\n%s\n' "$k" "$(backup_text kit.restore_title)"
-  printf -- '- %s\n- %s\n- %s\n\n' "$(backup_text kit.restore_1 version "$ver")" "$(backup_text kit.restore_2)" "$(backup_text kit.restore_3)"
+  # Docker-Weg: Menuepunkt der Start-App statt Terminal.
+  local r2=kit.restore_2; rt_is_compose && r2=kit.restore_2_app
+  printf -- '- %s\n- %s\n- %s\n\n' "$(backup_text kit.restore_1 version "$ver")" "$(backup_text "$r2")" "$(backup_text kit.restore_3)"
   if rt_is_compose; then k="$(backup_text kit.again_app)"; else k="$(backup_text kit.again)"; fi
   printf '%s\n%s\n' "$(backup_text kit.guide url "$BACKUP_GUIDE_URL")" "$k"
 }

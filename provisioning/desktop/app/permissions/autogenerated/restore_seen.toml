@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-restore-seen"
+description = "Enables the restore_seen command without any pre-configured scope."
+commands.allow = ["restore_seen"]
+
+[[permission]]
+identifier = "deny-restore-seen"
+description = "Denies the restore_seen command without any pre-configured scope."
+commands.deny = ["restore_seen"]

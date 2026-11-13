@@ -205,6 +205,14 @@ BEGIN
   IF (SELECT valid_to FROM finance.recurring_payments WHERE id = (SELECT recurring_payment_id FROM finance.insurances WHERE id = v_id))
      IS DISTINCT FROM DATE '2028-01-01' THEN
     RAISE EXCEPTION 'FAIL set_insurance [nachtragen]: Vertragsende an der neuen Kette erwartet, got %', v_res; END IF;
-  RAISE NOTICE 'PASS set_insurance [Beitrag nachtragen: ohne Datum/Konto ok:false, sonst Kette angelegt und verknuepft]';
+  -- Gekuendigte Police ohne Beitrag: kein Nachtragen (die neue Kette liefe sonst als Zahlung weiter), ohne Write
+  v_id := (finance.fn_create_insurance(jsonb_build_object('name','__test_set_ins_nach_alt__','valid_from','2026-01-01'))->>'insurance_id')::int;
+  PERFORM finance.fn_set_insurance(jsonb_build_object('insurance_id', v_id, 'status', 'cancelled'));
+  v_res := finance.fn_set_insurance(jsonb_build_object('insurance_id', v_id, 'annual_premium', 50,
+             'effective_from', '2026-02-01', 'debit_account_id', v_acct));
+  IF (v_res->>'ok')::boolean IS DISTINCT FROM false OR v_res->>'reason' NOT LIKE '%active%'
+     OR (SELECT recurring_payment_id FROM finance.insurances WHERE id = v_id) IS NOT NULL THEN
+    RAISE EXCEPTION 'FAIL set_insurance [nachtragen gekuendigt]: ok:false ohne Write erwartet, got %', v_res; END IF;
+  RAISE NOTICE 'PASS set_insurance [Beitrag nachtragen: ohne Datum/Konto ok:false, gekuendigt ok:false, sonst Kette angelegt und verknuepft]';
 END $$;
 ROLLBACK;

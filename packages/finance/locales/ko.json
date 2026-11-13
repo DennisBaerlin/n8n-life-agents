@@ -1043,7 +1043,7 @@
   "finance.note.statement_no_settlement": "출금 계좌가 없어서 입금과 출금은 나머지에 남아요. 이후 제공자가 어디로 지급하는지 알려 주세요.",
   "finance.note.statement_lump": "그 후 잔액은 명세서와 일치해요.",
   "finance.note.statement_insurance_premium_missing": "아직 보험료가 없는 보험: {names}. 명세서에서 보이면 이후에 알려 주세요.",
-  "finance.note.insurance_premium_missing": "보험료 없이 등록했어요. 알게 되면 알려 주세요. 그때까지 월간 점검에서 알려 드려요.",
+  "finance.note.insurance_premium_missing": "보험료 없이 저장돼요. 알게 되면 알려 주세요.",
   "finance.value.premium_missing": "— (보험료 아직 없음)",
   "finance.label.statement_rest_net": "나머지 (합계 하나로)",
   "finance.label.statement_rest_other": "그중 기타 (기록되지 않거나 설명되지 않음)",

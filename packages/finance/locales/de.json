@@ -1043,7 +1043,7 @@
   "finance.note.statement_no_settlement": "Ein- und Auszahlungen bleiben im Rest, weil das Konto für Auszahlungen fehlt. Sag mir danach, wohin der Anbieter auszahlt.",
   "finance.note.statement_lump": "Danach stimmt der Kontostand mit dem Auszug überein.",
   "finance.note.statement_insurance_premium_missing": "Beitrag fehlt noch bei: {names}. Siehst du ihn im Auszug, schreib ihn mir danach.",
-  "finance.note.insurance_premium_missing": "Ohne Beitrag angelegt. Sobald du ihn weißt, schreib ihn mir; bis dahin erinnert der Monats-Check daran.",
+  "finance.note.insurance_premium_missing": "Wird ohne Beitrag gespeichert. Sobald du ihn weißt, schreib ihn mir.",
   "finance.value.premium_missing": "— (Beitrag fehlt noch)",
   "finance.label.statement_rest_net": "Rest (als eine Summe)",
   "finance.label.statement_rest_other": "darin Übriges (nicht gebucht oder nicht erklärbar)",

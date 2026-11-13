@@ -24,7 +24,7 @@
 --   RUECKGABE: {ok:true, insurance_id, recurring_payment_id (Kopf), split/previous_id (nur bei Beitragsaenderung), effective_from (erste
 --   Abbuchung des neuen bzw. nachgetragenen Beitrags), premium_amount + annual_premium (wirksam ab dem Stichtag, nur bei Beitragsaenderung)}.
 --   Korrigierbar (Beitrag <= 0/unstimmig/unlesbar, Rhythmus ohne Betrag, Tag/Ende an einer Police ohne Beitrag, Beitrag
---   nachtragen ohne effective_from oder Konto bzw. auf ein Nicht-EUR- oder nicht buchbares Konto,
+--   nachtragen an einer nicht aktiven Police, ohne effective_from oder Konto bzw. auf ein Nicht-EUR- oder nicht buchbares Konto,
 --   status/schedule_unit/insurance_type unbekannt, coverage_amount<0, Meldefrist ungueltig, Ende vor Vertragsbeginn,
 --   Split-Guards) -> {ok:false}.
 -- ============================================================
@@ -97,6 +97,10 @@ BEGIN
     END IF;
     -- Beitrag nachtragen (Police ohne Kette, wie fn_set_loan beim Kredit ohne Rate): effective_from = erste Abbuchung
     IF v_head IS NULL AND v_per IS NOT NULL THEN
+        IF COALESCE(v_status, v_ins.status) <> 'active' THEN
+            RETURN jsonb_build_object('ok', false,
+                'reason', 'This policy is ' || COALESCE(v_status, v_ins.status) || ' - a premium can only be added to an active policy.');
+        END IF;
         v_first := NULLIF(p->>'effective_from', '')::date;
         IF v_first IS NULL THEN
             RETURN jsonb_build_object('ok', false,

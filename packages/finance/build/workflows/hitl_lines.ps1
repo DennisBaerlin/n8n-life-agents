@@ -218,7 +218,8 @@ function Get-FinanceHitlLines {
                 (New-HitlLine 'finance.label.beneficiary'          "$S.beneficiary" -OmitEmpty)
                 (New-HitlLine 'finance.label.claim_deadline'       "($S.claim_deadline_hours ? 'finance.tpl.hours' : null)" -Kind tpl -Params @{ value = "$S.claim_deadline_hours" } -OmitEmpty)
                 (New-HitlLine 'core.label.note'                    "$S.notes" -OmitEmpty)
-                (New-HitlNote -Key 'finance.note.insurance_premium_missing' -If "!$hasP")
+                # Import: die Beitrags-Zeile sagt es je Police; der Hinweis stuende sonst einmal je Zeile
+                if (-not $Import) { New-HitlNote -Key 'finance.note.insurance_premium_missing' -If "!$hasP" }
             )
         }
         'pension' {

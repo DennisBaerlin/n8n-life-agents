@@ -1,12 +1,15 @@
 #!/usr/bin/env bash
-# lifeagents — Runtime-CLI der n8n-life-agents-Instanz. GENERIERT von provisioning (install_cli);
+# lifeagents — Runtime-CLI der n8n-life-agents-Instanz. Generiert von provisioning (install_cli);
 # nicht hand-editieren — `lifeagents update` ueberschreibt die Datei mit der Release-Version.
 #
-# Muster: ein Verb-Dispatcher wie `openclaw <verb>` / `rustup <verb>` — DER einzige Runtime-Einstieg
+# Muster: ein Verb-Dispatcher wie `openclaw <verb>` / `rustup <verb>` — der einzige Runtime-Einstieg
 # fuer den ganzen Lebenszyklus. Die Logik liegt im gespiegelten Provisioning-Baum
 # (@@LIBDIR@@/provisioning). `update` traegt die Fetch-Logik selbst (gespiegelte lib/fetch_release.sh),
-# laedt das neueste Release und startet den neuen provision.sh — ruft NIE install.sh (der Wegwerf-
+# laedt das neueste Release und startet den neuen provision.sh — ruft nie install.sh (der Wegwerf-
 # Bootstrap lebt nicht in der Runtime).
+#
+# Aufruf: lifeagents <befehl> [optionen] (Liste: `lifeagents help`). Exit: help/version 0; unbekannter Befehl, fehlende
+# lib/ im Baum oder fehlendes root 1; sonst der Exit des Verbs (doctor = Anzahl ROT).
 set -euo pipefail
 # UTF-8 ist Gesetz (provisioning/CLAUDE.md): alle Verben (doctor, config list, Pager) laufen in UTF-8, egal was das
 # System sagt (Proxmox-Vorlagen: LANG="C" -> Umlaute als <C3><A4> im Pager).
@@ -14,7 +17,7 @@ export LANG=C.UTF-8 LC_ALL=C.UTF-8
 
 # psql-Pager hart aus (erbt in jede runuser/psql-Kette): auf dem interaktiven Terminal wuerde psql
 # sonst seine Ausgaben pagen ('--More--', wartet auf Tastendruck) — package install/list etc. hingen.
-# Den Pager des Owners VORHER merken: lange Anzeige-Listen (`config list`, ui_page in common.sh) blaettern
+# Den Pager des Owners vorher merken: lange Anzeige-Listen (`config list`, ui_page in common.sh) blaettern
 # bewusst ueber ihn (sonst less) — der PAGER=cat-Export unten gilt psql und kuenftigen systemctl-Ausgaben.
 # shellcheck disable=SC2034  # gelesen von ui_page (lib/common.sh, im selben Prozess gesourct)
 LIFEAGENTS_USER_PAGER="${PAGER-}"
@@ -71,12 +74,12 @@ Beispiel: lifeagents update
 EOF
 }
 
-# Hauptmenue (Pfeiltasten-Picker) bei NACKTEM Aufruf auf einem TTY. Der $#-Check MUSS VOR der
+# Hauptmenue (Pfeiltasten-Picker) bei nacktem Aufruf auf einem TTY. Der $#-Check muss vor der
 # cmd-Default-Substitution stehen: eine Zeile weiter kollabieren "kein Argument" und explizites
 # `lifeagents help` beide auf cmd='help' und sind nicht mehr unterscheidbar. Non-TTY/unattended/
-# ESC -> Usage wie bisher (Exit 0, byte-identisch; Skripte sehen NIE ein Menue). common.sh wird
-# NUR in diesem Zweig gesourct (Existenz-Guard analog der Verb-Arme) — doctor/version/help/
-# uninstall funktionieren weiter auch ohne libs. Bei uns anders (arch-challenge, Opus-adjudiziert):
+# ESC -> Usage (Exit 0, byte-identisch; Skripte sehen nie ein Menue). common.sh wird
+# nur in diesem Zweig gesourct (Existenz-Guard analog der Verb-Arme) — doctor/version/help/
+# uninstall funktionieren auch ohne libs. Bei uns anders:
 # bare-Invocation-Menue statt gh-/clig.dev-Hilfetext -> docs/reference/provisioning.md *Entscheidungen*.
 if [ "$#" -eq 0 ] && [ -f "${LIFEAGENTS_PROV}/lib/common.sh" ]; then
   # shellcheck source=/dev/null
@@ -103,13 +106,13 @@ MENU
 fi
 
 cmd="${1:-help}"
-# Befehle unabhaengig von der Schreibweise (Fall 2026-10-26: "lifeagents Update" vom Handy -> nur die Befehlsliste).
+# Befehle unabhaengig von der Schreibweise (z. B. "lifeagents Update" vom Handy).
 cmd="${cmd,,}"
 [ "$#" -gt 0 ] && shift || true
 
 case "$cmd" in
   update)
-    # Fetch-Logik SELBST tragen (kein install.sh-Aufruf): die gespiegelte lib/ sourcen und
+    # Fetch-Logik selbst tragen (kein install.sh-Aufruf): die gespiegelte lib/ sourcen und
     # fetch_and_run_release fahren -> laedt 'latest', verifiziert, entpackt, exec't den NEUEN
     # provision.sh (re-spiegelt CLI + Baum -> self-updating). Root erzwingt die Lib; der Download ist anonym (keine
     # Frage -> release_inputs.sh wird hier nicht gebraucht).
@@ -143,10 +146,10 @@ case "$cmd" in
   package)
     # Fach-Paket-Lebenszyklus: common.sh + pkg_lifecycle.sh + pkg_teardown.sh sourcen und dispatchen.
     # Braucht root (DB-Zugriff via runuser postgres-Peer-Auth; uninstall stoppt/startet n8n). pkg_teardown.sh
-    # traegt die n8n-REST-Teardown-Helfer fuer `uninstall` (WS-2). release_inputs.sh liefert
-    # _prompt_validated + die Validator-fns fuer den Stage-4-Secrets-Wizard/`reconfigure` (Install-UX).
+    # traegt die n8n-REST-Teardown-Helfer fuer `uninstall`. release_inputs.sh liefert
+    # _prompt_validated + die Validator-fns fuer den Stage-4-Secrets-Wizard/`reconfigure`.
     # install braucht die paket-skopierten Primitive (apply_schema/seed_data/inject_credentials/
-    # deploy_workflows) — DENSELBEN Code wie provision.sh (ein Code-Pfad, zwei Aufrufer).
+    # deploy_workflows) — denselben Code wie provision.sh (ein Code-Pfad, zwei Aufrufer).
     for f in common.sh release_inputs.sh apply_schema.sh seed_data.sh inject_credentials.sh deploy_workflows.sh pkg_teardown.sh pkg_lifecycle.sh; do
       [ -f "${LIFEAGENTS_PROV}/lib/$f" ] || { printf 'lifeagents: lib/%s fehlt (%s) — Baum beschaedigt.\n' "$f" "${LIFEAGENTS_PROV}/lib/$f" >&2; exit 1; }
     done
@@ -161,7 +164,7 @@ case "$cmd" in
     pkg_lifecycle "$@"
     ;;
   reconfigure)
-    # Angaben nach der Installation aendern (Install-UX-Phase 7): Grundsystem (core.env-Host-Keys -> voller Converge des
+    # Angaben nach der Installation aendern: Grundsystem (core.env-Host-Keys -> voller Converge des
     # installierten Baums, run_installed_release) oder ein Paket (pkg_cmd_reconfigure). Braucht die household-
     # Bibliotheken (Owner-Skelett-Pruefung, Proxy-Frage, Proxy-Vorlage) + fetch_release.sh. Braucht root.
     for f in common.sh release_inputs.sh apply_schema.sh seed_data.sh inject_credentials.sh deploy_workflows.sh pkg_teardown.sh pkg_lifecycle.sh bootstrap_owner.sh firewall.sh owner_connect.sh fetch_release.sh reconfigure_cli.sh; do
@@ -196,7 +199,7 @@ case "$cmd" in
     config_cli "$@"
     ;;
   proxy)
-    # Reverse Proxy (Install-UX-Phase 5): wo laeuft er, wem ist n8n geoeffnet (TRUSTED_PROXIES in core.env).
+    # Reverse Proxy: wo laeuft er, wem ist n8n geoeffnet (TRUSTED_PROXIES in core.env).
     # show = Stand + Proxy-Konfiguration erneut; set = speichern + ueber provision.sh --apply-network anwenden.
     for f in common.sh release_inputs.sh firewall.sh owner_connect.sh proxy_cli.sh; do
       [ -f "${LIFEAGENTS_PROV}/lib/$f" ] || { printf 'lifeagents: lib/%s fehlt (%s) — Baum beschaedigt.\n' "$f" "${LIFEAGENTS_PROV}/lib/$f" >&2; exit 1; }
@@ -208,7 +211,7 @@ case "$cmd" in
     proxy_cli "$@"
     ;;
   household)
-    # Owner-Lifecycle am Haushalt (Personen-CRUD + Knocker-Sperre, WS-5d): common.sh + household_cli.sh
+    # Owner-Lifecycle am Haushalt (Personen-CRUD + Knocker-Sperre): common.sh + household_cli.sh
     # sourcen und dispatchen. Braucht root (DB-Zugriff via runuser postgres-Peer-Auth, host-vermittelt).
     # `pair-owner` faehrt das gefuehrte Ende der Installation (owner_connect.sh: Erreichbarkeit, Pairing,
     # Workflows mit der chat_id neu deployen) -> dieselben Install-Primitive wie der package-/backup-Arm.
@@ -227,9 +230,9 @@ case "$cmd" in
     household_cli "$@"
     ;;
   backup)
-    # Backup/Restore der Nutzerdaten (Phase 4b/5): common.sh + backup_cli.sh + die Install-Primitive
+    # Backup/Restore der Nutzerdaten: common.sh + backup_cli.sh + die Install-Primitive
     # (Restore-vor-Install ruft pkg_install_one --no-seed). Braucht root (pg_dump/pg_restore + core.backup_key
-    # + ggf. per-Paket-Install). DENSELBE Install-Code wie `lifeagents package install`.
+    # + ggf. per-Paket-Install). Derselbe Install-Code wie `lifeagents package install`.
     for f in common.sh release_inputs.sh apply_schema.sh seed_data.sh inject_credentials.sh deploy_workflows.sh pkg_teardown.sh pkg_lifecycle.sh backup_cli.sh; do
       [ -f "${LIFEAGENTS_PROV}/lib/$f" ] || { printf 'lifeagents: lib/%s fehlt (%s) — Baum beschaedigt.\n' "$f" "${LIFEAGENTS_PROV}/lib/$f" >&2; exit 1; }
     done
@@ -263,7 +266,7 @@ case "$cmd" in
     usage
     ;;
   *)
-    # Hinweis NACH der (langen) Liste: davor scrollte er aus dem Bild und es sah aus, als zeige der Befehl nur die Hilfe.
+    # Hinweis nach der (langen) Liste: davor scrollte er aus dem Bild und es sah aus, als zeige der Befehl nur die Hilfe.
     usage
     printf '\nlifeagents: unbekannter Befehl: %s (siehe Liste oben)\n' "$cmd" >&2
     exit 1

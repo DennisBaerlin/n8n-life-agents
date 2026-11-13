@@ -1,14 +1,14 @@
-# common.sh — shared helpers for the provisioning core.
-# SOURCED, never executed: no shebang, no `set -e` here (the top-level script owns the
-# error mode per the plan: "set -euo pipefail nur im Top-Script"). Every helper is
-# idempotent or guarded so a second install run is a no-op.
+# common.sh — gemeinsame Helfer des Provisioning-Kerns.
+# Gesourct (u. a. von provision.sh, doctor.sh, der Runtime-CLI), nie ausgefuehrt: kein Shebang, kein `set -e`
+# (das Top-Script besitzt den Error-Mode). Jeder Helfer ist idempotent oder guarded, sodass ein zweiter
+# Install-Lauf ein no-op ist.
 
 # --- logging -----------------------------------------------------------------
-# All diagnostics go to stderr so a caller can capture a helper's stdout cleanly.
-# Farb-Guard nach no-color.org/clig.dev: Farbe NUR wenn der Ziel-Strom ein TTY ist UND NO_COLOR
-# nicht gesetzt UND TERM != dumb. Praefixe bleiben ASCII (Owner-Entscheid 2026-07-03).
-# ui_color_enabled <fd> = DIE Pruefung fuer beide Stroeme: fd 2 fuer die log/ok/warn-Farben unten, fd 1 fuer
-# Anzeige-Listen auf stdout (`lifeagents config list`) — dort VOR jeder Pipe zum Pager auswerten (danach ist
+# Alle Diagnosen gehen nach stderr, damit ein Aufrufer die stdout eines Helfers sauber abgreifen kann.
+# Farb-Guard nach no-color.org/clig.dev: Farbe nur wenn der Ziel-Strom ein TTY ist und NO_COLOR
+# nicht gesetzt und TERM != dumb. Praefixe bleiben ASCII.
+# ui_color_enabled <fd> = die Pruefung fuer beide Stroeme: fd 2 fuer die log/ok/warn-Farben unten, fd 1 fuer
+# Anzeige-Listen auf stdout (`lifeagents config list`) — dort vor jeder Pipe zum Pager auswerten (danach ist
 # stdout die Pipe, nicht mehr das Terminal).
 ui_color_enabled() { [ -t "${1:-1}" ] && [ -z "${NO_COLOR:-}" ] && [ "${TERM:-}" != "dumb" ]; }
 if ui_color_enabled 2; then
@@ -18,7 +18,7 @@ else
 fi
 log()  { printf '%s[*]%s %s\n' "$_C_CYAN"   "$_C_RST" "$*" >&2; }
 ok()   { printf '%s[+]%s %s\n' "$_C_GREEN"  "$_C_RST" "$*" >&2; }
-# warn: im Quiet-Modus (ui_log_begin) ZUSAETZLICH aufs Terminal (fd3) — eine Warnung soll der Nutzer
+# warn: im Quiet-Modus (ui_log_begin) zusaetzlich aufs Terminal (fd3) — eine Warnung soll der Nutzer
 # sehen, nicht nur das Log. Explizites `return 0`: warn steht oft als letzter Befehl einer `|| warn`-Kette.
 warn() {
   printf '%s[!]%s %s\n' "$_C_YELLOW" "$_C_RST" "$*" >&2
@@ -26,7 +26,7 @@ warn() {
   return 0
 }
 err()  { printf '%s[x]%s %s\n' "$_C_RED"    "$_C_RST" "$*" >&2; }
-# die: nur in der HAUPT-Shell zaehlt ein Abbruch als gescheitertes Update (Ergebnis-Datei, s. result_set) — ein `die` in
+# die: nur in der Haupt-Shell zaehlt ein Abbruch als gescheitertes Update (Ergebnis-Datei, s. result_set) — ein `die` in
 # einer Subshell (Paket-Install `( pkg_install_one )`, $(...)) beendet nur diesen Teil, der Lauf geht weiter.
 die()  { err "$*"; [ "${BASH_SUBSHELL:-0}" -eq 0 ] && result_set status failed; exit 1; }
 # die_because <reason_code> <text> — wie die, merkt aber den festen Grund fuer die Fehler-Hilfe im Chat
@@ -44,11 +44,11 @@ result_set() {
   return 0
 }
 
-# --- Update-Sperre: EINE fuer alle Wege, die das System umbauen ----------------------------------------------------
+# --- Update-Sperre: eine fuer alle Wege, die das System umbauen ----------------------------------------------------
 # provision.sh main (Installer, `lifeagents update`, `reconfigure`, `package install`) und der Chat-Runner nehmen sie;
 # zwei gleichzeitige Laeufe (Terminal-Update waehrend eines Chat-Updates) sind so ausgeschlossen. fd 9 + flock; der
 # Runner nie wartend (-n, naechste Minute), Terminal-Laeufe bis 30 s: der minuetliche Runner haelt die Sperre zur
-# vollen Minute fuer Sekundenbruchteile auch ohne Auftrag (CI-Befund 2026-10-26: Update zur Minute :00 brach ab).
+# vollen Minute fuer Sekundenbruchteile auch ohne Auftrag (ein Update zur Minute :00 brach sonst ab).
 # Ein Kind-Lauf erbt die Sperre ueber den offenen fd und LIFEAGENTS_UPDATE_LOCK_HELD=1 (exec-fest).
 LIFEAGENTS_UPDATE_LOCK="${LIFEAGENTS_UPDATE_LOCK:-/run/lifeagents-update.lock}"
 # update_lock_acquire [wait_s] — 0 = Sperre gehalten (oder geerbt), 1 = belegt (ohne wait_s sofort, sonst nach wait_s).
@@ -72,7 +72,7 @@ need_cmd()     { command -v "$1" >/dev/null 2>&1; }
 require_cmd()  { need_cmd "$1" || die "Pflicht-Kommando fehlt: $1"; }
 
 # pg_db_encoding <db> — Kodierung der Datenbank (z. B. UTF8/SQL_ASCII); leer, wenn PG fehlt, nicht laeuft oder die DB
-# nicht existiert. Als postgres-Superuser (Peer-Auth) -> nur als root. EINE Abfrage fuer Installer-Guard + doctor
+# nicht existiert. Als postgres-Superuser (Peer-Auth) -> nur als root. Eine Abfrage fuer Installer-Guard + doctor
 # (UTF-8 ist Gesetz, provisioning/CLAUDE.md). Der DB-Name kommt aus der eigenen Config, nie vom Nutzer.
 pg_db_encoding() {
   need_su_tools || return 0
@@ -138,10 +138,9 @@ write_if_changed() {
 }
 
 # env_upsert <file> <key> <value>  — set KEY=value in an env file, preserving every other line
-# and comment (Coolify .env-merge pattern: replace the key's line if present, else append). The
-# content replace keeps the existing file's mode/owner; a fresh file inherits the umask (callers
-# that create the file first set 640 root:n8n). Atomic via temp. Values are tokens/paths/hex with
-# no newline by construction.
+# and comment (replace the key's line if present, else append). The content replace keeps the existing
+# file's mode/owner; a fresh file inherits the umask (callers that create the file first set 640
+# root:n8n). Atomic via temp. Values are tokens/paths/hex with no newline by construction.
 env_upsert() {
   local file="$1" key="$2" val="$3"
   mkdir -p "$(dirname "$file")"
@@ -176,14 +175,14 @@ read_env_value() {
   printf '%s' "${line#*=}"
 }
 
-# env_has_key <file> <key>  → 0 wenn eine KEY=-Zeile existiert (auch mit LEEREM Wert).
-# Das ist das SEEN-Bit des debconf-Modells (Spec C, E2.1): "Zeile existiert" = die Frage wurde
-# schon gestellt/beantwortet — orthogonal zum Wert (read_env_value liefert den).
+# env_has_key <file> <key>  → 0 wenn eine KEY=-Zeile existiert (auch mit leerem Wert).
+# Das ist das Seen-Bit des debconf-Modells: "Zeile existiert" = die Frage wurde schon
+# gestellt/beantwortet — orthogonal zum Wert (read_env_value liefert den).
 env_has_key() { [ -f "$1" ] && grep -qE "^${2}=" "$1"; }
 
-# drop_legacy_repo_token <env-file...> — Einmal-Migration Public-Repo (2026-10-24): der Release-Download ist anonym,
-#   ein GH_TOKEN aus der privaten Zeit wird nie mehr gelesen. Steht er noch in einer Env-Datei, die Zeile entfernen und
-#   einmal daran erinnern, ihn auf GitHub zu widerrufen (ein liegengelassener gueltiger Token ist ein Risiko ohne Nutzen).
+# drop_legacy_repo_token <env-file...> — der Release-Download ist anonym, ein alter GH_TOKEN wird nie gelesen.
+#   Steht er noch in einer Env-Datei, die Zeile entfernen und einmal daran erinnern, ihn auf GitHub zu
+#   widerrufen (ein liegengelassener gueltiger Token ist ein Risiko ohne Nutzen).
 drop_legacy_repo_token() {
   local f
   for f in "$@"; do
@@ -193,8 +192,8 @@ drop_legacy_repo_token() {
   done
 }
 
-# env_remove_key <file> <key>  — die KEY=-Zeile entfernen (Einmal-Migrations-Helfer, Opus-Review F3;
-# Kommentare/andere Zeilen bleiben, atomar via temp wie env_upsert).
+# env_remove_key <file> <key>  — die KEY=-Zeile entfernen (Kommentare/andere Zeilen bleiben, atomar via temp
+# wie env_upsert).
 env_remove_key() {
   local file="$1" key="$2" tmp
   [ -f "$file" ] || return 0
@@ -203,18 +202,18 @@ env_remove_key() {
   _env_swap_in "$tmp" "$file"
 }
 
-# ---- /etc/lifeagents secret namespace (Phase 5) -------------------------------------------------
-# Installer-eigener Secret-Namespace (FHS §3.7: ein Installer besitzt SEIN /etc-Verzeichnis, nicht
+# ---- /etc/lifeagents secret namespace --------------------------------------------------------------
+# Installer-eigener Secret-Namespace (FHS §3.7: ein Installer besitzt sein /etc-Verzeichnis, nicht
 # n8ns). `core.env` = Host/Core-Secrets (API-Key, core_ro/context_ro-PW) + Nutzer-Eingaben (Domain,
-# Owner-Identitaet, LLM-/Telegram-Keys); `<pkg>.env` = Secrets EINES Pakets (<pkg>_rw/_ro-PW) — install
+# Owner-Identitaet, LLM-/Telegram-Keys); `<pkg>.env` = Secrets eines Pakets (<pkg>_rw/_ro-PW) — install
 # legt an, `uninstall --purge` loescht (`rm`), ein Schreiber pro Datei. n8n.env bleibt n8n-eigen in
-# /etc/n8n (n8n liest es selbst). NIE im Repo; 640 root:<n8n-Gruppe>.
+# /etc/n8n (n8n liest es selbst). Nie im Repo; 640 root:<n8n-Gruppe>.
 LIFEAGENTS_DIR="${LIFEAGENTS_DIR:-/etc/lifeagents}"
 
 # lifeagents_env_file <pkg>  -> Pfad der per-Paket-env-Datei (core -> /etc/lifeagents/core.env).
 lifeagents_env_file() { printf '%s/%s.env' "$LIFEAGENTS_DIR" "$1"; }
 
-# Release-Quelle: EINE Adresse fuer die Runtime (fetch_release.sh = lifeagents update, upgrade_guard.sh = Rueckweg-
+# Release-Quelle: eine Adresse fuer die Runtime (fetch_release.sh = lifeagents update, upgrade_guard.sh = Rueckweg-
 # Hinweis). install.sh (self-contained Bootstrap, sourct nichts) traegt bewusst eine eigene Kopie.
 PROVISION_REPO_SLUG="${PROVISION_REPO_SLUG:-DennisBaerlin/n8n-life-agents}"
 # shellcheck disable=SC2034  # gelesen von fetch_release.sh + upgrade_guard.sh (gesourct)
@@ -222,13 +221,12 @@ PROVISION_GH_API="${PROVISION_GH_API:-https://api.github.com}"   # Override nur 
 
 # Installierter Runtime-Baum (install_cli spiegelt provisioning/ + packages/ hierhin) und sein Marker VERSION: install_cli
 # schreibt ihn, sobald Core + Pakete einmal durchgelaufen sind (auch wenn der Deploy uebersprungen wurde oder ein Paket
-# scheiterte — „Core konvergiert", postgres-Entrypoint-Muster PG_VERSION) -> fehlt er, ist die Maschine frisch
-# (_is_first_install). EINE Adresse fuer install_cli, _is_first_install, run_installed_release und den Uninstall
-# (Install-UX-Phase 7).
+# scheiterte — „Core konvergiert") -> fehlt er, ist die Maschine frisch (_is_first_install). Eine Adresse fuer
+# install_cli, _is_first_install, run_installed_release und den Uninstall.
 lifeagents_runtime_dir()    { printf '%s' "${LIFEAGENTS_LIB:-/usr/local/lib/lifeagents}"; }
 # lifeagents_db_name — N8N_DB_NAME fuer Runtime-Verben ausserhalb provision.sh setzen (n8n.env, Standard n8n) und auf
-#   stdout geben. EINE Adresse fuer die vorher in jeder *_cli.sh kopierte Aufloesung. Setzt die Variable global (nie
-#   in $(...) aufrufen, sonst bleibt sie im Subshell; Aufruf `lifeagents_db_name >/dev/null`).
+#   stdout geben. Setzt die Variable global (nie in $(...) aufrufen, sonst bleibt sie im Subshell; Aufruf
+#   `lifeagents_db_name >/dev/null`).
 lifeagents_db_name() {
   if [ -z "${N8N_DB_NAME:-}" ]; then
     local envf="${N8N_ENV_FILE:-/etc/n8n/n8n.env}" val=""
@@ -250,8 +248,8 @@ ensure_lifeagents_dir() {
 }
 
 # psql_setvar <name> <value>  -> eine psql-`\set name 'value'`-Zeile (escaped fuer den Single-Quote-
-#   Kontext: \ -> \\, ' -> \'). Fuer einen 600/postgres-eigenen Treiber — der Wert steht NIE in der
-#   Kommandozeile (kein /proc/cmdline-Leak; Hard-Rule "Secret nie als CLI-Argument").
+#   Kontext: \ -> \\, ' -> \'). Fuer einen 600/postgres-eigenen Treiber — der Wert steht nie in der
+#   Kommandozeile (kein /proc/cmdline-Leak).
 psql_setvar() {
   local v="$2"; v="${v//\\/\\\\}"; v="${v//\'/\\\'}"
   printf "\\set %s '%s'\n" "$1" "$v"
@@ -259,7 +257,7 @@ psql_setvar() {
 
 # psql_superuser_driver [psql-args...]  -> liest \set-Zeilen + SQL von STDIN, fuehrt sie als
 #   postgres-Superuser ueber eine 600/postgres-eigene Temp-Datei aus (Werte bleiben in der 600-Datei).
-#   Reads globals: DB_SUPERUSER (default postgres), N8N_DB_NAME.
+#   Liest Globals: DB_SUPERUSER (default postgres), N8N_DB_NAME.
 # shellcheck disable=SC2120  # generischer Treiber: optionale psql-Args via "$@"; aktueller Caller bare
 psql_superuser_driver() {
   local su="${DB_SUPERUSER:-postgres}" drv; drv="$(mktemp /tmp/la_drv.XXXXXX.sql)"
@@ -270,13 +268,13 @@ psql_superuser_driver() {
 }
 
 # provision_role_password <role> <env_file> <var_name>  -> einer LOGIN-Rolle ein Passwort sicherstellen,
-#   persistiert in env_file (override-first reuse: Prozess-Env $var_name ODER die Datei gewinnt -> ein
-#   funktionierendes Passwort wird NIE rotiert; nach `--purge` ist die Rolle frisch+passwortlos -> die
-#   persistierte Datei liefert dasselbe PW -> Rolle <-> Credential bleiben in Sync, B2), exportiert als
-#   var_name fuer die Credential-Injektion. GENERISCH fuer Host-Rollen (core_ro/context_ro) UND
+#   persistiert in env_file (override-first reuse: Prozess-Env $var_name oder die Datei gewinnt -> ein
+#   funktionierendes Passwort wird nie rotiert; nach `--purge` ist die Rolle frisch+passwortlos -> die
+#   persistierte Datei liefert dasselbe PW -> Rolle <-> Credential bleiben in Sync), exportiert als
+#   var_name fuer die Credential-Injektion. Generisch fuer Host-Rollen (core_ro/context_ro) und
 #   Paket-Rollen (<pkg>_rw/_ro) — ein Mechanismus, keine hartkodierte Rollen-Liste. Die Rolle muss
-#   existieren (apply_schema/fn_provision_package_roles legt sie LOGIN ohne Passwort an). Wert NIE im argv.
-#   Reads globals: N8N_DB_NAME, N8N_USER (Datei-Owner). 0 = ok, !=0 = ALTER ROLE fehlgeschlagen.
+#   existieren (apply_schema/fn_provision_package_roles legt sie LOGIN ohne Passwort an). Wert nie im argv.
+#   Liest Globals: N8N_DB_NAME, N8N_USER (Datei-Owner). 0 = ok, !=0 = ALTER ROLE fehlgeschlagen.
 provision_role_password() {
   local role="$1" envf="$2" var="$3" val
   eval "val=\${$var:-}"
@@ -351,27 +349,25 @@ apt_install() {
 }
 
 # --- terminal UX (ui_*-Schicht) ------------------------------------------------
-# EINE Ausgabe-/Eingabe-Schicht fuer beide Install-Pfade (Haupt-Install + Paket-Install), Spec D
-# der Install-UX-Phase: jede ui_*-Funktion hat einen gum-Zweig (huebsch, optional) UND einen
-# plain-ANSI-Fallback (funktional identisch). gum ist NIE eine Hard-Dependency: Feature-Detection
-# + best-effort ensure_gum (SHA256-gepinnter GitHub-Release-Download, KEIN Fremd-APT-Repo);
-# unattended/kein TTY laeuft IMMER plain (deterministische Substrat-Ausgabe). gum zeichnet in den
-# normalen Scrollback (kein Alternate-Screen wie whiptail) -> Pairing-Code/Zugaenge bleiben kopierbar.
+# Eine Ausgabe-/Eingabe-Schicht fuer beide Install-Pfade (Haupt-Install + Paket-Install): jede
+# ui_*-Funktion hat einen gum-Zweig (huebsch, optional) und einen plain-ANSI-Fallback (funktional
+# identisch). gum ist nie eine Hard-Dependency: Feature-Detection + best-effort ensure_gum
+# (SHA256-gepinnter GitHub-Release-Download, kein Fremd-APT-Repo); unattended/kein TTY laeuft immer plain
+# (deterministische Substrat-Ausgabe). gum zeichnet in den normalen Scrollback (kein Alternate-Screen wie
+# whiptail) -> Pairing-Code/Zugaenge bleiben kopierbar.
 
-# tty_usable — 0 nur, wenn sich /dev/tty WIRKLICH oeffnen laesst. `[ -r /dev/tty ]` prueft nur die
-# Dateirechte (crw-rw-rw-) und ist darum auch OHNE steuerndes Terminal wahr (ssh ohne -t, cron,
-# docker exec ohne -t) -> der erste read/printf auf /dev/tty scheiterte dann mit ENXIO (Install-UX-
-# Phase 3, live auf der Dev-Instanz belegt). Muster rustup-init (`-t`-Probe statt Rechte-Test).
+# tty_usable — 0 nur, wenn sich /dev/tty wirklich oeffnen laesst. `[ -r /dev/tty ]` prueft nur die
+# Dateirechte (crw-rw-rw-) und ist darum auch ohne steuerndes Terminal wahr (ssh ohne -t, cron,
+# docker exec ohne -t) -> der erste read/printf auf /dev/tty scheiterte dann mit ENXIO.
 tty_usable() { { : </dev/tty; } 2>/dev/null; }
 
-# ui_interactive — DAS eine Interaktivitaets-Praedikat (Befund 1 der Install-UX-Phase):
-# TTY nutzbar UND NICHT --unattended. ${UNATTENDED:-0} ist default-safe im lifeagents-CLI-Kontext
-# (dort ist die Variable nicht gesetzt = interaktiv erlaubt). JEDER interaktive Zweig im
-# provisioning-Baum gatet hierueber (contract_lint Prompt-Gate-Guard; Einzeiler, der Lint prueft
-# UNATTENDED auf derselben Zeile).
+# ui_interactive — das eine Interaktivitaets-Praedikat: TTY nutzbar und nicht --unattended.
+# ${UNATTENDED:-0} ist default-safe im lifeagents-CLI-Kontext (dort ist die Variable nicht gesetzt =
+# interaktiv erlaubt). Jeder interaktive Zweig im provisioning-Baum gatet hierueber (contract_lint
+# Prompt-Gate-Guard; Einzeiler, der Lint prueft UNATTENDED auf derselben Zeile).
 ui_interactive() { [ "${UNATTENDED:-0}" -ne 1 ] && tty_usable; }
 
-# gum-Pins: Update = Version + BEIDE Hashes aus checksums.txt des Releases eintragen
+# gum-Pins: Update = Version + beide Hashes aus checksums.txt des Releases eintragen
 # (github.com/charmbracelet/gum/releases). Best-effort — ein falscher/alter Pin degradiert
 # nur auf plain ANSI, bricht nie den Install.
 GUM_VERSION="0.17.0"
@@ -379,20 +375,20 @@ GUM_SHA256_X86_64="69ee169bd6387331928864e94d47ed01ef649fbfe875baed1bbf27b5377a6
 GUM_SHA256_ARM64="b0b9ed95cbf7c8b7073f17b9591811f5c001e33c7cfd066ca83ce8a07c576f9c"
 GUM_INSTALL_DIR="${LIFEAGENTS_LIB:-/usr/local/lib/lifeagents}/bin"
 
-# gum-choose-Theme ZENTRAL (ein Look fuer alle ui_choose-Picker, passend zum cyan ui_section-Stil;
+# gum-choose-Theme zentral (ein Look fuer alle ui_choose-Picker, passend zum cyan ui_section-Stil;
 # ANSI-Farbcodes: 6=cyan, 14=hellcyan). NO_COLOR/TERM=dumb respektiert gum selbst (termenv);
 # Auswahl-Praefixe bleiben gum-Default (die ASCII-Praefix-Regel gilt fuer UNSERE printf-Ausgaben).
 export GUM_CHOOSE_CURSOR_FOREGROUND="6" GUM_CHOOSE_HEADER_FOREGROUND="6" \
        GUM_CHOOSE_SELECTED_FOREGROUND="14" GUM_CHOOSE_SELECTED_BOLD="true"
 
-# _ui_term_capable → 0 wenn das Terminal ein TUI-Widget tragen kann. bubbletea/gum HAENGT auf
-# TERM=unset/dumb (statt sauber zu failen — live in der pty-Probe getroffen) -> ohne brauchbares
-# TERM IMMER plain (der read-Fallback braucht kein TERM). Schliesst "seltsames Terminal = Hang".
+# _ui_term_capable → 0 wenn das Terminal ein TUI-Widget tragen kann. bubbletea/gum haengt bei
+# TERM=unset/dumb (statt sauber zu failen) -> ohne brauchbares TERM immer plain (der read-Fallback braucht
+# kein TERM). Schliesst "seltsames Terminal = Hang".
 _ui_term_capable() { [ -n "${TERM:-}" ] && [ "${TERM}" != "dumb" ]; }
 
 # _ui_gum_bin → Pfad eines nutzbaren gum-Binaries auf stdout (nonzero = plain-Zweig nehmen).
 # Nur im interaktiven Kontext (unattended bleibt byte-deterministisch plain).
-# GUM_DISABLE=1 erzwingt plain (deterministische pty-Proben + Owner-Opt-out ohne Deinstallation).
+# GUM_DISABLE=1 erzwingt plain (deterministische pty-Proben + Opt-out ohne Deinstallation).
 _ui_gum_bin() {
   [ "${GUM_DISABLE:-0}" != "1" ] || return 1
   _ui_term_capable || return 1
@@ -433,7 +429,7 @@ ensure_gum() {
   if tar -xzf "$tmpd/gum.tgz" -C "$tmpd" 2>/dev/null && bin="$(find "$tmpd" -type f -name gum | head -n1)" && [ -n "$bin" ]; then
     # `|| …return 0`: als Non-Root (z. B. Hauptmenue der lifeagents-CLI) ist das Zielverzeichnis
     # nicht schreibbar — ein nacktes mkdir -p wuerde unter dem geerbten set -e den ganzen Lauf
-    # killen statt best-effort auf plain ANSI zu degradieren (Plan-Kritik A2).
+    # killen statt best-effort auf plain ANSI zu degradieren.
     mkdir -p "$GUM_INSTALL_DIR" 2>/dev/null || { log "gum: ${GUM_INSTALL_DIR} nicht schreibbar (kein root?) — plain ANSI."; rm -rf "$tmpd"; return 0; }
     if install -m 0755 "$bin" "$GUM_INSTALL_DIR/gum" 2>/dev/null; then
       ok "gum ${GUM_VERSION} installiert (${GUM_INSTALL_DIR}/gum) — huebsche Prompts aktiv."
@@ -447,8 +443,8 @@ ensure_gum() {
   return 0
 }
 
-# ui_section <titel> — benannter Sektions-Banner (Owner-Entscheid: OHNE x/y-Zaehler, Hermes-Stil)
-# auf stderr (Fortschritts-Narration). gum: gestylter Titel; plain: cyan '--- Titel ---'.
+# ui_section <titel> — benannter Sektions-Banner (ohne x/y-Zaehler) auf stderr (Fortschritts-Narration).
+# gum: gestylter Titel; plain: cyan '--- Titel ---'.
 ui_section() {
   local title="$1" gum fd=2
   if [ "${UI_QUIET:-0}" = 1 ]; then
@@ -463,10 +459,10 @@ ui_section() {
   printf '\n%s--- %s ---%s\n' "${_T_CYAN:-$_C_CYAN}" "$title" "${_T_RST:-$_C_RST}" >&"$fd"
 }
 
-# ui_box <titel> — Ergebnis-Box auf STDOUT (Body von STDIN; scrollback-persistent, kopierbar —
-# der EINE Helfer fuer Pairing-Code / Zugangs-Recap / End-Recap, ersetzt die hand-gerollten
-# ====-Boxen). Secrets laufen via STDIN-Pipe, NIE ins argv (Projekt-Hard-Rule). Im Quiet-Modus geht
-# die Box NUR aufs Terminal (fd3), NIE ins Log: Boxen tragen Pairing-Code + generierte Passwoerter.
+# ui_box <titel> — Ergebnis-Box auf stdout (Body von stdin; scrollback-persistent, kopierbar —
+# der eine Helfer fuer Pairing-Code / Zugangs-Recap / End-Recap). Secrets laufen via stdin-Pipe, nie ins
+# argv. Im Quiet-Modus geht die Box nur aufs Terminal (fd3), nie ins Log: Boxen tragen Pairing-Code +
+# generierte Passwoerter.
 ui_box() {
   local title="$1" body gum fd=1
   body="$(cat)"
@@ -485,12 +481,12 @@ ui_box() {
   } >&"$fd"
 }
 
-# ui_page — Anzeige-Text von STDIN auf stdout; auf einem Terminal ueber den Pager des Owners (clig.dev: Pager nur
+# ui_page — Anzeige-Text von stdin auf stdout; auf einem Terminal ueber den Pager des Owners (clig.dev: Pager nur
 # bei interaktivem stdout; git/systemctl-Muster: $PAGER, sonst less, LESS=FRX nur wenn LESS leer -> passt der Text
-# auf einen Bildschirm, wird nicht geblaettert). Pager = LIFEAGENTS_USER_PAGER (merkt lifeagents.tpl VOR seinem
+# auf einen Bildschirm, wird nicht geblaettert). Pager = LIFEAGENTS_USER_PAGER (merkt lifeagents.tpl vor seinem
 # eigenen PAGER=cat-Export), sonst less; leer->less, `cat`/nicht vorhanden/kein brauchbares TERM (less haengt bei
 # TERM=dumb) -> direkt. LESSCHARSET=utf-8: root-Shells im LXC laufen oft mit C-Locale, less zeigte Umlaute sonst
-# als <C3><A4>. Der Text wird erst komplett gelesen -> ein Fehler des Erzeugers bricht ab, BEVOR der Pager startet.
+# als <C3><A4>. Der Text wird erst komplett gelesen -> ein Fehler des Erzeugers bricht ab, bevor der Pager startet.
 # `|| true`: beendet der Owner den Pager vorzeitig (q), endet der Schreiber mit SIGPIPE — unter set -e/pipefail
 # kein Fehler.
 ui_page() {
@@ -505,23 +501,23 @@ ui_page() {
   printf '%s\n' "$text"
 }
 
-# Fragen-Buchfuehrung (Install-UX-Phase 7; vorbelegt fuer set -u in JEDEM Einstieg, der common.sh sourct):
-# UI_ASKED=1, sobald in diesem Lauf WIRKLICH eine Frage gestellt wurde (nur dann — oder bei der Erstinstallation —
+# Fragen-Buchfuehrung (vorbelegt fuer set -u in jedem Einstieg, der common.sh sourct):
+# UI_ASKED=1, sobald in diesem Lauf wirklich eine Frage gestellt wurde (nur dann — oder bei der Erstinstallation —
 # erscheint die Uebersicht vor dem Installieren); UI_ASKED_KEYS = die dabei gefragten Keys; UI_ABORT_MSG s. ui_abort.
 # shellcheck disable=SC2034  # gelesen/geschrieben von release_inputs.sh, pkg_lifecycle.sh, provision.sh
 UI_ASKED=0
 UI_ABORT_MSG=''
-# Reihenfolge bewusst: UI_ASKED_KEYS steht als LETZTE Zuweisung vor einer Leerzeile — gitleaks' generic-api-key-Regel
-# las sonst „…KEYS=''" + den Namen der Folgezeile als Schluessel-Wert (Fehlalarm, Install-UX-Phase 7).
+# Reihenfolge bewusst: UI_ASKED_KEYS steht als letzte Zuweisung vor einer Leerzeile — gitleaks' generic-api-key-Regel
+# las sonst „…KEYS=''" + den Namen der Folgezeile als Schluessel-Wert (Fehlalarm).
 # shellcheck disable=SC2034  # s. o.
 UI_ASKED_KEYS=''
 
-# ui_input <prompt> <secret?> — EIN interaktiver Wert auf stdout (leer = kein TTY/unattended/skip).
+# ui_input <prompt> <secret?> — ein interaktiver Wert auf stdout (leer = kein TTY/unattended/skip).
 # gum: gum input [--password]; plain: read aus /dev/tty (curl|bash-sicher). secret=1 -> maskiert.
-# Der EINE Eingabe-Primitiv — Aufrufer sind die sanktionierten Wrapper (_prompt_validated & Co.,
+# Das eine Eingabe-Primitiv — Aufrufer sind die sanktionierten Wrapper (_prompt_validated & Co.,
 # contract_lint Prompt-Gate-Guard).
 # ui_abort — Strg-C in einem gum-Feld (gum faengt die Taste im Raw-Modus selbst und endet mit 130, das Skript
-# bekommt KEIN SIGINT): den ganzen Befehl beenden statt die Eingabe als „leer = überspringen" zu werten (sonst
+# bekommt kein SIGINT): den ganzen Befehl beenden statt die Eingabe als „leer = überspringen" zu werten (sonst
 # entstuende still eine „schon gefragt"-Zeile). Laeuft in der $(…)-Subshell des Aufrufers -> beendet per TERM die
 # Haupt-Shell ($$ = Haupt-PID auch in Subshells). Bereits beantwortete Fragen sind sofort gespeichert
 # (_prompt_validated) -> ein erneuter Lauf fragt nur den Rest. UI_ABORT_MSG ersetzt den Text, wo „gespeichert" nicht
@@ -541,7 +537,7 @@ ui_input() {
     else
       val="$("$gum" input --prompt "$prompt" --placeholder '' --width 0 </dev/tty 2>/dev/tty)" || rc=$?
     fi
-    [ "$rc" -eq 130 ] && ui_abort   # Strg-C in gum = Abbruch, NICHT „leer = überspringen"
+    [ "$rc" -eq 130 ] && ui_abort   # Strg-C in gum = Abbruch, nicht „leer = überspringen"
     printf '%s' "$val"
     return 0
   fi
@@ -556,35 +552,34 @@ ui_input() {
   printf '%s' "$val"
 }
 
-# ui_choose <header> <multi:0|1> [<preselect-csv>] — DER interaktive Listen-Picker (Pfeiltasten/
-# Leertaste). Optionen von STDIN, eine je Zeile als "label<TAB>value" (ohne TAB gilt label==value).
-# Rueckgabe: gewaehlte value(s) newline-separiert auf stdout; LEER = kein TTY/unattended/Abbruch/
+# ui_choose <header> <multi:0|1> [<preselect-csv>] — der interaktive Listen-Picker (Pfeiltasten/
+# Leertaste). Optionen von stdin, eine je Zeile als "label<TAB>value" (ohne TAB gilt label==value).
+# Rueckgabe: gewaehlte value(s) newline-separiert auf stdout; leer = kein TTY/unattended/Abbruch/
 # keine Optionen — der Aufrufer faellt auf seinen Bestandspfad zurueck (derselbe Vertrag wie
-# ui_input: leer + return 0, KEIN Exit-Code-Signal — schuetzt val=$(ui_choose ...) vor dem
-# set -e-Kommandosubstitutions-Footgun; arch-challenge REJECT 2.3). gum-Zweig: gum choose macht
-# den TAB-Split NATIV (--label-delimiter, arch-challenge ADOPT 2.2) — Optionen laufen als stdin-
-# Pipe, bubbletea holt sich die Tastatur selbst von /dev/tty, TUI auf /dev/tty (nie stderr, eine
-# 2>&1-Umleitung des Aufrufers darf die UI nicht verschlucken). Plain-Fallback: nummerierte Liste
-# + Nummern-Eingabe (yay-Muster; Multi = Space/Komma), Anzeige+read via /dev/tty wie ui_input.
+# ui_input: leer + return 0, kein Exit-Code-Signal — schuetzt val=$(ui_choose ...) vor dem
+# set -e-Kommandosubstitutions-Footgun). gum-Zweig: gum choose macht den TAB-Split nativ
+# (--label-delimiter) — Optionen laufen als stdin-Pipe, bubbletea holt sich die Tastatur selbst von
+# /dev/tty, TUI auf /dev/tty (nie stderr, eine 2>&1-Umleitung des Aufrufers darf die UI nicht
+# verschlucken). Plain-Fallback: nummerierte Liste + Nummern-Eingabe (Multi = Space/Komma),
+# Anzeige+read via /dev/tty wie ui_input.
 # preselect-csv ist reine Komfort-Vorbelegung im gum-Zweig (--selected) und matcht gegen die
-# LABELS, nicht die Values (gum choose/command.go ersetzt Options bei --label-delimiter durch die
-# Labels VOR dem Selected-Abgleich — Cold-Eyes A2; die Aufrufer mit Vorbelegung — Funktions-Wahl und Einstellungen in
-# der Uebersicht, Install-UX-Phase 7 — reichen darum kommafreie LABELS);
-# der Plain-Pfad ignoriert sie bewusst (explizite Nummern-Eingabe, Semantik identisch). Das Echo
-# der Wahl (E7, die gum-TUI loescht sich selbst) liegt ZENTRAL hier und zeigt die LABELS (nie interne
-# Werte wie __later__). Endet IMMER mit return 0.
-# Werte sollen stabile, nicht-leere Tags sein (debconf Choices-C). Ein LEERER Wert ist erlaubt und heisst
+# Labels, nicht die Values (gum choose/command.go ersetzt Options bei --label-delimiter durch die
+# Labels vor dem Selected-Abgleich; die Aufrufer mit Vorbelegung — Funktions-Wahl und Einstellungen in
+# der Uebersicht — reichen darum kommafreie Labels); der Plain-Pfad ignoriert sie bewusst (explizite
+# Nummern-Eingabe, Semantik identisch). Das Echo der Wahl (die gum-TUI loescht sich selbst) liegt
+# zentral hier und zeigt die Labels (nie interne Werte wie __later__). Endet immer mit return 0.
+# Werte sollen stabile, nicht-leere Tags sein (debconf Choices-C). Ein leerer Wert ist erlaubt und heisst
 # „nichts gewaehlt" (= Esc-Vertrag, in beiden Zweigen gleich): gum v0.17 liest stdin mit TrimSpace ueber die
-# GANZE Eingabe -> eine letzte Zeile "label<TAB>" verloere ihr TAB ("invalid option format") -> der gum-Zweig
+# ganze Eingabe -> eine letzte Zeile "label<TAB>" verloere ihr TAB ("invalid option format") -> der gum-Zweig
 # reicht leere Werte intern als _UI_EMPTY_VALUE durch und entfernt sie danach wieder.
 _UI_EMPTY_VALUE='__ui_empty__'
 ui_choose() {
   local header="$1" multi="${2:-0}" pre="${3:-}" gum out="" options
   ui_interactive || return 0
-  _ui_spin_stop   # ein laufender Spinner wuerde die Picker-TUI zerschiessen (Arbiter-Blocker 3)
+  _ui_spin_stop   # ein laufender Spinner wuerde die Picker-TUI zerschiessen
   options="$(cat)"
   [ -n "$options" ] || return 0
-  # Zeilen ohne TAB auf "label<TAB>value" normalisieren (label==value) — gum-Zweig UND Plain-
+  # Zeilen ohne TAB auf "label<TAB>value" normalisieren (label==value) — gum-Zweig und Plain-
   # Fallback sehen dieselbe kanonische Form.
   options="$(printf '%s\n' "$options" | awk -F '\t' '{ if (index($0, "\t") == 0) print $0 "\t" $0; else print $0 }')"
   if gum="$(_ui_gum_bin)"; then
@@ -639,14 +634,13 @@ ui_choose() {
   return 0
 }
 
-# --- Ruhige Ausgabe: Schritte + Logdatei (Install-UX-Phase 3) -----------------------------------
+# --- Ruhige Ausgabe: Schritte + Logdatei -----------------------------------------------------------
 # Interaktiv (TTY) zeigt der Installer eine Zeile je Schritt (Spinner -> ✓/✗); die komplette
 # technische Ausgabe (apt/dpkg, npm, psql, n8n-CLI, log/ok-Zeilen) landet in einer Logdatei. Bei
 # einem Fehler zeigt er die letzten Log-Zeilen + den Pfad (clig.dev "print the logs on error").
-# Muster: Coolify install.sh (`exec >>log 2>&1`, fd3 = Terminal, EXIT-Trap mit Log-Ende) + Proxmox
-# community-scripts core.func (msg_info/msg_ok + Spinner, silent/verbose). Non-TTY/--unattended/
-# --verbose: KEIN Quiet -> byte-identisch die bisherige Ausgabe (Haus-Regel Install-UX).
-# UI_QUIET=1 heisst "Log aktiv, fd3 = Terminal" und wird NUR von ui_log_begin gesetzt; bewusst NICHT
+# Mechanik: `exec >>log 2>&1`, fd3 = Terminal, EXIT-Trap mit Log-Ende. Non-TTY/--unattended/--verbose:
+# kein Quiet -> volle Ausgabe.
+# UI_QUIET=1 heisst "Log aktiv, fd3 = Terminal" und wird nur von ui_log_begin gesetzt; bewusst nicht
 # exportiert (runuser/`bash doctor.sh`-Kinder duerfen den Modus nicht erben, sie haben kein fd3).
 UI_QUIET=0
 UI_LOG_DIR="${UI_LOG_DIR:-/var/log/lifeagents}"
@@ -719,8 +713,8 @@ _ui_spin_loop() {
 }
 
 # ui_step <text> [stage] — einen Schritt beginnen. Quiet: Spinner-Hintergrundprozess auf fd3 (reines printf;
-# gum spin kann keine Shell-Funktionen mit geteiltem Zustand ausfuehren). Sonst: Sektions-Banner wie
-# bisher (ui_section) — die volle Ausgabe darunter bleibt gegliedert lesbar (Substrat/CI/--verbose).
+# gum spin kann keine Shell-Funktionen mit geteiltem Zustand ausfuehren). Sonst: Sektions-Banner
+# (ui_section) — die volle Ausgabe darunter bleibt gegliedert lesbar (Substrat/CI/--verbose).
 # stage = fester Schritt-Code fuer die Ergebnis-Datei (Fehler-Hilfe im Chat nennt den Schritt; Codes = Keys
 # core.update.stage.<code>, gemappt in core.fn_update_report). Ohne stage bleibt der vorige Code stehen.
 ui_step() {
@@ -747,7 +741,7 @@ ui_step_done() {
 }
 
 # ui_step_fail [hinweis] — laufenden Schritt als gescheitert markieren: ✗ + letzte 25 Log-Zeilen +
-# Log-Pfad (Quiet). Ein Paket-Fehler ist NICHT fatal fuer den Lauf — der Aufrufer entscheidet.
+# Log-Pfad (Quiet). Ein Paket-Fehler ist nicht fatal fuer den Lauf — der Aufrufer entscheidet.
 ui_step_fail() {
   local hint="${1:-}" text="${_UI_STEP_TEXT:-Installation}"
   _ui_spin_stop
@@ -784,8 +778,8 @@ _ui_on_signal() {
   exit 130
 }
 
-# ui_wait_key <sekunden> — EINE Taste mit Timeout lesen (Warteschleifen, z. B. Pairing). Ergebnis in
-# der globalen UI_KEY (NICHT per $(...): eine Subshell bekaeme Strg-C parallel zur Haupt-Shell).
+# ui_wait_key <sekunden> — eine Taste mit Timeout lesen (Warteschleifen, z. B. Pairing). Ergebnis in
+# der globalen UI_KEY (nie per $(...): eine Subshell bekaeme Strg-C parallel zur Haupt-Shell).
 # Rueckgabe: 0 = Taste (UI_KEY; Enter = Zeilenumbruch), 1 = Timeout/kein TTY, 2 = Strg-C.
 # `-d ''`: Enter wird als Zeichen gelesen statt als leerer Timeout (Homebrew getc/wait_for_user);
 # stty wird gesichert + zurueckgesetzt, Strg-C ist hier ein normales "spaeter", kein Abbruch des Laufs.
@@ -815,15 +809,15 @@ curl_cfg() {
   local v="$2"; v="${v//\\/\\\\}"; v="${v//\"/\\\"}"
   printf '%s = "%s"\n' "$1" "$v"
 }
-# curl_secret [curl-args...] — curl mit der Config von STDIN (`-K -`): URL mit Token, Header mit Keys
-# und Request-Bodies mit Passwoertern stehen so NIE in der Prozessliste (/proc/<pid>/cmdline ist fuer
+# curl_secret [curl-args...] — curl mit der Config von stdin (`-K -`): URL mit Token, Header mit Keys
+# und Request-Bodies mit Passwoertern stehen so nie in der Prozessliste (/proc/<pid>/cmdline ist fuer
 # jeden lokalen Nutzer lesbar). Aufrufer: `{ curl_cfg url "…"; curl_cfg header "…"; } | curl_secret -fsS`.
 curl_secret() { curl -K - "$@"; }
 
 # --- n8n-Gesundheit ------------------------------------------------------------------------------
 # wait_n8n_health [versuche] — /healthz/readiness pollen (2 s Takt, Default 60 Versuche = 2 Min). 0 = bereit.
 # Readiness statt /healthz: /healthz meldet schon, wenn der Prozess lauscht; /healthz/readiness erst, wenn die
-# DB verbunden UND migriert ist (n8n-Doku hosting/logging-monitoring/monitoring) — nach einem Versionssprung
+# DB verbunden und migriert ist (n8n-Doku hosting/logging-monitoring/monitoring) — nach einem Versionssprung
 # laufen die Migrationen minutenlang, REST-Aufrufe davor scheitern. Ein Helfer fuer alle Warteschleifen
 # (install_n8n, bootstrap_owner, deploy_workflows, pkg_teardown). URL-Fallback fuer install_n8n (laeuft vor N8N_URL).
 wait_n8n_health() {
@@ -835,7 +829,7 @@ wait_n8n_health() {
   return 1
 }
 
-# --- Sicherungs-Verschluesselung (EINE Adresse: `lifeagents backup` + Upgrade-Sicherung) -----------------------
+# --- Sicherungs-Verschluesselung (eine Adresse: `lifeagents backup` + Upgrade-Sicherung) -----------------------
 # Schluessel = core.backup_key('backup_encryption_key') — der Installer setzt ihn out-of-band
 # (bootstrap_owner _ensure_backup_secret) und ueberschreibt ihn nie. Einzige Aenderung: ein Restore mit einem
 # mitgebrachten, unbekannten Schluessel (Notfallblatt) macht diesen zum aktiven; der bisherige bleibt als
@@ -859,7 +853,7 @@ backup_ref_epoch() {
 }
 # backup_key_read [tabelle] -> Schluessel auf stdout (leer, wenn keiner gesetzt; rc!=0, wenn die Tabelle fehlt).
 #   Tabelle Standard core.backup_key; upgrade_guard.sh liest auf v0.1.0-Bestand auch core.secret (vor core:V006).
-#   Reads globals: N8N_DB_NAME, DB_SUPERUSER.
+#   Liest Globals: N8N_DB_NAME, DB_SUPERUSER.
 backup_key_read() {
   local tab="${1:-core.backup_key}"
   case "$tab" in core.backup_key|core.secret) ;; *) return 1 ;; esac   # fester Satz -> kein SQL-Einschleusen
@@ -915,8 +909,8 @@ backup_key_normalize() {
 #   jeder Sicherung (Diagnose "falscher Schluessel" vs. "beschaedigt", Aufraeumen nur eigener Sicherungen); 32 Bit eines
 #   Hashs verraten nichts ueber einen 256-Bit-Schluessel.
 backup_key_id() { printf 'k%s' "$(sha256sum | cut -c1-8)"; }
-# _backup_key_check <zeilennummer> <16 hex> -> 2 Hex Pruefzeichen der Zeile (Borg-Paper-Key-Muster; die Nummer geht mit
-#   ein, damit vertauschte Zeilen auffallen).
+# _backup_key_check <zeilennummer> <16 hex> -> 2 Hex Pruefzeichen der Zeile (die Nummer geht mit ein, damit
+#   vertauschte Zeilen auffallen).
 _backup_key_check() { printf '%s:%s' "$1" "$2" | sha256sum | cut -c1-2; }
 # backup_key_paper (stdin) -> der Schluessel als 4 Zeilen "n:  xxxx-xxxx-xxxx-xxxx  pp" (pp = Pruefzeichen). Kein
 #   64-Hex-Schluessel (nie vom Installer erzeugt) -> unveraendert in einer Zeile.
@@ -1040,13 +1034,13 @@ backup_key_parse() {
   esac
 }
 # n8n_api_curl <api-key> <url> [curl-args...] — REST-Call gegen n8n mit X-N8N-API-KEY im curl-Config-
-# Kanal (stdin) statt im argv. Ersetzt das bisherige `curl … -H "X-N8N-API-KEY: $KEY"`-Muster.
+# Kanal (stdin) statt im argv (nie `curl … -H "X-N8N-API-KEY: $KEY"`).
 n8n_api_curl() {
   local key="$1" url="$2"; shift 2
   { curl_cfg url "$url"; curl_cfg header "X-N8N-API-KEY: ${key}"; } | curl_secret "$@"
 }
-# _owner_chat_id_db — Owner-chat_id NUR aus der DB (family-Facts role=owner.telegram_user_id; leer =
-#   noch nicht gepairt). Das Pairing-Warten (owner_connect.sh) braucht genau dieses Praedikat OHNE den
+# _owner_chat_id_db — Owner-chat_id nur aus der DB (family-Facts role=owner.telegram_user_id; leer =
+#   noch nicht gepairt). Das Pairing-Warten (owner_connect.sh) braucht genau dieses Praedikat ohne den
 #   OWNER_CHAT_ID-Env-Fallback — ein gesetzter Env-Wert (Substrat/Dev) taeuschte sonst sofort Erfolg vor.
 _owner_chat_id_db() {
   local v=''
@@ -1056,7 +1050,7 @@ _owner_chat_id_db() {
       2>/dev/null | head -n1 || true)"
   fi
   # Nur reine Ziffern (Telegram-uid): der Wert landet in einem root-sed-Ausdruck (deploy_workflows) — ein anderer
-  # DB-Inhalt wird verworfen statt ausgefuehrt (Security-Audit 2026-10).
+  # DB-Inhalt wird verworfen statt ausgefuehrt.
   if [ -n "$v" ] && ! printf '%s' "$v" | grep -qE '^[0-9]+$'; then
     warn "Owner-chat_id in der DB ist keine Zahl — ignoriert (family-Facts pruefen)."
     v=''
@@ -1064,7 +1058,7 @@ _owner_chat_id_db() {
   printf '%s' "$v"
 }
 
-# _wf_live_pages <query> <jq-filter> — GET /workflows?<query> ueber ALLE Seiten (limit <= 250, nextCursor), jede Seite
+# _wf_live_pages <query> <jq-filter> — GET /workflows?<query> ueber alle Seiten (limit <= 250, nextCursor), jede Seite
 #   durch <jq-filter> (auf das Seiten-Objekt). rc1 bei jedem Fehler.
 _wf_live_pages() {
   local query="$1" filter="$2" cursor='' page
@@ -1087,7 +1081,7 @@ owner_chat_placeholder_count() {
   if [ -z "$rows" ]; then echo 0; else printf '%s\n' "$rows" | sort -u | wc -l; fi
 }
 
-# n8n_set_published <publish|unpublish> <id> [curl-args...] — DER Veroeffentlichen-/Abmelden-Aufruf (Public API seit
+# n8n_set_published <publish|unpublish> <id> [curl-args...] — der Veroeffentlichen-/Abmelden-Aufruf (Public API seit
 #   n8n 2.33; /activate + /deactivate sind veraltet und fallen mit n8n 3 weg). Body {} + Content-Type sind Pflicht
 #   (sonst 415). Fehler-/Ausgabe-Modus (-fsS -o … -w …) waehlt der Aufrufer.
 n8n_set_published() {
@@ -1095,17 +1089,17 @@ n8n_set_published() {
   n8n_api_curl "$N8N_API_KEY" "$N8N_URL/api/v1/workflows/$id/$action" -X POST \
     -H 'Content-Type: application/json' --data '{}' "$@"
 }
-# n8n_delete_workflow <id> — REST-DELETE eines Workflows; 0 = geloescht ODER schon weg (404), 1 = Fehler
+# n8n_delete_workflow <id> — REST-DELETE eines Workflows; 0 = geloescht oder schon weg (404), 1 = Fehler
 # (Netz/Auth/5xx). Der HTTP-Code wird ausgewertet (-fsS allein machte 404 und einen Auth-Fehler ununter-
 # scheidbar). Geteilt von pkg_teardown (Paket-Uninstall) und deploy_workflows (retire_workflows).
 n8n_delete_workflow() {
   local code body i
-  # Seit n8n 2.4x lehnt DELETE einen veroeffentlichten Workflow ab (409 "Unpublish it before deleting", Substrat-
-  # Upgrade-Test 2026-10-20) -> erst unpublish (meldet im n8n-Prozess auch den Ausloeser ab); best effort: schon
+  # Seit n8n 2.4x lehnt DELETE einen veroeffentlichten Workflow ab (409 "Unpublish it before deleting")
+  # -> erst unpublish (meldet im n8n-Prozess auch den Ausloeser ab); best effort: schon
   # unveroeffentlicht/weg (404) ist kein Fehler, das DELETE danach entscheidet.
   n8n_set_published unpublish "$1" -sS -o /dev/null 2>/dev/null || true
-  # 2.44.4: unpublish antwortet 200, bevor die Abmeldung fertig ist -> DELETE kurz danach = 409 "Workflow is still
-  # being unpublished. Please try again in a few moments." (genericity-CI, zufaellig je Workflow) -> 409 bis ~30 s
+  # unpublish antwortet 200, bevor die Abmeldung fertig ist -> DELETE kurz danach = 409 "Workflow is still
+  # being unpublished. Please try again in a few moments." (zufaellig je Workflow) -> 409 bis ~30 s
   # wiederholen; jeder andere Code entscheidet sofort.
   body="$(mktemp)"
   for i in $(seq 1 30); do
@@ -1118,8 +1112,8 @@ n8n_delete_workflow() {
   rm -f "$body"
   return 1
 }
-# n8n_list_credentials — ALLE n8n-Credentials als 'id<TAB>name<TAB>type'-Zeilen (cursor-paginiert); rc 1 bei
-# GET-Fehler (der Aufrufer entscheidet: warn+skip bzw. fail-closed). EINE Paginierung fuer pkg_teardown (Uninstall),
+# n8n_list_credentials — alle n8n-Credentials als 'id<TAB>name<TAB>type'-Zeilen (cursor-paginiert); rc 1 bei
+# GET-Fehler (der Aufrufer entscheidet: warn+skip bzw. fail-closed). Eine Paginierung fuer pkg_teardown (Uninstall),
 # deploy_workflows (retire_credentials) und inject_credentials::_list_existing_creds (wandelt nur in JSON).
 n8n_list_credentials() {
   local url="$N8N_URL/api/v1/credentials?limit=250" resp cursor
@@ -1131,7 +1125,7 @@ n8n_list_credentials() {
     url="$N8N_URL/api/v1/credentials?limit=250&cursor=$cursor"
   done
 }
-# n8n_delete_credential <id> — REST-DELETE einer Credential; 0 = geloescht ODER schon weg (404), 1 = Fehler
+# n8n_delete_credential <id> — REST-DELETE einer Credential; 0 = geloescht oder schon weg (404), 1 = Fehler
 # (Muster n8n_delete_workflow).
 n8n_delete_credential() {
   local code
@@ -1159,7 +1153,7 @@ _ingress_uuid() {
 # _app_path -> Pfad der Mini-App „Übersicht“ unter /webhook/ (docs/package-contract.md §3.12), je Instanz aus
 #   INGRESS_ID_KEY abgeleitet wie die Telegram-Eingangs-ids: das Repo nennt nur den Platzhalter __APP_PATH__, die echte
 #   Adresse kennt nur diese Instanz (Verteidigung in der Tiefe; den Zugriff schuetzt die initData-Pruefung in der DB).
-#   Leer, wenn der Schluessel fehlt. EINE Adresse fuer den Workflow-Patch und den Menue-Knopf.
+#   Leer, wenn der Schluessel fehlt. Eine Adresse fuer den Workflow-Patch und den Menue-Knopf.
 _app_path() {
   local k; k="$(read_env_value "${N8N_OWNER_ENV_FILE:-/etc/lifeagents/core.env}" INGRESS_ID_KEY || true)"
   [ -n "$k" ] || return 0
@@ -1168,8 +1162,7 @@ _app_path() {
 
 # --- Paket-Baum + Textkatalog (docs/package-contract.md §3.11) ----------------------------------------------
 # _pkg_dir -> Paket-Quelle: der gespiegelte Runtime-Baum (`/usr/local/lib/lifeagents/packages/<pkg>/…`) bzw. im
-# Dev der Repo-Baum. v1 = lokaler Baum (D13); kuenftige Per-Paket-Release-Quellen abstrahiert der `pkg_source`-
-# Resolver (vertagt).
+# Dev der Repo-Baum (immer ein lokaler Baum).
 _pkg_dir() {
   if [ -n "${LIFEAGENTS_LIB:-}" ] && [ -d "${LIFEAGENTS_LIB}/packages" ]; then
     printf '%s' "${LIFEAGENTS_LIB}/packages"
@@ -1227,7 +1220,7 @@ notify_owner_telegram() {
     --data-urlencode "chat_id=${chat}" --data-urlencode "text=$1" >/dev/null 2>&1
 }
 
-# note <text> — ERWARTBARER Hinweis (bewusst uebersprungener Schluessel, noch nicht gepairter Owner):
+# note <text> — erwartbarer Hinweis (bewusst uebersprungener Schluessel, noch nicht gepairter Owner):
 # ohne Quiet wie warn; im Quiet-Modus nur ins Log — der End-Recap fasst diese Faelle zusammen, statt
 # dass sie den ruhigen Lauf zwischen den ✓-Zeilen unterbrechen.
 note() {
@@ -1235,7 +1228,7 @@ note() {
   return 0
 }
 
-# ui_step_bad <hinweis> — Schritt ohne Erfolg beenden, ABER ohne Log-Auszug (erwartbarer Zustand wie
+# ui_step_bad <hinweis> — Schritt ohne Erfolg beenden, aber ohne Log-Auszug (erwartbarer Zustand wie
 # "Domain noch nicht erreichbar" — kein Programmfehler): ✗ text — hinweis.
 ui_step_bad() {
   local hint="${1:-}" text="$_UI_STEP_TEXT"
@@ -1251,15 +1244,15 @@ ui_step_bad() {
 ui_fd() { if [ "${UI_QUIET:-0}" = 1 ]; then printf '3'; else printf '2'; fi; }
 
 # --- Erreichbarkeit (geteilt von doctor.sh + owner_connect.sh) ------------------------------------
-# https_code <domain> -> HTTP-Status von https://<domain>/ (000 = keine TLS-Verbindung). JEDE Antwort
+# https_code <domain> -> HTTP-Status von https://<domain>/ (000 = keine TLS-Verbindung). Jede Antwort
 # (auch 404 = gesunder webhook-only-Zustand) heisst "TLS-Endpunkt + Reverse Proxy antworten".
 https_code() {
-  # curl schreibt bei Verbindungsfehler SELBST '000' (-w) UND endet != 0 -> ein `|| printf 000` ergaebe '000000'.
+  # curl schreibt bei Verbindungsfehler selbst '000' (-w) und endet != 0 -> ein `|| printf 000` ergaebe '000000'.
   local code; code="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 8 "https://$1/" 2>/dev/null)" || true
   printf '%s' "${code:-000}"
 }
 
-# --- Internet-Adresse (Domain): EINE Regel fuer alle Eingabewege ----------------------------------------------------
+# --- Internet-Adresse (Domain): eine Regel fuer alle Eingabewege ----------------------------------------------------
 # normalize_domain <eingabe> -> die Adresse, wie Installer, core.env und n8n sie fuehren: Rand-Leerzeichen, Gross-
 #   schreibung, http(s)://, Pfad/Query/Fragment, Schluss-Slash, :443 und Schluss-Punkt weg (eingefuegt wird oft die
 #   ganze URL aus dem Browser). Ein anderer Port bleibt stehen -> domain_problem meldet ihn. Ein Leerzeichen innen
@@ -1274,7 +1267,7 @@ normalize_domain() {
   printf '%s' "$d"
 }
 
-# domain_problem <domain> -> leer = gueltig, sonst der Grund im Klartext (EINE Quelle fuer _validate_domain, die Meldung
+# domain_problem <domain> -> leer = gueltig, sonst der Grund im Klartext (eine Quelle fuer _validate_domain, die Meldung
 #   im Prompt und den Abbruch bei vorgegebener DOMAIN). Erwartet einen normalisierten Wert. Immer rc 0.
 domain_problem() {
   case "$1" in
@@ -1285,7 +1278,7 @@ domain_problem() {
   return 0
 }
 
-# is_router_myfritz_name <domain> -> 0, wenn das die MyFRITZ!-Adresse der FritzBox SELBST ist (<kennung>.myfritz.net);
+# is_router_myfritz_name <domain> -> 0, wenn das die MyFRITZ!-Adresse der FritzBox selbst ist (<kennung>.myfritz.net);
 #   die Adresse einer MyFRITZ!-Freigabe fuer ein Geraet hat ein Label mehr (<geraet>.<kennung>.myfritz.net). Ohne Netz:
 #   erkennt die IPv6-Falle (AAAA = die Box) auch, wenn der Server selbst keinen IPv6-Weg hat.
 is_router_myfritz_name() { printf '%s' "$1" | grep -qiE '^[^.]+\.myfritz\.net$'; }
@@ -1295,7 +1288,7 @@ is_router_myfritz_name() { printf '%s' "$1" | grep -qiE '^[^.]+\.myfritz\.net$';
 # falscher AAAA-Eintrag (MyFRITZ!-Adresse der Box = die Box selbst) faellt deshalb im Chat nie auf. Gemessen wird das
 # Ergebnis, nicht die IP (der Proxy kann auf einem anderen Rechner laufen): je Adressfamilie dieselbe Anfrage ueber
 # die Domain (--resolve auf die DNS-Adresse) und direkt an dieses n8n, Status + Body muessen gleich sein. Nie
-# blockierend (arch-challenge 2026-10-28: Mailcow-Muster statt der harten Sperre von Nextcloud AIO).
+# blockierend (keine harte Sperre).
 
 # dns_first_addr <host> <4|6> -> erste Adresse der Familie aus dem DNS, an /etc/hosts VORBEI (node/c-ares): der Pin aus
 #   hitl_chat_reachable zeigt die Domain auf dem Server auf den Proxy und verdeckte sonst genau den Weg der Geraete.
@@ -1306,15 +1299,15 @@ dns_first_addr() {
 }
 
 # url_host <url> / url_port <url> -> Host bzw. Port von scheme://host[:port]/… (Port: der angegebene, sonst https 443,
-#   http 80). EINE Stelle fuer alle Probes (--resolve braucht beides).
+#   http 80). Eine Stelle fuer alle Probes (--resolve braucht beides).
 url_host() { local h="${1#*://}"; h="${h%%/*}"; printf '%s' "${h%%:*}"; }
 url_port() {
   local h="${1#*://}"; h="${h%%/*}"
   case "$h" in *:*) printf '%s' "${h##*:}" ;; *) case "$1" in https://*) printf 443 ;; *) printf 80 ;; esac ;; esac
 }
 
-# http_fp <url> [curl-args...] -> "<status>|<sha256 des Body>|<1 = FRITZ!Box-Seite, sonst 0>|<curl-rc>" — der EINE
-#   Fingerabdruck fuer „ist die Anfrage bei DIESEM n8n gelandet?“ (Geraete-Check, Bestaetigungs-Route): dieselbe Anfrage
+# http_fp <url> [curl-args...] -> "<status>|<sha256 des Body>|<1 = FRITZ!Box-Seite, sonst 0>|<curl-rc>" — der eine
+#   Fingerabdruck fuer „ist die Anfrage bei diesem n8n gelandet?“ (Geraete-Check, Bestaetigungs-Route): dieselbe Anfrage
 #   direkt an n8n und ueber die Domain, die ersten beiden Felder muessen gleich sein. Die URL geht nur ueber die
 #   curl-Config auf stdin, nie ins argv (der App-Pfad ist je Instanz geheim, provisioning/CLAUDE.md).
 http_fp() {
@@ -1327,7 +1320,7 @@ http_fp() {
 
 # reach_probe_ip <base> <path> <ip> -> ok | fritz | cert | down | other:<status> | nolocal. <base> = http(s)://host[:port]
 #   (Port aus dem Schema, sonst der angegebene), <path> beginnt mit /. Vergleich mit derselben Anfrage an dieses n8n
-#   (${N8N_URL}, sonst 127.0.0.1:N8N_PORT). cert NUR bei curl-rc 60 (falscher Name, abgelaufen und selbstsigniert enden
+#   (${N8N_URL}, sonst 127.0.0.1:N8N_PORT). cert nur bei curl-rc 60 (falscher Name, abgelaufen und selbstsigniert enden
 #   alle so; 51 gibt es seit curl 7.62 nicht mehr). nolocal = das lokale n8n antwortet selbst nicht (kein Befund).
 reach_probe_ip() {
   local base="${1%/}" path="$2" ip="$3" host port ref res
@@ -1360,13 +1353,13 @@ reach_family() {
   reach_probe_ip "$base" "$path" "$addr"
 }
 
-# Die Handgriffe (EINE Quelle fuer doctor + Installer; Schritt fuer Schritt: Doku-Seite „FritzBox einrichten“).
+# Die Handgriffe (eine Quelle fuer doctor + Installer; Schritt fuer Schritt: Doku-Seite „FritzBox einrichten“).
 REACH_HINT_FRITZ='Die Adresse zeigt über IPv6 auf die FRITZ!Box selbst — Handy und Laptop öffnen dann zufällig eine FritzBox-Seite statt deines Servers. Abhilfe: beim Rechner mit dem Reverse Proxy eine MyFRITZ!-Freigabe „HTTPS-Server“ anlegen (Internet → Freigaben → Portfreigaben → Stift beim Gerät → Neue Freigabe → MyFRITZ!-Freigabe) und dessen eigene MyFRITZ!-Adresse (<gerät>.<kennung>.myfritz.net) als Internet-Adresse nehmen: lifeagents reconfigure core. Schritt für Schritt: Doku „FritzBox einrichten“.'
 REACH_HINT_CERT='Das Zertifikat passt nicht zur Adresse oder ist ungültig — der Reverse Proxy braucht ein gültiges Zertifikat für genau diesen Namen (Caddy holt es selbst; dafür muss Port 80 freigegeben bleiben).'
 REACH_HINT_V6='Über IPv6 antwortet unter dieser Adresse nicht dein Reverse Proxy — der IPv6-Eintrag (AAAA) der Adresse muss auf den Proxy-Rechner zeigen oder ganz fehlen (FritzBox: Doku „FritzBox einrichten“).'
 REACH_HINT_V4='Über IPv4 antwortet unter dieser Adresse nicht dein Reverse Proxy — DNS-Eintrag (A) und die Weiterleitung von Port 443 auf den Proxy-Rechner prüfen.'
 
-# reach_assess <r4> <r6> <telegram_ok 0|1> <host> — Ergebnis je Familie (reach_family) in Zeilen + EINEN Handgriff
+# reach_assess <r4> <r6> <telegram_ok 0|1> <host> — Ergebnis je Familie (reach_family) in Zeilen + einen Handgriff
 #   uebersetzen. Setzt REACH_LINES ("ok|bad|info<TAB>Text" je Zeile), REACH_HINT (leer = nichts zu tun) und REACH_BAD (0/1).
 #   Regeln: das Zertifikat zaehlt aus IPv4 (rc 60 nur ueber IPv6 = IPv6 landet woanders); IPv4 scheitert vom Server aus
 #   (auch mit rc 60: dann antwortet z. B. die Router-Oberflaeche mit eigenem Zertifikat), obwohl Telegram an genau diese
@@ -1423,11 +1416,11 @@ tg_webhook_delivers() {
 # --- Bestaetigen im Chat: Selbst-Erreichbarkeit (geteilt von deploy_workflows.sh + doctor.sh) -------------------
 # Ein Tipp auf einen Bestaetigungs-Knopf kommt von Telegram beim Orchestrator-Trigger an; der POSTet ihn an
 # <WEBHOOK_URL>/webhook-waiting-telegram weiter (n8n TelegramTrigger hitlForwardUrl, best-effort: ein Fehlschlag
-# verschluckt den Tipp still). Diese Weiterleitung laeuft VOM SERVER SELBST ueber die oeffentliche Domain -> im
+# verschluckt den Tipp still). Diese Weiterleitung laeuft vom Server selbst ueber die oeffentliche Domain -> im
 # Heimnetz droht Hairpin-NAT bzw. der IPv6-Abzweig zur FritzBox (MyFRITZ!-AAAA = die Box selbst).
 HITL_ROUTE_SUFFIX='/webhook-waiting-telegram'
 
-# Die EINE Liste oeffentlicher Pfade fuer beide Installationswege (contract_lint 34): das Caddyfile der CLI
+# Die eine Liste oeffentlicher Pfade fuer beide Installationswege (contract_lint 34): das Caddyfile der CLI
 # (templates/Caddyfile.tpl), die Hilfetexte fuer einen eigenen Proxy (owner_connect.sh) und der Rand des Docker-Verbunds
 # (lib/reach.sh schreibt denselben Baustein fuer edge). /webhook-waiting/* ist Pflicht fuer die Bestaetigungs-Knoepfe.
 LA_PUBLIC_PATHS='/webhook/* /webhook-test/* /webhook-waiting/* /webhook-waiting-telegram'
@@ -1440,7 +1433,7 @@ caddy_webhook_block() {
 
 # hitl_route_probe <webhook-url> [<ip>] -> rc0, wenn ein leerer Callback-POST an <webhook-url>/webhook-waiting-telegram
 #   (ueber DNS bzw. per --resolve auf <ip>) denselben Fingerabdruck (http_fp: Status + Body) liefert wie derselbe POST
-#   direkt an dieses n8n = die Anfrage ist bei DIESEM n8n gelandet (n8n antwortet ohne gueltigen Callback deterministisch
+#   direkt an dieses n8n = die Anfrage ist bei diesem n8n gelandet (n8n antwortet ohne gueltigen Callback deterministisch
 #   und ohne Seiteneffekt). Vergleich statt fester Statuscode: FritzBox/Home Assistant/Proxy antworten auch 403/404.
 hitl_route_probe() {
   local base="${1%/}" ip="${2:-}" host local_fp pub_fp post=(-X POST -H 'Content-Type: application/json' --data '{}')
@@ -1477,7 +1470,7 @@ hosts_pin_clear() {
   awk -v b="$_HOSTS_BEGIN" -v e="$_HOSTS_END" '$0==b{f=1;next} $0==e{f=0;next} !f' "$HOSTS_FILE" > "$tmp"
   cat "$tmp" > "$HOSTS_FILE"; rm -f "$tmp"   # cat statt mv: Inode/Rechte von /etc/hosts bleiben (Container-Bind-Mounts)
 }
-# hosts_pin_prune <behalten> — den Block entfernen, wenn er NICHT genau <behalten> pinnt (leer = immer): nach einem
+# hosts_pin_prune <behalten> — den Block entfernen, wenn er nicht genau <behalten> pinnt (leer = immer): nach einem
 #   Domain-Wechsel bliebe sonst der Pin des alten Namens stehen (hosts_pin_get findet nur den aktuellen). Immer rc 0.
 hosts_pin_prune() {
   [ -f "$HOSTS_FILE" ] && grep -qxF "$_HOSTS_BEGIN" "$HOSTS_FILE" || return 0
@@ -1488,7 +1481,7 @@ hosts_pin_prune() {
 }
 
 # hitl_chat_state -> "true"/"false": der beim letzten Core-Deploy entschiedene Knopf-Modus (core.env HITL_CHAT_APPROVAL,
-#   EIN Fakt fuer alle Workflows + doctor); leer = noch nie entschieden. Immer rc 0 (set -e-sicher in $(…)).
+#   ein Fakt fuer alle Workflows + doctor); leer = noch nie entschieden. Immer rc 0 (set -e-sicher in $(…)).
 hitl_chat_state() { read_env_value "$(lifeagents_env_file core)" HITL_CHAT_APPROVAL 2>/dev/null || true; return 0; }
 
 # hitl_chat_reachable <webhook-url> -> rc0, wenn der Server seinen Bestaetigungs-Endpunkt ueber die Domain erreicht.
@@ -1514,8 +1507,8 @@ hitl_chat_reachable() {
 }
 
 # n8n_orchestrator_state <api-key> <base-url> -> "<id><TAB><true|false>" des Orchestrator-Workflows
-# (Telegram-Trigger) oder leer (API nicht erreichbar / Workflow fehlt). `.active|tostring` VOR `//`:
-# sonst fiele ein rohes JSON-false auf `empty` zurueck (doctor-Befund).
+# (Telegram-Trigger) oder leer (API nicht erreichbar / Workflow fehlt). `.active|tostring` vor `//`:
+# sonst fiele ein rohes JSON-false auf `empty` zurueck.
 n8n_orchestrator_state() {
   n8n_api_curl "$1" "$2/api/v1/workflows?limit=250" -fsS --max-time 5 2>/dev/null \
     | jq -r 'first(.data[]? | select(.name | test("orchestrator")) | "\(.id)\t\(.active | tostring)") // empty' 2>/dev/null || true

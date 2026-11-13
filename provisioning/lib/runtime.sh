@@ -1,21 +1,21 @@
 # runtime.sh — Betriebsart des Installers: systemd (LXC/Debian, Standard) oder compose (Verbund aus Containern).
-# GESOURCT von common.sh (kein Shebang, kein set -e). Diese Datei ist die EINZIGE Stelle, die weiss, WIE Postgres, n8n und
-# die Dienste erreicht werden: rohe `runuser`/`systemctl`- und JEDE `docker`-Zeile stehen nur hier (contract_lint 32). Im
-# systemd-Betrieb tun die Wrapper exakt das, was vorher inline stand; keine vorgetaeuschten Programme (kein Fake-systemctl).
+# Gesourct von common.sh (kein Shebang, kein set -e). Diese Datei ist die einzige Stelle, die weiss, wie Postgres, n8n und
+# die Dienste erreicht werden: rohe `runuser`/`systemctl`- und jede `docker`-Zeile stehen nur hier (contract_lint 32). Im
+# systemd-Betrieb sind die Wrapper duenne Huellen um die direkten Aufrufe; keine vorgetaeuschten Programme (kein Fake-systemctl).
 #
 # LIFEAGENTS_RUNTIME=compose (gesetzt im master-Container, provisioning/compose/compose.yml): Postgres, n8n und LLM-Gateway
-# laufen als eigene Container in EINEM Netz-Namensraum (network_mode: service:anchor, Pod-Muster), der Installer im master.
+# laufen als eigene Container in einem Netz-Namensraum (network_mode: service:anchor, Pod-Muster), der Installer im master.
 # Alle 127.0.0.1-Annahmen (5432, 5678, 8090) bleiben wahr.
 #
-# DOCKER-POSITIVLISTE (contract_lint 32, gilt auch fuer die Start-App): erlaubt sind nur
+# Docker-Positivliste (contract_lint 32, gilt auch fuer die Start-App): erlaubt sind nur
 #   docker exec · docker inspect · docker image inspect · docker version · docker volume inspect · docker volume create ·
 #   docker run --rm · docker ps --format '{"image":…}' (nur in rt_published_ports_json: festes JSON-Objekt, keine
 #   Kennungen) · docker compose -p "$LA_PROJECT" <up|start|stop|restart|ps|config|pull|version|down>.
-# Dazu fuer den Deinstaller (Pruefliste Nr. 17, nur nach ausdruecklicher Rueckfrage): `docker volume rm <name>` NUR in
-# rt_volume_rm_own (prueft vorher unser Label an genau diesem einen Namen) und `compose down` NUR in rt_stack_down (ohne
+# Dazu fuer den Deinstaller (Pruefliste Nr. 17, nur nach ausdruecklicher Rueckfrage): `docker volume rm <name>` nur in
+# rt_volume_rm_own (prueft vorher unser Label an genau diesem einen Namen) und `compose down` nur in rt_stack_down (ohne
 # -v/--rmi: externe Volumes und Images bleiben; entfernt nur Container + Netze DIESES Projekts).
 # Verboten sind breite Befehle (prune, --all/-a, ps -q, rm $(…), down -v/--volumes, --rmi, system …): unser master hat
-# Zugriff auf GANZ Docker, ein Fehler hier traefe fremde Container (z. B. Paperless) — die wichtigste Regel des Verbunds.
+# Zugriff auf ganz Docker, ein Fehler hier traefe fremde Container (z. B. Paperless) — die wichtigste Regel des Verbunds.
 # Bind-Mounts nur per `--mount` (der Schalter -v ist wegen `down -v` gesperrt). Alles, was wir anlegen, traegt den
 # Projektnamen als Vorsatz und das Label io.lifeagents.install=<projekt>. `image rm <laut Journal selbst geladen>` gehoert
 # der Start-App (sie fuehrt das Journal), nicht dem master.
@@ -31,20 +31,20 @@ LA_N8N_CONTAINER="${LA_N8N_CONTAINER:-${LA_PROJECT}-n8n}"
 LA_GW_CONTAINER="${LA_GW_CONTAINER:-${LA_PROJECT}-gateway}"
 LA_N8N_EXEC_USER="${LA_N8N_EXEC_USER:-node}"   # Nutzer des n8n-Images (uid 1000); im systemd-Betrieb gilt $N8N_USER
 # Zustandsfuehrende Volumes (compose.yml: alle `external`, `compose down` loescht sie nie; nur der Deinstaller nach
-# Rueckfrage). EINE Liste fuer rt_volumes_ensure und den Deinstaller (Paket 2).
+# Rueckfrage). Eine Liste fuer rt_volumes_ensure und den Deinstaller.
 LA_STATE_VOLUMES="pgdata n8n_home etc_n8n etc_la var_la rt_tree gw_state ts_state wizard_state"
 # Abgeleitete Volumes (compose.yml: von Compose verwaltet, jeder Installer-Lauf schreibt sie neu, keine Nutzerdaten):
 # der Deinstaller entfernt sie immer. contract_lint 33 haelt die Liste gleich mit compose.yml.
 # shellcheck disable=SC2034  # gelesen von compose/stack.sh
 LA_DERIVED_VOLUMES="shared gw_code n8n_patches reach_conf caddy_data"
 
-# _rt_compose <args…> — docker compose mit FESTEM Projekt und fester Datei (nie das Projekt aus der Umgebung raten).
+# _rt_compose <args…> — docker compose mit festem Projekt und fester Datei (nie das Projekt aus der Umgebung raten).
 _rt_compose() { docker compose -p "$LA_PROJECT" -f "$LA_COMPOSE_FILE" "$@"; }
 
 # --- Postgres als Superuser ---------------------------------------------------------------------------------------------
 # pg_su_exec <programm> [args…] — ein Programm als Postgres-Superuser (systemd: runuser/Peer-Auth, compose: docker exec).
-# compose: OHNE -i, stdin wird NICHT weitergereicht. `docker exec -i` liest stdin bis EOF — in einer
-# `while read … done <<<"$liste"`-Schleife (provision.sh Paket-Loop) frass es den Rest der Liste (Probelauf-Fund 2).
+# compose: ohne -i, stdin wird nicht weitergereicht. `docker exec -i` liest stdin bis EOF — in einer
+# `while read … done <<<"$liste"`-Schleife (provision.sh Paket-Loop) frisst es den Rest der Liste.
 pg_su_exec() {
   if rt_is_compose; then docker exec -u postgres "$LA_PG_CONTAINER" "$@"
   else runuser -u "${DB_SUPERUSER:-postgres}" -- "$@"; fi
@@ -110,7 +110,7 @@ n8n_cli_env() {
 n8n_exec() { if rt_is_compose; then docker exec -u "$LA_N8N_EXEC_USER" "$LA_N8N_CONTAINER" "$@"; else "$@"; fi; }
 # n8n_present — gibt es ein n8n, das man fragen kann? (compose: der Container laeuft)
 n8n_present() { if rt_is_compose; then svc_is_active n8n; else need_cmd n8n; fi; }
-# n8n_image_tar <verzeichnis> — tar-Strom eines Verzeichnisses aus dem UNVERAENDERTEN n8n-Image (nur compose: die
+# n8n_image_tar <verzeichnis> — tar-Strom eines Verzeichnisses aus dem unveraenderten n8n-Image (nur compose: die
 # n8n-Korrektur legt eine Kopie des Verzeichnisses samt korrigierter Datei ins Volume, s. n8n_patches.sh).
 n8n_image_tar() {
   docker run --rm --name "${LA_PROJECT}-patchsrc" --label "${LA_LABEL}=${LA_PROJECT}" --network none \
@@ -222,7 +222,7 @@ rt_wait_healthy() {
   return 1
 }
 # rt_volumes_ensure — die zustandsfuehrenden Volumes anlegen (external in compose.yml, also nicht von Compose). Ein Volume
-# mit unserem Namen OHNE unser Label gehoert jemand anderem -> Abbruch, nie uebernehmen (Einwand 29). rc 0 = alle da.
+# mit unserem Namen ohne unser Label gehoert jemand anderem -> Abbruch, nie uebernehmen. rc 0 = alle da.
 rt_volumes_ensure() {
   local v name lbl
   for v in $LA_STATE_VOLUMES; do
@@ -234,7 +234,7 @@ rt_volumes_ensure() {
     fi
   done
 }
-# rt_stack_config_check — Prueft die Compose-Datei samt Interpolation (Pruefliste Nr. 13), OHNE sie auszugeben: die
+# rt_stack_config_check — Prueft die Compose-Datei samt Interpolation (Pruefliste Nr. 13), ohne sie auszugeben: die
 # aufgeloeste Fassung enthaelt das Superuser-Passwort (`config --quiet` = nur Fehlermeldungen).
 rt_stack_config_check() { _rt_compose config --quiet; }
 # rt_stack_pull <dienste…> — fehlende Images dieser Dienste vorab laden (per Digest festgelegt: ein lokaler Treffer
@@ -258,7 +258,7 @@ rt_host_port_free() {
     "${LA_PROBE_IMAGE:?LA_PROBE_IMAGE nicht gesetzt}" true >/dev/null 2>&1
 }
 # rt_published_ports_json <image-teil> <container-port> -> eine JSON-Zeile [{"ip":"0.0.0.0","port":8010}, …]: veroeffentlichte
-# Host-Ports laufender Container DIESES Rechners (auch fremder, z. B. Paperless fuer den Adress-Vorschlag im Wizard), deren
+# Host-Ports laufender Container dieses Rechners (auch fremder, z. B. Paperless fuer den Adress-Vorschlag im Wizard), deren
 # Image <image-teil> enthaelt, fuer <container-port>/tcp. ip wie Docker sie meldet ("::" ohne Klammern), Paare einmalig;
 # Port-Bereiche (8010-8011->…) zaehlen nicht. Ohne Docker oder bei einem Fehler: keine Ausgabe und rc 1 (der Aufrufer setzt
 # dann [] ein, wizard/bridge.sh; ein eigenes [] ergaebe dort zwei JSON-Werte). Nur lesend; `ps --format` mit festem
@@ -286,12 +286,12 @@ rt_master_write() {
 # rt_master_exec <befehl…> — im master ausfuehren (ohne stdin, s. pg_su_exec).
 rt_master_exec() { docker exec "$(rt_master_container)" "$@"; }
 
-# --- Laufzeit im Verbund: Image-Wechsel, Messung, Rechner-Ordner, Abbau (Paket 2) ---------------------------------------
+# --- Laufzeit im Verbund: Image-Wechsel, Messung, Rechner-Ordner, Abbau -------------------------------------------------
 # rt_container_image <container> -> das Image (Name@Digest wie in compose.yml), mit dem der Container angelegt wurde.
 rt_container_image() { docker inspect -f '{{.Config.Image}}' "$1" 2>/dev/null; }
 # rt_container_running <container> — 0 = laeuft.
 rt_container_running() { [ "$(docker inspect -f '{{.State.Running}}' "$1" 2>/dev/null)" = true ]; }
-# rt_master_image_of <compose-datei> -> das master-Image, das DIESE Datei selbst nennt (Release-Pin, Paket 5:
+# rt_master_image_of <compose-datei> -> das master-Image, das diese Datei selbst nennt (Release-Pin:
 #   x-images.master `${LA_MASTER_IMAGE:-<register>/master@sha256:…}`, scripts/lib/release_images.ps1), also OHNE die Vorgabe aus der Umgebung. Leer = die Datei nennt
 #   keins (neutrale Form `:?`). Die aufgeloeste Fassung enthaelt das Superuser-Passwort: sie geht nur in jq, nie in eine Ausgabe.
 rt_master_image_of() {
@@ -321,8 +321,8 @@ rt_master_selfcheck() {
   done
   return 1
 }
-# rt_swap_helper_start <image> <arbeitsordner> — den kurzlebigen Helfer fuer den master-Wechsel starten (Fund 6: der master
-#   kann sich nicht selbst ersetzen). Aus dem ALTEN, bewaehrten Image; sieht nur den Docker-Socket und var_la (dort liegen
+# rt_swap_helper_start <image> <arbeitsordner> — den kurzlebigen Helfer fuer den master-Wechsel starten (der master
+#   kann sich nicht selbst ersetzen). Aus dem alten, bewaehrten Image; sieht nur den Docker-Socket und var_la (dort liegen
 #   Zustandsdatei, beide compose-Dateien und die Env-Datei). Fester Name: ein zweiter Wechsel waehrend eines laufenden
 #   scheitert am Namen, bevor er etwas aendert.
 rt_swap_helper_start() {
@@ -338,12 +338,12 @@ rt_swap_helper_running() { rt_container_running "${LA_PROJECT}-swap"; }
 #   /proc/1: der exec-Prozess teilt den Namensraum, und PID 1 eines anderen Nutzers (postgres) waere ohne ptrace nicht lesbar.
 rt_netns() { docker exec "$1" readlink /proc/self/ns/net 2>/dev/null; }
 # rt_probe_internal <port> — erreicht ein Kurzlauf-Container im internen Netz (dort, wo der Rand steht) anchor:<port>?
-#   Die Messung von aussen (Plan *Der Rand*): was der Rand sieht, sieht hier auch die Probe. 0 = erreichbar.
+#   Die Messung von aussen: was der Rand sieht, sieht hier auch die Probe. 0 = erreichbar.
 rt_probe_internal() {
   docker run --rm --label "${LA_LABEL}=${LA_PROJECT}" --network "${LA_PROJECT}_internal" \
     "${LA_PROBE_IMAGE:?LA_PROBE_IMAGE nicht gesetzt}" nc -z -w 2 anchor "$1" >/dev/null 2>&1
 }
-# _rt_host_run [-i] <mount-angabe> <befehl…> — EIN Kurzlauf-Container fuer einen Ordner AUF DEM RECHNER (Sicherung, Fund 7:
+# _rt_host_run [-i] <mount-angabe> <befehl…> — ein Kurzlauf-Container fuer einen Ordner auf dem Rechner (Sicherung:
 #   nicht auf der Docker-Platte): busybox, ohne Netz, genau dieser eine Bind-Mount, unser Label. Fehlt der Ordner, scheitert
 #   der Mount (Docker legt ihn mit --mount nie still an). -i = stdin durchreichen.
 _rt_host_run() {
@@ -384,7 +384,7 @@ rt_host_rm() {
   for f in "${@:2}"; do case "$f" in */*|''|.|..) return 1 ;; esac; done
   _rt_host_run "type=bind,src=$1,dst=/out" sh -c 'cd /out && for f in "$@"; do rm -f -- "$f"; done' _ "${@:2}"
 }
-# rt_stack_down — Container + Netze DIESES Projekts entfernen (Deinstaller, Rechner-Seite). Ohne -v/--rmi: die externen
+# rt_stack_down — Container + Netze dieses Projekts entfernen (Deinstaller, Rechner-Seite). Ohne -v/--rmi: die externen
 #   Volumes (Daten) und alle Images bleiben. Dienste aus Profilen (tailscale, wan) sind fuer Compose keine Waisen: `down`
 #   erfasst sie nur, wenn ihr Profil aktiv ist -> alle Profile aus compose.yml aktivieren. --remove-orphans erfasst nur
 #   Container mit unserem Compose-Projekt, nie fremde.
@@ -393,7 +393,7 @@ rt_stack_down() {
   profiles="$(_rt_compose config --profiles | paste -sd, -)" || return 1
   COMPOSE_PROFILES="$profiles" _rt_compose down --remove-orphans
 }
-# rt_volume_rm_own <name> — EIN Volume entfernen, aber nur, wenn es unser Label traegt (fremdes gleichen Namens: Abbruch).
+# rt_volume_rm_own <name> — ein Volume entfernen, aber nur, wenn es unser Label traegt (fremdes gleichen Namens: Abbruch).
 #   rc 0 = entfernt oder nicht vorhanden, 1 = fremdes Label (unberuehrt), 2 = Docker lehnte ab (Meldung nennt den Grund,
 #   z. B. noch von einem Container belegt).
 rt_volume_rm_own() {
@@ -402,7 +402,7 @@ rt_volume_rm_own() {
   [ "$lbl" = "$LA_PROJECT" ] || { warn "Volume $1 trägt nicht unser Label — bleibt unangetastet."; return 1; }
   err="$(docker volume rm "$1" 2>&1 >/dev/null)" || { warn "Volume $1 ließ sich nicht entfernen: ${err:-Docker nannte keinen Grund}"; return 2; }
 }
-# --- Rand (Paket 3, lib/reach.sh): edge, tailscale, wan -----------------------------------------------------------------
+# --- Rand (lib/reach.sh): edge, tailscale, wan --------------------------------------------------------------------------
 # Feste Dienstliste ausserhalb des Pods, Container <projekt>-<dienst>; jeder andere Name = rc 2 (nie ein fremder Container).
 _rt_edge_container() { case "$1" in edge|tailscale|wan) printf '%s-%s' "$LA_PROJECT" "$1" ;; *) return 2 ;; esac; }
 # rt_edge_active <dienst> — 0 = Container laeuft.

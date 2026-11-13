@@ -1,13 +1,13 @@
-# household_cli.sh — Runtime-CLI fuer Owner-Lifecycle-Operationen am Haushalt (WS-5d).
-# SOURCED (kein Shebang, kein `set -e` — der Top-Aufrufer `lifeagents` traegt den Error-Mode).
+# household_cli.sh — Runtime-CLI fuer Owner-Lifecycle-Operationen am Haushalt.
+# Gesourct (kein Shebang, kein `set -e` — der Top-Aufrufer `lifeagents` traegt den Error-Mode).
 #
 # Aufruf: `lifeagents household <verb> [args]` (die CLI sourct diese Datei + common.sh).
 # DB-Zugriff: postgres-Superuser via runuser/Peer-Auth am lokalen Socket (host-vermittelt, wie
 # config_cli.sh/pkg_lifecycle.sh). Die Autorisierung ist der OS-/SSH-Root-Zugang — diese seltenen
-# Wartungs-/Defense-Ereignisse laufen bewusst NICHT ueber das LLM/den Chat (deterministisch).
+# Wartungs-/Defense-Ereignisse laufen bewusst nicht ueber das LLM/den Chat (deterministisch).
 #
-# Verben (noun-then-verb wie config/package/backup; EIN Noun `household` buendelt Personen-Lifecycle
-# UND Knocker-Sperre — lokales Mehr-Concern-pro-Noun-Muster, s. docs/reference/provisioning.md *Entscheidungen*):
+# Verben (noun-then-verb wie config/package/backup; das eine Noun `household` buendelt Personen-Lifecycle
+# und Knocker-Sperre, s. docs/reference/provisioning.md *Entscheidungen*):
 #   list                                   Haushalts-Personen + Telegram-Verknuepfung anzeigen (read-only)
 #   add <first> <last> <birth_date> <role> Person anlegen ("Geburt"); role = owner|partner|child
 #   remove <person_id>                     Person loeschen ("Tod"); abgelehnt, solange finance-Daten referenzieren
@@ -38,10 +38,10 @@ _hh_slug_ok() { printf '%s' "$1" | grep -qE '^[a-z0-9_]+$'; }
 _hh_num_ok()  { printf '%s' "$1" | grep -qE '^[0-9]+$'; }
 
 # _hh_call_fn <fn> <jsonb-sql>  -> ruft agent.<fn>(<jsonb>) und setzt $HH_OK/$HH_DETAIL/$HH_REASON.
-#   HH_OK = 'true'/'false' (jsonb-Boolean ->> ergibt 'true'/'false', NICHT 't'/'f'!). HH_DETAIL =
+#   HH_OK = 'true'/'false' (jsonb-Boolean ->> ergibt 'true'/'false', nicht 't'/'f'). HH_DETAIL =
 #   person_id/freed_telegram_user_id/was_blocked je nach fn. Rueckgabe 0 wenn der DB-Call lief (nicht == ok).
-#   Feldtrenner = ASCII Unit Separator (0x1F, NICHT TAB): TAB ist IFS-WHITESPACE -> `read` kollabiert
-#   aufeinanderfolgende Tabs + verschluckt ein LEERES Mittelfeld (ok:false hat ein leeres detail) ->
+#   Feldtrenner = ASCII Unit Separator (0x1F, nicht TAB): TAB ist IFS-Whitespace -> `read` kollabiert
+#   aufeinanderfolgende Tabs + verschluckt ein leeres Mittelfeld (ok:false hat ein leeres detail) ->
 #   die reason rutschte sonst nach HH_DETAIL. Ein Nicht-Whitespace-Trenner bewahrt leere Felder.
 _hh_call_fn() {
   local fn="$1" payload="$2" row
@@ -58,7 +58,7 @@ EOF
 
 # _hh_person_rows [linked_only:0|1] -> "label<TAB>person_id"-Zeilen fuer die Personen-Picker
 # (remove/unlink); dieselbe Quelle wie household_cmd_list, nur maschinenlesbar (nie Anzeige-Output
-# parsen). linked_only=1 filtert auf Personen MIT Telegram-Verknuepfung (unlink-Kandidaten).
+# parsen). linked_only=1 filtert auf Personen mit Telegram-Verknuepfung (unlink-Kandidaten).
 # `|| true`: fehlendes Schema -> leer -> der Picker faellt auf die Usage zurueck.
 _hh_person_rows() {
   local linked="${1:-0}" cond=""
@@ -88,8 +88,8 @@ household_cmd_list() {
 
 # --- add: Person anlegen -------------------------------------------------------------------------
 household_cmd_add() {
-  # Rollen-Picker (E3-Sonderfall Mehr-Arg-Verb): NUR wenn genau die Rolle fehlt ($#==3) —
-  # die Freitextfelder (Namen, Geburtsdatum) bleiben getippt (kein Wizard, YAGNI).
+  # Rollen-Picker nur, wenn genau die Rolle fehlt ($#==3) — die Freitextfelder (Namen, Geburtsdatum)
+  # bleiben getippt (kein Wizard).
   if [ "$#" -eq 3 ] && ui_interactive; then
     ensure_gum
     local _role
@@ -125,7 +125,7 @@ MENU
 
 # --- remove: Person loeschen ---------------------------------------------------------------------
 household_cmd_remove() {
-  # Missing-Arg-Picker (E3): Personen-Liste; der fn-Guard (Owner/FK-referenziert) bleibt dahinter (E8-Klasse).
+  # Picker bei fehlendem Argument: Personen-Liste; der fn-Guard (Owner/FK-referenziert) bleibt dahinter.
   if [ "$#" -lt 1 ] && ui_interactive; then
     ensure_gum
     local _pick
@@ -142,7 +142,7 @@ household_cmd_remove() {
 
 # --- unlink: Telegram-ID von einer Person trennen ------------------------------------------------
 household_cmd_unlink() {
-  # Missing-Arg-Picker (E3): nur Personen MIT Telegram-Verknuepfung (unlink-Kandidaten).
+  # Picker bei fehlendem Argument: nur Personen mit Telegram-Verknuepfung (unlink-Kandidaten).
   if [ "$#" -lt 1 ] && ui_interactive; then
     ensure_gum
     local _pick
@@ -171,7 +171,7 @@ household_cmd_block() {
 
 # --- unblock: Sperre aufheben --------------------------------------------------------------------
 household_cmd_unblock() {
-  # Missing-Arg-Picker (E3): Auswahl aus der Sperrliste. (`block` bleibt bewusst picker-los —
+  # Picker bei fehlendem Argument: Auswahl aus der Sperrliste. (`block` bleibt bewusst picker-los —
   # fuer einen noch-nicht-geblockten Anklopfer existiert keine Enumerationsquelle.)
   if [ "$#" -lt 1 ] && ui_interactive; then
     ensure_gum
@@ -205,8 +205,8 @@ household_cmd_blocked() {
 }
 
 # owner_connect_machine reach|arm|status|finalize — derselbe Ablauf wie owner_connect_guided (owner_connect.sh), maschinenlesbar für den
-#   Wizard im Docker-Betrieb (`lifeagents household pair-owner --machine <verb>`, Plan „Docker-Installer für Freunde“,
-#   Paket 4): je Aufruf genau eine JSON-Zeile auf stdout, kein Terminal, keine Rückfrage; der Wizard zeigt den Link als
+#   Wizard im Docker-Betrieb (`lifeagents household pair-owner --machine <verb>`): je Aufruf genau eine JSON-Zeile
+#   auf stdout, kein Terminal, keine Rückfrage; der Wizard zeigt den Link als
 #   QR-Code und fragt den Stand selbst ab. Bausteine sind die Funktionen oben (_oc_reachable, _arm_owner_challenge,
 #   _oc_finalize, _oc_send_welcome) — kein zweiter Pfad. Der Code steht nur in dieser Ausgabe (wie im Terminal nur im
 #   Kasten), nie im Log und nie über Telegram.
@@ -262,7 +262,7 @@ owner_connect_machine() {
 }
 
 # --- pair-owner: den Owner mit Telegram verbinden (Erstverbindung ODER Re-Link nach `unlink <owner>`) ---
-# Install-UX-Phase 3: derselbe gefuehrte Ablauf wie am Ende der Installation (owner_connect_guided —
+# Derselbe gefuehrte Ablauf wie am Ende der Installation (owner_connect_guided —
 # ein Code-Pfad, zwei Aufrufer): Erreichbarkeit pruefen (ggf. Caddyfile + "Erneut pruefen/Spaeter"),
 # Deep-Link t.me/<bot>?start=<code> zeigen, auf /start warten, danach den Bot auf die chat_id einstellen.
 # Ein bereits verbundener Owner wird abgelehnt (fn_arm_pairing_challenge lehnt ihn ab) — Re-Link erst nach
@@ -295,7 +295,7 @@ household_cmd_pair_owner() {
   owner_connect_guided
   case "$OWNER_CONNECT_RESULT" in
     connected)
-      # Install-UX-Phase 6: owner_connect_guided hat ggf. schon die Begruessung geschickt (OWNER_WELCOME_SENT).
+      # owner_connect_guided hat ggf. schon die Begruessung geschickt (OWNER_WELCOME_SENT).
       if [ "${OWNER_WELCOME_SENT:-0}" = 1 ]; then
         ok 'Fertig — dein Bot hat dir in Telegram geschrieben; tippe dort „Haushalt einrichten" (oder /onboarding).'
       else
@@ -309,7 +309,7 @@ household_cmd_pair_owner() {
 # --- Dispatcher: `lifeagents household <verb> [args]` --------------------------------------------
 household_cli() {
   # Verb-Picker: nacktes `lifeagents household` auf TTY -> Menue statt Hilfetext; ESC/non-TTY ->
-  # Hilfetext wie bisher (Exit 0, E5b). `add`/`block` verlangen danach weiter getippte Argumente
+  # Hilfetext (Exit 0). `add`/`block` verlangen danach weiter getippte Argumente
   # (Freitext/keine Enumerationsquelle) — deren Usage-Meldung nennt die Syntax.
   if [ "$#" -eq 0 ] && ui_interactive; then
     ensure_gum

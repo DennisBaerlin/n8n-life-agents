@@ -1,11 +1,11 @@
 # pkg_lifecycle.sh — CLI-Lebenszyklus der Fach-Pakete (Core/Package-Architektur).
-# SOURCED (kein Shebang, kein `set -e` — der Top-Aufrufer `lifeagents` traegt den Error-Mode).
+# Gesourct (kein Shebang, kein `set -e` — der Top-Aufrufer `lifeagents` traegt den Error-Mode).
 #
-# Voll verdrahtet (Phasen 1/4a/5): Verb-Dispatch + die Prereq-/Dep-/core_api-GATES (gegen die DB-
+# Verb-Dispatch + die Prereq-/Dep-/core_api-Gates (gegen die DB-
 # Wahrheit core.package_registry + core.fn_pkg_*); read-only-Verben (catalog/list/doctor); die reinen
-# Status-Flips (activate/deactivate); **install** (Phase 5, der per-Paket-Zustandsfluss Gate->Migration->
+# Status-Flips (activate/deactivate); **install** (der per-Paket-Zustandsfluss Gate->Migration->
 # Rollen->Credentials->Seed->Deploy->active, dpkg-analog installing->active) und **uninstall**
-# (Phase 4a, --keep-data|--purge). Der install-Pfad ist DERSELBE Code, den provision.sh je gebuendeltem
+# (--keep-data|--purge). Der install-Pfad ist derselbe Code, den provision.sh je gebuendeltem
 # Nicht-Core-Paket aufruft (ein Code-Pfad, zwei Aufrufer) und den die Restore-vor-Install nutzt.
 #
 # Aufruf: `lifeagents package <verb> [args]` (die CLI sourct diese Datei + common.sh).
@@ -44,8 +44,8 @@ _pkg_manifest_field() {
 }
 
 # _pkg_catalog_rows -> TAB-Zeilen "pkg<TAB>version<TAB>status<TAB>beschreibung" ueber den Manifest-
-# Katalog (Status aus der Registry, '—' = nicht registriert). Die EINE maschinenlesbare Quelle fuer
-# pkg_cmd_catalog (Anzeige) UND die ui_choose-Picker — nie Anzeige-Output parsen (Plan-Kritik C9).
+# Katalog (Status aus der Registry, '—' = nicht registriert). Die eine maschinenlesbare Quelle fuer
+# pkg_cmd_catalog (Anzeige) und die ui_choose-Picker — nie Anzeige-Output parsen.
 _pkg_catalog_rows() {
   local dir mf pkg ver desc status
   dir="$(_pkg_dir)"
@@ -54,9 +54,9 @@ _pkg_catalog_rows() {
   for mf in "$dir"/*/manifest.json; do
     [ -r "$mf" ] || continue
     pkg="$(jq -r '.name // empty' "$mf")"; ver="$(jq -r '.version // empty' "$mf")"
-    # Install-UX-Phase 6: Anzeigename + deutscher Owner-Einzeiler aus dem Textkatalog (Fallback: die englische description).
+    # Anzeigename + deutscher Owner-Einzeiler aus dem Textkatalog (Fallback: die englische description).
     desc="$(pkg_text "$pkg" package.summary)"; [ -n "$desc" ] || desc="$(jq -r '.description // ""' "$mf")"; desc="$(pkg_display_name "$pkg") — $desc"
-    # Name gegen den Schema-/Rollen-Vertrag pruefen, BEVOR er in die SQL-Query interpoliert wird
+    # Name gegen den Schema-/Rollen-Vertrag pruefen, bevor er in die SQL-Query interpoliert wird
     # (ein kaputter Manifest-Name liefe sonst in einen Syntaxfehler statt eines sauberen Skip).
     _pkg_name_ok "$pkg" || { warn "Manifest '$mf': ungueltiger Paketname '$pkg' — uebersprungen."; continue; }
     status="$(_pkg_psql_scalar "SELECT status FROM core.package_registry WHERE package = '${pkg//\'/\'\'}'" || true)"
@@ -97,13 +97,13 @@ pkg_cmd_list() {
   printf '%s\n' "$rows"
 }
 
-# --- _pkg_gate_install: Prereq + Dep + core_api VOR jeder Mutation (npm/apt-Standard) --------------
-# Gibt 0 zurueck, wenn das Paket installiert werden DARF; sonst nonzero mit Begruendung.
+# --- _pkg_gate_install: Prereq + Dep + core_api vor jeder Mutation (npm/apt-Standard) --------------
+# Gibt 0 zurueck, wenn das Paket installiert werden darf; sonst nonzero mit Begruendung.
 _pkg_gate_install() {
   local pkg="$1"
   _pkg_name_ok "$pkg" || { err "Ungueltiger Paketname (erwarte ^[a-z][a-z0-9_]*$): $pkg"; return 1; }
 
-  # PREREQ: der Core muss vollstaendig + aktiv sein (DEP1).
+  # Prereq: der Core muss vollstaendig + aktiv sein (DEP1).
   local core_status
   core_status="$(_pkg_psql_scalar "SELECT status FROM core.package_registry WHERE package = 'core'" || true)"
   if [ "$core_status" != "active" ]; then
@@ -136,10 +136,10 @@ _pkg_gate_install() {
   return 0
 }
 
-# --- _pkg_resolve_env: Laufzeit-Umgebung fuer den per-Paket-Install (Provision- UND Standalone-CLI-Kontext) -
+# --- _pkg_resolve_env: Laufzeit-Umgebung fuer den per-Paket-Install (Provision- und Standalone-CLI-Kontext) -
 # Setzt die Globals, die apply_schema/seed_data/inject/deploy erwarten. In provision.sh sind sie schon
 # gesetzt (keine Ueberschreibung); im CLI-Kontext leitet sie sie aus dem gespiegelten Baum + n8n.env +
-# /etc/lifeagents/core.env ab (B1: n8n-Erreichbarkeit; D8: API-Key aus core.env).
+# /etc/lifeagents/core.env ab (n8n-Erreichbarkeit; API-Key aus core.env).
 _pkg_resolve_env() {
   [ -n "${REPO_ROOT:-}" ] || REPO_ROOT="${LIFEAGENTS_LIB:-/usr/local/lib/lifeagents}"
   export REPO_ROOT
@@ -157,12 +157,12 @@ _pkg_resolve_env() {
   export N8N_DB_NAME N8N_ENV_FILE N8N_USER N8N_DB_USER N8N_API_KEY N8N_URL N8N_PORT
 }
 
-# --- Paket-Secrets-Wizard (Stage 4, Install-UX-Phase; docs/package-contract.md §3.8) ----------------
-# Manifest-`credentials`-Block = DEKLARATION (Paket); dieser Wizard + inject_package_credentials =
-# AUSFUEHRUNG (Host, generisch — kein Paket-Literal, Naht-Guard-gelintet).
+# --- Paket-Secrets-Wizard (Stage 4; docs/package-contract.md §3.8) ----------------
+# Manifest-`credentials`-Block = Deklaration (Paket); dieser Wizard + inject_package_credentials =
+# Ausfuehrung (Host, generisch — kein Paket-Literal, Naht-Guard-gelintet).
 
-# _pkg_validator_fn <enum>  -> Name der Validator-fn (release_inputs.sh). GESCHLOSSENES Enum
-#   (arch-challenge E3.3: Name-Bindung wie context_validators, NIE ausfuehrbarer Code im Manifest);
+# _pkg_validator_fn <enum>  -> Name der Validator-fn (release_inputs.sh). Geschlossenes Enum
+#   (Name-Bindung wie context_validators, nie ausfuehrbarer Code im Manifest);
 #   contract_lint prueft deklarierte Werte schon beim Commit. Unbekannt -> nonzero (Aufrufer warnt).
 _pkg_validator_fn() {
   case "$1" in
@@ -176,11 +176,10 @@ _pkg_validator_fn() {
   esac
 }
 
-# _pkg_migrate_legacy_env <pkg> <envf>  — Einmal-Migration (Opus-Review F3): vor der Install-UX-Phase
-#   lebten Paket-Secret-Keys im HOST-Store core.env (_INSTALL_ENV_KEYS-Aera). Generisch fuer jeden
-#   deklarierten env-Key: non-empty in core.env + noch KEINE Zeile in <pkg>.env -> Wert uebernehmen
-#   + aus core.env entfernen (ein Schreiber pro Datei, Secret-Modell §3.0a). Evidenz sagt dormant
-#   (Owner-Keys nie angelegt, kein lebendes Prod), aber die Zeilen schliessen den Silent-Loss-Pfad.
+# _pkg_migrate_legacy_env <pkg> <envf>  — Einmal-Migration: Paket-Secret-Keys, die noch im
+#   Host-Store core.env liegen (_INSTALL_ENV_KEYS-Aera). Generisch fuer jeden
+#   deklarierten env-Key: non-empty in core.env + noch keine Zeile in <pkg>.env -> Wert uebernehmen
+#   + aus core.env entfernen (ein Schreiber pro Datei, Secret-Modell §3.0a). Schliesst den Silent-Loss-Pfad.
 _pkg_migrate_legacy_env() {
   local pkg="$1" envf="$2" coreenv="${INSTALL_ENV_FILE:-/etc/lifeagents/core.env}"
   [ -f "$coreenv" ] || return 0
@@ -199,7 +198,7 @@ _pkg_migrate_legacy_env() {
 }
 
 # _pkg_secret_value <envf> <KEY> -> der wirksame Wert eines Paket-Keys: Prozess-Env, sonst <pkg>.env (leer = keiner).
-#   EINE Regel fuer Persistenz, Uebersichts-Status und die „beide oder keine"-Pruefung des Wizards.
+#   Eine Regel fuer Persistenz, Uebersichts-Status und die „beide oder keine"-Pruefung des Wizards.
 _pkg_secret_value() {
   local v="${!2:-}"
   [ -n "$v" ] || v="$(read_env_value "$1" "$2" 2>/dev/null || true)"
@@ -219,7 +218,7 @@ _pkg_cred_label() {
   printf '%s: %s' "$name" "$label"
 }
 
-# _pkg_secret_ask <entry-json> <envf> <reask> — EINEN env-Key ueber _prompt_validated erfragen. Setzt
+# _pkg_secret_ask <entry-json> <envf> <reask> — einen env-Key ueber _prompt_validated erfragen. Setzt
 #   _PKG_SECRET_ASKED=1, wenn wirklich eine Frage gestellt wurde (UI_ASKED-Schnappschuss; UI_ASKED bleibt gesetzt).
 _PKG_SECRET_ASKED=0
 _pkg_secret_ask() {
@@ -235,7 +234,7 @@ _pkg_secret_ask() {
     vfn='_validate_any'
   fi
   # reask (reconfigure/Uebersicht): dieselbe Schleife wie die Erstfrage (_prompt_validated reask=1 — Enter =
-  # behalten, 3x ungueltig = alter Wert, speichert NICHT; die Persistenz-Schleife des Wizards schreibt nach der
+  # behalten, 3x ungueltig = alter Wert, speichert nicht; die Persistenz-Schleife des Wizards schreibt nach der
   # letzten Antwort, damit sich ein Mehr-Key-Credential nur als Ganzes aendert).
   UI_ASKED=0
   _prompt_validated "$ekey" "$eprompt" "$esec01" "$vfn" "$req01" "$envf" "$ehelp" 0 "$reask"
@@ -244,8 +243,8 @@ _pkg_secret_ask() {
   return 0
 }
 
-# Die EINE Auswahl der erfragbaren Paket-Angaben (jq-Filter ueber manifest.json), gelesen von _pkg_secrets_wizard /
-#   _pkg_settings_wizard (CLI, ohne Terminal auch _pkg_settings_from_env) UND provisioning/wizard/bridge.sh (Wizard im Docker-Betrieb) — beide Wege fragen dieselben
+# Die eine Auswahl der erfragbaren Paket-Angaben (jq-Filter ueber manifest.json), gelesen von _pkg_secrets_wizard /
+#   _pkg_settings_wizard (CLI, ohne Terminal auch _pkg_settings_from_env) und provisioning/wizard/bridge.sh (Wizard im Docker-Betrieb) — beide Wege fragen dieselben
 #   Angaben in derselben Reihenfolge. Je Zeile ein JSON-Objekt; der Zugangs-Filter braucht --arg only ("" = alle Zugaenge).
 # shellcheck disable=SC2016  # $-Ausdrücke sind jq-Variablen, keine Shell-Variablen
 _PKG_CRED_ROWS_JQ='(.credentials // {}) | to_entries[] | select(.key != "_comment") | select($only == "" or .key == $only)
@@ -257,12 +256,12 @@ _PKG_CRED_ROWS_JQ='(.credentials // {}) | to_entries[] | select(.key != "_commen
 _PKG_SETTING_ROWS_JQ='(.config // {}) | to_entries[] | select(.key != "_comment") | .key as $c | .value | to_entries[] | select(.value | type == "object" and has("prompt")) | {cat:$c, key:.key, prompt:.value.prompt, help:.value.help, validator:.value.validator, choices:.value.choices}'
 
 # _pkg_secrets_wizard <pkg> <envf> [reask] [credential]  — die manifest-deklarierten env-Keys erfragen.
-#   env-override-first -> SEEN-Gate (KEY=-Zeile in <pkg>.env, debconf) -> interaktiv (ui_interactive:
+#   env-override-first -> Seen-Gate (KEY=-Zeile in <pkg>.env, debconf) -> interaktiv (ui_interactive:
 #   TTY ∧ ¬UNATTENDED — kein Prompt erreicht je den unattended-Pfad). Optional + Enter = skip mit
 #   Nachtrag-Hinweis; required + non-interaktiv failt spaeter fail-fast im Inject. reask=1
 #   (reconfigure, Uebersicht vor dem Installieren): auch gesetzte Keys erneut anbieten — Enter = behalten; ein Secret
-#   wird NIE angezeigt, ein secret:false-Wert als Vorgabe (debconf-Standard, Install-UX-Phase 7). credential = nur die
-#   env-Keys DIESES Credentials (Uebersicht „Eine Angabe ändern": Mehr-Key-Credentials gemeinsam). Persistenz: Wert
+#   wird nie angezeigt, ein secret:false-Wert als Vorgabe (debconf-Standard). credential = nur die
+#   env-Keys dieses Credentials (Uebersicht „Eine Angabe ändern": Mehr-Key-Credentials gemeinsam). Persistenz: Wert
 #   bzw. leere Seen-Zeile nach <pkg>.env (640 root:n8n), im reask-Fall erst nach der letzten Antwort.
 _pkg_secrets_wizard() {
   local pkg="$1" envf="$2" reask="${3:-0}" only="${4:-}"
@@ -288,7 +287,7 @@ _pkg_secrets_wizard() {
     fi
     return 0
   fi
-  # Kein Sektions-Banner im Install-Pfad (Install-UX-Phase 4, Runde 2): jede WIRKLICH gestellte Frage bringt
+  # Kein Sektions-Banner im Install-Pfad: jede wirklich gestellte Frage bringt
   # ihre eigene Erklaer-Box mit (_prompt_validated <help>); ist alles schon beantwortet, bleibt es still.
   # Nur `reconfigure` (reask, ganzes Paket) fragt bewusst alles erneut -> dort ein Banner mit dem Paketnamen.
   [ "${UI_QUIET:-0}" = 1 ] || ensure_gum
@@ -296,8 +295,8 @@ _pkg_secrets_wizard() {
     local _pname; _pname="$(pkg_text "$pkg" package.name)"
     ui_section "Zugangsdaten: ${_pname:-$pkg}"
   fi
-  # „Beide oder keine" schon beim Fragen (§3.8 Atomaritaet, gilt nur fuer OPTIONALE Zugaenge mit >1 Key): bleibt der
-  # ERSTE Key leer, fragt der Wizard den Rest nicht; ist der Zugang am Ende halb ausgefuellt und wurde in DIESEM Aufruf
+  # „Beide oder keine" schon beim Fragen (§3.8 Atomaritaet, gilt nur fuer optionale Zugaenge mit >1 Key): bleibt der
+  # erste Key leer, fragt der Wizard den Rest nicht; ist der Zugang am Ende halb ausgefuellt und wurde in diesem Aufruf
   # etwas gefragt, folgt „Nochmal eingeben / Zugang auslassen" (reask: „Nichts ändern"). „Leer" = Endzustand
   # (_pkg_secret_value), nie „wurde gefragt" — der Wizard laeuft je Installation zweimal und nach Strg-C erneut.
   local entry ekey ecred eidx en req01 skip_rest=0 asked_cred=0 suppressed=0 cname choice e k v
@@ -309,7 +308,7 @@ _pkg_secrets_wizard() {
     eidx="$(jq -r '.i' <<<"$entry")"; en="$(jq -r '.n' <<<"$entry")"
     req01=0; [ "$(jq -r '.required' <<<"$entry")" = "true" ] && req01=1
     if [ "$eidx" -eq 0 ]; then skip_rest=0; asked_cred=0; suppressed=0; grp=(); snap=(); fi
-    grp+=("$entry"); snap[$ekey]="$(_pkg_secret_value "$envf" "$ekey")"   # Stand VOR dieser Frage (Env, sonst Datei)
+    grp+=("$entry"); snap[$ekey]="$(_pkg_secret_value "$envf" "$ekey")"   # Stand vor dieser Frage (Env, sonst Datei)
     if [ "$skip_rest" -eq 1 ] && [ -z "$(_pkg_secret_value "$envf" "$ekey")" ]; then
       # Frage unterdrueckt — Hinweis nur, wenn sie sonst wirklich gestellt worden waere (kein Nagen bei jedem update).
       if [ "$reask" -eq 1 ] || ! env_has_key "$envf" "$ekey"; then suppressed=1; fi
@@ -342,8 +341,8 @@ _pkg_secrets_wizard() {
         done
         continue
       fi
-      # Auslassen / Nichts ändern / Esc: NUR die Eingaben dieses Aufrufs verwerfen = jeden Key auf seinen Stand vor der
-      # Frage zuruecksetzen (snap) — ein schon vorher gespeicherter Wert bleibt (Phase-4-Regel: nie still leeren). Die
+      # Auslassen / Nichts ändern / Esc: nur die Eingaben dieses Aufrufs verwerfen = jeden Key auf seinen Stand vor der
+      # Frage zuruecksetzen (snap) — ein schon vorher gespeicherter Wert bleibt (nie still leeren). Die
       # Erstfrage hat schon gespeichert (_store_answer) -> dort auch die Datei zuruecksetzen; reask schrieb nichts.
       for e in "${grp[@]}"; do
         k="$(jq -r '.k' <<<"$e")"
@@ -359,9 +358,9 @@ _pkg_secrets_wizard() {
     done
   done <<<"$(jq -c --arg only "$only" "$_PKG_CRED_ROWS_JQ" "$mf")"
   # Persistenz: jeden deklarierten Key nach <pkg>.env — Wert oder leere Seen-Zeile (interaktiv
-  # angeboten + uebersprungen = seen -> Zweitlauf fragt nie erneut; E2.1).
-  # NIE leer ueber einen gespeicherten Wert schreiben (Install-UX-Phase 4, Datenverlust-Bug): das Seen-Gate
-  # in _prompt_validated ueberspringt einen schon gespeicherten Key, OHNE ihn in die Env zu laden -> $k war
+  # angeboten + uebersprungen = seen -> Zweitlauf fragt nie erneut).
+  # Nie leer ueber einen gespeicherten Wert schreiben: das Seen-Gate
+  # in _prompt_validated ueberspringt einen schon gespeicherten Key, ohne ihn in die Env zu laden -> $k war
   # hier leer und ein Zweitlauf (update / package install) loeschte einen gespeicherten Paket-Schluessel.
   while IFS= read -r k; do
     [ -n "$k" ] || continue
@@ -374,8 +373,8 @@ _pkg_secrets_wizard() {
 }
 
 # _bundled_packages -> die gebuendelten Nicht-Core-Pakete des vorliegenden Baums ($REPO_ROOT), eins je
-#   Zeile, Glob-Reihenfolge. EINE Aufzaehlung fuer die Fragen-Phase (collect_package_inputs) UND den
-#   Install-Loop in provision.sh main() — die zwei Schleifen duerfen nicht driften (Install-UX-Phase 3).
+#   Zeile, Glob-Reihenfolge. Eine Aufzaehlung fuer die Fragen-Phase (collect_package_inputs) und den
+#   Install-Loop in provision.sh main() — die zwei Schleifen duerfen nicht driften.
 _bundled_packages() {
   local d p
   for d in "$REPO_ROOT"/packages/*/; do
@@ -386,7 +385,7 @@ _bundled_packages() {
   done
 }
 
-# ensure_jq_quiet — jq sicherstellen, BEVOR install_base_packages laeuft (frisches Debian hat keins; install.sh/
+# ensure_jq_quiet — jq sicherstellen, bevor install_base_packages laeuft (frisches Debian hat keins; install.sh/
 #   fetch_release bringen es mit, ein direkter provision.sh-Lauf nicht). Still, nie fatal (0 = jq da).
 ensure_jq_quiet() {
   need_cmd jq && return 0
@@ -401,9 +400,9 @@ _installed_packages() {
   _pkg_psql_scalar "SELECT package FROM core.package_registry WHERE package <> 'core' ORDER BY package" 2>/dev/null || true
 }
 
-# _packages_to_process <spec> -> die Pakete, die ein provision.sh-Lauf anfasst (Install-UX-Phase 4, apt/dnf-
-#   Muster "die installierte Menge"): alle INSTALLIERTEN (Update, Status bleibt — pkg_install_one schaltet ein
-#   deaktiviertes nie still ein) + die per --packages ZUSAETZLICH gewuenschten (none|all|a,b). Ein deinstalliertes
+# _packages_to_process <spec> -> die Pakete, die ein provision.sh-Lauf anfasst (apt/dnf-
+#   Muster "die installierte Menge"): alle installierten (Update, Status bleibt — pkg_install_one schaltet ein
+#   deaktiviertes nie still ein) + die per --packages zusaetzlich gewuenschten (none|all|a,b). Ein deinstalliertes
 #   Paket hat keine Registry-Zeile mehr -> bleibt weg. Sortiert nach requires (Abhaengigkeiten zuerst).
 _packages_to_process() {
   local spec="${1:-none}" list
@@ -418,20 +417,12 @@ _packages_to_process() {
   _pkg_sort_by_requires "$list"
 }
 
-# collect_package_inputs [paket…] — die Paket-Schluessel der GENANNTEN Pakete VOR der Installation erfragen
-#   (Install-UX-Phase 3/4, debconf/dpkg-preconfigure-Muster: erst alle Fragen, dann unbeaufsichtigt
-#   installieren). Ruft je Paket den bestehenden _pkg_secrets_wizard — kein eigener Prompt-Code; Stage 4 von
-#   pkg_install_one findet danach jeden Key ueber das Seen-Gate vor und laeuft still. Nur interaktiv
-#   (unattended/kein TTY: unveraendert). umask 077:
-#   die <pkg>.env entstehen jetzt VOR dem n8n-User — Stage 4 setzt danach 640 root:n8n wie bisher.
-#   jq fehlt auf einem frischen Debian vor install_base_packages (install.sh/fetch_release bringen ihn
-#   mit, ein direkter provision.sh-Lauf nicht) -> still nachinstallieren, bevor der Wizard liest.
-# --- Paket-EINSTELLUNGEN erfragen (Install-UX-Phase 4; docs/package-contract.md §3.6) -----------------------
-# Ein Manifest-`.config`-Eintrag MIT `prompt` wird bei der Installation erfragt (debconf-Template-Muster; gleiches
+# --- Paket-Einstellungen erfragen (docs/package-contract.md §3.6) -----------------------
+# Ein Manifest-`.config`-Eintrag mit `prompt` wird bei der Installation erfragt (debconf-Template-Muster; gleiches
 # Vokabular wie §3.8 credentials.env: prompt/validator/help — plus optional `choices` [{value,label}] = Auswahl-
 # liste statt Freitext, debconf `Choices`). Interaktiv; ohne Terminal liest _pkg_settings_from_env CONFIG_<CAT>_<KEY>. Enter/„Später" = ueberspringen (Manifest-Default
 # bleibt; Nachtrag `lifeagents config set`). Schon gesetzte Werte (core.config non-empty) fragt er nie erneut.
-# Antworten werden GEPUFFERT (PKG_SETTINGS_ANSWERS: pkg<TAB>category<TAB>key<TAB>value je Zeile) und erst NACH
+# Antworten werden gepuffert (PKG_SETTINGS_ANSWERS: pkg<TAB>category<TAB>key<TAB>value je Zeile) und erst nach
 # dem Seed geschrieben (pkg_install_one Stufe 5b) — die core.config-Zeile entsteht erst dort.
 PKG_SETTINGS_ANSWERS=''
 
@@ -445,7 +436,7 @@ _pkg_setting_current() {
 _PKG_SETTING_LATER='__later__'
 
 # _pkg_settings_wizard <pkg> [reask] [cat.key] — die erfragbaren Paket-Einstellungen. reask=1 (Uebersicht „Eine Angabe
-#   ändern", Install-UX-Phase 7): fragt auch schon gesetzte/übersprungene Einstellungen; Vorgabe = gepufferte Antwort
+#   ändern"): fragt auch schon gesetzte/übersprungene Einstellungen; Vorgabe = gepufferte Antwort
 #   bzw. der core.config-Wert; Esc/Enter = behalten; „Später festlegen" (_PKG_SETTING_LATER, ≠ Esc) entfernt dort die
 #   gepufferte Antwort; ein neuer Wert ersetzt sie und loescht eine fruehere „übersprungen"-Zeile (sonst fragte nach einem
 #   Abbruch an der Uebersicht niemand mehr nach). In der Erstfrage heissen „Später festlegen" und Esc beide „übersprungen".
@@ -480,7 +471,7 @@ _pkg_settings_wizard() {
     [ -n "$help" ] && printf '%s\n' "$help" | ui_box "$prompt"
     val=''
     if [ -n "$choices" ]; then
-      # EINE „Später festlegen"-Option fuer Erstfrage und Ändern-Pfad (stabiler Wert statt leer — debconf Choices-C).
+      # Eine „Später festlegen"-Option fuer Erstfrage und Ändern-Pfad (stabiler Wert statt leer — debconf Choices-C).
       pre=''; header="$prompt"
       if [ "$reask" = "1" ]; then
         pre="$(jq -r --arg v "$cur" '(.choices // [])[] | select(.value == $v) | .label' <<<"$entry" | head -n1)"
@@ -539,7 +530,7 @@ _pkg_settings_wizard() {
 #   steht in CONFIG_<CAT>_<KEY> (derselbe Name wie die Seen-Zeile in <pkg>.env). Regeln wie die Erstfrage: schon gesetzt
 #   (core.config) oder schon uebersprungen (Seen-Zeile) = nie ueberschreiben; leer = uebersprungen (Seen-Zeile); Auswahl
 #   muss ein `choices`-Wert sein, Freitext besteht den Manifest-Validator (Online-Pruefung nicht erreichbar = uebernommen),
-#   sonst Warnung und uebersprungen. Ohne Variable: nichts. Muss VOR dem Seed laufen (danach steht der Standardwert in
+#   sonst Warnung und uebersprungen. Ohne Variable: nichts. Muss vor dem Seed laufen (danach steht der Standardwert in
 #   core.config); gepuffert wie die Fragen, geschrieben in pkg_install_one Stufe 5b.
 _pkg_settings_from_env() {
   local pkg="$1" mf entry cat key seenkey envf val vfn rc
@@ -589,10 +580,10 @@ _pkg_setting_unbuffer() {
   return 0
 }
 
-# --- Uebersicht vor dem Installieren: Paket-Punkte (Install-UX-Phase 7; die Engine lebt in release_inputs.sh) ---------
+# --- Uebersicht vor dem Installieren: Paket-Punkte (die Engine lebt in release_inputs.sh) ---------
 # _pkg_review_items <pkg> -> Uebersichts-Zeilen "cred<TAB>pkg<TAB>credential<TAB>label" je Credential (alle nicht
 #   generierten env-Keys gemeinsam) + "setting<TAB>pkg<TAB>cat.key<TAB>label" je erfragbarer Einstellung. Beschriftung
-#   = Paketname + die Frage-Beschriftungen (_pkg_cred_label / _prompt_label, EINE Quelle mit den Wizards).
+#   = Paketname + die Frage-Beschriftungen (_pkg_cred_label / _prompt_label, eine Quelle mit den Wizards).
 _pkg_review_items() {
   local pkg="$1" mf name cred ck prompt
   mf="$(_pkg_dir)/$pkg/manifest.json"
@@ -670,6 +661,14 @@ _pkg_apply_settings() {
   return 0
 }
 
+# collect_package_inputs [paket…] — die Paket-Schluessel der genannten Pakete vor der Installation erfragen
+#   (debconf/dpkg-preconfigure-Muster: erst alle Fragen, dann unbeaufsichtigt
+#   installieren). Ruft je Paket den bestehenden _pkg_secrets_wizard — kein eigener Prompt-Code; Stage 4 von
+#   pkg_install_one findet danach jeden Key ueber das Seen-Gate vor und laeuft still. Nur interaktiv
+#   (unattended/kein TTY: unveraendert). umask 077:
+#   die <pkg>.env entstehen vor dem n8n-User — Stage 4 setzt danach 640 root:n8n.
+#   jq fehlt auf einem frischen Debian vor install_base_packages (install.sh/fetch_release bringen ihn
+#   mit, ein direkter provision.sh-Lauf nicht) -> still nachinstallieren, bevor der Wizard liest.
 collect_package_inputs() {
   ui_interactive || return 0
   local pkgs pkg old_umask
@@ -687,7 +686,7 @@ collect_package_inputs() {
   return 0
 }
 
-# _pkg_sort_by_requires <liste> -> die newline-Liste so sortiert, dass ein markiertes Paket NACH
+# _pkg_sort_by_requires <liste> -> die newline-Liste so sortiert, dass ein markiertes Paket nach
 # seinen ebenfalls markierten requires laeuft (Best-effort-Topo fuer den Batch-Install; Zyklen/
 # Unaufloesbares haengt unveraendert hinten an — der eigentliche Dep-Waechter bleibt _pkg_gate_install,
 # und ein Re-Run konvergiert wie beim provision.sh-Bundle).
@@ -716,11 +715,11 @@ _pkg_sort_by_requires() {
   printf '%s\n' "$sorted"
 }
 
-# --- install (CLI-Eingangstuer): Auswahl -> ALLE Fragen -> ruhige Installation je Paket -> Uebersicht ----------
-# Install-UX-Phase 4: `lifeagents package install` laeuft wie die Erstinstallation (debconf-preconfigure-Muster):
+# --- install (CLI-Eingangstuer): Auswahl -> alle Fragen -> ruhige Installation je Paket -> Uebersicht ----------
+# `lifeagents package install` laeuft wie die Erstinstallation (debconf-preconfigure-Muster):
 # erst alle Fragen aller gewaehlten Pakete (Zugangsdaten + Einstellungen), dann eine ✓/✗-Zeile je Paket (Details
 # in /var/log/lifeagents/package.log), am Ende eine Uebersicht. Nicht interaktiv (unattended/kein TTY) oder
-# --no-seed (Restore-vor-Install, bleibt fragelos) -> direkt pkg_install_one, Ausgabe wie bisher.
+# --no-seed (Restore-vor-Install, bleibt fragelos) -> direkt pkg_install_one.
 pkg_cmd_install() {
   local no_seed=0 a
   local -a pkgs=() extra=()
@@ -732,9 +731,9 @@ pkg_cmd_install() {
     esac
   done
   [ "$no_seed" -eq 1 ] && extra+=(--no-seed)
-  # Missing-Arg-Picker (E2): ohne Paketname interaktiv den Katalog anbieten — MULTI-Select (Leertaste
+  # Missing-Arg-Picker: ohne Paketname interaktiv den Katalog anbieten — Multi-Select (Leertaste
   # markiert). Kandidaten = nur echte Install-Faelle: ≠ core, ohne Registry-Zeile ('—') oder haengen-
-  # geblieben ('installing'); ein 'inactive' gehoert zu `activate` (Plan-Kritik A3). Abbruch/leer -> Usage.
+  # geblieben ('installing'); ein 'inactive' gehoert zu `activate`. Abbruch/leer -> Usage.
   if [ "${#pkgs[@]}" -eq 0 ] && ui_interactive; then
     ensure_gum
     local picked p
@@ -753,7 +752,7 @@ pkg_cmd_install() {
     [ -r "$(_pkg_dir)/$p/manifest.json" ] || die "Paket '$p' nicht im Katalog gefunden (lifeagents package catalog)."
   done
 
-  # Nicht-interaktiv / Restore / schon im ruhigen Lauf (provision.sh): der bisherige Weg, ohne Fragen-Phase.
+  # Nicht-interaktiv / Restore / schon im ruhigen Lauf (provision.sh): direkt installieren, ohne Fragen-Phase.
   if [ "$no_seed" -eq 1 ] || ! ui_interactive || [ "${UI_QUIET:-0}" = 1 ]; then
     if [ "${#pkgs[@]}" -eq 1 ]; then pkg_install_one "${pkgs[0]}" "${extra[@]}"; return; fi
     local done_n=0 failed=""
@@ -766,11 +765,11 @@ pkg_cmd_install() {
     return 0
   fi
 
-  # (1) ALLE Fragen vorab (Zugangsdaten + Einstellungen), dann laeuft die Installation ohne Unterbrechung.
+  # (1) Alle Fragen vorab (Zugangsdaten + Einstellungen), dann laeuft die Installation ohne Unterbrechung.
   local -a work_arr=()
   mapfile -t work_arr <<<"$work"
   collect_package_inputs "${work_arr[@]}"
-  # (1b) Uebersicht vor dem Installieren (Install-UX-Phase 7): alle Antworten pruefen, einzeln aendern oder abbrechen
+  # (1b) Uebersicht vor dem Installieren: alle Antworten pruefen, einzeln aendern oder abbrechen
   # (Esc = abbrechen, nichts installiert) — nur wenn die Pakete ueberhaupt etwas fragen.
   if _pkg_has_questions "${work_arr[@]}"; then
     review_install_answers package "${work_arr[@]}"
@@ -820,8 +819,8 @@ _pkg_provision_roles() {
 
 # --- pkg_install_one: Gate -> register(installing) -> Migration -> Rollen -> Creds -> Seed -> Deploy -> active -
 # Der per-Paket-Install-Zustandsfluss (dpkg-analog, zwei Status-Stufen installing->active). Idempotent;
-# bei Teil-Fehler bleibt status='installing' (kein Auto-Rollback) -> ein Re-Run konvergiert. EIN Code-Pfad
-# fuer provision.sh (Bundle-Loop) UND die CLI (`package install`, Restore-vor-Install via --no-seed). Fragt
+# bei Teil-Fehler bleibt status='installing' (kein Auto-Rollback) -> ein Re-Run konvergiert. Ein Code-Pfad
+# fuer provision.sh (Bundle-Loop) und die CLI (`package install`, Restore-vor-Install via --no-seed). Fragt
 # selbst nichts Neues (die Fragen-Phase liegt davor; das Seen-Gate des Wizards greift still). Sourct keine
 # eigenen Libs — provision.sh + lifeagents.tpl `package` sourcen apply_schema/seed_data/inject/deploy daneben.
 pkg_install_one() {
@@ -842,13 +841,13 @@ pkg_install_one() {
 
   # Stufe 0: Gate (Prereq Core active + Dep/core_api).
   _pkg_gate_install "$pkg" || die "Install abgebrochen (Gate, siehe oben)."
-  # Stufe 0b: Laufzeit-Umgebung + n8n-Erreichbarkeit (B1; Install kann ohne n8n nicht abschliessen).
+  # Stufe 0b: Laufzeit-Umgebung + n8n-Erreichbarkeit (Install kann ohne n8n nicht abschliessen).
   _pkg_resolve_env
   [ -n "${N8N_API_KEY:-}" ] || die "Kein N8N_API_KEY (/etc/lifeagents/core.env) — der Install braucht die n8n-REST-API. Owner-Bootstrap/Provision zuerst."
 
   log "Installiere Paket '$pkg'$([ "$no_seed" -eq 1 ] && printf ' (--no-seed)') ..."
 
-  # Vorher-Status merken: ein vom Owner DEAKTIVIERTES Paket bleibt inaktiv (Install-UX-Phase 4 — vorher
+  # Vorher-Status merken: ein vom Owner deaktiviertes Paket bleibt inaktiv (sonst
   # schaltete jedes `lifeagents update` es per Stufe 7 still wieder ein). Leer = nicht installiert.
   local prior_status
   prior_status="$(_pkg_psql_scalar "SELECT status FROM core.package_registry WHERE package = '${pkg}'" 2>/dev/null || true)"
@@ -856,15 +855,15 @@ pkg_install_one() {
   # Stufe 1: register -> status='installing' (Lebenszyklus-Start; fn_pkg_register laesst Status bei Re-Register).
   register_package "$pkg" || die "Registrierung '$pkg' fehlgeschlagen."
 
-  # Stufe 2: Migration (Schema-Inits->V->R + Owner-Grant aufs <pkg>-Schema), EINE psql-TX je Datei.
+  # Stufe 2: Migration (Schema-Inits->V->R + Owner-Grant aufs <pkg>-Schema), eine psql-TX je Datei.
   apply_schema "$pkg"
 
   # Stufe 3: Paket-Rollen <pkg>_rw/<pkg>_ro (LOGIN ohne Passwort) + Isolation, idempotent.
   _pkg_provision_roles "$pkg"
 
-  # Stufe 4: Passwoerter (generisch, override-first -> /etc/lifeagents/<pkg>.env, IMMER ALTER ROLE)
-  #   + Paket-Secrets-Wizard (manifest-deklarierte Fremd-API-Keys, interaktiv-gegatet; Install-UX-Phase)
-  #   + ALLE Paket-n8n-Creds (2 Postgres + Manifest-Creds) id-stabil injizieren.
+  # Stufe 4: Passwoerter (generisch, override-first -> /etc/lifeagents/<pkg>.env, immer ALTER ROLE)
+  #   + Paket-Secrets-Wizard (manifest-deklarierte Fremd-API-Keys, interaktiv-gegatet)
+  #   + alle Paket-n8n-Creds (2 Postgres + Manifest-Creds) id-stabil injizieren.
   ensure_lifeagents_dir
   local envf up; envf="$(lifeagents_env_file "$pkg")"; up="$(printf '%s' "$pkg" | tr '[:lower:]' '[:upper:]')"
   provision_role_password "${pkg}_rw" "$envf" "${up}_RW_PASSWORD" || warn "Passwort fuer ${pkg}_rw fehlgeschlagen -> Schreib-Credential wird uebersprungen."
@@ -873,8 +872,8 @@ pkg_install_one() {
   ui_interactive || _pkg_settings_from_env "$pkg"   # ohne Terminal: Einstellungen aus CONFIG_* (vor dem Seed, s. Funktion)
   inject_package_credentials "$pkg"
 
-  # Stufe 5: Seed paket-skopiert (config/contexts/validators/protected/onboarding/services NUR fuer <pkg>).
-  #   --no-seed ueberspringt NUR <pkg>.onboarding_state (Restore bringt sie); Code-Seeds laufen IMMER.
+  # Stufe 5: Seed paket-skopiert (config/contexts/validators/protected/onboarding/services nur fuer <pkg>).
+  #   --no-seed ueberspringt nur <pkg>.onboarding_state (Restore bringt sie); Code-Seeds laufen immer.
   if [ "$no_seed" -eq 1 ]; then SEED_PKG="$pkg" SEED_SKIP_ONBOARDING=1 seed_data
   else                          SEED_PKG="$pkg" seed_data; fi
   # Stufe 5b: vorab erfragte Paket-Einstellungen (Manifest .config.prompt) in die eben geseedeten Zeilen.
@@ -883,7 +882,7 @@ pkg_install_one() {
   # Stufe 6: nur die Paket-Workflows deployen (Wortgrenze-Prefix aus provides.agents) + aktivieren.
   deploy_workflows "$pkg"
 
-  # Stufe 7: status=active (ZULETZT, R7) -> der Pre-Router routet sofort auf das Paket. Ausnahme: war es
+  # Stufe 7: status=active (zuletzt) -> der Pre-Router routet sofort auf das Paket. Ausnahme: war es
   # vorher 'inactive' (Owner-Entscheid `package deactivate`), bleibt es inaktiv — Install/Update aktualisiert
   # nur Code + Schema, schaltet aber nie still wieder ein.
   if [ "$prior_status" = "inactive" ]; then
@@ -893,17 +892,17 @@ pkg_install_one() {
     _pkg_set_status "$pkg" active
     ok "Paket '$pkg' installiert + aktiv (installing->active)."
   fi
-  # (Keine Einzel-Box mehr: die Uebersicht liefern pkg_cmd_install bzw. der provision.sh-End-Recap.)
+  # (Keine Einzel-Box: die Uebersicht liefern pkg_cmd_install bzw. der provision.sh-End-Recap.)
 }
 
 # --- reconfigure: Paket-Secrets erneut erfragen + Credentials re-injizieren (dpkg-reconfigure-Parität) -
-# Arbiter E2.4: EIGENSTAENDIGES Verb — NICHT install-Re-Run (install = Lifecycle-Anlage), NICHT unter
+# Eigenstaendiges Verb, kein install-Re-Run (install = Lifecycle-Anlage) und nicht unter
 # `lifeagents config` (dort lebt core.config-Runtime). Re-ask erlaubt Ueberschreiben (Enter = behalten; ein Secret
-# wird nie angezeigt, ein secret:false-Wert als Vorgabe — Install-UX-Phase 7); danach id-stabiler Credential-Upsert —
-# KEIN Redeploy/Restart noetig (n8n liest Creds per-Execution aus Postgres). Auch erreichbar als `lifeagents reconfigure <pkg>`.
-# _pkg_reconfigure_rows -> Picker-Zeilen "anzeige<TAB>pkg" der installierten Pakete MIT credentials-Block — Registry ∩
-#   Manifest-jq (die Registry allein kennt den Block nicht; Plan-Kritik C4). Geteilt von `package reconfigure` und
-#   `lifeagents reconfigure` (Install-UX-Phase 7). Gibt immer 0 zurueck.
+# wird nie angezeigt, ein secret:false-Wert als Vorgabe); danach id-stabiler Credential-Upsert —
+# kein Redeploy/Restart noetig (n8n liest Creds per-Execution aus Postgres). Auch erreichbar als `lifeagents reconfigure <pkg>`.
+# _pkg_reconfigure_rows -> Picker-Zeilen "anzeige<TAB>pkg" der installierten Pakete mit credentials-Block — Registry ∩
+#   Manifest-jq (die Registry allein kennt den Block nicht). Geteilt von `package reconfigure` und
+#   `lifeagents reconfigure`. Gibt immer 0 zurueck.
 _pkg_reconfigure_rows() {
   local _p _v _s _d _mf
   while IFS=$'\t' read -r _p _v _s _d; do
@@ -919,7 +918,7 @@ _pkg_reconfigure_rows() {
 
 pkg_cmd_reconfigure() {
   local pkg="${1:-}"
-  # Missing-Arg-Picker (E3): installierte Pakete MIT credentials-Block.
+  # Missing-Arg-Picker: installierte Pakete mit credentials-Block.
   if [ -z "$pkg" ] && ui_interactive; then
     ensure_gum
     require_cmd jq
@@ -939,10 +938,10 @@ pkg_cmd_reconfigure() {
     return 0
   fi
   ui_interactive || die "reconfigure ist interaktiv (TTY noetig). Unattended-Alternative: Werte als Env-Variablen setzen bzw. in /etc/lifeagents/${pkg}.env pflegen und 'lifeagents update' fahren."
-  # Strg-C mittendrin = nichts gespeichert: der Wizard schreibt erst nach der letzten Antwort (Install-UX-Phase 7).
+  # Strg-C mittendrin = nichts gespeichert: der Wizard schreibt erst nach der letzten Antwort.
   # shellcheck disable=SC2034  # gelesen von ui_abort (common.sh)
   UI_ABORT_MSG='Abgebrochen — nichts geändert.'
-  _pkg_resolve_env   # F8b: VOR dem Inject (N8N_API_KEY/URL/ENV_FILE — sonst _inject_preflight-die)
+  _pkg_resolve_env   # vor dem Inject (N8N_API_KEY/URL/ENV_FILE — sonst _inject_preflight-die)
   [ -n "${N8N_API_KEY:-}" ] || die "Kein N8N_API_KEY (/etc/lifeagents/core.env) — reconfigure braucht die n8n-REST-API."
   ensure_lifeagents_dir
   local envf; envf="$(lifeagents_env_file "$pkg")"
@@ -958,7 +957,7 @@ pkg_cmd_reconfigure() {
   ok "Paket '$pkg' rekonfiguriert — Credentials id-stabil aktualisiert (sofort wirksam, kein Redeploy)."
 }
 
-# --- activate / deactivate: reiner Runtime-Status-Flip (KEIN Redeploy, KEINE Daten geloescht) ------
+# --- activate / deactivate: reiner Runtime-Status-Flip (kein Redeploy, keine Daten geloescht) ------
 _pkg_set_status() {
   local pkg="$1" status="$2"
   _pkg_name_ok "$pkg" || die "Ungueltiger Paketname: $pkg"
@@ -969,7 +968,7 @@ _pkg_set_status() {
     die "Status-Flip abgelehnt: $(printf '%s' "$res" | jq -r '.reason // .' 2>/dev/null)"
   fi
   ok "Paket '$pkg' -> status=$status (Pre-Router-Gate greift sofort, kein Redeploy)."
-  # /help-Katalog + Telegram-Befehlsmenue folgen dem Paket-Status (Install-UX-Phase 4).
+  # /help-Katalog + Telegram-Befehlsmenue folgen dem Paket-Status.
   _pkg_refresh_surfaces
   return 0
 }
@@ -983,7 +982,7 @@ _pkg_refresh_surfaces() {
   if declare -F refresh_bot_command_menus >/dev/null; then refresh_bot_command_menus; fi
   return 0
 }
-# Missing-Arg-Picker (E3): der Statusfilter folgt der Verb-Semantik (Plan-Kritik A4) —
+# Missing-Arg-Picker: der Statusfilter folgt der Verb-Semantik —
 # deactivate zeigt nur 'active' (≠ core), activate nur 'inactive'.
 pkg_cmd_deactivate() {
   local pkg="${1:-}"
@@ -1019,8 +1018,8 @@ _pkg_confirm() {
 }
 
 # --- uninstall: --keep-data (Default, = apt remove) | --purge (= apt purge: + Schema/Rollen/Daten weg) -----
-# Ablauf (WS-2): core-Reject -> Reverse-Dep-Guard -> Confirm -> n8n-Teardown (Workflows + 2 Paket-Creds +
-#   gegateter Restart, pkg_teardown.sh) -> DB-Teardown (keep-data: nur Dereg; purge: EINE psql-TX mit
+# Ablauf: core-Reject -> Reverse-Dep-Guard -> Confirm -> n8n-Teardown (Workflows + 2 Paket-Creds +
+#   gegateter Restart, pkg_teardown.sh) -> DB-Teardown (keep-data: nur Dereg; purge: eine psql-TX mit
 #   fn_pkg_purge_data + DROP SCHEMA CASCADE + fn_drop_package_roles + fn_pkg_remove, all-or-nothing).
 pkg_cmd_uninstall() {
   local pkg="" purge=0 force=0 a
@@ -1033,8 +1032,8 @@ pkg_cmd_uninstall() {
       *)           pkg="$a" ;;
     esac
   done
-  # Missing-Arg-Picker (E3): NUR das fehlende Paket-Argument — die Flag-Schleife oben parst
-  # positionsunabhaengig, und die bestehenden Confirms ('ja'/--yes) bleiben unveraendert dahinter (E8).
+  # Missing-Arg-Picker: nur das fehlende Paket-Argument — die Flag-Schleife oben parst
+  # positionsunabhaengig, und die Confirms ('ja'/--yes) bleiben unveraendert dahinter.
   if [ -z "$pkg" ] && ui_interactive; then
     ensure_gum
     pkg="$(_pkg_registry_rows \
@@ -1045,10 +1044,10 @@ pkg_cmd_uninstall() {
   _pkg_name_ok "$pkg" || die "Ungueltiger Paketname: $pkg"
   require_cmd jq
 
-  # 1) core-Reject GANZ OBEN (vor jeder Mutation/DDL): der privilegierte Host ist nie deinstallierbar.
+  # 1) core-Reject ganz oben (vor jeder Mutation/DDL): der privilegierte Host ist nie deinstallierbar.
   [ "$pkg" = "core" ] && die "Das privilegierte Core-Paket kann nicht deinstalliert werden."
 
-  # 2) Reverse-Dep-Guard: kein AKTIVES Paket darf <pkg> in requires fuehren (sonst risse der Abbau
+  # 2) Reverse-Dep-Guard: kein aktives Paket darf <pkg> in requires fuehren (sonst risse der Abbau
   #    dessen Abhaengigkeit weg — apt/dpkg-rdepends-Muster).
   local rd dependents esc="${pkg//\'/\'\'}"
   rd="$(_pkg_psql_scalar "SELECT (core.fn_pkg_reverse_deps(jsonb_build_object('package','${esc}')))::text")" \
@@ -1076,17 +1075,17 @@ pkg_cmd_uninstall() {
 
   # 4) n8n-Teardown (Workflows nach provides.agents-Namenspraefix + die 2 Paket-Creds + gegateter Restart).
   #    Der Paketname selbst ist zusaetzlicher Praefix-Kandidat (agent.<pkg>.*-Pipeline-Workflows —
-  #    Symmetrie zu deploy_workflows._wf_pkg_agents, paperless-WS-0 Naht 5; sonst blieben sie als Waisen).
+  #    Symmetrie zu deploy_workflows._wf_pkg_agents; sonst blieben sie als Waisen).
   local agents; agents="$(_pkg_manifest_field "$pkg" "([\"$pkg\"] + [(.provides.agents // [])[] | if type==\"object\" then .name else . end]) | unique | join(\",\")")" || agents="$pkg"
   _pkgt_teardown "$pkg" "$agents"
 
   # 5) DB-Teardown.
   if [ "$purge" -eq 1 ]; then
-    # EINE psql-Transaktion (ein DO-Block = atomar): PG-DDL (DROP SCHEMA/ROLE) ist transaktional ->
+    # Eine psql-Transaktion (ein DO-Block = atomar): PG-DDL (DROP SCHEMA/ROLE) ist transaktional ->
     # all-or-nothing (Atomaritaet-ist-Gesetz). Single-App-DB-Annahme: der cluster-globale DROP-ROLE-
     # Dependency-Check ist nur unter genau einer App-DB unkritisch. Ein fn-{ok:false} -> RAISE -> Rollback,
-    # nichts geloescht. (KEIN CASE...1/0-Guard: ein konstantes 1/0 wird vom Planner gefaltet und faellt
-    # IMMER, nicht nur im ELSE-Zweig.) DROP SCHEMA via format %I (pkg ist _pkg_name_ok-validiert).
+    # nichts geloescht. (Kein CASE...1/0-Guard: ein konstantes 1/0 wird vom Planner gefaltet und faellt
+    # immer, nicht nur im ELSE-Zweig.) DROP SCHEMA via format %I (pkg ist _pkg_name_ok-validiert).
     if _pkg_psql_exec "
 DO \$do\$
 DECLARE r jsonb;
@@ -1115,7 +1114,7 @@ END
     ok "Paket '$pkg' deinstalliert (Registry dereg, removed=$(printf '%s' "$res" | jq -r '.removed' 2>/dev/null)); Schema/Rollen/Daten bleiben."
     log "Re-Install: 'lifeagents package install ${pkg}' (redeployt Workflows + Credentials)."
   fi
-  # /help-Katalog + Telegram-Befehlsmenue ohne das entfernte Paket (Install-UX-Phase 4).
+  # /help-Katalog + Telegram-Befehlsmenue ohne das entfernte Paket.
   _pkg_refresh_surfaces
   return 0
 }
@@ -1163,8 +1162,8 @@ SQL
 # --- Dispatcher: `lifeagents package <verb> [args]` ------------------------------------------------
 pkg_lifecycle() {
   # Verb-Picker: nacktes `lifeagents package` auf TTY -> Menue statt Hilfetext; ESC/non-TTY ->
-  # Hilfetext wie bisher (Exit 0, E5b). Danach greifen die Missing-Arg-Picker der Verben rekursiv
-  # (durchklickbare Kette). Bei uns anders (arch-challenge 1.4) -> docs/reference/provisioning.md *Install-UX* + *Entscheidungen*.
+  # Hilfetext (Exit 0). Danach greifen die Missing-Arg-Picker der Verben rekursiv
+  # (durchklickbare Kette). Bei uns anders -> docs/reference/provisioning.md *Install-UX* + *Entscheidungen*.
   if [ "$#" -eq 0 ] && ui_interactive; then
     ensure_gum
     local _menu_verb

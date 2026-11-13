@@ -20,7 +20,7 @@ ensure_n8n_user() {
 }
 
 # --- env file: secrets generated once, then preserved across re-runs ----------
-# The encryption key must NEVER change once n8n booted (else every stored credential
+# The encryption key must never change once n8n booted (else every stored credential
 # becomes undecryptable). Existing file wins over any override env var.
 prepare_n8n_env() {
   ensure_n8n_user
@@ -81,7 +81,7 @@ ensure_node() {
   add_apt_source "$NODE_LIST" \
     "deb [signed-by=${NODE_KEYRING}] https://deb.nodesource.com/node_${NODE_MAJOR}.x nodistro main"
   force_apt_update
-  # Explizit die neueste Version DIESER Hauptversion: ein schon installiertes hoeheres Node bliebe sonst apt-Kandidat
+  # Explizit die neueste Version dieser Hauptversion: ein schon installiertes hoeheres Node bliebe sonst apt-Kandidat
   # (Rueckweg 24 -> 22), und Debians eigenes nodejs-Paket koennte dazwischenfunken. --allow-downgrades fuer den Rueckweg.
   local ver
   ver="$(apt-cache madison nodejs 2>/dev/null | awk -v m="$NODE_MAJOR" '$3 ~ ("^" m "\\.") {print $3; exit}')"
@@ -101,7 +101,7 @@ ensure_n8n_package() {
     # Node-ABI neu bauen — npm-Doku `npm rebuild` (upgrade_guard.sh merkt sich die alte Node-Version).
     if _n8n_node_switched; then
       log "Node-Hauptversion gewechselt — native n8n-Bausteine neu bauen (npm rebuild) ..."
-      # Im n8n-Paketbaum OHNE Paketnamen: `npm rebuild -g n8n` baute nur das Hauptpaket, nicht die verschachtelten
+      # Im n8n-Paketbaum ohne Paketnamen: `npm rebuild -g n8n` baute nur das Hauptpaket, nicht die verschachtelten
       # nativen Bausteine darunter.
       ( cd "$(npm root -g)/n8n" && npm rebuild --no-audit --no-fund )
     fi
@@ -110,7 +110,7 @@ ensure_n8n_package() {
   local root cur before
   root="$(npm root -g)"
   # Vor dem Tausch: laufende Version (leer = keine bzw. kaputt) + schon liegende .n8n-*-Kopien -> der Rueckweg nimmt nur
-  # eine Kopie, die npm in DIESEM Lauf beiseitelegt (_n8n_install_failed).
+  # eine Kopie, die npm in diesem Lauf beiseitelegt (_n8n_install_failed).
   cur="$(n8n --version 2>/dev/null || true)"
   before="$(find "$root" -maxdepth 1 -type d -name '.n8n-*' 2>/dev/null | sort || true)"
   log "n8n@${N8N_VERSION} global via npm installieren (dauert einige Minuten) ..."
@@ -131,9 +131,9 @@ _n8n_node_switched() {
 }
 
 # n8n_cleanup_leftovers — Reste frueherer Laeufe freigeben: npm-Download-Cache (~1 GB, npm-Doku: `cache clean` ist fuer
-#   "reclaiming disk space") und von npm beiseitegelegte .n8n-XXXX-Kopien (mehrere GB) — die Kopien NUR,
+#   "reclaiming disk space") und von npm beiseitegelegte .n8n-XXXX-Kopien (mehrere GB) — die Kopien nur,
 #   wenn das installierte n8n funktioniert (bei einem halb ersetzten n8n kann eine Kopie der einzige Rueckweg sein).
-#   Gerufen vom Preflight VOR der Platzmessung (sonst blockieren Reste das Update, die der Lauf ohnehin wegraeumt) und
+#   Gerufen vom Preflight vor der Platzmessung (sonst blockieren Reste das Update, die der Lauf ohnehin wegraeumt) und
 #   nach einem erfolgreichen Install. Nie fatal.
 n8n_cleanup_leftovers() {
   need_cmd npm || return 0
@@ -145,8 +145,8 @@ n8n_cleanup_leftovers() {
 }
 
 # _n8n_install_failed <npm-root> <version-vorher> <kopien-vorher> — npm install gescheitert (z. B. Platte voll
-#   beim Wechsel 2.44.4 -> 2.45.4; npm hatte das alte Paket als .n8n-XXXX beiseitegelegt und nicht zurueckgeholt ->
-#   n8n halb ersetzt, Bot aus). Zurueckgelegt wird nur eine Kopie, die npm in DIESEM Lauf beiseitegelegt hat und die
+#   beim Versionswechsel; npm hatte das alte Paket als .n8n-XXXX beiseitegelegt und nicht zurueckgeholt ->
+#   n8n halb ersetzt, Bot aus). Zurueckgelegt wird nur eine Kopie, die npm in diesem Lauf beiseitegelegt hat und die
 #   genau die vorher laufende Version enthaelt (nie ein alter Rest, nie ein halb installiertes Paket), und nur ohne
 #   Node-Wechsel (alte native Bausteine). Danach n8n starten und auf /healthz/readiness warten: bereit -> Merkzettel weg
 #   (an den Daten wurde noch nichts getauscht, upgrade_finish laeuft erst spaeter), Abbruch mit "laeuft weiter";
@@ -239,6 +239,6 @@ install_n8n() {
     ensure_node
     ensure_n8n_package
   fi
-  apply_n8n_patches   # lib/n8n_patches.sh: bekannte n8n-Fehler korrigieren, bis n8n sie selbst liefert (bei JEDEM Lauf)
+  apply_n8n_patches   # lib/n8n_patches.sh: bekannte n8n-Fehler korrigieren, bis n8n sie selbst liefert (bei jedem Lauf)
   install_n8n_unit
 }

@@ -1,4 +1,4 @@
-# update_runner.sh — Update im Chat (Update-Hinweis 2026-10-24): Release-Check alle 2 Stunden + Runner fuer Update-Auftraege.
+# update_runner.sh — Update im Chat: Release-Check alle 2 Stunden + Runner fuer Update-Auftraege.
 #
 # Gesourct von der lifeagents-CLI fuer die Arme `update --check` (systemd-Timer lifeagents-update-check, alle 2 h) und
 # `update --run-requested` (Timer lifeagents-update-run, minuetlich) — zusammen mit common.sh, deploy_workflows.sh
@@ -12,7 +12,7 @@
 #           (Platz, DB) -> Fortschritts-Helfer (lib/update_progress.sh) -> `lifeagents update --version <tag>` mit Ergebnis-
 #           Datei, Ausgabe per tee ins Log -> core.fn_update_request_finish (Ergebnis zuerst) -> Ergebnis-Meldung ueber
 #           _ur_reports_flush (core.fn_update_report = die Fehler-Hilfe). Nicht Zugestelltes holt der naechste Lauf nach.
-#   Der Runner traut der Auftrags-Zeile NICHT (n8n kann sie schreiben): er installiert nur das aktuelle stabile
+#   Der Runner traut der Auftrags-Zeile nicht (n8n kann sie schreiben): er installiert nur das aktuelle stabile
 #   releases/latest, und nur wenn es neuer ist als VERSION (Retry: gleich VERSION erlaubt).
 #   Meldungen gehen direkt ueber die Bot-API (tg_api_curl), nicht ueber n8n — das Update startet n8n neu, und ein
 #   gescheitertes Update kann n8n lahmlegen.
@@ -67,13 +67,13 @@ _ur_installed() { cat "$(lifeagents_version_marker)" 2>/dev/null | head -n1 | tr
 # _ur_is_tag <s> — stabiles Release-Tag vX.Y.Z (gleiche Form wie der CHECK in core.update_requests).
 _ur_is_tag() { [[ "$1" =~ ^v[0-9]{1,6}\.[0-9]{1,6}\.[0-9]{1,6}$ ]]; }
 
-# _ur_semver_cmp <a> <b> -> 1|0|-1 bzw. leer (nicht vergleichbar) — die EINE SemVer-Logik lebt in der DB.
+# _ur_semver_cmp <a> <b> -> 1|0|-1 bzw. leer (nicht vergleichbar) — die eine SemVer-Logik lebt in der DB.
 _ur_semver_cmp() {
   _ur_sql "$(jq -nc --arg a "$1" --arg b "$2" '{a:$a,b:$b}')" \
     "SELECT core.fn_semver_cmp((:'p'::jsonb)->>'a', (:'p'::jsonb)->>'b');" 2>/dev/null || true
 }
 
-# _ur_require_signature — 0, wenn diese Installation unterschriebene Releases verlangt (Phase 2: Schluesselbund in /etc).
+# _ur_require_signature — 0, wenn diese Installation unterschriebene Releases verlangt (Schluesselbund in /etc).
 _ur_require_signature() { [ -n "$(_release_keyring)" ]; }
 
 # _ur_send <text> [keyboard-json] — Plain-Text (ohne parse_mode, kein Escaping) an den gepairten Owner, optional mit
@@ -104,7 +104,7 @@ _ur_n8n_port() {
   return 0
 }
 
-# _ur_bot_ready — 0, wenn der Bot antwortet: n8n bereit UND Orchestrator aktiv. Ohne API-Schluessel (frueher Abbruch der
+# _ur_bot_ready — 0, wenn der Bot antwortet: n8n bereit und Orchestrator aktiv. Ohne API-Schluessel (frueher Abbruch der
 #   Einrichtung) bleibt nur Readiness; ein API-Fehler zaehlt als nicht bereit.
 _ur_bot_ready() {
   local key st port
@@ -369,11 +369,11 @@ _ur_conclude() {
 update_run_requested() {
   require_root
   lifeagents_db_name >/dev/null
-  # Sperre nehmen, BEVOR ein Auftrag angefasst wird: unter ihr laeuft sicher kein anderes Update (provision.sh main
+  # Sperre nehmen, bevor ein Auftrag angefasst wird: unter ihr laeuft sicher kein anderes Update (provision.sh main
   # nimmt dieselbe Sperre) -> haengende Auftraege duerfen als interrupted geschlossen werden.
   update_lock_acquire || { log "Update-Sperre belegt (anderes Update/Einrichtung läuft) — nächster Lauf."; return 0; }
   local installed claim id tag kind
-  # Docker-Verbund: ein offener master-Wechsel geht VOR jeden neuen Auftrag — und vor dem Schliessen haengender Auftraege,
+  # Docker-Verbund: ein offener master-Wechsel geht vor jeden neuen Auftrag — und vor dem Schliessen haengender Auftraege,
   # denn sein Auftrag steht bis zum Abschluss offen (lib/master_swap.sh).
   if rt_is_compose && master_swap_pending; then _ur_swap_continue; return 0; fi
   installed="$(_ur_installed)"
@@ -497,7 +497,7 @@ update_tick() {
     env_upsert "$UPDATE_TICK_STATE" LAST_CHECK "$nowe"
     ( update_check scheduled ) || true
   fi
-  # Taegliche Sicherung in den Ordner auf dem Rechner (Verbund, Fund 7; ohne gewaehlten Ordner still) als eigener Prozess —
+  # Taegliche Sicherung in den Ordner auf dem Rechner (Verbund; ohne gewaehlten Ordner still) als eigener Prozess —
   # die backup-Arm-Bibliotheken laedt nur die CLI.
   # Scheiterte der heutige Versuch (backup.state: LAST_FAIL nach LAST_OK), stuendlich neu versuchen — eine externe Platte, die
   # nur tagsueber steckt, soll nicht bis morgen warten. Der Chat-Hinweis kommt aus

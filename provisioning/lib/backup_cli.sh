@@ -1,37 +1,37 @@
-# backup_cli.sh — Runtime-CLI fuer Backup/Restore der Nutzerdaten (Phase 4b, Strang A).
-# SOURCED (kein Shebang, kein `set -e` — der Top-Aufrufer `lifeagents` traegt den Error-Mode).
+# backup_cli.sh — Runtime-CLI fuer Backup/Restore der Nutzerdaten.
+# Gesourct (kein Shebang, kein `set -e` — der Top-Aufrufer `lifeagents` traegt den Error-Mode).
 #
 # Aufruf: `lifeagents backup <verb> [args]` (die CLI sourct diese Datei + common.sh).
 # DB-Zugriff: postgres-Superuser via runuser/Peer-Auth am lokalen Socket (wie config_cli/pkg_lifecycle/
 # apply_schema). Superuser ist Pflicht: pg_restore --disable-triggers schaltet auch die internen RI-(FK-)
 # Trigger ab (-> keine Topo-Sort/Saldo-Recompute noetig), das geht nur als Superuser.
 #
-# ARCHITEKTUR (Owner-Pivot 2026-06-20, Plan glowing-shimmying-waffle): Standard-Werkzeug pg_dump statt
-# selbstgebauter In-DB-Engine. Gesichert wird NUR die echte Nutzerdaten-Teilmenge (nicht die ganze DB:
-# der Rest ist Code aus dem Repo, n8n-Interna, verschluesselte Geheimnisse, Wegwerf-Logs). Deklariert
-# rein im manifest.json (`backup`-Block, je Paket) — Manifest = einzige SSOT.
-#   * schema_dump-Pakete (finance): das GANZE Schema via pg_dump -a --disable-triggers -Fc (materialisierte
+# Architektur: Standard-Werkzeug pg_dump statt selbstgebauter In-DB-Engine. Gesichert wird nur die echte
+# Nutzerdaten-Teilmenge (nicht die ganze DB: der Rest ist Code aus dem Repo, n8n-Interna, verschluesselte
+# Geheimnisse, Wegwerf-Logs). Deklariert rein im manifest.json (`backup`-Block, je Paket) — das Manifest
+# ist die einzige Quelle.
+#   * schema_dump-Pakete (finance): das ganze Schema via pg_dump -a --disable-triggers -Fc (materialisierte
 #     Tabellen 1:1, kein Recompute), exclude_tables raus.
 #   * full_tables (agent.advisor_plans/guide_onboarding_state): ganz, via pg_dump -t.
 #   * filtered_tables (agent.core_contexts managed_by='agent', monitor_triggers origin='user'): pg_dump kann
-#     NICHT zeilen-filtern -> Export als jsonb (SELECT ... WHERE), Restore regel-bewusst via
+#     nicht zeilen-filtern -> Export als jsonb (SELECT ... WHERE), Restore regel-bewusst via
 #     core.fn_backup_restore_filtered (protected Contexts nur UPDATE, family vor finance_profile, monitor entdoppelt).
-# pg_dump ignoriert -n (Schema), sobald -t gesetzt ist -> wir enumerieren ALLE bulk-Tabellen explizit per -t.
+# pg_dump ignoriert -n (Schema), sobald -t gesetzt ist -> alle bulk-Tabellen werden explizit per -t enumeriert.
 #
-# BUNDLE = verschluesseltes Tarball {manifest.json (Header: bundle_format/packages/versions/verify_counts),
+# Bundle = verschluesseltes Tarball {manifest.json (Header: bundle_format/packages/versions/verify_counts),
 #   data.dump (pg_dump -Fc), shared.json (gefilterte Zeilen)}, gpg --symmetric AES256, Passphrase = aktiver Schluessel
 #   aus core.backup_key (Lebenszyklus: common.sh *Sicherungs-Verschluesselung*). Klartext nur transient in /dev/shm.
 #   Dateiname lifeagents-backup-<ts>-k<schluessel-id>-v<release>.nla.enc: die ID trennt "falscher Schluessel" von
 #   "beschaedigt" und begrenzt das Aufraeumen auf eigene Sicherungen, die Version sagt, was ein Restore braucht.
-# NOTFALLBLATT: `backup key` zeigt den Schluessel (common.sh backup_kit_text); ein Restore, den kein gespeicherter
+# Notfallblatt: `backup key` zeigt den Schluessel (common.sh backup_kit_text); ein Restore, den kein gespeicherter
 #   Schluessel oeffnet, nimmt ihn vom Blatt an (TTY verdeckt oder --key-stdin, nie argv) und macht ihn in derselben
 #   Restore-TX zum aktiven.
 #
-# RESTORE ist ATOMAR (Opus B1): pg_restore -f - erzeugt SQL-TEXT (kein eigener DB-Connect); TRUNCATE +
-#   Restore-SQL + fn_backup_restore_filtered + Count-Verify laufen als EIN `psql -1`-Skript (eine TX) ->
-#   jeder Fehler rollt alles zurueck, die alte Welt bleibt intakt. Decrypt/Header-/Pre-Flight-Checks
-#   passieren VOR dem Wipe. Fehlt ein Bundle-Paket -> Auto-Install `pkg_install_one --no-seed` (seit Phase 5 live;
-#   der Restore bringt die Daten), dann Pre-Flight-Recheck; Fehlschlag = Abbruch VOR jedem Wipe.
+# Restore ist atomar: pg_restore -f - erzeugt SQL-Text (kein eigener DB-Connect); TRUNCATE + Restore-SQL +
+#   fn_backup_restore_filtered + Count-Verify laufen als ein `psql -1`-Skript (eine TX) -> jeder Fehler rollt
+#   alles zurueck, die alte Welt bleibt intakt. Decrypt/Header-/Pre-Flight-Checks passieren vor dem Wipe. Fehlt
+#   ein Bundle-Paket -> Auto-Install `pkg_install_one --no-seed` (der Restore bringt die Daten), dann
+#   Pre-Flight-Recheck; Fehlschlag = Abbruch vor jedem Wipe.
 
 DB_SUPERUSER="${DB_SUPERUSER:-postgres}"
 # BACKUP_KEY_NAME, Schluessel-Lesen und gpg-Ver-/Entschluesselung leben in common.sh (geteilt mit der Upgrade-Sicherung).
@@ -84,7 +84,7 @@ _bkp_is_active() { case " $2 " in *" $1 "*) return 0 ;; *) return 1 ;; esac; }
 
 # _bkp_bulk_tables -> qualifizierte Tabellen (eine/Zeile, sortiert/unique), die pg_dump per -t sichert:
 #   schema_dump-Pakete = alle BASE TABLEs des Paket-Schemas minus exclude_tables; + full_tables.
-#   (filtered_tables sind NICHT dabei — die laufen ueber jsonb/fn.) EINE Quelle fuer Export-Args,
+#   (filtered_tables sind nicht dabei — die laufen ueber jsonb/fn.) Eine Quelle fuer Export-Args,
 #   Restore-TRUNCATE und Count-Verify -> kein Drift.
 _bkp_bulk_tables() {
   local active mf pkg schema t out=""
@@ -147,16 +147,15 @@ _bkp_tmpdir() {
 }
 
 # _bkp_notify_telegram <datei> -> Off-Site-Zustellung: das fertige (AES256-verschluesselte) Bundle per
-# Telegram sendDocument an den gepairten Owner-Chat schicken. BEST-EFFORT: jeder Pfad endet mit `return 0`
-# (das lokale Backup ist hier bereits sicher geschrieben -> der Versand darf den Export NIE kippen; der von
-# der lifeagents-CLI geerbte `set -e` wuerde sonst bei rc!=0 abbrechen). Praezedenzfall:
-# bootstrap_owner.sh _wire_telegram (curl an api.telegram.org, warn+skip). Token NIE ins argv -> 600-`mktemp`-
-# curl-config (curl_cfg); nur die Nicht-Geheim-Felder (document/chat_id/caption)
-# als -F-Flags. Token + Owner ueber die geteilten Helfer owner_tg_token/owner_tg_chat_id (common.sh; der Owner via
-# _resolve_owner_chat_id aus deploy_workflows.sh) -> braucht N8N_DB_NAME, also _bkp_resolve_db ZUERST (sonst faellt
-# der Resolver still auf '0'). DATENSCHUTZ: das Bundle landet im persistenten Telegram-Cloud-Speicher (bleibt dort auch nach
-# Loeschen vorerst als Kopie), aber als Doppel-Chiffrat (gpg-Schluessel nur OFFLINE) -> Telegram sieht nie
-# Klartext; Restexposition = Metadaten + nicht-sofort-loeschbare Chiffrat-Kopie.
+# Telegram sendDocument an den gepairten Owner-Chat schicken. Best-effort: jeder Pfad endet mit `return 0`
+# (das lokale Backup ist hier bereits sicher geschrieben -> der Versand darf den Export nie kippen; der von
+# der lifeagents-CLI geerbte `set -e` wuerde sonst bei rc!=0 abbrechen). Token nie ins argv -> 600-`mktemp`-
+# curl-config; nur die Nicht-Geheim-Felder (document/chat_id/caption) als -F-Flags. Token + Owner ueber die
+# geteilten Helfer owner_tg_token/owner_tg_chat_id (common.sh; der Owner via _resolve_owner_chat_id aus
+# deploy_workflows.sh) -> braucht N8N_DB_NAME, also _bkp_resolve_db zuerst (sonst faellt der Resolver still
+# auf '0'). Datenschutz: das Bundle landet im persistenten Telegram-Cloud-Speicher (bleibt dort auch nach
+# Loeschen vorerst als Kopie), aber als verschluesseltes Chiffrat (gpg-Schluessel nur offline) -> Telegram
+# sieht nie Klartext; Restexposition = Metadaten + nicht-sofort-loeschbare Chiffrat-Kopie.
 _bkp_notify_telegram() {
   local file="$1"
   need_cmd curl || { warn "curl fehlt -> Off-Site-Versand (Telegram) uebersprungen. Backup liegt lokal: $file"; return 0; }
@@ -171,7 +170,7 @@ _bkp_notify_telegram() {
     return 0
   fi
 
-  # 50-MB-Sicherheitsgurt (Telegram-sendDocument-Limit; unsere Bundles <<1 MB). Numerischer Guard vor -gt
+  # 50-MB-Grenze (Telegram-sendDocument-Limit; unsere Bundles <<1 MB). Numerischer Guard vor -gt
   # (set -e: nicht-numerisch -> [ ] rc2 -> Abbruch).
   local size; size="$(stat -c '%s' "$file" 2>/dev/null || echo 0)"
   case "$size" in ''|*[!0-9]*) size=0 ;; esac
@@ -180,7 +179,7 @@ _bkp_notify_telegram() {
     return 0
   fi
 
-  # Token NIE ins argv: URL (mit Token) ueber eine 600-curl-config; document/chat_id/caption als -F (kein Secret).
+  # Token nie ins argv: URL (mit Token) ueber eine 600-curl-config; document/chat_id/caption als -F (kein Secret).
   # Config bevorzugt in tmpfs (/dev/shm, analog _bkp_tmpdir: Klartext-Secret nie auf Disk; mktemp legt 0600 an),
   # Fallback /tmp. mktemp via '|| true' -> set -e kippt den fertigen Export nicht; Fehlschlag = warn+skip.
   local cfg=""
@@ -206,9 +205,9 @@ _bkp_notify_telegram() {
 #   im Docker-Verbund im Datenbank-Container (pg_su_exec = docker exec, im master gibt es sie nicht).
 _bkp_require_pg() { if rt_is_compose; then require_cmd docker; else require_cmd "$1"; fi; }
 
-# --- Sicherungs-Ordner auf dem Rechner (Docker-Verbund, Plan-Pruefung Fund 7) ------------------------------------------
+# --- Sicherungs-Ordner auf dem Rechner (Docker-Verbund) ------------------------------------------
 # Die Docker-Platte kann mit allen Volumes verschwinden ("Clean up data", defekte VM-Platte) -> Sicherungen gehen in einen
-# vom Nutzer gewaehlten Ordner AUF DEM RECHNER. Gemerkt als BACKUP_HOST_DIR in core.env (nicht geheim) in der Schreibweise des
+# vom Nutzer gewaehlten Ordner auf dem Rechner. Gemerkt als BACKUP_HOST_DIR in core.env (nicht geheim) in der Schreibweise des
 # Nutzers (Mac/Linux /…, Windows C:\…); an Docker geht immer die Docker-Form (_bkp_hd). Kein Komma (Trenner der --mount-
 # Angabe), kein Anfuehrungszeichen, kein Zeilenumbruch.
 BACKUP_HOST_KEEP="${BACKUP_HOST_KEEP:-14}"   # so viele automatische Sicherungen bleiben im Ordner (aelteste gehen zuerst)
@@ -236,7 +235,7 @@ _bkp_hd() {
 }
 # _bkp_join <ordner> <name> -> Pfad in der Schreibweise des Ordners (Windows mit "\", sonst "/").
 _bkp_join() { case "$1" in *\\*|[A-Za-z]:) printf '%s\\%s' "${1%\\}" "$2" ;; *) printf '%s/%s' "${1%/}" "$2" ;; esac; }
-# _bkp_rotate_victims <behalten> <schluessel-id> (stdin: Dateinamen) -> die zu loeschenden: nur Sicherungen mit DIESER
+# _bkp_rotate_victims <behalten> <schluessel-id> (stdin: Dateinamen) -> die zu loeschenden: nur Sicherungen mit dieser
 #   Schluessel-ID jenseits der neuesten <behalten>. Fremde IDs (ein alter Rechner im selben Ordner) und Namen ohne ID
 #   bleiben immer liegen — sonst loeschte der neue Rechner nach 14 Tagen genau die Sicherungen, aus denen er herkommt.
 _bkp_rotate_victims() {
@@ -302,7 +301,7 @@ _bkp_reason_of() { case "$1" in readonly) printf write ;; *) printf folder ;; es
 # _bkp_folder_target <eltern-ordner> -> der Ordner, in den gesichert wird (Schreibweise des Nutzers): liegen im gewaehlten Ordner
 #   schon Sicherungen, dieser selbst (sonst entstuende ".../Life Agents Sicherungen/Life Agents Sicherungen"); gibt es darin einen
 #   Unterordner mit dem Namen aus IRGENDEINER Katalog-Sprache (alter Rechner auf Deutsch, neuer auf Englisch), dieser; sonst der
-#   Name in der Owner-Sprache (Owner-Entscheid F4). Legt nichts an.
+#   Name in der Owner-Sprache. Legt nichts an.
 _bkp_folder_target() {
   local dir="$1" n f
   if rt_host_ls "$(_bkp_hd "$dir")" 2>/dev/null | grep -q .; then printf '%s' "$dir"; return 0; fi
@@ -364,7 +363,7 @@ backup_cmd_host_dir() {
 # _bkp_stale_notify — Docker-Verbund: ist die Bezugszeit (backup_ref_epoch) aelter als BACKUP_STALE_S, bekommt der Owner eine
 #   Telegram-Nachricht mit dem festen Grund als Alltagssatz (Ordnername ja, Pfad und Schluessel nie). Nur tagsueber
 #   (BACKUP_NOTIFY_HOURS, Haushalts-Zeitzone; der Takt laeuft um 03:30 und danach stuendlich bis zum Erfolg), hoechstens alle
-#   20 h, ohne gewaehlten Ordner nur woechentlich (dort hilft taegliches Erinnern nicht, Owner-Entscheid F1). Sperre LAST_NOTIFY.
+#   20 h, ohne gewaehlten Ordner nur woechentlich (dort hilft taegliches Erinnern nicht). Sperre LAST_NOTIFY.
 #   Best-effort, immer rc 0.
 BACKUP_NOTIFY_EVERY_S="${BACKUP_NOTIFY_EVERY_S:-72000}"          # 20 h
 BACKUP_NOTIFY_NOFOLDER_S="${BACKUP_NOTIFY_NOFOLDER_S:-604800}"   # 7 Tage
@@ -394,8 +393,8 @@ _bkp_stale_notify() {
 }
 
 # backup_cmd_auto — taegliche Sicherung in den Rechner-Ordner (Tick im master, update_runner.sh: 03:30, nach einem Fehlschlag
-#   stuendlich). Ohne gemerkten Ordner nur der Vermerk "nofolder" (Bestand ohne Ordner, Owner-Entscheid F1: doctor ROT +
-#   Chat-Hinweis statt Dialog); jeder Fehler nur als Warnung, damit der Tick weiterlaeuft. Danach ggf. der Chat-Hinweis.
+#   stuendlich). Ohne gemerkten Ordner nur der Vermerk "nofolder" (Bestand ohne Ordner: doctor ROT + Chat-Hinweis
+#   statt Dialog); jeder Fehler nur als Warnung, damit der Tick weiterlaeuft. Danach ggf. der Chat-Hinweis.
 backup_cmd_auto() {
   if [ -z "$(_bkp_host_dir)" ]; then
     _bkp_state_set LAST_FAIL "$(date +%s)"; _bkp_state_set LAST_FAIL_REASON nofolder
@@ -415,12 +414,12 @@ backup_cmd_export() {
   require_cmd jq; _bkp_require_pg pg_dump; require_cmd gpg
   _bkp_resolve_db
   # Arg-Parse wie backup_cmd_restore (reihenfolge-robust): optionaler Positional-Pfad + --notify-telegram.
-  # Mehrfacher Positional = letzter gewinnt (konsistent mit restore). Default-Pfad NACH der Schleife.
-  # --to-host <ordner> (Docker-Verbund): das fertige Chiffrat in einen Ordner AUF DEM RECHNER (Fund 7); ohne Pfad und
+  # Mehrfacher Positional = letzter gewinnt (konsistent mit restore). Default-Pfad nach der Schleife.
+  # --to-host <ordner> (Docker-Verbund): das fertige Chiffrat in einen Ordner auf dem Rechner; ohne Pfad und
   # ohne --to-host nimmt der Verbund den gemerkten Ordner (BACKUP_HOST_DIR), nie die Docker-Platte.
   local out="" notify=0 a host="" want_host=0 prev=""
   for a in "$@"; do
-    # --to-host [<ordner>]: ein folgender ABSOLUTER Pfad ist der Ordner; sonst gilt der gemerkte (backup auto).
+    # --to-host [<ordner>]: ein folgender absoluter Pfad ist der Ordner; sonst gilt der gemerkte (backup auto).
     if [ "$prev" = --to-host ]; then
       prev=""
       case "$a" in /*|[A-Za-z]:\\*|[A-Za-z]:/*) host="$a"; continue ;; esac
@@ -455,8 +454,8 @@ backup_cmd_export() {
   [ -n "$bulk" ] || _bkp_fail dump "Keine zu sichernden Tabellen gefunden (aktive Pakete + backup-Block pruefen)."
 
   local tmp; tmp="$(_bkp_tmpdir)" || die "Konnte Arbeitsverzeichnis nicht anlegen."
-  # Klartext-Reste IMMER aufraeumen (auch bei `die`->exit; RETURN feuert bei exit NICHT). Die CLI
-  # beendet sich direkt nach backup_cli -> EXIT-Trap deckt Normal-Rueckkehr UND Fehler-exit. Pfad JETZT
+  # Klartext-Reste immer aufraeumen (auch bei `die`->exit; RETURN feuert bei exit nicht). Die CLI
+  # beendet sich direkt nach backup_cli -> EXIT-Trap deckt Normal-Rueckkehr und Fehler-exit. Pfad jetzt
   # in den Trap-String expandieren (Doppel-Quotes): $tmp ist function-local -> bei der global feuernden
   # EXIT-Trap waere es unter `set -u` "unbound variable".
   # shellcheck disable=SC2064  # bewusst JETZT expandieren: $tmp ist local -> bei der global feuernden EXIT-Trap unter `set -u` unbound
@@ -471,7 +470,7 @@ backup_cmd_export() {
     _bkp_qual_ok "$t" || { warn "Ueberspringe ungueltigen Tabellennamen: $t"; continue; }
     dump_args+=( -t "$t" )
   done <<< "$bulk"
-  # pg_dump laeuft als postgres (runuser/Peer-Auth) und darf das root-eigene 0700-tmpfs NICHT beschreiben
+  # pg_dump laeuft als postgres (runuser/Peer-Auth) und darf das root-eigene 0700-tmpfs nicht beschreiben
   # -> Ausgabe auf stdout, die root-Shell leitet in die Datei um (postgres fasst das Verzeichnis nie an).
   # stderr erst nach dem Lauf gefiltert ausgeben (_bkp_pgdump_stderr), der Exit-Code bleibt der von pg_dump.
   local dump_rc=0
@@ -494,7 +493,7 @@ backup_cmd_export() {
     printf '{}' > "$tmp/shared.json"
   fi
 
-  # --- (3) verify_counts: count(*) je bulk- + filtered-Tabelle (Korruptions-Versicherung, Opus B3) ---
+  # --- (3) verify_counts: count(*) je bulk- + filtered-Tabelle (Korruptions-Pruefung) ---
   local vsel=() n
   while IFS= read -r t; do
     [ -n "$t" ] || continue; _bkp_qual_ok "$t" || continue
@@ -510,7 +509,7 @@ backup_cmd_export() {
   local core_ver pkgs_json
   core_ver="$(_bkp_psql_scalar "SELECT value FROM core.config WHERE category='api' AND key='core_version'")"
   pkgs_json="$(_bkp_psql_scalar "SELECT COALESCE(jsonb_agg(jsonb_build_object('name',package,'version',version) ORDER BY package), '[]'::jsonb) FROM core.package_registry WHERE status='active'")"
-  # Defaults als eigene Guards (NICHT inline ${x:-{}} — bash matcht dort die erste '}' als Expansions-Ende
+  # Defaults als eigene Guards (nicht inline ${x:-{}} — bash matcht dort die erste '}' als Expansions-Ende
   # und haengt bei nicht-leerem Wert ein Streu-'}' an -> ungueltiges JSON fuer jq --argjson).
   [ -n "$pkgs_json" ]   || pkgs_json='[]'
   [ -n "$verify_json" ] || verify_json='{}'
@@ -706,13 +705,12 @@ _bkp_pick_lines() {
 # Im JSON-Modus (--json) endet jeder Restore-Weg mit genau einem JSON-Objekt auf stdout ({ok:true,…} bzw. {ok:false, code,…});
 # der Satz geht auf stderr. Codes (die App uebersetzt sie, report::ERROR_CODES): key_needed key_line key_format key_foreign
 # key_no_open corrupt corrupt_stored bundle_incomplete format package_unknown version_older version_newer needs_setup no_tables
-# unreadable safety
-# folder nofolder busy internal. Eigene Funktion statt die_because: die schreibt die Ergebnis-Datei eines Updates, hier
-# liest die App stdout bzw. backup.state.
+# unreadable safety folder nofolder busy internal. Eigene Funktion statt die_because: die schreibt die Ergebnis-Datei eines
+# Updates, hier liest die App stdout bzw. backup.state.
 _BKP_JSON=0; _BKP_CHILD=0; _BKP_SHEET=''; _BKP_SHEET_SET=0
 BACKUP_RESTORE_LOCK="${BACKUP_RESTORE_LOCK:-/run/lifeagents-restore.lock}"
 # _bkp_rdie <code> <satz> [jq-argumente…] — Restore abbrechen: im Hintergrund-Lauf LAST_RESTORE_FAIL + Grund in backup.state,
-#   im JSON-Modus das Fehler-Objekt (weitere Felder per --arg/--argjson), sonst die wie bisher. Immer exit 1.
+#   im JSON-Modus das Fehler-Objekt (weitere Felder per --arg/--argjson), sonst `die`. Immer exit 1.
 _bkp_rdie() {
   local code="$1" msg="$2"; shift 2
   if [ "$_BKP_CHILD" = 1 ]; then _bkp_state_set LAST_RESTORE_FAIL "$(date +%s)"; _bkp_state_set LAST_RESTORE_REASON "$code"; fi
@@ -836,7 +834,7 @@ backup_cmd_restore_status() {
 # restore
 # ============================================================
 # backup_cmd_restore [<datei>|<name>] [--from-host] [--key-stdin] [--in-stdin] [--yes] [--plan] [--detach] [--json]
-#   Terminal: Auswahl, Wipe-Uebersicht, „ja“, dann EINE TX. Start-App (Plan restore-ohne-terminal):
+#   Terminal: Auswahl, Wipe-Uebersicht, „ja“, dann eine TX. Start-App:
 #   --plan --json  Probelauf: oeffnen, pruefen, nichts schreiben (auch kein Paket, kein backup.state) -> ein JSON-Objekt.
 #   --detach --json  (mit --yes) pruefen wie der Probelauf, dann im Hintergrund: Pakete einrichten, Vorab-Sicherung, TX;
 #                  Ergebnis in backup.state (backup restore-status). Der Aufrufer bekommt sofort {ok:true, started}.
@@ -844,7 +842,7 @@ backup_cmd_restore_status() {
 backup_cmd_restore() {
   require_cmd jq; _bkp_require_pg pg_restore; require_cmd gpg
   _bkp_resolve_db
-  # --from-host (Docker-Verbund): <datei> liegt in einem Ordner AUF DEM RECHNER — als voller Pfad oder als Name im gemerkten
+  # --from-host (Docker-Verbund): <datei> liegt in einem Ordner auf dem Rechner — als voller Pfad oder als Name im gemerkten
   # Ordner (BACKUP_HOST_DIR). Im Verbund ist das ohne Pfad der Normalfall (die Auswahl listet den gemerkten Ordner).
   # --key-stdin: Schluessel vom Notfallblatt aus stdin (Text oder die ganze Notfallblatt-Datei), nur gelesen, wenn kein
   # gespeicherter Schluessel die Datei oeffnet. Nie als Argument (Prozessliste).
@@ -865,10 +863,10 @@ backup_cmd_restore() {
   if [ "$detach" = 1 ] && { [ "$force" != 1 ] || [ "$_BKP_JSON" != 1 ] || [ "$plan" = 1 ]; }; then
     die "--detach braucht --yes und --json (Start-App) und schliesst --plan aus."
   fi
-  # Missing-Arg-Picker (E3): *.nla.enc aus cwd + /root — realpath-dedupe (als root ist cwd oft
-  # /root selbst, sonst Dubletten), dann absteigend nach BASENAME sortiert (der traegt den
+  # Picker bei fehlendem Argument: *.nla.enc aus cwd + /root — realpath-dedupe (als root ist cwd oft
+  # /root selbst, sonst Dubletten), dann absteigend nach Basename sortiert (der traegt den
   # Timestamp -> neueste zuerst; eine Voll-Pfad-Sortierung liesse das Verzeichnis-Praefix
-  # dominieren, Cold-Eyes A1). Danach laufen Wipe-Uebersicht + 'ja'-Confirm unveraendert (E8).
+  # dominieren). Danach laufen Wipe-Uebersicht + 'ja'-Confirm unveraendert.
   # Kein Treffer/Abbruch -> unveraenderte Usage.
   if [ "$in_stdin" = 0 ] && rt_is_compose && { [ -z "$enc" ] || [ ! -r "$enc" ]; }; then from_host=1; fi
   if [ -z "$enc" ] && [ "$in_stdin" = 0 ] && [ "$_BKP_JSON" = 0 ] && [ "$from_host" -eq 1 ] && ui_interactive; then
@@ -908,19 +906,19 @@ backup_cmd_restore() {
   local src_name; src_name="${host_src:-$enc}"; src_name="${src_name##*/}"; src_name="${src_name##*\\}"
 
   local tmp; tmp="$(_bkp_tmpdir)" || _bkp_rdie internal "Konnte Arbeitsverzeichnis nicht anlegen."
-  # Pfad JETZT in den Trap-String expandieren (s. export): $tmp ist local -> bei der global feuernden
+  # Pfad jetzt in den Trap-String expandieren (s. export): $tmp ist local -> bei der global feuernden
   # EXIT-Trap waere es unter `set -u` "unbound variable".
   # shellcheck disable=SC2064  # bewusst JETZT expandieren: $tmp ist local -> bei der global feuernden EXIT-Trap unter `set -u` unbound
   trap "rm -rf -- '$tmp'" EXIT
 
-  # Sperren VOR dem Lesen: der Probelauf schreibt nichts und nimmt keine; alles andere wartet bis 30 s auf die Update-Sperre
+  # Sperren vor dem Lesen: der Probelauf schreibt nichts und nimmt keine; alles andere wartet bis 30 s auf die Update-Sperre
   # (der Minuten-Takt haelt sie kurz) und verlangt, dass kein Hintergrund-Lauf mehr laeuft.
   if [ "$plan" = 0 ]; then
     _bkp_restore_running && _bkp_rdie busy "Es läuft schon eine Wiederherstellung."
     update_lock_acquire 30 || _bkp_rdie busy "Gerade läuft ein Update oder eine Sicherung — gleich noch einmal versuchen."
   fi
 
-  # --- (1) Holen + Entschluesseln + Header lesen (VOR jedem Wipe) ---
+  # --- (1) Holen + Entschluesseln + Header lesen (vor jedem Wipe) ---
   if [ "$in_stdin" = 1 ]; then
     _bkp_read_in_stdin "$tmp/in.nla.enc"
     enc="$tmp/in.nla.enc"
@@ -974,10 +972,10 @@ backup_cmd_restore() {
       to_activate="${to_activate}${pkg} "
     fi
     if [ -n "$ver" ] && [ "$ver" != "$inst_ver" ]; then
-      # Versions-Gate (fail-closed VOR jedem Wipe): pg_restore -a passt Daten NICHT an ein per Migration
-      # veraendertes Ziel-Schema an -> bewusst KEIN Cross-Version-Restore (Branchen-Standard: pg_restore/
-      # Borg/restic verweigern Cross-Version ebenso). Echtes Forward-Migrate braeuchte eine Migrationskette
-      # zwischen >=2 Versionen (vertagt, Trigger: ein Restore scheitert real an der Versionssperre).
+      # Versions-Gate (fail-closed vor jedem Wipe): pg_restore -a passt Daten nicht an ein per Migration
+      # veraendertes Ziel-Schema an -> bewusst kein Cross-Version-Restore (pg_restore/Borg/restic verweigern
+      # Cross-Version ebenso). Echtes Forward-Migrate braeuchte eine Migrationskette zwischen >=2 Versionen
+      # (vertagt, Trigger: ein Restore scheitert real an der Versionssperre).
       # Aelteres Bundle: ein Update hilft nicht (es geht nur vorwaerts) -> die Version aus dem Dateinamen nennen.
       if [ "$(printf '%s\n%s\n' "$ver" "$inst_ver" | sort -V | head -n1)" = "$ver" ]; then
         _bkp_rdie version_older "Versions-Konflikt fuer '$pkg': die Sicherung ist älter (Bundle=$ver, installiert=$inst_ver). Ein Update hilft hier nicht — die Sicherung lässt sich nur in genau ihre Version zurückspielen: Life Agents ${rel_hint:-in der Version der Sicherung} neu installieren, dann erneut restoren (Anleitung: ${BACKUP_GUIDE_URL}). Es wurde NICHTS geaendert." \
@@ -1021,7 +1019,7 @@ backup_cmd_restore() {
     filt_disp+="$qd ($cd)"; filt_n=$((filt_n + 1))
   done < <(_bkp_filtered)
 
-  # Wipe-Uebersicht IMMER ausweisen (via warn/log -> STDERR; auch unter --yes sichtbar, Z.B. im Cron-Log).
+  # Wipe-Uebersicht immer ausweisen (via warn/log -> stderr; auch unter --yes sichtbar, z. B. im Cron-Log).
   warn "RESTORE ueberschreibt ALLE aktuellen Nutzerdaten (Finanzen, Profil, Trigger, Plaene) mit dem Bundle-Inhalt. Betroffen:"
   log "  Pakete (Bundle): ${pkg_summary:-?}"
   [ -z "$to_install" ] || log "  Wird vorher eingerichtet (--no-seed): ${to_install% }"
@@ -1042,7 +1040,7 @@ backup_cmd_restore() {
   fi
 
   if [ "$detach" = 1 ]; then
-    # Hintergrund-Lauf als bash-Unterschale OHNE exec: der Schluessel bleibt in ihrem Speicher (kein neues Programm, also
+    # Hintergrund-Lauf als bash-Unterschale ohne exec: der Schluessel bleibt in ihrem Speicher (kein neues Programm, also
     # nichts in argv/Umgebung). Sie erbt fd 9 (Update-Sperre) und nimmt fd 8 (Restore-Sperre); ihr eigener EXIT-Trap raeumt
     # den tmpfs. Der Aufrufer gibt den Trap ab (sonst loeschte er das Bundle unter dem Kind) und endet sofort; docker exec
     # kehrt zurueck, weil das Kind stdout/stderr gleich auf das Protokoll umlegt.
@@ -1073,7 +1071,7 @@ backup_cmd_restore() {
 
 # _bkp_rs_apply <tmp> <blatt-schluessel> <weitere> <eigene-daten:0|1> <pakete-einrichten> <pakete-einschalten> — der
 #   aendernde Teil nach der Bestaetigung (Terminal und Hintergrund-Lauf): Pakete einrichten/einschalten, Vorab-Sicherung der
-#   jetzigen Daten, dann EINE TX. Jeder Abbruch ueber _bkp_rdie; ein vorher eingerichtetes Paket bleibt.
+#   jetzigen Daten, dann eine TX. Jeder Abbruch ueber _bkp_rdie; ein vorher eingerichtetes Paket bleibt.
 _bkp_rs_apply() {
   local tmp="$1" brought="$2" others="$3" has_data="$4" to_install="$5" to_activate="$6" pkg
   for pkg in $to_install; do
@@ -1084,7 +1082,7 @@ _bkp_rs_apply() {
   for pkg in $to_activate; do
     ( _pkg_set_status "$pkg" active ) || _bkp_rdie internal "Paket '$pkg' ließ sich nicht einschalten -> Abbruch vor dem Wipe."
   done
-  # M2: Pre-Flight-Recheck nach Install/Einschalten — jedes Bundle-Paket muss jetzt aktiv sein: _bkp_bulk_tables (Wipe/
+  # Pre-Flight-Recheck nach Install/Einschalten — jedes Bundle-Paket muss jetzt aktiv sein: _bkp_bulk_tables (Wipe/
   # Restore-Menge) zaehlt nur aktive Pakete, ein inaktives wuerde nicht truncatet (UNIQUE/PK-Konflikte, Rollback).
   while IFS= read -r pkg; do
     [ -n "$pkg" ] || continue
@@ -1106,12 +1104,12 @@ _bkp_rs_apply() {
     fi
   fi
 
-  # --- (4) ATOMARER Restore: TRUNCATE + pg_restore-SQL + fn + Count-Verify in EINER psql -1-TX (Opus B1) ---
+  # --- (4) Atomarer Restore: TRUNCATE + pg_restore-SQL + fn + Count-Verify in einer psql -1-TX ---
   local restore_sql="$tmp/restore.sql"
   # lock_timeout: haelt n8n gerade eine Zeilen-/Tabellensperre (ein Mitglied schreibt), wartet TRUNCATE nicht endlos.
   printf "SET LOCAL lock_timeout = '30s';\n" > "$restore_sql"
   # (a) TRUNCATE der bulk-Tabellen (FK-/Trigger-frei dank --disable-triggers im pg_restore; CASCADE als Sicherung).
-  #     filtered_tables (core_contexts/monitor_triggers) NICHT truncaten -> die fn macht den zeilen-gefilterten Wipe.
+  #     filtered_tables (core_contexts/monitor_triggers) nicht truncaten -> die fn macht den zeilen-gefilterten Wipe.
   local trunc="" t n
   while IFS= read -r t; do
     [ -n "$t" ] || continue; _bkp_qual_ok "$t" || _bkp_rdie internal "Ungueltiger Tabellenname im bulk-Set: $t"
@@ -1119,8 +1117,8 @@ _bkp_rs_apply() {
     trunc+="$t"
   done <<< "$bulk"
   printf 'TRUNCATE %s CASCADE;\n' "$trunc" >> "$restore_sql"
-  # (b) pg_restore -> SQL-TEXT (KEIN eigener DB-Connect; laeuft so in unserer einen TX).
-  # pg_restore (postgres via runuser) liest die Archiv-Datei NICHT direkt (root-eigenes 0700-tmpfs) -> die
+  # (b) pg_restore -> SQL-Text (kein eigener DB-Connect; laeuft so in unserer einen TX).
+  # pg_restore (postgres via runuser) liest die Archiv-Datei nicht direkt (root-eigenes 0700-tmpfs) -> die
   # root-Shell oeffnet sie per stdin-Redirect; pg_restore -f - schreibt das SQL auf stdout (in unsere EINE TX).
   if ! pg_su_stdin pg_restore -a --disable-triggers -f - < "$tmp/data.dump" >> "$restore_sql"; then
     _bkp_rdie corrupt "pg_restore (SQL-Generierung) fehlgeschlagen. Nichts geaendert."
@@ -1213,7 +1211,7 @@ backup_cmd_key() {
 # ============================================================
 backup_cli() {
   # Verb-Picker: nacktes `lifeagents backup` auf TTY -> Menue statt Hilfetext; ESC/non-TTY ->
-  # Hilfetext wie bisher (Exit 0, E5b).
+  # Hilfetext (Exit 0).
   if [ "$#" -eq 0 ] && ui_interactive; then
     ensure_gum
     local _menu_verb

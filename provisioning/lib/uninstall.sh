@@ -1,14 +1,14 @@
-# uninstall.sh — die Instanz wieder abbauen (Phase 6). Sourced by provision.sh. Definiert uninstall().
+# uninstall.sh — die Instanz wieder abbauen. Gesourct von provision.sh. Definiert uninstall().
 #
-# ZWEI Stufen (destruktives gated, Default reversibel):
-#   --uninstall              : Dienste stoppen+entfernen (n8n-Unit) + die APP-Schemata
+# Zwei Stufen (destruktives gated, Default reversibel):
+#   --uninstall              : Dienste stoppen+entfernen (n8n-Unit) + die App-Schemata
 #                              agent/core DROPpen. PostgreSQL, die n8n-DB-Engine und /etc/n8n bleiben
 #                              -> ein erneuter Installer-Lauf stellt die App wieder her (Encryption-Key
-#                              bleibt erhalten = n8n-Credentials weiter entschluesselbar). REVERSIBEL.
-#   --uninstall --purge-data : ZUSAETZLICH die n8n-DATENBANK + alle Rollen (n8n-Owner + Host-RO
+#                              bleibt erhalten = n8n-Credentials weiter entschluesselbar). Reversibel.
+#   --uninstall --purge-data : zusaetzlich die n8n-Datenbank + alle Rollen (n8n-Owner + Host-RO
 #                              core_ro/context_ro + je Paket <pkg>_rw/<pkg>_ro, dynamisch ueber das
 #                              _rw/_ro-Suffix) + Daten-/Config-Verzeichnisse (/var/lib/n8n, /etc/n8n,
-#                              /etc/lifeagents) entfernen. Voller Wipe (die PG-Engine bleibt). DESTRUKTIV.
+#                              /etc/lifeagents) entfernen. Voller Wipe (die PG-Engine bleibt). Destruktiv.
 #
 # Idempotent + guarded: jeder Schritt prueft Existenz (Unit/DB/Rolle/Verzeichnis) -> Zweitlauf no-op.
 # Bestaetigung per /dev/tty, sofern nicht --yes (destruktiv -> opt-in/Confirm-Prinzip).
@@ -71,14 +71,14 @@ uninstall() {
   # LLM-Gateway (install_llm_gateway.sh) nach n8n: Unit + Code-Ordner weg (beide Modi; ein erneuter Installer-
   # Lauf legt ihn wieder an — er haelt keine Daten).
   if declare -F uninstall_llm_gateway >/dev/null; then uninstall_llm_gateway; fi
-  # Firewall-Freigabe fuer einen Proxy auf einem anderen Rechner (Install-UX-Phase 5): NACH dem n8n-Stop
+  # Firewall-Freigabe fuer einen Proxy auf einem anderen Rechner: nach dem n8n-Stop
   # (Reihenfolge: n8n nie offen ohne Tabelle) Unit + n8n-Drop-in + Tabelle + Datei entfernen — in beiden Modi
   # (--uninstall und --purge-data), sonst blockierte ein Rest-Drop-in den naechsten n8n-Start.
   if declare -F firewall_remove >/dev/null; then firewall_remove; fi
   # Verwalteter /etc/hosts-Block (Bestaetigen im Chat, hitl_chat_reachable) — in beiden Modi weg; ein erneuter
   # Installer-Lauf setzt ihn bei Bedarf wieder.
   if declare -F hosts_pin_clear >/dev/null; then hosts_pin_clear && ok "Eigene-Domain-Eintrag in /etc/hosts entfernt (falls vorhanden)."; fi
-  # Kein caddy-Stop mehr: der Reverse Proxy ist bring-your-own (Install-UX-Phase 2), nie von uns
+  # Kein caddy-Stop: der Reverse Proxy ist bring-your-own, nie von uns
   # installiert -> er ist nicht unser Dienst zum Abbauen (ein bestehender Proxy des Nutzers bleibt).
 
   # --- App-Schemata DROPpen (agent/core) — nur wenn die DB existiert ----------
@@ -94,7 +94,7 @@ uninstall() {
   fi
 
   if [ "$PURGE_DATA" -ne 1 ]; then
-    # Erfolgs-Marker VERSION entfernen (Install-UX-Phase 7): die CLI bleibt fuer update/doctor stehen, aber ein Neu-Install
+    # Erfolgs-Marker VERSION entfernen: die CLI bleibt fuer update/doctor stehen, aber ein Neu-Install
     # danach ist wieder eine Erstinstallation (_is_first_install: Funktions-Wahl, Uebersicht, Pflicht-Pruefung).
     rm -f "$(lifeagents_version_marker)" 2>/dev/null || true
     ok "Uninstall (reversibel) fertig: Dienste weg, agent/core gedroppt. PG + n8n-DB + /etc/n8n bleiben."
@@ -113,8 +113,8 @@ uninstall() {
       warn "DROP DATABASE '${N8N_DB_NAME}' fehlgeschlagen (offene Verbindung?) — manuell pruefen."
     fi
   fi
-  # Rollen: der n8n-Owner + ALLE Host-/Paket-Lese-/Schreib-Rollen. Seit Phase 5 sind das core_ro/
-  # context_ro (Host) PLUS je installiertem Paket <pkg>_rw/<pkg>_ro -> dynamisch ueber das _rw/_ro-
+  # Rollen: der n8n-Owner + alle Host-/Paket-Lese-/Schreib-Rollen: core_ro/
+  # context_ro (Host) plus je installiertem Paket <pkg>_rw/<pkg>_ro -> dynamisch ueber das _rw/_ro-
   # Suffix enumerieren (statt einer hartkodierten Liste, die einen Paket-Rollen-Rest stehen liesse).
   # Nach DROP DATABASE sind sie referenzlos (Single-App-DB-Annahme, wie der Paket-Purge).
   local r pkg_roles
@@ -133,9 +133,9 @@ uninstall() {
   rm -rf "$N8N_HOME" 2>/dev/null && ok "Datenverzeichnis $N8N_HOME entfernt." || true
   rm -rf /etc/n8n  2>/dev/null && ok "Config/Secrets /etc/n8n entfernt." || true
   rm -rf "${LIFEAGENTS_DIR:-/etc/lifeagents}" 2>/dev/null && ok "Installer-Secrets ${LIFEAGENTS_DIR:-/etc/lifeagents} entfernt." || true
-  # Installations-Protokolle (Quiet-Modus, Install-UX-Phase 3) — koennen PII aus psql-Fehlern enthalten.
+  # Installations-Protokolle (Quiet-Modus) — koennen PII aus psql-Fehlern enthalten.
   rm -rf "${UI_LOG_DIR:-/var/log/lifeagents}" 2>/dev/null && ok "Installations-Protokolle ${UI_LOG_DIR:-/var/log/lifeagents} entfernt." || true
-  # Deploy-Zustand (deploy_workflows.sh, NUR GEAENDERTE) gehoert zur geloeschten n8n-DB.
+  # Deploy-Zustand (deploy_workflows.sh, nur geaenderte) gehoert zur geloeschten n8n-DB.
   [ -z "${WF_DEPLOY_STATE_FILE:-}" ] || rm -f "$WF_DEPLOY_STATE_FILE" 2>/dev/null || true
   # lifeagents-Admin-CLI + gespiegelter Provisioning-Baum (install_cli) — nur beim Voll-Wipe.
   rm -f  /usr/local/bin/lifeagents 2>/dev/null && ok "lifeagents-CLI entfernt." || true

@@ -1,13 +1,12 @@
 # shellcheck disable=SC1111,SC2034  # SC1111: deutsche Anfuehrungszeichen in Nutzertexten gewollt; SC2034: REACH_* lesen die Aufrufer
-# reach.sh — Weg nach aussen im Docker-Verbund (LIFEAGENTS_RUNTIME=compose; Plan docker-installer-freunde *Der Rand*).
-# GESOURCT (kein Shebang, kein set -e). Docker nur ueber lib/runtime.sh (rt_edge_*, rt_stack_up,
+# reach.sh — Weg nach aussen im Docker-Verbund (LIFEAGENTS_RUNTIME=compose).
+# Gesourct (kein Shebang, kein set -e). Docker nur ueber lib/runtime.sh (rt_edge_*, rt_stack_up,
 # rt_host_port_free). Die CLI-Installation (systemd) nutzt nur die reinen Funktionen reach_ts_eval, reach_public_ipv4 und
 # reach_dslite (lib/reach_cli.sh) — deren Verhalten bleibt fuer beide Betriebsarten gleich.
 #
 # Der Rand (`edge`, Caddy, compose.yml LA_CADDYFILE) hat drei Eingaenge: :8080 Editor und :8081 Wizard nur ueber
-# 127.0.0.1 des Rechners, :8088 = die EINE Liste oeffentlicher Pfade (common.sh LA_PUBLIC_PATHS, reach_edge_public_write,
-# contract_lint 34). Beide
-# Wege nach aussen enden auf :8088:
+# 127.0.0.1 des Rechners, :8088 = die eine Liste oeffentlicher Pfade (common.sh LA_PUBLIC_PATHS, reach_edge_public_write,
+# contract_lint 34). Beide Wege nach aussen enden auf :8088:
 #   tunnel   (empfohlen) Dienst `tailscale` (Profil tunnel) im Netz-Namensraum des Rands, Zustand im Volume ts_state.
 #            Anmeldung ohne Schluessel: Tailscale stellt einen Anmelde-Link aus (Status-Feld AuthURL). Funnel nimmt HTTPS
 #            auf 443 an, beendet TLS und reicht an 127.0.0.1:8088 weiter (`tailscale funnel --bg`, bleibt im Zustand
@@ -37,7 +36,7 @@ reach_mode() {
 #   Attrappen-JSON). Setzt REACH_TS_STATE (starting | needs_login | needs_machine_auth | needs_funnel | key_expired |
 #   stopped | running), REACH_TS_URL (Anmelde-Link, nur login.tailscale.com), REACH_TS_DNS (ohne Schluss-Punkt),
 #   REACH_TS_KEY_EXPIRY (RFC 3339 oder leer = Ablauf abgeschaltet), REACH_TS_KEY_DAYS (ganze Tage, leer = kein Ablauf).
-#   `running` heisst: angemeldet UND der Knoten darf HTTPS + Funnel (Node-Faehigkeiten "https" und "funnel"; fehlt eine,
+#   `running` heisst: angemeldet und der Knoten darf HTTPS + Funnel (Node-Faehigkeiten "https" und "funnel"; fehlt eine,
 #   muss der Nutzer Funnel im Konto freigeben -> needs_funnel). Felder laut ipn/ipnstate (BackendState, AuthURL,
 #   Self.DNSName/KeyExpiry/Expired/CapMap).
 reach_ts_eval() {
@@ -82,7 +81,7 @@ reach_funnel_configured() {
         '((.AllowFunnel[$k] // false) == true) and ((.Web[$k].Handlers["/"].Proxy // "") == $t)' 2>/dev/null)" = true ]
 }
 
-# _reach_funnel_on — DER eine Aufruf zum Einschalten: `tailscale funnel --bg` auf :8088. Darf der Knoten noch nicht,
+# _reach_funnel_on — der eine Aufruf zum Einschalten: `tailscale funnel --bg` auf :8088. Darf der Knoten noch nicht,
 #   gibt Tailscale den Link zur Freigabe-Seite im Konto aus (CLI: enableFeatureInteractive -> QueryFeature) und wartet
 #   auf die Freigabe -> kurze Frist (8 s). Ein ausgegebener Link landet im Zwischenspeicher (5 Min, der Wizard fragt alle
 #   paar Sekunden). Gibt der Nutzer frei, waehrend der Aufruf wartet, schaltet derselbe Aufruf Funnel gleich ein.
@@ -152,7 +151,7 @@ reach_webhook_eval() {
 #   3. A oeffentlich: nur mit Gegenprobe "own" — die IPv4, unter der dieser Rechner nach aussen sichtbar ist (ein Echo-
 #      Dienst, 4 s, nur IPv4: api.ipify.org, quelloffen, keine Anmeldung). Gleich -> own; anders (veralteter Eintrag,
 #      Carrier-NAT mit oeffentlichem Bereich) oder nicht pruefbar -> unknown. Nie eine falsche Sicherheit: unknown
-#      fuehrt zum Weg von Hand (Online-Monitor der FritzBox), wie bisher.
+#      fuehrt zum Weg von Hand (Online-Monitor der FritzBox).
 # Beide Adressen per Umgebung uebersteuerbar: Tests duerfen nie die echte Box oder den Echo-Dienst des Rechners treffen.
 REACH_IPV4_ECHO="${REACH_IPV4_ECHO:-https://api.ipify.org}"
 REACH_UPNP_URL="${REACH_UPNP_URL:-http://fritz.box:49000/igdupnp/control/WANIPConn1}"
@@ -169,8 +168,8 @@ _reach_ipv4_shared() {
   return 1
 }
 
-# Hinweise der Start-App: fluechtige Datei im master (0600, KEY=wert, vor jedem Oeffnen des Fragebogens neu), NICHT als
-# Umgebung — die bliebe in `docker inspect` dauerhaft sichtbar (Entscheid der Leitung). Gelesen, nie ausgefuehrt; nur
+# Hinweise der Start-App: fluechtige Datei im master (0600, KEY=wert, vor jedem Oeffnen des Fragebogens neu), nicht als
+# Umgebung — die bliebe in `docker inspect` dauerhaft sichtbar. Gelesen, nie ausgefuehrt; nur
 # eine gewoehnliche Datei (kein Link), hoechstens 4 KB. Fehlt sie, gibt es keinen Hinweis.
 REACH_HINTS_FILE="${REACH_HINTS_FILE:-/run/lifeagents-wizard/hints.env}"
 _reach_hint() {
@@ -195,7 +194,7 @@ _reach_dns6() { dns_first_addr "$1" 6; }
 _reach_echo4() { curl -4 -fsS --max-time 4 "$REACH_IPV4_ECHO" 2>/dev/null | head -c 64 || true; }
 
 # reach_public_ipv4 -> die oeffentliche IPv4, unter der dieser Rechner nach aussen sichtbar ist, oder leer (nicht
-#   pruefbar, kein gueltiger Wert, oder die Adresse ist selbst geteilt/privat). rc 0. DIE eine Stelle fuer den Echo-Dienst
+#   pruefbar, kein gueltiger Wert, oder die Adresse ist selbst geteilt/privat). rc 0. Die eine Stelle fuer den Echo-Dienst
 #   (DS-Lite-Pruefung hier, Adress-Vorschlag im Wizard): ein Erfolg gilt 10 Min (Zwischenspeicher), ein Fehlschlag nicht.
 reach_public_ipv4() {
   local f="$REACH_RUN_DIR/public-ipv4" ip
@@ -274,7 +273,7 @@ reach_ipv4_eval() {
 
 # --- Tailscale-Rechnername ------------------------------------------------------------------------------------------
 # Der Name steht in oeffentlichen Zertifikats-Protokollen (Funnel-Zertifikat) und soll weder Person noch Software
-# verraten: zwei freundliche Woerter aus lib/ts_names.json, der EINEN Liste (die Start-App bettet dieselbe Datei ein).
+# verraten: zwei freundliche Woerter aus lib/ts_names.json, der einen Liste (die Start-App bettet dieselbe Datei ein).
 # Zieh-Regel, in beiden Umsetzungen gleich und an `vectors` der Datei geprueft: n (0..2^32-1) ->
 # adjectives[n % A] "-" nouns[(n / A) % N]. Einmal je Installation ziehen und speichern; ein neuer Name wuerde das Geraet
 # im Tailnet umbenennen (neue Internet-Adresse, neuer Webhook). Rueckfall ohne Liste: `bot` (compose.yml).
@@ -324,7 +323,7 @@ reach_edge_public_write() {
 }
 
 # --- FritzBox (wan) -------------------------------------------------------------------------------------------------
-# reach_ports_free -> 0, wenn 80 UND 443 am Rechner frei sind (rt_host_port_free: Kurzlauf-Container, Pruefliste Nr. 13).
+# reach_ports_free -> 0, wenn 80 und 443 am Rechner frei sind (rt_host_port_free: Kurzlauf-Container, Pruefliste Nr. 13).
 reach_ports_free() { rt_host_port_free 80 && rt_host_port_free 443; }
 
 # reach_wan_write_domain <domain> -> 0 = Datei geaendert (wan muss neu starten), 1 = unveraendert. Nur geprueft gueltige
@@ -338,7 +337,7 @@ reach_wan_write_domain() {
 }
 
 # --- Status fuer Wizard und Start-App -------------------------------------------------------------------------------
-# reach_status_json — EINE JSON-Zeile (Format: docs/reference/provisioning.md *Docker-Verbund: Erreichbarkeit*):
+# reach_status_json — eine JSON-Zeile (Format: docs/reference/provisioning.md *Docker-Verbund: Erreichbarkeit*):
 #   {mode, state, url, dns_name, key_expiry, key_days_left, webhook, webhook_pending, webhook_error, webhook_error_at,
 #   ipv4, ipv4_reason, ts_hostname, reason}. ts_hostname = LA_TS_HOSTNAME des master (compose.yml), leer wenn ungueltig.
 #   ipv4 (own|none|unknown) nur beim FritzBox-Weg und vor der Wahl. Aendert nichts, ausser beim Tunnel

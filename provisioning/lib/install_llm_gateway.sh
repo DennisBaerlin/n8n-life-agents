@@ -1,27 +1,27 @@
 # install_llm_gateway.sh — den lokalen LLM-Gateway (Prompt-Caching + Nutzungs-Messung) als systemd-Dienst
-# einrichten. Sourced by provision.sh (+ uninstall.sh liest die Namen). Definiert install_llm_gateway.
+# einrichten. Gesourct von provision.sh (uninstall.sh liest die Namen). Definiert install_llm_gateway.
 #
-# WAS: llm_gateway/server.js (dependency-frei, Node aus ensure_node) lauscht auf 127.0.0.1:LLM_GATEWAY_PORT;
+# Was: llm_gateway/server.js (dependency-frei, Node aus ensure_node) lauscht auf 127.0.0.1:LLM_GATEWAY_PORT;
 # inject_credentials.sh zeigt die Anthropic-Credential (url) darauf. Mechanik/Begruendung → Kopf von server.js
 # und provisioning/CLAUDE.md *LLM-Gateway*.
 #
-# REIHENFOLGE (fail-closed): laeuft NACH install_n8n (Node da) und VOR inject_credentials. Antwortet der Dienst
-# nicht, bricht der Lauf HIER ab (die) — die Credential wird nie auf einen toten Gateway umgebogen (sonst
+# Reihenfolge (fail-closed): laeuft nach install_n8n (Node da) und vor inject_credentials. Antwortet der Dienst
+# nicht, bricht der Lauf hier ab (die) — die Credential wird nie auf einen toten Gateway umgebogen (sonst
 # scheiterten alle Agenten; die direkten HTTP-Knoten sogar still via onError=continueRegularOutput).
 #
-# CODE-ORT: der Code wird SELBST nach $LLM_GATEWAY_DIR kopiert (write_if_changed), nicht aus dem
+# Code-Ort: der Code wird selbst nach $LLM_GATEWAY_DIR kopiert (write_if_changed), nicht aus dem
 # install_cli-Spiegel gestartet — der entsteht erst am Lauf-Ende, und bei `lifeagents update` ist REPO_ROOT
-# ein temporaerer Entpack-Ordner. Neustart, wenn Unit ODER Code sich geaendert haben.
+# ein temporaerer Entpack-Ordner. Neustart, wenn Unit oder Code sich geaendert haben.
 
 LLM_GATEWAY_UNIT_NAME="lifeagents-llm-gateway"
-# Port FEST (kein Env-Override): die direkten HTTP-Knoten tragen http://127.0.0.1:8090 build-time eingebacken
+# Port fest (kein Env-Override): die direkten HTTP-Knoten tragen http://127.0.0.1:8090 build-time eingebacken
 # (New-AnthropicMessagesNode) — ein abweichender Port liesse sie still ins Leere laufen.
 LLM_GATEWAY_PORT=8090
 LLM_GATEWAY_DIR="${LLM_GATEWAY_DIR:-/usr/local/lib/lifeagents-llm-gateway}"
 LLM_GATEWAY_UNIT="/etc/systemd/system/${LLM_GATEWAY_UNIT_NAME}.service"
 LLM_GATEWAY_URL="http://127.0.0.1:${LLM_GATEWAY_PORT}"
 
-# _llm_gateway_port_foreign — 0, wenn der Port von einem FREMDEN Prozess belegt ist (unser Dienst laeuft nicht).
+# _llm_gateway_port_foreign — 0, wenn der Port von einem fremden Prozess belegt ist (unser Dienst laeuft nicht).
 _llm_gateway_port_foreign() {
   svc_is_active "$LLM_GATEWAY_UNIT_NAME" && return 1
   need_cmd ss || return 1
@@ -71,7 +71,7 @@ install_llm_gateway() {
 
   local changed=1
   if write_if_changed "$LLM_GATEWAY_DIR/server.js" 0644 < "$src"; then changed=0; fi
-  # Persona-Sticker fuer den Telegram-Relay (Kopf von server.js): wie der Code SELBST kopiert (REPO_ROOT ist beim
+  # Persona-Sticker fuer den Telegram-Relay (Kopf von server.js): wie der Code selbst kopiert (REPO_ROOT ist beim
   # Update ein Entpack-Ordner, der install_cli-Spiegel entsteht erst am Lauf-Ende). Binaer -> cmp + install statt
   # write_if_changed (das liest per $(cat) als Text). Geaenderte Datei -> Neustart (file_id-Cache im RAM leeren).
   local sticker_src="${LLM_GATEWAY_STICKER_SRC:-$SCRIPT_DIR/../packages/core/build/stickers}" sticker_dir="$LLM_GATEWAY_DIR/stickers" f

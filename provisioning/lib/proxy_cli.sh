@@ -1,9 +1,9 @@
 # shellcheck disable=SC1111  # deutsche Anführungszeichen („…“) in den Nutzertexten sind gewollt
-# proxy_cli.sh — `lifeagents proxy show|set` (Install-UX-Phase 5): wo laeuft der Reverse Proxy, wem ist n8n
-# geoeffnet? EIN Fakt TRUSTED_PROXIES in /etc/lifeagents/core.env; `set` schreibt ihn und wendet ihn ueber
-# DENSELBEN Pfad wie die Installation an (`provision.sh --apply-network`: firewall_converge -> prepare_n8n_env ->
-# install_n8n_unit) — keine zweite Render-Logik. Sourced by templates/lifeagents.tpl (mit common.sh, release_inputs.sh,
-# firewall.sh, owner_connect.sh). Kein `refresh`: es werden nie Namen gespeichert (arch-challenge REJECT-mit-Notiz).
+# proxy_cli.sh — `lifeagents proxy show|set`: wo laeuft der Reverse Proxy, wem ist n8n
+# geoeffnet? Ein Fakt TRUSTED_PROXIES in /etc/lifeagents/core.env; `set` schreibt ihn und wendet ihn ueber
+# denselben Pfad wie die Installation an (`provision.sh --apply-network`: firewall_converge -> prepare_n8n_env ->
+# install_n8n_unit) — keine zweite Render-Logik. Gesourct von templates/lifeagents.tpl (mit common.sh, release_inputs.sh,
+# firewall.sh, owner_connect.sh). Kein `refresh`: es werden nie Namen gespeichert.
 
 PROXY_CORE_ENV="${LIFEAGENTS_DIR:-/etc/lifeagents}/core.env"
 PROXY_N8N_ENV="/etc/n8n/n8n.env"

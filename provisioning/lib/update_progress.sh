@@ -1,4 +1,4 @@
-# update_progress.sh — Fortschritts-Nachricht eines Updates im Chat. GESOURCT von update_runner.sh.
+# update_progress.sh — Fortschritts-Nachricht eines Updates im Chat. Gesourct von update_runner.sh.
 #
 # Ein Hintergrund-Helfer liest den Schritt aus der Ergebnis-Datei (wie der Wizard) und bearbeitet genau eine Telegram-Nachricht.
 # Das Update weiss nichts von ihm: keine Zeile in provision.sh, kein Warten, kein Exit-Status, der irgendwo ausgewertet wird.

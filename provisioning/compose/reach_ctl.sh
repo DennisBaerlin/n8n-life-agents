@@ -10,6 +10,9 @@
 #        Danach eine JSON-Zeile wie `status`. Exit = der des Installer-Laufs.
 #   bash /opt/lifeagents/provisioning/compose/reach_ctl.sh relogin    Tailscale-Container neu starten (frischer
 #        Anmelde-Link, z. B. nach abgelaufener Anmeldung). Nie `tailscale reset`/`logout`: der Knoten bleibt derselbe.
+#        Nur beim Tunnel-Weg (REACH_MODE=tunnel).
+# Voraussetzung: LIFEAGENTS_RUNTIME=compose (sonst Abbruch); activate braucht root.
+# Exit: status 0; activate = Exit des Installer-Laufs; relogin 0; Abbruch per die 1; unbekanntes Verb 2.
 set -euo pipefail
 export LANG=C.UTF-8 LC_ALL=C.UTF-8
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

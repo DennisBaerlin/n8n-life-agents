@@ -12,16 +12,16 @@ PG_KEY_URL="https://www.postgresql.org/media/keys/ACCC4CF8.asc"
 # a hard dependency on sudo on a minimal image.
 _pg_super() { pg_su_exec "$@"; }
 
-# require_utf8_db — UTF-8 ist Gesetz (provisioning/CLAUDE.md): eine bestehende Nicht-UTF8-App-DB (angelegt von <= v0.4.0
-# auf einem System mit LANG="C", Proxmox-Vorlage) speichert Umlaute nur als Bytes. Nie still weiter, nie automatisch
-# loeschen. Laeuft ZWEIMAL: in preflight() (vor upgrade_prepare -> ein Update haelt n8n gar nicht erst an) und nach
+# require_utf8_db — UTF-8 ist Gesetz (provisioning/CLAUDE.md): eine bestehende Nicht-UTF8-App-DB (angelegt auf einem
+# System mit LANG="C", Proxmox-Vorlage) speichert Umlaute nur als Bytes. Nie still weiter, nie automatisch
+# loeschen. Laeuft zweimal: in preflight() (vor upgrade_prepare -> ein Update haelt n8n gar nicht erst an) und nach
 # createdb in install_postgres. Fehlt die DB (oder PG), ist nichts zu pruefen.
 require_utf8_db() {
   local enc
   enc="$(pg_db_encoding "${N8N_DB_NAME}")"
   if [ -z "$enc" ] || [ "$enc" = "UTF8" ]; then return 0; fi
   if [ "$(_pg_super psql -X -tA -d "${N8N_DB_NAME}" -c "SELECT 1 FROM pg_namespace WHERE nspname='core'" 2>/dev/null)" = "1" ]; then
-    # Bestand MIT Daten: kein Loesch-Rat (purge vernichtet alles). Ein Umzugs-Pfad (Dump -> UTF8-DB -> Restore) ist
+    # Bestand mit Daten: kein Loesch-Rat (purge vernichtet alles). Ein Umzugs-Pfad (Dump -> UTF8-DB -> Restore) ist
     # bewusst nicht gebaut, solange keine solche Instanz existiert.
     die "Die Datenbank '${N8N_DB_NAME}' ist nicht UTF-8 (sondern ${enc}) und enthält bereits Daten. NICHTS löschen — \
 dieser Installer bricht ab, n8n läuft unverändert weiter. Für den Umzug auf UTF-8 bitte im Projekt melden."
@@ -75,21 +75,21 @@ install_pg_packages() {
   force_apt_update
 
   # --- UTF-8 ist Gesetz (provisioning/CLAUDE.md) ---
-  # postgresql-common legt den Cluster beim Paket-Install mit der SYSTEM-Locale aus /etc/default/locale an
+  # postgresql-common legt den Cluster beim Paket-Install mit der System-Locale aus /etc/default/locale an
   # (maintscripts-functions::set_system_locale; die Sitzung zaehlt bewusst nicht). Proxmox-Debian-Vorlagen tragen dort
-  # LANG="C" -> initdb waehlt SQL_ASCII (v0.4.0 brach daran ab). Der offizielle Drop-in-Weg (createcluster.conf(5),
+  # LANG="C" -> initdb waehlt SQL_ASCII. Der offizielle Drop-in-Weg (createcluster.conf(5),
   # include_dir createcluster.d) erzwingt UTF-8 unabhaengig davon; die Hauptdatei bleibt unberuehrt (kein ucf-Konflikt).
   # C.UTF-8 ist unter Debian 12 immer da (glibc, ohne locales-Paket) und sortiert stabil nach Code-Punkt (keine
-  # Kollations-Drift bei glibc-Updates). Folge: ORDER BY reiht „Ä…" hinter „Z…" — wie zuvor die SQL_ASCII-Instanzen
-  # (Byte-Order); sprachrichtige Sortierung waere eine eigene Entscheidung (ICU), kein Teil dieses Gesetzes.
+  # Kollations-Drift bei glibc-Updates). Folge: ORDER BY reiht „Ä…" hinter „Z…" (Byte-Order);
+  # sprachrichtige Sortierung waere eine eigene Entscheidung (ICU), kein Teil dieses Gesetzes.
   install -d -m 0755 /etc/postgresql-common/createcluster.d
   printf '%s\n' "# n8n-life-agents: Cluster immer UTF-8, egal was /etc/default/locale sagt (install_pg.sh)" \
     "initdb_options = '--encoding=UTF8 --locale=C.UTF-8'" > /etc/postgresql-common/createcluster.d/lifeagents-utf8.conf
 
-  # --- server (Hauptversion im Paketnamen; Minor-Updates NUR ueber diesen Lauf) ---
+  # --- server (Hauptversion im Paketnamen; Minor-Updates nur ueber diesen Lauf) ---
   # Die Hauptversion kann nie springen: postgresql-<PG_VERSION> ist ein eigenes Paket (PGDG-Wiki „Apt"), nur das
-  # Metapaket `postgresql` wuerde wechseln. Der Hold bleibt, damit KEIN anderer Weg (apt upgrade von Hand,
-  # unattended-upgrades) den Cluster unter laufendem n8n neu startet. Frueher blockierte er aber auch jedes
+  # Metapaket `postgresql` wuerde wechseln. Der Hold bleibt, damit kein anderer Weg (apt upgrade von Hand,
+  # unattended-upgrades) den Cluster unter laufendem n8n neu startet. Er blockiert aber auch jedes
   # 17.x-Sicherheits-Update (PostgreSQL: „always run the current minor release") -> hier gezielt loesen, die Minor
   # nachziehen, wieder halten. n8n steht dabei bereits (upgrade_guard.sh, PG-Minor zaehlt als Versionswechsel).
   if ! dpkg -s "postgresql-${PG_VERSION}" >/dev/null 2>&1; then
@@ -102,7 +102,7 @@ install_pg_packages() {
   apt-mark hold "postgresql-${PG_VERSION}" "postgresql-client-${PG_VERSION}" >/dev/null
 }
 
-# pg_restart_if_stale — ein laufender Server mit alter Minor laedt nach `--only-upgrade` die NEUE Bibliothek
+# pg_restart_if_stale — ein laufender Server mit alter Minor laedt nach `--only-upgrade` die neue Bibliothek
 # (plpgsql.so: "undefined symbol") und bricht beim naechsten Backend ab. Auf einem echten LXC startet das Paket den
 # Cluster selbst (prerm stop_version, postinst `invoke-rc.d postgresql start`); wo die Paket-Skripte nicht starten
 # duerfen (policy-rc.d exit 101, Substrat/Container) bleibt der alte Postmaster stehen. Darum hier ausdruecklich pruefen
@@ -120,7 +120,7 @@ install_postgres() {
   if rt_is_compose; then
     # Verbund: der offizielle postgres:17-Container (UTF-8/C.UTF-8 per initdb-Args in compose.yml). Auf frischem Volume
     # laeuft erst ein Init-Server nur am Socket, dann der echte Start -> auf den TCP-Healthcheck warten, sonst greift der
-    # Installer in den Neustart hinein (Probelauf-Fund).
+    # Installer in den Neustart hinein.
     svc_up postgresql
     rt_wait_healthy "$LA_PG_CONTAINER" 180 || die "PostgreSQL-Container wurde nicht gesund ($(svc_logs_hint postgresql))."
   else

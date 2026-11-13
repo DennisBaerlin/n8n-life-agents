@@ -1,13 +1,13 @@
 # config_cli.sh — Runtime-CLI fuer den zentralen Config-Store (core.config).
-# SOURCED (kein Shebang, kein `set -e` — der Top-Aufrufer `lifeagents` traegt den Error-Mode).
+# Gesourct (kein Shebang, kein `set -e` — der Top-Aufrufer `lifeagents` traegt den Error-Mode).
 #
 # Aufruf: `lifeagents config <verb> [args]` (die CLI sourct diese Datei + common.sh).
 # DB-Zugriff: postgres-Superuser via runuser/Peer-Auth am lokalen Socket (host-vermittelt, wie
 # pkg_lifecycle.sh/apply_schema.sh).
 #
-# Zugriffsmodell (Owner-Direktive, Plan §2/§WP5): Config ist EIN flacher zentraler Store mit global
-# eindeutigem (category,key); die `package`-Spalte ist Vor-Installations-Deklaration (Manifest) und
-# reine INFO — per CLI NIE aenderbar (write-own: die CLI setzt nur Werte, nie die Paket-Zuordnung).
+# Zugriffsmodell: Config ist ein flacher zentraler Store mit global eindeutigem (category,key); die
+# `package`-Spalte ist Vor-Installations-Deklaration (Manifest) und reine Info — per CLI nie aenderbar
+# (die CLI setzt nur Werte, nie die Paket-Zuordnung).
 # `set` ist UPDATE-only (kein INSERT) -> ein unbekannter Key ist ein Fehler, kein stiller Drift; die
 # Defaults deklariert das Manifest (.config-Block), der Installer-Seeder (_seed_package_config) legt
 # die Zeilen an. Die DB prueft jeden neuen Wert (category='model': bekanntes Modell derselben Art wie der Standard,
@@ -25,7 +25,7 @@ _cfg_resolve_db() { lifeagents_db_name >/dev/null; }
 
 # _cfg_psql <psql-args...>  -> psql als postgres-Superuser am lokalen Socket (ON_ERROR_STOP).
 # -q (quiet) unterdrueckt den Command-Status-Tag ("UPDATE 0/1") -> bei `set` liefert RETURNING auf
-# eine nicht-existente Zeile WIRKLICH leeren stdout (sonst maskiert "UPDATE 0" die 0-Treffer-Erkennung);
+# eine nicht-existente Zeile wirklich leeren stdout (sonst maskiert "UPDATE 0" die 0-Treffer-Erkennung);
 # Ergebniszeilen von SELECT bleiben unberuehrt.
 # VERBOSITY=terse: eine abgelehnte Eingabe zeigt nur die DB-Meldung ("Ungültiger Wert … — erwartet: …"), ohne die
 # technische CONTEXT-Zeile der PL/pgSQL-Funktion.
@@ -34,7 +34,7 @@ _cfg_psql() {
   pg_su_psql -v ON_ERROR_STOP=1 -v VERBOSITY=terse -X -q -d "$N8N_DB_NAME" "$@"
 }
 
-# _cfg_ident_ok <s>  -> 0 wenn ^[a-z][a-z0-9_]*$ (category/key-Vertrag; Injection-Schutz VOR Interpolation).
+# _cfg_ident_ok <s>  -> 0 wenn ^[a-z][a-z0-9_]*$ (category/key-Vertrag; Injection-Schutz vor Interpolation).
 _cfg_ident_ok() { printf '%s' "$1" | grep -qE '^[a-z][a-z0-9_]*$'; }
 
 # _cfg_managed_by <category> <key>  -> 'owner' | 'system' | '' (Zeile fehlt). Argumente vorher ident-geprueft.
@@ -59,7 +59,7 @@ _cfg_apply_schedule() {
   esac
   log "Zeitplan geändert -> Workflows von '$pkg' neu einspielen ..."
   _pkg_resolve_env
-  # DEPLOY_STRICT_ACTIVATE=1: lief ein deaktivierter Workflow danach NICHT wieder an, ist das ein Fehler (sonst
+  # DEPLOY_STRICT_ACTIVATE=1: lief ein deaktivierter Workflow danach nicht wieder an, ist das ein Fehler (sonst
   # meldete die CLI "aktiv", waehrend der Zeitplan-Workflow stillsteht).
   if ( DEPLOY_STRICT_ACTIVATE=1 deploy_workflows "$pkg" ); then
     ok "Neuer Zeitplan für ${2} ist aktiv."
@@ -69,14 +69,14 @@ _cfg_apply_schedule() {
 }
 
 # --- list: alle Config-Zeilen, je Paket eine Ueberschrift, je Eintrag zwei Zeilen -------------------
-# Reine ANZEIGE (zweizeilig, auch ohne Terminal; kein --plain/--json — Skripte lesen core.config direkt, nie diese
+# Reine Anzeige (zweizeilig, auch ohne Terminal; kein --plain/--json — Skripte lesen core.config direkt, nie diese
 # Ausgabe): `category/key = value [*]` + darunter eingerueckt der deutsche Einzeiler `summary` (Manifest-Feld
-# `.config.<c>.<k>.summary`; `description` bleibt englischer Entwickler-Text und wird hier bewusst NICHT gezeigt).
+# `.config.<c>.<k>.summary`; `description` bleibt englischer Entwickler-Text und wird hier bewusst nicht gezeigt).
 # Grundsystem (core) zuerst, dann die Pakete alphabetisch; Ueberschrift im ui_section-Plain-Stil.
 config_cmd_list() {
   local rows out='' c_head='' c_dim='' c_rst='' wrap=0 width=0 cols
   local pkg label category key mark sum val cur='' wrapped line shown
-  # Farbe + Breite EINMAL vorab: danach geht stdout ggf. in die Pipe zum Pager (ui_page) und waere kein TTY mehr.
+  # Farbe + Breite einmal vorab: danach geht stdout ggf. in die Pipe zum Pager (ui_page) und waere kein TTY mehr.
   # Eigene Codes statt _C_CYAN/_C_RST (common.sh): die richten sich nach stderr (fd 2), die Liste geht auf stdout;
   # Ueberschrift im Plain-Stil von ui_section, das selbst auf stderr schreibt.
   if ui_color_enabled 1; then c_head=$'\033[0;36m'; c_dim=$'\033[2m'; c_rst=$'\033[0m'; fi
@@ -88,7 +88,7 @@ config_cmd_list() {
     wrap=1
   fi
   # Trenner \x1f statt \t: summary/value koennen leer sein, und bash `read` kollabiert konsekutive Tabs (Tab ist
-  # IFS-whitespace, gleiche Begruendung wie seed_data.sh _seed_package_config). value als LETZTE Spalte -> `read`
+  # IFS-whitespace, gleiche Begruendung wie seed_data.sh _seed_package_config). value als letzte Spalte -> `read`
   # haengt den Rest dort an. mark = '*' wenn der Wert vom ausgelieferten Default abweicht (conffile,
   # core.fn_config_seed) — solche Werte ueberleben Updates; `lifeagents config reset` holt den Default zurueck.
   rows="$(_cfg_psql -tA -F $'\x1f' -c \
@@ -114,7 +114,7 @@ config_cmd_list() {
     out+=$'\n'
     # leer = Zeile noch nicht neu geseedet (Update vor diesem Release) -> sichtbar statt still.
     if [ -z "$sum" ]; then sum='(keine Beschreibung — lifeagents update)'; fi
-    # Erst den reinen Text umbrechen, DANN je Zeile einfaerben (Farbcodes zaehlten sonst als Breite). fold zaehlt
+    # Erst den reinen Text umbrechen, dann je Zeile einfaerben (Farbcodes zaehlten sonst als Breite). fold zaehlt
     # Bytes -> Umlaute brechen minimal frueher um, nie ueber den Rand. Ohne Terminal: eine Zeile.
     if [ "$wrap" = 1 ]; then wrapped="$(printf '%s\n' "$sum" | fold -s -w "$width")"; else wrapped="$sum"; fi
     while IFS= read -r line; do
@@ -125,7 +125,7 @@ config_cmd_list() {
   printf '%s\n' "$out" | ui_page
 }
 
-# --- reset: Wert EINER Zeile auf den ausgelieferten Standard zuruecksetzen (core.fn_config_reset) -----
+# --- reset: Wert einer Zeile auf den ausgelieferten Standard zuruecksetzen (core.fn_config_reset) -----
 config_cmd_reset() {
   if [ "$#" -eq 0 ] && ui_interactive; then
     ensure_gum
@@ -152,13 +152,12 @@ config_cmd_reset() {
   _cfg_apply_schedule "$category" "$key"
 }
 
-# --- set: Wert EINER bestehenden Zeile setzen (UPDATE-only, kein INSERT, package-Ownership fix) ----
+# --- set: Wert einer bestehenden Zeile setzen (UPDATE-only, kein INSERT, package-Ownership fix) ----
 config_cmd_set() {
-  # Missing-Arg-Picker (E3, NUR beim voll-leeren Aufruf — Teil-Aufrufe behalten die heutige Usage,
-  # KISS): Key-Auswahl aus core.config; der Picker-VALUE traegt "category key" (beide Tokens
-  # ident-gepinnt ^[a-z][a-z0-9_]*$ -> space-safe splitbar, Plan-Kritik C5). Wert danach: bei
-  # category='model' ein zweiter Picker ueber die passenden agent.ai_models (der DB-Trigger validiert ohnehin),
-  # sonst ui_input. Abbruch an jeder Stelle -> unveraenderte Usage (E5a). `|| true` je Pipeline:
+  # Picker nur beim voll-leeren Aufruf (Teil-Aufrufe behalten die Usage): Key-Auswahl aus core.config; der
+  # Picker-Value traegt "category key" (beide Tokens ident-gepinnt ^[a-z][a-z0-9_]*$ -> space-safe splitbar).
+  # Wert danach: bei category='model' ein zweiter Picker ueber die passenden agent.ai_models (der DB-Trigger
+  # validiert ohnehin), sonst ui_input. Abbruch an jeder Stelle -> unveraenderte Usage. `|| true` je Pipeline:
   # eine fehlende Registry/Schema darf unter set -e nicht crashen, sondern leer -> Usage.
   if [ "$#" -eq 0 ] && ui_interactive; then
     ensure_gum
@@ -168,7 +167,7 @@ config_cmd_set() {
       | ui_choose 'Config-Eintrag aendern:' 0 || true)"
     if [ -n "$pick" ]; then
       local p_category="${pick%% *}" p_key="${pick##* }" p_value="" p_info p_sum p_cur p_def
-      # Erklaer-Kasten VOR der Eingabe (Muster _prompt_validated: printf help | ui_box >&2): der deutsche
+      # Erklaer-Kasten vor der Eingabe (Muster _prompt_validated: printf help | ui_box >&2): der deutsche
       # Einzeiler `summary` + aktueller Wert + Standard. Erst ident-pruefen (Interpolation), Fehlschlag -> kein
       # Kasten (die Pruefung unten bricht dann ohnehin ab).
       if _cfg_ident_ok "$p_category" && _cfg_ident_ok "$p_key"; then
@@ -208,10 +207,10 @@ config_cmd_set() {
     die "${category}.${key} ist ein Systemwert (setzt jedes Update selbst) und nicht änderbar."
 
   # category/key sind ident-validiert; der Wert wird als SQL-Literal interpoliert -> Quotes verdoppeln.
-  # UPDATE-only + RETURNING: matcht die (category,key)-Zeile NICHT -> leere Rueckgabe -> Fehler (kein
+  # UPDATE-only + RETURNING: matcht die (category,key)-Zeile nicht -> leere Rueckgabe -> Fehler (kein
   # stiller INSERT); lehnt die DB den Wert ab (Modell unbekannt, falscher Typ/ausserhalb der Grenzen) -> psql zeigt
-  # ihre Meldung (was erwartet wird) auf stderr, ON_ERROR_STOP -> nonzero -> Fehler. managed_by='owner' im WHERE =
-  # Gurt zum Hosentraeger oben (ein Systemwert wird nie per CLI geschrieben).
+  # ihre Meldung (was erwartet wird) auf stderr, ON_ERROR_STOP -> nonzero -> Fehler. managed_by='owner' im WHERE
+  # doppelt die Pruefung oben ab (ein Systemwert wird nie per CLI geschrieben).
   local v_esc="${value//\'/\'\'}" updated
   updated="$(_cfg_psql -tA -c \
     "UPDATE core.config SET value = '${v_esc}' WHERE category = '${category}' AND key = '${key}' AND managed_by = 'owner' RETURNING key")" || \
@@ -226,7 +225,7 @@ config_cmd_set() {
 # --- Dispatcher: `lifeagents config <verb> [args]` ------------------------------------------------
 config_cli() {
   # Verb-Picker: nacktes `lifeagents config` auf TTY -> Menue statt Hilfetext; ESC/non-TTY ->
-  # Hilfetext wie bisher (Exit 0, E5b).
+  # Hilfetext (Exit 0).
   if [ "$#" -eq 0 ] && ui_interactive; then
     ensure_gum
     local _menu_verb

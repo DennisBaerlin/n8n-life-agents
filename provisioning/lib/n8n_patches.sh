@@ -1,21 +1,21 @@
 # shellcheck disable=SC2034  # N8N_PATCH_CHANGED liest install_n8n_unit (install_n8n.sh, gesourct): Neustart nach angewendeter Korrektur
 # n8n_patches.sh — gezielte Korrekturen an der npm-global installierten n8n, bis n8n sie selbst liefert.
-# Sourced by provision.sh (apply_n8n_patches in install_n8n) + doctor.sh (n8n_patch_status, read-only).
+# Gesourct von provision.sh (apply_n8n_patches in install_n8n) + doctor.sh (n8n_patch_status, read-only).
 #
-# Warum ein eigener Mechanismus (arch-challenge 2026-10-23): n8n laeuft als `npm install -g` ohne eigenes
+# Warum ein eigener Mechanismus: n8n laeuft als `npm install -g` ohne eigenes
 # Projekt-Manifest -> patch-package/pnpm patch/npm overrides greifen nicht ohne Umbau (Fork, anderer ExecStart).
-# Etabliertes Muster stattdessen: idempotenter, verankerter Ersatz (Ansible `replace`) mit Fingerabdruck der GANZEN
+# Etabliertes Muster stattdessen: idempotenter, verankerter Ersatz (Ansible `replace`) mit Fingerabdruck der ganzen
 # Datei vorher und nachher (strenger als ein Diff-Kontext, kein Zusatzpaket wie `patch`):
-#   Datei = bekannte Original-Fassung  -> jede Anker-Stelle woertlich ersetzen (je genau EIN Vorkommen),
+#   Datei = bekannte Original-Fassung  -> jede Anker-Stelle woertlich ersetzen (je genau ein Vorkommen),
 #                                         <datei>.orig behalten, Ergebnis-Hash pruefen
 #   Datei = bekannte gepatchte Fassung -> nichts tun (Zweitlauf = no-op)
 #   Leit-Anker fehlt                   -> nichts tun; n8n hat die Stelle geaendert (vermutlich behoben) -> pruefen
 #   sonst (unbekannte Fassung)         -> nichts anfassen, warnen; doctor meldet ROT
-# Ein npm-Reinstall/Update ersetzt die Datei -> install_n8n ruft apply_n8n_patches bei JEDEM Lauf nach
+# Ein npm-Reinstall/Update ersetzt die Datei -> install_n8n ruft apply_n8n_patches bei jedem Lauf nach
 # ensure_n8n_package. n8n-Pin-Wechsel: Hashes je Patch neu pruefen bzw. den Patch loeschen (provisioning/CLAUDE.md).
 #
 # Tabelle: id|Pfad relativ zu `npm root -g`|sha256 Original|sha256 gepatcht|Grund (Issue)
-# Ersatz-Paare je id in _n8n_patch_pairs (JSON [[anker, ersatz], ...], woertlich, kein Regex); der ERSTE Anker ist
+# Ersatz-Paare je id in _n8n_patch_pairs (JSON [[anker, ersatz], ...], woertlich, kein Regex); der erste Anker ist
 # der Leit-Anker fuer die Status-Erkennung.
 N8N_PATCHES=(
   "memory-all-tool-rounds|n8n/node_modules/@n8n/n8n-nodes-langchain/dist/utils/agent-execution/memoryManagement.js|265e5c43cf6474f882ef03a24bb120579022ac2da2d93a297db865635e7eff73|47358c76e32c0618b7dff6561ecc7285a79cabf20f489e7a5b4f4ccb0baae84c|AI Agent V3 speichert nur die letzte Tool-Runde einer Nachricht im Chat-Gedächtnis (https://github.com/n8n-io/n8n/issues/41554)"   # lint-ignore: npm-Paketpfad unter `npm root -g`, kein Repo-Ordner
@@ -24,10 +24,10 @@ N8N_PATCHES=(
 
 # _n8n_patch_pairs <id> -> JSON-Array der Ersatz-Paare
 #   memory-all-tool-rounds (n8n 2.44.4 / langchain 2.44.2; in n8n 2.45.7 / langchain 2.45.6 byte-gleiche Datei):
-#   (1) saveToMemory schneidet die Tool-Runden einer Nachricht nicht mehr bis auf die letzte ab (= Upstream-PR #41577);
+#   (1) saveToMemory schneidet die Tool-Runden einer Nachricht nicht bis auf die letzte ab (= Upstream-PR #41577);
 #   (2) buildMessagesFromSteps: fruehere Runden kommen ueber die Ausfuehrungs-Metadaten serialisiert zurueck
 #       ({lc, kwargs} statt AIMessage) -> wieder zur AIMessage machen, sonst bricht die Postgres-Chat-Memory mit
-#       "message.toDict is not a function" ab (im Substrat nachgewiesen 2026-10-23; PR #41577 allein reicht nicht).
+#       "message.toDict is not a function" ab (PR #41577 allein reicht nicht).
 _n8n_patch_pairs() {
   case "$1" in
     memory-all-tool-rounds) cat <<'JSON'
@@ -72,7 +72,7 @@ _n8n_patch_anchor() {
   esac
 }
 
-# n8n_patch_must_stay <id> -> rc 0: ein Fehlen des Leit-Ankers heisst NICHT "vermutlich behoben" (doctor ROT statt Hinweis):
+# n8n_patch_must_stay <id> -> rc 0: ein Fehlen des Leit-Ankers heisst nicht "vermutlich behoben" (doctor ROT statt Hinweis):
 #   die Korrektur traegt eine Sicherheitszusage, die n8n von sich aus nicht gibt.
 n8n_patch_must_stay() { [ "$1" = hitl-chat-no-link-fallback ]; }
 
@@ -88,7 +88,7 @@ _n8n_patch_field() {
 # n8n_patch_ids -> alle Patch-ids, je Zeile eine
 n8n_patch_ids() { local row; for row in "${N8N_PATCHES[@]}"; do printf '%s\n' "${row%%|*}"; done; }
 
-# n8n_patch_file <id> -> absoluter Pfad (Fehler, wenn npm fehlt). compose: Pfad IM n8n-Image (dessen globales npm-root;
+# n8n_patch_file <id> -> absoluter Pfad (Fehler, wenn npm fehlt). compose: Pfad im n8n-Image (dessen globales npm-root;
 #   compose.yml legt die gepatchte Datei genau dort ueber das Original, contract_lint 33 haelt beide gleich).
 N8N_IMAGE_NPM_ROOT="${N8N_IMAGE_NPM_ROOT:-/usr/local/lib/node_modules}"
 n8n_patch_file() {
@@ -104,7 +104,7 @@ n8n_patch_status() {
   local f sha tmp st
   f="$(n8n_patch_file "$1" 2>/dev/null || true)"
   [ -n "$f" ] || { printf 'missing'; return 0; }
-  # EIN Lesezugriff (compose: ein docker exec), dann Hash und Anker lokal.
+  # Ein Lesezugriff (compose: ein docker exec), dann Hash und Anker lokal.
   tmp="$(mktemp)"
   if ! n8n_live_cat "$f" > "$tmp" 2>/dev/null; then rm -f "$tmp"; printf 'missing'; return 0; fi
   sha="$(sha256sum < "$tmp" | cut -d' ' -f1)"
@@ -115,7 +115,7 @@ n8n_patch_status() {
   rm -f "$tmp"; printf '%s' "$st"
 }
 
-# _n8n_patch_render <id> <quelle> <ziel> — woertlicher Ersatz je Paar, jeder Anker genau EINMAL (node ist da: n8n laeuft
+# _n8n_patch_render <id> <quelle> <ziel> — woertlicher Ersatz je Paar, jeder Anker genau einmal (node ist da: n8n laeuft
 #   darauf; compose: node im master). Paare ueber Env. rc 0 = geschrieben.
 _n8n_patch_render() {
   PATCH_SRC="$2" PATCH_DST="$3" PATCH_PAIRS="$(_n8n_patch_pairs "$1")" node -e '
@@ -128,11 +128,11 @@ _n8n_patch_render() {
       fs.writeFileSync(process.env.PATCH_DST, s);'
 }
 
-# _apply_n8n_patches_compose — Verbund: n8n liegt im UNVERAENDERLICHEN Image (kein eigenes Image, Einwand 5). Das
-#   VERZEICHNIS der zu korrigierenden Datei wird aus dem Image kopiert (n8n_image_tar, nie aus dem laufenden Container mit
+# _apply_n8n_patches_compose — Verbund: n8n liegt im unveraenderlichen Image (kein eigenes Image). Das
+#   Verzeichnis der zu korrigierenden Datei wird aus dem Image kopiert (n8n_image_tar, nie aus dem laufenden Container mit
 #   dem Mount), die Datei darin geprueft und gepatcht, das Ergebnis liegt im Volume N8N_PATCH_DIR (`n8n_patches`) unter
 #   <id>/; compose.yml haengt <id>/ per Volume-Unterpfad schreibgeschuetzt ueber das Original-Verzeichnis. Verzeichnis statt
-#   Einzeldatei: ein Unterpfad auf eine DATEI lehnen Docker-Engines unter Linux ab ("readdirent … not a directory", CI-Fund),
+#   Einzeldatei: ein Unterpfad auf eine Datei lehnen Docker-Engines unter Linux ab ("readdirent … not a directory"),
 #   Docker Desktop nicht. Geaendert -> N8N_PATCH_CHANGED=1, der folgende n8n-Neustart haengt die neue Fassung ein.
 _apply_n8n_patches_compose() {
   local id f name stage out="${N8N_PATCH_DIR:-/opt/n8n-patches}" sha
@@ -210,7 +210,7 @@ apply_n8n_patches() {
       original)
         f="$(n8n_patch_file "$id")"
         tmp="${f}.lifeagents-tmp"
-        # Woertlicher Ersatz je Paar, jeder Anker genau EINMAL (node ist da: n8n laeuft darauf); Paare ueber Env
+        # Woertlicher Ersatz je Paar, jeder Anker genau einmal (node ist da: n8n laeuft darauf); Paare ueber Env
         if _n8n_patch_render "$id" "$f" "$tmp" \
            && [ "$(sha256sum "$tmp" | cut -d' ' -f1)" = "$(_n8n_patch_field "$id" 4)" ]; then
           cp -p "$f" "${f}.orig"

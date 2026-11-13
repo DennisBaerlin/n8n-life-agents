@@ -1,46 +1,44 @@
-# bootstrap_owner.sh — Owner-Bootstrap + Multi-User-Erstidentitaet (Phase 4/5 Dev/Release-Split-Plan).
-# Sourced by provision.sh. Definiert bootstrap_owner(). Laeuft NACH apply_schema und VOR der
-# (API-Key-gegateten) Credential-/Workflow-Injektion — denn der hier gemintete N8N_API_KEY ist
-# genau deren Tor.
+# bootstrap_owner.sh — Owner-Bootstrap + Erstidentitaet (Owner-Person-Skelett).
+# Gesourct von provision.sh; definiert bootstrap_owner(). Laeuft nach apply_schema und vor der
+# (API-Key-gegateten) Credential-/Workflow-Injektion — der hier gemintete N8N_API_KEY ist deren Tor.
 #
-# OWNER-MECHANISMUS (Phase-5-Redesign, ersetzt das fragile managed-env):
-#   Der Owner wird ueber n8ns INTERNEN Setup-Flow eingerichtet — `POST /rest/owner/setup`
-#   (firstName/lastName/email/password) -> Session-Cookie -> `POST /rest/api-keys`. Das ist
-#   genau der Pfad des Setup-Assistenten und damit VERSIONS-STABIL.
-#   Verworfen: N8N_INSTANCE_OWNER_MANAGED_BY_ENV (+ bcrypt-Hash). Recherche (n8n PR #27859):
-#   managed-env provisioniert den Owner NUR beim allerersten Boot und no-opt still, wenn die
-#   Vars erst NACH dem ersten Start dazukommen — genau die Reihenfolge in provision.sh
-#   (n8n startet in install_n8n, core.env entstand erst danach) -> Mint-Login 401 -> Deploy
-#   blockiert (der Phase-5-Blocker). `/rest/owner/setup` haengt an KEINEM Boot-Timing:
+# Owner-Mechanismus:
+#   Der Owner wird ueber n8ns internen Setup-Flow eingerichtet — `POST /rest/owner/setup`
+#   (firstName/lastName/email/password) -> Session-Cookie -> `POST /rest/api-keys`. Das ist der Pfad des
+#   Setup-Assistenten und damit versionsstabil.
+#   Verworfen: N8N_INSTANCE_OWNER_MANAGED_BY_ENV (+ bcrypt-Hash). Recherche (n8n PR #27859): managed-env
+#   provisioniert den Owner nur beim allerersten Boot und no-opt still, wenn die Vars erst nach dem ersten
+#   Start dazukommen — genau die Reihenfolge in provision.sh (n8n startet in install_n8n, core.env entstand
+#   erst danach) -> Mint-Login 401 -> Deploy blockiert. `/rest/owner/setup` haengt an keinem Boot-Timing:
 #   n8n bootet im Setup-Pending-Zustand, der Bootstrap richtet den Owner danach ein.
 #
 # Schritte (jeder idempotent + guarded; ein zweiter Lauf ist ein no-op bzw. reuse):
-#   1. n8n-API-Key  : Override-first (N8N_API_KEY aus der Env ODER bereits in core.env -> reuse,
-#                     kein erneutes Minten = keine dangling Keys). Sonst Session beschaffen —
-#                     erst `/rest/login` (Owner existiert schon, z.B. Re-Run mit gepinntem
-#                     Passwort), sonst `/rest/owner/setup` (frische Instanz) -> Cookie ->
-#                     `POST /rest/api-keys`. RESILIENT: jeder Fehlschlag -> warn + skip (die
-#                     Cred-/Workflow-Injektion ist auf N8N_API_KEY gegatet, faellt sauber aus).
-#                     Persistiert in core.env (640 root:n8n) fuer den idempotenten Reuse.
-#   2. Telegram-Basis: setMyCommands ROLLEN-SKOPIERT (WS-6, visibility-skopiert aus dem core-
-#                      `commands`-Block: Owner-Befehle via {type:chat}, Default-Befehle via
-#                      {type:default}; je Scope sofort per getMyCommands verifiziert) + deleteWebhook
-#                      (drop_pending_updates) — clean slate; Projekt-Profilbild, wenn der Bot sicher noch keins hat.
-#                      (Den eigentlichen setWebhook mit secret_token managt
-#                      n8n SELBST beim Aktivieren des Telegram-Trigger-Workflows; ein manueller
-#                      setWebhook hier wuerde von n8ns Aktivierung ueberschrieben -> Phase 6.)
-#   3. Owner-Person-Skelett: packages/core/db/util/util_seed_owner_skeleton.sql (family-Zeile; finance_profile legt seit
-#                            Install-UX-Phase 6 das finance-Paket selbst an, context_skeletons) anlegen, falls fehlend. MUSS existieren, BEVOR der Owner seinen Code
-#                            eintippt — fn_consume_pairing_challenge mergt nur in eine bestehende
-#                            Person (birth_date-Validator = Backstop). PII via psql-Variablen.
-#   4. Owner-Pairing-Code  : NICHT mehr hier (Install-UX-Phase 3) — _arm_owner_challenge armiert ihn erst im
-#                            gefuehrten Ende (owner_connect.sh), wenn der Bot erreichbar ist; Code NUR im Terminal,
-#                            NIE ueber Telegram. `/start <code>` -> Orchestrator-Pre-Router bindet role=owner.
+#   1. n8n-API-Key  : Override-first (N8N_API_KEY aus der Env oder bereits in core.env -> reuse, kein
+#                     erneutes Minten = keine dangling Keys). Sonst Session beschaffen — erst `/rest/login`
+#                     (Owner existiert schon, z.B. Re-Run mit gepinntem Passwort), sonst
+#                     `/rest/owner/setup` (frische Instanz) -> Cookie -> `POST /rest/api-keys`. Resilient:
+#                     jeder Fehlschlag -> warn + skip (die Cred-/Workflow-Injektion ist auf N8N_API_KEY
+#                     gegatet, faellt sauber aus). Persistiert in core.env (640 root:n8n) fuer den
+#                     idempotenten Reuse.
+#   2. Telegram-Basis: setMyCommands rollen-skopiert (aus dem core-`commands`-Block: Owner-Befehle via
+#                      {type:chat}, Default-Befehle via {type:default}; je Scope sofort per getMyCommands
+#                      verifiziert) + deleteWebhook (drop_pending_updates) — clean slate; Projekt-Profilbild,
+#                      wenn der Bot sicher noch keins hat. Den eigentlichen setWebhook mit secret_token
+#                      managt n8n selbst beim Aktivieren des Telegram-Trigger-Workflows; ein manueller
+#                      setWebhook hier wuerde von n8ns Aktivierung ueberschrieben.
+#   3. Owner-Person-Skelett: packages/core/db/util/util_seed_owner_skeleton.sql (family-Zeile; finance_profile
+#                            legt das finance-Paket selbst an, context_skeletons) anlegen, falls fehlend. Muss
+#                            existieren, bevor der Owner seinen Code eintippt — fn_consume_pairing_challenge
+#                            mergt nur in eine bestehende Person (birth_date-Validator = Backstop). PII via
+#                            psql-Variablen.
+#   4. Owner-Pairing-Code  : nicht hier — _arm_owner_challenge armiert ihn erst im gefuehrten Ende
+#                            (owner_connect.sh), wenn der Bot erreichbar ist; Code nur im Terminal, nie ueber
+#                            Telegram. `/start <code>` -> Orchestrator-Pre-Router bindet role=owner.
 #
-# Reads globals (provision.sh): N8N_USER, N8N_OWNER_ENV_FILE, N8N_PORT, N8N_URL, PROFILE,
+# Liest Globals (provision.sh): N8N_USER, N8N_OWNER_ENV_FILE, N8N_PORT, N8N_URL, PROFILE,
 #   UNATTENDED, DOMAIN, REPO_ROOT, N8N_DB_NAME.
-# Inputs via Prozess-Env (override-first; Dev/Test: aus dem .env-Test-Block, Release/Phase 6: TTY):
-#   N8N_OWNER_EMAIL (default owner@localhost) · N8N_OWNER_PASSWORD (sonst generiert, n8n-konform) ·
+# Eingaben per Prozess-Env (override-first; Dev/Test aus dem .env-Test-Block, Release per TTY):
+#   N8N_OWNER_EMAIL (default owner@<DOMAIN|example.com>) · N8N_OWNER_PASSWORD (sonst generiert, n8n-konform) ·
 #   OWNER_FIRST_NAME / OWNER_LAST_NAME / OWNER_BIRTH_DATE (Skelett; fehlt -> Seed+Arm uebersprungen) ·
 #   OWNER_LANGUAGE (Sprache fester Bot-Texte, default 'de') ·
 #   OWNER_PERSONA (Bot-Charakter, default neutral; ungueltig -> neutral, nie Abbruch) ·
@@ -54,12 +52,8 @@ _owner_psql() {
   pg_su_psql -v ON_ERROR_STOP=1 -X -d "$N8N_DB_NAME" "$@"
 }
 
-# Owner-Credentials aufloesen (Email + Klartext-Passwort). KEIN bcrypt/managed-env mehr —
-# /rest/owner/setup nimmt das Klartext-Passwort und hasht selbst. Das generierte Passwort MUSS
-# n8ns Policy erfuellen (>=8 Zeichen, >=1 Ziffer, >=1 Grossbuchstabe; rand_hex liefert nur
-# Kleinbuchstaben+Ziffern -> Prefix 'Pw' + Suffix-Ziffer ergaenzt Gross/Ziffer garantiert).
-# n8n-Passwort-Policy (verifiziert in 2.21.7-Source: passwordSchema; Owner-Setup auf 2.44.4 bestaetigt): 8–64 Zeichen, >=1 Ziffer,
-# >=1 Grossbuchstabe. Verletzung -> /rest/owner/setup 400 (still). 0 = konform.
+# n8n-Passwort-Policy (passwordSchema in n8n): 8–64 Zeichen, >=1 Ziffer, >=1 Grossbuchstabe. Verletzung ->
+# /rest/owner/setup 400 (still). 0 = konform.
 _owner_password_ok() {
   local p="$1"
   [ "${#p}" -ge 8 ] && [ "${#p}" -le 64 ] || return 1
@@ -68,10 +62,12 @@ _owner_password_ok() {
   return 0
 }
 
-# Default-Email MUSS ein FQDN sein: n8ns /rest/owner/setup validiert per zod-`.email()` und lehnt
+# Owner-Credentials aufloesen (Email + Klartext-Passwort; /rest/owner/setup hasht selbst).
+# Default-Email muss ein FQDN sein: n8ns /rest/owner/setup validiert per zod-`.email()` und lehnt
 # `owner@localhost` ab ("Invalid email"). Mit Domain -> owner@<domain>, sonst valider Platzhalter.
-# Generiertes Passwort ist policy-konform by construction (Prefix 'Pw' + Suffix-Ziffer); ein per Env
-# gepinntes Passwort wird gegen die Policy geprueft und bei Verstoss klar gewarnt (sonst opaker 400).
+# Das generierte Passwort ist policy-konform by construction (rand_hex liefert nur Kleinbuchstaben+Ziffern,
+# Prefix 'Pw' + Suffix-Ziffer ergaenzen Gross/Ziffer); ein per Env gepinntes Passwort wird gegen die Policy
+# geprueft und bei Verstoss klar gewarnt (sonst opaker 400).
 _resolve_owner_creds() {
   OWNER_EMAIL="${N8N_OWNER_EMAIL:-owner@${DOMAIN:-example.com}}"
   OWNER_FIRST="${OWNER_FIRST_NAME:-Owner}"
@@ -89,11 +85,11 @@ _bootstrap_wait_health() {
 }
 
 # Body + HTTP-Code einer JSON-POST gegen die interne REST-API holen. Gibt "<body>\n<code>" aus
-# (Cookie -> Jar via -c). KEIN -f: wir wollen den 4xx-Body (Validierungsfehler) sehen. Der Body
-# eines FEHLERs enthaelt nur Validierungstext (kein Secret) -> sicher loggbar; Erfolg loggen wir nie.
+# (Cookie -> Jar via -c). Ohne -f: der 4xx-Body (Validierungsfehler) wird gebraucht. Der Body
+# eines Fehlers enthaelt nur Validierungstext (kein Secret) -> loggbar; Erfolg wird nie geloggt.
 _owner_post() {
   local jar="$1" path="$2" data="$3"
-  # Body (enthaelt das Owner-Passwort) ueber den curl-Config-Kanal, NIE im argv (curl_secret).
+  # Body (enthaelt das Owner-Passwort) ueber den curl-Config-Kanal, nie im argv (curl_secret).
   curl_cfg data "$data" | curl_secret -sS --max-time 15 -c "$jar" -o - -w '\n%{http_code}' -X POST "${N8N_URL}${path}" \
        -H 'content-type: application/json' 2>/dev/null || true
 }
@@ -109,7 +105,7 @@ _owner_login() {
 }
 
 # Frische Instanz: Owner via n8ns internem Setup-Endpoint anlegen -> Session-Cookie in den Jar.
-# Das ist der Pfad des Setup-Assistenten (versions-stabil). 0 = eingerichtet, !=0 = fehlgeschlagen
+# 0 = eingerichtet, !=0 = fehlgeschlagen
 # (z.B. Owner schon vorhanden -> 400, Passwort-Policy/Email-Format) -> Grund (Body) in den warn.
 _owner_setup() {
   local jar="$1" resp code body
@@ -129,9 +125,9 @@ _owner_setup() {
 }
 
 # Den n8n-API-Key in /etc/lifeagents/core.env persistieren (640 root:n8n) — per-Key-Upsert (env_upsert),
-# damit die Nutzer-Eingaben von release_inputs in derselben Datei NICHT geclobbert werden (ein Schreiber
+# damit die Nutzer-Eingaben von release_inputs in derselben Datei nicht geclobbert werden (ein Schreiber
 # je Key, kein Whole-File-Write; Secret-Modell §3.0a). Die RO-Rollen-Passwoerter persistiert
-# provision_role_password selbst. core.env ist KEINE n8n-Config (n8n ignoriert die Keys); EnvironmentFile=-
+# provision_role_password selbst. core.env ist keine n8n-Config (n8n ignoriert die Keys); EnvironmentFile=-
 # der Unit toleriert unbekannte Keys.
 _persist_owner_env() {
   local envf="$N8N_OWNER_ENV_FILE"
@@ -151,7 +147,7 @@ _persist_owner_env() {
 # Bestehende Host-Secrets aus core.env in die Env zurueckladen (Reuse), falls nicht schon per
 # Prozess-Env gesetzt — damit ein Re-Run dieselben Werte wiederverwendet (kein Rotieren). Host-only
 # (API-Key + core_ro/context_ro-PW); die Paket-Passwoerter liegen in /etc/lifeagents/<pkg>.env und
-# laedt der per-Paket-Install. NUR if-Form (set-e-Falle, leerer Wert).
+# laedt der per-Paket-Install. Nur if-Form (set-e-Falle, leerer Wert).
 _load_owner_env_state() {
   local v
   if [ -z "${N8N_API_KEY:-}" ]; then
@@ -168,14 +164,13 @@ _load_owner_env_state() {
   fi
 }
 
-# Die HOST-Read-Only-Login-Rollen (core_ro/context_ro) brauchen ein Passwort, damit n8n sie ueber
+# Die Host-Read-Only-Login-Rollen (core_ro/context_ro) brauchen ein Passwort, damit n8n sie ueber
 # 127.0.0.1 + scram nutzen kann (peer-Auth gilt nur am Unix-Socket fuer postgres). apply_schema legt
-# sie als LOGIN OHNE Passwort an -> HIER setzen wir es (Superuser, generischer common-Helfer) und
-# persistieren es in /etc/lifeagents/core.env + reichen es als CORE_RO_PASSWORD/CONTEXT_RO_PASSWORD an
-# inject_credentials. **NUR Host-Rollen** (Secret-Modell §3.0a, D1): die PAKET-Rollen <pkg>_rw/_ro
-# mintet der per-Paket-Install selbst (pkg_lifecycle Stufe 4, eigene /etc/lifeagents/<pkg>.env) — der
-# fruehere finance_ro/finance_rw-Mint hier lief VOR der Rollen-Anlage (Reihenfolge-Blocker).
-# OHNE diesen Schritt verweisen die Core-Postgres-Nodes (Pairing-Pre-Router, Frei-SQL-Lesepfad der
+# sie als LOGIN ohne Passwort an -> hier wird es gesetzt (Superuser, generischer common-Helfer) und in
+# /etc/lifeagents/core.env persistiert + als CORE_RO_PASSWORD/CONTEXT_RO_PASSWORD an inject_credentials
+# gereicht. Nur Host-Rollen (Secret-Modell §3.0a): die Paket-Rollen <pkg>_rw/_ro mintet der per-Paket-Install
+# selbst (pkg_lifecycle Stufe 4, eigene /etc/lifeagents/<pkg>.env) — vor der Rollen-Anlage gibt es sie noch nicht.
+# Ohne diesen Schritt verweisen die Core-Postgres-Nodes (Pairing-Pre-Router, Frei-SQL-Lesepfad der
 # Core-Agenten unter core_ro, load_context unter context_ro) auf eine nicht existente Credential.
 _provision_ro_secrets() {
   ensure_lifeagents_dir
@@ -185,7 +180,7 @@ _provision_ro_secrets() {
   else
     warn "context_ro-Passwort setzen fehlgeschlagen -> Lese-Credential 'agent.core_contexts read-only' wird uebersprungen."
   fi
-  # core_ro: Frei-SQL-Lesepfad der CORE-Agenten (monitor/guide) — agent+core+finance read-only (B3).
+  # core_ro: Frei-SQL-Lesepfad der Core-Agenten (monitor/guide) — agent+core+finance read-only.
   if provision_role_password core_ro "$envf" CORE_RO_PASSWORD; then
     ok "RO-Rolle core_ro: Passwort gesetzt (lifeagents/core.env) + an die Credential-Injektion gereicht."
   else
@@ -193,8 +188,8 @@ _provision_ro_secrets() {
   fi
 }
 
-# N8N_API_KEY ueber die INTERNE REST-API minten (kein Public-Endpoint dafuer). Session beschaffen
-# (Login ODER Owner-Setup) -> POST /rest/api-keys. Bewusst RESILIENT: jeder Fehlschlag -> warn +
+# N8N_API_KEY ueber die interne REST-API minten (kein Public-Endpoint dafuer). Session beschaffen
+# (Login oder Owner-Setup) -> POST /rest/api-keys. Bewusst resilient: jeder Fehlschlag -> warn +
 # skip (die Cred-/Workflow-Injektion ist auf N8N_API_KEY gegatet und faellt dann sauber aus).
 _mint_api_key() {
   # Override-first: schon vorhanden -> nichts tun.
@@ -218,14 +213,14 @@ _mint_api_key() {
     return 1
   fi
 
-  # Scopes sind seit n8n 2.x Pflicht im CreateApiKeyRequestDto. Die fuer den Owner gueltige Liste
-  # liefert n8n selbst -> GET /rest/api-keys/scopes (versions-proof, exakt wie es die UI macht).
+  # Scopes sind in n8n 2.x Pflicht im CreateApiKeyRequestDto. Die fuer den Owner gueltige Liste
+  # liefert n8n selbst -> GET /rest/api-keys/scopes (versionsfest, wie es die UI macht).
   # Voller Owner-Scope = Vollzugriff (Community erzwingt Scopes nicht, aber das DTO verlangt das Array).
   local scopes
   scopes="$(curl -sS --max-time 10 -b "$jar" "${N8N_URL}/rest/api-keys/scopes" 2>/dev/null | jq -c '.data // .' 2>/dev/null || true)"
   case "$scopes" in ''|null) scopes='[]' ;; esac
 
-  # API-Key anlegen. Antwort-Shape variiert je n8n-Version -> defensiv mehrere Felder probieren.
+  # API-Key anlegen. Antwort-Form variiert je n8n-Version -> mehrere Felder probieren.
   # -w fuer den HTTP-Code (Diagnose); ein 2xx-Body kann den Key enthalten -> nur Fehler-Body loggen.
   local resp code key
   resp="$(curl -sS --max-time 10 -b "$jar" -o - -w '\n%{http_code}' -X POST "${N8N_URL}/rest/api-keys" \
@@ -308,11 +303,11 @@ _bot_profile_photo_remember() {
     warn "Bot-Profilbild: Merkzeile nicht geschrieben — ein später selbst gelöschtes Bild käme beim nächsten Update zurück."
 }
 
-# Telegram-Basis: rollen-skopiertes BotFather-Menue (WS-6, aus dem core-`commands`-Block) + clean slate.
-# PROSA-Gotcha (n8n-Doku-Pflicht): den produktiven setWebhook (URL + secret_token) setzt n8n SELBST,
-# sobald der Telegram-Trigger-Workflow aktiviert wird (deploy_workflows). Ein manueller setWebhook hier
-# liefe ihm voraus und wuerde ueberschrieben -> wir beschraenken uns auf das Menue + drop_pending_updates
-# (clearing). Den secret_token macht _ensure_ingress_id_key je Instanz geheim (deploy_workflows leitet die ids ab).
+# Telegram-Basis: rollen-skopiertes BotFather-Menue (aus dem core-`commands`-Block) + clean slate.
+# Den produktiven setWebhook (URL + secret_token) setzt n8n selbst, sobald der Telegram-Trigger-Workflow
+# aktiviert wird (deploy_workflows). Ein manueller setWebhook hier liefe ihm voraus und wuerde ueberschrieben
+# -> nur das Menue + drop_pending_updates. Den secret_token macht _ensure_ingress_id_key je Instanz geheim
+# (deploy_workflows leitet die ids ab).
 _wire_telegram() {
   [ -n "${TELEGRAM_BOT_TOKEN:-}" ] || { log "Kein TELEGRAM_BOT_TOKEN -> Telegram-Schritt uebersprungen."; return 0; }
   need_cmd curl || { warn "curl fehlt -> Telegram-Schritt uebersprungen."; return 0; }
@@ -324,13 +319,13 @@ _wire_telegram() {
   # Projekt-Profilbild, wenn der Bot sicher noch keins hat (eigener Schritt, nie fatal).
   _ensure_bot_profile_photo "$TELEGRAM_BOT_TOKEN" || true
 
-  # BotFather-Menue rollen-getrennt aus der EINEN Befehls-SoT (Owner /help+/onboarding via {type:chat},
+  # BotFather-Menue rollen-getrennt aus dem einen Befehls-Block (Owner /help+/onboarding via {type:chat},
   # Default /help via {type:default}); je Scope sofort per getMyCommands verifiziert.
   _set_bot_command_menus "$TELEGRAM_BOT_TOKEN"
 
   # Clean slate: haengende Updates verwerfen. Loescht einen ggf. veralteten Webhook; n8n
   # registriert ihn beim Trigger-Activate frisch (Webhook-Profil) bzw. Long-Polling kann
-  # dann getUpdates nutzen (Dev). drop_pending_updates verhindert eine Alt-Nachrichten-Flut.
+  # dann getUpdates nutzen (Dev). drop_pending_updates verhindert eine Flut alter Nachrichten.
   if tg_api_curl "$TELEGRAM_BOT_TOKEN" deleteWebhook -fsS --max-time 10 -X POST -H 'content-type: application/json' \
        --data '{"drop_pending_updates":true}' >/dev/null 2>&1; then
     ok "Telegram-Webhook-State bereinigt (drop_pending_updates)."
@@ -350,7 +345,7 @@ _seed_owner_skeleton() {
   local seed="$REPO_ROOT/packages/core/db/util/util_seed_owner_skeleton.sql"
   [ -f "$seed" ] || die "Seed fehlt: $seed (unvollstaendiges Paket)."
 
-  # PII (Name/Geburtsdatum) ueber \set in einem 600-Treiber, NICHT als -v (Prozessliste). Der
+  # PII (Name/Geburtsdatum) ueber \set in einem 600-Treiber, nicht als -v (Prozessliste). Der
   # postgres-User liest die 600/postgres-eigene Treiberdatei; die Repo-Datei bleibt root-only.
   # shellcheck disable=SC2119  # psql_superuser_driver bewusst ohne extra psql-Args
   if {
@@ -369,22 +364,22 @@ _seed_owner_skeleton() {
 }
 
 # _arm_owner_challenge <code> — Owner-Pairing-Code in der DB armieren; das jsonb-Ergebnis von
-# fn_arm_pairing_challenge ({ok, expires_at} bzw. {ok:false, reason}) auf STDOUT. Gibt NICHTS aus — die
-# Anzeige (Deep-Link + Warten) macht owner_connect_guided am ENDE des Laufs, wenn der Bot erreichbar ist
-# (Install-UX-Phase 3: frueher stand die Code-Box mitten im Lauf, vor der Webhook-Aktivierung, und war
-# bis zum Ende abgelaufen). fn_arm guardt selbst: bereits gepairter Owner -> {ok:false}; ein neuer Code
-# ersetzt eine offene Owner-Challenge. Code via \set im 600-Treiber (nie als -v / argv).
+# fn_arm_pairing_challenge ({ok, expires_at} bzw. {ok:false, reason}) auf stdout. Zeigt nichts an — die
+# Anzeige (Deep-Link + Warten) macht owner_connect_guided am Ende des Laufs, wenn der Bot erreichbar ist
+# (mitten im Lauf waere der Code vor der Webhook-Aktivierung bis zum Ende abgelaufen). fn_arm guardt selbst:
+# bereits gepairter Owner -> {ok:false}; ein neuer Code ersetzt eine offene Owner-Challenge. Code via \set
+# im 600-Treiber (nie als -v / argv).
 _arm_owner_challenge() {
   { psql_setvar code "$1"
     printf "SELECT agent.fn_arm_pairing_challenge(jsonb_build_object('role','owner','challenge', :'code'));\n"
   } | psql_superuser_driver -At 2>/dev/null || true
 }
 
-# core.backup_key-Backup-Key sicherstellen: generiert einen backup_encryption_key, falls NOCH KEINER
-# da ist (ON CONFLICT DO NOTHING — NIE rotieren, sonst werden bereits erstellte Export-Backups
+# core.backup_key-Backup-Key sicherstellen: generiert einen backup_encryption_key, falls noch keiner
+# da ist (ON CONFLICT DO NOTHING — nie rotieren, sonst werden bereits erstellte Export-Backups
 # unentschluesselbar). Lebt sync-frei in der DB (packages/core/CLAUDE.md Backup/Restore), ACL-gefenct gegen
-# die Leserollen. Generiert via openssl rand; Wert NUR ueber den 600-Treiber (Secret, kein argv-Leak).
-# BACKUP_KEY_NEW=1, wenn DIESER Lauf den Schluessel angelegt hat (RETURNING liefert nur dann eine Zeile) -> der End-Recap
+# die Leserollen. Generiert via rand_hex; Wert nur ueber den 600-Treiber (Secret, kein argv-Leak).
+# BACKUP_KEY_NEW=1, wenn dieser Lauf den Schluessel angelegt hat (RETURNING liefert nur dann eine Zeile) -> der End-Recap
 # zeigt einmal das Notfallblatt (provision.sh _recap_backup_kit). Prozess-Variable, nie exportiert.
 # shellcheck disable=SC2034  # gelesen von provision.sh _recap_backup_kit (im selben Prozess gesourct)
 BACKUP_KEY_NEW=0
@@ -401,9 +396,9 @@ _ensure_backup_secret() {
   fi
 }
 
-# Eingangs-Schluessel INGRESS_ID_KEY sicherstellen (Security-Audit 2026-10): n8n prueft echte Telegram-Zustellungen ueber
+# Eingangs-Schluessel INGRESS_ID_KEY sicherstellen: n8n prueft echte Telegram-Zustellungen ueber
 # secret_token = <workflowId>_<nodeId> auf der Route <webhookId>/webhook — im Repo build-stabil und damit oeffentlich.
-# deploy_workflows leitet beide ids des telegramTrigger je Instanz aus diesem Schluessel ab. EINMAL erzeugen, nie
+# deploy_workflows leitet beide ids des telegramTrigger je Instanz aus diesem Schluessel ab. Einmal erzeugen, nie
 # rotieren (sonst re-registriert jeder Deploy den Webhook neu); Wert nur ueber env_upsert (kein argv).
 _ensure_ingress_id_key() {
   if [ -n "$(read_env_value "$N8N_OWNER_ENV_FILE" INGRESS_ID_KEY || true)" ]; then return 0; fi
@@ -427,7 +422,7 @@ bootstrap_owner() {
   _ensure_ingress_id_key   # geheime Telegram-Eingangs-ids je Instanz (deploy_workflows)
   _wire_telegram
   _seed_owner_skeleton
-  # Kein Pairing-Code mehr hier: der kommt im gefuehrten Ende (owner_connect_guided), sobald der Bot
-  # erreichbar ist. Ohne TTY: `lifeagents household pair-owner` (derselbe Ablauf).
+  # Der Pairing-Code kommt erst im gefuehrten Ende (owner_connect_guided), sobald der Bot erreichbar ist.
+  # Ohne TTY: `lifeagents household pair-owner` (derselbe Ablauf).
   ok "Owner-Bootstrap abgeschlossen."
 }

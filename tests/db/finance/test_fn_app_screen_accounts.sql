@@ -7,7 +7,8 @@
 --   [2] Zeilen: Sparkonto „Stand heute · davon frei“ + „Reicht bis {Monat}“ mit warn „x im Monat mehr ab als rein“
 --       (B1/B2); Girokonto mit Bruecke <= 8 Zeilen und Kontoauszug-Datum im Aufklappen; Gemeinschaftskonto ohne Auszug
 --       -> „Kontoauszug: noch keiner“ + „Tiefster Stand —“ mit Grund im Aufklappen, Einzelposten gedeckelt; Tagesgeld
---       ohne Bewegung -> „0 · keine Zahlungen“; Gehen ab / Kommen rein im naechsten Monat getrennt, nie netto
+--       ohne Bewegung -> „0 · keine Zahlungen“; Gehen ab / Kommen rein im naechsten Monat getrennt, nie netto, an
+--       jedem Stichtag des Monats (eigene Abbuchung am 28.)
 --   [3] Partnerin sieht dasselbe wie der Owner
 --   [4] Kind: nur eigenes Konto, kein Haushaltsname (Volltextsuche), Eingang vom Haushalt neutral; Lint = 0
 --   [5] Gast ohne Daten: ein leerer Abschnitt; probe empty
@@ -71,7 +72,16 @@ BEGIN
   IF it->'pill' IS DISTINCT FROM finance.fn_app_low_state_pill(finance.fn_account_low_state(
        (SELECT id::int FROM pg_temp.app_fx WHERE key = 'acc_giro_jonas'))) THEN
     RAISE EXCEPTION 'FAIL [2c2] Girokonto: Pille = fn_app_low_state_pill(fn_account_low_state), got %', it->'pill'; END IF;
-  -- Gehen ab / Kommen rein: bis zum 15. „noch im <laufenden Monat>“, danach „im <naechsten Monat>“, getrennt, nie netto
+  -- Gehen ab / Kommen rein: bis zum 15. „noch im <laufenden Monat>“, danach „im <naechsten Monat>“, getrennt, nie netto.
+  -- Die Fixture-Abgaenge liegen am 1. und 12.: vom 13. bis 15. ist der Rest des Monats leer (0 · keine Zahlungen). Darum
+  -- eine eigene Abbuchung am 28. und das Gehalt am Monatsletzten: beide liegen an jedem Tag im Fenster (Tag <= 15 ->
+  -- [heute, Monatsende] mit heute <= 28; sonst der ganze naechste Monat). [2d] prueft am Datum des Laufs, [2d3] die
+  -- uebrigen Stichtage.
+  INSERT INTO finance.recurring_payments (name, account_id, amount, schedule_unit, schedule_day_of_month, first_payment_date, valid_from)
+  VALUES ('Fenster-Abo Test', (SELECT id::int FROM pg_temp.app_fx WHERE key = 'acc_giro_jonas'), -12, 'month', 28,
+          (date_trunc('month', current_date) + interval '27 days')::date, current_date - 30);
+  SELECT x INTO s FROM jsonb_array_elements(finance.fn_app_screen_accounts(jsonb_build_object('person_id', 'fxh_jonas', 'params', '{}'::jsonb))->'sections') x
+   WHERE x->'title'->'params'->>'account' = 'Girokonto Jonas';
   v_rest := extract(day FROM current_date) <= 15;
   v_from := CASE WHEN v_rest THEN current_date ELSE (date_trunc('month', current_date) + interval '1 month')::date END;
   IF NOT EXISTS (SELECT 1 FROM jsonb_array_elements(s->'items') i
@@ -83,6 +93,22 @@ BEGIN
                                             jsonb_build_object('month', core.fn_ui_month(v_from, true)))
                        AND (i->'value'->>'value')::numeric > 0) THEN
     RAISE EXCEPTION 'FAIL [2d] Girokonto: Gehen ab (< 0) und Kommen rein (> 0) im naechsten Monat getrennt, got %', s; END IF;
+  -- [2d3] dieselbe Fenster-Regel fuer andere Stichtage (1., 13., 15., 16., 28., Monatsletzter des naechsten Monats): die
+  -- Vorkommen haengen nur am Fenster (fn_app_payment_occurrences hat kein eigenes Datum) -> Abgang und Eingang immer da
+  DECLARE d date; w_from date; w_until date; o jsonb; BEGIN
+    FOREACH d IN ARRAY (SELECT array_agg((date_trunc('month', current_date) + interval '1 month')::date + k)
+                          FROM unnest(ARRAY[0, 12, 14, 15, 27]) k)
+                       || ((date_trunc('month', current_date) + interval '2 months - 1 day')::date) LOOP
+      w_from := CASE WHEN extract(day FROM d) <= 15 THEN d ELSE (date_trunc('month', d) + interval '1 month')::date END;
+      w_until := CASE WHEN extract(day FROM d) <= 15 THEN (date_trunc('month', d) + interval '1 month - 1 day')::date
+                      ELSE (date_trunc('month', d) + interval '2 months - 1 day')::date END;
+      o := finance.fn_app_payment_occurrences((SELECT id::int FROM pg_temp.app_fx WHERE key = 'acc_giro_jonas'), w_from, w_until, true, 'fxh_jonas');
+      IF NOT EXISTS (SELECT 1 FROM jsonb_array_elements(o->'rows') r WHERE (r->>'amount')::numeric < 0)
+         OR NOT EXISTS (SELECT 1 FROM jsonb_array_elements(o->'rows') r WHERE (r->>'amount')::numeric > 0) THEN
+        RAISE EXCEPTION 'FAIL [2d3] Stichtag %: Fenster % .. % ohne Abgang oder Eingang, got %', d, w_from, w_until, o; END IF;
+    END LOOP;
+  END;
+  DELETE FROM finance.recurring_payments WHERE name = 'Fenster-Abo Test';
   -- Kontoauszug bei jedem Konto im Aufklappen von „Stand heute“: Girokonto mit Datum
   IF NOT EXISTS (SELECT 1 FROM jsonb_array_elements(s->'items'->0->'details') d
                   WHERE d->'label' = core.fn_ui_tpl('finance.app.accounts.d_statement') AND d->'value'->>'kind' = 'date') THEN

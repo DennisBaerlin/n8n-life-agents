@@ -1,9 +1,9 @@
 ﻿#Requires -Version 5.1
 # =====================================================================================================
-# builder_discovery.ps1 — findet die Workflow-Builder aller Pakete (Phase D: keine zentrale Registry)
+# builder_discovery.ps1 — findet die Workflow-Builder aller Pakete (keine zentrale Registry)
 #
 # Konvention: jede Def-Datei unter packages/<pkg>/build/workflows/{,tools/}*.ps1 definiert ihre Builder als
-# TOP-LEVEL-Funktion 'Build-<X>' (tools/: genau eine). Die Engine parst jede Datei mit dem PowerShell-Parser
+# Top-Level-Funktion 'Build-<X>' (tools/: genau eine). Die Engine parst jede Datei mit dem PowerShell-Parser
 # (keine Ausfuehrung, kein Namens-Raten) und leitet daraus die Builder-Liste ab — ein neues Paket dockt ohne
 # Engine-Edit an. Hilfs-Dateien ohne Build-* (harnesses.ps1, cron.advisor_common.ps1, …) liefern 0 Builder.
 # Die Reihenfolge ist fuer das Ergebnis wirkungslos (IDs kommen nur aus den gespeicherten <id>-<name>.json,
@@ -41,9 +41,9 @@ function Find-WorkflowBuilder {
 }
 
 # Netz gegen still leere Credentials: jede in einer Datei gelesene $CRED_*-Variable muss ein bekannter
-# Deskriptor (Host + Manifest-erzeugt) sein oder IRGENDWO in derselben Datei zugewiesen werden (lokaler
+# Deskriptor (Host + Manifest-erzeugt) sein oder irgendwo in derselben Datei zugewiesen werden (lokaler
 # Alias, z. B. $CRED_POSTGRES = $CRED_<PKG>_RW). Ein Tippfehler ergaebe sonst in PowerShell still $null.
-# Umgekehrt: eine zugewiesene UNBEKANNTE $CRED_*-Variable, die in der Datei nie gelesen wird, ist ein Tippfehler auf
+# Umgekehrt: eine zugewiesene unbekannte $CRED_*-Variable, die in der Datei nie gelesen wird, ist ein Tippfehler auf
 # der linken Seite ($CRED_POSTGRSE = $CRED_<PKG>_RW -> der Build-Pg liefe still unter der breiten Owner-Cred).
 # $Files = Liste {Path, Rel, Ast} (Find-WorkflowBuilder.Files bzw. geparste lib-Dateien).
 function Assert-CredentialReference {

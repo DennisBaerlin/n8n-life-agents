@@ -1,6 +1,6 @@
 ﻿#Requires -Version 5.1
 # post_merge_regenerate.ps1 -- git-Hook (prek, Stage post-merge und post-commit): erzeugt nach einem Merge/Pull die generierten Dateien neu, wenn
-# deren QUELLEN im Merge geaendert wurden (sonst steht der erzeugte Block veraltet da und ui_token_lint wird rot).
+# deren Quellen im Merge geaendert wurden (sonst steht der erzeugte Block veraltet da und ui_token_lint wird rot).
 #   Quellen Tokens  config/ui.*, scripts/lib/ui_tokens.ps1, scripts/lib/ui_art.ps1, scripts/build_ui_tokens.ps1 -> build_ui_tokens.ps1
 #   Quellen Site    docs/site/{content,layouts,static,data,hugo.toml}, scripts/build_site.ps1                    -> build_site.ps1
 # Das Ergebnis bleibt als Aenderung im Arbeitsbaum stehen (kein Auto-Commit); der Merge-Commit selbst bleibt unberuehrt.

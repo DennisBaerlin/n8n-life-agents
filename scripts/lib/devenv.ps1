@@ -1,18 +1,17 @@
 ﻿#Requires -Version 5.1
-# Geteilte Helfer der Dev-Umgebungs-Einrichtung (dot-source-only, KEINE Seiteneffekte beim Laden).
+# Geteilte Helfer der Dev-Umgebungs-Einrichtung (dot-source-only, keine Seiteneffekte beim Laden).
 #
-# Vier reale Konsumenten teilen sich diesen Kern -> DRY statt Duplikat (CLAUDE.md YAGNI-Regel b:
-# "2. realer Konsument = JETZT vereinheitlichen"; Pattern-Paritaets-Zeile "geteilte prek-Aufloesung"):
+# Konsumenten:
 #   - scripts/install_git_hooks.ps1     -> Resolve-Prek (nach dem Clone)
 #   - scripts/setup_dev_env.ps1         -> Resolve-Prek (nach frischem winget-Install), $DevEnvPins
 #                                          (Download-Versionen) + Get-DevEnvRequirementHash (Marker)
 #   - .claude/hooks/check_dev_env.ps1   -> Get-DevEnvRequirementHash (Frisch-System-Erkennung)
 #   - scripts/doc_lint.ps1 (Check 11)   -> liest $DevEnvPins textuell fuer den Pin-Drift-Check
 #
-# Die gepinnten Binary-Versionen sind hier die EINE Source of Truth; doc_lint Check 11 haelt sie
+# Die gepinnten Binary-Versionen sind hier die Source of Truth; doc_lint Check 11 haelt sie
 # driftfrei gegen die externen Zweitquellen (ci.yml fuer gitleaks/squawk, build_site.ps1 fuer Hugo).
 
-# Gepinnte Toolchain-Versionen (SoT; Drift-gegatet via doc_lint Check 11).
+# Gepinnte Toolchain-Versionen (Drift-gegatet via doc_lint Check 11).
 $script:DevEnvPins = [ordered]@{
     gitleaks      = '8.30.1'   # == .github/workflows/ci.yml (gitleaks-Job)
     squawk        = '2.70.0'   # == .github/workflows/ci.yml (squawk-Install)
@@ -20,8 +19,8 @@ $script:DevEnvPins = [ordered]@{
     hugo          = '0.168.0'  # == scripts/build_site.ps1 $PinnedHugoVersion (nur -Site)
 }
 
-# 3-stufige prek-Aufloesung (extrahiert aus install_git_hooks.ps1 = DRY): PATH -> winget-Links-Shim
-# -> Packages-Scan. Gibt den Pfad ODER $null zurueck; der Aufrufer entscheidet ueber throw/Install
+# 3-stufige prek-Aufloesung: PATH -> winget-Links-Shim
+# -> Packages-Scan. Gibt den Pfad oder $null zurueck; der Aufrufer entscheidet ueber throw/Install
 # (install_git_hooks wirft, setup_dev_env installiert erst via winget und ruft dann erneut).
 function Resolve-Prek {
     $p = (Get-Command prek -ErrorAction SilentlyContinue).Source
@@ -33,8 +32,8 @@ function Resolve-Prek {
     return $null
 }
 
-# Windows sperrt PowerShell-Skripte im Terminal des Owners, solange keine passende Richtlinie gesetzt ist (Abbruch beim
-# Signieren, 2026-11-02). Die Prozess-Ebene zaehlt nicht: Hooks und Tools laufen mit -ExecutionPolicy Bypass, das Terminal
+# Windows sperrt PowerShell-Skripte im Terminal des Owners, solange keine passende Richtlinie gesetzt ist (Symptom:
+# Abbruch beim Signieren). Die Prozess-Ebene zaehlt nicht: Hooks und Tools laufen mit -ExecutionPolicy Bypass, das Terminal
 # nicht. Gibt den Hinweis zurueck oder $null. Setzt nie etwas: die Sicherheitseinstellung bleibt beim Owner.
 function Get-ExecutionPolicyHint {
     foreach ($scope in 'MachinePolicy', 'UserPolicy', 'CurrentUser', 'LocalMachine') {
@@ -49,7 +48,7 @@ function Get-ExecutionPolicyHint {
 # Stabiler, sortierter Fingerprint der Anforderungs-Liste (Tool-Namen + Pins) -> deterministisch.
 # setup_dev_env.ps1 schreibt MD5(davon) in .local/devenv_state.json; check_dev_env.ps1 vergleicht.
 # Jeder Pin-Bump / jedes hinzugefuegte/entfernte Tool aendert den String -> Marker wird stale ->
-# Reminder. BEWUSST nur die Anforderungs-LISTE, nicht der Ist-Zustand (kein TTL, KISS -- ein spaeter
+# Reminder. Bewusst nur die Anforderungs-Liste, nicht der Ist-Zustand (kein TTL -- ein spaeter
 # manuell deinstalliertes Tool wird nicht re-erkannt; diese Grenze steht in CONTRIBUTING.md *Setup*).
 function Get-DevEnvRequirementFingerprint {
     $tokens = New-Object System.Collections.Generic.List[string]

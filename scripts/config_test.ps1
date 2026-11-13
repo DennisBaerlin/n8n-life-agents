@@ -1,5 +1,5 @@
 ﻿#Requires -Version 5.1
-# Config-Smoke (A4c). Kein LLM, kein DB-Write -- prueft die paket-besessenen Config-Bloecke
+# Config-Smoke. Kein LLM, kein DB-Write -- prueft die paket-besessenen Config-Bloecke
 # (packages/*/manifest.json .config) deterministisch, bevor ein kaputter Standardwert ausgeliefert wird.
 #   (1) Selbsttest: der Cron-Pruefer hier und core.fn_config_cron_valid (DB) pruefen DIESELBE Fallliste
 #       tests/util/util_cron_cases.sql (JSON zwischen den $cases$-Markern) -> beide koennen nicht auseinanderlaufen.
@@ -9,7 +9,7 @@
 #   (3) Zeitplan-Platzhalter: jeder `__CFG_SCHEDULE_<KEY>__` in packages/<pkg>/workflows/*.json hat seine Zeile
 #       .config.schedule.<key> im Manifest DESSELBEN Pakets, und jede schedule-Zeile wird von einem Workflow genutzt
 #       (der Installer setzt den Wert beim Einspielen ein, provisioning/lib/deploy_workflows.sh).
-#   (4) Modelle wirken zur Laufzeit (Festwert-Phase 2) — statisch ueber die gebauten Workflows + den Bau-Code:
+#   (4) Modelle wirken zur Laufzeit — statisch ueber die gebauten Workflows + den Bau-Code:
 #       (a) jeder Bezug $('<Knoten>').item|first().json.model.<key> zeigt auf einen Config-Knoten DESSELBEN Workflows;
 #           bei 'Load model config' (New-ModelConfigNode) muss der Knoten genau diesen Key laden und dem Bezug im
 #           Ablauf vorausgehen (bei Umschaltern: der Kette, an der der Umschalter haengt); die geladenen (Paket, Key)
@@ -17,7 +17,7 @@
 #           Config'/'Load core.config', alle Zeilen) -> dort genuegt: der Key ist irgendeine Manifest-Modell-Zeile.
 #       (b) jede Manifest-Modell-Zeile wird von mindestens einem Workflow gelesen (jede Zeile in config list wirkt);
 #       (c) kein Anthropic-HTTP-Knoten traegt ein Modell-Literal (das Modell kommt aus dem Config-Knoten);
-#       (d) die Bau-Zeit-Helfer Get-PackageConfig/Get-AnthropicModel kommen im Bau-Code nicht mehr vor.
+#       (d) die Bau-Zeit-Helfer Get-PackageConfig/Get-AnthropicModel duerfen im Bau-Code nicht vorkommen.
 #   (5) Modell-Register packages/core/seed/ai_models.json (Quelle des Selector-Baus): mode chat|embedding, chat <=>
 #       selector_index, Chat nur Anthropic, Chat-Nummern lueckenlos 1..n, und jeder Manifest-model.*-Standard ist dort
 #       ein Chat-Modell. mode/Nummer spiegeln die DB (ai_models_mode_*_check, core.fn_model_value_eligible — die
@@ -38,7 +38,7 @@ $script:failed = 0
 function Fail([string]$Msg) { Write-Host "  [FAIL] $Msg" -ForegroundColor Red; $script:failed++ }
 function Pass([string]$Msg) { if ($Verbose) { Write-Host "  [PASS] $Msg" -ForegroundColor Green } }
 
-# Validiert EIN Cron-Feld gegen seinen Wertebereich [min,max]. Erlaubt: *, n, a-b, a-b/s, */s, n/s, Listen mit ','.
+# Erlaubt: *, n, a-b, a-b/s, */s, n/s, Listen mit ','.
 function Test-CronField([string]$Field, [int]$Min, [int]$Max) {
     if ($Field -eq '') { return $false }
     foreach ($part in ($Field -split ',')) {
@@ -60,7 +60,7 @@ function Test-CronField([string]$Field, [int]$Min, [int]$Max) {
     return $true
 }
 
-# Validiert eine ganze Cron-Expression: 5 Felder oder 6 mit FESTER Sekunde vorn (n8n-Form). Spiegel von
+# 5 Felder oder 6 mit fester Sekunde vorn (n8n-Form). Spiegel von
 # core.fn_config_cron_valid (packages/core/db/core.config_init.sql).
 function Test-CronExpression([string]$Expr) {
     if ($null -eq $Expr) { return $false }
@@ -252,8 +252,8 @@ foreach ($pkgDir in (Get-ChildItem (Join-Path $RepoRoot 'packages') -Directory))
                     Fail "${where}: Knoten '$($n.name)' liest model.$key aus unbekanntem Config-Knoten '$src' (erlaubt: '$cfgNode', $($fullCfgNodes -join ', '))"
                 }
             }
-            # Claude-HTTP-Knoten = Ziel /v1/messages (seit dem LLM-Gateway lokal 127.0.0.1:8090, nicht mehr
-            # api.anthropic.com) — Auswahl ueber den Pfad, damit der Waechter nach einer URL-Aenderung nie still leer laeuft.
+            # Claude-HTTP-Knoten = Ziel /v1/messages (LLM-Gateway lokal 127.0.0.1:8090, nicht api.anthropic.com);
+            # Auswahl ueber den Pfad, damit der Waechter nach einer URL-Aenderung nie still leer laeuft.
             if ($n.type -eq 'n8n-nodes-base.httpRequest' -and [string]$n.parameters.url -like '*/v1/messages*') {
                 $httpCount++
                 if ([string]$n.parameters.url -like '*api.anthropic.com*') { Fail "${where}: Anthropic-HTTP-Knoten '$($n.name)' umgeht den LLM-Gateway (url direkt auf api.anthropic.com) — New-AnthropicMessagesNode nutzen" }
@@ -286,7 +286,7 @@ Write-Host "  (4) $refCount Modell-Bezuege + $httpCount Anthropic-HTTP-Knoten ge
 # Der Bau liest die JSON (New-ModelSelectorBundle verdrahtet Eingang selector_index-1 bei numberInputs = Anzahl der
 # Chat-Modelle), die DB-CHECKs sehen sie erst beim Seed -> hier dieselben Regeln VOR dem Commit.
 $aiPath = Join-Path $RepoRoot 'packages\core\seed\ai_models.json'
-# Klammer + ForEach-Object PFLICHT (PS-5.1-Quirk): ConvertFrom-Json reicht das Array sonst als EIN Objekt weiter.
+# Klammer + ForEach-Object sind noetig (PS-5.1-Quirk): ConvertFrom-Json reicht das Array sonst als EIN Objekt weiter.
 $ai = @(([System.IO.File]::ReadAllText($aiPath, $Utf8NoBom) | ConvertFrom-Json) | ForEach-Object { $_ })
 $aiKeys = @{}
 foreach ($r in $ai) {

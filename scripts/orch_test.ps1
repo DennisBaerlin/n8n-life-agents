@@ -1,16 +1,15 @@
 ﻿#Requires -Version 5.1
-# Orchestrator Routing Tests -- Tier 3 der TDD-Infrastruktur (Weg C / Teststrategie Phase 8).
-# Prueft, ob agent.orchestrator.main_route eine Anfrage korrekt an den richtigen Spezialisten routet
-# (Tool "Call 'agent.<x>'") oder selbst beantwortet (Non-Finance).
+# Orchestrator Routing Tests. Prueft, ob agent.orchestrator.main_route eine Anfrage korrekt an den
+# richtigen Spezialisten routet (Tool "Call 'agent.<x>'") oder selbst beantwortet (Non-Finance).
 #
-# WEG C: KEIN test_-Bypass, KEIN "Test entry" mehr. Der Treiber feuert eine TELEGRAM-foermige Update
-#   mit NUMERISCHER chat_id (gepairter Owner-Sender) an den ECHTEN Telegram-Trigger-Webhook des
-#   Orchestrators (Produktivpfad, wie real_ingress). Das echte Send-and-Wait-Gate eines vom Sub-Agenten
-#   gewaehlten Write-Tools wird ueber das abgefangene Mock-Telegram DECLINEd (kein Write, kein Spam) ->
-#   die Routing-Entscheidung steht im Orchestrator-runData. Execution-Korrelation: monotone Exec-id.
+# Der Treiber feuert ein Telegram-foermiges Update mit numerischer chat_id (gepairter Owner-Sender) an den
+#   echten Telegram-Trigger-Webhook des Orchestrators (Produktivpfad, wie real_ingress). Das echte
+#   Send-and-Wait-Gate eines vom Sub-Agenten gewaehlten Write-Tools wird ueber das abgefangene
+#   Mock-Telegram declined (kein Write, kein Spam) -> die Routing-Entscheidung steht im
+#   Orchestrator-runData. Execution-Korrelation: monotone Exec-id.
 #
-# Voraussetzung: laufendes Substrat + enable_mock_telegram.ps1 (fuers Gate). REAL LLM (Claude)
-#   -> mock_llm NICHT aktiv (sonst gescriptetes statt echtes Routing). .env TEST_HARNESS_SECRET nicht noetig.
+# Voraussetzung: laufendes Substrat + enable_mock_telegram.ps1 (fuers Gate). Echtes LLM (Claude):
+#   mock_llm nicht aktiv (sonst gescriptetes statt echtes Routing). .env TEST_HARNESS_SECRET nicht noetig.
 #
 # Case-Felder (Bot-Persona, alle optional): persona = Owner-Persona nur fuer diesen Fall (danach neutral);
 #   verbatim_relay = true -> die Spezialisten-Antwort muss woertlich im Endtext stehen, plus hoechstens ein Satz;
@@ -23,7 +22,7 @@
 #   expect_body_empty = true -> der Router antwortet nur mit einer Reaktion (Relay compose.body leer, kein Text).
 #
 # Usage:  .\scripts\orch_test.ps1 [-Id oc01] [-Timeout 90] [-Verbose]
-# Exit-Code = Anzahl Fehler. KOSTET LLM-Credits (owner-gegatet).
+# Exit-Code = Anzahl Fehler. Kostet LLM-Credits (owner-gegatet).
 param(
     [string]$Id,
     [int]$Timeout = 90,
@@ -35,7 +34,7 @@ $ErrorActionPreference = 'Stop'
 $Utf8NoBom = New-Object System.Text.UTF8Encoding($false)
 $RepoRoot = git -C $PSScriptRoot rev-parse --show-toplevel
 
-# N8N_URL/N8N_API_KEY kommen aus dem ephemeren Docker-Test-Substrat (raus aus Prod), nicht aus .env.
+# N8N_URL/N8N_API_KEY kommen aus dem Docker-Test-Substrat, nicht aus .env.
 . "$PSScriptRoot\dev\test_n8n_state.ps1"
 $conn        = Get-TestN8nConnection
 $N8N_URL     = $conn.Url
@@ -43,23 +42,22 @@ $N8N_API_KEY = $conn.ApiKey
 $Container   = $conn.Container
 $Headers     = @{ 'X-N8N-API-KEY' = $N8N_API_KEY }
 
-# Mock-Telegram muss aktiv sein (fuer die Gate-Aufloesung); Mock-LLM darf NICHT aktiv sein (echtes Routing).
 $state = Get-TestN8nState
 if (-not $state.mock_telegram) { throw "Mock-Telegram nicht aktiv (fuer die Gate-Aufloesung noetig). Zuerst: .\scripts\dev\enable_mock_telegram.ps1" }
-# Mock-LLM aktiv = gescriptetes statt echtes Routing -> hart abbrechen (vorher nur Warnung; der Waechter prueft den
-# tatsaechlichen Gateway-Upstream, nicht nur den State-Block). Dazu die Start-Marke fuer die Kostenuebersicht.
+# Mock-LLM aktiv = gescriptetes statt echtes Routing -> hart abbrechen; der Waechter prueft den
+# tatsaechlichen Gateway-Upstream, nicht nur den State-Block. Dazu die Start-Marke fuer die Kostenuebersicht.
 Assert-LlmGatewayUpstream -Container $Container -Expect real
 $llmCursor = Get-LlmUsageCursor -Container $Container
 
 $AgentNode   = 'Orchestrator agent'
-# Route-Agenten aus den Manifesten (kein Paket im Treiber; Verdikt-Logik geteilt mit mock_route_test).
+# Route-Agenten aus den Manifesten (Verdikt-Logik geteilt mit mock_route_test).
 $routeAgents = Get-TestRouteAgent
 
 # Anders als Get-AgentOutput (test_n8n_state.ps1): nach einem Spezialisten zaehlt der gesendete Text, nicht die Agent-Ausgabe.
 function Get-SentOutput([object]$RunData) {
     $txt = ''
-    # Woertliches Weiterreichen: die GESENDETE Nachricht = Rahmensatz aus 'Claim expression' (frame_r.text, falls da)
-    # + Leerzeile + 'Relay compose'.body; der Agent selbst liefert nach einem Spezialisten nur FRAME/NOFRAME. Fuer Judge
+    # Die gesendete Nachricht = Rahmensatz aus 'Claim expression' (frame_r.text, falls da) + Leerzeile +
+    # 'Relay compose'.body; der Agent selbst liefert nach einem Spezialisten nur FRAME/NOFRAME. Fuer Judge
     # und verbatim_relay zaehlt der gesendete Text.
     if ($RunData.PSObject.Properties.Name.Contains('Relay compose')) {
         $body = ''; $frame = ''
@@ -72,9 +70,9 @@ function Get-SentOutput([object]$RunData) {
     foreach ($run in $RunData.$AgentNode) { try { if ($run.data.main[0][0].json.output) { $txt = $run.data.main[0][0].json.output } } catch { } }
     return $txt
 }
-# Bot-Persona (Rahmen-Modell): die Antwort des Spezialisten = laengster Text-Blatt-Wert in der AUSGABE (.data) der
-# "Call 'agent.<x>'"-Tool-Nodes (ein JSON-String mit .output wird ausgepackt). Leer = kein Spezialist gerufen. Nur .data:
-# die Eingabe (inputOverride) traegt die Nutzernachricht, die sonst eine kuerzere Antwort als "laengster Text" schlaegt.
+# Die Antwort des Spezialisten = laengster Text-Blatt-Wert in der Ausgabe (.data) der "Call 'agent.<x>'"-Tool-Nodes
+# (ein JSON-String mit .output wird ausgepackt). Leer = kein Spezialist gerufen. Nur .data: die Eingabe
+# (inputOverride) traegt die Nutzernachricht, die sonst eine kuerzere Antwort als "laengster Text" schlaegt.
 function Get-StringLeafList($Obj) {
     if ($null -eq $Obj) { return @() }
     if ($Obj -is [string]) { return @($Obj) }
@@ -94,7 +92,7 @@ function Get-SpecialistOutput([object]$RunData) {
     return $best
 }
 # verbatim_relay: der Spezialisten-Text steht (Leerraum normalisiert) im Endtext, und ausserhalb davon steht hoechstens
-# EIN Satz (der Persona-Rahmensatz). Liefert @{ ok; reason }.
+# ein Satz (der Persona-Rahmensatz). Liefert @{ ok; reason }.
 function Test-VerbatimRelay([string]$Specialist, [string]$Final) {
     $norm = { param($s) ([regex]::Replace("$s", '\s+', ' ')).Trim() }
     $sp = & $norm $Specialist; $fi = & $norm $Final
@@ -139,11 +137,10 @@ function Set-TestRouterHistory {
     if ($r.Code -ne 0) { throw "router_history setzen fehlgeschlagen (Tabelle entsteht erst beim ersten Router-Turn): $(($r.Output | Where-Object { $_ }) -join ' ')" }
 }
 
-# --- Setup: echten Ingress aufloesen + Owner pairen ---
 $ingress = Resolve-OrchestratorIngress -BridgeUrl $N8N_URL -ApiKey $N8N_API_KEY
 $OrchWfId = $ingress.OrchWfId
 # Dieselbe Vorbereitung wie n8n_test/mock_route_test/e2e_test (Fixtures + abgeschlossenes Onboarding): auf einem frischen
-# Substrat leitete der Spezialist sonst auf die Einrichtung um und der Router-Pin onboarding_in_progress zog Gruesse zum Guide.
+# Substrat leitet der Spezialist sonst auf die Einrichtung um und der Router-Pin onboarding_in_progress zieht Gruesse zum Guide.
 Initialize-AgentTestState -Container $Container -RepoRoot $RepoRoot
 $PairedUid = $TestOwnerTelegramUid
 Set-OwnerTelegramPairing -Container $Container -Uid $PairedUid
@@ -168,13 +165,12 @@ foreach ($tc in $cases) {
 
     $caseTimeout = if ($tc.PSObject.Properties['timeout_s'] -and $tc.timeout_s) { [int]$tc.timeout_s } else { $Timeout }
     # Chat = der gepairte Owner wie im Privatchat (chat.id = from.id): die Spezialisten loesen den Absender aus der chat_id auf,
-    # mit einer fremden Test-chat_id galt er als unbekannt (oc42 im bezahlten Lauf 2026-11-02: "nicht als Mitglied erkannt").
-    # Die Isolation zwischen den Faellen halten Memory- und Karten-Reset.
+    # mit einer fremden Test-chat_id gilt er als unbekannt. Die Isolation zwischen den Faellen halten Memory- und Karten-Reset.
     [long]$chatId = $PairedUid
     Clear-ChatSessionMemory -Container $Container -SessionId "$chatId"
     Clear-HitlPending -Container $Container
     Clear-MockTelegramRequests -Container $Container
-    # Folge-Bindung (Case-Feld followup_agent, 2026-10-28): simuliert "ein Knopf hat eben agent.<x> gestartet" fuer genau
+    # Folge-Bindung (Case-Feld followup_agent): simuliert "ein Knopf hat eben agent.<x> gestartet" fuer genau
     # diesen Chat (agent.fn_set_dispatch_followup, wie der Knopf-Arm nach dem Relay) -> die Nachricht prueft die
     # Router-Regel 2a. Ohne Feld wird eine Rest-Bindung des Chats geloescht (fn_take liest+loescht einmalig).
     $fuAgent = if ($tc.PSObject.Properties['followup_agent'] -and $tc.followup_agent) { [string]$tc.followup_agent } else { '' }
@@ -186,7 +182,7 @@ foreach ($tc in $cases) {
     if ($tc.PSObject.Properties['router_history'] -and $tc.router_history) { Set-TestRouterHistory -Container $Container -SessionId "$chatId" -Turn $tc.router_history }
     $base = Get-MaxExecId -WfId $OrchWfId -BridgeUrl $N8N_URL -ApiKey $N8N_API_KEY
 
-    # Bot-Persona (Case-Feld persona): die Owner-Persona gilt NUR fuer diesen Fall -> im finally wieder neutral, weil
+    # Die Owner-Persona (Case-Feld persona) gilt nur fuer diesen Fall -> im finally wieder neutral, weil
     # alle Faelle als derselbe gepairte Owner laufen (ein Rest wuerde die folgenden Faelle faerben).
     if ($tc.persona -and -not (Set-TestPersonaFact -Container $Container -PersonId 'owner' -Code "$($tc.persona)")) {
         Write-Host "    [FAIL] Persona '$($tc.persona)' konnte nicht gesetzt werden." -ForegroundColor Red; $failed++; continue
@@ -217,8 +213,8 @@ foreach ($tc in $cases) {
         Write-Host "    verbatim_relay: $($vr.ok) ($($vr.reason))"
         if (-not $vr.ok) { $pass = $false }
     }
-    # expected_signal (Bot mit Gesicht): FRAME|NOFRAME, das der Router nach dem Spezialisten liefert (Relay compose.signal;
-    # Regel 6 gilt fuer ALLE Personen, NOFRAME = ernst -> kein Sticker).
+    # expected_signal: FRAME|NOFRAME, das der Router nach dem Spezialisten liefert (Relay compose.signal;
+    # Regel 6 gilt fuer alle Personen, NOFRAME = ernst -> kein Sticker).
     if ($tc.expected_signal) {
         $sig = ''
         if ($runData.PSObject.Properties.Name.Contains('Relay compose')) { try { $sig = [string]$runData.'Relay compose'[0].data.main[0][0].json.signal } catch { } }
@@ -260,7 +256,6 @@ foreach ($tc in $cases) {
     }
 }
 
-# wartende Orchestrator-/Gate-Executions aufraeumen
 try { (Invoke-N8nGet "executions?workflowId=$OrchWfId&status=waiting&limit=20").data | ForEach-Object { Stop-Exec $_.id } } catch { }
 
 Write-Host ""

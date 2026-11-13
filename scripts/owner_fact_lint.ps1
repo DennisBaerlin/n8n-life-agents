@@ -1,5 +1,5 @@
 ﻿#Requires -Version 5.1
-# owner_fact_lint.ps1 -- Regeln fuer die Fundorte, an denen frueher Lebensumstaende des Betreibers ins Repo kamen (hartes Gate,
+# owner_fact_lint.ps1 -- Regeln fuer typische Fundorte von Lebensumstaenden des Betreibers im Repo (hartes Gate,
 # Ergaenzung zu privacy_lint.ps1, das nur feste Werte kennt):
 #   (P) Prompt-Dateien (Contexts, Manifeste, Build-Defs, Seeds): keine Saetze ueber die Lage des Betreibers. Fakten ueber Personen
 #       stehen zur Laufzeit in der Datenbank (Onboarding, Profil), Prompts sind Code und oeffentlich.
@@ -8,7 +8,9 @@
 #   (B) Ueberall: kein "Live-Befund" zusammen mit einem Geldbetrag auf derselben Zeile oder, bei Kommentaren, auf der Folgezeile.
 # Die Muster bleiben grob: Sie finden typische Formulierungen, keine Umschreibungen; die pruefen /privacy-review und der Owner.
 # Ausgenommen: generierte Dateien (ihre Quellen werden geprueft), angewandte V__-Migrationen (Pruefsummen-Schutz), diese Datei.
-# Ausgaben nennen nur Datei:Zeile und die Regel. Exit-Code = Anzahl Fehler. Kein LLM, kein Netz, kein Substrat.
+# Ausgaben nennen nur Datei:Zeile und die Regel (nie den Fund). Nutzt `git grep`, prueft also nur getrackte Dateien.
+# Aufruf: .\scripts\owner_fact_lint.ps1
+# Exit-Code = Anzahl Fehler. Kein LLM, kein Netz, kein Substrat.
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $ErrorActionPreference = 'Stop'
 $RepoRoot = git -C $PSScriptRoot rev-parse --show-toplevel
@@ -27,7 +29,7 @@ $promptPaths = @('packages/*/contexts/*', 'packages/*/manifest.json', 'packages/
 $generated = @(':(exclude,glob)packages/*/workflows/**', ':(exclude)docs/site/public/*', ':(exclude)docs/fn_catalog.md',
     ':(exclude,glob)packages/*/db/migrations/V*__*', ':(exclude)scripts/owner_fact_lint.ps1', ':(exclude)scripts/dev/privacy_lint_test.ps1')
 
-# Selbst-Asserts: stirbt die Erkennung still, bricht der Lint. Die Proben werden zusammengesetzt, damit die Datei sauber bleibt.
+# Selbst-Asserts: stirbt die Erkennung still, bricht der Lint. Die Proben sind zusammengesetzt, damit diese Datei selbst nicht trifft.
 if (('the owner' + ' dislikes meetings') -notmatch $promptRegex) { Fail 'Selbst-Assert: Prompt-Regel defekt' }
 if (('Owner-' + 'Befund 2026') -cnotmatch $markerRegex) { Fail 'Selbst-Assert: Marken-Regel defekt' }
 if (('Owner-' + 'Fallback') -cmatch $markerRegex) { Fail 'Selbst-Assert: Marken-Regel trifft einen Fachbegriff' }
@@ -46,7 +48,7 @@ function Invoke-Rule([string]$Label, [string[]]$GrepArgs) {
 Invoke-Rule 'Satz ueber den Betreiber in einem Prompt' (@('-i', $promptRegex, '--') + $promptPaths + $generated)
 Invoke-Rule 'Herkunftsmarke' (@($markerRegex, '--', '.') + $generated)
 Invoke-Rule 'Live-Befund mit Betrag' (@($amountRegex, '--', '.') + $generated)
-# Regel (B), Folgezeile: Befund-Kommentar, der Betrag steht eine Zeile darunter. git grep -A1 trennt Kontextzeilen mit "-".
+# Regel (B), Folgezeile: Betrag steht eine Zeile unter dem Befund-Kommentar. git grep -A1 trennt Kontextzeilen mit "-".
 $ctx = & git -C $RepoRoot (@('grep', '-n', '-I', '-E', '-A1', $foundRegex, '--', '.') + $generated)
 if ($LASTEXITCODE -gt 1) { Fail "git grep fehlgeschlagen (Exit $LASTEXITCODE): Live-Befund mit Betrag (Folgezeile)" }
 $hitPath = $null; $hitLine = 0

@@ -1,11 +1,11 @@
 ﻿#Requires -Version 5.1
-# sign_release.ps1 — nach jedem Release im Terminal des Owners: den Release-ENTWURF pruefen, unterschreiben und
-# veroeffentlichen (Update im Chat, Phase 2; Schluessel aus scripts/new_release_key.ps1).
+# sign_release.ps1 — nach jedem Release im Terminal des Owners: den Release-Entwurf pruefen, unterschreiben und
+# veroeffentlichen (Schluessel aus scripts/new_release_key.ps1).
 #
 # Warum lokal und nicht in der CI: ein Signierschluessel als Actions-Secret schuetzte nicht gegen ein gekapertes
 # GitHub-Konto (wer das Konto hat, laesst die CI signieren). Darum unterschreibt der Owner selbst — aber nie blind:
 #   1. Entwurfs-Assets laden (Tarball, install.sh, compose.yml, DMG, EXE, SHA256SUMS) und SHA256SUMS gegen die Dateien pruefen.
-#   2. Den Inhalt mit dem LOKALEN Tag vergleichen: der entpackte Tar-Strom muss byte-gleich mit `git archive` des Tags
+#   2. Den Inhalt mit dem lokalen Tag vergleichen: der entpackte Tar-Strom muss byte-gleich mit `git archive` des Tags
 #      sein (gzip-Bytes duerfen je git-Version abweichen, der Tar-Strom nicht); sonst Datei fuer Datei per Blob-Hash.
 #      install.sh und compose.yml muessen genau die Dateien des Tags sein. Das master-Image aus dem Release-Pin muss anonym
 #      als Index fuer linux/amd64 + linux/arm64 im Register liegen und aus diesem Tag gebaut sein (Label revision, nur die
@@ -17,6 +17,7 @@
 #
 # Braucht: gpg (Git for Windows), gh (winget GitHub.cli), git; GH_TOKEN wird bei Bedarf aus dem Git-Credential-Manager
 #   geholt (nur fuer diesen Prozess). Usage: .\scripts\sign_release.ps1 v0.14.0
+# Exit 0 = unterschrieben und veroeffentlicht; jede fehlgeschlagene Pruefung bricht mit throw ab (nichts wird hochgeladen).
 param([Parameter(Mandatory = $true)][string]$Tag)
 $ErrorActionPreference = 'Stop'
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
@@ -38,14 +39,14 @@ function Get-GpgExe {
 }
 function Get-Sha256([string]$Path) { (Get-FileHash -Algorithm SHA256 -LiteralPath $Path).Hash.ToLowerInvariant() }
 # gpg-Aufruf, bei dem nur der Exit-Code zaehlt. PS 5.1 macht aus umgeleitetem stderr eines Native-Tools ein ErrorRecord,
-# das unter ErrorActionPreference=Stop abbricht (gpg schreibt Status wie "Good signature" nach stderr; Lauf
-# 2026-10-24) -> fuer diesen Aufruf Continue.
+# das unter ErrorActionPreference=Stop abbricht (gpg schreibt Status wie "Good signature" nach stderr)
+# -> fuer diesen Aufruf Continue.
 function Invoke-GpgQuiet {
     $prevEap = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
     try { & $gpg @args *> $null; return $LASTEXITCODE } finally { $ErrorActionPreference = $prevEap }
 }
 # Pfad fuer gpg-Ressourcen (--keyring, --homedir). Das gpg aus Git for Windows (MSYS) lehnt 'C:\...' als --keyring ab
-# ("invalid key resource URL", der Doppelpunkt gilt als URL-Schema; Lauf 2026-10-24) und haengt es bei --homedir an
+# ("invalid key resource URL", der Doppelpunkt gilt als URL-Schema) und haengt es bei --homedir an
 # das Arbeitsverzeichnis -> /c/... uebergeben. Gpg4win (nativ) bekommt den Windows-Pfad. Datei-Argumente betrifft das nicht.
 function ConvertTo-GpgPath([string]$Path) {
     if ($gpg -notlike '*\usr\bin\gpg.exe') { return $Path }

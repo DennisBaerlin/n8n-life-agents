@@ -1,10 +1,11 @@
 ﻿#Requires -Version 5.1
 # Conventional-Commits-Lint (commit-msg-Hook, .pre-commit-config.yaml id conventional-commit).
-# Bespoke Mini-Regex -- kein Node-commitlint (Stack-Politik: kein Node/Python-Ballast). prek uebergibt
-# den Pfad zur Commit-Message-Datei als einziges Argument. Exit 1 = Commit abgelehnt.
+# Eigene Mini-Regex statt Node-commitlint (kein Node/Python im Stack). prek uebergibt den Pfad zur
+# Commit-Message-Datei als einziges Argument:  .\scripts\lint_commit_msg.ps1 <message-datei>
+# Exit 0 = ok (auch ohne Datei-Argument: uebersprungen), 1 = Commit abgelehnt (BOM, leere Message, Subject passt nicht).
 #
 # Erlaubt: <type>(scope)!: <subject>  mit type in der Standard-Liste; plus Merge-/Revert-/fixup-/
-# squash-Auto-Messages (die git/Tools selbst erzeugen). Quelle: https://www.conventionalcommits.org
+# squash-/amend-Auto-Messages (die git/Tools selbst erzeugen). Quelle: https://www.conventionalcommits.org
 
 $ErrorActionPreference = 'Stop'
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
@@ -16,8 +17,8 @@ if (-not $msgPath -or -not (Test-Path $msgPath)) {
 }
 
 $Utf8NoBom = New-Object System.Text.UTF8Encoding($false)
-# BOM vorn: ReadAllText entfernt es still (Encoding-Erkennung), git speichert es aber im Subject -> ein unsichtbares
-# Zeichen vor dem type im oeffentlichen Log. Quelle meist PS 5.1 `Set-Content -Encoding utf8` (schreibt immer ein BOM).
+# BOM vorn: ReadAllText entfernt es still (Encoding-Erkennung), git speichert es aber im Subject, also ein
+# unsichtbares Zeichen vor dem type im oeffentlichen Log. Ursache meist PS 5.1 `Set-Content -Encoding utf8` (schreibt immer ein BOM).
 $head = [System.IO.File]::ReadAllBytes($msgPath) | Select-Object -First 3
 if ($head.Count -eq 3 -and $head[0] -eq 0xEF -and $head[1] -eq 0xBB -and $head[2] -eq 0xBF) {
     Write-Host "COMMIT ABGELEHNT: die Message-Datei beginnt mit einem UTF-8-BOM (git uebernimmt es ins Subject)." -ForegroundColor Red
@@ -27,7 +28,7 @@ if ($head.Count -eq 3 -and $head[0] -eq 0xEF -and $head[1] -eq 0xBB -and $head[2
 $raw = [System.IO.File]::ReadAllText($msgPath, $Utf8NoBom)
 $lines = $raw -split "`r?`n"
 
-# Erste nicht-leere, nicht-Kommentar-Zeile = Subject.
+# Subject = erste nicht-leere Zeile ohne Kommentar-Praefix
 $subject = $null
 foreach ($l in $lines) {
     if ($l -match '^\s*#') { continue }
@@ -40,7 +41,7 @@ if (-not $subject) {
     exit 1
 }
 
-# Auto-Messages durchlassen (von git/Tools erzeugt, nicht hand-formatierbar).
+# Auto-Messages durchlassen (von git/Tools erzeugt)
 if ($subject -match '^(Merge |Revert |fixup! |squash! |amend! )') { exit 0 }
 
 $types = 'feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert'

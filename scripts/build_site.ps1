@@ -1,8 +1,7 @@
 ﻿# build_site.ps1 — Treiber der Showcase-Site (docs/site): Hugo-Build + -Verify-Regenerat-Diff.
 #
-# Muster build.ps1/gen_fn_catalog: Quelle (docs/site/{content,layouts,static,data,hugo.toml})
-# -> externes Standard-Binary (Hugo, arch-challenge R2/R3: KEIN Eigenbau-Renderer) -> getrackter
-# Output docs/site/public/ (NIE hand-editieren; Eingeladene brauchen kein Binary, nur den Output).
+# Quelle docs/site/{content,layouts,static,data,hugo.toml} -> Hugo -> getrackter Output docs/site/public/ (nie von Hand
+# editieren; Eingeladene brauchen kein Binary, nur den Output).
 #
 #   .\scripts\build_site.ps1            # baut docs/site/public/ neu (cleanDestinationDir)
 #   .\scripts\build_site.ps1 -Verify    # pre-push-Gate: frischer Build in Temp == public/ (byte-genau)
@@ -10,10 +9,12 @@
 #                                       # .claude/launch.json) -- loest die Binary wie der Build auf, damit sie auch in
 #                                       # einem Worktree laeuft (dort fehlt das gitignorierte .local/); schreibt nie public/
 #
-# Binary-Aufloesung: $env:HUGO_EXE -> <repo>\.local\bin\hugo.exe -> (Worktree) <haupt-checkout>\.local\bin\hugo.exe -> PATH. Die Version ist HART auf
-# $PinnedHugoVersion assertiert (Doku-Pin waere Ehrensache: abweichende Versionen aendern den Output
-# und machen das Regenerat-Diff nicht-deterministisch; Generator-Meta ist via hugo.toml
-# disableHugoGeneratorInject abgeschaltet). Install -> CONTRIBUTING.md "The enforcement gates".
+# Exit 0 = gebaut bzw. -Verify identisch; Exit 1 = -Verify findet Abweichung oder public/ fehlt; Build-Fehler brechen mit throw ab;
+# -Serve endet mit dem Exit-Code von hugo server.
+# Binary-Aufloesung: $env:HUGO_EXE -> <repo>\.local\bin\hugo.exe -> (Worktree) <haupt-checkout>\.local\bin\hugo.exe -> PATH. Die Version ist hart auf
+# $PinnedHugoVersion assertiert: abweichende Versionen aendern den Output und machen das Regenerat-Diff
+# nicht-deterministisch (Generator-Meta ist via hugo.toml disableHugoGeneratorInject abgeschaltet).
+# Install -> CONTRIBUTING.md "The enforcement gates".
 [CmdletBinding()]
 param(
     [switch]$Verify,
@@ -61,7 +62,7 @@ function Invoke-HugoBuild([string]$exe, [string]$destination) {
     if ($LASTEXITCODE -ne 0) { throw "Hugo-Build fehlgeschlagen (Exit $LASTEXITCODE)." }
 }
 
-# Relativer Pfad -> SHA256 fuer jeden File eines Baums (Vergleichsbasis des Regenerat-Diffs).
+# Relativer Pfad -> SHA256 je Datei eines Baums.
 function Get-TreeHashes([string]$root) {
     $map = @{}
     Get-ChildItem -Path $root -Recurse -File | ForEach-Object {
@@ -75,7 +76,7 @@ $hugoExe = Resolve-HugoExe
 Test-HugoVersion $hugoExe
 
 if ($Serve) {
-    # Vordergrund-Prozess bis Strg+C bzw. Stoppen der Vorschau; --renderToMemory: public/ bleibt unberuehrt
+    # --renderToMemory: public/ bleibt unberuehrt
     & $hugoExe server --source $SiteDir --port $Port --renderToMemory --disableFastRender
     exit $LASTEXITCODE
 }
@@ -87,7 +88,6 @@ if (-not $Verify) {
     exit 0
 }
 
-# -Verify: frischer Build in ein Temp-Ziel, byte-genauer Vergleich gegen den getrackten Output.
 if (-not (Test-Path $PublicDir)) { Write-Output 'build_site -Verify: FAIL — docs/site/public/ fehlt (erst bauen).'; exit 1 }
 $tmpDest = Join-Path ([System.IO.Path]::GetTempPath()) ("site_verify_" + [guid]::NewGuid().ToString('N').Substring(0, 8))
 try {

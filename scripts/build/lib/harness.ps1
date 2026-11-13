@@ -1,11 +1,11 @@
 ﻿#Requires -Version 5.1
-# Engine-Teil der Test-Harness-Aggregation (Toolchain, dot-gesourct von build.ps1 VOR allen Paketen).
-# Die Registry $script:Harnesses wird hier LEER initialisiert; JEDES Paket steuert seine Eintraege in
+# Engine-Teil der Test-Harness-Aggregation (dot-gesourct von build.ps1 vor allen Paketen).
+# Die Registry $script:Harnesses wird hier leer initialisiert; jedes Paket steuert seine Eintraege in
 # packages/<pkg>/build/workflows/harnesses.ps1 per `$script:Harnesses += @(...)` bei. Init in der Engine ->
-# Paket-Lade-Reihenfolge ist irrelevant (kein "core muss zuerst"-Zwang). Build-Harness + Get-HarnessWorkflow
-# sind generisch/paket-agnostisch. Nutzt $WorkflowsDir/Get-WorkflowIdByName/New-Id/E aus dem build.ps1-Scope.
-# Harnesses sind Test-Eingaenge: KEIN errorWorkflow (laufen manuell), daher NICHT Build-Workflow. Die
-# Header-Auth-Credential referenziert ein lesbarer Platzhalter (__CRED_HARNESS__); inject_credentials legt
+# Paket-Lade-Reihenfolge ist irrelevant. Build-Harness + Get-HarnessWorkflow sind paket-agnostisch.
+# Nutzt $WorkflowsDir/Get-WorkflowIdByName/New-Id/E aus dem build.ps1-Scope.
+# Harnesses sind Test-Eingaenge: kein errorWorkflow (laufen manuell), daher nicht Build-Workflow. Die
+# Header-Auth-Credential referenziert den lesbaren Platzhalter __CRED_HARNESS__; inject_credentials legt
 # sie aus TEST_HARNESS_SECRET an + remappt den Platzhalter.
 
 $script:Harnesses = @()
@@ -25,8 +25,8 @@ function Build-Harness {
 
     # responseMode=lastNode: der POST blockiert bis zum Ende des Laufs und liefert die 'Run Info'
     # (harness_execution_id) zurueck als Sync-Punkt; die Harness-Skripte korrelieren danach ueber die
-    # monotone Exec-id (Get-MaxExecId vor dem Feuern) -- Weg C/Phase 8, da die am HITL-Gate suspendierte
-    # Execution keine subExecution-Metadata mehr liefert.
+    # monotone Exec-id (Get-MaxExecId vor dem Feuern), weil die am HITL-Gate suspendierte
+    # Execution keine subExecution-Metadata liefert.
     $webhook = [ordered]@{
         parameters = [ordered]@{
             httpMethod = 'POST'; path = $H.path; authentication = 'headerAuth'; responseMode = 'lastNode'; options = @{}
@@ -59,7 +59,7 @@ function Build-Harness {
     }
 
     # Letzter Node = Webhook-Response (responseMode=lastNode): liefert die eigene Execution-ID des
-    # Harness zurueck als Sync-Punkt; korreliert wird ueber die monotone Exec-id (Get-MaxExecId; Weg C).
+    # Harness zurueck als Sync-Punkt; korreliert wird ueber die monotone Exec-id (Get-MaxExecId).
     $runInfo = [ordered]@{
         parameters = [ordered]@{
             # noWait: Startfehler des Ziels (kein Einstieg, unbekannte id) mitliefern, sonst schluckt onError ihn still.
@@ -98,12 +98,12 @@ Bei Nichtbenutzung deaktivieren (Webhook-Pfad dann nicht registriert).
         'Test Webhook' = @{ main = @( ,@( E $runName ) ) }
         $runName       = @{ main = @( ,@( E 'Run Info' ) ) }
     }
-    # KEIN errorWorkflow (Test-Harness) -> eigenes settings, nicht Build-Workflow.
+    # Kein errorWorkflow (Test-Harness) -> eigenes settings, nicht Build-Workflow.
     return [ordered]@{ name = $H.name; nodes = $nodes; connections = $conns; settings = [ordered]@{ executionOrder = 'v1' } }
 }
 
 
-# Liefert alle Harness-Workflow-Objekte (ohne id) als Array -- die Union aller Paket-Beitraege.
+# Alle Harness-Workflow-Objekte (ohne id) = Union aller Paket-Beitraege.
 function Get-HarnessWorkflow {
     foreach ($H in $script:Harnesses) { Build-Harness $H }
 }

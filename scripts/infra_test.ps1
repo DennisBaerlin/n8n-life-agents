@@ -3,20 +3,20 @@
 # Prueft Cross-Cutting-Sub-Workflows direkt und isoliert (Faelle: tests/agent/core/infra_cases.json):
 #   agent.tool_load_context     -- Static + Lazy-Manifest Assembly (include_manifest-Flag)
 #   core.sub_load_config        -- Config-Store-Read + Pivot (model-Objekt befuellt)
-# Das HITL-Gate (agent.tool_human_approval) wird seit Teststrategie Phase 8 (Weg C) NICHT mehr hier
-# geprueft (kein Test-Bypass mehr) -> Approve/Decline deckt scripts\dev\hitl_gate_test.ps1 ab (echtes
-# Send-and-Wait ueber Mock-Telegram). Depth-Gates (ic08/11/12) + web_search/expert_panel-Guards bleiben.
+# Das HITL-Gate (agent.tool_human_approval) prueft diese Suite nicht: Approve/Decline deckt
+# scripts\dev\hitl_gate_test.ps1 ab (echtes Send-and-Wait ueber Mock-Telegram). Depth-Gates (ic08/11/12) +
+# web_search/expert_panel-Guards gehoeren hierher.
 #
 # Jeder Test laeuft ueber einen dedizierten Harness-Webhook (build.ps1 -Only '*test_harness*' -> bootstrap_test_n8n.ps1 -Reset).
-# Das Skript pollt die Ziel-Execution (seperater Datensatz, wie bei orch_test.ps1) und
-# pruefte den Ausgabewert eines bestimmten Nodes.
+# Das Skript pollt die Ziel-Execution (separater Datensatz, wie bei orch_test.ps1) und
+# prueft den Ausgabewert eines bestimmten Nodes.
 #
 # Assertions je Case: must_be_nonempty / must_contain / must_not_contain / must_equal.
 # Optional je Case: requires = Name eines State-Blocks (z. B. 'mock_paperless'; Punkt-Pfad 'mock_llm.cred_id' = Feld darin muss
 #   gesetzt sein) oder eine Liste davon, ohne die der Case mit klarem
-#   Hinweis FAILt (statt gegen eine fehlende Attrappe zu laufen); der Body-Platzhalter __OWNER_CHAT_ID__ pairt den
-#   Substrat-Owner deterministisch (Set-OwnerTelegramPairing, uid $TestOwnerTelegramUid wie mock_route_test) und setzt die uid ein —
-#   fuer Pfade, die einen AUFGELOESTEN Haushalts-Absender brauchen (agent.sub_dispatch_tool: core.fn_resolve_service
+#   Hinweis fehlschlaegt (statt gegen eine fehlende Attrappe zu laufen); der Body-Platzhalter __OWNER_CHAT_ID__ pairt den
+#   Substrat-Owner deterministisch (Set-OwnerTelegramPairing, uid $TestOwnerTelegramUid wie mock_route_test) und setzt die uid ein,
+#   fuer Pfade, die einen aufgeloesten Haushalts-Absender brauchen (agent.sub_dispatch_tool: core.fn_resolve_service
 #   ist fail-closed fuer unbekannte Absender).
 #
 # Usage:  .\scripts\infra_test.ps1 [-Id ic01] [-Timeout 30] [-Verbose]
@@ -25,7 +25,7 @@
 #   .env mit TEST_HARNESS_SECRET.
 #         -Id ic01,ic02 = mehrere Faelle (unbekannte id = Abbruch vor dem Lauf).
 #         -ForceAbortId ic01 = Testschalter: wirft am Anfang dieses Falls eine Ausnahme (zeigt den Abbruch-Pfad ohne echte Last).
-# Eine Ausnahme im Fall (z. B. HTTP 500 vom Eingang unter Last) macht NUR diesen Fall rot, der Lauf geht weiter.
+# Eine Ausnahme im Fall (z. B. HTTP 500 vom Eingang unter Last) macht nur diesen Fall rot, der Lauf geht weiter.
 param(
     [string[]]$Id,
     [string]$ForceAbortId,
@@ -42,7 +42,7 @@ $RepoRoot = git -C $PSScriptRoot rev-parse --show-toplevel
 Read-DotEnvLines "$RepoRoot\.env" | ForEach-Object {
     if ($_ -match '^\s*([^#\s][^=]*)=(.*)$') { Set-Variable -Name $Matches[1].Trim() -Value $Matches[2].Trim() -Scope Script }
 }
-# N8N_URL/N8N_API_KEY kommen aus dem ephemeren Docker-Test-Substrat (raus aus Prod), nicht aus .env.
+# N8N_URL/N8N_API_KEY kommen aus dem Docker-Test-Substrat, nicht aus .env.
 . "$PSScriptRoot\dev\test_n8n_state.ps1"
 $conn        = Get-TestN8nConnection
 $N8N_URL     = $conn.Url
@@ -74,7 +74,6 @@ function Get-FieldValue([object]$RunData, [string]$NodeName, [string]$FieldPath)
     } catch { return $null }
 }
 
-# --- Setup ---
 Write-Host "Suche Workflows ..."
 $wfList = Invoke-N8nGet 'workflows?limit=200'
 $wfMap  = @{}
@@ -94,7 +93,7 @@ if ($missing.Count) { throw "Testfall nicht gefunden in infra_cases.json: $($mis
 if (-not $cases) { throw "Keine Testfaelle in infra_cases.json." }
 if ($ForceAbortId -and $ForceAbortId -notin @($cases.id)) { throw "-ForceAbortId $ForceAbortId ist nicht unter den ausgewaehlten Faellen." }
 
-# Haengende Harness-Executions (Gate wartet) stoppen: nach dem Lauf und nach einem abgebrochenen Fall.
+# Haengende Harness-Executions (Gate wartet) stoppen, nach dem Lauf und nach einem abgebrochenen Fall.
 $infraHarnesses = @('agent.tool_load_context.test_harness','core.sub_load_config.test_harness','agent.tool_human_approval.test_harness')
 function Clear-InfraHarnessLeftovers {
     foreach ($hName in $infraHarnesses) {
@@ -151,13 +150,13 @@ foreach ($tc in $cases) {
         $payload    = ($tc.body | ConvertTo-Json -Compress)
         if ($payload.Contains('__OWNER_CHAT_ID__')) {
             # Gepairter Owner-Sender wie mock_route_test/real_ingress_test (der frisch gebootstrappte Owner hat noch keine
-            # telegram_user_id -> fn_resolve_sender found=false). Idempotent, einmal je Lauf reicht -> hier je Case billig.
+            # telegram_user_id -> fn_resolve_sender found=false). Idempotent, daher je Case billig.
             Set-OwnerTelegramPairing -Container $conn.Container -Uid $PairedOwnerUid
             $payload = $payload.Replace('__OWNER_CHAT_ID__', "$PairedOwnerUid")
         }
         try {
-            # Harness antwortet seit responseMode=lastNode erst nach Lauf-Ende -> POST blockiert;
-            # Timeout ist KEIN Fehler (Polling unten uebernimmt wie bisher).
+            # Harness antwortet (responseMode=lastNode) erst nach Lauf-Ende -> POST blockiert;
+            # Timeout ist kein Fehler (Polling unten uebernimmt).
             Invoke-RestMethod -Uri $webhookUrl -Method Post -Headers @{ $AuthHeader = $TEST_HARNESS_SECRET } `
                 -TimeoutSec ($Timeout + 10) `
                 -ContentType 'application/json; charset=utf-8' -Body ([System.Text.Encoding]::UTF8.GetBytes($payload)) | Out-Null
@@ -211,7 +210,7 @@ foreach ($tc in $cases) {
             if ($val -ne $tc.must_equal) { $errors += "Erwartet $($tc.must_equal), erhalten: $val" }
         }
 
-        # Mehrfach-Leser: N VERSCHIEDENE Dateien stehen im Vision-Request (Mock-LLM protokolliert Art + Hash je Datei-Block).
+        # Mehrfach-Leser: N verschiedene Dateien stehen im Vision-Request (Mock-LLM protokolliert Art + Hash je Datei-Block).
         if ($tc.PSObject.Properties['expect_llm_file_blocks']) {
             $withFiles = @(Get-MockLlmRequests -Container $conn.Container | Where-Object { @($_.file_blocks).Count -gt 0 })
             $distinct = if ($withFiles.Count) { @(@($withFiles[-1].file_blocks) | ForEach-Object { $_.sha } | Sort-Object -Unique).Count } else { 0 }
@@ -234,7 +233,6 @@ foreach ($tc in $cases) {
     }
 }
 
-# Haengende Harness-Executions aufraeumen
 Clear-InfraHarnessLeftovers
 $failed += Assert-ForceAbortFired $ForceAbortId
 

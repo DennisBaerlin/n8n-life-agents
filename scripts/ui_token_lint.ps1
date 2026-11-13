@@ -1,5 +1,5 @@
 ﻿#Requires -Version 5.1
-# ui_token_lint.ps1 -- eine Farbquelle fuer alle Oberflaechen (hartes Gate, Vorbild scripts/ui_literal_lint.ps1).
+# ui_token_lint.ps1 -- eine Farbquelle fuer alle Oberflaechen (hartes Gate).
 # Regeln und Ablauf: docs/reference/ui.md, Skill /ui-task. Mechanik der Bloecke: scripts/lib/ui_tokens.ps1.
 # Prueft in dieser Reihenfolge:
 #   Selbst-Asserts   stirbt die Erkennung still, bricht der Lint (Kontrast-Formel, Literal-Erkennung, Blockformat).
@@ -19,6 +19,7 @@
 #                    Farben duerfen abweichen. Ausnahmen mit Begruendung: Get-UiMarkExempt.
 #   (8) Erklaer-Bilder die Ordner aus Get-UiArtDirs enthalten genau die aus config/ui.art.*.svg erzeugten Dateien (feste Farben dort
 #                    sind gewollt: das Bild wird per <img> gezeigt und erreicht keine var(--token) der Seite).
+# Aufruf: .\scripts\ui_token_lint.ps1 [-Verbose] [-Baseline]
 # -Baseline: druckt die gefundenen Literale als JSON-Geruest (reason:'TODO').
 # Exit-Code = Anzahl Fehler. Kein LLM, kein Netz, kein Substrat.
 param([switch]$Baseline, [switch]$Verbose)

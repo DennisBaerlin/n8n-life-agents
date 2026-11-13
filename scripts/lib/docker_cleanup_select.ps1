@@ -1,6 +1,6 @@
 ﻿#Requires -Version 5.1
 # Auswahl-Logik fuer scripts/dev/docker_cleanup.ps1 (rein, ohne Docker; Test: scripts/dev/docker_cleanup_test.ps1).
-# "Eigen" heisst: Label lifeagents.substrate* / io.lifeagents.* ODER ein bekannter Test-Container-Name. Alles andere bleibt unberuehrt.
+# "Eigen" heisst: Label lifeagents.substrate* / io.lifeagents.* oder ein bekannter Test-Container-Name. Alles andere bleibt unberuehrt.
 
 $OwnLabelPattern = '^(lifeagents\.substrate|io\.lifeagents\.)'
 $OwnNamePattern  = '^(n8ntest|lifeagents-dbtest|ta-voltest|ta-[a-z0-9]+test)'
@@ -17,7 +17,7 @@ function Test-OwnContainer($C) {
     return [bool]@($C.Labels | Where-Object { $_ -match $OwnLabelPattern }).Count
 }
 
-# Eigene, NICHT laufende Container (laufende bleiben immer stehen).
+# Eigene, nicht laufende Container (laufende bleiben immer stehen).
 function Select-StoppedOwnContainers($Containers) {
     return @($Containers | Where-Object { $_.State -in @('exited', 'created', 'dead') -and (Test-OwnContainer $_) })
 }

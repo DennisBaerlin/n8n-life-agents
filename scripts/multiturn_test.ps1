@@ -1,16 +1,16 @@
 ﻿#Requires -Version 5.1
-# Multi-Turn-Agent-Tests (Weg C / Teststrategie Phase 8). Feuert tests\agent\cross\multiturn_cases.json:
-# je Case MEHRERE Turns sequenziell ueber DIESELBE (numerische) chat_id (KEIN Memory-Clear zwischen den
-# Turns) -> prueft Kontext-Erhalt (Pronomen-Aufloesung) UND den HITL-Korrektur-Loop (ablehnen ->
+# Multi-Turn-Agent-Tests. Feuert tests\agent\cross\multiturn_cases.json:
+# je Case mehrere Turns sequenziell ueber dieselbe (numerische) chat_id (kein Memory-Clear zwischen den
+# Turns) -> prueft Kontext-Erhalt (Pronomen-Aufloesung) und den HITL-Korrektur-Loop (ablehnen ->
 # korrigieren -> neu planen). Der letzte Turn wird gegen expected_tool (+ optional expected_tool_args)
 # deterministisch geprueft.
 #
-# WEG C: KEIN test_-Gate-Bypass mehr. Jeder Turn feuert am Agent-Harness (finance-test); ruft ein Turn
-#   ein Write-Tool, wird das echte Send-and-Wait-Gate ueber das abgefangene Mock-Telegram DECLINEd
-#   (= die "ablehnen"-Haelfte des Korrektur-Loops). Execution-Korrelation: monotone Exec-id je Turn.
+# Jeder Turn feuert am Agent-Harness (finance-test); ruft ein Turn ein Write-Tool, wird das echte
+# Send-and-Wait-Gate ueber das abgefangene Mock-Telegram declined (= die "ablehnen"-Haelfte des
+# Korrektur-Loops). Execution-Korrelation: monotone Exec-id je Turn.
 #
 # Usage:  .\scripts\multiturn_test.ps1 [-Id mt01] [-Timeout 70] [-Verbose]
-# Exit-Code = Anzahl Fehler. KOSTET LLM-Credits (owner-gegatet).
+# Exit-Code = Anzahl Fehler. Kostet LLM-Credits (owner-gegatet).
 # Voraussetzung: Docker-Test-Substrat + enable_mock_telegram.ps1 (fuers Gate) + .env TEST_HARNESS_SECRET.
 param(
     [string]$Id,
@@ -39,11 +39,10 @@ $WebhookUrl = "$N8N_URL/webhook/finance-test"
 
 $state = Get-TestN8nState
 if (-not $state.mock_telegram) { throw "Mock-Telegram nicht aktiv (fuer die Gate-Aufloesung noetig). Zuerst: .\scripts\dev\enable_mock_telegram.ps1" }
-# Echte Claude-Antworten noetig (Gateway-Upstream = API, nicht Mock) + Start-Marke fuer die Kostenuebersicht.
+# Echte Claude-Antworten noetig (Gateway-Upstream = API, nicht Mock); Start-Marke fuer die Kostenuebersicht.
 Assert-LlmGatewayUpstream -Container $Container -Expect real
 $llmCursor = Get-LlmUsageCursor -Container $Container
 
-# --- Setup ---
 $wfList    = Invoke-N8nGet 'workflows?limit=200'
 $financeWf = $wfList.data | Where-Object { $_.name -eq 'agent.finance' } | Select-Object -First 1
 $harnessWf = $wfList.data | Where-Object { $_.name -eq 'agent.finance.test_harness' } | Select-Object -First 1
@@ -64,7 +63,6 @@ Write-Host "Multi-Turn-Agent-Tests -- $($cases.Count) Case(s)  (Webhook: $Webhoo
 Write-Host ("-" * 64)
 $passed = 0; $failed = 0
 
-# Ein Turn = ein Harness-POST -> agent.finance-Execution; jedes Write-Gate wird DECLINEd.
 function Invoke-Turn([string]$Task, [long]$ChatId, [int]$TurnTimeout) {
     Clear-MockTelegramRequests -Container $Container
     # Wiederhol-Sperre: jede Runde = neue Nachricht; den Orchestrator-Abschluss, der die Zeile sonst loescht, gibt es hier nicht.
@@ -85,9 +83,9 @@ foreach ($tc in $cases) {
     Write-Host "  [$($tc.id)] $($tc.name)  ($($tc.turns.Count) Turns)"
     $caseTimeout = if ($tc.PSObject.Properties['timeout_s'] -and $tc.timeout_s) { [int]$tc.timeout_s } else { $Timeout }
     [long]$chatId = Get-TestChatId -Seed $tc.id
-    # EINMAL je Case leeren (numerisch) -> Turns innerhalb des Cases bauen bewusst aufeinander auf.
+    # Einmal je Case leeren: Turns innerhalb des Cases bauen bewusst aufeinander auf.
     Clear-ChatSessionMemory -Container $Container -SessionId "$chatId"
-    # Voraussetzungen wie in den anderen Agent-Tiers (eine Stelle: Invoke-TestCaseSetup); vorher alte __E2E__-Reste weg
+    # Voraussetzungen ueber Invoke-TestCaseSetup; vorher alte __E2E__-Reste weg
     if ($tc.PSObject.Properties['setup_sql'] -and $tc.setup_sql) {
         [void](Invoke-TestN8nPsql -Container $Container -PsqlArgs @('-q', '-c', 'SELECT agent.fn_clear_e2e_data();'))
         try { Invoke-TestCaseSetup -Container $Container -Sql "$($tc.setup_sql)" }

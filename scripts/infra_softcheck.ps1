@@ -1,17 +1,16 @@
 ﻿#Requires -Version 5.1
-# WEICHER Pre-Push-Check (aus pre_push_check.ps1 extrahiert) -- blockt NIE (Exit immer 0).
-# Bewahrt die alte Gate-Semantik unter prek:
+# Weicher Pre-Push-Check, blockt nie (Exit immer 0):
 #   - infra_test laeuft gegen das ephemere Docker-Test-Substrat -> nur wenn es laeuft + erreichbar ist,
-#     Fehler = WARNUNG (kein Block; kein laufendes Substrat darf einen Push verhindern).
-#   - contract_test prueft externe API-Schemata -> netz-abhaengig, Fehler = WARNUNG.
-# Das HARTE Gate (db_test) ist ein eigener, blockender prek-Hook (id db-test).
+#     Fehler = Warnung (kein laufendes Substrat darf einen Push verhindern).
+#   - contract_test prueft externe API-Schemata -> netz-abhaengig, Fehler = Warnung.
+# Das harte Gate (db_test) ist ein eigener, blockender prek-Hook (id db-test).
+# Aufruf: .\scripts\infra_softcheck.ps1 (ohne Parameter; ruft infra_test.ps1 und contract_test.ps1 auf).
 
 $ErrorActionPreference = 'Stop'
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $RepoRoot = git -C $PSScriptRoot rev-parse --show-toplevel
 
-# infra_test nur wenn das Docker-Test-Substrat laeuft + erreichbar ist (gratis, aber substrat-abhaengig
-# -> nur Warnung). Verbindung aus .local/n8ntest_state.<container>.json (raus aus Prod; -AllowMissing = $null statt Throw).
+# Verbindung aus .local/n8ntest_state.<container>.json; -AllowMissing liefert $null statt Throw.
 Write-Host "Infra-Tests (wenn das Test-Substrat laeuft; nur Warnung) ..." -ForegroundColor Cyan
 . "$PSScriptRoot\dev\test_n8n_state.ps1"
 $conn = Get-TestN8nConnection -AllowMissing
@@ -31,7 +30,6 @@ if ($reachable) {
     Write-Host "  n8n nicht erreichbar -> infra_test uebersprungen (kein Block)." -ForegroundColor DarkGray
 }
 
-# Externe API-Contracts (netz-abhaengig -> nur Warnung, blockt nicht).
 Write-Host "Contract-Smoke (externe APIs; nur Warnung) ..." -ForegroundColor Cyan
 & powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $RepoRoot 'scripts\contract_test.ps1')
 if ($LASTEXITCODE -ne 0) {

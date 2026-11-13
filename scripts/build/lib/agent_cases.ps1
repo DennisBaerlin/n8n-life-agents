@@ -1,6 +1,6 @@
 ﻿#Requires -Version 5.1
 # =====================================================================================================
-# agent_cases.ps1 — findet die Agent-Test-Case-Dateien aller Pakete (Phase D: keine Datei-Liste je Paket)
+# agent_cases.ps1 — findet die Agent-Test-Case-Dateien aller Pakete (keine Datei-Liste je Paket)
 #
 # Quelle: tests/agent/<pkg|cross>/*_cases.json (Layout erzwingt layout_lint L3). Jede Datei ist ein JSON-Array
 # von Cases (eine Objekt-Wurzel wird als EIN Case gelesen). Die Konsumenten filtern selbst nach der Case-Form:

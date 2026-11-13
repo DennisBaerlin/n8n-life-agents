@@ -42,9 +42,9 @@ function Get-UiSurfaces {
             Rules  = @(
                 [pscustomobject]@{ Selector = ':root'; Group = 'light' }
                 [pscustomobject]@{ Media = '@media (prefers-color-scheme: dark)'; Selector = ':root'; Group = 'dark' }
-                # QR-Code und Nachzeichnungen fremder Oberflächen (di9: FritzBox u. a., die echte Oberfläche ist immer hell).
+                # QR-Code und Nachzeichnungen fremder Oberflächen (FritzBox u. a., die echte Oberfläche ist immer hell).
                 [pscustomobject]@{ Selector = '.qr, .art-light'; Group = 'light' }
-                # Handy-Bilder (ui/art/, di9): Rahmen immer dunkel, Bildschirm immer hell wie ein Telegram-Chat am Tag.
+                # Handy-Bilder (ui/art/): Rahmen immer dunkel, Bildschirm immer hell wie ein Telegram-Chat am Tag.
                 [pscustomobject]@{ Selector = '.phone'; Group = 'dark' }
                 [pscustomobject]@{ Selector = '.phone .screen'; Group = 'light' }
             )
@@ -87,7 +87,7 @@ function Get-UiCopyText([string]$RepoRoot, $Copy) {
 }
 
 # Texte aus dem Katalog packages/core/locales/<code>.json als Block in eine Oberflaeche ohne Bau-Schritt (Start-App,
-# Leitung 2026-11-06: eine Uebersetzungs-Quelle mit Bot und Fragebogen). Je Sprache die Schluessel mit den genannten
+# eine Uebersetzungs-Quelle mit Bot und Fragebogen). Je Sprache die Schluessel mit den genannten
 # Praefixen, sortiert. Eigenes Serialisieren statt ConvertTo-Json: gleiche Ausgabe unter PowerShell 5.1 und 7.
 function Get-UiLocaleBlocks {
     @([pscustomobject]@{ Name = 'desktop'; File = 'provisioning/desktop/ui/app.js'; Prefixes = @('core.art.greeting.alt', 'core.desktop.', 'core.wizard.step.') })

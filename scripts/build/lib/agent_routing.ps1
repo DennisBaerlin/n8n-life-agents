@@ -1,23 +1,22 @@
 ﻿# =====================================================================================================
-# agent_routing.ps1 — DIE eine Lese- + Pruef-Stelle fuer provides.agents[] aller Paket-Manifeste (Phase C)
+# agent_routing.ps1 — die eine Lese- + Pruef-Stelle fuer provides.agents[] aller Paket-Manifeste
 #
 # Das Routing-Wissen eines Pakets lebt in seinen provides.agents-Objekten {name, router_description, order,
 # fallback_for?} — der Core-Prompt kennt kein Paket. Diese Funktion liefert die nach order sortierte Routing-
-# Liste (ohne 'orchestrator' = der Router routet nicht zu sich selbst) UND die Verstoesse gegen den Vertrag:
-#   (a) jeder Agent ausser 'orchestrator' hat eine nicht-leere router_description (die frueher leere
-#       finance-Sonderlocke kann nicht zurueckkehren);
+# Liste (ohne 'orchestrator' = der Router routet nicht zu sich selbst) und die Verstoesse gegen den Vertrag:
+#   (a) jeder Agent ausser 'orchestrator' hat eine nicht-leere router_description;
 #   (b) jedes agent.<x> in einer router_description ist ein deklarierter Agent irgendeines Manifests.
-#       Gehoert <x> per Namens-Konvention (x == <pkg> oder <pkg>_…) zu einem VORHANDENEN Paket, ist ein
+#       Gehoert <x> per Namens-Konvention (x == <pkg> oder <pkg>_…) zu einem vorhandenen Paket, ist ein
 #       unbekannter Name ein Tippfehler -> Fehler; ebenso, wenn er einem deklarierten Agenten- oder vorhandenen
 #       Paketnamen bis auf <= 2 Zeichen gleicht (Levenshtein; faengt agent.monitr / agent.finnce_advisor). Sonst verweist der Text auf
-#       ein abwesendes (optionales, docs/package-contract.md §4.2) Paket -> nur Warnung (Phase D, Owner-Entscheid:
-#       ein Repo ohne beliebiges Domaenen-Paket bleibt baubar; zur Laufzeit meldet der Verteiler "nicht installiert");
-#   (c) fallback_for ist eine LISTE aus $AgentFallbackKinds, nicht am 'orchestrator', und jede Art
-#       beansprucht hoechstens EIN Agent ueber alle Pakete (Dialogflow-/Rasa-"fallback", arch-challenge Phase C).
-# Konsumenten: build.ps1 ($AgentRoutingList -> throw bei Verstoss = tiefste Durchsetzung, die Daten entstehen
-# build-time), contract_lint.ps1 Check 19 (fruehere, freundliche Meldung + synthetische Negativ-Asserts) und
-# (Phase E) die Test-Treiber ueber scripts/dev/test_n8n_state.ps1 Get-TestRouteAgent (kein Paket im Treiber).
-# Bewusst abhaengigkeitsfrei (nur Manifest-JSON rein, Objekte raus), damit der Lint sie dot-sourcen kann.
+#       ein abwesendes (optionales, docs/package-contract.md §4.2) Paket -> nur Warnung
+#       (ein Repo ohne beliebiges Domaenen-Paket bleibt baubar; zur Laufzeit meldet der Verteiler "nicht installiert");
+#   (c) fallback_for ist eine Liste aus $AgentFallbackKinds, nicht am 'orchestrator', und jede Art
+#       beansprucht hoechstens ein Agent ueber alle Pakete.
+# Konsumenten: build.ps1 ($AgentRoutingList -> throw bei Verstoss), contract_lint.ps1 Check 19 (freundliche
+# Meldung + synthetische Negativ-Asserts) und die Test-Treiber ueber scripts/dev/test_n8n_state.ps1
+# Get-TestRouteAgent (kein Paket im Treiber).
+# Abhaengigkeitsfrei (nur Manifest-JSON rein, Objekte raus), damit der Lint sie dot-sourcen kann.
 # =====================================================================================================
 
 # Erlaubte fallback_for-Arten (geschlossene Liste; eine neue Art = bewusster Diff hier + Satz in
@@ -38,8 +37,8 @@ function Get-EditDistance([string]$A, [string]$B) {
     return $prev[$B.Length]
 }
 
-# Der feste englische Satz (Schicht 1), den der Orchestrator-Build an die Tool-Beschreibung des
-# Fallback-Agenten haengt — EINE Formulierung, Core-generisch.
+# Der feste englische Satz, den der Orchestrator-Build an die Tool-Beschreibung des
+# Fallback-Agenten haengt — eine Formulierung, Core-generisch.
 function Get-AgentFallbackSentence([string]$Kind) {
     switch ($Kind) {
         'attachment' { return 'Default recipient for an attachment marker whose document type stays unclear from caption and conversation.' }
@@ -58,7 +57,7 @@ function Get-PackageManifest([string]$RepoRoot) {
     })
 }
 
-# Onboarding-Reihenfolge der Pakete (Menue + Dispatch) — ABGELEITET, nie deklariert: Pakete mit
+# Onboarding-Reihenfolge der Pakete (Menue + Dispatch) — abgeleitet, nie deklariert: Pakete mit
 # onboarding/sections.json; wer Daten/Dienste eines anderen Onboarding-Pakets konsumiert (consumes.reads
 # '<schema>.<fn>', consumes.services '<pkg>:<dienst>'), kommt danach (dessen Daten liegen dann schon vor).
 # Gleichstand: haushaltsweite Pakete vor persoenlichen (ein context_scopes-Eintrag mit scope per_user), dann Name.
@@ -66,10 +65,10 @@ function Get-PackageManifest([string]$RepoRoot) {
 # Rueckgabe: @( [pscustomobject]@{ Package; Agent } ) in Onboarding-Reihenfolge (Agent = bare
 # provides.onboarding.agent; contract_lint 11 erzwingt provides.onboarding <-> sections.json).
 # Get-OnboardingPackageOrder liest das Repo; Get-OnboardingOrderFromManifests ist die reine Sortierung (Eingabe
-# @{ Path; Json } NUR der Pakete mit sections.json) — contract_lint 21 fuettert sie mit synthetischen Faellen.
-# Get-OnboardingSectionKeys — die Sektions-Keys EINES Pakets in Reihenfolge (ord) aus packages/<pkg>/onboarding/
+# @{ Path; Json } nur der Pakete mit sections.json) — contract_lint 21 fuettert sie mit synthetischen Faellen.
+# Get-OnboardingSectionKeys — die Sektions-Keys eines Pakets in Reihenfolge (ord) aus packages/<pkg>/onboarding/
 # sections.json, fuer Tool-Beschreibungen (tool_set_onboarding_section): die Liste wird abgeleitet, nie abgetippt
-# (die estate-Beschreibung nannte 6 von 7 Keys -> system_profile war nicht markierbar). Fehlt die Datei -> throw.
+# (eine abgetippte Liste verliert Keys). Fehlt die Datei -> throw.
 # -NonGatingOnly: nur die Sektionen mit "gates_advisor": false (offen sperren sie den Berater-Eingang nicht, z. B.
 # der Monats-Check; fehlt das Feld = sperrt) -> build-fixe Ausnahmeliste des Onboarding-Gates im Berater.
 function Get-OnboardingSectionKeys([string]$RepoRoot, [string]$Package, [switch]$NonGatingOnly) {
@@ -124,7 +123,7 @@ function Get-OnboardingOrderFromManifests([array]$Manifests) {
     })
 }
 
-# Onboarding-Plan-Schritt (2026-10-28): die Berater-Domaenen mit "plan_step": true im Manifest-Block advisors, in
+# Onboarding-Plan-Schritt: die Berater-Domaenen mit "plan_step": true im Manifest-Block advisors, in
 # Onboarding-Reihenfolge ihres Pakets (der Plan-Schritt steht im Menue hinter den Abschnitten seines Pakets).
 # Rueckgabe: @( [pscustomobject]@{ Domain; Package; Agent (voll, agent.<x>); HandoffAgent (advisors.<domain>.handoff_agent,
 # voll oder ''; Ziel von [Durchgehen] und Schalter fuer den Parameter handoff_tasks am Plan-Tool); ReadyKeys (Katalog-Keys
@@ -176,7 +175,7 @@ function Get-NextStepOrder([string]$RepoRoot) {
 }
 
 # Name des Route-Tool-Nodes, den der Orchestrator-Build je Agent erzeugt (n8n zeigt ihn im runData unter
-# metadata.subNodeExecutionData.actions[].nodeName) — EINE Adresse fuer Orchestrator-Def und Test-Treiber.
+# metadata.subNodeExecutionData.actions[].nodeName) — eine Adresse fuer Orchestrator-Def und Test-Treiber.
 function Get-AgentCallNodeName([string]$AgentName) { return "Call 'agent.$AgentName'" }
 
 # $Manifests = Liste von @{ Path = <Anzeige-Pfad>; Json = <ConvertFrom-Json-Objekt> }.
@@ -208,7 +207,7 @@ function Get-AgentRouting($Manifests) {
             $desc = [string]$a.router_description
             $isRouter = ($name -eq 'orchestrator')
 
-            # (c) fallback_for: fehlend/null = keine; sonst MUSS es eine JSON-Liste sein (ein nackter String
+            # (c) fallback_for: fehlend/null = keine; sonst muss es eine JSON-Liste sein (ein nackter String
             # wuerde in PowerShell sonst still zeichenweise bzw. als Ein-Element-Wert durchgehen).
             $kinds = @()
             $hasFb = $a.PSObject.Properties.Name -contains 'fallback_for'

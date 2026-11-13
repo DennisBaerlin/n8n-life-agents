@@ -1,35 +1,34 @@
 ﻿#Requires -Version 5.1
-# role_test_lint.ps1 -- hartes Commit-Gate (Vorbild approval_lint/core_literal_lint): jede publizierte
-# SECURITY-DEFINER-Bruecken-fn, die unter einer RESTRIKTIVEN Lese-Rolle laeuft (EXECUTE-Grant an eine
-# *_ro-Rolle), MUSS in tests/db/cross/test_role_permissions.sql einen SET-LOCAL-ROLE-Perspektiv-Test
-# haben (Rollen-Perspektiv-Pflicht -> tests/CLAUDE.md *DB-Tests: Pattern*). Grund: der db_test laeuft als
-# Superuser und umgeht ALLE Rechtepruefungen -> ein fehlender Grant / kein Zugriff unter der engen Rolle
-# ist im Superuser-Test UNSICHTBAR (so brach core.fn_fetch_context/load_context monatelang, WS3).
+# role_test_lint.ps1 -- hartes Commit-Gate: jede publizierte SECURITY-DEFINER-Bruecken-fn, die unter einer
+# restriktiven Lese-Rolle laeuft (EXECUTE-Grant an eine *_ro-Rolle), braucht in tests/db/cross/test_role_permissions.sql
+# einen SET-LOCAL-ROLE-Perspektiv-Test (Rollen-Perspektiv-Pflicht -> tests/CLAUDE.md *DB-Tests: Pattern*). Grund: der
+# db_test laeuft als Superuser und umgeht alle Rechtepruefungen, ein fehlender Grant / kein Zugriff unter der engen Rolle
+# ist im Superuser-Test unsichtbar.
 #
-# STRENGE = "mind. EINE Rolle" (nicht "unter jeder"): die fn ist in mind. einem SET-LOCAL-ROLE-Segment
-# aufgerufen (der echte Prod-Pfad ist damit gedeckt; estate_ro-Paritaet ist billige optionale Zugabe,
-# kein Muss -> s. Plan-Notiz).
+# Strenge = "mind. eine Rolle" (nicht "unter jeder"): die fn ist in mind. einem SET-LOCAL-ROLE-Segment
+# aufgerufen (der echte Prod-Pfad ist damit gedeckt; estate_ro-Paritaet ist optionale Zugabe).
 #
-# SCOPE (Union zweier Zweige):
-#  (A) provides.reads[] je packages/*/manifest.json -- NUR wenn die owning-fn SECURITY DEFINER ist.
+# Scope (Union zweier Zweige):
+#  (A) provides.reads[] je packages/*/manifest.json, nur wenn die owning-fn SECURITY DEFINER ist.
 #      Die Oberflaeche-A-Provider-fns (finance.fn_liquidity_snapshot/_insurance_register/_account_register/
-#      _liability_register) sind PLAIN STABLE + kein Grant -> laufen NIE unter *_ro -> skip. Ohne diesen
+#      _liability_register) sind PLAIN STABLE ohne Grant, laufen nie unter *_ro -> skip. Ohne diesen
 #      DEFINER-Filter wuerde der Lint auf allen 4 false-failen. Modus = R__fn_<name>.sql auf /SECURITY DEFINER/i.
 #  (B) expliziter GRANT EXECUTE an eine Lese-Rolle: static util_create_*_ro.sql (TO <role>_ro) + dynamisch
-#      R__fn_provision_package_roles.sql (TO %I, %I == (v_rw, v_ro)). Single %I == v_rw -> KEIN Read-Role-
-#      Grant -> exclude (fn_set_onboarding_section/fn_check_write_permission/fn_should_notify/fn_notify_resolve).
-#      MUST-IGNORE: (i) Blanket GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA; (ii) jeder GRANT SELECT/USAGE.
+#      R__fn_provision_package_roles.sql (TO %I, %I == (v_rw, v_ro)). Single %I == v_rw -> kein Read-Role-
+#      Grant, exclude (fn_set_onboarding_section/fn_check_write_permission/fn_should_notify/fn_notify_resolve).
+#      Ignoriert: (i) Blanket GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA; (ii) jeder GRANT SELECT/USAGE.
 #
-# MATCH: schema-qualifizierter NAME (core.fn_x) in mind. einem SET-LOCAL-ROLE...RESET-ROLE-Segment (NUR
-# der Name, NIE die Signatur -- der Grant traegt arg-TYPEN, der Test arg-WERTE). No-arg-fns per Name
-# identisch. Ein Vorkommen ausserhalb eines Rollen-Segments (Kommentar/Fixture) zaehlt NICHT.
+# Match: schema-qualifizierter Name (core.fn_x) in mind. einem SET-LOCAL-ROLE...RESET-ROLE-Segment (nur
+# der Name, nie die Signatur: der Grant traegt arg-Typen, der Test arg-Werte). No-arg-fns per Name
+# identisch. Ein Vorkommen ausserhalb eines Rollen-Segments (Kommentar/Fixture) zaehlt nicht.
 #
-# ALLOWLIST: scripts/build/role_test_lint_allowlist.json {fn, reason} (Ratchet-Spirit wie core_literal).
-# Mit dem DEFINER-Filter bleibt sie LEER (alle 12 heutigen Fenster getestet). Orphan = FAIL.
+# Allowlist: scripts/build/role_test_lint_allowlist.json {fn, reason}, Ratchet wie core_literal. Mit dem
+# DEFINER-Filter bleibt sie leer; ein Orphan-Eintrag ist ein Fehler.
 #
-# GEGENRICHTUNG (C, 2026-10-23): jeder core./agent.-Aufruf eines gebauten Workflow-Knotens unter einer engen Rolle
-# muss fuer diese Rolle ausfuehrbar sein (PUBLIC-Default oder Grant) -- Details am Block unten.
+# Gegenrichtung (C): jeder core./agent.-Aufruf eines gebauten Workflow-Knotens unter einer engen Rolle
+# muss fuer diese Rolle ausfuehrbar sein (PUBLIC-Default oder Grant), Details am Block unten.
 #
+# Aufruf: .\scripts\role_test_lint.ps1 [-Verbose]
 # Kein LLM, kein Netz, kein Substrat. Exit-Code = Anzahl Fehler.
 param([switch]$Verbose)
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
@@ -39,7 +38,7 @@ $u8 = New-Object System.Text.UTF8Encoding($false)
 $fails = 0
 function Fail($m) { Write-Host "  [FAIL] $m" -ForegroundColor Red; $script:fails++ }
 
-# --- SQL-Kommentar quote-aware strippen (-- am Code-Level; -- innerhalb '...' bleibt) -----------------
+# --- SQL-Kommentar quote-aware strippen (-- am Code-Level; -- innerhalb '...' bleibt) ---
 function Get-SqlCode {
     param([string]$Line)
     $inS = $false; $inD = $false
@@ -54,18 +53,18 @@ function Get-SqlCode {
     return $Line
 }
 
-# --- SECURITY DEFINER als echten fn-Modifier erkennen (NICHT im Kommentar) ----------------------------
+# --- SECURITY DEFINER als echten fn-Modifier erkennen (nicht im Kommentar) ---
 # Die Oberflaeche-A-Header erwaehnen "SECURITY DEFINER" in der Prosa ("... als SECURITY DEFINER exponieren
-# -> dann ...") als die VERWORFENE Alternative -> ein roher Text-Match false-positived alle 4 PLAIN-STABLE-
+# -> dann ...") als verworfene Alternative, ein roher Text-Match false-positived alle 4 PLAIN-STABLE-
 # fns. Darum zuerst die --Kommentare quote-aware strippen, dann matchen (der Modifier steht im fn-Header,
-# nie im $$-Body -> Comment-Stripping ist hier sicher).
+# nie im $$-Body, Comment-Stripping ist hier sicher).
 function Test-FileHasDefiner {
     param([string]$Path)
     $code = ([System.IO.File]::ReadAllLines($Path, $u8) | ForEach-Object { Get-SqlCode $_ }) -join "`n"
     return ($code -match '(?i)SECURITY\s+DEFINER')
 }
 
-# --- Branch B: GRANT-EXECUTE-Zeilen einer Datei -> Liste der an eine Lese-Rolle gegranteten schema.fn ---
+# --- Zweig B: GRANT-EXECUTE-Zeilen einer Datei -> Liste der an eine Lese-Rolle gegranteten schema.fn ---
 $grantRx = [regex]"GRANT\s+EXECUTE\s+ON\s+FUNCTION\s+([a-z0-9_]+\.[a-z0-9_]+)\s*\(([^)]*)\)\s+TO\s+([^';]+)"
 function Get-ReadRoleGrants {
     param([string]$Path)
@@ -75,13 +74,13 @@ function Get-ReadRoleGrants {
         $code = Get-SqlCode $line
         $m = $grantRx.Match($code)
         if (-not $m.Success) {
-            # Self-Assert (Cold-Eyes A2): eine per-fn GRANT-EXECUTE-Zeile, die $grantRx NICHT parst, ist ein
-            # STILLER Deckungs-Verlust (mehrzeiliges GRANT ODER verschachtelte Argument-Klammer wie
-            # numeric(10,2) -> [^)]* stoppt an der inneren `)`). Fail-closed statt still uebergehen.
-            # (Die Blanket-Form GRANT EXECUTE ON ALL FUNCTIONS matcht `ON FUNCTION ` bewusst nicht -> kein Fehlalarm.)
-            # SUPPRESSION (zweistufig wie layout_lint L4): ein in-line `lint-ignore: role-test-lint` auf der
-            # ROHEN Zeile (Kommentar-Teil) markiert eine bewusst dynamische Grant-Form ausserhalb des Scopes —
-            # heute genau der INVOKER-only-Bulk-Grant in fn_provision_package_roles (NOT prosecdef gefiltert,
+            # Self-Assert: eine per-fn GRANT-EXECUTE-Zeile, die $grantRx nicht parst, ist ein
+            # stiller Deckungs-Verlust (mehrzeiliges GRANT oder verschachtelte Argument-Klammer wie
+            # numeric(10,2): [^)]* stoppt an der inneren `)`). Fail-closed statt still uebergehen.
+            # (Die Blanket-Form GRANT EXECUTE ON ALL FUNCTIONS matcht `ON FUNCTION ` bewusst nicht, kein Fehlalarm.)
+            # Suppression (zweistufig wie layout_lint L4): ein in-line `lint-ignore: role-test-lint` auf der
+            # rohen Zeile (Kommentar-Teil) markiert eine bewusst dynamische Grant-Form ausserhalb des Scopes,
+            # derzeit der INVOKER-only-Bulk-Grant in fn_provision_package_roles (NOT prosecdef gefiltert,
             # kein DEFINER-Fenster). Unmarkierte dynamische Grants failen weiter fail-closed.
             if ([regex]::IsMatch($code, 'GRANT\s+EXECUTE\s+ON\s+FUNCTION\s')) {
                 if ($line -match 'lint-ignore:\s*role-test-lint') {
@@ -106,10 +105,10 @@ function Get-ReadRoleGrants {
     return $out
 }
 
-# --- Scope aufbauen: $required[schema.fn] = <Quelle> --------------------------------------------------
+# --- Scope aufbauen: $required[schema.fn] = <Quelle> ---
 $required = @{}
 
-# (B) Grant-Quellen: die zwei Core-RO-Util + jedes R__fn_provision_package_roles (heute nur core).
+# (B) Grant-Quellen: die Core-RO-Utils + jedes R__fn_provision_package_roles.
 $grantSources = @()
 $grantSources += @(Get-ChildItem (Join-Path $RepoRoot 'packages') -Recurse -Filter 'util_create_*_ro.sql' -ErrorAction SilentlyContinue | ForEach-Object FullName)
 $grantSources += @(Get-ChildItem (Join-Path $RepoRoot 'packages') -Recurse -Filter 'R__fn_provision_package_roles.sql' -ErrorAction SilentlyContinue | ForEach-Object FullName)
@@ -145,14 +144,14 @@ foreach ($pkgDir in (Get-ChildItem (Join-Path $RepoRoot 'packages') -Directory |
 # Self-Assert: Scope-Enumeration darf nicht still leer sein (Parser-Bruch -> False-Green).
 if ($required.Count -lt 1) { Fail "Scope-Enumeration lieferte 0 fns -- Grant-Parser kaputt? (erwartet >=1)" }
 
-# --- Rollen-Perspektiv-Testdatei: SET-LOCAL-ROLE...RESET-ROLE-Segmente extrahieren --------------------
+# --- Rollen-Perspektiv-Testdatei: SET-LOCAL-ROLE...RESET-ROLE-Segmente extrahieren ---
 $testFile = Join-Path $RepoRoot 'tests\db\cross\test_role_permissions.sql'
 $segments = @()
 if (-not (Test-Path $testFile)) {
     Fail "Rollen-Perspektiv-Testdatei fehlt: tests/db/cross/test_role_permissions.sql"
 } else {
-    # Kommentare zuerst strippen (wie Test-FileHasDefiner): ein fn-Name in einem --Kommentar INNERHALB
-    # eines Rollen-Segments darf NICHT als Deckung zaehlen (Cold-Eyes A1) -- nur ein echter Aufruf zaehlt.
+    # Kommentare zuerst strippen (wie Test-FileHasDefiner): ein fn-Name in einem --Kommentar innerhalb
+    # eines Rollen-Segments darf nicht als Deckung zaehlen, nur ein echter Aufruf.
     $testCode = ([System.IO.File]::ReadAllLines($testFile, $u8) | ForEach-Object { Get-SqlCode $_ }) -join "`n"
     $segRx = [regex]'(?is)SET\s+LOCAL\s+ROLE\s+\w+\s*;(.*?)RESET\s+ROLE'
     $segments = @($segRx.Matches($testCode) | ForEach-Object { $_.Groups[1].Value })
@@ -160,7 +159,7 @@ if (-not (Test-Path $testFile)) {
     if ($segments.Count -lt 1) { Fail "keine SET-LOCAL-ROLE-Segmente in test_role_permissions.sql gefunden -- Segment-Parser kaputt?" }
 }
 
-# --- Allowlist laden + selbst-konsistent pruefen -----------------------------------------------------
+# --- Allowlist laden + Selbstkonsistenz pruefen ---
 $alPath = Join-Path $RepoRoot 'scripts\build\role_test_lint_allowlist.json'
 $allow = @{}
 if (-not (Test-Path $alPath)) {
@@ -176,10 +175,10 @@ if (-not (Test-Path $alPath)) {
     }
 }
 
-# --- Abgleich: jede in-scope fn hat mind. ein Rollen-Segment mit ihrem Namen --------------------------
+# --- Abgleich: jede in-scope fn hat mind. ein Rollen-Segment mit ihrem Namen ---
 $usedAllow = @{}
 foreach ($fn in ($required.Keys | Sort-Object)) {
-    $nameRx = [regex]("(?i)" + [regex]::Escape($fn) + "\b")   # NUR der Name, nie die Signatur
+    $nameRx = [regex]("(?i)" + [regex]::Escape($fn) + "\b")   # nur der Name, nie die Signatur
     $covered = $false
     foreach ($seg in $segments) { if ($nameRx.IsMatch($seg)) { $covered = $true; break } }
     if ($covered) {
@@ -194,21 +193,22 @@ foreach ($fn in ($required.Keys | Sort-Object)) {
     Fail "$fn ist unter einer Lese-Rolle EXECUTE-gegrantet ($($required[$fn])), hat aber KEINEN SET-LOCAL-ROLE-Perspektiv-Test in tests/db/cross/test_role_permissions.sql -- Rollen-Test ergaenzen (SET LOCAL ROLE <rolle>; ... $fn(...); RESET ROLE;) ODER mit Begruendung in scripts/build/role_test_lint_allowlist.json allowlisten."
 }
 
-# --- Orphan-Allowlist: Eintrag (a) nicht in scope ODER (b) in scope + ohnehin getestet ----------------
+# --- Orphan-Allowlist: Eintrag (a) nicht in scope oder (b) in scope und ohnehin getestet ---
 foreach ($k in ($allow.Keys | Sort-Object)) {
     if (-not $usedAllow.ContainsKey($k)) {
         Fail "allowlist-ORPHAN '$k' -- die fn braucht keine Ausnahme (nicht in scope ODER hat bereits einen Rollen-Test); Eintrag entfernen (Ratchet schrumpft)."
     }
 }
 
-# --- (C) Gegenrichtung: jeder Workflow-Aufruf unter einer ENGEN Rolle braucht ein Ausfuehrungsrecht ----------------
-# Anlass 2026-10-23 (/reminders-Menue): ein Postgres-Knoten unter core_ro rief core.fn_ui_texts_for (REVOKE PUBLIC,
-# Grant nur an die Paket-Rollen) -> zur Laufzeit permission denied; db_test (Superuser) und (A)/(B) oben (Grant ->
-# Test) sahen es nicht. Statisch je gebautem Knoten: Rolle aus dem Platzhalter __CRED_POSTGRES_<ROLLE>_RO|RW__
-# (WRITE = Owner-Cred -> skip), Aufrufe core.fn_x( / agent.fn_x( aus der Query. Erlaubt, wenn das Schema fuer die
-# Rolle sichtbar ist (Paket-Rollen: nur core) UND entweder die fn ihren PUBLIC-Default behaelt (kein REVOKE ... FROM
-# public in packages/*/db; context_ro bekommt nie etwas ueber PUBLIC) ODER ein Grant die Rolle deckt
-# (util_create_<rolle>.sql literal; fn_provision_package_roles 'TO %I, %I' = rw+ro, 'TO %I' = nur rw).
+# --- (C) Gegenrichtung: jeder Workflow-Aufruf unter einer engen Rolle braucht ein Ausfuehrungsrecht ---
+# Symptom ohne diese Pruefung: ein Postgres-Knoten unter core_ro ruft core.fn_ui_texts_for (REVOKE PUBLIC,
+# Grant nur an die Paket-Rollen) und scheitert zur Laufzeit mit permission denied; db_test (Superuser) und (A)/(B)
+# oben (Grant -> Test) sehen es nicht. Statisch je gebautem Knoten: Rolle aus dem Platzhalter
+# __CRED_POSTGRES_<ROLLE>_RO|RW__ (WRITE = Owner-Cred -> skip), Aufrufe core.fn_x( / agent.fn_x( aus der Query.
+# Erlaubt, wenn das Schema fuer die Rolle sichtbar ist (Paket-Rollen: nur core) und entweder die fn ihren
+# PUBLIC-Default behaelt (kein REVOKE ... FROM public in packages/*/db; context_ro bekommt nie etwas ueber PUBLIC)
+# oder ein Grant die Rolle deckt (util_create_<rolle>.sql literal; fn_provision_package_roles 'TO %I, %I' = rw+ro,
+# 'TO %I' = nur rw).
 $grantMap = @{}   # schema.fn -> @{ <rolle> | '%rw' | '%ro' = $true }
 foreach ($src in ($grantSources | Sort-Object -Unique)) {
     foreach ($line in [System.IO.File]::ReadAllLines($src, $u8)) {

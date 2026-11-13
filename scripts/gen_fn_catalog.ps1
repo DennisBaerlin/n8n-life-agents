@@ -1,30 +1,30 @@
 ﻿#Requires -Version 5.1
-# fn-Katalog-Generator (Hardening-Phase Session 2) -- nach dem Vorbild build.ps1 -CatalogOnly/-VerifyCatalog.
+# fn-Katalog-Generator.
 #
 # Parst die packages/*/db/migrations/R__fn_*.sql (Header-Kommentar + CREATE FUNCTION-Signaturen + direkt
-# gelesene jsonb-Keys) und generiert den tracked Katalog docs/fn_catalog.md -- EINE Datei
-# fuer Kontrakt-Lookups statt Datei-Suche ueber alle fn-Dateien. Source of Truth bleiben die
-# SQL-Dateien; der Katalog ist ein generierter Index (NIE hand-editieren).
+# gelesene jsonb-Keys) und generiert den getrackten Katalog docs/fn_catalog.md: eine Datei
+# fuer Kontrakt-Lookups ueber alle fn-Dateien. Quelle bleiben die SQL-Dateien; der Katalog ist ein
+# generierter Index (nie hand-editieren).
 #
-# Deterministisch (ordinal sortiert, LF-normalisiert, keine Zeitstempel) -> Drift-Gate per
-# String-Vergleich, analog dem Capabilities-Catalog:
+# Deterministisch (ordinal sortiert, LF-normalisiert, keine Zeitstempel), Drift-Gate per String-Vergleich:
 #   .\scripts\gen_fn_catalog.ps1            # Katalog (neu) schreiben
-#   .\scripts\gen_fn_catalog.ps1 -Verify    # kein Write; Exit 1 wenn tracked != frisch generiert
+#   .\scripts\gen_fn_catalog.ps1 -Verify    # kein Write; Exit 1 wenn getrackt != frisch generiert
 #                                           #   (hartes Gate: prek-Hook `fn-catalog`)
+# Exit-Code: 0 = ok/geschrieben, 1 = Drift (-Verify) oder DEFINER-Hygiene-Verstoss; unerwartete Fehler brechen mit Exception ab.
 param([switch]$Verify)
 
 $ErrorActionPreference = 'Stop'
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $Utf8NoBom = New-Object System.Text.UTF8Encoding($false)
 $RepoRoot  = git -C $PSScriptRoot rev-parse --show-toplevel
-# Flyway-Repeatables: die Tool-Functions liegen als R__fn_*.sql (R__ = repeatable, fn_ = Function),
-# paket-bewusst unter packages/<pkg>/db/migrations/ (alle Pakete; kein flacher db/-Rest mehr).
+# Flyway-Repeatables: die Tool-Functions liegen als R__fn_*.sql (R__ = repeatable, fn_ = Function)
+# paketweise unter packages/<pkg>/db/migrations/ (kein flaches db/ im Repo-Root).
 # Der Katalog-Name = Dateiname ohne R__-Praefix (siehe ConvertFrom-FnFile/$byName);
-# fn_catalog.md bleibt EIN global aggregiertes Artefakt.
+# fn_catalog.md ist ein global aggregiertes Artefakt.
 $FnGlobs   = @((Join-Path $RepoRoot 'packages\*\db\migrations\R__fn_*.sql'))
 $OutPath   = Join-Path $RepoRoot 'docs\fn_catalog.md'
 
-# ORDINAL-Sort (kultur-unabhaengig -> stabiler Vergleich auf jeder Culture; analog lib/catalog.ps1)
+# Ordinal-Sort: kulturunabhaengig, damit der Drift-Vergleich auf jeder Culture stabil bleibt
 function Sort-Ordinal([string[]]$Items) {
     if ($null -eq $Items -or $Items.Count -eq 0) { return @() }
     $a = [string[]]$Items
@@ -34,12 +34,12 @@ function Sort-Ordinal([string[]]$Items) {
 
 # --- Eine fn-Datei parsen: Header (Titel-Tag + Beschreibung), Signaturen, jsonb-Reads ---
 function ConvertFrom-FnFile([string]$Path) {
-    # R__-Praefix (Flyway-Repeatable) abstreifen -> Katalog-Name = fn_<name> (wie die Titelzeile im File).
+    # Katalog-Name = fn_<name> (wie die Titelzeile im File)
     $name = [System.IO.Path]::GetFileNameWithoutExtension($Path) -replace '^R__', ''
     $text = [System.IO.File]::ReadAllText($Path, (New-Object System.Text.UTF8Encoding($false)))
 
-    # Fuehrender Kommentar-Block: Ruler-/Pfad-Zeilen droppen, Titelzeile "-- fn_x (TAG)" -> Tag,
-    # Rest = Beschreibung (zum Einzeiler kollabiert).
+    # Fuehrender Kommentar-Block: Ruler-/Pfad-Zeilen verwerfen, Titelzeile "-- fn_x (TAG)" -> Tag,
+    # Rest = Beschreibung (zum Einzeiler zusammengezogen).
     $tag = ''; $titleSeen = $false; $descLines = @()
     foreach ($line in ($text -split "`r?`n")) {
         if ($line -notmatch '^\s*--') { break }
@@ -53,7 +53,7 @@ function ConvertFrom-FnFile([string]$Path) {
     }
     $desc = (($descLines -join ' ') -replace '\s+', ' ').Trim()
 
-    # Signaturen: alle CREATE FUNCTION im File (Konvention: eine fn pro Datei; Overloads moeglich).
+    # Signaturen: alle CREATE FUNCTION im File (eine fn pro Datei; Overloads moeglich)
     $sigs = @()
     foreach ($m in [regex]::Matches($text, '(?is)CREATE\s+(?:OR\s+REPLACE\s+)?FUNCTION\s+([a-z0-9_]+\.[a-z0-9_]+)\s*\((.*?)\)\s*RETURNS\s+(.+?)\s+(?:LANGUAGE|AS)\b')) {
         $fnArgs = ($m.Groups[2].Value -replace '\s+', ' ').Trim()
@@ -64,7 +64,7 @@ function ConvertFrom-FnFile([string]$Path) {
     $sigs = @($sigs | Select-Object -Unique)
 
     # Direkt im File gelesene jsonb-Keys (Ueberapproximation, gleiche Regexes wie contract_lint;
-    # transitive fn-in-fn-Reads prueft contract_lint selbst).
+    # transitive fn-in-fn-Reads prueft contract_lint selbst)
     $keys = New-Object System.Collections.Generic.HashSet[string]
     foreach ($m in [regex]::Matches($text, "->>?\s*'([A-Za-z0-9_]+)'")) { [void]$keys.Add($m.Groups[1].Value) }
     foreach ($m in [regex]::Matches($text, "\?\s*'([A-Za-z0-9_]+)'"))   { [void]$keys.Add($m.Groups[1].Value) }
@@ -72,18 +72,17 @@ function ConvertFrom-FnFile([string]$Path) {
     return @{ Name = $name; Tag = $tag; Desc = $desc; Sigs = $sigs; Keys = (Sort-Ordinal @($keys)) }
 }
 
-# --- Katalog generieren (deterministisch -> stabiler Vergleich) ---
+# --- Katalog generieren ---
 $files = @(Get-ChildItem $FnGlobs -File -ErrorAction SilentlyContinue)
 if ($files.Count -eq 0) { throw "Keine R__fn_*.sql unter packages/*/db/migrations gefunden." }
 
-# --- DEFINER-Hygiene-Gate (Post-WS3-Härtung, arch-challenge dünner-B): jede SECURITY-DEFINER-fn MUSS
-#     (1) search_path pinnen (CVE-2018-1058) UND (2) REVOKE ... FROM PUBLIC haben (Least-Privilege).
-#     NUR diese 2 Assertions (etablierter Standard: Splinter 0011 + CVE-2018-1058) — KEIN 5-Punkt-Protokoll,
-#     kein Header-Marker (vertagt). Geprueft wird JE FUNKTIONSKOPF (CREATE … FUNCTION bis AS $), nach Entfernen der
-#     Zeilen-Kommentare: nur ein Kopf mit SECURITY DEFINER zaehlt, und nur SEIN search_path (eine INVOKER-fn derselben
+# --- DEFINER-Hygiene-Gate: jede SECURITY-DEFINER-fn pinnt search_path (CVE-2018-1058) und hat
+#     REVOKE ... FROM PUBLIC (Least-Privilege); mehr prueft das Gate nicht (Standard: Splinter 0011 + CVE-2018-1058).
+#     Geprueft wird je Funktionskopf (CREATE ... FUNCTION bis AS $), nach Entfernen der Zeilen-Kommentare:
+#     nur ein Kopf mit SECURITY DEFINER zaehlt, und nur sein search_path (eine INVOKER-fn derselben
 #     Datei bleibt unberuehrt).
-#     (1b) der gepinnte search_path endet auf pg_temp — sonst durchsucht PostgreSQL das temporaere Schema der
-#     Sitzung bei Tabellen ZUERST (PG-Doku CREATE FUNCTION, "Writing SECURITY DEFINER Functions Safely").
+#     (1b) der gepinnte search_path endet auf pg_temp, sonst durchsucht PostgreSQL das temporaere Schema der
+#     Sitzung bei Tabellen zuerst (PG-Doku CREATE FUNCTION, "Writing SECURITY DEFINER Functions Safely").
 $hygiene = @()
 foreach ($f in $files) {
     $t = [System.IO.File]::ReadAllText($f.FullName, $Utf8NoBom)
@@ -106,9 +105,9 @@ if ($hygiene.Count -gt 0) {
     exit 1
 }
 
-# Key = <name>|<paket> (Phase B): gleichnamige fns verschiedener Pakete (z. B. die per-Paket-Registry-fns
-# fn_advisor_review / fn_clear_e2e_data) sind legitim und bekommen je einen eigenen Eintrag -- vorher keyte
-# der Katalog nach Basename und verschluckte sie still.
+# Key = <name>|<paket>: gleichnamige fns verschiedener Pakete (z. B. die per-Paket-Registry-fns
+# fn_advisor_review / fn_clear_e2e_data) sind legitim und bekommen je einen eigenen Eintrag (ein Key nur
+# nach Basename wuerde sie still verschlucken).
 $byName = @{}
 foreach ($f in $files) {
     $pkg = Split-Path (Split-Path (Split-Path (Split-Path $f.FullName -Parent) -Parent) -Parent) -Leaf
@@ -133,7 +132,7 @@ $sb = New-Object System.Text.StringBuilder
 
 foreach ($n in (Sort-Ordinal @($byName.Keys))) {
     $e = ConvertFrom-FnFile $byName[$n]
-    # Titel schema-qualifiziert (Schema aus der ersten Signatur; Fallback Paketname).
+    # Titel schema-qualifiziert (Schema aus der ersten Signatur; Fallback Paketname)
     $schema = ($n -split '\|')[1]
     if ($e.Sigs.Count -gt 0 -and $e.Sigs[0] -match '^([a-z0-9_]+)\.') { $schema = $Matches[1] }
     $title = "$schema.$($e.Name)"

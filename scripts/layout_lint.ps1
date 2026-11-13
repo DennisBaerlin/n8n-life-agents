@@ -1,16 +1,15 @@
 ﻿#Requires -Version 5.1
-# layout_lint.ps1 -- Repo-Layout-/Struktur-Lint (hartes Commit-Gate, Vorbild approval_lint.ps1 +
-# core_literal_lint.ps1). Macht die Struktur-Aufraeumung (Plan greedy-roaming-falcon, WP-10) erstmals
-# zur INVARIANTE statt zur Konvention: was S1-S5a von Hand aufgeraeumt haben, kann strukturell nicht
-# mehr zurueckdriften. git-ls-files-basiert = platten-zustands-unabhaengig (transiente Agent-Worktrees
-# unter .claude/** + gitignorte .local/** sind strukturell ausgeschlossen -- sie sind nicht getrackt).
+# layout_lint.ps1 -- Repo-Layout-/Struktur-Lint (hartes Commit-Gate). Haelt die Repo-Struktur als
+# Invariante. git-ls-files-basiert, also unabhaengig vom Platten-Zustand (transiente Agent-Worktrees
+# unter .claude/** und gitignorte .local/** sind nicht getrackt und damit ausgeschlossen).
+# Aufruf: .\scripts\layout_lint.ps1 [-Verbose] [-Baseline]   (-Baseline druckt das L4-Allowlist-Geruest)
 #
-# Sieben Checks (jeder mit synthetischen Selbst-Asserts VOR dem Scan -- unbedingt, kein Schalter; stirbt
+# Sieben Checks (jeder mit synthetischen Selbst-Asserts vor dem Scan, unbedingt; stirbt
 # die Extraktion/Praedikat-Logik still, wird das Lint hart rot statt leise gruen):
 #   L1 Top-Level-Allowlist: jeder getrackte Root-Eintrag (Dir bzw. Datei) steht in der In-Skript-Allowlist
 #      -> re-committetes db/ o.ae. failt hart.
-#   L2 Paket-Contract: je packages/<pkg>/ sind manifest.json + CLAUDE.md + build/ + workflows/ PFLICHT
-#      (schliesst die Fail-Open-Luecke: command_lint/config_test ueberspringen manifest-lose Pakete still);
+#   L2 Paket-Contract: je packages/<pkg>/ sind manifest.json + CLAUDE.md + build/ + workflows/ Pflicht
+#      (command_lint/config_test ueberspringen manifest-lose Pakete sonst still);
 #      Subdirs subset {db,build,contexts,seed,workflows,onboarding,locales}; direkt unter dem Paket nur
 #      manifest.json/CLAUDE.md; direkt unter packages/ nur CLAUDE.md.
 #   L3 Tests-Contract: alles unter tests/ matcht tests/(db|agent)/(<pkg>|cross)/... | util/ | fixtures/ | wizard/ | backup/ |
@@ -23,15 +22,15 @@
 #      Found==Allowlist je (Datei, Token), Neues=FAIL, entferntes=count-schrumpfen, Orphan=FAIL).
 #      -Baseline druckt das Allowlist-Geruest.
 #   L5 CLAUDE.md-Titel-Konvention: Zeile 1 jeder Sub-CLAUDE.md traegt "(... beim Arbeiten in `<realer Pfad>/`)"
-#      (Root-CLAUDE.md ausgenommen -- always-loaded, kein verzeichnisgebundener Auto-Load). Laengen-Gate
-#      jeder CLAUDE.md = doc_lint Check 9 (eine Adresse; der fruehere weiche 400-Zeilen-Hinweis hier ist entfallen).
-#   L6 (nur Haelfte 2) Pathspec-Listen-Check: die drei slashlosen Mirror-/Archiv-Listen (release.yml
-#      git-archive-Pathspec, provision.sh install_cli-Mirror, bootstrap_test_n8n-foreach) -- jedes
-#      Listen-Token loest als getracktes Root-Artefakt auf ODER ist ein bekanntes Release-Artefakt
-#      (VERSION). Deckt die ZWEI schwersten realen Vorfaelle (release.yml-pathspec-BLOCKER + set-e-Bruch
-#      im Mirror). Extraktion 0 Treffer = FAIL (Zeile verschoben/reformatiert = totes Gate).
+#      (Root-CLAUDE.md ausgenommen: always-loaded, kein verzeichnisgebundener Auto-Load). Das Laengen-Gate
+#      jeder CLAUDE.md steht in doc_lint Check 9.
+#   L6 (nur Haelfte 2) Pathspec-Listen-Check: die slashlosen Mirror-/Archiv-Listen (release.yml
+#      git-archive-Pathspec, provision.sh install_cli-Mirror, bootstrap_test_n8n-foreach, $ReleasePathspec) -- jedes
+#      Listen-Token loest als getracktes Root-Artefakt auf oder ist ein bekanntes Release-Artefakt
+#      (VERSION). Ein Root-Eintrag ausserhalb der Listen bricht Release-Archiv bzw. Mirror. Extraktion 0 Treffer = FAIL
+#      (Zeile verschoben/reformatiert = totes Gate).
 #      Haelfte 1 (jeder .pre-commit-config-files:-Filter matcht >=1 Pfad) laeuft ueber die prek-nativen
-#      repo:meta-Hooks check-hooks-apply + check-useless-excludes (arch-ADOPT S5a) -- NICHT hier.
+#      repo:meta-Hooks check-hooks-apply + check-useless-excludes, nicht hier.
 #   L7 (SOLLTE) SQL-Selbst-/Tests-Header: jeder Repo-Pfad-Token im fuehrenden Kommentar-Block einer
 #      tests/db/**- oder packages/*/db/**-SQL existiert (verschobene Datei -> alter Self-Header-Pfad ist
 #      weg -> Fail); ein Token mit dem eigenen Dateinamen muss dem realen Pfad gleichen.
@@ -52,7 +51,7 @@ $L1Dirs  = @('.claude', '.github', 'config', 'docs', 'packages', 'provisioning',
 $L1Files = @('.editorconfig', '.env.example', '.gitattributes', '.gitignore', '.pre-commit-config.yaml', '.worktreeinclude',
              'AGENTS.md', 'CLAUDE.md', 'CONTRIBUTING.md', 'LICENSE', 'README.md', 'SECURITY.md')
 $L2Subdirs     = @('db', 'build', 'contexts', 'seed', 'workflows', 'onboarding', 'locales')
-$L2Required    = @('manifest.json', 'CLAUDE.md', 'build', 'workflows')   # je Paket Pflicht (Owner-Entscheid S5b)
+$L2Required    = @('manifest.json', 'CLAUDE.md', 'build', 'workflows')   # je Paket Pflicht
 $L2DirectFiles = @('manifest.json', 'CLAUDE.md')                         # einzige direkt-im-Paket erlaubten Dateien
 $L6Generated   = @('VERSION')   # Release-Zeit-Artefakt, nicht getrackt (provision.sh install_cli-Mirror)
 $placeholderRx = '[<>{}\*\$\s]|http|\.\.\.'
@@ -93,7 +92,7 @@ function Get-L4LineTokens([string]$line) {
 function Test-L4Skip([string]$rel) {
     if ($rel -match '/migrations/V[0-9]+__') { return $true }                        # eingefrorene Flyway-V-Migrationen
     if ($rel -eq 'docs/fn_catalog.md') { return $true }                              # generiert (gen_fn_catalog)
-    if ($rel -match '^docs/site/') { return $true }                                  # Showcase-Site (Site-Phase): public/ generiert (build_site.ps1 -Verify), Quellen = Nutzer-Prosa
+    if ($rel -match '^docs/site/') { return $true }                                  # Showcase-Site: public/ generiert (build_site.ps1 -Verify), Quellen = Nutzer-Prosa
     if ($rel -match '^packages/[^/]+/seed/capabilities_catalog') { return $true }    # generiert (build.ps1 -VerifyCatalog)
     if ($rel -match '^packages/[^/]+/workflows/.*\.json$') { return $true }          # generiert (build.ps1)
     if ($rel -eq 'scripts/layout_lint.ps1') { return $true }                         # self (eigenes Regex/Beispiele)
@@ -124,7 +123,7 @@ function Get-LeadingCommentTokens([string[]]$Lines) {
 }
 
 # =====================================================================================================
-# Selbst-Asserts: synthetische Fixtures je Check VOR dem Scan (unbedingt, kein Schalter -- Antwort auf "Waechter stirbt still")
+# Selbst-Asserts: synthetische Fixtures je Check vor dem Scan (unbedingt, kein Schalter)
 # =====================================================================================================
 $st = 0
 # L1
@@ -152,7 +151,7 @@ if (Test-L3Path 'tests/random/x.txt' @('core'))               { $st++ }   # unbe
 if (Test-L3Path 'tests/db/x.sql' @('core'))                   { $st++ }   # nicht paket-bucketed
 # L4
 if ($L4Rx.IsMatch('packages/core/db/x'))   { $st++ }   # innerhalb Pfad -> kein Treffer
-if ($L4Rx.IsMatch('@n8n/n8n-nodes'))       { $st++ }   # @-praefixt -> kein Treffer (Verifier-Fund)
+if ($L4Rx.IsMatch('@n8n/n8n-nodes'))       { $st++ }   # @-praefixt -> kein Treffer
 if ($L4Rx.IsMatch('foo-db/bar'))           { $st++ }   # bindestrich-praefixt -> kein Treffer
 if (-not $L4Rx.IsMatch('vgl. `db/`'))      { $st++ }   # backtick-gequotet -> Treffer
 if (-not $L4Rx.IsMatch('laeuft n8n/foo'))  { $st++ }   # freistehend -> Treffer
@@ -192,7 +191,7 @@ $tracked = @(git -C $RepoRoot ls-files)
 $pkgNames = @($tracked | Where-Object { $_ -match '^packages/[^/]+/' } | ForEach-Object { ($_ -split '/')[1] } | Sort-Object -Unique)
 
 # =====================================================================================================
-# L4 zuerst berechnen (fuer -Baseline UND Ratchet-Vergleich): Found je (relfile|token) -> count
+# L4 zuerst berechnen (fuer -Baseline und Ratchet-Vergleich): Found je (relfile|token) -> count
 # =====================================================================================================
 $found = @{}
 foreach ($rel in $tracked) {

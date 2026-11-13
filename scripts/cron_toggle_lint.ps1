@@ -1,32 +1,31 @@
 ﻿#Requires -Version 5.1
-# cron_toggle_lint.ps1 -- Phase 0 (WS-0b) Cron-Toggle-UX-Paritaet-Lint (hartes Gate, Vorbild scripts/command_lint.ps1).
-# Erzwingt das vom Owner gelockte Cron-Modell (2026-06-28) STRUKTURELL, nicht per Disziplin. ZWEI legitime Muster,
-# unterschieden durch den Default-Wert des cron_enable-Flags im Manifest (kein neues Schema):
-#   * OPT-IN  (value=false): startet AUS; SETUP = aktivieren per Knopf (callback_data cron_on:<key>, am Publish-/
-#     Onboarding-Angebot), LAUFZEIT = abschalten per Knopf (cron_off:<key>, an der Nudge-/Lern-Karte), RE-AKTIVIEREN
-#     per /reminders (Roter Faden Paket B, Owner 2026-10-23) -> KEIN cron_on am Laufzeit-Nudge.
-#   * ALWAYS-ON (value=true): startet AN. Registrierte Haushalts-Erinnerungen (cron_labels.list) sind an ihrer Karte
+# cron_toggle_lint.ps1 -- Cron-Toggle-UX-Paritaet-Lint (hartes Gate).
+# Erzwingt das Cron-Modell strukturell. Zwei Muster, unterschieden durch den Default-Wert des cron_enable-Flags im Manifest:
+#   * Opt-in (value=false): startet AUS; Setup = aktivieren per Knopf (callback_data cron_on:<key>, am Publish-/
+#     Onboarding-Angebot), Laufzeit = abschalten per Knopf (cron_off:<key>, an der Nudge-/Lern-Karte), Re-Aktivieren
+#     per /reminders, also kein cron_on am Laufzeit-Nudge.
+#   * Always-on (value=true): startet AN. Registrierte Haushalts-Erinnerungen (cron_labels.list) sind an ihrer Karte
 #     abschaltbar und per /reminders schaltbar (c); Plumbing, Pflicht (cron_labels.mandatory) und Person-Notschalter
-#     (cron_labels.person, je Person rem:on|off) tragen KEINEN cron_on/cron_off-Knopf (nur Konsole bzw. rem:).
-# Seit Paket B zusaetzlich (g) Person-Reminder, (h) Default-Zeitplan im Erinnerungs-Fenster, (i) jeder Telegram-
-# sendende Cron ist registriert, (j) jede registrierte Erinnerung hat ihre Menue-Bezeichnung (Details an den Bloecken).
-# Geprueft wird die TOGGLE-OBERFLAECHE (die gebauten Inline-Keyboard-Buttons), NICHT der Cron-Node. SoT der Keys +
-# Default = die Manifest-`.config.cron_enable`-Bloecke (wie contract_lint F9); SoT der Buttons = die getrackten
-# gebauten Workflow-JSONs (wie approval_lint/command_lint -- kein ephemeres dist/). Fail-closed:
-#   (a) jeder OPT-IN-Key hat einen erreichbaren cron_off:<key> (der Abschaltknopf -- die Phase-0-Garantie);
-#   (b) jeder OPT-IN-Key hat einen erreichbaren cron_on:<key> (die Setup-Aktivierung; alle Opt-in-Crons starten AUS);
-#   (c) ALWAYS-ON: Haushalts-Erinnerung -> cron_off:<key> oder Fusszeile core.reminders.card_footer an der Karte;
-#       sonst KEIN cron_on/cron_off-Knopf;
+#     (cron_labels.person, je Person rem:on|off) tragen keinen cron_on/cron_off-Knopf (nur Konsole bzw. rem:).
+# Zusaetzlich (g) Person-Reminder, (h) Default-Zeitplan im Erinnerungs-Fenster, (i) jeder Telegram-sendende Cron ist
+# registriert, (j) jede registrierte Erinnerung hat ihre Menue-Bezeichnung, (k) Tagesbudget (Details an den Bloecken).
+# Geprueft wird die Toggle-Oberflaeche (die gebauten Inline-Keyboard-Buttons), nicht der Cron-Node. Quelle der Keys und
+# Defaults = die Manifest-`.config.cron_enable`-Bloecke (wie contract_lint F9); Quelle der Buttons = die getrackten
+# gebauten Workflow-JSONs (kein dist/). Fail-closed:
+#   (a) jeder Opt-in-Key hat einen erreichbaren cron_off:<key> (der Abschaltknopf);
+#   (b) jeder Opt-in-Key hat einen erreichbaren cron_on:<key> (die Setup-Aktivierung; alle Opt-in-Crons starten AUS);
+#   (c) Always-on: Haushalts-Erinnerung -> cron_off:<key> oder Fusszeile core.reminders.card_footer an der Karte;
+#       sonst kein cron_on/cron_off-Knopf;
 #   (d) kein Dangling: jede cron_on:/cron_off:-callback_data verweist auf einen deklarierten cron_enable-Key, und
 #       keine cron-callback_data ist ein dynamischer/unparsbarer Ausdruck (entzoege sich dem statischen Gate);
-#   (e) fn-Akzeptanz (LEGACY-Whitelist): solange core.fn_set_cron_enable noch eine harte NOT-IN-Whitelist trug,
-#       musste sie GENAU die Opt-in-Keys akzeptieren. Seit WS-0c #2/#3 ist die Whitelist weg (Togglability =
-#       Registry-Membership in core.cron_labels) -> der Whitelist-Zweig findet kein Literal mehr und (e) wird mit
-#       Hinweis uebersprungen; die fn-Akzeptanz sichert jetzt (f) statisch + db_test (always-on/unbekannt -> ok:false).
-#   (f) cron_labels<->cron_enable-Paritaet (WS-0c #2/#3): jeder Opt-in-Key steht in einer Manifest-cron_labels.list
+#   (e) fn-Akzeptanz (Legacy-Whitelist): traegt core.fn_set_cron_enable eine harte NOT-IN-Whitelist, muss sie genau die
+#       Opt-in-Keys akzeptieren. Ohne Whitelist-Literal (Togglability = Registry-Membership in core.cron_labels) wird (e)
+#       mit Hinweis uebersprungen; die fn-Akzeptanz sichern dann (f) statisch + db_test (always-on/unbekannt -> ok:false).
+#   (f) cron_labels<->cron_enable-Paritaet: jeder Opt-in-Key steht in einer Manifest-cron_labels.list
 #       (= die Registry-Membership, die die fn als Togglability liest) und hat seine vier Katalog-Texte,
-#       KEIN Always-on-Key hat einen (sonst chat-schaltbar), keine tote cron_labels-Zeile ohne cron_enable-Key.
-# Exit-Code = Anzahl Fehler (CI-/Pre-Push-tauglich). Kein LLM, kein Netz, kein Substrat.
+#       kein Always-on-Key hat einen (sonst chat-schaltbar), keine tote cron_labels-Zeile ohne cron_enable-Key.
+# Aufruf: .\scripts\cron_toggle_lint.ps1 [-Verbose]
+# Exit-Code = Anzahl Fehler. Kein LLM, kein Netz, kein Substrat.
 param([switch]$Verbose, [string]$ExtraWorkflowDir)   # -ExtraWorkflowDir: nur fuer den Fehlfall-Test scripts/dev/cron_toggle_lint_test.ps1
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $ErrorActionPreference = 'Stop'
@@ -35,7 +34,7 @@ $u8 = New-Object System.Text.UTF8Encoding($false)
 $fails = 0
 function Fail($m) { Write-Host "  [FAIL] $m" -ForegroundColor Red; $script:fails++ }
 
-# --- (1) Deklarierte cron_enable-Keys + Default-Wert aus den Manifest-Bloecken (SoT, wie contract_lint F9) -------
+# --- (1) Deklarierte cron_enable-Keys + Default-Wert aus den Manifest-Bloecken (wie contract_lint F9) ---
 $declared = @{}   # key -> @{ pkg; default ('false'|'true') }; Keys global eindeutig (core.config UNIQUE(category,key))
 foreach ($mf in (Get-ChildItem (Join-Path $RepoRoot 'packages\*\manifest.json'))) {
     $mjson = [System.IO.File]::ReadAllText($mf.FullName, $u8) | ConvertFrom-Json
@@ -51,9 +50,9 @@ foreach ($mf in (Get-ChildItem (Join-Path $RepoRoot 'packages\*\manifest.json'))
 if ($declared.Count -eq 0) { Fail 'kein cron_enable-Key in irgendeinem Manifest gefunden (Lese-/Schema-Drift?)' }
 $chatKeys    = @($declared.Keys | Where-Object { $declared[$_].default -eq 'false' })   # Opt-in -> Chat-Toggle
 $consoleKeys = @($declared.Keys | Where-Object { $declared[$_].default -eq 'true' })    # always-on -> Konsole
-# Roter Faden Paket B: die Erinnerungs-Registry (cron_labels) kennt drei Ebenen — list = Haushalts-Erinnerung (der Owner
+# Die Erinnerungs-Registry (cron_labels) kennt drei Ebenen: list = Haushalts-Erinnerung (der Owner
 # schaltet sie in /reminders oder per Knopf an der Karte, egal ob Default an oder aus), person = je Person (rem:),
-# mandatory = Pflicht-Erinnerung (nur Anzeige). Always-on OHNE Registry-Eintrag = Plumbing (nur Konsole, kein Knopf).
+# mandatory = Pflicht-Erinnerung (nur Anzeige). Always-on ohne Registry-Eintrag = Plumbing (nur Konsole, kein Knopf).
 $regList = @{}; $regPerson = @{}; $regMand = @{}
 foreach ($mf in (Get-ChildItem (Join-Path $RepoRoot 'packages\*\manifest.json'))) {
     $mj = [System.IO.File]::ReadAllText($mf.FullName, $u8) | ConvertFrom-Json
@@ -63,10 +62,10 @@ foreach ($mf in (Get-ChildItem (Join-Path $RepoRoot 'packages\*\manifest.json'))
     if ($mj.cron_labels.person) { foreach ($p in $mj.cron_labels.person.PSObject.Properties) { if ($p.Name -ne '_comment') { $regPerson[$p.Name] = [string]$mj.name } } }
 }
 
-# --- (2) Toggle-Buttons aus den GEBAUTEN Workflow-JSONs (Inline-Keyboard-callback_data) -------------------------
-# Getrackte-Dir-Scan wie approval_lint/command_lint (NIE rekursiver Glob -> .local/backups/** haette alte JSONs).
-# Nur ECHTE Buttons (parameters.inlineKeyboard...callback_data) -- KEIN Roh-Text-Scan (Sticky-Notes nennen die
-# callback_data dokumentarisch -> waeren falsche Treffer).
+# --- (2) Toggle-Buttons aus den gebauten Workflow-JSONs (Inline-Keyboard-callback_data) ---
+# Nur getrackte workflows/-Verzeichnisse, kein rekursiver Glob (.local/backups/** haette alte JSONs).
+# Nur echte Buttons (parameters.inlineKeyboard...callback_data), kein Roh-Text-Scan (Sticky-Notes nennen die
+# callback_data dokumentarisch und waeren falsche Treffer).
 $wfDirs = @()
 foreach ($p in (Get-ChildItem -Path (Join-Path $RepoRoot 'packages') -Directory -ErrorAction SilentlyContinue)) {
     $w = Join-Path $p.FullName 'workflows'; if (Test-Path $w) { $wfDirs += $w }
@@ -98,14 +97,14 @@ foreach ($file in (Get-ChildItem $wfDirs -Filter '*.json')) {
     }
 }
 
-# --- (a) jeder OPT-IN-Key hat einen cron_off-Knopf (Abschaltknopf -- die Phase-0-Garantie) ----------------------
+# --- (a) jeder Opt-in-Key hat einen cron_off-Knopf ---
 foreach ($key in ($chatKeys | Sort-Object)) {
     if (-not $offKeys.ContainsKey($key)) {
         Fail "Opt-in-Cron '$key' ($($declared[$key].pkg), Default AUS) hat KEINEN erreichbaren cron_off:$key-Knopf im gebauten Graph (Cron ohne Abschaltknopf -- genau das verhindert diese Phase)"
     }
 }
 $watchHandler = $null -ne (([System.IO.File]::ReadAllText((Join-Path $PSScriptRoot '..\packages\core\manifest.json'), [System.Text.Encoding]::UTF8) | ConvertFrom-Json).callback_handlers.watch)
-# --- (b) jeder OPT-IN-Key hat einen cron_on-Knopf (Setup-Aktivierung) ------------------------------------------
+# --- (b) jeder Opt-in-Key hat einen cron_on-Knopf (Setup-Aktivierung) ---
 foreach ($key in ($chatKeys | Sort-Object)) {
     # watch:on aktiviert drift_check und plan_review; das Manifest fuehrt dafuer callback_handlers.watch.
     if ($key -in @('drift_check', 'plan_review') -and $watchHandler) { continue }
@@ -113,9 +112,9 @@ foreach ($key in ($chatKeys | Sort-Object)) {
         Fail "Opt-in-Cron '$key' ($($declared[$key].pkg), Default AUS) hat KEINEN erreichbaren cron_on:$key-Knopf im gebauten Graph (keine Setup-Aktivierung; Opt-in-Crons starten AUS, brauchen also einen Aktivieren-Knopf)"
     }
 }
-# --- (c) ALWAYS-ON: als Haushalts-Erinnerung registriert (cron_labels.list) -> an der Karte abschaltbar (cron_off:<key>
-# ODER der Fusszeilen-Hinweis core.reminders.card_footer bei Bestaetigungs-Karten); sonst (Plumbing, Pflicht, Person-
-# Notschalter) KEIN cron_on/cron_off-Knopf (nur Konsole bzw. rem:).
+# --- (c) Always-on: als Haushalts-Erinnerung registriert (cron_labels.list) -> an der Karte abschaltbar (cron_off:<key>
+# oder der Fusszeilen-Hinweis core.reminders.card_footer bei Bestaetigungs-Karten); sonst (Plumbing, Pflicht, Person-
+# Notschalter) kein cron_on/cron_off-Knopf (nur Konsole bzw. rem:).
 $footerWf = @{}
 foreach ($file in (Get-ChildItem $wfDirs -Filter '*.json')) {
     if ([System.IO.File]::ReadAllText($file.FullName, $u8).Contains('core.reminders.card_footer')) {
@@ -134,7 +133,7 @@ foreach ($key in ($consoleKeys | Sort-Object)) {
     if ($onKeys.ContainsKey($key))  { Fail "Always-on-Cron '$key' ($($declared[$key].pkg), Default AN, keine Haushalts-Erinnerung) hat einen cron_on:$key-Knopf ($($onKeys[$key])) -- nur Konsole; soll er schaltbar sein, in cron_labels.list aufnehmen." }
     if ($offKeys.ContainsKey($key)) { Fail "Always-on-Cron '$key' ($($declared[$key].pkg), Default AN, keine Haushalts-Erinnerung) hat einen cron_off:$key-Knopf ($($offKeys[$key])) -- nur Konsole; soll er schaltbar sein, in cron_labels.list aufnehmen." }
 }
-# --- (d) kein Dangling: jede gefundene cron-callback_data verweist auf einen deklarierten Key ------------------
+# --- (d) kein Dangling: jede gefundene cron-callback_data verweist auf einen deklarierten Key ---
 foreach ($key in (@($onKeys.Keys) + @($offKeys.Keys) | Sort-Object -Unique)) {
     if (-not $declared.ContainsKey($key)) {
         $where = if ($onKeys.ContainsKey($key)) { $onKeys[$key] } else { $offKeys[$key] }
@@ -142,7 +141,7 @@ foreach ($key in (@($onKeys.Keys) + @($offKeys.Keys) | Sort-Object -Unique)) {
     }
 }
 
-# --- (e) fn-Akzeptanz: core.fn_set_cron_enable (Chat-Pfad) akzeptiert GENAU die Opt-in-Keys -------------------
+# --- (e) fn-Akzeptanz: core.fn_set_cron_enable (Chat-Pfad) akzeptiert genau die Opt-in-Keys ---
 $fnFiles = @()
 $fnFiles += Get-ChildItem (Join-Path $RepoRoot 'packages\*\db\migrations\R__fn_set_cron_enable.sql') -ErrorAction SilentlyContinue
 if ($fnFiles.Count -eq 0) {
@@ -151,7 +150,7 @@ if ($fnFiles.Count -eq 0) {
     $fnSql = [System.IO.File]::ReadAllText($fnFiles[0].FullName, $u8)
     $wl = [regex]::Match($fnSql, "v_key\s+NOT\s+IN\s*\(([^)]*)\)", 'IgnoreCase')
     if (-not $wl.Success) {
-        # Kein Whitelist-Literal mehr -> UPDATE-only-auf-Existenz (WS-0c). Akzeptanz = geseedete Zeile + db_test.
+        # Kein Whitelist-Literal: UPDATE nur auf Existenz. Akzeptanz = geseedete Zeile + db_test.
         if ($Verbose) { Write-Host "  [info] fn_set_cron_enable ohne NOT-IN-Whitelist -> Existenz-basiert; (e) uebersprungen (Akzeptanz via Seed + db_test)" -ForegroundColor DarkGray }
     } else {
         $whitelist = @{}
@@ -169,12 +168,12 @@ if ($fnFiles.Count -eq 0) {
     }
 }
 
-# --- (f) cron_labels<->cron_enable-Paritaet (Phase 0 WS-0c #2/#3): die core.cron_labels-Registry IST die
-# Togglability-SoT von core.fn_set_cron_enable (Mitgliedschaft=schaltbar). Jeder Opt-in-Key MUSS einen
-# Manifest-cron_labels-Block haben (sonst lehnt die fn den Chat-Toggle ab), KEIN always-on-Key darf einen
-# haben (sonst waere er entgegen dem gelockten Modell chat-schaltbar). Die vier Texte je Key stehen im Textkatalog
-# des Pakets (<pkg>.cron.<key>.on_toast|off_toast|on_message|off_message, Textkatalog Phase B) und muessen in de.json
-# existieren (locale_lint haelt die anderen Sprachen paritaetisch). SoT = die Manifest-cron_labels.list.
+# --- (f) cron_labels<->cron_enable-Paritaet: die core.cron_labels-Registry ist die
+# Togglability-Quelle von core.fn_set_cron_enable (Mitgliedschaft = schaltbar). Jeder Opt-in-Key braucht einen
+# Manifest-cron_labels-Block (sonst lehnt die fn den Chat-Toggle ab), kein always-on-Key darf einen
+# haben (sonst waere er chat-schaltbar). Die vier Texte je Key stehen im Textkatalog
+# des Pakets (<pkg>.cron.<key>.on_toast|off_toast|on_message|off_message) und muessen in de.json
+# existieren (locale_lint haelt die anderen Sprachen paritaetisch). Quelle = die Manifest-cron_labels.list.
 $labelKeys = @{}   # key -> @{ pkg; complete }
 foreach ($mf in (Get-ChildItem (Join-Path $RepoRoot 'packages\*\manifest.json'))) {
     $mjson = [System.IO.File]::ReadAllText($mf.FullName, $u8) | ConvertFrom-Json
@@ -212,14 +211,14 @@ foreach ($key in ($regMand.Keys | Sort-Object)) {
     if ($onKeys.ContainsKey($key) -or $offKeys.ContainsKey($key)) { Fail "Pflicht-Erinnerung '$key' ($($regMand[$key])) traegt einen cron_on/cron_off-Knopf -- Pflicht heisst nicht schaltbar" }
 }
 
-# --- (g) Person-Reminder (Roter Faden 2026-10-23, Manifest cron_labels.person): jede Person schaltet ihre Zustellung
-# per rem:on|off:<key> (agent.reminder_prefs); der cron_enable.<key> ist nur der Konsolen-Notschalter fuer alle ->
-# er MUSS existieren und always-on sein (Default 'true'), sonst kaeme der Reminder nie an; die Toast-Texte
+# --- (g) Person-Reminder (Manifest cron_labels.person): jede Person schaltet ihre Zustellung
+# per rem:on|off:<key> (agent.reminder_prefs); der cron_enable.<key> ist nur der Konsolen-Notschalter fuer alle,
+# er muss existieren und always-on sein (Default 'true'), sonst kaeme der Reminder nie an; die Toast-Texte
 # <pkg>.cron.<key>.on_toast|off_toast muessen in locales/de.json stehen (core.fn_handle_reminder_cb liest sie);
 # kein Key darf zugleich in list (Haushalt) und person stehen; jeder Person-Key hat einen rem:off:<key>-Knopf.
-# --- (h) Erinnerungs-Fenster (Owner-Entscheid 2026-10-23): der Default-Zeitplan jedes Reminder-Crons (cron_labels.list
+# --- (h) Erinnerungs-Fenster: der Default-Zeitplan jedes Reminder-Crons (cron_labels.list
 # + .person, sofern das Manifest einen config.schedule.<key> traegt) liegt in [general.reminders_from, reminders_until)
-# des Core-Manifests (volle Stunden). Der Owner darf die Zeit spaeter per Konsole frei setzen.
+# des Core-Manifests (volle Stunden). Per Konsole ist die Zeit frei setzbar.
 $remOffKeys = @{}
 foreach ($dir in $wfDirs) {
     foreach ($wf in (Get-ChildItem -Path $dir -Filter '*.json' -File)) {
@@ -258,13 +257,13 @@ foreach ($mf in (Get-ChildItem (Join-Path $RepoRoot 'packages\*\manifest.json'))
     }
 }
 
-# --- (i) Roter Faden: JEDER Cron, der Telegram-Nachrichten schickt, ist eine registrierte Erinnerung (cron_labels
-# list/person/mandatory) -> er erscheint in /reminders und folgt dem Fenster. Einzige Ausnahme: monitor_triggers, der
-# Herzschlag der vom Nutzer SELBST bestellten Waechter (geschaltet je Trigger ueber den Monitor-Agenten, Wert-Waechter
+# --- (i) Jeder Cron, der Telegram-Nachrichten schickt, ist eine registrierte Erinnerung (cron_labels
+# list/person/mandatory), erscheint also in /reminders und folgt dem Fenster. Einzige Ausnahme: monitor_triggers, der
+# Herzschlag der vom Nutzer selbst bestellten Waechter (geschaltet je Trigger ueber den Monitor-Agenten, Wert-Waechter
 # melden bewusst sofort). Plumbing-Crons ohne Telegram-Send brauchen keinen Eintrag.
 $exemptSchedule = @('monitor_triggers')
-# (j) jede registrierte Erinnerung hat ihre Menue-Bezeichnung <pkg>.cron.<key>.label in locales/de.json (das
-# /reminders-Menue zeigte sonst den rohen Key; locale_lint haelt die anderen Sprachen paritaetisch).
+# (j) jede registrierte Erinnerung hat ihre Menue-Bezeichnung <pkg>.cron.<key>.label in locales/de.json (sonst
+# zeigt das /reminders-Menue den rohen Key; locale_lint haelt die anderen Sprachen paritaetisch).
 foreach ($pair in @($regList.GetEnumerator()) + @($regPerson.GetEnumerator()) + @($regMand.GetEnumerator())) {
     $deF = Join-Path $RepoRoot "packages\$($pair.Value)\locales\de.json"
     $de  = if (Test-Path $deF) { [System.IO.File]::ReadAllText($deF, $u8) | ConvertFrom-Json } else { [pscustomobject]@{} }
@@ -285,7 +284,7 @@ foreach ($file in (Get-ChildItem $wfDirs -Filter '*.json')) {
 }
 
 # --- (k) Tagesbudget: jeder Cron, der ungefragt sendet (direkt oder ueber einen Sub mit Telegram-Knoten), nennt seinen
-# Budget-Weg (Text, der im gebauten Workflow stehen muss) oder eine begruendete Ausnahme. Doppel-Eintrag waere ein Widerspruch.
+# Budget-Weg (Text, der im gebauten Workflow stehen muss) oder eine begruendete Ausnahme; ein Doppel-Eintrag ist ein Widerspruch.
 $budgetWays = @{
     drift_check = 'fn_advisor_review_evaluate'; review_register = 'fn_advisor_review_evaluate'
     reconcile_accounts = 'fn_proactive_claim'; remind_pension_statement = 'fn_proactive_claim'

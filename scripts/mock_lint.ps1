@@ -1,28 +1,26 @@
 ﻿#Requires -Version 5.1
-# Mock-Szenario-Lint (Teststrategie Phase 6b Item 3 Teil B). Kein LLM, kein Substrat, kein Netz --
-# rein statisch ueber tests/mock_llm/scenarios.json + die *_cases.json. Haelt den Mock-LLM-Tier
-# (scripts/dev/mock_route_test.ps1) als HARTES Gate ehrlich: faengt Drift zwischen den Szenarien und
-# den echten Test-Cases FRUEH (commit-time), bevor ein vergessenes/umbenanntes Szenario den
-# Gratis-Tier still loechrig macht (Step-8-Charter-A-Hinweis aus Phase 6).
+# Mock-Szenario-Lint. Kein LLM, kein Substrat, kein Netz: rein statisch ueber tests/mock_llm/scenarios.json
+# und die *_cases.json. Haelt den Mock-LLM-Tier (scripts/dev/mock_route_test.ps1) als hartes Gate ehrlich: faengt Drift
+# zwischen den Szenarien und den echten Test-Cases commit-time, bevor ein vergessenes/umbenanntes Szenario den
+# Gratis-Tier still loechrig macht.
 #
 # Geprueft wird (alle = hartes Gate):
 #   C0 (eindeutige Case-ids): in jeder *_cases.json (auch E2E/NULL-Suiten) kommt jede id nur einmal vor.
-#   C1 (Coverage): jeder NICHT-NULL-Case (expected_route/expected_tool gesetzt) hat ein Szenario, das
+#   C1 (Coverage): jeder Nicht-NULL-Case (expected_route/expected_tool gesetzt) hat ein Szenario, das
 #      der Mock fuer seinen Task waehlen wuerde (laengster `match`-Substring, wie pickScenario in
-#      server.js) UND dessen calls den erwarteten Call enthalten. NULL-Cases (expected=null) sind
-#      ausgenommen -- sie brauchen kein Szenario (kein Match -> finaler Text -> kein Tool -> PASS).
-#   C2 (kein Orphan): jeder Szenario-`match` ist Substring mindestens EINES echten Case-Tasks — oder das Szenario
+#      server.js) und dessen calls den erwarteten Call enthalten. NULL-Cases (expected=null) sind
+#      ausgenommen: sie brauchen kein Szenario (kein Match -> finaler Text -> kein Tool -> PASS).
+#   C2 (kein Orphan): jeder Szenario-`match` ist Substring mindestens eines echten Case-Tasks, oder das Szenario
 #      nennt per `driver` das Test-Skript, das den Task selbst schickt (das Skript muss den match woertlich enthalten).
 #   C3 (eligible>0 / Tool-Namens-Drift): jeder Call-`tool` eines Szenarios ist ein echter erwarteter
-#      Call IRGENDEINES Cases (Orchestrator-Route SANITISIERT zu Call_agent_<route>_, sonst der
+#      Call irgendeines Cases (Orchestrator-Route sanitisiert zu Call_agent_<route>_, sonst der
 #      Tool-Name). Faengt umbenannte/vertippte Tools im Szenario, bevor der Live-Lauf rot wird.
 #      Leere calls (NULL-Pfad-Szenarien wie "Wetter") sind ausgenommen.
 #
-# tool_publish_plan ist bewusst OHNE Szenario (kein Case erwartet es) -> taucht in keiner der drei Pruefungen
-# auf (weder Case-expected noch Szenario-Call) -> kein False-Positive, kein Sonderfall noetig.
+# tool_publish_plan hat bewusst kein Szenario (kein Case erwartet es) und taucht in keiner der Pruefungen auf.
 #
 # Usage:  .\scripts\mock_lint.ps1 [-Verbose]
-# Exit-Code = Anzahl Fehler -> CI-/prek-Gate-faehig (Vorbild config_test.ps1 / doc_lint.ps1).
+# Exit-Code = Anzahl Fehler.
 param([switch]$Verbose)
 
 $ErrorActionPreference = 'Stop'
@@ -30,11 +28,11 @@ $ErrorActionPreference = 'Stop'
 $Utf8NoBom = New-Object System.Text.UTF8Encoding($false)
 $RepoRoot  = git -C $PSScriptRoot rev-parse --show-toplevel
 
-# Case-Dateien (Phase D: per Glob ueber scripts/build/lib/agent_cases.ps1 statt einer Paket-Liste). Ein Mock-Tier-Case
-# hat einen `task`, KEIN `kind` (Real-Ingress-Cases haben ihren eigenen Runner) und einen Erwartungs-Schluessel; die
+# Case-Dateien per Glob ueber scripts/build/lib/agent_cases.ps1 (keine Paket-Liste). Ein Mock-Tier-Case
+# hat einen `task`, kein `kind` (Real-Ingress-Cases haben ihren eigenen Runner) und einen Erwartungs-Schluessel; die
 # Form folgt dem Schluessel: expected_route = Orchestrator (sanitisierter Call-Name), expected_tool = Agent (Tool-Name
-# 1:1). Eine Datei zaehlt nur mit, wenn mindestens EIN Case eine konkrete (nicht-NULL) Erwartung traegt — eine reine
-# NULL-Suite (z. B. Angriffs-Cases) hat fuer den Mock nichts zu pruefen. Multi-Turn (`turns` statt `task`) + E2E
+# 1:1). Eine Datei zaehlt nur mit, wenn mindestens ein Case eine konkrete (nicht-NULL) Erwartung traegt; eine reine
+# NULL-Suite (z. B. Angriffs-Cases) hat fuer den Mock nichts zu pruefen. Multi-Turn (`turns` statt `task`) und E2E
 # (kein Erwartungs-Schluessel) fallen heraus.
 . (Join-Path $RepoRoot 'scripts\build\lib\agent_cases.ps1')
 function Get-CaseExpected([object]$Case) {
@@ -47,8 +45,7 @@ function Get-CaseExpected([object]$Case) {
 }
 
 # Orchestrator-Routen-Name -> sanitisierter Tool-Function-Name, wie n8n ihn der LLM anbietet
-# (Call 'agent.finance' -> Call_agent_finance_; Trailing-Underscore!). Quelle: scripts/CLAUDE.md
-# *Mock-LLM* + Discovery-Empirie.
+# (Call 'agent.finance' -> Call_agent_finance_, mit Unterstrich am Ende). Quelle: scripts/CLAUDE.md *Mock-LLM*.
 function ConvertTo-RouteCall([string]$Route) { "Call_agent_${Route}_" }
 
 function Read-Json([string]$RelPath) {
@@ -57,7 +54,7 @@ function Read-Json([string]$RelPath) {
     return ($raw | ConvertFrom-Json)
 }
 
-# --- Cases einlesen + erwarteten Call je Case ableiten -------------------------------------------
+# --- Cases einlesen + erwarteten Call je Case ableiten ---
 $cases = @()   # @{ Id; Task; Expected (string|$null); File }
 $mockFiles = @()
 $sentTexts = @()   # C2: auch die Nachrichten der Ingress-/node_ran-Faelle (Feld text) treiben Szenarien (z. B. ri62/ri63)
@@ -81,7 +78,7 @@ if ($Verbose) { Write-Host "Mock-Case-Dateien: $($mockFiles -join ', ')" -Foregr
 $allExpected = @{}
 foreach ($c in $cases) { if ($c.Expected) { $allExpected[$c.Expected] = $true } }
 
-# --- Szenarien einlesen --------------------------------------------------------------------------
+# --- Szenarien einlesen ---
 $scenarios = @(Read-Json 'tests\mock_llm\scenarios.json')
 
 # Das Szenario, das der Mock fuer einen Task waehlt: laengster `match`-Substring gewinnt (pickScenario
@@ -112,9 +109,8 @@ Write-Host "Mock-Szenario-Lint -- $($cases.Count) Case(s), $($scenarios.Count) S
 Write-Host ("-" * 64)
 $failed = 0
 
-# --- C0: Case-IDs je Datei eindeutig (alle *_cases.json, auch E2E/NULL-Suiten) ------------------
-# Anlass 2026-10-30: parallele Sessions vergaben tc80/tc81 und e2e42/e2e43 doppelt; die Tiers melden
-# Ergebnisse je id, das Judge-Bundle ueberschrieb dann still einen Case. Hier faellt es commit-time auf.
+# --- C0: Case-IDs je Datei eindeutig (alle *_cases.json, auch E2E/NULL-Suiten) ---
+# Die Tiers melden Ergebnisse je id und das Judge-Bundle ueberschriebe bei Doppelung still einen Case.
 foreach ($cf in (Get-AgentCaseFile $RepoRoot)) {
     $dups = @($cf.Cases | Where-Object { $_.PSObject.Properties['id'] -and $_.id } | Group-Object { [string]$_.id } |
               Where-Object { $_.Count -gt 1 } | ForEach-Object { $_.Name })
@@ -124,12 +120,12 @@ foreach ($cf in (Get-AgentCaseFile $RepoRoot)) {
     }
 }
 
-# --- C1: Coverage (jeder Nicht-NULL-Case hat ein passendes Szenario) -----------------------------
+# --- C1: Coverage (jeder Nicht-NULL-Case hat ein passendes Szenario) ---
 # Kein Namespace-Filter noetig (anders als server.js eligible = offered ∩ calls): der erwartete Call
-# IST per Konstruktion der Tool/Route DIESES Cases -> er wird der Ziel-Agentin immer angeboten, der
-# Filter entfernt nur FREMDE Namespaces, nie den erwarteten Call. Die Laengster-Match-Auswahl (wie
-# pickScenario) faengt zugleich Shadowing: waehlt der Mock ein laengeres Szenario ohne den erwarteten
-# Call, schlaegt C1 hier an -- genau wie der Live-Lauf dann finalen Text statt des Tools liefert.
+# ist per Konstruktion der Tool/Route dieses Cases, wird der Ziel-Agentin also immer angeboten; der
+# Filter entfernt nur fremde Namespaces. Die Laengster-Match-Auswahl (wie pickScenario) faengt zugleich
+# Shadowing: waehlt der Mock ein laengeres Szenario ohne den erwarteten Call, schlaegt C1 an, wie der
+# Live-Lauf dann finalen Text statt des Tools liefert.
 foreach ($c in $cases) {
     if (-not $c.Expected) { continue }   # NULL-Case ausgenommen
     $s = Select-Scenario $c.Task
@@ -145,7 +141,7 @@ foreach ($c in $cases) {
     if ($Verbose) { Write-Host "  [PASS] C1 $($c.Id) -> '$($s.match)' -> $($c.Expected)" -ForegroundColor Green }
 }
 
-# --- C2: kein Orphan-Szenario (jeder match ist Substring eines echten Tasks) ---------------------
+# --- C2: kein Orphan-Szenario (jeder match ist Substring eines echten Tasks) ---
 foreach ($s in $scenarios) {
     if (-not $s.PSObject.Properties['match']) { continue }
     $m = [string]$s.match
@@ -164,7 +160,7 @@ foreach ($s in $scenarios) {
     } elseif ($Verbose) { Write-Host "  [PASS] C2 match '$m'" -ForegroundColor Green }
 }
 
-# --- C3: eligible>0 / Tool-Namens-Drift (jeder Szenario-Call ist ein echter erwarteter Call) -----
+# --- C3: eligible>0 / Tool-Namens-Drift (jeder Szenario-Call ist ein echter erwarteter Call) ---
 foreach ($s in $scenarios) {
     foreach ($tool in (Get-ScenarioTools $s)) {
         # Treiber-eigenes Szenario: ein Call, den der Treiber selbst prueft (Tool-Name woertlich im Skript, z. B.

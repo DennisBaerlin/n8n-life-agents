@@ -2,8 +2,8 @@
 # Fixture-Verifikation der Routing-Suite (Tier 2) aus der Single-Source tests/fixtures/fixtures.json.
 #
 # Die Routing-Cases (finance_cases.json) referenzieren benannte Entitaeten (Lindenbank Giro, VWCE,
-# Baufinanzierung Buchenbank, ...). Fehlen sie (z. B. nach util_reset_user_data), failen ~23 Cases "leer",
-# obwohl der Agent korrekt nachfragt. Dieses Skript ist die EINE Existenz-Pruefung der Suite:
+# Baufinanzierung Buchenbank, ...). Fehlen sie (z. B. nach util_reset_user_data), failen viele Cases "leer",
+# obwohl der Agent korrekt nachfragt. Dieses Skript ist die eine Existenz-Pruefung der Suite:
 # scripts/n8n_test.ps1 ruft '-Verify' als Pre-Flight, statt eine zweite Namensliste zu fuehren.
 # Den vollen fn_create_*-Payload haelt der Seed tests/fixtures/util_seed_test_fixtures.sql; doc_lint
 # erzwingt Manifest-subset-Seed (jede hier gepruefte Entitaet wird dort auch angelegt).
@@ -12,8 +12,9 @@
 #   .\scripts\test_fixtures.ps1 -Verify    # (Default) prueft Existenz in der DB
 #   .\scripts\test_fixtures.ps1 -List      # druckt die Manifest-Namen
 #
+# Voraussetzung (-Verify): Test-Substrat (bootstrap_test_n8n.ps1); die Fixtures liegen in der Container-DB.
 # Exit-Code (-Verify):  0 = alle vorhanden  ·  1 = welche fehlen (Liste + Seed-Hinweis)
-#                       2 = nicht pruefbar (kein Test-Substrat — bootstrap_test_n8n.ps1 zuerst)
+#                       2 = nicht pruefbar (kein Test-Substrat — bootstrap_test_n8n.ps1 zuerst — oder psql-Fehler)
 param([switch]$List, [switch]$Verify)
 
 $ErrorActionPreference = 'Stop'
@@ -29,8 +30,7 @@ if ($List) {
     exit 0
 }
 
-# Default = Verify
-# --- SQL aus dem Manifest bauen (EINE Existenz-Pruefung; gibt fehlende Labels als CSV zurueck) ---
+# Default = Verify. SQL aus dem Manifest; gibt fehlende Labels als CSV zurueck.
 function Esc([string]$s) { return ($s -replace "'", "''") }
 $clauses = @()
 foreach ($f in $manifest.fixtures) {
@@ -53,9 +53,8 @@ foreach ($f in $manifest.fixtures) {
 }
 $sql = "SELECT string_agg(m.name, ', ') FROM (`n" + ($clauses -join "`n  UNION ALL ") + "`n) m"
 
-# --- Pruefung gegen die DB der ephemeren n8n-Test-Instanz (raus aus Prod) ---
 # Die Fixtures liegen in der Container-DB (von n8n_test, mock_route_test und e2e_test ueber Initialize-AgentTestState -> util_seed_test_fixtures.sql geseedet);
-# der Zugriff laeuft ueber docker exec runuser-psql (Invoke-TestN8nPsql) statt Prod-PG_*.
+# der Zugriff laeuft ueber docker exec runuser-psql (Invoke-TestN8nPsql).
 . "$PSScriptRoot\dev\test_n8n_state.ps1"
 $conn = Get-TestN8nConnection -AllowMissing
 if (-not $conn) {

@@ -1,12 +1,10 @@
 ﻿#Requires -Version 5.1
-# DUENNER WRAPPER (seit prek-Migration). Das Pre-Push-Gate selbst lebt jetzt in
-# .pre-commit-config.yaml (prek). Der echte .git/hooks/pre-push ist prek-eigen (Installer:
-# scripts/install_git_hooks.ps1 -> prek install). Dieses Skript bleibt als manueller
-# "Gate jetzt voll laufen lassen"-Befehl + fuer Doku-/Tool-Aufrufer, die den alten Namen kennen.
-#
-# Frueher: bespoke Aggregator (db_test/config_test/workflow_lint/doc_lint/contract_lint/Catalog/
-# fn-Katalog hart + Dirty-Surface-Warner). Alle diese Checks laufen jetzt als prek-Hooks
-# (commit-stage: die deterministischen Linter; pre-push-stage: db_test/infra_test + llm_suite_advice).
+# Duenner Wrapper: das Pre-Push-Gate selbst steht in .pre-commit-config.yaml (prek; commit-stage: die
+# deterministischen Linter, pre-push-stage: db_test/infra_test + llm_suite_advice). Der echte .git/hooks/pre-push
+# ist prek-eigen (Installer: scripts/install_git_hooks.ps1). Dieses Skript ist der manuelle Befehl
+# "Gate jetzt voll ueber alle Dateien laufen lassen".
+# Usage:  .\scripts\pre_push_check.ps1
+# Voraussetzung: prek (winget install --id j178.Prek). Exit 0 = beide Stages gruen, 1 = mindestens eine rot.
 
 $ErrorActionPreference = 'Stop'
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
@@ -27,7 +25,6 @@ if (-not $prek) {
 
 Push-Location $RepoRoot
 try {
-    # Voller Gate-Lauf: erst die commit-stage-Hooks, dann die pre-push-Hooks -- alle ueber alle Dateien.
     & $prek run --all-files --hook-stage pre-commit
     $a = $LASTEXITCODE
     & $prek run --all-files --hook-stage pre-push

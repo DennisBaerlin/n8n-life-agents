@@ -44,6 +44,6 @@ BEGIN
   v_out := career.fn_render_career_preferences('career_preferences');
   IF position('Gehaltsuntergrenze: 60000 € (Einheit offen)' IN v_out) = 0 THEN
     RAISE EXCEPTION 'FAIL [salary ohne Einheit]: %', v_out; END IF;
-  RAISE NOTICE 'PASS [WP3: Gehalt mit Einheit + Jahreswert, Bestand ohne Einheit offen]';
+  RAISE NOTICE 'PASS [Gehalt mit Einheit + Jahreswert, Bestand ohne Einheit offen]';
 END $$;
 ROLLBACK;

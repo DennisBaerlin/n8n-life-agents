@@ -180,7 +180,7 @@ apply_schema() {
   else                          db_dir="$REPO_ROOT/packages/$only/db"; fi
   [ -d "$db_dir" ] || die "packages/$only/db fehlt: $db_dir (unvollstaendiges Paket)."
 
-  log "Schema anwenden: Paket '$only' (Flyway 3-Phasen$([ "$is_core" = 1 ] && printf ' + Hardening/RO-Rollen'))..."
+  log "Schema anwenden: Paket '$only' (Flyway: Inits, V__, R__, $([ "$is_core" = 1 ] && printf "Hardening/RO-Rollen" || printf "Owner-Grants"))..."
 
   local driver; driver="$(mktemp /tmp/apply_schema.XXXXXX.sql)"
   chmod 0644 "$driver"   # postgres-User oeffnet den Treiber; Repo-Dateien bleiben root-only

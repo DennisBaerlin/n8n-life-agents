@@ -177,18 +177,18 @@ BEGIN
     RAISE EXCEPTION 'FAIL remove [Kaskade]: Profil-Eintrag nicht/zu viel entfernt: %', r; END IF;
   -- Per-Person-Purge: nur premovables per_user-PII weg; powners bleibt; household-Kontext unberuehrt
   IF EXISTS (SELECT 1 FROM agent.core_contexts WHERE name='career_profile__premovable') THEN
-    RAISE EXCEPTION 'FAIL remove [P0b purge]: per_user-Kontext der entfernten Person nicht geloescht'; END IF;
+    RAISE EXCEPTION 'FAIL remove [purge]: per_user-Kontext der entfernten Person nicht geloescht'; END IF;
   IF NOT EXISTS (SELECT 1 FROM agent.core_contexts WHERE name='career_profile__powner') THEN
-    RAISE EXCEPTION 'FAIL remove [P0b purge]: per_user-Kontext EINER ANDEREN Person faelschlich geloescht'; END IF;
+    RAISE EXCEPTION 'FAIL remove [purge]: per_user-Kontext EINER ANDEREN Person faelschlich geloescht'; END IF;
   IF NOT EXISTS (SELECT 1 FROM agent.core_contexts WHERE name='career_planning') THEN
-    RAISE EXCEPTION 'FAIL remove [P0b purge]: household-Kontext faelschlich geloescht'; END IF;
+    RAISE EXCEPTION 'FAIL remove [purge]: household-Kontext faelschlich geloescht'; END IF;
   -- Latch-Purge: nur premovables Advisor-Latch weg; powners + household-Latch bleiben.
   IF EXISTS (SELECT 1 FROM core.notification_state WHERE source='advisor:career:premovable') THEN
-    RAISE EXCEPTION 'FAIL remove [P2b-2 latch]: Advisor-Latch der entfernten Person nicht geraeumt'; END IF;
+    RAISE EXCEPTION 'FAIL remove [latch]: Advisor-Latch der entfernten Person nicht geraeumt'; END IF;
   IF NOT EXISTS (SELECT 1 FROM core.notification_state WHERE source='advisor:career:powner') THEN
-    RAISE EXCEPTION 'FAIL remove [P2b-2 latch]: Advisor-Latch EINER ANDEREN Person faelschlich geraeumt'; END IF;
+    RAISE EXCEPTION 'FAIL remove [latch]: Advisor-Latch EINER ANDEREN Person faelschlich geraeumt'; END IF;
   IF NOT EXISTS (SELECT 1 FROM core.notification_state WHERE source='advisor:finance') THEN
-    RAISE EXCEPTION 'FAIL remove [P2b-2 latch]: household-Latch (kein pid-Segment) faelschlich geraeumt'; END IF;
+    RAISE EXCEPTION 'FAIL remove [latch]: household-Latch (kein pid-Segment) faelschlich geraeumt'; END IF;
   -- Sticker-Bremse: nur die der entfernten Person weg
   IF EXISTS (SELECT 1 FROM core.notification_state WHERE source='persona_sticker' AND key='premovable')
      OR NOT EXISTS (SELECT 1 FROM core.notification_state WHERE source='persona_sticker' AND key='powner') THEN

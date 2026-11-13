@@ -187,6 +187,6 @@ BEGIN
     RAISE EXCEPTION 'FAIL [10 per-Person]: Plan rendert nicht: %', v_hdr; END IF;
   IF v_hdr NOT LIKE '%Skill-Lücken (Ziel Data Analyst)%' THEN
     RAISE EXCEPTION 'FAIL [10 per-Person]: Skill-Lücken-Zeile fehlt (Suffix-Read career_profile__pid greift nicht): %', v_hdr; END IF;
-  RAISE NOTICE 'PASS [10] P0c per-Person [Renderer leitet pid aus p_name ab -> career_profile__pid -> Gap-Zeile rendert]';
+  RAISE NOTICE 'PASS [10] per-Person [Renderer leitet pid aus p_name ab -> career_profile__pid -> Gap-Zeile rendert]';
 END $$;
 ROLLBACK;

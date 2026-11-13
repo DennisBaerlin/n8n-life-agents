@@ -138,7 +138,7 @@ BEGIN
   IF NOT v_denied THEN RAISE EXCEPTION 'FAIL [6b] special_assets.asset_type-CHECK nicht erzwungen (geschlossene Condition-Liste)'; END IF;
   RAISE NOTICE 'PASS [6] storage_places/special_assets (kind-/asset_type-CHECKs)';
 
-  RAISE NOTICE 'PASS estate registers (CHECK-/PK-Backstops aller WS-0a-Register)';
+  RAISE NOTICE 'PASS estate registers (CHECK-/PK-Backstops aller Register)';
 END $$;
 
 ROLLBACK;

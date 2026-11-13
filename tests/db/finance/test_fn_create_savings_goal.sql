@@ -284,7 +284,7 @@ BEGIN
     RAISE EXCEPTION 'FAIL [8a]: kein savings_squeeze-Fold mit note bei Kontoveraenderung <0, got %', v_result; END IF;
   IF (v_result->'savings_squeeze'->>'account_change')::numeric IS DISTINCT FROM -500.00 THEN
     RAISE EXCEPTION 'FAIL [8a]: account_change -500 erwartet (frei 1000 - Sparen 1500), got %', v_result->'savings_squeeze'; END IF;
-  RAISE NOTICE 'PASS [8a WS-4: Reserve-Rate kippt die Kontoveraenderung <0 -> savings_squeeze-Fold im Return]';
+  RAISE NOTICE 'PASS [8a: Reserve-Rate kippt die Kontoveraenderung <0 -> savings_squeeze-Fold im Return]';
 
   -- 8a-Rate raus, damit 8b sauber misst
   v_rp8a := (v_result->>'recurring_payment_id')::int;
@@ -300,7 +300,7 @@ BEGIN
     RAISE EXCEPTION 'FAIL [8b setup]: Ziel-Anlage scheiterte: %', v_result; END IF;
   IF v_result ? 'savings_squeeze' THEN
     RAISE EXCEPTION 'FAIL [8b]: savings_squeeze-Fold trotz gesundem liquidity_net (+800), got %', v_result; END IF;
-  RAISE NOTICE 'PASS [8b WS-4: gesunde Rate -> kein Fold]';
+  RAISE NOTICE 'PASS [8b: gesunde Rate -> kein Fold]';
 
   -- (8c) schon bestehendes Pflicht-Defizit: Ausgabe 1200 > Einnahmen 1000 -> neues Ziel warnt trotzdem
   UPDATE finance.recurring_payments SET status = 'paused' WHERE id = (v_result->>'recurring_payment_id')::int;

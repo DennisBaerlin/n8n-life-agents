@@ -86,7 +86,7 @@ BEGIN
     'schedule_unit','month','first_payment_date',current_date::text)) INTO v_res;
   IF v_res ? 'cashflow_coverage' THEN
     RAISE EXCEPTION 'FAIL [5a]: cashflow_coverage-Fold trotz gesundem net (+2000), got %', v_res; END IF;
-  RAISE NOTICE 'PASS [5a WS-3: Einnahme -> net>0 -> kein Fold]';
+  RAISE NOTICE 'PASS [5a: Einnahme -> net>0 -> kein Fold]';
 
   -- (5b) Ausgabe -3000 -> net = 2000 - 3000 = -1000 -> cashflow_coverage-Note
   SELECT finance.fn_create_recurring_payment(jsonb_build_object(
@@ -96,7 +96,7 @@ BEGIN
     RAISE EXCEPTION 'FAIL [5b setup]: %', v_res; END IF;
   IF NOT (v_res ? 'cashflow_coverage') OR COALESCE(v_res->'cashflow_coverage'->>'note','') = '' THEN
     RAISE EXCEPTION 'FAIL [5b]: kein cashflow_coverage-Fold mit note bei net<0, got %', v_res; END IF;
-  RAISE NOTICE 'PASS [5b WS-3: Ausgabe kippt net<0 -> cashflow_coverage-Fold im Return]';
+  RAISE NOTICE 'PASS [5b: Ausgabe kippt net<0 -> cashflow_coverage-Fold im Return]';
 END $$;
 ROLLBACK TO SAVEPOINT crp_fold;
 

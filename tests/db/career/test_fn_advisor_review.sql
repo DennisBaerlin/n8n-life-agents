@@ -46,7 +46,7 @@ BEGIN
     RAISE EXCEPTION 'FAIL [2] digest soll Rolle+Zielrolle nennen: %', v_digest;
   END IF;
   IF v_digest NOT LIKE '%career.advisor.digest_target_date%2028%' THEN
-    RAISE EXCEPTION 'FAIL [2] digest soll das Zieldatum nennen (WP3, statt timeline_years): %', v_digest;
+    RAISE EXCEPTION 'FAIL [2] digest soll das Zieldatum nennen (statt timeline_years): %', v_digest;
   END IF;
   RAISE NOTICE 'PASS [2] Staleness-Alert (>365d) + Digest aus Plan/Profil';
 
@@ -203,7 +203,7 @@ BEGIN
   IF ((v_res->'digest'->'lines')::text) NOT LIKE '%career.advisor.digest_gaps%' THEN
     RAISE EXCEPTION 'FAIL [7] Digest-Skill-Zeile fehlt trotz Owner-Suffix-Lücke: %', (v_res->'digest'->'lines')::text;
   END IF;
-  RAISE NOTICE 'PASS [7] P0c per-Person [Owner-Suffix-Read -> skill_gaps wirkt, Suspend-Guard weg]';
+  RAISE NOTICE 'PASS [7] per-Person [Owner-Suffix-Read -> skill_gaps wirkt, Suspend-Guard weg]';
 
   -- ---------- TEST 8 (expliziter Personen-Pfad): p_person_id liest die eigenen Fakten der Person ----------
   -- erika hat (Test 7) eine echte Skill-Luecke. lena bekommt einen eigenen Plan ohne Luecke (Profil deckt Soll).

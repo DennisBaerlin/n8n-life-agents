@@ -238,7 +238,7 @@ BEGIN
   IF (v_result->>'ok')::boolean IS DISTINCT FROM true
      OR (SELECT amount FROM finance.recurring_payments WHERE id = (v_result->>'recurring_payment_id')::int) IS DISTINCT FROM -83.34 THEN
     RAISE EXCEPTION 'FAIL fn_create_insurance [Rundung]: got %', v_result; END IF;
-  RAISE NOTICE 'PASS fn_create_insurance [WP2: 30 monatlich roh -> 360/30 abgeleitet; ohne Rhythmus/unstimmig ok:false; Rundung 0,01 ok]';
+  RAISE NOTICE 'PASS fn_create_insurance [30 monatlich roh -> 360/30 abgeleitet; ohne Rhythmus/unstimmig ok:false; Rundung 0,01 ok]';
 
   -- Beitrag unbekannt („nachfragen, sonst ohne"): Police ohne Beitrags-Kette ist gueltig; Konto, erste
   -- Abbuchung und Rhythmus braucht sie dann nicht. Vertragsbeginn ohne Angabe = heute; die Notiz wird gespeichert.

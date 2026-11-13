@@ -192,7 +192,7 @@ BEGIN
     RAISE EXCEPTION 'FAIL [5a setup]: erwartet split=true, got %', v_res; END IF;
   IF v_res ? 'cashflow_coverage' THEN
     RAISE EXCEPTION 'FAIL [5a M3]: zukuenftig datierte Erhoehung darf KEINEN Sofort-Hinweis ausloesen, got %', v_res; END IF;
-  RAISE NOTICE 'PASS [5a WS-3/M3: zukuenftig datierte Erhoehung -> kein Sofort-Hinweis (Cron faengt es)]';
+  RAISE NOTICE 'PASS [5a M3: zukuenftig datierte Erhoehung -> kein Sofort-Hinweis (Cron faengt es)]';
 
   -- exp_a (alte + neue Split-Zeile, gleicher Name) pausieren -> Szenario 5b sauber
   UPDATE finance.recurring_payments SET status = 'paused' WHERE name = '__srp_fold_exp_a__';
@@ -211,7 +211,7 @@ BEGIN
     RAISE EXCEPTION 'FAIL [5b setup]: %', v_res; END IF;
   IF NOT (v_res ? 'cashflow_coverage') OR COALESCE(v_res->'cashflow_coverage'->>'note','') = '' THEN
     RAISE EXCEPTION 'FAIL [5b]: kein cashflow_coverage-Fold bei heute-datierter Erhoehung (net<0), got %', v_res; END IF;
-  RAISE NOTICE 'PASS [5b WS-3: heute datierte Erhoehung kippt net<0 -> cashflow_coverage-Fold]';
+  RAISE NOTICE 'PASS [5b: heute datierte Erhoehung kippt net<0 -> cashflow_coverage-Fold]';
 
   -- ===== (5c) ETF-Sparplan ist keine Fixkosten: Einnahmen 2000, ETF 1800, Miete 500 -> 1000 =====
   -- Als Fixkosten gezaehlt waere monthly_net = 2000 - 1800 - 1000 = -800 (Fehlalarm); richtig ist frei = 2000 - 1000 = +1000 -> keine Note.

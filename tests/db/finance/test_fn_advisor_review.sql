@@ -306,7 +306,7 @@ BEGIN
   SELECT (a->>'value')::numeric INTO v_e1 FROM jsonb_array_elements(r->'alerts') a WHERE a->>'metric_key'='target_portfolio';
   IF round(v_e1 - v_e0, 2) <> 10000 THEN
     RAISE EXCEPTION 'FAIL [W2]: Delta erwartet +10000 (voller Depot-Wert, kein Earmark-Netting), got % - % = %', v_e1, v_e0, v_e1 - v_e0; END IF;
-  RAISE NOTICE 'PASS [W2: Depot fliesst voll in den FIRE-Pot (+10000, WS-B kein Earmark-Abzug)]';
+  RAISE NOTICE 'PASS [W2: Depot fliesst voll in den FIRE-Pot (+10000, kein Earmark-Abzug)]';
 
   -- (W3) fixed_deposit als Plan-Block -> non_rebalanceable, kein Drift-Alarm (sonst Dauer-Fehlalarm)
   UPDATE agent.core_contexts SET metadata = jsonb_set(metadata, '{facts,target_allocation}',
@@ -369,10 +369,10 @@ BEGIN
   SELECT COALESCE((SELECT (c->>'value_eur')::numeric FROM jsonb_array_elements(r->'net_worth_by_class') c WHERE c->>'class'='sp500'),0) INTO v_sp_after;
 
   IF round(v_p1 - v_p0, 2) <> 0 THEN
-    RAISE EXCEPTION 'FAIL [WS3a-1]: Kind-Depot darf den FIRE-Pool NICHT erhöhen (T2), Delta %', v_p1 - v_p0; END IF;
+    RAISE EXCEPTION 'FAIL: Kind-Depot darf den FIRE-Pool NICHT erhöhen (T2), Delta %', v_p1 - v_p0; END IF;
   IF round(v_sp_after - v_sp_before, 2) <> 10000 THEN
-    RAISE EXCEPTION 'FAIL [WS3a-1]: net_worth_by_class sp500 sollte +10000 (Kind IM Gesamt-Vermögen T1), Delta %', v_sp_after - v_sp_before; END IF;
-  RAISE NOTICE 'PASS [WS3a: Kind-Depot RAUS aus FIRE-Pool (T2), DRIN im Gesamt-Vermögen (T1)]';
+    RAISE EXCEPTION 'FAIL: net_worth_by_class sp500 sollte +10000 (Kind IM Gesamt-Vermögen T1), Delta %', v_sp_after - v_sp_before; END IF;
+  RAISE NOTICE 'PASS [Kind-Depot RAUS aus FIRE-Pool (T2), DRIN im Gesamt-Vermögen (T1)]';
 
   -- Kontrast: HAUSHALTS-Depot (owner NULL) gleicher Wert -> FIRE-Pool STEIGT um 10000 (Rolle, nicht Existenz)
   INSERT INTO finance.accounts (name, account_type, currency, status)
@@ -385,8 +385,8 @@ BEGIN
   r := finance.fn_advisor_review('finance');
   SELECT (a->>'value')::numeric INTO v_p2 FROM jsonb_array_elements(r->'alerts') a WHERE a->>'metric_key'='target_portfolio';
   IF round(v_p2 - v_p1, 2) <> 10000 THEN
-    RAISE EXCEPTION 'FAIL [WS3a-2]: Haushalts-Depot sollte den FIRE-Pool um 10000 erhöhen, Delta %', v_p2 - v_p1; END IF;
-  RAISE NOTICE 'PASS [WS3a: Haushalts-Depot (owner NULL) IM FIRE-Pool — die Rolle entscheidet]';
+    RAISE EXCEPTION 'FAIL: Haushalts-Depot sollte den FIRE-Pool um 10000 erhöhen, Delta %', v_p2 - v_p1; END IF;
+  RAISE NOTICE 'PASS [Haushalts-Depot (owner NULL) IM FIRE-Pool — die Rolle entscheidet]';
 END $$;
 
 -- ============================================================
@@ -691,7 +691,7 @@ BEGIN
   SELECT (a->'msg')::text INTO v_txt FROM jsonb_array_elements(r->'alerts') a WHERE a->>'kind' = 'data_quality' LIMIT 1;
   IF COALESCE(v_txt,'') NOT LIKE '%finance.advisor.dq_null_rate%' THEN
     RAISE EXCEPTION 'FAIL [S4b data_quality]: null_rate nicht im Daten-Hinweis (text=%)', v_txt; END IF;
-  RAISE NOTICE 'PASS [S4b WP-3c: null_rate-Advisory + Daten-Hinweis melden GBP ohne Kurs (sichtbar statt still 0)]';
+  RAISE NOTICE 'PASS [S4b: null_rate-Advisory + Daten-Hinweis melden GBP ohne Kurs (sichtbar statt still 0)]';
 
   -- ---------- (S5) Reserve-Aufschluesselung im Digest ----------
   v_txt := (r->'digest'->'lines')::text;

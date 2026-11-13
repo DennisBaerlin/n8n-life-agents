@@ -78,7 +78,7 @@ BEGIN
   v_next := agent.fn_next_check('2026-02-01 11:00+00'::timestamptz, INTERVAL '1 month',
                                 '2026-03-01 11:00+00'::timestamptz);
   IF v_next IS DISTINCT FROM '2026-04-01 11:00+00'::timestamptz THEN
-    RAISE EXCEPTION 'FAIL fn_next_check [Monat, Februar]: erwartet 01.04.2026 12:00, got %', v_next;
+    RAISE EXCEPTION 'FAIL fn_next_check [Monat, Februar]: erwartet 01.04.2026 11:00 UTC, got %', v_next;
   END IF;
   RAISE NOTICE 'PASS fn_next_check [Monats-Intervall: Korrektur nach oben]';
 

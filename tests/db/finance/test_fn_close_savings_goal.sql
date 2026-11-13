@@ -71,7 +71,7 @@ BEGIN
     RAISE EXCEPTION 'FAIL close_savings_goal [tagged soft-close]: erwartet action=closed, got % (getaggte Tx uebersehen?)', v_res; END IF;
   SELECT status::text INTO v_status FROM finance.savings_goals WHERE id = v_g_c;
   IF v_status IS DISTINCT FROM 'cancelled' THEN RAISE EXCEPTION 'FAIL close_savings_goal [tagged status]: %', v_status; END IF;
-  RAISE NOTICE 'PASS close_savings_goal [getaggte Einmal-Tx ohne Rate-Tx -> Soft-Close (WS-A Regressionsfall)]';
+  RAISE NOTICE 'PASS close_savings_goal [getaggte Einmal-Tx ohne Rate-Tx -> Soft-Close (Regressionsfall)]';
 
   -- TEST 3: not-found -> {ok:false, reason, candidates} als Daten (Probelauf vor der Karte)
   SELECT finance.fn_close_savings_goal('{"savings_goal_name":"__test_csg_missing__"}'::jsonb) INTO v_res;

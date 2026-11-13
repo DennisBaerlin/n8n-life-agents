@@ -72,17 +72,17 @@ BEGIN
   -- Festgeld = eigene bucket-Klasse, nicht tradeable, brutto 10000
   SELECT value_eur, tradeable INTO v_val, v_trad FROM finance.networth_by_asset_class WHERE bucket = 'fixed_deposit';
   IF v_val IS DISTINCT FROM 10000 OR v_trad IS DISTINCT FROM false THEN RAISE EXCEPTION 'FAIL [fixed_deposit]: erwartet 10000/nicht-tradeable, got %/%', v_val, v_trad; END IF;
-  RAISE NOTICE 'PASS [WS3: Festgeld eigene Klasse 10000 (brutto), nicht handelbar]';
+  RAISE NOTICE 'PASS [Festgeld eigene Klasse 10000 (brutto), nicht handelbar]';
 
   -- Festgeld nicht in der cash-Klasse (cash bleibt 10000, ohne die 10000 Festgeld)
   SELECT value_eur INTO v_val FROM finance.networth_by_asset_class WHERE asset_class = 'cash';
   IF v_val IS DISTINCT FROM 10000 THEN RAISE EXCEPTION 'FAIL [cash ohne Festgeld]: erwartet 10000 (ohne das Festgeld), got %', v_val; END IF;
-  RAISE NOTICE 'PASS [WS3: cash-Klasse ohne Festgeld]';
+  RAISE NOTICE 'PASS [cash-Klasse ohne Festgeld]';
 
   -- tradeable-Summe (Rebalancing-Nenner) schliesst Festgeld aus = depot (550+320+100=970) + cash 10000 = 10970
   SELECT COALESCE(sum(value_eur),0) INTO v_trade_sum FROM finance.networth_by_asset_class WHERE tradeable;
   IF v_trade_sum IS DISTINCT FROM 10970 THEN RAISE EXCEPTION 'FAIL [tradeable sum]: erwartet 10970 (depot 970 + cash 10000, OHNE Festgeld), got %', v_trade_sum; END IF;
-  RAISE NOTICE 'PASS [WS3: tradeable-Summe schliesst Festgeld aus (10970)]';
+  RAISE NOTICE 'PASS [tradeable-Summe schliesst Festgeld aus (10970)]';
 
   -- loan negativ
   SELECT value_eur INTO v_val FROM finance.networth_by_asset_class WHERE asset_class = 'loan';

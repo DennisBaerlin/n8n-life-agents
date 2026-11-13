@@ -6,6 +6,7 @@
 # prek liest .pre-commit-config.yaml (die Single-Source der Durchsetzung). Stages:
 #   pre-commit  = deterministische Domaenen-Linter (doc/config/workflow/contract/catalog/fn) + Hygiene
 #   pre-push    = LAN/live + langsam (db_test/infra_test) + LLM-Suiten-Empfehlung
+#   post-merge/post-commit = generierte Dateien nach Merge neu bauen (post-commit nur fuer einen von Hand aufgeloesten Konflikt-Merge)
 #   commit-msg  = Conventional Commits
 # Notfall-Bypass: git commit/push --no-verify (bewusst, nicht zur Gewohnheit).
 
@@ -23,11 +24,11 @@ if (-not $prek) {
 Push-Location $RepoRoot
 try {
     # --overwrite entfernt Alt-/Legacy-Hooks (sonst laeuft prek den alten pre-push ZUSAETZLICH mit).
-    & $prek install --overwrite --hook-type pre-commit --hook-type pre-push --hook-type commit-msg --hook-type post-merge
+    & $prek install --overwrite --hook-type pre-commit --hook-type pre-push --hook-type commit-msg --hook-type post-merge --hook-type post-commit
     if ($LASTEXITCODE -ne 0) { throw "prek install fehlgeschlagen (Exit $LASTEXITCODE)." }
 } finally {
     Pop-Location
 }
 
-Write-Host "Installiert: pre-commit + pre-push + commit-msg + post-merge Hooks via prek." -ForegroundColor Green
+Write-Host "Installiert: pre-commit + pre-push + commit-msg + post-merge + post-commit Hooks via prek." -ForegroundColor Green
 Write-Host "Voll-Lauf jederzeit: prek run --all-files . Notfall-Bypass: git push --no-verify." -ForegroundColor Cyan

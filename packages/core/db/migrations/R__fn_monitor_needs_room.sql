@@ -1,5 +1,6 @@
 -- ============================================================
--- agent.fn_monitor_needs_room(type, due_date, warn_days, today) (READ -- braucht dieser Trigger einen Budget-Platz?)
+-- fn_monitor_needs_room (READ)
+--   Braucht dieser Trigger einen Budget-Platz? Eingabe: p_type, p_due, p_warn (Tage), p_today. IMMUTABLE.
 --   true fuer recurring_info und fuer ein Datum im Warnfenster vor der Frist. Faellige Daten (deadline), Daten vor dem
 --   Warnfenster und Wert-Trigger: false. Die eine Adresse fuer fn_monitor_due und fn_monitor_evaluate.
 --   Tests: tests/db/core/test_fn_monitor_evaluate.sql

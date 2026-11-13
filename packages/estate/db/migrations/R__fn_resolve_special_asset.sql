@@ -1,12 +1,13 @@
 -- ============================================================
--- estate.fn_resolve_special_asset (read-only Resolver, WS-2)
+-- estate.fn_resolve_special_asset (read-only Resolver)
 --   Loest einen Sonderfall-Stub ueber die Beschreibung (exakt) + optional den Typ auf
---   (Vorbild: finance.fn_resolve_real_estate; Rueckgabe id/hit_count/candidates). Die
---   Beschreibung ist der einzige Frei-Identifikator der Stubs — der Agent liest sie vorher
---   exakt aus dem Register (REGISTER-FIRST-Vertrag der Instructions).
+--   (Muster: finance.fn_resolve_real_estate). Die Beschreibung ist der einzige Frei-Identifikator
+--   der Stubs — der Agent liest sie vorher exakt aus dem Register (Register-first-Vertrag der Instructions).
+--   Eingabe: p_description, p_asset_type (NULL/'' = nicht filtern). Rueckgabe: Zeile (id, hit_count,
+--   candidates); id nur bei genau einem Treffer, sonst NULL; candidates =
+--   [{id,asset_type,description,owner_person_id}] (leer: []).
 --   Genutzt von tool_delete_special_asset (Pre-Gate-Resolve) + als Dubletten-Backstop
 --   in tool_create_special_asset.
---   Anwenden via: db_apply.ps1 -File packages\estate\db\migrations\R__fn_resolve_special_asset.sql
 -- ============================================================
 CREATE OR REPLACE FUNCTION estate.fn_resolve_special_asset(
     p_description text,

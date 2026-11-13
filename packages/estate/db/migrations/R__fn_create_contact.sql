@@ -1,14 +1,15 @@
 -- ============================================================
--- estate.fn_create_contact (ATOMIC WRITE — WS-2)
---   Legt einen NEUEN Schluessel-Kontakt des Ereignis-/Vorsorgefalls an (Notar, Steuerberater,
---   Anwalt, Hausarzt, Bestatter, Arbeitgeber-HR, Vermieter, Vertrauensperson). KEIN UNIQUE
+-- estate.fn_create_contact (ATOMIC WRITE)
+--   Legt einen neuen Schluessel-Kontakt des Ereignis-/Vorsorgefalls an (Notar, Steuerberater,
+--   Anwalt, Hausarzt, Bestatter, Arbeitgeber-HR, Vermieter, Vertrauensperson). Kein UNIQUE
 --   auf role (mehrere trusted_person/physician legitim); Dubletten-Backstop (Name+Rolle)
---   faehrt das TOOL vor dem Gate (fn_resolve_contact).
+--   faehrt das Tool vor dem Gate (fn_resolve_contact).
 --   DB-Backstop: core.fn_check_write_permission('adults_only', chat_id) — Kind -> {ok:false}.
---   Eingabe jsonb: chat_id, owner_person_id (Slug, ''=Haushalts-Kontakt), role, name,
+--   Eingabe jsonb: chat_id, owner_person_id (Slug, ''=Haushalts-Kontakt), role (Pflicht, geschlossene Liste:
+--     notary|tax_advisor|lawyer|physician|undertaker|employer_hr|landlord|trusted_person), name (Pflicht),
 --     organization, phone, email, address, notes.
---   RUECKGABE: {ok:true, contact_id} | {ok:false, reason} (korrigierbar, kein RAISE).
---   Anwenden via: db_apply.ps1 -File packages\estate\db\migrations\R__fn_create_contact.sql
+--   Rueckgabe: {ok:true, contact_id} | {ok:false, reason} (korrigierbar, kein RAISE); reasons: 'Write rejected
+--   (<perm>): …', 'name is required (non-empty).', 'invalid role "<r>" — valid: …'.
 -- ============================================================
 CREATE OR REPLACE FUNCTION estate.fn_create_contact(p jsonb)
 RETURNS jsonb LANGUAGE plpgsql AS $$

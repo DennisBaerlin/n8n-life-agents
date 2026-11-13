@@ -1,10 +1,13 @@
 -- ============================================================
--- core.fn_remove_context_note(p jsonb) -> jsonb   (Phase C, WS-3; NEU — Undo/learn:undo, R5-C)
---   Entfernt die zu einem APPROVED note-Kandidaten gehoerende "## Gelernt"-Zeile aus dem Ziel-Kontext
---   (allowlist-geguardet) UND setzt den Kandidaten auf 'rejected' -> HITL-Reversibilitaet des
+-- fn_remove_context_note (ATOMIC WRITE) — Undo einer gelernten Notiz (learn:undo)
+--   Entfernt die zu einem approved note-Kandidaten gehoerende "## Gelernt"-Zeile aus dem Ziel-Kontext
+--   (allowlist-geguardet) und setzt den Kandidaten auf 'rejected' -> HITL-Reversibilitaet des
 --   Prosa-Schreibpfads. Entfernt zeilen-genau (gleiche Normalisierung wie der Append: Bullet-Zeile, die den
---   normalisierten Notiztext UND den Provenienz-Marker "aus Chat" traegt) -> trifft keine fremden Bullets.
---   owner_only-Backstop. Gelesene p-Keys: { candidate_id, chat_id }. INVOKER, search_path-Pin + REVOKE.
+--   normalisierten Notiztext und den Provenienz-Marker "aus Chat" traegt) -> trifft keine fremden Bullets.
+--   owner_only-Backstop. Gelesene p-Keys: { candidate_id (Pflicht), chat_id (Pflicht) }. INVOKER, search_path-Pin + REVOKE.
+--   Rueckgabe: {ok:true, context_name, removed (bool)} | {ok:false, reason: owner_only | 'candidate_id required' |
+--   'candidate not found' | 'candidate is not a note' | 'candidate is <status> (only approved notes are undoable)' |
+--   'context "<name>" is not note-appendable'}.
 -- ============================================================
 CREATE OR REPLACE FUNCTION core.fn_remove_context_note(p jsonb)
 RETURNS jsonb LANGUAGE plpgsql

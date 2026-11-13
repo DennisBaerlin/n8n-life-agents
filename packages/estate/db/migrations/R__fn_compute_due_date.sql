@@ -1,19 +1,19 @@
 -- ============================================================
--- estate.fn_compute_due_date (Fristen-Engine, WS-3 — IMMUTABLE, DIE zentrale Frist-Berechnung)
---   Rechnet die Faelligkeit einer Task aus Anker-Datum + Frist. Das LLM rechnet NIE — hier lebt die
---   Korrektheit. p_anchor = event_date ODER knowledge_date (der Aufrufer waehlt nach template.
---   deadline_anchor; § 1944 BGB / § 30 ErbStG laufen ab KENNTNIS). Einheiten:
+-- estate.fn_compute_due_date (Fristen-Engine — IMMUTABLE, die zentrale Frist-Berechnung)
+--   Rechnet die Faelligkeit einer Task aus Anker-Datum + Frist. Das LLM rechnet nie — hier lebt die
+--   Korrektheit. p_anchor = event_date oder knowledge_date (der Aufrufer waehlt nach template.
+--   deadline_anchor; § 1944 BGB / § 30 ErbStG laufen ab Kenntnis). Einheiten:
 --     * NULL count       -> 'unverzueglich' = am Anker-Tag faellig (RETURN p_anchor).
 --     * 'business_day'    -> § 28 PStG-Werktage (fn_add_business_days; Sa/So/Feiertage zaehlen nicht).
 --     * 'day'            -> Kalendertage.
 --     * 'week'           -> p_count * 7 Kalendertage.
---     * 'month'          -> KALENDARISCH (§§ 187/188 BGB): der Tag GLEICHER ZAHL im Zielmonat; fehlt er
+--     * 'month'          -> kalendarisch (§§ 187/188 BGB): der Tag gleicher Zahl im Zielmonat; fehlt er
 --                          (31. -> kurzer Monat), der letzte Tag des Monats. Genau das leistet die
 --                          Postgres-Intervall-Addition (make_interval(months=>n) klemmt auf Monatsende).
---   v1 OHNE § 193-Verschiebung (Frist-Ende an Sa/So/Feiertag wird NICHT auf den naechsten Werktag
---   geschoben) — bewusst konservativ (fruehere Frist), im Plan dokumentiert.
---   p_anchor NULL -> NULL. EINGABE: p_anchor date, p_count int, p_unit text, p_bundesland text.
---   Anwenden via: db_apply.ps1 -File packages\estate\db\migrations\R__fn_compute_due_date.sql
+--   Ohne § 193-Verschiebung (Frist-Ende an Sa/So/Feiertag wird nicht auf den naechsten Werktag
+--   geschoben) — bewusst konservativ (fruehere Frist).
+--   p_anchor NULL -> NULL. Eingabe: p_anchor date, p_count int, p_unit text, p_bundesland text.
+--   Rueckgabe: date.
 -- ============================================================
 CREATE OR REPLACE FUNCTION estate.fn_compute_due_date(p_anchor date, p_count int, p_unit text, p_bundesland text)
 RETURNS date LANGUAGE plpgsql IMMUTABLE AS $$

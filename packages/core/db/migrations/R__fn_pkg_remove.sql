@@ -1,11 +1,11 @@
 -- ============================================================
 -- fn_pkg_remove (ATOMIC WRITE — Registry-Eintrag eines Pakets entfernen)
---   Loescht NUR die core.package_registry-Zeile (Deregistrierung). Das eigentliche
+--   Loescht nur die core.package_registry-Zeile (Deregistrierung). Das eigentliche
 --   Aufraeumen (DROP SCHEMA <pkg> CASCADE, DROP ROLE, paket-gelieferte core_contexts-
 --   Zeilen, Config, Workflows/Credentials) macht der CLI-Lifecycle (pkg_lifecycle.sh)
---   ausserhalb — diese fn ist der DB-Schritt "aus der Registry nehmen".
+--   ausserhalb.
 --   Eingabe jsonb: package (Pflicht).
---   RUECKGABE: {ok:true, package, removed} (removed = DB-entschieden: true wenn eine
+--   Rueckgabe: {ok:true, package, removed} (removed = DB-entschieden: true wenn eine
 --     Zeile geloescht wurde, false wenn es das Paket nicht gab — idempotent, kein RAISE).
 --     Leerer package -> {ok:false, reason}.
 -- ============================================================

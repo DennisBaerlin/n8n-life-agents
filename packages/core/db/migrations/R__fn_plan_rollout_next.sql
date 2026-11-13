@@ -1,12 +1,13 @@
 -- ============================================================
--- core.fn_plan_rollout_next(p_domain, p_person) — der eine naechste Schritt nach dem Veroeffentlichen
+-- fn_plan_rollout_next (ATOMIC WRITE) — der eine naechste Schritt nach dem Veroeffentlichen
+--   Eingabe: p_domain text, p_person text (person_id).
 --   Leitet aus dem Bestand ab, was als Naechstes dran ist (level-triggered, kein Status). Reihenfolge: 0 [Plan durchsehen],
---   1 Uebergabe-Liste, 2 Warten auf Eintragen, 3 Paket-Schritt (core.advisors.rollout_fn), 4 Wert-Waechter, 5 Schluss. Die Stelle fuer die
---   Aenderungs-Nachricht (C4) liegt vor Schritt 0. Offener Entwurf (je Domain und Person) juenger als advisor.rollout_draft_stale_days:
---   0, 4, 5 entfallen, 1 wartet (step 1, wait).
+--   1 Uebergabe-Liste, 2 Warten auf Eintragen, 3 Paket-Schritt (core.advisors.rollout_fn), 4 Wert-Waechter, 5 Schluss.
+--   Offener Entwurf (je Domain und Person) juenger als advisor.rollout_draft_stale_days: 0, 4, 5 entfallen, 1 wartet (step 1, wait).
 --   Haushaltsplan: nur der Owner bekommt Schritte; per_user: jede Person ihre eigenen, ohne watch:on und plan:share.
 --   Beansprucht ueber core.fn_should_notify('plan_rollout', key, '30 minutes'); festschreiben macht der Sender (core.fn_notify_commit).
---   Rueckgabe {step, wait?, loser?, messages:[{msg:[tpl], buttons:[{text_key,data}], memory_agent?, latch:{source,key}, latches?}]}.
+--   Rueckgabe {step, wait?, loser?, messages:[{msg:[tpl], buttons:[{text_key,data}], memory_agent?, latch:{source,key}, latches?}]};
+--   unbekannte Domain, fremde Person oder kein aktiver Plan -> {step:null, messages:[]}.
 --   Nachrichten ohne Knopf werden verworfen. INVOKER unter der Host-Cred. Tests: tests/db/core/test_fn_plan_rollout_next.sql
 -- ============================================================
 CREATE OR REPLACE FUNCTION core.fn_plan_rollout_next(p_domain text, p_person text)
@@ -65,8 +66,6 @@ BEGIN
     v_stale := COALESCE(NULLIF(core.fn_config_get('core', 'advisor', 'rollout_draft_stale_days'), '')::int, 30);
     v_draft := EXISTS (SELECT 1 FROM agent.advisor_plans d WHERE d.domain = p_domain AND d.person_id IS NOT DISTINCT FROM v_pid
                         AND d.status = 'draft' AND d.updated_at > now() - make_interval(days => v_stale));
-
-    -- Stelle der Aenderungs-Nachricht (C4): vor Schritt 0.
 
     -- Schritt 0: [Plan durchsehen]
     IF v_plan.synced_at IS NULL AND v_sync AND NOT v_draft THEN

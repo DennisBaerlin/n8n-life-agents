@@ -1,8 +1,8 @@
 -- ============================================================
--- fn_is_blocked (read-only Guard, WS-5d)
---   Liefert true, wenn die numerische Telegram-Identitaet in agent.access_blocks gesperrt ist.
---   DIE eine Stelle, die der Sperr-Check ausdrueckt — konsumiert von fn_register_knock (keine
---   Owner-Notiz) UND fn_claim_/fn_consume_pairing_challenge (gesperrte uid pairt nicht).
+-- fn_is_blocked (READ)
+--   Liefert true, wenn die numerische Telegram-Identitaet (p_uid) in agent.access_blocks gesperrt ist.
+--   Die eine Stelle, die den Sperr-Check ausdrueckt, konsumiert von fn_register_knock (keine
+--   Owner-Notiz) und fn_claim_/fn_consume_pairing_challenge (gesperrte uid pairt nicht).
 --   NULL-uid -> false (kein Block). Laeuft als Caller (SECURITY INVOKER): die Pairing-/Knock-fns
 --   sind invoker und rufen es unter der Haupt-Credential (Blanket-Grant deckt access_blocks).
 --   RUECKGABE: boolean

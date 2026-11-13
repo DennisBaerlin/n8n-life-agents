@@ -1,19 +1,17 @@
 -- ============================================================
--- Pairing — Member-/Owner-Identity-Bootstrap (Multi-User, Phase 3 Dev/Release-Split-Plan)
+-- Pairing — Member-/Owner-Identity-Bootstrap (Multi-User)
 -- Zweck:   agent.pairing_state traegt die Einmal-Pairing-Challenge, die eine numerische
---          Telegram-Identitaet (telegram_user_id, NIE Username — OpenClaw-CVE: Identity-
---          Rebinding) mit einer Haushalts-Rolle (owner|partner|child) verknuepft. Nutzt dasselbe
---          race-feste Single-Use-Challenge-Muster wie das fruehere /import-Wipe-Gate (Phase 4b
---          retired): (FOR UPDATE SKIP LOCKED, Exakt-Match, Expiry, Bindung,
---          consumed_at-Replay-Schutz), ABER ohne file_id und MIT role + fail_count-Lockout.
---          Eigene Init (single-responsibility): Identity-Bootstrap ist ein anderer Belang als
---          der Wipe-Gate-Zustand des Orchestrators — analog import_init/guide_init/monitor_init.
+--          Telegram-Identitaet (telegram_user_id, nie Username — OpenClaw-CVE: Identity-
+--          Rebinding) mit einer Haushalts-Rolle (owner|partner|child) verknuepft. Race-festes
+--          Single-Use-Challenge-Muster: FOR UPDATE SKIP LOCKED, Exakt-Match, Expiry, Bindung,
+--          consumed_at-Replay-Schutz, dazu role + fail_count-Lockout.
+--          Eigene Init (single-responsibility), analog guide_init/monitor_init.
 --
 -- Zwei-Stufen-Bootstrap (volle Begruendung in fn_consume_pairing_challenge):
 --   Stufe 1 — der Person-Stammsatz (first_name/last_name/birth_date/role) liegt bereits in den
 --             family-Facts (Owner/Guide-Onboarding); fn_validate_household_facts bleibt hartes
---             Backstop-Gesetz (birth_date Pflicht) und wird hier NICHT aufgeweicht.
---   Stufe 2 — fn_consume_pairing_challenge MERGT bei Erfolg nur telegram_user_id + role in genau
+--             Backstop-Gesetz (birth_date Pflicht) und wird hier nicht aufgeweicht.
+--   Stufe 2 — fn_consume_pairing_challenge merged bei Erfolg nur telegram_user_id + role in genau
 --             diese bestehende Person (Merge-Pfad, validator-konform). Das volle Onboarding
 --             (Konten/Investments/...) fuehrt danach der Guide.
 --
@@ -23,13 +21,12 @@
 --     Pflicht → fail_count-Lockout, s. fn_consume). Ein Buggy-Generator (4-Zeichen-Code) failt
 --     strukturell, nicht erst im Tool.
 --   - fail_count >= 0 (Defense-in-Depth gegen Direktzugriff).
---   - Partial-UNIQUE (telegram_user_id) WHERE consumed_at IS NULL — eine OFFENE Challenge je
+--   - Partial-UNIQUE (telegram_user_id) WHERE consumed_at IS NULL — eine offene Challenge je
 --     numerischer Identitaet (Anti-Doppel-Arm; mehrere NULLs erlaubt fuer Owner-Bootstrap, bei
 --     dem die ID erst am consume gebunden wird).
---   - Partial-UNIQUE (role='owner') WHERE consumed_at IS NULL — hoechstens EINE offene Owner-
+--   - Partial-UNIQUE (role='owner') WHERE consumed_at IS NULL — hoechstens eine offene Owner-
 --     Challenge (Race-Backstop; "Owner ist Einmal-Bootstrap"). Der "Owner existiert schon →
---     kein Re-Arm"-Guard liest die family-Facts und lebt in fn_arm (cross-table → fn-Ebene,
---     Projekt-Regel: Multi-Row/Cross-Table-Invarianten ueber fn, nicht ueber Gate-Trigger).
+--     kein Re-Arm"-Guard liest die family-Facts und lebt in fn_arm (cross-table → fn-Ebene).
 --
 -- Usage:   db_apply.ps1 -File packages\core\db\agent.pairing_init.sql
 -- Tests:   tests/db/core/test_fn_pairing_challenge.sql
@@ -40,7 +37,7 @@ CREATE SCHEMA IF NOT EXISTS agent;
 CREATE TABLE IF NOT EXISTS agent.pairing_state (
     id               serial PRIMARY KEY,
     chat_id          text,                          -- Chat, der einloesen darf; NULL = Owner-Bootstrap (Chat erst am consume bekannt)
-    telegram_user_id bigint,                        -- numerische Identitaet (NIE Username); gesetzt am arm (Member, bekannt) bzw. am consume (Owner)
+    telegram_user_id bigint,                        -- numerische Identitaet (nie Username); gesetzt am arm (Member, bekannt) bzw. am consume (Owner)
     role             text NOT NULL                  -- in die Person gemergte Rolle bei Erfolg
                        CHECK (role IN ('owner','partner','child')),
     challenge        text NOT NULL                  -- >=8 alphanum Pairing-Code, exakt zu tippen
@@ -52,14 +49,13 @@ CREATE TABLE IF NOT EXISTS agent.pairing_state (
                        CONSTRAINT pairing_fail_count_nonneg CHECK (fail_count >= 0)
 );
 
--- WS-5a — Einladungs-Modell (owner-bestaetigt): additive Stage-Spalten (Init-only, ADD COLUMN IF NOT
--- EXISTS erreicht auch bestehende Instanzen idempotent; KEINE V-Migration, kein Backfill).
+-- Einladungs-Modell (owner-bestaetigt): additive Stage-Spalten.
 --   person_id      = Einladungs-Ziel (vorhandene family-Person). NULL beim Owner-Bootstrap (Chicken-Egg:
 --                    der Owner-Pfad loest sein unverknuepftes Skelett zur Laufzeit auf, s. fn_consume).
---                    Member-Invite setzt es beim arm -> fn_confirm bindet GENAU diese Person.
---   claimed_uid/_chat_id/_at = STAGE-Zustand: das Mitglied hat den Code eingeloest (fn_claim), die
+--                    Member-Invite setzt es beim arm -> fn_confirm bindet genau diese Person.
+--   claimed_uid/_chat_id/_at = Stage-Zustand: das Mitglied hat den Code eingeloest (fn_claim), die
 --                    Owner-Bestaetigung (fn_confirm via callback_query) steht noch aus. claimed_uid bleibt
---                    BEWUSST getrennt von telegram_user_id (sonst kollidiert das Stagen gegen den
+--                    bewusst getrennt von telegram_user_id (sonst kollidiert das Stagen gegen den
 --                    Partial-UNIQUE pairing_state_one_open_per_user). claimed_chat_id traegt den Member-Chat,
 --                    damit der spaetere Owner-Confirm/Reject dem Mitglied antworten kann.
 ALTER TABLE agent.pairing_state ADD COLUMN IF NOT EXISTS person_id      text;
@@ -67,8 +63,8 @@ ALTER TABLE agent.pairing_state ADD COLUMN IF NOT EXISTS claimed_uid    bigint;
 ALTER TABLE agent.pairing_state ADD COLUMN IF NOT EXISTS claimed_chat_id text;
 ALTER TABLE agent.pairing_state ADD COLUMN IF NOT EXISTS claimed_at     timestamptz;
 
--- Textkatalog Phase B: language_hint = die Telegram-App-Sprache des einloesenden Mitglieds (from.language_code,
--- normalisiert per agent.fn_normalize_language auf einen Katalog-Code, sonst NULL), gemerkt beim claim. NUR ein
+-- Textkatalog: language_hint = die Telegram-App-Sprache des einloesenden Mitglieds (from.language_code,
+-- normalisiert per agent.fn_normalize_language auf einen Katalog-Code, sonst NULL), gemerkt beim claim. Nur ein
 -- Vorschlag: nach dem Owner-Confirm markiert der Sprach-Picker diese Sprache; gespeichert wird erst der Tipp der
 -- Person (lang:-Callback). Kein FK auf core.ui_languages (dieses Init laeuft vor core.ui_texts_init.sql; die fn
 -- normalisiert ohnehin nur auf vorhandene Codes) -> Format-CHECK als Backstop.
@@ -100,18 +96,18 @@ CREATE UNIQUE INDEX IF NOT EXISTS pairing_state_one_open_owner
     ON agent.pairing_state ((role))
     WHERE consumed_at IS NULL AND role = 'owner';
 
--- WS-5a: hoechstens EINE offene Einladung je Ziel-Person (Member-Analogon zum one_open_owner-Index;
+-- Hoechstens eine offene Einladung je Ziel-Person (Member-Analogon zum one_open_owner-Index;
 -- fn_arm superseded aeltere offene Einladungen derselben person_id vor dem INSERT -> Race-Backstop).
 CREATE UNIQUE INDEX IF NOT EXISTS pairing_state_one_open_per_person
     ON agent.pairing_state (person_id)
     WHERE consumed_at IS NULL AND person_id IS NOT NULL;
 
 -- ------------------------------------------------------------
--- Knock-Throttle (Owner-Notify-Anti-Spam): MIGRIERT (Phase Notify). Der Cooldown-Zustand lebt jetzt in
--- der GETEILTEN core.notification_state (source='knock', key=uid) statt der frueheren agent.knock_log
--- -> EINE Dedup-Adresse aller Producer; fn_register_knock ruft core.fn_should_notify. Die alte Tabelle
--- droppt einmalig V012__consolidate_notification_state.sql.
+-- Knock-Throttle (Owner-Notify-Anti-Spam): der Cooldown-Zustand lebt in der geteilten
+-- core.notification_state (source='knock', key=uid), nicht in einer eigenen Tabelle
+-- -> eine Dedup-Adresse aller Producer; fn_register_knock ruft core.fn_should_notify. Die alte Tabelle
+-- agent.knock_log droppt V012__consolidate_notification_state.sql.
 
--- Lesepfad: NUR die Haupt-Credential (Pre-Router) und die Pairing-fns. KEIN Grant an core_ro (Security-Audit 2026-10):
+-- Lesepfad: nur die Haupt-Credential (Pre-Router) und die Pairing-fns. Kein Grant an core_ro:
 -- die offenen Einmal-Codes stehen im Klartext, der Frei-SQL-Pfad darf sie nie sehen (nicht auf der
 -- Erlaubnisliste in util_create_core_ro.sql, zusaetzlich auf deren Deny-Liste).

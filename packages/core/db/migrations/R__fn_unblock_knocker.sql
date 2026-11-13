@@ -1,10 +1,10 @@
 -- ============================================================
--- fn_unblock_knocker (WS-5d — Sperre aufheben)
---   Owner-Aktion (Telegram-„Entsperren"-Button ODER `lifeagents household unblock <uid>`): entfernt die
+-- fn_unblock_knocker (ATOMIC WRITE — Sperre aufheben)
+--   Owner-Aktion (Telegram-„Entsperren"-Button oder `lifeagents household unblock <uid>`): entfernt die
 --   Sperr-Zeile aus agent.access_blocks. Idempotent (keine Zeile -> was_blocked:false). Beruehrt
---   die Knock-Dedup (core.notification_state, source='knock') NIE.
---   p: { telegram_user_id }
---   RUECKGABE: {ok:true, telegram_user_id, was_blocked:bool} | {ok:false, reason}
+--   die Knock-Dedup (core.notification_state, source='knock') nie.
+--   p: { telegram_user_id (Pflicht, numerisch) }
+--   Rueckgabe: {ok:true, telegram_user_id, was_blocked:bool} | {ok:false, reason}
 --   Tests: tests/db/core/test_fn_is_blocked.sql
 -- ============================================================
 CREATE OR REPLACE FUNCTION agent.fn_unblock_knocker(p jsonb)

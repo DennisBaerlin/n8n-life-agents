@@ -1,5 +1,5 @@
 -- ============================================================
--- core.fn_set_proactive_pause(p) (WRITE -- eine Person setzt oder beendet ihre Pause ungefragter Nachrichten)
+-- fn_set_proactive_pause (ATOMIC WRITE) — eine Person setzt oder beendet ihre Pause ungefragter Nachrichten
 --   p: { chat_id (vom Callback, nie LLM), enabled }. Person nur aus agent.fn_resolve_sender(chat_id).
 --   enabled=true: Upsert until_date = core.fn_today() + general.proactive_pause_days (Default 14); false: Zeile weg.
 --   Rueckgabe: {ok:true, enabled, until_date|null} | {ok:false, reason: invalid_input|unresolved_sender}. Nie RAISE (Callback-Pfad).

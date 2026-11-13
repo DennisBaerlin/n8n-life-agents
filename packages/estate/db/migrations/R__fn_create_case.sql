@@ -1,24 +1,23 @@
 -- ============================================================
--- estate.fn_create_case (ATOMIC WRITE — WS-3, Break-Glass owner_info)
+-- estate.fn_create_case (ATOMIC WRITE — Break-Glass owner_info)
 --   Legt einen Ereignisfall (death/incapacity) an und instanziiert die Fristen-Checkliste. Validierung
---   + Preview kommen aus DERSELBEN fn (estate.fn_preview_case) — re-validiert zur Write-Zeit (eine
+--   + Preview kommen aus derselben fn (estate.fn_preview_case) — re-validiert zur Write-Zeit (eine
 --   Quelle, kein TOCTOU). Bei {ok:false} wird das Preview-Verdikt durchgereicht (korrigierbar, kein
 --   RAISE -> kein Owner-Alert).
---   AUTO-SUPERSEDE: ein offener incapacity-Fall derselben Person wird beim Anlegen eines death-Falls in
---   DERSELBEN Tx auf 'superseded' gesetzt, BEVOR der death-Fall einfuegt (sonst blockte der
+--   Auto-Supersede: ein offener incapacity-Fall derselben Person wird beim Anlegen eines death-Falls in
+--   derselben Tx auf 'superseded' gesetzt, bevor der death-Fall einfuegt (sonst blockte der
 --   partial-UNIQUE(subject) WHERE open) — die Todesnachricht scheitert nie am Doppelfall.
 --   adults_only-DB-Backstop (im Preview). Eingabe jsonb: chat_id, subject_person_id (Slug, vom Tool
 --   aufgeloest), case_type, event_date, knowledge_date (optional), bundesland (optional), flags (jsonb).
---   flags = nur Nutzer-Aussagen (true/false, null faellt weg); der Rest kommt live aus dem Register (WP3).
+--   flags = nur Nutzer-Aussagen (true/false, null faellt weg); der Rest kommt live aus dem Register.
 --   special_assets (optional, Array von {asset_type, description}) = im Gespraech genannte Sonderfaelle (Waffe, Tier,
---   Fahrzeug, Firma): die Stubs entstehen in DERSELBEN Tx (Besitzer = betroffene Person), danach erzeugt fan_out die
+--   Fahrzeug, Firma): die Stubs entstehen in derselben Tx (Besitzer = betroffene Person), danach erzeugt fan_out die
 --   Pflicht-Aufgaben. Validierung/Dubletten/"Typ ohne Vorlage im Falltyp" kommen aus fn_preview_case. Eine Absage
 --   des Falls (fn_cancel_case) laesst die Stubs stehen: der Gegenstand existiert real; irrtuemlich angelegte Eintraege
 --   entfernt tool_delete_special_asset.
---   RUECKGABE: {ok:true, case_id, case_type, status, superseded_case_id, phase_counts, total_open, intake_facts,
+--   Rueckgabe: {ok:true, case_id, case_type, status, superseded_case_id, phase_counts, total_open, intake_facts,
 --     unknown_flags, special_asset_ids (neu angelegte Stubs, [] wenn keine)}
 --     | {ok:false, reason} (das Preview-Verdikt).
---   Anwenden via: db_apply.ps1 -File packages\estate\db\migrations\R__fn_create_case.sql
 -- ============================================================
 CREATE OR REPLACE FUNCTION estate.fn_create_case(p jsonb)
 RETURNS jsonb LANGUAGE plpgsql AS $$
@@ -48,7 +47,7 @@ BEGIN
             CASE WHEN jsonb_typeof(p->'flags') = 'object' THEN jsonb_strip_nulls(p->'flags') ELSE '{}'::jsonb END)
     RETURNING id INTO v_id;
 
-    -- Genannte Sonderfaelle: exakt die Stubs, die die Preview als NEU gemeldet hat (Dubletten sind dort schon raus),
+    -- Genannte Sonderfaelle: exakt die Stubs, die die Preview als neu gemeldet hat (Dubletten sind dort schon raus),
     -- vor der Instanziierung, damit fan_out die Pflicht-Aufgaben in derselben Tx anlegt. Besitzer = betroffene Person.
     WITH ins AS (
         INSERT INTO estate.special_assets (owner_person_id, asset_type, description)

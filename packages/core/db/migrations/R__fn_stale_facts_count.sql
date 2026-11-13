@@ -1,10 +1,11 @@
 -- ============================================================
--- core.fn_stale_facts_count() -> integer   (Phase A — Aktualitaets-Waechter household_facts_freshness)
+-- fn_stale_facts_count (READ-ONLY) — Aktualitaets-Waechter household_facts_freshness
+--   Eingabe: keine. Rueckgabe: integer.
 --   Zaehlt die Personen-Fakten (Eintraege in metadata.facts.persons[]) mit as_of aelter als 12 Monate oder
---   ohne as_of, ueber family + die household-Fakten-Kontexte AKTIVER Pakete (EIN Praedikat:
+--   ohne as_of, ueber family + die household-Fakten-Kontexte aktiver Pakete (ein Praedikat:
 --   core.fn_facts_context_allowed — Fakten inaktiver/deinstallierter Pakete wecken den Owner nicht).
---   Ersetzt die gespeicherte Abfrage mit dem Literal 'finance_profile' (Core kennt kein Paket). Die Core-
---   Trigger-Zeile ruft nur diese fn (agent.monitor_init.sql; Bestand: core:V019) -> der Owner kann die Spec
+--   Core kennt kein Paket, darum kein Paket-Literal in der Abfrage. Die Core-
+--   Trigger-Zeile ruft nur diese fn (agent.monitor_init.sql; core:V019) -> der Owner kann die Spec
 --   editieren, eine Logik-Aenderung bleibt trotzdem eine reine R__-Aenderung.
 --   Ausgefuehrt von fn_monitor_acquire als core_ro_eval (agent.fn_monitor_ro_eval) -> STABLE INVOKER, search_path gepinnt,
 --   array-sicher (jsonb_array_elements nur auf echten Arrays); EXECUTE an core_ro in util_create_core_ro.sql.

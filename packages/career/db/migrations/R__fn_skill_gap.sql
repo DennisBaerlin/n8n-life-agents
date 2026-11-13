@@ -1,36 +1,35 @@
 -- ============================================================
--- career.fn_skill_gap (WS-3 — deterministische Skill-Luecke Soll-Ist, DRY-Kern)
---   Rechnet je Ziel-Rolle die Luecke zwischen den VERLANGTEN Skills (Soll, career_planning.target_roles[].
---   required_skills[]) und den AKTUELLEN Skills (Ist, career_profile.skills[]) — DETERMINISTISCH in der DB
---   (CLAUDE.md "LLM rechnet nicht"). Karriere-Analog der finance-Allokations-Drift (Soll-Block-Array join Ist).
---   PURE: nimmt die beiden Fakten-Blobs (kein eigener SELECT) -> von Renderer (fn_render_career_planning) UND
---   Review (fn_advisor_review) aufrufbar (DRY: EINE Definition der Level-Arithmetik).
+-- career.fn_skill_gap (READ)
+--   Deterministische Skill-Luecke Soll-Ist: rechnet je Ziel-Rolle die Luecke zwischen den verlangten Skills
+--   (Soll, career_planning.target_roles[].required_skills[]) und den aktuellen Skills (Ist, career_profile.skills[])
+--   in der DB. Karriere-Analog der finance-Allokations-Drift (Soll-Block-Array join Ist).
+--   Eingabe: p_plan_facts, p_profile_facts (die beiden Fakten-Blobs; kein eigener SELECT), daher vom Renderer
+--   (fn_render_career_planning) und vom Review (fn_advisor_review) aufrufbar (eine Definition der Level-Arithmetik).
 --
 --   Klassifikation je Soll-Skill (Name-Match lower(trim), erster Treffer):
 --     * kein Ist-Treffer                                  -> missing
 --     * Ist-Treffer + presence-only (min_level fehlt, req_rank 0) -> met   (Level egal, Ueberskill irrelevant)
 --     * Ist-Treffer, have_rank < req_rank                 -> weak   (auch: Ist ohne level -> have_rank 0 < req_rank)
---     * Ist-Treffer, have_rank > req_rank                 -> overskilled (KEINE Luecke; nur bei gesetztem min_level)
+--     * Ist-Treffer, have_rank > req_rank                 -> overskilled (keine Luecke; nur bei gesetztem min_level)
 --     * sonst (have_rank == req_rank)                     -> met
 --   req_rank/have_rank via career.fn_skill_level_rank (unbekannt/NULL -> 0; fehlt min_level -> presence-only).
 --
---   RAISE-FREI (speist die all-Advisor-CTE von fn_advisor_review_evaluate): kein ::boolean-Cast auf Junk
+--   RAISE-frei (speist die all-Advisor-CTE von fn_advisor_review_evaluate): kein ::boolean-Cast auf Junk
 --   (jsonb_typeof-Guard), Profil/required_skills fehlend/kein Array -> still leer.
 --
---   RUECKGABE jsonb:
+--   Rueckgabe jsonb:
 --     { gap_count, blocker_gap_count, overskill_count,
 --       roles:[ { title, required_count, met_count,
 --                 missing:[{name,required,is_blocker}],
 --                 weak:[{name,have,required,is_blocker}],
 --                 overskilled:[{name,have,required}] } ] }
---     roles[] enthaelt NUR Ziel-Rollen mit einem required_skills-Array (Konsumenten matchen per title).
---   ZAEHLUNG je FAEHIGKEIT (Name lower(trim)), nicht je Rolle: eine Faehigkeit, die in mehreren Ziel-Rollen fehlt oder
+--     roles[] enthaelt nur Ziel-Rollen mit einem required_skills-Array (Konsumenten matchen per title).
+--   Zaehlung je Faehigkeit (Name lower(trim)), nicht je Rolle: eine Faehigkeit, die in mehreren Ziel-Rollen fehlt oder
 --     zu schwach ist, zaehlt in gap_count einmal. blocker_gap_count zaehlt sie, wenn sie in mindestens einer Rolle
 --     Luecke UND Pflicht zugleich ist (Pflicht in einer Rolle, in der sie erfuellt ist, macht eine Luecke ohne Pflicht
 --     anderswo nicht zum Blocker). overskill_count zaehlt sie einmal, wenn sie in mindestens einer Rolle uebererfuellt
 --     ist. roles[] bleibt je Rolle voll (die Zeilen "Ziel X: ..." brauchen das); gap_count minus die Luecken der
 --     primaeren Rolle = Faehigkeiten, die die primaere Rolle nicht hat (fn_advisor_review "Dazu kommen n").
---   Anwenden via: db_apply.ps1 -File packages\career\db\migrations\R__fn_skill_gap.sql
 -- ============================================================
 CREATE OR REPLACE FUNCTION career.fn_skill_gap(p_plan_facts jsonb, p_profile_facts jsonb)
 RETURNS jsonb LANGUAGE plpgsql STABLE AS $$
@@ -66,7 +65,7 @@ BEGIN
 
     FOR v_role IN SELECT * FROM jsonb_array_elements(p_plan_facts->'target_roles') LOOP
         -- Rolle ohne required_skills-Array traegt nichts bei (IS DISTINCT FROM: fehlt -> jsonb_typeof NULL
-        -- -> NULL <> 'array' waere NULL und wuerde NICHT skippen)
+        -- -> NULL <> 'array' waere NULL und wuerde nicht skippen)
         CONTINUE WHEN jsonb_typeof(v_role->'required_skills') IS DISTINCT FROM 'array';
         v_missing := '[]'::jsonb; v_weak := '[]'::jsonb; v_over := '[]'::jsonb;
         v_met := 0; v_reqcnt := 0;

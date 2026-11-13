@@ -1,20 +1,22 @@
 -- ============================================================
--- estate.fn_preview_case (WS-3 — read-only Dry-Run + Validierung; DIE HITL-Preview-Quelle)
---   Berechnet, was fn_create_case anlegen WUERDE, ohne zu schreiben: validiert alle Eingaben und gibt
---   die Task-ZAHL je Phase zurueck (Trauer-UX: die HITL-Summary zeigt eine Zusammenfassung, keine
---   Voll-Liste). Der create_case-Tool ruft sie VOR dem Gate fuer die Bestaetigungs-Nachricht; fn_create_
+-- estate.fn_preview_case (READ — read-only Dry-Run + Validierung; die HITL-Preview-Quelle)
+--   Berechnet, was fn_create_case anlegen wuerde, ohne zu schreiben: validiert alle Eingaben und gibt
+--   die Task-Zahl je Phase zurueck (Trauer-UX: die HITL-Summary zeigt eine Zusammenfassung, keine
+--   Voll-Liste). Das create_case-Tool ruft sie vor dem Gate fuer die Bestaetigungs-Nachricht; fn_create_
 --   case ruft sie zur Write-Zeit erneut (re-validiert -> eine Quelle, kein TOCTOU). STABLE (kein Write).
---   VALIDIERUNG (alle korrigierbar -> {ok:false, reason}, kein RAISE):
+--   Eingabe jsonb: chat_id, case_type, subject_person_id, event_date, knowledge_date (optional), bundesland
+--   (optional), flags, special_assets (optional).
+--   Validierung (alle korrigierbar -> {ok:false, reason}, kein RAISE):
 --     * adults_only-Backstop (core.fn_check_write_permission; Kind -> reject).
 --     * case_type ∈ {death, incapacity}; subject_person_id Pflicht + muss ein Haushaltsmitglied sein
---       (core.fn_household_persons, NIE agent.persons direkt, D10).
---     * subject == Sender selbst -> {ok:false, subject_is_sender} (v1-Grenze; nur numerischer Pfad).
+--       (core.fn_household_persons, nie agent.persons direkt).
+--     * subject == Sender selbst -> {ok:false, subject_is_sender} (Grenze; nur numerischer Pfad).
 --     * event_date Pflicht, nicht in der Zukunft; knowledge_date >= event_date (Default = event_date); beide
---       YYYY-MM-DD oder relativ (core.fn_resolve_input_dates) — die Rueckgabe traegt die AUFGELOESTEN Daten, die der
+--       YYYY-MM-DD oder relativ (core.fn_resolve_input_dates) — die Rueckgabe traegt die aufgeloesten Daten, die der
 --       Tool-Write danach unveraendert uebernimmt (Karte = Speicher).
 --     * intake_facts / unknown_flags: Intake-Merkmale des Falltyps, wirksam true bzw. unbekannt (Register via
 --       estate.fn_case_register_flags, ueberstimmt von p.flags).
---     * bundesland FAIL-CLOSED: Parameter -> Config estate.general.bundesland -> sonst
+--     * bundesland fail-closed: Parameter -> Config estate.general.bundesland -> sonst
 --       {ok:false, bundesland_required}; unbekannter Slug -> reject. (Der Agent fragt dann nach.)
 --     * offener Fall derselben Person: gleicher Typ -> reject (Idempotenz); death ueber offenem
 --       incapacity -> supersede_case_id gesetzt (Auto-Supersede in fn_create_case); incapacity ueber
@@ -26,10 +28,9 @@
 --       Haushalt oder schon in der Liste) entfaellt. Eine offensichtliche Verneinung als Beschreibung ("keine Waffen",
 --       "nein", "-") wird abgewiesen (das Modell soll das Feld leer lassen). Die Task-Zahl zaehlt die neuen Stubs mit (fn_case_template_rows,
 --       Platzhalter-Ref 'new:<n>'); geschrieben wird hier nichts.
---   RUECKGABE ok:true: case_type, subject_person_id, event_date, knowledge_date, bundesland, phase_counts, total_open,
---     intake_facts, unknown_flags, special_assets (die NEU anzulegenden Stubs [{asset_type, description}], fuer die
+--   Rueckgabe ok:true: case_type, subject_person_id, event_date, knowledge_date, bundesland, phase_counts, total_open,
+--     intake_facts, unknown_flags, special_assets (die neu anzulegenden Stubs [{asset_type, description}], fuer die
 --     Karte und fn_create_case), supersede_case_id. ok:false: reason (+ code bundesland_required / subject_is_sender).
---   Anwenden via: db_apply.ps1 -File packages\estate\db\migrations\R__fn_preview_case.sql
 -- ============================================================
 CREATE OR REPLACE FUNCTION estate.fn_preview_case(p jsonb)
 RETURNS jsonb LANGUAGE plpgsql STABLE AS $$
@@ -81,7 +82,7 @@ BEGIN
             'reason', 'You cannot open an event case for yourself — the affected person (subject) must be a DIFFERENT household member (this is a v1 limitation).');
     END IF;
 
-    -- WP3: relative Angaben ("yesterday", "-3 days", "last friday") rechnet die DB, das LLM uebersetzt nur.
+    -- Relative Angaben ("yesterday", "-3 days", "last friday") rechnet die DB, das LLM uebersetzt nur.
     IF NULLIF(trim(COALESCE(p->>'event_date', '')), '') IS NULL THEN
         RETURN jsonb_build_object('ok', false, 'reason', 'event_date is required.');
     END IF;
@@ -124,7 +125,7 @@ BEGIN
     END IF;
 
     -- Im Gespraech genannte Sonderfaelle: validieren und gegen das Register dedublizieren. Das Ergebnis ist die Liste
-    -- der NEU anzulegenden Stubs (fn_create_case legt exakt diese an); die Aufgaben-Zahl unten zaehlt sie mit.
+    -- der neu anzulegenden Stubs (fn_create_case legt exakt diese an); die Aufgaben-Zahl unten zaehlt sie mit.
     IF p->'special_assets' IS NOT NULL AND jsonb_typeof(p->'special_assets') <> 'null' THEN
         IF jsonb_typeof(p->'special_assets') <> 'array' THEN
             RETURN jsonb_build_object('ok', false, 'reason',
@@ -171,7 +172,7 @@ BEGIN
              WHERE status = 'open'
              GROUP BY phase) s;
 
-    -- WP3: Intake-Merkmale dieses Falltyps — wirksam (Register || Angabe) true = intake_facts (Karte), weder Register
+    -- Intake-Merkmale dieses Falltyps — wirksam (Register || Angabe) true = intake_facts (Karte), weder Register
     -- noch Angabe = unknown_flags (genau das fragt der Agent, einmal gesammelt). Derived-Conditions zaehlen nicht.
     v_eff := jsonb_strip_nulls(estate.fn_case_register_flags(v_subject)) || v_flags;
     SELECT COALESCE(jsonb_agg(k ORDER BY k) FILTER (WHERE v_eff->>k = 'true'), '[]'::jsonb),

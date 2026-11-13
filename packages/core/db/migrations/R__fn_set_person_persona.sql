@@ -1,20 +1,20 @@
 -- ============================================================
--- agent.fn_set_person_persona (Callback-Handler des Persona-Pickers, Prefix persona:<person_id>:<code>)
+-- fn_set_person_persona (ATOMIC WRITE — Callback-Handler des Persona-Pickers, Prefix persona:<person_id>:<code>)
 --   Registriert in core.callback_handlers (Core-Manifest callback_handlers, member_permeable=true); der Dispatcher
 --   core.fn_dispatch_callback laesst Owner und aufgeloeste Mitglieder durch, die FEINE Autorisierung liegt hier:
 --     Owner -> jede Person; Mitglied -> nur sich selbst; unaufgeloester Absender -> abgelehnt.
 --   Analog agent.fn_set_person_language (gleiche Zero-Trust-Regeln, gleicher Schreibweg):
---   ZERO-TRUST: re-resolvt den Absender selbst aus p->>'chat_id' (RAISE-freier Cast), vertraut keinem Caller-Flag.
---   Der Tipp IST die Bestaetigung, kein HITL-Gate davor. Write ueber agent.fn_set_context_facts OHNE chat_id
+--   Zero-Trust: re-resolvt den Absender selbst aus p->>'chat_id' (RAISE-freier Cast), vertraut keinem Caller-Flag.
+--   Der Tipp ist die Bestaetigung, kein HITL-Gate davor. Write ueber agent.fn_set_context_facts ohne chat_id
 --   (vertrauenswuerdiger Aufruf; die family-owner_only-Pruefung dort uebernimmt diese Autorisierung), genau
 --   {person_id, persona} — 'neutral' loescht dort den Key (neutral wird nie gespeichert).
---   Toast in der Sprache des TIPPENDEN (die Persona aendert die Sprache nicht), Texte core.persona.*, Persona-Name
+--   Toast in der Sprache des Tippenden (die Persona aendert die Sprache nicht), Texte core.persona.*, Persona-Name
 --   aus core.persona.name.<code>; 'neutral' (Zurueck auf Standard) mit eigenem Toast core.persona.reset.
---   sticker_event='persona_chosen' nur, wenn die Person ihre EIGENE Persona GEAENDERT hat (Hallo-Sticker des neuen
+--   sticker_event='persona_chosen' nur, wenn die Person ihre eigene Persona geaendert hat (Hallo-Sticker des neuen
 --   Sets ueber agent.fn_claim_persona_sticker; ein erneuter Tipp auf dieselbe, auch auf alten Picker-Karten, sendet keinen,
 --   sonst umginge jeder Tipp die Sticker-Bremse).
 --   p: das Callback-Payload {data, chat_id, ...}
---   RUECKGABE: {ok:true, person_id, persona, toast, sticker_event?} | {ok:false, reason, toast}  (nie RAISE -> kein Owner-Alert)
+--   Rueckgabe: {ok:true, person_id, persona, toast, sticker_event?} | {ok:false, reason, toast}  (nie RAISE -> kein Owner-Alert)
 --   Tests: tests/db/core/test_fn_set_person_persona.sql
 -- ============================================================
 CREATE OR REPLACE FUNCTION agent.fn_set_person_persona(p jsonb)
@@ -79,7 +79,7 @@ BEGIN
                                                     -- Enum-Prefix + Code (locale_lint 7b sichert je Code den Key)
                                                     'persona', core.fn_ui_text('core.persona.name' || '.' || v_code, v_lang)))
                  END)
-        -- nur bei EIGENER Wahl: der Orchestrator fragt agent.fn_claim_persona_sticker nach dem Hallo-Sticker des
+        -- nur bei eigener Wahl: der Orchestrator fragt agent.fn_claim_persona_sticker nach dem Hallo-Sticker des
         -- neuen Sets (waehlt der Owner fuer jemand anderen, landete der Sticker sonst im falschen Chat)
         || CASE WHEN v_sender->>'person_id' = v_pid AND COALESCE(v_target->>'persona', 'neutral') IS DISTINCT FROM v_code
                 THEN jsonb_build_object('sticker_event', 'persona_chosen')

@@ -1,9 +1,9 @@
 -- ============================================================
 -- core.llm_usage — Mitschrift der Claude-Nutzung (Kosten-Report /kosten)
--- Zweck:   je Anfrage durch den lokalen LLM-Gateway (provisioning/llm_gateway) EINE Zeile mit den rohen
+-- Zweck:   je Anfrage durch den lokalen LLM-Gateway (provisioning/llm_gateway) eine Zeile mit den rohen
 --          Anthropic-usage-Zahlen + dem ausloesenden Workflow. Quelle ist die Gateway-Datei usage.jsonl, die der
 --          /kosten-Sub per GET /__usage holt und ueber core.fn_import_llm_usage einspielt (idempotent ueber id).
---          Kosten sind bewusst KEINE Spalte (abgeleitet aus agent.ai_models.pricing_usd_per_mtok, Preise koennen sich
+--          Kosten sind bewusst keine Spalte (abgeleitet aus agent.ai_models.pricing_usd_per_mtok, Preise koennen sich
 --          aendern) -> core.fn_get_llm_cost_report rechnet sie beim Lesen.
 -- Privacy: nur Zahlen, Modell, Workflow-Name und Zeit — nie Prompt-, Antwort- oder Header-Inhalte.
 -- Retention: 13 Monate, aufgeraeumt inline beim Import (kein Cron).
@@ -21,7 +21,7 @@ CREATE TABLE IF NOT EXISTS core.llm_usage (
     model                       text,                                       -- Anthropic-Modell-id der Anfrage (= agent.ai_models.n8n_model_id)
     keepalive                   boolean NOT NULL DEFAULT FALSE,             -- Warmhalte-Anstupser des Gateways (max_tokens 0)
     status                      int,                                        -- HTTP-Status der Antwort
-    -- Anthropic-Feldnamen: input_tokens = UNGECACHTER Rest; Gesamt-Eingabe = input + cache_creation + cache_read
+    -- Anthropic-Feldnamen: input_tokens = ungecachter Rest; Gesamt-Eingabe = input + cache_creation + cache_read
     input_tokens                bigint NOT NULL DEFAULT 0 CHECK (input_tokens >= 0),
     cache_creation_input_tokens bigint NOT NULL DEFAULT 0 CHECK (cache_creation_input_tokens >= 0),
     ephemeral_1h_input_tokens   bigint NOT NULL DEFAULT 0 CHECK (ephemeral_1h_input_tokens >= 0),   -- Anteil 1h-TTL (Rest = 5 Min)

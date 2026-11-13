@@ -1,19 +1,19 @@
 -- ============================================================
--- estate.fn_instantiate_case_tasks (WS-3 — interner Materialisierer, kein Agent-Tool)
---   Schreibt/aktualisiert die case_tasks eines Falls aus dem Soll-Satz (fn_case_template_rows). EINE
---   Logik fuer BEIDE Aufrufer (DRY): fn_create_case (frischer Fall -> alles INSERT) und fn_set_case
---   (Reconcile nach knowledge/bundesland/flags-Aenderung). Das ON CONFLICT deckt beide:
---     * due_date wird IMMER neu berechnet (bundesland/knowledge-Aenderung schlaegt auf offene Fristen).
---     * Reconcile in BEIDE Richtungen, aber nur fuer Status, die das SYSTEM gesetzt hat (status_source='system'):
+-- estate.fn_instantiate_case_tasks (internal — interner Materialisierer, kein Agent-Tool)
+--   Schreibt/aktualisiert die case_tasks eines Falls aus dem Soll-Satz (fn_case_template_rows). Eine
+--   Logik fuer beide Aufrufer: fn_create_case (frischer Fall -> alles INSERT) und fn_set_case
+--   (Reconcile nach knowledge/bundesland/flags-Aenderung). Das ON CONFLICT deckt beide.
+--   Eingabe: p_case_id bigint (unbekannt -> RAISE). Rueckgabe: void.
+--     * due_date wird immer neu berechnet (bundesland/knowledge-Aenderung schlaegt auf offene Fristen).
+--     * Reconcile in beide Richtungen, aber nur fuer Status, die das System gesetzt hat (status_source='system'):
 --       Bedingung jetzt wahr -> n.a. kippt auf open; Bedingung nicht mehr wahr (Merkmal zurueckgenommen, Register
---       geaendert) -> open kippt auf n.a.; fan_out-Tasks ohne Stub mehr -> n.a. Vom NUTZER gesetzte Status
+--       geaendert) -> open kippt auf n.a.; fan_out-Tasks ohne Stub mehr -> n.a. Vom Nutzer gesetzte Status
 --       (status_source='user': done, "trifft nicht zu", wieder offen) fasst der Reconcile nie an. Der Auto-Complete-
 --       Trigger kann den Fall dabei schliessen (letzte offene Task n.a.) -> fn_set_case meldet case_status.
---     * title/detail = SNAPSHOT (beim ersten Insert eingefroren, nie ueberschrieben — der Katalog darf
+--     * title/detail = Snapshot (beim ersten Insert eingefroren, nie ueberschrieben — der Katalog darf
 --       sich aendern, die laufende Checkliste bleibt stabil).
---   Manuelle Tasks (template_key NULL) sind NICHT im Soll-Satz -> vom Reconcile nie beruehrt.
+--   Manuelle Tasks (template_key NULL) sind nicht im Soll-Satz -> vom Reconcile nie beruehrt.
 --   SECURITY INVOKER (laeuft unter estate_rw des Aufrufers; alle Refs schema-qualifiziert).
---   Anwenden via: db_apply.ps1 -File packages\estate\db\migrations\R__fn_instantiate_case_tasks.sql
 -- ============================================================
 CREATE OR REPLACE FUNCTION estate.fn_instantiate_case_tasks(p_case_id bigint)
 RETURNS void LANGUAGE plpgsql AS $$

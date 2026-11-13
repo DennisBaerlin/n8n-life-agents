@@ -1,23 +1,23 @@
 -- ============================================================
 -- fn_advisor_save_section (ATOMIC WRITE — Interview-Sektion in den Draft-Plan)
---   Upsertet EINE Interview-Sektion in interview_state des Draft-Plans der Domain;
+--   Upsertet eine Interview-Sektion in interview_state des Draft-Plans der Domain;
 --   existiert kein Draft, wird er angelegt (version = MAX(version)+1 der Domain —
 --   die DB zaehlt, nicht das LLM). Aufgerufen vom HITL-gegateten Tool
---   agent.tool_save_plan_section (domain ist dort FIXER Binding-Input, nie $fromAI).
---   P0c PERSON-SCOPE (Paritaet fn_set_context_facts): Plan-Schluessel = (domain, person_id). household-Domains
+--   agent.tool_save_plan_section (domain ist dort fixer Binding-Input, nie $fromAI).
+--   Person-Scope (Paritaet fn_set_context_facts): Plan-Schluessel = (domain, person_id). household-Domains
 --   (finance/financial_planning) -> person_id NULL (ein Haushalts-Plan); per_user (career/career_planning,
 --   core.context_scopes) -> person_id = der Sender selbst (own_user_only), aus der chat_id via fn_resolve_sender
---   (NIE LLM); unaufgeloester Sender bei per_user -> {ok:false}. Permission via fn_check_write_permission
---   (owner_only delegiert byte-gleich an fn_sender_is_member -> finance unveraendert).
---   Eingabe jsonb: domain (Pflicht — Phase B: kein 'finance'-Default mehr; ein leeres domain landete vorher
---     still im Finanzplan), chat_id (Identitaet), section_key (Pflicht; gegen den Textkatalog des Pakets geprueft, s. u.),
+--   (nie LLM); unaufgeloester Sender bei per_user -> {ok:false}. Permission via fn_check_write_permission
+--   (owner_only delegiert an fn_sender_is_member).
+--   Eingabe jsonb: domain (Pflicht, kein Default; ein leeres domain landete sonst still im Finanzplan), chat_id (Identitaet),
+--     section_key (Pflicht; gegen den Textkatalog des Pakets geprueft, s. u.),
 --     section_content (Pflicht, Klartext der Sektion bzw. des Themas in der Sprache der Antwort des Beraters; die Karte zeigt ihn ganz),
 --     topic (optional, 1..60 Zeichen nach btrim): Thema innerhalb des Abschnitts. Gesetzt -> Upsert in
 --       interview_state[key].topics[] als {topic, content, data, saved_at} (Reihenfolge der ersten Speicherung; gleiche
 --       Bezeichnung ohne Gross-/Kleinschreibung ersetzt das Thema mitsamt data). Abschnitts-data = legacy_data || Themen-data
 --       (derselbe Top-Block in zwei Themen -> code block_in_two_topics). Ein Alt-content des Abschnitts wandert beim ersten
 --       Themen-Save nach legacy_content (Alt-data nach legacy_data) und die Karte bekommt die Notiz core.hitl.plan_legacy_replaced.
---       Ohne topic: content/data/saved_at wie bisher gesetzt, topics und legacy_* bleiben.
+--       Ohne topic: content/data/saved_at des Abschnitts werden gesetzt, topics und legacy_* bleiben.
 --     Laengen-Gesetz: core.config <paket>.advisor.topic_max_chars (Paket der Domain aus core.advisors, E2E-Domain -> echte
 --       Domain). Gesetzt -> ohne topic code topic_required, Text laenger -> code topic_too_long {max, length}; ohne Wert keine Regel.
 --     section_data (optional, leerer String = nicht angegeben; jsonb-Objekt ODER JSON-String — String wird geparst; relative Zeitangaben in
@@ -29,7 +29,7 @@
 --       mit topic die des Themas plus die themenlosen des Abschnitts, ohne topic alle des Abschnitts; weggelassen bleiben sie
 --       unveraendert; working/done/cancelled bleiben immer. Person = Sender (core.fn_handoff_person), package = Paket der
 --       Plan-Domain (core.advisors, E2E-Domain -> echte Domain).
---   RUECKGABE-VERTRAG: Erfolg -> {ok:true, plan_id, version, status:'draft',
+--   Rueckgabe-Vertrag: Erfolg -> {ok:true, plan_id, version, status:'draft',
 --     draft_created, sections, section_count, topics, topic_replaced, handoff_task_count, card_lines} (Post-State: welche
 --     Sektionen der Draft JETZT hat; topics = Themen-Bezeichnungen des Abschnitts in Reihenfolge; topic_replaced und
 --     draft_created = DB-entschieden; card_lines = Notiz core.hitl.plan_legacy_replaced beim Abloesen eines Alt-Texts und je
@@ -37,7 +37,7 @@
 --     section_key gegen den Textkatalog: fuehrt das Paket der Domain Abschnitts-Keys (core.ui_texts <paket>.plan_section.<key>),
 --       ist nur einer davon erlaubt, sonst code unknown_section_key + valid_keys (Tippfehler legte sonst einen Phantom-Abschnitt
 --       an). Fuehrt der Katalog keine (Test-DB ohne Seed, Paket ohne Plan), bleibt der Key frei.
---   Korrigierbar (fehlendes domain, leerer section_key/-content, unknown_section_key, topic ueber 60 Zeichen, topic_required, topic_too_long,
+--   Korrigierbar (fehlendes domain, leerer section_key/-content, unknown_section_key, topic ueber 60 Zeichen (code topic_label_too_long), topic_required, topic_too_long,
 --     block_in_two_topics, invalides section_data-JSON, ungueltige handoff_tasks, Person nicht aufloesbar) -> {ok:false, reason
 --     [, code]} OHNE Write (kein RAISE -> kein Owner-Alert).
 -- ============================================================
@@ -53,7 +53,7 @@ DECLARE
     v_created BOOLEAN := false;
     v_state   JSONB;
     v_keys    JSONB;
-    -- P0c Person-Scope (Paritaet fn_set_context_facts): v_ctx = Plan-Context der Domain (core.advisors),
+    -- Person-Scope (Paritaet fn_set_context_facts): v_ctx = Plan-Context der Domain (core.advisors),
     -- v_scope/v_perm aus core.context_scopes; per_user -> v_pid (Sender selbst) aus der nicht-spoofbaren chat_id.
     v_ctx     TEXT;
     v_scope   TEXT;
@@ -77,7 +77,7 @@ BEGIN
         RETURN jsonb_build_object('ok', false,
             'reason', 'domain is required (the advisor tool binding passes it as a fixed input)');
     END IF;
-    -- P0c: Plan-Context der Domain (Domain->Context-Map aus der Registry; Fallback v_domain||'_planning' fuer
+    -- Plan-Context der Domain (Domain->Context-Map aus der Registry; Fallback v_domain||'_planning' fuer
     -- E2E-Sentinel-Domains ohne advisors-Zeile) -> dessen scope/write_permission steuert household vs per_user.
     v_ctx := COALESCE((SELECT plan_context FROM core.advisors WHERE domain = v_domain), v_domain || '_planning');
     SELECT cs.scope, cs.write_permission INTO v_scope, v_perm
@@ -85,18 +85,17 @@ BEGIN
     v_scope := COALESCE(v_scope, 'household');
     v_perm  := COALESCE(v_perm, 'owner_only');
 
-    -- per_user -> Ziel-Person == Sender (own_user_only), aus der chat_id (Numerik-Guard, NIE LLM).
+    -- per_user -> Ziel-Person == Sender (own_user_only), aus der chat_id (Numerik-Guard, nie LLM).
     IF v_scope = 'per_user' AND p->>'chat_id' ~ '^[0-9]+$' THEN
         v_pid := agent.fn_resolve_sender((p->>'chat_id')::bigint) ->> 'person_id';
     END IF;
-    -- per_user FAIL-CLOSED (das echte Gate fuer unaufgeloeste Sender, VOR Permission & Write).
+    -- per_user fail-closed (das echte Gate fuer unaufgeloeste Sender, vor Permission und Write).
     IF v_scope = 'per_user' AND v_pid IS NULL THEN
         RETURN jsonb_build_object('ok', false, 'reason', 'cannot resolve person for per-user plan');
     END IF;
 
-    -- WS-5b/P0c: Schreib-Permission generisch aus der Registry (ersetzt den fn_sender_is_member-Hardcode;
-    -- financial_planning->owner_only delegiert byte-gleich an fn_sender_is_member, career_planning->own_user_only).
-    -- Identitaet aus der chat_id, NIE LLM. {ok:false} VOR jedem Write (RAISE-frei -> kein Owner-Alert).
+    -- Schreib-Permission generisch aus der Registry (financial_planning->owner_only, career_planning->own_user_only).
+    -- Identitaet aus der chat_id, nie LLM. {ok:false} vor jedem Write (RAISE-frei -> kein Owner-Alert).
     v_err := agent.fn_check_write_permission(v_perm, p->>'chat_id', v_pid);
     IF v_err IS NOT NULL THEN
         RETURN jsonb_build_object('ok', false, 'reason', v_err);
@@ -135,7 +134,7 @@ BEGIN
     END IF;
 
     -- section_data: jsonb-Objekt direkt; JSON-String parsen (LLM-Output -> Parse-Fehler sind
-    -- KORRIGIERBAR, kein RAISE). Leerer String = nicht angegeben: das Tool-Binding liefert ihn beim Weglassen.
+    -- korrigierbar, kein RAISE). Leerer String = nicht angegeben: das Tool-Binding liefert ihn beim Weglassen.
     IF p ? 'section_data' AND jsonb_typeof(p->'section_data') IS DISTINCT FROM 'null'
        AND btrim(COALESCE(p->>'section_data', '')) <> '' THEN
         IF jsonb_typeof(p->'section_data') = 'string' THEN
@@ -188,7 +187,7 @@ BEGIN
         RETURN jsonb_build_object('ok', false, 'reason', 'cannot resolve the person for the handoff tasks');
     END IF;
 
-    -- WP3: relative Zeitangaben (*_date / since) rechnet die DB; as_of jedes Top-Level-OBJEKT-Blocks stempelt die fn
+    -- Relative Zeitangaben (*_date / since) rechnet die DB; as_of jedes Top-Level-Objekt-Blocks stempelt die fn
     -- (Provenienz-Stempel: "Stand der Erhebung" = Tag des Sektions-Saves; ein vom LLM mitgeschicktes as_of zaehlt nicht).
     IF jsonb_typeof(v_data) = 'object' THEN
         v_data := core.fn_resolve_fact_dates(v_data);

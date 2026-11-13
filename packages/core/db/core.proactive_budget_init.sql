@@ -1,13 +1,13 @@
 -- ============================================================
 -- core.proactive_budget / core.proactive_deferred -- Tagesbudget ungefragter Nachrichten je Empfaenger
--- Zweck:   Ein Cron, mehrere Pakete oder Empfaenger-Items belegen EINEN Slot je Tag; core.fn_proactive_claim zaehlt
+-- Zweck:   Ein Cron, mehrere Pakete oder Empfaenger-Items belegen einen Slot je Tag; core.fn_proactive_claim zaehlt
 --          verschiedene Slots gegen general.proactive_daily_max. proactive_deferred merkt den ersten abgewiesenen Tag
 --          eines normal-Slots (Altern: nach general.proactive_age_days wird er wie priority behandelt).
 -- DB-Gesetze:
 --   - PK (person_id, day, slot): ein Slot zaehlt je Tag genau einmal.
 --   - class CHECK: normal|priority|deadline.
 --   - FK person_id -> agent.persons ON DELETE CASCADE (entfernte Person -> Zaehler weg).
--- EPHEMER: nicht im Backup, von core.fn_reset_user_data geleert. Geschrieben nur ueber core.fn_proactive_claim (DEFINER).
+-- Ephemer: nicht im Backup, von core.fn_reset_user_data geleert. Geschrieben nur ueber core.fn_proactive_claim (DEFINER).
 -- Tests:   tests/db/core/test_fn_proactive_claim.sql
 -- ============================================================
 

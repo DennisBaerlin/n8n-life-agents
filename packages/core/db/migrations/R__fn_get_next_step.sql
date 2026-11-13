@@ -1,6 +1,6 @@
 -- ============================================================
--- core.fn_get_next_step(p) — der EINE naechste Schritt einer Person (READ)
---   Die DB bestimmt, das Modell formuliert nur (Owner-Entscheid 2026-11-11). Leser: Orchestrator (Laufzeit-Flags + Knopf am
+-- core.fn_get_next_step(p) — der eine naechste Schritt einer Person (READ)
+--   Die DB bestimmt, das Modell formuliert nur. Leser: Orchestrator (Laufzeit-Flags + Knopf am
 --   Sendepunkt), agent.guide (Prompt), core.fn_check_next_step_tap (veralteter Knopf), Fortschritts-/Menue-Subs.
 --   Regel (gleich der Menue-Regel planTarget in core.sub_send_onboarding_menu):
 --     1. Absender ueber agent.fn_resolve_sender; nicht gefunden -> kind none ohne Beispiel. Rolle NULL zaehlt als Mitglied.
@@ -14,7 +14,7 @@
 --   Eingabe p: { chat_id (Pflicht), order:["core:household","<pkg>:<key>",…], plan_order:["<domain>",…], smalltalk?, with_example? }
 --     order/plan_order kommen build-time aus derselben Quelle wie das Menue (Get-OnboardingSectionOrder).
 --     smalltalk = core.fn_smalltalk_kind der Nachricht: nur greeting/ping unterliegen den Vorschlags-Grenzen.
---   RUECKGABE jsonb { ok:true, kind:'section'|'plan'|'wait'|'none', package, key, domain, state, generation, callback,
+--   Rueckgabe jsonb { ok:true, kind:'section'|'plan'|'wait'|'none', package, key, domain, state, generation, callback,
 --     data, label, button, example, offer, role, sees_household } — wirft nie.
 --     callback = Ziel ohne Suffix; data = callback_data des Knopfs (Onboarding-Ziele mit ':next' fuer den Tipp-Check);
 --     button NULL, wenn data laenger als 64 Byte ist (Telegram-Grenze). state: open (Abschnitt) bzw. none|draft|gaps (Plan)
@@ -139,7 +139,7 @@ BEGIN
         v_out := v_out || jsonb_build_object('button', NULL);
     END IF;
 
-    -- offer (nur lesend): Knopf vorhanden UND bei Gruss/Lebenszeichen beide Grenzen frei
+    -- offer (nur lesend): Knopf vorhanden und bei Gruss/Lebenszeichen beide Grenzen frei
     IF v_out->>'button' IS NULL THEN
         v_out := v_out || jsonb_build_object('offer', false);
     ELSIF v_small IS NULL OR v_small NOT IN ('greeting', 'ping') THEN

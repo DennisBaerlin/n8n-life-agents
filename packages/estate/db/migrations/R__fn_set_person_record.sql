@@ -1,19 +1,19 @@
 -- ============================================================
--- estate.fn_set_person_record (ATOMIC UPSERT — WS-2, 1 Zeile je Person)
---   Erfasst/aendert die amtlichen Stammdaten EINER Person (PK person_id -> set_-Semantik mit
+-- estate.fn_set_person_record (ATOMIC UPSERT — 1 Zeile je Person)
+--   Erfasst/aendert die amtlichen Stammdaten einer Person (PK person_id -> set_-Semantik mit
 --   UPSERT unter der Haube: die Zeile entsteht beim ersten Write, danach partielles Update
---   "nicht gesendet = unveraendert"). person_id loest das TOOL vor dem Gate via
+--   "nicht gesendet = unveraendert"). person_id loest das Tool vor dem Gate via
 --   core.fn_resolve_person auf (Pflicht-Input; 0/>1 -> Tool-Rueckfrage).
---   FORMAT-NORMALISIERUNG (das LLM validiert nie — die DB): Steuer-ID + RV-Nummer werden
+--   Format-Normalisierung (das LLM validiert nie — die DB): Steuer-ID + RV-Nummer werden
 --   leerzeichen-bereinigt (RV zusaetzlich upper) und gegen die Gesetz-Regexes geprueft
 --   (§ 139b AO 11 Ziffern; RV ^\d{8}[A-Z]\d{3}$) -> freundliche {ok:false}-Spiegelung der
---   Tabellen-CHECKs. KEINE Geheimnisse: nur amtliche Kennnummern + Fundort-Verweise.
+--   Tabellen-CHECKs. Keine Geheimnisse: nur amtliche Kennnummern + Fundort-Verweise.
 --   DB-Backstop: core.fn_check_write_permission('adults_only', chat_id) — Kind -> {ok:false}.
 --   Eingabe jsonb: chat_id, person_id (Slug, Pflicht), tax_id, pension_insurance_no,
 --     health_insurance_type (gkv|pkv), health_insurance_name, health_insurance_no, employer,
 --     certificates_location, notes.
---   RUECKGABE: {ok:true, person_id, created} | {ok:false, reason} (korrigierbar).
---   Anwenden via: db_apply.ps1 -File packages\estate\db\migrations\R__fn_set_person_record.sql
+--   Rueckgabe: {ok:true, person_id, created} | {ok:false, reason} (korrigierbar); reasons: 'Write rejected (<perm>): …',
+--   'person_id is required …', 'invalid tax_id …', 'invalid pension_insurance_no …', 'invalid health_insurance_type …'.
 -- ============================================================
 CREATE OR REPLACE FUNCTION estate.fn_set_person_record(p jsonb)
 RETURNS jsonb LANGUAGE plpgsql AS $$
@@ -34,14 +34,14 @@ BEGIN
     IF v_person IS NULL THEN
         RETURN jsonb_build_object('ok', false, 'reason', 'person_id is required (resolve the household member first).');
     END IF;
-    -- KEIN expliziter agent.persons-Read: die fn ist SECURITY INVOKER und laeuft unter estate_rw,
-    -- das per D10 KEIN USAGE auf Schema agent hat -> ein `SELECT FROM agent.persons` crasht mit
+    -- Kein expliziter agent.persons-Read: die fn ist SECURITY INVOKER und laeuft unter estate_rw,
+    -- das kein USAGE auf Schema agent hat -> ein `SELECT FROM agent.persons` crasht mit
     -- 'permission denied for schema agent' (finance-Muster: die FK person_id -> agent.persons(person_id)
     -- ist der Backstop, der RI-Check laeuft intern unter Constraint-Owner-Recht ohne Schema-Grant).
     -- Der Tool-Resolve (core.fn_resolve_person -> Person unique?) ist der Guard; ein bogus person_id
     -- (nur via Direkt-Call moeglich) laeuft in die FK -> foreign_key_violation = echte Ausnahme.
 
-    -- Freundliche Spiegelung der Format-CHECKs (Gesetz-Regexes; kanonisch OHNE Leerzeichen):
+    -- Freundliche Spiegelung der Format-CHECKs (Gesetz-Regexes; kanonisch ohne Leerzeichen):
     IF v_tax IS NOT NULL AND v_tax !~ '^[0-9]{11}$' THEN
         RETURN jsonb_build_object('ok', false, 'reason',
             'invalid tax_id "' || v_tax || '" — the German Steuer-ID has exactly 11 digits (§ 139b AO).');

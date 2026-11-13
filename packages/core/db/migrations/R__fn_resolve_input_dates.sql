@@ -1,5 +1,6 @@
 -- ============================================================
--- core.fn_resolve_input_dates (DATUMS-KEYS EINES TOOL-PAYLOADS EINMAL AUFLOESEN)
+-- fn_resolve_input_dates (READ-ONLY) — Datums-Keys eines Tool-Payloads einmal aufloesen
+--   Eingabe: p jsonb (Payload), p_keys text[] (zu loesende Keys), p_today date (optional).
 --   Der eine Einstieg der Paket-Write-fns fuer relative Datumsangaben (das LLM gibt "yesterday", "in 2 weeks" roh
 --   weiter, die DB rechnet): jeder Key aus p_keys, der in p als nicht-leerer Wert steht, laeuft durch
 --   core.fn_resolve_date (Tag genau, Haushalts-Zeitzone; ISO bleibt -> idempotent).

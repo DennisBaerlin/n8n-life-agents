@@ -1,5 +1,5 @@
 -- ============================================================
--- core.fn_plan_sync (ATOMIC WRITE — Erinnerungen eines Plans abgleichen)
+-- fn_plan_sync (ATOMIC WRITE — Erinnerungen eines Plans abgleichen)
 --   Legt Termin-Waechter eines Plans an, verschiebt und schaltet sie ab; gerufen aus agent.fn_advisor_publish_plan (mit plan_id,
 --   zaehlt zur Publish-Transaktion) und aus agent.tool_sync_plan (aktiver Plan, keine neue Version). Trigger-Regeln bleiben allein
 --   in agent.fn_create_monitor_trigger / agent.fn_set_monitor_trigger. Erst alles pruefen, dann schreiben.

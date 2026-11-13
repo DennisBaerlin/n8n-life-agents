@@ -1,13 +1,16 @@
 -- ============================================================
--- career.fn_read_job_matches(chat_id, limit) — gebundenes Lesefenster der EIGENEN Job-Treffer (read-only)
+-- career.fn_read_job_matches(chat_id, limit) — gebundenes Lesefenster der eigenen Job-Treffer (READ)
 --   career.job_matches ist person-privat (person_id NOT NULL in einem per_user-Paket) -> fuer die Frei-SQL-Rollen
---   career_ro/core_ro gesperrt (core.fn_provision_package_roles, Security-Audit 2026-10, Owner "strikt privat").
+--   career_ro/core_ro gesperrt (core.fn_provision_package_roles).
 --   Der career_advisor liest seine Treffer ueber das Werkzeug read_job_matches: Credential career_rw (keine
 --   Frei-SQL-Rolle), chat_id build-fix aus dem Start-Node (nie $fromAI). Person aus agent.fn_resolve_sender
 --   (fail-closed: unaufgeloest -> leer); ein Aufruf aus einer Frei-SQL-Sitzung (core.fn_is_free_sql_session) -> leer
 --   (Defense in depth: die *_ro-Rollen haben ohnehin kein EXECUTE).
---   Neueste Bewertung zuerst (feedback_at DESC NULLS LAST, dann created_at DESC) -> die "zuletzt bewertete Stelle"
---   fuer den Freitext-Grund-Loop ist die erste Zeile mit feedback_at. p_limit: Default 20, gekappt auf 1..100.
+--   Eingabe: p_chat_id (text, nur Ziffern, sonst leer), p_limit Default 20, gekappt auf 1..100.
+--   Rueckgabe: Tabelle (id, source, board, external_id, title, employer, location, url, score, is_serendipity,
+--   status, feedback_at, created_at); leer statt Fehler. Neueste Bewertung zuerst (feedback_at DESC NULLS LAST,
+--   dann created_at DESC): die "zuletzt bewertete Stelle" fuer den Freitext-Grund-Loop ist die erste Zeile
+--   mit feedback_at.
 --   SECURITY DEFINER + gepinnter search_path + REVOKE PUBLIC; EXECUTE bekommt nur career_rw (Bulk-Grant aller
 --   career-fns in core.fn_provision_package_roles; der INVOKER-Bulk-Grant an career_ro laesst DEFINER-fns aus).
 --   Tests: tests/db/career/test_fn_read_job_matches.sql, tests/db/cross/test_role_permissions.sql

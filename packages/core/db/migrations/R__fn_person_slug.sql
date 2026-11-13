@@ -1,6 +1,7 @@
 -- ============================================================
--- agent.fn_person_slug (die EINE Adresse fuer "neue person_id aus dem Vornamen")
---   Slugs vergibt die DB, nie das LLM (.claude/rules/sql.md: Slugs/IDs vergibt die fn). Aus dem Vornamen:
+-- fn_person_slug (READ-ONLY) — die eine Adresse fuer "neue person_id aus dem Vornamen"
+--   Slugs vergibt die DB, nie das LLM. Eingabe: p_first text (Vorname), p_taken text[] (optional). Rueckgabe: text (Slug).
+--   Aus dem Vornamen:
 --   Umlaute ae/oe/ue/ss, gaengige Akzente per translate, alles Nicht-[a-z0-9_] -> '_', Raender getrimmt;
 --   leer (z. B. nur Hangul) -> Fallback 'person'. Eindeutig (_2/_3 …) gegen
 --     (1) die LIVE family.facts.persons[],

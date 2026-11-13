@@ -1,7 +1,7 @@
 -- ============================================================
--- core.fn_handle_update_cb(p) — Registry-Handler des Callback-Prefix 'upd' (owner-only; Update-Hinweis 2026-10-24)
+-- core.fn_handle_update_cb(p) — Registry-Handler des Callback-Prefix 'upd' (owner-only)
 --   callback_data 'upd:now|retry:<tag>' von der Release-Karte ([Jetzt aktualisieren], core.fn_release_card) bzw.
---   der Fehler-Hilfe ([Erneut versuchen], core.fn_update_report). Legt EINEN Auftrag in core.update_requests an;
+--   der Fehler-Hilfe ([Erneut versuchen], core.fn_update_report). Legt einen Auftrag in core.update_requests an;
 --   ausgefuehrt wird er vom root-Runner (systemd-Timer, `lifeagents update --run-requested`), der Tag, VERSION und
 --   releases/latest selbst noch einmal prueft (diese fn ist Komfort, nie die Sicherheitsgrenze fuer root).
 --   Erreicht ueber core.fn_dispatch_callback (Member-Gate: member_permeable=false -> nur der Owner); der Handler
@@ -9,8 +9,8 @@
 --     * now   -> nur fuer ein Tag, dessen Karte wirklich ging (Latch release_update/<tag>, core.fn_release_card_sent);
 --     * retry -> nur, wenn core.fn_update_retry_allowed(<tag>) (die eine Wiederholungs-Regel);
 --     * schon ein offener Auftrag -> Toast "laeuft schon" (Unique-Index ist das Gesetz, hier nur freundlich).
---   p: { data, chat_id (from.id), chat_type }
---   RUECKGABE: {ok:true, toast, request_id} | {ok:false, reason:'owner_only'|'invalid'|'unknown_release'|
+--   Eingabe p: { data, chat_id (from.id), chat_type }
+--   Rueckgabe: {ok:true, toast, request_id} | {ok:false, reason:'owner_only'|'invalid'|'unknown_release'|
 --              'already_open'|'no_retry', toast}. Toasts in der Sprache des Tippenden (core.update.toast.*). Nie RAISE.
 --   SECURITY INVOKER (Host-Cred des Dispatchers, die core.* schreibt), search_path gepinnt.
 --   Tests: tests/db/core/test_fn_update_requests.sql

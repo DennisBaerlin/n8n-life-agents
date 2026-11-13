@@ -1,11 +1,12 @@
 -- ============================================================
--- core.fn_ui_month (rein, typisierter Wert fester Texte)
+-- fn_ui_month (READ-ONLY, IMMUTABLE — typisierter Wert fester Texte)
+--   Eingabe: p_value date, p_long boolean (Default false).
 --   Monat als typisierter Rohwert {kind:'month', value:'YYYY-MM'} fuer core.fn_ui_tpl-Parameter („reicht bis 04.2027“,
 --   „bis 03.2040“); der Workflow formatiert per Intl im Locale des Empfaengers (2-stelliger Monat + Jahr). Der Tag des
 --   Eingabedatums faellt weg. NULL -> null (Renderer: '—').
 --   p_long = true -> zusaetzlich style 'long': Monatsname, das Jahr nur ausserhalb des Kurz-Fensters (wie bei Datumswerten)
 --   („Gehen ab im November“).
---   RUECKGABE: {kind:'month', value[, style:'long']}
+--   Rueckgabe: {kind:'month', value[, style:'long']}
 --   Tests: tests/db/core/test_fn_ui_values.sql
 -- ============================================================
 DROP FUNCTION IF EXISTS core.fn_ui_month(date);

@@ -1,11 +1,11 @@
 -- ============================================================
--- fn_resolve_monitor_trigger
+-- fn_resolve_monitor_trigger (READ-ONLY)
 --   Loest (domain, label) eines Monitor-Triggers in die ID auf — Muster fn_resolve_account
---   (Rueckgabe id, hit_count, candidates; 0/>1 -> Tool fragt nach). Label-Match
+--   (Eingabe p_label, p_domain optional, p_active_only optional; Rueckgabe id, hit_count, candidates; 0/>1 -> Tool fragt nach). Label-Match
 --   case-insensitiv (UNIQUE-Index auf lower(label) je Domain -> innerhalb einer Domain
 --   strukturell <=1 Treffer; ohne Domain-Filter kann es Mehrtreffer geben).
 --   p_active_only: TRUE -> disabled ausblenden (Default FALSE — set/delete muessen auch
---   fired/disabled finden, Lifecycle-Konvention wie fn_resolve_loan).
+--   fired/disabled finden).
 -- ============================================================
 CREATE OR REPLACE FUNCTION agent.fn_resolve_monitor_trigger(
     p_label       text,

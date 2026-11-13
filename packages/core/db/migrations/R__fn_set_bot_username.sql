@@ -1,5 +1,5 @@
 -- ============================================================
--- core.fn_set_bot_username — traegt den Telegram-Benutzernamen des Bots in core.config (telegram.bot_username) ein
+-- fn_set_bot_username (ATOMIC WRITE) — traegt den Telegram-Benutzernamen des Bots in core.config (telegram.bot_username) ein
 --   Eingabe: p_name (Benutzername aus getMe, ohne @). Der Name folgt zwingend aus dem Bot-Token, darum ersetzt er auch
 --   einen von Hand gesetzten Wert; der Update-Seed laesst ihn stehen (Wert ungleich Default, core.fn_config_seed).
 --   Rueckgabe: {ok:true, changed} (false = Wert stimmte schon, kein Schreibvorgang);

@@ -1,16 +1,18 @@
 -- ============================================================
--- estate.fn_set_case_task (ATOMIC WRITE — WS-3; das Tool fragt seit dem Security-Audit 2026-10 per Karte, owner_info)
---   Setzt den Status EINER Task (open|done|not_applicable). Das Tool laeuft als Probelauf VOR der Karte und nach
---   dem Tipp als Write (Owner-Entscheid "Karte nur bei Abhaken"); der est:-Callback ist selbst ein menschlicher
---   Tipp. adults_only-DB-Backstop (Kind -> {ok:false}). GUARD: die Task muss zu einem OFFENEN Fall
+-- estate.fn_set_case_task (ATOMIC WRITE — das Tool fragt per Karte, owner_info)
+--   Setzt den Status einer Task (open|done|not_applicable). Das Tool laeuft als Probelauf vor der Karte und nach
+--   dem Tipp als Write (Karte nur bei Abhaken); der est:-Callback ist selbst ein menschlicher
+--   Tipp. adults_only-DB-Backstop (Kind -> {ok:false}). Die Task muss zu einem offenen Fall
 --   gehoeren (Tasks abgeschlossener/abgebrochener/superseded Faelle sind eingefroren). done -> done_at
 --   materialisiert. Der Auto-Complete-Trigger kann den Fall danach auf 'completed' kippen -> der
---   Post-State liest den Fall-Status FRISCH (nach dem Trigger, in derselben Tx).
---   Wird von ZWEI Aufrufern genutzt: dem Tool (unter estate_rw) UND dem est:-Callback-Handler
+--   Post-State liest den Fall-Status frisch (nach dem Trigger, in derselben Tx).
+--   Wird von zwei Aufrufern genutzt: dem Tool (unter estate_rw) und dem est:-Callback-Handler
 --   (fn_handle_case_task_callback, unter dem Host-RW-Credential) — beide erreichen die core-Windows.
---   Eingabe jsonb: chat_id, case_task_id, status. RUECKGABE: {ok:true, case_task_id, status, case_id,
---     case_status, case_completed} | {ok:false, reason}.
---   Anwenden via: db_apply.ps1 -File packages\estate\db\migrations\R__fn_set_case_task.sql
+--   Eingabe jsonb: chat_id, case_task_id (Pflicht), status (Pflicht). Rueckgabe: {ok:true, case_task_id, status,
+--     case_id, case_status, case_completed} | {ok:false, reason}; reasons: 'Write rejected (<perm>): …',
+--     'case_task_id is required.', 'status must be open, done or not_applicable.', 'task not found.',
+--     'the case for this task is not open (status <s>) …' (der Callback-Handler matcht diese Praefixe 'Write rejected'
+--     und 'the case' fuer die Toast-Wahl).
 -- ============================================================
 CREATE OR REPLACE FUNCTION estate.fn_set_case_task(p jsonb)
 RETURNS jsonb LANGUAGE plpgsql AS $$
@@ -47,7 +49,7 @@ BEGIN
     UPDATE estate.case_tasks
        SET status        = v_status,
            done_at       = CASE WHEN v_status = 'done' THEN now() ELSE NULL END,
-           status_source = 'user'   -- WP3: vom Nutzer gesetzt -> der Reconcile fasst die Task nie wieder an
+           status_source = 'user'   -- vom Nutzer gesetzt -> der Reconcile fasst die Task nie wieder an
      WHERE id = v_id;
 
     SELECT status INTO v_new_cstat FROM estate.cases WHERE id = v_case;   -- nach dem Auto-Complete-Trigger

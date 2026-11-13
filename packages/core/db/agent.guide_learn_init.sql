@@ -1,14 +1,14 @@
 -- ============================================================
--- Guide-Agent — Lern-Loop-Zustand (Phase C, WS-1; Init-only, KEIN V)
+-- Guide-Agent — Lern-Loop-Zustand (Init-only, kein V)
 -- Zweck:   Zwei additive Tabellen fuer den opt-in Tages-Lern-Loop (learn_context):
---          * agent.guide_learn_candidates — VORGESCHLAGENE Lern-Eintraege. Der Cron schlaegt nur
---            vor (schreibt AUSSCHLIESSLICH hier); der EINZIGE agent.core_contexts-Schreibpfad ist die
+--          * agent.guide_learn_candidates — vorgeschlagene Lern-Eintraege. Der Cron schlaegt nur
+--            vor (schreibt ausschliesslich hier); der einzige agent.core_contexts-Schreibpfad ist die
 --            owner-gegatete Approve-fn (Per-Eintrag-HITL). target_kind 'fact' (strukturierter
 --            metadata.facts-Merge) | 'note' (Prosa-Notiz unter "## Gelernt"). Queue:
 --            pending -> approved | rejected | expired.
 --          * agent.guide_learn_watermark — per-Quelltabelle Cursor: n8n besitzt die
 --            agent.<agent>_chat_memory-Tabellen mit je eigener id-Sequenz -> ein Cursor je agent_name.
---          Beide sind EPHEMERER Loop-State -> bewusst NICHT im Backup-Block (manifest .backup).
+--          Beide sind ephemerer Loop-State -> bewusst nicht im Backup-Block (manifest .backup).
 -- Schreibpfade: Cron (Haupt-Owner-Credential) -> guide_learn_* via agent.fn_record_learn_candidates
 --          (atomar, Watermark-Vorschub in derselben Tx); Orchestrator-Callback -> Status-Transition
 --          via agent.fn_approve_learn_candidate / agent.fn_reject_learn_candidate.
@@ -52,7 +52,7 @@ CREATE TABLE IF NOT EXISTS agent.guide_learn_candidates (
     CONSTRAINT guide_learn_candidates_idem_key UNIQUE (agent_name, source_id, slot_key)
 );
 
--- Nur EIN offener (pending) Vorschlag je (Kontext, Slot) — verhindert Karten-Spam fuer denselben Fakt;
+-- Nur ein offener (pending) Vorschlag je (Kontext, Slot) — verhindert Karten-Spam fuer denselben Fakt;
 -- abgelehnte/abgelaufene Eintraege bleiben als Rejection-/Audit-Memory liegen (Teilindex greift nur bei pending).
 CREATE UNIQUE INDEX IF NOT EXISTS guide_learn_candidates_pending_slot_uq
     ON agent.guide_learn_candidates (context_name, slot_key)

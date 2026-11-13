@@ -1,6 +1,6 @@
 -- ============================================================
 -- fn_parse_decimal_or_null (rein, IMMUTABLE) -- freie Dezimal-Eingabe eines Monitor-Triggers -> numeric oder NULL
---   Schwellen, Prozente und Plausibilitaets-Grenzen kommen als freier Text vom Modell; ein deutsches Komma ("1,5")
+--   Eingabe: p_raw text. Rueckgabe: numeric oder NULL. Schwellen, Prozente und Plausibilitaets-Grenzen kommen als freier Text vom Modell; ein deutsches Komma ("1,5")
 --   wird Dezimalpunkt, Leerzeichen fallen weg. Unlesbares (auch "1.234,5" oder Einheiten) -> NULL, nie ein Cast-RAISE:
 --   der Aufrufer meldet dann {ok:false} (korrigierbare Ablehnung statt Owner-Alert). Leer/NULL -> NULL.
 --   Bewusst ohne Tausender-Punkt-Regel (finance.fn_parse_numeric_or_null ist paket-eigen und fuer Geldbetraege).

@@ -1,13 +1,13 @@
 -- ============================================================
--- fn_drop_package_roles (ATOMIC, privilegiert — per-Paket-Rollen entfernen, D10)
+-- fn_drop_package_roles (ATOMIC, privilegiert — per-Paket-Rollen entfernen)
 --   Gegenstueck zu fn_provision_package_roles fuer den purge-Pfad
 --   (`package uninstall --purge`): entfernt <pkg>_rw / <pkg>_ro restlos. Idempotent
---   (Rolle fehlt schon -> removed=false, kein RAISE).
+--   (Rolle fehlt schon -> dropped=false, kein RAISE).
 --
---   Reihenfolge (Pflicht): DROP OWNED BY <rolle> ZUERST — das widerruft alle der Rolle
---   erteilten Privilegien + entfernt ihre Default-Privilege-Eintraege in DIESER DB; sonst
+--   Reihenfolge (Pflicht): zuerst DROP OWNED BY <rolle> — das widerruft alle der Rolle
+--   erteilten Privilegien und entfernt ihre Default-Privilege-Eintraege in dieser DB; sonst
 --   scheitert DROP ROLE mit "role cannot be dropped because some objects depend on it".
---   Diese Rollen BESITZEN keine Objekte (die Tabellen gehoeren postgres) -> DROP OWNED
+--   Diese Rollen besitzen keine Objekte (die Tabellen gehoeren postgres) -> DROP OWNED
 --   loescht nur Grants/ACL, keine Daten. Das Paket-Schema selbst dropt der CLI-Lifecycle
 --   separat per DROP SCHEMA <pkg> CASCADE.
 --
@@ -15,7 +15,7 @@
 --   INVOKER (kein Eskalations-Fenster).
 --
 --   Eingabe jsonb: package (Pflicht).
---   RUECKGABE: {ok:true, package, dropped} (dropped = mind. eine Rolle entfernt).
+--   Rueckgabe: {ok:true, package, dropped} (dropped = mind. eine Rolle entfernt).
 --     Leerer/ungueltiger Name -> {ok:false, reason}.
 -- ============================================================
 CREATE OR REPLACE FUNCTION core.fn_drop_package_roles(p jsonb)

@@ -1,9 +1,10 @@
 -- ============================================================
--- core.fn_plan_share_preview(p_domain, p_version, p_chat_id) — Owner-Karte "Erwachsene informieren?" (2026-10-28)
---   Gerufen von agent.tool_publish_plan nach einem erfolgreichen Publish (read-only). shareable gdw der Betrachter der
+-- fn_plan_share_preview (READ-ONLY, SECURITY DEFINER) — Owner-Karte "Erwachsene informieren?"
+--   Eingabe: p_domain text, p_version int, p_chat_id text (Betrachter).
+--   Gerufen von agent.tool_publish_plan nach einem erfolgreichen Publish. shareable gdw der Betrachter der
 --   Owner ist, p_version die aktive Version des Haushalts-Plans der Domain ist (core.fn_household_plan_active) und es
 --   mindestens einen Empfaenger gibt (core.fn_plan_adult_recipients). names = Vornamen fuer den Kartentext.
---   RUECKGABE: {shareable, names:[...]} — nie RAISE (die Karte ist Komfort, das Publish ist schon geschehen).
+--   Rueckgabe: {shareable, names:[...]} — nie RAISE (die Karte ist Komfort, das Publish ist schon geschehen).
 --   STABLE, SECURITY DEFINER, search_path gepinnt; LANGUAGE plpgsql.
 --   Tests: tests/db/core/test_fn_plan_share_targets.sql
 -- ============================================================

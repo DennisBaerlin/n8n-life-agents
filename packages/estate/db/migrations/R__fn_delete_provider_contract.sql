@@ -1,13 +1,13 @@
 -- ============================================================
--- estate.fn_delete_provider_contract (ATOMIC WRITE — WS-2, Hard-DELETE)
---   Loescht einen Vertrag aus dem Register (beendet/Fehlanlage; Vorbild
+-- estate.fn_delete_provider_contract (ATOMIC WRITE — Hard-DELETE)
+--   Loescht einen Vertrag aus dem Register (beendet/Fehlanlage; Muster
 --   finance.fn_delete_real_estate: Name-Re-Resolve in der fn, 0/>1 Treffer -> {ok:false, code, candidates} statt
---   RAISE — das TOOL loest vor dem Gate auf, die fn ist der Backstop).
+--   RAISE — das Tool loest vor dem Gate auf, die fn ist der Backstop).
 --   Keine FK-Referenzen auf provider_contracts -> reines Delete.
 --   DB-Backstop: core.fn_check_write_permission('adults_only', chat_id) — Kind -> {ok:false}.
 --   Eingabe jsonb: chat_id, provider (exakt), category (optionaler Filter).
---   RUECKGABE: {ok:true, action:'deleted', provider_contract_id} | {ok:false, reason}.
---   Anwenden via: db_apply.ps1 -File packages\estate\db\migrations\R__fn_delete_provider_contract.sql
+--   Rueckgabe: {ok:true, action:'deleted', provider_contract_id} | {ok:false, reason, code?, candidates?}; code
+--   'not_found' (candidates []) oder 'ambiguous' (candidates = Treffer).
 -- ============================================================
 CREATE OR REPLACE FUNCTION estate.fn_delete_provider_contract(p jsonb)
 RETURNS jsonb LANGUAGE plpgsql AS $$

@@ -1,26 +1,27 @@
 -- ============================================================
--- agent.fn_claim_persona_sticker (Sticker vor der Antwort, Bot mit Gesicht 2026-10-30)
---   Die EINE Entscheidung, ob vor einer Antwort ein Persona-Sticker kommt (kein LLM, keine Mehrkosten). Der
+-- agent.fn_claim_persona_sticker (Sticker vor der Antwort)
+--   Die eine Entscheidung, ob vor einer Antwort ein Persona-Sticker kommt (kein LLM, keine Mehrkosten). Der
 --   Orchestrator ruft sie vor der Relay-Kette und nach einer eigenen Persona-Wahl; der Gateway sendet den
 --   Sticker '<set>_<ausdruck>' (provisioning/llm_gateway, Ordner packages/core/build/stickers).
---   ZERO-TRUST: re-resolvt den Absender selbst aus p->>'chat_id' (RAISE-freier Cast); das Set ist seine
---   Persona (fehlt -> 'neutral' = Roboter-Set, Owner-Entscheid 2026-10-30).
---   AUSWAHL (hoechstens einer, Prioritaet):
---     yay   — Einrichtung in DIESEM Lauf fertig: Latch onboarding/all_done:<pid> mit last_fired_at >= Laufbeginn
---     top   — Karte DIESES Laufs endgueltig bestaetigt (agent.hitl_pending.approved, opened_at >= Laufbeginn)
+--   Zero-Trust: re-resolvt den Absender selbst aus p->>'chat_id' (RAISE-freier Cast); das Set ist seine
+--   Persona (fehlt -> 'neutral' = Roboter-Set).
+--   Auswahl (hoechstens einer, Prioritaet):
+--     yay   — Einrichtung in diesem Lauf fertig: Latch onboarding/all_done:<pid> mit last_fired_at >= Laufbeginn
+--     top   — Karte dieses Laufs endgueltig bestaetigt (agent.hitl_pending.approved, opened_at >= Laufbeginn)
 --     hmm   — Datei/Foto im Lauf
 --     hallo — reiner Gruss (core.fn_smalltalk_kind) ohne Werkzeug-Aufruf
 --     event 'persona_chosen' (eigene Wahl, agent.fn_set_person_persona) -> hallo im neuen Set
---   LAUFBEGINN = run_started_at, eine DB-Zeit vom Anfang des Laufs (Resolve sender, clock_timestamp()) -> derselbe
---     Zeitgeber wie opened_at/last_fired_at (nie die Telegram-Uhr message.date; Code-Review 2026-10-30).
+--   Laufbeginn = run_started_at, eine DB-Zeit vom Anfang des Laufs (Resolve sender, clock_timestamp()) -> derselbe
+--     Zeitgeber wie opened_at/last_fired_at (nie die Telegram-Uhr message.date).
 --   Nie bei Signal NOFRAME (ernster Moment, Router-Regel 6); lief ein Werkzeug ohne Signal, gilt das als NOFRAME (wie
 --     das Router-Gedaechtnis). top/hmm verlangen FRAME. yay/top/hmm verlangen reply_ok (die Antwort ist kein fester
 --     Leer-/Fehler-Hinweis) -> nie ein Daumen hoch vor einer Fehlermeldung.
---   BREMSE: core.fn_should_notify('persona_sticker', <pid>, persona.sticker_cooldown_hours) — erst Kandidat, dann
+--   Bremse: core.fn_should_notify('persona_sticker', <pid>, persona.sticker_cooldown_hours) — erst Kandidat, dann
 --     Gate (Vertrag der Notify-Schicht). yay + Persona-Wahl umgehen die Pruefung, setzen den Latch aber neu.
 --     0 Stunden = keine Bremse. Aus-Schalter persona.stickers_enabled.
---   p: {chat_id, text, tool_called, has_file, signal, reply_ok, run_started_at (timestamptz), event?}
---   RUECKGABE: {ok:true, sticker:'<set>_<ausdruck>'|null}  (nie RAISE -> ein Fehler kostet nur den Sticker)
+--   Eingabe p: {chat_id, text, tool_called, has_file, signal, reply_ok, run_started_at (timestamptz), event?}
+--   Rueckgabe: {ok:true, sticker:'<set>_<ausdruck>'|null}  (nie RAISE -> ein Fehler kostet nur den Sticker)
+--   Seiteneffekt: Notify-Latch 'persona_sticker' (core.notification_state).
 --   Tests: tests/db/core/test_fn_claim_persona_sticker.sql
 -- ============================================================
 CREATE OR REPLACE FUNCTION agent.fn_claim_persona_sticker(p jsonb)

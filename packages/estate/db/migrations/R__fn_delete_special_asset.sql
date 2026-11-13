@@ -1,14 +1,14 @@
 -- ============================================================
--- estate.fn_delete_special_asset (ATOMIC WRITE — WS-2, Hard-DELETE)
+-- estate.fn_delete_special_asset (ATOMIC WRITE — Hard-DELETE)
 --   Loescht einen Sonderfall-Stub (verkauft/abgegeben/Fehlanlage — special_assets haben
---   keinen Lifecycle-Status; ein verkauftes Fahrzeug MUSS raus, sonst instanziiert der
---   WS-3-Ereignisfall falsche Checklisten-Tasks). Vorbild finance.fn_delete_real_estate:
---   Beschreibungs-Re-Resolve, 0/>1 Treffer -> {ok:false, code, candidates} (Probelauf vor der Karte) — das TOOL loest vor dem Gate auf.
+--   keinen Lifecycle-Status; ein verkauftes Fahrzeug muss raus, sonst instanziiert der
+--   Ereignisfall falsche Checklisten-Tasks). Muster finance.fn_delete_real_estate:
+--   Beschreibungs-Re-Resolve, 0/>1 Treffer -> {ok:false, code, candidates} (Probelauf vor der Karte) — das Tool loest vor dem Gate auf.
 --   DB-Backstop: core.fn_check_write_permission('adults_only', chat_id) — Kind -> {ok:false}.
 --   Eingabe jsonb: chat_id, description (exakt), asset_type (optionaler Filter).
 --   Seiteneffekt: offene case_tasks mit subject_ref 'asset:<id>' -> not_applicable (derselbe Tx).
---   RUECKGABE: {ok:true, action:'deleted', special_asset_id, tasks_closed} | {ok:false, reason}.
---   Anwenden via: db_apply.ps1 -File packages\estate\db\migrations\R__fn_delete_special_asset.sql
+--   Rueckgabe: {ok:true, action:'deleted', special_asset_id, tasks_closed} | {ok:false, reason, code?, candidates?};
+--   code 'not_found' (candidates []) oder 'ambiguous' (candidates = Treffer).
 -- ============================================================
 CREATE OR REPLACE FUNCTION estate.fn_delete_special_asset(p jsonb)
 RETURNS jsonb LANGUAGE plpgsql AS $$

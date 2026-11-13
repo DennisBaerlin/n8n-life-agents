@@ -1,10 +1,11 @@
 -- ============================================================
--- estate.fn_resolve_contact (read-only Resolver, WS-2)
+-- estate.fn_resolve_contact (read-only Resolver)
 --   Loest einen Schluessel-Kontakt ueber den Namen (exakt) + optional die Rolle auf
---   (Vorbild: finance.fn_resolve_real_estate; Rueckgabe id/hit_count/candidates).
+--   (Muster: finance.fn_resolve_real_estate). Eingabe: p_name, p_role (NULL/'' = nicht filtern).
+--   Rueckgabe: Zeile (id, hit_count, candidates); id nur bei genau einem Treffer, sonst NULL;
+--   candidates = [{id,name,role,organization,owner_person_id}] (leer: []).
 --   Genutzt von tool_set_/delete_contact (Pre-Gate-Resolve) + als Dubletten-Backstop
 --   in tool_create_contact.
---   Anwenden via: db_apply.ps1 -File packages\estate\db\migrations\R__fn_resolve_contact.sql
 -- ============================================================
 CREATE OR REPLACE FUNCTION estate.fn_resolve_contact(
     p_name text,

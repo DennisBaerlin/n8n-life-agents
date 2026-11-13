@@ -1,25 +1,26 @@
 -- ============================================================
--- estate.fn_record_directive (ATOMIC UPSERT — WS-2, Verb record_ wie career.fn_record_job_match)
---   DIE eine Schreib-fn des Vorsorge-Dokumente-Registers estate.directives: UPSERT auf den
---   UNIQUE NULLS NOT DISTINCT (owner_person_id, doc_type)-Key — genau EIN Registereintrag je
---   (Person|Haushalt, Dokumenttyp); ein Re-Record AKTUALISIERT (idempotent, kein Duplikat,
---   darum record_ statt create_: der create_-Vertrag "legt nur NEUES an" widersprraeche dem
---   UPSERT strukturell). owner_person_id NULL/leer = gemeinschaftliche HAUSHALTS-Urkunde
+-- estate.fn_record_directive (ATOMIC UPSERT — Verb record_ wie career.fn_record_job_match)
+--   Die eine Schreib-fn des Vorsorge-Dokumente-Registers estate.directives: UPSERT auf den
+--   UNIQUE NULLS NOT DISTINCT (owner_person_id, doc_type)-Key — genau ein Registereintrag je
+--   (Person|Haushalt, Dokumenttyp); ein Re-Record aktualisiert (idempotent, kein Duplikat,
+--   darum record_ statt create_: der create_-Vertrag "legt nur Neues an" widerspraeche dem
+--   UPSERT strukturell). owner_person_id NULL/leer = gemeinschaftliche Haushalts-Urkunde
 --   (Berliner Testament, Erbvertrag beider Partner).
 --   "Entfernen" eines Eintrags = doc_status 'does_not_exist' (bewusst erfasster, ehrlicher
---   Gap) — es gibt KEIN delete_directive (Plan WS-2, Register-Semantik).
---   DB-Backstop: core.fn_check_write_permission('adults_only', chat_id) in JEDER estate-Write-fn
---   (erste Live-Nutzung von adults_only; Kind -> {ok:false} ohne Write). NUR Metadaten, NIE
---   Dokument-Inhalte/Geheimnisse (Owner-Entscheid 2; Inhalt haerten Tool-Description + Prompt).
---   UPDATE-Semantik: doc_status wird IMMER uebernommen (Kern-Aussage des Eintrags); alle
+--   Gap) — es gibt kein delete_directive (Register-Semantik).
+--   DB-Backstop: core.fn_check_write_permission('adults_only', chat_id) in jeder estate-Write-fn
+--   (Kind -> {ok:false} ohne Write). Nur Metadaten, nie Dokument-Inhalte/Geheimnisse
+--   (Inhalt haerten Tool-Description + Prompt).
+--   UPDATE-Semantik: doc_status wird immer uebernommen (Kern-Aussage des Eintrags); alle
 --   anderen Felder partiell (COALESCE: nicht gesendet = unveraendert).
---   Eingabe jsonb: chat_id, owner_person_id (Slug, ''=Haushalt), doc_type (estate.directive_types),
---     doc_status (exists|does_not_exist|planned), form (privat|notariell|amtlich), registry
+--   Eingabe jsonb: chat_id, owner_person_id (Slug, ''=Haushalt), doc_type (Pflicht, estate.directive_types),
+--     doc_status (Pflicht: exists|does_not_exist|planned), form (privat|notariell|amtlich), registry
 --     (ztr|zvr), storage_place_name (-> in-fn Resolve, 0/>1 -> {ok:false}), location_note,
 --     authorized_person (Freitext, darf haushalts-extern sein), notes.
---   RUECKGABE: {ok:true, directive_id, created, doc_status} | {ok:false, reason} (korrigierbar,
---     kein RAISE -> kein Owner-Alert). updated_at pflegt der Touch-Trigger.
---   Anwenden via: db_apply.ps1 -File packages\estate\db\migrations\R__fn_record_directive.sql
+--   Rueckgabe: {ok:true, directive_id, created, doc_status} | {ok:false, reason} (korrigierbar,
+--     kein RAISE -> kein Owner-Alert); reasons: 'Write rejected (<perm>): …', 'unknown doc_type "<t>" — valid: …',
+--     'doc_status is required: …', 'invalid form …', 'invalid registry …', 'storage place "<n>" not found …',
+--     'storage place "<n>" is ambiguous …'. updated_at pflegt der Touch-Trigger.
 -- ============================================================
 CREATE OR REPLACE FUNCTION estate.fn_record_directive(p jsonb)
 RETURNS jsonb LANGUAGE plpgsql AS $$
@@ -42,7 +43,7 @@ BEGIN
             'reason', 'Write rejected (' || v_perm || '): only adult household members (owner/partner) may write to the estate register.');
     END IF;
 
-    -- Korrigierbare Validierung VOR dem Write (die CHECKs/FKs sind der strukturelle Backstop):
+    -- Korrigierbare Validierung vor dem Write (die CHECKs/FKs sind der strukturelle Backstop):
     IF v_doc_type IS NULL OR NOT EXISTS (SELECT 1 FROM estate.directive_types dt WHERE dt.doc_type = v_doc_type) THEN
         RETURN jsonb_build_object('ok', false, 'reason',
             'unknown doc_type "' || COALESCE(v_doc_type, '') || '" — valid: '

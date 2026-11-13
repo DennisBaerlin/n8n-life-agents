@@ -1,22 +1,24 @@
 -- ============================================================
--- estate.fn_handle_case_task_callback (WS-3 — Callback-Handler des est:-Prefixes)
---   Hinter der Phase-0-Registry core.callback_handlers (prefix 'est' -> diese fn). Der Owner tippt an
+-- estate.fn_handle_case_task_callback (CALLBACK HANDLER)
+--   Callback-Handler hinter der Registry core.callback_handlers (prefix 'est' -> diese fn). Der Owner tippt an
 --   der Erinnerungs-Karte (cron_remind_case_tasks) einen Button 'est:done:<task_id>' / 'est:skip:<task_id>'
---   -> der Orchestrator dispatcht ueber core.fn_dispatch_callback hierher (KEIN Orchestrator-Edit,
---   additiv auf der 'extra'-Ausgabe). Muster career.fn_handle_job_feedback.
---   ROLLENMODELL: SECURITY INVOKER + SET search_path=pg_catalog (CVE-2018-1058). Der Dispatcher laeuft
+--   -> der Orchestrator dispatcht ueber core.fn_dispatch_callback hierher (Eingabe p->>'data', p->>'chat_id').
+--   Muster career.fn_handle_job_feedback.
+--   Rollenmodell: SECURITY INVOKER + SET search_path=pg_catalog (CVE-2018-1058). Der Dispatcher laeuft
 --   unter dem Host-RW-Credential (N8N_DB_USER) -> agent.fn_resolve_sender + estate.fn_set_case_task sind
---   erreichbar (KEIN D10-Problem wie in den estate_rw-Write-fns).
---   MEMBER-PERMEABEL (core.callback_handlers.member_permeable=true; der Dispatcher core.fn_dispatch_callback
---   enforced es fail-closed + routet ein aufgeloestes Nicht-Owner-Mitglied hierher): der Sender MUSS ein
+--   erreichbar (anders als in den estate_rw-Write-fns).
+--   Member-permeabel (core.callback_handlers.member_permeable=true; der Dispatcher core.fn_dispatch_callback
+--   enforced es fail-closed + routet ein aufgeloestes Nicht-Owner-Mitglied hierher): der Sender muss ein
 --   aufgeloestes Haushaltsmitglied sein (sonst {ok:false, toast}). Die eigentliche adults_only-Pruefung + der
---   "Fall offen?"-Guard + der Auto-Complete liegen in estate.fn_set_case_task (EINE Write-fn, kein
---   Duplikat). NIE RAISE (der Dispatcher faengt sonst keinen Owner-Alert ab): jeder Fehler -> {ok:false,
---   reason, toast}. RUECKGABE: {ok, toast[, case_completed]} — der Orchestrator rendert nur den toast.
+--   "Fall offen?"-Guard + der Auto-Complete liegen in estate.fn_set_case_task (eine Write-fn, kein
+--   Duplikat). Raised nie (der Dispatcher faengt sonst keinen Owner-Alert ab): jeder Fehler -> {ok:false,
+--   reason, toast}.
+--   Rueckgabe: {ok:true, toast, case_completed} | {ok:false, reason, toast}; reasons: 'unknown est action "<a>"',
+--   'invalid task id "<x>"', 'unresolved sender', 'set failed', sonst der reason aus fn_set_case_task. Der
+--   Orchestrator rendert nur den toast.
 --   Toasts aus dem Textkatalog (estate.toast.*, core.toast.*) in der Sprache des Tippenden (agent.fn_person_lang:
---   Person -> Owner -> en; der Sender wird dafuer VOR jeder Pruefung aufgeloest), Muster agent.fn_set_person_language.
+--   Person -> Owner -> en; der Sender wird dafuer vor jeder Pruefung aufgeloest).
 --   Tests: tests/db/estate/test_fn_handle_case_task_callback.sql
---   Anwenden via: db_apply.ps1 -File packages\estate\db\migrations\R__fn_handle_case_task_callback.sql
 -- ============================================================
 CREATE OR REPLACE FUNCTION estate.fn_handle_case_task_callback(p jsonb)
 RETURNS jsonb
@@ -35,7 +37,7 @@ DECLARE
     v_res    JSONB;
     v_lang   TEXT;
 BEGIN
-    -- Sender ZUERST aufloesen: jeder Toast kommt in der Sprache des Tippenden (Textkatalog §3.11; unaufgeloest ->
+    -- Sender zuerst aufloesen: jeder Toast kommt in der Sprache des Tippenden (Textkatalog §3.11; unaufgeloest ->
     -- Owner-Sprache, agent.fn_person_lang). chat_id RAISE-frei casten.
     BEGIN
         v_chat := NULLIF(p->>'chat_id', '')::bigint;
@@ -65,7 +67,7 @@ BEGIN
 
     v_status := CASE v_action WHEN 'done' THEN 'done' ELSE 'not_applicable' END;
 
-    -- Delegiert an die EINE Write-fn (adults_only-Backstop + "Fall offen?" + Auto-Complete). Wrap: ein
+    -- Delegiert an die eine Write-fn (adults_only-Backstop + "Fall offen?" + Auto-Complete). Wrap: ein
     -- unerwarteter Fehler darf keinen Owner-Alert ausloesen (der Dispatcher faengt nichts ab).
     BEGIN
         v_res := estate.fn_set_case_task(jsonb_build_object(

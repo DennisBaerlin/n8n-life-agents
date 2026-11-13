@@ -1,7 +1,7 @@
 -- ============================================================
--- core.fn_handle_reminder_cb(p) — Registry-Handler des Callback-Prefix 'rem' (member_permeable; Roter Faden 2026-10-23)
---   callback_data 'rem:on|off:<key>[:m]' — EIN Schalt-Weg fuer alle Erinnerungen (Karten-Knopf und /reminders-Menue):
---     * scope='person'    -> die TIPPENDE Person schaltet IHRE Zustellung (core.fn_set_reminder_pref, agent.reminder_prefs);
+-- core.fn_handle_reminder_cb(p) — Registry-Handler des Callback-Prefix 'rem' (member_permeable)
+--   callback_data 'rem:on|off:<key>[:m]' — ein Schalt-Weg fuer alle Erinnerungen (Karten-Knopf und /reminders-Menue):
+--     * scope='person'    -> die tippende Person schaltet ihre Zustellung (core.fn_set_reminder_pref, agent.reminder_prefs);
 --     * scope='household' -> nur der Owner, ueber den Haushalts-Schalter core.fn_set_cron_enable (cron_enable.<key>);
 --                            ein Mitglied bekommt den Toast core.toast.owner_only;
 --     * mandatory         -> nie schaltbar (Pflicht-Erinnerung, z. B. Fristen im Ereignisfall): Toast core.toast.reminder_mandatory;
@@ -11,7 +11,7 @@
 --   neuen Stand neu); ohne Suffix (Karten-Knopf, z. B. [Nicht mehr erinnern]) nur der Toast.
 --   Erreicht ueber core.fn_dispatch_callback (Member-Gate re-resolvt den Sender, member_permeable=true); der Owner
 --   kommt ueber denselben generischen Dispatch (rem ist kein hartkodierter Orchestrator-Arm).
---   p: { data, chat_id (from.id), chat_type }
+--   Eingabe p: { data, chat_id (from.id), chat_type }
 --   Toast in der Sprache des Tippenden: <pkg>.cron.<key>.on_toast|off_toast (Paket aus core.cron_labels). Nie RAISE.
 --   SECURITY INVOKER (Host-Cred des Dispatchers, die core.config + agent.* schreibt), search_path gepinnt.
 --   Tests: tests/db/core/test_fn_reminder_prefs.sql

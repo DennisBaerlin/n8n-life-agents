@@ -1,41 +1,41 @@
 -- ============================================================
 -- core.schema_version — Migrations-Ledger (idempotent, Flyway-Single-Table-Modell)
 --   Anwenden via: db_apply.ps1 -File packages\core\db\core.schema_version_init.sql
---   (laeuft als ERSTE Datei im Schema-Apply, vor allen Inits/Migrationen —
+--   (laeuft als erste Datei im Schema-Apply, vor allen Inits/Migrationen —
 --    der Migrations-Treiber in apply_schema.sh / db_apply.ps1 braucht die
 --    Funktionen bereits, bevor er die erste V-/R-Datei anlegt.)
 --
--- Zweck: Aus EINER Quelle (packages/*/db/) zwei Artefakte konsistent halten — die
+-- Zweck: Aus einer Quelle (packages/*/db/) zwei Artefakte konsistent halten — die
 --   Windows/PowerShell-Dev-Werkzeugkette (db_apply.ps1) und der bash-
---   Auslieferungs-Kern (provisioning/lib/apply_schema.sh) fahren BEIDE
+--   Auslieferungs-Kern (provisioning/lib/apply_schema.sh) fahren beide
 --   dasselbe Schema. Nach dem etablierten **Flyway-Standard** (meistgenutztes
---   DB-Migrations-Tool) gibt es ZWEI Migrationstypen — beide in DIESER EINEN
+--   DB-Migrations-Tool) gibt es zwei Migrationstypen — beide in dieser einen
 --   Tabelle getrackt (Flyways `flyway_schema_history`-Single-Table-Modell =
---   EIN Audit-Trail, sofort als Migrations-Ledger erkennbar):
+--   ein Audit-Trail, sofort als Migrations-Ledger erkennbar):
 --
 --   1. **versioned** (`packages/<pkg>/db/migrations/V{NNN}__*.sql`): einmalige, nicht-
 --      idempotente Struktur-Deltas (destruktiver ALTER/DROP, Spalten-RENAME,
---      Daten-Backfill, ENUM-Wert-Drop). Laeuft genau EINMAL; unveraenderlich.
+--      Daten-Backfill, ENUM-Wert-Drop). Laeuft genau einmal; unveraenderlich.
 --   2. **repeatable** (`packages/<pkg>/db/migrations/R__*.sql`): Views + Tool-Functions, die
---      bei JEDER Inhalts-Aenderung neu laufen sollen (Idempotenz via DROP+CREATE
+--      bei jeder Inhalts-Aenderung neu laufen sollen (Idempotenz via DROP+CREATE
 --      / CREATE OR REPLACE). Per Checksum getrackt -> laeuft nur neu, wenn sich
 --      der Inhalt aenderte (kein Apply-Bremsen durch wachsendes Schema; Audit,
---      welche View-/fn-Version live ist). `version` haelt hier den RELATIVEN
---      PFAD als Key (z. B. 'packages/finance/db/migrations/R__finance_views.sql').
+--      welche View-/fn-Version live ist). `version` haelt hier den relativen
+--      Pfad als Key (z. B. 'packages/finance/db/migrations/R__finance_views.sql').
 --
--- Mechanik (Treiber-Vertrag, identisch in bash + PowerShell), je Datei in EINER
+-- Mechanik (Treiber-Vertrag, identisch in bash + PowerShell), je Datei in einer
 -- Transaktion mit ON_ERROR_STOP=1:
---   VERSIONED:  SELECT core.migration_should_apply('V001','V001__x.sql','<md5>')
+--   versioned:  SELECT core.migration_should_apply('V001','V001__x.sql','<md5>')
 --     -> TRUE  => der Treiber `\i`-t die Datei (Reservierung ist gesetzt;
 --                 schlaegt die Datei fehl, rollt die Transaktion auch die
 --                 Reservierung zurueck -> sie laeuft beim naechsten Mal erneut).
 --     -> FALSE => bereits angewandt, der Treiber ueberspringt die Datei.
---     Geaenderte Checksumme einer angewandten Version => Drift-EXCEPTION
+--     Geaenderte Checksumme einer angewandten Version => Drift-Exception
 --     (unveraenderlich; korrigieren = neue V-Datei, nie editieren).
---   REPEATABLE: SELECT core.repeatable_should_apply('packages/<pkg>/db/migrations/R__x.sql','<md5>')
+--   repeatable: SELECT core.repeatable_should_apply('packages/<pkg>/db/migrations/R__x.sql','<md5>')
 --     -> TRUE  => Inhalt neu (oder geaendert) -> anwenden (Eintrag/Update gesetzt).
---     -> FALSE => unveraendert -> ueberspringen. MUTABEL (keine Drift-Exception):
---                 Repeatables SIND zum Neu-Laufen gedacht — der Gegensatz zum
+--     -> FALSE => unveraendert -> ueberspringen. Mutabel (keine Drift-Exception):
+--                 Repeatables sind zum Neu-Laufen gedacht — der Gegensatz zum
 --                 unveraenderlichen versioned-Pfad.
 -- ============================================================
 
@@ -54,7 +54,7 @@ CREATE TABLE IF NOT EXISTS core.schema_version (
 -- versioned-only -> Default 'versioned' ist fuer Altzeilen korrekt.
 ALTER TABLE core.schema_version ADD COLUMN IF NOT EXISTS kind text NOT NULL DEFAULT 'versioned';
 
--- Core-Paket-Framework: paket-scoped Ledger (Plan §5/R5). Altzeilen = Core -> Default 'core' korrekt.
+-- Paket-scoped Ledger. Altzeilen = Core -> Default 'core' korrekt.
 -- Paket-Zuordnung kommt aus der Session-GUC `lifeagents.package`, die der Apply-Treiber
 -- (apply_schema.sh / db_apply.ps1) pro Quell-Verzeichnis-Batch setzt ('core' fuer packages/core/db/,
 -- '<paket>' fuer den jeweiligen Paket-/Flach-Batch). Ungesetzt -> 'core' (Default, rueckwaerts-kompatibel).
@@ -91,8 +91,8 @@ BEGIN
         RAISE EXCEPTION 'core.migration_should_apply: leere version';
     END IF;
 
-    -- Paket-Ledger-Scope (R5/arch-challenge C): der PK-Key der VERSIONED-Migrationen wird mit dem
-    -- besitzenden Paket praefixt ('finance:V001'), damit core V001 und finance V001 NICHT kollidieren
+    -- Paket-Ledger-Scope: der PK-Key der versioned-Migrationen wird mit dem
+    -- besitzenden Paket praefixt ('finance:V001'), damit core V001 und finance V001 nicht kollidieren
     -- (das Schema-version-PK ist Single-Column). Das Paket kommt aus der Session-GUC, die der
     -- Apply-Treiber pro Batch setzt; ungesetzt -> 'core'. Repeatables bleiben unpraefixt (ihr
     -- relativer Pfad ist global eindeutig). Body-only: die Treiber-Aufrufe (bare 'V001') bleiben gleich.
@@ -110,10 +110,10 @@ BEGIN
                 '(gespeichert=%, jetzt=%). Migrationen sind unveraenderlich — neue V-Datei anlegen, nie editieren.',
                 v_key, p_filename, v_existing.checksum, p_checksum;
         END IF;
-        RETURN FALSE;   -- bereits angewandt -> NICHT erneut fahren
+        RETURN FALSE;   -- bereits angewandt -> nicht erneut fahren
     END IF;
 
-    -- Neue Migration: in DIESER Transaktion reservieren. Der Treiber wendet die
+    -- Neue Migration: in dieser Transaktion reservieren. Der Treiber wendet die
     -- Datei als Naechstes an; failt sie unter ON_ERROR_STOP, rollt die Transaktion
     -- diese Zeile mit zurueck -> die Migration gilt nicht als angewandt.
     INSERT INTO core.schema_version (version, filename, checksum, kind, package)
@@ -124,12 +124,12 @@ $$;
 
 -- ------------------------------------------------------------
 -- core.repeatable_should_apply(name, checksum) -> boolean
---   Gegenstueck zu migration_should_apply fuer REPEATABLES (Views/Functions,
+--   Gegenstueck zu migration_should_apply fuer Repeatables (Views/Functions,
 --   packages/<pkg>/db/migrations/R__*.sql). `p_name` = relativer Pfad als Key (zugleich filename).
 --     kein Eintrag        -> INSERT(kind='repeatable') + TRUE  (erstmals anwenden).
 --     vorhanden, andere   -> UPDATE checksum/applied_at      + TRUE  (Inhalt geaendert -> neu fahren).
 --     vorhanden, gleiche  ->                                   FALSE (unveraendert -> ueberspringen).
---   BEWUSST MUTABEL: keine Drift-Exception (anders als versioned). Race-fest wie das
+--   Bewusst mutabel: keine Drift-Exception (anders als versioned). Race-fest wie das
 --   versioned-Pendant — die Reservierung/Update passiert in derselben Transaktion wie
 --   das nachfolgende `\i` der Datei (Fehler -> ON_ERROR_STOP rollt beides zurueck).
 -- ------------------------------------------------------------
@@ -167,10 +167,10 @@ END;
 $$;
 
 -- ------------------------------------------------------------
--- M2 — Bestands-Backfill der paket-prefixed VERSIONED-Keys (idempotent, Phase-0).
---   Auf einer ledger-ERHALTENDEN DB (lifeagents update / Prod) liegen Altzeilen mit UNPREFIXED
---   versioned-Key ('V001') neben kuenftig prefixed Schreibungen ('finance:V001') -> migration_should_apply
---   faende die Altzeile nicht mehr und wuerde V001 ERNEUT fahren (nicht-idempotente Migration!).
+-- Bestands-Backfill der paket-prefixed versioned-Keys (idempotent).
+--   Auf einer ledger-erhaltenden DB (lifeagents update / Prod) liegen Altzeilen mit unprefixed
+--   versioned-Key ('V001') neben prefixed Schreibungen ('finance:V001') -> migration_should_apply
+--   faende die Altzeile nicht mehr und wuerde V001 erneut fahren (nicht-idempotente Migration!).
 --   Darum hier einmalig + idempotent die versioned-Altzeilen auf '<package>:<version>' heben.
 --   Laeuft als allererste Datei (vor allen V/R) -> die danach gefahrenen V-Migrationen sehen
 --   bereits den prefixed Endzustand. Repeatables (kind='repeatable', Pfad-Key) bleiben unberuehrt.

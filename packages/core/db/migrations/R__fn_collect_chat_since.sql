@@ -1,19 +1,19 @@
 -- ============================================================
--- core.fn_collect_chat_since() -> TABLE(agent_name text, source_id bigint, content text)   (Phase C, WS-2)
---   Sammelt je QUELLTABELLE die NEUEN Owner-Nachrichten seit dem per-Tabelle-Watermark fuer den
+-- core.fn_collect_chat_since() -> TABLE(agent_name text, source_id bigint, content text)
+--   Sammelt je Quelltabelle die neuen Owner-Nachrichten seit dem per-Tabelle-Watermark fuer den
 --   opt-in Lern-Loop (agent.guide.cron_learn_context). n8n besitzt die agent.<agent>_chat_memory-Tabellen
---   mit je EIGENER id-Sequenz -> ein Cursor je agent_name (agent.guide_learn_watermark).
---   Phase B (Owner-Entscheid 2026-10-19) — Core kennt kein Paket:
---     * Quellen = ALLE agent.*_chat_memory (dynamisch, Muster util_clear_chat_memory) AUSSER orchestrator
+--   mit je eigener id-Sequenz -> ein Cursor je agent_name (agent.guide_learn_watermark).
+--   Core kennt kein Paket:
+--     * Quellen = alle agent.*_chat_memory (dynamisch, Muster util_clear_chat_memory) ausser orchestrator
 --       (der Verteiler speichert dieselben Nachrichten, die der Fach-Agent bekommt -> Duplikat-Quelle).
---       Ein neues Paket-Agent dockt ohne Code-Edit an (vorher feste Liste finance|finance_advisor|guide).
---     * NUR Owner-Nachrichten: session_id = Telegram-Chat des Owners (agent.fn_owner_person_id +
+--       Ein neuer Paket-Agent dockt ohne Code-Edit an.
+--     * Nur Owner-Nachrichten: session_id = Telegram-Chat des Owners (agent.fn_owner_person_id +
 --       agent.fn_person_chat_id, dieselbe family-Quelle wie fn_resolve_sender). Owner nicht gepairt ->
---       nichts (fail-closed). Vorher sammelte die fn JEDE Session -> Mitglieder-Nachrichten konnten als
---       Vorschlag beim Owner landen.
+--       nichts (fail-closed); sonst koennten Mitglieder-Nachrichten als Vorschlag beim Owner landen.
 --     * Fehlende Watermark = 0 (neue Agent-Tabelle: n8n legt sie beim ersten Turn an -> ihr erstes Gespraech
---       zaehlt). Die einmalige Startmarke der mit Phase B neu hinzugekommenen, schon gefuellten Quellen setzt
---       core:V023 (Alt-Historie z. B. career-/estate-Gespraeche geht nie ans Lern-Modell). STABLE, read-only.
+--       zaehlt). Die einmalige Startmarke schon gefuellter Quellen setzt core:V023 (Alt-Historie z. B.
+--       career-/estate-Gespraeche geht nie ans Lern-Modell). STABLE, read-only.
+--   Rueckgabe: je Zeile agent_name (Quelle ohne Suffix _chat_memory), source_id (m.id), content.
 --   Filter (DB entscheidet, nicht das LLM):
 --     * m.id > last_seen_id
 --     * message->>'type' = 'human'  (KI-Antworten sind kein Lernstoff)

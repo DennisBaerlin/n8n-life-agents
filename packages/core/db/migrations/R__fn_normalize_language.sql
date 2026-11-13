@@ -1,6 +1,6 @@
 -- ============================================================
--- agent.fn_normalize_language (read-only, Sprach-Normierung — die EINE Regel fuer freie Sprach-Angaben)
---   Bildet eine freie Angabe ("Deutsch", "Korean", "ko-KR", " DE ") auf einen Code aus core.ui_languages ab:
+-- fn_normalize_language (READ)
+--   Die eine Regel fuer freie Sprach-Angaben (Eingabe p_value). Bildet eine freie Angabe ("Deutsch", "Korean", "ko-KR", " DE ") auf einen Code aus core.ui_languages ab:
 --   lower(trim()) -> Region abschneiden (ko-kr/de_de -> ko/de) -> Code ODER Alias (core.ui_languages.aliases).
 --   Nicht unterstuetzt / leer / NULL -> NULL (der Aufrufer entscheidet: Validator-Ablehnung, Owner-Default, weglassen).
 --   Konsumenten: agent.fn_set_context_facts (normiert family.persons[].language vor der Validierung),

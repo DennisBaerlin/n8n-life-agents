@@ -1,9 +1,10 @@
 -- ============================================================
--- core.fn_plan_rollout_claim(p) — Eingang der geführten Abfolge je Chat (Laufende, Nachzuegler)
---   p: {chat_id, budget ('true' nur vom taeglichen Nachzuegler: Slot 'plan_rollout' normal, erst wenn eine Nachricht feststeht; ohne Platz werden ihre Merker freigegeben)}. Guenstige Pruefungen zuerst: Chat numerisch, Schalter cron_enable.plan_rollout (core.fn_reminder_allowed), Sender aufgeloest, keine
+-- fn_plan_rollout_claim (ATOMIC WRITE) — Eingang der gefuehrten Abfolge je Chat (Laufende, Nachzuegler)
+--   Eingabe p: {chat_id (Pflicht, numerisch), budget ('true' nur vom taeglichen Nachzuegler: Slot 'plan_rollout' normal, erst wenn eine Nachricht feststeht; ohne Platz werden ihre Merker freigegeben)}.
+--   Guenstige Pruefungen zuerst: Chat numerisch, Schalter cron_enable.plan_rollout (core.fn_reminder_allowed), Sender aufgeloest, keine
 --   offene Karte (released_at IS NULL, expires_at in der Zukunft), kein Entwurf der letzten 2 Stunden (Bedingung wie der Interview-Pin des Orchestrators).
 --   Dann je Domain mit plan_step die erste nicht leere Antwort von core.fn_plan_rollout_next; ein Verlierer des Claims stoppt.
---   Nie core.fn_advisor_plan_status (ruft teure gaps_fn). Nie RAISE: Fehler -> leer.
+--   Nie core.fn_advisor_plan_status (ruft teure gaps_fn). Nie RAISE: jeder Fehler und jede Absage -> {messages:[]}.
 --   Rueckgabe {messages:[...mit chat_id], step, domain}. INVOKER, search_path gepinnt. Tests: tests/db/core/test_fn_plan_rollout_claim.sql
 -- ============================================================
 CREATE OR REPLACE FUNCTION core.fn_plan_rollout_claim(p jsonb)

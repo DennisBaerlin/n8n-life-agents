@@ -1,22 +1,23 @@
 -- ============================================================
--- career.fn_upsert_market_signals (WS-4 — atomarer Markt-Signal-Upsert, datierter Posting-Count-Cache)
---   Vom Cron agent.career.cron_refresh_market_signals aufgerufen (KEYLESS Bundesagentur-Jobsuche-Fetch ->
---   diese fn, KEIN LLM). Muster finance.fn_upsert_market_prices: extrahiert + still-guarded, damit die
---   Upsert-Invarianten deterministisch testbar sind (tests/db/career/test_fn_upsert_market_signals.sql) statt nur
---   im Cron-Node zu leben. Laeuft unter dem Haupt-RW-Cred (schreibt career.market_signals).
---   (v1 NUR Posting-Count; das Gehaltsband ist nicht hier — Entgeltatlas blockt automatischen Zugriff,
---    Gehalt liefert der Advisor on-demand via web_search; strukturiertes Band via Destatis GENESIS = vertagt.)
+-- career.fn_upsert_market_signals (ATOMIC UPSERT)
+--   Atomarer Markt-Signal-Upsert (datierter Posting-Count-Cache), vom Cron agent.career.cron_refresh_market_signals
+--   aufgerufen (keyless Bundesagentur-Jobsuche-Fetch -> diese fn, kein LLM). Muster finance.fn_upsert_market_prices:
+--   extrahiert + still-guarded, damit die Upsert-Invarianten deterministisch testbar sind
+--   (tests/db/career/test_fn_upsert_market_signals.sql) statt nur im Cron-Node zu leben. Laeuft unter dem
+--   Haupt-RW-Cred (schreibt career.market_signals). Nur Posting-Count; das Gehaltsband liefert der Advisor
+--   on-demand via web_search (Entgeltatlas blockt automatischen Zugriff).
 --
---   p = { "as_of":  "2026-06-29",                  (optional, default CURRENT_DATE)
+--   p = { "as_of":  "2026-06-29",                  (optional, default CURRENT_DATE; muss ein gueltiges Datum sein)
 --         "source": "bundesagentur",               (optional)
 --         "signals": [                             (Pflicht: Array; je Eintrag eine market_signals-Zeile)
 --           { "kind":"postings", "primary":"<Rolle>", "secondary":"<Ort>", "postings_count":120, "raw":{...} } ] }
---   scope_key baut career.fn_market_scope_key aus rohen Feldern (EINE Quelle, Write==Read).
+--   scope_key baut career.fn_market_scope_key aus rohen Feldern (eine Quelle, Write==Read).
 --
---   STILL-GUARDED (kein RAISE, kein Owner-Alert): Eintrag ohne kind/primary -> skip; postings_count nur
---   uebernommen, wenn ganzzahlig (sonst NULL -> faengt "n/a"/leer ab, KEIN ::int-RAISE). ON CONFLICT
---   (scope_key, as_of) -> idempotenter Tages-Upsert.
---   Anwenden via: db_apply.ps1 -File packages\career\db\migrations\R__fn_upsert_market_signals.sql
+--   Rueckgabe: {ok:true, upserted, as_of}; ohne signals-Array {ok:false, reason:'no signals array in payload',
+--   upserted:0}.
+--   Einzelne Eintraege still-guarded (kein RAISE, kein Owner-Alert): ohne kind/primary -> skip; postings_count
+--   nur uebernommen, wenn ganzzahlig (sonst NULL, faengt "n/a"/leer ab, kein ::int-RAISE). ON CONFLICT
+--   (scope_key, as_of) -> idempotenter Tages-Upsert (COALESCE-Merge des postings_count).
 -- ============================================================
 CREATE OR REPLACE FUNCTION career.fn_upsert_market_signals(p jsonb)
 RETURNS jsonb LANGUAGE plpgsql AS $$

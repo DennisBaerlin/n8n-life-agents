@@ -1,31 +1,30 @@
 -- ============================================================
--- core.fn_backup_restore_filtered (Phase 4b — NUR-Restore-Helfer der gefilterten geteilten Tabellen)
---   KEIN Backup, KEIN ganzer Restore: der Bulk (finance.* + advisor_plans + guide_onboarding_state)
---   laeuft via pg_restore in der CLI; diese fn macht NUR die ZWEI zeilen-gefilterten gemischten
---   agent-Tabellen, die pg_restore nicht zeilengenau behandeln kann (Code+Nutzerdaten in EINER Tabelle):
+-- core.fn_backup_restore_filtered (Restore-Helfer der zeilen-gefilterten geteilten Tabellen)
+--   Kein Backup, kein ganzer Restore: der Bulk (finance.* + advisor_plans + guide_onboarding_state)
+--   laeuft via pg_restore in der CLI; diese fn macht nur die zwei zeilen-gefilterten gemischten
+--   agent-Tabellen, die pg_restore nicht zeilengenau behandeln kann (Code+Nutzerdaten in einer Tabelle):
 --     * agent.core_contexts (managed_by='agent' = PII: family + Paket-Fakten-/Plan-Kontexte):
---       UPDATE-statt-DELETE (trg_core_contexts_protect blockt DELETE protected Zeilen), family VOR den
---       Kontexten, die family-Personen referenzieren (bidirektionaler trg_validate_household_facts), Phase-0
---       (deren LIVE-persons[] leeren — NUR fuer Kontexte, die das Bundle mitbringt; sonst verloere ein Bundle
---       ohne sie die Live-Facts / der Orphan-Check blockte den family-Write). Phase A: form-getrieben ueber den
+--       UPDATE-statt-DELETE (trg_core_contexts_protect blockt DELETE protected Zeilen), family vor den
+--       Kontexten, die family-Personen referenzieren (bidirektionaler trg_validate_household_facts), Phase 0
+--       (deren Live-persons[] leeren, nur fuer Kontexte, die das Bundle mitbringt; sonst verloere ein Bundle
+--       ohne sie die Live-Facts / der Orphan-Check blockte den family-Write). Form-getrieben ueber den
 --       reservierten Core-Key persons[] statt des Literals finance_profile (bewusst nicht registry-getrieben:
---       das Bundle ist Daten, die Registry kann zum Restore-Zeitpunkt abweichen — arch-challenge D3c).
+--       das Bundle ist Daten, die Registry kann zum Restore-Zeitpunkt abweichen).
 --     * agent.monitor_triggers (origin='user'): DELETE origin='user' (observations CASCADE) + Fresh-id-
 --       Insert (kein UNIQUE(domain,lower(label))-Bruch gegen bestehende user-Zeilen; nichts referenziert
 --       Trigger-ids ausser den ausgeschlossenen observations).
---   = schlanke Uebernahme der bewaehrten Shared-Choreografie der frueheren agent.fn_import_restore (Phase 3,
---   via V004 entfernt), ohne den finance-Bulk (den uebernimmt jetzt pg_dump/pg_restore). filtered_tables ist STRUKTURELL Core-Sache:
---   das Schema agent ist geteilter Host-Raum; Domaenen-Pakete besitzen ihr eigenes Schema voll (Voll-Wipe).
+--   filtered_tables ist strukturell Core-Sache: das Schema agent ist geteilter Host-Raum; Domaenen-Pakete
+--   besitzen ihr eigenes Schema voll (Voll-Wipe).
 --
---   Phase B: bringt das Bundle einen Trigger mit, dessen acquisition_method auf der Ziel-Instanz NICHT in
---     core.monitor_acquisition_methods steht (z. B. fx_rate, aber finance nicht installiert), bricht der Restore
---     VORHER mit einer verstaendlichen Meldung ab (welche Methoden, Paket zuerst installieren) — statt eines
---     kryptischen FK-Fehlers. Ueberspringen scheidet aus: der Count-Verify der CLI (verify_counts) fiele dann
---     ohnehin; die alte Welt bleibt durch die eine Restore-TX intakt.
---   EINGABE p (jsonb, Schluessel = qualifizierte Tabellennamen wie im core-Manifest backup.filtered_tables):
+--   Bringt das Bundle einen Trigger mit, dessen acquisition_method auf der Ziel-Instanz nicht in
+--   core.monitor_acquisition_methods steht (z. B. fx_rate, aber finance nicht installiert), bricht der Restore
+--   vorher mit einer verstaendlichen Meldung ab (welche Methoden, Paket zuerst installieren) statt mit einem
+--   kryptischen FK-Fehler. Ueberspringen scheidet aus: der Count-Verify der CLI (verify_counts) fiele dann
+--   ohnehin; die alte Welt bleibt durch die eine Restore-TX intakt.
+--   Eingabe p (jsonb, Schluessel = qualifizierte Tabellennamen wie im core-Manifest backup.filtered_tables):
 --     { "agent.core_contexts": [ {row}, ... ], "agent.monitor_triggers": [ {row}, ... ] }   (Keys optional)
---   RUECKGABE: { ok:true, core_contexts:n, monitor_triggers:n }
---   ATOMAR via die AUFRUFENDE TX (SECURITY INVOKER): jeder Fehler -> RAISE -> der CLI-`psql -1`-Restore
+--   Rueckgabe: { ok:true, core_contexts:n, monitor_triggers:n }; Fehler sind RAISE (keine ok:false-Rueckgabe).
+--   Atomar via die aufrufende TX (SECURITY INVOKER): jeder Fehler -> RAISE -> der CLI-`psql -1`-Restore
 --   rollt alles (inkl. pg_restore-Bulk + TRUNCATE) zurueck. Laeuft als postgres-Superuser (CLI).
 --   search_path=pg_catalog gepinnt (alle Objekte schema-qualifiziert, CVE-2018-1058).
 -- ============================================================
@@ -44,7 +43,7 @@ DECLARE
     v_cols    TEXT;
     v_missing TEXT;
 BEGIN
-    -- ---------- agent.monitor_triggers: user-Zeilen wipen + Fresh-id-Insert ----------
+    -- agent.monitor_triggers: user-Zeilen wipen + Fresh-id-Insert.
     IF jsonb_typeof(v_mt) = 'array' THEN
         SELECT string_agg(DISTINCT r->>'acquisition_method', ', ') INTO v_missing
           FROM jsonb_array_elements(v_mt) r
@@ -56,7 +55,7 @@ BEGIN
         -- nur user-Trigger (core-Seeds bleiben; observations CASCADE)
         DELETE FROM agent.monitor_triggers WHERE origin = 'user';
         IF jsonb_array_length(v_mt) > 0 THEN
-            -- Spaltenliste aus dem Katalog (NUR is_generated='NEVER', OHNE id = frisch gemintet) ->
+            -- Spaltenliste aus dem Katalog (nur is_generated='NEVER', ohne id = frisch gemintet):
             -- schema-evolutionsfest, keine handgepflegte Spaltenliste.
             SELECT string_agg(quote_ident(column_name), ', ' ORDER BY ordinal_position)
             INTO v_cols
@@ -71,28 +70,28 @@ BEGIN
         END IF;
     END IF;
 
-    -- ---------- agent.core_contexts: managed_by='agent' (PII) per UPDATE/INSERT ----------
+    -- agent.core_contexts: managed_by='agent' (PII) per UPDATE/INSERT.
     IF jsonb_typeof(v_cc) = 'array' THEN
-        -- Phase 0: die LIVE-Personen jedes Nicht-family-Kontexts mit persons[] leeren — NUR wenn das Bundle
+        -- Phase 0: die Live-Personen jedes Nicht-family-Kontexts mit persons[] leeren, nur wenn das Bundle
         -- diesen Kontext selbst mitbringt (sonst verloere ein Bundle ohne ihn die Live-Facts). Bedingung auf der
-        -- LIVE-Zeile (persons[] vorhanden), nicht auf der Bundle-Zeile: auch ein aelteres Bundle-Exemplar ohne
+        -- Live-Zeile (persons[] vorhanden), nicht auf der Bundle-Zeile: auch ein aelteres Bundle-Exemplar ohne
         -- persons ersetzt die Zeile, die Live-Referenzen muessen also vor dem family-Write weg. Der bidirektionale
-        -- Facts-Check prueft ein family-UPDATE gegen ALLE Live-persons[]-Referenzen; ohne dieses Leeren blockte eine
-        -- Live-Person, die das (aeltere) Bundle nicht kennt, den Restore. (Ein Live-Kontext mit persons[], den das
-        -- Bundle NICHT mitbringt, bleibt — referenziert er eine Person, die das Bundle-family nicht kennt, rollt der
-        -- Restore laut zurueck: dasselbe Limit wie vorher.)
+        -- Facts-Check prueft ein family-UPDATE gegen alle Live-persons[]-Referenzen; ohne dieses Leeren blockte eine
+        -- Live-Person, die das (aeltere) Bundle nicht kennt, den Restore. Grenzfall: ein Live-Kontext mit persons[],
+        -- den das Bundle nicht mitbringt, bleibt; referenziert er eine Person, die das Bundle-family nicht kennt,
+        -- rollt der Restore laut zurueck.
         UPDATE agent.core_contexts lc
         SET metadata = jsonb_set(lc.metadata, '{facts,persons}', '[]'::jsonb)
         WHERE lc.name <> 'family'
           AND jsonb_typeof(lc.metadata->'facts'->'persons') = 'array'
           AND EXISTS (SELECT 1 FROM jsonb_array_elements(v_cc) c WHERE c->>'name' = lc.name);
 
-        -- Phase 1+2: family ZUERST (ORDER BY name <> 'family'), dann die uebrigen Kontexte. Protected/
-        -- managed Contexts werden per UPDATE ERSETZT (nie DELETE -> Protect-Trigger blockte). managed_by/
+        -- Phase 1+2: family zuerst (ORDER BY name <> 'family'), dann die uebrigen Kontexte. Protected/
+        -- managed Contexts werden per UPDATE ersetzt (nie DELETE, der Protect-Trigger blockte). managed_by/
         -- package aus dem Bundle (COALESCE haelt den Bestandswert bzw. defaultet agent/Paket beim INSERT).
         FOR v_row IN SELECT * FROM jsonb_array_elements(v_cc) c
                      ORDER BY (c->>'name' <> 'family'), c->>'name' LOOP
-            -- Backups von VOR dem Textkatalog (core:V027) tragen Freitext-Sprachen ("Deutsch") -> vor dem Write
+            -- Backups von vor dem Textkatalog (core:V027) tragen Freitext-Sprachen ("Deutsch"): vor dem Write
             -- normieren, sonst lehnte der Validator (Wertevorrat core.ui_languages) den family-Restore ab.
             IF v_row->>'name' = 'family' AND jsonb_typeof(v_row->'metadata'->'facts'->'persons') = 'array' THEN
                 v_row := jsonb_set(v_row, '{metadata,facts,persons}',

@@ -1,5 +1,5 @@
 -- ============================================================
--- core.update_requests — Update-Auftraege aus dem Chat (Update-Hinweis, 2026-10-24)
+-- core.update_requests — Update-Auftraege aus dem Chat (Update-Hinweis)
 --   Anwenden via: db_apply.ps1 -File packages\core\db\core.update_requests_init.sql
 --
 -- Zweck: die Bruecke zwischen dem unprivilegierten n8n (Owner tippt [Jetzt aktualisieren] auf der Release-Karte)
@@ -8,8 +8,8 @@
 --   (core.fn_update_request_claim), fuehrt das Update aus und schliesst sie (core.fn_update_request_finish).
 --   Muster "Trigger = Daten-Zeile" (Monitor): keine Spool-Datei, kein Datei-Node in n8n (provisioning/CLAUDE.md).
 --
--- INVARIANTEN (DB-Gesetz):
---   * hoechstens EIN offener Auftrag (partieller Unique-Index) -> Doppel-Tap/zweiter Weg legt nie einen zweiten an;
+-- Invarianten (DB-Gesetz):
+--   * hoechstens ein offener Auftrag (partieller Unique-Index) -> Doppel-Tap/zweiter Weg legt nie einen zweiten an;
 --   * finished_at und outcome nur gemeinsam; abgeschlossen nur, was uebernommen wurde;
 --   * tag ist ein stabiles Release-Tag vX.Y.Z (der Runner prueft zusaetzlich in bash, bevor er ihn als Argument nutzt).
 --   Der Runner traut der Zeile trotzdem nicht: er installiert nur, wenn tag = aktuelles releases/latest > VERSION.

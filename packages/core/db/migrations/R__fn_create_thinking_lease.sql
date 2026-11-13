@@ -1,14 +1,15 @@
 -- ============================================================
 -- fn_create_thinking_lease ("Bot denkt nach"-Schalter)
 --   Der Aufrufer (Orchestrator beim Eingang einer Nachricht an die KI, agent.sub_dispatch_agent bei Paket-Befehlen/
---   -Onboarding) ruft sie im privaten Chat, BEVOR er core.sub_show_thinking startet: Zeile (execution, chat) mit
---   expires_at = now() + ttl. JE CHAT EIN SCHALTER (Telegram zeigt je Chat eine Blase): andere Schalter des Chats
+--   -Onboarding) ruft sie im privaten Chat, bevor er core.sub_show_thinking startet: Zeile (execution, chat) mit
+--   expires_at = now() + ttl. Je Chat ein Schalter (Telegram zeigt je Chat eine Blase): andere Schalter des Chats
 --   werden geloescht — auch der liegengebliebene eines abgebrochenen Laufs (ein Abbruch ruft keinen errorWorkflow);
 --   deren Schleife endet beim naechsten Claim ('stop'). Raeumt ausserdem Abgelaufene weg. Erneutes Anlegen derselben
 --   execution = Upsert. Nicht-numerische chat_id (Test-Sentinel) -> keine Zeile.
 --   Fehlende execution_id/ttl_minutes = Bau-Fehler des Aufrufers -> RAISE (nicht nutzerkorrigierbar).
---   p: { chat_id, execution_id, ttl_minutes }
---   RUECKGABE: {ok:true, expires_at} | {ok:false, reason}
+--   Eingabe p: { chat_id, execution_id, ttl_minutes }
+--   Rueckgabe: {ok:true, expires_at} | {ok:false, reason}; reason = "chat_id must be numeric".
+--   Seiteneffekt: DELETE abgelaufener/fremder Schalter des Chats, UPSERT agent.thinking_lease.
 --   Tests: tests/db/core/test_fn_thinking_lease.sql
 -- ============================================================
 CREATE OR REPLACE FUNCTION agent.fn_create_thinking_lease(p jsonb)

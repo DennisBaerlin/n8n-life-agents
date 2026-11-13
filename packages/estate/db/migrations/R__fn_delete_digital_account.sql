@@ -1,12 +1,12 @@
 -- ============================================================
--- estate.fn_delete_digital_account (ATOMIC WRITE — WS-2, Hard-DELETE)
+-- estate.fn_delete_digital_account (ATOMIC WRITE — Hard-DELETE)
 --   Loescht ein Konto des digitalen Nachlasses aus dem Register (aufgeloest/Fehlanlage;
---   Vorbild finance.fn_delete_real_estate: Name-Re-Resolve, 0/>1 Treffer -> {ok:false, code, candidates} (Probelauf vor der Karte) —
---   das TOOL loest vor dem Gate auf). Keine FK-Referenzen -> reines Delete.
+--   Muster finance.fn_delete_real_estate: Name-Re-Resolve, 0/>1 Treffer -> {ok:false, code, candidates} (Probelauf vor der Karte) —
+--   das Tool loest vor dem Gate auf). Keine FK-Referenzen -> reines Delete.
 --   DB-Backstop: core.fn_check_write_permission('adults_only', chat_id) — Kind -> {ok:false}.
 --   Eingabe jsonb: chat_id, provider (exakt), username (optionaler Filter).
---   RUECKGABE: {ok:true, action:'deleted', digital_account_id} | {ok:false, reason}.
---   Anwenden via: db_apply.ps1 -File packages\estate\db\migrations\R__fn_delete_digital_account.sql
+--   Rueckgabe: {ok:true, action:'deleted', digital_account_id} | {ok:false, reason, code?, candidates?}; code
+--   'not_found' (candidates []) oder 'ambiguous' (candidates = Treffer).
 -- ============================================================
 CREATE OR REPLACE FUNCTION estate.fn_delete_digital_account(p jsonb)
 RETURNS jsonb LANGUAGE plpgsql AS $$

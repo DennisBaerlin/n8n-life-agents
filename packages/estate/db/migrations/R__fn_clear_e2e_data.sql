@@ -1,14 +1,15 @@
 -- ============================================================
--- fn_clear_e2e_data (GEGUARDETES TEST-CLEANUP, estate-Teil — KEIN Produktiv-Tool)
---   Paket-Hook der Konvention <pkg>.fn_clear_e2e_data(text) (Phase B, docs/package-contract.md §6): der Core-
---   Dispatcher agent.fn_clear_e2e_data ruft ihn je installiertem Paket (gleiche Transaktion).
---   Reihenfolge FK-sicher: directives VOR storage_places (FK RESTRICT auf storage_place_id). directives haben
---   keinen Namen -> Sentinel in notes/location_note ODER via referenzierte Sentinel-Fundstelle. person_records/
---   funeral_preferences keyen auf REALE Personen -> nur zeilen-genau ueber den Sentinel in notes/wishes.
+-- fn_clear_e2e_data (GEGUARDETES TEST-CLEANUP, estate-Teil)
+--   Kein Produktiv-Tool. Paket-Hook der Konvention <pkg>.fn_clear_e2e_data(text) (docs/package-contract.md §6):
+--   der Core-Dispatcher agent.fn_clear_e2e_data ruft ihn je installiertem Paket (gleiche Transaktion).
+--   Reihenfolge FK-sicher: directives vor storage_places (FK RESTRICT auf storage_place_id). directives haben
+--   keinen Namen -> Sentinel in notes/location_note oder via referenzierte Sentinel-Fundstelle. person_records/
+--   funeral_preferences keyen auf reale Personen -> nur zeilen-genau ueber den Sentinel in notes/wishes.
 --   Ereignisfall (cases/case_tasks) traegt keinen Sentinel-Namen; in der ephemeren Container-DB gibt es keinen
 --   Nicht-Test-Produzenten eines Falls (nur der E2E-Tier APPROVEt create_case) -> wholesale (case_tasks vor cases).
---   Post-Assertion: keine Sentinel-Zeile darf bleiben. p_runid: NULL/'' = generischer Sweep.
---   RUECKGABE: {estate_rows} (Summe ueber alle Register)
+--   Post-Assertion: keine Sentinel-Zeile darf bleiben (sonst RAISE).
+--   Eingabe: p_runid optional (nur [a-z0-9], sonst RAISE): NULL/'' = generischer Sweep, sonst nur '__E2E_<runid>__'.
+--   Rueckgabe: {estate_rows} (Summe ueber alle Register)
 --   Tests: tests/db/core/test_fn_clear_e2e_data.sql
 -- ============================================================
 CREATE OR REPLACE FUNCTION estate.fn_clear_e2e_data(p_runid text DEFAULT NULL)

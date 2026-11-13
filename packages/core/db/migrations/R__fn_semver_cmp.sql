@@ -1,8 +1,9 @@
 -- ============================================================
--- core.fn_semver_cmp(a, b) (read-only, IMMUTABLE — Update-Hinweis 2026-10-24)
---   Die EINE SemVer-Vergleichs-Logik des Systems (Release-Karte, Callback-Handler, root-Runner per psql — nie in
+-- fn_semver_cmp (READ-ONLY, IMMUTABLE)
+--   Die eine SemVer-Vergleichs-Logik des Systems (Release-Karte, Callback-Handler, root-Runner per psql — nie in
 --   bash nachgebaut). Vergleicht stabile Release-Tags 'vMAJOR.MINOR.PATCH' numerisch (v0.10.0 > v0.9.2).
---   RUECKGABE: 1 (a > b) | 0 (gleich) | -1 (a < b) | NULL, wenn eine Seite kein stabiles Tag ist ('dev',
+--   Eingabe: a text, b text.
+--   Rueckgabe: 1 (a > b) | 0 (gleich) | -1 (a < b) | NULL, wenn eine Seite kein stabiles Tag ist ('dev',
 --   Prerelease 'v1.0.0-rc1', NULL) — Aufrufer behandeln NULL als "nicht vergleichbar" (nie als gleich).
 --   Tests: tests/db/core/test_fn_release_card.sql
 -- ============================================================

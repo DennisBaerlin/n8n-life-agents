@@ -1,7 +1,7 @@
 -- ============================================================
 -- core.fn_handoff_overview_mark(p) — merkt die erfolgreich gesendete Uebergabe-Liste fuer die Abfolge
 --   Gerufen von agent.tool_send_handoff_overview nach dem Send, damit Schritt 1 sie im selben Lauf nicht noch einmal schickt.
---   p: {domain, chat_id, max_task_id}. Schluessel wie core.fn_plan_rollout_next. RUECKGABE {ok, marked}. Nie RAISE.
+--   p: {domain, chat_id, max_task_id}. Schluessel wie core.fn_plan_rollout_next. Rueckgabe {ok, marked}. Nie RAISE.
 --   Tests: tests/db/core/test_fn_handoff_overview_mark.sql
 -- ============================================================
 CREATE OR REPLACE FUNCTION core.fn_handoff_overview_mark(p jsonb)

@@ -1,16 +1,16 @@
 -- ============================================================
--- career.fn_render_career_planning (WS-1 — Render des career_planning-Sidecars, Header-only)
---   Liefert NUR den autoritativen Fakten-HEADER des advisor-gepflegten 'career_planning'-Sidecars
---   (Ziel-Rollen, Ziel-Branchen, Umstiegs-Zieldatum). Vorbild finance.fn_render_plan_facts. Die Engine
---   core.fn_fetch_context wrappt Banner + Header + _meta + Prosa. UNIFORME Signatur fn(text)->text.
---   ABLEITUNG render-at-fetch, NIE gespeichert: "in ~N Jahren" / "Zieldatum vorbei" aus target_date + heute, Jahreswert des Zielgehalts
---   (kein gespeichertes target_year — die Denylist sperrt es). Die Skill-Luecken-Zeile der
---   primaeren Ziel-Rolle (WS-3) rendert career.fn_skill_gap render-at-fetch (Soll required_skills[] vs Ist
---   career_profile.skills[]). WS-4: die Stellen-Nachfrage-Zeile rendert career.fn_market_trend (Posting-Trend,
---   render-at-fetch). WS-5: die Runway-Zeile rendert career.fn_runway (cross-paket finance->career, Doppel-Guard
---   + graceful NULL). ALLE career.*/agent.*/finance.*-Referenzen schema-qualifiziert (DEFINER-Pin via fn_fetch_context).
---   RUECKGABE: Header-Text ODER NULL (kein facts-Sidecar -> nur Prosa).
---   Anwenden via: db_apply.ps1 -File packages\career\db\migrations\R__fn_render_career_planning.sql
+-- career.fn_render_career_planning (READ)
+--   Render des career_planning-Sidecars, Header-only: liefert nur den autoritativen Fakten-Header des
+--   advisor-gepflegten 'career_planning'-Sidecars (Ziel-Rollen, Ziel-Branchen, Umstiegs-Zieldatum). Vorbild
+--   finance.fn_render_plan_facts. Die Engine core.fn_fetch_context wrappt Banner + Header + _meta + Prosa.
+--   Eingabe: p_name (physischer, suffigierter Name career_planning__<pid>). Uniforme Signatur fn(text)->text.
+--   Ableitungen render-at-fetch, nie gespeichert: "in ~N Jahren" / "Zieldatum vorbei" aus target_date + heute,
+--   Jahreswert des Zielgehalts (kein gespeichertes target_year, die Denylist sperrt es). Die Skill-Luecken-Zeile
+--   der primaeren Ziel-Rolle rendert career.fn_skill_gap (Soll required_skills[] vs Ist career_profile.skills[]),
+--   die Stellen-Nachfrage-Zeile career.fn_market_trend (Posting-Trend), die Runway-Zeile career.fn_runway
+--   (cross-paket finance->career, Doppel-Guard + graceful NULL). Alle career.*/agent.*/finance.*-Referenzen
+--   schema-qualifiziert (DEFINER-Pin via fn_fetch_context).
+--   Rueckgabe: Header-Text oder NULL (kein facts-Sidecar -> nur Prosa).
 -- ============================================================
 CREATE OR REPLACE FUNCTION career.fn_render_career_planning(p_name text)
 RETURNS text LANGUAGE plpgsql STABLE AS $$
@@ -23,7 +23,7 @@ DECLARE
     v_ind      JSONB;
     v_target   DATE;
     v_prof     JSONB;
-    v_pid      TEXT;   -- P0c: person_id aus dem suffigierten p_name (career_planning__<pid>) abgeleitet
+    v_pid      TEXT;   -- person_id aus dem suffigierten p_name (career_planning__<pid>) abgeleitet
     v_gap      JSONB;
     v_grole    JSONB;
     v_ptitle   TEXT;
@@ -31,8 +31,8 @@ DECLARE
     v_g        JSONB;
     v_cnt      INT;
     v_more     INT;
-    v_mtrend   JSONB;   -- WS-4 Stellen-Nachfrage-Trend (career.fn_market_trend, render-at-fetch)
-    v_rw       JSONB;   -- WS-5 Runway (career.fn_runway, cross-paket finance->career, render-at-fetch)
+    v_mtrend   JSONB;   -- Stellen-Nachfrage-Trend (career.fn_market_trend, render-at-fetch)
+    v_rw       JSONB;   -- Runway (career.fn_runway, cross-paket finance->career, render-at-fetch)
 BEGIN
     SELECT c.metadata->'facts' INTO v_facts FROM agent.core_contexts c WHERE c.name = p_name;
     IF v_facts IS NULL OR jsonb_typeof(v_facts) <> 'object' OR v_facts = '{}'::jsonb THEN
@@ -42,7 +42,7 @@ BEGIN
     -- Ziel-Rollen (max 3, kompakt; optional Zielgehalt)
     IF jsonb_typeof(v_facts->'target_roles') = 'array' THEN
         FOR v_role IN SELECT * FROM jsonb_array_elements(v_facts->'target_roles') LIMIT 3 LOOP
-            -- WP3: Zielgehalt mit Einheit (roh) -> Text + Jahreswert render-at-fetch (career.fn_salary_text)
+            -- Zielgehalt mit Einheit (roh) -> Text + Jahreswert render-at-fetch (career.fn_salary_text)
             v_roles := v_roles || (COALESCE(v_role->>'title','?')
                 || CASE WHEN jsonb_typeof(v_role->'salary_expectation_eur') = 'number'
                         THEN ' (~' || career.fn_salary_text((v_role->>'salary_expectation_eur')::numeric,
@@ -64,11 +64,11 @@ BEGIN
         END IF;
     END IF;
 
-    -- WP3: Zieldatum roh, Abstand render-at-fetch ("in ~N Jahren" bzw. ueberschritten); nie eine gespeicherte Jahreszahl.
+    -- Zieldatum roh, Abstand render-at-fetch ("in ~N Jahren" bzw. ueberschritten); nie eine gespeicherte Jahreszahl.
     v_target := career.fn_partial_date(v_facts->>'target_date');
     IF v_target IS NOT NULL THEN
         v_lines := v_lines || ('Angepeilter Umstieg: ' || (v_facts->>'target_date')
-            -- ueberschritten erst nach dem ENDE der genannten Periode ("2026" gilt bis 31.12.2026)
+            -- ueberschritten erst nach dem Ende der genannten Periode ("2026" gilt bis 31.12.2026)
             || CASE WHEN (CASE length(btrim(v_facts->>'target_date'))
                                WHEN 4 THEN (v_target + interval '1 year' - interval '1 day')::date
                                WHEN 7 THEN (v_target + interval '1 month' - interval '1 day')::date
@@ -80,12 +80,12 @@ BEGIN
                     ELSE ' (in ~' || (extract(year FROM v_target) - extract(year FROM core.fn_today()))::int::text || ' Jahren)' END);
     END IF;
 
-    -- WS-3: Skill-Luecken-Zeile der PRIMAEREN Ziel-Rolle (target_roles[0]); render-at-fetch, nichts gespeichert.
-    -- career.* + agent.* schema-qualifiziert (DEFINER-Pin pg_catalog,agent,core via fn_fetch_context, KEIN career).
-    -- P0c: career_planning ist per_user -> p_name ist der PHYSISCHE, suffigierte Name (career_planning__<pid>,
+    -- Skill-Luecken-Zeile der primaeren Ziel-Rolle (target_roles[0]); render-at-fetch, nichts gespeichert.
+    -- career.* + agent.* schema-qualifiziert (DEFINER-Pin pg_catalog,agent,core via fn_fetch_context, kein career).
+    -- career_planning ist per_user -> p_name ist der physische, suffigierte Name (career_planning__<pid>,
     -- fn_fetch_context USING v_physical). career_profile derselben Person liegt unter demselben Suffix -> die
     -- person_id aus p_name ableiten (greedy .+ -> person_id mit eigenen '__' bleibt intakt) und career_profile__<pid>
-    -- lesen. KEIN Basis-/scope-Guard mehr (der P0b-Interim ist mit P0c weg) -> die Skill-Luecken-Zeile rendert wieder.
+    -- lesen.
     v_ptitle := v_facts->'target_roles'->0->>'title';
     IF v_ptitle IS NOT NULL THEN
         v_pid := substring(p_name from '^career_planning__(.+)$');
@@ -120,8 +120,8 @@ BEGIN
         END IF;
     END IF;
 
-    -- WS-4: Stellen-Nachfrage-Zeile (Posting-Count + Trend der primaeren Rolle) via career.fn_market_trend
-    -- render-at-fetch (DB rechnet, nichts gespeichert). career.* schema-qualifiziert (DEFINER-Pin pg_catalog,
+    -- Stellen-Nachfrage-Zeile (Posting-Count + Trend der primaeren Rolle) via career.fn_market_trend
+    -- render-at-fetch. career.* schema-qualifiziert (DEFINER-Pin pg_catalog,
     -- agent,core via fn_fetch_context; der Renderer laeuft als dessen Owner -> liest career.market_signals).
     v_mtrend := career.fn_market_trend(v_facts);
     IF v_mtrend IS NOT NULL AND (v_mtrend->>'count') IS NOT NULL THEN
@@ -133,11 +133,11 @@ BEGIN
                     ELSE '' END);
     END IF;
 
-    -- WS-5: Runway-Zeile ("kann ich mir den Jobwechsel leisten?") — cross-paket finance->career, render-at-fetch.
-    -- career.fn_runway doppel-guardet das OPTIONALE finance-Paket (fn_package_active + to_regprocedure) und
+    -- Runway-Zeile ("kann ich mir den Jobwechsel leisten?") — cross-paket finance->career, render-at-fetch.
+    -- career.fn_runway doppel-guardet das optionale finance-Paket (fn_package_active + to_regprocedure) und
     -- liefert NULL, wenn finance fehlt/inaktiv -> die Zeile entfaellt graceful (kein Crash). finance.*/core.*
     -- in fn_runway schema-qualifiziert (DEFINER-Pin pg_catalog,agent,core via fn_fetch_context; der Renderer
-    -- laeuft als dessen Owner=Superuser -> liest finance.* OHNE neuen Grant, Oberflaeche A der WS-5-arch-challenge).
+    -- laeuft als dessen Owner=Superuser -> liest finance.* ohne neuen Grant).
     v_rw := career.fn_runway(v_facts);
     IF v_rw IS NOT NULL THEN
         v_lines := v_lines || ('Runway: '
@@ -148,8 +148,8 @@ BEGIN
                                  ELSE 'NICHT gedeckt - Lücke '
                                       || ((v_rw->>'probation_months')::int - (v_rw->>'runway_months')::int)::text || ' Mon.)' END
                     ELSE 'unbegrenzt (Notfall-Einkommen deckt die Ausgaben)' END
-            -- WP-3c: fehlt fuer ein Fremdwaehrungs-Cash-Konto der Wechselkurs, ist es NICHT in cash_eur -> die
-            -- Runway ist zu optimistisch. Sichtbar melden statt still unterzaehlen (Owner-Prinzip).
+            -- Fehlt fuer ein Fremdwaehrungs-Cash-Konto der Wechselkurs, ist es nicht in cash_eur -> die
+            -- Runway ist zu optimistisch. Sichtbar melden statt still unterzaehlen.
             || CASE WHEN (v_rw->>'has_fx_gap')::boolean
                     THEN E'\n  ⚠ Hinweis: ein Fremdwährungs-Konto ohne aktuellen Wechselkurs ist noch NICHT '
                          || 'eingerechnet - die tatsächliche Liquidität (und damit die Runway) liegt höher.'

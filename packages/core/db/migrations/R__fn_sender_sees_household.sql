@@ -1,16 +1,16 @@
 -- ============================================================
--- core.fn_sender_sees_household(p_chat_id text) — sieht der Absender den Haushalt? (READ)
+-- fn_sender_sees_household (READ-ONLY, SECURITY DEFINER) — sieht der Absender den Haushalt?
 --   Die eine Regel fuer den Chat: das Tor im Vermittler (agent.sub_dispatch_agent), das Eingangs-Gate des Monitors, die
 --   Wahl des Hilfe-Agent-Knotens, core.fn_fetch_context und die Trigger-fns fragen hier. Der Rollenteil ist allein
 --   core.fn_app_sees_household (Allow-List owner/partner, dieselbe Regel wie die Mini-App).
 --   Eingabe: p_chat_id = chat_id aus dem Agent-/Werkzeug-Start (produktiv die numerische telegram_user_id).
---   RUECKGABE boolean, nie NULL:
+--   Rueckgabe boolean, nie NULL:
 --     '^[0-9]{1,18}$' -> fn_app_sees_household(person_id aus agent.fn_resolve_sender); unbekannt -> false;
 --     '^test_'        -> true (Test-Sentinel der Agent-Harnesses, deren chat_ids so heissen);
 --     alles andere (NULL, leer, negativ/Gruppe, ueberlang, Leerzeichen, Buchstaben) -> false.
 --   Bewusst anders als agent.fn_check_write_permission (adults_only laesst NULL/unbekannt durch: dort entscheidet danach
 --   das HITL-Gate) und core.fn_plan_adult_recipients (nur partner: Empfaenger einer Info, nicht Sichtrecht).
---   SECURITY DEFINER (fn_app_sees_household ist REVOKE PUBLIC, fn_resolve_sender liest agent.*), search_path gepinnt,
+--   DEFINER, weil fn_app_sees_household REVOKE PUBLIC ist und fn_resolve_sender agent.* liest; search_path gepinnt,
 --   REVOKE PUBLIC; EXECUTE an core_ro (Hilfe-Agent-Read, Monitor-Gate) in util_create_core_ro.sql.
 --   Tests: tests/db/core/test_fn_sender_sees_household.sql
 -- ============================================================

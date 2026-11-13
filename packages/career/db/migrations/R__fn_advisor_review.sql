@@ -1,28 +1,33 @@
 -- ============================================================
--- career.fn_advisor_review (WS-1 — Review-fn der Career-Advisor-Domaene, MINIMAL)
---   Erfuellt den generischen Engine-Vertrag fn(text,jsonb)->jsonb { alerts:[…], digest:{…} } (WS2):
+-- career.fn_advisor_review (READ)
+--   Review-fn der Career-Advisor-Domaene im generischen Engine-Vertrag fn(text,jsonb)->jsonb { alerts:[…], digest:{…} }:
 --   der Core-Wrapper core.fn_advisor_review_evaluate dispatcht hierher, latcht je alert ueber metric_key
 --   (geteilte core.notification_state, source='advisor:career') und reicht den digest ungelatcht durch.
---   Jeder alert traegt `msg` = [tpl…], der digest `lines` = [tpl…] (Textkatalog Phase C, Form wie finance:
---   career.advisor.*-Keys + typisierte Werte) — die generischen Core-Crons rendern nur die Struktur.
+--   Jeder alert traegt `msg` = [tpl…], der digest `lines` = [tpl…] (Textkatalog, Form wie finance:
+--   career.advisor.*-Keys + typisierte Werte); die generischen Core-Crons rendern nur die Struktur.
 --
---   Metriken: Plan-Staleness (Soll-Plan ueberfaellig) + WS-3 Skill-Gap (career.fn_skill_gap: Soll
---   target_roles[].required_skills[] vs Ist career_profile.skills[]) -> EIN gelatchter singleton-Alert
---   metric_key='skill_gaps' (Owner-Wahl "ruhig": feuert beim Auftauchen, still solange Luecken
---   bestehen — auch wenn die Zahl waechst —, re-armt erst bei gap_count=0). Career-Ist ist weich/selbst-
---   berichtet -> kein harter Soll-Ist-Drift wie bei finance. career.-qualifiziert (der Wrapper
---   fn_advisor_review_evaluate pinnt nur pg_catalog). Ueberskill = KEINE Luecke (hoechstens Digest-Notiz).
+--   Eingabe: p_person_id (optional; NULL = Owner-Fallback via agent.fn_owner_person_id()) waehlt die
+--   per_user-Dokumente career_planning__<pid> / career_profile__<pid>. p_domain und p_observations werden
+--   nicht ausgewertet (Vertragssignatur).
+--   Rueckgabe: {ok:true, alerts:[…], digest:{lines:[…]}}; kein ok:false-Pfad.
+--   Config: core.fn_config_get('career','advisor','career_plan_stale_days'), Default 365.
 --
---   ⚠️ DARF NIE RAISEn: der Drift-Cron wertet ALLE Advisor in EINER materialisierten CTE aus -> eine
---   Exception hier kippt auch den finance-Lauf. Fehlt der Plan/das Profil -> {alerts:[], digest:{lines}}
---   ohne Crash (alle Datums-/Cast-Pfade defensiv geguarded). Der Core-Wrapper faengt nur eine FEHLENDE
---   fn ab, NICHT ein RAISE INNERHALB.
---   Anwenden via: db_apply.ps1 -File packages\career\db\migrations\R__fn_advisor_review.sql
+--   Metriken: Plan-Staleness (Soll-Plan ueberfaellig; metric_key 'plan_staleness') + Skill-Gap
+--   (career.fn_skill_gap: Soll target_roles[].required_skills[] vs Ist career_profile.skills[]) -> ein gelatchter
+--   singleton-Alert metric_key='skill_gaps' (feuert beim Auftauchen, still solange Luecken bestehen, auch wenn die
+--   Zahl waechst; re-armt erst bei gap_count=0). Career-Ist ist weich/selbstberichtet, daher kein harter
+--   Soll-Ist-Drift wie bei finance. career.-qualifiziert (der Wrapper fn_advisor_review_evaluate pinnt nur
+--   pg_catalog). Ueberskill ist keine Luecke (hoechstens Digest-Notiz).
+--
+--   Darf nie RAISEn: der Drift-Cron wertet alle Advisor in einer materialisierten CTE aus, eine Exception
+--   hier kippt auch den finance-Lauf. Fehlt der Plan/das Profil -> {alerts:[], digest:{lines}} ohne Crash
+--   (alle Datums-/Cast-Pfade defensiv geguarded). Der Core-Wrapper faengt nur eine fehlende fn ab, nicht ein
+--   RAISE innerhalb.
 -- ============================================================
 CREATE OR REPLACE FUNCTION career.fn_advisor_review(p_domain text, p_person_id text DEFAULT NULL, p_observations jsonb DEFAULT '{}'::jsonb)
 RETURNS jsonb LANGUAGE plpgsql STABLE AS $$
 DECLARE
-    v_owner       TEXT;   -- P2a: per-Person-Anker (p_person_id, sonst Owner-Fallback); per_user-Reads am Suffix
+    v_owner       TEXT;   -- per-Person-Anker (p_person_id, sonst Owner-Fallback); per_user-Reads am Suffix
     v_plan        JSONB;
     v_profile     JSONB;
     v_alerts      JSONB := '[]'::jsonb;
@@ -32,7 +37,7 @@ DECLARE
     v_role        TEXT;
     v_target      TEXT;
     v_lines       JSONB;
-    -- WS-3 Skill-Gap
+    -- Skill-Gap
     v_gap         JSONB;
     v_gap_count   INT;
     v_blk         INT;
@@ -43,19 +48,18 @@ DECLARE
     v_g           JSONB;
     v_more        INT;
 BEGIN
-    -- P2a: career_planning + career_profile sind per_user (Name-Suffix '<base>__<pid>'). Der GETEILTE Review-
-    -- Wrapper core.fn_advisor_review_evaluate reicht den p_person_id jetzt UNIFORM durch (Person-Faecherung); die
-    -- P2b-Cron-Schleife ruft pro Person mit gesetztem p_person_id. p_person_id IS NULL (heutige 1-Arg-Cron-Aufrufe)
-    -- -> Owner-Fallback via agent.fn_owner_person_id() (LIMIT 1, RAISE-frei) = byte-gleiches P0c-Verhalten. Kein
-    -- Owner / kein per-Person-Doc -> COALESCE auf den Basis-Namen (post-Migration leer) -> v_plan/v_profile NULL
-    -- -> graceful, kein RAISE.
+    -- career_planning + career_profile sind per_user (Name-Suffix '<base>__<pid>'). Der geteilte Review-
+    -- Wrapper core.fn_advisor_review_evaluate reicht p_person_id uniform durch; die Cron-Schleife ruft pro
+    -- Person mit gesetztem p_person_id. p_person_id IS NULL (1-Arg-Cron-Aufrufe) -> Owner-Fallback via
+    -- agent.fn_owner_person_id() (LIMIT 1, RAISE-frei). Kein Owner / kein per-Person-Doc -> COALESCE auf den
+    -- Basis-Namen (leer) -> v_plan/v_profile NULL -> graceful, kein RAISE.
     v_owner := COALESCE(p_person_id, agent.fn_owner_person_id());
     SELECT c.metadata->'facts' INTO v_plan
     FROM agent.core_contexts c WHERE c.name = COALESCE('career_planning__' || v_owner, 'career_planning');
     SELECT c.metadata->'facts' INTO v_profile
     FROM agent.core_contexts c WHERE c.name = COALESCE('career_profile__' || v_owner, 'career_profile');
 
-    -- Tuning-Schwelle (career-eigener Config-Key; Default 365, falls nicht geseedet -> kein Crash)
+    -- career-eigener Config-Key; Default 365, falls nicht geseedet -> kein Crash
     BEGIN
         v_stale_days := COALESCE(core.fn_config_get('career', 'advisor', 'career_plan_stale_days')::numeric, 365);
     EXCEPTION WHEN OTHERS THEN
@@ -77,10 +81,8 @@ BEGIN
     END IF;
 
     -- ---------- (1b) Skill-Gap (deterministisch; Soll required_skills[] vs Ist skills[]) ----------
-    -- career.fn_skill_gap rechnet die Luecke (DB rechnet, nicht das LLM); career.-qualifiziert (der Wrapper
-    -- pinnt nur pg_catalog). EIN singleton-Alert metric_key='skill_gaps' (Owner-Wahl "ruhig").
-    -- Der Alert-Text versoehnt die Render-Zeile (nur primaere Rolle) mit der Gesamt-Zahl ueber ALLE Rollen.
-    -- P0c: rechnet wieder direkt (v_plan/v_profile am Owner-Suffix gelesen) -> der P0b-Suspend-Guard ist weg.
+    -- Ein singleton-Alert metric_key='skill_gaps'. Der Alert-Text versoehnt die Render-Zeile (nur primaere
+    -- Rolle) mit der Gesamt-Zahl ueber alle Rollen.
     v_gap := career.fn_skill_gap(v_plan, v_profile);
     v_gap_count := COALESCE((v_gap->>'gap_count')::int, 0);
     IF v_gap_count > 0 THEN
@@ -123,8 +125,8 @@ BEGIN
                                                             ELSE 'career.advisor.skill_gaps_primary' END,
                                             jsonb_build_object('role', v_ptitle, 'more', core.fn_ui_num(v_more),
                                                                'skills', jsonb_build_object('kind', 'list', 'value', v_gitems))) END,
-                              -- "weitere Ziele"-Zusatz NUR wenn eine primaere Gap-Rolle gezeigt wurde (sonst nennt der
-                              -- Hauptsatz schon die Gesamtzahl -> kein Doppelzaehlen; Cold-Eyes A1)
+                              -- "weitere Ziele"-Zusatz nur wenn eine primaere Gap-Rolle gezeigt wurde (sonst nennt der
+                              -- Hauptsatz schon die Gesamtzahl -> kein Doppelzaehlen)
                               CASE WHEN v_pgrole IS NOT NULL AND v_gap_count > v_primary
                                    THEN core.fn_ui_tpl('career.advisor.skill_gaps_other',
                                             jsonb_build_object('n', core.fn_ui_num(v_gap_count - v_primary))) END,
@@ -132,10 +134,9 @@ BEGIN
     END IF;
 
     -- ---------- (2) Digest (Quartals-Review, ungelatcht durchgereicht) ----------
-    -- P0c: v_profile ist der Owner-Per-Person-Read -> v_role lebt wieder ("Aktuelle Rolle"-Digest-Zeile restauriert).
     v_role   := v_profile->>'current_title';
     v_target := v_plan->'target_roles'->0->>'title';
-    -- Digest als Zeilen-STRUKTUR (Textkatalog Phase C, Form wie finance: tpl | null = Leerzeile); entfallene
+    -- Digest als Zeilen-Struktur (Form wie finance: tpl | null = Leerzeile); entfallene
     -- Zeilen (keine Rolle/Timeline/Luecke) bleiben draussen.
     IF v_plan IS NULL THEN
         v_lines := jsonb_build_array(core.fn_ui_tpl('career.advisor.digest_no_plan'));
@@ -144,10 +145,10 @@ BEGIN
             (1, core.fn_ui_tpl('career.advisor.digest_title')),
             (2, CASE WHEN v_role IS NOT NULL THEN core.fn_ui_tpl('career.advisor.digest_role', jsonb_build_object('role', v_role)) END),
             (3, CASE WHEN v_target IS NOT NULL THEN core.fn_ui_tpl('career.advisor.digest_target', jsonb_build_object('role', v_target)) END),
-            -- WP3: Zieldatum roh (YYYY/YYYY-MM/Tag), keine gespeicherte Jahresspanne
+            -- Zieldatum roh (YYYY/YYYY-MM/Tag), keine gespeicherte Jahresspanne
             (4, CASE WHEN career.fn_partial_date(v_plan->>'target_date') IS NOT NULL
                      THEN core.fn_ui_tpl('career.advisor.digest_target_date', jsonb_build_object('date', v_plan->>'target_date')) END),
-            -- WS-3: Skill-Luecken-Aufschluesselung (ungelatcht im Digest) + Ueberskill-Randnotiz
+            -- Skill-Luecken-Aufschluesselung (ungelatcht im Digest) + Ueberskill-Randnotiz
             (5, CASE WHEN COALESCE((v_gap->>'gap_count')::int, 0) > 0
                      THEN core.fn_ui_tpl(CASE WHEN COALESCE((v_gap->>'blocker_gap_count')::int, 0) > 0
                                               THEN 'career.advisor.digest_gaps_blockers' ELSE 'career.advisor.digest_gaps' END,

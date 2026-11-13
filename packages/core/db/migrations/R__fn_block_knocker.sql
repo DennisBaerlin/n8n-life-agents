@@ -1,11 +1,13 @@
 -- ============================================================
--- fn_block_knocker (WS-5d — unbekannten Anklopfer sperren)
---   Owner-Aktion (Telegram-Button am Knock-Notify ODER `lifeagents household block <uid>`): legt eine
+-- fn_block_knocker (unbekannten Anklopfer sperren)
+--   Owner-Aktion (Telegram-Button am Knock-Notify oder `lifeagents household block <uid>`): legt eine
 --   Sperr-Zeile in agent.access_blocks an. Idempotent (ON CONFLICT DO NOTHING -> zweites Sperren = no-op).
---   Beruehrt die Knock-Dedup (core.notification_state, source='knock') NIE -> eine nie-geklopfte uid
---   (CLI-Pfad) erzeugt KEINE synthetische Knock-Latch-Zeile (Sperrliste bleibt ehrlich; arch-challenge D2).
---   p: { telegram_user_id, reason? }
---   RUECKGABE: {ok:true, telegram_user_id, blocked:true} | {ok:false, reason}
+--   Beruehrt die Knock-Dedup (core.notification_state, source='knock') nie -> eine nie-geklopfte uid
+--   (CLI-Pfad) erzeugt keine synthetische Knock-Latch-Zeile (Sperrliste bleibt ehrlich).
+--   Eingabe p: { telegram_user_id (Pflicht, numerisch), reason? }
+--   Rueckgabe: {ok:true, telegram_user_id, blocked:true} | {ok:false, reason}; reason = "telegram_user_id is
+--   required" | "telegram_user_id must be numeric".
+--   Seiteneffekt: INSERT in agent.access_blocks.
 --   Tests: tests/db/core/test_fn_is_blocked.sql
 -- ============================================================
 CREATE OR REPLACE FUNCTION agent.fn_block_knocker(p jsonb)

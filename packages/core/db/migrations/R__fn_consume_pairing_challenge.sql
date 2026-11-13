@@ -1,29 +1,31 @@
 -- ============================================================
 -- fn_consume_pairing_challenge (Multi-User-Pairing — Einmal-Code einloesen)
---   DIE atomare Durchsetzung der Pairing-Invarianten, 1:1 vom fn_consume_import_challenge-Muster:
---   die Match-Bedingungen stehen ZUSAETZLICH im aeusseren WHERE des UPDATE (READ COMMITTED:
+--   Die atomare Durchsetzung der Pairing-Invarianten:
+--   die Match-Bedingungen stehen zusaetzlich im aeusseren WHERE des UPDATE (READ COMMITTED:
 --   ein uncorrelated Subselect wird beim EvalPlanQual-Recheck nicht neu evaluiert -> sonst
 --   koennten zwei parallele Commits beide einloesen), FOR UPDATE SKIP LOCKED verhindert das
 --   Warten auf den jeweils anderen.
---   WS-5d: eine in agent.access_blocks gesperrte uid wird VOR dem Consume abgewiesen ({ok:false,blocked}).
---   p: { chat_id, challenge, telegram_user_id, person_id }
---      telegram_user_id = LIVE-from.id des einloesenden Senders (Identitaet wird an den lebenden
---        Sender gebunden, NICHT an einen arm-Zeit-Wert — OpenClaw-CVE: numerische Identitaet).
+--   Eine in agent.access_blocks gesperrte uid wird vor dem Consume abgewiesen ({ok:false,blocked}).
+--   Eingabe p: { chat_id, challenge, telegram_user_id, person_id }
+--      telegram_user_id = live from.id des einloesenden Senders (Identitaet wird an den lebenden
+--        Sender gebunden, nicht an einen arm-Zeit-Wert — OpenClaw-CVE: numerische Identitaet); Pflicht.
 --      person_id        = bestehende family-Person, an die telegram_user_id+role gemergt werden.
---   ABLAUF:
+--   Ablauf:
 --     1) Exakt-Match-Consume (race-fest): Code exakt (getrimmt), Chat passt (chat_id IS NULL =
 --        Owner-Bootstrap matcht jeden Chat), armierte Identitaet passt (telegram_user_id IS NULL
---        ODER == Sender), nicht konsumiert, nicht abgelaufen, fail_count < 3.
---        -> bei Treffer MERGE telegram_user_id+role in die bestehende Person via den Merge-Kern
---           fn_merge_member_identity (-> fn_set_context_facts; der birth_date-Validator bleibt unberuehrtes
---           Backstop-Gesetz — die Person traegt ihren Stammsatz aus dem Onboarding bereits).
+--        oder == Sender), nicht konsumiert, nicht abgelaufen, fail_count < 3.
+--        -> bei Treffer Merge telegram_user_id+role in die bestehende Person via den Merge-Kern
+--           fn_merge_member_identity (-> fn_set_context_facts; der birth_date-Validator bleibt
+--           Backstop — die Person traegt ihren Stammsatz aus dem Onboarding bereits).
 --           Schlaegt der Merge fehl (Person fehlt / unvollstaendig), RAISE -> die ganze
 --           Transaktion (inkl. consumed_at) rollt zurueck, die Challenge bleibt offen.
 --     2) kein Exakt-Match, aber offene Challenge fuer diesen Chat -> Fehlversuch zaehlen
 --        (fail_count++); beim 3. -> consumed_at = NOW() (Challenge invalidiert, OWASP-Lockout).
 --     3) sonst {ok:false}.
---   RUECKGABE: {ok:true, role, telegram_user_id, person_id}
+--   Rueckgabe: {ok:true, role, telegram_user_id, person_id}
 --            | {ok:false, reason, fail_count, locked}   (Fehlversuch an offener Challenge)
+--            | {ok:false, blocked:true}                  (uid gesperrt)
+--            | {ok:false, reason}                        (telegram_user_id fehlt)
 --            | {ok:false}                                (kein Match / nichts offen)
 --   Invarianten-Tests: tests/db/core/test_fn_pairing_challenge.sql
 -- ============================================================
@@ -42,7 +44,7 @@ BEGIN
     END IF;
     v_tg := (p->>'telegram_user_id')::bigint;
 
-    -- WS-5d: gesperrte uid kann sich auch mit gueltigem Owner-Bootstrap-Code NICHT verbinden.
+    -- Eine gesperrte uid kann sich auch mit gueltigem Owner-Bootstrap-Code nicht verbinden.
     IF agent.fn_is_blocked(v_tg) THEN
         RETURN jsonb_build_object('ok', false, 'blocked', true);
     END IF;
@@ -65,7 +67,7 @@ BEGIN
             RAISE EXCEPTION 'pairing consume: person_id is required to attach the identity';
         END IF;
         -- Zwei-Stufen-Bootstrap: telegram_user_id + role in die bestehende Person mergen ueber den
-        -- geteilten Kern (as_of-Bewahrung + Doppel-Bind-Backstop dort, DRY mit fn_confirm_pairing).
+        -- geteilten Kern (as_of-Bewahrung + Doppel-Bind-Backstop dort, derselbe wie fn_confirm_pairing).
         -- Beim Owner-Bootstrap ist die Zielperson das unverknuepfte Skelett (telegram_user_id NULL) ->
         -- der Kern merged sofort. Schlaegt der Merge fehl (Person fehlt / unerwartet schon gepairt),
         -- RAISE -> Rollback der Consume (consumed_at), die Challenge bleibt offen.
@@ -77,9 +79,9 @@ BEGIN
     END IF;
 
     -- (2) Fehlversuch an einer offenen Challenge dieses Chats zaehlen; 3. -> invalidieren.
-    --     chat_id IS NULL (Owner-Bootstrap-Challenge matcht JEDEN Chat) MUSS hier ebenfalls greifen —
+    --     chat_id IS NULL (Owner-Bootstrap-Challenge matcht jeden Chat) muss hier ebenfalls greifen —
     --     dieselbe Bindung wie der Exakt-Match oben (Schritt 1), sonst zaehlt ein Owner-Code-Bruteforce
-    --     NIE einen Fehlversuch und der OWASP-Lockout liefe leer.
+    --     nie einen Fehlversuch und der OWASP-Lockout liefe leer.
     UPDATE agent.pairing_state
     SET fail_count  = fail_count + 1,
         consumed_at = CASE WHEN fail_count + 1 >= 3 THEN NOW() ELSE consumed_at END
@@ -100,7 +102,7 @@ BEGIN
 END;
 $$;
 
--- Backup-Pfad-fn: EXECUTE-REVOKE fuer die Agent-Leserollen (Pairing laeuft ueber die Haupt-Credential).
+-- EXECUTE-REVOKE fuer die Agent-Leserollen (Pairing laeuft ueber die Haupt-Credential).
 REVOKE ALL ON FUNCTION agent.fn_consume_pairing_challenge(jsonb) FROM public;
 DO $$ BEGIN
     IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'context_ro') THEN

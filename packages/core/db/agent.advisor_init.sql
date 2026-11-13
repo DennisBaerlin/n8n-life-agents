@@ -1,34 +1,34 @@
 -- ============================================================
--- Advisor — Schema fuer Berater-Agenten (Phase 1: finance.advisor)
+-- Advisor — Schema fuer Berater-Agenten
 -- Zweck:   Persistenz der per Interview erstellten Plaene (Draft -> Publish -> Versionen).
---          DOMAENEN-NEUTRAL by design (Owner-Entscheidung, Greenfield-gratis): die Tabelle heisst
---          advisor_plans mit `domain`-Spalte, NICHT finance_advisor_plans — ein spaeterer
---          Career-Advisor nutzt dieselbe Tabelle/Functions mit domain='career', ohne Retrofit.
+--          Domaenen-neutral: die Tabelle heisst advisor_plans mit `domain`-Spalte (nicht
+--          finance_advisor_plans); ein weiterer Berater nutzt dieselbe Tabelle/Functions mit
+--          z. B. domain='career'.
 --
 -- Lifecycle einer Plan-Zeile:
 --   draft       -> in Arbeit; fn_advisor_save_section upsertet Sektionen in interview_state
 --   active      -> publiziert; fn_advisor_publish_plan persistiert plan_md + upsertet das
---                  Domänen-Plan-Doc (finance -> 'financial_planning', WS-B2c; agent.core_contexts,
+--                  Domaenen-Plan-Doc (finance -> 'financial_planning'; agent.core_contexts,
 --                  lazy, global, managed_by='agent' [typisierte Spalte], package=Domain)
 --   superseded  -> von einer neueren Version abgeloest (Versions-Audit, nie geloescht)
 --
--- PERSON-SCOPE (P0c): Spalte person_id macht den Plan-Schluessel pro PERSON. NULL = Haushalt
---   (Finance-Konvention owner_person_id NULL=Haushalt) -> finance/financial_planning bleibt EIN
+-- Person-Scope: Spalte person_id macht den Plan-Schluessel pro Person. NULL = Haushalt
+--   (Finance-Konvention owner_person_id NULL=Haushalt) -> finance/financial_planning ist ein
 --   Haushalts-Plan (person_id NULL). per_user-Domaenen (career/career_planning, scope-Registry
---   core.context_scopes) tragen die reale person_id (aus chat_id via fn_resolve_sender, NIE LLM).
+--   core.context_scopes) tragen die reale person_id (aus chat_id via fn_resolve_sender, nie LLM).
 --   Die DB-Gesetze gelten je (domain, person_id); NULLS NOT DISTINCT haelt sie auch fuer die
---   household-NULL-Zeilen (sonst kollidieren zwei NULLs NICHT -> stiller Verlust des "ein-active").
+--   household-NULL-Zeilen (sonst kollidieren zwei NULLs nicht -> stiller Verlust des "ein-active").
 --   FK person_id -> agent.persons(person_id) ON DELETE RESTRICT haengt core:V014 an (advisor_init
---   laeuft VOR persons_init = reihenfolge-tolerante Inits; die V-Phase laeuft nach allen Inits).
+--   laeuft vor persons_init = reihenfolge-tolerante Inits; die V-Phase laeuft nach allen Inits).
 --
 -- Invarianten (DB-Gesetz, nicht Prompt):
---   * genau EIN aktiver Plan pro (Domain, Person)  (Partial-UNIQUE advisor_plans_one_active_per_domain)
---   * genau EIN Draft pro (Domain, Person)          (Partial-UNIQUE advisor_plans_one_draft_per_domain;
+--   * genau ein aktiver Plan pro (Domain, Person)  (Partial-UNIQUE advisor_plans_one_active_per_domain)
+--   * genau ein Draft pro (Domain, Person)          (Partial-UNIQUE advisor_plans_one_draft_per_domain;
 --                                          fn_advisor_save_section zielt immer auf "den" Draft)
 --   * (domain, person_id, version) eindeutig         (UNIQUE — Versions-Audit luegt nie)
 --
--- section_key ist FREIER text, KEIN ENUM: der Sektionskatalog (DIN-77230-inspiriert) ist
--- Prompt-DATEN des jeweiligen Advisors, nicht Schema — neue Domaene = neuer Katalog, kein DDL.
+-- section_key ist freier text, kein ENUM: der Sektionskatalog (DIN-77230-inspiriert) ist
+-- Prompt-Daten des jeweiligen Advisors, nicht Schema — neue Domaene = neuer Katalog, kein DDL.
 --
 -- Usage:   db_apply.ps1 -File packages\core\db\agent.advisor_init.sql
 -- ============================================================
@@ -41,8 +41,8 @@ CREATE SCHEMA IF NOT EXISTS agent;
 
 CREATE TABLE IF NOT EXISTS agent.advisor_plans (
     id              serial PRIMARY KEY,
-    domain          text NOT NULL,         -- Pflicht (Phase B/core:V021: kein 'finance'-Default — Core kennt kein Paket)
-    person_id       text,                  -- P0c: NULL = Haushalt (finance); reale person_id = per_user (career). FK -> agent.persons via core:V014.
+    domain          text NOT NULL,         -- Pflicht, kein Default (Core kennt kein Paket)
+    person_id       text,                  -- NULL = Haushalt (finance); reale person_id = per_user (career). FK -> agent.persons via core:V014.
     plan_name       text NOT NULL,
     status          text NOT NULL DEFAULT 'draft'
                         CHECK (status IN ('draft', 'active', 'superseded')),
@@ -72,9 +72,9 @@ CREATE UNIQUE INDEX IF NOT EXISTS plan_reminder_declines_key
     ON agent.plan_reminder_declines (domain, person_id, lower(btrim(label))) NULLS NOT DISTINCT;
 
 -- Invarianten (siehe Kopf-Kommentar). NULLS NOT DISTINCT (PG15+): zwei household-NULL-Zeilen
--- KOLLIDIEREN -> "genau ein active/draft pro (domain, person_id)" haelt auch fuer person_id=NULL
+-- kollidieren -> "genau ein active/draft pro (domain, person_id)" haelt auch fuer person_id=NULL
 -- (sonst behandelt der Default NULLS DISTINCT zwei NULLs als verschieden -> stiller Verlust).
--- (Auf einer BESTANDS-DB sind diese Namen schon mit der alten (domain)-Form belegt -> IF NOT EXISTS
+-- (Auf einer Bestands-DB sind diese Namen schon mit der (domain)-Form belegt -> IF NOT EXISTS
 --  ueberspringt sie hier; core:V014 droppt+recreated sie auf die (domain, person_id)-Form.)
 CREATE UNIQUE INDEX IF NOT EXISTS advisor_plans_one_active_per_domain
     ON agent.advisor_plans (domain, person_id) NULLS NOT DISTINCT WHERE status = 'active';
@@ -92,7 +92,7 @@ DO $$ BEGIN
 END $$;
 
 -- ============================================================
--- TRIGGER: updated_at pflegen (gemeinsamer Helper aus finance.init.sql;
+-- TRIGGER: updated_at pflegen (gemeinsamer Helper agent.touch_updated_at, auch in guide_init/monitor_init;
 -- hier idempotent mit-definiert, damit advisor_init standalone anwendbar bleibt)
 -- ============================================================
 
@@ -104,16 +104,16 @@ CREATE TRIGGER trg_advisor_plans_touch
     BEFORE UPDATE ON agent.advisor_plans
     FOR EACH ROW EXECUTE FUNCTION agent.touch_updated_at();
 
--- Plan teilen (2026-10-28): Provenienz der Version (Ausnahme (c) "Provenienz/Snapshot", nicht ableitbar): die vom
+-- Plan teilen: Provenienz der Version (Ausnahme (c) "Provenienz/Snapshot", nicht ableitbar): die vom
 -- Berater formulierte Aenderungs-Zusammenfassung beim Publish + die Sprache des veroeffentlichenden Owners (Text in
 -- Originalsprache, nie uebersetzt; die Mitglieder-Nachricht zeigt ihn nur bei gleicher Sprache).
--- Gesetzt NUR von agent.fn_advisor_publish_plan.
+-- Gesetzt nur von agent.fn_advisor_publish_plan.
 ALTER TABLE agent.advisor_plans ADD COLUMN IF NOT EXISTS change_summary text;
 ALTER TABLE agent.advisor_plans ADD COLUMN IF NOT EXISTS change_summary_lang text;
 
 -- Gesamtcheck vor dem Veroeffentlichen (Provenienz der Version, Ausnahme (c)): die Funde, die der Berater mit dem Nutzer
 -- geklaert hat, je {text, outcome resolved|deferred|accepted}, und die Zahl der Durchgaenge. Beide gesetzt oder beide NULL
--- (NULL = Version ohne Gesamtcheck). Gesetzt NUR von agent.fn_advisor_publish_plan, die auch die
+-- (NULL = Version ohne Gesamtcheck). Gesetzt nur von agent.fn_advisor_publish_plan, die auch die
 -- Elementform prueft; der CHECK ist der Backstop fuer die Form.
 ALTER TABLE agent.advisor_plans ADD COLUMN IF NOT EXISTS check_findings jsonb;
 ALTER TABLE agent.advisor_plans ADD COLUMN IF NOT EXISTS check_passes int;
@@ -138,8 +138,8 @@ CREATE TABLE IF NOT EXISTS agent.advisor_plan_wishes (
     created_at timestamptz NOT NULL DEFAULT now()
 );
 
--- Folge-Bindung nach einem Knopf-Tipp (arch-challenge 2026-10-28, Muster "aktiver Handler je Chat" wie Rasa active_loop /
--- PTB ConversationHandler): ein Knopf startet einen Agenten am Router vorbei; die NAECHSTE Text-Nachricht dieses Chats
+-- Folge-Bindung nach einem Knopf-Tipp (Muster "aktiver Handler je Chat" wie Rasa active_loop /
+-- PTB ConversationHandler): ein Knopf startet einen Agenten am Router vorbei; die naechste Text-Nachricht dieses Chats
 -- bekommt den Router-Hinweis followup_agent (einmalig, TTL beim Lesen). Eine Zeile je Chat, ein neuer Knopf
 -- ueberschreibt (last write wins). Schreiber agent.fn_set_dispatch_followup, Leser+Loescher agent.fn_take_dispatch_followup.
 -- Bei uns anders: einmalig statt bis zum Handoff (ab dem ersten gerouteten Folge-Turn traegt das Router-Gedaechtnis die
@@ -208,19 +208,19 @@ CREATE TRIGGER trg_handoff_tasks_final
     FOR EACH ROW EXECUTE FUNCTION agent.fn_handoff_tasks_final_guard();
 
 -- ============================================================
--- LESE-ZUGRIFF auf advisor_plans (Paket-Isolation, O1): advisor_plans bleibt in `agent`
--- (Shared-Infra fuer einen kuenftigen Career-Advisor). Der Advisor-Agent laeuft unter der
--- ENGEN Paket-Leserolle finance_ro (schema-scoped auf finance) → er erreicht agent.advisor_plans
--- NICHT mehr direkt, sondern NUR ueber die publizierte SECURITY-DEFINER-Read-fn
+-- Lesezugriff auf advisor_plans (Paket-Isolation): advisor_plans liegt in `agent`
+-- (Shared-Infra fuer weitere Berater). Der Advisor-Agent laeuft unter der
+-- engen Paket-Leserolle finance_ro (schema-scoped auf finance) → er erreicht agent.advisor_plans
+-- nicht direkt, sondern nur ueber die publizierte SECURITY-DEFINER-Read-fn
 -- core.fn_advisor_read_plan(text) (EXECUTE-GRANT in core.fn_provision_package_roles). Darum hier
--- KEIN direkter GRANT SELECT … TO finance_ro mehr (das war die Vor-Isolations-Form). core_ro liest
+-- kein direkter GRANT SELECT … TO finance_ro. core_ro liest
 -- advisor_plans nicht (nicht auf der Erlaubnisliste in util_create_core_ro); die RLS unten bleibt als zweiter
 -- Riegel fuer die Personen-Plaene stehen; den Schreibpfad faehrt der Owner (fn_advisor_save_section/publish_plan);
 -- die Core-Advisor-Engine (core.cron_review via core.fn_advisor_review_evaluate) liest den Plan ueber das
 -- DEFINER-Fenster.
 -- ============================================================
 
--- ROW-LEVEL-SECURITY (Owner-Entscheid 2026-10-24 "strikt privat"): Personen-Plaene (person_id NOT NULL, per_user-
+-- Row-Level-Security ("strikt privat"): Personen-Plaene (person_id NOT NULL, per_user-
 -- Domaenen wie career) sind fuer den Frei-SQL-Pfad core_ro unsichtbar; die Person liest ihren Plan nur ueber das
 -- gebundene Fenster core.fn_advisor_read_plan. Muster + Begruendung (current_user statt TO core_ro, Owner/DEFINER
 -- umgehen RLS, VIEW-Falle) wie agent.core_contexts in agent.core_init.sql.

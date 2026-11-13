@@ -9,7 +9,7 @@
 --   Ein Key zaehlt nur, wenn er mit '<pkg>.' beginnt und im Katalog (core.ui_texts, Sprache der Person -> en) steht und
 --   der Text keinen {platzhalter} traegt; sonst und bei jedem Fehler der Paket-fn weiter zum naechsten Paket.
 --   Ohne Treffer: core.next_step.example_neutral. Ohne Person (NULL) -> NULL.
---   RUECKGABE text in der Sprache der Person (agent.fn_person_lang). STABLE, SECURITY DEFINER, search_path gepinnt.
+--   Rueckgabe text in der Sprache der Person (agent.fn_person_lang). STABLE, SECURITY DEFINER, search_path gepinnt.
 --   Tests: tests/db/core/test_fn_get_next_step.sql
 -- ============================================================
 CREATE OR REPLACE FUNCTION core.fn_get_next_step_example(p_person_id text, p_order jsonb)

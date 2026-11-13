@@ -1,18 +1,20 @@
 -- ============================================================
--- fn_check_household_invite (WS-5a — Einladungs-Validierung, READ-ONLY, kein Write)
---   Pre-Gate-Pruefung des tool_invite_household_member-Tools (agent.guide): laeuft VOR dem HITL-Gate
---   und vor jedem pairing_state-Write (Plan M2). Zwei deterministische Pruefungen:
---     1. Owner-Gate: nur der GEPAIRTE Haushalts-Owner darf einladen. Die Sender-Identitaet kommt
---        DETERMINISTISCH aus der Telegram-chat_id (Privatchat: chat.id == from.id), NIE aus $fromAI.
+-- fn_check_household_invite (Einladungs-Validierung, READ, kein Write)
+--   Pre-Gate-Pruefung des tool_invite_household_member-Tools (agent.guide): laeuft vor dem HITL-Gate
+--   und vor jedem pairing_state-Write. Deterministische Pruefungen:
+--     1. Owner-Gate: nur der gepairte Haushalts-Owner darf einladen. Die Sender-Identitaet kommt
+--        aus der Telegram-chat_id (Privatchat: chat.id == from.id), nie aus $fromAI.
 --        fn_resolve_sender(uid).role muss 'owner' sein.
 --     1b. Bot-Name bekannt (core.fn_app_bot_username), sonst keine Einladung.
---     2. Ziel-Person: existiert genau EINE family-Person zum Namen (gleiche Match-Logik wie
---        core.fn_resolve_person: first/last/voll/Alias, case-insensitiv), ist sie KEIN Owner und
---        noch UNGEPAIRT (keine telegram_user_id) -> einladbar.
---   p: { chat_id (Telegram-chat des Aufrufers), person_name }
---   RUECKGABE: {ok:true, person_id, role, full_name} | {ok:false, reason}
---   Wird auch von fn_invite_household_member (Write-Pfad) als gemeinsamer Validierungs-Kern gerufen
---   (DRY: die Logik lebt EINMAL hier). Lesepfad unter der Haupt-Credential (agent direkt erreichbar).
+--     2. Ziel-Person: existiert genau eine family-Person zum Namen (gleiche Match-Logik wie
+--        core.fn_resolve_person: first/last/voll/Alias, case-insensitiv), ist sie kein Owner und
+--        noch ungepairt (keine telegram_user_id) -> einladbar.
+--   Eingabe p: { chat_id (Telegram-chat des Aufrufers, numerisch), person_name }, beide Pflicht.
+--   Rueckgabe: {ok:true, person_id, role, full_name} | {ok:false, reason}; reason u. a. "chat_id is required",
+--   "only the household owner can issue member invitations", "person_name is required", Name unbekannt/mehrdeutig,
+--   "the owner cannot be invited as a member", "... is already paired to a Telegram account".
+--   Wird auch von fn_invite_household_member (Write-Pfad) als gemeinsamer Validierungs-Kern gerufen.
+--   Lesepfad unter der Haupt-Credential (agent direkt erreichbar).
 --   Invarianten-Tests: tests/db/core/test_fn_invite_household_member.sql
 -- ============================================================
 CREATE OR REPLACE FUNCTION agent.fn_check_household_invite(p jsonb)
@@ -37,14 +39,14 @@ BEGIN
         RETURN jsonb_build_object('ok', false, 'reason', 'chat_id must be numeric');
     END;
 
-    -- Owner-Gate (deterministisch, NICHT vom LLM entschieden).
+    -- Owner-Gate (deterministisch, nicht vom LLM entschieden).
     v_sender := agent.fn_resolve_sender(v_uid);
     IF (v_sender->>'found')::boolean IS DISTINCT FROM true OR v_sender->>'role' <> 'owner' THEN
         RETURN jsonb_build_object('ok', false,
             'reason', 'only the household owner can issue member invitations');
     END IF;
 
-    -- Ohne echten Bot-Namen wuerde der Link auf einen fremden Bot zeigen (getMe scheiterte bisher).
+    -- Ohne echten Bot-Namen wuerde der Link auf einen fremden Bot zeigen.
     IF core.fn_app_bot_username() IS NULL THEN
         RETURN jsonb_build_object('ok', false,
             'reason', 'the bot name is not known yet, so no invitation link can be made. Tell the owner to run lifeagents update and try again.');

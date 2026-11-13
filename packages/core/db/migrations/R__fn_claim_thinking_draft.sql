@@ -1,19 +1,20 @@
 -- ============================================================
 -- fn_claim_thinking_draft ("Bot denkt nach"-Schalter)
---   core.sub_show_thinking fragt sie VOR jedem Draft. Reihenfolge fest:
+--   core.sub_show_thinking fragt sie vor jedem Draft. Reihenfolge fest:
 --     1. keine/abgelaufene Zeile bzw. keine execution_id  -> 'stop' (auch bei offener Karte)
 --     2. offene Bestaetigungskarte im Chat der Zeile       -> 'pause' (keine Punkte ueber der Karte); verlaengert
 --        (agent.hitl_pending: released_at NULL, nicht abgelaufen)   expires_at auf mind. now()+5 min (begrenzt,
 --                                                            weil auch die Karte ablaeuft) -> nach dem Tipp weiter
 --     3. sonst                                            -> 'show' und drafting_until = clock_timestamp()+1 s
---   SPERR-REIHENFOLGE (READ COMMITTED, jedes Statement eigener Snapshot): ZUERST die eigene Zeile FOR UPDATE, DANN
+--   Sperr-Reihenfolge (READ COMMITTED, jedes Statement eigener Snapshot): zuerst die eigene Zeile FOR UPDATE, dann
 --   die Karte pruefen. fn_delete_thinking_lease und fn_create_hitl_pending sperren dieselbe Zeile:
---     - sperrt der Claim zuerst, sehen sie danach drafting_until und warten das Fenster ab (Draft landet VOR der
+--     - sperrt der Claim zuerst, sehen sie danach drafting_until und warten das Fenster ab (Draft landet vor der
 --       Antwort bzw. Karte);
 --     - sperren sie zuerst, findet der Claim danach keine Zeile ('stop') bzw. sieht die Karte ('pause').
 --   Nie Karte-pruefen-dann-sperren (dazwischen koennte die Karte committen).
---   p: { execution_id }
---   RUECKGABE: {ok:true, state: 'show'|'pause'|'stop'}
+--   Eingabe p: { execution_id }
+--   Rueckgabe: {ok:true, state: 'show'|'pause'|'stop'}
+--   Seiteneffekt: setzt agent.thinking_lease.drafting_until bzw. verlaengert expires_at (pause).
 --   Tests: tests/db/core/test_fn_thinking_lease.sql
 -- ============================================================
 CREATE OR REPLACE FUNCTION agent.fn_claim_thinking_draft(p jsonb)

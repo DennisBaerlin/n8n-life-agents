@@ -1,14 +1,14 @@
 -- ============================================================
--- estate.fn_set_provider_contract (ATOMIC WRITE — WS-2, partielles UPDATE)
+-- estate.fn_set_provider_contract (ATOMIC WRITE — partielles UPDATE)
 --   Aendert einen bestehenden Nicht-finance-Vertrag ("nicht gesendet = unveraendert",
---   COALESCE-Idiom wie finance.fn_set_real_estate). Die ID loest das TOOL vor dem Gate via
+--   COALESCE-Idiom wie finance.fn_set_real_estate). Die ID loest das Tool vor dem Gate via
 --   estate.fn_resolve_provider_contract auf (0/>1 -> Tool-Rueckfrage); not-found hier =
---   echte Ausnahme (RAISE — der Resolve haette greifen muessen).
+--   echte Ausnahme (RAISE 'Provider contract <id> not found.' — der Resolve haette greifen muessen).
 --   DB-Backstop: core.fn_check_write_permission('adults_only', chat_id) — Kind -> {ok:false}.
---   Eingabe jsonb: chat_id, provider_contract_id, new_provider, new_category, customer_no,
+--   Eingabe jsonb: chat_id, provider_contract_id (Pflicht), new_provider, new_category, customer_no,
 --     contract_no, contact_info, death_action (cancel|transfer|keep), notes.
---   RUECKGABE: {ok:true, provider_contract_id} | {ok:false, reason} (korrigierbar).
---   Anwenden via: db_apply.ps1 -File packages\estate\db\migrations\R__fn_set_provider_contract.sql
+--   Rueckgabe: {ok:true, provider_contract_id} | {ok:false, reason} (korrigierbar); reasons: 'Write rejected (<perm>): …',
+--   'invalid new_category …', 'invalid death_action …'.
 -- ============================================================
 CREATE OR REPLACE FUNCTION estate.fn_set_provider_contract(p jsonb)
 RETURNS jsonb LANGUAGE plpgsql AS $$

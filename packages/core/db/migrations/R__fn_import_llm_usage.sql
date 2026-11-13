@@ -1,18 +1,21 @@
 -- ============================================================
--- core.fn_import_llm_usage(p) — Gateway-Mitschrift (usage.jsonl, GET /__usage) nach core.llm_usage einspielen
---   p: { rows: [ {id, t, wf, model, keepalive, status, input_tokens, cache_creation_input_tokens,
+-- fn_import_llm_usage (WRITE)
+--   Spielt die Gateway-Mitschrift (usage.jsonl, GET /__usage) in core.llm_usage ein.
+--   p: { rows (Pflicht, Array): [ {id, t, wf, model, keepalive, status, input_tokens, cache_creation_input_tokens,
 --                 ephemeral_1h_input_tokens, cache_read_input_tokens, output_tokens, web_search_requests}, ... ] }
+--   Pflicht je Zeile sind id und t; fehlende Zaehler werden 0.
 --   Idempotent ueber id (ON CONFLICT DO NOTHING): die Abrufe ueberlappen bewusst um 10 Min (Uhr-Spruenge).
---   Ungueltige Zeilen werden uebersprungen und gezaehlt — nie RAISE, eine kaputte Zeile darf weder den Report noch die
---   anderen Zeilen derselben Seite blockieren: Vorfilter (id-Form, ISO-Zeitstempel, Zaehler ganze Zahlen >= 0, Websuche
+--   Ungueltige Zeilen werden uebersprungen und gezaehlt, nie RAISE: eine kaputte Zeile darf weder den Report noch die
+--   anderen Zeilen derselben Seite blockieren. Vorfilter (id-Form, ISO-Zeitstempel, Zaehler ganze Zahlen >= 0, Websuche
 --   hoechstens 9 Stellen), dann je Zeile ein eigener Block, der auch unmoegliche Daten (30. Februar) abfaengt. Zeilen mehr
 --   als einen Tag in der Zukunft (Gateway-Uhr falsch, z. B. vor NTP) werden verworfen. Ungueltiger Workflow-Name -> wf NULL.
---   Raeumt Zeilen aelter als 13 Monate weg (inline, kein Cron).
 --   rows kein Array -> RAISE (Bau-Fehler des Aufrufers; der /kosten-Sub ist fail-open).
---   RUECKGABE: {ok:true, imported, skipped, after} — skipped = ungueltig/Zukunft (schon vorhandene ids zaehlen nicht); after = 13-stellige Epoch-ms der juengsten Zeile bis jetzt minus
---   10 Min (Cursor fuer den naechsten GET /__usage?after=; eine Zukunfts-Zeile kann ihn nie festnageln), NULL bei leerer
---   Tabelle. Ein Aufruf mit rows:[] liefert nur den Cursor.
---   Laeuft unter der n8n-Schreib-Credential (INVOKER, Muster fn_record_ingress_message).
+--   RUECKGABE: {ok:true, imported, skipped, after}. skipped = ungueltig/Zukunft (schon vorhandene ids zaehlen nicht).
+--   after = 13-stellige Epoch-ms der juengsten Zeile bis jetzt minus 10 Min (Cursor fuer den naechsten
+--   GET /__usage?after=; eine Zukunfts-Zeile kann ihn nie festnageln), NULL bei leerer Tabelle. Ein Aufruf mit rows:[]
+--   liefert nur den Cursor.
+--   Seiteneffekt: raeumt Zeilen aelter als 13 Monate weg (inline, kein Cron).
+--   Laeuft unter der n8n-Schreib-Credential (SECURITY INVOKER).
 --   Tests: tests/db/core/test_fn_import_llm_usage.sql
 -- ============================================================
 CREATE OR REPLACE FUNCTION core.fn_import_llm_usage(p jsonb)

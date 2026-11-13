@@ -1,30 +1,30 @@
 -- ============================================================
--- estate.fn_render_register_body (WS-5 — der GETEILTE Register-Body von Overview UND Notfallmappe)
+-- estate.fn_render_register_body (READ — der geteilte Register-Body von Overview und Notfallmappe)
 --   Baut render-at-fetch den vollstaendigen Haushalts-Notfall-Register-Ueberblick aus den estate-
---   Register-Tabellen (Vorsorge-Dokumente, Vertraege, digitaler Nachlass OHNE Passwoerter, Kontakte,
---   Stammdaten, Bestattungswuensche, Fundstellen, Sonderfall-Stubs, System-Steckbrief) UND konsumiert
---   die WS-0b-finance-Lese-fns (fn_insurance/account/liability_register) DOPPEL-GUARDET
+--   Register-Tabellen (Vorsorge-Dokumente, Vertraege, digitaler Nachlass ohne Passwoerter, Kontakte,
+--   Stammdaten, Bestattungswuensche, Fundstellen, Sonderfall-Stubs, System-Steckbrief) und konsumiert
+--   die finance-Lese-fns (fn_insurance/account/liability_register) doppel-guardet
 --   (core.fn_package_active('finance') + to_regprocedure je Call-Site, docs/package-contract.md §4.2
 --   Oberflaeche A) -> finance absent/fn fehlt = ehrliche Absenz-Zeile statt stiller Auslassung, nie
 --   ein Crash.
---   RULE OF THREE (Plan-Critique/genericity): dies ist die EINE Register-Rendering-Logik. Zwei Konsumenten
---   rufen sie, statt sie zu duplizieren -> strukturell drift-frei:
+--   Dies ist die eine Register-Rendering-Logik. Zwei Konsumenten rufen sie, statt sie zu duplizieren ->
+--   strukturell drift-frei:
 --     * estate.fn_render_estate_overview(text) = duenner Wrapper -> fn_render_register_body(false, 'de').
 --     * estate.fn_render_emergency_binder(jsonb) = Druck-Header + fn_render_register_body(mask, <Sprache>).
---   p_mask (WS-5 Maskierung): TRUE maskiert die sensibelsten Kennnummern (Steuer-ID + RV-Nr.) als
+--   Eingabe p_mask: TRUE maskiert die sensibelsten Kennnummern (Steuer-ID + RV-Nr.) als
 --     '••••••' — fuer eine weitergabe-taugliche Notfallmappe an Dritte; Default-Konsum (Overview,
 --     vollstaendige Binder) = false (der Partner braucht die Nummern fuer die Aemter).
---   p_lang (Textkatalog Phase C): Sprache der Ueberschriften/Bezeichnungen (Katalog estate.register.*,
+--   Eingabe p_lang: Sprache der Ueberschriften/Bezeichnungen (Katalog estate.register.*,
 --     estate.gap.*; Fallback lang -> en -> Key). Gespeicherte Eintraege (Namen, Fundorte, Rechtsbegriffe der
 --     directive_types) bleiben in Originalsprache. Der Binder rendert in der Sprache des Anfragenden, die
---     Overview (Modell-Kontext) fest 'de' (Verhalten des Agenten unveraendert).
---   SECURITY INVOKER + STABLE: laeuft in BEIDEN Aufrufern im DEFINER-Superuser-Kontext (Overview via
---     core.fn_fetch_context-DEFINER; Binder ist selbst DEFINER) -> sieht finance + core.ui_texts. KEIN eigenes
---     SET search_path -> erbt den Aufrufer-Pfad; ALLE Referenzen schema-qualifiziert (der Overview-DEFINER-Pin
---     hat KEIN estate/finance im Pfad -> Schema-Qualifikation ist Pflicht, empirisch geprueft).
---   RAISE-FREI; leeres Register -> ehrlicher Leer-Hinweis (nie NULL). Gap-Marker: NULL rendert als 'OFFEN'.
---   RUECKGABE: mehrzeiliger Register-Text (Schicht-5-Registerdaten; nie NULL).
---   Anwenden via: db_apply.ps1 -File packages\estate\db\migrations\R__fn_render_register_body.sql
+--     Overview (Modell-Kontext) fest 'de'.
+--   SECURITY INVOKER + STABLE: laeuft in beiden Aufrufern im DEFINER-Superuser-Kontext (Overview via
+--     core.fn_fetch_context-DEFINER; Binder ist selbst DEFINER) -> sieht finance + core.ui_texts. Kein eigenes
+--     SET search_path -> erbt den Aufrufer-Pfad; alle Referenzen schema-qualifiziert (der Overview-DEFINER-Pin
+--     hat kein estate/finance im Pfad -> Schema-Qualifikation ist Pflicht).
+--   RAISE-frei; leeres Register -> ehrlicher Leer-Hinweis (nie NULL). Gap-Marker: NULL rendert als Katalogtext
+--   estate.register.open.
+--   Rueckgabe: mehrzeiliger Register-Text (nie NULL).
 -- ============================================================
 CREATE OR REPLACE FUNCTION estate.fn_render_register_body(p_mask boolean, p_lang text)
 RETURNS text LANGUAGE plpgsql STABLE AS $$
@@ -37,7 +37,7 @@ DECLARE
     v_j        JSONB;
     v_e        JSONB;
     r          RECORD;
-    -- EIN Katalog-Read fuer alle Bezeichnungen (Keys vollstaendig als Literale, locale_lint prueft sie)
+    -- Ein Katalog-Read fuer alle Bezeichnungen (Keys vollstaendig als Literale, locale_lint prueft sie)
     t          JSONB := core.fn_ui_texts(p_lang, ARRAY[
         'estate.register.empty', 'estate.register.household', 'estate.register.directives',
         'estate.register.status_exists', 'estate.register.status_planned', 'estate.register.status_not_existing',
@@ -131,7 +131,7 @@ BEGIN
         v_blocks := v_blocks || ((t->>'estate.register.contracts') || ':' || E'\n- ' || array_to_string(v_lines, E'\n- '));
     END IF;
 
-    -- ---------- Digitaler Nachlass (NIE Passwoerter — nur Fundort-Verweise) ----------
+    -- ---------- Digitaler Nachlass (nie Passwoerter — nur Fundort-Verweise) ----------
     v_lines := '{}';
     FOR r IN
         SELECT COALESCE(p.full_name, a.owner_person_id) AS who,
@@ -176,7 +176,7 @@ BEGIN
         v_blocks := v_blocks || ((t->>'estate.register.contacts') || ':' || E'\n- ' || array_to_string(v_lines, E'\n- '));
     END IF;
 
-    -- ---------- Amtliche Stammdaten je Person (WS-5: Steuer-ID + RV-Nr. bei p_mask maskiert) ----------
+    -- ---------- Amtliche Stammdaten je Person (Steuer-ID + RV-Nr. bei p_mask maskiert) ----------
     v_lines := '{}';
     FOR r IN
         SELECT COALESCE(p.full_name, pr.person_id) AS who,
@@ -245,7 +245,7 @@ BEGIN
         v_blocks := v_blocks || ((t->>'estate.register.storage') || ':' || E'\n- ' || array_to_string(v_lines, E'\n- '));
     END IF;
 
-    -- ---------- Sonderfaelle (Stubs — erkennen + ehrlich verweisen, Owner-Entscheid 7) ----------
+    -- ---------- Sonderfaelle (Stubs — erkennen + ehrlich verweisen) ----------
     v_lines := '{}';
     FOR r IN
         SELECT COALESCE(p.full_name, s.owner_person_id) AS who, s.asset_type, s.description
@@ -264,9 +264,9 @@ BEGIN
         v_blocks := v_blocks || ((t->>'estate.register.special') || ':' || E'\n- ' || array_to_string(v_lines, E'\n- '));
     END IF;
 
-    -- ---------- Finanz-Register (finance-Paket, §4.2 Oberflaeche A — DOPPEL-GUARD je Call-Site) ----------
+    -- ---------- Finanz-Register (finance-Paket, §4.2 Oberflaeche A — Doppel-Guard je Call-Site) ----------
     -- Stammdaten leben bei finance (Grenzregel); hier nur die nachlass-relevante Lese-Sicht. Absenz
-    -- (Paket inaktiv ODER Provider-fn fehlt) wird SICHTBAR gemeldet, nie still ausgelassen.
+    -- (Paket inaktiv oder Provider-fn fehlt) wird sichtbar gemeldet, nie still ausgelassen.
     v_fin_on := core.fn_package_active('finance');
     IF v_fin_on THEN
         v_fin := '{}';
@@ -320,7 +320,7 @@ BEGIN
                      ELSE E'\n- ' || array_to_string(v_lines, E'\n- ') END);
         END IF;
         IF array_length(v_fin, 1) IS NULL THEN
-            -- Paket aktiv, aber KEINE Provider-fn auffindbar (Drift) -> wie Absenz sichtbar melden.
+            -- Paket aktiv, aber keine Provider-fn auffindbar (Drift) -> wie Absenz sichtbar melden.
             v_blocks := v_blocks || (t->>'estate.register.fin_unavailable');
         ELSE
             v_blocks := v_blocks || ((t->>'estate.register.fin_heading') || ':' || E'\n' || array_to_string(v_fin, E'\n'));
@@ -329,9 +329,9 @@ BEGIN
         v_blocks := v_blocks || (t->>'estate.register.fin_absent');
     END IF;
 
-    -- ---------- System-Steckbrief & Notfall-Zugang (WS-5 — DR-Info fuer den Hinterbliebenen) ----------
+    -- ---------- System-Steckbrief & Notfall-Zugang (DR-Info fuer den Hinterbliebenen) ----------
     -- Household-Singleton (0/1 Zeile). Nur Fundort-Verweise (nie Passwoerter/Schluessel). Der
-    -- backup_key-Fundort deckt den Fall "beide Partner betroffen / System aus" (Owner-Entscheid 9).
+    -- backup_key-Fundort deckt den Fall "beide Partner betroffen / System aus".
     v_lines := '{}';
     FOR r IN SELECT backup_key_location, system_location, admin_access, restore_hint, notes
              FROM estate.system_profile
@@ -346,8 +346,8 @@ BEGIN
         v_blocks := v_blocks || ((t->>'estate.register.system') || ':' || E'\n- ' || array_to_string(v_lines, E'\n- '));
     END IF;
 
-    -- ---------- Luecken (Gap-Report, WS-2 — EINE Quelle: estate.fn_gap_report) ----------
-    -- Erwartungsmenge = essential+recommended je ERWACHSENEM (Haushalts-Urkunde deckt beide);
+    -- ---------- Luecken (Gap-Report, eine Quelle: estate.fn_gap_report) ----------
+    -- Erwartungsmenge = essential+recommended je Erwachsenem (Haushalts-Urkunde deckt beide);
     -- + offene Feld-/Zeilen-Luecken + konkrete finance-Feld-Gaps (doppel-guardet in der fn).
     -- Im DEFINER-Kontext ist finance lesbar -> hier erscheint der volle Gap-Blick.
     v_j := estate.fn_gap_report();

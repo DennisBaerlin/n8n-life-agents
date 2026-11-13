@@ -1,6 +1,7 @@
 -- ============================================================
--- fn_monitor_method_status (READ-ONLY — ist eine Beschaffungs-Methode gerade nutzbar?)
---   Die EINE Verfuegbarkeits-Regel des Trigger-Monitorings (Phase B, docs/package-contract.md §3.9), genutzt
+-- fn_monitor_method_status (READ)
+--   Ist eine Beschaffungs-Methode (p_method) gerade nutzbar? Die eine Verfuegbarkeits-Regel des
+--   Trigger-Monitorings (docs/package-contract.md §3.9), genutzt
 --   von Beschaffung (fn_monitor_acquire), Parken (fn_monitor_due/fn_monitor_evaluate), Spec-Pruefung
 --   (fn_monitor_validate_params) und Anlage/Aenderung (fn_create/set_monitor_trigger).
 --     * Core-Builtin (web_search | sql | none)                          -> {builtin:true,  available:true}
@@ -8,7 +9,7 @@
 --     * Platzhalter / fns fehlen (to_regprocedure)                      -> {available:false, reason: not installed}
 --     * Paket nicht aktiv (core.fn_package_active)                      -> {available:false, reason: inactive}
 --     * sonst                                                           -> {builtin:false, available:true, acquire_fn, validate_fn, package}
---   Die fn-Namen kommen NUR aus der Registry (Seeder-Boundary + Regex-CHECK) — kein Caller-Input im EXECUTE.
+--   Die fn-Namen kommen nur aus der Registry (Seeder-Boundary + Regex-CHECK), kein Caller-Input im EXECUTE.
 --   RUECKGABE: jsonb wie oben; reason ist Englisch (Agent-Layer).
 --   Tests: tests/db/core/test_monitor_acquisition_methods.sql
 -- ============================================================

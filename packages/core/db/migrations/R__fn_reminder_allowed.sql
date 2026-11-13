@@ -1,9 +1,9 @@
 -- ============================================================
--- core.fn_reminder_allowed(p_cron_key, p_person_id) — DIE eine Pruef-Adresse "darf Reminder X an Person Y?"
---   (Roter Faden 2026-10-23; etabliertes Muster Knock/Novu-Preferences: zentraler Default + sparse Nutzer-
---   Override, der Admin-Notschalter gewinnt ueber beide).
+-- fn_reminder_allowed (READ-ONLY, SECURITY DEFINER) — die eine Pruef-Adresse "darf Reminder X an Person Y?"
+--   Eingabe: p_cron_key text, p_person_id text. Rueckgabe: boolean.
+--   Muster: zentraler Default + sparse Nutzer-Override, der Admin-Notschalter gewinnt ueber beide.
 --   = Notschalter core.config cron_enable.<key> (Paket aus core.cron_labels) = 'true'
---     UND bei scope='person': COALESCE(agent.reminder_prefs.enabled, core.cron_labels.default_enabled).
+--     und bei scope='person': COALESCE(agent.reminder_prefs.enabled, core.cron_labels.default_enabled).
 --   scope='household' -> nur der Notschalter (die Person spielt keine Rolle). Unbekannter Key -> false (fail-closed).
 --   Jeder Cron mit Person-Faecherung fragt HIER (nie eigene Praeferenz-Logik).
 --   SECURITY DEFINER (liest agent.reminder_prefs + core.config/cron_labels; Paket-Crons laufen unter engen Rollen),

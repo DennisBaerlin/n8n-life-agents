@@ -1,28 +1,28 @@
 -- ============================================================
--- core.fn_should_notify (geteilte Notify-Dedup-Entscheidung, Phase Notify WS-1)
---   Das EINE Entscheidungs-Fenster aller Owner-Benachrichtigungs-Producer. Liefert true GENAU DANN,
---   wenn der Latch (source, key) jetzt von 'ok' -> 'fired' kippt -- d.h. die Notiz ist NEU (Erst-Breach
+-- fn_should_notify (ATOMIC WRITE — geteilte Notify-Dedup-Entscheidung)
+--   Das eine Entscheidungs-Fenster aller Owner-Benachrichtigungs-Producer. Liefert true genau dann,
+--   wenn der Latch (source, key) jetzt von 'ok' -> 'fired' kippt, d.h. die Notiz ist neu (Erst-Breach
 --   oder nach Re-Arm) und soll raus. Stempelt in derselben Operation state='fired', last_fired_at, und
 --   (bei TTL) expires_at = now()+ttl. Bereits 'fired' ohne abgelaufenen TTL -> false (still).
+--   Eingabe: p_source text, p_key text, p_ttl interval (optional). Rueckgabe: boolean.
 --
---   VERTRAG: NUR aufrufen, wenn die zu meldende Bedingung BEREITS WAHR ist -- die fn gatet eine schon-
---     wahre Notiz (Dedup), sie evaluiert die Bedingung NICHT selbst. (Reserve breached? monthly_net<0?
---     unbekannter Knock? -> erst pruefen, DANN fn_should_notify.)
+--   Vertrag: nur aufrufen, wenn die zu meldende Bedingung bereits wahr ist — die fn gatet eine schon-
+--     wahre Notiz (Dedup), sie evaluiert die Bedingung nicht selbst. (Reserve breached? monthly_net<0?
+--     unbekannter Knock? -> erst pruefen, dann fn_should_notify.)
 --
---   STRATEGIEN ueber EINEN Parameter:
---     * p_ttl = NULL  -> reiner Edge-Latch: feuert einmal, bleibt 'fired' bis ein EXPLIZITER Re-Arm
+--   Strategien ueber einen Parameter:
+--     * p_ttl = NULL  -> reiner Edge-Latch: feuert einmal, bleibt 'fired' bis ein expliziter Re-Arm
 --                        (fn_notify_resolve / fn_notify_reconcile) kommt. Fuer reserve_breach (Re-Arm
 --                        im Saldo-Trigger) + advisor (Re-Arm via Reconcile-GC).
 --     * p_ttl = intvl -> Cooldown/TTL-Backstop: feuert, ist im Fenster still, re-armt nach Ablauf
 --                        automatisch. Fuer knock (1h) + cashflow_coverage-Backstop (48h) + savings_squeeze (24h).
 --
---   RACE-SAFE (Muster core.fn_advisor_review_evaluate): INSERT ... ON CONFLICT DO NOTHING (schliesst die
---     PK-Luecke beim Erst-Breach; ein SELECT ... FOR UPDATE auf eine NICHT-existente Zeile sperrte keine
+--   Race-safe (Muster core.fn_advisor_review_evaluate): INSERT ... ON CONFLICT DO NOTHING (schliesst die
+--     PK-Luecke beim Erst-Breach; ein SELECT ... FOR UPDATE auf eine nicht-existente Zeile sperrte keine
 --     Luecke) -> dann FOR UPDATE auf die nun existente Zeile (serialisiert gleichzeitige Producer).
 --
---   SECURITY DEFINER + search_path=pg_catalog (CVE-2018-1058) + REVOKE PUBLIC: enge Paket-Rollen (finance_rw)
---     erreichen core.notification_state NUR ueber dieses Fenster (D10). EXECUTE-Grant in fn_provision_package_roles.
---   Anwenden via: db_apply.ps1 -File packages\core\db\migrations\R__fn_should_notify.sql
+--   SECURITY DEFINER + gepinnter search_path + REVOKE PUBLIC: enge Paket-Rollen (finance_rw)
+--     erreichen core.notification_state nur ueber dieses Fenster. EXECUTE-Grant in fn_provision_package_roles.
 -- ============================================================
 CREATE OR REPLACE FUNCTION core.fn_should_notify(p_source text, p_key text, p_ttl interval DEFAULT NULL)
 RETURNS boolean
@@ -44,8 +44,8 @@ BEGIN
     WHERE source = p_source AND key = p_key
     FOR UPDATE;
 
-    -- Kippen, wenn 'ok' (frisch/re-armed) ODER ein TTL-Latch abgelaufen ist (auto Re-Arm).
-    -- NULL-TTL-'fired' re-armt NIE automatisch -> bleibt still bis explizitem Re-Arm.
+    -- Kippen, wenn 'ok' (frisch/re-armed) oder ein TTL-Latch abgelaufen ist (auto Re-Arm).
+    -- NULL-TTL-'fired' re-armt nie automatisch -> bleibt still bis explizitem Re-Arm.
     IF v_state = 'ok' OR (v_state = 'fired' AND v_exp IS NOT NULL AND v_exp <= now()) THEN
         UPDATE core.notification_state
         SET state         = 'fired',

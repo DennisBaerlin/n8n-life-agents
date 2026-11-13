@@ -1,10 +1,14 @@
 -- ============================================================
--- core.fn_in_reminder_window(p_at) — liegt der Zeitpunkt im Erinnerungs-Fenster? (Roter Faden, Owner-Entscheid 2026-10-23)
---   Nicht zeitkritische Erinnerungen kommen nur zwischen general.reminders_from und general.reminders_until (volle
---   Stunden, Haushalts-Zeitzone der DB-Sitzung wie core.fn_today; Fenster [from, until)). Defaults 10 und 20.
+-- fn_in_reminder_window (READ)
+--   Liegt der Zeitpunkt im Erinnerungs-Fenster? Nicht zeitkritische Erinnerungen kommen nur zwischen
+--   general.reminders_from und general.reminders_until (volle Stunden, Haushalts-Zeitzone der DB-Sitzung wie
+--   core.fn_today; Fenster [from, until)). Defaults 10 und 20.
+--   Eingabe: p_at timestamptz (optional, Default now()).
+--   Rueckgabe: boolean. Defensiv: kaputte oder ausserhalb 0..23 / 1..24 liegende Werte, from >= until -> Defaults,
+--   nie RAISE.
 --   Die Reminder-Crons sind ohnehin im Fenster terminiert (cron_toggle_lint prueft die Defaults); diese fn ist die
---   EINE Adresse fuer Laufzeit-Entscheidungen, die stuendlich laufen (Waechter-Vorwarnungen/-Problemberichte in
---   agent.fn_monitor_evaluate / fn_monitor_due). Defensiv: kaputte Werte -> Defaults, nie RAISE.
+--   eine Adresse fuer Laufzeit-Entscheidungen, die stuendlich laufen (Waechter-Vorwarnungen/-Problemberichte in
+--   agent.fn_monitor_evaluate / fn_monitor_due).
 --   STABLE, INVOKER (liest ueber das DEFINER-Fenster core.fn_config_get), search_path gepinnt.
 --   Tests: tests/db/core/test_fn_in_reminder_window.sql
 -- ============================================================

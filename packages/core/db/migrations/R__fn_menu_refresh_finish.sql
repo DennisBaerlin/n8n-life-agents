@@ -1,11 +1,12 @@
 -- ============================================================
--- core.fn_menu_refresh_finish(p_gen bigint, p_ok boolean) — Menue-Auftrag der Mini-App abschliessen (WRITE, Betrieb)
---   Gegenstueck zu core.fn_menu_refresh_claim; Aufrufer nur bash als Superuser (_set_bot_menu_buttons, der Runner
---   ohne Bot-Token).
+-- fn_menu_refresh_finish (WRITE)
+--   Menue-Auftrag der Mini-App abschliessen. Gegenstueck zu core.fn_menu_refresh_claim; Aufrufer nur bash als
+--   Superuser (_set_bot_menu_buttons, der Runner ohne Bot-Token). Eingabe: p_gen (die beim Claim gelesene gen),
+--   p_ok (Pflicht). Rueckgabe: void.
 --   p_ok = true  (alle Knoepfe gesetzt): done_gen = GREATEST(done_gen, LEAST(p_gen, requested_gen)) -> genau bis zur
 --                uebernommenen Generation, nie zurueck; Fehlerzaehler, retry_after und gave_up_at weg.
 --   p_ok = false (Telegram/Token scheiterte): retry_after = now() + 10 Min (der minuetliche Runner ruft Telegram nicht
---                jede Minute vergeblich). Beim DRITTEN Fehlschlag in Folge gibt der Auftrag auf (Generation
+--                jede Minute vergeblich). Beim dritten Fehlschlag in Folge gibt der Auftrag auf (Generation
 --                geschlossen, gave_up_at gestempelt): ein Chat, der den Bot blockiert, haelt sonst ewig einen Auftrag
 --                offen. Der naechste Ausloeser oder das naechste Update versucht es wieder; doctor meldet die Aufgabe.
 --   Tests: tests/db/core/test_fn_menu_refresh.sql

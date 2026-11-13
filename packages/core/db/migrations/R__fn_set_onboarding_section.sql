@@ -1,35 +1,36 @@
 -- ============================================================
--- core.fn_set_onboarding_section (WS-B3 DRY-Onboarding O3) — eine Onboarding-Sektion auf Status setzen
---   p: { package?, section_key, status }  (package default 'core'; status in {completed,skipped,unknown})
+-- fn_set_onboarding_section (ATOMIC WRITE) — eine Onboarding-Sektion auf Status setzen
+--   p: { package?, section_key, status, chat_id? }  (package default 'core'; status in {completed,skipped,unknown})
 --   - 'core' -> agent.guide_onboarding_state (Host-Sonderfall); sonst <pkg>.onboarding_state.
 --   - Wann eine Sektion uebersprungen wurde, ist ableitbar (status='skipped' + status_changed_at) und wird nicht als
---     eigene Spalte gespeichert (WP3; core:V032 droppt agent.guide_onboarding_state.skipped_at).
+--     eigene Spalte gespeichert (core:V032 droppt agent.guide_onboarding_state.skipped_at).
 --   - unbekannte Sektion / ungueltiger Status / unbekanntes Paket -> {ok:false, reason} (kein Write, kein RAISE).
---   RUECKGABE: {ok:true, section_key, status, complete, area_completed_now, area_all_skipped} | {ok:false, reason}
+--   Rueckgabe: {ok:true, section_key, status, complete, area_completed_now, area_all_skipped} | {ok:false, reason}
 --     complete           = Post-State: im Bereich (Paket bzw. Person) ist keine Sektion mehr 'unknown'.
---     area_completed_now = DIESER Aufruf hat den Bereich von offen -> aufgeloest gekippt (Roter Faden: genau dann
+--     area_completed_now = dieser Aufruf hat den Bereich von offen -> aufgeloest gekippt (genau dann
 --                          schickt das Tool die Weiter-Karte). Vor-/Nach-Read unter pg_advisory_xact_lock je
 --                          (Paket, Person) -> zwei parallele Markierungen desselben Bereichs sehen einander (kein
 --                          verlorener Kipp, kein Doppel-Kipp). Erneutes Markieren eines aufgeloesten Bereichs = false.
 --     area_all_skipped   = der Bereich ist aufgeloest, aber keine Sektion 'completed' (Karte sagt "uebersprungen").
---   status_changed_at wird NUR bei echter Status-Aenderung gestempelt (Stillstands-Uhr des Nachfassens).
+--   status_changed_at wird nur bei echter Status-Aenderung gestempelt (Stillstands-Uhr des Nachfassens).
+--   Seiteneffekt: kippt der household-Bereich offen<->fertig -> core.fn_menu_refresh_request() (Menue-Knopf neu setzen).
 --
---   D10 / Auth: SECURITY INVOKER (bewusst KEIN DEFINER) — der Write kreuzt keine Schema-Grenze, die der
+--   SECURITY INVOKER (bewusst kein DEFINER) — der Write kreuzt keine Schema-Grenze, die der
 --   Aufrufer nicht ohnehin darf: der Guide/Host-Cred schreibt agent.*, finance_rw schreibt nur finance.*.
---   Die Isolation haelt damit durch die Grants des AUFRUFERS selbst (ein finance_rw-Aufruf mit package='core'
+--   Die Isolation haelt damit durch die Grants des Aufrufers selbst (ein finance_rw-Aufruf mit package='core'
 --   scheiterte an "permission denied for schema agent" — kein Eskalations-Fenster). EXECUTE wird in
 --   core.fn_provision_package_roles an <pkg>_rw gegrantet. search_path gepinnt; Suffix '.onboarding_state'
---   ist LITERAL (nie 2. %I) + Name-Regex + to_regclass-Guard. package ist build-time-konstant (nie $fromAI).
---   KEIN HITL: setzt nur den Fortschritts-Marker (kein Finanz-Write); die eigentlichen Onboarding-Writes
+--   ist literal (nie 2. %I) + Name-Regex + to_regclass-Guard. package ist build-time-konstant (nie $fromAI).
+--   Kein HITL: setzt nur den Fortschritts-Marker (kein Finanz-Write); die eigentlichen Onboarding-Writes
 --   laufen ueber die gebundenen HITL-Tools (tool_set_household_facts, tool_create_* etc.).
 --
---   PER-USER-SCOPE (P2b-1, Parität agent.fn_set_context_facts): traegt das PAKET in core.context_scopes einen
---   per_user-Context (career), ist das Onboarding pro Person. Die person_id kommt DETERMINISTISCH aus der nicht-
---   spoofbaren chat_id (p->>'chat_id') via agent.fn_resolve_sender (NIE LLM/$fromAI; Numerik-Guard wie fetch_context).
---   Unaufgeloester Sender auf per_user -> {ok:false, unresolved_sender} OHNE Write (fail-closed; das echte Gate).
+--   Per-User-Scope (Paritaet agent.fn_set_context_facts): traegt das Paket in core.context_scopes einen
+--   per_user-Context (career), ist das Onboarding pro Person. Die person_id kommt deterministisch aus der nicht-
+--   spoofbaren chat_id (p->>'chat_id') via agent.fn_resolve_sender (nie LLM/$fromAI; Numerik-Guard wie fetch_context).
+--   Unaufgeloester Sender auf per_user -> {ok:false, reason:'unresolved_sender'} ohne Write (fail-closed; das echte Gate).
 --   Vor dem UPDATE materialisiert core.fn_ensure_onboarding_person die Sektionszeilen der Person aus dem Katalog
 --   (Lazy-Onboarding einer weiteren Person). UPDATE + Completeness-Read tragen dann das person_id-Praedikat.
---   household-Pakete (finance/guide/estate, scope-frei in context_scopes): kein person_id; schreiben darf NUR der
+--   household-Pakete (finance/guide/estate, scope-frei in context_scopes): kein person_id; schreiben darf nur der
 --   Owner — ein positiv aufgeloestes Mitglied (p->>'chat_id') -> {ok:false, code:'owner_only', reason (EN-Satz mit naechstem Schritt)} ohne Write, ueber
 --   das publizierte Fenster core.fn_check_write_permission('owner_only') (Pass-Through ohne chat_id = CLI/Test).
 --   Die Paket-Tools reichen dafuer die build-fixe chat_id (nie LLM) im Payload durch.
@@ -62,7 +63,7 @@ BEGIN
         RETURN jsonb_build_object('ok', false, 'reason', 'invalid package name: ' || v_pkg);
     END IF;
 
-    -- Tabelle aufloesen ('core' = Host-Sonderfall; sonst <pkg>.onboarding_state, Suffix LITERAL).
+    -- Tabelle aufloesen ('core' = Host-Sonderfall; sonst <pkg>.onboarding_state, Suffix literal).
     IF v_pkg = 'core' THEN
         v_rel := 'agent.guide_onboarding_state';
     ELSE
@@ -72,8 +73,8 @@ BEGIN
         RETURN jsonb_build_object('ok', false, 'reason', 'unknown_package');
     END IF;
 
-    -- Per-User-Scope (P0a-Registry, package-keyed): scope aus core.context_scopes; person aus chat_id (Numerik-
-    -- Guard wie fn_fetch_context), NIE LLM. Unaufgeloest auf per_user -> fail-closed {ok:false} (kein Write).
+    -- Per-User-Scope (package-keyed Registry): scope aus core.context_scopes; person aus chat_id (Numerik-
+    -- Guard wie fn_fetch_context), nie LLM. Unaufgeloest auf per_user -> fail-closed {ok:false} (kein Write).
     v_per_user := core.fn_package_is_per_user(v_pkg);   -- die eine Regel (R__fn_package_is_per_user)
     IF v_per_user THEN
         IF v_chat ~ '^[0-9]+$' THEN
@@ -94,8 +95,8 @@ BEGIN
                    || '". Tell the user the owner can finish it in their own chat.');
     END IF;
 
-    -- Roter Faden: Vor-/Nach-Zustand des Bereichs serialisiert je (Paket, Person) -> genau EIN Kipp je Uebergang.
-    -- Der Lock steht VOR dem Vor-Read: unter READ COMMITTED sieht die naechste Anweisung danach den Commit eines
+    -- Vor-/Nach-Zustand des Bereichs serialisiert je (Paket, Person) -> genau ein Kipp je Uebergang.
+    -- Der Lock steht vor dem Vor-Read: unter READ COMMITTED sieht die naechste Anweisung danach den Commit eines
     -- parallelen Aufrufers (der Lock wird erst an dessen Transaktionsende frei).
     PERFORM pg_advisory_xact_lock(hashtext('onboarding_area:' || v_pkg || ':' || COALESCE(v_pid, '')));
     EXECUTE format('SELECT NOT EXISTS (SELECT 1 FROM %s WHERE status = ''unknown''%s)', v_rel, v_pfilter)

@@ -4,8 +4,8 @@
 --   gleichem Schluessel (agent.fn_hitl_repeat_key) und nicht abgelaufener Zeile (expires_at ist die Wahrheit). Das Gate
 --   sendet dann keine Karte und liefert {approved:false, repeat_blocked:true}. Eine nicht-numerische chat_id (Test-Sentinel)
 --   oder ein fehlendes Summary sperrt nie. plpgsql, weil agent.fn_hitl_repeat_key alphabetisch spaeter kommt.
---   p: {chat_id, summary}
---   RUECKGABE: boolean
+--   Eingabe p: {chat_id, summary}
+--   Rueckgabe: boolean
 --   Tests: tests/db/core/test_fn_hitl_pending.sql; Gate-Rolle tests/db/cross/test_role_permissions.sql
 -- ============================================================
 CREATE OR REPLACE FUNCTION agent.fn_get_hitl_repeat_blocked(p jsonb)

@@ -1,8 +1,9 @@
 -- ============================================================
--- agent.fn_record_learn_candidates(p jsonb) -> jsonb   (Phase C, WS-2; EINE atomare Tx)
---   Nimmt die ROH-Kandidaten der LLM-Extraktion (das LLM liefert nur Rohwerte; slot_key/kind/expires_at
---   leitet die DB ab) und VERSIONIERT sie als Vorschlaege in agent.guide_learn_candidates. Schreibt
---   AUSSCHLIESSLICH guide_learn_candidates + guide_learn_watermark — NIE agent.core_contexts (M1).
+-- fn_record_learn_candidates (ATOMIC WRITE — Lern-Kandidaten als Vorschlaege ablegen)
+--   Nimmt die Roh-Kandidaten der LLM-Extraktion (das LLM liefert nur Rohwerte; slot_key/kind/expires_at
+--   leitet die DB ab) und legt sie als Vorschlaege in agent.guide_learn_candidates ab. Schreibt
+--   ausschliesslich guide_learn_candidates + guide_learn_watermark, nie agent.core_contexts
+--   (contract_lint 9). Eine Transaktion, Advisory-Lock serialisiert ueberlappende Cron-Laeufe.
 --   Gelesene p-Keys:
 --     candidates[]: { agent_name, source_id, target_kind(fact|note), context_name, person_slug?, field?,
 --                     value, rationale? }
@@ -10,14 +11,14 @@
 --   Pro Kandidat (DB entscheidet, nicht das LLM):
 --     1. Shape-Guard (Pflichtfelder; fact braucht person_slug+field).
 --     2. fact: Kontext-Pruefung core.fn_facts_context_allowed (family + household-Fakten-Kontexte AKTIVER Pakete) + Denylist-Vorfilter via der kanonischen
---        agent.fn_validate_household_facts (synthetischer Nicht-'family'-Name -> NUR die Derived-Value-
---        Denylist) -> abgeleitete Felder (age/start_year/...) fallen raus ("LLM rechnet nicht", M2).
+--        agent.fn_validate_household_facts (synthetischer Nicht-'family'-Name -> nur die Derived-Value-
+--        Denylist) -> abgeleitete Felder (age/start_year/...) fallen raus (das LLM rechnet nicht).
 --        note: Knowledge-Allowlist core.fn_note_context_allowed (managed_by='agent' + kuratierte Liste).
 --     3. slot_key ableiten (fact: lower(context|person|field); note: context|md5(normalisierte Notiz)).
 --     4. NOOP/Update: fact gegen gespeicherte metadata.facts.persons; note Substring gegen "## Gelernt".
 --     5. Dedup x3: in-batch (gleicher slot) · vs offene (pending) · vs kuerzlich rejected (< expiry_days,
---        durable Rejection-Memory).
---     6. Cap LIMIT learn_context.daily_cap des KALENDERTAGS (Prio update>new), ON CONFLICT
+--        die Ablehnung bleibt dauerhaft im Gedaechtnis).
+--     6. Cap LIMIT learn_context.daily_cap des Kalendertags (Prio update>new), ON CONFLICT
 --        (agent_name,source_id,slot_key) DO NOTHING (Idempotenz / at-most-once-lossy).
 --     7. Watermark-Vorschub GREATEST je agent_name — selbe Tx (Transactional-Outbox).
 --   Config-getrieben: learn_context.daily_cap (3) / learn_context.expiry_days (7) ueber core.fn_config_get.
@@ -64,7 +65,7 @@ DECLARE
     v_wm_adv    int := 0;
 BEGIN
     -- Advisory-Lock (transaktions-skopiert -> auto-Release, kein Connection-Pool-Leak): serialisiert
-    -- ueberlappende Cron-Laeufe an genau dem Punkt, der schreibt. Ein zweiter Lauf wartet, sieht dann den
+    -- ueberlappende Cron-Laeufe am schreibenden Punkt. Ein zweiter Lauf wartet, sieht dann den
     -- committeten Stand (Dedup vs pending + ON CONFLICT + Watermark-GREATEST machen ihn idempotent).
     PERFORM pg_advisory_xact_lock(hashtext('agent.fn_record_learn_candidates')::bigint);
 
@@ -88,11 +89,11 @@ BEGIN
             IF v_person IS NULL OR v_field IS NULL THEN
                 v_malformed := v_malformed + 1; CONTINUE;
             END IF;
-            IF NOT core.fn_facts_context_allowed(v_ctx) THEN   -- Install-UX-Phase 6: registry statt Paket-Literal
+            IF NOT core.fn_facts_context_allowed(v_ctx) THEN
                 v_allowlist := v_allowlist + 1; CONTINUE;
             END IF;
-            -- Denylist-Vorfilter (M2): kanonische Derived-Value-Liste wiederverwenden (synthetischer
-            -- Nicht-'family'-Name -> NUR die Denylist laeuft, keine Struktur-Pflichtfelder).
+            -- Denylist-Vorfilter: kanonische Derived-Value-Liste wiederverwenden (synthetischer
+            -- Nicht-'family'-Name -> nur die Denylist laeuft, keine Struktur-Pflichtfelder).
             IF agent.fn_validate_household_facts(jsonb_build_object(v_field, v_value), '_learn_denylist_probe') IS NOT NULL THEN
                 v_denylist := v_denylist + 1; CONTINUE;
             END IF;
@@ -112,8 +113,8 @@ BEGIN
             END IF;
             v_norm := lower(regexp_replace(v_value, '\s+', ' ', 'g'));
             v_slot := v_ctx || '|' || md5(v_norm);
-            -- NOOP nur gegen die "## Gelernt"-LERN-Notizzeilen (Bullet + Provenienz-Marker 'aus Chat'),
-            -- NICHT gegen den gesamten content (sonst wuerde ein zufaelliger Substring in der Prosa/
+            -- NOOP nur gegen die "## Gelernt"-Lern-Notizzeilen (Bullet + Provenienz-Marker 'aus Chat'),
+            -- nicht gegen den gesamten content (sonst wuerde ein zufaelliger Substring in der Prosa/
             -- Instruktion eine echte Notiz dauerhaft als bekannt unterdruecken). Gleiche Identitaet wie
             -- der Append/Remove-Pfad (fn_append/fn_remove_context_note).
             SELECT c.content INTO v_content FROM agent.core_contexts c WHERE c.name = v_ctx;
@@ -148,7 +149,7 @@ BEGIN
             'prio', CASE WHEN v_kind = 'update' THEN 0 ELSE 1 END);
     END LOOP;
 
-    -- ===== 2. Cap: pending DES KALENDERTAGS =====
+    -- ===== 2. Cap: pending des Kalendertags =====
     SELECT count(*) INTO v_today_pending
     FROM agent.guide_learn_candidates
     WHERE status = 'pending' AND created_at::date = current_date;

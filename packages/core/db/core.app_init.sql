@@ -3,7 +3,7 @@
 --
 -- core.app_secret: der Pruef-Schluessel der Telegram-initData = HMAC_SHA256(key="WebAppData", msg=Bot-Token), nie das
 --   Token selbst (der Schluessel steuert keinen Bot, faelscht aber jede initData -> ACL wie core.backup_key). Der Host
---   schreibt ihn bei JEDEM Deploy aus TELEGRAM_BOT_TOKEN (deploy_workflows.sh _ensure_app_secret, Token per stdin an
+--   schreibt ihn bei jedem Deploy aus TELEGRAM_BOT_TOKEN (deploy_workflows.sh _ensure_app_secret, Token per stdin an
 --   openssl, nie argv) -> ein Token-Wechsel greift sofort. Nie geseedet, nie im Backup (Schema core steht in keinem
 --   backup-Block). Genau eine Zeile (id = true), Schluessel genau 32 Byte.
 -- core.app_screens: host-geseedete Registry der Bildschirme (Manifest-Block app_screens, seed_data.sh

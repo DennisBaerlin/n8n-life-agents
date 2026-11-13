@@ -1,10 +1,10 @@
 -- ============================================================
--- fn_delete_hitl_pending (Karte-offen-Sperre, Fix C)
---   Der Orchestrator ruft sie nach seiner Antwort: loescht die FREIGEGEBENEN Zeilen (released_at gesetzt) des
+-- fn_delete_hitl_pending (Karte-offen-Sperre)
+--   Der Orchestrator ruft sie nach seiner Antwort: loescht die freigegebenen Zeilen (released_at gesetzt) des
 --   Chats — die Kette hinter der Karte ist dann fertig, ihr Chat-Gedaechtnis geschrieben. Offene Karten
 --   (released_at NULL) bleiben unberuehrt. Nicht-numerische chat_id = no-op. Idempotent.
---   p: { chat_id }
---   RUECKGABE: {ok:true, removed}  (removed = es war eine freigegebene Zeile da)
+--   Eingabe p: { chat_id }
+--   Rueckgabe: {ok:true, removed}  (removed = es war eine freigegebene Zeile da)
 --   Tests: tests/db/core/test_fn_hitl_pending.sql
 -- ============================================================
 CREATE OR REPLACE FUNCTION agent.fn_delete_hitl_pending(p jsonb)

@@ -1,6 +1,6 @@
 -- ============================================================
--- core.fn_release_handoff_tasks(p) — gibt beanspruchte Plan-Aufgaben nach einem gescheiterten Buchhalter-Start frei
---   p: { task_ids: [int, ...] } (die task_ids aus core.fn_handle_handoff_cb). working -> open, claimed_at NULL; andere
+-- fn_release_handoff_tasks (ATOMIC WRITE) — gibt beanspruchte Plan-Aufgaben nach einem gescheiterten Buchhalter-Start frei
+--   p: { task_ids: [int, ...] } (die task_ids aus core.fn_handle_handoff_cb; fehlend/ungueltig -> released 0). working -> open, claimed_at NULL; andere
 --   Zustaende bleiben (eine schon erledigte Aufgabe wird nie wieder offen). Rueckgabe {ok:true, released}.
 --   Aufgerufen vom Orchestrator (Host-Cred) im Fehler-Ausgang von 'Run handoff <domain>'.
 --   Tests: tests/db/core/test_fn_handoff_tasks.sql

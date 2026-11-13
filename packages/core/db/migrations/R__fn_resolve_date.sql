@@ -1,13 +1,14 @@
 -- ============================================================
--- core.fn_resolve_date (DIE EINE ADRESSE FUER "RELATIVE ZEITANGABE -> DATUM")
---   Das LLM rechnet nie (auch keine Datums-Arithmetik, Root-CLAUDE.md): es UEBERSETZT die Nutzer-Angabe
+-- fn_resolve_date (READ-ONLY) — die eine Adresse fuer "relative Zeitangabe -> Datum"
+--   Das LLM rechnet nie (auch keine Datums-Arithmetik): es uebersetzt die Nutzer-Angabe
 --   ("vor drei Tagen", "in drei Wochen", "letzten Freitag") in eine feste Form, die DB rechnet hier.
+--   Eingabe: p_text text, p_today date (optional). Rueckgabe: date oder NULL.
 --   Akzeptiert (case-insensitiv, getrimmt):
 --     * YYYY-MM-DD (ungueltiges Datum wie 2024-02-30 -> NULL, kein RAISE)
 --     * today | yesterday | tomorrow
 --     * [+-]N <unit> | in N <unit> | N <unit> ago   mit <unit> = day(s)|week(s)|month(s)|year(s), N <= 9999
 --       (Vorzeichen zusammen mit "ago" = Doppel-Negation -> NULL; ohne Richtung ("3 days") -> NULL)
---     * next|last <weekday> (englisch) = 1..7 Tage STRIKT danach bzw. davor (gleicher Wochentag = +-7)
+--     * next|last <weekday> (englisch) = 1..7 Tage strikt danach bzw. davor (gleicher Wochentag = +-7)
 --   Sonst NULL — der Aufrufer antwortet {ok:false, reason} mit dem Format-Hinweis. Bewusst keine Freitext-NLP
 --   (de/en/ko-Zahlwoerter in SQL waeren fragil). Offsets per make_interval (unabhaengig von IntervalStyle);
 --   Monatsende klemmt wie Postgres (31.01. + 1 month = 28.02.).
@@ -31,7 +32,7 @@ BEGIN
     IF v = '' THEN
         RETURN NULL;
     END IF;
-    p_today := COALESCE(p_today, core.fn_today());   -- late-bound: R__fn_today sortiert alphabetisch NACH dieser Datei
+    p_today := COALESCE(p_today, core.fn_today());   -- late-bound: R__fn_today sortiert alphabetisch nach dieser Datei
 
     IF v ~ '^\d{4}-\d{2}-\d{2}$' THEN
         BEGIN

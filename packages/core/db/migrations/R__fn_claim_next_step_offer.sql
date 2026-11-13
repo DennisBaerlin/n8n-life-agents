@@ -9,7 +9,7 @@
 --   Aufraeumen im selben Lauf (core.fn_notify_forget_before): Tag-Keys aelter als 2 Tage (der Kalendertag im Key macht
 --     sie bedeutungslos), Wiederholungs-Keys aelter als 90 Tage (alte Generationen; eine Lage, die so lange still
 --     unveraendert liegt, darf wieder angeboten werden).
---   RUECKGABE boolean. Wirft nie; jeder Fehler und ein unbekannter Absender -> false (der Knopf ist Komfort, eine kaputte
+--   Rueckgabe boolean. Wirft nie; jeder Fehler und ein unbekannter Absender -> false (der Knopf ist Komfort, eine kaputte
 --     Latch-Schicht darf keine Knopf-Flut ausloesen).
 --   Bewusst hingenommen: zwei fast gleichzeitige Gruesse lesen beide offer=true, der zweite Claim verliert -> sein Satz
 --     geht ohne Knopf raus.

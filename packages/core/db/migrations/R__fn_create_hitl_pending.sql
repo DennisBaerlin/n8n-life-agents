@@ -1,14 +1,15 @@
 -- ============================================================
--- fn_create_hitl_pending (Karte-offen-Sperre, Fix C)
---   Das HITL-Gate ruft sie direkt VOR jedem sendAndWait: Zeile (Ursprungs-Chat, execution, own_card) mit
+-- fn_create_hitl_pending (Karte-offen-Sperre)
+--   Das HITL-Gate ruft sie direkt vor jedem sendAndWait: Zeile (Ursprungs-Chat, execution, own_card) mit
 --   expires_at = now() + ttl. Raeumt vorher abgelaufene Zeilen weg; erneutes Anlegen derselben
 --   (chat, execution) setzt die Zeile zurueck (Upsert). Nicht-numerische chat_id (Test-Sentinel) -> keine Zeile.
 --   own_card (Default true) = die Karte liegt im Ursprungs-Chat; false = Freigabe durch jemand anderen.
 --   Laeuft im Chat eine "Bot denkt nach"-Schleife mit offenem Draft-Fenster (agent.thinking_lease.drafting_until),
 --   wartet sie es ab (<= 1 s) -> kein "Thinking..." nach der Karte.
 --   Fehlende execution_id/ttl_minutes = Bau-Fehler des Aufrufers -> RAISE (nicht nutzerkorrigierbar).
---   p: { chat_id, execution_id, ttl_minutes, own_card? }
---   RUECKGABE: {ok:true, expires_at} | {ok:false, reason}
+--   Eingabe p: { chat_id, execution_id, ttl_minutes, own_card? }
+--   Rueckgabe: {ok:true, expires_at} | {ok:false, reason}; reason = "chat_id must be numeric".
+--   Seiteneffekt: INSERT/UPSERT agent.hitl_pending, sperrt agent.thinking_lease-Zeilen des Chats.
 --   Tests: tests/db/core/test_fn_hitl_pending.sql
 -- ============================================================
 CREATE OR REPLACE FUNCTION agent.fn_create_hitl_pending(p jsonb)
@@ -35,7 +36,7 @@ BEGIN
 
     DELETE FROM agent.hitl_pending WHERE expires_at <= now();
 
-    -- "Bot denkt nach" (agent.thinking_lease): ein evtl. unterwegs befindlicher Draft dieses Chats muss VOR der Karte
+    -- "Bot denkt nach" (agent.thinking_lease): ein evtl. unterwegs befindlicher Draft dieses Chats muss vor der Karte
     -- ankommen -> sein Fenster abwarten (<= 1 s). Erst die Schalter-Zeilen sperren: ordnet gegen fn_claim_thinking_draft
     -- (dort erst sperren, dann Karte pruefen) -> ein spaeterer Claim sieht die Karte und pausiert.
     PERFORM 1 FROM agent.thinking_lease WHERE chat_id = v_chat FOR UPDATE;

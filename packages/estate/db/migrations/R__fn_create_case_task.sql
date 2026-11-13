@@ -1,13 +1,14 @@
 -- ============================================================
--- estate.fn_create_case_task (ATOMIC WRITE — WS-3, Fortschritts-Flag-Klasse: KEIN HITL am Tool)
---   Fuegt eine MANUELLE Task (template_key NULL) zu einem OFFENEN Fall hinzu — fuer haushaltsspezifische
+-- estate.fn_create_case_task (ATOMIC WRITE — Fortschritts-Flag-Klasse: kein HITL am Tool)
+--   Fuegt eine manuelle Task (template_key NULL) zu einem offenen Fall hinzu — fuer haushaltsspezifische
 --   Schritte, die kein Template abdeckt. Fortschritts-Flag-Klasse (kein Gate); adults_only-DB-Backstop.
 --   Manuelle Tasks (template_key NULL, subject_ref '') sind vom additiven Reconcile (fn_set_case) nie
---   beruehrt — sie ueberleben Fristen-Recomputes. GUARD: nur OFFENE Faelle. phase Default first_week.
---   Eingabe jsonb: chat_id, case_id, title, phase (optional), detail (optional), due_date (optional; YYYY-MM-DD oder
---     relativ, core.fn_resolve_input_dates). status_source='user' (vom Nutzer angelegt).
---   RUECKGABE: {ok:true, case_task_id, case_id, due_date (aufgeloest)} | {ok:false, reason}.
---   Anwenden via: db_apply.ps1 -File packages\estate\db\migrations\R__fn_create_case_task.sql
+--   beruehrt — sie ueberleben Fristen-Recomputes. Nur offene Faelle. phase Default first_week.
+--   Eingabe jsonb: chat_id, case_id, title (Pflicht), phase (optional), detail (optional), due_date (optional;
+--     YYYY-MM-DD oder relativ, core.fn_resolve_input_dates). status_source='user' (vom Nutzer angelegt).
+--   Rueckgabe: {ok:true, case_task_id, case_id, due_date (aufgeloest)} | {ok:false, reason}; reasons: 'Write rejected
+--   (<perm>): …', 'case_id is required.', 'title is required (non-empty).', 'phase must be …', 'case not found.',
+--   'case <id> is not open (status <s>) …' sowie die Datums-Ablehnung von fn_resolve_input_dates.
 -- ============================================================
 CREATE OR REPLACE FUNCTION estate.fn_create_case_task(p jsonb)
 RETURNS jsonb LANGUAGE plpgsql AS $$
@@ -45,7 +46,7 @@ BEGIN
         RETURN jsonb_build_object('ok', false, 'reason',
             'case ' || v_case || ' is not open (status ' || v_cstatus || ') — cannot add tasks.');
     END IF;
-    -- WP3: relative Faelligkeit ("in 3 days", "next friday") rechnet die DB (kein HITL -> genau ein Aufloesungszeitpunkt).
+    -- Relative Faelligkeit ("in 3 days", "next friday") rechnet die DB (kein HITL -> genau ein Aufloesungszeitpunkt).
     v_dates := core.fn_resolve_input_dates(p, ARRAY['due_date']);
     IF NOT (v_dates->>'ok')::boolean THEN RETURN v_dates; END IF;
     v_due := NULLIF(v_dates->'resolved'->>'due_date', '')::date;

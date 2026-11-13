@@ -1,18 +1,20 @@
 -- ============================================================
--- fn_add_household_person (WS-5d — Person anlegen, „Geburt")
---   Owner-CLI (`lifeagents household add`): legt eine NEUE Haushalts-Person in der Autoring-Quelle
---   `family` an. Den Slug `person_id` vergibt agent.fn_person_slug (Vorname, Umlaute transliteriert, eindeutig)
---   und DELEGIERT den eigentlichen Append an fn_set_context_facts (DRY: Validierung [volles Skelett:
---   first/last/birth_date/role Pflicht] + Projektion + as_of-Stempel laufen dort).
+-- fn_add_household_person (Person anlegen)
+--   Owner-CLI (`lifeagents household add`): legt eine neue Haushalts-Person in der Autoring-Quelle `family` an.
+--   Den Slug `person_id` vergibt agent.fn_person_slug (Vorname, Umlaute transliteriert, eindeutig); den Append
+--   delegiert die fn an fn_set_context_facts (Validierung des vollen Skeletts, Projektion und as_of-Stempel laufen dort).
 --
---   owner_only-Backstop (WS-5b): fn_set_context_facts lehnt fuer family einen positiv aufgeloesten Nicht-Owner-
---   chat_id ab. Der Payload hier traegt BEWUSST KEINEN chat_id-Key — die CLI ist OS-/SSH-autorisiert
---   (postgres-Superuser), nicht chat-autorisiert -> der Backstop greift nie (fn_sender_is_member(NULL)
---   = false). NIE eine Caller-chat_id durchreichen (sonst tript ein Member-chat_id den Backstop).
---   p: { first_name, last_name, birth_date, role, language? }  — language = Sprache fester Texte (Code oder freie
---      Angabe, normiert via agent.fn_normalize_language; nicht unterstuetzt -> {ok:false}; fehlt -> Laufzeit-
---      Fallback Owner-Sprache)
---   RUECKGABE: {ok:true, person_id, full_name, role} | {ok:false, reason}
+--   owner_only-Backstop: fn_set_context_facts lehnt fuer family einen positiv aufgeloesten Nicht-Owner-chat_id ab.
+--   Der Payload hier traegt bewusst keinen chat_id-Key: die CLI ist OS-/SSH-autorisiert (postgres-Superuser), nicht
+--   chat-autorisiert, der Backstop greift nie (fn_sender_is_member(NULL) = false). Nie eine Caller-chat_id
+--   durchreichen, sonst loest eine Member-chat_id den Backstop aus.
+--   Eingabe p: { first_name, last_name, birth_date (YYYY-MM-DD), role (owner|partner|child) } alle Pflicht;
+--      language? = Sprache fester Texte (Code oder freie Angabe, normiert via agent.fn_normalize_language;
+--      nicht unterstuetzt -> {ok:false}; fehlt -> Laufzeit-Fallback Owner-Sprache).
+--   Rueckgabe: {ok:true, person_id, full_name, role} | {ok:false, reason}; reason = "first_name and last_name are
+--      required", "birth_date is required (YYYY-MM-DD)", "role must be owner|partner|child", "language ... is not
+--      supported" oder der durchgereichte reason aus fn_set_context_facts.
+--   Seiteneffekt: Append der Person in den Context `family` (via fn_set_context_facts).
 --   Tests: tests/db/core/test_fn_household_person.sql
 -- ============================================================
 CREATE OR REPLACE FUNCTION agent.fn_add_household_person(p jsonb)
@@ -45,7 +47,7 @@ BEGIN
     -- Slug aus dem Vornamen, eindeutig (die eine Adresse: agent.fn_person_slug).
     v_slug := agent.fn_person_slug(v_first);
 
-    -- Delegieren — KEIN chat_id im Payload (s. Header: owner_only-Backstop bewusst umgangen).
+    -- Delegieren — kein chat_id im Payload (s. Header: owner_only-Backstop bewusst umgangen).
     v_set := agent.fn_set_context_facts(jsonb_build_object(
         'context_name', 'family',
         'facts', jsonb_build_object('persons', jsonb_build_array(jsonb_strip_nulls(jsonb_build_object(

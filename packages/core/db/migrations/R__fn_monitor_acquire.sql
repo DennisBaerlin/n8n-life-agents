@@ -1,28 +1,29 @@
 -- ============================================================
--- fn_monitor_acquire (HELPER — DB-seitige Wert-Beschaffung fuer sql / none / Paket-Methoden)
---   Die EINE Quelle der nicht-Web-Beschaffung — genutzt von fn_monitor_evaluate (Cron)
---   UND fn_monitor_probe (Test-Abruf der Tools). web_search wird IMMER im Workflow
---   beschafft (HTTP-Node mit Credential) und hier abgelehnt.
---     * sql: Shape-Guard (single SELECT, kein ';', Laengen-Cap) als Beratungsebene,
---       dann agent.fn_monitor_ro_eval (DEFINER, Eigentuemer core_ro_eval = nur die core_ro-Leserechte: strukturell read-only — das
---       GESETZ, ohne Rollenwechsel-Ausweg; core_ro ist die Core-Host-Leserolle: liest agent+core+jedes
+-- fn_monitor_acquire (HELPER)
+--   DB-seitige Wert-Beschaffung fuer sql / none / Paket-Methoden. Die eine Quelle der nicht-Web-Beschaffung,
+--   genutzt von fn_monitor_evaluate (Cron) und fn_monitor_probe (Test-Abruf der Tools). web_search wird immer im
+--   Workflow beschafft (HTTP-Node mit Credential) und hier abgelehnt.
+--   Eingabe: p_method, p_spec (jsonb; sql: {query}), p_as_of (date).
+--     * sql: Shape-Guard (single SELECT, kein ';', max. 2000 Zeichen) als Beratungsebene,
+--       dann agent.fn_monitor_ro_eval (DEFINER, Eigentuemer core_ro_eval = nur die core_ro-Leserechte: strukturell
+--       read-only, das Gesetz, ohne Rollenwechsel-Ausweg; core_ro ist die Core-Host-Leserolle: liest agent+core+jedes
 --       installierte Paket ohne fremde Person-Daten, denn eine Monitor-sql-Acquisition kann beliebige Schemata
---       treffen — der Core-Seed household_facts_freshness liest agent.core_contexts, ein Paket-Trigger dessen
---       Schema, B3) mit Scalar-Subquery-Wrap 'SELECT (<q>)::numeric' (>1 Zeile/Spalte bricht kontrolliert).
---       KEIN statement_timeout: wirkt in PG nur am Top-Level-Statement (Restrisiko dokumentiert in
+--       treffen: der Core-Seed household_facts_freshness liest agent.core_contexts, ein Paket-Trigger dessen
+--       Schema) mit Scalar-Subquery-Wrap 'SELECT (<q>)::numeric' (>1 Zeile/Spalte bricht kontrolliert).
+--       Kein statement_timeout: wirkt in PG nur am Top-Level-Statement (Restrisiko dokumentiert in
 --       agent.monitor_init.sql).
 --     * none: ok ohne Wert (reiner Reminder).
---     * PAKET-Methode (Phase B, core.monitor_acquisition_methods): Dispatch an die acquire_fn des Pakets
+--     * Paket-Methode (core.monitor_acquisition_methods): Dispatch an die acquire_fn des Pakets
 --       (fn-Name nur aus der Registry, to_regprocedure-Guard ueber agent.fn_monitor_method_status) mit
---       {spec, as_of}; Methode nicht verfuegbar (Paket fehlt/inaktiv) -> {ok:false, reason} — NIE RAISE
---       (vorher las der Core finance.fx_rates ungeguardet -> ein verwaister fx-Trigger brach den Heartbeat
---       fuer ALLE Trigger ab). Ein RAISE in der Paket-fn wird ebenfalls zu {ok:false} gefangen.
+--       {spec, as_of}; Methode nicht verfuegbar (Paket fehlt/inaktiv) -> {ok:false, reason}, nie RAISE
+--       (ein verwaister Trigger darf den Heartbeat nicht fuer alle Trigger abbrechen). Ein RAISE in der
+--       Paket-fn wird ebenfalls zu {ok:false} gefangen.
 --   Rueckgabe: Observation {ok, value?, unit?, as_of?, source_url?, reason?}
---   BEWUSST KEIN SET search_path (anders als fn_monitor_method_status/_validate_params): der sql-Zweig reicht
+--   Bewusst kein SET search_path (anders als fn_monitor_method_status/_validate_params): der sql-Zweig reicht
 --   den Default-search_path an fn_monitor_ro_eval weiter (unqualifizierte Namen der Trigger-Query); das
 --   EXECUTE-Ziel der Paket-Methode ist ohnehin schema-qualifiziert aus der Registry (Regex-CHECK).
 -- ============================================================
-DROP FUNCTION IF EXISTS agent.fn_monitor_acquire(text, jsonb, date, int);   -- Phase B: p_stale_days lebt beim Paket
+DROP FUNCTION IF EXISTS agent.fn_monitor_acquire(text, jsonb, date, int);   -- alte Signatur mit p_stale_days (liegt beim Paket)
 CREATE OR REPLACE FUNCTION agent.fn_monitor_acquire(
     p_method     text,
     p_spec       jsonb,

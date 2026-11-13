@@ -1,26 +1,24 @@
 -- ============================================================
--- fn_list_monitor_triggers (READ-ONLY, SECURITY DEFINER — publiziertes Core-Lesefenster, D10)
---   Liefert die BESTEHENDEN Trigger einer Domain (Label + Typ + Status + kompakte Spec-Zeile) aus
---   agent.monitor_triggers. ZWECK: der Advisor scannt beim Plan-Publish den Plan auf monitorbare
---   Trigger und schlaegt nur NEUE vor — dafuer muss er die schon registrierten LESEN koennen
---   (Dubletten-Bewusstsein; das create-Tool faengt exakte Label-Dubletten ohnehin via unique_violation,
---   dieses Fenster verhindert das blinde Vorschlagen + semantische Dubletten unter abweichendem Label).
---   Eine finance-/advisor-Rolle (finance_ro) darf agent.monitor_triggers NICHT direkt lesen (Schema-
---   Isolation D10) -> sie liest ueber dieses publizierte Fenster (analog core.fn_monitor_trigger_summary,
---   das nur Zaehler liefert; hier braucht der Scan die LABELS).
---
---   GENERISCH: p_domain ist Parameter (read-all, keine own-Restriktion) — der Career-Advisor liest mit
---   domain='career'. Lesen filtert per `domain`; Besitz/Purge per `package` (zwei Schluessel) — in der
+-- fn_list_monitor_triggers (READ)
+--   Publiziertes Core-Lesefenster (SECURITY DEFINER, D10): liefert die bestehenden Trigger einer Domain
+--   (label, trigger_type, status, spec_summary als kompakte Spec-Zeile) aus agent.monitor_triggers.
+--   Der Advisor scannt beim Plan-Publish den Plan auf monitorbare Trigger und schlaegt nur neue vor; dafuer muss er
+--   die schon registrierten lesen koennen (das create-Tool faengt exakte Label-Dubletten ohnehin via
+--   unique_violation, dieses Fenster verhindert das blinde Vorschlagen und semantische Dubletten unter abweichendem Label).
+--   Eine finance-/advisor-Rolle (finance_ro) darf agent.monitor_triggers nicht direkt lesen (Schema-
+--   Isolation D10) -> sie liest ueber dieses Fenster (analog core.fn_monitor_trigger_summary,
+--   das nur Zaehler liefert; hier braucht der Scan die Labels).
+--   Eingabe: p_domain (Pflicht; read-all, keine own-Restriktion; der Career-Advisor liest mit domain='career').
+--   Lesen filtert per domain; Besitz/Purge laeuft per package (zwei Schluessel) -- in der
 --   Praxis ist der Advisor der einzige Writer seiner Domain, daher unkritisch.
---   CONTENT-GUARD: spec_summary wird AUSSCHLIESSLICH aus den TYPISIERTEN Vergleichs-Spalten gebaut
---   (acquisition_method-Enum, comparator, threshold_value, drawdown_pct, due_date) — NIE aus
---   acquisition_spec (freier Web-Prompt/Roh-SQL) oder action_note (freier DE-Text): sonst Prompt-
---   Injection-Echo + Token-Bombe zurueck in den Advisor-Kontext. label wird verbatim zurueckgegeben
---   (der Advisor braucht es zum Dedup). Auch disabled und abgelehnte Eintraege (status 'declined' aus
+--   Rueckgabe: Zeilen (label, trigger_type, status, spec_summary), sortiert nach label; label verbatim (der Advisor
+--   braucht es zum Dedup). Enthalten sind auch disabled Trigger und abgelehnte Eintraege (status 'declined' aus
 --   agent.plan_reminder_declines): beide darf der Plan-Durchlauf nicht erneut anbieten.
---
---   SECURITY DEFINER + gepinnter search_path (CVE-2018-1058) + REVOKE ALL FROM PUBLIC + EXECUTE nur an
---   die Paket-Rollen (erteilt in core.fn_provision_package_roles, to_regprocedure-guarded). READ-ONLY.
+--   Content-Guard: spec_summary wird ausschliesslich aus den typisierten Vergleichs-Spalten gebaut
+--   (acquisition_method-Enum, comparator, threshold_value, drawdown_pct, due_date), nie aus
+--   acquisition_spec (freier Web-Prompt/Roh-SQL) oder action_note (freier DE-Text): sonst kaeme ein Prompt-
+--   Injection-Echo samt Token-Bombe zurueck in den Advisor-Kontext.
+--   EXECUTE nur an die Paket-Rollen (erteilt in core.fn_provision_package_roles, to_regprocedure-guarded).
 -- ============================================================
 CREATE OR REPLACE FUNCTION core.fn_list_monitor_triggers(p_domain text)
 RETURNS TABLE (label text, trigger_type text, status text, spec_summary text)

@@ -1,19 +1,19 @@
 -- ============================================================
--- estate.fn_create_provider_contract (ATOMIC WRITE — WS-2)
---   Legt einen NEUEN Nicht-finance-Vertrag im Register an (Energie/Telekom/Abo/Verein/Wohnen;
---   Versicherungs-/Konto-Stammdaten leben bei FINANCE — Grenzregel). Den deterministischen
---   Dubletten-Backstop (gleicher Anbieter + Kategorie) faehrt das TOOL vor dem Gate
+-- estate.fn_create_provider_contract (ATOMIC WRITE)
+--   Legt einen neuen Nicht-finance-Vertrag im Register an (Energie/Telekom/Abo/Verein/Wohnen;
+--   Versicherungs-/Konto-Stammdaten leben bei finance — Grenzregel). Den deterministischen
+--   Dubletten-Backstop (gleicher Anbieter + Kategorie) faehrt das Tool vor dem Gate
 --   (fn_resolve_provider_contract, create_*-Pflicht-Node); Aenderungen -> set_provider_contract.
 --   DB-Backstop: core.fn_check_write_permission('adults_only', chat_id) — Kind -> {ok:false}.
---   death_action NULL = bewusst OFFENER Gap (die Gap-Analyse nudgt darauf).
---   finance_recurring_payment_id: lose Referenz OHNE FK (stale = Gap-Anzeige, nie Crash);
---   das WS-2-Tool sendet sie nicht (der estate-Agent liest finance nicht) — der Key bleibt
+--   death_action NULL = bewusst offener Gap (die Gap-Analyse nudgt darauf).
+--   finance_recurring_payment_id: lose Referenz ohne FK (stale = Gap-Anzeige, nie Crash);
+--   das Tool sendet sie nicht (der estate-Agent liest finance nicht) — der Key bleibt
 --   fuer privilegierte Aufrufer lesbar.
---   Eingabe jsonb: chat_id, owner_person_id (Slug, ''=Haushalt), category, provider,
+--   Eingabe jsonb: chat_id, owner_person_id (Slug, ''=Haushalt), category (Pflicht), provider (Pflicht),
 --     customer_no, contract_no, contact_info, death_action (cancel|transfer|keep),
 --     finance_recurring_payment_id, notes.
---   RUECKGABE: {ok:true, provider_contract_id} | {ok:false, reason} (korrigierbar, kein RAISE).
---   Anwenden via: db_apply.ps1 -File packages\estate\db\migrations\R__fn_create_provider_contract.sql
+--   Rueckgabe: {ok:true, provider_contract_id} | {ok:false, reason} (korrigierbar, kein RAISE); reasons: 'Write rejected
+--   (<perm>): …', 'provider is required (non-empty).', 'invalid category "<c>" — valid: …', 'invalid death_action …'.
 -- ============================================================
 CREATE OR REPLACE FUNCTION estate.fn_create_provider_contract(p jsonb)
 RETURNS jsonb LANGUAGE plpgsql AS $$
@@ -43,7 +43,7 @@ BEGIN
         RETURN jsonb_build_object('ok', false, 'reason',
             'invalid death_action "' || v_action || '" — valid: cancel | transfer | keep (or omit = open gap).');
     END IF;
-    -- Lose finance-Referenz: nur eine ECHTE Zahl uebernehmen (kein Cast-RAISE auf Muell).
+    -- Lose finance-Referenz: nur eine echte Zahl uebernehmen (kein Cast-RAISE auf Muell).
     IF COALESCE(p->>'finance_recurring_payment_id', '') ~ '^[0-9]+$' THEN
         v_rp_id := (p->>'finance_recurring_payment_id')::bigint;
     END IF;

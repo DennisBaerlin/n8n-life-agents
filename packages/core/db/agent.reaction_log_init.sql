@@ -3,7 +3,7 @@
 -- Zweck:   Tages-Kontingent der Gefuehls-Reaktionen je Person (kind 'mood' zaehlt) und Doppel-Sperre je Nachricht.
 --          kind: seen = 👀 Lebenszeichen an Foto/Dokument; done = 👌 nach endgueltig bestaetigter Karte;
 --                mood = Stimmung neben einer Antwort (zaehlt zur Obergrenze); answer = Stimmung statt Text.
--- WARUM eine eigene Tabelle statt core.fn_should_notify: die Notify-Schicht kennt nur "1 je Fenster" (eine Zeile je
+-- Warum eine eigene Tabelle statt core.fn_should_notify: die Notify-Schicht kennt nur "1 je Fenster" (eine Zeile je
 --   Schluessel); die Obergrenze ist "N je Tag". Verlaufsquelle fuer spaetere Rueckbezuege.
 -- DB-Gesetze: UNIQUE (chat_id, message_id, kind) -> nie zweimal dieselbe Art an dieselbe Nachricht; Koppel-CHECK
 --   kind <-> emoji (Telegram-Liste, ❤ ohne VS16 wie die Allowlist im LLM-Gateway provisioning/llm_gateway/server.js).

@@ -1,13 +1,13 @@
 -- ============================================================
--- estate.fn_set_contact (ATOMIC WRITE — WS-2, partielles UPDATE)
+-- estate.fn_set_contact (ATOMIC WRITE — partielles UPDATE)
 --   Aendert einen bestehenden Schluessel-Kontakt ("nicht gesendet = unveraendert").
---   Die ID loest das TOOL vor dem Gate via estate.fn_resolve_contact auf; not-found hier =
---   echte Ausnahme (RAISE).
+--   Die ID loest das Tool vor dem Gate via estate.fn_resolve_contact auf; not-found hier =
+--   echte Ausnahme (RAISE 'Contact <id> not found.').
 --   DB-Backstop: core.fn_check_write_permission('adults_only', chat_id) — Kind -> {ok:false}.
---   Eingabe jsonb: chat_id, contact_id, new_name, new_role, organization, phone, email,
+--   Eingabe jsonb: chat_id, contact_id (Pflicht), new_name, new_role, organization, phone, email,
 --     address, notes.
---   RUECKGABE: {ok:true, contact_id} | {ok:false, reason} (korrigierbar).
---   Anwenden via: db_apply.ps1 -File packages\estate\db\migrations\R__fn_set_contact.sql
+--   Rueckgabe: {ok:true, contact_id} | {ok:false, reason} (korrigierbar); reasons: 'Write rejected (<perm>): …',
+--   'invalid new_role "<r>" — valid: …'.
 -- ============================================================
 CREATE OR REPLACE FUNCTION estate.fn_set_contact(p jsonb)
 RETURNS jsonb LANGUAGE plpgsql AS $$

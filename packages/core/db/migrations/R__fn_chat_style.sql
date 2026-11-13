@@ -9,7 +9,7 @@
 --   (util_create_core_ro.sql) -> nur die Stufe verlaesst das Fenster, nie ein Wortlaut. Tabelle fehlt (frische DB,
 --   n8n legt sie beim ersten Gebrauch an), NULL-Chat oder jeder Fehler -> 'neutral' (nie RAISE: der Aufrufer ist die
 --   Absender-Aufloesung).
---   RUECKGABE: 'expressive' | 'neutral' | 'terse'
+--   Rueckgabe: 'expressive' | 'neutral' | 'terse'
 --   Tests: tests/db/core/test_fn_chat_style.sql, tests/db/cross/test_role_permissions.sql
 -- ============================================================
 CREATE OR REPLACE FUNCTION agent.fn_chat_style(p_chat_id bigint)

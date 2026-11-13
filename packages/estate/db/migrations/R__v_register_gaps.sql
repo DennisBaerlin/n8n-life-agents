@@ -1,19 +1,18 @@
 -- ============================================================
--- estate.v_register_gaps (Gap-View, WS-2 — offene Feld-/Zeilen-Luecken der estate-Register)
+-- estate.v_register_gaps (Gap-View — offene Feld-/Zeilen-Luecken der estate-Register)
 --   Eine Zeile = ein konkreter, handlungsfaehiger Gap:
 --     * provider_contract: death_action NULL (Todesfall-Aktion nicht entschieden)
 --     * digital_account:   desired_action NULL (Todesfall-Aktion nicht entschieden)
---     * digital_account:   SCHLUESSELKONTO ohne access_path (im Ereignisfall gatet das
+--     * digital_account:   Schluesselkonto ohne access_path (im Ereignisfall gatet das
 --                          E-Mail-Konto alle Resets — ohne Zugangs-Fundort kritisch)
---     * person_record:     Erwachsener ohne ein einziges Stammdaten-Feld (Zeile fehlt ODER ist leer — WP3: eine
---                          leere Zeile vom Review-Stempel schliesst die Luecke nicht mehr still)
---     * funeral_preferences: Erwachsener ohne Bestattungswunsch (Zeile fehlt ODER Art/Vorsorge/Wuensche alle leer)
---   gap_code (Textkatalog Phase C) = stabiler Code; die Anzeige rendert estate.gap.<code> in der Sprache des Lesers
+--     * person_record:     Erwachsener ohne ein einziges Stammdaten-Feld (Zeile fehlt oder ist leer: eine
+--                          leere Zeile vom Review-Stempel schliesst die Luecke nicht still)
+--     * funeral_preferences: Erwachsener ohne Bestattungswunsch (Zeile fehlt oder Art/Vorsorge/Wuensche alle leer)
+--   gap_code = stabiler Code; die Anzeige rendert estate.gap.<code> in der Sprache des Lesers
 --   (fn_render_register_body). gap = englischer Modelltext (Sprachpolitik: der estate_ro-Frei-SQL-Leser ist das LLM).
 --   Personen-Zeilen-Gaps nur fuer Erwachsene (owner|partner — wie v_directive_gaps).
 --   Personen-Quelle = core.fn_household_persons() (View laeuft mit Owner-Rechten).
 --   Konsumiert von estate.fn_gap_report + estate_ro (Frei-SQL).
---   Anwenden via: db_apply.ps1 -File packages\estate\db\migrations\R__v_register_gaps.sql
 -- ============================================================
 DROP VIEW IF EXISTS estate.v_register_gaps CASCADE;
 CREATE VIEW estate.v_register_gaps AS
@@ -41,7 +40,7 @@ SELECT 'person_record', NULL::bigint, hp.person_id, hp.full_name,
        'person_record_missing'
 FROM core.fn_household_persons() hp
 WHERE hp.role IN ('owner', 'partner')
-  -- nach INHALT, nicht Zeilen-Existenz: fn_confirm_review legt fuer den Review-Stempel auch eine leere Zeile an
+  -- nach Inhalt, nicht Zeilen-Existenz: fn_confirm_review legt fuer den Review-Stempel auch eine leere Zeile an
   AND NOT EXISTS (SELECT 1 FROM estate.person_records pr WHERE pr.person_id = hp.person_id
                     AND coalesce(pr.tax_id, pr.pension_insurance_no, pr.health_insurance_type, pr.health_insurance_name,
                                  pr.health_insurance_no, pr.employer, pr.certificates_location) IS NOT NULL)

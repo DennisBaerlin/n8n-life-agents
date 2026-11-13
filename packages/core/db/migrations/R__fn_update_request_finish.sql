@@ -1,5 +1,5 @@
 -- ============================================================
--- core.fn_update_request_finish(p) (Write — Update-Hinweis 2026-10-24)
+-- fn_update_request_finish (ATOMIC WRITE) — Ergebnis eines Update-Auftrags festhalten
 --   Der root-Runner haelt das Ergebnis eines uebernommenen Auftrags fest (aus der Ergebnis-Datei von provision.sh
 --   bzw. aus seinen eigenen Vor-Pruefungen). Nur ein uebernommener, offener Auftrag laesst sich abschliessen.
 --   stage/reason_code nur als feste Codes ([a-z_]), sonst NULL; detail auf 500 Zeichen gekuerzt (nur Anzeige im
@@ -7,7 +7,7 @@
 --   report (Objekt) markiert die Meldung als faellig (report_state='due', core.fn_update_report_due); ohne den Key bleibt
 --   report_state NULL, damit ein Runner ohne Merker, der selbst meldet, nicht zusaetzlich nachgesendet wird.
 --   p: {id, outcome, stage?, reason_code?, changed?, detail?, report?:{log?, backup?, missing?, failed?, latest?}}
---   RUECKGABE: {ok:true, id, outcome} | {ok:false, reason:'invalid'|'invalid_outcome'|'not_open'}. Nie RAISE.
+--   Rueckgabe: {ok:true, id, outcome} | {ok:false, reason:'invalid'|'invalid_outcome'|'not_open'}. Nie RAISE.
 --   INVOKER (root ueber runuser postgres). Tests: tests/db/core/test_fn_update_requests.sql
 -- ============================================================
 CREATE OR REPLACE FUNCTION core.fn_update_request_finish(p jsonb)

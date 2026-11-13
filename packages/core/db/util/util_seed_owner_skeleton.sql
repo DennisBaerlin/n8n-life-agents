@@ -1,23 +1,23 @@
 -- ============================================================
--- util_seed_owner_skeleton.sql — Erst-Seed der Haushalts-Kontexte beim Owner-Bootstrap (Phase 4)
+-- util_seed_owner_skeleton.sql — Erst-Seed der Haushalts-Kontexte beim Owner-Bootstrap
 --
--- ZWECK: Auf einer FRISCHEN Instanz existiert die Kontextzeile 'family' noch nicht (PII -> kein
+-- Zweck: Auf einer frischen Instanz existiert die Kontextzeile 'family' noch nicht (PII -> kein
 --   Tarball-Inhalt, kein SQL-Seed). fn_consume_pairing_challenge mergt aber nur in
---   eine BESTEHENDE, vollstaendige family-Person (birth_date-Validator = Backstop-Gesetz). Dieser Seed
---   legt daher das Owner-Person-SKELETT an, BEVOR der Owner seinen Pairing-Code eintippt — die
+--   eine bestehende, vollstaendige family-Person (birth_date-Validator = Backstop-Gesetz). Dieser Seed
+--   legt daher das Owner-Person-Skelett an, bevor der Owner seinen Pairing-Code eintippt — die
 --   Telegram-Identitaet (telegram_user_id) bindet erst der spaetere Consume-Merge.
 --
--- STRUKTUR ist hier getrackt + reviewbar; die PII kommt als psql-Variable zur Laufzeit (nie ins Repo):
+-- Struktur ist hier getrackt + reviewbar; die PII kommt als psql-Variable zur Laufzeit (nie ins Repo):
 --   bootstrap_owner.sh ruft:  psql -v owner_first=... -v owner_last=... -v owner_birth=YYYY-MM-DD \
 --                                  [-v owner_person_id=owner] -f packages/core/db/util/util_seed_owner_skeleton.sql
 --
--- IDEMPOTENT + sicher: ON CONFLICT (name) DO NOTHING — ein vorhandener Haushalt (Re-Run, Restore)
---   wird NIE ueberschrieben. role ist fix 'owner'; telegram_user_id bleibt absichtlich NULL (Skelett).
---   Render-at-fetch dispatcht seit WS1b die Registry core.context_renderers (family ->
---   agent.fn_household_context, aus packages/core/manifest.json geseedet) — KEIN metadata.render_fn-Flag mehr.
---   managed_by='agent' (Sync-Guard: Seeder fasst die PII-Zeile nie an) + package='core' sind seit D14/WS-B2
---   TYPISIERTE Spalten; load_strategy='lazy', agent_name=NULL.
---   Install-UX-Phase 6: das leere 'finance_profile'-Skelett legt NICHT mehr der Core an (Core-Single-Paket-
+-- Idempotent + sicher: ON CONFLICT (name) DO NOTHING — ein vorhandener Haushalt (Re-Run, Restore)
+--   wird nie ueberschrieben. role ist fix 'owner'; telegram_user_id bleibt absichtlich NULL (Skelett).
+--   Render-at-fetch dispatcht die Registry core.context_renderers (family ->
+--   agent.fn_household_context, aus packages/core/manifest.json geseedet), kein metadata.render_fn-Flag.
+--   managed_by='agent' (Sync-Guard: Seeder fasst die PII-Zeile nie an) + package='core' sind
+--   typisierte Spalten; load_strategy='lazy', agent_name=NULL.
+--   Das leere 'finance_profile'-Skelett legt nicht der Core an (Core-Single-Paket-
 --   Naht), sondern das finance-Paket selbst bei jeder Installation (Manifest-Block `context_skeletons`,
 --   seed_data.sh _seed_context_skeletons) — sonst fehlte es nach `finance --purge` + Neuinstallation.
 -- ============================================================

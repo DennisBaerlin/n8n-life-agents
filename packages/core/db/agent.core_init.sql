@@ -4,19 +4,18 @@
 --          (System-Prompts, Memory, Planning, Personal Info).
 --
 -- Sichtbarkeits-Matrix (load_strategy x agent_name):
---   static + NULL          -> System-Prompt JEDES Agenten (global)
+--   static + NULL          -> System-Prompt jedes Agenten (global)
 --   static + '<agent>'     -> System-Prompt nur von <agent>
---   lazy   + NULL          -> Manifest JEDES Agenten (on-demand fetch)
+--   lazy   + NULL          -> Manifest jedes Agenten (on-demand fetch)
 --   lazy   + '<agent>'     -> Manifest nur von <agent>
 --
 -- Lade-Logik ist fuer alle Agenten identisch und im n8n-Sub-Workflow
 -- "agent.tool_load_context" (id UpUCUpPLqNnosD5B) gekapselt: ein executeWorkflow-Call
 -- mit Input { agent_name, include_manifest } liefert den fertigen system_prompt.
--- Diese Assembly (Static-Concat + optionales Manifest) lebt BEWUSST im Workflow,
--- NICHT hier als DB-Funktion/View -- diese Datei bleibt reines Schema. (Pendant zur
--- Sticky-Note-Konvention: hier der umgekehrte Zeiger "passiert nicht in der DB".)
---   include_manifest = 'false' -> nur Static-Concat, KEIN Manifest
---                                 (fuer Agenten OHNE load_context-Tool, z. B. Orchestrator/Router)
+-- Diese Assembly (Static-Concat + optionales Manifest) lebt bewusst im Workflow,
+-- nicht hier als DB-Funktion/View; diese Datei bleibt reines Schema.
+--   include_manifest = 'false' -> nur Static-Concat, kein Manifest
+--                                 (fuer Agenten ohne load_context-Tool, z. B. Orchestrator/Router)
 --   sonst (default / 'true')    -> Static-Concat + Manifest
 -- Lazy-Content-Fetch erfolgt danach on-demand per "load_context"-Tool des Agenten.
 --
@@ -47,10 +46,10 @@ CREATE TABLE IF NOT EXISTS agent.core_contexts (
     load_strategy varchar(16) NOT NULL DEFAULT 'lazy'               -- 'static': Workflow laedt immer in System-Prompt
                       CHECK (load_strategy IN ('static', 'lazy')), -- 'lazy': Agent holt bei Bedarf per SELECT
     content       text NOT NULL DEFAULT '',                         -- Markdown-Body
-    package     text NOT NULL DEFAULT 'core',         -- D14: besitzendes Paket (Lifecycle/Uninstall-Purge-Key); 'core' | '<paket>'
-    managed_by  text NOT NULL DEFAULT 'seed'          -- D14: Sync-Provenienz (aus metadata.managed_by promoted) — wer ueberschreibt die Zeile
+    package     text NOT NULL DEFAULT 'core',         -- besitzendes Paket (Lifecycle/Uninstall-Purge-Key); 'core' | '<paket>'
+    managed_by  text NOT NULL DEFAULT 'seed'          -- Sync-Provenienz: wer ueberschreibt die Zeile
                     CHECK (managed_by IN ('seed', 'build', 'agent')),  -- seed=getrackte md | build=Generat | agent=Laufzeit (PII, exportiert, Seeder fasst sie nie an)
-    metadata    jsonb NOT NULL DEFAULT '{}'::jsonb,   -- Reserve (facts-Sidecar, render_fn, embeddings-refs); Loeschschutz lebt in core.protected_contexts (WS-B2b)
+    metadata    jsonb NOT NULL DEFAULT '{}'::jsonb,   -- Reserve (facts-Sidecar, render_fn, embeddings-refs); Loeschschutz lebt in core.protected_contexts
     created_at  timestamptz NOT NULL DEFAULT now(),
     updated_at  timestamptz NOT NULL DEFAULT now()
 );
@@ -75,7 +74,7 @@ CREATE TRIGGER trg_core_contexts_touch
 -- ============================================================
 -- HAUSHALTS-FAKTEN-SIDECAR (md-first + metadata.facts)
 -- Die Kontexte 'family' (global) und 'finance_profile' (advisor-scoped) tragen neben dem
--- freien Prosa-Body (content) ein kleines jsonb-Sidecar metadata.facts NUR fuer die
+-- freien Prosa-Body (content) ein kleines jsonb-Sidecar metadata.facts nur fuer die
 -- berechenbaren/kritischen Felder (Identitaet, Daten, Zahlen):
 --   family:          {persons:[{person_id, first_name, last_name, aliases[], role(owner|partner|child),
 --                     birth_date, telegram_user_id?, citizenships[]?, language?, persona?, education_status?, as_of?}],
@@ -86,8 +85,8 @@ CREATE TRIGGER trg_core_contexts_touch
 --                     tax_residency?, as_of?}], _meta:{...}}
 -- (finance_profile ist ein Paket-Kontext — Strukturregeln in finance.fn_validate_finance_profile; der Core
 -- kennt nur die reservierten Form-Keys persons/household, s. fn_validate_household_facts unten.)
--- Alles andere ist bewusst un-gelawte Prosa (kontrolliertes Vokabular im Doc-Template).
--- Abgeleitete Werte (Alter, Regelaltersgrenze, Kindergeld-Ende) werden NIE gespeichert —
+-- Alles andere ist bewusst ungepruefte Prosa (kontrolliertes Vokabular im Doc-Template).
+-- Abgeleitete Werte (Alter, Regelaltersgrenze, Kindergeld-Ende) werden nie gespeichert —
 -- render-at-fetch ueber die Render-Registry core.context_renderers (Dispatch: core.fn_fetch_context).
 -- Das LLM rechnet nie Datums-Arithmetik.
 -- Schreibpfad: agent.fn_set_context_facts (HITL-Tool, freundliche {ok:false}) — der
@@ -105,20 +104,19 @@ DECLARE
     v_bad_key    TEXT;
     v_dangling   TEXT;
 BEGIN
-    -- Derived-Value-Denylist (Review-Konsens, an Owner-R5 angepasst; WS1b: REKURSIV ueber ALLE
-    -- jsonb-Ebenen JEDES Sidecars, nicht mehr nur persons[]). Das Sidecar bleibt OPEN-WORLD (neue
-    -- Rohfakt-Keys wie pflegegrad kosten nichts), aber ABGELEITETE Werte duerfen nie gespeichert werden
-    -- (Projekt-Gesetz "Rohfakt speichern, Ableitung rechnen" — ein gespeichertes Alter/Jahr ist am
-    -- naechsten Geburtstag still falsch). GENERISCH fuer family/finance_profile UND die block-
-    -- strukturierten Plan-facts (financial_planning, ohne persons[]) — der Plan-Guard lebt seit WS1b
-    -- HIER im Core, nicht mehr im finance-Validator. Geblockt: CALENDAR-YEAR (start_year/retirement_year/
-    -- target_year), Alter (age/alter/current_age), Restzeit (years_to_*), Projektionen (income/projected_
-    -- income), Nominalwerte ('nominal' = immer aus real abgeleitet) + derived_/computed_-Prefix +
-    -- die DE-Ableitungen regelaltersgrenze/kindergeld + die WS-5 career-Runway (runway/runway_months/covers/
-    -- effective_burn = career.fn_runway render-at-fetch); WP3 zusaetzlich die Muster *_year, (…_)age(_…),
-    -- years_since_*, is_minor/is_adult. ERLAUBT (Roh): birth_date, start_age, planned_retirement_age,
-    -- age_from/age_to (glidepath), horizon_years, target_income_eur_month, transition.probation_months,
-    -- transition.expected_gap_income_eur. Bestand mit neu gesperrten Keys bereinigt core:V032.
+    -- Derived-Value-Denylist: rekursiv ueber alle jsonb-Ebenen jedes Sidecars (nicht nur persons[]).
+    -- Das Sidecar bleibt open-world (neue Rohfakt-Keys wie pflegegrad kosten nichts), aber abgeleitete
+    -- Werte duerfen nie gespeichert werden ("Rohfakt speichern, Ableitung rechnen": ein gespeichertes
+    -- Alter/Jahr ist am naechsten Geburtstag still falsch). Generisch fuer family/finance_profile und die
+    -- blockstrukturierten Plan-facts (financial_planning, ohne persons[]). Geblockt: Kalenderjahr
+    -- (start_year/retirement_year/target_year), Alter (age/alter/current_age), Restzeit (years_to_*),
+    -- Projektionen (income/projected_income), Nominalwerte ('nominal' = immer aus real abgeleitet),
+    -- derived_/computed_-Prefix, die DE-Ableitungen regelaltersgrenze/kindergeld, die career-Runway
+    -- (runway/runway_months/covers/effective_burn = career.fn_runway render-at-fetch) sowie die Muster
+    -- *_year, (…_)age(_…), years_since_*, is_minor/is_adult. Erlaubt (Roh): birth_date, start_age,
+    -- planned_retirement_age, age_from/age_to (glidepath), horizon_years, target_income_eur_month,
+    -- transition.probation_months, transition.expected_gap_income_eur. Bestand mit neu gesperrten Keys
+    -- bereinigt core:V032.
     IF p_facts IS NOT NULL AND jsonb_typeof(p_facts) = 'object' THEN
         WITH RECURSIVE nodes(j) AS (
             SELECT p_facts
@@ -139,15 +137,15 @@ BEGIN
         CROSS JOIN LATERAL jsonb_object_keys(CASE WHEN jsonb_typeof(n2.j)='object' THEN n2.j ELSE '{}'::jsonb END) AS k
         WHERE lower(k) IN ('age','alter','current_age','start_year','retirement_year','target_year',
                            'income','projected_income','years_to_retirement','years_to_goal',
-                           -- WS-5 career-Runway: abgeleitet (career.fn_runway render-at-fetch), nie gespeichert.
-                           -- ROH erlaubt: transition.probation_months / transition.expected_gap_income_eur.
+                           -- career-Runway: abgeleitet (career.fn_runway render-at-fetch), nie gespeichert.
+                           -- Roh erlaubt: transition.probation_months / transition.expected_gap_income_eur.
                            'runway','runway_months','covers','effective_burn')
            OR lower(k) ~ '^(derived|computed)_'
            OR lower(k) ~ '(regelaltersgrenze|kindergeld|years_to_|years_since_)'
            OR lower(k) ~ 'nominal'
-           -- WP3 Muster statt Einzel-Keys: ein Kalenderjahr (*_year, birth_year), ein Alter (age, child_age,
+           -- Muster statt Einzel-Keys: ein Kalenderjahr (*_year, birth_year), ein Alter (age, child_age,
            -- age_years) oder ein Minderjaehrig-/Volljaehrig-Flag ist am naechsten Geburtstag/Jahreswechsel still
-           -- falsch. ERLAUBT bleiben GEPLANTE Roh-Alter (start_age, planned_retirement_age, glidepath age_from/age_to).
+           -- falsch. Erlaubt bleiben geplante Roh-Alter (start_age, planned_retirement_age, glidepath age_from/age_to).
            OR lower(k) ~ '_year$'
            OR (lower(k) ~ '(^|_)age(_|$)'
                AND lower(k) NOT IN ('start_age', 'planned_retirement_age', 'age_from', 'age_to'))
@@ -161,10 +159,10 @@ BEGIN
         END IF;
     END IF;
 
-    -- Reservierte Core-Form-Keys (Phase A, gelten fuer JEDES Sidecar; Schreibweg agent.fn_set_context_facts):
+    -- Reservierte Core-Form-Keys (gelten fuer jedes Sidecar; Schreibweg agent.fn_set_context_facts):
     --   persons   = Array von Objekten mit regex-gueltigem, eindeutigem person_id (Merge-Key);
     --   household = Objekt. Nur geprueft, wenn der Key da ist; nicht-leer nur bei family (Skelette/Reset
-    --   tragen leere Arrays). Pruefung VOR dem family-Zweig, damit kein Sidecar die Form still umdeutet.
+    --   tragen leere Arrays). Pruefung vor dem family-Zweig, damit kein Sidecar die Form still umdeutet.
     IF p_facts IS NOT NULL AND jsonb_typeof(p_facts) = 'object' THEN
         IF p_facts ? 'household' AND jsonb_typeof(p_facts->'household') IS DISTINCT FROM 'object' THEN
             RETURN 'facts.household must be a JSON object (reserved core shape key)';
@@ -173,7 +171,7 @@ BEGIN
             IF jsonb_typeof(p_facts->'persons') IS DISTINCT FROM 'array' THEN
                 RETURN 'facts.persons must be an array of person objects (reserved core shape key)';
             END IF;
-            -- per_user-Kontexte ('<base>__<pid>' bzw. die Basis) tragen KEIN persons (Haushalts-Form).
+            -- per_user-Kontexte ('<base>__<pid>' bzw. die Basis) tragen kein persons (Haushalts-Form).
             IF agent.fn_context_base_name(p_name) IS NOT NULL THEN
                 RETURN format('context "%s" is per-user scoped; facts.persons is a household-only shape key', p_name);
             END IF;
@@ -258,10 +256,10 @@ BEGIN
             END IF;
         END LOOP;
 
-        -- Bidirektionaler Single-Writer-Check (Review A2), Phase A generisch: ein family-Write darf keine
-        -- persons[]-Referenz IRGENDEINES anderen Kontexts verwaisen (Person entfernt/umbenannt). Referenz-
+        -- Bidirektionaler Single-Writer-Check: ein family-Write darf keine
+        -- persons[]-Referenz irgendeines anderen Kontexts verwaisen (Person entfernt/umbenannt). Referenz-
         -- getrieben ueber die reservierte Form (FK-Analogon — jede referenzierende Zeile zaehlt, auch die eines
-        -- inaktiven Pakets), nicht registry-getrieben (bewusst, arch-challenge D3a).
+        -- inaktiven Pakets), bewusst nicht registry-getrieben.
         SELECT string_agg(DISTINCT c2.name || ':' || (fpp->>'person_id'), ', ') INTO v_dangling
         FROM agent.core_contexts c2,
              jsonb_array_elements(CASE WHEN jsonb_typeof(c2.metadata->'facts'->'persons') = 'array'
@@ -274,10 +272,10 @@ BEGIN
         RETURN NULL;
     END IF;
 
-    -- Gegenrichtung (Phase A, generisch — vorher nur finance.fn_validate_finance_profile): jede persons[].person_id
-    -- eines Nicht-family-Kontexts muss in family existieren (Single-Writer: andere Kontexte REFERENZIEREN family-
+    -- Gegenrichtung: jede persons[].person_id
+    -- eines Nicht-family-Kontexts muss in family existieren (Single-Writer: andere Kontexte referenzieren family-
     -- Personen, duplizieren sie nie). Fehlt die family-Zeile (Bootstrap/Restore-Reihenfolge), entfaellt die
-    -- Pruefung (Paritaet zum frueheren Paket-Check).
+    -- Pruefung.
     IF p_facts IS NOT NULL AND jsonb_typeof(p_facts->'persons') = 'array' THEN
         SELECT string_agg(DISTINCT rp->>'person_id', ', ') INTO v_dangling
         FROM jsonb_array_elements(p_facts->'persons') rp
@@ -291,19 +289,19 @@ BEGIN
         END IF;
     END IF;
     -- Paket-besessene Sidecar-Strukturregeln (z. B. finance.fn_validate_finance_profile) liegen in der
-    -- jeweiligen PAKET-fn (D12); der Trigger unten dispatcht sie GENERISCH ueber core.context_validators.
+    -- jeweiligen Paket-fn; der Trigger unten dispatcht sie generisch ueber core.context_validators.
     RETURN NULL;
 END;
 $$;
 
 -- ------------------------------------------------------------
--- agent.fn_context_base_name(p_name) -> per_user-Basisname | NULL (Bugfix-Runde)
---   Registry-Lookups laufen immer auf dem BASIS-Namen (packages/core/CLAUDE.md *context_scopes*): eine per_user-Zeile
+-- agent.fn_context_base_name(p_name) -> per_user-Basisname | NULL
+--   Registry-Lookups laufen immer auf dem Basis-Namen (packages/core/CLAUDE.md *context_scopes*): eine per_user-Zeile
 --   heisst '<base>__<pid>' (oder die Basis selbst). Laengster passender per_user-Basisname aus core.context_scopes
---   gewinnt (ein Basisname darf selbst '__' enthalten). Die EINE Adresse fuer diese Regel (Trigger, Validatoren).
+--   gewinnt (ein Basisname darf selbst '__' enthalten). Die eine Adresse fuer diese Regel (Trigger, Validatoren).
 -- ------------------------------------------------------------
 -- plpgsql statt sql: der Body wird erst zur Laufzeit aufgeloest (core.context_scopes entsteht in einer Init-Datei,
--- die alphabetisch NACH dieser laeuft; ein sql-Body wuerde beim CREATE schon gegen die Tabelle geprueft).
+-- die alphabetisch nach dieser laeuft; ein sql-Body wuerde beim CREATE schon gegen die Tabelle geprueft).
 CREATE OR REPLACE FUNCTION agent.fn_context_base_name(p_name text)
 RETURNS text LANGUAGE plpgsql STABLE
 SET search_path = pg_catalog
@@ -319,8 +317,8 @@ END;
 $$;
 
 -- ------------------------------------------------------------
--- agent.fn_is_per_user_row(p_name) -> true gdw p_name eine PHYSISCHE per_user-Zeile '<base>__<pid>' ist (nicht die
---   Basis selbst). Aufbauend auf fn_context_base_name (eine Adresse). Konsumenten: core.fn_fetch_context (lehnt einen
+-- agent.fn_is_per_user_row(p_name) -> true gdw p_name eine physische per_user-Zeile '<base>__<pid>' ist (nicht die
+--   Basis selbst). Aufbauend auf fn_context_base_name. Konsumenten: core.fn_fetch_context (lehnt einen
 --   physischen Namen ab -> nur Basisname + eigene chat_id), das Lazy-Manifest (agent.tool_load_context) und die
 --   RLS-Policy core_contexts_ro_private unten (Frei-SQL unter core_ro sieht keine Person-Zeilen).
 -- ------------------------------------------------------------
@@ -337,7 +335,7 @@ $$;
 
 -- ------------------------------------------------------------
 -- agent.fn_validate_context_facts(p_facts, p_name) -> Fehlertext (mit Wert, fuer den Schreibenden) | NULL
---   Die EINE Pruefung "Fakten fuer Kontext X": (1) Core-Anteil agent.fn_validate_household_facts, (2) Paket-Anteil
+--   Die eine Pruefung "Fakten fuer Kontext X": (1) Core-Anteil agent.fn_validate_household_facts, (2) Paket-Anteil
 --   ueber die Registry core.context_validators (exakter Name zuerst, sonst der per_user-Basisname) -> dynamisches
 --   EXECUTE. validate_fn ist installer-geschrieben (CHECK: schema-qualifiziert, lowercase) -> kein Injection-Pfad;
 --   to_regprocedure-Guard faengt eine veraltete Registry-Zeile ab. Konsumenten: der Trigger unten (Netz) und die
@@ -368,17 +366,15 @@ END;
 $$;
 
 -- ------------------------------------------------------------
--- Trigger-Dispatch (WS-B1 / D12): generische Validator-Registry statt Hardcode (agent.fn_validate_context_facts).
---   Der Core nennt KEIN Paket hartkodiert; fehlt die Registry-Zeile (Paket nicht installiert), entfaellt der
+-- Trigger-Dispatch: generische Validator-Registry statt Hardcode (agent.fn_validate_context_facts).
+--   Der Core nennt kein Paket hartkodiert; fehlt die Registry-Zeile (Paket nicht installiert), entfaellt der
 --   Paket-Anteil still (graceful degradation, kein EXCEPTION-Catch der einen Defekt verschluckt).
--- HAERTUNG (CVE-2018-1058): search_path hart auf pg_catalog gepinnt + alle Nicht-pg_catalog-Objekte schema-qualifiziert.
--- Bugfix-Runde:
---   * per_user-Zeilen '<base>__<pid>' pruefen gegen den Validator ihres BASIS-Namens (vorher exakter NEW.name -> der
---     Paket-Validator lief fuer per_user nie, ein career_planning-Publish blieb ungeprueft).
---   * Ihre Meldung traegt KEINE Werte (nur den Basis-Namen, ERRCODE check_violation): ein RAISE erreicht ueber
+-- Haertung (CVE-2018-1058): search_path hart auf pg_catalog gepinnt + alle Nicht-pg_catalog-Objekte schema-qualifiziert.
+--   * per_user-Zeilen '<base>__<pid>' pruefen gegen den Validator ihres Basis-Namens (nicht des exakten NEW.name).
+--   * Ihre Meldung traegt keine Werte (nur den Basis-Namen, ERRCODE check_violation): ein RAISE erreicht ueber
 --     core.sub_error_notify den Owner, und per_user-Fakten gehoeren dem Mitglied. Die freundlichen Vorpruefungen
 --     melden den Grund mit Wert an den Schreibenden selbst.
---   * Ein UPDATE mit UNVERAENDERTEN facts (z. B. ein Notiz-Append, der nur content aendert) wird nicht neu geprueft:
+--   * Ein UPDATE mit unveraenderten facts (z. B. ein Notiz-Append, der nur content aendert) wird nicht neu geprueft:
 --     die facts wurden beim Schreiben geprueft; ein Altbestand aus der Zeit vor einer Regel blockiert sonst jeden
 --     content-Write an der Zeile.
 -- ------------------------------------------------------------
@@ -413,17 +409,17 @@ CREATE TRIGGER trg_validate_household_facts
     EXECUTE FUNCTION agent.trg_core_contexts_validate_facts_fn();
 
 -- ============================================================
--- CORE-PROTECTION (WS-B2b): DELETE strukturell unmoeglich fuer paket-DEKLARIERTE Kontexte.
--- Der Schutz ist DATEN-gesteuert ueber die host-eigene Registry core.protected_contexts
--- (core.protected_contexts_init.sql), NICHT mehr name-hartkodiert oder per mutablem
--- metadata.protected-Flag (beides retired): jedes Paket deklariert die geschuetzten Context-Namen
+-- CORE-PROTECTION: DELETE strukturell unmoeglich fuer paket-deklarierte Kontexte.
+-- Der Schutz ist daten-gesteuert ueber die host-eigene Registry core.protected_contexts
+-- (core.protected_contexts_init.sql), nicht name-hartkodiert oder per mutablem
+-- metadata.protected-Flag: jedes Paket deklariert die geschuetzten Context-Namen
 -- in seinem manifest.json ("protected_contexts"), der Host seedet sie in die Registry (Kubernetes-
 -- Finalizer-Muster). Eine Zeile ist erst loeschbar, wenn ihr Registry-Eintrag entfernt ist — das tut
 -- nur der Host/Deinstall (Paket-Rollen sind via D10 von Schema core ausgesperrt -> tamper-proof,
 -- ohne "Waechter-des-Waechters"-Trigger). Leere Registry = nichts blockiert (graceful: ein Seed-
 -- Fehlschlag kann Context-Writes nicht bricken).
--- KEIN SECURITY DEFINER: nur die Host-Credential (Eigentuemer beider Schemata) loescht core_contexts;
--- DEFINER braechte Reichweite-null + Eskalations-Oberflaeche. search_path=pg_catalog gepinnt (CVE-2018-1058).
+-- Kein SECURITY DEFINER: nur die Host-Credential (Eigentuemer beider Schemata) loescht core_contexts;
+-- DEFINER braechte nur Eskalations-Oberflaeche ohne Gewinn. search_path=pg_catalog gepinnt (CVE-2018-1058).
 -- ============================================================
 
 CREATE OR REPLACE FUNCTION agent.trg_core_contexts_protect_fn()
@@ -435,11 +431,11 @@ BEGIN
     IF EXISTS (SELECT 1 FROM core.protected_contexts WHERE context_name = OLD.name) THEN
         RAISE EXCEPTION 'core context "%" is protected and cannot be deleted (only the owning package''s uninstall removes it)', OLD.name;
     END IF;
-    -- (2) PER-USER-Suffix (P0b): die suffigierte PII '<protected_base>__<pid>' einer NOCH LEBENDEN Person
+    -- (2) per_user-Suffix: die suffigierte PII '<protected_base>__<pid>' einer noch lebenden Person
     --     (pid in family.facts.persons[]) ist genauso geschuetzt wie der Basis-Name war. Komponiert korrekt:
-    --     * Person-Purge (fn_remove_household_person) loescht die per_user-Zeile NACH dem family-Remove ->
+    --     * Person-Purge (fn_remove_household_person) loescht die per_user-Zeile nach dem family-Remove ->
     --       pid nicht mehr in family -> nicht geblockt -> purgebar.
-    --     * fn_pkg_purge_data loescht core.protected_contexts ZUERST (Finalizer) -> pc leer -> nicht geblockt.
+    --     * fn_pkg_purge_data loescht core.protected_contexts zuerst (Finalizer) -> pc leer -> nicht geblockt.
     --     * Lebende Person / Owner -> geblockt = PII-Loeschschutz erhalten (sonst verloere ein Rename die
     --       Schutz-Bindung, weil die Registry auf den nicht mehr existenten Basis-Namen zeigt).
     IF EXISTS (
@@ -461,7 +457,7 @@ CREATE TRIGGER trg_core_contexts_protect
     BEFORE DELETE ON agent.core_contexts
     FOR EACH ROW EXECUTE FUNCTION agent.trg_core_contexts_protect_fn();
 
--- TRUNCATE-Backstop (Review): row-level BEFORE-DELETE-Trigger feuern bei TRUNCATE nicht —
+-- TRUNCATE-Backstop: row-level BEFORE-DELETE-Trigger feuern bei TRUNCATE nicht —
 -- ohne dieses Statement-Level-Deny haette "auch via psql unloeschbar" ein Loch.
 CREATE OR REPLACE FUNCTION agent.trg_deny_truncate_fn()
 RETURNS trigger LANGUAGE plpgsql AS $$
@@ -511,12 +507,12 @@ DO $$ BEGIN
 END $$;
 
 -- ============================================================
--- MIGRATION (D14 / WS-B2): package + managed_by als TYPISIERTE Spalten (aus metadata promoted).
--- Hier nur die SPALTEN-Anlage fuer Bestands-DBs (idempotent, jeder Apply); der einmalige Daten-
+-- MIGRATION: package + managed_by als typisierte Spalten.
+-- Hier nur die Spalten-Anlage fuer Bestands-DBs (idempotent, jeder Apply); der einmalige Daten-
 -- Backfill (metadata->>'package'/'managed_by' -> Spalte, finance_profile/-plan_current -> 'finance',
 -- danach Strip der jsonb-Keys) laeuft als versioned packages/core/db/migrations/V001__promote_context_provenance_columns.sql.
 -- Fresh-DB: CREATE TABLE oben traegt schon den Endzustand -> diese ALTERs sind no-op.
--- (origin als 2. Spalte BEWUSST NICHT — arch-challenge WS-B2: managed_by [Sync-Ownership: wer
+-- (origin als 2. Spalte bewusst nicht: managed_by [Sync-Ownership: wer
 --  ueberschreibt] und monitor_triggers.origin [Authorship: wer erzeugte] sind verschiedene Achsen;
 --  ein gemeinsamer Name behauptete eine Synonymie, die die Read-Sites nicht tragen.)
 -- ============================================================
@@ -534,13 +530,13 @@ END $$;
 
 -- ============================================================
 -- ROW-LEVEL-SECURITY: per_user-Zeilen sind fuer den Frei-SQL-Pfad (core_ro: guide/monitor-LLM, Monitor-Specs) unsichtbar
---   (Owner-Entscheid 2026-10-24 "strikt privat"). PERMISSIVE fuer alle = unveraendertes Verhalten; die RESTRICTIVE-
+--   ("strikt privat"). PERMISSIVE fuer alle = unveraendertes Verhalten; die RESTRICTIVE-
 --   Policy blendet nur fuer current_user = core_ro / core_ro_eval (Monitor-Specs) die physischen per_user-Zeilen aus
 --   (strpos vorab: Zeilen ohne "__" kosten keinen fn-Aufruf). Bewusst current_user statt
 --   "TO core_ro": eine Policy "TO <rolle>" trifft jedes Mitglied der Rolle — die Sperre haengt so nur an den zwei
 --   tatsaechlichen Frei-SQL-Identitaeten, unabhaengig davon, wer welche Rolle erbt. Owner (postgres) und
---   DEFINER-Fenster (core.fn_fetch_context) umgehen RLS -> die gebundenen Lesepfade bleiben intakt. ACHTUNG: eine
---   kuenftige VIEW ueber diese Tabelle laeuft mit Owner-Rechten und umginge die Policy.
+--   DEFINER-Fenster (core.fn_fetch_context) umgehen RLS -> die gebundenen Lesepfade bleiben intakt. Falle: eine
+--   VIEW ueber diese Tabelle laeuft mit Owner-Rechten und umginge die Policy.
 -- ============================================================
 ALTER TABLE agent.core_contexts ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS core_contexts_all ON agent.core_contexts;

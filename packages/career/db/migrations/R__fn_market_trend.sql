@@ -1,22 +1,21 @@
 -- ============================================================
--- career.fn_market_trend (WS-4 — deterministischer Stellen-Nachfrage-Trend der primaeren Ziel-Rolle)
---   Rechnet fuer target_roles[0] den Posting-Count-Trend (aktuellste Messung + Delta gegen die vorherige
---   Messung desselben scope) DETERMINISTISCH in der DB (CLAUDE.md "LLM rechnet nicht"). Karriere-Analog von
---   career.fn_skill_gap (DB rechnet, Render liest), liest den datierten Cache career.market_signals (vom
---   Cron befuellt) — NICHT die kuratierten Fakten (arch-challenge D1). Genutzt vom Renderer
---   (fn_render_career_planning) -> Markt-Zeile im Plan.
+-- career.fn_market_trend (READ)
+--   Stellen-Nachfrage-Trend der primaeren Ziel-Rolle: fuer target_roles[0] aktuellste Posting-Count-Messung +
+--   Delta gegen die vorherige Messung desselben scope, deterministisch in der DB. Liest den datierten Cache
+--   career.market_signals (vom Cron befuellt), nicht die kuratierten Fakten. Wie career.fn_skill_gap
+--   (DB rechnet, Render liest); genutzt von fn_render_career_planning -> Markt-Zeile im Plan.
+--   Eingabe: p_plan_facts (career_planning-Fakten; braucht target_roles[0].title, optional target_locations[0]).
 --
---   SCHEMA-QUALIFIZIERT durchgehend (career.*/agent.* explizit): der Render-Pfad laeuft via
---   core.fn_fetch_context (DEFINER, search_path pg_catalog,agent,core OHNE career; der Renderer laeuft als
---   dessen Owner = Superuser -> liest career.* trotz context_ro-Binding). KEINE SECURITY DEFINER noetig
+--   Schema-qualifiziert durchgehend (career.*/agent.* explizit): der Render-Pfad laeuft via
+--   core.fn_fetch_context (DEFINER, search_path pg_catalog,agent,core ohne career; der Renderer laeuft als
+--   dessen Owner = Superuser und liest career.* trotz context_ro-Binding). Kein SECURITY DEFINER noetig
 --   (plain wie fn_skill_gap); der Render-unter-context_ro-Test (test_fn_render_career_planning) deckt die
 --   Rollen-Perspektiv-Pflicht.
 --
---   RAISE-FREI: kein Cast auf Junk, Division durch 0 geguarded, fehlende Rolle/Zahlen/Cache-Zeilen -> NULL.
---   RUECKGABE jsonb (oder NULL, wenn keine Daten):
+--   RAISE-frei: kein Cast auf Junk, Division durch 0 geguarded, fehlende Rolle/Zahlen/Cache-Zeilen -> NULL.
+--   Rueckgabe jsonb (oder NULL, wenn keine Daten):
 --     { role, location, count, prev_count, trend_pct, direction, as_of }
 --     trend_pct/direction nur bei >= 2 Messungen (sonst trend_pct null, direction 'flat').
---   Anwenden via: db_apply.ps1 -File packages\career\db\migrations\R__fn_market_trend.sql
 -- ============================================================
 CREATE OR REPLACE FUNCTION career.fn_market_trend(p_plan_facts jsonb)
 RETURNS jsonb LANGUAGE plpgsql STABLE AS $$
@@ -65,7 +64,7 @@ BEGIN
         v_dir   := CASE WHEN v_cnt > v_prev THEN 'up'
                         WHEN v_cnt < v_prev THEN 'down' ELSE 'flat' END;
     ELSE
-        v_dir := 'flat';   -- nur EINE Messung -> kein Trend
+        v_dir := 'flat';   -- nur eine Messung -> kein Trend
     END IF;
 
     RETURN jsonb_build_object(

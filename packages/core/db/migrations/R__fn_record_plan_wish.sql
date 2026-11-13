@@ -1,12 +1,12 @@
 -- ============================================================
--- agent.fn_record_plan_wish(p) (ATOMIC WRITE — "Wunsch an den Owner" zu einem Haushalts-Plan, 2026-10-28)
---   Ein erwachsenes Mitglied (Rolle partner) haelt einen Aenderungswunsch zum AKTIVEN Haushalts-Plan der Domain fest
+-- fn_record_plan_wish (ATOMIC WRITE — "Wunsch an den Owner" zu einem Haushalts-Plan)
+--   Ein erwachsenes Mitglied (Rolle partner) haelt einen Aenderungswunsch zum aktiven Haushalts-Plan der Domain fest
 --   (core.fn_household_plan_active). Der Wunsch aendert den Plan nicht — der Owner entscheidet; er bekommt den Wortlaut
 --   ueber die HITL-Stufe owner_info des Tools agent.tool_record_plan_wish (Mitglied bestaetigt, Owner-Info in seiner
 --   Sprache). Wortlaut in Originalsprache, nur getrimmt (nie uebersetzt), plan_id = aktive Version (Provenienz).
 --   p: { domain (fixer Binding-Input, nie LLM), chat_id (Identitaet, build-fix), wish_text (Pflicht, <= 2000 Zeichen) }
 --   Probelauf vor der Karte ueber das generische core.fn_dry_run (New-FnWriteGate, immer zurueckgerollt).
---   RUECKGABE: Erfolg -> {ok:true, wish_id, plan_id, plan_version}; korrigierbar (kein aktiver Plan, kein Partner/unbekannt, leer, zu lang) -> {ok:false, reason} OHNE
+--   Rueckgabe: Erfolg -> {ok:true, wish_id, plan_id, plan_version}; korrigierbar (kein aktiver Plan, kein Partner/unbekannt, leer, zu lang) -> {ok:false, reason} ohne
 --     Write (kein RAISE -> kein Owner-Alert). CHECK am Tabellen-Wortlaut als Backstop.
 --   Tests: tests/db/core/test_fn_record_plan_wish.sql
 -- ============================================================

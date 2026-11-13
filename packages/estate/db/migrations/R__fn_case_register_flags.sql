@@ -1,7 +1,8 @@
 -- ============================================================
--- estate.fn_case_register_flags (WP3 — Fall-Merkmale aus dem Vorsorge-Register ABLEITEN, nie erfragen/speichern)
+-- estate.fn_case_register_flags (READ — Fall-Merkmale aus dem Vorsorge-Register ableiten, nie erfragen/speichern)
 --   Liefert je Intake-Merkmal true | false | null (null = das Register weiss es nicht -> der Agent fragt genau das).
---   Muster wie die DERIVED-Conditions adult_subject/minor_children in fn_case_template_rows: der Fall speichert nur,
+--   Eingabe: p_subject (person_id des Subjekts). Rueckgabe: {has_will, no_poa, employed, pension_relevant, tenant}.
+--   Muster wie die derived-Conditions adult_subject/minor_children in fn_case_template_rows: der Fall speichert nur,
 --   was der Nutzer ausdruecklich sagt (cases.flags = Override), alles andere kommt live aus dem Register.
 --     has_will         true : testament ODER erbvertrag 'exists'
 --                      false: testament 'does_not_exist' und kein erbvertrag 'exists'/'planned'
@@ -10,9 +11,9 @@
 --     pension_relevant true : person_records.pension_insurance_no gesetzt
 --     tenant           true : ein landlord-Kontakt (Subjekt oder Haushalt)
 --   Urkunden/Kontakte des Haushalts (owner_person_id NULL, z. B. Berliner Testament) zaehlen nur fuer ein
---   ERWACHSENES Subjekt (owner/partner). Fuer ein Kind sind employed/pension_relevant/tenant/no_poa abgeleitet false
+--   erwachsenes Subjekt (owner/partner). Fuer ein Kind sind employed/pension_relevant/tenant/no_poa abgeleitet false
 --   (Eltern vertreten ein minderjaehriges Kind kraft Sorgerecht; es arbeitet/mietet nicht).
---   Rolle NUR ueber core.fn_household_persons() (DEFINER-Fenster, D10). STABLE, kein Write.
+--   Rolle nur ueber core.fn_household_persons() (DEFINER-Fenster). STABLE, kein Write.
 --   Tests: tests/db/estate/test_fn_case_register_flags.sql
 -- ============================================================
 CREATE OR REPLACE FUNCTION estate.fn_case_register_flags(p_subject text)

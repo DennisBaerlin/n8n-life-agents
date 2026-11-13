@@ -1,11 +1,12 @@
 -- ============================================================
--- core.fn_set_reminder_pref(p) — eine Person schaltet IHRE Zustellung eines Person-Reminders (Roter Faden 2026-10-23)
+-- fn_set_reminder_pref (ATOMIC WRITE) — eine Person schaltet ihre Zustellung eines Person-Reminders
 --   p: { chat_id (vom Callback, nie LLM), key, enabled }
---   - Person NUR aus agent.fn_resolve_sender(chat_id); unaufgeloest -> {ok:false, reason:'unresolved_sender'}.
+--   - Person nur aus agent.fn_resolve_sender(chat_id); unaufgeloest -> {ok:false, reason:'unresolved_sender'}.
 --   - key muss in core.cron_labels mit scope='person' stehen; Haushalts-Keys schaltet der Owner ueber
 --     core.fn_set_cron_enable -> {ok:false, reason:'not_person_scoped'}; unbekannt -> {ok:false, reason:'unknown_key'}.
 --   - Upsert in agent.reminder_prefs (idempotent).
---   RUECKGABE: {ok:true, key, enabled, person_id} | {ok:false, reason}. Nie RAISE (Callback-Pfad).
+--   Rueckgabe: {ok:true, key, enabled, person_id} | {ok:false, reason: unresolved_sender | unknown_key | not_person_scoped |
+--     'invalid chat_id or enabled' | 'enabled must be true|false'}. Nie RAISE (Callback-Pfad).
 --   INVOKER: gerufen von core.fn_handle_reminder_cb unter der Host-Cred des Dispatchers. search_path gepinnt.
 --   Tests: tests/db/core/test_fn_reminder_prefs.sql
 -- ============================================================

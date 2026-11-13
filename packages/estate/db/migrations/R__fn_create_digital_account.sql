@@ -1,20 +1,19 @@
 -- ============================================================
--- estate.fn_create_digital_account (ATOMIC WRITE — WS-2)
---   Legt ein NEUES Konto des digitalen Nachlasses an — OHNE Passwoerter (Owner-Entscheid 2):
---   access_path/twofa_hint/seed_backup_location sind FUNDORT-Verweise, nie das Geheimnis
+-- estate.fn_create_digital_account (ATOMIC WRITE)
+--   Legt ein neues Konto des digitalen Nachlasses an — ohne Passwoerter:
+--   access_path/twofa_hint/seed_backup_location sind Fundort-Verweise, nie das Geheimnis
 --   selbst (Inhalt haerten Tool-Description + Instructions; die DB kann ihn nicht pruefen).
---   seed_backup_location NUR fuer category='crypto' — der Tabellen-CHECK ist das Gesetz,
+--   seed_backup_location nur fuer category='crypto' — der Tabellen-CHECK ist das Gesetz,
 --   hier die freundliche {ok:false}-Spiegelung. Dubletten-Backstop (Anbieter+Nutzername)
---   faehrt das TOOL vor dem Gate (fn_resolve_digital_account).
+--   faehrt das Tool vor dem Gate (fn_resolve_digital_account).
 --   DB-Backstop: core.fn_check_write_permission('adults_only', chat_id) — Kind -> {ok:false}.
---   desired_action NULL = bewusst OFFENER Gap. is_key_account: tolerant geparster
---   Wahrheitswert (true/false/yes/no/1/0), Default false.
---   Eingabe jsonb: chat_id, owner_person_id (Slug, ''=Haushalt), category, provider, username,
+--   desired_action NULL = bewusst offener Gap. is_key_account: tolerant geparster
+--   Wahrheitswert (true/false/yes/no/1/0/ja/nein), Default false.
+--   Eingabe jsonb: chat_id, owner_person_id (Slug, ''=Haushalt), category (Pflicht), provider (Pflicht), username,
 --     is_key_account, desired_action (delete|memorialize|transfer|keep), access_path,
 --     legacy_contact_status (configured|not_configured|unavailable), twofa_hint,
 --     seed_backup_location (nur crypto), notes.
---   RUECKGABE: {ok:true, digital_account_id} | {ok:false, reason} (korrigierbar, kein RAISE).
---   Anwenden via: db_apply.ps1 -File packages\estate\db\migrations\R__fn_create_digital_account.sql
+--   Rueckgabe: {ok:true, digital_account_id, is_key_account} | {ok:false, reason} (korrigierbar, kein RAISE).
 -- ============================================================
 CREATE OR REPLACE FUNCTION estate.fn_create_digital_account(p jsonb)
 RETURNS jsonb LANGUAGE plpgsql AS $$
@@ -56,7 +55,7 @@ BEGIN
         RETURN jsonb_build_object('ok', false, 'reason',
             'seed_backup_location is only valid for category crypto (a seed backup location belongs to a crypto account).');
     END IF;
-    -- Toleranter Wahrheitswert (WS-0b-Lektion has_transmortal_poa: "True"/"yes" nicht verlieren):
+    -- Toleranter Wahrheitswert (wie has_transmortal_poa: "True"/"yes" nicht verlieren):
     v_key := CASE WHEN v_key_raw IN ('true', 'yes', '1', 'ja') THEN TRUE
                   WHEN v_key_raw IN ('false', 'no', '0', 'nein') OR v_key_raw IS NULL THEN FALSE
                   ELSE NULL END;

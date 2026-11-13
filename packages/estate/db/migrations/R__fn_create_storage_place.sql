@@ -1,15 +1,15 @@
 -- ============================================================
--- estate.fn_create_storage_place (ATOMIC WRITE — WS-2)
---   Legt eine NEUE Fundstelle an (Tresor/Bankschliessfach/Ordner/digital). access_hint =
---   WIE man rankommt ("Schluessel im Sekretaer") — NIE Codes/PINs (Owner-Entscheid 2; Inhalt
+-- estate.fn_create_storage_place (ATOMIC WRITE)
+--   Legt eine neue Fundstelle an (Tresor/Bankschliessfach/Ordner/digital). access_hint =
+--   wie man rankommt ("Schluessel im Sekretaer") — nie Codes/PINs (Inhalt
 --   haerten Tool-Description + Instructions). Fundstellen sind FK-Ziel von estate.directives
---   (RESTRICT) — deshalb gibt es KEIN delete_storage_place in WS-2 (Repurpose via
---   set_storage_place). Dubletten-Backstop (Name) faehrt das TOOL vor dem Gate.
+--   (RESTRICT) — deshalb gibt es kein delete_storage_place (Repurpose via
+--   set_storage_place). Dubletten-Backstop (Name) faehrt das Tool vor dem Gate.
 --   DB-Backstop: core.fn_check_write_permission('adults_only', chat_id) — Kind -> {ok:false}.
---   Eingabe jsonb: chat_id, owner_person_id (Slug, ''=Haushalts-Fundstelle), name,
---     kind (safe|bank_deposit_box|folder|digital|other), location, access_hint, notes.
---   RUECKGABE: {ok:true, storage_place_id} | {ok:false, reason} (korrigierbar, kein RAISE).
---   Anwenden via: db_apply.ps1 -File packages\estate\db\migrations\R__fn_create_storage_place.sql
+--   Eingabe jsonb: chat_id, owner_person_id (Slug, ''=Haushalts-Fundstelle), name (Pflicht),
+--     kind (Pflicht: safe|bank_deposit_box|folder|digital|other), location, access_hint, notes.
+--   Rueckgabe: {ok:true, storage_place_id} | {ok:false, reason} (korrigierbar, kein RAISE); reasons: 'Write rejected
+--   (<perm>): …', 'name is required (non-empty).', 'invalid kind "<k>" — valid: …'.
 -- ============================================================
 CREATE OR REPLACE FUNCTION estate.fn_create_storage_place(p jsonb)
 RETURNS jsonb LANGUAGE plpgsql AS $$

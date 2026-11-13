@@ -1,17 +1,16 @@
 -- ============================================================
--- estate.fn_public_holidays (Fristen-Engine, WS-3 — IMMUTABLE, reine Arithmetik)
---   Liefert die gesetzlichen Feiertage EINES Jahres in EINEM Bundesland als date[] — die Basis der
+-- estate.fn_public_holidays (Fristen-Engine — IMMUTABLE, reine Arithmetik)
+--   Liefert die gesetzlichen Feiertage eines Jahres in einem Bundesland als date[] — die Basis der
 --   Werktags-Berechnung (fn_add_business_days) fuer § 28 PStG (Sterbefallanzeige am 3. Werktag).
---   IMMUTABLE, weil KEINE Tabelle gelesen wird (Leitplanke Plan: sobald eine Fristen-fn eine Tabelle
+--   IMMUTABLE, weil keine Tabelle gelesen wird (sobald eine Fristen-fn eine Tabelle
 --   liest -> STABLE): Gauss'sche Osterformel (Gregorianisch, mit den zwei Korrektur-Ausnahmen) +
 --   geschlossene 16-Laender-CASE. Bundesweite Feiertage + landesspezifische (Heilige Drei Koenige,
 --   Frauentag, Fronleichnam, Mariae Himmelfahrt, Weltkindertag, Reformationstag, Allerheiligen,
---   Buss- und Bettag). KONSERVATIV (Plan): nur LANDESWEITE Feiertage — kommunale (z. B. Mariae
---   Himmelfahrt in Teilen Bayerns) werden bewusst NICHT gezaehlt (weniger Feiertage -> Werktage
+--   Buss- und Bettag). Konservativ: nur landesweite Feiertage — kommunale (z. B. Mariae
+--   Himmelfahrt in Teilen Bayerns) werden bewusst nicht gezaehlt (weniger Feiertage -> Werktage
 --   akkumulieren schneller -> fruehere Frist = konservativ, wie der bewusste Verzicht auf § 193 BGB).
 --   Unbekannter/leerer Bundesland-Slug -> nur die bundesweiten Feiertage (kein Wurf).
---   EINGABE: p_year int, p_bundesland text (16-Laender-Slug). RUECKGABE: date[].
---   Anwenden via: db_apply.ps1 -File packages\estate\db\migrations\R__fn_public_holidays.sql
+--   Eingabe: p_year int, p_bundesland text (16-Laender-Slug). Rueckgabe: date[].
 -- ============================================================
 CREATE OR REPLACE FUNCTION estate.fn_public_holidays(p_year int, p_bundesland text)
 RETURNS date[] LANGUAGE plpgsql IMMUTABLE AS $$

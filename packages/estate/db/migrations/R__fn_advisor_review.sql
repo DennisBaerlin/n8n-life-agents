@@ -1,46 +1,47 @@
 -- ============================================================
--- estate.fn_advisor_review (WS-4 — Review-fn der Nachlass-/Vorsorge-Domaene, Jahres-Review)
---   Erfuellt den generischen Engine-Vertrag fn(text,text,jsonb)->jsonb { alerts:[…], digest:{…} } (WS2):
---   der Core-Wrapper core.fn_advisor_review_evaluate dispatcht hierher (Registry core.advisors, domain
---   'estate'), latcht je alert ueber metric_key (geteilte core.notification_state, source='advisor:estate')
---   und reicht den digest ungelatcht durch. Jeder alert traegt 'msg' = [tpl…], der digest 'lines' = [tpl|null…]
---   (Textkatalog Phase C, Form wie finance: estate.advisor.*-Keys + typisierte Werte) — die generischen Core-Crons
---   (UND der estate-eigene cron_review_register) kennen KEINE estate-Felder, sie rendern nur die Struktur.
+-- estate.fn_advisor_review (READ)
+--   Review-fn der Nachlass-/Vorsorge-Domaene (Jahres-Review) im generischen Engine-Vertrag
+--   fn(text,text,jsonb)->jsonb { alerts:[…], digest:{…} }: der Core-Wrapper core.fn_advisor_review_evaluate
+--   dispatcht hierher (Registry core.advisors, domain 'estate'), latcht je alert ueber metric_key
+--   (geteilte core.notification_state, source='advisor:estate') und reicht den digest ungelatcht durch.
+--   Jeder alert traegt 'msg' = [tpl…], der digest 'lines' = [tpl|null…] (Textkatalog, Form wie finance:
+--   estate.advisor.*-Keys + typisierte Werte); die generischen Core-Crons (und der estate-eigene
+--   cron_review_register) kennen keine estate-Felder, sie rendern nur die Struktur.
 --
---   estate ist HAUSHALT (KEIN per_user wie career): p_person_id wird IGNORIERT (NULL byte-gleich; die
---   Signatur ist nur die uniforme Plugin-Schnittstelle, Praezedenz finance). estate_overview traegt KEINE
+--   Eingabe: p_domain, p_person_id, p_observations werden ignoriert (uniforme Plugin-Signatur, Praezedenz
+--   finance). estate ist Haushalt, nicht per_user wie career: estate_overview traegt keine
 --   core.context_scopes-Zeile -> agent.fn_context_persons('estate_overview') ist leer -> der Eval-Cron
---   faechert household (person_id NULL). Muster/Delta zu career: STATT eines Plan-Sidecars sind die Register-
---   Tabellen die Wahrheit; die Luecken rechnet die WS-2-Quelle estate.fn_gap_report() (doppel-guardet).
+--   faechert household (person_id NULL). Delta zu career: statt eines Plan-Sidecars sind die Register-Tabellen
+--   die Wahrheit; die Luecken rechnet estate.fn_gap_report() (doppel-guardet).
+--   Config: advisor.estate_review_days (core.fn_config_get, Default 365).
 --
 --   Metriken (alle latch-faehig ueber metric_key):
---     (A) STALENESS je Erwachsenem: person_records.last_reviewed_at aelter als advisor.estate_review_days
---         (Config, Default 365) -> ein Alert je ueberfaelligem Erwachsenen (metric_key
---         review_staleness:<pid>). fn_confirm_review re-armt (stempelt last_reviewed_at -> Alert
---         faellt aus dem Set -> Reconcile-GC loescht den Latch). GRENZE: NULL last_reviewed_at (nie
---         bestaetigt) feuert NICHT — es gibt keine gerissene Frist-Basis; die Register-Luecke (missing
---         person_record) deckt Unvollstaendigkeit ab. Erst-Confirm startet die jaehrliche Re-Arm-Schleife.
---     (B) FEHLENDE Vorsorge-Dokumente je Erwachsenem (estate.v_directive_gaps, essential+recommended;
+--     (A) Staleness je Erwachsenem: person_records.last_reviewed_at aelter als advisor.estate_review_days
+--         -> ein Alert je ueberfaelligem Erwachsenen (metric_key review_staleness:<pid>).
+--         fn_confirm_review re-armt (stempelt last_reviewed_at -> Alert faellt aus dem Set ->
+--         Reconcile-GC loescht den Latch). Grenze: NULL last_reviewed_at (nie bestaetigt) feuert nicht —
+--         es gibt keine gerissene Frist-Basis; die Register-Luecke (missing person_record) deckt
+--         Unvollstaendigkeit ab. Erst-Confirm startet die jaehrliche Re-Arm-Schleife.
+--     (B) Fehlende Vorsorge-Dokumente je Erwachsenem (estate.v_directive_gaps, essential+recommended;
 --         Haushalts-Urkunde deckt beide Partner) -> ein Alert je Erwachsenem mit ≥1 Luecke (metric_key
---         directive_gaps:<pid>), Owner-Wahl "ruhig": feuert beim Auftauchen, re-armt per Person
---         bei 0 Luecken. Kind + situational NIE (die View filtert).
---     (C) finance-Nachlass-Feld-Gaps GUARDED: estate.fn_gap_report().finance.gaps (policy_number/beneficiary/
---         claim_deadline_hours je Police, ownership/has_transmortal_poa je Konto) -> EIN Singleton-Alert
---         finance_gaps. DOPPEL-GUARDET in fn_gap_report (fn_package_active('finance') + to_regprocedure
---         je Call-Site) -> finance absent/nicht lesbar => gaps=[] => KEIN Alert (graceful, kein Crash).
---   DIGEST (ungelatcht): strukturierte Zaehler (adults_total/reviews_recorded/stale_review_count/
+--         directive_gaps:<pid>), ruhig: feuert beim Auftauchen, re-armt per Person bei 0 Luecken.
+--         Kind + situational nie (die View filtert).
+--     (C) finance-Nachlass-Feld-Gaps guarded: estate.fn_gap_report().finance.gaps (policy_number/beneficiary/
+--         claim_deadline_hours je Police, ownership/has_transmortal_poa je Konto) -> ein Singleton-Alert
+--         finance_gaps. Doppel-guardet in fn_gap_report (fn_package_active('finance') + to_regprocedure
+--         je Call-Site) -> finance absent/nicht lesbar => gaps=[] => kein Alert (graceful, kein Crash).
+--   Digest (ungelatcht): strukturierte Zaehler (adults_total/reviews_recorded/stale_review_count/
 --     directive_gap_count/register_gap_count/finance_gap_count/finance_status) + 'lines' (Zeilen-Struktur).
 --
---   ⚠️ DARF NIE RAISEn: der geteilte Drift-Cron wertet ALLE Advisor in EINER materialisierten CTE aus ->
+--   Darf nie RAISEn: der geteilte Drift-Cron wertet alle Advisor in einer materialisierten CTE aus,
 --   eine Exception hier kippt auch den finance-/career-Lauf. Alle Datums-/Cast-Pfade defensiv geguarded.
---   Der Core-Wrapper faengt nur eine FEHLENDE fn ab, NICHT ein RAISE INNERHALB.
+--   Der Core-Wrapper faengt nur eine fehlende fn ab, nicht ein RAISE innerhalb.
 --
---   ROLLEN-PFAD: aufgerufen vom Core-Wrapper unter dem Haupt-RW-Credential (Owner/DDL) -> erreicht estate.*
+--   Rollen-Pfad: aufgerufen vom Core-Wrapper unter dem Haupt-RW-Credential (Owner/DDL) -> erreicht estate.*
 --   + core.fn_household_persons()/fn_config_get() (DEFINER-Fenster) + finance.* (via fn_gap_report, guarded).
---   estate.-qualifiziert (der Wrapper pinnt nur pg_catalog -> ALLES schema-qualifiziert). STABLE/INVOKER.
---   RUECKGABE jsonb: { ok, alerts:[{metric_key,kind,label,value,target?,msg}], digest:{…,lines} }.
---   ROTER FADEN: alerts nur, wenn mind. ein estate.onboarding_state-Abschnitt completed ist ("erst einladen, dann mahnen").
---   Anwenden via: db_apply.ps1 -File packages\estate\db\migrations\R__fn_advisor_review.sql
+--   estate.-qualifiziert (der Wrapper pinnt nur pg_catalog -> alles schema-qualifiziert). STABLE/INVOKER.
+--   Rueckgabe jsonb: { ok:true, alerts:[{metric_key,kind,label,value,target?,msg}], digest:{…,lines} }.
+--   Alerts nur, wenn mind. ein estate.onboarding_state-Abschnitt completed ist ("erst einladen, dann mahnen").
 -- ============================================================
 CREATE OR REPLACE FUNCTION estate.fn_advisor_review(p_domain text, p_person_id text DEFAULT NULL, p_observations jsonb DEFAULT '{}'::jsonb)
 RETURNS jsonb LANGUAGE plpgsql STABLE AS $$
@@ -61,14 +62,14 @@ DECLARE
     v_lines        jsonb;
     r              record;
 BEGIN
-    -- Tuning-Schwelle (estate-eigener Config-Key; Default 365, defensiv gegen fehlende/leere Zeile).
+    -- estate-eigener Config-Key; Default 365, defensiv gegen fehlende/leere Zeile.
     BEGIN
         v_stale_days := COALESCE(NULLIF(core.fn_config_get('estate', 'advisor', 'estate_review_days'), '')::numeric, 365);
     EXCEPTION WHEN OTHERS THEN
         v_stale_days := 365;
     END;
 
-    -- EINE Gap-Quelle (doppel-guardet): Vorsorge-Dokumente, Register-Feld-Luecken, finance-Nachlass-Felder.
+    -- Eine Gap-Quelle (doppel-guardet): Vorsorge-Dokumente, Register-Feld-Luecken, finance-Nachlass-Felder.
     v_report     := estate.fn_gap_report();
     v_fin_status := v_report->'finance'->>'status';
     v_fin_gaps   := COALESCE(v_report->'finance'->'gaps', '[]'::jsonb);
@@ -77,7 +78,7 @@ BEGIN
     v_reg_gap_ct := jsonb_array_length(COALESCE(v_report->'register_gaps', '[]'::jsonb));
 
     -- ---------- (A) Staleness je Erwachsenem (Register jaehrlich bestaetigen) ----------
-    -- Nur NOT NULL last_reviewed_at, das die Frist reisst; NULL = nie bestaetigt -> keine Staleness (die
+    -- Nur nicht-NULL last_reviewed_at, das die Frist reisst; NULL = nie bestaetigt -> keine Staleness (die
     -- Register-Luecke deckt Unvollstaendigkeit). Erwachsene ueber das DEFINER-Fenster core.fn_household_persons().
     FOR r IN
         SELECT hp.person_id, hp.full_name,
@@ -97,7 +98,7 @@ BEGIN
     END LOOP;
 
     -- ---------- (B) Fehlende Vorsorge-Dokumente je Erwachsenem (aus v_directive_gaps) ----------
-    -- Ein singleton-Alert JE ERWACHSENEM (Owner-Wahl "ruhig": feuert beim Auftauchen, re-armt per Person bei
+    -- Ein singleton-Alert je Erwachsenem (ruhig: feuert beim Auftauchen, re-armt per Person bei
     -- 0 Luecken). Der Text nennt die essenziellen Fehlstellen zuerst. Kind + situational filtert die View.
     FOR r IN
         SELECT g.person_id,
@@ -122,7 +123,7 @@ BEGIN
                                                  'count', core.fn_ui_num(r.gap_count), 'labels', r.essential_labels))));
     END LOOP;
 
-    -- ---------- (C) finance-Nachlass-Feld-Gaps (GUARDED via fn_gap_report) ----------
+    -- ---------- (C) finance-Nachlass-Feld-Gaps (guarded via fn_gap_report) ----------
     -- Singleton-Alert: die konkreten Felder leben bei finance (Grenzregel) und werden dort nachgetragen ->
     -- ein Sammel-Nudge statt per-Feld-Laerm. Guard sitzt in fn_gap_report (Paket absent/nicht lesbar -> []).
     IF v_fin_count > 0 THEN
@@ -144,7 +145,7 @@ BEGIN
     FROM core.fn_household_persons() hp
     LEFT JOIN estate.person_records pr ON pr.person_id = hp.person_id;
 
-    -- Digest als Zeilen-STRUKTUR (Textkatalog Phase C, Form wie finance: tpl | null = Leerzeile).
+    -- Digest als Zeilen-Struktur (Form wie finance: tpl | null = Leerzeile).
     v_lines := jsonb_build_array(
         core.fn_ui_tpl('estate.advisor.digest_title'),
         core.fn_ui_tpl('estate.advisor.digest_adults', jsonb_build_object(
@@ -156,17 +157,17 @@ BEGIN
              ELSE core.fn_ui_tpl('estate.advisor.digest_finance_unavailable',
                       jsonb_build_object('status', COALESCE(v_fin_status, 'unknown'))) END,
         NULL,
-        -- "vollstaendig" nur wenn ALLE Gap-Kategorien 0 sind — inkl. der register_gaps, die (anders als
-        -- Staleness/Dokument-/finance-Gaps) KEINEN Alert emittieren und nur hier im Digest zaehlen. Ohne den
-        -- reg-Term widerspraeche der Schluss-Satz der Zeile "Offene Register-Luecken: N" (Cold-Eyes WS-4).
+        -- "vollstaendig" nur wenn alle Gap-Kategorien 0 sind — inkl. der register_gaps, die (anders als
+        -- Staleness/Dokument-/finance-Gaps) keinen Alert emittieren und nur hier im Digest zaehlen. Ohne den
+        -- reg-Term widerspraeche der Schluss-Satz der Zeile "Offene Register-Luecken: N".
         CASE WHEN v_stale_count = 0 AND v_dir_count = 0 AND v_fin_count = 0 AND v_reg_gap_ct = 0
              THEN core.fn_ui_tpl('estate.advisor.digest_all_done')
              ELSE core.fn_ui_tpl('estate.advisor.digest_next') END);
 
-    -- Roter Faden "erst einladen, dann mahnen" (Owner-Entscheid 2026-10-23): solange KEIN estate-Onboarding-Abschnitt
+    -- "Erst einladen, dann mahnen": solange kein estate-Onboarding-Abschnitt
     -- 'completed' ist, mahnt der Review nicht (die Nachfass-Karte core.fn_onboarding_nudges_due laedt zum Einrichten
     -- ein). Nur 'skipped' = "nicht jetzt" -> ebenfalls still. Leere alerts -> der Engine-Reconcile raeumt alte Latches,
-    -- nach dem Start feuern die Luecken einmal als NEU. Der Digest bleibt (Inhalt auf Abruf).
+    -- nach dem Start feuern die Luecken einmal als neu. Der Digest bleibt (Inhalt auf Abruf).
     IF NOT EXISTS (SELECT 1 FROM estate.onboarding_state WHERE status = 'completed') THEN
         v_alerts := '[]'::jsonb;
     END IF;

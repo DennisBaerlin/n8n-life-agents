@@ -1,13 +1,12 @@
 -- ============================================================
 -- Estate-Paket — Schema "estate" (Baseline-Init, idempotent)
---   WS-0a Geruest (Plan groovy-watching-wave): das Vorsorge-/Nachlass-REGISTER — Vorsorge-Dokumente,
---   Nicht-finance-Vertraege, digitaler Nachlass, Schluessel-Kontakte, Stammdaten, Bestattungswuensche,
---   Fundstellen, Sonderfall-Stubs + household-Onboarding-State. OHNE Ereignisfall (cases/case_tasks/
---   task_templates = WS-3), OHNE Agent (WS-1), OHNE Write-fns (WS-2).
---   GRENZREGEL (Owner-Entscheid 2/5): Produkt-Attribute (Versicherungen, Konten) leben bei FINANCE;
---   estate haelt Prozess-/Fundort-/Wunsch-Attribute + lose Referenzen — NIE Kopien, NIE Cross-Schema-FKs
---   (FK nur auf agent.persons + estate-intern). GEHEIMNISSE NIE: keine Passwoerter/PINs/Seeds —
---   ausschliesslich Fundort-VERWEISE (die Spalten-Kommentare + WS-2-Tool-Descriptions tragen das).
+--   Das Vorsorge-/Nachlass-Register — Vorsorge-Dokumente, Nicht-finance-Vertraege, digitaler Nachlass,
+--   Schluessel-Kontakte, Stammdaten, Bestattungswuensche, Fundstellen, Sonderfall-Stubs,
+--   household-Onboarding-State — plus der Ereignisfall (cases/case_tasks/task_templates, unten).
+--   Grenzregel: Produkt-Attribute (Versicherungen, Konten) leben bei finance; estate haelt
+--   Prozess-/Fundort-/Wunsch-Attribute + lose Referenzen, nie Kopien, nie Cross-Schema-FKs
+--   (FK nur auf agent.persons + estate-intern). Geheimnisse nie: keine Passwoerter/PINs/Seeds,
+--   ausschliesslich Fundort-Verweise (die Spalten-Kommentare + Tool-Descriptions tragen das).
 --   Usage: db_apply.ps1 -File packages/estate/db/estate.tables_init.sql
 -- ============================================================
 
@@ -15,8 +14,8 @@ CREATE SCHEMA IF NOT EXISTS estate;
 
 -- ============================================================
 -- Generischer updated_at-Touch-Trigger (paket-lokal, Muster career/finance.touch_updated_at).
---   Paket-lokal (nicht core/shared), weil die engen Paket-Rollen kein Cross-Schema-EXECUTE haben
---   und ein Paket sein eigenes Schema voll besitzt (D10).
+--   Paket-lokal statt core/shared, weil die engen Paket-Rollen kein Cross-Schema-EXECUTE haben
+--   und ein Paket sein eigenes Schema voll besitzt.
 -- ============================================================
 CREATE OR REPLACE FUNCTION estate.touch_updated_at()
 RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN NEW.updated_at := NOW(); RETURN NEW; END; $$;
@@ -24,18 +23,17 @@ RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN NEW.updated_at := NOW(); RETURN NEW
 -- ============================================================
 -- DIRECTIVE_TYPES (Seed-Katalog, dev-besessen) — die 9 deutschen Vorsorge-Dokumenttypen.
 --   doc_type = deutscher Rechtsbegriff als stabiler Schluessel (Sprachpolitik: Steuer-/Rechtsbegriffe
---   bleiben Deutsch; identisch zu den Plan-/Recherche-Begriffen). FK-Ziel von estate.directives ->
---   Tippfehler werden FK-Fehler (Muster finance.currencies).
---   recommendation = Empfehlungsklasse fuer die Gap-Analyse (WS-2 fn_gap_report): 'essential' +
---   'recommended' bilden die ERWARTUNGSMENGE je ERWACHSENEM Haushaltsmitglied (Minderjaehrigen-
+--   bleiben Deutsch). FK-Ziel von estate.directives -> Tippfehler werden FK-Fehler (Muster finance.currencies).
+--   recommendation = Empfehlungsklasse fuer die Gap-Analyse (fn_gap_report): 'essential' +
+--   'recommended' bilden die Erwartungsmenge je erwachsenem Haushaltsmitglied (Minderjaehrigen-
 --   Gap-Nudges waeren rechtlich unsinnig — Testierfaehigkeit ab 16, Vorsorgevollmacht ab 18);
---   'situational' wird NIE genudgt (nur situativ relevant: Erbvertrag als Testament-Alternative,
+--   'situational' wird nie genudgt (nur situativ relevant: Erbvertrag als Testament-Alternative,
 --   Sorgerechtsverfuegung nur bei minderjaehrigen Kindern, Organspende ist persoenliche Wahl).
 --   Einstufung nach verbraucherzentrale.de-Vorsorge-Trio (Vorsorgevollmacht/Patientenverfuegung/
---   Betreuungsverfuegung) + Recherche-Synthese des Plans.
---   SEED per ON CONFLICT DO UPDATE (nicht DO NOTHING wie currencies): der Katalog ist DEV-besessen
---   (arch-challenge P4a) — Label-/Einstufungs-Korrekturen muessen Bestands-Substrate per Re-Apply
---   erreichen; Nutzer erweitern ihn nie (kein Write-Tool auf dieser Tabelle).
+--   Betreuungsverfuegung).
+--   Seed per ON CONFLICT DO UPDATE (nicht DO NOTHING wie currencies): der Katalog ist dev-besessen —
+--   Label-/Einstufungs-Korrekturen muessen Bestands-Substrate per Re-Apply erreichen; Nutzer erweitern ihn
+--   nie (kein Write-Tool auf dieser Tabelle).
 -- ============================================================
 CREATE TABLE IF NOT EXISTS estate.directive_types (
     doc_type       text NOT NULL PRIMARY KEY CHECK (doc_type ~ '^[a-z_]+$'),
@@ -59,9 +57,9 @@ ON CONFLICT (doc_type) DO UPDATE
 
 -- ============================================================
 -- STORAGE_PLACES — Fundstellen (Tresor/Bankschliessfach/Ordner/digital).
---   Vor den Registern definiert (directives referenziert sie per FK). access_hint = WIE man
---   rankommt ("Schluessel im Sekretaer"), NIE Codes/PINs (Owner-Entscheid 2; Inhalt ist per DB
---   nicht pruefbar -> WS-2-Tool-Description + Instructions tragen die Hard-Rule).
+--   Vor den Registern definiert (directives referenziert sie per FK). access_hint = wie man
+--   rankommt ("Schluessel im Sekretaer"), nie Codes/PINs (Inhalt ist per DB nicht pruefbar ->
+--   Tool-Description + Instructions tragen die Hard-Rule).
 --   owner_person_id NULL = Haushalts-Fundstelle (Muster finance *_person_id: NULL=Haushalt).
 -- ============================================================
 CREATE TABLE IF NOT EXISTS estate.storage_places (
@@ -81,24 +79,23 @@ CREATE TRIGGER trg_storage_places_touch BEFORE UPDATE ON estate.storage_places
     FOR EACH ROW EXECUTE FUNCTION estate.touch_updated_at();
 
 -- ============================================================
--- DIRECTIVES — das Dokumente-REGISTER (nur Metadaten, nie Inhalte).
---   * owner_person_id NULLABLE, BEGRUENDET: gemeinschaftliche Urkunden (Berliner Testament,
---     Erbvertrag beider Partner) sind EIN Dokument des HAUSHALTS -> NULL. Person-eigene Dokumente
+-- DIRECTIVES — das Dokumente-Register (nur Metadaten, nie Inhalte).
+--   * owner_person_id nullable, begruendet: gemeinschaftliche Urkunden (Berliner Testament,
+--     Erbvertrag beider Partner) sind ein Dokument des Haushalts -> NULL. Person-eigene Dokumente
 --     tragen den Slug (FK agent.persons RESTRICT — eine referenzierte Person ist aus `family`
 --     nicht entfernbar, Muster finance).
---   * UNIQUE(owner_person_id, doc_type) NULLS NOT DISTINCT (PG15+): genau EIN Registereintrag je
---     (Person|Haushalt, Dokumenttyp). OHNE NULLS NOT DISTINCT waeren zwei Haushalts-Testamente
---     beide einfuegbar (NULL-UNIQUE-Falle, Lektion advisor_plans P0c) — das ist zugleich der
---     kuenftige UPSERT-Key von record_directive (WS-2).
+--   * UNIQUE(owner_person_id, doc_type) NULLS NOT DISTINCT (PG15+): genau ein Registereintrag je
+--     (Person|Haushalt, Dokumenttyp). Ohne NULLS NOT DISTINCT waeren zwei Haushalts-Testamente
+--     beide einfuegbar (NULL-UNIQUE-Falle) — zugleich der UPSERT-Key von record_directive.
 --   * doc_status: 'exists' (liegt vor) / 'does_not_exist' (bewusst erfasst: gibt es nicht ->
---     ehrlicher Gap) / 'planned' (in Arbeit). KEIN Default — der Status ist die Kern-Aussage
+--     ehrlicher Gap) / 'planned' (in Arbeit). Kein Default — der Status ist die Kern-Aussage
 --     des Eintrags, das Tool muss ihn explizit setzen.
 --   * form: privat/notariell/amtlich (notarielle Urkunde macht den Erbschein oft ueberfluessig —
---     Beratungs-Wissen, WS-1 Instructions). registry: ZTR (Zentrales Testamentsregister) /
+--     Beratungs-Wissen der Instructions). registry: ZTR (Zentrales Testamentsregister) /
 --     ZVR (Zentrales Vorsorgeregister), NULL = nicht registriert/unbekannt.
 --   * storage_place_id RESTRICT: eine Fundstelle mit Dokumenten ist nicht loeschbar (Ledger-FK-
 --     Politik); location_note = freier Fundort-Text ohne Fundstellen-Zeile.
---   * authorized_person FREITEXT (nicht FK): Bevollmaechtigte koennen Haushalts-EXTERNE sein
+--   * authorized_person Freitext (nicht FK): Bevollmaechtigte koennen Haushalts-Externe sein
 --     (Geschwister, Freund) — agent.persons deckt nur den Haushalt.
 -- ============================================================
 CREATE TABLE IF NOT EXISTS estate.directives (
@@ -126,10 +123,10 @@ CREATE TRIGGER trg_directives_touch BEFORE UPDATE ON estate.directives
 --   Versicherungs-/Konto-STAMMDATEN leben bei finance (Grenzregel oben); hier stehen die Vertraege,
 --   die finance nicht fuehrt (Energie/Telekom/Abos/Vereine/Wohnen) + die PROZESS-Attribute.
 --   * death_action: cancel (Sonderkuendigung §§ 563 f. BGB u. ae.) / transfer (auf Partner
---     umschreiben) / keep. NULL = offener GAP — die Gap-Analyse (WS-2) nudgt genau darauf.
---   * finance_recurring_payment_id: LOSE Referenz auf finance.recurring_payments.id OHNE FK
+--     umschreiben) / keep. NULL = offener Gap — die Gap-Analyse nudgt genau darauf.
+--   * finance_recurring_payment_id: lose Referenz auf finance.recurring_payments.id ohne FK
 --     (Cross-Schema-FK verboten, finance ist optionale Dependency §4.2): eine stale ID ist
---     eine GAP-ANZEIGE im Rendering, nie ein Crash (Doppel-Guard deckt nur Paket-Absenz).
+--     eine Gap-Anzeige im Rendering, nie ein Crash (Doppel-Guard deckt nur Paket-Absenz).
 -- ============================================================
 CREATE TABLE IF NOT EXISTS estate.provider_contracts (
     id              bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
@@ -152,19 +149,19 @@ CREATE TRIGGER trg_provider_contracts_touch BEFORE UPDATE ON estate.provider_con
     FOR EACH ROW EXECUTE FUNCTION estate.touch_updated_at();
 
 -- ============================================================
--- DIGITAL_ACCOUNTS — digitaler Nachlass OHNE Passwoerter (Owner-Entscheid 2).
---   * is_key_account: das SCHLUESSELKONTO (v. a. E-Mail) — dessen Verlust sperrt Resets aller
---     anderen Konten; der Ereignisfall (WS-3) priorisiert Key-Accounts.
+-- DIGITAL_ACCOUNTS — digitaler Nachlass ohne Passwoerter.
+--   * is_key_account: das Schluesselkonto (v. a. E-Mail) — dessen Verlust sperrt Resets aller
+--     anderen Konten; der Ereignisfall priorisiert Key-Accounts.
 --   * desired_action: delete/memorialize (Gedenkzustand, z. B. Facebook — irreversibel!)/
 --     transfer/keep. NULL = offener Gap.
 --   * legacy_contact_status: Nachlass-Funktion des Anbieters (Google Inactive Account Manager,
 --     Facebook Legacy Contact, Apple Legacy Contact): configured/not_configured/unavailable,
 --     NULL = unbekannt.
---   * access_path = FUNDORT-Verweis auf den Zugang ("Passwort-Manager X, Master-Passwort im
---     Tresor"), twofa_hint = 2FA-Geraet/Backup-Codes-FUNDORT — beides nie das Geheimnis selbst.
---   * seed_backup_location NUR fuer category='crypto' (CHECK-Kopplung): der FUNDORT des
---     Seed-Phrase-Backups (Metallplatte/Schliessfach). Die Seed-Phrase selbst gehoert NIE ins
---     System/Testament (Recherche: Nachlass-Fallstricke).
+--   * access_path = Fundort-Verweis auf den Zugang ("Passwort-Manager X, Master-Passwort im
+--     Tresor"), twofa_hint = 2FA-Geraet/Backup-Codes-Fundort — beides nie das Geheimnis selbst.
+--   * seed_backup_location nur fuer category='crypto' (CHECK-Kopplung): der Fundort des
+--     Seed-Phrase-Backups (Metallplatte/Schliessfach). Die Seed-Phrase selbst gehoert nie ins
+--     System/Testament.
 -- ============================================================
 CREATE TABLE IF NOT EXISTS estate.digital_accounts (
     id                    bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
@@ -190,8 +187,8 @@ CREATE TRIGGER trg_digital_accounts_touch BEFORE UPDATE ON estate.digital_accoun
 
 -- ============================================================
 -- CONTACTS — Schluessel-Kontakte des Ereignis-/Vorsorgefalls.
---   role = geschlossene Liste (Plan): der Ereignisfall (WS-3) referenziert Rollen deterministisch
---   ("Kontaktiere den Bestatter"). KEIN UNIQUE auf role: mehrere trusted_person/physician sind
+--   role = geschlossene Liste: der Ereignisfall referenziert Rollen deterministisch
+--   ("Kontaktiere den Bestatter"). Kein UNIQUE auf role: mehrere trusted_person/physician sind
 --   legitim. employer_hr ist person-gebunden -> owner_person_id (NULL = Haushalts-Kontakt).
 -- ============================================================
 CREATE TABLE IF NOT EXISTS estate.contacts (
@@ -215,11 +212,11 @@ CREATE TRIGGER trg_contacts_touch BEFORE UPDATE ON estate.contacts
 
 -- ============================================================
 -- PERSON_RECORDS — amtliche Stammdaten je Person (1 Zeile je Person, PK person_id).
---   Der Ereignisfall braucht sie SOFORT (Sterbefallanzeige, Renten-/Krankenkassen-Meldung).
+--   Der Ereignisfall braucht sie sofort (Sterbefallanzeige, Renten-/Krankenkassen-Meldung).
 --   Format-CHECKs = Gesetz (das LLM validiert nie): Steuer-ID = 11 Ziffern (§ 139b AO);
 --   RV-Nummer = 2 Ziffern Bereichsnummer + 6 Ziffern Geburtsdatum + Grossbuchstabe
 --   (Anfangsbuchstabe Geburtsname) + 3 Ziffern (Serie/Pruefziffer) -> ^\d{8}[A-Z]\d{3}$
---   (kanonisch OHNE Leerzeichen gespeichert; das WS-2-Tool normalisiert die Eingabe).
+--   (kanonisch ohne Leerzeichen gespeichert; das Tool normalisiert die Eingabe).
 --   certificates_location = Fundort Stammbuch/Geburts-/Heiratsurkunden (Freitext-Verweis).
 -- ============================================================
 CREATE TABLE IF NOT EXISTS estate.person_records (
@@ -244,8 +241,8 @@ CREATE TRIGGER trg_person_records_touch BEFORE UPDATE ON estate.person_records
 -- ============================================================
 -- FUNERAL_PREFERENCES — Bestattungswuensche (1 Zeile je Person, PK person_id).
 --   burial_type = deutsche Bestattungsarten (Schicht-5-Domaenenwerte, wie doc_type);
---   has_prepaid_contract NULLABLE = Tri-State (NULL = unbekannt/nicht erfasst) — ein
---   Bestattungs-VORSORGEVERTRAG (+ Anbieter) spart dem Partner im Ereignisfall die
+--   has_prepaid_contract nullable = Tri-State (NULL = unbekannt/nicht erfasst) — ein
+--   Bestattungs-Vorsorgevertrag (+ Anbieter) spart dem Partner im Ereignisfall die
 --   teuerste Ad-hoc-Entscheidung.
 -- ============================================================
 CREATE TABLE IF NOT EXISTS estate.funeral_preferences (
@@ -257,7 +254,7 @@ CREATE TABLE IF NOT EXISTS estate.funeral_preferences (
     wishes                    text,
     created_at                timestamptz NOT NULL DEFAULT now(),
     updated_at                timestamptz NOT NULL DEFAULT now(),
-    -- Ein genannter Anbieter heisst: es GIBT einen Vorsorgevertrag (kein zweiter, widerspruechlicher Fakt; estate:V002).
+    -- Ein genannter Anbieter heisst: es gibt einen Vorsorgevertrag (kein zweiter, widerspruechlicher Fakt; Bestand: estate:V002).
     CONSTRAINT funeral_preferences_provider_implies_contract
         CHECK (prepaid_contract_provider IS NULL OR has_prepaid_contract IS TRUE)
 );
@@ -267,12 +264,12 @@ CREATE TRIGGER trg_funeral_preferences_touch BEFORE UPDATE ON estate.funeral_pre
     FOR EACH ROW EXECUTE FUNCTION estate.touch_updated_at();
 
 -- ============================================================
--- SPECIAL_ASSETS — Sonderfall-Stubs (Owner-Entscheid 7: erkennen + ehrlich verweisen).
+-- SPECIAL_ASSETS — Sonderfall-Stubs (erkennen + ehrlich verweisen).
 --   Geschlossene asset_type-Liste: jeder Typ mappt auf eine Checklisten-Condition des
---   Ereignisfalls (WS-3 task_templates.condition_key) + einen Verweis-Baustein (Notar/Anwalt/StB,
+--   Ereignisfalls (task_templates.condition_key) + einen Verweis-Baustein (Notar/Anwalt/StB,
 --   RDG-Disclaimer): vehicle (Umschreibung/Versicherung), business_interest (GmbH-Anteile ->
 --   Gesellschaftsvertrag vor Erbrecht), firearm (§ 20 WaffG: 1 Monat!), pet (Versorgung).
---   BEWUSST kein 'other' — ein offener Typ haette keine Condition und wuerde still nichts ausloesen.
+--   Bewusst kein 'other' — ein offener Typ haette keine Condition und wuerde still nichts ausloesen.
 -- ============================================================
 CREATE TABLE IF NOT EXISTS estate.special_assets (
     id              bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
@@ -290,11 +287,10 @@ CREATE TRIGGER trg_special_assets_touch BEFORE UPDATE ON estate.special_assets
 
 -- ============================================================
 -- ONBOARDING-FORTSCHRITT — household-Form (PK section_key), byte-gleich finance/guide.
---   Estate-Onboarding ist HAUSHALTS-Sache (EIN Register, symmetrisch — Owner-Entscheid 3),
---   anders als career (per-person). Sektionen kommen aus packages/estate/onboarding/sections.json
---   (WS-1, Host-Seeder _seed_onboarding_sections); gelesen/geschrieben ueber die geteilten
---   Core-Onboarding-fns. KEIN Pflicht-Gate am Agenten (arch-challenge P3: fail-open fuer den
---   Notfall-Pfad) — nur die 3 geteilten Gates der Advisor-Naht (WS-1).
+--   Estate-Onboarding ist Haushalts-Sache (ein Register, symmetrisch), anders als career (per-person).
+--   Sektionen kommen aus packages/estate/onboarding/sections.json (Host-Seeder _seed_onboarding_sections);
+--   gelesen/geschrieben ueber die geteilten Core-Onboarding-fns. Kein Pflicht-Gate am Agenten
+--   (fail-open fuer den Notfall-Pfad) — nur die 3 geteilten Gates der Advisor-Naht.
 -- ============================================================
 CREATE TABLE IF NOT EXISTS estate.onboarding_state (
     section_key text PRIMARY KEY,
@@ -303,7 +299,7 @@ CREATE TABLE IF NOT EXISTS estate.onboarding_state (
     status      text NOT NULL DEFAULT 'unknown' CHECK (status IN ('unknown', 'completed', 'skipped')),
     updated_at  timestamptz NOT NULL DEFAULT now()
 );
--- Roter Faden (Nachfassen): Zeitpunkt der letzten STATUS-Aenderung, gesetzt nur von core.fn_set_onboarding_section
+-- Nachfassen: Zeitpunkt der letzten STATUS-Aenderung, gesetzt nur von core.fn_set_onboarding_section
 -- (Konvention jedes <pkg>.onboarding_state, s. agent.guide_init.sql).
 ALTER TABLE estate.onboarding_state ADD COLUMN IF NOT EXISTS status_changed_at timestamptz NOT NULL DEFAULT now();
 
@@ -312,36 +308,36 @@ CREATE TRIGGER trg_onboarding_state_touch BEFORE UPDATE ON estate.onboarding_sta
     FOR EACH ROW EXECUTE FUNCTION estate.touch_updated_at();
 
 -- ============================================================
--- =============  EREIGNISFALL (WS-3, Plan groovy-watching-wave)  ==============
+-- =============  EREIGNISFALL  ==============
 --   Der Ereignisfall-Modus: stirbt ein Mitglied (death) oder wird es handlungsunfaehig
 --   (incapacity/Vorsorgefall), instanziiert der Agent aus dem Template-Katalog eine
---   Fristen-Checkliste. Die FRISTEN RECHNET DIE DB (estate.fn_compute_due_date +
---   fn_add_business_days + fn_public_holidays), NIE das LLM (Daten-Integritaet:
---   das Modell rechnet nicht). Register-Tabellen oben = Vorsorge; die drei hier = Ereignisfall.
+--   Fristen-Checkliste. Die Fristen rechnet die DB (estate.fn_compute_due_date +
+--   fn_add_business_days + fn_public_holidays), nie das LLM.
+--   Register-Tabellen oben = Vorsorge; die drei hier = Ereignisfall.
 -- ============================================================
 
 -- ============================================================
 -- TASK_TEMPLATES (Seed-Katalog, dev-besessen) — der Fristen-/Aufgaben-Katalog des Ereignisfalls.
 --   Muster directive_types: dev-besessener Seed (ON CONFLICT DO UPDATE, kein Write-Tool), stabile
---   Schluessel. Ein Fall instanziiert daraus seine case_tasks (Snapshot). Recherche-Synthese des
---   Plans (§§ PStG/BGB/ErbStG/SGB/VVG/WaffG, Quellen im Plan-Header). Werte:
+--   Schluessel. Ein Fall instanziiert daraus seine case_tasks (Snapshot). Rechtsgrundlagen
+--   §§ PStG/BGB/ErbStG/SGB/VVG/WaffG je Zeile in legal_source. Werte:
 --     * phase: grobe Dringlichkeits-Stufe (immediate/first_week/first_month/later); ord = Feinordnung.
---     * deadline_anchor: 'event' (ab Ereignis-/Todestag) vs. 'knowledge' (ab KENNTNIS — § 1944 BGB
+--     * deadline_anchor: 'event' (ab Ereignis-/Todestag) vs. 'knowledge' (ab Kenntnis — § 1944 BGB
 --       Ausschlagung 6 Wo., § 30 ErbStG 3 Mon. laufen ab Kenntnis, nicht ab Tod).
 --     * offset_count/offset_unit: die Frist relativ zum Anker; NULL/NULL = 'unverzueglich' (sofort
 --       faellig). unit business_day = § 28 PStG (Sa/So/Feiertage zaehlen nicht); day/week/month
 --       kalendarisch (§§ 187/188 BGB). Paarungs-CHECK: beide gesetzt oder beide NULL.
---     * condition_key: NULL = gilt IMMER; sonst ein Praedikat, das fn_case_template_rows auswertet
+--     * condition_key: NULL = gilt immer; sonst ein Praedikat, das fn_case_template_rows auswertet
 --       (derived: adult_subject/finance_absent/minor_children; sonst ein case.flags-Schluessel, den
 --       der Agent im Intake erfragt: tenant/employed/pension_relevant/has_will/no_poa/abroad_or_work_accident).
---       Condition FALSE -> die Task wird als 'not_applicable' SICHTBAR instanziiert (nicht still
---       weggelassen — Transparenz: der Nutzer sieht, dass sie geprueft wurde).
+--       Condition FALSE -> die Task wird als 'not_applicable' sichtbar instanziiert (nicht still
+--       weggelassen — der Nutzer sieht, dass sie geprueft wurde).
 --     * fan_out: NULL = eine Task; sonst ein special_assets.asset_type — je passendem Sonderfall-Stub
---       (Fahrzeug/Waffe/Firma/Haustier des Subjekts oder Haushalts) EINE eigene Task (subject_ref='asset:<id>').
+--       (Fahrzeug/Waffe/Firma/Haustier des Subjekts oder Haushalts) eine eigene Task (subject_ref='asset:<id>').
 --     * hardness: critical (zeitkritisch/rechtlich hart) / recommended / optional — Sortier-/Render-Prio.
 --     * retired: Soft-Delete (Muster active_*) — ein ueberholtes Template wird nie geloescht (bestehende
 --       case_tasks referenzieren es per FK), nur retired=true -> es instanziiert nicht mehr.
---   SEED per ON CONFLICT DO UPDATE (dev-besessen wie directive_types): Titel-/Fristen-Korrekturen
+--   Seed per ON CONFLICT DO UPDATE (dev-besessen wie directive_types): Titel-/Fristen-Korrekturen
 --   erreichen Bestands-Substrate per Re-Apply.
 -- ============================================================
 CREATE TABLE IF NOT EXISTS estate.task_templates (
@@ -411,19 +407,19 @@ ON CONFLICT (template_key) DO UPDATE SET
 
 -- ============================================================
 -- CASES — ein Ereignisfall (Tod/Vorsorgefall) je Zeile.
---   * subject_person_id FK RESTRICT auf agent.persons (das BETROFFENE Mitglied). NOT NULL: ein Fall
+--   * subject_person_id FK RESTRICT auf agent.persons (das betroffene Mitglied). NOT NULL: ein Fall
 --     hat immer ein Subjekt (anders als die Register-owner_person_id = NULL fuer Haushalt).
 --   * event_date = Ereignis-/Todestag; knowledge_date = ab wann der Haushalt Kenntnis hatte (Default =
 --     event_date; CHECK >= event_date). Anker fuer die Fristen (§ 1944/§ 30 laufen ab Kenntnis).
---   * bundesland = 16-Laender-Slug (Feiertage der Werktags-Berechnung). fail-closed erzwingt die fn
+--   * bundesland = 16-Laender-Slug (Feiertage der Werktags-Berechnung). Fail-closed erzwingt die fn
 --     (weder Config estate.bundesland noch Parameter -> {ok:false}); die geschlossene Liste ist der
 --     DB-Backstop (unbekannter Slug -> CHECK-RAISE; die fn faengt ihn vorher freundlich ab).
 --   * flags jsonb = Intake-Antworten des Agenten (tenant/employed/pension_relevant/has_will/no_poa/
 --     abroad_or_work_accident ...), die condition_key-Praedikate auswerten. {} = keine gesetzt.
---   * status open|completed|cancelled|superseded, closed_at MATERIALISIERT (Auto-Complete-Trigger auf
+--   * status open|completed|cancelled|superseded, closed_at materialisiert (Auto-Complete-Trigger auf
 --     case_tasks kippt open->completed, wenn die letzte Task done/n.a. ist; cancel/supersede setzen es
 --     ebenfalls). CHECK: open <=> closed_at IS NULL.
---   * partial UNIQUE(subject_person_id) WHERE status='open' = hoechstens EIN offener Fall je Person
+--   * partial UNIQUE(subject_person_id) WHERE status='open' = hoechstens ein offener Fall je Person
 --     (Multi-Row-Invariante strukturell, kein Gate-Trigger). fn_create_case(death) supersedet einen
 --     offenen incapacity-Fall derselben Person in EINER Tx, bevor es einfuegt (sonst blockte der Index).
 -- ============================================================
@@ -446,7 +442,7 @@ CREATE TABLE IF NOT EXISTS estate.cases (
     CONSTRAINT cases_closed_at_consistency CHECK ((status = 'open') = (closed_at IS NULL))
 );
 
--- Hoechstens EIN offener Fall je Person (Multi-Row-Invariante = partial UNIQUE, nicht Gate-Trigger).
+-- Hoechstens ein offener Fall je Person (Multi-Row-Invariante = partial UNIQUE, nicht Gate-Trigger).
 CREATE UNIQUE INDEX IF NOT EXISTS cases_one_open_per_subject
     ON estate.cases (subject_person_id) WHERE status = 'open';
 
@@ -459,14 +455,14 @@ CREATE TRIGGER trg_cases_touch BEFORE UPDATE ON estate.cases
 --   * template_key FK RESTRICT auf task_templates (Snapshot-Herkunft; NULL = manuelle Task via
 --     create_case_task). Templates werden nie geloescht (retired=Soft-Delete) -> FK bleibt intakt.
 --   * subject_ref text NOT NULL DEFAULT '' = fan-out-Diskriminator ('' = 1 Task; 'asset:<id>' je
---     Sonderfall-Stub). NOT NULL DEFAULT '' loest die NULL-UNIQUE-Falle (Lektion advisor_plans P0c):
+--     Sonderfall-Stub). NOT NULL DEFAULT '' loest die NULL-UNIQUE-Falle:
 --     UNIQUE(case_id, template_key, subject_ref) macht die Instanziierung idempotent (ON CONFLICT) —
 --     mit NULL waeren zwei gleiche Template-Tasks beide einfuegbar.
---   * title/detail/phase/due_date/hardness/legal_source = SNAPSHOT beim Instanziieren (der Katalog
+--   * title/detail/phase/due_date/hardness/legal_source = Snapshot beim Instanziieren (der Katalog
 --     kann sich spaeter aendern, die laufende Checkliste bleibt stabil). due_date DB-berechnet
 --     (fn_compute_due_date), NULL = unverzueglich/kein Datum.
 --   * status open|done|not_applicable. not_applicable = Condition beim Instanziieren FALSE (sichtbar
---     n.a., nicht still weg) ODER manuell abgehakt als "trifft nicht zu". done_at materialisiert.
+--     n.a., nicht still weg) oder manuell abgehakt als "trifft nicht zu". done_at materialisiert.
 -- ============================================================
 CREATE TABLE IF NOT EXISTS estate.case_tasks (
     id            bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
@@ -484,10 +480,10 @@ CREATE TABLE IF NOT EXISTS estate.case_tasks (
     created_at    timestamptz NOT NULL DEFAULT now(),
     updated_at    timestamptz NOT NULL DEFAULT now(),
     UNIQUE (case_id, template_key, subject_ref),
-    -- done_at gehoert genau zu status='done' (Bestand angeglichen in estate:V002).
+    -- done_at gehoert genau zu status='done' (Bestand: estate:V002).
     CONSTRAINT case_tasks_done_at_consistency CHECK ((status = 'done') = (done_at IS NOT NULL))
 );
--- WP3 Provenienz des Status (Ausnahme (c) der Regel "keine ableitbaren Spalten"): 'system' = vom Soll-Satz gesetzt
+-- Provenienz des Status (Ausnahme (c) der Regel "keine ableitbaren Spalten"): 'system' = vom Soll-Satz gesetzt
 -- (fn_instantiate_case_tasks darf ihn bei geaenderten Merkmalen nachziehen), 'user' = vom Nutzer gesetzt
 -- (fn_set_case_task; ein "trifft nicht zu" oeffnet sich danach nie wieder von selbst).
 ALTER TABLE estate.case_tasks ADD COLUMN IF NOT EXISTS status_source text NOT NULL DEFAULT 'system'
@@ -499,10 +495,10 @@ CREATE TRIGGER trg_case_tasks_touch BEFORE UPDATE ON estate.case_tasks
 
 -- ============================================================
 -- AUTO-COMPLETE-STATUS-MASCHINE (DB-Gesetz, Trigger — kein Tool pflegt cases.status selbst).
---   Sobald die LETZTE offene Task eines Falls done/not_applicable wird, kippt der Fall auf
+--   Sobald die letzte offene Task eines Falls done/not_applicable wird, kippt der Fall auf
 --   'completed' (closed_at=now()). Umgekehrt: wird eine Task eines faelschlich completed Falls wieder
---   'open', kippt der Fall zurueck auf 'open' (defensiv — der Tool-Pfad editiert nur Tasks OFFENER
---   Faelle, aber der Trigger bleibt konsistent). cancelled/superseded sind TERMINAL (kein Auto-Flip).
+--   'open', kippt der Fall zurueck auf 'open' (defensiv — der Tool-Pfad editiert nur Tasks offener
+--   Faelle, aber der Trigger bleibt konsistent). cancelled/superseded sind terminal (kein Auto-Flip).
 --   Inline-Baseline-fn (Trigger-gekoppelt, wie estate.touch_updated_at) — kein R__.
 -- ============================================================
 CREATE OR REPLACE FUNCTION estate.fn_case_tasks_autocomplete()
@@ -531,24 +527,22 @@ CREATE TRIGGER trg_case_tasks_autocomplete AFTER UPDATE OF status ON estate.case
     EXECUTE FUNCTION estate.fn_case_tasks_autocomplete();
 
 -- ============================================================
--- =============  SYSTEM-STECKBRIEF (WS-5, Plan groovy-watching-wave)  ==============
--- SYSTEM_PROFILE — genau EINE Haushalts-Zeile (Singleton): der System-Steckbrief + der FUNDORT der
---   Offline-Kopie des core.backup_key (Owner-Entscheid 9; docs/package-contract.md §3.6 nennt die
---   Offline-Kopie explizit als DR-Pflicht). GEHEIMNISSE NIE — ausschliesslich Fundort-VERWEISE
---   (Grenzregel wie digital_accounts.seed_backup_location; die WS-5-Tool-Description + Instructions
---   tragen "nur Verweis, nie das Geheimnis"). Deckt den DR-Fall "beide Partner betroffen / System aus":
---   der Hinterbliebene findet damit Backup-Schluessel-Fundort + Admin/Restore-Weg, selbst wenn das
---   System nicht laeuft.
---   SINGLETON-ERZWINGUNG (arch-challenge P-B ADOPT, Option b): scope text PK DEFAULT 'household'
---   CHECK(scope='household') = strukturell genau 0/1 Zeile (PK-Unique auf einem CHECK-fixierten Wert).
---   Naming-Paritaet zu core.context_scopes.scope (selbst-dokumentierend: sagt WAS die Zeile ist, nicht
---   nur "Singleton"). Der CHECK ist PFLICHT-Backstop, weil ein AGENT-Tool schreibt (hoeheres Drift-Risiko
---   als core.backup_key, das nur der Installer per ON CONFLICT DO NOTHING schreibt — kein Praezedenz).
---   Init-only, KEIN V (additiv idempotent, WS-3-Praezedenz cases/case_tasks).
+-- =============  SYSTEM-STECKBRIEF  ==============
+-- SYSTEM_PROFILE — genau eine Haushalts-Zeile (Singleton): der System-Steckbrief + der Fundort der
+--   Offline-Kopie des core.backup_key (docs/package-contract.md §3.6 nennt die Offline-Kopie explizit
+--   als DR-Pflicht). Geheimnisse nie — ausschliesslich Fundort-Verweise (Grenzregel wie
+--   digital_accounts.seed_backup_location; Tool-Description + Instructions tragen "nur Verweis, nie das
+--   Geheimnis"). Deckt den DR-Fall "beide Partner betroffen / System aus": der Hinterbliebene findet damit
+--   Backup-Schluessel-Fundort + Admin/Restore-Weg, selbst wenn das System nicht laeuft.
+--   Singleton-Erzwingung: scope text PK DEFAULT 'household' CHECK(scope='household') = strukturell genau
+--   0/1 Zeile (PK-Unique auf einem CHECK-fixierten Wert). Naming wie core.context_scopes.scope
+--   (selbst-dokumentierend: sagt, was die Zeile ist, nicht nur "Singleton"). Der CHECK ist Pflicht-Backstop,
+--   weil ein Agent-Tool schreibt (hoeheres Drift-Risiko als core.backup_key, das nur der Installer per
+--   ON CONFLICT DO NOTHING schreibt).
 -- ============================================================
 CREATE TABLE IF NOT EXISTS estate.system_profile (
     scope               text PRIMARY KEY DEFAULT 'household' CHECK (scope = 'household'),
-    backup_key_location text,   -- Fundort der OFFLINE-Kopie des core.backup_key (NIE der Schluessel)
+    backup_key_location text,   -- Fundort der Offline-Kopie des core.backup_key (nie der Schluessel)
     system_location     text,   -- wo laeuft das System (Host/Provider/Standort)
     admin_access        text,   -- wie erreicht man Admin/Restore-Hilfe (Person/Kontakt, kein Passwort)
     restore_hint        text,   -- Verweis auf die Restore-Prozedur/Doku (z. B. lifeagents backup restore, Ordner ...)
@@ -562,7 +556,7 @@ CREATE TRIGGER trg_system_profile_touch BEFORE UPDATE ON estate.system_profile
     FOR EACH ROW EXECUTE FUNCTION estate.touch_updated_at();
 
 -- ============================================================
--- Reset-Lebenszyklus-Marker (Phase B, docs/package-contract.md §6 *Werkszustand-Reset*): core.fn_reset_user_data
+-- Reset-Lebenszyklus-Marker (docs/package-contract.md §6 *Werkszustand-Reset*): core.fn_reset_user_data
 --   leert jede Basistabelle dieses Schemas ausser den hier als 'lifecycle:reference' markierten (deny-by-default;
 --   system_profile ist Nutzerdaten -> wird geleert).
 -- ============================================================

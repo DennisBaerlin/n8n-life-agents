@@ -1,12 +1,12 @@
 -- ============================================================
--- core.fn_update_retry_allowed(tag) (read-only — Update-Hinweis 2026-10-24)
---   Die EINE Regel fuer [Erneut versuchen] (upd:retry:<tag>): genutzt vom Callback-Handler (darf der Tap einen
+-- fn_update_retry_allowed (READ-ONLY) — darf ein Update-Auftrag wiederholt werden?
+--   Eingabe: p_tag text. Die eine Regel fuer [Erneut versuchen] (upd:retry:<tag>): genutzt vom Callback-Handler (darf der Tap einen
 --   Auftrag anlegen?) und von core.fn_update_report (wird der Knopf ueberhaupt angeboten?).
 --   Erlaubt genau dann, wenn der zuletzt abgeschlossene Auftrag fuer <tag> partial/failed/interrupted ist, sein
 --   Grund keine Sicherheits-/Sinnlos-Wiederholung ist (signature, checksum, downgrade, not_found) und seit dem
 --   letzten [Jetzt aktualisieren] fuer <tag> weniger als 2 Wiederholungen liefen (keine Schleife; danach bleiben
 --   Terminal und Rueckweg).
---   RUECKGABE: boolean (nie NULL). Tests: tests/db/core/test_fn_update_requests.sql
+--   Rueckgabe: boolean (nie NULL). Tests: tests/db/core/test_fn_update_requests.sql
 -- ============================================================
 CREATE OR REPLACE FUNCTION core.fn_update_retry_allowed(p_tag text)
 RETURNS boolean

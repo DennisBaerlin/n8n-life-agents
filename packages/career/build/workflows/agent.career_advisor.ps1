@@ -1,21 +1,20 @@
 ﻿#Requires -Version 5.1
 # Definition agent.career_advisor -> Build-AgentCareerAdvisor. Dot-gesourct von build.ps1.
-# Schlanker Klon des agent.finance_advisor-Templates (Clone-and-Trim, bewusst KEINE Factory —
-# build-CLAUDE.md "Agent-Generatoren sind Clone-and-Trim") fuer die 2. Advisor-Domaene (Career-Coach).
-# SCHREIBT NUR UEBER HITL-GEGATETE TOOLS (kein un-gegateter Domaenen-Write): tool_save_plan_section/
+# Schlanker Klon des agent.finance_advisor-Templates (Clone-and-Trim, bewusst keine Factory;
+# scripts/build/CLAUDE.md) fuer die Advisor-Domaene Career-Coach.
+# Schreibt nur ueber HITL-gegatete Tools (kein un-gegateter Domaenen-Write): tool_save_plan_section/
 # tool_publish_plan (Plan, domain=career, owner_only) + tool_set_profile_facts (career_profile, Stufe self)
-# + WS-2 tool_set_career_preferences (career_preferences; beide ueber agent.tool_set_own_context_facts, Stufe self:
-# die fragende Person pflegt ihre EIGENEN per_user-Daten selbst) + tool_record_job_match (eine
-# weitergeleitete Stelle vormerken, owner_info). Die deterministische Eingangs-Naht (Anti-Loop + Package-Active + Core-first) kommt aus
-# dem GETEILTEN New-AdvisorGateChain (lib/build_helpers.ps1); zusaetzlich ein career-LOKALES, person-skopiertes
-# PFLICHT-Onboarding NACH Load Config (P2b-1, flag feature.career_onboarding_gate Default true): die fragende Person
-# muss ihr eigenes Career-Onboarding abschliessen — solange es offen ist, erfasst der Advisor zuerst das Profil statt
-# zu beraten (Prompt-Abschnitt, kein Redirect: der Advisor ist selbst der Onboarding-Agent). KEIN Monitor-Tool
-# (Markt-Signal-Trigger kommen mit WS-4).
+# + tool_set_career_preferences (career_preferences; beide ueber agent.tool_set_own_context_facts, Stufe self:
+# die fragende Person pflegt ihre eigenen per_user-Daten selbst) + tool_record_job_match (eine
+# weitergeleitete Stelle vormerken, owner_info). Die deterministische Eingangs-Naht (Anti-Loop + Package-Active +
+# Core-first) kommt aus dem geteilten New-AdvisorGateChain (lib/build_helpers.ps1); zusaetzlich ein career-lokales,
+# person-skopiertes Pflicht-Onboarding nach Load Config (flag feature.career_onboarding_gate Default true): die
+# fragende Person muss ihr eigenes Career-Onboarding abschliessen — solange es offen ist, erfasst der Advisor zuerst
+# das Profil statt zu beraten (Prompt-Abschnitt, kein Redirect: der Advisor ist selbst der Onboarding-Agent).
+# Kein Monitor-Tool.
 
-# New-AdvisorToolNode (CROSS-AGENT-Tool-Builder) lebt seit Phase 0 WS-0c AT geteilt in
-# scripts/build/lib/build_helpers.ps1 (loest die lokale Duplikat-Def New-CareerAdvisorToolNode ab;
-# -StartNode jetzt PFLICHT -> die Calls uebergeben $START_NODE = 'Start agent.career_advisor').
+# New-AdvisorToolNode (Cross-Agent-Tool-Builder) liegt geteilt in scripts/build/lib/build_helpers.ps1;
+# -StartNode ist Pflicht -> die Calls uebergeben $START_NODE = 'Start agent.career_advisor'.
 
 function Build-AgentCareerAdvisor {
     # --- Domaenen-Konstanten ---
@@ -24,10 +23,10 @@ function Build-AgentCareerAdvisor {
     $CONFIG_FIELD  = 'model.career_advisor'
     $MEMORY_TABLE  = 'agent.career_advisor_chat_memory'
     $START_NODE    = 'Start agent.career_advisor'
-    # e2e-Domain-Switch: test_e2e-chat_ids schreiben die PLAN-Kette (save/publish) unter Sentinel-Domain
-    # '__e2e_career__' (die ECHTE career-Plan-Kette bleibt unberuehrt; fn_clear_e2e_data raeumt 'e2e').
-    # (tool_set_profile_facts schreibt career_profile direkt — kein domain-Switch; ein Profil-e2e-Case
-    #  kommt mit WS-1b/CV und braeuchte einen registrierten Sentinel-Context -> vertagt.)
+    # e2e-Domain-Switch: test_e2e-chat_ids schreiben die Plan-Kette (save/publish) unter Sentinel-Domain
+    # '__e2e_career__' (die echte career-Plan-Kette bleibt unberuehrt; fn_clear_e2e_data raeumt 'e2e').
+    # tool_set_profile_facts schreibt career_profile direkt — kein domain-Switch, daher kein Profil-e2e-Case
+    # (braeuchte einen registrierten Sentinel-Context).
     $DOMAIN_EXPR   = '={{ String($(''' + $START_NODE + ''').item.json.chat_id || '''').startsWith(''test_e2e'') ? ''__e2e_career__'' : ''career'' }}'
 
     $ID_LOAD_CTX  = $LoadContextId   # agent.tool_load_context (build.ps1: per Name aus dem State)
@@ -53,21 +52,21 @@ function Build-AgentCareerAdvisor {
 
     # Eingangs-Naht (Anti-Loop-Depth-Gate -> Package-Active-Gate -> Core-first-Gate) = geteilter Helfer
     # New-AdvisorGateChain (lib). NextNode='Load Config' = False-Zweig des Core-Gates. Das geteilte Trio bleibt
-    # die drei generischen Gates; das career-PFLICHT-Onboarding-Gate ist career-lokal (NACH Load Config, unten) —
-    # analog dem finance-lokalen feature.onboarding_gate (Parität agent.finance_advisor.ps1).
+    # die drei generischen Gates; das career-Pflicht-Onboarding-Gate ist career-lokal (nach Load Config, unten) —
+    # analog dem finance-lokalen feature.onboarding_gate (agent.finance_advisor.ps1).
     $gate = New-AdvisorGateChain -StartNode $START_NODE -Package 'career' -CredPgRo $CRED_PG_RO -NextNode 'Load Config'
 
     $nLoadConfig = Build-CallWorkflow 'Load Config' @(-1376, 0) $ID_LOAD_CFG 'core.sub_load_config' (@{})
 
-    # --- Career-Onboarding-Pflicht PRO PERSON (P2b-1, flag-gated feature.career_onboarding_gate) ---
-    # Ist das Feature an (Default true = verpflichtend, per Konsole abschaltbar) UND das Career-Onboarding der
-    # FRAGENDEN Person unvollstaendig, haengt Build Agent Input einen Abschnitt '## Career onboarding required' mit den
-    # offenen Sektionen ans ENDE des System-Prompts (Prompt-Caching) -> der Advisor erfasst zuerst das Profil statt zu
-    # beraten. KEIN deterministischer Redirect mehr: der Advisor IST der Onboarding-Agent des Pakets
+    # --- Career-Onboarding-Pflicht pro Person (flag-gated feature.career_onboarding_gate) ---
+    # Ist das Feature an (Default true = verpflichtend, per Konsole abschaltbar) und das Career-Onboarding der
+    # fragenden Person unvollstaendig, haengt Build Agent Input einen Abschnitt '## Career onboarding required' mit den
+    # offenen Sektionen ans Ende des System-Prompts (Prompt-Caching) -> der Advisor erfasst zuerst das Profil statt zu
+    # beraten. Kein deterministischer Redirect: der Advisor ist der Onboarding-Agent des Pakets
     # (provides.onboarding.agent) — ein Redirect wies auch den Erfassungs-Auftrag aus dem /onboarding-Menue ab
     # (Sackgasse). Analog agent.finance 'Onboarding ausstehend'. core.fn_onboarding_status('career', chat_id) liefert
     # complete (core-Haushalt AND career-Person) + die offenen Sektionen; die Person loest die DEFINER-fn intern aus
-    # chat_id auf (NIE LLM). onError=continue: Lesefehler -> kein Anhang (fail-open, Paritaet Core-Gate).
+    # chat_id auf (nie LLM). onError=continue: Lesefehler -> kein Anhang (fail-open, wie das Core-Gate).
     $nGateRead = Build-Pg 'Career onboarding read' @(-1264, 0) `
         "=SELECT (s.st->>'complete')::boolean AS complete, s.st->'open' AS open, COALESCE((SELECT value FROM core.config WHERE category='feature' AND key='career_onboarding_gate'),'true') AS gate_on FROM (SELECT core.fn_onboarding_status('career', (`$1::jsonb)->>'chat_id') AS st) s;" `
         ([ordered]@{ chat_id = "`$('$START_NODE').item.json.chat_id" })
@@ -90,7 +89,7 @@ function Build-AgentCareerAdvisor {
             promptType = 'define'
             text = '={{ $json.task }}'
             # maxIterations 12: Interview-Start = Resume-Check + Plan-/Profil-Load
-            # + ggf. Recherche -> tool-lastiger als der Buchhalter. Cap als Retry-Sturm-Bremse.
+            # + ggf. Recherche -> tool-lastiger als der Buchhalter; Cap bremst Retry-Stuerme.
             options = [ordered]@{ systemMessage = '={{ $json.system_prompt }}'; maxIterations = 12 }
         }
         type = '@n8n/n8n-nodes-langchain.agent'
@@ -104,7 +103,7 @@ function Build-AgentCareerAdvisor {
     $mb = New-ModelSelectorBundle -ConfigField $CONFIG_FIELD -ConfigNodeName 'Load Config' `
         -AgentNodeName 'Advisor Agent' -SelectorPos @(-688, 208) -ModelRowPos @(-848, 416) -Effort high
 
-    # --- Chat-Memory: eigene Tabelle, GROSSES Fenster (15) — Interviews sind lange Dialoge ---
+    # --- Chat-Memory: eigene Tabelle, grosses Fenster (15) — Interviews sind lange Dialoge ---
     $nMemory = [ordered]@{
         parameters = [ordered]@{
             sessionIdType = 'customKey'
@@ -128,7 +127,7 @@ function Build-AgentCareerAdvisor {
     # fn_fetch_context = gemeinsame Lazy-Fetch-Stelle (render-at-fetch: career_profile/career_planning
     # werden zur Ladezeit mit Header gerendert). jsonb-Param (Standard) + onError (halluzinierter Name =
     # korrigierbarer Tool-Fehler, killt nicht die Execution).
-    # P0b: chat_id als 2. Arg (build-fix aus dem Start-Node, NIE $fromAI) -> fn_fetch_context loest die
+    # chat_id als 2. Arg (build-fix aus dem Start-Node, nie $fromAI) -> fn_fetch_context loest die
     # person_id intern auf und liest per_user-Kontexte (career_profile/career_preferences/career_planning) suffigiert
     # pro Person. household-Kontexte (family) ignorieren das Arg (kein Suffix).
     $loadQuery = "=SELECT content FROM core.fn_fetch_context((`$1::jsonb)->>'name', (`$1::jsonb)->>'chat_id');"
@@ -150,14 +149,13 @@ function Build-AgentCareerAdvisor {
         credentials = @{ postgres = $CRED_CTX_RO }
     }
 
-    # read_plan (P2b-2 Isolations-Fix, BLOCKER): person-skopierter Draft-Resume. career_planning ist per_user ->
-    # der Plan-Read MUSS person-skopiert sein. Der frueher EINZIGE Lesepfad (freies postgres_select ->
-    # fn_advisor_read_plan('career'), 1-arg) las bei fehlendem chat_id IMMER den OWNER-Plan -> B sah A (Leck,
-    # R__fn_advisor_read_plan.sql Kommentar). Dieses GEBUNDENE Tool fixiert die chat_id BUILD-fix aus dem
-    # Start-Node (NIE $fromAI -> nicht spoofbar; Muster load_context Z149-150) + den domain (career bzw.
-    # e2e-Sentinel __e2e_career__, Paritaet save/publish). Read-only DEFINER-fn unter der HAUPT-Credential (Security-
-    # Audit 2026-10): aus einer Frei-SQL-Sitzung (Login-Rolle *_ro) liefert das Fenster fuer per_user-Domaenen nichts
-    # (core.fn_is_free_sql_session) -> die chat_id ist dort nicht spoofbar. KEINE $fromAI-Inputs (kein Spoof-Vektor).
+    # read_plan: person-skopierter Draft-Resume. career_planning ist per_user -> der Plan-Read muss
+    # person-skopiert sein; ein freies postgres_select auf fn_advisor_read_plan('career') (1-arg) liest bei
+    # fehlender chat_id den Owner-Plan (Leck, s. R__fn_advisor_read_plan.sql). Dieses gebundene Tool fixiert die
+    # chat_id build-fix aus dem Start-Node (nie $fromAI -> nicht spoofbar; Muster load_context) + den domain
+    # (career bzw. e2e-Sentinel __e2e_career__, wie save/publish). Read-only DEFINER-fn unter der Haupt-Credential:
+    # aus einer Frei-SQL-Sitzung (Login-Rolle *_ro) liefert das Fenster fuer per_user-Domaenen nichts
+    # (core.fn_is_free_sql_session) -> die chat_id ist dort nicht spoofbar. Keine $fromAI-Inputs (kein Spoof-Vektor).
     $readPlanDomain = "String(`$('$START_NODE').item.json.chat_id || '').startsWith('test_e2e') ? '__e2e_career__' : 'career'"
     $nToolReadPlan = [ordered]@{
         parameters = [ordered]@{
@@ -176,10 +174,10 @@ function Build-AgentCareerAdvisor {
         credentials = @{ postgres = $CRED_POSTGRES }
     }
 
-    # read_job_matches (Security-Audit 2026-10, Owner "strikt privat"): career.job_matches ist person-privat und fuer
-    # career_ro gesperrt (core.fn_provision_package_roles). Gebundenes Fenster career.fn_read_job_matches(chat_id, limit):
-    # chat_id BUILD-fix aus dem Start-Node (nie $fromAI), Credential career_rw (keine Frei-SQL-Rolle; EXECUTE auf die
-    # DEFINER-fn hat nur career_rw). Muster read_plan: KEINE $fromAI-Inputs (die 20 neuesten genuegen dem Gespraech).
+    # read_job_matches: career.job_matches ist person-privat und fuer career_ro gesperrt
+    # (core.fn_provision_package_roles). Gebundenes Fenster career.fn_read_job_matches(chat_id, limit):
+    # chat_id build-fix aus dem Start-Node (nie $fromAI), Credential career_rw (keine Frei-SQL-Rolle; EXECUTE auf die
+    # DEFINER-fn hat nur career_rw). Muster read_plan: keine $fromAI-Inputs (die 20 neuesten genuegen dem Gespraech).
     $nToolReadJobs = [ordered]@{
         parameters = [ordered]@{
             descriptionType = 'manual'
@@ -230,7 +228,7 @@ function Build-AgentCareerAdvisor {
             ,@('context_description', 'Optional description for the published context document; omit for the default', 'string', '')
         ) ([ordered]@{ domain = $DOMAIN_EXPR }) @(640, 208) -StartNode $START_NODE
 
-    # tool_set_profile_facts: context_name FIX 'career_profile' (der Advisor pflegt nur das Profil, nie einen anderen
+    # tool_set_profile_facts: context_name fest 'career_profile' (der Advisor pflegt nur das Profil, nie einen anderen
     # Context). Ueber agent.tool_set_own_context_facts (Stufe self): die fragende Person bestaetigt selbst, die fn setzt
     # scope=per_user fest -> nur ihr eigener Kontext <base>__<person_id>. facts/content vom LLM.
     $nToolSetProfile = New-AdvisorToolNode 'tool_set_profile_facts' (Resolve-CoreServiceAlias 'core:set_own_context_facts' $CoreServiceMap) `
@@ -240,10 +238,10 @@ function Build-AgentCareerAdvisor {
             ,@('content', 'Optional prose description stored alongside the facts; omit to keep the existing prose.', 'string', '')
         ) ([ordered]@{ context_name = 'career_profile' }) @(800, 208) -StartNode $START_NODE
 
-    # tool_extract_cv (WS-1b): CV-Vision READ-ONLY. Career-eigenes Tool (agent.career.tool_extract_cv, KEIN
+    # tool_extract_cv: CV-Vision, read-only. Career-eigenes Tool (agent.career.tool_extract_cv, kein
     # core:-Alias) -> voller Workflow-Name direkt (New-AdvisorToolNode loest die id per Name aus dem
     # State). file_id kommt aus dem [attachment ...]-Marker (Orchestrator routet einen CV intent-basiert
-    # hierher, Marker verbatim). Das Tool SCHREIBT NICHTS — der Advisor spielt jedes Feld zurueck und
+    # hierher, Marker verbatim). Das Tool schreibt nichts — der Advisor spielt jedes Feld zurueck und
     # persistiert das bestaetigte Feld getrennt via tool_set_profile_facts (Per-Eintrag-HITL).
     $nToolExtractCv = New-AdvisorToolNode 'tool_extract_cv' 'agent.career.tool_extract_cv' `
         'Extract raw CV facts from a forwarded document. CALL THIS when the task contains an [attachment file_id=... type=photo|document] marker AND the document is a CV / resume / Lebenslauf. Pass the file_id from the marker VERBATIM - never invent it; several markers in one message: file_id = the first, more_file_ids = the others (read together; ignored_files in the result names a file that was not part of the CV). The tool runs vision extraction on the paid API and returns the raw career_profile fields (current_title, industry, career_start_date, skills, last_job_change_date) as a JSON string in profile - it WRITES NOTHING. Then: play the fields back in chat, get a verbal OK, and persist the confirmed fields via tool_set_profile_facts (one confirmed entry at a time). ok:false with an error means extraction failed (unreadable or not a CV) - relay it and offer to capture by asking instead. Finance documents (Kontoauszug, Depotauszug, policy, Renteninformation) are NOT yours - they belong to agent.finance.' `
@@ -253,8 +251,8 @@ function Build-AgentCareerAdvisor {
             ,@('doc_hint', 'Optional short context about the document, e.g. that it is a CV/Lebenslauf or its language', 'string', '')
         ) $null @(960, 208) -StartNode $START_NODE
 
-    # tool_record_job_match (WS-2): eine vom Nutzer weitergeleitete Stelle vormerken (source=forwarded, HITL
-    # owner_info). Career-eigenes Tool (voller Name, kein core:-Alias). source ist FIX in der fn (nicht $fromAI).
+    # tool_record_job_match: eine vom Nutzer weitergeleitete Stelle vormerken (source=forwarded, HITL
+    # owner_info). Career-eigenes Tool (voller Name, kein core:-Alias). source ist fest in der fn (nicht $fromAI).
     $nToolRecordJob = New-AdvisorToolNode 'tool_record_job_match' 'agent.career.tool_record_job_match' `
         'Bookmark a job posting the user forwarded or pasted, as a tracked match (it is saved as source forwarded). CALL when the user shares a concrete job opening they want noted/remembered. Extract the fields from the forwarded text/link. title is required; employer/location/url/external_id are optional - omit what is not clearly stated, never invent. Shows a short button confirmation; after saving, the tool may offer to switch on the weekday auto-scan. Do NOT use this for matches from the automatic scan (the cron saves those itself).' `
         @(
@@ -265,7 +263,7 @@ function Build-AgentCareerAdvisor {
             ,@('external_id', 'The external reference or ID of the posting if present (e.g. a Bundesagentur refnr), else omit', 'string', '')
         ) $null @(1120, 208) -StartNode $START_NODE
 
-    # tool_set_career_preferences (WS-2): 2. Bindung von core:set_own_context_facts (context_name FIX
+    # tool_set_career_preferences: zweite Bindung von core:set_own_context_facts (context_name fest
     # 'career_preferences', Stufe self). Persistiert die aus dem 👍/👎-Feedback gelernten Job-Praeferenzen der fragenden Person
     # (Stufe self; own_user_only in fn_set_context_facts). Der Scorer re-injiziert career_preferences -> Lernschleife.
     $nToolSetPrefs = New-AdvisorToolNode 'tool_set_career_preferences' (Resolve-CoreServiceAlias 'core:set_own_context_facts' $CoreServiceMap) `
@@ -275,10 +273,10 @@ function Build-AgentCareerAdvisor {
             ,@('content', 'Optional prose description stored alongside the facts; omit to keep the existing prose.', 'string', '')
         ) ([ordered]@{ context_name = 'career_preferences' }) @(1280, 208) -StartNode $START_NODE
 
-    # tool_set_onboarding_section (P1 Generisches Paket-Onboarding): Career-Onboarding-Fortschritts-Marker
-    # (package=career FIX in der fn, kein HITL, kein Domaenen-/PII-Write — nur ein Tri-State-Flag). Der Advisor
-    # markiert eine seiner 3 ONBOARDING-Sektionen (profile_basics/skills_overview/goals_targets) als
-    # completed/skipped, sobald er sie im Onboarding-Modus erfasst hat — NICHT die Plan-Sektionen
+    # tool_set_onboarding_section: Career-Onboarding-Fortschritts-Marker
+    # (package=career fest in der fn, kein HITL, kein Domaenen-/PII-Write — nur ein Tri-State-Flag). Der Advisor
+    # markiert eine seiner 3 Onboarding-Sektionen (profile_basics/skills_overview/goals_targets) als
+    # completed/skipped, sobald er sie im Onboarding-Modus erfasst hat — nicht die Plan-Sektionen
     # situation/targets/path. chat_id reicht New-AdvisorToolNode automatisch durch; package ist fix im Tool.
     $nToolSetOnb = New-AdvisorToolNode 'tool_set_onboarding_section' 'agent.career.tool_set_onboarding_section' `
         'Mark ONE career ONBOARDING section as done - ONLY while onboarding (the task names an onboarding section), NEVER during normal advice or a plan interview. CALL this right after you captured a section (status=completed) or the user deliberately skipped it (status=skipped). section_key is one of the CAREER ONBOARDING sections: profile_basics, skills_overview, goals_targets - these are ONBOARDING sections, NOT the plan sections situation/targets/path (do not confuse them). No confirmation button: this only flips a progress flag, it writes NO profile data - persist confirmed facts separately via tool_set_profile_facts first.' `
@@ -319,7 +317,7 @@ function Build-AgentCareerAdvisor {
     $svc = Add-ServiceTools -Package 'career' -AgentNode 'Advisor Agent' -StartNode $START_NODE -Position @(-336, 840) -ExistingNodes $nodes
     $nodes += $svc.Nodes
 
-    # Eingangs-Naht-Connections aus New-AdvisorGateChain ZUERST mergen (Schluessel-Reihenfolge
+    # Eingangs-Naht-Connections aus New-AdvisorGateChain zuerst mergen (Schluessel-Reihenfolge
     # $START_NODE -> Depth -> Package -> Core), dann die career-lokale Pipeline + Tool/Memory-ai_*-Kanten.
     $conns = [ordered]@{}
     foreach ($k in $gate.Connections.Keys) { $conns[$k] = $gate.Connections[$k] }

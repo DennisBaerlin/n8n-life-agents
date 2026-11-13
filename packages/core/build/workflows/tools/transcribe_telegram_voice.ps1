@@ -3,18 +3,18 @@
 
 # --- agent.tool_transcribe_telegram_voice ------------------
 # Wiederverwendbarer Baustein (tool = fokussierte Einzweck-Faehigkeit, Eingang->Ausgang):
-# Telegram-file_id (Sprachnachricht ODER Audiodatei) -> Download -> Transkription -> { ok, text }.
-# DUAL-USE: der Orchestrator ruft ihn INLINE (executeWorkflow) auf dem voice/audio-Zweig; ein Agent
-# koennte ihn 1:1 als Tool binden (toolWorkflow, $fromAI) -- derselbe executeWorkflowTrigger-Eingang.
-# Provider-Wahl runtime ueber core.config transcription.provider (Switch wie im alten Orchestrator);
-# der deaktivierte Groq-Pfad ist 1:1 erhalten (Owner-Entscheid), aktiv ist Google-Gemini-Audio — der EINZIGE
-# verbliebene Google-Sprachmodell-Aufruf (Claude versteht kein Audio; Google-Schluessel ist optional).
-# Fehler (kein Google-Schluessel / Credential fehlt, Download- oder API-Fehler, unbekannter Anbieter) enden NICHT
-# im Absturz, sondern als Daten { ok:false, error:'voice_unavailable', reason } (Build-ToolError-Vertrag) — der
+# Telegram-file_id (Sprachnachricht oder Audiodatei) -> Download -> Transkription -> { ok, text }.
+# Dual-Use: der Orchestrator ruft ihn inline (executeWorkflow) auf dem voice/audio-Zweig; ein Agent
+# koennte ihn als Tool binden (toolWorkflow, $fromAI), derselbe executeWorkflowTrigger-Eingang.
+# Provider-Wahl runtime ueber core.config transcription.provider; der deaktivierte Groq-Pfad bleibt
+# erhalten, aktiv ist Google-Gemini-Audio, der einzige
+# Google-Sprachmodell-Aufruf (Claude versteht kein Audio; Google-Schluessel ist optional).
+# Fehler (kein Google-Schluessel / Credential fehlt, Download- oder API-Fehler, unbekannter Anbieter) enden nicht
+# im Absturz, sondern als Daten { ok:false, error:'voice_unavailable', reason } (Build-ToolError-Vertrag); der
 # Orchestrator antwortet dann freundlich und informiert den Owner hoechstens 1x/Tag. Ein leeres Transkript (stille
-# Aufnahme) endet als { ok:false, error:'voice_empty' } — kein Ausfall, der Orchestrator bittet nur um Wiederholung.
+# Aufnahme) endet als { ok:false, error:'voice_empty' }, kein Ausfall: der Orchestrator bittet nur um Wiederholung.
 function Build-TranscribeTelegramVoice {
-    $ID_LOAD_CFG = $LoadConfigId   # core.sub_load_config (build.ps1: per Name aus dem State)
+    $ID_LOAD_CFG = $LoadConfigId
 
     # Eingang: file_id (chat_id kommt via Build-Trigger automatisch dazu, hier ungenutzt).
     $trig = Build-Trigger @('file_id') @(-640, 0)
@@ -23,7 +23,7 @@ function Build-TranscribeTelegramVoice {
     $loadCfg = Build-CallWorkflow 'Load core.config' @(-420, 0) $ID_LOAD_CFG 'core.sub_load_config' (@{})
 
     # Telegram-Download (resource=file). Node-Name bewusst 'Get Telegram voice file' (der deaktivierte
-    # Groq-HTTP-Node referenziert ihn per Namen -> 1:1-Erhalt).
+    # Groq-HTTP-Node referenziert ihn per Namen).
     $getFile = [ordered]@{
         parameters = [ordered]@{
             resource = 'file'
@@ -35,21 +35,21 @@ function Build-TranscribeTelegramVoice {
         position = @(-200, 0)
         id = (New-Id)
         name = 'Get Telegram voice file'
-        # onError -> Fehler-Ausgang [1] (Voice unavailable). maxTries=1 ist ERZWUNGEN: retryOnFail x onError=Continue
-        # ist in n8n defekt (GH #10763, WP-2-Muster); retryOnFail bleibt fuers Retry-Gesetz von workflow_lint.
+        # onError -> Fehler-Ausgang [1] (Voice unavailable). maxTries=1 ist erzwungen: retryOnFail x onError=Continue
+        # ist in n8n defekt (GH #10763); retryOnFail bleibt fuers Retry-Gesetz von workflow_lint.
         retryOnFail = $true; maxTries = 1; waitBetweenTries = 3000
         onError = 'continueErrorOutput'
         credentials = @{ telegramApi = $CRED_TELEGRAM }
     }
 
-    # Provider-Switch (string-equals; 1:1 aus dem Orchestrator: groq | google). Fallback [2] (unbekannter Anbieter)
-    # -> Voice unavailable (vorher unverdrahtet = stilles Nicht-Antworten).
+    # Provider-Switch (string-equals: groq | google). Fallback [2] (unbekannter Anbieter)
+    # -> Voice unavailable (unverdrahtet gaebe es stilles Nicht-Antworten).
     $switch = Build-Switch 'Which transcription model' @(40, 0) @(
         @{ Left = "={{ `$('Load core.config').item.json.transcription.provider }}"; Type = 'string'; Op = 'equals'; Right = 'groq';   OutputKey = 'groq' }
         @{ Left = "={{ `$('Load core.config').item.json.transcription.provider }}"; Type = 'string'; Op = 'equals'; Right = 'google'; OutputKey = 'google' }
     )
 
-    # --- Groq-Pfad (DEAKTIVIERT, 1:1 erhalten) -------------------------------------------------
+    # --- Groq-Pfad (deaktiviert) -------------------------------------------------
     $groqCreds = Build-Set 'Groq credentials' @(280, -160) @(
         ,@('Groq_API',              'YOUR_GROQ_API_KEY',              'string')
         ,@('Telegram_access_token', 'YOUR_TELEGRAM_BOT_ACCESS_TOKEN', 'string')
@@ -79,7 +79,7 @@ function Build-TranscribeTelegramVoice {
         name = 'HTTP Request'
     }
 
-    # --- Google-Pfad (AKTIV): Gemini-Audio-Transkription (binary) ------------------------------
+    # --- Google-Pfad (aktiv): Gemini-Audio-Transkription (binary) ------------------------------
     $transcribe = [ordered]@{
         parameters = [ordered]@{
             resource = 'audio'
@@ -97,13 +97,13 @@ function Build-TranscribeTelegramVoice {
     }
 
     # Transkript aus der Anbieter-Antwort ziehen. Gemini (Simplify Output) liefert je Kandidat
-    # { content: { parts: [{ text }] } } — KEIN Top-Level-.text (das las der Return frueher -> "null" als
-    # Chat-Nachricht). Groq (OpenAI-Form) liefert .text direkt. Ergebnis getrimmt, leer = kein Transkript.
+    # { content: { parts: [{ text }] } }, kein Top-Level-.text (sonst ginge "null" als
+    # Chat-Nachricht raus). Groq (OpenAI-Form) liefert .text direkt. Ergebnis getrimmt, leer = kein Transkript.
     $extract = Build-Set 'Extract transcript' @(500, 0) @(
         ,@('text', "={{ (typeof `$json.text === 'string' ? `$json.text : ((`$json.content && `$json.content.parts) || []).map(p => p.text || '').join('')).trim() }}", 'string')
     )
-    # Leeres Transkript (stille/unverstaendliche Aufnahme) ist KEIN Erfolg (sonst bekaeme der Orchestrator einen
-    # leeren Auftrag), aber auch KEIN Ausfall: eigener Code voice_empty -> der Orchestrator bittet um Wiederholung
+    # Leeres Transkript (stille/unverstaendliche Aufnahme) ist kein Erfolg (sonst bekaeme der Orchestrator einen
+    # leeren Auftrag), aber auch kein Ausfall: eigener Code voice_empty -> der Orchestrator bittet um Wiederholung
     # und meldet dem Owner nichts (die 1x/Tag-Ausfallmeldung bleibt fuer echte Ausfaelle frei).
     $hasText = Build-If 'Transcript present?' @(620, 0) "={{ `$json.text }}" '' 'notEquals' 'string'
     $empty = Build-Set 'Transcript empty' @(860, -200) @(
@@ -113,12 +113,12 @@ function Build-TranscribeTelegramVoice {
     )
 
     # Rueckgabe-Vertrag: { ok, text } bzw. { ok:false, error:'voice_unavailable'|'voice_empty', reason }. ok:true
-    # NUR mit nicht-leerem Transkript.
+    # nur mit nicht-leerem Transkript.
     $ret = Build-Return @(860, 0) @(
         ,@('ok',   'true',                 'boolean')
         ,@('text', "={{ `$json.text }}",   'string')
     )
-    # EIN Fehler-Sammelpunkt fuer Download-Fehler, Transkriptions-Fehler und unbekannten Anbieter. reason = der
+    # Ein Fehler-Sammelpunkt fuer Download-Fehler, Transkriptions-Fehler und unbekannten Anbieter. reason = der
     # n8n-Fehlertext (Fehler-Ausgang: $json.error als Text oder Objekt) bzw. der unbekannte Anbieter (Fallback).
     $unavailable = Build-Set 'Voice unavailable' @(860, 200) @(
         ,@('ok',     'false',             'boolean')

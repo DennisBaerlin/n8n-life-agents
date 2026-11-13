@@ -1,9 +1,9 @@
 ﻿#Requires -Version 5.1
 # Dot-gesourct von build.ps1 (Helper + Script-Scope-Creds im Parent-Scope).
 
-# --- agent.estate.tool_delete_contact (WS-2, delete_ = Hard-DELETE) --------------------------
+# --- agent.estate.tool_delete_contact (delete_ = Hard-DELETE) --------------------------
 # Loescht einen Schluessel-Kontakt aus dem Register. Resolve (Name + optional Rolle) -> unique?
-# VOR dem Gate. HITL owner_approval. adults_only-DB-Backstop. estate_rw.
+# vor dem Gate. HITL owner_approval. adults_only-DB-Backstop. estate_rw.
 function Build-EstateDeleteContact {
     $CRED_POSTGRES = $CRED_ESTATE_RW
     $trig = Build-Trigger @('name','role')
@@ -15,9 +15,8 @@ function Build-EstateDeleteContact {
     $errBad = Build-ToolError 'Contact ambiguous' @(660, 200) `
         "=The contact '{{ `$('Start').item.json.name }}' resolves to {{ `$('Resolve Contact').item.json.hit_count }} matches. Candidates: {{ JSON.stringify(`$('Resolve Contact').item.json.candidates) }}. Ask which one (add the role), or check the name."
 
-    # Strukturiertes Summary (Textkatalog): Keys + typisierte Rohwerte, das Gate rendert je Empfaenger-Sprache.
     $S = "`$('Start').item.json"
-    # "DB ist das Gesetz": estate.fn_delete_contact laeuft als Probelauf VOR der Karte; derselbe Param-Satz geht nach dem Gate in den echten Write.
+    # estate.fn_delete_contact laeuft als Probelauf vor der Karte; derselbe Param-Satz geht nach dem Gate in den echten Write.
     $wg = New-FnWriteGate -Fn 'estate.fn_delete_contact' -DryPos @(660, 0) -WritePos @(1980, 0) `
         -WriteName 'Delete contact (atomic)' `
         -WriteSelect "(r->>'ok')::boolean AS ok, r->>'reason' AS reason, r->>'action' AS action, (r->>'contact_id')::bigint AS contact_id" `

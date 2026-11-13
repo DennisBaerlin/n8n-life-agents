@@ -1,10 +1,10 @@
 ﻿#Requires -Version 5.1
 # Dot-gesourct von build.ps1 (Helper + Script-Scope-Creds im Parent-Scope).
 
-# --- agent.estate.tool_record_directive (WS-2, Verb record_ = idempotenter UPSERT) ----------
-# Erfasst/aktualisiert EINEN Vorsorge-Dokument-Register-Eintrag (UPSERT auf den UNIQUE NULLS NOT
-# DISTINCT (owner_person_id, doc_type)-Key). Verb record_ (kein create_ -> KEIN Dubletten-Node:
-# der UPSERT-Vertrag ersetzt einen bestehenden Eintrag idempotent, Praezedenz career record_job_match).
+# --- agent.estate.tool_record_directive (Verb record_ = idempotenter UPSERT) ----------
+# Erfasst/aktualisiert einen Vorsorge-Dokument-Register-Eintrag (UPSERT auf den UNIQUE NULLS NOT
+# DISTINCT (owner_person_id, doc_type)-Key). Verb record_ (kein create_ -> kein Dubletten-Node:
+# der UPSERT-Vertrag ersetzt einen bestehenden Eintrag idempotent, Muster career record_job_match).
 # HITL owner_info (member-tauglich; additiver Register-Eintrag, kein Identitaets-/Plan-Write). Der
 # adults_only-DB-Backstop lebt in der fn (Kind -> {ok:false}). Cred = estate_rw (finance_rw-Paritaet).
 function Build-EstateRecordDirective {
@@ -21,11 +21,10 @@ function Build-EstateRecordDirective {
     $errPerson = Build-ToolError 'Person unresolved' @(660, 320) `
         "=The person '{{ `$('Start').item.json.owner_person }}' could not be uniquely resolved ({{ `$('Resolve Person').item.json.hit_count }} match(es)). Candidates: {{ JSON.stringify(`$('Resolve Person').item.json.candidates) }}. Ask which household member, or leave empty for a joint/household document (Berliner Testament)."
 
-    # HITL-Summary (Textkatalog; doc_type/doc_status/form menschenlesbar als Enum-Keys).
-    # Strukturiertes Summary (Textkatalog): Keys + typisierte Rohwerte, das Gate rendert je Empfaenger-Sprache.
+    # HITL-Summary: doc_type/doc_status/form menschenlesbar als Enum-Keys.
     $S  = "`$('Start').item.json"
     $RP = "`$('Resolve Person').item.json"
-    # "DB ist das Gesetz": estate.fn_record_directive laeuft als Probelauf VOR der Karte; derselbe Param-Satz geht nach dem Gate in den echten Write.
+    # estate.fn_record_directive laeuft als Probelauf vor der Karte; derselbe Param-Satz geht nach dem Gate in den echten Write.
     $wg = New-FnWriteGate -Fn 'estate.fn_record_directive' -DryPos @(660, 0) -WritePos @(1980, 0) `
         -WriteName 'Record directive (atomic)' `
         -WriteSelect "(r->>'ok')::boolean AS ok, r->>'reason' AS reason, (r->>'directive_id')::bigint AS directive_id, (r->>'created')::boolean AS created, r->>'doc_status' AS doc_status" `

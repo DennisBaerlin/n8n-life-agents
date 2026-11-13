@@ -3,18 +3,18 @@
 
 # --- agent.tool_publish_plan (CROSS-AGENT, HITL-Write) ----------------------
 # Publiziert den Draft-Plan der Domain: Vorgaenger -> superseded, Draft -> active,
-# Domänen-Plan-Doc (finance -> 'financial_planning', WS-B2c) upserted (lazy/global, Spalte
-# managed_by='agent' -> Seeder fasst die Zeile nie an) — alles EINE Transaktion in
+# Domänen-Plan-Doc (finance -> 'financial_planning') upserted (lazy/global, Spalte
+# managed_by='agent' -> Seeder fasst die Zeile nie an), alles in einer Transaktion in
 # agent.fn_advisor_publish_plan. domain ist beim Aufrufer fixer Binding-Input.
 # Die Approval-Summary erklaert das WAS (Versionen aus der DB gelesen, nicht vom LLM
 # gerechnet; change_summary liefert der Agent) — nie nur "Plan speichern?".
 function Build-PublishPlan {
     $trig = Build-Trigger @('domain', 'plan_md', 'plan_name', 'change_summary', 'context_description', 'check_findings', 'check_passes', 'reminders', 'declined', 'retire', 'watch_candidates')
 
-    # Read-only Pre-State: Scope des Plan-Dokuments (m2: domaenenneutral aus core.advisors.plan_context, NICHT hardcoded
-    # financial_planning) + Draft-/Active-Version + Sektionszahl aus der DB (LLM rechnet nicht). P0c person-
-    # skopiert (wie der Write fn_advisor_publish_plan): per_user-Domain -> Vorschau des SENDER-Plans
-    # (fn_resolve_sender(chat_id), Numerik-Guard); household -> person_id NULL. Multi-Person = P2.
+    # Read-only Pre-State: Scope des Plan-Dokuments (domaenenneutral aus core.advisors.plan_context, nicht hardcoded
+    # financial_planning) + Draft-/Active-Version + Sektionszahl aus der DB (LLM rechnet nicht). Person-
+    # skopiert (wie der Write fn_advisor_publish_plan): per_user-Domain -> Vorschau des Sender-Plans
+    # (fn_resolve_sender(chat_id), Numerik-Guard); household -> person_id NULL.
     $readState = Build-Pg 'Read plan state' @(220, 0) @'
 =WITH r AS (
   SELECT COALESCE((SELECT a.plan_context FROM core.advisors a WHERE a.domain = ($1::jsonb)->>'domain'),
@@ -43,8 +43,8 @@ LEFT JOIN agent.advisor_plans a ON a.domain = p.dom AND a.person_id IS NOT DISTI
     $errNoDraft = Build-ToolError 'No draft' @(660, -200) `
         "=No draft plan exists for domain '{{ `$('Start').item.json.domain }}'. Save at least one section via the tool_save_plan_section tool before publishing."
 
-    # "DB ist das Gesetz": agent.fn_advisor_publish_plan laeuft als Probelauf VOR der Karte; derselbe Param-Satz geht nach dem
-    # Gate in den echten Write. Sonst lehnt die fn erst nach dem Tipp ab (Muster tool_save_plan_section, Befund 2026-11-02).
+    # "DB ist das Gesetz": agent.fn_advisor_publish_plan laeuft als Probelauf vor der Karte; derselbe Param-Satz geht nach dem
+    # Gate in den echten Write. Sonst lehnt die fn erst nach dem Tipp ab (Muster tool_save_plan_section).
     $wg = New-FnWriteGate -Fn 'agent.fn_advisor_publish_plan' -DryPos @(660, 0) -WritePos @(1760, 0) `
         -WriteName 'Publish plan (atomic)' `
         -WriteSelect "(r->>'ok')::boolean AS ok, r->>'reason' AS reason, (r->>'plan_id')::int AS plan_id, (r->>'version')::int AS version, (r->>'superseded_plan_id')::int AS superseded_plan_id, r->>'context_name' AS context_name, (r->>'section_count')::int AS section_count, r->'sync' AS sync" `
@@ -53,14 +53,14 @@ LEFT JOIN agent.advisor_plans a ON a.domain = p.dom AND a.person_id IS NOT DISTI
             plan_md             = '$(''Start'').item.json.plan_md'
             plan_name           = '$(''Start'').item.json.plan_name'
             context_description = '$(''Start'').item.json.context_description'
-            change_summary      = '$(''Start'').item.json.change_summary'   # Plan teilen: Provenienz der Version (+ Owner-Sprache in der fn)
+            change_summary      = '$(''Start'').item.json.change_summary'   # Provenienz der Version (+ Owner-Sprache in der fn)
             check_findings      = '$(''Start'').item.json.check_findings'   # Gesamtcheck (JSON-String, leer = nicht angegeben); Pflicht und Kartenzahlen entscheidet die fn
             check_passes        = '$(''Start'').item.json.check_passes'
             reminders           = '$(''Start'').item.json.reminders'          # Plan-Durchlauf (JSON-Strings, leer = nicht angegeben): core.fn_plan_sync in derselben Transaktion
             declined            = '$(''Start'').item.json.declined'
             retire              = '$(''Start'').item.json.retire'
             watch_candidates    = '$(''Start'').item.json.watch_candidates'
-            chat_id             = '$(''Start'').item.json.chat_id'   # WS-5b: owner_only-Backstop (fn_sender_is_member)
+            chat_id             = '$(''Start'').item.json.chat_id'   # owner_only-Backstop (fn_sender_is_member)
         })
 
     # Strukturiertes Summary (Textkatalog): Versionen aus der DB (nie vom LLM gerechnet), Satz-Vorlagen je Fall.
@@ -87,7 +87,7 @@ LEFT JOIN agent.advisor_plans a ON a.domain = p.dom AND a.person_id IS NOT DISTI
 
     $errWrite = Build-ToolError 'Publish rejected' @(2200, 200) "={{ `$('Publish plan (atomic)').item.json.reason }}"
 
-    # Return liest die Post-State-Felder EXPLIZIT aus dem Publish-Node .
+    # Return liest die Post-State-Felder explizit aus dem Publish-Node.
     $ret = Build-Return @(3520, 0) @(
         ,@('ok','true','boolean')
         ,@('plan_id', "={{ `$('Publish plan (atomic)').item.json.plan_id }}", 'number')

@@ -2,14 +2,14 @@
 # Dot-gesourct von build.ps1 (Helper + Script-Scope-Creds im Parent-Scope).
 #
 # --- agent.tool_load_context (gemeinsamer System-Prompt-Bauer) --------------
-# Deterministischer Sub (KEIN Agent/LLM): jeder Agent-Workflow ruft ihn VOR dem AI-Node. Inputs:
+# Deterministischer Sub (kein Agent/LLM): jeder Agent-Workflow ruft ihn VOR dem AI-Node. Inputs:
 # agent_name, include_manifest. EINE Postgres-Query: static-concat der static-Docs aus
 # agent.core_contexts (global_instructions, dann agent-spezifisch, dann übrige agentlose) + optional das Lazy-Manifest
 # (Name+Description der lazy-Contexts). Rueckgabe: system_prompt. Von den Agenten per Name aus dem
 # State referenziert ($LoadContextId, kein ID-Literal). Die Assembly-SQL lebt hier im Workflow,
 # nicht in der DB (Verweis in packages/core/db/agent.core_init.sql).
 #
-# Start traegt NUR agent_name + include_manifest (KEIN chat_id) -> Build-Trigger passt nicht (das
+# Start traegt nur agent_name + include_manifest (kein chat_id) -> Build-Trigger passt nicht (das
 # wuerde chat_id erzwingen); der Trigger wird inline konstruiert.
 function Build-AgentToolLoadContext {
     $start = [ordered]@{
@@ -31,7 +31,7 @@ function Build-AgentToolLoadContext {
 
     # Assembly-SQL: $1 = jsonb { agent_name, include_manifest } (Build-Pg-Standard). Sichtbarkeit =
     # (load_strategy x agent_name): static+NULL/agent -> System-Prompt; lazy -> Manifest (nur wenn
-    # include_manifest != 'false'; physische per_user-Zeilen nie — Security-Audit 2026-10).
+    # include_manifest != 'false'; physische per_user-Zeilen nie).
     $sql = @'
 WITH static_docs AS (
   SELECT string_agg(content, E'\n\n---\n\n'

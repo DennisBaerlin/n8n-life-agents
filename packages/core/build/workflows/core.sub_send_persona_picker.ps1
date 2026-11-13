@@ -2,17 +2,17 @@
 # Dot-gesourct von build.ps1 (Helper + Script-Scope-Creds im Parent-Scope).
 #
 # --- core.sub_send_persona_picker (Bot-Persona je Person per Knopf) -------
-# Schickt EINE Karte "Wie soll ich mit dir sprechen?" mit je einem Knopf pro Persona (Name aus dem Textkatalog in der
+# Schickt eine Karte "Wie soll ich mit dir sprechen?" mit je einem Knopf pro Persona (Name aus dem Textkatalog in der
 # Sprache der Person, aktuelle Persona mit ✓) an chat_id. Der Tipp (callback_data persona:<person_id>:<code>) laeuft
 # ueber den generischen Callback-Dispatch (core.callback_handlers 'persona' -> agent.fn_set_person_persona; Owner jede
-# Person, Mitglied nur sich selbst). Analog core.sub_send_language_picker: deterministisch, KEIN LLM, sendet selbst.
-# Abweichung vom Sprach-Picker: nur EIN Modus (die Person waehlt fuer sich) und die Frage nur in IHRER Sprache — die
+# Person, Mitglied nur sich selbst). Analog core.sub_send_language_picker: deterministisch, kein LLM, sendet selbst.
+# Abweichung vom Sprach-Picker: nur ein Modus (die Person waehlt fuer sich) und die Frage nur in ihrer Sprache — die
 # Persona aendert die Sprache nicht, die Person kann die Karte also lesen.
 # Aufrufer: der Orchestrator bei /persona.
 #
 # Eingang: person_id (wessen Persona, zugleich Sprach-Quelle), chat_id (Empfaenger der Karte). Ablauf:
 #   Start -> Load picker text (core_ro: Frage + Knopf-Namen + aktuelle Persona) -> Send persona picker (Inline-
-#   Knoepfe build-time aus dem Core-Manifest personas.list = die EINE Liste; 2 je Zeile, damit lange Namen passen).
+#   Knoepfe build-time aus dem Core-Manifest personas.list = die eine Liste; 2 je Zeile, damit lange Namen passen).
 # n8n-Inline-Keyboard = statische fixedCollection -> Knopf-Anzahl/-Reihenfolge build-time; Laufzeit sind nur die
 # person_id im callback_data, der Knopf-Text aus der t-Map und die ✓-Markierung.
 function Build-CoreSubSendPersonaPicker {

@@ -2,10 +2,10 @@
 # Dot-gesourct von build.ps1 (Helper + Script-Scope-Creds im Parent-Scope).
 #
 # --- core.sub_send_language_picker (Textkatalog: Sprache je Person per Knopf) -------
-# Schickt EINE Karte "In welcher Sprache soll <Name> feste Nachrichten bekommen?" mit je einem Knopf pro
+# Schickt eine Karte "In welcher Sprache soll <Name> feste Nachrichten bekommen?" mit je einem Knopf pro
 # unterstuetzter Sprache (Eigenname, z. B. 한국어) an chat_id. Der Tipp (callback_data lang:<person_id>:<code>) laeuft
 # ueber den generischen Callback-Dispatch (core.callback_handlers 'lang' -> agent.fn_set_person_language; Owner jede
-# Person, Mitglied nur sich selbst). Analog core.sub_send_onboarding_menu: deterministisch, KEIN LLM, sendet selbst.
+# Person, Mitglied nur sich selbst). Analog core.sub_send_onboarding_menu: deterministisch, kein LLM, sendet selbst.
 # Aufrufer: agent.tool_set_context_facts (neu angelegte Person ohne Sprache -> Karte an den Owner, Modus 'other'),
 # der Orchestrator bei /language + /sprache (Modus 'self') und nach dem Owner-Confirm eines Mitglieds ohne eigene
 # Sprache (Modus 'self' + suggest = Telegram-App-Sprache vom Einloesen).
@@ -13,9 +13,9 @@
 # Eingang: person_id (wessen Sprache), chat_id (Empfaenger der Karte), mode ('self' | leer = 'other'), suggest
 # (Sprach-Code, nur Markierung). Ablauf:
 #   Start -> Load picker text (core_ro) -> Send language picker (Inline-Knoepfe build-time aus dem Core-Manifest
-#   languages.list = die EINE Liste).
-#   Modus 'other': Frage "In welcher Sprache soll <Name> …?" in der Sprache des EMPFAENGERS (core.lang.picker).
-#   Modus 'self':  Frage core.lang.picker_self in ALLEN Katalogsprachen untereinander (vorgeschlagene zuerst) — wer
+#   languages.list = die eine Liste).
+#   Modus 'other': Frage "In welcher Sprache soll <Name> …?" in der Sprache des Empfaengers (core.lang.picker).
+#   Modus 'self':  Frage core.lang.picker_self in allen Katalogsprachen untereinander (vorgeschlagene zuerst) — wer
 #                  seine Sprache waehlt, kann die aktuelle evtl. nicht lesen; so bleibt die Fallback-Kette unberuehrt
 #                  und nichts wird ohne Tipp gespeichert.
 # n8n-Inline-Keyboard = statische fixedCollection -> Knopf-Anzahl/-Reihenfolge build-time (Sprachliste ist build-time

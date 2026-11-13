@@ -1,8 +1,8 @@
 ﻿#Requires -Version 5.1
 # Dot-gesourct von build.ps1 (Helper + Script-Scope-Creds im Parent-Scope).
 
-# --- agent.estate.tool_create_digital_account (WS-2, create_ + Pflicht-Dubletten-Node) ------
-# Legt ein NEUES Konto des digitalen Nachlasses an — OHNE Passwoerter (nur Fundort-Verweise).
+# --- agent.estate.tool_create_digital_account (create_ + Pflicht-Dubletten-Node) ------
+# Legt ein neues Konto des digitalen Nachlasses an — ohne Passwoerter (nur Fundort-Verweise).
 # HITL owner_info. adults_only-DB-Backstop + crypto-Kopplung des Seed-Fundorts in der fn. Cred = estate_rw.
 function Build-EstateCreateDigitalAccount {
     $CRED_POSTGRES = $CRED_ESTATE_RW
@@ -24,12 +24,11 @@ function Build-EstateCreateDigitalAccount {
     $errPerson = Build-ToolError 'Person unresolved' @(660, 320) `
         "=The person '{{ `$('Start').item.json.owner_person }}' could not be uniquely resolved. Ask which household member, or leave empty for a shared account."
 
-    # Strukturiertes Summary (Textkatalog): Keys + typisierte Rohwerte, das Gate rendert je Empfaenger-Sprache.
-    # Offene Todesfall-Aktion (NULL) -> Enum-Wert 'open' ("OFFEN"); Schluesselkonto-Flag wie bisher aus true/yes/1/ja.
+    # Offene Todesfall-Aktion (NULL) -> Enum-Wert 'open' ("OFFEN"); Schluesselkonto-Flag aus true/yes/1/ja.
     $S  = "`$('Start').item.json"
     $RP = "`$('Resolve Person').item.json"
     $isKey = "(['true','yes','1','ja'].indexOf(String($S.is_key_account || '').toLowerCase()) >= 0)"
-    # "DB ist das Gesetz": estate.fn_create_digital_account laeuft als Probelauf VOR der Karte; derselbe Param-Satz geht nach dem Gate in den echten Write.
+    # estate.fn_create_digital_account laeuft als Probelauf vor der Karte; derselbe Param-Satz geht nach dem Gate in den echten Write.
     $wg = New-FnWriteGate -Fn 'estate.fn_create_digital_account' -DryPos @(660, 0) -WritePos @(1980, 0) `
         -WriteName 'Create account (atomic)' `
         -WriteSelect "(r->>'ok')::boolean AS ok, r->>'reason' AS reason, (r->>'digital_account_id')::bigint AS digital_account_id, (r->>'is_key_account')::boolean AS is_key_account" `

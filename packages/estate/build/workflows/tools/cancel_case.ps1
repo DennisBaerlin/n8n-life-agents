@@ -1,8 +1,8 @@
 ﻿#Requires -Version 5.1
 # Dot-gesourct von build.ps1 (Helper + Script-Scope-Creds im Parent-Scope).
 
-# --- agent.estate.tool_cancel_case (WS-3, Break-Glass owner_info; NEUES Verb cancel Floor 0) --------
-# Bricht einen OFFENEN Ereignisfall ab (status -> cancelled; die case_tasks bleiben als Verlauf).
+# --- agent.estate.tool_cancel_case (Break-Glass owner_info; Verb cancel Floor 0) --------
+# Bricht einen offenen Ereignisfall ab (status -> cancelled; die case_tasks bleiben als Verlauf).
 # Danach ist die partial-UNIQUE(subject) WHERE open frei -> Fall-Korrektur = cancel + create. HITL
 # owner_info (Break-Glass wie create_case). adults_only-DB-Backstop in der fn. Cred = estate_rw.
 function Build-EstateCancelCase {
@@ -16,10 +16,9 @@ function Build-EstateCancelCase {
     $errNotOpen = Build-ToolError 'Case not open' @(660, 200) `
         "=Case {{ `$('Start').item.json.case_id }} is not an open case (it may not exist, or is already closed/cancelled). Nothing to cancel."
 
-    # Strukturiertes Summary (Textkatalog): Keys + typisierte Rohwerte, das Gate rendert je Empfaenger-Sprache.
     $S = "`$('Start').item.json"
     $R = "`$('Read case').item.json"
-    # "DB ist das Gesetz": estate.fn_cancel_case laeuft als Probelauf VOR der Karte; derselbe Param-Satz geht nach dem Gate in den echten Write.
+    # estate.fn_cancel_case laeuft als Probelauf vor der Karte; derselbe Param-Satz geht nach dem Gate in den echten Write.
     $wg = New-FnWriteGate -Fn 'estate.fn_cancel_case' -DryPos @(660, 0) -WritePos @(1980, 0) `
         -WriteName 'Cancel case (atomic)' `
         -WriteSelect "(r->>'ok')::boolean AS ok, r->>'reason' AS reason, (r->>'case_id')::bigint AS case_id" `

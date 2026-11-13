@@ -2,12 +2,12 @@
 # Dot-gesourct von build.ps1 (Helper + Script-Scope-Creds im Parent-Scope).
 #
 # --- core.sub_load_config (zentraler Config-Loader) -------------------------
-# Deterministischer Sub (KEIN Agent/LLM): jeder Agent ruft ihn als ersten Schritt ('Load Config'/
+# Deterministischer Sub (kein Agent/LLM): jeder Agent ruft ihn als ersten Schritt ('Load Config'/
 # 'Load core.config'). Liest core.config (category/key/value) und pivotet die Zeilen zu EINEM
-# verschachtelten Objekt { model:{...}, transcription:{...}, ... }. Loest die alte ENV-Var-Injection
-# ab. Von den Agenten + dem Voice-Tool per Name aus dem State referenziert ($LoadConfigId, kein ID-Literal).
+# verschachtelten Objekt { model:{...}, transcription:{...}, ... }.
+# Von den Agenten + dem Voice-Tool per Name aus dem State referenziert ($LoadConfigId, kein ID-Literal).
 #
-# Start ist ein PASSTHROUGH-Trigger (KEINE getypten Inputs) -> Build-Trigger passt nicht (das wuerde
+# Start ist ein Passthrough-Trigger (keine getypten Inputs) -> Build-Trigger passt nicht (das wuerde
 # chat_id-Inputs erzwingen); der Trigger wird inline konstruiert.
 function Build-CoreSubLoadConfig {
     $start = [ordered]@{

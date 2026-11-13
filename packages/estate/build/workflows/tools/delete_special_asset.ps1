@@ -1,10 +1,10 @@
 ﻿#Requires -Version 5.1
 # Dot-gesourct von build.ps1 (Helper + Script-Scope-Creds im Parent-Scope).
 
-# --- agent.estate.tool_delete_special_asset (WS-2, delete_ = Hard-DELETE) --------------------
+# --- agent.estate.tool_delete_special_asset (delete_ = Hard-DELETE) --------------------
 # Loescht einen Sonderfall-Stub (verkauft/abgegeben — Stubs haben keinen Lifecycle-Status; ein
-# verkauftes Fahrzeug MUSS raus, sonst falsche WS-3-Checklisten-Tasks). Resolve (Beschreibung +
-# optional Typ) -> unique? VOR dem Gate. HITL owner_approval. adults_only-DB-Backstop. estate_rw.
+# verkauftes Fahrzeug muss raus, sonst falsche Checklisten-Tasks im Ereignisfall). Resolve (Beschreibung +
+# optional Typ) -> unique? vor dem Gate. HITL owner_approval. adults_only-DB-Backstop. estate_rw.
 function Build-EstateDeleteSpecialAsset {
     $CRED_POSTGRES = $CRED_ESTATE_RW
     $trig = Build-Trigger @('description','asset_type')
@@ -16,9 +16,8 @@ function Build-EstateDeleteSpecialAsset {
     $errBad = Build-ToolError 'Asset ambiguous' @(660, 200) `
         "=The special asset '{{ `$('Start').item.json.description }}' resolves to {{ `$('Resolve Asset').item.json.hit_count }} matches. Candidates: {{ JSON.stringify(`$('Resolve Asset').item.json.candidates) }}. Ask which one (add the type), or check the description."
 
-    # Strukturiertes Summary (Textkatalog): Keys + typisierte Rohwerte, das Gate rendert je Empfaenger-Sprache.
     $S = "`$('Start').item.json"
-    # "DB ist das Gesetz": estate.fn_delete_special_asset laeuft als Probelauf VOR der Karte; derselbe Param-Satz geht nach dem Gate in den echten Write.
+    # estate.fn_delete_special_asset laeuft als Probelauf vor der Karte; derselbe Param-Satz geht nach dem Gate in den echten Write.
     $wg = New-FnWriteGate -Fn 'estate.fn_delete_special_asset' -DryPos @(660, 0) -WritePos @(1980, 0) `
         -WriteName 'Delete asset (atomic)' `
         -WriteSelect "(r->>'ok')::boolean AS ok, r->>'reason' AS reason, r->>'action' AS action, (r->>'special_asset_id')::bigint AS special_asset_id" `

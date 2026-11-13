@@ -2,14 +2,14 @@
 # Dot-gesourct von build.ps1 (Helper + Script-Scope-Creds im Parent-Scope; Bausteine aus ../paperless_common.ps1).
 
 # --- agent.paperless.tool_ask_documents (read-only, kein HITL) ---------------------------------------
-# Inhaltsfrage an die Paperless-eigene Dokumenten-KI (E3): POST /api/documents/chat/ {q, document_id?} — der einzige
-# POST, er LIEST nur (E8). Paperless antwortet als text/event-stream mit reinem Text + Trailer
-# '__PAPERLESS_CHAT_METADATA__{"references":[{id,title}]}' (Spike (d), Paperless 3.3.2; ~23 s) -> Antwort als Text
-# lesen, am Trailer splitten. Die KI laeuft IN Paperless mit dem dort eingestellten Anbieter (ausserhalb dieses
-# Systems — Setup-Hilfe sagt es). Aufruf NUR ueber den Core-Vermittler (Service 'paperless:ask_documents', adults_only).
+# Inhaltsfrage an die Paperless-eigene Dokumenten-KI: POST /api/documents/chat/ {q, document_id?} — der einzige
+# POST, er liest nur. Paperless antwortet als text/event-stream mit reinem Text + Trailer
+# '__PAPERLESS_CHAT_METADATA__{"references":[{id,title}]}' (Paperless 3.3.2; ~23 s) -> Antwort als Text
+# lesen, am Trailer splitten. Die KI laeuft in Paperless mit dem dort eingestellten Anbieter (ausserhalb dieses
+# Systems — Setup-Hilfe sagt es). Aufruf nur ueber den Core-Vermittler (Service 'paperless:ask_documents', adults_only).
 function Build-PaperlessAskDocuments {
-    # Paperless-ids beginnen bei 1: '0' kam frueher durch (truthy String -> document_id 0) und Paperless fragte dann ueber
-    # ALLE Dokumente (Befund 2026-10-30, Platzhalter-Aufruf eines Agenten).
+    # Paperless-ids beginnen bei 1: '0' ginge als truthy String durch (document_id 0) und Paperless fragte dann ueber
+    # alle Dokumente.
     $extra ="if (out.document_id !== undefined && !/^[1-9][0-9]{0,11}`$/.test(out.document_id)) return bad('document_id must be the numeric Paperless id from search_documents, or empty');"
     $head = New-PaperlessToolHead 'ask_documents' 'Ask Paperless' $extra
 

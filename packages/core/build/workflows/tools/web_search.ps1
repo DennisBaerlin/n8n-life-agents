@@ -3,10 +3,10 @@
 
 # --- agent.tool_web_search (CROSS-AGENT, read-only, kein HITL) -------------
 # Claude-Messages-API + Server-Tool web_search ueber den geteilten Baustein New-AnthropicMessagesNode
-# (lib/build_helpers.ps1). Modell = core.config `model.web_search` (Default claude-sonnet-latest), bei JEDEM Lauf
+# (lib/build_helpers.ps1). Modell = core.config `model.web_search` (Default claude-sonnet-latest), bei jedem Lauf
 # gelesen (Load model config) -> `lifeagents config set model web_search <key>` wirkt ab dem naechsten Aufruf.
-# Kosten: $10 je 1.000 Suchen + Tokens (kein Gratis-Kontingent mehr, seit Gemini-Grounding 2026-10 entfernt wurde).
-# Shaping DETERMINISTISCH (Code-Node, kein LLM): Leerquery-Guard, UNTRUSTED-Header, {ok:false}-Vertrag.
+# Kosten: $10 je 1.000 Suchen + Tokens (kein Gratis-Kontingent).
+# Shaping deterministisch (Code-Node, kein LLM): Leerquery-Guard, UNTRUSTED-Header, {ok:false}-Vertrag.
 function Build-WebSearch {
     $sysText = 'You are a web research assistant. Answer the query concisely based on web search. Find the primary source first (central bank, agency, exchange, issuer itself, statute, official calendar) and read value and date from its page content, not from a snippet. ALWAYS include the date of each source (publication or last-update date); tax rules and interest rates are year-dependent, so check year and scope (tax year vs filing year, single vs joint, announced vs effective date). If sources conflict, the primary one wins and you say so. If no current value can be read from a source or the source shows no date, say so instead of guessing. Cite at least 2 sources when possible. Answer in English.'
 

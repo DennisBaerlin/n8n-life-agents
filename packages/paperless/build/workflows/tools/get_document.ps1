@@ -2,7 +2,7 @@
 # Dot-gesourct von build.ps1 (Helper + Script-Scope-Creds im Parent-Scope; Bausteine aus ../paperless_common.ps1).
 
 # --- agent.paperless.tool_get_document (read-only, kein HITL) ----------------------------------------
-# EIN Dokument lesen (E2): Metadaten + Volltext (Cap 15 000 Zeichen, truncated:true). Aufruf NUR ueber den Core-
+# Ein Dokument lesen: Metadaten + Volltext (Cap 15 000 Zeichen, truncated:true). Aufruf nur ueber den Core-
 # Vermittler agent.sub_dispatch_tool (Service 'paperless:get_document', permission adults_only).
 # Ablauf: Parse args (document_id Pflicht, nur Ziffern) -> Adresse lesen -> GET /api/documents/<id>/ -> ok? ->
 # Namensaufloesung -> Shape document.

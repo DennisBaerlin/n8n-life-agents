@@ -1,11 +1,11 @@
 ﻿#Requires -Version 5.1
 # Dot-gesourct von build.ps1 (Helper + Script-Scope-Creds im Parent-Scope).
 #
-# --- core.sub_send_reminders_menu (Roter Faden Paket B, Owner-Entscheid 2026-10-23) -------
-# Das /reminders-Menue: EINE Nachricht mit allem, was der Bot von sich aus schickt, samt Zeitplan in Klartext und
+# --- core.sub_send_reminders_menu -------
+# Das /reminders-Menue: eine Nachricht mit allem, was der Bot von sich aus schickt, samt Zeitplan in Klartext und
 # Stand (an/aus), plus je Erinnerung ein Schalt-Knopf. Deterministisch, kein LLM. Muster core.sub_send_onboarding_menu:
-# Knopf-STRUKTUR build-time (n8n-Inline-Keyboard = statische fixedCollection, Issue #19955 -> ein Send je Ansicht),
-# STAND + TEXTE zur Laufzeit in der Sprache des Betrachters.
+# Knopf-Struktur build-time (n8n-Inline-Keyboard = statische fixedCollection, Issue #19955 -> ein Send je Ansicht),
+# Stand + Texte zur Laufzeit in der Sprache des Betrachters.
 #
 # Eingang: chat_id. Aufrufer: Orchestrator /reminders|/erinnerungen und der Callback-Zweig nach einem Menue-Tipp
 # (rem:on|off:<key>:m -> core.fn_handle_reminder_cb -> route 'reminders' -> dieses Menue neu, mit neuem Stand).

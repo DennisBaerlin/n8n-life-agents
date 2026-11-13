@@ -1,14 +1,13 @@
 ﻿#Requires -Version 5.1
 # Dot-gesourct von build.ps1 (Helper + Script-Scope-Creds im Parent-Scope).
 #
-# --- agent.sub_dispatch_agent (Core-Vermittler zu Paket-Agenten, Install-UX-Phase 4) ------------
-# WARUM: der Core-Verteiler (agent.orchestrator.main_route) rief Paket-Agenten (finance, career, estate …)
-# mit FEST eingetragener Workflow-ID. n8n (geprueft 2.21.7 + 2.44.4) aktiviert einen Workflow nur, wenn jedes LITERAL
-# referenzierte Execute-Workflow-Ziel existiert + published ist (workflow-validation.service.ts) -> ohne
-# installierte Pakete blieb der Bot taub, und `package uninstall` + Neustart brach ihn. Der Verteiler ruft
-# Paket-Agenten jetzt NUR noch ueber diesen Core-Sub: Ziel-ID und Paket bekommt er vom Aufrufer
-# als FESTE Build-Zeit-Eingaben (Get-RequiredWorkflowId, name-aufgeloest), der eigentliche Aufruf nutzt eine
-# AUSDRUCKS-ID (n8n ueberspringt sie bei der Aktivierungspruefung; zur Laufzeit muss das Ziel published sein —
+# --- agent.sub_dispatch_agent (Core-Vermittler zu Paket-Agenten) ------------
+# WARUM: n8n (geprueft 2.21.7 + 2.44.4) aktiviert einen Workflow nur, wenn jedes LITERAL referenzierte
+# Execute-Workflow-Ziel existiert + published ist (workflow-validation.service.ts) -> ein Verteiler mit fester
+# Paket-Agent-ID machte den Bot ohne installierte Pakete taub, und `package uninstall` + Neustart brach ihn.
+# Der Verteiler ruft Paket-Agenten deshalb nur ueber diesen Core-Sub: Ziel-ID und Paket bekommt er vom Aufrufer
+# als feste Build-Zeit-Eingaben (Get-RequiredWorkflowId, name-aufgeloest), der eigentliche Aufruf nutzt eine
+# Ausdrucks-ID (n8n ueberspringt sie bei der Aktivierungspruefung; zur Laufzeit muss das Ziel published sein,
 # genau dann, wenn das Paket installiert ist).
 # Ablauf: Start -> Package status (core.fn_package_status) -> nutzbar?
 #   ja   -> Run agent (Ausdrucks-ID, wartet auf den Agenten) -> Ensure output (Agent-Ergebnis 1:1; nur ein
@@ -20,9 +19,9 @@
 # Anti-Loop: Orchestrator -> Vermittler (Sub, KEIN Agent) -> Agent -> Tool -> Gate; call_depth wird nur
 # durchgereicht (das Depth-Gate sitzt weiter am Agent-Eingang). DB-Fehler beim Status-Lesen = fail-open
 # (der Agent prueft am Eingang selbst noch einmal fn_package_active).
-# Textkatalog Phase B: der Anzeigename des Pakets (<pkg>.package.name) und die Hinweise (core.dispatch.*) kommen zur
-# Laufzeit in der Sprache des Absenders (chat_id -> Person -> agent.fn_person_lang; unbekannt -> Owner-Sprache) — der
-# Aufrufer reicht nur noch die Paket-id durch (kein build-time deutscher Anzeigename mehr).
+# Textkatalog: der Anzeigename des Pakets (<pkg>.package.name) und die Hinweise (core.dispatch.*) kommen zur
+# Laufzeit in der Sprache des Absenders (chat_id -> Person -> agent.fn_person_lang; unbekannt -> Owner-Sprache);
+# der Aufrufer reicht nur die Paket-id durch.
 function Build-AgentSubDispatchAgent {
     $start = Build-Trigger @('workflow_id', 'package', 'task', 'call_depth', 'thinking', 'audience') @(-900, 300)
 
@@ -38,7 +37,7 @@ function Build-AgentSubDispatchAgent {
     })
     $status['onError'] = 'continueRegularOutput'
 
-    # Kinder-Sicht (Paket C): audience 'all' laesst jeden durch, sonst nur einen Absender mit Haushalts-Sicht (core.fn_sender_sees_household,
+    # Kinder-Sicht: audience 'all' laesst jeden durch, sonst nur einen Absender mit Haushalts-Sicht (core.fn_sender_sees_household,
     # Regel der Mini-App). Fail-closed: fehlt 'sees' (DB-Fehler), sperrt das Tor auch Erwachsene (Privatsphaere vor Verfuegbarkeit).
     $audienceOk = Build-If 'Audience ok?' @(-460, 140) `
         "={{ String(`$('Start').item.json.audience || 'adults') === 'all' || `$('Package status').item.json.sees === true }}" 'true' 'equals' 'boolean'
@@ -69,7 +68,7 @@ function Build-AgentSubDispatchAgent {
         id = (New-Id); name = 'Run agent'; onError = 'continueRegularOutput'
     }
 
-    # "Bot denkt nach ..." NUR fuer Aufrufer ohne eigene Anzeige (thinking='loop': Paket-Befehle, Paket-Onboarding-Tipps
+    # "Bot denkt nach ..." nur fuer Aufrufer ohne eigene Anzeige (thinking='loop': Paket-Befehle, Paket-Onboarding-Tipps
     # im Orchestrator). Der KI-Weg (Router-Tool) hat schon die Schleife des Orchestrator-Laufs -> hier nichts.
     # Schalter (agent.thinking_lease, dieser Lauf) synchron anlegen -> core.sub_show_thinking (fire-and-forget) erneuert
     # bis 'Close thinking lease' ihn VOR der Rueckgabe loescht (die Antwort sendet der Aufrufer erst danach). Der Zweig

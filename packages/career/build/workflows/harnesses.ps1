@@ -5,7 +5,7 @@ $script:Harnesses += @(
     [ordered]@{ name='agent.career_advisor.test_harness'; targetName='agent.career_advisor'; path='career-test'; inputMap=$null }
     # Mehrfach-Leser ohne Agent davor (infra_cases): fremde Datei -> ignored_files.
     [ordered]@{ name='agent.career.tool_extract_cv.test_harness'; targetName='agent.career.tool_extract_cv'; path='extract-cv-test'; inputMap=[ordered]@{ file_id='body.file_id'; more_file_ids='body.more_file_ids'; doc_hint='body.doc_hint'; chat_id='body.chat_id' } }
-    # Textkatalog Phase C: die Treffer-Karte deterministisch testbar (cron_text_test; die Stellen-Suche holt live).
+    # Treffer-Karte deterministisch testbar (cron_text_test); die Stellen-Suche holt live.
     [ordered]@{ name='agent.career.sub_send_job_card.test_harness'; targetName='agent.career.sub_send_job_card'; path='job-card-test'
                 inputMap=[ordered]@{ chat_id='body.chat_id'; job_match_id='body.job_match_id'; is_serendipity='body.is_serendipity'
                                      score='body.score'; title='body.title'; employer='body.employer'; location='body.location'

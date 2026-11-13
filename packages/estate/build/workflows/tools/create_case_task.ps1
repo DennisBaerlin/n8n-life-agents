@@ -1,8 +1,8 @@
 ﻿#Requires -Version 5.1
 # Dot-gesourct von build.ps1 (Helper + Script-Scope-Creds im Parent-Scope).
 
-# --- agent.estate.tool_create_case_task (WS-3, Fortschritts-Flag-Klasse: KEIN HITL) ----------------
-# Fuegt eine MANUELLE Task (template_key NULL) zu einem OFFENEN Fall hinzu — haushaltsspezifische
+# --- agent.estate.tool_create_case_task (Fortschritts-Flag-Klasse: kein HITL) ----------------
+# Fuegt eine manuelle Task (template_key NULL) zu einem offenen Fall hinzu — haushaltsspezifische
 # Schritte, die kein Template abdeckt. Fortschritts-Flag-Klasse (kein Gate); adults_only-DB-Backstop
 # + "Fall offen?"-Guard in der fn. Manuelle Tasks ueberleben den Reconcile. Cred = estate_rw.
 function Build-EstateCreateCaseTask {

@@ -2,7 +2,7 @@
 # Dot-gesourct von build.ps1 (Helper + Script-Scope-Creds im Parent-Scope; Bausteine aus ../paperless_common.ps1).
 
 # --- agent.paperless.tool_search_documents (read-only, kein HITL) -------------------------------------
-# Volltextsuche in der Paperless-Instanz des Haushalts (E1). Aufruf NUR ueber den Core-Vermittler
+# Volltextsuche in der Paperless-Instanz des Haushalts. Aufruf nur ueber den Core-Vermittler
 # agent.sub_dispatch_tool (Service 'paperless:search_documents', permission adults_only) — Eingang args (JSON) + chat_id.
 # Ablauf: Parse args (Manifest-inputs: query Pflicht, limit Default 5) -> Adresse lesen -> GET /api/documents/?query=
 # -> Suche ok? -> Namensaufloesung (3 GETs) -> Shape results ({ok:true, untrusted, total, documents[]}).

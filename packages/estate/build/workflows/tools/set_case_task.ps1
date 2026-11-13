@@ -1,9 +1,9 @@
 ﻿#Requires -Version 5.1
 # Dot-gesourct von build.ps1 (Helper + Script-Scope-Creds im Parent-Scope).
 
-# --- agent.estate.tool_set_case_task (WS-3; HITL owner_info seit dem Security-Audit 2026-10) ---------
-# Setzt den Status EINER Checklisten-Task (open|done|not_applicable). Owner-Entscheid 2026-10-24 "Karte nur bei
-# Abhaken": der Statuswechsel laeuft durch das HITL-Gate (eine Pflichtfrist darf nie still per Modell abgehakt
+# --- agent.estate.tool_set_case_task (HITL owner_info) ---------
+# Setzt den Status einer Checklisten-Task (open|done|not_applicable). Der Statuswechsel laeuft durch das
+# HITL-Gate (eine Pflichtfrist darf nie still per Modell abgehakt
 # werden — z. B. nach einer Anweisung in einem gelesenen Dokument). Stufe owner_info wie create_case/cancel_case
 # (Break-Glass: der Owner kann der Betroffene sein). create_case_task bleibt ohne Karte. Der adults_only-DB-Backstop
 # + der "Task in offenem Fall"-Guard bleiben in der fn (Probelauf vor der Karte). Der Auto-Complete-Trigger kann
@@ -12,7 +12,7 @@ function Build-EstateSetCaseTask {
     $CRED_POSTGRES = $CRED_ESTATE_RW
     $trig = Build-Trigger @('case_task_id','status')
 
-    # "DB ist das Gesetz": estate.fn_set_case_task laeuft als Probelauf VOR der Karte (unbekannte Task, Fall nicht
+    # estate.fn_set_case_task laeuft als Probelauf vor der Karte (unbekannte Task, Fall nicht
     # offen, ungueltiger Status, nicht erwachsen -> ok:false ohne Karte); derselbe Param-Satz geht nach dem Gate in den Write.
     $wg = New-FnWriteGate -Fn 'estate.fn_set_case_task' -DryPos @(220, 0) -WritePos @(1540, 0) `
         -WriteName 'Set task (atomic)' `
@@ -27,7 +27,6 @@ function Build-EstateSetCaseTask {
         "=SELECT ct.title, ct.case_id FROM estate.case_tasks ct WHERE ct.id = (`$1::jsonb->>'case_task_id')::bigint;" `
         ([ordered]@{ case_task_id = '$(''Start'').item.json.case_task_id' })
 
-    # Strukturiertes Summary (Textkatalog): Keys + typisierte Rohwerte, das Gate rendert je Empfaenger-Sprache.
     $S = "`$('Start').item.json"
     $R = "`$('Read task').item.json"
     $summary = New-HitlSummary -Pos @(880, 0) -Title 'estate.hitl.set_case_task' -LinesExpr $wg.CardLinesExpr -Lines @(

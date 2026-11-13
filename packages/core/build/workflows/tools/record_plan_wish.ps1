@@ -1,15 +1,15 @@
 ﻿#Requires -Version 5.1
 # Dot-gesourct von build.ps1 (Helper + Script-Scope-Creds im Parent-Scope).
 
-# --- agent.tool_record_plan_wish (CROSS-AGENT, HITL owner_info) — Plan teilen, 2026-10-28 ---------------------------
-# "Wunsch an den Owner": ein erwachsenes Mitglied (partner) schickt dem Owner einen Aenderungswunsch zum AKTIVEN
-# Haushalts-Plan der Domain. Aendert den Plan NICHT (der Owner entscheidet). HITL-Stufe owner_info: das Mitglied
-# bestaetigt die Karte in seiner Sprache, der Owner bekommt danach die Info mit dem Wortlaut in SEINER Sprache — das
-# ist die Benachrichtigung (kein eigener Owner-Send). domain ist beim Aufrufer FIXER Binding-Input (nie $fromAI).
+# --- agent.tool_record_plan_wish (CROSS-AGENT, HITL owner_info) ---------------------------
+# "Wunsch an den Owner": ein erwachsenes Mitglied (partner) schickt dem Owner einen Aenderungswunsch zum aktiven
+# Haushalts-Plan der Domain. Aendert den Plan nicht (der Owner entscheidet). HITL-Stufe owner_info: das Mitglied
+# bestaetigt die Karte in seiner Sprache, der Owner bekommt danach die Info mit dem Wortlaut in seiner Sprache; das
+# ist die Benachrichtigung (kein eigener Owner-Send). domain ist beim Aufrufer fixer Binding-Input (nie $fromAI).
 function Build-RecordPlanWish {
     $trig = Build-Trigger @('domain', 'wish_text')
 
-    # "DB ist das Gesetz": agent.fn_record_plan_wish laeuft als Probelauf VOR der Karte (nur Partner, aktiver Plan,
+    # "DB ist das Gesetz": agent.fn_record_plan_wish laeuft als Probelauf vor der Karte (nur Partner, aktiver Plan,
     # Laenge); derselbe Param-Satz geht nach dem Gate in den echten Write.
     $wg = New-FnWriteGate -Fn 'agent.fn_record_plan_wish' -DryPos @(220, 0) -WritePos @(1320, 0) `
         -WriteName 'Record wish (atomic)' `

@@ -1,10 +1,10 @@
 ﻿#Requires -Version 5.1
 # Dot-gesourct von build.ps1 (Helper + Script-Scope-Creds im Parent-Scope).
 
-# --- agent.estate.tool_set_storage_place (WS-2, set_ = partielles Update / Repurpose) --------
+# --- agent.estate.tool_set_storage_place (set_ = partielles Update / Repurpose) --------
 # Aendert eine bestehende Fundstelle ("nicht gesendet = unveraendert"). Fundstellen sind FK-Ziel
-# der directives (RESTRICT) -> KEIN delete_storage_place; eine obsolete Fundstelle wird hier
-# umbenannt/umgewidmet. access_hint = Fundort-Verweis OHNE Codes. Resolve (Name) VOR dem Gate.
+# der directives (RESTRICT) -> kein delete_storage_place; eine obsolete Fundstelle wird hier
+# umbenannt/umgewidmet. access_hint = Fundort-Verweis ohne Codes. Resolve (Name) vor dem Gate.
 # HITL owner_approval. adults_only-DB-Backstop. estate_rw.
 function Build-EstateSetStoragePlace {
     $CRED_POSTGRES = $CRED_ESTATE_RW
@@ -17,10 +17,9 @@ function Build-EstateSetStoragePlace {
     $errBad = Build-ToolError 'Place ambiguous' @(660, 200) `
         "=The storage place '{{ `$('Start').item.json.name }}' resolves to {{ `$('Resolve Place').item.json.hit_count }} matches. Candidates: {{ JSON.stringify(`$('Resolve Place').item.json.candidates) }}. Ask which one, or check the name."
 
-    # Strukturiertes Summary (Textkatalog): Keys + typisierte Rohwerte, das Gate rendert je Empfaenger-Sprache.
     # Nur genannte Felder erscheinen (-If); der Hinweis "unveraendert" steht als Note darunter.
     $S = "`$('Start').item.json"
-    # "DB ist das Gesetz": estate.fn_set_storage_place laeuft als Probelauf VOR der Karte; derselbe Param-Satz geht nach dem Gate in den echten Write.
+    # estate.fn_set_storage_place laeuft als Probelauf vor der Karte; derselbe Param-Satz geht nach dem Gate in den echten Write.
     $wg = New-FnWriteGate -Fn 'estate.fn_set_storage_place' -DryPos @(660, 0) -WritePos @(1980, 0) `
         -WriteName 'Set place (atomic)' `
         -WriteSelect "(r->>'ok')::boolean AS ok, r->>'reason' AS reason, (r->>'storage_place_id')::bigint AS storage_place_id" `

@@ -1,30 +1,30 @@
 ﻿#Requires -Version 5.1
 # Dot-gesourct von build.ps1 (Helper + Script-Scope-Creds im Parent-Scope).
 
-# --- tool_extract_cv (WS-1b) -------------------------------------------------
-# CV-VISION-Pfad des Career-Advisors: Telegram-file_id(s) -> agent.tool_fetch_telegram_file (INLINE, je Datei,
-# generischer Download-/base64-Baustein, WS-4) -> Claude-Vision aufs BILD/PDF (bezahlte API, trainiert
+# --- tool_extract_cv -------------------------------------------------
+# CV-Vision-Pfad des Career-Advisors: Telegram-file_id(s) -> agent.tool_fetch_telegram_file (inline, je Datei,
+# generischer Download-/base64-Baustein) -> Claude-Vision aufs Bild/PDF (bezahlte API, trainiert
 # nicht: ein Lebenslauf ist sensible PII -> nie ueber einen Free-Tier-Zugang) -> rohe career_profile-Felder.
-# READ-ONLY BY CONSTRUCTION: KEIN DB-Write, KEIN HITL-Gate,
-# KEIN Staging — die Extraktion liefert die Rohfelder nur ZURUECK; der Advisor spielt jede Zeile im Chat
-# zurueck und schreibt das bestaetigte Feld getrennt via tool_set_profile_facts (Per-Eintrag-HITL,
-# Stufe self). Strukturell analog finance.tool_extract_finance_document, aber ohne den Staging-/Commit-
-# Pfad (Finanz-Vision schreibt; CV-Vision schlaegt nur vor). Modell via config model.cv_extract (career,
-# bei JEDEM Lauf gelesen, Muster vision_extract) — eigener Config-Key (finance besitzt model.vision_extract,
-# UNIQUE(category,key)). Das Plumbing (Download/Validierung/base64) lebt im Core-Baustein; die CV-Vision
-# bleibt HIER, der Claude-Aufruf ueber den geteilten Baustein New-AnthropicMessagesNode (lib/build_helpers.ps1).
+# Read-only: kein DB-Write, kein HITL-Gate, kein Staging — die Extraktion liefert die Rohfelder nur zurueck;
+# der Advisor spielt jede Zeile im Chat zurueck und schreibt das bestaetigte Feld getrennt via
+# tool_set_profile_facts (Per-Eintrag-HITL, Stufe self). Strukturell analog
+# finance.tool_extract_finance_document, aber ohne Staging-/Commit-Pfad (Finanz-Vision schreibt, CV-Vision
+# schlaegt nur vor). Modell via config model.cv_extract (career, bei jedem Lauf gelesen, Muster vision_extract);
+# eigener Config-Key, weil finance model.vision_extract besitzt (UNIQUE(category,key)). Das Plumbing
+# (Download/Validierung/base64) lebt im Core-Baustein; der Claude-Aufruf geht ueber New-AnthropicMessagesNode
+# (lib/build_helpers.ps1).
 function Build-ExtractCv {
-    # WS-4: generischen Download-/base64-Baustein inline rufen (D9-Core-Service-Alias). Liefert { ok, b64, mime, error }.
+    # Generischen Download-/base64-Baustein inline rufen (Core-Service-Alias). Liefert { ok, b64, mime, error }.
     $idFetch = Get-RequiredWorkflowId (Resolve-CoreServiceAlias 'core:fetch_telegram_file' $CoreServiceMap) 'Build-ExtractCv'
 
-    # Extraktions-Vertrag (EN, Layer 1): NUR Rohwerte, EIN JSON-Objekt, die career_profile-Felder.
-    # KEINE Apostrophe verwenden (JS-Single-Quote-String im jsonBody). "LLM rechnet NICHT" (WP3): Daten werden
+    # Extraktions-Vertrag (EN): nur Rohwerte, ein JSON-Objekt, die career_profile-Felder.
+    # Keine Apostrophe verwenden (JS-Single-Quote-String im jsonBody). Das LLM rechnet nicht: Daten werden
     # abgelesen, nie verrechnet — career_start_date = Beginn der fruehesten Berufstaetigkeit wie gedruckt (nie Jahre
     # summieren), Genauigkeit wie gedruckt (2014 / 2014-03 / Tag); die DB leitet alle Zeitspannen beim Anzeigen ab.
     $sysText = 'You extract a structured career profile from a photographed or scanned CV / resume / Lebenslauf. Output ONLY a JSON object, no prose. All fields are optional - omit any field that is not clearly printed or readable; never invent. Output RAW printed values only - never compute or estimate. Fields: current_title = the current or most recent job title (string); industry = the sector of the current or most recent role (string); career_start_date = the start of the EARLIEST professional role listed, read off as printed (never add up durations; the database derives time spans); skills = array of objects {name, level one of beginner|intermediate|advanced|expert only if the document grades it else omit level, since = the year the skill was first used only if printed} - only clearly evidenced skills, at most 20; last_job_change_date = the start date of the current or most recent role. Dates keep the precision printed: a full German date DD.MM.YYYY becomes YYYY-MM-DD, a month-year like 03/2021 becomes 2021-03, a bare year stays 2014. Several files may come together, labelled File 1 of N and so on: read the pages of one CV together. If one of several files is not part of the CV, list its number in ignored_files (array of numbers). If the document is not a CV or resume, return {}.'
 
     # Trigger-Inputs: file_id (aus dem [attachment ...]-Marker), doc_hint (optionaler Nutzer-Kontext),
-    # chat_id (vom Advisor-Binder immer durchgereicht — hier ungelesen, nur Vertrags-Symmetrie/Input-an-ZWEI-Stellen).
+    # chat_id (vom Advisor-Binder immer durchgereicht, hier ungelesen: Vertrags-Symmetrie, Input steht an zwei Stellen).
     $trig = Build-Trigger @('file_id', 'more_file_ids', 'doc_hint', 'chat_id')
 
     # Geteilter Datei-Leser (ein oder mehrere Fotos/PDFs): je Datei der Core-Baustein, Fehler als Daten.
@@ -69,8 +69,6 @@ return [{ json: { ok: true, profile: JSON.stringify(prof), field_count: keys.len
     $ifShaped = Build-If 'Profile ok?' @(1520, 60) "={{ `$json.ok }}" 'true' 'equals' 'boolean'
     $errShape = Build-ToolError 'Extraction failed' @(1740, 240) "={{ `$('Shape profile').item.json.error }}"
 
-    # READ-ONLY: nur die Rohfelder zurueckgeben (KEIN Write). Der Advisor spielt jedes Feld im Chat zurueck
-    # und schreibt das bestaetigte Feld getrennt via tool_set_profile_facts (Per-Eintrag-HITL, Stufe self).
     $ret = Build-Return @(1740, 60) @(
         ,@('ok', 'true', 'boolean')
         ,@('profile', "={{ `$('Shape profile').item.json.profile }}", 'string')

@@ -1,14 +1,13 @@
 ﻿#Requires -Version 5.1
 # Definition agent.career.sub_send_job_card -> Build-CareerSubSendJobCard. Dot-gesourct von build.ps1.
 #
-# --- agent.career.sub_send_job_card (Treffer-Karte des Job-Scans, Textkatalog Phase C) -------
-# Schickt EINE Stellen-Karte an die EIGENE chat_id der Person (score 1..4 oder "Blick ueber den Tellerrand"),
+# --- agent.career.sub_send_job_card (Treffer-Karte des Job-Scans) -------
+# Schickt eine Stellen-Karte an die eigene chat_id der Person (score 1..4 oder "Blick ueber den Tellerrand"),
 # mit 👍/👎 (job:up|down:<job_match_id> -> generischer Callback-Dispatch -> career.fn_handle_job_feedback) und
-# Abschalten (rem:off:score_jobs = NUR die eigenen Karten der Person, Roter Faden Paket B). Alle festen Texte in der Sprache des EMPFAENGERS (chat_id -> Person -> Kette
-# Person -> Owner -> en, core.fn_ui_texts_for unter career_ro); Titel/Arbeitgeber/Ort/Begruendung = Daten.
+# Abschalten (rem:off:score_jobs = nur die eigenen Karten der Person). Feste Texte in der Sprache des Empfaengers
+# (chat_id -> Person -> Kette Person -> Owner -> en, core.fn_ui_texts_for unter career_ro); Titel/Arbeitgeber/Ort/Begruendung = Daten.
 # Aufrufer: agent.career.cron_score_jobs (je gesurftem Treffer ein Item). Eigener Sub (Muster
-# core.sub_send_language_picker), damit die Karte deterministisch testbar ist (Harness, cron_text_test) — die
-# Stellen-Suche selbst holt live von BA/Adzuna/JSearch.
+# core.sub_send_language_picker), damit die Karte deterministisch testbar ist (Harness, cron_text_test).
 # Eingang: chat_id, job_match_id, is_serendipity, score, title, employer, location, board, url, reasoning.
 function Build-CareerSubSendJobCard {
     $trig = Build-Trigger @('job_match_id', 'is_serendipity', 'score', 'title', 'employer', 'location', 'board', 'url', 'reasoning')

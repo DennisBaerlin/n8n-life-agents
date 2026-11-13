@@ -1,9 +1,9 @@
 ﻿#Requires -Version 5.1
 # Dot-gesourct von build.ps1 (Helper + Script-Scope-Creds im Parent-Scope).
 
-# --- agent.estate.tool_set_provider_contract (WS-2, set_ = partielles Update) ----------------
+# --- agent.estate.tool_set_provider_contract (set_ = partielles Update) ----------------
 # Aendert einen bestehenden Nicht-finance-Vertrag ("nicht gesendet = unveraendert"). Resolve
-# (Anbieter + optional Kategorie) VOR dem Gate; 0/>1 -> Tool-Rueckfrage. HITL owner_approval
+# (Anbieter + optional Kategorie) vor dem Gate; 0/>1 -> Tool-Rueckfrage. HITL owner_approval
 # (Floor: gegatetes Mitglied -> Owner-Vier-Augen). adults_only-DB-Backstop in der fn. estate_rw.
 function Build-EstateSetProviderContract {
     $CRED_POSTGRES = $CRED_ESTATE_RW
@@ -17,10 +17,9 @@ function Build-EstateSetProviderContract {
     $errBad = Build-ToolError 'Contract ambiguous' @(660, 200) `
         "=The contract '{{ `$('Start').item.json.provider }}' resolves to {{ `$('Resolve Contract').item.json.hit_count }} matches. Candidates: {{ JSON.stringify(`$('Resolve Contract').item.json.candidates) }}. Ask the user which one (add the category), or check the name."
 
-    # Strukturiertes Summary (Textkatalog): Keys + typisierte Rohwerte, das Gate rendert je Empfaenger-Sprache.
     # Nur genannte Felder erscheinen (-If); der Hinweis "unveraendert" steht als Note darunter.
     $S = "`$('Start').item.json"
-    # "DB ist das Gesetz": estate.fn_set_provider_contract laeuft als Probelauf VOR der Karte; derselbe Param-Satz geht nach dem Gate in den echten Write.
+    # estate.fn_set_provider_contract laeuft als Probelauf vor der Karte; derselbe Param-Satz geht nach dem Gate in den echten Write.
     $wg = New-FnWriteGate -Fn 'estate.fn_set_provider_contract' -DryPos @(660, 0) -WritePos @(1980, 0) `
         -WriteName 'Set contract (atomic)' `
         -WriteSelect "(r->>'ok')::boolean AS ok, r->>'reason' AS reason, (r->>'provider_contract_id')::bigint AS provider_contract_id" `

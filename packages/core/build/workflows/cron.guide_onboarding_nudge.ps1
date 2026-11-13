@@ -1,9 +1,9 @@
 ﻿#Requires -Version 5.1
 # Definition agent.guide.cron_onboarding_nudge -> Build-CronGuideOnboardingNudge. Dot-gesourct von build.ps1.
-# Roter Faden (Owner-Entscheid 2026-10-23): sanftes Nachfassen, wenn das Einrichten liegen bleibt — nach 3 Tagen
+# Sanftes Nachfassen, wenn das Einrichten liegen bleibt — nach 3 Tagen
 # Stillstand eine Karte, nach 10 Tagen eine letzte, dann Ruhe (bis ein neues Paket Abschnitte oeffnet). Jede Karte:
 # [Weiter] (onboarding:<pkg>:<key>, derselbe Einstieg wie der Menue-Knopf) + [Nicht mehr erinnern]
-# (rem:off:onboarding_nudge -> core.fn_handle_reminder_cb, die Person schaltet NUR sich selbst ab).
+# (rem:off:onboarding_nudge -> core.fn_handle_reminder_cb, die Person schaltet nur sich selbst ab).
 #
 # Ablauf: scheduleTrigger (schedule.onboarding_nudge, 10:30 im Erinnerungs-Fenster) -> F9-Gate (fn_package_active(core)
 #   AND cron_enable.onboarding_nudge = Konsolen-Notschalter fuer alle) -> Find nudges (core.fn_onboarding_nudges_due:

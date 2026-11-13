@@ -1,9 +1,9 @@
 ﻿#Requires -Version 5.1
 # Dot-gesourct von build.ps1 (Helper + Script-Scope-Creds im Parent-Scope).
 
-# --- agent.estate.tool_create_contact (WS-2, create_ + Pflicht-Dubletten-Node) --------------
-# Legt einen NEUEN Schluessel-Kontakt an (Notar/Steuerberater/Anwalt/Arzt/Bestatter/HR/Vermieter/
-# Vertrauensperson). Mehrere je Rolle sind legitim (Dubletten-Node blockt nur EXAKT name+role).
+# --- agent.estate.tool_create_contact (create_ + Pflicht-Dubletten-Node) --------------
+# Legt einen neuen Schluessel-Kontakt an (Notar/Steuerberater/Anwalt/Arzt/Bestatter/HR/Vermieter/
+# Vertrauensperson). Mehrere je Rolle sind legitim (Dubletten-Node blockt nur exakt name+role).
 # HITL owner_info. adults_only-DB-Backstop in der fn. Cred = estate_rw.
 function Build-EstateCreateContact {
     $CRED_POSTGRES = $CRED_ESTATE_RW
@@ -23,10 +23,9 @@ function Build-EstateCreateContact {
     $errPerson = Build-ToolError 'Person unresolved' @(660, 320) `
         "=The person '{{ `$('Start').item.json.owner_person }}' could not be uniquely resolved. Ask which household member, or leave empty for a household contact."
 
-    # Strukturiertes Summary (Textkatalog): Keys + typisierte Rohwerte, das Gate rendert je Empfaenger-Sprache.
     $S  = "`$('Start').item.json"
     $RP = "`$('Resolve Person').item.json"
-    # "DB ist das Gesetz": estate.fn_create_contact laeuft als Probelauf VOR der Karte; derselbe Param-Satz geht nach dem Gate in den echten Write.
+    # estate.fn_create_contact laeuft als Probelauf vor der Karte; derselbe Param-Satz geht nach dem Gate in den echten Write.
     $wg = New-FnWriteGate -Fn 'estate.fn_create_contact' -DryPos @(660, 0) -WritePos @(1980, 0) `
         -WriteName 'Create contact (atomic)' `
         -WriteSelect "(r->>'ok')::boolean AS ok, r->>'reason' AS reason, (r->>'contact_id')::bigint AS contact_id" `

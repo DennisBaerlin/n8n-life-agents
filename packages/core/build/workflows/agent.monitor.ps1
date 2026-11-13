@@ -1,10 +1,9 @@
 ﻿#Requires -Version 5.1
 # Definition agent.monitor -> Build-AgentMonitor. Dot-gesourct von build.ps1.
-# Dritter gerouteter Spezialist: WATCHDOG des generischen Trigger-Monitorings.
-# Clone-and-Trim von agent.finance_advisor (Panel/Plan-Tools raus, Trigger-CRUD rein) —
-# bewusst KEINE Build-AdvisorAgent-Extraktion (Monitor ist nicht advisor-foermig: kein
-# Plan, kein Panel, kein Interview; das wartet auf den Career-Advisor).
-# OWNERSHIP-Regel: Wert-Fragen -> Fach-Advisor; Mechanik (Trigger anlegen/aendern/loeschen/
+# Watchdog des generischen Trigger-Monitorings.
+# Clone-and-Trim von agent.finance_advisor (Panel/Plan-Tools raus, Trigger-CRUD rein); keine
+# Build-AdvisorAgent-Extraktion (Monitor ist nicht advisor-foermig: kein Plan, kein Panel, kein Interview).
+# Ownership-Regel: Wert-Fragen -> Fach-Advisor; Mechanik (Trigger anlegen/aendern/loeschen/
 # auflisten/reparieren, "warum hat der Alert gefeuert") -> DIESER Agent. Der Advisor bindet
 # zusaetzlich NUR tool_create_monitor_trigger (+ read-only tool_list_monitor_triggers; domain+package fix
 # 'finance') fuer In-Flow-Plan-Trigger. Dieser Agent setzt package fix 'core'.
@@ -17,10 +16,10 @@ function Build-AgentMonitor {
     $START_NODE    = 'Start agent.monitor'
 
     # Infra-IDs (build-generierte Subs; per Name aus dem State aufgeloest in build.ps1 — kein ID-Literal)
-    $ID_LOAD_CTX  = $LoadContextId   # agent.tool_load_context (build.ps1: per Name aus dem State)
-    $ID_LOAD_CFG  = $LoadConfigId    # core.sub_load_config (build.ps1: per Name aus dem State)
-    # CORE-Agent: Frei-SQL-Lesepfad laeuft unter core_ro (agent+core+jedes installierte Paket read-only) —
-    # NICHT eine enge <pkg>_ro (die ist auf ihr Paket-Schema skopiert, B3/Owner-Lock).
+    $ID_LOAD_CTX  = $LoadContextId
+    $ID_LOAD_CFG  = $LoadConfigId
+    # Core-Agent: Frei-SQL-Lesepfad laeuft unter core_ro (agent+core+jedes installierte Paket read-only),
+    # nicht unter einer engen <pkg>_ro (auf ihr Paket-Schema skopiert).
     $CRED_PG_RO   = $CRED_CORE_RO
     $CRED_CTX_RO  = $CRED_CONTEXT_RO
 
@@ -40,12 +39,12 @@ function Build-AgentMonitor {
         name = $START_NODE
     }
 
-    # Anti-Loop-Backstop (Pflicht fuer jeden AGENT-Workflow, s. build-CLAUDE.md)
+    # Anti-Loop-Backstop (Pflicht fuer jeden Agent-Workflow, s. build-CLAUDE.md)
     $nDepthGate = Build-If 'Depth gate' @(-1480, 0) `
         "={{ Number(`$json.call_depth) || 0 }}" '2' 'largerEqual' 'number'
     $nDepthDeny = Build-ToolError 'Max call depth' @(-1300, 200) 'max_call_depth'
 
-    # Kinder-Sicht (Paket C): der Monitor beschafft per SQL Werte aus allen Paket-Schemata und zeigt den Probewert sofort ->
+    # Kinder-Sicht: der Monitor beschafft per SQL Werte aus allen Paket-Schemata und zeigt den Probewert sofort ->
     # fuer einen Absender ohne Haushalts-Sicht (core.fn_sender_sees_household) ein fester Satz statt eines Agent-Laufs.
     # Fail-closed: nur sees === true laesst weiter (der Router ruft den Monitor direkt, nicht ueber den Vermittler).
     $hhKeys = Get-UiKeysSql @('core.dispatch.household_only')
@@ -53,7 +52,7 @@ function Build-AgentMonitor {
         ("=SELECT core.fn_sender_sees_household((`$1::jsonb)->>'chat_id') AS sees, " +
          "core.fn_ui_texts_for(jsonb_build_object('chat_id', (`$1::jsonb)->>'chat_id', 'keys', to_jsonb($hhKeys)))->'t' AS t;") `
         ([ordered]@{ chat_id = "String(`$('$START_NODE').item.json.chat_id || '')" })
-    # Haupt-Credential (wie das Finanz-Tor bisher): core.fn_ui_texts_for ist fuer core_ro nicht freigegeben.
+    # Haupt-Credential (wie das Finanz-Tor): core.fn_ui_texts_for ist fuer core_ro nicht freigegeben.
     $nHouseholdRead['onError'] = 'continueRegularOutput'
     $nHouseholdGate = Build-If 'Household view gate' @(-1410, -60) "={{ `$('Household view read').item.json.sees === true }}" 'true' 'equals' 'boolean'
     $nHouseholdDeny = Build-Set 'Household only' @(-1300, 360) @(
@@ -108,8 +107,8 @@ function Build-AgentMonitor {
         credentials = @{ postgres = $CRED_POSTGRES }
     }
 
-    # --- Phase B: Paket-Wissen build-time aus den Manifesten (build.ps1: $ReadSurfaceList / $AdvisorDomainList /
-    #     $MonitorAcquisitionMethodList) — der Core nennt kein Paket mehr selbst. Ein nicht installiertes Paket faellt
+    # --- Paket-Wissen build-time aus den Manifesten (build.ps1: $ReadSurfaceList / $AdvisorDomainList /
+    #     $MonitorAcquisitionMethodList); der Core nennt kein Paket selbst. Ein nicht installiertes Paket faellt
     #     zur Laufzeit graceful aus (View-Dry-Run meldet den Fehler; Methode -> {ok:false} "not available").
     $viewsText = if ($ReadSurfaceList.Count -gt 0) { ($ReadSurfaceList | ForEach-Object { "$($_.Package): " + ($_.Views -join ', ') }) -join '; ' } else { 'none declared' }
     $domainNames = @($AdvisorDomainList | ForEach-Object { $_.Domain })
@@ -119,10 +118,9 @@ function Build-AgentMonitor {
 
     # --- Read-Tools ---
     $descSelect = 'Run read-only SELECT queries (role core_ro: schemas `agent` + `core`, plus the schema of every ACTIVE package). Your home tables: agent.monitor_triggers (one row per trigger: domain, label, trigger_type, acquisition_method, acquisition_spec, comparator, threshold_value, drawdown_pct, reference_value, due_date, check_interval, next_check_at, status armed|fired|disabled, fail_streak, last_value, action_note) and agent.monitor_observations (audit log of EVERY value acquisition incl. failures with reason - read this FIRST when diagnosing or repairing a trigger). When designing a sql acquisition you may inspect the curated package views (preferred first stop, per package - ' + $viewsText + ') and ALWAYS dry-run the candidate SELECT here before putting it into a trigger. If unsure of column names, SELECT * or use information_schema.columns. A failed query returns the database error - read it and retry corrected. You have NO write access here.'
-    # Frei-SQL-Lesewerkzeug: geteilter Builder (Guard gegen fehlendes query-Argument, onError continue).
     $nToolSelect = New-PostgresSelectToolNode -Description $descSelect -Cred $CRED_PG_RO
 
-    # fn_fetch_context = DIE gemeinsame Lazy-Fetch-Stelle (render-at-fetch: Kontexte mit einem Renderer in
+    # fn_fetch_context = die gemeinsame Lazy-Fetch-Stelle (render-at-fetch: Kontexte mit einem Renderer in
     # core.context_renderers werden zur Ladezeit mit berechneten Ableitungen gerendert; sonst stored content).
     # jsonb-Param (Build-Gotcha-Standard, kein String-Splice) + onError: ein halluzinierter
     # Context-Name killt nicht die Execution, sondern geht als korrigierbarer Tool-Fehler zurueck.

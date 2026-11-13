@@ -1,31 +1,31 @@
 ﻿#Requires -Version 5.1
-# Geteilter Bau-Helfer der generischen Core-Advisor-Engine-Crons (WS2). Dot-gesourct von build.ps1.
-# Die ZWEI Crons (agent.advisor.cron_drift_check + agent.advisor.cron_review) teilen denselben Schwanz:
+# Geteilter Bau-Helfer der generischen Core-Advisor-Engine-Crons. Dot-gesourct von build.ps1.
+# Die zwei Crons (agent.advisor.cron_drift_check + agent.advisor.cron_review) teilen denselben Schwanz:
 #   F9-Gate -> iterate core.advisors via core.fn_advisor_review_evaluate -> Build message (Code, det.)
 #   -> Anything to report? -> Phrase (model.advisor_review, onError continue) -> Choose text -> Telegram.
-# Faktorisiert (wie New-TelegramSendNode), damit die zwei Cron-Builder NICHT driften; der Phrasing-Schwanz
-# (Load model config + Phrase + Umschalter + Choose text) ist seit Festwert-Phase 2 der geteilte
+# Faktorisiert, damit die zwei Cron-Builder nicht driften; der Phrasing-Schwanz
+# (Load model config + Phrase + Umschalter + Choose text) ist der geteilte
 # New-AdvisorPhrasingTail (lib/build_helpers.ps1), den auch der estate-Jahres-Review nutzt.
-# Unterschied der beiden Crons = NUR (a) Cadence/Enable-Key, (b) die Evaluate-Query, (c) die Build-JS,
-# (d) der Send-Node-Name. Alles andere identisch.
+# Unterschied der beiden Crons = nur (a) Cadence/Enable-Key, (b) die Evaluate-Query, (c) die Build-JS,
+# (d) der Send-Node-Name.
 #
-# GENERIK: der Cron kennt KEINE finance-Felder — er rendert die paket-gelieferte Struktur (alert.msg / digest.lines,
-#   Textkatalog Phase C) mit dem geteilten Renderer in Owner-Sprache, das LLM formuliert in dieser Sprache um. Ein 2. Advisor
-#   (Career-Advisor) fliesst ohne Cron-Aenderung durch (Registry-Iteration).
-# ROLLE: laeuft unter dem Haupt-RW-Credential (Build-Pg-Default = WRITE) — die Evaluate-fn SCHREIBT
+# Generisch: der Cron kennt keine finance-Felder, er rendert die paket-gelieferte Struktur (alert.msg / digest.lines)
+#   mit dem geteilten Renderer in Owner-Sprache, das LLM formuliert in dieser Sprache um. Ein weiterer Advisor
+#   fliesst ohne Cron-Aenderung durch (Registry-Iteration).
+# Rolle: laeuft unter dem Haupt-RW-Credential (Build-Pg-Default = WRITE), die Evaluate-fn schreibt
 #   Latch-State (Praezedenz cron_monitor_check_triggers; die SQL ist entwickler-geschrieben + deterministisch,
 #   kein LLM-formuliertes SELECT -> kein core_ro/DEFINER-Fenster noetig).
-# P2b-2 Per-Person-Faecherung: geteilter CTE-Kopf BEIDER Advisor-Crons (drift_check + review). Faechert
+# Per-Person-Faecherung: geteilter CTE-Kopf beider Advisor-Crons (drift_check + review). Faechert
 # core.advisors generisch ueber die Personen: per_user-Domains (career, scope='per_user' in core.context_scopes)
 # ueber agent.fn_context_persons(plan_context) je Person; household-Domains (finance) mit person_id=NULL
-# (byte-gleich heute -> v_source 'advisor:'||domain, kein Suffix). Die VOLATILE Eval-fn faecherte sonst nur
-# am Owner (1-arg). Nur die ev-Projektion DANACH unterscheidet die beiden Crons (alerts vs. digest) -> der
-# Kopf lebt hier EINMAL (DRY), beide Crons prefixen ihn. Edge: per_user-Domain mit 0 Plaenen -> 0 pids-Zeilen
-# -> die Domain wird nicht evaluiert (verhaltens-korrekt: kein Plan = kein Alert); ein verwaister Person-Latch
+# (v_source 'advisor:'||domain, kein Suffix). Die VOLATILE Eval-fn faecherte sonst nur
+# am Owner (1-arg). Nur die ev-Projektion danach unterscheidet die beiden Crons (alerts vs. digest) -> der
+# Kopf lebt hier einmal, beide Crons prefixen ihn. Edge: per_user-Domain mit 0 Plaenen -> 0 pids-Zeilen
+# -> die Domain wird nicht evaluiert (kein Plan = kein Alert); ein verwaister Person-Latch
 # beim Plan-Loeschen wird im Person-Purge (fn_remove_household_person) geraeumt.
-# Roter Faden: Domaenen mit EIGENEM Review-Cron (core.advisors.own_review_cron, estate) laufen hier NICHT mit —
+# Domaenen mit eigenem Review-Cron (core.advisors.own_review_cron, estate) laufen hier nicht mit:
 # sonst latchte der geteilte Drift-Waechter ihre Alerts unter falschem Rahmen und der eigene Cron fand den Latch leer.
-# person_name (Vorname; NULL bei household) liefert die EINE Stelle fuer beide Crons (Person im Alert/Digest nennen).
+# person_name (Vorname; NULL bei household) liefert die eine Stelle fuer beide Crons (Person im Alert/Digest nennen).
 function Get-AdvisorFanoutCte {
     @'
 adv AS (
@@ -47,7 +47,7 @@ pids AS (
 '@
 }
 
-# Geteilter Rahmen der Berater-Crons (Fusszeile, Abschalten-Knopf, Prompt-Label der Sprache) — EINE Adresse fuer
+# Geteilter Rahmen der Berater-Crons (Fusszeile, Abschalten-Knopf, Prompt-Label der Sprache), eine Adresse fuer
 # drift_check + review. Keys fuer die Eval-Query ($AdvisorChromeKeys); das JS setzt im Build-Code U (uiRender) und
 # ui (Text-Buendel aus core.fn_ui_texts_for) voraus und definiert `chrome`.
 $script:AdvisorChromeKeys = @('core.advisor.footer_off', 'core.advisor.btn_off')
@@ -61,7 +61,7 @@ function New-AdvisorCron {
         [Parameter(Mandatory)][string]$WorkflowName,    # agent.advisor.cron_drift_check
         [Parameter(Mandatory)][string]$ScheduleKey,     # core schedule.<key>  (drift_check | plan_review)
         [Parameter(Mandatory)][string]$CronEnableKey,   # core cron_enable.<key> (drift_check | plan_review)
-        [Parameter(Mandatory)][string]$EvalSql,         # Pg-Query: EINE Zeile, jsonb-Spalte als Build-Input
+        [Parameter(Mandatory)][string]$EvalSql,         # Pg-Query: eine Zeile, jsonb-Spalte als Build-Input
         [Parameter(Mandatory)][string]$BuildJs,         # Code-JS: return [{ json: { det_text, report:bool, language_label, footer, btn_off } }]
         [Parameter(Mandatory)][string]$SendNodeName,    # 'Send drift' | 'Send review'
         [Parameter(Mandatory)][string]$StickyBody,      # Ueberblicks-Sticky-Text (cron-spezifisch)
@@ -70,7 +70,7 @@ function New-AdvisorCron {
     )
     $trig = Build-ScheduleTrigger @(-1100, 0) -ScheduleKey $ScheduleKey
 
-    # F9 Cron-Gating (WS-1/Phase 4a): nur wenn Paket aktiv UND cron_enable -> sonst No-op (fail-closed).
+    # F9 Cron-Gating: nur wenn Paket aktiv und cron_enable -> sonst No-op (fail-closed).
     # DB entscheidet. Toggle: lifeagents config set cron_enable <key> true (kein Rebuild).
     $gate = Build-Pg 'Cron enabled?' @(-880, 0) `
         "=SELECT core.fn_package_active('core') AND COALESCE(core.fn_config_get('core','cron_enable','$CronEnableKey') = 'true', false) AS enabled" `
@@ -79,7 +79,7 @@ function New-AdvisorCron {
     $off = Build-NoOp 'Disabled' @(-440, 200)
 
     # Generischer Eval-Pass: iteriert core.advisors, ruft je Domain core.fn_advisor_review_evaluate
-    # (Registry-Dispatch + Latch). MATERIALIZED CTE -> die VOLATILE Eval-fn laeuft EXAKT 1x je Advisor.
+    # (Registry-Dispatch + Latch). MATERIALIZED CTE -> die VOLATILE Eval-fn laeuft genau 1x je Advisor.
     $evaluate = Build-Pg 'Evaluate advisors' @(-440, 0) $EvalSql $null
 
     # Deterministischer Message-Text (Fallback + LLM-Input) — Code, kein LLM. report=false -> Quiet run.
@@ -93,17 +93,17 @@ function New-AdvisorCron {
     $ifReport = Build-If 'Anything to report?' @(0, 0) '={{ $json.report }}' 'true' 'equals' 'boolean'
     $quiet = Build-NoOp 'Quiet run' @(180, 200)
 
-    # LLM formuliert NUR um (Zahlen unveraendert); Fehler -> deterministischer Text (Choose text). Geteilter Schwanz
-    # (lib/build_helpers.ps1): Load model config (model.advisor_review bei JEDEM Lauf, Denk-Tiefe niedrig) + Phrase +
-    # Umschalter + Choose text. Load model config sitzt VOR Evaluate (Latch-Write erst nach erfolgreichem Laden).
+    # LLM formuliert nur um (Zahlen unveraendert); Fehler -> deterministischer Text (Choose text). Geteilter Schwanz
+    # (lib/build_helpers.ps1): Load model config (model.advisor_review bei jedem Lauf, Denk-Tiefe niedrig) + Phrase +
+    # Umschalter + Choose text. Load model config sitzt vor Evaluate (Latch-Write erst nach erfolgreichem Laden).
     $tail = New-AdvisorPhrasingTail -ConfigPackage 'core' -ConfigKey 'advisor_review' -Effort low `
         -PromptLead 'Rewrite the following periodic advisor check-in as a short, friendly Telegram message, written in the language {language}. PLAIN TEXT only (no markdown, no asterisks). Keep EVERY number, amount and date EXACTLY as written (do not reformat them) and keep every warning or hint sentence. Maximum 16 lines. Text:\n\n'
 
-    # Escape an (Helper-Default): der Phrase-Prompt erzwingt PLAIN TEXT, aber Modell-Output ist keine
+    # Escape an (Helper-Default): der Phrase-Prompt erzwingt Plain Text, aber Modell-Output ist keine
     # Garantie — ein ungepaartes _/*/[ haette den Send gecrasht ("can't parse entities").
-    # WS-3 Phase A: Inline-Button "Abschalten" (callback_data cron_off:<ScheduleKey>) -> der Owner schaltet
+    # Inline-Button "Abschalten" (callback_data cron_off:<ScheduleKey>) -> der Owner schaltet
     # diesen Waechter-Cron mit einem Tipp ab (Orchestrator-Callback -> core.fn_set_cron_enable). Fusszeile
-    # nennt das. Re-Aktivieren per /reminders (Roter Faden Paket B). Reitet nur auf echten
+    # nennt das. Re-Aktivieren per /reminders. Reitet nur auf echten
     # Nudges mit (Send feuert nur bei report=true). ScheduleKey = drift_check|plan_review (whitelisted).
     $buttons = @( @{ Text = "={{ `$('Build message').first().json.btn_off }}"; Data = "cron_off:$ScheduleKey" } )
     if ($WhatNow) { $buttons = @( @{ Text = "={{ `$('Build message').first().json.btn_what_now }}"; Data = "={{ 'plan:drift:' + `$('Build message').first().json.what_now_domain }}" } ) + $buttons }

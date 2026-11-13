@@ -1,16 +1,15 @@
 ﻿#Requires -Version 5.1
 # Definition agent.career.cron_refresh_market_signals -> Build-CronRefreshMarketSignals. Dot-gesourct von build.ps1.
-# WS-4 Markt-Signale: der deterministische Stellen-Nachfrage-Refresh. ALWAYS-ON-Cron (cron_enable.refresh_
-# market_signals=true default; nur Konsole, KEINE Chat-Buttons — Muster finance.cron_refresh_market_prices,
-# das Markt-Daten-Plumbing). Pfad: F9-Gate -> Kriterien laden (career_planning: primaere Rolle title, erster
-# Ort) -> Have criteria? -> Jobsuche /pc/v6/jobs?size=1 -> maxErgebnisse (KEYLESS, oeffentliche X-API-Key-
-# Konstante jobboerse-jobsuche; size=1 = nur die Zahl) -> career.fn_upsert_market_signals (datierter Cache).
-# KEIN LLM, KEIN paid Key, KEIN PII (nur oeffentlicher Rollen-Titel/Ort). Den Trend liest der Renderer via
+# Deterministischer Stellen-Nachfrage-Refresh. Always-on-Cron (cron_enable.refresh_market_signals=true
+# default; nur Konsole, keine Chat-Buttons — Muster finance.cron_refresh_market_prices).
+# Pfad: F9-Gate -> Kriterien laden (career_planning: primaere Rolle title, erster Ort) -> Have criteria? ->
+# Jobsuche /pc/v6/jobs?size=1 -> maxErgebnisse (keyless, oeffentliche X-API-Key-Konstante jobboerse-jobsuche;
+# size=1 = nur die Zahl) -> career.fn_upsert_market_signals (datierter Cache).
+# Kein LLM, kein paid Key, kein PII (nur oeffentlicher Rollen-Titel/Ort). Den Trend liest der Renderer via
 # career.fn_market_trend (Posting-Count ueber die Zeit). Laeuft unter dem Haupt-RW-Credential (Build-Pg-
 # Default — liest agent.core_contexts, schreibt career.market_signals; deterministische SQL, kein LLM-SELECT).
-# (Das amtliche GEHALTSBAND ist v1 NICHT hier: der Entgeltatlas blockt den automatischen Zugriff (403, tote
-#  Community-Keys) -> Gehalt liefert der Advisor on-demand via web_search; strukturiertes Band via Destatis
-#  GENESIS = vertagt.)
+# Gehaltsband nicht hier: der Entgeltatlas blockt den automatischen Zugriff (403, tote Community-Keys) ->
+# Gehalt liefert der Advisor on-demand via web_search.
 function Build-CronRefreshMarketSignals {
 
     $trig = Build-ScheduleTrigger @(-1120, 0) -ScheduleKey 'refresh_market_signals'
@@ -22,14 +21,14 @@ function Build-CronRefreshMarketSignals {
     $ifEnabled = Build-If 'Cron on?' @(-680, 0) '={{ $json.enabled }}' 'true' 'equals' 'boolean'
     $off = Build-NoOp 'Disabled' @(-460, 200)
 
-    # --- Kriterien ALLER aktiven Personen laden (Host-RW; agent.core_contexts). role_title -> Posting-Query
+    # --- Kriterien aller aktiven Personen laden (Host-RW; agent.core_contexts). role_title -> Posting-Query
     #     'was'; location (target_locations[0]) -> Posting-Ort 'wo'.
-    # P2b-2 Multi-Person: ueber agent.fn_context_persons('career_planning') faechern -> je Person die primaere
-    #      Ziel-Rolle am Suffix career_planning__<pid> -> als EIN aggregiertes, auf (Rolle, Ort) DEDUPLIZIERTES
-    #      pairs-Array (jsonb_agg DISTINCT) -> EIN Code-Node iteriert (kein splitInBatches: market_signals ist
-    #      household-global, keine Sends/kein person_id; Parität zur Single-Node-Struktur). DISTINCT verhindert
-    #      einen Doppel-API-Call, wenn zwei Personen dieselbe (Rolle, Ort) anpeilen. Keine Person/kein Plan ->
-    #      pairs=[] -> 'Have criteria?' faellt graceful auf 'No criteria' (kein API-Call).
+    # Ueber agent.fn_context_persons('career_planning') faechern -> je Person die primaere Ziel-Rolle am
+    # Suffix career_planning__<pid> -> ein aggregiertes, auf (Rolle, Ort) dedupliziertes pairs-Array
+    # (jsonb_agg DISTINCT) -> ein Code-Node iteriert (kein splitInBatches: market_signals ist household-global,
+    # keine Sends/kein person_id). DISTINCT verhindert einen Doppel-API-Call, wenn zwei Personen dieselbe
+    # (Rolle, Ort) anpeilen. Keine Person/kein Plan -> pairs=[] -> 'Have criteria?' faellt graceful auf
+    # 'No criteria' (kein API-Call).
     $loadCtx = Build-Pg 'Load context' @(-460, 0) @'
 =SELECT COALESCE(
          jsonb_agg(DISTINCT jsonb_build_object('role', role_title, 'loc', COALESCE(location, '')))
@@ -48,9 +47,9 @@ FROM (
         '={{ Array.isArray($json.pairs) && $json.pairs.length > 0 }}' 'true' 'equals' 'boolean'
     $noCrit = Build-NoOp 'No criteria' @(-20, 200)
 
-    # --- EIN Code-Node, KEYLESS (Muster cron_refresh_market_prices, kein LLM): holt die oeffentliche
+    # --- Ein Code-Node, keyless (Muster cron_refresh_market_prices, kein LLM): holt die oeffentliche
     #     Bundesagentur-Jobsuche via this.helpers.httpRequest (try/catch = graceful degrade) und baut die
-    #     signals-Payload fuer fn_upsert_market_signals. size=1 -> wir brauchen nur maxErgebnisse (die Gesamtzahl).
+    #     signals-Payload fuer fn_upsert_market_signals.
     $fetchJs = @'
 const pairs = ($('Load context').first().json.pairs) || [];
 const signals = [];

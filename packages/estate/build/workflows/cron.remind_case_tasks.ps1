@@ -1,18 +1,18 @@
 ﻿#Requires -Version 5.1
 # Definition agent.estate.cron_remind_case_tasks -> Build-EstateCronRemindCaseTasks. Dot-gesourct von build.ps1.
-# WS-3: taeglicher Fristen-Reminder des Ereignisfalls. No-op ohne offenen Fall; faellige/ueberfaellige
-# offene Tasks (3-Tage-Vorlauf) als EINE aggregierte Karte an den Owner, mit est:-Buttons fuer die
+# Taeglicher Fristen-Reminder des Ereignisfalls. No-op ohne offenen Fall; faellige/ueberfaellige
+# offene Tasks (3-Tage-Vorlauf) als eine aggregierte Karte an den Owner, mit est:-Buttons fuer die
 # oberste (dringlichste) Aufgabe. Latch je Task (core.fn_should_notify, Cooldown 3 Tage) -> kein
 # taegliches Spam derselben Task; ueberfaellige Tasks werden periodisch (nach dem Cooldown) neu erinnert.
-# KEINE monitor_triggers-Zeilen (Massen-Instanziierung; Cron-vs-Trigger-Gesetz). Default AN (always-on):
-# cron_enable.remind_case_tasks=true, KEIN Chat-Toggle (nur Konsole; cron_toggle_lint-always-on-Muster).
+# Keine monitor_triggers-Zeilen (Massen-Instanziierung; Cron-vs-Trigger-Gesetz). Default an (always-on):
+# cron_enable.remind_case_tasks=true, kein Chat-Toggle (nur Konsole; cron_toggle_lint-always-on-Muster).
 # Cred = estate_rw (estate-Read + fn_should_notify/fn_package_active/fn_config_get/fn_household_persons-Grants).
 function Build-EstateCronRemindCaseTasks {
     $CRED_POSTGRES = $CRED_ESTATE_RW
 
     $trig = Build-ScheduleTrigger @(-1100, 0) -ScheduleKey 'remind_case_tasks'
 
-    # F9-Gate (WS-1/Phase 4a): nur wenn Paket aktiv UND cron_enable -> sonst No-op (fail-closed).
+    # F9-Gate: nur wenn Paket aktiv und cron_enable -> sonst No-op (fail-closed).
     $gate = Build-Pg 'Cron enabled?' @(-880, 0) `
         "=SELECT core.fn_package_active('estate') AND COALESCE(core.fn_config_get('estate','cron_enable','remind_case_tasks') = 'true', false) AS enabled" `
         $null
@@ -20,9 +20,9 @@ function Build-EstateCronRemindCaseTasks {
     $off = Build-NoOp 'Disabled' @(-440, 200)
 
     # Faellige/ueberfaellige offene Tasks offener Faelle einsammeln + je Task latchen (Cooldown 3 Tage).
-    # MATERIALIZED -> fn_should_notify laeuft EXAKT 1x je faelliger Task (Latch-Seiteneffekt deterministisch).
-    # Die Texte (Owner-Sprache, core.fn_ui_texts_for) kommen in DERSELBEN Anweisung wie der Latch: ein Ladefehler
-    # rollt den Latch mit zurueck (nie "gemeldet", ohne verschickt zu sein). Datum ROH (ISO) -> Anzeige per Intl.
+    # MATERIALIZED -> fn_should_notify laeuft genau 1x je faelliger Task (Latch-Seiteneffekt deterministisch).
+    # Die Texte (Owner-Sprache, core.fn_ui_texts_for) kommen in derselben Anweisung wie der Latch: ein Ladefehler
+    # rollt den Latch mit zurueck (nie "gemeldet", ohne verschickt zu sein). Datum roh (ISO) -> Anzeige per Intl.
     $keys = Get-UiKeysSql (@('estate.dialog.case_tasks_title', 'estate.dialog.case_task_overdue', 'estate.dialog.case_task_due',
         'estate.dialog.case_tasks_more', 'estate.dialog.btn_done', 'estate.dialog.btn_not_applicable',
         'estate.dialog.subject_fallback') + $script:UiRenderKeys)
@@ -69,7 +69,7 @@ return [{ json: { count: tasks.length, top_id: String(tasks[0].id), message: hea
     $ifAny = Build-If 'Anything due?' @(0, 0) '={{ $json.count }}' '1' 'largerEqual' 'number'
     $quiet = Build-NoOp 'Nothing due' @(180, 200)
 
-    # EINE aggregierte Karte an den Owner; est:-Buttons fuer die OBERSTE Aufgabe (Trauer-UX "eine naechste
+    # Eine aggregierte Karte an den Owner; est:-Buttons fuer die oberste Aufgabe (Trauer-UX "eine naechste
     # Aufgabe"). callback_data est:done:<id>/est:skip:<id> -> core.callback_handlers 'est' ->
     # estate.fn_handle_case_task_callback (owner-first). Text escapt der Helper.
     $send = New-TelegramInlineKeyboardSendNode 'Send reminder' @(220, 0) `

@@ -7,14 +7,14 @@
 --   Haupt-RW-Cred (schreibt career.market_signals). Nur Posting-Count; das Gehaltsband liefert der Advisor
 --   on-demand via web_search (Entgeltatlas blockt automatischen Zugriff).
 --
---   p = { "as_of":  "2026-06-29",                  (optional, default CURRENT_DATE; muss ein gueltiges Datum sein)
+--   p = { "as_of":  "2026-06-29",                  (optional, default CURRENT_DATE)
 --         "source": "bundesagentur",               (optional)
 --         "signals": [                             (Pflicht: Array; je Eintrag eine market_signals-Zeile)
 --           { "kind":"postings", "primary":"<Rolle>", "secondary":"<Ort>", "postings_count":120, "raw":{...} } ] }
 --   scope_key baut career.fn_market_scope_key aus rohen Feldern (eine Quelle, Write==Read).
 --
 --   Rueckgabe: {ok:true, upserted, as_of}; ohne signals-Array {ok:false, reason:'no signals array in payload',
---   upserted:0}.
+--   upserted:0}; ungueltiges as_of {ok:false, reason:'invalid as_of "..." (expected YYYY-MM-DD)', upserted:0}.
 --   Einzelne Eintraege still-guarded (kein RAISE, kein Owner-Alert): ohne kind/primary -> skip; postings_count
 --   nur uebernommen, wenn ganzzahlig (sonst NULL, faengt "n/a"/leer ab, kein ::int-RAISE). ON CONFLICT
 --   (scope_key, as_of) -> idempotenter Tages-Upsert (COALESCE-Merge des postings_count).
@@ -22,7 +22,7 @@
 CREATE OR REPLACE FUNCTION career.fn_upsert_market_signals(p jsonb)
 RETURNS jsonb LANGUAGE plpgsql AS $$
 DECLARE
-    v_as_of  date := COALESCE(NULLIF(p->>'as_of','')::date, CURRENT_DATE);
+    v_as_of  date;
     v_source text := COALESCE(NULLIF(p->>'source',''), 'bundesagentur');
     v_sig    jsonb;
     v_key    text;
@@ -31,6 +31,11 @@ BEGIN
     IF p->'signals' IS NULL OR jsonb_typeof(p->'signals') <> 'array' THEN
         RETURN jsonb_build_object('ok', false, 'reason', 'no signals array in payload', 'upserted', 0);
     END IF;
+    -- Pruefen vor dem Cast: ein ungueltiges as_of ist korrigierbar und kommt als Daten zurueck, kein RAISE.
+    IF NULLIF(p->>'as_of','') IS NOT NULL AND NOT pg_input_is_valid(p->>'as_of', 'date') THEN
+        RETURN jsonb_build_object('ok', false, 'reason', format('invalid as_of "%s" (expected YYYY-MM-DD)', p->>'as_of'), 'upserted', 0);
+    END IF;
+    v_as_of := COALESCE(NULLIF(p->>'as_of','')::date, CURRENT_DATE);
 
     FOR v_sig IN SELECT * FROM jsonb_array_elements(p->'signals') LOOP
         -- kind + primary Pflicht; sonst still skip (kein leerer/halber scope_key)

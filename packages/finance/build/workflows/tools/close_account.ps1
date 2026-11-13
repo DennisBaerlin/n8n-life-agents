@@ -1,10 +1,9 @@
 ﻿#Requires -Version 5.1
 # Dot-gesourct von build_finance_tools.ps1 (Helper + Script-Scope-Creds im Parent-Scope).
 
-# --- 8. tool_close_account (Playbook 5.10) ---------------
+# --- tool_close_account ---
 function Build-CloseAccount {
-    # WS-B0: enge Paket-Schreibrolle (finance_rw, Least-Privilege D10) statt Owner-Cred.
-    # Dynamic-Scope: Build-Pg liest dieses $CRED_POSTGRES. Core-Tools nutzen die Owner-Cred.
+    # Enge Paket-Schreibrolle (finance_rw) statt Owner-Cred; Build-Pg liest $CRED_POSTGRES per Dynamic-Scope.
     $CRED_POSTGRES = $CRED_FINANCE_RW
     $trig = Build-Trigger @('account_name','closure_date','notes')
 
@@ -17,8 +16,8 @@ function Build-CloseAccount {
     $errAcct = Build-ToolError 'Account ambiguous' @(660, 200) `
         "=Account '{{ `$('Start').item.json.account_name }}' resolves to {{ `$('Resolve Account').item.json.hit_count }} matches. Candidates: {{ JSON.stringify(`$('Resolve Account').item.json.candidates) }}. Ask the user which exact account."
 
-    # Audit F6: Vorpruefung VOR der Karte ueber dieselbe fn wie der Guard in fn_close_account (Saldo, Depot,
-    # Sparplan, Kredit, laufende Dauerauftraege) -> der Owner bestaetigt nie etwas, das danach abgelehnt wird.
+    # Vorpruefung vor der Karte ueber dieselbe fn wie der Guard in fn_close_account (Saldo, Depot,
+    # Sparplan, Kredit, laufende Dauerauftraege).
     $checkBlk = Build-Pg 'Check close blockers' @(660, 0) `
         "=SELECT (b->>'blocked')::boolean AS blocked, b->>'reason' AS reason FROM finance.fn_get_account_close_blockers(((`$1::jsonb)->>'account_id')::int) AS b;" `
         ([ordered]@{ account_id = '$(''Resolve Account'').item.json.id' })
@@ -33,8 +32,6 @@ function Build-CloseAccount {
         "=SELECT b.balance, a.account_type::text AS account_type, a.currency FROM finance.account_balances b JOIN finance.accounts a ON a.id = b.account_id WHERE b.account_id = ((`$1::jsonb)->>'account_id')::int;" `
         ([ordered]@{ account_id = '$(''Resolve Account'').item.json.id' })
 
-    # "DB ist das Gesetz": fn_close_account laeuft als Probelauf VOR der Karte (korrigierbare Ablehnungen -> {ok:false} ohne Karte);
-    # derselbe Param-Satz geht nach dem Gate in den echten Write.
     $wg = New-FnWriteGate -Fn 'finance.fn_close_account' -DryPos @(1320, 0) -WritePos @(2640, 0) `
         -WriteName 'Close account (atomic)' `
         -WriteSelect "(r->>'ok')::boolean AS ok, r->>'reason' AS reason, (r->>'account_id')::int AS account_id, r->>'status' AS status" `
@@ -45,7 +42,7 @@ function Build-CloseAccount {
         })
 
     # --- HITL approval gate ---
-    # Strukturiertes Summary (Textkatalog); Saldo in der Konto-Waehrung (Read Current Balance).
+    # Saldo in der Konto-Waehrung (Read Current Balance).
     $S = "`$('Start').item.json"
     $B = "`$('Read Current Balance').item.json"
     $summary = New-HitlSummary -Pos @(1980, 0) -Title 'finance.hitl.close_account' -LinesExpr $wg.CardLinesExpr -Lines @(
@@ -65,12 +62,8 @@ function Build-CloseAccount {
 
     $retCancelled = Build-ToolCancelled 'Return cancelled' @(2640, 240) 'the close_account action'
 
-    # Atomarer Write via fn_close_account:
-    # UPDATE finance.accounts.status = 'closed' + Closure-Notiz anhaengen.
-    # DB: trg_finance_reject_closed_account blockiert danach jeden INSERT auf dieses Konto.
-    # fn liefert ok/reason: Blocker (fn_get_account_close_blockers, Race-Backstop zur Vorpruefung) -> {ok:false}.
-
-    # Korrigierbare Ablehnung aus der fn -> weiche Rueckfrage (kein Owner-Alert).
+    # Write: status = 'closed' + Closure-Notiz; trg_finance_reject_closed_account blockiert danach jeden INSERT auf dieses Konto.
+    # Blocker (fn_get_account_close_blockers) sind der Race-Backstop zur Vorpruefung.
     $ifWriteOk = Build-If 'Write ok?' @(2860, 0) "={{ `$json.ok }}" 'true' 'equals' 'boolean'
 
     $errWrite = Build-ToolError 'Close rejected' @(3080, 240) `

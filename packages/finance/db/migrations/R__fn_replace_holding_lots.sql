@@ -1,23 +1,23 @@
 -- ============================================================
--- fn_replace_holding_lots (ATOMIC WRITE) -- Bestandsuebernahme durch eingetippte Einzelkaeufe ersetzen (Fund 7, KW 45)
---   Befund 2026-11: der Agent ersetzte einen eingetippten Bestand in zwei Schritten (erst stornieren, dann die
---   Liste pruefen) -- die Position fehlte kurz, die Liste wurde danach abgelehnt. Hier prueft die DB die GANZE Liste
---   zuerst und tauscht in EINER Transaktion: neue Lots rein, alte Uebernahme raus (Muster fn_replace_takeover_with_lots,
+-- fn_replace_holding_lots (ATOMIC WRITE) -- Bestandsuebernahme durch eingetippte Einzelkaeufe ersetzen
+--   Zwei Schritte (erst stornieren, dann die Liste pruefen) liessen die Position kurz fehlen, und die Liste konnte
+--   danach abgelehnt werden. Darum prueft die DB die ganze Liste
+--   zuerst und tauscht in einer Transaktion: neue Lots rein, alte Uebernahme raus (Muster fn_replace_takeover_with_lots,
 --   dessen Schreib-Teil fn_replace_takeover_apply gemeinsam ist).
---   Eingabe jsonb: depot_name, position (Symbol oder ISIN), lots = Array [{date, shares, price_per_share ODER
---   cost_basis_total (Preis der Stuecke OHNE Gebuehr, wie fn_book_stock_buy), order_fee (opt)}] (max. 200). Datum ISO oder
+--   Eingabe jsonb: depot_name, position (Symbol oder ISIN), lots = Array [{date, shares, price_per_share oder
+--   cost_basis_total (Preis der Stuecke ohne Gebuehr, wie fn_book_stock_buy), order_fee (opt)}] (max. 200). Datum ISO oder
 --   relativ (core.fn_resolve_input_dates je Lot), Zahlen tolerant ("80,50"). Das Modell rechnet nie: Kurs aus Gesamtbetrag
 --   = fn_unit_price_from_total, Einstand/Stueck pflegen die Trigger.
 --   Ersetzbar ist eine Position nur, wenn ihre Uebernahme(n) reine Uebernahme-Gruppen sind: je Gruppe Summe der Betraege 0,
---   nur Kaeufe DIESER Position auf dem Verrechnungskonto + position_takeover-Gegenbuchungen, jeder Kauf mit Gegenbuchung.
---   Die neuen Lots sind IMMER cash-neutrale Uebernahme-Paare in einer neuen group_id -- das Verrechnungskonto aendert sich
+--   nur Kaeufe dieser Position auf dem Verrechnungskonto + position_takeover-Gegenbuchungen, jeder Kauf mit Gegenbuchung.
+--   Die neuen Lots sind immer cash-neutrale Uebernahme-Paare in einer neuen group_id -- das Verrechnungskonto aendert sich
 --   nie (der genannte Stand enthaelt den Bestand schon). Echte Folge-Buchungen der Position (Kaeufe/Verkaeufe ausserhalb
 --   der Uebernahme-Gruppen) bleiben unberuehrt; deshalb: jedes Lot-Datum <= juengster alter Uebernahme-Tag (ein Kauf
 --   danach gehoert zu tool_book_stock_buy; Monats-Check und Rendite haengen an diesem Tag) und der Bestand danach
 --   (Lots + Folge-Buchungen) darf nicht negativ werden. Die Stueckzahl darf sich aendern (die Liste ist die Wahrheit, die
 --   Karte zeigt alt -> neu). Ein Probelauf (core.fn_dry_run) liefert Karte + effective.lots (aufgeloeste ISO-Daten, Kurs je
 --   Stueck), der echte Write nach dem Tipp bekommt sie fest.
---   RUECKGABE: {ok:true, holding_id, group_id, shares_before, total_shares, avg_before, avg_purchase_price,
+--   Rueckgabe: {ok:true, holding_id, group_id, shares_before, total_shares, avg_before, avg_purchase_price,
 --   settlement_balance, settlement_change, effective:{lots:[{date, shares, price_per_share, order_fee}]}, card_lines}
 --   | {ok:false, code, reason, ...}: holding_not_found|holding_ambiguous|depot_not_found|depot_ambiguous (candidates),
 --   invalid_lots, invalid_date (lot_no), lot_invalid (lot_no), lot_in_future (lot_no), lot_after_takeover (lot_no),
@@ -33,7 +33,7 @@ DECLARE
     v_bad      UUID;
     v_day      DATE;            -- juengster alter Uebernahme-Tag
     v_before   NUMERIC;         -- Stueck der Position vor dem Tausch (inkl. Folge-Buchungen)
-    v_later    NUMERIC;         -- Stueck-Summe der Buchungen AUSSERHALB der alten Gruppen (Folgekaeufe +, Verkaeufe -)
+    v_later    NUMERIC;         -- Stueck-Summe der Buchungen ausserhalb der alten Gruppen (Folgekaeufe +, Verkaeufe -)
     v_avg_old  NUMERIC;
     v_raw      JSONB := p->'lots';
     v_lot      JSONB;
@@ -56,7 +56,7 @@ DECLARE
     v_scy      TEXT;
     v_card     JSONB := '[]'::jsonb;
 BEGIN
-    -- Position per Depot-Name + Symbol/ISIN: die EINE Positionssuche der Tools (0/mehrdeutig -> Daten, keine Karte)
+    -- Position per Depot-Name + Symbol/ISIN: die eine Positionssuche der Tools (0/mehrdeutig -> Daten, keine Karte)
     v_find := finance.fn_find_holding(jsonb_build_object('depot_name', p->>'depot_name', 'position', p->>'position'));
     IF (v_find->>'ok')::boolean IS DISTINCT FROM true THEN
         RETURN v_find;
@@ -72,7 +72,7 @@ BEGIN
     SELECT * INTO v_h FROM finance.depot_holdings WHERE id = (v_find->>'holding_id')::int FOR UPDATE;
     PERFORM 1 FROM finance.account_balances WHERE account_id = v_settle FOR UPDATE;
 
-    -- alte Uebernahme-Gruppen VOR dem ersten Write festhalten (die neue Gruppe waere sonst selbst eine)
+    -- alte Uebernahme-Gruppen vor dem ersten Write festhalten (die neue Gruppe waere sonst selbst eine)
     SELECT array_agg(DISTINCT t.group_id) INTO v_old
     FROM finance.transactions t
     WHERE t.holding_id = v_h.id AND t.category::text = 'buy' AND t.group_id IS NOT NULL
@@ -105,7 +105,7 @@ BEGIN
     WHERE t.holding_id = v_h.id AND (t.group_id IS NULL OR NOT t.group_id = ANY(v_old));
     v_avg_old := v_h.average_purchase_price;
 
-    -- jedes Lot pruefen (alles VOR dem ersten Write); Rueckgabe benennt die Lot-Nummer
+    -- jedes Lot pruefen (alles vor dem ersten Write); Rueckgabe benennt die Lot-Nummer
     FOR v_lot, v_i IN SELECT e, o::int FROM jsonb_array_elements(v_raw) WITH ORDINALITY AS x(e, o) LOOP
         IF jsonb_typeof(v_lot) <> 'object' THEN
             RETURN jsonb_build_object('ok', false, 'code', 'lot_invalid', 'lot_no', v_i,

@@ -1,8 +1,9 @@
 -- ============================================================
--- core.fn_next_step_offer_keys(p_person_id, p_callback, p_state, p_generation) — Latch-Keys der Vorschlags-Grenzen (READ)
+-- fn_next_step_offer_keys (READ)
+--   Latch-Keys der Vorschlags-Grenzen. Eingabe: p_person_id, p_callback, p_state, p_generation.
 --   Die eine Key-Bildung fuer das Lesen (core.fn_get_next_step, Feld offer) und das Setzen (core.fn_claim_next_step_offer),
---   damit beide nie auseinanderlaufen. Owner-Entscheid 2026-11-11: Vorschlag mit Knopf bei Gruss/Lebenszeichen hoechstens
---   offer_per_day je Kalendertag (core.fn_today, Haushalts-Zeitzone) und derselbe Schritt in derselben Lage hoechstens
+--   damit beide nie auseinanderlaufen. Ein Vorschlag mit Knopf bei Gruss/Lebenszeichen kommt hoechstens
+--   offer_per_day je Kalendertag (core.fn_today, Haushalts-Zeitzone), und derselbe Schritt in derselben Lage hoechstens
 --   offer_max_repeats mal ohne gueltigen Tipp.
 --   Keys (source in Klammern, core.notification_state, NULL-TTL):
 --     day    (next_step_day)   <pid>:<YYYY-MM-DD>:<i>                       i = 1..offer_per_day

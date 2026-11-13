@@ -3,14 +3,13 @@
 
 # --- tool_set_loan (set_*: Kredit-Konditionen/Status aendern) ---
 function Build-SetLoan {
-    # WS-B0: enge Paket-Schreibrolle (finance_rw, Least-Privilege D10) statt Owner-Cred.
-    # Dynamic-Scope: Build-Pg liest dieses $CRED_POSTGRES. Core-Tools nutzen die Owner-Cred.
+    # Enge Paket-Schreibrolle (finance_rw) statt Owner-Cred; Build-Pg liest $CRED_POSTGRES per Dynamic-Scope.
     $CRED_POSTGRES = $CRED_FINANCE_RW
     $trig = Build-Trigger @('loan_name','new_name','lender','borrower_person','interest_rate',
                            'interest_rate_fixed_until','term_end_date','monthly_annuity','schedule_day_of_month',
                            'effective_from','original_amount','disbursement_date','status','notes')
 
-    # Resolve ueber ALLE Status (auch paused/refinanced -> reaktivieren/markieren moeglich); inline,
+    # Resolve ueber alle Status (auch paused/refinanced -> reaktivieren/markieren moeglich); inline,
     # da fn_resolve_loan nur active liefert.
     $resLoan = Build-Pg 'Resolve Loan' @(220, 0) `
         "=SELECT (CASE WHEN count(*) = 1 THEN min(id) END)::int AS id, count(*)::int AS hit_count, COALESCE(jsonb_agg(jsonb_build_object('id', id, 'name', name, 'lender', lender, 'status', status) ORDER BY id), '[]'::jsonb) AS candidates FROM finance.loans WHERE name = (`$1::jsonb)->>'loan_name';" `
@@ -25,7 +24,7 @@ function Build-SetLoan {
         "=SELECT interest_rate, monthly_annuity, status::text AS status FROM finance.loan_overview WHERE id = ((`$1::jsonb)->>'id')::int;" `
         ([ordered]@{ id = '$(''Resolve Loan'').item.json.id' })
 
-    # WS-4: optionalen Kreditnehmer-Wechsel aufloesen (Name -> Slug; leer = unveraendert).
+    # Optionalen Kreditnehmer-Wechsel aufloesen (Name -> Slug; leer = unveraendert).
     $resPerson = Build-ResolvePerson 'Resolve Person' @(880, 360) 'borrower_person'
 
     $ifPersonBad = Build-If 'Person invalid?' @(1100, 360) `
@@ -34,8 +33,6 @@ function Build-SetLoan {
     $errPerson = Build-ToolError 'Person unresolved' @(1320, 480) `
         "=The borrower '{{ `$('Start').item.json.borrower_person }}' could not be uniquely resolved ({{ `$('Resolve Person').item.json.hit_count }} match(es)). Candidates: {{ JSON.stringify(`$('Resolve Person').item.json.candidates) }}. Ask which household member."
 
-    # "DB ist das Gesetz": fn_set_loan laeuft als Probelauf VOR der Karte; derselbe Param-Satz geht nach dem Gate in den
-    # echten Write (partielles UPDATE + Raten-Aenderung ueber die Kette + Status-Kaskade).
     $wg = New-FnWriteGate -Fn 'finance.fn_set_loan' -DryPos @(880, 0) -WritePos @(2200, 0) `
         -WriteName 'Set loan (atomic)' `
         -WriteSelect "(r->>'ok')::boolean AS ok, r->>'reason' AS reason, (r->>'loan_id')::int AS loan_id, (r->>'recurring_payment_id')::int AS recurring_payment_id, r->>'effective_from' AS effective_from, (r->>'balance_at_fixed_until')::numeric AS balance_at_fixed_until, (r->>'balance_at_term_end')::numeric AS balance_at_term_end" `
@@ -56,7 +53,7 @@ function Build-SetLoan {
             notes                     = '$(''Start'').item.json.notes'
         })
 
-    # Strukturiertes Summary (Textkatalog): nur gelieferte Felder (-If je Zeile). Monatsrate in EUR-Konvention.
+    # Nur gelieferte Felder (-If je Zeile). Monatsrate in EUR-Konvention.
     $S = "`$('Start').item.json"
     $R = "`$('Read Current').item.json"
     $P = "`$('Resolve Person').item.json"
@@ -71,7 +68,7 @@ function Build-SetLoan {
             from = (New-HitlValue -Kind money -Value "$R.monthly_annuity" -EurByModel)
             to   = (New-HitlValue -Kind money -Value "$S.monthly_annuity" -EurByModel) })
         (New-HitlLine 'finance.label.debit_day'       $dom -Kind tpl -Params @{ day = "$S.schedule_day_of_month" } -If "$S.schedule_day_of_month")
-        # WP2: Stichtag der neuen Rate/des neuen Tags aus dem Probelauf (genannt oder naechster offener Termin)
+        # Stichtag der neuen Rate/des neuen Tags aus dem Probelauf (genannt oder naechster offener Termin)
         (New-HitlLine 'finance.label.effective_from'  "$D.effective_from" -Kind date -If "($S.monthly_annuity || $S.schedule_day_of_month)" -OmitEmpty)
         (New-HitlLine 'finance.label.loan_amount_original' "$S.original_amount" -Kind money -EurByModel -If "$S.original_amount")
         (New-HitlLine 'finance.label.disbursement_date' (Get-DryEffectiveExpr 'disbursement_date') -Kind date -If "$S.disbursement_date")
@@ -93,7 +90,6 @@ function Build-SetLoan {
 
     $retCancelled = Build-ToolCancelled 'Return cancelled' @(2200, 240) 'the set_loan action'
 
-    # Atomarer Write via fn_set_loan ($wg.Write, 'Set loan (atomic)').
     $ifWriteOk = Build-If 'Write ok?' @(2420, 0) "={{ `$json.ok }}" 'true' 'equals' 'boolean'
 
     $errWrite = Build-ToolError 'Update rejected' @(2640, 240) `

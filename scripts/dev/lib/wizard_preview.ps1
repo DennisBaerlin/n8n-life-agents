@@ -1,7 +1,7 @@
 ﻿#Requires -Version 5.1
 # wizard_preview.ps1 -- Vorschau des Einrichtungs-Wizards (provisioning/wizard) ohne echten Server im Browser: Verbraucher
 # build_ui_review.ps1 (-Surface wizard, Bilder fuer die Freigabe) und serve_wizard_preview.ps1 (Browser-Bereich der App).
-# Die Seiten-Modelle kommen vom ECHTEN Server, den tests/wizard/preview_dump.js im Wegwerf-Container mit den Attrappen
+# Die Seiten-Modelle kommen vom echten Server, den tests/wizard/preview_dump.js im Wegwerf-Container mit den Attrappen
 # durchlaeuft (nur erfundene Werte); die Seite selbst ist die echte ui/index.html mit ui/app.css + ui/app.js, nur API-Antworten
 # kommen aus dem festgehaltenen Modell (window.WIZARD_PREVIEW). Dot-sourcen; $RepoRoot setzt der Aufrufer.
 

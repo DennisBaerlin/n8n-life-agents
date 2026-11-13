@@ -1,9 +1,10 @@
 -- ============================================================
 -- fn_mark_loan_paid_off (INTERNAL HELPER — not tool-facing)
---   Der EINE Uebergang "Kredit abbezahlt" (Audit Paket 2, Punkt 9; zweiter Konsument -> vereinheitlicht):
---   loans.status='paid_off' + die GANZE Raten-Kette endet (status='paused', valid_to = p_end; ein frueheres
---   vertragliches Ende bleibt; WP2: nach einer Ratenaenderung mit kuenftigem Stichtag liefe sonst ein Glied weiter). Der Vorzustand landet in loans.settled_from (status, chain = [{id, status, valid_to}] je Glied,
---   paid_off_on) -> fn_void_transaction stellt ihn exakt her, sobald nach einem Storno wieder Restschuld besteht.
+--   Der eine Uebergang "Kredit abbezahlt": loans.status='paid_off' + die ganze Raten-Kette endet (status='paused',
+--   valid_to = p_end; ein frueheres vertragliches Ende bleibt; nach einer Ratenaenderung mit kuenftigem Stichtag
+--   liefe sonst ein Glied weiter). Der Vorzustand landet in loans.settled_from (status, chain = [{id, status, valid_to}]
+--   je Glied, paid_off_on) -> fn_void_transaction stellt ihn exakt her, sobald nach einem Storno wieder Restschuld besteht.
+--   Eingabe: p_loan_id, p_end (beide Pflicht). Rueckgabe: void; RAISE bei unbekanntem Kredit.
 --   Gerufen von fn_settle_loan (p_end = Abloesedatum) und fn_book_loan_payment (p_end = Tag nach der letzten Rate).
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_mark_loan_paid_off(p_loan_id int, p_end date)

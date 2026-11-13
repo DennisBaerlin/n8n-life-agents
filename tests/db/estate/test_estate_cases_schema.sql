@@ -1,5 +1,5 @@
 -- tests/db/estate/test_estate_cases_schema.sql
--- WS-3 DDL-Invarianten: cases/case_tasks/task_templates CHECKs + partial-UNIQUE + Auto-Complete-Trigger.
+-- DDL-Invarianten: cases/case_tasks/task_templates CHECKs + partial-UNIQUE + Auto-Complete-Trigger.
 BEGIN;
 
 DO $$
@@ -30,7 +30,7 @@ BEGIN
   EXCEPTION WHEN check_violation THEN v_ok := true; END;
   IF NOT v_ok THEN RAISE EXCEPTION 'FAIL [unbekannter Bundesland-Slug nicht geblockt]'; END IF;
 
-  -- closed_at-Konsistenz: open MUSS closed_at NULL haben.
+  -- closed_at-Konsistenz: open muss closed_at NULL haben.
   v_ok := false;
   BEGIN
     INSERT INTO estate.cases (case_type, subject_person_id, event_date, knowledge_date, bundesland, status, closed_at)
@@ -78,7 +78,7 @@ BEGIN
     RAISE EXCEPTION 'FAIL [Task wieder open -> Fall nicht reopened]'; END IF;
   RAISE NOTICE 'PASS [Auto-Complete-Trigger: complete + reopen]';
 
-  -- WP3: done_at gehoert genau zu status='done' (CHECK case_tasks_done_at_consistency)
+  -- done_at gehoert genau zu status='done' (CHECK case_tasks_done_at_consistency)
   v_ok := false;
   BEGIN
     UPDATE estate.case_tasks SET status='done' WHERE case_id=v_case AND title='T2';

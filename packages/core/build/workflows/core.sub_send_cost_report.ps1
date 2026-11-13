@@ -1,10 +1,9 @@
 ﻿#Requires -Version 5.1
 # Dot-gesourct von build.ps1 (Helper + Script-Scope-Creds im Parent-Scope).
 #
-# --- core.sub_send_cost_report (/costs + /kosten, Owner-Wunsch 2026-10-25) --------------------------------------------
-# Die KI-Kostenuebersicht: EINE Nachricht mit den Claude-Kosten der letzten 7 und 30 Tage, je Assistent (Workflow),
+# --- core.sub_send_cost_report (/costs + /kosten) --------------------------------------------
+# Die KI-Kostenuebersicht: eine Nachricht mit den Claude-Kosten der letzten 7 und 30 Tage, je Assistent (Workflow),
 # Modell und Kostenart, plus regelbasierte Auffaelligkeiten. Deterministisch, kein LLM -> der Befehl kostet selbst nichts.
-# Muster core.sub_send_reminders_menu (Texte in der Sprache des Betrachters, core_ro-Reads fail-open, Sub sendet selbst).
 #
 # Eingang: chat_id. Aufrufer: Orchestrator /costs|/kosten.
 # Ablauf: Start -> Read texts (core_ro) -> Read role (Rolle des Absenders) -> Owner?

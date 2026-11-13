@@ -1,15 +1,15 @@
 ﻿#Requires -Version 5.1
 # Definition agent.finance_advisor -> Build-AgentFinanceAdvisor. Dot-gesourct von build.ps1.
 # Schlanker Klon des agent.finance-Templates und Vorlage der weiteren Advisor (Clone-and-Trim, bewusst
-# KEINE Factory — build-CLAUDE.md "Agent-Generatoren sind Clone-and-Trim"); die Domaenen-Konstanten stehen
+# keine Factory — build-CLAUDE.md "Agent-Generatoren sind Clone-and-Trim"); die Domaenen-Konstanten stehen
 # am Funktionskopf, Geteiltes liegt in lib/build_helpers.ps1 (New-AdvisorGateChain/-ToolNode/-PhrasingTail).
 # Der Advisor bucht nie: keine Buchungs-Tools gebunden; seine Writes sind Plan-Persistenz
 # (tool_save_plan_section/tool_publish_plan), Plan-Trigger und zwei Daten-Ausnahmen: tool_set_asset_classes (nur
-# Anlageklassen, Owner 2026-10-23) und die fehlenden Plan-Pflichtdaten (tool_create_account fest cash,
+# Anlageklassen) und die fehlenden Plan-Pflichtdaten (tool_create_account fest cash,
 # tool_create_recurring_payment) - alle HITL-gegatet.
 
-# New-AdvisorToolNode (CROSS-AGENT-Tool-Builder) lebt seit Phase 0 WS-0c AT geteilt in
-# scripts/build/lib/build_helpers.ps1 (loest die fruehere lokale Duplikat-Def ab; -StartNode jetzt PFLICHT).
+# New-AdvisorToolNode (Cross-Agent-Tool-Builder) lebt geteilt in
+# scripts/build/lib/build_helpers.ps1; -StartNode ist Pflicht.
 
 function Build-AgentFinanceAdvisor {
     # --- Domaenen-Konstanten (Extraktionspunkt fuer kuenftige Advisor) ---
@@ -19,7 +19,7 @@ function Build-AgentFinanceAdvisor {
     $MEMORY_TABLE  = 'agent.finance_advisor_chat_memory'
     $START_NODE    = 'Start agent.finance_advisor'
     # e2e-Domain-Switch: test_e2e-chat_ids schreiben unter Sentinel-Domain '__e2e_finance__',
-    # damit die ECHTE finance-Plan-Kette (ein Draft/ein Active pro Domain + financial_planning)
+    # damit die echte finance-Plan-Kette (ein Draft/ein Active pro Domain + financial_planning)
     # nie von Tests beruehrt wird. fn_clear_e2e_data raeumt die Sentinel-Domain.
     $DOMAIN_EXPR   = '={{ String($(''' + $START_NODE + ''').item.json.chat_id || '''').startsWith(''test_e2e'') ? ''__e2e_finance__'' : ''finance'' }}'
 
@@ -47,8 +47,8 @@ function Build-AgentFinanceAdvisor {
 
     # Eingangs-Naht (Anti-Loop-Depth-Gate -> Package-Active-Gate -> Core-first-Gate) = geteilter Helfer
     # New-AdvisorGateChain (lib/build_helpers.ps1). finance + finance_advisor + career teilen exakt diese
-    # Gate-Kette; das echte Delta (Tools/Modell/Memory/domain) bleibt lokal, ebenso das finance-SPEZIFISCHE
-    # feature.onboarding_gate (NACH Load Config, unten) — das gehoert NICHT in den Helfer. NextNode='Load Config'
+    # Gate-Kette; das echte Delta (Tools/Modell/Memory/domain) bleibt lokal, ebenso das finance-spezifische
+    # feature.onboarding_gate (nach Load Config, unten) — das gehoert nicht in den Helfer. NextNode='Load Config'
     # = False-Zweig des Core-Gates (Core fertig oder Lesefehler/fail-open -> weiter zur Pipeline).
     $gate = New-AdvisorGateChain -StartNode $START_NODE -Package 'finance' -CredPgRo $CRED_PG_RO -NextNode 'Load Config'
 
@@ -56,20 +56,20 @@ function Build-AgentFinanceAdvisor {
 
     # Kinder-Sicht: das Tor sitzt zentral im Vermittler (agent.sub_dispatch_agent, core.fn_sender_sees_household).
 
-    # --- Onboarding-Pflicht-Gate (Plan §1b, flag-gated feature.onboarding_gate; WS-B3 kombiniert) ---
-    # Deterministisch VOR dem LLM (kein Cost): wenn das Feature an ist UND das Onboarding noch nicht
-    # vollstaendig ist (core-Haushalt UND die sperrenden finance-Sektionen), antwortet der Advisor mit einem
-    # /onboarding-Redirect statt zu beraten. WS-B3: EIN Aufruf der kombinierten Schnittstelle
+    # --- Onboarding-Pflicht-Gate (flag-gated feature.onboarding_gate) ---
+    # Deterministisch vor dem LLM (kein Cost): wenn das Feature an ist und das Onboarding noch nicht
+    # vollstaendig ist (core-Haushalt und die sperrenden finance-Sektionen), antwortet der Advisor mit einem
+    # /onboarding-Redirect statt zu beraten. Ein Aufruf der kombinierten Schnittstelle
     # core.fn_onboarding_status('finance') liefert complete = (core AND finance) + die Union der offenen
     # Sektionen. Ist das finance-Paket-Bein unerreichbar (package={ok:false}), ist complete=false -> der
-    # Advisor refused (Gate SICHER zu) auch bei fertigem Core-Onboarding (gewollt; M1). gate_on aus
+    # Advisor refused (Gate sicher zu) auch bei fertigem Core-Onboarding (gewollt). gate_on aus
     # core.config (Haupt-Cred liest core.config + fuehrt die DEFINER-fn aus).
-    # Textkatalog Phase C: im selben Read die Umleitungs-Texte in der Sprache des Absenders + die Bereichsnamen der
-    # offenen Sektionen (<source>.onboarding.<key>, Katalog seit Phase B; fehlt einer -> das Label der Sektion).
-    # Plan-Luecken (2026-10-27): finance-Sektionen mit "gates_advisor": false in onboarding/sections.json (der Monats-
-    # Check — der Berater braucht ihn nicht, um einen Plan zu vervollstaendigen) sperren NICHT. complete wird darum hier
-    # gerechnet: Core complete UND Paket-Bein erreichbar (package.ok nicht false -> sonst fehlt es in open, Gate bleibt
-    # SICHER zu) UND keine offene Sektion ausser den Ausnahmen; open/doc = nur die sperrenden Bereiche.
+    # Im selben Read die Umleitungs-Texte in der Sprache des Absenders + die Bereichsnamen der
+    # offenen Sektionen (<source>.onboarding.<key>; fehlt einer -> das Label der Sektion).
+    # Finance-Sektionen mit "gates_advisor": false in onboarding/sections.json (der Monats-
+    # Check — der Berater braucht ihn nicht, um einen Plan zu vervollstaendigen) sperren nicht. complete wird darum hier
+    # gerechnet: Core complete und Paket-Bein erreichbar (package.ok nicht false -> sonst fehlt es in open, Gate bleibt
+    # sicher zu) und keine offene Sektion ausser den Ausnahmen; open/doc = nur die sperrenden Bereiche.
     $gateExempt = @(Get-OnboardingSectionKeys $RepoRoot 'finance' -NonGatingOnly)
     foreach ($k in $gateExempt) { if ($k -notmatch '^[a-z][a-z0-9_]*$') { throw "agent.finance_advisor: ungueltiger Sektions-Key '$k'" } }
     $gateExemptSql = if ($gateExempt.Count) { "ARRAY['" + ($gateExempt -join "','") + "']::text[]" } else { 'ARRAY[]::text[]' }
@@ -88,10 +88,10 @@ function Build-AgentFinanceAdvisor {
         ([ordered]@{ chat_id = "String(`$('$START_NODE').item.json.chat_id || '')" })
     $nGateIf = Build-If 'Onboarding gate' @(-1152, -160) `
         "={{ `$('Onboarding gate read').item.json.gate_on === 'true' && `$('Onboarding gate read').item.json.complete === false }}" 'true' 'equals' 'boolean'
-    # output = die user-facing Antwort (der Orchestrator relayed den Specialist-Return). L2: robuster
+    # output = die user-facing Antwort (der Orchestrator relayed den Specialist-Return). Robuster
     # Hinweis (Freitext "richte mich ein" routet ohnehin zum Guide, falls /onboarding nicht im Menue ist).
-    # A3: open defensiv parsen (falls der PG-Node die jsonb-Spalte je als String liefert). M1: leere Union
-    # (z. B. finance unerreichbar) NICHT als "Noch offen: ." rendern -> dann nur der Basis-Hinweis.
+    # open defensiv parsen (falls der PG-Node die jsonb-Spalte je als String liefert). Leere Union
+    # (z. B. finance unerreichbar) nicht als "Noch offen: ." rendern -> dann nur der Basis-Hinweis.
     $nGateDeny = Build-Set 'Onboarding required' @(-960, -300) @(
         ,@('ok', 'false', 'boolean')
         ,@('output', ("={{ (() => { const r = `$('Onboarding gate read').item.json; const o = r.open; const t = r.t || {}; if (r.viewer_is_member === true) { return " + (Get-UiTextJs 't' 'finance.gate.onboarding_member') + "; } const arr = (typeof o === 'string' ? JSON.parse(o || '[]') : (o || [])); const base = " +
@@ -104,7 +104,7 @@ function Build-AgentFinanceAdvisor {
 
     $nBuildInput = Build-Set 'Build Agent Input' @(-928, 0) @(
         ,@('task',          "={{ `$('$START_NODE').item.json.task }}", 'string')
-        # Wechselnde Teile ans ENDE (Prompt-Cache): Gespraechs-Kontext (Rolle + Plan-Stand aus der DB, nie geraten) und die
+        # Wechselnde Teile ans Ende (Prompt-Cache): Gespraechs-Kontext (Rolle + Plan-Stand aus der DB, nie geraten) und die
         # Plan-Reife. viewer kommt aus viewer_is_member (Test-chat_ids = owner), nicht aus can_write (dort waere die Rolle NULL).
         ,@('system_prompt', ("={{ `$('Load Agent Context').item.json.system_prompt + '\n\n## Conversation context\nviewer: ' + (`$('Onboarding gate read').item.json.viewer_is_member === true ? 'member' : 'owner') + '\nplan: ' + String(`$('Onboarding gate read').item.json.plan_state || 'none') + (() => { let rd = `$('Onboarding gate read').item.json.readiness; " +
                              "if (typeof rd === 'string') { try { rd = JSON.parse(rd); } catch (e) { rd = null; } } " +
@@ -118,8 +118,8 @@ function Build-AgentFinanceAdvisor {
             promptType = 'define'
             text = '={{ $json.task }}'
             # maxIterations 20 (Finance: 8): der Gateway schaltet parallele Tool-Aufrufe ab, jede Abfrage kostet also eine
-            # Iteration (Plan-Knopf riss 12 live, 2026-11-01). Das Gesamtbild liefert darum finance.fn_advisor_snapshot in
-            # EINER Abfrage; der Rest ist Reserve fuer Rueckfragen und Speichern. Cap bleibt als Retry-Sturm-Bremse.
+            # Iteration. Das Gesamtbild liefert darum finance.fn_advisor_snapshot in
+            # einer Abfrage; der Rest ist Reserve fuer Rueckfragen und Speichern. Cap bleibt als Retry-Sturm-Bremse.
             options = [ordered]@{ systemMessage = '={{ $json.system_prompt }}'; maxIterations = 20 }
         }
         type = '@n8n/n8n-nodes-langchain.agent'
@@ -135,7 +135,7 @@ function Build-AgentFinanceAdvisor {
     $mb = New-ModelSelectorBundle -ConfigField $CONFIG_FIELD -ConfigNodeName 'Load Config' `
         -AgentNodeName 'Advisor Agent' -SelectorPos @(-688, 208) -ModelRowPos @(-848, 416) -Effort high
 
-    # --- Chat-Memory: eigene Tabelle, GROSSES Fenster (15) — Interviews sind lange Dialoge ---
+    # --- Chat-Memory: eigene Tabelle, grosses Fenster (15) — Interviews sind lange Dialoge ---
     $nMemory = [ordered]@{
         parameters = [ordered]@{
             sessionIdType = 'customKey'
@@ -153,11 +153,11 @@ function Build-AgentFinanceAdvisor {
 
     # --- Read-Tools ---
     $descSelect = 'Run read-only SELECT queries (role finance_ro: schema `finance` only) to ground every recommendation in real data. The whole financial picture in ONE call: SELECT finance.fn_advisor_snapshot() returns one jsonb value with the lists persons, recurring (monthly_cashflow_overview), planned_recurring (recorded, starts later, not counted yet), accounts (cash accounts also carry has_history, everyday_per_day, everyday_per_month, everyday_provisional), networth, savings_plans, standing_orders, loans, insurances, pensions, pension_outlook, real_estate, goals (with goal_status), depot_holdings, depot_performance, warnings (account problems the database sees: kind account_coverage = balance falls too low before the next income, has_history false = planned payments alone, everyday spending comes on top; kind savings_funding = money no longer covers the savings plans from runs_out_on; lowest_balance and lowest_on as computed) (empty = []) and the objects cashflow_summary, parent_cashflow_summary, loan_summary, emergency_reserve; rows are those of the views below, without closed accounts, repaid loans, finished goals, ended savings plans, paid-out pensions or sold property; pension_outlook covers active pensions only. Not in it: notes, contract, policy and account numbers, the purchasing-power values of pensions (they need the plan inflation), the full savings funding rows (account_funding_overview), reserve coverage details (account_reserve_status, depot_reserve_status, savings_goal_reserve_breakdown, maintenance_reserve_status) - read those separately when a section needs them. Prefer views: finance.account_overview, finance.active_recurring_payments, finance.upcoming_recurring_payments, finance.active_insurances, finance.loan_overview, finance.loan_summary, finance.monthly_cashflow_overview, finance.monthly_cashflow_summary, finance.savings_goal_progress, finance.account_reserve_status, finance.real_estate_overview, finance.maintenance_reserve_status, finance.pension_overview, finance.depot_holdings_overview, finance.networth_by_asset_class, finance.parent_cashflow_overview, finance.parent_cashflow_summary, finance.savings_plan_overview (savings plans: amount per execution, rhythm in plain words, monthly_amount, linked goal - a recurring `amount` is per execution, quote monthly_amount, never compute a rhythm yourself), finance.depot_performance (money-weighted return per depot plus an is_total row without child depots: return_pa_pct from 365 days on, otherwise return_since_start_pct which is NOT per year; price_stale = rests on an outdated price; missing_reason instead of a number - never compute a return yourself), finance.depot_reserve_status (per depot: market_value vs the goal money reserved against it, shortfall, breach; fx_missing = coverage not determinable, NOT a shortfall), finance.savings_goal_reserve_breakdown (per goal and account where its reserve sits: source cash|depot, reserved_amount), finance.account_funding_overview (savings funding: one row per account that pays a savings plan or sends a standing order - roles plan|order_source, state, runs_out_on (first day below the goal money set aside on the account), min_projected, min_free (lowest balance minus that goal money), reserved, min_date, monthly_in, monthly_out, everyday none|estimated|unknown, fx_gap, horizon_end = end of the projection; one projection per row, so filter by account_name when you need one account), finance.standing_order_overview (the regular transfers of the household, running and upcoming: kind transfer = own account to own account, debit = savings outflow without a target account; executed_by says who makes a transfer: bank = standing order at the user bank, manual = the user transfers it themselves (nothing to set up or cancel at a bank), unknown = not stated - name a bank to-do only for bank, or ask once when it matters), finance.fn_emergency_reserve_status() (the household emergency reserve as ONE jsonb: exists, name, target_kind amount|months, months, target_eur, basis {monthly_eur, fixed_eur, everyday_eur, everyday_provisional}, covered_eur, accounts [{name, eur}], gap_eur, state ok|warn|neutral, month_options [{months, eur}] = ready targets for 3 and 6 months of expenses; also without a reserve (exists false: basis, month_options) - quote these, never recompute), finance.fn_emergency_reserve_candidates() (jsonb [{name, free_eur, low_date}]: the accounts that may hold the emergency reserve with the money still free even at their lowest projected balance), finance.account_everyday_spending (everyday spending per active cash account estimated from the imported bank statements: everyday_per_day, everyday_per_month, both <= 0 and NULL when has_history is false = no statement yet, unknown rather than zero). Goal status = the one rule, also shown in the overview app: SELECT id, name, finance.fn_savings_goal_pace(id) AS goal_status FROM finance.savings_goal_progress WHERE status = ''active'' (unmeasurable | behind | unknown | reached | paused | on_track; unknown = whether it is behind cannot be judged because part of the goal sits on an account without any exchange rate - never call it behind; NULL = a maintenance reserve without target amount; with has_fx_gap, current_amount and progress_percent are a lower bound). Account runway until the next income: SELECT finance.fn_account_outlook(id) FROM finance.account_overview WHERE name = ''<account name>'' (min_projected, min_date, buffer, shortfall, next_income_date, has_history, suggestion {amount, by_date, from_account}; has_history false = no bank statement yet, so the figure leaves out everyday spending - say so instead of calling the account covered). Never recompute what these views and functions return. Multi-member: networth_by_asset_class carries owner_person_id (NULL = household/joint) so you can aggregate per person - sum across all owners for the whole-family view, exclude role=child for the parents/FIRE pool, or filter one slug for a child sub-portfolio; savings_goal_progress carries beneficiary_person_id (per-child goal progress); parent_cashflow_* is the parents-scope cashflow (a parent->child transfer counts as an expense). Resolve person slugs to names/roles ONLY via the published function: SELECT person_id, full_name, role FROM core.fn_household_persons(). Plan persistence lives in another schema - read it ONLY via the published function: SELECT status, version, interview_state, plan_md FROM core.fn_advisor_read_plan(''finance'') (returns the draft + active plan; use it to resume an interview or check the published version). Direct access to agent.* tables is denied by design. Views are narrow and curated: if unsure of column names, SELECT * from the view, or inspect information_schema.columns. If a query fails you receive the database error back - read it and retry with a corrected query. You have NO write access here.'
-    $descSelect += ' ' + (Get-FinanceViewHintsText)   # Spalten-Spickzettel (view_hints.ps1, Fund 10 KW 45; Drift-Schutz: DB-Test + contract_lint Check 31)
+    $descSelect += ' ' + (Get-FinanceViewHintsText)   # Spalten-Spickzettel (view_hints.ps1; Drift-Schutz: DB-Test + contract_lint Check 31)
     # Frei-SQL-Lesewerkzeug: geteilter Builder (Guard gegen fehlendes query-Argument, onError continue).
     $nToolSelect = New-PostgresSelectToolNode -Description $descSelect -Cred $CRED_PG_RO
 
-    # fn_fetch_context = DIE gemeinsame Lazy-Fetch-Stelle (render-at-fetch: family/finance_profile
+    # fn_fetch_context = die gemeinsame Lazy-Fetch-Stelle (render-at-fetch: family/finance_profile
     # werden zur Ladezeit mit berechneten Ableitungen gerendert; sonst stored content).
     # jsonb-Param (Build-Gotcha-Standard, kein String-Splice) + onError: ein halluzinierter
     # Context-Name killt nicht die Execution, sondern geht als korrigierbarer Tool-Fehler zurueck.
@@ -236,7 +236,7 @@ function Build-AgentFinanceAdvisor {
             ,@('watch_candidates', 'Optional JSON array string, same shape as in tool_publish_plan', 'string', '')
         ) ([ordered]@{ domain = $DOMAIN_EXPR }) @(640, 408) -StartNode $START_NODE
 
-    # Plan teilen (2026-10-28): ein erwachsenes Mitglied schickt dem Owner einen Wunsch zum Haushalts-Plan (owner_info:
+    # Plan teilen: ein erwachsenes Mitglied schickt dem Owner einen Wunsch zum Haushalts-Plan (owner_info:
     # Mitglied bestaetigt, Owner bekommt den Wortlaut). domain fix wie die Plan-Tools.
     # Uebersicht der vereinbarten Eintraege mit Knopf [Durchgehen] (vor dem Publish oder wenn das Gespraech ohne Publish endet;
     # nach dem Publish sendet tool_publish_plan sie selbst). domain fix wie die Plan-Tools.
@@ -253,10 +253,10 @@ function Build-AgentFinanceAdvisor {
             ,@('wish_text', 'The member wish in their own words and language, verbatim (at most 2000 characters)', 'string')
         ) ([ordered]@{ domain = $DOMAIN_EXPR }) @(800, 208) -StartNode $START_NODE
 
-    # NUR create (kein set/delete — Edits/Repair verweist der Advisor an den Monitor-Agenten,
-    # Ownership-Regel: Wert-Fragen -> Advisor, Mechanik -> agent.monitor). domain FIX 'finance'
-    # (der e2e-Switch auf __e2e_monitor__ lebt IM Tool, gekeyt auf chat_id).
-    # Paket-Methoden DIESES Pakets aus dem Manifest-Block monitor_acquisition_methods (eine Quelle mit agent.monitor,
+    # Nur create (kein set/delete — Edits/Repair verweist der Advisor an den Monitor-Agenten,
+    # Ownership-Regel: Wert-Fragen -> Advisor, Mechanik -> agent.monitor). domain fix 'finance'
+    # (der e2e-Switch auf __e2e_monitor__ lebt im Tool, gekeyt auf chat_id).
+    # Paket-Methoden dieses Pakets aus dem Manifest-Block monitor_acquisition_methods (eine Quelle mit agent.monitor,
     # build.ps1 $MonitorAcquisitionMethodList) — kein zweites Abtippen von Methode/Parameter-Text.
     $ownMethods = @($MonitorAcquisitionMethodList | Where-Object { $_.Package -eq 'finance' })
     $ownMethodNames = @($ownMethods | ForEach-Object { $_.Method })
@@ -287,8 +287,8 @@ function Build-AgentFinanceAdvisor {
             ,@('action_note', 'German note sent verbatim in the alert: what to do when it fires', 'string', '')
         ) ([ordered]@{ domain = 'finance'; package = 'finance' }) @(800, 208) -StartNode $START_NODE
 
-    # READ-ONLY Dedup-Fenster: bestehende Monitorings dieser Domain lesen, BEVOR neue vorgeschlagen
-    # werden (Advisor<->Monitor). domain FIX 'finance' (kein $fromAI). Kein HITL (reiner Read).
+    # Read-only Dedup-Fenster: bestehende Monitorings dieser Domain lesen, bevor neue vorgeschlagen
+    # werden (Advisor<->Monitor). domain fix 'finance' (kein $fromAI). Kein HITL (reiner Read).
     $nToolListTriggers = New-AdvisorToolNode 'tool_list_monitor_triggers' (Resolve-CoreServiceAlias 'core:list_monitor_triggers' $CoreServiceMap) `
         'List the EXISTING monitoring triggers for your domain (label, type, status, a compact spec line). Call this BEFORE proposing reminders or watchers: entries with status disabled or declined must not be offered again, and nothing that already exists. Read-only - changing, repairing or deleting triggers is the monitor agent''s job.' `
         @() ([ordered]@{ domain = 'finance' }) @(960, 208) -StartNode $START_NODE
@@ -378,7 +378,7 @@ function Build-AgentFinanceAdvisor {
     $svc = Add-ServiceTools -Package 'finance' -AgentNode 'Advisor Agent' -StartNode $START_NODE -Position @(-336, 840) -ExistingNodes $nodes
     $nodes += $svc.Nodes
 
-    # Eingangs-Naht-Connections aus New-AdvisorGateChain ZUERST mergen -> Schluessel-Reihenfolge
+    # Eingangs-Naht-Connections aus New-AdvisorGateChain zuerst mergen -> Schluessel-Reihenfolge
     # ($START_NODE -> Depth -> Package -> Core) bleibt erhalten (= JSON connections-Reihenfolge), dann
     # die finance-lokale Pipeline (Load Config -> Flag-Gate -> Advisor) + die Tool/Memory-ai_*-Kanten.
     $conns = [ordered]@{}

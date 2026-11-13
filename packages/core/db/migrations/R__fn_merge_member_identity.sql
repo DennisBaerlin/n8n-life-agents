@@ -1,20 +1,22 @@
 -- ============================================================
--- fn_merge_member_identity (WS-5a — geteilter Identitaets-Merge-Kern)
---   Die EINE Stelle, die telegram_user_id + role in eine BESTEHENDE family-Person merged. Gerufen von
---   ZWEI Pfaden: fn_consume_pairing_challenge (Owner-Bootstrap, sofort-bindend) UND fn_confirm_pairing
---   (Member-Einladung, owner-bestaetigt). DRY: vorher lebte die Merge-Logik inline in fn_consume.
+-- fn_merge_member_identity (ATOMIC WRITE)
+--   Die eine Stelle, die telegram_user_id + role in eine bestehende family-Person merged. Gerufen von
+--   zwei Pfaden: fn_consume_pairing_challenge (Owner-Bootstrap, sofort-bindend) und fn_confirm_pairing
+--   (Member-Einladung, owner-bestaetigt).
+--   Eingabe: p_person_id, p_uid (telegram_user_id), p_role (alle Pflicht; leere person_id oder NULL-uid -> RAISE).
 --
---   Doppel-Bind-/Replay-Backstop (Opus-Reviewer B1): der family-Validator (trg_validate_household_facts)
---   faengt nur uid-Kollisionen INNERHALB einer Write-Payload, NICHT „diese Person ist schon gepairt".
---   fn_set_context_facts merged zudem bedingungslos (kein WHERE telegram_user_id IS NULL). DAHER liest
---   dieser Kern die aktuelle telegram_user_id der Zielperson SELBST vorab:
+--   Doppel-Bind-/Replay-Backstop: der family-Validator (trg_validate_household_facts)
+--   faengt nur uid-Kollisionen innerhalb einer Write-Payload, nicht "diese Person ist schon gepairt".
+--   fn_set_context_facts merged zudem bedingungslos (kein WHERE telegram_user_id IS NULL). Darum liest
+--   dieser Kern die aktuelle telegram_user_id der Zielperson selbst vorab:
 --     - bereits == p_uid  -> idempotenter no-op {ok:true, already:true} (Replay / Owner-Doppel-Confirm)
 --     - bereits != p_uid  -> {ok:false, already paired} (Doppel-Bind-Schutz)
---     - NULL              -> mergen (as_of der Person BEWAHREN -> kein Staleness-Sprung, Pairing ist
---                            KEINE Fakten-Aktualisierung; M3 aus fn_consume mitgezogen).
+--     - NULL              -> mergen (as_of der Person bewahren -> kein Staleness-Sprung, Pairing ist
+--                            keine Fakten-Aktualisierung).
 --   Person fehlt / family-Merge schlaegt fehl -> RAISE (person_id ist system-aufgeloest) -> der Aufrufer
 --   rollt seine Transaktion (consumed_at) zurueck, die Challenge bleibt offen.
 --   RUECKGABE: {ok:true, role, telegram_user_id, person_id [, already]} | {ok:false, reason}
+--   (reason: person is already paired to a different identity).
 --   Invarianten-Tests: tests/db/core/test_fn_merge_member_identity.sql + test_fn_pairing_challenge.sql
 -- ============================================================
 CREATE OR REPLACE FUNCTION agent.fn_merge_member_identity(p_person_id text, p_uid bigint, p_role text)
@@ -47,14 +49,14 @@ BEGIN
             RETURN jsonb_build_object('ok', true, 'already', true, 'role', p_role,
                                       'telegram_user_id', p_uid, 'person_id', p_person_id);
         END IF;
-        -- Zielperson traegt bereits eine ANDERE Identitaet -> Doppel-Bind-Backstop (B1).
+        -- Zielperson traegt bereits eine andere Identitaet -> Doppel-Bind-Backstop.
         RETURN jsonb_build_object('ok', false,
             'reason', format('person "%s" is already paired to a different identity', p_person_id));
     END IF;
 
     v_as_of := v_person->>'as_of';   -- Skelett-as_of bewahren (kein Staleness-Stempel auf heute)
 
-    -- Bewusst OHNE chat_id (Pairing ist nicht chat-autorisiert; der owner_only-Backstop greift nicht).
+    -- Bewusst ohne chat_id (Pairing ist nicht chat-autorisiert; der owner_only-Backstop greift nicht).
     v_set := agent.fn_set_context_facts(jsonb_build_object(
         'context_name', 'family',
         'facts', jsonb_build_object('persons', jsonb_build_array(

@@ -1,7 +1,9 @@
 -- ============================================================
--- fn_statement_match (READ, STABLE) -- Zuordnung der Kontoauszug-Zeilen zu erwarteten Zahlungen (Monats-Check WP-C)
---   Die EINE Zuordnungs-Adresse fuer Vorschau (fn_statement_prepare) und Buchung (fn_apply_bank_statement ruft
---   prepare erneut). Deterministisch, kein LLM. Nur Zeilen NACH p_cut (Tage bis p_cut stecken im bestaetigten Saldo).
+-- fn_statement_match (READ, STABLE) -- Zuordnung der Kontoauszug-Zeilen zu erwarteten Zahlungen (Monats-Check)
+--   Die eine Zuordnungs-Adresse fuer Vorschau (fn_statement_prepare) und Buchung (fn_apply_bank_statement ruft
+--   prepare erneut). Deterministisch, kein LLM. Nur Zeilen nach p_cut (Tage bis p_cut stecken im bestaetigten Saldo).
+--   Eingabe: p_account_id, p_cut (bestaetigter Tag), p_period_end, p_lines (jsonb-Array: date, amount, counterparty,
+--   counterparty_iban, creditor_id, mandate_ref, purpose, optional kind/isin/symbol/sub_kind/transfer_fee).
 --   Kandidaten:
 --     * offene Dauerauftrags-Vorkommen dieses Kontos als Quelle (Soll-Betrag fn_recurring_occurrence_amount) oder als
 --       Transfer-Ziel (+|amount|, nur gleiche Waehrung), Faelligkeit in [p_cut-10, p_period_end+5];
@@ -9,24 +11,24 @@
 --     * Stufe 0: schon gebuchte Dauerauftrags-/Zinsbuchungen dieses Kontos im Zeitraum (z. B. das Gegenbein aus dem
 --       Auszug des Partnerkontos oder eine manuell bestaetigte Abbuchung) — werden nicht erneut gebucht.
 --   Stufen (Paar Zeile x Kandidat, Vorzeichen muss stimmen):
---     0 = gebuchte Buchung: gleicher Betrag, Buchungsdatum +-5 Tage. Liegt das Buchungsdatum NACH period_end, nur wenn
+--     0 = gebuchte Buchung: gleicher Betrag, Buchungsdatum +-5 Tage. Liegt das Buchungsdatum nach period_end, nur wenn
 --         die Buchung (alle Beine der group_id) aufs Zeilendatum verschiebbar ist (kein Bein-Konto dort abgeglichen):
 --         fn_apply_bank_statement verschiebt sie, sonst zaehlte sie zusaetzlich im Rest.
 --     A = Schluessel: SEPA-Mandat (Glaeubiger-ID|Mandatsreferenz) oder Gegen-IBAN eines Glieds der Vorgaenger-Kette,
 --         bzw. Gegen-IBAN = Kontonummer des Transfer-Gegenkontos; Betrag 50-150 % des Solls; Faelligkeit +-10 Tage.
---     B = Betrag + Datum: Zeile 5 Tage vor bis 10 Tage nach der Faelligkeit; Betrag exakt (+-0,005) ODER, wenn ein
+--     B = Betrag + Datum: Zeile 5 Tage vor bis 10 Tage nach der Faelligkeit; Betrag exakt (+-0,005) oder, wenn ein
 --         Namens-Token des Dauerauftrags (>= 4 Zeichen) im Zeilentext steht, +-5 % (mind. 2,00). Verspaetete Abbuchung: 11-14 Tage
---         nur mit exaktem Betrag UND Namens-Token, nur Rhythmus month/year ohne feste Monatstage (kuerzere Rhythmen schloessen sonst ein altes Vorkommen).
+--         nur mit exaktem Betrag und Namens-Token, nur Rhythmus month/year ohne feste Monatstage (kuerzere Rhythmen schloessen sonst ein altes Vorkommen).
 --   Zuordnung gierig in fester Ordnung (Stufe -> |Betragsabweichung| -> |Tage| -> Zeile -> Kandidat): jede Zeile und
 --   jeder Kandidat hoechstens einmal (Muster YNAB/Actual: gleiche Betraege am selben Tag werden so stabil verteilt).
 --   Bank-Export-Datei: Zeilen mit kind (fn_bank_export_normalize) treffen nur passende Kandidaten: buy nur einen
---   Sparplan bzw. gebuchten Kauf DERSELBEN Position (ISIN, Krypto per Symbol), cash/fee nie einen Sparplan oder Kauf,
+--   Sparplan bzw. gebuchten Kauf derselben Position (ISIN, Krypto per Symbol), cash/fee nie einen Sparplan oder Kauf,
 --   interest den Zins ohne Textsuche, sell/dividend/tax/corporate/unknown nichts (die Prepare behandelt sie selbst).
---   Gedruckter Auszug = kind NULL = Verhalten wie zuvor.
+--   Gedruckter Auszug = kind NULL = keine kind-Filter.
 --   Bank-Import-Modul (Transfers zwischen eigenen Konten, beide Import-Reihenfolgen):
 --     0 (Gruppe, ckey 'g:') = schon gebuchter Ad-hoc-Transfer dieses Kontos (von Hand oder aus dem Auszug des
 --         Partnerkontos): Gruppe nur aus transfer/fee-Beinen ohne Dauerauftrag/Zins, mit Bein auf einem anderen Konto;
---         Summe der Gruppen-Beine auf DIESEM Konto = Zeilenbetrag, +-5 Tage (Dauerauftrags-Transfers bleiben 't:').
+--         Summe der Gruppen-Beine auf diesem Konto = Zeilenbetrag, +-5 Tage (Dauerauftrags-Transfers bleiben 't:').
 --         Zeile mit transfer_fee (Auszahlung mit Gebuehr): auch Gruppe ohne Gebuehr-Bein = Zeile + Gebuehr (expected <>
 --         amount; die Prepare bucht die Gebuehr als eigene Buchung nach, nie in die fremde Gruppe).
 --     T = Gegen-IBAN = Kontonummer eines anderen aktiven eigenen Kontos, kein Dauerauftrag getroffen -> neuer Transfer
@@ -151,8 +153,8 @@ BEGIN
             END AS stage
         ) x
         WHERE x.stage IS NOT NULL AND sign(l.amt) = sign(o.expected)
-          -- Broker-CSV: Kauf-Zeile nur gegen einen Sparplan DERSELBEN Position, Geldzeile nie gegen einen Sparplan,
-          -- Verkauf/Dividende/Steuer/unbekannt nie gegen einen Dauerauftrag (gedruckter Auszug: kind NULL, wie bisher)
+          -- Broker-CSV: Kauf-Zeile nur gegen einen Sparplan derselben Position, Geldzeile nie gegen einen Sparplan,
+          -- Verkauf/Dividende/Steuer/unbekannt nie gegen einen Dauerauftrag (gedruckter Auszug: kind NULL, kein Filter)
           AND (l.kind IS NULL
                OR (l.kind = 'buy' AND o.is_plan AND (o.sp_isin = l.isin OR (o.sp_isin IS NULL AND l.isin IS NULL AND o.sp_symbol = l.symbol)))
                OR (l.kind IN ('cash', 'fee') AND NOT o.is_plan))

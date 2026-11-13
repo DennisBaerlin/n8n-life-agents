@@ -1,7 +1,7 @@
 -- tests/db/career/test_fn_runway.sql
--- career.fn_runway (WS-5 Runway-Bruecke, Consumer-Seite): rechnet die Runway (liquide Mittel /
--- (Monats-Ausgaben - erwartetes Notfall-Einkommen)) vs Probezeit-Laenge. DB rechnet, "LLM rechnet nicht".
--- DOPPEL-GUARD auf das OPTIONALE finance-Paket: core.fn_package_active('finance') UND
+-- career.fn_runway (Runway-Bruecke, Consumer-Seite): rechnet die Runway (liquide Mittel /
+-- (Monats-Ausgaben - erwartetes Notfall-Einkommen)) vs Probezeit-Laenge.
+-- Doppel-Guard auf das optionale finance-Paket: core.fn_package_active('finance') und
 -- to_regprocedure('finance.fn_liquidity_snapshot()') -> bei Miss graceful NULL (Zeile entfaellt), nie RAISE.
 -- Math-Assertions self-konsistent gegen den realen Snapshot (robust gegen Bestands-Cash/-Ausgaben).
 BEGIN;
@@ -56,7 +56,7 @@ BEGIN
   IF (res->>'covers')::boolean IS DISTINCT FROM true THEN RAISE EXCEPTION 'FAIL [4 covers bei unbegrenzt]: %', res; END IF;
   RAISE NOTICE 'PASS [4] gap >= Ausgaben -> runway_months NULL (unbegrenzt), covers=true, kein Div/0';
 
-  -- ---------- TEST 4b (WP-3c): has_fx_gap wird aus dem Snapshot durchgereicht ----------
+  -- ---------- TEST 4b: has_fx_gap wird aus dem Snapshot durchgereicht ----------
   DECLARE v_clp int; BEGIN
     res := career.fn_runway('{}'::jsonb);
     IF (res->>'has_fx_gap')::boolean IS DISTINCT FROM false THEN

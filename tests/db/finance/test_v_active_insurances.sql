@@ -1,7 +1,7 @@
 -- tests/db/finance/test_v_active_insurances.sql
--- finance.active_insurances (Befund 2026-11-01): eine laufende Police gehoert in die View, auch wenn ihr gespeicherter
+-- finance.active_insurances: eine laufende Police gehoert in die View, auch wenn ihr gespeicherter
 -- Beginn in der Zukunft liegt. Ohne genannten Vertragsbeginn faellt valid_from auf die erste Abbuchung zurueck, und das ist
--- beim Erfassen meist die NAECHSTE Abbuchung; die Police fehlte dann in allen Lesern (Onboarding: "fehlen noch"). Werte erfunden.
+-- beim Erfassen meist die naechste Abbuchung; die Police fehlte dann in allen Lesern (Onboarding: "fehlen noch"). Werte erfunden.
 --   (1) erste Abbuchung in der Zukunft -> sichtbar, Beitrag + Konto gefuellt (Kopf der Kette, noch kein gueltiges Glied)
 --   (2) Dubletten-Hinweis beim Anlegen sieht diese Police (gleiche Gesellschaft, gleicher Jahresbeitrag)
 --   (3) Beginn in der Vergangenheit -> sichtbar

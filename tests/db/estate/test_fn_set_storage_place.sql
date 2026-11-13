@@ -1,5 +1,5 @@
 -- tests/db/estate/test_fn_set_storage_place.sql
--- WS-2: partielles Fundstellen-Update (Repurpose statt Delete — Fundstellen sind FK-Ziel
+-- Partielles Fundstellen-Update (Repurpose statt Delete — Fundstellen sind FK-Ziel
 -- der directives, RESTRICT) — Rename/kind-Wechsel, kind-Guard, Kind-Reject. Self-contained.
 BEGIN;
 

@@ -1,7 +1,6 @@
 ﻿#Requires -Version 5.1
 # check_ci_status.ps1 — CI-Ampel: ist der letzte Lauf jedes GitHub-Workflows auf main (Release: der letzte Tag-Lauf)
-# gruen? Anlass 2026-10-22: workflow_lint war ~20 Pushes lang nur in der CI rot (lokal uebersprungen), keine Session
-# hat es gemerkt. Genutzt vom SessionStart-Hook .claude/hooks/check_ci_status.ps1 (-Hook: knapper Kontext-Text,
+# gruen? Genutzt vom SessionStart-Hook .claude/hooks/check_ci_status.ps1 (-Hook: knapper Kontext-Text,
 # still bei gruen/Fehler) und manuell. Read-only gegen die GitHub-API; Token aus dem Git-Credential-Store (GCM,
 # derselbe Weg wie git push), nie interaktiv. Exit-Code = Anzahl roter Workflows (Fehler beim Abfragen -> 0 + Hinweis).
 #

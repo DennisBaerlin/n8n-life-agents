@@ -1,27 +1,30 @@
 -- ============================================================
 -- fn_arm_pairing_challenge (Multi-User-Pairing — Einmal-Code armieren)
 --   Schreibt die Pairing-Challenge fuer eine Telegram-Identitaet in agent.pairing_state
---   (10-Min-Expiry). Dasselbe "ein Ziel = eine offene Challenge"-Muster wie das fruehere
---   fn_arm_import_challenge (Phase 4b via V005 retired): offene aeltere werden still konsumiert,
---   ergaenzt um role + den Owner-Bootstrap-Guard.
---   p: { chat_id?, telegram_user_id?, role, challenge }
+--   (10-Min-Expiry). Muster "ein Ziel = eine offene Challenge": offene aeltere werden still konsumiert;
+--   dazu role und der Owner-Bootstrap-Guard.
+--   p: { chat_id?, telegram_user_id?, person_id?, role, challenge }
 --      chat_id           Member-Knock: der knockende Chat; Owner-Bootstrap (CLI): weglassen (NULL)
 --      telegram_user_id  Member: bekannte from.id (bindet den Code an die Identitaet); Owner: NULL
+--      person_id         Member-Einladungs-Ziel; beim Owner-Bootstrap NULL
 --      role              owner|partner|child — wird bei Erfolg in die Person gemergt
 --      challenge         >=8 alphanum Code (Entropie-Boden auch als CHECK; OWASP: <64 bit ⟹ Lockout)
---   GESETZE:
---      - owner-no-rearm: existiert in den family-Facts bereits ein GEPAIRTER Owner (role=owner MIT
+--   Gesetze:
+--      - owner-no-rearm: existiert in den family-Facts bereits ein gepairter Owner (role=owner mit
 --        gesetzter telegram_user_id), wird ein erneutes Owner-Arm abgelehnt ({ok:false}) — der
 --        etablierte Owner ist Einmal-Bootstrap; ein Re-Arm braucht CLI-Zugriff (Owner aus family
---        entfernen). Das noch UNVERKNUEPFTE Owner-Skelett (role=owner, telegram_user_id NULL) blockt
---        NICHT: der Zwei-Stufen-Bootstrap (Phase 4) seedet das Skelett, BEVOR der Owner seinen Code
+--        entfernen). Das noch unverknuepfte Owner-Skelett (role=owner, telegram_user_id NULL) blockt
+--        nicht: der Zwei-Stufen-Bootstrap seedet das Skelett, bevor der Owner seinen Code
 --        eintippt — fn_consume hat sonst keine Person zum Mergen. Struktureller Race-Backstop:
 --        Partial-UNIQUE pairing_state_one_open_owner (packages/core/db/agent.pairing_init.sql).
---      - Supersede: offene Challenges desselben Ziels (gleicher chat_id ODER gleiche
---        telegram_user_id ODER — bei role=owner — jede offene Owner-Challenge) werden vor dem
+--      - Supersede: offene Challenges desselben Ziels (gleicher chat_id oder gleiche
+--        telegram_user_id oder person_id oder — bei role=owner — jede offene Owner-Challenge) werden vor dem
 --        INSERT konsumiert -> hoechstens eine offene Challenge je Ziel (haelt die Partial-UNIQUE
 --        -Indizes konfliktfrei).
---   RUECKGABE: {ok:true, id, role, expires_at} | {ok:false, reason}
+--   Rueckgabe: {ok:true, id, role, expires_at} | {ok:false, reason}; reason = role/challenge/telegram_user_id
+--      ungueltig, "a paired owner already exists ...", "a pairing challenge for this target is already open
+--      (concurrent arm); retry".
+--   Seiteneffekt: konsumiert offene Challenges des Ziels, INSERT in agent.pairing_state.
 --   Invarianten-Tests: tests/db/core/test_fn_pairing_challenge.sql
 -- ============================================================
 CREATE OR REPLACE FUNCTION agent.fn_arm_pairing_challenge(p jsonb)
@@ -31,7 +34,7 @@ DECLARE
     v_tg    BIGINT;
     v_role  TEXT   := p->>'role';
     v_chal  TEXT   := COALESCE(p->>'challenge', '');
-    v_pid   TEXT   := NULLIF(p->>'person_id', '');   -- WS-5a: Member-Einladungs-Ziel (NULL beim Owner-Bootstrap)
+    v_pid   TEXT   := NULLIF(p->>'person_id', '');   -- Member-Einladungs-Ziel (NULL beim Owner-Bootstrap)
     v_id    INT;
     v_exp   TIMESTAMPTZ;
 BEGIN
@@ -50,9 +53,9 @@ BEGIN
         END;
     END IF;
 
-    -- owner-no-rearm: ein bereits etablierter (GEPAIRTER) Owner kann nicht ueber diesen Pfad neu
-    -- armiert werden (Privilege-Escalation-Schutz). "Etabliert" = role=owner MIT telegram_user_id;
-    -- das noch unverknuepfte Bootstrap-Skelett (telegram_user_id NULL) blockt bewusst NICHT, damit
+    -- owner-no-rearm: ein bereits etablierter (gepairter) Owner kann nicht ueber diesen Pfad neu
+    -- armiert werden (Privilege-Escalation-Schutz). "Etabliert" = role=owner mit telegram_user_id;
+    -- das noch unverknuepfte Bootstrap-Skelett (telegram_user_id NULL) blockt bewusst nicht, damit
     -- der Owner seinen Code gegen das vorab geseedete Skelett einloesen kann (Zwei-Stufen-Bootstrap).
     -- Cross-Table-Lesepruefung -> fn-Ebene (Projekt-Regel).
     IF v_role = 'owner' AND EXISTS (
@@ -67,7 +70,7 @@ BEGIN
 
     -- Supersede: offene Challenges desselben Ziels still konsumieren (hoechstens eine offen). Ziel =
     -- gleicher chat_id ODER gleiche telegram_user_id ODER (owner) jede offene Owner-Challenge ODER
-    -- (Member-Einladung, WS-5a) gleiche person_id -> haelt pairing_state_one_open_per_person konfliktfrei.
+    -- (Member-Einladung) gleiche person_id -> haelt pairing_state_one_open_per_person konfliktfrei.
     UPDATE agent.pairing_state
     SET consumed_at = NOW()
     WHERE consumed_at IS NULL
@@ -76,7 +79,7 @@ BEGIN
          OR (v_role = 'owner'   AND role = 'owner')
          OR (v_pid  IS NOT NULL AND person_id = v_pid) );
 
-    -- Der Supersede oben haelt die Partial-UNIQUE-Indizes im Normalfall konfliktfrei; bei ZWEI
+    -- Der Supersede oben haelt die Partial-UNIQUE-Indizes im Normalfall konfliktfrei; bei zwei
     -- echt gleichzeitigen Arms desselben Ziels (getrennte Tx) kann der zweite INSERT dennoch gegen
     -- pairing_state_one_open_* laufen -> als freundliches {ok:false} fangen statt als Owner-Alert.
     BEGIN
@@ -92,7 +95,7 @@ BEGIN
 END;
 $$;
 
--- Backup-Pfad-fn: EXECUTE-REVOKE fuer die Agent-Leserollen (Pairing laeuft ueber die Haupt-Credential).
+-- EXECUTE-REVOKE fuer die Agent-Leserollen (Pairing laeuft ueber die Haupt-Credential).
 REVOKE ALL ON FUNCTION agent.fn_arm_pairing_challenge(jsonb) FROM public;
 DO $$ BEGIN
     IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'context_ro') THEN

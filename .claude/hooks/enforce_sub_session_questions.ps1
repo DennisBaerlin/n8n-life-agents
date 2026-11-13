@@ -1,5 +1,5 @@
 # PreToolUse-Hook (AskUserQuestion|mcp__ccd_turn__wrap_up): Eine von der Leitung gestartete Session fragt den Owner nicht
-# selbst (Owner-Regel 2026-11-02, Skill /coordinate Abschnitt 5). Die Regel allein reichte nicht: zweimal am selben Tag kam eine
+# selbst (Skill /coordinate Abschnitt 5). Die Regel allein reicht nicht: sonst kommt eine
 # Frage direkt beim Owner an. Hart per 'deny', weil Hook-'ask' still durchgewinkt wird (siehe enforce_owner_window.ps1).
 #
 # Wer gilt als Unter-Session: Zeile 1 je Eintrag in .claude/sub_sessions.txt im Haupt-Checkout (gitignored, schreibt die Leitung

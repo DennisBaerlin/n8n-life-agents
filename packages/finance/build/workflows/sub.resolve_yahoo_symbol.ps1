@@ -1,23 +1,23 @@
 ﻿#Requires -Version 5.1
 # Definition agent.finance.sub_resolve_yahoo_symbol -> Build-ResolveYahooSymbol. Dot-gesourct von build.ps1.
-# Deterministisch, KEIN LLM. Loest beim Kauf (book_stock_buy) / Korrigieren (set_holding) das richtige Yahoo-
+# Deterministisch, kein LLM. Loest beim Kauf (book_stock_buy) / Korrigieren (set_holding) das richtige Yahoo-
 # Kurs-Symbol fuer eine ISIN auf, damit der Markt-Preis-Cron (COALESCE(provider_symbol, symbol)) verlaesslich
 # trifft. Quelle = Yahoo (wie Portfolio Performance): v1/finance/search?q=ISIN -> Kandidaten -> je Kandidat
-# v8/finance/chart (Preis/Waehrung/Boerse; GBp/Pence -> GBP/100). DISAMBIGUIERUNG per Waehrung == price_currency
-# (die vom Nutzer mit dem Kaufkurs genannte Waehrung; zuverlaessiger Selektor), darin die erste plausible Notierung. BEST-EFFORT /
-# NON-BLOCKING: alle HTTP in EINEM Code-Node (this.helpers.httpRequest top-level, try/catch, timeout 3000ms) wie der
+# v8/finance/chart (Preis/Waehrung/Boerse; GBp/Pence -> GBP/100). Disambiguierung per Waehrung == price_currency
+# (die vom Nutzer mit dem Kaufkurs genannte Waehrung; zuverlaessiger Selektor), darin die erste plausible Notierung. Best-effort /
+# non-blocking: alle HTTP in einem Code-Node (this.helpers.httpRequest top-level, try/catch, timeout 3000ms) wie der
 # Cron; jeder Fehler/Ausfall -> { verified:false, provider_symbol:raw } -> die Buchung laeuft trotzdem. Output flach:
 # { ok, verified, provider_symbol, market_price, currency, exchange, candidates, foreign_listing, plausible }.
-# foreign_listing (2026-10-23): KEINE Notierung in der Wunschwaehrung, der beste Kandidat notiert in einer anderen
+# foreign_listing: keine Notierung in der Wunschwaehrung, der beste Kandidat notiert in einer anderen
 # Waehrung (derselbe ISIN-Treffer, z. B. eine USD-Notierung fuer eine EUR-Position) -> Aufrufer duerfen ihn bei plausible
 # uebernehmen; die Bewertung rechnet per FX in EUR um (depot_holdings_overview).
-# PLAUSI-PFLICHT (Owner 2026-10-27): verified setzt plausible voraus — ein Treffer ohne passende Kurs-Groessenordnung
-# zaehlt nie als verifiziert. ZWEI Referenzen, eine reicht: ref_price/ref_currency (letzter Kurs der Position, enges Band
-# 0,8-1,25) ODER cost_price/cost_currency bzw. price_per_share in price_currency (Kauf-/Einstandskurs, Band 0,2-5 — deckt
+# Plausi-Pflicht: verified setzt plausible voraus — ein Treffer ohne passende Kurs-Groessenordnung
+# zaehlt nie als verifiziert. Zwei Referenzen, eine reicht: ref_price/ref_currency (letzter Kurs der Position, enges Band
+# 0,8-1,25) oder cost_price/cost_currency bzw. price_per_share in price_currency (Kauf-/Einstandskurs, Band 0,2-5 — deckt
 # auch einen seit Wochen veralteten oder von einer falschen Notierung stammenden letzten Kurs ab). Ohne jede Referenz ->
 # plausible:false. Andere Waehrung als die Referenz: Vergleich in EUR ueber fx_rates (JSON {CCY: Kurs EUR->CCY}); ohne
-# FX nur roh gegen den Kaufkurs (grobes Band). adoptable = EINE Regel "darf als Kursquelle gespeichert werden"
-# (verified ODER plausible Fremdwaehrungs-Notierung derselben ISIN) fuer alle Aufrufer. try_symbols (Websuche) sind nicht
+# FX nur roh gegen den Kaufkurs (grobes Band). adoptable = eine Regel "darf als Kursquelle gespeichert werden"
+# (verified oder plausible Fremdwaehrungs-Notierung derselben ISIN) fuer alle Aufrufer. try_symbols (Websuche) sind nicht
 # ISIN-gebunden -> dort nie foreign_listing (nur Treffer in Wunschwaehrung). name = Yahoo-Name der Notierung.
 function Build-ResolveYahooSymbol {
     $trig = Build-Trigger @('isin','raw_symbol','price_currency','price_per_share','provider_symbol','ref_price','ref_currency','cost_price','cost_currency','fx_rates','try_symbols') @(0, 0)

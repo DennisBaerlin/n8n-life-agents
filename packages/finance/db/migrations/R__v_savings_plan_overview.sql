@@ -1,20 +1,20 @@
 -- ============================================================
--- finance.savings_plan_overview (Lese-View, Befund 2026-10-27)
---   EINE Zeile je Sparplan mit den Bedingungen in Klartext: Betrag JE AUSFUEHRUNG, Rhythmus (fn_schedule_label),
---   Monatsbetrag (recurring_payments.monthly_equivalent), naechste Ausfuehrung. Anlass: der Agent las einen
---   Sparplan mit festen Ausfuehrungstagen aus recurring_payments und meldete den Betrag je Ausfuehrung als
---   Monatsbetrag. Der Agent liest Sparplaene hier, nie aus den Rohtabellen.
+-- finance.savings_plan_overview (Lese-View)
+--   Eine Zeile je Sparplan mit den Bedingungen in Klartext: Betrag je Ausfuehrung, Rhythmus (fn_schedule_label),
+--   Monatsbetrag (recurring_payments.monthly_equivalent), naechste Ausfuehrung. Aus recurring_payments gelesen
+--   wird der Betrag je Ausfuehrung leicht als Monatsbetrag missdeutet (feste Ausfuehrungstage).
+--   Der Agent liest Sparplaene hier, nie aus den Rohtabellen.
 --   Bedingungen aus dem HEUTE gueltigen Glied der Raten-Kette (fn_recurring_current; vor dem Start = Kopf ->
 --   starts_on). Eine geplante Aenderung (Kopf <> heute gueltiges Glied, Validity-Split mit kuenftigem Stichtag)
 --   steht in change_from / new_amount_per_execution / new_rhythm.
 --   next_execution kettenbewusst (nur aktive Plaene): erster Rasterpunkt des heute gueltigen Glieds ab
 --   max(heute, juengste erledigte Ausfuehrung der Kette + 1, valid_from) vor dessen valid_to, sonst der des Kopfs.
---   Bewusst EIGENE Datei (R__v_*, sortiert nach R__fn_*) und NUR Tabellen + Funktionen, keine Views aus
+--   Bewusst eigene Datei (R__v_*, sortiert nach R__fn_*) und nur Tabellen + Funktionen, keine Views aus
 --   R__finance_views: deren DROP ... CASCADE wuerde diese View sonst still mitreissen (Repeatables laufen nur bei
 --   eigener Checksum-Aenderung). Das Aktiv-Praedikat von active_recurring_payments ist deshalb hier nicht noetig:
 --   status kommt aus dem Plan (eine Quelle fuer pausiert/aktiv, fn_set_savings_plan kaskadiert auf die rp).
 --   Rechte: finance_ro per GRANT SELECT ON ALL TABLES (core.fn_provision_package_roles).
---   chain ist MATERIALIZED (2026-10-28): inline eingesetzt stand next_from (mit fn_recurring_last_done) in jeder
+--   chain ist MATERIALIZED: inline eingesetzt stand next_from (mit fn_recurring_last_done) in jeder
 --   Zeilen-Bedingung des Rasters von fn_schedule_occurrences und lief je Rasterzeile neu (~0,25 s je Plan statt ms).
 -- ============================================================
 DROP VIEW IF EXISTS finance.savings_plan_overview CASCADE;
@@ -65,8 +65,8 @@ SELECT sp.id,
        CASE WHEN h.id <> c.id THEN finance.fn_schedule_label(h.schedule_unit, h.schedule_interval,
                                        h.schedule_day_of_month, h.schedule_days_of_month) END AS new_rhythm,
        sp.recurring_payment_id,
-       -- Mini-App UX 2026-10-31 (ans Ende): heute gueltiges Glied + Kopf der Kette und die festen Tage des Glieds, damit
-       -- der Bildschirm Ziele die Kette nicht ein zweites Mal ablaeuft
+       -- heute gueltiges Glied + Kopf der Kette und die festen Tage des Glieds, damit der Bildschirm Ziele
+       -- die Kette nicht ein zweites Mal ablaeuft
        c.id                                     AS current_rp_id,
        h.id                                     AS head_rp_id,
        c.schedule_days_of_month                 AS days_of_month,

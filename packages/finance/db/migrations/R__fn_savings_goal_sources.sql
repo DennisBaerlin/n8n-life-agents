@@ -1,22 +1,23 @@
 -- ============================================================
--- fn_savings_goal_sources (READ, STABLE) -- woher kommt die Rate eines BESTEHENDEN Ziels (Mini-App UX 2026-10-31)
---   Die EINE Adresse fuer die Quelle der Rate eines Sparziels, einer Instandhaltungs- oder Notreserve; Konsument:
---   fn_app_screen_goals (Aufklappen „Rate …“). Ein neues Ziel leitet seine Quellen weiter allein fn_savings_goal_funding
+-- fn_savings_goal_sources (READ, STABLE) -- woher kommt die Rate eines bestehenden Ziels
+--   Die eine Adresse fuer die Quelle der Rate eines Sparziels, einer Instandhaltungs- oder Notreserve; Konsument:
+--   fn_app_screen_goals (Aufklappen „Rate …“). Ein neues Ziel leitet seine Quellen allein fn_savings_goal_funding
 --   ab (Write + Import-Karte); beide lesen denselben Monatsbetrag (Paritaets-Test).
+--   Eingabe: p_goal_id int (Pflicht).
 --   plans: aktive Sparplaene mit savings_plans.savings_goal_id = Ziel (status active, dasselbe Praedikat wie
 --     fn_savings_goal_funding und fn_savings_goal_pace Regel 5), sortiert nach Monatsbetrag absteigend, Name; je Plan
 --     {name, depot_owner_person_id, beneficiary_person_id} (die Seite filtert damit ihre Sichtbarkeit).
 --     plans_monthly_eur = Summe der Monatsbetraege in EUR wie fn_savings_goal_funding.plan_monthly (heute gueltiges
 --     Glied fn_recurring_current, abs(monthly_equivalent), Waehrung seines Kontos; = savings_plan_overview.monthly_amount,
---     die View laeuft aber die Kette ALLER Plaene ab und waere je Ziel zu teuer); fehlt ein Kurs: null + plans_fx_gap
+--     die View laeuft aber die Kette aller Plaene ab und waere je Ziel zu teuer); fehlt ein Kurs: null + plans_fx_gap
 --     (nie still zu niedrig); ohne Plan null.
 --   transfer: Raten-Kette savings_goals.recurring_payment_id -> Glied fn_recurring_current(rp, heute), wenn status active
---     und valid_to offen oder kuenftig. Bewusst NICHT exakt active_recurring_payments: ein erst kuenftig startendes Glied
+--     und valid_to offen oder kuenftig. Bewusst nicht exakt active_recurring_payments: ein erst kuenftig startendes Glied
 --     zaehlt mit (wie fn_savings_goal_pace Regel 5, „nicht pausiert"; fn_app_order_line nennt dann „ab <Datum>").
 --     {rp_id, account_name, account_owner_person_id} | null.
 --   monthly_eur = was je Monat hineinfliesst: plans_monthly_eur + Monatsbetrag des Raten-Glieds (abs(monthly_equivalent)
 --     in EUR) — dieselben Quellen wie die Zeilen „Rate …“, also auch ein erst kuenftig startendes Glied (ein
---     Sparplan-Wechsel „ab morgen“ liesse die Summe sonst fuer einen Tag verschwinden, Owner-Abnahme 2026-11-01);
+--     Sparplan-Wechsel „ab morgen“ liesse die Summe sonst fuer einen Tag verschwinden);
 --     fehlt ein Kurs -> null (nie still zu niedrig).
 --     Konsument: Hero-Note „jeden Monat kommen x dazu“ (fn_app_screen_goals).
 --   RUECKGABE: {ok:true, plans, plans_monthly_eur, plans_fx_gap, transfer, monthly_eur} | {ok:false} (unbekanntes Ziel).
@@ -42,7 +43,7 @@ BEGIN
     END IF;
 
     -- dieselbe Rechnung wie fn_savings_goal_funding (heute gueltiges Glied, Waehrung seines Kontos), direkt auf den
-    -- Tabellen: savings_plan_overview rechnet die Kette ALLER Plaene (MATERIALIZED) und waere je Ziel zu teuer
+    -- Tabellen: savings_plan_overview rechnet die Kette aller Plaene (MATERIALIZED) und waere je Ziel zu teuer
     SELECT COALESCE(jsonb_agg(jsonb_build_object(
                'name', sp.name,
                'depot_owner_person_id', d.owner_person_id,

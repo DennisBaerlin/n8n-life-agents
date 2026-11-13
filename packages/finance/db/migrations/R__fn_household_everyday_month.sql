@@ -1,15 +1,15 @@
 -- ============================================================
 -- fn_household_everyday_month (READ, STABLE) -- geschaetzte Alltagsausgaben des Haushalts je Monat in EUR
---   Die EINE Adresse fuer „Alltag“ in Fluss-Rechnungen (Transparenz 2026-10-30, Owner-Entscheid: einrechnen statt nur
---   kennzeichnen): die regelmaessigen Zahlungen (monthly_cashflow_summary) kennen Einkauf/Karte/Bargeld nicht, deshalb
---   wirkten „bleibt frei“, Notreserve-Ziel und Runway zu rosig. Quelle = finance.account_everyday_spending (Schaetzung je
+--   Die eine Adresse fuer „Alltag“ in Fluss-Rechnungen (einrechnen statt nur kennzeichnen): die regelmaessigen
+--   Zahlungen (monthly_cashflow_summary) kennen Einkauf/Karte/Bargeld nicht, ohne Alltag wirkten „bleibt frei“,
+--   Notreserve-Ziel und Runway zu rosig. Quelle = finance.account_everyday_spending (Schaetzung je
 --   Geld-Konto aus den Kontoauszuegen, fn_account_everyday_per_day), Eltern-Blick wie fn_liquidity_snapshot: aktive
---   cash-Konten OHNE kind-besessene (core.fn_household_persons). Konten ohne Auszug fehlen (unbekannt, nicht 0) ->
---   accounts nennt, aus wie vielen Konten die Zahl stammt.
+--   cash-Konten ohne kind-besessene (core.fn_household_persons). Konten ohne Auszug fehlen (unbekannt, nicht 0) ->
+--   accounts nennt, aus wie vielen Konten die Zahl stammt. Keine Eingabe.
 --   Konsumenten: fn_advisor_review (cashflow_coverage, savings_squeeze, Digest), fn_cashflow_coverage_fold,
 --   fn_savings_squeeze_fold, fn_liquidity_snapshot (monthly_expenses_eur = Pflicht + Alltag -> Notreserve/Runway).
 --   plpgsql: liest eine View aus einer alphabetisch spaeteren R__v_-Datei (late-bound).
---   RUECKGABE: (monthly_everyday <= 0 in EUR, accounts, provisional, has_fx_gap)
+--   Rueckgabe: (monthly_everyday <= 0 in EUR, accounts, provisional, has_fx_gap)
 --   Tests: tests/db/finance/test_fn_household_everyday_month.sql
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_household_everyday_month()

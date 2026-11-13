@@ -1,10 +1,11 @@
 -- ============================================================
--- fn_recurring_owner (WEM GEHOERT EINE DAUERZAHLUNG?)
---   Die EINE Abfrage, ob eine recurring_payments-Zeile einer Entitaet gehoert: 'insurance' | 'loan' | 'pension' |
+-- fn_recurring_owner (READ, STABLE — wem gehoert eine Dauerzahlung?)
+--   Die eine Abfrage, ob eine recurring_payments-Zeile einer Entitaet gehoert: 'insurance' | 'loan' | 'pension' |
 --   'savings_goal' | 'savings_plan' | NULL (freistehend). Konsumenten: fn_delete_recurring_payment (Entitaets-Zahlung
 --   nur ueber das Tool der Entitaet aenderbar), fn_set_recurring_payment (dito) + fn_recurring_name_check (Namenssperre nur
---   fuer freistehende). Besitzer zeigen auf den KOPF der Vorgaenger-Kette -> jedes Glied wird ueber den Kopf erkannt (WP2:
---   ein noch laufendes Vorgaenger-Glied einer Kredit-/Versicherungs-Kette galt sonst als freistehend).
+--   fuer freistehende). Besitzer zeigen auf den Kopf der Vorgaenger-Kette -> jedes Glied wird ueber den Kopf erkannt
+--   (sonst galt ein noch laufendes Vorgaenger-Glied einer Kredit-/Versicherungs-Kette als freistehend).
+--   Eingabe: p_rp_id. Rueckgabe: text.
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_recurring_owner(p_rp_id int)
 RETURNS text

@@ -3,27 +3,24 @@
 
 # --- tool_close_pension (Altersvorsorge beenden: Smart-Close wie close_savings_plan) ---
 function Build-ClosePension {
-    # WS-B0: enge Paket-Schreibrolle (finance_rw, Least-Privilege D10) statt Owner-Cred.
-    # Dynamic-Scope: Build-Pg liest dieses $CRED_POSTGRES. Core-Tools nutzen die Owner-Cred.
+    # Enge Paket-Schreibrolle (finance_rw) statt Owner-Cred; Build-Pg liest $CRED_POSTGRES per Dynamic-Scope.
     $CRED_POSTGRES = $CRED_FINANCE_RW
     $trig = Build-Trigger @('pension_name')
 
     $readPen = Build-Pg 'Read Pension' @(220, 0) `
         "=SELECT p.pension_type::text AS pension_type, p.provider, p.status::text AS pen_status, (SELECT COUNT(*)::int FROM finance.transactions t WHERE t.recurring_payment_id = p.recurring_payment_id) AS tx_count, (SELECT COUNT(*)::int FROM finance.pension_statements s WHERE s.pension_id = p.id) AS statement_count FROM finance.pension p WHERE p.name ILIKE ((`$1::jsonb)->>'pension_name') LIMIT 1;" `
         ([ordered]@{ pension_name = '$(''Start'').item.json.pension_name' })
-    # Unbekannter Name -> Tool-Fehler statt stillem Ende (New-RequiredRowGate, 2026-10-24).
+    # Unbekannter Name -> Tool-Fehler statt stillem Ende (New-RequiredRowGate).
     $found = New-RequiredRowGate -Read $readPen -KeyField 'tx_count' -IfName 'Pension found?' -ErrName 'Pension not found' `
         -IfPos @(330, -160) -ErrPos @(440, 240) `
         -NotFoundExpr "=No pension named '{{ `$('Start').item.json.pension_name }}' exists. List the pensions via postgres_select on finance.pension and ask the user which one to close."
 
-    # "DB ist das Gesetz": fn_close_pension laeuft als Probelauf VOR der Karte (korrigierbare Ablehnungen -> {ok:false} ohne Karte);
-    # derselbe Param-Satz geht nach dem Gate in den echten Write.
     $wg = New-FnWriteGate -Fn 'finance.fn_close_pension' -DryPos @(440, 0) -WritePos @(1760, 0) `
         -WriteName 'Close pension (atomic)' `
         -WriteSelect "(r->>'ok')::boolean AS ok, r->>'reason' AS reason, r->>'action' AS action, (r->>'tx_count')::int AS tx_count" `
         -Params ([ordered]@{ pension_name = '$(''Start'').item.json.pension_name' })
 
-    # Strukturiertes Summary (Textkatalog): Titel + Hinweis haengen an tx_count (Soft-Close vs. Hard-DELETE).
+    # Titel + Hinweis haengen an tx_count (Soft-Close vs. Hard-DELETE).
     $S = "`$('Start').item.json"
     $P = "`$('Read Pension').item.json"
     $titleVal = New-HitlValue -Kind key -Value "(($P.tx_count + $P.statement_count) > 0 ? 'finance.hitl.close_pension_close' : 'finance.hitl.close_pension_delete')"

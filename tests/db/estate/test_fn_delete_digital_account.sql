@@ -1,6 +1,6 @@
 -- tests/db/estate/test_fn_delete_digital_account.sql
--- WS-2: Digital-Konto-Loeschung — Nutzername-Filter disambiguiert, Ambiguitaet = RAISE,
--- Kind-Reject VOR dem Resolve. Self-contained; BEGIN..ROLLBACK.
+-- Digital-Konto-Loeschung — Nutzername-Filter disambiguiert, Ambiguitaet = RAISE,
+-- Kind-Reject vor dem Resolve. Self-contained; BEGIN..ROLLBACK.
 BEGIN;
 
 DO $$

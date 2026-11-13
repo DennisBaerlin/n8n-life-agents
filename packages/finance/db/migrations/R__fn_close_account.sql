@@ -2,13 +2,15 @@
 -- fn_close_account (ATOMIC WRITE)
 --   Setzt Kontostatus auf 'closed'. Danach blockiert
 --   trg_finance_reject_closed_account jeden neuen INSERT auf dieses Konto.
---   Eingabe jsonb: account_id, closure_date (leer = heute, core.fn_today), notes.
---   GUARD (Audit F6): fn_get_account_close_blockers (EINE Adresse, auch die HITL-Vorpruefung des Tools) --
+--   Eingabe jsonb: account_id, closure_date (optional, leer = heute, core.fn_today; relative Angaben wie "yesterday"
+--   loest core.fn_resolve_input_dates auf), notes (optional).
+--   Guard: fn_get_account_close_blockers (eine Adresse, auch die HITL-Vorpruefung des Tools) --
 --   Saldo <> 0, Verrechnungskonto aktiver Depots, Depotbestand, aktive Sparplaene, Kredite, laufende
---   Dauerauftraege (Quelle/Ziel). Vorher verschwand ein Guthaben still aus dem Vermoegen.
---   RUECKGABE-VERTRAG: Erfolg -> {ok:true, account_id, status, effective:{closure_date}} (Datum fuer die Karte). Korrigierbar (Blocker vorhanden) ->
---   {ok:false, reason, blockers, depot_count} OHNE Write (kein RAISE -> kein Owner-Alert). RAISE nur fuer
---   echte Ausnahmen (not-found / already-closed -> vom Tool-Resolve (active_only) schon abgefangen).
+--   Dauerauftraege (Quelle/Ziel). Sonst verschwaende ein Guthaben still aus dem Vermoegen.
+--   Rueckgabe: Erfolg -> {ok:true, account_id, status, effective:{closure_date}} (Datum fuer die Karte). Korrigierbar
+--   (Blocker vorhanden) -> {ok:false, code:'invalid_date'} bzw. {ok:false, reason, blockers, depot_count} ohne Write
+--   (kein RAISE -> kein Owner-Alert). RAISE nur fuer echte Ausnahmen (not-found / already-closed -> vom Tool-Resolve
+--   (active_only) schon abgefangen).
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_close_account(p jsonb)
 RETURNS jsonb LANGUAGE plpgsql AS $$
@@ -32,7 +34,7 @@ BEGIN
         RAISE EXCEPTION 'Account % is already closed.', v_account.id;
     END IF;
 
-    -- Korrigierbar: irgendein Blocker (Saldo, Depot, Sparplan, Kredit, Dauerauftrag) -> {ok:false} OHNE Write.
+    -- Korrigierbar: irgendein Blocker (Saldo, Depot, Sparplan, Kredit, Dauerauftrag) -> {ok:false} ohne Write.
     v_blk := finance.fn_get_account_close_blockers(v_account.id);
     IF (v_blk->>'blocked')::boolean THEN
         RETURN jsonb_build_object('ok', false,

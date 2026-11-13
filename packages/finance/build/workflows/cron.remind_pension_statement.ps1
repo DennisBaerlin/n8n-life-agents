@@ -1,14 +1,14 @@
 ﻿#Requires -Version 5.1
 # Definition agent.finance.cron_remind_pension_statement -> Build-CronRemindPensionStatement. Dot-gesourct von build.ps1.
-# Deterministisch, KEIN LLM, KEIN Write: Renteninformation-Erinnerung (Plan 2026-10-26, Muster cron_reconcile_accounts).
+# Deterministisch, kein LLM, kein Write: Renteninformation-Erinnerung (Muster cron_reconcile_accounts).
 # Schedule -> finance.fn_pension_statements_due() (aktive gesetzliche/betriebliche Renten, deren juengste
-# Renteninformation aelter als 13 Monate ist oder die noch keine haben) -> IF count>0 -> EINE Telegram-Nachricht mit
+# Renteninformation aelter als 13 Monate ist oder die noch keine haben) -> IF count>0 -> eine Telegram-Nachricht mit
 # Anleitung + Knopf [Erinnerung abschalten]. Zeitplan = Platzhalter __CFG_SCHEDULE_REMIND_PENSION_STATEMENT__.
 #
-# Design wie der Monats-Check: KEIN sendAndWait (die Antwort ist eine Datei; Dateien loesen kein offenes Gate auf). Der
+# Design wie der Monats-Check: kein sendAndWait (die Antwort ist eine Datei; Dateien loesen kein offenes Gate auf). Der
 # Nutzer schickt das PDF an den Bot -> agent.finance -> tool_extract_finance_document -> eine Karte.
 function Build-CronRemindPensionStatement {
-    # Read-only (SELECT + Telegram) -> enge Leserolle finance_ro (D10).
+    # Read-only (SELECT + Telegram) -> enge Leserolle finance_ro.
     $CRED_POSTGRES = $CRED_FINANCE_RO
 
     $trig = Build-ScheduleTrigger @(-680, 0) -ScheduleKey 'remind_pension_statement'
@@ -21,7 +21,7 @@ function Build-CronRemindPensionStatement {
         'Paket aktiv UND cron_enable.remind_pension_statement' `
         'Erster Schritt: core.fn_package_active(''finance'') AND core.fn_config_get(''finance'',''cron_enable'',''remind_pension_statement'')=''true'' (DB entscheidet, fail-closed). Aus -> No-op. Läuft unter finance_ro (read-only). Toggle: /reminders, der Knopf an der Nachricht oder lifeagents config set cron_enable remind_pension_statement false.' 280 400
 
-    # Eine Zeile: die faelligen Renten (EINE Regel: fn_pension_statements_due nutzt stale/never aus fn_pension_outlook)
+    # Eine Zeile: die faelligen Renten (eine Regel: fn_pension_statements_due nutzt stale/never aus fn_pension_outlook)
     # + die Texte in Owner-Sprache (core.fn_ui_texts_for). Datum per Intl im Owner-Locale in 'Build message'.
     $keys = Get-UiKeysSql (@('finance.dialog.pension_statement_intro', 'finance.dialog.pension_statement_line',
         'finance.dialog.pension_statement_never', 'finance.dialog.pension_statement_howto', 'core.reminders.btn_off') + $script:UiRenderKeys)

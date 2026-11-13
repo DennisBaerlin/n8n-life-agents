@@ -1,5 +1,5 @@
 -- tests/db/finance/test_recalc_loan.sql
--- Zweitrechnung (differential testing) Kredit: Erwartungswerte UNABHAENGIG hergeleitet (eigene Decimal-Schleife in
+-- Zweitrechnung (differential testing) Kredit: Erwartungswerte unabhaengig hergeleitet (eigene Decimal-Schleife in
 -- PowerShell + geschlossene Annuitaetenformel als Gegenprobe), nicht aus fn_loan_simulate abgeschrieben.
 -- Fachregel: Annuitaet A = K * i / (1 - (1 + i)^-n), i = Jahreszins / 12 (nominaler Monatszins, Banken-Standard);
 --   Monatszins = Restschuld * i, kaufmaennisch auf Cent; Tilgung = A - Zins; Schlussrate = Restschuld + Zins.

@@ -1,7 +1,7 @@
 ﻿#Requires -Version 5.1
 # Selbsttest der Fall-Abbruch-Helfer in scripts/dev/test_n8n_state.ps1 (Write-CaseAbort, Test-ForceAbort, ...). Kein Substrat, keine Kosten.
 # Schwarzkasten: ein Wegwerf-Treiber mit erfundenen Faellen laedt die Bibliothek per Dot-Sourcing wie ein echtes Testskript und laeuft als
-# KINDPROZESS; geprueft werden Exit-Code und Ausgabe. So ist belegt statt vermutet, dass der Zaehler nicht in einer Kopie verloren geht
+# Kindprozess; geprueft werden Exit-Code und Ausgabe. So ist belegt statt vermutet, dass der Zaehler nicht in einer Kopie verloren geht
 # und dass $script: aus der Bibliothek im Treiber ankommt (ein verlorenes $failed++ waere ein stiller Falsch-Gruen-Lauf).
 # Usage:  .\scripts\dev\case_abort_test.ps1
 # Exit-Code = Anzahl Fehler.

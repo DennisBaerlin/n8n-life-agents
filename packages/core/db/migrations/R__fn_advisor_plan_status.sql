@@ -1,10 +1,10 @@
 -- ============================================================
--- core.fn_advisor_plan_status(p_chat_id) — Plan-Zustand je Berater-Domaene fuer den Onboarding-Plan-Schritt (2026-10-28)
---   Die EINE Adresse fuer "welcher Plan-Schritt, in welchem Zustand, darf ich, reichen die Daten": gelesen vom
+-- core.fn_advisor_plan_status(p_chat_id) — Plan-Zustand je Berater-Domaene fuer den Onboarding-Plan-Schritt
+--   Die eine Adresse fuer "welcher Plan-Schritt, in welchem Zustand, darf ich, reichen die Daten": gelesen vom
 --   Menue-Sub core.sub_send_onboarding_menu (Fertig-Karte, Bereichsansicht, Uebersicht; unter core_ro) und von
---   core.fn_handle_plan_cb (Knopf plan:<domain>). Bewusst NICHT in core.fn_onboarding_overview: deren weitere Aufrufer
+--   core.fn_handle_plan_cb (Knopf plan:<domain>). Bewusst nicht in core.fn_onboarding_overview: deren weitere Aufrufer
 --   (fn_onboarding_progress_event, fn_onboarding_nudges_due) brauchen nur die Abschnitte und sollen weder die Paket-
---   fns bezahlen noch an ihnen scheitern (Code-Review 2026-10-28).
+--   fns bezahlen noch an ihnen scheitern.
 --   Je core.advisors-Zeile mit plan_step=true, deren Paket aktiv ist (core.package_registry):
 --     state   draft    -> ein Entwurf liegt vor ("fortsetzen"; hat Vorrang vor einem aktiven Plan)
 --             gaps     -> aktiver Plan, gaps_fn meldet > 0 offene Punkte ("vervollstaendigen (n offen)")
@@ -14,17 +14,17 @@
 --     ready/missing = readiness_fn {ready, missing:[{key, section}]} (ohne readiness_fn: reif, [])
 --     per_user  = core.context_scopes.scope des plan_context = 'per_user' (sonst Haushalt)
 --     can_write = der Betrachter ist der Owner: die Plan-Schreib-Tools (agent.tool_save_plan_section /
---                 tool_publish_plan) sind approval_matrix-Stufe owner_only (Owner-Vorgabe 6: Mitglieder beraten, Plaene
---                 aendert nur der Owner). Die write_permission des plan_context (owner_only/own_user_only) laesst den
---                 Owner fuer seinen Scope immer zu -> sie aendert das Ergebnis heute nicht. Wird die Tool-Stufe je
---                 gelockert, gehoert hier die write_permission-Regel von agent.fn_check_write_permission hin.
+--                 tool_publish_plan) sind approval_matrix-Stufe owner_only (Mitglieder beraten, Plaene aendert nur
+--                 der Owner). Die write_permission des plan_context (owner_only/own_user_only) laesst den Owner
+--                 fuer seinen Scope immer zu -> sie aendert das Ergebnis nicht. Wird die Tool-Stufe gelockert,
+--                 gehoert hier die write_permission-Regel von agent.fn_check_write_permission hin.
 --   Scope der Plan-Zeile wie core.fn_advisor_read_plan: household -> person_id NULL, per_user -> der Betrachter.
 --   Betrachter = agent.fn_resolve_sender(p_chat_id) (nie LLM); unaufgeloest/nicht numerisch -> [] (fail-closed).
 --   gaps_fn/readiness_fn nur aus der installer-geschriebenen Registry (CHECK-Format), Arity per to_regprocedure
 --   (text,text) geprueft, Name per format(%s) aus dem regproc (kein Caller-Text im EXECUTE). Fehlt eine fn
 --   (Manifest-Typo/Apply-Order) ODER wirft sie -> neutral (0 Luecken bzw. reif) statt Fehler: Menue und Knopf-Handler
 --   ("nie RAISE") duerfen an einem Paket-Fehler nicht brechen; die Paket-fn ist dann im eigenen db_test rot.
---   RUECKGABE jsonb-Array [{domain, package, state, open, ready, missing, per_user, can_write}] ORDER BY domain.
+--   Rueckgabe jsonb-Array [{domain, package, state, open, ready, missing, per_user, can_write}] ORDER BY domain.
 --   SECURITY DEFINER (owned by der DDL-Cred): liest agent.advisor_plans (RLS), core.* und ruft die Paket-fns; EXECUTE
 --   nur core_ro (Menue-Read, Grant in util_create_core_ro.sql) + die Host-Cred (Knopf-Handler). STABLE, search_path
 --   gepinnt, Body schema-qualifiziert. LANGUAGE plpgsql: ruft alphabetisch spaetere R__-fns -> late-bound.

@@ -1,5 +1,5 @@
 -- tests/db/estate/test_fn_cancel_case.sql
--- WS-3: Fall abbrechen (Break-Glass cancel) — adults_only, nur offen, danach partial-UNIQUE frei.
+-- Fall abbrechen (Break-Glass cancel) — adults_only, nur offen, danach partial-UNIQUE frei.
 BEGIN;
 
 DO $$

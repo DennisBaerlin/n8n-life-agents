@@ -1,11 +1,12 @@
 -- ============================================================
--- fn_dry_run (PROBELAUF EINER WRITE-FN VOR DER HITL-KARTE)
+-- fn_dry_run (Probelauf einer Write-fn vor der HITL-Karte)
 --   Fuehrt eine Write-fn fn(jsonb) RETURNS jsonb echt aus, gibt ihr Ergebnis zurueck (+ dry_run:true) und rollt ihre
---   Effekte IMMER zurueck (Savepoint des BEGIN/EXCEPTION-Blocks), auch bei ok:false nach einem Teil-Write.
---   Zweck: die DB entscheidet VOR der Karte (Owner-Prinzip "DB ist das Gesetz"), der Nutzer tippt nie "Bestaetigen"
+--   Effekte immer zurueck (Savepoint des BEGIN/EXCEPTION-Blocks), auch bei ok:false nach einem Teil-Write.
+--   Zweck: die DB entscheidet vor der Karte, der Nutzer tippt nie "Bestaetigen"
 --   auf etwas, das die fn danach ablehnt. Der echte Write laeuft nach dem Gate erneut (Bestand kann sich aendern).
---   Ergebnis: das jsonb der fn || {dry_run:true}. Nutzer-korrigierbare Ablehnungen sind laut Konvention Daten
---   ({ok:false, reason}); eine echte Exception der fn wird NICHT abgefangen (Owner-Alert ueber errorWorkflow bleibt).
+--   Eingabe: p_fn (regprocedure der Write-fn), p (jsonb-Payload).
+--   Rueckgabe: das jsonb der fn || {dry_run:true}. Nutzer-korrigierbare Ablehnungen sind laut Konvention Daten
+--   ({ok:false, reason}); eine echte Exception der fn wird nicht abgefangen (Owner-Alert ueber errorWorkflow bleibt).
 --   Verwendung (Build-Helper New-FnWriteGate):
 --     SELECT core.fn_dry_run('finance.fn_create_account(jsonb)'::regprocedure, $1::jsonb)
 --   Der fn-Name ist eine Build-Konstante, nie Nutzer-Input. Nur fn(jsonb) RETURNS jsonb (sonst RAISE = Build-Fehler).
@@ -41,13 +42,13 @@ BEGIN
 
     BEGIN
         EXECUTE 'SELECT ' || v_call || '($1)' INTO v_res USING p;
-        -- IMMER zurueckrollen, auch bei ok:false (ein Teil-Write vor der Ablehnung darf nicht bleiben)
+        -- immer zurueckrollen, auch bei ok:false (ein Teil-Write vor der Ablehnung darf nicht bleiben)
         RAISE EXCEPTION USING ERRCODE = 'LA001', MESSAGE = 'fn_dry_run: always rolled back';
     EXCEPTION
         WHEN SQLSTATE 'LA001' THEN
             NULL;
-        -- bewusst KEIN WHEN OTHERS: eine echte Exception der fn (Bug, kein Nutzerfehler) bricht den Probelauf ab
-        -- wie heute den Write -> n8n-Node scheitert -> errorWorkflow alarmiert den Owner (nie still verschluckt).
+        -- bewusst kein WHEN OTHERS: eine echte Exception der fn (Bug, kein Nutzerfehler) bricht den Probelauf ab
+        -- wie den Write -> n8n-Node scheitert -> errorWorkflow alarmiert den Owner (nie still verschluckt).
     END;
 
     RETURN COALESCE(v_res, '{}'::jsonb) || pg_catalog.jsonb_build_object('dry_run', true);

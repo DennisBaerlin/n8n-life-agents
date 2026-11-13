@@ -1,17 +1,17 @@
 -- tests/db/core/test_fn_monitor_evaluate.sql
--- Testet fn_monitor_evaluate: die EINE atomare Auswertungs-Function des Heartbeat-Crons.
+-- Testet fn_monitor_evaluate: die eine atomare Auswertungs-Function des Heartbeat-Crons.
 -- Vertrag (Eingabe jsonb): { now: timestamptz (Test-Injektion), observations: [{trigger_id,
 --   ok, value, unit, as_of, source_url, reason}] (nur web_search — sql/Paket-Methoden beschafft die fn
 --   selbst), fail_alert_streak (Test-Override; Default aus core.config monitor.* bzw. 3) }.
---   Phase B: Paket-Methode via Registry (Test-Methode zz_test, Stub-fns) + PARKEN bei inaktivem Paket.
+--   Paket-Methode via Registry (Test-Methode zz_test, Stub-fns) + Parken bei inaktivem Paket.
 -- Rueckgabe: { ok, checked, fired:[...], info:[...], problems:[...] }.
 -- Verhalten: FOR UPDATE + Status-Recheck (TOCTOU); Validierungs-Kaskade; Observation-Log
---   IMMER; threshold/drawdown/date latchen One-Shot (armed->fired); date: Vorwarnung als
---   NICHT-latchende Info, Latch erst am due_date; recurring_info latcht NIE; dirty ->
+--   immer; threshold/drawdown/date latchen One-Shot (armed->fired); date: Vorwarnung als
+--   nicht-latchende Info, Latch erst am due_date; recurring_info latcht nie; dirty ->
 --   fail_streak++ / last_value+Ratchet unberuehrt; Advance next_check_at bei Erfolg UND
 --   Fehlschlag; "heute" = core.fn_today(now) in der Sitzungs-Zeitzone (Mitternachts-Test).
 BEGIN;
--- Roter Faden: die Bestandsfaelle laufen mit fester Uhr (07:10) -> Erinnerungs-Fenster hier auf den ganzen Tag;
+-- Die Bestandsfaelle laufen mit fester Uhr (07:10) -> Erinnerungs-Fenster hier auf den ganzen Tag;
 -- das Fenster-Verhalten selbst prueft test_fn_monitor_evaluate (Block "Erinnerungs-Fenster").
 INSERT INTO core.config (package, category, key, value) VALUES
   ('core', 'general', 'reminders_from', '0'), ('core', 'general', 'reminders_until', '24')
@@ -148,7 +148,7 @@ BEGIN
   IF v_row.reference_value IS DISTINCT FROM 110 THEN
     RAISE EXCEPTION 'FAIL evaluate [dd ratchet up]: ref=%', v_row.reference_value;
   END IF;
-  -- Beobachtung 3: 90 -> dd 18.2%% < 20 -> KEIN Fire, Ratchet bleibt 110
+  -- Beobachtung 3: 90 -> dd 18.2%% < 20 -> kein Fire, Ratchet bleibt 110
   UPDATE agent.monitor_triggers SET next_check_at = v_now - INTERVAL '1 hour' WHERE id = v_id_dd;
   v := agent.fn_monitor_evaluate(jsonb_build_object('now', v_now,
     'observations', jsonb_build_array(jsonb_build_object(
@@ -157,7 +157,7 @@ BEGIN
   IF jsonb_array_length(v->'fired') <> 0 OR v_row.reference_value IS DISTINCT FROM 110 THEN
     RAISE EXCEPTION 'FAIL evaluate [dd -18%%]: fired/%/ref=%', v, v_row.reference_value;
   END IF;
-  -- dirty Beobachtung (out of bounds 5000) -> Ratchet UNBERUEHRT (Peak-Poisoning-Schutz)
+  -- dirty Beobachtung (out of bounds 5000) -> Ratchet unberuehrt (Peak-Poisoning-Schutz)
   UPDATE agent.monitor_triggers SET next_check_at = v_now - INTERVAL '1 hour' WHERE id = v_id_dd;
   v := agent.fn_monitor_evaluate(jsonb_build_object('now', v_now,
     'observations', jsonb_build_array(jsonb_build_object(
@@ -262,8 +262,8 @@ BEGIN
   RAISE NOTICE 'PASS evaluate [date: ausserhalb Warn-Fenster still]';
 
   -- ==========================================================
-  -- TEST 5: recurring_info — latcht NIE, feuert jede faellige Runde; sql-Beschaffung
-  -- laeuft in der fn unter core_ro (current_user-Echo beweist den Rollen-Switch; B3)
+  -- TEST 5: recurring_info — latcht nie, feuert jede faellige Runde; sql-Beschaffung
+  -- laeuft in der fn unter core_ro (current_user-Echo beweist den Rollen-Switch)
   -- ==========================================================
   INSERT INTO agent.monitor_triggers
     (domain, label, trigger_type, acquisition_method, acquisition_spec,
@@ -293,8 +293,8 @@ BEGIN
   RAISE NOTICE 'PASS evaluate [recurring_info: sql unter core_ro, latcht nie]';
 
   -- ==========================================================
-  -- TEST 6 (Phase B): Paket-Methode via Registry — feuert mit dem Wert der acquire_fn; Paket inaktiv ->
-  -- GEPARKT (nicht geprueft, kein fail_streak, next_check_at unberuehrt); Paket wieder aktiv -> laeuft an
+  -- TEST 6: Paket-Methode via Registry — feuert mit dem Wert der acquire_fn; Paket inaktiv ->
+  -- geparkt (nicht geprueft, kein fail_streak, next_check_at unberuehrt); Paket wieder aktiv -> laeuft an
   -- ==========================================================
   CREATE SCHEMA zz_pkg;
   CREATE FUNCTION zz_pkg.fn_validate(p jsonb) RETURNS jsonb LANGUAGE sql AS $f$
@@ -354,7 +354,7 @@ BEGIN
           '{"prompt": "x"}', 'gte', 100, 'USD', INTERVAL '1 day', v_now - INTERVAL '1 hour')
   RETURNING id INTO v_id_thr;
 
-  -- Fehlschlag 1: noch KEIN Problem-Alarm (Schwelle 2)
+  -- Fehlschlag 1: noch kein Problem-Alarm (Schwelle 2)
   v := agent.fn_monitor_evaluate(jsonb_build_object('now', v_now, 'fail_alert_streak', 2,
     'observations', jsonb_build_array(jsonb_build_object(
       'trigger_id', v_id_thr, 'ok', false, 'reason', 'cannot determine'))));
@@ -377,7 +377,7 @@ BEGIN
   IF v_count IS DISTINCT FROM 1 THEN
     RAISE EXCEPTION 'FAIL evaluate [streak 2]: kein Problem-Eintrag mit first_fail, got %', v;
   END IF;
-  -- Fehlschlag 3: KEIN Alarm (zwischen Vielfachen)
+  -- Fehlschlag 3: kein Alarm (zwischen Vielfachen)
   UPDATE agent.monitor_triggers SET next_check_at = v_now - INTERVAL '1 hour' WHERE id = v_id_thr;
   v := agent.fn_monitor_evaluate(jsonb_build_object('now', v_now, 'fail_alert_streak', 2,
     'observations', jsonb_build_array(jsonb_build_object(
@@ -440,7 +440,7 @@ BEGIN
   RAISE NOTICE 'PASS evaluate [TOCTOU: disabled ignoriert]';
 
   -- ==========================================================
-  -- TEST 9: mehrere Fires in EINEM Lauf (eine kombinierte Message)
+  -- TEST 9: mehrere Fires in einem Lauf (eine kombinierte Message)
   -- ==========================================================
   INSERT INTO agent.monitor_triggers
     (domain, label, trigger_type, acquisition_method, acquisition_spec, comparator,
@@ -465,7 +465,7 @@ BEGIN
 END $$;
 
 -- ==========================================================
--- Roter Faden: Erinnerungs-Fenster (10..20 Uhr, Haushalts-Zeitzone). Datums-Vorwarnung nachts NICHT faellig (bleibt
+-- Erinnerungs-Fenster (10..20 Uhr, Haushalts-Zeitzone). Datums-Vorwarnung nachts nicht faellig (bleibt
 -- faellig -> 10:10 kommt sie); Wert-Waechter feuert nachts sofort; Problembericht nachts vorgemerkt, im Fenster
 -- nachgereicht; behobener Trigger -> Vormerkung still weg.
 -- ==========================================================

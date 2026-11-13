@@ -1,10 +1,9 @@
 -- tests/db/core/test_advisor_plans_person_keying.sql
--- P0c DB-Gesetz: advisor_plans ist (domain, person_id)-keyed. person_id NULL = Haushalt (finance-Konvention).
--- Die Partial-UNIQUE-Gesetze + das Versions-Audit gelten je (domain, person_id) — und halten ueber
--- NULLS NOT DISTINCT (PG15+) AUCH fuer die household-NULL-Zeilen (sonst behandelt der Default NULLS DISTINCT
--- zwei NULLs als verschieden -> stiller Verlust des "ein active/draft pro Haushalt"). Das ist der
--- arch-challenge-Pflichttest (Option A): der CONSTRAINT lehnt ab, nicht fn-Logik. Direkte INSERTs (Superuser,
--- kein fn-Gate) pruefen die Constraints selbst.
+-- DB-Gesetz: advisor_plans ist (domain, person_id)-keyed. person_id NULL = Haushalt (finance-Konvention).
+-- Die Partial-UNIQUE-Gesetze + das Versions-Audit gelten je (domain, person_id) und halten ueber
+-- NULLS NOT DISTINCT (PG15+) auch fuer die household-NULL-Zeilen (sonst behandelt der Default NULLS DISTINCT
+-- zwei NULLs als verschieden -> stiller Verlust des "ein active/draft pro Haushalt"). Der CONSTRAINT lehnt
+-- ab, nicht fn-Logik: direkte INSERTs (Superuser, kein fn-Gate) pruefen die Constraints selbst.
 BEGIN;
 DO $$
 BEGIN
@@ -13,7 +12,7 @@ BEGIN
     VALUES ('persona', 'Person A', 'owner'), ('personb', 'Person B', 'partner')
     ON CONFLICT (person_id) DO NOTHING;
 
-  -- ---------- TEST 1 (arch-challenge Pflicht): zwei household-NULL active -> 2. abgelehnt (NULLS NOT DISTINCT) ----------
+  -- ---------- TEST 1: zwei household-NULL active -> 2. abgelehnt (NULLS NOT DISTINCT) ----------
   INSERT INTO agent.advisor_plans (domain, person_id, plan_name, status, version)
     VALUES ('__test_pk__', NULL, 'h1', 'active', 1);
   BEGIN

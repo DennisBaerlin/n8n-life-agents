@@ -1,16 +1,15 @@
 -- ============================================================
 -- fn_close_savings_plan (ATOMIC WRITE)
---   Smart-Close-Guard (analog fn_close_account): zaehlt Transaktionen auf ALLEN rps der Vorgaenger-Kette des
---   Plans (fn_recurring_lineage; Audit Paket 2, Punkt 2 -- vorher nur auf der aktuellen rp: nach einem Betrags-
---   Split wurde ein Plan mit Historie hart geloescht).
+--   Smart-Close-Guard (analog fn_close_account): zaehlt Transaktionen auf allen rps der Vorgaenger-Kette des
+--   Plans (fn_recurring_lineage; nach einem Betrags-Split truege die aktuelle rp allein keine Historie mehr).
 --   v_tx_count = 0 -> Hard-DELETE: Plan + alle rps der Kette entfernt (Karteileiche, keine Historie).
---   Soft-Close beendet ALLE noch laufenden Glieder der Kette (fn_end_recurring_chain).
+--   Soft-Close beendet alle noch laufenden Glieder der Kette (fn_end_recurring_chain).
 --   v_tx_count > 0 -> Soft-Close: RP.valid_to = CURRENT_DATE, plan.status = 'paused'
 --   (Buchungshistorie bleibt erhalten; Plan taucht nicht mehr in fn_recurring_due_open auf).
 --   Eingabe jsonb: savings_plan_name.
---   RUECKGABE: {ok:true, action:'deleted'|'closed', tx_count, card_lines (Broker-Hinweis fn_bank_setup_note 'bank_stop';
---   der Plan bleibt sonst beim Broker aktiv, eine Erinnerung kommt nicht: die Kette ist pausiert)}. RAISE fuer echte
---   Ausnahmen (nicht gefunden).
+--   Rueckgabe: {ok:true, action:'deleted'|'closed', tx_count, card_lines (Broker-Hinweis fn_bank_setup_note 'bank_stop';
+--   der Plan bleibt sonst beim Broker aktiv, eine Erinnerung kommt nicht: die Kette ist pausiert)}
+--   | {ok:false, code:'not_found'|'ambiguous', reason, candidates}.
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_close_savings_plan(p jsonb)
 RETURNS jsonb LANGUAGE plpgsql AS $$
@@ -48,14 +47,14 @@ BEGIN
     v_note := finance.fn_bank_note_recorded(v_plan.recurring_payment_id, 'bank_stop');
 
     IF v_tx_count = 0 THEN
-        -- Hard-DELETE: erst Plan (FK RESTRICT plan->rp), dann alle Ketten-rps in EINEM Statement (predecessor-FK
+        -- Hard-DELETE: erst Plan (FK RESTRICT plan->rp), dann alle Ketten-rps in einem Statement (predecessor-FK
         -- NO ACTION prueft am Statement-Ende)
         DELETE FROM finance.savings_plans        WHERE id = v_plan.id;
         DELETE FROM finance.recurring_payments   WHERE id = ANY(v_chain);
 
         RETURN jsonb_build_object('ok', true, 'action', 'deleted', 'tx_count', 0, 'card_lines', v_note);
     ELSE
-        -- Soft-Close: Plan pausieren; die Kette ist oben schon beendet (ALLE noch laufenden Glieder, auch eine alte rp
+        -- Soft-Close: Plan pausieren; die Kette ist oben schon beendet (alle noch laufenden Glieder, auch eine alte rp
         -- mit noch anstehender Ausfuehrung) -> nichts taucht mehr in fn_recurring_due_open auf.
         UPDATE finance.savings_plans
         SET status = 'paused'

@@ -1,9 +1,9 @@
 ﻿#Requires -Version 5.1
 # Dot-gesourct von build.ps1 (Helper + Script-Scope-Creds im Parent-Scope).
 
-# --- agent.estate.tool_delete_digital_account (WS-2, delete_ = Hard-DELETE) ------------------
+# --- agent.estate.tool_delete_digital_account (delete_ = Hard-DELETE) ------------------
 # Loescht ein Konto des digitalen Nachlasses aus dem Register. Resolve (Anbieter + optional
-# Nutzername) -> unique? VOR dem Gate. HITL owner_approval. adults_only-DB-Backstop. estate_rw.
+# Nutzername) -> unique? vor dem Gate. HITL owner_approval. adults_only-DB-Backstop. estate_rw.
 function Build-EstateDeleteDigitalAccount {
     $CRED_POSTGRES = $CRED_ESTATE_RW
     $trig = Build-Trigger @('provider','username')
@@ -15,9 +15,8 @@ function Build-EstateDeleteDigitalAccount {
     $errBad = Build-ToolError 'Account ambiguous' @(660, 200) `
         "=The account '{{ `$('Start').item.json.provider }}' resolves to {{ `$('Resolve Account').item.json.hit_count }} matches. Candidates: {{ JSON.stringify(`$('Resolve Account').item.json.candidates) }}. Ask which one (add the username), or check the provider."
 
-    # Strukturiertes Summary (Textkatalog): Keys + typisierte Rohwerte, das Gate rendert je Empfaenger-Sprache.
     $S = "`$('Start').item.json"
-    # "DB ist das Gesetz": estate.fn_delete_digital_account laeuft als Probelauf VOR der Karte; derselbe Param-Satz geht nach dem Gate in den echten Write.
+    # estate.fn_delete_digital_account laeuft als Probelauf vor der Karte; derselbe Param-Satz geht nach dem Gate in den echten Write.
     $wg = New-FnWriteGate -Fn 'estate.fn_delete_digital_account' -DryPos @(660, 0) -WritePos @(1980, 0) `
         -WriteName 'Delete account (atomic)' `
         -WriteSelect "(r->>'ok')::boolean AS ok, r->>'reason' AS reason, r->>'action' AS action, (r->>'digital_account_id')::bigint AS digital_account_id" `

@@ -1,10 +1,12 @@
 -- ============================================================
 -- fn_import_validate_row (per-Row-Validierung der Import-Staging — read-only)
---   Liefert NULL (= valid) oder einen EN-Fehlertext (Layer 1) mit konkretem Grund.
+--   Eingabe: p_batch_id, p_row_no, p_type (entity_type), p (Payload).
+--   Rueckgabe: NULL (= valid) oder ein EN-Fehlertext mit konkretem Grund (nie RAISE: unerwartete Cast-/Datenfehler
+--   werden zu 'invalid payload: ...').
 --   Prueft: Pflichtfelder je entity_type, Enum-/Zahlen-/Datums-Casts, Derived-Key-Denylist
 --   (Vision/LLM darf nie Abgeleitetes liefern), Feld-Allow-List (fn_import_allowed_keys = die Kartenfelder),
 --   Dubletten-Backstop (fn_resolve_* gegen
---   Bestand + Namens-Dublette IM Batch) und Konto-Referenzen (Bestand ODER account-Row
+--   Bestand + Namens-Dublette im Batch) und Konto-Referenzen (Bestand oder account-Row
 --   im selben Batch). Die tiefen Wert-Guards bleiben in den fn_create_*/fn_book_*.
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_import_validate_row(
@@ -97,7 +99,7 @@ BEGIN
         RETURN 'name is required';
     END IF;
 
-    -- Namens-Dublette IM Batch (gleicher Typ, gleicher Name, andere Row). Nicht fuer stock_buy: der Name ist dort
+    -- Namens-Dublette im Batch (gleicher Typ, gleicher Name, andere Row). Nicht fuer stock_buy: der Name ist dort
     -- nur Bezeichnung, derselbe ETF in zwei Depots ist legitim. Mehrere Zeilen derselben Position (Depot + ISIN/Symbol)
     -- sind datierte Tranchen; eine undatierte oder gleiche Zeile meldet fn_import_bundle als Dublette ("appears more than once"),
     -- eine im Bestand schon gehaltene Position fn_book_stock_buy ("already holds").
@@ -128,19 +130,19 @@ BEGIN
         IF p->>'account_type' IN ('stocks_depot','crypto_depot') AND COALESCE(NULLIF(p->>'opening_balance','')::numeric, 0) <> 0 THEN
             RETURN 'a depot has no cash balance - put opening_balance on its settlement account';
         END IF;
-        -- DB-ist-das-Gesetz S4 (Spiegel von fn_create_account): Festgeld braucht Zinssatz UND Faelligkeit
+        -- Spiegel von fn_create_account: Festgeld braucht Zinssatz und Faelligkeit
         IF p->>'account_type' = 'fixed_deposit' THEN
             v_ref := finance.fn_fixed_deposit_reason(NULLIF(p->>'interest_rate','')::numeric,
                                                      NULLIF(p->>'fixed_deposit_maturity_date','')::date);
             IF v_ref IS NOT NULL THEN RETURN v_ref; END IF;
         END IF;
         -- Dublette = aktives Konto gleichen Namens, typ-uebergreifend: Import-Referenzen (depot/account/
-        -- debit_account) loesen nur ueber den NAMEN auf, ein zweites Konto gleichen Namens machte sie mehrdeutig.
+        -- debit_account) loesen nur ueber den Namen auf, ein zweites Konto gleichen Namens machte sie mehrdeutig.
         SELECT hit_count INTO v_hits FROM finance.fn_resolve_account(v_name, NULL, TRUE);
         IF v_hits > 0 THEN
             RETURN format('account "%s" already exists - to set its balance use reconcile_account, to change its details use set_account; remove this row', v_name);
         END IF;
-        -- Monats-Check WP-B: dieselbe Kontonummer/IBAN = dasselbe Konto, auch unter anderem Namen (Auszug druckt
+        -- dieselbe Kontonummer/IBAN = dasselbe Konto, auch unter anderem Namen (Auszug druckt
         -- eine Kurzbezeichnung, das System kennt das Konto unter einem anderen Namen).
         SELECT a.name INTO v_ref FROM finance.accounts a
         WHERE a.status = 'active' AND a.account_number = finance.fn_normalize_account_number(p->>'account_number');
@@ -160,7 +162,7 @@ BEGIN
         END IF;
 
     ELSIF p_type = 'stock_buy' THEN
-        -- Kennung = Ticker ODER ISIN (fn_holding_symbol); eine Vermoegensuebersicht druckt oft nur die ISIN (2026-10-23)
+        -- Kennung = Ticker oder ISIN (fn_holding_symbol); eine Vermoegensuebersicht druckt oft nur die ISIN
         IF finance.fn_holding_symbol(p->>'symbol', p->>'isin') IS NULL THEN
             RETURN 'symbol (ticker; for crypto the coin symbol) or isin is required';
         END IF;
@@ -174,7 +176,7 @@ BEGIN
         ELSIF v_acct_type = 'stocks_depot' AND NULLIF(trim(COALESCE(p->>'isin','')),'') IS NULL THEN
             RETURN 'isin is required for a stocks_depot position';
         END IF;
-        -- gedruckte Depotnummer/Inhaber gegen das gewaehlte Depot (fn_import_depot_conflict, auch im Bundle) -- VOR
+        -- gedruckte Depotnummer/Inhaber gegen das gewaehlte Depot (fn_import_depot_conflict, auch im Bundle) -- vor
         -- dem Einstand: ein falsches Depot klaert der Agent zuerst
         v_key := finance.fn_import_depot_conflict(p_batch_id, p);
         IF v_key IS NOT NULL THEN RETURN v_key; END IF;
@@ -201,7 +203,7 @@ BEGIN
         END IF;
 
     ELSIF p_type = 'insurance' THEN
-        -- Spiegel fn_create_insurance (WP2): Beitrag je Abbuchung (+ Rhythmus) ODER Jahresbeitrag -- dieselbe Pruef-fn.
+        -- Spiegel fn_create_insurance: Beitrag je Abbuchung (+ Rhythmus) oder Jahresbeitrag -- dieselbe Pruef-fn.
         v_fields := finance.fn_insurance_fields(p);
         IF (v_fields->>'ok')::boolean IS DISTINCT FROM true THEN RETURN v_fields->>'reason'; END IF;
         -- Beitrag unbekannt = gueltig (Police ohne Beitrags-Kette); nur mit Beitrag sind Datum und Konto Pflicht. Ein
@@ -232,7 +234,7 @@ BEGIN
                                                  OR NULLIF(p->>'current_value','') IS NOT NULL) THEN
             RETURN 'a statutory pension stores no monthly pension or value of its own - put the figures into a pension_statement row';
         END IF;
-        -- WP2: Beitrags-Rhythmus roh (Spiegel fn_create_pension, Default monatlich)
+        -- Beitrags-Rhythmus roh (Spiegel fn_create_pension, Default monatlich)
         IF NULLIF(p->>'schedule_unit','') IS NOT NULL THEN
             BEGIN PERFORM (p->>'schedule_unit')::finance.schedule_unit;
             EXCEPTION WHEN OTHERS THEN
@@ -276,7 +278,7 @@ BEGIN
     ELSIF p_type = 'real_estate' THEN
         v_num := NULLIF(p->>'current_value','')::numeric;
         IF v_num IS NULL OR v_num < 0 THEN RETURN 'current_value must be a non-negative number'; END IF;
-        -- Instandhaltungsruecklage (2026-10-27): Wohnflaeche/Baujahr optional, dieselbe Pruefung wie die create-fn
+        -- Instandhaltungsruecklage: Wohnflaeche/Baujahr optional, dieselbe Pruefung wie die create-fn
         v_facts := finance.fn_real_estate_facts_reason(p);
         IF v_facts IS NOT NULL THEN RETURN v_facts; END IF;
         SELECT hit_count INTO v_hits FROM finance.fn_resolve_real_estate(v_name, FALSE);
@@ -285,8 +287,8 @@ BEGIN
     ELSIF p_type = 'savings_goal' THEN
         v_num := NULLIF(p->>'target_amount','')::numeric;
         IF v_num IS NULL OR v_num <= 0 THEN RETURN 'target_amount must be a positive number'; END IF;
-        -- WP2: first_payment_date optional (fn_savings_rate_schedule: naechster Abbuchungstag ab heute)
-        -- 2026-10-27: mit Sparplan(en) darf beides fehlen (das Datum folgt aus ihrem Monatsbetrag, fn_create_savings_goal)
+        -- first_payment_date optional (fn_savings_rate_schedule: naechster Abbuchungstag ab heute)
+        -- mit Sparplan(en) darf beides fehlen (das Datum folgt aus ihrem Monatsbetrag, fn_create_savings_goal)
         IF NULLIF(p->>'target_date','') IS NOT NULL AND NULLIF(p->>'monthly_savings_rate','') IS NOT NULL THEN
             RETURN 'provide EXACTLY ONE of target_date or monthly_savings_rate (the DB derives the other)';
         END IF;
@@ -297,7 +299,7 @@ BEGIN
         IF lower(COALESCE(NULLIF(p->>'replace_transfer',''), 'true')) NOT IN ('true', 'false') THEN
             RETURN 'replace_transfer must be true or false';
         END IF;
-        -- Sparziel-Zweckbindung 2026-10-27: das Abbuchungskonto ist nur fuer eine Rate noetig -> optional, wenn ein
+        -- das Abbuchungskonto ist nur fuer eine Rate noetig -> optional, wenn ein
         -- Startbestand (already_saved) das Ziel deckt oder ein Sparplan es finanziert (fn_create_savings_goal ist das Gesetz).
         IF NULLIF(p->>'already_saved','')::numeric < 0 THEN RETURN 'already_saved must not be negative'; END IF;
         v_ref := NULLIF(trim(COALESCE(p->>'account','')), '');
@@ -308,7 +310,7 @@ BEGIN
         IF v_ref IS NOT NULL AND finance.fn_import_ref_account(p_batch_id, v_ref) IS NULL THEN
             RETURN format('account "%s" not found (neither existing nor in this batch)', v_ref);
         END IF;
-        -- Audit Paket 3: ein Sparziel braucht ein Sparkonto (Topf), Gesetz in fn_create_savings_goal -> hier vorab
+        -- ein Sparziel braucht ein Sparkonto (Topf), Gesetz in fn_create_savings_goal -> hier vorab
         -- als Zeilenfehler (vor dem Gate), statt erst beim Commit.
         IF NULLIF(trim(COALESCE(p->>'reserve_account','')), '') IS NULL THEN
             RETURN 'reserve_account (name of the account that holds or receives the money) is required';
@@ -330,7 +332,7 @@ BEGIN
            AND NULLIF(trim(COALESCE(p->>'savings_plan','')), '') IS NULL THEN
             RETURN format('reserve_account "%s" is a depot - give already_saved (money already there) or savings_plan (the plan that buys into it)', trim(p->>'reserve_account'));
         END IF;
-        -- Bestehender Dauerauftrag in einen Topf aus der DB (wie fn_create_savings_goal, Befund 2026-10-27): vor dem
+        -- Bestehender Dauerauftrag in einen Topf aus der DB (wie fn_create_savings_goal): vor dem
         -- Gate als Zeilenfehler statt erst beim Commit; die Zeile braucht replace_transfer (true = fortfuehren).
         IF NULLIF(p->>'replace_transfer','') IS NULL AND NULLIF(trim(COALESCE(p->>'savings_plan','')), '') IS NULL
            AND COALESCE(NULLIF(p->>'already_saved','')::numeric, 0) < v_num
@@ -355,7 +357,7 @@ BEGIN
            AND ((p->>'current_balance')::numeric <= 0 OR (p->>'current_balance')::numeric > v_num) THEN
             RETURN 'current_balance (remaining debt) must be greater than 0 and not above original_amount';
         END IF;
-        -- WP2: ein frischer Kredit ohne Auszahlungsdatum eroeffnet zum Stichtag heute (Datum spaeter nachtragbar)
+        -- ein frischer Kredit ohne Auszahlungsdatum eroeffnet zum Stichtag heute (Datum spaeter nachtragbar)
         IF NULLIF(p->>'current_balance','') IS NULL AND v_num IS NULL THEN
             RETURN 'the remaining debt is required: current_balance (running loan) or original_amount (new loan)';
         END IF;
@@ -463,8 +465,8 @@ $$;
 
 -- ============================================================
 -- fn_import_ref_account / fn_import_ref_account_type — Referenz-Aufloesung fuer die
--- Validierung: existiert das Konto im BESTAND (fn_resolve_account, eindeutig) ODER als
--- account-Row im SELBEN Batch? Liefert 'db'/'batch' bzw. den account_type (Bestand oder
+-- Validierung: existiert das Konto im Bestand (fn_resolve_account, eindeutig) oder als
+-- account-Row im selben Batch? Liefert 'db'/'batch' bzw. den account_type (Bestand oder
 -- Batch-Payload) — NULL = nicht auffindbar.
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_import_ref_account(p_batch_id uuid, p_name text)
@@ -482,9 +484,9 @@ BEGIN
 END;
 $$;
 
--- fn_import_ref_currency — Waehrung des referenzierten Kontos (Batch-Zeile ODER Bestand), exakt wie
+-- fn_import_ref_currency — Waehrung des referenzierten Kontos (Batch-Zeile oder Bestand), exakt wie
 -- fn_create_account sie setzen wird: genannte currency, sonst bei einem Depot die seines Verrechnungskontos,
--- sonst EUR. Die EINE Adresse fuer validate_row (EUR-Pflicht Versicherung/Kredit vor dem Gate) und die
+-- sonst EUR. Die eine Adresse fuer validate_row (EUR-Pflicht Versicherung/Kredit vor dem Gate) und die
 -- Import-Karte (Betrag in der Zeilen-Waehrung). NULL = Konto nicht auffindbar.
 CREATE OR REPLACE FUNCTION finance.fn_import_ref_currency(p_batch_id uuid, p_name text)
 RETURNS text LANGUAGE plpgsql STABLE AS $$

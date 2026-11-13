@@ -1,5 +1,5 @@
 #Requires -Version 5.1
-# Der geteilte Tabellen-Leser fuer Bank-Export-Dateien ("Import zuerst": 2. Konsument -> vereinheitlicht): Fetch telegram
+# Der geteilte Tabellen-Leser fuer Bank-Export-Dateien: Fetch telegram
 # file (Core-Baustein, accept=table) -> File ok? -> Read table (CSV-Tokenizer RFC 4180 bzw. xlsx-Raster als Text, kennt
 # keine Bedeutung; die Kopfzeile bleibt im Raster) -> Table read?. Konsumenten: tool_import_bank_export (Monats-Check) und
 # tool_get_recurring_suggestions (Dauerauftrags-Vorschlaege). Die Bedeutung liest die DB (fn_bank_export_load bzw.

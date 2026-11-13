@@ -1,16 +1,16 @@
 -- ============================================================
--- agent.fn_set_person_language (Callback-Handler des Sprach-Pickers, Prefix lang:<person_id>:<code>)
+-- fn_set_person_language (ATOMIC WRITE — Callback-Handler des Sprach-Pickers, Prefix lang:<person_id>:<code>)
 --   Registriert in core.callback_handlers (Core-Manifest callback_handlers, member_permeable=true); der Dispatcher
 --   core.fn_dispatch_callback laesst Owner und aufgeloeste Mitglieder durch, die FEINE Autorisierung liegt hier:
 --     Owner -> jede Person; Mitglied -> nur sich selbst; unaufgeloester Absender -> abgelehnt.
---   ZERO-TRUST: re-resolvt den Absender selbst aus p->>'chat_id' (RAISE-freier Cast, Muster fn_dispatch_callback),
---   vertraut keinem Caller-Flag. Der Tipp IST die Bestaetigung (wie cron_on / learn:ok), kein HITL-Gate davor.
---   Write ueber den EINEN Fakten-Schreibweg agent.fn_set_context_facts, OHNE chat_id (vertrauenswuerdiger Aufruf
+--   Zero-Trust: re-resolvt den Absender selbst aus p->>'chat_id' (RAISE-freier Cast, Muster fn_dispatch_callback),
+--   vertraut keinem Caller-Flag. Der Tipp ist die Bestaetigung (wie cron_on / learn:ok), kein HITL-Gate davor.
+--   Write ueber den einzigen Fakten-Schreibweg agent.fn_set_context_facts, ohne chat_id (vertrauenswuerdiger Aufruf
 --   wie fn_add_household_person — die family-owner_only-Pruefung dort uebernimmt diese Autorisierung), und genau
 --   {person_id, language} — nie andere Felder.
---   Toast in der Sprache des TIPPENDEN (setzt er sich selbst: schon in der neuen Sprache), Texte core.lang.*.
+--   Toast in der Sprache des Tippenden (setzt er sich selbst: schon in der neuen Sprache), Texte core.lang.*.
 --   p: das Callback-Payload {data, chat_id, ...}
---   RUECKGABE: {ok:true, person_id, toast} | {ok:false, reason, toast}  (nie RAISE -> kein Owner-Alert)
+--   Rueckgabe: {ok:true, person_id, toast} | {ok:false, reason, toast}  (nie RAISE -> kein Owner-Alert)
 --   Tests: tests/db/core/test_fn_set_person_language.sql
 -- ============================================================
 CREATE OR REPLACE FUNCTION agent.fn_set_person_language(p jsonb)

@@ -5,8 +5,9 @@
 --     Jahrgang 1947-1958: 65 Jahre + (Jahrgang-1946) Monate   (1947=+1M ... 1958=+12M=66)
 --     Jahrgang 1959-1963: 66 Jahre + 2*(Jahrgang-1958) Monate (1959=+2M ... 1963=+10M)
 --     Jahrgang >= 1964: 67 Jahre
---   Rohfakt speichern, Ableitung rechnen: das LLM rechnet NIE Datums-Arithmetik —
---   Konsumenten sind die Render-Fns (fn_household_context) und kuenftige Cron-SQL.
+--   Eingabe: p_birth date. Rueckgabe: date (Stichtag der Regelaltersgrenze).
+--   Rohfakt speichern, Ableitung rechnen: das LLM rechnet nie Datums-Arithmetik;
+--   Konsument ist die Render-fn fn_household_context.
 -- ============================================================
 CREATE OR REPLACE FUNCTION agent.fn_regelaltersgrenze(p_birth date)
 RETURNS date LANGUAGE plpgsql IMMUTABLE AS $$

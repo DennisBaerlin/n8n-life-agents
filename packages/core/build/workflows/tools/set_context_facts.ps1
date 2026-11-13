@@ -1,21 +1,20 @@
 ﻿#Requires -Version 5.1
 # Dot-gesourct von build.ps1 (Helper + Script-Scope-Creds/$FactsDisplayJson im Parent-Scope).
 
-# --- agent.tool_set_context_facts (Phase A: der EINE HITL-Fakten-Schreibweg) ----
-# HITL-Write eines facts-Sidecars in die HOST-Tabelle agent.core_contexts ueber agent.fn_set_context_facts
-# (loest agent.guide.tool_set_household_facts + agent.tool_set_profile_facts ab; die id dieses Workflows ist die
-# des frueheren tool_set_profile_facts -> import:workflow ersetzt ihn in place). EIN Workflow, mehrere Bindings
+# --- agent.tool_set_context_facts (der eine HITL-Fakten-Schreibweg) ----
+# HITL-Write eines facts-Sidecars in die Host-Tabelle agent.core_contexts ueber agent.fn_set_context_facts.
+# Ein Workflow, mehrere Bindings
 # (Muster career): der Guide bindet ihn als KI-Tool tool_set_household_facts (persons/household/context_name,
-# scope='household' FEST), der career_advisor als tool_set_profile_facts/tool_set_career_preferences (facts,
-# context_name + scope='per_user' FEST). Der Pg-Node komponiert facts aus facts + persons + household; die fn
+# scope='household' fest), der career_advisor als tool_set_profile_facts/tool_set_career_preferences (facts,
+# context_name + scope='per_user' fest). Der Pg-Node komponiert facts aus facts + persons + household; die fn
 # entscheidet Gate/Zeilen-Regel/Merge (reservierte Core-Form-Keys persons/household). Approval-Stufe owner_only
 # (approval_matrix-Block des core-Manifests); die fn traegt den Permission-Backstop (family hart owner_only, sonst context_scopes).
 # Beschriftungen: Katalog-Keys <pkg>.facts.<ctx>.<feld>; die Kontext->Paket-Zuordnung kommt build-time aus den
-# context_validators-Bloecken ($FactsDisplayJson, build.ps1) — der Core nennt kein Paket.
-# Der Graph lebt in New-ContextFactsToolGraph und baut ZWEI Workflows (eine Build-* je tools/-Datei):
+# context_validators-Bloecken ($FactsDisplayJson, build.ps1); der Core nennt kein Paket.
+# Der Graph lebt in New-ContextFactsToolGraph und baut zwei Workflows (eine Build-* je tools/-Datei):
 #   agent.tool_set_context_facts     (hier, owner_only; Haushalts-Kontexte, scope fest aus der Bindung)
 #   agent.tool_set_own_context_facts (tools/set_own_context_facts.ps1, Stufe self; -Own: ruft
-#     agent.fn_set_own_context_facts, die scope='per_user' selbst setzt, KEIN scope-/persons-/household-Eingang).
+#     agent.fn_set_own_context_facts, die scope='per_user' selbst setzt, kein scope-/persons-/household-Eingang).
 function Build-SetContextFacts { New-ContextFactsToolGraph -WorkflowName 'agent.tool_set_context_facts' }
 
 function New-ContextFactsToolGraph {
@@ -27,7 +26,7 @@ function New-ContextFactsToolGraph {
     # Sprache des Empfaengers. Feld-Labels = <pkg>.facts.<ctx>.<feld> im Katalog des besitzenden Pakets ($FactsDisplayJson
     # = {ctx: pkg} aus den context_validators-Bloecken; family = core), ein offenes Feld ohne Key zeigt label_fallback
     # (lesbarer Feldname). Werte typisiert: Datum (ISO) -> date, role -> enum core.enum.role, language -> Eigenname,
-    # bool -> ja/nein, null -> 'wird entfernt'. KEINE rohen key=value-Dumps, keine DB-Spaltennamen (person_id intern).
+    # bool -> ja/nein, null -> 'wird entfernt'. Keine rohen key=value-Dumps, keine DB-Spaltennamen (person_id intern).
     $ctxPrefix = "(((c) => (c === 'family' ? 'core' : (__FACTS_PKG__[c] || 'core')) + '.facts.' + c + '.')(`$('Start').item.json.context_name || 'family'))"
     $linesExpr = @'
 (() => {
@@ -78,11 +77,11 @@ function New-ContextFactsToolGraph {
   return L;
 })()
 '@
-    # -Own: KEIN 'family'-Default (der Weg schreibt nie family) -> fehlt context_name, zeigt die Vorschau ehrlich '?'
+    # -Own: kein 'family'-Default (der Weg schreibt nie family) -> fehlt context_name, zeigt die Vorschau ehrlich '?'
     # (Titel-fallback = roher Kontextname, Labels = label_fallback).
     if ($Own) { $ctxPrefix = $ctxPrefix.Replace("context_name || 'family'", "context_name || '?'") }
     # Fakten-Quelle der Karte = das in "Resolve dates" von der DB aufgeloeste Objekt (relative Daten wie "-3 days" ->
-    # Datum): die Karte zeigt, was der Write schreibt (beide Wege, auch Stufe self — approval_lint (e) laesst genau
+    # Datum): die Karte zeigt, was der Write schreibt (beide Wege, auch Stufe self; approval_lint (e) laesst genau
     # diesen Lese-Knoten zu).
     $factsSource = "const R = parse(`$('Resolve dates').item.json.facts_resolved, {});`n  const facts = (R && typeof R === 'object' && !Array.isArray(R)) ? R : {};`n  const persons = Array.isArray(facts.persons) ? facts.persons : [];`n  const hh = (facts.household && typeof facts.household === 'object') ? facts.household : {};"
     $linesExpr = $linesExpr.Replace('__FACTS_SOURCE__', $factsSource)
@@ -101,7 +100,7 @@ function New-ContextFactsToolGraph {
     # Atomarer Write via fn. facts = facts-Objekt + persons/household der Guide-Bindung zusammengesetzt; leer ->
     # undefined (JSON.stringify droppt den Key) -> die fn liefert ein korrigierbares {ok:false} statt eines leeren Writes.
     # Ungueltiges JSON vom Modell -> try/catch liefert den Nicht-Objekt-Sentinel '__invalid_json__' -> die fn lehnt mit
-    # {ok:false, 'facts must be a JSON object'} ab (Tool-Fehler als DATEN, kein Execution-Abbruch + Owner-Alert).
+    # {ok:false, 'facts must be a JSON object'} ab (Tool-Fehler als Daten, kein Execution-Abbruch + Owner-Alert).
     # -Own: nur facts/content, die fn setzt scope='per_user' selbst (approval_lint (e) prueft: nur diese fn, kein scope-Eingang).
     $fnName = if ($Own) { 'agent.fn_set_own_context_facts' } else { 'agent.fn_set_context_facts' }
     $payload = if ($Own) {
@@ -109,21 +108,21 @@ function New-ContextFactsToolGraph {
             context_name = '$(''Start'').item.json.context_name'
             facts        = '(x => x ? JSON.parse(x) : undefined)($(''Resolve dates'').item.json.facts_resolved)'
             content      = '$(''Start'').item.json.content || '''''
-            chat_id      = '$(''Start'').item.json.chat_id'   # Identitaet: die fn schreibt NUR den Kontext dieser Person (NIE LLM)
+            chat_id      = '$(''Start'').item.json.chat_id'   # Identitaet: die fn schreibt nur den Kontext dieser Person (nie LLM)
         }
     } else {
         [ordered]@{
             context_name = '$(''Start'').item.json.context_name || ''family'''
-            # das in "Resolve dates" EINMAL aufgeloeste Objekt (Karte = Speicher); fehlt es -> undefined -> {ok:false}
+            # das in "Resolve dates" einmal aufgeloeste Objekt (Karte = Speicher); fehlt es -> undefined -> {ok:false}
             facts        = '(x => x ? JSON.parse(x) : undefined)($(''Resolve dates'').item.json.facts_resolved)'
             content      = '$(''Start'').item.json.content || '''''
-            scope        = '$(''Start'').item.json.scope || undefined'   # FEST aus der Bindung (household|per_user), nie $fromAI
-            chat_id      = '$(''Start'').item.json.chat_id'   # Identitaet fuer den Permission-Backstop (NIE LLM)
+            scope        = '$(''Start'').item.json.scope || undefined'   # fest aus der Bindung (household|per_user), nie $fromAI
+            chat_id      = '$(''Start'').item.json.chat_id'   # Identitaet fuer den Permission-Backstop (nie LLM)
         }
     }
-    # Relative Daten ("-3 days", "last monday") VOR der Karte von der DB aufloesen lassen
-    # (core.fn_resolve_fact_dates, Genauigkeit folgt der Angabe) — die Karte zeigt und der Write schreibt dasselbe.
-    # Eingabe = dasselbe zusammengesetzte facts-Objekt wie frueher direkt im Write (kaputtes JSON -> Sentinel -> fn {ok:false}).
+    # Relative Daten ("-3 days", "last monday") vor der Karte von der DB aufloesen lassen
+    # (core.fn_resolve_fact_dates, Genauigkeit folgt der Angabe); die Karte zeigt und der Write schreibt dasselbe.
+    # Eingabe = dasselbe zusammengesetzte facts-Objekt wie im Write (kaputtes JSON -> Sentinel -> fn {ok:false}).
     $resolve = Build-Pg 'Resolve dates' @(0, 160) `
         "=SELECT core.fn_resolve_fact_dates((`$1::jsonb)->'facts')::text AS facts_resolved;" `
         ([ordered]@{
@@ -141,7 +140,7 @@ function New-ContextFactsToolGraph {
     $ifOk = Build-If 'Write ok?' @(1100, 0) "={{ `$json.ok }}" 'true' 'equals' 'boolean'
     $err = Build-ToolError 'Write failed' @(1320, 200) "={{ `$('Set context facts (atomic)').item.json.reason }}"
 
-    # Sprach-Picker (Textkatalog): fn liefert language_missing = in DIESEM Write neu angelegte family-Personen ohne
+    # Sprach-Picker (Textkatalog): fn liefert language_missing = in diesem Write neu angelegte family-Personen ohne
     # Sprache -> je Person eine Knopf-Karte an den Owner (core.sub_send_language_picker). Der Sub-Aufruf ist fail-open
     # (onError continue): der Write ist schon gespeichert, ein fehlgeschlagener Picker darf ihn nicht als Fehler melden
     # (Sprache bleibt per Chat/CLI setzbar, Laufzeit-Fallback = Owner-Sprache).
@@ -203,7 +202,7 @@ function New-ContextFactsToolGraph {
         'Set context facts (atomic)' = @{ main = @( ,@( E 'Write ok?' ) ) }
     }
     if ($Own) {
-        # -Own legt nie eine family-Person an (language_missing bleibt leer) UND Stufe self darf ausser dem Gate keinen
+        # -Own legt nie eine family-Person an (language_missing bleibt leer) und Stufe self darf ausser dem Gate keinen
         # Workflow rufen (approval_lint (e)) -> kein Picker-Zweig, Write ok? geht direkt auf Return.
         $nodes = @($trig, $resolve, $summary, $gate, $ifApproved, $retCancelled, $write, $ifOk, $err, $ret, $stickyOverview, $stickyHitl, $stickyResolve)
         $conns['Write ok?'] = @{ main = @( @( E 'Return' ), @( E 'Write failed' ) ) }

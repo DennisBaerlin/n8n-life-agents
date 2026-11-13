@@ -1,8 +1,8 @@
 -- tests/db/core/test_fn_set_router_memory_signal.sql
 -- Testet agent.fn_set_router_memory_signal: nach einem woertlich weitergereichten Spezialisten ersetzt der Orchestrator
--- seinen eigenen Router-Text im Chat-Gedaechtnis durch das Signal (Befund 2026-10-26: der Router schrieb eine
--- eigene Fassung, die der Nutzer nie sah, und ahmte sie in den Folge-Turns nach). Nur die juengste passende ai-Zeile
--- DIESES Chats, nur ein gueltiges Signal, fehlende Tabelle = no-op.
+-- seinen eigenen Router-Text im Chat-Gedaechtnis durch das Signal (sonst schreibt der Router eine
+-- eigene Fassung, die der Nutzer nie sah, und ahmt sie in den Folge-Turns nach). Nur die juengste passende ai-Zeile
+-- dieses Chats, nur ein gueltiges Signal, fehlende Tabelle = no-op.
 BEGIN;
 
 DO $$

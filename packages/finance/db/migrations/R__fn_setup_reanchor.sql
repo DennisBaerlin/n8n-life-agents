@@ -1,7 +1,7 @@
 -- ============================================================
 -- fn_setup_reanchor (ATOMIC WRITE, hinter dem Gate) -- Startpunkt eines unberuehrten Kontos auf den Anfang der Datei legen
 --   Eingabe: chat_id, table:{rows}. Plan und Pruefung: fn_setup_reanchor_plan (Karte und Write lesen dieselben Werte).
---   RUECKGABE: {ok:true, account_id, balance, opening_balance_date, card_lines} | {ok:false, reason}.
+--   RUECKGABE: {ok:true, account_id, balance, opening_balance_date, phase, say, card_lines} | {ok:false, reason}.
 --   Trigger trg_finance_balance_update fuehrt den Saldo nach.
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_setup_reanchor(p jsonb)

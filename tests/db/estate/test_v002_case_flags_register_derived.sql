@@ -1,8 +1,8 @@
 -- tests/db/estate/test_v002_case_flags_register_derived.sql
--- estate:V002 (ECHTE Datei, zweimal): Bestand an die WP3-Regeln angleichen —
+-- estate:V002 (echte Datei, zweimal): Bestand an die register-abgeleiteten Fall-Regeln angleichen —
 --   (1) Alt-Default-false aus cases.flags entfernt, true bleibt; (2) status_source der Bestands-Tasks rekonstruiert
 --   (done/Knopf-n.a./n.a. trotz wahrem Merkmal -> user, sonst system); (3) done_at <-> done angeglichen + CHECK;
---   (4) Anbieter => Vorsorgevertrag + CHECK. Die Fixture entfernt die CHECKs vorher (Altbestand vor WP3).
+--   (4) Anbieter => Vorsorgevertrag + CHECK. Die Fixture entfernt die CHECKs vorher (Altbestand ohne CHECKs).
 BEGIN;
 
 ALTER TABLE estate.case_tasks DROP CONSTRAINT case_tasks_done_at_consistency;
@@ -28,7 +28,7 @@ SELECT c.id, v.k, '', 'first_week', v.k AS title, v.st, NULL
                ('order_death_certs', 'open'),            -- bedingungslos offen -> system
                ('deliver_will', 'open')) AS v (k, st)    -- has_will false, trotzdem offen -> per Hand -> user
  WHERE c.subject_person_id = 'hans';
-UPDATE estate.case_tasks SET done_at = now() WHERE template_key = 'order_death_certs';   -- offen MIT done_at
+UPDATE estate.case_tasks SET done_at = now() WHERE template_key = 'order_death_certs';   -- offen mit done_at
 INSERT INTO estate.funeral_preferences (person_id, has_prepaid_contract, prepaid_contract_provider)
 VALUES ('hans', FALSE, 'Bestattungshaus Muster'), ('erika', NULL, NULL);
 

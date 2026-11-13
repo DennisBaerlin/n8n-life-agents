@@ -1,5 +1,5 @@
 -- tests/db/finance/test_fn_import_resolve_depot.sql
--- Befund 2026-10-23 (Vermoegensuebersicht): Positionen ohne Ticker/Einstand, Depot geraten (falsches Depot),
+-- Vermoegensuebersicht-Import: Positionen ohne Ticker/Einstand, Depot geraten (falsches Depot),
 -- Depot ohne gespeicherte Nummer. Prueft:
 --   (1) fn_import_resolve_depot: Nummer > Inhaber > NULL; nicht aufloesbarer Inhaber/Krypto ohne Depot -> NULL
 --   (2) widerspruchsfreies extrahiertes Depot bleibt; Inhaber-Depot mit fremder Nummer wird nicht gewaehlt
@@ -50,8 +50,8 @@ BEGIN
     RAISE EXCEPTION 'FAIL (1) kein Treffer muss NULL sein'; END IF;
   RAISE NOTICE 'PASS (1) fn_import_resolve_depot [Nummer > Inhaber > NULL]';
 
-  -- (2) Review 2026-10-23: ein widerspruchsfreies extrahiertes Depot bleibt (Haushalts-Depot gegen Inhaberin);
-  --     ein Inhaber-Depot mit ANDERER gespeicherter Nummer wird nicht gewaehlt (waere sofort ein Widerspruch)
+  -- (2) ein widerspruchsfreies extrahiertes Depot bleibt (Haushalts-Depot gegen Inhaberin);
+  --     ein Inhaber-Depot mit anderer gespeicherter Nummer wird nicht gewaehlt (waere sofort ein Widerspruch)
   IF finance.fn_import_resolve_depot(NULL, '{"isin":"IE00B5BMR087","depot":"__t_rd_depot_hh__","depot_holder":"Rdkid Testfall"}') IS NOT NULL THEN
     RAISE EXCEPTION 'FAIL (2) Haushalts-Depot muss bleiben'; END IF;
   IF finance.fn_import_resolve_depot(NULL, '{"isin":"IE00B5BMR087","depot_number":"9000000033","depot_holder":"Rdown Testfall"}') IS NOT NULL THEN

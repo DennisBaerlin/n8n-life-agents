@@ -12,8 +12,9 @@
 --        Ohne Vorname nur Saetze ohne {name}.
 --   Texte direkt aus core.ui_texts (Sprache der Person, sonst en) — core.fn_ui_texts gaebe fuer einen fehlenden Key
 --   den Key selbst zurueck. {name} -> Vorname. Alte persona_greet-Latches der Person loescht derselbe Aufruf.
---   p: {chat_id, signal, has_parts, message_id}
---   RUECKGABE: {ok:true, text:text|null}  (nie RAISE -> ein Fehler kostet nur den Rahmensatz)
+--   Eingabe p: {chat_id, signal, has_parts, message_id}
+--   Rueckgabe: {ok:true, text:text|null}  (nie RAISE -> ein Fehler kostet nur den Rahmensatz)
+--   Seiteneffekt: Tagesgruss-Latch (core.notification_state) setzen, alte Latches der Person loeschen.
 --   Tests: tests/db/core/test_fn_claim_persona_frame.sql
 -- ============================================================
 CREATE OR REPLACE FUNCTION agent.fn_claim_persona_frame(p jsonb)

@@ -1,10 +1,10 @@
 -- ============================================================
--- fn_depot_cover_state (READ-ONLY Helfer, Mini-App UX 2026-10-30) — deckt der Marktwert eines Depots das Ziel-Geld darin?
---   Die EINE Regel fuer die Depot-Deckung: Mini-App (Ziele, Pille an der Sparziel-Zeile) und Berater-Alert reserve_coverage_depot
---   (fn_advisor_review) lesen beide hier. Der Ziel-Stand bleibt das Gesparte (Marktwert = Deckung, nie Reserve,
---   finance:V008); eine kleine Kursdelle ist keine Luecke (Befund 2026-10-30: erst bei heftigen
---   Kursschwankungen gelb).
---   RUECKGABE {state, gap, reserved, market_value}:
+-- fn_depot_cover_state (READ-ONLY Helfer) — deckt der Marktwert eines Depots das Ziel-Geld darin?
+--   Die eine Regel fuer die Depot-Deckung: Mini-App (Ziele, Pille an der Sparziel-Zeile) und Berater-Alert
+--   reserve_coverage_depot (fn_advisor_review) lesen beide hier. Der Ziel-Stand bleibt das Gesparte (Marktwert =
+--   Deckung, nie Reserve, finance:V008); eine kleine Kursdelle ist keine Luecke (erst bei heftigen Kursschwankungen gelb).
+--   Eingabe: p_account_id (Depot-Konto).
+--   Rueckgabe {state, gap, reserved, market_value}:
 --     unknown = Marktwert nicht ermittelbar: depot_reserve_status.fx_missing, eine Position ohne Marktwert
 --               (depot_holdings_overview.market_value_eur NULL) oder ein aktiver Ziel-Anteil ohne Wechselkurs
 --               (savings_goal_account_share.has_fx_gap) -> nie gruen, gap NULL

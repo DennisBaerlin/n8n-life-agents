@@ -14,8 +14,9 @@
 # -StopWaiting is safe: only touches executions with status=waiting. Useful when a gate
 # (sendAndWait) was never clicked and blocks n8n resources / slows down the web UI.
 #
-# Connection from the ephemeral Docker test substrate (Get-TestN8nConnection -> .local/n8ntest_state.<container>.json),
-# NOT from .env: there is no live prod anymore. Throws with a hint if no substrate is running.
+# Prerequisite: a running Docker test substrate. The connection comes from Get-TestN8nConnection
+# (.local/n8ntest_state.<container>.json), never from .env; it throws with a hint if no substrate runs.
+# Exit: 0 = done; non-zero = throw (no substrate, API error).
 
 param(
     [int]$Limit = 20,
@@ -36,7 +37,6 @@ $N8N_API_KEY = $conn.ApiKey
 $Headers = @{ 'X-N8N-API-KEY' = $N8N_API_KEY }
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 
-# Map workflowId -> name (one call, for readable output)
 $wfNames = @{}
 try {
     $wf = Invoke-RestMethod -Uri "$N8N_URL/api/v1/workflows?limit=200" -Headers $Headers -Method Get
@@ -59,7 +59,6 @@ function Stop-Execution([string]$ExecId, [string]$Label) {
     }
 }
 
-# -Stop: einzelne Execution anhalten
 if ($Stop) {
     if (-not $Id) { throw "-Stop erfordert -Id <id>" }
     $ex = Invoke-RestMethod -Uri "$N8N_URL/api/v1/executions/$Id" -Headers $Headers -Method Get
@@ -69,7 +68,6 @@ if ($Stop) {
     return
 }
 
-# -StopWaiting: alle haengenden Gates/Approvals auf einmal stoppen
 if ($StopWaiting) {
     $resp = Invoke-RestMethod -Uri "$N8N_URL/api/v1/executions?status=waiting&limit=100" `
         -Headers $Headers -Method Get
@@ -101,7 +99,6 @@ if ($Id) {
         if ($rd.error.description) { Write-Host "    description: $($rd.error.description)" }
         if ($rd.error.node)        { Write-Host "    node:        $($rd.error.node.name)" }
     }
-    # Per-node errors (where the failure actually happened)
     if ($rd.runData) {
         Write-Host ""
         Write-Host "  Node-level errors:"
@@ -114,7 +111,6 @@ if ($Id) {
             }
         }
     }
-    # Dump each node's first-run output (messages / tool I/O) for conversation analysis
     if ($Dump -and $rd.runData) {
         Write-Host ""
         Write-Host "  Node outputs (first run, truncated):"
@@ -132,7 +128,6 @@ if ($Id) {
     return
 }
 
-# List mode
 $st = if ($ErrorsOnly) { 'error' } elseif ($Status) { $Status } else { $null }
 $url = "$N8N_URL/api/v1/executions?limit=$Limit"
 if ($st) { $url += "&status=$st" }

@@ -19,7 +19,7 @@ BEGIN
   IF v_coll <> 'C.UTF-8' OR v_ctype <> 'C.UTF-8' THEN
     RAISE EXCEPTION 'FAIL db_encoding [Locale collate=% ctype=%, erwartet C.UTF-8 wie Prod (install_pg.sh)]', v_coll, v_ctype;
   END IF;
-  -- Die Eigenschaft, an der v0.4.0 scheiterte: ein Gedankenstrich (U+2013) ist kein Steuerzeichen.
+  -- Ein Gedankenstrich (U+2013) ist kein Steuerzeichen.
   IF chr(8211) ~ '[[:cntrl:]]' THEN
     RAISE EXCEPTION 'FAIL db_encoding [U+2013 gilt als Steuerzeichen]';
   END IF;

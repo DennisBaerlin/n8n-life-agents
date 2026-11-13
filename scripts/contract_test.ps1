@@ -1,13 +1,13 @@
 ﻿#Requires -Version 5.1
-# Contract-Smoke fuer externe APIs (A4b). Kein LLM, kein DB-Write -- prueft NUR, dass die
-# Antwort-Schemata externer Integrationen noch dem entsprechen, was unsere Workflows erwarten.
-# Hintergrund: cron_refresh_fx_rates -> agent.fn_upsert_fx_rates liest p->'rates'->>CCY als
+# Contract-Smoke fuer externe APIs. Kein LLM, kein DB-Write -- prueft nur, dass die
+# Antwort-Schemata externer Integrationen dem entsprechen, was unsere Workflows erwarten.
+# Grund: cron_refresh_fx_rates -> agent.fn_upsert_fx_rates liest p->'rates'->>CCY als
 # positive Zahl. Aendert open.er-api.com sein Schema (oder liefert 0/n-a), schreibt der Cron
 # still falsch/nichts -> jede Cross-Currency-Bewertung kippt, ohne dass ein Test es faengt.
-# Dieser Smoke macht genau diese ungemockte Integration sichtbar.
 #
 # Usage:  .\scripts\contract_test.ps1 [-Verbose]
-# Exit-Code = Anzahl fehlgeschlagener Contract-Checks. Netz-abhaengig (externe API).
+# Voraussetzung: Netzzugang zu open.er-api.com (kein Container, keine .env).
+# Exit-Code = Anzahl fehlgeschlagener Contract-Checks; 1, wenn die API nicht erreichbar ist.
 param([switch]$Verbose)
 
 $ErrorActionPreference = 'Stop'
@@ -41,7 +41,7 @@ try {
 Check 'result == success'        { $fx.result -eq 'success' }
 Check 'base_code == EUR'         { $fx.base_code -eq 'EUR' }       # fn_upsert_fx_rates schreibt base='EUR'
 Check 'rates-Objekt vorhanden'   { $null -ne $fx.rates }
-# Repraesentative getrackte Waehrungen muessen als positive Zahl vorliegen (so liest sie die fn).
+# fn_upsert_fx_rates liest die Kurse als positive Zahl.
 foreach ($ccy in @('USD','CLP')) {
     Check "rates.$ccy ist positive Zahl" {
         $v = $fx.rates.$ccy

@@ -1,5 +1,5 @@
 -- ============================================================
--- core.menu_refresh — Menue-Auftrag der Mini-App „Übersicht“ (Release 2, 2026-10-28)
+-- core.menu_refresh — Menue-Auftrag der Mini-App „Übersicht“
 --   Anwenden via: db_apply.ps1 -File packages\core\db\core.menu_refresh_init.sql
 --
 -- Zweck: der Knopf „📊 Übersicht“ (setChatMenuButton je Chat) soll einer Kopplung, einem Entkoppeln, einem Rollen- oder
@@ -11,7 +11,7 @@
 --   schliesst sie nur, wenn kein Telegram-Aufruf scheiterte (core.fn_menu_refresh_finish; sonst retry_after 10 Min).
 --   Muster „Daten-Zeile -> root-Timer“ wie core.update_requests (provisioning/CLAUDE.md *Update im Chat*), aber ein
 --   zusammenfassendes Flag statt eines Auftrags-Protokolls (kein Owner-Auftrag, keine Ergebnis-Karte).
---   Dateiname sortiert NACH core.app_init/core.config_init: die Trigger brauchen core.app_screens und core.config
+--   Dateiname sortiert nach core.app_init/core.config_init: die Trigger brauchen core.app_screens und core.config
 --   (db_test spielt die Inits alphabetisch ein, apply_schema.sh zieht nur config_init vor).
 --
 -- Ephemer (Betriebs-Zustand, keine Nutzerdaten) -> nicht im backup-Block des Manifests.

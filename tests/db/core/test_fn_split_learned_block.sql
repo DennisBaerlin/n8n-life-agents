@@ -1,5 +1,5 @@
 -- tests/db/core/test_fn_split_learned_block.sql
--- Phase A: core.fn_split_learned_block(text) — trennt den system-verwalteten "## Gelernt"-Block (bis vor die
+-- core.fn_split_learned_block(text) — trennt den system-verwalteten "## Gelernt"-Block (bis vor die
 -- naechste '## '-Ueberschrift, Leerzeilen + '### ' gehoeren dazu) vom restlichen Prosa-Text.
 DO $$
 DECLARE
@@ -22,7 +22,7 @@ BEGIN
      OR r.body IS DISTINCT FROM E'# Plan\n## Massnahmen\n- c' THEN
     RAISE EXCEPTION 'FAIL [Block in der Mitte]: got body=% block=%', r.body, r.block; END IF;
 
-  -- "## Gelerntes" ist NICHT der verwaltete Block (exakter Anker)
+  -- "## Gelerntes" ist nicht der verwaltete Block (exakter Anker)
   r := core.fn_split_learned_block(E'# Plan\n## Gelerntes aus dem Gespraech\n- x');
   IF r.block IS NOT NULL THEN
     RAISE EXCEPTION 'FAIL [exakter Anker]: "## Gelerntes" faelschlich als Block erkannt'; END IF;

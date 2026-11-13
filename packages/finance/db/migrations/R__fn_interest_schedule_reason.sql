@@ -1,18 +1,18 @@
 -- ============================================================
--- fn_interest_schedule_reason (READ HELPER) -- Pflicht-Kadenz einer Zinszeile (Befund 2026-10-24)
---   EINE Adresse fuer fn_create_account (erste Zinszeile, auch Import ueber fn_import_bundle) und
---   fn_interest_rate_preview (set_account_interest + Karte), angewandt auf die WIRKSAMEN Werte (nach dem Erben der
---   offenen Zeile). NULL = Kadenz vollstaendig, sonst der korrigierbare Grund (EN, nennt die Feldnamen des Tools).
---   Vorher erfand die DB still 'year' (Testbroker Cashkonten liefen jaehrlich statt monatlich). Regeln:
+-- fn_interest_schedule_reason (READ HELPER) -- Pflicht-Kadenz einer Zinszeile
+--   Die eine Adresse fuer fn_create_account (erste Zinszeile, auch Import ueber fn_import_bundle) und
+--   fn_interest_rate_preview (set_account_interest + Karte), angewandt auf die wirksamen Werte (nach dem Erben der
+--   offenen Zeile). Rueckgabe: NULL = Kadenz vollstaendig, sonst der korrigierbare Grund (EN, nennt die Feldnamen des
+--   Tools). Die DB erfindet nie still 'year' (Cashkonten liefen sonst jaehrlich statt monatlich). Regeln:
 --     * Rhythmus (unit) ist Pflicht -- nie angenommen; der Agent schlaegt die Konditionen nach oder fragt.
 --     * Intervall >= 1.
 --     * month -> Tag Pflicht: -1 (Ende des Monats/Quartals/Halbjahres, Kalender-Raster) oder fester Tag 1-28;
 --       -1 nur mit n in {1,2,3,4,6,12} (Kalender-Perioden, fn_interest_grid_is_calendar).
 --     * year  -> Tag leer (= Jahrestag des Starts) oder -1 (= 31.12.); ein fester Tag wuerde nicht wirken.
 --     * day/week -> kein Tag.
---   Bewusst KEIN spiegelnder CHECK: ein (NOT VALID) CHECK wuerde auch das UPDATE valid_to von Altzeilen (z. B. month
+--   Bewusst kein spiegelnder CHECK: ein (NOT VALID) CHECK wuerde auch das UPDATE valid_to von Altzeilen (z. B. month
 --   ohne Tag) bei einem reinen Satzwechsel blockieren; schedule_unit NOT NULL bleibt der strukturelle Backstop.
---   p_fields: 'account' (interest_credit_*-Felder von tool_create_account) | 'rate' (schedule_*-Felder von
+--   Eingabe: p_unit, p_interval, p_dom, p_fields: 'account' (interest_credit_*-Felder von tool_create_account) | 'rate' (schedule_*-Felder von
 --   tool_set_account_interest).
 --   plpgsql: Aufrufer liegen alphabetisch davor (fn_create_account, fn_interest_rate_preview) -> late-bound.
 --   Tests: tests/db/finance/test_fn_create_account.sql, tests/db/finance/test_fn_set_account_interest.sql

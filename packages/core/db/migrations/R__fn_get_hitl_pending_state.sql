@@ -1,12 +1,12 @@
 -- ============================================================
--- fn_get_hitl_pending_state (Karte-offen-Sperre, Fix C — read-only)
---   Zustand des Chats fuer den Orchestrator-Pre-Router ('Card open check', core_ro). DIE eine Stelle der
+-- fn_get_hitl_pending_state (Karte-offen-Sperre, READ)
+--   Zustand des Chats fuer den Orchestrator-Pre-Router ('Card open check', core_ro). Die eine Stelle der
 --   Ablauf-Logik (expires_at > now()): 'own' = mindestens eine Karte im Chat selbst offen (auch kurz nach dem
 --   Tipp, solange die Kette noch antwortet); 'other' = nur Freigaben durch jemand anderen offen; NULL = frei.
---   SECURITY DEFINER (Security-Audit 2026-10): agent.hitl_pending traegt den Auftragstext und steht auf der
+--   SECURITY DEFINER: agent.hitl_pending traegt den Auftragstext und steht auf der
 --   core_ro-Deny-Liste (util_create_core_ro.sql) -> der Pre-Router liest nur den Zustand ueber dieses Fenster.
---   NULL-Chat -> NULL.
---   RUECKGABE: text ('own' | 'other' | NULL)
+--   Eingabe: p_chat_id (bigint; NULL -> NULL).
+--   Rueckgabe: text ('own' | 'other' | NULL)
 --   Tests: tests/db/core/test_fn_hitl_pending.sql, tests/db/cross/test_role_permissions.sql
 -- ============================================================
 CREATE OR REPLACE FUNCTION agent.fn_get_hitl_pending_state(p_chat_id bigint)

@@ -1,30 +1,32 @@
 -- ============================================================
--- fn_advisor_read_plan (PUBLIZIERTE SECURITY-DEFINER-READ-FN — Core-Lesefenster, D10/O1)
---   Das EINZIGE Lesefenster der engen Paket-Leserolle finance_ro/career_ro auf die domaenen-neutrale
---   Plan-Persistenz agent.advisor_plans (die nach der Finance-Isolation in `agent` bleibt, O1 — Shared-
---   Infra fuer die Advisor-Domaenen). Der Advisor-Agent liest seinen Plan-Stand zur Laufzeit per freiem
---   postgres_select (Interview fortsetzen / publizierte Version pruefen); unter der engen Rolle erreicht
---   er agent.* nicht direkt → er ruft stattdessen diese Fn:
+-- fn_advisor_read_plan (READ, SECURITY DEFINER — Core-Lesefenster)
+--   Das einzige Lesefenster der engen Paket-Leserolle finance_ro/career_ro auf die domaenen-neutrale
+--   Plan-Persistenz agent.advisor_plans (bleibt in `agent`, Shared-Infra fuer die Advisor-Domaenen).
+--   Der Advisor-Agent liest seinen Plan-Stand zur Laufzeit per freiem postgres_select (Interview fortsetzen /
+--   publizierte Version pruefen); unter der engen Rolle erreicht er agent.* nicht direkt und ruft stattdessen
+--   diese fn:
 --       SELECT status, version, interview_state, plan_md FROM core.fn_advisor_read_plan('finance');
 --
---   P0c PERSON-SCOPE (Paritaet zum Schreibpfad fn_advisor_save_section/_publish_plan): der Plan-Schluessel
+--   Eingabe: p_domain (Pflicht; deckt auch den E2E-Sentinel '__e2e_finance__' ab: household, kein scope-Eintrag
+--   -> person_id NULL), p_chat_id (optional, nur fuer per_user relevant).
+--   Person-Scope (Paritaet zum Schreibpfad fn_advisor_save_section/_publish_plan): der Plan-Schluessel
 --   ist (domain, person_id). Die Domain -> ihr Plan-Context (core.advisors.plan_context, Fallback
 --   '<domain>_planning') -> dessen scope (core.context_scopes). household -> person_id IS NULL (der eine
 --   Haushalts-Plan; finance/financial_planning). per_user -> die Person:
---     * chat_id geliefert + aufgeloest (fn_resolve_sender, NIE LLM) -> dessen person_id;
---     * KEIN/unaufgeloester chat_id -> leere Menge (fail-closed; der fruehere Owner-Fallback ist entfernt).
+--     * chat_id geliefert + aufgeloest (fn_resolve_sender, nie LLM) -> dessen person_id;
+--     * kein/unaufgeloester chat_id -> leere Menge (fail-closed, kein Owner-Fallback).
 --     * Aufruf aus einer Frei-SQL-Sitzung (core.fn_is_free_sql_session: Login-Rolle *_ro) -> leere Menge: dort waere
 --       die chat_id LLM-gesteuert. Der career_advisor liest seinen Plan ueber das gebundene read_plan-Werkzeug unter
---       der Haupt-Credential (Security-Audit 2026-10, "strikt privat").
+--       der Haupt-Credential ("strikt privat").
 --
---   interview_state kommt gerendert: ein Abschnitt mit Themen traegt content = seine Themen als "<Thema>: <Text>" in
---   Reihenfolge (gespeichert ist dort kein content), dazu topics und legacy_content (Alt-Gesamttext, nur Quelle).
---   Liefert die OPERATIV relevanten Zeilen (draft + active) — KEINE superseded-Historie. p_domain deckt auch
---   den E2E-Sentinel '__e2e_finance__' ab (household, kein scope-Eintrag -> person_id NULL, m4-verifiziert).
+--   Rueckgabe: Tabelle (domain, plan_name, status, version, interview_state, plan_md, updated_at) mit den operativ
+--   relevanten Zeilen (draft + active), keine superseded-Historie. interview_state kommt gerendert: ein Abschnitt
+--   mit Themen traegt content = seine Themen als "<Thema>: <Text>" in Reihenfolge (gespeichert ist dort kein
+--   content), dazu topics und legacy_content (Alt-Gesamttext, nur Quelle).
 --
 --   SECURITY DEFINER + gepinnter search_path + REVOKE ALL FROM PUBLIC + EXECUTE nur an die Paket-Rollen
---   (erteilt in core.fn_provision_package_roles) = das Phase-1-Muster (core.fn_core_api_version). READ-ONLY.
---   2-Arg-Signatur (P0c): core:V014 droppt die alte 1-Arg-Form; der 1-Arg-Call ('career') matcht den
+--   (erteilt in core.fn_provision_package_roles) = das Muster von core.fn_core_api_version. Read-only.
+--   2-Arg-Signatur: core:V014 droppt die alte 1-Arg-Form; der 1-Arg-Call ('career') matcht den
 --   chat_id-DEFAULT der 2-Arg-Form (Muster fn_fetch_context/core:V013).
 -- ============================================================
 CREATE OR REPLACE FUNCTION core.fn_advisor_read_plan(p_domain text, p_chat_id text DEFAULT NULL)
@@ -41,9 +43,9 @@ LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = pg_catalog, agent, core, pg_temp
 AS $$
--- LANGUAGE plpgsql (NICHT sql): die fn ruft agent.fn_resolve_sender/fn_owner_person_id; eine sql-fn wuerde den
--- Body BEIM CREATE pruefen, aber R__fn_advisor_read_plan wird alphabetisch VOR R__fn_resolve_sender/-owner_*
--- applied -> "function does not exist". plpgsql verschiebt die Body-Pruefung auf den ersten Aufruf (alle R da).
+-- LANGUAGE plpgsql (nicht sql): die fn ruft agent.fn_resolve_sender; eine sql-fn wuerde den Body beim CREATE
+-- pruefen, aber R__fn_advisor_read_plan wird alphabetisch vor R__fn_resolve_sender applied -> "function does not
+-- exist". plpgsql verschiebt die Body-Pruefung auf den ersten Aufruf (alle R da).
 DECLARE
     v_ctx   text;
     v_scope text;
@@ -83,7 +85,7 @@ BEGIN
     WHERE ap.domain = p_domain
       AND ap.person_id IS NOT DISTINCT FROM v_pid
       AND ap.status IN ('draft', 'active')
-    ORDER BY ap.status;   -- 'active' < 'draft' alphabetisch — deterministische Reihenfolge
+    ORDER BY ap.status;   -- 'active' < 'draft' alphabetisch: deterministische Reihenfolge
 END;
 $$;
 

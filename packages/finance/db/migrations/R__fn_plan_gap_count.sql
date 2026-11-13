@@ -1,12 +1,13 @@
 -- ============================================================
--- finance.fn_plan_gap_count(p_domain, p_person_id) — offene Punkte am aktiven Haushalts-Finanzplan (2026-10-28)
+-- fn_plan_gap_count (READ, STABLE — offene Punkte am aktiven Haushalts-Finanzplan)
 --   Registry-Feld core.advisors.gaps_fn der Domain 'finance' (Onboarding-Plan-Schritt "Finanzplan vervollstaendigen
---   (n offen)"). Zaehlt die drei Listen der EINEN Adresse finance.fn_plan_gaps ueber die Fakten des Sidecars
+--   (n offen)"). Zaehlt die drei Listen der einen Adresse finance.fn_plan_gaps ueber die Fakten des Sidecars
 --   financial_planning: nie bestaetigte Sektionen + bestaetigte Sektionen ohne verwertbaren Block + nur im Draft
 --   gespeicherte Sektionen. Ohne aktiven Plan 0 (der Zustand heisst dann "kein Plan"/"Entwurf", nicht "Luecken").
 --   Die Draft-Liste zaehlt mit, damit die Zahl fuer sich stimmt; im Plan-Status ist sie praktisch 0, weil ein offener
 --   Entwurf dort Vorrang hat ("fortsetzen") und gaps_fn dann nicht gerufen wird.
---   p_domain/p_person_id = die einheitliche Registry-Signatur; der Finanzplan ist haushaltsweit, beide ungenutzt.
+--   Eingabe: p_domain/p_person_id = die einheitliche Registry-Signatur; der Finanzplan ist haushaltsweit, beide ungenutzt.
+--   Rueckgabe: int (Summe der drei Listen).
 --   STABLE/INVOKER (Muster fn_plan_gaps): einziger Aufrufer core.fn_advisor_plan_status (SECURITY DEFINER).
 --   Tests: tests/db/finance/test_fn_plan_gap_count.sql
 -- ============================================================

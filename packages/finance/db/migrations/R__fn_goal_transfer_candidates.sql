@@ -1,16 +1,15 @@
 -- ============================================================
--- fn_goal_transfer_candidates (READ HELPER — Befund 2026-10-27)
+-- fn_goal_transfer_candidates (READ HELPER)
 --   Freistehende Dauerauftraege (interne Transfers), die schon in den Topf p_pot eines Sparziels fliessen, optional nur
---   vom Abbuchungskonto p_debit. Eine Adresse fuer den Guard existing_transfer in fn_create_savings_goal und
---   fn_set_savings_goal (eine neue Ziel-Rate neben einem bestehenden Dauerauftrag zaehlte doppelt; der Agent hatte ihn
---   deshalb geloescht und die Rate ohne Tag neu angelegt) und fuer den Import.
+--   vom Abbuchungskonto p_debit (NULL = jedes). Eine Adresse fuer den Guard existing_transfer in fn_create_savings_goal
+--   und fn_set_savings_goal (eine neue Ziel-Rate neben einem bestehenden Dauerauftrag zaehlte doppelt) und fuer den Import.
 --   Kandidat = Kopf seiner Kette (fn_recurring_lineage_head), keiner Entitaet gehoerend (fn_recurring_owner NULL),
 --   status active, nicht beendet (valid_to NULL oder > heute; ein kuenftiger Start zaehlt), amount < 0 (Quelle).
 --   replaceable = monatlich mit hoechstens einem Tag (month/1, keine festen Tage) -> eine Ziel-Rate (immer monatlich)
 --   kann ihn nahtlos fortfuehren; day = sein Abbuchungstag (ohne festen Tag der Tag der ersten Ausfuehrung, 29.-31. ->
 --   -1 = Monatsletzter), next_due = naechster offener Termin (fn_recurring_next_due).
 --   plpgsql (late-bound): fn_recurring_owner/fn_recurring_next_due sortieren alphabetisch spaeter.
---   RUECKGABE: jsonb-Array [{id, name, account_id, amount (>0, je Ausfuehrung), monthly_amount, currency, rhythm, day,
+--   Rueckgabe: jsonb-Array [{id, name, account_id, amount (>0, je Ausfuehrung), monthly_amount, currency, rhythm, day,
 --   replaceable, next_due}] nach id; leer = '[]'.
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_goal_transfer_candidates(p_pot int, p_debit int)

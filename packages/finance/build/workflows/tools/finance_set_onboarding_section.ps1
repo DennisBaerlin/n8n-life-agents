@@ -1,18 +1,18 @@
 ﻿#Requires -Version 5.1
 # Dot-gesourct von build.ps1 (Helper + Script-Scope-Creds im Parent-Scope).
 
-# --- agent.finance.tool_set_onboarding_section (WS-B3 DRY-Onboarding) ------
-# Finanz-Onboarding-Fortschritts-Marker: setzt EINE finance-Sektion auf completed/skipped/unknown.
+# --- agent.finance.tool_set_onboarding_section ---
+# Finanz-Onboarding-Fortschritts-Marker: setzt eine finance-Sektion auf completed/skipped/unknown.
 # Spiegel des Guide-Tools (agent.guide.tool_set_onboarding_section), aber package='finance' -> schreibt
-# finance.onboarding_state ueber die Core-generische Schnittstelle core.fn_set_onboarding_section. KEIN HITL
+# finance.onboarding_state ueber die Core-generische Schnittstelle core.fn_set_onboarding_section. Kein HITL
 # (kein Finanz-Write, nur ein Status-Flag) — die eigentlichen Onboarding-Writes laufen ueber die HITL-Tools
 # (create_*/book_*/import). Laeuft unter finance_rw (eigenes Schema, INVOKER-fn → Isolation via Caller-Grants).
 function Build-FinanceSetOnboardingSection {
-    $CRED_POSTGRES = $CRED_FINANCE_RW   # funktions-lokal (Dynamic-Scope -> Build-Pg sieht es), WS-B0-Muster
+    $CRED_POSTGRES = $CRED_FINANCE_RW   # funktions-lokal (Dynamic-Scope -> Build-Pg sieht es)
 
     $trig = Build-Trigger @('section_key', 'status', 'chat_id')
 
-    # WS-B3: package='finance' hartkodiert (nie $fromAI; 'finance' -> finance.onboarding_state).
+    # package='finance' hartkodiert (nie $fromAI; 'finance' -> finance.onboarding_state).
     $set = Build-Pg 'Set section' @(220, 0) `
         "=SELECT (r->>'ok')::boolean AS ok, r->>'reason' AS reason, r->>'section_key' AS section_key, r->>'status' AS status, (r->>'complete')::boolean AS complete, (r->>'area_completed_now')::boolean AS area_completed_now, (r->>'area_all_skipped')::boolean AS area_all_skipped FROM core.fn_set_onboarding_section(`$1::jsonb) AS r;" `
         ([ordered]@{

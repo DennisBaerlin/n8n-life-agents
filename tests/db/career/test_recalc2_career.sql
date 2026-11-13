@@ -1,5 +1,5 @@
 -- tests/db/career/test_recalc2_career.sql
--- Zweitrechnung Runde 2, Career: Skill-Luecken je Rolle, Markt-Trend, Jahresgehalt. Erwartungen von Hand hergeleitet.
+-- Zweitrechnung, Career: Skill-Luecken je Rolle, Markt-Trend, Jahresgehalt. Erwartungen von Hand hergeleitet.
 -- Werte erfunden. Runway steht mit eigener Haushalts-Fixture in tests/db/cross/test_recalc2_household_cashflow.sql.
 -- Fachregeln:
 --   * Kompetenz-Skala ordinal beginner < intermediate < advanced < expert; Ist ohne Level gilt als unter jedem
@@ -7,13 +7,13 @@
 --   * Trend = (juengste - vorherige Messung) / vorherige x 100, eine Nachkommastelle; Messungen ohne Zahl zaehlen nicht.
 --   * Jahresgehalt bei Monatsangabe = 12 Gehaelter (Annahme laut fn-Kopf, so im Anzeigetext benannt).
 --   Profil: SQL advanced, Python beginner, Docker (ohne Level), Kubernetes expert.
---   (1) Rolle A: PYTHON >= intermediate Pflicht -> schwach (Pflicht); SQL >= advanced -> erfuellt; Spark -> fehlt;
+--   (1) Rolle A: Python >= intermediate Pflicht -> schwach (Pflicht); SQL >= advanced -> erfuellt; Spark -> fehlt;
 --       Docker >= beginner -> schwach (ohne Level); Kubernetes >= advanced -> uebererfuellt (zaehlt als erfuellt)
 --       -> gefordert 5, erfuellt 2, fehlend 1, schwach 2, ueber 1.
 --   (2) Rolle B: Python >= intermediate -> schwach; dbt Pflicht -> fehlt; SQL ohne Level -> erfuellt
---       -> gefordert 3, erfuellt 1. Gesamt je FAEHIGKEIT: Luecken Spark, Python, Docker, dbt = 4 (Python steht in
+--       -> gefordert 3, erfuellt 1. Gesamt je Faehigkeit: Luecken Spark, Python, Docker, dbt = 4 (Python steht in
 --       beiden Rollen schwach, zaehlt einmal), davon Pflicht Python + dbt = 2, ueber 1.
---   (2c) Je Faehigkeit statt je Rolle (Owner-Entscheid): Rolle A Python + Spark, Rolle B python + dbt, leeres Profil
+--   (2c) Je Faehigkeit statt je Rolle: Rolle A Python + Spark, Rolle B python + dbt, leeres Profil
 --       -> Python, Spark, dbt = 3 (nicht 2 + 2).
 --   (3) Trend: 90 (vor 60 T.), 100 (vor 30 T.), Messung ohne Zahl (vor 10 T.), 67 (heute) -> 67 vs 100 = -33,0 % down.
 --       Vorherige 0 -> kein Trend (flat, trend_pct null).

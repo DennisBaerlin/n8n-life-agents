@@ -1,16 +1,16 @@
 -- ============================================================
 -- fn_delete_account (ATOMIC WRITE) -- Hard-DELETE einer Konto-Fehlanlage
---   close_account deckt den Soft-Close-Fall ab; delete bringt nur bei einer LEEREN Fehlanlage
---   Mehrwert (kein Verlust echter Historie). Daher reines Delete-if-empty: jede Referenz aus dem
---   Ledger/Stammdaten haelt das Konto (FK RESTRICT) und fuehrt zu {ok:false}.
---   KORRIGIERBAR (kein RAISE -> kein Owner-Alert), je mit Count fuer Test-Stabilitaet:
---     - Transaktionen, Depot-Holdings, Recurring-Payments (abbuchend ODER Ziel eines Uebertrags), Versicherungen,
---       Sparziel-Reserve-Journal (Depot), Sparplaene (depot_id), Kredite (loan/debit/disbursement-Konto),
---       Verrechnungskonto-Nutzung eines Depots -> {ok:false, reason, ...}.
---   Eingabe jsonb: account_name. Resolve findet auch closed-Konten (p_active_only=FALSE).
---   RUECKGABE: {ok:true, action:'deleted', account_id}. RAISE nur bei not-found / mehrdeutig.
---   finance_account_interest_rates gehen per CASCADE (explizit), die balance-Zeile hat KEIN
---   CASCADE -> wird vor dem Konto explizit geloescht.
+--   Delete-if-empty: jede Referenz aus Ledger/Stammdaten haelt das Konto (FK RESTRICT) und fuehrt zu
+--   {ok:false}; close_account deckt den Soft-Close-Fall ab.
+--   Eingabe jsonb: account_name (Pflicht; Resolve findet auch closed-Konten, p_active_only=FALSE).
+--   Rueckgabe: {ok:true, action:'deleted', account_id}.
+--   {ok:false} (kein RAISE -> kein Owner-Alert), je mit Count fuer Test-Stabilitaet:
+--     - code 'not_found' (candidates []) / 'ambiguous' (candidates)
+--     - reason + transaction_count, holding_count, recurring_payment_count (abbuchend),
+--       recurring_target_count (Ziel eines Uebertrags), reserve_entry_count (Sparziel-Reserve-Journal),
+--       savings_plan_count (depot_id), loan_count (loan/debit/disbursement-Konto),
+--       depot_count (Verrechnungskonto eines Depots oder P2P-Kontos).
+--   Seiteneffekt: loescht account_interest_rates und die account_balances-Zeile (kein CASCADE) vor dem Konto.
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_delete_account(p jsonb)
 RETURNS jsonb LANGUAGE plpgsql AS $$
@@ -33,7 +33,7 @@ BEGIN
     END IF;
     v_id := v_resolve.id;
 
-    -- Korrigierbare Referenz-Guards (FK RESTRICT wuerde sonst hart scheitern).
+    -- Referenz-Guards als Daten statt hartem FK-Fehler.
     SELECT COUNT(*) INTO v_cnt FROM finance.transactions WHERE account_id = v_id;
     IF v_cnt > 0 THEN
         RETURN jsonb_build_object('ok', false,
@@ -55,7 +55,7 @@ BEGIN
             'recurring_payment_count', v_cnt);
     END IF;
 
-    -- Audit Paket 2, Punkt 14: Ziel eines Dauer-Uebertrags (target_account_id, FK) -> {ok:false} statt FK-RAISE.
+    -- Ziel eines Dauer-Uebertrags (target_account_id, FK).
     SELECT COUNT(*) INTO v_cnt FROM finance.recurring_payments WHERE target_account_id = v_id;
     IF v_cnt > 0 THEN
         RETURN jsonb_build_object('ok', false,
@@ -63,12 +63,10 @@ BEGIN
             'recurring_target_count', v_cnt);
     END IF;
 
-    -- (WP2: das Abbuchungskonto einer Versicherung steht nur an ihrer Beitrags-rp -> von der rp-Pruefung oben gedeckt.)
+    -- Das Abbuchungskonto einer Versicherung steht nur an ihrer Beitrags-rp, die Pruefung oben deckt es.
 
-    -- WS-B: der Reserve-Journal-Guard (savings_goal_reserve_entries.account_id, seit 2026-10-27 jedes zuordenbare
-    -- Konto) — eine Fehlanlage mit Zuordnung haelt das Konto. Bewusst die ZEILEN-Anzahl, nicht der Netto-Anteil: das
-    -- Journal ist append-only und der FK RESTRICT haelt auch eine freigegebene (Netto-0-)Spur fest -> ohne diesen
-    -- Guard waere es ein harter FK-Fehler statt {ok:false}.
+    -- Reserve-Journal (jedes zuordenbare Konto): bewusst die Zeilen-Anzahl, nicht der Netto-Anteil. Das Journal ist
+    -- append-only und der FK RESTRICT haelt auch eine freigegebene (Netto-0-)Spur fest.
     SELECT COUNT(*) INTO v_cnt FROM finance.savings_goal_reserve_entries WHERE account_id = v_id;
     IF v_cnt > 0 THEN
         RETURN jsonb_build_object('ok', false,
@@ -99,7 +97,7 @@ BEGIN
             'depot_count', v_cnt);
     END IF;
 
-    -- Clean -> loeschen. interest_rates (CASCADE, explizit fuer Klarheit), balance-Zeile (kein CASCADE).
+    -- interest_rates gehen per CASCADE (explizit geloescht), die balance-Zeile hat kein CASCADE.
     DELETE FROM finance.account_interest_rates WHERE account_id = v_id;
     DELETE FROM finance.account_balances WHERE account_id = v_id;
     DELETE FROM finance.accounts WHERE id = v_id;

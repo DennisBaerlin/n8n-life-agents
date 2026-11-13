@@ -65,7 +65,7 @@ BEGIN
   END IF;
   RAISE NOTICE 'PASS fn_crypto [1a]: erster BTC-Kauf, holding_id=%', v_holding_id_1;
 
-  -- TEST 1b: Zweiter Crypto-Kauf gleicher Asset → SELBE Holding-Zeile, akkumulierte Shares
+  -- TEST 1b: Zweiter Crypto-Kauf gleicher Asset → selbe Holding-Zeile, akkumulierte Shares
   SELECT finance.fn_book_stock_buy(
     jsonb_build_object('price_currency_confirmed',true,
       'depot_id',        v_depot_id,
@@ -81,7 +81,7 @@ BEGIN
   ) INTO v_result;
   v_holding_id_2 := (v_result->>'holding_id')::int;
 
-  -- KERN-ASSERT: beide Käufe liefern dieselbe holding_id
+  -- Kern-Assert: beide Käufe liefern dieselbe holding_id
   IF v_holding_id_1 IS DISTINCT FROM v_holding_id_2 THEN
     RAISE EXCEPTION 'FAIL fn_crypto [1b]: zwei Käufe erzeugen verschiedene Holdings (% vs %) — Duplikat!',
       v_holding_id_1, v_holding_id_2;
@@ -122,7 +122,7 @@ BEGIN
   RAISE NOTICE 'PASS fn_crypto [1b]: holding_id=%, shares=%, avg=%, settle_bal=%',
     v_holding_id_1, v_got_shares, round(v_got_avg, 2), v_got_bal;
 
-  -- TEST 2: Zweite Crypto-Asset im selben Depot → ANDERE Holding-Zeile (Symbol ETH ≠ BTC)
+  -- TEST 2: Zweite Crypto-Asset im selben Depot → andere Holding-Zeile (Symbol ETH ≠ BTC)
   SELECT finance.fn_book_stock_buy(
     jsonb_build_object('price_currency_confirmed',true,
       'depot_id',        v_depot_id,

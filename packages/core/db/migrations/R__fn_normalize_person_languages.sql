@@ -1,8 +1,8 @@
 -- ============================================================
--- agent.fn_normalize_person_languages (read-only, Restore-Helfer)
---   Normiert language je Person einer family.persons[]-Liste (agent.fn_normalize_language). Nicht abbildbar:
---   Owner -> 'de', sonst Key entfernt — dieselbe Regel wie core:V027. Zweck: ein Backup von VOR dem Textkatalog
---   (Freitext-Sprachen) bleibt einspielbar, statt am Validator zu scheitern (core.fn_backup_restore_filtered).
+-- fn_normalize_person_languages (READ)
+--   Restore-Helfer. Normiert language je Person einer family.persons[]-Liste p_persons (agent.fn_normalize_language).
+--   Nicht abbildbar: Owner -> 'de', sonst Key entfernt (dieselbe Regel wie core:V027). Zweck: ein Backup mit
+--   Freitext-Sprachen bleibt einspielbar, statt am Validator zu scheitern (core.fn_backup_restore_filtered).
 --   RUECKGABE: jsonb-Array gleicher Laenge/Reihenfolge | NULL bei NULL/Nicht-Array
 --   Tests: tests/db/core/test_fn_normalize_language.sql, test_fn_backup_restore_filtered.sql (TEST 5)
 -- ============================================================

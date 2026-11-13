@@ -1,16 +1,16 @@
 -- ============================================================
--- estate.fn_confirm_review (ATOMIC WRITE — WS-2, Fortschritts-Flag-Klasse)
---   Stempelt estate.person_records.last_reviewed_at = now() fuer EINE Person — die Bestaetigung
---   "Register durchgesehen, Stand aktuell". Re-armt damit den WS-4-Jahres-Review (Staleness-
+-- estate.fn_confirm_review (ATOMIC WRITE — Fortschritts-Flag-Klasse)
+--   Stempelt estate.person_records.last_reviewed_at = now() fuer eine Person — die Bestaetigung
+--   "Register durchgesehen, Stand aktuell". Re-armt damit den Jahres-Review (Staleness-
 --   Vergleich advisor.estate_review_days). UPSERT: existiert noch keine Stammdaten-Zeile,
 --   entsteht sie mit dem Stempel (die Review-Bestaetigung soll nie an einer fehlenden Zeile
---   scheitern). person_id loest das TOOL via core.fn_resolve_person auf (Pflicht-Input).
---   KEIN HITL am Tool (Fortschritts-Flag wie set_onboarding_section — kein
+--   scheitern). person_id loest das Tool via core.fn_resolve_person auf (Pflicht-Input).
+--   Kein HITL am Tool (Fortschritts-Flag wie set_onboarding_section — kein
 --   Domaenen-/PII-Write, nur ein Zeitstempel); der adults_only-DB-Backstop bleibt trotzdem:
 --   core.fn_check_write_permission('adults_only', chat_id) — Kind -> {ok:false}.
 --   Eingabe jsonb: chat_id, person_id (Slug, Pflicht).
---   RUECKGABE: {ok:true, person_id, last_reviewed_at} | {ok:false, reason}.
---   Anwenden via: db_apply.ps1 -File packages\estate\db\migrations\R__fn_confirm_review.sql
+--   Rueckgabe: {ok:true, person_id, last_reviewed_at} | {ok:false, reason}; reasons: 'Write rejected (<perm>): …',
+--   'person_id is required …'.
 -- ============================================================
 CREATE OR REPLACE FUNCTION estate.fn_confirm_review(p jsonb)
 RETURNS jsonb LANGUAGE plpgsql AS $$
@@ -28,7 +28,7 @@ BEGIN
     IF v_person IS NULL THEN
         RETURN jsonb_build_object('ok', false, 'reason', 'person_id is required (resolve the household member first).');
     END IF;
-    -- KEIN expliziter agent.persons-Read (SECURITY INVOKER unter estate_rw ohne agent-USAGE, D10):
+    -- Kein expliziter agent.persons-Read (SECURITY INVOKER unter estate_rw ohne agent-USAGE):
     -- die FK person_id -> agent.persons(person_id) ist der Backstop (RI-Check intern, kein Grant noetig),
     -- der Tool-Resolve ist der Guard. Siehe fn_set_person_record fuer die volle Begruendung.
 

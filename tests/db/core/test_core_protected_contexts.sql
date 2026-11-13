@@ -1,9 +1,9 @@
 -- tests/db/core/test_core_protected_contexts.sql
--- WS-B2b: paket-deklarierter Löschschutz via core.protected_contexts (Kubernetes-Finalizer-Muster).
+-- Paket-deklarierter Löschschutz via core.protected_contexts (Kubernetes-Finalizer-Muster).
 -- Deckt: (1) Tabellen-Form + PK(context_name); (2) registry-getriebener BEFORE-DELETE-Schutz
 -- (registrierter Name -> DELETE blockt; UPDATE bleibt erlaubt; Registry-Eintrag entfernt -> löschbar);
 -- (3) nicht-registrierter Context bleibt frei löschbar (Schutz opt-in via Registry); (4) TRUNCATE-Backstop.
--- db_test hat KEIN seed_data -> der Test seedet core.protected_contexts SELBST (wie test_core_context_validators).
+-- db_test hat kein seed_data -> der Test seedet core.protected_contexts selbst (wie test_core_context_validators).
 -- Self-contained: BEGIN ... ROLLBACK.
 BEGIN;
 
@@ -76,7 +76,7 @@ BEGIN
   RAISE NOTICE 'PASS protected_contexts [TRUNCATE-Backstop core_contexts]';
 END $$;
 
--- 5) P0b suffix-aware Schutz: die suffigierte per_user-PII '<protected_base>__<pid>' einer LEBENDEN Person
+-- 5) Suffix-aware Schutz: die suffigierte per_user-PII '<protected_base>__<pid>' einer lebenden Person
 --    ist geschuetzt (sonst verloere ein per_user-Rename die Schutz-Bindung); nach Person-Entfernung purgebar.
 DO $$
 BEGIN
@@ -86,7 +86,7 @@ BEGIN
             jsonb_build_object('person_id','owner_p','first_name','O','last_name','P','role','owner','birth_date','1980-01-01'),
             jsonb_build_object('person_id','liveperson','first_name','L','last_name','P','role','partner','birth_date','1990-01-01')))))
   ON CONFLICT (name) DO UPDATE SET metadata = EXCLUDED.metadata;
-  -- per_user-Basis, in BEIDEN Registries (protected + scope=per_user)
+  -- per_user-Basis, in beiden Registries (protected + scope=per_user)
   INSERT INTO core.protected_contexts (context_name, package) VALUES ('test_pc_peruser','career')
   ON CONFLICT (context_name) DO NOTHING;
   INSERT INTO core.context_scopes (context_name, scope, write_permission, package)
@@ -95,7 +95,7 @@ BEGIN
   INSERT INTO agent.core_contexts (name, description, load_strategy, content)
   VALUES ('test_pc_peruser__liveperson','x','lazy','b'),
          ('test_pc_peruser__owner_p','x','lazy','b'),
-         ('test_pc_peruser__ghost','x','lazy','b')   -- pid 'ghost' NICHT in family
+         ('test_pc_peruser__ghost','x','lazy','b')   -- pid 'ghost' nicht in family
   ON CONFLICT (name) DO NOTHING;
 
   -- (A) lebendes Mitglied -> geschuetzt
@@ -110,7 +110,7 @@ BEGIN
     RAISE EXCEPTION 'FAIL pc-peruser [B]: DELETE der Owner-PII akzeptiert';
   EXCEPTION WHEN OTHERS THEN IF SQLERRM LIKE 'FAIL%' THEN RAISE; END IF;
   END;
-  -- (C) pid NICHT in family -> NICHT geblockt (purgebar; das ist der Person-Purge-Pfad NACH dem Remove)
+  -- (C) pid nicht in family -> nicht geblockt (purgebar; das ist der Person-Purge-Pfad nach dem Remove)
   DELETE FROM agent.core_contexts WHERE name='test_pc_peruser__ghost';
   IF EXISTS (SELECT 1 FROM agent.core_contexts WHERE name='test_pc_peruser__ghost') THEN
     RAISE EXCEPTION 'FAIL pc-peruser [C]: PII einer NICHT-lebenden Person muss purgebar sein';

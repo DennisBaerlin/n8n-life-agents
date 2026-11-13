@@ -1,6 +1,6 @@
 -- tests/db/finance/test_fn_bank_end_reminders.sql
 -- Erinnerung "Auftrag bei der Bank beenden": fn_bank_end_due (wer ist faellig), fn_bank_end_claim (Nachrichten je
---   Empfaenger + Latch), fn_bank_stop_note_told (Beenden im Bot latcht den Owner). db_test hat KEIN seed_data ->
+--   Empfaenger + Latch), fn_bank_stop_note_told (Beenden im Bot latcht den Owner). db_test hat kein seed_data ->
 --   family + Registry self-seeden. Werte erfunden.
 BEGIN;
 
@@ -202,7 +202,7 @@ BEGIN
   UPDATE core.config SET value = 'true' WHERE category = 'cron_enable' AND key = 'remind_bank_end';
   RAISE NOTICE 'PASS [18/19] Abschalten';
 
-  -- [8/21] Beenden im Bot, L <= heute: Probelauf latcht nicht, echter Write latcht NUR den Owner-Key
+  -- [8/21] Beenden im Bot, L <= heute: Probelauf latcht nicht, echter Write latcht nur den Owner-Key
   DELETE FROM finance.recurring_payments;
   INSERT INTO finance.recurring_payments (name, account_id, target_account_id, amount, schedule_unit, first_payment_date, valid_from, executed_by)
     VALUES ('stop', v_a_partner, v_tgt, -100, 'month', v_today - 33, v_today - 33, 'bank') RETURNING id INTO v_rp;

@@ -12,7 +12,7 @@ DECLARE
   v_person TEXT;
 BEGIN
 
-  -- WS-4 Fixture: eine Person als typisierter Eigentuemer (owner_person_id, kein Freitext mehr)
+  -- Fixture: eine Person als typisierter Eigentuemer (owner_person_id)
   INSERT INTO agent.persons (person_id, full_name, role)
   VALUES ('__test_setre_p', 'Test Eigentuemer', 'owner') ON CONFLICT (person_id) DO NOTHING;
 

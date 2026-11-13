@@ -1,9 +1,9 @@
 ﻿#Requires -Version 5.1
 # Dot-gesourct von build.ps1 (Helper + Script-Scope-Creds im Parent-Scope).
 
-# --- agent.estate.tool_set_contact (WS-2, set_ = partielles Update) --------------------------
+# --- agent.estate.tool_set_contact (set_ = partielles Update) --------------------------
 # Aendert einen bestehenden Schluessel-Kontakt ("nicht gesendet = unveraendert"). Resolve
-# (Name + optional Rolle) VOR dem Gate. HITL owner_approval. adults_only-DB-Backstop. estate_rw.
+# (Name + optional Rolle) vor dem Gate. HITL owner_approval. adults_only-DB-Backstop. estate_rw.
 function Build-EstateSetContact {
     $CRED_POSTGRES = $CRED_ESTATE_RW
     $trig = Build-Trigger @('name','role','new_name','new_role','organization','phone','email','address','notes')
@@ -15,10 +15,9 @@ function Build-EstateSetContact {
     $errBad = Build-ToolError 'Contact ambiguous' @(660, 200) `
         "=The contact '{{ `$('Start').item.json.name }}' resolves to {{ `$('Resolve Contact').item.json.hit_count }} matches. Candidates: {{ JSON.stringify(`$('Resolve Contact').item.json.candidates) }}. Ask which one (add the role), or check the name."
 
-    # Strukturiertes Summary (Textkatalog): Keys + typisierte Rohwerte, das Gate rendert je Empfaenger-Sprache.
     # Nur genannte Felder erscheinen (-If); der Hinweis "unveraendert" steht als Note darunter.
     $S = "`$('Start').item.json"
-    # "DB ist das Gesetz": estate.fn_set_contact laeuft als Probelauf VOR der Karte; derselbe Param-Satz geht nach dem Gate in den echten Write.
+    # estate.fn_set_contact laeuft als Probelauf vor der Karte; derselbe Param-Satz geht nach dem Gate in den echten Write.
     $wg = New-FnWriteGate -Fn 'estate.fn_set_contact' -DryPos @(660, 0) -WritePos @(1980, 0) `
         -WriteName 'Set contact (atomic)' `
         -WriteSelect "(r->>'ok')::boolean AS ok, r->>'reason' AS reason, (r->>'contact_id')::bigint AS contact_id" `

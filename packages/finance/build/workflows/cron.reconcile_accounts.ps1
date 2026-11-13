@@ -1,25 +1,22 @@
 ﻿#Requires -Version 5.1
 # Definition agent.finance.cron_reconcile_accounts -> Build-CronReconcileAccounts. Dot-gesourct von build.ps1.
-# Deterministisch, KEIN LLM, KEIN Write: Monats-Check-Erinnerung (WP-D). Schedule -> Konten mit Kontoauszug, deren
-# bestaetigter Stand den letzten Monat noch nicht abdeckt -> IF count>0 -> EINE Telegram-Nachricht mit Anleitung.
+# Deterministisch, kein LLM, kein Write: Monats-Check-Erinnerung. Schedule -> Konten mit Kontoauszug, deren
+# bestaetigter Stand den letzten Monat noch nicht abdeckt -> IF count>0 -> eine Telegram-Nachricht mit Anleitung.
 # Zeitplan = Platzhalter __CFG_SCHEDULE_RECONCILE_ACCOUNTS__, den der Installer beim Einspielen aus core.config
 # (schedule.reconcile_accounts) einsetzt. Nutzt aus dem Orchestrator-Scope: $RepoRoot, $Utf8NoBom, $CRED_POSTGRES,
 # $CRED_TELEGRAM + build_helpers (Build-Pg/Build-If/Build-Sticky/E/Build-Workflow/New-Id).
 #
-# Design: KEIN sendAndWait-Dialog. Die Antwort ist eine Datei (Kontoauszug-PDF), und Datei/Freitext loesen ein offenes
-# sendAndWait-Gate NICHT auf (HITL-Constraint, Root-CLAUDE.md). Darum nur eine informierende Nachricht; der Nutzer
+# Design: kein sendAndWait-Dialog. Die Antwort ist eine Datei (Kontoauszug-PDF), und Datei/Freitext loesen ein offenes
+# sendAndWait-Gate nicht auf. Darum nur eine informierende Nachricht; der Nutzer
 # schickt das PDF an den Bot -> agent.finance -> tool_reconcile_bank_statement (eine Karte je Auszug).
 function Build-CronReconcileAccounts {
-    # Read-only (nur SELECT + Telegram-Reminder, kein Write) -> enge Leserolle finance_ro (D10);
+    # Read-only (nur SELECT + Telegram-Reminder, kein Write) -> enge Leserolle finance_ro;
     # funktions-lokaler Override (inkl. Gate-Read; fn_package_active/fn_config_get sind an finance_ro gegrantet).
     $CRED_POSTGRES = $CRED_FINANCE_RO
 
-    # lokale Node-Builder (cron-spezifisch)
-    # Node-Builder (Build-ScheduleTrigger/New-TelegramSendNode/Build-NoOp) kommen zentral aus
-    # lib/build_helpers.ps1 — der Telegram-Helper escapt dynamischen Text automatisch.
     $trig = Build-ScheduleTrigger @(-680, 0) -ScheduleKey 'reconcile_accounts'
 
-    # F9 Cron-Gating (WS4a): laeuft nur, wenn Paket aktiv UND cron_enable -> sonst No-op (DB entscheidet, fail-closed).
+    # F9 Cron-Gating: laeuft nur, wenn Paket aktiv und cron_enable -> sonst No-op (DB entscheidet, fail-closed).
     $gate = Build-Pg 'Cron enabled?' @(-500, 0) `
         "SELECT core.fn_package_active('finance') AND COALESCE(core.fn_config_get('finance','cron_enable','reconcile_accounts') = 'true', false) AS enabled"
     $gateIf = Build-If 'Cron on?' @(-340, -40) "={{ `$json.enabled }}" 'true' 'equals' 'boolean'
@@ -31,7 +28,7 @@ function Build-CronReconcileAccounts {
     # Eine Zeile: Stichtag (letzter Tag des Vormonats) + die faelligen Konten (Name, bestaetigt bis) + die Texte in
     # Owner-Sprache (core.fn_ui_texts_for, an finance_ro gegrantet). Die Anzeige (Datum per Intl im Owner-Locale) baut
     # 'Build message' — nie to_char (Format hinge an lc_numeric).
-    # Monats-Check (WP-D): Kandidaten = aktive cash-Konten mit Kontoauszug — Kontonummer bekannt, eine Bank angegeben
+    # Kandidaten = aktive cash-Konten mit Kontoauszug — Kontonummer bekannt, eine Bank angegeben
     # (Bargeld hat keine) oder schon ein eingespielter Auszug. Faellig, wenn der bestaetigte Stand den Stichtag noch nicht
     # erreicht: naechstes erwartetes Auszugs-Ende = letztes Auszugs-Ende + Laenge des letzten Auszugs in Monaten (ein
     # Quartalsauszug fragt nur jedes Quartal), sonst COALESCE(last_reconciled_at, created_at) < Stichtag. Bei 0 Treffern
@@ -83,7 +80,7 @@ return [{ json: { message: intro + '\n\n' + lines.join('\n') + howto,
         type = 'n8n-nodes-base.code'; typeVersion = 2; position = @(220, -100)
         id = (New-Id); name = 'Build message'
     }
-    # Roter Faden Paket B: Abmelden an der Nachricht selbst (RFC-8058-Prinzip) -> [Erinnerung abschalten] =
+    # Abmelden an der Nachricht selbst (RFC-8058-Prinzip) -> [Erinnerung abschalten] =
     # cron_off:reconcile_accounts (Owner-Callback -> core.fn_set_cron_enable); wieder an in /reminders.
     $notify = New-TelegramInlineKeyboardSendNode 'Notify overdue' @(440, -100) '={{ $json.message }}' `
         @( @{ Text = '={{ $json.btn_off }}'; Data = 'cron_off:reconcile_accounts' } )

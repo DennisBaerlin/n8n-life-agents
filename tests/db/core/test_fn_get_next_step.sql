@@ -1,6 +1,6 @@
 -- tests/db/core/test_fn_get_next_step.sql
--- core.fn_get_next_step(p) + core.fn_get_next_step_example(person_id, order): der EINE naechste Schritt je Person.
--- Je Zeile der Zustands-Matrix (.claude/plans/ux-paket-a-next-step.md) ein Fall:
+-- core.fn_get_next_step(p) + core.fn_get_next_step_example(person_id, order): der eine naechste Schritt je Person.
+-- Je Zeile der Zustands-Matrix ein Fall:
 --   Owner: Haushalt -> Abschnitt in order-Reihenfolge -> Plan in plan_order-Reihenfolge (reif / Zuerst / Drift) -> none;
 --   Mitglied: wait solange der Haushalt offen ist, nur per_user-Abschnitte mit Rolle in for_roles, nie ein Plan;
 --   unbekannter Absender -> none ohne Beispiel; Beispielfrage nur aus einer sicher angelegten Paket-fn mit gueltigem
@@ -73,7 +73,7 @@ BEGIN
     ('career.plan_step.btn_none', 'de', 'Karriereplan erstellen', 'career')
   ON CONFLICT (key, lang) DO UPDATE SET text = EXCLUDED.text;
 
-  -- Paket-Beispiel-fn (Vertrag fuer Paket B): Key nur mit Haushalts-Sicht
+  -- Paket-Beispiel-fn (Vertrag fuer Pakete): Key nur mit Haushalts-Sicht
   CREATE OR REPLACE FUNCTION finance.fn_next_step_example(p_person_id text) RETURNS text
   LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $f$
   BEGIN

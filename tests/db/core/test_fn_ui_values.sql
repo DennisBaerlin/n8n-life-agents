@@ -1,5 +1,5 @@
 -- tests/db/core/test_fn_ui_values.sql
--- Struktur-Bausteine fester Texte (Textkatalog Phase C): core.fn_ui_tpl / fn_ui_money / fn_ui_num / fn_ui_date / fn_ui_month
+-- Struktur-Bausteine fester Texte: core.fn_ui_tpl / fn_ui_money / fn_ui_num / fn_ui_date / fn_ui_month
 --   liefern die HITL-Form, die der Workflow-Renderer (Get-UiRenderLibJs) in der Empfaenger-Sprache rendert.
 BEGIN;
 
@@ -22,11 +22,11 @@ BEGIN
     RAISE EXCEPTION 'FAIL ui_tpl [leere params]'; END IF;
   IF core.fn_ui_money(NULL)->'value' <> 'null'::jsonb OR core.fn_ui_money(5)->>'currency' <> 'EUR' THEN
     RAISE EXCEPTION 'FAIL ui_money [NULL/Default: %]', core.fn_ui_money(NULL); END IF;
-  -- Vorzeichen (Uebersicht R3): nur bei p_sign der Schluessel sign, sonst Form unveraendert
+  -- Vorzeichen: nur bei p_sign der Schluessel sign, sonst Form unveraendert
   IF core.fn_ui_money(12.345, 'EUR', true) <> '{"kind":"money","value":12.35,"currency":"EUR","sign":true}'::jsonb
      OR core.fn_ui_money(-3, 'EUR', false) ? 'sign' OR core.fn_ui_money(1, 'USD') ? 'sign' THEN
     RAISE EXCEPTION 'FAIL ui_money [sign: %]', core.fn_ui_money(12.345, 'EUR', true); END IF;
-  -- p_whole (2026-11-06): Wert bleibt genau, nur digits:0 (der Renderer zeigt ganze Euro); ohne p_whole byte-gleich
+  -- p_whole: Wert bleibt genau, nur digits:0 (der Renderer zeigt ganze Euro); ohne p_whole byte-gleich
   IF core.fn_ui_money(9333.99, 'EUR', false, true) <> '{"kind":"money","value":9333.99,"currency":"EUR","digits":0}'::jsonb
      OR core.fn_ui_money(-6000.50, 'EUR', true, true) <> '{"kind":"money","value":-6000.50,"currency":"EUR","sign":true,"digits":0}'::jsonb
      OR core.fn_ui_money(9333.99, 'EUR') <> '{"kind":"money","value":9333.99,"currency":"EUR"}'::jsonb THEN
@@ -36,7 +36,7 @@ BEGIN
   IF core.fn_ui_num(7)->>'digits' <> '0' OR (core.fn_ui_num(7)->>'sign')::boolean THEN
     RAISE EXCEPTION 'FAIL ui_num [Default]'; END IF;
   IF core.fn_ui_date(NULL)->'value' <> 'null'::jsonb THEN RAISE EXCEPTION 'FAIL ui_date [NULL]'; END IF;
-  -- Monat (Mini-App UX 2026-10-31): Tag faellt weg
+  -- Monat: Tag faellt weg
   IF core.fn_ui_month('2027-04-30') <> '{"kind":"month","value":"2027-04"}'::jsonb THEN
     RAISE EXCEPTION 'FAIL ui_month [%]', core.fn_ui_month('2027-04-30'); END IF;
   IF core.fn_ui_month(NULL)->'value' <> 'null'::jsonb THEN RAISE EXCEPTION 'FAIL ui_month [NULL]'; END IF;

@@ -1,17 +1,17 @@
 ﻿#Requires -Version 5.1
 # Definition agent.finance.cron_remind_missing_prices -> Build-CronRemindMissingPrices. Dot-gesourct von build.ps1.
-# Kurs-Luecken-Erinnerung (Owner 2026-10-27: "ein Kurs, der nicht gefunden wird, darf nie unentdeckt bleiben").
-# Deterministisch bis auf EINE optionale Websuche je Luecke und Latch-Fenster. Ablauf: Schedule (im Erinnerungs-
+# Kurs-Luecken-Erinnerung: ein Kurs, der nicht gefunden wird, darf nie unentdeckt bleiben.
+# Deterministisch bis auf eine optionale Websuche je Luecke und Latch-Fenster. Ablauf: Schedule (im Erinnerungs-
 # fenster) -> finance.fn_price_gaps() (Luecken missing|stale, Feed-Ausfall, Re-Arm behobener Luecken) ->
-#   Feed-Ausfall -> EINE Meldung (Latch 'feed_down', 7 Tage);
-#   sonst je Luecke: fn_price_gap_claim (Latch je Position, 7 Tage; DIREKT vor dem eigenen Versand) -> Yahoo-ISIN-Suche
+#   Feed-Ausfall -> eine Meldung (Latch 'feed_down', 7 Tage);
+#   sonst je Luecke: fn_price_gap_claim (Latch je Position, 7 Tage; direkt vor dem eigenen Versand) -> Yahoo-ISIN-Suche
 #   (sub_resolve_yahoo_symbol, Plausi-Pflicht) -> kein Kandidat: Websuche (core:web_search) nach Boersen-Tickern ->
-#   dieselbe Sub prueft sie (try_symbols) -> Karte [Uebernehmen]/[Nicht jetzt] ODER Text-Hinweis.
+#   dieselbe Sub prueft sie (try_symbols) -> Karte [Uebernehmen]/[Nicht jetzt] oder Text-Hinweis.
 #   Uebernehmen -> fn_apply_price_symbol (Guard already_resolved) -> Kurs (+FX) sofort holen -> Ergebnis-Zeile.
 # Warum Cron statt Monitor-Trigger: Dialog + Schreibzugriff auf eine Domaenen-Tabelle (packages/core/CLAUDE.md
 # Cron-vs-Trigger-Gesetz). Warum kein Callback-Knopf: der DB-Handler kann den Kurs nicht sofort holen.
 function Build-CronRemindMissingPrices {
-    # Schreibt via fn_apply_price_symbol/fn_price_gap_claim -> enge Paket-Schreibrolle finance_rw (D10).
+    # Schreibt via fn_apply_price_symbol/fn_price_gap_claim -> enge Paket-Schreibrolle finance_rw.
     $CRED_POSTGRES = $CRED_FINANCE_RW
     $ResolveYahooSymbolId = Get-RequiredWorkflowId 'agent.finance.sub_resolve_yahoo_symbol' 'Build-CronRemindMissingPrices' -Soft
     $MarketPricesCronId   = Get-RequiredWorkflowId 'agent.finance.cron_refresh_market_prices' 'Build-CronRemindMissingPrices' -Soft
@@ -26,7 +26,7 @@ function Build-CronRemindMissingPrices {
     $gateIf = Build-If 'Cron on?' @(-760, -40) "={{ `$json.enabled }}" 'true' 'equals' 'boolean'
     $gateOff = Build-NoOp 'Disabled' @(-760, 200)
 
-    # EINE Zeile: Luecken-Dokument (Seiteneffekt: Re-Arm behobener Luecken) + Texte in Owner-Sprache.
+    # Eine Zeile: Luecken-Dokument (Seiteneffekt: Re-Arm behobener Luecken) + Texte in Owner-Sprache.
     $keys = Get-UiKeysSql (@(
         'finance.dialog.price_gap_missing', 'finance.dialog.price_gap_stale', 'finance.dialog.price_gap_found',
         'finance.dialog.price_gap_none', 'finance.dialog.price_gap_maybe', 'finance.dialog.price_gap_btn_apply',
@@ -40,7 +40,7 @@ FROM (SELECT finance.fn_price_gaps() AS r) x;
     $T   = "`$('Find gaps').first().json.ui.t"
     $lib = Get-UiRenderLibJs
 
-    # Feed-Ausfall -> EIN Item; sonst ein Item je Luecke (0 Luecken -> 0 Items -> Ende).
+    # Feed-Ausfall -> ein Item; sonst ein Item je Luecke (0 Luecken -> 0 Items -> Ende).
     $planJs = $lib + @'
 const m = $('Find gaps').first().json;
 const doc = m.doc || {};
@@ -65,13 +65,13 @@ return (Array.isArray(doc.gaps) ? doc.gaps : []).map((g) => ({ json: Object.assi
     # ohne Paarung) und dem Websuche-Aufruf traegt die Item-Paarung nicht verlaesslich.
     $it   = "`$('Loop Over Items').first().json"
 
-    # Latch je Position DIREKT vor dem eigenen Versand (nie fuer alle vorab).
+    # Latch je Position direkt vor dem eigenen Versand (nie fuer alle vorab).
     $claim = Build-Pg 'Claim gap' @(260, 160) "=SELECT finance.fn_price_gap_claim((`$1::jsonb)->>'key') AS due;" `
         ([ordered]@{ key = "String($it.holding_id)" })
     $ifDue = Build-If 'Gap due?' @(460, 160) "={{ `$json.due }}" 'true' 'equals' 'boolean'
 
     # Yahoo-Suche: immer ISIN-Suche (provider_symbol leer, auch ein kaputtes Override wird neu gesucht); gewuenschte
-    # Waehrung = die der Position; Plausi-Referenzen = letzter Kurs (enges Band) UND Einstand (grobes Band), je in ihrer
+    # Waehrung = die der Position; Plausi-Referenzen = letzter Kurs (enges Band) und Einstand (grobes Band), je in ihrer
     # Waehrung, FX-Karte aus fn_price_gaps (ein veralteter oder falscher letzter Kurs sperrt so keinen richtigen Treffer).
     $resolveInputs = {
         param([string]$Try)
@@ -92,7 +92,7 @@ return (Array.isArray(doc.gaps) ? doc.gaps : []).map((g) => ({ json: Object.assi
     $resolve = Build-CallWorkflow 'Resolve Yahoo symbol' @(660, 100) $ResolveYahooSymbolId 'agent.finance.sub_resolve_yahoo_symbol' `
         (& $resolveInputs "={{ '' }}")
 
-    # Kandidat bewerten + Texte bauen (EINE Regel fuer Yahoo- und Websuche-Kandidaten): uebernehmbar nur mit ISIN,
+    # Kandidat bewerten + Texte bauen (eine Regel fuer Yahoo- und Websuche-Kandidaten): uebernehmbar nur mit ISIN,
     # anderem Symbol als dem heutigen Feed-Symbol und adoptable (Sub: verifiziert inkl. Plausi-Pflicht, oder plausible
     # Fremdwaehrungs-Notierung derselben ISIN; Websuche-Ticker nie Fremdwaehrung).
     $pickJs = {
@@ -167,7 +167,7 @@ return [{ json: Object.assign({}, $('Pick candidate').first().json, { tickers: o
     $gAsk = New-StaleTapGuard -AskName 'Ask price symbol' -Next 'Apply?' -Pos @(1460, -160)
     $ifApply = Build-If 'Apply?' @(1820, -160) "={{ `$json.data && `$json.data.approved === true }}" 'true' 'equals' 'boolean'
 
-    # Kandidat aus dem LETZTEN Lauf von Accept? (.first() = juengster Lauf, Hauptausgang true): Accept? laeuft je Runde
+    # Kandidat aus dem letzten Lauf von Accept? (.first() = juengster Lauf, Hauptausgang true): Accept? laeuft je Runde
     # bis zu zweimal (Yahoo-, dann Websuche-Kandidat); nur der true-Lauf fuehrt zur Karte. Muster wie 'Loop Over Items'.
     $A = "`$('Accept?').first().json"
     $apply = Build-Pg 'Apply symbol' @(2020, -260) `
@@ -257,7 +257,7 @@ return [{ json: { text: U.fill(U.t('finance.dialog.price_gap_later'), { name: g.
         'Find gaps'                   = @{ main = @( ,@( E 'Plan items' ) ) }
         'Plan items'                  = @{ main = @( ,@( E 'Feed down?' ) ) }
         'Feed down?'                  = @{ main = @(
-            @( E 'Claim feed down' ),    # true: Feed-Ausfall -> EINE Meldung
+            @( E 'Claim feed down' ),    # true: Feed-Ausfall -> eine Meldung
             @( E 'Loop Over Items' )     # false: je Luecke
         ) }
         'Claim feed down'             = @{ main = @( ,@( E 'Feed due?' ) ) }

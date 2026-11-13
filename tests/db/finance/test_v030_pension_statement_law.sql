@@ -1,5 +1,5 @@
 -- tests/db/finance/test_v030_pension_statement_law.sql
--- finance:V030 (Renteninformation-Plan 2026-10-26): Altbestand vor den neuen Gesetzen aufraeumen. Der Test baut den
+-- finance:V030: Altbestand vor den neuen Gesetzen aufraeumen. Der Test baut den
 -- Altzustand in der Test-Tx nach (Constraints/Index weg, gesetzliche Rente mit eigener Monatsrente/Wert, zwei aktive
 -- gesetzliche Renten des Haushalts) und fuehrt die ECHTE Migration zweimal aus (zweiter Lauf = No-op).
 BEGIN;

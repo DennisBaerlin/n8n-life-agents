@@ -1,7 +1,8 @@
 -- packages/finance/db/migrations/R__fn_ensure_currency.sql
--- Auto-registers an ISO-4217 currency code in finance_currencies if absent.
--- Guards: ^[A-Z]{3}$ regex; zero-decimal list (minor_unit=0); all others default to 2.
--- Idempotent: ON CONFLICT (code) DO NOTHING. Returns {ok:bool, reason?, code, minor_unit}.
+-- fn_ensure_currency (WRITE HELPER)
+--   Registriert einen ISO-4217-Code in finance.currencies, falls er fehlt (idempotent, ON CONFLICT DO NOTHING).
+--   Eingabe: p_code (Pflicht, ^[A-Z]{3}$); minor_unit = 0 fuer die Zero-Decimal-Liste, sonst 2.
+--   Rueckgabe: {ok:true, code, minor_unit} | {ok:false, reason} (ungueltiger Code, kein RAISE).
 CREATE OR REPLACE FUNCTION finance.fn_ensure_currency(p_code text)
 RETURNS jsonb LANGUAGE plpgsql AS $$
 DECLARE

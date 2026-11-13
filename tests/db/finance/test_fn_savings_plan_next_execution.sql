@@ -1,8 +1,8 @@
 -- tests/db/finance/test_fn_savings_plan_next_execution.sql
--- Audit Paket 2, Punkt 3: Sparplan-Aenderung mit Stichtag NACH der naechsten Ausfuehrung.
+-- Sparplan-Aenderung mit Stichtag nach der naechsten Ausfuehrung.
 --   Beispiel: 50 EUR/Monat, Aenderung "ab +10 Tage 100 EUR", eine Ausfuehrung zu 50 EUR steht noch an.
---   * fn_set_savings_plan: vorher {ok:false} ("naechste Ausfuehrung laeuft noch zu alten Konditionen") -> jetzt ok.
---   * fn_savings_plan_next_execution liefert das offene Vorkommen der ALTEN rp (Kette) mit 50 EUR — dieselbe fn
+--   * fn_set_savings_plan: der Split ist erlaubt, die naechste Ausfuehrung laeuft noch zu den alten Konditionen.
+--   * fn_savings_plan_next_execution liefert das offene Vorkommen der alten rp (Kette) mit 50 EUR — dieselbe fn
 --     speist Karte und Buchung; fn_book_savings_plan_execution stempelt genau diese rp, Abweichung gegen 50.
 --   * Uebersprungen statt gebucht -> kein offenes Vorkommen mehr; nicht gefunden / nicht aktiv -> {ok:false}.
 BEGIN;
@@ -36,7 +36,7 @@ BEGIN
     RAISE EXCEPTION 'FAIL next_exec [altes Vorkommen]: +5 auf der alten rp nicht mehr faellig'; END IF;
   RAISE NOTICE 'PASS next_exec [Split mit Stichtag nach der naechsten Ausfuehrung erlaubt]';
 
-  -- B) faelliges Vorkommen der ALTEN rp: Lese-fn + Buchung (Split direkt ueber den Helfer, Vorkommen schon faellig)
+  -- B) faelliges Vorkommen der alten rp: Lese-fn + Buchung (Split direkt ueber den Helfer, Vorkommen schon faellig)
   SELECT finance.fn_create_savings_plan(jsonb_build_object('name','__test_spn_b__','depot_name','__test_spn_depot__',
     'isin','IE00B4L5Y983','symbol','IUSQ','security_name','iShares MSCI World','amount',50,
     'schedule_interval',1,'schedule_unit','month','first_payment_date',(CURRENT_DATE - 2)::text)) INTO v_res;

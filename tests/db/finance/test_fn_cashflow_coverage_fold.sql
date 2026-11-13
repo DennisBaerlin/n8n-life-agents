@@ -1,7 +1,7 @@
 -- tests/db/finance/test_fn_cashflow_coverage_fold.sql
--- finance.fn_cashflow_coverage_fold (Audit Paket 3): der EINE cashflow_coverage-Sofort-Hinweis der Write-fns
+-- finance.fn_cashflow_coverage_fold: der eine cashflow_coverage-Sofort-Hinweis der Write-fns
 -- fn_create_recurring_payment / fn_set_recurring_payment. Feuert bei monthly_free < 0 (Pflichtausgaben = Konsum +
--- Kreditraten > Einnahmen), auch OHNE Einnahmen (letztes Gehalt beendet); Sparraten zaehlen nicht. Gelatcht ueber
+-- Kreditraten > Einnahmen), auch ohne Einnahmen (letztes Gehalt beendet); Sparraten zaehlen nicht. Gelatcht ueber
 -- core.fn_should_notify, Re-Arm bei Erholung. Leere Quelle (keine laufende Zahlung) = neutral.
 BEGIN;
 UPDATE finance.recurring_payments SET status = 'paused';   -- kontrollierter Cashflow (nur in dieser Transaktion)
@@ -30,7 +30,7 @@ BEGIN
     RAISE EXCEPTION 'FAIL [1]: frei +1500 darf keinen Hinweis geben, got %', finance.fn_cashflow_coverage_fold(); END IF;
   RAISE NOTICE 'PASS [1] Sparplan ist keine Fixkosten -> kein Hinweis';
 
-  -- (2) Code-Review: einziges Gehalt endet -> Einnahmen 0, Pflicht 500 -> Hinweis mit monthly_free -500
+  -- (2) einziges Gehalt endet -> Einnahmen 0, Pflicht 500 -> Hinweis mit monthly_free -500
   UPDATE finance.recurring_payments SET status = 'paused' WHERE name = '__ccf_salary__';
   r := finance.fn_cashflow_coverage_fold();
   IF (r->'cashflow_coverage'->>'monthly_free')::numeric IS DISTINCT FROM -500.00

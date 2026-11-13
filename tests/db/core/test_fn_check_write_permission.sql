@@ -1,6 +1,6 @@
 -- tests/db/core/test_fn_check_write_permission.sql
--- P0a: das generische Schreib-Permission-Praedikat agent.fn_check_write_permission(write_permission, chat_id,
--- target_person_id) -> NULL=erlaubt | Grund-Token=abgelehnt (Vertrag wie fn_validate_*). Getestet je STUFE × Rolle,
+-- Das generische Schreib-Permission-Praedikat agent.fn_check_write_permission(write_permission, chat_id,
+-- target_person_id) -> NULL=erlaubt | Grund-Token=abgelehnt (Vertrag wie fn_validate_*). Getestet je Stufe × Rolle,
 -- inkl. der Pass-Through-Pfade (nicht-numerisch/leer/NULL chat_id, unresolved) — genau der ::bigint-Numerik-Guard,
 -- der sonst ungetestet bliebe (Behavior-Neutralitaets-Kern). Self-contained: family-Fixture (owner 111, partner 222,
 -- child 333) in der Transaktion; BEGIN..ROLLBACK.
@@ -26,7 +26,7 @@ BEGIN
   RAISE NOTICE 'PASS fixture [family owner/partner/child]';
 
   -- =========================================================
-  -- STUFE owner_only (delegiert an fn_sender_is_member)
+  -- Stufe owner_only (delegiert an fn_sender_is_member)
   -- =========================================================
   v_r := agent.fn_check_write_permission('owner_only', '111', NULL);
   IF v_r IS DISTINCT FROM NULL THEN RAISE EXCEPTION 'FAIL [owner_only/owner]: erwartet NULL, got %', v_r; END IF;
@@ -41,7 +41,7 @@ BEGIN
   RAISE NOTICE 'PASS [owner_only: owner->ok, partner/child->reject, non-numeric/unresolved->ok]';
 
   -- =========================================================
-  -- STUFE adults_only (role ∈ owner,partner)
+  -- Stufe adults_only (role ∈ owner,partner)
   -- =========================================================
   v_r := agent.fn_check_write_permission('adults_only', '111', NULL);
   IF v_r IS DISTINCT FROM NULL THEN RAISE EXCEPTION 'FAIL [adults_only/owner]: erwartet NULL, got %', v_r; END IF;
@@ -49,7 +49,7 @@ BEGIN
   IF v_r IS DISTINCT FROM NULL THEN RAISE EXCEPTION 'FAIL [adults_only/partner]: erwartet NULL, got %', v_r; END IF;
   v_r := agent.fn_check_write_permission('adults_only', '333', NULL);
   IF v_r IS DISTINCT FROM 'adults_only' THEN RAISE EXCEPTION 'FAIL [adults_only/child]: erwartet adults_only, got %', v_r; END IF;
-  -- Numerik-Guard / Pass-Through (m4): nicht-numerisch / leer / NULL / unresolved -> NULL
+  -- Numerik-Guard / Pass-Through: nicht-numerisch / leer / NULL / unresolved -> NULL
   v_r := agent.fn_check_write_permission('adults_only', 'test_e2e', NULL);
   IF v_r IS DISTINCT FROM NULL THEN RAISE EXCEPTION 'FAIL [adults_only/non-numeric]: erwartet NULL, got %', v_r; END IF;
   v_r := agent.fn_check_write_permission('adults_only', '', NULL);
@@ -61,7 +61,7 @@ BEGIN
   RAISE NOTICE 'PASS [adults_only: owner/partner->ok, child->reject, non-numeric/empty/null/unresolved->ok]';
 
   -- =========================================================
-  -- STUFE own_user_only (aufgeloeste Person == Ziel)
+  -- Stufe own_user_only (aufgeloeste Person == Ziel)
   -- =========================================================
   v_r := agent.fn_check_write_permission('own_user_only', '222', 'lena');   -- self
   IF v_r IS DISTINCT FROM NULL THEN RAISE EXCEPTION 'FAIL [own_user_only/self]: erwartet NULL, got %', v_r; END IF;
@@ -69,7 +69,7 @@ BEGIN
   IF v_r IS DISTINCT FROM 'own_user_only' THEN RAISE EXCEPTION 'FAIL [own_user_only/other]: erwartet own_user_only, got %', v_r; END IF;
   v_r := agent.fn_check_write_permission('own_user_only', '222', NULL);     -- aufgeloest + Ziel NULL = fail-closed
   IF v_r IS DISTINCT FROM 'own_user_only' THEN RAISE EXCEPTION 'FAIL [own_user_only/null-target]: erwartet own_user_only (fail-closed), got %', v_r; END IF;
-  -- m5: nicht-numerische chat_id MIT Ziel -> NULL (fail-OPEN, Sentinel-Paritaet, VOR dem Personen-Vergleich)
+  -- nicht-numerische chat_id mit Ziel -> NULL (fail-open, Sentinel-Paritaet, vor dem Personen-Vergleich)
   v_r := agent.fn_check_write_permission('own_user_only', 'test_e2e', 'lena');
   IF v_r IS DISTINCT FROM NULL THEN RAISE EXCEPTION 'FAIL [own_user_only/non-numeric]: erwartet NULL (fail-open Sentinel), got %', v_r; END IF;
   v_r := agent.fn_check_write_permission('own_user_only', '999', 'lena');   -- unresolved -> NULL

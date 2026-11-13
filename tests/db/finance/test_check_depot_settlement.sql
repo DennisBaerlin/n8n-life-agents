@@ -6,21 +6,21 @@ BEGIN;
 DO $$
 DECLARE v_blocked BOOLEAN; v_id INT;
 BEGIN
-  -- (1) stocks_depot OHNE settlement -> blockiert
+  -- (1) stocks_depot ohne settlement -> blockiert
   v_blocked := FALSE;
   BEGIN
     INSERT INTO finance.accounts (name, account_type) VALUES ('__ds_depot__', 'stocks_depot');
   EXCEPTION WHEN OTHERS THEN v_blocked := TRUE; END;
   IF NOT v_blocked THEN RAISE EXCEPTION 'FAIL depot_settlement: stocks_depot ohne settlement NICHT blockiert'; END IF;
 
-  -- (2) crypto_depot OHNE settlement -> blockiert
+  -- (2) crypto_depot ohne settlement -> blockiert
   v_blocked := FALSE;
   BEGIN
     INSERT INTO finance.accounts (name, account_type) VALUES ('__ds_crypto__', 'crypto_depot');
   EXCEPTION WHEN OTHERS THEN v_blocked := TRUE; END;
   IF NOT v_blocked THEN RAISE EXCEPTION 'FAIL depot_settlement: crypto_depot ohne settlement NICHT blockiert'; END IF;
 
-  -- (3) Kontrolle: cash OHNE settlement -> erlaubt
+  -- (3) Kontrolle: cash ohne settlement -> erlaubt
   INSERT INTO finance.accounts (name, account_type) VALUES ('__ds_cash__', 'cash') RETURNING id INTO v_id;
   IF v_id IS NULL THEN RAISE EXCEPTION 'FAIL depot_settlement: cash ohne settlement sollte erlaubt sein'; END IF;
 

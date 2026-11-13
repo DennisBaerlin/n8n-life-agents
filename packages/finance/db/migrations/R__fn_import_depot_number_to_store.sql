@@ -1,11 +1,12 @@
 -- ============================================================
 -- fn_import_depot_number_to_store (READ, STABLE) -- gedruckte Depotnummer, die der Commit am Depot nachtraegt
---   Owner 2026-10-23: ein per Chat angelegtes Depot kennt seine Nummer nicht -> der naechste Import speichert sie mit,
---   danach ordnet fn_import_resolve_depot kuenftige Auszuege per Nummer zu. Nur fuer ein BESTANDS-Depot ohne
---   Nummer (ein Depot aus einer Konto-Zeile desselben Batches traegt seine Nummer in dieser Zeile). EINE Bedingung
+--   Ein per Chat angelegtes Depot kennt seine Nummer nicht -> der naechste Import speichert sie mit,
+--   danach ordnet fn_import_resolve_depot kuenftige Auszuege per Nummer zu. Nur fuer ein Bestands-Depot ohne
+--   Nummer (ein Depot aus einer Konto-Zeile desselben Batches traegt seine Nummer in dieser Zeile). Eine Bedingung
 --   fuer fn_import_card_rows (Kartenzeile mit Depot + Nummer) und fn_import_bundle (Write per fn_set_account im
 --   selben Savepoint).
---   RUECKGABE text (normalisierte Nummer) | NULL.
+--   Eingabe: p_batch_id, p (Zeilen-Payload: depot, depot_number).
+--   Rueckgabe: text (normalisierte Nummer) | NULL.
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_import_depot_number_to_store(p_batch_id uuid, p jsonb)
 RETURNS text LANGUAGE plpgsql STABLE AS $$

@@ -1,19 +1,19 @@
 -- ============================================================
--- fn_pkg_reverse_deps (READ-ONLY — Reverse-Dependency-Guard fuer den Uninstall, WS-2)
---   Gegenstueck zu fn_pkg_check_deps: VOR der Deinstallation eines Pakets prueft die CLI,
---   ob ein anderes AKTIVES Paket es in seinem `requires` fuehrt (apt/dpkg-rdepends-Muster) —
---   sonst risse die Deinstallation dessen Abhaengigkeit weg. Nur `status='active'` zaehlt:
---   inaktive/entfernte Abhaengige blockieren nicht (sie laufen ohnehin nicht).
+-- fn_pkg_reverse_deps (READ-ONLY — Reverse-Dependency-Guard fuer den Uninstall)
+--   Gegenstueck zu fn_pkg_check_deps: vor der Deinstallation eines Pakets prueft die CLI,
+--   ob ein anderes aktives Paket es in seinem `requires` fuehrt, sonst risse die Deinstallation
+--   dessen Abhaengigkeit weg. Nur `status='active'` zaehlt: inaktive/entfernte Abhaengige
+--   blockieren nicht (sie laufen ohnehin nicht).
 --   Eingabe jsonb: package (Pflicht).
---   RUECKGABE: {ok:true, package, dependents:[…]} — dependents ist IMMER ein jsonb-Array
+--   Rueckgabe: {ok:true, package, dependents:[…]} — dependents ist immer ein jsonb-Array
 --     (leer statt null, damit die CLI .[]-iterieren kann). Leerer package -> {ok:false, reason}.
---   READ-ONLY: kein Write, kein RAISE (Vorpruefung).
+--   Read-only, kein RAISE (Vorpruefung).
 -- ============================================================
 CREATE OR REPLACE FUNCTION core.fn_pkg_reverse_deps(p jsonb)
 RETURNS jsonb
 LANGUAGE plpgsql
 SECURITY INVOKER
-SET search_path = pg_catalog   -- Hygiene-Parität zu fn_pkg_purge_data/fn_pkg_check_deps (CVE-2018-1058); Objekte schema-qualifiziert
+SET search_path = pg_catalog   -- Paritaet zu fn_pkg_purge_data/fn_pkg_check_deps; Objekte schema-qualifiziert
 AS $$
 DECLARE
     v_pkg  TEXT := trim(COALESCE(p->>'package', ''));

@@ -2,7 +2,7 @@
 -- Testet fn_void_transaction: einfache Tx, Depot-Buy (Holding bleibt, shares 0), Oversell-Guard,
 -- Kredit-Paar (beide Beine), not-found
 BEGIN;
--- Audit Paket 3: ein Sparziel braucht ein Sparkonto -> Fixture-Topf fuer fn_create_savings_goal.
+-- Fixture: ein Sparziel braucht ein Sparkonto (Topf) fuer fn_create_savings_goal.
 INSERT INTO finance.accounts (name, account_type, currency, status) VALUES ('__sg_fixture_pot__','cash','EUR','active');
 
 DO $$
@@ -31,7 +31,7 @@ BEGIN
   ) THEN RAISE EXCEPTION 'FAIL void [audit]: kein Audit-Eintrag fuer gevoidete Tx %', v_txid; END IF;
   RAISE NOTICE 'PASS void [Cash-Buchung geloescht, Saldo 0, Audit-Eintrag vorhanden]';
 
-  -- ===== TEST 2: Depot-Kauf voiden -> Holding bleibt (shares 0), ISIN NICHT geloescht =====
+  -- ===== TEST 2: Depot-Kauf voiden -> Holding bleibt (shares 0), ISIN nicht geloescht =====
   SELECT finance.fn_create_account('{"name":"__test_void_settle__","account_type":"cash","account_holder":"Test"}'::jsonb) INTO v_res;
   v_settle := (v_res->>'account_id')::int;
   SELECT finance.fn_create_account(jsonb_build_object('name','__test_void_depot__','account_type','stocks_depot','account_holder','Test','settlement_id',v_settle)) INTO v_res;
@@ -118,7 +118,7 @@ BEGIN
   END;
 END $$;
 
--- TEST 6-9 (Audit F4/F5): Void raeumt abgeleiteten Zustand mit auf.
+-- TEST 6-9: Void raeumt abgeleiteten Zustand mit auf.
 DO $$
 DECLARE
   v_res     JSONB;
@@ -167,7 +167,7 @@ BEGIN
   SELECT current_amount INTO v_cur FROM finance.savings_goal_progress WHERE id = v_goal;
   IF v_cur IS DISTINCT FROM 200 THEN
     RAISE EXCEPTION 'FAIL void [goal-buy]: Sparziel erwartet 200, got % (Journal-Zeile ueberlebt?)', v_cur; END IF;
-  -- append-only: die beiden Kauf-Zeilen (Depot +50, Verrechnungskonto -50; 2026-10-27) bleiben, je eine Gegenzeile
+  -- append-only: die beiden Kauf-Zeilen (Depot +50, Verrechnungskonto -50) bleiben, je eine Gegenzeile
   -- kind=void kommt dazu (Depot -50, Verrechnungskonto +50)
   SELECT count(*), sum(delta_native) FILTER (WHERE kind = 'void' AND account_id = v_depot) INTO v_cnt, v_delta
   FROM finance.savings_goal_reserve_entries WHERE savings_goal_id = v_goal;
@@ -212,7 +212,7 @@ BEGIN
     RAISE EXCEPTION 'FAIL void [settle]: Kredit=% Rate=%/% (erwartet active/active/NULL)', v_status, v_rp_st, v_rp_to; END IF;
   RAISE NOTICE 'PASS void [Abloesung rueckgaengig -> Kredit active, Rate laeuft wieder]';
 
-  -- ===== TEST 8: Void der Abloesung eines Kredits OHNE Rate -> paused (CHECK active_needs_annuity), kein Fehler =====
+  -- ===== TEST 8: Void der Abloesung eines Kredits ohne Rate -> paused (CHECK active_needs_annuity), kein Fehler =====
   SELECT finance.fn_create_loan(jsonb_build_object('name','__test_vd_family__','lender','Oma','borrower','T',
     'original_amount',5000,'current_balance',5000,'disbursement_date',(CURRENT_DATE - 40)::text,'interest_rate',0,
     'debit_account_id',v_giro)) INTO v_res;
@@ -226,7 +226,7 @@ BEGIN
     RAISE EXCEPTION 'FAIL void [settle ohne Rate]: ok=% status=% (erwartet true/paused)', v_res->>'ok', v_status; END IF;
   RAISE NOTICE 'PASS void [Abloesung eines Kredits ohne Rate -> paused]';
 
-  -- ===== TEST 8b (Review): Void stellt den Zustand VOR der Abloesung exakt wieder her: ein vorher pausierter
+  -- ===== TEST 8b: Void stellt den Zustand vor der Abloesung exakt wieder her: ein vorher pausierter
   --   Kredit bleibt pausiert, ein vertragliches Raten-Ende (valid_to) bleibt erhalten =====
   SELECT finance.fn_create_loan(jsonb_build_object('name','__test_vd_kredit3__','lender','B','borrower','T',
     'original_amount',8000,'current_balance',8000,'disbursement_date',(CURRENT_DATE - 40)::text,'interest_rate',2,
@@ -259,8 +259,8 @@ BEGIN
   RAISE NOTICE 'PASS void [Immobilienverkauf rueckgaengig -> active]';
 END $$;
 
--- Sparziel-Zweckbindung 2026-10-27 (Plan-Review B1/M3):
---  (V1) zwei goal-verknuepfte Kaeufe aus Ziel-Geld, den ZWEITEN stornieren -> ok (der Guard rechnet mit dem vollen
+-- Void bei Sparziel-Zweckbindung:
+--  (V1) zwei goal-verknuepfte Kaeufe aus Ziel-Geld, den zweiten stornieren -> ok (der Guard rechnet mit dem vollen
 --       Anteil auf dem Verrechnungskonto, nicht nur mit den Journal-Zeilen), Ziel unveraendert
 --  (V2) Verkauf mit Sparziel stornieren -> die derisk-Zeilen bekommen Gegenzeilen, Anteile wie vorher
 DO $$
@@ -303,7 +303,7 @@ BEGIN
   RAISE NOTICE 'PASS void [V2: goal-Verkauf storniert, Anteile Depot 100 / Verrechnungskonto 900 wie vorher]';
 END $$;
 
--- TEST 10 (Post-State-Vertrag, Befund 2026-10-28): der Void meldet je beruehrtem Konto den neuen Saldo und die
+-- TEST 10 (Post-State-Vertrag): der Void meldet je beruehrtem Konto den neuen Saldo und die
 -- Netto-Aenderung (DB-Delta) und je Position Stueck/Einstand -- das Modell erfindet sonst eine "Gutschrift".
 DO $$
 DECLARE

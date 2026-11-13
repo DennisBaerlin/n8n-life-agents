@@ -1,12 +1,11 @@
 -- tests/db/core/test_fn_pairing_challenge.sql
--- Sicherheits-Invarianten des Multi-User-Pairings (Phase 3 Dev/Release-Split-Plan), nach dem
--- Vorbild test_fn_import_challenge.sql, ergaenzt um die Pairing-spezifischen Gesetze:
---   * arm: Pflichtfelder (role), Entropie-Boden (>=8 alphanum) als {ok:false} UND CHECK-Backstop
+-- Sicherheits-Invarianten des Multi-User-Pairings:
+--   * arm: Pflichtfelder (role), Entropie-Boden (>=8 alphanum) als {ok:false} und CHECK-Backstop
 --   * arm: owner-no-rearm (Owner existiert in family-Facts -> kein erneutes Owner-Arm ohne CLI)
 --   * consume: chat_id-Bindung (fremder Chat loest nicht ein, brennt nichts)
 --   * consume: Identitaets-Bindung (Member-Code nur durch die armierte telegram_user_id)
---   * consume: Erfolg -> MERGE telegram_user_id+role in eine BESTEHENDE family-Person
---               (Zwei-Stufen-Bootstrap; fn_validate_household_facts bleibt UNVERAENDERT gruen)
+--   * consume: Erfolg -> merge von telegram_user_id+role in eine bestehende family-Person
+--               (Zwei-Stufen-Bootstrap; fn_validate_household_facts bleibt gruen)
 --   * consume: Replay (consumed_at), Expiry, fail_count-Lockout (3 Fehlversuche -> invalidiert)
 -- Fixture: family (powner owner + ppartner partner, beide ohne telegram_user_id) + leeres
 -- finance_profile, in der Transaktion ge-upsertet (BEGIN...ROLLBACK -> kein Residual-State).
@@ -48,16 +47,16 @@ BEGIN
   r := agent.fn_arm_pairing_challenge('{"chat_id":"test_pair_a","role":"partner","challenge":"AB12"}'::jsonb);
   IF (r->>'ok')::boolean THEN RAISE EXCEPTION 'FAIL arm [Code unter Entropie-Boden akzeptiert]'; END IF;
 
-  -- ---------- arm: owner-bootstrap DARF gegen ein UNPAIRED Owner-Skelett armieren ----------
-  -- Zwei-Stufen-Bootstrap (Phase 4): das Owner-Skelett (powner: role=owner, OHNE telegram_user_id)
-  -- existiert, BEVOR der Owner seinen Code eintippt — sonst hat fn_consume keine Person zum Mergen.
-  -- Der owner-no-rearm-Guard schuetzt nur den ETABLIERTEN (gepairten) Owner vor Re-Bind, nicht das
-  -- noch unverknuepfte Skelett. Arm muss hier also GELINGEN.
+  -- ---------- arm: owner-bootstrap darf gegen ein unpaired Owner-Skelett armieren ----------
+  -- Zwei-Stufen-Bootstrap: das Owner-Skelett (powner: role=owner, ohne telegram_user_id)
+  -- existiert, bevor der Owner seinen Code eintippt — sonst hat fn_consume keine Person zum Mergen.
+  -- Der owner-no-rearm-Guard schuetzt nur den etablierten (gepairten) Owner vor Re-Bind, nicht das
+  -- noch unverknuepfte Skelett. Arm muss hier also gelingen.
   r := agent.fn_arm_pairing_challenge('{"role":"owner","challenge":"OWNERSEED1"}'::jsonb);
   IF NOT (r->>'ok')::boolean THEN
     RAISE EXCEPTION 'FAIL arm [owner-bootstrap gegen UNPAIRED Skelett abgelehnt: %]', r->>'reason'; END IF;
 
-  -- ---------- arm: owner-no-rearm greift, sobald der Owner GEPAIRT ist (telegram_user_id gesetzt) ----------
+  -- ---------- arm: owner-no-rearm greift, sobald der Owner gepairt ist (telegram_user_id gesetzt) ----------
   -- powner eine numerische Identitaet geben (= etablierter Owner). Ein erneutes Owner-Arm muss jetzt
   -- abgelehnt werden (Privilege-Escalation-Schutz; Re-Arm braucht CLI-Zugriff).
   PERFORM agent.fn_set_context_facts(jsonb_build_object('context_name','family',
@@ -87,7 +86,7 @@ BEGIN
     RAISE EXCEPTION 'FAIL consume [Identitaets-Mismatch zaehlt nicht als Fehlversuch: %]', r;
   END IF;
 
-  -- ---------- consume: korrekt (chat+id+code) -> MERGE in bestehende Person ----------
+  -- ---------- consume: korrekt (chat+id+code) -> Merge in bestehende Person ----------
   r := agent.fn_consume_pairing_challenge(
         '{"chat_id":"test_pair_a","telegram_user_id":555,"challenge":"  PAIRCODE1  ","person_id":"ppartner"}'::jsonb);
   IF NOT (r->>'ok')::boolean OR r->>'role' IS DISTINCT FROM 'partner' THEN
@@ -98,8 +97,8 @@ BEGIN
   IF (v_res->>'found')::boolean IS DISTINCT FROM true OR v_res->>'person_id' IS DISTINCT FROM 'ppartner' THEN
     RAISE EXCEPTION 'FAIL consume [telegram_user_id nicht in family-Facts gemerged: %]', v_res;
   END IF;
-  -- as_of-Erhaltung (BL3): das Pairing heftet nur Identitaet an, es ist KEINE Fakten-Aktualisierung
-  -- -> der Skelett-as_of der Person ('2026-06-11') muss UNVERAENDERT bleiben (nicht auf heute springen).
+  -- as_of-Erhaltung: das Pairing heftet nur Identitaet an, es ist keine Fakten-Aktualisierung
+  -- -> der Skelett-as_of der Person ('2026-06-11') muss unveraendert bleiben (nicht auf heute springen).
   IF (SELECT pp->>'as_of'
         FROM agent.core_contexts c, jsonb_array_elements(c.metadata->'facts'->'persons') pp
        WHERE c.name = 'family' AND pp->>'person_id' = 'ppartner') IS DISTINCT FROM '2026-06-11' THEN
@@ -139,19 +138,19 @@ BEGIN
         '{"chat_id":"test_pair_a","telegram_user_id":555,"challenge":"WRONGCODE","person_id":"ppartner"}'::jsonb);
   IF (r->>'fail_count')::int IS DISTINCT FROM 3 OR NOT (r->>'locked')::boolean THEN
     RAISE EXCEPTION 'FAIL lockout [dritter Fehlversuch muss locked=true setzen: %]', r; END IF;
-  -- jetzt ist die Challenge invalidiert: selbst der KORREKTE Code wird abgewiesen
+  -- jetzt ist die Challenge invalidiert: selbst der korrekte Code wird abgewiesen
   r := agent.fn_consume_pairing_challenge(
         '{"chat_id":"test_pair_a","telegram_user_id":555,"challenge":"LOCKCODE1","person_id":"ppartner"}'::jsonb);
   IF (r->>'ok')::boolean THEN RAISE EXCEPTION 'FAIL lockout [korrekter Code nach Lockout eingeloest]'; END IF;
   RAISE NOTICE 'PASS consume [fail_count-Lockout: 3 Fehlversuche invalidieren, korrekter Code danach gesperrt]';
 
-  -- ---------- consume: OWNER-Challenge (chat_id NULL) zaehlt Fehlversuche + lockt aus ----------
+  -- ---------- consume: Owner-Challenge (chat_id NULL) zaehlt Fehlversuche + lockt aus ----------
   -- Regression-Guard: die Owner-Bootstrap-Challenge wird mit chat_id NULL armiert (matcht jeden
-  -- Chat). Der Fehlversuch-Pfad MUSS sie trotzdem treffen (chat_id IS NULL OR chat_id = v_chat) —
+  -- Chat). Der Fehlversuch-Pfad muss sie trotzdem treffen (chat_id IS NULL OR chat_id = v_chat) —
   -- sonst koennte der Owner-Code im 10-Min-Fenster ohne OWASP-Lockout gebruteforct werden.
   r := agent.fn_arm_pairing_challenge('{"role":"owner","challenge":"OWNERLOCK1"}'::jsonb);
   IF NOT (r->>'ok')::boolean THEN RAISE EXCEPTION 'FAIL arm [owner-lockout-setup: %]', r->>'reason'; END IF;
-  -- Falschversuch aus einem BELIEBIGEN Chat -> muss an der NULL-chat-Owner-Challenge zaehlen
+  -- Falschversuch aus einem beliebigen Chat -> muss an der NULL-chat-Owner-Challenge zaehlen
   r := agent.fn_consume_pairing_challenge(
         '{"chat_id":"test_attacker","telegram_user_id":777,"challenge":"WRONGOWNR","person_id":"powner"}'::jsonb);
   IF (r->>'ok')::boolean THEN RAISE EXCEPTION 'FAIL owner-lockout [falscher Code eingeloest]'; END IF;
@@ -164,7 +163,7 @@ BEGIN
         '{"chat_id":"test_attacker2","telegram_user_id":888,"challenge":"WRONGOWNR","person_id":"powner"}'::jsonb);
   IF (r->>'fail_count')::int IS DISTINCT FROM 3 OR NOT (r->>'locked')::boolean THEN
     RAISE EXCEPTION 'FAIL owner-lockout [3. Fehlversuch muss locked=true setzen: %]', r; END IF;
-  -- jetzt ist die Owner-Challenge invalidiert: der KORREKTE Code wird abgewiesen
+  -- jetzt ist die Owner-Challenge invalidiert: der korrekte Code wird abgewiesen
   r := agent.fn_consume_pairing_challenge(
         '{"chat_id":"test_owner","telegram_user_id":111,"challenge":"OWNERLOCK1","person_id":"powner"}'::jsonb);
   IF (r->>'ok')::boolean THEN RAISE EXCEPTION 'FAIL owner-lockout [korrekter Owner-Code nach Lockout eingeloest]'; END IF;
@@ -181,7 +180,7 @@ BEGIN
   END;
 
   -- ============================================================
-  -- WS-5a: Einladungs-Flow (Owner-initiiert) — arm(person_id) -> claim STAGT -> Owner confirm/reject
+  -- Einladungs-Flow (Owner-initiiert) — arm(person_id) -> claim stagt -> Owner confirm/reject
   -- ============================================================
   -- frische Kind-Person als Einladungs-Ziel (ppartner ist oben bereits an 555 gepairt).
   PERFORM agent.fn_set_context_facts(jsonb_build_object('context_name','family','facts', jsonb_build_object('persons', jsonb_build_array(
@@ -192,13 +191,13 @@ BEGIN
   r := agent.fn_arm_pairing_challenge('{"role":"child","challenge":"INVITE001","person_id":"pchild"}'::jsonb);
   IF NOT (r->>'ok')::boolean THEN RAISE EXCEPTION 'FAIL invite-arm [%]', r->>'reason'; END IF;
 
-  -- claim: Mitglied loest ein -> STAGT, bindet NICHT (vor Owner-Bestaetigung nicht aufloesbar)
+  -- claim: Mitglied loest ein -> stagt, bindet nicht (vor Owner-Bestaetigung nicht aufloesbar)
   r := agent.fn_claim_pairing_challenge('{"challenge":"INVITE001","telegram_user_id":4242,"chat_id":"4242","language_code":"en-GB"}'::jsonb);
   IF (r->>'staged')::boolean IS DISTINCT FROM true OR r->>'person_id' IS DISTINCT FROM 'pchild' THEN
     RAISE EXCEPTION 'FAIL claim [Member-Code nicht gestaged: %]', r; END IF;
   IF (agent.fn_resolve_sender(4242)->>'found')::boolean THEN
     RAISE EXCEPTION 'FAIL claim [Identitaet vor Owner-Confirm bereits gebunden]'; END IF;
-  -- Telegram-Sprache (from.language_code) wird nur als normalisierter VORSCHLAG gemerkt (en-GB -> en).
+  -- Telegram-Sprache (from.language_code) wird nur als normalisierter Vorschlag gemerkt (en-GB -> en).
   IF (SELECT language_hint FROM agent.pairing_state WHERE challenge='INVITE001') IS DISTINCT FROM 'en' THEN
     RAISE EXCEPTION 'FAIL claim [language_hint nicht normalisiert gemerkt: %]',
       (SELECT language_hint FROM agent.pairing_state WHERE challenge='INVITE001'); END IF;
@@ -209,8 +208,8 @@ BEGIN
     RAISE EXCEPTION 'FAIL claim [zweite Einloesung nicht als pending: %]', r; END IF;
   RAISE NOTICE 'PASS claim [Member-Einloesung stagt nicht-bindend; Doppel-Einloesung = pending]';
 
-  -- confirm: Owner bestaetigt -> BINDUNG committet. Haushalt fertig + aktives persoenliches Paket (career) ->
-  -- members_have_areas=true (Knopf 'Meine Bereiche' an der Bestaetigung, 2026-10-28).
+  -- confirm: Owner bestaetigt -> Bindung committet. Haushalt fertig + aktives persoenliches Paket (career) ->
+  -- members_have_areas=true (Knopf 'Meine Bereiche' an der Bestaetigung).
   UPDATE agent.guide_onboarding_state SET status = 'completed';
   INSERT INTO core.package_registry (package, version, status) VALUES ('career','0.1.0','active')
   ON CONFLICT (package) DO UPDATE SET status = 'active';
@@ -224,7 +223,7 @@ BEGIN
     RAISE EXCEPTION 'FAIL confirm [members_have_areas: %]', r; END IF;
   IF (agent.fn_resolve_sender(4242)->>'person_id') IS DISTINCT FROM 'pchild' THEN
     RAISE EXCEPTION 'FAIL confirm [Identitaet nach Owner-Confirm nicht gebunden]'; END IF;
-  -- Vorschlag zurueck an den Orchestrator (Picker-Markierung), aber NIE still gesetzt: family bleibt ohne language.
+  -- Vorschlag zurueck an den Orchestrator (Picker-Markierung), aber nie still gesetzt: family bleibt ohne language.
   IF r->>'language_hint' IS DISTINCT FROM 'en' OR (r->>'has_language')::boolean IS DISTINCT FROM false THEN
     RAISE EXCEPTION 'FAIL confirm [language_hint/has_language: %]', r; END IF;
   IF (SELECT pp ? 'language' FROM agent.core_contexts c, jsonb_array_elements(c.metadata->'facts'->'persons') pp
@@ -256,13 +255,13 @@ BEGIN
     RAISE EXCEPTION 'FAIL reject [Mitglied nach Ablehnung doch gebunden]'; END IF;
   RAISE NOTICE 'PASS reject [Ablehnung verwirft den Stage ohne Bindung]';
 
-  -- claim: Owner-Bootstrap-Code (person_id NULL) matcht den Member-Pfad NIE
+  -- claim: Owner-Bootstrap-Code (person_id NULL) matcht den Member-Pfad nie
   r := agent.fn_arm_pairing_challenge('{"role":"owner","challenge":"OWNERONLY1"}'::jsonb);
   IF NOT (r->>'ok')::boolean THEN RAISE EXCEPTION 'FAIL owner-arm [%]', r->>'reason'; END IF;
   r := agent.fn_claim_pairing_challenge('{"challenge":"OWNERONLY1","telegram_user_id":6363,"chat_id":"6363"}'::jsonb);
   IF (r->>'staged')::boolean THEN RAISE EXCEPTION 'FAIL claim [Owner-Code im Member-Pfad gestaged]'; END IF;
 
-  -- claim: zwei offene Einladungen, gleiche Member-uid, verschiedene Personen -> kein Index-Konflikt (M1)
+  -- claim: zwei offene Einladungen, gleiche Member-uid, verschiedene Personen -> kein Index-Konflikt
   PERFORM agent.fn_set_context_facts(jsonb_build_object('context_name','family','facts', jsonb_build_object('persons', jsonb_build_array(
     jsonb_build_object('person_id','pchildA','first_name','KindA','last_name','Person','role','child','birth_date','2018-01-01'),
     jsonb_build_object('person_id','pchildB','first_name','KindB','last_name','Person','role','child','birth_date','2019-02-02')))));
@@ -276,7 +275,7 @@ BEGIN
   RAISE NOTICE 'PASS claim [Owner-Code-Ausschluss + zwei gestagte Claims gleiche uid/verschiedene Person]';
 
   -- ============================================================
-  -- WS-5d: eine gesperrte uid (agent.access_blocks) kann sich auch mit gueltigem Code NICHT verbinden
+  -- Gesperrte uid (agent.access_blocks) kann sich auch mit gueltigem Code nicht verbinden
   -- ============================================================
   PERFORM agent.fn_block_knocker('{"telegram_user_id":7777}'::jsonb);
 
@@ -287,7 +286,7 @@ BEGIN
   r := agent.fn_claim_pairing_challenge('{"challenge":"BLOCKINV1","telegram_user_id":7777,"chat_id":"7777"}'::jsonb);
   IF (r->>'staged')::boolean OR (r->>'blocked')::boolean IS DISTINCT FROM true THEN
     RAISE EXCEPTION 'FAIL claim [gesperrte uid gestaged statt abgewiesen: %]', r; END IF;
-  -- die Einladung ist NICHT verbraucht -> eine NICHT-gesperrte uid koennte sie weiter einloesen
+  -- die Einladung ist nicht verbraucht -> eine nicht gesperrte uid koennte sie weiter einloesen
   r := agent.fn_claim_pairing_challenge('{"challenge":"BLOCKINV1","telegram_user_id":7778,"chat_id":"7778"}'::jsonb);
   IF (r->>'staged')::boolean IS DISTINCT FROM true THEN
     RAISE EXCEPTION 'FAIL claim [Block-Abweisung verbrannte die Einladung: %]', r; END IF;

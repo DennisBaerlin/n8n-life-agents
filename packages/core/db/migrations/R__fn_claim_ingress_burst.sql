@@ -1,7 +1,7 @@
 -- ============================================================
--- fn_claim_ingress_burst (Telegram-Eingangs-Buendelung, Schritt 2)
+-- fn_claim_ingress_burst (Telegram-Eingangs-Buendelung, Beanspruchen nach fn_record_ingress_message)
 --   Der Orchestrator-Eingang ruft sie fuer text/file nach dem kurzen Warten (und bei action 'wait' erneut).
---   Entscheidet, ob DIESER Lauf seine Nachricht verarbeitet, weiter wartet oder still endet:
+--   Entscheidet, ob dieser Lauf seine Nachricht verarbeitet, weiter wartet oder still endet:
 --     Zeile fehlt (record gescheitert)        -> process (ohne update: der Eingang nimmt das Roh-Update; fail-open)
 --     exec_id fremd (Webhook-Retry)           -> drop, reason duplicate
 --     solo (legt record selbst-beansprucht an) -> process
@@ -10,20 +10,21 @@
 --       registered_at von 2 s VOR bis 10 s NACH der EIGENEN Ankunft (nie relativ zur Uhr: eine verspaetete
 --       eigene Zeile geht nie verloren; nur 2 s zurueck: eine aeltere unbeanspruchte Zeile ist sonst die eines
 --       Laufs, der nach einem DB-Fehler schon fail-open allein lief -> nicht ein zweites Mal verarbeiten).
---       Juengste Ankunft < 1 s her UND eigene < 5 s her UND nicht final -> wait (gleitendes Fenster, Obergrenze
+--       Juengste Ankunft < 1 s her und eigene < 5 s her und nicht final -> wait (gleitendes Fenster, Obergrenze
 --       5 s; final = letzte Runde der Graph-Schleife -> nie mehr wait). Sonst alle Texte + alle Dateien beanspruchen
---       und EIN Update bauen: Primaer = frueheste Datei (sonst fruehester Text), weitere Dateien in message_id-
+--       und ein Update bauen: Primaer = frueheste Datei (sonst fruehester Text), weitere Dateien in message_id-
 --       Reihenfolge -> message.extra_files [{file_id, type photo|document, file_name?}] (Foto: groesste Aufloesung),
 --       Texte/Bildunterschriften in message_id-Reihenfolge mit Leerzeile -> caption (bzw. text ohne Datei);
 --       entities/caption_entities fallen weg (ihre Offsets passten nicht mehr). update nur, wenn > 1 Zeile.
 --   Beanspruchte Zeilen: claimed_by = eigene update_id, payload = NULL (Privatsphaere). Raeumt Zeilen > 2 min weg.
---   NEBENLAEUFIGKEIT: erste Anweisung ist ein EIGENES PERFORM pg_advisory_xact_lock(<Namensraum>, <chat>)
---   (VOLATILE-fn -> jede folgende Anweisung sieht unter READ COMMITTED einen frischen Schnappschuss NACH dem
+--   Nebenlaeufigkeit: Die erste Anweisung ist ein eigenes PERFORM pg_advisory_xact_lock(<Namensraum>, <chat>)
+--   (VOLATILE-fn -> jede folgende Anweisung sieht unter READ COMMITTED einen frischen Schnappschuss nach dem
 --   Lock). Claims desselben Chats laufen so strikt nacheinander; record nimmt den Lock nicht (es legt nur
 --   neue Zeilen an). Zeitbasis clock_timestamp(), nicht now().
 --   Fehlende exec_id = Bau-Fehler des Aufrufers -> RAISE (der Eingang ist fail-open).
---   p: { update_id, exec_id, final? }
---   RUECKGABE: {ok:true, action: process|wait|drop, update?, merged_update_ids?, reason?}
+--   Eingabe p: { update_id (numerisch), exec_id (Pflicht), final? }
+--   Rueckgabe: {ok:true, action: process|wait|drop, update?, merged_update_ids?, reason?}; nicht numerische
+--   update_id -> {ok:false, action:'process', reason}.
 --   Tests: tests/db/core/test_fn_ingress_buffer.sql
 -- ============================================================
 CREATE OR REPLACE FUNCTION agent.fn_claim_ingress_burst(p jsonb)

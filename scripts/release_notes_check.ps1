@@ -1,13 +1,13 @@
 ﻿#Requires -Version 5.1
-# release_notes_check.ps1 - prueft die Tag-Nachricht eines Releases, BEVOR das Tag gesetzt wird (ein von CI abgelehntes
-# Tag verbraucht die Versionsnummer: Tags sind per Ruleset unverrueckbar). release.yml ruft dasselbe Skript - die EINE
-# Fassung der Regel.
+# release_notes_check.ps1 - prueft die Tag-Nachricht eines Releases, bevor das Tag gesetzt wird (ein von CI abgelehntes
+# Tag verbraucht die Versionsnummer: Tags sind per Ruleset unverrueckbar). release.yml ruft dasselbe Skript auf, es ist
+# die einzige Fassung der Regel.
 #
 # Regel (Gegenstueck zur Anzeige: core.fn_release_intro(body, lang), die Update-Karte im Chat):
 #   - Einleitungsabsatz (englisch, = Kurzfassung fuer 'en'): vorhanden, <= 300 Zeichen, ohne '<!--'.
-#   - Fuer JEDE Systemsprache ausser 'en' ein Marker  <!-- summary:<code> ... -->  (nach einer Leerzeile, hinter dem
+#   - Fuer jede Systemsprache ausser 'en' ein Marker  <!-- summary:<code> ... -->  (nach einer Leerzeile, hinter dem
 #     Einleitungsabsatz), nicht leer, <= 300 Zeichen. Die Sprachen kommen aus dem Core-Manifest (languages.list, dieselbe
-#     Quelle wie core.ui_languages) - kommt eine Sprache dazu, verlangt das Skript sie automatisch.
+#     Quelle wie core.ui_languages); eine neue Sprache verlangt das Skript automatisch.
 #   - Jeder Marker: bekannter Code, hoechstens einmal, kein '-->' im Text, vollstaendig in den ersten 4000 Zeichen
 #     (der jq-Auszug in update_runner.sh kuerzt den Text dort).
 # Zeichen werden als Codepoints gezaehlt (wie length() in PostgreSQL), nicht als UTF-16-Einheiten.
@@ -17,6 +17,7 @@
 # Usage:
 #   .\scripts\release_notes_check.ps1 -File <tag-nachricht.md>          # vor `git tag -a --cleanup=whitespace -F <datei>`
 #   .\scripts\release_notes_check.ps1 -File <datei> -Print de           # nur die bereinigte Kurzfassung ausgeben (en = Intro)
+#   -Manifest <pfad> ersetzt das Core-Manifest als Sprachquelle (Default packages/core/manifest.json).
 # Exit-Code: 0 = in Ordnung, 1 = Regel verletzt (deutsche Meldung samt Beispiel).
 param(
     [Parameter(Mandatory = $true)][string]$File,
@@ -100,18 +101,16 @@ Beispiel (Aufbau der Tag-Nachricht):
     - ...
 '@
 
-# Sprachen aus dem Manifest (dieselbe Quelle wie core.ui_languages).
 $langs = @((Get-Content -LiteralPath $Manifest -Raw -Encoding UTF8 | ConvertFrom-Json).languages.list | ForEach-Object { $_.code })
 if ($langs.Count -eq 0) { Write-Host "release_notes_check: keine Sprachen in $Manifest gefunden."; exit 1 }
 
-# Einleitungsabsatz
 $introRaw = Get-IntroRaw $body
 $intro = Clear-Markdown $introRaw
 if ($intro -eq '') { $errors.Add('Die Tag-Nachricht braucht einen englischen Einleitungsabsatz (1-3 Saetze vor der ersten Ueberschrift).') }
 elseif ($introRaw.Contains('<!--')) { $errors.Add('Der Einleitungsabsatz enthaelt "<!--". Marker stehen NACH einer Leerzeile hinter dem Absatz.') }
 elseif ((Get-CodepointCount $intro) -gt $MaxChars) { $errors.Add("Der Einleitungsabsatz ist $(Get-CodepointCount $intro) Zeichen lang (max. $MaxChars).") }
 
-# Klammern: ein '-->' im Kommentartext beendet den Marker zu frueh -> mehr '-->' als '<!--'.
+# Klammern: ein '-->' im Kommentartext beendet den Marker zu frueh, dann sind es mehr '-->' als '<!--'.
 $open = [regex]::Matches($body, '<!--').Count
 $close = [regex]::Matches($body, '-->').Count
 if ($open -ne $close) { $errors.Add('Anzahl von "<!--" und "-->" passt nicht (ein "-->" im Marker-Text beendet den Kommentar zu frueh).') }

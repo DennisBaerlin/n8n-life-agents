@@ -1,13 +1,14 @@
 -- ============================================================
--- fn_resolve_account_by_number (READ) -- Konto-Zuordnung eines Kontoauszugs (Monats-Check WP-B)
---   Loest eine gedruckte Kontonummer/IBAN in ein AKTIVES Konto auf (Spiegel zu fn_resolve_account fuer Namen).
+-- fn_resolve_account_by_number (READ) -- Konto-Zuordnung eines Kontoauszugs
+--   Loest eine gedruckte Kontonummer/IBAN in ein aktives Konto auf (Spiegel zu fn_resolve_account fuer Namen).
 --   1. exakt in der Normalform fn_normalize_account_number (Leerzeichen/Gross-Klein egal),
---   2. sonst Fallback LETZTE 4 STELLEN (Kreditkarten-Auszuege drucken nur eine maskierte Nummer "XXXX ... 4711"),
---      nur fuer cash-Konten, nur bei genau einem Treffer und NUR wenn die gedruckte Nummer maskiert ist (Folge von
+--   2. sonst Fallback letzte 4 Stellen (Kreditkarten-Auszuege drucken nur eine maskierte Nummer "XXXX ... 4711"),
+--      nur fuer cash-Konten, nur bei genau einem Treffer und nur wenn die gedruckte Nummer maskiert ist (Folge von
 --      X/*/Punkten oder hoechstens 6 Ziffern) — eine vollstaendige fremde IBAN mit zufaellig gleichen Endziffern ist
 --      ein neues Konto (account_unknown), nie ein Treffer.
---   RUECKGABE: TABLE(id, hit_count, candidates) — id nur bei genau einem Treffer; candidates = [{id,name,bank,
---   account_type}] der Treffer (bei 0 Treffern: aktive cash-Konten OHNE Kontonummer = die Kandidaten, denen der
+--   Eingabe: p_number (gedruckte Kontonummer/IBAN).
+--   Rueckgabe: TABLE(id, hit_count, candidates) — id nur bei genau einem Treffer; candidates = [{id,name,bank,
+--   account_type}] der Treffer (bei 0 Treffern: aktive cash-Konten ohne Kontonummer = die Kandidaten, denen der
 --   Nutzer die Nummer zuordnen kann).
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_resolve_account_by_number(p_number text)

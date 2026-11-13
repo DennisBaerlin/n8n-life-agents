@@ -1,17 +1,16 @@
 -- ============================================================
 -- fn_cashflow_coverage_fold (INTERNAL HELPER — Event-Fold, nicht tool-facing)
---   Der EINE cashflow_coverage-Sofort-Hinweis der Write-fns fn_create_recurring_payment und fn_set_recurring_payment
---   (zweiter Konsument -> vereinheitlicht, Audit Paket 3). Liest den Post-State NACH dem Write aus
---   finance.monthly_cashflow_summary: monthly_free < 0 = die Pflichtausgaben (Konsum inkl. Kreditzins + Tilgung)
---   uebersteigen die Einnahmen; Sparraten zaehlen nicht (die meldet savings_squeeze). Auch OHNE Einnahmen (das letzte
---   Gehalt endet) -> Hinweis. Keine laufende Zahlung = neutral (leere/halb-onboardete DB).
---   Phase Notify: ueber core.fn_should_notify gelatcht (Singleton-Key, TTL 48h = Backstop fuer den valid_to-Ablauf-
---   Erholungspfad ohne Schreib-Edge); frei >= 0 -> core.fn_notify_resolve (expliziter Re-Arm).
+--   Der eine cashflow_coverage-Sofort-Hinweis der Write-fns fn_create_recurring_payment und fn_set_recurring_payment.
+--   Liest den Post-State nach dem Write aus finance.monthly_cashflow_summary: monthly_free < 0 = die Pflichtausgaben
+--   (Konsum inkl. Kreditzins + Tilgung) uebersteigen die Einnahmen; Sparraten zaehlen nicht (die meldet savings_squeeze).
+--   Auch ohne Einnahmen (das letzte Gehalt endet) -> Hinweis. Keine laufende Zahlung = neutral (leere/halb-onboardete DB).
+--   Gelatcht ueber core.fn_should_notify (Singleton-Key, TTL 48h = Backstop fuer den valid_to-Ablauf-Erholungspfad
+--   ohne Schreib-Edge); frei >= 0 -> core.fn_notify_resolve (expliziter Re-Arm).
 --   Nicht-blockierend: der Aufrufer faltet das Ergebnis in seinen {ok:true}-Return, der Bookkeeper relayed die note.
---   Seit 2026-10-30 (Transparenz, Owner-Entscheid) rechnet „frei“ den geschaetzten Alltag ein
---   (finance.fn_household_everyday_month, dieselbe Adresse wie fn_advisor_review); die note nennt die Basis.
+--   „frei“ rechnet den geschaetzten Alltag ein (finance.fn_household_everyday_month, dieselbe Adresse wie
+--   fn_advisor_review); die note nennt die Basis.
 --   p_chat_id (optional) = Absender; hoerte der Owner die Notiz, merkt core.fn_mark_told das fuer den Waechter.
---   RUECKGABE jsonb: '{}' oder {cashflow_coverage: {monthly_free, note}}.
+--   Rueckgabe jsonb: '{}' oder {cashflow_coverage: {monthly_free, note}}.
 -- ============================================================
 DROP FUNCTION IF EXISTS finance.fn_cashflow_coverage_fold();
 CREATE OR REPLACE FUNCTION finance.fn_cashflow_coverage_fold(p_chat_id text DEFAULT NULL)

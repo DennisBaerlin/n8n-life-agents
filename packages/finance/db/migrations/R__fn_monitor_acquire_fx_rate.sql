@@ -1,13 +1,12 @@
 -- ============================================================
 -- fn_monitor_acquire_fx_rate (READ-ONLY — acquire_fn der Monitor-Methode 'fx_rate')
---   Registriert ueber den manifest-Block monitor_acquisition_methods (Phase B, docs/package-contract.md §3.9);
---   der Core dispatcht via agent.fn_monitor_acquire (Heartbeat-Cron + Tool-Probe). Logik 1:1 aus dem frueheren
---   fx-Zweig der Core-fn verschoben (der Core las finance.fx_rates ungeguardet).
+--   Registriert ueber den manifest-Block monitor_acquisition_methods (docs/package-contract.md §3.9);
+--   der Core dispatcht via agent.fn_monitor_acquire (Heartbeat-Cron + Tool-Probe).
 --   As-of-Lookup auf finance.fx_rates (Idiom fn_to_eur); juengster Kurs aelter als monitor.fx_stale_days
---   (finance-Config, Default 5) -> {ok:false, reason 'stale'} (lauter Fehlerpfad — ein still gestorbener
---   FX-Cron wird so zum Telegram-Alert).
---   p: {spec: {base, quote}, as_of: 'YYYY-MM-DD', stale_days?: int (Test-Injektion)}
---   RUECKGABE: Observation {ok, value, unit, as_of, source_url} | {ok:false, reason}
+--   (finance-Config, Default 5) -> {ok:false, reason: 'fx rate ... is stale ...'} (lauter Fehlerpfad — ein still
+--   gestorbener FX-Cron wird so zum Telegram-Alert). Kein Kurs fuer das Paar -> {ok:false, reason: 'no fx rate ...'}.
+--   p: {spec: {base, quote}, as_of?: 'YYYY-MM-DD' (Default heute), stale_days?: int (Test-Injektion)}
+--   Rueckgabe: Observation {ok:true, value, unit, as_of, source_url} | {ok:false, reason}
 --   Tests: tests/db/finance/test_fn_monitor_acquire_fx_rate.sql
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_monitor_acquire_fx_rate(p jsonb)

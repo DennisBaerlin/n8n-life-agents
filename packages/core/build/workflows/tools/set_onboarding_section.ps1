@@ -1,22 +1,19 @@
 ﻿#Requires -Version 5.1
 # Dot-gesourct von build.ps1 (Helper + Script-Scope-Creds im Parent-Scope).
 
-# --- agent.guide.tool_set_onboarding_section (Phase 5a) ------
-# Fortschritts-Marker des Onboardings: setzt EINE Sektion auf completed/skipped/unknown.
-# KEIN HITL (kein Finanz-Write, nur ein Status-Flag) — die eigentlichen Onboarding-Writes laufen
+# --- agent.guide.tool_set_onboarding_section ------
+# Fortschritts-Marker des Onboardings: setzt eine Sektion auf completed/skipped/unknown.
+# Kein HITL (kein Finanz-Write, nur ein Status-Flag); die eigentlichen Onboarding-Writes laufen
 # ueber die gebundenen HITL-Tools (tool_set_household_facts, tool_commit_import, tool_save_plan_section).
-# 'skipped' = bewusst uebersprungen (Plan §1b) und zaehlt fuers Gate als aufgeloest.
+# 'skipped' = bewusst uebersprungen und zaehlt fuers Gate als aufgeloest.
 function Build-SetOnboardingSection {
     # chat_id: owner_only-Riegel der fn (Mitglied darf household nicht setzen) + Ziel der Weiter-Karte (core.sub_onboarding_progress).
     $trig = Build-Trigger @('section_key', 'status', 'chat_id')
 
-    # KEIN Test-Bypass mehr (Teststrategie Phase 8 — Weg C): der frühere `Is Test?`/`Return Test`-Zweig
-    # (chat_id-Prefix test_ → ok:true OHNE Write) ist ENTFERNT. Er sollte verhindern, dass Routing-Tests
-    # den PERSISTENTEN Onboarding-Zustand mutieren — das ist gegenstandslos, seit die Tiers gegen die
-    # EPHEMERE Container-DB laufen (per Lauf frisch). Routing-Tests durchlaufen jetzt den ECHTEN Write
-    # (mock_route guide bleibt grün: gc03 prüft den Tool-Call, den der reale Pfad ebenso registriert).
+    # Kein Test-Bypass: Routing-Tests laufen gegen die ephemere Container-DB und durchlaufen den echten Write
+    # (mock_route guide, Fall gc03 prueft den Tool-Call).
 
-    # WS-B3: Core-generische Schnittstelle core.fn_set_onboarding_section; der Guide besitzt NUR das
+    # Core-generische Schnittstelle core.fn_set_onboarding_section; der Guide besitzt nur das
     # Core-Onboarding -> package='core' ist hartkodiert (nie $fromAI; 'core' -> agent.guide_onboarding_state).
     $set = Build-Pg 'Set section' @(220, 0) `
         "=SELECT (r->>'ok')::boolean AS ok, r->>'reason' AS reason, r->>'section_key' AS section_key, r->>'status' AS status, (r->>'complete')::boolean AS complete, (r->>'area_completed_now')::boolean AS area_completed_now, (r->>'area_all_skipped')::boolean AS area_all_skipped FROM core.fn_set_onboarding_section(`$1::jsonb) AS r;" `
@@ -30,12 +27,12 @@ function Build-SetOnboardingSection {
     $ifOk = Build-If 'Set ok?' @(440, 0) "={{ `$json.ok }}" 'true' 'equals' 'boolean'
     $err = Build-ToolError 'Set failed' @(660, 200) "={{ `$('Set section').item.json.reason }}"
 
-    # Roter Faden: hat der Schritt den Haushalt geschlossen, schickt core.sub_onboarding_progress die Weiter-Karte
-    # (naechster Bereich) und den Mitgliedern "Es kann losgehen". Das Lern-Angebot (frueher HIER nach dem Haushalt
-    # und bei jedem erneuten complete) kommt jetzt dort genau einmal, wenn ALLE Bereiche eingerichtet sind.
+    # Hat der Schritt den Haushalt geschlossen, schickt core.sub_onboarding_progress die Weiter-Karte
+    # (naechster Bereich) und den Mitgliedern "Es kann losgehen". Das Lern-Angebot kommt dort genau einmal,
+    # wenn alle Bereiche eingerichtet sind.
     $progress = New-OnboardingProgressCallNode -Package 'core' -Pos @(660, 0)
 
-    # Return liest die Felder EXPLIZIT aus 'Set section' (zwischen Set ok? und Return liegt der Fortschritts-Aufruf).
+    # Return liest die Felder explizit aus 'Set section' (zwischen Set ok? und Return liegt der Fortschritts-Aufruf).
     $ret = Build-Return @(880, 0) @(
         ,@('ok', 'true', 'boolean')
         ,@('section_key', "={{ `$('Set section').item.json.section_key }}", 'string')

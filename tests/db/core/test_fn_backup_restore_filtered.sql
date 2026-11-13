@@ -1,10 +1,10 @@
 -- tests/db/core/test_fn_backup_restore_filtered.sql
--- Phase 4b: core.fn_backup_restore_filtered stellt die ZWEI zeilen-gefilterten geteilten
+-- core.fn_backup_restore_filtered stellt die zwei zeilen-gefilterten geteilten
 -- agent-Tabellen wieder her, die pg_restore (Bulk) nicht zeilengenau behandeln kann:
 --   * agent.core_contexts (managed_by='agent' = PII: family/finance_profile/financial_planning)
---     -> UPDATE-statt-DELETE (Protect-Trigger blockt DELETE), family VOR den persons[]-Kontexten
---        (bidirektionaler Validator), Phase-0 (deren Live-persons leeren NUR fuer Kontexte, die das
---        Bundle mitbringt — seit Phase A generisch, TEST 4).
+--     -> UPDATE-statt-DELETE (Protect-Trigger blockt DELETE), family vor den persons[]-Kontexten
+--        (bidirektionaler Validator), Phase 0 (deren Live-persons leeren nur fuer Kontexte, die das
+--        Bundle mitbringt — generisch, TEST 4).
 --   * agent.monitor_triggers (origin='user') -> DELETE origin='user' (observations CASCADE)
 --     + Fresh-id-Insert (kein UNIQUE(domain,lower(label))-Bruch gegen bestehende user-Zeilen).
 -- Atomar via die aufrufende TX (SECURITY INVOKER, RAISE -> Rollback). Getestet in BEGIN..ROLLBACK.
@@ -20,7 +20,7 @@ DECLARE
 BEGIN
   -- ============================================================
   -- Fixtures: Live-DB-Vorzustand (wie nach einem frischen Install: family-Skelett +
-  -- ein VORHANDENER user-Trigger mit demselben (domain,label) wie im "Bundle" = UNIQUE-Falle).
+  -- ein vorhandener user-Trigger mit demselben (domain,label) wie im "Bundle" = UNIQUE-Falle).
   -- db_test hat kein seed_data -> Registry-Zeilen + family selbst seeden.
   -- ============================================================
   -- family (managed+protected) LIVE, mit Erika + Lisa
@@ -34,7 +34,7 @@ BEGIN
               'household', jsonb_build_object('shared_finances', true))))
   ON CONFLICT (name) DO UPDATE SET metadata = EXCLUDED.metadata, managed_by = EXCLUDED.managed_by, package = EXCLUDED.package;
   INSERT INTO core.protected_contexts (context_name, package) VALUES ('family', 'core') ON CONFLICT DO NOTHING;
-  -- finance_profile LIVE mit einer Person, die das Bundle (s.u.) NICHT mehr kennt -> ohne Phase-0
+  -- finance_profile LIVE mit einer Person, die das Bundle (s.u.) nicht mehr kennt -> ohne Phase-0
   -- wuerde der family-Restore (nur erika) den Validator gegen die Live-finance_profile-Referenz brechen.
   INSERT INTO agent.core_contexts (name, description, agent_name, load_strategy, content, managed_by, package, metadata)
   VALUES ('finance_profile', 'live fixture', NULL, 'lazy', 'Live finance profile.', 'agent', 'finance',
@@ -42,18 +42,18 @@ BEGIN
             jsonb_build_object('person_id','erika','steuerklasse',1)))))
   ON CONFLICT (name) DO UPDATE SET metadata = EXCLUDED.metadata, managed_by = EXCLUDED.managed_by, package = EXCLUDED.package;
   INSERT INTO core.protected_contexts (context_name, package) VALUES ('finance_profile', 'finance') ON CONFLICT DO NOTHING;
-  -- ein VORHANDENER user-Trigger mit (domain='general', label='__rt watch') -> Bundle traegt denselben
+  -- ein vorhandener user-Trigger mit (domain='general', label='__rt watch') -> Bundle traegt denselben
   INSERT INTO agent.monitor_triggers (domain, label, trigger_type, acquisition_method, check_interval, origin)
   VALUES ('general', '__rt watch', 'recurring_info', 'none', interval '30 days', 'user')
   RETURNING id INTO v_old_trig;
-  -- ein core-Trigger (origin='core') muss den Restore UEBERLEBEN (nur user-Zeilen werden gewipt)
+  -- ein core-Trigger (origin='core') muss den Restore ueberleben (nur user-Zeilen werden gewipt)
   INSERT INTO agent.monitor_triggers (domain, label, trigger_type, acquisition_method, check_interval, origin)
   VALUES ('general', '__rt core seed', 'recurring_info', 'none', interval '30 days', 'core')
   ON CONFLICT DO NOTHING;
 
   -- ============================================================
   -- "Bundle"-Payload: gefilterte Zeilen wie der CLI-Export sie liefert
-  --   core_contexts: family (NUR erika) + finance_profile (NUR erika) + ein NEUER managed Context
+  --   core_contexts: family (nur erika) + finance_profile (nur erika) + ein neuer managed Context
   --   monitor_triggers: ein user-Trigger mit demselben (domain,label) wie der Live-Trigger
   -- ============================================================
   v_cc := jsonb_build_array(
@@ -70,10 +70,10 @@ BEGIN
       'metadata', jsonb_build_object('facts', jsonb_build_object('persons', jsonb_build_array(
         jsonb_build_object('person_id','erika','steuerklasse',3)))))
   );
-  -- monitor-Payload realistisch wie der CLI-Export: VOLLE Zeile(n) via to_jsonb (alle Spalten inkl.
-  -- NOT-NULL-Defaults wie warn_days_before — jsonb_populate_recordset wendet KEINE Spalten-Defaults an,
+  -- monitor-Payload realistisch wie der CLI-Export: volle Zeile(n) via to_jsonb (alle Spalten inkl.
+  -- NOT-NULL-Defaults wie warn_days_before — jsonb_populate_recordset wendet keine Spalten-Defaults an,
   -- daher muss das Bundle vollstaendig sein; pg_dump/\copy liefert das so). Selber (domain,label) wie der
-  -- Live-Trigger -> testet die UNIQUE-Kollisions-Vermeidung (Wipe origin='user' VOR Fresh-id-Insert).
+  -- Live-Trigger -> testet die UNIQUE-Kollisions-Vermeidung (Wipe origin='user' vor Fresh-id-Insert).
   SELECT jsonb_agg(to_jsonb(t)) INTO v_mt FROM agent.monitor_triggers t WHERE t.origin = 'user';
   v_payload := jsonb_build_object('agent.core_contexts', v_cc, 'agent.monitor_triggers', v_mt);
 
@@ -85,21 +85,21 @@ BEGIN
     RAISE EXCEPTION 'FAIL restore_filtered [ok]: %', v_result;
   END IF;
 
-  -- M1: family ueberlebt (per UPDATE ersetzt, nie geloescht) + neuer Content drin
+  -- family ueberlebt (per UPDATE ersetzt, nie geloescht) + neuer Content drin
   IF (SELECT content FROM agent.core_contexts WHERE name = 'family') NOT LIKE '%Restored body.%' THEN
     RAISE EXCEPTION 'FAIL restore_filtered [family nicht per UPDATE ersetzt]';
   END IF;
   IF (SELECT content FROM agent.core_contexts WHERE name = 'finance_profile') NOT LIKE '%Restored finance profile.%' THEN
     RAISE EXCEPTION 'FAIL restore_filtered [finance_profile nicht ersetzt]';
   END IF;
-  -- M1: direkter DELETE auf family bleibt geblockt (Protect-Trigger intakt)
+  -- direkter DELETE auf family bleibt geblockt (Protect-Trigger intakt)
   BEGIN
     DELETE FROM agent.core_contexts WHERE name = 'family';
     RAISE EXCEPTION 'FAIL restore_filtered [DELETE-Protection: family loeschbar trotz Registry]';
   EXCEPTION WHEN OTHERS THEN NULL;  -- erwartet: Trigger blockt
   END;
 
-  -- M3: genau EIN user-Trigger '__rt watch' (alter gewipt, neuer fresh-id) -> kein UNIQUE-Bruch
+  -- genau ein user-Trigger '__rt watch' (alter gewipt, neuer fresh-id) -> kein UNIQUE-Bruch
   IF (SELECT COUNT(*) FROM agent.monitor_triggers WHERE origin='user' AND label='__rt watch') <> 1 THEN
     RAISE EXCEPTION 'FAIL restore_filtered [monitor user-Trigger count != 1]: %',
       (SELECT COUNT(*) FROM agent.monitor_triggers WHERE origin='user' AND label='__rt watch');
@@ -129,7 +129,7 @@ BEGIN
   IF (v_result->>'ok')::boolean IS DISTINCT FROM true THEN
     RAISE EXCEPTION 'FAIL restore_filtered [empty payload]: %', v_result;
   END IF;
-  -- family unangetastet, user-Trigger NICHT gewipt (kein monitor-Key im Payload)
+  -- family unangetastet, user-Trigger nicht gewipt (kein monitor-Key im Payload)
   IF (SELECT COUNT(*) FROM agent.monitor_triggers WHERE origin='user' AND label='__rt watch') <> 1 THEN
     RAISE EXCEPTION 'FAIL restore_filtered [empty payload hat monitor-Zeilen veraendert]';
   END IF;
@@ -137,10 +137,10 @@ BEGIN
 END $$;
 
 -- ============================================================
--- TEST 4 (Phase A): Phase 0 GENERISCH fuer jeden persons[]-Kontext (nicht nur finance_profile)
---   Live: family {erika, tom} + ein 2. persons-Kontext, der tom referenziert. Bundle: family NUR {erika} +
---   eine AELTERE Fassung des 2. Kontexts OHNE persons. Ohne generisches Phase 0 blockte die Live-Referenz auf
---   tom den family-Restore (Waisen-Pruefung); die Bedingung haengt an der LIVE-Zeile, nicht an der Bundle-Zeile.
+-- TEST 4: Phase 0 generisch fuer jeden persons[]-Kontext (nicht nur finance_profile)
+--   Live: family {erika, tom} + ein 2. persons-Kontext, der tom referenziert. Bundle: family nur {erika} +
+--   eine aeltere Fassung des 2. Kontexts ohne persons. Ohne generisches Phase 0 blockte die Live-Referenz auf
+--   tom den family-Restore (Waisen-Pruefung); die Bedingung haengt an der Live-Zeile, nicht an der Bundle-Zeile.
 -- ============================================================
 DO $$
 DECLARE
@@ -172,7 +172,7 @@ BEGIN
 END $$;
 
 -- ============================================================
--- TEST 5: Backup von VOR der Sprach-Normierung (core:V027) — family traegt Freitext-Sprachen
+-- TEST 5: Backup aus der Zeit vor der Sprach-Normierung (core:V027) — family traegt Freitext-Sprachen
 --   ('Deutsch', 'English', 'fr'). Der Restore normalisiert sie (agent.fn_normalize_person_languages) statt am
 --   Validator (language nur aus core.ui_languages) zu scheitern: Owner -> de, Mitglied en, Unbekanntes faellt weg.
 -- ============================================================

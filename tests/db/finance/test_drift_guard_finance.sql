@@ -1,6 +1,5 @@
 -- tests/db/finance/test_drift_guard_finance.sql
--- Absicherung der DB-Seite von Drift-Funden, deren Fehler NICHT in der fn liegt (Karten-IDs aus dem Drift-Bericht,
--- Stand main 8ff7de43). Die fn kann hier bereits, was die Tool-Description verneint oder umstaendlich beschreibt;
+-- Absicherung der DB-Seite von Drift-Funden, deren Fehler nicht in der fn liegt. Die fn kann hier bereits, was die Tool-Description verneint oder umstaendlich beschreibt;
 -- der Fix gehoert in Description bzw. Tool-Graph und darf diese Faehigkeit nicht verlieren.
 BEGIN;
 

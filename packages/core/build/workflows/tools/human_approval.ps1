@@ -1,18 +1,18 @@
 ﻿#Requires -Version 5.1
-# Dot-gesourct von build_finance_tools.ps1 (Helper + Script-Scope-Creds im Parent-Scope).
+# Dot-gesourct von build.ps1 (Helper + Script-Scope-Creds im Parent-Scope).
 
-# --- 0. tool_human_approval (cross-agent HITL gate) ----------
-# Generic Human-in-the-Loop approval gate. Any write-tool calls this BEFORE writing:
-# it posts the value summary to the owner via Telegram "Send and Wait for Response"
-# (Approve/Disapprove) and returns { approved: bool }. Workflow name has NO .finance —
-# it is general agent infrastructure (scope `agent`, like agent.tool_load_context).
-# WS-5b — Maker-Checker / Dual-Control. Das Gate ist nicht mehr Owner-only, sondern rollen-bewusst:
-# Inputs summary + chat_id (= deterministische, nicht-spoofbare Sender-uid) + approval_tier
-# (owner_only|owner_approval|owner_info|self, aus dem approval_matrix-Block des Paket-Manifests je Aufrufer). DREI Zweige
-# (s. Overview-Sticky). Member-Pfad NUR bei positiv verifiziertem Nicht-Owner; jeder andere Ausgang sendet
-# fix an den Owner ODER blockiert (Sicherheits-Invariante). Resolve-DB-Fehler = harter Stop (kein onError ->
+# --- agent.tool_human_approval (cross-agent HITL gate) ----------
+# Generisches Human-in-the-Loop-Gate. Jedes Write-Tool ruft es vor dem Schreiben:
+# es schickt die Wert-Zusammenfassung per Telegram "Send and Wait for Response"
+# (Approve/Disapprove) und liefert { approved: bool }. Allgemeine Agent-Infrastruktur
+# (Scope `agent`, wie agent.tool_load_context), daher kein .finance im Namen.
+# Maker-Checker / Dual-Control: das Gate ist rollen-bewusst. Inputs summary + chat_id
+# (= deterministische, nicht-spoofbare Sender-uid) + approval_tier
+# (owner_only|owner_approval|owner_info|self, aus dem approval_matrix-Block des Paket-Manifests je Aufrufer). Drei Zweige
+# (s. Overview-Sticky). Member-Pfad nur bei positiv verifiziertem Nicht-Owner; jeder andere Ausgang sendet
+# fix an den Owner oder blockiert (Sicherheits-Invariante). Resolve-DB-Fehler = harter Stop (kein onError ->
 # errorWorkflow alarmiert den Owner, kein Write = fail-closed). limitWaitTime begrenzt den Telegram-Hang.
-# Textkatalog: summary ist ein STRUKTUR-Objekt (New-HitlSummary im Tool; ein String nur aus Test-Harnesses), das
+# Textkatalog: summary ist ein Struktur-Objekt (New-HitlSummary im Tool; ein String nur aus Test-Harnesses), das
 # Gate rendert es je Empfaenger in dessen Sprache (Render texts + Compose messages, Sticky 'Doc Texte je Sprache').
 function Build-HumanApproval {
     $trig = Build-Trigger @('summary', 'approval_tier')   # chat_id wird von Build-Trigger immer ergaenzt
@@ -22,8 +22,8 @@ function Build-HumanApproval {
 
     # --- Texte je Empfaenger (Textkatalog): 'Render texts' holt Sprache/Locale/Texte fuer Owner + ggf. Mitglied
     # (core.fn_hitl_texts, core_ro), 'Compose messages' rendert Summary + Hinweis + Knoepfe je Sprache
-    # (Get-HitlComposeJs). Beide OHNE onError -> ein Fehler stoppt das Gate fail-closed (kein Write), wie Resolve.
-    # Sie liefern NUR Texte — chatId/approverIds bleiben unten an Resolve sender/$OWNER_CHAT_ID gebunden
+    # (Get-HitlComposeJs). Beide ohne onError -> ein Fehler stoppt das Gate fail-closed (kein Write), wie Resolve.
+    # Sie liefern nur Texte — chatId/approverIds bleiben unten an Resolve sender/$OWNER_CHAT_ID gebunden
     # (New-TelegramSendAndWaitNode bricht den Build, wenn ein Ziel-Ausdruck die Text-Knoten referenziert).
     $render = Build-Pg 'Render texts' @(240, -720) `
         "=SELECT core.fn_hitl_texts(`$1::jsonb) AS r;" `
@@ -36,7 +36,7 @@ function Build-HumanApproval {
     }
     $T = "`$('Compose messages').first().json"
 
-    # --- Wiederhol-Sperre (2026-11-04): das Modell ruft nach Abbrechen dasselbe Tool mit gleichen Eingaben erneut auf (ein Satz im
+    # --- Wiederhol-Sperre: das Modell ruft nach Abbrechen dasselbe Tool mit gleichen Eingaben erneut auf (ein Satz im
     # Tool-Ergebnis haelt es nicht ab). Ganz vorn, vor Texten und Zweigen: wurde dieselbe Karte in diesem Chat schon nicht bestaetigt
     # und lebt die Zeile noch -> keine Karte, {approved:false, repeat_blocked:true}. onError continue: scheitert die Abfrage, ist
     # blocked leer und die Karte geht normal raus (eine Karte verlangt ohnehin einen Tipp, fail-open schuetzt jeden Write).
@@ -52,17 +52,17 @@ function Build-HumanApproval {
     $ownerTxt =@{ Msg = "={{ $T.owner.text }}"; Yes = "={{ $T.owner.approve }}"; No = "={{ $T.owner.cancel }}"; Unauth = "={{ $T.owner.unauthorized }}" }
     $memberTxt = @{ Msg = "={{ $T.member.text }}"; Yes = "={{ $T.member.approve }}"; No = "={{ $T.member.cancel }}"; Unauth = "={{ $T.member.unauthorized }}" }
 
-    # WP-5c: der Member-Send adressiert die KANONISCHE chat_id der via fn_resolve_sender VERIFIZIERTEN Person
+    # Der Member-Send adressiert die kanonische chat_id der via fn_resolve_sender verifizierten Person
     # (sender.chat_id = deren telegram_user_id), nicht die roh eingehende chat_id -> Send-Ziel ist an die
     # aufgeloeste Identitaet ruecksichert (dieser Zweig laeuft nur nach positiver Member-Verifikation).
     # .first() statt .item: zwischen Resolve und Send liegt der Pg-Knoten 'Open pending' (Item-Paarung).
     $memberChat   = "={{ String(`$('Resolve sender').first().json.sender.chat_id) }}"
-    # Wer am Member-Send tippen darf: NUR die verifizierte Person (approverIds; leer hiesse jeder). Im Webhook-
+    # Wer am Member-Send tippen darf: nur die verifizierte Person (approverIds; leer hiesse jeder). Im Webhook-
     # Kontext ohne Item-Index ausgewertet -> .first(); '-1' (keine echte uid) statt leer = fail-closed.
     $memberApprover = "={{ String(`$('Resolve sender').first().json.sender.chat_id || '-1') }}"
-    # Ergebnis eines Sends EXPLIZIT per Name lesen: nach dem Send laeuft 'Close pending', $json ist dann dessen
+    # Ergebnis eines Sends explizit per Name lesen: nach dem Send laeuft 'Close pending', $json ist dann dessen
     # Ausgabe. Defensiv: Timeout -> data leer -> false.
-    # Get-ApprovedJs = der EINE approved-Ausdruck (auch fuer Mark result unten), Get-ApprovedExpr = derselbe als n8n-Ausdruck.
+    # Get-ApprovedJs = der eine approved-Ausdruck (auch fuer Mark result unten), Get-ApprovedExpr = derselbe als n8n-Ausdruck.
     function Get-ApprovedJs([string]$SendName) { "((`$('$SendName').first().json.data || {}).approved === true)" }
     function Get-ApprovedExpr([string]$SendName) { "={{ $(Get-ApprovedJs $SendName) }}" }
     # Ausgang der Karte fuer den Text ans Modell (Build-ToolCancelled). n8n liefert nach einem Tipp data.approved als true/false, nach
@@ -74,10 +74,10 @@ function Build-HumanApproval {
     }
     function Get-OutcomeExpr([string]$SendName, [string]$Prefix = '') { Get-OutcomeExprFor "`$('$SendName')" $Prefix }
 
-    # --- Karte-offen-Sperre (Fix C, agent.hitl_pending): je Send 'Open pending' davor + 'Close pending' danach.
-    # Zeile fuer den URSPRUNGS-Chat der Anfrage (Start.chat_id = message.chat.id des Orchestrators), nicht fuer den
+    # --- Karte-offen-Sperre (agent.hitl_pending): je Send 'Open pending' davor + 'Close pending' danach.
+    # Zeile fuer den Ursprungs-Chat der Anfrage (Start.chat_id = message.chat.id des Orchestrators), nicht fuer den
     # Karten-Empfaenger: gesperrt wird die geparkte Unterhaltung. TTL = WAIT_MIN + 6 (Puffer fuer den bekannten
-    # Telegram-Send-Haenger). Close LOESCHT NICHT, sondern gibt frei (released + Gnadenfrist $GRACE_MIN): die
+    # Telegram-Send-Haenger). Close loescht nicht, sondern gibt frei (released + Gnadenfrist $GRACE_MIN): die
     # Kette dahinter antwortet erst noch und schreibt ihr Gedaechtnis; der Orchestrator loescht die Zeile nach
     # seiner Antwort. $OwnExpr = JS-Ausdruck: liegt die Karte im Ursprungs-Chat (true) oder wartet sie auf die
     # Freigabe eines anderen (false -> anderer Hinweistext). Beide onError=continue -> fail-open (Komfort-Sperre).
@@ -94,9 +94,9 @@ function Build-HumanApproval {
         @{ Open = $open; Close = $close; OpenName = $open.name; CloseName = $close.name }
     }
 
-    # --- Ergebnis der Karte (je Ausgang mit Karte VOR dem Return ein 'Mark result (<Return>)'), fuer ALLE Zeilen dieser Execution
-    # (Vier-Augen: Mitglieds- und Owner-Zeile). Bestaetigt: agent.fn_set_hitl_pending_approved (Bot mit Gesicht 2026-10-30, Leser:
-    # Orchestrator, agent.fn_claim_persona_sticker). Nicht bestaetigt (Abbrechen ODER Ablauf): agent.fn_set_hitl_pending_declined
+    # --- Ergebnis der Karte (je Ausgang mit Karte vor dem Return ein 'Mark result (<Return>)'), fuer alle Zeilen dieser Execution
+    # (Vier-Augen: Mitglieds- und Owner-Zeile). Bestaetigt: agent.fn_set_hitl_pending_approved (Leser:
+    # Orchestrator, agent.fn_claim_persona_sticker). Nicht bestaetigt (Abbrechen oder Ablauf): agent.fn_set_hitl_pending_declined
     # (Wiederhol-Sperre, Leser: 'Repeat check'). Summary ueber .first(), nie .item: auf dem Pfad langer Karten reisst die
     # Item-Paarung. Vor dem Return, damit dessen Ausgabe der Rueckgabewert des Gates bleibt. onError continue (nie ein Gate-Abbruch).
     function New-ResultMark([string]$ReturnName, [int[]]$Pos, [string]$ApprovedJs) {
@@ -108,9 +108,9 @@ function Build-HumanApproval {
     }
 
     # --- Lange Karten (Telegram-Limit 4096): Compose messages liefert je Text pre = die vorderen Teile ("Teil n/N").
-    # Je Send-Pfad VOR dem Karten-Send (und NACH Open pending -> die Sperre steht schon, waehrend die Teile laufen):
-    # Has parts? -> Split parts (ein Item je Teil, Items tragen NUR den Text, nie ein Ziel) -> Send parts (sendMessage je
-    # Item, Ziel = EXAKT der Ziel-Ausdruck des Karten-Sends) -> Parts sent (Limit 1: die Karte geht genau einmal) -> Karte.
+    # Je Send-Pfad vor dem Karten-Send (und nach Open pending -> die Sperre steht schon, waehrend die Teile laufen):
+    # Has parts? -> Split parts (ein Item je Teil, Items tragen nur den Text, nie ein Ziel) -> Send parts (sendMessage je
+    # Item, Ziel = exakt der Ziel-Ausdruck des Karten-Sends) -> Parts sent (Limit 1: die Karte geht genau einmal) -> Karte.
     # Kein onError: scheitert ein Teil, stoppt das Gate (keine Karte, kein Write; die Sperre gibt core.sub_error_notify
     # bzw. die TTL frei). Bekannt: retryOnFail sendet bei einem Telegram-Haenger alle Teile erneut (Doppel moeglich).
     function New-HitlPreSend([string]$SendName, [int[]]$SendPos, [string]$PreExpr, [string]$ChatIdExpr) {
@@ -140,7 +140,7 @@ function Build-HumanApproval {
     # --- Zweig-Weiche: numerisch? -> Resolve; sonst (Test-Sentinel) -> Owner-Pfad -----------------------
     $numeric = Build-If 'Sender numeric?' @(240, 0) "={{ `$('Start').item.json.chat_id }}" '^[0-9]+$' 'regex' 'string'
 
-    # Resolve unter core_ro; KEIN onError -> DB-Fehler stoppt hart (fail-closed) + errorWorkflow-Alert (B0).
+    # Resolve unter core_ro; kein onError -> DB-Fehler stoppt hart (fail-closed) + errorWorkflow-Alert.
     $resolve = Build-Pg 'Resolve sender' @(460, 120) `
         "=SELECT agent.fn_resolve_sender(((`$1::jsonb)->>'uid')::bigint) AS sender;" `
         ([ordered]@{ uid = '$(''Start'').item.json.chat_id' })
@@ -150,7 +150,7 @@ function Build-HumanApproval {
         "={{ `$('Resolve sender').item.json.sender.found === true && `$('Resolve sender').item.json.sender.role !== 'owner' }}" `
         'true' 'equals' 'boolean'
 
-    # --- OWNER-PFAD (Zweig A + B-owner + found:false): ein Tap an den Owner = heutiges Verhalten ---------
+    # --- Owner-Pfad (Zweig A + B-owner + found:false): ein Tap an den Owner ---------
     # Gemeinsame Send-Parameter: Katalog-Texte, removeButtons (n8n haengt sonst die fest englische Zeile
     # "✅ Approved by ..." an — die Agent-Antwort nach dem Write ist die Bestaetigung).
     $ownerSend = New-TelegramSendAndWaitNode 'Owner approval' @(680, -160) $ownerTxt.Msg -ChatIdExpr $OWNER_CHAT_ID `
@@ -161,14 +161,14 @@ function Build-HumanApproval {
         ,@('outcome', (Get-OutcomeExpr 'Owner approval'), 'string')
     )
 
-    # --- MEMBER-PFAD (Zweig C, nur aus positiver B1-Verifikation), nach approval_tier ------------------
+    # --- Member-Pfad (Zweig C, nur aus positiver Verifikation), nach approval_tier ------------------
     $tierSwitch = Build-Switch 'Tier switch' @(900, 120) @(
         @{ Left = "={{ `$('Start').item.json.approval_tier }}"; Type = 'string'; Op = 'equals'; Right = 'owner_only';     OutputKey = 'owner_only' }
         @{ Left = "={{ `$('Start').item.json.approval_tier }}"; Type = 'string'; Op = 'equals'; Right = 'owner_approval'; OutputKey = 'owner_approval' }
         @{ Left = "={{ `$('Start').item.json.approval_tier }}"; Type = 'string'; Op = 'equals'; Right = 'owner_info';     OutputKey = 'owner_info' }
         @{ Left = "={{ `$('Start').item.json.approval_tier }}"; Type = 'string'; Op = 'equals'; Right = 'self';           OutputKey = 'self' }
     )
-    # owner_only: HARTER BLOCK, kein Send (Plan-/Haushalts-/Einladungs-Tools haben zusaetzlich den DB-Backstop)
+    # owner_only: harter Block, kein Send (Plan-/Haushalts-/Einladungs-Tools haben zusaetzlich den DB-Backstop)
     $retBlocked = Build-Set 'Return blocked' @(1140, 0) @(
         ,@('approved', 'false', 'boolean')
         ,@('reason', 'owner_only', 'string')
@@ -202,7 +202,7 @@ function Build-HumanApproval {
         ,@('approved', 'false', 'boolean')
         ,@('outcome', (Get-OutcomeExprFor $stage1Send), 'string')
     )
-    # self: die Person bestaetigt ihre EIGENEN Daten, KEIN Owner-Send (eine Info truege private per_user-Daten zum
+    # self: die Person bestaetigt ihre eigenen Daten, kein Owner-Send (eine Info truege private per_user-Daten zum
     # Owner). Nur fuer Workflows, die ausschliesslich agent.fn_set_own_context_facts rufen (approval_lint (e)).
     $memberSendSelf = New-TelegramSendAndWaitNode 'Member self' @(1140, 600) $memberTxt.Msg -ChatIdExpr $memberChat -ApproverIdsExpr $memberApprover `
         -ApproveLabel $memberTxt.Yes -DisapproveLabel $memberTxt.No -UnauthorizedReply $memberTxt.Unauth `

@@ -1,5 +1,5 @@
 -- tests/db/finance/test_fn_emergency_reserve_status.sql
--- Notreserve als Ruecklage (2026-10-30): savings_goals.kind = emergency_reserve.
+-- Notreserve als Ruecklage: savings_goals.kind = emergency_reserve.
 --   1) Gesetz: Form-CHECK (kein Datum, genau eines von Betrag/Monaten), hoechstens eine aktive, Art-Wechsel nur goal ->
 --      emergency_reserve (Trigger).
 --   2) fn_create_savings_goal: Monats-Ziel auf einem Geld-Konto mit Startbestand; P2P-Topf, zweite Notreserve, kein
@@ -24,8 +24,8 @@ BEGIN
   PERFORM finance.fn_add_recurring_payment(v_giro, -1200, '__ers_miete__', 1::smallint, 'month'::finance.schedule_unit, 1::smallint,
             t - 60, t - 60, NULL, NULL, NULL);
 
-  -- ===== 0) Vor dem Anlegen (Onboarding, Befund 2026-10-30): der Buchhalter wiederholte eine veraltete
-  --      Monatsausgabe, rechnete "6 Monatsgehaelter" selbst und bot Kinderkonten an -> der Status liefert auch ohne
+  -- ===== 0) Vor dem Anlegen (Onboarding): der Buchhalter soll keine veraltete
+  --      Monatsausgabe wiederholen, "6 Monatsgehaelter" nicht selbst rechnen und keine Kinderkonten anbieten -> der Status liefert auch ohne
   --      Notreserve die frische Basis, fertige Monats-Optionen und die zulaessigen Konten mit freiem Betrag =====
   INSERT INTO finance.accounts (name, account_type, currency, status, owner_person_id)
   VALUES ('__ers_kidcash0__', 'cash', 'EUR', 'active', '__ers_kid__') RETURNING id INTO v_dep;
@@ -38,7 +38,7 @@ BEGIN
     RAISE EXCEPTION 'FAIL [0a] ohne Notreserve: frische Basis + Monats-Optionen: %', v_s; END IF;
   -- zulaessig (fn_emergency_reserve_candidates): nur Geld-Konten der Eltern (kein P2P, kein Kinderkonto). Tagesgeld:
   -- frei = Saldo nach allen Ziel-Zuordnungen (8000 - 1500), keine Abgaenge -> kein low_date. Giro: die Miete (-1200)
-  -- faellt vor dem naechsten Geldeingang -> frei = tiefster vorausgesagter Stand (Befund: Sparplan-Konto), low_date
+  -- faellt vor dem naechsten Geldeingang -> frei = tiefster vorausgesagter Stand, low_date
   v := finance.fn_emergency_reserve_candidates();
   IF (SELECT jsonb_agg(c->>'name' ORDER BY c->>'name') FROM jsonb_array_elements(v) c WHERE c->>'name' LIKE '\_\_ers\_%')
      IS DISTINCT FROM '["__ers_giro__", "__ers_tg__"]'::jsonb
@@ -182,7 +182,7 @@ BEGIN
   IF v::text LIKE '%banner_emergency%' THEN RAISE EXCEPTION 'FAIL [5d] Kind-Banner zur Notreserve: %', v; END IF;
   RAISE NOTICE 'PASS [5] Berater ohne reached-Alert; Mini-App nur fuer den Haushalt';
 
-  -- ===== 6) Code-Review 2026-10-30: Karte beim Aendern, Kinderkonto zaehlt nie, Umwidmung mit Rate in P2P =====
+  -- ===== 6) Karte beim Aendern, Kinderkonto zaehlt nie, Umwidmung mit Rate in P2P =====
   v_res := finance.fn_set_savings_goal(jsonb_build_object('goal_id', v_g, 'target_months', 6));
   IF NOT v_res->'card_lines' @? '$[*] ? (@.value == "finance.note.emergency_target_months")'
      OR NOT v_res->'card_lines' @? '$[*] ? (@.value == "finance.note.emergency_covered")'
@@ -211,7 +211,7 @@ BEGIN
   RAISE NOTICE 'PASS [6] set-Karte, Kinderkonto raus, Umwidmung prueft die laufende Rate';
 END $$;
 
--- 8) Kandidat mit Ziel-Zuordnung UND Abgaengen: frei = tiefster Stand minus das fuer Ziele reservierte Geld;
+-- 8) Kandidat mit Ziel-Zuordnung und Abgaengen: frei = tiefster Stand minus das fuer Ziele reservierte Geld;
 --    (9) eine Zuordnung eines geschlossenen Ziels senkt die Notreserve-Deckung nicht.
 DO $$
 DECLARE v_acc INT; v_g INT; v_min NUMERIC; v_free NUMERIC; v_cov0 NUMERIC; r record;
@@ -229,7 +229,7 @@ BEGIN
     RAISE EXCEPTION 'FAIL [8] frei = tiefster Stand % minus reserviert 2000, got %', v_min, v_free; END IF;
   RAISE NOTICE 'PASS [8] Kandidat: tiefster Stand minus Ziel-Geld';
 
-  -- (9) Notreserve 600 auf einem Konto mit Saldo 1000; ein GESCHLOSSENES Ziel mit dem ganzen Saldo zaehlt nicht mit
+  -- (9) Notreserve 600 auf einem Konto mit Saldo 1000; ein geschlossenes Ziel mit dem ganzen Saldo zaehlt nicht mit
   UPDATE finance.savings_goals SET status = 'cancelled' WHERE kind = 'emergency_reserve' AND status = 'active';
   v_acc := (finance.fn_create_account('{"name":"__ers9_tg__","account_type":"cash","currency":"EUR","opening_balance":1000}'::jsonb)->>'account_id')::int;
   INSERT INTO finance.savings_goals (name, kind, target_amount, status) VALUES ('__ers9_nr__', 'emergency_reserve', 3000, 'active')

@@ -1,13 +1,13 @@
 -- ============================================================
 -- fn_import_sweep (Hygiene — verfallene Staging-Zeilen loeschen)
---   Aus dem Write-Pfad von fn_import_stage herausgezogen (ein Write-Tool darf fremden Zustand nicht als Seiteneffekt
---   jedes Calls loeschen). Gerufen von fn_import_stage beim Anlegen eines NEUEN Batches, von fn_import_stage_recurring
---   vor jedem Ergaenzen und taeglich von cron_refresh_fx_rates (immer an, finance_rw).
+--   Eigene fn, damit ein Write-Tool fremden Zustand nicht als Seiteneffekt jedes Calls loescht. Gerufen von
+--   fn_import_stage beim Anlegen eines neuen Batches, von fn_import_stage_recurring vor jedem Ergaenzen und
+--   taeglich von cron_refresh_fx_rates (immer an, finance_rw). Eingabe: p_days (Default 7).
 --   (1) Import-Batches ohne Vorschlags-origin: nicht committete Zeilen nach p_days ab created_at.
 --   (2) Vorschlags-Stapel (origin recurring_suggestion): der ganze Stapel (offene, abgelehnte und uebernommene Zeilen)
 --   p_days nach seinem letzten Ergaenzen (max(merged_at)); Stempeln und Ablehnen verschieben die Frist nicht
 --   (updated_at waere dafuer falsch, das setzt der Touch-Trigger bei jedem UPDATE).
---   RUECKGABE: Anzahl geloeschter Rows.
+--   Rueckgabe: Anzahl geloeschter Rows.
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_import_sweep(p_days int DEFAULT 7)
 RETURNS int LANGUAGE plpgsql AS $$

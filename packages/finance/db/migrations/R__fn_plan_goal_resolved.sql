@@ -1,14 +1,15 @@
 -- ============================================================
--- fn_plan_goal_resolved (READ HELPER, IMMUTABLE, WP2 "Finanzen schlank")
+-- fn_plan_goal_resolved (READ HELPER, IMMUTABLE)
 --   Der Finanzplan-Zielblock speichert von Wunsch-Einkommen (target_income_eur_month, real, EUR/Monat), Entnahmerate
---   (withdrawal_rate_pct) und Zielportfolio (target_portfolio_eur, Zahl oder [lo, hi]) nur ZWEI -- der dritte haengt an
+--   (withdrawal_rate_pct) und Zielportfolio (target_portfolio_eur, Zahl oder [lo, hi]) nur zwei -- der dritte haengt an
 --   den beiden (Zielportfolio = Einkommen x 12 / Rate); fn_validate_financial_planning lehnt alle drei zusammen ab
---   (Regel "Keine ableitbaren Spalten"). Diese fn liefert den Block mit dem abgeleiteten dritten Wert -- die EINE Adresse
+--   (Regel "Keine ableitbaren Spalten"). Diese fn liefert den Block mit dem abgeleiteten dritten Wert -- die eine Adresse
 --   fuer Anzeige (fn_render_plan_facts) und Drift (fn_advisor_review); das LLM rechnet ihn nie.
+--   Eingabe: p_goal (jsonb, der Zielblock).
 --     Zielportfolio = round(Einkommen x 12 / Rate x 100)                 (Euro)
 --     Einkommen     = round(Zielportfolio(unterer Wert) x Rate / 100 / 12, 2)
 --     Rate          = round(Einkommen x 12 / Zielportfolio(unterer Wert) x 100, 2)
---   RUECKGABE: der Block (unveraendert, wenn weniger als zwei Werte da sind) + derived_key (der abgeleitete Schluessel
+--   Rueckgabe: der Block (unveraendert, wenn weniger als zwei Werte da sind) + derived_key (der abgeleitete Schluessel
 --   oder NULL). NULL/Nicht-Objekt -> unveraendert.
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_plan_goal_resolved(p_goal jsonb)

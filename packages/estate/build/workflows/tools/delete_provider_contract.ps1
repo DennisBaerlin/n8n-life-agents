@@ -1,9 +1,9 @@
 ﻿#Requires -Version 5.1
 # Dot-gesourct von build.ps1 (Helper + Script-Scope-Creds im Parent-Scope).
 
-# --- agent.estate.tool_delete_provider_contract (WS-2, delete_ = Hard-DELETE) ----------------
+# --- agent.estate.tool_delete_provider_contract (delete_ = Hard-DELETE) ----------------
 # Loescht einen Vertrag aus dem Register (beendet/Fehlanlage). Resolve (Anbieter + optional
-# Kategorie) -> unique? VOR dem Gate (0/>1 -> Rueckfrage, kein RAISE/Owner-Alert). HITL
+# Kategorie) -> unique? vor dem Gate (0/>1 -> Rueckfrage, kein RAISE/Owner-Alert). HITL
 # owner_approval. adults_only-DB-Backstop in der fn. estate_rw.
 function Build-EstateDeleteProviderContract {
     $CRED_POSTGRES = $CRED_ESTATE_RW
@@ -16,9 +16,8 @@ function Build-EstateDeleteProviderContract {
     $errBad = Build-ToolError 'Contract ambiguous' @(660, 200) `
         "=The contract '{{ `$('Start').item.json.provider }}' resolves to {{ `$('Resolve Contract').item.json.hit_count }} matches. Candidates: {{ JSON.stringify(`$('Resolve Contract').item.json.candidates) }}. Ask which one (add the category), or check the name."
 
-    # Strukturiertes Summary (Textkatalog): Keys + typisierte Rohwerte, das Gate rendert je Empfaenger-Sprache.
     $S = "`$('Start').item.json"
-    # "DB ist das Gesetz": estate.fn_delete_provider_contract laeuft als Probelauf VOR der Karte; derselbe Param-Satz geht nach dem Gate in den echten Write.
+    # estate.fn_delete_provider_contract laeuft als Probelauf vor der Karte; derselbe Param-Satz geht nach dem Gate in den echten Write.
     $wg = New-FnWriteGate -Fn 'estate.fn_delete_provider_contract' -DryPos @(660, 0) -WritePos @(1980, 0) `
         -WriteName 'Delete contract (atomic)' `
         -WriteSelect "(r->>'ok')::boolean AS ok, r->>'reason' AS reason, r->>'action' AS action, (r->>'provider_contract_id')::bigint AS provider_contract_id" `

@@ -1,17 +1,19 @@
 -- ============================================================
--- estate.fn_set_case (ATOMIC WRITE — WS-3, partielles UPDATE eines OFFENEN Falls)
---   Aendert knowledge_date / bundesland / flags eines offenen Falls und ZIEHT DIE FRISTEN NACH:
+-- estate.fn_set_case (ATOMIC WRITE — partielles UPDATE eines offenen Falls)
+--   Aendert knowledge_date / bundesland / flags eines offenen Falls und zieht die Fristen nach:
 --     * Recompute aller offenen Task-Fristen (bundesland -> Werktage/Feiertage; knowledge_date ->
 --       kenntnis-verankerte Fristen wie § 1944/§ 30).
 --     * Task-Reconcile (fn_instantiate_case_tasks): neu zutreffende Templates kippen von n.a. auf open, nicht mehr
---       zutreffende von open auf n.a. — nur vom SYSTEM gesetzte Status; Nutzer-Status (done, "trifft nicht zu")
+--       zutreffende von open auf n.a. — nur vom System gesetzte Status; Nutzer-Status (done, "trifft nicht zu")
 --       bleiben. fan_out zieht neu registrierte Sonderfall-Stubs nach.
---   flags werden GEMERGT (bestehende || neue; ein null-Wert loescht die Aussage -> wieder Register-Ableitung),
+--   flags werden gemergt (bestehende || neue; ein null-Wert loescht die Aussage -> wieder Register-Ableitung),
 --   knowledge_date (YYYY-MM-DD oder relativ, core.fn_resolve_input_dates)/bundesland partiell (nicht gesendet bleibt
---   unveraendert). adults_only-DB-Backstop. Nur OFFENE Faelle. Eingabe jsonb: chat_id, case_id, knowledge_date,
---   bundesland, flags (alle optional).
---   RUECKGABE: {ok:true, case_id, phase_counts, total_open, case_status, effective?{knowledge_date}} | {ok:false, reason}.
---   Anwenden via: db_apply.ps1 -File packages\estate\db\migrations\R__fn_set_case.sql
+--   unveraendert). adults_only-DB-Backstop. Nur offene Faelle. Eingabe jsonb: chat_id, case_id (Pflicht),
+--   knowledge_date, bundesland, flags (optional).
+--   Rueckgabe: {ok:true, case_id, phase_counts, total_open, case_status, effective?{knowledge_date}} | {ok:false, reason};
+--   reasons: 'Write rejected (<perm>): …', 'case_id is required.', 'case not found.', 'case <id> is not open …',
+--   'knowledge_date cannot be in the future.', 'knowledge_date cannot be before event_date.', 'invalid bundesland …'
+--   sowie die Datums-Ablehnung von fn_resolve_input_dates.
 -- ============================================================
 CREATE OR REPLACE FUNCTION estate.fn_set_case(p jsonb)
 RETURNS jsonb LANGUAGE plpgsql AS $$
@@ -44,7 +46,7 @@ BEGIN
             'case ' || v_id || ' is not open (status ' || v_status || ') — cannot change it.');
     END IF;
 
-    -- WP3: relative Angabe ("yesterday", "-3 days") rechnet die DB; der Probelauf meldet das Ergebnis als effective,
+    -- Relative Angabe ("yesterday", "-3 days") rechnet die DB; der Probelauf meldet das Ergebnis als effective,
     -- New-FnWriteGate reicht es an den echten Write (Karte = Speicher, auch beim Tipp nach Mitternacht).
     v_dates := core.fn_resolve_input_dates(p, ARRAY['knowledge_date']);
     IF NOT (v_dates->>'ok')::boolean THEN RETURN v_dates; END IF;

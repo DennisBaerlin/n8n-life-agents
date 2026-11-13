@@ -1,7 +1,7 @@
 -- tests/db/finance/test_fn_set_asset_classes.sql
--- fn_set_asset_classes: mehrere Positionen in EINEM atomaren Schritt (Owner-Entscheid 2026-10-23, Berater-Werkzeug)
+-- fn_set_asset_classes: mehrere Positionen in einem atomaren Schritt (Berater-Werkzeug)
 --   (1) zwei Positionen (Symbol bzw. ISIN), card_lines je Position, nur asset_class geaendert
---   (2) atomar: eine unbekannte Position / falsches Format / doppelte Position -> NICHTS geschrieben
+--   (2) atomar: eine unbekannte Position / falsches Format / doppelte Position -> nichts geschrieben
 --   (3) outside_plan erlaubt
 BEGIN;
 

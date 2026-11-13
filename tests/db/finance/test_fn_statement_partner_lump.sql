@@ -384,7 +384,7 @@ BEGIN
     SELECT x.a, x.b INTO a, b FROM pg_temp.mk_pair('s12', ps) x;
     na := '__t_a_s12'; nb := '__t_b_s12'; ib := 'TESTB' || b;
     PERFORM pg_temp.apply(pg_temp.stmt(nb, ps, pe, 1000, jsonb_build_array(pg_temp.line(pe, 100))));
-    -- so hat die alte Version gebucht: Transfer unterwegs, Bein auf B am Tag nach dessen Abgleich
+    -- Altzustand: Transfer unterwegs, Bein auf B am Tag nach dessen Abgleich
     v_app := pg_temp.apply(pg_temp.stmt(na, ps, pe, 1000, jsonb_build_array(pg_temp.line(ps + 2, -30))));
     v_res := finance.fn_book_transfer(jsonb_build_object('from_account_id', a, 'to_account_id', b, 'amount', 100,
                  'transaction_date', (pe + 1)::text, 'from_account_name', na, 'to_account_name', nb, 'purpose', 'Monats-Check'));
@@ -404,7 +404,7 @@ BEGIN
     END IF;
     RAISE NOTICE 'PASS [S12 Altzustand korrigiert]';
 
-    -- ---------- S13: Rest-Betrag getrennt (Fund 4): Eingaenge, Ausgaenge und Sonstiges ergeben auf den Cent den Rest ----------
+    -- ---------- S13: Rest-Betrag getrennt: Eingaenge, Ausgaenge und Sonstiges ergeben auf den Cent den Rest ----------
     SELECT x.a, x.b INTO a, b FROM pg_temp.mk_pair('s13', ps) x;
     na := '__t_a_s13'; nb := '__t_b_s13'; ib := 'TESTB' || b;
     -- A: +900/-800 offen, dazu eine erkannte, nicht buchbare Zeile -40 (Gegenkonto weit nach der Zeile bestaetigt)

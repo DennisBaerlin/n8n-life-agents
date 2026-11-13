@@ -1,43 +1,43 @@
 ﻿#Requires -Version 5.1
 # Definition agent.career.cron_score_jobs -> Build-CronScoreJobs. Dot-gesourct von build.ps1.
-# WS-2 Job-Matching + P2b-2 Multi-Person + V005 MULTI-SOURCE: der werktägliche Job-Scan PRO PERSON aus
-# MEHREREN Quellen (Bundesagentur keyless + Adzuna + JSearch). Person-Reminder (Roter Faden Paket B: cron_enable.score_jobs=true
-# = Konsolen-Notschalter; je Person rem:on|off:score_jobs -> agent.reminder_prefs, cron_labels.person). Pfad:
+# Werktaeglicher Multi-Source-Job-Scan pro Person (Bundesagentur keyless + Adzuna + JSearch).
+# Person-Reminder: cron_enable.score_jobs=true = Konsolen-Notschalter; je Person rem:on|off:score_jobs ->
+# agent.reminder_prefs, cron_labels.person. Pfad:
 # F9-Gate -> Personen mit aktivem career_planning enumerieren (agent.fn_context_persons('career_planning'),
 # je Person die eigene chat_id via agent.fn_person_chat_id; ungepairte Person -> raus; per-Quelle Enable-Flags
-# + source-partitionierter known-Set) -> Loop persons (splitInBatches v3): JE PERSON Kriterien/Profil/Praeferenzen
-# am Suffix career_planning__<pid> usw. -> Have criteria? -> Build query (baut EINE gemeinsame Query -> je Quelle
+# + source-partitionierter known-Set) -> Loop persons (splitInBatches v3): je Person Kriterien/Profil/Praeferenzen
+# am Suffix career_planning__<pid> usw. -> Have criteria? -> Build query (baut eine gemeinsame Query -> je Quelle
 # eine URL) -> Fetch BA / Fetch Adzuna / Fetch JSearch (linear, jeder onError=continue+retry = graceful degrade;
-# fehlender Key -> Cred-Fehler faellt in onError -> Quelle still uebersprungen) -> Normalize postings (EIN Code-Node:
-# je Quelle EIGENER try/catch + Parse in die normalisierte Form + Dedup gegen den EIGENEN known-Set der Quelle;
-# disabled -> uebersprungen; merge; ephemerer Per-Run-Index i) -> EIN gebatchter Cheap-Scorer (model.job_scorer,
-# Claude via New-AnthropicMessagesNode, Structured Output) je Person ueber ALLE Quellen (echot den integer-Index i) -> career.fn_record_job_match je
-# Treffer (source/board/external_id, person_id TRUSTED CRON) -> je Treffer >= Schwelle (Top max_per_run GLOBAL
-# ueber alle Quellen) + 1 Serendipity eine Karte mit 👍/👎 + Abschalten-Knopf an die EIGENE chat_id (Karte zeigt
-# "via <board>" nur fuer jsearch). Danach zurueck in den Loop (naechste Person).
-# ROLLE: laeuft unter dem Haupt-RW-Credential (Build-Pg-Default) — liest agent.core_contexts + core.config +
-#   schreibt career.* (deterministische, entwickler-geschriebene SQL, kein LLM-SELECT).
-# PRIVACY: career_profile/career_preferences (PII) gehen NUR in den Scorer-Prompt -> bezahlte Anthropic-API (trainiert nicht). Die
-#   Aggregatoren bekommen NUR die oeffentliche Query (Rolle+Ort), KEIN PII.
-# BOARD-HERKUNFT je Quelle (V005): jsearch -> board IMMER aus job_publisher; adzuna -> NULL by design (Adzuna
-#   legt kein Board offen); bundesagentur -> NULL. DEDUP: (source, external_id, person_id) source-skopiert.
+# fehlender Key -> Cred-Fehler faellt in onError -> Quelle still uebersprungen) -> Normalize postings (ein Code-Node:
+# je Quelle eigener try/catch + Parse in die normalisierte Form + Dedup gegen den eigenen known-Set der Quelle;
+# disabled -> uebersprungen; merge; ephemerer Per-Run-Index i) -> ein gebatchter Cheap-Scorer (model.job_scorer,
+# Claude via New-AnthropicMessagesNode, Structured Output) je Person ueber alle Quellen (echot den integer-Index i)
+# -> career.fn_record_job_match je Treffer (source/board/external_id, person_id vom Cron vertraut) -> je Treffer
+# >= Schwelle (Top max_per_run global ueber alle Quellen) + 1 Serendipity eine Karte mit 👍/👎 + Abschalten-Knopf
+# an die eigene chat_id (Karte zeigt "via <board>" nur fuer jsearch). Danach zurueck in den Loop (naechste Person).
+# Rolle: laeuft unter dem Haupt-RW-Credential (Build-Pg-Default) — liest agent.core_contexts + core.config +
+#   schreibt career.* (deterministische SQL, kein LLM-SELECT).
+# Privacy: career_profile/career_preferences (PII) gehen nur in den Scorer-Prompt -> bezahlte Anthropic-API
+#   (trainiert nicht). Die Aggregatoren bekommen nur die oeffentliche Query (Rolle+Ort), kein PII.
+# Board je Quelle: jsearch -> board immer aus job_publisher; adzuna -> NULL by design (Adzuna legt kein Board
+#   offen); bundesagentur -> NULL. Dedup: (source, external_id, person_id) source-skopiert.
 function Build-CronScoreJobs {
     $trig = Build-ScheduleTrigger @(-1780, 0) -ScheduleKey 'score_jobs'
 
-    # --- F9 Cron-Gating: nur wenn career aktiv UND cron_enable.score_jobs (Notschalter; je Person filtert Enumerate persons) -> sonst No-op (fail-closed).
+    # --- F9 Cron-Gating: nur wenn career aktiv und cron_enable.score_jobs (Notschalter; je Person filtert Enumerate persons) -> sonst No-op (fail-closed).
     $gate = Build-Pg 'Cron enabled?' @(-1560, 0) `
         "=SELECT core.fn_package_active('career') AND COALESCE(core.fn_config_get('career','cron_enable','score_jobs') = 'true', false) AS enabled" `
         $null
     $ifEnabled = Build-If 'Cron on?' @(-1340, 0) '={{ $json.enabled }}' 'true' 'equals' 'boolean'
     $off = Build-NoOp 'Disabled' @(-1120, 200)
 
-    # --- Scorer-Modell (model.job_scorer) bei JEDEM Lauf aus core.config — VOR der Personen-Enumeration (deren SQL
+    # --- Scorer-Modell (model.job_scorer) bei jedem Lauf aus core.config — vor der Personen-Enumeration (deren SQL
     #     hat keine Eingangs-Bezuege); der Scorer-HTTP-Knoten liest es je Person per .first().
     $loadModel = New-ModelConfigNode -Position @(-1230, -180) -Keys @( ,@('career', 'job_scorer') )
 
-    # --- P2b-2 Person-Enumeration: EINE Zeile JE Person mit aktivem career_planning. V005 Multi-Source: je Person
-    #     die per-Quelle Enable-Flags (sources_enabled, Default true wenn Key fehlt) + der SOURCE-PARTITIONIERTE
-    #     known-Set (known = {source: [external_id, …]}) -> jede Quelle dedupt gegen ihre EIGENEN known-ids (BA-refnr /
+    # --- Person-Enumeration: eine Zeile je Person mit aktivem career_planning. Je Person die per-Quelle
+    #     Enable-Flags (sources_enabled, Default true wenn Key fehlt) + der source-partitionierte
+    #     known-Set (known = {source: [external_id, …]}) -> jede Quelle dedupt gegen ihre eigenen known-ids (BA-refnr /
     #     Adzuna-id / JSearch-job_id sind verschiedene Schluesselraeume; ein source-blinder known-Set unterdrueckte
     #     sonst faelschlich einen echten Treffer einer anderen Quelle). threshold/max_per_run runtime aus core.config.
     $enumerate = Build-Pg 'Enumerate persons' @(-1120, 0) @'
@@ -77,9 +77,9 @@ WHERE agent.fn_person_chat_id(p.person_id) IS NOT NULL
   AND core.fn_reminder_allowed('score_jobs', p.person_id)
 '@ $null
 
-    # --- Loop persons (splitInBatches): EINE Person je Iteration -> die nachgelagerten $('Node').first()-Refs
+    # --- Loop persons (splitInBatches): eine Person je Iteration -> die nachgelagerten $('Node').first()-Refs
     #     bleiben iterations-lokal korrekt. Jeder Terminal-Zweig kehrt zur Loop-Node zurueck. person_id + chat_id
-    #     werden durch die Kette GEFAEDELT (nicht per loop-item-Lineage), weil der Record-Postgres-Node das Item ersetzt.
+    #     werden durch die Kette gefaedelt (nicht per loop-item-Lineage), weil der Record-Postgres-Node das Item ersetzt.
     $loop = Build-Loop 'Loop persons' @(-900, 0)
     $done = Build-NoOp 'Done' @(-680, -260)
 
@@ -87,9 +87,9 @@ WHERE agent.fn_person_chat_id(p.person_id) IS NOT NULL
     $ifCriteria = Build-If 'Have criteria?' @(-680, 0) `
         '={{ $json.planning && Array.isArray($json.planning.target_roles) && $json.planning.target_roles.length > 0 }}' 'true' 'equals' 'boolean'
 
-    # --- EINE gemeinsame Query aus den Kriterien der AKTUELLEN Person (was/wo URL-encoded; umkreis default 50) ->
-    #     je Quelle eine URL. v1: erste Zielrolle + erster Ort. Kontext (profile/preferences/planning/known/
-    #     sources_enabled/person_id/chat_id) wird mitgefuehrt. Die Aggregator-URLs tragen KEINE Keys (die kommen
+    # --- Eine gemeinsame Query aus den Kriterien der aktuellen Person (was/wo URL-encoded; umkreis default 50) ->
+    #     je Quelle eine URL. Nur erste Zielrolle + erster Ort. Kontext (profile/preferences/planning/known/
+    #     sources_enabled/person_id/chat_id) wird mitgefuehrt. Die Aggregator-URLs tragen keine Keys (die kommen
     #     aus der gebundenen Credential: Adzuna app_id/app_key als httpCustomAuth-qs; JSearch x-rapidapi-key Header).
     $buildQueryJs = @'
 const plan = $json.planning || {};
@@ -129,7 +129,7 @@ return [{ json: { ba_url, adzuna_url, jsearch_url,
         id = (New-Id); name = 'Build query'
     }
 
-    # --- Fetch BA (keyless, X-API-Key = oeffentliche Konstante, KEIN Credential). onError continue + retry.
+    # --- Fetch BA (keyless, X-API-Key = oeffentliche Konstante, kein Credential). onError continue + retry.
     $fetchBa = [ordered]@{
         parameters = [ordered]@{
             method = 'GET'
@@ -179,12 +179,12 @@ return [{ json: { ba_url, adzuna_url, jsearch_url,
         credentials = @{ httpHeaderAuth = $CRED_JSEARCH }
     }
 
-    # --- Normalize+Merge+Dedup: EIN Code-Node. Je Quelle EIGENER try/catch (eine Quelle mit Schema-Drift/Fehler
-    #     killt die anderen NICHT) + defensive Shape-Pruefung -> normalisierte Posting-Form
-    #     {source, board, external_id, title, employer, location, url, raw}. url VERBATIM aus dem Quell-Link
+    # --- Normalize+Merge+Dedup: ein Code-Node. Je Quelle eigener try/catch (eine Quelle mit Schema-Drift/Fehler
+    #     killt die anderen nicht) + defensive Shape-Pruefung -> normalisierte Posting-Form
+    #     {source, board, external_id, title, employer, location, url, raw}. url verbatim aus dem Quell-Link
     #     (Adzuna redirect_url, JSearch job_apply_link — Aggregator-ToS + tote Self-URL vermeiden; BA konstruiert
     #     jobdetail/<refnr>). board: jsearch=job_publisher (immer), sonst NULL by design. Dedup je Quelle gegen ihren
-    #     EIGENEN known-Set. sources_enabled: eine disabled Quelle wird ignoriert. Danach ephemerer Per-Run-Index i.
+    #     eigenen known-Set. sources_enabled: eine disabled Quelle wird ignoriert. Danach ephemerer Per-Run-Index i.
     $normalizeJs = @'
 const bq = $('Build query').first().json;
 const enabled = bq.sources_enabled || {};
@@ -262,8 +262,8 @@ return [{ json: { postings: indexed,
     }
     $ifNew = Build-If 'Any new?' @(200, 0) '={{ $json.postings.length > 0 }}' 'true' 'equals' 'boolean'
 
-    # --- Gebatchter Cheap-Scorer: EIN Claude-Call (geteilter Baustein New-AnthropicMessagesNode, Denk-Tiefe
-    #     niedrig) bewertet ALLE neuen Postings DIESER Person 1..4 gegen Profil + Praeferenzen + Planung. Antwort
+    # --- Gebatchter Cheap-Scorer: ein Claude-Call (geteilter Baustein New-AnthropicMessagesNode, Denk-Tiefe
+    #     niedrig) bewertet alle neuen Postings dieser Person 1..4 gegen Profil + Praeferenzen + Planung. Antwort
     #     per Structured Output (output_config.format) als {scores:[{i,score,reasoning}]}. Echot den integer-Index i
     #     (kollisionsfrei ueber Quellen — external_id-Strings verschiedener Quellen koennten kollidieren).
     $sysText = 'You rate how well each job posting fits a candidate, for a job-change copilot. For EACH posting output an integer score from 1 to 4 (1 = poor fit, 2 = weak, 3 = good, 4 = excellent) and ONE short reasoning sentence, written in the language named in the user message (the candidate language). Weigh: the candidate current role, skills and experience (profile); the target roles, industries and locations (planning); and the learned likes/dislikes (preferences) - a disliked aspect or industry lowers the score, a preferred aspect raises it. Return one entry per posting in scores, using the exact integer index i of each posting.'
@@ -291,10 +291,10 @@ return [{ json: { postings: indexed,
     $score = New-AnthropicMessagesNode -Name 'Score postings' -Position @(420, 0) -ConfigModelKey 'job_scorer' -System $sysText `
         -ContentJs $contentJs -Effort low -JsonSchema $scoreSchema -TimeoutMs 120000
 
-    # --- Scores zuruecksortieren (per Index i): ALLE gescort + recorded, surface = Top max_per_run >= Schwelle
-    #     GLOBAL ueber ALLE Quellen + genau 1 Serendipity (hoechstes BEWERTETES unter Schwelle). Fehlt ein Score oder ist
-#     er ungueltig -> null ("nicht bewertet", WP3; frueher 1 = falsche Zahl): gespeichert, nie gesendet, neu bewertet.
-    #     source/board/external_id/person_id/chat_id auf JEDES Posting-Item faedeln (Record liest sie aus $json;
+    # --- Scores zuruecksortieren (per Index i): alle gescort + recorded, surface = Top max_per_run >= Schwelle
+    #     global ueber alle Quellen + genau 1 Serendipity (hoechstes bewertetes unter Schwelle). Fehlt ein Score oder ist
+    #     er ungueltig -> null ("nicht bewertet"): gespeichert, nie gesendet, neu bewertet.
+    #     source/board/external_id/person_id/chat_id auf jedes Posting-Item faedeln (Record liest sie aus $json;
     #     Send liest chat_id/board via $('Apply scores').item — der Record-Postgres-Node ersetzt $json durch sein Ergebnis).
     $applyJs = (Get-AnthropicResultJs) + @'
 const r = $('Score postings').first().json;
@@ -335,7 +335,7 @@ return scored.map(p => ({ json: {
         id = (New-Id); name = 'Apply scores'
     }
 
-    # --- Je Posting upserten (career.fn_record_job_match, source/board/external_id + score + person_id TRUSTED CRON).
+    # --- Je Posting upserten (career.fn_record_job_match, source/board/external_id + score + person_id vom Cron vertraut).
     #     Liefert job_match_id fuer die Karten-callback_data. Laeuft per-Item (n8n: ein Node, N Items -> N Aufrufe).
     $record = Build-Pg 'Record match' @(860, 0) `
         "=SELECT (r->>'ok')::boolean AS ok, (r->>'job_match_id')::bigint AS job_match_id, (r->>'created')::boolean AS created FROM career.fn_record_job_match(`$1::jsonb) AS r;" `
@@ -354,12 +354,12 @@ return scored.map(p => ({ json: {
             raw            = '$json.raw'
         })
 
-    # Nur surface=true UND erfolgreich recorded -> Karte (Top-Treffer + Serendipity); der Rest ist recorded
+    # Nur surface=true und erfolgreich recorded -> Karte (Top-Treffer + Serendipity); der Rest ist recorded
     # (Advisor sieht ihn via read_job_matches). Das `Record match`.ok-Gate verhindert eine Karte mit job:up:null-Button.
     $ifSurface = Build-If 'Surface?' @(1080, 0) "={{ `$('Record match').item.json.ok === true && `$('Apply scores').item.json.surface === true }}" 'true' 'equals' 'boolean'
 
-    # --- EINE Karte je Posting an die EIGENE chat_id der Person: Sub agent.career.sub_send_job_card (Textkatalog Phase C:
-    #     Texte in der Sprache der Person, deterministisch testbar ueber den Harness). Je gesurftem Item ein Aufruf mit
+    # --- Eine Karte je Posting an die eigene chat_id der Person: Sub agent.career.sub_send_job_card
+    #     (Texte in der Sprache der Person, deterministisch testbar ueber den Harness). Je gesurftem Item ein Aufruf mit
     #     den Karten-Feldern (Apply scores) + der job_match_id (Record match) fuer die 👍/👎-callback_data.
     $cardId = Get-RequiredWorkflowId 'agent.career.sub_send_job_card' 'Build-CareerCronScoreJobs'
     $card = Build-CallWorkflow 'Send card' @(1300, 0) $cardId 'agent.career.sub_send_job_card' ([ordered]@{

@@ -1,14 +1,16 @@
 -- ============================================================
--- fn_monitor_ro_eval (HELPER — fuehrt EINE gespeicherte Monitor-sql-Spec strukturell read-only aus)
+-- fn_monitor_ro_eval (HELPER)
+--   Fuehrt eine gespeicherte Monitor-sql-Spec strukturell read-only aus. Eingabe: p_query (Spec-SQL), p_search_path.
 --   Einziger Aufrufer: agent.fn_monitor_acquire (sql-Zweig; Cron fn_monitor_evaluate + Test-Abruf fn_monitor_probe).
---   SECURITY DEFINER mit EIGENTUEMER core_ro_eval (NOLOGIN, erbt nur core_ro; ALTER OWNER am Rollen-Ort
---   util_create_core_ro.sql): die Abfrage laeuft mit genau den Leserechten von core_ro, und in einer DEFINER-fn lehnt PostgreSQL jedes Setzen von role/
---   session_authorization ab -> eine eingebettete set_config('role', ...) kann die Leserolle nicht mehr ablegen
---   (frueher: SET LOCAL ROLE core_ro als Session-Owner -> 'none' setzte auf die App-Rolle zurueck; Security-Audit 2026-10).
---   search_path: gepinnt (DEFINER-Checkliste), im Body auf den Pfad des AUFRUFERS gesetzt (p_search_path) — gespeicherte
+--   SECURITY DEFINER mit Eigentuemer core_ro_eval (NOLOGIN, erbt nur core_ro; ALTER OWNER am Rollen-Ort
+--   util_create_core_ro.sql): die Abfrage laeuft mit genau den Leserechten von core_ro, und in einer DEFINER-fn lehnt
+--   PostgreSQL jedes Setzen von role/session_authorization ab -> eine eingebettete set_config('role', ...) kann die
+--   Leserolle nicht mehr ablegen (ein SET LOCAL ROLE core_ro als Session-Owner liesse sich per 'none' auf die App-Rolle
+--   zuruecksetzen).
+--   search_path: gepinnt (DEFINER-Checkliste), im Body auf den Pfad des Aufrufers gesetzt (p_search_path); gespeicherte
 --   Specs loesen unqualifizierte Paket-Namen weiter auf. Kein Kapern-Risiko: der Eigentuemer (core_ro_eval) darf weniger
 --   als jeder Aufrufer.
---   FAIL-CLOSED: current_user <> 'core_ro_eval' -> RAISE (Erst-Apply vor dem Eigentuemerwechsel, oder eine auf
+--   Fail-closed: current_user <> 'core_ro_eval' -> RAISE (Erst-Apply vor dem Eigentuemerwechsel, oder eine auf
 --   SECURITY INVOKER umgestellte fn). Shape-Guard + Fehler-Abbildung bleiben beim Aufrufer. Eigener NOLOGIN-Eigentuemer:
 --   eine Frei-SQL-Sitzung unter core_ro kann die fn weder aendern noch droppen.
 --   RUECKGABE: numeric (Scalar-Subquery-Wrap 'SELECT (<q>)::numeric'; >1 Zeile/Spalte bricht kontrolliert).

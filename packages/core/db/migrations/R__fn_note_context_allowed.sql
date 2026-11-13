@@ -1,15 +1,15 @@
 -- ============================================================
--- core.fn_note_context_allowed(p_name text) -> boolean   (Phase C, WS-2; geteilt mit WS-3; Phase A registry-getrieben)
---   Harte Knowledge-Context-Allowlist fuer den Prosa-Lern-Pfad ("## Gelernt"): TRUE nur, wenn der
---   Ziel-Kontext EXISTIERT, managed_by='agent' ist UND ein Prosa-Wissens-Kontext ist: der Host-Kontext 'family'
---   ODER das Plan-Dokument (core.advisors.plan_context) einer Advisor-Domaene, die das per learn_notes=true
---   ausdruecklich erlaubt (Manifest-advisors-Block) und deren Paket AKTIV ist. Ersetzt die Literal-Liste
---   family/financial_planning (Core kannte einen Paket-Kontextnamen). Verhindert, dass der Lern-Loop Prosa in
---   Instruktions-/Seed-Kontexte (managed_by='seed', Verhaltens-Korruption) ODER in reine Fakten-Kontexte
+-- fn_note_context_allowed (READ)
+--   Harte Knowledge-Context-Allowlist fuer den Prosa-Lern-Pfad ("## Gelernt"). Eingabe: p_name (Kontextname).
+--   Rueckgabe boolean: true nur, wenn der Ziel-Kontext existiert, managed_by='agent' ist und ein Prosa-Wissens-Kontext
+--   ist: der Host-Kontext 'family' oder das Plan-Dokument (core.advisors.plan_context) einer Advisor-Domaene, die das
+--   per learn_notes=true ausdruecklich erlaubt (Manifest-advisors-Block) und deren Paket aktiv ist (registry-getrieben,
+--   damit Core keinen Paket-Kontextnamen kennt). Verhindert, dass der Lern-Loop Prosa in
+--   Instruktions-/Seed-Kontexte (managed_by='seed', Verhaltens-Korruption) oder in reine Fakten-Kontexte
 --   (facts-strukturiert, kein Prosa-Body) schreibt. Exakter Namensvergleich -> per_user-Plan-Dokumente
 --   ('<base>__<pid>') sind nie erlaubt (contract_lint: learn_notes nur fuer household-Plan-Kontexte).
---   EINE Quelle fuer beide Aufrufer (agent.fn_record_learn_candidates Vorfilter + core.fn_append_context_note
---   Backstop) -> kein Drift. Roh-INVOKER (kein Secret) — der Aufrufer braucht ohnehin SELECT auf agent.core_contexts.
+--   Eine Quelle fuer beide Aufrufer (agent.fn_record_learn_candidates Vorfilter + core.fn_append_context_note
+--   Backstop) -> kein Drift. Nackter INVOKER (kein Secret); der Aufrufer braucht ohnehin SELECT auf agent.core_contexts.
 -- ============================================================
 CREATE OR REPLACE FUNCTION core.fn_note_context_allowed(p_name text)
 RETURNS boolean

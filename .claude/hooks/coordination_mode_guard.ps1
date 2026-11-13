@@ -1,7 +1,7 @@
-# PreToolUse-Hook (ListAgents|SendMessage): keine Session-Koordination im Bypass-Modus (Owner-Regel 2026-10-23,
+# PreToolUse-Hook (ListAgents|SendMessage): keine Session-Koordination im Bypass-Modus (Owner-Regel,
 # Skill /coordinate Schritt 1). Laeuft eine Session mit bypassPermissions, die anderen aber mit "prompting"/auto,
 # halten die Empfaenger Nachrichten zur Freigabe fest, bis sie ablaufen - die Koordination steht still, ohne dass
-# es jemand merkt (2026-10-23: drei Anmeldungen von 7d verfielen ungelesen).
+# es jemand merkt (Anmeldungen verfallen ungelesen).
 # Claude kann den eigenen Modus nicht umstellen (kein Tool; ein SessionStart-Hook bekommt permission_mode nicht
 # und kann ihn nicht setzen, Doku code.claude.com/docs/en/hooks) -> deny mit Anweisung: anhalten, Owner bitten.
 # deny statt ask: 'ask' wird unter bypassPermissions in der VS-Code-Erweiterung still durchgewinkt (GH #77212).

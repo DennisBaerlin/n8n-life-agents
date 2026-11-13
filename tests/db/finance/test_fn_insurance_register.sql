@@ -1,6 +1,6 @@
 -- tests/db/finance/test_fn_insurance_register.sql
--- WS-0b (estate): finance.fn_insurance_register() = Oberflaeche-A-Lesefenster fuer das estate-Paket
--- (plain STABLE, kein Grant; im core.fn_fetch_context-DEFINER gelesen). Prueft: nur AKTIVE Policen,
+-- finance.fn_insurance_register() = Oberflaeche-A-Lesefenster fuer das estate-Paket
+-- (plain STABLE, kein Grant; im core.fn_fetch_context-DEFINER gelesen). Prueft: nur aktive Policen,
 -- mit den estate-relevanten Feldern (insurance_type/beneficiary/coverage_amount/claim_deadline_hours),
 -- gekuendigte ausgeschlossen, Rueckgabe ist ein JSON-Array.
 BEGIN;
@@ -19,7 +19,7 @@ BEGIN
   ) INTO v_result;
   v_acct := (v_result->>'account_id')::int;
 
-  -- AKTIVE Police mit den estate-Feldern
+  -- aktive Police mit den estate-Feldern
   SELECT finance.fn_create_insurance(jsonb_build_object(
     'name','__test_insreg_life__','insurance_company','TestLV AG','policy_number','LV-1',
     'insurance_type','life','beneficiary','Ehepartner','coverage_amount','250000','claim_deadline_hours','72',
@@ -56,7 +56,7 @@ BEGIN
     RAISE EXCEPTION 'FAIL fn_insurance_register: estate-Felder falsch, got %', v_row;
   END IF;
 
-  -- Gekuendigte darf NICHT drin sein.
+  -- Gekuendigte darf nicht drin sein.
   IF EXISTS (SELECT 1 FROM jsonb_array_elements(v_reg) e WHERE e->>'name' = '__test_insreg_cancelled__') THEN
     RAISE EXCEPTION 'FAIL fn_insurance_register: gekuendigte Police nicht ausgeschlossen';
   END IF;

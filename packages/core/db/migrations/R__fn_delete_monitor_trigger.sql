@@ -1,11 +1,13 @@
 -- ============================================================
 -- fn_delete_monitor_trigger (ATOMIC WRITE — Monitor-Trigger hart loeschen)
---   Trigger sind CONFIG, kein Ledger: Hard-DELETE ist legitim (kein FK zeigt auf die
+--   Trigger sind Config, kein Ledger: Hard-DELETE ist legitim (kein FK zeigt auf die
 --   Tabelle ausser monitor_observations, die per ON DELETE CASCADE mitgehen — Audit-Log
 --   eines geloeschten Triggers hat keinen Wert). Aufloesung per (domain, label).
 --   Stilllegen statt loeschen -> tool_set_monitor_trigger status='disabled'.
---   RUECKGABE: {ok:true, trigger_id, observations_deleted} (Count = Informationsgehalt
---   des CASCADE) | {ok:false, reason} bei 0/>1 Treffern.
+--   Eingabe p: { label (Pflicht), domain (Default 'general'), chat_id? (Kinder-Sicht-Pruefung) }
+--   Rueckgabe: {ok:true, trigger_id, observations_deleted} (Count = Informationsgehalt
+--   des CASCADE) | {ok:false, reason} bei 0 Treffern (mit available_labels), >1 Treffern (mit candidates),
+--   Core-Trigger (origin='core') oder Kinder-Sicht ("household_only").
 -- ============================================================
 CREATE OR REPLACE FUNCTION agent.fn_delete_monitor_trigger(p jsonb)
 RETURNS jsonb LANGUAGE plpgsql AS $$
@@ -15,7 +17,7 @@ DECLARE
     v_obs    INT;
     v_avail  JSONB;
 BEGIN
-    -- Kinder-Sicht (Paket C): eine bekannte Person ohne Haushalts-Sicht (Kind) legt keine Erinnerung auf Haushaltswerte an,
+    -- Kinder-Sicht: eine bekannte Person ohne Haushalts-Sicht (Kind) legt keine Erinnerung auf Haushaltswerte an,
     -- aendert oder loescht keine; ohne chat_id (Cron, Systempfad) unveraendert. Vor jedem Probelauf und Write.
     IF core.fn_sender_is_household_restricted(p->>'chat_id') THEN
         RETURN jsonb_build_object('ok', false, 'reason', 'household_only: only the adults of the household can set up or change reminders here');

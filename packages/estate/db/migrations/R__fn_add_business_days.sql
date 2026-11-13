@@ -1,13 +1,12 @@
 -- ============================================================
--- estate.fn_add_business_days (Fristen-Engine, WS-3 — IMMUTABLE)
---   Addiert p_count WERKTAGE auf p_start (strikt NACH p_start; § 187 BGB: der Ereignistag zaehlt nicht).
---   Werktag = Montag–Freitag, das KEIN gesetzlicher Feiertag des Bundeslands ist. SAMSTAG zaehlt
---   NICHT (§ 28 PStG-Praxis: die Sterbefallanzeige-Frist "dritter Werktag" behandelt Sa wie einen
+-- estate.fn_add_business_days (Fristen-Engine — IMMUTABLE)
+--   Addiert p_count Werktage auf p_start (strikt nach p_start; § 187 BGB: der Ereignistag zaehlt nicht).
+--   Werktag = Montag–Freitag, das kein gesetzlicher Feiertag des Bundeslands ist. Samstag zaehlt
+--   nicht (§ 28 PStG-Praxis: die Sterbefallanzeige-Frist "dritter Werktag" behandelt Sa wie einen
 --   Nicht-Werktag) — bewusst enger als der allgemeine HGB-Werktag. Feiertage aus fn_public_holidays.
 --   IMMUTABLE (keine Tabelle gelesen; ruft nur die IMMUTABLE fn_public_holidays). p_count<=0/NULL ->
---   p_start unveraendert. Der Zaehler ist klein (§ 28 PStG: 3) -> die Schleife ist billig.
---   EINGABE: p_start date, p_count int, p_bundesland text. RUECKGABE: date.
---   Anwenden via: db_apply.ps1 -File packages\estate\db\migrations\R__fn_add_business_days.sql
+--   p_start unveraendert; p_start NULL -> NULL. Der Zaehler ist klein (§ 28 PStG: 3) -> die Schleife ist billig.
+--   Eingabe: p_start date, p_count int, p_bundesland text. Rueckgabe: date.
 -- ============================================================
 CREATE OR REPLACE FUNCTION estate.fn_add_business_days(p_start date, p_count int, p_bundesland text)
 RETURNS date LANGUAGE plpgsql IMMUTABLE AS $$

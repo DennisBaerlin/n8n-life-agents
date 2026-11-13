@@ -1,7 +1,7 @@
 -- tests/db/finance/test_recurring_payment_amount_check.sql
--- Multi-Member WS-3a: struktureller CHECK (amount <> 0) auf finance.recurring_payments
--- (finance:V005). SIGNIERTER Betrag -> <> 0 (NICHT > 0; Ausgaben sind negativ). Der CHECK ist der
--- BACKSTOP unter den fn-Guards (haertet zugleich den WS-2 v_mag=0-Pfad). Der tool-fn faengt 0 schon
+-- Struktureller CHECK (amount <> 0) auf finance.recurring_payments
+-- (finance:V005). Signierter Betrag -> <> 0 (nicht > 0; Ausgaben sind negativ). Der CHECK ist der
+-- Backstop unter den fn-Guards (haertet zugleich den v_mag=0-Pfad). Der tool-fn faengt 0 schon
 -- davor freundlich ab -> der CHECK schlaegt nie als Owner-Alert durch.
 BEGIN;
 
@@ -28,7 +28,7 @@ BEGIN
     VALUES ('__rpc_neg__', v_acct, -100, 1, 'month', current_date, current_date, 'active');
   RAISE NOTICE 'PASS [1b: negativer Betrag (Ausgabe) bleibt erlaubt (CHECK ist <> 0)]';
 
-  -- (2) tool-fn fn_create_recurring_payment mit amount 0 -> freundliches {ok:false}, KEIN RAISE
+  -- (2) tool-fn fn_create_recurring_payment mit amount 0 -> freundliches {ok:false}, kein RAISE
   v_res := finance.fn_create_recurring_payment(jsonb_build_object(
     'account_id', v_acct, 'direction', 'expense', 'amount', 0,
     'schedule_unit', 'month', 'first_payment_date', to_char(current_date,'YYYY-MM-DD')));

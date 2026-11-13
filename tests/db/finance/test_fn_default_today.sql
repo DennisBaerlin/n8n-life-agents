@@ -1,5 +1,5 @@
 -- tests/db/finance/test_fn_default_today.sql
--- "Datum leer = heute" sitzt in der DB (Paket DB-ist-das-Gesetz S5), nicht im Prompt: fn_book_transaction,
+-- "Datum leer = heute" sitzt in der DB, nicht im Prompt: fn_book_transaction,
 --   fn_book_transfer, fn_book_stock_buy, fn_book_stock_sell buchen ohne transaction_date auf core.fn_today()
 --   (Haushalts-Zeitzone) und melden den gesetzten Wert als effective.transaction_date zurueck. Der Probelauf vor der Karte
 --   reicht effective fest in den echten Write (New-FnWriteGate) -> Karte und Buchung zeigen dasselbe Datum.
@@ -52,7 +52,7 @@ BEGIN
      OR (v_r->'effective'->>'order_fee')::numeric IS DISTINCT FROM 0 THEN
     RAISE EXCEPTION 'FAIL default_today [book_stock_sell]: % / %', v_r, v_d; END IF;
 
-  -- Dividende (c9-Fund 2026-10-23: Pflicht-Datum -> das Modell erfand 2025-01-01)
+  -- Dividende (Pflicht-Datum haette das Modell erfinden lassen)
   v_r := finance.fn_book_dividend(jsonb_build_object('account_id', v_a, 'amount', 4.2, 'holding_id', v_hold,
            'description', 'Dividende IWDA'));
   SELECT transaction_date INTO v_d FROM finance.transactions WHERE id = (v_r->>'transaction_id')::int;
@@ -66,7 +66,7 @@ BEGIN
      OR (v_r->'effective'->>'reconciliation_date')::date IS DISTINCT FROM core.fn_today() THEN
     RAISE EXCEPTION 'FAIL default_today [reconcile_account]: %', v_r; END IF;
 
-  -- Konto schliessen ohne Datum = heute (c9-Fund 2026-10-23: Pflicht-Datum -> das Modell erfand 2025-01-01)
+  -- Konto schliessen ohne Datum = heute (Pflicht-Datum haette das Modell erfinden lassen)
   v_r := finance.fn_create_account('{"name":"__dt_close__","account_type":"cash"}'::jsonb);
   v_r := finance.fn_close_account(jsonb_build_object('account_id', (v_r->>'account_id')::int));
   IF (v_r->>'ok')::boolean IS DISTINCT FROM true

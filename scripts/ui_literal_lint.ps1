@@ -1,14 +1,14 @@
 ﻿#Requires -Version 5.1
-# ui_literal_lint.ps1 -- Textkatalog Phase B: "kein NEUER fest deutscher Nutzertext" (hartes Gate, Vorbild
-# scripts/core_literal_lint.ps1). Feste Nutzertexte kommen aus dem Textkatalog (packages/<pkg>/locales/<lang>.json,
+# ui_literal_lint.ps1 -- "kein neuer fest deutscher Nutzertext" (hartes Gate).
+# Feste Nutzertexte kommen aus dem Textkatalog (packages/<pkg>/locales/<lang>.json,
 # docs/package-contract.md §3.11) in der Sprache des Empfaengers; ein deutsches Literal in einem Telegram-Send, Code-/
-# Set-Node oder einer R__-fn waere ein Rueckfall. Mechanik = RATCHET (Baseline-Allowlist): jede HEUTE vorhandene Stelle
-# steht in scripts/build/ui_literal_allowlist.json mit Begruendung (seit Phase C ist jeder Nutzertext im Katalog -> nur
-# noch model:<warum> = Text fuers Sprachmodell, kein Nutzertext;
+# Set-Node oder einer R__-fn waere ein Rueckfall. Mechanik = Ratchet (Baseline-Allowlist): jede vorhandene Stelle
+# steht in scripts/build/ui_literal_allowlist.json mit Begruendung. Erlaubte Gruende (reason, ein Nutzertext gehoert in den Katalog):
+# model:<warum> = Text fuers Sprachmodell, kein Nutzertext;
 # admin:<warum> = RAISE/Konsolen-Meldung fuer den Betreiber; data:<warum> = gespeicherter Inhalt, Originalsprache nach
-# Sprachpolitik). Exakt je (Ort, Literal):
-#   - Found > Allowlist  -> NEUER deutscher Text (FAIL: Katalog-Key nutzen ODER mit Begruendung allowlisten);
-#   - Found < Allowlist  -> eine Stelle wurde umgestellt (FAIL: Allowlist schrumpfen = Phase-C-Fortschritt);
+# Sprachpolitik. Exakt je (Ort, Literal):
+#   - Found > Allowlist  -> neuer deutscher Text (FAIL: Katalog-Key nutzen oder mit Begruendung allowlisten);
+#   - Found < Allowlist  -> eine Stelle wurde umgestellt (FAIL: Allowlist schrumpfen);
 #   - Allowlist-Eintrag ohne Fund -> Orphan (FAIL: entfernen).
 # Scan:
 #   (a) gebaute Workflows packages/*/workflows/*.json (die Deploy-Vertraege): Telegram-Nodes (alle Text-Parameter inkl.
@@ -18,7 +18,8 @@
 #   (b) packages/*/db/migrations/R__*.sql: String-Literale im Code-Anteil (Kommentare quote-aware gestrippt). Ort = Pfad.
 # Treffer = Literal mit deutscher Signatur (Umlaut/ß oder ein typisches deutsches Funktionswort) und mindestens einem
 # Wort aus >= 3 Buchstaben; Katalog-Keys, englische Gruende/Codes und Identifier fallen so heraus.
-# Selbst-Asserts laufen VOR jedem Scan — stirbt die Erkennung still, bricht der Lint.
+# Selbst-Asserts laufen vor jedem Scan; stirbt die Erkennung still, bricht der Lint.
+# Aufruf: .\scripts\ui_literal_lint.ps1 [-Verbose] [-Baseline]
 # -Baseline: druckt die gefundenen (where,literal,count) als JSON-Geruest (reason:'TODO').
 # Exit-Code = Anzahl Fehler. Kein LLM, kein Netz, kein Substrat.
 param([switch]$Baseline, [switch]$Verbose)

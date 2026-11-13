@@ -44,7 +44,7 @@ BEGIN
     ELSE RAISE EXCEPTION 'FAIL set_holding [not_found]: falscher Fehler: %', SQLERRM; END IF;
   END;
 
-  -- TEST 4 (WS2b): asset_class partielles Update -> Tag gesetzt, name/symbol UNVERAENDERT (Korrektur des Auto-Tags)
+  -- TEST 4: asset_class partielles Update -> Tag gesetzt, name/symbol unveraendert (Korrektur des Auto-Tags)
   DECLARE v_tag TEXT; v_name4 TEXT; BEGIN
     SELECT finance.fn_set_holding(jsonb_build_object('holding_id', v_hid1, 'asset_class', 'sp500')) INTO v_res;
     IF (v_res->>'ok')::boolean IS DISTINCT FROM true THEN
@@ -57,7 +57,7 @@ BEGIN
     RAISE NOTICE 'PASS set_holding [asset_class partielles Update, name unberuehrt]';
   END;
 
-  -- TEST 5 (WS2b): ungueltiges asset_class-Format -> {ok:false} (kein CHECK-RAISE/Owner-Alert), Tag unveraendert
+  -- TEST 5: ungueltiges asset_class-Format -> {ok:false} (kein CHECK-RAISE/Owner-Alert), Tag unveraendert
   DECLARE v_tag5 TEXT; BEGIN
     SELECT finance.fn_set_holding(jsonb_build_object('holding_id', v_hid1, 'asset_class', 'S&P 500')) INTO v_res;
     IF (v_res->>'ok')::boolean IS DISTINCT FROM false THEN
@@ -68,7 +68,7 @@ BEGIN
     RAISE NOTICE 'PASS set_holding [ungueltiges asset_class-Format -> ok:false, Tag unveraendert]';
   END;
 
-  -- TEST 6 (WS2b): Format-CHECK ist der strukturelle Backstop (Direktzugriff unter Umgehung der fn)
+  -- TEST 6: Format-CHECK ist der strukturelle Backstop (Direktzugriff unter Umgehung der fn)
   BEGIN
     UPDATE finance.depot_holdings SET asset_class = 'bad tag!' WHERE id = v_hid1;
     RAISE EXCEPTION 'FAIL set_holding [CHECK backstop]: ungueltiger Tag wurde direkt akzeptiert';
@@ -76,7 +76,7 @@ BEGIN
     RAISE NOTICE 'PASS set_holding [asset_class Format-CHECK Backstop greift]';
   END;
 
-  -- TEST 7 (Phase M): provider_symbol + quote_currency partielles Update -> gesetzt, symbol/name UNVERAENDERT.
+  -- TEST 7: provider_symbol + quote_currency partielles Update -> gesetzt, symbol/name unveraendert.
   DECLARE v_ps TEXT; v_qc CHAR(3); v_sym7 TEXT; BEGIN
     SELECT finance.fn_set_holding(jsonb_build_object('holding_id', v_hid2, 'provider_symbol', 'IWDA.UK', 'quote_currency', 'USD')) INTO v_res;
     IF (v_res->>'ok')::boolean IS DISTINCT FROM true THEN
@@ -89,8 +89,8 @@ BEGIN
     RAISE NOTICE 'PASS set_holding [provider_symbol + quote_currency partielles Update, symbol unberuehrt]';
   END;
 
-  -- TEST 8 (WP-1 Crash-Schutz): currency + quote_currency in KLEINSCHREIBUNG -> normalisiert gespeichert
-  -- (VOR dem Fix: {ok:false}-Ablehnung bei lowercase; zudem schrieb die UPDATE-Site den Roh-Wert).
+  -- TEST 8: currency + quote_currency in Kleinschreibung -> normalisiert gespeichert
+  -- (kein {ok:false} bei lowercase, auch die UPDATE-Site schreibt den normalisierten Wert).
   DECLARE v_cc8 CHAR(3); v_qc8 CHAR(3); BEGIN
     SELECT finance.fn_set_holding(jsonb_build_object('holding_id', v_hid2, 'currency', 'jpy', 'quote_currency', 'gbp')) INTO v_res;
     IF (v_res->>'ok')::boolean IS DISTINCT FROM true THEN
@@ -101,7 +101,7 @@ BEGIN
     RAISE NOTICE 'PASS set_holding [lowercase currency jpy->JPY + quote gbp->GBP normalisiert gespeichert]';
   END;
 
-  -- TEST 8b (WP-1): echt-ungueltiger Code ('DOLLAR') -> {ok:false}, Wert unveraendert (kein RAISE/Owner-Alert).
+  -- TEST 8b: echt-ungueltiger Code ('DOLLAR') -> {ok:false}, Wert unveraendert (kein RAISE/Owner-Alert).
   DECLARE v_qc8b CHAR(3); BEGIN
     SELECT finance.fn_set_holding(jsonb_build_object('holding_id', v_hid2, 'quote_currency', 'DOLLAR')) INTO v_res;
     IF (v_res->>'ok')::boolean IS DISTINCT FROM false THEN

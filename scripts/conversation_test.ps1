@@ -1,6 +1,6 @@
 ﻿#Requires -Version 5.1
-# Durchspiel-Werkzeug: fuehrt Gespraeche wie ein Mensch ueber den ECHTEN Telegram-Eingang des Orchestrators
-# (Freitext, /befehl, Knopf-Tipp; Absender Owner oder Mitglied) und schreibt JEDE Bot-Ausgabe je Runde auf:
+# Durchspiel-Werkzeug: fuehrt Gespraeche wie ein Mensch ueber den echten Telegram-Eingang des Orchestrators
+# (Freitext, /befehl, Knopf-Tipp; Absender Owner oder Mitglied) und schreibt jede Bot-Ausgabe je Runde auf:
 # Text, Knoepfe, Sticker, Reaktion, Knopf-Quittung, dazu welcher Agent lief, HITL-Karten und Kosten der Runde.
 # Es bewertet nichts von selbst; optionale Pruefungen je Runde (expect_texts / forbid_texts / expect_agent) sind fuer
 # die feste Vorher/Nachher-Abnahme gedacht. Faelle: tests/agent/cross/conversation_cases.json.
@@ -14,12 +14,12 @@
 # Ein /befehl ist ein Text mit fuehrendem Schraegstrich. Startzustand: alle Onboarding-Abschnitte completed, keine
 # Berater-Plaene, Owner (Fixture-Person) und Mitglied (Fixture-Person Lena) gepairt, Sprache de, Persona neutral.
 # no_cash_account = wie onboarding_done, aber ohne aktives Geldkonto (die Fixture-Konten sind nur waehrend des Falls
-# geschlossen; Wiederherstellung auch nach Abbruch, Mechanik am Kopf von Restore-ClosedAccounts). Ein Fall, der Konten
+# geschlossen; Wiederherstellung auch nach Abbruch, Mechanik beim Pfad $ClosedAccountsFile unten). Ein Fall, der Konten
 # anlegt, nennt sie mit __E2E__-Praefix, sonst raeumt agent.fn_clear_e2e_data sie nicht weg.
 #
 # Usage:  .\scripts\conversation_test.ps1 [-Id s1,s2] [-Timeout 120] [-OutDir <Ordner>] [-Verbose]       # gratis, Mock-Modell
 #         -MaxCostUsd 2.0 (nur -Real): haelt den Lauf vor der naechsten Runde an, sobald die Summe darueber liegt
-#         .\scripts\conversation_test.ps1 -Real [-Id s2]                                                   # KOSTET LLM-Credits
+#         .\scripts\conversation_test.ps1 -Real [-Id s2]                                                   # kostet LLM-Credits
 # Beispiel-Runden der Faelle: "hallo", "und jetzt?", "kannst du mich beraten?", "wie viel Geld haben wir?", "/help",
 # "da sind gerade 1.200 Euro drauf", "Das Gehalt sind 3000 netto, das kommt am 1." (Mock-Szenarien matchen woertlich, mock_lint C2).
 # Voraussetzung: Substrat (bootstrap_test_n8n.ps1) + enable_mock_telegram.ps1; ohne -Real zusaetzlich enable_mock_llm.ps1,
@@ -60,7 +60,7 @@ $ingress     = Resolve-OrchestratorIngress -BridgeUrl $N8nUrl -ApiKey $ApiKey
 $OrchWfId    = $ingress.OrchWfId
 $routeAgents = Get-TestRouteAgent
 $prices      = Get-LlmPriceTable -RepoRoot $RepoRoot
-$MemberUid   = 880055200   # Fixture-Person Lena; Uid wie real_ingress_test (eine Fixture-Konstante, kein echter Wert)
+$MemberUid   = 880055200   # Fixture-Person Lena; Uid wie real_ingress_test (Fixture-Konstante, kein echter Wert)
 
 if (-not $CasesFile) { $CasesFile = Join-Path $RepoRoot 'tests\agent\cross\conversation_cases.json' }
 $rawCases = [System.IO.File]::ReadAllText($CasesFile, $Utf8NoBom) | ConvertFrom-Json
@@ -116,7 +116,6 @@ function Close-CashAccounts {
     if ((@($left.Output) -join '').Trim() -ne '0') { throw "Nach dem Schliessen gibt es noch aktive Geldkonten: $($left.Output -join ' ')" }
 }
 
-# Startzustand eines Falls: nur vorhandene Test-Helfer (Fixture-Seed, Pairing, Onboarding-Zustand) plus Plaene leeren.
 function Initialize-ConversationState($Tc) {
     Restore-ClosedAccounts   # Rest eines frueheren Falls/Abbruchs, bevor der Fixture-Seed laeuft
     Initialize-AgentTestState -Container $Container -RepoRoot $RepoRoot
@@ -141,7 +140,7 @@ WHERE name = 'family';
     if ("$($Tc.start)" -eq 'no_cash_account') { Close-CashAccounts }
 }
 
-# Knopf-Beschriftung + callback_data/url aus einem reply_markup (n8n schickt es teils als JSON-String).
+# n8n schickt reply_markup teils als JSON-String.
 function Get-ButtonList($Markup) {
     if ($Markup -is [string]) { try { $Markup = $Markup | ConvertFrom-Json } catch { return @() } }
     $out = @()
@@ -154,7 +153,6 @@ function Get-ButtonList($Markup) {
     return $out
 }
 
-# Rohe Mock-Telegram-Aufzeichnung -> geordnete, lesbare Ausgabe-Liste (+ Zaehler der uebrigen Aufrufe).
 function ConvertTo-BotOutputs($Reqs) {
     $outs = @(); $other = 0
     foreach ($r in @($Reqs)) {
@@ -181,7 +179,6 @@ function Get-OutputText($Outs) {
     (@(foreach ($o in $Outs) { $o.text; foreach ($b in $o.buttons) { $b.label } }) | Where-Object { $_ }) -join "`n"
 }
 
-# Eine Runde: Eingabe senden, Orchestrator-Execution zu Ende treiben (HITL-Karten je Fall loesen), Ausgaben + Kosten lesen.
 function Invoke-Round($Tc, $Turn, [int]$N, [long]$Uid) {
     Clear-MockTelegramRequests -Container $Container
     Clear-HitlPending -Container $Container
@@ -281,13 +278,12 @@ foreach ($tc in $cases) {
     if ($script:stopRun) { break }
 }
 } finally {
-    # Auch bei Ctrl-C oder Fehler: geschlossene Geldkonten wieder oeffnen, angelegte __E2E__-Konten wegraeumen.
+    # Auch bei Ctrl-C oder Fehler: geschlossene Geldkonten wieder oeffnen, __E2E__-Konten wegraeumen.
     try { Restore-ClosedAccounts } catch { Write-Host "    [FAIL] Wiederherstellung: $($_.Exception.Message)" -ForegroundColor Red; $failed++ }
 }
 try { (Invoke-N8nGet "executions?workflowId=$OrchWfId&status=waiting&limit=20").data | ForEach-Object { Stop-Exec $_.id } } catch { }
 Clear-HitlPending -Container $Container
 
-# --- Aufzeichnung schreiben ---------------------------------------------------------------------------------------
 if (-not $OutDir) { $OutDir = Join-Path $RepoRoot '.local\conversation_runs' }
 [System.IO.Directory]::CreateDirectory($OutDir) | Out-Null
 $stamp = (Get-Date).ToString('yyyyMMdd-HHmmss')

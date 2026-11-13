@@ -1,10 +1,11 @@
 -- ============================================================
--- core.fn_ui_texts (read-only, Text-Buendel fuer Workflows)
+-- fn_ui_texts (READ-ONLY) — Text-Buendel fuer Workflows
+--   Eingabe: p_lang text, p_keys text[].
 --   Key -> Text fuer eine Liste von Keys in einer Sprache, Fallback-Kette wie core.fn_ui_text (lang -> 'en' -> Key
---   selbst), OHNE Platzhalter-Ersetzung (die macht der Workflow-Renderer mit den Laufzeitwerten). Ein Aufruf je
+--   selbst), ohne Platzhalter-Ersetzung (die macht der Workflow-Renderer mit den Laufzeitwerten). Ein Aufruf je
 --   Empfaenger statt eines DB-Knotens je Text. Laeuft unter core_ro (HITL-Gate) -> Perspektiv-Test in
 --   tests/db/cross/test_role_permissions.sql.
---   RUECKGABE: jsonb-Objekt {key: text} (leere Liste -> {})
+--   Rueckgabe: jsonb-Objekt {key: text} (leere Liste -> {})
 --   Tests: tests/db/core/test_ui_texts.sql
 -- ============================================================
 CREATE OR REPLACE FUNCTION core.fn_ui_texts(p_lang text, p_keys text[])

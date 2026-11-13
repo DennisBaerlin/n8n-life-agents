@@ -1,6 +1,6 @@
 # shellcheck disable=SC1111  # deutsche Anführungszeichen („…“) in den Nutzertexten sind gewollt, keine vertippten Shell-Quotes
-# reconfigure_cli.sh — `lifeagents reconfigure [core|<paket>]` (Install-UX-Phase 7): Angaben NACH der Installation erneut
-# erfragen und anwenden (dpkg-reconfigure / `openclaw configure` / `gitlab-ctl reconfigure`). SOURCED von
+# reconfigure_cli.sh — `lifeagents reconfigure [core|<paket>]`: Angaben nach der Installation erneut erfragen und
+# anwenden (Muster dpkg-reconfigure / `openclaw configure` / `gitlab-ctl reconfigure`). Gesourct von
 # templates/lifeagents.tpl (mit den household-Bibliotheken + fetch_release.sh) — kein Shebang, kein set -e.
 #   ohne Argument  Auswahl „Grundsystem" + installierte Pakete mit Zugangsdaten (Esc = nichts tun).
 #   core           _host_reconfigure: Internet-Adresse, Telegram-Bot, Anthropic, Google (+ Name/Geburtsdatum, solange noch
@@ -9,7 +9,7 @@
 #                  Anwenden = voller Converge des installierten Baums (run_installed_release = `lifeagents update` ohne
 #                  Download). Bei uns anders als `package reconfigure` (nur Credential-Upsert, kein Redeploy): Host-Keys
 #                  tragen abgeleiteten Zustand (WEBHOOK_URL, Telegram-Webhook, Befehlsmenues, Owner-Skelett, Pairing)
-#                  -> docs/reference/provisioning.md *Install-UX* (Phase 7).
+#                  -> docs/reference/provisioning.md *Install-UX*, Bullet „Install-UX-Phase 7".
 #   <paket>        pkg_cmd_reconfigure (Paket-Zugangsdaten, id-stabiler Credential-Upsert, kein Redeploy).
 
 _reconfigure_usage() {
@@ -36,7 +36,7 @@ reconfigure_cli() {
   case "$target" in
     help|--help|-h) _reconfigure_usage; return 0 ;;
   esac
-  # Strg-C mittendrin = nichts gespeichert (Grundsystem UND Pakete speichern erst nach der letzten Antwort).
+  # Strg-C mittendrin = nichts gespeichert (Grundsystem und Pakete speichern erst nach der letzten Antwort).
   # shellcheck disable=SC2034  # gelesen von ui_abort (common.sh)
   UI_ABORT_MSG='Abgebrochen — nichts geändert.'
   if [ -z "$target" ]; then
@@ -73,7 +73,7 @@ _host_reconfigure_apply() {
   run_installed_release
 }
 
-# _host_reconfigure — Grund-Angaben aendern (core.env) und anwenden. Speichert erst nach der LETZTEN Antwort
+# _host_reconfigure — Grund-Angaben aendern (core.env) und anwenden. Speichert erst nach der letzten Antwort
 #   (Strg-C mittendrin = nichts geaendert); ohne Aenderung kein Converge (ausser auf ausdruecklichen Wunsch).
 _host_reconfigure() {
   local keys k v action changed='' labels=''
@@ -105,7 +105,7 @@ EOF
   esac
 
   # Vorher-Stand merken, dann eine Auswahl: nur die gewaehlte Angabe wird gefragt („Enter = behalten", _host_key_ask
-  # reask speichert selbst nichts), danach zurueck zur Auswahl — Muster „Eine Angabe ändern" der Uebersicht, aber OHNE
+  # reask speichert selbst nichts), danach zurueck zur Auswahl — Muster „Eine Angabe ändern" der Uebersicht, aber ohne
   # _review_edit (das speichert sofort; hier gilt: erst nach „Fertig" speichern, Strg-C/Abbrechen = nichts geaendert).
   local -A before=()
   local pick missing proxy_asked=0
@@ -148,7 +148,7 @@ EOF
   fi
 
   # Bot gewechselt: dem alten Bot den Webhook nehmen (gemeinsamer Baustein mit der Uebersicht, release_inputs.sh) — gegen
-  # die ALTE Adresse geprueft, falls sich beides zugleich aendert.
+  # die alte Adresse geprueft, falls sich beides zugleich aendert.
   case " $changed " in
     *" TELEGRAM_BOT_TOKEN "*) _drop_old_bot_webhook "${before[TELEGRAM_BOT_TOKEN]}" "${TELEGRAM_BOT_TOKEN:-}" "${before[DOMAIN]}" ;;
   esac

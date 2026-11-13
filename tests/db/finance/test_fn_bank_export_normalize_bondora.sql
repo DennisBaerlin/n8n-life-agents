@@ -1,5 +1,5 @@
 -- ============================================================
--- test_fn_bank_export_normalize_bondora -- Golden-File Profil bondora_go_grow_v1 (Bank-Import-Modul Paket 2)
+-- test_fn_bank_export_normalize_bondora -- Golden-File Profil bondora_go_grow_v1
 --   finance.fn_bank_export_normalize (Dispatcher) -> fn_bank_export_normalize_bondora. Raster wie der xlsx-Leser es
 --   liefert (Blatt "Data": Kopfblock Summary/Opening/Payments in/Payments out/Closing, Zeitraum M/D/YYYY-M/D/YYYY,
 --   "All Goals", Kopfzeile Date|Payment type|In|Out|Balance). Werte frei erfunden. Deckt: Profil per Kopfzeile hinter
@@ -104,7 +104,7 @@ BEGIN
     END IF;
     RAISE NOTICE 'PASS [B12 Registry]';
 
-    -- Deutsche Export-Variante (Befund 2026-10-30, gleicher Aufbau): Kopfzeile Datum|
+    -- Deutsche Export-Variante (gleicher Aufbau): Kopfzeile Datum|
     -- Zahlungsart|Eingaenge|Ausgaenge|Guthaben, Kopfblock Zu Beginn/Einzahlungen/Auszahlungen/Ergebnis, Daten TT.MM.JJJJ
     v_res := finance.fn_bank_export_normalize(jsonb_build_object('rows', jsonb_build_array(
         '["Test Person","","","Zusammenfassung",""]'::jsonb,

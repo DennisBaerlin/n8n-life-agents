@@ -1,7 +1,7 @@
 -- tests/db/core/test_fn_remove_context_note.sql
--- core.fn_remove_context_note(p {candidate_id, chat_id}) — Entfern-/Undo-Pfad (Phase C, WS-3, R5-C):
+-- core.fn_remove_context_note(p {candidate_id, chat_id}) — Entfern-/Undo-Pfad:
 --   entfernt die zu einem approved note-Kandidaten gehoerende "## Gelernt"-Zeile (allowlist-geguardet)
---   UND setzt den Kandidaten auf 'rejected' (HITL-Reversibilitaet learn:undo). owner_only-Backstop.
+--   und setzt den Kandidaten auf 'rejected' (HITL-Reversibilitaet learn:undo). owner_only-Backstop.
 -- Self-seedend, BEGIN..ROLLBACK. Testet den vollen Zyklus approve(note) -> remove(undo).
 BEGIN;
 
@@ -15,7 +15,7 @@ ON CONFLICT (name) DO UPDATE SET content=excluded.content, managed_by=excluded.m
 INSERT INTO agent.core_contexts (name, description, agent_name, load_strategy, content, managed_by, package, metadata)
 VALUES ('financial_planning', 'fixture', 'finance_advisor', 'lazy', E'# Plan\n', 'agent', 'finance', '{}'::jsonb)
 ON CONFLICT (name) DO UPDATE SET content=excluded.content, managed_by=excluded.managed_by, metadata=excluded.metadata;
--- Phase A: Notiz-Freigabe registry-getrieben (core.advisors.learn_notes + aktives Paket statt Literal-Liste).
+-- Notiz-Freigabe registry-getrieben (core.advisors.learn_notes + aktives Paket).
 INSERT INTO core.package_registry (package, status) VALUES ('finance', 'active')
 ON CONFLICT (package) DO UPDATE SET status = 'active';
 INSERT INTO core.advisors (domain, plan_context, review_fn, package, learn_notes)
@@ -47,7 +47,7 @@ BEGIN
   IF position('Sabbatical' IN v_cont) = 0 THEN RAISE EXCEPTION 'FAIL 1 [Mitglied hat trotzdem entfernt]'; END IF;
   RAISE NOTICE 'PASS 1 [owner_only: Mitglied verweigert]';
 
-  -- ===== 2. Undo: entfernt NUR die getroffene Zeile + Kandidat -> rejected =====
+  -- ===== 2. Undo: entfernt nur die getroffene Zeile + Kandidat -> rejected =====
   r := core.fn_remove_context_note(jsonb_build_object('candidate_id', v_id, 'chat_id', '111'));
   IF (r->>'ok')::boolean IS DISTINCT FROM true THEN RAISE EXCEPTION 'FAIL 2 [ok]: %', r; END IF;
   SELECT content INTO v_cont FROM agent.core_contexts WHERE name='financial_planning';

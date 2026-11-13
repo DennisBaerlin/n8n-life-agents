@@ -22,7 +22,7 @@ VALUES ('financial_planning', 'test fixture', 'finance_advisor', 'lazy',
         E'# Finanzplan\n\n## Gelernt\n- Bekannte Notiz die schon da ist (gelernt am 2026-01-01 aus Chat)\n',
         'agent', 'finance', '{}'::jsonb)
 ON CONFLICT (name) DO UPDATE SET content = excluded.content, managed_by = excluded.managed_by, metadata = excluded.metadata;
--- Phase A: Notiz-Freigabe registry-getrieben (core.advisors.learn_notes + aktives Paket statt Literal-Liste).
+-- Notiz-Freigabe registry-getrieben (core.advisors.learn_notes + aktives Paket).
 INSERT INTO core.package_registry (package, status) VALUES ('finance', 'active')
 ON CONFLICT (package) DO UPDATE SET status = 'active';
 INSERT INTO core.advisors (domain, plan_context, review_fn, package, learn_notes)
@@ -66,8 +66,8 @@ BEGIN
   IF v_n <> 1 THEN RAISE EXCEPTION 'FAIL S1 [note new inserted]: %', v_n; END IF;
   RAISE NOTICE 'PASS S1 [denylist+allowlist+noop(fact,note)+fact-update+note-new]';
 
-  -- ================= S1b (Install-UX-Phase 6): Fakt auf einen Paket-Fakten-Kontext nur bei AKTIVEM Paket =========
-  -- core.fn_facts_context_allowed ersetzt die feste Liste family/finance_profile: finance_profile ist zulaessig,
+  -- ================= S1b: Fakt auf einen Paket-Fakten-Kontext nur bei aktivem Paket =========
+  -- core.fn_facts_context_allowed entscheidet: finance_profile ist zulaessig,
   -- solange finance registriert+aktiv ist (Validator-Registry-Zeile vorhanden), sonst zaehlt der Kandidat als allowlist.
   INSERT INTO core.context_validators (context_name, validate_fn, package)
   VALUES ('finance_profile', 'finance.fn_validate_finance_profile', 'finance')
@@ -102,7 +102,7 @@ BEGIN
   IF (v_res->'skipped'->>'dedup')::int <> 2 THEN RAISE EXCEPTION 'FAIL S2 [dedup]: erwartet 2, got %', v_res->'skipped'; END IF;
   RAISE NOTICE 'PASS S2 [dedup vs pending + in-batch]';
 
-  -- ================= S3: Dedup vs kuerzlich rejected; alt-rejected NICHT mehr unterdrueckt =================
+  -- ================= S3: Dedup vs kuerzlich rejected; alt-rejected nicht mehr unterdrueckt =================
   DELETE FROM agent.guide_learn_candidates;
   INSERT INTO agent.guide_learn_candidates (agent_name, source_id, target_kind, context_name, person_slug, field, proposed_value, kind, slot_key, status, rejected_at, expires_at)
   VALUES
@@ -131,7 +131,7 @@ BEGIN
   )));
   IF (v_res->>'new_pending')::int <> 2 THEN RAISE EXCEPTION 'FAIL S4 [new_pending]: erwartet 2, got %', v_res; END IF;
   IF (v_res->'skipped'->>'capped')::int <> 1 THEN RAISE EXCEPTION 'FAIL S4 [capped]: erwartet 1, got %', v_res->'skipped'; END IF;
-  -- update1 MUSS dabei sein (Prio), genau eine der news faellt weg
+  -- update1 muss dabei sein (Prio), genau eine der news faellt weg
   SELECT count(*) INTO v_n FROM agent.guide_learn_candidates WHERE status='pending' AND kind='update' AND field='last_name';
   IF v_n <> 1 THEN RAISE EXCEPTION 'FAIL S4 [update priorisiert]: %', v_n; END IF;
   SELECT count(*) INTO v_n FROM agent.guide_learn_candidates WHERE status='pending';
@@ -141,7 +141,7 @@ BEGIN
 
   -- ================= S5: Idempotenz (ON CONFLICT) + Watermark (GREATEST) =================
   DELETE FROM agent.guide_learn_candidates;
-  -- bereits APPROVED Kandidat (nicht im Dedup-Set: weder pending noch rejected) -> Insert-Versuch -> ON CONFLICT
+  -- bereits approved Kandidat (nicht im Dedup-Set: weder pending noch rejected) -> Insert-Versuch -> ON CONFLICT
   INSERT INTO agent.guide_learn_candidates (agent_name, source_id, target_kind, context_name, person_slug, field, proposed_value, kind, slot_key, status, approved_at, expires_at)
   VALUES ('finance', 500, 'fact', 'family', 'lisa', 'language', 'de', 'new', 'family|lisa|language', 'approved', now(), now() + interval '7 days');
   v_res := agent.fn_record_learn_candidates(jsonb_build_object(

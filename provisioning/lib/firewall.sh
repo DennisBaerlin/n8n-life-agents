@@ -1,21 +1,20 @@
 # shellcheck disable=SC1111,SC2034  # SC1111: deutsche Anführungszeichen in Nutzertexten gewollt; SC2034: N8N_LISTEN_ADDRESS_EFF/LA_FW_* lesen die gesourcten Aufrufer (install_n8n.sh, doctor.sh)
-# firewall.sh — n8n fuer einen Reverse Proxy auf einem ANDEREN Rechner oeffnen, aber NUR fuer ihn
-# (Install-UX-Phase 5). Sourced by provision.sh + doctor.sh + der Runtime-CLI (`lifeagents proxy`).
+# firewall.sh — n8n fuer einen Reverse Proxy auf einem anderen Rechner oeffnen, aber nur fuer ihn.
+# Gesourct von provision.sh + doctor.sh + der Runtime-CLI (`lifeagents proxy`).
 #
-# EIN Fakt: TRUSTED_PROXIES (core.env; Komma-Liste IPv4/CIDR; leer = 127.0.0.1) — Muster Home Assistant
-# `trusted_proxies` / Gitea `REVERSE_PROXY_TRUSTED_PROXIES` / Immich `IMMICH_TRUSTED_PROXIES`. Daraus abgeleitet
-# (nie separat gespeichert): n8n-Bind (nur Loopback -> 127.0.0.1, sonst 0.0.0.0) + die Freigabe-Liste der Firewall.
+# Ein Fakt: TRUSTED_PROXIES (core.env; Komma-Liste IPv4/CIDR; leer = 127.0.0.1). Daraus abgeleitet (nie
+# separat gespeichert): n8n-Bind (nur Loopback -> 127.0.0.1, sonst 0.0.0.0) + die Freigabe-Liste der Firewall.
 #
-# Firewall = EIGENE nftables-Tabelle `inet lifeagents` (Muster fail2ban `inet f2b-table`): /etc/nftables.conf und
-# nftables.service bleiben unberuehrt (deren `flush ruleset` wuerde fremde Tabellen loeschen). Geladen von der
-# oneshot-Unit lifeagents-firewall.service (After/PartOf/ReloadPropagatedFrom=nftables.service -> nach dessen
-# flush/reload wieder da). FAIL-CLOSED: n8n-Drop-in Requires= + ExecStartPre=+nft list table -> n8n laeuft nie
+# Firewall = eigene nftables-Tabelle `inet lifeagents`: /etc/nftables.conf und nftables.service bleiben
+# unberuehrt (deren `flush ruleset` wuerde fremde Tabellen loeschen). Geladen von der oneshot-Unit
+# lifeagents-firewall.service (After/PartOf/ReloadPropagatedFrom=nftables.service -> nach dessen
+# flush/reload wieder da). Fail-closed: n8n-Drop-in Requires= + ExecStartPre=+nft list table -> n8n laeuft nie
 # offen ohne Tabelle; scheitert nft schon bei der Einrichtung, bleibt der Bind 127.0.0.1 (laute Warnung,
-# doctor ROT). Reihenfolge: Oeffnen = Firewall zuerst, dann n8n auf 0.0.0.0 (provision: firewall_converge VOR
+# doctor ROT). Reihenfolge: Oeffnen = Firewall zuerst, dann n8n auf 0.0.0.0 (provision: firewall_converge vor
 # prepare_n8n_env); Schliessen = n8n stoppen, dann Tabelle/Unit/Drop-in weg, dann n8n auf 127.0.0.1 starten.
 #
-# Reads globals: LIFEAGENTS_DIR, N8N_PORT, N8N_ENV_FILE, TEMPLATE_DIR, TRUSTED_PROXIES.
-# Sets: N8N_LISTEN_ADDRESS_EFF (vom Aufrufer in n8n.env gerendert).
+# Liest Globals: LIFEAGENTS_DIR, N8N_PORT, N8N_ENV_FILE, TEMPLATE_DIR, TRUSTED_PROXIES.
+# Setzt: N8N_LISTEN_ADDRESS_EFF (vom Aufrufer in n8n.env gerendert).
 
 LA_FW_TABLE="lifeagents"
 LA_FW_FILE="${LIFEAGENTS_DIR:-/etc/lifeagents}/firewall.nft"
@@ -25,7 +24,7 @@ LA_FW_DROPIN_DIR="/etc/systemd/system/n8n.service.d"
 LA_FW_DROPIN="${LA_FW_DROPIN_DIR}/lifeagents-firewall.conf"
 N8N_LISTEN_ADDRESS_EFF="127.0.0.1"
 
-# _ipv4_ok <a.b.c.d> — vier Oktette 0..255 OHNE fuehrende Null (010 waere je nach Parser oktal = mehrdeutig).
+# _ipv4_ok <a.b.c.d> — vier Oktette 0..255 ohne fuehrende Null (010 waere je nach Parser oktal = mehrdeutig).
 _ipv4_ok() {
   printf '%s' "$1" | grep -qE '^(0|[1-9][0-9]{0,2})(\.(0|[1-9][0-9]{0,2})){3}$' || return 1
   local o
@@ -60,7 +59,7 @@ _cidr_range() {
 }
 
 # normalize_trusted_proxies <roh> -> normalisierte Komma-Liste auf stdout (Leer/Komma/Leerzeichen-getrennt,
-# /32 entfernt, dedupliziert, Eintraege, die in einem anderen Eintrag ENTHALTEN sind, fallen weg — sonst lehnt das
+# /32 entfernt, dedupliziert, Eintraege, die in einem anderen Eintrag enthalten sind, fallen weg — sonst lehnt das
 # nft-Intervall-Set ueberlappende Elemente ab; Reihenfolge erhalten). Ungueltig -> Meldung auf stderr + rc 1.
 normalize_trusted_proxies() {
   local raw="${1:-}" e f out="" list="" s1 e1 s2 e2 keep
@@ -181,14 +180,14 @@ firewall_remove() {
 }
 
 # firewall_converge — Ist-Zustand an TRUSTED_PROXIES angleichen (idempotent; provision.sh + `lifeagents proxy`).
-# Ergebnis in N8N_LISTEN_ADDRESS_EFF: 0.0.0.0 NUR wenn die Tabelle nachweislich geladen ist, sonst 127.0.0.1.
+# Ergebnis in N8N_LISTEN_ADDRESS_EFF: 0.0.0.0 nur wenn die Tabelle nachweislich geladen ist, sonst 127.0.0.1.
 firewall_converge() {
   local list nonloop
   N8N_LISTEN_ADDRESS_EFF="127.0.0.1"
   if rt_is_compose; then
-    # Verbund: n8n lauscht auf 0.0.0.0 IM Namensraum des anchor. Erreichbar ist das nur ueber das interne Netz zum Rand
+    # Verbund: n8n lauscht auf 0.0.0.0 im Namensraum des anchor. Erreichbar ist das nur ueber das interne Netz zum Rand
     # (caddy, compose.yml); Postgres und Gateway bleiben auf 127.0.0.1. Keine nft-Tabelle: die Grenze sind Namensraum +
-    # internes Netz, veroeffentlichte Ports hat nur der Rand. doctor misst das von aussen (Paket 2).
+    # internes Netz, veroeffentlichte Ports hat nur der Rand. doctor misst das von aussen.
     N8N_LISTEN_ADDRESS_EFF="0.0.0.0"
     log "Compose-Betrieb: keine Firewall-Tabelle; n8n ist nur über den Rand des Verbunds erreichbar."
     return 0
@@ -228,7 +227,7 @@ firewall_converge() {
   else
     svc_start "$LA_FW_UNIT_NAME" || true
   fi
-  if firewall_set_matches "$list"; then   # nachweislich GENAU die gewuenschte Liste geladen (nicht nur irgendeine Tabelle)
+  if firewall_set_matches "$list"; then   # nachweislich genau die gewuenschte Liste geladen (nicht nur irgendeine Tabelle)
     N8N_LISTEN_ADDRESS_EFF="0.0.0.0"
     ok "Firewall aktiv: n8n-Port ${N8N_PORT:-5678} nur für $(printf '%s' "$nonloop" | paste -sd, - | sed 's/,/, /g') (+ diesen Rechner)."
   else

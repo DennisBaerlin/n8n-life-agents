@@ -1,18 +1,20 @@
 -- ============================================================
--- fn_insurance_fields (READ HELPER) -- Versicherungs-Rohwerte lesen + pruefen (Import-Haertung 2026-10-22)
---   EINE Adresse fuer fn_create_insurance, fn_set_insurance UND die Karten-Vorschau der Tools (Karte = Write, Post-State-
---   Vertrag): vorher zeigte die Karte "1.200" als 1,20 (JS Number) und speicherte 1200.
---   BEITRAG (WP2 "Finanzen schlank", das LLM rechnet nicht): der Nutzer nennt den Beitrag so, wie er ihn kennt --
---     premium_amount = Betrag JE ABBUCHUNG (die Wahrheit, landet roh an der rp; Rhythmus schedule_unit dann PFLICHT, sonst
---       wuerde "30 monatlich" ohne Einheit still zu 30 im Jahr) ODER
+-- fn_insurance_fields (READ HELPER) -- Versicherungs-Rohwerte lesen + pruefen
+--   Die eine Adresse fuer fn_create_insurance, fn_set_insurance und die Karten-Vorschau der Tools (Karte = Write,
+--   Post-State-Vertrag): die Karte darf "1.200" nicht als 1,20 (JS Number) zeigen und 1200 speichern.
+--   Eingabe jsonb: premium_amount, annual_premium, coverage_amount, schedule_interval, schedule_unit, insurance_type,
+--   claim_deadline_hours (alle optional).
+--   Beitrag (das LLM rechnet nicht): der Nutzer nennt den Beitrag so, wie er ihn kennt --
+--     premium_amount = Betrag je Abbuchung (die Wahrheit, landet roh an der rp; Rhythmus schedule_unit dann Pflicht, sonst
+--       wuerde "30 monatlich" ohne Einheit still zu 30 im Jahr) oder
 --     annual_premium = Jahresbeitrag (Rhythmus-Default jaehrlich; den Betrag je Abbuchung rechnet fn_insurance_period_amount).
 --     Beide genannt -> sie muessen bis auf 0,01 zusammenpassen (Rundung), sonst {ok:false}; der Betrag je Abbuchung gilt. Den Jahreswert leitet fn_annual_equivalent ab (kann bei
 --     nicht-jaehrlichem Rhythmus um Cent vom genannten Jahresbeitrag abweichen: die Abbuchung ist die Wahrheit).
 --   Geldbetraege wie fn_create_account: JSON-Zahl bleibt Zahl, Text laeuft durch fn_parse_de_numeric (Tausenderpunkt:
---   "50.000" -> 50000). Meldefrist claim_deadline_hours: positive ganze Stundenzahl, Muster-Pruefung VOR dem Cast
+--   "50.000" -> 50000). Meldefrist claim_deadline_hours: positive ganze Stundenzahl, Muster-Pruefung vor dem Cast
 --   ("48h"/"12.5"). schedule_unit = Enum (fn_enum_reason), insurance_type = Liste (fn_insurance_type_reason). Leere
 --   Felder bleiben NULL (set_*: unveraendert). fn_set_insurance reicht den bisherigen Rhythmus mit, wenn keiner genannt ist.
---   RUECKGABE: {ok:true, premium_amount (je Abbuchung, positiv | NULL = kein Beitrag genannt), annual_premium (abgeleitet),
+--   Rueckgabe: {ok:true, premium_amount (je Abbuchung, positiv | NULL = kein Beitrag genannt), annual_premium (abgeleitet),
 --   schedule_interval, schedule_unit (wirksam), coverage_amount, claim_deadline_hours} | {ok:false, reason}.
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_insurance_fields(p jsonb)

@@ -1,11 +1,12 @@
 -- ============================================================
--- estate.fn_resolve_digital_account (read-only Resolver, WS-2)
+-- estate.fn_resolve_digital_account (read-only Resolver)
 --   Loest ein digitales Konto ueber den Anbieter-Namen (exakt) + optional den Nutzernamen auf
---   (Vorbild: finance.fn_resolve_real_estate; Rueckgabe id/hit_count/candidates). Zwei Konten
---   beim selben Anbieter (z. B. je Partner ein Google-Konto) disambiguiert der Nutzername.
+--   (Muster: finance.fn_resolve_real_estate). Zwei Konten beim selben Anbieter (z. B. je Partner ein
+--   Google-Konto) disambiguiert der Nutzername. Eingabe: p_provider, p_username (NULL/'' = nicht filtern).
+--   Rueckgabe: Zeile (id, hit_count, candidates); id nur bei genau einem Treffer, sonst NULL;
+--   candidates = [{id,provider,username,category,is_key_account,owner_person_id}] (leer: []).
 --   Genutzt von tool_set_/delete_digital_account (Pre-Gate-Resolve) + als Dubletten-Backstop
 --   in tool_create_digital_account.
---   Anwenden via: db_apply.ps1 -File packages\estate\db\migrations\R__fn_resolve_digital_account.sql
 -- ============================================================
 CREATE OR REPLACE FUNCTION estate.fn_resolve_digital_account(
     p_provider text,

@@ -1,9 +1,9 @@
 ﻿#Requires -Version 5.1
 # Dot-gesourct von build.ps1 (Helper + Script-Scope-Creds im Parent-Scope).
 
-# --- agent.estate.tool_set_funeral_preferences (WS-2, set_ = UPSERT je Person) ---------------
-# Erfasst/aendert die Bestattungswuensche EINER Person (1 Zeile je Person, UPSERT + partiell).
-# Person (Pflicht) -> Slug via core.fn_resolve_person VOR dem Gate. has_prepaid_contract ist
+# --- agent.estate.tool_set_funeral_preferences (set_ = UPSERT je Person) ---------------
+# Erfasst/aendert die Bestattungswuensche einer Person (1 Zeile je Person, UPSERT + partiell).
+# Person (Pflicht) -> Slug via core.fn_resolve_person vor dem Gate. has_prepaid_contract ist
 # Tri-State (nur explizit gesendet aendert). HITL owner_approval. adults_only-DB-Backstop. estate_rw.
 function Build-EstateSetFuneralPreferences {
     $CRED_POSTGRES = $CRED_ESTATE_RW
@@ -14,12 +14,11 @@ function Build-EstateSetFuneralPreferences {
     $errBad = Build-ToolError 'Person unresolved' @(660, 200) `
         "=The person '{{ `$('Start').item.json.person }}' could not be uniquely resolved ({{ `$('Resolve Person').item.json.hit_count }} match(es)). Name the household member clearly."
 
-    # Strukturiertes Summary (Textkatalog): Keys + typisierte Rohwerte, das Gate rendert je Empfaenger-Sprache.
     # Nur genannte Felder erscheinen (-If); der Hinweis "unveraendert" steht als Note darunter.
     $S  = "`$('Start').item.json"
     $RP = "`$('Resolve Person').item.json"
     $isPrepaid = "(['true','yes','1','ja'].indexOf(String($S.has_prepaid_contract).toLowerCase()) >= 0)"
-    # "DB ist das Gesetz": estate.fn_set_funeral_preferences laeuft als Probelauf VOR der Karte; derselbe Param-Satz geht nach dem Gate in den echten Write.
+    # estate.fn_set_funeral_preferences laeuft als Probelauf vor der Karte; derselbe Param-Satz geht nach dem Gate in den echten Write.
     $wg = New-FnWriteGate -Fn 'estate.fn_set_funeral_preferences' -DryPos @(660, 0) -WritePos @(1980, 0) `
         -WriteName 'Set wishes (atomic)' `
         -WriteSelect "(r->>'ok')::boolean AS ok, r->>'reason' AS reason, r->>'person_id' AS person_id, (r->>'created')::boolean AS created" `

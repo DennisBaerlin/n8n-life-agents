@@ -1,9 +1,9 @@
 ﻿#Requires -Version 5.1
-# runtime_test.ps1 — DETERMINISTISCHER, GRATIS Test der Betriebsart-Naht des Installers (systemd | Docker-Verbund).
-# Kopiert provisioning/ DIESES Checkouts + den Fall-Runner (tests/mock_runtime/) in den laufenden Substrat-Container und
+# runtime_test.ps1 — deterministischer, gratis Test der Betriebsart-Naht des Installers (systemd | Docker-Verbund).
+# Kopiert provisioning/ dieses Checkouts + den Fall-Runner (tests/mock_runtime/) in den laufenden Substrat-Container und
 # faehrt dort tests/mock_runtime/cases.sh gegen den echten Lib-Code (common.sh -> runtime.sh, release_inputs.sh):
 #   - Antwort-Datei fuer --unattended wird gelesen, nie ausgefuehrt ('…', $(), Backticks, Zeilenumbruch, gesperrte Schluessel);
-#   - Wrapper: systemd-Zweig = die frueheren runuser/systemctl-Aufrufe, compose-Zweig = docker exec mit festem Container
+#   - Wrapper: systemd-Zweig = runuser/systemctl-Aufrufe, compose-Zweig = docker exec mit festem Container
 #     (stdin nur, wenn psql liest), Compose-Aufrufe nur mit festem Projekt; Volumes nur mit eigenem Label;
 #   - Telegram-Pruefung vor der Aktivierung (frei / eigener / fremder Webhook / Long-Polling / nicht pruefbar).
 # docker, systemctl und runuser sind dort Attrappen (PATH): nichts wird wirklich gestartet. Braucht kein n8n und kein Netz.

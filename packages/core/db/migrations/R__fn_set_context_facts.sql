@@ -1,27 +1,26 @@
 -- ============================================================
--- fn_set_context_facts (ATOMIC WRITE — der EINE Schreibweg fuer facts-Sidecars, Phase A Fakten-Konsolidierung)
---   Schreibt metadata.facts eines Kontexts in der HOST-Tabelle agent.core_contexts. Loest die zwei frueheren
---   Pfade ab (das fruehere Haushalts-Fakten-Schreibfenster fuer family/finance_profile und das Profil-Fakten-Schreibfenster fuer career) — core:V019 droppt
---   sie. D10 verbietet Paket-Rollen jeden Write auf agent.* -> jeder Fakten-Write ist core-vermittelt.
+-- fn_set_context_facts (ATOMIC WRITE — der einzige Schreibweg fuer facts-Sidecars)
+--   Schreibt metadata.facts eines Kontexts in der Host-Tabelle agent.core_contexts. Paket-Rollen duerfen
+--   nichts auf agent.* schreiben -> jeder Fakten-Write ist core-vermittelt (core:V019 droppt die frueheren Fenster).
 --   Aufrufer: HITL-Tool agent.tool_set_context_facts (Guide bindet es als tool_set_household_facts, career als
 --   tool_set_profile_facts/tool_set_career_preferences), fn_add_household_person + fn_merge_member_identity
 --   (bewusst OHNE chat_id: CLI/Pairing sind nicht chat-autorisiert), fn_approve_learn_candidate.
 --
 --   Eingabe jsonb: context_name (Pflicht), facts (Objekt, partielle Roh-Fakten), content (optional, Prosa-
 --     Replace; der system-verwaltete "## Gelernt"-Block bleibt erhalten, ein mitgeschickter wird verworfen —
---     core.fn_split_learned_block, Paritaet fn_advisor_publish_plan), description (optional, nur per_user-Erstanlage), chat_id (Identitaet, NIE LLM), scope (optional,
---     FEST aus der Tool-Bindung, nie $fromAI: 'household' Guide / 'per_user' career -> Abweichung = {ok:false}).
+--     core.fn_split_learned_block, Paritaet fn_advisor_publish_plan), description (optional, nur per_user-Erstanlage), chat_id (Identitaet, nie LLM), scope (optional,
+--     fest aus der Tool-Bindung, nie $fromAI: 'household' Guide / 'per_user' career -> Abweichung = {ok:false}).
 --
---   RESERVIERTE CORE-FORM-KEYS (gelten fuer JEDES Sidecar; Merge-Key = Core-Konstante, kein Registry-Feld):
+--   Reservierte Core-Form-Keys (gelten fuer jedes Sidecar; Merge-Key = Core-Konstante, kein Registry-Feld):
 --     persons   = Liste von Personen-Objekten, Merge-Key person_id (vorhanden: Key-Merge, neu: anhaengen),
---                 as_of-Stempel je beruehrter Person; NUR household-Kontexte (per_user -> {ok:false}).
+--                 as_of-Stempel je beruehrter Person; nur household-Kontexte (per_user -> {ok:false}).
 --     household = Objekt, flacher Merge + as_of-Stempel.
 --     Alle anderen Top-Level-Keys: ersetzen. null loescht den Key (Top-Level, in einer Person, im household) —
 --     nur die Keys des Patches, nie das Gesamtdokument (gespeicherte JSON-nulls bleiben gueltig).
 --     Abgewiesen ({ok:false}): persons:null / household:null (Massen-Loeschung — Person entfernen ist
 --     fn_remove_household_person), person_id:null/fehlt, ein _meta-Key (System-Stempel), falsche Typen.
---   CHAT-PFAD (chat_id gesetzt = das LLM-Tool schreibt; WP3 "Slugs und Stempel vergibt die fn"):
---     * as_of je Person/household stempelt IMMER die fn (ein mitgeschicktes as_of wird ueberschrieben).
+--   Chat-Pfad (chat_id gesetzt = das LLM-Tool schreibt; Slugs und Stempel vergibt die fn):
+--     * as_of je Person/household stempelt immer die fn (ein mitgeschicktes as_of wird ueberschrieben).
 --     * family: person_id darf fehlen. Treffer per Vor- + Nachname auf GENAU eine Person -> Merge in diese (ein
 --       abweichendes Geburtsdatum -> {ok:false}: Korrektur oder Namensvetter wird nicht geraten, person_id noetig);
 --       kein Treffer + vollstaendiger Neu-Datensatz (first/last/birth_date/role) -> neue Person mit Slug von
@@ -30,29 +29,29 @@
 --     Ohne chat_id (CLI, Pairing, interne Aufrufer) gilt das bisherige Verhalten (as_of nur, wenn es fehlt).
 --   Relative Zeitangaben in *_date / since ("-12 years", "last monday") loest core.fn_resolve_fact_dates auf.
 --
---   ZWEI ZWEIGE (Scope aus core.context_scopes; fehlt die Zeile -> household/owner_only):
+--   Zwei Zweige (Scope aus core.context_scopes; fehlt die Zeile -> household/owner_only):
 --     household (inkl. family): Gate core.fn_facts_context_allowed (family ODER registriert ∧ Paket aktiv ∧
---       household). Die Zeile MUSS existieren (Installer-Skelett: family via util_seed_owner_skeleton, Paket-
---       Kontexte via Manifest-context_skeletons) -> fehlt sie: {ok:false}, KEIN Insert — sonst entstuende sie mit
---       agent_name=NULL und waere still fuer jeden Agenten sichtbar. family = hart owner_only als ERSTE Pruefung
+--       household). Die Zeile muss existieren (Installer-Skelett: family via util_seed_owner_skeleton, Paket-
+--       Kontexte via Manifest-context_skeletons) -> fehlt sie: {ok:false}, kein Insert — sonst entstuende sie mit
+--       agent_name=NULL und waere still fuer jeden Agenten sichtbar. family = hart owner_only als erste Pruefung
 --       (family traegt role/telegram_user_id = die Identitaets-Quelle von fn_resolve_sender -> Eskalationspfad).
---     per_user: person_id DETERMINISTISCH aus fn_resolve_sender(chat_id); unaufgeloest -> {ok:false} (fail-closed,
+--     per_user: person_id deterministisch aus fn_resolve_sender(chat_id); unaufgeloest -> {ok:false} (fail-closed,
 --       das echte Gate); physischer Speicher '<base>__<pid>' (Suffix fuer I/O, Basis fuer Registry-Lookups);
 --       Registry-Zeile core.context_validators ∧ Paket aktiv; INSERT-on-first-write (managed_by='agent', lazy,
 --       agent_name=NULL, package aus der Registry) — Muster fn_ensure_onboarding_person (Personen-Zeilen lazy).
 --   Permission: agent.fn_check_write_permission(write_permission, chat_id, target_pid) — ohne chat_id
 --     Pass-Through (CLI/Pairing, Paritaet fn_sender_is_member).
---   Plan-Dokumente (core.advisors.plan_context, z. B. financial_planning/career_planning) sind fuer ALLE
+--   Plan-Dokumente (core.advisors.plan_context, z. B. financial_planning/career_planning) sind fuer alle
 --     Absender gesperrt -> {ok:false}; sie schreibt nur fn_advisor_publish_plan (owner_only, versioniert).
 --   Mitglieder-Selbstpflege: agent.fn_set_own_context_facts setzt scope='per_user' fest (Stufe self).
 --   Freundliche Pre-Validation (gleiche Quellen wie der Trigger-Backstop): Core-Validator
---     agent.fn_validate_household_facts + registrierter Paket-Validator -> {ok:false, reason} OHNE Write.
+--     agent.fn_validate_household_facts + registrierter Paket-Validator -> {ok:false, reason} ohne Write.
 --   Sprache: language einer Person wird vorab normiert (agent.fn_normalize_language: "Koreanisch" -> ko); ein nicht
 --     abbildbarer Wert bleibt roh und scheitert am Validator (Wertevorrat core.ui_languages) mit Grund.
 --   Persona: persona einer Person wird lower(trim()) normiert; 'neutral' loescht den Key (neutral wird nie gespeichert,
 --     Validator-Gesetz).
---   RUECKGABE (Post-State): {ok:true, context_name, created, last_confirmed_at} + persons_count/updated_persons,
---     wenn der Post-State persons[] traegt; bei family zusaetzlich language_missing = die in DIESEM Write neu
+--   Rueckgabe (Post-State): {ok:true, context_name, created, last_confirmed_at} + persons_count/updated_persons,
+--     wenn der Post-State persons[] traegt; bei family zusaetzlich language_missing = die in diesem Write neu
 --     angehaengten Personen ohne Sprache (Handles -> das Tool schickt dem Owner je Person den Sprach-Picker)
 --     | {ok:false, reason} ohne Write.
 --   Tests: tests/db/core/test_fn_set_context_facts.sql (+ test_fn_household_facts.sql Trigger-Teil)
@@ -98,19 +97,19 @@ BEGIN
         RETURN jsonb_build_object('ok', false, 'reason', 'context_name is required');
     END IF;
 
-    -- family = hart owner_only, ZUERST (ein Mitglied erfaehrt nichts ueber Existenz/Form; kein Registry-Lookup davor).
+    -- family = hart owner_only, zuerst (ein Mitglied erfaehrt nichts ueber Existenz/Form; kein Registry-Lookup davor).
     IF v_name = 'family' AND agent.fn_sender_is_member(p->>'chat_id') THEN
         RETURN jsonb_build_object('ok', false, 'reason', 'owner_only');
     END IF;
 
-    -- Plan-Dokumente (core.advisors.plan_context) schreibt NUR fn_advisor_publish_plan (owner_only, versioniert) —
-    -- fuer ALLE Absender, sonst umginge ein per_user-Plan (career_planning) ueber diesen Weg das Publish-Gate.
+    -- Plan-Dokumente (core.advisors.plan_context) schreibt nur fn_advisor_publish_plan (owner_only, versioniert) —
+    -- fuer alle Absender, sonst umginge ein per_user-Plan (career_planning) ueber diesen Weg das Publish-Gate.
     IF EXISTS (SELECT 1 FROM core.advisors a WHERE a.plan_context = v_name) THEN
         RETURN jsonb_build_object('ok', false, 'reason',
             format('context "%s" is a plan document; it is written only by publishing the plan', v_name));
     END IF;
 
-    -- ---- Eingabe-Form (E3) ----
+    -- ---- Eingabe-Form ----
     IF v_in IS NULL OR jsonb_typeof(v_in) = 'null' THEN
         IF v_content IS NULL THEN
             RETURN jsonb_build_object('ok', false, 'reason', 'nothing to write (facts or content required)');
@@ -131,7 +130,7 @@ BEGIN
             RETURN jsonb_build_object('ok', false, 'reason', 'persons must be an array of partial person objects');
         END IF;
         FOR v_e IN SELECT * FROM jsonb_array_elements(v_in->'persons') LOOP
-            -- Ausnahme: family auf dem Chat-Pfad darf person_id WEGLASSEN (neue Person -> Slug von der fn, bekannte
+            -- Ausnahme: family auf dem Chat-Pfad darf person_id weglassen (neue Person -> Slug von der fn, bekannte
             -- Person -> Treffer per Name); ein explizites person_id:null bleibt abgelehnt.
             IF jsonb_typeof(v_e) <> 'object'
                OR (jsonb_typeof(v_e->'person_id') IS DISTINCT FROM 'string'

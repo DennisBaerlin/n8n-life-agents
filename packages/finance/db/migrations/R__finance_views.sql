@@ -1,20 +1,19 @@
 -- ============================================================
--- R__finance_views.sql — Flyway-REPEATABLE: alle Finance-Reporting-Views.
+-- R__finance_views.sql — alle Finance-Reporting-Views (Repeatable).
 --
--- Repeatable (R__): laeuft bei JEDER Inhalts-Aenderung neu (Checksum-getrackt ueber
--- core.repeatable_should_apply). Laeuft NACH den Baseline-Inits UND den versionierten
--- V__-Migrationen (Treiber-Reihenfolge in db_apply.ps1 / apply_schema.sh) — d. h. die
--- Spalten-Endzustaende (z. B. finance_loans.disbursement_account_id nach V001) liegen
--- bereits vor. Die View-Helfer fn_to_eur/fn_monthly_equivalent sind INLINE-Baseline
--- (in den *_init.sql), nicht Tool-Repeatables -> existieren ebenfalls schon.
+-- Laeuft bei jeder Inhalts-Aenderung neu (Checksum ueber core.repeatable_should_apply), nach den
+-- Baseline-Inits und den versionierten V__-Migrationen (Treiber-Reihenfolge in db_apply.ps1 /
+-- apply_schema.sh): die Spalten-Endzustaende (z. B. loans.disbursement_account_id) liegen also
+-- vor. Die View-Helfer fn_to_eur/fn_monthly_equivalent sind Inline-Baseline (in den *_init.sql),
+-- nicht Tool-Repeatables -> existieren ebenfalls schon.
 --
--- DROP VIEW IF EXISTS … CASCADE + CREATE VIEW (statt CREATE OR REPLACE): robust gegen
+-- DROP VIEW IF EXISTS … CASCADE + CREATE VIEW statt CREATE OR REPLACE: robust gegen
 -- Output-Spalten-Renames/Umsortierung (CREATE OR REPLACE kann Output-Spalten weder
--- umbenennen noch droppen) -> KEINE information_schema-Drop-Guards mehr noetig.
--- Drop in UMGEKEHRTER, Create in normaler Dependency-Reihenfolge.
+-- umbenennen noch droppen).
+-- Drop in umgekehrter, Create in normaler Dependency-Reihenfolge.
 -- Inter-View-Deps: *_summary haengt an *_overview (loan_summary->loan_overview,
 -- monthly_cashflow_summary->monthly_cashflow_overview); monthly_cashflow_overview und
--- parent_cashflow_overview haengen an recurring_cashflow_classified (EINE Klassifikation).
+-- parent_cashflow_overview haengen an recurring_cashflow_classified (eine Klassifikation).
 -- ============================================================
 
 -- --- Drops (umgekehrte Dependency-Reihenfolge; CASCADE faengt evtl. Hand-Abhaengige) ---
@@ -24,10 +23,10 @@ DROP VIEW IF EXISTS finance.networth_by_asset_class CASCADE;
 DROP VIEW IF EXISTS finance.networth_items CASCADE;   -- networth_by_asset_class aggregiert daraus
 DROP VIEW IF EXISTS finance.loan_summary CASCADE;
 DROP VIEW IF EXISTS finance.parent_cashflow_summary CASCADE;
-DROP VIEW IF EXISTS finance.monthly_cashflow_summary CASCADE;   -- haengt (Paket 3) an cashflow_summary_by_scope
+DROP VIEW IF EXISTS finance.monthly_cashflow_summary CASCADE;   -- haengt an cashflow_summary_by_scope
 DROP VIEW IF EXISTS finance.cashflow_summary_by_scope CASCADE;
 DROP VIEW IF EXISTS finance.parent_cashflow_overview CASCADE;
--- Defunct (Audit Paket 3): liquidity_net ist jetzt monthly_cashflow_summary.monthly_account_change.
+-- Entfallene View (liquidity_net steht in monthly_cashflow_summary.monthly_account_change).
 -- Drop bleibt, damit bestehende DBs die Alt-View verlieren (idempotent).
 DROP VIEW IF EXISTS finance.monthly_liquidity_summary CASCADE;
 DROP VIEW IF EXISTS finance.depot_holdings_overview CASCADE;
@@ -44,16 +43,16 @@ DROP VIEW IF EXISTS finance.recurring_cashflow_classified CASCADE;
 DROP VIEW IF EXISTS finance.loan_overview CASCADE;
 DROP VIEW IF EXISTS finance.upcoming_recurring_payments CASCADE;
 DROP VIEW IF EXISTS finance.active_recurring_payments CASCADE;
--- Defunct: finance_balance_drift_check (Policy lebt im cron_reconcile_accounts, nicht mehr
--- als View). Drop bleibt, damit bestehende DBs die Alt-View verlieren (idempotent).
+-- Entfallene View balance_drift_check (die Policy lebt im cron_reconcile_accounts).
+-- Drop bleibt, damit bestehende DBs die Alt-View verlieren (idempotent).
 DROP VIEW IF EXISTS finance.balance_drift_check CASCADE;
 
 -- ============================================================
 -- VIEW: Currently active recurring payments
--- Rohe Betriebssicht ALLER aktiven recurring payments (inkl. interner Transfers, target_account_id
--- gesetzt, amount Quell-seitig negativ). Fuer Cashflow-Aggregate NICHT diese View summieren -> die
--- transfer-bereinigten `monthly_cashflow_overview`/`_summary` nutzen (Doppelzaehl-Schutz, WS-2).
--- rhythm = Klartext-Rhythmus (fn_schedule_label): amount gilt JE AUSFUEHRUNG, monthly_equivalent je Monat.
+-- Rohe Betriebssicht aller aktiven recurring payments (inkl. interner Transfers, target_account_id
+-- gesetzt, amount Quell-seitig negativ). Fuer Cashflow-Aggregate nicht diese View summieren -> die
+-- transfer-bereinigten `monthly_cashflow_overview`/`_summary` nutzen (Doppelzaehl-Schutz).
+-- rhythm = Klartext-Rhythmus (fn_schedule_label): amount gilt je Ausfuehrung, monthly_equivalent je Monat.
 -- ============================================================
 CREATE VIEW finance.active_recurring_payments AS
 SELECT *,
@@ -65,7 +64,7 @@ WHERE status = 'active'
   AND (valid_to IS NULL OR valid_to > current_date);
 
 -- ============================================================
--- VIEW: Erfasste Zahlungen, die noch nicht gestartet sind (Befund 2026-11-02)
+-- VIEW: Erfasste Zahlungen, die noch nicht gestartet sind
 -- Je Kette hoechstens eine Zeile: das massgebliche Glied (fn_recurring_effective), wenn es erst kommt. Eine geplante
 -- Betragsaenderung einer laufenden Kette steht deshalb nicht hier. Inkl. interner Transfers, wie active_recurring_payments.
 -- counted_in_cashflow = zaehlt schon in der Monatsrechnung (fn_recurring_starts_within_cycle, dort mit starts_on); false =
@@ -85,12 +84,10 @@ WHERE status = 'active'
   AND id = finance.fn_recurring_effective(id, current_date);
 
 -- ============================================================
--- VIEW: Loan overview with current Restschuld
--- Joins loans with their live balance so the LLM gets all
--- relevant loan data including outstanding debt in one query.
--- EINE QUELLE (WP2, finance:V026): Rate und Abbuchungstag kommen aus dem HEUTE gueltigen Glied der Raten-Kette
--- (fn_recurring_current) -- die Kredit-Zeile traegt keine Kopie mehr. Abgeleitet (nie gespeichert):
---   initial_principal_rate           = rechnerische anfaengliche Tilgung in % p.a. aus Kreditbetrag + ERSTER erfasster
+-- VIEW: Loan overview with current Restschuld (Kredit + Live-Saldo in einer Abfrage)
+-- Eine Quelle: Rate und Abbuchungstag kommen aus dem heute gueltigen Glied der Raten-Kette
+-- (fn_recurring_current); die Kredit-Zeile traegt keine Kopie. Abgeleitet (nie gespeichert):
+--   initial_principal_rate           = rechnerische anfaengliche Tilgung in % p.a. aus Kreditbetrag + erster erfasster
 --                                      Rate (aeltestes Glied, Jahreswert ueber fn_annual_equivalent) - Zins; nur mit
 --                                      original_amount und Rate.
 --   balance_at_*_projected           = voraussichtliche Restschuld zum Zinsbindungs- bzw. Laufzeitende (bei gleichem
@@ -102,8 +99,8 @@ SELECT
     l.id,
     l.name,
     l.lender,
-    -- WS-4: Freitext-borrower abgeloest -> abgeleitete Eigentuemer-Anzeige aus dem typisierten FK
-    -- (core.fn_household_persons-Fenster; NULL=Haushalt). Output-Spaltenname bleibt borrower (Consumer-stabil).
+    -- Eigentuemer-Anzeige aus dem typisierten FK (core.fn_household_persons-Fenster; NULL=Haushalt).
+    -- Output-Spaltenname bleibt borrower (Consumer-stabil).
     COALESCE(bp.full_name, 'Haushalt')  AS borrower,
     l.borrower_person_id,
     l.original_amount,
@@ -117,15 +114,14 @@ SELECT
     l.debit_account_id,
     l.notes,
     l.disbursement_account_id,
-    -- Zins/Tilgung dynamisch aus der LIVE-Restschuld (nicht origination): exakt fuer laufende Kredite.
+    -- Zins/Tilgung dynamisch aus der Live-Restschuld (nicht origination): exakt fuer laufende Kredite.
     -- Zinsanteil = aktuelle Restschuld x Zinssatz / 12; Tilgungsanteil = gegebene Rate - Zinsanteil.
-    -- Audit Paket 3: die EINE Zinsformel fn_loan_monthly_interest (wie Cashflow-Klassifikation + Raten-Vorschau)
+    -- Die eine Zinsformel fn_loan_monthly_interest (wie Cashflow-Klassifikation + Raten-Vorschau).
     finance.fn_loan_monthly_interest(-b.balance, l.interest_rate) AS monthly_interest_current,
     abs(rc.amount) - finance.fn_loan_monthly_interest(-b.balance, l.interest_rate) AS monthly_principal_current,
-    -- Multi-Waehrung: Loan-Konto-Waehrung + Restschuld in EUR-Basis.
+    -- Kreditkonto-Waehrung + Restschuld in EUR-Basis.
     la.currency,
     finance.fn_to_eur(b.balance, la.currency) AS current_remaining_debt_eur,
-    -- WP2 (Spalten am Ende):
     l.term_end_date,
     rc.schedule_day_of_month,
     l.recurring_payment_id,
@@ -136,7 +132,7 @@ SELECT
     END                                AS initial_principal_rate,
     finance.fn_loan_projected_balance(l.id, l.interest_rate_fixed_until, current_date) AS balance_at_fixed_until_projected,
     finance.fn_loan_projected_balance(l.id, l.term_end_date, current_date)             AS balance_at_term_end_projected,
-    -- Uebersicht R3 (ans Ende angehaengt): voraussichtliches Tilgungsende + Zinsen bis dahin (fn_loan_projected_payoff,
+    -- Voraussichtliches Tilgungsende + Zinsen bis dahin (fn_loan_projected_payoff,
     -- dieselbe Simulation wie balance_at_*; gleicher Zins, ohne Sondertilgung; NULL wenn so nie getilgt). Bewusst als
     -- Ausdruck in der SELECT-Liste, nicht als LATERAL-Join: eine nicht abgefragte Spalte rechnet die einfache View dann
     -- nicht mit (Write-fns, loan_summary, Agent-SQL lesen loan_overview ohne diese Spalten).
@@ -155,31 +151,31 @@ LEFT JOIN finance.accounts la ON la.id = l.loan_account_id
 LEFT JOIN core.fn_household_persons() bp ON bp.person_id = l.borrower_person_id;
 
 -- ============================================================
--- VIEW: Cashflow-Klassifikation (Audit Paket 3) — die EINE Quelle fuer Konsum / Tilgung / Sparen
--- Je REGULAER LAUFENDER Kette (Befund 2026-11-02) genau ein Glied + Klasse + EUR-Anteile: das massgebliche Glied
+-- VIEW: Cashflow-Klassifikation — die eine Quelle fuer Konsum / Tilgung / Sparen
+-- Je regulaer laufender Kette genau ein Glied + Klasse + EUR-Anteile: das massgebliche Glied
 -- (fn_recurring_effective), aktiv, nicht beendet, nicht leer, gestartet oder innerhalb fn_recurring_starts_within_cycle
--- startend. Frueher nur „heute gueltig": frisch erfasste Zahlungen fehlten bis zu ihrem ersten Termin in Summen, Alarmen,
--- Notreserve und Runway. starts_on = erster Termin, solange er aussteht, sonst NULL. „Laeuft heute" bleibt
+-- startend (nicht nur „heute gueltig": sonst fehlten frisch erfasste Zahlungen bis zu ihrem ersten Termin in Summen,
+-- Alarmen, Notreserve und Runway). starts_on = erster Termin, solange er aussteht, sonst NULL. „Laeuft heute" bleibt
 -- active_recurring_payments, spaeter Startendes steht in upcoming_recurring_payments.
--- Grenze (Test [15]): eine Abloesung als ZWEI getrennte Ketten (altes Gehalt endet, neues ab dem Folgetag, ohne predecessor_id)
+-- Grenze (Test [15]): eine Abloesung als zwei getrennte Ketten (altes Gehalt endet, neues ab dem Folgetag, ohne predecessor_id)
 -- zaehlt bis zum Wechsel doppelt, last_valid_day + starts_on zeigen das Paar.
 -- Gelesen von monthly_cashflow_overview (Familie) und parent_cashflow_overview (Eltern-Blick) -> beide
 -- Sichten klassifizieren identisch (keine zweite Definition). Reihenfolge (keine Exklusivitaet ueber
 -- Tabellen hinweg, daher feste CASE-Prioritaet):
---   income          monthly_equivalent > 0 (auch eine Vorsorge-AUSZAHLUNG)
+--   income          monthly_equivalent > 0 (auch eine Vorsorge-Auszahlung)
 --   loan            Kredit-rp (loans.recurring_payment_id): Zins = Konsum, Rest = Tilgung. Zins aus
 --                   fn_loan_monthly_interest (dieselbe Formel wie die Kreditraten-Vorschau), in der
 --                   Kreditkonto-Waehrung, gedeckelt auf die Rate (Tilgung nie positiv). Fehlt der FX-Kurs
 --                   der Kreditwaehrung -> ganze Rate Konsum + fx_gap (nie still verschwinden).
 --   saving          negative rp eines Sparplans / Sparziels / Vorsorge-Vertrags (Vermoegensaufbau, ruhend
---                   stellbar -> keine Pflichtausgabe). Sparziel-Raten MIT Topf (target_account_id) zaehlen
+--                   stellbar -> keine Pflichtausgabe). Sparziel-Raten mit Topf (target_account_id) zaehlen
 --                   hier als Sparen, obwohl sie ein interner Transfer sind.
 --   saving_internal Spar-rp auf einem Konto, dessen Spar-Abfluss vollstaendig von laufenden Spar-Ueberweisungen
 --                   gegenfinanziert ist (Sparziel-Topf = Verrechnungskonto des Sparplans; Eltern->Kind-Ziel +
 --                   Kind-Sparplan) -> 0: das Geld galt beim Verlassen des Girokontos schon als gespart. Bei
 --                   teilweiser Deckung bleibt die Klasse saving, nur der gegenfinanzierte Anteil faellt heraus.
---   transfer        sonstiger interner Transfer own<->own (cashflow-neutral, WS-2; vertagt: "Cash-Runway ueber
---                   ALLE Transfers" bewusst YAGNI) -> 0
+--   transfer        sonstiger interner Transfer own<->own (cashflow-neutral; ein Cash-Runway ueber
+--                   alle Transfers ist bewusst nicht gebaut) -> 0
 --   consumption     alles Uebrige
 -- Geld-Spalten in EUR, Vorzeichen roh (Ausgaben <= 0): income_eur, consumption_eur, principal_eur, saving_eur.
 -- fx_gap = ein Betrag != 0 ohne EUR-Kurs (Zeile oder Kreditwaehrung) -> Summen melden es als has_fx_gap.
@@ -195,7 +191,7 @@ WITH base AS (
            ln.loan_id,
            ln.loan_interest_eur,
            ln.loan_interest_native,
-           -- Besitzer zeigen immer auf den KOPF der Vorgaenger-Kette (Paket 2) -> eine alte, noch laufende Zeile eines
+           -- Besitzer zeigen immer auf den Kopf der Vorgaenger-Kette -> eine alte, noch laufende Zeile eines
            -- in die Zukunft geaenderten Sparplans/Kredits bleibt so Sparen/Kredit statt Konsum.
            EXISTS (SELECT 1 FROM finance.savings_plans sp WHERE sp.recurring_payment_id = h.head)
            OR EXISTS (SELECT 1 FROM finance.savings_goals g WHERE g.recurring_payment_id = h.head)
@@ -220,7 +216,7 @@ WITH base AS (
       AND finance.fn_recurring_starts_within_cycle(rp.valid_from, rp.schedule_interval, rp.schedule_unit, current_date)
 ),
 -- Spar-Zufluss je Konto (laufende Spar-Ueberweisungen in dieses Konto) vs. Spar-Abfluss von diesem Konto: der
--- gegenfinanzierte ANTEIL der dortigen Spar-Raten (LEAST(Zufluss/Abfluss, 1)) zaehlt nicht erneut als Sparen.
+-- gegenfinanzierte Anteil der dortigen Spar-Raten (LEAST(Zufluss/Abfluss, 1)) zaehlt nicht erneut als Sparen.
 -- Anteilig, nicht die ganze Rate: Topf bekommt 50 Ziel-Rate, Sparplan bucht 500 ab -> 450 bleiben echtes Sparen.
 saving_in AS (
     SELECT target_account_id AS acct, sum(-monthly_equivalent_eur) AS amt
@@ -284,11 +280,10 @@ FROM classed c;
 
 -- ============================================================
 -- VIEW: Regular recurring payments normalized to monthly amounts (Familie)
--- Running payments plus those waiting for their first date within one rhythm (starts_on), so
--- the LLM can read the full cashflow picture without WHERE clauses.
--- WS-2 (Multi-Member): INTERNE Transfers own<->own sind ausgeschlossen (cashflow_class='transfer'), damit
--- eine Bewegung zwischen eigenen Konten nicht als Haushalts-Ein-/Ausgabe doppelzaehlt (Standard Actual/YNAB).
--- Audit Paket 3: Sparziel-Raten in einen Topf stehen als cashflow_class='saving' DRIN; Klasse + EUR-Anteile
+-- Laufende Zahlungen plus die, die innerhalb eines Rhythmus ihren ersten Termin haben (starts_on).
+-- Interne Transfers own<->own sind ausgeschlossen (cashflow_class='transfer'), damit eine Bewegung
+-- zwischen eigenen Konten nicht als Haushalts-Ein-/Ausgabe doppelzaehlt (Standard Actual/YNAB).
+-- Sparziel-Raten in einen Topf stehen als cashflow_class='saving' drin; Klasse + EUR-Anteile
 -- (income/consumption/principal/saving) kommen aus recurring_cashflow_classified.
 -- ============================================================
 CREATE VIEW finance.monthly_cashflow_overview AS
@@ -300,8 +295,7 @@ WHERE cashflow_class <> 'transfer';
 
 -- ============================================================
 -- VIEW: Account overview with live balance
--- Base view for almost every account-related LLM query:
--- joins accounts with their auto-maintained balance.
+-- Basis fast jeder Konten-Abfrage: accounts + der per Trigger gepflegte Saldo.
 -- ============================================================
 CREATE VIEW finance.account_overview AS
 SELECT
@@ -310,8 +304,8 @@ SELECT
     a.account_type,
     a.bank,
     a.account_number,
-    -- WS-4: Freitext-account_holder abgeloest -> abgeleitete Eigentuemer-Anzeige aus dem typisierten FK
-    -- (core.fn_household_persons-Fenster; NULL=Haushalt). Output-Spaltenname bleibt account_holder (Consumer-stabil).
+    -- Eigentuemer-Anzeige aus dem typisierten FK (core.fn_household_persons-Fenster; NULL=Haushalt).
+    -- Output-Spaltenname bleibt account_holder (Consumer-stabil).
     COALESCE(ap.full_name, 'Haushalt')  AS account_holder,
     a.owner_person_id,
     a.currency,
@@ -322,7 +316,7 @@ SELECT
     b.balance,
     b.updated_at  AS balance_updated_at,
     a.notes,
-    -- Multi-Waehrung (ans Ende angehaengt): Saldo in EUR-Basis fuer Roll-ups/Net-Worth.
+    -- Saldo in EUR-Basis fuer Roll-ups/Net-Worth.
     finance.fn_to_eur(b.balance, a.currency) AS balance_eur,
     finance.fn_account_label(a.emoji, a.account_type, a.name) AS label
 FROM finance.accounts a
@@ -330,16 +324,16 @@ LEFT JOIN finance.account_balances b ON b.account_id = a.id
 LEFT JOIN core.fn_household_persons() ap ON ap.person_id = a.owner_person_id;
 
 -- ============================================================
--- VIEW: Savings goal account share  (Sparziel-Zweckbindung 2026-10-27 — die EINE Quelle des Ziel-Anteils je Konto)
+-- VIEW: Savings goal account share  (die eine Quelle des Ziel-Anteils je Konto)
 -- Je (Ziel, Konto): Anteil = getaggte Transfers (transactions.savings_goal_id: Raten-Haben-Bein, deposit/withdrawal/
 -- relocate) + Journal savings_goal_reserve_entries (Zuordnung ohne Geldbewegung, Sparplan-Kauf, Umschichten, void).
 -- Beide Quellen sind vorzeichen-roh und derived (YNAB-Assign/Firefly-Piggy: Zuordnung != Geldbewegung).
 --   share_eur    = Summe je Zeile fn_to_eur(Betrag, Waehrung, Datum) — dieselbe Live-Semantik fuer beide Quellen
 --                  (die Legs eines goal-Kaufs kuerzen sich nach EUR exakt).
---   share_native = Anteil in KONTOWAEHRUNG, nur fuer saldo-basierte Konten (fn_goal_pot_account_types): Tag-Legs sind
+--   share_native = Anteil in Kontowaehrung, nur fuer saldo-basierte Konten (fn_goal_pot_account_types): Tag-Legs sind
 --                  per Definition in Kontowaehrung, Journal-Zeilen dort laut fn_book_savings_reservation ebenfalls.
 --                  Depot: NULL (manual = EUR, sparplan_buy = Depot-Waehrung -> nativ nicht addierbar).
---   manual_eur   = Anteil aus Hand-Zuordnungen (kind='manual'): Startbestand/spaetere Zuordnung, KEIN Spartempo
+--   manual_eur   = Anteil aus Hand-Zuordnungen (kind='manual'): Startbestand/spaetere Zuordnung, kein Spartempo
 --                  (savings_goal_progress rechnet ihn aus observed_monthly_rate heraus).
 -- Konsumenten: savings_goal_progress, account_reserve_status, depot_reserve_status, savings_goal_reserve_breakdown,
 --   fn_goal_reserve_accounts, fn_book_savings_reservation, fn_void_transaction, fn_delete_account.
@@ -368,8 +362,8 @@ SELECT l.goal_id,
        sum(l.eur)                                                     AS share_eur,
        CASE WHEN a.account_type = ANY (finance.fn_goal_pot_account_types()) THEN sum(l.amount) END AS share_native,
        COALESCE(sum(l.eur) FILTER (WHERE l.is_manual), 0)             AS manual_eur,
-       -- Mini-App 2026-10-28 (ans Ende angehaengt): ein Bein ohne Wechselkurs faellt sonst STILL aus share_eur (sum
-       -- ignoriert NULL) -> als Luecke melden (Muster networth_by_asset_class.has_fx_gap).
+       -- Ein Bein ohne Wechselkurs faellt sonst still aus share_eur (sum ignoriert NULL) -> als Luecke melden
+       -- (Muster networth_by_asset_class.has_fx_gap).
        COALESCE(bool_or(l.amount <> 0 AND l.eur IS NULL), false)      AS has_fx_gap,
        finance.fn_account_label(a.emoji, a.account_type, a.name)      AS account_label
 FROM legs_eur l
@@ -378,43 +372,41 @@ JOIN finance.accounts a ON a.id = l.account_id
 GROUP BY l.goal_id, g.status, l.account_id, a.name, a.account_type, a.currency, a.emoji;
 
 -- ============================================================
--- VIEW: Savings goal progress  (WS-A Phase S: RESERVE-Modell, Ziel-Tag-Envelope)
--- current_amount = aktuelle RESERVE des Ziels = vorzeichen-rohe Summe ALLER mit dem Ziel markierten
--- Buchungen (transactions.savings_goal_id) — ueber BELIEBIG viele Konten (Tagesgeld + Depot). Reserve-
+-- VIEW: Savings goal progress  (Reserve-Modell, Ziel-Tag-Envelope)
+-- current_amount = aktuelle Reserve des Ziels = vorzeichen-rohe Summe aller mit dem Ziel markierten
+-- Buchungen (transactions.savings_goal_id) — ueber beliebig viele Konten (Tagesgeld + Depot). Reserve-
 -- Zufluss (Sparrate-Haben-Bein, Einmal-Summe) zaehlt +, Entnahme/Reserve-Abfluss zaehlt - => eine Entnahme
--- SENKT den Fortschritt automatisch (Fall "Erspartes anderweitig gebraucht"). Etablierter Standard
--- (YNAB/Actual-Umschlag, Firefly-Piggy): Fortschritt = aktueller Topf-STAND, nicht die Summe der Einzahlungen.
---   * Nur das RESERVE-Bein wird getaggt (das Haben-Bein der Rate-Umbuchung; nie beide Beine -> sonst Netto-0).
+-- senkt den Fortschritt automatisch (Fall "Erspartes anderweitig gebraucht"). Etablierter Standard
+-- (YNAB/Actual-Umschlag, Firefly-Piggy): Fortschritt = aktueller Topf-Stand, nicht die Summe der Einzahlungen.
+--   * Nur das Reserve-Bein wird getaggt (das Haben-Bein der Rate-Umbuchung; nie beide Beine -> sonst Netto-0).
 --     Die Stempelung macht fn_book_recurring_transfer (Rate eines Ziels); Entnahme/Einmal tragen das Tag direkt.
---   * Kein Tag UND kein Journal -> current_amount 0 (Defensiv-Zweig; ein Ziel ohne Reserve-Bewegung hat 0).
+--   * Kein Tag und kein Journal -> current_amount 0 (Defensiv-Zweig; ein Ziel ohne Reserve-Bewegung hat 0).
 --   * Journal-Term = signed SUM(savings_goal_reserve_entries, je Zeile via fn_to_eur nach EUR) je Ziel (append-only,
---     DERIVED -> driftfrei), ADDITIV zum Tag-Term; seit 2026-10-27 auf jedem zuordenbaren Konto (Zuordnung ohne
---     Geldbewegung). Beides liefert savings_goal_account_share. Der Depot-MARKTWERT ist NUR Deckung.
---   * RETIRED (finance:V008): savings_goal_holdings (Marktwert-Term, doppelzaehl-anfaellig) + savings_goal_
---     allocations (Earmark/FIRE); das FIRE-Topf-Netting ist vertagt (Fundament zuerst).
+--     derived -> driftfrei), additiv zum Tag-Term; auf jedem zuordenbaren Konto (Zuordnung ohne
+--     Geldbewegung). Beides liefert savings_goal_account_share. Der Depot-Marktwert ist nur Deckung.
 -- Erkenntnis-Fakten (DB rechnet, LLM reasoned darueber): expected_percent (Zeit-Pace), pace_drift_pp,
 --   observed_monthly_rate, projected_completion_date (beim beobachteten Tempo), required_catchup_rate
 --   (um das Zieldatum zu halten). Anker durchgaengig created_at; Div/0 + Vorzeichen geguardet
 --   (projected/catchup = NULL bei gedecktem Ziel bzw. Zieldatum nicht in der Zukunft). Toleranz-Schwelle
---   bewusst NICHT hier — der Advisor wendet drift_pace_pp an.
--- Multi-Member (WS-3b): traegt beneficiary_person_id (beguenstigte Person je Ziel; NULL = Haushalt) ->
---   Pro-Kind-Ziel-Fortschritt; Fortschritt haengt am Ziel-rp, NICHT am finanzierenden Konto (orthogonal).
+--   bewusst nicht hier — der Advisor wendet drift_pace_pp an.
+-- Traegt beneficiary_person_id (beguenstigte Person je Ziel; NULL = Haushalt) ->
+--   Pro-Kind-Ziel-Fortschritt; Fortschritt haengt am Ziel-rp, nicht am finanzierenden Konto (orthogonal).
 -- Output-Spaltennamen current_amount/progress_percent sind consumer-stabil (fn_advisor_review liest sie namentlich).
 -- ============================================================
 CREATE VIEW finance.savings_goal_progress AS
 WITH share AS (
-    -- Tag-Term + Journal-Term je Ziel aus der EINEN Quelle savings_goal_account_share (EUR je Zeile, Live-Semantik).
-    -- Der MARKTWERT eines Depots ist NUR Deckel/Deckung (depot_reserve_status), NIE der Fortschritt -> eine
-    -- Kurs-Explosion blaeht current_amount nicht auf (das fruehere Marktwert-Modell ist mit finance:V008 RETIRED).
+    -- Tag-Term + Journal-Term je Ziel aus der einen Quelle savings_goal_account_share (EUR je Zeile, Live-Semantik).
+    -- Der Marktwert eines Depots ist nur Deckel/Deckung (depot_reserve_status), nie der Fortschritt -> eine
+    -- Kurs-Explosion blaeht current_amount nicht auf.
     -- manual = Hand-Zuordnungen (Startbestand), aus dem Spartempo herausgerechnet.
     SELECT goal_id, sum(share_eur) AS saved, sum(manual_eur) AS manual, bool_or(has_fx_gap) AS fx_gap
     FROM finance.savings_goal_account_share
     GROUP BY goal_id
 ),
--- saved = aktueller Reserve-Stand (Tags + Journal). EINE Quelle fuer ALLE Erkenntnis-Fakten unten (sonst driften
+-- saved = aktueller Reserve-Stand (Tags + Journal). Eine Quelle fuer alle Erkenntnis-Fakten unten (sonst driften
 -- current_amount und progress/pace auseinander).
--- Audit Paket 3: measurable = FALSE genau dann, wenn die Raten-rp des Ziels GERADE LAEUFT (Praedikat wie
--- active_recurring_payments) und KEINEN Topf hat (target_account_id NULL): die Rate geht dann als nackte
+-- measurable = FALSE genau dann, wenn die Raten-rp des Ziels gerade laeuft (Praedikat wie
+-- active_recurring_payments) und keinen Topf hat (target_account_id NULL): die Rate geht dann als nackte
 -- Abbuchung unverfolgt vom Konto ab -> Fortschritt/Tempo sind nicht messbar (statt Dauer-"hinter Plan").
 -- Beendete/pausierte Raten + einmalige getaggte Einzahlungen bzw. Journal-Eintraege bleiben messbar.
 base AS (
@@ -422,9 +414,9 @@ base AS (
            coalesce(s.saved, 0) AS saved,
            coalesce(s.fx_gap, false) AS fx_gap,
            -- Spartempo-Basis: was nicht aus Hand-Zuordnung stammt (nie negativ; eine Entnahme senkt es mit). Eine
-           -- NEGATIVE Netto-Zuordnung (Zuordnung unter schon eingezahltes Geld gesenkt) ist kein Spartempo -> bei 0 gekappt.
+           -- negative Netto-Zuordnung (Zuordnung unter schon eingezahltes Geld gesenkt) ist kein Spartempo -> bei 0 gekappt.
            GREATEST(coalesce(s.saved, 0) - GREATEST(coalesce(s.manual, 0), 0), 0) AS paced,
-           -- ueber die ganze Vorgaenger-Kette (Paket 2): eine alte, noch laufende Zeile ohne Topf zaehlt mit, auch wenn
+           -- ueber die ganze Vorgaenger-Kette: eine alte, noch laufende Zeile ohne Topf zaehlt mit, auch wenn
            -- der Kopf (auf den das Ziel zeigt) erst spaeter gilt.
            NOT EXISTS (SELECT 1
                        FROM finance.fn_recurring_lineage(g.recurring_payment_id) lid
@@ -461,13 +453,13 @@ SELECT
                                    / (b.target_date - b.created_at::date), 0), 1) * 100
                     - b.saved / b.target_amount * 100, 2)
          ELSE NULL END                                  AS pace_drift_pp,
-    -- beobachtetes Monatstempo = bisher GESPART (ohne Hand-Zuordnungen: ein Startbestand von 2000 ist kein Tempo von
+    -- beobachtetes Monatstempo = bisher gespart (ohne Hand-Zuordnungen: ein Startbestand von 2000 ist kein Tempo von
     -- 2000/Monat) / vergangene Monate (GREATEST(1,..)-Guard). NULL bei paced<=0 (kein negatives "Spartempo").
     CASE WHEN b.paced > 0 AND b.measurable
          THEN round(b.paced
               / GREATEST(1, (current_date - b.created_at::date)::numeric / finance.fn_days_per_month()), 2)
          ELSE NULL END                                  AS observed_monthly_rate,
-    -- voraussichtliches Erreichungs-Datum beim beobachteten Tempo; NULL wenn Tempo 0 ODER bereits gedeckt
+    -- voraussichtliches Erreichungs-Datum beim beobachteten Tempo; NULL wenn Tempo 0 oder bereits gedeckt
     CASE WHEN b.paced > 0 AND b.target_amount - b.saved > 0 AND b.measurable
          THEN (current_date + (round(
                  (b.target_amount - b.saved)
@@ -475,22 +467,22 @@ SELECT
                     / GREATEST(1, (current_date - b.created_at::date)::numeric / finance.fn_days_per_month()))
                  * finance.fn_days_per_month())::int) * interval '1 day')::date
          ELSE NULL END                                  AS projected_completion_date,
-    -- noetige Nachhol-Rate, um das Zieldatum zu halten; NULL wenn Zieldatum nicht in der Zukunft ODER gedeckt
+    -- noetige Nachhol-Rate, um das Zieldatum zu halten; NULL wenn Zieldatum nicht in der Zukunft oder gedeckt
     CASE WHEN b.target_date > current_date AND b.target_amount - b.saved > 0 AND b.measurable
          THEN round((b.target_amount - b.saved)
                     / GREATEST(1, ceil((b.target_date - current_date)::numeric / finance.fn_days_per_month())), 2)
          ELSE NULL END                                  AS required_catchup_rate,
     b.recurring_payment_id,
     b.beneficiary_person_id,
-    b.priority,                                          -- WS-C1: Engpass-Reihung (kleiner = wichtiger; NULL = unpriorisiert)
+    b.priority,                                          -- Engpass-Reihung (kleiner = wichtiger; NULL = unpriorisiert)
     b.status,
     b.notes,
-    b.measurable                                        AS progress_measurable,  -- Audit Paket 3 (ans Ende angehaengt)
-    b.saved - b.paced                                   AS earmarked_amount,     -- davon Hand-Zuordnung (EUR; 2026-10-27)
+    b.measurable                                        AS progress_measurable,
+    b.saved - b.paced                                   AS earmarked_amount,     -- davon Hand-Zuordnung (EUR)
     b.real_estate_id,                                   -- gesetzt = Instandhaltungsruecklage (ohne Ziel/Datum -> Prozent/Rest/Pace NULL)
-    b.fx_gap                                            AS has_fx_gap,           -- ein Ziel-Anteil ohne Wechselkurs: current_amount zu niedrig (2026-10-28)
-    -- Rueckstand in EUR = Soll-Stand heute (linearer Zeit-Pace wie pace_drift_pp, UNGERUNDET) minus Gespartes, >= 0;
-    -- NULL ohne Messbarkeit oder bei fx-Luecke (der Stand waere zu niedrig, der Rueckstand zu hoch). Mini-App 2026-10-30.
+    b.fx_gap                                            AS has_fx_gap,           -- ein Ziel-Anteil ohne Wechselkurs: current_amount zu niedrig
+    -- Rueckstand in EUR = Soll-Stand heute (linearer Zeit-Pace wie pace_drift_pp, ungerundet) minus Gespartes, >= 0;
+    -- NULL ohne Messbarkeit oder bei fx-Luecke (der Stand waere zu niedrig, der Rueckstand zu hoch).
     CASE WHEN b.target_date > b.created_at::date AND b.target_amount > 0 AND b.measurable AND NOT b.fx_gap
          THEN round(GREATEST(LEAST(GREATEST((current_date - b.created_at::date)::numeric
                                             / (b.target_date - b.created_at::date), 0), 1) * b.target_amount
@@ -499,21 +491,21 @@ SELECT
 FROM base b;
 
 -- ============================================================
--- VIEW: Account reserve status  (WS-C2 Phase S — proaktiver Reserve-Waechter)
--- Pro AKTIVEM saldo-basiertem Konto (fn_goal_pot_account_types; Depots deckt depot_reserve_status per Marktwert —
+-- VIEW: Account reserve status  (proaktiver Reserve-Waechter)
+-- Pro aktivem saldo-basiertem Konto (fn_goal_pot_account_types; Depots deckt depot_reserve_status per Marktwert —
 --   ihr Buch-Saldo ~0 laege sonst immer unter der Zuordnung = Schein-Breach): live-Saldo vs. der darauf fuer aktive
---   Sparziele RESERVIERTE Betrag.
---   reserved = Summe savings_goal_account_share.share_native (Tags + Journal) ueber AKTIVE Ziele, in der
---     NATIVE-Waehrung des Kontos -> Saldo vs. reserviert ist apfel-zu-apfel, KEIN FX. Quelle ist DIESELBE wie
+--   Sparziele reservierte Betrag.
+--   reserved = Summe savings_goal_account_share.share_native (Tags + Journal) ueber aktive Ziele, in der
+--     Waehrung des Kontos -> Saldo vs. reserviert ist apfel-zu-apfel, kein FX. Quelle ist dieselbe wie
 --     savings_goal_progress, nur per-Konto statt per-Ziel gruppiert.
 --   breach = reserved>0 AND balance<reserved -> der Saldo deckt die zurueckgelegte Reserve nicht mehr
 --     (der Owner hat „in seinen Sparbetrag eingegriffen"). Etablierter Standard: YNAB „Warn when target balance
---     not reached", Firefly „account balance >= sum of piggy allocations" — bei uns ADVISORY (nie blockierend).
---   shortfall = GREATEST(reserved-balance, 0) (nie NULL; balance/reserved COALESCEt).
--- WICHTIG (Tag-Envelope, per-KONTO nicht per-Ziel): der Konto-Saldo poolt alle Earmarks -> „aus welchem Ziel
---   kam dieser Euro?" ist keine reale Tatsache; das ist eine Konto-LIQUIDITAETS-Sicht. Per-Ziel-Drill-down
+--     not reached", Firefly „account balance >= sum of piggy allocations" — bei uns advisory (nie blockierend).
+--   shortfall = GREATEST(reserved-balance, 0) (nie NULL; balance/reserved per COALESCE).
+-- Wichtig (Tag-Envelope, per-Konto nicht per-Ziel): der Konto-Saldo poolt alle Earmarks -> „aus welchem Ziel
+--   kam dieser Euro?" ist keine reale Tatsache; das ist eine Konto-Liquiditaets-Sicht. Per-Ziel-Drill-down
 --   beantwortet der Agent on demand aus savings_goal_progress.
--- Ein completed/cancelled-Ziel faellt aus dem status='active'-Join -> es GIBT SEINE RESERVE FREI -> ein Konto
+-- Ein completed/cancelled-Ziel faellt aus dem status='active'-Join -> es gibt seine Reserve frei -> ein Konto
 --   kann dadurch ent-breachen (kein Bug). Ein hart-geloeschtes Ziel: savings_goal_id ON DELETE SET NULL -> der
 --   Tag faellt automatisch raus.
 -- Konsumenten: fn_reserve_breach (per-Konto-Read fuer den Buch-fn-Fold), fn_advisor_review (reserve_coverage),
@@ -540,11 +532,11 @@ WHERE a.status = 'active'
 
 -- ============================================================
 -- VIEW: Real estate overview with associated debt and net equity
--- Joins properties with their OUTSTANDING loans (via real_estate_id; active ODER paused =
--- finance.fn_loan_is_outstanding, Audit Paket 2 -- vorher nur active, ein pausierter Kredit fehlte im Eigenkapital)
+-- Joins properties with their outstanding loans (via real_estate_id; active oder paused =
+-- finance.fn_loan_is_outstanding, sonst fehlte ein pausierter Kredit im Eigenkapital)
 -- and the loan accounts' current Restschuld (negative balance).
 -- net_equity = current_value + associated_debt (debt is negative). active_loan_count zaehlt nur aktive.
--- has_fx_gap (am Ende): eine Restschuld in Fremdwaehrung ohne Kurs fiele sonst still als 0 aus der Summe.
+-- has_fx_gap: eine Restschuld in Fremdwaehrung ohne Kurs fiele sonst still als 0 aus der Summe.
 -- ============================================================
 CREATE VIEW finance.real_estate_overview AS
 SELECT
@@ -552,7 +544,7 @@ SELECT
     re.name,
     re.current_value,
     re.value_updated_at,
-    -- WS-4: Freitext-owner abgeloest -> abgeleitete Eigentuemer-Anzeige (NULL=Haushalt); Name bleibt owner.
+    -- Eigentuemer-Anzeige aus dem typisierten FK (NULL=Haushalt); Name bleibt owner.
     COALESCE(rep.full_name, 'Haushalt')  AS owner,
     re.owner_person_id,
     re.status,
@@ -562,7 +554,7 @@ SELECT
     count(l.id) FILTER (WHERE l.status = 'active')      AS active_loan_count,
     re.notes,
     COALESCE(bool_or(b.balance <> 0 AND finance.fn_to_eur(b.balance, ka.currency) IS NULL), false) AS has_fx_gap,
-    re.living_area_m2,                                   -- Instandhaltungsruecklage (2026-10-27)
+    re.living_area_m2,                                   -- Instandhaltungsruecklage
     re.year_built
 FROM finance.real_estate re
 LEFT JOIN finance.loans l
@@ -576,10 +568,10 @@ GROUP BY re.id, re.name, re.current_value, re.value_updated_at,
          rep.full_name, re.owner_person_id, re.status, re.notes, re.living_area_m2, re.year_built;
 
 -- ============================================================
--- VIEW: maintenance_reserve_status (Instandhaltungsruecklage, 2026-10-27)
--- Je AKTIVER Immobilie (plus jede verkaufte, deren Ruecklage noch aktiv ist): Empfehlung nach II. BV
+-- VIEW: maintenance_reserve_status (Instandhaltungsruecklage)
+-- Je aktiver Immobilie (plus jede verkaufte, deren Ruecklage noch aktiv ist): Empfehlung nach II. BV
 -- (finance.fn_maintenance_reserve_rate, NULL ohne Flaeche/Baujahr), die aktive Ruecklage (savings_goals.real_estate_id),
--- ihr Stand (savings_goal_progress.current_amount) und die EINGESTELLTE Monatsrate in EUR = Kopf der Raten-Kette
+-- ihr Stand (savings_goal_progress.current_amount) und die eingestellte Monatsrate in EUR = Kopf der Raten-Kette
 -- (auf ihn zeigt das Ziel immer), solange er aktiv und nicht beendet ist - auch wenn die erste Abbuchung erst kommt
 -- (sonst meldete der Advisor direkt nach dem Anlegen "0 EUR laufen"). 0 ohne laufende Rate, NULL ohne Ruecklage oder
 -- ohne Kurs fuer die Konto-Waehrung (has_fx_gap; ein fehlender Kurs faellt nie still als 0 aus).
@@ -623,7 +615,7 @@ SELECT b.id                                                       AS real_estate
        CASE WHEN (b.rec->>'ok')::boolean AND b.goal_id IS NOT NULL
             THEN (b.rec->>'monthly_eur')::numeric - r.monthly_eur END                AS gap_monthly_eur,
        COALESCE(r.fx_gap, false)                                  AS has_fx_gap,
-       -- Uebersicht R3 (ans Ende): Jahresbetrag der Empfehlung (Flaeche x Satz) fuer die Herleitung in der Mini-App
+       -- Jahresbetrag der Empfehlung (Flaeche x Satz) fuer die Herleitung in der Mini-App
        CASE WHEN (b.rec->>'ok')::boolean THEN (b.rec->>'annual_eur')::numeric END  AS recommended_annual
 FROM base b
 LEFT JOIN run r ON r.goal_id = b.goal_id
@@ -633,8 +625,8 @@ LEFT JOIN finance.savings_goal_progress p ON p.id = b.goal_id;
 -- VIEW: Pension overview (net-worth building block)
 -- One row per pension provision + the linked Beitrag (recurring_payment) if any.
 -- current_value may be NULL (e.g. statutory) -> excluded from net-worth sums by callers.
--- WP2: Beitrag je Abbuchung + Rhythmus kommen aus dem heute gueltigen Glied der Beitrags-Kette; monthly_contribution
--- ist der daraus abgeleitete Monatswert (rp.monthly_equivalent; vorher roh rp.amount -> bei jaehrlichem Beitrag falsch).
+-- Beitrag je Abbuchung + Rhythmus kommen aus dem heute gueltigen Glied der Beitrags-Kette; monthly_contribution
+-- ist der daraus abgeleitete Monatswert (rp.monthly_equivalent; roh rp.amount waere bei jaehrlichem Beitrag falsch).
 -- ============================================================
 CREATE VIEW finance.pension_overview AS
 SELECT
@@ -643,7 +635,7 @@ SELECT
     p.pension_type,
     p.provider,
     p.contract_number,
-    -- WS-4: Freitext-owner abgeloest -> abgeleitete Eigentuemer-Anzeige (NULL=Haushalt); Name bleibt owner.
+    -- Eigentuemer-Anzeige aus dem typisierten FK (NULL=Haushalt); Name bleibt owner.
     COALESCE(pp.full_name, 'Haushalt')                 AS owner,
     p.owner_person_id,
     p.current_value,
@@ -654,7 +646,7 @@ SELECT
     p.recurring_payment_id,
     p.status,
     p.notes,
-    abs(rc.amount)                                     AS contribution_amount,   -- WP2: Beitrag je Abbuchung
+    abs(rc.amount)                                     AS contribution_amount,   -- Beitrag je Abbuchung
     rc.schedule_interval,
     rc.schedule_unit
 FROM finance.pension p
@@ -664,11 +656,11 @@ LEFT JOIN core.fn_household_persons() pp ON pp.person_id = p.owner_person_id;
 -- ============================================================
 -- VIEW: Currently active insurances
 -- Filters to active, not yet ended insurances and joins the debit account name.
--- EINE QUELLE (WP2, finance:V027): Beitrag je Abbuchung, Rhythmus, Tag und Konto aus dem heute gueltigen Glied der
+-- Eine Quelle: Beitrag je Abbuchung, Rhythmus, Tag und Konto aus dem heute gueltigen Glied der
 -- Beitrags-Kette, das Vertragsende (valid_to, exklusiv) vom Kopf der Kette. annual_premium/monthly_equivalent sind
--- ABGELEITET (fn_annual_equivalent bzw. rp.monthly_equivalent; Spaltennamen consumer-stabil, positiv). Ohne
+-- abgeleitet (fn_annual_equivalent bzw. rp.monthly_equivalent; Spaltennamen consumer-stabil, positiv). Ohne
 -- Beitrags-Kette (beitragsfreie Police) sind die Beitrags-Spalten NULL.
--- Bewusst KEIN Filter auf valid_from (Befund 2026-11-01): ohne genannten Vertragsbeginn steht dort die erste Abbuchung,
+-- Bewusst kein Filter auf valid_from: ohne genannten Vertragsbeginn steht dort die erste Abbuchung,
 -- beim Erfassen meist die naechste. Aktiv = Status aktiv und nicht beendet. Bei uns anders als active_recurring_payments:
 -- dort entscheidet der Start, ob gerade gezahlt wird, hier nur, ob der Vertrag existiert (Cashflow liest die Beitrags-rp).
 -- ============================================================
@@ -678,7 +670,7 @@ SELECT
     i.name,
     i.insurance_company,
     i.policy_number,
-    -- WS-4: Freitext-policyholder abgeloest -> abgeleitete Anzeige (NULL=Haushalt); Name bleibt policyholder.
+    -- Anzeige aus dem typisierten FK (NULL=Haushalt); Name bleibt policyholder.
     COALESCE(ip.full_name, 'Haushalt')  AS policyholder,
     i.policyholder_person_id,
     finance.fn_annual_equivalent(abs(rc.amount), rc.schedule_interval, rc.schedule_unit,
@@ -692,9 +684,9 @@ SELECT
     rc.account_id,
     a.name  AS account_name,
     i.notes,
-    abs(rc.amount)                      AS premium_amount,      -- WP2 (am Ende): Beitrag je Abbuchung
+    abs(rc.amount)                      AS premium_amount,      -- Beitrag je Abbuchung
     i.recurring_payment_id,
-    -- Am Ende: inklusives Vertragsende. valid_to bleibt, weil Monitor-Trigger freies SQL auf dieser View speichern koennen.
+    -- Inklusives Vertragsende. valid_to bleibt, weil Monitor-Trigger freies SQL auf dieser View speichern koennen.
     finance.fn_recurring_last_valid_day(i.recurring_payment_id) AS last_valid_day
 FROM finance.insurances i
 LEFT JOIN finance.recurring_payments rc ON rc.id = finance.fn_recurring_current(i.recurring_payment_id, current_date)
@@ -705,13 +697,13 @@ WHERE i.status = 'active'
   AND (hd.valid_to IS NULL OR hd.valid_to > current_date);
 
 -- ============================================================
--- VIEW: Depot holdings with account name, book value AND live market value (Phase M)
+-- VIEW: Depot holdings with account name, book value and live market value
 -- book_value      = shares * average_purchase_price (Gewinn-Basis, immer gefuellt).
--- market_value    = shares * juengster market_prices.price (NULL wenn KEIN Live-Kurs vorliegt -> ehrlich
+-- market_value    = shares * juengster market_prices.price (NULL wenn kein Live-Kurs vorliegt -> ehrlich
 --                   "noch kein Kurs" statt Buchwert-Fallback; der COALESCE-Fallback gilt nur im Summen-
---                   Roll-up networth_by_asset_class, NIE in dieser Anzeige-View, sonst suggeriert
+--                   Roll-up networth_by_asset_class, nie in dieser Anzeige-View, sonst suggeriert
 --                   unrealized_gain_eur=0 faelschlich "kein Gewinn"). price_as_of=NULL = derselbe Zustand.
--- Die Kurs-Waehrung ist die im market_prices gespeicherte (= COALESCE(quote_currency, currency), Phase M) ->
+-- Die Kurs-Waehrung ist die im market_prices gespeicherte (= COALESCE(quote_currency, currency)) ->
 -- die EUR-Konvertierung nimmt lp.price_currency, der Buchwert h.currency.
 -- ============================================================
 CREATE VIEW finance.depot_holdings_overview AS
@@ -733,27 +725,27 @@ SELECT
     round(h.shares * h.average_purchase_price, 2)       AS book_value,
     h.currency,
     h.updated_at,
-    -- Multi-Waehrung (ans Ende angehaengt): Buchwert in EUR-Basis fuer Portfolio-Roll-ups.
+    -- Buchwert in EUR-Basis fuer Portfolio-Roll-ups.
     finance.fn_to_eur(round(h.shares * h.average_purchase_price, 2), h.currency) AS book_value_eur,
-    -- Phase M Live-Marktwert (NULL wenn kein Kurs): market_value nativ in lp.price_currency, _eur konvertiert,
+    -- Live-Marktwert (NULL wenn kein Kurs): market_value nativ in lp.price_currency, _eur konvertiert,
     -- price_as_of als Kurs-Datum, unrealized_gain_eur = Marktwert_eur - Buchwert_eur (alle NULL ohne Kurs).
     lp.as_of                                            AS price_as_of,
     round(h.shares * lp.price, 2)                       AS market_value,
     finance.fn_to_eur(round(h.shares * lp.price, 2), lp.price_currency)          AS market_value_eur,
     finance.fn_to_eur(round(h.shares * lp.price, 2), lp.price_currency)
         - finance.fn_to_eur(round(h.shares * h.average_purchase_price, 2), h.currency) AS unrealized_gain_eur,
-    -- Monats-Check WP-G: die Tool-Descriptions (sell/set/delete holding) sprechen von "holding_id from
-    -- depot_holdings_overview"; der Agent fragte die Spalte so ab und lief auf einen Fehler (2026-10-22).
+    -- Die Tool-Descriptions (sell/set/delete holding) sprechen von "holding_id from
+    -- depot_holdings_overview"; die Spalte muss so heissen, sonst scheitert die Abfrage des Agenten.
     h.id                                                AS holding_id,
-    -- 2026-10-23 (ans Ende angehaengt): market_value steht in der Kurs-Waehrung (USD bei einer US-Notierung), die
+    -- market_value steht in der Kurs-Waehrung (USD bei einer US-Notierung), die
     -- Zeile traegt sonst nur die Buchwert-Waehrung (h.currency) -> price_currency macht das fuer freies SQL sichtbar;
     -- asset_class fuer den Anlageklassen-Schritt des Beraters (ungetaggte/unmapped Positionen benennen).
     lp.price_currency,
     h.asset_class,
-    -- Kurs-Luecken 2026-10-27 (ans Ende angehaengt): ok | stale | missing aus finance.fn_price_status (Init-Helfer,
+    -- ok | stale | missing aus finance.fn_price_status (Init-Helfer,
     -- dieselbe Regel wie fn_holding_price_status/fn_advisor_review) -> der Agent sagt "Kurs fehlt/veraltet".
     finance.fn_price_status(lp.as_of)                   AS price_status,
-    -- Uebersicht R3 (ans Ende angehaengt): der juengste Kurs selbst (in price_currency) fuer die Anzeige
+    -- Der juengste Kurs selbst (in price_currency) fuer die Anzeige
     -- "Kurs 148,60 $" bei Fremdwaehrung, statt ihn aus market_value / shares zurueckzurechnen.
     lp.price                                            AS latest_price
 FROM finance.depot_holdings h
@@ -762,22 +754,23 @@ LEFT JOIN latest_price lp ON lp.symbol = h.symbol
 WHERE h.shares > 0;   -- hide fully sold-off positions (shares=0)
 
 -- ============================================================
--- VIEW: Eltern-Scope-Cashflow (Multi-Member WS-3a, D2 — Custodial off-budget)
+-- VIEW: Eltern-Scope-Cashflow (Custodial off-budget)
 -- Anders als monthly_cashflow_overview (= Gesamt-Familie, Transfers strukturell neutral) zeigt diese
--- View den ELTERN-Blick: ein Eltern->Kind-Transfer verlaesst das Eltern-Budget und zaehlt als AUSGABE
+-- View den Eltern-Blick: ein Eltern->Kind-Transfer verlaesst das Eltern-Budget und zaehlt als Ausgabe
 -- (Geld bleibt im Familienvermoegen, ist aber dem Kind geschenkt). Standard YNAB/Actual: Transfer auf ein
--- off-budget-Konto = kategorisierte Ausgabe. Erkennung AUSSCHLIESSLICH ueber die Owner-ROLLE des Kontos
+-- off-budget-Konto = kategorisierte Ausgabe. Erkennung ausschliesslich ueber die Owner-Rolle des Kontos
 -- (owner_person_id -> role='child' via core.fn_household_persons(), dem publizierten DEFINER-Lesefenster —
--- finance liest agent.persons NIE direkt, D10), NIE ueber Verwendungszweck/Text. Regeln:
---   * Quell-Konto-Owner = child  -> RAUS (Kind-eigene Bewegung, kein Eltern-Cashflow; z. B. Kind-Sparplan).
---   * Transfer (target_account_id gesetzt): NUR rein, wenn Ziel-Konto-Owner = child (Eltern->Kind = Ausgabe);
---     own<->own / Eltern->Eltern-Transfer bleibt NEUTRAL (raus) — WS-2 own<->own unangetastet.
+-- finance liest agent.persons nie direkt, .claude/rules/sql.md Cross-Schema-Read-Regel), nie ueber
+-- Verwendungszweck/Text. Regeln:
+--   * Quell-Konto-Owner = child  -> raus (Kind-eigene Bewegung, kein Eltern-Cashflow; z. B. Kind-Sparplan).
+--   * Transfer (target_account_id gesetzt): nur rein, wenn Ziel-Konto-Owner = child (Eltern->Kind = Ausgabe);
+--     own<->own / Eltern->Eltern-Transfer bleibt neutral (raus).
 --   * Nicht-Transfer (target NULL) eines Nicht-Kind-Kontos -> zaehlt wie im Familie-Scope.
 -- Doppelzaehl-Schutz: im 200-EUR-Szenario zaehlt der Eltern-Scope den Transfer (-200), der Familie-Scope den
 -- Kind-Sparplan (-200) — nie beide in einem Scope. Der freie Transfer-name bleibt unveraendert (kein gespeichertes
 -- "Sparen fuers Kind"); is_child_transfer ist ein abgeleitetes Anzeige-Label (render-at-fetch).
--- Audit Paket 3: Klasse + EUR-Anteile aus recurring_cashflow_classified (dieselbe Klassifikation wie die Familie).
--- Im Eltern-Blick wird ein Eltern->Kind-Transfer OHNE Sparziel (Familie: 'transfer') zu 'consumption' (Geschenk);
+-- Klasse + EUR-Anteile aus recurring_cashflow_classified (dieselbe Klassifikation wie die Familie).
+-- Im Eltern-Blick wird ein Eltern->Kind-Transfer ohne Sparziel (Familie: 'transfer') zu 'consumption' (Geschenk);
 -- eine Sparziel-Rate in einen eigenen Topf (saving) bleibt drin, own<->own sonst raus.
 -- ============================================================
 CREATE VIEW finance.parent_cashflow_overview AS
@@ -817,7 +810,7 @@ WHERE srcp.role IS DISTINCT FROM 'child'                       -- Kind-eigene Be
        OR c.cashflow_class IN ('saving', 'saving_internal'));  -- Sparziel-Rate in einen eigenen Topf
 
 -- ============================================================
--- VIEW: Cashflow-Summen je Scope (Audit Paket 3) — EINE Aggregation fuer Familie ('family') und Eltern ('parent')
+-- VIEW: Cashflow-Summen je Scope — eine Aggregation fuer Familie ('family') und Eltern ('parent')
 -- Genau eine Zeile je Scope (VALUES-Liste, auch ohne Zahlungen). Summiert die Klassen-Anteile (EUR, Ausgaben <= 0):
 --   monthly_income / monthly_consumption (inkl. Kreditzins) / monthly_principal (Tilgung)
 --   monthly_obligations    = Konsum + Tilgung (Pflichtausgaben; Basis Notreserve/Runway)
@@ -827,7 +820,7 @@ WHERE srcp.role IS DISTINCT FROM 'child'                       -- Kind-eigene Be
 --   has_fx_gap             = eine Zeile ohne EUR-Kurs (Summen dann unvollstaendig, nie still 0)
 -- COALESCE je Summe: eine Klasse ohne Zeilen (oder nur mit FX-Luecken) ist 0, nie NULL -> die abgeleiteten
 -- Spalten kippen nie still auf NULL; leere Quelle = alles 0 + Zaehler 0 (Konsumenten guarden darauf).
--- Bewusst NEUE Namen (frueher monthly_expenses/monthly_net + monthly_liquidity_summary.liquidity_net):
+-- Bewusst neue Namen (nicht monthly_expenses/monthly_net/liquidity_net weiterverwenden):
 -- gespeicherte Alt-Abfragen schlagen laut fehl statt still umzudeuten. Insurances laufen ueber ihre rp.
 -- ============================================================
 CREATE VIEW finance.cashflow_summary_by_scope AS
@@ -879,10 +872,10 @@ FROM finance.cashflow_summary_by_scope WHERE scope = 'parent';
 
 -- ============================================================
 -- VIEW: Loan summary (single row aggregate)
--- Aggregates OUTSTANDING loans (finance.fn_loan_is_outstanding = active ODER paused, Audit Paket 2): total_debt
--- zaehlt beide (vorher nur active -> Advisor debt_total ohne pausierte Kredite, die im Vermoegen aber zaehlten);
+-- Aggregates outstanding loans (finance.fn_loan_is_outstanding = active oder paused): total_debt
+-- zaehlt beide (sonst fehlten pausierte Kredite in debt_total, obwohl sie im Vermoegen zaehlen);
 -- die Monatswerte (Rate, Zins, Tilgung) nur aktive (ein pausierter Kredit zahlt gerade nicht).
--- total_debt is negative (Restschuld). has_fx_gap (am Ende): Restschuld in Fremdwaehrung ohne Kurs.
+-- total_debt is negative (Restschuld). has_fx_gap: Restschuld in Fremdwaehrung ohne Kurs.
 -- ============================================================
 CREATE VIEW finance.loan_summary AS
 SELECT
@@ -890,7 +883,7 @@ SELECT
     -- Multi-Waehrung: alle Geldsummen in EUR-Basis konvertiert (mixed-currency-Summe waere sonst falsch).
     sum(current_remaining_debt_eur)                       AS total_debt,                                    -- negative, EUR
     sum(finance.fn_to_eur(monthly_annuity, currency)) FILTER (WHERE status = 'active')      AS total_monthly_payment,
-    -- Zins/Tilgung nur aus der aktuellen Restschuld (die Ursprungs-Summen entfielen mit finance:V025):
+    -- Zins/Tilgung nur aus der aktuellen Restschuld, nicht aus den Ursprungswerten:
     sum(finance.fn_to_eur(monthly_interest_current, currency)) FILTER (WHERE status = 'active')  AS total_monthly_interest,   -- aus aktueller Restschuld
     sum(finance.fn_to_eur(monthly_principal_current, currency)) FILTER (WHERE status = 'active') AS total_monthly_principal,  -- Rate - Zins
     count(*) FILTER (WHERE status = 'paused')             AS paused_loan_count,
@@ -899,36 +892,35 @@ FROM finance.loan_overview
 WHERE finance.fn_loan_is_outstanding(status);
 
 -- ============================================================
--- VIEW: Gesamtvermoegen nach Anlageklasse (WS2b — Core-Advisor-Engine)
+-- VIEW: Gesamtvermoegen nach Anlageklasse
 -- Eine Zeile je (bucket, asset_class) mit EUR-Wert; Quelle der per-Block-Allokations-Drift
 -- (finance.fn_advisor_review). bucket = Entitaets-Typ-Diskriminator -> die Drift-fn weiss, was
--- HANDELBAR ist (Rebalancing nur Depot + liquides Cash netto; Festgeld/Immobilie/Vorsorge/p2p/Kredit nie im Drift).
--- Klassen-Herkunft (Owner-Lock, docs/package-contract + packages/finance/CLAUDE.md):
+-- handelbar ist (Rebalancing nur Depot + liquides Cash netto; Festgeld/Immobilie/Vorsorge/p2p/Kredit nie im Drift).
+-- Klassen-Herkunft (packages/finance/CLAUDE.md):
 --   * Depot-Positionen (depot_holdings, shares>0): bucket='depot', asset_class = der Tag (NULL = ungetaggt
 --     -> null_tag-Report); Wert = shares x juengstem market_prices.price (Fallback Buchwert avg, bis ein
 --     Kurs vorliegt) in EUR.
---   * Cash (Giro/Tagesgeld): bucket='cash', Wert = BRUTTO-balance (WS-B: das Earmark-Netting via
---     savings_goal_allocations ist mit dem Tabellen-DROP entfallen; das FIRE-Topf-Netting ist bewusst nach
---     vertagt — Reserve-Fundament zuerst). Das Depot-Verrechnungs-/Tagesgeldkonto Typ cash zaehlt voll.
---   * WS3: Festgeld (fixed_deposit): EIGENE bucket='fixed_deposit'-Klasse, Wert = BRUTTO-balance, aber
---     tradeable=false -> Stabilitaets-Baustein, zaehlt in Net-Worth/FIRE-Pot, NICHT im Rebalancing-Nenner
+--   * Cash (Giro/Tagesgeld): bucket='cash', Wert = Brutto-balance (kein Earmark-Netting). Das
+--     Depot-Verrechnungs-/Tagesgeldkonto Typ cash zaehlt voll.
+--   * Festgeld (fixed_deposit): eigene bucket='fixed_deposit'-Klasse, Wert = Brutto-balance, aber
+--     tradeable=false -> Stabilitaets-Baustein, zaehlt in Net-Worth/FIRE-Pot, nicht im Rebalancing-Nenner
 --     (illiquide bis Faelligkeit; Experten-Modell Bengen/Morningstar-Bucket).
---   * p2p: bucket='p2p' (Alternativ, NICHT handelbar). Kredit (loan): bucket='loan' (negativ, Verbindlichkeit).
---   * REINE Depot-Konten (stocks_depot/crypto_depot, Saldo strukturell 0): NICHT enthalten (Wert steckt in
+--   * p2p: bucket='p2p' (Alternativ, nicht handelbar). Kredit (loan): bucket='loan' (negativ, Verbindlichkeit).
+--   * Reine Depot-Konten (stocks_depot/crypto_depot, Saldo strukturell 0): nicht enthalten (Wert steckt in
 --     den Holdings -> Doppelzaehl-Schutz).
 --   * Immobilie -> bucket='real_estate' (Wert current_value, gilt als EUR), Vorsorge -> bucket='pension'
---     (current_value); abgeleitet aus dem Entitaets-Typ, KEIN Tag. Kredite/Restschuld stehen separat im
+--     (current_value); abgeleitet aus dem Entitaets-Typ, kein Tag. Kredite/Restschuld stehen separat im
 --     loan-bucket (kein Netten ins real_estate -> sauberes Brutto-Asset + separate Verbindlichkeit).
--- Multi-Member (WS-3a Custodial-Scope): jede Zeile traegt jetzt owner_person_id (Eigentuemer-Person aus
---   accounts/real_estate/pension; Depot ERBT ueber das Konto via JOIN; Kreditkonto ohne owner -> Kreditnehmer;
+-- Custodial-Scope: jede Zeile traegt owner_person_id (Eigentuemer-Person aus
+--   accounts/real_estate/pension; Depot erbt ueber das Konto via JOIN; Kreditkonto ohne owner -> Kreditnehmer;
 --   NULL = Haushalt/gemeinsam). Nur aktive Depot-Konten (wie Cash). Drei
---   Sichten auf EINE Datenbasis: T1 Gesamt-Familie (Caller lassen owner_person_id aus dem GROUP BY -> SUM
+--   Sichten auf eine Datenbasis: T1 Gesamt-Familie (Caller lassen owner_person_id aus dem GROUP BY -> SUM
 --   kollabiert, additiv) · T2 Eltern-/FIRE-Pool (Konsument schliesst role='child' via core.fn_household_persons()
 --   aus) · T3 Pro-Kind (WHERE owner_person_id = Kind-Slug). owner_person_id ist roher Slug (kein Window-Join in
 --   der View -> finance_ro liest sie unveraendert); die Rollen-Aufloesung macht der Konsument.
--- Zwei Ebenen EINER Rechnung: finance.networth_items = je Objekt (Konto/Depot-Position/Immobilie/Vorsorge; item_kind,
+-- Zwei Ebenen einer Rechnung: finance.networth_items = je Objekt (Konto/Depot-Position/Immobilie/Vorsorge; item_kind,
 --   item_id, item_name, value_eur unrund, value_native) — die Mini-App klappt eine Anlageart damit in ihre Konten,
---   Depots und Objekte auf (Owner-Abnahme 2026-10-31), die Teile ergeben die Zeile. networth_by_asset_class
+--   Depots und Objekte auf, die Teile ergeben die Zeile. networth_by_asset_class
 --   aggregiert daraus (Ausgabe unveraendert).
 -- ============================================================
 CREATE VIEW finance.networth_items AS
@@ -939,12 +931,12 @@ WITH latest_price AS (
 ),
 parts AS (
     -- Depot-Positionen: Marktwert (Fallback Buchwert), Klasse = asset_class-Tag (NULL = ungetaggt);
-    -- Owner ERBT ueber das Depot-Konto (JOIN accounts) — z. B. Kinder-Custodial-Depot.
+    -- Owner erbt ueber das Depot-Konto (JOIN accounts) — z. B. Kinder-Custodial-Depot.
     SELECT 'depot'::text AS bucket,
            h.asset_class AS asset_class,
            da.owner_person_id AS owner_person_id,
-           -- Phase M: den Live-Kurs in SEINER gespeicherten Waehrung (lp.currency = COALESCE(quote_currency,
-           -- currency)) nach EUR konvertieren, NICHT in h.currency -- sonst Fehl-Umrechnung, wenn die
+           -- Den Live-Kurs in seiner gespeicherten Waehrung (lp.currency = COALESCE(quote_currency,
+           -- currency)) nach EUR konvertieren, nicht in h.currency -- sonst Fehl-Umrechnung, wenn die
            -- Quote-Waehrung von der Aufnahme-Waehrung abweicht (US-Listing in USD, Position EUR gefuehrt).
            -- Fallback = Buchwert in h.currency, bis ein Kurs vorliegt.
            CASE WHEN lp.price IS NOT NULL
@@ -958,16 +950,15 @@ parts AS (
     JOIN finance.accounts da ON da.id = h.account_id
     LEFT JOIN latest_price lp ON lp.symbol = h.symbol
     WHERE h.shares > 0
-      AND da.status = 'active'   -- wie Cash unten: ein geschlossenes Depot zaehlt nicht (Uebersicht R3: Depotwert = Anlageart)
+      AND da.status = 'active'   -- wie Cash unten: ein geschlossenes Depot zaehlt nicht
 
     UNION ALL
-    -- Cash/Festgeld = BRUTTO-balance (WS-B: Earmark-Netting via savings_goal_allocations entfallen, FIRE-Topf-
-    -- Netting vertagt); WS3: Festgeld eigene Klasse; p2p eigene Klasse; Kredit negativ;
-    -- reine Depot-Konten raus.
+    -- Cash/Festgeld = Brutto-balance (kein Earmark-Netting); Festgeld eigene Klasse; p2p eigene Klasse;
+    -- Kredit negativ; reine Depot-Konten raus.
     SELECT CASE a.account_type WHEN 'p2p' THEN 'p2p' WHEN 'loan' THEN 'loan' WHEN 'fixed_deposit' THEN 'fixed_deposit' ELSE 'cash' END AS bucket,
            CASE a.account_type WHEN 'p2p' THEN 'p2p' WHEN 'loan' THEN 'loan' WHEN 'fixed_deposit' THEN 'fixed_deposit' ELSE 'cash' END AS asset_class,
-           -- Kreditkonten legt fn_create_loan ohne owner an -> Eigentuemer = Kreditnehmer des Kredits (Uebersicht R3:
-           -- der Kredit eines Kindes gehoert in dessen Vermoegen, nicht in den Haushalts-Pool).
+           -- Kreditkonten legt fn_create_loan ohne owner an -> Eigentuemer = Kreditnehmer des Kredits
+           -- (der Kredit eines Kindes gehoert in dessen Vermoegen, nicht in den Haushalts-Pool).
            COALESCE(a.owner_person_id, ln.borrower_person_id) AS owner_person_id,
            finance.fn_to_eur(b.balance, a.currency) AS value_eur,  -- cash/fixed_deposit brutto, p2p (Nennwert), loan (negativ)
            b.balance AS value_native,
@@ -1005,30 +996,29 @@ SELECT bucket,
        owner_person_id,
        (bucket IN ('depot','cash')) AS tradeable,   -- handelbar/rebalancierbar (Drift-Nenner)
        round(sum(value_eur), 2)     AS value_eur,
-       -- Audit Paket 2 (Punkt 11): ein Wert ohne Wechselkurs faellt sonst STILL als 0 aus value_eur (sum ignoriert
+       -- Ein Wert ohne Wechselkurs faellt sonst still als 0 aus value_eur (sum ignoriert
        -- NULL) -> als Luecke melden. Ein fehlender Marktpreis ist keine Luecke (Buchwert-Fallback oben).
        COALESCE(bool_or(value_native <> 0 AND value_eur IS NULL), false) AS has_fx_gap
 FROM finance.networth_items
 GROUP BY bucket, asset_class, owner_person_id;
 
 -- ============================================================
--- VIEW: Depot-Reserve-Deckungs-Waechter  (WS-B Phase S)
--- Je AKTIVEM Depot-Konto: der Live-Marktwert vs. der darauf fuer aktive Sparziele RESERVIERTE Betrag (Σ der
+-- VIEW: Depot-Reserve-Deckungs-Waechter
+-- Je aktivem Depot-Konto: der Live-Marktwert vs. der darauf fuer aktive Sparziele reservierte Betrag (Σ der
 -- Ziel-Anteile aus savings_goal_account_share, EUR). Spiegelt account_reserve_status (Cash, Saldo-basiert),
--- aber MARKT-WERT-basiert (ein Depot traegt keine Buchungen -> kein Saldo; der Wert steckt in den shares).
---   market_value = SUM(depot_holdings_overview.market_value_eur) je Depot (EUR; NULL wenn KEINE gehaltene
+-- aber marktwert-basiert (ein Depot traegt keine Buchungen -> kein Saldo; der Wert steckt in den shares).
+--   market_value = SUM(depot_holdings_overview.market_value_eur) je Depot (EUR; NULL wenn keine gehaltene
 --     Position einen Live-Kurs hat -> Deckung nicht ermittelbar).
---   reserved = Σ savings_goal_account_share.share_eur ueber AKTIVE Ziele (goal_status='active' -> ein
+--   reserved = Σ savings_goal_account_share.share_eur ueber aktive Ziele (goal_status='active' -> ein
 --     completed/cancelled-Ziel gibt seine Depot-Reserve frei; ein hart-geloeschtes cascadet ohnehin weg).
 --   breach = COALESCE(market_value,0) < reserved  (reserved>0). NULL-Preis -> COALESCE 0 -> breach=TRUE: ein
---     nicht ermittelbarer Marktwert deckt NICHTS, nie still FALSE (3-wertige Logik vermieden) — Edge-Reviewer-Pflicht.
---   fx_missing (WP-3c) = market_value IS NULL AND reserved>0: die Deckung ist NICHT ERMITTELBAR (kein Live-Kurs
---     ODER fehlender FX-Kurs) -> der Advisor unterscheidet damit „Kurs fehlt" von „echt unterdeckt" (breach bleibt
+--     nicht ermittelbarer Marktwert deckt nichts, nie still FALSE (3-wertige Logik vermieden).
+--   fx_missing = market_value IS NULL AND reserved>0: die Deckung ist nicht ermittelbar (kein Live-Kurs
+--     oder fehlender FX-Kurs) -> der Advisor unterscheidet damit „Kurs fehlt" von „echt unterdeckt" (breach bleibt
 --     fail-loud TRUE, aber der Alert-Text sagt bei fx_missing ehrlich „nicht ermittelbar" statt Fehldiagnose).
 --   shortfall = GREATEST(reserved - COALESCE(market_value,0), 0) (nie NULL).
--- ADVISORY (wie account_reserve_status): kein Block; der Advisor wendet die Pace-bewusste Smart-Unterdrueckung an.
--- Konsumenten: fn_advisor_review (Deckungs-Dialog), finance_ro (Drill-down). (WP-5a: fn_reserve_breach liest
--- diese View NICHT mehr — sein Depot-Zweig war toter Code und wurde entfernt.)
+-- Advisory (wie account_reserve_status): kein Block; der Advisor wendet die Pace-bewusste Smart-Unterdrueckung an.
+-- Konsumenten: fn_advisor_review (Deckungs-Dialog), finance_ro (Drill-down).
 -- ============================================================
 CREATE VIEW finance.depot_reserve_status AS
 SELECT a.id                                             AS account_id,
@@ -1037,7 +1027,7 @@ SELECT a.id                                             AS account_id,
        COALESCE(res.reserved, 0)                        AS reserved,
        GREATEST(COALESCE(res.reserved, 0) - COALESCE(mv.market_value, 0), 0) AS shortfall,
        (COALESCE(res.reserved, 0) > 0 AND COALESCE(mv.market_value, 0) < COALESCE(res.reserved, 0)) AS breach,
-       (mv.market_value IS NULL AND COALESCE(res.reserved, 0) > 0)          AS fx_missing   -- WP-3c: Deckung nicht ermittelbar
+       (mv.market_value IS NULL AND COALESCE(res.reserved, 0) > 0)          AS fx_missing   -- Deckung nicht ermittelbar
 FROM finance.accounts a
 LEFT JOIN (
     SELECT account_id, sum(market_value_eur) AS market_value   -- NULL wenn keine Position einen Kurs hat
@@ -1054,7 +1044,7 @@ WHERE a.status = 'active'
   AND a.account_type IN ('stocks_depot', 'crypto_depot');
 
 -- ============================================================
--- VIEW: Sparziel-Reserve-Aufschluesselung  (WS-B Phase S — "wo liegt mein Ziel-Geld?")
+-- VIEW: Sparziel-Reserve-Aufschluesselung  ("wo liegt mein Ziel-Geld?")
 -- Je (Ziel, Konto) eine Zeile aus savings_goal_account_share; source = Art des Kontos ('cash' = saldo-basiert,
 -- 'depot' = Depot), nicht die Art der Buchung (Tag vs. Journal). reserved_amount in EUR (fn_to_eur je Zeile), damit
 -- die Aufschluesselung ueber verschieden-waehrige Konten aufsummiert werden darf. Reiner Drill-down/Anzeige-Helfer

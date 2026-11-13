@@ -18,7 +18,7 @@ BEGIN
   ) INTO v_result;
   v_debit_id := (v_result->>'account_id')::int;
 
-  -- TEST 1: Pension OHNE Beitrag (z.B. bAV mit Deckungskapital, current_value optional)
+  -- TEST 1: Pension ohne Beitrag (z.B. bAV mit Deckungskapital, current_value optional)
   SELECT finance.fn_create_pension(jsonb_build_object(
     'name','bAV Direktversicherung','pension_type','occupational','provider','Eichenversicherung',
     'current_value',45000,'value_updated_at','2026-01-01'
@@ -36,7 +36,7 @@ BEGIN
   END IF;
   RAISE NOTICE 'PASS fn_create_pension [1 ohne Beitrag, pension_id=%]', v_pension_id;
 
-  -- TEST 2: Pension MIT Beitrag -> recurring_payment (expense) + FK-Link
+  -- TEST 2: Pension mit Beitrag -> recurring_payment (expense) + FK-Link
   SELECT finance.fn_create_pension(jsonb_build_object(
     'name','Eichenversicherung Ruerup','pension_type','ruerup','provider','Eichenversicherung',
     'current_value',12000,'contribution_amount',200,'debit_account_id',v_debit_id,
@@ -78,7 +78,7 @@ BEGIN
   END IF;
   RAISE NOTICE 'PASS fn_create_pension [contribution ohne debit -> ok:false]';
 
-  -- TEST 5 (Renteninformation, 2026-10-26): gesetzliche Rente ohne eigene Betraege; je Person nur eine aktive
+  -- TEST 5 (Renteninformation): gesetzliche Rente ohne eigene Betraege; je Person nur eine aktive
   SELECT finance.fn_create_pension('{"name":"DRV","pension_type":"statutory","guaranteed_monthly_pension":2000}'::jsonb) INTO v_result;
   IF (v_result->>'ok')::boolean IS DISTINCT FROM false THEN
     RAISE EXCEPTION 'FAIL fn_create_pension [statutory mit Monatsrente]: erwartet ok=false, got %', v_result; END IF;
@@ -92,7 +92,7 @@ BEGIN
 
 END $$;
 
--- WP2 (das LLM rechnet nicht): Beitrag je Abbuchung + Rhythmus roh; der Monatswert kommt aus der Beitrags-Zeile.
+-- Das LLM rechnet nicht: Beitrag je Abbuchung + Rhythmus roh; der Monatswert kommt aus der Beitrags-Zeile.
 DO $$
 DECLARE v_res JSONB; v_giro INT;
 BEGIN

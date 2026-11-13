@@ -112,8 +112,8 @@ BEGIN
 END $$;
 
 -- ============================================================
--- Vormerkungen (Befund 2026-10-30): die App zieht eine vorgemerkte Kartenzahlung schon ab, der Export enthaelt sie
--- erst nach der Buchung. Die Luecke App-Stand - (bestaetigter Stand + Exportzeilen) gehoert in den Rest DIESES
+-- Vormerkungen: die App zieht eine vorgemerkte Kartenzahlung schon ab, der Export enthaelt sie
+-- erst nach der Buchung. Die Luecke App-Stand - (bestaetigter Stand + Exportzeilen) gehoert in den Rest dieses
 -- Zeitraums, nie als drift an den bestaetigten Schnitt. drift bleibt nur fuer Systemaenderungen vor dem Schnitt seit
 -- der Bestaetigung. Naechster Export mit der dann (spaet, vor dem Schnitt datiert) gebuchten Zeile -> Rest 0.
 -- ============================================================

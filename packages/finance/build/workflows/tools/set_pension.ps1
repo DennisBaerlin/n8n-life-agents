@@ -3,8 +3,7 @@
 
 # --- tool_set_pension (set_*: Altersvorsorge aktualisieren) ---
 function Build-SetPension {
-    # WS-B0: enge Paket-Schreibrolle (finance_rw, Least-Privilege D10) statt Owner-Cred.
-    # Dynamic-Scope: Build-Pg liest dieses $CRED_POSTGRES. Core-Tools nutzen die Owner-Cred.
+    # Enge Paket-Schreibrolle (finance_rw) statt Owner-Cred; Build-Pg liest $CRED_POSTGRES per Dynamic-Scope.
     $CRED_POSTGRES = $CRED_FINANCE_RW
     $trig = Build-Trigger @('pension_name','new_name','provider','contract_number','owner_person',
                            'current_value','value_updated_at','guaranteed_monthly_pension',
@@ -23,7 +22,7 @@ function Build-SetPension {
         "=SELECT current_value, status::text AS status FROM finance.pension WHERE id = ((`$1::jsonb)->>'id')::int;" `
         ([ordered]@{ id = '$(''Resolve Pension'').item.json.id' })
 
-    # WS-4: optionalen Eigentuemer-Wechsel aufloesen (Name -> Slug; leer = unveraendert).
+    # Optionalen Eigentuemer-Wechsel aufloesen (Name -> Slug; leer = unveraendert).
     $resPerson = Build-ResolvePerson 'Resolve Person' @(880, 360) 'owner_person'
 
     $ifPersonBad = Build-If 'Person invalid?' @(1100, 360) `
@@ -32,8 +31,6 @@ function Build-SetPension {
     $errPerson = Build-ToolError 'Person unresolved' @(1320, 480) `
         "=The owner person '{{ `$('Start').item.json.owner_person }}' could not be uniquely resolved ({{ `$('Resolve Person').item.json.hit_count }} match(es)). Candidates: {{ JSON.stringify(`$('Resolve Person').item.json.candidates) }}. Ask which household member."
 
-    # "DB ist das Gesetz": fn_set_pension laeuft als Probelauf VOR der Karte; derselbe Param-Satz geht nach dem Gate in
-    # den echten Write (partielles UPDATE + Status-Kaskade auf den Beitrag).
     $wg = New-FnWriteGate -Fn 'finance.fn_set_pension' -DryPos @(880, 0) -WritePos @(2200, 0) `
         -WriteName 'Set pension (atomic)' `
         -WriteSelect "(r->>'ok')::boolean AS ok, r->>'reason' AS reason, (r->>'pension_id')::int AS pension_id" `
@@ -51,7 +48,7 @@ function Build-SetPension {
             notes                      = '$(''Start'').item.json.notes'
         })
 
-    # Strukturiertes Summary (Textkatalog): nur gelieferte Felder (-If je Zeile). Betraege in EUR-Konvention
+    # Nur gelieferte Felder (-If je Zeile). Betraege in EUR-Konvention
     # (entity-Werte in EUR erfasst).
     $S = "`$('Start').item.json"
     $R = "`$('Read Current').item.json"
@@ -82,7 +79,6 @@ function Build-SetPension {
 
     $retCancelled = Build-ToolCancelled 'Return cancelled' @(2200, 240) 'the set_pension action'
 
-    # Atomarer Write via fn_set_pension ($wg.Write, 'Set pension (atomic)').
     $ifWriteOk = Build-If 'Write ok?' @(2420, 0) "={{ `$json.ok }}" 'true' 'equals' 'boolean'
 
     $errWrite = Build-ToolError 'Update rejected' @(2640, 240) `

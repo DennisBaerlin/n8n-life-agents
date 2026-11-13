@@ -1,7 +1,8 @@
 -- ============================================================
--- fn_resolve_savings_plan
+-- fn_resolve_savings_plan (READ, STABLE)
 --   Loest Sparplan-Name in ID auf (Vorbild: fn_resolve_insurance).
 --   Liefert Mehrdeutigkeits-Info (hit_count/candidates).
+--   Rueckgabe: TABLE(id, hit_count, candidates); id nur bei genau einem Treffer.
 --   p_active_only: wenn TRUE, nur status='active'.
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_resolve_savings_plan(

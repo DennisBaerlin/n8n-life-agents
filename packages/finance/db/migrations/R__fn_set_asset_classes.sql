@@ -1,13 +1,13 @@
 -- ============================================================
--- fn_set_asset_classes (ATOMIC WRITE) -- Anlageklassen mehrerer Depot-Positionen in EINEM Schritt setzen
---   Owner-Entscheid 2026-10-23: die Anlageklasse wird in der Finanzplanung geklaert -> der Finanzberater (und der
---   Buchhalter) ordnet alle offenen Positionen mit EINER Karte zu. Setzt NUR asset_class (Stammdatum), nie Bestand,
+-- fn_set_asset_classes (ATOMIC WRITE) -- Anlageklassen mehrerer Depot-Positionen in einem Schritt setzen
+--   Die Anlageklasse wird in der Finanzplanung geklaert -> der Finanzberater (und der
+--   Buchhalter) ordnet alle offenen Positionen mit einer Karte zu. Setzt nur asset_class (Stammdatum), nie Bestand,
 --   Einstand oder Buchungen. Keine zweite Pruef-Logik: je Zeile fn_find_holding (Depot + Position) und
 --   fn_set_holding({holding_id, asset_class}) (Format-Pruefung lowercase snake). Reservierter Key
 --   outside_plan = "bewusst ausserhalb des Haushaltsplans" (z. B. Kinder-Depot; fn_advisor_review meldet ihn nicht).
 --   Eingabe jsonb: { assignments: [ {depot_name, position (Symbol oder ISIN), asset_class}, ... ] } (1..50)
---   Atomar: ALLE Zeilen werden zuerst aufgeloest/geprueft (Position unbekannt/mehrdeutig, Format, doppelte Position)
---   -> eine Ablehnung = KEIN Write, {ok:false, reason, errors:[{index, reason, candidates?}], candidates (alle, fuer das Gate)}.
+--   Atomar: alle Zeilen werden zuerst aufgeloest/geprueft (Position unbekannt/mehrdeutig, Format, doppelte Position)
+--   -> eine Ablehnung = kein Write, {ok:false, reason, errors:[{index, reason, candidates?}], candidates (alle, fuer das Gate)}.
 --   RUECKGABE {ok:true, updated:[{holding_id, name, depot_name, asset_class_before, asset_class}], card_lines}
 --   card_lines = je Position eine Kartenzeile (Name, Depot, alt -> neu) fuer das Gate (core.fn_dry_run-Probelauf).
 -- ============================================================

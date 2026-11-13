@@ -4,7 +4,7 @@
 # scripts/layout_lint.ps1 (L6), scripts/dev/release_images_test.ps1.
 #
 # Pin-Zeile (x-images.master, Anker &img_master):
-#   neutral  ${LA_MASTER_IMAGE:?LA_MASTER_IMAGE fehlt (kein Release-Pin)}   Branches + JEDER Bau-Kontext des Images
+#   neutral  ${LA_MASTER_IMAGE:?LA_MASTER_IMAGE fehlt (kein Release-Pin)}   Branches + jeder Bau-Kontext des Images
 #   Release  ${LA_MASTER_IMAGE:-<register>/<pfad>@sha256:<64 hex>}           ab dem Pin-Commit bis zum Tag
 # Das Image enthaelt immer die neutrale Form: stuende sein eigener Digest darin, aenderte das Eintragen den Digest. Im master
 # ist LA_MASTER_IMAGE ohnehin gesetzt (compose.yml environment). Pruefbar bleibt die Herkunft ueber das Label

@@ -125,10 +125,9 @@ BEGIN
 
   -- TEST 4: Betrag-Änderung -> Validity-Split: neues RP, altes RP beendet,
   --   plan.recurring_payment_id zeigt auf neues RP
-  -- Audit F2c(4): offene Alt-Vorkommen vor dem Stichtag blockieren den Split -> vorher ueberspringen
+  -- Offene Alt-Vorkommen vor dem Stichtag blockieren den Split -> vorher ueberspringen
   --   (sonst buchte die Erinnerung sie spaeter als nackte Abbuchung ohne Kauf). Nur VOR heute: ein heute faelliges
-  --   Vorkommen uebernimmt der Split selbst (Stichtag heute); uebersprungen sperrte es den Split (Flake am Faelligkeitstag,
-  --   2026-11-01).
+  --   Vorkommen uebernimmt der Split selbst (Stichtag heute); uebersprungen sperrte es den Split (Flake am Faelligkeitstag).
   PERFORM finance.fn_skip_recurring_occurrence(jsonb_build_object('recurring_payment_id', o.recurring_payment_id,
             'due_date', o.due_date::text))
   FROM finance.fn_recurring_due_open(CURRENT_DATE) o WHERE o.recurring_payment_id = v_rp_id_old AND o.due_date < CURRENT_DATE;
@@ -182,8 +181,8 @@ BEGIN
   END IF;
   RAISE NOTICE 'PASS fn_set_savings_plan [amount=0 -> ok:false]';
 
-  -- TEST 6 (WS-B Stufe 2): Kadenz-Aenderung (schedule_unit) -> Validity-Split, neue RP traegt die
-  --   neue Kadenz; der Betrag bleibt erhalten (kein new_amount uebergeben). Edge-Reviewer: ein
+  -- TEST 6: Kadenz-Aenderung (schedule_unit) -> Validity-Split, neue RP traegt die
+  --   neue Kadenz; der Betrag bleibt erhalten (kein new_amount uebergeben). Ein
   --   Sparplan "50 €/Woche" muss auf "monatlich" umstellbar sein, ohne den Betrag neu nennen zu muessen.
   DECLARE
     v_rp_before INT;
@@ -192,7 +191,7 @@ BEGIN
     v_amt       NUMERIC;
   BEGIN
     SELECT recurring_payment_id INTO v_rp_before FROM finance.savings_plans WHERE id = v_plan_id;
-    -- Audit F2c(4): eine heute faellige Ausfuehrung (Test laeuft am Monatsersten) blockiert den Split -> ueberspringen.
+    -- Eine heute faellige Ausfuehrung (Test laeuft am Monatsersten) blockiert den Split -> ueberspringen.
     PERFORM finance.fn_skip_recurring_occurrence(jsonb_build_object('recurring_payment_id', o.recurring_payment_id,
               'due_date', o.due_date::text))
     FROM finance.fn_recurring_due_open(CURRENT_DATE) o WHERE o.recurring_payment_id = v_rp_before;
@@ -224,7 +223,7 @@ BEGIN
     RAISE NOTICE 'PASS fn_set_savings_plan [schedule_unit week-Split, Betrag erhalten]';
   END;
 
-  -- TEST 7 (Phase L WS-6): asset_class korrigierbar (orthogonal, in-place; kein Split, keine neue RP).
+  -- TEST 7: asset_class korrigierbar (orthogonal, in-place; kein Split, keine neue RP).
   DECLARE v_cls TEXT; v_rp_pre INT; v_rp_post INT; BEGIN
     SELECT recurring_payment_id INTO v_rp_pre FROM finance.savings_plans WHERE id = v_plan_id;
     SELECT finance.fn_set_savings_plan(jsonb_build_object(
@@ -234,7 +233,7 @@ BEGIN
     SELECT asset_class, recurring_payment_id INTO v_cls, v_rp_post FROM finance.savings_plans WHERE id = v_plan_id;
     IF v_cls IS DISTINCT FROM 'commodities' THEN
       RAISE EXCEPTION 'FAIL fn_set_savings_plan [asset_class set]: erwartet commodities, got %', v_cls; END IF;
-    -- reine Anlageklasse-Aenderung darf KEINEN Validity-Split ausloesen (rp_id unveraendert)
+    -- reine Anlageklasse-Aenderung darf keinen Validity-Split ausloesen (rp_id unveraendert)
     IF v_rp_post IS DISTINCT FROM v_rp_pre THEN
       RAISE EXCEPTION 'FAIL fn_set_savings_plan [asset_class split]: rp_id geaendert trotz reiner Tag-Aenderung'; END IF;
     RAISE NOTICE 'PASS fn_set_savings_plan [asset_class in-place korrigiert, kein Split]';
@@ -249,9 +248,9 @@ BEGIN
       RAISE EXCEPTION 'FAIL fn_set_savings_plan [asset_class bad format]: Tag trotz ok=false veraendert, got %', v_cls; END IF;
     RAISE NOTICE 'PASS fn_set_savings_plan [ungueltiges asset_class-Format -> ok:false, Tag unveraendert]';
 
-    -- Atomaritaet (Cold-Eyes): kombinierter Aufruf new_amount<=0 + asset_class -> {ok:false} OHNE Teil-Mutation.
-    -- Die orthogonale asset_class darf NICHT geschrieben werden, obwohl die fn das Feld kennt (Split-Vorbedingung
-    -- wird VOR den orthogonalen UPDATEs geprueft -> der korrigierbare {ok:false}-Pfad mutiert nichts). Tag bleibt 'commodities'.
+    -- Atomaritaet: kombinierter Aufruf new_amount<=0 + asset_class -> {ok:false} ohne Teil-Mutation.
+    -- Die orthogonale asset_class darf nicht geschrieben werden, obwohl die fn das Feld kennt (Split-Vorbedingung
+    -- wird vor den orthogonalen UPDATEs geprueft -> der korrigierbare {ok:false}-Pfad mutiert nichts). Tag bleibt 'commodities'.
     SELECT finance.fn_set_savings_plan(jsonb_build_object(
       'savings_plan_name','__test_ssp_plan__','new_amount',-5,'asset_class','momentum')) INTO v_result;
     IF (v_result->>'ok')::boolean IS DISTINCT FROM false THEN
@@ -262,7 +261,7 @@ BEGIN
     RAISE NOTICE 'PASS fn_set_savings_plan [Atomaritaet: new_amount<=0 + asset_class -> ok:false, kein Teil-Write]';
   END;
 
-  -- TEST 8-9 (Audit F2): offene Alt-Vorkommen blockieren den Split; ein pausierter Plan bleibt nach dem Split pausiert.
+  -- TEST 8-9: offene Alt-Vorkommen blockieren den Split; ein pausierter Plan bleibt nach dem Split pausiert.
   DECLARE v_rp2 INT; v_new2 INT; v_st TEXT; BEGIN
     SELECT finance.fn_create_savings_plan(jsonb_build_object('name','__test_ssp_plan2__','depot_name','__test_ssp_depot__',
       'isin','IE00B4L5Y983','symbol','IUSQ','security_name','iShares MSCI World','amount',50,'schedule_interval',1,
@@ -287,7 +286,7 @@ BEGIN
   -- TEST 9b: die Sperre prueft genau die offenen Ausfuehrungen, die Erinnerung und Buchen/Ueberspringen anbieten
   -- (fn_recurring_due_open(CURRENT_DATE), 90-Tage-Fenster). Woechentlich ab heute - 91: nach dem Ueberspringen aller
   -- angebotenen bleibt nur die Ausfuehrung von vor 91 Tagen offen, die niemand mehr angeboten bekommt -> sie darf den
-  -- Split nicht sperren (vorher Fenster ab Stichtag - 1, an manchen Tagen ein Tag weiter zurueck).
+  -- Split nicht sperren.
   DECLARE v_rp3 INT; BEGIN
     SELECT finance.fn_create_savings_plan(jsonb_build_object('name','__test_ssp_plan3__','depot_name','__test_ssp_depot__',
       'isin','IE00B5BMR087','symbol','CSPX','security_name','iShares Core S&P 500','amount',20,'schedule_interval',1,
@@ -305,7 +304,7 @@ BEGIN
 END $$;
 
 
--- TEST 10 (C8, Bugfix-Runde): savings_squeeze-Fold auch auf dem set-Pfad. Die Fold-fn liest die GLOBALE
+-- TEST 10: savings_squeeze-Fold auch auf dem set-Pfad. Die Fold-fn liest die globale
 -- Single-Row-View monthly_cashflow_summary -> alle rp neutralisieren (Dateiende, das ROLLBACK raeumt), kontrollierten Cashflow setzen.
 -- Einnahmen 2000, Miete 500; Sparplan 1800 pausiert -> gesund (kein Fold); wieder aktiv -> Kontoveraenderung -300
 -- -> savings_squeeze im {ok:true}-Return.
@@ -396,7 +395,7 @@ BEGIN
     RAISE EXCEPTION 'FAIL fn_set_savings_plan [days week/2]: days=% me=%', v_r.schedule_days_of_month, v_r.monthly_equivalent; END IF;
   RAISE NOTICE 'PASS fn_set_savings_plan [Kadenzwechsel aus dem Depot-Kalender: 9./23., 200/Monat]';
 
-  -- nur schedule_interval genannt ("jetzt jede Woche" = interval 1): Basis-Einheit ist der NUTZER-Rhythmus der
+  -- nur schedule_interval genannt ("jetzt jede Woche" = interval 1): Basis-Einheit ist der Nutzer-Rhythmus der
   -- Tage-Zeile (week), nicht das gespeicherte 'month' -> 4 Tage, nie "jeden Monat einmal"
   SELECT finance.fn_set_savings_plan(jsonb_build_object('savings_plan_name','__test_ssp_days__',
     'schedule_interval',1,'valid_from','2027-03-16')) INTO v_result;
@@ -436,9 +435,9 @@ BEGIN
   RAISE NOTICE 'PASS fn_set_savings_plan [Kalender-Korrektur per Nutzer-Antwort]';
 END $$;
 
--- Befund 2026-10-27: Eine Rhythmus-Angabe, die dem schon gespeicherten woechentlichen Plan (feste Bank-Tage) entspricht -> der
--- Agent rief week/1 auf; die fn haette einen identischen Split angelegt. No-Change = {ok:false, code:'no_change'} mit
--- dem gespeicherten Rhythmus + Monatsbetrag, VOR den Split-Vorbedingungen (auch ohne valid_from), kein Write.
+-- Eine Rhythmus-Angabe, die dem schon gespeicherten woechentlichen Plan (feste Bank-Tage) entspricht (der Agent
+-- ruft week/1 auf), darf keinen identischen Split anlegen. No-Change = {ok:false, code:'no_change'} mit
+-- dem gespeicherten Rhythmus + Monatsbetrag, vor den Split-Vorbedingungen (auch ohne valid_from), kein Write.
 DO $$
 DECLARE
   v_result JSONB; v_settle INT; v_tr INT; v_plain INT; v_rp INT; v_cnt INT;
@@ -456,7 +455,7 @@ BEGIN
   v_rp := (v_result->>'recurring_payment_id')::int;
   SELECT count(*) INTO v_cnt FROM finance.recurring_payments;
 
-  -- woechentlich auf woechentlich, ohne Stichtag (Befund) -> no_change statt "Stichtag nach valid_from"
+  -- woechentlich auf woechentlich, ohne Stichtag -> no_change statt "Stichtag nach valid_from"
   SELECT finance.fn_set_savings_plan(jsonb_build_object('savings_plan_name','__test_ssp_nc_weekly__',
     'schedule_unit','week','schedule_interval',1)) INTO v_result;
   IF (v_result->>'ok')::boolean IS DISTINCT FROM false OR v_result->>'code' IS DISTINCT FROM 'no_change'
@@ -504,7 +503,7 @@ BEGIN
   RAISE NOTICE 'PASS fn_set_savings_plan [monatlich: gleicher Rhythmus no_change, anderer Betrag splittet]';
 
   -- geplante Aenderung (80 ab 15.02.) noch nicht gueltig am Stichtag 20.01. -> "80" ist dort eine echte Aenderung,
-  -- kein no_change (Code-Review 2026-10-27: Vergleich gegen das am Stichtag gueltige Glied)
+  -- kein no_change (Vergleich gegen das am Stichtag gueltige Glied)
   SELECT finance.fn_set_savings_plan(jsonb_build_object('savings_plan_name','__test_ssp_nc_monthly__',
     'new_amount',80,'valid_from','2027-01-20')) INTO v_result;
   IF v_result->>'code' IS NOT DISTINCT FROM 'no_change' THEN

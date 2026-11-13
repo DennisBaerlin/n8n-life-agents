@@ -1,5 +1,5 @@
 -- tests/db/finance/test_recalc2_real_estate.sql
--- Zweitrechnung Runde 2, Immobilien: Eigenkapital, Restschuld-Verknuepfung, Fremdwaehrungs-Kredit, Instandhaltungs-Luecke.
+-- Zweitrechnung Immobilien: Eigenkapital, Restschuld-Verknuepfung, Fremdwaehrungs-Kredit, Instandhaltungs-Luecke.
 -- Erwartungswerte schriftlich hergeleitet (nicht aus den Views abgeschrieben). Werte erfunden.
 -- Fachregel Eigenkapital (Beleihungs-/Vermoegens-Sicht): Eigenkapital = Marktwert - offene Restschuld aller Darlehen,
 --   die auf dem Objekt liegen. Offen = Darlehen laeuft ODER Raten ruhen (Restschuld besteht weiter); ein getilgtes Darlehen

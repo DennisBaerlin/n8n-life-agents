@@ -1,6 +1,6 @@
 ﻿#Requires -Version 5.1
-# release_fetch_test.ps1 — DETERMINISTISCHER, GRATIS Test des Release-Downloads (immer anonym, oeffentliches Repo).
-# Kopiert den Download-Code DIESES Checkouts (provisioning/) + den GitHub-Mock (tests/mock_github/) in den laufenden
+# release_fetch_test.ps1 — deterministischer, gratis Test des Release-Downloads (immer anonym, oeffentliches Repo).
+# Kopiert den Download-Code dieses Checkouts (provisioning/) + den GitHub-Mock (tests/mock_github/) in den laufenden
 # Substrat-Container und faehrt dort tests/mock_github/cases.sh: provisioning/install.sh (Bootstrap) und
 # lib/fetch_release.sh (`lifeagents update`) gegen den Mock (PROVISION_GH_API-Override, nur Test):
 #   - latest + --version, nie ein Auth-Header (auch mit altem GH_TOKEN in der Env), Asset ueber den Redirect;

@@ -1,19 +1,19 @@
 -- ============================================================
--- fn_emergency_reserve_status (READ, STABLE) -- Notreserve des Haushalts: Ziel, Basis, Deckung, Konten (2026-10-30)
---   Die EINE Rechen-Adresse der Notreserve (Ruecklage kind = emergency_reserve, hoechstens eine aktive). Konsumenten:
+-- fn_emergency_reserve_status (READ, STABLE) -- Notreserve des Haushalts: Ziel, Basis, Deckung, Konten
+--   Die eine Rechen-Adresse der Notreserve (Ruecklage kind = emergency_reserve, hoechstens eine aktive). Keine Eingabe. Konsumenten:
 --   fn_advisor_review (Alert emergency_reserve), fn_plan_gaps, fn_render_plan_facts, fn_app_screen_goals (Zeile
 --   Notreserve im Abschnitt Ruecklagen), fn_create/fn_set_savings_goal (Karte, Post-State). Das LLM rechnet nichts davon nach.
---   Ziel: target_amount (fest) ODER target_months x Monatsausgaben; Monatsausgaben = fn_liquidity_snapshot
+--   Ziel: target_amount (fest) oder target_months x Monatsausgaben; Monatsausgaben = fn_liquidity_snapshot
 --   (feste Zahlungen + Kreditraten ohne Sparraten + geschaetzter Alltag) — gespeichert ist nur die Einstellung, der
 --   Betrag wird zur Laufzeit abgeleitet (Ausgaben aendern sich; DB-Gesetz „keine ableitbaren Spalten“).
 --   Deckung: finance.fn_emergency_reserve_covered (je Geld-Konto, nach den anderen Zielen, hoechstens der Saldo).
 --   state: neutral = kein Ziel bestimmbar (Monate ohne Ausgaben-Daten) oder Kurs fehlt; ok = gedeckt; warn = darunter.
---   Immer (auch ohne Notreserve — Onboarding, Befund 2026-10-30: der Buchhalter wiederholte eine veraltete
---   Monatsausgabe aus dem Verlauf, rechnete „6 Monatsgehaelter“ selbst und bot Kinderkonten an):
+--   Immer (auch ohne Notreserve, fuers Onboarding; der Buchhalter soll weder eine veraltete Monatsausgabe aus dem
+--   Verlauf wiederholen noch selbst rechnen):
 --   basis (frisch) und month_options [{months 3|6, eur}] (fertige Betraege, nur mit Ausgaben-Daten). Andere
 --   Monatszahlen nennt der Buchhalter ohne Betrag — den rechnet die Bestaetigungskarte (Probelauf). Die Konten mit
 --   freiem Betrag liefert finance.fn_emergency_reserve_candidates (eigene fn: braucht je Konto die Vorschau).
---   RUECKGABE jsonb: {exists:false, basis, month_options} | {exists:true, goal_id, name,
+--   Rueckgabe jsonb: {exists:false, basis, month_options} | {exists:true, goal_id, name,
 --   target_kind ('amount'|'months'), months, target_eur, basis:{monthly_eur, fixed_eur, everyday_eur, everyday_accounts,
 --   everyday_provisional}, month_options, covered_eur, accounts:[{name, eur}], gap_eur, state, has_fx_gap}
 --   Tests: tests/db/finance/test_fn_emergency_reserve_status.sql

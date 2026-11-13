@@ -1,9 +1,9 @@
 -- ============================================================
--- test_bank_statement_pool -- Pool-Regel auf der Bank-Seite (Bank-Import-Modul Paket 3)
+-- test_bank_statement_pool -- Pool-Regel auf der Bank-Seite
 --   fn_statement_prepare: Gegenpart-Name passt zum counterparty_pattern eines Profils (Bondora) und kein eigenes
 --   Konto per IBAN -> Kandidaten = P2P-Konten dieses Profils. Eingang: Verrechnungskonto = dieses Konto, sonst gleicher
 --   Inhaber (nie Haushalt) -> Transfer + Gebuehr-Bein beim P2P-Konto. Ausgang: Referenz (Kontonummer als ganzes Wort im
---   Verwendungszweck), sonst bei GENAU einer Zahlung mit zwei Kandidaten transfer_choice_required (der Agent fragt) bzw.
+--   Verwendungszweck), sonst bei genau einer Zahlung mit zwei Kandidaten transfer_choice_required (der Agent fragt) bzw.
 --   transfer_account; 'none' oder mehrere solche Zahlungen -> Rest + Hinweis. Danach erkennt der Bondora-Export die
 --   Auszahlung (Gruppe inkl. Gebuehr).
 --   Werte und Referenzen erfunden.
@@ -58,7 +58,7 @@ BEGIN
        OR NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v_res->'card_lines') c WHERE c->>'value' = 'finance.note.statement_pool_unassigned') THEN
         RAISE EXCEPTION 'FAIL [P2a keins von beiden -> Rest + Hinweis]: %', v_res;
     END IF;
-    -- ZWEI solche Zahlungen: nie EINE Wahl fuer alle -> keine Rueckfrage, beide im Rest + Hinweis
+    -- zwei solche Zahlungen: nie eine Wahl fuer alle -> keine Rueckfrage, beide im Rest + Hinweis
     v_res := finance.fn_statement_prepare(v_s || jsonb_build_object('closing_balance', 1000 + 200 - 100 - 50 - 30,
                  'lines', (v_s->'lines') || jsonb_build_array(
                      jsonb_build_object('date', ps + 8, 'amount', -30, 'counterparty', 'Bondora Capital Oü', 'purpose', 'Sparen'))));
@@ -93,7 +93,7 @@ BEGIN
            WHERE f.account_id = v_ga AND f.category = 'fee' AND f.amount = -1 AND t.account_id = v_tr AND t.amount = 200) <> 1 THEN
         RAISE EXCEPTION 'FAIL [P6 Buchung]: %', v_app;
     END IF;
-    -- Befund 2026-10-30: die erkannten Uebertraege stehen in der Rueckgabe (Gegenkonto, gebuchtes Bein aus Sicht
+    -- die erkannten Uebertraege stehen in der Rueckgabe (Gegenkonto, gebuchtes Bein aus Sicht
     -- dieses Kontos, Gebuehr beim Gegenkonto), booked_count = 3 Vorgaenge
     IF (SELECT string_agg((t->>'account_name') || ':' || (t->>'amount') || ':' || (t->>'fee') || ':' || COALESCE(t->>'fee_account', '-')
                           || ':' || (t->>'date') || ':' || (t->>'already_booked'), ',' ORDER BY (t->>'date')::date)
@@ -120,7 +120,7 @@ BEGIN
        OR jsonb_array_length(v_res->'matched') <> 0 OR (v_res->>'lump')::numeric <> 0 THEN
         RAISE EXCEPTION 'FAIL [P7 Bondora danach]: %', v_res;
     END IF;
-    -- schon gebuchter Transfer erscheint mit already_booked (Gegenkonto ueber die Gruppe, Gebuehr-Bein auf DIESEM Konto)
+    -- schon gebuchter Transfer erscheint mit already_booked (Gegenkonto ueber die Gruppe, Gebuehr-Bein auf diesem Konto)
     v_app := finance.fn_apply_bank_statement(jsonb_build_object('source', 'file', 'account_name', '__t_pl_gga__',
         'table', jsonb_build_object('rows', jsonb_build_array(
             jsonb_build_array('', '', '', 'Summary', ''),
@@ -163,7 +163,7 @@ BEGIN
     RAISE NOTICE 'PASS [P9 abgeglichen -> kein Kandidat]';
 END $$;
 
--- ---------- Pool-Eingang vor dem Eroeffnungstag des P2P-Kontos (Befund 2026-11-03): nur das eigene Bein, keine Gebuehr ----------
+-- ---------- Pool-Eingang vor dem Eroeffnungstag des P2P-Kontos: nur das eigene Bein, keine Gebuehr ----------
 DO $$
 DECLARE
     T DATE := core.fn_today();

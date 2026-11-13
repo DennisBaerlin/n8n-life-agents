@@ -1,21 +1,22 @@
 -- ============================================================
--- fn_validate_observation (IMMUTABLE HELPER — geteilte Validierungs-Kaskade)
---   Die EINE Quelle der Wert-Validierung fuer beschaffte Observations — genutzt von
---   fn_monitor_evaluate (Cron) UND fn_monitor_probe (Test-Abruf vor dem HITL-Gate).
+-- fn_validate_observation (READ-ONLY, IMMUTABLE — geteilte Validierungs-Kaskade)
+--   Die eine Quelle der Wert-Validierung fuer beschaffte Observations — genutzt von
+--   fn_monitor_evaluate (Cron) und fn_monitor_probe (Test-Abruf vor dem HITL-Gate).
+--   Eingabe: p_obs jsonb {ok, value, unit, as_of, source_url, reason}, p_method, p_expected_unit, p_min, p_max, p_jump_pct, p_last.
 --   Kaskade (Stufen 2-4; Stufe 1 = struktureller JSON-Parse im Workflow-Code-Node):
 --     (0) input ok=false wird durchgereicht (Beschaffung selbst schlug fehl)
 --     (1) value muss numerisch sein (LLM-Prosa wie "ca. 4000" -> dirty)
---     (2) Unit-Echo: NUR web_search + expected_unit gesetzt — geliefertes unit muss
+--     (2) Unit-Echo: nur web_search + expected_unit gesetzt — geliefertes unit muss
 --         case-/trim-tolerant matchen (faengt $/t-vs-EUR/t und t-vs-kg, was statische
---         Bounds NICHT fangen); sql/fx haben kein Echo (expected_unit = Render-Label)
+--         Bounds nicht fangen); sql/fx haben kein Echo (expected_unit = Render-Label)
 --     (3) statische Plausibilitaet min/max_plausible (Groessenordnungs-Fehler)
---     (4) Kontinuitaet max_jump_pct (optional): Abweichung > X% vom letzten SAUBEREN
+--     (4) Kontinuitaet max_jump_pct (optional): Abweichung > X% vom letzten sauberen
 --         Wert -> dirty (Quelle gewechselt / Skala verrutscht); kein last_value
 --         (erster Wert) oder Guard NULL -> Stufe uebersprungen
 --   p_method='none' (reiner Reminder) -> immer ok, kein Wert noetig.
 --   Rueckgabe: normalisierte Observation {ok, value?, unit?, as_of?, source_url?, reason?}
 --   — value ist nur enthalten, wenn numerisch (Aufrufer duerfen blind ::numeric casten).
---   Fn-intern (positional), kein Tool-facing {ok:false}-Vertrag noetig.
+--   Fn-intern (positional), kein Tool-facing {ok:false}-Vertrag.
 -- ============================================================
 CREATE OR REPLACE FUNCTION agent.fn_validate_observation(
     p_obs           jsonb,

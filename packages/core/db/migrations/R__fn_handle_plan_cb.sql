@@ -1,5 +1,5 @@
 -- ============================================================
--- core.fn_handle_plan_cb(p) — Registry-Handler des Callback-Prefix 'plan' (member_permeable, 2026-10-28)
+-- core.fn_handle_plan_cb(p) — Registry-Handler des Callback-Prefix 'plan' (member_permeable)
 --   Der Knopf des Onboarding-Plan-Schritts (plan:<domain>, aus core.sub_send_onboarding_menu: Fertig-Karte, Bereichs-
 --   ansicht, Uebersicht). Owner und Mitglied kommen beide ueber core.fn_dispatch_callback hierher (kein hartkodierter
 --   'Callback action'-Arm). Bei Erfolg {ok:true, route:'plan', domain} -> der Orchestrator ('Plan route?') startet den
@@ -12,12 +12,12 @@
 --     * can_write=false (Mitglied am Haushalts-Plan, write_permission owner_only) -> Toast "pflegt der Haushalts-Owner";
 --     * ready=false (Mindestdaten fehlen, readiness_fn) -> Toast "fehlen noch Daten" (Schutz fuer alte Karten; das Menue
 --       zeigt dann statt des Plan-Knopfs "Zuerst: <Abschnitt>").
---   Verben (Plan teilen, 2026-10-28; share/explain/wish sind als Domain-Name reserviert):
+--   Verben (Plan teilen; share/explain/wish sind als Domain-Name reserviert):
 --     plan:share:<domain>:<version> -> nur Owner, Version = aktive Version des Haushalts-Plans (sonst 'nicht aktuell')
 --     plan:explain:<domain> | plan:wish:<domain> -> nur Rolle partner (Owner: Hinweis, Kind: nur Erwachsene), aktiver
 --       Haushalts-Plan (core.fn_household_plan_active); persoenliche Plaene (career) -> nicht verfuegbar.
 --     Rueckgabe {ok:true, route:'plan', verb: start|share|explain|wish, domain, version?, summary? (explain/wish)}.
---   Berater-Verben (Geführte Abfolge): plan:scan|event|alert|watch|drift:<domain>[:<version>] -> nur can_write (alert auf general: Owner); offene Karte, Doppeltipp
+--   Berater-Verben: plan:scan|event|alert|watch|drift:<domain>[:<version>] -> nur can_write (alert auf general: Owner); offene Karte, Doppeltipp
 --     (Sperre 10 Minuten), Tageslimit advisor.button_starts_per_day (je Haushalt) und leere Daten -> Toast. Eine alte Version bekommt den Stale-Toast, ohne das Limit zu verbrauchen.
 --     data nur aus festen Feldlisten (Art, Wert, Einheit, Datum, Domain), nie reason, action_note oder URL; event/alert/drift lesen nur, wenn die fn existiert.
 --   Nie RAISE (Dispatcher-Vertrag). Toasts aus dem Textkatalog in der Sprache des Tippenden (agent.fn_person_lang).
@@ -126,7 +126,7 @@ BEGIN
         RETURN jsonb_build_object('ok', true, 'route', 'plan', 'verb', v_verb, 'domain', v_domain, 'version', v_active.version, 'data', v_out);
     END IF;
 
-    -- Plan teilen (2026-10-28): Verb zuerst (share/explain/wish sind als Domain-Name reserviert), sonst Start-Format.
+    -- Plan teilen: Verb zuerst (share/explain/wish sind als Domain-Name reserviert), sonst Start-Format.
     IF v_verb IN ('share', 'explain', 'wish') THEN
         v_domain := split_part(v_data, ':', 3);
         v_ver    := split_part(v_data, ':', 4);

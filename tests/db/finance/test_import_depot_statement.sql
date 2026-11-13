@@ -1,6 +1,5 @@
 -- tests/db/finance/test_import_depot_statement.sql
--- Monats-Check WP-G: Depotauszug-Import robuster (Befund 2026-10-22: ein Broker-Auszug lieferte keinen
--- Stueckpreis, obwohl Einstand gedruckt war).
+-- Depotauszug-Import ohne gedruckten Stueckpreis, wenn der Einstand gedruckt ist.
 --   (1) cost_basis_total (gedruckter Gesamt-Einstand) -> die DB leitet price_per_share = Einstand / Stueck ab
 --   (2) average_purchase_price (gedruckter Durchschnittskurs) ist ein Alias fuer price_per_share, kein Sperr-Key
 --   (3) provider_symbol ist erlaubt und landet an der Position; fn_import_bundle liefert positions[] (Post-State)
@@ -23,7 +22,7 @@ BEGIN
   IF (v_res->>'invalid')::int <> 0 OR (v_res->>'valid')::int <> 2 THEN RAISE EXCEPTION 'FAIL (1/2) stage: %', v_res; END IF;
   v_batch := (v_res->>'batch_id')::uuid;
   SELECT payload INTO v_p FROM finance.import_staging WHERE batch_id = v_batch AND row_no = 1;
-  -- 8 Nachkommastellen = Spaltenpraezision von unit_price/average_purchase_price (Rundungs-Paket 2026-10-23; vorher 6)
+  -- 8 Nachkommastellen = Spaltenpraezision von unit_price/average_purchase_price
   IF (v_p->>'price_per_share')::numeric IS DISTINCT FROM round(30000.50 / 500.12345, 8) THEN
     RAISE EXCEPTION 'FAIL (1) abgeleiteter Preis: %', v_p; END IF;
   SELECT payload INTO v_p FROM finance.import_staging WHERE batch_id = v_batch AND row_no = 2;
@@ -46,7 +45,7 @@ BEGIN
     RAISE EXCEPTION 'FAIL (4): depot_holdings_overview.holding_id fehlt'; END IF;
   RAISE NOTICE 'PASS (4) depot_holdings_overview.holding_id';
 
-  -- (5) 2026-10-23: Notierung nur in Fremdwaehrung (provider_currency aus tool_commit_import) -> quote_currency der
+  -- (5) Notierung nur in Fremdwaehrung (provider_currency aus tool_commit_import) -> quote_currency der
   --     EUR-Position, Einstand bleibt EUR; die Uebersicht zeigt Kurs-Waehrung + Anlageklasse-Spalte, market_value_eur
   --     rechnet per FX um; ein genannter Kaufkurs-quote_currency geht vor.
   INSERT INTO finance.currencies (code, minor_unit) VALUES ('USD', 2) ON CONFLICT (code) DO NOTHING;

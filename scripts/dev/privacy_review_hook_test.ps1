@@ -280,7 +280,7 @@ Invoke-SandboxGit @('commit', '-q', '-m', 'vier')
 Assert-Stamp 'Lint rot: kein Stempel' $false
 
 # --- Echter Release-Ablauf: Pin-Commit, main-Push, Tag-Push mit echtem git push gegen das Wegwerf-Remote ---------------------
-# Der Stempel haengt am Ausgehenden gegen den Remote-Stand. Ein Tag-Stempel VOR dem main-Push enthaelt den Pin-Commit noch;
+# Der Stempel haengt am Ausgehenden gegen den Remote-Stand. Ein Tag-Stempel vor dem main-Push enthaelt den Pin-Commit noch;
 # nach dem main-Push ist er veraltet (anderer Hash), erst ein neuer Stempel gibt den Tag-Push frei (docs/reference/sessions.md
 # *Release-Ablauf* Schritt 8). Der git pre-push-Hook ist der echte von prek (Gate privacy_outgoing -Check), fehlt prek, entfaellt der Teil.
 Write-Host 'Echter Release-Ablauf (git push gegen das Wegwerf-Remote):'

@@ -77,7 +77,7 @@ BEGIN
   END IF;
   RAISE NOTICE 'PASS batch [beide reconciled, nur A Korrekturbuchung]';
 
-  -- TEST 3: Atomaritaet -> ein gueltiges + ein unbekanntes Konto -> ok:false, KEIN Write
+  -- TEST 3: Atomaritaet -> ein gueltiges + ein unbekanntes Konto -> ok:false, kein Write
   -- Reset: neues Konto C ohne Reconcile-Historie
   SELECT finance.fn_create_account('{"name":"__test_recon_batch_c__","account_type":"cash","account_holder":"T","currency":"EUR"}'::jsonb) INTO v_result;
   INSERT INTO finance.transactions (account_id, amount, transaction_date, category, description)
@@ -91,7 +91,7 @@ BEGIN
   IF (v_result->>'ok')::boolean IS DISTINCT FROM FALSE THEN
     RAISE EXCEPTION 'FAIL batch-atomic [ok]: erwartet false, got %', v_result;
   END IF;
-  -- C darf NICHT reconciled/gebucht worden sein (RETURN brach die TX-Logik vor dem Write ab)
+  -- C darf nicht reconciled/gebucht worden sein (RETURN brach die TX-Logik vor dem Write ab)
   SELECT last_reconciled_at INTO v_last FROM finance.accounts
     WHERE name = '__test_recon_batch_c__';
   IF v_last IS NOT NULL THEN
@@ -120,7 +120,7 @@ BEGIN
   END IF;
   RAISE NOTICE 'PASS preview [unbekanntes Konto + leere Liste -> ok:false]';
 
-  -- TEST 6: Preview ist READ-ONLY -- kein last_reconciled, keine Korrekturbuchung (Konto C aus TEST 3)
+  -- TEST 6: Preview ist read-only -- kein last_reconciled, keine Korrekturbuchung (Konto C aus TEST 3)
   SELECT finance.fn_reconcile_accounts_preview(jsonb_build_object('accounts', jsonb_build_array(
       jsonb_build_object('account_name','__test_recon_batch_c__','confirmed_balance',350)
   ))) INTO v_result;
@@ -142,7 +142,7 @@ BEGIN
 END $$;
 
 -- ============================================================
--- Phase B: Modell-Eingaben -> {ok:false} statt Absturz (Build-Sentinel bei kaputtem JSON, fehlender Key,
+-- Modell-Eingaben -> {ok:false} statt Absturz (Build-Sentinel bei kaputtem JSON, fehlender Key,
 -- nicht-numerischer Saldo, kaputtes Datum) — beide fns, kein Write.
 -- ============================================================
 DO $$
@@ -168,10 +168,10 @@ BEGIN
   RAISE NOTICE 'PASS reconcile guards [Sentinel/fehlender Key/Zahl/Datum -> ok:false, kein Absturz]';
 END $$;
 
--- Rennen/Pass-2-Ablehnung (Paket DB-ist-das-Gesetz, vorher RAISE = Owner-Alarm): Pass 1 prueft gegen den Altstand;
+-- Rennen/Pass-2-Ablehnung (ein RAISE waere Owner-Alarm): Pass 1 prueft gegen den Altstand;
 -- aendert sich ein Konto bis Pass 2, lehnt fn_reconcile_account dort ab. In einer Test-TX nicht natuerlich erreichbar
--- -> fn_reconcile_account wird IN DIESER TX (ROLLBACK unten stellt sie wieder her) fuer das zweite Konto auf
--- {ok:false} umgebogen. Erwartet: {ok:false, reason, account_name}, der GANZE Stapel zurueckgerollt (auch Konto 1).
+-- -> fn_reconcile_account wird in dieser TX (ROLLBACK unten stellt sie wieder her) fuer das zweite Konto auf
+-- {ok:false} umgebogen. Erwartet: {ok:false, reason, account_name}, der ganze Stapel zurueckgerollt (auch Konto 1).
 CREATE OR REPLACE FUNCTION finance.fn_reconcile_account(p jsonb) RETURNS jsonb LANGUAGE plpgsql AS $f$
 BEGIN
     IF (SELECT name FROM finance.accounts WHERE id = (p->>'account_id')::int) = '__rca_b__' THEN

@@ -1,13 +1,13 @@
 -- ============================================================
 -- fn_reset_onboarding_state (Owner-Ops — Onboarding-Fortschritt auf Anfang)
---   Setzt JEDE Onboarding-Sektion auf 'unknown': Core (agent.guide_onboarding_state) UND jedes
+--   Setzt jede Onboarding-Sektion auf 'unknown': Core (agent.guide_onboarding_state) und jedes
 --   Paket ueber die Konvention <pkg>.onboarding_state (docs/package-contract.md §3.2 — gleiche Spalten
 --   status/status_changed_at bei allen Paketen; per-Person-Tabellen werden fuer alle Personen-Zeilen zurueckgesetzt).
---   Phase B: generischer Loop statt finance/career-Literal (estate fehlte vorher). Paket-Menge =
---   core.package_registry ∪ core.schema_version (auch --keep-data-Deinstallierte), Tabelle per to_regclass.
+--   Paket-Menge = core.fn_package_schemas() (auch --keep-data-Deinstallierte), Tabelle per to_regclass.
 --   Aufrufer: core.fn_reset_user_data (Werkszustand) + packages/core/db/util/util_reset_onboarding_state.sql.
---   Schliesst das Advisor-Pflicht-Gate wieder (feature.onboarding_gate vorausgesetzt).
---   RUECKGABE: {ok:true, core:<n>, packages:{<pkg>:<n>}}
+--   Schliesst das Advisor-Pflicht-Gate wieder (feature.onboarding_gate vorausgesetzt) und
+--   nimmt den Knopf „Uebersicht“ weg (Latch app_button/ready geloest, Menue-Refresh angefordert).
+--   Eingabe: keine. Rueckgabe: {ok:true, core:<n>, packages:{<pkg>:<n>}}
 --   Tests: tests/db/core/test_fn_reset_user_data.sql
 -- ============================================================
 CREATE OR REPLACE FUNCTION core.fn_reset_onboarding_state()
@@ -33,7 +33,7 @@ BEGIN
         v_pkgs := v_pkgs || jsonb_build_object(v_pkg, v_n);
     END LOOP;
 
-    -- Der Knopf „Uebersicht“ verschwindet mit: „einmal bereit“ endet nur hier
+    -- „einmal bereit“ des Knopfs „Uebersicht“ endet nur hier
     PERFORM core.fn_notify_resolve('app_button', 'ready');
     PERFORM core.fn_menu_refresh_request();
 

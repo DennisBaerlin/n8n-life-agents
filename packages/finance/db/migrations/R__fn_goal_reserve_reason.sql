@@ -1,10 +1,11 @@
 -- ============================================================
--- fn_goal_reserve_reason (REGEL FUER EINEN NEUEN SPARZIEL-TOPF)
---   Der Topf eines Sparziels ist das Zielkonto seiner Sparrate (recurring_payments.target_account_id). Die RESERVE ist
---   der Topf plus jedes Konto, auf dem noch getaggtes Geld des Ziels liegt (Paket DB-ist-das-Gesetz Nachtrag D).
+-- fn_goal_reserve_reason (READ HELPER — Regel fuer einen neuen Sparziel-Topf)
+--   Der Topf eines Sparziels ist das Zielkonto seiner Sparrate (recurring_payments.target_account_id). Die Reserve ist
+--   der Topf plus jedes Konto, auf dem noch getaggtes Geld des Ziels liegt.
 --   Familie: fn_goal_reserve_accounts / fn_goal_reserve_account_reason / fn_goal_reserve_reason / fn_apply_goal_reserve;
 --   Konsumenten: fn_book_savings_goal_transfer, fn_set_savings_goal.
---   -> NULL | Grund: Konto-Regel (fn_goal_reserve_account_reason), dann: das Ziel hat eine Sparrate.
+--   Eingabe: p_goal (Ziel-id), p_account (Topf-Kandidat).
+--   Rueckgabe: NULL (in Ordnung) | Grund (EN): Konto-Regel (fn_goal_reserve_account_reason), dann: das Ziel hat eine Sparrate.
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_goal_reserve_reason(p_goal int, p_account int)
 RETURNS text

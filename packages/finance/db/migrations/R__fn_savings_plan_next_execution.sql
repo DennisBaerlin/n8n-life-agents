@@ -1,9 +1,9 @@
 -- ============================================================
--- fn_savings_plan_next_execution (READ) -- naechste offene Ausfuehrung eines Sparplans (Audit Paket 2, Punkt 3)
---   EINE Quelle fuer die HITL-Karte (tool_book_savings_plan_execution, Read-Node) UND die Buchung
+-- fn_savings_plan_next_execution (READ) -- naechste offene Ausfuehrung eines Sparplans
+--   Eine Quelle fuer die HITL-Karte (tool_book_savings_plan_execution, Read-Node) und die Buchung
 --   (fn_book_savings_plan_execution) -> Karte = Buchung. Sucht das frueheste offene Vorkommen (fn_recurring_due_open
---   bis heute) ueber ALLE Glieder der Vorgaenger-Kette des Plans: nach einer Betragsaenderung mit Stichtag in der
---   Zukunft liegt die noch anstehende Ausfuehrung auf der ALTEN rp (alter Betrag) -> sie wird mit genau dieser rp
+--   bis heute) ueber alle Glieder der Vorgaenger-Kette des Plans: nach einer Betragsaenderung mit Stichtag in der
+--   Zukunft liegt die noch anstehende Ausfuehrung auf der alten rp (alter Betrag) -> sie wird mit genau dieser rp
 --   und ihrem Betrag geliefert.
 --   Eingabe jsonb: savings_plan_name.
 --   RUECKGABE: {ok:true, savings_plan_id, symbol, security_name, due_date, recurring_payment_id, plan_amount (>0),

@@ -25,7 +25,7 @@ BEGIN
     'schedule_unit','month','schedule_day_of_month','1','valid_from',CURRENT_DATE::text,
     'debit_account_id',v_acct,'recurring_amount','-10'));
 
-  -- Standalone rp MIT gebuchter Transaktion -> Guard
+  -- Standalone rp mit gebuchter Transaktion -> Guard
   SELECT (finance.fn_create_recurring_payment(jsonb_build_object(
     'name','__test_drp_booked__','account_id',v_acct,'direction','expense','amount','30',
     'schedule_unit','month','schedule_day_of_month','1','first_payment_date',CURRENT_DATE::text
@@ -55,15 +55,15 @@ BEGIN
   IF v_cnt <> 1 THEN RAISE EXCEPTION 'FAIL delete_recurring_payment [rp mit tx faelschlich geloescht]'; END IF;
   RAISE NOTICE 'PASS delete_recurring_payment [tx-guard: ok=false]';
 
-  -- TEST 4: not-found -> {ok:false, reason, candidates} als Daten (Vertragsaenderung DB-ist-das-Gesetz: Probelauf vor der Karte)
+  -- TEST 4: not-found -> {ok:false, reason, candidates} als Daten (Probelauf vor der Karte)
   SELECT finance.fn_delete_recurring_payment('{"recurring_payment_name":"__test_drp_missing__"}'::jsonb) INTO v_res;
   IF (v_res->>'ok')::boolean IS DISTINCT FROM false OR v_res->>'reason' NOT LIKE '%not found%' OR NOT (v_res ? 'candidates') THEN
     RAISE EXCEPTION 'FAIL delete_recurring_payment [not-found -> ok:false]: %', v_res; END IF;
   RAISE NOTICE 'PASS delete_recurring_payment [not-found -> ok:false]';
 END $$;
 
--- Befund 2026-10-27: der Agent loeschte einen Uebertrag auf das Verrechnungskonto eines Sparplans als
--- "Duplikat" einer Ziel-Rate. Zubringer (Sparplan-Verrechnungskonto, Ziel-Topf) -> feeds_savings ohne Bestaetigung.
+-- Ein Uebertrag auf das Verrechnungskonto eines Sparplans darf nicht als
+-- "Duplikat" einer Ziel-Rate geloescht werden. Zubringer (Sparplan-Verrechnungskonto, Ziel-Topf) -> feeds_savings ohne Bestaetigung.
 DO $$
 DECLARE
   v_r      JSONB;

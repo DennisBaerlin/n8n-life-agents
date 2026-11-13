@@ -1,7 +1,8 @@
 -- ============================================================
 -- fn_import_card_rows (READ, STABLE) -- die Zeilen der Import-Bestaetigungskarte (tool_commit_import)
---   Je VALIDER Staging-Zeile (row_no-Reihenfolge) {row_no, entity_type, name, p, x}: p = roher Payload, x = die
---   abgeleiteten Werte, die das Einzel-Tool vor seiner Karte aus DENSELBEN fn_* holt (Post-State-Vertrag):
+--   Eingabe: p_batch_id (Staging-Batch).
+--   Je valider Staging-Zeile (row_no-Reihenfolge) {row_no, entity_type, name, p, x}: p = roher Payload, x = die
+--   abgeleiteten Werte, die das Einzel-Tool vor seiner Karte aus denselben fn_* holt (Post-State-Vertrag):
 --     person          Name der Person (fn_import_person_field + core.fn_resolve_person; NULL = Haushalt)
 --     ccy             Zeilen-Waehrung: Konto/Dauerauftrag = fn_import_ref_currency, Depot-Position = quote_currency
 --                     (fn_normalize_currency, wie fn_book_stock_buy) sonst die des Depots, Rest EUR nach Modell
@@ -21,7 +22,7 @@
 --                     wie fn_create_loan first_rate_interest/_principal)
 --   Zeilen mit cost_origin (Ersteinrichtung) erscheinen je Position einmal: Stueck und Einstand summiert, x.lots_count, x.transaction_date = erster Kauf.
 --   name = Anzeige-Name der Zeile (name, sonst symbol, sonst die referenzierte Rente).
---   RUECKGABE jsonb-Array (leer = '[]', nie NULL -> der Pg-Knoten liefert immer genau ein Item).
+--   Rueckgabe jsonb-Array (leer = '[]', nie NULL -> der Pg-Knoten liefert immer genau ein Item).
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_import_card_rows(p_batch_id uuid)
 RETURNS jsonb LANGUAGE plpgsql STABLE AS $$
@@ -75,7 +76,7 @@ BEGIN
                 'settlement_ref', CASE WHEN v_settle IS NOT NULL THEN finance.fn_import_ref_account(p_batch_id, v_settle) END,
                 'transaction_date', COALESCE(NULLIF(v_p->>'transaction_date', ''), to_char(CURRENT_DATE, 'YYYY-MM-DD')));
         ELSIF v_row.entity_type = 'insurance' THEN
-            -- dieselbe Pruef-/Ableitungs-fn wie fn_create_insurance (WP2): Betrag je Abbuchung roh oder aus dem
+            -- dieselbe Pruef-/Ableitungs-fn wie fn_create_insurance: Betrag je Abbuchung roh oder aus dem
             -- Jahresbeitrag, Jahreswert abgeleitet
             v_x := v_x || (SELECT jsonb_build_object('period_amount', f->'premium_amount', 'annual_premium', f->'annual_premium',
                                   -- Vertragsbeginn wie fn_create_insurance ihn speichert (Rueckfall erste Abbuchung, sonst heute)
@@ -83,7 +84,7 @@ BEGIN
                                                          to_char(core.fn_today(), 'YYYY-MM-DD')))
                            FROM finance.fn_insurance_fields(v_p) f);
         ELSIF v_row.entity_type = 'savings_goal' THEN
-            -- Rate/Datum/erste Rate aus DERSELBEN Ableitung wie der Commit (fn_create_savings_goal ->
+            -- Rate/Datum/erste Rate aus derselben Ableitung wie der Commit (fn_create_savings_goal ->
             -- fn_savings_goal_funding): Sparplaene, fortgefuehrter Dauerauftrag, Rest. Topf/Abbuchungskonto als id nur,
             -- wenn sie schon existieren; ein im Batch neues Abbuchungskonto hat noch keinen Dauerauftrag
             -- (replace_transfer=false, wie der Commit es mit der neuen id sieht).

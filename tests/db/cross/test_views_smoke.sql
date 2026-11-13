@@ -1,8 +1,7 @@
 -- tests/db/cross/test_views_smoke.sql
--- Generische All-Package-View-Smoke (E7): JEDE View ALLER Nicht-System-Schemas existiert +
--- ist abfragbar (LIMIT 1) — paket-uebergreifend statt hartkodierter finance-Liste. Faengt
--- Migrations-Brueche (append-only-View-Regel) und die DROP-CASCADE-Falle der R__-Sammeldateien
--- (eine per CASCADE mitgedroppte View fehlt hier sofort — via Floor + Sentinels, s. u.).
+-- Jede View aller Nicht-System-Schemas existiert und ist abfragbar (LIMIT 1), paketuebergreifend.
+-- Faengt Migrations-Brueche (append-only-View-Regel) und die DROP-CASCADE-Falle der R__-Sammeldateien
+-- (eine per CASCADE mitgedroppte View faellt ueber Floor und Sentinels auf, s. u.).
 BEGIN;
 
 DO $$
@@ -25,8 +24,8 @@ BEGIN
     v_count := v_count + 1;
   END LOOP;
 
-  -- Anti-Silent-Green: eine leere pg_views-Menge (Bootstrap-/R__-Apply-Bruch) darf NICHT
-  -- gruen durchlaufen. Floor bei bewusstem View-Abbau senken (Stand: 19 Paket-Views).
+  -- Anti-Silent-Green: eine leere pg_views-Menge (Bootstrap-/R__-Apply-Bruch) darf nicht
+  -- gruen durchlaufen. Floor bei bewusstem View-Abbau senken.
   IF v_count < 15 THEN
     RAISE EXCEPTION 'FAIL views_smoke: nur % Views gefunden (Floor 15) — Bootstrap/R__-Apply pruefen', v_count;
   END IF;

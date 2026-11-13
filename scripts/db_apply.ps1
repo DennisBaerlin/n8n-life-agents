@@ -1,10 +1,10 @@
 ﻿#Requires -Version 5.1
-# Apply one or more .sql files to the PostgreSQL database (schema init / migrations).
-# All files are run with ON_ERROR_STOP=1 so any error aborts immediately.
-# Mehrere Dateien laufen in EINER psql-Session (\i-Driver, Fail-fast-Semantik identisch,
-# Fehlerdatei steht in der psql:<datei>:<zeile>:-Zeile); -Sequential = alter Per-File-Pfad.
-# The SQL files are written to be idempotent (CREATE ... IF NOT EXISTS, CREATE OR REPLACE,
-# ADD COLUMN IF NOT EXISTS) so re-applying is safe.
+# Wendet .sql-Dateien (Schema-Init, V__-Migrationen, R__-Repeatables) auf das Docker-Test-Postgres an.
+# Alle Dateien laufen mit ON_ERROR_STOP=1, der erste Fehler bricht ab.
+# Mehrere Dateien laufen in einer psql-Session (\i-Driver); die Fehlerdatei steht in der
+# psql:<datei>:<zeile>:-Zeile; -Sequential = ein psql-Spawn je Datei.
+# Die SQL-Dateien sind idempotent (CREATE ... IF NOT EXISTS, CREATE OR REPLACE, ADD COLUMN IF NOT EXISTS),
+# Re-Apply ist sicher.
 #
 # Usage:
 #   .\scripts\db_apply.ps1                                  # applies packages\finance\db\finance.tables_init.sql by default
@@ -17,57 +17,55 @@
 # oder ein Wildcard-Glob (-> alle Treffer, sortiert) sein. Sortierung nach Name macht den
 # Ziffern-Prefix (00_schema.sql) reihenfolge-stabil vor den fn_*.sql.
 #
-# Connection: ephemeres Docker-Test-Postgres (pgvector/pgvector:pg17 = postgres:17 + pgvector, trust-Auth, Loopback, nicht-geheime
-# Wegwerf-Defaults; Overrides $env:DBTEST_PG_*). db_apply ist reines Dev-/Test-Werkzeug — die neue Prod
-# wird ueber den Installer (provisioning/lib/apply_schema.sh) provisioniert, NIE ueber dieses Skript.
+# Voraussetzung: das Test-Postgres laeuft (bootstrap_test_db.ps1). Exit: 0 = alles angewandt, ungleich 0 = throw
+# (psql-Fehler, Datei/Glob nicht gefunden).
+#
+# Connection: ephemeres Docker-Test-Postgres (trust-Auth, Loopback, nicht-geheime Wegwerf-Defaults;
+# Overrides $env:DBTEST_PG_*). Prod wird ueber den Installer (provisioning/lib/apply_schema.sh) provisioniert,
+# nie ueber dieses Skript.
 
 param(
     [string[]]$File = @('packages\finance\db\finance.tables_init.sql'),
     [switch]$Sequential,   # Debug-Fallback: 1 psql-Spawn je Datei statt Batch-Session
-    # Versionierte Einmal-Migrationen (packages\<pkg>\db\migrations\V{NNN}__*.sql) NACH den -File-Inits
-    # gated ueber core.schema_version (migration_should_apply) anwenden — identisches Muster wie
-    # provisioning/lib/apply_schema.sh (Dev<->Release-Konsistenz). Leer = aus. Verarbeitet NUR V*.sql.
-    # Paket-bewusst (Phase 2): EIN Verzeichnis ODER eine Liste (z. B. 'packages\core\db\migrations',
-    # 'packages\finance\db\migrations') — je Verzeichnis name-sortiert, in der angegebenen Reihenfolge.
+    # Versionierte Einmal-Migrationen (packages\<pkg>\db\migrations\V{NNN}__*.sql) nach den -File-Inits,
+    # gated ueber core.schema_version (migration_should_apply) wie provisioning/lib/apply_schema.sh
+    # (Dev<->Release-Konsistenz). Leer = aus. Verarbeitet nur V*.sql.
+    # Ein Verzeichnis oder eine Liste (z. B. 'packages\core\db\migrations', 'packages\finance\db\migrations'),
+    # je Verzeichnis name-sortiert, in der angegebenen Reihenfolge.
     [string[]]$Migrations = @(),
-    # Flyway-REPEATABLES (packages\<pkg>\db\migrations\R__*.sql: Views + Tool-Functions) NACH dem -Migrations-Block,
+    # Flyway-Repeatables (packages\<pkg>\db\migrations\R__*.sql: Views + Tool-Functions) nach dem -Migrations-Block,
     # gated ueber core.repeatable_should_apply (relativer Pfad als Key + md5 -> laeuft nur neu bei
     # Inhalts-Aenderung). Glob(s) wie -File (Datei|Verzeichnis|Glob, komma-getrennt). Leer = aus.
     # Kanonischer Dev-Full-Apply = paket-bewusste Glob-Arrays, Core zuerst (Muster: bootstrap_test_db.ps1), je Paket:
     #   db_apply -File 'packages\<pkg>\db\*.sql' -Migrations 'packages\<pkg>\db\migrations' -Repeatable 'packages\<pkg>\db\migrations\R__*.sql'
-    # Einzeldatei-Applies (db_apply -File packages\<pkg>\db\migrations\R__fn_x.sql) bleiben UNGATED -> Inner-Loop
+    # Einzeldatei-Applies (db_apply -File packages\<pkg>\db\migrations\R__fn_x.sql) sind ungated -> Inner-Loop
     # nicht durch die Checksum gebremst; Gating greift nur ueber diesen -Repeatable-Pfad.
     [string[]]$Repeatable = @(),
-    # Ledger-Eigentum (core.schema_version.package, B1) fuer FLACHE Dateien (kein packages/<pkg>/ im Pfad).
-    # Dateien UNTER packages/<pkg>/ leiten ihr Paket automatisch aus dem Pfad ab (s. Get-LedgerPkg) — dieser
-    # Wert ist nur der Fallback fuer den flachen Rest (Phase-2-Hybrid: flach = 'finance'). Default 'core'
-    # (rueckwaerts-kompatibel + DB-Spalten-Default). Gilt NUR fuer die gegateten V__/R__-Bloecke (Inits
-    # treffen das Ledger nicht).
+    # Ledger-Eigentum (core.schema_version.package) fuer flache Dateien (kein packages/<pkg>/ im Pfad).
+    # Dateien unter packages/<pkg>/ leiten ihr Paket aus dem Pfad ab (s. Get-LedgerPkg); dieser Wert ist
+    # nur der Fallback. Gilt nur fuer die gegateten V__/R__-Bloecke (Inits treffen das Ledger nicht).
     [string]$Package = 'core'
 )
 
 $ErrorActionPreference = 'Stop'
 $RepoRoot = git -C $PSScriptRoot rev-parse --show-toplevel
 
-# Invoke-Psql — JEDER psql-Aufruf dieses Skripts. psql schreibt NOTICEs auf stderr; leitet ein Aufrufer die Ausgabe um
+# Jeder psql-Aufruf laeuft hier durch. psql schreibt NOTICEs auf stderr; leitet ein Aufrufer die Ausgabe um
 # (*> / 2>&1, z. B. run_free_gates.ps1), macht PS 5.1 daraus unter $ErrorActionPreference='Stop' einen
-# terminierenden NativeCommandError (2026-10-23 an allen vier Stellen getroffen). Daher EAP lokal 'Continue';
-# Pass/Fail allein ueber $LASTEXITCODE (ON_ERROR_STOP=1), den der Aufrufer wie bisher prueft.
+# terminierenden NativeCommandError. Daher EAP lokal 'Continue'; Pass/Fail allein ueber $LASTEXITCODE (ON_ERROR_STOP=1).
 function Invoke-Psql {
     $prev = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
     try { & psql --no-psqlrc -v ON_ERROR_STOP=1 @args } finally { $ErrorActionPreference = $prev }
 }
 
-# Get-LedgerPkg <path> — leitet das besitzende Paket fuer den Ledger ab: packages/<pkg>/ -> <pkg>,
-# sonst der -Package-Fallback. So traegt EIN db_apply-Aufruf gemischte Core-/Flach-Globs mit je
-# korrektem Label (Treiber-Vertrag identisch zu apply_schema.sh: Paket folgt dem Quell-Verzeichnis).
+# Besitzendes Paket fuer den Ledger: packages/<pkg>/ -> <pkg>, sonst der -Package-Fallback. So traegt ein
+# Aufruf gemischte Core-/Flach-Globs mit je korrektem Label (wie apply_schema.sh: Paket folgt dem Quell-Verzeichnis).
 function Get-LedgerPkg([string]$path) {
     if ($path.Replace('\', '/') -match '/packages/([^/]+)/') { return $Matches[1] }
     return $Package
 }
 
-# Verbindung: ephemeres Docker-Test-Postgres (s. bootstrap_test_db.ps1) — trust-Auth -> kein Passwort,
-# Loopback-Port, nicht-geheime Wegwerf-Defaults (Overrides $env:DBTEST_PG_*). Keine .env-DB-Keys.
+# Keine .env-DB-Keys (trust-Auth, s. bootstrap_test_db.ps1).
 $PG_HOST     = if ($env:DBTEST_PG_HOST)     { $env:DBTEST_PG_HOST }     else { '127.0.0.1' }
 $PG_PORT     = if ($env:DBTEST_PG_PORT)     { $env:DBTEST_PG_PORT }     else { '55432' }
 $PG_USER     = if ($env:DBTEST_PG_USER)     { $env:DBTEST_PG_USER }     else { 'postgres' }
@@ -92,18 +90,15 @@ $env:PGCLIENTENCODING = 'UTF8'
 
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 
-# Jeden -File-Eintrag zu konkreten .sql-Pfaden aufloesen (Datei | Verzeichnis | Glob). Eine in Anfuehrungszeichen
-# uebergebene Komma-Liste ('a.sql,b.sql') kommt als EIN String an -> hier ebenfalls aufteilen (2026-10-24 so gestolpert).
+# Eine in Anfuehrungszeichen uebergebene Komma-Liste ('a.sql,b.sql') kommt als ein String an -> hier aufteilen.
 $File = @($File | ForEach-Object { $_ -split ',' } | ForEach-Object { $_.Trim() } | Where-Object { $_ })
 $resolved = foreach ($f in $File) {
     $base = if ([System.IO.Path]::IsPathRooted($f)) { $f } else { Join-Path $RepoRoot $f }
     if ($f -match '[*?]') {
-        # Wildcard-Glob -> sortierte Treffer
         $hits = @(Get-ChildItem -Path $base -File -ErrorAction SilentlyContinue | Sort-Object Name)
         if ($hits.Count -eq 0) { throw "Keine Datei passt zum Glob: $f" }
         $hits.FullName
     } elseif (Test-Path $base -PathType Container) {
-        # Verzeichnis -> alle *.sql darin, nach Name sortiert
         $hits = @(Get-ChildItem -Path $base -Filter '*.sql' -File | Sort-Object Name)
         if ($hits.Count -eq 0) { throw "Keine *.sql im Verzeichnis: $f" }
         $hits.FullName
@@ -118,11 +113,9 @@ $resolved = @($resolved)
 $sw = [System.Diagnostics.Stopwatch]::StartNew()
 
 if ($resolved.Count -gt 1 -and -not $Sequential) {
-    # BATCH: alle Dateien in EINER psql-Session via generiertem \i-Driver — eliminiert den
-    # ~2s-Spawn-Overhead pro Datei (97 Dateien: ~3,5 min -> ~30s). ON_ERROR_STOP=1 wirkt
-    # session-weit ueber alle \i = exakt die bisherige Fail-fast-Semantik (Abbruch beim ersten
-    # Fehler; bereits applizierte Dateien bleiben — idempotente SQLs, unkritisch). Die
-    # ERROR-Zeile traegt "psql:<datei>:<zeile>:" -> Fehlerdatei bleibt identifizierbar.
+    # Batch: alle Dateien in einer psql-Session via generiertem \i-Driver (spart ~2 s Spawn je Datei).
+    # ON_ERROR_STOP=1 wirkt session-weit ueber alle \i: Abbruch beim ersten Fehler, bereits applizierte
+    # Dateien bleiben (idempotent). Die ERROR-Zeile traegt "psql:<datei>:<zeile>:".
     $driverPath = Join-Path $env:TEMP "db_apply_driver_$PID.sql"
     try {
         $driver = New-Object System.Collections.Generic.List[string]
@@ -131,8 +124,7 @@ if ($resolved.Count -gt 1 -and -not $Sequential) {
         }
         [System.IO.File]::WriteAllLines($driverPath, $driver)
 
-        # -q: Command-Tags (CREATE FUNCTION ...) unterdruecken — bei 97 Dateien nur Rauschen;
-        # NOTICEs/ERRORs (stderr) bleiben sichtbar, Fehler traegt psql:<datei>:<zeile>:.
+        # -q: Command-Tags (CREATE FUNCTION ...) unterdruecken; NOTICEs/ERRORs (stderr) bleiben sichtbar.
         Write-Host "==> psql Batch: $($resolved.Count) Datei(en) in einer Session ($($File -join ', ')) ..."
         Invoke-Psql -q -f $driverPath
         if ($LASTEXITCODE -ne 0) {
@@ -142,7 +134,6 @@ if ($resolved.Count -gt 1 -and -not $Sequential) {
         Remove-Item -Path $driverPath -Force -ErrorAction SilentlyContinue
     }
 } else {
-    # Einzeldatei (oder -Sequential als Debug-Fallback): 1 psql-Spawn je Datei wie bisher.
     foreach ($path in $resolved) {
         $rel = $path.Replace('\', '/').Replace("$RepoRoot/", '')   # Anzeige: Forward-Slashes, dann Root strippen
         Write-Host ""
@@ -156,15 +147,14 @@ if ($resolved.Count -gt 1 -and -not $Sequential) {
 }
 
 # =====================================================================
-# Versionierte Migrationen (optional): packages/<pkg>/db/migrations/V{NNN}__*.sql, je GENAU einmal.
+# Versionierte Migrationen (optional): packages/<pkg>/db/migrations/V{NNN}__*.sql, je genau einmal.
 # Gated ueber core.schema_version (packages/core/db/core.schema_version_init.sql muss vorher angewandt
-# sein — Teil der -File-Inits). Jede Migration laeuft in EINER Transaktion: Reservierung
-# (migration_should_apply) + Anwendung atomar; Fehler unter ON_ERROR_STOP rollt die
-# Reservierung mit zurueck -> beim naechsten Lauf erneut. Zweiter Lauf = No-op.
+# sein, Teil der -File-Inits). Jede Migration laeuft in einer Transaktion: Reservierung
+# (migration_should_apply) + Anwendung atomar; ein Fehler rollt die Reservierung mit zurueck ->
+# beim naechsten Lauf erneut. Zweiter Lauf = No-op.
 # =====================================================================
 if ($Migrations.Count -gt 0) {
-    # Paket-bewusst: ueber jedes -Migrations-Verzeichnis in der gegebenen Reihenfolge (Hybrid: core zuerst,
-    # dann flach), je Verzeichnis V*.sql name-sortiert. Ledger-Eigentum leitet Get-LedgerPkg pro Datei ab.
+    # Je -Migrations-Verzeichnis in der gegebenen Reihenfolge V*.sql name-sortiert; Ledger-Eigentum je Datei via Get-LedgerPkg.
     $migFiles = @(foreach ($md in $Migrations) {
         $migBase = if ([System.IO.Path]::IsPathRooted($md)) { $md } else { Join-Path $RepoRoot $md }
         if (-not (Test-Path $migBase -PathType Container)) { throw "Migrations-Verzeichnis nicht gefunden: $migBase" }
@@ -182,7 +172,7 @@ if ($Migrations.Count -gt 0) {
             $ver = ($mf.Name -split '__')[0]                                  # 'V001__x.sql' -> 'V001'
             $sum = (Get-FileHash -Algorithm MD5 -LiteralPath $mf.FullName).Hash.ToLower()
             $fwd = $mf.FullName.Replace('\','/')
-            $migDriver.Add("SET lifeagents.package = '$(Get-LedgerPkg $mf.FullName)';")   # Ledger-Eigentum (B1)
+            $migDriver.Add("SET lifeagents.package = '$(Get-LedgerPkg $mf.FullName)';")   # Ledger-Eigentum
             $migDriver.Add('BEGIN;')
             $migDriver.Add("SELECT CASE WHEN core.migration_should_apply('$ver', '$($mf.Name)', '$sum') THEN 'true' ELSE 'false' END AS _mig \gset")
             $migDriver.Add('\if :_mig')
@@ -208,10 +198,9 @@ if ($Migrations.Count -gt 0) {
 
 # =====================================================================
 # Repeatables (optional): packages/<pkg>/db/migrations/R__*.sql (Views + Tool-Functions), je per
-# core.repeatable_should_apply(relpfad, md5) gegated -> laufen NUR neu bei Inhalts-Aenderung.
-# Laeuft NACH dem -Migrations-Block (V__ vor R__: ein V-Rename muss vor dem View-Recreate liegen).
-# Glob-Aufloesung wie -File (Datei|Verzeichnis|Glob, komma-getrennt). Tracking-Key = relativer Pfad
-# mit Forward-Slashes. Jede Datei in EINER Transaktion: Reservierung/Update + Anwendung atomar.
+# core.repeatable_should_apply(relpfad, md5) gegated -> laufen nur neu bei Inhalts-Aenderung.
+# Nach dem -Migrations-Block (ein V-Rename muss vor dem View-Recreate liegen). Tracking-Key = relativer
+# Pfad mit Forward-Slashes. Jede Datei in einer Transaktion: Reservierung/Update + Anwendung atomar.
 # =====================================================================
 if ($Repeatable.Count -gt 0) {
     $repResolved = foreach ($r in $Repeatable) {
@@ -236,14 +225,13 @@ if ($Repeatable.Count -gt 0) {
     $repDriver = New-Object System.Collections.Generic.List[string]
     $repDriver.Add('\set ON_ERROR_STOP on')
     foreach ($rf in $repResolved) {
-        # relativer Pfad = Tracking-Key. ZUERST nach Forward-Slashes normalisieren, DANN den
-        # Repo-Root strippen: $RepoRoot kommt aus `git rev-parse` mit Forward-Slashes, $rf.FullName
-        # mit Backslashes -> ein Strip von "$RepoRoot\" griffe nie (Slash-Mismatch -> absoluter Key).
+        # Erst nach Forward-Slashes normalisieren, dann den Repo-Root strippen: $RepoRoot kommt aus
+        # `git rev-parse` mit Forward-Slashes, der Pfad mit Backslashes (sonst absoluter Key).
         $rel = $rf.Replace('\', '/').Replace("$RepoRoot/", '')
         $sum = (Get-FileHash -Algorithm MD5 -LiteralPath $rf).Hash.ToLower()
         $fwd = $rf.Replace('\', '/')
         $name = [System.IO.Path]::GetFileName($rf)
-        $repDriver.Add("SET lifeagents.package = '$(Get-LedgerPkg $rf)';")   # Ledger-Eigentum (B1)
+        $repDriver.Add("SET lifeagents.package = '$(Get-LedgerPkg $rf)';")   # Ledger-Eigentum
         $repDriver.Add('BEGIN;')
         $repDriver.Add("SELECT CASE WHEN core.repeatable_should_apply('$rel', '$sum') THEN 'true' ELSE 'false' END AS _rep \gset")
         $repDriver.Add('\if :_rep')

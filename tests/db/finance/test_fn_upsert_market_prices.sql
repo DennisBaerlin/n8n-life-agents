@@ -1,5 +1,5 @@
 -- tests/db/finance/test_fn_upsert_market_prices.sql
--- fn_upsert_market_prices (WS2b Core-Advisor-Engine): Markt-Preis-Upsert NUR fuer Symbole, die als
+-- fn_upsert_market_prices: Markt-Preis-Upsert nur fuer Symbole, die als
 -- gehaltene Depot-Position (depot_holdings WHERE shares>0) existieren (Objekt-getrieben, kein Spam fuer
 -- nicht gehaltene Ticker — Muster fn_upsert_fx_rates). Guards: Symbol gehalten, numerisch+>0,
 -- Tages-Idempotenz (PK symbol,as_of), leeres prices-Objekt -> ok:false. Preis-Waehrung = Holding-Waehrung.
@@ -24,11 +24,11 @@ BEGIN
   -- gehaltene Position (shares>0, EUR) — Trigger pflegt shares normalerweise; im Test direkt setzen.
   INSERT INTO finance.depot_holdings (account_id, isin, symbol, name, shares, currency)
   VALUES (v_depot, 'IE00BK5BQT80', 'VWCE', 'Vanguard FTSE All-World', 5, 'EUR');
-  -- sold-off Position (shares=0) -> NICHT im Symbol-Set
+  -- sold-off Position (shares=0) -> nicht im Symbol-Set
   INSERT INTO finance.depot_holdings (account_id, isin, symbol, name, shares, currency)
   VALUES (v_depot, 'IE00BSOLD000', 'SOLD', 'Sold Off', 0, 'EUR');
 
-  -- TEST 1: Upsert nur fuer gehaltenes Symbol; SOLD (shares=0) + UNHELD (kein Holding) werden NICHT geschrieben.
+  -- TEST 1: Upsert nur fuer gehaltenes Symbol; SOLD (shares=0) + UNHELD (kein Holding) werden nicht geschrieben.
   SELECT finance.fn_upsert_market_prices(jsonb_build_object(
     'as_of', v_as_of::text,
     'prices', jsonb_build_object('VWCE', 110.50, 'SOLD', 5, 'UNHELD', 9, 'BAD', 'n/a', 'ZER', 0)
@@ -74,7 +74,7 @@ BEGIN
   END IF;
   RAISE NOTICE 'PASS fn_upsert_market_prices [source-Default yahoo]';
 
-  -- TEST 4b (Cold-Eyes A4): wissenschaftliche Notation (sub-microcent-Krypto, JSON '1e-7') wird akzeptiert
+  -- TEST 4b: wissenschaftliche Notation (sub-microcent-Krypto, JSON '1e-7') wird akzeptiert
   INSERT INTO finance.depot_holdings (account_id, symbol, name, shares, currency)
   VALUES (v_depot, 'TINY', 'Tiny Token', 1000000, 'EUR');
   SELECT finance.fn_upsert_market_prices(jsonb_build_object(
@@ -93,7 +93,7 @@ BEGIN
   END IF;
   RAISE NOTICE 'PASS fn_upsert_market_prices [kein prices-Objekt -> ok:false]';
 
-  -- TEST 6 (Phase M): quote_currency ueberschreibt die Holding-Waehrung als Kurs-Waehrung.
+  -- TEST 6: quote_currency ueberschreibt die Holding-Waehrung als Kurs-Waehrung.
   -- Holding QC in EUR gefuehrt, aber quote_currency=USD (US-Listing) -> market_prices.currency = USD.
   -- Setup: USD registrieren (der fn-Pfad macht das via fn_ensure_currency; hier inserten wir direkt, daher
   -- den FK depot_holdings.quote_currency->currencies vorab bedienen). market_prices.currency erbt den FK ebenso.
@@ -109,10 +109,10 @@ BEGIN
   END IF;
   RAISE NOTICE 'PASS fn_upsert_market_prices [quote_currency override -> market_prices.currency=USD]';
 
-  -- TEST 7 (Phase M, M4): gleiches Symbol in ZWEI Depots, eines mit quote_currency=USD, eines ohne (currency=EUR).
-  -- Korrekte Aggregation = min(COALESCE(quote_currency, currency)) PRO ZEILE -> min(USD-Zeile, EUR-Zeile) = 'EUR'.
-  -- Der fruehere Bug COALESCE(min(quote_currency), min(currency)) = COALESCE(USD, EUR) = USD wuerde die Waehrungen
-  -- ueber Zeilen MISCHEN. Wir asserten 'EUR' -> beweist die per-Zeile-Aufloesung.
+  -- TEST 7: gleiches Symbol in zwei Depots, eines mit quote_currency=USD, eines ohne (currency=EUR).
+  -- Korrekte Aggregation = min(COALESCE(quote_currency, currency)) pro Zeile -> min(USD-Zeile, EUR-Zeile) = 'EUR'.
+  -- COALESCE(min(quote_currency), min(currency)) = COALESCE(USD, EUR) = USD wuerde die Waehrungen
+  -- ueber Zeilen mischen. 'EUR' beweist die per-Zeile-Aufloesung.
   DECLARE v_cash2 INT; v_depot2 INT; BEGIN
     INSERT INTO finance.accounts (name, account_type, currency, status)
     VALUES ('__test_settle_mp2__', 'cash', 'EUR', 'active') RETURNING id INTO v_cash2;
@@ -134,12 +134,12 @@ BEGIN
     RAISE NOTICE 'PASS fn_upsert_market_prices [min(COALESCE) pro Zeile, keine Waehrungs-Mischung]';
   END;
 
-  -- TEST 8 (Yahoo-Robustheit): die GEFETCHTE Waehrung (Payload currencies{}) gewinnt ueber quote_currency/holding
-  -- UND wird von fn_upsert registriert (fn_ensure_currency), auch wenn sie noch nicht in finance.currencies steht.
+  -- TEST 8: die gefetchte Waehrung (Payload currencies{}) gewinnt ueber quote_currency/holding
+  -- und wird von fn_upsert registriert (fn_ensure_currency), auch wenn sie noch nicht in finance.currencies steht.
   -- Holding FCW: currency=EUR, quote_currency=USD; Fetch currencies={FCW:'CHF'} (CHF nicht vorab registriert).
   INSERT INTO finance.depot_holdings (account_id, isin, symbol, name, shares, currency, quote_currency)
   VALUES (v_depot, 'CH0000000FCW', 'FCW', 'Fetched Ccy Wins', 5, 'EUR', 'USD');
-  -- Setup robust: sicherstellen, dass CHF NICHT vorab registriert ist (Beweis-Voraussetzung, dass fn_upsert sie anlegt).
+  -- Setup robust: sicherstellen, dass CHF nicht vorab registriert ist (Beweis-Voraussetzung, dass fn_upsert sie anlegt).
   -- BEGIN/ROLLBACK -> kein Residual; DELETE statt IF-EXISTS-RAISE, das bei breiteren Currency-Seeds spurious feuern wuerde.
   DELETE FROM finance.currencies WHERE code = 'CHF';
   SELECT finance.fn_upsert_market_prices(jsonb_build_object(
@@ -155,7 +155,7 @@ BEGIN
   END IF;
   RAISE NOTICE 'PASS fn_upsert_market_prices [gefetchte Yahoo-Waehrung gewinnt + wird registriert]';
 
-  -- TEST 9 (Yahoo-Robustheit): eine INVALIDE gefetchte Waehrung (kein ^[A-Z]{3}$) faellt defensiv auf h.currency
+  -- TEST 9: eine invalide gefetchte Waehrung (kein ^[A-Z]{3}$) faellt defensiv auf h.currency
   -- zurueck statt FK-RAISE im Cron. Holding BADC: currency=EUR; Fetch currencies={BADC:'gbp'} (lowercase = invalid).
   INSERT INTO finance.depot_holdings (account_id, isin, symbol, name, shares, currency)
   VALUES (v_depot, 'XX0000000BAD', 'BADC', 'Bad Fetched Ccy', 2, 'EUR');
@@ -171,7 +171,7 @@ BEGIN
 
 END $$;
 
--- Die Preis-Pruefungen greifen auch fuer GEHALTENE Symbole: Text und 0 werden nie geschrieben (oben fielen BAD/ZER schon
+-- Die Preis-Pruefungen greifen auch fuer gehaltene Symbole: Text und 0 werden nie geschrieben (oben fielen BAD/ZER schon
 -- am Halte-Filter heraus).
 DO $$
 DECLARE v_acct INT; v_depot INT; v_result JSONB;

@@ -1,5 +1,5 @@
 -- tests/db/finance/test_constraints_hardening.sql
--- Strukturelle Haertung (Defense-in-Depth): jeder neue CHECK lehnt die Verletzung ab und laesst
+-- Strukturelle Haertung (Defense-in-Depth): jeder CHECK lehnt die Verletzung ab und laesst
 -- gueltige Grenzwerte zu. Prueft die DB-Ebene direkt (umgeht die fn-Guards bewusst).
 BEGIN;
 
@@ -72,8 +72,8 @@ BEGIN
     RAISE NOTICE 'PASS [transfer mit group_id erlaubt, CHECK validiert]';
 
     -- V022-Backfill (Spiegel der beiden UPDATEs aus finance:V022 — V-Migrationen laufen nicht aus db_test heraus):
-    -- Altzeilen (vor group_id) bekommen eine group_id; ein Kredit-Ereignis mit transfer-Bein bekommt fuer ALLE
-    -- Beine eines (loan_id, Datum) EINE gemeinsame. Constraint dafuer kurz loesen (nur in dieser Transaktion).
+    -- Altzeilen (vor group_id) bekommen eine group_id; ein Kredit-Ereignis mit transfer-Bein bekommt fuer alle
+    -- Beine eines (loan_id, Datum) eine gemeinsame. Constraint dafuer kurz loesen (nur in dieser Transaktion).
     ALTER TABLE finance.transactions DROP CONSTRAINT finance_transactions_transfer_grouped;
     INSERT INTO finance.loans (name, original_amount, disbursement_date, interest_rate, status, loan_account_id)
     VALUES ('__test_chk_tr_loan__', 1000, CURRENT_DATE, 1.0, 'paused', v_acc) RETURNING id INTO v_loan;

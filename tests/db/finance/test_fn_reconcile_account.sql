@@ -100,8 +100,8 @@ BEGIN
   END IF;
   RAISE NOTICE 'PASS fn_reconcile_account [-drift: Balance=%]', v_got_bal;
 
-  -- TEST 4-9 (Audit Paket 2, Punkt 6): Abgleich zum STICHTAG. Beispiel: 1000 bis D-10, +300 am D-3; der Nutzer
-  -- sagt "am D-5 waren es 1000" -> Differenz 0 (vorher Vergleich mit dem HEUTIGEN Saldo 1300 -> Korrektur -300).
+  -- TEST 4-9: Abgleich zum Stichtag. Beispiel: 1000 bis D-10, +300 am D-3; der Nutzer
+  -- sagt "am D-5 waren es 1000" -> Differenz 0 (nicht Vergleich mit dem heutigen Saldo 1300 -> Korrektur -300).
   DECLARE v_a INT; v_b INT; BEGIN
     SELECT (finance.fn_create_account('{"name":"__test_rca_asof__","account_type":"cash","currency":"EUR"}'::jsonb)->>'account_id')::int INTO v_a;
     INSERT INTO finance.transactions (account_id, amount, transaction_date, category)
@@ -123,7 +123,7 @@ BEGIN
       RAISE EXCEPTION 'FAIL reconcile [Stichtag]: erwartet ok/diff 0/kein TX/balance_after 1300, got %', v_result; END IF;
     RAISE NOTICE 'PASS reconcile [Stichtag D-5: Saldo damals 1000 -> keine Korrektur; Vorschau = Buchung]';
 
-    -- Stichtag VOR dem letzten Abgleich -> ok:false (verschoebe einen schon bestaetigten Saldo); Zukunft -> ok:false
+    -- Stichtag vor dem letzten Abgleich -> ok:false (verschoebe einen schon bestaetigten Saldo); Zukunft -> ok:false
     SELECT finance.fn_reconcile_account(jsonb_build_object('account_id', v_a, 'confirmed_balance', 900,
       'reconciliation_date', (CURRENT_DATE - 8)::text)) INTO v_result;
     IF (v_result->>'ok')::boolean IS DISTINCT FROM false THEN
@@ -144,7 +144,7 @@ BEGIN
       RAISE EXCEPTION 'FAIL reconcile [Rundung/Datum]: %', v_result; END IF;
     RAISE NOTICE 'PASS reconcile [1300.005 -> 1300.01, ohne Datum = heute]';
 
-    -- <=-Grenze: Buchung AM Stichtag zaehlt mit
+    -- <=-Grenze: Buchung am Stichtag zaehlt mit
     SELECT (finance.fn_create_account('{"name":"__test_rca_edge__","account_type":"cash","currency":"EUR"}'::jsonb)->>'account_id')::int INTO v_b;
     INSERT INTO finance.transactions (account_id, amount, transaction_date, category)
     VALUES (v_b, 1000, CURRENT_DATE - 10, 'other'), (v_b, 200, CURRENT_DATE - 5, 'other');
@@ -154,7 +154,7 @@ BEGIN
       RAISE EXCEPTION 'FAIL reconcile [<=-Grenze]: erwartet diff 0, got %', v_result; END IF;
     RAISE NOTICE 'PASS reconcile [Buchung am Stichtag zaehlt mit]';
 
-    -- Doppeltes Konto im Batch -> ok:false in Vorschau UND Buchung (sonst wiche die Vorschau von der Buchung ab)
+    -- Doppeltes Konto im Batch -> ok:false in Vorschau und Buchung (sonst wiche die Vorschau von der Buchung ab)
     SELECT finance.fn_reconcile_accounts_preview(jsonb_build_object('accounts', jsonb_build_array(
       jsonb_build_object('account_name','__test_rca_edge__','confirmed_balance','1200'),
       jsonb_build_object('account_name','__test_rca_edge__','confirmed_balance','1250')))) INTO v_result;

@@ -1,5 +1,5 @@
 -- tests/db/estate/test_fn_render_register_body.sql
--- WS-5: der GETEILTE Register-Body (Rule-of-Three-Extraktion). Prueft die DRY-Garantie
+-- Der geteilte Register-Body. Prueft die DRY-Garantie
 -- (Overview == fn_render_register_body(false), also kein Sektions-Duplikat -> drift-frei), die
 -- Maskierung am Body-Level (p_mask true/false) und die System-Steckbrief-Sektion. Self-contained.
 BEGIN;

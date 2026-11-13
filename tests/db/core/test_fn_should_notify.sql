@@ -1,10 +1,10 @@
 -- tests/db/core/test_fn_should_notify.sql
--- Phase Notify (WS-1): geteilte Owner-Benachrichtigungs-Dedup-Schicht.
+-- Geteilte Owner-Benachrichtigungs-Dedup-Schicht.
 -- core.fn_should_notify(source, key, ttl) liefert true GDW der Latch jetzt ok->fired kippt
 -- (Erst-Breach oder nach Re-Arm) und stempelt state='fired'/last_fired_at/expires_at.
 -- Invarianten:
 --   * Erst-Aufruf (keine Zeile)                 -> true,  state fired, expires NULL (kein TTL)
---   * zweiter Aufruf (fired, NULL-TTL)          -> false (NULL-TTL re-armt NIE automatisch)
+--   * zweiter Aufruf (fired, NULL-TTL)          -> false (NULL-TTL re-armt nie automatisch)
 --   * nach fn_notify_resolve                     -> wieder true (expliziter Re-Arm)
 --   * TTL-Aufruf, innerhalb des Fensters         -> false; nach Ablauf -> true (auto Re-Arm)
 -- BEGIN...ROLLBACK -> kein Residual-State.
@@ -44,7 +44,7 @@ BEGIN
   r := core.fn_should_notify('test', 'k2', interval '1 hour');
   IF r IS DISTINCT FROM true THEN RAISE EXCEPTION 'FAIL [k2 nach TTL-Ablauf muss true (auto Re-Arm): %]', r; END IF;
 
-  -- ---------- NULL-TTL fired re-armt NIE automatisch (k1 ist fired, expires NULL) ----------
+  -- ---------- NULL-TTL fired re-armt nie automatisch (k1 ist fired, expires NULL) ----------
   r := core.fn_should_notify('test', 'k1');
   IF r IS DISTINCT FROM false THEN RAISE EXCEPTION 'FAIL [k1 NULL-TTL fired muss still bleiben: %]', r; END IF;
 

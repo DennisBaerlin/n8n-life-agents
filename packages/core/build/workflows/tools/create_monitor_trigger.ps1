@@ -2,15 +2,15 @@
 # Dot-gesourct von build.ps1 (Helper + Script-Scope-Creds im Parent-Scope).
 
 # --- agent.tool_create_monitor_trigger (CROSS-AGENT, HITL-Write) -------------
-# Legt EINEN Monitor-Trigger an (Tabelle agent.monitor_triggers). Binder: agent.monitor
-# (domain vom LLM aus bekanntem Set) + ein Fach-Advisor (domain+package FIX = sein Paket).
-# E2E-Sentinel-Switch lebt IM Tool (chat_id startsWith test_e2e -> domain __e2e_monitor__),
-# damit EIN Switch alle Binder deckt (der Monitor-Agent liefert domain per $fromAI).
-# PROBE VOR DEM GATE: die Beschaffung laeuft einmal exakt wie der Cron (web: Claude-web_search-HTTP
-# + Parse; sql/Paket-Methoden: in fn_monitor_probe, sql unter core_ro) + Validierungs-Kaskade — Probe-Fail
-# = ToolError VOR dem Gate (nichts geschrieben), Probe-Wert steht in der Approval-Summary
+# Legt einen Monitor-Trigger an (Tabelle agent.monitor_triggers). Binder: agent.monitor
+# (domain vom LLM aus bekanntem Set) + ein Fach-Advisor (domain+package fix = sein Paket).
+# E2E-Sentinel-Switch lebt im Tool (chat_id startsWith test_e2e -> domain __e2e_monitor__),
+# damit ein Switch alle Binder deckt (der Monitor-Agent liefert domain per $fromAI).
+# Probe vor dem Gate: die Beschaffung laeuft einmal exakt wie der Cron (web: Claude-web_search-HTTP
+# + Parse; sql/Paket-Methoden: in fn_monitor_probe, sql unter core_ro) + Validierungs-Kaskade; Probe-Fail
+# = ToolError vor dem Gate (nichts geschrieben), Probe-Wert steht in der Approval-Summary
 # und wird nach Approve als erste Observation geloggt (+ Drawdown-Ratchet-Seed).
-# Phase B: Paket-Methoden (core.monitor_acquisition_methods) nehmen ihre Parameter als EIN Feld acquisition_params
+# Paket-Methoden (core.monitor_acquisition_methods) nehmen ihre Parameter als ein Feld acquisition_params
 # (JSON-String, geschuetzt geparst); die Bestaetigungszeile (z. B. "Waehrungspaar: EUR/CLP") liefert die validate_fn
 # des Pakets ueber die Probe (probe_display), die Methoden-Labels backt build.ps1 aus den Manifesten.
 function Build-CreateMonitorTrigger {
@@ -28,7 +28,7 @@ function Build-CreateMonitorTrigger {
         ,@('domain', '={{ String($(''Start'').item.json.chat_id || '''').startsWith(''test_e2e'') ? ''__e2e_monitor__'' : ($(''Start'').item.json.domain || ''general'') }}', 'string')
     )
 
-    # create_*-Konvention: deterministischer Dubletten-Backstop VOR dem Gate
+    # create_*-Konvention: deterministischer Dubletten-Backstop vor dem Gate
     $dupCheck = Build-Pg 'Check duplicate label' @(360, 0) `
         "=SELECT r.hit_count FROM agent.fn_resolve_monitor_trigger((`$1::jsonb)->>'label', (`$1::jsonb)->>'domain', false) AS r;" `
         ([ordered]@{
@@ -40,7 +40,7 @@ function Build-CreateMonitorTrigger {
         '=A trigger with this label already exists in this domain. Use tool_set_monitor_trigger to change it, or pick a different label.'
 
     # Probe: nur web braucht den HTTP-Abruf; sql/none/Paket-Methoden beschafft fn_monitor_probe selbst.
-    # Exklusive Branches (jedes Item geht GENAU einen Weg) -> der Probe-Pg-Node laeuft exakt 1x.
+    # Exklusive Branches (jedes Item geht genau einen Weg) -> der Probe-Pg-Node laeuft genau 1x.
     $paramsExpr = Get-GuardedJsonExpr '$(''Start'').item.json.acquisition_params ? JSON.parse($(''Start'').item.json.acquisition_params) : null'
     $ifWeb = Build-If 'Web probe?' @(720, 0) `
         "={{ `$('Start').item.json.acquisition_method }}" 'web_search' 'equals' 'string'
@@ -76,8 +76,8 @@ function Build-CreateMonitorTrigger {
 
     # Strukturiertes Summary (Textkatalog; zu viel Logik fuer Einzel-Zeilen -> -LinesExpr). Methoden-Bezeichnung =
     # <pkg>.monitor_method.<methode> ($MonitorMethodPkgJson {methode: paket}, Core-Builtins unter core.*), fehlt sie ->
-    # Methodenname. probe_display ist die Bestaetigungszeile der Paket-validate_fn (kind raw): ein tpl-Objekt (Textkatalog
-    # Phase C, gerendert in der Sprache des Bestaetigers) oder - aeltere Pakete - ein fertiger String.
+    # Methodenname. probe_display ist die Bestaetigungszeile der Paket-validate_fn (kind raw): ein tpl-Objekt (Textkatalog,
+    # gerendert in der Sprache des Bestaetigers) oder - Pakete ohne Katalog - ein fertiger String.
     $linesExpr = @'
 (() => {
   const s = $('Start').item.json;

@@ -1,5 +1,5 @@
 -- tests/db/finance/test_fn_monitor_validate_fx_rate.sql
--- Phase B: validate_fn der finance-Monitor-Methode fx_rate.
+-- validate_fn der finance-Monitor-Methode fx_rate.
 --   finance.fn_monitor_validate_fx_rate: Paar normalisiert (Grossbuchstaben, getrimmt) + display;
 --   unbekannte Waehrung / fehlender Code -> {ok:false}; Idempotenz-Vertrag (eigene spec als params -> gleiche spec)
 --   (Beschaffung + End-to-end ueber die Core-Registry: test_fn_monitor_acquire_fx_rate.sql)

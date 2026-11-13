@@ -1,5 +1,5 @@
 -- tests/db/finance/test_fn_book_takeover_pair.sql
--- Testet den internen Paar-Baustein der Bestandsuebernahme: Kauf + Gegenbuchung in EINER group_id, Verrechnungskonto
+-- Testet den internen Paar-Baustein der Bestandsuebernahme: Kauf + Gegenbuchung in einer group_id, Verrechnungskonto
 -- netto 0, korrigierbare Eingaben -> {ok:false} ohne Write; plus fn_unit_price_from_total (Stueckpreis aus Gesamtbetrag).
 BEGIN;
 

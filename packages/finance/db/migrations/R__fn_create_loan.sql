@@ -1,41 +1,41 @@
 -- ============================================================
 -- fn_create_loan (ATOMIC WRITE)
---   Legt in EINER Transaktion an: (1) Loan-Konto, (2) optional die Raten-Kette (recurring_payment, nur wenn
+--   Legt in einer Transaktion an: (1) Loan-Konto, (2) optional die Raten-Kette (recurring_payment, nur wenn
 --   monthly_annuity gesetzt), (3) Loan-Stammdaten mit FK-Link, (4) Restschuld-Eroeffnung auf dem Loan-Konto
---   (-Restschuld), (5) optionale Auszahlungsbuchung (+original_amount) auf disbursement_account_id NUR wenn dieses gesetzt
+--   (-Restschuld), (5) optionale Auszahlungsbuchung (+original_amount) auf disbursement_account_id nur wenn dieses gesetzt
 --   ist (Kreditsumme floss auf ein eigenes Konto). Eingabe als jsonb:
 --     name, lender, borrower_person_id (Slug, NULL=Haushalt), original_amount, current_balance (aktuelle Restschuld),
 --     disbursement_date, interest_rate, interest_rate_fixed_until, term_end_date (Laufzeitende = Termin der letzten Rate;
 --     bei Schlussrate deren Termin, Betrag in notes), monthly_annuity, schedule_day_of_month (1-28 | -1 | -2),
---     first_payment_date (echtes erstes/naechstes Ratendatum; PFLICHT, sobald monthly_annuity gesetzt ist), notes,
+--     first_payment_date (echtes erstes/naechstes Ratendatum; Pflicht, sobald monthly_annuity gesetzt ist), notes,
 --     disbursement_account_id (im n8n aufgeloest; NULL = keine Auszahlungsbuchung),
 --     debit_account_id (Rate; im n8n aufgeloest), real_estate_id (optional)
---   EINE QUELLE (WP2, finance:V026): Rate, Rhythmus und Abbuchungstag stehen nur an der Raten-Kette; die Kredit-Zeile
---   traegt keine Kopie. Die "anfaengliche Tilgung" wird nicht mehr erfasst (loan_overview.initial_principal_rate leitet
+--   Eine Quelle (finance:V026): Rate, Rhythmus und Abbuchungstag stehen nur an der Raten-Kette; die Kredit-Zeile
+--   traegt keine Kopie. Die "anfaengliche Tilgung" wird nicht erfasst (loan_overview.initial_principal_rate leitet
 --   sie aus Kreditbetrag + erster Rate ab).
---   FRISCH vs. ERÖFFNUNG ZUM STICHTAG HEUTE (Befunde 2026-10-24/25, "die Rate ist die Wahrheit"):
+--   Frisch vs. Eroeffnung zum Stichtag heute ("die Rate ist die Wahrheit"):
 --     * frisch mit Auszahlungsbuchung bzw. mit genanntem Auszahlungsdatum: original_amount Pflicht; die Eroeffnung
---       (-original_amount) bucht zum disbursement_date; ein Auszahlungskonto braucht Betrag UND Datum.
+--       (-original_amount) bucht zum disbursement_date; ein Auszahlungskonto braucht Betrag und Datum.
 --     * Eroeffnung zum Stichtag heute (core.fn_today(), accounts.opening_balance_date wie fn_create_account): laufender
---       Kredit (current_balance kleiner original_amount oder ohne original_amount) ODER frischer Kredit ohne Datum und
+--       Kredit (current_balance kleiner original_amount oder ohne original_amount) oder frischer Kredit ohne Datum und
 --       ohne eigenes Auszahlungskonto (Auszahlung an Dritte). Pflicht nur Restschuld, Zins, Abbuchungskonto (+ Rate mit
 --       naechster Faelligkeit); original_amount / disbursement_date sind spaeter per fn_set_loan nachtragbar.
 --       fn_get_balance_as_of vor heute = 0 -> ein Stichtags-Abgleich gegen einen alten Darlehensauszug sieht nicht schon
---       die heutige Restschuld. Bewusst KEIN waehlbarer Stichtag (Raten zwischen Stichtag und heute fielen sonst durch
+--       die heutige Restschuld. Bewusst kein waehlbarer Stichtag (Raten zwischen Stichtag und heute fielen sonst durch
 --       das 90-Tage-Fenster -> Restschuld still zu hoch).
---   Die Raten-recurring_payment gilt fruehestens ab dem Eroeffnungssaldo-Stichtag des Abbuchungskontos UND des
+--   Die Raten-recurring_payment gilt fruehestens ab dem Eroeffnungssaldo-Stichtag des Abbuchungskontos und des
 --   Kreditkontos (fn_recurring_valid_from, die eine Regel): fruehere Raten stecken schon im genannten Kontostand bzw.
 --   in der Restschuld; first_payment_date bleibt Anker.
 --   Kredit-Betraege sind EUR nach Modell (das Kredit-Konto traegt die Default-Waehrung) -> Abbuchungs- und
 --   Auszahlungskonto in Fremdwaehrung werden abgelehnt.
---   RUECKGABE: {ok:true, loan_id, loan_account_id, debit_account_id, recurring_payment_id, remaining_debt (Restschuld
+--   Rueckgabe: {ok:true, loan_id, loan_account_id, debit_account_id, recurring_payment_id, remaining_debt (Restschuld
 --   nach dem Saldo-Trigger, positiv), disbursement_balance (Saldo des Auszahlungskontos nach der Buchung, sonst NULL),
 --   opening_balance_date (Stichtag einer Eroeffnung zu heute, sonst NULL), first_rate_interest / first_rate_principal
 --   (DB-gerechnete Aufteilung der 1. Rate aus der Restschuld: fn_loan_monthly_interest, Tilgung = Rate - Zins; ohne
 --   Rate NULL), initial_principal_rate, balance_at_fixed_until, balance_at_term_end (aus loan_overview: rechnerische
 --   anfaengliche Tilgung; voraussichtliche Restschuld zum Zinsbindungs-/Laufzeitende bei gleichem Zins, ohne
 --   Sondertilgung), card_lines} | {ok:false, reason}
---   OHNE Write: Buchungstag, Zinssatz fehlt/negativ, Restschuld fehlt/<= 0/> original_amount, Betrag <= 0,
+--   ohne Write: Buchungstag, Zinssatz fehlt/negativ, Restschuld fehlt/<= 0/> original_amount, Betrag <= 0,
 --   Auszahlungsdatum in der Zukunft, Auszahlungskonto ohne Betrag/Datum oder bei laufendem Kredit, Laufzeitende vor
 --   Auszahlung oder vor dem Zinsbindungsende, Rate <= 0, Rate ohne first_payment_date, Rate unter dem Monatszins der
 --   Restschuld ({interest, payment}; jede Buchung scheiterte sonst an fn_get_loan_payment_split), Konto nicht EUR,
@@ -78,7 +78,7 @@ BEGIN
     v_fixed    := NULLIF(p->>'interest_rate_fixed_until', '')::date;
     v_term_end := NULLIF(p->>'term_end_date', '')::date;
     v_first    := NULLIF(p->>'first_payment_date', '')::date;
-    -- WP-2b: fester Buchungstag 1-28, -1 (Monatsletzter) oder -2 (vorletzter Tag); 29/30/31 overflowen kurze Monate.
+    -- Fester Buchungstag 1-28, -1 (Monatsletzter) oder -2 (vorletzter Tag); 29/30/31 overflowen kurze Monate.
     IF finance.fn_schedule_dom_reason(v_dom) IS NOT NULL THEN
         RETURN jsonb_build_object('ok', false, 'reason', finance.fn_schedule_dom_reason(v_dom));
     END IF;
@@ -97,7 +97,7 @@ BEGIN
             'reason', 'The remaining debt is required: today''s remaining debt (current_balance) for a loan that is already '
                    || 'being repaid, or the loan amount (original_amount) for a new loan.');
     END IF;
-    -- Restschuld-Grenzen VOR der Frisch/Laufend-Unterscheidung (sonst verdeckte "Restschuld > Kreditbetrag" den Grund)
+    -- Restschuld-Grenzen vor der Frisch/Laufend-Unterscheidung (sonst verdeckte "Restschuld > Kreditbetrag" den Grund)
     IF v_current <= 0 OR v_current > v_amount THEN
         RETURN jsonb_build_object('ok', false,
             'reason', 'The remaining debt (current_balance ' || v_current || ') must be greater than 0'
@@ -143,7 +143,7 @@ BEGIN
             'reason', 'Loan amounts are kept in EUR - the debit and payout accounts must be EUR accounts.');
     END IF;
     v_reason := COALESCE(finance.fn_bookable_account_reason(v_debit), finance.fn_bookable_account_reason(v_disbursement_id),
-                         -- numeric(6,4) kuerzte > 4 Nachkommastellen still (Rundungs-Paket 2026-10-23)
+                         -- numeric(6,4) kuerzte > 4 Nachkommastellen still
                          finance.fn_rate_precision_reason(v_irate, 'Interest rate'));
     IF v_reason IS NOT NULL THEN
         RETURN jsonb_build_object('ok', false, 'reason', v_reason);
@@ -171,7 +171,7 @@ BEGIN
        AND (l.original_amount = v_amount OR (v_amount IS NULL AND abs(rc.amount) = v_annuity))
      ORDER BY l.id LIMIT 1;
 
-    -- 2. Raten-Kette (nur bei vorhandener Rate) VOR dem Kredit: CHECK "aktiv <=> Raten-Kette" (finance:V026)
+    -- 2. Raten-Kette (nur bei vorhandener Rate) vor dem Kredit: CHECK "aktiv <=> Raten-Kette" (finance:V026)
     IF v_annuity IS NOT NULL THEN
         -- Gueltig ab dem spaeteren Stichtag von Abbuchungs- und Kreditkonto (die eine Regel fn_recurring_valid_from).
         v_from := COALESCE(v_disb, v_today);
@@ -186,7 +186,7 @@ BEGIN
         (name, lender, borrower_person_id, original_amount, disbursement_date,
          interest_rate, interest_rate_fixed_until, term_end_date, status, notes,
          loan_account_id, debit_account_id, disbursement_account_id, real_estate_id, recurring_payment_id)
-    VALUES (p->>'name', NULLIF(p->>'lender', ''), NULLIF(p->>'borrower_person_id', ''), v_amount, v_disb,   -- WS-4: typisierter Kreditnehmer (Slug); NULL=Haushalt.
+    VALUES (p->>'name', NULLIF(p->>'lender', ''), NULLIF(p->>'borrower_person_id', ''), v_amount, v_disb,   -- typisierter Kreditnehmer (Slug); NULL=Haushalt.
             v_irate, v_fixed, v_term_end,
             CASE WHEN v_annuity IS NOT NULL THEN 'active' ELSE 'paused' END::finance.loan_status,
             NULLIF(p->>'notes', ''),
@@ -201,7 +201,7 @@ BEGIN
             CASE WHEN v_running THEN 'Restschuld ' || (p->>'name') || ' (bestehender Kredit)'
                  ELSE 'Kreditauszahlung ' || (p->>'name') END, v_group);
 
-    -- 5. Auszahlungsbuchung auf das eigene Konto NUR wenn disbursement_account_id gesetzt ist
+    -- 5. Auszahlungsbuchung auf das eigene Konto nur wenn disbursement_account_id gesetzt ist
     --    (Kreditsumme floss tatsaechlich auf ein eigenes Konto). NULL = an Dritte/Verkaeufer
     --    oder laufender Kredit -> keine Buchung.
     IF v_disbursement_id IS NOT NULL THEN

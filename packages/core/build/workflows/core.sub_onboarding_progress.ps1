@@ -1,7 +1,7 @@
 ﻿#Requires -Version 5.1
 # Dot-gesourct von build.ps1 (Helper + Script-Scope-Creds im Parent-Scope).
 #
-# --- core.sub_onboarding_progress (Roter Faden 2026-10-23) -------
+# --- core.sub_onboarding_progress -------
 # Die EINE Stelle, die nach einem Onboarding-Schritt die naechste Karte schickt — deterministisch statt LLM-Text.
 # Aufgerufen von JEDEM tool_set_onboarding_section (core/finance/career/estate) ueber den Core-Dienst
 # core:onboarding_progress (fire-and-forget, New-OnboardingProgressCallNode), aber NUR wenn der Schritt einen Bereich
@@ -14,7 +14,7 @@
 #   -> Send progress card (core.sub_send_onboarding_menu: Uebersicht mit Kopfzeile "<Bereich> eingerichtet" /
 #      "uebersprungen" / "alles eingerichtet" + der bestehende Weiter-Knopf auf den naechsten offenen Abschnitt)
 #   -> Learn offer? -> Offer learning (cron_on:learn_context, nur Owner, nur beim allerersten "alles eingerichtet",
-#      nur wenn das Lernen aus ist — frueher kam das Angebot schon nach dem Haushalt und bei jedem Core-complete)
+#      nur wenn das Lernen aus ist)
 #   -> Members? -> je gepairtem Mitglied "Es kann losgehen" in SEINER Sprache (nur wenn der Haushalt mit diesem
 #      Schritt fertig wurde, genau einmal ueberhaupt); gibt es persoenliche Bereiche (per_user), mit Knopf dorthin.
 function Build-CoreSubOnboardingProgress {

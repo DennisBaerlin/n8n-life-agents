@@ -1,13 +1,14 @@
 -- ============================================================
--- fn_bookable_account_reason (READ HELPER) -- Kontotyp-Guard fuer freie Geld-Buchungen (Audit Paket 2, Punkt 7)
---   EINE Adresse fuer book_transaction / book_transfer / book_recurring_transfer / reconcile_account(s)(_preview):
---   liefert NULL, wenn auf das Konto frei gebucht werden darf, sonst den korrigierbaren Grund (EN, fuers {ok:false}).
+-- fn_bookable_account_reason (READ HELPER) -- Kontotyp-Guard fuer freie Geld-Buchungen
+--   Die eine Adresse fuer book_transaction / book_transfer / book_recurring_transfer / reconcile_account(s)(_preview).
+--   Eingabe: p_account_id. Rueckgabe: NULL, wenn auf das Konto frei gebucht werden darf, sonst der korrigierbare
+--   Grund (EN, fuers {ok:false}).
 --     * stocks_depot/crypto_depot: ein Depot-Konto traegt nie Geld (der Wert steckt in den Positionen; das Konto
---       zaehlt nicht im Vermoegen) -> eine Buchung dort liess Geld still aus dem Vermoegen verschwinden.
+--       zaehlt nicht im Vermoegen) -> eine Buchung dort liesse Geld still aus dem Vermoegen verschwinden.
 --     * loan: die Restschuld bewegen nur die Kredit-Tools (mit loan_id) -> sonst Restschuld ohne Kredit
---       (Abgleich auf die Restschuld buchte ein positives Vorzeichen).
---   Struktureller Backstop: trg_finance_reject_account_type_txn (Init). Unbekanntes Konto -> NULL (der Aufrufer
---   behandelt not-found wie bisher).
+--       (ein Abgleich auf die Restschuld buchte ein positives Vorzeichen).
+--   Struktureller Backstop: trg_finance_reject_account_type_txn (Init). Unbekanntes Konto -> NULL (not-found
+--   behandelt der Aufrufer).
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_bookable_account_reason(p_account_id int)
 RETURNS text LANGUAGE sql STABLE AS $$

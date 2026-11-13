@@ -1,19 +1,19 @@
 ﻿#Requires -Version 5.1
 # Dot-gesourct von build.ps1 (Helper + Script-Scope-Creds im Parent-Scope).
 #
-# --- agent.sub_dispatch_tool (Core-Vermittler zu Paket-WERKZEUGEN, paperless Phase 2) -----------
-# WARUM: ein Nicht-Core-Paket (zuerst paperless) stellt Werkzeuge fuer FREMDE Agenten bereit (finance,
+# --- agent.sub_dispatch_tool (Core-Vermittler zu Paket-Werkzeugen) -----------
+# WARUM: ein Nicht-Core-Paket (z. B. paperless) stellt Werkzeuge fuer fremde Agenten bereit (finance,
 # finance_advisor, career_advisor, estate_advisor; docs/package-contract.md §5 Cross-package tool services).
-# Der Konsument darf die Paket-Workflow-ID NIE literal tragen (workflow_lint-Naht; n8n wuerde ihn sonst ohne das
-# Paket nicht aktivieren) -> er bindet NUR diesen Core-Sub (Build-Helper Add-ServiceTools), mit FESTEM
+# Der Konsument darf die Paket-Workflow-ID nie literal tragen (workflow_lint-Naht; n8n wuerde ihn sonst ohne das
+# Paket nicht aktivieren) -> er bindet nur diesen Core-Sub (Build-Helper Add-ServiceTools), mit festem
 # service = '<pkg>:<alias>' + args (JSON-String aus den $fromAI-Feldern) + chat_id.
 # Ablauf: Start -> Resolve service (core.fn_resolve_service = die EINE Pruefstelle: Service bekannt? Paket
 #   nutzbar? Absender darf? -> workflow_id) -> erlaubt?
 #   ja   -> Run tool (AUSDRUCKS-ID aus der DB = keine Aktivierungspruefung, Laufzeit-Lookup statt Build-ID)
 #           -> Ensure result (Werkzeug-Ergebnis 1:1; fehlt ok -> {ok:false, error:'tool_failed'})
 #   nein -> Not available: {ok:false, error, hint} — generischer Hinweis fuer das Modell (kein Paket-Literal).
-# Geschwister (nicht Merge) von agent.sub_dispatch_agent: Werkzeuge tragen KEIN call_depth (Anti-Loop: Tools
-# rufen nie Agenten) und liefern {ok,...}-Daten statt .output-Text. FAIL-CLOSED: ein DB-Fehler beim Pruefen
+# Geschwister (nicht Merge) von agent.sub_dispatch_agent: Werkzeuge tragen kein call_depth (Anti-Loop: Tools
+# rufen nie Agenten) und liefern {ok,...}-Daten statt .output-Text. Fail-closed: ein DB-Fehler beim Pruefen
 # verweigert (anders als der Agent-Vermittler — ein Werkzeug prueft nicht selbst nach).
 function Build-AgentSubDispatchTool {
     $start = Build-Trigger @('service', 'args') @(-900, 300)
@@ -61,7 +61,7 @@ return out.length ? out : [{ json: { ok: false, error: 'tool_failed', hint: 'The
         type = 'n8n-nodes-base.code'; typeVersion = 2; position = @(0, 200); id = (New-Id); name = 'Ensure result'
     }
 
-    # Ablehnung: generischer Modell-Hinweis aus error/reason/package_label (KEIN Paket-Literal im Core). Englisch
+    # Ablehnung: generischer Modell-Hinweis aus error/reason/package_label (kein Paket-Literal im Core). Englisch
     # (Werkzeug-Ausgabe = Modell-Schicht); das Modell antwortet dem Nutzer in dessen Sprache.
     $denyJs = @'
 const r = ($('Resolve service').first().json || {}).r || null;

@@ -1,30 +1,34 @@
 -- ============================================================
--- fn_savings_goal_funding (READ — Befund 2026-10-27)
---   Die EINE Ableitung "womit wird ein neues Sparziel gespart und bis wann": fn_create_savings_goal (autoritativ im
+-- fn_savings_goal_funding (READ)
+--   Die eine Ableitung "womit wird ein neues Sparziel gespart und bis wann": fn_create_savings_goal (autoritativ im
 --   Write) und die Import-Karte (fn_import_card_rows) rufen sie mit denselben Werten -> Karte = Write.
---   1. Sparplaene (p.savings_plan, einer oder mehrere): erst der ganze Text als EIN Name (ein Name mit Komma bleibt
---      heil), nur bei 0 Treffern an Kommas getrennt; ids dedupliziert; ein Plan gehoert zu EINEM Ziel. Monatsbetrag =
---      heute gueltiges Glied (fn_recurring_current) der AKTIVEN Plaene in EUR; ohne Kurs fuer eine Plan-Waehrung
+--   1. Sparplaene (p.savings_plan, einer oder mehrere): erst der ganze Text als ein Name (ein Name mit Komma bleibt
+--      heil), nur bei 0 Treffern an Kommas getrennt; ids dedupliziert; ein Plan gehoert zu einem Ziel. Monatsbetrag =
+--      heute gueltiges Glied (fn_recurring_current) der aktiven Plaene in EUR; ohne Kurs fuer eine Plan-Waehrung
 --      {ok:false} (ein fehlender Kurs faellt nie still aus einer Summe). Ohne target_date und Rate folgt das Zieldatum
 --      aus diesem Monatsbetrag.
 --   2. Bestehender Dauerauftrag in den Topf (nur Raten-Pfad: kein Plan, Topf bekannt und saldo-basiert, Rest > 0):
 --      fn_goal_transfer_choice(Topf, Abbuchungskonto, p.replace_transfer). Fortfuehren -> sein Konto, Tag und
---      naechster Termin, die Rate = SEIN Monatsbetrag (die Bank ueberweist ihn weiter); bei genanntem Datum needed_rate.
+--      naechster Termin, die Rate = sein Monatsbetrag (die Bank ueberweist ihn weiter); bei genanntem Datum needed_rate.
 --   3. fn_savings_rate_schedule auf dem Rest (Ziel - p_saved_eur).
---   INSTANDHALTUNGSRUECKLAGE (p.real_estate_id gesetzt, 2026-10-27): kein Ziel, kein Datum. Rate = genannte
+--   Instandhaltungsruecklage (p.real_estate_id gesetzt): kein Ziel, kein Datum. Rate = genannte
 --   monthly_savings_rate, sonst die Empfehlung (fn_maintenance_reserve_rate der Immobilie; ohne Flaeche/Baujahr deren
 --   {ok:false, code:'maintenance_data_missing'}). Waere die Rate > 0, laeuft dieselbe Dauerauftrags-Entscheidung wie
---   oben (fn_goal_transfer_choice; Bedingung "Rate > 0" statt "Rest > 0"): fortfuehren -> Rate = SEIN Monatsbetrag,
+--   oben (fn_goal_transfer_choice; Bedingung "Rate > 0" statt "Rest > 0"): fortfuehren -> Rate = sein Monatsbetrag,
 --   needed_rate = genannte Rate bzw. Empfehlung. Erste Rate = genannt bzw. naechster Termin ab heute (Raster wie
 --   fn_savings_rate_schedule). Zusaetzlich recommendation = das jsonb der Empfehlung (oder null).
---   NOTRESERVE (p.kind = emergency_reserve, 2026-10-30): derselbe Ruecklagen-Zweig ohne Empfehlung — Rate = genannte
+--   Notreserve (p.kind = emergency_reserve): derselbe Ruecklagen-Zweig ohne Empfehlung — Rate = genannte
 --   monthly_savings_rate, sonst 0 (keine Rate; das Geld liegt per Zuordnung schon da oder kommt spaeter).
 --   Eingabe: p (Payload wie fn_create_savings_goal; Datumsfelder schon ISO), p_reserve (Topf-id oder NULL = im Import
 --   noch nicht angelegt), p_reserve_is_depot, p_acct (Abbuchungskonto-id oder NULL), p_saved_eur (Startbestand in EUR).
 --   RUECKGABE: {ok:true, monthly_rate (wirksame eigene Rate bzw. der Plan-/Dauerauftrags-Betrag), needed_rate,
 --   target_date, months, first_payment_date, first_defaulted (erste Rate weder genannt noch vom Dauerauftrag),
 --   plan_ids, plan_names, plan_monthly, transfer (fortgefuehrter Dauerauftrag oder null), account_id (wirksames
---   Abbuchungskonto), schedule_day_of_month} | {ok:false, reason, code?}. STABLE, schreibt nie.
+--   Abbuchungskonto), schedule_day_of_month, recommendation (nur Instandhaltung)} | {ok:false, reason, code?}: eigene
+--   reasons bei mehrdeutigem oder nicht gefundenem Sparplan, einem Plan, der schon ein anderes Ziel finanziert,
+--   fehlendem Kurs einer Plan-Waehrung und negativer Rate; durchgereicht werden die Ablehnungen von
+--   fn_maintenance_reserve_rate (code maintenance_data_missing), fn_goal_transfer_choice, core.fn_resolve_input_dates
+--   und fn_savings_rate_schedule. STABLE, schreibt nie.
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_savings_goal_funding(p jsonb, p_reserve int, p_reserve_is_depot boolean,
                                                            p_acct int, p_saved_eur numeric)
@@ -170,7 +174,7 @@ BEGIN
         END IF;
     END IF;
 
-    -- 3. Rate ODER Zieldatum auf dem Rest (kein LLM-Rechnen)
+    -- 3. Rate oder Zieldatum auf dem Rest (kein LLM-Rechnen)
     v_sched := finance.fn_savings_rate_schedule(v_q || jsonb_build_object('already_saved', COALESCE(p_saved_eur, 0)));
     IF (v_sched->>'ok')::boolean IS DISTINCT FROM true THEN
         RETURN v_sched;

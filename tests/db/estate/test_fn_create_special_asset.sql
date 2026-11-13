@@ -1,5 +1,5 @@
 -- tests/db/estate/test_fn_create_special_asset.sql
--- WS-2: Sonderfall-Stub-Anlage — Happy Path, geschlossene Typ-Liste OHNE other (freundliche
+-- Sonderfall-Stub-Anlage — Happy Path, geschlossene Typ-Liste ohne other (freundliche
 -- CHECK-Spiegelung), Kind-Reject. Self-contained; BEGIN..ROLLBACK.
 BEGIN;
 
@@ -37,7 +37,7 @@ BEGIN
   IF NOT FOUND THEN RAISE EXCEPTION 'FAIL [happy path]: Zeile nicht wie erwartet'; END IF;
   RAISE NOTICE 'PASS [create: Fahrzeug-Stub gespeichert]';
 
-  -- Geschlossene Liste OHNE other (offener Typ loeste im Ereignisfall still nichts aus):
+  -- Geschlossene Liste ohne other (offener Typ loeste im Ereignisfall still nichts aus):
   v_r := estate.fn_create_special_asset(jsonb_build_object(
       'chat_id','111', 'asset_type','other', 'description','Irgendwas'));
   IF (v_r->>'ok')::boolean OR v_r->>'reason' NOT LIKE '%invalid asset_type%' THEN

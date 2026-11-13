@@ -1,5 +1,5 @@
 -- tests/db/finance/test_fn_reconcile_open_due.sql
--- fn_reconcile_open_due: offene Vorkommen eines Kontos mit Faelligkeit <= Stichtag-10 (Quelle ODER Transfer-Ziel);
+-- fn_reconcile_open_due: offene Vorkommen eines Kontos mit Faelligkeit <= Stichtag-10 (Quelle oder Transfer-Ziel);
 -- juengere bleiben offen (10 Tage Karenz); fremde Konten zaehlen nicht. fn_reconcile_account skippt genau diese Menge.
 BEGIN;
 

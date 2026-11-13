@@ -1,20 +1,19 @@
 ﻿#Requires -Version 5.1
 # Dot-gesourct von build.ps1 (Helper + Script-Scope-Creds im Parent-Scope).
 
-# --- agent.career.tool_record_job_match (WS-2) -------------------------------
-# Merkt eine MANUELL WEITERGELEITETE Stelle vor (source='forwarded'). NEUER Verb record_ (arch-challenge
-# REJECT-mit-Notiz: idempotenter Tracking-Eintrag, UPSERT auf external_id -> bewusst nicht create_ [dessen
-# lokaler Vertrag "nur NEUES + Pflicht-Dubletten-Node" widerspricht UPSERT] und nicht book_ [Finanz]).
-# HITL owner_info (additiv, kein Identitaets-/Plan-Write). Cred = Haupt-RW (wie Core/Monitor/Guide-Tools;
-# nur finance nutzt finance_rw, WS-B0). Nach dem Write: Zero-Spam-Angebot, den werktäglichen Job-Scan zu
-# aktivieren (rem:on:score_jobs = nur fuer die Person selbst, Roter Faden Paket B) — neben /reminders der Chat-Pfad, den
-# Scan fuer sich einzuschalten. Strukturell wie ein finance-Write-Tool (Resolve entfaellt -> direkter
-# fn-Call), aber READ-frei: die Felder kommen aus der vom Advisor extrahierten Weiterleitung.
+# --- agent.career.tool_record_job_match -------------------------------
+# Merkt eine manuell weitergeleitete Stelle vor (source='forwarded'). Verb record_: idempotenter
+# Tracking-Eintrag, UPSERT auf external_id -> bewusst nicht create_ (dessen lokaler Vertrag
+# "nur Neues + Pflicht-Dubletten-Node" widerspricht UPSERT) und nicht book_ (Finanz).
+# HITL owner_info (additiv, kein Identitaets-/Plan-Write). Cred = Haupt-RW (nur finance nutzt finance_rw).
+# Nach dem Write: Zero-Spam-Angebot, den werktaeglichen Job-Scan zu aktivieren (rem:on:score_jobs = nur
+# fuer die Person selbst) — neben /reminders der Chat-Pfad dafuer. Strukturell wie ein finance-Write-Tool
+# (Resolve entfaellt -> direkter fn-Call), aber ohne Read: die Felder kommen aus der vom Advisor
+# extrahierten Weiterleitung.
 function Build-RecordJobMatch {
     $trig = Build-Trigger @('title', 'employer', 'location', 'url', 'external_id')
 
     # --- HITL approval gate (vor dem Write); approval_tier=owner_info injiziert build.ps1 (approval_matrix) ---
-    # Strukturiertes Summary (Textkatalog): das Gate rendert es in der Sprache des Empfaengers.
     $S = "`$('Start').item.json"
     $summary = New-HitlSummary -Pos @(420, 0) -Title 'career.hitl.record_job_match' -Lines @(
         (New-HitlLine 'career.label.job_title' "$S.title")
@@ -27,7 +26,7 @@ function Build-RecordJobMatch {
     $ifApproved = Build-If 'Approved?' @(860, 0) "={{ `$json.approved }}" 'true' 'equals' 'boolean'
     $retCancelled = Build-ToolCancelled 'Return cancelled' @(1080, 200) 'the record_job_match action'
 
-    # source FIX 'forwarded' (nie $fromAI); external_id optional (NULL -> reiner INSERT, kein Dedup).
+    # source fest 'forwarded' (nie $fromAI); external_id optional (NULL -> reiner INSERT, kein Dedup).
     $record = Build-Pg 'Record match' @(1080, 0) `
         "=SELECT (r->>'ok')::boolean AS ok, r->>'reason' AS reason, (r->>'job_match_id')::bigint AS job_match_id, (r->>'created')::boolean AS created FROM career.fn_record_job_match(`$1::jsonb) AS r;" `
         ([ordered]@{
@@ -42,12 +41,12 @@ function Build-RecordJobMatch {
     $ifWriteOk = Build-If 'Write ok?' @(1300, 0) "={{ `$json.ok }}" 'true' 'equals' 'boolean'
     $errWrite = Build-ToolError 'Record rejected' @(1520, 240) "={{ `$('Record match').item.json.reason }}"
 
-    # Zero-Spam-Angebot: nach erfolgreichem Vormerken den werktäglichen Job-Scan anbieten — aber NUR wenn der Notschalter
-    # cron_enable.score_jobs an ist (sonst haette ein Einschalten keine Wirkung) UND er fuer DIESE
-    # Person aus ist (Roter Faden Paket B: Job-Vorschlaege je Person, core.fn_reminder_allowed = Notschalter UND eigene
-    # Einstellung). Der Knopf rem:on:score_jobs laeuft ueber den Registry-Handler core.fn_handle_reminder_cb und schaltet
-    # NUR die Karten der tippenden Person ein (agent.reminder_prefs) — auch ein Mitglied kann ihn bedienen.
-    # Textkatalog Phase C: im selben Read die Angebots-Texte in der Sprache des Absenders (core.fn_ui_texts_for).
+    # Zero-Spam-Angebot: nach erfolgreichem Vormerken den werktaeglichen Job-Scan anbieten, aber nur wenn der Notschalter
+    # cron_enable.score_jobs an ist (sonst haette ein Einschalten keine Wirkung) und der Scan fuer diese
+    # Person aus ist (core.fn_reminder_allowed = Notschalter und eigene Einstellung). Der Knopf rem:on:score_jobs
+    # laeuft ueber den Registry-Handler core.fn_handle_reminder_cb und schaltet nur die Karten der tippenden
+    # Person ein (agent.reminder_prefs) — auch ein Mitglied kann ihn bedienen.
+    # Derselbe Read liefert die Angebots-Texte in der Sprache des Absenders (core.fn_ui_texts_for).
     $readScan = Build-Pg 'Read scan flag' @(1520, 0) `
         ("=SELECT CASE WHEN COALESCE(core.fn_config_get('career', 'cron_enable', 'score_jobs'), 'false') <> 'true' " +
          "OR COALESCE(core.fn_reminder_allowed('score_jobs', agent.fn_resolve_sender(CASE WHEN (`$1::jsonb)->>'chat_id' ~ '^[0-9]{1,18}`$' " +

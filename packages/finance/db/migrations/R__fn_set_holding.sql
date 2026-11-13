@@ -1,17 +1,18 @@
 -- ============================================================
 -- fn_set_holding (ATOMIC WRITE)
---   Aendert NUR die Metadaten einer bestehenden Depot-Position
+--   Aendert nur die Metadaten einer bestehenden Depot-Position
 --   (name/symbol/isin/currency/asset_class/provider_symbol/quote_currency).
 --   shares + average_purchase_price sind Trigger-gepflegt (aus finance_transactions) und werden
---   hier NIE geschrieben -> eine falsche Stueckzahl/avg korrigiert man ueber die Transaktionen,
+--   hier nie geschrieben -> eine falsche Stueckzahl/avg korrigiert man ueber die Transaktionen,
 --   nicht hier. ISIN ist der stabile Identifier (Ticker aendert sich bei Corporate Actions).
 --   asset_class = Allokations-Block-key (lowercase snake; Korrektur des Auto-Tags aus fn_book_stock_buy);
 --   Format-Verstoss -> {ok:false} (spiegelt den finance_depot_holdings_asset_class_fmt-CHECK).
---   provider_symbol (Phase M): Markt-Daten-Feed-Symbol-Override (z. B. VWCE.DE); quote_currency (Phase M):
+--   provider_symbol: Markt-Daten-Feed-Symbol-Override (z. B. VWCE.DE); quote_currency:
 --   native Quote-Waehrung, via fn_ensure_currency validiert -> {ok:false} bei ungueltigem Code.
 --   Partielles Update. Eingabe jsonb: holding_id (im n8n via finance_depot_holdings_overview ermittelt),
 --   name, symbol, isin, currency, asset_class, provider_symbol, quote_currency.
---   RUECKGABE: {ok:true, holding_id}. Korrigierbar (Dubletten-Identitaet im Depot) -> {ok:false}.
+--   RUECKGABE: {ok:true, holding_id}. Korrigierbar (ungueltiges asset_class-Format, ungueltige Waehrung,
+--   Dubletten-Identitaet ISIN/Symbol im Depot) -> {ok:false, reason}. RAISE nur bei unbekannter holding_id.
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_set_holding(p jsonb)
 RETURNS jsonb LANGUAGE plpgsql AS $$
@@ -19,8 +20,8 @@ DECLARE
     v_id              INT  := (p->>'holding_id')::int;
     -- Roh-Input normalisieren ('usd' -> 'USD'); STRICT-Helper gibt NULL bei NULL zurueck (partielles Update).
     v_new_currency    TEXT := finance.fn_normalize_currency(NULLIF(p->>'currency', ''));
-    v_asset_cls       TEXT := NULLIF(p->>'asset_class', '');  -- WS2b: Allokations-Block-key (Korrektur des Auto-Tags)
-    v_quote_ccy       TEXT := finance.fn_normalize_currency(NULLIF(p->>'quote_currency', '')); -- Phase M: native Quote-Waehrung (roh normalisiert)
+    v_asset_cls       TEXT := NULLIF(p->>'asset_class', '');  -- Allokations-Block-key (Korrektur des Auto-Tags)
+    v_quote_ccy       TEXT := finance.fn_normalize_currency(NULLIF(p->>'quote_currency', '')); -- native Quote-Waehrung (roh normalisiert)
     v_currency_result JSONB;
 BEGIN
     IF NOT EXISTS (SELECT 1 FROM finance.depot_holdings WHERE id = v_id) THEN
@@ -41,7 +42,7 @@ BEGIN
         END IF;
     END IF;
 
-    -- Phase M: optionale Quote-Waehrung (falls gesetzt) registrieren/validieren -> {ok:false} bei ungueltigem
+    -- optionale Quote-Waehrung (falls gesetzt) registrieren/validieren -> {ok:false} bei ungueltigem
     -- ISO-Code (kein FK-RAISE/Owner-Alert; mirror des currency-Pfads oben). Der FK depot_holdings.quote_currency
     -- ist Backstop; dieser Pfad ist der primaere.
     IF v_quote_ccy IS NOT NULL THEN

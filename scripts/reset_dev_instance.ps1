@@ -1,27 +1,30 @@
 ﻿#Requires -Version 5.1
-# reset_dev_instance.ps1 — die Dev-Instanz (Proxmox-LXC im LAN) clean machen und den LOKALEN Repo-Stand
+# reset_dev_instance.ps1 — die Dev-Instanz (Proxmox-LXC im LAN) clean machen und den lokalen Repo-Stand
 # (inkl. nicht committeter Aenderungen) als frischen Install-Baum bereitlegen. Die Installation selbst
-# faehrt der Owner danach INTERAKTIV im Container (Look-and-feel-Test des Nutzer-Installationsprozesses):
+# faehrt der Owner danach interaktiv im Container (Look-and-feel-Test des Nutzer-Installationsprozesses):
 #   bash /root/lifeagents-dev/install-dev.sh
 #
 # Ablauf: (1) Vorab-Pruefung (SSH, freier Platz) -> (2) Baum packen wie das Release (`git archive`, dieselbe
-# Pathspec wie .github/workflows/release.yml, aber aus einer KOPIE des Git-Index inkl. Working-Tree ->
+# Pathspec wie .github/workflows/release.yml, aber aus einer Kopie des Git-Index inkl. Working-Tree ->
 # gitignorte Dateien wie .env/.local/.claude koennen strukturell nicht hinein; + dasselbe No-Secrets-Gate)
 # -> (3) scp + SHA256-Abgleich -> (4) im Container: einmalig /etc/lifeagents/*.env nach saved-env/ retten,
 # Shell-Syntax pruefen, bestehende Instanz per `provision.sh --uninstall --purge-data --yes` (aus dem NEUEN
 # Baum) abbauen, Rest-Check, neuen Baum nach src/ tauschen (alter wird geloescht) + install-dev.sh schreiben.
 #
-# WARUM kein Build: der getrackte Baum ist bereits gebaut und deploybar (der Build ist deterministisch, ein Lauf ohne
+# Warum kein Build: der getrackte Baum ist bereits gebaut und deploybar (der Build ist deterministisch, ein Lauf ohne
 # Def-Aenderung aendert nichts) -> gebaut wird nur, wenn Build-Defs geaendert wurden (Root-CLAUDE.md *Entwicklungszyklus*).
-# WARUM scp statt Pipe: PS 5.1 kodiert Native-Pipes als Text -> ein tar.gz ueber `| ssh` waere korrupt.
-# WARUM install-dev.sh: install.sh laedt immer ein GitHub-Release; der Wrapper macht exakt dessen letzten
+# Warum scp statt Pipe: PS 5.1 kodiert Native-Pipes als Text -> ein tar.gz ueber `| ssh` waere korrupt.
+# Warum install-dev.sh: install.sh laedt immer ein GitHub-Release; der Wrapper macht exakt dessen letzten
 # Schritt (RELEASE_TAG exportieren, --profile release als Default, exec provision.sh) auf dem lokalen Baum.
 #
 # Ziel aus .env (gitignored): DEV_INSTANCE_HOST (Pflicht), DEV_INSTANCE_USER (Default root),
-# DEV_INSTANCE_SSH_KEY (Pfad zum privaten Key; ~ erlaubt). Nur Key-Login (BatchMode).
+# DEV_INSTANCE_SSH_KEY (Pflicht; Pfad zum privaten Key; ~ erlaubt). Nur Key-Login (BatchMode).
 #
-# -KeepInstance (Install-UX-Phase 7): denselben Stand bereitlegen, aber die bestehende Instanz NICHT abbauen (kein
+# -KeepInstance: denselben Stand bereitlegen, aber die bestehende Instanz nicht abbauen (kein
 # Abbau, kein Rest-Check) — zum Testen des Update-Pfads (install-dev.sh laeuft dann als Bestands-Lauf).
+#
+# Exit 0 = Stand liegt bereit; sonst Exit-Code des Container-Skripts (10 SHA256-Abgleich, 11 Shell-Syntax, 12 Abbau,
+# 13 Rest-Check); Fehler vor dem Container-Lauf (.env, SSH, Platz, No-Secrets-Gate, scp) brechen mit throw ab.
 #
 # Usage:
 #   .\scripts\reset_dev_instance.ps1                # clean + aktuellen Stand bereitlegen
@@ -44,7 +47,7 @@ $ReleasePaths = @('provisioning', 'packages', '.gitattributes')
 # Dasselbe No-Secrets-Gate-Muster wie release.yml.
 $SecretPathRegex = '(?i)((^|/)(\.env|\.local/|\.claude/|\.git/)|\.(key|pem)$|(^|/)id_rsa)'
 
-# --- .env laden (gleiche Mechanik wie die uebrigen scripts/-Treiber) ---------
+# --- .env laden ---------
 . "$PSScriptRoot\lib\dotenv.ps1"
 Read-DotEnvLines "$RepoRoot\.env" | ForEach-Object {
     if ($_ -match '^\s*([^#\s][^=]*)=(.*)$') {
@@ -57,9 +60,8 @@ function Get-EnvValue([string]$name) {
     return $v.Trim()
 }
 
-# Invoke-Native — natives Tool aufrufen, stdout+stderr + Exit-Code einsammeln (wie bootstrap_test_n8n.ps1).
-# EAP lokal auf 'Continue' (PS-5.1-Quirk: native stderr unter 'Stop' + 2>&1 wuerde als terminierender
-# NativeCommandError werfen).
+# Invoke-Native — natives Tool aufrufen, stdout+stderr + Exit-Code einsammeln. EAP lokal auf 'Continue'
+# (PS-5.1-Quirk: native stderr unter 'Stop' + 2>&1 wuerde als terminierender NativeCommandError werfen).
 function Invoke-Native {
     param([string]$Exe, [string[]]$CmdArgs)
     $prev = $ErrorActionPreference

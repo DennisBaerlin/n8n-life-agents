@@ -1,7 +1,7 @@
 -- tests/db/finance/test_monthly_cashflow_transfer.sql
--- WS-2 (Multi-Member): Doppelzaehl-Schutz im Cashflow.
+-- Doppelzaehl-Schutz im Cashflow.
 --   monthly_cashflow_overview/_summary schliessen interne Transfers strukturell aus
---   (WHERE target_account_id IS NULL) — eine Transfer-rp darf NICHT als Haushalts-Ausgabe zaehlen,
+--   (WHERE target_account_id IS NULL) — eine Transfer-rp darf nicht als Haushalts-Ausgabe zaehlen,
 --   eine gewoehnliche/Spar-rp schon. Delta-Messung (robust gegen vorhandene Seed-Zeilen).
 BEGIN;
 
@@ -24,7 +24,7 @@ BEGIN
   -- Baseline (vor unseren rps)
   SELECT consumption_count, monthly_consumption INTO v_exp_cnt0, v_exp_sum0 FROM finance.monthly_cashflow_summary;
 
-  -- (a) gewoehnliche Ausgabe -200/Monat (KEIN target) -> zaehlt
+  -- (a) gewoehnliche Ausgabe -200/Monat (kein target) -> zaehlt
   SELECT finance.fn_create_recurring_payment(jsonb_build_object(
     'name','__test_cf_expense__', 'account_id', v_src, 'direction','expense',
     'amount', 200, 'schedule_unit','month', 'first_payment_date', CURRENT_DATE::text
@@ -33,7 +33,7 @@ BEGIN
     RAISE EXCEPTION 'FAIL [setup expense]: %', v_result;
   END IF;
 
-  -- (b) interner Transfer 200/Monat src->dst (target gesetzt) -> zaehlt NICHT
+  -- (b) interner Transfer 200/Monat src->dst (target gesetzt) -> zaehlt nicht
   SELECT finance.fn_create_recurring_transfer(jsonb_build_object(
     'name','__test_cf_transfer__', 'from_account_id', v_src, 'to_account_id', v_dst,
     'amount', 200, 'schedule_unit','month', 'first_payment_date', CURRENT_DATE::text
@@ -44,7 +44,7 @@ BEGIN
 
   SELECT consumption_count, monthly_consumption INTO v_exp_cnt1, v_exp_sum1 FROM finance.monthly_cashflow_summary;
 
-  -- Genau EINE neue Konsum-Zeile (die gewoehnliche), NICHT zwei (Transfer ausgeschlossen)
+  -- Genau eine neue Konsum-Zeile (die gewoehnliche), nicht zwei (Transfer ausgeschlossen)
   IF (v_exp_cnt1 - v_exp_cnt0) <> 1 THEN
     RAISE EXCEPTION 'FAIL [count]: consumption_count-Delta erwartet 1 (nur gewoehnliche rp), got % (Transfer fehl-gezaehlt?)', (v_exp_cnt1 - v_exp_cnt0);
   END IF;

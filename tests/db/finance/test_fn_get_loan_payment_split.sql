@@ -1,11 +1,11 @@
 -- tests/db/finance/test_fn_get_loan_payment_split.sql
--- Testet fn_get_loan_payment_split (Audit F1c/F7): die EINE Zins/Tilgungs-Formel fuer HITL-Vorschau UND Buchung.
+-- Testet fn_get_loan_payment_split: die eine Zins/Tilgungs-Formel fuer HITL-Vorschau und Buchung.
 --   Read-only (kein Write), dieselben Zahlen wie fn_book_loan_payment, korrigierbare Faelle als {ok:false}.
---   Vorher rechnete der Tool-Graph selbst mit der NEGATIVEN Restschuld -> Karte "Zins -600 / Tilgung 1.600".
+--   Die Restschuld wird positiv gefuehrt; mit der negativen Restschuld ergaebe sich Zins negativ / Tilgung zu gross.
 BEGIN;
 
--- Audit Paket 2, Punkt 9: Tilgung > Rate / negativ -> {ok:false}; reine Zinsrate bucht nur das Giro-Bein (vorher
--- CHECK-Alarm durch ein 0-EUR-Tilgungsbein); Quartalsrate traegt drei Monatszinsen (vorher einen).
+-- Tilgung > Rate / negativ -> {ok:false}; reine Zinsrate bucht nur das Giro-Bein (ein 0-EUR-Tilgungsbein loeste
+-- den CHECK aus); Quartalsrate traegt drei Monatszinsen.
 DO $$
 DECLARE
   v_res  JSONB;

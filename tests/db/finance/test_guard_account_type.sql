@@ -1,7 +1,7 @@
 -- tests/db/finance/test_guard_account_type.sql
--- Audit Paket 2, Punkt 7: Kontotyp-Guard. Buchung/Uebertrag/Abgleich auf ein DEPOT-Konto liess Geld aus dem
+-- Kontotyp-Guard. Buchung/Uebertrag/Abgleich auf ein Depot-Konto liesse Geld aus dem
 --   Vermoegen verschwinden (Depot-Konten zaehlen nicht im Networth, der Wert steckt in den Holdings); auf ein
---   KREDIT-Konto entstand eine Restschuld ohne loan_id (Abgleich "Restschuld 198.000" buchte +198.000).
+--   Kredit-Konto entstuende eine Restschuld ohne loan_id (Abgleich "Restschuld 198.000" buchte +198.000).
 --   fn-Ebene: {ok:false} mit Hinweis (kein RAISE/Owner-Alarm). Backstop: Trigger trg_finance_reject_account_type_txn
 --   (Depot nie, Kreditkonto nur mit loan_id).
 BEGIN;
@@ -57,7 +57,7 @@ BEGIN
   IF (v_res->>'ok')::boolean IS DISTINCT FROM false THEN RAISE EXCEPTION 'FAIL guard [reconcile preview Depot]: %', v_res; END IF;
   RAISE NOTICE 'PASS guard [Abgleich Kredit/Depot -> ok:false, auch Batch + Vorschau]';
 
-  -- 4. Dauer-Uebertrag ins Depot -> ok:false (vorher kein Guard)
+  -- 4. Dauer-Uebertrag ins Depot -> ok:false
   v_rp := finance.fn_add_recurring_payment(v_cash, -50, '__test_gat_rp__', 1::smallint, 'month', NULL,
     CURRENT_DATE, CURRENT_DATE, NULL, 'active', NULL);
   UPDATE finance.recurring_payments SET target_account_id = v_depot WHERE id = v_rp;
@@ -65,7 +65,7 @@ BEGIN
   IF (v_res->>'ok')::boolean IS DISTINCT FROM false THEN RAISE EXCEPTION 'FAIL guard [Dauer-Uebertrag Depot]: %', v_res; END IF;
   RAISE NOTICE 'PASS guard [Dauer-Uebertrag ins Depot -> ok:false]';
 
-  -- 4b. Review: Kreditrate / Abloesung aus einem Depot, Immobilien-Erloes aufs Depot -> ok:false statt Alarm
+  -- 4b. Kreditrate / Abloesung aus einem Depot, Immobilien-Erloes aufs Depot -> ok:false statt Alarm
   v_res := finance.fn_book_loan_payment(jsonb_build_object('loan_id',v_loan,'loan_account_id',v_lacc,
     'debit_account_id',v_depot,'payment_amount',1500,'payment_date',CURRENT_DATE::text));
   IF (v_res->>'ok')::boolean IS DISTINCT FROM false THEN RAISE EXCEPTION 'FAIL guard [Kreditrate aus Depot]: %', v_res; END IF;

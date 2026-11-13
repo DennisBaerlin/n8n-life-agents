@@ -1,9 +1,8 @@
 -- tests/db/finance/test_fn_render_finance_profile.sql
--- Testet den paket-besessenen Finanzprofil-Renderer finance.fn_render_finance_profile(text) (Phase A: aus dem
--- Core [vormals agent.fn_finance_profile_context] ins finance-Paket gezogen) ueber die generische Engine
--- core.fn_fetch_context: joint BEIDE Sidecars (Wunsch-Rentenjahr aus family.birth_date + fp.planned_retirement_age),
+-- Testet den paket-besessenen Finanzprofil-Renderer finance.fn_render_finance_profile(text) ueber die generische Engine
+-- core.fn_fetch_context: joint beide Sidecars (Wunsch-Rentenjahr aus family.birth_date + fp.planned_retirement_age),
 -- Header-only (Banner/Stempel/'---'/Prosa setzt die Engine), leere persons -> Fallback-Zeile statt Junk-Bullet.
--- db_test seedet core.context_renderers NICHT -> der Test seedet die Registry-Zeile selbst, wie seed_data.sh
+-- db_test seedet core.context_renderers nicht -> der Test seedet die Registry-Zeile selbst, wie seed_data.sh
 -- sie aus packages/finance/manifest.json "context_renderers" setzt.
 BEGIN;
 
@@ -11,7 +10,7 @@ DO $$
 DECLARE
   v_txt TEXT;
 BEGIN
-  -- REIHENFOLGE: erst finance_profile-Personen leeren (sonst blockt die Waisen-Pruefung den family-Fixture-Write),
+  -- Reihenfolge: erst finance_profile-Personen leeren (sonst blockt die Waisen-Pruefung den family-Fixture-Write),
   -- dann family, dann finance_profile darauf.
   UPDATE agent.core_contexts
   SET metadata = jsonb_set(COALESCE(metadata,'{}'::jsonb), '{facts,persons}', '[]'::jsonb)
@@ -38,7 +37,7 @@ BEGIN
   VALUES ('finance_profile', 'finance.fn_render_finance_profile', 'finance')
   ON CONFLICT (context_name) DO UPDATE SET render_fn = EXCLUDED.render_fn, package = EXCLUDED.package;
 
-  -- ---------- TEST 1 (BIT-REGRESSION): finance_profile ueber die Engine joint beide Sidecars ----------
+  -- ---------- TEST 1: finance_profile ueber die Engine joint beide Sidecars ----------
   SELECT content INTO v_txt FROM core.fn_fetch_context('finance_profile');
   IF v_txt NOT LIKE '%Authoritative facts%' THEN
     RAISE EXCEPTION 'FAIL finance_profile [engine banner]: Banner fehlt: %', left(v_txt, 200);
@@ -52,7 +51,7 @@ BEGIN
   END IF;
   RAISE NOTICE 'PASS finance.fn_render_finance_profile [Engine: Join beider Sidecars 1980+63=2043 + Prosa]';
 
-  -- ---------- TEST 2 (Review A3): leeres persons-Array -> KEIN Junk-Bullet, Fallback-Text ----------
+  -- ---------- TEST 2: leeres persons-Array -> kein Junk-Bullet, Fallback-Text ----------
   UPDATE agent.core_contexts
   SET metadata = jsonb_set(metadata, '{facts,persons}', '[]'::jsonb)
   WHERE name = 'finance_profile';

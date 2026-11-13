@@ -1,12 +1,13 @@
 -- ============================================================
--- fn_reconciled_reason (READ HELPER) -- Doppelzaehlungs-Sperre gegen den Saldo-Abgleich (Monats-Check WP-A)
+-- fn_reconciled_reason (READ HELPER, STABLE) -- Doppelzaehlungs-Sperre gegen den Saldo-Abgleich
 --   Ein Saldo-Abgleich zum Stichtag D (fn_reconcile_account: manuell oder per Kontoauszug) bestaetigt den
---   Kontostand inkl. ALLER Bewegungen bis D; die Differenz steckt in der Korrekturbuchung. Eine danach nachgeholte
---   Dauerauftrags-/Zinsbuchung mit Buchungsdatum <= D zaehlte doppelt. Gilt je BEIN-Konto (Transfer: Quelle UND
---   Ziel) und keyt aufs BUCHUNGSdatum, nicht auf die Faelligkeit (Faelligkeit 30.09., abgebucht 01.10. gehoert in den
---   Oktober). EINE Adresse fuer fn_book_recurring_occurrence/_transfer, fn_book_loan_payment, fn_book_stock_buy
+--   Kontostand inkl. aller Bewegungen bis D; die Differenz steckt in der Korrekturbuchung. Eine danach nachgeholte
+--   Dauerauftrags-/Zinsbuchung mit Buchungsdatum <= D zaehlte doppelt. Gilt je Bein-Konto (Transfer: Quelle und
+--   Ziel) und keyt aufs Buchungsdatum, nicht auf die Faelligkeit (Faelligkeit 30.09., abgebucht 01.10. gehoert in den
+--   Oktober). Die eine Adresse fuer fn_book_recurring_occurrence/_transfer, fn_book_loan_payment, fn_book_stock_buy
 --   (Sparplan-Pfad) und fn_book_interest_occurrence.
---   RUECKGABE: NULL = buchbar, sonst der Grund (EN, fuer {ok:false, code:'reconciled', reason}).
+--   Eingabe: p_account_id, p_date (Buchungsdatum).
+--   Rueckgabe: NULL = buchbar, sonst der Grund (EN, fuer {ok:false, code:'reconciled', reason}).
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_reconciled_reason(p_account_id int, p_date date)
 RETURNS text LANGUAGE sql STABLE AS $$

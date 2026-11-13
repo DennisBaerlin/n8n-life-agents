@@ -1,4 +1,4 @@
--- finance.fn_fx_rate_status: Wechselkurs-Stand je aktiver Fremdwaehrung (eine Adresse fuer "fehlt ein Kurs?")
+-- fn_fx_rate_status (READ) -- Wechselkurs-Stand je aktiver Fremdwaehrung (eine Adresse fuer "fehlt ein Kurs?")
 --   Ein Eintrag je Waehrung aus fn_active_currencies, also auch fuer die erst vom Kursabruf gelernte Waehrung.
 --   Eingabe: keine; Grenze aus core.config finance.fx_stale_days (Default 7).
 --   Rueckgabe: code, last_as_of (juengster EUR-Kurs, NULL ohne Kurs), status missing | stale (Alter > Grenze) | ok.

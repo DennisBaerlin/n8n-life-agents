@@ -3,23 +3,20 @@
 
 # --- tool_delete_recurring_payment (standalone Dauerauftrag loeschen: Hard-DELETE) ---
 function Build-DeleteRecurringPayment {
-    # WS-B0: enge Paket-Schreibrolle (finance_rw, Least-Privilege D10) statt Owner-Cred.
-    # Dynamic-Scope: Build-Pg liest dieses $CRED_POSTGRES. Core-Tools nutzen die Owner-Cred.
+    # Enge Paket-Schreibrolle (finance_rw) statt Owner-Cred; Build-Pg liest $CRED_POSTGRES per Dynamic-Scope.
     $CRED_POSTGRES = $CRED_FINANCE_RW
     $trig = Build-Trigger @('recurring_payment_name','confirm_feeds_savings')
 
     $readRp = Build-Pg 'Read Recurring' @(220, 0) `
         "=SELECT rp.amount, (SELECT a.currency FROM finance.accounts a WHERE a.id = rp.account_id) AS currency, rp.status::text AS rp_status, (SELECT COUNT(*)::int FROM finance.transactions t WHERE t.recurring_payment_id = rp.id) AS tx_count, (EXISTS (SELECT 1 FROM finance.insurances WHERE recurring_payment_id=rp.id) OR EXISTS (SELECT 1 FROM finance.loans WHERE recurring_payment_id=rp.id) OR EXISTS (SELECT 1 FROM finance.pension WHERE recurring_payment_id=rp.id) OR EXISTS (SELECT 1 FROM finance.savings_goals WHERE recurring_payment_id=rp.id) OR EXISTS (SELECT 1 FROM finance.savings_plans WHERE recurring_payment_id=rp.id)) AS owned FROM finance.recurring_payments rp WHERE rp.name = ((`$1::jsonb)->>'recurring_payment_name') AND NOT EXISTS (SELECT 1 FROM finance.recurring_payments s WHERE s.predecessor_id = rp.id) ORDER BY rp.id LIMIT 1;" `
         ([ordered]@{ recurring_payment_name = '$(''Start'').item.json.recurring_payment_name' })
-    # Unbekannter Name -> Tool-Fehler statt stillem Ende (New-RequiredRowGate, 2026-10-24).
+    # Unbekannter Name -> Tool-Fehler statt stillem Ende (New-RequiredRowGate).
     $found = New-RequiredRowGate -Read $readRp -KeyField 'rp_status' -IfName 'Recurring Payment found?' -ErrName 'Recurring Payment not found' `
         -IfPos @(330, -160) -ErrPos @(440, 240) `
         -NotFoundExpr "=No recurring payment named '{{ `$('Start').item.json.recurring_payment_name }}' exists. List them via postgres_select on finance.active_recurring_payments and finance.upcoming_recurring_payments and ask the user which one is meant."
 
-    # Strukturiertes Summary (Textkatalog): Betrag in der Konto-Waehrung (Read Recurring liest accounts.currency mit).
-    # "DB ist das Gesetz": fn_delete_recurring_payment laeuft als Probelauf VOR der Karte (Entitaets-besessen / gebuchte
-    # Transaktionen / Zubringer eines Sparplans oder Sparziels ohne confirm_feeds_savings -> {ok:false, code:'feeds_savings'}
-    # ohne Karte); derselbe Param-Satz geht nach dem Gate in den echten Write.
+    # Betrag in der Konto-Waehrung (Read Recurring liest accounts.currency mit). Zubringer eines Sparplans oder
+    # Sparziels ohne confirm_feeds_savings lehnt der Probelauf mit code 'feeds_savings' ab.
     $wg = New-FnWriteGate -Fn 'finance.fn_delete_recurring_payment' -DryPos @(440, 0) -WritePos @(1760, 0) `
         -WriteName 'Delete recurring (atomic)' `
         -WriteSelect "(r->>'ok')::boolean AS ok, r->>'reason' AS reason, r->>'action' AS action, (r->>'recurring_payment_id')::int AS recurring_payment_id" `
@@ -46,7 +43,7 @@ function Build-DeleteRecurringPayment {
 
     $retCancelled = Build-ToolCancelled 'Return cancelled' @(1760, 240) 'the delete_recurring_payment action'
 
-    # Atomarer Write ($wg.Write, 'Delete recurring (atomic)'): prueft erneut, falls sich seit dem Probelauf etwas geaendert hat.
+    # Der Write prueft erneut, falls sich seit dem Probelauf etwas geaendert hat.
     $ifWriteOk = Build-If 'Write ok?' @(1980, 0) "={{ `$json.ok }}" 'true' 'equals' 'boolean'
 
     $errWrite = Build-ToolError 'Delete rejected' @(2200, 240) `

@@ -1,8 +1,8 @@
 -- tests/db/estate/test_fn_gap_report.sql
--- WS-2: Gap-Analyse — Erwartungsmenge (essential+recommended je ERWACHSENEM; Kind NIE
--- genudgt; situational NIE), Haushalts-Urkunde deckt BEIDE Erwachsene, Register-Feld-Gaps
+-- Gap-Analyse — Erwartungsmenge (essential+recommended je Erwachsenem; Kind nie
+-- genudgt; situational nie), Haushalts-Urkunde deckt beide Erwachsene, Register-Feld-Gaps
 -- (death_action/desired_action/Schluesselkonto/fehlende Personen-Zeilen) + konkrete
--- finance-Feld-Gaps (doppel-guardet: aktiv-Pfad UND Absenz-Pfad). Deckt die Views
+-- finance-Feld-Gaps (doppel-guardet: aktiv-Pfad und Absenz-Pfad). Deckt die Views
 -- v_directive_gaps + v_register_gaps mit ab. Self-contained; BEGIN..ROLLBACK.
 BEGIN;
 
@@ -34,7 +34,7 @@ BEGIN
   IF FOUND THEN RAISE EXCEPTION 'FAIL [situational genudgt]'; END IF;
   RAISE NOTICE 'PASS [Erwartungsmenge: 10 Gaps, Kind + situational NIE genudgt]';
 
-  -- ---------- Haushalts-Urkunde deckt BEIDE Erwachsene ----------
+  -- ---------- Haushalts-Urkunde deckt beide Erwachsene ----------
   INSERT INTO estate.directives (owner_person_id, doc_type, doc_status)
   VALUES (NULL, 'testament', 'exists');
   SELECT count(*) INTO v_n FROM estate.v_directive_gaps;
@@ -58,7 +58,7 @@ BEGIN
   SELECT count(*) INTO v_n FROM estate.v_register_gaps;
   -- 1 (death_action) + 2 (desired_action + Schluesselkonto) + 2 (person_records fehlen) + 2 (funeral fehlt) = 7
   IF v_n <> 7 THEN RAISE EXCEPTION 'FAIL [register gaps]: % statt 7', v_n; END IF;
-  INSERT INTO estate.person_records (person_id, employer) VALUES ('erika', 'Beispiel GmbH');   -- Inhalt schliesst die Luecke (WP3)
+  INSERT INTO estate.person_records (person_id, employer) VALUES ('erika', 'Beispiel GmbH');   -- Inhalt schliesst die Luecke
   SELECT count(*) INTO v_n FROM estate.v_register_gaps;
   IF v_n <> 6 THEN RAISE EXCEPTION 'FAIL [person_record-Gap nicht aufgeloest]: % statt 6', v_n; END IF;
   RAISE NOTICE 'PASS [Register-Feld-Gaps: death_action/desired_action/Schluesselkonto/Personen-Zeilen]';
@@ -90,7 +90,7 @@ BEGIN
   IF v_n <> 8 THEN RAISE EXCEPTION 'FAIL [report directive count]: % statt 8', v_n; END IF;
   SELECT count(*) INTO v_n FROM jsonb_array_elements(v_r->'register_gaps');
   IF v_n <> 6 THEN RAISE EXCEPTION 'FAIL [report register count]: % statt 6', v_n; END IF;
-  -- Textkatalog Phase C: jeder Register-Gap traegt einen stabilen gap_code (Anzeige estate.gap.<code>) + englischen
+  -- Jeder Register-Gap traegt einen stabilen gap_code (Anzeige estate.gap.<code>) + englischen
   -- Modelltext (der estate_ro-Leser ist das LLM)
   IF EXISTS (SELECT 1 FROM jsonb_array_elements(v_r->'register_gaps') g
               WHERE g->>'gap_code' NOT IN ('death_action_open', 'digital_action_open', 'key_account_no_access',
@@ -99,7 +99,7 @@ BEGIN
     RAISE EXCEPTION 'FAIL [gap_code/englischer gap]: %', v_r->'register_gaps'; END IF;
   RAISE NOTICE 'PASS [finance-Feld-Gaps: konkrete missing_fields je Police/Konto + Aggregat-Parity]';
 
-  -- Nicht-todesfall-relevante Police: beneficiary/claim_deadline werden NICHT genudgt:
+  -- Nicht-todesfall-relevante Police: beneficiary/claim_deadline werden nicht genudgt:
   INSERT INTO finance.insurances (name, valid_from, insurance_type, policy_number)
   VALUES ('__test__ Haftpflicht', CURRENT_DATE, 'liability', 'HP-1');
   v_r := estate.fn_gap_report();

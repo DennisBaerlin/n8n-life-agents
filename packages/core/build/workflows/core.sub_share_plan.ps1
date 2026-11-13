@@ -1,8 +1,8 @@
 ﻿#Requires -Version 5.1
 # Dot-gesourct von build.ps1 (Helper + Script-Scope-Creds im Parent-Scope).
 #
-# --- core.sub_share_plan (Plan teilen, 2026-10-28) -------
-# Die EINE Stelle, die erwachsene Mitglieder ueber einen neuen Haushalts-Plan informiert — deterministisch, kein LLM.
+# --- core.sub_share_plan (Plan teilen) -------
+# Die eine Stelle, die erwachsene Mitglieder ueber einen neuen Haushalts-Plan informiert — deterministisch, kein LLM.
 # Aufgerufen vom Orchestrator nach dem Owner-Tipp plan:share:<domain>:<version> (core.fn_handle_plan_cb hat Owner +
 # aktuelle Version geprueft). Laeuft unter der Core-Cred.
 #
@@ -50,7 +50,7 @@ return t.map(x => ({ json: { skip: false, person_id: String(x.person_id), chat_i
     }
     $ifTargets = Build-If 'Has targets?' @(-440, 0) "={{ `$json.skip !== true }}" 'true' 'equals' 'boolean'
 
-    # Texte je Person in IHRER Sprache; Bereichsname <pkg>.package.name aller Plan-Pakete (build-time aus $AdvisorPlanStepList).
+    # Texte je Person in ihrer Sprache; Bereichsname <pkg>.package.name aller Plan-Pakete (build-time aus $AdvisorPlanStepList).
     $pkgNameKeys = @($AdvisorPlanStepList | ForEach-Object { "$($_.Package).package.name" } | Sort-Object -Unique)
     $msgKeys = Get-UiKeysSql (@('core.plan_share.member_title', 'core.plan_share.member_summary', 'core.plan_share.member_other_lang',
         'core.plan_share.btn_explain', 'core.plan_share.btn_wish', 'core.plan_share.btn_stop') + $pkgNameKeys)
@@ -92,7 +92,7 @@ return [{ json: { ok: true, sent: delivered.length, delivered, failed, already: 
         type = 'n8n-nodes-base.code'; typeVersion = 2; position = @(220, -120)
         id = (New-Id); name = 'Collect results'
     }
-    # Merken erst NACH dem Send (core.fn_plan_share_mark): nur zugestellte Nachrichten zaehlen als informiert.
+    # Merken erst nach dem Send (core.fn_plan_share_mark): nur zugestellte Nachrichten zaehlen als informiert.
     $mark = Build-Pg 'Mark delivered' @(440, -120) `
         "=SELECT core.fn_plan_share_mark(`$1::jsonb)::text AS r;" `
         ([ordered]@{

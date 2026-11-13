@@ -1,4 +1,4 @@
-# install_update_timers.sh — systemd-Timer fuer das Update im Chat (Update-Hinweis 2026-10-24).
+# install_update_timers.sh — systemd-Timer fuer das Update im Chat. Gesourct von provision.sh.
 #
 #   lifeagents-update-check.{service,timer}  alle 2 h (gerade Stunden :20, Haushalts-Zeitzone): `lifeagents update --check --scheduled`
 #   lifeagents-update-run.{service,timer}    minuetlich: `lifeagents update --run-requested`
@@ -43,10 +43,10 @@ uninstall_update_timers() {
   done
 }
 
-# install_release_keyring — den oeffentlichen Release-Signierschluessel des Projekts EINMAL nach /etc/lifeagents legen
+# install_release_keyring — den oeffentlichen Release-Signierschluessel des Projekts einmal nach /etc/lifeagents legen
 #   (Vertrauen beim ersten Kontakt: Erstinstallation bzw. das erste Update auf eine signierende Version). Danach prueft
-#   jedes Update (lifeagents update, Chat-Runner, install.sh) die Unterschrift gegen GENAU dieses Bund (fetch_release.sh
-#   _release_fetch_verify). Ein Update ueberschreibt es NIE — sonst koennte ein gekapertes Release seinen eigenen
+#   jedes Update (lifeagents update, Chat-Runner, install.sh) die Unterschrift gegen genau dieses Bund (fetch_release.sh
+#   _release_fetch_verify). Ein Update ueberschreibt es nie — sonst koennte ein gekapertes Release seinen eigenen
 #   Schluessel mitbringen. Liefert der Baum (noch) keinen Schluessel, bleibt alles beim SHA256-Sidecar.
 #   Reads globals: SCRIPT_DIR (provisioning/), LIFEAGENTS_DIR.
 install_release_keyring() {

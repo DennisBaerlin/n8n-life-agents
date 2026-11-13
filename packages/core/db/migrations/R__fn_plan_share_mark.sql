@@ -1,10 +1,11 @@
 -- ============================================================
--- core.fn_plan_share_mark(p) — zugestellte Plan-Nachrichten als "informiert" merken (Plan teilen, 2026-10-28)
---   Der Sub core.sub_share_plan ruft sie NACH den Sends mit den Personen, deren Nachricht zugestellt wurde. Je Person
+-- fn_plan_share_mark (ATOMIC WRITE, SECURITY DEFINER) — zugestellte Plan-Nachrichten als "informiert" merken
+--   Der Sub core.sub_share_plan ruft sie nach den Sends mit den Personen, deren Nachricht zugestellt wurde. Je Person
 --   core.fn_should_notify('plan_news', '<pid>:<domain>:p<plan_id>') (NULL-TTL, einmal je Person und Plan-Version).
 --   Gescheiterte Sends werden nicht gemerkt -> ein zweiter Owner-Tipp erreicht sie noch. Bricht der Lauf zwischen Send
 --   und Merken ab, kann eine Person die Nachricht doppelt bekommen (lieber doppelt als nie).
---   p: { domain, plan_id, person_ids:[...] }   RUECKGABE: {ok:true, marked}. Nie RAISE.
+--   p: { domain, plan_id, person_ids:[...] } (alle drei Pflicht; ungueltige Form -> {ok:true, marked:0}, ungueltige person_id wird uebersprungen)
+--   Rueckgabe: {ok:true, marked}. Nie RAISE.
 --   VOLATILE, SECURITY DEFINER, search_path gepinnt; EXECUTE nur die Host-Cred (REVOKE PUBLIC).
 --   Tests: tests/db/core/test_fn_plan_share_targets.sql
 -- ============================================================

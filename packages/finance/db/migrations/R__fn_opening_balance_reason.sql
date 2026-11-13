@@ -5,7 +5,8 @@
 --   Stichtag immer, am Stichtag nur bei spaeterer Anlage (Endsaldo = Tagesende; Anlage am selben Tag = "morgens").
 --   plpgsql wegen der alphabetisch spaeteren fn_recurring_valid_from. Konsumenten: fn_book_transfer,
 --   fn_book_recurring_transfer, fn_statement_prepare (Stufe T, Pool, Dauerauftrag).
---   RUECKGABE: NULL = nicht im Startbetrag, sonst der Grund (EN, fuer {ok:false, code:'before_opening', reason}); den naechsten
+--   Eingabe: p_account_id, p_date (Datum der Bewegung).
+--   Rueckgabe: NULL = nicht im Startbetrag, sonst der Grund (EN, fuer {ok:false, code:'before_opening', reason}); den naechsten
 --   Schritt ergaenzt der Aufrufer.
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_opening_balance_reason(p_account_id int, p_date date)

@@ -3,11 +3,11 @@
 --   Idempotenter Upsert je `package` (PK). Erstanlage -> status='installing'
 --   (Lifecycle-Start; `active` setzt erst fn_pkg_set_status zuletzt). Re-Register
 --   (gleiches Paket) aktualisiert version/description/requires/core_api/checksum,
---   laesst den `status` UNANGETASTET (ein Update-Lauf kippt nicht ungewollt aktiv->installing).
---   Aufgerufen vom CLI-Lifecycle (pkg_lifecycle.sh) NACH erfolgreicher DB-Migration/Deploy.
---   Eingabe jsonb: package (Pflicht), version, description, display_name (deutscher Anzeigename,
---     Install-UX-Phase 6), core_api (Mindest-Core-API), requires (jsonb-Array von Paketnamen), manifest_checksum.
---   RUECKGABE: {ok:true, package, version, status, created} (created = DB-entschieden:
+--   laesst den `status` unangetastet (ein Update-Lauf kippt nicht ungewollt aktiv->installing).
+--   Aufgerufen vom CLI-Lifecycle (pkg_lifecycle.sh) nach erfolgreicher DB-Migration/Deploy.
+--   Eingabe jsonb: package (Pflicht), version, description, display_name (deutscher Anzeigename),
+--     core_api (Mindest-Core-API), requires (jsonb-Array von Paketnamen), manifest_checksum.
+--   Rueckgabe: {ok:true, package, version, status, created} (created = DB-entschieden:
 --     true bei Erstanlage, false bei Upsert). Leerer package -> {ok:false, reason} ohne Write.
 -- ============================================================
 CREATE OR REPLACE FUNCTION core.fn_pkg_register(p jsonb)
@@ -23,7 +23,6 @@ BEGIN
         RETURN jsonb_build_object('ok', false, 'reason', 'package must be non-empty');
     END IF;
 
-    -- requires: jsonb-Array -> text[] (fehlt/null -> leer)
     IF p ? 'requires' AND jsonb_typeof(p->'requires') = 'array' THEN
         SELECT COALESCE(array_agg(value::text), '{}') INTO v_req
         FROM jsonb_array_elements_text(p->'requires') AS value;
@@ -50,7 +49,7 @@ BEGIN
         core_api_at_install = COALESCE(p->>'core_api', core.package_registry.core_api_at_install),
         requires            = v_req,
         manifest_checksum   = COALESCE(p->>'manifest_checksum', core.package_registry.manifest_checksum)
-        -- status BEWUSST nicht angefasst (Re-Register kippt den Lebenszyklus nicht)
+        -- status bewusst nicht angefasst (Re-Register kippt den Lebenszyklus nicht)
     RETURNING (xmax = 0) AS inserted, version, status INTO v_created, v_version, v_status;
 
     RETURN jsonb_build_object(

@@ -51,8 +51,8 @@ BEGIN
   END IF;
   RAISE NOTICE 'PASS fn_active_currencies [DISTINCT: mehrere Objekte -> 1 Eintrag]';
 
-  -- TEST 5 (WP-3a): quote_currency einer EUR-GEFUEHRTEN Position (US-Listing in GBP) -> GBP in der Menge.
-  -- Red-first: vor der quote_currency-UNION taucht GBP NICHT auf -> FX-Cron holt den Kurs nie -> still 0.
+  -- TEST 5: quote_currency einer EUR-gefuehrten Position (US-Listing in GBP) -> GBP in der Menge.
+  -- Ohne die quote_currency-UNION taucht GBP nicht auf -> FX-Cron holt den Kurs nie -> still 0.
   INSERT INTO finance.currencies (code, minor_unit) VALUES ('GBP', 2) ON CONFLICT (code) DO NOTHING;
   INSERT INTO finance.depot_holdings (account_id, name, symbol, currency, quote_currency)
   VALUES (v_depot_id, '__test_holding_eur_gbpquote__', 'TSTG', 'EUR', 'GBP');
@@ -61,7 +61,7 @@ BEGIN
   END IF;
   RAISE NOTICE 'PASS fn_active_currencies [WP-3a quote_currency GBP erkannt]';
 
-  -- TEST 6 (2026-10-23): Kurs-Waehrung aus market_prices einer GEHALTENEN Position ohne quote_currency (Feed liefert
+  -- TEST 6: Kurs-Waehrung aus market_prices einer gehaltenen Position ohne quote_currency (Feed liefert
   -- CHF) -> CHF in der Menge; eine nicht mehr gehaltene Position (shares=0) und ein aelterer Kurs in anderer Waehrung zaehlen nicht.
   INSERT INTO finance.currencies (code, minor_unit) VALUES ('CHF', 2), ('JPY', 0) ON CONFLICT (code) DO NOTHING;
   PERFORM finance.fn_book_stock_buy(jsonb_build_object('price_currency_confirmed',true,'depot_id', v_depot_id, 'settlement_id', v_settle_id,

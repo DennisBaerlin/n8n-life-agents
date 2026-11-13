@@ -1,8 +1,8 @@
 -- tests/db/finance/test_fn_book_savings_reservation.sql
--- WS-B Stufe 1 (Phase S): finance.fn_book_savings_reservation — der Depot-Anteil einer Sparziel-Reserve als
--- APPEND-ONLY Journal (savings_goal_reserve_entries). Input = ABSOLUTER Ziel-Betrag (amount) fuer (Ziel, Depot);
--- die fn rechnet delta = amount - COALESCE(SUM(journal),0) und haengt EINE manual-Zeile an (kein LLM-Rechnen,
--- absolut-rein -> delta-append -> strukturell driftfrei). Marktwert ist Deckel/Deckung, NIE die gespeicherte
+-- finance.fn_book_savings_reservation — der Depot-Anteil einer Sparziel-Reserve als
+-- append-only Journal (savings_goal_reserve_entries). Input = absoluter Ziel-Betrag (amount) fuer (Ziel, Depot);
+-- die fn rechnet delta = amount - COALESCE(SUM(journal),0) und haengt eine manual-Zeile an (kein LLM-Rechnen,
+-- absolut-rein -> delta-append -> strukturell driftfrei). Marktwert ist Deckel/Deckung, nie die gespeicherte
 -- Reserve. Korrigierbar (kein RAISE): nicht-Depot-Konto / Ziel-Konto nicht gefunden / delta=0 (no-op) /
 -- amount<0 (negative Reserve). Post-State {reserved, delta, market_value, shortfall} DB-berechnet.
 BEGIN;
@@ -28,7 +28,7 @@ BEGIN
     VALUES ('__rsv_goal__', 8000, current_date + 365, 'active') RETURNING id INTO v_goal;
 
   -- ===================================================================================
-  -- (1) Erstzuordnung: amount 3000 -> delta 3000 (oldΣ 0) -> EINE Journal-Zeile, reserved 3000.
+  -- (1) Erstzuordnung: amount 3000 -> delta 3000 (oldΣ 0) -> eine Journal-Zeile, reserved 3000.
   --     Marktwert 600 < reserviert 3000 -> shortfall 2400 (DB-berechnet, Post-State).
   -- ===================================================================================
   SELECT finance.fn_book_savings_reservation(jsonb_build_object(
@@ -43,7 +43,7 @@ BEGIN
   RAISE NOTICE 'PASS [1: amount 3000 -> delta-append 3000, reserved 3000, mv 600, shortfall 2400]';
 
   -- ===================================================================================
-  -- (2) Erhoehung auf absolut 5000 -> delta = 5000 - 3000 = 2000 angehaengt (NIE UPDATE) -> 2 Zeilen, Σ 5000.
+  -- (2) Erhoehung auf absolut 5000 -> delta = 5000 - 3000 = 2000 angehaengt (nie UPDATE) -> 2 Zeilen, Σ 5000.
   -- ===================================================================================
   SELECT finance.fn_book_savings_reservation(jsonb_build_object(
     'savings_goal_id', v_goal, 'account_id', v_depot, 'amount', 5000)) INTO v_res;

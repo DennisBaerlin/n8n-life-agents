@@ -1,10 +1,10 @@
 -- ============================================================
--- fn_recurring_plausible_day (IMMUTABLE) -- Monatstag eines Dauerauftrags, von dem nur EIN Termin gesehen wurde
+-- fn_recurring_plausible_day (IMMUTABLE) -- Monatstag eines Dauerauftrags, von dem nur ein Termin gesehen wurde
 --   Tag 29-31 -> -1 (Regel "der 30. = Monatsletzter"); bis zum Monatsende nur Wochenende (auch: Termin = Monatsletzter)
 --   -> -1; seit Monatsbeginn nur Wochenende -> 1 (Buchung am Montag nach einem 1. am Wochenende); sonst der gebuchte Tag.
 --   Feiertage zaehlen nicht (Fenster des Monats-Checks -5/+10 faengt sie). Ab zwei Terminen misst
 --   fn_get_recurring_candidates den Tag selbst.
---   RUECKGABE: int in 1..28 | -1.
+--   Eingabe: p_date (der gesehene Termin). Rueckgabe: int in 1..28 | -1.
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_recurring_plausible_day(p_date date)
 RETURNS int LANGUAGE sql IMMUTABLE AS $$

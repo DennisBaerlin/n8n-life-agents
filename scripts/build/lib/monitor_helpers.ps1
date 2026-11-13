@@ -3,18 +3,18 @@
 # Web-Beschaffung per Claude web_search (geteilter Baustein New-AnthropicMessagesNode) mit striktem
 # JSON-Vertrag + deterministischem Parse.
 # Genutzt von den monitor-Build-Defs in packages/core/build/workflows/ (tools/create_monitor_trigger.ps1,
-# tools/set_monitor_trigger.ps1, cron.monitor_check_triggers.ps1) — der Abruf-Pfad ist ueberall IDENTISCH (derselbe
+# tools/set_monitor_trigger.ps1, cron.monitor_check_triggers.ps1) — der Abruf-Pfad ist ueberall identisch (derselbe
 # Vertrag wie im Cron, damit die Probe vor dem Gate exakt das testet, was spaeter laeuft).
 # Dot-gesourct von build.ps1 (sieht $RepoRoot + die lib-Helper im Parent-Scope).
 
 # Strikter Antwort-Vertrag der Wert-Beschaffung (EN, build-time Konstante).
 $script:MonitorSysText = 'You retrieve exactly ONE metric value via web search. Respond with ONLY a single JSON object, no prose, no markdown fences: {"ok": true|false, "value": number|null, "unit": "unit exactly as requested in the query", "as_of": "date the value refers to (YYYY-MM-DD)", "source_url": "best source url", "reason": "only when ok=false"}. Rules: (1) Find the primary source first (central bank, agency, exchange, issuer itself, statute, official calendar) and read value and date from its page content, not from a snippet. If sources conflict, the primary one wins. If the page shows no date, set ok=false and say so in reason instead of inventing one. (2) as_of contains ONLY a date in the form YYYY-MM-DD, nothing else: the date the value refers to in the source, not today; for a time series read the newest row; if the source gives only a month, use the best day-level date it states (publication or announcement date); put every caveat into reason. as_of is never after today. (3) The value must be the one in force or observed as of today. A decision that is announced but takes effect after today is not the current value: report the value still in force, as_of = the date it took effect. (4) Prices: use the newest dated value you can read (a quote that shows its own timestamp, or the latest dated close), never an older close when a newer dated value is available; market values must be at most about a week old. (5) Never guess or compute. If no current value can be read from a source, or the instrument or series is discontinued, or the date is not yet published, set ok=false with a concrete reason. Check year and scope (tax year vs filing year, single vs joint, announced vs effective date). value is a plain number with dot decimal, no thousands separators, no units inside value.'
 
-# HTTP-Node fuer EINEN Web-Abruf (laeuft per-Item). $PromptExpr ist ein roher
-# JS-Ausdruck, der den gespeicherten Retrieval-Prompt WOERTLICH liefert (nie umformuliert).
-# Modell = model.monitor_acquisition, zur LAUFZEIT aus dem Knoten 'Load model config' (New-MonitorModelConfigNode,
+# HTTP-Node fuer einen Web-Abruf (laeuft per-Item). $PromptExpr ist ein roher
+# JS-Ausdruck, der den gespeicherten Retrieval-Prompt woertlich liefert (nie umformuliert).
+# Modell = model.monitor_acquisition, zur Laufzeit aus dem Knoten 'Load model config' (New-MonitorModelConfigNode,
 # muss in jedem Aufrufer-Workflow vor diesem Knoten liegen). JSON per Prompt-Vertrag + Parse,
-# bewusst OHNE output_config.format (der Vertrag ist seit v1 prompt-getragen; der Parse unten ist robust).
+# bewusst ohne output_config.format (der Vertrag ist prompt-getragen; der Parse unten ist robust).
 function New-MonitorAcquireHttpNode {
     param([string]$Name, [int[]]$Pos, [string]$PromptExpr)
     New-AnthropicMessagesNode -Name $Name -Position $Pos -ConfigModelKey 'monitor_acquisition' -System $script:MonitorSysText `
@@ -29,13 +29,13 @@ function New-MonitorModelConfigNode {
 }
 
 # Deterministischer Parse des Abruf-Outputs (Stufe 1 der Validierungs-Kaskade):
-# Fences strippen, ERSTEN balancierten {...}-Block extrahieren (die Antwort kann Zitat-Text um das JSON
+# Fences strippen, ersten balancierten {...}-Block extrahieren (die Antwort kann Zitat-Text um das JSON
 # tragen), value muss finite number sein; jeder Parse-Fehler (auch abgeschnittene Antwort/Ablehnung/
 # unfertige Suche via anthropicText) wird {ok:false, reason} -> Fehlerpfad (fail_streak), nie Exception.
 # $ResultExprJs: JS-Zeilen, die aus dem geparsten Objekt `obs` das Item bauen
 # (z. B. 'return [{ json: { probe: obs } }];' fuer die Tool-Probe).
 # -PerItem: fuer Code-Nodes im runOnceForEachItem-Modus — n8n blockt `.first()` dort
-# STATISCH (auch im nicht genommenen Ternary-Zweig; real getroffen), daher zwei Varianten.
+# statisch (auch im nicht genommenen Ternary-Zweig), daher zwei Varianten.
 function Get-MonitorShapeJs {
     param([string]$ResultExprJs, [string]$Prelude = '', [switch]$PerItem)
     $accessor = if ($PerItem) { 'const r = $input.item.json;' } else { 'const r = $input.first().json;' }

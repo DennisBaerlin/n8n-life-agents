@@ -1,6 +1,6 @@
 -- tests/db/core/test_fn_set_own_context_facts.sql
 -- agent.fn_set_own_context_facts(p): Schreibweg der Freigabe-Stufe self (agent.tool_set_own_context_facts).
--- Duenner Delegat auf agent.fn_set_context_facts, der scope='per_user' SELBST setzt (ein Aufrufer-scope wird
+-- Duenner Delegat auf agent.fn_set_context_facts, der scope='per_user' selbst setzt (ein Aufrufer-scope wird
 -- ueberschrieben) -> nur der eigene per_user-Kontext der aus chat_id aufgeloesten Person ist schreibbar;
 -- household/family/Plan-Kontexte strukturell nicht. Self-contained (BEGIN..ROLLBACK).
 BEGIN;
@@ -43,7 +43,7 @@ BEGIN
     RAISE EXCEPTION 'FAIL [1] eigener per_user-Kontext: got %', v_result;
   END IF;
 
-  -- 2) household-Kontext (adults_only -> Partnerin duerfte ihn household-seitig schreiben) -> ueber diesen Weg NIE
+  -- 2) household-Kontext (adults_only -> Partnerin duerfte ihn household-seitig schreiben) -> ueber diesen Weg nie
   v_result := agent.fn_set_own_context_facts(jsonb_build_object(
     'context_name','test_hh_ctx','chat_id','222','facts', jsonb_build_object('x','y')));
   IF (v_result->>'ok')::boolean IS DISTINCT FROM false

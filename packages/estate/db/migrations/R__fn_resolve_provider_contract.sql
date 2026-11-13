@@ -1,11 +1,11 @@
 -- ============================================================
--- estate.fn_resolve_provider_contract (read-only Resolver, WS-2)
+-- estate.fn_resolve_provider_contract (read-only Resolver)
 --   Loest einen Vertrag ueber den Anbieter-Namen (exakt) + optional die Kategorie auf
---   (Vorbild: finance.fn_resolve_real_estate; Rueckgabe id/hit_count/candidates — bei
---   hit_count <> 1 praesentiert das Tool die Kandidaten statt zu schreiben).
---   p_category NULL = nicht filtern. Genutzt von tool_set_/delete_provider_contract
+--   (Muster: finance.fn_resolve_real_estate). Rueckgabe: Zeile (id, hit_count, candidates); id nur bei genau
+--   einem Treffer, sonst NULL; bei hit_count <> 1 praesentiert das Tool die Kandidaten statt zu schreiben;
+--   candidates = [{id,provider,category,customer_no,owner_person_id}] (leer: []).
+--   p_category NULL/'' = nicht filtern. Genutzt von tool_set_/delete_provider_contract
 --   (Pre-Gate-Resolve) + als Dubletten-Backstop in tool_create_provider_contract.
---   Anwenden via: db_apply.ps1 -File packages\estate\db\migrations\R__fn_resolve_provider_contract.sql
 -- ============================================================
 CREATE OR REPLACE FUNCTION estate.fn_resolve_provider_contract(
     p_provider text,

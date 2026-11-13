@@ -1,14 +1,14 @@
 -- ============================================================
--- core.fn_update_request_claim(p) (Write — Update-Hinweis 2026-10-24)
---   Der root-Runner (`lifeagents update --run-requested`) ruft sie UNTER der Update-Sperre (flock): erst werden
+-- fn_update_request_claim (ATOMIC WRITE) — Update-Auftrag uebernehmen
+--   Der root-Runner (`lifeagents update --run-requested`) ruft sie unter der Update-Sperre (flock): erst werden
 --   haengende Auftraege geschlossen (uebernommen, aber nie abgeschlossen = der Runner starb, z. B. Neustart
 --   mitten im Update; unter der Sperre laeuft sicher kein anderer), dann wird der offene Auftrag uebernommen.
---   Ein haengender Auftrag gilt als succeeded, wenn VERSION schon = sein Tag ist UND es beim Start nicht war (Abbruch
+--   Ein haengender Auftrag gilt als succeeded, wenn VERSION schon = sein Tag ist und es beim Start nicht war (Abbruch
 --   nach dem CLI-Tausch; eine Wiederholung nach partial startet schon mit VERSION = Tag -> interrupted), sonst als
 --   interrupted — der Runner meldet beides (core.fn_update_report).
 --   report=true markiert erholte Auftraege als faellig (core.fn_update_report_due); ohne den Key meldet der Aufrufer selbst.
 --   p: {installed = Inhalt von VERSION (Tag oder 'dev'; anderes -> NULL), report?}
---   RUECKGABE: {recovered:[{id, tag, kind, outcome}], claimed:{id, tag, kind, from_version} | null}. Nie RAISE.
+--   Rueckgabe: {recovered:[{id, tag, kind, outcome}], claimed:{id, tag, kind, from_version} | null}. Nie RAISE.
 --   Atomar (eine fn = eine TX). INVOKER (root ueber runuser postgres).
 --   Tests: tests/db/core/test_fn_update_requests.sql
 -- ============================================================

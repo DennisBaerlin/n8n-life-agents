@@ -1,14 +1,13 @@
 ﻿#Requires -Version 5.1
 # =====================================================================================================
-# run_free_gates.ps1 — ALLE kostenlosen Gates auf dem laufenden (oder frisch gebauten) Substrat in EINEM Lauf
+# run_free_gates.ps1 — alle kostenlosen Gates auf dem laufenden (oder frisch gebauten) Substrat in einem Lauf
 #
-# Anlass (2026-10-23, Schluss-Gates des gemeinsamen Release): die Leitung setzte die Reihe von Hand zusammen und
-# verlor Zeit an drei Fallen — fehlende Mock-Vorbedingung (infra_test braucht mock_paperless), ein aus Bash
-# uebergebenes -WriteTools kam als EIN String an, und eine psql-NOTICE brach unter *>-Umleitung ab. Dieses Skript
-# ist die EINE Adresse fuer "freie Gates auf dem Gesamtstand" (/coordinate): richtige Reihenfolge, alle Mocks,
-# jede Suite einzeln geloggt, Zusammenfassung am Ende. Bezahlte Suiten laufen hier NIE (Owner-Fenster).
+# Die eine Adresse fuer "freie Gates auf dem Gesamtstand" (/coordinate): richtige Reihenfolge ([Substrat] -> Mocks llm, telegram, paperless -> Suiten aus $Gates; db_test im Eltern-Prozess), alle Mocks,
+# jede Suite einzeln geloggt, Zusammenfassung am Ende. Bezahlte Suiten laufen hier nie (Owner-Fenster).
+# Fallen bei Handarbeit: fehlende Mock-Vorbedingung (infra_test braucht mock_paperless), ein aus Bash
+# uebergebenes -WriteTools kommt als EIN String an, und eine psql-NOTICE bricht unter *>-Umleitung ab.
 #
-# PARALLEL (2026-10-26, Owner: "Das dauert immer sehr lange"): -Parallel verteilt die Substrat-Suiten auf ZWEI Substrate
+# Parallel: -Parallel verteilt die Substrat-Suiten auf ZWEI Substrate
 # (das eigene + <N8NTEST_CONTAINER>-b auf Port +1), je ein Kind-Prozess mit eigenen Mocks und eigener Zustandsdatei
 # (.local/n8ntest_state.<container>.json, Get-TestN8nStateFile); db_test laeuft derweil im Eltern-Prozess. Die Gruppen
 # sind nach gemessener Dauer balanciert ($GroupA/$GroupB). Belegt beide Substrat-Plaetze (Limit 2) nur fuer den Lauf: das
@@ -76,7 +75,7 @@ $Gates = [ordered]@{
     plan_rollout  = @{ Script = 'scripts\dev\plan_rollout_test.ps1' }   # Gefuehrte Abfolge am Laufende gegen die Mocks
     monitor_probe = @{ Script = 'scripts\dev\monitor_probe_test.ps1' }   # Waechter-Heartbeat Ende-zu-Ende gegen die Mocks
 }
-# Gruppen fuer -Parallel, nach gemessener Dauer balanciert (Lauf 2026-10-26: A 10,4 / B 7,4 min -> hitl_gate + mr_estate
+# Gruppen fuer -Parallel, nach gemessener Dauer balanciert (gemessen: A 10,4 / B 7,4 min -> hitl_gate + mr_estate
 # nach B; Richtwerte mr_orch ~3,6, real_ingress ~3,7, cron_text ~3,2, mr_finance ~3,0).
 $GroupA = @('infra', 'cron_text', 'bot_menu', 'update_chat', 'llm_gateway', 'mr_finance', 'mr_advisor', 'mr_guide',
             'mr_monitor', 'mr_career', 'mr_paperless')
@@ -86,8 +85,8 @@ if ($unknown) { throw "Unbekannte Suite(n): $($unknown -join ', ')" }
 if (@($GroupA + $GroupB).Count -ne $Gates.Count) { throw 'run_free_gates: jede Suite muss in genau einer Gruppe stehen ($GroupA/$GroupB).' }
 if ($ListSuites) { ConvertTo-Json -InputObject @($Gates.Keys) -Compress; exit 0 }
 
-# Sperre gegen parallele Laeufe auf DENSELBEN Containern (2026-10-23: ein git push lief waehrend dieses Skripts;
-# Pre-Push-db_test und infra-softcheck kollidierten mit den Suiten). db_test.ps1 prueft dieselbe Datei. Ein Kind-Prozess
+# Sperre gegen parallele Laeufe auf denselben Containern (ein git push waehrend des Skripts:
+# Pre-Push-db_test und infra-softcheck kollidieren mit den Suiten). db_test.ps1 prueft dieselbe Datei. Ein Kind-Prozess
 # laeuft unter der Sperre seines Eltern-Laufs.
 $lock = Join-Path $RepoRoot '.local\run_free_gates.lock'
 if (-not $Child) {
@@ -120,14 +119,14 @@ function Invoke-Gate {
     Write-Host ("    exit={0}  {1}" -f $code, "$summary".Trim()) -ForegroundColor $color
 }
 
-# Ein Substrat vorbereiten + Suiten fahren (seriell ODER als Kind eines -Parallel-Laufs).
+# Ein Substrat vorbereiten + Suiten fahren (seriell oder als Kind eines -Parallel-Laufs).
 function Invoke-SubstrateSuites([string[]]$Names) {
     if ($Reset) {
         $boot = @{ Reset = $true }; if ($Cold) { $boot['Cold'] = $true }
         Invoke-Gate 'substrat' 'scripts\dev\bootstrap_test_n8n.ps1' $boot
         if (-not $results[-1].Ok) { Write-Host "Substrat-Aufbau rot -> Abbruch (Log: $env:TEMP\free_gate_$($env:N8NTEST_CONTAINER)_substrat.log)" -ForegroundColor Red; return $false }
     }
-    # Alle Mocks VOR den Substrat-Suiten (infra_test-Faelle verlangen mock_paperless/mock_llm/mock_telegram im State;
+    # Alle Mocks vor den Substrat-Suiten (infra_test-Faelle verlangen mock_paperless/mock_llm/mock_telegram im State;
     # ein Substrat-Redeploy setzt sie zurueck -> hier immer neu einschalten).
     foreach ($m in 'enable_mock_llm', 'enable_mock_telegram', 'enable_mock_paperless') {
         Invoke-Gate ($m -replace '^enable_', '') "scripts\dev\$m.ps1"
@@ -139,7 +138,7 @@ function Invoke-SubstrateSuites([string[]]$Names) {
     return $true
 }
 
-# --- Kind-Prozess: nur die genannten Suiten auf SEINEM Substrat, Ergebnis als JSON an den Eltern-Lauf ------------
+# --- Kind-Prozess: nur die genannten Suiten auf seinem Substrat, Ergebnis als JSON an den Eltern-Lauf ------------
 if ($Child) {
     [void](Invoke-SubstrateSuites $Suites)
     [System.IO.File]::WriteAllText($ResultFile, ($results | ConvertTo-Json -Depth 4), (New-Object System.Text.UTF8Encoding($false)))
@@ -178,7 +177,7 @@ if ($Parallel) {
         $c.Proc.WaitForExit()
         if (Test-Path $c.Result) {
             # PS 5.1: ConvertFrom-Json gibt ein JSON-Array als EIN Objekt in die Pipeline -> erst zuweisen, dann iterieren
-            # (sonst landete das ganze Array als ein Ergebnis und rote Suiten zaehlten nicht; 2026-10-26).
+            # (sonst landete das ganze Array als ein Ergebnis und rote Suiten zaehlten nicht).
             $parsed = [System.IO.File]::ReadAllText($c.Result, (New-Object System.Text.UTF8Encoding($false))) | ConvertFrom-Json
             foreach ($r in $parsed) { $results.Add($r) }
         } else {

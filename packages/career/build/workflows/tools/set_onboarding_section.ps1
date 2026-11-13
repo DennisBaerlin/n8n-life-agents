@@ -1,22 +1,22 @@
 ﻿#Requires -Version 5.1
 # Dot-gesourct von build.ps1 (Helper + Script-Scope-Creds im Parent-Scope).
 
-# --- agent.career.tool_set_onboarding_section (P1 Generisches Paket-Onboarding) ------
-# Career-Onboarding-Fortschritts-Marker: setzt EINE career-Sektion auf completed/skipped/unknown.
+# --- agent.career.tool_set_onboarding_section ------
+# Career-Onboarding-Fortschritts-Marker: setzt eine career-Sektion auf completed/skipped/unknown.
 # Spiegel des Guide-/Finance-Tools, aber package='career' -> schreibt career.onboarding_state ueber die
-# Core-generische Schnittstelle core.fn_set_onboarding_section. KEIN HITL (kein Domaenen-/PII-Write, nur ein
-# Status-Flag) -> ruft KEIN Gate -> KEIN approval_matrix-Eintrag (approval_lint greift nur fuer Gate-Aufrufer).
-# Cred = Haupt-RW (Default Build-Pg) wie die anderen career-Tools (record_job_match) + das Guide-Tool; nur
-# finance nutzt finance_rw (WS-B0). fn_set_onboarding_section ist SECURITY INVOKER -> der INVOKER-Write auf
-# career.onboarding_state laeuft unter dem Haupt-RW-Owner/Host-Cred (der agent.* lesen darf -> fn_resolve_sender
-# fuer den per_user-Scope; ein finance_rw-Aufruf scheiterte daran, deshalb Haupt-RW). P2b-1: career.onboarding_state
-# ist PRO PERSON -> die fn loest die Person aus chat_id via fn_resolve_sender (NIE LLM) auf, materialisiert ihre
-# Sektionszeilen lazy und setzt NUR ihre Zeile; unaufgeloeste/non-numerische chat_id -> {ok:false} (fail-closed).
+# Core-generische Schnittstelle core.fn_set_onboarding_section. Kein HITL (kein Domaenen-/PII-Write, nur ein
+# Status-Flag) -> ruft kein Gate -> kein approval_matrix-Eintrag (approval_lint greift nur fuer Gate-Aufrufer).
+# Cred = Haupt-RW (Default Build-Pg) wie die anderen career-Tools; nur finance nutzt finance_rw.
+# fn_set_onboarding_section ist SECURITY INVOKER -> der Write auf career.onboarding_state laeuft unter dem
+# Haupt-RW-Owner/Host-Cred (der agent.* lesen darf -> fn_resolve_sender fuer den per_user-Scope); ein
+# finance_rw-Aufruf scheiterte daran. career.onboarding_state ist pro Person -> die fn loest die Person aus
+# chat_id via fn_resolve_sender (nie LLM) auf, materialisiert ihre Sektionszeilen lazy und setzt nur ihre
+# Zeile; unaufgeloeste/non-numerische chat_id -> {ok:false} (fail-closed).
 function Build-CareerSetOnboardingSection {
     $trig = Build-Trigger @('section_key', 'status', 'chat_id')
 
     # package='career' hartkodiert (nie $fromAI; 'career' -> career.onboarding_state). chat_id ins jsonb-Payload
-    # durchreichen (P2b-1: die fn loest daraus deterministisch die Person fuer den per_user-Scope auf).
+    # durchreichen (die fn loest daraus die Person fuer den per_user-Scope auf).
     $set = Build-Pg 'Set section' @(220, 0) `
         "=SELECT (r->>'ok')::boolean AS ok, r->>'reason' AS reason, r->>'section_key' AS section_key, r->>'status' AS status, (r->>'complete')::boolean AS complete, (r->>'area_completed_now')::boolean AS area_completed_now, (r->>'area_all_skipped')::boolean AS area_all_skipped FROM core.fn_set_onboarding_section(`$1::jsonb) AS r;" `
         ([ordered]@{
@@ -28,7 +28,7 @@ function Build-CareerSetOnboardingSection {
 
     $ifOk = Build-If 'Set ok?' @(440, 0) "={{ `$json.ok }}" 'true' 'equals' 'boolean'
     $err = Build-ToolError 'Set failed' @(660, 200) "={{ `$('Set section').item.json.reason }}"
-    # Roter Faden: hat der Schritt den Bereich geschlossen, schickt core.sub_onboarding_progress die Weiter-Karte
+    # Hat der Schritt den Bereich geschlossen, schickt core.sub_onboarding_progress die Weiter-Karte
     # (fire-and-forget; die Entscheidung trifft die DB ueber area_completed_now + die Einmal-Latches).
     $progress = New-OnboardingProgressCallNode -Package 'career' -Pos @(660, 0)
     $ret = Build-Return @(880, 0) @(

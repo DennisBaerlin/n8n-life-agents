@@ -1,13 +1,13 @@
 ﻿#Requires -Version 5.1
 # Dot-gesourct von build_finance_tools.ps1 (Helper + Script-Scope-Creds im Parent-Scope).
 
-# --- tool_create_recurring_transfer (WS-2 Multi-Member) ---------------
-# Interner wiederkehrender Transfer zwischen ZWEI eigenen Konten (z. B. Dauerauftrag 200 EUR/Monat
-# Owner-Konto -> Kind-Depot-Cash). Markiert per target_account_id -> strukturell cashflow-neutral
-# (zaehlt NICHT als Haushalts-Ausgabe/Sparquote). KEIN harter Namens-Dedup (gleichnamige Transfers
+# --- tool_create_recurring_transfer ---
+# Interner wiederkehrender Transfer zwischen zwei eigenen Konten (z. B. Dauerauftrag 200 EUR/Monat
+# Konto A -> Kind-Depot-Cash). Markiert per target_account_id -> strukturell cashflow-neutral
+# (zaehlt nicht als Haushalts-Ausgabe/Sparquote). Kein harter Namens-Dedup (gleichnamige Transfers
 # legitim). Zwei Konto-Resolves (Quelle/Ziel) wie book_transfer, Schedule-Felder wie create_recurring_payment.
 function Build-CreateRecurringTransfer {
-    # WS-B0: enge Paket-Schreibrolle (finance_rw, Least-Privilege D10) statt Owner-Cred.
+    # Enge Paket-Schreibrolle (finance_rw) statt Owner-Cred.
     $CRED_POSTGRES = $CRED_FINANCE_RW
     $trig = Build-Trigger @('name','from_account_name','to_account_name','amount','schedule_interval',
                            'schedule_unit','schedule_day_of_month','first_payment_date','valid_from','valid_to','notes',
@@ -31,8 +31,6 @@ function Build-CreateRecurringTransfer {
     $errTo = Build-ToolError 'To ambiguous' @(1100, 200) `
         "=Target account '{{ `$('Start').item.json.to_account_name }}' resolves to {{ `$('Resolve To').item.json.hit_count }} matches. Candidates: {{ JSON.stringify(`$('Resolve To').item.json.candidates) }}. Ask the user which exact account."
 
-    # "DB ist das Gesetz": fn_create_recurring_transfer laeuft als Probelauf VOR der Karte (korrigierbare Ablehnungen -> {ok:false} ohne Karte);
-    # derselbe Param-Satz geht nach dem Gate in den echten Write.
     $wg = New-FnWriteGate -Fn 'finance.fn_create_recurring_transfer' -DryPos @(1100, 0) -WritePos @(2420, 0) `
         -WriteName 'Create recurring transfer (atomic)' `
         -WriteSelect "(r->>'ok')::boolean AS ok, r->>'reason' AS reason, (r->>'recurring_payment_id')::int AS recurring_payment_id, (r->>'monthly_equivalent')::numeric AS monthly_equivalent, COALESCE(r->'savings_funding'->>'note', '') AS savings_funding" `
@@ -55,7 +53,7 @@ function Build-CreateRecurringTransfer {
         })
 
     # --- HITL approval gate (before the atomic write) ---
-    # Strukturiertes Summary (Textkatalog): Rate in der Waehrung des Quellkontos (Resolve From liest accounts.currency mit).
+    # Rate in der Waehrung des Quellkontos (Resolve From liest accounts.currency mit).
     # until_free_money: das Ende setzt die DB (Probelauf: effective.last_execution / free_after) statt „unbegrenzt".
     $S = "`$('Start').item.json"
     $free = "(!!" + (Get-DryEffectiveExpr 'last_execution') + ")"   # aus dem Probelauf, nie aus der LLM-Eingabe: Karte = Write
@@ -94,9 +92,8 @@ function Build-CreateRecurringTransfer {
 
     $retCancelled = Build-ToolCancelled 'Return cancelled' @(2420, 240) 'the create_recurring_transfer action'
 
-    # Atomarer Write via fn_create_recurring_transfer: INSERT via Helper + target via Folge-UPDATE
-    # (eine Transaktion). amount Quell-seitig negativ; No-Self-Transfer-CHECK ist der Backstop.
-    # fn liefert ok/reason: amount<=0 / Quelle==Ziel -> {ok:false}.
+    # Write: INSERT via Helper + target via Folge-UPDATE (eine Transaktion). amount Quell-seitig negativ;
+    # No-Self-Transfer-CHECK ist der Backstop.
 
     $ifWriteOk = Build-If 'Write ok?' @(2640, 0) "={{ `$json.ok }}" 'true' 'equals' 'boolean'
 

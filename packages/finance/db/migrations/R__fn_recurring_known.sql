@@ -12,7 +12,7 @@
 --   Bewusst nicht fn_name_matches: der vergleicht ganze Namen ("NETFLIX INTERNATIONAL B.V." gegen "Netflix").
 --   (a)/(d) auf einem anderen Konto -> elsewhere = dessen Kontoname.
 --   Eingabe p: {account_id*, sign* (1|-1), amount* (positiv), iban, shared (bool), other_account_id, unit, interval, dom,
---   tol (def 3), name, mandate}. RUECKGABE: {known:bool, elsewhere?:text}.
+--   tol (def 3), name, mandate}. Rueckgabe: {known:bool, elsewhere?:text}.
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_recurring_known(p jsonb)
 RETURNS jsonb LANGUAGE plpgsql STABLE AS $$

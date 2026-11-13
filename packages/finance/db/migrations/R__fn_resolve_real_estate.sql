@@ -1,8 +1,9 @@
 -- ============================================================
--- fn_resolve_real_estate
+-- fn_resolve_real_estate (READ, STABLE)
 --   Loest Immobilien-Name in ID auf (Vorbild: fn_resolve_account).
 --   Liefert Mehrdeutigkeits-Info (hit_count/candidates), damit das Tool
 --   bei hit_count > 1 dem Nutzer die Treffer praesentieren kann.
+--   Rueckgabe: TABLE(id, hit_count, candidates); id nur bei genau einem Treffer.
 --   p_active_only: wenn TRUE, nur status='active'.
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_resolve_real_estate(
@@ -24,7 +25,7 @@ BEGIN
         jsonb_agg(jsonb_build_object(
             'id',     re.id,
             'name',   re.name,
-            'owner_person_id', re.owner_person_id,   -- WS-4: Freitext-owner abgeloest (NULL=Haushalt)
+            'owner_person_id', re.owner_person_id,   -- NULL = Haushalt
             'status', re.status
         ) ORDER BY re.id),
         COUNT(*),

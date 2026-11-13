@@ -1,8 +1,8 @@
 -- ============================================================
 -- test_fn_bank_export_resolve_account -- Konto-Waechter fuer Bank-Export-Dateien (fn_bank_export_resolve_account)
---   Befund 2026-10-30 (Werte erfunden): zu einer Export-CSV ohne Bildunterschrift riet der Agent ein
---   Konto einer anderen Bank -> die Datei wurde gegen das falsche Profil geprueft. Jetzt entscheidet die DB:
---   (a) Datei-Profil <> Konto-Profil -> export_account_mismatch (+ passende Konten), in prepare UND im Lots-Probelauf;
+--   Werte erfunden. Zu einer Export-CSV ohne Bildunterschrift darf der Agent kein Konto einer anderen Bank raten
+--   (die Datei wuerde gegen das falsche Profil geprueft), die DB entscheidet:
+--   (a) Datei-Profil <> Konto-Profil -> export_account_mismatch (+ passende Konten), in prepare und im Lots-Probelauf;
 --   (b) ohne account_name genau ein passendes Konto -> dieses (Depot nie Kandidat); (c) mehrere -> account_ambiguous;
 --   (d) keins -> account_unknown mit Bank; (e) Konto ohne Bank-Feld nur ohne passendes Konto, andere Bank immer
 --   mismatch; (f) genanntes Depot -> not_bookable mit Kandidaten. Fremde Konten mit Datei-Profil (Fixtures) sind im

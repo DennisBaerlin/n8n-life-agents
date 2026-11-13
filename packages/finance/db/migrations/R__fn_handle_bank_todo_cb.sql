@@ -1,8 +1,9 @@
 -- ============================================================
--- finance.fn_handle_bank_todo_cb(p) -- Registry-Handler des Callback-Prefix 'btodo' (member_permeable)
+-- fn_handle_bank_todo_cb (CALLBACK HANDLER) -- Registry-Handler des Callback-Prefix 'btodo' (member_permeable)
 --   Knopf btodo:<erste-id>:<max-id>: erledigt alle sichtbaren Punkte derselben Bank und desselben Inhabers bis max-id.
 --   Owner alles, erwachsenes Mitglied (partner) nur eigene, Kind nichts. Doppeltipp oder geloeschter Punkt: Hinweis.
---   p: {data, chat_id, chat_type}. Rueckgabe {ok:true, closed, toast} | {ok:false, reason, toast}. Nie RAISE.
+--   p: {data, chat_id, chat_type}. Rueckgabe {ok:true, closed, toast} |
+--   {ok:false, reason (not_allowed|unknown|nothing_open|error), toast}. Nie RAISE (EXCEPTION WHEN OTHERS).
 --   Tests: tests/db/finance/test_fn_handle_bank_todo_cb.sql
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_handle_bank_todo_cb(p jsonb)
@@ -28,7 +29,7 @@ BEGIN
     IF v_data <> 'btodo:' || v_first || ':' || v_max OR v_first !~ '^[0-9]{1,9}$' OR v_max !~ '^[0-9]{1,9}$' THEN
         RETURN jsonb_build_object('ok', false, 'reason', 'unknown', 'toast', core.fn_ui_text('finance.bank_todo.toast_nothing', v_lang));
     END IF;
-    -- Der erste Punkt muss nur noch existieren: Er kann schon gebucht sein, waehrend andere derselben Nachricht offen sind.
+    -- Der erste Punkt muss nur noch existieren: er kann schon gebucht sein, waehrend andere derselben Nachricht offen sind.
     v_item := finance.fn_bank_todo_item(v_first::int);
     IF v_item IS NULL THEN
         RETURN jsonb_build_object('ok', false, 'reason', 'nothing_open', 'toast', core.fn_ui_text('finance.bank_todo.toast_nothing', v_lang));

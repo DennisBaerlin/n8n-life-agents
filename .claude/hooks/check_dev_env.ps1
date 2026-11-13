@@ -1,5 +1,5 @@
-# SessionStart-Hook: deterministische Frisch-System-Erkennung. Liest NUR den Marker
-# .local/devenv_state.json + die geteilte Anforderungs-Liste (scripts/lib/devenv.ps1) -- KEINE
+# SessionStart-Hook: deterministische Frisch-System-Erkennung. Liest nur den Marker
+# .local/devenv_state.json + die geteilte Anforderungs-Liste (scripts/lib/devenv.ps1), keine
 # Tool-Probes (kein winget/docker/--version), daher <50 ms. Fehlt der Marker oder ist er stale
 # (Marker complete=false ODER Tool-Pins geaendert) -> Reminder, scripts/setup_dev_env.ps1 zu fahren.
 # Dazu der Hinweis auf die Windows-Skriptsperre (Get-ExecutionPolicyHint), gesetzt wird nichts.

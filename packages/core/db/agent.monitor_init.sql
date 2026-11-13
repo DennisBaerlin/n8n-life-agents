@@ -1,18 +1,18 @@
 -- ============================================================
 -- Monitor — Schema fuer das generische Trigger-Monitoring (agent.monitor)
--- Zweck:   Trigger sind DATEN, keine Workflows: jede Zeile beschreibt EINE ueberwachte
+-- Zweck:   Trigger sind Daten, keine Workflows: jede Zeile beschreibt eine ueberwachte
 --          Bedingung (Schwellwert / Drawdown / Termin / wiederkehrende Info) inkl. eigener
 --          Pruef-Cadence und eigener Wert-Beschaffung ("Tool + Prompt"). Der Heartbeat-Cron
 --          agent.monitor.cron_check_triggers waehlt faellige Zeilen (next_check_at), beschafft
 --          Werte (web_search per Claude-Websuche / sql in-fn unter core_ro / none / Paket-
 --          Methoden aus core.monitor_acquisition_methods, z. B. finance fx_rate) und wertet
---          DETERMINISTISCH in fn_monitor_evaluate aus.
+--          deterministisch in fn_monitor_evaluate aus.
 --          Angelegt/geaendert werden Trigger ausschliesslich ueber die HITL-Tools
 --          agent.tool_create/set/delete_monitor_trigger (Owner: agent.monitor; der
 --          finance_advisor bindet nur create mit fixem domain='finance').
 --
 -- Lifecycle: armed -> fired (One-Shot-Latch, nur fn_monitor_evaluate) -> Re-Arm/disabled
---            (nur via set-Tool, HITL). recurring_info latcht NIE (feuert jede faellige Runde).
+--            (nur via set-Tool, HITL). recurring_info latcht nie (feuert jede faellige Runde).
 --
 -- Invarianten (DB-Gesetz, nicht Prompt):
 --   * Typ x Feld-Konsistenz als CHECK (date braucht due_date, threshold braucht comparator+
@@ -25,12 +25,12 @@
 --     Namen"-Nicht-Ziel; fn_create faengt unique_violation -> {ok:false})
 --
 -- SQL-Beschaffung (Sicherheits-Layering): HITL bei Anlage + Regex-Shape-Guard in der fn
--- ('^\s*select\y', kein ';', Laengen-Cap — Beratung) -> EXECUTE im DEFINER-Fenster agent.fn_monitor_ro_eval
+-- ('^\s*select\y', kein ';', Laengen-Cap) -> EXECUTE im DEFINER-Fenster agent.fn_monitor_ro_eval
 -- (Eigentuemer core_ro_eval = nur die core_ro-Leserechte; strukturelles Gesetz: read-only, kein Rollenwechsel
 -- moeglich; core_ro = Core-Host-Leserolle agent+core+Pakete ohne fremde Person-Daten, weil eine Acquisition
--- beliebige Schemata treffen kann — B3; Security-Audit 2026-10).
--- BEKANNTE GRENZE: statement_timeout wirkt in Postgres nur am Top-Level-Statement — ein
--- SET LOCAL im fn-Inneren begrenzt das innere EXECUTE NICHT. Restrisiko (Runaway-Query)
+-- beliebige Schemata treffen kann).
+-- Bekannte Grenze: statement_timeout wirkt in Postgres nur am Top-Level-Statement — ein
+-- SET LOCAL im fn-Inneren begrenzt das innere EXECUTE nicht. Restrisiko (Runaway-Query)
 -- akzeptiert: Single-User, Query ist HITL-bestaetigt + Probe-getestet, Scalar-Subquery-Wrap.
 --
 -- Usage:   db_apply.ps1 -File packages\core\db\agent.monitor_init.sql
@@ -51,7 +51,7 @@ CREATE TABLE IF NOT EXISTS agent.monitor_triggers (
     trigger_type       text NOT NULL
                            CHECK (trigger_type IN ('threshold','drawdown','date','recurring_info')),
 
-    -- Wert-Beschaffung ("Tool + Prompt" — Owner-Konzept)
+    -- Wert-Beschaffung ("Tool + Prompt")
     acquisition_method text NOT NULL DEFAULT 'none',
         -- Mitgliedschaft = FK auf core.monitor_acquisition_methods (core:V020; Core-Builtins + Paket-Methoden)
     acquisition_spec   jsonb NOT NULL DEFAULT '{}'::jsonb,
@@ -74,10 +74,10 @@ CREATE TABLE IF NOT EXISTS agent.monitor_triggers (
     max_plausible      numeric,
     max_jump_pct       numeric CHECK (max_jump_pct IS NULL OR max_jump_pct > 0),
         -- optionaler Kontinuitaets-Guard: Abweichung > X% vom letzten sauberen Wert => dirty.
-        -- Default NULL=aus (Crash-Drawdown-Trigger MUESSEN legitime Spruenge sehen);
+        -- Default NULL=aus (Crash-Drawdown-Trigger muessen legitime Spruenge sehen);
         -- nur fuer sprung-unplausible Metriken setzen (Basiszins, FX).
 
-    -- per-Trigger-Cadence (Heartbeat-Cron = Aufloesungsboden, Frequenz lebt HIER)
+    -- per-Trigger-Cadence (Heartbeat-Cron = Aufloesungsboden, Frequenz lebt hier)
     check_interval     interval NOT NULL,
     next_check_at      timestamptz NOT NULL DEFAULT now(),
     last_checked_at    timestamptz,
@@ -86,7 +86,7 @@ CREATE TABLE IF NOT EXISTS agent.monitor_triggers (
     status             text NOT NULL DEFAULT 'armed'
                            CHECK (status IN ('armed','fired','disabled')),
     fired_at           timestamptz,
-    last_value         numeric,            -- letzter SAUBERER Wert (dirty Werte beruehren ihn nie)
+    last_value         numeric,            -- letzter sauberer Wert (dirty Werte beruehren ihn nie)
     last_value_as_of   text,               -- quellen-gemeldetes Datum (frei: "2026-06-09", "Q1 2026")
     fail_streak        int NOT NULL DEFAULT 0,
 
@@ -122,9 +122,9 @@ CREATE TABLE IF NOT EXISTS agent.monitor_triggers (
     )
 );
 
--- Methoden-Name: Form-CHECK (Mitgliedschaft = FK, core:V020). Phase B ersetzt die fruehere IN-Liste mit dem
--- finance-Literal 'fx_rate' (Core kannte eine Paket-Methode). Gleicher Auto-Name wie die alte Inline-CHECK ->
--- DROP+ADD heilt Bestands-DBs idempotent (Muster origin_chk unten).
+-- Methoden-Name: Form-CHECK (Mitgliedschaft = FK, core:V020), keine IN-Liste mit Paket-Methoden (Core kennt kein
+-- Paket). Gleicher Auto-Name wie die Inline-CHECK auf Bestands-DBs ->
+-- DROP+ADD heilt sie idempotent (Muster origin_chk unten).
 ALTER TABLE agent.monitor_triggers DROP CONSTRAINT IF EXISTS monitor_triggers_acquisition_method_check;
 ALTER TABLE agent.monitor_triggers ADD  CONSTRAINT monitor_triggers_acquisition_method_check
     CHECK (acquisition_method ~ '^[a-z][a-z0-9_]*$');
@@ -147,7 +147,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS monitor_triggers_domain_label
 -- TABLE: monitor_observations — Audit-Log jeder Wert-Beschaffung (auch dirty/failed).
 -- Klein (1 Zeile pro Pruefung), unverzichtbar wenn ein Alert hinterfragt wird; zugleich
 -- die Drift-Spur eines sterbenden Web-Prompts (Folge von cannot_determine). Der
--- Drawdown-Ratchet lebt NICHT hier, sondern als reference_value am Trigger.
+-- Drawdown-Ratchet lebt nicht hier, sondern als reference_value am Trigger.
 -- ============================================================
 
 CREATE TABLE IF NOT EXISTS agent.monitor_observations (
@@ -182,7 +182,7 @@ CREATE TRIGGER trg_monitor_triggers_touch
 -- ============================================================
 -- CORE-PROTECTION: origin='core' = system-eigener Trigger (z. B. household_facts_freshness).
 -- Nie loeschbar (BEFORE-DELETE-Backstop hier + freundliches {ok:false} in
--- fn_delete_monitor_trigger), IMMER deaktivierbar (status='disabled' bleibt erlaubt) —
+-- fn_delete_monitor_trigger), immer deaktivierbar (status='disabled' bleibt erlaubt) —
 -- Owner-Anforderung "never-deletable, always-silenceable".
 -- ============================================================
 
@@ -191,22 +191,21 @@ ALTER TABLE agent.monitor_triggers DROP CONSTRAINT IF EXISTS monitor_triggers_or
 ALTER TABLE agent.monitor_triggers ADD  CONSTRAINT monitor_triggers_origin_chk CHECK (origin IN ('core','user'));
 
 -- ============================================================
--- PACKAGE-OWNERSHIP (Advisor<->Monitor-Integration): WELCHES Paket besitzt diesen Trigger.
--- Reiner Lifecycle-/Purge-Schluessel (Kubernetes-ownerReference-Muster, NICHT die fachliche
--- `domain`-Gruppierung, die der User/Monitor frei vergibt). Per-Binding FIX gesetzt: der
--- finance_advisor schreibt 'finance', der Core-Monitor-Agent 'core' — NIE vom LLM ($fromAI).
+-- PACKAGE-OWNERSHIP: welches Paket besitzt diesen Trigger.
+-- Reiner Lifecycle-/Purge-Schluessel (Kubernetes-ownerReference-Muster, nicht die fachliche
+-- `domain`-Gruppierung, die der User/Monitor frei vergibt). Per-Binding fix gesetzt: der
+-- finance_advisor schreibt 'finance', der Core-Monitor-Agent 'core' — nie vom LLM ($fromAI).
 -- core.fn_pkg_purge_data raeumt `WHERE package=<pkg> AND origin='user'` beim Paket-Deinstall
 -- (sonst leakt ein advisor-erzeugter Trigger in der Host-Tabelle agent.monitor_triggers, die
--- `DROP SCHEMA <pkg> CASCADE` nicht erreicht). Additive Spalte -> Init-only (Muster origin/
--- asset_class), keine V-Migration. Default 'core' = Bestands-/geseedete Trigger gehoeren dem Host.
+-- `DROP SCHEMA <pkg> CASCADE` nicht erreicht). Default 'core' = Bestands-/geseedete Trigger gehoeren dem Host.
 -- ============================================================
 ALTER TABLE agent.monitor_triggers ADD COLUMN IF NOT EXISTS package text NOT NULL DEFAULT 'core';
 ALTER TABLE agent.monitor_triggers DROP CONSTRAINT IF EXISTS monitor_triggers_package_chk;
 ALTER TABLE agent.monitor_triggers ADD  CONSTRAINT monitor_triggers_package_chk CHECK (package ~ '^[a-z0-9_]+$');
 
--- Roter Faden (Erinnerungs-Fenster, Owner-Entscheid 2026-10-23): ein Problembericht, der ausserhalb von
+-- Roter Faden (Erinnerungs-Fenster): ein Problembericht, der ausserhalb von
 -- general.reminders_from..until entsteht, wird hier vorgemerkt und von agent.fn_monitor_evaluate im ersten Lauf
--- im Fenster nachgereicht (dann NULL). Additive Spalte -> Init-only.
+-- im Fenster nachgereicht (dann NULL).
 ALTER TABLE agent.monitor_triggers ADD COLUMN IF NOT EXISTS problem_pending_at timestamptz;
 ALTER TABLE agent.monitor_triggers ADD COLUMN IF NOT EXISTS retired_by_plan_at timestamptz;
 COMMENT ON COLUMN agent.monitor_triggers.retired_by_plan_at IS 'Provenienz (Ausnahme c): vom Plan-Durchlauf abgeschaltet, core.fn_plan_sync darf ihn wieder scharf stellen; jede Statusaenderung ueber fn_set_monitor_trigger loescht den Stempel';
@@ -226,7 +225,7 @@ CREATE TRIGGER trg_monitor_triggers_protect
     BEFORE DELETE ON agent.monitor_triggers
     FOR EACH ROW EXECUTE FUNCTION agent.trg_monitor_triggers_protect_fn();
 
--- TRUNCATE-Backstop (Review): row-level BEFORE DELETE feuert bei TRUNCATE nicht.
+-- TRUNCATE-Backstop: row-level BEFORE DELETE feuert bei TRUNCATE nicht.
 -- Helper idempotent mit-definiert (Muster touch_updated_at), damit monitor_init standalone bleibt.
 CREATE OR REPLACE FUNCTION agent.trg_deny_truncate_fn()
 RETURNS trigger LANGUAGE plpgsql AS $$
@@ -242,7 +241,7 @@ CREATE TRIGGER trg_monitor_triggers_no_truncate
     FOR EACH STATEMENT EXECUTE FUNCTION agent.trg_deny_truncate_fn();
 
 -- ============================================================
--- SPEC-VALIDIERUNG der PAKET-Methoden als DB-Gesetz (Phase B; Muster trg_core_contexts_validate_facts_fn):
+-- SPEC-VALIDIERUNG der Paket-Methoden als DB-Gesetz (Muster trg_core_contexts_validate_facts_fn):
 -- die Spec einer registrierten Paket-Methode prueft deren validate_fn (via agent.fn_monitor_validate_params).
 -- Scope `UPDATE OF acquisition_method, acquisition_spec` + Unveraendert-Return: die stuendlichen Heartbeat-
 -- UPDATEs (last_value/fail_streak/next_check_at) feuern ihn nie. Core-Builtins -> sofort zurueck (ihre Form
@@ -289,13 +288,13 @@ CREATE TRIGGER trg_monitor_triggers_validate_spec
 
 -- ============================================================
 -- CORE-SEED: household_facts_freshness — jaehrlicher Staleness-Check der Haushalts-Fakten.
--- sql-Acquisition liefert EINEN numerischen Skalar => Count der Personen-Fakten mit as_of aelter als
--- 12 Monate (oder ohne as_of) ueber family + die household-Fakten-Kontexte AKTIVER Pakete. Die Logik
+-- sql-Acquisition liefert einen numerischen Skalar => Count der Personen-Fakten mit as_of aelter als
+-- 12 Monate (oder ohne as_of) ueber family + die household-Fakten-Kontexte aktiver Pakete. Die Logik
 -- lebt in core.fn_stale_facts_count() (R__) — die gespeicherte Spec ruft nur die fn (der Owner kann die
 -- Spec editieren; Logik-Aenderungen brauchen so keine V-Migration). Bestands-Zeilen: core:V019 (geguardet).
 -- Statische action_note verweist auf den Guide (der enumeriert die Stale-Liste on-demand per SQL).
--- recurring_info latcht nie; Count-0-Unterdrueckung der Nachricht ist Message-Builder-Sache
--- (Phase 5/6). Idempotent via NOT EXISTS (Trigger sind sonst HITL-erzeugte DATEN).
+-- recurring_info latcht nie; Count-0-Unterdrueckung der Nachricht ist Message-Builder-Sache.
+-- Idempotent via NOT EXISTS (Trigger sind sonst HITL-erzeugte Daten).
 -- ============================================================
 
 INSERT INTO agent.monitor_triggers
@@ -318,11 +317,11 @@ WHERE NOT EXISTS (
 );
 
 -- ============================================================
--- GRANTS (Paket-Isolation, B3): der Monitor-Agent liest seine Trigger/Observations ueber den
--- Frei-SQL-Pfad unter der CORE-HOST-Leserolle core_ro (nicht mehr finance_ro — das ist nach
--- der Paket-Extraktion eng auf `finance` skopiert; der Monitor ist ein CORE-Agent). Massgeblich ist
+-- GRANTS (Paket-Isolation): der Monitor-Agent liest seine Trigger/Observations ueber den
+-- Frei-SQL-Pfad unter der Core-Host-Leserolle core_ro (nicht finance_ro, das eng auf `finance`
+-- skopiert ist; der Monitor ist ein Core-Agent). Massgeblich ist
 -- die Erlaubnisliste in util_create_core_ro (fuehrt beide Tabellen); der GRANT hier ist Backstop.
--- Keine Mitgliedschaft des App-Users in core_ro mehr (Security-Audit 2026-10: agent.fn_monitor_ro_eval statt
+-- Der App-User ist kein Mitglied von core_ro (agent.fn_monitor_ro_eval statt
 -- SET ROLE). No-op, falls core_ro (noch) nicht existiert (Phase 1 vor util_create_core_ro = Phase 4;
 -- greift beim Re-Apply / im db_test, wo core_ro vor den Monitor-Tests da ist).
 -- ============================================================

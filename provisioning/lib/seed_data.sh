@@ -1,29 +1,28 @@
-# seed_data.sh — getrackte Daten-Seeds in eine frische Instanz laden (Phase 6).
-# Sourced by provision.sh. Definiert seed_data().
+# seed_data.sh — getrackte Daten-Seeds in eine frische Instanz laden.
+# Gesourct von provision.sh. Definiert seed_data().
 #
-# WARUM: apply_schema legt nur die LEEREN Tabellen an (CREATE … IF NOT EXISTS). Die
-# ZEILEN — Modell-Registry, Zentral-Config UND die Agent-Instruktions-Contexts — leben in
+# Warum: apply_schema legt nur die leeren Tabellen an (CREATE … IF NOT EXISTS). Die
+# Zeilen — Modell-Registry, Zentral-Config und die Agent-Instruktions-Contexts — leben in
 # getrackten Artefakten: packages/core/seed/ai_models.json, die .config-Bloecke der
 # packages/*/manifest.json und packages/*/contexts/*.md. Ein frisches Release ohne Seed
 # haette leere core.config / agent.ai_models / core_contexts -> Agenten ohne Modell, ohne
-# Config, OHNE System-Prompt = funktionslos. seed_data() ist DER Seeder (Dev/Test wie Prod;
-# die fruehere Autoren-Werkzeugkette n8n_push ist retired).
+# Config, ohne System-Prompt = funktionslos. seed_data() ist der Seeder (Dev/Test wie Prod).
 #
-# REIHENFOLGE (Pflicht): ai_models VOR config (der core.config-Modell-Trigger referenziert
+# Reihenfolge (Pflicht): ai_models vor config (der core.config-Modell-Trigger referenziert
 # agent.ai_models.model_key). Danach die Contexts.
 #
-# SEED vs. ONBOARDING (Privacy-Trennlinie, Plan Phase 6):
-#   - SEED (hier, getrackt, KEINE PII): die Agent-Instruktionen + global_instructions +
+# Seed vs. Onboarding (Privacy-Trennlinie):
+#   - Seed (hier, getrackt, keine PII): die Agent-Instruktionen + global_instructions +
 #     trigger_design (englische Modell-Instruktionen / System-Protokoll). managed_by='seed'.
-#   - ONBOARDING (NICHT hier, PII): family/finance_profile/financial_planning (managed_by=
+#   - Onboarding (nicht hier, PII): family/finance_profile/financial_planning (managed_by=
 #     'agent') sowie die persoenlichen Lazy-Docs (vehicles/financial_planning/career_planning/
 #     shared_memory) — die fuellt der Owner/Guide zur Laufzeit. Sie liegen im .local-Mirror
-#     (gitignored) und kommen NIE in den Tarball.
-# capabilities_catalog (GENERIERT von build.ps1, getrackt, keine PII) wird als managed_by='build'
-# mitgeseedet — exakt wie n8n_push Sektion 1c.
+#     (gitignored) und kommen nie in den Tarball.
+# capabilities_catalog (generiert von build.ps1, getrackt, keine PII) wird als managed_by='build'
+# mitgeseedet.
 #
-# Laeuft als postgres-Superuser (runuser, peer-Auth) in EINER psql-Session, ON_ERROR_STOP=1.
-# Der Treiber ist 0644 in /tmp — zulaessig, weil ALLE Inhalte hier PII-frei sind (genau das ist
+# Laeuft als postgres-Superuser (runuser, peer-Auth) in einer psql-Session, ON_ERROR_STOP=1.
+# Der Treiber ist 0644 in /tmp — zulaessig, weil alle Inhalte hier PII-frei sind (genau das ist
 # der Sinn der Seed/Onboarding-Trennung; PII laeuft ueber die 600-Treiber in bootstrap_owner.sh).
 #
 # Reads globals (provision.sh): REPO_ROOT, N8N_DB_NAME.
@@ -36,20 +35,20 @@ _seed_psql() {
 }
 
 # _sql_str <value>  → in SQL-Single-Quotes gewrappter, escapeter String ('' fuer eingebettete ').
-# Leerer Wert -> '' (leerer String), NICHT NULL (Aufrufer entscheidet NULL separat).
+# Leerer Wert -> '' (leerer String), nicht NULL (Aufrufer entscheidet NULL separat).
 _sql_str() {
   local v="${1//\'/\'\'}"
   printf "'%s'" "$v"
 }
 
-# _seed_skip_pkg <pkg>  -> 0 (= skip) wenn SEED_PKG gesetzt ist UND != pkg; sonst 1 (nicht skippen).
-# Phase 5: derselbe Seeder-Code dient dem Monolith (SEED_PKG leer = alle Pakete) UND dem per-Paket-
-# Install (SEED_PKG=<pkg> = nur dieses Paket) — EIN Code-Pfad, kein Cross-Package-Side-Effect.
+# _seed_skip_pkg <pkg>  -> 0 (= skip) wenn SEED_PKG gesetzt ist und != pkg; sonst 1 (nicht skippen).
+# Derselbe Seeder-Code dient dem Voll-Seed (SEED_PKG leer = alle Pakete) und dem per-Paket-
+# Install (SEED_PKG=<pkg> = nur dieses Paket) — ein Code-Pfad, kein Cross-Package-Side-Effect.
 _seed_skip_pkg() { [ -n "${SEED_PKG:-}" ] && [ "${SEED_PKG}" != "$1" ]; }
 
 # --- (1) agent.ai_models  ----------------------------------------------------
 # jq liefert metadaten-flache TSV-Zeilen (Werte ohne Tabs/Newlines by construction); bash baut
-# das UPSERT (identische Semantik zu n8n_push 1b).
+# das UPSERT.
 _seed_ai_models() {
   _seed_skip_pkg core && return 0   # ai_models ist core-eigen
   local file="$REPO_ROOT/packages/core/seed/ai_models.json"
@@ -69,15 +68,14 @@ _seed_ai_models() {
   done
 }
 
-# --- (2) core.config — generischer per-Paket-Config-Seeder (WS4a) ------------
-# Jedes Paket DEKLARIERT seine Config im manifest.json (.config: {category:{key:{value,description,summary}}});
-# der HOST laedt sie paket-skopiert (package=<pkg>) in core.config. Loest _seed_config (packages/core/
-# seed/config.json, retired) ab — 'core' ist nur ein erweitertes privilegiertes Paket und deklariert
-# seine Config genauso im Manifest. Upsert-Regel = core.fn_config_seed (Install-UX-Phase 4, dpkg-conffile):
-#   der Manifest-Wert ist der DEFAULT (default_value wird immer nachgezogen); value folgt ihm nur, solange der
+# --- (2) core.config — generischer per-Paket-Config-Seeder ------------
+# Jedes Paket deklariert seine Config im manifest.json (.config: {category:{key:{value,description,summary}}});
+# der Host laedt sie paket-skopiert (package=<pkg>) in core.config. 'core' ist nur ein erweitertes privilegiertes
+# Paket und deklariert seine Config genauso im Manifest. Upsert-Regel = core.fn_config_seed (dpkg-conffile):
+#   der Manifest-Wert ist der Default (default_value wird immer nachgezogen); value folgt ihm nur, solange der
 #   Owner ihn nie geaendert hat — `lifeagents config set`/Wizard-/Agent-Werte ueberleben jedes Update.
 #   cron_enable = Laufzeit-Schalter (nie ueberschrieben; der Erst-Seed legt die Default-Zeile an = Garantie fuers
-#   fail-closed Cron-Gate), api.* = System-Werte (immer ueberschrieben). Vorher: DO UPDATE value=EXCLUDED.value.
+#   fail-closed Cron-Gate), api.* = System-Werte (immer ueberschrieben).
 # description (EN Entwickler-Text) optional; summary = DE Owner-Einzeiler fuer `lifeagents config list`
 # (contract_lint erzwingt ihn). UNIQUE(category,key) bleibt global -> die CLI adressiert eine Zeile ohne Paket.
 _seed_package_config() {
@@ -85,8 +83,8 @@ _seed_package_config() {
   for mf in "$REPO_ROOT"/packages/*/manifest.json; do
     [ -f "$mf" ] || continue
     _seed_skip_pkg "$(jq -r '.name // empty' "$mf")" && continue
-    # Feld-Trenner = Unit-Separator (\x1f), NICHT \t: bash `read` mit IFS=$'\t' KOLLABIERT konsekutive Tabs
-    # (Tab ist IFS-whitespace) -> ein LEERER value (z. B. estate.general.bundesland = fail-closed-Default '')
+    # Feld-Trenner = Unit-Separator (\x1f), nicht \t: bash `read` mit IFS=$'\t' kollabiert konsekutive Tabs
+    # (Tab ist IFS-whitespace) -> ein leerer value (z. B. estate.general.bundesland = fail-closed-Default '')
     # bekaeme sonst die description in val geschoben. \x1f ist Nicht-whitespace -> leere Felder bleiben leer.
     # type/minimum/maximum/managed_by (Wert-Pruefung + System-Werte, core.config_init.sql): fehlt ein Feld -> ''
     # -> core.fn_config_seed nimmt den Default (string / keine Grenze / owner). minimum/maximum sind JSON-Zahlen.
@@ -112,8 +110,8 @@ _seed_package_config() {
 #
 # _seed_context_md <file> <managed_by> [package]
 #   package = besitzendes Paket (Lifecycle-/Uninstall-Purge-Key) und managed_by = Sync-Provenienz
-#   (seed|build|agent) sind seit D14/WS-B2 TYPISIERTE Spalten auf agent.core_contexts (vorher
-#   metadata.package/.managed_by). metadata wird hier auf '{}' gesetzt; das Loeschschutz-Flag
+#   (seed|build|agent) sind typisierte Spalten auf agent.core_contexts.
+#   metadata wird hier auf '{}' gesetzt; das Loeschschutz-Flag
 #   (protected) stempelt util_protect_contexts danach additiv ein (s. _seed_contexts).
 _seed_context_md() {
   local file="$1" managed="$2" pkg="${3:-core}"
@@ -122,8 +120,8 @@ _seed_context_md() {
   # BOM (falls vorhanden) defensiv strippen, sonst matcht /^---/ nicht.
   local clean; clean="$(sed '1s/^\xEF\xBB\xBF//' "$file")"
 
-  # Frontmatter = Zeilen zwischen dem 1. und 2. '---'. Body = ALLES nach dem 2. '---'
-  # (die Body-awk druckt erst, DANN inkrementiert -> ein '---' im Body bleibt erhalten).
+  # Frontmatter = Zeilen zwischen dem 1. und 2. '---'. Body = alles nach dem 2. '---'
+  # (die Body-awk druckt erst, dann inkrementiert -> ein '---' im Body bleibt erhalten).
   local fm body desc agent strat
   fm="$(printf '%s\n' "$clean"  | awk '/^---[[:space:]]*$/{c++; next} c==1{print}')"
   body="$(printf '%s\n' "$clean" | awk 'c>=2{print} /^---[[:space:]]*$/{c++}')"
@@ -143,26 +141,26 @@ _seed_context_md() {
   printf 'VALUES (%s, %s, %s, %s, $%s$%s$%s$, %s, %s, %s)\n' \
     "$(_sql_str "$name")" "$(_sql_str "$desc")" "$agent_sql" "$(_sql_str "$strat")" \
     "$tag" "$body" "$tag" "$(_sql_str "$managed")" "$(_sql_str "$pkg")" "'{}'::jsonb"
-  # Conffile-Guard (WS-1, arch-challenge D1 — dpkg-conffile-Semantik): eine Zeile, die der Owner
-  # uebernommen hat (managed_by='agent': Prompt-Import, WS-5-Feedback-Tool, Laufzeit-PII), wird vom
-  # Re-Seed NIE ueberschrieben — der Paket-Default gilt nur, solange der Nutzer nicht angefasst hat.
-  # protected_contexts (§3.4) schuetzt nur vor DELETE; DIESER Guard schuetzt vor UPDATE-Clobber.
-  # GEGENSTUECK core.fn_reset_user_data: managed_by='agent' gilt dort als Laufzeit-Daten und wird beim
-  # Werkszustand-Reset GELOESCHT -> ein kuenftiger Uebernahme-Pfad braucht eine eigene Provenienz
-  # (z. B. 'owner'), nicht 'agent' (heute existiert keiner).
+  # Conffile-Guard (dpkg-conffile-Semantik): eine Zeile, die der Owner
+  # uebernommen hat (managed_by='agent': Prompt-Import, Feedback-Tool, Laufzeit-PII), wird vom
+  # Re-Seed nie ueberschrieben — der Paket-Default gilt nur, solange der Nutzer nicht angefasst hat.
+  # protected_contexts (§3.4) schuetzt nur vor DELETE; dieser Guard schuetzt vor UPDATE-Clobber.
+  # Gegenstueck core.fn_reset_user_data: managed_by='agent' gilt dort als Laufzeit-Daten und wird beim
+  # Werkszustand-Reset geloescht -> ein kuenftiger Uebernahme-Pfad braeuchte eine eigene Provenienz
+  # (z. B. 'owner'; heute erlaubt core_contexts_managed_by_check nur seed/build/agent), nicht 'agent'.
   printf 'ON CONFLICT (name) DO UPDATE SET description=EXCLUDED.description, agent_name=EXCLUDED.agent_name, load_strategy=EXCLUDED.load_strategy, content=EXCLUDED.content, managed_by=EXCLUDED.managed_by, package=EXCLUDED.package, metadata=EXCLUDED.metadata WHERE core_contexts.managed_by <> %s;\n' "$(_sql_str 'agent')"
 }
 
-# --- Capabilities-Katalog (/help + Guide) aus den Fragmenten der INSTALLIERTEN Pakete, je Sprache -------------
-# Install-UX-Phase 4 (Paket-Modularitaet) + Textkatalog Phase B: build.ps1 rendert je Paket UND Katalogsprache ein
+# --- Capabilities-Katalog (/help + Guide) aus den Fragmenten der installierten Pakete, je Sprache -------------
+# build.ps1 rendert je Paket und Katalogsprache ein
 # Fragment (packages/<pkg>/seed/capabilities_catalog/<lang>.fragment.md) und je Sprache die komponierte Uebersicht
-# (packages/core/seed/capabilities_catalog/<lang>.md) aus ALLEN Paketen. Der Installer komponiert zur Laufzeit je
+# (packages/core/seed/capabilities_catalog/<lang>.md) aus allen Paketen. Der Installer komponiert zur Laufzeit je
 # Sprache: Kopf (bis zur ersten '## '-Kategorie) der komponierten Datei + die Fragmente von Core + jedem 'active'
 # Paket in core.package_registry (dieselbe Regel wie Telegram-Menue + Onboarding) (+ dem gerade geseedeten SEED_PKG,
 # das in Stufe 5 noch 'installing' ist), sortiert nach Manifest catalog.ord. Gleiche Reihenfolge-/Strip-Regel wie
 # Build-ComposedCatalog (scripts/build/lib/catalog.ps1).
 #
-# Install-UX-Phase 6: Zusatz-Sektion „Weitere Funktionen" am Ende (gebuendelte, aber nicht aktive Pakete mit
+# Zusatz-Sektion „Weitere Funktionen" am Ende (gebuendelte, aber nicht aktive Pakete mit
 # Einzeiler + dem richtigen Server-Befehl, Texte core.help.more_* + <pkg>.package.*) — gleiche Zustands-Regel wie
 # installed_packages (_pkg_state_rows).
 # _capabilities_catalog_md <lang>
@@ -194,14 +192,14 @@ _capabilities_catalog_md() {
   } | sed -e :a -e '/^\n*$/{$d;N;ba' -e '}'
 }
 
-# _pkg_state_rows — TSV „<pkg>\t<state>" je GEBUENDELTEM Nicht-Core-Paket (Manifest-Glob, nach Name sortiert).
-# state = active | inactive | absent — NUR aus der Registry (nicht aus SEED_PKG: ein abgebrochenes 'installing'
-# zaehlt als nicht installiert). Install-UX-Phase 6, EINE Regel fuer installed_packages, den /help-Tail,
+# _pkg_state_rows — TSV „<pkg>\t<state>" je gebuendeltem Nicht-Core-Paket (Manifest-Glob, nach Name sortiert).
+# state = active | inactive | absent — nur aus der Registry (nicht aus SEED_PKG: ein abgebrochenes 'installing'
+# zaehlt als nicht installiert). Eine Regel fuer installed_packages, den /help-Tail,
 # Begruessung (core.fn_render_welcome liest dieselbe Registry) und den Recap. Anzeigenamen liefert der Aufrufer in
 # seiner Sprache (pkg_display_name / pkg_text).
 _pkg_state_rows() {
   local reg raw mf pkg st
-  # Registry NICHT lesbar -> return 1 (der Aufrufer ueberspringt das Seeden, die alte Zeile bleibt) statt still
+  # Registry nicht lesbar -> return 1 (der Aufrufer ueberspringt das Seeden, die alte Zeile bleibt) statt still
   # "alles nicht installiert" zu behaupten.
   raw="$(_seed_psql -tA -c "SELECT package || ':' || status FROM core.package_registry" 2>/dev/null)" || return 1
   reg=" $(printf '%s' "$raw" | tr '\n' ' ') "
@@ -237,9 +235,9 @@ _more_packages_md() {
   printf '\n'
 }
 
-# _installed_packages_md — der STATISCHE globale Context `installed_packages` (Install-UX-Phase 6): jedem Agenten
+# _installed_packages_md — der statische globale Context `installed_packages`: jedem Agenten
 # (static, agent_name leer) sagen, welche Pakete aktiv / ausgeschaltet / nicht installiert sind — sonst bot z. B.
-# der Guide den „Buchhalter" an, obwohl Finance fehlt. Modell-Schicht -> Englisch, bewusst WINZIG (steht in jedem
+# der Guide den „Buchhalter" an, obwohl Finance fehlt. Modell-Schicht -> Englisch, bewusst winzig (steht in jedem
 # Prompt); deutsche Anzeigenamen nur als Nutzer-Begriff. Materialisierte Projektion aus Manifest + Registry ueber
 # denselben Refresh-Haken wie der Katalog (nicht installierte Pakete stehen nicht in der DB).
 _installed_packages_md() {
@@ -271,10 +269,10 @@ _installed_packages_md() {
 }
 
 # _seed_capabilities_catalog — SQL-Upsert des laufzeit-komponierten Katalogs + des Paket-Zustands-Contexts
-# installed_packages (managed_by='build', package core; EIN Haken -> kein Drift zwischen /help und Prompt).
-# Textkatalog Phase B: je Katalogsprache (Core-Manifest languages.list) eine Zeile in core.help_catalog (die liest
+# installed_packages (managed_by='build', package core; ein Haken -> kein Drift zwischen /help und Prompt).
+# Je Katalogsprache (Core-Manifest languages.list) eine Zeile in core.help_catalog (die liest
 # der Orchestrator bei /help in der Sprache des Absenders); der Kontext capabilities_catalog (Guide-Agent, Modell-
-# Wissen) bleibt die deutsche Fassung aus derselben Erzeugung — keine Prompt-Aenderung.
+# Wissen) ist die deutsche Fassung aus derselben Erzeugung.
 _seed_capabilities_catalog() {
   local tmpd lang; tmpd="$(mktemp -d)"
   for lang in $(jq -r '.languages.list | sort_by(.ord) | .[].code' "$REPO_ROOT/packages/core/manifest.json" 2>/dev/null); do
@@ -317,13 +315,12 @@ refresh_capabilities_catalog() {
 
 # --- (3) Contexts  -----------------------------------------------------------
 _seed_contexts() {
-  # (a) Capabilities-Katalog: IMMER (auch beim per-Paket-Seed) laufzeit-komponiert aus Core + installierten
+  # (a) Capabilities-Katalog: immer (auch beim per-Paket-Seed) laufzeit-komponiert aus Core + installierten
   #     Paketen (s. _capabilities_catalog_md) — ein Host-Komposit, kein Paket-Artefakt.
   _seed_capabilities_catalog
 
-  # (b) Per-Paket-Contexts: packages/<pkg>/contexts/*.md (package = <pkg>). Seit WS-B2 liegen
-  #     ALLE Instruktions-Contexts paket-besessen hier (auch die Finance-Instruktionen) — der
-  #     fruehere flache db/seed/contexts/-Pfad ist retired.
+  # (b) Per-Paket-Contexts: packages/<pkg>/contexts/*.md (package = <pkg>). Alle
+  #     Instruktions-Contexts sind paket-besessen.
   local d pkg f seeded=0 seeded_names=''
   for d in "$REPO_ROOT"/packages/*/contexts; do
     [ -d "$d" ] || continue
@@ -335,9 +332,9 @@ _seed_contexts() {
       seeded_names="${seeded_names}${seeded_names:+, }$(_sql_str "$(basename "$f" .md)")"
     done
   done
-  # Signalisierung zum Conffile-Guard (arch-challenge D1 ADOPT): bewahrte Owner-Zeilen NICHT still
+  # Signalisierung zum Conffile-Guard: bewahrte Owner-Zeilen nicht still
   # ueberspringen — eine NOTICE nennt die Anzahl (der ON-CONFLICT-Skip selbst ist nicht zaehlbar,
-  # daher separater count). Voll-Signalisierung (.dpkg-dist-Aequivalent) = vertagt.
+  # daher separater count).
   if [ -n "$seeded_names" ]; then
     # shellcheck disable=SC2016  # $conffile$ ist ein SQL-Dollar-Quote-Tag, KEINE Shell-Expansion
     printf 'DO $conffile$ DECLARE n int; BEGIN\n'
@@ -350,16 +347,16 @@ _seed_contexts() {
   fi
   # Warnung nur beim Voll-Seed (per-Paket-Seed eines context-losen Pakets ist legitim).
   [ "$seeded" = "1" ] || [ -n "${SEED_PKG:-}" ] || warn "Keine Instruktions-Contexts gefunden (packages/*/contexts leer — Agenten ohne System-Prompt!)."
-  # Loeschschutz (WS-B2b): NICHT mehr per metadata.protected-Flag (util_protect_contexts retired) —
-  # die geschuetzten Namen kommen aus den Paket-Manifesten in core.protected_contexts (_seed_protected_contexts).
+  # Loeschschutz: die geschuetzten Namen kommen aus den Paket-Manifesten in core.protected_contexts
+  # (_seed_protected_contexts).
 }
 
-# --- (4) core.context_validators — generische Validator-Registry (WS-B1 / D12) -----
-# Jedes Paket DEKLARIERT im manifest.json einen "context_validators"-Block
-# { "<context_name>": "<pkg>.<fn>" }; der HOST upsertet die Zeile in core.context_validators
-# (Deklaration vs. Ausfuehrung, docs/package-contract.md §3.3 — das Paket schreibt die Registry NIE
+# --- (4) core.context_validators — generische Validator-Registry -----
+# Jedes Paket deklariert im manifest.json einen "context_validators"-Block
+# { "<context_name>": "<pkg>.<fn>" }; der Host upsertet die Zeile in core.context_validators
+# (Deklaration vs. Ausfuehrung, docs/package-contract.md §3.3 — das Paket schreibt die Registry nie
 # selbst). Der Core-Trigger dispatcht generisch ueber diese Tabelle (kein hartkodierter Paket-Name im Core).
-# BOUNDARY (own-schema-scoping wie bei den Rollen-Grants): validate_fn MUSS ins eigene Paket-Schema
+# Boundary (own-schema-scoping wie bei den Rollen-Grants): validate_fn muss ins eigene Paket-Schema
 # zeigen — ein Paket darf keinen fremden/Core-Validator binden.
 _seed_context_validators() {
   local mf pkg cname fn
@@ -377,7 +374,7 @@ _seed_context_validators() {
       printf 'INSERT INTO core.context_validators (context_name, validate_fn, package)\n'
       printf 'VALUES (%s, %s, %s)\n' "$(_sql_str "$cname")" "$(_sql_str "$fn")" "$(_sql_str "$pkg")"
       printf 'ON CONFLICT (context_name) DO UPDATE SET validate_fn=EXCLUDED.validate_fn, package=EXCLUDED.package, updated_at=now();\n'
-      # Install-Zeit-Sichtbarkeit (arch-challenge): fehlt die Ziel-fn (Manifest-Typo / Apply-Order),
+      # Install-Zeit-Sichtbarkeit: fehlt die Ziel-fn (Manifest-Typo / Apply-Order),
       # WARNING statt stiller Laufzeit-Degradation. Non-fatal -> Zeile bleibt, Trigger-Guard skippt grazil.
       # shellcheck disable=SC2016  # $dv$ ist ein literales SQL-Dollar-Quote-Tag, KEINE Shell-Expansion (gewollt nicht expandieren).
       printf 'DO $dv$ BEGIN IF to_regprocedure(%s) IS NULL THEN RAISE WARNING %s; END IF; END $dv$;\n' \
@@ -386,13 +383,13 @@ _seed_context_validators() {
   done
 }
 
-# --- (4a) core.context_scopes — Scope-/Permission-Registry (P0a, deklaratives Fundament) -----
-# Jedes Paket DEKLARIERT im manifest.json einen "context_scopes"-Block, VERSCHACHTELT (2 Werte je Context):
+# --- (4a) core.context_scopes — Scope-/Permission-Registry -----
+# Jedes Paket deklariert im manifest.json einen "context_scopes"-Block, verschachtelt (2 Werte je Context):
 #   { "<context>": { "scope", "write_permission" } } ;
-# der HOST upsertet die Zeile in core.context_scopes (Deklaration vs. Ausfuehrung, analog _seed_context_validators).
+# der Host upsertet die Zeile in core.context_scopes (Deklaration vs. Ausfuehrung, analog _seed_context_validators).
 # agent.fn_check_write_permission setzt die write_permission generisch durch (kein hartkodierter Paket-Name im Core).
-# KEIN own-schema-Boundary-Check (anders als validators/renderers/advisors, wie _seed_cron_labels): die Werte sind
-# reine Daten-Enums, KEINE fn-Bezeichner — die Durchsetzung sind die Tabellen-CHECKs (scope/write_permission/Cross).
+# Kein own-schema-Boundary-Check (anders als validators/renderers/advisors, wie _seed_cron_labels): die Werte sind
+# reine Daten-Enums, keine fn-Bezeichner — die Durchsetzung sind die Tabellen-CHECKs (scope/write_permission/Cross).
 # package=<pkg> -> fn_pkg_purge_data raeumt die Zeile beim Uninstall. Definitions- = Aufrufreihenfolge (vor renderers).
 _seed_context_scopes() {
   local mf pkg cname scope perm
@@ -415,13 +412,12 @@ _seed_context_scopes() {
   done
 }
 
-# --- (4a2) Paket-Fakten-Skelette — leere facts-Kontexte, die das PAKET besitzt (Install-UX-Phase 6) -----
-# Jedes Paket DEKLARIERT im manifest.json einen "context_skeletons"-Block, VERSCHACHTELT:
+# --- (4a2) Paket-Fakten-Skelette — leere facts-Kontexte, die das Paket besitzt -----
+# Jedes Paket deklariert im manifest.json einen "context_skeletons"-Block, verschachtelt:
 #   { "<context>": { "agent_name", "description", "content", "facts": {…} } } ;
-# der HOST legt die Zeile INSERT-ONLY an (ON CONFLICT DO NOTHING — vorhandene PII-Fakten werden NIE angefasst;
-# Debian-postinst-Muster: das Paket legt seinen Zustand bei jeder Installation selbst an). Loest die Core-Naht
-# ab, dass util_seed_owner_skeleton.sql auch ohne Finance eine finance_profile-Zeile anlegte (und sie nach
-# `--purge` + Neuinstallation fehlte). Laeuft auch mit --no-seed (Code-Seed; der Restore UPDATEt danach die
+# der Host legt die Zeile insert-only an (ON CONFLICT DO NOTHING — vorhandene PII-Fakten werden nie angefasst;
+# Debian-postinst-Muster: das Paket legt seinen Zustand bei jeder Installation selbst an; dadurch fehlt die
+# Zeile auch nach `--purge` + Neuinstallation nie). Laeuft auch mit --no-seed (Code-Seed; der Restore UPDATEt danach die
 # Zeile aus dem Bundle). Nur wenn das Paket registriert ist (ein Voll-Seed auf einer Core-only-Instanz legt
 # so keine Waise an). load_strategy lazy, managed_by='agent' (Seeder fasst sie danach nie wieder an), package=<pkg>.
 # Der facts-Trigger validiert den Start-Sidecar (der Validator ist oben schon registriert).
@@ -450,13 +446,13 @@ _seed_context_skeletons() {
   done
 }
 
-# --- (4b) core.context_renderers — generische Render-Registry (WS1a, Core-Advisor-Engine) -----
-# Jedes Paket DEKLARIERT im manifest.json einen "context_renderers"-Block
-# { "<context_name>": "<pkg>.<fn>" }; der HOST upsertet die Zeile in core.context_renderers
+# --- (4b) core.context_renderers — generische Render-Registry -----
+# Jedes Paket deklariert im manifest.json einen "context_renderers"-Block
+# { "<context_name>": "<pkg>.<fn>" }; der Host upsertet die Zeile in core.context_renderers
 # (Deklaration vs. Ausfuehrung, docs/package-contract.md §3.3 — analog _seed_context_validators).
 # Die generische Engine core.fn_fetch_context dispatcht generisch (kein hartkodierter Context-Name im Core).
-# BOUNDARY (own-schema-scoping wie die Rollen-Grants): render_fn MUSS ins eigene Paket-Schema zeigen.
-# Signatur ist UNIFORM fn(text)->text (Context-Name als Argument) — anders als die Validatoren fn(jsonb).
+# Boundary (own-schema-scoping wie die Rollen-Grants): render_fn muss ins eigene Paket-Schema zeigen.
+# Signatur ist uniform fn(text)->text (Context-Name als Argument) — anders als die Validatoren fn(jsonb).
 _seed_context_renderers() {
   local mf pkg cname fn
   for mf in "$REPO_ROOT"/packages/*/manifest.json; do
@@ -467,7 +463,7 @@ _seed_context_renderers() {
     while IFS=$'\t' read -r cname fn pkg; do
       [ -n "$cname" ] || continue
       # Own-schema-scoping: ein Paket bindet nur <pkg>.*; der CORE (privilegiert, besitzt core+agent)
-      # darf auch agent.* binden (die Haushalts-Renderer leben im geteilten agent-Layer, WS1b).
+      # darf auch agent.* binden (die Haushalts-Renderer leben im geteilten agent-Layer).
       if [ "$pkg" = core ]; then
         case "$fn" in core.*|agent.*) : ;; *) warn "context_renderer '$cname' -> '$fn' zeigt nicht ins Core-Schema (core.*/agent.*) — uebersprungen (Boundary)."; continue ;; esac
       else
@@ -485,22 +481,22 @@ _seed_context_renderers() {
   done
 }
 
-# --- (4c) core.advisors — generische Advisor-Registry (WS2, Core-Advisor-Engine) -----
-# Jedes Paket DEKLARIERT im manifest.json einen "advisors"-Block, VERSCHACHTELT:
+# --- (4c) core.advisors — generische Advisor-Registry -----
+# Jedes Paket deklariert im manifest.json einen "advisors"-Block, verschachtelt:
 #   { "<domain>": { "plan_context": "<context>", "review_fn": "<pkg>.<fn>", "advisor_agent": "agent.<a>",
 #                   "learn_notes": true|false (optional, Default false) } } ;
-# der HOST upsertet die Zeile own-schema-scoped in core.advisors (Deklaration vs. Ausfuehrung, analog
+# der Host upsertet die Zeile own-schema-scoped in core.advisors (Deklaration vs. Ausfuehrung, analog
 # _seed_context_renderers — das Paket schreibt die Registry NIE selbst). Der generische Core-Wrapper
 # core.fn_advisor_review_evaluate(domain) dispatcht ueber die Tabelle (kein hartkodierter Paket-Name im Core).
-# BOUNDARY (own-schema-scoping wie die Rollen-Grants): review_fn MUSS ins eigene Paket-Schema zeigen; der
-# CORE (privilegiert) darf core.*/agent.* binden (kuenftiger Core-Advisor). Signatur UNIFORM fn(text,text,jsonb)->jsonb (domain, person_id, opts).
+# Boundary (own-schema-scoping wie die Rollen-Grants): review_fn muss ins eigene Paket-Schema zeigen; der
+# Core (privilegiert) darf core.*/agent.* binden. Signatur uniform fn(text,text,jsonb)->jsonb (domain, person_id, opts).
 # package=<pkg> -> fn_pkg_purge_data raeumt die Zeile beim Uninstall (sonst Orphan-review_fn).
 _seed_advisors() {
   local mf pkg domain plan_ctx fn agent agent_sql learn owncron planstep gapsfn readyfn rolloutfn xfn xsql gaps_sql ready_sql rollout_sql
   for mf in "$REPO_ROOT"/packages/*/manifest.json; do
     [ -f "$mf" ] || continue
     _seed_skip_pkg "$(jq -r '.name // empty' "$mf")" && continue
-    # learn_notes STRIKT boolean (Muster member_permeable der callback_handlers): nur ein echtes JSON-true
+    # learn_notes strikt boolean (Muster member_permeable der callback_handlers): nur ein echtes JSON-true
     # zaehlt, alles andere (fehlend/String/Zahl) -> false (fail-closed).
     jq -r '.name as $pkg | (.advisors // {}) | to_entries[]
            | select(.key != "_comment")
@@ -517,10 +513,10 @@ _seed_advisors() {
       else
         case "$fn" in "$pkg".*) : ;; *) warn "advisor '$domain' -> review_fn '$fn' zeigt nicht ins Paket-Schema '$pkg' — uebersprungen (Boundary)."; continue ;; esac
       fi
-      # advisor_agent (Phase 0 WS-0c #1, Datenquelle Domaene->Router-Ziel): leer -> NULL (CHECK erlaubt NULL).
+      # advisor_agent (Datenquelle Domaene->Router-Ziel): leer -> NULL (CHECK erlaubt NULL).
       agent_sql='NULL'; [ -n "$agent" ] && agent_sql="$(_sql_str "$agent")"
       [ "$learn" = true ] || learn=false
-      [ "$owncron" = true ] || owncron=false   # Roter Faden: eigener Review-Cron -> geteilte Advisor-Crons lassen die Domaene aus
+      [ "$owncron" = true ] || owncron=false   # eigener Review-Cron -> geteilte Advisor-Crons lassen die Domaene aus
       [ "$planstep" = true ] || planstep=false # Onboarding-Plan-Schritt (Knopf plan:<domain>)
       # gaps_fn/readiness_fn (optional, Signatur (text,text)): Boundary wie review_fn (eigenes Paket-Schema), leer -> NULL.
       # Fehlt ein Feld, liefert jq "-" statt "": Tab ist IFS-Whitespace, read wuerde leere Felder zusammenziehen und
@@ -546,8 +542,7 @@ _seed_advisors() {
       done
       # Install-Zeit-Sichtbarkeit: fehlt die Ziel-fn (Manifest-Typo / Apply-Order), WARNING statt stiller
       # Laufzeit-Degradation (der Eval-Wrapper gibt {ok:false,review_fn_missing} zurueck). Signatur (text,text,jsonb)
-      # = die Arity, die core.fn_advisor_review_evaluate dispatcht (P2b-2 person-skopiert; vorher pruefte diese
-      # Warnung die alte (text,jsonb)-Arity und griff nie).
+      # = die Arity, die core.fn_advisor_review_evaluate dispatcht (person-skopiert).
       # shellcheck disable=SC2016  # $da$ ist ein literales SQL-Dollar-Quote-Tag, KEINE Shell-Expansion.
       printf 'DO $da$ BEGIN IF to_regprocedure(%s) IS NULL THEN RAISE WARNING %s; END IF; END $da$;\n' \
         "$(_sql_str "$fn(text,text,jsonb)")" "$(_sql_str "advisor $domain -> $fn(text,text,jsonb) nicht gefunden (Manifest-Typo/Apply-Order?)")"
@@ -555,16 +550,16 @@ _seed_advisors() {
   done
 }
 
-# --- (4d) core.cron_labels — Chat-Toggle-Registry der opt-in Crons (Phase 0 WS-0c #2/#3) -----
-# Jedes Paket DEKLARIERT im manifest.json die Liste seiner schaltbaren opt-in Crons:
+# --- (4d) core.cron_labels — Chat-Toggle-Registry der opt-in Crons -----
+# Jedes Paket deklariert im manifest.json die Liste seiner schaltbaren opt-in Crons:
 #   "cron_labels": { "_comment", "list": ["<cron_key>", ...] } ;
-# der HOST upsertet die Zeile in core.cron_labels (Deklaration vs. Ausfuehrung, analog _seed_advisors —
-# das Paket schreibt die Registry NIE selbst, D10). MITGLIEDSCHAFT = chat-togglability-SoT (core.fn_set_cron_enable
-# lehnt jeden Key ab, der NICHT hier steht -> always-on Crons stehen nicht drin). Die Toast-/Meldungstexte stehen im
-# Textkatalog des Pakets (<pkg>.cron.<key>.*, Textkatalog Phase B), nicht mehr in der Registry.
-# package=<pkg> -> fn_pkg_purge_data raeumt die Zeile beim Uninstall. KEIN own-schema-Boundary-Check
+# der Host upsertet die Zeile in core.cron_labels (Deklaration vs. Ausfuehrung, analog _seed_advisors —
+# das Paket schreibt die Registry nie selbst). Mitgliedschaft = chat-togglability-SoT (core.fn_set_cron_enable
+# lehnt jeden Key ab, der nicht hier steht -> always-on Crons stehen nicht drin). Die Toast-/Meldungstexte stehen im
+# Textkatalog des Pakets (<pkg>.cron.<key>.*), nicht in der Registry.
+# package=<pkg> -> fn_pkg_purge_data raeumt die Zeile beim Uninstall. Kein own-schema-Boundary-Check
 # (anders als advisors/validators): die Werte sind reine Daten-Strings, keine fn-Bezeichner.
-# Roter Faden: "cron_labels.person": { "<key>": { "default_enabled": bool } } = PERSON-Reminder (scope='person', jede
+# "cron_labels.person": { "<key>": { "default_enabled": bool } } = Person-Reminder (scope='person', jede
 # Person schaltet ihre Zustellung selbst ueber agent.reminder_prefs); "list" = Haushalts-Schalter (scope='household').
 # scope + default_enabled werden bei jedem Seed nachgezogen (ON CONFLICT DO UPDATE), damit ein Update den Wechsel traegt.
 _seed_cron_labels() {
@@ -572,9 +567,9 @@ _seed_cron_labels() {
   for mf in "$REPO_ROOT"/packages/*/manifest.json; do
     [ -f "$mf" ] || continue
     _seed_skip_pkg "$(jq -r '.name // empty' "$mf")" && continue
-    # Paket B: "mandatory": ["<key>"] = Pflicht-Erinnerung (Haushalt, in /reminders nur Anzeige, nie schaltbar).
+    # "mandatory": ["<key>"] = Pflicht-Erinnerung (Haushalt, in /reminders nur Anzeige, nie schaltbar).
     # default_enabled per has() statt `// true`: jq-`//` ersetzt auch ein gesetztes false (sonst waere
-    # score_jobs still fuer jede Person an; Substrat-Befund 2026-10-23).
+    # score_jobs still fuer jede Person an).
     jq -r '.name as $pkg
            | ((.cron_labels.list // [])[] | [$pkg, ., "household", "true", "false"]),
              ((.cron_labels.person // {}) | to_entries[] | select(.key != "_comment")
@@ -590,9 +585,9 @@ _seed_cron_labels() {
   done
 }
 
-# --- (4d2) core.ui_languages — die EINE Liste der unterstuetzten Sprachen fester Nutzertexte -----
+# --- (4d2) core.ui_languages — die eine Liste der unterstuetzten Sprachen fester Nutzertexte -----
 # SoT = Core-Manifest-Block "languages.list" (docs/package-contract.md §3.11). Upsert von Name/Locale/Reihenfolge/
-# Aliasen; NIE loeschen (eine Person kann den Code tragen — der Validator lehnte sonst jeden family-Write ab).
+# Aliasen; nie loeschen (eine Person kann den Code tragen — der Validator lehnte sonst jeden family-Write ab).
 # core:V027 legt die Basis-Codes vorab an (Backfill + Validator laufen vor dem Seed). Code-Seed (auch --no-seed).
 _seed_ui_languages() {
   _seed_skip_pkg core && return 0   # die Sprachliste ist core-eigen
@@ -608,8 +603,8 @@ _seed_ui_languages() {
   done
 }
 
-# --- (4d2b) core.ui_personas — die EINE Liste der Bot-Personas je Person -----
-# SoT = Core-Manifest-Block "personas.list". Upsert der Reihenfolge; NIE loeschen (eine Person kann den Code tragen —
+# --- (4d2b) core.ui_personas — die eine Liste der Bot-Personas je Person -----
+# SoT = Core-Manifest-Block "personas.list". Upsert der Reihenfolge; nie loeschen (eine Person kann den Code tragen —
 # der Validator lehnte sonst jeden family-Write ab). core:V031 legt die Basis-Codes vorab an. Code-Seed (auch --no-seed).
 _seed_ui_personas() {
   _seed_skip_pkg core && return 0   # die Persona-Liste ist core-eigen
@@ -624,11 +619,11 @@ _seed_ui_personas() {
 
 # --- (4d3) core.ui_texts — Textkatalog fester Nutzertexte (packages/<pkg>/locales/<lang>.json) -----
 # Muster Rails/gettext: die getrackten Dateien sind die Wahrheit, die Tabelle ist build-verwaltet -> je Paket
-# VOLLSTAENDIG ersetzen (DELETE + INSERT in der Seed-Transaktion; kein Owner-Edit, kein Conffile-Guard). Die
-# Datei-Inhalte gehen per Dollar-Quote ($uitexts$) als EIN jsonb-Literal hinein (kein Zeilen-Escaping noetig);
+# vollstaendig ersetzen (DELETE + INSERT in der Seed-Transaktion; kein Owner-Edit, kein Conffile-Guard). Die
+# Datei-Inhalte gehen per Dollar-Quote ($uitexts$) als ein jsonb-Literal hinein (kein Zeilen-Escaping noetig);
 # '_'-Keys (_comment) bleiben draussen. Eine Datei, deren Sprache nicht in core.ui_languages steht, scheitert am
 # FK (locale_lint faengt das vorher). Pakete ohne locales/ werden uebersprungen. Code-Seed (auch --no-seed).
-# Abbild ALLER gebuendelten Pakete, unabhaengig vom Installationsstand: Onboarding-Menue und Vermittler nennen auch
+# Abbild aller gebuendelten Pakete, unabhaengig vom Installationsstand: Onboarding-Menue und Vermittler nennen auch
 # nicht installierte Pakete beim Namen (<pkg>.package.name, <pkg>.onboarding.*) -> der Core-Lauf (SEED_PKG leer
 # oder core) seedet jedes Paket im Baum und raeumt Pakete, die das Release verlassen haben; ein Paket-Lauf nur sich
 # selbst. Die Purge (core.fn_pkg_purge_data) fasst die Tabelle deshalb nicht an.
@@ -660,13 +655,13 @@ _seed_ui_texts() {
   fi
 }
 
-# --- (4e) core.callback_handlers — generische Callback-Dispatch-Registry (Phase 0 WS-0c CB) -----
-# Jedes Paket DEKLARIERT im manifest.json einen "callback_handlers"-Block { "<prefix>": "<pkg>.<fn>" };
-# der HOST upsertet die Zeile in core.callback_handlers (Deklaration vs. Ausfuehrung, analog
+# --- (4e) core.callback_handlers — generische Callback-Dispatch-Registry -----
+# Jedes Paket deklariert im manifest.json einen "callback_handlers"-Block { "<prefix>": "<pkg>.<fn>" };
+# der Host upsertet die Zeile in core.callback_handlers (Deklaration vs. Ausfuehrung, analog
 # _seed_context_validators). Der generische Core-Dispatcher core.fn_dispatch_callback schlaegt das
 # callback_data-Prefix hier nach + fuehrt die handler_fn dynamisch aus (kein hartkodierter Paket-Name im Core).
-# BOUNDARY (own-schema-scoping wie die Validatoren): handler_fn MUSS ins eigene Paket-Schema zeigen; der
-# CORE (privilegiert) darf core.*/agent.* binden. Signatur UNIFORM fn(jsonb)->jsonb.
+# Boundary (own-schema-scoping wie die Validatoren): handler_fn muss ins eigene Paket-Schema zeigen; der
+# Core (privilegiert) darf core.*/agent.* binden. Signatur uniform fn(jsonb)->jsonb.
 # package=<pkg> -> fn_pkg_purge_data raeumt die Zeile beim Uninstall (sonst Orphan-handler_fn).
 _seed_callback_handlers() {
   local mf pkg prefix fn perm
@@ -674,8 +669,8 @@ _seed_callback_handlers() {
     [ -f "$mf" ] || continue
     _seed_skip_pkg "$(jq -r '.name // empty' "$mf")" && continue
     # Nested-Schema { "<prefix>": { "handler_fn": "<pkg>.<fn>", "member_permeable": <bool> } } (Muster
-    # _seed_context_scopes). member_permeable STRIKT boolean-getypt: nur exakt jq-true -> "true", jeder
-    # andere/fehlende/falsch getypte Wert -> "false" = FAIL-CLOSED (die Member-Route oeffnet nie versehentlich).
+    # _seed_context_scopes). member_permeable strikt boolean-getypt: nur exakt jq-true -> "true", jeder
+    # andere/fehlende/falsch getypte Wert -> "false" = fail-closed (die Member-Route oeffnet nie versehentlich).
     jq -r '.name as $pkg | (.callback_handlers // {}) | to_entries[]
            | select(.key != "_comment")
            | [.key, .value.handler_fn, (if (.value.member_permeable // false) == true then "true" else "false" end), $pkg]
@@ -701,10 +696,10 @@ _seed_callback_handlers() {
 }
 
 # --- (4e2) core.app_screens — Bildschirme der Mini-App „Übersicht“ (docs/package-contract.md §3.12) -----
-# Jedes Paket DEKLARIERT im manifest.json einen "app_screens"-Block { "<screen>": { handler_fn, ord, icon } };
-# der HOST ersetzt die Zeilen des Pakets (DELETE + INSERT in der Seed-Transaktion -> ein aus dem Manifest
+# Jedes Paket deklariert im manifest.json einen "app_screens"-Block { "<screen>": { handler_fn, ord, icon } };
+# der Host ersetzt die Zeilen des Pakets (DELETE + INSERT in der Seed-Transaktion -> ein aus dem Manifest
 # entfernter Bildschirm verschwindet, statt als tote Registry-Zeile zu bleiben). core.fn_app_screen dispatcht
-# generisch. BOUNDARY wie _seed_callback_handlers (handler_fn im eigenen Schema; core darf core.*/agent.*),
+# generisch. Boundary wie _seed_callback_handlers (handler_fn im eigenen Schema; core darf core.*/agent.*),
 # Signatur fn(jsonb)->jsonb. Bildschirm-Keys sind paket-uebergreifend eindeutig (contract_lint).
 _seed_app_screens() {
   local mf pkg screen fn ord icon
@@ -736,15 +731,15 @@ _seed_app_screens() {
   done
 }
 
-# --- (4f) core.monitor_acquisition_methods — Monitor-Beschaffungs-Methoden der Pakete (Phase B) -----
-# Jedes Paket DEKLARIERT im manifest.json einen "monitor_acquisition_methods"-Block, VERSCHACHTELT:
+# --- (4f) core.monitor_acquisition_methods — Monitor-Beschaffungs-Methoden der Pakete -----
+# Jedes Paket deklariert im manifest.json einen "monitor_acquisition_methods"-Block, verschachtelt:
 #   { "<method>": { "acquire_fn": "<pkg>.<fn>", "validate_fn": "<pkg>.<fn>", "label": "...", "params_description": "..." } }
-# der HOST upsertet method/acquire_fn/validate_fn/package (label/params_description sind BUILD-Daten fuer die
+# der Host upsertet method/acquire_fn/validate_fn/package (label/params_description sind Build-Daten fuer die
 # Tool-Beschreibungen, nicht in der DB). Der Core dispatcht generisch (agent.fn_monitor_acquire /
-# fn_monitor_validate_params) — kein Paket-Name im Core. BOUNDARY (own-schema, Muster _seed_callback_handlers):
-# beide fns MUESSEN ins eigene Paket-Schema zeigen. Upsert fuellt auch einen V020-Platzhalter (package NULL),
-# stiehlt aber nie die Methode eines ANDEREN Pakets (WHERE package IS NULL OR package = EXCLUDED.package).
-# Signatur UNIFORM fn(jsonb)->jsonb. package=<pkg> -> fn_pkg_purge_data Schritt 3c raeumt Trigger + Zeile.
+# fn_monitor_validate_params) — kein Paket-Name im Core. Boundary (own-schema, Muster _seed_callback_handlers):
+# beide fns muessen ins eigene Paket-Schema zeigen. Upsert fuellt auch einen V020-Platzhalter (package NULL),
+# stiehlt aber nie die Methode eines anderen Pakets (WHERE package IS NULL OR package = EXCLUDED.package).
+# Signatur uniform fn(jsonb)->jsonb. package=<pkg> -> fn_pkg_purge_data Schritt 3c raeumt Trigger + Zeile.
 _seed_monitor_acquisition_methods() {
   local mf pkg method afn vfn
   for mf in "$REPO_ROOT"/packages/*/manifest.json; do
@@ -770,12 +765,12 @@ _seed_monitor_acquisition_methods() {
   done
 }
 
-# --- (5) core.protected_contexts — paket-deklarierter Loeschschutz-Registry (WS-B2b) -----
+# --- (5) core.protected_contexts — paket-deklarierter Loeschschutz-Registry -----
 # Jedes Paket deklariert im manifest.json eine "protected_contexts"-Liste von core_contexts.name;
-# der HOST upsertet sie in core.protected_contexts (Deklaration vs. Ausfuehrung, docs/package-contract.md
+# der Host upsertet sie in core.protected_contexts (Deklaration vs. Ausfuehrung, docs/package-contract.md
 # §3.4 — analog _seed_context_validators). Der Core-Lösch-Trigger blockt DELETE fuer registrierte Namen
-# (Finalizer-Muster). package = besitzendes Paket (Uninstall-Scope). Paket schreibt die Registry NIE selbst
-# (D10 sperrt Paket-Rollen von core aus). Single-Trusted-Author -> kein harter own-package-Check (PK = first-writer).
+# (Finalizer-Muster). package = besitzendes Paket (Uninstall-Scope). Paket schreibt die Registry nie selbst
+# (Paket-Rollen sind von core ausgesperrt). Single-Trusted-Author -> kein harter own-package-Check (PK = first-writer).
 _seed_protected_contexts() {
   local mf pkg name
   for mf in "$REPO_ROOT"/packages/*/manifest.json; do
@@ -791,23 +786,23 @@ _seed_protected_contexts() {
   done
 }
 
-# --- (6) <pkg>.onboarding_state — paket-besessene Onboarding-Sektionen (WS-B3 DRY-Onboarding) -----
-# Jedes Paket DEKLARIERT seine Onboarding-Sektionen in packages/<pkg>/onboarding/sections.json
-# ([{key,ord,label}]); der HOST seedet sie in <schema>.onboarding_state (homogenes Muster; ON CONFLICT
+# --- (6) <pkg>.onboarding_state — paket-besessene Onboarding-Sektionen -----
+# Jedes Paket deklariert seine Onboarding-Sektionen in packages/<pkg>/onboarding/sections.json
+# ([{key,ord,label}]); der Host seedet sie in <schema>.onboarding_state (homogenes Muster; ON CONFLICT
 # DO NOTHING -> vorhandene Status bleiben erhalten). Die Tabelle legt der Paket-Init an; gelesen/geschrieben
 # wird ueber die Core-Schnittstelle core.fn_onboarding_status / core.fn_set_onboarding_section. Core-'household'
 # bleibt in agent.guide_init.sql hardkodiert (Host-Konvenienz, kein packages/core/onboarding noetig).
 #
-# P2b-1 PER-USER (career): traegt ein Paket in seinem context_scopes-Block einen per_user-Context, ist
-# <pkg>.onboarding_state PRO PERSON (person_id NOT NULL, composite-PK (section_key, person_id)). Dann wird die
-# OWNER-Zeile geseedet (person_id aus family role=owner; der Owner existiert hier, weil bootstrap_owner VOR
+# Per-User (career): traegt ein Paket in seinem context_scopes-Block einen per_user-Context, ist
+# <pkg>.onboarding_state pro Person (person_id NOT NULL, composite-PK (section_key, person_id)). Dann wird die
+# Owner-Zeile geseedet (person_id aus family role=owner; der Owner existiert hier, weil bootstrap_owner VOR
 # pkg_install_one laeuft) als Sektions-Katalog; weitere Personen materialisiert core.fn_ensure_onboarding_person
 # lazy daraus. Kein Owner (sollte nicht vorkommen) -> 0 Zeilen statt NOT-NULL-Crash. Die per_user-Ableitung
 # spiegelt die fn-Ableitung (context_scopes scope='per_user'), gelesen aus dem Manifest.
 _seed_onboarding_sections() {
-  # --no-seed (pkg_install_one im Restore-vor-Install-Pfad): NUR die nutzerdaten-foermige onboarding_state
+  # --no-seed (pkg_install_one im Restore-vor-Install-Pfad): nur die nutzerdaten-foermige onboarding_state
   # ueberspringen (der Restore bringt sie); die Code-Seeds (config/ui_languages/ui_texts/contexts/validators/protected/services)
-  # laufen IMMER (nie im Backup-Bundle). M4.
+  # laufen immer (nie im Backup-Bundle).
   [ "${SEED_SKIP_ONBOARDING:-0}" = "1" ] && { log "onboarding_state-Seed uebersprungen (--no-seed)."; return 0; }
   local mf pkg schema sf key ord label per_user roles arr r
   for mf in "$REPO_ROOT"/packages/*/manifest.json; do
@@ -819,7 +814,7 @@ _seed_onboarding_sections() {
     [ -f "$sf" ] || continue
     # per_user gdw irgendein context_scopes-Eintrag scope='per_user' traegt (Objekt-Werte; _comment ignoriert).
     per_user="$(jq -r '[(.context_scopes // {}) | to_entries[] | select((.value|type=="object") and .value.scope=="per_user")] | length' "$mf")"
-    # Label = deutscher Katalog-Text <pkg>.onboarding.<key> (Textkatalog Phase B): die Spalte ist die Modell-Projektion
+    # Label = deutscher Katalog-Text <pkg>.onboarding.<key>: die Spalte ist die Modell-Projektion
     # (Onboarding-Agenten lesen sie); das Menue holt die Labels selbst in der Sprache des Betrachters.
     jq -r '.[] | [.key, (.ord|tostring), ((.for_roles // []) | join(","))] | @tsv' "$sf" |
     while IFS=$'\t' read -r key ord roles; do
@@ -855,9 +850,9 @@ _seed_onboarding_sections() {
   done
 }
 
-# _collect_workflow_name_ids — TSV (name<TAB>id) ALLER getrackten Workflow-JSONs
+# _collect_workflow_name_ids — TSV (name<TAB>id) aller getrackten Workflow-JSONs
 # (packages/*/workflows; Build-Artefakte _*.json uebersprungen — dieselbe Dir-Logik wie
-# deploy_workflows.sh). REINE Datei-Lese (kein REST, keine Import-Abhaengigkeit) — dieselbe Art Artefakt-
+# deploy_workflows.sh). Reine Datei-Lese (kein REST, keine Import-Abhaengigkeit) — dieselbe Art Artefakt-
 # Lese wie die Manifest-/Context-Reads. Liefert die name->id-Quelle fuer _seed_services (artefakt-
 # deklarierte id; n8n uebernimmt sie id-erhaltend beim Import).
 _collect_workflow_name_ids() {
@@ -873,17 +868,17 @@ _collect_workflow_name_ids() {
   done
 }
 
-# --- (6) core.services — generischer Service-Alias-Seeder (WS-B6) -------------
-# Jedes Paket DEKLARIERT seine Dienste im manifest.json (provides.services: { <alias>: <workflow-name> });
-# der HOST materialisiert sie in core.services (alias -> workflow_id + package). Gleiche Deklaration-vs-
-# Ausfuehrung-Mechanik wie _seed_context_validators (das Paket schreibt die Registry NIE selbst). Die
+# --- (6) core.services — generischer Service-Alias-Seeder -------------
+# Jedes Paket deklariert seine Dienste im manifest.json (provides.services: { <alias>: <workflow-name> });
+# der Host materialisiert sie in core.services (alias -> workflow_id + package). Gleiche Deklaration-vs-
+# Ausfuehrung-Mechanik wie _seed_context_validators (das Paket schreibt die Registry nie selbst). Die
 # Workflow-id kommt artefakt-deklariert aus den getrackten JSONs (n8n uebernimmt sie id-erhaltend beim
-# Import) -> KEIN REST-Read-Back. DECLARED state: die Deploy-Existenz bestaetigt der Verify post-deploy.
-# Per-Paket-Reconcile (ownership-scoped, k8s ownerReference): loescht NUR aus DIESEM Paket-Manifest
+# Import) -> kein REST-Read-Back. Declared state: die Deploy-Existenz bestaetigt der Verify post-deploy.
+# Per-Paket-Reconcile (ownership-scoped, k8s ownerReference): loescht nur aus diesem Paket-Manifest
 # verschwundene Aliase, nie fremde.
 # Zwei Formen (docs/package-contract.md §5): Core = String-Form { <alias>: <workflow-name> }, Zeilenname
 # unqualifiziert. Nicht-Core-Paket-Tool-Services = Objekt-Form { <alias>: { workflow, description, permission,
-# inputs } }, Zeilenname QUALIFIZIERT '<pkg>:<alias>' (globaler PK -> keine Kollision zwischen Anbietern; der
+# inputs } }, Zeilenname qualifiziert '<pkg>:<alias>' (globaler PK -> keine Kollision zwischen Anbietern; der
 # Praefix-CHECK in core.services erzwingt es) + permission/description fuer den Vermittler agent.sub_dispatch_tool.
 _seed_services() {
   local nameids; nameids="$(_collect_workflow_name_ids)"
@@ -898,9 +893,9 @@ _seed_services() {
     [ -n "$pkg" ] || { warn "Manifest ohne .name: $mf — uebersprungen."; continue; }
     _seed_skip_pkg "$pkg" && continue
     # Deklariert das Paket (noch) Dienste? Gezaehlt werden echte Aliase (Objekt-Keys ohne '_'-Kommentare; eine
-    # leere Liste [] = keine). Keine -> ownership-scoped ALLES dieses Pakets entfernen: ein Paket, das seinen
+    # leere Liste [] = keine). Keine -> ownership-scoped alles dieses Pakets entfernen: ein Paket, das seinen
     # letzten Dienst streicht, hinterlaesst sonst Leichen-Zeilen, die core.fn_resolve_service bei aktivem Paket
-    # auf einen nicht mehr existierenden Workflow aufloesen wuerde (Cold-Eyes, Phase 2). Fuer Pakete ohne je
+    # auf einen nicht mehr existierenden Workflow aufloesen wuerde. Fuer Pakete ohne je
     # einen Dienst ist das DELETE ein No-op.
     has="$(jq -r '(.provides.services // {}) | if type == "object" then ([keys[] | select(startswith("_") | not)] | length) else 0 end > 0' "$mf" 2>/dev/null)"
     if [ "$has" = "false" ]; then
@@ -909,7 +904,7 @@ _seed_services() {
     elif [ "$has" != "true" ]; then
       warn "core.services: provides.services von $pkg nicht auswertbar — uebersprungen (kein Reconcile)."; continue
     fi
-    # Upsert je (alias, wf_name) mit Map-Treffer; ALLE deklarierten Aliase fuer den Reconcile sammeln (S1).
+    # Upsert je (alias, wf_name) mit Map-Treffer; alle deklarierten Aliase fuer den Reconcile sammeln.
     aliases=""
     while IFS=$'\t' read -r alias wf_name perm desc; do
       [ -n "$alias" ] || continue
@@ -928,8 +923,8 @@ _seed_services() {
                     | if (.value | type) == "object"
                       then [.key, .value.workflow, (.value.permission // "owner_only"), (.value.description // "")]
                       else [.key, .value, "owner_only", ""] end | @tsv' "$mf")
-    # Per-Paket-Reconcile (ownership-scoped): nur Aliase DIESES Pakets, gegen die DEKLARIERTE Menge (S1:
-    # nicht die Treffer-Teilmenge -> eine declared-but-not-yet-deployed-Zeile bleibt erhalten).
+    # Per-Paket-Reconcile (ownership-scoped): nur Aliase dieses Pakets, gegen die deklarierte Menge
+    # (nicht die Treffer-Teilmenge -> eine declared-but-not-yet-deployed-Zeile bleibt erhalten).
     [ -n "$aliases" ] && \
       printf 'DELETE FROM core.services WHERE package = %s AND name <> ALL (ARRAY[%s]::text[]);\n' \
         "$(_sql_str "$pkg")" "$aliases"
@@ -949,24 +944,24 @@ seed_data() {
   {
     printf '\\set ON_ERROR_STOP on\n'
     printf 'BEGIN;\n'
-    _seed_ai_models       # ZUERST (config-Trigger referenziert model_key)
-    _seed_package_config  # core.config aus den .config-Bloecken ALLER Manifeste (WS4a; loest _seed_config ab)
+    _seed_ai_models       # zuerst (config-Trigger referenziert model_key)
+    _seed_package_config  # core.config aus den .config-Bloecken aller Manifeste
     _seed_ui_languages    # core.ui_languages aus dem Core-Manifest "languages" (Textkatalog; vor den Texten, FK)
     _seed_ui_personas     # core.ui_personas aus dem Core-Manifest "personas" (Wertevorrat family.persons[].persona)
     _seed_ui_texts        # core.ui_texts aus packages/<pkg>/locales/<lang>.json (Textkatalog, je Paket ersetzt)
     _seed_contexts
-    _seed_context_validators   # core.context_validators aus den Paket-Manifesten (WS-B1/D12)
-    _seed_context_scopes       # core.context_scopes aus den Paket-Manifesten (P0a Scope-/Permission-Registry)
-    _seed_context_skeletons       # leere Fakten-Skelette der Pakete (Install-UX-Phase 6, insert-only, nach den Validatoren)
-    _seed_context_renderers    # core.context_renderers aus den Paket-Manifesten (WS1a Render-Engine)
-    _seed_advisors             # core.advisors aus den Paket-Manifesten (WS2 Core-Advisor-Engine)
-    _seed_cron_labels          # core.cron_labels aus den Paket-Manifesten (Phase 0 WS-0c #2/#3 Cron-Toggle-Registry)
-    _seed_callback_handlers    # core.callback_handlers aus den Paket-Manifesten (Phase 0 WS-0c CB Callback-Dispatch-Registry)
+    _seed_context_validators   # core.context_validators aus den Paket-Manifesten
+    _seed_context_scopes       # core.context_scopes aus den Paket-Manifesten (Scope-/Permission-Registry)
+    _seed_context_skeletons       # leere Fakten-Skelette der Pakete (insert-only, nach den Validatoren)
+    _seed_context_renderers    # core.context_renderers aus den Paket-Manifesten (Render-Engine)
+    _seed_advisors             # core.advisors aus den Paket-Manifesten (Core-Advisor-Engine)
+    _seed_cron_labels          # core.cron_labels aus den Paket-Manifesten (Cron-Toggle-Registry)
+    _seed_callback_handlers    # core.callback_handlers aus den Paket-Manifesten (Callback-Dispatch-Registry)
     _seed_app_screens          # core.app_screens aus den Paket-Manifesten (Mini-App „Übersicht“, §3.12)
-    _seed_monitor_acquisition_methods  # core.monitor_acquisition_methods aus den Paket-Manifesten (Phase B Monitor-Methoden)
-    _seed_protected_contexts  # core.protected_contexts aus den Paket-Manifesten (WS-B2b Loeschschutz)
-    _seed_onboarding_sections  # <pkg>.onboarding_state aus packages/<pkg>/onboarding/sections.json (WS-B3)
-    _seed_services             # core.services aus provides.services ALLER Manifeste + getrackten Workflow-ids (WS-B6)
+    _seed_monitor_acquisition_methods  # core.monitor_acquisition_methods aus den Paket-Manifesten (Monitor-Methoden)
+    _seed_protected_contexts  # core.protected_contexts aus den Paket-Manifesten (Loeschschutz)
+    _seed_onboarding_sections  # <pkg>.onboarding_state aus packages/<pkg>/onboarding/sections.json
+    _seed_services             # core.services aus provides.services aller Manifeste + getrackten Workflow-ids
     printf 'COMMIT;\n'
   } > "$driver"
 
@@ -980,26 +975,25 @@ seed_data() {
   fi
 }
 
-# register_package <pkg> [status]  — EIN Paket in core.package_registry registrieren (Upsert aus dem
+# register_package <pkg> [status]  — ein Paket in core.package_registry registrieren (Upsert aus dem
 # Manifest) und optional auf <status> setzen (leer = nur registrieren -> fn_pkg_register setzt bei der
-# Erstanlage 'installing', laesst den Status bei Re-Register unangetastet). Phase 5: ersetzt das pauschale
-# register_packages (INTERIM). provision.sh registriert den Core ('active') in der Core-Phase; jedes andere
-# Paket registriert+aktiviert der per-Paket-Install (pkg_install_one Stage 1 'register' -> Stage 7 'active').
-# EIN Mechanismus, kein "alles aktiv"-Pauschal-Seed mehr. Idempotent. Reads globals: REPO_ROOT, N8N_DB_NAME.
+# Erstanlage 'installing', laesst den Status bei Re-Register unangetastet). provision.sh registriert den Core
+# ('active') in der Core-Phase; jedes andere Paket registriert+aktiviert der per-Paket-Install
+# (pkg_install_one Stage 1 'register' -> Stage 7 'active'). Idempotent. Reads globals: REPO_ROOT, N8N_DB_NAME.
 register_package() {
   local pkg="$1" status="${2:-}"
   [ -n "${REPO_ROOT:-}" ]   || die "REPO_ROOT nicht gesetzt."
   [ -n "${N8N_DB_NAME:-}" ] || die "N8N_DB_NAME nicht gesetzt."
   require_cmd jq; require_cmd md5sum
   printf '%s' "$pkg" | grep -qE '^[a-z][a-z0-9_]*$' || { warn "Ungueltiger Paketname '$pkg' — Registrierung uebersprungen."; return 1; }
-  # $status wird unten in die SQL interpoliert -> gegen die CHECK-Enum-Werte validieren (heute nur 'active';
-  # Backstop gegen einen kuenftigen Aufrufer, der einen freien String reinreicht -> sonst malformte SQL).
+  # $status wird unten in die SQL interpoliert -> gegen die CHECK-Enum-Werte validieren (Backstop gegen
+  # einen Aufrufer, der einen freien String reinreicht -> sonst malformte SQL).
   [ -z "$status" ] || printf '%s' "$status" | grep -qE '^[a-z][a-z_]+$' || { warn "Ungueltiger Status '$status' — Registrierung '$pkg' uebersprungen."; return 1; }
   local mf="$REPO_ROOT/packages/$pkg/manifest.json"
   [ -f "$mf" ] || { warn "Manifest fehlt: $mf — Registrierung '$pkg' uebersprungen."; return 1; }
   local sum payload esc setstatus=""
   sum="$(md5sum "$mf" | awk '{print $1}')"
-  # display_name = deutscher Katalog-Name (<pkg>.package.name, Textkatalog Phase B; Konsole/Modell-Projektion).
+  # display_name = deutscher Katalog-Name (<pkg>.package.name; Konsole/Modell-Projektion).
   payload="$(jq -c --arg sum "$sum" --arg dn "$(pkg_text "$pkg" package.name)" \
     '{package:.name, version:.version, description:.description, display_name:$dn, core_api:.core_api, requires:(.requires // []), manifest_checksum:$sum}' "$mf")"
   esc="${payload//\'/\'\'}"

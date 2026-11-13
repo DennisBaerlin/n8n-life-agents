@@ -1,7 +1,7 @@
 -- ============================================================
--- core.fn_update_report(p) (read-only — Update-Hinweis 2026-10-24, Fehler-Hilfe auf Owner-Wunsch)
---   Text + Knoepfe JEDER Meldung des root-Runners zu einem Auftrag (core.update_requests), in der Sprache des Owners.
---   Die EINE Adresse der Hilfe-Logik (Runner-Meldung im Chat und `lifeagents doctor`).
+-- fn_update_report (READ-ONLY) — Meldung des root-Runners zu einem Update-Auftrag
+--   Text + Knoepfe jeder Meldung des root-Runners zu einem Auftrag (core.update_requests), in der Sprache des Owners.
+--   Die eine Adresse der Hilfe-Logik (Runner-Meldung im Chat und `lifeagents doctor`).
 --   Jede Ergebnis-Meldung beantwortet drei Fragen: Was ist passiert? Laeuft mein System noch? Was kann ich tun?
 --   -> Kopf-Text je Klasse (core.update.<klasse> bzw. core.update.fail.<klasse>) + nummerierte Schritte
 --   (core.update.todo.*) + ggf. technische Details/Protokoll-Pfad.
@@ -9,19 +9,19 @@
 --     done | already_current | superseded | held | partial
 --     done_not_ready = installiert, aber der Bot antwortet nicht (kein Knopf, der Text nennt `lifeagents doctor`)
 --     unchanged  = failed, changed=false (Netz, Limit, Platz, Sperre, ...): System unveraendert
---     security   = failed mit signature/checksum: NICHT installiert, nie wiederholen, melden
+--     security   = failed mit signature/checksum: nicht installiert, nie wiederholen, melden
 --     midway     = failed, changed=true/unbekannt, Bot laeuft: Wiederholen setzt fort, sonst Rueckweg
 --     interrupted= Runner starb mittendrin (Neustart), Bot laeuft
---     bot_down   = wie midway/interrupted, aber n8n nicht bereit -> KEINE Callback-Knoepfe (wuerden ins Leere tippen),
+--     bot_down   = wie midway/interrupted, aber n8n nicht bereit -> keine Callback-Knoepfe (wuerden ins Leere tippen),
 --                  nur Terminal-Schritte; URL-Knoepfe (Hilfe, Problem melden) gehen auch ohne Bot.
 --   Knoepfe: [Erneut versuchen] (upd:retry:<tag>) nur bei laufendem Bot und core.fn_update_retry_allowed;
 --     [Hilfe] -> help_url#<klasse>; [Problem melden] nur bei security -> github.com/<slug>/security/advisories/new
 --     (private Meldung, Issues sind aus; ohne vorausgefuellten Text, also nie detail/Log im Link).
---   Phase progress_plan: alle Texte der Fortschritts-Nachricht samt Balken, fertig gerendert. Der Runner liest sie einmal vor
+--   phase progress_plan: alle Texte der Fortschritts-Nachricht samt Balken, fertig gerendert. Der Runner liest sie einmal vor
 --   dem Update, denn danach ist die DB zeitweise weg. Prozent = Beginn des Schritts, fest geschaetzt; der Helfer rechnet nichts.
 --   p: {request_id, phase:'start'|'result'|'progress_plan', bot_up?(Default true), help_url?, repo_slug?, backup?, log?,
 --       missing?, failed?, latest?}
---   RUECKGABE: {text, keyboard:[[...]], class} — unbekannter Auftrag -> {text:'', keyboard:[]}. Nie RAISE.
+--   Rueckgabe: {text, keyboard:[[...]], class} — unbekannter Auftrag -> {text:'', keyboard:[]}. Nie RAISE.
 --     progress_plan: {start:{pct,text,stopped}, stages:{<code>:{pct,text,stopped}}, done:{pct,text}}
 --   INVOKER (root ueber runuser postgres). Tests: tests/db/core/test_fn_update_requests.sql
 -- ============================================================
@@ -79,7 +79,7 @@ BEGIN
     END IF;
 
     v_lang := agent.fn_person_lang(NULL)->>'lang';   -- NULL = Owner
-    -- Codes -> GANZE Katalog-Keys (locale_lint 8: SQL nennt Keys nur vollstaendig); Unbekanntes -> .unknown
+    -- Codes -> ganze Katalog-Keys (locale_lint 8: SQL nennt Keys nur vollstaendig); Unbekanntes -> .unknown
     v_stage_key := COALESCE((SELECT s->>'key' FROM jsonb_array_elements(v_stages) s WHERE s->>'code' = v_r.stage),
                             'core.update.stage.unknown');
     v_reason_key := CASE v_r.reason_code
@@ -129,7 +129,8 @@ BEGIN
                     'tag', v_r.tag, 'pct', '100', 'bar', repeat(v_filled, 10)))));
     END IF;
 
-    -- Die Start-Meldung ruft nur noch ein Runner ohne Fortschritts-Helfer: er laeuft beim Umstieg neben dieser Fassung.
+    -- Die Start-Meldung ruft nur ein Runner ohne Fortschritts-Helfer (phase 'start'): beim Umstieg laeuft der
+    -- alte Runner neben dieser Fassung, darum bleibt der Zweig.
     IF COALESCE(p->>'phase', 'result') = 'start' THEN
         RETURN jsonb_build_object('text', core.fn_ui_text('core.update.running', v_lang, v_params),
                                   'keyboard', '[]'::jsonb, 'class', 'running');
@@ -220,6 +221,6 @@ BEGIN
 END;
 $$;
 
--- Der einzige Aufrufer ist oben entfallen. Hier statt in einem V__ gedroppt: V__ laeuft vor den R__, und ein dazwischen
+-- Kein Aufrufer mehr. Hier statt in einem V__ gedroppt: V__ laeuft vor den R__, und ein dazwischen
 -- abgebrochenes Update fiele mit der alten Fassung dieser fn gerade beim Melden des Fehlers aus.
 DROP FUNCTION IF EXISTS core.fn_url_encode(text);

@@ -3,7 +3,7 @@
 --   Ein Konto "kann Datei-Import", wenn seine Bank (sonst sein Name) zum bank_pattern eines Profils aus
 --   fn_bank_export_profiles passt. Leser: Monats-Erinnerung (cron.reconcile_accounts: Schritt-Text Datei statt PDF).
 --   plpgsql (late-bound): fn_bank_export_profiles liegt alphabetisch spaeter.
---   RUECKGABE: Profil-key (text) | NULL.
+--   Eingabe: p_account_id. Rueckgabe: Profil-key (text) | NULL (auch bei unbekannter Konto-id).
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_bank_export_account_profile(p_account_id int)
 RETURNS text LANGUAGE plpgsql STABLE AS $$

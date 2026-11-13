@@ -1,19 +1,18 @@
 -- ============================================================
 -- fn_import_balance_targets (READ, STABLE) -- Cash-/Verrechnungs-Salden aus einer Depot-Uebersicht zuordnen
---   Fall 2026-10-23: eine Broker-Vermoegensuebersicht druckt neben den Positionen den Cash-Stand des
---   Verrechnungskontos (Cash-Stand mit Datum). Die Extraktion lieferte ihn als neues Konto -> als Dublette
---   eines FREMDEN Kontos abgelehnt und verworfen. Jetzt: tool_extract_finance_document stagt diese Zeilen NICHT,
---   sondern ordnet sie hier zu; der Agent bietet danach je Abweichung tool_reconcile_account an (eigene Karte,
---   Owner-Entscheid "zweite Karte statt neuer Import-Art").
+--   Eine Broker-Vermoegensuebersicht druckt neben den Positionen den Cash-Stand des Verrechnungskontos (mit Datum).
+--   Als neues Konto gestagt wuerde er als Dublette eines fremden Kontos abgelehnt: tool_extract_finance_document
+--   stagt diese Zeilen nicht, sondern ordnet sie hier zu; der Agent bietet danach je Abweichung
+--   tool_reconcile_account an (eigene Karte statt neuer Import-Art).
 --   Eingabe: p_batch_id (Staging-Batch derselben Extraktion, fuer In-Batch-Depots), p_rows jsonb-Array von
 --     {depot?, depot_number?, depot_holder?, balance, balance_date}.
 --   Je Zeile: Depot ueber fn_import_resolve_depot (Nummer -> extrahierter Name -> Inhaber; ohne ISIN/Symbol jeder
---   Depot-Typ) + fn_import_depot_conflict, dann dessen Verrechnungskonto (settlement_account_id). Nur BESTEHENDE
+--   Depot-Typ) + fn_import_depot_conflict, dann dessen Verrechnungskonto (settlement_account_id). Nur bestehende
 --   Konten: ein Depot, das erst in diesem Batch entsteht, bekommt seinen Saldo als opening_balance der Konto-Zeile
---   (Plan-Review: sonst Doppelbuchung, fn_get_balance_as_of zum Druckdatum waere 0). Pflicht: balance + balance_date
+--   (sonst Doppelbuchung, fn_get_balance_as_of zum Druckdatum waere 0). Pflicht: balance + balance_date
 --   (nie "heute" raten: ein alter Stand ueberschriebe einen neueren). Zweite Zeile fuer dasselbe Konto = Fehler.
 --   Blocker wie die Buchung (fn_reconcile_blocker: Depot-/Kreditkonto, Zukunft, vor dem letzten Abgleich).
---   RUECKGABE jsonb-Array, je Zeile {ok:true, account_name, currency, balance_date, balance_before, balance,
+--   Rueckgabe jsonb-Array, je Zeile {ok:true, account_name, currency, balance_date, balance_before, balance,
 --   difference, skip_count} | {ok:false, error, row}. balance_before = fn_get_balance_as_of(Konto, Druckdatum);
 --   skip_count = fn_reconcile_open_due (was der Abgleich als erledigt markiert).
 -- ============================================================

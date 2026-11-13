@@ -1,6 +1,6 @@
 -- tests/db/core/test_fn_render_welcome.sql
--- Testet core.fn_render_welcome(p_lang) (Install-UX-Phase 6 + Textkatalog Phase B): die EINE Textquelle der
--- Owner-Begruessung, gelesen vom Orchestrator (bare /start, core_ro, Sprache des Owners) UND vom Installer (nach dem
+-- Testet core.fn_render_welcome(p_lang): die eine Textquelle der
+-- Owner-Begruessung, gelesen vom Orchestrator (bare /start, core_ro, Sprache des Owners) und vom Installer (nach dem
 -- Pairing + _oc_finalize, Superuser, ohne Argument = Owner-Sprache).
 --   Vertrag: {ok, kind: new|back, lang, text, buttons:[{text, callback_data}]}
 --   new  = Core-Haushalt noch offen (guide_onboarding_state 'unknown') -> Vorname + installierte Funktionen
@@ -10,7 +10,6 @@
 --   Paket-id); 'inactive' wird mit dem Einschalt-Befehl genannt; 'installing' (abgebrochen) zaehlt nicht.
 --   Alle Texte aus core.ui_texts in p_lang (NULL -> Owner-Sprache; Key fehlt -> en). Die Fixture-Texte tragen
 --   Sprach-Marker (DE/KO/EN), damit die Tests den Wortlaut des echten Katalogs nicht spiegeln.
--- Pattern: BEGIN…ROLLBACK, RAISE EXCEPTION 'FAIL …' = Test fehlgeschlagen.
 BEGIN;
 
 DO $$

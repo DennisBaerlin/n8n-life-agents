@@ -1,30 +1,29 @@
 -- ============================================================
--- finance.fn_validate_financial_planning (WS1a — Core-Advisor-Engine)
+-- fn_validate_financial_planning (READ HELPER, STABLE)
 --   Strukturvalidierung des paket-besessenen 'financial_planning'-Plan-Fakten-Sidecars
---   (metadata.facts: goal / risk_profile / target_allocation / glidepath / _meta). emergency_reserve wird seit
---   2026-10-30 abgewiesen (Notreserve = Ruecklage kind emergency_reserve, fn_emergency_reserve_status).
---   Phase A: risk_profile = {risk_tolerance, risk_capacity (low|medium|high), as_of (DATE, nicht Zukunft)}.
---   WS2b: jeder target_allocation.blocks[]-Eintrag traegt einen stabilen Maschinen-`key`
---   (lowercase snake, == depot_holdings.asset_class-Format) NEBEN dem Anzeige-`name` — Pflicht je Block,
---   Format-geprueft + eindeutig (der stabile Drift-Join-Key, ueberlebt name-Renames; arch-challenge
---   Candidate 1, Praezedenz Nautobot key/label).
---   Vom Core-Trigger agent.trg_core_contexts_validate_facts_fn GENERISCH ueber die Registry
+--   (metadata.facts: goal / risk_profile / target_allocation / glidepath / _meta). emergency_reserve wird
+--   abgewiesen (Notreserve = Ruecklage kind emergency_reserve, fn_emergency_reserve_status).
+--   risk_profile = {risk_tolerance, risk_capacity (low|medium|high), as_of (DATE, nicht Zukunft)}.
+--   Jeder target_allocation.blocks[]-Eintrag traegt einen stabilen Maschinen-`key`
+--   (lowercase snake, == depot_holdings.asset_class-Format) neben dem Anzeige-`name` — Pflicht je Block,
+--   Format-geprueft + eindeutig (der stabile Drift-Join-Key, ueberlebt name-Renames; Praezedenz Nautobot key/label).
+--   Vom Core-Trigger agent.trg_core_contexts_validate_facts_fn generisch ueber die Registry
 --   core.context_validators dispatcht (NEW.name='financial_planning' -> diese fn); fehlt die
 --   Registry-Zeile (Paket nicht installiert), entfaellt die Plan-Strukturpruefung still.
+--   Eingabe: p_facts jsonb (kein Objekt oder NULL -> gueltig).
 --
---   PARTIAL-TOLERANT (P1-B): jeder Top-Block ist OPTIONAL — innere Konsistenz wird NUR geprueft,
+--   Partial-tolerant: jeder Top-Block ist optional — innere Konsistenz wird nur geprueft,
 --   wenn der Block vorhanden ist (Muster fn_validate_finance_profile: 'IF p_facts ? x'-geguardet).
 --   Sonst wuerde der BEFORE-UPDATE-Trigger jeden Publish mit noch-unvollstaendigem facts hart
---   ablehnen (Compose materialisiert nur die im Interview berührten Sektionen).
+--   ablehnen (Compose materialisiert nur die im Interview beruehrten Sektionen).
 --
---   DERIVED-GUARD (P1-1): die rekursive Derived-Key-Denylist (calendar years / ages / years_to_* /
---   nominal / derived_/computed_-Prefix) lebt seit WS1b GENERISCH im Core-Validator
---   agent.fn_validate_household_facts (laeuft vom selben Trigger VOR diesem Paket-Validator, fuer
---   JEDEN facts-Sidecar) — hier NICHT mehr dupliziert. Dieser Validator prueft nur die DOMAENEN-
---   STRUKTUR der Plan-facts.
+--   Derived-Guard: die rekursive Derived-Key-Denylist (calendar years / ages / years_to_* /
+--   nominal / derived_/computed_-Prefix) lebt generisch im Core-Validator
+--   agent.fn_validate_household_facts (laeuft vom selben Trigger vor diesem Paket-Validator, fuer
+--   jeden facts-Sidecar) — hier nicht dupliziert. Dieser Validator prueft nur die Domaenen-
+--   Struktur der Plan-facts.
 --
 --   RUECKGABE: NULL = gueltig; sonst englischer Fehlertext (der Core-Trigger -> RAISE EXCEPTION).
---   Anwenden via: db_apply.ps1 -File packages\finance\db\migrations\R__fn_validate_financial_planning.sql
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_validate_financial_planning(p_facts jsonb)
 RETURNS text LANGUAGE plpgsql STABLE AS $$
@@ -50,7 +49,7 @@ BEGIN
         RETURN NULL;  -- facts optional / nicht-Objekt: nichts zu pruefen (Compose schreibt immer ein Objekt)
     END IF;
 
-    -- Notreserve (2026-10-30): kein Plan-Fakt mehr, sondern eine Ruecklage (Sparziel kind emergency_reserve) — ein
+    -- Notreserve: kein Plan-Fakt, sondern eine Ruecklage (Sparziel kind emergency_reserve) — ein
     -- Fakt, eine Adresse. Alt-Bloecke raeumt finance:V033 aus den gespeicherten Plaenen.
     IF p_facts ? 'emergency_reserve' THEN
         RETURN 'emergency_reserve is no longer a plan block - the emergency reserve is kept as a reserve goal (the '
@@ -58,14 +57,9 @@ BEGIN
             || 'section prose only';
     END IF;
 
-    -- HINWEIS (WS1b): die rekursive DERIVED-Key-Denylist (calendar years / ages / years_to_* / nominal /
-    -- derived_/computed_-Prefix) lebt jetzt GENERISCH im Core-Validator agent.fn_validate_household_facts,
-    -- der vom selben Trigger VOR diesem Paket-Validator laeuft (jeder facts-Sidecar) — hier nicht mehr
-    -- dupliziert (P1-1). Dieser Validator prueft nur noch die DOMAENEN-STRUKTUR des Plan-Sidecars.
-
     -- ---------- goal (optional) ----------
     IF p_facts ? 'goal' AND jsonb_typeof(p_facts->'goal') = 'object' THEN
-        -- WP2 ("Keine ableitbaren Spalten"): von Einkommen, Entnahmerate und Zielportfolio nur ZWEI speichern -- der dritte
+        -- Keine ableitbaren Spalten: von Einkommen, Entnahmerate und Zielportfolio nur zwei speichern -- der dritte
         -- haengt an den beiden (fn_plan_goal_resolved leitet ihn fuer Anzeige + Drift ab).
         IF (p_facts->'goal') ? 'target_income_eur_month' AND (p_facts->'goal') ? 'withdrawal_rate_pct'
            AND (p_facts->'goal') ? 'target_portfolio_eur' THEN
@@ -79,17 +73,17 @@ BEGIN
                 RETURN format('goal.withdrawal_rate_pct %s out of range (0,10]', v_rate);
             END IF;
         END IF;
-        -- Inflations-Annahme (FPA "improved method": alles REAL gespeichert + EINE Annahme, Nominal abgeleitet)
+        -- Inflations-Annahme (FPA "improved method": alles real gespeichert + eine Annahme, Nominal abgeleitet)
         IF (p_facts->'goal') ? 'inflation_pct'
            AND jsonb_typeof(p_facts->'goal'->'inflation_pct') = 'number' THEN
             IF (p_facts->'goal'->>'inflation_pct')::numeric < 0 OR (p_facts->'goal'->>'inflation_pct')::numeric > 10 THEN
                 RETURN format('goal.inflation_pct %s out of range [0,10]', p_facts->'goal'->>'inflation_pct');
             END IF;
         END IF;
-        -- WS3: target_portfolio_basis = wie der Review-Drift den FIRE-Topf misst (2026-06-22).
-        --   'investment' (Default) = Depot + Cash + Festgeld + P2P - Earmarks, OHNE Hypothek/Haus/Rente
+        -- target_portfolio_basis = wie der Review-Drift den FIRE-Topf misst.
+        --   'investment' (Default) = Depot + Cash + Festgeld + P2P (brutto, kein Netting der Sparziel-Reserven), ohne Hypothek/Haus/Rente
         --     (Bengen/Trinity/Big-ERN: der 4%-Entnahme-Topf; Haus+Hypothek heben sich auf, bleiben aussen).
-        --   'net_worth' = investierbar + Immobilien + alle Kredite (Audit Paket 3: Haus und Hypothek heben sich auf;
+        --   'net_worth' = investierbar + Immobilien + alle Kredite (Haus und Hypothek heben sich auf;
         --   eine herausfallende Immobilie nimmt ihren Kredit mit). Der Review honoriert es per
         --   COALESCE(...,'investment') mit ELSE-Fail-Safe -> hier nur die Enum-Integritaet (Backstop).
         IF (p_facts->'goal') ? 'target_portfolio_basis'
@@ -111,16 +105,16 @@ BEGIN
            AND jsonb_array_length(v_alloc->'blocks') > 0 THEN
             v_sum := 0;
             FOR v_blk IN SELECT * FROM jsonb_array_elements(v_alloc->'blocks') LOOP
-                -- WS2b (arch-challenge Candidate 1): jeder Block traegt einen stabilen Maschinen-`key`
-                -- (lowercase snake, == depot_holdings.asset_class-Tag-Format) NEBEN dem Anzeige-`name`.
-                -- Der key ist der STABILE Join-Key der Drift (ueberlebt name-Renames); Pflicht je Block +
+                -- jeder Block traegt einen stabilen Maschinen-`key`
+                -- (lowercase snake, == depot_holdings.asset_class-Tag-Format) neben dem Anzeige-`name`.
+                -- Der key ist der stabile Join-Key der Drift (ueberlebt name-Renames); Pflicht je Block +
                 -- Format + eindeutig (Praezedenz Nautobot key/label, Ghostfolio enum+UI, PP uuid+name).
                 IF jsonb_typeof(v_blk->'key') IS DISTINCT FROM 'string'
                    OR (v_blk->>'key') !~ '^[a-z0-9_]+$' THEN
                     RETURN 'each target_allocation.blocks[] needs a key matching ^[a-z0-9_]+$ (lowercase machine key, e.g. sp500)';
                 END IF;
                 v_key := v_blk->>'key';
-                -- outside_plan ist reserviert (2026-10-23): Positionen "bewusst ausserhalb des Plans"; ein Block mit
+                -- outside_plan ist reserviert: Positionen "bewusst ausserhalb des Plans"; ein Block mit
                 -- diesem key zoege sie zurueck in den Drift-Nenner
                 IF v_key = 'outside_plan' THEN
                     RETURN 'target_allocation.blocks[] key "outside_plan" is reserved (positions deliberately outside the plan) - choose another key';
@@ -149,9 +143,9 @@ BEGIN
                     END IF;
                 END IF;
             END LOOP;
-            -- Allokations-Summe = 100 (±0.5 Toleranz fuer Rundung). target_pct/corridor sind GESAMTplan-Anteile
+            -- Allokations-Summe = 100 (±0.5 Toleranz fuer Rundung). target_pct/corridor sind Gesamtplan-Anteile
             -- (inkl. Festgeld/Immobilie/Vorsorge); fn_advisor_review normiert die handelbaren Bloecke fuer den
-            -- Drift auf deren Summe (Audit Paket 3) -> hier bewusst keine zweite, handelbare Summenpruefung.
+            -- Drift auf deren Summe -> hier bewusst keine zweite, handelbare Summenpruefung.
             IF abs(v_sum - 100) > 0.5 THEN
                 RETURN format('target_allocation.blocks target_pct sum to %s, expected 100 (±0.5)', v_sum);
             END IF;
@@ -189,11 +183,11 @@ BEGIN
         END IF;
     END IF;
 
-    -- ---------- risk_profile (optional, Phase A) — MiFID-Dimensionen + as_of-Stempel ----------
+    -- ---------- risk_profile (optional) — MiFID-Dimensionen + as_of-Stempel ----------
     -- risk_tolerance (Bereitschaft) + risk_capacity (Tragfaehigkeit) als grobe low|medium|high-Enums
-    -- (Owner-Wahl: konversationelles Single-User-Tool, keine numerischen Robo-Scores); as_of = Stand der
-    -- Risiko-Erhebung (MiFID-Jahres-Re-Assessment; treibt den risk_profile_staleness-Nudge). BEWUSST KEIN
-    -- risk_need (semi-ableitbar -> in der Prosa gegen goal abgewogen, nicht gespeichert) und KEIN
+    -- (konversationelles Tool, keine numerischen Robo-Scores); as_of = Stand der
+    -- Risiko-Erhebung (MiFID-Jahres-Re-Assessment; treibt den risk_profile_staleness-Nudge). Bewusst kein
+    -- risk_need (semi-ableitbar -> in der Prosa gegen goal abgewogen, nicht gespeichert) und kein
     -- time_horizon (abgeleitet planned_retirement_age - Alter; die Core-Denylist verbietet gespeicherten
     -- Horizont). Partial-tolerant: jedes Feld optional.
     IF p_facts ? 'risk_profile' AND jsonb_typeof(p_facts->'risk_profile') = 'object' THEN

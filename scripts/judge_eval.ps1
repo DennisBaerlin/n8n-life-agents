@@ -1,33 +1,35 @@
 ﻿#Requires -Version 5.1
 # Auto-Judge -- automatisierte Bewertung der Verhaltens-Rubrics (Layer 2, Judge-Schritt).
 # Liest tests\agent\judge_bundle.json (von n8n_test.ps1 erzeugt) und bewertet jede Rubric
-# per LLM. Der finale Verdikt ist KOMBINIERT:
+# per LLM. Das finale Verdikt ist kombiniert:
 #
 #   OVERALL PASS  <=>  det_pass (deterministisches Routing+Args) UND Judge-Verdikt == PASS
 #
 # det_pass kommt aus dem Bundle (n8n_test.ps1 schreibt es mit); der Judge bewertet nur das
 # Verhalten/die Parameter (z. B. fragt nach Zinssatz, nennt Saldo, erklaert Mismatch).
 #
-# --- A1: Judge-KALIBRIERUNG (gegen menschliche Labels) ---
-#   .\scripts\judge_eval.ps1 -Calibrate
+# Usage:
+#   .\scripts\judge_eval.ps1                  # Bundle bewerten
+#   .\scripts\judge_eval.ps1 -Calibrate       # Judge gegen Labels eichen
+#   .\scripts\judge_eval.ps1 -Model <id>      # gepinnte Judge-Version ueberschreiben (z. B. claude-sonnet-5-5)
+#
+# --- A1: Judge-Kalibrierung (gegen menschliche Labels) ---
 #   Misst den Judge gegen tests\agent\cross\judge_labels.json (hand-gelabelte Faelle): Agreement-Rate
 #   + Cohen's kappa (binaer PASS vs. nicht-PASS). Ein ungemessener LLM-Judge ist ein ungemessenes
 #   Messinstrument -> diese Eichung validiert, dass ein "PASS" etwas wert ist. Bei jedem
 #   Judge-Modell-/Provider-Wechsel neu laufen lassen. Exit != 0 wenn kappa < Schwelle.
 #
-# --- Judge-Modell (Modell-Phase 2) ---
-#   Claude Haiku 5.5 ueber die Anthropic-Messages-API (wie die Agenten seit Modell-Phase 2 nur noch Claude;
-#   der fruehere Google-Zweig ist entfernt). Das Urteil kommt per Structured Output (output_config.format,
-#   JSON-Schema verdict+reason), Denk-Tiefe low, KEINE Sampling-Parameter (die 5.5-Generation lehnt
-#   temperature mit 400 ab). -Model ueberschreibt die gepinnte Version (z. B. claude-sonnet-5-5).
+# --- Judge-Modell ---
+#   Claude Haiku 5.5 ueber die Anthropic-Messages-API. Das Urteil kommt per Structured Output
+#   (output_config.format, JSON-Schema verdict+reason), Denk-Tiefe low, keine Sampling-Parameter
+#   (die 5.5-Generation lehnt temperature mit 400 ab).
 #
 # --- C2: ERROR != FAIL ---
-#   Ein API-Timeout/Parse-Fehler des Judges (verdict=ERROR) ist Infra-Flake, KEIN inhaltliches FAIL.
+#   Ein API-Timeout/Parse-Fehler des Judges (verdict=ERROR) ist Infra-Flake, kein inhaltliches FAIL.
 #   ERROR wird einmal ge-retry-t und im Summary getrennt ausgewiesen (nicht als Rubric-FAIL).
 #
 # Exit-Code = Anzahl OVERALL FAILs + nicht-aufloesbare ERRORs (Gate bleibt ehrlich: unjudged != gruen).
-# Voraussetzungen: .env mit ANTHROPIC_API_KEY.
-#   Scripts-Only-Policy: offizielles Skript, nur auf explizite Aufforderung (kostet LLM-Calls).
+# Voraussetzungen: .env mit ANTHROPIC_API_KEY; der Lauf kostet LLM-Calls und braucht das Owner-Fenster.
 param(
     [string]$Model = 'claude-haiku-5-5',
     [switch]$Calibrate,
@@ -40,7 +42,6 @@ $ErrorActionPreference = 'Stop'
 $Utf8NoBom = New-Object System.Text.UTF8Encoding($false)
 $RepoRoot  = git -C $PSScriptRoot rev-parse --show-toplevel
 
-# .env laden (gleicher Mechanismus wie die uebrigen Skripte)
 . "$PSScriptRoot\lib\dotenv.ps1"
 Read-DotEnvLines "$RepoRoot\.env" | ForEach-Object {
     if ($_ -match '^\s*([^#\s][^=]*)=(.*)$') {
@@ -48,20 +49,19 @@ Read-DotEnvLines "$RepoRoot\.env" | ForEach-Object {
     }
 }
 
-# Key kommt IMMER als Header (nie im URI) -> der Key landet nie in URL-basierten Fehlermeldungen.
+# Der Key geht immer als Header, nie im URI -> er landet nie in URL-basierten Fehlermeldungen.
 if ([string]::IsNullOrEmpty((Get-Variable 'ANTHROPIC_API_KEY' -ValueOnly -ErrorAction SilentlyContinue))) {
     throw "ANTHROPIC_API_KEY ist nicht gesetzt in .env (der Judge laeuft ueber Claude)."
 }
 $script:Endpoint = 'https://api.anthropic.com/v1/messages'
 $script:ApiKey   = $ANTHROPIC_API_KEY
 $Provider = 'anthropic'   # nur fuer die Ausgabe-Zeilen
-# Kostenuebersicht (gleiche Ausgabe wie die Agent-Suiten): der Judge ruft Anthropic DIREKT (nicht ueber den
-# LLM-Gateway des Substrats) -> usage je Antwort lokal mitzaehlen. Bewusst KEIN Prompt-Caching (System ~120 Token
-# < 512-Minimum) und KEINE Batch-API (~40 Haiku-Aufrufe ~ 0,01 $/Lauf -> -50 % spart < 1 Cent).
+# Der Judge ruft Anthropic direkt (nicht ueber den LLM-Gateway des Substrats) -> usage je Antwort lokal
+# mitzaehlen fuer die Kostenuebersicht. Bewusst kein Prompt-Caching (System ~120 Token < 512-Minimum)
+# und keine Batch-API (~40 Haiku-Aufrufe ~ 0,01 $/Lauf -> -50 % spart < 1 Cent).
 . "$PSScriptRoot\dev\test_n8n_state.ps1"
 $script:JudgeUsage = New-Object System.Collections.ArrayList
 
-# System-Instruction: knapp, erzwingt parsebares JSON.
 $SystemText = @'
 Du bewertest, ob das Verhalten eines Finanz-Agenten eine vorgegebene Erwartungs-Rubric erfuellt.
 Beruecksichtige sowohl den Antworttext als auch den tatsaechlichen Tool-Aufruf inkl. seiner
@@ -88,7 +88,6 @@ Antworte AUSSCHLIESSLICH als JSON ohne Markdown-Fences in der Form:
 PASS nur, wenn die Rubric vollstaendig erfuellt ist; PARTIAL bei teilweiser Erfuellung; sonst FAIL.
 '@
 
-# Baut den User-Prompt-Text aus einem Bundle-/Label-Eintrag.
 function Format-JudgeUserText([object]$Entry) {
     return @"
 TASK:
@@ -108,7 +107,7 @@ $($Entry.actual_output)
 "@
 }
 
-# Urteils-Schema (Structured Output): die API garantiert parsebares JSON mit genau diesen Feldern.
+# Structured Output: die API garantiert parsebares JSON mit genau diesen Feldern.
 $VerdictSchema = [ordered]@{
     type                 = 'object'
     properties           = [ordered]@{
@@ -119,7 +118,7 @@ $VerdictSchema = [ordered]@{
     additionalProperties = $false
 }
 
-# Ein Judge-Call. Liefert @{ verdict; reason }. verdict in PASS|FAIL|PARTIAL|ERROR.
+# Liefert @{ verdict; reason }, verdict in PASS|FAIL|PARTIAL|ERROR.
 function Invoke-JudgeOnce([object]$Entry) {
     $userText = Format-JudgeUserText $Entry
     try {
@@ -143,10 +142,10 @@ function Invoke-JudgeOnce([object]$Entry) {
         if ($resp.stop_reason -in @('max_tokens', 'refusal', 'pause_turn')) {
             return @{ verdict = 'ERROR'; reason = "Judge-Antwort unvollstaendig (stop_reason $($resp.stop_reason))" }
         }
-        # Alle text-Bloecke ohne Trenner zusammenfuegen (Muster anthropicText in Get-AnthropicResultJs).
+        # Alle text-Bloecke ohne Trenner zusammenfuegen (wie anthropicText in Get-AnthropicResultJs).
         $raw = (@($resp.content) | Where-Object { $_.type -eq 'text' } | ForEach-Object { $_.text }) -join ''
     } catch {
-        # NUR Statuszeile ausgeben -- niemals $_ roh (koennte Request-Header/-Body spiegeln).
+        # Nur die Statuszeile ausgeben, nie $_ roh (koennte Request-Header/-Body spiegeln).
         $msg = "$Provider-API-Call fehlgeschlagen"
         try { if ($_.Exception.Response.StatusCode) { $msg += " (HTTP $([int]$_.Exception.Response.StatusCode))" } } catch { }
         return @{ verdict = 'ERROR'; reason = $msg }
@@ -164,7 +163,7 @@ function Invoke-JudgeOnce([object]$Entry) {
     }
 }
 
-# C2: ERROR ist Infra-Flake -> einmal retryen, bevor wir aufgeben.
+# C2: ERROR ist Infra-Flake -> einmal retryen.
 function Invoke-Judge([object]$Entry) {
     $r = Invoke-JudgeOnce $Entry
     if ($r.verdict -eq 'ERROR') {
@@ -175,9 +174,7 @@ function Invoke-Judge([object]$Entry) {
     return $r
 }
 
-# =======================================================================
-# A1: Kalibrierungs-Modus -- Judge gegen menschliche Labels messen.
-# =======================================================================
+# A1: Kalibrierungs-Modus
 if ($Calibrate) {
     $labelPath = Join-Path $RepoRoot 'tests\agent\cross\judge_labels.json'
     if (-not (Test-Path $labelPath)) {
@@ -190,8 +187,8 @@ if ($Calibrate) {
     Write-Host "Judge-Kalibrierung ($Provider/$Model) -- $($labels.Count) Label-Case(s)"
     Write-Host ("-" * 64)
 
-    # Binaer: human/judge auf PASS vs. nicht-PASS (PARTIAL/FAIL = nicht-PASS) reduzieren -- so wird
-    # auch das OVERALL-Gate gefahren (nur PASS zaehlt). Confusion-Matrix-Zellen:
+    # Binaer: human/judge auf PASS vs. nicht-PASS (PARTIAL/FAIL = nicht-PASS) reduzieren, wie das OVERALL-Gate
+    # (nur PASS zaehlt).
     $tp = 0; $tn = 0; $fp = 0; $fn = 0; $errc = 0
     foreach ($e in $labels) {
         $human = "$($e.human_verdict)".ToUpper()
@@ -219,9 +216,9 @@ if ($Calibrate) {
     Write-Host ("-" * 64)
     if ($n -eq 0) { Write-Host "Keine auswertbaren Faelle (alle ERROR?)." -ForegroundColor Red; exit 1 }
 
-    $po = ($tp + $tn) / $n                                  # beobachtete Uebereinstimmung
-    $pPassH = ($tp + $fn) / $n; $pPassJ = ($tp + $fp) / $n  # Randverteilungen
-    $pe = ($pPassH * $pPassJ) + ((1 - $pPassH) * (1 - $pPassJ))  # erwartete Zufalls-Uebereinstimmung
+    $po = ($tp + $tn) / $n
+    $pPassH = ($tp + $fn) / $n; $pPassJ = ($tp + $fp) / $n
+    $pe = ($pPassH * $pPassJ) + ((1 - $pPassH) * (1 - $pPassJ))
     $kappa = if ((1 - $pe) -eq 0) { 1.0 } else { ($po - $pe) / (1 - $pe) }
 
     Write-Host ("Confusion (PASS vs. nicht-PASS):  TP={0}  TN={1}  FP={2}  FN={3}  (ERROR={4})" -f $tp,$tn,$fp,$fn,$errc)
@@ -237,9 +234,7 @@ if ($Calibrate) {
     }
 }
 
-# =======================================================================
 # Normalbetrieb: Bundle bewerten.
-# =======================================================================
 $bundlePath = Join-Path $RepoRoot 'tests\agent\judge_bundle.json'
 if (-not (Test-Path $bundlePath)) {
     throw "judge_bundle.json nicht gefunden ($bundlePath). Erst .\scripts\n8n_test.ps1 ausfuehren."
@@ -264,7 +259,7 @@ foreach ($e in $bundle) {
     Write-Host "    Judge: $($j.verdict)"
     if ($Verbose -or $j.verdict -ne 'PASS') { Write-Host "      reason: $($j.reason)" -ForegroundColor DarkGray }
 
-    # C2: ERROR (auch nach Retry) ist KEIN inhaltliches FAIL -> separat ausweisen.
+    # C2: ERROR (auch nach Retry) ist kein inhaltliches FAIL -> separat ausweisen.
     if ($j.verdict -eq 'ERROR') {
         $errorCount++
         Write-Host "    [JUDGE ERROR] -> Infra/Parsing (nicht als Rubric-FAIL gewertet, aber Gate nicht gruen)" -ForegroundColor Yellow
@@ -289,7 +284,7 @@ Write-Host "$passed/$($bundle.Count) Cases OVERALL PASS (det AND Rubric), $overa
 if ($errorCount -gt 0) { Write-Host "Hinweis: ERROR = Judge nicht auswertbar (API/Parsing), NICHT inhaltlich durchgefallen -- erneut laufen lassen." -ForegroundColor Yellow }
 Write-Host ""
 
-# Gate bleibt ehrlich: unjudged (ERROR) zaehlt in den Exit-Code (Gruen nur wenn alles wirklich PASS),
-# wird im Summary aber klar von echten Rubric-FAILs getrennt (nicht mehr als FAIL fehl-etikettiert).
+# Gate bleibt ehrlich: unjudged (ERROR) zaehlt in den Exit-Code (gruen nur, wenn alles wirklich PASS),
+# wird im Summary aber von echten Rubric-FAILs getrennt.
 Write-LlmCostReport -Usage @($script:JudgeUsage) -Label 'judge_eval' -RepoRoot $RepoRoot
 exit ($overallFail + $errorCount)

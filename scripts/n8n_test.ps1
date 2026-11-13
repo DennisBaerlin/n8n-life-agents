@@ -1,17 +1,16 @@
 ﻿#Requires -Version 5.1
-# Agent Routing Tests -- Layer 2 der TDD-Infrastruktur (Weg C / Teststrategie Phase 8).
-# Feuert tests\agent\finance\finance_cases.json gegen den Finance-Agenten. Hybrid:
+# Agent Routing Tests (Verhalten/Routing). Feuert tests\agent\finance\finance_cases.json gegen den Finance-Agenten. Hybrid:
 #   (1) deterministisch -> wurde das erwartete tool_* aufgerufen? (expected_tool [+ expected_tool_args])
 #   (2) optional Verhaltens-Rubric (expected_behavior) -> Judge-Bundle fuer einen AI-Judge.
 #
 # Trigger: POST an den Agent-Harness (agent.finance.test_harness, Header-Auth) -> Execute Workflow ruft
-#   den Agenten ueber dessen PRODUKTIONS-executeWorkflowTrigger auf (kein Test-Sonderknoten im Agenten).
+#   den Agenten ueber dessen Produktions-executeWorkflowTrigger auf (kein Test-Sonderknoten im Agenten).
 #
-# WEG C: KEIN test_-Gate-Bypass mehr. chat_id ist NUMERISCH; das echte Send-and-Wait-Gate eines
-#   Write-Tools wird ueber das abgefangene Mock-Telegram DECLINEd (Wait-ExecResolvingGates -Approve
-#   $false) -> kein DB-Write, kein Spam; die Routing-Entscheidung steht trotzdem im runData. Execution-
-#   Korrelation: monotone Exec-id auf dem Ziel-Workflow (Get-MaxExecId vor dem Feuern; die suspendierte
-#   Execution liefert KEINE Run-Info-subExecution mehr).
+# chat_id ist numerisch; das echte Send-and-Wait-Gate eines Write-Tools wird ueber das abgefangene
+#   Mock-Telegram declined (Wait-ExecResolvingGates -Approve $false) -> kein DB-Write, kein Spam; die
+#   Routing-Entscheidung steht trotzdem im runData. Execution-Korrelation: monotone Exec-id auf dem
+#   Ziel-Workflow (Get-MaxExecId vor dem Feuern; die suspendierte Execution liefert keine
+#   Run-Info-subExecution).
 #
 # Pre-Flight (jeder Paket-Agent): seedet + verifiziert die Routing-Fixtures + abgeschlossenes Onboarding.
 # Ziel/Paket-Eigenschaften leitet Get-TestRouteAgent aus den Manifesten + core.context_scopes ab (kein Paket im Treiber).
@@ -22,9 +21,9 @@
 #   .\scripts\n8n_test.ps1 -TargetWorkflow agent.finance_advisor -WebhookPath advisor-test `
 #       -WriteTools tool_save_plan_section,tool_publish_plan,tool_create_monitor_trigger,tool_search_documents,tool_set_asset_classes,tool_record_plan_wish,tool_send_handoff_overview,tool_sync_plan,tool_create_account,tool_create_recurring_payment -CasesFile tests\agent\finance\advisor_cases.json
 #
-# Exit-Code = Anzahl fehlgeschlagener Tests. KOSTET LLM-Credits (owner-gegatet).
+# Exit-Code = Anzahl fehlgeschlagener Tests. Kostet LLM-Credits (owner-gegatet).
 # Voraussetzung: Docker-Test-Substrat + enable_mock_telegram.ps1 (fuers Gate) + .env TEST_HARNESS_SECRET.
-#   Mock-LLM NICHT aktiv (echtes Routing). Test-Memory wird je Case in der Container-DB geleert.
+#   Mock-LLM nicht aktiv (echtes Routing). Test-Memory wird je Case in der Container-DB geleert.
 param(
     [string]$Id,
     [int]$Timeout = 60,
@@ -37,7 +36,7 @@ param(
 
 $ErrorActionPreference = 'Stop'
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
-# Ueber powershell.exe -File (z. B. aus Bash) kommt "a,b,c" als EIN String an -> sonst zaehlte kein Write (Muster mock_route_test).
+# Ueber powershell.exe -File (z. B. aus Bash) kommt "a,b,c" als ein String an -> sonst zaehlte kein Write.
 $WriteTools = @($WriteTools | ForEach-Object { $_ -split ',' } | ForEach-Object { $_.Trim() } | Where-Object { $_ })
 $Utf8NoBom = New-Object System.Text.UTF8Encoding($false)
 $RepoRoot = git -C $PSScriptRoot rev-parse --show-toplevel
@@ -58,20 +57,17 @@ $WebhookUrl  = "$N8N_URL/webhook/$WebhookPath"
 
 $state = Get-TestN8nState
 if (-not $state.mock_telegram) { throw "Mock-Telegram nicht aktiv (fuer die Gate-Aufloesung noetig). Zuerst: .\scripts\dev\enable_mock_telegram.ps1" }
-# Echte Claude-Antworten noetig (Gateway-Upstream = API, nicht Mock) + Start-Marke fuer die Kostenuebersicht.
+# Echte Claude-Antworten noetig (Gateway-Upstream = API, nicht Mock); Start-Marke fuer die Kostenuebersicht.
 Assert-LlmGatewayUpstream -Container $Container -Expect real
 $llmCursor = Get-LlmUsageCursor -Container $Container
 
-# -------------------------------------------------------
-# Hilfsfunktionen
-# -------------------------------------------------------
 function Clear-TestCaseSetup {
     $res = Invoke-TestN8nPsql -Container $Container -PsqlArgs @('-q', '-t', '-A', '-c', 'SELECT agent.fn_clear_e2e_data();')
     if ($res.Code -ne 0) { throw "Cleanup (fn_clear_e2e_data) fehlgeschlagen: $(($res.Output | Where-Object { $_ }) -join ' ')" }
 }
-# Werkzeug-Aufrufe aus den Sub-Workflow-Executions (zuverlaessig): der n8n-Action-Log (Get-ToolCall) laesst Aufrufe aus
-# Modell-Antworten MIT Denk-Block aus (belegt 2026-10-23, tc12: stage_rows fehlte, commit_import stand drin) -> jede neue
-# Execution nach $AfterId, deren Workflow-Name auf ein Werkzeug des Agenten endet (agent.<pkg>.tool_x -> tool_x), zaehlt mit.
+# Werkzeug-Aufrufe aus den Sub-Workflow-Executions: der n8n-Action-Log (Get-ToolCall) laesst Aufrufe aus
+# Modell-Antworten mit Denk-Block aus -> jede neue Execution nach $AfterId, deren Workflow-Name auf ein
+# Werkzeug des Agenten endet (agent.<pkg>.tool_x -> tool_x), zaehlt mit.
 # n8n vergibt Execution-ids global fortlaufend; die Tiers laufen sequentiell.
 function Get-GlobalMaxExecId { $r = Invoke-N8nGet 'executions?limit=1'; if ($r.data -and $r.data.Count -gt 0) { return [long]$r.data[0].id }; return 0 }
 function Get-ExecutedToolRun([long]$AfterId) {
@@ -92,7 +88,7 @@ function Get-ToolRunInput([string]$ExecId) {
         return $rd.$start[0].data.main[0][0].json
     } catch { return $null }
 }
-# Rueckgabe eines Werkzeug-Laufs (Ausgabe des letzten Knotens, gekuerzt) fuer den Bewerter.
+# Ausgabe des letzten Knotens, gekuerzt, fuer den Bewerter.
 function Get-ToolRunOutput([string]$ExecId) {
     try {
         $d = Get-ExecDetail $ExecId
@@ -103,11 +99,8 @@ function Get-ToolRunOutput([string]$ExecId) {
     } catch { return '' }
 }
 
-# -------------------------------------------------------
-# Setup
-# -------------------------------------------------------
 Write-Host "Suche Workflows ($TargetWorkflow + $TargetWorkflow.test_harness) ..."
-# Ziel aus den Manifesten (kein Paket im Treiber): ein Nicht-Route-Agent bricht ab.
+# Ein Nicht-Route-Agent bricht ab.
 $routeAgents = Get-TestRouteAgent
 $target = Resolve-TestTarget -RouteAgents $routeAgents -TargetWorkflow $TargetWorkflow
 if ($null -eq $target) { throw "n8n_test prueft einen Agenten ueber seinen Harness; fuer den Orchestrator: .\scripts\orch_test.ps1" }
@@ -143,7 +136,7 @@ switch ($LASTEXITCODE) {
     2 { Write-Host "[WARN] Fixture-Pre-Flight uebersprungen (kein Test-Substrat)." -ForegroundColor Yellow }
     default { throw "Routing-Fixtures fehlen trotz Seed -- Substrat pruefen: .\scripts\dev\bootstrap_test_n8n.ps1 -Reset" }
 }
-# WS-5b Test-Identitaets-Riegel: bricht VOR dem ersten (teuren) LLM-Call ab, falls der Substrat-Owner
+# Test-Identitaets-Riegel: bricht vor dem ersten (teuren) LLM-Call ab, falls der Substrat-Owner
 # nicht der fiktive Golden-Owner 'Erika' ist (Mismatch verbrennt sonst die ganze Suite; faengt PII-Leaks).
 Assert-GoldenHousehold -Container $Container
 
@@ -151,7 +144,7 @@ Write-Host ""
 Write-Host "n8n Agent Routing Tests -- $($cases.Count) Testfall(e)  (Webhook: $WebhookUrl)"
 Write-Host ("-" * 64)
 $passed = 0; $failed = 0; $quarantined = 0; $judgeBundle = @(); $pkgOnbDirty = $false
-# Einmal auch vor dem ersten Case: raeumt Reste eines abgebrochenen Laufs (wie e2e_test).
+# Einmal auch vor dem ersten Case: raeumt Reste eines abgebrochenen Laufs.
 $setupDirty = $true
 
 foreach ($tc in $cases) {
@@ -166,8 +159,8 @@ foreach ($tc in $cases) {
     Clear-ChatSessionMemory -Container $Container -SessionId "$chatId"
     # Wiederhol-Sperre: ohne Orchestrator-Abschluss bliebe die Karte des Vorfalls gesperrt, ein Fall mit gleicher Karte bekaeme keine.
     Clear-HitlPending -Container $Container
-    # Optionaler Haushalts-/Paket-Onboarding-Vorzustand des Cases (Guide: neuer Nutzer = unknown; "package_onboarding":
-    # offener Paket-Bereich); sonst gilt completed.
+    # Optionaler Onboarding-Vorzustand des Cases (onboarding: Haushalt, z. B. neuer Nutzer = unknown;
+    # package_onboarding: offener Paket-Bereich); sonst gilt completed.
     try {
         if ($tc.PSObject.Properties['chat_history'] -and $tc.chat_history) { Set-TestChatHistory -Container $Container -SessionId "$chatId" -ChatHistory $tc.chat_history }
         Set-TestHouseholdOnboarding -Container $Container -Status $(if ($tc.onboarding) { "$($tc.onboarding)" } else { 'completed' })
@@ -178,7 +171,7 @@ foreach ($tc in $cases) {
     }
     catch { Write-Host "    [FAIL] $($_.Exception.Message)" -ForegroundColor Red; $failed++; continue }
     # Optionale Voraussetzungen des Cases (setup_sql, __E2E__-Entitaeten, z. B. die Einnahme, ohne die fn_plan_readiness das
-    # Plan-Interview sperrt): gelten NUR fuer diesen Case, die Fixtures bleiben ohne Einnahme (real_ingress ri07e).
+    # Plan-Interview sperrt): gelten nur fuer diesen Case, die Fixtures bleiben ohne Einnahme (real_ingress ri07e).
     if ($setupDirty) { Clear-TestCaseSetup; $setupDirty = $false }
     if ($tc.PSObject.Properties['setup_sql'] -and $tc.setup_sql) {
         $setupDirty = $true
@@ -206,7 +199,7 @@ foreach ($tc in $cases) {
 
     $runData = $ex.data.resultData.runData
     $calledTool = Get-CalledTool $runData $AgentNodeName
-    # Alle Schreib-Werkzeuge dieses Laufs: Action-Log UND Werkzeug-Executions (der Log allein ist unvollstaendig).
+    # Alle Schreib-Werkzeuge dieses Laufs: Action-Log und Werkzeug-Executions (der Log allein ist unvollstaendig).
     $loggedWrite = @(Get-ToolCall $runData $AgentNodeName | Where-Object { Test-IsWriteTool $_.tool })
     $execWrite = @(Get-ExecutedToolRun -AfterId $globalBase | Where-Object { Test-IsWriteTool $_.tool })
     $allWrite = @(@($loggedWrite | ForEach-Object { $_.tool }) + @($execWrite | ForEach-Object { $_.tool }) | Select-Object -Unique)
@@ -220,13 +213,13 @@ foreach ($tc in $cases) {
         if ($notTolerated.Count -eq 0) { $pass = $true }
         else { Write-Host "    FEHLER: Tool='$($notTolerated -join ', ')' aufgerufen, obwohl keins erwartet" -ForegroundColor Red }
     } else {
-        # PASS, wenn das erwartete Werkzeug im Lauf aufgerufen wurde (nicht nur, wenn es zufaellig als erstes protokolliert ist).
+        # Pass, wenn das erwartete Werkzeug im Lauf aufgerufen wurde (nicht nur, wenn es zufaellig als erstes protokolliert ist).
         if ($allWrite -contains $tc.expected_tool) { $pass = $true; $calledTool = $tc.expected_tool }
         else { Write-Host "    FEHLER: Tool='$($allWrite -join ', ')', erwartet='$($tc.expected_tool)'" -ForegroundColor Red }
     }
 
     if ($pass -and $tc.expected_tool_args) {
-        # Der ERSTE Aufruf zaehlt (Executions kommen neueste zuerst; der Action-Log kann ihn verlieren, s. o.).
+        # Der erste Aufruf zaehlt (Executions kommen neueste zuerst; der Action-Log kann ihn verlieren, s. o.).
         $run = $execWrite | Where-Object { $_.tool -eq $tc.expected_tool } | Select-Object -Last 1
         $writeCall = if ($run) { @{ tool = $run.tool; inputObj = (Get-ToolRunInput $run.execId) } } else { $loggedWrite | Where-Object { $_.tool -eq $tc.expected_tool } | Select-Object -First 1 }
         $argErrors = Test-ToolArg $writeCall.inputObj $tc.expected_tool_args
@@ -260,9 +253,8 @@ foreach ($tc in $cases) {
 
     if ($tc.expected_behavior) {
         $allCalls = Get-ToolCall $runData $AgentNodeName
-        # Eingabe des bewerteten Werkzeugs: ALLE seine Aufrufe aus den Executions, aeltester zuerst (der Action-Log ist
-        # unvollstaendig, s. o.: bei cc09 zeigte er nur den zweiten Versuch und der Bewerter sah den ersten Aufruf nie);
-        # ohne Execution der Action-Log.
+        # Eingabe des bewerteten Werkzeugs: alle seine Aufrufe aus den Executions, aeltester zuerst (der Action-Log ist
+        # unvollstaendig, s. o.: er kann den ersten Aufruf verlieren, den der Bewerter sehen muss); ohne Execution der Action-Log.
         $wtool    = $allCalls | Where-Object { $_.tool -eq $calledTool } | Select-Object -First 1
         $wInput   = if ($wtool) { $wtool.input } else { '' }
         $wOutput = ''
@@ -272,10 +264,10 @@ foreach ($tc in $cases) {
             $wInputs = @($wRuns | ForEach-Object { Get-ToolRunInput $_.execId } | Where-Object { $_ })
             if ($wInputs.Count -eq 1) { $wInput = ($wInputs[0] | ConvertTo-Json -Depth 4 -Compress) }
             elseif ($wInputs.Count -gt 1) { $wInput = (ConvertTo-Json -InputObject $wInputs -Depth 5 -Compress) }
-            # Rueckgabe des Werkzeugs: ohne sie wertete der Bewerter belegte Aussagen als unbelegt (tc65: complete).
+            # Rueckgabe des Werkzeugs: ohne sie wertet der Bewerter belegte Aussagen als unbelegt.
             $wOutput = (@($wRuns | ForEach-Object { Get-ToolRunOutput $_.execId } | Where-Object { $_ }) -join "`n")
         }
-        # Weitere Schreib-Werkzeuge desselben Laufs mit Rueckgabe, aeltestes zuerst: ohne sie wertete der Bewerter einen
+        # Weitere Schreib-Werkzeuge desselben Laufs mit Rueckgabe, aeltestes zuerst: ohne sie wertet der Bewerter einen
         # Folge-Aufruf (Versand nach dem Lesen) als unbelegt, obwohl die Execution ihn zeigt.
         $otherRuns = @($execWrite | Where-Object { $_.tool -ne $calledTool })
         [array]::Reverse($otherRuns)

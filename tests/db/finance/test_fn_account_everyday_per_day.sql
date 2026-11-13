@@ -28,7 +28,7 @@ BEGIN
   RAISE NOTICE 'PASS fn_account_everyday_per_day: ohne Auszug 0, per_day / per_day_net, netto gedeckelt';
 END $$;
 
--- Transparenz 2026-10-30 (Befund): der frueheste Auszug eines Kontos entsteht meist vor den Dauerauftraegen
+-- Transparenz: der frueheste Auszug eines Kontos entsteht meist vor den Dauerauftraegen
 -- ("Import zuerst") -> Gehalt/Uebertraege landen ungematcht im Alltag. Er zaehlt nicht mehr, sobald ein spaeterer da ist
 -- (Rang nach period_end, auch wenn ein Chat-Abgleich davor prev_last_reconciled_at gesetzt hat); Fenster = 3 gezaehlte.
 DO $$
@@ -71,7 +71,7 @@ BEGIN
   RAISE NOTICE 'PASS fn_account_everyday_per_day: fruehester Auszug zaehlt nicht, Fenster 3, Details je Auszug';
 END $$;
 
--- Einmalige Grossausgaben (Owner-Entscheid 2026-10-30): oneoff_out (Summe der ungematchten Abgaenge ab der Grenze,
+-- Einmalige Grossausgaben: oneoff_out (Summe der ungematchten Abgaenge ab der Grenze,
 -- Stempel oneoff_threshold) zaehlt nicht in per_day (Kontovorschau); per_day_net (Spar-Deckung) bleibt vorsichtig.
 DO $$
 DECLARE
@@ -122,8 +122,8 @@ BEGIN
   IF r.per_day IS DISTINCT FROM -9.68::numeric THEN RAISE EXCEPTION 'FAIL [6] basis per_day auf Cent -9.68, got %', r; END IF;
   RAISE NOTICE 'PASS fn_account_everyday_basis: per_day je Auszug auf Cent';
 END $$;
--- Monatswert aus dem UNGERUNDETEN Tageswert, einmal gerundet: 92 gezaehlte Tage, -1.000,49 -> -1.000,49 / 92 x 30,4375
--- = -331,004 -> -331,00 (vorher -10,87 x 30,4375 = -330,86).
+-- Monatswert aus dem ungerundeten Tageswert, einmal gerundet: 92 gezaehlte Tage, -1.000,49 -> -1.000,49 / 92 x 30,4375
+-- = -331,004 -> -331,00 (aus dem gerundeten Tageswert -10,87 ergaebe sich -330,86).
 DO $$
 DECLARE
   t date := current_date;

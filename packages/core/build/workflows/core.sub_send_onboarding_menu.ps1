@@ -1,14 +1,14 @@
 ﻿#Requires -Version 5.1
 # Dot-gesourct von build.ps1 (Helper + Script-Scope-Creds im Parent-Scope).
 #
-# --- core.sub_send_onboarding_menu (WS-2 Onboarding-UX, arch-challenge R4 Candidate D) -------
-# Wiederverwendbare, DETERMINISTISCHE Menue-Render-Mechanik (KEIN LLM, gratis) in zwei Ebenen: UEBERSICHT
-# (Haushalt + ein Knopf je Bereich mit Fortschritt + "Weiter" auf den naechsten offenen Abschnitt) bzw. BEREICH
-# (nur dessen Abschnitte). Sendet EINMAL an chat_id. Aufgerufen NUR an deterministischen Eintrittspunkten des
+# --- core.sub_send_onboarding_menu -------
+# Wiederverwendbare, deterministische Menue-Render-Mechanik (kein LLM, gratis) in zwei Ebenen: Uebersicht
+# (Haushalt + ein Knopf je Bereich mit Fortschritt + "Weiter" auf den naechsten offenen Abschnitt) bzw. Bereich
+# (nur dessen Abschnitte). Sendet einmal an chat_id. Aufgerufen nur an deterministischen Eintrittspunkten des
 # Orchestrators (/onboarding-Command, Bereichs-Knopf onboarding:_area:<package>) bzw. von core.sub_onboarding_progress
-# (Roter Faden: nach einem geschlossenen Bereich, DB-gelatcht genau einmal je Uebergang) -> Folge-Turns erreichen diese
+# (nach einem geschlossenen Bereich, DB-gelatcht genau einmal je Uebergang) -> Folge-Turns erreichen diese
 # Node nie -> Knopf-Spam strukturell unmoeglich (vgl. ConversationHandler.entry_points;
-# Sub statt Guide-intern, weil ein 'sub' eigene Telegram-Sends haben darf — Praezedenz core.sub_error_notify).
+# Sub statt Guide-intern, weil ein 'sub' eigene Telegram-Sends haben darf, Praezedenz core.sub_error_notify).
 #
 # Eingang: chat_id, area (leer = Uebersicht). Ablauf:
 #   Start -> Read onboarding status (core.fn_onboarding_overview(chat_id) + Menue-Texte in der Sprache des
@@ -16,17 +16,17 @@
 #         -> Build menu (Code: Status, Fortschritt, naechster Schritt, Text)
 #         -> Which menu? (Switch auf area) -> Send overview | Send area <package> (statisches Inline-Grid je Ansicht).
 #
-# P1 (Generisches Paket-Onboarding): KEIN finance-Hardcode mehr.
-#   - STATUS runtime ueber EINE fn core.fn_onboarding_overview(chat_id) (Core-Haushalt + ALLE aktiven Pakete;
-#     loest core_literal #5 ab — fruehere core.fn_onboarding_status('finance')). P2b-1: chat_id durchgereicht ->
-#     per_user-Pakete (career) zeigen den Status der TAPPENDEN Person (DEFINER loest sie intern auf, nie LLM).
-#   - Button-STRUKTUR build-time generisch ueber ALLE Pakete: Core-Haushalt + packages/<pkg>/onboarding/
+# Generisches Paket-Onboarding, kein finance-Hardcode:
+#   - Status runtime ueber eine fn core.fn_onboarding_overview(chat_id) (Core-Haushalt + alle aktiven Pakete).
+#     chat_id durchgereicht -> per_user-Pakete (career) zeigen den Status der tappenden Person (DEFINER loest sie
+#     intern auf, nie LLM).
+#   - Button-Struktur build-time generisch ueber alle Pakete: Core-Haushalt + packages/<pkg>/onboarding/
 #     sections.json in $OnboardingPackageOrder (abgeleitete Abhaengigkeits-Reihenfolge; ein neues Onboarding-Paket
 #     erscheint ohne Edit).
-#     n8n-Inline-Keyboard = statische fixedCollection (Button-ANZAHL nicht laufzeit-dynamisch) -> die Struktur ist
-#     build-time (alle Pakete sind build-time bekannt), STATUS + TEXT sind runtime. callback_data =
-#     onboarding:<package>:<key> (P1-Encoding; der Orchestrator routet auf das <package>-Glied).
-#   - TEXTE (Textkatalog Phase B, docs/package-contract.md §3.11): Abschnitts-Labels <pkg>.onboarding.<key> (Haushalt
+#     n8n-Inline-Keyboard = statische fixedCollection (Button-Anzahl nicht laufzeit-dynamisch) -> die Struktur ist
+#     build-time (alle Pakete sind build-time bekannt), Status + Text sind runtime. callback_data =
+#     onboarding:<package>:<key> (der Orchestrator routet auf das <package>-Glied).
+#   - Texte (Textkatalog, docs/package-contract.md §3.11): Abschnitts-Labels <pkg>.onboarding.<key> (Haushalt
 #     core.onboarding.household), Bereichsnamen <pkg>.package.name und alle Menue-Saetze core.onboarding.menu.* kommen
 #     als t-Map in der Sprache des Betrachters (Person -> Owner -> en); build-time steht nur die Key-Liste fest.
 function Build-CoreSubSendOnboardingMenu {
@@ -48,8 +48,8 @@ function Build-CoreSubSendOnboardingMenu {
             $SECTIONS += [ordered]@{ package = "$($op.Package)"; key = "$($s.key)"; labelKey = "$($op.Package).onboarding.$($s.key)"; groupKey = "$($op.Package).package.name"; gates = $gates }
         }
     }
-    # Onboarding-Plan-Schritt (2026-10-28): je Berater-Domaene mit plan_step ($AdvisorPlanStepList, build.ps1) ein
-    # EMPFOHLENER Schritt hinter den Abschnitten seines Pakets — kein Abschnitt (zaehlt nicht im Fortschritt, nicht im
+    # Onboarding-Plan-Schritt: je Berater-Domaene mit plan_step ($AdvisorPlanStepList, build.ps1) ein
+    # empfohlener Schritt hinter den Abschnitten seines Pakets, kein Abschnitt (zaehlt nicht im Fortschritt, nicht im
     # "alles eingerichtet"-Latch). Zustand/Rechte/Daten-Reife runtime aus core.fn_advisor_plan_status (Read-Spalte plans).
     $PLANS = @($AdvisorPlanStepList | ForEach-Object { [ordered]@{ domain = $_.Domain; package = $_.Package } })
     $planSuffixes = @('btn_none', 'btn_draft', 'btn_gaps', 'btn_complete', 'btn_later', 'btn_owner', 'line_none', 'line_draft',
@@ -83,10 +83,10 @@ function Build-CoreSubSendOnboardingMenu {
     }
 
     # --- Read onboarding status (core_ro; fail-open: Lesefehler -> Code zeigt alles offen) ---
-    # P2b-1: chat_id durchreichen -> fn_onboarding_overview rendert per_user-Pakete (career) mit dem Status der
-    # TAPPENDEN Person (jeder sieht SEINE career-Sektionen; household-Pakete unveraendert). Die DEFINER-fn loest
-    # die Person intern aus chat_id auf (NIE LLM). Ohne chat_id wuerden alle per_user-Sektionen 'unknown' zeigen.
-    # Textkatalog Phase B: dieselbe Abfrage holt die Menue-Texte (t) in der Sprache des Betrachters (chat_id ->
+    # chat_id durchreichen -> fn_onboarding_overview rendert per_user-Pakete (career) mit dem Status der
+    # tappenden Person (jeder sieht seine career-Sektionen; household-Pakete unveraendert). Die DEFINER-fn loest
+    # die Person intern aus chat_id auf (nie LLM). Ohne chat_id wuerden alle per_user-Sektionen 'unknown' zeigen.
+    # Textkatalog: dieselbe Abfrage holt die Menue-Texte (t) in der Sprache des Betrachters (chat_id ->
     # Person -> agent.fn_person_lang; nicht-numerische/Gruppen-chat_id -> Owner-Sprache).
     $read = Build-Pg 'Read onboarding status' @(-620, 0) `
         ("=SELECT core.fn_onboarding_overview((`$1::jsonb)->>'chat_id') AS overview, core.fn_advisor_plan_status((`$1::jsonb)->>'chat_id') AS plans, " +
@@ -98,12 +98,12 @@ function Build-CoreSubSendOnboardingMenu {
     $read.credentials = @{ postgres = $CRED_PG_RO }
     $read['onError'] = 'continueRegularOutput'
 
-    # --- Build menu (Code; runOnceForEachItem -> EIN Objekt, kein Array) ---
-    # Zwei Ebenen (Progressive Disclosure statt eines 16-Knopf-Grids): area leer -> UEBERSICHT (Haushalt + ein Knopf
-    # je Bereich mit Fortschritt + "Weiter"-Knopf auf den naechsten offenen Abschnitt); area=<package> -> BEREICH
+    # --- Build menu (Code; runOnceForEachItem -> ein Objekt, kein Array) ---
+    # Zwei Ebenen (Progressive Disclosure statt eines 16-Knopf-Grids): area leer -> Uebersicht (Haushalt + ein Knopf
+    # je Bereich mit Fortschritt + "Weiter"-Knopf auf den naechsten offenen Abschnitt); area=<package> -> Bereich
     # (nur dessen Abschnitte + "Zur Uebersicht"). "Als Naechstes" = erster offener, nutzbarer Abschnitt in
     # Menue-Reihenfolge ($SECTIONS) -> der gefuehrte Pfad folgt der abgeleiteten Abhaengigkeits-Reihenfolge.
-    # Emoji via String.fromCharCode/fromCodePoint (KEIN Emoji-Literal im .ps1 -> PS-5.1-Encoding-Falle):
+    # Emoji via String.fromCharCode/fromCodePoint (kein Emoji-Literal im .ps1 -> PS-5.1-Encoding-Falle):
     # completed=U+2705, skipped=U+23ED, unknown=U+25FB, naechster Schritt=U+1F449. Status-Map aus
     # overview.sections, gekeyt auf '<package>:<key>'; fehlt der Status (Read-Fehler/Paket inaktiv) -> 'unknown'.
     $buildJs = @'
@@ -326,15 +326,15 @@ return { json: { text: lines.join(NL), btn, abtn, next_text, next_cb, pbtn, pcb,
         name        = 'Build menu'
     }
 
-    # --- Which menu? (Switch auf area): je Bereich ein Ausgang -> sein Send, Fallback (extra, ZULETZT) = Uebersicht.
-    # Ein Send je Ansicht, weil das n8n-Inline-Keyboard eine statische fixedCollection ist (Knopf-ANZAHL build-time).
+    # --- Which menu? (Switch auf area): je Bereich ein Ausgang -> sein Send, Fallback (extra, zuletzt) = Uebersicht.
+    # Ein Send je Ansicht, weil das n8n-Inline-Keyboard eine statische fixedCollection ist (Knopf-Anzahl build-time).
     $areaCases = @($OnboardingPackageOrder | ForEach-Object {
         @{ Left = "={{ String(`$json.area || '') }}"; Type = 'string'; Op = 'equals'; Right = $_.Package; OutputKey = $_.Package }
     })
     $switch = Build-Switch 'Which menu?' @(-180, 0) $areaCases
 
     # --- Send-Nodes (New-TelegramInlineKeyboardSendNode -Rows, ein Knopf je Reihe) ---
-    # Text = Ausdruck auf $json.text (der Helfer escapt ihn). Knopf-TEXT = Ausdruck auf die von 'Build menu'
+    # Text = Ausdruck auf $json.text (der Helfer escapt ihn). Knopf-Text = Ausdruck auf die von 'Build menu'
     # berechnete Beschriftung (Marker naechster Schritt, Fortschritt, Zusatz 'nicht installiert'); Ersatz = der
     # Katalog-Key (kein fest deutscher Text). callback_data build-time, nur der Weiter-Knopf ist ein Ausdruck (Ziel =
     # naechster offener Abschnitt). '_area' ist reserviert: ein Paketname beginnt nie mit '_'.
@@ -362,7 +362,7 @@ return { json: { text: lines.join(NL), btn, abtn, next_text, next_cb, pbtn, pcb,
         $y += 200
     }
     $sendNodes += New-TelegramInlineKeyboardSendNode 'Send overview' @(40, 0) '={{ $json.text }}' -Rows $ovRows -ChatIdExpr $chatExpr
-    $switchOuts += ,@( E 'Send overview' )   # extra (Fallback ZULETZT) = Uebersicht
+    $switchOuts += ,@( E 'Send overview' )   # extra (Fallback zuletzt) = Uebersicht
 
     $sticky = Build-Sticky 'Doc: Überblick' @(-860, -360) -Header 'Ablauf' `
         'core.sub_send_onboarding_menu — Onboarding-Menü in zwei Ebenen (deterministisch, KEIN LLM)' `

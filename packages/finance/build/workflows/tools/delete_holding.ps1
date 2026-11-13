@@ -3,10 +3,9 @@
 
 # --- tool_delete_holding (Depot-Position loeschen: Hard-DELETE einer Fehlanlage/leeren Position) ---
 function Build-DeleteHolding {
-    # WS-B0: enge Paket-Schreibrolle (finance_rw, Least-Privilege D10) statt Owner-Cred.
-    # Dynamic-Scope: Build-Pg liest dieses $CRED_POSTGRES. Core-Tools nutzen die Owner-Cred.
+    # Enge Paket-Schreibrolle (finance_rw) statt Owner-Cred; Build-Pg liest $CRED_POSTGRES per Dynamic-Scope.
     $CRED_POSTGRES = $CRED_FINANCE_RW
-    # Position per Depot-Name + Symbol/ISIN (finance.fn_find_holding, die EINE Positionssuche der Tools) statt
+    # Position per Depot-Name + Symbol/ISIN (finance.fn_find_holding, die eine Positionssuche der Tools) statt
     # holding_id-Lookup durch das Modell; unbekannt/mehrdeutig -> {ok:false, code, candidates} ohne Karte.
     $trig = Build-Trigger @('depot_name','position')
 
@@ -25,14 +24,12 @@ function Build-DeleteHolding {
         "=SELECT h.symbol, h.name AS sec_name, h.shares, a.name AS depot_name, (SELECT COUNT(*)::int FROM finance.transactions t WHERE t.holding_id = h.id) AS tx_count FROM finance.depot_holdings h JOIN finance.accounts a ON a.id = h.account_id WHERE h.id = ((`$1::jsonb)->>'holding_id')::int;" `
         ([ordered]@{ holding_id = '$(''Find Holding'').item.json.r.holding_id' })
 
-    # "DB ist das Gesetz": fn_delete_holding laeuft als Probelauf VOR der Karte (verknuepfte Trades -> {ok:false} ohne
-    # Karte); derselbe Param-Satz geht nach dem Gate in den echten Write.
     $wg = New-FnWriteGate -Fn 'finance.fn_delete_holding' -DryPos @(440, 0) -WritePos @(1760, 0) `
         -WriteName 'Delete holding (atomic)' `
         -WriteSelect "(r->>'ok')::boolean AS ok, r->>'reason' AS reason, r->>'action' AS action, (r->>'holding_id')::int AS holding_id" `
         -Params ([ordered]@{ holding_id = '$(''Find Holding'').item.json.r.holding_id' })
 
-    # Strukturiertes Summary (Textkatalog): Ablehnungs- bzw. Hard-DELETE-Hinweis haengt an tx_count.
+    # Ablehnungs- bzw. Hard-DELETE-Hinweis haengt an tx_count.
     $H = "`$('Read Holding').item.json"
     $summary = New-HitlSummary -Pos @(1100, 0) -Title 'finance.hitl.delete_holding' -LinesExpr $wg.CardLinesExpr -Lines @(
         (New-HitlLine 'finance.label.security'      "($H.sec_name ? 'finance.tpl.symbol_name' : 'finance.tpl.plain')" -Kind tpl -Params @{ symbol = "$H.symbol"; name = "$H.sec_name"; value = "$H.symbol" })
@@ -50,7 +47,7 @@ function Build-DeleteHolding {
 
     $retCancelled = Build-ToolCancelled 'Return cancelled' @(1760, 240) 'the delete_holding action'
 
-    # Atomarer Write ($wg.Write, 'Delete holding (atomic)'): prueft erneut, falls sich seit dem Probelauf etwas geaendert hat.
+    # Der Write prueft erneut, falls sich seit dem Probelauf etwas geaendert hat.
     $ifWriteOk = Build-If 'Write ok?' @(1980, 0) "={{ `$json.ok }}" 'true' 'equals' 'boolean'
 
     $errWrite = Build-ToolError 'Delete rejected' @(2200, 240) `

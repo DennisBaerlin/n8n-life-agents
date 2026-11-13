@@ -1,13 +1,13 @@
 -- tests/db/finance/test_fn_advisor_review.sql
--- WS2 (Core-Advisor-Engine): finance.fn_advisor_review — die paket-besessene Soll-Ist-Drift + der
--- Quartals-Digest. WS2a-Stand = buchwert-immune Metriken (Sparziel-Pace, Notreserve, Staleness).
---   (1) Notreserve-Unterdeckung (Ruecklage kind emergency_reserve, gedeckt < Ziel; seit 2026-10-30 statt Plan-Fakt)
+-- finance.fn_advisor_review — die paket-besessene Soll-Ist-Drift + der
+-- Quartals-Digest. Buchwert-immune Metriken (Sparziel-Pace, Notreserve, Staleness).
+--   (1) Notreserve-Unterdeckung (Ruecklage kind emergency_reserve, gedeckt < Ziel)
 --       -> emergency_reserve-Alert
 --   (2) Sparziel hinter Pace (10% Ist vs ~50% erwartet) -> savings_pace-Alert
 --   (3) Plan ueberfaellig (_meta.last_confirmed_at alt) -> staleness-Alert
 --   (4) Digest traegt alle 12 Felder (Regressionsnetz: plan_version/armed/fired ueber DEFINER-Fenster)
 --       + den paket-gerenderten digest.text (Generik-Vertrag: der generische Cron sendet nur 'text')
---   (5) ohne aktive Notreserve KEIN emergency-Alert (kein Crash; die Luecke meldet fn_plan_gaps)
+--   (5) ohne aktive Notreserve kein emergency-Alert (kein Crash; die Luecke meldet fn_plan_gaps)
 BEGIN;
 
 -- ---------- Fixtures ----------
@@ -16,8 +16,8 @@ INSERT INTO finance.accounts (id, name, account_type, currency, status)
 VALUES (910001, '__test_cash__', 'cash', 'EUR', 'active');
 UPDATE finance.account_balances SET balance = 1000 WHERE account_id = 910001;
 
--- Sparziel hinter Pace: created vor 365 T, target in 365 T -> erwartet ~50%; WS-A: Fortschritt = aktuelle
--- RESERVE = markierte Bewegungen (savings_goal_id). 10% Deckung = +1000 markierter Reserve-Zufluss +
+-- Sparziel hinter Pace: created vor 365 T, target in 365 T -> erwartet ~50%; Fortschritt = aktuelle
+-- Reserve = markierte Bewegungen (savings_goal_id). 10% Deckung = +1000 markierter Reserve-Zufluss +
 -- -1000 Abbuchung (Giro-Soll, untagged) -> 910001 netto 0 (Drift-Block 2 unberuehrt), progress 1000.
 INSERT INTO finance.savings_goals (id, name, target_amount, target_date, status, created_at)
 VALUES (910002, '__test_goal__', 10000, current_date + 365, 'active', (now() - interval '365 days'));
@@ -51,7 +51,7 @@ BEGIN
   IF v_em < 1 THEN RAISE EXCEPTION 'FAIL [1]: kein emergency_reserve-Alert (alerts=%)', r->'alerts'; END IF;
   RAISE NOTICE 'PASS [Notreserve-Unterdeckung -> emergency_reserve-Alert]';
 
-  -- Generik-Vertrag: JEDER alert traegt ein paket-gerendertes, nicht-leeres 'text'-Feld (der generische
+  -- Generik-Vertrag: jeder alert traegt ein paket-gerendertes, nicht-leeres 'text'-Feld (der generische
   -- Cron joint nur diese Texte). Beweis am emergency-Alert: enthaelt den Soll-Betrag.
   IF NOT EXISTS (SELECT 1 FROM jsonb_array_elements(r->'alerts') a
                  WHERE a->>'kind' = 'emergency_reserve'
@@ -66,7 +66,7 @@ BEGIN
   IF v_pace < 1 THEN RAISE EXCEPTION 'FAIL [2]: kein savings_pace-Alert (alerts=%)', r->'alerts'; END IF;
   RAISE NOTICE 'PASS [Sparziel hinter Pace -> savings_pace-Alert]';
 
-  -- (2b) WS-1: der Pace-Alert traegt die angereicherte Meldung (Nachhol-Rate, da Zieldatum in der Zukunft
+  -- (2b) der Pace-Alert traegt die angereicherte Meldung (Nachhol-Rate, da Zieldatum in der Zukunft
   -- + ungedeckt -> required_catchup_rate non-NULL). Deckt die CASE-Anreicherung im fn-Text ab.
   IF NOT EXISTS (SELECT 1 FROM jsonb_array_elements(r->'alerts') a
                  WHERE a->>'kind' = 'savings_pace' AND (a->'msg')::text LIKE '%finance.advisor.savings_pace_catchup%') THEN
@@ -76,9 +76,9 @@ BEGIN
   IF v_stale < 1 THEN RAISE EXCEPTION 'FAIL [3]: kein staleness-Alert (alerts=%)', r->'alerts'; END IF;
   RAISE NOTICE 'PASS [Plan überfällig -> staleness-Alert]';
 
-  -- (4) Digest 12-Feld-Regression (Textkatalog Phase C: Rohwerte + 'lines'-Struktur statt vorformatierter Strings)
+  -- (4) Digest 12-Feld-Regression (Rohwerte + 'lines'-Struktur statt vorformatierter Strings)
   v_dig := r->'digest';
-  -- Audit Paket 3 (bewusste Vertragsaenderung): expenses/net -> consumption/obligations/free/saving/account_change
+  -- Felder consumption/obligations/free/saving/account_change (kein expenses/net)
   IF NOT (v_dig ? 'plan_count' AND v_dig ? 'plan_version' AND v_dig ? 'plan_published'
           AND v_dig ? 'income' AND v_dig ? 'consumption' AND v_dig ? 'obligations' AND v_dig ? 'free'
           AND v_dig ? 'saving' AND v_dig ? 'account_change' AND v_dig ? 'lines'
@@ -96,7 +96,7 @@ BEGIN
   END IF;
   RAISE NOTICE 'PASS [Digest trägt paket-gerenderten text]';
 
-  -- (4c) Textkatalog Phase C: Struktur statt deutschem Text — kein alert traegt 'text'; jedes msg-Element ist
+  -- (4c) Struktur statt deutschem Text — kein alert traegt 'text'; jedes msg-Element ist
   -- null (entfallener Teilsatz) oder ein tpl mit finance.advisor-Key; Betraege sind typisierte Zahlen (kein to_char).
   IF EXISTS (SELECT 1 FROM jsonb_array_elements(r->'alerts') a WHERE a ? 'text') THEN
     RAISE EXCEPTION 'FAIL [4c]: alert mit altem text-Feld (%)', r->'alerts'; END IF;
@@ -124,7 +124,7 @@ BEGIN
 END $$;
 
 -- ============================================================
--- WS2b: Marktwert-Metriken (Allokations-Drift, Zielportfolio, Pflicht-Advisory-Sektionen)
+-- Marktwert-Metriken (Allokations-Drift, Zielportfolio, Pflicht-Advisory-Sektionen)
 -- ============================================================
 DO $$
 DECLARE
@@ -149,15 +149,15 @@ BEGIN
   INSERT INTO finance.market_prices (symbol, price, currency, as_of) VALUES
     ('VWCE',100,'EUR',current_date), ('EMX',100,'EUR',current_date),
     ('GLD',100,'EUR',current_date), ('ALT',100,'EUR',current_date), ('UNT',100,'EUR',current_date);
-  -- NOP bewusst OHNE market_prices-Zeile -> null_price + Buchwert-Fallback
+  -- NOP bewusst ohne market_prices-Zeile -> null_price + Buchwert-Fallback
 
   INSERT INTO finance.real_estate (name, current_value, status) VALUES ('__ar_re__', 250000, 'active');
 
-  -- Plan: Ziel-Allokation mit STABILEN keys + ein nicht-handelbarer Ziel-Block (real_estate) + Zielportfolio.
-  -- (Validator-Registry hier NICHT geseedet -> der finance-Block-Validator laeuft nicht; Core-Trigger ok.)
-  -- Audit Paket 3: echte Gesamtplan-Anteile statt target_pct 0 fuer die Immobilie (20 %). Die handelbaren Bloecke
+  -- Plan: Ziel-Allokation mit stabilen keys + ein nicht-handelbarer Ziel-Block (real_estate) + Zielportfolio.
+  -- (Validator-Registry hier nicht geseedet -> der finance-Block-Validator laeuft nicht; Core-Trigger ok.)
+  -- Echte Gesamtplan-Anteile statt target_pct 0 fuer die Immobilie (20 %). Die handelbaren Bloecke
   -- (Summe 80) normiert der Advisor auf ihre Summe -> sp500 66 -> 82,5 % [62,70] -> [77,5; 87,5], emerging 10,4 -> 13 %
-  -- [6,4; 14,4] -> [8,18], commodities 3,6 -> 4,5 % (dieselben Erwartungen wie vorher).
+  -- [6,4; 14,4] -> [8,18], commodities 3,6 -> 4,5 %.
   UPDATE agent.core_contexts SET metadata = jsonb_build_object('facts', jsonb_build_object(
       'goal', jsonb_build_object('target_portfolio_eur', jsonb_build_array(700000, 800000)),
       'target_allocation', jsonb_build_object('rebalance_drift_pp', 5, 'blocks', jsonb_build_array(
@@ -170,7 +170,7 @@ BEGIN
 
   r := finance.fn_advisor_review('finance');
 
-  -- (6) rebalanceable_drift: 3 handelbare Bloecke; sp500 IN Korridor (kein breach), emerging + commodities breach
+  -- (6) rebalanceable_drift: 3 handelbare Bloecke; sp500 in Korridor (kein breach), emerging + commodities breach
   IF jsonb_array_length(r->'rebalanceable_drift') <> 3 THEN
     RAISE EXCEPTION 'FAIL [6]: erwartet 3 handelbare Drift-Blöcke, got %', r->'rebalanceable_drift'; END IF;
   SELECT (b->>'breach')::boolean INTO v_breach FROM jsonb_array_elements(r->'rebalanceable_drift') b WHERE b->>'key'='sp500';
@@ -183,7 +183,7 @@ BEGIN
     RAISE EXCEPTION 'FAIL [6]: sp500 darf KEINEN Alert haben (im Korridor)'; END IF;
   RAISE NOTICE 'PASS [rebalanceable_drift: sp500 im Korridor still, emerging+commodities breach]';
 
-  -- (7) non_rebalanceable_targets: der real_estate-Ziel-Block (nicht handelbar) -> gelistet, KEIN Alert
+  -- (7) non_rebalanceable_targets: der real_estate-Ziel-Block (nicht handelbar) -> gelistet, kein Alert
   IF jsonb_array_length(r->'non_rebalanceable_targets') <> 1
      OR (r->'non_rebalanceable_targets'->0->>'key') <> 'real_estate' THEN
     RAISE EXCEPTION 'FAIL [7]: real_estate sollte non_rebalanceable_target sein, got %', r->'non_rebalanceable_targets'; END IF;
@@ -191,7 +191,7 @@ BEGIN
     RAISE EXCEPTION 'FAIL [7]: nicht-handelbarer Block darf NIE Drift-Alarm geben'; END IF;
   RAISE NOTICE 'PASS [non_rebalanceable_targets: real_estate gelistet, kein Drift-Alarm]';
 
-  -- (8) net_worth_by_class deckt ALLE Klassen ab (inkl. real_estate abgeleitet)
+  -- (8) net_worth_by_class deckt alle Klassen ab (inkl. real_estate abgeleitet)
   IF NOT EXISTS (SELECT 1 FROM jsonb_array_elements(r->'net_worth_by_class') c WHERE c->>'class'='real_estate') THEN
     RAISE EXCEPTION 'FAIL [8]: net_worth_by_class enthält real_estate nicht, got %', r->'net_worth_by_class'; END IF;
   RAISE NOTICE 'PASS [net_worth_by_class deckt alle Klassen ab]';
@@ -203,8 +203,8 @@ BEGIN
     RAISE EXCEPTION 'FAIL [9]: UNT nicht als null_tag gemeldet, got %', r->'advisories'->'null_tag'; END IF;
   IF NOT EXISTS (SELECT 1 FROM jsonb_array_elements(r->'advisories'->'null_price') p WHERE p->>'symbol'='NOP') THEN
     RAISE EXCEPTION 'FAIL [9]: NOP nicht als null_price gemeldet, got %', r->'advisories'->'null_price'; END IF;
-  -- Kurs-Luecken 2026-10-27: null_price kommt aus fn_holding_price_status (Name + Status je Position), der
-  -- Digest nennt die Namen, der Alarm nicht, und es gibt KEINEN null_price-latch_key (melden tut der Kurs-Luecken-Cron)
+  -- Kurs-Luecken: null_price kommt aus fn_holding_price_status (Name + Status je Position), der
+  -- Digest nennt die Namen, der Alarm nicht, und es gibt keinen null_price-latch_key (melden tut der Kurs-Luecken-Cron)
   IF NOT EXISTS (SELECT 1 FROM jsonb_array_elements(r->'advisories'->'null_price') p
                  WHERE p->>'name' = 'Rohstoff2 (kein Kurs)' AND p->>'status' = 'missing') THEN
     RAISE EXCEPTION 'FAIL [9 null_price name/status]: got %', r->'advisories'->'null_price'; END IF;
@@ -220,7 +220,7 @@ BEGIN
     RAISE EXCEPTION 'FAIL [9]: kein data_quality-Sammelalert'; END IF;
   RAISE NOTICE 'PASS [Pflicht-Advisory: unmapped/null_tag/null_price + data_quality-Alert]';
 
-  -- (9b) 2026-10-23: outside_plan ist weder unmapped noch null_tag; der Alarm nennt die Namen und latcht je Position
+  -- (9b) outside_plan ist weder unmapped noch null_tag; der Alarm nennt die Namen und latcht je Position
   IF EXISTS (SELECT 1 FROM jsonb_array_elements(r->'advisories'->'unmapped') u WHERE u->>'asset_class'='outside_plan') THEN
     RAISE EXCEPTION 'FAIL [9b]: outside_plan als unmapped gemeldet: %', r->'advisories'->'unmapped'; END IF;
   IF NOT EXISTS (SELECT 1 FROM jsonb_array_elements(r->'alerts') a, jsonb_array_elements(a->'msg') m
@@ -232,7 +232,7 @@ BEGIN
     RAISE EXCEPTION 'FAIL [9b]: latch_keys fehlen'; END IF;
   RAISE NOTICE 'PASS [outside_plan kein Datenhinweis; dq_null_tag mit Namen + latch_keys]';
 
-  -- (10) price_as_of gesetzt, NICHT stale (Kurse von heute)
+  -- (10) price_as_of gesetzt, nicht stale (Kurse von heute)
   IF (r->'advisories'->>'price_stale')::boolean IS DISTINCT FROM false THEN
     RAISE EXCEPTION 'FAIL [10]: price_stale sollte false sein (heutige Kurse), got %', r->'advisories'; END IF;
   IF (r->'advisories'->>'price_as_of') IS NULL THEN
@@ -255,7 +255,7 @@ BEGIN
 END $$;
 
 -- ============================================================
--- WS3 — FIRE-Topf-Semantik: target_portfolio_basis (investment default), Depot-Earmark im Pot,
+-- FIRE-Topf-Semantik: target_portfolio_basis (investment default), Depot-Earmark im Pot,
 --   fixed_deposit non-rebalanceable-Guard, ELSE-Fail-Safe. Differenz-basierte Assertions (robust gegen
 --   die Bestands-Fixtures der vorigen Bloecke: nur der jeweils variierte Posten zaehlt in die Differenz).
 -- ============================================================
@@ -275,7 +275,7 @@ BEGIN
       '_meta', jsonb_build_object('last_confirmed_at', to_char(current_date,'YYYY-MM-DD'))))
   WHERE name = 'financial_planning';
 
-  -- (W1) investment (default, kein basis-key): Hypothek wird NICHT abgezogen
+  -- (W1) investment (default, kein basis-key): Hypothek wird nicht abgezogen
   r := finance.fn_advisor_review('finance');
   SELECT (a->>'value')::numeric INTO v_inv FROM jsonb_array_elements(r->'alerts') a WHERE a->>'metric_key'='target_portfolio';
 
@@ -285,14 +285,14 @@ BEGIN
   SELECT (a->>'value')::numeric INTO v_net FROM jsonb_array_elements(r->'alerts') a WHERE a->>'metric_key'='target_portfolio';
 
   IF v_inv IS NULL OR v_net IS NULL THEN RAISE EXCEPTION 'FAIL [W1]: target_portfolio-Alert fehlt (inv=%, net=%)', v_inv, v_net; END IF;
-  -- Audit Paket 3 (bewusste Vertragsaenderung): net_worth = investment + Immobilien + Kredite. Der Kredit hier haengt
+  -- net_worth = investment + Immobilien + Kredite. Der Kredit hier haengt
   -- an keiner Immobilie -> Diff = Immobilienwerte der Vor-Bloecke (__ar_re__ 250.000) - 200.000.
   IF round(v_net - v_inv, 2) <> (SELECT sum(current_value) FROM finance.real_estate WHERE status = 'active' AND current_value IS NOT NULL) - 200000 THEN
     RAISE EXCEPTION 'FAIL [W1]: net_worth - investment = Immobilien - 200000 erwartet, got % - % = %', v_net, v_inv, v_net - v_inv; END IF;
   RAISE NOTICE 'PASS [W1: investment zieht die Hypothek NICHT ab; net_worth zaehlt Immobilien + Kredite]';
 
-  -- (W2) Depot fliesst VOLL in den FIRE-Pot (WS-B: Earmark-Netting entfallen): zurueck auf investment,
-  --   Pot messen, dann Depot anlegen -> Pot waechst um den vollen Depot-Wert (kein Earmark-Abzug mehr).
+  -- (W2) Depot fliesst voll in den FIRE-Pot (kein Earmark-Netting): zurueck auf investment,
+  --   Pot messen, dann Depot anlegen -> Pot waechst um den vollen Depot-Wert (kein Earmark-Abzug).
   UPDATE agent.core_contexts SET metadata = jsonb_set(metadata, '{facts,goal,target_portfolio_basis}', '"investment"') WHERE name='financial_planning';
   r := finance.fn_advisor_review('finance');
   SELECT (a->>'value')::numeric INTO v_e0 FROM jsonb_array_elements(r->'alerts') a WHERE a->>'metric_key'='target_portfolio';
@@ -308,7 +308,7 @@ BEGIN
     RAISE EXCEPTION 'FAIL [W2]: Delta erwartet +10000 (voller Depot-Wert, kein Earmark-Netting), got % - % = %', v_e1, v_e0, v_e1 - v_e0; END IF;
   RAISE NOTICE 'PASS [W2: Depot fliesst voll in den FIRE-Pot (+10000, WS-B kein Earmark-Abzug)]';
 
-  -- (W3) fixed_deposit als Plan-Block -> non_rebalanceable, KEIN Drift-Alarm (sonst Dauer-Fehlalarm)
+  -- (W3) fixed_deposit als Plan-Block -> non_rebalanceable, kein Drift-Alarm (sonst Dauer-Fehlalarm)
   UPDATE agent.core_contexts SET metadata = jsonb_set(metadata, '{facts,target_allocation}',
     jsonb_build_object('rebalance_drift_pp',5,'blocks', jsonb_build_array(
       jsonb_build_object('key','sp500','name','S&P','target_pct',80),
@@ -318,7 +318,7 @@ BEGIN
     RAISE EXCEPTION 'FAIL [W3]: fixed_deposit-Plan-Block darf KEINEN Drift-Alarm geben'; END IF;
   IF NOT EXISTS (SELECT 1 FROM jsonb_array_elements(r->'non_rebalanceable_targets') n WHERE n->>'key'='fixed_deposit') THEN
     RAISE EXCEPTION 'FAIL [W3]: fixed_deposit-Plan-Block sollte non_rebalanceable_target sein, got %', r->'non_rebalanceable_targets'; END IF;
-  -- Audit Paket 3: sp500 = einziger handelbarer Block -> normiert 100 % (Plan-Roh-Anteil 80 bleibt als plan_pct sichtbar)
+  -- sp500 = einziger handelbarer Block -> normiert 100 % (Plan-Roh-Anteil 80 bleibt als plan_pct sichtbar)
   IF NOT EXISTS (SELECT 1 FROM jsonb_array_elements(r->'rebalanceable_drift') b
                  WHERE b->>'key'='sp500' AND (b->>'target_pct')::numeric = 100 AND (b->>'plan_pct')::numeric = 80) THEN
     RAISE EXCEPTION 'FAIL [W3]: sp500 erwartet target_pct 100 (normiert) + plan_pct 80, got %', r->'rebalanceable_drift'; END IF;
@@ -334,10 +334,10 @@ BEGIN
 END $$;
 
 -- ============================================================
--- WS-3a — Custodial-Scope: Kind-Vermoegen (role='child') faellt aus dem FIRE-Pool (T2), bleibt aber
+-- Custodial-Scope: Kind-Vermoegen (role='child') faellt aus dem FIRE-Pool (T2), bleibt aber
 --   im Gesamt-Vermoegen (T1, net_worth_by_class). Erkennung rollen-basiert ueber core.fn_household_persons().
---   Differenz-basiert (robust gegen die Bestands-Fixtures): Kind-Depot erhoeht den FIRE-Pool NICHT,
---   ein Haushalts-Depot gleichen Werts schon -> die ROLLE entscheidet, nicht die Existenz.
+--   Differenz-basiert (robust gegen die Bestands-Fixtures): Kind-Depot erhoeht den FIRE-Pool nicht,
+--   ein Haushalts-Depot gleichen Werts schon -> die Rolle entscheidet, nicht die Existenz.
 -- ============================================================
 DO $$
 DECLARE
@@ -356,7 +356,7 @@ BEGIN
   SELECT (a->>'value')::numeric INTO v_p0 FROM jsonb_array_elements(r->'alerts') a WHERE a->>'metric_key'='target_portfolio';
   SELECT COALESCE((SELECT (c->>'value_eur')::numeric FROM jsonb_array_elements(r->'net_worth_by_class') c WHERE c->>'class'='sp500'),0) INTO v_sp_before;
 
-  -- KIND-Custodial-Depot 10000 (owner child)
+  -- Kind-Custodial-Depot 10000 (owner child)
   INSERT INTO finance.accounts (name, account_type, currency, status, owner_person_id)
     VALUES ('__rev_kid_cash__','cash','EUR','active','rev_kid') RETURNING id INTO v_kid_cash;
   INSERT INTO finance.accounts (name, account_type, currency, status, settlement_account_id, owner_person_id)
@@ -390,8 +390,8 @@ BEGIN
 END $$;
 
 -- ============================================================
--- Phase-0 Item-4 — die tunbaren Schwellen werden ueber core.fn_config_get('core','advisor',...) gelesen
---   (vorher inline core.config). Regression: ein NICHT-Default plan_stale_days wird geehrt (nicht der
+-- Die tunbaren Schwellen werden ueber core.fn_config_get('core','advisor',...) gelesen.
+--   Regression: ein Nicht-Default plan_stale_days wird geehrt (nicht der
 --   COALESCE-Default 365). Faengt zugleich einen falschen Paket-Parameter ab (falsches Paket -> NULL ->
 --   COALESCE-Default 365 -> kein Alert), der sonst still drueber liefe.
 -- ============================================================
@@ -406,18 +406,18 @@ BEGIN
   VALUES ('core', 'advisor', 'plan_stale_days', '30')
   ON CONFLICT (category, key) DO UPDATE SET value = '30', package = 'core';
 
-  -- Plan-Stempel exakt 100 Tage alt: unter Default 365 NICHT stale, unter konfigurierten 30 stale.
+  -- Plan-Stempel exakt 100 Tage alt: unter Default 365 nicht stale, unter konfigurierten 30 stale.
   UPDATE agent.core_contexts SET metadata = jsonb_build_object('facts', jsonb_build_object(
       '_meta', jsonb_build_object('last_confirmed_at', to_char(current_date - 100, 'YYYY-MM-DD'))))
   WHERE name = 'financial_planning';
 
   r := finance.fn_advisor_review('finance');
 
-  -- (a) Staleness-Alert MUSS feuern (100 > konfigurierte 30) -> Config wurde gelesen, nicht der Default.
+  -- (a) Staleness-Alert muss feuern (100 > konfigurierte 30) -> Config wurde gelesen, nicht der Default.
   SELECT count(*) INTO v_cnt FROM jsonb_array_elements(r->'alerts') a WHERE a->>'kind' = 'staleness';
   IF v_cnt < 1 THEN
     RAISE EXCEPTION 'FAIL [Item4]: kein staleness-Alert bei plan_stale_days=30 + 100 Tage alt -> Config nicht gelesen (alerts=%)', r->'alerts'; END IF;
-  -- (b) sein target == die KONFIGURIERTEN 30 (nicht 365): beweist den Config-Read-Pfad exakt.
+  -- (b) sein target == die konfigurierten 30 (nicht 365): beweist den Config-Read-Pfad exakt.
   SELECT (a->>'target')::numeric INTO v_target FROM jsonb_array_elements(r->'alerts') a WHERE a->>'kind' = 'staleness';
   IF v_target IS DISTINCT FROM 30 THEN
     RAISE EXCEPTION 'FAIL [Item4]: staleness target=% erwartet 30 (konfigurierter Wert nicht geehrt -> falsches Paket/Default-Fallback)', v_target; END IF;
@@ -425,9 +425,9 @@ BEGIN
 END $$;
 
 -- ============================================================
--- Phase A — Staleness-Nudges: tax_year_staleness (Vorjahr-Stempel, Bool-Toggle) + risk_profile_staleness
+-- Staleness-Nudges: tax_year_staleness (Vorjahr-Stempel, Bool-Toggle) + risk_profile_staleness
 --   (as_of-Alter, day-Schwelle). Beide additive Alerts in fn_advisor_review; nur die rohen Alerts werden
---   geprueft (Latch sitzt im Core-Wrapper). Prueft NUR die jeweiligen metric_keys -> plan_staleness daneben
+--   geprueft (Latch sitzt im Core-Wrapper). Prueft nur die jeweiligen metric_keys -> plan_staleness daneben
 --   ist egal.
 -- ============================================================
 DO $$
@@ -437,7 +437,7 @@ DECLARE
   v_prior text := to_char(date_trunc('year', current_date) - interval '1 day', 'YYYY-MM-DD'); -- 31.12. Vorjahr
   v_curr  text := to_char(date_trunc('year', current_date), 'YYYY-MM-DD');                     -- 01.01. lfd. Jahr
 BEGIN
-  -- (A1) UNSEEDED default-ON (M2): kein tax_year_nudge-Config-Eintrag -> Vorjahr-Stempel feuert den Nudge.
+  -- (A1) unseeded default-on (M2): kein tax_year_nudge-Config-Eintrag -> Vorjahr-Stempel feuert den Nudge.
   DELETE FROM core.config WHERE category = 'advisor' AND key = 'tax_year_nudge';
   UPDATE agent.core_contexts SET metadata = jsonb_build_object('facts', jsonb_build_object(
       '_meta', jsonb_build_object('last_confirmed_at', v_prior)))
@@ -451,7 +451,7 @@ BEGIN
     RAISE EXCEPTION 'FAIL [PA-tax1]: tax_year_staleness ohne gerenderten text'; END IF;
   RAISE NOTICE 'PASS [PA-tax1: Vorjahr-Stempel + unseeded -> tax_year_staleness (default-ON via COALESCE)]';
 
-  -- (A2) tax_year_nudge='false' -> trotz Vorjahr-Stempel KEIN Alert.
+  -- (A2) tax_year_nudge='false' -> trotz Vorjahr-Stempel kein Alert.
   INSERT INTO core.config (package, category, key, value) VALUES ('core', 'advisor', 'tax_year_nudge', 'false')
     ON CONFLICT (category, key) DO UPDATE SET value = 'false', package = 'core';
   r := finance.fn_advisor_review('finance');
@@ -499,7 +499,7 @@ BEGIN
 END $$;
 
 -- ============================================================
--- WS-C3 — Reserve-Coverage-Alert + Engpass-Reihung im Digest.
+-- Reserve-Coverage-Alert + Engpass-Reihung im Digest.
 --   (RC1) ein Konto, dessen Saldo die getaggte Sparziel-Reserve nicht deckt (account_reserve_status.breach)
 --         -> reserve_coverage-Alert (nennt das Konto). completed-Ziel gibt die Reserve frei -> Alert weg.
 --   (RC2) Digest-goals-Ordering deterministisch: gleiches target_date -> priority ASC NULLS LAST, dann name.
@@ -509,8 +509,8 @@ DECLARE
   r jsonb; v_acct INT; v_goal INT; v_txt text;
   v_d date := current_date + 400;   -- gemeinsames Zieldatum fuer die Ordering-Probe
 BEGIN
-  -- KONTO-skopiert (robust): die Bestands-Fixtures dieses Tests breachen u. U. eigene Konten -> wir pruefen
-  -- NICHT die globale Alert-Zahl, sondern ob GENAU UNSER Konto im reserve_coverage-Text auftaucht/verschwindet.
+  -- konto-skopiert (robust): die Bestands-Fixtures dieses Tests breachen u. U. eigene Konten -> wir pruefen
+  -- nicht die globale Alert-Zahl, sondern ob genau unser Konto im reserve_coverage-Text auftaucht/verschwindet.
   -- Breach erzeugen: Reserve +800 (getaggt) + un-getaggte Ausgabe -500 -> Saldo 300 < reserviert 800.
   SELECT finance.fn_create_account('{"name":"__rc_acct__","account_type":"cash","account_holder":"Test"}'::jsonb) INTO r; v_acct := (r->>'account_id')::int;
   INSERT INTO finance.savings_goals (name, target_amount, target_date, status) VALUES ('__rc_goal__', 9000, current_date + 365, 'active') RETURNING id INTO v_goal;
@@ -524,7 +524,7 @@ BEGIN
     RAISE EXCEPTION 'FAIL [RC1]: reserve_coverage-Text nennt unser breach-Konto nicht: %', v_txt; END IF;
   RAISE NOTICE 'PASS [RC1: Konto unter Reserve -> reserve_coverage-Alert nennt das Konto]';
 
-  -- completed-Ziel gibt die Reserve frei -> UNSER Konto ent-breacht -> faellt aus dem Text (andere Konten egal).
+  -- completed-Ziel gibt die Reserve frei -> unser Konto ent-breacht -> faellt aus dem Text (andere Konten egal).
   UPDATE finance.savings_goals SET status = 'completed' WHERE id = v_goal;
   r := finance.fn_advisor_review('finance');
   SELECT (a->'msg')::text INTO v_txt FROM jsonb_array_elements(r->'alerts') a WHERE a->>'kind' = 'reserve_coverage' LIMIT 1;
@@ -549,13 +549,13 @@ BEGIN
 END $$;
 
 -- ============================================================
--- WS-B Stufe 3 — Lebenszyklus + Deckungs-Dialog (Berater-Zusaetze).
+-- Lebenszyklus + Deckungs-Dialog (Berater-Zusaetze).
 --   (S1) Uebererfuellt-Zweig: aktives Ziel mit current_amount >= target -> savings_goal_reached-Alert
---        (feuert NUR bei erreicht/uebertroffen, NICHT bei "hinter Plan").
+--        (feuert nur bei erreicht/uebertroffen, nicht bei "hinter Plan").
 --   (S2) Depot-Deckungs-Dialog: breach (depot_reserve_status) + Ziel HINTER Plan -> reserve_coverage_depot-Alert
 --        (nennt Depot + Lever) + (S2-tax) Steuer-Hinweis (Abgeltungssteuer) beim Absichern.
 --   (S3) Smart-Unterdrueckung: identischer breach, aber Ziel ON PACE (hohe laufende Rate = rp.monthly_equivalent)
---        -> KEIN reserve_coverage_depot-Alert fuer dieses Depot. Beweist laufende Rate != observed (gleicher
+--        -> kein reserve_coverage_depot-Alert fuer dieses Depot. Beweist laufende Rate != observed (gleicher
 --        observed-Pace in S2/S3; nur die konfigurierte Vorwaerts-Rate unterscheidet).
 --   (S4) Fremdwaehrungs-Caveat: breached Depot mit non-EUR-Holding -> FX-Hinweis im Alert-Text.
 --   (S5) Reserve-Aufschluesselung Cash/Depot im Digest.
@@ -583,13 +583,13 @@ BEGIN
   IF NOT EXISTS (SELECT 1 FROM jsonb_array_elements(r->'alerts') a
                  WHERE a->>'kind' = 'savings_goal_reached' AND (a->'msg')::text LIKE '%__s3_over__%') THEN
     RAISE EXCEPTION 'FAIL [S1]: kein savings_goal_reached-Alert für uebererfuelltes Ziel (alerts=%)', r->'alerts'; END IF;
-  -- darf NICHT als savings_pace (hinter Plan) erscheinen
+  -- darf nicht als savings_pace (hinter Plan) erscheinen
   IF EXISTS (SELECT 1 FROM jsonb_array_elements(r->'alerts') a
              WHERE a->>'kind' = 'savings_pace' AND (a->'msg')::text LIKE '%__s3_over__%') THEN
     RAISE EXCEPTION 'FAIL [S1]: uebererfuelltes Ziel fälschlich als savings_pace (hinter Plan) gemeldet'; END IF;
   RAISE NOTICE 'PASS [S1: current >= target -> savings_goal_reached, nicht savings_pace]';
 
-  -- (S1b) nur durch Zuordnung gedeckt (Sparziel-Zweckbindung 2026-10-27): die Karte der Zuordnung/Anlage meldete die
+  -- (S1b) nur durch Zuordnung gedeckt (Sparziel-Zweckbindung): die Karte der Zuordnung/Anlage meldete die
   -- Deckung schon -> kein periodischer savings_goal_reached-Alert (Rauschen fuer "Geld liegt schon da").
   DECLARE v_p2p int; v_ge int; BEGIN
     v_p2p := (finance.fn_create_account('{"name":"__s3_p2p__","account_type":"p2p","opening_balance":5000}'::jsonb)->>'account_id')::int;
@@ -625,7 +625,7 @@ BEGIN
   RAISE NOTICE 'PASS [S2: breach + hinter Plan -> reserve_coverage_depot + Steuer-Hinweis]';
 
   -- ---------- (S3) Smart-Unterdrueckung: identischer breach, aber ON PACE (hohe laufende Rate) ----------
-  -- Audit Paket 3: die laufende Rate fliesst in einen Topf (sonst ist das Ziel "nicht messbar" und nie on-pace)
+  -- die laufende Rate fliesst in einen Topf (sonst ist das Ziel "nicht messbar" und nie on-pace)
   INSERT INTO finance.accounts (name, account_type, currency, status) VALUES ('__s3_pot__','cash','EUR','active') RETURNING id INTO v_p3;
   INSERT INTO finance.recurring_payments (name, account_id, target_account_id, amount, schedule_unit, first_payment_date, valid_from)
   VALUES ('__s3_rp_b__', v_fund, v_p3, -10000, 'month', current_date, current_date) RETURNING id INTO v_rp_b;  -- monthly_equivalent -10000
@@ -644,7 +644,7 @@ BEGIN
     RAISE EXCEPTION 'FAIL [S3]: reserve_coverage_depot trotz on-pace (laufende Rate schliesst die Lücke) -> Smart-Unterdrückung griff nicht'; END IF;
   RAISE NOTICE 'PASS [S3: identischer breach, aber laufende Rate >= Nachhol-Rate -> unterdrückt (laufende != observed)]';
 
-  -- ---------- (S3b) Kursdelle (Mini-App UX 2026-10-30): Marktwert 1000 gegen Reserve 1010 = 1 %% < 10 %% ----------
+  -- ---------- (S3b) Kursdelle: Marktwert 1000 gegen Reserve 1010 = 1 %% < 10 %% ----------
   -- dieselbe Regel wie die App (fn_depot_cover_state = dip) -> kein Alert, auch wenn das Ziel hinter Plan ist
   DECLARE v_pd int; v_gd int; BEGIN
     INSERT INTO finance.accounts (name, account_type, currency, status, settlement_account_id)
@@ -683,9 +683,9 @@ BEGIN
     RAISE EXCEPTION 'FAIL [S4]: Deckungs-Alert ohne Fremdwährungs-Caveat: %', v_txt; END IF;
   RAISE NOTICE 'PASS [S4: non-EUR-Holding im breached Depot -> FX-Caveat im Alert]';
 
-  -- ---------- (S4b) WP-3c: null_rate-Advisory + data_quality-Alert nennen die kurslose Fremdwaehrung ----------
-  -- GBP ist in Nutzung (Holding-Waehrung, s. S4) aber hat KEINE fx_rate-Zeile -> fn_to_eur=NULL -> die Roll-ups
-  -- wuerden es still als 0 zaehlen. Der neue null_rate-Marker macht die Luecke sichtbar (Zwilling zu null_price).
+  -- ---------- (S4b) null_rate-Advisory + data_quality-Alert nennen die kurslose Fremdwaehrung ----------
+  -- GBP ist in Nutzung (Holding-Waehrung, s. S4) aber hat keine fx_rate-Zeile -> fn_to_eur=NULL -> die Roll-ups
+  -- wuerden es still als 0 zaehlen. Der null_rate-Marker macht die Luecke sichtbar (Zwilling zu null_price).
   IF NOT (r->'advisories'->'null_rate' @> '[{"currency":"GBP"}]'::jsonb) THEN
     RAISE EXCEPTION 'FAIL [S4b null_rate]: GBP (in Nutzung, kein FX-Kurs) fehlt in advisories.null_rate (%)', r->'advisories'->'null_rate'; END IF;
   SELECT (a->'msg')::text INTO v_txt FROM jsonb_array_elements(r->'alerts') a WHERE a->>'kind' = 'data_quality' LIMIT 1;
@@ -703,17 +703,17 @@ BEGIN
 END $$;
 
 -- ============================================================
--- Phase L — cashflow_coverage (WS-1) + savings_squeeze (WS-2).
---   monthly_cashflow_summary/monthly_liquidity_summary sind GLOBALE Single-Row-Views; die Geschwister-Bloecke
---   dieser Datei legen recurring_payments an (akkumulieren in der EINEN Transaktion). Daher in einem SAVEPOINT
+-- cashflow_coverage + savings_squeeze.
+--   monthly_cashflow_summary/monthly_liquidity_summary sind globale Single-Row-Views; die Geschwister-Bloecke
+--   dieser Datei legen recurring_payments an (akkumulieren in der einen Transaktion). Daher in einem SAVEPOINT
 --   alle bestehenden rp neutralisieren (status='paused', FK-frei, kein DELETE) + den financial_planning-Fakt
 --   entfernen, kontrollierte Fixtures setzen, danach ROLLBACK TO SAVEPOINT -> Neutralisierung + Fixtures weg,
---   alle vorher gelaufenen Bloecke unberuehrt. Robust gegen Block-Reihenfolge (Reviewer m4).
---   (L1) net<0 -> cashflow_coverage (hart) + text; KEIN savings_squeeze (M5-Guard monthly_net>=0).
+--   alle vorher gelaufenen Bloecke unberuehrt. Robust gegen Block-Reihenfolge.
+--   (L1) net<0 -> cashflow_coverage (hart) + text; kein savings_squeeze (M5-Guard monthly_net>=0).
 --   (L2) gesundes Plus -> kein Alert.   (L3) Plus < 10%-Puffer + Toggle an -> sanfter Alert.
 --   (L4) Toggle aus -> kein Puffer-Alert.   (L5) Config-Schwelle (buffer_pct=0.50) geehrt (target=1000).
---   (L6) leer / income=0 -> KEIN Alert (NULL-Guard).
---   (L7) net>=0 aber net - signierte Sparziel-Foerderrate < 0 -> savings_squeeze + text, KEIN cashflow_coverage.
+--   (L6) leer / income=0 -> kein Alert (NULL-Guard).
+--   (L7) net>=0 aber net - signierte Sparziel-Foerderrate < 0 -> savings_squeeze + text, kein cashflow_coverage.
 -- ============================================================
 SAVEPOINT phase_l_cf;
 UPDATE finance.recurring_payments SET status = 'paused';        -- nur im Savepoint; FK-frei
@@ -776,7 +776,7 @@ BEGIN
   RAISE NOTICE 'PASS [L5: cashflow_buffer_pct=0.50 geehrt (target=1000)]';
   DELETE FROM core.config WHERE category='advisor' AND key IN ('cashflow_buffer_pct','cashflow_buffer_nudge');
 
-  -- (L6) leer / income=0: alle rp pausieren -> income NULL -> KEIN Alert, kein Crash
+  -- (L6) leer / income=0: alle rp pausieren -> income NULL -> kein Alert, kein Crash
   UPDATE finance.recurring_payments SET status='paused';
   r := finance.fn_advisor_review('finance');
   SELECT count(*) INTO v_cf FROM jsonb_array_elements(r->'alerts') a WHERE a->>'kind'='cashflow_coverage';
@@ -785,7 +785,7 @@ BEGIN
 
   -- (L7) savings_squeeze: nur Einkommen __pl_inc__ +2000 aktiv + eine Sparziel-Foerderrate -2500 (Transfer auf
   --      Reservekonto, > Einkommen) -> monthly_net=+2000 (Transfer ausgeschlossen), liquidity_net=-500.
-  --      M1: Rate signiert NEGATIV eingefuegt.
+  --      Rate signiert negativ eingefuegt.
   UPDATE finance.recurring_payments SET status='active' WHERE name='__pl_inc__';   -- +2000 (aus L1)
   INSERT INTO finance.accounts (name, account_type, currency, status)
   VALUES ('__pl_res__','cash','EUR','active') RETURNING id INTO v_res;
@@ -807,17 +807,17 @@ END $$;
 ROLLBACK TO SAVEPOINT phase_l_cf;
 
 -- ============================================================
--- Audit Paket 3 — die drei Abwaegungen mit den Zahlen-Beispielen aus dem Auftrag.
---   Wie Phase L in einem SAVEPOINT: alle Bestands-rps pausieren, Salden/Bestaende/Immobilien/Vorsorge der
+-- Die drei Abwaegungen mit Zahlen-Beispielen.
+--   Wie der cashflow_coverage-Block in einem SAVEPOINT: alle Bestands-rps pausieren, Salden/Bestaende/Immobilien/Vorsorge der
 --   Geschwister-Bloecke neutralisieren -> kontrollierte, absolute Erwartungen; danach ROLLBACK TO SAVEPOINT.
 --   (C1) 3000 / Konsum 2500 / ETF 600 -> kein cashflow_coverage, savings_squeeze gap 100.
 --   (C2) 3000 / Konsum 2200 + Kreditrate 1000 (Zins 400, Tilgung 600) -> frei -200 -> cashflow_coverage, kein squeeze.
 --   (M1) Zielmix Welt 50 / Anleihen 20 / Cash 10 / Festgeld 20 genau gehalten -> kein alloc-Alert, Welt-Soll 62,5.
---   (M2) Reviewer #6: kein cash-Block + 10.000 Giro -> Giro faellt aus dem Nenner (kein Dauer-Drift).
---   (M3) Reviewer #6: zurueckgelegtes Sparziel-Geld blaeht "Cash uebergewichtet" nicht auf.
+--   (M2) kein cash-Block + 10.000 Giro -> Giro faellt aus dem Nenner (kein Dauer-Drift).
+--   (M3) zurueckgelegtes Sparziel-Geld blaeht "Cash uebergewichtet" nicht auf.
 --   (N1) net_worth: Haus 300.000 + Hypothek -200.000 -> Topf +100.000 gegenueber investment.
---   (N2) Haus ohne Wert bzw. kind-besessen -> Haus UND sein Kredit fallen beide heraus (symmetrisch).
---   (G1) Sparziel mit laufender Rate ohne Topf -> savings_goal_unmeasurable, KEIN savings_pace.
+--   (N2) Haus ohne Wert bzw. kind-besessen -> Haus und sein Kredit fallen beide heraus (symmetrisch).
+--   (G1) Sparziel mit laufender Rate ohne Topf -> savings_goal_unmeasurable, kein savings_pace.
 --   (E1) Notreserve liest das freie Cash aus fn_liquidity_snapshot (eine Adresse).
 -- ============================================================
 SAVEPOINT paket3;
@@ -839,7 +839,7 @@ BEGIN
   INSERT INTO finance.accounts (name, account_type, currency, status, settlement_account_id)
     VALUES ('__p3_depot__','stocks_depot','EUR','active', v_giro) RETURNING id INTO v_depot;
 
-  -- ---------- (C1) Auftrags-Beispiel Monatsueberschuss ----------
+  -- ---------- (C1) Beispiel Monatsueberschuss ----------
   INSERT INTO finance.recurring_payments (name, account_id, amount, schedule_unit, first_payment_date, valid_from) VALUES
     ('__p3_salary__', v_giro, 3000, 'month', current_date, current_date),
     ('__p3_rent__',   v_giro, -2500, 'month', current_date, current_date);
@@ -857,7 +857,7 @@ BEGIN
     RAISE EXCEPTION 'FAIL [C1 digest]: frei 500 / Konto -100 erwartet, got %', r->'digest'; END IF;
   RAISE NOTICE 'PASS [C1: 3000/2500/ETF 600 -> kein Fixkosten-Alarm, savings_squeeze 100]';
 
-  -- ---------- (C2) Reviewer #1: Tilgung ist Pflicht, kein "Sparrate senken" ----------
+  -- ---------- (C2) Tilgung ist Pflicht, kein "Sparrate senken" ----------
   UPDATE finance.recurring_payments SET status = 'paused' WHERE name = '__p3_etf__';
   UPDATE finance.recurring_payments SET amount = -2200 WHERE name = '__p3_rent__';
   INSERT INTO finance.accounts (name, account_type, currency, status) VALUES ('__p3_loan__','loan','EUR','active') RETURNING id INTO v_loan;
@@ -947,7 +947,7 @@ BEGIN
     RAISE EXCEPTION 'FAIL [N1]: net_worth = investment + Haus 300.000 - Hypothek 200.000 = +100.000 erwartet, got % - % = %', v_nw, v_inv, v_nw - v_inv; END IF;
   RAISE NOTICE 'PASS [N1: net_worth zaehlt Haus und Hypothek (+100.000)]';
 
-  -- ---------- (N2) Haus ohne Wert -> Haus UND Hypothek fallen heraus (= investment) + Digest-Hinweis ----------
+  -- ---------- (N2) Haus ohne Wert -> Haus und Hypothek fallen heraus (= investment) + Digest-Hinweis ----------
   UPDATE finance.real_estate SET current_value = NULL WHERE id = v_re;
   r := finance.fn_advisor_review('finance');
   SELECT (a->>'value')::numeric INTO v_nw FROM jsonb_array_elements(r->'alerts') a WHERE a->>'metric_key' = 'target_portfolio';
@@ -964,7 +964,7 @@ BEGIN
     RAISE EXCEPTION 'FAIL [N2 kid]: Kind-Haus + seine Hypothek muessen beide raus, got Diff %', v_nw - v_inv; END IF;
   RAISE NOTICE 'PASS [N2: Haus ohne Wert / Kind-Haus -> Haus und Kredit symmetrisch raus]';
 
-  -- (N3, Review) Haus VERKAUFT, Hypothek noch offen -> das Haus zaehlt nicht mehr, die Schuld schon (-200.000)
+  -- (N3) Haus verkauft, Hypothek noch offen -> das Haus zaehlt nicht mehr, die Schuld schon (-200.000)
   UPDATE finance.real_estate SET owner_person_id = NULL, status = 'sold' WHERE id = v_re;
   r := finance.fn_advisor_review('finance');
   SELECT (a->>'value')::numeric INTO v_nw FROM jsonb_array_elements(r->'alerts') a WHERE a->>'metric_key' = 'target_portfolio';
@@ -972,7 +972,7 @@ BEGIN
     RAISE EXCEPTION 'FAIL [N3]: verkauftes Haus mit offener Hypothek -> net_worth = investment - 200.000, got Diff %', v_nw - v_inv; END IF;
   RAISE NOTICE 'PASS [N3: Kredit einer verkauften Immobilie bleibt Schuld]';
 
-  -- (FX, Paket-2-Punkt 11b) Wert DER Zielportfolio-Basis ohne Wechselkurs -> Alert sagt "unvollstaendig";
+  -- (FX) Wert der Zielportfolio-Basis ohne Wechselkurs -> Alert sagt "unvollstaendig";
   -- eine Luecke ausserhalb der Basis (Kind-Konto) loest keinen Hinweis aus. Danach aufraeumen (Saldo 0).
   UPDATE agent.core_contexts SET metadata = jsonb_set(metadata, '{facts,goal,target_portfolio_basis}', '"investment"') WHERE name = 'financial_planning';
   PERFORM finance.fn_ensure_currency('CHF');
@@ -997,7 +997,7 @@ BEGIN
   END;
   RAISE NOTICE 'PASS [FX: Wechselkurs-Luecke im Zielportfolio wird gemeldet, ausserhalb der Basis nicht]';
 
-  -- ---------- (G1) Sparziel mit laufender Rate OHNE Topf -> nicht messbar statt "hinter Plan" ----------
+  -- ---------- (G1) Sparziel mit laufender Rate ohne Topf -> nicht messbar statt "hinter Plan" ----------
   INSERT INTO finance.recurring_payments (name, account_id, amount, schedule_unit, first_payment_date, valid_from)
     VALUES ('__p3_old_rate__', v_giro, -100, 'month', current_date - 300, current_date - 300) RETURNING id INTO v_rp;
   INSERT INTO finance.savings_goals (name, target_amount, target_date, status, recurring_payment_id, created_at)
@@ -1014,7 +1014,7 @@ BEGIN
     RAISE EXCEPTION 'FAIL [G1]: Digest zeigt das Ziel nicht als "nicht messbar"'; END IF;
   RAISE NOTICE 'PASS [G1: Ziel ohne Topf -> nicht messbar (Alert + Digest), kein savings_pace]';
 
-  -- (G2, Review) Depot-Unterdeckung eines NICHT messbaren Ziels wird nicht als "on pace" verschluckt
+  -- (G2) Depot-Unterdeckung eines nicht messbaren Ziels wird nicht als "on pace" verschluckt
   INSERT INTO finance.savings_goal_reserve_entries (savings_goal_id, account_id, delta_native, kind)
     VALUES ((SELECT id FROM finance.savings_goals WHERE name = '__p3_old_goal__'), v_depot, 500, 'manual');   -- kein Live-Kurs -> Deckung 0
   r := finance.fn_advisor_review('finance');
@@ -1023,7 +1023,7 @@ BEGIN
     RAISE EXCEPTION 'FAIL [G2]: Depot-Unterdeckung eines nicht messbaren Ziels fehlt (alerts=%)', r->'alerts'; END IF;
   RAISE NOTICE 'PASS [G2: nicht messbares Ziel gilt nie als on-pace -> Depot-Deckung meldet sich]';
 
-  -- ---------- (E1) Notreserve = zugeordnetes Geld (Ruecklage, 2026-10-30); fuer die Runway verfuegbar ----------
+  -- ---------- (E1) Notreserve = zugeordnetes Geld (Ruecklage); fuer die Runway verfuegbar ----------
   -- 3.000 auf dem Giro (10.000, frei) als Notreserve: Alert-Wert = gedeckt 3.000; das freie Cash der Runway bleibt
   -- 10.000 (Notreserve zaehlt dort als verfuegbar), emergency_eur = 3.000.
   INSERT INTO finance.savings_goals (name, kind, target_amount, status) VALUES ('__p3_er__', 'emergency_reserve', 99999999, 'active')
@@ -1042,7 +1042,7 @@ END $$;
 ROLLBACK TO SAVEPOINT paket3;
 
 -- ============================================================
--- (G3) Kurs-Luecke im Sparziel (2026-11-06): gemessener Stand = Untergrenze.
+-- (G3) Kurs-Luecke im Sparziel: gemessener Stand = Untergrenze.
 --   kein savings_pace bei Rueckstand + Luecke (fn_savings_goal_pace 'unknown'); der Daten-Hinweis nennt das
 --   aktive Konto (Einzahl dq_null_rate {account}, Mehrzahl dq_null_rate_many {accounts}), ein geschlossenes Konto
 --   allein meldet nichts; Digest-Zeile „mindestens“ (digest_goal_line_fx_gap); erreichtes Ziel mit Luecke ->
@@ -1144,7 +1144,7 @@ END $$;
 ROLLBACK TO SAVEPOINT fxgap;
 
 -- ============================================================
--- Umschicht-Hilfe (Glide Path, Sparziel-Zweckbindung 2026-10-27; Owner: Fenster 60 Monate, Toleranz 10 pp):
+-- Umschicht-Hilfe (Glide Path: Fenster 60 Monate, Toleranz 10 pp):
 --   erlaubt im Depot = Ziel * Restmonate / Fenster; mehr als erlaubt + Toleranz -> savings_goal_derisk mit
 --   Vorschlagsbetrag (drift) und latch_keys je Restjahr; mit aktivem Sparplan zusaetzlich der Pausieren-Satz.
 --   (D1) 12 Monate vor dem Ziel, 10000 im Depot -> Alert, drift = excess aus der View, latch y1, Plan-Satz
@@ -1152,7 +1152,7 @@ ROLLBACK TO SAVEPOINT fxgap;
 --   (D3) nur knapp ueber erlaubt (unter Toleranz) -> kein Alert
 --   (D4) Fenster per Config 12 Monate -> erlaubt = Ziel, kein Alert fuer D1
 --   (D5) bewusst bestaetigt -> kein Alert; (D6) Entscheidung abgelaufen -> Alert mit goal_derisk_expired + _final
---   (D7) Zielmonat: latch_keys bleibt y1 (vorher y0 = zweite Meldung im letzten Jahr)
+--   (D7) Zielmonat: latch_keys bleibt y1 (nicht y0: sonst zweite Meldung im letzten Jahr)
 -- ============================================================
 SAVEPOINT derisk;
 DO $$
@@ -1198,7 +1198,7 @@ BEGIN
     RAISE EXCEPTION 'FAIL [D4 Config-Fenster]: %', r->'alerts'; END IF;
   DELETE FROM core.config WHERE category = 'advisor' AND key = 'derisk_window_months';
 
-  -- (D5) bewusste Ausnahme 2026-11-06: gueltige Entscheidung -> still; (D6) abgelaufen (Entscheidung vor dem Stichtag
+  -- (D5) bewusste Ausnahme: gueltige Entscheidung -> still; (D6) abgelaufen (Entscheidung vor dem Stichtag
   -- 12 Monate vor dem Termin, heute danach) -> genau die Meldung "du wolltest es bewusst so"; Latch im Zielmonat y1.
   INSERT INTO finance.savings_goal_risk_decisions (savings_goal_id, event, decided_at, target_date, limit_eur, allowed_eur)
     VALUES (v_g1, 'accept', now(), current_date + 365, 10000, v_allowed);
@@ -1214,7 +1214,7 @@ BEGIN
   IF a IS NULL OR (a->'msg')::text NOT LIKE '%finance.advisor.goal_derisk_expired%'
      OR (a->'msg')::text NOT LIKE '%finance.advisor.goal_derisk_final%' THEN
     RAISE EXCEPTION 'FAIL [D6 abgelaufen -> letzte Erinnerung]: %', a; END IF;
-  -- (D7) Bestandsfehler y0: im Zielmonat (Restmonate 0) bleibt der Latch-Schluessel y1
+  -- (D7) im Zielmonat (Restmonate 0) bleibt der Latch-Schluessel y1 (nicht y0)
   UPDATE finance.savings_goals SET target_date = (date_trunc('month', current_date) + interval '1 month' - interval '1 day')::date WHERE id = v_g1;
   DELETE FROM finance.savings_goal_risk_decisions WHERE savings_goal_id = v_g1;
   r := finance.fn_advisor_review('finance');
@@ -1228,7 +1228,7 @@ END $$;
 ROLLBACK TO SAVEPOINT derisk;
 
 -- ============================================================
--- Instandhaltungsruecklage (2026-10-27): Rate unter der Empfehlung nach II. BV -> maintenance_reserve_low:<id>
+-- Instandhaltungsruecklage: Rate unter der Empfehlung nach II. BV -> maintenance_reserve_low:<id>
 -- (latch_keys = Stufe + Satz, damit ein Stufen-/Satzwechsel erneut meldet); aktive Immobilie ohne Ruecklage ->
 -- maintenance_reserve_missing:<id>; Digest-Zeile digest_maintenance_line statt "0 % (x / —)".
 -- ============================================================
@@ -1282,7 +1282,7 @@ BEGIN
 END $$;
 ROLLBACK TO SAVEPOINT maintenance;
 
--- ---------- (SO) Umschichtung mit Enddatum: standing_order_ending (2026-11-01) ----------
+-- ---------- (SO) Umschichtung mit Enddatum: standing_order_ending ----------
 SAVEPOINT order_ending;
 DO $$
 DECLARE r jsonb; a jsonb; v_p2p int; v_settle int; v_far int; v_eng int; v_goal int; v_first date := current_date + 5;

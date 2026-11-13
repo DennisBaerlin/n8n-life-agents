@@ -1,5 +1,5 @@
 -- ============================================================
--- core.fn_fmt_date (read-only, Datum fuer SQL-gerenderte Dokumente)
+-- core.fn_fmt_date (READ, Datum fuer SQL-gerenderte Dokumente)
 --   Formatiert ein Datum im Muster der Sprache (core.ui_languages.date_pattern, Quelle: Core-Manifest
 --   languages.list[].date_pattern). Die Muster liefern dieselbe Ausgabe wie Fmt-DateJs mit Intl im Workflow
 --   (de 31.12.2026, en-GB 31/12/2026, ko 2026. 12. 31.). Bei uns anders: PostgreSQL hat kein Intl; Workflows

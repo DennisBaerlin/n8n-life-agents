@@ -3,8 +3,7 @@
 
 # --- tool_set_account_interest (set_*: Kontozins setzen/aendern) ---
 function Build-SetAccountInterest {
-    # WS-B0: enge Paket-Schreibrolle (finance_rw, Least-Privilege D10) statt Owner-Cred.
-    # Dynamic-Scope: Build-Pg liest dieses $CRED_POSTGRES. Core-Tools nutzen die Owner-Cred.
+    # Enge Paket-Schreibrolle (finance_rw) statt Owner-Cred; Build-Pg liest $CRED_POSTGRES per Dynamic-Scope.
     $CRED_POSTGRES = $CRED_FINANCE_RW
     $trig = Build-Trigger @('account_name','annual_rate','schedule_interval','schedule_unit',
                            'schedule_day_of_month','day_count_convention','posting_day_of_month','auto_post','valid_from')
@@ -18,10 +17,10 @@ function Build-SetAccountInterest {
     $errAcct = Build-ToolError 'Account ambiguous' @(660, 200) `
         "=Account '{{ `$('Start').item.json.account_name }}' resolves to {{ `$('Resolve Account').item.json.hit_count }} matches. Candidates: {{ JSON.stringify(`$('Resolve Account').item.json.candidates) }}. Ask the user which exact account."
 
-    # Read-only Vorschau der WIRKSAMEN Werte aus derselben fn wie die Buchung (Audit Paket 2: fn_interest_rate_preview
-    # -> Karte = Buchung): geerbte Kadenz/Tage/auto_post bei reinem Satzwechsel, Zinsmethode samt Grund, und die
+    # Read-only Vorschau der wirksamen Werte aus derselben fn wie die Buchung (fn_interest_rate_preview,
+    # Karte = Buchung): geerbte Kadenz/Tage/auto_post bei reinem Satzwechsel, Zinsmethode samt Grund, und die
     # korrigierbaren Ablehnungen (Konto nicht zins-faehig, Satz negativ, Datum vor offener Zeile oder vor der juengsten
-    # verzinsten Periode) schon VOR der Karte.
+    # verzinsten Periode) schon vor der Karte.
     $resInt = Build-Pg 'Resolve interest defaults' @(660, 0) `
         "=SELECT (r->>'ok')::boolean AS ok, r->>'reason' AS reason, r->>'day_count_convention' AS conv, (r->>'auto_post')::boolean AS auto_post, r->>'conv_reason' AS conv_reason, r->>'schedule_unit' AS schedule_unit, (r->>'schedule_interval')::int AS schedule_interval, (r->>'schedule_day_of_month')::int AS schedule_day_of_month, (r->>'posting_day_of_month')::int AS posting_day_of_month, r->>'first_credit_date' AS first_credit_date FROM finance.fn_interest_rate_preview(`$1::jsonb) AS r;" `
         ([ordered]@{
@@ -39,8 +38,7 @@ function Build-SetAccountInterest {
     $ifPreOk = Build-If 'Preview ok?' @(770, -160) "={{ `$json.ok }}" 'true' 'equals' 'boolean'
     $errPre = Build-ToolError 'Interest rejected' @(880, 240) "={{ `$('Resolve interest defaults').item.json.reason }}"
 
-    # "DB ist das Gesetz": fn_set_account_interest laeuft als Probelauf VOR der Karte (nach der Read-only-Vorschau);
-    # derselbe Param-Satz geht nach dem Gate in den echten Write (offene Zeile schliessen (valid_to) + neue Zeile).
+    # Der Probelauf laeuft nach der Read-only-Vorschau; der Write schliesst die offene Zeile (valid_to) und legt eine neue an.
     $wg = New-FnWriteGate -Fn 'finance.fn_set_account_interest' -DryPos @(880, 0) -WritePos @(2200, 0) `
         -WriteName 'Set interest (atomic)' `
         -WriteSelect "(r->>'ok')::boolean AS ok, r->>'reason' AS reason, (r->>'interest_rate_id')::int AS interest_rate_id, (r->>'closed_previous')::boolean AS closed_previous" `
@@ -56,7 +54,7 @@ function Build-SetAccountInterest {
             valid_from            = '$(''Start'').item.json.valid_from'
         })
 
-    # Strukturiertes Summary (Textkatalog): Zinssatz als Prozent, Zinsmethode samt Grund (Code aus dem SQL, im Katalog
+    # Zinssatz als Prozent, Zinsmethode samt Grund (Code aus dem SQL, im Katalog
     # uebersetzt), Hinweis auf das automatische Beenden des bisher offenen Satzes.
     $S = "`$('Start').item.json"
     $D = "`$('Resolve interest defaults').item.json"
@@ -79,7 +77,6 @@ function Build-SetAccountInterest {
 
     $retCancelled = Build-ToolCancelled 'Return cancelled' @(2200, 240) 'the set_account_interest action'
 
-    # Atomarer Write via fn_set_account_interest ($wg.Write, 'Set interest (atomic)'): offene Zeile schliessen + neue Zeile.
     $ifWriteOk = Build-If 'Write ok?' @(2420, 0) "={{ `$json.ok }}" 'true' 'equals' 'boolean'
 
     $errWrite = Build-ToolError 'Update rejected' @(2640, 240) `

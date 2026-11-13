@@ -1,6 +1,6 @@
 -- tests/db/core/test_fn_claim_next_step_offer.sql
 -- core.fn_claim_next_step_offer(p) + core.fn_next_step_offer_keys + Feld offer von core.fn_get_next_step:
---   Owner-Entscheid 2026-11-11 "1x/Tag, nach 3x Ruhe": Gruss/Lebenszeichen hoechstens offer_per_day je Kalendertag,
+--   "1x/Tag, nach 3x Ruhe": Gruss/Lebenszeichen hoechstens offer_per_day je Kalendertag,
 --   derselbe Schritt in derselben Lage hoechstens offer_max_repeats ohne gueltigen Tipp; "und jetzt?" (smalltalk NULL)
 --   wird weder geprueft noch gezaehlt; beide Grenzen werden erst gelesen, dann zusammen gesetzt (kein verbrauchter Latch
 --   ohne Knopf); neue Generation = frische Zaehlung; 0 = aus; offer (lesend) und Claim nutzen dieselben Keys.

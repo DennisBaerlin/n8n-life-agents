@@ -1,6 +1,6 @@
 ﻿#Requires -Version 5.1
 # backup_test.ps1 — GRATIS Ende-zu-Ende-Test von Notfallblatt und Schluessel-Uebernahme (lifeagents backup) gegen das
-# echte PostgreSQL des laufenden Substrats. Kopiert provisioning/ + packages/ DIESES Checkouts und den Fall-Runner
+# echte PostgreSQL des laufenden Substrats. Kopiert provisioning/ + packages/ dieses Checkouts und den Fall-Runner
 # (tests/backup/) in den Container und faehrt dort tests/backup/cases.sh mit der CLI dieses Baums:
 #   - Export: Dateiname mit Schluessel-ID + Version, backup.state;
 #   - Restore auf einem "neuen Rechner": ohne Eingabe, falscher Schluessel, Tippfehler, beschaedigte Datei, gescheiterte TX

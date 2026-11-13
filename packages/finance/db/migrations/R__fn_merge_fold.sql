@@ -1,11 +1,12 @@
 -- ============================================================
 -- fn_merge_fold (INTERNAL HELPER, IMMUTABLE) -- haengt ein Fold-Ergebnis an die Rueckgabe einer Write-fn
---   Die EINE Stelle, an der card_lines zusammengefuegt werden: die Kartenzeilen des Folds kommen HINTER die eigenen
+--   Die eine Stelle, an der card_lines zusammengefuegt werden: die Kartenzeilen des Folds kommen hinter die eigenen
 --   der Write-fn (aehnlicher Eintrag, Namenspruefung, Kalender ...), alle uebrigen Fold-Schluessel (z. B.
 --   savings_funding) werden angehaengt. Ein blankes `||` wuerde card_lines ersetzen und die eigenen Hinweise still von
---   der Karte nehmen (Plan-Review 2026-10-30). card_lines, die kein Array sind (fehlend, JSON null), zaehlen als leer.
+--   der Karte nehmen. card_lines, die kein Array sind (fehlend, JSON null), zaehlen als leer.
+--   Eingabe: p_base (Rueckgabe der Write-fn), p_fold (Fold-Ergebnis); beide NULL-tolerant.
 --   Aufrufer: fn_create_savings_plan, fn_set_savings_plan, fn_create_recurring_transfer, fn_create_recurring_payment.
---   RUECKGABE jsonb: p_base || (p_fold ohne card_lines) + card_lines = base.card_lines || fold.card_lines
+--   Rueckgabe: jsonb p_base || (p_fold ohne card_lines) + card_lines = base.card_lines || fold.card_lines
 --   Tests: tests/db/finance/test_fn_savings_funding_fold.sql
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_merge_fold(p_base jsonb, p_fold jsonb)

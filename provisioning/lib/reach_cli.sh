@@ -3,10 +3,10 @@
 # set -e), keine Eingaben (die Dialoge leben in release_inputs.sh, contract_lint 12d). Gegenstueck im Docker-Verbund:
 # lib/reach.sh — von dort nur die reinen Funktionen (reach_ts_eval, reach_public_ipv4, reach_dslite) lesend genutzt.
 #
-# EIN Fakt REACH_MODE in core.env (derselbe Schluessel wie im Verbund), Werte in der CLI:
+# Ein Fakt REACH_MODE in core.env (derselbe Schluessel wie im Verbund), Werte in der CLI:
 #   tunnel   Tailscale Funnel. tailscaled laeuft direkt auf dem Rechner (offizielle apt-Quelle); ohne /dev/net/tun
 #            (unprivilegierter LXC, Proxmox-Standard) im Userspace-Modus — Funnel/Serve brauchen kein TUN, der Verbund
-#            laeuft genauso (compose.yml TS_USERSPACE). Die Tuer ist Tailscale selbst: je oeffentlichem Pfad aus der EINEN
+#            laeuft genauso (compose.yml TS_USERSPACE). Die Tuer ist Tailscale selbst: je oeffentlichem Pfad aus der einen
 #            Liste LA_PUBLIC_PATHS ein Serve-Eintrag auf 127.0.0.1:<n8n-port><pfad>, alles andere 404; n8n bleibt auf
 #            127.0.0.1 (TRUSTED_PROXIES=127.0.0.1), kein Caddy, keine Firewall-Oeffnung. Tailscale schneidet den Eintrags-
 #            Pfad vor dem Weiterreichen ab (tailscale/tailscale#6571) -> das Ziel traegt den Pfad selbst.
@@ -15,7 +15,7 @@
 #            ueberschrieben (dann: anderer Weg).
 #   fritzbox MyFRITZ!-Freigabe + eigener Reverse Proxy (bring your own, Caddyfile wie beim eigenen Proxy). Hier nur die
 #            Pruefungen: DS-Lite (reach_dslite, UPnP der FritzBox) und „zeigt die Adresse auf meinen Anschluss?".
-#   proxy    eigene Domain + eigener Reverse Proxy (der Weg vor dieser Datei).
+#   proxy    eigene Domain + eigener Reverse Proxy.
 #   leer     nur Heimnetz. Bestand ohne REACH_MODE, aber mit DOMAIN -> proxy (abgeleitet, nie neu gefragt).
 
 # Neutraler Rechnername (Zertifikats-Protokolle sind oeffentlich): einmal gezogen und als TS_HOSTNAME in core.env
@@ -148,7 +148,7 @@ reach_cli_funnel_mounts() {
 }
 
 # reach_cli_funnel_eval <dns> <funnel-status-json> [port] -> ours | absent | partial | foreign
-#   ours    = Funnel an :443 erlaubt UND genau unsere Eintraege mit unseren Zielen (kein „/" fuer alles).
+#   ours    = Funnel an :443 erlaubt und genau unsere Eintraege mit unseren Zielen (kein „/" fuer alles).
 #   absent  = auf <dns>:443 gibt es nichts.   partial = nur Eintraege von uns, aber unvollstaendig/abweichend.
 #   foreign = ein Eintrag, der nicht von uns ist (der Nutzer nutzt Serve selbst) -> nie anfassen.
 reach_cli_funnel_eval() {
@@ -186,7 +186,7 @@ reach_cli_funnel_ensure() {
   [ "$(reach_cli_funnel_eval "$dns" "$(_reach_cli_funnel_status)" "$port")" = ours ]
 }
 
-# reach_cli_funnel_off <dns> [port] — NUR unsere Eintraege zuruecknehmen (Wechsel weg vom Tunnel). Fremde bleiben.
+# reach_cli_funnel_off <dns> [port] — nur unsere Eintraege zuruecknehmen (Wechsel weg vom Tunnel). Fremde bleiben.
 reach_cli_funnel_off() {
   local dns="$1" port="${2:-}" m t
   need_cmd tailscale || return 0

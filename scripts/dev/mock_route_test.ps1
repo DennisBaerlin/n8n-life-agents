@@ -1,21 +1,20 @@
 ﻿#Requires -Version 5.1
-# mock_route_test.ps1 — DETERMINISTISCHER, GRATIS Routing-/Tool-Path-Test ueber den Mock-LLM
-# (Teststrategie Phase 6, auf Weg C / Phase 8 umgestellt). KEIN echtes LLM, keine API-Credits ->
-# eigener Tier (anders als die owner-gegateten n8n_test/orch_test) und vom PreToolUse-deny-Hook NICHT
-# erfasst (anderer Name).
+# mock_route_test.ps1 — deterministischer, kostenloser Routing-/Tool-Path-Test ueber den Mock-LLM.
+# Kein echtes LLM, keine API-Credits -> eigener Tier (anders als die owner-gegateten n8n_test/orch_test) und vom
+# PreToolUse-deny-Hook nicht erfasst (anderer Name).
 #
-# WEG C (Phase 8): KEIN test_-Gate-Bypass, KEIN Orchestrator-"Test entry" mehr. Stattdessen Prod-Pfad:
-#   - Orchestrator-Ziel  -> feuert am ECHTEN Telegram-Trigger-Webhook (numerische chat_id, gepairter
+# Prod-Pfad, kein test_-Gate-Bypass und kein Orchestrator-"Test entry":
+#   - Orchestrator-Ziel  -> feuert am echten Telegram-Trigger-Webhook (numerische chat_id, gepairter
 #                            Owner-Sender), wie real_ingress.
 #   - Agent-Ziel (jeder Route-Agent aus provides.agents) -> feuert am Agent-Harness (<x>-test), der
-#                            den Agenten als Sub-Workflow ueber seinen PRODUKTIONS-executeWorkflowTrigger
+#                            den Agenten als Sub-Workflow ueber seinen Produktions-executeWorkflowTrigger
 #                            aufruft (kein Test-Sonderknoten im Agenten).
 #   Beide: Execution-Korrelation ueber monotone Exec-id (Get-MaxExecId vor dem Feuern); jedes echte
-#   Send-and-Wait-Gate wird ueber das abgefangene Mock-Telegram DECLINEd (Wait-ExecResolvingGates) ->
+#   Send-and-Wait-Gate wird ueber das abgefangene Mock-Telegram abgelehnt (Wait-ExecResolvingGates) ->
 #   das Tool nimmt den 'cancelled'-Ausgang (kein DB-Write), die Routing-Entscheidung steht im runData.
 #
 # Der Mock-LLM-Stub liefert pro Task gescriptete functionCall/Text-Antworten (tests/mock_llm/scenarios.json)
-# -> deterministisches Routing. So wird der Agent-Tool-Pfad ein HARTES, gratis Gate.
+# -> deterministisches Routing.
 #
 # Assertion (auto je Case-Form):
 #   - Case hat `expected_route` (orch_cases.json): prueft `Call 'agent.<route>'` im Orchestrator-runData.
@@ -23,7 +22,7 @@
 #
 # Modi:
 #   .\scripts\dev\mock_route_test.ps1                       # Orchestrator-Routing (orch_cases.json)
-#   .\scripts\dev\mock_route_test.ps1 -Discover -Id oc01    # NUR feuern + Mock-Log dumpen (Tool-Namen)
+#   .\scripts\dev\mock_route_test.ps1 -Discover -Id oc01    # nur feuern + Mock-Log dumpen (Tool-Namen)
 #   .\scripts\dev\mock_route_test.ps1 -TargetWorkflow agent.finance -WebhookPath finance-test `
 #       -CasesFile tests\agent\finance\finance_cases.json   # Agent-Tool-Path (Agent-Node wird auto-erkannt)
 #   Webhook-Pfade je Agent-Ziel: finance-test / advisor-test / monitor-test / guide-test.
@@ -35,7 +34,7 @@
 #   ... -Id oc01,oc02                                      # mehrere Faelle (unbekannte id = Abbruch vor dem Lauf)
 #   ... -ForceAbortId oc01                                 # Testschalter: wirft am Anfang dieses Falls (oder von draft-fail) eine
 #                                                          # Ausnahme und zeigt so den Abbruch-Pfad ohne echte Last
-# Eine Ausnahme im Fall (z. B. HTTP 500 vom Eingang unter Last) macht NUR diesen Fall rot, der Lauf geht weiter.
+# Eine Ausnahme im Fall (z. B. HTTP 500 vom Eingang unter Last) macht nur diesen Fall rot, der Lauf geht weiter.
 param(
     [string[]]$Id,
     [string]$ForceAbortId,
@@ -44,12 +43,12 @@ param(
     [string]$WebhookPath = 'finance-test',
     [string]$AgentNode = 'Orchestrator agent',
     [string]$CasesFile = 'tests\agent\core\orch_cases.json',
-    # Welche Tool-Node-Namen als WRITE-Tool zaehlen (expected_tool-Matching). Leer = Default 'tool_*'
-    # (Finance-Konvention). Seit Phase D sind ALLE Write-Tools tool_*-praefixiert -> der Default deckt auch
-    # Advisor/Guide/Monitor; -WriteTools (z.B. tool_save_plan_section,tool_publish_plan,tool_create_monitor_trigger) nur noch zum Verengen.
+    # Welche Tool-Node-Namen als Write-Tool zaehlen (expected_tool-Matching). Leer = Default 'tool_*'
+    # (alle Write-Tools sind tool_*-praefixiert, der Default deckt auch Advisor/Guide/Monitor);
+    # -WriteTools (z.B. tool_save_plan_section,tool_publish_plan,tool_create_monitor_trigger) dient nur zum Verengen.
     [string[]]$WriteTools = @(),
     [switch]$Discover,
-    # Chat-Gedaechtnis NICHT vor dem Fall leeren -> zwei Aufrufe nacheinander pruefen das Wiedereinlesen einer
+    # Chat-Gedaechtnis nicht vor dem Fall leeren -> zwei Aufrufe nacheinander pruefen das Wiedereinlesen einer
     # Historie mit mehreren Tool-Runden (n8n-Korrektur memory-all-tool-rounds, provisioning/lib/n8n_patches.sh).
     [switch]$KeepMemory,
     [switch]$Verbose
@@ -59,7 +58,7 @@ $ErrorActionPreference = 'Stop'
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $Utf8NoBom = New-Object System.Text.UTF8Encoding($false)
 $RepoRoot = git -C $PSScriptRoot rev-parse --show-toplevel
-# Ueber powershell.exe -File (z. B. aus Bash) kommt "a,b,c" als EIN String an -> sonst zaehlte kein Write (2026-10-23).
+# Ueber powershell.exe -File (z. B. aus Bash) kommt "a,b,c" als ein String an -> sonst zaehlte kein Write.
 $WriteTools = @($WriteTools | ForEach-Object { $_ -split ',' } | ForEach-Object { $_.Trim() } | Where-Object { $_ })
 $Id = @($Id | ForEach-Object { $_ -split ',' } | ForEach-Object { $_.Trim() } | Where-Object { $_ })   # ebenso -Id "a,b"
 
@@ -97,7 +96,7 @@ function Invoke-ScalarSql([string]$Sql) {
     if ($r.Code -ne 0) { throw "SQL fehlgeschlagen: $($r.Output -join ' ')" }
     ([string](@($r.Output) | Where-Object { "$_".Trim() } | Select-Object -Last 1)).Trim()
 }
-# Drafts (je mit .at = Epoch) + Zeitpunkt der Antwort = LETZTES sendMessage an den Chat (eine Bestaetigungskarte davor
+# Drafts (je mit .at = Epoch) + Zeitpunkt der Antwort = letztes sendMessage an den Chat (eine Bestaetigungskarte davor
 # ist auch ein sendMessage; danach laeuft die Schleife legitim weiter, bis die Antwort kommt).
 function Get-ThinkingTimeline([long]$ChatId) {
     $reqs = @(Get-MockTelegramRequests -Container $Container)
@@ -108,7 +107,7 @@ function Get-ThinkingTimeline([long]$ChatId) {
         Answer = if ($answer) { ConvertTo-EpochSec $answer.t } else { $null }
     }
 }
-# Nach jeder Antwort: Schalter weg, kein Draft NACH der Antwort, jeder Draft an den Absender-Chat.
+# Nach jeder Antwort: Schalter weg, kein Draft nach der Antwort, jeder Draft an den Absender-Chat.
 function Test-ThinkingAfterAnswer([long]$ChatId) {
     $tl = Get-ThinkingTimeline $ChatId
     $ok = $true
@@ -122,8 +121,8 @@ function Test-ThinkingAfterAnswer([long]$ChatId) {
     if ($left -ne '0') { $ok = $false; Write-Host "    FEHLER: 'Denkt nach'-Schalter nach der Antwort nicht geloescht ($left Zeile(n))" -ForegroundColor Red }
     return $ok
 }
-# Schleife endet nach dem Loeschen des Schalters (Befund 2026-10-24): spaetestens eine Runde (5 s Wait) nach dem
-# Loeschen darf keine core.sub_show_thinking-Execution mehr laufen. Ueber die n8n-API, NICHT per Roh-SQL: n8n loescht
+# Schleife endet nach dem Loeschen des Schalters: spaetestens eine Runde (5 s Wait) nach dem
+# Loeschen darf keine core.sub_show_thinking-Execution mehr laufen. Ueber die n8n-API, nicht per Roh-SQL: n8n loescht
 # nicht gespeicherte Laeufe (saveDataSuccessExecution none) nur weich -- execution_entity behaelt status 'running' mit
 # deletedAt bis zum Pruning; die API blendet sie aus. Wartet mit fruehem Abbruch bis $TimeoutSec.
 function Get-ThinkingWorkflowId {
@@ -163,8 +162,8 @@ $PairedUid = $TestOwnerTelegramUid    # gepairter Owner-Sender — Orchestrator-
 $routeAgents = Get-TestRouteAgent
 $null = Resolve-TestTarget -RouteAgents $routeAgents -TargetWorkflow $TargetWorkflow   # unbekanntes Ziel -> Abbruch
 # Absender = gepairter Fixture-Owner (Orchestrator-Pfad UND jedes Agent-Ziel) + Fixtures/abgeschlossenes Onboarding:
-# Initialize-AgentTestState (scripts/dev/test_n8n_state.ps1, gemeinsam mit n8n_test.ps1). Gratis, deterministisch;
-# Container-DB-Pfad, NIE db_apply.ps1 (das zielt auf die db_test-DB; tests/CLAUDE.md).
+# Initialize-AgentTestState (scripts/dev/test_n8n_state.ps1, gemeinsam mit n8n_test.ps1).
+# Container-DB-Pfad, nie db_apply.ps1 (das zielt auf die db_test-DB; tests/CLAUDE.md).
 Initialize-AgentTestState -Container $Container -RepoRoot $RepoRoot
 if ($isOrch) {
     $ingress = Resolve-OrchestratorIngress -BridgeUrl $N8N_URL -ApiKey $N8N_API_KEY
@@ -263,7 +262,7 @@ foreach ($tc in $cases) {
             continue
         }
 
-        # --- Assertion: route (orchestrator) ODER tool (agent) je nach Case-Form ---
+        # --- Assertion: route (orchestrator) oder tool (agent) je nach Case-Form ---
         $pass = $false
         if ($tc.PSObject.Properties['expected_route']) {
             $expect = [string]$tc.expected_route
@@ -274,8 +273,8 @@ foreach ($tc in $cases) {
                 Write-Host "    FEHLER: erwartet $want, got [$($hit -join '+')]" -ForegroundColor Red
             }
         } elseif ($tc.PSObject.Properties['expected_tool']) {
-            # Write-Tool-Erkennung: -WriteTools-Liste (Advisor: tool_save_plan_section,...) ODER Default tool_*.
-            # WICHTIG: lokale Variable NICHT $writeTools nennen — PowerShell-Variablen sind case-insensitiv,
+            # Write-Tool-Erkennung: -WriteTools-Liste (Advisor: tool_save_plan_section,...) oder Default tool_*.
+            # Lokale Variable nicht $writeTools nennen — PowerShell-Variablen sind case-insensitiv,
             # das wuerde den Param $WriteTools ueberschreiben (leeres $tools im 1. Case -> Param weg).
             $hitWrite = if ($WriteTools.Count -gt 0) { @($tools | Where-Object { $WriteTools -contains $_ }) }
                         else { @($tools | Where-Object { $_ -like 'tool_*' }) }
@@ -284,7 +283,7 @@ foreach ($tc in $cases) {
                 $pass = ($hitWrite -contains $expTool)
                 if (-not $pass) { Write-Host "    FEHLER: erwartet tool=$expTool, got [$($hitWrite -join ', ')]" -ForegroundColor Red }
                 # Aufgerufen heisst nicht gelaufen: scheitert der Aufruf am Eingabe-Schema (z. B. Zahl statt Text im
-                # Szenario), laeuft der Tool-Workflow nie, der Agent bekommt nur eine Fehlermeldung (2026-10-23 so unbemerkt).
+                # Szenario), laeuft der Tool-Workflow nie, der Agent bekommt nur eine Fehlermeldung.
                 if ($pass -and $runData.PSObject.Properties.Name -contains $expTool) {
                     $toolErr = @($runData.$expTool | Where-Object { $_.error -or $_.executionStatus -eq 'error' })
                     if ($toolErr.Count -gt 0) {
@@ -301,13 +300,13 @@ foreach ($tc in $cases) {
             Write-Host "    FEHLER: Case hat weder expected_route noch expected_tool." -ForegroundColor Red
         }
 
-        # "Bot denkt nach": der Mock-LLM antwortet sofort -> ob VOR der Antwort ein Draft kam, ist ein Wettlauf und wird
+        # "Bot denkt nach": der Mock-LLM antwortet sofort -> ob vor der Antwort ein Draft kam, ist ein Wettlauf und wird
         # hier nicht verlangt (das pruefen [thinking-keepalive] und [draft-fail] mit langsamem Mock). Hart: der Schalter
-        # ist nach der Antwort weg und kein Draft kam NACH ihr.
+        # ist nach der Antwort weg und kein Draft kam nach ihr.
         if ($pass -and $isOrch) { $pass = Test-ThinkingAfterAnswer $chatId }
 
         # Zurueckgespielte Werkzeugaufrufe muessen ihre Angaben behalten (der Mock schickt vor jedem Aufruf einen Denkblock;
-        # n8n-Fix #41241 ab 2.45, Regressionswache). Fehlen sie, wiederholt das echte Modell den "leeren" Aufruf.
+        # n8n-Fix #41241, Regressionswache). Fehlen sie, wiederholt das echte Modell den "leeren" Aufruf.
         if ($pass) {
             $lost = @(Get-MockLlmRequests -Container $Container | ForEach-Object { @($_.replay_lost) } | Where-Object { $_ })
             if ($lost.Count -gt 0) { $pass = $false; Write-Host "    FEHLER: Aufruf ohne Angaben oder unvollstaendig zurueckgespielt (dropped = Block fehlt, unpaired = ohne tool_result): $($lost -join ', ')" -ForegroundColor Red }
@@ -465,7 +464,7 @@ if ($isOrch -and -not $Discover -and @($cases).Count -gt 0) {
             else { Start-Sleep -Milliseconds 300 }
         }
         if (-not $leaseSeen) { throw "kein Schalter in agent.thinking_lease nach 15 s" }
-        # Gegenprobe fuer Test-NoThinkingLoopRunning: WAEHREND die Antwort aussteht, muss die API die Schleife als
+        # Gegenprobe fuer Test-NoThinkingLoopRunning: waehrend die Antwort aussteht, muss die API die Schleife als
         # running zeigen -- sonst waere "keine laeuft mehr" nach der Antwort nichtssagend.
         Start-Sleep -Milliseconds 2000
         $loopSeen = @(Get-RunningThinkingLoop).Count -ge 1
@@ -492,7 +491,7 @@ if ($isOrch -and -not $Discover -and @($cases).Count -gt 0) {
     if ($ok) { $passed++; Write-Host "    [PASS]" -ForegroundColor Green } else { $failed++; Write-Host "    [FAIL] 'Denkt nach'-Anzeige lebt nicht bis zur Antwort bzw. pausiert nicht bei offener Karte" -ForegroundColor Red }
 }
 
-# --- Frei-SQL ohne query-Argument (Befund 2026-10-24, Execution 732) -------------------------------------------
+# --- Frei-SQL ohne query-Argument -------------------------------------------
 # Paket-neutral: jedes Agent-Ziel mit postgres_select. Szenario __mock_select_no_query__ ruft postgres_select mit {}.
 # Erwartet: Execution success und das Tool-Ergebnis ist die Guard-Zeile {ok:false, error} (New-PostgresSelectToolNode),
 # kein n8n-interner Fehler ("Cannot read properties of undefined (reading 'match')").
@@ -525,7 +524,7 @@ if (-not $isOrch -and -not $Discover -and @($cases).Count -gt 0 -and ($wfDetail.
     if ($ok) { $passed++; Write-Host "    [PASS]" -ForegroundColor Green } else { $failed++; Write-Host "    [FAIL] postgres_select ohne query liefert keine Guard-Zeile bzw. Execution nicht success" -ForegroundColor Red }
 }
 
-# "Denkt nach"-Schleifen enden nach dem Loeschen des Schalters: nach ALLEN Faellen laeuft keine mehr (ein einziger
+# "Denkt nach"-Schleifen enden nach dem Loeschen des Schalters: nach allen Faellen laeuft keine mehr (ein einziger
 # Sammel-Check statt bis zu 10 s je Fall).
 if ($isOrch -and -not $Discover -and @($cases).Count -gt 0) {
     $extra++

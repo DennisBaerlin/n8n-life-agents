@@ -7,8 +7,6 @@
       "reason": "package-relative -- Contract-Feld `migrations` = Pfad zum paket-eigenen `db/`-Migration-Set (eigenes Schema)." },
     { "file": "packages/finance/db/migrations/R__fn_stop_savings_goal_funders.sql", "token": "n8n/", "count": 1,
       "reason": "prose-fp -- 'im n8n/Aufrufer aufgeloest' = im n8n-Aufrufer, der Slash ist Prosa-Trenner (kein Pfad); eingefrorene Repeatable-Migration nicht fuer den Lint anfassen." },
-    { "file": "provisioning/lib/seed_data.sh", "token": "db/", "count": 1,
-      "reason": "retired-note -- Kommentar: der fruehere flache `db/seed/contexts/`-Pfad ist retired." },
     { "file": "scripts/build/lib/build_helpers.ps1", "token": "n8n/", "count": 1,
       "reason": "prose-fp -- 'roher n8n/JS-Ausdruck' = n8n- oder JS-Ausdruck, der Slash ist Prosa-Trenner (kein Pfad)." },
     { "file": "scripts/gen_fn_catalog.ps1", "token": "db/", "count": 1,

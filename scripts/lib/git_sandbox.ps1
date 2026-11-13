@@ -1,7 +1,7 @@
 ﻿# git_sandbox.ps1 -- Sicherung fuer Tests, die ein Wegwerf-Repo anlegen. Im Commit-Hook setzt git GIT_DIR, GIT_INDEX_FILE & Co.:
-# mit ihnen trifft jeder git-Aufruf das ECHTE Repo, auch mit 'git -C <temp>' (ein git init schrieb so 2026-11-02 core.worktree in
-# die gemeinsame .git/config, ein git add ersetzte den Index). Darum: zuerst Clear-GitEnvironment, dann Initialize-GitSandbox.
-# Selbsttest: scripts/dev/privacy_lint_test.ps1 (Abschnitt Sandbox), gegen ein Wegwerf-"Echtes" Repo.
+# mit ihnen trifft jeder git-Aufruf das echte Repo, auch mit 'git -C <temp>' (ein git init schreibt so core.worktree in
+# die gemeinsame .git/config, ein git add ersetzt den Index). Darum: zuerst Clear-GitEnvironment, dann Initialize-GitSandbox.
+# Selbsttest: scripts/dev/privacy_lint_test.ps1 (Abschnitt Sandbox), gegen ein Wegwerf-"echtes" Repo.
 
 function Clear-GitEnvironment {
     foreach ($n in @(Get-ChildItem Env: | Where-Object { $_.Name -like 'GIT_*' } | ForEach-Object { $_.Name })) {

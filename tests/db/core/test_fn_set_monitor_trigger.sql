@@ -74,7 +74,7 @@ BEGIN
   END IF;
   RAISE NOTICE 'PASS set [Rename + Dubletten-Schutz]';
 
-  -- TEST 3b (WP3): due_date relativ rechnet die DB; neu gesendete Vergangenheit -> {ok:false}
+  -- TEST 3b: due_date relativ rechnet die DB; neu gesendete Vergangenheit -> {ok:false}
   v := agent.fn_set_monitor_trigger(jsonb_build_object('domain', '__test__', 'label', 'Other Trigger', 'due_date', 'in 3 weeks'));
   IF (v->>'ok')::boolean IS DISTINCT FROM true OR (v->>'due_date')::date IS DISTINCT FROM core.fn_today() + 21
      OR (SELECT due_date FROM agent.monitor_triggers WHERE label = 'Other Trigger') IS DISTINCT FROM core.fn_today() + 21 THEN
@@ -112,7 +112,7 @@ BEGIN
     RAISE EXCEPTION 'FAIL set [re-arm]: status=%, fired_at=%, streak=%, next=%',
       v_row.status, v_row.fired_at, v_row.fail_streak, v_row.next_check_at;
   END IF;
-  -- reference_value bleibt OHNE reset_peak erhalten
+  -- reference_value bleibt ohne reset_peak erhalten
   IF v_row.reference_value IS DISTINCT FROM 110 THEN
     RAISE EXCEPTION 'FAIL set [re-arm]: reference_value ohne reset_peak geaendert: %', v_row.reference_value;
   END IF;
@@ -139,8 +139,8 @@ BEGIN
   RAISE NOTICE 'PASS set [disable]';
 
   -- TEST 7b: Tool-Payload-Form — das Werkzeug schickt nicht genannte Felder als '' (n8n-$fromAI-Default).
-  -- Real 2026-10-20 (E2E me02): reset_peak='' brach mit "invalid input syntax for type boolean" ab ->
-  -- kein Trigger liess sich aendern, ohne reset_peak ausdruecklich zu senden.
+  -- Ein leeres reset_peak ('') darf nicht mit "invalid input syntax for type boolean" abbrechen,
+  -- sonst liesse sich kein Trigger aendern, ohne reset_peak ausdruecklich zu senden.
   v := agent.fn_set_monitor_trigger(jsonb_build_object(
     'domain', '__test__', 'label', 'Aluminium over 4200', 'status', 'armed', 'reset_peak', '',
     'new_label', '', 'check_interval', '', 'action_note', '', 'min_plausible', '', 'max_plausible', ''

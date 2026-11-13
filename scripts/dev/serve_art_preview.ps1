@@ -1,7 +1,7 @@
 ﻿#Requires -Version 5.1
 # serve_art_preview.ps1 -- Vorschau der Erklär-Bilder (Quellen config/ui.art.*.svg, Generator scripts/lib/ui_art.ps1) im Browser
 # der Claude-Desktop-App (Vorschau-Eintrag "explain-art" in .claude/launch.json). Erzeugt bei jeder Anfrage neu aus den Quellen,
-# in ALLEN Sprachen und hell/dunkel (auch Kombinationen, die kein Verbraucher bekommt), schmale Wizard-Fassungen als *.compact.svg;
+# in allen Sprachen und hell/dunkel (auch Kombinationen, die kein Verbraucher bekommt), schmale Wizard-Fassungen als *.compact.svg;
 # schreibt nichts ins Repo.
 #   .\scripts\dev\serve_art_preview.ps1 [-Port 8790]
 #   http://localhost:8790/?lang=de&theme=dark          Galerie (lang: de|en|ko|all, theme: light|dark)

@@ -1,5 +1,5 @@
 -- ============================================================
--- fn_record_ingress_message (Telegram-Eingangs-Buendelung, Schritt 1)
+-- fn_record_ingress_message (ATOMIC WRITE — Telegram-Eingangs-Buendelung, erster Schritt vor fn_claim_ingress_burst)
 --   Der Orchestrator-Eingang ruft sie fuer jedes message-Update: legt die Zeile (update_id, chat, Absender,
 --   message_id, kind, exec_id) an und sagt dem Eingang, wie es weitergeht (action):
 --     text/file -> wait    (Payload = rohes Update; nach dem kurzen Warten entscheidet fn_claim_ingress_burst)
@@ -9,8 +9,8 @@
 --   message.document), solo (alles andere: Befehl, Sprache, Audio, Video ...).
 --   Raeumt vorher Zeilen > 2 min weg (Aufraeumen bei jedem Eingang, kein Cron).
 --   Fehlende exec_id = Bau-Fehler des Aufrufers -> RAISE (der Eingang ist fail-open, der Lauf geht weiter).
---   p: { update, exec_id }
---   RUECKGABE: {ok:true, action: wait|process|drop, kind, duplicate} | {ok:false, reason}
+--   p: { update (Pflicht, Telegram-Update mit message), exec_id (Pflicht) }
+--   Rueckgabe: {ok:true, action: wait|process|drop, kind, duplicate} | {ok:false, reason}
 --   Tests: tests/db/core/test_fn_ingress_buffer.sql
 -- ============================================================
 CREATE OR REPLACE FUNCTION agent.fn_record_ingress_message(p jsonb)

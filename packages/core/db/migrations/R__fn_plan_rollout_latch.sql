@@ -1,5 +1,6 @@
 -- ============================================================
--- core.fn_plan_rollout_latch(p_key) (READ-ONLY — Zustand eines Rollout-Schritts)
+-- fn_plan_rollout_latch (READ-ONLY) — Zustand eines Rollout-Schritts
+--   Eingabe: p_key text (notification_state-Key unter source 'plan_rollout'). Rueckgabe: text:
 --   'free' = kein gueltiger Merker, 'pending' = beansprucht (Frist laeuft, ein anderer Lauf sendet gerade), 'done' = festgeschrieben.
 --   Tests: tests/db/core/test_fn_plan_rollout_next.sql
 -- ============================================================

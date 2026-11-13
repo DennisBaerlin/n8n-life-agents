@@ -164,7 +164,7 @@ BEGIN
   END IF;
   RAISE NOTICE 'PASS fn_create_savings_plan [amount=0 -> ok:false]';
 
-  -- TEST 6 (Phase L WS-6): asset_class wird bei der Anlage erfasst (an die Ausfuehrung vererbt).
+  -- TEST 6: asset_class wird bei der Anlage erfasst (an die Ausfuehrung vererbt).
   DECLARE v_cls TEXT; v_plan6 INT; BEGIN
     SELECT finance.fn_create_savings_plan(jsonb_build_object(
       'name','__test_sparplan_tagged__','depot_name','__test_sp_depot__',
@@ -184,7 +184,7 @@ BEGIN
     RAISE NOTICE 'PASS fn_create_savings_plan [asset_class erfasst + ohne Eingabe NULL]';
   END;
 
-  -- TEST 7 (Phase L WS-6): ungueltiges asset_class-Format -> {ok:false}, kein Write.
+  -- TEST 7: ungueltiges asset_class-Format -> {ok:false}, kein Write.
   SELECT finance.fn_create_savings_plan(jsonb_build_object(
     'name','__test_sparplan_badcls__','depot_name','__test_sp_depot__',
     'isin','IE00B0M62Q58','symbol','VWRL3','security_name','Test',
@@ -282,7 +282,7 @@ BEGIN
 
   -- TEST 12: Woher kommt das Geld? (fn_savings_funding_fold) -- Konto mit 100, Plan 50/Monat ohne Zufluss -> Luecke:
   --   Probelauf zeigt Kartenzeile + Frage und verbraucht den Latch nicht; der echte Write fragt (Fehlbetrag 50);
-  --   ein zweiter Plan aufs selbe Wertpapier behaelt den Aehnlich-Hinweis UND bekommt die Kartenzeile; er verschiebt das
+  --   ein zweiter Plan aufs selbe Wertpapier behaelt den Aehnlich-Hinweis und bekommt die Kartenzeile; er verschiebt das
   --   „reicht bis"-Datum (neue Lage) und fragt deshalb erneut.
   DECLARE v_s12 INT; v_p12 JSONB; BEGIN
     DELETE FROM core.notification_state WHERE source = 'finance' AND key LIKE 'savings_funding:%';
@@ -318,7 +318,7 @@ BEGIN
 
 END $$;
 
--- Betrag 0 -> ok:false; Dubletten-Hinweis nur fuer einen aktiven Plan aufs selbe Wertpapier (ISIN vor Symbol) im SELBEN Depot.
+-- Betrag 0 -> ok:false; Dubletten-Hinweis nur fuer einen aktiven Plan aufs selbe Wertpapier (ISIN vor Symbol) im selben Depot.
 DO $$
 DECLARE v_settle INT; v_res JSONB; v_base JSONB;
 BEGIN
@@ -334,7 +334,7 @@ BEGIN
   v_res := finance.fn_create_savings_plan(v_base || jsonb_build_object('name', '__test_csp2_p1__', 'depot_name', '__test_csp2_d2__',
              'isin', 'IE00CSP2A001', 'symbol', 'CSPA', 'security_name', 'A ETF'));
   IF (v_res->>'ok')::boolean IS DISTINCT FROM true THEN RAISE EXCEPTION 'SETUP p1: %', v_res; END IF;
-  -- dasselbe Wertpapier in einem ANDEREN Depot -> kein Hinweis
+  -- dasselbe Wertpapier in einem anderen Depot -> kein Hinweis
   v_res := finance.fn_create_savings_plan(v_base || jsonb_build_object('name', '__test_csp2_p2__', 'depot_name', '__test_csp2_d1__',
              'isin', 'IE00CSP2A001', 'symbol', 'CSPA', 'security_name', 'A ETF'));
   IF (v_res->>'ok')::boolean IS DISTINCT FROM true OR v_res->'card_lines' @> '[{"value":"finance.note.similar_entry"}]' THEN

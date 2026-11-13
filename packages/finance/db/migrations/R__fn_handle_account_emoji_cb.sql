@@ -1,10 +1,11 @@
 -- ============================================================
--- finance.fn_handle_account_emoji_cb(p) -- Registry-Handler des Callback-Prefix 'acem' (nicht member_permeable)
---   acem:<id>:<zeichen> speichert ueber fn_set_account OHNE HITL-Karte: bewusste Ausnahme (der Tipp des Owners ist die Bestaetigung,
+-- fn_handle_account_emoji_cb (CALLBACK HANDLER) -- Registry-Handler des Callback-Prefix 'acem' (nicht member_permeable)
+--   acem:<id>:<zeichen> speichert ueber fn_set_account ohne HITL-Karte: bewusste Ausnahme (der Tipp des Owners ist die Bestaetigung,
 --   das Zeichen rechnet nichts und ist sofort wieder aenderbar; docs/reference/packages.md). acem:<id>:more:<seite> schreibt nichts
 --   und liefert die naechste Seite als choice_card (der Orchestrator sendet sie, Zweig 'Choice card?').
 --   Alte Knoepfe sind harmlos: der letzte Tipp gilt, geschlossenes oder geloeschtes Konto = Hinweis-Toast.
---   p: {data, chat_id, chat_type}. Rueckgabe {ok:true, toast[, choice_card]} | {ok:false, reason, toast}. Nie RAISE.
+--   Nur der Owner darf. p: {data, chat_id, chat_type}. Rueckgabe {ok:true, toast[, choice_card]} |
+--   {ok:false, reason (not_allowed|unknown|account_unavailable|rejected|error), toast}. Nie RAISE (EXCEPTION WHEN OTHERS).
 --   Tests: tests/db/finance/test_fn_handle_account_emoji_cb.sql
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_handle_account_emoji_cb(p jsonb)

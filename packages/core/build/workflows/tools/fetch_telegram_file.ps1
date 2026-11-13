@@ -7,18 +7,18 @@
 # -> base64 -> { ok, b64, mime, text, rows, error }. Opt-in accept='table' (Bank-Import-Modul): zusaetzlich eine
 # Textdatei mit Endung .csv -> text (UTF-8, BOM entfernt) bzw. eine Excel-Datei .xlsx -> rows (rohes Raster aus dem
 # ersten Blatt, Extract From File) statt b64; ohne accept unveraendert (text leer, rows []).
-# REINES PLUMBING: keine Vision, kein LLM, kein API-Key
-# -- die Bezahl-Schluessel-/Vision-Privacy lebt im FINANZ-Konsumenten
+# Reines Plumbing: keine Vision, kein LLM, kein API-Key
+# -- die Bezahl-Schluessel-/Vision-Privacy lebt im Finanz-Konsumenten
 # (agent.finance.tool_extract_finance_document), der diesen Baustein inline ruft und das Bild selbst
-# per Vision erkennt. DUAL-USE: inline per executeWorkflow ODER als Agent-Tool bindbar (gleicher
-# executeWorkflowTrigger-Eingang). Vorbild 1:1: agent.tool_transcribe_telegram_voice.
+# per Vision erkennt. Dual-Use: inline per executeWorkflow oder als Agent-Tool bindbar (gleicher
+# executeWorkflowTrigger-Eingang). Gleiche Form wie agent.tool_transcribe_telegram_voice.
 function Build-FetchTelegramFile {
     # Eingang: file_id, accept (opt, 'table'; chat_id kommt via Build-Trigger automatisch dazu, hier ungenutzt durchgereicht).
     $trig = Build-Trigger @('file_id', 'accept') @(-640, 0)
 
     $ifEmpty = Build-If 'File id empty?' @(-420, 0) `
         "={{ (`$('Start').item.json.file_id || '').trim().length }}" '0' 'equals' 'number'
-    # Relaybare DATEN (inline-konsumiert) -- KEIN Build-ToolError (das ist fuer Agent-Tool-Pfade).
+    # Relaybare DATEN (inline-konsumiert) -- kein Build-ToolError (das ist fuer Agent-Tool-Pfade).
     $errEmpty = Build-Set 'No file id' @(-200, -160) @(
         ,@('ok',    'false',            'boolean')
         ,@('error', 'No file_id given.','string')
@@ -27,7 +27,7 @@ function Build-FetchTelegramFile {
         ,@('text',  '',                 'string')
     )
 
-    # Telegram-Download (resource=file) -- Form 1:1 aus dem alten Monolithen.
+    # Telegram-Download (resource=file)
     $getFile = [ordered]@{
         parameters = [ordered]@{
             resource = 'file'
@@ -44,14 +44,14 @@ function Build-FetchTelegramFile {
     }
 
     # Binary -> base64 (helpers.getBinaryDataBuffer deckt memory- UND filesystem-BinaryMode ab).
-    # JEDER return liefert ALLE Keys (ok/b64/mime/text/rows/error) -> einheitlicher Shape ueber alle Zweige
+    # Jeder return liefert alle Keys (ok/b64/mime/text/rows/error) -> einheitlicher Shape ueber alle Zweige
     # (sonst null-Refs im Return). runOnceForAllItems -> Array-Return.
     # Tabellen (nur mit accept='table'): n8n leitet mimeType aus der Endung des Telegram-Dateipfads ab (Telegram-Node:
     # lookup(fileName) || application/octet-stream) -> die Endung entscheidet. .csv: Inhalt muss Text sein (kein NUL-Byte).
     # .xlsx: Inhalt muss ein ZIP sein ('PK'); der Code reicht das Binary mit sheet:true weiter -> Read sheet liest es.
     # Bei .xls entscheidet der Inhalt: ZIP mit xl/workbook = xlsx-Arbeitsmappe unter altem Namen -> wie .xlsx; echtes OLE-xls
     # und jedes andere ZIP bleiben abgelehnt (kein BIFF-Parser).
-    # Inhalts-Pruefung (Befund, PDF ohne Dateiendung): sagen weder Endung noch MIME etwas Brauchbares, entscheidet
+    # Inhalts-Pruefung (z. B. PDF ohne Dateiendung): sagen weder Endung noch MIME etwas Brauchbares, entscheidet
     # sniff() ueber die ersten Bytes (Text-Tabelle nur ohne Endung und ohne Typ-Angabe); danach laufen dieselben Zweige.
     $jsB64 = @'
 const item = items[0];
@@ -118,9 +118,9 @@ return res({ ok: true, b64: buf.toString('base64'), mime });
         name = 'To base64'
     }
 
-    # xlsx (nur accept='table'): Extract From File liest das ERSTE Blatt als Raster. headerRow=false -> je Zeile ein Item
+    # xlsx (nur accept='table'): Extract From File liest das erste Blatt als Raster. headerRow=false -> je Zeile ein Item
     # {row:[...]} (sheet_to_json header:1), includeEmptyCells -> leere Zellen als '' (sonst verrutschen die Spalten).
-    # typeVersion 1.2: echte Excel-Datumszellen kommen als ISO-Text (formatSpreadsheetDates). EIN Ausgang fuer alles:
+    # typeVersion 1.2: echte Excel-Datumszellen kommen als ISO-Text (formatSpreadsheetDates). Ein Ausgang fuer alles:
     # kaputte Datei -> continueRegularOutput (Item mit json.error), leeres Blatt -> alwaysOutputData (leeres Item);
     # Collect rows unterscheidet beides (kein zweiter Fehler-Ausgang, sonst liefen beide Zweige bis Return).
     $ifSheet = Build-If 'Spreadsheet?' @(240, 60) "={{ `$json.sheet === true }}" 'true' 'equals' 'boolean'
@@ -138,7 +138,7 @@ return res({ ok: true, b64: buf.toString('base64'), mime });
         alwaysOutputData = $true
         onError = 'continueRegularOutput'
     }
-    # alle Zeilen-Items -> EIN Item (sonst liefe der Aufrufer je Zeile einmal)
+    # alle Zeilen-Items -> ein Item (sonst liefe der Aufrufer je Zeile einmal)
     $jsCollect = @'
 const XLSX = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
 const all = $input.all();

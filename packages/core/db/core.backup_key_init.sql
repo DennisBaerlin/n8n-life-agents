@@ -1,19 +1,19 @@
 -- ============================================================
--- core.backup_key — DB-residenter Backup-Verschluesselungs-Schluessel (Phase 5: aus core.secret
---   zweck-umbenannt). Zeile 'backup_encryption_key' = der aktive Wert (gpg-Passphrase der CLI, AES256);
+-- core.backup_key — DB-residenter Backup-Verschluesselungs-Schluessel.
+--   Zeile 'backup_encryption_key' = der aktive Wert (gpg-Passphrase der CLI, AES256);
 --   'backup_encryption_key_prev_<UTC>'-Zeilen = fruehere, die nur noch entschluesseln. Eine prev-Zeile
 --   entsteht einzig beim Restore mit einem mitgebrachten Schluessel vom Notfallblatt (backup_cli.sh).
--- Zweck:   Ablage des Backup-Schluessels OHNE Repo-Beruehrung (diese Tabelle wird NIE geseedet —
---          seed_data.sh fasst nur core.config + agent.ai_models + Contexts an) und OHNE n8n-Env-
---          Oeffnung. Der Schluessel ist KATEGORISCH anders als die Rollen-Passwoerter (die liegen in
---          /etc/lifeagents/<pkg>.env, frei neu-wuerfelbar): der Installer ueberschreibt ihn NIE (sonst
+-- Zweck:   Ablage des Backup-Schluessels ohne Repo-Beruehrung (diese Tabelle wird nie geseedet —
+--          seed_data.sh fasst nur core.config + agent.ai_models + Contexts an) und ohne n8n-Env-
+--          Oeffnung. Der Schluessel ist kategorisch anders als die Rollen-Passwoerter (die liegen in
+--          /etc/lifeagents/<pkg>.env, frei neu-wuerfelbar): der Installer ueberschreibt ihn nie (sonst
 --          waeren bereits erstellte Backups und das Notfallblatt wertlos) -> eigene, schwer-versehentlich-
 --          ueberschreibbare DB-Heimat (ON CONFLICT DO NOTHING), getrennt vom Datei-Secret-Lebenszyklus.
--- ACL:     NUR der Haupt-Credential-Owner (postgres/Write-Pfad) liest sie. finance_ro/context_ro/
+-- ACL:     nur der Haupt-Credential-Owner (postgres/Write-Pfad) liest sie. finance_ro/context_ro/
 --          core_ro bekommen explizit REVOKE — ein prompt-injizierter Agent erreicht den Schluessel
---          strukturell nicht. Der Schluessel ist STRUKTURELL nicht im Backup-Bundle (Schema `core`
+--          strukturell nicht. Der Schluessel ist strukturell nicht im Backup-Bundle (Schema `core`
 --          steht in keinem manifest.json-`backup`-Block; contract_lint erzwingt das).
--- SETZEN (einmalig, out-of-band — NIE durch den Telegram-Chat): der Installer erzeugt den Schluessel
+-- Setzen (einmalig, out-of-band — nie durch den Telegram-Chat): der Installer erzeugt den Schluessel
 --   beim Provisioning (provision.sh -> bootstrap_owner.sh _ensure_backup_secret, `openssl rand`,
 --   ON CONFLICT DO NOTHING). Die Offline-Kopie ist das Notfallblatt (`lifeagents backup key`) —
 --   die DB-Kopie ist nur die operative; ohne Blatt kein Restore nach Totalverlust (DR-Pflicht).

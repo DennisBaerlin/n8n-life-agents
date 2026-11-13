@@ -41,7 +41,7 @@ END $$;
 --   (Programmierfehler). Der Name kommt aus accounts.bank: Dauerauftrag = Quell-Konto des Kopfs
 --   (dort richtet man ihn ein), Sparplan = Depot des Sparplans. Ohne Artikel im Text ("bei {bank}"): der Artikel ist
 --   bei Bank-Namen nicht ableitbar. Hat die Kette ein Ende, nennen bank_setup und bank_stop (solange der Termin noch
---   kommt und die Kette nicht pausiert ist: Pausieren heisst jetzt stoppen) die letzte Ausfuehrung: _until-Variante mit
+--   kommt und die Kette nicht pausiert ist: Pausieren zaehlt als Stoppen) die letzte Ausfuehrung: _until-Variante mit
 --   params.date (fn_recurring_last_due).
 --   Tests: tests/db/finance/test_fn_bank_setup_kind.sql
 -- ============================================================
@@ -118,7 +118,7 @@ END $$;
 
 -- ============================================================
 -- fn_recurring_never_ran (READ HELPER) -- lief diese Kette noch nie?
---   TRUE, wenn kein Glied der Kette (fn_recurring_lineage) je eine gebuchte Transaktion hat UND bei einem Uebertrag
+--   TRUE, wenn kein Glied der Kette (fn_recurring_lineage) je eine gebuchte Transaktion hat und bei einem Uebertrag
 --   auch keine andere Kette derselben Strecke (gleiche Quelle, gleiches Ziel-Konto) je gebucht wurde: ein Ersatz-
 --   Dauerauftrag (Sparziel replace_transfer) fuehrt einen bei der Bank laufenden Auftrag fort und ist nicht "neu".
 --   Bewusst ohne Auszugs-Skips: der Berater (2d) meldet erst nach zwei Skips und braucht trotzdem "nie gelaufen";

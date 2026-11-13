@@ -1,22 +1,23 @@
 -- ============================================================
 -- fn_import_normalize_payload (rein, IMMUTABLE — Zahl-Felder einer Staging-Row kanonisieren)
---   Wendet fn_parse_de_numeric auf die bekannten ZAHL-Felder je entity_type an und schreibt
---   den Wert als JSON-ZAHL zurueck in den Payload. EINMAL beim Staging-Write angewandt (fn_import_stage
---   + fn_import_update_row) -> der gespeicherte Payload ist immer kanonisch, validate_row UND
---   fn_import_bundle (bzw. die inneren fn_create_*) sehen saubere Werte. Genau EINE Stelle der
---   Normalisierung (Review A4: keine Drift zwischen Validate- und Commit-Schicht).
---   * Nur STRING-Werte werden geparst; eine JSON-Zahl (LLM liefert 0.125) ist schon kanonisch und bleibt
---     unberuehrt -> idempotent (update_row normalisiert das ganze Payload erneut, Audit-Fund 2026-10-21).
---   * Tausenderpunkt-Heuristik nur fuer GELD-Felder; Stueckzahl/Kurs/Zinssatz parsen rein dezimal.
+--   Wendet fn_parse_de_numeric auf die bekannten Zahl-Felder je entity_type an und schreibt
+--   den Wert als JSON-Zahl zurueck in den Payload. Einmal beim Staging-Write angewandt (fn_import_stage
+--   + fn_import_update_row) -> der gespeicherte Payload ist immer kanonisch, validate_row und
+--   fn_import_bundle (bzw. die inneren fn_create_*) sehen saubere Werte. Die eine Stelle der
+--   Normalisierung (keine Drift zwischen Validate- und Commit-Schicht).
+--   Eingabe: p_type (entity_type), p (Payload). Rueckgabe: normalisierter Payload (jsonb).
+--   * Nur String-Werte werden geparst; eine JSON-Zahl (LLM liefert 0.125) ist schon kanonisch und bleibt
+--     unberuehrt -> idempotent (update_row normalisiert das ganze Payload erneut).
+--   * Tausenderpunkt-Heuristik nur fuer Geld-Felder; Stueckzahl/Kurs/Zinssatz parsen rein dezimal.
 --   * Nicht-castbarer String bleibt String (validate_row meldet den freundlichen Row-Fehler).
 --   Nicht-Zahl-Felder (Namen, Datum, Enums) bleiben unberuehrt.
---   DEPOT-POSITION (Monats-Check WP-G, Befund 2026-10-22: Broker-Auszug ohne Stueckpreis):
+--   Depot-Position (Broker-Auszug ohne Stueckpreis):
 --   * average_purchase_price = gedruckter Durchschnitts-Einstandskurs -> Alias fuer price_per_share (Rohwert, nicht
 --     abgeleitet; nur bei stock_buy umbenannt, sonst greift die Derived-Denylist in fn_import_validate_row).
---   * cost_basis_total = gedruckter GESAMT-Einstand -> die DB leitet price_per_share = Einstand / Stueck ab (8 NK = Spaltenpraezision;
+--   * cost_basis_total = gedruckter Gesamt-Einstand -> die DB leitet price_per_share = Einstand / Stueck ab (8 NK = Spaltenpraezision;
 --     das LLM rechnet nie), wenn kein Stueckpreis gedruckt ist. Beide Eingabe-Keys werden danach entfernt (die
 --     Karte zeigt den Stueckpreis; fn_import_allowed_keys kennt sie nicht).
---   * provider_symbol (Kurs-Feed-Symbol) in Grossbuchstaben (VWCE.DE).
+--   * provider_symbol (Kurs-Feed-Symbol) und provider_currency in Grossbuchstaben (VWCE.DE).
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_import_normalize_payload(p_type text, p jsonb)
 RETURNS jsonb LANGUAGE plpgsql IMMUTABLE AS $$
@@ -67,10 +68,10 @@ BEGIN
                            to_jsonb(finance.fn_unit_price_from_total((p->>'cost_basis_total')::numeric, (p->>'shares')::numeric)));
         ELSIF NULLIF(p->>'price_per_share', '') IS NULL AND jsonb_typeof(p->'cost_basis_total') = 'string' THEN
             -- nicht lesbarer/mehrdeutiger Gesamt-Einstand ("643,220") -> als Preis-Rohwert stehen lassen: validate_row meldet
-            -- den Wert als "keine Zahl" (Rueckfrage) statt still "Preis fehlt" (Rundungs-Paket 2026-10-23)
+            -- den Wert als "keine Zahl" (Rueckfrage) statt still "Preis fehlt"
             p := jsonb_set(p, '{price_per_share}', p->'cost_basis_total');
         END IF;
-        -- Stueckzahl auf die Spaltenpraezision (numeric(18,8)) — SICHTBAR: die Karte zeigt den gerundeten Wert vor dem
+        -- Stueckzahl auf die Spaltenpraezision (numeric(18,8)) — sichtbar: die Karte zeigt den gerundeten Wert vor dem
         -- Bestaetigen (Boersen liefern bis 18 Stellen; das Einzel-Tool lehnt > 8 Stellen dagegen ab, fn_trade_amount_reason).
         IF jsonb_typeof(p->'shares') = 'number' THEN
             p := jsonb_set(p, '{shares}', to_jsonb(round((p->>'shares')::numeric, 8)));

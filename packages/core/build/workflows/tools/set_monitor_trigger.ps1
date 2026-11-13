@@ -2,12 +2,12 @@
 # Dot-gesourct von build.ps1 (Helper + Script-Scope-Creds im Parent-Scope).
 
 # --- agent.tool_set_monitor_trigger (CROSS-AGENT, HITL-Write) ----------------
-# Aendert EINEN bestehenden Monitor-Trigger (partielles UPDATE: nicht gesendet = unveraendert)
-# inkl. Lifecycle: status armed (RE-ARM eines gefeuerten Triggers) | disabled, reset_peak
-# (Drawdown-Ratchet nullen), Prompt-/SQL-Edit (Repair-Flow — Quellen driften).
-# Binder: NUR agent.monitor (der Advisor verweist Edits/Repair an den Monitor-Agenten).
-# RE-PROBE bei Spec-Aenderung: wird Prompt/SQL/Methoden-Parameter (acquisition_params, Paket-Methode) geaendert,
-# laeuft die Beschaffung einmal exakt wie der Cron VOR dem Gate (Probe-Fail = ToolError, nichts geschrieben).
+# Aendert einen bestehenden Monitor-Trigger (partielles UPDATE: nicht gesendet = unveraendert)
+# inkl. Lifecycle: status armed (Re-Arm eines gefeuerten Triggers) | disabled, reset_peak
+# (Drawdown-Ratchet nullen), Prompt-/SQL-Edit (Repair-Flow, Quellen driften).
+# Binder: nur agent.monitor (der Advisor verweist Edits/Repair an den Monitor-Agenten).
+# Re-Probe bei Spec-Aenderung: wird Prompt/SQL/Methoden-Parameter (acquisition_params, Paket-Methode) geaendert,
+# laeuft die Beschaffung einmal exakt wie der Cron vor dem Gate (Probe-Fail = ToolError, nichts geschrieben).
 # Die Probe bekommt die ueber die gespeicherte Spec gemergten Parameter; der Write sendet nur die geaenderten Keys
 # (fn_set_monitor_trigger merged + laesst die validate_fn des Pakets pruefen).
 function Build-SetMonitorTrigger {
@@ -30,14 +30,14 @@ function Build-SetMonitorTrigger {
         ([ordered]@{
             label    = '$(''Start'').item.json.label'
             domain   = '$(''Resolve domain'').item.json.domain'
-            # WP3: relatives Datum ("+6 months") EINMAL hier aufloesen -> Karte und Write zeigen/schreiben dasselbe Datum
+            # relatives Datum ("+6 months") einmal hier aufloesen -> Karte und Write zeigen/schreiben dasselbe Datum
             due_date = '$(''Start'').item.json.due_date'
         })
     $ifFound = Build-If 'Found?' @(540, 0) '={{ $json.hit_count }}' '1' 'equals' 'number'
     $errFound = Build-ToolError 'Not found' @(720, -200) `
         "={{ `$('Resolve trigger').item.json.hit_count === 0 ? 'No trigger with this label in this domain. List existing triggers via postgres_select on agent.monitor_triggers and ask the user.' : 'Label is ambiguous across domains - specify the domain. Candidates: ' + `$('Resolve trigger').item.json.candidates }}"
 
-    # WP3: ein neues due_date, das die DB nicht aufloesen kann oder das in der Vergangenheit liegt -> ToolError VOR der Karte
+    # Ein neues due_date, das die DB nicht aufloesen kann oder das in der Vergangenheit liegt -> ToolError vor der Karte
     # (dieselbe Regel agent.fn_resolve_monitor_due wie im Write; kein Tipp auf eine Karte, die der Write danach ablehnt).
     $ifDueBad = Build-If 'Due date invalid?' @(630, 0) "={{ `$('Resolve trigger').item.json.due_chk !== null && `$('Resolve trigger').item.json.due_chk.ok === false }}" 'true' 'equals' 'boolean'
     $errDue = Build-ToolError 'Due date rejected' @(720, 200) "={{ 'Nothing was changed: ' + `$('Resolve trigger').item.json.due_chk.reason + '. Ask the user for the date again and pass it as said (YYYY-MM-DD or relative like +6 months).' }}"
@@ -84,7 +84,7 @@ function Build-SetMonitorTrigger {
     $errProbe = Build-ToolError 'Probe failed' @(1800, -280) `
         "={{ 'Test acquisition with the NEW spec failed BEFORE approval - nothing was changed. Reason: ' + (`$('Probe (validate)').item.json.probe_reason || 'unknown') + '. Refine the acquisition with the user and retry.' }}"
 
-    # Summary: nur GEAENDERTE Felder (nicht gesendete bleiben unveraendert) + Probe-Ergebnis.
+    # Summary: nur geaenderte Felder (nicht gesendete bleiben unveraendert) + Probe-Ergebnis.
     # Strukturiertes Summary (Textkatalog; nur genannte Felder -> -LinesExpr). probe_display = Bestaetigungszeile (tpl-Objekt oder String)
     # der Paket-validate_fn (kind raw); der Probe-Knoten laeuft nur bei geaenderter Quelle (try/catch).
     $linesExpr = @'

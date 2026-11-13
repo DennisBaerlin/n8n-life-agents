@@ -1,20 +1,20 @@
 -- ============================================================
--- fn_reset_user_data (Owner-Ops — Werkszustand-Reset; DESTRUKTIV, kein Agent-Tool)
---   Setzt die Instanz auf den Nach-Installations-Stand zurueck (Owner-Entscheid 2026-10-19 „Werkszustand"):
---   ALLE Nutzerdaten weg, nur Config, Stammdaten/Caches, Instruktions-Kontexte, Owner-Identitaet (Name im
---   family-Skelett) und Backup-Key bleiben. VORHER Backup ziehen: `lifeagents backup export`.
+-- fn_reset_user_data (Owner-Ops — Werkszustand-Reset; destruktiv, kein Agent-Tool)
+--   Setzt die Instanz auf den Nach-Installations-Stand zurueck („Werkszustand"):
+--   alle Nutzerdaten weg, nur Config, Stammdaten/Caches, Instruktions-Kontexte, Owner-Identitaet (Name im
+--   family-Skelett) und Backup-Key bleiben. Vorher Backup ziehen: `lifeagents backup export`.
 --   Aufruf: SELECT core.fn_reset_user_data('RESET');  (Wrapper packages/core/db/util/util_reset_user_data.sql)
---   Falscher/fehlender Bestaetigungs-Token -> {ok:false}, nichts passiert.
+--   Eingabe: p_confirm text, muss 'RESET' sein; falscher/fehlender Token -> {ok:false}, nichts passiert.
 --
---   Phase B — Core kennt kein Paket (docs/package-contract.md §6 *Werkszustand-Reset*):
---   (1) Paket-Tabellen DENY-BY-DEFAULT: jede Basistabelle jedes Paket-Schemas (core.package_registry ∪
---       core.schema_version, auch --keep-data-Deinstallierte) wird geleert, AUSSER (a) per
+--   Core kennt kein Paket (docs/package-contract.md §6 *Werkszustand-Reset*):
+--   (1) Paket-Tabellen deny-by-default: jede Basistabelle jedes Paket-Schemas (core.package_registry ∪
+--       core.schema_version, auch --keep-data-Deinstallierte) wird geleert, ausser (a) per
 --       COMMENT ON TABLE 'lifecycle:reference ...' markierte Stammdaten/Caches (Muster PG
 --       pg_extension_config_dump: Marker am Objekt, faellt mit DROP SCHEMA), (b) extension-eigene Tabellen,
 --       (c) <pkg>.onboarding_state (Konvention, Schritt 5). Ein per COMMENT ON SCHEMA 'lifecycle:reset-skip ...'
---       markiertes Schema bleibt ganz unberuehrt (Vertrag fuer ein Paket, das nur einen Fremd-Cache haelt; derzeit von keinem
---       Paket genutzt, Test: test-lokales Schema zzskip in test_fn_reset_user_data).
---       EIN Multi-Table-TRUNCATE ... CONTINUE IDENTITY, NIE CASCADE (ein FK-Bruch scheitert laut statt still
+--       markiertes Schema bleibt ganz unberuehrt (Vertrag fuer ein Paket, das nur einen Fremd-Cache haelt;
+--       Test: test-lokales Schema zzskip in test_fn_reset_user_data).
+--       Ein Multi-Table-TRUNCATE ... CONTINUE IDENTITY, nie CASCADE (ein FK-Bruch scheitert laut statt still
 --       Referenzdaten mitzunehmen; CONTINUE statt RESTART: alte Telegram-Knoepfe/HITL-Gates/Latches mit einer
 --       alten id duerfen nie eine neue Zeile treffen).
 --   (2) Nicht-Owner-Zeilen jeder per-Person-<pkg>.onboarding_state (Spalte person_id).
@@ -24,18 +24,17 @@
 --       Dedup bleibt), alle agent.*_chat_memory; Nicht-Owner-Personen ueber agent.fn_remove_household_person
 --       (Kaskade Profil-Eintraege/per-user-Kontexte/Latches; erst jetzt — ihre FK-Referenzierer sind weg);
 --       agent-verwaltete Kontexte auf den Nach-Installations-Stand: alle ausser family + den household-Fakten-
---       Skeletten werden GELOESCHT (Plan-Docs inkl. „## Gelernt", per-user-Kontexte, Laufzeit-Docs) — der
---       Loeschschutz core.protected_contexts wird dafuer in DERSELBEN Transaktion kurz gehoben und unveraendert
+--       Skeletten werden geloescht (Plan-Docs inkl. „## Gelernt", per-user-Kontexte, Laufzeit-Docs) — der
+--       Loeschschutz core.protected_contexts wird dafuer in derselben Transaktion kurz gehoben und unveraendert
 --       wiederhergestellt (Finalizer-Muster fn_pkg_purge_data); Kontexte eines reset-skip-Pakets bleiben.
---       VERTRAG: managed_by='agent' = Laufzeit-Daten -> der Reset loescht sie (deny-by-default: ein kuenftiger
---       Laufzeit-Kontexttyp faellt automatisch mit). Ein kuenftiger Uebernahme-Pfad fuer GESEEDETE Instruktions-
---       Kontexte (Prompt-Import, Feedback-Tool; Conffile-Guard in seed_data.sh _seed_context_md) MUSS eine eigene
+--       Vertrag: managed_by='agent' = Laufzeit-Daten -> der Reset loescht sie (deny-by-default: ein kuenftiger
+--       Laufzeit-Kontexttyp faellt automatisch mit). Ein kuenftiger Uebernahme-Pfad fuer geseedete Instruktions-
+--       Kontexte (Prompt-Import, Feedback-Tool; Conffile-Guard in seed_data.sh _seed_context_md) muss eine eigene
 --       Provenienz setzen (z. B. managed_by='owner') und darf eine Seed-Zeile nicht auf 'agent' umschreiben —
---       sonst loescht der Reset sie und bis zum naechsten Seed fehlt die Instruktion. Heute gibt es keinen
---       solchen Pfad (kein Codepfad stellt eine Seed-Zeile auf 'agent' um).
+--       sonst loescht der Reset sie und bis zum naechsten Seed fehlt die Instruktion.
 --   (4) household-Fakten-Skelette auf Stub, family auf den Owner (nur Skelett-Pflichtfelder).
 --   (5) core.fn_reset_onboarding_state().
---   RUECKGABE: {ok:true, packages, skipped, truncated_tables, advisor_plans, monitor_triggers, persons_removed,
+--   Rueckgabe: {ok:true, packages, skipped, truncated_tables, advisor_plans, monitor_triggers, persons_removed,
 --     contexts_deleted, chat_memory, onboarding} | {ok:false, reason}
 --   Tests: tests/db/core/test_fn_reset_user_data.sql, tests/db/core/test_core_only.sql
 -- ============================================================
@@ -96,7 +95,7 @@ BEGIN
     END LOOP;
 
     -- (3) Host-Daten.
-    DELETE FROM agent.advisor_plan_wishes;                   -- Plan teilen: Mitglieder-Wuensche (haengen an Plan + Person)
+    DELETE FROM agent.advisor_plan_wishes;                   -- Mitglieder-Wuensche (haengen an Plan + Person)
     DELETE FROM agent.dispatch_followup;                     -- Knopf-Folge-Bindung (fluechtig)
     DELETE FROM agent.handoff_tasks;                         -- Uebergabe Berater -> Buchhalter (haengt an Plan-Gespraech + Person)
     DELETE FROM agent.plan_reminder_declines;                -- abgelehnte Plan-Erinnerungen
@@ -104,19 +103,19 @@ BEGIN
     DELETE FROM agent.monitor_triggers WHERE origin = 'user'; GET DIAGNOSTICS v_mt = ROW_COUNT;   -- Observations per CASCADE
     DELETE FROM agent.guide_learn_candidates;
     DELETE FROM agent.guide_learn_watermark;
-    DELETE FROM agent.reminder_prefs;                         -- Roter Faden: Erinnerungs-Einstellungen je Person
+    DELETE FROM agent.reminder_prefs;                         -- Erinnerungs-Einstellungen je Person
     DELETE FROM agent.reminder_pause;                         -- Pause je Person
     DELETE FROM core.proactive_budget;                        -- Tagesbudget ungefragter Nachrichten
     DELETE FROM core.proactive_deferred;
     DELETE FROM agent.reaction_log;                           -- Reaktions-Protokoll (Tages-Obergrenze, Verlauf)
-    -- Update-Protokoll (wer hat wann aktualisiert); ein OFFENER Auftrag bleibt, sonst koennte der laufende root-Runner
+    -- Update-Protokoll (wer hat wann aktualisiert); ein offener Auftrag bleibt, sonst koennte der laufende root-Runner
     -- ihn nicht mehr abschliessen und melden. Der Release-Latch 'release_update' bleibt (Systemzustand, kein Nutzerdatum).
     DELETE FROM core.update_requests WHERE finished_at IS NOT NULL;
     -- Latch-Quellen-Konvention '<pkg>' / '<pkg>:<sub>' + die Advisor-Engine 'advisor:<domain>[:<pid>]' (Plaene weg);
     -- 'knock' (Pairing-Dedup unbekannter Absender) und reset-skip-Pakete bleiben.
     DELETE FROM core.notification_state
      WHERE split_part(source, ':', 1) = ANY (v_pkgs) OR split_part(source, ':', 1) = 'advisor'
-        OR source IN ('onboarding', 'onboarding_nudge', 'plan_news', 'persona_sticker', 'persona_greet', 'plan_rollout', 'plan_verb', 'plan_verb_day');   -- Roter Faden: Einmal-Karten + Nachfass-Stufen; Plan teilen: Merker 'schon informiert'; Sticker-Bremse + Tagesgruss-Latch (Werkszustand)
+        OR source IN ('onboarding', 'onboarding_nudge', 'plan_news', 'persona_sticker', 'persona_greet', 'plan_rollout', 'plan_verb', 'plan_verb_day');   -- Einmal-Karten + Nachfass-Stufen; Merker 'schon informiert'; Sticker-Bremse + Tagesgruss-Latch
     FOR v_tbl IN SELECT tablename FROM pg_tables
                  WHERE schemaname = 'agent' AND tablename LIKE '%\_chat\_memory' ESCAPE '\'
     LOOP
@@ -154,8 +153,8 @@ BEGIN
     INSERT INTO core.protected_contexts
     SELECT * FROM jsonb_populate_recordset(NULL::core.protected_contexts, v_pc);
 
-    -- (4) household-Fakten-Skelette auf Stub — die Paket-Fakten-Kontexte ZUERST (bidirektionaler
-    --     trg_validate_household_facts: ein family-Write darf keine Profil-Person verwaisen). DB-GESETZ:
+    -- (4) household-Fakten-Skelette auf Stub — die Paket-Fakten-Kontexte zuerst (bidirektionaler
+    --     trg_validate_household_facts: ein family-Write darf keine Profil-Person verwaisen). DB-Gesetz:
     --     family.facts.persons darf nie leer sein + die Zeile ist nie loeschbar -> legales Minimum = der Owner
     --     nur mit den Skelett-Pflichtfeldern (= Stand nach util_seed_owner_skeleton).
     UPDATE agent.core_contexts c

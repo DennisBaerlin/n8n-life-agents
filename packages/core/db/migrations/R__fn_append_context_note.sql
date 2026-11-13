@@ -1,12 +1,17 @@
 -- ============================================================
--- core.fn_append_context_note(p jsonb) -> jsonb   (Phase C, WS-3; NEU)
---   Der EINZIGE Prosa-Schreibpfad des Lern-Loops: haengt eine bestaetigte Erkenntnis APPEND-ONLY unter
---   "## Gelernt" an einen Wissens-Kontext, mit Provenienz-Stempel "gelernt am <DATE> aus Chat" (R5-B).
---   HARTER {ok:false}-Allowlist-Guard (R5-A): nur core.fn_note_context_allowed (managed_by='agent' +
---   family oder ein per core.advisors.learn_notes freigegebenes Plan-Dokument) -> der protect-Trigger blockt nur DELETE, NICHT content-UPDATE, also ist
---   DIESER Guard die Sicherung gegen Verhaltens-Korruption von Instruktions-/Seed-Kontexten. owner_only-
---   Backstop (agent.fn_sender_is_member). Beruehrt NUR content (kein metadata.facts); der Validate-Trigger
---   feuert zwar (WHEN NEW.metadata ? 'facts'), prueft unveraenderte facts aber nicht neu. Gelesene p-Keys: { context_name, note, chat_id }. RUECKGABE {ok,context_name,appended}|{ok:false,reason}.
+-- core.fn_append_context_note(p jsonb) -> jsonb
+--   Der einzige Prosa-Schreibpfad des Lern-Loops: haengt eine bestaetigte Erkenntnis append-only unter
+--   "## Gelernt" an einen Wissens-Kontext, mit Provenienz-Stempel "gelernt am <DATE> aus Chat".
+--   Harter {ok:false}-Allowlist-Guard: nur core.fn_note_context_allowed (managed_by='agent' +
+--   family oder ein per core.advisors.learn_notes freigegebenes Plan-Dokument). Der protect-Trigger blockt nur
+--   DELETE, nicht content-UPDATE, also ist dieser Guard die Sicherung gegen Verhaltens-Korruption von
+--   Instruktions-/Seed-Kontexten. owner_only-Backstop (agent.fn_sender_is_member). Beruehrt nur content (kein
+--   metadata.facts); der Validate-Trigger feuert zwar (WHEN NEW.metadata ? 'facts'), prueft unveraenderte facts
+--   aber nicht neu.
+--   Eingabe p: { context_name, note, chat_id }; context_name und note sind Pflicht (note wird whitespace-normiert).
+--   Rueckgabe: {ok:true, context_name, appended} | {ok:false, reason}; reason = owner_only, "context_name required",
+--   "note is empty", "context ... is not note-appendable ...".
+--   Seiteneffekt: UPDATE agent.core_contexts.content (Zeile FOR UPDATE gesperrt).
 --   INVOKER (Orchestrator-Callback unter Host-RW-Cred). search_path-Pin (CVE-2018-1058) + REVOKE.
 -- ============================================================
 CREATE OR REPLACE FUNCTION core.fn_append_context_note(p jsonb)
@@ -32,7 +37,7 @@ BEGIN
     IF v_note IS NULL THEN
         RETURN jsonb_build_object('ok', false, 'reason', 'note is empty');
     END IF;
-    -- HARTER Allowlist-Guard (R5-A) — verhindert content-Korruption von Instruktions-/Seed-/Fakten-Kontexten.
+    -- Allowlist-Guard: verhindert content-Korruption von Instruktions-/Seed-/Fakten-Kontexten.
     IF NOT core.fn_note_context_allowed(v_ctx) THEN
         RETURN jsonb_build_object('ok', false,
             'reason', format('context "%s" is not note-appendable (managed_by=agent + knowledge allowlist only)', v_ctx));
@@ -53,7 +58,7 @@ BEGIN
         -- Sektion existiert noch nicht -> am Ende anlegen.
         v_content := rtrim(v_content, E'\n ') || E'\n\n## Gelernt\n\n' || v_line;
     ELSE
-        -- direkt NACH der Header-Zeile einfuegen (neueste zuerst).
+        -- direkt nach der Header-Zeile einfuegen (neueste zuerst).
         v_lines   := v_lines[1:v_hdr] || v_line || v_lines[v_hdr + 1 : array_length(v_lines, 1)];
         v_content := array_to_string(v_lines, E'\n');
     END IF;

@@ -1,16 +1,15 @@
 -- ============================================================
--- fn_change_owned_recurring (INTERNAL HELPER — not tool-facing, WP2 "Finanzen schlank")
---   Die EINE Aenderung von Betrag/Rhythmus/Abbuchungstag einer entitaets-besessenen Raten-Kette (Kredit, Versicherung;
---   zweiter Konsument -> vereinheitlicht). Vorher ueberschrieben fn_set_loan/fn_set_insurance die rp in place: die
---   Historie war weg, und ein neuer Abbuchungstag verschob das Raster schon gebuchter Termine (alte Termine erschienen
---   wieder offen).
---   * KORREKTUR (in place, keine Historie zu bewahren): der Kopf hat noch keinen gebuchten/uebersprungenen Termin, vor
+-- fn_change_owned_recurring (INTERNAL HELPER — not tool-facing)
+--   Die eine Aenderung von Betrag/Rhythmus/Abbuchungstag einer entitaets-besessenen Raten-Kette (Kredit, Versicherung;
+--   Konsumenten fn_set_loan, fn_set_insurance, fn_set_savings_goal). Ein In-place-Ueberschreiben verloere die Historie, und ein neuer
+--   Abbuchungstag verschoebe das Raster schon gebuchter Termine (alte Termine erschienen wieder offen).
+--   * Korrektur (in place, keine Historie zu bewahren): der Kopf hat noch keinen gebuchten/uebersprungenen Termin, vor
 --     heute war noch keiner faellig, und kein spaeterer Stichtag ist genannt (p_eff_from leer oder <= valid_from).
---   * SONST Split ueber fn_split_recurring_payment (Historie, Kopf-Repoint, Guards dort) zum Stichtag p_eff_from, Default
+--   * Sonst Split ueber fn_split_recurring_payment (Historie, Kopf-Repoint, Guards dort) zum Stichtag p_eff_from, Default
 --     = naechster noch nicht erledigter Termin ab heute (fn_recurring_next_due).
 --   Positionale Args: p_amount signed (NULL = unveraendert), p_interval/p_unit/p_dom (NULL = unveraendert; ein neuer
---   Einzeltag ersetzt feste Monatstage).
---   RUECKGABE: {ok:true, recurring_payment_id (Kopf danach), split, previous_id (nur Split), effective_from}
+--     Einzeltag ersetzt feste Monatstage).
+--   Rueckgabe: {ok:true, recurring_payment_id (Kopf danach), split, previous_id (nur Split), effective_from}
 --   | {ok:false, reason, ...} aus den Split-Guards bzw. ohne kommenden Termin.
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_change_owned_recurring(

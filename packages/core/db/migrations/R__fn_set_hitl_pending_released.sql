@@ -1,13 +1,13 @@
 -- ============================================================
--- fn_set_hitl_pending_released (Karte-offen-Sperre, Fix C)
+-- fn_set_hitl_pending_released (ATOMIC WRITE — Karte-offen-Sperre freigeben)
 --   Das HITL-Gate ruft sie nach jedem sendAndWait (Tipp oder Timeout): released_at = now() und
 --   expires_at auf hoechstens now() + grace. Die Sperre bleibt also noch kurz bestehen — die geparkte Kette
 --   dahinter antwortet erst noch und schreibt ihr Chat-Gedaechtnis; der Orchestrator loescht die Zeile nach
 --   seiner Antwort (fn_delete_hitl_pending). core.sub_error_notify ruft sie mit grace 0 fuer einen
---   gescheiterten Gate-Lauf (sofort frei). Betrifft NUR Zeilen dieser execution. Leere execution_id
+--   gescheiterten Gate-Lauf (sofort frei). Betrifft nur Zeilen dieser execution. Leere execution_id
 --   (Error-Trigger ohne execution, z. B. Trigger-Fehler) = no-op; fehlende grace_minutes = Bau-Fehler -> RAISE.
 --   p: { execution_id, grace_minutes }
---   RUECKGABE: {ok:true, released}  (released = es war eine Zeile dieser execution da)
+--   Rueckgabe: {ok:true, released}  (released = es war eine Zeile dieser execution da)
 --   Tests: tests/db/core/test_fn_hitl_pending.sql
 -- ============================================================
 CREATE OR REPLACE FUNCTION agent.fn_set_hitl_pending_released(p jsonb)

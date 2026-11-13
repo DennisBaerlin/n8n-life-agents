@@ -132,11 +132,9 @@ function ConvertTo-UiArtSvg([string]$Src, [string]$Variant, $Catalog, [string]$L
     $root = $doc.DocumentElement
     # Kommentare raus (Entwickler-Text der Quelle gehört nicht ins ausgelieferte Bild)
     foreach ($c in @($doc.SelectNodes('//comment()'))) { [void]$c.ParentNode.RemoveChild($c) }
-    # Varianten
     foreach ($e in @($doc.SelectNodes('//*[@data-variant]'))) {
         if ($e.GetAttribute('data-variant') -ne $Variant) { [void]$e.ParentNode.RemoveChild($e) } else { $e.RemoveAttribute('data-variant') }
     }
-    # Volle oder schmale Fassung
     foreach ($e in @($doc.SelectNodes('//*[@data-full]'))) {
         if ($Compact) { [void]$e.ParentNode.RemoveChild($e) } else { $e.RemoveAttribute('data-full') }
     }
@@ -148,13 +146,11 @@ function ConvertTo-UiArtSvg([string]$Src, [string]$Variant, $Catalog, [string]$L
         $root.SetAttribute('height', $h)
     }
     $root.RemoveAttribute('data-compact-height')
-    # Zeichen
     $markXml = ($MarkPaths | ForEach-Object { $_ -replace '<path ', "<path xmlns=`"$ns`" " })
     foreach ($g in @($doc.SelectNodes('//*[@data-mark]'))) {
         foreach ($p in $markXml) { $frag = [xml]::new(); $frag.LoadXml($p); [void]$g.AppendChild($doc.ImportNode($frag.DocumentElement, $true)) }
         $g.RemoveAttribute('data-mark')
     }
-    # Sticker
     foreach ($e in @($doc.SelectNodes('//*[@data-sticker]'))) {
         $name = $e.GetAttribute('data-sticker')
         if ($name -notmatch '^[a-z]+_[a-z]+$') { throw "${SrcName}: Sticker-Name '$name' ungültig" }
@@ -163,7 +159,6 @@ function ConvertTo-UiArtSvg([string]$Src, [string]$Variant, $Catalog, [string]$L
         $e.SetAttribute('href', 'data:image/webp;base64,' + [Convert]::ToBase64String([System.IO.File]::ReadAllBytes($file)))
         $e.RemoveAttribute('data-sticker')
     }
-    # Texte
     foreach ($e in @($doc.SelectNodes('//*[@data-t]'))) {
         $key = "core.art.$($e.GetAttribute('data-t'))"
         $val = [string]$Catalog.$key

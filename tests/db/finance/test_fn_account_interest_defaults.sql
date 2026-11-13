@@ -1,6 +1,6 @@
 -- tests/db/finance/test_fn_account_interest_defaults.sql
--- Testet fn_account_interest_defaults: die vorgeschlagenen Zins-Werte eines NEUEN Kontos (Kadenz, Zinsmethode samt
--- Grund, Auto-Buchung) — die EINE Quelle fuer die HITL-Karte (tool_create_account, Import-Karte) UND fn_create_account.
+-- Testet fn_account_interest_defaults: die vorgeschlagenen Zins-Werte eines neuen Kontos (Kadenz, Zinsmethode samt
+-- Grund, Auto-Buchung) — die eine Quelle fuer die HITL-Karte (tool_create_account, Import-Karte) und fn_create_account.
 -- Letzter Block: Karte = Write (die geschriebene Zinszeile traegt exakt die Vorschlagswerte).
 BEGIN;
 
@@ -10,7 +10,7 @@ DECLARE
   v_r  JSONB;
   v_ir RECORD;
 BEGIN
-  -- ---------- Vorschlag aus dem Kontotyp; KEIN erfundener Rhythmus (Befund 2026-10-24: vorher 'year') ----------
+  -- ---------- Vorschlag aus dem Kontotyp; kein erfundener Rhythmus ----------
   v := finance.fn_account_interest_defaults('{"account_type":"cash"}'::jsonb);
   IF v ? 'unit' AND v->>'unit' IS NOT NULL
      OR v->>'first_period_end' IS NOT NULL

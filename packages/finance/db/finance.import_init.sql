@@ -1,14 +1,14 @@
 -- ============================================================
--- Bulk-Import — Staging-Schicht (Phase 2 Onboarding-Plan)
--- Zweck:   propose -> review -> commit: Extraktion (Vision/Chat/CSV) landet als ROHE Rows
---          in finance_import_staging; fn_import_validate prueft je Row (Pflichtfelder,
+-- Bulk-Import — Staging-Schicht
+-- Zweck:   propose -> review -> commit: Extraktion (Vision/Chat/CSV) landet als rohe Rows
+--          in finance.import_staging; fn_import_validate prueft je Row (Pflichtfelder,
 --          Enums, Dubletten-Backstop, Referenz-Aufloesung inkl. In-Batch-Konten);
---          Korrekturen passieren VOR dem HITL-Gate per Chat (fn_import_update_row, kein
---          eigenes Gate — Staging ist keine Domaenen-Daten); der Commit laeuft als EIN
---          atomarer fn_import_bundle-Aufruf (Loop ueber die BESTEHENDEN fn_create_*/
+--          Korrekturen passieren vor dem HITL-Gate per Chat (fn_import_update_row, kein
+--          eigenes Gate — Staging ist keine Domaenen-Daten); der Commit laeuft als ein
+--          atomarer fn_import_bundle-Aufruf (Loop ueber die bestehenden fn_create_*/
 --          fn_book_* = die getestete Validierungs-Oberflaeche; all-or-nothing pro Batch).
 --
--- Payload-Vertrag (ROHE Nutzer-Werte, NAMEN statt IDs — die Bundle-fn loest auf;
+-- Payload-Vertrag (rohe Nutzer-Werte, NAMEN statt IDs — die Bundle-fn loest auf;
 -- das LLM/Vision extrahiert nur Rohwerte, nie Abgeleitetes):
 --   account:           name*, account_type* (nicht loan), bank, account_number, currency, owner_person,
 --                      settlement_account (Name; Pflicht bei *_depot), opening_balance
@@ -28,7 +28,7 @@
 --   real_estate:       name*, current_value*, owner_person, notes, value_updated_at
 --   savings_goal:      name*, target_amount*, account* (Name), reserve_account* (Name, Sparkonto/Topf, ≠ account),
 --                      first_payment_date (def naechster Abbuchungstag ab heute), beneficiary_person,
---                      GENAU EINES von {target_date, monthly_savings_rate}, goal_type, ...
+--                      genau eines von {target_date, monthly_savings_rate}, goal_type, ...
 --   loan:              name*, interest_rate*, debit_account* (Name, EUR), monthly_annuity (+ first_payment_date Pflicht),
 --                      frisch: original_amount* (+ disbursement_date; ohne = Eroeffnung zum Stichtag heute); laufend:
 --                      current_balance* (Restschuld heute, 0 < x <= original), Ursprungswerte dann optional, borrower_person,
@@ -41,8 +41,8 @@
 
 CREATE SCHEMA IF NOT EXISTS finance;
 
--- Phase-3a Schema-Extraktion (idempotent): bestehende agent.finance_import_staging -> finance.import_staging.
--- Fresh-DB: no-op; Bestands-DB: verschiebt die echten Staging-Daten vor dem CREATE ... IF NOT EXISTS (kein Verlust).
+-- Umzug agent.finance_import_staging -> finance.import_staging (idempotent). Fresh-DB: no-op; Bestands-DB:
+-- verschiebt die Staging-Daten vor dem CREATE ... IF NOT EXISTS (kein Verlust).
 DO $$ BEGIN
     IF to_regclass('agent.finance_import_staging') IS NOT NULL AND to_regclass('finance.import_staging') IS NULL THEN
         ALTER TABLE agent.finance_import_staging SET SCHEMA finance;
@@ -64,8 +64,8 @@ CREATE TABLE IF NOT EXISTS finance.import_staging (
     UNIQUE (batch_id, row_no)
 );
 
--- entity_type-CHECK als DROP+ADD (Migration: pension_statement kam nach v1 dazu;
--- der auto-benannte Spalten-CHECK der Erstanlage wird mit-gedroppt)
+-- entity_type-CHECK als DROP+ADD, damit neue Werte auf Bestands-DBs greifen (der auto-benannte
+-- Spalten-CHECK der Erstanlage wird mit-gedroppt)
 ALTER TABLE finance.import_staging DROP CONSTRAINT IF EXISTS finance_import_staging_entity_type_check;
 ALTER TABLE finance.import_staging DROP CONSTRAINT IF EXISTS finance_import_staging_entity_type_chk;
 ALTER TABLE finance.import_staging ADD CONSTRAINT finance_import_staging_entity_type_chk
@@ -96,7 +96,7 @@ COMMENT ON COLUMN finance.import_staging.merged_at IS
 COMMENT ON COLUMN finance.import_staging.recurring_payment_id IS
     'Provenienz (Ausnahme c): der per Knopf angelegte Dauerauftrag einer uebernommenen Vorschlagszeile (bis zum Aufraeumen).';
 
--- Status-CHECK benannt (stand inline ohne Namen; der Auto-Name haengt am Tabellennamen der Erstanlage)
+-- Status-CHECK benannt (der Auto-Name haengt am Tabellennamen der Erstanlage); die alten Namen werden mit-gedroppt
 ALTER TABLE finance.import_staging DROP CONSTRAINT IF EXISTS finance_import_staging_status_check;
 ALTER TABLE finance.import_staging DROP CONSTRAINT IF EXISTS import_staging_status_check;
 ALTER TABLE finance.import_staging DROP CONSTRAINT IF EXISTS finance_import_staging_status_chk;
@@ -104,7 +104,7 @@ ALTER TABLE finance.import_staging ADD CONSTRAINT finance_import_staging_status_
     CHECK (status IN ('staged','valid','invalid','committed','declined'));
 
 -- Kein separater (batch_id, row_no)-Index: die UNIQUE (batch_id, row_no) oben legt bereits
--- einen deckenden Index an (redundant entfernt -> packages/finance/db/migrations/V004__drop_redundant_import_staging_index.sql).
+-- einen deckenden Index an (packages/finance/db/migrations/V004__drop_redundant_import_staging_index.sql entfernt den alten).
 
 -- updated_at via gemeinsamen Touch-Helper (idempotent mit-definiert, standalone-faehig)
 CREATE OR REPLACE FUNCTION finance.touch_updated_at()
@@ -117,5 +117,4 @@ CREATE TRIGGER trg_finance_import_staging_touch
 
 -- Lesepfad: finance_ro liest diese Tabelle ueber den breiten Schema-Grant, den die Host-fn
 -- core.fn_provision_package_roles('finance') erteilt (GRANT SELECT ON ALL TABLES IN SCHEMA finance).
--- KEIN GRANT in Paket-SQL (Paket-Lese-Vertrag: Deklaration vs. Ausfuehrung — Rechte vergibt NUR die
--- privilegierte Host-fn, nie das Paket; docs/package-contract.md).
+-- Kein GRANT in Paket-SQL: Rechte vergibt nur die privilegierte Host-fn (docs/package-contract.md).

@@ -1,15 +1,11 @@
 -- ============================================================
 -- fn_delete_holding (ATOMIC WRITE) -- Hard-DELETE einer Fehlanlage / leeren Position
---   Eine Depot-Position hat keine recurring_payment und keinen Status; ihre "Historie"
---   sind die verknuepften Trades (finance_transactions.holding_id, FK RESTRICT). Sinnvoll
---   nur fuer eine versehentlich angelegte oder nach vollstaendigem Void verwaiste Zeile
---   (shares=0, keine Buchungen). Identifikation per holding_id (Agent liest sie via
---   finance_depot_holdings_overview / postgres_select).
---   KORRIGIERBAR (kein RAISE -> kein Owner-Alert):
---     - >=1 verknuepfte Transaktion -> {ok:false, reason, transaction_count}
---       (erst die Trades voiden, dann die Position loeschen).
---   Eingabe jsonb: holding_id.
---   RUECKGABE: {ok:true, action:'deleted', holding_id}. RAISE nur bei not-found.
+--   Nur fuer eine versehentlich angelegte oder nach vollstaendigem Void verwaiste Position (shares=0,
+--   keine Buchungen); die Historie sind die verknuepften Trades (transactions.holding_id, FK RESTRICT).
+--   Eingabe jsonb: holding_id (Pflicht; Agent liest sie via finance_depot_holdings_overview / postgres_select).
+--   Rueckgabe: {ok:true, action:'deleted', holding_id}.
+--   {ok:false} (kein RAISE -> kein Owner-Alert): >=1 verknuepfte Transaktion -> reason + transaction_count
+--   (erst die Trades voiden). RAISE nur bei not-found.
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_delete_holding(p jsonb)
 RETURNS jsonb LANGUAGE plpgsql AS $$
@@ -21,7 +17,7 @@ BEGIN
         RAISE EXCEPTION 'Holding % not found.', v_id;
     END IF;
 
-    -- Korrigierbar: verknuepfte Trades (FK RESTRICT wuerde sonst hart scheitern).
+    -- Verknuepfte Trades als Daten statt hartem FK-Fehler.
     SELECT COUNT(*) INTO v_tx_count
     FROM finance.transactions WHERE holding_id = v_id;
     IF v_tx_count > 0 THEN

@@ -1,9 +1,10 @@
 -- ============================================================
--- core.fn_render_welcome(p_lang text DEFAULT NULL) -> jsonb   (Install-UX-Phase 6 — die EINE Textquelle der Owner-Begruessung)
+-- fn_render_welcome (READ-ONLY) — die eine Textquelle der Owner-Begruessung
+--   Eingabe: p_lang text (optional, s. Sprache).
 --   Zwei Konsumenten, ein Text: (a) der Orchestrator bei einem nackten /start des Owners (liest unter core_ro,
 --   'Start onboarding read', mit der Sprache des Owners) und (b) der Installer direkt nach dem Pairing + _oc_finalize
 --   (owner_connect.sh, Superuser, ohne Argument; erst dann sind echte Owner-chat_id + Re-Deploy durch, sonst liefe ein
---   frueher Knopf-Tipp ins Leere). Reiner Text OHNE Markdown (der n8n-Send escapt ohnehin, der Installer sendet ohne
+--   frueher Knopf-Tipp ins Leere). Reiner Text ohne Markdown (der n8n-Send escapt ohnehin, der Installer sendet ohne
 --   parse_mode).
 --   Sprache: p_lang (NULL/leer -> Sprache des Owners, agent.fn_person_lang); alle Texte aus dem Textkatalog
 --   (core.ui_texts, Keys core.welcome.*, Paketnamen <pkg>.package.name; fehlender Key -> en, docs/package-contract.md §3.11).
@@ -13,12 +14,12 @@
 --   Installiert = core.package_registry status 'active' (Name aus dem Katalog, Fallback Paket-id; core zuerst);
 --   'inactive' wird mit dem Einschalt-Befehl genannt; 'installing'/'installed' (abgebrochen) zaehlen nicht.
 --   Vorname = family.metadata.facts.persons[] role 'owner' (fehlt -> generische Anrede).
---   Knopf-Vertrag (FEST): [onboarding:core:household, help:overview] — beide Core = immer gueltig; workflow_lint prueft
+--   Knopf-Vertrag (fest): [onboarding:core:household, help:overview] — beide Core = immer gueltig; workflow_lint prueft
 --     die Orchestrator-Knoepfe gegen genau diese callback_data-Liste (Anzahl/Reihenfolge der n8n-Knoepfe ist build-time
 --     fest, nur Text/Data sind Ausdruecke); die Knopf-Texte kommen in derselben Sprache mit.
 --   SECURITY INVOKER (core_ro liest agent+core ohnehin; Decision-Rule .claude/rules/sql.md), search_path gepinnt,
 --   REVOKE PUBLIC; der core_ro-Grant lebt am Rollen-Ort util_create_core_ro.sql.
---   RUECKGABE: {ok:true, kind, lang, text, buttons:[{text, callback_data}]}
+--   Rueckgabe: {ok:true, kind, lang, text, buttons:[{text, callback_data}]}
 --   Tests: tests/db/core/test_fn_render_welcome.sql
 -- ============================================================
 CREATE OR REPLACE FUNCTION core.fn_render_welcome(p_lang text DEFAULT NULL)
@@ -38,7 +39,7 @@ DECLARE
     v_hi       TEXT;
     v_text     TEXT;
 BEGIN
-    -- Sprache: explizit (nur Katalog-Codes, sonst en) oder die des Owners (Kette Owner -> en).
+    -- Explizit (nur Katalog-Codes, sonst en) oder die Sprache des Owners (Kette Owner -> en).
     v_lang := CASE
         WHEN NULLIF(btrim(p_lang), '') IS NULL THEN agent.fn_person_lang(agent.fn_owner_person_id())->>'lang'
         WHEN EXISTS (SELECT 1 FROM core.ui_languages WHERE code = btrim(p_lang)) THEN btrim(p_lang)
@@ -53,8 +54,8 @@ BEGIN
     v_new := EXISTS (SELECT 1 FROM agent.guide_onboarding_state WHERE status = 'unknown');
     v_has_pkg := EXISTS (SELECT 1 FROM core.package_registry WHERE status IN ('active', 'inactive') AND package <> 'core');
 
-    -- Paketnamen aus dem Katalog (fehlt der Key -> Paket-id). Core zuerst (immer da — der Host ist mit dem System
-    -- installiert), dann aktive Pakete nach Anzeigename.
+    -- Paketnamen aus dem Katalog (fehlt der Key -> Paket-id). Core zuerst (immer da), dann aktive Pakete
+    -- nach Anzeigename.
     WITH n AS (
         SELECT r.package, r.status,
                COALESCE(NULLIF(core.fn_ui_text(r.package || '.package.name', v_lang), r.package || '.package.name'),

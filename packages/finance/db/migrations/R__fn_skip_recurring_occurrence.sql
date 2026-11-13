@@ -2,7 +2,7 @@
 -- fn_skip_recurring_occurrence (ATOMIC WRITE)
 --   Markiert ein faelliges Vorkommen als "fuer diese Periode uebersprungen" (Skip-Zeile).
 --   Danach erscheint es nicht mehr in fn_recurring_due_open. Eingabe jsonb:
---   recurring_payment_id, due_date.
+--   recurring_payment_id, due_date. Idempotent (ON CONFLICT DO NOTHING). RUECKGABE: {ok:true}.
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_skip_recurring_occurrence(p jsonb)
 RETURNS jsonb LANGUAGE plpgsql AS $$

@@ -1,18 +1,18 @@
 -- ============================================================
--- core.fn_plan_share_targets(p) — Versand-Liste "Erwachsene informieren" (Plan teilen, 2026-10-28)
+-- fn_plan_share_targets (READ-ONLY, SECURITY DEFINER) — Versand-Liste "Erwachsene informieren"
 --   Gerufen vom Sub core.sub_share_plan nach dem Owner-Tipp plan:share:<domain>:<version>. Prueft (auch wenn der
 --   Handler schon prueft — alte Karten, Doppel-Tipp): Absender = Owner, p.version = aktive Version des Haushalts-Plans
 --   (core.fn_household_plan_active, sonst reason 'stale'). Empfaenger = core.fn_plan_adult_recipients (Rolle partner,
 --   Chat, plan_news erlaubt — darin auch der Notschalter cron_enable.plan_news).
---   READ-ONLY: wer fuer DIESEN Plan schon informiert wurde (Merker core.notification_state source 'plan_news', key
+--   Wer fuer diesen Plan schon informiert wurde (Merker core.notification_state source 'plan_news', key
 --   '<pid>:<domain>:p<plan_id>' im Zustand fired), zaehlt zu already; alle anderen kommen in targets. Den Merker setzt erst
---   core.fn_plan_share_mark NACH einem zugestellten Send (Code-Review 2026-10-28: ein vorab gesetzter Merker verschluckte
---   Personen, wenn der Lauf zwischen Liste und Send starb). Key an der plan_id (nicht der Version): ein Daten-Reset
+--   core.fn_plan_share_mark nach einem zugestellten Send (ein vorab gesetzter Merker verschluckte
+--   Personen, wenn der Lauf zwischen Liste und Send stirbt). Key an der plan_id (nicht der Version): ein Daten-Reset
 --   beginnt wieder bei Version 1, die plan_id (serial) nie — sonst galten alle als "schon informiert".
 --   show_summary = die Sprache der Person ist die Sprache der gespeicherten Zusammenfassung (change_summary_lang) — der
 --   Text wird nie uebersetzt; sonst erklaert der Berater die Aenderungen in ihrer Sprache. summary auf 1500 Zeichen gekappt.
---   p: { domain, version, chat_id (Tapper, build-fix aus dem Callback, nie LLM) }
---   RUECKGABE: {ok:true, plan_id, version, package, summary, targets:[{person_id, chat_id, lang, show_summary}], already, none}
+--   p: { domain, version, chat_id (Tapper, build-fix aus dem Callback, nie LLM) } (alle drei Pflicht)
+--   Rueckgabe: {ok:true, plan_id, version, package, summary, targets:[{person_id, chat_id, lang, show_summary}], already, none}
 --            | {ok:false, reason: owner_only|stale|unknown_plan}. Nie RAISE.
 --   STABLE, SECURITY DEFINER, search_path gepinnt; EXECUTE nur die Host-Cred (REVOKE PUBLIC).
 --   Tests: tests/db/core/test_fn_plan_share_targets.sql

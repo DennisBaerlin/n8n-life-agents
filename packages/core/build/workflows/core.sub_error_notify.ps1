@@ -4,18 +4,17 @@
 # --- core.sub_error_notify (globale Fehler-Sicherheitsleine) ----------------
 # Jeder Prod-Workflow zeigt per settings.errorWorkflow auf diesen Sub; Build-Workflow loest dessen id
 # per Name aus dem State auf ($ErrorNotifyId, kein ID-Literal). Eingang ist ein n8n errorTrigger (feuert NUR
-# bei echten Fehlern automatischer Executions, nicht via executeWorkflow ansteuerbar). Loest die
-# fruehere scripts/build/sync_error_notify.ps1 ab (geloescht 2026-06-17) -> jetzt voll build-generiert.
+# bei echten Fehlern automatischer Executions, nicht via executeWorkflow ansteuerbar).
 #
-# Eigenheiten (inline konstruiert, Einzelfall — KEINE Lib-Helper):
-#   * settings haben BEWUSST KEIN errorWorkflow (self-reference = Endlos-Alert-Schleife).
-#   * Der Telegram-Send escapt den Text NICHT selbst (Allowlist in workflow_lint.ps1:
-#     'core.sub_error_notify :: Send Telegram Alert') — das Escaping passiert UPSTREAM im
-#     Format-Message-Code-Node (.replace der 4 Legacy-Markdown-Entities). Daher KEIN
+# Eigenheiten (inline konstruiert, Einzelfall, keine Lib-Helper):
+#   * settings haben bewusst kein errorWorkflow (self-reference = Endlos-Alert-Schleife).
+#   * Der Telegram-Send escapt den Text nicht selbst (Allowlist in workflow_lint.ps1:
+#     'core.sub_error_notify :: Send Telegram Alert'); das Escaping passiert upstream im
+#     Format-Message-Code-Node (.replace der 4 Legacy-Markdown-Entities). Daher kein
 #     New-TelegramSendNode (der wuerde doppelt escapen). Node-Name 'Send Telegram Alert' ist Pflicht
 #     (workflow_lint-Allowlist + Verdrahtungs-Check).
 #   * Format Message filtert Harness-getriggerte Executions (Root-Trigger 'Test Webhook') -> alerten
-#     nie (Suite-Timeout-Stopps feuerten sonst Owner-Alerts, 2026-06-12).
+#     nie (sonst loesten Suite-Timeout-Stopps Owner-Alerts aus).
 function Build-CoreSubErrorNotify {
     $onError = [ordered]@{
         parameters  = @{}
@@ -26,8 +25,8 @@ function Build-CoreSubErrorNotify {
         name        = 'On Error'
     }
 
-    # Textkatalog Phase C: die Alarm-Texte in Owner-Sprache + Owner-Locale (core.fn_ui_texts_for). Die Sicherheitsleine
-    # haengt NIE an der DB: onError=continue, alwaysOutputData, KEIN Retry (ein toter DB-Server darf den Alarm nicht
+    # Textkatalog: die Alarm-Texte in Owner-Sprache + Owner-Locale (core.fn_ui_texts_for). Die Sicherheitsleine
+    # haengt nie an der DB: onError=continue, alwaysOutputData, kein Retry (ein toter DB-Server darf den Alarm nicht
     # verzoegern) -> Format Message faellt dann auf englische Ersatztexte zurueck (bewusste Ausnahme vom Katalog).
     $loadTexts = Build-Pg 'Load alert texts' @(110, 160) `
         ("SELECT core.fn_ui_texts_for(jsonb_build_object('keys', to_jsonb(" + (Get-UiKeysSql @(
@@ -79,7 +78,7 @@ return out;
         name        = 'Format Message'
     }
 
-    # Inline (NICHT New-TelegramSendNode): Text wird NICHT escapt (Format Message escapt upstream).
+    # Inline (nicht New-TelegramSendNode): Text wird nicht escapt (Format Message escapt upstream).
     # chatId = Platzhalter -> deploy_workflows.sh re-injiziert die echte Owner-chat_id.
     $send = [ordered]@{
         parameters  = [ordered]@{
@@ -114,7 +113,7 @@ return out;
 
     # Karte-offen-Sperre: scheitert ein Gate-Lauf (z. B. Telegram-Send), laeuft dessen 'Close pending' nie ->
     # die Zeile in agent.hitl_pending dieser Execution hier sofort freigeben (Gnadenfrist 0; sonst sperrt ein Hinweis auf
-    # eine NICHT existierende Karte den Chat bis zur TTL). Leerer/fremder Lauf = no-op in der fn. Zweiter Ast NACH dem
+    # eine nicht existierende Karte den Chat bis zur TTL). Leerer/fremder Lauf = no-op in der fn. Zweiter Ast nach dem
     # Alarm (v1-Reihenfolge), onError=continue: die Sicherheitsleine haengt nie an diesem Schritt.
     $clearLock = Build-Pg 'Clear card lock' @(110, 320) `
         "=SELECT agent.fn_set_hitl_pending_released(`$1::jsonb) AS r;" `
@@ -144,7 +143,7 @@ return out;
     }
 
     $wf = Build-Workflow 'core.sub_error_notify' $nodes $conns
-    # KEIN errorWorkflow (sonst Endlos-Alert-Schleife); nur executionOrder.
+    # Kein errorWorkflow (sonst Endlos-Alert-Schleife); nur executionOrder.
     $wf.settings = [ordered]@{ executionOrder = 'v1' }
     return $wf
 }

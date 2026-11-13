@@ -1,6 +1,6 @@
 -- ============================================================
--- core.fn_notify_told (Lese-Sicht der geteilten Notify-Schicht)
---   Liefert true, wenn der Merker (p_source, p_key) gemeldet ist und nicht abgelaufen. Schreibt nichts. Grundlage von
+-- fn_notify_told (READ)
+--   Lese-Sicht der geteilten Notify-Schicht. Liefert true, wenn der Merker (p_source, p_key) gemeldet ist und nicht abgelaufen. Schreibt nichts. Grundlage von
 --   told_keys in core.fn_advisor_review_evaluate: dieselbe Lage ueber zwei Wege wird nur einmal gesagt.
 --   Eingaben: p_source, p_key. Rueckgabe: boolean.
 --   SECURITY DEFINER: Paket-Rollen haben kein Tabellenrecht auf core.notification_state; EXECUTE in fn_provision_package_roles.

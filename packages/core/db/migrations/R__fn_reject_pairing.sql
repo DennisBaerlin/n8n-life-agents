@@ -1,12 +1,12 @@
 -- ============================================================
--- fn_reject_pairing (WS-5a — Owner lehnt die gestagete Einladung ab -> Stage verwerfen)
---   Schritt 3 (Decline): der Owner tippt ❌ am callback_query. Owner-Auth liegt deterministisch im
---   Orchestrator-Handler VOR diesem Aufruf. Markiert die Zeile als konsumiert (consumed_at) OHNE jede
---   Bindung -> die Member-Identitaet wird NICHT an die Person geheftet. Idempotent (zweites ❌ -> resolved).
---   p: { id }
---   RUECKGABE: {ok:true, person_id, full_name, member_chat_id}   (-> Member „abgelehnt"-Notiz)
+-- fn_reject_pairing (ATOMIC WRITE — Owner lehnt die gestagete Einladung ab -> Stage verwerfen)
+--   Decline-Schritt: der Owner tippt ❌ am callback_query. Owner-Auth liegt deterministisch im
+--   Orchestrator-Handler vor diesem Aufruf. Markiert die Zeile als konsumiert (consumed_at) ohne jede
+--   Bindung -> die Member-Identitaet wird nicht an die Person geheftet. Idempotent (zweites ❌ -> resolved).
+--   p: { id (Pflicht, pairing_state.id) }
+--   Rueckgabe: {ok:true, person_id, full_name, member_chat_id}   (-> Member „abgelehnt"-Notiz)
 --            | {ok:false, resolved:true}     (bereits aufgeloest)
---            | {ok:false, reason}            (nicht gefunden)
+--            | {ok:false, reason}            ('pairing id is required' | 'pairing request not found')
 --   Invarianten-Tests: tests/db/core/test_fn_pairing_challenge.sql
 -- ============================================================
 CREATE OR REPLACE FUNCTION agent.fn_reject_pairing(p jsonb)

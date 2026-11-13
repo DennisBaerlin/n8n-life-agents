@@ -1,14 +1,14 @@
 ﻿#Requires -Version 5.1
 # Definition agent.guide.cron_learn_context -> Build-CronGuideLearnContext. Dot-gesourct von build.ps1.
-# OPT-IN Tages-Lern-Loop (Phase C): sichtet die juengste Owner-Chat-Historie und SCHLAEGT dauerhaft
-# relevante Erkenntnisse als HITL-Kandidaten VOR. Hoechstes Risiko der Roadmap = Auto-Memory-Writes,
-# darum die strukturelle Leitplanke: dieser Cron schreibt AUSSCHLIESSLICH guide_learn_candidates +
-# guide_learn_watermark (via agent.fn_record_learn_candidates) und NIE agent.core_contexts (M1) - der
+# Opt-in Tages-Lern-Loop: sichtet die juengste Owner-Chat-Historie und schlaegt dauerhaft
+# relevante Erkenntnisse als HITL-Kandidaten vor. Auto-Memory-Writes sind das hoechste Risiko,
+# darum die strukturelle Leitplanke: dieser Cron schreibt ausschliesslich guide_learn_candidates +
+# guide_learn_watermark (via agent.fn_record_learn_candidates) und nie agent.core_contexts - der
 # einzige core_contexts-Schreibpfad ist die owner-gegatete Approve-fn (Per-Eintrag-Callback learn:ok).
 #
 # Ablauf: scheduleTrigger -> F9-Gate (fn_package_active(core) AND cron_enable.learn_context='true') ->
 #   core.fn_collect_chat_since() (per-Tabelle id>Watermark, nur human, test%-Filter) -> kein Material? Ende
-#   -> Standard-Model-Selector-Buendel (model.learn_context, runtime-einstellbar wie die Agenten, R2) ->
+#   -> Standard-Model-Selector-Buendel (model.learn_context, runtime-einstellbar wie die Agenten) ->
 #   chainLlm-Extraktion (Rohwerte, keine gerechneten Werte) -> agent.fn_record_learn_candidates (atomar:
 #   Denylist/Allowlist/NOOP/Dedup x3/Cap/Idempotenz + Watermark-Vorschub derselben Tx) -> bei new_pending>0
 #   Intro-Karte (mit "Lernen aus"-Knopf) + je Kandidat eine Karte mit [Speichern]=learn:ok:<id>
@@ -30,7 +30,7 @@ function Build-CronGuideLearnContext {
     $off = Build-NoOp 'Disabled' @(-880, 200)
 
     # 3) Collect (read-only): rows (fuer das LLM) + watermarks (MAX id je Quelltabelle) + count.
-    #    MATERIALIZED -> die STABLE Collect-fn laeuft EXAKT 1x (Muster Advisor-Cron); jsonb als ::text
+    #    MATERIALIZED -> die STABLE Collect-fn laeuft genau 1x (Muster Advisor-Cron); jsonb als ::text
     #    (n8n-Pg-Node-Quirk: jsonb robust ueber JSON.parse im Code-Node).
     $collectSql = @'
 =WITH c AS MATERIALIZED (SELECT * FROM core.fn_collect_chat_since())
@@ -56,10 +56,10 @@ FROM c;
     $ifMaterial = Build-If 'New material?' @(-440, 0) '={{ $json.n }}' '1' 'gte' 'number'
     $noMaterial = Build-NoOp 'No new chat' @(-440, 200)
 
-    # 4) Modell-Config (speist den Standard-Selektor; runtime-einstellbar wie die Agenten, R2)
+    # 4) Modell-Config (speist den Standard-Selektor; runtime-einstellbar wie die Agenten)
     $loadModel = New-ModelConfigNode -Position @(-220, 0) -Keys @( ,@('core', 'learn_context') )
 
-    # 5) Extraktions-Prompt deterministisch bauen (Code) - Rohwerte, KEINE gerechneten Werte (R5-B/M2).
+    # 5) Extraktions-Prompt deterministisch bauen (Code) - Rohwerte, keine gerechneten Werte.
     $promptJs = @'
 const rows = $('Collect chat').item.json.rows || '[]';
 const factCtx = $('Collect chat').item.json.fact_contexts || 'family';
@@ -96,7 +96,7 @@ return [{ json: { prompt: instr + '\n\nRecent user messages (JSON):\n' + rows } 
         onError = 'continueRegularOutput'
         retryOnFail = $true; maxTries = 2; waitBetweenTries = 2000
     }
-    # Standard-Model-Selector-Buendel (je Chat-Modell ein Node + Selector), model.learn_context -> runtime-einstellbar (R2).
+    # Standard-Model-Selector-Buendel (je Chat-Modell ein Node + Selector), model.learn_context -> runtime-einstellbar.
     $selector = New-ModelSelectorBundle -ConfigField 'model.learn_context' -ConfigNodeName 'Load model config' `
         -AgentNodeName 'Extract candidates' -SelectorPos @(220, 360) -ModelRowPos @(-120, 520) -Effort medium
 
@@ -127,7 +127,7 @@ return [{ json: { candidates: candidates, watermarks: watermarks } }];
     $nothingNew = Build-NoOp 'Nothing new' @(880, 200)
 
     # 9) Intro-Karte (einmal) mit karten-weitem "Lernen aus"-Knopf (cron_off:learn_context).
-    # Texte aus 'Collect chat' (Owner-Sprache, Textkatalog Phase C).
+    # Texte aus 'Collect chat' (Owner-Sprache, Textkatalog).
     $UI = "JSON.parse(`$('Collect chat').first().json.ui || '{}').t"
     $sendIntro = New-TelegramInlineKeyboardSendNode 'Send intro' @(1100, 0) `
         (Get-UiTextExpr $UI 'core.learn.intro' @{ count = "`$('Record candidates').item.json.new_pending" }) `
@@ -165,7 +165,7 @@ return out;
             @{ Text = "={{ `$json.btn_discard }}"; Data = "={{ 'learn:no:' + `$json.id }}" }
         )
 
-    # --- Stickies (Pflicht: Ablauf + off-canvas fn-Logik + M1 + Privacy sichtbar machen) ---
+    # --- Stickies (Ablauf, off-canvas fn-Logik, Schreib-Leitplanke und Privacy sichtbar machen) ---
     $stOverview = Build-Sticky 'Überblick' @(-1360, -420) `
         'Opt-in Tages-Lern-Loop (Phase C): schlägt nur vor, schreibt NIE core_contexts (M1)' `
         ('Sichtet täglich (schedule.learn_context) die jüngste Owner-Chat-Historie und SCHLÄGT dauerhaft relevante Erkenntnisse als Kandidaten VOR. STRUKTURELLE Leitplanke gegen das Auto-Memory-Risiko: dieser Cron schreibt AUSSCHLIESSLICH agent.guide_learn_candidates + guide_learn_watermark (via agent.fn_record_learn_candidates) und NIE agent.core_contexts (M1, lint-erzwungen). Der EINZIGE core_contexts-Schreibpfad ist die owner-gegatete Approve-fn (Orchestrator-Callback learn:ok:<id>). Opt-in: cron_enable.learn_context default false; aktiviert am Onboarding-Ende ([Lernen aktivieren]) oder per Konsole. PRIVACY: die Extraktion läuft über die bezahlte Anthropic-API (model.learn_context, Claude) -> Privacy-Hard-Rule erfüllt (kein Training auf Kundeninhalten, Finanzdaten).') 360 760 'Lern-Loop'

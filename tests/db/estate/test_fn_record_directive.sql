@@ -1,7 +1,7 @@
 -- tests/db/estate/test_fn_record_directive.sql
--- WS-2: UPSERT-Vertrag des Vorsorge-Dokumente-Registers — NULLS-NOT-DISTINCT-Falle (zwei
--- Haushalts-Records desselben Typs = EIN Eintrag), partielles COALESCE-Update, Fundstellen-
--- Aufloesung in-fn, Enum-Guards + Kind-Reject (erste Live-Nutzung von adults_only) +
+-- UPSERT-Vertrag des Vorsorge-Dokumente-Registers — NULLS-NOT-DISTINCT-Falle (zwei
+-- Haushalts-Records desselben Typs = ein Eintrag), partielles COALESCE-Update, Fundstellen-
+-- Aufloesung in-fn, Enum-Guards + Kind-Reject (adults_only) +
 -- Sentinel-Pass-Through. Self-contained family-Fixture (owner 111 / partner 222 / child 333,
 -- Muster test_fn_check_write_permission); BEGIN..ROLLBACK.
 BEGIN;
@@ -26,7 +26,7 @@ BEGIN
                                  'role','child','birth_date','2012-03-10','telegram_user_id',333)))))
   ON CONFLICT (name) DO UPDATE SET metadata = EXCLUDED.metadata;
 
-  -- ---------- Kind-Reject (adults_only-Backstop, VOR jeder Validierung/jedem Write) ----------
+  -- ---------- Kind-Reject (adults_only-Backstop, vor jeder Validierung/jedem Write) ----------
   v_r := estate.fn_record_directive(jsonb_build_object(
       'chat_id','333', 'doc_type','testament', 'doc_status','exists'));
   IF (v_r->>'ok')::boolean OR v_r->>'reason' NOT LIKE '%adults_only%' THEN

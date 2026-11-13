@@ -1,5 +1,5 @@
 -- tests/db/finance/test_fn_account_free_balance.sql
--- finance.fn_account_free_balance: Saldo eines saldo-basierten Kontos minus die Anteile AKTIVER Sparziele darauf
+-- finance.fn_account_free_balance: Saldo eines saldo-basierten Kontos minus die Anteile aktiver Sparziele darauf
 -- (getaggte Buchungen + Zuordnungen, savings_goal_account_share). Die eine Adresse fuer den Freier-Saldo-Guard
 -- (fn_book_savings_reservation, fn_create_savings_goal).
 --   (1) ohne Ziel-Anteil = Saldo
@@ -26,7 +26,7 @@ BEGIN
   UPDATE finance.savings_goals SET status = 'cancelled' WHERE id = v_g1;
   v_free := finance.fn_account_free_balance(v_acct);
   IF v_free IS DISTINCT FROM 5000 THEN RAISE EXCEPTION 'FAIL afb [3]: erwartet 5300 - 300 = 5000, got %', v_free; END IF;
-  -- (3b) ein NEGATIVER Anteil (z. B. Alt-Tag eines Sparplan-Kaufs) erhoeht den freien Saldo nicht (je Ziel bei 0 gekappt)
+  -- (3b) ein negativer Anteil (z. B. Alt-Tag eines Sparplan-Kaufs) erhoeht den freien Saldo nicht (je Ziel bei 0 gekappt)
   INSERT INTO finance.savings_goal_reserve_entries (savings_goal_id, account_id, delta_native, currency, kind) VALUES (v_g2, v_acct, -2000, 'EUR', 'void');
   v_free := finance.fn_account_free_balance(v_acct);
   IF v_free IS DISTINCT FROM 5300 THEN RAISE EXCEPTION 'FAIL afb [3b]: erwartet 5300 (Anteil -1700 zaehlt 0), got %', v_free; END IF;

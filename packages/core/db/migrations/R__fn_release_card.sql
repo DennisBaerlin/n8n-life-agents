@@ -1,12 +1,12 @@
 -- ============================================================
--- core.fn_release_card(p) (read-only, MERKT NICHTS — Update-Hinweis 2026-10-24)
+-- fn_release_card (READ-ONLY, merkt nichts) — Update-Hinweis
 --   Entscheidet, ob der Owner eine Release-Karte bekommt, und baut sie (Text + inline_keyboard) in seiner Sprache.
 --   Aufrufer: der root-Check `lifeagents update --check` (provisioning/lib/update_runner.sh) mit dem jq-Auszug von
---   GET /repos/<slug>/releases. Gemerkt wird ERST nach erfolgreichem Senden (core.fn_release_card_sent) — ein
+--   GET /repos/<slug>/releases. Gemerkt wird erst nach erfolgreichem Senden (core.fn_release_card_sent) — ein
 --   gescheiterter Send heisst: beim naechsten Check erneut.
---   Faellig, wenn: Schalter config feature.update_check = 'true' (fail-closed) UND installed ein stabiles Tag (nicht
---   'dev') UND es stabile Releases > installed gibt (keine Drafts/Prereleases/Nicht-SemVer; mit require_signature nur
---   solche mit Asset 'SHA256SUMS.sig') UND fuer das neueste noch keine Karte ging (Latch release_update/<tag>).
+--   Faellig, wenn: Schalter config feature.update_check = 'true' (fail-closed) und installed ein stabiles Tag (nicht
+--   'dev') und es stabile Releases > installed gibt (keine Drafts/Prereleases/Nicht-SemVer; mit require_signature nur
+--   solche mit Asset 'SHA256SUMS.sig') und fuer das neueste noch keine Karte ging (Latch release_update/<tag>).
 --   Text: Titel + die Kurzfassungen der hoechstens 3 neuesten Releases in der Owner-Sprache
 --   (core.fn_release_intro(body, lang): summary:<lang>-Marker, sonst englischer Einleitungsabsatz) + Hinweis.
 --   Knoepfe: [Jetzt aktualisieren] (upd:now:<tag>, core.fn_handle_update_cb) + Link [Alle Aenderungen] (nur https).
@@ -14,7 +14,7 @@
 --   sonst outside_window ohne zu latchen; ohne scheduled (Handaufruf, Folge-Check nach einem Update) sofort.
 --   p: {installed, releases:[{tag, draft, prerelease, body, html_url, assets:[name]}], require_signature?, scheduled?,
 --       at? (nur Test: Zeitpunkt fuer den Fenster-Test)}
---   RUECKGABE: {due:false, reason:'disabled'|'not_release'|'invalid'|'up_to_date'|'notified'|'outside_window'}
+--   Rueckgabe: {due:false, reason:'disabled'|'not_release'|'invalid'|'up_to_date'|'notified'|'outside_window'}
 --            | {due:true, tag, text, keyboard:[[{text,callback_data}],[{text,url}]]}
 --   Nie RAISE. INVOKER (Aufrufer = root ueber runuser postgres; db_test als Superuser).
 --   Tests: tests/db/core/test_fn_release_card.sql
@@ -69,7 +69,7 @@ BEGIN
     END IF;
 
     -- Geplanter Check (Timer/Tick alle 2 h) schickt nur im Erinnerungs-Fenster; der Handaufruf ignoriert es.
-    -- Erst NACH up_to_date/notified geprueft, damit das Log nachts den eigentlichen Zustand zeigt. 'at' ist nur die
+    -- Erst nach up_to_date/notified geprueft, damit das Log nachts den eigentlichen Zustand zeigt. 'at' ist nur die
     -- Test-Injektion (Produktion uebergibt es nie); kaputter Wert -> now(), nie RAISE.
     IF COALESCE(p->'scheduled' = 'true'::jsonb, false)
        AND NOT core.fn_in_reminder_window(CASE WHEN pg_input_is_valid(p->>'at', 'timestamptz')

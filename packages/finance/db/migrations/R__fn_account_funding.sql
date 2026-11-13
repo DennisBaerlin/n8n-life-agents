@@ -3,7 +3,7 @@
 --   und Sparplaene? Andere Frage als fn_account_outlook („reicht es bis zum naechsten Geldeingang, mit Puffer"):
 --   Horizont finance.funding_horizon_months (Default 24), kein Puffer, keine Zinsen (P2P/Festgeld -> eher vorsichtig).
 --   Tagesreihe = finance.fn_account_projection ab d0 (Tag nach dem bestaetigten Stand, sonst heute), ausgewertet ab heute.
---   SCHWELLE = Ziel-Geld des Kontos je Tag (UX-Gesamtkonzept 2026-10-31, Bug B1 „Ziel-Geld ist nicht frei“): Start =
+--   Schwelle = Ziel-Geld des Kontos je Tag (Ziel-Geld ist nicht frei): Start =
 --   Ziel-Geld heute (Saldo - finance.fn_account_free_balance), auf den Saldo gedeckelt (eine bestehende Ueber-Zuordnung
 --   ist keine Luecke der Zukunft, die App zeigt sie am Stand); minus die Ausfuehrungen ziel-verknuepfter Sparplaene von
 --   diesem Konto (verbrauchen ihr Ziel-Geld, je Ziel hoechstens sein Anteil hier); plus eingehende Ziel-Raten (neues
@@ -12,7 +12,7 @@
 --   Uebertrag noch Sparplan/Sparziel/Vorsorge sind (Miete, Strom, Kredit -> Ausgabenkonto), zaehlt die Schaetzung aus den
 --   Auszuegen netto (fn_account_everyday_per_day.per_day_net, 'estimated'); ohne Auszug ist sie unbekannt ('unknown')
 --   -> neutral statt eines falschen „gedeckt" (ein Gehaltskonto mit Kartenzahlungen sahe sonst immer gruen aus).
---   Gewollter Abbau aus Guthaben ist keine Luecke (arch-challenge 2026-10-29, ohne Markierung durch den Nutzer):
+--   Gewollter Abbau aus Guthaben ist ohne Markierung durch den Nutzer keine Luecke:
 --     alert = Stand faellt innerhalb von finance.funding_alert_months (Default 3, gedeckelt auf den Horizont) unter die
 --             Schwelle,
 --     warn  = innerhalb des Horizonts (runs_out_on = erster Tag unter der Schwelle), ok sonst,
@@ -20,17 +20,17 @@
 --   p_alert_only = true (probe beim App-Start): rechnet nur das alert-Fenster (billig); die Fenster-Regel lebt nur hier.
 --   p_horizon_months (opt.) ersetzt den Config-Horizont (fn_transfer_free_end rechnet das Ende einer Umschichtung weiter).
 --   monthly_in/out = Summe von finance.fn_account_flows (je Kette das massgebliche Glied) in Kontowaehrung.
---   GEPLANTES ENDE (2026-11-01, Umschichtung mit Enddatum): freistehende Uebertrags-Ketten (fn_recurring_owner NULL),
+--   Geplantes Ende (Umschichtung mit Enddatum): freistehende Uebertrags-Ketten (fn_recurring_owner NULL),
 --   deren Kopf ein Ende hat (letzter Termin fn_recurring_last_due, heute..Horizont), sind ein gewollter Abbau:
 --     drawdown    = {last_date (spaetester letzter Termin), monthly (Summe ab, positiv), target_account_id (Ziel der
---                   groessten), to_plan (Ziel bezahlt einen Sparplan)} nur fuer ABGAENGE und nur im Zustand ok (der
+--                   groessten), to_plan (Ziel bezahlt einen Sparplan)} nur fuer Abgaenge und nur im Zustand ok (der
 --                   Abbau fasst kein Ziel-Geld an und ist bestimmbar; sonst bleibt die Warnung bzw. neutral);
---     inflow_ends = spaetester letzter Termin endender ZUGAENGE, wenn das Konto danach unter die Schwelle faellt
---                   (runs_out_on nach diesem Termin). Beide Felder liest bisher nur finance.account_funding_overview (Berater); die App
---                   zeigt sie bewusst noch nicht (Darstellung offen, Owner 2026-11-01).
+--     inflow_ends = spaetester letzter Termin endender Zugaenge, wenn das Konto danach unter die Schwelle faellt
+--                   (runs_out_on nach diesem Termin). Beide Felder liest nur finance.account_funding_overview (Berater);
+--                   die App zeigt sie bewusst nicht.
 --   Konsumenten: fn_account_low_state (Konten-Tab, Spiegel-Pille am Sparplan), fn_savings_funding_fold,
 --   finance.account_funding_overview, fn_transfer_free_end.
---   RUECKGABE: {ok, account_id, currency, balance, monthly_in, monthly_out, everyday, everyday_per_day, min_projected
+--   Rueckgabe: {ok, account_id, currency, balance, monthly_in, monthly_out, everyday, everyday_per_day, min_projected
 --   (absoluter tiefster Stand), min_date, runs_out_on, horizon_end, state, fx_gap, reserved (Ziel-Geld am Start),
 --   min_free (tiefster Stand minus Schwelle), min_free_date (sein Tag), drawdown, inflow_ends}
 --   | {ok:false, reason} (Kreditkonto, unbekannt)
@@ -144,7 +144,7 @@ BEGIN
                     WHEN v_out_on IS NOT NULL THEN 'warn'
                     ELSE 'ok' END;
 
-    -- Geplantes Ende freistehender Uebertrags-Ketten (je Kette das massgebliche Glied aus fn_account_flows).
+    -- je Kette das massgebliche Glied aus fn_account_flows
     WITH e AS (
         SELECT f.side, f.monthly, r.account_id, r.target_account_id, finance.fn_recurring_last_due(r.id) AS last_due
           FROM finance.fn_account_flows(p_account_id) f

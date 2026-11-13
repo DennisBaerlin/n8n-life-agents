@@ -1,10 +1,9 @@
 ﻿#Requires -Version 5.1
 # Dot-gesourct von build_finance_tools.ps1 (Helper + Script-Scope-Creds im Parent-Scope).
 
-# --- 7. tool_create_real_estate (NEW) -------------------------
+# --- tool_create_real_estate ---
 function Build-CreateRealEstate {
-    # WS-B0: enge Paket-Schreibrolle (finance_rw, Least-Privilege D10) statt Owner-Cred.
-    # Dynamic-Scope: Build-Pg liest dieses $CRED_POSTGRES. Core-Tools nutzen die Owner-Cred.
+    # Enge Paket-Schreibrolle (finance_rw) statt Owner-Cred; Build-Pg liest $CRED_POSTGRES per Dynamic-Scope.
     $CRED_POSTGRES = $CRED_FINANCE_RW
     $trig = Build-Trigger @('name','current_value','value_updated_at','owner_person','status','notes','living_area_m2','year_built')
 
@@ -19,7 +18,7 @@ function Build-CreateRealEstate {
     $errExists = Build-ToolError 'Real estate exists' @(660, -300) `
         "=An active real-estate asset named '{{ `$('Start').item.json.name }}' already exists. I will NOT create a duplicate. Use a different name or the dedicated update tool."
 
-    # WS-4: typisierte Eigentuemer-Person aufloesen (Name -> Slug via core.fn_resolve_person; leer=Haushalt).
+    # Typisierte Eigentuemer-Person aufloesen (Name -> Slug via core.fn_resolve_person; leer=Haushalt).
     $resPerson = Build-ResolvePerson 'Resolve Person' @(220, 180) 'owner_person'
 
     $ifPersonBad = Build-If 'Person invalid?' @(440, 180) `
@@ -28,8 +27,6 @@ function Build-CreateRealEstate {
     $errPerson = Build-ToolError 'Person unresolved' @(660, 320) `
         "=The owner person '{{ `$('Start').item.json.owner_person }}' could not be uniquely resolved ({{ `$('Resolve Person').item.json.hit_count }} match(es)). Candidates: {{ JSON.stringify(`$('Resolve Person').item.json.candidates) }}. Ask which household member, or leave empty for a joint/household asset."
 
-    # "DB ist das Gesetz": fn_create_real_estate laeuft als Probelauf VOR der Karte (korrigierbare Ablehnungen -> {ok:false} ohne Karte);
-    # derselbe Param-Satz geht nach dem Gate in den echten Write.
     $wg = New-FnWriteGate -Fn 'finance.fn_create_real_estate' -DryPos @(660, 0) -WritePos @(1980, 0) `
         -WriteName 'Create real estate (atomic)' `
         -WriteSelect "(r->>'ok')::boolean AS ok, r->>'reason' AS reason, (r->>'real_estate_id')::int AS real_estate_id" `
@@ -45,7 +42,7 @@ function Build-CreateRealEstate {
         })
 
     # --- HITL approval gate (before the write) ---
-    # Strukturiertes Summary (Textkatalog): Wert in EUR-Konvention (vorher hart " €" an der Rohzahl), Bewertungsdatum formatiert.
+    # Wert in EUR-Konvention, Bewertungsdatum formatiert.
     $S = "`$('Start').item.json"
     $P = "`$('Resolve Person').item.json"
     # Zeilen aus der geteilten Felddefinition (../hitl_lines.ps1, dieselbe wie die Import-Karte).
@@ -61,7 +58,7 @@ function Build-CreateRealEstate {
     $retCancelled = Build-ToolCancelled 'Return cancelled' @(1980, 200) 'the create_real_estate action'
 
 
-    # Import-Haertung 2026-10-22: die fn lehnt z. B. einen unbekannten Status mit {ok:false} ab -> nie "angelegt" melden.
+    # Die fn lehnt z. B. einen unbekannten Status mit {ok:false} ab -> nie "angelegt" melden.
     $ifWriteOk = Build-If 'Write ok?' @(2200, 0) "={{ `$json.ok }}" 'true' 'equals' 'boolean'
 
     $errWrite = Build-ToolError 'Create rejected' @(2420, 240) `

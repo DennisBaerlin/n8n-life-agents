@@ -1,24 +1,24 @@
 -- ============================================================
--- estate.fn_gap_report (read-only Gap-Analyse, WS-2 — EINE Quelle fuer Renderer + WS-4-Review)
---   Aggregiert die Vollstaendigkeits-Luecken des Notfall-Registers als jsonb:
---     * directive_gaps: estate.v_directive_gaps (Soll = essential+recommended je ERWACHSENEM;
+-- estate.fn_gap_report (READ — read-only Gap-Analyse, eine Quelle fuer Renderer + Review)
+--   Aggregiert die Vollstaendigkeits-Luecken des Notfall-Registers als jsonb (keine Eingabe):
+--     * directive_gaps: estate.v_directive_gaps (Soll = essential+recommended je Erwachsenem;
 --       Haushalts-Urkunde deckt beide Partner — Logik lebt in der View, hier nur Aggregation)
 --     * register_gaps:  estate.v_register_gaps (offene Feld-/Zeilen-Luecken)
---     * finance:        KONKRETE Feld-Gaps der finance-Register (Plan/Owner-Entscheid 2):
+--     * finance:        konkrete Feld-Gaps der finance-Register:
 --       je aktiver Versicherung fehlende policy_number/insurance_type + fehlende
---       beneficiary/claim_deadline_hours NUR bei (potenziell) todesfall-relevanten Typen
+--       beneficiary/claim_deadline_hours nur bei (potenziell) todesfall-relevanten Typen
 --       (life|accident|Typ unbekannt — ein Haftpflicht-Bezugsrecht waere Gap-Rauschen);
 --       je aktivem Konto offene ownership/has_transmortal_poa.
---   finance-Konsum DOPPEL-GUARDET (core.fn_package_active + to_regprocedure je Call-Site,
---   §4.2 Oberflaeche A) — Absenz = sichtbares finance.status-Feld, NIE stille Auslassung.
---   DRITTER Guard (Pfad-Robustheit): die Oberflaeche-A-fns sind PLAIN INVOKER — unter
+--   finance-Konsum doppel-guardet (core.fn_package_active + to_regprocedure je Call-Site,
+--   §4.2 Oberflaeche A) — Absenz = sichtbares finance.status-Feld, nie stille Auslassung.
+--   Dritter Guard (Pfad-Robustheit): die Oberflaeche-A-fns sind plain INVOKER — unter
 --   estate_ro (Frei-SQL des Agenten) wirft der finance-Tabellen-Read insufficient_privilege;
 --   der EXCEPTION-Handler degradiert dann auf status 'not_readable_on_this_path' (der volle
 --   finance-Blick kommt ueber estate_overview, dessen Renderer im fn_fetch_context-DEFINER
---   laeuft). RAISE-FREI + STABLE; alles schema-qualifiziert (DEFINER-search_path-sicher).
---   RUECKGABE: {ok:true, directive_gaps:[...], register_gaps:[...],
---     finance:{status:'ok'|'absent'|'fns_missing'|'not_readable_on_this_path', gaps:[...]}}.
---   Anwenden via: db_apply.ps1 -File packages\estate\db\migrations\R__fn_gap_report.sql
+--   laeuft). RAISE-frei + STABLE; alles schema-qualifiziert (DEFINER-search_path-sicher).
+--   Rueckgabe: {ok:true, directive_gaps:[{person_id,full_name,doc_type,label,recommendation,status}],
+--     register_gaps:[{area,ref_id,person_id,item,gap,gap_code}],
+--     finance:{status:'ok'|'absent'|'fns_missing'|'not_readable_on_this_path', gaps:[{area,item,missing_fields}]}}.
 -- ============================================================
 CREATE OR REPLACE FUNCTION estate.fn_gap_report()
 RETURNS jsonb LANGUAGE plpgsql STABLE AS $$
@@ -47,9 +47,9 @@ BEGIN
       FROM estate.v_register_gaps g;
 
     -- ---------- finance-Feld-Gaps (doppel-guardet + Pfad-Guard) ----------
-    -- Der GANZE finance-schema-beruehrende Block liegt in EINEM insufficient_privilege-Handler:
+    -- Der ganze finance-schema-beruehrende Block liegt in einem insufficient_privilege-Handler:
     -- unter estate_ro (Frei-SQL des Agenten) wirft schon das to_regprocedure('finance...') den
-    -- Schema-Zugriffsfehler (finance ist D10-gesperrt) — er MUSS mit im Handler liegen, sonst
+    -- Schema-Zugriffsfehler (finance ist gesperrt) — er muss mit im Handler liegen, sonst
     -- entkommt er vor der Degradation. Im DEFINER-Renderer (Owner-Rechte) laeuft alles durch.
     IF NOT core.fn_package_active('finance') THEN
         v_fin_state := 'absent';
@@ -87,7 +87,7 @@ BEGIN
             END LOOP;
         END IF;
       EXCEPTION WHEN insufficient_privilege THEN
-            -- Frei-SQL-Pfad unter estate_ro: schema finance ist D10-gesperrt (schon der
+            -- Frei-SQL-Pfad unter estate_ro: schema finance ist gesperrt (schon der
             -- to_regprocedure-Lookup wirft) -> ehrlich degradieren; der volle Blick laeuft
             -- ueber load_context('estate_overview') (DEFINER-Renderer mit Owner-Rechten).
             v_fin_state := 'not_readable_on_this_path';

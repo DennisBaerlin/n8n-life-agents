@@ -1,15 +1,16 @@
 -- ============================================================
--- estate.fn_cancel_case (ATOMIC WRITE — WS-3, Break-Glass owner_info; NEUES Verb 'cancel', Floor 0)
---   Bricht einen OFFENEN Ereignisfall ab (status -> 'cancelled', closed_at materialisiert). Die
+-- estate.fn_cancel_case (ATOMIC WRITE — Break-Glass owner_info; Verb 'cancel', Floor 0)
+--   Bricht einen offenen Ereignisfall ab (status -> 'cancelled', closed_at materialisiert). Die
 --   case_tasks bleiben als Audit erhalten (CASCADE greift erst beim echten Loeschen des Falls, das es
 --   nicht gibt). Danach ist die partial-UNIQUE(subject) WHERE open frei -> ein neuer/korrigierter Fall
 --   ist anlegbar (Fall-Korrektur = cancel + create). Verb 'cancel' Floor 0 (owner_info-faehig, Break-
 --   Glass): ein erwachsenes Mitglied kann einen Fall allein abbrechen (Owner-Info = Audit) — bewusste
---   Konsequenz (Plan). adults_only-DB-Backstop (Kind -> {ok:false}). case_id vom Tool geliefert (der
+--   Konsequenz. adults_only-DB-Backstop (Kind -> {ok:false}). case_id vom Tool geliefert (der
 --   Agent liest ihn per postgres_select). Nicht gefunden/nicht offen = korrigierbar ({ok:false}, kein
 --   RAISE -> kein Owner-Alert-Sturm bei einer veralteten id).
---   Eingabe jsonb: chat_id, case_id. RUECKGABE: {ok:true, case_id, status:'cancelled'} | {ok:false, reason}.
---   Anwenden via: db_apply.ps1 -File packages\estate\db\migrations\R__fn_cancel_case.sql
+--   Eingabe jsonb: chat_id, case_id (Pflicht).
+--   Rueckgabe: {ok:true, case_id, status:'cancelled'} | {ok:false, reason}; reasons: 'Write rejected (<perm>): …'
+--   (Kind/fremder Sender), 'case_id is required.', 'case <id> not found.', 'case <id> is not open (status <s>) …'.
 -- ============================================================
 CREATE OR REPLACE FUNCTION estate.fn_cancel_case(p jsonb)
 RETURNS jsonb LANGUAGE plpgsql AS $$

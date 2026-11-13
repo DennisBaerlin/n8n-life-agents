@@ -1,8 +1,8 @@
 -- tests/db/core/test_guide_learn_schema.sql
--- Schema-/Constraint-Test fuer den Phase-C Lern-Loop (WS-1; TDD Red ZUERST, KEINE fn noetig):
+-- Schema-/Constraint-Test fuer den Lern-Loop (keine fn noetig):
 --   agent.guide_learn_candidates  — Defaults, CHECKs (target_kind/kind/status/fact-shape),
 --     Idempotenz-UNIQUE(agent_name,source_id,slot_key), partielles UNIQUE(context_name,slot_key)
---     WHERE status='pending' (nur EIN offener Vorschlag je Slot; rejected/expired bleiben).
+--     WHERE status='pending' (nur ein offener Vorschlag je Slot; rejected/expired bleiben).
 --   agent.guide_learn_watermark   — per-Quelltabelle Cursor (PK agent_name, Default last_seen_id=0).
 -- Self-seedend, BEGIN..ROLLBACK (kein Residual-State). Tests: tests/CLAUDE.md.
 BEGIN;
@@ -80,7 +80,7 @@ BEGIN
   RETURNING id INTO v_id2;
   RAISE NOTICE 'PASS candidates [note erlaubt ohne person_slug/field]';
 
-  -- ===== partielles UNIQUE(context_name, slot_key) WHERE pending: nur EIN offener Vorschlag je Slot =====
+  -- ===== partielles UNIQUE(context_name, slot_key) WHERE pending: nur ein offener Vorschlag je Slot =====
   -- (v_id1 ist noch pending mit (family, family|lisa|birth_date) -> zweiter pending blockt, andere source)
   BEGIN
     INSERT INTO agent.guide_learn_candidates

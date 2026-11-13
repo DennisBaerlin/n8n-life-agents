@@ -5,7 +5,7 @@
 --   Tippenden (neu gerechnet), nicht "Status <> unknown" — ein Zuerst-Abschnitt eines Plans darf erledigt oder
 --   uebersprungen sein. Rolle und for_roles sind damit mitgeprueft (ein Kind kann keinen fremden career-Knopf nutzen).
 --   Eingabe p: { chat_id, data, order, plan_order } (order/plan_order wie core.fn_get_next_step, build-time).
---   RUECKGABE jsonb:
+--   Rueckgabe jsonb:
 --     ohne Suffix                     -> { ok:true, data }                 (unveraendert)
 --     aktuell                         -> { ok:true, data:<ohne Suffix> }   + Wiederholungs-Zaehler dieses Schritts zurueck
 --                                        (core.fn_notify_resolve je Key: ein gueltiger Tipp ist kein ignoriertes Angebot)

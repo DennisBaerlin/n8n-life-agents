@@ -1,16 +1,17 @@
 ﻿#Requires -Version 5.1
-# new_release_key.ps1 — EINMALIG im Terminal des Owners: den Release-Signierschluessel des Projekts erzeugen
-# (Update im Chat, Phase 2 "unterschriebene Releases"; Muster Debian SecureApt: Offline-Schluessel + gpgv).
+# new_release_key.ps1 — einmalig im Terminal des Owners: den Release-Signierschluessel des Projekts erzeugen
+# (Offline-Schluessel + gpgv, Muster Debian SecureApt).
 #
 # Was passiert:
 #   1. gpg (aus Git for Windows) erzeugt einen Ed25519-Signierschluessel mit Passwort (fragt dieses Skript ab, geht per
-#      stdin an gpg — nie ins argv). Der PRIVATE Schluessel bleibt im gpg-Speicher dieses PCs.
-#   2. Der OEFFENTLICHE Schluessel landet als Schluesselbund in provisioning/keys/release-signing.gpg UND base64-
+#      stdin an gpg — nie ins argv). Der private Schluessel bleibt im gpg-Speicher dieses PCs.
+#   2. Der oeffentliche Schluessel landet als Schluesselbund in provisioning/keys/release-signing.gpg und base64-
 #      eingebettet in provisioning/install.sh (RELEASE_KEY_B64; contract_lint 24 haelt beides gleich).
-#   3. Ab dem naechsten Release legt die CI das Release als ENTWURF an; veroeffentlicht wird es erst nach
+#   3. Ab dem naechsten Release legt die CI das Release als Entwurf an; veroeffentlicht wird es erst nach
 #      .\scripts\sign_release.ps1 <tag>. Jede Installation spielt dann nur noch unterschriebene Updates ein.
-# Danach: die beiden geaenderten Dateien committen (Leitung/Release-Ablauf) und den privaten Schluessel OFFLINE sichern
+# Danach: die beiden geaenderten Dateien committen (Leitung/Release-Ablauf) und den privaten Schluessel offline sichern
 # (USB-Stick oder Passwort-Manager, Befehl steht am Ende). Geht er verloren, lassen sich keine Updates mehr ausliefern.
+# Voraussetzung: gpg (PATH oder Git for Windows). Existiert schon ein Schluessel (Datei oder gpg-Speicher), bricht das Skript mit throw ab.
 #
 # Usage: .\scripts\new_release_key.ps1 [-Name 'n8n-life-agents release signing'] [-Email <adresse>]
 param(
@@ -44,7 +45,7 @@ function Read-Passphrase {
 
 $gpg = Get-GpgExe
 # gpg >= 2.4 legt in einem neuen Home 'use-keyboxd' in common.conf an. Das gpg aus Git for Windows startet keyboxd
-# ausserhalb der Git-Bash nicht ("error running '/usr/lib/gnupg/keyboxd'", Lauf 2026-10-24) -> Zeile
+# ausserhalb der Git-Bash nicht ("error running '/usr/lib/gnupg/keyboxd'") -> Zeile
 # auskommentieren; gpg nutzt dann die Schluesseldatei pubring.kbx direkt (der klassische Weg, auch fuer sign_release.ps1).
 $gpgHome = if ($env:GNUPGHOME) { $env:GNUPGHOME } else { Join-Path $env:USERPROFILE '.gnupg' }
 $commonConf = Join-Path $gpgHome 'common.conf'
@@ -64,7 +65,7 @@ if (Test-Path $keyFile) {
 $uid = if ($Email) { "$Name <$Email>" } else { $Name }
 # Nur der Exit-Code zaehlt. PS 5.1 macht aus umgeleitetem stderr eines Native-Tools ein ErrorRecord, das unter
 # ErrorActionPreference=Stop abbricht -- gpg schreibt beim ersten Lauf "directory '.../.gnupg' created" dorthin
-# (Lauf 2026-10-24) -> fuer diesen einen Aufruf Continue.
+# -> fuer diesen einen Aufruf Continue.
 $prevEap = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
 & $gpg --batch --list-keys $uid *> $null
 $listRc = $LASTEXITCODE

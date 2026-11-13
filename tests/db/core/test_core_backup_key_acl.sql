@@ -1,10 +1,10 @@
 -- tests/db/core/test_core_backup_key_acl.sql
--- Phase 5: core.secret wurde zweck-umbenannt zu core.backup_key (haelt nur den nie-rotieren
--- Backup-Schluessel; die Rollen-Passwoerter liegen jetzt in /etc/lifeagents/<pkg>.env). Backup laeuft
--- via pg_dump/gpg in der CLI; die gpg-Passphrase liest der CLI-Superuser aus core.backup_key.
--- ERHALTENE Invariante (vormals test_core_secret_acl.sql / test_fn_backup_crypto.sql m2): die Agent-
--- Leserollen duerfen den Schluessel NIE lesen — ein prompt-injizierter Agent kann core.backup_key
--- strukturell nicht erreichen. Faengt insb. die Drift-Klasse "ein Rollen-Re-Apply re-grantet core.backup_key".
+-- core.backup_key haelt nur den nie rotierten Backup-Schluessel (die Rollen-Passwoerter liegen in
+-- /etc/lifeagents/<pkg>.env). Backup laeuft via pg_dump/gpg in der CLI; die gpg-Passphrase liest der
+-- CLI-Superuser aus core.backup_key.
+-- Invariante: die Agent-Leserollen duerfen den Schluessel nie lesen, ein prompt-injizierter Agent kann
+-- core.backup_key strukturell nicht erreichen. Faengt insb. die Drift-Klasse "ein Rollen-Re-Apply
+-- re-grantet core.backup_key".
 BEGIN;
 
 DO $$

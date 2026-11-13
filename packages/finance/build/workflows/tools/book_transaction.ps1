@@ -1,12 +1,11 @@
 ﻿#Requires -Version 5.1
 # Dot-gesourct von build_finance_tools.ps1 (Helper + Script-Scope-Creds im Parent-Scope).
 
-# --- 2b. tool_book_transaction (externe Ausgabe/Einnahme, EIN Bein) ----
-# Bucht eine einzelne Transaktion auf EINES meiner Konten gegen eine externe (nicht getrackte)
-# Gegenseite -- KEIN Transfer. direction (inflow/outflow) -> Vorzeichen rechnet die DB-Function.
+# --- tool_book_transaction (externe Ausgabe/Einnahme, ein Bein) ---
+# Bucht eine einzelne Transaktion auf ein Konto gegen eine externe (nicht getrackte)
+# Gegenseite, kein Transfer. direction (inflow/outflow) -> Vorzeichen rechnet die DB-Function.
 function Build-BookTransaction {
-    # WS-B0: enge Paket-Schreibrolle (finance_rw, Least-Privilege D10) statt Owner-Cred.
-    # Dynamic-Scope: Build-Pg liest dieses $CRED_POSTGRES. Core-Tools nutzen die Owner-Cred.
+    # Enge Paket-Schreibrolle (finance_rw) statt Owner-Cred; Build-Pg liest $CRED_POSTGRES per Dynamic-Scope.
     $CRED_POSTGRES = $CRED_FINANCE_RW
     $trig = Build-Trigger @('account_name','direction','amount','transaction_date','description','category')
 
@@ -19,10 +18,7 @@ function Build-BookTransaction {
     $errAcct = Build-ToolError 'Account ambiguous' @(660, 200) `
         "=Account '{{ `$('Start').item.json.account_name }}' resolves to {{ `$('Resolve Account').item.json.hit_count }} matches. Candidates: {{ JSON.stringify(`$('Resolve Account').item.json.candidates) }}. Ask the user which exact account."
 
-    # "DB ist das Gesetz": fn_book_transaction laeuft als Probelauf VOR der Karte (ungueltige direction, amount<=0,
-    # fee auf inflow -> {ok:false} ohne Karte); derselbe Param-Satz geht nach dem Gate in den echten Write.
-    # Atomarer Write via Function: ein Bein, Vorzeichen aus direction.
-    # WS-C2: reserve_breach -> als DB-gerenderte NOTE-Zeichenkette durchreichen (COALESCE -> nie NULL: n8n-Set-
+    # reserve_breach -> als DB-gerenderte NOTE-Zeichenkette durchreichen (COALESCE -> nie NULL: n8n-Set-
     # Typ-Validierung null-sicher; die Note traegt Konto + Fehlbetrag, der Agent formuliert um). Strukturobjekt
     # bleibt in der fn (Tests/Advisor) — das Tool zeigt dem LLM nur die menschliche Note.
     $wg = New-FnWriteGate -Fn 'finance.fn_book_transaction' -DryPos @(660, 0) -WritePos @(1980, 0) `
@@ -39,7 +35,6 @@ function Build-BookTransaction {
         })
 
     # --- HITL approval gate (before the atomic write) ---
-    # Strukturiertes Summary (Textkatalog): Keys + typisierte Rohwerte, das Gate rendert je Empfaenger-Sprache.
     # Betrag in der Konto-Waehrung (Resolve Account liest accounts.currency mit), nie ein festes EUR.
     $S = "`$('Start').item.json"
     $summary = New-HitlSummary -Pos @(1320, 0) -Title 'finance.hitl.book_transaction' -LinesExpr $wg.CardLinesExpr -Lines @(
@@ -58,9 +53,6 @@ function Build-BookTransaction {
 
     $retCancelled = Build-ToolCancelled 'Return cancelled' @(1980, 200) 'the book_transaction action'
 
-    # Atomarer Write via fn_book_transaction ($wg.Write, Params siehe oben).
-    # fn liefert ok/reason: ungueltige direction / amount<=0 / fee-needs-outflow -> {ok:false}.
-    # Korrigierbare Ablehnung aus der fn -> weiche Rueckfrage (kein Owner-Alert).
     $ifWriteOk = Build-If 'Write ok?' @(2200, 0) "={{ `$json.ok }}" 'true' 'equals' 'boolean'
 
     $errWrite = Build-ToolError 'Transaction rejected' @(2420, 200) `

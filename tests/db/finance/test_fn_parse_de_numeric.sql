@@ -1,5 +1,5 @@
 -- tests/db/finance/test_fn_parse_de_numeric.sql
--- Review LM2/A4: deterministische Normalisierung deutscher/plain Zahl-Strings, damit der
+-- Deterministische Normalisierung deutscher/plain Zahl-Strings, damit der
 -- nachgelagerte ::numeric-Cast nie an "4.200,50" scheitert. Plus: die Normalisierung im
 -- Staging-Write (fn_import_normalize_payload) macht "4.200,50" auf opening_balance castbar.
 BEGIN;
@@ -26,7 +26,7 @@ BEGIN
   PERFORM ('4200.50')::numeric, ('1234567.89')::numeric, ('-89.50')::numeric;
   RAISE NOTICE 'PASS fn_parse_de_numeric [DE both/comma/thousands/multi-dot/currency/neg + plain]';
 
-  -- ---------- Audit-Fund 2026-10-21: Nicht-Geld-Felder ohne Tausender-Heuristik + Vorzeichen ----------
+  -- ---------- Nicht-Geld-Felder ohne Tausender-Heuristik + Vorzeichen ----------
   IF finance.fn_parse_de_numeric('0.125', false) <> '0.125' THEN RAISE EXCEPTION 'FAIL plain 0.125 -> %', finance.fn_parse_de_numeric('0.125', false); END IF;
   IF finance.fn_parse_de_numeric('3.125', false) <> '3.125' THEN RAISE EXCEPTION 'FAIL plain 3.125 -> %', finance.fn_parse_de_numeric('3.125', false); END IF;
   IF finance.fn_parse_de_numeric('0,125', false) <> '0.125' THEN RAISE EXCEPTION 'FAIL plain 0,125 -> %', finance.fn_parse_de_numeric('0,125', false); END IF;
@@ -65,7 +65,7 @@ BEGIN
   END IF;
   RAISE NOTICE 'PASS fn_import_normalize_payload [Zahl-Felder kanonisiert, Rest unberuehrt]';
 
-  -- ---------- End-to-end: deutsche Zahl im Stage -> valid (frueher Cast-FAIL) ----------
+  -- ---------- End-to-end: deutsche Zahl im Stage -> valid ----------
   v := finance.fn_import_stage(jsonb_build_object(
     'rows', jsonb_build_array(
       jsonb_build_object('entity_type','account','name','__test_imp DE-Giro','account_type','cash',
@@ -96,7 +96,7 @@ BEGIN
   END;
   RAISE NOTICE 'PASS fn_import_update_row [Korrektur laesst 0,125 Stueck bei 0.125]';
 
-  -- Rundungs-Paket 2026-10-23: Exponent korrekt lesen (vorher "1e-7" -> "17"); "1,234" als GELD mehrdeutig
+  -- Exponent korrekt lesen ("1e-7" nicht als "17"); "1,234" als Geld mehrdeutig
   -- (engl. Tausender vs. dt. Dezimal) -> Rohwert, der Cast meldet den Zeilenfehler; als Stueck/Kurs eindeutig dezimal.
   IF finance.fn_parse_de_numeric('1e-7', false)::numeric IS DISTINCT FROM 0.0000001
      OR finance.fn_parse_de_numeric('2E3', true)::numeric IS DISTINCT FROM 2000 THEN

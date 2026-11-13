@@ -1,14 +1,14 @@
 -- tests/db/core/test_v024_retire_gemini.sql
--- Modell-Phase 2: core:V024 stellt eine Bestands-Installation von Gemini auf Claude um. Der Test baut den
--- Zustand VOR V024 nach (ohne Fremdschluessel, mode teils leer, die 3 Gemini-Chat-Zeilen + Config-Zeilen aller
--- Faelle), fuehrt die ECHTE Migrationsdatei zweimal aus (\ir, keine Kopie -> kein Drift; 2. Lauf = No-op) und prueft:
+-- core:V024 stellt eine Bestands-Installation von Gemini auf Claude um. Der Test baut den
+-- Zustand vor V024 nach (ohne Fremdschluessel, mode teils leer, die 3 Gemini-Chat-Zeilen + Config-Zeilen aller
+-- Faelle), fuehrt die echte Migrationsdatei zweimal aus (\ir, keine Kopie -> kein Drift; 2. Lauf = No-op) und prueft:
 --   (1) Owner-Regel: gemini-2.5-flash -> claude-haiku-latest, jedes andere Gemini-Chat-Modell -> claude-sonnet-latest
---       (value UND default_value; auch Zeilen nicht installierter Pakete)
+--       (value und default_value; auch Zeilen nicht installierter Pakete)
 --   (2) ein Owner-Wert, der schon auf Claude steht, bleibt
 --   (3) Altlasten: verwaister Wert oder Wert falscher Art (Embedding) -> gueltiger Standard bzw. claude-sonnet-latest;
 --       verwaister Standard -> NULL
 --   (4) die Gemini-Chat-Zeilen sind weg, das Embedding-Modell bleibt; mode ist nachgefuellt + NOT NULL
---   (5) Fremdschluessel: ein von value ODER default_value genutztes Modell ist nicht loeschbar
+--   (5) Fremdschluessel: ein von value oder default_value genutztes Modell ist nicht loeschbar
 --   (6) Nicht-Modell-Config ist unberuehrt
 -- BEGIN...ROLLBACK -> kein Residual-State.
 BEGIN;
@@ -42,7 +42,7 @@ INSERT INTO core.config (category, key, value, default_value, package) VALUES
 
 ALTER TABLE core.config ENABLE TRIGGER trg_config_check_model_value;
 
--- ---------- die ECHTE Migration (zweimal: Idempotenz) ----------
+-- ---------- die echte Migration (zweimal: Idempotenz) ----------
 \ir ../../../packages/core/db/migrations/V024__retire_gemini_chat_models.sql
 \ir ../../../packages/core/db/migrations/V024__retire_gemini_chat_models.sql
 

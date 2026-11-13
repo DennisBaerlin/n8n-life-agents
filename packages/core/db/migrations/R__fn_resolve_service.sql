@@ -1,25 +1,25 @@
 -- ============================================================
--- core.fn_resolve_service (READ-ONLY) — die EINE Pruefstelle (PDP) fuer Paket-Tool-Services (paperless Phase 2)
---   Der Core-Vermittler agent.sub_dispatch_tool (PEP) ruft Werkzeuge eines Nicht-Core-Pakets fuer FREMDE Agenten
---   (docs/package-contract.md §5 Cross-package tool services). Er fragt VOR dem Aufruf diese fn, ob er darf und
+-- fn_resolve_service (READ-ONLY) — die eine Pruefstelle (PDP) fuer Paket-Tool-Services
+--   Der Core-Vermittler agent.sub_dispatch_tool (PEP) ruft Werkzeuge eines Nicht-Core-Pakets fuer fremde Agenten
+--   (docs/package-contract.md §5 Cross-package tool services). Er fragt vor dem Aufruf diese fn, ob er darf und
 --   wohin: p jsonb {service:'<pkg>:<alias>', chat_id} ->
 --     {ok:true,  workflow_id, package}
 --     {ok:false, error:'unknown_service'}                                    Zeile fehlt / leere workflow_id (Bau-Drift)
 --     {ok:false, error:'package_unavailable', reason, is_owner, package, package_label}  core.fn_package_status nicht ok
 --     {ok:false, error:'not_permitted', reason}                              reason = unresolved_sender | <permission>
---   Reihenfolge Zeile -> Paket -> Absender. Ablehnungen sind DATEN, nie RAISE (kein Owner-Alert).
+--   Reihenfolge Zeile -> Paket -> Absender. Ablehnungen sind Daten, nie RAISE (kein Owner-Alert).
 --
---   BERECHTIGUNG (core.services.permission, fail-closed DEFAULT owner_only, CHECK 3 Stufen):
---     Absender IMMER aus der chat_id re-resolvt (agent.fn_resolve_sender, RAISE-freier Cast) — nie vom LLM/Caller.
---     Unaufgeloest (nicht-numerisch/leer/unbekannt) -> unresolved_sender, FUER JEDE STUFE (Paritaet
---     core.fn_dispatch_callback: die rohe chat_id NIE an das fail-open-Primitiv geben).
---     all_members -> jedes aufgeloeste Mitglied; adults_only/owner_only -> Stufen-Logik bleibt EINE Wahrheit im
+--   Berechtigung (core.services.permission, fail-closed Default owner_only, CHECK 3 Stufen):
+--     Absender immer aus der chat_id re-resolvt (agent.fn_resolve_sender, RAISE-freier Cast) — nie vom LLM/Caller.
+--     Unaufgeloest (nicht-numerisch/leer/unbekannt) -> unresolved_sender, fuer jede Stufe (Paritaet
+--     core.fn_dispatch_callback: die rohe chat_id nie an das fail-open-Primitiv geben).
+--     all_members -> jedes aufgeloeste Mitglied; adults_only/owner_only -> Stufen-Logik bleibt eine Wahrheit im
 --     Primitiv agent.fn_check_write_permission (kein Rollen-Duplikat hier; der Name sagt "write", die Stufen-
 --     Auswertung ist aber lese-neutral — wie beim gegateten READ-Egress estate.fn_render_emergency_binder).
 --
---   ROLLENMODELL (Praezedenz core.fn_package_status / fn_dispatch_callback): SECURITY INVOKER; Aufrufer ist der
---   Vermittler ueber das Host-/RW-Credential (USAGE auf agent fuer den Re-Resolve). search_path gepinnt
---   (CVE-2018-1058), alles schema-qualifiziert. Kein Grant an Lese-/Paket-Rollen.
+--   Rollenmodell (wie core.fn_package_status / fn_dispatch_callback): SECURITY INVOKER; Aufrufer ist der
+--   Vermittler ueber das Host-/RW-Credential (USAGE auf agent fuer den Re-Resolve). search_path gepinnt,
+--   alles schema-qualifiziert. Kein Grant an Lese-/Paket-Rollen.
 --   Tests: tests/db/core/test_fn_resolve_service.sql
 -- ============================================================
 CREATE OR REPLACE FUNCTION core.fn_resolve_service(p jsonb)

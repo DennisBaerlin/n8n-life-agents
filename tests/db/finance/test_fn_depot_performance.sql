@@ -1,9 +1,9 @@
 -- tests/db/finance/test_fn_depot_performance.sql
 -- finance.fn_depot_performance(p jsonb) + View finance.depot_performance — Depot-Rendite (XIRR) je Depot und gesamt.
 --   1) Stichtag 30.06.2026. Depot A (genau 365 Tage): Kauf, ausverkaufte Position, Dividende -> 10,00 % pro Jahr,
---      Wert nur der Bestand. Depot B (Uebernahme MIT Kurs am Uebernahme-Tag, 180 Tage): Startwert = Marktwert am
+--      Wert nur der Bestand. Depot B (Uebernahme mit Kurs am Uebernahme-Tag, 180 Tage): Startwert = Marktwert am
 --      Uebernahme-Tag (nicht der Einstand), unter 1 Jahr nur Rendite seit Beginn (+10,00 %), keine p.a.-Zahl.
---      Depot C (Uebernahme OHNE Kurs am Tag): Start = erster Kurs-Tag danach, ein Kauf dazwischen faellt in den
+--      Depot C (Uebernahme ohne Kurs am Tag): Start = erster Kurs-Tag danach, ein Kauf dazwischen faellt in den
 --      Startwert, Hinweis-Datum. Kinder-Depot D eigene Zeile (10 % p.a. ueber 730 Tage), nicht in „gesamt".
 --      Leeres Depot: no_flows. Gesamt = gepoolte Fluesse von A+B+C (= fn_xirr derselben Fluesse, Barwert 0).
 --   2) Position ohne Kurs -> Wert NULL + no_price (nie 0, nie Kaufwert), Gesamt ebenso; Uebernahme ohne Kurs ab dem
@@ -79,7 +79,7 @@ BEGIN
     ('DPFB1', 70, 'EUR', '2025-12-01'), ('DPFB1', 80, 'EUR', '2026-01-01'), ('DPFB1', 88, 'EUR', c_as_of),
     ('DPFC1', 30, 'EUR', '2026-01-15'), ('DPFC1', 33, 'EUR', c_as_of),
     ('DPFD1', 121, 'EUR', c_as_of),
-    -- ein Kurs NACH dem Stichtag zaehlt nie
+    -- ein Kurs nach dem Stichtag zaehlt nie
     ('DPFA1', 999, 'EUR', c_as_of + 1);
 
   -- ===== 1) Haushalt =====

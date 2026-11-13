@@ -1,7 +1,7 @@
 -- ============================================================
 -- core.fn_complete_handoff_task(p) — schliesst eine vereinbarte Plan-Aufgabe nach dem erfolgreichen Write ab
 --   p: { handoff_task_id, chat_id }. Prueft wie core.fn_handoff_task_check (working, Person des Absenders) und setzt
---   working -> done, closed_at = now(). Laeuft in DERSELBEN Transaktion wie der Write der Ziel-fn (finance.fn_with_handoff):
+--   working -> done, closed_at = now(). Laeuft in derselben Transaktion wie der Write der Ziel-fn (finance.fn_with_handoff):
 --   die Buchung und das "erledigt" fallen zusammen oder gar nicht. Erfolg {ok:true, task_id, status:'done'}; sonst die
 --   Ablehnung der Pruef-fn. SECURITY DEFINER, EXECUTE an <pkg>_rw via core.fn_provision_package_roles.
 --   Tests: tests/db/core/test_fn_handoff_tasks.sql, tests/db/finance/test_fn_with_handoff.sql

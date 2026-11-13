@@ -2,16 +2,16 @@
 -- fn_set_router_memory_signal (ATOMIC WRITE — Router-Gedaechtnis nach woertlichem Weiterreichen)
 --   Der Orchestrator reicht Spezialisten-Antworten woertlich weiter (Relay compose); vom Router verlangt er danach nur
 --   das Signal FRAME/NOFRAME. Schreibt der Router doch eine eigene Fassung, sieht der Nutzer sie nie -- das
---   memoryPostgresChat-Gedaechtnis speichert aber genau sie, und die Folge-Turns ahmen sie nach (Befund
---   2026-10-26: Umformulierung statt Signal, selbstverstaerkend). Diese fn ersetzt sie durch das Signal; die Antwort,
+--   memoryPostgresChat-Gedaechtnis speichert aber genau sie, und die Folge-Turns ahmen sie nach
+--   (Umformulierung statt Signal, selbstverstaerkend). Diese fn ersetzt sie durch das Signal; die Antwort,
 --   die der Nutzer sah, steht direkt davor woertlich als tool-Zeile im Gedaechtnis.
---   Nur die JUENGSTE ai-Zeile des Chats, deren Text exakt dem Router-Output entspricht (keine fremde Zeile bei
+--   Nur die juengste ai-Zeile des Chats, deren Text exakt dem Router-Output entspricht (keine fremde Zeile bei
 --   parallelen Laeufen). Tabelle fehlt (frische DB, n8n legt sie beim ersten Gebrauch an) / Signal ungueltig /
 --   Text leer = no-op. Idempotent.
 --   Ohne Werkzeug gilt dasselbe fuer die Vorschlags-Markerzeile NEXT_STEP: p.content = der bereinigte Text, den der Nutzer sah
 --   (sonst haengte der Router den Marker kuenftig auch an Nicht-Gruesse). signal hat Vorrang vor content.
 --   p: { chat_id, raw (Router-Output dieses Laufs), signal ('FRAME' | 'NOFRAME') | content (bereinigter Text) }
---   RUECKGABE: {ok:true, updated}
+--   Rueckgabe: {ok:true, updated}
 --   Tests: tests/db/core/test_fn_set_router_memory_signal.sql
 -- ============================================================
 CREATE OR REPLACE FUNCTION agent.fn_set_router_memory_signal(p jsonb)

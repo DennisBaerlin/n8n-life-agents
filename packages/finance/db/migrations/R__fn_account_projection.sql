@@ -1,17 +1,17 @@
 -- ============================================================
--- fn_account_projection (READ, STABLE) -- Tagesreihe des voraussichtlichen Kontostands, der EINE Rechenkern
+-- fn_account_projection (READ, STABLE) -- Tagesreihe des voraussichtlichen Kontostands, der eine Rechenkern
 --   Konsumenten: fn_account_outlook (Kontovorschau bis zum naechsten Geldeingang, mit Alltagsausgaben) und
---   fn_account_funding (Spar-Deckung ueber den Horizont, ohne Alltagsausgaben). Muster Actual Budget „Balance Forecast"
---   (Saldo + geplante Vorkommen inkl. Uebertraege) / Quicken Simplifi „projected balance".
+--   fn_account_funding (Spar-Deckung ueber den Horizont, ohne Alltagsausgaben).
+--   Eingabe: p_account_id, p_from, p_until, p_per_day (Alltag je Tag, <= 0; NULL = 0).
 --   Stand(d) = Saldo zum Vortag von p_from (fn_get_balance_as_of) + Buchungen in [p_from, d] + offene
 --   Dauerauftrags-Vorkommen in [p_from, d] (finance.fn_account_planned_flows: Quell-Seite = Buchungsbetrag, Kredit-
 --   Schlussrate = Abloese, Ziel-Seite in Zielwaehrung, ohne Kurs Rohbetrag + fx_gap) + p_per_day x Tage seit p_from.
 --   Eine Zeile je Tag (auch ohne Fluss); inflow/outflow = Summe der positiven bzw. negativen Fluesse des Tages (nicht
---   verrechnet). Fuer die Bruecke der Kontovorschau (Transparenz 2026-10-30) getrennt: booked = Buchungen des Tages,
+--   verrechnet). Fuer die Bruecke der Kontovorschau getrennt: booked = Buchungen des Tages,
 --   planned_in / planned_out = positive / negative Vorkommen; inflow + outflow = booked + planned_in + planned_out.
 --   Keine Zinsen (P2P/Festgeld) -> eher vorsichtig gerechnet.
---   RUECKGABE: (day, bal, inflow, outflow, fx_gap, booked, planned_in, planned_out); unbekanntes Konto -> leer
---   Rueckgabetyp geaendert 2026-10-30 -> DROP vor CREATE (Konsumenten sind plpgsql, keine View haengt daran).
+--   Rueckgabe: (day, bal, inflow, outflow, fx_gap, booked, planned_in, planned_out); unbekanntes Konto -> leer
+--   DROP vor CREATE, weil sich der Rueckgabetyp aendern darf (Konsumenten sind plpgsql, keine View haengt daran).
 --   Tests: tests/db/finance/test_fn_account_projection.sql
 -- ============================================================
 DROP FUNCTION IF EXISTS finance.fn_account_projection(int, date, date, numeric);

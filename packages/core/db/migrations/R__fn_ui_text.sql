@@ -1,7 +1,8 @@
 -- ============================================================
--- core.fn_ui_text (read-only, ein fester Nutzertext in einer Sprache)
---   Lookup + Fallback-Kette (lang -> 'en' -> der Key selbst) ueber core.fn_ui_texts (EINE Regel, nicht dupliziert);
---   danach jede {platzhalter}-Stelle aus p_params in EINEM Durchlauf ersetzen (ein Wert, der selbst wie ein
+-- fn_ui_text (READ-ONLY) — ein fester Nutzertext in einer Sprache
+--   Eingabe: p_key text, p_lang text, p_params jsonb (Default {}).
+--   Lookup + Fallback-Kette (lang -> 'en' -> der Key selbst) ueber core.fn_ui_texts (eine Regel, nicht dupliziert);
+--   danach jede {platzhalter}-Stelle aus p_params in einem Durchlauf ersetzen (ein Wert, der selbst wie ein
 --   Platzhalter aussieht, wird nicht erneut ersetzt — gleiche Semantik wie der HITL-Renderer im Workflow); ein
 --   fehlender Parameter bleibt als {name} stehen. Konsumenten: DB-seitige feste Texte (Toasts, Knopf-Nachrichten
 --   der Callback-Registry, Picker-Toast in agent.fn_set_person_language).
@@ -10,7 +11,7 @@
 --   setzt '+' vor positive Betraege; digits:0 ignoriert, SQL zeigt immer zwei Stellen), date -> core.fn_fmt_date,
 --   number -> Zahl mit den Nachkommastellen des Werts, Tausender- und Dezimalzeichen wie fn_fmt_money, tpl -> verschachtelter
 --   Text; NULL-Wert -> '—' (wie der Workflow-Renderer). Andere Arten (month) -> der Rohwert. Strings unveraendert.
---   RUECKGABE: text
+--   Rueckgabe: text
 --   Tests: tests/db/core/test_ui_texts.sql
 -- ============================================================
 CREATE OR REPLACE FUNCTION core.fn_ui_text(p_key text, p_lang text, p_params jsonb DEFAULT '{}'::jsonb)

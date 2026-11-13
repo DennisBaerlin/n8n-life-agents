@@ -1,9 +1,9 @@
 -- ============================================================
--- core.fn_update_report_sent(p) (Write)
+-- fn_update_report_sent (ATOMIC WRITE) — Meldung als zugestellt vermerken
 --   Der root-Runner vermerkt die erfolgreiche Zustellung einer Ergebnis-Meldung, erst nach Telegram-2xx: eine verlorene
 --   Meldung waere schlimmer als eine seltene doppelte (Telegram kennt keinen Schutz gegen doppeltes Senden).
 --   p: {id}
---   RUECKGABE: {ok:true, changed} | {ok:false, reason:'invalid'}. Nie RAISE. INVOKER (root ueber runuser postgres).
+--   Rueckgabe: {ok:true, changed} | {ok:false, reason:'invalid'}. Nie RAISE. INVOKER (root ueber runuser postgres).
 --   Tests: tests/db/core/test_fn_update_requests.sql
 -- ============================================================
 CREATE OR REPLACE FUNCTION core.fn_update_report_sent(p jsonb)

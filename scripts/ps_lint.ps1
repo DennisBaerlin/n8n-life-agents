@@ -1,22 +1,20 @@
 ﻿#Requires -Version 5.1
-# PowerShell-Lint-Gate (prek-Hook `ps-lint` + CI). Faehrt PSScriptAnalyzer ueber scripts/**/*.ps1 +
-# packages/*/build/**/*.ps1 (paket-uniforme Build-Defs, WS-B5) mit
-# der kuratierten config/PSScriptAnalyzerSettings.psd1. Exit-Code: 0 = sauber, 1 = Findings (NICHT die
-# Anzahl als Code -- Windows wrappt Exit-Codes mod 256, 256 Findings -> 0 -> falsches PASS).
-# Gate-faehig wie die anderen Domaenen-Linter.
+# PowerShell-Lint-Gate (prek-Hook `ps-lint` + CI). Faehrt PSScriptAnalyzer ueber scripts/**/*.ps1 und
+# packages/*/build/**/*.ps1 mit der kuratierten config/PSScriptAnalyzerSettings.psd1.
+# Aufruf: .\scripts\ps_lint.ps1
+# Exit-Code: 0 = sauber, 1 = Findings (bewusst nicht die Anzahl: Windows wrappt Exit-Codes mod 256,
+# 256 Findings ergaeben 0).
 #
-# PSScriptAnalyzer ist ein PS-MODUL (kein Binary): auf windows-latest-CI vorinstalliert; lokal liegt es
-# in $HOME/.local/psmodules (das via OneDrive umgeleitete Documents-Modulverzeichnis ist kaputt ->
-# Install-Module schlaegt dort fehl, s. CONTRIBUTING.md). Darum laeuft der Hook als `language: system`
-# in BEIDEN Punkten (kein CI-SKIP).
+# Voraussetzung: PSScriptAnalyzer ist ein PS-Modul (kein Binary): auf windows-latest-CI vorinstalliert; lokal
+# liegt es in $HOME/.local/psmodules (das umgeleitete Documents-Modulverzeichnis ist kaputt, Install-Module
+# schlaegt dort fehl, s. CONTRIBUTING.md). Darum laeuft der Hook als `language: system` lokal und in CI.
 [CmdletBinding()]
 param()
 $ErrorActionPreference = 'Stop'
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $RepoRoot = git -C $PSScriptRoot rev-parse --show-toplevel
 
-# Lokales Modul-Verzeichnis vor den Standard-PSModulePath haengen (CI hat das Modul im Standardpfad ->
-# Test-Path faellt durch -> Import nutzt die vorinstallierte Version).
+# Lokales Modul-Verzeichnis vorn in den PSModulePath (in CI fehlt es, dort greift die vorinstallierte Version).
 $LocalModules = Join-Path $HOME '.local/psmodules'
 if (Test-Path $LocalModules) {
     $env:PSModulePath = $LocalModules + [System.IO.Path]::PathSeparator + $env:PSModulePath
@@ -24,8 +22,7 @@ if (Test-Path $LocalModules) {
 Import-Module PSScriptAnalyzer -ErrorAction Stop
 
 $Settings = Join-Path $RepoRoot 'config/PSScriptAnalyzerSettings.psd1'
-# Paket-uniform (WS-B5): die Build-Defs liegen unter packages/*/build/ -> mit-scannen, sonst verlieren sie
-# die PSScriptAnalyzer-Abdeckung. Engine + uebrige Skripte bleiben unter scripts/.
+# Build-Defs liegen unter packages/*/build/ und werden mit gescannt; Engine + uebrige Skripte unter scripts/.
 $Targets  = @((Join-Path $RepoRoot 'scripts')) +
             @(Get-ChildItem (Join-Path $RepoRoot 'packages') -Directory -ErrorAction SilentlyContinue |
               ForEach-Object { Join-Path $_.FullName 'build' } | Where-Object { Test-Path $_ })

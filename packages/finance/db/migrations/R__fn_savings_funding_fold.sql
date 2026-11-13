@@ -1,9 +1,10 @@
 -- ============================================================
 -- fn_savings_funding_fold (INTERNAL HELPER -- Event-Fold + Karten-Hinweis, nicht tool-facing)
---   „Woher kommt das Geld?" (Owner 2026-10-30, arch-challenge: Hinweis im Moment der Anlage wie YNAB Targets, Meldung
---   nur beim Uebergang wie SRE/Prometheus). Fuer jedes uebergebene Konto, das ein Deckungs-Konto ist
---   (finance.fn_funding_accounts, dieselbe Regel wie der Konten-Tab), liest der Helfer NACH dem Write
---   finance.fn_account_funding (die eine Rechnung, keine zweite Projektion) und liefert:
+--   „Woher kommt das Geld?": Hinweis im Moment der Anlage, Meldung nur beim Uebergang (Latch). Fuer jedes uebergebene
+--   Konto, das ein Deckungs-Konto ist (finance.fn_funding_accounts, dieselbe Regel wie der Konten-Tab), liest der
+--   Helfer nach dem Write finance.fn_account_funding (die eine Rechnung, keine zweite Projektion) und liefert:
+--   Eingabe: p_account_ids int[] (NULL-Eintraege und Dubletten werden ignoriert), p_ask boolean (Pflicht),
+--   p_state_only boolean (optional, default false), p_report_ok int[] (optional, default '{}').
 --   (1) eine Kartenzeile „Danach ..." (ungelatcht: Vorschau im Probelauf, Post-State-Vertrag) -- funding_ok,
 --       funding_ok_drain (gedeckt, baut aber ab), funding_until (warn), funding_gap (alert), funding_timing (rein = raus,
 --       der Eingang kommt aber nach der Abbuchung), bei p_state_only (kuenftige Ratenaenderung: monthly_in/out gelten
@@ -14,11 +15,11 @@
 --       dieselbe Lage fragt nie doppelt (Probelauf + Write, Wiederholung), jede Aenderung der Lage auf irgendeinem Weg
 --       (neuer Plan, Raten-Aenderung, Zubringer per set_recurring_payment, Einmal-Ueberweisung) ergibt einen neuen
 --       Schluessel und fragt bei einer Luecke wieder -- kein Re-Arm-Pfad noetig, der an jedem Schreibweg haengen
---       muesste (Code-Review 2026-10-30). Je gefragter Lage bleibt eine kleine notification_state-Zeile stehen.
+--       muesste. Je gefragter Lage bleibt eine kleine notification_state-Zeile stehen.
 --       p_ask = false (Zubringer-/Zahlungs-Writes): Bericht ohne Frage, verbraucht keinen Latch -- bei warn/alert
 --       immer, „gedeckt" nur fuer die Konten in p_report_ok (Geldeingang aufs Konto; eine Abbuchung, die die Deckung
 --       nicht bricht, meldet nichts).
---   FREIES GELD (UX-Gesamtkonzept 2026-10-31): Ziel-Geld auf dem Konto ist nicht frei (fn_account_funding.reserved /
+--   Freies Geld: Ziel-Geld auf dem Konto ist nicht frei (fn_account_funding.reserved /
 --   min_free) -> Kartenzeilen nennen den tiefsten freien Stand, die Note den freien Stand + „after X reserved for goals“.
 --   „gedeckt“ (ok) nur fuer p_report_ok-Konten oder bei p_ask (sonst stuende bei jedem Dauerauftrag eine Zeile zum
 --   Absender auf der Karte). neutral (Kurs fehlt, Alltagsausgaben unbekannt) -> nichts, keine Zeile. Fehlbetrag je Monat (monthly_gap) rechnet die
@@ -69,8 +70,7 @@ DECLARE
 BEGIN
     FOR v_id IN SELECT DISTINCT x FROM unnest(p_account_ids) x WHERE x IS NOT NULL ORDER BY 1 LOOP
         -- billiger Index-Check zuerst (ein Gehaltskonto mit Netflix kostet nur diese Lookups), dann die eine Regel:
-        -- das Konto schickt einen Spar-Abfluss (Uebertrag/Ziel-Rate/Vorsorge = Absender, UX-Gesamtkonzept Bug B2) oder
-        -- bezahlt einen Sparplan
+        -- das Konto schickt einen Spar-Abfluss (Uebertrag/Ziel-Rate/Vorsorge = Absender) oder bezahlt einen Sparplan
         CONTINUE WHEN NOT EXISTS (SELECT 1 FROM finance.recurring_payments r
                                    WHERE r.account_id = v_id AND r.amount < 0
                                      AND (r.target_account_id IS NOT NULL
@@ -98,7 +98,7 @@ BEGIN
         v_gap   := GREATEST(v_drain, 0);
         v_date  := (v_f->>'runs_out_on')::date;
         v_asked := false;
-        -- Ziel-Geld ist nicht frei (fn_account_funding: Schwelle): Stand und Tief nennen das FREIE Geld
+        -- Ziel-Geld ist nicht frei (fn_account_funding: Schwelle): Stand und Tief nennen das freie Geld
         v_res   := COALESCE((v_f->>'reserved')::numeric, 0);
         v_free_min := COALESCE((v_f->>'min_free')::numeric, (v_f->>'min_projected')::numeric);
         v_free_dt  := COALESCE((v_f->>'min_free_date')::date, (v_f->>'min_date')::date);

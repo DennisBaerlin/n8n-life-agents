@@ -1,7 +1,7 @@
 -- tests/db/finance/test_pension_statements_law.sql
--- DB-Gesetz der Renteninformation (Plan "Renteninformation einlesen", 2026-10-26): neue Rohwert-Spalten
+-- DB-Gesetz der Renteninformation: Rohwert-Spalten
 -- (Entgeltpunkte, DRV-Szenarien 1 %/2 %, Regelaltersrenten-Beginn), Plausibilitaet (>= 0, Szenarien steigend),
--- gesetzliche Rente ohne eigene Monatsrente/Wert (die Werte stehen in der Renteninformation) und hoechstens EINE
+-- gesetzliche Rente ohne eigene Monatsrente/Wert (die Werte stehen in der Renteninformation) und hoechstens eine
 -- aktive gesetzliche Rente je Person (bzw. je Haushalt bei leerer Person).
 BEGIN;
 
@@ -51,7 +51,7 @@ BEGIN
   VALUES ('__t_psl_bav__', 'occupational', 150, 12000);   -- andere Arten weiter erlaubt
   RAISE NOTICE 'PASS pension_law [statutory ohne Monatsrente/Wert, andere Arten unberuehrt]';
 
-  -- TEST 4: hoechstens eine AKTIVE gesetzliche Rente je Person (NULL = Haushalt zaehlt als eine)
+  -- TEST 4: hoechstens eine aktive gesetzliche Rente je Person (NULL = Haushalt zaehlt als eine)
   BEGIN
     INSERT INTO finance.pension (name, pension_type) VALUES ('__t_psl_drv2__', 'statutory');
     RAISE EXCEPTION 'FAIL pension_law [zweite gesetzliche Rente (Haushalt) angenommen]';

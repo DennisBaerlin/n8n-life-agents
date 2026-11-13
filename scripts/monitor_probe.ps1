@@ -1,5 +1,5 @@
 ﻿#Requires -Version 5.1
-# monitor_probe.ps1 - BEZAHLTE Einmal-Probe des Monitors (Owner-Fenster): echter Web-Wert bis Mock-Telegram (mp01), Nachrichten-Spike
+# monitor_probe.ps1 - bezahlte Einmal-Probe des Monitors (Owner-Fenster): echter Web-Wert bis Mock-Telegram (mp01), Nachrichten-Spike
 # mit allowed_callers direct (mp04/mp02/mp03, direkter API-Weg ohne Produktionsknoten) und me04 (Agent legt Web-Waechter an) als
 # Kindprozess. Misst Suchen, Tokens und Dollar je Fall. Die Grenze steht hier, weil der Hook nur Aufrufe durch Claude abfaengt:
 # Summe bisher + Obergrenze des naechsten Falls > 0,95 $, Modell ohne Preis, Gateway nicht auf real oder Telegram nicht auf Mock -> Abbruch.

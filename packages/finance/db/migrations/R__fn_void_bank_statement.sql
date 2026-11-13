@@ -1,10 +1,10 @@
 -- ============================================================
--- fn_void_bank_statement (ATOMIC WRITE) -- den LETZTEN Kontoauszug eines Kontos zuruecknehmen (Monats-Check WP-C)
---   Nur der juengste Auszug (LIFO): jeder spaetere Abgleich baut auf ihm auf. Nimmt in EINER Transaktion zurueck:
+-- fn_void_bank_statement (ATOMIC WRITE) -- den letzten Kontoauszug eines Kontos zuruecknehmen (Monats-Check)
+--   Nur der juengste Auszug (LIFO): jeder spaetere Abgleich baut auf ihm auf. Nimmt in einer Transaktion zurueck:
 --   alle Buchungen mit seiner Herkunft (bank_statement_id, je Gruppe ueber fn_void_transaction — Kredit-/Sparplan-/
 --   Reserve-Folgen inklusive), die beim Abgleich gesetzten Skips (bank_statements.skipped), die gelernten Schluessel
 --   (learned_key_ids), den Abgleichsstand davor (prev_last_reconciled_*) und das Aggregat selbst (gibt den Zeitraum
---   fuer ein erneutes Einspielen frei). Bewusst NICHT: eine gelernte Kontonummer und Plan-Anpassungen (eigene
+--   fuer ein erneutes Einspielen frei). Bewusst nicht: eine gelernte Kontonummer und Plan-Anpassungen (eigene
 --   Stammdaten-Aenderungen; Korrektur ueber set_account / set_recurring_payment).
 --   Void-Schutz: liegt ein Transfer-Bein dieses Auszugs auf einem anderen Konto, das an dessen Datum schon abgeglichen
 --   ist (dessen Auszug kam danach), -> {ok:false, code:'partner_reconciled', account} ohne Write (erst dort zuruecknehmen).
@@ -13,7 +13,8 @@
 --   der Schutz greift also, bis dessen Auszug zurueck ist; dabei faellt der geminderte Rest weg, nichts ist wiederherzustellen.
 --   Eingabe jsonb: account_id.
 --   RUECKGABE: {ok:true, voided_tx_count, period_start, period_end, restored_last_reconciled_at}
---   | {ok:false, code?, account?, reason}
+--   | {ok:false, code?, account?, reason}: kein importierter Auszug; Saldo danach erneut bestaetigt
+--   (last_reconciled_at <> period_end); code partner_reconciled; Ablehnung von fn_void_transaction.
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_void_bank_statement(p jsonb)
 RETURNS jsonb LANGUAGE plpgsql AS $$
@@ -37,7 +38,7 @@ BEGIN
             'reason', 'The balance was confirmed again after this statement (on ' || v_last
                    || '); the statement can no longer be taken back on its own.');
     END IF;
-    -- Void-Schutz (Bank-Import-Modul): ein Transfer-Bein dieses Auszugs auf einem ANDEREN Konto, das an dessen Datum
+    -- Void-Schutz (Bank-Import-Modul): ein Transfer-Bein dieses Auszugs auf einem anderen Konto, das an dessen Datum
     -- schon abgeglichen ist, steckt in dessen bestaetigtem Stand -> Loeschen wuerde ihn still falsch machen.
     SELECT a.name INTO v_partner
     FROM finance.transactions t JOIN finance.accounts a ON a.id = t.account_id

@@ -1,5 +1,5 @@
 -- ============================================================
--- test_bank_statement_csv -- Monats-Check aus dem Broker-CSV-Export (Paket B)
+-- test_bank_statement_csv -- Monats-Check aus dem Broker-CSV-Export
 --   fn_statement_prepare (source:'file', Bank-Export-Datei) + fn_apply_bank_statement + fn_statement_match (kind-Filter).
 --   Werte erfunden, Daten relativ zu core.fn_today(). Szenario: TR-Cashkonto mit Startsaldo 1000 (Stichtag heute-20),
 --   Depot daran, Bestandsuebernahme ALT (10 Stueck, heute-12), Sparplan SPX (50/Monat, Faelligkeit im Zeitraum).
@@ -126,8 +126,8 @@ BEGIN
        OR EXISTS (SELECT 1 FROM jsonb_array_elements(v_prep->'card_lines') c WHERE c->>'label' = 'finance.label.statement_opening') THEN
         RAISE EXCEPTION 'FAIL [C14 Karte]: %', v_prep->'card_lines';
     END IF;
-    -- Rest +57 aus offenen Ein- UND Ausgaengen ist ein Saldo: weder "Alltagsausgaben" noch ein einzelner "ungeklaerter
-    -- Eingang" (Befund KW 45)
+    -- Rest +57 aus offenen Ein- und Ausgaengen ist ein Saldo: weder "Alltagsausgaben" noch ein einzelner "ungeklaerter
+    -- Eingang"
     IF NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v_prep->'card_lines') c
                    WHERE c->>'label' = 'finance.label.statement_rest_net' AND (c->>'value')::numeric = 57)
        OR EXISTS (SELECT 1 FROM jsonb_array_elements(v_prep->'card_lines') c
@@ -179,7 +179,7 @@ BEGIN
     -- Simuliert den naechsten Export: der vorige CSV-Abgleich endete heute-3 (Zeitraum heute-19..heute-3).
     UPDATE finance.bank_statements SET period_end = T - 3 WHERE id = (v_app->>'statement_id')::int;
     UPDATE finance.accounts SET last_reconciled_at = T - 3 WHERE id = v_tr;
-    -- der Kauf ALT (Export heute-2) liegt im System VOR dem Schnitt (von Hand frueher datiert) -> trotzdem Stufe 0
+    -- der Kauf ALT (Export heute-2) liegt im System vor dem Schnitt (von Hand frueher datiert) -> trotzdem Stufe 0
     UPDATE finance.transactions SET transaction_date = T - 4
     WHERE holding_id = v_old AND category::text = 'buy' AND shares = 1 AND bank_statement_id = (v_app->>'statement_id')::int;
     v_res := finance.fn_statement_prepare(v_p || jsonb_build_object('closing_balance', 1025.25,
@@ -207,7 +207,7 @@ BEGIN
 END $$;
 
 -- ============================================================
--- Ehrliche Rest-Bezeichnung (Befund 2026-11-03): Alltagsausgaben nur, wenn Abgaenge (mit Export-Luecke) den Rest erklaeren;
+-- Ehrliche Rest-Bezeichnung: Alltagsausgaben nur, wenn Abgaenge (mit Export-Luecke) den Rest erklaeren;
 -- ohne jede Erklaerung "Ungeklaerter Abgang", gemischt "Rest" mit Notiz. Werte erfunden, Startsaldo 1000 am Stichtag heute-20.
 -- ============================================================
 CREATE FUNCTION pg_temp.rl_acct(p_name text, p_type text DEFAULT 'cash') RETURNS int LANGUAGE plpgsql AS $$
@@ -323,7 +323,7 @@ BEGIN
     END IF;
     RAISE NOTICE 'PASS [R5 Abgaenge allein]';
 
-    -- R6: Abgaenge plus Export-Luecke -> Alltagsausgaben, "darin noch vorgemerkt" als Zeile (vorher Hinweis), Summe = Rest
+    -- R6: Abgaenge plus Export-Luecke -> Alltagsausgaben, "darin noch vorgemerkt" als Zeile, Summe = Rest
     v_id := pg_temp.rl_acct('__t_rl6__');
     v_prep := finance.fn_statement_prepare(pg_temp.rl_file('__t_rl6__', 950, jsonb_build_array(v_old,
         pg_temp.tr_row(T - 5, 'CASH', 'CARD_TRANSACTION', '', '', '', '', '', '-30.000000', '', '', 'rl6-1', 'Laden'))));
@@ -342,7 +342,7 @@ BEGIN
     END IF;
     RAISE NOTICE 'PASS [R6 Abgaenge + Luecke]';
 
-    -- R7: Export beginnt zu spaet: dessen Warnung behaelt den Vorrang vor dem neuen Hinweis
+    -- R7: Export beginnt zu spaet: dessen Warnung (statement_export_starts_late) hat Vorrang vor dem Hinweis statement_export_gap_unexplained
     v_id := pg_temp.rl_acct('__t_rl7__');
     v_prep := finance.fn_statement_prepare(pg_temp.rl_file('__t_rl7__', 900, jsonb_build_array(
         pg_temp.tr_row(T - 5, 'CASH', 'TAX', '', '', '', '', '', '-5.000000', '', '', 'rl7-1', 'Steuer'))));
@@ -373,7 +373,7 @@ BEGIN
     RAISE NOTICE 'PASS [R9 Ungeklaerter Eingang bleibt]';
 END $$;
 
--- ---------- Zinsen, die das System vor der Bank bucht (Owner-Entscheid: Buchung bleibt): nichts zaehlt doppelt ----------
+-- ---------- Zinsen, die das System vor der Bank bucht (die Buchung bleibt): nichts zaehlt doppelt ----------
 DO $$
 DECLARE
     T DATE := core.fn_today();

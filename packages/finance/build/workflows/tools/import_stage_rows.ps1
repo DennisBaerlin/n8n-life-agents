@@ -2,15 +2,14 @@
 # Dot-gesourct von build.ps1 (Helper + Script-Scope-Creds im Parent-Scope).
 
 # --- tool_import_stage_rows --------------------------------
-# BULK-IMPORT Schritt 1/3 (Phase 2 Onboarding-Plan): viele Entitaeten auf einmal stagen.
-# KEIN HITL — Staging ist keine Domaenen-Daten (propose-Store); jede Row wird sofort
+# Bulk-Import Schritt 1/3: viele Entitaeten auf einmal stagen.
+# Kein HITL — Staging ist keine Domaenen-Daten (propose-Store); jede Row wird sofort
 # validiert (Pflichtfelder, Enums, Dubletten-Backstop, Referenzen inkl. In-Batch-Konten).
-# Der echte Write passiert erst in tool_commit_import (EIN Gate fuer den ganzen Batch).
+# Der echte Write passiert erst in tool_commit_import (ein Gate fuer den ganzen Batch).
 function Build-ImportStageRows {
-    # WS-B0: enge Paket-Schreibrolle (finance_rw, Least-Privilege D10) statt Owner-Cred.
-    # Dynamic-Scope: Build-Pg liest dieses $CRED_POSTGRES. Core-Tools nutzen die Owner-Cred.
+    # Enge Paket-Schreibrolle (finance_rw) statt Owner-Cred; Build-Pg liest $CRED_POSTGRES per Dynamic-Scope.
     $CRED_POSTGRES = $CRED_FINANCE_RW
-    $trig = Build-Trigger @((Get-ImportToolSpec 'tool_import_stage_rows') | ForEach-Object { $_[0] })   # Feldliste aus ../import_tool_specs.ps1 (EINE Quelle, Review A5)
+    $trig = Build-Trigger @((Get-ImportToolSpec 'tool_import_stage_rows') | ForEach-Object { $_[0] })   # Feldliste aus ../import_tool_specs.ps1 (eine Quelle)
 
     # rows kommt als JSON-String vom Agenten -> geschuetztes JSON.parse (ungueltig -> Sentinel -> die fn lehnt mit
     # {ok:false} ab, kein Execution-Abbruch); batch_id leer = neuer Batch.
@@ -53,10 +52,10 @@ function Build-ImportStageRows {
         ) }
     }
 
-    # Kein /help-Beispiel fuer Import (Review L5): der einzige Import-Case ist eine lange, verschachtelte
+    # Kein /help-Beispiel fuer Import: der einzige Import-Case ist eine lange, verschachtelte
     # Bulk-Utterance mit Dedup-Suffix ("…Neu") — als nachahmbares /help-Beispiel ungeeignet. Die
     # Kategorie-Beschreibung (finance.help.import.description) traegt die Bedeutung; der Vision-Foto-Pfad ist der
-    # primaere Import-Weg. Saubere kurze Import-Goldens -> vertagt.
+    # primaere Import-Weg.
     return Build-Workflow 'agent.finance.tool_import_stage_rows' $nodes $conns `
         @{ Category = 'import' }
 }

@@ -1,42 +1,41 @@
 -- ============================================================
--- finance.fn_liquidity_snapshot (WS-5 — Provider-Lesefenster fuer die career-Runway-Bruecke)
+-- fn_liquidity_snapshot (READ, STABLE — Provider-Lesefenster fuer die career-Runway-Bruecke)
 --   Publizierte, provider-eigene Lese-fn (docs/package-contract.md "Cross-package reads / provides.reads"):
---   liefert das FREIE Cash + die monatlichen Pflichtausgaben/Einnahmen, aus denen der career-Renderer die
---   Runway ("kann ich mir den Jobwechsel leisten?") rechnet. finance besitzt die BERECHNUNG (Domaene),
---   career besitzt die Runway-Mathe (career.fn_runway). Audit Paket 3: auch fn_advisor_review liest
---   Notreserve-Cash + Monatsbasis HIER (eine Adresse statt zwei Summen).
+--   liefert das freie Cash + die monatlichen Pflichtausgaben/Einnahmen, aus denen der career-Renderer die
+--   Runway ("kann ich mir den Jobwechsel leisten?") rechnet. finance besitzt die Berechnung (Domaene),
+--   career besitzt die Runway-Mathe (career.fn_runway). Auch fn_advisor_review liest Notreserve-Cash + Monatsbasis
+--   hier (eine Adresse statt zwei Summen).
 --
---   PLAIN STABLE, KEIN SECURITY DEFINER, KEIN Grant: career liest sie NICHT unter career_ro, sondern der
---   career-Renderer (career.fn_render_career_planning -> career.fn_runway) ruft sie render-at-fetch IM
---   core.fn_fetch_context-DEFINER-Kontext (Owner=Superuser) auf -> Schema-Read OHNE neuen Grant (Oberflaeche A
---   der WS-5-arch-challenge). Eine spaetere interaktive Variante C (Tool unter career_ro) wuerde dieselbe fn
---   als SECURITY DEFINER + Grant exponieren.
+--   Eingabe: keine.
+--   Plain STABLE, kein SECURITY DEFINER, kein Grant: career liest sie nicht unter career_ro, sondern der
+--   career-Renderer (career.fn_render_career_planning -> career.fn_runway) ruft sie render-at-fetch im
+--   core.fn_fetch_context-DEFINER-Kontext (Owner=Superuser) auf -> Schema-Read ohne neuen Grant. Eine interaktive
+--   Variante (Tool unter career_ro) muesste dieselbe fn als SECURITY DEFINER + Grant exponieren.
 --
---   RAISE-FREI + alles COALESCE'd: die fn laeuft IM Render-Fetch -> ein RAISE braeche den ganzen
+--   RAISE-frei und alles COALESCE'd: die fn laeuft im Render-Fetch, ein RAISE braeche den ganzen
 --   load_context-Abruf ab. Die Summary-Views sind bare Aggregate (immer 1 Zeile).
 --
---   FREIES CASH (Audit Paket 3; Verbraucherzentrale/Finanztip: Notreserve aufs Tagesgeld, nicht in Aktien):
---   aktive account_type='cash'-Konten OHNE kind-besessene (core.fn_household_persons(), publiziertes Fenster),
---   je Konto abzueglich der fuer aktive Sparziele reservierten Summe (account_reserve_status.reserved), hoechstens
---   bis zum positiven Saldo: balance - LEAST(GREATEST(reserved,0), GREATEST(balance,0)). reserved = Ziel-Anteile
---   (getaggt + zugeordnet, savings_goal_account_share); ein negativer Anteil zaehlt 0 -> blaeht das freie Cash nie auf.
---   earmarked_eur = Summe des Abgezogenen. NOTRESERVE (2026-10-30, Ruecklage kind emergency_reserve): ihr gedecktes
---   Geld (finance.fn_emergency_reserve_covered, Rang nach den anderen Zielen) zaehlt wieder ZUM freien Cash — im Notfall
+--   Freies Cash (Notreserve gehoert aufs Tagesgeld, nicht in Aktien): aktive account_type='cash'-Konten ohne
+--   kind-besessene (core.fn_household_persons(), publiziertes Fenster), je Konto abzueglich der fuer aktive Sparziele
+--   reservierten Summe (account_reserve_status.reserved), hoechstens bis zum positiven Saldo:
+--   balance - LEAST(GREATEST(reserved,0), GREATEST(balance,0)). reserved = Ziel-Anteile (getaggt + zugeordnet,
+--   savings_goal_account_share); ein negativer Anteil zaehlt 0 -> blaeht das freie Cash nie auf.
+--   earmarked_eur = Summe des Abgezogenen. Notreserve (Ruecklage kind emergency_reserve): ihr gedecktes Geld
+--   (finance.fn_emergency_reserve_covered, Rang nach den anderen Zielen) zaehlt wieder zum freien Cash — im Notfall
 --   ist es verfuegbar (Runway) — und steht zusaetzlich als emergency_eur im Ergebnis. Umbuchungs-Vorschlaege sperren es
 --   weiter (account_reserve_status zaehlt alle Ziele). Der Notreserve-Check selbst liest fn_emergency_reserve_status.
 --
---   PFLICHT-BASIS: monthly_expenses_eur (Key consumer-stabil fuer career.fn_runway) = fixed_expenses_eur +
+--   Pflicht-Basis: monthly_expenses_eur (Key consumer-stabil fuer career.fn_runway) = fixed_expenses_eur +
 --   everyday_eur. fixed = |monthly_obligations| aus parent_cashflow_summary = Konsum + Kreditrate (inkl. Tilgung;
---   laeuft im Notfall weiter), OHNE Sparraten (ruhend stellbar). everyday = geschaetzte Alltagsausgaben je Monat aus
---   den Kontoauszuegen (finance.fn_household_everyday_month; seit 2026-10-30 eingerechnet, Owner-Entscheid — vorher
---   fehlten Einkauf/Karte und Notreserve-Ziel/Runway wirkten zu rosig; 0 ohne Kontoauszug). Eltern-Blick = derselbe
---   Scope wie das freie Cash ohne Kinderkonten.
+--   laeuft im Notfall weiter), ohne Sparraten (ruhend stellbar). everyday = geschaetzte Alltagsausgaben je Monat aus
+--   den Kontoauszuegen (finance.fn_household_everyday_month; 0 ohne Kontoauszug), damit Einkauf/Karte nicht fehlen und
+--   Notreserve-Ziel/Runway nicht zu rosig wirken. Eltern-Blick = derselbe Scope wie das freie Cash ohne Kinderkonten.
 --
---   RUECKGABE jsonb: { cash_eur, earmarked_eur, emergency_eur, monthly_expenses_eur (>=0, ABS), fixed_expenses_eur, everyday_eur,
---   everyday_accounts, everyday_provisional, monthly_income_eur, has_data, has_fx_gap }. has_fx_gap = true, wenn ein
---   AKTIVES Cash-Konto mit Guthaben in einer Fremdwaehrung OHNE FX-Kurs liegt (balance_eur IS NULL -> still 0) ODER ein
---   laufender Dauerauftrag bzw. eine Alltags-Schaetzung ohne Kurs in der Pflicht-Basis fehlt. career.fn_runway reicht
---   das Flag durch, der Renderer warnt.
+--   Rueckgabe: jsonb { cash_eur, earmarked_eur, emergency_eur, monthly_expenses_eur (>=0, ABS), fixed_expenses_eur,
+--   everyday_eur, everyday_accounts, everyday_provisional, monthly_income_eur, has_data, has_fx_gap }. has_fx_gap =
+--   true, wenn ein aktives Cash-Konto mit Guthaben in einer Fremdwaehrung ohne FX-Kurs liegt (balance_eur IS NULL ->
+--   still 0) oder ein laufender Dauerauftrag bzw. eine Alltags-Schaetzung ohne Kurs in der Pflicht-Basis fehlt.
+--   career.fn_runway reicht das Flag durch, der Renderer warnt.
 --   Anwenden via: db_apply.ps1 -File packages\finance\db\migrations\R__fn_liquidity_snapshot.sql
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_liquidity_snapshot()

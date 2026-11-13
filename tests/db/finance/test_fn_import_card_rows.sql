@@ -1,5 +1,5 @@
 -- tests/db/finance/test_fn_import_card_rows.sql
--- Testet fn_import_card_rows: die Zeilen der Import-Bestaetigungskarte — je VALIDER Staging-Zeile der rohe Payload
+-- Testet fn_import_card_rows: die Zeilen der Import-Bestaetigungskarte — je valider Staging-Zeile der rohe Payload
 -- plus die abgeleiteten Werte (x), die das Einzel-Tool vor seiner Karte aus denselben fn_* holt: Personenname,
 -- Zeilen-Waehrung, Zins-Vorschlag, Rate je Abbuchung, Sparplan, Verrechnungskonto einer Depot-Position und die
 -- Defaults, die fn_import_bundle setzt (Datum heute, nominal = ja). Leerer Batch -> [].
@@ -23,7 +23,7 @@ BEGIN
     SET metadata = jsonb_set(agent.core_contexts.metadata, '{facts,persons}',
           COALESCE(agent.core_contexts.metadata->'facts'->'persons', '[]'::jsonb) || (EXCLUDED.metadata->'facts'->'persons'));
 
-  -- Bestand: Verrechnungskonto + Depot (Depot-Position gegen ein BESTEHENDES Depot)
+  -- Bestand: Verrechnungskonto + Depot (Depot-Position gegen ein bestehendes Depot)
   INSERT INTO finance.accounts (name, account_type, currency) VALUES ('__test_icr Alt-Giro', 'cash', 'EUR') RETURNING id INTO v_acct;
   INSERT INTO finance.accounts (name, account_type, currency, settlement_account_id)
   VALUES ('__test_icr Alt-Depot', 'stocks_depot', 'EUR', v_acct);
@@ -92,14 +92,14 @@ BEGIN
   RAISE NOTICE 'PASS fn_import_card_rows [stock_buy: Verrechnungskonto Batch/Bestand, quote_currency, Datum-Default]';
 
   -- Herkunft des Verrechnungskontos (settlement_ref, fn_import_ref_account): 'batch' = wird mit angelegt,
-  -- 'db' = besteht schon (Owner 2026-10-23: Karte zeigte nur den Namen, las sich wie eine Neuanlage)
+  -- 'db' = besteht schon (sonst liest sich die Karte mit nur dem Namen wie eine Neuanlage)
   IF v_rows->1->'x'->>'settlement_ref' IS DISTINCT FROM 'batch'
      OR v_rows->2->'x'->>'settlement_ref' IS DISTINCT FROM 'batch'
      OR v_rows->3->'x'->>'settlement_ref' IS DISTINCT FROM 'db'
      OR v_rows->0->'x' ? 'settlement_ref' THEN
     RAISE EXCEPTION 'FAIL [settlement_ref]: % / % / % / %', v_rows->0->'x', v_rows->1->'x', v_rows->2->'x', v_rows->3->'x';
   END IF;
-  -- neues Depot im Import, Verrechnungskonto aus dem Bestand (der gemeldete Fall)
+  -- neues Depot im Import, Verrechnungskonto aus dem Bestand
   v_res := finance.fn_import_stage(jsonb_build_object('rows', jsonb_build_array(
     jsonb_build_object('entity_type','account','name','__test_icr Neu-Depot','account_type','stocks_depot',
                        'settlement_account','__test_icr Alt-Giro'),

@@ -1,22 +1,22 @@
 -- ============================================================
--- Ingress-Buffer — Telegram-Eingangs-Buendelung je Chat (2026-10-23)
--- Zweck:   Telegram liefert "Weiterleiten mit Kommentar" als ZWEI Updates (Datei + Text, ~0,4 s Abstand,
---          Reihenfolge nicht garantiert, kein verknuepfendes Feld). Jedes Update startete einen eigenen
---          Orchestrator-Lauf -> zwei Agent-Laeufe -> zwei Bestaetigungskarten (live msg 284/285). Der
+-- Ingress-Buffer — Telegram-Eingangs-Buendelung je Chat
+-- Zweck:   Telegram liefert "Weiterleiten mit Kommentar" als zwei Updates (Datei + Text, ~0,4 s Abstand,
+--          Reihenfolge nicht garantiert, kein verknuepfendes Feld); ohne Buendelung startet jedes Update
+--          einen eigenen Orchestrator-Lauf -> zwei Agent-Laeufe -> zwei Bestaetigungskarten. Der
 --          Orchestrator-Eingang legt jede message hier ab (fn_record_ingress_message), wartet kurz und
---          beansprucht dann das Buendel (fn_claim_ingress_burst): genau EIN Lauf verarbeitet alle Texte + Dateien
+--          beansprucht dann das Buendel (fn_claim_ingress_burst): genau ein Lauf verarbeitet alle Texte + Dateien
 --          als eine Nachricht, die anderen enden still.
 --
--- WARUM eine eigene Tabelle: n8n hat kein Debounce und keine Per-Chat-Concurrency (nur global
+-- Warum eine eigene Tabelle: n8n hat kein Debounce und keine Per-Chat-Concurrency (nur global
 --   N8N_CONCURRENCY_PRODUCTION_LIMIT); etabliertes Muster = Puffer-Store + kurzes Warten (aiogram/Raito-Album,
 --   n8n-nodes-message-debounce, takopi forward_coalesce). Effizienz-Mechanik, fail-open: jeder DB-Fehler ->
---   die Nachricht laeuft wie frueher einzeln.
+--   die Nachricht laeuft einzeln.
 --
 -- DB-Gesetze: PK update_id (Telegrams Dedupe-Schluessel -> ein Webhook-Retry laeuft nur einmal).
 --   kind: text (Text ohne '/'), file (Foto/Dokument), solo (alles andere: Befehl, Sprache, Audio ... nie gebuendelt).
 --   solo speichert nie Inhalt; eine unbeanspruchte text/file-Zeile behaelt ihn immer (sonst ginge ihr Inhalt
 --   still verloren); beanspruchte Zeilen verlieren ihn (Privatsphaere). claimed_by = update_id des Laufs,
---   der die Zeile verarbeitet. EPHEMER: nicht im Backup (core sichert nur full/filtered_tables). Zeilen
+--   der die Zeile verarbeitet. Ephemer: nicht im Backup (core sichert nur full/filtered_tables). Zeilen
 --   > 2 min raeumen record und claim beim naechsten Eingang weg (kein Cron); Inhalt traegt bis dahin nur
 --   eine Zeile, deren Lauf vor dem Zugriff starb (n8n-Neustart) — jede normal verarbeitete ist schon leer.
 --

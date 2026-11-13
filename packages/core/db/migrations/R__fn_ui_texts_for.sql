@@ -1,16 +1,16 @@
 -- ============================================================
--- agent.fn_ui_texts_for (read-only, Text-Buendel EINES Empfaengers fester Texte)
---   Sprache, Intl-Locale und t-Map {key: text} fuer den Empfaenger eines festen Textes (Textkatalog Phase C:
---   Cron-Erinnerungen/-Berichte, Agent-Eingangs-Gates, Angebots-Karten). Empfaenger = die Person hinter p.chat_id
+-- fn_ui_texts_for (READ-ONLY) — Text-Buendel eines Empfaengers fester Texte
+--   Sprache, Intl-Locale und t-Map {key: text} fuer den Empfaenger eines festen Textes
+--   (Cron-Erinnerungen/-Berichte, Agent-Eingangs-Gates, Angebots-Karten). Empfaenger = die Person hinter p.chat_id
 --   (agent.fn_resolve_sender), sonst der Owner; Sprache per agent.fn_person_lang (Person -> Owner -> en).
 --   Keys = p.keys + jeder key-foermige String in p.doc (z. B. das Ergebnis einer fn_advisor_review mit
 --   {kind:'tpl', value:<key>, params} — auch verschachtelt) + bei kind=enum der Wert-Key <enum>.<wert>
 --   (gleiche Regel wie der Renderer). Deckel 500. Fallback der Texte wie core.fn_ui_texts (lang -> en -> Key).
---   NIE EIN RAISE beim Empfaenger: nicht-numerische/ueberlange/unbekannte chat_id oder ein kaputtes Dokument ->
---   Owner bzw. nur p.keys (fail-open-Gates und Crons haengen daran). Liefert NIE eine chat_id/Person.
+--   Nie ein RAISE beim Empfaenger: nicht-numerische/ueberlange/unbekannte chat_id oder ein kaputtes Dokument ->
+--   Owner bzw. nur p.keys (fail-open-Gates und Crons haengen daran). Liefert nie eine chat_id/Person.
 --   Plain INVOKER (core_ro + Haupt-Credential lesen agent+core direkt; core.fn_hitl_texts baut darauf auf).
 --   p: {chat_id?, keys?: [text], doc?: jsonb}
---   RUECKGABE: {lang, locale, language (Eigenname), language_label ("ko (한국어)", Prompt-Label), t:{key:text}}
+--   Rueckgabe: {lang, locale, language (Eigenname), language_label ("ko (한국어)", Prompt-Label), t:{key:text}}
 --   Tests: tests/db/core/test_fn_ui_texts_for.sql
 -- ============================================================
 CREATE OR REPLACE FUNCTION agent.fn_ui_texts_for(p jsonb)
@@ -73,7 +73,7 @@ BEGIN
         'lang',     v_l->>'lang',
         'locale',   v_l->>'locale',
         'language', v_name,                                   -- Eigenname der Sprache
-        -- EINE Adresse fuer das Prompt-Label der Sprach-Anweisung ("write in ko (한국어)"); ohne Namen nur der Code
+        -- Die eine Adresse fuer das Prompt-Label der Sprach-Anweisung ("write in ko (한국어)"); ohne Namen nur der Code
         'language_label', (v_l->>'lang') || COALESCE(' (' || v_name || ')', ''),
         't',        core.fn_ui_texts(v_l->>'lang', v_keys));
 END;
@@ -82,10 +82,10 @@ $$;
 -- ============================================================
 -- core.fn_ui_texts_for (publiziertes SECURITY-DEFINER-Fenster auf das agent-Primitiv oben)
 --   Paket-Crons (finance_rw/_ro, estate_rw) und die Agent-Eingangs-Gates (<pkg>_ro) brauchen die Empfaenger-Texte,
---   erreichen aber weder Schema agent noch core.ui_texts (D10). Muster core.fn_person_chat_id: duenner Wrapper,
+--   erreichen aber weder Schema agent noch core.ui_texts. Muster core.fn_person_chat_id: duenner Wrapper,
 --   gehaertet (search_path gepinnt, pg_temp zuletzt; kein dynamisches SQL), PUBLIC entzogen; EXECUTE an jede
 --   Paket-Rolle generisch in core.fn_provision_package_roles. Liefert nur Sprache/Locale/Texte, nie Personen-Daten.
---   RUECKGABE: wie agent.fn_ui_texts_for
+--   Rueckgabe: wie agent.fn_ui_texts_for
 --   Tests: tests/db/core/test_fn_ui_texts_for.sql; Paket-Rollen-Perspektive tests/db/cross/test_role_permissions.sql
 -- ============================================================
 CREATE OR REPLACE FUNCTION core.fn_ui_texts_for(p jsonb)

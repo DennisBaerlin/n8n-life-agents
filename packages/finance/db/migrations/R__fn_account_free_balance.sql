@@ -1,17 +1,18 @@
 -- ============================================================
 -- fn_account_free_balance (READ, STABLE) — freier Saldo eines saldo-basierten Kontos
---   Saldo minus die Anteile AKTIVER Sparziele auf dem Konto (getaggte Buchungen + Zuordnungen,
+--   Saldo minus die Anteile aktiver Sparziele auf dem Konto (getaggte Buchungen + Zuordnungen,
 --   savings_goal_account_share.share_native, Kontowaehrung). Die eine Adresse des Freier-Saldo-Guards
---   (YNAB/Firefly: Summe der Zuordnungen <= Kontostand) fuer fn_book_savings_reservation und fn_create_savings_goal.
+--   (Summe der Zuordnungen <= Kontostand) fuer fn_book_savings_reservation und fn_create_savings_goal.
 --   Depot/Kredit (kein saldo-basiertes Konto, fn_goal_pot_account_types) -> NULL. Kann negativ sein (Saldo unter die
 --   Zuordnungen gefallen = account_reserve_status.breach).
+--   Rueckgabe: numeric.
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_account_free_balance(p_account int)
 RETURNS numeric
 LANGUAGE sql
 STABLE
 AS $$
-    -- je Ziel bei 0 gekappt: ein negativer Anteil (z. B. Alt-Tag eines Sparplan-Kaufs vor 2026-10-27) gibt nie
+    -- je Ziel bei 0 gekappt: ein negativer Anteil (z. B. Alt-Tag eines Sparplan-Kaufs) gibt nie
     -- zusaetzlichen Saldo frei (gleiche Regel wie account_reserve_status)
     SELECT COALESCE(b.balance, 0)
            - COALESCE((SELECT sum(GREATEST(s.share_native, 0)) FROM finance.savings_goal_account_share s

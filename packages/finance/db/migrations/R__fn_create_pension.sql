@@ -1,8 +1,8 @@
 -- ============================================================
 -- fn_create_pension (ATOMIC WRITE)
 --   Erfasst eine Altersvorsorge als Net-Worth-Asset (gesetzlich/bAV/Riester/Ruerup/privat).
---   Optional Beitrag -> recurring_payment (expense) via fn_add_recurring_payment + FK. Beitrag JE ABBUCHUNG roh +
---   Rhythmus (schedule_interval/schedule_unit, Default 1 x Monat; WP2: das LLM rechnet nie in einen Monatswert um --
+--   Optional Beitrag -> recurring_payment (expense) via fn_add_recurring_payment + FK. Beitrag je Abbuchung roh +
+--   Rhythmus (schedule_interval/schedule_unit, Default 1 x Monat; das LLM rechnet nie in einen Monatswert um --
 --   pension_overview.monthly_contribution leitet ihn aus rp.monthly_equivalent ab).
 --   Eingabe jsonb: name, pension_type, provider, contract_number, owner_person_id (Slug, NULL=Haushalt), current_value (opt;
 --   Rueckkaufswert/Deckungskapital), value_updated_at (opt), guaranteed_monthly_pension (opt),
@@ -10,7 +10,7 @@
 --   debit_account_id (opt, n8n-
 --   resolved; Pflicht wenn contribution gesetzt), schedule_day_of_month (opt), first_payment_date
 --   (opt bei monatlichem Beitrag, sonst Pflicht), notes.
---   RUECKGABE: Erfolg -> {ok:true, pension_id, recurring_payment_id}. Korrigierbar
+--   Rueckgabe: Erfolg -> {ok:true, pension_id, recurring_payment_id}. Korrigierbar
 --   (unbekannter pension_type/Rhythmus, current_value<0, contribution<0, contribution ohne bzw. auf nicht buchbares
 --   debit_account [Depot/Kredit], nicht-monatlicher Beitrag ohne first_payment_date [code missing_required], gesetzliche Rente mit Monatsrente/Wert oder als zweite aktive der Person)
 --   -> {ok:false, reason}.
@@ -18,7 +18,7 @@
 CREATE OR REPLACE FUNCTION finance.fn_create_pension(p jsonb)
 RETURNS jsonb LANGUAGE plpgsql AS $$
 DECLARE
-    v_type       finance.pension_type;   -- Cast erst nach dem Enum-Guard (Import-Haertung)
+    v_type       finance.pension_type;   -- Cast erst nach dem Enum-Guard
     v_reason     TEXT;
     v_current    NUMERIC  := NULLIF(p->>'current_value','')::numeric;
     v_contrib    NUMERIC  := NULLIF(p->>'contribution_amount','')::numeric;
@@ -50,7 +50,7 @@ BEGIN
             'reason', 'The payment interval (schedule_interval) must be a whole number of at least 1, got "' || (p->>'schedule_interval') || '".');
     END IF;
     v_interval := COALESCE(NULLIF(btrim(p->>'schedule_interval'), ''), '1')::smallint;
-    -- WP-2b: fester Buchungstag 1-28, -1 (Monatsletzter) oder -2 (vorletzter Tag); 29/30/31 overflowen kurze Monate.
+    -- Fester Buchungstag 1-28, -1 (Monatsletzter) oder -2 (vorletzter Tag); 29/30/31 overflowen kurze Monate.
     IF finance.fn_schedule_dom_reason(v_dom) IS NOT NULL THEN
         RETURN jsonb_build_object('ok', false, 'reason', finance.fn_schedule_dom_reason(v_dom));
     END IF;
@@ -117,7 +117,7 @@ BEGIN
         v_type,
         NULLIF(p->>'provider',''),
         NULLIF(p->>'contract_number',''),
-        NULLIF(p->>'owner_person_id',''),   -- WS-4: typisierter Eigentuemer (Slug, im Tool aufgeloest); NULL=Haushalt.
+        NULLIF(p->>'owner_person_id',''),   -- typisierter Eigentuemer (Slug, im Tool aufgeloest); NULL=Haushalt.
         v_current,
         NULLIF(p->>'value_updated_at','')::date,
         NULLIF(p->>'guaranteed_monthly_pension','')::numeric,

@@ -1,13 +1,13 @@
 ﻿#Requires -Version 5.1
 # Dot-gesourct von build.ps1 (Helper + Script-Scope-Creds im Parent-Scope).
 
-# --- agent.estate.tool_confirm_review (WS-2, Fortschritts-Flag-Klasse — KEIN HITL) -----------
-# Stempelt estate.person_records.last_reviewed_at = now() fuer EINE Person: die Bestaetigung
-# "Register durchgesehen, Stand aktuell" (re-armt den WS-4-Jahres-Review). KEIN HITL-Gate:
+# --- agent.estate.tool_confirm_review (Fortschritts-Flag-Klasse, kein HITL) -----------
+# Stempelt estate.person_records.last_reviewed_at = now() fuer eine Person: die Bestaetigung
+# "Register durchgesehen, Stand aktuell" (re-armt den Jahres-Review). Kein HITL-Gate:
 # reiner Fortschritts-/Bestaetigungs-Flag ohne Daten-/PII-Write (Praezedenz
-# tool_set_onboarding_section) -> ruft KEIN agent.tool_human_approval -> KEIN
+# tool_set_onboarding_section) -> ruft kein agent.tool_human_approval -> kein
 # approval_matrix-Eintrag (approval_lint greift nur fuer Gate-Aufrufer). Der adults_only-DB-
-# Backstop bleibt (Kind -> {ok:false}) — die einzige Absicherung ohne Gate. Cred = estate_rw.
+# Backstop (Kind -> {ok:false}) ist die einzige Absicherung ohne Gate. Cred = estate_rw.
 function Build-EstateConfirmReview {
     $CRED_POSTGRES = $CRED_ESTATE_RW
     $trig = Build-Trigger @('person')

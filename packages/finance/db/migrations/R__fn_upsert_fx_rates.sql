@@ -1,8 +1,8 @@
 -- packages/finance/db/migrations/R__fn_upsert_fx_rates.sql
--- Atomarer FX-Kurs-Upsert (A4b). Extrahiert aus dem Inline-SQL des Cron-Nodes
--- agent.finance.cron_refresh_fx_rates, damit die Upsert-Invarianten deterministisch testbar sind
--- (tests/db/finance/test_fn_upsert_fx_rates.sql) statt nur im Workflow-Node zu leben — "invariants as deep
--- as possible". Der Cron-Node ruft jetzt nur noch SELECT finance.fn_upsert_fx_rates($1::jsonb).
+-- fn_upsert_fx_rates (ATOMIC WRITE)
+-- Atomarer FX-Kurs-Upsert des Crons agent.finance.cron_refresh_fx_rates, damit die Upsert-Invarianten
+-- deterministisch testbar sind (tests/db/finance/test_fn_upsert_fx_rates.sql). Der Cron-Node ruft nur
+-- SELECT finance.fn_upsert_fx_rates($1::jsonb).
 --
 -- p = { "rates": { "USD": 1.08, "CLP": 1450, ... },   (Pflicht: open.er-api.com-Antwortobjekt)
 --       "as_of":  "2026-06-07",                         (optional, default CURRENT_DATE)
@@ -12,8 +12,9 @@
 -- der anderen nicht killen):
 --   * nur Waehrungen aus finance.fn_active_currencies() — Objekt-getrieben, kein Cron-Spam fuer CLP ohne Konto
 --   * Key muss im rates-Objekt existieren
---   * Wert numerisch UND > 0 (faengt 0-/Negativ-/"n/a"-Kurse ab -> sonst CHECK(rate>0)-RAISE)
+--   * Wert numerisch und > 0 (faengt 0-/Negativ-/"n/a"-Kurse ab -> sonst CHECK(rate>0)-RAISE)
 -- ON CONFLICT (base, quote, as_of) -> idempotenter Tages-Upsert.
+-- RUECKGABE: {ok:true, upserted, as_of} | {ok:false, reason, upserted:0} (kein rates-Objekt im Payload).
 CREATE OR REPLACE FUNCTION finance.fn_upsert_fx_rates(p jsonb)
 RETURNS jsonb LANGUAGE plpgsql AS $$
 DECLARE

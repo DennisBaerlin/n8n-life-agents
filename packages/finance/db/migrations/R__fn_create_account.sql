@@ -1,11 +1,12 @@
 -- ============================================================
 -- fn_create_account (ATOMIC WRITE)
---   Legt ein Konto an, optional eine Zinszeile und optional die Eroeffnungsbuchung, alles in EINER
---   Transaktion. Der EINE Anlage-Pfad fuer Einzel-Tool (tool_create_account) UND Bulk-Import
+--   Legt ein Konto an, optional eine Zinszeile und optional die Eroeffnungsbuchung, alles in einer
+--   Transaktion. Der eine Anlage-Pfad fuer Einzel-Tool (tool_create_account) und Bulk-Import
 --   (fn_import_bundle delegiert hierher). Eingabe als jsonb:
---     name, account_type, bank, account_number, settlement_id, owner_person_id (Slug, NULL=Haushalt), currency,
+--     name, account_type (Pflicht), bank, account_number, settlement_id, owner_person_id (Slug, NULL=Haushalt), currency,
+--     fixed_deposit_maturity_date + fixed_deposit_auto_renew (Festgeld: Faelligkeit und Zins sind Pflicht),
 --     opening_balance (optional; aktueller Saldo in Kontowaehrung, auch negativ = ueberzogen),
---     interest_rate (% p.a., optional), interest_credit_unit (day/week/month/year, PFLICHT mit Satz -- nie angenommen),
+--     interest_rate (% p.a., optional), interest_credit_unit (day/week/month/year, Pflicht mit Satz -- nie angenommen),
 --     interest_credit_interval (optional -> 1), interest_credit_day_of_month (month: Pflicht, -1 = Ende des Monats/
 --     Quartals/Halbjahres oder 1-28; year: leer = Jahrestag / -1 = 31.12.; day/week: leer),
 --     interest_day_count_convention (optional Override; sonst Vorschlag aus fn_account_interest_defaults),
@@ -15,7 +16,7 @@
 --     Datumsfelder ISO oder relativ ("yesterday", "-3 days"; core.fn_resolve_input_dates, effective = aufgeloest).
 --     opening_balance_date (optional, nicht in der Zukunft, nur mit opening_balance, nie auf Depots:
 --     Stichtag des Saldos, z. B. das Ende des Kontoauszugs, aus dem ein neues Konto angelegt wird; leer = heute)
---   Eroeffnungssaldo: EIGENE Buchung category='other' zum Stichtag (kein 'reconciliation', kein
+--   Eroeffnungssaldo: eigene Buchung category='other' zum Stichtag (kein 'reconciliation', kein
 --   last_reconciled_* -> der erste echte Abgleich-Reminder bleibt unverfaelscht). 0/leer -> keine Buchung.
 --   Ein genannter Saldo (auch 0) setzt opening_balance_date = Stichtag: wiederkehrende Zahlungen, die danach
 --   angelegt werden, zaehlen erst ab diesem Stichtag, bei vergangenem Stichtag (Auszugsende) ab dem Folgetag
@@ -26,20 +27,22 @@
 --   Die DB-CHECKs finance_accounts_depot_needs_settlement + _settlement_kind bleiben harter Backstop.
 --   emoji (optional, Listen-Zeichen, VS16 wird bereinigt; leer = Zeichen der Kontoart): sonst {ok:false, code:'invalid_emoji'};
 --   name mit fuehrendem Listen-Zeichen -> {ok:false, code:'emoji_in_name'}, vor der Namens-Dublette.
---   RUECKGABE-VERTRAG: Erfolg -> {ok:true, account_id, interest_added, balance, opening_balance_date, currency, emoji (wirksam), label} (currency =
---   abgeleitete Kontowaehrung: genannt, sonst die des Verrechnungskontos, sonst EUR - die Karte liest sie von hier; balance =
---   Post-State nach dem Saldo-Trigger, in derselben Transaktion gelesen; opening_balance_date = geschriebener
---   Stichtag oder NULL ohne Saldo — die Karte liest ihn aus dem Probelauf). Korrigierbar -> {ok:false, reason} OHNE Write:
---   Stichtag kein YYYY-MM-DD / in der Zukunft / ohne Saldo / auf einem Depot;
+--   Rueckgabe: Erfolg -> {ok:true, account_id, interest_added, balance, opening_balance_date, currency, emoji (wirksam), label,
+--   effective, card_lines} (currency = abgeleitete Kontowaehrung: genannt, sonst die des Verrechnungskontos, sonst EUR - die
+--   Karte liest sie von hier; balance = Post-State nach dem Saldo-Trigger, in derselben Transaktion gelesen;
+--   opening_balance_date = geschriebener Stichtag oder NULL ohne Saldo — die Karte liest ihn aus dem Probelauf;
+--   card_lines = weicher Hinweis "aehnliches Konto vorhanden", kein Block). Korrigierbar -> {ok:false, reason} ohne Write:
+--   Stichtag kein YYYY-MM-DD / in der Zukunft / ohne Saldo / auf einem Depot (code invalid_date bei unaufloesbarem Datum);
 --   ungueltige Waehrung; account_type 'loan' (Kredite nur ueber fn_create_loan, das sein Konto selbst
 --   anlegt); opening_balance auf einem Depot (Depot-Saldo bleibt 0, Geld liegt auf dem Verrechnungskonto);
 --   Depot-Waehrung <> Waehrung des Verrechnungskontos; Kontonummer/IBAN schon bei einem aktiven Konto vergeben
---   (Monats-Check WP-B: gespeichert in der Normalform fn_normalize_account_number; UNIQUE-Index = Backstop);
---   Import-Haertung 2026-10-22: account_type fehlt/unbekannt; Verrechnungskonto nicht buchbar (Depot/Kredit);
---   Zinssatz auf nicht verzinsbarem Kontotyp (vorher Trigger-RAISE); Zins-Konditionen ungueltig
---   (fn_interest_terms_reason: Rhythmus, Buchungstag, Gutschrift-Tag, Konvention — vorher CHECK-RAISE); Zins ohne
---   Rhythmus bzw. Tag unpassend zum Rhythmus (fn_interest_schedule_reason, code missing_required; Befund
---   2026-10-24, vorher still 'year').
+--   (gespeichert in der Normalform fn_normalize_account_number; UNIQUE-Index = Backstop; code invalid_iban bei falscher
+--   Pruefziffer); Namens-Dublette unter aktiven Konten (code duplicate_name, candidates);
+--   account_type fehlt/unbekannt; Verrechnungskonto nicht buchbar (Depot/Kredit);
+--   Zinssatz auf nicht verzinsbarem Kontotyp; Zins-Konditionen ungueltig
+--   (fn_interest_terms_reason: Rhythmus, Buchungstag, Gutschrift-Tag, Konvention); Zins ohne
+--   Rhythmus bzw. Tag unpassend zum Rhythmus (fn_interest_schedule_reason, code missing_required; sonst stuende still
+--   'year'); Festgeld ohne Zins/Faelligkeit (fn_fixed_deposit_reason, code missing_required).
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_create_account(p jsonb)
 RETURNS jsonb LANGUAGE plpgsql AS $$
@@ -113,8 +116,8 @@ BEGIN
         RETURN jsonb_build_object('ok', false,
             'reason', 'Loans are not created as plain accounts - use the loan tool (create_loan), which creates the loan account together with the remaining debt and the monthly rate.');
     END IF;
-    -- DB-ist-das-Gesetz S4: Festgeld ohne Zins/Faelligkeit rechnet nichts (vorher nur Prompt-Regel; Spiegel-CHECK
-    -- finance_accounts_fixed_deposit_maturity_chk fuer die Faelligkeit, der Zins liegt in account_interest_rates).
+    -- Festgeld ohne Zins/Faelligkeit rechnet nichts (Spiegel-CHECK finance_accounts_fixed_deposit_maturity_chk fuer
+    -- die Faelligkeit, der Zins liegt in account_interest_rates).
     IF v_acct_type = 'fixed_deposit' THEN
         v_reason := finance.fn_fixed_deposit_reason(v_rate, NULLIF(p->>'fixed_deposit_maturity_date', '')::date);
         IF v_reason IS NOT NULL THEN
@@ -130,8 +133,8 @@ BEGIN
         RETURN jsonb_build_object('ok', false, 'code', 'emoji_in_name',
             'reason', 'An account name must not start with a sign - pass the name without it and the sign in the field emoji.');
     END IF;
-    -- S6: Kontoname unter aktiven Konten eindeutig, ohne Gross-/Kleinschreibung und typuebergreifend (wie
-    -- fn_import_validate_row): Referenzen (Verrechnungs-/Abbuchungskonto, Depot) loesen nur ueber den NAMEN auf.
+    -- Kontoname unter aktiven Konten eindeutig, ohne Gross-/Kleinschreibung und typuebergreifend (wie
+    -- fn_import_validate_row): Referenzen (Verrechnungs-/Abbuchungskonto, Depot) loesen nur ueber den Namen auf.
     -- Kein UNIQUE-Index (sql.md: Bestandspaare sind legitim); dieser Backstop sitzt in der create-fn.
     SELECT jsonb_agg(jsonb_build_object('id', a.id, 'name', a.name, 'account_type', a.account_type, 'bank', a.bank,
                                         'owner_person_id', a.owner_person_id) ORDER BY a.id)
@@ -145,9 +148,8 @@ BEGIN
                    || (p->>'name') || ' <first name>").',
             'candidates', v_dup_cand);
     END IF;
-    -- S6 weicher Hinweis (Karte, kein Block, hohe Schwelle): gleicher Typ + gleiche Bank + gleicher Inhaber und
-    -- keine zwei verschiedenen bekannten Kontonummern -> "aehnliches Konto vorhanden". Ersetzt die Prompt-Regel
-    -- "aehnlichen Namen/Bank selbst suchen und nachfragen".
+    -- Weicher Hinweis (Karte, kein Block, hohe Schwelle): gleicher Typ + gleiche Bank + gleicher Inhaber und
+    -- keine zwei verschiedenen bekannten Kontonummern -> "aehnliches Konto vorhanden".
     SELECT jsonb_agg(jsonb_build_object('kind', 'note', 'value', 'finance.note.similar_account',
                                         'params', jsonb_build_object('name', a.name)) ORDER BY a.id)
     INTO v_similar
@@ -168,7 +170,7 @@ BEGIN
     IF v_reason IS NOT NULL THEN
         RETURN jsonb_build_object('ok', false, 'reason', v_reason);
     END IF;
-    -- Zinszeile: Kontotyp + Konditionen VOR dem ersten Write (Spiegel von Trigger + CHECKs auf account_interest_rates).
+    -- Zinszeile: Kontotyp + Konditionen vor dem ersten Write (Spiegel von Trigger + CHECKs auf account_interest_rates).
     IF v_rate IS NOT NULL AND v_rate <> 0 THEN
         v_reason := finance.fn_rate_precision_reason(v_rate, 'Interest rate');   -- numeric(6,4) kuerzte still
         IF v_reason IS NOT NULL THEN
@@ -178,7 +180,7 @@ BEGIN
             RETURN jsonb_build_object('ok', false,
                 'reason', 'Interest applies only to cash, fixed-deposit and P2P accounts (account type ' || v_acct_type || ' is not eligible).');
         END IF;
-        -- Kadenzfelder ueber DIESELBE Einlese-Stelle wie der Vorschlag (fn_parse_small_int): geprueft wird, was
+        -- Kadenzfelder ueber dieselbe Einlese-Stelle wie der Vorschlag (fn_parse_small_int): geprueft wird, was
         -- geschrieben wird; ein genannter, aber unlesbarer Wert ist korrigierbar statt still leer.
         SELECT string_agg(k, ', ') INTO v_reason
           FROM unnest(ARRAY['interest_credit_interval', 'interest_credit_day_of_month', 'interest_posting_day_of_month']) k
@@ -194,7 +196,7 @@ BEGIN
         IF v_reason IS NOT NULL THEN
             RETURN jsonb_build_object('ok', false, 'reason', v_reason);
         END IF;
-        -- Pflicht-Kadenz (Befund 2026-10-24): kein erfundener Rhythmus, Tag passend zum Rhythmus.
+        -- Pflicht-Kadenz: kein erfundener Rhythmus, Tag passend zum Rhythmus.
         v_reason := finance.fn_interest_schedule_reason(NULLIF(p->>'interest_credit_unit', '')::finance.schedule_unit,
                         finance.fn_parse_small_int(p->>'interest_credit_interval'),
                         finance.fn_parse_small_int(p->>'interest_credit_day_of_month'), 'account');
@@ -203,7 +205,7 @@ BEGIN
         END IF;
     END IF;
 
-    -- S7: eine IBAN-foermige Nummer muss ihre Pruefziffer bestehen (Spiegel-CHECK finance_accounts_iban_chk)
+    -- Eine IBAN-foermige Nummer muss ihre Pruefziffer bestehen (Spiegel-CHECK finance_accounts_iban_chk)
     IF NOT finance.fn_iban_valid(v_number) THEN
         RETURN jsonb_build_object('ok', false, 'code', 'invalid_iban',
             'reason', 'The IBAN ' || v_number || ' has wrong check digits - a digit is probably mistyped; ask the user to check it.');
@@ -216,8 +218,8 @@ BEGIN
                    || '". Use that account (e.g. reconcile it or change its details) instead of creating a second one.');
     END IF;
 
-    -- Fremdwaehrung registrieren/validieren; den {ok:false} NICHT verwerfen (sonst FK-RAISE + Owner-Alert
-    -- bei echt-ungueltigem Code) -> als korrigierbaren Tool-Fehler zurueckgeben. Parität zu fn_book_stock_buy.
+    -- Fremdwaehrung registrieren/validieren; das {ok:false} nicht verwerfen (sonst FK-RAISE + Owner-Alert
+    -- bei echt-ungueltigem Code) -> als korrigierbaren Tool-Fehler zurueckgeben, wie fn_book_stock_buy.
     IF v_currency <> 'EUR' THEN
         v_ccy_result := finance.fn_ensure_currency(v_currency);
         IF NOT (v_ccy_result->>'ok')::boolean THEN
@@ -248,7 +250,7 @@ BEGIN
         NULLIF(p->>'bank', ''),
         v_number,
         NULLIF(p->>'settlement_id', '')::int,
-        NULLIF(p->>'owner_person_id', ''),   -- WS-4: typisierter Eigentuemer (Slug, im Tool aufgeloest); NULL=Haushalt. FK->agent.persons.
+        NULLIF(p->>'owner_person_id', ''),   -- typisierter Eigentuemer (Slug, im Tool aufgeloest); NULL=Haushalt. FK->agent.persons.
         v_currency,
         'active',
         NULLIF(p->>'fixed_deposit_maturity_date', '')::date,
@@ -259,7 +261,7 @@ BEGIN
     RETURNING id INTO v_account_id;
 
     IF v_rate IS NOT NULL AND v_rate <> 0 THEN
-        -- Kadenz, Methode + auto_post aus DERSELBEN fn wie die HITL-Karte (Karte = Write; Override schlaegt Vorschlag).
+        -- Kadenz, Methode + auto_post aus derselben fn wie die HITL-Karte (Karte = Write; Override schlaegt Vorschlag).
         v_defaults := finance.fn_account_interest_defaults(p);
         v_unit := (v_defaults->>'unit')::finance.schedule_unit;
         v_conv := v_defaults->>'conv';

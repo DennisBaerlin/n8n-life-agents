@@ -1,10 +1,11 @@
 -- ============================================================
 -- fn_reconcile_open_due (READ, STABLE) -- die offenen Vorkommen, die ein Saldo-Abgleich zum Stichtag als erledigt
---   markiert (Monats-Check WP-A): Dauerauftrags-Vorkommen des Kontos (Quelle oder Transfer-Ziel) mit Faelligkeit
---   <= Stichtag - 10 Tage und Zins-Vorkommen mit value_date <= Stichtag - 10. EINE Adresse fuer fn_reconcile_account
---   (Skip-Write) und die Karte von tool_reconcile_account (2026-10-23: Hinweis "n offene Vorkommen werden als erledigt
---   markiert" — ein Depot-Verrechnungskonto mit offener Sparplan-Ausfuehrung verlor sonst still die Kauf-Erinnerung).
---   RUECKGABE TABLE(recurring_payment_id, due_date, interest_period_end) — je Zeile genau eine Art gesetzt.
+--   markiert: Dauerauftrags-Vorkommen des Kontos (Quelle oder Transfer-Ziel) mit Faelligkeit
+--   <= Stichtag - 10 Tage und Zins-Vorkommen mit value_date <= Stichtag - 10. Die eine Adresse fuer fn_reconcile_account
+--   (Skip-Write) und die Karte von tool_reconcile_account (Hinweis "n offene Vorkommen werden als erledigt
+--   markiert" — ein Depot-Verrechnungskonto mit offener Sparplan-Ausfuehrung verlore sonst still die Kauf-Erinnerung).
+--   Eingabe: p_account_id, p_date (Stichtag).
+--   Rueckgabe: TABLE(recurring_payment_id, due_date, interest_period_end) — je Zeile genau eine Art gesetzt.
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_reconcile_open_due(p_account_id int, p_date date)
 RETURNS TABLE (recurring_payment_id int, due_date date, interest_period_end date)

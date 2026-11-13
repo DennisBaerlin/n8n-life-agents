@@ -1,6 +1,6 @@
 -- tests/db/finance/test_fn_liability_register.sql
--- WS-0b (estate): finance.fn_liability_register() = Oberflaeche-A-Lesefenster fuer das estate-Paket
--- (plain STABLE, kein Grant). Prueft: AKTIVE/PAUSIERTE Kredite mit Restschuld (EUR-Basis), abgeloeste
+-- finance.fn_liability_register() = Oberflaeche-A-Lesefenster fuer das estate-Paket
+-- (plain STABLE, kein Grant). Prueft: aktive/pausierte Kredite mit Restschuld (EUR-Basis), abgeloeste
 -- (paid_off) ausgeschlossen, Rueckgabe ist ein JSON-Array.
 BEGIN;
 
@@ -42,8 +42,7 @@ BEGIN
   IF (v_row->>'id')::int IS DISTINCT FROM v_loan_id
      OR v_row->>'lender' IS DISTINCT FROM 'TestBank'
      OR (v_row->>'original_amount')::numeric IS DISTINCT FROM 200000
-     -- Audit Paket 2 (Punkt 10): Register = Betrag der Schuld, POSITIV (vorher -200000 -> estate rendert
-     -- "Restschuld ~-200000 EUR"). Bewusste Vertragsaenderung.
+     -- Register = Betrag der Schuld, positiv (negativ rendert estate "Restschuld ~-200000 EUR").
      OR (v_row->>'current_remaining_debt_eur')::numeric IS DISTINCT FROM 200000
      OR v_row->>'status' IS DISTINCT FROM 'active' THEN
     RAISE EXCEPTION 'FAIL fn_liability_register: Felder falsch, got %', v_row;

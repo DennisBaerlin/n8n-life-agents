@@ -23,12 +23,12 @@ BEGIN
   IF v_hdr NOT LIKE '%Data Analyst%' OR v_hdr NOT LIKE '%Tech%' OR v_hdr NOT LIKE '%Data Analyst (~75000 € brutto/Jahr)%' THEN
     RAISE EXCEPTION 'FAIL [render content]: %', v_hdr;
   END IF;
-  -- WP3: Zieldatum roh, Abstand render-at-fetch (nie gespeichert)
+  -- Zieldatum roh, Abstand render-at-fetch (nie gespeichert)
   v_year := to_char(CURRENT_DATE + make_interval(years => 2), 'YYYY');
   IF v_hdr NOT LIKE '%Angepeilter Umstieg: ' || v_year || ' (in ~2 Jahren)%' THEN
     RAISE EXCEPTION 'FAIL [derived target year %]: %', v_year, v_hdr;
   END IF;
-  -- keine required_skills -> KEINE Skill-Luecken-Zeile
+  -- keine required_skills -> keine Skill-Luecken-Zeile
   IF v_hdr LIKE '%Skill-Lücken%' THEN RAISE EXCEPTION 'FAIL [no gap line ohne required_skills]: %', v_hdr; END IF;
   -- ueberschritten erst nach Ende der Periode; dieses Jahr
   UPDATE agent.core_contexts SET metadata = jsonb_set(metadata, '{facts,target_date}', to_jsonb(to_char(CURRENT_DATE, 'YYYY')))
@@ -41,7 +41,7 @@ BEGIN
     RAISE EXCEPTION 'FAIL [Zieljahr vorbei]: %', career.fn_render_career_planning('career_planning'); END IF;
   RAISE NOTICE 'PASS [1] no-row NULL + Header + Zieldatum/Gehalt render-at-fetch + keine Gap-Zeile';
 
-  -- ---------- TEST 2 (WS-3 Skill-Luecken-Zeile, primaere Rolle, Blocker zuerst) ----------
+  -- ---------- TEST 2 (Skill-Luecken-Zeile, primaere Rolle, Blocker zuerst) ----------
   -- Primaere Rolle Data Analyst bekommt required_skills; Profil hat Statistik nur beginner (weak+Pflicht), Python fehlt.
   UPDATE agent.core_contexts SET metadata = jsonb_set(metadata, '{facts,target_roles}', jsonb_build_array(
       jsonb_build_object('title','Data Analyst','required_skills', jsonb_build_array(
@@ -62,16 +62,16 @@ BEGIN
   IF v_hdr NOT LIKE '%Python%fehlt%' THEN RAISE EXCEPTION 'FAIL [2 missing]: %', v_hdr; END IF;
   RAISE NOTICE 'PASS [2] Skill-Lücken-Zeile (Blocker zuerst, weak Ist->Soll, missing)';
 
-  -- ---------- TEST 3 (M1: kein career_profile -> kein Crash, alle missing) ----------
+  -- ---------- TEST 3 (kein career_profile -> kein Crash, alle missing) ----------
   DELETE FROM agent.core_contexts WHERE name = 'career_profile';
   v_hdr := career.fn_render_career_planning('career_planning');
   IF v_hdr IS NULL OR v_hdr NOT LIKE '%Skill-Lücken (Ziel Data Analyst)%' THEN
     RAISE EXCEPTION 'FAIL [3 no-profile gap line]: %', v_hdr; END IF;
   RAISE NOTICE 'PASS [3] kein career_profile -> Lücken-Zeile (alle missing), kein Crash';
 
-  -- ---------- TEST 4 (M1: Render unter dem Produktions-DEFINER-Pin) ----------
-  -- core.fn_fetch_context pinnt search_path = pg_catalog, agent, core (KEIN career). Eine unqualifizierte
-  -- career.*-Referenz im Renderer wuerde HIER failen (der Superuser-Default-Pfad oben maskiert das).
+  -- ---------- TEST 4 (Render unter dem Produktions-DEFINER-Pin) ----------
+  -- core.fn_fetch_context pinnt search_path = pg_catalog, agent, core (kein career). Eine unqualifizierte
+  -- career.*-Referenz im Renderer wuerde hier failen (der Superuser-Default-Pfad oben maskiert das).
   SET LOCAL search_path = pg_catalog, agent, core;
   v_hdr := career.fn_render_career_planning('career_planning');
   IF v_hdr IS NULL OR v_hdr NOT LIKE '%Skill-Lücken (Ziel Data Analyst)%' THEN
@@ -79,7 +79,7 @@ BEGIN
   RESET search_path;
   RAISE NOTICE 'PASS [4] Render unter Produktions-search_path-Pin (career.* schema-qualifiziert)';
 
-  -- ---------- TEST 5 (WS-4 Markt-Zeile: Stellen-Nachfrage + Trend, render-at-fetch) ----------
+  -- ---------- TEST 5 (Markt-Zeile: Stellen-Nachfrage + Trend, render-at-fetch) ----------
   UPDATE agent.core_contexts SET metadata = jsonb_set(metadata, '{facts,target_locations}', jsonb_build_array('Leipzig'))
     WHERE name = 'career_planning';
   INSERT INTO career.market_signals (scope_key, as_of, postings_count)
@@ -92,8 +92,8 @@ BEGIN
   RAISE NOTICE 'PASS [5] Markt-Zeile (Stellen-Nachfrage + Posting-Trend)';
 
   -- ---------- TEST 6 (Markt-Zeile unter dem Produktions-DEFINER-Pin — career.market_signals-Read) ----------
-  -- Der NEUE Cross-Schema-Read (career.market_signals via fn_market_trend) muss unter dem fn_fetch_context-
-  -- search_path (pg_catalog,agent,core; KEIN career) greifen -> alle career.*-Refs schema-qualifiziert.
+  -- Der Cross-Schema-Read (career.market_signals via fn_market_trend) muss unter dem fn_fetch_context-
+  -- search_path (pg_catalog,agent,core; kein career) greifen -> alle career.*-Refs schema-qualifiziert.
   SET LOCAL search_path = pg_catalog, agent, core;
   v_hdr := career.fn_render_career_planning('career_planning');
   IF v_hdr IS NULL OR v_hdr NOT LIKE '%Stellen-Nachfrage%' THEN
@@ -103,7 +103,7 @@ BEGIN
 END $$;
 
 -- ============================================================
--- WS-5 — Runway-Zeile (Cross-Paket-Read finance->career, render-at-fetch, Doppel-Guard + graceful degradation).
+-- Runway-Zeile (Cross-Paket-Read finance->career, render-at-fetch, Doppel-Guard + graceful degradation).
 --   Eigener DO-Block (das career_planning-Sidecar lebt aus Block 1 in derselben Transaktion weiter).
 -- ============================================================
 DO $$
@@ -124,10 +124,10 @@ BEGIN
   IF v_hdr NOT LIKE '%Runway:%' THEN RAISE EXCEPTION 'FAIL [7 Runway-Zeile fehlt]: %', v_hdr; END IF;
   RAISE NOTICE 'PASS [7] Runway-Zeile rendert (finance präsent)';
 
-  -- ---------- TEST 8 (Opus m8): Runway-Read unter dem Produktions-DEFINER-Pin (finance.* schema-qualifiziert) ----------
-  -- core.fn_fetch_context pinnt search_path = pg_catalog, agent, core (KEIN finance, KEIN career) -> jede
-  -- finance.*-/career.*-Ref im Runway-Pfad muss schema-qualifiziert sein, sonst failt der Read HIER (der
-  -- Superuser-Default-Pfad oben maskiert das). Hoechstes "was faende Schritt 8"-Risiko: Grant/search_path.
+  -- ---------- TEST 8: Runway-Read unter dem Produktions-DEFINER-Pin (finance.* schema-qualifiziert) ----------
+  -- core.fn_fetch_context pinnt search_path = pg_catalog, agent, core (kein finance, kein career) -> jede
+  -- finance.*-/career.*-Ref im Runway-Pfad muss schema-qualifiziert sein, sonst failt der Read hier (der
+  -- Superuser-Default-Pfad oben maskiert das). Risiko: Grant/search_path.
   SET LOCAL search_path = pg_catalog, agent, core;
   v_hdr := career.fn_render_career_planning('career_planning');
   IF v_hdr IS NULL OR v_hdr NOT LIKE '%Runway:%' THEN
@@ -135,7 +135,7 @@ BEGIN
   RESET search_path;
   RAISE NOTICE 'PASS [8] Runway-Zeile unter Produktions-search_path-Pin (finance.* schema-qualifiziert)';
 
-  -- ---------- TEST 8b (WP-3c): Fremdwaehrungs-Cash ohne Kurs -> Runway-Zeile traegt einen FX-Warnhinweis ----------
+  -- ---------- TEST 8b: Fremdwaehrungs-Cash ohne Kurs -> Runway-Zeile traegt einen FX-Warnhinweis ----------
   IF v_hdr LIKE '%Fremdwährungs-Konto ohne aktuellen Wechselkurs%' THEN
     RAISE EXCEPTION 'FAIL [8b baseline]: FX-Warnhinweis obwohl (noch) kein Fremdwährungs-Konto'; END IF;
   DECLARE v_clp int; BEGIN
@@ -159,9 +159,9 @@ BEGIN
 END $$;
 
 -- ============================================================
--- TEST 10 (P0c per-Person): career_planning ist per_user -> p_name ist der PHYSISCHE, suffigierte Name
+-- TEST 10 (per-Person): career_planning ist per_user -> p_name ist der physische, suffigierte Name
 --   (career_planning__<pid>). Der Renderer leitet die person_id aus p_name ab und liest career_profile__<pid>
---   (KEIN Suspend-Guard mehr) -> die Skill-Luecken-Zeile rendert WIEDER, pro Person.
+--   -> die Skill-Luecken-Zeile rendert pro Person.
 -- ============================================================
 DO $$
 DECLARE v_hdr text;
@@ -170,7 +170,7 @@ BEGIN
     ('career_profile','per_user','own_user_only','career'),
     ('career_planning','per_user','own_user_only','career')
   ON CONFLICT (context_name) DO UPDATE SET scope='per_user';
-  -- Suffix-Contexts: Plan (Data Analyst required_skills) + Profil OHNE die Skills -> echte Luecke.
+  -- Suffix-Contexts: Plan (Data Analyst required_skills) + Profil ohne die Skills -> echte Luecke.
   INSERT INTO agent.core_contexts (name, description, agent_name, load_strategy, content, managed_by, package, metadata)
   VALUES ('career_planning__erika','t',NULL,'lazy','p','agent','career',
     jsonb_build_object('facts', jsonb_build_object(

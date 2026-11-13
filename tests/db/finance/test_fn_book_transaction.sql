@@ -123,8 +123,8 @@ BEGIN
   END IF;
   RAISE NOTICE 'PASS fn_book_transaction [fee inflow -> ok:false]';
 
-  -- TEST 7 (WS-C2 Reserve-Waechter): un-getaggte Belastung drueckt Saldo unter die getaggte Reserve ->
-  -- die fn faltet reserve_breach in {ok:true,...} (NUR bei Outflow; Inflow nie).
+  -- TEST 7 (Reserve-Waechter): un-getaggte Belastung drueckt Saldo unter die getaggte Reserve ->
+  -- die fn faltet reserve_breach in {ok:true,...} (nur bei Outflow; Inflow nie).
   SELECT finance.fn_create_account('{"name":"__btx_rb__","account_type":"cash","account_holder":"Test"}'::jsonb) INTO v_result;
   v_rb_acct := (v_result->>'account_id')::int;
   INSERT INTO finance.savings_goals (name, target_amount, target_date, status) VALUES ('__btx_rb_goal__', 5000, current_date + 365, 'active') RETURNING id INTO v_rb_goal;
@@ -147,7 +147,7 @@ BEGIN
   END IF;
   RAISE NOTICE 'PASS fn_book_transaction [7b: Inflow faltet kein reserve_breach]';
 
-  -- (c) Outflow auf einem Konto OHNE Reserve -> kein reserve_breach.
+  -- (c) Outflow auf einem Konto ohne Reserve -> kein reserve_breach.
   SELECT finance.fn_create_account('{"name":"__btx_norb__","account_type":"cash","account_holder":"Test"}'::jsonb) INTO v_result;
   v_acct_id := (v_result->>'account_id')::int;
   SELECT finance.fn_book_transaction(jsonb_build_object(
@@ -157,8 +157,8 @@ BEGIN
   END IF;
   RAISE NOTICE 'PASS fn_book_transaction [7c: Outflow ohne Reserve -> kein reserve_breach]';
 
-  -- TEST 8 (Audit Paket 2, Punkt 8): Betrag wird vor dem Buchen auf die Waehrungseinheit gerundet -> Rueckgabe =
-  -- gespeicherter Wert (vorher 10.005 zurueck, 10.01 gespeichert); 0.004 rundet auf 0 -> ok:false.
+  -- TEST 8: Betrag wird vor dem Buchen auf die Waehrungseinheit gerundet -> Rueckgabe =
+  -- gespeicherter Wert (nicht 10.005 zurueck bei 10.01 gespeichert); 0.004 rundet auf 0 -> ok:false.
   SELECT finance.fn_book_transaction(jsonb_build_object(
     'account_id', v_acct_id, 'amount', '10.005', 'direction', 'outflow', 'transaction_date', CURRENT_DATE::text)) INTO v_result;
   IF (v_result->>'amount')::numeric IS DISTINCT FROM -10.01
@@ -170,7 +170,7 @@ BEGIN
     RAISE EXCEPTION 'FAIL fn_book_transaction [0.004]: erwartet ok=false, got %', v_result; END IF;
   RAISE NOTICE 'PASS fn_book_transaction [8: 10.005 -> 10.01 in Rueckgabe und Speicher, 0.004 -> ok:false]';
 
-  -- TEST 9 (Audit Paket 2, Punkt 8): strukturelle Kategorien (Kauf/Verkauf/Kredit/Abgleich) und "transfer"
+  -- TEST 9: strukturelle Kategorien (Kauf/Verkauf/Kredit/Abgleich) und "transfer"
   -- (einbeinig) -> ok:false statt CHECK-RAISE + Owner-Alarm bzw. stiller Halb-Buchung.
   DECLARE v_cat TEXT; v_cnt0 INT; BEGIN
     SELECT count(*) INTO v_cnt0 FROM finance.transactions;

@@ -1,23 +1,23 @@
 -- ============================================================
--- R__zz_drop_agent_finance_orphans — Phase-3a-Extraktion: Orphan-Cleanup in Schema 'agent'
---   Sortiert als Repeatable BEWUSST ZULETZT (zz): laeuft NACH allen finance.fn_*/Views (phase-major
+-- R__zz_drop_agent_finance_orphans — Orphan-Cleanup in Schema 'agent' nach dem Umzug nach finance
+--   Sortiert als Repeatable bewusst zuletzt (zz): laeuft nach allen finance.fn_*/Views (phase-major
 --   R__-Reihenfolge), erst dann existieren die finance-Kopien, an denen die Orphan-Erkennung haengt.
 --   Ein versioned V__ liefe in Phase 2 (vor den R__) -> die finance-fns gaebe es da noch nicht.
---   BESTANDS-DB (lifeagents update): die Init hat agent.finance_* per SET SCHEMA nach finance verschoben;
+--   Bestands-DB (lifeagents update): die Init hat agent.finance_* per SET SCHEMA nach finance verschoben;
 --     zurueck bleiben (a) die alten agent.<fn>-Kopien (CREATE OR REPLACE legte die finance-Kopie an, liess
 --     die agent-Kopie stehen) und (b) die alten agent.finance_*-Views (OID-gueltig, aber falsch beheimatet).
---   FRESH-DB: nichts davon existiert je -> reiner No-op. Idempotent (DROP IF EXISTS).
+--   Fresh-DB: nichts davon existiert -> reiner No-op. Idempotent (DROP IF EXISTS).
 -- ============================================================
 DO $$
 DECLARE r RECORD;
 BEGIN
     -- (1) Funktions-Orphans: agent.<fn> die es identisch (Name + Identity-Args) auch in finance gibt.
-    --     AUSGENOMMEN sind gewollt gleichnamige Core-Funktionen:
+    --     Ausgenommen sind gewollt gleichnamige Core-Funktionen:
     --       touch_updated_at   — geteilter Core-Helfer (monitor/advisor/guide/core_contexts-Trigger haengen an
     --                            agent.touch_updated_at; nur die Finance-Tabellen nutzen finance.touch_updated_at);
-    --       fn_clear_e2e_data  — Phase B: der Core-Dispatcher agent.fn_clear_e2e_data(text) ruft je Paket den
+    --       fn_clear_e2e_data  — der Core-Dispatcher agent.fn_clear_e2e_data(text) ruft je Paket den
     --                            Konventions-Hook <pkg>.fn_clear_e2e_data(text) — gleicher Name + Args by design
-    --                            (sonst loeschte DIESE Datei den Dispatcher bei jedem Apply).
+    --                            (sonst loeschte diese Datei den Dispatcher bei jedem Apply).
     FOR r IN
         SELECT 'agent.' || quote_ident(p.proname) || '(' || pg_get_function_identity_arguments(p.oid) || ')' AS sig
         FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace

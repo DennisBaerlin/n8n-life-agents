@@ -1,5 +1,5 @@
 ﻿#Requires -Version 5.1
-# wizard_test.ps1 -- GRATIS-Tests des Einrichtungs-Wizards (provisioning/wizard): Sicherheit des Servers, Antwort-Datei,
+# wizard_test.ps1 -- gratis Tests des Einrichtungs-Wizards (provisioning/wizard): Sicherheit des Servers, Antwort-Datei,
 # Durchlauf gegen Attrappen von provision.sh/lifeagents, Bruecke zur CLI-Quelle (bridge.sh), QR-Code. Kein Netz, kein LLM,
 # kein Substrat, kein n8n-Testplatz: ein Wegwerf-Container (--rm) aus dem schlanken Test-Bild tests/wizard/Dockerfile (Node 24 +
 # bash + jq + curl, einmalig lokal gebaut; -Image ueberschreibt), der

@@ -1,18 +1,16 @@
 ﻿#Requires -Version 5.1
-# DB Smoke Tests — Layer 1 der TDD-Infrastruktur.
-# Fuehrt alle tests\db\**\test_*.sql (rekursiv, ein Unterordner je Paket + cross)
-# gegen eine EPHEMERE, hermetische Docker-Test-DB aus (NIE Prod):
-# bootstrap_test_db.ps1 faehrt pgvector/pgvector:pg17 (= postgres:17 + pgvector) als Wegwerf-Container hoch + baut das Schema aus den
-# packages/*/db-Quellen (hash-gegated). fn_*-Writes, Resolve/Verify, Hard-Guarantee-CHECKs/Trigger, View-Smoke.
-# Jede SQL-Datei laeuft in BEGIN/DO-Block/ROLLBACK — immer clean, kein Residual-State.
+# DB Smoke Tests (Daten-Korrektheit: fn_*-Writes, Resolve/Verify, Hard-Guarantee-CHECKs/Trigger, View-Smoke).
+# Fuehrt alle tests\db\**\test_*.sql (rekursiv, ein Unterordner je Paket + cross) gegen eine ephemere,
+# hermetische Docker-Test-DB aus: bootstrap_test_db.ps1 faehrt den Wegwerf-Container hoch und baut das
+# Schema aus den packages/*/db-Quellen (hash-gegated).
+# Jede SQL-Datei laeuft in BEGIN/DO-Block/ROLLBACK, kein Residual-State.
 #
-# Default = BATCH-Modus: ALLE Tests in EINER psql-Session (Driver-File aus \warn-Markern
-# + \i + Guard-ROLLBACK/RESET) — eliminiert den Spawn-Overhead pro Datei. Gegen das lokale
-# Docker-Test-Postgres (kein Netz-RTT mehr) laeuft die Voll-Suite in wenigen Sekunden.
-# Mechanik-Invarianten (nicht "vereinfachen"):
-#   - Marker via \warn (stderr!), NICHT \echo: psql-stdout ist im Pipe-Modus block-gepuffert,
+# Default = Batch-Modus: alle Tests in einer psql-Session (Driver-File aus \warn-Markern + \i +
+# Guard-ROLLBACK/RESET), spart den Spawn je Datei.
+# Mechanik-Invarianten:
+#   - Marker via \warn (stderr), nicht \echo: psql-stdout ist im Pipe-Modus block-gepuffert,
 #     ERROR: geht auf stderr -> nur im selben Stream ist die Marker<->ERROR-Ordnung garantiert.
-#   - ON_ERROR_STOP MUSS aus sein: es wirkt session-weit ueber alle \i und wuerde beim ersten
+#   - ON_ERROR_STOP muss aus sein: es wirkt session-weit ueber alle \i und wuerde beim ersten
 #     FAIL die ganze Kette beenden. Pass/Fail kommt komplett aus dem stderr-Parsing.
 #   - Guard "ROLLBACK; RESET ALL;" nach jedem \i faengt vergessene/aborted Transaktionen +
 #     Session-State-Leakage; sein "WARNING: there is no transaction in progress" ist normal.
@@ -22,10 +20,11 @@
 #   .\scripts\db_test.ps1                        # alle Tests (Batch, eine Session)
 #   .\scripts\db_test.ps1 -Filter "*transfer*"   # nur Matching-Tests (mehrere: "*transfer*,*reconcile*")
 #   .\scripts\db_test.ps1 -Verbose               # NOTICE-Messages (PASS-Details) anzeigen
-#   .\scripts\db_test.ps1 -Sequential            # alter Pfad: 1 psql-Spawn je Datei (Debug)
+#   .\scripts\db_test.ps1 -Sequential            # 1 psql-Spawn je Datei (Debug)
 #   .\scripts\db_test.ps1 -Reset                 # Test-Container + DB verwerfen und frisch bauen
 #
-# Vorbedingung: Docker (Desktop) laeuft (die Test-DB ist ein pgvector/pgvector:pg17-Wegwerf-Container).
+# Vorbedingung: Docker (Desktop) laeuft (die Test-DB ist ein Wegwerf-Container). Eigener Container/Port
+# je Worktree: $env:DBTEST_CONTAINER / $env:DBTEST_PG_PORT.
 # Exit-Code = Anzahl fehlgeschlagener Tests (0 = alle gruen, >0 = CI-Fehler).
 param(
     [string[]]$Filter = @('test_*.sql'),
@@ -39,11 +38,10 @@ $ErrorActionPreference = 'Stop'
 
 $RepoRoot = git -C $PSScriptRoot rev-parse --show-toplevel
 
-# Hermetische Test-DB sicherstellen (ephemeres Docker-Postgres, NIE Prod): Container hoch + Schema
-# hash-gegated bauen (-Reset erzwingt Neubau). db_test liest die Prod-PG_*-Keys GAR NICHT —
-# struktureller Schutz gegen Prod-Kontamination.
-# Kollisionsschutz: laeuft scripts/dev/run_free_gates.ps1 in einem ANDEREN Prozess auf derselben Test-DB (z. B. ein
-# git push mit Pre-Push-db_test waehrenddessen, 2026-10-23), wuerden sich beide die DB gegenseitig neu bauen.
+# Die Test-DB kommt aus bootstrap_test_db.ps1 (hash-gegated, -Reset erzwingt Neubau); db_test liest
+# keine Prod-PG_*-Keys (struktureller Schutz gegen Prod-Kontamination).
+# Kollisionsschutz: laeuft scripts/dev/run_free_gates.ps1 in einem anderen Prozess auf derselben Test-DB
+# (z. B. ein git push mit Pre-Push-db_test), wuerden sich beide die DB gegenseitig neu bauen.
 $freeGatesLock = Join-Path $RepoRoot '.local\run_free_gates.lock'
 if (Test-Path $freeGatesLock) {
     $held = [System.IO.File]::ReadAllText($freeGatesLock, (New-Object System.Text.UTF8Encoding($false))) | ConvertFrom-Json
@@ -57,7 +55,6 @@ $bootstrapArgs = @{}
 if ($Reset) { $bootstrapArgs['Reset'] = $true }
 & "$PSScriptRoot\bootstrap_test_db.ps1" @bootstrapArgs
 
-# Test-DB-Verbindung (identisch zu db_apply.ps1; trust-Auth -> kein Passwort)
 $PG_HOST     = if ($env:DBTEST_PG_HOST)     { $env:DBTEST_PG_HOST }     else { '127.0.0.1' }
 $PG_PORT     = if ($env:DBTEST_PG_PORT)     { $env:DBTEST_PG_PORT }     else { '55432' }
 $PG_USER     = if ($env:DBTEST_PG_USER)     { $env:DBTEST_PG_USER }     else { 'postgres' }
@@ -77,14 +74,13 @@ $env:PGPASSWORD       = $PG_PASSWORD
 $env:PGDATABASE       = $PG_DATABASE
 $env:PGCLIENTENCODING = 'UTF8'
 
-# Test-Dateien entdecken
 $testDir = Join-Path $RepoRoot 'tests\db'
 if (-not (Test-Path $testDir)) {
     throw "Test-Verzeichnis nicht gefunden: $testDir"
 }
-# -File: der Filter darf nie ein VERZEICHNIS treffen (tests/db/<pkg> matcht sonst z. B. '*estate*'
-# und crasht Get-TestKey mit DirectoryInfo — latent seit den Paket-Unterordnern, estate-WS-0a getroffen).
-# Mehrere Muster komma-getrennt ("*transfer*,*reconcile*" oder als PS-Liste) -> Vereinigung (frueher: kein Treffer).
+# -File: der Filter darf nie ein Verzeichnis treffen (tests/db/<pkg> matcht sonst z. B. '*estate*'
+# und crasht Get-TestKey mit DirectoryInfo).
+# Mehrere Muster komma-getrennt ("*transfer*,*reconcile*" oder als PS-Liste) -> Vereinigung.
 $filters = @($Filter | ForEach-Object { $_ -split ',' } | ForEach-Object { $_.Trim() } | Where-Object { $_ })
 $tests = @($filters | ForEach-Object { Get-ChildItem -Path $testDir -Filter $_ -Recurse -File }) |
     Sort-Object FullName -Unique
@@ -93,9 +89,8 @@ if ($tests.Count -eq 0) {
     exit 0
 }
 
-# Report-Key = Relativpfad zu tests\db (Forward-Slash, ohne .sql), NICHT BaseName:
-# finance/ und career/ tragen je eine test_fn_advisor_review.sql — BaseName-Keys wuerden
-# die Marker-Bloecke der beiden Dateien lautlos ineinander maskieren.
+# Report-Key = Relativpfad zu tests\db (Forward-Slash, ohne .sql), nicht BaseName: gleichnamige Dateien in
+# verschiedenen Paket-Ordnern wuerden ihre Marker-Bloecke lautlos ineinander maskieren.
 function Get-TestKey([System.IO.FileInfo]$File) {
     $rel = $File.FullName.Substring($testDir.Length).TrimStart('\', '/')
     return ($rel -replace '\.sql$', '').Replace('\', '/')
@@ -111,7 +106,7 @@ $passed   = 0
 $failed   = 0
 
 if (-not $Sequential) {
-    # ---------- BATCH-Modus: ein psql, Driver-File, stderr-Marker-Parsing ----------
+    # Batch-Modus: ein psql, Driver-File, stderr-Marker-Parsing
     $driverPath = Join-Path $env:TEMP "db_test_driver_$PID.sql"
     $outPath    = Join-Path $env:TEMP "db_test_stdout_$PID.txt"
     $errPath    = Join-Path $env:TEMP "db_test_stderr_$PID.txt"
@@ -128,9 +123,8 @@ if (-not $Sequential) {
         }
         [System.IO.File]::WriteAllLines($driverPath, $driver)
 
-        # KEIN ON_ERROR_STOP (siehe Kopf-Kommentar). Redirect via cmd /c: stdout/stderr je
-        # eigene Datei -> garantierte Zeilen-Ordnung im stderr-Stream, kein PS-5.1-
-        # NativeCommandError-Quirk (stderr beruehrt die PS-Pipeline nie).
+        # Kein ON_ERROR_STOP (s. Kopf). Redirect via cmd /c: stdout/stderr je eigene Datei -> garantierte
+        # Zeilen-Ordnung im stderr-Stream, kein PS-5.1-NativeCommandError-Quirk (stderr beruehrt die PS-Pipeline nie).
         # Unter Linux (CI free-gates.yml, PowerShell 7) dasselbe ueber sh; $IsLinux gibt es in PS 5.1 nicht ($null).
         $psqlCmd = "psql --no-psqlrc -P pager=off --no-align -t -q -f `"$driverPath`" >`"$outPath`" 2>`"$errPath`""
         if ($IsLinux) { & sh -c $psqlCmd } else { & cmd /c $psqlCmd }
@@ -138,8 +132,7 @@ if (-not $Sequential) {
 
         $errLines = if (Test-Path $errPath) { [System.IO.File]::ReadAllLines($errPath) } else { @() }
 
-        # Marker-Bloecke zuordnen (alles im selben Stream -> Ordnung garantiert).
-        # $ended trackt den END-Marker: stirbt psql MITTEN in einem Test (FATAL/Connection-Abriss
+        # $ended trackt den END-Marker: stirbt psql mitten in einem Test (FATAL/Connection-Abriss
         # produziert kein "ERROR:"), darf der angefangene Block nicht still PASSen.
         $blocks  = @{}
         $ended   = @{}
@@ -157,7 +150,7 @@ if (-not $Sequential) {
         }
 
         if ($blocks.Count -eq 0) {
-            # Kein einziger Marker -> psql kam gar nicht bis zum Driver (Connection o. ae.)
+            # kein Marker: psql kam nicht bis zum Driver (Connection o. ae.)
             $errLines | ForEach-Object { Write-Host "  $_" -ForegroundColor Red }
             throw "psql-Batch lieferte keine Test-Marker (Exit $psqlExit) — Verbindung/Driver pruefen."
         }
@@ -166,14 +159,14 @@ if (-not $Sequential) {
             $name  = Get-TestKey $test
             $lines = $blocks[$name]
             if ($null -eq $lines) {
-                # BEGIN-Marker fehlt -> Session starb vor diesem Test (z. B. fataler Abbruch)
+                # BEGIN-Marker fehlt: Session starb vor diesem Test
                 $failed++
                 Write-Host "  [FAIL] $name" -ForegroundColor Red
                 Write-Host "         (kein Marker-Block — psql-Session endete vorzeitig, Exit $psqlExit)" -ForegroundColor Red
                 continue
             }
-            # ERROR als Severity-Token ankern: Zeilenstart ODER nach "psql:<datei>:<zeile>: "
-            # (\i-Praefix) — ein "ERROR:" mitten in einer NOTICE-Message zaehlt NICHT als FAIL.
+            # ERROR als Severity-Token ankern: Zeilenstart oder nach "psql:<datei>:<zeile>: "
+            # (\i-Praefix); ein "ERROR:" mitten in einer NOTICE-Message zaehlt nicht als FAIL.
             $errorHits = @($lines | Where-Object { $_ -match '^(?:psql:.*:\d+: +)?ERROR:' })
             if (-not $ended[$name]) {
                 $failed++
@@ -197,16 +190,10 @@ if (-not $Sequential) {
         Remove-Item -Path $driverPath, $outPath, $errPath -Force -ErrorAction SilentlyContinue
     }
 } else {
-    # ---------- Sequentieller Modus (Debug-Fallback): 1 psql-Spawn je Datei ----------
+    # Sequentieller Modus (Debug-Fallback): 1 psql-Spawn je Datei
     foreach ($test in $tests) {
         $name = Get-TestKey $test
 
-        # psql-Flags:
-        #   --no-psqlrc           : kein User-psqlrc
-        #   -v ON_ERROR_STOP=1    : bricht bei RAISE EXCEPTION ab (Exit != 0)
-        #   -P pager=off          : kein Pager
-        #   --no-align -t         : plain output (nur NOTICE-Zeilen, kein Tabellenrahmen)
-        #   -q                    : quiet (kein "DO" / "ROLLBACK"-Echo) ausser -Verbose
         $psqlArgs = @(
             '--no-psqlrc'
             '-v', 'ON_ERROR_STOP=1'
@@ -216,9 +203,8 @@ if (-not $Sequential) {
         )
         if (-not $Verbose) { $psqlArgs += '-q' }
 
-        # psql schreibt RAISE NOTICE/EXCEPTION auf stderr. 2>&1 wuerde unter
-        # $ErrorActionPreference='Stop' jede stderr-Zeile als terminierenden
-        # NativeCommandError werfen (PS-5.1-Quirk) -> hier lokal auf 'Continue'.
+        # psql schreibt RAISE NOTICE/EXCEPTION auf stderr. 2>&1 wuerde unter $ErrorActionPreference='Stop'
+        # jede stderr-Zeile als terminierenden NativeCommandError werfen (PS-5.1-Quirk) -> lokal 'Continue'.
         # Pass/Fail kommt allein aus $LASTEXITCODE (ON_ERROR_STOP=1).
         $prevEAP = $ErrorActionPreference
         $ErrorActionPreference = 'Continue'
@@ -238,7 +224,6 @@ if (-not $Sequential) {
         } else {
             $failed++
             Write-Host "  [FAIL] $name" -ForegroundColor Red
-            # Fehler-Output direkt ausgeben (RAISE EXCEPTION-Meldung ist hier enthalten)
             $output | Where-Object { $_ } | ForEach-Object { Write-Host "         $_" -ForegroundColor Red }
         }
     }

@@ -1,5 +1,5 @@
 -- tests/db/core/test_fn_model_value_eligible.sql
--- Modell-Phase 2: core.fn_model_value_eligible(value, default) = die EINE Regel "welches Modell passt in einen
+-- core.fn_model_value_eligible(value, default) = die eine Regel "welches Modell passt in einen
 -- Modell-Eintrag" (Trigger trg_config_check_model_value, Seed-Guard fn_config_seed, CLI-Auswahl):
 --   (1) Wert existiert + gleiche Modell-Art (mode) wie der Standard -> true
 --   (2) Wert unbekannt -> false

@@ -1,6 +1,6 @@
 -- tests/db/finance/test_fn_schedule_label.sql
--- Testet finance.fn_schedule_label: Rhythmus einer Dauerzahlung in Klartext (Befund 2026-10-27: ein woechentlicher
---   Plan mit festen Bank-Tagen wurde als "monatlich" gelesen). Feste Tage nennen immer Anzahl je Monat + Tage.
+-- Testet finance.fn_schedule_label: Rhythmus einer Dauerzahlung in Klartext (ein woechentlicher
+--   Plan mit festen Bank-Tagen darf nicht als "monatlich" gelesen werden). Feste Tage nennen immer Anzahl je Monat + Tage.
 BEGIN;
 
 DO $$

@@ -1,30 +1,31 @@
 -- ============================================================
 -- fn_set_account (ATOMIC WRITE)
---   Aendert Konto-STAMMDATEN (partielles Update: nur uebergebene, nicht-leere Felder;
+--   Aendert Konto-Stammdaten (partielles Update: nur uebergebene, nicht-leere Felder;
 --   "nicht gesendet = unveraendert" via COALESCE(NULLIF(...), spalte)).
---   BEWUSST NICHT aenderbar: account_type (haengt an depot-needs-settlement-CHECK,
+--   Bewusst nicht aenderbar: account_type (haengt an depot-needs-settlement-CHECK,
 --   loan=negativ, depot=keine Tx), currency (Betraege sind nativ gespeichert -> retroaktiv
 --   Korruption), status (-> fn_close_account), last_reconciled_* (-> fn_reconcile_account).
 --   Eingabe jsonb: account_id (im n8n via fn_resolve_account aufgeloest), name, bank,
 --   account_number, owner_person_id (Slug, im Tool aufgeloest; leer=unveraendert), notes,
---   fixed_deposit_maturity_date, fixed_deposit_auto_renew, ownership/has_transmortal_poa (WS-0b estate:
---   Nachlass-Attribute, geschlossene ownership-Liste per CHECK; leer=unveraendert).
---   Kontonummer (Monats-Check WP-B) in der Normalform fn_normalize_account_number; schon bei einem ANDEREN aktiven
+--   fixed_deposit_maturity_date (auch relativ, nicht aufloesbar -> code:'invalid_date'), fixed_deposit_auto_renew,
+--   ownership/has_transmortal_poa (Nachlass-Attribute, geschlossene ownership-Liste per CHECK; leer=unveraendert).
+--   Kontonummer in der Normalform fn_normalize_account_number; eine IBAN-foermige Nummer mit falscher Pruefziffer ->
+--   {ok:false, code:'invalid_iban'}; schon bei einem anderen aktiven
 --   Konto vergeben -> {ok:false, reason} ohne Write (UNIQUE-Index = Backstop). remove_account_number = true entfernt die
---   Nummer ("Import zuerst": Korrekturweg fuer eine falsch zugeordnete bzw. gelernte IBAN, die sonst beim richtigen Konto
+--   Nummer (Korrekturweg fuer eine falsch zugeordnete bzw. gelernte IBAN, die sonst beim richtigen Konto
 --   als Dublette abgelehnt wuerde); zusammen mit account_number -> {ok:false, code:'conflicting_input'}.
 --   settlement_id (im Tool aufgeloest; leer=unveraendert): Verrechnungskonto, Pruefung fn_settlement_account_reason
 --   (nur Depot/P2P; P2P = das Girokonto, auf das der Anbieter auszahlt, Bank-Import-Modul) -> sonst {ok:false, reason}.
 --   Bankwechsel setzt den Depot-Kalender accounts.plan_execution_days zurueck (NULL = unbekannt): er beschreibt die
---   Ausfuehrungstage der ALTEN Bank (fn_resolve_plan_schedule belegt neu vor bzw. fragt einmal nach).
---   min_balance (Transparenz 2026-10-30): Puffer je Konto in Kontowaehrung fuer die Kontovorschau (fn_account_outlook);
+--   Ausfuehrungstage der alten Bank (fn_resolve_plan_schedule belegt neu vor bzw. fragt einmal nach).
+--   min_balance: Puffer je Konto in Kontowaehrung fuer die Kontovorschau (fn_account_outlook);
 --   nur Geld-Konten, >= 0 (sonst {ok:false}; CHECK finance_accounts_min_balance_chk = Backstop). min_balance_default =
 --   true setzt zurueck auf den Standard (NULL = core.config coverage_buffer_eur); zusammen mit min_balance ->
 --   {ok:false, code:'conflicting_input'}.
 --   emoji (Listen-Zeichen, VS16 wird bereinigt; sonst {ok:false, code:'invalid_emoji'} mit der Liste, CHECK = Backstop);
 --   emoji_default = true setzt zurueck auf das Zeichen der Kontoart (NULL); beides zugleich -> conflicting_input.
 --   Ein neuer name mit fuehrendem Listen-Zeichen -> {ok:false, code:'emoji_in_name'}.
---   RUECKGABE: {ok:true, account_id, emoji (wirksam), label}. RAISE nur bei not-found (Resolve haette greifen muessen).
+--   RUECKGABE: {ok:true, account_id, emoji (wirksam), label, effective}. RAISE nur bei not-found (Resolve haette greifen muessen).
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_set_account(p jsonb)
 RETURNS jsonb LANGUAGE plpgsql AS $$
@@ -80,7 +81,7 @@ BEGIN
             'reason', 'An account name must not start with a sign - pass the name without it and the sign in the field emoji.');
     END IF;
 
-    -- S7: eine IBAN-foermige Nummer muss ihre Pruefziffer bestehen (Spiegel-CHECK finance_accounts_iban_chk)
+    -- eine IBAN-foermige Nummer muss ihre Pruefziffer bestehen (Spiegel-CHECK finance_accounts_iban_chk)
     IF NOT finance.fn_iban_valid(v_number) THEN
         RETURN jsonb_build_object('ok', false, 'code', 'invalid_iban',
             'reason', 'The IBAN ' || v_number || ' has wrong check digits - a digit is probably mistyped; ask the user to check it.');
@@ -110,11 +111,11 @@ BEGIN
                                            THEN NULL ELSE plan_execution_days END,
         account_number              = CASE WHEN v_remove THEN NULL ELSE COALESCE(v_number, account_number) END,
         settlement_account_id       = COALESCE(v_settle, settlement_account_id),
-        owner_person_id             = COALESCE(NULLIF(p->>'owner_person_id', ''), owner_person_id),  -- WS-4: typisierter Eigentuemer (Slug); leer=unveraendert (Un-Tag vertagt)
+        owner_person_id             = COALESCE(NULLIF(p->>'owner_person_id', ''), owner_person_id),  -- Slug; leer=unveraendert, Entfernen ueber dieses Feld gibt es nicht
         notes                       = COALESCE(NULLIF(p->>'notes', ''), notes),
         fixed_deposit_maturity_date = COALESCE(NULLIF(p->>'fixed_deposit_maturity_date', '')::date, fixed_deposit_maturity_date),
         fixed_deposit_auto_renew    = COALESCE(NULLIF(p->>'fixed_deposit_auto_renew', '')::boolean, fixed_deposit_auto_renew),
-        -- WS-0b (estate): Nachlass-Attribute (leer=unveraendert; ownership-CHECK = geschlossene-Liste-Backstop).
+        -- Nachlass-Attribute (leer=unveraendert; ownership-CHECK = geschlossene-Liste-Backstop)
         ownership                   = COALESCE(NULLIF(p->>'ownership', ''), ownership),
         has_transmortal_poa         = COALESCE(NULLIF(p->>'has_transmortal_poa', '')::boolean, has_transmortal_poa),
         min_balance                 = CASE WHEN v_mb_def THEN NULL ELSE COALESCE(v_mb, min_balance) END,

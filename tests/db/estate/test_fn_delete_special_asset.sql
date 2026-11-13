@@ -1,6 +1,6 @@
 -- tests/db/estate/test_fn_delete_special_asset.sql
--- WS-2: Sonderfall-Stub-Loeschung (verkauft/abgegeben — Stubs haben keinen Lifecycle-Status;
--- ein verkauftes Fahrzeug MUSS raus, sonst falsche WS-3-Checklisten-Tasks) — Typ-Filter,
+-- Sonderfall-Stub-Loeschung (verkauft/abgegeben — Stubs haben keinen Lifecycle-Status;
+-- ein verkauftes Fahrzeug muss raus, sonst falsche Checklisten-Tasks im Ereignisfall) — Typ-Filter,
 -- not-found = RAISE, Kind-Reject. Self-contained; BEGIN..ROLLBACK.
 BEGIN;
 

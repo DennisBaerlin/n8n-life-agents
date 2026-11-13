@@ -2,24 +2,23 @@
 # Dot-gesourct von build.ps1 (Helper + Script-Scope-Creds im Parent-Scope).
 
 # --- tool_commit_import ------------------------------------
-# BULK-IMPORT Schritt 3/3: EIN HITL-Gate fuer den ganzen Batch -> EIN atomarer Write
-# (fn_import_bundle loopt die BESTEHENDEN fn_create_*/fn_book_* in EINER Transaktion).
-# 40 Einzel-Approvals waeren Approval-Fatigue (= Sicherheitsloch, Review-Konsens) —
-# Praezedenz: tool_reconcile_accounts_batch. Read summary -> Gate -> atomic Write.
+# Bulk-Import Schritt 3/3: ein HITL-Gate fuer den ganzen Batch -> ein atomarer Write
+# (fn_import_bundle loopt die bestehenden fn_create_*/fn_book_* in einer Transaktion).
+# 40 Einzel-Approvals waeren Approval-Fatigue (= Sicherheitsloch); gleiches Muster:
+# tool_reconcile_accounts_batch. Read summary -> Gate -> atomic Write.
 function Build-CommitImport {
-    # WS-B0: enge Paket-Schreibrolle (finance_rw, Least-Privilege D10) statt Owner-Cred.
-    # Dynamic-Scope: Build-Pg liest dieses $CRED_POSTGRES. Core-Tools nutzen die Owner-Cred.
+    # Enge Paket-Schreibrolle (finance_rw) statt Owner-Cred; Build-Pg liest $CRED_POSTGRES per Dynamic-Scope.
     $CRED_POSTGRES = $CRED_FINANCE_RW
     $FxCronId = Get-RequiredWorkflowId 'agent.finance.cron_refresh_fx_rates' 'Build-CommitImport'   # Sofort-FX-Fetch (Dual-Trigger), paket-intern
-    # Monats-Check WP-G: Yahoo-Sub + Kurs-Cron SOFT (2-Pass-Bootstrap, Muster set_holding).
+    # Yahoo-Sub + Kurs-Cron -Soft (2-Pass-Bootstrap, Muster set_holding).
     $ResolveYahooSymbolId = Get-RequiredWorkflowId 'agent.finance.sub_resolve_yahoo_symbol' 'Build-CommitImport' -Soft
     $MarketPricesCronId   = Get-RequiredWorkflowId 'agent.finance.cron_refresh_market_prices' 'Build-CommitImport' -Soft
-    $trig = Build-Trigger @((Get-ImportToolSpec 'tool_commit_import') | ForEach-Object { $_[0] })   # Feldliste aus ../import_tool_specs.ps1 (EINE Quelle, Review A5)
+    $trig = Build-Trigger @((Get-ImportToolSpec 'tool_commit_import') | ForEach-Object { $_[0] })   # Feldliste aus ../import_tool_specs.ps1 (eine Quelle)
 
-    # Monats-Check WP-G: Kurs-Symbol VOR der Karte. Je Depot-Position mit ISIN und ohne Feed-Symbol die ISIN bei Yahoo
-    # aufloesen (derselbe Sub wie tool_book_stock_buy/set_holding); nur ein VERIFIZIERTER Treffer (Boersen-Waehrung =
+    # Kurs-Symbol vor der Karte. Je Depot-Position mit ISIN und ohne Feed-Symbol die ISIN bei Yahoo
+    # aufloesen (derselbe Sub wie tool_book_stock_buy/set_holding); nur ein verifizierter Treffer (Boersen-Waehrung =
     # Depot-Waehrung) wandert ins Staging -> die Karte zeigt ihn, der Owner bestaetigt ihn mit. Kein Treffer -> bleibt
-    # leer, nach dem Import fragt der Agent nach (positions_without_price). alwaysOutputData: 0 Positionen -> EIN leeres
+    # leer, nach dem Import fragt der Agent nach (positions_without_price). alwaysOutputData: 0 Positionen -> ein leeres
     # Item, der Loop laeuft einmal leer durch (Sub ohne ISIN = sofort roh, kein HTTP).
     $loadPos = Build-Pg 'Load positions' @(220, -420) `
         "=SELECT s.row_no, s.payload->>'isin' AS isin, s.payload->>'symbol' AS symbol, s.payload->>'price_per_share' AS price, COALESCE(NULLIF(s.payload->>'quote_currency',''), finance.fn_import_depot_currency(s.batch_id, s.payload->>'depot')) AS ccy FROM finance.import_staging s WHERE s.batch_id = ((`$1::jsonb)->>'batch_id')::uuid AND s.entity_type = 'stock_buy' AND s.status <> 'committed' AND NULLIF(s.payload->>'isin','') IS NOT NULL AND NULLIF(s.payload->>'provider_symbol','') IS NULL AND NOT EXISTS (SELECT 1 FROM finance.import_staging e WHERE e.batch_id = s.batch_id AND e.entity_type = 'stock_buy' AND e.row_no < s.row_no AND e.payload->>'depot' = s.payload->>'depot' AND e.payload->>'isin' = s.payload->>'isin') ORDER BY s.row_no;" `
@@ -37,7 +36,7 @@ function Build-CommitImport {
             fx_rates        = "={{ '' }}"
             try_symbols     = "={{ '' }}"
         })
-    # Uebernommen wird ein verifizierter Treffer ODER (2026-10-23) eine plausible Notierung in Fremdwaehrung, wenn es
+    # Uebernommen wird ein verifizierter Treffer oder eine plausible Notierung in Fremdwaehrung, wenn es
     # keine in der Wunschwaehrung gibt (USD-Notierung fuer eine EUR-Position) -> provider_currency steht dann mit auf der
     # Karte ("wird in EUR umgerechnet"); fn_import_bundle reicht sie als quote_currency an die Position weiter.
     $ifVerified = Build-If 'Symbol verified?' @(880, -540) "={{ `$json.adoptable === true && !!`$('Each position').item.json.row_no }}" 'true' 'equals' 'boolean'
@@ -50,12 +49,12 @@ function Build-CommitImport {
         })
 
     # Read-only Batch-Summary fuer das Gate: Counts + die Kartenzeilen aus finance.fn_import_card_rows (je valider Zeile
-    # roher Payload + abgeleitete Werte aus DENSELBEN fn wie der Write: Person, Zeilen-Waehrung, Zins-Vorschlag, Rate,
-    # Sparplan, Verrechnungskonto, Bundle-Defaults). Formatiert wird erst im Gate je Empfaenger. EIN Statement.
+    # roher Payload + abgeleitete Werte aus denselben fn wie der Write: Person, Zeilen-Waehrung, Zins-Vorschlag, Rate,
+    # Sparplan, Verrechnungskonto, Bundle-Defaults). Formatiert wird erst im Gate je Empfaenger. Ein Statement.
     $load = Build-Pg 'Load batch summary' @(220, 0) `
         "=SELECT (SELECT COUNT(*) FROM finance.import_staging s WHERE s.batch_id = ((`$1::jsonb)->>'batch_id')::uuid AND s.status = 'invalid')::int AS invalid_count, (SELECT COUNT(*) FROM finance.import_staging s WHERE s.batch_id = ((`$1::jsonb)->>'batch_id')::uuid AND s.status = 'valid')::int AS valid_count, (SELECT COUNT(*) FROM finance.import_staging s WHERE s.batch_id = ((`$1::jsonb)->>'batch_id')::uuid AND s.status = 'committed')::int AS committed_count, finance.fn_import_card_rows(((`$1::jsonb)->>'batch_id')::uuid) AS rows;" `
         ([ordered]@{ batch_id = '$(''Start'').first().json.batch_id' })
-    # Nach dem Positions-Loop kommen N Items an ('done' gibt alle durchlaufenen aus) -> EINE Summary, EINE Karte.
+    # Nach dem Positions-Loop kommen N Items an ('done' gibt alle durchlaufenen aus) -> eine Summary, eine Karte.
     $load['executeOnce'] = $true
 
     $ifReady = Build-If 'Batch ready?' @(440, 0) "={{ `$json.invalid_count === 0 && `$json.committed_count === 0 && `$json.valid_count > 0 }}" 'true' 'equals' 'boolean'
@@ -67,8 +66,8 @@ function Build-CommitImport {
         ,@('error', "={{ `$('Load batch summary').item.json.committed_count > 0 ? 'This batch is already committed.' : (`$('Load batch summary').item.json.valid_count === 0 ? 'Nothing to commit — stage rows first.' : `$('Load batch summary').item.json.invalid_count + ' row(s) are still invalid — fix them with tool_update_staging_row first (the user corrects in chat, e.g. row 7: balance 5230).') }}", 'string')
     )
 
-    # Import-Haertung 2026-10-22: Probelauf VOR der Karte = derselbe fn_import_bundle-Lauf, immer zurueckgerollt.
-    # Fehler -> keine Karte, die Fehlerzeilen gehen an den Agenten (Befund: Karte sah gut aus, Abbruch erst
+    # Probelauf vor der Karte = derselbe fn_import_bundle-Lauf, immer zurueckgerollt.
+    # Fehler -> keine Karte, die Fehlerzeilen gehen an den Agenten (sonst Abbruch erst
     # nach dem Bestaetigen). executeOnce: hinter dem Positions-Loop kann mehr als ein Item ankommen.
     $dryRun = Build-Pg 'Dry run import' @(660, -120) `
         "=SELECT (r->>'ok')::boolean AS ok, r->>'reason' AS reason, r->>'error_summary' AS error_summary, COALESCE(r->'errors', '[]'::jsonb) AS errors FROM finance.fn_import_bundle(`$1::jsonb) AS r;" `
@@ -83,8 +82,8 @@ function Build-CommitImport {
         ,@('error_summary', "={{ `$('Dry run import').first().json.error_summary || '' }}", 'string')
     )
 
-    # EINE Approval-Summary (Textkatalog): Anzahl + je Staging-Zeile ein Block "Art: #Nr Name" mit denselben Feldzeilen
-    # wie die Einzel-Karte der Art (../hitl_lines.ps1, Get-FinanceImportCardLinesExpr). Keine Kuerzung mehr: ist die
+    # Eine Approval-Summary: Anzahl + je Staging-Zeile ein Block "Art: #Nr Name" mit denselben Feldzeilen
+    # wie die Einzel-Karte der Art (../hitl_lines.ps1, Get-FinanceImportCardLinesExpr). Keine Kuerzung: ist die
     # Karte laenger als eine Telegram-Nachricht, teilt das Gate sie in "Teil n/N" (nichts wird blind mit-bestaetigt).
     $linesExpr = Get-FinanceImportCardLinesExpr "`$('Load batch summary').item.json.rows"
     $summary = New-HitlSummary -Pos @(660, 0) -Title 'finance.hitl.commit_import' -Lines @(
@@ -105,18 +104,18 @@ function Build-CommitImport {
 
     $ifWritten = Build-If 'Write ok?' @(1540, 0) "={{ `$json.ok }}" 'true' 'equals' 'boolean'
 
-    # A11: error_summary ist bereits zu "Zeile N: reason; …" formatiert (kein roher JSON-Blob)
+    # error_summary ist bereits zu "Zeile N: reason; …" formatiert (kein roher JSON-Blob)
     $errWrite = Build-ToolError 'Import rolled back' @(1760, 200) `
         "={{ `$('Import bundle (atomic)').item.json.reason + ' — ' + `$('Import bundle (atomic)').item.json.error_summary }}"
 
-    # NACH dem Kurs-Abruf: erst er kennt die echte Kurswaehrung. Fehlt fuer eine aktive Waehrung der Wechselkurs, den
+    # Nach dem Kurs-Abruf: erst er kennt die echte Kurswaehrung. Fehlt fuer eine aktive Waehrung der Wechselkurs, den
     # FX-Cron als Sub rufen (sonst bleiben die *_eur-Werte bis zum naechsten Schedule-Lauf NULL).
     $fxGap = New-FinanceFxGapCheck -CheckPos @(2420, -120) -IfPos @(2640, -120)
-    $fxGap[0]['executeOnce'] = $true   # der Kurs-Abruf kann mehrere Items liefern -> EIN FX-Abruf
+    $fxGap[0]['executeOnce'] = $true   # der Kurs-Abruf kann mehrere Items liefern -> ein FX-Abruf
     $callFx = Build-CallWorkflow 'Refresh FX rates' @(2860, -240) $FxCronId 'agent.finance.cron_refresh_fx_rates' `
         ([ordered]@{ chat_id = "={{ `$('Start').first().json.chat_id }}" })
 
-    # Monats-Check WP-G: nach dem Write Kurse der neuen Positionen sofort holen (Sub, Muster set_holding) und melden,
+    # Nach dem Write Kurse der neuen Positionen sofort holen (Sub, Muster set_holding) und melden,
     # welche Position noch keinen Kurs bzw. keine Anlageklasse hat -> der Agent klaert es mit dem Owner (Kurs-Symbol per
     # tool_verify_price_symbol + tool_set_holding; Anlageklasse nur bei Finanzplan per tool_set_asset_classes, eine Karte).
     $ifPos = Build-If 'Positions imported?' @(1760, -120) `
@@ -129,7 +128,7 @@ function Build-CommitImport {
         "=WITH ids AS (SELECT (x->>'holding_id')::int AS id FROM jsonb_array_elements(COALESCE((`$1::jsonb)->'positions', '[]'::jsonb)) x), ps AS (SELECT * FROM finance.fn_holding_price_status(COALESCE((SELECT array_agg(id) FROM ids), '{}'::int[]))) SELECT COALESCE((SELECT jsonb_agg(jsonb_build_object('holding_id', ps.holding_id, 'name', ps.name, 'isin', ps.isin, 'symbol', ps.symbol, 'feed_symbol', ps.feed_symbol, 'status', ps.status)) FROM ps WHERE ps.status <> 'ok'), '[]'::jsonb) AS positions_without_price, COALESCE((SELECT jsonb_agg(jsonb_build_object('holding_id', h.id, 'name', h.name)) FROM finance.depot_holdings h JOIN ids ON ids.id = h.id WHERE h.asset_class IS NULL), '[]'::jsonb) AS positions_without_asset_class;" `
         ([ordered]@{ positions = '$(''Import bundle (atomic)'').first().json.positions || []' })
 
-    $checkPos['executeOnce'] = $true   # beide Zweige (mit/ohne FX) muenden hier -> EIN Check
+    $checkPos['executeOnce'] = $true   # beide Zweige (mit/ohne FX) muenden hier -> ein Check
     $ret = Build-Return @(3300, 0) @(
         ,@('ok','true','boolean')
         ,@('approved_via_card','true','boolean')

@@ -25,7 +25,7 @@ BEGIN
        jsonb_build_array(jsonb_build_object('title','X','salary_expectation_eur',99999999)))) IS NULL THEN
     RAISE EXCEPTION 'FAIL [salary range]'; END IF;
 
-  -- WP3: timeline_years abgeloest (Hinweis auf target_date); target_date roh in Teil-Genauigkeit, Vergangenheit erlaubt
+  -- timeline_years abgeloest (Hinweis auf target_date); target_date roh in Teil-Genauigkeit, Vergangenheit erlaubt
   IF career.fn_validate_career_planning(jsonb_build_object('timeline_years',2)) NOT LIKE '%target_date%' THEN
     RAISE EXCEPTION 'FAIL [timeline_years abgeloest]'; END IF;
   IF career.fn_validate_career_planning(jsonb_build_object('target_date','2020-06')) IS NOT NULL THEN
@@ -43,7 +43,7 @@ BEGIN
   IF career.fn_validate_career_planning(jsonb_build_object('target_industries','tech')) IS NULL THEN
     RAISE EXCEPTION 'FAIL [industries type]'; END IF;
 
-  -- WS-2 Suchkriterien (targets-Block): gueltig -> NULL
+  -- Suchkriterien (targets-Block): gueltig -> NULL
   v_err := career.fn_validate_career_planning(jsonb_build_object(
     'target_roles', jsonb_build_array(jsonb_build_object('title','Data Analyst')),
     'target_locations', jsonb_build_array('Leipzig','Bremen'),
@@ -63,7 +63,7 @@ BEGIN
   IF career.fn_validate_career_planning(jsonb_build_object('employment_types','vollzeit')) IS NULL THEN
     RAISE EXCEPTION 'FAIL [employment type]'; END IF;
 
-  -- WS-3 required_skills: gueltig (min_level optional, is_blocker optional) -> NULL
+  -- required_skills: gueltig (min_level optional, is_blocker optional) -> NULL
   v_err := career.fn_validate_career_planning(jsonb_build_object('target_roles', jsonb_build_array(
     jsonb_build_object('title','Data Analyst','required_skills', jsonb_build_array(
       jsonb_build_object('name','Statistik','min_level','advanced','is_blocker',true),
@@ -98,7 +98,7 @@ BEGIN
       jsonb_build_object('name','Statistik','is_blocker','maybe')))))) IS NULL THEN
     RAISE EXCEPTION 'FAIL [required_skills is_blocker bool]'; END IF;
 
-  -- WS-5 transition-Block (Runway-Szenario): probation_months/expected_gap_income_eur, beide optional/roh -> NULL
+  -- transition-Block (Runway-Szenario): probation_months/expected_gap_income_eur, beide optional/roh -> NULL
   v_err := career.fn_validate_career_planning(jsonb_build_object(
     'transition', jsonb_build_object('probation_months', 6, 'expected_gap_income_eur', 1800)));
   IF v_err IS NOT NULL THEN RAISE EXCEPTION 'FAIL [transition valid]: %', v_err; END IF;
@@ -112,8 +112,8 @@ BEGIN
   IF career.fn_validate_career_planning(jsonb_build_object('transition', jsonb_build_object('expected_gap_income_eur',-5))) IS NULL THEN
     RAISE EXCEPTION 'FAIL [transition gap income range]'; END IF;
 
-  -- WS-5 Core-Denylist (agent.fn_validate_household_facts, generisch + rekursiv je facts-Sidecar):
-  -- abgeleitete Runway-Werte duerfen NIE gespeichert werden (render-at-fetch); die ROH-Szenario-Fakten schon.
+  -- Core-Denylist (agent.fn_validate_household_facts, generisch + rekursiv je facts-Sidecar):
+  -- abgeleitete Runway-Werte duerfen nie gespeichert werden (render-at-fetch); die Roh-Szenario-Fakten schon.
   IF agent.fn_validate_household_facts(jsonb_build_object('runway_months', 8), 'career_planning') IS NULL THEN
     RAISE EXCEPTION 'FAIL [denylist runway_months]'; END IF;
   IF agent.fn_validate_household_facts(jsonb_build_object('transition', jsonb_build_object('runway', 8)), 'career_planning') IS NULL THEN

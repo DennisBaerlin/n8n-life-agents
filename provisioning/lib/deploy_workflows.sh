@@ -1,30 +1,30 @@
-# deploy_workflows.sh — getrackte Workflow-JSONs auf die Instanz bringen (Phase 5: paket-skopiert).
-# Sourced by provision.sh + der Runtime-CLI (`lifeagents package`). Definiert deploy_workflows [pkg].
+# deploy_workflows.sh — getrackte Workflow-JSONs auf die Instanz bringen (paket-skopiert).
+# Gesourct von provision.sh + der Runtime-CLI (`lifeagents package`). Definiert deploy_workflows [pkg].
 #
-# SCOPE (Phase 5): `deploy_workflows core` (Default) deployt die CORE-Workflows = alle, die KEINEM
+# Scope: `deploy_workflows core` (Default) deployt die Core-Workflows = alle, die keinem
 # Nicht-Core-Paket gehoeren (Orchestrator/monitor/guide + geteilte tool_/sub_-Infra + Harnesses).
 # Test-Harnesses (*.test_harness) nur auf Test-Instanzen (TEST_HARNESS_SECRET gesetzt oder Harness-Credential live);
 # eine Prod-/Dev-Instanz stagt sie nicht und entfernt vorhandene Live-Kopien (retire_stale).
-# `deploy_workflows <pkg>` deployt NUR die Workflows DIESES Pakets (Wortgrenze-Prefix aus provides.agents,
+# `deploy_workflows <pkg>` deployt nur die Workflows dieses Pakets (Wortgrenze-Prefix aus provides.agents,
 # wie pkg_teardown — symmetrisch zum Uninstall). Jedes Paket haelt seine Workflows unter
-# packages/<pkg>/workflows -> Scope ueber den NAMEN, nicht das Verzeichnis.
+# packages/<pkg>/workflows -> Scope ueber den Namen, nicht das Verzeichnis.
 #
-# WARUM CLI-Import statt REST-POST: `n8n import:workflow` BEHAELT die ids aus dem JSON (ids = Import-Keys),
+# Warum CLI-Import statt REST-POST: `n8n import:workflow` behaelt die ids aus dem JSON (ids = Import-Keys),
 # REST-POST vergibt neue -> das dichte executeWorkflow-Referenznetz (Orchestrator->Agenten->Tools->Gate,
 # errorWorkflow, load_context/load_config) bliebe zerrissen. CLI-Import = ids stabil.
 #
-# CREDENTIAL-REMAP per NAME-Aufloesung (Phase 5, D2): inject_credentials setzt die Creds id-STABIL
-# (import:credentials-Upsert, stabile id); HIER loesen wir jeden im Workflow gefundenen `__CRED_*__`-
-# Platzhalter ueber die Platzhalter<->Name-Map (inject_credentials.sh) gegen die LIVE-n8n-Credential-Liste
-# (GET, name+type) auf. Robust fuer Provision-Zeit UND Standalone-CLI. Kein Remap-File-Handoff.
+# Credential-Remap per Namens-Aufloesung: inject_credentials setzt die Creds id-stabil
+# (import:credentials-Upsert, stabile id); hier loest deploy_workflows jeden im Workflow gefundenen `__CRED_*__`-
+# Platzhalter ueber die Platzhalter<->Name-Map (inject_credentials.sh) gegen die Live-n8n-Credential-Liste
+# (GET, name+type) auf. Robust fuer Provision-Zeit und Standalone-CLI. Kein Remap-File-Handoff.
 #
-# KEIN Deploy-Restart: seit die Credential-id stabil ist (kein DELETE), referenziert ein laufender
-# In-Memory-Trigger nie eine geloeschte id -> der Geister-Cron (WS-B4b, #21770) kann strukturell nicht
+# Kein Deploy-Restart: weil die Credential-id stabil ist (kein DELETE), referenziert ein laufender
+# In-Memory-Trigger nie eine geloeschte id -> der Geister-Cron (#21770) kann strukturell nicht
 # entstehen. Und ein geaenderter Ausloeser (z. B. ein neuer Zeitplan) laeuft nicht doppelt, weil jeder aktive
-# Workflow mit eigenem Ausloeser VOR dem Import per REST deaktiviert wird (_deactivate_live_triggers). (Der
-# Paket-UNINSTALL-Restart in pkg_teardown.sh BLEIBT — echte Workflow-Loeschung = andere Ursache.)
+# Workflow mit eigenem Ausloeser vor dem Import per REST deaktiviert wird (_deactivate_live_triggers). (Der
+# Paket-Uninstall-Restart in pkg_teardown.sh bleibt — echte Workflow-Loeschung = andere Ursache.)
 #
-# NUR GEAENDERTE: `import:workflow` vergibt JEDEM importierten Workflow eine neue versionId, setzt ihn unpublished
+# Nur Geaenderte: `import:workflow` vergibt jedem importierten Workflow eine neue versionId, setzt ihn unpublished
 # und meldet einen Telegram-Trigger ab (deleteWebhook) — auch bei identischem Inhalt (n8n 2.44.4 import.service).
 # Darum merkt sich der Server je Workflow einen Fingerabdruck (sha256 der fertig gepatchten Datei + Deploy-Kontext:
 # n8n-Version, WEBHOOK_URL, sha256 des Bot-Tokens) und die versionId nach dem Einspielen (WF_DEPLOY_STATE_FILE).
@@ -32,24 +32,24 @@
 # veraendert, DB zurueckgespielt); unveraendert + unpublished -> nur publish; unveraendert + published -> nichts.
 # Ausnahme Telegram-Trigger: immer ab- und wieder anmelden (der Installer loescht den Bot-Webhook bei jedem Lauf).
 # Ein Bot-/Adress-/Versionswechsel aendert den Kontext -> alles neu (Telegram registriert die Adresse neu).
-# Jeder Zweifel (Live-Liste nicht abrufbar, LIFEAGENTS_DEPLOY_FULL=1) = der fruehere Weg: alles einspielen.
+# Jeder Zweifel (Live-Liste nicht abrufbar, LIFEAGENTS_DEPLOY_FULL=1) = alles einspielen.
 #
-# ZEITPLAENE: die Workflows tragen statt eines Cron-Ausdrucks den Platzhalter `__CFG_SCHEDULE_<KEY>__`
+# Zeitplaene: die Workflows tragen statt eines Cron-Ausdrucks den Platzhalter `__CFG_SCHEDULE_<KEY>__`
 # (Build-ScheduleTrigger); der Wert kommt beim Einspielen aus core.config (category 'schedule') — ein per
 # `lifeagents config set` geaenderter Zeitplan ueberlebt so jedes Update. Bleibt ein Platzhalter ohne Wert, bricht
 # der Deploy mit Klartext ab (nie ein Platzhalter als Cron).
 #
-# Reads globals: REPO_ROOT, N8N_URL, N8N_API_KEY, N8N_USER, N8N_ENV_FILE, N8N_DB_NAME, OWNER_CHAT_ID (opt).
-# Reuses (sourced siblings): _list_existing_creds/_cred_host_placeholder_names/_cred_pkg_placeholder_names
+# Liest Globals: REPO_ROOT, N8N_URL, N8N_API_KEY, N8N_USER, N8N_ENV_FILE, N8N_DB_NAME, OWNER_CHAT_ID (optional).
+# Nutzt (gesourcte Geschwister): _list_existing_creds/_cred_host_placeholder_names/_cred_pkg_placeholder_names
 #   (inject_credentials.sh).
 
 DB_SUPERUSER="${DB_SUPERUSER:-postgres}"
 
 # activate_inactive_workflows — nach dem Bundle-Loop (provision.sh): Workflows, deren Aktivierung im
-#   Core-Pass an n8ns Sub-Workflow-Validierung scheiterte, jetzt nachaktivieren (Fixpunkt). Real getroffen
-#   (Install-UX-Phase 3, Substrat-Journal "Workflow activation failed sub-workflow validation"): der
-#   Orchestrator ruft Paket-Agenten, die erst NACH `deploy_workflows core` importiert werden -> er blieb
-#   inaktiv, bis ein spaeteres `lifeagents update` den Core erneut deployte (Bot taub nach Erstinstall).
+#   Core-Pass an n8ns Sub-Workflow-Validierung scheiterte ("Workflow activation failed sub-workflow
+#   validation"), jetzt nachaktivieren (Fixpunkt): der Orchestrator ruft Paket-Agenten, die erst nach
+#   `deploy_workflows core` importiert werden -> er bliebe inaktiv, bis ein spaeteres `lifeagents update` den
+#   Core erneut deployte (Bot taub nach Erstinstall).
 #   Non-fatal; was dann noch inaktiv ist (Telegram-Trigger ohne erreichbare Domain), holt das gefuehrte
 #   Ende bzw. `lifeagents household pair-owner` nach — fehlt die Adresse ganz, `lifeagents reconfigure`.
 activate_inactive_workflows() {
@@ -96,12 +96,6 @@ _ingress_id_map() {
     | jq -Rn '[inputs | split("\t") | {(.[0]): .[1]}] | add // {}'
 }
 
-# (Der gegatete Deploy-Restart + seine Helfer _list_active_workflow_ids/_deploy_wait_health sind ENTFERNT:
-#  seit inject_credentials id-STABIL upsertet [import:credentials, kein DELETE], referenziert ein laufender
-#  In-Memory-Trigger nie eine geloeschte Credential-id → der Geister-Cron kann strukturell nicht entstehen,
-#  der Restart-Workaround ist gegenstandslos. Der Paket-UNINSTALL-Restart in pkg_teardown.sh BLEIBT — dort
-#  werden Workflows wirklich geloescht [echte In-Memory-Waise, #21770], ein anderer Kausalpfad.)
-
 # _WF_OWN_TRIGGER_JQ — jq-Funktion `own_trigger`: hat der Workflow einen EIGENEN Ausloeser, den n8n beim Aktivieren
 #   im laufenden Prozess registriert (Cron/Webhook/Telegram/Error-Trigger)? executeWorkflowTrigger zaehlt nicht
 #   (reiner Sub-Workflow-Eingang). Geteilt von retire_workflows (Neustart noetig?) und _deactivate_live_triggers.
@@ -118,13 +112,13 @@ _schedule_placeholder_map() {
 }
 
 # _hitl_chat_approval <scope> — "true"/"false" fuer den Platzhalter __HITL_CHAT_APPROVAL__ (Telegram-Node chatApproval
-#   in New-TelegramSendAndWaitNode): true = Bestaetigungs-Knoepfe antworten im Chat (callback_data, kein Browser). NUR,
+#   in New-TelegramSendAndWaitNode): true = Bestaetigungs-Knoepfe antworten im Chat (callback_data, kein Browser). Nur,
 #   wenn der Server seinen eigenen /webhook-waiting-telegram ueber die n8n-WEBHOOK_URL erreicht (hitl_chat_reachable,
 #   pinnt bei Bedarf /etc/hosts) — sonst verschluckte n8n jeden Tipp still. Sonst false = Link-Knoepfe ueber
-#   /webhook-waiting/* wie bisher (kein Update verschlechtert eine laufende Installation). Entschieden wird NUR beim
+#   /webhook-waiting/* (kein Update verschlechtert eine laufende Installation). Entschieden wird nur beim
 #   Core-Deploy (Installation/update/reconfigure) und in core.env HITL_CHAT_APPROVAL festgehalten; Paket-Deploys
 #   (package install, config set schedule) uebernehmen diesen Wert -> alle Workflows im selben Modus, doctor liest ihn.
-#   LIFEAGENTS_HITL_CHAT_APPROVAL=true|false erzwingt den Wert (NUR Test-Substrat, bootstrap_test_n8n -HitlChatApproval;
+#   LIFEAGENTS_HITL_CHAT_APPROVAL=true|false erzwingt den Wert (nur Test-Substrat, bootstrap_test_n8n -HitlChatApproval;
 #   dort gibt es keinen /etc/hosts-Pin, darum raeumt dieser Zweig bewusst nichts auf).
 _hitl_chat_approval() {
   local scope="${1:-core}" envf; envf="$(lifeagents_env_file core)"
@@ -148,7 +142,7 @@ _hitl_chat_approval() {
         fi ;;
     esac
     [ "$_HITL_CHAT_APPROVAL_VAL" = true ] && log "Bestätigen im Chat: an (Knöpfe antworten über Telegram)."
-    # Festhalten NUR beim Core-Deploy (er spielt das HITL-Gate ein); ein Paket-Deploy ohne Eintrag probt nur fuer sich.
+    # Festhalten nur beim Core-Deploy (er spielt das HITL-Gate ein); ein Paket-Deploy ohne Eintrag probt nur fuer sich.
     if [ "$scope" = core ] && [ -d "$(dirname "$envf")" ] && [ "$(hitl_chat_state)" != "$_HITL_CHAT_APPROVAL_VAL" ]; then
       env_upsert "$envf" HITL_CHAT_APPROVAL "$_HITL_CHAT_APPROVAL_VAL"
     fi
@@ -156,15 +150,15 @@ _hitl_chat_approval() {
   printf '%s' "$_HITL_CHAT_APPROVAL_VAL"
 }
 
-# _deactivate_live_triggers <id…> — VOR dem Import: jeden Workflow des Deploy-Sets, der live AKTIV ist und einen
-#   eigenen Ausloeser hat, per REST deaktivieren. WARUM: `n8n import:workflow` laeuft in einem eigenen Prozess und
-#   meldet den im laufenden n8n registrierten Ausloeser NICHT ab; das Aktivieren danach registriert den neuen
-#   zusaetzlich -> ein geaenderter Zeitplan liefe bis zum naechsten n8n-Neustart DOPPELT (alt + neu; belegt an n8n 2.21.7, auf 2.44.4 beibehalten —
-#   import.service/workflow.service.activateWorkflow/scheduled-task-manager). Das REST-Deaktivieren laeuft IM
+# _deactivate_live_triggers <id…> — vor dem Import: jeden Workflow des Deploy-Sets, der live aktiv ist und einen
+#   eigenen Ausloeser hat, per REST deaktivieren. Warum: `n8n import:workflow` laeuft in einem eigenen Prozess und
+#   meldet den im laufenden n8n registrierten Ausloeser nicht ab; das Aktivieren danach registriert den neuen
+#   zusaetzlich -> ein geaenderter Zeitplan liefe bis zum naechsten n8n-Neustart doppelt (alt + neu; n8n-Quellen
+#   import.service/workflow.service.activateWorkflow/scheduled-task-manager). Das REST-Deaktivieren laeuft im
 #   n8n-Prozess und meldet den Ausloeser dort ab. Telegram-Trigger: Deaktivieren loescht den Webhook, das Aktivieren
 #   danach setzt ihn neu; Nachrichten dazwischen haelt Telegram vor (setWebhook ohne drop_pending_updates).
 #   Ergebnis: _DEPLOY_DEACTIVATED (ids, fuer die Wieder-Aktivierung bei Import-Fehler) + _DEPLOY_DEACT_FAILED
-#   (Anzahl; > 0 -> deploy_workflows startet n8n am Ende einmal neu = der fruehere, immer korrekte Weg).
+#   (Anzahl; > 0 -> deploy_workflows startet n8n am Ende einmal neu = der immer korrekte Weg).
 _deactivate_live_triggers() {
   _DEPLOY_DEACTIVATED=(); _DEPLOY_DEACT_FAILED=0
   local live id w want
@@ -187,7 +181,7 @@ _deactivate_live_triggers() {
   return 0
 }
 
-# --- NUR GEAENDERTE (s. Kopf) ---------------------------------------------------------------------------------------
+# --- Nur Geaenderte (s. Kopf) ---------------------------------------------------------------------------------------
 # Zustand: je Workflow eine Zeile <id>\t<fingerprint>\t<versionId>; neben dem upgrade_guard-Marker (/var/lib/lifeagents).
 # Eine fehlende/kaputte Datei heisst nur "alles einspielen" (sicher).
 WF_DEPLOY_STATE_FILE="${WF_DEPLOY_STATE_FILE:-/var/lib/lifeagents/workflow_deploy.state}"
@@ -228,7 +222,7 @@ _wf_state_commit() {
   return 0
 }
 
-# _reactivate_ids <id…> — best effort (Import gescheitert): die eben deaktivierten Workflows mit ihrem ALTEN Stand
+# _reactivate_ids <id…> — best effort (Import gescheitert): die eben deaktivierten Workflows mit ihrem alten Stand
 #   wieder einschalten, damit ein abgebrochener Deploy keine Zeitplaene/den Bot stilllegt.
 _reactivate_ids() {
   local id
@@ -237,21 +231,21 @@ _reactivate_ids() {
   done
 }
 
-# _wf_pkg_agents <pkg>  -> provides.agents als CSV aus dem Manifest PLUS der Paketname selbst als
+# _wf_pkg_agents <pkg>  -> provides.agents als CSV aus dem Manifest plus der Paketname selbst als
 #   Praefix-Kandidat: die Pipeline-/Tool-/Cron-Workflows eines Pakets tragen den Scope agent.<pkg>.*
-#   (z. B. agent.career.cron_score_jobs), NICHT den Agent-Namen agent.<pkg>_advisor — ohne den
-#   Kandidaten fielen sie in den Core-Sweep (falsche Credential-Remap-Scope) bzw. blieben beim
-#   Uninstall als Waisen (paperless-WS-0 Naht 5, heilt career gleich mit; volle Paritaet zur
-#   build-seitigen Get-WorkflowHomeMap-Regel — segment-genau via _wf_name_matches inkl. '_'-Suffix).
+#   (z. B. agent.career.cron_score_jobs), nicht den Agent-Namen agent.<pkg>_advisor — ohne den
+#   Kandidaten fielen sie in den Core-Sweep (falscher Credential-Remap-Scope) bzw. blieben beim
+#   Uninstall als Waisen (Paritaet zur build-seitigen Get-WorkflowHomeMap-Regel — segment-genau via
+#   _wf_name_matches inkl. '_'-Suffix).
 _wf_pkg_agents() {
   local mf; mf="$REPO_ROOT/packages/$1/manifest.json"
   [ -r "$mf" ] || return 0
   jq -r --arg pkg "$1" '([$pkg] + [(.provides.agents // [])[] | if type=="object" then .name else . end]) | unique | join(",")' "$mf" 2>/dev/null || true
 }
 
-# _wf_name_matches <name> <agents_csv>  -> 0 wenn name == 'agent.<a>' ODER startswith 'agent.<a>.'
-#   ODER startswith 'agent.<a>_' (segment-genaue Wortgrenzen — volle Paritaet zur build-seitigen
-#   Get-WorkflowHomeDir-Regel: ein Paket beansprucht agent.<pkg> exakt, mit '.'- UND '_'-Suffix).
+# _wf_name_matches <name> <agents_csv>  -> 0 wenn name == 'agent.<a>' oder startswith 'agent.<a>.'
+#   oder startswith 'agent.<a>_' (segment-genaue Wortgrenzen — Paritaet zur build-seitigen
+#   Get-WorkflowHomeDir-Regel: ein Paket beansprucht agent.<pkg> exakt, mit '.'- und '_'-Suffix).
 _wf_name_matches() {
   local name="$1" csv="$2" a oldifs="$IFS"
   IFS=','
@@ -263,7 +257,7 @@ _wf_name_matches() {
   IFS="$oldifs"; return 1
 }
 
-# _wf_noncore_agents  -> CSV ALLER provides.agents + Paketnamen der Nicht-Core-Pakete (zum Aussondern
+# _wf_noncore_agents  -> CSV aller provides.agents + Paketnamen der Nicht-Core-Pakete (zum Aussondern
 #   beim Core-Deploy; symmetrisch zu _wf_pkg_agents — sonst zoege der Core-Sweep agent.<pkg>.*-Workflows).
 _wf_noncore_agents() {
   local mf pkg out=""
@@ -276,13 +270,13 @@ _wf_noncore_agents() {
   printf '%s' "$out"
 }
 
-# _build_cred_remap <scope>  -> jq-Objekt {placeholder: live-id} per NAME-Aufloesung gegen die Live-Cred-Liste.
+# _build_cred_remap <scope>  -> jq-Objekt {placeholder: live-id} per Namens-Aufloesung gegen die Live-Cred-Liste.
 #   scope='core' -> nur Host-Platzhalter; scope='<pkg>' -> Host + die 2 Paket-Platzhalter. Unreferenzierte
 #   Platzhalter schaden nicht (jq-walk ersetzt nur vorhandene). Fehlt eine Cred live -> Platzhalter bleibt
 #   (dangling Ref; warn). _EXISTING_CREDS_JSON wurde vom Aufrufer via _list_existing_creds geladen.
 _build_cred_remap() {
   local scope="$1" ph name typ id obj='{}'
-  # Prozess-Substitution (kein Pipe) -> die while-Schleife laeuft in DIESER Shell, obj bleibt erhalten.
+  # Prozess-Substitution (keine Pipe) -> die while-Schleife laeuft in dieser Shell, obj bleibt erhalten.
   while IFS=$'\t' read -r ph name typ; do
     [ -n "$ph" ] || continue
     id="$(printf '%s' "$_EXISTING_CREDS_JSON" | jq -r --arg n "$name" --arg t "$typ" 'map(select(.name==$n and .type==$t)) | (.[0].id // empty)' 2>/dev/null)"
@@ -292,15 +286,15 @@ _build_cred_remap() {
 }
 
 # retire_workflows <scope> [staging-ids...]  — stillgelegte Workflows des Scopes von der Instanz entfernen.
-#   Quelle: der Manifest-Block `retired_workflows.list: [{id, name, since}]` des BESITZENDEN Pakets (explizite
-#   Tombstones, dpkg-`rm_conffile`-Analogon — KEIN mengen-basiertes Prune: n8n-Workflows tragen kein
-#   Ownership-Label, ein Prune ueber Namens-Praefixe waere heuristisch; arch-challenge D6).
-#   Je Eintrag: GET /workflows/{id} -> 404 = schon weg (ok); Name != Tombstone-Name -> warn + NICHT loeschen
-#   (fremde/neu vergebene id); eine id aus dem aktuellen Deploy-Set wird nie geloescht. Laeuft NACH dem
+#   Quelle: der Manifest-Block `retired_workflows.list: [{id, name, since}]` des besitzenden Pakets (explizite
+#   Tombstones, dpkg-`rm_conffile`-Analogon — kein mengen-basiertes Prune: n8n-Workflows tragen kein
+#   Ownership-Label, ein Prune ueber Namens-Praefixe waere heuristisch).
+#   Je Eintrag: GET /workflows/{id} -> 404 = schon weg (ok); Name != Tombstone-Name -> warn + nicht loeschen
+#   (fremde/neu vergebene id); eine id aus dem aktuellen Deploy-Set wird nie geloescht. Laeuft nach dem
 #   Import: der Import ersetzt jeden Aufrufer id-erhaltend in place, danach verweist kein getrackter
 #   Workflow mehr auf eine retired id (contract_lint) -> das Loeschen kann keinen laufenden Pfad brechen.
 #   Hatte ein geloeschter Workflow einen eigenen aktiven Ausloeser (Cron/Webhook/Telegram/Error-Trigger),
-#   setzt es _RETIRE_NEEDS_RESTART — retire_stale startet n8n danach EINMAL neu (single-main raeumt In-Memory-
+#   setzt es _RETIRE_NEEDS_RESTART — retire_stale startet n8n danach einmal neu (single-main raeumt In-Memory-
 #   Trigger nur per Neustart, #21770 — Muster pkg_teardown). Non-fatal: Fehler werden nur gewarnt, nie per `die` abgebrochen.
 retire_workflows() {
   local scope="$1"; shift
@@ -310,7 +304,7 @@ retire_workflows() {
   _retire_workflow_entries "$scope" retired_workflows "$entries" "$@"
 }
 
-# _retire_workflow_entries <scope> <label> <entries-tsv: id<TAB>name je Zeile> [staging-ids...]  — die EINE
+# _retire_workflow_entries <scope> <label> <entries-tsv: id<TAB>name je Zeile> [staging-ids...]  — die eine
 #   Loesch-Schleife mit den Schutzregeln von retire_workflows (id aus dem Deploy-Set nie, abweichender Live-Name nie,
 #   404 = schon weg, eigener aktiver Ausloeser -> _RETIRE_NEEDS_RESTART). Konsumenten: retire_workflows (Manifest-
 #   Tombstones) und retire_stale (Test-Harnesses, die eine Prod-Instanz nicht deployt, s. deploy_workflows).
@@ -344,16 +338,16 @@ _retire_workflow_entries() {
       warn "$label: DELETE $id ($name) fehlgeschlagen -> naechster Lauf versucht es erneut."
     fi
   done <<< "$entries"
-  [ "$need_restart" -eq 1 ] && _RETIRE_NEEDS_RESTART=1   # Neustart macht retire_stale EINMAL am Ende
+  [ "$need_restart" -eq 1 ] && _RETIRE_NEEDS_RESTART=1   # Neustart macht retire_stale einmal am Ende
   [ "$n_del" -eq 0 ] || log "Scope '$scope': $n_del Workflow(s) entfernt ($label)."
   return 0
 }
 
 # retire_credentials <scope>  — stillgelegte n8n-Credentials des Scopes entfernen (Manifest-Block
 #   `retired_credentials.list[{name, type, env_keys[], since}]`, docs/package-contract.md §2 — Geschwister von
-#   retired_workflows, dpkg-rm_conffile-Analog). Laeuft NACH retire_workflows (die stillgelegten Workflows
-#   referenzierten diese Credentials). Geloescht wird NUR bei gleichem Name UND Typ (eine gleichnamige fremde
-#   Credential bleibt, warn); nicht vorhanden/404 = schon weg. Danach verschwinden GENAU die gelisteten env_keys
+#   retired_workflows, dpkg-rm_conffile-Analog). Laeuft nach retire_workflows (die stillgelegten Workflows
+#   referenzierten diese Credentials). Geloescht wird nur bei gleichem Name und Typ (eine gleichnamige fremde
+#   Credential bleibt, warn); nicht vorhanden/404 = schon weg. Danach verschwinden genau die gelisteten env_keys
 #   aus /etc/lifeagents/<scope>.env (kein Secret als Leiche, z. B. ein Service-Account-PEM). Nie abbrechend:
 #   jeder Fehler = warn, der naechste Deploy versucht es erneut (idempotent).
 retire_credentials() {
@@ -390,11 +384,11 @@ retire_credentials() {
   return 0
 }
 
-# retire_stale <scope> [staging-ids...]  — EIN Einstieg fuer die Stilllegung: Workflows, dann Credentials, dann
-#   hoechstens EIN n8n-Neustart ZULETZT. Der Neustart darf nicht zwischen den Schritten liegen: /healthz meldet
-#   gesund, bevor die REST-API antwortet (live im Substrat: GET /credentials scheiterte direkt nach dem Neustart).
+# retire_stale <scope> [staging-ids...]  — ein Einstieg fuer die Stilllegung: Workflows, dann Credentials, dann
+#   hoechstens ein n8n-Neustart zuletzt. Der Neustart darf nicht zwischen den Schritten liegen: /healthz meldet
+#   gesund, bevor die REST-API antwortet (GET /credentials scheiterte direkt nach dem Neustart).
 #   Auch der Deploy-Fall "ein laufender Ausloeser liess sich vor dem Import nicht abmelden" (_DEPLOY_DEACT_FAILED,
-#   _deactivate_live_triggers) laeuft ueber DIESEN einen Neustart-Weg.
+#   _deactivate_live_triggers) laeuft ueber diesen einen Neustart-Weg.
 #   Test-Harnesses, die deploy_workflows auf einer Prod-Instanz herausgefiltert hat (_DEPLOY_HARNESS_RETIRE), raeumt
 #   derselbe Schritt mit denselben Schutzregeln ab.
 retire_stale() {
@@ -420,13 +414,13 @@ deploy_workflows() {
   local n8n_bin; n8n_bin="$(n8n_bin_path)"
   [ -n "$n8n_bin" ] || die "n8n-Binary nicht im PATH (install_n8n muss vorher laufen)."
 
-  # Scope-Praedikat aufbauen: package -> dessen agents; core -> alles NICHT-Nicht-Core.
+  # Scope-Praedikat aufbauen: package -> dessen agents; core -> alles, was keinem Nicht-Core-Paket gehoert.
   local incl_agents="" excl_agents=""
   if [ "$scope" = core ]; then excl_agents="$(_wf_noncore_agents)"
   else
     incl_agents="$(_wf_pkg_agents "$scope")"
-    # Agent-loses Paket (WS-0 Scaffold, z. B. career): nichts zu deployen -> sauberer No-op (frueher: die).
-    # So konvergiert pkg_install_one Stage 6 -> 7 (active) auch fuer ein Paket ohne provides.agents.
+    # Agent-loses Paket: nichts zu deployen -> sauberer No-op. So konvergiert pkg_install_one Stage 6 -> 7
+    # (active) auch fuer ein Paket ohne provides.agents.
     if [ -z "$incl_agents" ]; then
       log "Paket '$scope': keine provides.agents -> Workflow-Deploy uebersprungen."
       retire_stale "$scope"
@@ -439,18 +433,18 @@ deploy_workflows() {
   for d in "$REPO_ROOT"/packages/*/workflows; do [ -d "$d" ] && wf_dirs+=("$d"); done
   [ "${#wf_dirs[@]}" -gt 0 ] || die "Keine Workflow-Verzeichnisse."
 
-  # Live-Cred-Liste laden + Remap (NAME-Aufloesung) bauen. _list_existing_creds ist seit dem id-stabilen
-  # inject fail-closed (rc1 bei GET-Fehlschlag); deploy bleibt bewusst MILD (leere Liste -> Remap ggf.
-  # unvollstaendig -> unaufgeloeste Platzhalter werden nur gewarnt, kein Abbruch — anders als inject, das
-  # abbricht, weil es sonst blind IDs generieren wuerde).
+  # Live-Cred-Liste laden + Remap (Namens-Aufloesung) bauen. _list_existing_creds ist fail-closed (rc1 bei
+  # GET-Fehlschlag); deploy bleibt bewusst mild (leere Liste -> Remap ggf. unvollstaendig -> unaufgeloeste
+  # Platzhalter werden nur gewarnt, kein Abbruch — anders als inject, das abbricht, weil es sonst blind IDs
+  # generieren wuerde).
   local creds_ok=1
   _EXISTING_CREDS_JSON="$(_list_existing_creds)" || { warn "GET /credentials fehlgeschlagen -> Remap ggf. unvollstaendig."; _EXISTING_CREDS_JSON='[]'; creds_ok=0; }
   local remap_json; remap_json="$(_build_cred_remap "$scope")"
   # Test-Harnesses (*.test_harness) nur auf Test-Instanzen: Marker = TEST_HARNESS_SECRET gesetzt (Substrat-Erstlauf)
-  # ODER die installer-eigene Harness-Credential ('lifeagents test harness auth', inject_credentials.sh; bewusst
+  # oder die installer-eigene Harness-Credential ('lifeagents test harness auth', inject_credentials.sh; bewusst
   # nicht n8ns Standardname) existiert live (Folge-Deploys ohne das Secret in der Env, z. B. lifeagents update auf
   # dem Substrat). Sonst (Prod/Dev-Instanz) werden sie nicht gestaged und eine Live-Kopie per retire_stale entfernt —
-  # aber nur bei erfolgreich geladener Credential-Liste (fail-safe: bei GET-Fehler bleibt alles wie bisher).
+  # aber nur bei erfolgreich geladener Credential-Liste (fail-safe: bei GET-Fehler bleibt alles unveraendert).
   local keep_harness=1
   if [ -z "${TEST_HARNESS_SECRET:-}" ] && [ "$creds_ok" -eq 1 ] \
      && ! printf '%s' "$_EXISTING_CREDS_JSON" | jq -e 'any(.[]; .name == "lifeagents test harness auth" and .type == "httpHeaderAuth")' >/dev/null 2>&1; then
@@ -465,7 +459,7 @@ deploy_workflows() {
 
   local cfg_map; cfg_map="$(_schedule_placeholder_map)"
   printf '%s' "$cfg_map" | jq -e 'type == "object"' >/dev/null 2>&1 || cfg_map='{}'
-  # Geheime Telegram-Eingangs-ids je Instanz (Security-Audit 2026-10): der secret_token <workflowId>_<nodeId> und die
+  # Geheime Telegram-Eingangs-ids je Instanz: der secret_token <workflowId>_<nodeId> und die
   # Route <webhookId>/webhook stehen build-stabil im oeffentlichen Repo -> id + webhookId jedes telegramTrigger werden
   # hier aus INGRESS_ID_KEY (core.env, bootstrap_owner._ensure_ingress_id_key) abgeleitet. Ohne Schluessel: Abbruch
   # beim ersten Trigger-Workflow, nie ein Rueckfall auf die oeffentlichen ids.
@@ -507,7 +501,7 @@ deploy_workflows() {
         rm -rf "$staging"
         die "Eingangs-Schlüssel INGRESS_ID_KEY fehlt in core.env — ohne ihn wäre die Adresse der Übersicht öffentlich ableitbar. Abhilfe: 'lifeagents update' (bzw. provision.sh) erneut ausführen."
       fi
-      # Zeitplan-Platzhalter: NUR exakte String-Werte ersetzen (jq --argjson, kein sed — ein Cron enthaelt '/').
+      # Zeitplan-Platzhalter: nur exakte String-Werte ersetzen (jq --argjson, kein sed — ein Cron enthaelt '/').
       jq --argjson map "$remap_json" --argjson cfg "$cfg_map" --argjson hitl "$hitl_chat" --argjson ing "$ing_map" \
          --arg app "$app_path" '
         walk(
@@ -529,13 +523,13 @@ deploy_workflows() {
     done
   done
   if [ "$count" -eq 0 ]; then
-    # Ein Paket ohne (verbliebene) Workflows ist legitim (z. B. paperless v0.3.0: alle stillgelegt) — die
-    # Stilllegung MUSS trotzdem laufen, sonst blieben genau dann die Alt-Workflows/-Creds liegen.
+    # Ein Paket ohne (verbliebene) Workflows ist legitim (z. B. alle stillgelegt) — die Stilllegung muss
+    # trotzdem laufen, sonst blieben genau dann die Alt-Workflows/-Creds liegen.
     rm -rf "$staging"; note "Scope '$scope': keine Workflows im Baum."
     retire_stale "$scope"
     return 0
   fi
-  # Rest-Platzhalter = ein Zeitplan ohne Wert in core.config (Seed fehlt/DB nicht lesbar) -> abbrechen, BEVOR
+  # Rest-Platzhalter = ein Zeitplan ohne Wert in core.config (Seed fehlt/DB nicht lesbar) -> abbrechen, bevor
   # irgendetwas live geaendert wird (ein Platzhalter als Cron-Ausdruck liesse den Workflow nie oder falsch laufen).
   local missing; missing="$(grep -oh '__CFG_[A-Z0-9_]*__\|"__APP_PATH__"' "$staging"/*.json 2>/dev/null | sort -u | tr '\n' ' ' || true)"
   if [ -n "$missing" ]; then
@@ -544,7 +538,7 @@ deploy_workflows() {
   fi
   ok "$count Workflow(s) im Scope '$scope' gepatcht."
 
-  # Plan je Workflow (s. Kopf NUR GEAENDERTE): import | publish (unveraendert, aber nicht published) | skip.
+  # Plan je Workflow (s. Kopf „Nur Geaenderte“): import | publish (unveraendert, aber nicht published) | skip.
   # all_ids = das ganze Deploy-Set (Schutzliste fuer retire_stale); id-lose Dateien werden immer importiert.
   # Telegram-Trigger (refresh_ids): auch unveraendert jedes Mal ab- und wieder anmelden — bootstrap_owner::_wire_telegram
   # loescht bei JEDEM Installer-Lauf den Bot-Webhook (deleteWebhook), erst das Aktivieren setzt ihn neu (setWebhook).
@@ -579,7 +573,7 @@ deploy_workflows() {
     fi
   done
 
-  # Laufende Ausloeser (Zeitplaene, Bot-Webhook) der NEU einzuspielenden Workflows VOR dem Import abmelden (s.
+  # Laufende Ausloeser (Zeitplaene, Bot-Webhook) der neu einzuspielenden Workflows vor dem Import abmelden (s.
   # _deactivate_live_triggers) — sonst liefe ein geaenderter Zeitplan bis zum naechsten n8n-Neustart doppelt.
   # Dazu die Telegram-Trigger (refresh_ids, s. o.): das Aktivieren im Fixpunkt registriert ihren Webhook neu.
   if [ "$(( ${#import_ids[@]} + ${#refresh_ids[@]} ))" -gt 0 ]; then
@@ -613,8 +607,8 @@ deploy_workflows() {
     [ "$progressed" -eq 1 ] || break
   done
 
-  # Zustand der eingespielten Workflows festhalten — NACH dem Publish (der laesst die versionId stehen) und nur bei
-  # NEUER versionId: hat ein Import still nicht gegriffen (versionId wie vorher), bleibt der alte Eintrag und der
+  # Zustand der eingespielten Workflows festhalten — nach dem Publish (der laesst die versionId stehen) und nur bei
+  # neuer versionId: hat ein Import still nicht gegriffen (versionId wie vorher), bleibt der alte Eintrag und der
   # naechste Lauf spielt ihn erneut ein, statt ihn fuer immer zu ueberspringen.
   local upd="$staging/state.tsv" after
   local -A new_vid=()
@@ -630,7 +624,7 @@ deploy_workflows() {
   _wf_state_commit "$upd"
 
   rm -rf "$staging"
-  # Lief ein Workflow vor dem Import (wir haben ihn deaktiviert) und ist jetzt NICHT wieder aktiv, haben WIR ihn
+  # Lief ein Workflow vor dem Import (wir haben ihn deaktiviert) und ist jetzt nicht wieder aktiv, haben wir ihn
   # stillgelegt (z. B. ein Zeitplan-Workflow) -> laut warnen, nicht als erwartbarer Core-Pass-Hinweis verstecken.
   # DEPLOY_STRICT_ACTIVATE=1 (lifeagents config set schedule) macht daraus einen Fehler-Rueckgabewert.
   local lost=() p
@@ -646,7 +640,7 @@ deploy_workflows() {
     note "${#pending[@]} Workflow(s) nach $pass Pass/Pässen nicht published (ggf. Sub-Workflows noch nicht da oder Trigger ohne WEBHOOK_URL): ${pending[*]}"
   fi
   ok "Scope '$scope' deployed: $n_import neu eingespielt, $((${#publish_ids[@]} - ${#import_ids[@]})) nur (neu) veröffentlicht, $n_skip unverändert ($activated published/aktiviert)."
-  # KEIN Deploy-Restart (id-stabile Credentials + Deaktivieren vor dem Import; s. Kopf-Kommentar) — ausser
+  # Kein Deploy-Restart (id-stabile Credentials + Deaktivieren vor dem Import; s. Kopf-Kommentar) — ausser
   # retire_workflows entfernt einen stillgelegten Workflow mit eigenem aktiven Ausloeser, oder ein laufender
   # Ausloeser liess sich vor dem Import nicht abmelden.
   retire_stale "$scope" "${all_ids[@]}"   # startet n8n auch neu, wenn ein Ausloeser nicht abgemeldet werden konnte
@@ -654,27 +648,27 @@ deploy_workflows() {
   return 0
 }
 
-# === Telegram-Befehlsmenue (BotFather setMyCommands) — folgt den AKTIVEN Paketen, je Katalogsprache ===============
+# === Telegram-Befehlsmenue (BotFather setMyCommands) — folgt den aktiven Paketen, je Katalogsprache ===============
 # Hier (nicht in bootstrap_owner.sh), weil jeder Arm, der Pakete installiert/schaltet (provision.sh,
-# `lifeagents package|household|backup`), deploy_workflows.sh sourct (Install-UX-Phase 4).
+# `lifeagents package|household|backup`), deploy_workflows.sh sourct.
 #
-# Textkatalog Phase B (docs/package-contract.md §3.11): Telegram waehlt das Menue im Privatchat in der Reihenfolge
+# Textkatalog (docs/package-contract.md §3.11): Telegram waehlt das Menue im Privatchat in der Reihenfolge
 # Chat+language_code -> Chat -> AllPrivateChats(+lc) -> Default+language_code -> Default
 # (core.telegram.org/bots/api#determining-list-of-commands). Bei uns anders als „ein Menue je Person": das Menue
-# folgt der Sprache des TELEGRAM-PROGRAMMS (language_code), nicht der Personen-Sprache — n8n hat keine
+# folgt der Sprache des Telegram-Programms (language_code), nicht der Personen-Sprache — n8n hat keine
 # setMyCommands-Operation und sein Telegram-Credential kann der HTTP-Node nicht einsetzen (kein `authenticate`),
 # ein Menue je Person muesste bei jedem Sprachwechsel/Pairing aus n8n mit dem Bot-Token im Workflow gesetzt werden.
-# Darum setzt NUR der Host: je Katalogsprache L Default+lc=L und Owner-Chat+lc=L, dazu ohne lc Default + Owner-Chat
-# in der OWNER-Sprache (Fallback fuer andere App-Sprachen = die Kette Person -> Owner). Chat+lc schlaegt Chat -> kein
+# Darum setzt nur der Host: je Katalogsprache L Default+lc=L und Owner-Chat+lc=L, dazu ohne lc Default + Owner-Chat
+# in der Owner-Sprache (Fallback fuer andere App-Sprachen = die Kette Person -> Owner). Chat+lc schlaegt Chat -> kein
 # Verschatten. Texte = Katalog-Keys <pkg>.cmd.<name> direkt aus den getrackten locales/<lang>.json (Datei = Wahrheit,
 # der Host liest schon die Manifeste; Key fehlt -> en -> Befehlsname).
 
-# _push_bot_commands <bot-token> <cmds-json> <scope-json> <label> [<language_code>] — EINEN BotCommandScope (+ Sprache)
-# setzen + SOFORT verifizieren (Haus-Muster Sofort-Validierung, wie inject_credentials::_cred_test). <cmds-json>
+# _push_bot_commands <bot-token> <cmds-json> <scope-json> <label> [<language_code>] — einen BotCommandScope (+ Sprache)
+# setzen + sofort verifizieren (wie inject_credentials::_cred_test). <cmds-json>
 # ist die jq-c-Ausgabe (gueltiges kompaktes JSON), <scope-json> ein validiertes JSON-Fragment
 # ({"type":"default"} bzw. {"type":"chat","chat_id":N} mit numerisch-validierter N), <language_code> ein validierter
-# ISO-639-1-Code oder leer. Body per String-Konkatenation der JSON-Fragmente (KEIN Re-Parse durch jq -> keine
-# Double-Precision auf der chat_id). LEERE Liste -> skip (ein leeres commands-Array LOESCHT bei setMyCommands das
+# ISO-639-1-Code oder leer. Body per String-Konkatenation der JSON-Fragmente (kein Re-Parse durch jq -> keine
+# Double-Precision auf der chat_id). Leere Liste -> skip (ein leeres commands-Array loescht bei setMyCommands das
 # Scope-Menue -> nie senden). Best-effort: jeder curl-Fehler -> warn + weiter, nie die.
 _push_bot_commands() {
   local token="$1" cmds="$2" scope="$3" label="$4" lc="${5:-}"
@@ -708,8 +702,8 @@ _push_bot_commands() {
 
 
 # _bot_command_manifests — Manifest-Pfade, deren `commands`-Block ins Menue gehoert: core + jedes Paket mit
-# core.package_registry.status='active' (Install-UX-Phase 4: ein nicht installiertes/ausgeschaltetes Paket
-# bietet keine Befehle an, z. B. /notfall nur mit estate). DB nicht lesbar -> nur core (sicherer Default).
+# core.package_registry.status='active' (ein nicht installiertes/ausgeschaltetes Paket bietet keine Befehle
+# an, z. B. /notfall nur mit estate). DB nicht lesbar -> nur core (sicherer Default).
 _bot_command_manifests() {
   local p
   printf '%s\n' "$REPO_ROOT/packages/core/manifest.json"
@@ -742,14 +736,14 @@ _bot_menu_cmds() {
   printf '%s' "$out"
 }
 
-# Rollen-skopiertes BotFather-Menue aus den `commands`-Bloecken (WS-6; SoT je Paket-Manifest, Ableitungsregel
+# Rollen-skopiertes BotFather-Menue aus den `commands`-Bloecken (Quelle je Paket-Manifest, Ableitungsregel
 # im core commands._comment) von core + aktiven Paketen. Default {type:default} = visibility IN (member,all) fuer
-# jeden; Owner {type:chat,chat_id:OWNER} = visibility IN (owner,all) als Override NUR fuer den Owner-Chat. Je
+# jeden; Owner {type:chat,chat_id:OWNER} = visibility IN (owner,all) als Override nur fuer den Owner-Chat. Je
 # Katalogsprache (Core-Manifest languages.list) mit language_code, plus je ein Fallback ohne language_code in der
-# Owner-Sprache ZUM ZEITPUNKT DES SETZENS (agent.fn_person_lang; DB nicht lesbar -> de) — ein spaeterer /language-
+# Owner-Sprache zum Zeitpunkt des Setzens (agent.fn_person_lang; DB nicht lesbar -> de) — ein spaeterer /language-
 # Wechsel des Owners zieht erst beim naechsten Setzen nach (Update, Paket-Statuswechsel); betrifft nur Telegram-Programme
-# in einer Sprache AUSSERHALB des Katalogs, alle Katalogsprachen haben ihr eigenes Menue. Owner noch nicht gepairt (chat_id '0'/leer/nicht-
-# numerisch) -> Owner-Scopes UEBERSPRUNGEN; das Pairing (owner_connect.sh) setzt sie danach.
+# in einer Sprache ausserhalb des Katalogs, alle Katalogsprachen haben ihr eigenes Menue. Owner noch nicht gepairt (chat_id '0'/leer/nicht-
+# numerisch) -> Owner-Scopes uebersprungen; das Pairing (owner_connect.sh) setzt sie danach.
 _set_bot_command_menus() {
   local token="$1"
   need_cmd jq || { warn "jq fehlt -> Telegram-Befehlsmenue uebersprungen."; return 0; }
@@ -802,7 +796,7 @@ _sync_bot_username() {
 }
 
 # _ensure_app_secret <bot-token> — Pruef-Schluessel der Mini-App = HMAC_SHA256(key="WebAppData", msg=Bot-Token)
-#   (core.telegram.org/bots/webapps) nach core.app_secret (ACL wie core.backup_key). Bei JEDEM Install/Update neu
+#   (core.telegram.org/bots/webapps) nach core.app_secret (ACL wie core.backup_key). Bei jedem Install/Update neu
 #   abgeleitet (bootstrap_owner._wire_telegram, eigener Schritt, nicht am Menue haengend) -> ein Token-Wechsel greift
 #   sofort; geschrieben nur bei Aenderung. Token nur per stdin an openssl (printf = Builtin), der Schluessel nur per stdin
 #   an psql — nie im argv. Best-effort: Fehler -> warn (die App lehnt dann mit no_secret/bad_signature ab).
@@ -822,15 +816,15 @@ WHERE core.app_secret.webapp_key IS DISTINCT FROM EXCLUDED.webapp_key;\n" "$key"
   key=''
 }
 
-# _tg_set_menu_button <bot-token> <body-json> — EIN setChatMenuButton. Der Body traegt die je Instanz geheime App-Adresse
-#   -> URL UND Body nur ueber die curl-Config auf stdin (curl_cfg/curl_secret), nie im argv (/proc/<pid>/cmdline).
+# _tg_set_menu_button <bot-token> <body-json> — ein setChatMenuButton. Der Body traegt die je Instanz geheime App-Adresse
+#   -> URL und Body nur ueber die curl-Config auf stdin (curl_cfg/curl_secret), nie im argv (/proc/<pid>/cmdline).
 _tg_set_menu_button() {
   { curl_cfg url "${LIFEAGENTS_TELEGRAM_API:-https://api.telegram.org}/bot$1/setChatMenuButton"; curl_cfg data "$2"; } |
     curl_secret -fsS --max-time 10 -X POST -H 'content-type: application/json' >/dev/null 2>&1
 }
 
 # _set_bot_menu_buttons <bot-token> — der dauerhafte Knopf „📊 Übersicht“ links neben dem Eingabefeld
-#   (setChatMenuButton mit chat_id, Typ web_app; Text = core.app.menu_button in der Sprache der Person). NUR pro Chat
+#   (setChatMenuButton mit chat_id, Typ web_app; Text = core.app.menu_button in der Sprache der Person). Nur pro Chat
 #   fuer berechtigte Personen (app.enabled, app.audience owner|household, mind. ein Bildschirm eines aktiven Pakets),
 #   nie als Standard-Knopf: der waere fuer jeden Fremden sichtbar. Alle anderen bekannten Chats und alle Chats aus der
 #   Merkliste $LIFEAGENTS_DIR/app-menu-chats, die nicht mehr im Haushalt sind, bekommen das Befehlsmenue zurueck; ein
@@ -900,7 +894,7 @@ _set_bot_menu_buttons_run() {
   local token="$1" wh path url enabled audience screens ready prev=' ' rows tid role lang text tj uj body kind ok_n=0 reset_n=0
   local state="${LIFEAGENTS_DIR:-/etc/lifeagents}/app-menu-chats" core_loc keep=' ' seen=' ' got=' ' gen fails=0 listed
   need_cmd jq || return 0
-  # Generation VOR dem Lesen uebernehmen: was danach markiert wird, bleibt fuer den naechsten Lauf offen.
+  # Generation vor dem Lesen uebernehmen: was danach markiert wird, bleibt fuer den naechsten Lauf offen.
   gen="$(pg_su_psql -X -tA -d "$N8N_DB_NAME" -c "SELECT core.fn_menu_refresh_claim()->>'gen'" 2>/dev/null || true)"
   case "$gen" in ''|*[!0-9]*) gen='' ;; esac
   wh="$(read_env_value "${N8N_ENV_FILE:-/etc/n8n/n8n.env}" WEBHOOK_URL 2>/dev/null || true)"

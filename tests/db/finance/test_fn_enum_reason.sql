@@ -1,5 +1,5 @@
 -- tests/db/finance/test_fn_enum_reason.sql
--- Import-Haertung 2026-10-22: EIN Enum-Guard fuer alle Write-fns (unbekannter Wert -> korrigierbares {ok:false}
+-- Import-Haertung: ein Enum-Guard fuer alle Write-fns (unbekannter Wert -> korrigierbares {ok:false}
 -- statt Cast-RAISE + Owner-Alert). (1) leer/NULL -> NULL, (2) gueltiges Label -> NULL, (3) unbekannt -> Grund
 -- mit Feldname + Liste der erlaubten Werte (Reihenfolge = Enum-Reihenfolge), (4) kein Trim-Raten (Cast trimmt nicht).
 BEGIN;

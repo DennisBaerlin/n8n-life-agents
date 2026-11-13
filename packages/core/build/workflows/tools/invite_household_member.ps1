@@ -1,14 +1,14 @@
 ﻿#Requires -Version 5.1
 # Dot-gesourct von build.ps1 (Helper + Script-Scope-Creds im Parent-Scope).
 
-# --- agent.guide.tool_invite_household_member (WS-5a, owner-only Member-Einladung) ----
+# --- agent.guide.tool_invite_household_member (owner-only Member-Einladung) ----
 # Der Owner sagt im Chat "lade meine Tochter Lisa ein". Das Tool stellt eine Einladung aus:
-#   Check invite (READ, Owner-Gate + Person existiert & ungepairt -> ToolError VOR dem HITL)
+#   Check invite (read, Owner-Gate + Person existiert & ungepairt -> ToolError vor dem HITL)
 #   -> Approval-Summary -> HITL-Gate -> Run invite (fn_invite_household_member: re-validiert atomar
 #   + generiert Einmal-Code + armt die Challenge) -> Deep-Link t.me/<bot>?start=<code> zurueck.
-# AUTH ist NICHT $fromAI: chat_id wird deterministisch aus dem Guide-Start durchgereicht (wie alle
+# Auth ist nicht $fromAI: chat_id wird deterministisch aus dem Guide-Start durchgereicht (wie alle
 # guide-Tools); fn_check/fn_invite leiten die Owner-Identitaet aus der numerischen chat_id ab
-# (Privatchat: chat.id == from.id). Der bot_username kommt zur LAUFZEIT aus core.config (deployment-
+# (Privatchat: chat.id == from.id). Der bot_username kommt zur Laufzeit aus core.config (deployment-
 # spezifisch -> nicht build-gebacken). Das eigentliche Binden passiert spaeter ueber den callback_query-
 # Owner-Confirm im Orchestrator (Member loest ein -> Stage -> Owner-Tap committet).
 function Build-InviteHouseholdMember {
@@ -47,7 +47,7 @@ function Build-InviteHouseholdMember {
     $ifOk = Build-If 'Write ok?' @(1540, 0) "={{ `$json.ok }}" 'true' 'equals' 'boolean'
     $errFail = Build-ToolError 'Invite failed' @(1760, 200) "={{ `$('Run invite (atomic)').item.json.reason }}"
 
-    # Deep-Link: bot_username zur LAUFZEIT aus core.config (deployment-spezifisch, nicht build-gebacken).
+    # Deep-Link: bot_username zur Laufzeit aus core.config (deployment-spezifisch, nicht build-gebacken).
     $botCfg = Build-Pg 'Load bot username' @(1760, 0) `
         "=SELECT value AS bot FROM core.config WHERE category = 'telegram' AND key = 'bot_username';"
     $ret = Build-Return @(1980, 0) @(

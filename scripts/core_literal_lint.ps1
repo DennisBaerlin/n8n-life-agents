@@ -1,46 +1,40 @@
 ﻿#Requires -Version 5.1
-# core_literal_lint.ps1 -- Phase 0 (WS-0b) "kein neues Core-Paket-Literal" (hartes Gate, Vorbild approval_lint.ps1).
-# Verankert STRUKTURELL die Owner-Direktive (2026-06-28): der Core haelt KEINE neuen paket-spezifischen Hardcodes
-# (Routing/Domaenen-Branch auf 'finance'/'career'/...) -- ein zweites/N-tes Paket muss generisch andocken, nicht
-# via Hand-Edit am Core. Mechanik = RATCHET (Baseline-Allowlist): jedes HEUTE vorhandene Paket-Literal ist in
-# scripts/build/core_literal_allowlist.json mit Begruendung gelistet (legitimer finance-first-Default ODER Schuld,
-# die WS-0c entfernt). Der Lint erzwingt EXAKTE Uebereinstimmung Found<->Allowlist je (Datei, Literal):
-#   - Found > Allowlist  -> NEUES Paket-Literal (FAIL: generisch bauen oder mit Begruendung allowlisten);
-#   - Found < Allowlist  -> ein Literal wurde entfernt (FAIL: Allowlist-Eintrag schrumpfen = WS-0c-Fortschritt);
+# core_literal_lint.ps1 -- "kein neues Core-Paket-Literal" (hartes Gate).
+# Der Core haelt keine paket-spezifischen Hardcodes (Routing/Domaenen-Branch auf 'finance'/'career'/...); ein
+# weiteres Paket muss generisch andocken, nicht per Hand-Edit am Core. Mechanik = Ratchet (Baseline-Allowlist):
+# jedes vorhandene Paket-Literal steht in scripts/build/core_literal_allowlist.json mit Begruendung (legitimer
+# finance-first-Default oder abzubauende Schuld). Der Lint erzwingt exakte Uebereinstimmung Found<->Allowlist je (Datei, Literal):
+#   - Found > Allowlist  -> neues Paket-Literal (FAIL: generisch bauen oder mit Begruendung allowlisten);
+#   - Found < Allowlist  -> ein Literal wurde entfernt (FAIL: Allowlist-Eintrag schrumpfen);
 #   - Allowlist-Eintrag ohne Fund -> Orphan (FAIL: entfernen).
-# Erkannte Literale = EXAKT-Wert je Nicht-Core-Paket P (aus packages/<P>/): 'P', 'P_advisor', 'agent.P',
-#   'agent.P_advisor' (Domaenen-/Agent-/Routing-Kopplung) PLUS (Phase A) jeder in packages/<P>/manifest.json
-#   deklarierte Kontext-Name (z. B. 'finance_profile', 'financial_planning') -- KEIN Substring (so faellt
-#   'finance_accounts' NICHT faelschlich rein). Single- ODER Double-Quote.
-#   PLUS (Phase B) zwei UNGEQUOTETE Token-Klassen je Nicht-Core-Paket P: schema-qualifizierte Bezeichner
-#   'P.<ident>' (z. B. finance.fx_rates — eine Core-fn, die Paket-Tabellen liest, war genau die fx_rate-Naht) und
-#   die Paket-Rollen 'P_ro'/'P_rw' (z. B. die frueheren REVOKE ... FROM finance_ro). Wortgrenzen-genau mit negativem
-#   Lookbehind (real_estate. != estate., agent.finance.cron_x != finance.<ident>).
-#   PLUS (Phase C) die AGENT-NAMEN-Klasse: jeder in einem Nicht-Core-Manifest unter provides.agents[].name
-#   deklarierte Agent als 'agent.<name>' (auch als Praefix von agent.<name>.tool_x) und — wenn der Name ein '_'
-#   traegt — bar ('finance_advisor'); wortgrenzen-genau (agent.finance_chat_memory / finance_advisor_instructions
-#   sind KEINE Treffer). Bares 'finance' bleibt der Quoted-Klasse (englisches Wort in Prosa). Ein Treffer INNERHALB
-#   eines schon von der Quoted-Klasse gezaehlten Literals zaehlt nicht doppelt. Die Klasse existiert, weil der
-#   Verteiler-Prompt alle Paket-Agenten als Prosa nannte, ohne dass ein Waechter es sah.
-#   PLUS (Phase D) fuer die BAU-ENGINE scripts/build/**/*.ps1 eine STRENGE SEGMENT-Klasse statt der obigen: jedes
-#   Identifier-Wort ([A-Za-z0-9_]+) wird an '_' und Klein->Gross-Wechseln zerlegt, jedes Segment case-insensitiv gegen
-#   die Nicht-Core-Paketnamen verglichen (faengt Build-EstateCreateCase, $CRED_FINANCE_RW, 'finance\finance_cases.json',
-#   tool_extract_finance_document). Die Engine kennt GAR kein Paket — Allowlist-Eintraege dort nur mit reason 'doc:…'.
-#   Bewusst textbasiert ("bei uns anders" zu ESLint no-restricted-syntax/AST, arch-challenge Phase D): EIN Lint, EINE
-#   Engine fuer .ps1/.sql/.json/.md; Import-Graph-Tools (Nx/import-linter) passen nicht (das Leck ist ein Literal).
-#   Selbst-Asserts (synthetisches Paket 'zzp') laufen VOR jedem Scan — stirbt die Erkennung still, bricht der Lint.
-#   PLUS (Phase E) dieselbe Segment-Klasse fuer die TEST-TREIBER (jedes scripts/- bzw. scripts/dev/-Skript, das
-#   scripts/dev/test_n8n_state.ps1 dot-sourct, + der Helfer selbst + scripts/llm_suite_advice.ps1): Route-/Paket-/
-#   per-user-Agenten leiten sie aus Manifest bzw. Substrat-DB ab (Get-TestRouteAgent). Allowlist-Eintraege dort nur
-#   mit reason 'fixture:…' (Treiber-Default-Ziel, Fall-Szenario, Attrappe eines externen Paket-Dienstes) oder
-#   'doc:…'. Scope-Selbst-Asserts brechen ab, wenn die Treiber-Erkennung nichts mehr findet.
-# Scope: packages/core/build/**/*.ps1 + packages/core/db/**/*.sql (alle Klassen) + (Phase B) packages/core/manifest.json
-#   (alle Klassen) + packages/core/contexts/*.md (nur die ungequoteten Klassen — Prosa-Prompts) + (Phase D)
-#   scripts/build/**/*.ps1 (nur die Segment-Klasse; die Lint-Allowlist-JSONs dort sind Unterdrueckungs-Daten)
-#   + (Phase E) die Test-Treiber (nur die Segment-Klasse; Erkennung s. o.).
-#   AUSGENOMMEN: Kommentare (#-/--, quote-aware gestrippt), die unveraenderlichen Flyway-V-Migrationen
-#   (**/migrations/V*__*.sql = einmalige historische Daten-Backfills), generierte Dateien.
-# -Baseline: druckt die gefundenen (file,literal,count) als JSON-Geruest (reason:'TODO') -> Start fuer die Allowlist.
+# Erkannte Literal-Klassen je Nicht-Core-Paket P (aus packages/<P>/):
+#   - Quoted: exakter Wert 'P', 'P_advisor', 'agent.P', 'agent.P_advisor' (Domaenen-/Agent-/Routing-Kopplung) plus jeder in
+#     packages/<P>/manifest.json deklarierte Kontext-Name (z. B. 'finance_profile', 'financial_planning'); kein Substring
+#     ('finance_accounts' faellt nicht rein). Single- oder Double-Quote.
+#   - Token (ungequotet): schema-qualifizierte Bezeichner 'P.<ident>' (z. B. finance.fx_rates) und die Paket-Rollen
+#     'P_ro'/'P_rw'. Wortgrenzen-genau mit negativem Lookbehind (real_estate. != estate., agent.finance.cron_x != finance.<ident>).
+#   - Agent-Namen: jeder in einem Nicht-Core-Manifest unter provides.agents[].name deklarierte Agent als 'agent.<name>' (auch
+#     als Praefix von agent.<name>.tool_x) und, wenn der Name ein '_' traegt, bar ('finance_advisor'); wortgrenzen-genau
+#     (agent.finance_chat_memory / finance_advisor_instructions sind keine Treffer). Bares 'finance' bleibt der Quoted-Klasse
+#     (englisches Wort in Prosa). Ein Treffer innerhalb eines schon von der Quoted-Klasse gezaehlten Literals zaehlt nicht doppelt.
+#   - Segment (Bau-Engine scripts/build/**/*.ps1, statt der obigen): jedes Identifier-Wort ([A-Za-z0-9_]+) wird an '_' und
+#     Klein->Gross-Wechseln zerlegt, jedes Segment case-insensitiv gegen die Nicht-Core-Paketnamen verglichen (faengt
+#     Build-EstateCreateCase, $CRED_FINANCE_RW, 'finance\finance_cases.json', tool_extract_finance_document). Die Engine kennt
+#     kein Paket; Allowlist-Eintraege dort nur mit reason 'doc:...'. Bewusst textbasiert statt AST (ein Lint fuer
+#     .ps1/.sql/.json/.md; Import-Graph-Tools passen nicht, das Leck ist ein Literal).
+#   - Segment fuer Test-Treiber (jedes scripts/- bzw. scripts/dev/-Skript, das scripts/dev/test_n8n_state.ps1 dot-sourct, der
+#     Helfer selbst und scripts/llm_suite_advice.ps1): Route-/Paket-/per-user-Agenten leiten sie aus Manifest bzw. Substrat-DB
+#     ab (Get-TestRouteAgent). Allowlist-Eintraege dort nur mit reason 'fixture:...' (Treiber-Default-Ziel, Fall-Szenario,
+#     Attrappe eines externen Paket-Dienstes) oder 'doc:...'. Scope-Selbst-Asserts brechen ab, wenn die Treiber-Erkennung
+#     nichts mehr findet.
+# Selbst-Asserts (synthetisches Paket 'zzp') laufen vor jedem Scan; stirbt die Erkennung still, bricht der Lint.
+# Scope: packages/core/build/**/*.ps1 + packages/core/db/**/*.sql + packages/core/manifest.json (alle Klassen),
+#   packages/core/contexts/*.md (nur die ungequoteten Klassen, Prosa-Prompts), scripts/build/**/*.ps1 und die Test-Treiber
+#   (nur Segment; die Lint-Allowlist-JSONs in scripts/build sind Unterdrueckungs-Daten).
+#   Ausgenommen: Kommentare (#-/--, quote-aware gestrippt), die unveraenderlichen Flyway-V-Migrationen
+#   (**/migrations/V*__*.sql = einmalige Daten-Backfills), generierte Dateien.
+# Aufruf: .\scripts\core_literal_lint.ps1 [-Verbose]
+#   -Baseline druckt die gefundenen (file,literal,count) als JSON-Geruest (reason:'TODO') als Start fuer die Allowlist.
 # Exit-Code = Anzahl Fehler. Kein LLM, kein Netz, kein Substrat.
 param([switch]$Baseline, [switch]$Verbose)
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
@@ -50,15 +44,15 @@ $u8 = New-Object System.Text.UTF8Encoding($false)
 $fails = 0
 function Fail($m) { Write-Host "  [FAIL] $m" -ForegroundColor Red; $script:fails++ }
 
-# --- Paketnamen entdecken (Verzeichnisse unter packages/ ausser 'core') ----------------------------------------
+# --- Paketnamen entdecken (Verzeichnisse unter packages/ ausser 'core') ---
 $pkgNames = @(Get-ChildItem (Join-Path $RepoRoot 'packages') -Directory -ErrorAction SilentlyContinue |
     Where-Object { $_.Name -ne 'core' } | ForEach-Object { $_.Name })
 # Exakt-Wert-Set der zu erkennenden Literale (ohne Quotes); Lookup case-sensitiv.
 $litSet = New-Object System.Collections.Generic.HashSet[string]
 foreach ($p in $pkgNames) { foreach ($v in @($p, "${p}_advisor", "agent.$p", "agent.${p}_advisor")) { [void]$litSet.Add($v) } }
-# Phase A (Fakten-Konsolidierung): zusaetzlich jeder KONTEXT-Name, den ein Nicht-Core-Manifest deklariert
-# (context_validators/_scopes/_skeletons/_renderers-Keys, advisors.*.plan_context, protected_contexts)
-# -- ein Core, der z. B. 'finance_profile' literal nennt, koppelt sich genauso an ein Paket wie an dessen Namen.
+# Zusaetzlich jeder Kontext-Name, den ein Nicht-Core-Manifest deklariert (context_validators/_scopes/_skeletons/
+# _renderers-Keys, advisors.*.plan_context, protected_contexts): ein Core, der z. B. 'finance_profile' literal
+# nennt, koppelt sich genauso an ein Paket wie an dessen Namen.
 foreach ($p in $pkgNames) {
     $mfPath = Join-Path $RepoRoot "packages\$p\manifest.json"
     if (-not (Test-Path $mfPath)) { continue }
@@ -73,7 +67,7 @@ foreach ($p in $pkgNames) {
     }
     foreach ($n in @($mj.protected_contexts)) { if ($n) { [void]$litSet.Add([string]$n) } }
 }
-# Phase C: Agent-Namen der Nicht-Core-Pakete (Extraktion wie build.ps1/lib/agent_routing.ps1).
+# Agent-Namen der Nicht-Core-Pakete (Extraktion wie build.ps1/lib/agent_routing.ps1)
 $agentNames = @()
 foreach ($p in $pkgNames) {
     $mfPath = Join-Path $RepoRoot "packages\$p\manifest.json"
@@ -86,7 +80,7 @@ foreach ($p in $pkgNames) {
     }
 }
 
-# --- Kommentar-Anteil quote-aware strippen (entfernt #-/--Kommentar, achtet auf '...'/"...") --------------------
+# --- Kommentar-Anteil quote-aware strippen (#-/--Kommentar; '...'/"..." bleiben) ---
 function Get-CodePart {
     param([string]$Line, [string]$Kind)   # Kind = 'ps' (#) | 'sql' (--)
     $inS = $false; $inD = $false
@@ -102,18 +96,18 @@ function Get-CodePart {
     return $Line
 }
 
-# --- In-Scope-Dateien sammeln ----------------------------------------------------------------------------------
+# --- In-Scope-Dateien sammeln ---
 $targets = @()
 $targets += Get-ChildItem (Join-Path $RepoRoot 'packages\core\build') -Recurse -Filter '*.ps1' -ErrorAction SilentlyContinue
 $targets += Get-ChildItem (Join-Path $RepoRoot 'packages\core\db')    -Recurse -Filter '*.sql' -ErrorAction SilentlyContinue
 $targets += Get-Item (Join-Path $RepoRoot 'packages\core\manifest.json') -ErrorAction SilentlyContinue
 $targets += Get-ChildItem (Join-Path $RepoRoot 'packages\core\contexts') -Filter '*.md' -ErrorAction SilentlyContinue
-$targets += Get-ChildItem (Join-Path $RepoRoot 'scripts\build') -Recurse -Filter '*.ps1' -ErrorAction SilentlyContinue   # Phase D: Bau-Engine
-# Phase E: Test-Treiber = jedes Skript unter scripts/ bzw. scripts/dev/, das den gemeinsamen n8n-Test-Helfer
+$targets += Get-ChildItem (Join-Path $RepoRoot 'scripts\build') -Recurse -Filter '*.ps1' -ErrorAction SilentlyContinue   # Bau-Engine
+# Test-Treiber = jedes Skript unter scripts/ bzw. scripts/dev/, das den gemeinsamen n8n-Test-Helfer
 # scripts/dev/test_n8n_state.ps1 dot-sourct (jeder n8n-Tier muss das: Verbindung + Container-DB), plus der Helfer
 # selbst und scripts/llm_suite_advice.ps1. Inhalts- statt Namens-Kriterium: Lints wie config_test.ps1 tragen
 # andere Ratchets und gehoeren nicht hierher. Scope-Selbst-Asserts: der Helfer existiert und je Verzeichnis
-# findet sich >= 1 Treiber — sonst stirbt der Schutz still beim Verschieben/Umbenennen.
+# findet sich >= 1 Treiber, sonst stirbt der Schutz still beim Verschieben/Umbenennen.
 $driverSet = @{}
 $helperRel = 'scripts/dev/test_n8n_state.ps1'
 if (-not (Test-Path (Join-Path $RepoRoot $helperRel))) { Fail "Scope-Selbst-Assert: $helperRel fehlt -- Treiber-Erkennung tot (Pfad anpassen)" }
@@ -133,12 +127,12 @@ foreach ($rel in $driverSet.Keys) { $p = Join-Path $RepoRoot $rel; if (Test-Path
 function Test-IsDriver([string]$Rel) { return $script:driverSet.ContainsKey($Rel) }
 # Quoted-Literal-Regex: faengt '...'/"..." Inhalt; danach Exakt-Wert-Test gegen $litSet.
 $quoteRx = [regex]"'([^']*)'|""([^""]*)"""
-# Phase B: ungequotete Token-Klassen (schema-qualifizierte Paket-Bezeichner + Paket-Rollen), wortgrenzen-genau.
+# Ungequotete Token-Klassen (schema-qualifizierte Paket-Bezeichner + Paket-Rollen), wortgrenzen-genau.
 function New-TokenRx([string[]]$Pkgs) {
     $alt = ($Pkgs | ForEach-Object { [regex]::Escape($_) }) -join '|'
     if ($alt) { [regex]"(?<![A-Za-z0-9_.])(?:(?:$alt)\.[a-z_][a-z0-9_]*|(?:$alt)_(?:ro|rw)(?![A-Za-z0-9_]))" } else { $null }
 }
-# Phase C: Agent-Namen-Klasse (agent.<name> immer; bar nur Namen mit '_'), laengste Alternative zuerst.
+# Agent-Namen-Klasse (agent.<name> immer; bar nur Namen mit '_'), laengste Alternative zuerst.
 function New-AgentRx([string[]]$Names) {
     $all = @($Names | Sort-Object Length -Descending | ForEach-Object { [regex]::Escape($_) })
     $bare = @($Names | Where-Object { $_ -match '_' } | Sort-Object Length -Descending | ForEach-Object { [regex]::Escape($_) })
@@ -150,7 +144,7 @@ function New-AgentRx([string[]]$Names) {
 $tokenRx = New-TokenRx $pkgNames
 $agentRx = New-AgentRx $agentNames
 
-# Phase D: Segment-Klasse der Bau-Engine. Liefert je Identifier-Wort, das ein Paket-Segment traegt, das Wort selbst.
+# Segment-Klasse (Bau-Engine, Test-Treiber): liefert je Identifier-Wort mit Paket-Segment das Wort selbst.
 function Get-SegmentHits([string]$Code, [string[]]$Pkgs) {
     $set = @{}; foreach ($p in $Pkgs) { $set[$p.ToLowerInvariant()] = $true }
     $hits = New-Object System.Collections.Generic.List[string]
@@ -164,7 +158,7 @@ function Get-SegmentHits([string]$Code, [string[]]$Pkgs) {
     return $hits.ToArray()
 }
 
-# Treffer EINER (bereits kommentar-gestrippten) Zeile -> Liste der Literal-Werte. Reihenfolge: Token-Klasse,
+# Treffer einer (bereits kommentar-gestrippten) Zeile -> Liste der Literal-Werte. Reihenfolge: Token-Klasse,
 # Quoted-Klasse (nicht in md), Agent-Klasse (ohne Treffer innerhalb eines schon gezaehlten Quoted-Literals).
 function Get-LineHits([string]$Code, [string]$Kind, $TokRx, $QRx, $Lits, $AgRx) {
     $hits = New-Object System.Collections.Generic.List[string]
@@ -186,7 +180,7 @@ function Get-LineHits([string]$Code, [string]$Kind, $TokRx, $QRx, $Lits, $AgRx) 
     return $hits.ToArray()   # entrollt in die Pipeline; Aufrufer sammeln mit @(...) (leer = @())
 }
 
-# --- Selbst-Asserts (synthetisches Paket 'zzp' mit Agenten zzp + zzp_advisor) — unbedingt, vor dem Scan ---------
+# --- Selbst-Asserts (synthetisches Paket 'zzp' mit Agenten zzp + zzp_advisor), unbedingt vor dem Scan ---
 $tLits = New-Object System.Collections.Generic.HashSet[string]
 foreach ($v in @('zzp', 'zzp_advisor', 'agent.zzp', 'agent.zzp_advisor')) { [void]$tLits.Add($v) }
 $tTok = New-TokenRx @('zzp'); $tAg = New-AgentRx @('zzp', 'zzp_advisor')
@@ -205,7 +199,7 @@ foreach ($sc in $selfCases) {
         Fail "Selbst-Assert: '$($sc.c)' ($($sc.k)) -> erwartet [$(@($sc.want) -join ', ')], gefunden [$($got -join ', ')] -- Erkennung defekt, Lint-Ergebnis waere wertlos"
     }
 }
-# Phase D: Segment-Klasse (Bau-Engine) — inkl. Kommentar-Strip (ganze Zeile + angehaengt, quote-aware).
+# Segment-Klasse inkl. Kommentar-Strip (ganze Zeile + angehaengt, quote-aware)
 $segCases = @(
     @{ c = '${function:Build-ZzpCreateX}';                    want = @('ZzpCreateX') },
     @{ c = '$CRED_POSTGRES = $CRED_ZZP_RW';                    want = @('CRED_ZZP_RW') },
@@ -241,7 +235,7 @@ foreach ($f in ($targets | Sort-Object FullName -Unique)) {
     }
 }
 
-# --- Baseline-Modus: Allowlist-Geruest drucken ----------------------------------------------------------------
+# --- Baseline-Modus: Allowlist-Geruest drucken ---
 if ($Baseline) {
     $entries = foreach ($k in ($found.Keys | Sort-Object)) {
         $p = $k -split '\|', 2
@@ -252,7 +246,7 @@ if ($Baseline) {
     exit 0
 }
 
-# --- Allowlist laden + selbst-konsistent pruefen ---------------------------------------------------------------
+# --- Allowlist laden + Selbstkonsistenz pruefen ---
 $alPath = Join-Path $RepoRoot 'scripts\build\core_literal_allowlist.json'
 if (-not (Test-Path $alPath)) { Fail "Allowlist fehlt: $alPath (mit -Baseline erzeugen + Begruendungen eintragen)"; Write-Host "core_literal_lint: $fails Fehler" -ForegroundColor Red; exit $fails }
 $al = [System.IO.File]::ReadAllText($alPath, $u8) | ConvertFrom-Json
@@ -266,7 +260,7 @@ foreach ($e in $al.allow) {
     $allow[$key] = [int]$e.count
 }
 
-# --- Abgleich Found <-> Allowlist (exakt je (Datei, Literal)) --------------------------------------------------
+# --- Abgleich Found <-> Allowlist (exakt je (Datei, Literal)) ---
 foreach ($key in ($found.Keys | Sort-Object)) {
     $p = $key -split '\|', 2
     if (-not $allow.ContainsKey($key)) {

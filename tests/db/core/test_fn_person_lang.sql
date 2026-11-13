@@ -1,6 +1,6 @@
 -- tests/db/core/test_fn_person_lang.sql
 -- agent.fn_person_lang(person_id): Sprache + Intl-Locale eines Empfaengers fester Texte.
---   Fallback-Kette: Person -> Owner -> 'en'; ein (nicht mehr) unterstuetzter Code faellt ebenfalls zurueck.
+--   Fallback-Kette: Person -> Owner -> 'en'; ein nicht unterstuetzter Code faellt ebenfalls zurueck.
 --   person_id NULL -> Owner-Sprache.
 BEGIN;
 
@@ -40,7 +40,7 @@ BEGIN
   IF r->>'lang' IS DISTINCT FROM 'en' OR r->>'locale' IS DISTINCT FROM 'en-GB' THEN
     RAISE EXCEPTION 'FAIL person_lang [Fallback en: %]', r; END IF;
 
-  -- ein nicht mehr gelisteter Code (Sprache entfernt) faellt zurueck statt zu brechen
+  -- ein nicht gelisteter Code (Sprache entfernt) faellt zurueck statt zu brechen
   ALTER TABLE agent.core_contexts DISABLE TRIGGER trg_validate_household_facts;
   UPDATE agent.core_contexts SET metadata = jsonb_set(metadata, '{facts,persons,1,language}', '"fr"')
    WHERE name = 'family';

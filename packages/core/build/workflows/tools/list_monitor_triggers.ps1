@@ -2,13 +2,13 @@
 # Dot-gesourct von build.ps1 (Helper + Script-Scope-Creds im Parent-Scope).
 
 # --- agent.tool_list_monitor_triggers (CROSS-AGENT, READ-ONLY) ----------------
-# Listet die bestehenden Monitor-Trigger EINER Domain (Label + Typ + Status + kompakte
+# Listet die bestehenden Monitor-Trigger einer Domain (Label + Typ + Status + kompakte
 # Spec-Zeile) ueber das publizierte Core-Lesefenster core.fn_list_monitor_triggers.
-# Binder: agent.finance_advisor (domain FIX 'finance') — der Advisor liest sie beim
-# Plan-Publish, um Dubletten zu vermeiden und nur NEUE Trigger vorzuschlagen.
-# GENERISCH: jeder Fach-Advisor bindet dasselbe Tool mit seiner domain (fixer Binding-Input).
-# KEIN HITL (reiner Read). Die fn ist SECURITY DEFINER (publiziertes Lesefenster fuer die <pkg>_ro-Rollen,
-# D10) + Content-Guard (spec_summary nur aus typisierten Spalten, kein Freitext-Echo).
+# Binder: agent.finance_advisor (domain fix 'finance'); der Advisor liest sie beim
+# Plan-Publish, um Dubletten zu vermeiden und nur neue Trigger vorzuschlagen.
+# Generisch: jeder Fach-Advisor bindet dasselbe Tool mit seiner domain (fixer Binding-Input).
+# Kein HITL (reiner Read). Die fn ist SECURITY DEFINER (publiziertes Lesefenster fuer die <pkg>_ro-Rollen)
+# + Content-Guard (spec_summary nur aus typisierten Spalten, kein Freitext-Echo).
 function Build-ListMonitorTriggers {
     $trig = Build-Trigger @('domain')
 

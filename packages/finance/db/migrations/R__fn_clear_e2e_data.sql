@@ -1,13 +1,14 @@
 -- ============================================================
--- fn_clear_e2e_data (GEGUARDETES TEST-CLEANUP, finance-Teil — KEIN Produktiv-Tool)
---   Paket-Hook der Konvention <pkg>.fn_clear_e2e_data(text) (Phase B, docs/package-contract.md §6): der Core-
---   Dispatcher agent.fn_clear_e2e_data ruft ihn je installiertem Paket. Loescht ALLE finance-E2E-Entitaeten mit
+-- fn_clear_e2e_data (geguardetes Test-Cleanup, finance-Teil, kein Produktiv-Tool)
+--   Paket-Hook der Konvention <pkg>.fn_clear_e2e_data(text) (docs/package-contract.md §6): der Core-
+--   Dispatcher agent.fn_clear_e2e_data ruft ihn je installiertem Paket. Loescht alle finance-E2E-Entitaeten mit
 --   dem Sentinel-Marker '__E2E__', FK-sicher und atomar (laeuft in der Transaktion des Dispatchers).
---   GUARD 1 (Pre-Assertion): jede eingesammelte Konto-ID MUSS den Marker tragen + Runaway-Obergrenze -> bricht VOR
---     jedem DELETE ab. GUARD 2 (Post-Assertion): keine finance-Sentinel-Zeile darf zurueckbleiben.
+--   Guard 1 (Pre-Assertion): jede eingesammelte Konto-ID muss den Marker tragen + Runaway-Obergrenze -> bricht vor
+--     jedem DELETE ab. Guard 2 (Post-Assertion): keine finance-Sentinel-Zeile darf zurueckbleiben.
 --   Jeder DELETE ist sentinel-/account-scoped (eine Instandhaltungsruecklage einer Sentinel-Immobilie zaehlt als
---   Sentinel, auch ohne Marker im Namen: sonst blockiert ihr FK RESTRICT den Immobilien-DELETE). p_runid: NULL/'' = generischer Sweep, sonst nur '__E2E_<runid>__'.
---   RUECKGABE: flache Zaehler {accounts, transactions, holdings, savings_plans, insurances, loans, savings_goals,
+--   Sentinel, auch ohne Marker im Namen: sonst blockiert ihr FK RESTRICT den Immobilien-DELETE).
+--   Eingabe: p_runid (optional); NULL/'' = generischer Sweep, sonst nur '__E2E_<runid>__'.
+--   Rueckgabe: flache Zaehler {accounts, transactions, holdings, savings_plans, insurances, loans, savings_goals,
 --     real_estate, pension, recurring_payments, interest_rates, balances, import_staging}
 --   Tests: tests/db/core/test_fn_clear_e2e_data.sql
 -- ============================================================
@@ -39,7 +40,7 @@ BEGIN
     ) s;
     v_n := COALESCE(array_length(v_acct, 1), 0);
 
-    -- GUARD 1: jede eingesammelte ID MUSS den Marker tragen ("Enthalten"-Pattern wegen 'Kredit __E2E__ ...').
+    -- Guard 1: jede eingesammelte ID muss den Marker tragen ("Enthalten"-Pattern wegen 'Kredit __E2E__ ...').
     IF EXISTS (SELECT 1 FROM finance.accounts WHERE id = ANY(v_acct) AND name NOT LIKE v_pat_any) THEN
         RAISE EXCEPTION 'fn_clear_e2e_data GUARD: Nicht-Sentinel-Konto in Löschmenge — Abbruch';
     END IF;
@@ -47,7 +48,7 @@ BEGIN
         RAISE EXCEPTION 'fn_clear_e2e_data GUARD: % Sentinel-Konten > Obergrenze % — Abbruch', v_n, v_max;
     END IF;
 
-    -- Recurring-Payments: referenziert von Sentinel-Stammdaten ODER von/auf ein Sentinel-Konto.
+    -- Recurring-Payments: referenziert von Sentinel-Stammdaten oder von/auf ein Sentinel-Konto.
     SELECT COALESCE(array_agg(DISTINCT rp_id), ARRAY[]::int[]) INTO v_rp FROM (
         SELECT recurring_payment_id AS rp_id FROM finance.insurances    WHERE name LIKE v_pat AND recurring_payment_id IS NOT NULL
         UNION SELECT recurring_payment_id    FROM finance.loans         WHERE name LIKE v_pat AND recurring_payment_id IS NOT NULL
@@ -85,7 +86,7 @@ BEGIN
     -- 5. Recurring-Payments (jetzt referenzfrei)
     DELETE FROM finance.recurring_payments WHERE id = ANY(v_rp);  GET DIAGNOSTICS v_rpc = ROW_COUNT;
 
-    -- 6. Zins-Raten + Zins-Skips (ON DELETE CASCADE griffe; explizit fuer Klarheit)
+    -- 6. Zins-Raten + Zins-Skips (ON DELETE CASCADE griffe ohnehin; explizit der Klarheit halber)
     DELETE FROM finance.account_interest_rates WHERE account_id = ANY(v_acct);  GET DIAGNOSTICS v_ir = ROW_COUNT;
     DELETE FROM finance.interest_skips WHERE account_id = ANY(v_acct);
 
@@ -99,7 +100,7 @@ BEGIN
     DELETE FROM finance.import_staging WHERE payload::text LIKE v_pat_any;  GET DIAGNOSTICS v_stg = ROW_COUNT;
     DELETE FROM finance.setup_session WHERE chat_id LIKE 'test_%';
 
-    -- GUARD 2: keine finance-Sentinel-Zeile darf zurueckbleiben.
+    -- Guard 2: keine finance-Sentinel-Zeile darf zurueckbleiben.
     IF EXISTS (SELECT 1 FROM finance.accounts     WHERE name LIKE v_pat)
     OR EXISTS (SELECT 1 FROM finance.insurances    WHERE name LIKE v_pat)
     OR EXISTS (SELECT 1 FROM finance.loans         WHERE name LIKE v_pat)

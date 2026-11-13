@@ -1,27 +1,24 @@
-# fetch_release.sh — gespiegelte Fetch-Bibliothek der Runtime (`lifeagents update`, Phase 6b).
+# fetch_release.sh — gespiegelte Fetch-Bibliothek der Runtime (`lifeagents update`).
 #
-# NICHT von provision.sh gesourct (der Applier laeuft auf einem bereits vorliegenden Baum). Gesourct
-# von der `lifeagents`-CLI (fuer `update` nur zusammen mit common.sh — keine release_inputs.sh-Helfer nutzen):
-# fetch_and_run_release() laedt den getrackten Baum eines getaggten Releases als SHA256-
-# verifiziertes Asset, entpackt ihn und exec't den NEUEN `provision.sh`
-# (self-replacing, rustup-Muster `rustup self update`). Ruft NIE install.sh (der Wegwerf-Bootstrap
-# lebt nicht in der Runtime).
+# Nie von provision.sh gesourct (der Applier laeuft auf einem bereits vorliegenden Baum). Gesourct von der
+# `lifeagents`-CLI (fuer `update` nur zusammen mit common.sh — keine release_inputs.sh-Helfer nutzen):
+# fetch_and_run_release() laedt den getrackten Baum eines getaggten Releases als SHA256-verifiziertes
+# Asset, entpackt ihn und exec't den neuen `provision.sh` (self-replacing). Ruft nie install.sh (der
+# Wegwerf-Bootstrap lebt nicht in der Runtime).
 #
-# Der Bootstrap-Launcher install.sh nutzt DIESELBE Mechanik inline/self-contained (bewusste kleine
-# Doppelung Bootstrap<->Runtime, exakt das rustup-Muster `sh.rustup.rs` != `rustup self update`); der
-# Download-Block `# >>> gh-download` ist in beiden Dateien byte-gleich (contract_lint Check 23).
+# Der Bootstrap-Launcher install.sh nutzt dieselbe Mechanik inline/self-contained (bewusste kleine
+# Doppelung Bootstrap<->Runtime); der Download-Block `# >>> gh-download` ist in beiden Dateien
+# byte-gleich (contract_lint Check 23).
 #
-# Sicherheitsmodell (Sigstore "safer curl|bash"): NIE blind `curl … | bash`. Erst Datei + Pruefsumme
-# holen, die Pruefsumme VOR dem Entpacken/Ausfuehren verifizieren, dann den verifizierten Baum starten.
+# Sicherheitsmodell: Datei + Pruefsumme holen, die Pruefsumme vor dem Entpacken/Ausfuehren verifizieren,
+# dann den verifizierten Baum starten.
 #
-# EIN Weg (Owner-Entscheid 2026-10-24, oeffentliches Repo): der Download ist immer anonym — kein Token, keine
-# Token-Frage, kein Auth-Header. Ein alter GH_TOKEN aus der privaten Zeit wird nie gelesen; provision.sh
-# entfernt ihn aus den Env-Dateien (drop_legacy_repo_token).
+# Der Download ist immer anonym (oeffentliches Repo) — kein Token, keine Token-Frage, kein Auth-Header. Ein
+# alter GH_TOKEN wird nie gelesen; provision.sh entfernt ihn aus den Env-Dateien (drop_legacy_repo_token).
 #
-# Exec't provision.sh OHNE Argument-Filter (provision.sh kennt kein --version) -> reicht die Passthrough-Args
-# direkt durch.
-# Zweiter Einstieg (Install-UX-Phase 7): run_installed_release = derselbe exec-Schwanz (_exec_applier) auf einer Kopie
-# des INSTALLIERTEN Baums, ohne Download (`lifeagents reconfigure`).
+# provision.sh bekommt die Passthrough-Args ohne Filter (es kennt kein --version).
+# Zweiter Einstieg: run_installed_release = derselbe exec-Schwanz (_exec_applier) auf einer Kopie des
+# installierten Baums, ohne Download (`lifeagents reconfigure`).
 
 # Release-Quelle (PROVISION_REPO_SLUG, PROVISION_GH_API) lebt in common.sh — geteilt mit dem Rueckweg-Hinweis
 # (upgrade_guard.sh); install.sh traegt als self-contained Bootstrap bewusst eine eigene Kopie.
@@ -161,12 +158,12 @@ _ensure_release_deps() {
 
 # fetch_and_run_release [tag] [provision-args...]  — der `lifeagents update`-Pfad. Laedt + verifiziert
 # + entpackt das Release und exec't den gepinnten provision.sh (Passthrough-Args). Kehrt nie zurueck
-# (exec) — bei jedem Fehler `die` (Abbruch VOR jeder Aenderung am System). tag default 'latest'.
+# (exec) — bei jedem Fehler `die` (Abbruch vor jeder Aenderung am System). tag default 'latest'.
 # Arbeitsverzeichnis: bei jedem Abbruch per EXIT-Trap weg; `exec` des Appliers loest keinen Trap aus (wie install.sh).
 fetch_and_run_release() {
   local tag="${1:-latest}"; [ "$#" -gt 0 ] && shift || true
   require_root
-  # Die Sperre vor allem Lesen der VERSION (_refuse_downgrade): ein zweites Update neben einem laufenden sonst sah die alte
+  # Die Sperre vor jedem Lesen der VERSION (_refuse_downgrade): ein zweites Update neben einem laufenden sah sonst die alte
   # Version und liess einen Rueckschritt durch. Der Applier erbt sie (fd 9 + LIFEAGENTS_UPDATE_LOCK_HELD, exec-fest).
   update_lock_acquire "${LIFEAGENTS_UPDATE_LOCK_WAIT_S:-30}" \
     || die_because locked "Gerade läuft schon ein Update oder eine Einrichtung (Sperre ${LIFEAGENTS_UPDATE_LOCK}) — danach erneut starten."
@@ -179,7 +176,7 @@ fetch_and_run_release() {
   _REL_WORK="$work"
   trap 'rm -rf "${_REL_WORK:-}"' EXIT
   local rel="$work/release.json"
-  # 'latest' (= `lifeagents update`): /releases/latest liefert das neueste NICHT-prerelease, NICHT-draft Release
+  # 'latest' (= `lifeagents update`): /releases/latest liefert das neueste Nicht-prerelease, Nicht-draft Release
   # samt Assets -> kein zweiter Aufruf je Tag noetig.
   if [ "$tag" = "latest" ]; then
     log "Neuestes Release ermitteln (/releases/latest) ..."
@@ -193,10 +190,10 @@ fetch_and_run_release() {
   log "Release ${tag} von ${PROVISION_REPO_SLUG} laden (SHA256-verifiziert) ..."
 
   local tarball_name="${PROVISION_ASSET_BASENAME}-${tag}.tar.gz"
-  # Pruefen VOR dem Entpacken (gh-download-Block): Unterschrift + Pruefsummenliste gegen den installierten
-  # Schluesselbund. Fehlt er, bricht das Update ab (Security-Audit 2026-10): seit v0.14.0 bringt jede Installation ihn
-  # mit — ein fehlender Bund hiesse sonst still "nur SHA256 aus demselben Release" (keine Echtheit). Den Bund holt
-  # install.sh zurueck (der Schluessel ist dort eingebettet). Bricht ab, bevor irgendetwas entpackt oder ausgefuehrt wird.
+  # Pruefen vor dem Entpacken (gh-download-Block): Unterschrift + Pruefsummenliste gegen den installierten
+  # Schluesselbund. Fehlt er, bricht das Update ab: jede Installation bringt ihn mit — ein fehlender Bund hiesse
+  # sonst still "nur SHA256 aus demselben Release" (keine Echtheit). Den Bund holt install.sh zurueck (der
+  # Schluessel ist dort eingebettet). Bricht ab, bevor irgendetwas entpackt oder ausgefuehrt wird.
   result_set stage verify
   local kr; kr="$(_release_keyring)"
   [ -n "$kr" ] || die_because signature "Der Release-Signierschlüssel fehlt (/etc/lifeagents/release-signing.gpg) — ohne ihn lässt sich die Echtheit eines Updates nicht prüfen, ABBRUCH. Abhilfe: das Installationsskript install.sh erneut ausführen (es bringt den Schlüssel mit und behält deine Daten)."
@@ -208,7 +205,7 @@ fetch_and_run_release() {
   [ -n "$applier" ] || die "Im Asset fehlt provisioning/provision.sh (unvollstaendiges Release)."
   ok "Release ${tag} entpackt nach ${applier%/provisioning/provision.sh}"
 
-  # Docker-Verbund: das Release bringt ein eigenes master-Image (lib/master_swap.sh). Ziel aus der GEPRUEFTEN compose.yml;
+  # Docker-Verbund: das Release bringt ein eigenes master-Image (lib/master_swap.sh). Ziel aus der geprueften compose.yml;
   # ist es nicht das laufende, uebernimmt der Helfer (der master endet hier) und der neue master setzt fort.
   if rt_is_compose; then
     local _tree="${applier%/provisioning/provision.sh}" _target
@@ -240,7 +237,7 @@ _refuse_downgrade() {
 }
 
 # _release_keyring -> Pfad des installierten Release-Schluesselbunds auf stdout (leer = diese Installation prueft noch keine
-#   Unterschrift). Fest in /etc (install_release_keyring legt es einmal an, ein Update ueberschreibt es nie); der Override
+#   Unterschrift). Liegt fest in /etc (install_release_keyring legt es einmal an, ein Update ueberschreibt es nie); der Override
 #   LIFEAGENTS_RELEASE_KEYRING dient nur Tests (Prozess-Env von root). Immer rc 0.
 _release_keyring() {
   local k="${LIFEAGENTS_RELEASE_KEYRING:-/etc/lifeagents/release-signing.gpg}"
@@ -248,8 +245,8 @@ _release_keyring() {
   return 0
 }
 
-# _release_workdir_new -> frisches Arbeitsverzeichnis fuer einen Applier-Lauf auf stdout. Raeumt dabei die Reste FRUEHERER
-#   Laeufe ab: der Applier startet per exec, danach kann niemand mehr aufraeumen — also raeumt der naechste Lauf (es bleibt
+# _release_workdir_new -> frisches Arbeitsverzeichnis fuer einen Applier-Lauf auf stdout. Raeumt dabei die Reste
+#   frueherer Laeufe ab: der Applier startet per exec, danach kann niemand mehr aufraeumen — also raeumt der naechste Lauf (es bleibt
 #   hoechstens das juengste Verzeichnis liegen). Nur das eigene Namensmuster direkt unter /tmp und nur aelter als 60 Minuten
 #   (ein gleichzeitig laufender Converge — z. B. ein Cron-Update waehrend `reconfigure` — verliert so nie seinen Baum).
 _release_workdir_new() {
@@ -269,8 +266,8 @@ _exec_applier() {
   exec bash "$applier" "$@"
 }
 
-# run_installed_release [provision-args...] — den INSTALLIERTEN Stand erneut anwenden (`lifeagents reconfigure`,
-#   Install-UX-Phase 7): wie fetch_and_run_release, nur ohne Download — der Runtime-Baum wird nach /tmp kopiert (der
+# run_installed_release [provision-args...] — den installierten Stand erneut anwenden (`lifeagents reconfigure`):
+#   wie fetch_and_run_release, nur ohne Download — der Runtime-Baum wird nach /tmp kopiert (der
 #   laufende Baum tauscht sich in install_cli so nie selbst aus), RELEASE_TAG kommt aus der installierten VERSION
 #   (sonst schriebe install_cli „dev"). Profil (INSTALL_PROFILE) und Paketmenge (Registry) liest provision.sh selbst.
 #   Kehrt nie zurueck.

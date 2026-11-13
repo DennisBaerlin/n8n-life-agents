@@ -18,7 +18,9 @@
 #   .\scripts\build_master_image.ps1 -Version v0.37.0 -Digest sha256:<hex> # schon gepusht (z. B. nach dem Oeffentlich-Stellen): nur pruefen + Pin
 # Push nach ghcr.io braucht vorher `docker login ghcr.io` (Token mit write:packages) und ist eine Veroeffentlichung; das Paket
 # muss danach oeffentlich sein (GitHub > Packages > master > Package settings > Change visibility), sonst scheitert die Pruefung.
-# Exit 0 = gebaut (und ggf. gepusht + geprueft + Pin eingetragen); jeder Fehler bricht mit Meldung ab.
+# Voraussetzungen: docker (buildx), git, origin = GitHub-Repo.
+# Exit 0 = gebaut (und ggf. gepusht + geprueft + Pin eingetragen); Exit 1 = Registerpruefung gescheitert (Paket noch privat);
+# jeder andere Fehler bricht mit Meldung ab (throw).
 param(
     [Parameter(Mandatory = $true)][string]$Version,
     [string]$Registry,

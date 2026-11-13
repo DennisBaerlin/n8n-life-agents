@@ -1,10 +1,10 @@
 -- ============================================================
--- career.fn_render_career_preferences (WS-2 — Render des career_preferences-Sidecars, Header-only)
---   Liefert den autoritativen Fakten-HEADER der gelernten Job-Praeferenzen (mag/meidet, Gehaltsuntergrenze,
---   Arbeitsort, Pendelweg). Die generische Engine core.fn_fetch_context wrappt Banner/Stempel/Prosa.
---   UNIFORME Signatur fn(text)->text. RUECKGABE: Header-Text ODER NULL (kein facts-Sidecar -> nur Prosa).
---   Vorbild career.fn_render_career_profile. Anwenden via:
---     db_apply.ps1 -File packages\career\db\migrations\R__fn_render_career_preferences.sql
+-- career.fn_render_career_preferences (READ)
+--   Render des career_preferences-Sidecars, Header-only: autoritativer Fakten-Header der gelernten
+--   Job-Praeferenzen (mag/meidet, Gehaltsuntergrenze, Arbeitsort, Pendelweg). Die generische Engine
+--   core.fn_fetch_context wrappt Banner/Stempel/Prosa.
+--   Eingabe: p_name (Name des Sidecars). Uniforme Signatur fn(text)->text.
+--   Rueckgabe: Header-Text oder NULL (kein facts-Sidecar -> nur Prosa). Vorbild career.fn_render_career_profile.
 -- ============================================================
 CREATE OR REPLACE FUNCTION career.fn_render_career_preferences(p_name text)
 RETURNS text LANGUAGE plpgsql STABLE AS $$
@@ -30,7 +30,7 @@ BEGIN
         v_lines := v_lines || ('Arbeitgeber meiden: ' || (SELECT string_agg(e, ', ') FROM jsonb_array_elements_text(v_facts->'disliked_employers') AS e));
     END IF;
     IF v_facts ? 'salary_floor' AND jsonb_typeof(v_facts->'salary_floor') = 'number' THEN
-        -- WP3: Einheit roh, Jahreswert render-at-fetch (career.fn_salary_text; fehlende Einheit offen, nie angenommen)
+        -- Einheit roh, Jahreswert render-at-fetch (career.fn_salary_text; fehlende Einheit offen, nie angenommen)
         v_lines := v_lines || ('Gehaltsuntergrenze: ' || career.fn_salary_text((v_facts->>'salary_floor')::numeric,
                                    v_facts->>'salary_floor_period', v_facts->>'salary_floor_basis'));
     END IF;

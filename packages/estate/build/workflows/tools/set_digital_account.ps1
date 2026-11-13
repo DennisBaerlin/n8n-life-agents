@@ -1,10 +1,10 @@
 ﻿#Requires -Version 5.1
 # Dot-gesourct von build.ps1 (Helper + Script-Scope-Creds im Parent-Scope).
 
-# --- agent.estate.tool_set_digital_account (WS-2, set_ = partielles Update) ------------------
+# --- agent.estate.tool_set_digital_account (set_ = partielles Update) ------------------
 # Aendert ein bestehendes Konto des digitalen Nachlasses ("nicht gesendet = unveraendert").
-# NIE Passwoerter — Zugangs-Felder sind Fundort-Verweise. Resolve (Anbieter + optional
-# Nutzername) VOR dem Gate. HITL owner_approval. adults_only-DB-Backstop in der fn. estate_rw.
+# Keine Passwoerter — Zugangs-Felder sind Fundort-Verweise. Resolve (Anbieter + optional
+# Nutzername) vor dem Gate. HITL owner_approval. adults_only-DB-Backstop in der fn. estate_rw.
 function Build-EstateSetDigitalAccount {
     $CRED_POSTGRES = $CRED_ESTATE_RW
     $trig = Build-Trigger @('provider','username','new_provider','new_username','new_category',
@@ -18,11 +18,10 @@ function Build-EstateSetDigitalAccount {
     $errBad = Build-ToolError 'Account ambiguous' @(660, 200) `
         "=The account '{{ `$('Start').item.json.provider }}' resolves to {{ `$('Resolve Account').item.json.hit_count }} matches. Candidates: {{ JSON.stringify(`$('Resolve Account').item.json.candidates) }}. Ask which one (add the username), or check the provider."
 
-    # Strukturiertes Summary (Textkatalog): Keys + typisierte Rohwerte, das Gate rendert je Empfaenger-Sprache.
     # Nur genannte Felder erscheinen (-If); der Hinweis "unveraendert" steht als Note darunter.
     $S = "`$('Start').item.json"
     $isKey = "(['true','yes','1','ja'].indexOf(String($S.is_key_account || '').toLowerCase()) >= 0)"
-    # "DB ist das Gesetz": estate.fn_set_digital_account laeuft als Probelauf VOR der Karte; derselbe Param-Satz geht nach dem Gate in den echten Write.
+    # estate.fn_set_digital_account laeuft als Probelauf vor der Karte; derselbe Param-Satz geht nach dem Gate in den echten Write.
     $wg = New-FnWriteGate -Fn 'estate.fn_set_digital_account' -DryPos @(660, 0) -WritePos @(1980, 0) `
         -WriteName 'Set account (atomic)' `
         -WriteSelect "(r->>'ok')::boolean AS ok, r->>'reason' AS reason, (r->>'digital_account_id')::bigint AS digital_account_id" `

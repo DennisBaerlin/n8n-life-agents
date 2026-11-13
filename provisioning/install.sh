@@ -1,32 +1,38 @@
 #!/usr/bin/env bash
-# install.sh — Wegwerf-Bootstrap-Launcher (NUR Erstinstallation via curl|bash).
+# install.sh — Wegwerf-Bootstrap-Launcher (nur Erstinstallation).
 #
-# Genau EINE Aufgabe: die Quelle aufloesen -> SHA256-verifiziert laden -> entpacken -> den
-# `provision.sh` des verifizierten Baums starten. KEINE Provisionierungslogik, KEIN Sourcing der
-# schweren lib/ (unter `curl … | bash` gibt es noch keinen Baum) -> self-contained.
+# Zweck: Quelle aufloesen -> Release-Asset laden und verifizieren -> entpacken -> `provision.sh` des
+# verifizierten Baums per exec starten. Keine Provisionierungslogik, kein Sourcing von lib/ (beim ersten
+# Kontakt gibt es noch keinen Baum) -> self-contained.
 #
-# Bootstrap auf frischem Debian (install.sh ist Release-Asset; mit && verkettet, damit ein fehlgeschlagener
-# Download kein STALE install.sh aus dem CWD ausfuehrt; nie `| bash` — ein abgebrochener Download liefe halb):
+# Aufruf auf frischem Debian als root (install.sh ist Release-Asset; mit && verkettet, damit ein
+# fehlgeschlagener Download kein altes install.sh aus dem CWD ausfuehrt; nie `| bash`, ein abgebrochener
+# Download liefe halb):
 #   curl -fsSL https://github.com/<slug>/releases/latest/download/install.sh -o install.sh \
 #     && bash install.sh
 #   bash install.sh --version vX.Y.Z   # eine bestimmte Version pinnen
 #
-# Default (ohne --version) = neuestes STABLES Release (GitHubs /releases/latest); `--version <tag>`
-# pinnt ein Tag (oder 'latest'). --profile defaultet auf `release` (Endnutzer-Fall), wenn der Nutzer
-# keins uebergibt; alle uebrigen Flags (--profile/--domain/--unattended/--uninstall/…) laufen
-# unveraendert an provision.sh durch. Wird NICHT in die Runtime gespiegelt (install_cli laesst
-# install.sh aus); Updates der installierten Instanz laufen ueber `lifeagents update`, nie hierueber.
+# Ohne --version gilt das neueste stabile Release (/releases/latest); `--version <tag>` pinnt ein Tag
+# (oder 'latest'). Ohne eigenes --profile wird `--profile release` angehaengt; alle uebrigen Flags
+# (--profile/--domain/--unattended/--uninstall/...) laufen unveraendert an provision.sh durch.
+# Voraussetzungen: root (`require_root`); curl, jq, tar, sha256sum werden bei Bedarf per apt nachinstalliert
+# (`_ensure_deps`). Env-Overrides: PROVISION_REPO_SLUG, PROVISION_GH_API (nur Test-Mock),
+# LIFEAGENTS_RELEASE_KEYRING (Schluesselbund, Standard /etc/lifeagents/release-signing.gpg).
+# Exit: 0 bei --help; 1 bei jedem `die` (Download-/Verifikations-/Entpackfehler, kein root); sonst der
+# Exit-Code von provision.sh (exec). Der ERR-Trap meldet unerwartete Abbrueche mit Zeile.
 #
-# Sicherheitsmodell (Sigstore "safer curl|bash"): NIE blind `curl … | bash`. Erst Asset + Pruefsumme
-# holen, die Pruefsumme VOR dem Entpacken/Ausfuehren verifizieren, dann den verifizierten Baum starten.
-# EIN Weg (Owner-Entscheid 2026-10-24, oeffentliches Repo): immer anonym, kein Token.
+# Wird nicht in die Runtime gespiegelt (install_cli laesst install.sh aus); Updates der installierten
+# Instanz laufen ueber `lifeagents update`.
 #
-# Bewusste kleine Doppelung gegenueber lib/fetch_release.sh (das `lifeagents update` nutzt): exakt das
-# rustup-Muster `sh.rustup.rs` (Bootstrap, self-contained) != `rustup self update` (Runtime, lib-basiert). Der
-# Download-Block `# >>> gh-download` ist in beiden Dateien byte-gleich (contract_lint Check 23).
+# Sicherheitsmodell: Asset + Pruefdaten laden, VOR dem Entpacken/Ausfuehren verifizieren, dann erst den
+# verifizierten Baum starten; Download immer anonym, kein Token (oeffentliches Repo).
+#
+# Bewusste kleine Doppelung gegenueber lib/fetch_release.sh (nutzt `lifeagents update`): Bootstrap
+# self-contained, Runtime lib-basiert. Der Download-Block `# >>> gh-download` ist in beiden Dateien
+# byte-gleich (contract_lint Check 23).
 set -euo pipefail
-# UTF-8 ist Gesetz (provisioning/CLAUDE.md) — egal was das System sagt (Proxmox-Vorlagen: LANG="C"); provision.sh
-# setzt es ebenso, hier schon fuer die eigene Ausgabe des Launchers.
+# UTF-8 unabhaengig von der System-Locale (Proxmox-Vorlagen: LANG="C"); provision.sh setzt es ebenso, hier
+# schon fuer die eigene Ausgabe des Launchers.
 export LANG=C.UTF-8 LC_ALL=C.UTF-8
 # shellcheck disable=SC2154  # false positive: ShellCheck doesn't parse assignments inside the trap
                             # string argument, so it can't see that rc=$? is set at the trap body start.
@@ -87,8 +93,8 @@ parse_args() {
         PASSTHROUGH+=("$1"); shift ;;   # alles andere -> provision.sh
     esac
   done
-  # Endnutzer-Default: ohne explizites --profile ist "release" der selbstverstaendliche Fall (das
-  # Test-Substrat ruft provision.sh direkt mit --profile dev auf, NICHT ueber install.sh -> unberuehrt).
+  # Endnutzer-Default release; das Test-Substrat ruft provision.sh direkt mit --profile dev auf, nicht
+  # ueber install.sh.
   [ "$PROFILE_SEEN" -eq 1 ] || PASSTHROUGH+=(--profile release)
 }
 
@@ -228,8 +234,8 @@ main() {
   trap 'rm -rf "${_BOOT_WORK:-}"' EXIT
   local rel="$work/release.json"
 
-  # Quelle aufloesen: Default = neuestes STABLES Release (/releases/latest = neuestes NICHT-prerelease,
-  # NICHT-draft, samt Assets). --version <tag> pinnt; 'latest' faellt auf denselben Pfad.
+  # Quelle aufloesen: Default = neuestes stabiles Release (/releases/latest = neuestes Nicht-prerelease,
+  # Nicht-draft, samt Assets). --version <tag> pinnt; 'latest' faellt auf denselben Pfad.
   local tag="${VERSION:-latest}"
   if [ "$tag" = "latest" ]; then
     log "Neuestes stabiles Release ermitteln (/releases/latest) ..."
@@ -242,9 +248,9 @@ main() {
   log "Release ${tag} von ${PROVISION_REPO_SLUG} laden (SHA256-verifiziert) ..."
 
   local tarball_name="${PROVISION_ASSET_BASENAME}-${tag}.tar.gz"
-  # Schluesselbund: das INSTALLIERTE (/etc — Neuinstallation, Rueckweg) gewinnt immer; sonst der mit diesem install.sh
+  # Schluesselbund: der installierte (/etc — Neuinstallation, Rueckweg) gewinnt immer; sonst der mit diesem install.sh
   # gelieferte (Erstinstallation = Vertrauen beim ersten Kontakt, TOFU, unvermeidbar). Leer = das Projekt signiert noch
-  # nicht -> nur das SHA256-Sidecar. Pruefen VOR dem Entpacken (gh-download-Block).
+  # nicht -> nur das SHA256-Sidecar. Pruefen vor dem Entpacken (gh-download-Block).
   local kr="${LIFEAGENTS_RELEASE_KEYRING:-/etc/lifeagents/release-signing.gpg}"
   if [ ! -s "$kr" ]; then
     kr=""
@@ -261,9 +267,8 @@ main() {
   [ -n "$applier" ] || die "Im Asset fehlt provisioning/provision.sh (unvollstaendiges Release)."
   ok "Release ${tag} entpackt nach ${applier%/provisioning/provision.sh}"
 
-  # RELEASE_TAG fuer den Applier-Lauf exportieren -> install_cli schreibt es in die lifeagents-
-  # VERSION-Datei (`lifeagents version`). Den verifizierten provision.sh exec'en (anderes Skript ->
-  # KEIN Self-Loop; provision.sh kennt --version nicht, daher reicht der Passthrough ohne Filter).
+  # RELEASE_TAG wandert per Env zu install_cli (VERSION-Datei, `lifeagents version`). provision.sh kennt
+  # --version nicht, daher reicht der Passthrough ohne Filter.
   export RELEASE_TAG="$tag"
   log "Starte Applier: provisioning/provision.sh ${PASSTHROUGH[*]:-}"
   exec bash "$applier" "${PASSTHROUGH[@]}"

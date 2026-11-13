@@ -1,11 +1,12 @@
 -- ============================================================
--- core.fn_split_learned_block(p_content text, OUT body text, OUT block text)   (Phase A — "## Gelernt" verwaltet)
+-- fn_split_learned_block (READ-ONLY, IMMUTABLE) — "## Gelernt"-Block abtrennen
+--   Eingabe: p_content text. Rueckgabe (OUT): body text, block text.
 --   Trennt den system-verwalteten Lern-Notiz-Block eines Prosa-Kontexts vom Rest (Ansible-blockinfile-Muster):
---   block = ab der ERSTEN Zeile '^## Gelernt\s*$' bis VOR die naechste '^## '-Ueberschrift (eine '### '-Unter-
+--   block = ab der ersten Zeile '^## Gelernt\s*$' bis vor die naechste '^## '-Ueberschrift (eine '### '-Unter-
 --   ueberschrift gehoert dazu) oder Textende, rechts getrimmt; body = der Text ohne diesen Block, rechts
 --   getrimmt. Kein Block -> body = Eingabe, block = NULL. Der Block darf Leerzeilen enthalten
 --   (core.fn_append_context_note fuegt neueste zuerst direkt nach der Ueberschrift ein).
---   EINE Definition des Ankers fuer: core.fn_append_context_note (Ziel-Ueberschrift) und
+--   Die eine Definition des Ankers fuer: core.fn_append_context_note (Ziel-Ueberschrift) und
 --   agent.fn_advisor_publish_plan (Block beim Re-Publish erhalten, im neuen plan_md mitgeschickten verwerfen —
 --   sonst loeschte jeder Publish still alle bestaetigten Notizen).
 --   IMMUTABLE, rein textuell, kein Tabellenzugriff.

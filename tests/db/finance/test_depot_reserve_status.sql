@@ -1,9 +1,9 @@
 -- tests/db/finance/test_depot_reserve_status.sql
--- WS-B Stufe 1 (Phase S): View finance.depot_reserve_status — der Deckungs-Waechter der DEPOT-Reserve.
--- Je AKTIVEM Depot-Konto: Marktwert (shares x juengstem Kurs, EUR, via depot_holdings_overview-Roll-up) vs.
--- Σ savings_goal_reserve_entries.delta_native ueber AKTIVE Ziele.
+-- View finance.depot_reserve_status — der Deckungs-Waechter der Depot-Reserve.
+-- Je aktivem Depot-Konto: Marktwert (shares x juengstem Kurs, EUR, via depot_holdings_overview-Roll-up) vs.
+-- Σ savings_goal_reserve_entries.delta_native ueber aktive Ziele.
 --   breach = COALESCE(market_value,0) < reserved  (reserved>0). NULL-Preis -> COALESCE 0 -> breach=TRUE
---     (3-wertige Logik vermieden: ein nicht ermittelbarer Marktwert deckt NICHTS, nie still FALSE).
+--     (3-wertige Logik vermieden: ein nicht ermittelbarer Marktwert deckt nichts, nie still FALSE).
 --   shortfall = GREATEST(reserved - COALESCE(market_value,0), 0).
 -- Ein completed/cancelled-Ziel faellt aus dem status='active'-Join -> gibt seine Depot-Reserve frei.
 BEGIN;
@@ -15,7 +15,7 @@ DECLARE
 BEGIN
   INSERT INTO finance.accounts (name, account_type, currency, status)
     VALUES ('__drs_settle__','cash','EUR','active') RETURNING id INTO v_settle;
-  -- Depot 1: Marktwert 600 (5 x 120). Depot 2: gehalten, KEIN Kurs -> Marktwert NULL. Depot 3: Marktwert 1000.
+  -- Depot 1: Marktwert 600 (5 x 120). Depot 2: gehalten, kein Kurs -> Marktwert NULL. Depot 3: Marktwert 1000.
   INSERT INTO finance.accounts (name, account_type, currency, status, settlement_account_id)
     VALUES ('__drs_depot1__','stocks_depot','EUR','active', v_settle) RETURNING id INTO v_d1;
   INSERT INTO finance.accounts (name, account_type, currency, status, settlement_account_id)
@@ -27,7 +27,7 @@ BEGIN
     VALUES (v_d1, 'DRSX', 'D1 Wert', 5, 100, 'EUR');
   INSERT INTO finance.market_prices (symbol, price, currency, as_of) VALUES ('DRSX', 120, 'EUR', current_date);  -- mv 600
   INSERT INTO finance.depot_holdings (account_id, symbol, name, shares, average_purchase_price, currency)
-    VALUES (v_d2, 'DRSY', 'D2 Wert', 3, 100, 'EUR');   -- KEIN Kurs -> mv NULL
+    VALUES (v_d2, 'DRSY', 'D2 Wert', 3, 100, 'EUR');   -- kein Kurs -> mv NULL
   INSERT INTO finance.depot_holdings (account_id, symbol, name, shares, average_purchase_price, currency)
     VALUES (v_d3, 'DRSZ', 'D3 Wert', 10, 100, 'EUR');
   INSERT INTO finance.market_prices (symbol, price, currency, as_of) VALUES ('DRSZ', 100, 'EUR', current_date);  -- mv 1000
@@ -39,16 +39,16 @@ BEGIN
   INSERT INTO finance.savings_goals (name, target_amount, target_date, status)
     VALUES ('__drs_gIn__', 9000, current_date + 365, 'completed') RETURNING id INTO v_gIn;
 
-  -- Depot 1: reserviert 400 (gegen mv 600) -> GEDECKT, kein breach, shortfall 0.
+  -- Depot 1: reserviert 400 (gegen mv 600) -> gedeckt, kein breach, shortfall 0.
   INSERT INTO finance.savings_goal_reserve_entries (savings_goal_id, account_id, delta_native, kind)
     VALUES (v_gA, v_d1, 400, 'manual');
-  -- Depot 3: reserviert 600 (gA) + 700 (gB) = 1300 (gegen mv 1000) -> UNTERDECKT, shortfall 300.
+  -- Depot 3: reserviert 600 (gA) + 700 (gB) = 1300 (gegen mv 1000) -> unterdeckt, shortfall 300.
   INSERT INTO finance.savings_goal_reserve_entries (savings_goal_id, account_id, delta_native, kind)
     VALUES (v_gA, v_d3, 600, 'manual'), (v_gB, v_d3, 700, 'manual');
   -- Depot 2: reserviert 200, aber Marktwert NULL (kein Kurs) -> breach=TRUE, shortfall 200.
   INSERT INTO finance.savings_goal_reserve_entries (savings_goal_id, account_id, delta_native, kind)
     VALUES (v_gA, v_d2, 200, 'manual');
-  -- Depot 1 zusaetzlich: reserviert 5000 fuer ein COMPLETED-Ziel -> darf NICHT zaehlen (Join active).
+  -- Depot 1 zusaetzlich: reserviert 5000 fuer ein completed-Ziel -> darf nicht zaehlen (Join active).
   INSERT INTO finance.savings_goal_reserve_entries (savings_goal_id, account_id, delta_native, kind)
     VALUES (v_gIn, v_d1, 5000, 'manual');
 
@@ -67,8 +67,8 @@ BEGIN
   IF v_breach IS DISTINCT FROM true OR v_short IS DISTINCT FROM 300 THEN RAISE EXCEPTION 'FAIL [2 breach]: erwartet breach=true / shortfall 300, got %/%', v_breach, v_short; END IF;
   RAISE NOTICE 'PASS [2: Depot unterdeckt (1300>1000, 2 Ziele gepoolt) -> breach, shortfall 300]';
 
-  -- (3) Depot 2: Marktwert NULL (kein Kurs) -> breach=TRUE (Deckung 0), shortfall = reserved 200. NIE still FALSE.
-  --     WP-3c: fx_missing=TRUE (Deckung nicht ermittelbar) — trennt „Kurs fehlt" von „echt unterdeckt".
+  -- (3) Depot 2: Marktwert NULL (kein Kurs) -> breach=TRUE (Deckung 0), shortfall = reserved 200. Nie still FALSE.
+  --     fx_missing=TRUE (Deckung nicht ermittelbar) — trennt „Kurs fehlt" von „echt unterdeckt".
   DECLARE v_fxm BOOLEAN; BEGIN
     SELECT market_value, reserved, shortfall, breach, fx_missing INTO v_mv, v_res, v_short, v_breach, v_fxm
       FROM finance.depot_reserve_status WHERE account_id = v_d2;

@@ -1,10 +1,11 @@
 -- ============================================================
--- agent.fn_resolve_monitor_due (die EINE Faelligkeits-Regel der date-Trigger)
+-- fn_resolve_monitor_due (READ-ONLY) — die eine Faelligkeits-Regel der date-Trigger
 --   Loest due_date ueber core.fn_resolve_date auf (YYYY-MM-DD oder relativ "+6 months" — das LLM rechnet nie) und
---   prueft "nicht in der Vergangenheit". EINE Quelle fuer die Write-fns (fn_create_/fn_set_monitor_trigger) UND die
+--   prueft "nicht in der Vergangenheit". Eine Quelle fuer die Write-fns (fn_create_/fn_set_monitor_trigger) und die
 --   Karten-Vorstufe der Tools (Probe bzw. Resolve trigger), damit Karte und Write dieselbe Regel und dasselbe Datum
 --   haben (kein Tipp auf eine Karte, die der Write danach ablehnt).
---   RUECKGABE: {ok:true, due_date:'YYYY-MM-DD'} | {ok:false, reason}. NULL/leer -> {ok:false} (der Aufrufer entscheidet,
+--   Eingabe: p_text text.
+--   Rueckgabe: {ok:true, due_date:'YYYY-MM-DD'} | {ok:false, reason}. NULL/leer -> {ok:false} (der Aufrufer entscheidet,
 --   ob ein Datum Pflicht ist).
 --   STABLE. Tests: tests/db/core/test_fn_resolve_monitor_due.sql
 -- ============================================================

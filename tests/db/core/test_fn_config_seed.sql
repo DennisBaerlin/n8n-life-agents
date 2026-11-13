@@ -1,7 +1,7 @@
 -- tests/db/core/test_fn_config_seed.sql
--- Install-UX-Phase 4 (Schritt 1): core.fn_config_seed + core.fn_config_reset — dpkg-conffile-Semantik fuer
---   core.config. Der Seed (seed_data.sh::_seed_package_config) setzt default_value IMMER auf den Manifest-Wert,
---   ueberschreibt value aber NUR, wenn der Owner ihn nie geaendert hat (value IS NOT DISTINCT FROM altem
+-- core.fn_config_seed + core.fn_config_reset — dpkg-conffile-Semantik fuer
+--   core.config. Der Seed (seed_data.sh::_seed_package_config) setzt default_value immer auf den Manifest-Wert,
+--   ueberschreibt value aber nur, wenn der Owner ihn nie geaendert hat (value IS NOT DISTINCT FROM altem
 --   default_value). Bestandszeilen (default_value NULL) gelten als vom Owner gesetzt. Ausnahmen: cron_enable
 --   (Laufzeit-Schalter, nie ueberschreiben), managed_by='system' (System-Werte, immer ueberschreiben), model mit einem nicht
 --   (mehr) bekannten model_key (zurueck auf den Default, sonst blockiert der Modell-Trigger den Seed).
@@ -56,14 +56,14 @@ BEGIN
   PERFORM core.fn_config_seed('{"category":"general","key":"__t_legacy2","value":"next","description":"","package":"__tpkg"}');
   IF (SELECT value FROM core.config WHERE category='general' AND key='__t_legacy2') <> 'next' THEN RAISE EXCEPTION 'FAIL [5 bestand gleich default]'; END IF;
 
-  -- (6) cron_enable: Laufzeit-Schalter, NIE ueberschreiben (auch wenn nie geaendert).
+  -- (6) cron_enable: Laufzeit-Schalter, nie ueberschreiben (auch wenn nie geaendert).
   PERFORM core.fn_config_seed('{"category":"cron_enable","key":"__t_cron","value":"true","description":"","package":"__tpkg"}');
   UPDATE core.config SET value='false' WHERE category='cron_enable' AND key='__t_cron';
   PERFORM core.fn_config_seed('{"category":"cron_enable","key":"__t_cron","value":"true","description":"","package":"__tpkg"}');
   IF (SELECT value FROM core.config WHERE category='cron_enable' AND key='__t_cron') <> 'false' THEN RAISE EXCEPTION 'FAIL [6 cron_enable ueberschrieben]'; END IF;
 
-  -- (7) managed_by='system' (z. B. api.core_version): System-Wert, IMMER ueberschreiben. Die Kategorie allein
-  --     entscheidet das nicht mehr (ohne managed_by gilt auch api.* als Owner-Wert).
+  -- (7) managed_by='system' (z. B. api.core_version): System-Wert, immer ueberschreiben. Die Kategorie allein
+  --     entscheidet das nicht (ohne managed_by gilt auch api.* als Owner-Wert).
   PERFORM core.fn_config_seed('{"category":"api","key":"__t_ver","value":"1","description":"","managed_by":"system","package":"__tpkg"}');
   UPDATE core.config SET value='hand' WHERE category='api' AND key='__t_ver';
   PERFORM core.fn_config_seed('{"category":"api","key":"__t_ver","value":"2","description":"","managed_by":"system","package":"__tpkg"}');
@@ -72,7 +72,7 @@ BEGIN
   -- (8) model: Owner-Wert bleibt, solange er zur Modell-Art (agent.ai_models.mode) des Standards passt
   --     (core.fn_model_value_eligible). Wechselt der Standard die Art (chat -> embedding), setzt der Seed den
   --     Owner-Wert auf den neuen Standard zurueck (sonst blockierte der Modell-Trigger den ganzen Seed). Ein
-  --     verwaister Wert ist seit core:V024 unmoeglich (Fremdschluessel) -> kein eigener Fall mehr.
+  --     verwaister Wert ist seit core:V024 unmoeglich (Fremdschluessel) -> kein eigener Fall.
   INSERT INTO agent.ai_models (model_key, provider, n8n_model_id, selector_index, mode)
   VALUES ('__t_m1', 'x', 'm1', 901, 'chat'), ('__t_m2', 'x', 'm2', 902, 'chat'), ('__t_e1', 'x', 'e1', NULL, 'embedding')
   ON CONFLICT (model_key) DO NOTHING;
@@ -83,7 +83,7 @@ BEGIN
   PERFORM core.fn_config_seed('{"category":"model","key":"__t_agent","value":"__t_e1","description":"","package":"__tpkg"}');
   IF (SELECT value FROM core.config WHERE category='model' AND key='__t_agent') <> '__t_e1' THEN RAISE EXCEPTION 'FAIL [8 owner-wert falscher modell-art nicht zurueckgesetzt]'; END IF;
 
-  -- (9) Besitzer-Wechsel (Phase C: feature.onboarding_gate zog core -> finance): deklariert ein anderes Paket den
+  -- (9) Besitzer-Wechsel (Key wandert von core in ein Paket): deklariert ein anderes Paket den
   --     Key, stempelt der naechste Seed `package` neu; ein Owner-Wert bleibt (conffile-Regel unabhaengig vom Besitzer).
   PERFORM core.fn_config_seed('{"category":"feature","key":"__t_move","value":"true","description":"","package":"__tcore"}');
   UPDATE core.config SET value='false' WHERE category='feature' AND key='__t_move';
@@ -96,7 +96,7 @@ BEGIN
   r := core.fn_config_seed('{"key":"x","value":"y"}');
   IF (r->>'ok')::boolean IS NOT FALSE THEN RAISE EXCEPTION 'FAIL [10 pflichtfeld] %', r; END IF;
 
-  -- (11) summary (deutscher Owner-Einzeiler fuer `lifeagents config list`): wie description IMMER aus dem
+  -- (11) summary (deutscher Owner-Einzeiler fuer `lifeagents config list`): wie description immer aus dem
   --      Manifest — gesetzt beim Erst-Seed, ueberschrieben beim Re-Seed, fehlender Key -> ''.
   PERFORM core.fn_config_seed('{"category":"general","key":"__t_sum","value":"1","description":"","summary":"Satz eins","package":"__tpkg"}');
   IF (SELECT summary FROM core.config WHERE category='general' AND key='__t_sum') IS DISTINCT FROM 'Satz eins' THEN RAISE EXCEPTION 'FAIL [11 summary insert]'; END IF;

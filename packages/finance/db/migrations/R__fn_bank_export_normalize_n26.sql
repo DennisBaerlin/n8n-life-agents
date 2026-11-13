@@ -1,6 +1,6 @@
 -- ============================================================
 -- fn_bank_export_normalize_n26 (READ, IMMUTABLE) -- Profil n26_v1 des Bank-Import-Moduls
---   Fester Leser in Code, kein LLM (die Datei geht nicht an Anthropic). Aufruf NUR ueber den Dispatcher
+--   Fester Leser in Code, kein LLM (die Datei geht nicht an Anthropic). Aufruf nur ueber den Dispatcher
 --   fn_bank_export_normalize: Eingabe {columns (Spaltenname -> Index), rows (nach der Kopfzeile), header_row_no}.
 --   N26-CSV-Export (Format seit 2025): Booking Date | Value Date | Partner Name | Partner Iban | Type |
 --   Payment Reference | Account Name | Amount (EUR) | Original Amount | Original Currency | Exchange Rate.
@@ -13,7 +13,7 @@
 --   ext_ref (N26 hat keine Transaktions-ID) = md5 ueber [Buchungstag, Betrag auf Cent, IBAN, Partner, Referenz] +
 --   laufende Nummer gleicher Zeilen in Dateifolge: bewusst ohne Space-Name, Valuta, Typ und Fremdwaehrung, damit ein
 --   umbenannter Space oder "-30" statt "-30.00" eine schon gesehene Zeile nie als verspaetet doppelt zaehlen laesst.
---   RUECKGABE: {ok:true, rows:[{row_no, date, kind, type, cash_amount, counterparty, counterparty_iban, purpose, name,
+--   Rueckgabe: {ok:true, rows:[{row_no, date, kind, type, cash_amount, counterparty, counterparty_iban, purpose, name,
 --   account_type, ext_ref, reason}], unknown_rows:[{row_no, date, type, cash_amount, name, reason}], account_types[],
 --   currencies (["EUR"])} | {ok:false, code:'export_invalid', reason, row_no?}.
 --   row_no = Zeile in der Datei (Kopfzeile = header_row_no).

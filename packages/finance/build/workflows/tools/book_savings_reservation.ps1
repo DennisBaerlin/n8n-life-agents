@@ -3,7 +3,7 @@
 
 # --- tool_book_savings_reservation (Zweckbindung: vorhandenes Geld eines Kontos einem Sparziel zuordnen, append-only Journal) ---
 function Build-BookSavingsReservation {
-    # WS-B0: enge Paket-Schreibrolle (finance_rw, Least-Privilege D10).
+    # Enge Paket-Schreibrolle (finance_rw).
     $CRED_POSTGRES = $CRED_FINANCE_RW
     $trig = Build-Trigger @('savings_goal_name','account_name','amount')
 
@@ -32,9 +32,6 @@ function Build-BookSavingsReservation {
         "=Account '{{ `$('Start').item.json.account_name }}' resolves to {{ `$('Resolve Account').item.json.hit_count }} matches among cash, fixed-deposit, P2P and depot accounts. Candidates: {{ JSON.stringify(`$('Resolve Account').item.json.candidates) }}. Ask the user which exact account."
 
     # --- HITL approval gate (absoluter Betrag = roher Nutzer-Input; Deckung/freier Saldo zeigt der Post-State NACH dem Write) ---
-    # "DB ist das Gesetz": fn_book_savings_reservation laeuft als Probelauf VOR der Karte (amount<0, Ziel/Konto nicht
-    # gefunden, Kredit, delta=0, mehr als frei -> {ok:false} ohne Karte); derselbe Param-Satz geht nach dem Gate in den
-    # echten Write.
     $wg = New-FnWriteGate -Fn 'finance.fn_book_savings_reservation' -DryPos @(1100, 0) -WritePos @(2420, 0) `
         -WriteName 'Book earmark (atomic)' `
         -WriteSelect "(r->>'ok')::boolean AS ok, r->>'reason' AS reason, r->'depot_risk' AS depot_risk, (r->>'entry_id')::int AS entry_id, (r->>'delta')::numeric AS delta, (r->>'reserved')::numeric AS reserved, (r->>'current_amount')::numeric AS current_amount, (r->>'free_balance')::numeric AS free_balance, (r->>'market_value')::numeric AS market_value, (r->>'shortfall')::numeric AS shortfall, COALESCE(r->'savings_goal_reached'->>'note', '') AS savings_goal_reached" `
@@ -62,7 +59,7 @@ function Build-BookSavingsReservation {
 
     $retCancelled = Build-ToolCancelled 'Return cancelled' @(2420, 200) 'the book_savings_reservation action'
 
-    # Atomarer Write via fn_book_savings_reservation ($wg.Write): absolut-rein -> delta-append (eine Journal-Zeile).
+    # Write ($wg.Write): absolut-rein -> delta-append (eine Journal-Zeile).
     $ifWriteOk = Build-If 'Write ok?' @(2640, 0) "={{ `$json.ok }}" 'true' 'equals' 'boolean'
 
     $errWrite = Build-ToolError 'Reservation rejected' @(2860, 200) `
@@ -72,7 +69,7 @@ function Build-BookSavingsReservation {
     # freier Saldo (Saldo-Konto) bzw. Deckung (Depot) und der Erreicht-Hinweis (leer = keiner).
     $ret = Build-Return @(2860, 0) @(
         ,@('ok','true','boolean')
-        # Sparziel kurz vor dem Termin im Depot (2026-11-06): nach "Risiko eingehen" festgehalten + Monat des letzten Checks
+        # Sparziel kurz vor dem Termin im Depot: nach "Risiko eingehen" festgehalten + Monat des letzten Checks
         ,@('depot_risk_recorded', "={{ !!`$('Book earmark (atomic)').item.json.depot_risk }}", 'boolean')
         ,@('depot_risk_reminder_month', "={{ (`$('Book earmark (atomic)').item.json.depot_risk || {}).reminder_month || '' }}", 'string')
         ,@('entry_id', "={{ `$('Book earmark (atomic)').item.json.entry_id }}", 'number')
@@ -131,9 +128,9 @@ function Build-BookSavingsReservation {
         ) }
     }
 
-    # Kein /help-Beispiel (finance.help.savings_goals.exN): kein Routing-Golden (operiert auf bestehendem Ziel + Konto; keine dauerhafte Fixture ->
-    # der Agent wuerde sonst nachfragen statt zu rufen, tier-Wahl wie book_savings_goal_transfer/set_holding).
-    # Abdeckung = db_test (test_fn_book_savings_reservation) + E2E (e2e37). Category 'Sparziele' traegt die Bedeutung.
+    # Kein /help-Beispiel (finance.help.savings_goals.exN): kein Routing-Golden, weil das Tool auf einem bestehenden Ziel + Konto
+    # arbeitet und es keine dauerhafte Fixture gibt (der Agent wuerde nachfragen statt zu rufen).
+    # Abdeckung = db_test (test_fn_book_savings_reservation) + E2E (e2e37).
     return Build-Workflow 'agent.finance.tool_book_savings_reservation' $nodes $conns `
         @{ Category = 'savings_goals' }
 }

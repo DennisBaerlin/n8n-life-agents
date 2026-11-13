@@ -1,5 +1,5 @@
 -- ============================================================
--- test_bank_statement_transfer -- Ad-hoc-Transfers zwischen eigenen Konten im Monats-Check (Bank-Import-Modul P1)
+-- test_bank_statement_transfer -- Ad-hoc-Transfers zwischen eigenen Konten im Monats-Check
 --   fn_statement_match (Stufe T: Gegen-IBAN = eigenes Konto; Stufe 0 'g:' gegen gebuchte Transfer-Gruppen),
 --   fn_statement_prepare (blocked: nicht buchbares Ziel / pending_pair; Monatsgrenze; Rest-Label p2p),
 --   fn_apply_bank_statement (fn_book_transfer, Bein-Verschiebung), fn_void_bank_statement (partner_reconciled).
@@ -160,8 +160,8 @@ BEGIN
     IF (SELECT b->>'reason' FROM jsonb_array_elements(v_res->'blocked') b WHERE (b->>'amount')::numeric = -10) IS DISTINCT FROM 'partner_reconciled' THEN
         RAISE EXCEPTION 'FAIL [T5e alt + abgeglichen -> partner_reconciled]: %', v_res->'blocked';
     END IF;
-    -- erkannte, nicht buchbare Umbuchung ist kein Alltag (Befund 2026-10-30: ein Uebertrag an ein spaeter angelegtes Konto
-    -- blaehte die Alltags-Schaetzung auf) -> unmatched_out wie ohne die Zeile; der Rest deckt sie weiter ab
+    -- erkannte, nicht buchbare Umbuchung ist kein Alltag (ein Uebertrag an ein spaeter angelegtes Konto
+    -- blaehte sonst die Alltags-Schaetzung auf) -> unmatched_out wie ohne die Zeile; der Rest deckt sie weiter ab
     IF (v_res->>'unmatched_out')::numeric IS DISTINCT FROM (v_prep->>'unmatched_out')::numeric
        OR (v_res->>'lump')::numeric IS DISTINCT FROM (v_prep->>'lump')::numeric - 10 THEN
         RAISE EXCEPTION 'FAIL [T5f blocked nicht in unmatched_out, aber im Rest]: out % vs %, lump % vs %',
@@ -195,7 +195,7 @@ BEGIN
 END $$;
 
 -- ============================================================
--- Ueberweisung vor dem Eroeffnungstag des Gegenkontos (Befund 2026-11-03): das Geld steckt dort schon im Startbetrag,
+-- Ueberweisung vor dem Eroeffnungstag des Gegenkontos: das Geld steckt dort schon im Startbetrag,
 -- gebucht wird nur das Bein des importierten Kontos. Stichtag der spaeter eroeffneten Konten = heute-20, Werte erfunden.
 -- ============================================================
 CREATE FUNCTION pg_temp.ob_acct(p_name text, p_number text, p_open numeric, p_date date) RETURNS int LANGUAGE plpgsql AS $$

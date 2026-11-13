@@ -3,8 +3,7 @@
 
 # --- tool_void_transaction (set_*: Fehlbuchung per Hard-DELETE rueckgaengig machen) ---
 function Build-VoidTransaction {
-    # WS-B0: enge Paket-Schreibrolle (finance_rw, Least-Privilege D10) statt Owner-Cred.
-    # Dynamic-Scope: Build-Pg liest dieses $CRED_POSTGRES. Core-Tools nutzen die Owner-Cred.
+    # Enge Paket-Schreibrolle (finance_rw) statt Owner-Cred; Build-Pg liest $CRED_POSTGRES per Dynamic-Scope.
     $CRED_POSTGRES = $CRED_FINANCE_RW
     $trig = Build-Trigger @('transaction_id')
 
@@ -12,15 +11,13 @@ function Build-VoidTransaction {
     $readTx = Build-Pg 'Read Tx' @(220, 0) `
         "=SELECT t.amount, t.transaction_date, t.category::text AS category, t.description, a.name AS account_name, finance.fn_account_label(a.emoji, a.account_type, a.name) AS account_label, a.currency AS currency, (CASE WHEN t.group_id IS NOT NULL THEN (SELECT count(*) FROM finance.transactions x WHERE x.group_id = t.group_id) WHEN t.loan_id IS NOT NULL THEN (SELECT count(*) FROM finance.transactions x WHERE x.loan_id = t.loan_id AND x.transaction_date = t.transaction_date) ELSE 1 END)::int AS leg_count FROM finance.transactions t JOIN finance.accounts a ON a.id = t.account_id WHERE t.id = ((`$1::jsonb)->>'transaction_id')::int;" `
         ([ordered]@{ transaction_id = '$(''Start'').item.json.transaction_id' })
-    # Unbekannte transaction_id -> Tool-Fehler statt stillem Ende (New-RequiredRowGate, Mock-Tier 2026-10-24).
+    # Unbekannte transaction_id -> Tool-Fehler statt stillem Ende (New-RequiredRowGate).
     $found = New-RequiredRowGate -Read $readTx -KeyField 'account_name' -IfName 'Tx found?' -ErrName 'Tx not found' `
         -IfPos @(330, -160) -ErrPos @(440, 240) `
         -NotFoundExpr "=Transaction {{ `$('Start').item.json.transaction_id }} does not exist. Look up the transaction id via postgres_select on finance.transactions and ask the user which booking to void."
 
-    # Strukturiertes Summary (Textkatalog): Betrag in der Konto-Waehrung (a.currency aus Read Tx), transaction_date ist
+    # Betrag in der Konto-Waehrung (a.currency aus Read Tx), transaction_date ist
     # ISO aus der DB; Kategorie als lesbarer Begriff.
-    # "DB ist das Gesetz": fn_void_transaction laeuft als Probelauf VOR der Karte (Oversell-Guard -> {ok:false} ohne
-    # Karte); derselbe Param-Satz geht nach dem Gate in den echten Write.
     $wg = New-FnWriteGate -Fn 'finance.fn_void_transaction' -DryPos @(440, 0) -WritePos @(1760, 0) `
         -WriteName 'Void (atomic)' `
         -WriteSelect "(r->>'ok')::boolean AS ok, r->>'reason' AS reason, (r->>'deleted_count')::int AS deleted_count, r->'accounts' AS accounts, r->'holdings' AS holdings" `
@@ -45,7 +42,7 @@ function Build-VoidTransaction {
 
     $retCancelled = Build-ToolCancelled 'Return cancelled' @(1760, 240) 'the void_transaction action'
 
-    # Atomarer Hard-DELETE via fn_void_transaction ($wg.Write, 'Void (atomic)'; Kredit-Paar zusammen; Oversell-Guard).
+    # Hard-DELETE: Kredit-Paar zusammen; Oversell-Guard.
     $ifWriteOk = Build-If 'Write ok?' @(1980, 0) "={{ `$json.ok }}" 'true' 'equals' 'boolean'
 
     $errWrite = Build-ToolError 'Void rejected' @(2200, 240) `

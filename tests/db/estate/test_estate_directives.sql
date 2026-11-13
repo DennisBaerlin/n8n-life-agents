@@ -1,11 +1,11 @@
 -- tests/db/estate/test_estate_directives.sql
--- Estate WS-0a — Dokumente-Register `estate.directives` + Seed-Katalog `estate.directive_types`.
+-- Dokumente-Register `estate.directives` + Seed-Katalog `estate.directive_types`.
 --
--- Prueft die DB-GESETZE des Kern-Registers (Invarianten strukturell, nicht per fn — die Write-fns
--- kommen erst WS-2): (1) der directive_types-Seed traegt die 9 deutschen Vorsorge-Dokumenttypen mit
--- gueltiger Empfehlungsklasse; (2) UNIQUE(owner_person_id, doc_type) NULLS NOT DISTINCT = genau EIN
+-- Prueft die DB-Gesetze des Kern-Registers (Invarianten strukturell, nicht per fn):
+-- (1) der directive_types-Seed traegt die 9 deutschen Vorsorge-Dokumenttypen mit
+-- gueltiger Empfehlungsklasse; (2) UNIQUE(owner_person_id, doc_type) NULLS NOT DISTINCT = genau ein
 -- Registereintrag je (Person|Haushalt, Dokumenttyp) — inkl. der NULL-Falle (zwei Haushalts-Testamente
--- waeren ohne NULLS NOT DISTINCT beide einfuegbar, Lektion advisor_plans P0c); (3) CHECK-/FK-Backstops
+-- waeren ohne NULLS NOT DISTINCT beide einfuegbar); (3) CHECK-/FK-Backstops
 -- (doc_status/form/registry, doc_type-FK RESTRICT, person-FK); (4) updated_at-Touch-Trigger.
 --
 -- Fixture: family-Context-Upsert -> Projektions-Trigger fuellt agent.persons (Muster
@@ -50,17 +50,17 @@ BEGIN
   RAISE NOTICE 'PASS [1] directive_types-Seed (9 Typen, Empfehlungsklassen-CHECK)';
 
   -- TEST 2: UNIQUE(owner_person_id, doc_type) NULLS NOT DISTINCT — die NULL-Falle.
-  -- (2a) EIN Haushalts-Testament (owner_person_id NULL, gemeinschaftliche Urkunde) geht.
+  -- (2a) ein Haushalts-Testament (owner_person_id NULL, gemeinschaftliche Urkunde) geht.
   INSERT INTO estate.directives (owner_person_id, doc_type, doc_status)
   VALUES (NULL, 'testament', 'exists');
-  -- (2b) ein ZWEITES Haushalts-Testament -> unique_violation (NULLS NOT DISTINCT greift).
+  -- (2b) ein zweites Haushalts-Testament -> unique_violation (NULLS NOT DISTINCT greift).
   v_denied := false;
   BEGIN
     INSERT INTO estate.directives (owner_person_id, doc_type, doc_status)
     VALUES (NULL, 'testament', 'planned');
   EXCEPTION WHEN unique_violation THEN v_denied := true; END;
   IF NOT v_denied THEN RAISE EXCEPTION 'FAIL [2b] zweites Haushalts-Testament nicht geblockt (NULLS-NOT-DISTINCT-Falle)'; END IF;
-  -- (2c) person-eigene Eintraege koexistieren mit dem Haushalts-Eintrag UND untereinander.
+  -- (2c) person-eigene Eintraege koexistieren mit dem Haushalts-Eintrag und untereinander.
   INSERT INTO estate.directives (owner_person_id, doc_type, doc_status) VALUES ('erika', 'testament', 'exists');
   INSERT INTO estate.directives (owner_person_id, doc_type, doc_status) VALUES ('lena',  'testament', 'planned');
   SELECT count(*) INTO v_cnt FROM estate.directives WHERE doc_type = 'testament';
@@ -121,7 +121,7 @@ BEGIN
 
   -- TEST 5: updated_at-Touch-Trigger feuert beim UPDATE.
   -- NOW() ist transaktions-stabil -> ein frischer INSERT + UPDATE truegen im selben BEGIN denselben
-  -- Stempel. Daher: INSERT mit RUECKDATIERTEM updated_at (kein Trigger auf INSERT), dann UPDATE ->
+  -- Stempel. Daher: INSERT mit rueckdatiertem updated_at (kein Trigger auf INSERT), dann UPDATE ->
   -- der BEFORE-UPDATE-Trigger muss auf NOW() vorziehen.
   INSERT INTO estate.directives (owner_person_id, doc_type, doc_status, updated_at)
   VALUES ('lena', 'vorsorgevollmacht', 'exists', now() - interval '1 day');

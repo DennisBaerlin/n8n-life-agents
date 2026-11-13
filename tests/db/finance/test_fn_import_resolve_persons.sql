@@ -52,7 +52,7 @@ BEGIN
     RAISE EXCEPTION 'FAIL irp [fremdes Feld]'; END IF;
   IF finance.fn_import_resolve_persons('stock_buy', '{"owner":"Irpa"}'::jsonb)->>'error' NOT LIKE '%has no person%' THEN
     RAISE EXCEPTION 'FAIL irp [Typ ohne Person]'; END IF;
-  -- insurance.beneficiary (Bezugsberechtigter, Freitext) ist KEIN Personen-Key
+  -- insurance.beneficiary (Bezugsberechtigter, Freitext) ist kein Personen-Key
   IF finance.fn_import_resolve_persons('insurance', '{"beneficiary":"Kinder"}'::jsonb)->>'error' IS NOT NULL THEN
     RAISE EXCEPTION 'FAIL irp [beneficiary-Freitext faelschlich abgelehnt]'; END IF;
   RAISE NOTICE 'PASS fn_import_resolve_persons [mehrdeutig / alter Key / Slug / fremdes Feld / Typ ohne Person; beneficiary-Freitext ok]';

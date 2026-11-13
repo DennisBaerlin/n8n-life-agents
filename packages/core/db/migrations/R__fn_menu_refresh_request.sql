@@ -1,5 +1,6 @@
 -- ============================================================
--- core.fn_menu_refresh_request — legt einen Menue-Auftrag an (core.menu_refresh), damit der Knopf „Uebersicht“ folgt
+-- fn_menu_refresh_request (WRITE)
+--   Legt einen Menue-Auftrag an (core.menu_refresh), damit der Knopf „Uebersicht“ folgt; keine Eingabe.
 --   SECURITY DEFINER: core.fn_set_onboarding_section laeuft unter den engen <pkg>_rw-Rollen, die core.menu_refresh nicht
 --   schreiben duerfen. EXECUTE je Paket-Rolle in core.fn_provision_package_roles. Rueckgabe: void.
 --   Tests: tests/db/core/test_fn_app_button_state.sql, tests/db/cross/test_role_permissions.sql

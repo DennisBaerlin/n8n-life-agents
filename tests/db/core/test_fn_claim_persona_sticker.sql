@@ -1,7 +1,7 @@
 -- tests/db/core/test_fn_claim_persona_sticker.sql
--- agent.fn_claim_persona_sticker(p): waehlt hoechstens EINEN Sticker je Antwort und setzt die Bremse.
+-- agent.fn_claim_persona_sticker(p): waehlt hoechstens einen Sticker je Antwort und setzt die Bremse.
 --   * Prioritaet yay > top > hmm > hallo; Set = Persona des Absenders (neutral = Roboter-Set 'neutral')
---   * top nur bei ENDGUELTIG bestaetigter Karte DIESES Laufs (approved, opened_at >= Nachrichtenzeit) + FRAME
+--   * top nur bei endgueltig bestaetigter Karte dieses Laufs (approved, opened_at >= Nachrichtenzeit) + FRAME
 --   * hmm nur Datei + FRAME; hallo nur reiner Gruss ohne Werkzeug-Aufruf; nie bei NOFRAME
 --   * Bremse je Person (persona_sticker:<pid>, Default 4 h); yay + Persona-Wahl umgehen sie, setzen sie aber
 --   * Aus-Schalter core.config persona.stickers_enabled; unbekannter Absender -> kein Sticker

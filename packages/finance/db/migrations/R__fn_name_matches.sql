@@ -1,8 +1,8 @@
 -- ============================================================
--- fn_name_matches (NAMENS-VERGLEICH DER RESOLVER)
---   Die EINE Vergleichsregel aller fn_resolve_*-Namensaufloesungen ("erst exakt, nur bei 0 Treffern ohne
---   Gross-/Kleinschreibung", Paket DB-ist-das-Gesetz S3):
---     p_exact = TRUE  -> p_candidate = p_name (wie bisher)
+-- fn_name_matches (READ HELPER, IMMUTABLE — Namensvergleich der Resolver)
+--   Die eine Vergleichsregel aller fn_resolve_*-Namensaufloesungen ("erst exakt, nur bei 0 Treffern ohne
+--   Gross-/Kleinschreibung"). Eingabe: p_candidate, p_name, p_exact. Rueckgabe: boolean.
+--     p_exact = TRUE  -> p_candidate = p_name
 --     p_exact = FALSE -> lower(btrim()) beider Seiten gleich (kein Pattern: '_'/'%' sind normale Zeichen)
 --   Die Resolver rufen erst mit TRUE und nur bei 0 Treffern mit FALSE -> Bestandspaare, die sich nur in der
 --   Schreibweise unterscheiden, bleiben bei exakter Eingabe eindeutig.

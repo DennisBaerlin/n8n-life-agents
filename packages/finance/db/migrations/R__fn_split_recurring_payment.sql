@@ -1,25 +1,25 @@
 -- ============================================================
 -- fn_split_recurring_payment (INTERNAL HELPER — not tool-facing)
---   Der EINE history-erhaltende Validity-Split einer recurring_payment (Audit F2). Gerufen von
---   fn_set_recurring_payment und fn_set_savings_plan (zweiter Konsument -> vereinheitlicht).
---   Alte Zeile endet zum Stichtag (valid_to = p_eff_from, EXKLUSIV); neue Zeile gilt ab p_eff_from und ERBT
+--   Der eine history-erhaltende Validity-Split einer recurring_payment. Gerufen von
+--   fn_set_recurring_payment und fn_set_savings_plan.
+--   Alte Zeile endet zum Stichtag (valid_to = p_eff_from, exklusiv); neue Zeile gilt ab p_eff_from und erbt
 --   von der alten: account_id, target_account_id (Transfer bleibt Transfer), status (pausiert bleibt
 --   pausiert), das bisherige Ende (wenn kein neues), den Rhythmus-Anker first_payment_date (bei gleicher
 --   Kadenz; sonst Neu-Anker am Stichtag). Vorkommen vor valid_from blendet fn_recurring_due_open aus ->
---   am Stichtag ist nie alte UND neue Rate faellig.
+--   am Stichtag ist nie alte und neue Rate faellig.
 --   Positionale Args (fn-intern): p_amount signed (NULL = alter Betrag), p_interval/p_unit/p_dom/p_name/p_notes
---   (NULL = alter Wert), p_valid_to = neues Ende EXKLUSIV gespeichert (Aufrufer rechnet die inklusive
+--   (NULL = alter Wert), p_valid_to = neues Ende exklusiv gespeichert (Aufrufer rechnet die inklusive
 --   Nutzer-Eingabe +1 Tag um; NULL = altes Ende).
---   VORGAENGER-KETTE (Audit Paket 2, A0): die neue Zeile traegt predecessor_id = alte Zeile; alle Besitzer
+--   Vorgaenger-Kette: die neue Zeile traegt predecessor_id = alte Zeile; alle Besitzer
 --   (Kredit/Sparplan/Sparziel/Versicherung/Vorsorge) zeigen danach auf die neue Zeile (fn_repoint_recurring_owners,
 --   Kopf-Regel). Alte Vorkommen vor dem Stichtag bleiben auf der alten Zeile und werden ueber
 --   fn_recurring_lineage weiter ihrem Besitzer zugeordnet.
---   KORRIGIERBAR (kein Write) -> {ok:false, reason, ...}: Stichtag nicht nach valid_from; alte Zeile vor dem
---   Stichtag schon beendet; Stichtag nicht nach der letzten gebuchten/uebersprungenen Rate (sonst gaelten
---   Vorkommen doppelt; "gebucht" keyt auf die Faelligkeit recurring_due_date, nicht aufs Buchungsdatum);
---   neues Ende nicht nach dem Stichtag.
+--   Korrigierbar (kein Write) -> {ok:false, reason, ...}: Stichtag nicht nach valid_from (current_valid_from); alte Zeile
+--   vor dem Stichtag schon beendet (last_valid_day); Stichtag nicht nach der letzten gebuchten/uebersprungenen Rate
+--   (last_booked; sonst gaelten Vorkommen doppelt; "gebucht" keyt auf die Faelligkeit recurring_due_date, nicht aufs
+--   Buchungsdatum); neues Ende nicht nach dem Stichtag. RAISE nur bei unbekannter p_rp_id.
 --   executed_by (Nutzerangabe: Dauerauftrag bei der Bank oder selbst ueberwiesen, NULL = nicht angegeben) erbt die neue Zeile.
---   FESTE MONATSTAGE p_days (optional, letzter Parameter): NULL = von der alten Zeile erben, solange die Einheit
+--   Feste Monatstage p_days (optional, letzter Parameter): NULL = von der alten Zeile erben, solange die Einheit
 --   'month' bleibt und kein neuer Einzeltag p_dom kommt; '{}' = leeren; sonst die neuen Tage (der Einzeltag wird
 --   dann NULL, CHECK finance_rp_schedule_days_chk). Andere Tage = Kadenzwechsel -> Neu-Anker am Stichtag.
 --   RUECKGABE: {ok:true, recurring_payment_id} (neue Zeile).

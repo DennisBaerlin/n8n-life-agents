@@ -50,7 +50,7 @@ BEGIN
     RAISE EXCEPTION 'FAIL [1] Frage auf dem Ziel-Konto: %', v_prep->'card_lines'; END IF;
   RAISE NOTICE 'PASS [1] Auszug des Ziel-Kontos zuerst: Frage dort';
 
-  -- [2] Quell-Konto: zwei fehlende Termine der neuen Kette -> beide never_seen, EINE Frage mit Bank und Name;
+  -- [2] Quell-Konto: zwei fehlende Termine der neuen Kette -> beide never_seen, eine Frage mit Bank und Name;
   --     die gelaufene Kette und die Lastschrift fehlen ohne never_seen
   v_stmt := jsonb_build_object('account_number', 'DE11520513735120710131', 'currency', 'EUR',
               'period_start', ps, 'period_end', pe, 'opening_balance', 1000, 'closing_balance', 1000, 'lines', '[]'::jsonb);

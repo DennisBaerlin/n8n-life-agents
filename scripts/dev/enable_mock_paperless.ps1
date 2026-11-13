@@ -1,7 +1,7 @@
 ﻿#Requires -Version 5.1
 # enable_mock_paperless.ps1 — den Mock-Paperless-Server in der laufenden Test-n8n-Instanz scharf schalten
-# (paperless Phase 2; Muster enable_mock_telegram.ps1). Operiert auf einem BEREITS hochgefahrenen Substrat
-# (scripts/dev/bootstrap_test_n8n.ps1) — der byte-identische Install-Pfad bleibt unberuehrt.
+# (Aufruf: .\scripts\dev\enable_mock_paperless.ps1 [-Down] [-Verbose]). Operiert auf einem bereits hochgefahrenen
+# Substrat (scripts/dev/bootstrap_test_n8n.ps1) — der byte-identische Install-Pfad bleibt unberuehrt.
 #
 # Was es tut (idempotent):
 #   1) tests/mock_paperless/server.js in den Container kopieren (-> /opt/mock_paperless/server.js).
@@ -9,14 +9,15 @@
 #   3) core.config paperless.general.paperless_url auf den Mock setzen (Container-psql) — die Werkzeuge lesen die
 #      Adresse zur Laufzeit (core.fn_config_get), kein Redeploy noetig.
 #   4) Die Token-Credential 'Paperless-NGX API' (httpHeaderAuth) per REST-PATCH auf den Mock-Token umstellen — das
-#      ECHTE Owner-Token (TEST_PAPERLESS_API_TOKEN) geht so nie an den Mock (Plan-Reviewer F5).
+#      echte Owner-Token (TEST_PAPERLESS_API_TOKEN) geht so nie an den Mock.
 #   5) Einen `mock_paperless`-Block ins State-File schreiben (infra_test-Cases mit requires=mock_paperless).
 #
 # -Down: Unit stoppen, paperless_url auf den vorherigen Wert, Credential zurueck auf 'Token <TEST_PAPERLESS_API_TOKEN>'
 #        (falls in .env gesetzt), State-Block entfernen.
 #
-# Vorbedingung: laufendes Substrat mit installiertem paperless-Paket UND der Credential 'Paperless-NGX API'
+# Vorbedingung: laufendes Substrat mit installiertem paperless-Paket und der Credential 'Paperless-NGX API'
 # (inject_credentials legt sie nur an, wenn TEST_PAPERLESS_API_TOKEN in .env steht — beliebiger Wert genuegt).
+# Exit-Code: 0 = ok; jeder Fehler wirft ($ErrorActionPreference = 'Stop') und bricht das Skript ab (Exit ungleich 0).
 param(
     [switch]$Down,
     [switch]$Verbose
@@ -69,7 +70,7 @@ function Get-PaperlessCredId {
     return $c.id
 }
 function Set-PaperlessToken([string]$CredId, [string]$HeaderValue) {
-    # allowedDomains = Pflicht-Feldform von httpHeaderAuth (n8n 2.21.7, auf 2.44.4 bestaetigt) (wie inject_credentials.sh _cred_assemble_data).
+    # allowedDomains = Pflicht-Feldform von httpHeaderAuth (wie inject_credentials.sh _cred_assemble_data).
     $body = @{ name = $CredName; type = 'httpHeaderAuth'; data = @{ name = 'Authorization'; value = $HeaderValue; allowedDomains = '' } } | ConvertTo-Json -Compress
     Invoke-RestMethod -Uri "$N8nUrl/api/v1/credentials/$CredId" -Headers $Headers -Method Patch `
         -ContentType 'application/json; charset=utf-8' -Body ([System.Text.Encoding]::UTF8.GetBytes($body)) | Out-Null

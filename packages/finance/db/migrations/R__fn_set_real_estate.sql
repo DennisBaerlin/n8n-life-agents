@@ -3,13 +3,13 @@
 --   Aendert eine bestehende Immobilie (Neubewertung/Status/Stammdaten). Partielles Update
 --   ("nicht gesendet = unveraendert"). Reine UPDATE -- kein Trigger/GENERATED; die Net-Worth-View
 --   finance_real_estate_overview liest current_value live.
---   Wird current_value gesetzt OHNE value_updated_at -> value_updated_at = CURRENT_DATE (Bewertungsdatum).
+--   Wird current_value gesetzt ohne value_updated_at -> value_updated_at = heute (core.fn_today, Bewertungsdatum).
 --   Eingabe jsonb: real_estate_id (im n8n via fn_resolve_real_estate aufgeloest), name,
 --   current_value (Betrag, auch deutsch geschrieben), value_updated_at, owner_person_id (Slug; leer=unveraendert),
 --   status ('active'; 'sold' nur, wenn schon verkauft -- ein Verkauf laeuft ueber fn_sell_real_estate), notes,
---   living_area_m2, year_built (Instandhaltungsruecklage 2026-10-27; leer=unveraendert).
---   RUECKGABE: {ok:true, real_estate_id, card_lines (nur wenn Flaeche/Baujahr gesendet: fn_maintenance_card_lines)}.
---   Korrigierbar (current_value<0 oder unlesbar, unbekannter status, Flaeche/Baujahr ungueltig) -> {ok:false};
+--   living_area_m2, year_built (Instandhaltungsruecklage; leer=unveraendert).
+--   RUECKGABE: {ok:true, real_estate_id, effective, card_lines (nur wenn Flaeche/Baujahr gesendet: fn_maintenance_card_lines)}.
+--   Korrigierbar (nicht aufloesbares Datum -> code invalid_date, current_value<0 oder unlesbar, unbekannter status, Flaeche/Baujahr ungueltig) -> {ok:false};
 --   status sold auf einer aktiven Immobilie -> {ok:false, code:'use_sell_tool'}.
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_set_real_estate(p jsonb)
@@ -58,7 +58,7 @@ BEGIN
                                THEN COALESCE(NULLIF(p->>'value_updated_at', '')::date, core.fn_today())
                                ELSE COALESCE(NULLIF(p->>'value_updated_at', '')::date, value_updated_at)
                            END,
-        owner_person_id  = COALESCE(NULLIF(p->>'owner_person_id', ''), owner_person_id),  -- WS-4: typisierter Eigentuemer (Slug); leer=unveraendert
+        owner_person_id  = COALESCE(NULLIF(p->>'owner_person_id', ''), owner_person_id),  -- Slug; leer=unveraendert
         status           = COALESCE(NULLIF(p->>'status', '')::finance.property_status, status),
         notes            = COALESCE(NULLIF(p->>'notes', ''), notes),
         living_area_m2   = COALESCE(NULLIF(p->>'living_area_m2', '')::numeric, living_area_m2),

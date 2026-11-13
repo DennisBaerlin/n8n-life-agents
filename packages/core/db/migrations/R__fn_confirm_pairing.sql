@@ -1,21 +1,22 @@
 -- ============================================================
--- fn_confirm_pairing (WS-5a — Owner bestaetigt die gestagete Einladung -> BINDUNG committen)
+-- fn_confirm_pairing (Owner bestaetigt die gestagete Einladung -> Bindung committen)
 --   Schritt 3 (Approve): der Owner tippt ✅ am callback_query. Die Owner-Auth (from.id == Owner) liegt
---   DETERMINISTISCH im Orchestrator-Handler VOR diesem Aufruf (LLM entscheidet keine Auth); diese fn ist
+--   deterministisch im Orchestrator-Handler vor diesem Aufruf (LLM entscheidet keine Auth); diese fn ist
 --   die atomare Durchsetzung. Bindet die beim Claim gestagete Member-Identitaet (claimed_uid) an die
 --   Einladungs-Person (person_id) ueber den geteilten Merge-Kern (fn_merge_member_identity).
---   IDEMPOTENT (Opus-Reviewer): zweites ✅ (Telegram-Retry / Doppel-Tap) findet consumed_at gesetzt ->
---   {ok:false, resolved:true}, KEIN zweiter Merge, kein Owner-Alert. Schon-gepairt/Merge-Fehler reicht der
+--   Idempotent: zweites ✅ (Telegram-Retry / Doppel-Tap) findet consumed_at gesetzt ->
+--   {ok:false, resolved:true}, kein zweiter Merge, kein Owner-Alert. Schon-gepairt/Merge-Fehler reicht der
 --   Kern als freundliches {ok:false} bzw. RAISE (Rollback) durch.
---   p: { id }   (pairing_state.id aus dem callback_data confirm:<id>)
---   RUECKGABE: {ok:true, person_id, role, full_name, telegram_user_id, member_chat_id, language_hint, has_language, members_have_areas}
+--   Eingabe p: { id }   (pairing_state.id aus dem callback_data confirm:<id>, Pflicht)
+--   Rueckgabe: {ok:true, person_id, role, full_name, telegram_user_id, member_chat_id, language_hint, has_language, members_have_areas}
 --            (language_hint = Telegram-App-Sprache vom claim, nur Vorschlag; has_language = Person hat schon eine
 --             eigene Sprache -> der Orchestrator schickt den Sprach-Picker nur, wenn false; members_have_areas = der Haushalt
---             ist fertig eingerichtet UND ein aktives persoenliches (per_user) Paket hat Onboarding-Abschnitte -> die
---             Bestaetigung traegt den Knopf 'Meine Bereiche' (2026-10-28: 'Es kann losgehen' kommt nur EINMAL, beim ersten
---             Haushalts-Abschluss; ein spaeter verbundenes Mitglied erfuhr sonst nie von seinen Bereichen))
+--             ist fertig eingerichtet und ein aktives persoenliches (per_user) Paket hat Onboarding-Abschnitte -> die
+--             Bestaetigung traegt den Knopf 'Meine Bereiche'; 'Es kann losgehen' kommt nur einmal, beim ersten
+--             Haushalts-Abschluss, ein spaeter verbundenes Mitglied erfuehre sonst nie von seinen Bereichen)
 --            | {ok:false, resolved:true}        (bereits bestaetigt/abgelehnt -> idempotent)
---            | {ok:false, reason, member_chat_id?}  (noch nicht eingeloest / already paired)
+--            | {ok:false, reason, member_chat_id?}  (pairing id fehlt / request nicht gefunden / noch nicht eingeloest / already paired)
+--   Seiteneffekt: Merge der Identitaet in die family-Facts (fn_merge_member_identity), pairing_state.consumed_at = NOW().
 --   Invarianten-Tests: tests/db/core/test_fn_pairing_challenge.sql
 -- ============================================================
 CREATE OR REPLACE FUNCTION agent.fn_confirm_pairing(p jsonb)

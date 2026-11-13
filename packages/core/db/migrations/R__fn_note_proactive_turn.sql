@@ -1,6 +1,6 @@
 -- ============================================================
--- agent.fn_note_proactive_turn (traegt eine proaktive Nachricht ins Gedaechtnis nach)
---   Crons schreiben in kein Agenten-Gedaechtnis; antwortet jemand frei auf eine Rollout-Nachricht, kennt sie sonst niemand.
+-- fn_note_proactive_turn (WRITE)
+--   Traegt eine proaktive Nachricht ins Gedaechtnis nach. Crons schreiben in kein Agenten-Gedaechtnis; antwortet jemand frei auf eine Rollout-Nachricht, kennt sie sonst niemand.
 --   Nur Katalog-Schluessel mit Skalar-Parametern, nie freier Text. Router: Vier-Zeilen-Form wie agent.fn_set_router_button_turn; Agent: Paar [Proactive message] + Struktur.
 --   p: {chat_id, agent ('agent.<x>' oder 'orchestrator'), via ('agent.<x>', nur Router: der Agent, dem die Nachricht gehoert), msg:[{kind:'tpl', value, params}]}. Ungueltig oder Tabelle fehlt: no-op, nie RAISE.
 --   RUECKGABE {ok:true, recorded}. Tests: tests/db/core/test_fn_note_proactive_turn.sql

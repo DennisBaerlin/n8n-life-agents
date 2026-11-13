@@ -1,5 +1,5 @@
 -- tests/db/core/test_fn_claim_reaction.sql
--- agent.fn_claim_reaction(p): hoechstens EINE Reaktion je Aufruf, Entscheidung nur in der DB.
+-- agent.fn_claim_reaction(p): hoechstens eine Reaktion je Aufruf, Entscheidung nur in der DB.
 --   * seen 👀 (Lebenszeichen), done 👌 (Karte dieses Laufs endgueltig bestaetigt + FRAME + reply_ok)
 --   * answer = Stimmung statt Text (ohne Werkzeug, react_only), ohne Obergrenze
 --   * mood = Stimmung neben Text: nach Werkzeug nur FRAME, ohne Werkzeug nur mit Text, nie mit Sticker, nie NOFRAME,
@@ -58,7 +58,7 @@ BEGIN
   IF r->>'emoji' IS NOT NULL THEN RAISE EXCEPTION 'FAIL claim_reaction [done trotz NOFRAME: %]', r; END IF;
   r := pg_temp.rx(111, 10, '{"tool_called":true,"signal":"FRAME","reply_ok":false}');
   IF r->>'emoji' IS NOT NULL THEN RAISE EXCEPTION 'FAIL claim_reaction [done vor Fehler-Hinweis: %]', r; END IF;
-  -- Daumen-Sticker im selben Lauf -> kein 👌 (Owner-Entscheid: ein Bestaetigungs-Signal genuegt, 👀 bleibt)
+  -- Daumen-Sticker im selben Lauf -> kein 👌 (ein Bestaetigungs-Signal genuegt, 👀 bleibt)
   r := pg_temp.rx(111, 10, '{"tool_called":true,"signal":"FRAME","sticker":"butler_top"}');
   IF r->>'emoji' IS NOT NULL THEN RAISE EXCEPTION 'FAIL claim_reaction [done trotz Sticker: %]', r; END IF;
   r := pg_temp.rx(111, 10, '{"tool_called":true,"signal":"FRAME","mood":"CHEER"}');

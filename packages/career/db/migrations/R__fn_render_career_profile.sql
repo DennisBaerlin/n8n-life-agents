@@ -1,13 +1,13 @@
 -- ============================================================
--- career.fn_render_career_profile (WS-1 — Render des career_profile-Sidecars, Header-only)
---   Liefert NUR den autoritativen Fakten-HEADER des 'career_profile'-Sidecars (aktuelle Rolle, Branche,
+-- career.fn_render_career_profile (READ)
+--   Render des career_profile-Sidecars, Header-only: autoritativer Fakten-Header (aktuelle Rolle, Branche,
 --   Berufsstart, Skills). Die generische Engine core.fn_fetch_context wrappt Banner + Header + _meta-Stempel
 --   + Prosa. Ohne diese Render-Zeile wuerde load_context dem LLM nur die rohe Prosa zeigen (die facts
---   blieben unsichtbar) — der Renderer macht die strukturierten Roh-Fakten zum autoritativen Header.
---   UNIFORME Signatur fn(text)->text. ABLEITUNGEN render-at-fetch, NIE gespeichert (Root-CLAUDE.md "LLM
---   rechnet nicht"): "letzter Wechsel vor ~N Jahren" aus last_job_change_date. RUECKGABE: Header-Text
---   ODER NULL (kein facts-Sidecar -> Engine rendert nur Prosa).
---   Anwenden via: db_apply.ps1 -File packages\career\db\migrations\R__fn_render_career_profile.sql
+--   blieben unsichtbar).
+--   Eingabe: p_name (Name des Sidecars). Uniforme Signatur fn(text)->text.
+--   Ableitungen render-at-fetch, nie gespeichert: "Berufsstart vor ~N Jahren" aus career_start_date,
+--   "letzter Wechsel vor ~N Jahren" aus last_job_change_date, Skill "seit" roh.
+--   Rueckgabe: Header-Text oder NULL (kein facts-Sidecar -> Engine rendert nur Prosa).
 -- ============================================================
 CREATE OR REPLACE FUNCTION career.fn_render_career_profile(p_name text)
 RETURNS text LANGUAGE plpgsql STABLE AS $$
@@ -31,7 +31,7 @@ BEGIN
         v_lines := v_lines || ('Branche: ' || (v_facts->>'industry'));
     END IF;
 
-    -- WP3: Berufsstart roh, die Jahre seitdem render-at-fetch. BEWUSST keine Behauptung "N Jahre Berufserfahrung"
+    -- Berufsstart roh, die Jahre seitdem render-at-fetch. Bewusst keine Behauptung "N Jahre Berufserfahrung"
     -- (Elternzeit/Teilzeit/Pausen machen sie falsch) — nur, wie lange der Start zurueckliegt.
     v_start := career.fn_partial_date(v_facts->>'career_start_date');
     IF v_start IS NOT NULL THEN

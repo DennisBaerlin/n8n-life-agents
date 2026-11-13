@@ -1,19 +1,19 @@
 -- ============================================================
--- career.fn_validate_career_planning (WS-1 — Validator des career_planning-facts-Sidecars, D12)
+-- career.fn_validate_career_planning (VALIDATOR)
 --   Strukturvalidierung des advisor-gepflegten 'career_planning'-Sidecars (Ziel-Rollen, Ziel-Branchen,
 --   Umstiegs-Timeline). Vorbild finance.fn_validate_financial_planning (partial-tolerant: jeder Top-Block
 --   optional). Der Plan-Sidecar wird von core.fn_advisor_publish_plan(domain='career') geschrieben; der
---   Core-Trigger dispatcht die Struktur GENERISCH ueber core.context_validators hierher. Die Derived-Value-
+--   Core-Trigger dispatcht die Struktur generisch ueber core.context_validators hierher. Die Derived-Value-
 --   Denylist (keine gespeicherten Ableitungen wie computed_months/target_year) liegt im Core-Validator.
---   skill_gaps sind WS-3 (Skill-Gap-Numerik) — die SOLL-Skills je Ziel-Rolle
---   (target_roles[].required_skills[]={name,min_level?,is_blocker?}) werden hier (WS-3) strukturell geprueft
---   (name Pflicht, min_level in der 4-Skala via career.fn_skill_level_rank, kein doppelter Skill-Name je Rolle,
---   is_blocker bool) — der jsonb-Sub-Feld-Backstop. Die Skill-Gap-NUMERIK rechnet career.fn_skill_gap, nie hier.
---   WS-2: die SUCHKRITERIEN des Job-Scanners (target_locations/search_radius_km/employment_types) leben als
---   Block der targets-Sektion in DIESEM Sidecar (Owner-Entscheid: Suchkriterien = career_planning-Fakten,
---   kein Tabellen-Konstrukt) -> der Cron cron.score_jobs liest sie. Hier nur partial-tolerant strukturiert.
---   RUECKGABE: NULL = gueltig, sonst Fehlertext. Anwenden via:
---     db_apply.ps1 -File packages\career\db\migrations\R__fn_validate_career_planning.sql
+--   Eingabe: p_facts (jsonb-Objekt; NULL/Nicht-Objekt -> gueltig).
+--   Die Soll-Skills je Ziel-Rolle (target_roles[].required_skills[]={name,min_level?,is_blocker?}) werden hier
+--   strukturell geprueft (name Pflicht, min_level in der 4-Skala via career.fn_skill_level_rank, kein doppelter
+--   Skill-Name je Rolle, is_blocker bool) — der jsonb-Sub-Feld-Backstop. Die Skill-Gap-Numerik rechnet
+--   career.fn_skill_gap, nie hier.
+--   Die Suchkriterien des Job-Scanners (target_locations/search_radius_km/employment_types) leben als
+--   Block der targets-Sektion in diesem Sidecar (Suchkriterien = career_planning-Fakten, kein Tabellen-Konstrukt);
+--   der Cron cron.score_jobs liest sie. Hier nur partial-tolerant strukturiert.
+--   Rueckgabe: NULL = gueltig, sonst Fehlertext.
 -- ============================================================
 CREATE OR REPLACE FUNCTION career.fn_validate_career_planning(p_facts jsonb)
 RETURNS text LANGUAGE plpgsql STABLE AS $$
@@ -48,7 +48,7 @@ BEGIN
                     RETURN format('career_planning.target_roles[].salary_expectation_eur %s out of sane range (0..10000000)', v_sal);
                 END IF;
             END IF;
-            -- WP3: Gehalt mit Einheit (roh, wie gesagt); den Jahreswert rechnet career.fn_salary_annual beim Anzeigen
+            -- Gehalt mit Einheit (roh, wie gesagt); den Jahreswert rechnet career.fn_salary_annual beim Anzeigen
             IF v_role ? 'salary_period' AND jsonb_typeof(v_role->'salary_period') <> 'null'
                AND v_role->>'salary_period' NOT IN ('month', 'year') THEN
                 RETURN format('career_planning.target_roles[].salary_period "%s" invalid (month|year)', v_role->>'salary_period');
@@ -58,12 +58,12 @@ BEGIN
                 RETURN format('career_planning.target_roles[].salary_basis "%s" invalid (gross|net)', v_role->>'salary_basis');
             END IF;
 
-            -- WS-3: required_skills[] (Soll-Skills je Ziel-Rolle) — partial-tolerant (fehlt -> ok)
+            -- required_skills[] (Soll-Skills je Ziel-Rolle) — partial-tolerant (fehlt -> ok)
             IF v_role ? 'required_skills' AND jsonb_typeof(v_role->'required_skills') <> 'null' THEN
                 IF jsonb_typeof(v_role->'required_skills') <> 'array' THEN
                     RETURN 'career_planning.target_roles[].required_skills must be an array';
                 END IF;
-                v_seen := '{}';   -- per-Rolle-Dubletten-Check (== der Tabellen-UNIQUE auf Validator-Ebene)
+                v_seen := '{}';   -- per-Rolle-Dubletten-Check (Validator-Ebene, keine Tabelle)
                 FOR v_rs IN SELECT * FROM jsonb_array_elements(v_role->'required_skills') LOOP
                     IF length(trim(COALESCE(v_rs->>'name', ''))) = 0 THEN
                         RETURN 'career_planning.target_roles[].required_skills[].name is required (non-empty)';
@@ -91,9 +91,9 @@ BEGIN
         RETURN 'career_planning.target_industries must be an array';
     END IF;
 
-    -- WP3: Zieldatum ROH (absolut oder relativ wie gesagt, die DB loest "+2 years" beim Speichern auf), nie eine
-    -- relative Jahreszahl (timeline_years ist naechstes Jahr falsch; career:V007 hat den Bestand umgerechnet).
-    -- KEIN Vergangenheits-Check hier: das Dokument wird bei jedem Publish neu geprueft, ein erreichtes Ziel darf
+    -- Zieldatum roh (absolut oder relativ wie gesagt, die DB loest "+2 years" beim Speichern auf), nie eine
+    -- relative Jahreszahl (timeline_years ist naechstes Jahr falsch; Bestand umgerechnet in career:V007).
+    -- Kein Vergangenheits-Check hier: das Dokument wird bei jedem Publish neu geprueft, ein erreichtes Ziel darf
     -- spaeteres Publizieren nicht blockieren (der Renderer zeigt "ueberschritten").
     IF p_facts ? 'timeline_years' THEN
         RETURN 'career_planning.timeline_years is no longer stored (it is wrong a year later) — pass target_date '
@@ -104,7 +104,7 @@ BEGIN
         RETURN format('career_planning.target_date "%s" must be YYYY, YYYY-MM or YYYY-MM-DD', p_facts->>'target_date');
     END IF;
 
-    -- WS-2 Suchkriterien (targets-Block; Owner-Entscheid Option A):
+    -- Suchkriterien (targets-Block):
     -- target_locations: Array von Orten (Strings; -> Cron-Param 'wo')
     IF p_facts ? 'target_locations' AND jsonb_typeof(p_facts->'target_locations') <> 'null'
        AND jsonb_typeof(p_facts->'target_locations') <> 'array' THEN
@@ -128,9 +128,9 @@ BEGIN
         RETURN 'career_planning.employment_types must be an array';
     END IF;
 
-    -- WS-5 transition-Block (Runway-Szenario; ROHE Owner-Werte, beide optional): { probation_months?,
-    -- expected_gap_income_eur? }. Die ABGELEITETE Runway (runway_months/covers/effective_burn) rechnet
-    -- career.fn_runway render-at-fetch und wird NIE gespeichert — die Core-Denylist (agent.fn_validate_
+    -- transition-Block (Runway-Szenario; rohe Nutzer-Werte, beide optional): { probation_months?,
+    -- expected_gap_income_eur? }. Die abgeleitete Runway (runway_months/covers/effective_burn) rechnet
+    -- career.fn_runway render-at-fetch und wird nie gespeichert — die Core-Denylist (agent.fn_validate_
     -- household_facts) sperrt diese Keys generisch (DB-Backstop).
     IF p_facts ? 'transition' AND jsonb_typeof(p_facts->'transition') <> 'null' THEN
         IF jsonb_typeof(p_facts->'transition') <> 'object' THEN

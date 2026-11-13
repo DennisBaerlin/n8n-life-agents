@@ -1,10 +1,10 @@
 -- tests/db/finance/test_schedule_dom_domain.sql
--- WP-2b: schedule_day_of_month-Domaene (1-28 | -1 | NULL). Beweist die DREI Adressen der Invariante:
+-- schedule_day_of_month-Domaene (1-28 | -1 | NULL). Beweist die drei Adressen der Invariante:
 --   (1) fn_valid_schedule_dom (IMMUTABLE Bool-Helper, freundlicher Guard-Kern),
 --   (2) der V012-CHECK auf den tragenden Tabellen (struktureller Backstop, direktes DML; Kredit/Versicherung tragen den
 --       Tag seit finance:V026/V027 nur noch an der rp),
 --   (3) der freundliche {ok:false}-Guard in einer repraesentativen Schreib-fn.
--- Regression gegen den fixed-dom-Overflow (29/30/31 overflowt kurze Monate -> Kachel-Bruch, arch-surfaced).
+-- Schutz gegen den fixed-dom-Overflow (29/30/31 overflowt kurze Monate -> Kachel-Bruch).
 BEGIN;
 DO $$
 DECLARE v_acct INT; v_res JSONB;
@@ -125,7 +125,7 @@ BEGIN
   RAISE NOTICE 'PASS [CHECK accounts plan_execution_days: nur Depots, kanonisch, leer erlaubt]';
 END $$;
 
--- ===== (5) -2 = vorletzter Tag des Monats (Befund 2026-10-24): Zahlungen ja, Zins-Konditionen nein =====
+-- ===== (5) -2 = vorletzter Tag des Monats: Zahlungen ja, Zins-Konditionen nein =====
 DO $$
 DECLARE v_acct INT; v_res JSONB; v_reason TEXT;
 BEGIN
@@ -133,7 +133,7 @@ BEGIN
     RAISE EXCEPTION 'FAIL [fn_valid_schedule_dom]: -2 (vorletzter Tag) abgelehnt'; END IF;
   IF finance.fn_valid_schedule_dom(-3) THEN
     RAISE EXCEPTION 'FAIL [fn_valid_schedule_dom]: -3 akzeptiert'; END IF;
-  -- Reason-fn = die EINE Adresse des Fehlertexts
+  -- Reason-fn = die eine Adresse des Fehlertexts
   IF finance.fn_schedule_dom_reason(-2) IS NOT NULL OR finance.fn_schedule_dom_reason(NULL) IS NOT NULL
      OR finance.fn_schedule_dom_reason(28) IS NOT NULL THEN
     RAISE EXCEPTION 'FAIL [fn_schedule_dom_reason]: gueltiger Tag mit Grund'; END IF;

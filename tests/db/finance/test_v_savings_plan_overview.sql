@@ -1,6 +1,6 @@
 -- tests/db/finance/test_v_savings_plan_overview.sql
--- Testet finance.savings_plan_overview (Befund 2026-10-27: ein Plan bei einer Bank mit festen
---   Ausfuehrungstagen wurde als Monatsbetrag gelesen). Eine Zeile je Plan: Betrag je Ausfuehrung, Rhythmus in
+-- Testet finance.savings_plan_overview (ein Plan bei einer Bank mit festen
+--   Ausfuehrungstagen darf nicht als Monatsbetrag gelesen werden). Eine Zeile je Plan: Betrag je Ausfuehrung, Rhythmus in
 --   Klartext, Monatsbetrag, Start, naechste Ausfuehrung (kettenbewusst), geplante Aenderung.
 BEGIN;
 

@@ -1,5 +1,5 @@
 -- ============================================================
--- fn_get_recurring_candidates (READ, STABLE) -- wiederkehrende Zahlungen aus Zeilen erkennen (Export ODER Kontoauszug)
+-- fn_get_recurring_candidates (READ, STABLE) -- wiederkehrende Zahlungen aus Zeilen erkennen (Export oder Kontoauszug)
 --   Die eine Adresse fuer Rhythmus-Messung, Tageswahl, Reife-Regel ("sicher"), Startdatum und Bekannt-Filter
 --   (fn_recurring_known). Konsumenten: fn_get_recurring_suggestions (mode export), fn_import_stage_recurring und
 --   fn_get_recurring_suggestion_queue (mode statement; die Queue misst die gespeicherten Termine einer Vorschlagszeile neu).
@@ -26,8 +26,9 @@
 --   (fn_match_household_holder), sonst payment.
 --   plpgsql (late-bound): ruft alphabetisch spaetere fn_iban_strict, fn_match_household_holder, fn_recurring_*,
 --   fn_statement_lines_merge.
---   Eingabe p: {account_id*, mode (export|statement, def export), period_last (def juengste Zeile), lines*[]}.
---   RUECKGABE: {suggestions:[{name, kind, direction, counterparty_iban?, from_account?, to_account?, from_account_id?,
+--   Eingabe p: {account_id (Pflicht), mode (export|statement, def export), period_last (def juengste Zeile), lines[]}.
+--   RAISE nur bei unbekanntem mode oder Konto.
+--   Rueckgabe: {suggestions:[{name, kind, direction, counterparty_iban?, from_account?, to_account?, from_account_id?,
 --   to_account_id?, amount, average_amount, amount_varies, schedule_unit, schedule_interval, schedule_day_of_month,
 --   first_payment_date, occurrences, first_date, last_date, dates:[{date, amount}], statement: recurring_kind, confidence,
 --   rhythm_assumed, series, creditor_id?, mandate_ref?}] (nach Monatsbetrag absteigend), known_elsewhere:[{name,
@@ -208,7 +209,7 @@ BEGIN
 
         FOR v_c IN SELECT c FROM jsonb_array_elements(v_merged) c
                    WHERE jsonb_array_length(c) >= CASE WHEN v_stmt THEN (v_pol->>'min_lines')::int ELSE 2 END LOOP
-            -- Zwei Zahlungen am selben Tag an denselben Schluessel = EIN Termin mit der Summe
+            -- Zwei Zahlungen am selben Tag an denselben Schluessel = ein Termin mit der Summe
             v_c := (SELECT jsonb_agg(jsonb_build_object('d', x.d, 'amt', x.amt, 'nm', x.nm, 'iban', x.iban, 'other', x.other,
                                                         'mand', x.mand, 'cid', x.cid, 'mref', x.mref, 'hint', x.hint, 'ser', x.ser) ORDER BY x.d)
                     FROM (SELECT (e->>'d')::date AS d, sum((e->>'amt')::numeric) AS amt, min(e->>'nm') AS nm,

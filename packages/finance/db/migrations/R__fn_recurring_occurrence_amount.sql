@@ -1,7 +1,8 @@
 -- ============================================================
 -- fn_recurring_occurrence_amount (READ) -- der Betrag, den fn_book_recurring_occurrence fuer ein Vorkommen bucht
---   EINE Quelle fuer den Soll-Betrag im Monats-Check (fn_statement_match) UND die Buchung (Audit Paket 2,
---   Punkt 9 + Plan-Review "Karte = Buchung"). Signiert wie recurring_payments.amount.
+--   Die eine Quelle fuer den Soll-Betrag im Monats-Check (fn_statement_match) und die Buchung
+--   (Karte = Buchung). Signiert wie recurring_payments.amount.
+--   Eingabe: p_rp_id, p_due (Faelligkeit). Rueckgabe: numeric.
 --   Regel: Kreditrate (rp-Kette gehoert einem Kredit) und die geplante Rate wuerde den Kredit ueberzahlen
 --   (letzte, kleinere Rate) -> der Abloesebetrag aus fn_get_loan_payment_split (Restschuld + Zins); sonst der
 --   geplante Betrag der rp. Unbekannte rp -> NULL.

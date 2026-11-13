@@ -1,9 +1,8 @@
 -- tests/db/core/test_fn_advisor_review_evaluate.sql
--- WS2: der generische Core-Eval-/Latch-Wrapper core.fn_advisor_review_evaluate. Isoliert die LATCH-
--- Logik von der finance-Review-fn ueber einen STUB-Reviewer, dessen alerts via GUC test.alerts gesteuert
+-- Der generische Core-Eval-/Latch-Wrapper core.fn_advisor_review_evaluate. Isoliert die Latch-
+-- Logik von der finance-Review-fn ueber einen Stub-Reviewer, dessen alerts via GUC test.alerts gesteuert
 -- werden (db_test hat kein seed_data -> die core.advisors-Zeile + der Stub werden im Test angelegt).
--- (Phase Notify: der Latch lebt jetzt in der GETEILTEN core.notification_state, source='advisor:'||domain,
---  state 'fired' statt 'breached'.)
+-- (Der Latch lebt in der geteilten core.notification_state, source='advisor:'||domain, state 'fired'.)
 --   (1) Erst-Breach -> send=true + state='fired'
 --   (2) gleicher Breach erneut -> send=false (still, Latch haelt)
 --   (3) wieder im Band (leeres alerts) -> Reconcile raeumt die Zeile (Re-Arm)
@@ -13,7 +12,7 @@
 BEGIN;
 
 -- Stub-Reviewer: liefert das per GUC gesetzte alerts-Array (Default leer); digest leer.
--- P2a: uniform 3-arg (p_domain, p_person_id, p_obs) — der Wrapper dispatcht 3-arg; der Stub ignoriert person_id.
+-- Uniform 3-arg (p_domain, p_person_id, p_obs) — der Wrapper dispatcht 3-arg; der Stub ignoriert person_id.
 CREATE OR REPLACE FUNCTION finance.fn__test_advisor_review(p_domain text, p_person_id text, p_obs jsonb)
 RETURNS jsonb LANGUAGE sql STABLE AS $$
     SELECT jsonb_build_object(
@@ -84,8 +83,8 @@ BEGIN
   IF (r->>'ok')::boolean THEN RAISE EXCEPTION 'FAIL [6]: unbekannte Domain ok=true'; END IF;
   RAISE NOTICE 'PASS [unbekannte Domain -> ok=false, graceful]';
 
-  -- (7) P2a Person-Faecherung: zwei Personen latchen UNABHAENGIG (source 'advisor:__test__:<pid>'); der
-  -- 1-Arg-Call (person NULL, Tests 1-6) bleibt byte-gleich 'advisor:__test__'. M2: Reconcile-GC person-isoliert.
+  -- (7) Person-Faecherung: zwei Personen latchen unabhaengig (source 'advisor:__test__:<pid>'); der
+  -- 1-Arg-Call (person NULL, Tests 1-6) bleibt byte-gleich 'advisor:__test__'. Reconcile-GC person-isoliert.
   PERFORM set_config('test.alerts', alert_a, true);
   r := core.fn_advisor_review_evaluate('__test__', 'erika');
   IF NOT (r->>'send')::boolean THEN RAISE EXCEPTION 'FAIL [7a] erika Erst-Breach send=false'; END IF;
@@ -97,7 +96,7 @@ BEGIN
   IF v_cnt <> 1 THEN RAISE EXCEPTION 'FAIL [7d] lena person-source-Zeile fehlt (%)', v_cnt; END IF;
   r := core.fn_advisor_review_evaluate('__test__', 'erika');  -- still (eigener Latch haelt)
   IF (r->>'send')::boolean THEN RAISE EXCEPTION 'FAIL [7e] erika Wiederhol-Breach send=true'; END IF;
-  -- M2: erika wieder im Band -> Reconcile raeumt NUR erikas person-source, lena bleibt
+  -- erika wieder im Band -> Reconcile raeumt nur erikas person-source, lena bleibt
   PERFORM set_config('test.alerts', '[]', true);
   PERFORM core.fn_advisor_review_evaluate('__test__', 'erika');
   SELECT count(*) INTO v_cnt FROM core.notification_state WHERE source='advisor:__test__:erika' AND key <> '__first_run__';
@@ -107,9 +106,9 @@ BEGIN
   RAISE NOTICE 'PASS [7] Person-Faecherung: getrennte Latches je person-source + Reconcile-GC person-isoliert (M2)';
 END $$;
 
--- (8) Roter Faden latch_keys (mit e2 abgestimmt): ein Mengen-Alarm (z. B. data_quality "Positionen ohne Anlageklasse")
---     latcht je Element (metric_key#k) -> NEU, sobald ein Element neu ist; gleiche Menge still; verschwundene Elemente
---     re-armt der Reconcile; leeres latch_keys = Alt-Verhalten (metric_key).
+-- (8) latch_keys: ein Mengen-Alarm (z. B. data_quality "Positionen ohne Anlageklasse")
+--     latcht je Element (metric_key#k) -> neu, sobald ein Element neu ist; gleiche Menge still; verschwundene Elemente
+--     re-armt der Reconcile; leeres latch_keys = Latch je metric_key.
 DO $$
 DECLARE r jsonb; v_cnt int;
 BEGIN

@@ -1,10 +1,9 @@
 ﻿#Requires -Version 5.1
 # Dot-gesourct von build_finance_tools.ps1 (Helper + Script-Scope-Creds im Parent-Scope).
 
-# --- 7. tool_reconcile_account (Playbook 5.9) ---------------
+# --- tool_reconcile_account ---
 function Build-ReconcileAccount {
-    # WS-B0: enge Paket-Schreibrolle (finance_rw, Least-Privilege D10) statt Owner-Cred.
-    # Dynamic-Scope: Build-Pg liest dieses $CRED_POSTGRES. Core-Tools nutzen die Owner-Cred.
+    # Enge Paket-Schreibrolle (finance_rw) statt Owner-Cred; Build-Pg liest $CRED_POSTGRES per Dynamic-Scope.
     $CRED_POSTGRES = $CRED_FINANCE_RW
     $trig = Build-Trigger @('account_name','confirmed_balance','reconciliation_date','notes')
 
@@ -17,8 +16,8 @@ function Build-ReconcileAccount {
     $errAcct = Build-ToolError 'Account ambiguous' @(660, 200) `
         "=Account '{{ `$('Start').item.json.account_name }}' resolves to {{ `$('Resolve Account').item.json.hit_count }} matches. Candidates: {{ JSON.stringify(`$('Resolve Account').item.json.candidates) }}. Ask the user which exact account."
 
-    # Saldo ZUM STICHTAG + Kontowaehrung + korrigierbare Ablehnung aus denselben fns wie die Buchung (Audit Paket 2,
-    # Punkt 6/7): fn_get_balance_as_of (vorher heutiger Saldo -> eine spaetere Buchung galt als Differenz),
+    # Saldo zum Stichtag + Kontowaehrung + korrigierbare Ablehnung aus denselben fns wie die Buchung:
+    # fn_get_balance_as_of (ein heutiger Saldo liesse eine spaetere Buchung als Differenz gelten),
     # fn_reconcile_blocker (Depot-/Kreditkonto, Stichtag Zukunft / vor letztem Abgleich), bestaetigter Saldo auf die
     # Waehrungseinheit gerundet, Differenz von der DB gerechnet. Fehlendes Datum = heute (wie die fn); relative Angabe ("yesterday")
     # rechnet core.fn_resolve_date, eine unlesbare lehnt der Probelauf (fn_reconcile_account) danach mit ok:false ab.
@@ -33,11 +32,9 @@ function Build-ReconcileAccount {
     $ifOk = Build-If 'Reconcilable?' @(770, -160) "={{ !`$json.blocker }}" 'true' 'equals' 'boolean'
     $errBlocked = Build-ToolError 'Reconcile blocked' @(880, 240) "={{ `$('Read DB Balance').item.json.blocker }}"
 
-    # "DB ist das Gesetz": fn_reconcile_account laeuft als Probelauf VOR der Karte (nach dem Read-only-Blocker-Check);
-    # derselbe Param-Satz geht nach dem Gate in den echten Write.
-    # Atomarer Write via fn_reconcile_account:
+    # Der Probelauf laeuft nach dem Read-only-Blocker-Check. Write (fn_reconcile_account):
     # 1. UPDATE finance.accounts.last_reconciled_balance + last_reconciled_at
-    # 2. Korrekturbuchung (category=reconciliation) NUR bei Differenz != 0; Saldo via Trigger.
+    # 2. Korrekturbuchung (category=reconciliation) nur bei Differenz != 0; Saldo via Trigger.
     $wg = New-FnWriteGate -Fn 'finance.fn_reconcile_account' -DryPos @(880, 0) -WritePos @(2200, 0) `
         -WriteName 'Reconcile (atomic)' `
         -WriteSelect "(r->>'ok')::boolean AS ok, r->>'reason' AS reason, (r->>'db_balance_before')::numeric AS db_balance_before, (r->>'confirmed_balance')::numeric AS confirmed_balance, (r->>'difference')::numeric AS difference, (r->>'reconciliation_tx_id') AS reconciliation_tx_id, r->>'currency' AS currency, (r->>'balance_after')::numeric AS balance_after" `
@@ -48,8 +45,8 @@ function Build-ReconcileAccount {
             notes                = '$(''Start'').item.json.notes'
         })
 
-    # --- HITL approval gate --- (Betraege in der KONTOWAEHRUNG, nicht hart EUR)
-    # Strukturiertes Summary (Textkatalog); die Differenz-Zeile traegt den Hinweis "Korrekturbuchung" bzw. "kein Unterschied".
+    # --- HITL approval gate --- (Betraege in der Kontowaehrung, nicht hart EUR)
+    # Die Differenz-Zeile traegt den Hinweis "Korrekturbuchung" bzw. "kein Unterschied".
     $S = "`$('Start').item.json"
     $B = "`$('Read DB Balance').item.json"
     $diff = "Number($B.diff)"
@@ -61,7 +58,7 @@ function Build-ReconcileAccount {
             value = (New-HitlValue -Kind money -Value $diff -Currency "$B.currency") })
         (New-HitlLine 'core.label.date'                 "$B.reconciliation_date" -Kind date)
         (New-HitlLine 'core.label.note'                 "$S.notes")
-        # 2026-10-23: der Abgleich markiert offene Dauerauftrags-/Sparplan-/Zins-Vorkommen bis Stichtag-10 als erledigt
+        # Der Abgleich markiert offene Dauerauftrags-/Sparplan-/Zins-Vorkommen bis Stichtag-10 als erledigt
         # (fn_reconcile_open_due, dieselbe Menge wie der Write) -> vorher sichtbar machen; das Datum (spaeteste Faelligkeit
         # der Menge) rechnet die DB im Read-Knoten (Datum statt "10 Tage vor")
         (New-HitlNote -Key 'finance.note.reconcile_closes_due' -If "Number($B.skip_count) > 0" -Params @{

@@ -1,22 +1,22 @@
 # upgrade_guard.sh — Schutz fuer Versionswechsel auf Bestands-Instanzen (n8n, Node.js, PostgreSQL-Minor).
-# Sourced by provision.sh (kein Shebang, kein `set -e` — erbt den Error-Mode des Top-Skripts).
+# Gesourct von provision.sh (kein Shebang, kein `set -e` — erbt den Error-Mode des Top-Skripts).
 #
-# WARUM: n8n migriert beim ersten Start einer neuen Version seine Tabellen (nicht automatisch umkehrbar, nur
-# `n8n db:revert` je Migration), und n8n + alle lifeagents-Schemas liegen in EINER Datenbank (N8N_DB_NAME).
+# Warum: n8n migriert beim ersten Start einer neuen Version seine Tabellen (nicht automatisch umkehrbar, nur
+# `n8n db:revert` je Migration), und n8n + alle lifeagents-Schemas liegen in einer Datenbank (N8N_DB_NAME).
 # Darum „erst sichern, dann aendern" (Muster GitLab Omnibus: Auto-Backup vor jedem Paket-Upgrade):
 #   upgrade_detect   — gibt es etwas zu schuetzen? (Versionswechsel n8n, Node oder PG-Minor auf einer Instanz mit DB,
 #                      oder ein unvollendeter frueherer Tausch = Merkzettel vorhanden)
-#   upgrade_prepare  — VOR install_postgres: Merkzettel -> laufende Ausfuehrungen abwarten -> n8n stoppen ->
+#   upgrade_prepare  — vor install_postgres: Merkzettel -> laufende Ausfuehrungen abwarten -> n8n stoppen ->
 #                      ganze DB per pg_dump -Fc verschluesselt sichern (common.sh gpg_sym_encrypt, core.backup_key).
-#                      Danach tauschen install_postgres/install_n8n bei STEHENDEM n8n (PG-Neustart gefahrlos, kein
+#                      Danach tauschen install_postgres/install_n8n bei stehendem n8n (PG-Neustart gefahrlos, kein
 #                      Absturz-Neustart auf halb getauschte Dateien); install_n8n_unit startet + wartet hart auf
 #                      /healthz/readiness (UPGRADE_ACTIVE).
 #   upgrade_finish   — sobald der Tausch steht (n8n bereit + Gateway neu gestartet): Merkzettel weg, Sicherungen bis
 #                      auf die letzten UPGRADE_KEEP raeumen. Das Workflow-Deploy danach ist ein normaler, wiederholbarer
 #                      Schritt — ein dort gescheiterter Lauf soll beim naechsten Update nicht erneut stoppen/neu starten.
-# Der MERKZETTEL (upgrade.pending) haelt den Zustand ueber Abbrueche: existiert er, setzt jeder Wiederholungslauf
+# Der Merkzettel (upgrade.pending) haelt den Zustand ueber Abbrueche: existiert er, setzt jeder Wiederholungslauf
 # die Sicherung voraus (fehlt sie, wird sie gezogen, solange noch etwas zu tauschen ist) und startet n8n + Gateway neu.
-# Rueckweg bewusst MANUELL (upgrade_rollback_hint): ein automatisches Zurueckspielen auf eine halb migrierte DB waere
+# Rueckweg bewusst manuell (upgrade_rollback_hint): ein automatisches Zurueckspielen auf eine halb migrierte DB waere
 # riskanter als ein Mensch im Loop.
 # Ein normales Update ohne Versionswechsel beruehrt nichts davon (kein Stopp, keine Sicherung).
 # Reads globals: N8N_VERSION, NODE_MAJOR, PG_VERSION, N8N_DB_NAME, N8N_PORT, N8N_OWNER_ENV_FILE.
@@ -30,7 +30,7 @@ UPGRADE_KEEP=2
 UPGRADE_DRAIN_SECS="${UPGRADE_DRAIN_SECS:-120}"
 UPGRADE_ACTIVE=0      # 1 = dieser Lauf tauscht Versionen (oder setzt einen abgebrochenen Tausch fort)
 UPGRADE_CHANGES=''    # von upgrade_detect gefuellt: eine Zeile je anstehendem Tausch
-RELEASE_HISTORY_START="v0.35.0"   # erstes Release im heutigen Repo; aeltere Tags gibt es seit dem Repo-Neustart ohne Historie nicht mehr
+RELEASE_HISTORY_START="v0.35.0"   # erstes Release im Repo; aeltere Tags sind dort nicht ladbar (Repo ohne Historie)
 
 # _release_is_gone <tag> — 0, wenn <tag> ein stabiles vX.Y.Z vor RELEASE_HISTORY_START ist (also nicht mehr ladbar). Vergleich
 #   per `sort -V` wie _refuse_downgrade: bewusst ohne DB, der Rueckweg muss auch bei einer kaputten DB laufen.
@@ -48,13 +48,13 @@ _upg_pg_versions() {
 }
 
 # _upg_n8n_version -> installierte n8n-Version (leer, wenn keins). Gecacht: der n8n-CLI-Start dauert Sekunden, und
-# preflight, upgrade_detect und upgrade_prepare fragen VOR dem Tausch mehrfach (danach liest ensure_n8n_package frisch).
+# preflight, upgrade_detect und upgrade_prepare fragen vor dem Tausch mehrfach (danach liest ensure_n8n_package frisch).
 _UPG_N8N_VER=''
 _UPG_N8N_VER_SET=0
 _upg_n8n_version() {
   if [ "$_UPG_N8N_VER_SET" -eq 0 ]; then
     if rt_is_compose; then
-      # Verbund: die Version des LAUFENDEN n8n-Containers (vor dem Tausch = die alte), nicht die des Pins.
+      # Verbund: die Version des laufenden n8n-Containers (vor dem Tausch = die alte), nicht die des Pins.
       if svc_is_active n8n; then _UPG_N8N_VER="$(n8n_exec n8n --version 2>/dev/null || true)"; fi
     elif need_cmd n8n; then _UPG_N8N_VER="$(n8n --version 2>/dev/null || true)"; fi
     _UPG_N8N_VER_SET=1
@@ -100,7 +100,7 @@ _upg_changes_systemd() {
   return 0
 }
 
-# _upg_release_change — beide Betriebsarten. Release-Wechsel (Update im Chat; GitLab Omnibus sichert vor JEDEM Paket-
+# _upg_release_change — beide Betriebsarten. Release-Wechsel (Update im Chat; GitLab Omnibus sichert vor jedem Paket-
 #   Upgrade): ein neues Release bringt Schema-Migrationen mit, die sich nicht automatisch umkehren -> auch ohne n8n-/Node-/
 #   PG-Wechsel erst sichern. So hat jeder Rueckweg (lifeagents rollback) eine Sicherung von direkt davor. Erneut anwenden
 #   (gleiches Tag) sichert nicht.
@@ -126,7 +126,7 @@ _upg_db_exists() {
   [ "$(pg_su_psql -X -tAc "SELECT 1 FROM pg_database WHERE datname='${N8N_DB_NAME}'" 2>/dev/null)" = 1 ]
 }
 
-# _upg_load_backup_key — Sicherungsschluessel nach _UPG_KEY, seine Tabelle nach _UPG_KEY_TABLE (direkt rufen, NICHT in
+# _upg_load_backup_key — Sicherungsschluessel nach _UPG_KEY, seine Tabelle nach _UPG_KEY_TABLE (direkt rufen, nicht in
 # $(…) — die Globals muessen im Aufrufer ankommen). rc 0 = gelesen (_UPG_KEY leer = es gibt noch keine Schluessel-Tabelle
 # bzw. -Zeile -> die Erstinstallation kam nie bis zum Owner-Bootstrap, keine Nutzerdaten); rc 1 = nicht lesbar -> der
 # Aufrufer bricht ab (nie still "ohne Sicherung" weiter). Vor core:V006 hiess die Tabelle core.secret (v0.1.0-Bestand;
@@ -139,7 +139,7 @@ _upg_load_backup_key() {
   tables="$(pg_su_psql -v ON_ERROR_STOP=1 -X -tA -d "$N8N_DB_NAME" -c \
     "SELECT concat_ws(' ', CASE WHEN to_regclass('core.backup_key') IS NOT NULL THEN 'core.backup_key' END,
                            CASE WHEN to_regclass('core.secret') IS NOT NULL THEN 'core.secret' END)" 2>/dev/null)" || return 1
-  # Erste Tabelle MIT Schluessel gewinnt (zwischen Init und V006 koennen beide existieren, der Wert steht in core.secret).
+  # Erste Tabelle mit Schluessel gewinnt (zwischen Init und V006 koennen beide existieren, der Wert steht in core.secret).
   for t in $tables; do
     _UPG_KEY="$(backup_key_read "$t" 2>/dev/null)" || return 1
     if [ -n "$_UPG_KEY" ]; then _UPG_KEY_TABLE="$t"; return 0; fi
@@ -183,7 +183,7 @@ _upg_drain() {
   warn "Nach ${UPGRADE_DRAIN_SECS} s laufen noch Ausführungen — n8n hält trotzdem an (offene Bestätigungen bleiben erhalten)."
 }
 
-# _upg_snapshot <key> <ziel> — pg_dump -Fc der GANZEN App-DB, direkt in gpg gestreamt (kein Klartext auf der Platte).
+# _upg_snapshot <key> <ziel> — pg_dump -Fc der ganzen App-DB, direkt in gpg gestreamt (kein Klartext auf der Platte).
 # Schreibt erst <ziel>.part und benennt nur bei Erfolg um -> ein halbes Chiffrat gilt nie als Sicherung.
 _upg_snapshot() {
   local key="$1" out="$2" part="${2}.part"
@@ -194,7 +194,7 @@ _upg_snapshot() {
      && [ -s "$part" ]; then
     mv -f "$part" "$out"; chmod 0600 "$out"
     ok "Sicherung geschrieben: ${out} ($(du -h "$out" | cut -f1))"
-    # Verbund (Fund 7): zusaetzlich eine Kopie in den Ordner auf dem Rechner — die Docker-Platte kann samt Volume verschwinden.
+    # Verbund: zusaetzlich eine Kopie in den Ordner auf dem Rechner — die Docker-Platte kann samt Volume verschwinden.
     local hd
     hd="$(read_env_value "$(lifeagents_env_file core)" BACKUP_HOST_DIR 2>/dev/null || true)"
     if rt_is_compose && [ -n "$hd" ]; then
@@ -217,7 +217,7 @@ _upg_stop_n8n() {
 }
 
 # upgrade_detect — 0, wenn dieser Lauf geschuetzt tauschen muss (fuellt UPGRADE_CHANGES). Nach install_base_packages
-# rufen (apt-Kandidaten aktuell), VOR install_postgres.
+# rufen (apt-Kandidaten aktuell), vor install_postgres.
 upgrade_detect() {
   # Verbund: das Datenverzeichnis gehoert einer PostgreSQL-Hauptversion; ein Pin auf eine andere (compose.yml, contract_lint 33
   # haelt ihn = PG_VERSION) liesse den neuen Container auf den alten Daten nicht starten -> Abbruch, bevor etwas getauscht wird.
@@ -244,7 +244,7 @@ upgrade_prepare() {
   # shellcheck disable=SC2034  # gelesen von install_n8n.sh + install_llm_gateway.sh (erzwungener Neustart)
   UPGRADE_ACTIVE=1
   # PostgreSQL sicher an (ein frueher Lauf kann mitten im PG-Tausch abgebrochen sein; install_postgres startet es sonst
-  # erst NACH dieser Stelle) -> dann den Schluessel ZUERST: ist er nicht lesbar, bricht der Lauf ab, bevor etwas
+  # erst nach dieser Stelle) -> dann den Schluessel zuerst: ist er nicht lesbar, bricht der Lauf ab, bevor etwas
   # (weiter) getauscht wird.
   svc_start postgresql >/dev/null 2>&1 || true
   pg_wait_ready 30 || true
@@ -288,14 +288,14 @@ upgrade_prepare() {
   printf 'FROM_N8N=%s\nFROM_NODE=%s\nFROM_RELEASE=%s\nBACKUP=%s\nKEY_TABLE=%s\nSTARTED=%s\n' \
     "$from" "$(node_major)" "$(cat "$(lifeagents_version_marker)" 2>/dev/null || true)" "$backup" \
     "$_UPG_KEY_TABLE" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" | write_file "$UPGRADE_MARKER" 0600
-  # Verbund: der Rueckweg wechselt den master auf das VORHERIGE Image zurueck (lib/master_swap.sh). Laeuft dieser Lauf nach
+  # Verbund: der Rueckweg wechselt den master auf das vorherige Image zurueck (lib/master_swap.sh). Laeuft dieser Lauf nach
   # einem master-Wechsel, stehen Image + compose.yml von vorher noch im Wechsel-Ordner; sonst ist es das laufende.
   if rt_is_compose; then _upg_record_master_from; fi
 
   _upg_drain
   _upg_stop_n8n
   if [ -z "$_UPG_KEY" ]; then
-    # Ohne Schluessel UND ohne core-Schema kam die Erstinstallation nie bis zu den Nutzerdaten (oder der Owner hat
+    # Ohne Schluessel und ohne core-Schema kam die Erstinstallation nie bis zu den Nutzerdaten (oder der Owner hat
     # UPGRADE_ALLOW_NO_BACKUP=1 gesetzt) -> ohne Sicherung weiter.
     warn "Kein Sicherungsschlüssel — Update ohne Sicherung (Erstinstallation nie abgeschlossen bzw. bewusst so gewählt)."
   elif _upg_snapshot "$_UPG_KEY" "$backup"; then
@@ -326,7 +326,7 @@ upgrade_node_switched() {
   [ -n "$from" ] && [ "$from" != "$NODE_MAJOR" ]
 }
 
-# _upg_record_master_from — Verbund: Image + compose.yml VOR diesem Update in den Merkzettel (FROM_MASTER_IMAGE, FROM_COMPOSE).
+# _upg_record_master_from — Verbund: Image + compose.yml vor diesem Update in den Merkzettel (FROM_MASTER_IMAGE, FROM_COMPOSE).
 #   Nach einem master-Wechsel (lib/master_swap.sh) stehen sie noch im Wechsel-Ordner, sonst gilt das laufende. Die Datei liegt
 #   neben der Sicherung (<sicherung>.compose.yml), damit der Rueckweg auch nach upgrade_finish weiss, wohin zurueck.
 _upg_record_master_from() {
@@ -341,7 +341,7 @@ _upg_record_master_from() {
 }
 
 # upgrade_finish — sobald der Tausch steht (n8n bereit, Gateway neu gestartet; vor dem Workflow-Deploy): Merkzettel weg,
-# alte Sicherungen bis auf die letzten UPGRADE_KEEP raeumen (erst JETZT, damit ein gescheiterter Tausch nie die juengste loescht).
+# alte Sicherungen bis auf die letzten UPGRADE_KEEP raeumen (erst jetzt, damit ein gescheiterter Tausch nie die juengste loescht).
 upgrade_finish() {
   [ -f "$UPGRADE_MARKER" ] || return 0
   local backup
@@ -367,13 +367,13 @@ upgrade_rollback_hint() {
   from_node="$(read_env_value "$UPGRADE_MARKER" FROM_NODE 2>/dev/null || true)"
   from_rel="$(read_env_value "$UPGRADE_MARKER" FROM_RELEASE 2>/dev/null || true)"
   ktab="$(read_env_value "$UPGRADE_MARKER" KEY_TABLE 2>/dev/null || true)"
-  # Das Vorgaenger-Release ueber den Bootstrap-Launcher install.sh — NICHT ueber `lifeagents update`: scheitert der Tausch,
-  # ist noch die ALTE CLI installiert (install_cli laeuft erst am Ende) und kennt keine Versionswahl. install.sh ist
-  # self-contained und prueft die SHA256-Summe. Geladen wird das install.sh des NEUEN Release (Release-Asset, anonym). URL
+  # Das Vorgaenger-Release ueber den Bootstrap-Launcher install.sh — nicht ueber `lifeagents update`: scheitert der Tausch,
+  # ist noch die alte CLI installiert (install_cli laeuft erst am Ende) und kennt keine Versionswahl. install.sh ist
+  # self-contained und prueft die SHA256-Summe. Geladen wird das install.sh des neuen Release (Release-Asset, anonym). URL
   # fest auf github.com (PROVISION_GH_API = nur Test-Override).
   local boot_rel="latest/download"
   case "${RELEASE_TAG:-}" in v[0-9]*) boot_rel="download/${RELEASE_TAG}" ;; esac
-  # Releases vor RELEASE_HISTORY_START: im Repo gibt es ihr Tag nicht mehr. Dann KEINE Rueckweg-Kommandos drucken — alte
+  # Releases vor RELEASE_HISTORY_START: im Repo gibt es ihr Tag nicht mehr. Dann keine Rueckweg-Kommandos drucken — alte
   # Daten ohne den alten Programmstand liessen n8n erst recht nicht starten (neue n8n-Version, altes Schema).
   if _release_is_gone "$from_rel"; then
     txt="
@@ -440,21 +440,21 @@ _upg_carry_backup_keys() {
   printf 'BEGIN;\n%sCOMMIT;\n' "$drv" | psql_superuser_driver -q >/dev/null
 }
 
-# upgrade_rollback — `lifeagents rollback`: der GEFUEHRTE Rueckweg (fuehrt aus, was upgrade_rollback_hint druckt).
+# upgrade_rollback — `lifeagents rollback`: der gefuehrte Rueckweg (fuehrt aus, was upgrade_rollback_hint druckt).
 #   Quelle: der Merkzettel eines unvollendeten Updates, sonst die juengste pre-upgrade-Sicherung samt Begleitdatei .meta
 #   (upgrade_prepare). Zeigt, was passiert, fragt nach (nur mit Terminal: Daten seit der Sicherung gehen verloren -> nie
-#   automatisch, auch nicht aus dem Chat), prueft den Schluessel an der Sicherung, stellt die GANZE DB her und spielt den
+#   automatisch, auch nicht aus dem Chat), prueft den Schluessel an der Sicherung, stellt die ganze DB her und spielt den
 #   vorherigen Stand ueber dessen install.sh ein (--version, anonym, SHA256). Sicherheitsnetz: die aktuelle DB wird nur
-#   UMBENANNT (<db>_before_rollback); scheitert das Herstellen, kommt sie unveraendert zurueck. Erst nach einem
+#   umbenannt (<db>_before_rollback); scheitert das Herstellen, kommt sie unveraendert zurueck. Erst nach einem
 #   erfolgreichen Einspielen wird sie geloescht.
-# _rb_resume — nach einem Abbruch des Rueckwegs n8n UND die Update-Timer wieder an (sonst kaeme keine Release-Karte mehr
+# _rb_resume — nach einem Abbruch des Rueckwegs n8n und die Update-Timer wieder an (sonst kaeme keine Release-Karte mehr
 #   und Chat-Auftraege blieben liegen, bis zum naechsten vollen Provision).
 _rb_resume() { svc_start n8n lifeagents-update-run.timer lifeagents-update-check.timer 2>/dev/null || true; }
 
 #   Braucht: common.sh, fetch_release.sh (_gh_release_json/_gh_fetch), deploy_workflows.sh (Owner-chat_id fuer die Meldung).
 upgrade_rollback() {
   require_root
-  # --yes nur im Docker-Verbund: dort fragt die Start-App selbst nach (Rueckweg-Knopf, Fund 6) und hat kein Terminal.
+  # --yes nur im Docker-Verbund: dort fragt die Start-App selbst nach (Rueckweg-Knopf) und hat kein Terminal.
   local assume_yes=0
   if [ "${1:-}" = --yes ]; then
     rt_is_compose || die "--yes gibt es nur im Docker-Verbund — hier bitte im Terminal bestätigen."
@@ -496,10 +496,10 @@ upgrade_rollback() {
     || die "Die Sicherung lässt sich mit keinem gespeicherten Schlüssel öffnen (beschädigt?) — Rückweg abgebrochen, es wurde nichts geändert."
   key="$_BK_HIT_KEY"
 
-  # Vorab das install.sh des Vorgaengers holen UND pruefen — Netz- oder Signaturfehler fallen so auf, bevor irgendetwas
+  # Vorab das install.sh des Vorgaengers holen und pruefen — Netz- oder Signaturfehler fallen so auf, bevor irgendetwas
   # geaendert ist. Mit Schluesselbund: Unterschrift + exakte Zeile in SHA256SUMS (gh-download-Block). Ein unsigniertes
-  # Vorgaenger-Release scheitert damit HIER (sein install.sh verlangte mit dem installierten Bund dieselbe Unterschrift
-  # erst NACH dem Zuruecksetzen der Daten). Ohne Bund: Abbruch (Security-Audit 2026-10 — nie ein ungepruefter
+  # Vorgaenger-Release scheitert damit hier (sein install.sh verlangte mit dem installierten Bund dieselbe Unterschrift
+  # erst nach dem Zuruecksetzen der Daten). Ohne Bund: Abbruch (nie ein ungepruefter
   # install.sh als root; Paritaet fetch_and_run_release).
   # Docker-Verbund: kein install.sh — der vorherige Stand IST das vorherige master-Image (lief hier schon, per Digest
   # festgelegt) samt seiner compose.yml aus dem Merkzettel; beides muss vor jeder Aenderung bereitliegen.

@@ -61,7 +61,7 @@ BEGIN
     RAISE EXCEPTION 'FAIL [2] Split: alt=% neu=%', finance.fn_bank_setup_kind(v_rp_plan), finance.fn_bank_setup_kind(v_rp_split); END IF;
   RAISE NOTICE 'PASS [2] Split-Glied antwortet wie der Kopf';
 
-  -- [3] Notiz: Dauerauftrag mit Bank der QUELLE, Sparplan mit Bank des DEPOTS, leerer Name -> _generic ohne bank
+  -- [3] Notiz: Dauerauftrag mit Bank der Quelle, Sparplan mit Bank des Depots, leerer Name -> _generic ohne bank
   v_n := finance.fn_bank_setup_note(v_rp_so, 'statement_never_seen');
   IF jsonb_array_length(v_n) <> 1 OR v_n->0->>'kind' <> 'note'
      OR v_n->0->>'value' <> 'finance.note.statement_never_seen_standing_order'

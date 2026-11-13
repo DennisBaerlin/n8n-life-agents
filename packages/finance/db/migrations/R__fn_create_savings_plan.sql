@@ -1,6 +1,6 @@
 -- ============================================================
 -- fn_create_savings_plan (ATOMIC WRITE)
---   Legt in EINER Transaktion an: (1) recurring_payment auf dem Verrechnungskonto
+--   Legt in einer Transaktion an: (1) recurring_payment auf dem Verrechnungskonto
 --   des Depots (monatliche Cash-Abbuchung), (2) Sparplan-Eintrag mit FK-Link.
 --   Invariante: Depot-Typ und ISIN-Praesenz muessen passen (stocks_depot=ISIN erwartet,
 --   crypto_depot=ISIN verboten). Uniqueness via UNIQUE INDEX (lower(name)).
@@ -9,18 +9,18 @@
 --   notes (opt), beneficiary_person_id (opt, Slug; leer = Inhaber des Depots, fn_default_beneficiary;
 --     Depot ohne Inhaber -> NULL=Haushalt),
 --   depot_execution_days (opt -- rohe Nutzer-Antwort nach needs_calendar: Monatstage oder 'none'),
---   asset_class (opt -- Phase L WS-6: Allokations-Block-key, lowercase snake; an jede Ausfuehrung vererbt;
+--   asset_class (opt -- Allokations-Block-key, lowercase snake; an jede Ausfuehrung vererbt;
 --     Format-Verstoss -> {ok:false}).
---   RHYTHMUS: der genannte Rhythmus (z. B. week/1) wird ueber den Depot-Kalender abgeleitet
+--   Rhythmus: der genannte Rhythmus (z. B. week/1) wird ueber den Depot-Kalender abgeleitet
 --     (fn_resolve_plan_schedule: Broker mit festen Monatstagen -> month + schedule_days_of_month); ein neu
 --     gelernter/vorbelegter Kalender wird im selben Write am Depot gespeichert (accounts.plan_execution_days).
---   RUECKGABE-VERTRAG: Erfolg -> {ok:true, savings_plan_id, recurring_payment_id, card_lines,
---   beneficiary_person_id, beneficiary_name (ueber core.fn_household_persons, D10), monthly_amount (Betrag je Monat,
+--   Rueckgabe: Erfolg -> {ok:true, savings_plan_id, recurring_payment_id, card_lines,
+--   beneficiary_person_id, beneficiary_name (ueber core.fn_household_persons), monthly_amount (Betrag je Monat,
 --   positiv, aus der GENERATED-Spalte), schedule_unit/schedule_interval/schedule_day_of_month (gespeichert),
 --   schedule_days ("2, 9, 16, 23" oder null), calendar_learned (nur wenn der Depot-Kalender neu gesetzt wurde),
 --   effective {beneficiary_person_id}} + optional savings_squeeze (fn_savings_squeeze_fold; erster Abbuchungstag
 --   ausserhalb fn_recurring_starts_within_cycle -> erst der Cron) + optional savings_funding (fn_savings_funding_fold: Deckung des Abbuchungskontos
---   NACH dem Write, Frage nach der Geldquelle bei einer Luecke); card_lines um die Zeile „Danach ..." ergaenzt.
+--   nach dem Write, Frage nach der Geldquelle bei einer Luecke); card_lines um die Zeile „Danach ..." ergaenzt.
 --   card_lines: aehnlicher Sparplan, Bank-Hinweis (fn_bank_setup_note 'bank_setup': beim Broker selbst einrichten).
 --   Korrigierbar (Depot nicht gefunden, Typ-Mismatch, Duplikat, amount<=0, asset_class-Format, Rhythmus passt nicht
 --   zum Depot-Kalender (+ next_possible_date), Kalender unbekannt (needs_calendar)) -> {ok:false, reason} OHNE Write
@@ -40,7 +40,7 @@ DECLARE
     v_unit        finance.schedule_unit := (COALESCE(NULLIF(p->>'schedule_unit', ''), 'month'))::finance.schedule_unit;
     v_dom         SMALLINT          := NULLIF(p->>'schedule_day_of_month', '')::smallint;
     v_first       DATE;
-    v_asset_cls   TEXT              := NULLIF(p->>'asset_class', '');  -- Phase L WS-6: Allokations-Block-key (vererbt)
+    v_asset_cls   TEXT              := NULLIF(p->>'asset_class', '');  -- Allokations-Block-key (vererbt)
     v_depot_id    INT;
     v_settle_id   INT;
     v_fold        JSONB;
@@ -63,7 +63,7 @@ BEGIN
     IF NOT (v_dates->>'ok')::boolean THEN RETURN v_dates; END IF;
     p := v_dates->'p';
     v_first := (p->>'first_payment_date')::date;
-    -- WP-2b: fester Buchungstag 1-28, -1 (Monatsletzter) oder -2 (vorletzter Tag); 29/30/31 overflowen kurze Monate.
+    -- Fester Buchungstag 1-28, -1 (Monatsletzter) oder -2 (vorletzter Tag); 29/30/31 overflowen kurze Monate.
     IF finance.fn_schedule_dom_reason(v_dom) IS NOT NULL THEN
         RETURN jsonb_build_object('ok', false, 'reason', finance.fn_schedule_dom_reason(v_dom));
     END IF;
@@ -75,7 +75,7 @@ BEGIN
     IF v_symbol IS NULL THEN
         RETURN jsonb_build_object('ok', false, 'reason', 'A savings plan needs a ticker symbol or an ISIN (crypto: the coin symbol).');
     END IF;
-    -- WS-6: das Anlageklasse-Etikett muss das Block-key-Format treffen (lowercase snake) -> {ok:false} statt
+    -- Das Anlageklasse-Etikett muss das Block-key-Format treffen (lowercase snake) -> {ok:false} statt
     -- hartem CHECK-RAISE/Owner-Alert (das LLM nennt das Label, es ist nutzer-korrigierbar; mirror fn_book_stock_buy).
     IF v_asset_cls IS NOT NULL AND v_asset_cls !~ '^[a-z0-9_]+$' THEN
         RETURN jsonb_build_object('ok', false,
@@ -185,12 +185,12 @@ BEGIN
         v_rp_id,
         'active',
         NULLIF(p->>'notes', ''),
-        v_benef,                                  -- WS-4: genannte Person, sonst Depot-Inhaber (NULL = Haushalt/Joint)
-        v_asset_cls                               -- WS-6: Anlageklasse (vererbt an jede Ausfuehrung; NULL = ungetaggt)
+        v_benef,                                  -- genannte Person, sonst Depot-Inhaber (NULL = Haushalt/Joint)
+        v_asset_cls                               -- Anlageklasse (vererbt an jede Ausfuehrung; NULL = ungetaggt)
     )
     RETURNING id INTO v_plan_id;
 
-    -- Woher kommt das Geld? Deckung des Abbuchungskontos NACH dem Write (Kartenzeile + gelatchte Frage)
+    -- Woher kommt das Geld? Deckung des Abbuchungskontos nach dem Write (Kartenzeile + gelatchte Frage)
     v_fold := finance.fn_savings_funding_fold(ARRAY[v_settle_id], true);
 
     RETURN finance.fn_merge_fold(jsonb_build_object(

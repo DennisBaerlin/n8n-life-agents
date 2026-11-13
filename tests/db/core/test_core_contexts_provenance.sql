@@ -1,10 +1,10 @@
 -- tests/db/core/test_core_contexts_provenance.sql
--- D14 / WS-B2: agent.core_contexts.package + managed_by sind TYPISIERTE Spalten (aus metadata
--- promoted). Deckt: (1) Spalten-Existenz/Typ/Default/NOT NULL, (2) managed_by-CHECK (seed|build|agent),
+-- agent.core_contexts.package + managed_by sind typisierte Spalten (aus metadata promoted).
+-- Deckt: (1) Spalten-Existenz/Typ/Default/NOT NULL, (2) managed_by-CHECK (seed|build|agent),
 -- (3) den V001-Backfill-Vertrag (metadata->>'managed_by'/'package' -> Spalte; finance_profile/
--- finance_plan_current -> package='finance'; danach Strip NUR dieser jsonb-Keys), (4) fremde
--- metadata-Keys (render_fn) bleiben dabei unangetastet. (Loeschschutz lebt seit WS-B2b in
--- core.protected_contexts, nicht mehr in metadata.protected — s. test_core_protected_contexts.)
+-- finance_plan_current -> package='finance'; danach Strip nur dieser jsonb-Keys), (4) fremde
+-- metadata-Keys (render_fn) bleiben dabei unangetastet. (Loeschschutz lebt in
+-- core.protected_contexts, s. test_core_protected_contexts.)
 -- Self-contained: BEGIN ... ROLLBACK.
 BEGIN;
 
@@ -66,7 +66,7 @@ END $$;
 DO $$
 DECLARE v_pkg TEXT; v_mb TEXT; v_meta JSONB;
 BEGIN
-  -- Alt-Zeilen simulieren (wie vor D14 geschrieben): managed_by/package nur in metadata.
+  -- Alt-Zeilen simulieren: managed_by/package nur in metadata.
   -- (Spalten bekommen erst mal die Defaults core/seed.)
   INSERT INTO agent.core_contexts (name, description, load_strategy, content, metadata)
   VALUES ('__test_prov_legacy_build__', 'x', 'lazy', 'body',

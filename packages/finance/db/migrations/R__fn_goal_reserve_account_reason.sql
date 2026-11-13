@@ -1,11 +1,11 @@
 -- ============================================================
--- fn_goal_reserve_account_reason (KONTO-REGEL FUER EINEN SPARZIEL-TOPF)
+-- fn_goal_reserve_account_reason (READ HELPER — Konto-Regel fuer einen Sparziel-Topf)
 --   Die eine Adresse der Konto-Regel eines Sparziel-Topfs: aktives saldo-basiertes Konto (fn_goal_pot_account_types:
 --   cash/Tagesgeld, Festgeld, P2P; kein Depot, Kredit oder geschlossenes Konto) und nicht das Abbuchungskonto der Rate
 --   (p_funding; NULL = ohne Rate).
 --   Familie: fn_goal_reserve_accounts / fn_goal_reserve_reason / fn_apply_goal_reserve; Konsumenten:
 --   fn_create_savings_goal (Ziel existiert noch nicht), fn_goal_reserve_reason, fn_book_savings_goal_transfer.
---   -> NULL | Grund.
+--   Eingabe: p_account (Topf-Kandidat), p_funding. Rueckgabe: NULL (in Ordnung) | Grund (EN).
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_goal_reserve_account_reason(p_account int, p_funding int)
 RETURNS text

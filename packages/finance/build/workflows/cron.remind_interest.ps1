@@ -1,8 +1,8 @@
 ﻿#Requires -Version 5.1
 # Definition agent.finance.cron_remind_interest -> Build-CronRemindInterest. Dot-gesourct von build.ps1.
 # Deterministisch, kein LLM: Schedule -> fn_interest_due_open -> Loop -> auto-buchen ODER HITL "Zinsgutschrift buchen?".
-# Eigener Cron: Zins ist eine 2. Due-Quelle (account_interest_rates), eigene
-# Cadence/Toggle. Der Betrag wird von der DB berechnet (fn_interest_amount_due, NIE das LLM); auto_post-Konten
+# Eigener Cron: Zins ist eine zweite Due-Quelle (account_interest_rates), eigene
+# Cadence/Toggle. Der Betrag wird von der DB berechnet (fn_interest_amount_due, nie das LLM); auto_post-Konten
 # (taeglich/woechentlich) werden ohne Gate gebucht, sonst HITL. Idempotenz je (Konto, period_end) macht
 # Mehrfach-/Backfill-Laeufe doppel-sicher. Schedule (Cron) aus core.config, beim Einspielen eingesetzt.
 # Nutzt aus dem Build-Scope: $RepoRoot, $Utf8NoBom, $CRED_FINANCE_RW, $CRED_TELEGRAM + build_helpers.
@@ -12,7 +12,7 @@ function Build-CronRemindInterest {
 
     $trig = Build-ScheduleTrigger @(-680, 0) -ScheduleKey 'remind_interest'
 
-    # F9 Cron-Gating: laeuft nur, wenn Paket aktiv UND cron_enable -> sonst No-op (DB entscheidet, fail-closed).
+    # F9 Cron-Gating: laeuft nur, wenn Paket aktiv und cron_enable -> sonst No-op (DB entscheidet, fail-closed).
     $gate = Build-Pg 'Cron enabled?' @(-500, 0) `
         "SELECT core.fn_package_active('finance') AND COALESCE(core.fn_config_get('finance','cron_enable','remind_interest') = 'true', false) AS enabled"
     $gateIf = Build-If 'Cron on?' @(-340, -40) "={{ `$json.enabled }}" 'true' 'equals' 'boolean'
@@ -23,8 +23,8 @@ function Build-CronRemindInterest {
 
     # Offene Zins-Faelligkeiten + DB-berechneter Betrag + auto_post-Flag; nur Vorschlaege > 0 (Nullsaldo/ohne Satz
     # raus). ORDER BY period_end ASC -> die Zinseszins-Kette wird in der richtigen Reihenfolge gebucht.
-    # Monats-Check (WP-D): Konten mit eingespieltem Kontoauszug fragt die Erinnerung NICHT — dort hakt der Auszug die
-    # Zinsgutschrift ab (fn_statement_match), oder der Abgleich schliesst sie (keine taegliche Rueckfrage mehr).
+    # Konten mit eingespieltem Kontoauszug fragt die Erinnerung nicht — dort hakt der Auszug die
+    # Zinsgutschrift ab (fn_statement_match), oder der Abgleich schliesst sie.
     # auto_post-Konten (taeglich/woechentlich) bucht der Cron weiter still: dort fragt niemand, und ohne sie fehlte der
     # Zins zwischen zwei Auszuegen im Saldo. Kein Doppel: der Auszug-Rest ist die DB-Differenz zum Endsaldo, die schon
     # gebuchten Gutschriften stecken im Systemstand.
@@ -46,10 +46,10 @@ ORDER BY q.period_end, q.account_name;
     $loop = Build-Loop 'Loop Over Items' @(0, 0)
     $done = Build-NoOp 'Done' @(220, -260)
 
-    # M3 Auto-Post-Branch: auto_post=true (Default day/week) -> direkt buchen (kein Gate); sonst HITL-Loop.
+    # Auto-Post-Branch: auto_post=true (Default day/week) -> direkt buchen (kein Gate); sonst HITL-Loop.
     $autoIf = Build-If 'Auto-post?' @(220, 0) "={{ `$json.auto_post }}" 'true' 'equals' 'boolean'
 
-    # Textkatalog Phase C: Texte EINMAL in Owner-Sprache (read-only VOR jedem Write).
+    # Texte einmal in Owner-Sprache (read-only vor jedem Write).
     $loadTexts = Build-Pg 'Load texts' @(-240, -200) `
         ("SELECT core.fn_ui_texts_for(jsonb_build_object('keys', to_jsonb(" + (Get-UiKeysSql @(
             'finance.dialog.interest_ask', 'finance.dialog.interest_defer', 'finance.dialog.btn_book',
@@ -61,11 +61,11 @@ ORDER BY q.period_end, q.account_name;
     $it  = "`$('Loop Over Items').item.json"
     $popup = Get-UiTextExpr $T 'core.hitl.unauthorized'
 
-    # WP-5: Betrag waehrungs-korrekt (Fmt-MoneyJs mit der Konto-Waehrung), Daten im Owner-Locale (Fmt-DateJs).
+    # Betrag waehrungs-korrekt (Fmt-MoneyJs mit der Konto-Waehrung), Daten im Owner-Locale (Fmt-DateJs).
     $intAmt = Fmt-MoneyJs "$it.amount" "$it.currency" $LOC
     $intPe  = Fmt-DateJs  "$it.period_end" $LOC
     $intVd  = Fmt-DateJs  "$it.value_date" $LOC
-    # Roter Faden Paket B: die Bestaetigungs-Frage hat genau zwei Knoepfe (sendAndWait) -> statt eines Abschalten-Knopfs
+    # Die Bestaetigungs-Frage hat genau zwei Knoepfe (sendAndWait) -> statt eines Abschalten-Knopfs
     # die Fusszeile core.reminders.card_footer ("Erinnerungen verwalten: /reminders"); cron_toggle_lint verlangt eins von beiden.
     $askInterest = New-TelegramSendAndWaitNode 'Ask interest booked' @(440, 60) `
         ('={{ ' + (Get-UiTextJs $T 'finance.dialog.interest_ask' @{ amount = $intAmt; account = "$it.account_label"; period_end = $intPe; value_date = $intVd }) +
@@ -119,7 +119,7 @@ ORDER BY q.period_end, q.account_name;
         'Auto-post? -> auto buchen ODER HITL' `
         'Auto-post? (auto_post=true, Default täglich/wöchentlich) -> direkt Book interest ohne Gate (deterministisch, cron-vs-trigger-konform; der Owner verifiziert später gegen den Auszug, Idempotenz je period_end schützt vor Doppel). Sonst (monatlich/jährlich, false) -> HITL "Ask interest booked": Bestätigen -> Book interest (berechnet, KEIN Override). Ablehnen -> Ask defer (morgen erneut = kein Write, taucht morgen wieder auf / überspringen = fn_skip_interest_occurrence -> interest_skips). Anderer Betrag: der Nutzer nennt dem Agenten den Ist-Betrag -> tool_book_interest bucht den Override. TEXTKATALOG: Texte + Aktions-Knöpfe in Owner-Sprache aus Load texts (core.fn_ui_texts_for, read-only VOR jedem Write), Beträge/Daten per Intl. Nach jedem Tipp eine Ergebnis-Zeile (Notify booked / skipped / tomorrow, onError continue; Fehlgrund als code aus der fn, nie der englische reason). Beide Wege buchen über denselben Knoten Book interest; Auto-posted? lässt den Auto-Branch still zurück in die Schleife, nur der bestätigte Pfad bekommt Notify booked.' 340 720
 
-    # Stale-Tap-Schutz hinter JEDER Frage (mehrere Fragen nacheinander in einer Execution; New-StaleTapGuard).
+    # Stale-Tap-Schutz hinter jeder Frage (mehrere Fragen nacheinander in einer Execution; New-StaleTapGuard).
     $gInterest = New-StaleTapGuard -AskName 'Ask interest booked' -Next 'Book interest?' -Pos @(500, 260)
     $gDefer    = New-StaleTapGuard -AskName 'Ask defer'           -Next 'Tomorrow?'      -Pos @(940, 300)
     $stickyStale = Build-Sticky 'Doppel-Tipp-Schutz' @(1300, -320) `

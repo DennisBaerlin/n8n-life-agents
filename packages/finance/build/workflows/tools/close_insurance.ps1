@@ -3,29 +3,26 @@
 
 # --- tool_close_insurance (Versicherung beenden: Smart-Close wie close_savings_plan) ---
 function Build-CloseInsurance {
-    # WS-B0: enge Paket-Schreibrolle (finance_rw, Least-Privilege D10) statt Owner-Cred.
-    # Dynamic-Scope: Build-Pg liest dieses $CRED_POSTGRES. Core-Tools nutzen die Owner-Cred.
+    # Enge Paket-Schreibrolle (finance_rw) statt Owner-Cred; Build-Pg liest $CRED_POSTGRES per Dynamic-Scope.
     $CRED_POSTGRES = $CRED_FINANCE_RW
     $trig = Build-Trigger @('insurance_name')
 
-    # Details + Buchungsanzahl fuer dynamischen HITL-Summary (WP2: Jahreswert aus der Beitrags-Kette abgeleitet, Buchungen
+    # Details + Buchungsanzahl fuer dynamischen HITL-Summary (Jahreswert aus der Beitrags-Kette abgeleitet, Buchungen
     # ueber die ganze Kette -- dieselbe Zaehlung wie fn_close_insurance)
     $readIns = Build-Pg 'Read Insurance' @(220, 0) `
         "=SELECT i.insurance_company, ip.full_name AS policyholder, finance.fn_annual_equivalent(abs(rc.amount), rc.schedule_interval, rc.schedule_unit, COALESCE(cardinality(rc.schedule_days_of_month), 1)) AS annual_premium, i.status::text AS ins_status, (SELECT COUNT(*)::int FROM finance.transactions t WHERE t.recurring_payment_id IN (SELECT finance.fn_recurring_lineage(i.recurring_payment_id))) AS tx_count FROM finance.insurances i LEFT JOIN finance.recurring_payments rc ON rc.id = finance.fn_recurring_current(i.recurring_payment_id, current_date) LEFT JOIN core.fn_household_persons() ip ON ip.person_id = i.policyholder_person_id WHERE i.name ILIKE ((`$1::jsonb)->>'insurance_name') LIMIT 1;" `
         ([ordered]@{ insurance_name = '$(''Start'').item.json.insurance_name' })
-    # Unbekannter Name -> Tool-Fehler statt stillem Ende (New-RequiredRowGate, 2026-10-24).
+    # Unbekannter Name -> Tool-Fehler statt stillem Ende (New-RequiredRowGate).
     $found = New-RequiredRowGate -Read $readIns -KeyField 'tx_count' -IfName 'Insurance found?' -ErrName 'Insurance not found' `
         -IfPos @(330, -160) -ErrPos @(440, 240) `
         -NotFoundExpr "=No insurance named '{{ `$('Start').item.json.insurance_name }}' exists. List the insurances via postgres_select on finance.active_insurances and ask the user which one to close."
 
-    # "DB ist das Gesetz": fn_close_insurance laeuft als Probelauf VOR der Karte (korrigierbare Ablehnungen -> {ok:false} ohne Karte);
-    # derselbe Param-Satz geht nach dem Gate in den echten Write.
     $wg = New-FnWriteGate -Fn 'finance.fn_close_insurance' -DryPos @(440, 0) -WritePos @(1760, 0) `
         -WriteName 'Close insurance (atomic)' `
         -WriteSelect "(r->>'ok')::boolean AS ok, r->>'reason' AS reason, r->>'action' AS action, (r->>'tx_count')::int AS tx_count" `
         -Params ([ordered]@{ insurance_name = '$(''Start'').item.json.insurance_name' })
 
-    # Strukturiertes Summary (Textkatalog): Titel + Hinweis haengen an tx_count (Soft-Close vs. Hard-DELETE).
+    # Titel + Hinweis haengen an tx_count (Soft-Close vs. Hard-DELETE).
     # Jahrespraemie in EUR-Konvention. Haushalts-Police: Fallback-Text kommt aus dem Katalog (SQL liefert NULL).
     $S = "`$('Start').item.json"
     $I = "`$('Read Insurance').item.json"

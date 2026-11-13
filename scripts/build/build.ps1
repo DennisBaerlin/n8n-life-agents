@@ -1,15 +1,19 @@
 ﻿#Requires -Version 5.1
-# THE Build-Orchestrator (ersetzt die alten build_*-Entrypoints). Generiert ALLE Workflow-JSONs
-# nach packages/<pkg>/workflows/ — KEINE API-Calls (Deploy ins Substrat = bootstrap_test_n8n.ps1 -Reset; Prod = provision.sh).
+# Build-Orchestrator: generiert alle Workflow-JSONs nach packages/<pkg>/workflows/ und den /help-Katalog.
+# Keine API-Calls (Deploy ins Substrat = bootstrap_test_n8n.ps1 -Reset; Prod = provision.sh).
 #
-# Einheitlicher Lifecycle: jede Build-Funktion liefert ein Workflow-Objekt OHNE id; Save-WorkflowFile
+# Lifecycle: jede Build-Funktion liefert ein Workflow-Objekt ohne id; Save-WorkflowFile
 # (lib/workflow_lifecycle.ps1) loest die ID per Name aus dem State (getrackte <id>-name.json) auf und
 # backt sie ein (bzw. schreibt eine id-lose Datei; eine neue ID vergibt der Autor selbst im Dateinamen,
-# import:workflow erhaelt sie). ALLE Workflow-Cross-Refs (Tool-IDs, Harness-Ziele, Gate, errorWorkflow,
-# load_config, load_context) werden per Get-WorkflowIdByName aus dem State aufgeloest — KEINE
-# hardcodierten Workflow-ID-Literale. Credentials referenzieren die Defs ueber LESBARE Platzhalter-Tokens
-# (__CRED_*__, analog __OWNER_CHAT_ID__), die der Deploy (inject_credentials/deploy_workflows) gegen die
-# frisch geminteten ids tauscht.
+# import:workflow erhaelt sie). Alle Workflow-Cross-Refs (Tool-IDs, Harness-Ziele, Gate, errorWorkflow,
+# load_config, load_context) loest Get-WorkflowIdByName aus dem State auf, keine Workflow-ID-Literale.
+# Credentials referenzieren die Defs ueber lesbare Platzhalter-Tokens (__CRED_*__, analog
+# __OWNER_CHAT_ID__), die der Deploy (inject_credentials/deploy_workflows) gegen die frisch geminteten
+# ids tauscht.
+#
+# Voraussetzungen: git im PATH; .env im Repo-Root mit OWNER_CHAT_ID (sonst throw).
+# Exit-Code: 0 = OK; 1 = -VerifyCatalog findet Drift bzw. ein Katalog-Text fehlt; jeder throw (Vertragsbruch
+# in Manifest/Build-Def) bricht den Lauf mit ungleich 0 ab.
 #
 # Usage:
 #   .\scripts\build\build.ps1                       # alle Workflows bauen
@@ -17,7 +21,7 @@
 #   danach: .\scripts\dev\bootstrap_test_n8n.ps1 -Reset   # ins Docker-Substrat deployen (Prod: provision.sh)
 #   .\scripts\build\build.ps1 -VerifyCatalog          # Drift-Check: getrackter Katalog == frisch generiert
 #                                                       # (kein File-Write; Exit 1 bei Drift/Example-ohne-Case)
-#   .\scripts\build\build.ps1 -CatalogOnly            # NUR den /help-Katalog neu schreiben (packages/core/seed/capabilities_catalog/<lang>.md + Paket-Fragmente)
+#   .\scripts\build\build.ps1 -CatalogOnly            # nur den /help-Katalog neu schreiben (packages/core/seed/capabilities_catalog/<lang>.md + Paket-Fragmente)
 #                                                       # (keine Workflow-JSONs anfassen)
 param([string]$Only = '*', [switch]$VerifyCatalog, [switch]$CatalogOnly)
 
@@ -25,20 +29,18 @@ $ErrorActionPreference = 'Stop'
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $RepoRoot     = git -C $PSScriptRoot rev-parse --show-toplevel
 $Utf8NoBom    = New-Object System.Text.UTF8Encoding($false)
-# $WorkflowsDir wird NACH dem Dot-Sourcen gesetzt (Get-WorkflowDirs lebt in workflow_lifecycle.ps1) —
-# paket-bewusst: Such-Liste packages/*/workflows.
+# $WorkflowsDir wird erst nach dem Dot-Sourcen gesetzt (Get-WorkflowDirs lebt in workflow_lifecycle.ps1).
 
-# --- env ---
 . "$PSScriptRoot\..\lib\dotenv.ps1"
 Read-DotEnvLines "$RepoRoot\.env" | ForEach-Object {
     if ($_ -match '^\s*([^#\s][^=]*)=(.*)$') { Set-Variable -Name $Matches[1].Trim() -Value $Matches[2].Trim() -Scope Script }
 }
 if ([string]::IsNullOrEmpty($OWNER_CHAT_ID))      { throw "OWNER_CHAT_ID nicht in .env" }
 
-# --- Credentials: LESBARE Platzhalter-Tokens (__CRED_*__, analog __OWNER_CHAT_ID__), KEINE echten
-#     ids/Secrets. inject_credentials.sh legt die Credential beim Deploy frisch an (Secret aus .env/
-#     Installer) und deploy_workflows.sh tauscht den Platzhalter gegen die frische echte id. ---
-# Host-Credentials (Core = Host; gleiche Namen wie inject_credentials.sh::_cred_host_placeholder_names).
+# --- Credentials: lesbare Platzhalter-Tokens (__CRED_*__), keine echten ids/Secrets.
+#     inject_credentials.sh legt die Credential beim Deploy frisch an, deploy_workflows.sh tauscht den
+#     Platzhalter gegen die frische id. ---
+# Host-Credentials (gleiche Namen wie inject_credentials.sh::_cred_host_placeholder_names).
 $CRED_POSTGRES    = @{ id = '__CRED_POSTGRES_WRITE__'; name = 'Postgres account' }
 $CRED_CORE_RO     = @{ id = '__CRED_POSTGRES_CORE_RO__'; name = 'Postgres core_ro (read-only)' }      # breiter Host-Lesepfad (monitor/guide/Gate-Resolve)
 $CRED_CONTEXT_RO  = @{ id = '__CRED_POSTGRES_CONTEXT_RO__'; name = 'agent.core_contexts read-only' }   # nur core_contexts (load_context)
@@ -49,10 +51,10 @@ $CRED_HARNESS     = @{ id = '__CRED_HARNESS__'; name = 'lifeagents test harness 
 $CRED_TELEGRAM_RELAY = @{ id = '__CRED_TELEGRAM_RELAY__'; name = 'Telegram relay (gateway)' }   # Bot-Token als Header fuer den Gateway-Relay (New-TelegramRelayNode)
 $HostCredentialVars = @('CRED_POSTGRES', 'CRED_CORE_RO', 'CRED_CONTEXT_RO', 'CRED_TELEGRAM', 'CRED_ANTHROPIC', 'CRED_GEMINI', 'CRED_HARNESS', 'CRED_TELEGRAM_RELAY')
 
-# Paket-Credentials (Phase D): aus den Manifesten abgeleitet (lib/credentials.ps1 — Rollen-Konvention
-# <pkg>_rw/_ro + `credentials`-Block, dieselbe Formel wie der Installer). Enge Paket-Rollen (D10): ein
-# Paket-Write-Tool setzt funktions-lokal $CRED_POSTGRES = $CRED_<PKG>_RW (Dynamic Scope -> Build-Pg sieht es),
-# Lese-Nodes haengen $CRED_<PKG>_RO post-construction an. Script-Scope -> die dot-gesourcten Defs sehen sie.
+# Paket-Credentials: aus den Manifesten abgeleitet (lib/credentials.ps1 — Rollen-Konvention
+# <pkg>_rw/_ro + `credentials`-Block, dieselbe Formel wie der Installer). Ein Paket-Write-Tool setzt
+# funktions-lokal $CRED_POSTGRES = $CRED_<PKG>_RW (Dynamic Scope -> Build-Pg sieht es), Lese-Nodes
+# haengen $CRED_<PKG>_RO nachtraeglich an. Script-Scope -> die dot-gesourcten Defs sehen sie.
 . "$PSScriptRoot\lib\credentials.ps1"
 $PackageCredentials = @(Get-PackageCredentialDescriptor $RepoRoot)
 foreach ($c in $PackageCredentials) {
@@ -60,37 +62,36 @@ foreach ($c in $PackageCredentials) {
     Set-Variable -Name $c.Var -Value @{ id = $c.Id; name = $c.Name } -Scope Script
 }
 
-# --- Libs dot-sourcen (Helper + Cred-Sichtbarkeit im Script-Scope; Workflow-Defs erst NACH der
-#     Cross-Ref-Aufloesung, weil manche Def (agent.finance) Infra-IDs schon im File-Scope liest) ---
+# --- Libs dot-sourcen (Helper + Cred-Sichtbarkeit im Script-Scope); die Workflow-Defs erst nach der
+#     Cross-Ref-Aufloesung, weil manche Def Infra-IDs schon im File-Scope liest ---
 . "$PSScriptRoot\lib\build_helpers.ps1"
 . "$PSScriptRoot\lib\monitor_helpers.ps1"
 . "$PSScriptRoot\lib\workflow_lifecycle.ps1"
 . "$PSScriptRoot\lib\agent_cases.ps1"   # Test-Case-Dateien per Glob (Katalog-Example-Pool; auch mock_lint)
 . "$PSScriptRoot\lib\catalog.ps1"
-. "$PSScriptRoot\lib\harness.ps1"   # init $script:Harnesses=@() + Build-Harness/Get-HarnessWorkflow; Pakete appenden ihre Eintraege
+. "$PSScriptRoot\lib\harness.ps1"   # initialisiert $script:Harnesses=@(); Pakete appenden ihre Eintraege
 
-# Paket-bewusste Workflow-Such-Liste (packages/*/workflows). Cross-Ref-Aufloesung
-# (Get-WorkflowIdByName unten + in den Build-Defs) spannt damit alle Pakete; geschrieben wird je Workflow
-# in seine Home-Dir (Get-WorkflowHomeDir, in Save-AndReport).
+# Workflow-Such-Liste packages/*/workflows: Cross-Ref-Aufloesung (Get-WorkflowIdByName) spannt alle
+# Pakete; geschrieben wird je Workflow in seine Home-Dir (Get-WorkflowHomeDir, in Save-AndReport).
 $WorkflowsDir = Get-WorkflowDirs $RepoRoot
 
-# --- Core-Service-Alias-Map (D9) aus dem Provider-Manifest laden (script-scope, dynamic-scope -> die
-# dot-gesourcten Build-Defs sehen $CoreServiceMap wie $WorkflowsDir). ConvertFrom-Json liefert ein
-# PSCustomObject -> explizit in eine Hashtable pivotieren (sonst kein .ContainsKey im Resolver).
+# --- Core-Service-Alias-Map aus dem Provider-Manifest (script-scope -> die dot-gesourcten Build-Defs
+# sehen $CoreServiceMap wie $WorkflowsDir). ConvertFrom-Json liefert ein PSCustomObject -> explizit in
+# eine Hashtable pivotieren (sonst kein .ContainsKey im Resolver).
 $coreManifest   = [System.IO.File]::ReadAllText((Join-Path $RepoRoot 'packages\core\manifest.json'), $Utf8NoBom) | ConvertFrom-Json
 $CoreServiceMap = @{}
 foreach ($p in $coreManifest.provides.services.PSObject.Properties) { $CoreServiceMap[$p.Name] = $p.Value }
-# Unterstuetzte Sprachen fester Texte (Textkatalog) als 'de|en|ko' fuer Modell-Texte (Tool-Beschreibungen) — die EINE
-# Liste ist der Core-Manifest-Block languages.list, nie abtippen.
+# Unterstuetzte Sprachen fester Texte (Textkatalog) als 'de|en|ko' fuer Modell-Texte (Tool-Beschreibungen);
+# Quelle ist der Core-Manifest-Block languages.list.
 $LanguageCodes = (@($coreManifest.languages.list | Sort-Object { [int]$_.ord } | ForEach-Object { [string]$_.code })) -join '|'
 if (-not $LanguageCodes) { throw 'packages/core/manifest.json: languages.list fehlt (Textkatalog).' }
 
-# --- Agenten-Routing-Liste (Phase 0 WS-0c #4, Phase C) aus den Manifest-provides.agents-Objekten {name,
-# router_description, order, fallback_for?} ALLER Pakete (Union), 'orchestrator' ausgeschlossen (der Router routet
-# nicht zu sich selbst), nach order (dann name) sortiert. Der Orchestrator-Build-Def (agent.orchestrator.ps1)
-# generiert daraus je Agent einen Call-Node + ai_tool-Binding -> ein neues Paket dockt einen Route-Agenten ohne
-# Orchestrator-Edit an. Lesen + Vertrags-Pruefung (Pflicht-Beschreibung, agent.<x>-Referenzen, fallback_for)
-# teilen sich Build und contract_lint 19 in lib/agent_routing.ps1; ein Verstoss bricht den Build ab.
+# --- Agenten-Routing-Liste aus den Manifest-provides.agents-Objekten {name, router_description, order,
+# fallback_for?} aller Pakete (Union), 'orchestrator' ausgeschlossen (der Router routet nicht zu sich
+# selbst), nach order (dann name) sortiert. Der Orchestrator-Build-Def (agent.orchestrator.ps1) generiert
+# daraus je Agent einen Call-Node + ai_tool-Binding -> ein neues Paket dockt ohne Orchestrator-Edit an.
+# Lesen + Vertrags-Pruefung (Pflicht-Beschreibung, agent.<x>-Referenzen, fallback_for) teilen sich Build
+# und contract_lint 19 in lib/agent_routing.ps1; ein Verstoss bricht den Build ab.
 # Script-scope -> der dot-gesourcte Build-Def sieht $AgentRoutingList wie $CoreServiceMap.
 . "$PSScriptRoot\lib\agent_routing.ps1"
 $routing = Get-AgentRouting (Get-PackageManifest $RepoRoot)
@@ -98,13 +99,13 @@ if ($routing.Errors.Count -gt 0) { throw ("provides.agents-Vertrag verletzt:`n  
 foreach ($rw in $routing.Warnings) { Write-Warning "provides.agents: $rw" }   # Verweis auf ein im Repo abwesendes Paket (optional)
 $AgentRoutingList = $routing.List
 
-# --- Onboarding-Dispatch-Liste (P1 Generisches Paket-Onboarding) aus den Manifest-provides.onboarding-Objekten
-# {agent} ALLER Pakete (Paritaet $AgentRoutingList). Der Orchestrator-Build-Def (agent.orchestrator.ps1) generiert
-# daraus je Paket einen Onboarding-Callback-Dispatch-Arm (Run/Answer/Relay -> agent.<agent>) + den Switch-Case auf
-# das <package>-Glied von callback_data 'onboarding:<package>:<key>' -> kein agent.<pkg>-Literal im Core (core_literal
-# #1) und kein Orchestrator-Edit fuer ein neues Onboarding-Paket. Core-Haushalt ist der hartkodierte Sonderfall (kein
-# provides.onboarding -> nicht in dieser Liste). Reihenfolge = $OnboardingPackageOrder (abgeleitet aus den
-# consumes-Abhaengigkeiten, Get-OnboardingPackageOrder in lib/agent_routing.ps1) = die Menue-Reihenfolge.
+# --- Onboarding-Dispatch-Liste aus den Manifest-provides.onboarding-Objekten {agent} aller Pakete.
+# Der Orchestrator-Build-Def (agent.orchestrator.ps1) generiert daraus je Paket einen
+# Onboarding-Callback-Dispatch-Arm (Run/Answer/Relay -> agent.<agent>) + den Switch-Case auf das
+# <package>-Glied von callback_data 'onboarding:<package>:<key>' -> kein agent.<pkg>-Literal im Core
+# (core_literal #1). Core-Haushalt ist der hartkodierte Sonderfall (kein provides.onboarding -> nicht in
+# dieser Liste). Reihenfolge = $OnboardingPackageOrder (aus den consumes-Abhaengigkeiten,
+# Get-OnboardingPackageOrder in lib/agent_routing.ps1) = die Menue-Reihenfolge.
 # Script-scope -> der dot-gesourcte Build-Def sieht $OnboardingDispatchList/$OnboardingPackageOrder wie $AgentRoutingList.
 $OnboardingPackageOrder = @(Get-OnboardingPackageOrder $RepoRoot)
 $OnboardingDispatchList = @($OnboardingPackageOrder | Where-Object { $_.Agent } | ForEach-Object {
@@ -113,14 +114,13 @@ $OnboardingDispatchList = @($OnboardingPackageOrder | Where-Object { $_.Agent } 
 # Onboarding-Plan-Schritt: Berater-Domaenen mit advisors.<domain>.plan_step (Menue-Plan-Zeile + Orchestrator-Arm plan:<domain>).
 $AdvisorPlanStepList = @(Get-AdvisorPlanStepList $RepoRoot)
 
-# --- Command-Dispatch-Liste (WS-5 Command-Router-Generalisierung) aus den Manifest-`commands`-Bloecken
-# ALLER Pakete (Paritaet $OnboardingDispatchList). Nur Eintraege MIT einem `dispatch`-Feld {agent, task}:
-# das sind CODE-PFAD-Commands, die einen Agenten starten (erster: estate `/notfall`). Die Core-Commands
-# (/help, /onboarding, /start) haben KEIN dispatch = Host-bespoke Handler und bleiben aussen. Der
-# Orchestrator-Build-Def generiert daraus je Command einen Switch-Case im `Command router` + einen
-# Run/Relay-Dispatch-Arm -> agent.<agent> INLINE (message.text-Pfad) -> kein Orchestrator-Edit fuer ein
-# neues Paket-Command. Discriminant (docs/package-contract.md): Code-Pfad-Command -> Build-Zeit-Switch;
-# reiner Text-/Callback-Prefix -> Laufzeit-core.callback_handlers.
+# --- Command-Dispatch-Liste aus den Manifest-`commands`-Bloecken aller Pakete. Nur Eintraege mit einem
+# `dispatch`-Feld {agent, task}: das sind Code-Pfad-Commands, die einen Agenten starten. Die
+# Core-Commands (/help, /onboarding, /start) haben kein dispatch (Host-bespoke Handler) und bleiben aussen.
+# Der Orchestrator-Build-Def generiert daraus je Command einen Switch-Case im `Command router` + einen
+# Run/Relay-Dispatch-Arm -> agent.<agent> inline (message.text-Pfad). Discriminant
+# (docs/package-contract.md): Code-Pfad-Command -> Build-Zeit-Switch; reiner Text-/Callback-Prefix ->
+# Laufzeit-core.callback_handlers.
 $CommandDispatchList = @()
 foreach ($mf in (Get-ChildItem (Join-Path $RepoRoot 'packages\*\manifest.json'))) {
     $mj = [System.IO.File]::ReadAllText($mf.FullName, $Utf8NoBom) | ConvertFrom-Json
@@ -142,8 +142,8 @@ foreach ($mf in (Get-ChildItem (Join-Path $RepoRoot 'packages\*\manifest.json'))
 }
 $CommandDispatchList = @($CommandDispatchList | Sort-Object Command)
 
-# --- Fakten-Kontext -> besitzendes Paket + household-Fakten-Kontexte (Phase A) aus den Manifest-Bloecken
-# `context_validators` und `context_scopes` ALLER Pakete (Paritaet $AgentRoutingList). Der Tool-Build-Def
+# --- Fakten-Kontext -> besitzendes Paket + household-Fakten-Kontexte aus den Manifest-Bloecken
+# `context_validators` und `context_scopes` aller Pakete. Der Tool-Build-Def
 # agent.tool_set_context_facts backt $FactsDisplayJson ({ctx: pkg}) in die HITL-Summary: die Beschriftungen liegen im
 # Textkatalog des besitzenden Pakets (<pkg>.facts.<ctx>.title / <pkg>.facts.<ctx>.<feld>, je Sprache; der Core kennt
 # keine Paket-Labels); agent.guide.ps1 nennt dem Modell die household-Kontexte aus $HouseholdFactsContexts statt eines
@@ -169,10 +169,10 @@ $HouseholdFactsContexts = @($HouseholdFactsContexts | Sort-Object)
 $FactsDisplayJson = (ConvertTo-Json -InputObject $FactsDisplay -Depth 5 -Compress) -replace '\}\}', '} }' -replace '\}\}', '} }'
 if ($FactsDisplayJson -match 'System\.' -or $FactsDisplayJson -match '\}\}') { throw "facts_display: Serialisierung fehlerhaft ($FactsDisplayJson)." }
 
-# --- Phase B (Core kennt kein Paket): Monitor-Beschaffungs-Methoden, Paket-Lesefenster und Advisor-Domaenen aus den
-# Manifest-Bloecken `monitor_acquisition_methods` / `read_surface` / `advisors` ALLER Pakete (Paritaet $HouseholdFactsContexts).
+# --- Monitor-Beschaffungs-Methoden, Paket-Lesefenster und Advisor-Domaenen aus den Manifest-Bloecken
+# `monitor_acquisition_methods` / `read_surface` / `advisors` aller Pakete (der Core kennt kein Paket).
 # Die Core-Build-Defs (agent.monitor + die Monitor-Tools + der Monitor-Cron) backen daraus ihre LLM-Beschreibungen, die
-# Methoden-Labels der HITL-Summary und die Advisor-Hinweise — vorher standen finance-Views/-Domain/fx-Felder fest im Core.
+# Methoden-Labels der HITL-Summary und die Advisor-Hinweise.
 # Repo-Baum = Build-Menge (nicht die installierte Menge): ein nicht installiertes Paket faellt zur Laufzeit graceful aus
 # (Methode nicht verfuegbar -> {ok:false}; View nicht lesbar -> der Dry-Run meldet den Fehler). Script-scope.
 $MonitorAcquisitionMethodList = @()
@@ -215,12 +215,12 @@ foreach ($dup in @($AdvisorDomainList | Group-Object Domain | Where-Object { $_.
 # <pkg>.monitor_method.<methode> (Core-Builtins web_search/sql/none unter core.monitor_method.*).
 $MonitorMethodPkgJson = '{' + (($MonitorAcquisitionMethodList | ForEach-Object { (ConvertTo-Json $_.Method) + ': ' + (ConvertTo-Json $_.Package) }) -join ', ') + ' }'
 
-# --- WS-5b Auth-Matrix: Maker-Checker-Stufe je Gate-Aufrufer, je Paket im manifest.json-Block `approval_matrix`
-# (Phase D; docs/package-contract.md §3.10). lib/approval_matrix.ps1 vereint + prueft die Bloecke (tier-Enum, Doppel,
-# Verb-Praefix-Strenge: SCHWAECHER als das Verb verlangt = Build-Fehler, strenger erlaubt). build.ps1 injiziert den
+# --- Auth-Matrix: Maker-Checker-Stufe je Gate-Aufrufer, je Paket im manifest.json-Block `approval_matrix`
+# (docs/package-contract.md §3.10). lib/approval_matrix.ps1 vereint + prueft die Bloecke (tier-Enum, Doppel,
+# Verb-Praefix-Strenge: schwaecher als das Verb verlangt = Build-Fehler, strenger erlaubt). build.ps1 injiziert den
 # tier in jeden agent.tool_human_approval-Aufruf-Node (Set-ApprovalTier, unten in Save-AndReport); ein Gate-Aufrufer
-# ohne Eintrag -> Build-Fehler (Deny-by-Default, fail-closed). Besitz: das deklarierende Paket muss das Paket des
-# Workflow-Namens (Get-WorkflowPackage) UND des erzeugenden Build-Defs sein (Set-ApprovalTier).
+# ohne Eintrag -> Build-Fehler (fail-closed). Besitz: das deklarierende Paket muss das Paket des
+# Workflow-Namens (Get-WorkflowPackage) und des erzeugenden Build-Defs sein (Set-ApprovalTier).
 . "$PSScriptRoot\lib\approval_matrix.ps1"
 $ApprovalGateName = 'agent.tool_human_approval'
 $am = Get-ApprovalMatrix $RepoRoot
@@ -235,7 +235,7 @@ $script:ApprovalMatrix = $am.Entries
 
 # Set-ApprovalTier <wf> <def> — injiziert approval_tier in jeden Gate-Aufruf-Node (executeWorkflow ->
 # cachedResultName == agent.tool_human_approval). Harnesses (*.test_harness) liefern approval_tier selbst
-# ueber den Test-Webhook -> uebersprungen. Bereits gesetztes approval_tier (explizit) wird nie ueberschrieben.
+# ueber den Test-Webhook -> uebersprungen. Ein explizit gesetztes approval_tier bleibt.
 function Set-ApprovalTier([object]$Wf, [object]$Def) {
     if ($Wf.name -like '*.test_harness') { return }
     foreach ($n in $Wf.nodes) {
@@ -254,25 +254,24 @@ function Set-ApprovalTier([object]$Wf, [object]$Def) {
     }
 }
 
-# --- Cross-Ref-ID(s), die mehrere Workflows brauchen, einmal aus dem State (Dateinamen) aufloesen ---
-# KEINE hartkodierten Workflow-ID-Literale mehr: Name = Single-Source, die ID kommt aus dem getrackten
-# <id>-<name>.json. Vor dem Dot-Sourcen der Defs, damit File-Scope-Refs sie sehen.
-# Die Core-Dienste werden ueber den Alias-Resolver (core:<name> -> physischer Name) aufgeloest, damit die
-# physischen Core-Workflow-Namen NUR im core-Manifest leben (D9; provides.services = SSOT). Paket-INTERNE
-# Cross-Refs loest der jeweilige Build-Def selbst auf (Get-RequiredWorkflowId im Funktionskoerper).
+# --- Cross-Ref-IDs, die mehrere Workflows brauchen, einmal aus dem State (Dateinamen) aufloesen ---
+# Der Name ist Single-Source, die ID kommt aus dem getrackten <id>-<name>.json. Vor dem Dot-Sourcen der
+# Defs, damit File-Scope-Refs sie sehen.
+# Die Core-Dienste loest der Alias-Resolver auf (core:<name> -> physischer Name), damit die physischen
+# Core-Workflow-Namen nur im core-Manifest leben (provides.services). Paket-interne Cross-Refs loest der
+# jeweilige Build-Def selbst auf (Get-RequiredWorkflowId im Funktionskoerper).
 $GateId        = Get-RequiredWorkflowId (Resolve-CoreServiceAlias 'core:human_approval' $CoreServiceMap) 'build.ps1'   # genutzt von allen Write-Tools
 # Infra-Subs: Build-Workflow nutzt $ErrorNotifyId; die Agent-/Voice-Defs $LoadConfigId/$LoadContextId.
-$ErrorNotifyId = Get-RequiredWorkflowId (Resolve-CoreServiceAlias 'core:error_notify' $CoreServiceMap) 'build.ps1'    # settings.errorWorkflow JEDES Prod-Workflows (in Build-Workflow)
+$ErrorNotifyId = Get-RequiredWorkflowId (Resolve-CoreServiceAlias 'core:error_notify' $CoreServiceMap) 'build.ps1'    # settings.errorWorkflow jedes Prod-Workflows (in Build-Workflow)
 $LoadConfigId  = Get-RequiredWorkflowId (Resolve-CoreServiceAlias 'core:load_config' $CoreServiceMap) 'build.ps1'     # 'Load Config' erster Schritt jedes Agenten + Voice-Tool
 $LoadContextId = Get-RequiredWorkflowId (Resolve-CoreServiceAlias 'core:load_context' $CoreServiceMap) 'build.ps1'    # System-Prompt-Bauer, von jedem Agenten gerufen
 
-# --- Workflow-Definitionen finden + dot-sourcen (NACH der Cross-Ref-Aufloesung, paket-uniform; Phase D) ---
-# JEDES Paket haelt seine Build-Defs unter packages/<pkg>/build/workflows/{,tools}/ (Core wie jedes Domaenen-Paket,
-# strukturell identisch; Core nur per Manifest als Host deklariert). Die Engine (build.ps1 + lib/) bleibt in
-# scripts/build/ und kennt KEINE Builder-Liste: lib/builder_discovery.ps1 parst jede Def-Datei (PowerShell-AST,
-# ohne Ausfuehrung) und leitet die Top-Level-Build-*-Funktionen ab -> ein neues Paket dockt ohne Engine-Edit an.
-# Reihenfolge (Tools, dann uebrige Defs, je nach Pfad) ist fuer das Ergebnis wirkungslos: IDs kommen nur aus den
-# gespeicherten <id>-<name>.json (ein im selben Lauf neu gebauter Workflow ist ohnehin id-los -> 2-Pass-Bootstrap).
+# --- Workflow-Definitionen finden + dot-sourcen (nach der Cross-Ref-Aufloesung) ---
+# Jedes Paket haelt seine Build-Defs unter packages/<pkg>/build/workflows/{,tools}/. Die Engine
+# (build.ps1 + lib/) kennt keine Builder-Liste: lib/builder_discovery.ps1 parst jede Def-Datei
+# (PowerShell-AST, ohne Ausfuehrung) und leitet die Top-Level-Build-*-Funktionen ab.
+# Die Reihenfolge ist fuer das Ergebnis wirkungslos: IDs kommen nur aus den gespeicherten <id>-<name>.json
+# (ein im selben Lauf neu gebauter Workflow ist ohnehin id-los -> 2-Pass-Bootstrap).
 # harnesses.ps1 appendet beim Dot-Sourcen an $script:Harnesses (lib/harness.ps1 hat initialisiert).
 . "$PSScriptRoot\lib\builder_discovery.ps1"
 $Discovery = Find-WorkflowBuilder $RepoRoot
@@ -290,7 +289,7 @@ Write-Host "Build-Orchestrator -> $WorkflowsDir   (Filter: $Only)"
 Write-Host ("-" * 64)
 
 $built = 0; $new = 0
-$script:catalog   = [ordered]@{}   # Phase 4: name -> _manifest @{Category;Examples} NUR user-facing (Build-Zeit, nie serialisiert)
+$script:catalog   = [ordered]@{}   # name -> _manifest @{Category;Examples}, nur user-facing (Build-Zeit, nie serialisiert)
 $script:wfPackage = @{}            # Workflow-Name -> Paket des erzeugenden Build-Defs (Katalog-Segmentierung)
 $script:toolDefs  = [ordered]@{}   # Tool-Workflow-Name -> @{Def; Manifest} (Vollstaendigkeits-Check im Katalog-Teil)
 function Save-AndReport([object]$Wf, [object]$Def = $null) {
@@ -301,13 +300,13 @@ function Save-AndReport([object]$Wf, [object]$Def = $null) {
         $script:wfPackage[[string]$Wf.name] = $Def.Package
         if ($Def.IsTool) { $script:toolDefs[[string]$Wf.name] = @{ Def = $Def; Manifest = $Wf._manifest } }
     }
-    # Katalog IMMER sammeln (auch bei -Only/-Verify/-CatalogOnly) — interne Werkzeuge (_manifest.Internal) filtert
+    # Katalog immer sammeln (auch bei -Only/-Verify/-CatalogOnly) — interne Werkzeuge (_manifest.Internal) filtert
     # die Sammelstelle heraus, sie erreichen nie Kategorie-/Example-Check oder Fragment-Renderer.
     if ($Wf._manifest -and -not $Wf._manifest.Internal) { $script:catalog[$Wf.name] = $Wf._manifest }
     if ($VerifyCatalog -or $CatalogOnly) { return }                    # In-Memory-only: keine Workflow-File-Writes
     if ($Wf.name -notlike $Only) { return }
-    Set-ApprovalTier $Wf $Def                           # WS-5b: approval_tier aus dem approval_matrix-Block in jeden Gate-Aufruf injizieren (fail-closed)
-    $wfHome = Get-WorkflowHomeDir $Wf.name $RepoRoot    # paket-bewusste Ziel-Dir ($home ist PS-Automatik-Var -> nicht shadowen)
+    Set-ApprovalTier $Wf $Def                           # approval_tier aus dem approval_matrix-Block in jeden Gate-Aufruf injizieren (fail-closed)
+    $wfHome = Get-WorkflowHomeDir $Wf.name $RepoRoot    # Ziel-Dir des Pakets ($home ist PS-Automatik-Var -> nicht shadowen)
     $res = Save-WorkflowFile $Wf $Wf.name $wfHome $OWNER_CHAT_ID
     $tag = if ($res.IsNew) { '[NEU id-los -> ID selbst im Dateinamen vergeben]' } else { "[id=$($res.Id)]" }
     Write-Host ("  {0,-44} {1}" -f $res.Name, $tag) -ForegroundColor $(if ($res.IsNew) { 'Yellow' } else { 'Green' })
@@ -317,17 +316,17 @@ function Save-AndReport([object]$Wf, [object]$Def = $null) {
 foreach ($d in $Discovery.Builders) { Save-AndReport (& $d.Function) $d }
 foreach ($wf in (Get-HarnessWorkflow)) { Save-AndReport $wf }
 
-# --- Phase 4 + WS-B7 + Textkatalog Phase B: Per-Fragment-Capabilities-Catalog je Sprache ------------------------
-# Generierung nur bei VOLLEM Build (-Only '*') oder -Verify/-CatalogOnly (sonst fehlen Manifeste -> falscher
-# Hash; $script:catalog wird in Save-AndReport IMMER voll gesammelt, auch bei -Only). Jedes Paket BESITZT
-# seine Katalog-STRUKTUR im manifest.json-`catalog`-Block (ord/categories/tail), die TEXTE im Textkatalog
-# (<pkg>.help.*). build.ps1 rendert je Paket UND Katalogsprache ein Fragment
+# --- Capabilities-Katalog je Sprache (Fragmente je Paket) ------------------------
+# Generierung nur bei vollem Build (-Only '*') oder -Verify/-CatalogOnly (sonst fehlen Manifeste -> falscher
+# Hash; $script:catalog wird in Save-AndReport immer voll gesammelt, auch bei -Only). Jedes Paket besitzt
+# seine Katalog-Struktur im manifest.json-`catalog`-Block (ord/categories/tail), die Texte im Textkatalog
+# (<pkg>.help.*). build.ps1 rendert je Paket und Katalogsprache ein Fragment
 # (packages/<pkg>/seed/capabilities_catalog/<lang>.fragment.md) + composet sie je Sprache nach Paket-`ord` in die
 # getrackte packages/core/seed/capabilities_catalog/<lang>.md (Kopf-Quelle des Install-Compose, seed_data.sh).
-# Drift-Lint PER-FRAGMENT (nennt Paket + Sprache) + Compose-Integritaet je Sprache.
+# Drift-Check je Fragment (nennt Paket + Sprache) + Compose-Integritaet je Sprache.
 $catDir = "$RepoRoot\packages\core\seed\capabilities_catalog"
 if ($VerifyCatalog -or $CatalogOnly -or $Only -eq '*') {
-    # (1) Manifest-Vollstaendigkeit (Review A1) auf den GEBAUTEN Tool-Workflows: jedes Werkzeug aus einer tools/-Def
+    # (1) Manifest-Vollstaendigkeit auf den gebauten Tool-Workflows: jedes Werkzeug aus einer tools/-Def
     #     traegt genau eins von Category (user-facing Capability) oder Internal = $true (Infra/Agent-intern,
     #     co-located am Tool, Muster OpenAPI x-internal) — keins oder beides = Fehler.
     $nameToPkg = $script:wfPackage
@@ -357,7 +356,7 @@ if ($VerifyCatalog -or $CatalogOnly -or $Only -eq '*') {
         $byPkg[$p][$n] = $script:catalog[$n]
     }
 
-    # (4) Undeklarierte Kategorien + fehlende Pflicht-Texte sammeln (m3 = harter Verify-FAIL): ein Paket mit
+    # (4) Undeklarierte Kategorien + fehlende Pflicht-Texte sammeln (harter Verify-FAIL): ein Paket mit
     #     Katalog-Tools aber ohne catalog-Block faellt sonst still aus dem Katalog -> ebenfalls Fehler.
     $undeclared = @()
     foreach ($p in ($byPkg.Keys | Where-Object { -not $pkgCatalogs.ContainsKey($_) } | Sort-Object)) {

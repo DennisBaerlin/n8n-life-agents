@@ -1,6 +1,7 @@
 -- ============================================================
 -- fn_get_recurring_suggestion_queue (VOLATILE: Probelauf) -- welche Dauerauftrags-Vorschlaege gehen jetzt als Knopf-Nachricht
---   Fuer tool_send_recurring_suggestions. Offene Zeilen des nicht abgelaufenen (fn_recurring_suggestion_expired) Vorschlags-Stapels dieses Chats, deren aktuelle Fassung noch
+--   Fuer tool_send_recurring_suggestions. Offene Zeilen des nicht abgelaufenen (fn_recurring_suggestion_expired)
+--   Vorschlags-Stapels dieses Chats, deren aktuelle Fassung noch
 --   nicht geschickt wurde (sent_version <> version), zuerst sure, dann confirm, je nach Betrag absteigend; hoechstens 10
 --   je Aufruf (Rest = more). Kinder und Unbekannte bekommen nichts. Je Zeile: Sicherheit neu aus den Terminen
 --   (fn_recurring_suggestion_measure; NULL = inzwischen bekannt -> rejected), dann der Probelauf derselben Anlege-fn
@@ -9,9 +10,10 @@
 --   VOLATILE; je Zeile ein Probelauf samt Event-Folds, deshalb die Obergrenze. Der Nachrichtentext entsteht in der Sprache
 --   des Empfaengers (fn_recurring_suggestion_text), die Knopf-Daten tragen nur Zeile und Fassung (rsug:ok|no:<id>:<version>,
 --   unter 64 Bytes). Schreibt nichts; gestempelt wird nach dem Senden (fn_record_recurring_suggestions_sent).
---   Eingabe p: {chat_id*}.
---   RUECKGABE: {ok:true, items:[{id, version, message, btn_accept, btn_decline, data_ok, data_no, confidence, amount}],
---   rejected:[{id, reason}], more, open_count, sent_before}.
+--   Eingabe p: {chat_id (Pflicht)}.
+--   Rueckgabe: {ok:true, items:[{id, version, message, btn_accept, btn_decline, data_ok, data_no, confidence, amount}],
+--   rejected:[{id, reason}], more, open_count, sent_before}; ungueltige chat_id und Absender ausser Owner/Partner
+--   liefern dieselbe Form leer (items [], Zaehler 0), nie {ok:false}.
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_get_recurring_suggestion_queue(p jsonb)
 RETURNS jsonb LANGUAGE plpgsql VOLATILE AS $$

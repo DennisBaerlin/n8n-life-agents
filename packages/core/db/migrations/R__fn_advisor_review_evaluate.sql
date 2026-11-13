@@ -1,46 +1,45 @@
 -- ============================================================
--- core.fn_advisor_review_evaluate (WS2 — generischer Eval-/Latch-Wrapper der Core-Advisor-Engine)
---   Der EINE Eintrittspunkt des Drift-Checks: Registry-Lookup domain -> review_fn, dyn. EXECUTE der
---   paket-besessenen Review-fn, dann generischer LATCH gegen die GETEILTE core.notification_state
---   (Phase Notify; person-suffigierte v_source = 'advisor:'||domain||COALESCE(':'||person_id,''), P2a)
+-- core.fn_advisor_review_evaluate (generischer Eval-/Latch-Wrapper der Core-Advisor-Engine)
+--   Der eine Eintrittspunkt des Drift-Checks: Registry-Lookup domain -> review_fn, dyn. EXECUTE der
+--   paket-besessenen Review-fn, dann generischer Latch gegen die geteilte core.notification_state
+--   (person-suffigierte v_source = 'advisor:'||domain||COALESCE(':'||person_id,''))
 --   ueber core.fn_should_notify/fn_notify_reconcile + Reconcile-GC.
+--   Eingaben: p_domain (Pflicht), p_person_id (optional), p_observations (optional, an die review_fn durchgereicht).
 --
---   ROLLENMODELL (Praezedenz fn_monitor_evaluate): SECURITY INVOKER. Der schreibende Cron laeuft unter
---   dem Haupt-RW-Credential (wie cron_monitor_check_triggers) — die Cron-SQL ist entwickler-geschrieben
---   + deterministisch (kein LLM-formuliertes SELECT), darum KEIN core_ro/DEFINER-Eskalationsfenster
---   noetig fuer den Latch-Write. SET search_path=pg_catalog (CVE-2018-1058) + to_regprocedure-Guard auf
+--   Rollenmodell (wie fn_monitor_evaluate): SECURITY INVOKER. Der schreibende Cron laeuft unter
+--   dem Haupt-RW-Credential (wie cron_monitor_check_triggers); die Cron-SQL ist entwickler-geschrieben
+--   und deterministisch (kein LLM-formuliertes SELECT), darum braucht der Latch-Write kein core_ro/DEFINER-
+--   Eskalationsfenster. SET search_path=pg_catalog (CVE-2018-1058) + to_regprocedure-Guard auf
 --   die installer-geschriebene review_fn aus der Registry (nie $fromAI).
 --
---   LATCH (geteilte Schicht, Muster fn_monitor_evaluate): je alert aus review_fn.alerts ruft
---   core.fn_should_notify(v_source, metric_key) (NULL-TTL = reiner Edge-Latch) -> true GDW der
---   Latch ok->fired kippt = NEUER Breach = senden (send=true); bereits 'fired' = still. RECONCILE-GC:
---   core.fn_notify_reconcile loescht jede Latch-Zeile dieser source, deren metric_key NICHT mehr im
---   aktuellen Set ist (wieder im Band ODER Ziel/Block umbenannt/geloescht) -> Re-Arm + kein Leak.
+--   Latch (geteilte Schicht, Muster fn_monitor_evaluate): je alert aus review_fn.alerts ruft
+--   core.fn_should_notify(v_source, metric_key) (NULL-TTL = reiner Edge-Latch) -> true gdw der
+--   Latch ok->fired kippt = neuer Breach = senden (send=true); bereits 'fired' = still. Reconcile-GC:
+--   core.fn_notify_reconcile loescht jede Latch-Zeile dieser source, deren metric_key nicht mehr im
+--   aktuellen Set ist (wieder im Band oder Ziel/Block umbenannt/geloescht) -> Re-Arm + kein Leak.
 --
---   MENGEN-ALARM (Roter Faden 2026-10-23): traegt ein alert ein nicht-leeres Array 'latch_keys' (z. B. die ids der
+--   Mengen-Alarm: traegt ein alert ein nicht-leeres Array 'latch_keys' (z. B. die ids der
 --   Positionen ohne Anlageklasse), latcht die Engine je Element unter 'metric_key#k' statt unter metric_key -> ein
---   NEU hinzukommendes Element meldet den Alarm erneut, dieselbe Menge bleibt still, ein verschwundenes Element
---   re-armt per Reconcile. Einmaleffekt beim ersten Lauf nach Einfuehrung: der bisherige metric_key-Latch wird
---   reconciled und der bestehende Alarm meldet sich EINMAL neu (gewollt: er nennt jetzt die konkreten Namen).
+--   neu hinzukommendes Element meldet den Alarm erneut, dieselbe Menge bleibt still, ein verschwundenes Element
+--   re-armt per Reconcile.
 --
---   PERSON-FAECHERUNG (P2a, uniform 3-arg): p_person_id faechert den Latch + den Dispatch pro Person.
---   v_source = 'advisor:'||domain||COALESCE(':'||person_id,'') -> person_id NULL ist BYTE-GLEICH heute
---   ('advisor:'||domain) -> finance (Haushalt) + die heutigen 1-Arg-Cron-Aufrufe sind 0-Verhaltensaenderung;
---   mit person_id (P2b-Cron-Schleife) latcht jede Person getrennt ('advisor:career:<pid>'). Der person_id geht
---   UNIFORM an ALLE registrierten <pkg>.fn_advisor_review(text,text,jsonb) (finance ignoriert ihn = Haushalt,
---   career nutzt ihn) — keine scope-konditionale Dispatch-Aritaet (Rule of Three, 2. Dispatcher-Konsument).
+--   Person-Faecherung: p_person_id faechert den Latch und den Dispatch pro Person.
+--   v_source = 'advisor:'||domain||COALESCE(':'||person_id,'') -> person_id NULL ergibt 'advisor:'||domain
+--   (finance, Haushalt); mit person_id latcht jede Person getrennt ('advisor:career:<pid>'). Die person_id geht
+--   uniform an alle registrierten <pkg>.fn_advisor_review(text,text,jsonb) (finance ignoriert sie = Haushalt,
+--   career nutzt sie); keine scope-konditionale Dispatch-Aritaet.
 --
---   TOLD_KEYS: ein alert darf told_keys:[{source,key,latch_key?}] tragen. Ist einer laut core.fn_notify_told gemeldet,
+--   told_keys: ein alert darf told_keys:[{source,key,latch_key?}] tragen. Ist einer laut core.fn_notify_told gemeldet,
 --   wird der Merker gesetzt, der alert (bzw. mit latch_key das Element) aber nicht neu (Alertmanager inhibit_rules).
 --
---   BUDGET: Ist etwas neu, belegt die fn VOR dem ersten Merker den Slot des Owners (die Nachricht geht in den Owner-Chat):
+--   Budget: Ist etwas neu, belegt die fn vor dem ersten Merker den Slot des Owners (die Nachricht geht in den Owner-Chat):
 --   Waechter 'advisor_drift' normal (mehrere Domains = eine Nachricht), eigener Review-Cron 'advisor:<domain>' priority.
 --   Kein Platz -> { ok, send:false, deferred:true, alerts:[], first_run:false, digest }, keine Merker.
---   RUECKGABE jsonb: { ok, send:boolean, alerts:[…neue Breaches, je _latched:[{source,key}]…], first_run:boolean, digest:{…} }
---     send=true gdw mindestens EIN Breach NEU ist (Latch-Uebergang) -> der Drift-Cron schickt nur dann.
+--   Rueckgabe jsonb: { ok, send:boolean, alerts:[…neue Breaches, je _latched:[{source,key}]…], first_run:boolean, digest:{…} }
+--     send=true gdw mindestens ein Breach neu ist (Latch-Uebergang) -> der Drift-Cron schickt nur dann.
 --     first_run=true beim ersten Lauf je (domain, person) mit neuen Alarmen. _latched braucht core.fn_advisor_alerts_cap.
 --     digest reicht die fn unveraendert durch (der Quartals-Cron nutzt ihn ungelatcht).
---   Anwenden via: db_apply.ps1 -File packages\core\db\migrations\R__fn_advisor_review_evaluate.sql
+--     ok:false, error = 'unknown_advisor_domain' | 'review_fn_missing' (send:false, alerts:[]).
 -- ============================================================
 CREATE OR REPLACE FUNCTION core.fn_advisor_review_evaluate(p_domain text, p_person_id text DEFAULT NULL, p_observations jsonb DEFAULT '{}'::jsonb)
 RETURNS jsonb
@@ -63,12 +62,11 @@ DECLARE
     v_first_run  boolean := false;
     v_needs      boolean;
     v_own_cron   boolean;
-    -- P2a: person-suffigierte Latch-source (NULL=Haushalt -> byte-gleich heute). EINE Variable, an BEIDEN
-    -- Call-Sites (fn_should_notify + fn_notify_reconcile) genutzt -> sonst latcht der eine person-aware und der
-    -- Reconcile raeumt person-blind -> Dauer-Stummschaltung/Leak (Opus-Review M2).
+    -- Person-suffigierte Latch-source (NULL = Haushalt). Eine Variable, an beiden Call-Sites
+    -- (fn_should_notify + fn_notify_reconcile) genutzt, sonst latcht der eine person-aware und der
+    -- Reconcile raeumt person-blind -> Dauer-Stummschaltung/Leak.
     v_source     text := 'advisor:' || p_domain || COALESCE(':' || p_person_id, '');
 BEGIN
-    -- Registry-Lookup + Guard
     SELECT review_fn, own_review_cron INTO v_fn, v_own_cron FROM core.advisors WHERE domain = p_domain;
     IF v_fn IS NULL THEN
         RETURN jsonb_build_object('ok', false, 'send', false, 'error', 'unknown_advisor_domain', 'alerts', '[]'::jsonb);
@@ -77,8 +75,7 @@ BEGIN
         RETURN jsonb_build_object('ok', false, 'send', false, 'error', 'review_fn_missing', 'alerts', '[]'::jsonb);
     END IF;
 
-    -- Paket-Review-fn dynamisch ausfuehren (review_fn ist installer-kontrolliert + schema-qualifiziert).
-    -- UNIFORM 3-arg: person_id durchgereicht (finance ignoriert ihn = Haushalt; career nutzt ihn).
+    -- review_fn ist installer-kontrolliert und schema-qualifiziert; uniform 3-arg (person_id durchgereicht).
     EXECUTE format('SELECT %s($1, $2, $3)', v_fn) INTO v_result USING p_domain, p_person_id, p_observations;
     v_alerts := COALESCE(v_result->'alerts', '[]'::jsonb);
     v_digest := COALESCE(v_result->'digest', '{}'::jsonb);
@@ -108,16 +105,12 @@ BEGIN
         RETURN jsonb_build_object('ok', true, 'send', false, 'deferred', true, 'alerts', '[]'::jsonb, 'first_run', false, 'digest', v_digest);
     END IF;
 
-    -- ---------- Latch je aktuellem Alert (Phase Notify: ueber die GETEILTE core.notification_state) ----------
-    -- Der frueher advisor-eigene Edge-Latch (core.advisor_review_state) lebt jetzt in der geteilten Dedup-
-    -- Schicht (source='advisor:'||domain, key=metric_key). Pro aktuellem Alert ueber das Edge-Latch-Fenster
-    -- core.fn_should_notify gaten (NULL-TTL = reiner Edge-Latch, KEIN auto-Re-Arm) -> true GDW der Latch jetzt
-    -- ok->fired kippt (Erst-Breach oder nach Re-Arm) -> NEUER Breach -> senden. Race-Safety (INSERT ON CONFLICT
-    -- -> FOR UPDATE) + send-once/Re-Arm-Semantik byte-gleich; die frueheren Audit-Spalten (last_value/target/drift)
-    -- entfallen (write-only, kein Leser).
+    -- Latch je aktuellem Alert ueber die geteilte core.notification_state (source='advisor:'||domain, key=metric_key):
+    -- core.fn_should_notify gatet (NULL-TTL = reiner Edge-Latch, kein auto-Re-Arm) -> true gdw der Latch jetzt
+    -- ok->fired kippt (Erst-Breach oder nach Re-Arm) -> neuer Breach -> senden.
     FOR v_alert IN SELECT * FROM jsonb_array_elements(v_alerts) LOOP
         v_key  := v_alert->>'metric_key';
-        CONTINUE WHEN v_key IS NULL;   -- defensiv: ein alert ohne metric_key wuerde sonst die NOT-NULL-key-
+        CONTINUE WHEN v_key IS NULL;   -- ein alert ohne metric_key wuerde sonst die NOT-NULL-key-
                                        -- Constraint von core.notification_state verletzen + den Cron-Lauf killen
         -- Der Merker wird immer zuerst gesetzt, erst dann told geprueft: Eine gesagte Lage gilt so als gemeldet.
         -- Mengen-Alarm mit latch_keys -> je Element 'metric_key#k' latchen (Alertmanager-Gruppe: ein neues Mitglied
@@ -157,11 +150,9 @@ BEGIN
         v_first_run := core.fn_should_notify(v_source, '__first_run__');
     END IF;
 
-    -- ---------- Reconcile-GC: Re-Arm wieder-im-Band + Loeschen stale Keys ----------
-    -- Level-triggered: der Review-Lauf liefert das VOLLE aktuelle Alert-Set. Jede gelatchte Metrik dieser
-    -- Domain, die NICHT (mehr) im Set ist (wieder im Band ODER Ziel/Block umbenannt/geloescht), wird ueber
-    -- das Reconcile-Fenster geloescht -> re-armt sauber (naechster Breach feuert wieder) + kein Leak.
-    -- (Desired-State treibt die Tabelle, k8s-Reconcile.)
+    -- Reconcile-GC (level-triggered): der Review-Lauf liefert das volle aktuelle Alert-Set. Jede gelatchte
+    -- Metrik dieser Domain, die nicht (mehr) im Set ist (wieder im Band oder Ziel/Block umbenannt/geloescht),
+    -- wird ueber das Reconcile-Fenster geloescht -> re-armt sauber (naechster Breach feuert wieder), kein Leak.
     PERFORM core.fn_notify_reconcile(v_source, v_keys);
 
     RETURN jsonb_build_object(

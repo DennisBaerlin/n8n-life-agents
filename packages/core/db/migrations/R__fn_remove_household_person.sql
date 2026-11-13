@@ -1,21 +1,22 @@
 -- ============================================================
--- fn_remove_household_person (WS-5d — Person loeschen, „Tod")
+-- fn_remove_household_person (ATOMIC WRITE — Person loeschen)
 --   Owner-CLI (`lifeagents household remove <person_id>`): entfernt die Person aus der Autoring-Quelle
 --   `family.facts.persons[]`. fn_set_context_facts ist merge/append-only (kann nicht entfernen) ->
---   eigener JSONB-Write. Das ist der in agent.persons_init.sql vorgesehene „Remove-Pfad":
+--   eigener JSONB-Write. Das ist der in agent.persons_init.sql vorgesehene Remove-Pfad:
 --     family-UPDATE -> BEFORE-Validator + AFTER-Reconcile-Trigger (trg_project_persons) feuern ->
 --     der GC-DELETE auf agent.persons trifft FK ON DELETE RESTRICT, falls die Person noch von
 --     finance-Daten referenziert wird -> foreign_key_violation -> hier in {ok:false} gefangen
 --     (die Sub-Transaktion rollt zurueck, `family` bleibt unveraendert).
 --   Guards: role='owner' -> {ok:false} (Owner-Identitaet nie loeschen); letzte verbleibende Person ->
 --     {ok:false}; sonstiger Validator-RAISE -> {ok:false} mit dem Validator-Grund.
---   KASKADE (Phase A, Konvention „Config/Children = CASCADE"): die persons[]-Eintraege der Person in ALLEN
---     anderen Kontexten (z. B. ein Paket-Finanzprofil) werden in DERSELBEN Sub-Transaktion vor dem family-
+--   Kaskade (Konvention „Config/Children = CASCADE"): die persons[]-Eintraege der Person in allen
+--     anderen Kontexten (z. B. ein Paket-Finanzprofil) werden in derselben Sub-Transaktion vor dem family-
 --     UPDATE entfernt — sonst waere eine referenzierte Person nie loeschbar (die Waisen-Pruefung blockte, und
 --     kein anderer Weg entfernt einen Profil-Eintrag). Echte Finanzdaten (Konten/Kredite/…) blockieren weiter
 --     ueber FK RESTRICT -> dann rollt auch die Kaskade zurueck.
---   p: { person_id }
---   RUECKGABE: {ok:true, person_id, removed:true, removed_from_contexts} | {ok:false, reason}
+--   Danach raeumt die fn die per_user-Kontexte der Person und ihre Latches (advisor, persona_sticker, persona_greet) mit.
+--   p: { person_id (Pflicht) }
+--   Rueckgabe: {ok:true, person_id, removed:true, removed_from_contexts} | {ok:false, reason}
 --   Tests: tests/db/core/test_fn_household_person.sql
 -- ============================================================
 CREATE OR REPLACE FUNCTION agent.fn_remove_household_person(p jsonb)
@@ -30,8 +31,8 @@ BEGIN
         RETURN jsonb_build_object('ok', false, 'reason', 'person_id is required');
     END IF;
 
-    -- Die family-Zeile sperren, bevor wir lesen + den letzte-Person-Guard auswerten (Lock-Disziplin
-    -- wie fn_unlink_member_identity/fn_set_context_facts; Single-User -> faktisch kontentionsfrei).
+    -- Die family-Zeile sperren, bevor gelesen und der letzte-Person-Guard ausgewertet wird (Lock-Disziplin
+    -- wie fn_unlink_member_identity/fn_set_context_facts).
     PERFORM 1 FROM agent.core_contexts WHERE name = 'family' FOR UPDATE;
 
     SELECT pp INTO v_person
@@ -45,7 +46,6 @@ BEGIN
         RETURN jsonb_build_object('ok', false, 'reason', 'the owner person cannot be removed');
     END IF;
 
-    -- neue persons[] ohne die Ziel-Person
     SELECT COALESCE(jsonb_agg(pp), '[]'::jsonb) INTO v_new
     FROM agent.core_contexts c, jsonb_array_elements(c.metadata->'facts'->'persons') pp
     WHERE c.name = 'family' AND pp->>'person_id' <> v_pid;
@@ -55,7 +55,7 @@ BEGIN
     END IF;
 
     BEGIN
-        -- Kaskade: die Eintraege der Person aus allen anderen persons[]-Kontexten entfernen (s. Header).
+        -- Kaskade in die anderen persons[]-Kontexte (s. Header).
         UPDATE agent.core_contexts c
         SET metadata = jsonb_set(c.metadata, '{facts,persons}',
             (SELECT COALESCE(jsonb_agg(e), '[]'::jsonb)
@@ -80,23 +80,23 @@ BEGIN
             RETURN jsonb_build_object('ok', false, 'reason', SQLERRM);
     END;
 
-    -- P0b: generischer Per-Person-Purge der per_user-Kontexte der ENTFERNTEN Person ('<base>__<pid>').
-    -- Generisch ueber core.context_scopes WHERE scope='per_user' (kein career-Hardcode; nimmt jeden kuenftigen
-    -- per_user-Context automatisch mit). Reihenfolge tragend: das family-UPDATE oben hat die Person SCHON
+    -- Generischer Per-Person-Purge der per_user-Kontexte der entfernten Person ('<base>__<pid>'),
+    -- ueber core.context_scopes WHERE scope='per_user' (kein Paket-Hardcode; nimmt jeden kuenftigen
+    -- per_user-Context automatisch mit). Reihenfolge tragend: das family-UPDATE oben hat die Person schon
     -- entfernt -> der suffix-aware Protect-Trigger (agent.trg_core_contexts_protect_fn) sieht <pid> nicht mehr
-    -- in family -> blockt NICHT -> Purge laeuft. Eine noch lebende Person/Owner bliebe geschuetzt. Der
-    -- scope='per_user'-Filter + PK auf context_name -> ein household-Kontext kann nie getroffen werden. Atomar.
+    -- in family -> blockt nicht -> Purge laeuft. Eine noch lebende Person/Owner bliebe geschuetzt. Der
+    -- scope='per_user'-Filter + PK auf context_name -> ein household-Kontext kann nie getroffen werden.
     DELETE FROM agent.core_contexts c
     USING core.context_scopes cs
     WHERE cs.scope = 'per_user'
       AND c.name = cs.context_name || '__' || v_pid;
 
-    -- P2b-2: die person-suffigierten Advisor-Latches der entfernten Person mit-raeumen
+    -- Die person-suffigierten Advisor-Latches der entfernten Person mit-raeumen
     -- (core.notification_state source='advisor:<domain>:<pid>', gesetzt von fn_advisor_review_evaluate).
     -- Sonst bliebe ein verwaister 'fired'-Latch zurueck: der per-Person-gefaecherte Cron ueberspringt die
     -- Person (kein Plan mehr -> nicht in fn_context_persons) -> fn_notify_reconcile raeumt sie nie ->
     -- ein spaeterer echter Alert derselben person_id wuerde stumm unterdrueckt. split_part(.,':',3) matcht
-    -- das pid-Segment EXAKT (kein LIKE-Wildcard auf dem '_'-haltigen Slug); household-Sources ('advisor:finance',
+    -- das pid-Segment exakt (kein LIKE-Wildcard auf dem '_'-haltigen Slug); household-Sources ('advisor:finance',
     -- 'knock', 'finance') tragen kein pid-Segment -> bleiben unberuehrt.
     DELETE FROM core.notification_state
     WHERE source LIKE 'advisor:%'

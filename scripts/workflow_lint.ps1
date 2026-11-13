@@ -1,42 +1,42 @@
 ﻿#Requires -Version 5.1
-# Workflow-Struktur-/Logik-Lint (A4a). Kein LLM, kein Live-Trigger -- prueft kritische Workflows,
-# die NICHT bequem live testbar sind, gegen ihre getrackte Definition.
+# Workflow-Struktur-/Logik-Lint. Kein LLM, kein Live-Trigger: prueft kritische Workflows,
+# die nicht bequem live testbar sind, gegen ihre getrackte Definition.
 #
-# Schwerpunkt core.sub_error_notify (die SYSTEMWEITE Sicherheitsleine: jeder Prod-Workflow zeigt per
+# Schwerpunkt core.sub_error_notify (die systemweite Sicherheitsleine: jeder Prod-Workflow zeigt per
 # settings.errorWorkflow darauf). Bricht sie still (Node umbenannt, Telegram-Credential entfernt,
-# Verdrahtung kaputt), fallen ALLE Workflows lautlos aus -- kein Alert kommt mehr an. Da der Eingang
+# Verdrahtung kaputt), fallen alle Workflows lautlos aus, kein Alert kommt mehr an. Da der Eingang
 # ein n8n errorTrigger ist (feuert nur bei echten Fehlern, nicht via executeWorkflow ansteuerbar),
-# pruefen wir deterministisch die DEFINITION:
+# prueft das Lint deterministisch die Definition:
 #   (1) Struktur: erwartete Nodes/Typen + Verdrahtung On Error -> Load alert texts -> Format Message -> Send Telegram Alert
 #   (2) Send-Node: chatId gesetzt + Telegram-Credential + appendAttribution:false
-#   (3) Format-Message-LOGIK: der JS-Code baut aus einem synthetischen Error-Payload korrekt die
+#   (3) Format-Message-Logik: der JS-Code baut aus einem synthetischen Error-Payload korrekt die
 #       Alert-Nachricht (via node ausgefuehrt: lokal installiert oder per Docker) -> faengt Code-Regressions.
 #
-# Zusaetzlich QUERSCHNITTS-GESETZE ueber ALLE getrackten Workflows (Fehlerklasse "Prod-Pfad
-# crasht, alle Tests gruen" -- real getroffen 2026-06-12, Executions 3026-3030):
-#   (4) chat_id-Typsicherheit: Telegram liefert message.chat.id als ZAHL, Test-Harnesses
-#       uebergeben Strings ('test_...') -> typ-unsichere String-Ops auf chat_id crashen NUR
+# Zusaetzlich Querschnitts-Gesetze ueber alle getrackten Workflows (Fehlerklasse "Prod-Pfad
+# crasht, alle Tests gruen"):
+#   (4) chat_id-Typsicherheit: Telegram liefert message.chat.id als Zahl, Test-Harnesses
+#       uebergeben Strings ('test_...') -> typ-unsichere String-Ops auf chat_id crashen nur
 #       produktiv (strict-IF: NodeOperationError "Wrong type ... is a number"; Expression:
 #       TypeError .startsWith auf Zahl). Gesetz: jede String-Condition (IF/Switch/Filter) und
 #       jede .startsWith-Expression auf chat_id ist String()-gewrappt; der Orchestrator (die
-#       Quelle) stringifiziert chat_id in JEDEM workflowInputs-Binding.
-#   (5) Code-Node-Return-Shape: mode=runOnceForEachItem MUSS ein Einzel-Item { json: {...} }
-#       returnen -- ein Array-Return [{...}] wirft "A 'json' property isn't an object"
-#       (genau das machte die Fehler-Sicherheitsleine selbst von Anfang an kaputt).
-#   (Stickies) jeder Workflow traegt >= 1 Sticky-Note -- Workflows sind die primaere Doku (Root-CLAUDE.md);
-#       deterministischer Backstop der Prosa-Pflicht (Harness-Rightsizing 2026-10-20).
+#       Quelle) stringifiziert chat_id in jedem workflowInputs-Binding.
+#   (5) Code-Node-Return-Shape: mode=runOnceForEachItem muss ein Einzel-Item { json: {...} }
+#       returnen; ein Array-Return [{...}] wirft "A 'json' property isn't an object".
+#   (Stickies) jeder Workflow traegt >= 1 Sticky-Note (Workflows sind die primaere Doku, Root-CLAUDE.md);
+#       deterministischer Backstop der Prosa-Pflicht.
 #   (Sprachmodelle) kein Gemini-Chat-Node; Google-Gemini (Node/Credential/URL) nur im Transkriptions-Tool
-#       (Modell-Phase 2: Chat-Modelle laufen nur noch ueber Claude).
+#       (Chat-Modelle laufen nur ueber Claude).
 #   (Kosten-Kennung) jeder Claude-Aufruf traegt seinen Workflow-Namen fuer den Kosten-Report: Kennzeile vorn in der
 #       System-Nachricht (Agent/Kette) bzw. Header x-lifeagents-workflow (Gateway-HTTP-Knoten).
 #   (Ausdrucks-Syntax) jeder {{ … }}-Ausdruck in Node-Parametern ist gueltiges JavaScript (via node lokal oder per Docker;
-#       in der CI Pflicht — fehlt node dort, failt der Check statt still zu ueberspringen). n8n akzeptiert einen kaputten Ausdruck beim Publish und scheitert erst zur Laufzeit mit
-#       "invalid syntax" (real 2026-10-20: tool_book_savings_plan_execution, Approval-Summary mit fehlender Klammer
-#       -> das Werkzeug brach seit Langem vor jeder Bestaetigung ab, unbemerkt bis zum E2E-Lauf). Auch $fromAI(…)-Ausdruecke:
-#       ein "}}" im Beschreibungstext beendet den Ausdruck vorzeitig (real 2026-10-20: tool_save_plan_section, JSON-Beispiel
-#       in der section_data-Beschreibung -> jeder Speicher-Aufruf "invalid syntax"). Ausgenommen nur Code-Nodes (eigenes jsCode).
+#       in der CI Pflicht, fehlt node dort, failt der Check statt still zu ueberspringen). n8n akzeptiert einen
+#       kaputten Ausdruck beim Publish und scheitert erst zur Laufzeit mit "invalid syntax". Auch $fromAI(…)-Ausdruecke:
+#       ein "}}" im Beschreibungstext beendet den Ausdruck vorzeitig (z. B. ein JSON-Beispiel in einer Tool-Beschreibung).
+#       Ausgenommen nur Code-Nodes (eigenes jsCode).
 #
 # Usage:  .\scripts\workflow_lint.ps1 [-Verbose]
+# Voraussetzung: node lokal oder Docker (Image node:20.18.0-alpine, wird bei Bedarf gezogen) fuer (3) und die Ausdrucks-Syntax;
+#   fehlt beides, failt der jeweilige Check.
 # Exit-Code = Anzahl fehlgeschlagener Checks.
 param([switch]$Verbose)
 
@@ -46,13 +46,13 @@ $Utf8NoBom = New-Object System.Text.UTF8Encoding($false)
 $RepoRoot  = git -C $PSScriptRoot rev-parse --show-toplevel
 
 # Node fuer die JS-Checks (Format-Message-Logik, Ausdrucks-Syntax): installiert (CI-Runner) -> direkt; sonst ueber
-# Docker (lokal ohnehin Pflicht fuer db_test) mit gepinntem Image -> lokal laeuft DERSELBE Check wie in der CI statt
-# still uebersprungen zu werden (2026-10-21/22: ein lokal uebersprungener Check war ~20 Pushes lang nur in der CI rot).
+# Docker (lokal ohnehin Pflicht fuer db_test) mit gepinntem Image, damit lokal derselbe Check wie in der CI laeuft
+# statt still uebersprungen zu werden (ein lokal uebersprungener Check war sonst nur in der CI rot).
 # Beide Wege arbeiten nur mit Dateien unter .local/lint_tmp und Repo-relativen Pfaden (im Container = /repo).
 $LintNodeImage = 'node:20.18.0-alpine'
 $LintTmpRel    = '.local/lint_tmp'
 $LintNode = if (Get-Command node -CommandType Application -ErrorAction SilentlyContinue) { 'local' } else {
-    # Probe darf den Lint nie abbrechen (EAP=Stop + stderr / fehlende docker-CLI) -> sonst greift der Fehl-Check unten.
+    # Probe darf den Lint nie abbrechen (EAP=Stop + stderr / fehlende docker-CLI), sonst greift der Fehl-Check unten nicht.
     $prevEap = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
     try { $null = & docker info --format '{{.ServerVersion}}' 2>$null; if ($LASTEXITCODE -eq 0) { 'docker' } else { $null } }
     catch { $null } finally { $ErrorActionPreference = $prevEap }
@@ -78,9 +78,8 @@ function New-LintTmpFile([string]$Ext) {
 }
 . (Join-Path $RepoRoot 'scripts\build\lib\umlaut.ps1')   # Ersatz-Umlaut-Erkennung (Textkatalog)
 
-# Paket-bewusste Workflow-Quellen: jedes Paket unter packages/<pkg>/workflows/. Get-WfDirs = Such-Liste;
-# Resolve-WfPath findet '<id>-<name>.json' (id state-aufgeloest, KEIN hardcodiertes ID-Literal mehr)
-# ueber alle Dirs.
+# Workflow-Quellen: jedes Paket unter packages/<pkg>/workflows/. Get-WfDirs = Such-Liste;
+# Resolve-WfPath findet '<id>-<name>.json' ueber alle Dirs (kein hardcodiertes ID-Literal).
 function Get-WfDirs {
     $dirs = @()
     foreach ($p in (Get-ChildItem (Join-Path $RepoRoot 'packages') -Directory -ErrorAction SilentlyContinue)) {
@@ -133,7 +132,7 @@ if ($en) {
     Check 'Send: appendAttribution=false'           { $null -ne $send -and $send.parameters.additionalFields.appendAttribution -eq $false }
     Check 'Send: Retry On Fail aktiv'               { $null -ne $send -and $send.retryOnFail -eq $true }
 
-    # Verdrahtung On Error -> Load alert texts (Owner-Sprache, Textkatalog Phase C) -> Format Message -> Send. Der
+    # Verdrahtung On Error -> Load alert texts (Owner-Sprache) -> Format Message -> Send. Der
     # Text-Read darf den Alarm nie aufhalten: onError=continue + alwaysOutputData, kein Retry.
     $c = $en.connections
     $lt = $nodes | Where-Object { $_.name -eq 'Load alert texts' } | Select-Object -First 1
@@ -151,22 +150,22 @@ if ($en) {
         $js -match 'execution' -and $js -match 'workflow' -and $js -match 'error'
     }
     # Telegram parst legacy Markdown: rohe _/*/`/[ (Workflow-/Node-Namen!) fressen Underscores
-    # oder crashen den Alert ("can't parse entities") -> der Formatter MUSS escapen.
+    # oder crashen den Alert ("can't parse entities"), der Formatter muss also escapen.
     Check 'Code escapt Markdown-Entities (_ * ` [)' { $js -match 'replace\(/\[_\*' }
     # Suite-Rauschen: Harness-getriggerte Executions (Root-Trigger 'Test Webhook') duerfen nie
-    # alerten (canceled Timeout-Stopps der Test-Skripte feuerten Owner-Alerts, 2026-06-12).
+    # alerten (abgebrochene Timeout-Stopps der Test-Skripte feuerten sonst Owner-Alerts).
     Check 'Code filtert Harness-Executions (Test Webhook)' { $js -match 'Test Webhook' }
 
-    # (3) LOGIK-Test: Format-Message-JS gegen synthetische Payloads ausfuehren (node lokal oder per Docker, Invoke-LintNode).
+    # (3) Logik-Test: Format-Message-JS gegen synthetische Payloads ausfuehren (node lokal oder per Docker, Invoke-LintNode).
     if ($LintNode) {
         $tmpF = New-LintTmpFile '.js'; $tmp = $tmpF.Full
         $payload = '{"execution":{"error":{"message":"connection refused"},"lastNodeExecuted":"Finance Agent","url":"https://n8n.example/exec/1"},"workflow":{"name":"agent.finance"}}'
-        # Harness-Payload: Root-Trigger = Test Webhook -> MUSS unterdrueckt werden (leeres Array).
+        # Harness-Payload: Root-Trigger = Test Webhook -> muss unterdrueckt werden (leeres Array).
         $payloadH = '{"execution":{"error":{"message":"This operation was aborted"},"lastNodeExecuted":"Finance Agent","executionContext":{"triggerNode":{"name":"Test Webhook","type":"n8n-nodes-base.webhook"}}},"workflow":{"name":"agent.finance"}}'
-        # jsCode liest die Fehler-Daten ueber $('On Error').all() (seit Textkatalog Phase C; 'Load alert texts'
-        # liefert die Owner-Texte) bzw. frueher $input.all() -> in Funktion wrappen; die Fakes liefern beides
-        # (item UND all(); 'Load alert texts' leer -> englische Ersatztexte, wie bei einem DB-Ausfall).
-        # Shape-tolerant, damit der Logik-Test auch bei Regression laeuft -- die Shape erzwingt Gesetz (5) unten.
+        # jsCode liest die Fehler-Daten ueber $('On Error').all() ('Load alert texts' liefert die Owner-Texte)
+        # -> in Funktion wrappen; die Fakes liefern item und all() ('Load alert texts' leer -> englische
+        # Ersatztexte, wie bei einem DB-Ausfall).
+        # Shape-tolerant, damit der Logik-Test auch bei Regression laeuft; die Shape erzwingt Gesetz (5) unten.
         $script = "const __p = $payload;`nconst __h = $payloadH;`n" +
                   "const fn = (`$input, `$) => {`n$js`n};`n" +
                   "const mk = (p) => ({ item: { json: p }, all: () => [ { json: p } ], first: () => ({ json: p }) });`n" +
@@ -188,11 +187,10 @@ if ($en) {
 }
 
 # --- agent.tool_human_approval (HITL-Gate) ---
-# Seit Teststrategie Phase 8 (Weg C) hat das Gate KEINEN Test-Bypass mehr; alle Tiers loesen das echte
-# Send-and-Wait ueber das abgefangene Mock-Telegram auf (hitl_gate_test beweist Approve+Decline). Hier
-# nur die statische Definition pruefen: parse_mode ist im n8n-sendAndWait HARTKODIERT 'Markdown' -> die
-# Message MUSS die 4 Legacy-Entities (_ * ` [) escapen, sonst crasht jede Summary mit rohen Underscores
-# (DB-Werte/Nutzerdaten) mit "can't parse entities".
+# Das Gate hat keinen Test-Bypass; alle Tiers loesen das echte Send-and-Wait ueber das abgefangene
+# Mock-Telegram auf (hitl_gate_test beweist Approve+Decline). Hier nur die statische Definition: parse_mode ist im
+# n8n-sendAndWait hartkodiert 'Markdown', die Message muss also die 4 Legacy-Entities (_ * ` [) escapen, sonst
+# crasht jede Summary mit rohen Underscores (DB-Werte/Nutzerdaten) mit "can't parse entities".
 Write-Host ""
 Write-Host "agent.tool_human_approval (HITL-Gate):"
 $gatePath = Resolve-WfPath 'agent.tool_human_approval'
@@ -206,7 +204,7 @@ if ($gatePath -and (Test-Path $gatePath)) {
     }
 }
 
-# --- Querschnitts-Gesetze (ALLE getrackten Workflows) ---
+# --- Querschnitts-Gesetze (alle getrackten Workflows) ---
 Write-Host ""
 Write-Host "Querschnitt (alle Workflows): chat_id-Typsicherheit + Code-Node-Return-Shape:"
 
@@ -232,11 +230,11 @@ function Get-StringValue($obj) {
     if ($obj -is [System.Collections.IEnumerable]) { foreach ($e in $obj) { Get-StringValue $e } }
 }
 
-# (WP-5) Rohe (un-formatierte) Betraege/Daten in einer nutzer-sichtbaren Nachricht/Summary-Expression erkennen:
-# Geld = eine Geld-Feld-Referenz (.amount/.balance/... — geschlossenes Vokabular, NICHT .shares/.count/IDs) OHNE
-# die Formatter-Signatur toLocaleString( (Fmt-MoneyJs). Datum = eine *_date/period_*-Referenz OHNE die Signatur
-# toLocaleDateString( (Fmt-DateJs, Intl im Empfaenger-Locale). Feld-Vokabular statt Blind-"+ zahl +" -> keine False-Positives auf Stueckzahlen/IDs;
-# das 'EUR'-Fallback des Formatters ist gerade DURCH toLocaleString gedeckt (kippt den Geld-Flag nicht).
+# Rohe (unformatierte) Betraege/Daten in einer nutzersichtbaren Nachricht/Summary-Expression erkennen:
+# Geld = eine Geld-Feld-Referenz (.amount/.balance/..., geschlossenes Vokabular, nicht .shares/.count/IDs) ohne
+# die Formatter-Signatur toLocaleString( (Fmt-MoneyJs). Datum = eine *_date/period_*-Referenz ohne die Signatur
+# toLocaleDateString( (Fmt-DateJs, Intl im Empfaenger-Locale). Feld-Vokabular statt Blind-"+ zahl +", damit
+# Stueckzahlen/IDs nicht false-positiven; das 'EUR'-Fallback des Formatters ist durch toLocaleString gedeckt.
 function Test-RawMoneyDate([string]$Text) {
     if ($Text -notmatch '\{\{') { return $false }
     $moneyRef = $Text -match '\.(?:amount|balance|annual_premium|premium|principal|monthly_annuity|annuity|target_amount|current_amount|monthly_savings_rate|savings_rate|market_value|net_worth|price_per_share|order_fee|opening_balance|plan_amount|computed|actual_amount|shortfall)\b'
@@ -255,42 +253,42 @@ $staleTapExempt = @(
     'agent.tool_human_approval'
 )
 
-# (6/7) Telegram-Gesetze: JEDER Send (nicht nur error_notify/Gate) braucht appendAttribution=false
-# + retryOnFail; JEDER dynamische Text ({{...}}) muss die 4 Legacy-Markdown-Entities escapen
+# (6/7) Telegram-Gesetze: jeder Send (nicht nur error_notify/Gate) braucht appendAttribution=false
+# + retryOnFail; jeder dynamische Text ({{...}}) muss die 4 Legacy-Markdown-Entities escapen
 # (parse_mode: sendAndWait hartkodiert 'Markdown', sendMessage wirksamer Default -> "can't parse
-# entities"-Klasse). Neue Sends entstehen nur noch via New-TelegramSendNode/-SendAndWaitNode
-# (lib/build_helpers.ps1) -> erfuellen das strukturell; dieser Lint ist der Backstop.
-# ESCAPE-ALLOWLIST (bewusst un-escapte dynamische Texte, je mit Grund):
+# entities"-Klasse). Neue Sends entstehen nur via New-TelegramSendNode/-SendAndWaitNode
+# (lib/build_helpers.ps1) und erfuellen das strukturell; dieser Lint ist der Backstop.
+# Escape-Allowlist (bewusst unescapte dynamische Texte, je mit Grund):
 $tgEscapeAllow = @(
     # Relay-Ketten (New-TelegramRelayChain, Hauptpfad + Onboarding-/Befehls-Arme unten als Muster): der Text ist
-    # UPSTREAM im Code-Node '<Name> split' HTML-escapt (& < >) und geht mit parse_mode=HTML raus (= echtes Plain,
-    # Plan lively-cooking-map WP1, woertliches Weiterreichen) -> keine Markdown-Entities moeglich.
+    # upstream im Code-Node '<Name> split' HTML-escapt (& < >) und geht mit parse_mode=HTML raus (echtes Plain,
+    # woertliches Weiterreichen) -> keine Markdown-Entities moeglich.
     'agent.orchestrator.main_route :: Send a text message'
-    # Escape passiert UPSTREAM im Format-Message-Code-Node (eigener Check in der error_notify-Sektion oben:
+    # Escape passiert upstream im Format-Message-Code-Node (eigener Check in der error_notify-Sektion oben:
     # "Code escapt Markdown-Entities").
     'core.sub_error_notify :: Send Telegram Alert'
     # /kosten: der Code-Node 'Build message' baut deterministisches HTML (<pre>-Tabellen, <b>/<i>) und escapt jeden
     # DB-Wert (& < >); parse_mode=HTML -> keine Markdown-Entities moeglich. Kein LLM-Text.
     'core.sub_send_cost_report :: Send cost report'
 )
-# MUSTER-Allowlist (P1/WS-5): die build-time pro Paket generierten Relay-Ketten (New-TelegramRelayChain, Text im
-# '<Name> split'-Code-Node HTML-escapt, parse_mode=HTML) -> ein neues Paket dockt an, ohne dass diese Liste editiert
-# werden muss. 'Relay onboarding *' = P1 Onboarding-Arme (inkl. cb); 'Relay command *' = WS-5 Command-Arme (/notfall).
+# Muster-Allowlist: die build-time pro Paket generierten Relay-Ketten (New-TelegramRelayChain, Text im
+# '<Name> split'-Code-Node HTML-escapt, parse_mode=HTML); ein neues Paket dockt an, ohne dass diese Liste editiert
+# werden muss. 'Relay onboarding *' = Onboarding-Arme (inkl. cb); 'Relay command *' = Command-Arme (/notfall).
 $tgEscapeAllowLike = @(
     'agent.orchestrator.main_route :: Relay onboarding *'
     'agent.orchestrator.main_route :: Relay command *'
-    'agent.orchestrator.main_route :: Relay plan *'   # Plan-Schritt-Arme (Onboarding, 2026-10-28), dieselbe Relay-Kette
+    'agent.orchestrator.main_route :: Relay plan *'   # Plan-Schritt-Arme (Onboarding), dieselbe Relay-Kette
     'agent.orchestrator.main_route :: Relay handoff *'   # Uebergabe-Arme (Knopf Durchgehen), dieselbe Relay-Kette
 )
-# WP-5 Formatter-Allowlist (bewusst un-formatierte Betraege/Daten in einer Nachricht/Summary, je mit Grund; Form +
-# Key-Konvention 'wf :: node' wie $tgEscapeAllow). Leer = jede Geld-/Datums-Anzeige MUSS Fmt-MoneyJs/Fmt-DateJs nutzen.
+# Formatter-Allowlist (bewusst unformatierte Betraege/Daten in einer Nachricht/Summary, je mit Grund; Form +
+# Key-Konvention 'wf :: node' wie $tgEscapeAllow). Leer = jede Geld-/Datums-Anzeige muss Fmt-MoneyJs/Fmt-DateJs nutzen.
 $tgFmtAllow = @()
 $tgFmtAllowLike = @()
 
 foreach ($wfFile in (Get-AllWfFiles)) {
     $w = [System.IO.File]::ReadAllText($wfFile.FullName, $Utf8NoBom) | ConvertFrom-Json
-    # (Stickies) Workflows sind die Doku: jeder Workflow traegt >= 1 Sticky-Note (Ueberblick) -- deterministischer
-    # Backstop der Sticky-Pflicht (Root-CLAUDE.md, Arbeitsweise); Harness-Rightsizing 2026-10-20.
+    # (Stickies) Workflows sind die Doku: jeder Workflow traegt >= 1 Sticky-Note (Ueberblick), deterministischer
+    # Backstop der Sticky-Pflicht (Root-CLAUDE.md, Arbeitsweise).
     if (@($w.nodes | Where-Object { $_.type -eq 'n8n-nodes-base.stickyNote' }).Count -eq 0) { $vNoSticky += "$($w.name)" }
     foreach ($n in $w.nodes) {
         if ($n.type -eq 'n8n-nodes-base.stickyNote') { continue }
@@ -316,7 +314,7 @@ foreach ($wfFile in (Get-AllWfFiles)) {
         }
 
         # (Textkatalog) sichtbare deutsche Texte mit echten Umlauten: jede Telegram-Textquelle (Literal bzw. die
-        # String-Literale eines Ausdrucks; Knoten-Referenzen zaehlen nicht) — Nachricht, Caption, Toast, Knoepfe, Popup.
+        # String-Literale eines Ausdrucks; Knoten-Referenzen zaehlen nicht): Nachricht, Caption, Toast, Knoepfe, Popup.
         if ($n.type -eq 'n8n-nodes-base.telegram') {
             $tp = $n.parameters
             $vis = @($tp.text, $tp.message, $tp.caption, $tp.additionalFields.caption, $tp.additionalFields.text,
@@ -351,23 +349,23 @@ foreach ($wfFile in (Get-AllWfFiles)) {
         #     + retryOnFail; (7) dynamischer Text/Message escapt Markdown-Entities (oder Allowlist).
         #     resource 'file' (Vision-Download) und 'callback' (answerCallbackQuery: kein Message-Body,
         #     keine Attribution/kein parse_mode -> Toast-Text plain <=200 Zeichen) sind ausgenommen.
-        #     operation 'sendMessageDraft' (New-TelegramDraftNode, "Bot denkt nach"-Platzhalter) ist NUR von Attribution
+        #     operation 'sendMessageDraft' (New-TelegramDraftNode, "Bot denkt nach"-Platzhalter) ist nur von Attribution
         #     und Retry ausgenommen (keine Nachricht, bewusst ohne Retry + onError=continue); Text-Escape/Formatter gelten.
         if ($n.type -eq 'n8n-nodes-base.telegram' -and "$($n.parameters.resource)" -notin @('file','callback')) {
             $key = "$($w.name) :: $($n.name)"
             $isSAW = ("$($n.parameters.operation)" -eq 'sendAndWait')
             $isDraft = ("$($n.parameters.operation)" -eq 'sendMessageDraft')
-            # WS-5: sendDocument traegt seinen Text NICHT in .text, sondern in additionalFields.caption
-            # (New-TelegramSendDocumentNode, Notfallmappe-Egress) -> sonst prueft der Escape-Check die
-            # Caption gar nicht (stiller Durchlauf). Attribution/Retry sind node-unabhaengig.
+            # sendDocument traegt seinen Text nicht in .text, sondern in additionalFields.caption
+            # (New-TelegramSendDocumentNode, Notfallmappe-Egress); sonst prueft der Escape-Check die
+            # Caption gar nicht. Attribution/Retry sind node-unabhaengig.
             $isDoc = ("$($n.parameters.operation)" -eq 'sendDocument')
             $attr = if ($isSAW) { $n.parameters.options.appendAttribution } else { $n.parameters.additionalFields.appendAttribution }
             if ($attr -ne $false -and -not $isDraft) { $vTgAttr += $key }
             if ($n.retryOnFail -ne $true -and -not $isDraft) { $vTgRetry += $key }
             $txt = if ($isSAW) { "$($n.parameters.message)" } elseif ($isDoc) { "$($n.parameters.additionalFields.caption)" } else { "$($n.parameters.text)" }
-            # WP-2: der Plain-Fallback sendet parse_mode='HTML' mit &/</> als Entities -> Legacy-Markdown-Entities
-            # sind dort bedeutungslos, Escaping gegenstandslos -> ausgenommen. Ein LEERES parse_mode ist verboten:
-            # n8n macht daraus still 'Markdown' (Exec 297, 2026-10-22) -> der "Plain"-Send crasht wie der Primary.
+            # Der Plain-Fallback sendet parse_mode='HTML' mit &/</> als Entities; Legacy-Markdown-Entities
+            # sind dort bedeutungslos, Escaping gegenstandslos -> ausgenommen. Ein leeres parse_mode ist verboten:
+            # n8n macht daraus still 'Markdown', der "Plain"-Send crasht dann wie der Primary.
             $af = $n.parameters.additionalFields
             if ($af -and $af.PSObject.Properties['parse_mode'] -and "$($af.parse_mode)" -eq '') { $vTgEmptyParse += $key }
             $isPlain = ($af -and "$($af.parse_mode)" -eq 'HTML' -and $txt -match "replace\(/</g, '&lt;'\)")
@@ -376,26 +374,26 @@ foreach ($wfFile in (Get-AllWfFiles)) {
                 $vTgEscape += $key
             }
             # (9) Bestaetigen im Chat: ein sendAndWait mit chatApproval (Deploy-Platzhalter oder true) braucht
-            #     nicht-leere approverIds (leer = JEDER darf bestaetigen) und keinen .item-Ausdruck darin (im
-            #     Webhook-Kontext ohne Item-Index ausgewertet) — Backstop zu New-TelegramSendAndWaitNode.
+            #     nicht-leere approverIds (leer = jeder darf bestaetigen) und keinen .item-Ausdruck darin (im
+            #     Webhook-Kontext ohne Item-Index ausgewertet); Backstop zu New-TelegramSendAndWaitNode.
             if ($isSAW -and ($n.parameters.chatApproval -eq $true -or "$($n.parameters.chatApproval)" -eq '__HITL_CHAT_APPROVAL__')) {
                 $ap = "$($n.parameters.approverIds)"
                 if ([string]::IsNullOrWhiteSpace($ap) -or $ap -match '\.item\b') { $vTgApprover += $key }
             }
             # (11) Wartegrenze nur unter options: Telegram liest options.limitWaitTime (configureWaitTillDate), ein
-            #      top-level limitWaitTime wird still ignoriert -> Karte wartet unbegrenzt — Backstop zu New-TelegramSendAndWaitNode.
+            #      top-level limitWaitTime wird still ignoriert -> Karte wartet unbegrenzt; Backstop zu New-TelegramSendAndWaitNode.
             if ($isSAW -and $n.parameters.PSObject.Properties['limitWaitTime']) { $vTgWaitLimit += $key }
-            # (WP-5) Formatter-Zwang: rohe Betraege/Daten in der Telegram-Nachricht -> Fmt-MoneyJs/Fmt-DateJs.
+            # Formatter-Zwang: rohe Betraege/Daten in der Telegram-Nachricht -> Fmt-MoneyJs/Fmt-DateJs.
             if ((Test-RawMoneyDate $txt) -and $tgFmtAllow -notcontains $key `
                 -and -not ($tgFmtAllowLike | Where-Object { $key -like $_ })) {
                 $vTgFmt += $key
             }
         }
 
-        # (WP-5 + Textkatalog) HITL-Summary-Set-Node 'Build Approval Summary': die Summary ist STRUKTURIERT (New-HitlSummary,
-        # Zuweisung summary vom Typ object) — das Gate rendert sie je Empfaenger-Sprache, Betraege/Daten formatiert Intl.
-        # (a) eine String-Summary (alte deutsche Form) ist verboten; (b) ein Geld-/Datums-Feld darf nicht als roher
-        # kind 'text'-Wert stehen (dann fehlte die Formatierung) — Feld-Vokabular wie Test-RawMoneyDate.
+        # HITL-Summary-Set-Node 'Build Approval Summary': die Summary ist strukturiert (New-HitlSummary,
+        # Zuweisung summary vom Typ object); das Gate rendert sie je Empfaenger-Sprache, Betraege/Daten formatiert Intl.
+        # (a) eine String-Summary ist verboten; (b) ein Geld-/Datums-Feld darf nicht als roher
+        # kind 'text'-Wert stehen (dann fehlte die Formatierung), Feld-Vokabular wie Test-RawMoneyDate.
         if ($n.type -eq 'n8n-nodes-base.set' -and "$($n.name)" -eq 'Build Approval Summary') {
             $skey = "$($w.name) :: $($n.name)"
             $asg = @($n.parameters.assignments.assignments | Where-Object { $_.name -eq 'summary' })
@@ -411,7 +409,7 @@ foreach ($wfFile in (Get-AllWfFiles)) {
             }
         }
 
-        # (4c) Quelle: Orchestrator stringifiziert chat_id in JEDEM workflowInputs-Binding
+        # (4c) Quelle: Orchestrator stringifiziert chat_id in jedem workflowInputs-Binding
         if ($w.id -eq $ORCH_ID -and $n.parameters.PSObject.Properties['workflowInputs']) {
             $bind = $n.parameters.workflowInputs.value
             if ($bind -and $bind.PSObject.Properties['chat_id'] -and $bind.chat_id -is [string] -and
@@ -433,10 +431,10 @@ foreach ($wfFile in (Get-AllWfFiles)) {
         }
     }
 
-    # (8) Connection-Konsistenz: jede Connection-Quelle UND jedes -Ziel referenziert einen existierenden Node.
-    #     n8n import:workflow lehnt sonst den GANZEN Workflow ab (verifiziert P1: ein build-time generierter
-    #     Dispatch-Arm, dessen Nodes nicht ins $nodes-Array gemerged wurden -> Deploy-Bruch; build.ps1 validiert
-    #     das NICHT). Generisch ueber alle Workflows -> faengt die ganze Klasse pre-push (gratis) statt erst beim Deploy.
+    # (8) Connection-Konsistenz: jede Connection-Quelle und jedes -Ziel referenziert einen existierenden Node.
+    #     n8n import:workflow lehnt sonst den ganzen Workflow ab (z. B. ein build-time generierter Dispatch-Arm,
+    #     dessen Nodes nicht ins $nodes-Array gemerged wurden; build.ps1 validiert das nicht). Generisch ueber
+    #     alle Workflows, faengt die Klasse pre-push (gratis) statt erst beim Deploy.
     $nodeNames = @($w.nodes | ForEach-Object { $_.name })
     if ($w.connections) {
         foreach ($srcProp in $w.connections.PSObject.Properties) {
@@ -444,7 +442,7 @@ foreach ($wfFile in (Get-AllWfFiles)) {
             foreach ($ctypeProp in $srcProp.Value.PSObject.Properties) {
                 # Form: main = Array von Ausgaengen, jeder Ausgang ein Array (auch leer). Ein Ein-Element-Array, das
                 # PowerShell beim Build zu einem Objekt entpackt, lehnt n8n import:workflow ab ("main[0] Expected array,
-                # received object", 2026-10-25 New-TelegramRelayChain) -> hier gratis statt erst beim Deploy.
+                # received object"; New-TelegramRelayChain) -> hier gratis statt erst beim Deploy.
                 if ($ctypeProp.Value -isnot [System.Array]) { $vConnShape += "$($w.name) :: '$($srcProp.Name)'.$($ctypeProp.Name) ist kein Array" }
                 else { $oi = 0; foreach ($o in $ctypeProp.Value) { if ($null -ne $o -and $o -isnot [System.Array]) { $vConnShape += "$($w.name) :: '$($srcProp.Name)'.$($ctypeProp.Name)[$oi] ist kein Array" }; $oi++ } }
                 foreach ($outputs in $ctypeProp.Value) {
@@ -457,7 +455,7 @@ foreach ($wfFile in (Get-AllWfFiles)) {
             }
         }
     }
-    # (Test-Startpunkt) Jeder Cron (Name *.cron_* oder Zeitplan-Knoten) traegt GENAU einen 'Test run' (executeWorkflowTrigger
+    # (Test-Startpunkt) Jeder Cron (Name *.cron_* oder Zeitplan-Knoten) traegt genau einen 'Test run' (executeWorkflowTrigger
     # ueber Build-Trigger, nie passthrough) mit denselben Kanten wie der Zeitplan (Build-Workflow) -> cron_text_test und
     # hitl_gate_test starten ihn ueber core.cron_run.test_harness. Ein Cron mit anders benanntem Zeitplan-Knoten bekaeme
     # keinen Einstieg und fiele sonst erst als Timeout im Test auf.
@@ -497,13 +495,13 @@ Check 'Connections: jede Quelle/jedes Ziel referenziert einen Node'     { $vConn
 Check 'Connections: main = Array von Arrays (n8n-Import-Form)'           { $vConnShape.Count -eq 0 }
 Check 'Crons: Test-Startpunkt Test run (Build-Trigger, Kanten wie der Zeitplan)' { $vCronTestRun.Count -eq 0 }
 
-# (Naht) Paket-Modularitaet (Install-UX-Phase 4): KEIN Core-Workflow traegt eine LITERALE Workflow-ID eines
-# Paket-Workflows (executeWorkflow ODER toolWorkflow). n8n (geprueft 2.21.7 + 2.44.4) aktiviert einen Workflow nur, wenn alle literal
-# referenzierten Ziele existieren + published sind -> ein solcher Verweis machte den Bot ohne das Paket taub
-# (und `package uninstall` + Neustart ebenso). Paket-Agenten ruft der Core NUR ueber den Vermittler
-# agent.sub_dispatch_agent (Ausdrucks-ID); die Ziel-ID darf dort als DATEN-Eingabe stehen, nie als workflowId.
-# paperless Phase 2: dieselbe Naht gilt ZWISCHEN Paketen — ein Paket-Workflow traegt nie die literale ID eines Workflows
-# eines FREMDEN Nicht-Core-Pakets (sonst aktiviert n8n ihn ohne das andere Paket nicht). Paket-Werkzeuge fuer fremde
+# (Naht) Paket-Modularitaet: kein Core-Workflow traegt eine literale Workflow-ID eines
+# Paket-Workflows (executeWorkflow oder toolWorkflow). n8n aktiviert einen Workflow nur, wenn alle literal
+# referenzierten Ziele existieren und published sind; ein solcher Verweis machte den Bot ohne das Paket taub
+# (und `package uninstall` + Neustart ebenso). Paket-Agenten ruft der Core nur ueber den Vermittler
+# agent.sub_dispatch_agent (Ausdrucks-ID); die Ziel-ID darf dort als Daten-Eingabe stehen, nie als workflowId.
+# Dieselbe Naht gilt zwischen Paketen: ein Paket-Workflow traegt nie die literale ID eines Workflows
+# eines fremden Nicht-Core-Pakets (sonst aktiviert n8n ihn ohne das andere Paket nicht). Paket-Werkzeuge fuer fremde
 # Agenten laufen ueber agent.sub_dispatch_tool (Laufzeit-Lookup der ID aus core.services).
 $pkgWfIds = @{}   # id -> @{ File; Pkg } (nur Nicht-Core-Pakete)
 foreach ($pf in (Get-AllWfFiles)) {
@@ -523,10 +521,10 @@ foreach ($cf in (Get-AllWfFiles)) {
 foreach ($v in $vSeam) { Write-Host "    OFFENDER: $v" -ForegroundColor Yellow }
 Check 'Naht: kein Workflow referenziert einen Workflow eines fremden Pakets literal (nur via agent.sub_dispatch_agent/_tool)' { $pkgWfIds.Count -gt 0 -and $vSeam.Count -eq 0 }
 
-# (Begruessung) Install-UX-Phase 6: die Owner-Begruessung hat ZWEI Sender mit EINER Textquelle
-# (core.fn_render_welcome) — der Orchestrator bei /start (statische Knoepfe, n8n kann keine Ausdrucks-Tastatur,
+# (Begruessung) Die Owner-Begruessung hat zwei Sender mit einer Textquelle
+# (core.fn_render_welcome): der Orchestrator bei /start (statische Knoepfe, n8n kann keine Ausdrucks-Tastatur,
 # Issue #19955) und der Installer nach dem Pairing (Knoepfe aus der fn). Die Knopf-Ziele (callback_data) muessen
-# deshalb in BEIDEN gleich sein: 'Send welcome new' im Orchestrator == die callback_data-Literale der fn (Reihenfolge).
+# deshalb in beiden gleich sein: 'Send welcome new' im Orchestrator == die callback_data-Literale der fn (Reihenfolge).
 $welcomeSql = Join-Path $RepoRoot 'packages/core/db/migrations/R__fn_render_welcome.sql'
 $fnBtns = @()
 if (Test-Path $welcomeSql) {
@@ -546,9 +544,9 @@ if ($orchPath) {
 if ($Verbose -or (($fnBtns -join '|') -ne ($wfBtns -join '|'))) { Write-Host "    fn: $($fnBtns -join ', ')  |  Orchestrator: $($wfBtns -join ', ')" -ForegroundColor DarkGray }
 Check 'Begruessung: Orchestrator-Knoepfe (Send welcome new) == Knopf-Vertrag von core.fn_render_welcome' { $fnBtns.Count -gt 0 -and (($fnBtns -join '|') -eq ($wfBtns -join '|')) }
 
-# (Sprachmodelle) Modell-Phase 2 (Owner-Entscheid 2026-10-19): Chat-Modelle laufen nur noch ueber Claude. Ein
-# Gemini-Chat-Node (lmChatGoogleGemini) ist ueberall verboten; ein Google-Gemini-Aufruf (googleGemini-Node,
-# googlePalmApi-Credential, generativelanguage-URL) nur noch im Transkriptions-Tool (Claude versteht kein Audio).
+# (Sprachmodelle) Chat-Modelle laufen nur ueber Claude. Ein Gemini-Chat-Node (lmChatGoogleGemini) ist
+# ueberall verboten; ein Google-Gemini-Aufruf (googleGemini-Node, googlePalmApi-Credential,
+# generativelanguage-URL) nur im Transkriptions-Tool (Claude versteht kein Audio).
 $geminiAllow = @('agent.tool_transcribe_telegram_voice')
 $vGemini = @()
 foreach ($wfFile in (Get-AllWfFiles)) {
@@ -565,7 +563,7 @@ foreach ($wfFile in (Get-AllWfFiles)) {
 if ($vGemini.Count) { $vGemini | ForEach-Object { Write-Host "    $_" -ForegroundColor DarkGray } }
 Check 'Sprachmodelle: kein Gemini-Chat-Node; Google-Gemini nur im Transkriptions-Tool' { $vGemini.Count -eq 0 }
 
-# (Frei-SQL) Befund 2026-10-24: ein postgresTool ohne query-Argument liess n8n intern werfen ("reading 'match'").
+# (Frei-SQL) Ein postgresTool ohne query-Argument laesst n8n intern werfen ("reading 'match'").
 # Jedes postgresTool, dessen query das LLM per $fromAI liefert, kommt aus New-PostgresSelectToolNode und traegt den
 # Guard (leere query -> SELECT ... AS error). Nicht betroffen: load_context (query fest, $fromAI nur im Parameter).
 $vSqlGuard = @()
@@ -613,7 +611,7 @@ foreach ($wfFile in (Get-AllWfFiles)) {
 if ($vWfTag.Count) { $vWfTag | ForEach-Object { Write-Host "    $_" -ForegroundColor DarkGray } }
 Check 'Kosten-Kennung: jede Claude-System-Nachricht beginnt mit <<la-wf:Workflow>>, jeder Gateway-HTTP-Knoten sendet x-lifeagents-workflow' { $vWfTag.Count -eq 0 }
 
-# --- Ausdrucks-Syntax: jeder {{ … }}-Ausdruck ist gueltiges JavaScript (node, falls verfuegbar) ---
+# --- Ausdrucks-Syntax: jeder {{ … }}-Ausdruck ist gueltiges JavaScript (node lokal oder per Docker) ---
 if ($LintNode) {
     $exprJs = @'
 const fs = require('fs');
@@ -651,7 +649,7 @@ process.stdout.write(JSON.stringify({ checked, bad }));
     if ($exprRes) { @($exprRes.bad) | ForEach-Object { if ($_) { Write-Host "    $_" -ForegroundColor DarkGray } } }
     Check "Ausdruecke: jeder {{ }}-Ausdruck ist gueltiges JavaScript ($(if ($exprRes) { $exprRes.checked } else { '?' }) geprueft)" { $null -ne $exprRes -and @($exprRes.bad).Count -eq 0 }
 } else {
-    # Nie still ausfallen (CI-Runner bringen node mit, lokal laeuft er ueber Docker): fehlt beides, ist das ein Fehler.
+    # CI-Runner bringen node mit, lokal laeuft er ueber Docker: fehlt beides, ist das ein Fehler statt stillem Ueberspringen.
     Check 'Ausdruecke: node lokal oder Docker verfuegbar (sonst liefe der Syntax-Check nicht)' { $false }
 }
 

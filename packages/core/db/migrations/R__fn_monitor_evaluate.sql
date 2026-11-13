@@ -1,45 +1,44 @@
 -- ============================================================
--- fn_monitor_evaluate (ATOMIC WRITE — die EINE Auswertung des Heartbeat-Crons)
---   Wertet alle faelligen, scharfen Trigger DETERMINISTISCH aus (das LLM beschafft
---   hoechstens Werte, entscheidet nie). Eine Transaktion; RAISE -> Auto-Rollback.
---   Ablauf je Trigger (FOR UPDATE — Cron parallel zu set-Tool = zwei n8n-Executions):
---     1. Due-Set wird HIER unter Lock neu berechnet (TOCTOU-Guard: ein zwischenzeitlich
+-- fn_monitor_evaluate (ATOMIC WRITE)
+--   Die eine Auswertung des Heartbeat-Crons: wertet alle faelligen, scharfen Trigger deterministisch aus (das LLM
+--   beschafft hoechstens Werte, entscheidet nie). Eine Transaktion; RAISE -> Auto-Rollback.
+--   Ablauf je Trigger (FOR UPDATE, Cron laeuft parallel zum set-Tool = zwei n8n-Executions):
+--     1. Due-Set wird hier unter Lock neu berechnet (TOCTOU-Guard: ein zwischenzeitlich
 --        disabled/editierter Trigger wird mit Row-Wahrheit ausgewertet; die Workflow-
 --        Observation liefert nur value/unit/as_of/source)
---     1b. PARKEN (Phase B): Trigger einer Paket-Methode, die gerade nicht verfuegbar ist (Paket deinstalliert/
---        inaktiv, Platzhalter ohne acquire_fn — fn_monitor_method_status), werden NICHT ausgewertet: kein
+--     1b. Parken: Trigger einer Paket-Methode, die gerade nicht verfuegbar ist (Paket deinstalliert/
+--        inaktiv, Platzhalter ohne acquire_fn, fn_monitor_method_status), werden nicht ausgewertet: kein
 --        fail_streak, kein Problem-Alarm, next_check_at unberuehrt -> sie laufen von selbst wieder an, sobald
 --        das Paket aktiv ist (deckt `--keep-data`-Deinstall + deaktivierte Pakete; Spiegel in fn_monitor_due).
 --     2. Beschaffung: web_search aus p.observations (Workflow); sql/none/Paket-Methoden via
---        fn_monitor_acquire (sql unter SET LOCAL ROLE core_ro; Paket-Methoden ueber ihre acquire_fn)
+--        fn_monitor_acquire (sql unter core_ro_eval, strukturell read-only; Paket-Methoden ueber ihre acquire_fn)
 --     3. Validierungs-Kaskade fn_validate_observation (numerisch/Unit-Echo/Bounds/Jump)
---     4. Observation-Log IMMER (agent.monitor_observations — Audit auch fuer dirty)
+--     4. Observation-Log immer (agent.monitor_observations, Audit auch fuer dirty)
 --     5. dirty -> fail_streak++; Problem-Alarm exakt beim Erreichen von
 --        monitor.fail_alert_streak und jedem Vielfachen (taucht wieder auf, nervt aber
---        nicht jede Runde); last_value/Ratchet/Fire UNBERUEHRT (Peak-Poisoning-Schutz)
+--        nicht jede Runde); last_value/Ratchet/Fire unberuehrt (Peak-Poisoning-Schutz)
 --     6. clean -> last_value/-as_of, fail_streak=0, dann je Typ:
 --        threshold: gte/lte-Vergleich -> One-Shot-Latch (armed->fired)
 --        drawdown:  reference_value = GREATEST(ref, value) (Ratchet, nur saubere Werte);
 --                   dd% = (ref-value)/ref*100 >= drawdown_pct -> Latch
 --        date:      heute >= due_date -> Latch; im Warn-Fenster (due - warn_days_before)
---                   VORHER: NICHT-latchende date_warning-Info (Reviewer-Blocker-Fix:
---                   die Deadline selbst darf nie still verstreichen)
---        recurring_info: Info-Eintrag jede faellige Runde, latcht NIE
---     7. next_check_at via fn_next_check IMMER advancen (Erfolg UND Fehlschlag — sonst
+--                   vorher: nicht-latchende date_warning-Info (die Deadline selbst darf nie still verstreichen)
+--        recurring_info: Info-Eintrag jede faellige Runde, latcht nie
+--     7. next_check_at via fn_next_check immer advancen (Erfolg und Fehlschlag, sonst
 --        brennt ein kaputter Web-Prompt jede Heartbeat-Runde einen Web-Abruf); date-Trigger kappt den Slot auf
 --        den naechsten Meilenstein (Warn-Beginn, sonst due_date), damit ein langer Rhythmus die Frist nicht ueberspringt
 --   Datums-Logik gepinnt: heute = core.fn_today(now) (Haushalts-Zeitzone der Sitzung, die eine Adresse fuer "heute").
---   ERINNERUNGS-FENSTER (Roter Faden, Owner-Entscheid 2026-10-23, core.fn_in_reminder_window): Wert-Waechter
+--   Erinnerungs-Fenster (core.fn_in_reminder_window): Wert-Waechter
 --   (threshold/drawdown) melden sofort, auch nachts. Datums-/Info-Trigger gelten ausserhalb des Fensters nicht als
 --   faellig (bleiben faellig -> erster Lauf im Fenster). Ein Problembericht ausserhalb des Fensters wird vorgemerkt
 --   (monitor_triggers.problem_pending_at) und im ersten Lauf im Fenster nachgereicht, solange der Trigger noch scheitert.
 --   Eingabe jsonb: { now? (Test-Injektion), observations?: [{trigger_id, ok, value,
---     unit, as_of, source_url, reason}], fail_alert_streak? (Override; Default RUNTIME aus
---     core.config monitor.fail_alert_streak — bewusst kein Build-Time-Baking) }.
---   BUDGET: Die Sammelnachricht je Lauf belegt den Tages-Slot 'monitor' des Owners: faellige Daten als deadline (immer, auch in
+--     unit, as_of, source_url, reason}], fail_alert_streak? (Override; Default zur Laufzeit aus
+--     core.config monitor.fail_alert_streak, bewusst kein Build-Time-Baking) }.
+--   Budget: Die Sammelnachricht je Lauf belegt den Tages-Slot 'monitor' des Owners: faellige Daten als deadline (immer, auch in
 --   der Pause), Vorwarnungen und Info als normal und nur mit Platz. Ohne Platz bleibt die Zeile unveraendert faellig. Wert-Trigger ohne Claim.
---   Rueckgabe: { ok, checked, in_window (false = der Cron sendet ohne Ton), fired:[...], info:[...], problems:[...] } — alles, was
---   der deterministische Message-Builder braucht, nichts mehr (Post-State-Vertrag).
+--   Rueckgabe: { ok, checked, in_window (false = der Cron sendet ohne Ton), fired:[...], info:[...], problems:[...] },
+--   alles, was der deterministische Message-Builder braucht, nichts mehr (Post-State-Vertrag).
 -- ============================================================
 CREATE OR REPLACE FUNCTION agent.fn_monitor_evaluate(p jsonb DEFAULT '{}'::jsonb)
 RETURNS jsonb LANGUAGE plpgsql AS $$
@@ -84,7 +83,7 @@ BEGIN
         SELECT * FROM agent.monitor_triggers t
         WHERE t.status = 'armed' AND t.next_check_at <= v_now
           AND COALESCE((agent.fn_monitor_method_status(t.acquisition_method)->>'available')::boolean, false)
-          -- Roter Faden: Datums-/Info-Trigger (nicht zeitkritisch) nur im Erinnerungs-Fenster; sie bleiben faellig
+          -- Datums-/Info-Trigger (nicht zeitkritisch) nur im Erinnerungs-Fenster; sie bleiben faellig
           -- und laufen im ersten Lauf ab reminders_from (Spiegel in agent.fn_monitor_due).
           AND (t.trigger_type NOT IN ('date', 'recurring_info') OR v_window)
           AND (v_room OR NOT agent.fn_monitor_needs_room(t.trigger_type, t.due_date, t.warn_days_before, v_today))
@@ -130,8 +129,8 @@ BEGIN
              WHERE id = v_t.id
              RETURNING fail_streak INTO v_streak;
 
-            -- Roter Faden: ein Problembericht ausserhalb des Erinnerungs-Fensters wird vorgemerkt (problem_pending_at)
-            -- und im ersten Lauf im Fenster nachgereicht (unten) — nie verworfen, nie nachts gesendet.
+            -- Ein Problembericht ausserhalb des Erinnerungs-Fensters wird vorgemerkt (problem_pending_at)
+            -- und im ersten Lauf im Fenster nachgereicht (unten): nie verworfen, nie nachts gesendet.
             IF v_streak % v_fail_alert = 0 AND NOT v_window THEN
                 UPDATE agent.monitor_triggers SET problem_pending_at = v_now WHERE id = v_t.id;
             ELSIF v_streak % v_fail_alert = 0 THEN
@@ -229,7 +228,7 @@ BEGIN
         END IF;
     END LOOP;
 
-    -- Roter Faden: vorgemerkte Problemberichte (ausserhalb des Fensters entstanden) im Fenster nachreichen — nur wenn
+    -- Vorgemerkte Problemberichte (ausserhalb des Fensters entstanden) im Fenster nachreichen, nur wenn
     -- der Trigger noch scharf ist und weiter scheitert (fail_streak > 0); behoben -> Vormerkung still loeschen.
     IF v_window THEN
         FOR v_t IN

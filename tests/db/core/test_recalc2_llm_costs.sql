@@ -1,16 +1,16 @@
 -- tests/db/core/test_recalc2_llm_costs.sql
--- Zweitrechnung Runde 2, KI-Kosten (/costs, core.fn_get_llm_cost_report) mit den ECHTEN Seed-Preisen
+-- Zweitrechnung KI-Kosten (/costs, core.fn_get_llm_cost_report) mit den echten Seed-Preisen
 -- (packages/core/seed/ai_models.json). Erwartungen von Hand gerechnet. Token-Zahlen erfunden.
--- Fachregel = offizielle Preisseite https://platform.claude.com/docs/en/about-claude/pricing (abgeglichen 2026-11-08):
+-- Fachregel = offizielle Preisseite https://platform.claude.com/docs/en/about-claude/pricing:
 --   Opus 5.5: 4 / 5 (Cache-Schreiben 5 Min) / 8 (1 h) / 0,20 (Lesen) / 20 (Output) USD je Mio Tokens;
---   Sonnet 5.5: 2 / 2,50 / 4 / 0,10 / 10; Haiku 5.5: 0,10 / 0,125 / 0,20 / 0,01 / 0,50, Prompt UEBER 100.000 Tokens
+--   Sonnet 5.5: 2 / 2,50 / 4 / 0,10 / 10; Haiku 5.5: 0,10 / 0,125 / 0,20 / 0,01 / 0,50, Prompt ueber 100.000 Tokens
 --   (input + Cache schreiben + Cache lesen) 0,50 / 0,625 / 1 / 0,05 / 2,50; Websuche 10 USD je 1.000 = 0,01 je Suche.
---   input_tokens ist der UNGECACHTE Rest (Gesamt-Eingabe = input + cache_creation + cache_read).
+--   input_tokens ist der ungecachte Rest (Gesamt-Eingabe = input + cache_creation + cache_read).
 --   Zeilen heute:
 --     A Opus: 12.000 in, Cache schreiben 30.000 (davon 1 h 25.000), lesen 400.000, out 2.500
 --       = 0,048 + (0,025 + 0,200) + 0,080 + 0,050 = 0,403; Kaltstart (1 h >= 20.000), Kaltstart-Kosten 0,225.
 --     B Haiku 110.000 Prompt (20.000 in + 90.000 lesen) > 100.000 -> Langkontext: 0,010 + 0,0045 + out 1.000 x 2,50 = 0,0025 -> 0,017.
---     B2 Haiku genau 100.000 (10.000 + 90.000) -> NICHT darueber: 0,001 + 0,0009 + 0,0005 = 0,0024.
+--     B2 Haiku genau 100.000 (10.000 + 90.000) -> nicht darueber: 0,001 + 0,0009 + 0,0005 = 0,0024.
 --     C Sonnet: 5.000 in, 800 out, 3 Suchen = 0,010 + 0,008 + 0,030 = 0,048.
 --     D Sonnet Warmhalten: 300.000 lesen = 0,030 -> Topf keepalive (keine Anfrage).
 --     E unbekanntes Modell -> unbepreist, zaehlt als Anfrage, nicht in Summen.

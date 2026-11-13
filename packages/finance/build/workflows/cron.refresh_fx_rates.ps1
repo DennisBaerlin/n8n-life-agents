@@ -1,6 +1,6 @@
 ﻿#Requires -Version 5.1
 # Definition agent.finance.cron_refresh_fx_rates -> Build-CronRefreshFxRates. Dot-gesourct von build.ps1.
-# Deterministisch, KEIN LLM. VIER EINGAENGE: (a) Schedule (taeglich; Platzhalter, den der Installer beim Einspielen aus
+# Deterministisch, kein LLM. Vier Eingaenge: (a) Schedule (taeglich; Platzhalter, den der Installer beim Einspielen aus
 # core.config schedule.refresh_fx_rates einsetzt — scheduleTrigger liest seinen Plan nur beim Aktivieren) und (b)
 # executeWorkflowTrigger fuer den Sofort-Fetch aus tool_create_account/tool_set_holding nach einem
 # Fremdwaehrungs-Write, (c) n8nTrigger beim Start von n8n und (d) stuendlicher Schedule; (a), (c), (d) laufen durch
@@ -8,7 +8,7 @@
 # HTTP GET open.er-api.com/v6/latest/EUR -> finance.fn_upsert_fx_rates. Nutzt aus dem Orchestrator-Scope:
 # $RepoRoot, $Utf8NoBom, $CRED_POSTGRES + build_helpers (Build-Pg/Build-Http/Build-Sticky/E/Build-Workflow/New-Id).
 function Build-CronRefreshFxRates {
-    # Schreibt finance.fx_rates -> laeuft unter der engen Paket-Schreibrolle finance_rw (Least-Privilege, D10);
+    # Schreibt finance.fx_rates -> laeuft unter der engen Paket-Schreibrolle finance_rw;
     # funktions-lokaler Override (Dynamic-Scope -> Build-Pg sieht es), inkl. der Gate-Reads (fn_package_active/
     # fn_config_get sind an finance_rw EXECUTE-gegrantet).
     $CRED_POSTGRES = $CRED_FINANCE_RW
@@ -20,10 +20,10 @@ function Build-CronRefreshFxRates {
     # den Workflow nach einem Fremdwaehrungs-Write als Sub auf (Sofort-Fetch, kein Warten auf 06:00).
     $subTrig = Build-Trigger @() @(-820, 200)
 
-    # F9 Cron-Gating — Dual-Trigger: Tagesplan, n8n-Start und stuendlicher Check laufen durch EIN Gate (New-CatchUpEntry:
+    # F9 Cron-Gating — Dual-Trigger: Tagesplan, n8n-Start und stuendlicher Check laufen durch ein Gate (New-CatchUpEntry:
     # Paket aktiv AND cron_enable AND fn_feed_refresh_due('fx'); die DB entscheidet, ein Abruf je Kalendertag, wer zuerst
     # kommt). Der Sofort-Fetch ('Start') ist Folge eines bereits erlaubten/HITL-approvten Fremdwaehrungs-Writes und prueft
-    # NUR Paket aktiv (cron_enable aus blockt ihn nicht). Aus -> 'Disabled' (No-op).
+    # nur Paket aktiv (cron_enable aus blockt ihn nicht). Aus -> 'Disabled' (No-op).
     $gateStart = Build-Pg 'Package active?' @(-600, 200) `
         "SELECT core.fn_package_active('finance') AS active"
     $ifStart = Build-If 'Package on?' @(-400, 240) "={{ `$json.active }}" 'true' 'equals' 'boolean'
@@ -35,7 +35,7 @@ function Build-CronRefreshFxRates {
     $catchUp = New-CatchUpEntry -Package 'finance' -Feed 'fx' -CronKey 'refresh_fx_rates' `
         -OnDue @('Check active currencies') -Origin @(-1040, -220)
 
-    # Das Aufraeumen haengt NICHT an der Faelligkeit: ohne Fremdwaehrung ist der Abruf nie faellig, der Tagesplan soll
+    # Das Aufraeumen haengt nicht an der Faelligkeit: ohne Fremdwaehrung ist der Abruf nie faellig, der Tagesplan soll
     # trotzdem taeglich aufraeumen. Eigenes Gate (Paket aktiv AND cron_enable), nur vom Tagesplan.
     $gateSweep = Build-Pg 'Cron enabled?' @(-600, -100) `
         "SELECT core.fn_package_active('finance') AND COALESCE(core.fn_config_get('finance','cron_enable','refresh_fx_rates') = 'true', false) AS enabled"
@@ -54,7 +54,7 @@ function Build-CronRefreshFxRates {
     # fx_rate_stale nach finance.fx_stale_days, core.fn_should_notify); der Upsert schreibt ohne rates nichts.
     $fetch['onError'] = 'continueRegularOutput'
 
-    # Upsert via finance.fn_upsert_fx_rates (A4b): Upsert-Invarianten deterministisch testbar in der fn.
+    # Upsert via finance.fn_upsert_fx_rates: Upsert-Invarianten deterministisch testbar in der fn.
     $upsert = Build-Pg 'Upsert fx_rates' @(540, 0) `
         "=SELECT (r->>'ok')::boolean AS ok, (r->>'upserted')::int AS upserted FROM finance.fn_upsert_fx_rates(`$1::jsonb) AS r;" `
         ([ordered]@{ rates = '$json.rates' })

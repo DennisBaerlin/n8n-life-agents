@@ -1,29 +1,32 @@
 -- ============================================================
--- fn_set_recurring_payment (ATOMIC WRITE) -- nur STANDALONE-Zeilen
+-- fn_set_recurring_payment (ATOMIC WRITE) -- nur Standalone-Zeilen
 --   Aendert eine standalone wiederkehrende Einnahme/Ausgabe (Gehalt/Miete/Abo/Rente).
---   STANDALONE-GUARD (Befund B): ist die Zeile (bzw. der Kopf ihrer Kette) von einer Entitaet besessen (insurance/loan/
+--   Standalone-Guard: ist die Zeile (bzw. der Kopf ihrer Kette) von einer Entitaet besessen (insurance/loan/
 --   savings_goal/pension/savings_plan -> recurring_payment_id, fn_recurring_owner), wird abgelehnt ({ok:false}) -> Aenderung
 --   ueber das jeweilige set_<entity>-Tool (sonst Verwaisen der FK beim Split).
---   BETRAGS-AENDERUNG = history-erhaltender VALIDITY-SPLIT (Best Practice "effective date") ueber den
+--   Betrags-Aenderung = history-erhaltender Validity-Split ("effective date") ueber den
 --   gemeinsamen Helfer fn_split_recurring_payment (Vorzeichen aus der alten Zeile; Ziel-Konto, Status, Ende,
---   Rhythmus-Anker geerbt; Guards s. dort). Sonst (kein amount) IN-PLACE: status (pause/resume),
+--   Rhythmus-Anker geerbt; Guards s. dort). Sonst (kein amount) in place: status (pause/resume),
 --   valid_to (beenden), name, schedule_day_of_month, notes.
---   valid_to-EINGABE ist INKLUSIV (letzter gueltiger Tag, wie der Nutzer es sagt); gespeichert wird
---   EXKLUSIV (+1 Tag, Konvention [valid_from, valid_to) -> Audit F2a). Das LLM rechnet nicht.
+--   valid_to-Eingabe ist inklusiv (letzter gueltiger Tag, wie der Nutzer es sagt); gespeichert wird
+--   exklusiv (+1 Tag, Konvention [valid_from, valid_to)). Das LLM rechnet nicht.
 --   Eingabe jsonb: recurring_payment_id (im n8n aufgeloest), amount (positiver Betrag -> Split),
 --   valid_from (Stichtag des Splits; default heute), status, valid_to, schedule_day_of_month,
---   name, notes, until_free_money (true: das Ende setzt die DB, fn_transfer_free_end; nur freistehende Uebertraege,
---   nicht zusammen mit amount oder valid_to; Ablehnung rollt das Update per Savepoint zurueck, LA002).
+--   name, notes, chat_id (opt, fuer den Cashflow-Hinweis), until_free_money (true: das Ende setzt die DB,
+--   fn_transfer_free_end; nur freistehende Uebertraege, nicht zusammen mit amount oder valid_to; Ablehnung rollt das
+--   Update per Savepoint zurueck, SQLSTATE LA002).
 --   executed_by (opt, bank|manual): Nutzerangabe zu einem Uebertrag (Dauerauftrag bei der Bank oder der Nutzer ueberweist
---   selbst; leer = unveraendert). Wird auf ALLE noch laufenden Glieder der Kette geschrieben (Berater-Alarm liest den Kopf,
+--   selbst; leer = unveraendert). Wird auf alle noch laufenden Glieder der Kette geschrieben (Berater-Alarm liest den Kopf,
 --   die Uebersicht das gueltige Glied: beide muessen dasselbe zeigen) und mit amount zusaetzlich auf die neue Split-Zeile;
 --   nur an Uebertraegen (Zeile mit Ziel-Konto), sonst {ok:false}. Steuert nur Hinweise, nie die Buchung.
 --   RUECKGABE: {ok:true, recurring_payment_id, split}; bei split=true zusaetzlich previous_id; bei einem Uebertrag zusaetzlich
---   execution (aufgeloest bank|manual|unknown, fn_transfer_executed_by; EIGENES Feld, nicht unter effective: das Gate mischt
---   effective in den echten Write); card_lines = Bank-Hinweis (fn_bank_setup_note: pausieren/valid_to -> bank_stop,
+--   execution (aufgeloest bank|manual|unknown, fn_transfer_executed_by; eigenes Feld, nicht unter effective: das Gate mischt
+--   effective in den echten Write); effective (aufgeloeste relative Daten, bei until_free_money zusaetzlich das
+--   berechnete Ende aus fn_transfer_free_end); die Keys von fn_cashflow_coverage_fold; card_lines = Bank-Hinweis (fn_bank_setup_note: pausieren/valid_to -> bank_stop,
 --   amount/schedule_day_of_month/Fortsetzen -> bank_change; nicht bei until_free_money, Name/Notiz, executed_by manual).
---   Korrigierbar (entitaets-besessen, amount<=0, ungueltiger executed_by oder an einem
---   Nicht-Uebertrag, Split-Guards des Helfers inkl. last_booked) -> {ok:false}.
+--   Korrigierbar (nicht aufloesbares Datum -> code invalid_date, entitaets-besessen, amount<=0, ungueltiger executed_by
+--   oder an einem Nicht-Uebertrag, until_free_money zusammen mit amount/valid_to, Ablehnung von fn_transfer_free_end,
+--   Split-Guards des Helfers inkl. last_booked) -> {ok:false}.
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_set_recurring_payment(p jsonb)
 RETURNS jsonb LANGUAGE plpgsql AS $$
@@ -39,7 +42,7 @@ DECLARE
     v_signed   NUMERIC;
     v_new_id   INT;
     v_eff_from DATE;
-    v_core     JSONB;     -- Phase L WS-3: Erfolgs-Kern beider Zweige (Split/In-Place) vor dem Cashflow-Fold
+    v_core     JSONB;     -- Erfolgs-Kern beider Zweige (Split/In-Place) vor dem Cashflow-Fold
     v_dates    JSONB;
     v_free     BOOLEAN := COALESCE(NULLIF(p->>'until_free_money', '')::boolean, false);
     v_end      JSONB   := '{}'::jsonb;
@@ -51,7 +54,7 @@ BEGIN
     p := v_dates->'p';
     v_from := NULLIF(p->>'valid_from', '')::date;
     v_to   := NULLIF(p->>'valid_to', '')::date + 1;
-    -- WP-2b: fester Buchungstag 1-28, -1 (Monatsletzter) oder -2 (vorletzter Tag); 29/30/31 overflowen kurze Monate.
+    -- fester Buchungstag 1-28, -1 (Monatsletzter) oder -2 (vorletzter Tag); 29/30/31 overflowen kurze Monate
     IF finance.fn_schedule_dom_reason(v_dom) IS NOT NULL THEN
         RETURN jsonb_build_object('ok', false, 'reason', finance.fn_schedule_dom_reason(v_dom));
     END IF;
@@ -60,8 +63,8 @@ BEGIN
         RAISE EXCEPTION 'Recurring payment % not found.', v_id;
     END IF;
 
-    -- Standalone-Guard (Befund B): entitaets-besessene Zeilen -> ueber das set_<entity>-Tool. Die eine Besitzer-Abfrage
-    -- fn_recurring_owner erkennt auch Vorgaenger-Glieder einer Entitaets-Kette (WP2: Kopf-Regel).
+    -- Standalone-Guard: entitaets-besessene Zeilen -> ueber das set_<entity>-Tool. Die eine Besitzer-Abfrage
+    -- fn_recurring_owner erkennt auch Vorgaenger-Glieder einer Entitaets-Kette (Kopf-Regel).
     v_owner := replace(finance.fn_recurring_owner(v_id), '_', ' ');
     IF v_owner IS NOT NULL THEN
         RETURN jsonb_build_object('ok', false,
@@ -81,7 +84,6 @@ BEGIN
     END IF;
 
     IF v_amount IS NOT NULL THEN
-        -- BETRAGS-AENDERUNG -> Validity-Split
         IF v_amount <= 0 THEN
             RETURN jsonb_build_object('ok', false, 'reason', 'Amount must be a positive number, got ' || v_amount || '.');
         END IF;
@@ -95,11 +97,11 @@ BEGIN
             RETURN v_core;
         END IF;
         v_new_id := (v_core->>'recurring_payment_id')::int;
-        -- Ein mitgenannter Status gilt fuer die NEUE Zeile ("laeuft wieder, ab 1.11. 3200"); sonst erbt sie den alten.
+        -- Ein mitgenannter Status gilt fuer die neue Zeile ("laeuft wieder, ab 1.11. 3200"); sonst erbt sie den alten.
         IF v_status IS NOT NULL THEN
             UPDATE finance.recurring_payments SET status = v_status WHERE id = v_new_id;
         END IF;
-        -- executed_by: die neue Zeile erbt im Split den alten Wert; eine mitgenannte Angabe gilt fuer die neue Zeile UND alle
+        -- executed_by: die neue Zeile erbt im Split den alten Wert; eine mitgenannte Angabe gilt fuer die neue Zeile und alle
         -- noch laufenden Glieder (gleiche Regel wie im In-Place-Zweig)
         IF v_exec IS NOT NULL THEN
             UPDATE finance.recurring_payments SET executed_by = v_exec
@@ -109,7 +111,7 @@ BEGIN
         END IF;
         v_core := jsonb_build_object('ok', true, 'recurring_payment_id', v_new_id, 'split', true, 'previous_id', v_id);
     ELSE
-        -- IN-PLACE-Aenderung (kein Betrag); until_free_money: Ende aus der Projektion, Ablehnung rollt alles zurueck
+        -- in place (kein Betrag); until_free_money: Ende aus der Projektion, Ablehnung rollt alles zurueck
         BEGIN
             UPDATE finance.recurring_payments SET
                 name                  = COALESCE(NULLIF(p->>'name', ''), name),
@@ -147,15 +149,15 @@ BEGIN
         v_core := jsonb_build_object('ok', true, 'recurring_payment_id', v_id, 'split', false);
     END IF;
 
-    -- Phase L WS-3: Cashflow-Sofort-Hinweis (Event-Fold, geteilt von beiden Erfolgs-Zweigen). Post-State NACH dem
-    -- Write aus monthly_cashflow_summary. M3 (Stichtag-Grenze): bei ZUKUENFTIG datierter Erhoehung bleibt die ALTE
+    -- Cashflow-Sofort-Hinweis (Event-Fold, geteilt von beiden Erfolgs-Zweigen). Post-State nach dem
+    -- Write aus monthly_cashflow_summary. Stichtag-Grenze: bei zukuenftig datierter Erhoehung bleibt die alte
     -- Zeile massgeblich (fn_recurring_effective: laufendes aktives Glied vor dem Nachfolger) -> die Live-View zeigt den
-    -- noch geltenden Ist-Stand, der Fold feuert korrekterweise JETZT NICHT; der periodische Cron faengt es, wenn der
-    -- Stichtag erreicht ist. Bei Stichtag HEUTE spiegelt die View exakt die neue Zeile; laeuft die Zahlung gerade nicht
-    -- (pausiert, „laeuft wieder ab ...“), zaehlt die neue Zeile, sobald sie im Fenster liegt. Audit Paket 3: der eine Fold-Helfer
+    -- noch geltenden Ist-Stand, der Fold feuert korrekterweise jetzt nicht; der periodische Cron faengt es, wenn der
+    -- Stichtag erreicht ist. Bei Stichtag heute spiegelt die View exakt die neue Zeile; laeuft die Zahlung gerade nicht
+    -- (pausiert, „laeuft wieder ab ...“), zaehlt die neue Zeile, sobald sie im Fenster liegt. Der eine Fold-Helfer
     -- fn_cashflow_coverage_fold (Pflichtausgaben > Einnahmen, gelatcht, Re-Arm bei Erholung; geteilt mit
     -- fn_create_recurring_payment) -> Note (advisory, nicht-blockierend).
-    -- Ausfuehrung eines Uebertrags (Schlusssatz der Karte) als EIGENES Feld, nicht unter effective (siehe Header)
+    -- Ausfuehrung eines Uebertrags (Schlusssatz der Karte) als eigenes Feld, nicht unter effective (siehe Header)
     IF v_row.target_account_id IS NOT NULL THEN
         v_core := v_core || jsonb_build_object('execution',
             finance.fn_transfer_executed_by((v_core->>'recurring_payment_id')::int));

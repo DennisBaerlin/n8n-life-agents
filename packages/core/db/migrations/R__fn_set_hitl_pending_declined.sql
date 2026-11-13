@@ -1,12 +1,12 @@
 -- ============================================================
--- agent.fn_set_hitl_pending_declined (Wiederhol-Sperre: Karte nicht bestaetigt)
---   Das HITL-Gate agent.tool_human_approval ruft sie an jedem Ausgang ohne Bestaetigung (Abbrechen ODER abgelaufen, das Gate
---   unterscheidet es nicht) mit seiner eigenen Execution-id: ALLE Zeilen dieser Execution bekommen den Schluessel der Karte
+-- fn_set_hitl_pending_declined (ATOMIC WRITE — Wiederhol-Sperre: Karte nicht bestaetigt)
+--   Das HITL-Gate agent.tool_human_approval ruft sie an jedem Ausgang ohne Bestaetigung (Abbrechen oder abgelaufen, das Gate
+--   unterscheidet es nicht) mit seiner eigenen Execution-id: alle Zeilen dieser Execution bekommen den Schluessel der Karte
 --   (agent.fn_hitl_repeat_key). Der Lebenszyklus bleibt der der Zeile: Der Orchestrator loescht sie nach seiner Antwort,
 --   sonst verfaellt sie mit expires_at. Leser: agent.fn_get_hitl_repeat_blocked.
 --   Fail-open wie die ganze Sperre: kein RAISE, ein Fehler kostet nur eine zweite Karte.
---   p: {execution_id, summary}
---   RUECKGABE: {ok:true, rows} | {ok:false, reason}
+--   p: {execution_id (Pflicht), summary (Karten-Struktur fuer den Schluessel)}
+--   Rueckgabe: {ok:true, rows} | {ok:false, reason:'missing_execution_id'}
 --   Tests: tests/db/core/test_fn_hitl_pending.sql; Gate-Rolle tests/db/cross/test_role_permissions.sql
 -- ============================================================
 CREATE OR REPLACE FUNCTION agent.fn_set_hitl_pending_declined(p jsonb)

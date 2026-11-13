@@ -1,16 +1,16 @@
 -- ============================================================
 -- fn_create_monitor_trigger (ATOMIC WRITE — Monitor-Trigger anlegen)
 --   Aufgerufen vom HITL-gegateten Tool agent.tool_create_monitor_trigger (Monitor-Agent:
---   domain vom LLM aus bekanntem Set; Advisor-Binding: domain FIX 'finance').
---   ALLE DB-CHECKs sind hier als freundliche {ok:false}-Guards gespiegelt (kein RAISE
+--   domain vom LLM aus bekanntem Set; Advisor-Binding: domain fix 'finance').
+--   Alle DB-CHECKs sind hier als freundliche {ok:false}-Guards gespiegelt (kein RAISE
 --   -> kein Owner-Alert; der Agent reicht reason an den Nutzer). Dublette via
 --   unique_violation-Catch (UNIQUE(domain, lower(label)) ist das Gesetz).
---   probe_observation (optional): die VOR dem Gate per fn_monitor_probe validierte
+--   probe_observation (optional): die vor dem Gate per fn_monitor_probe validierte
 --   Test-Beschaffung — wird nach Approve als erste Observation geloggt und seedet
 --   last_value (+ reference_value-Ratchet bei drawdown). So startet kein Trigger
 --   mit ungetesteter Beschaffung.
---   Beschaffungs-Methode (Phase B): Core-Builtins web_search | sql | none direkt; jede andere Methode MUSS
---     eine VERFUEGBARE Paket-Methode aus core.monitor_acquisition_methods sein (agent.fn_monitor_method_status) —
+--   Beschaffungs-Methode: Core-Builtins web_search | sql | none direkt; jede andere Methode muss
+--     eine verfuegbare Paket-Methode aus core.monitor_acquisition_methods sein (agent.fn_monitor_method_status) —
 --     ihre acquisition_params prueft + normalisiert die validate_fn des Pakets (fn_monitor_validate_params).
 --   Eingabe jsonb: domain (default 'general'), label, trigger_type, acquisition_method
 --     (default none), acquisition_prompt | acquisition_sql | acquisition_params (Paket-Methode, Objekt),
@@ -21,14 +21,16 @@
 --     first_check (optional, Datum oder relativ, Regel agent.fn_resolve_monitor_due; Tagesbeginn = erster Lauf und Anker des
 --     Rhythmus; leer = sofort; Vergangenheit/unlesbar -> {ok:false}). Zahl-Felder als Text mit Punkt oder Komma
 --     (agent.fn_parse_decimal_or_null); unlesbar -> {ok:false}.
---   RUECKGABE (Post-State): {ok:true, trigger_id, status:'armed', next_check_at,
---     check_interval (normalisiert — DB-berechnet), due_date (aufgeloest, nur date-Trigger), armed_count (Domain)}.
+--     package (Lifecycle-Owner, Binding-fix, nie $fromAI; Default 'core'), chat_id (fuer die Kinder-Sicht-Pruefung).
+--   Rueckgabe (Post-State): {ok:true, trigger_id, status:'armed', next_check_at,
+--     check_interval (normalisiert — DB-berechnet), due_date (aufgeloest, nur date-Trigger), armed_count (Domain)};
+--     {ok:false, reason} fuer jede korrigierbare Ablehnung (Kinder-Sicht: reason beginnt mit "household_only").
 -- ============================================================
 CREATE OR REPLACE FUNCTION agent.fn_create_monitor_trigger(p jsonb)
 RETURNS jsonb LANGUAGE plpgsql AS $$
 DECLARE
     v_domain   TEXT := COALESCE(NULLIF(trim(p->>'domain'), ''), 'general');
-    v_pkg      TEXT := lower(trim(COALESCE(p->>'package', 'core')));  -- Lifecycle-Owner (Binding-fix, NIE $fromAI); Default core = Host
+    v_pkg      TEXT := lower(trim(COALESCE(p->>'package', 'core')));  -- Lifecycle-Owner (Binding-fix, nie $fromAI); Default core = Host
     v_label    TEXT := trim(COALESCE(p->>'label', ''));
     v_type     TEXT := NULLIF(trim(COALESCE(p->>'trigger_type', '')), '');
     v_method   TEXT := COALESCE(NULLIF(trim(p->>'acquisition_method'), ''), 'none');
@@ -58,7 +60,7 @@ DECLARE
     v_key      TEXT;
     v_first    DATE;
 BEGIN
-    -- Kinder-Sicht (Paket C): eine bekannte Person ohne Haushalts-Sicht (Kind) legt keine Erinnerung auf Haushaltswerte an,
+    -- Kinder-Sicht: eine bekannte Person ohne Haushalts-Sicht (Kind) legt keine Erinnerung auf Haushaltswerte an,
     -- aendert oder loescht keine; ohne chat_id (Cron, Systempfad) unveraendert. Vor jedem Probelauf und Write.
     IF core.fn_sender_is_household_restricted(p->>'chat_id') THEN
         RETURN jsonb_build_object('ok', false, 'reason', 'household_only: only the adults of the household can set up or change reminders here');
@@ -165,7 +167,7 @@ BEGIN
         END IF;
         v_due := NULL; v_cmp := NULL; v_thr := NULL;
     ELSIF v_type = 'date' THEN
-        -- WP3: relative Angabe ("+6 months", "in 3 weeks") rechnet die DB, das LLM uebersetzt nur.
+        -- Relative Angabe ("+6 months", "in 3 weeks") rechnet die DB, das LLM uebersetzt nur.
         v_dchk := agent.fn_resolve_monitor_due(p->>'due_date');   -- die eine Regel (auch fuer die Karte im Tool)
         IF NOT (v_dchk->>'ok')::boolean THEN
             RETURN jsonb_build_object('ok', false, 'reason', 'date triggers: ' || (v_dchk->>'reason'));

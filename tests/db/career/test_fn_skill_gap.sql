@@ -10,8 +10,8 @@ DECLARE
   v_role    jsonb;
 BEGIN
   -- ---------- Fixtures ----------
-  -- Soll: Data Analyst verlangt Statistik(advanced, BLOCKER), Python(intermediate), Kommunikation(presence-only),
-  --       Kanban(beginner, ueberskillt). Software-Entwickler hat KEIN required_skills (-> skip).
+  -- Soll: Data Analyst verlangt Statistik(advanced, Blocker), Python(intermediate), Kommunikation(presence-only),
+  --       Kanban(beginner, ueberskillt). Software-Entwickler hat kein required_skills (-> skip).
   v_plan := jsonb_build_object('target_roles', jsonb_build_array(
     jsonb_build_object('title','Data Analyst','required_skills', jsonb_build_array(
       jsonb_build_object('name','Statistik','min_level','advanced','is_blocker', true),
@@ -21,7 +21,7 @@ BEGIN
     jsonb_build_object('title','Software-Entwickler')));                  -- kein required_skills -> skip
 
   -- Ist: Statistik beginner (zu schwach -> weak+blocker), Kommunikation expert (presence erfuellt -> met),
-  --      Kanban expert (ueber Ziel -> overskilled), Python FEHLT (-> missing). Case-Test: 'STATISTIK'.
+  --      Kanban expert (ueber Ziel -> overskilled), Python fehlt (-> missing). Case-Test: 'STATISTIK'.
   v_prof := jsonb_build_object('skills', jsonb_build_array(
     jsonb_build_object('name','STATISTIK','level','beginner'),
     jsonb_build_object('name','Kommunikation','level','expert'),
@@ -34,7 +34,7 @@ BEGIN
   IF (v_res->>'blocker_gap_count')::int <> 1 THEN RAISE EXCEPTION 'FAIL [blocker_gap_count=1]: %', v_res; END IF;
   IF (v_res->>'overskill_count')::int <> 1 THEN RAISE EXCEPTION 'FAIL [overskill_count=1]: %', v_res; END IF;
 
-  -- roles[] enthaelt NUR Data Analyst (Software-Entwickler ohne required_skills -> geskippt)
+  -- roles[] enthaelt nur Data Analyst (Software-Entwickler ohne required_skills -> geskippt)
   IF jsonb_array_length(v_res->'roles') <> 1 THEN RAISE EXCEPTION 'FAIL [1 role with required_skills]: %', v_res; END IF;
   v_role := v_res->'roles'->0;
   IF v_role->>'title' <> 'Data Analyst' THEN RAISE EXCEPTION 'FAIL [role title]: %', v_role; END IF;
@@ -94,7 +94,7 @@ BEGIN
   RAISE NOTICE 'PASS [5] Junk-level/is_blocker -> kein RAISE';
 
   -- ---------- TEST 6: gleiche Faehigkeit in mehreren Rollen zaehlt je Faehigkeit einmal ----------
-  -- Python ist in A Pflicht und fehlt, in B ohne Pflicht -> 1 Luecke, 1 Blocker (Luecke UND Pflicht in einer Rolle).
+  -- Python ist in A Pflicht und fehlt, in B ohne Pflicht -> 1 Luecke, 1 Blocker (Luecke und Pflicht in einer Rolle).
   v_res := career.fn_skill_gap(
     '{"target_roles":[{"title":"A","required_skills":[{"name":"Python","is_blocker":true}]},
                       {"title":"B","required_skills":[{"name":" python "}]}]}', '{}'::jsonb);
@@ -103,7 +103,7 @@ BEGIN
   IF jsonb_array_length(v_res->'roles'->0->'missing') <> 1 OR jsonb_array_length(v_res->'roles'->1->'missing') <> 1 THEN
     RAISE EXCEPTION 'FAIL [6a roles[] bleibt je Rolle voll]: %', v_res; END IF;
 
-  -- Pflicht in B, dort erfuellt; in A nur Luecke OHNE Pflicht -> KEIN Blocker (Pflicht ohne Luecke zaehlt nicht).
+  -- Pflicht in B, dort erfuellt; in A nur Luecke ohne Pflicht -> kein Blocker (Pflicht ohne Luecke zaehlt nicht).
   v_res := career.fn_skill_gap(
     '{"target_roles":[{"title":"A","required_skills":[{"name":"SQL","min_level":"advanced"}]},
                       {"title":"B","required_skills":[{"name":"SQL","min_level":"beginner","is_blocker":true}]}]}',
@@ -118,7 +118,7 @@ BEGIN
     '{"skills":[{"name":"Excel","level":"beginner"}]}');
   IF (v_res->>'gap_count')::int <> 1 THEN RAISE EXCEPTION 'FAIL [6c weak in 2 Rollen: 1]: %', v_res; END IF;
 
-  -- uebererfuellt in zwei Rollen -> ein Ueberskill; uebererfuellt in A + schwach in B -> Luecke 1 UND Ueberskill 1.
+  -- uebererfuellt in zwei Rollen -> ein Ueberskill; uebererfuellt in A + schwach in B -> Luecke 1 und Ueberskill 1.
   v_res := career.fn_skill_gap(
     '{"target_roles":[{"title":"A","required_skills":[{"name":"Git","min_level":"beginner"}]},
                       {"title":"B","required_skills":[{"name":"git","min_level":"intermediate"}]}]}',

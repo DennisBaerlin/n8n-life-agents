@@ -1,6 +1,6 @@
 -- ============================================================
--- fn_transfer_free_end (WRITE HELPER, 2026-11-01 "Umschichtung mit Enddatum")
---   Setzt das Ende eines laufenden freistehenden Uebertrags-Dauerauftrags so, dass er nur FREIES Geld der Quelle
+-- fn_transfer_free_end (WRITE HELPER)
+--   Setzt das Ende eines laufenden freistehenden Uebertrags-Dauerauftrags so, dass er nur freies Geld der Quelle
 --   verbraucht: spaetester Termin, mit dem die Quelle nicht frueher unter ihr Ziel-Geld faellt als ohne diesen Auftrag.
 --   Keine zweite Rechnung: fn_account_funding der Quelle (langer Horizont 120 Monate) rechnet runs_out_on
 --     Basis  = ohne den Auftrag (Kopf kurz pausiert),
@@ -8,10 +8,12 @@
 --     Suche  = Halbierung ueber die Termine vor X (weniger Ueberweisungen = nie frueher unter dem Ziel-Geld, also monoton;
 --              weitere Abgaenge teilen sich das freie Geld). Meist passt schon der letzte Termin vor X (ein Aufruf).
 --   Gespeichert exklusiv = Termin + 1, Status wie vorher. Gerufen von fn_create_recurring_transfer /
---   fn_set_recurring_payment (until_free_money) NACH dem Insert/Update; bei {ok:false} rollt der Aufrufer seinen Write per
+--   fn_set_recurring_payment (until_free_money) nach dem Insert/Update; bei {ok:false} rollt der Aufrufer seinen Write per
 --   Savepoint zurueck (Sentinel LA002), es bleibt kein halber Write.
+--   Eingabe: p_rp_id (Kopf oder Glied der Kette).
 --   RUECKGABE: {ok:true, last_execution (inklusiv), free_after (freies Geld am tiefsten Punkt danach), horizon_end}
---   Korrigierbar {ok:false, code, reason}: not_transfer (kein Uebertrag/Entitaets-Zahlung/Kreditkonto), not_running (Kette
+--   Korrigierbar {ok:false, code, reason}: not_transfer (kein Uebertrag/Entitaets-Zahlung/Kreditkonto, auch wenn
+--   fn_account_funding die Quelle ablehnt), not_running (Kette
 --   pausiert oder schon beendet: ein neues Ende liesse alte Termine wieder faellig werden), funding_unknown (Ampel neutral:
 --   Alltagsausgaben unbekannt oder Kurs fehlt -> das Ende waere zu spaet), source_short (+ on_date: die Quelle faellt auch
 --   ohne diesen Auftrag an diesem Tag unter das Ziel-Geld), no_free_money (schon der naechste Termin fasst Ziel-Geld an),

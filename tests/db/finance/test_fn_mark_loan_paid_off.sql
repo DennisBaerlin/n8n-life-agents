@@ -1,12 +1,12 @@
 -- tests/db/finance/test_fn_mark_loan_paid_off.sql
--- Audit Paket 2, Punkt 9: letzte Kreditrate + Restschuld 0 -> abbezahlt, und der Storno stellt zurueck.
+-- Letzte Kreditrate + Restschuld 0 -> abbezahlt, und der Storno stellt zurueck.
 --   Kredit Restschuld 800, 3 % p.a., Annuitaet 500, monatlich ab d0.
 --   Rate d0: Zins 2.00, Tilgung 498 -> Rest 302.
---   Rate d1: Annuitaet 500 wuerde ueberzahlen (Tilgung 499.24 > 302) -> vorher lehnte die Erinnerung ab, ohne Grund.
---     Jetzt: fn_recurring_occurrence_amount = -302.76 (Rest 302 + Zins 0.76), die Erinnerung bucht genau das ->
---     Rest 0 -> Kredit paid_off, Raten-rp paused + valid_to = d1 + 1 (vorher blieb active, die Erinnerung fragte weiter).
+--   Rate d1: Annuitaet 500 wuerde ueberzahlen (Tilgung 499.24 > 302); die Erinnerung darf nicht grundlos ablehnen.
+--     Stattdessen: fn_recurring_occurrence_amount = -302.76 (Rest 302 + Zins 0.76), die Erinnerung bucht genau das ->
+--     Rest 0 -> Kredit paid_off, Raten-rp paused + valid_to = d1 + 1 (nicht active bleiben, sonst fragt die Erinnerung weiter).
 --   Storno der letzten Rate -> Kredit wieder active, Rate laeuft wieder (valid_to NULL).
---   Storno einer FRUEHEREN Rate nach der Abzahlung -> ebenfalls zurueck auf active.
+--   Storno einer frueheren Rate nach der Abzahlung -> ebenfalls zurueck auf active.
 --   Ein Nutzer-Betrag (Override) ueber der Abloese bleibt {ok:false} (nie still geaendert).
 BEGIN;
 
@@ -81,7 +81,7 @@ BEGIN
       (SELECT to_jsonb(r) FROM finance.recurring_payments r WHERE id = v_rp), v_res; END IF;
   RAISE NOTICE 'PASS storno [letzte Rate -> Kredit active, Rate laeuft wieder]';
 
-  -- 5. erneut abzahlen, dann eine FRUEHERE Rate stornieren -> wieder Restschuld -> active
+  -- 5. erneut abzahlen, dann eine fruehere Rate stornieren -> wieder Restschuld -> active
   SELECT finance.fn_book_recurring_occurrence(jsonb_build_object('recurring_payment_id', v_rp, 'due_date', v_d1::text)) INTO v_res;
   IF v_res->>'loan_status' IS DISTINCT FROM 'paid_off' THEN RAISE EXCEPTION 'SETUP FAIL re-payoff: %', v_res; END IF;
   SELECT finance.fn_void_transaction(jsonb_build_object('transaction_id', v_tx0)) INTO v_res;
@@ -93,7 +93,7 @@ BEGIN
   RAISE NOTICE 'PASS storno [fruehere Rate nach Abzahlung -> Kredit active, Rest 498]';
 END $$;
 
--- Review: die letzte, kleinere Rate MANUELL im Chat bezahlt (tool_book_loan_payment, ohne due_date) wird ihrem
+-- Die letzte, kleinere Rate manuell im Chat bezahlt (tool_book_loan_payment, ohne due_date) wird ihrem
 -- Vorkommen zugeordnet (Abloesebetrag = faellige Rate) -> Vorkommen geschlossen, Kredit abbezahlt, keine Erinnerung.
 DO $$
 DECLARE
@@ -109,7 +109,7 @@ BEGIN
   SELECT (finance.fn_create_account(jsonb_build_object('name','__test_mlp2_giro__','account_type','cash',
     'currency','EUR'))->>'account_id')::int INTO v_giro;
   -- frischer Kredit (Eroeffnung zum Auszahlungstag): ein laufender buchte seine Restschuld zum Stichtag heute, die
-  -- vergangenen Raten d0/d1 steckten dann schon darin (fn_create_loan, Befund 2026-10-24)
+  -- vergangenen Raten d0/d1 steckten dann schon darin (fn_create_loan)
   SELECT finance.fn_create_loan(jsonb_build_object('name','__test_mlp2_kredit__','lender','B','borrower','T',
     'original_amount',800,'disbursement_date',(v_d0 - 30)::text,'interest_rate',3,
     'monthly_annuity',500,'first_payment_date',v_d0::text,'debit_account_id',v_giro)) INTO v_res;

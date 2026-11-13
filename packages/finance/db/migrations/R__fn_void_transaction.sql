@@ -1,22 +1,22 @@
 -- ============================================================
 -- fn_void_transaction (ATOMIC WRITE) -- Hard-DELETE einer Fehlbuchung
 --   Loescht eine Transaktion; die Trigger rechnen Saldo, holding.shares, holding.average_purchase_price
---   und die Kredit-Restschuld (= Saldo des Kreditkontos) danach KORREKT aus den verbleibenden Zeilen neu.
+--   und die Kredit-Restschuld (= Saldo des Kreditkontos) danach korrekt aus den verbleibenden Zeilen neu.
 --   Identifikation per transaction_id (Agent liest die letzte(n) Buchung(en) via postgres_select).
 --
---   KONTEXT-SCHUTZ (damit kein Entitaets-Status kaputtgeht):
---   1. MULTI-LEG-EVENTS (transfer/loan) werden mit ihrer GANZEN logischen Gruppe geloescht (atomar, nie nur
+--   Kontext-Schutz (damit kein Entitaets-Status kaputtgeht):
+--   1. Multi-Leg-Events (transfer/loan) werden mit ihrer ganzen logischen Gruppe geloescht (atomar, nie nur
 --      ein Bein) -- primaer per group_id (von der Write-fn gestempelt), Fallback (loan_id, transaction_date) fuer Altdaten ohne group_id.
---   2. OVERSELL-GUARD: wuerde das Loeschen einen Depot-Bestand NEGATIV machen (ein spaeterer Verkauf
+--   2. Oversell-Guard: wuerde das Loeschen einen Depot-Bestand negativ machen (ein spaeterer Verkauf
 --      haengt am zu loeschenden Kauf), wird abgelehnt -> {ok:false}; erst die spaetere Tx voiden.
---   3. Die HOLDING-Zeile wird NIE geloescht: der shares-Trigger setzt nur shares (ggf. 0); die Zeile
+--   3. Die Holding-Zeile wird nie geloescht: der shares-Trigger setzt nur shares (ggf. 0); die Zeile
 --      (inkl. ISIN) bleibt fuer Historie/spaetere Dividenden bestehen.
---   4. SPARZIEL-RESERVE (Audit F4): haengt an einer geloeschten Kauf-Tx eine Reserve-Journal-Zeile
---      (source_tx_id), wird eine GEGENZEILE kind='void' angehaengt (delta=-original, gleiche currency/
+--   4. Sparziel-Reserve: haengt an einer geloeschten Kauf-Tx eine Reserve-Journal-Zeile
+--      (source_tx_id), wird eine Gegenzeile kind='void' angehaengt (delta=-original, gleiche currency/
 --      value_date) -> current_amount bleibt konserviert, das Journal bleibt append-only. Wuerde die Reserve
 --      (Ziel, Depot) dadurch negativ (Reserve schon freigegeben) -> {ok:false}, nichts geloescht.
---   5. STATUS-RUECKNAHME (Audit F5 + Paket 2): traegt ein abbezahlter Kredit (paid_off, Vorzustand in
---      loans.settled_from von fn_mark_loan_paid_off) NACH dem Loeschen wieder Restschuld, gehen Kredit und Raten-rp
+--   5. Status-Ruecknahme: traegt ein abbezahlter Kredit (paid_off, Vorzustand in
+--      loans.settled_from von fn_mark_loan_paid_off) nach dem Loeschen wieder Restschuld, gehen Kredit und Raten-rp
 --      exakt auf den Zustand davor zurueck -- egal ob die Abloesung, die letzte Rate oder eine fruehere Rate
 --      storniert wurde. Altbestand ohne settled_from (Abloesung): active, ohne Rate paused -- CHECK
 --      active_needs_annuity -- und die von der Abloesung beendete Rate wieder aktiv, nur paused + valid_to =
@@ -26,12 +26,13 @@
 --   RUECKGABE: {ok:true, deleted_count, transaction_ids, reverted_loans, reverted_real_estate,
 --   accounts:[{account_id, name, balance, change}], holdings:[{holding_id, symbol, shares, avg_purchase_price}], card_lines}
 --   (Name/Symbol als Handle fuer die Antwort: der Agent nennt nie interne ids).
---   POST-STATE (Befund 2026-10-28: ohne Zahl erfand das Modell nach dem Void einer Bestandsuebernahme eine
+--   Post-State (ohne Zahl erfaende das Modell nach dem Void einer Bestandsuebernahme eine
 --   "Gutschrift"): je beruehrtem Konto der neue Saldo und change = Saldo nachher - vorher (DB-Delta; Kauf + Gegen-
 --   buchung einer Uebernahme -> 0), je beruehrter Position Stueck/Einstand nach dem Trigger. card_lines = dieselbe
 --   Wirkung je Konto fuer die HITL-Karte (der Probelauf vor der Karte liefert exakt die Zahlen des echten Writes).
---   Korrigierbar (Oversell-nach-Void, Reserve wuerde negativ, Bein im bestaetigten Stand eines anderen Kontos ->
---   code partner_reconciled + account) -> {ok:false}.
+--   Korrigierbar (Oversell-nach-Void (holding_id, resulting_shares), Reserve wuerde negativ (savings_goal_id,
+--   resulting_reserve), Bein im bestaetigten Stand eines anderen Kontos -> code partner_reconciled + account)
+--   -> {ok:false}.
 --   RAISE nur bei not-found (der Agent uebergibt eine gelesene id).
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_void_transaction(p jsonb)
@@ -58,8 +59,8 @@ BEGIN
 
     -- 1. Logische Gruppe bestimmen (so tief wie moeglich -> strukturell, nicht heuristisch):
     --    (a) group_id = der neue Standard: transfer- + loan-Beine teilen eine group_id (von der
-    --        jeweiligen Write-fn gestempelt) -> die GANZE Gruppe atomar entfernen,
-    --    (b) Fallback fuer Altbestand OHNE group_id: Kredit-Event ueber (loan_id, transaction_date),
+    --        jeweiligen Write-fn gestempelt) -> die ganze Gruppe atomar entfernen,
+    --    (b) Fallback fuer Altbestand ohne group_id: Kredit-Event ueber (loan_id, transaction_date),
     --    (c) sonst nur diese eine Tx.
     IF v_tx.group_id IS NOT NULL THEN
         SELECT array_agg(id) INTO v_ids
@@ -72,7 +73,7 @@ BEGIN
         v_ids := ARRAY[v_id];
     END IF;
 
-    -- 1b. Partner-Schutz: ein Bein der Gruppe, das der Auszug eines ANDEREN Kontos gestempelt hat und das auf seinem Konto
+    -- 1b. Partner-Schutz: ein Bein der Gruppe, das der Auszug eines anderen Kontos gestempelt hat und das auf seinem Konto
     --     schon bestaetigt ist, steckt in dessen bestaetigtem Stand (Muster fn_void_bank_statement).
     SELECT a.name INTO v_partner
     FROM finance.transactions t
@@ -107,9 +108,9 @@ BEGIN
         END IF;
     END LOOP;
 
-    -- 2b. Reserve-Guard (Audit F4): die Gegenzeilen duerfen keinen (Ziel, Konto)-Anteil negativ machen. Basis ist der
-    --     VOLLE Anteil aus savings_goal_account_share (getaggte Transfers + Journal, EUR) — nicht nur die Journal-Summe:
-    --     sonst wuerde ein zweiter Kauf mit negativer Verrechnungskonto-Zeile faelschlich abgelehnt (Plan-Review B1).
+    -- 2b. Reserve-Guard: die Gegenzeilen duerfen keinen (Ziel, Konto)-Anteil negativ machen. Basis ist der
+    --     volle Anteil aus savings_goal_account_share (getaggte Transfers + Journal, EUR) — nicht nur die Journal-Summe:
+    --     sonst wuerde ein zweiter Kauf mit negativer Verrechnungskonto-Zeile faelschlich abgelehnt.
     FOR v_bad IN
         WITH rev AS (
             SELECT e.savings_goal_id, e.account_id,
@@ -144,9 +145,9 @@ BEGIN
     FROM finance.savings_goal_reserve_entries
     WHERE source_tx_id = ANY(v_ids);
 
-    -- 3c. Status-Ruecknahme ALTBESTAND (Abloesung ohne loans.settled_from, vor Audit F5): Kredit active (ohne Rate
+    -- 3c. Status-Ruecknahme Altbestand (Abloesung ohne loans.settled_from): Kredit active (ohne Rate
     --     paused), die von der Abloesung beendete Rate (paused + valid_to = Abloesedatum) wieder aktiv. Kredite MIT
-    --     settled_from stellt Schritt 4b NACH dem Loeschen generisch her (Abloesung UND letzte Rate).
+    --     settled_from stellt Schritt 4b nach dem Loeschen generisch her (Abloesung und letzte Rate).
     v_loan_ids := ARRAY(SELECT DISTINCT loan_id FROM finance.transactions WHERE id = ANY(v_ids) AND loan_id IS NOT NULL);
     WITH s AS (
         SELECT DISTINCT loan_id, transaction_date
@@ -157,7 +158,7 @@ BEGIN
         FROM finance.loans lo JOIN s ON s.loan_id = lo.id
         WHERE lo.status = 'paid_off' AND lo.settled_from IS NULL
     ), l AS (
-        -- WP2: "hat eine Rate" = hat eine Raten-Kette (die Kopie monthly_annuity entfiel mit finance:V026)
+        -- "hat eine Rate" = hat eine Raten-Kette
         UPDATE finance.loans lo
         SET status = CASE WHEN pre.recurring_payment_id IS NULL THEN 'paused'::finance.loan_status
                           ELSE 'active'::finance.loan_status END
@@ -195,11 +196,11 @@ BEGIN
     DELETE FROM finance.transactions WHERE id = ANY(v_ids);
     GET DIAGNOSTICS v_count = ROW_COUNT;
 
-    -- 4b. Status-Ruecknahme "abbezahlt" (Audit F5 + Paket 2): jeder betroffene Kredit, der paid_off ist, einen
-    --     gespeicherten Vorzustand (settled_from, von fn_mark_loan_paid_off) hat und NACH dem Loeschen wieder
+    -- 4b. Status-Ruecknahme "abbezahlt": jeder betroffene Kredit, der paid_off ist, einen
+    --     gespeicherten Vorzustand (settled_from, von fn_mark_loan_paid_off) hat und nach dem Loeschen wieder
     --     Restschuld traegt, geht exakt auf diesen Zustand zurueck: Kredit-Status, Raten-Kette mit Status + Ende je
-    --     Glied (settled_from.chain, WP2; Altformat settled_from.rp_id = nur der Kopf bleibt lesbar). Deckt
-    --     Abloesung, letzte Rate und den Void einer FRUEHEREN Rate nach der Abzahlung ab.
+    --     Glied (settled_from.chain; Altformat settled_from.rp_id = nur der Kopf bleibt lesbar). Deckt
+    --     Abloesung, letzte Rate und den Void einer frueheren Rate nach der Abzahlung ab.
     WITH pre AS (
         SELECT lo.id, lo.settled_from
         FROM finance.loans lo

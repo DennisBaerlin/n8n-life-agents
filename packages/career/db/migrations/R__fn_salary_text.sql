@@ -1,7 +1,7 @@
 -- ============================================================
 -- career.fn_salary_text (Gehalt mit Einheit als Anzeige-Text fuer die Fakten-Header)
 --   "4000 € netto/Monat (≈ 48000 € netto/Jahr)", "75000 € brutto/Jahr"; ohne Basis "…; brutto/netto offen", ohne
---   Einheit (Bestand vor WP3) "60000 € (Einheit offen)" — nie eine angenommene Einheit. Den Jahreswert rechnet
+--   Einheit (Bestandswert) "60000 € (Einheit offen)" — nie eine angenommene Einheit. Den Jahreswert rechnet
 --   career.fn_salary_annual; brutto/netto wird nie umgerechnet. Ohne Betrag -> NULL.
 --   plpgsql (late-bound: ruft die alphabetisch fruehere career.fn_salary_annual, aber robust gegen Umsortierung).
 --   IMMUTABLE. Tests: tests/db/career/test_fn_salary_text.sql

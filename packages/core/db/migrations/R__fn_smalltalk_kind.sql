@@ -1,17 +1,18 @@
 -- ============================================================
--- core.fn_smalltalk_kind (Klassifikator fuer reinen Dank / reinen Gruss, Bot mit Gesicht 2026-10-30)
+-- fn_smalltalk_kind (READ-ONLY, IMMUTABLE — Klassifikator fuer reinen Dank / reinen Gruss)
+--   Eingabe: p_text text.
 --   Deterministisch statt LLM: der Orchestrator setzt bei 'thanks' nur ein Herz (kein Agent-Lauf), bei
---   'greeting' darf fn_claim_persona_sticker einen Hallo-Sticker waehlen. Darum EXAKTER Abgleich nach
+--   'greeting' darf fn_claim_persona_sticker einen Hallo-Sticker waehlen. Darum exakter Abgleich nach
 --   Normalisierung (Kleinschreibung, Emoji-Varianten/Hautton/ZWJ, Satzzeichen, Leerraum): jedes weitere Wort
 --   -> NULL. "nein danke", "ja danke", "gerne danke", "네 감사합니다" sind Antworten auf eine Rueckfrage, kein
 --   Dank; 👍 und "ok" allein koennen ein Ja sein und zaehlen nie. Deko-Emoji (Herzen, 🙏, 🙂, 👍 ...) fallen nur
---   NEBEN einem Wort weg; allein zaehlen nur Herzen als Dank.
+--   neben einem Wort weg; allein zaehlen nur Herzen als Dank.
 --   Die Listen sind bewusst kurz und exakt (de/en/ko = core.ui_languages); fehlt ein Ausdruck, laeuft die
 --   Nachricht ganz normal ueber den Router (fail-safe).
 --   'ping' = reines Lebenszeichen ("Test", "ping", "?"): Grundlage der Vorschlags-Grenze (core.fn_claim_next_step_offer);
 --   der Hallo-Sticker (agent.fn_claim_persona_sticker) prueft nur 'greeting' und bleibt fuer ein Lebenszeichen aus.
---   Fragezeichen allein werden VOR dem Satzzeichen-Strip erkannt (danach waere der Text leer).
---   RUECKGABE: 'thanks' | 'greeting' | 'ping' | NULL
+--   Fragezeichen allein werden vor dem Satzzeichen-Strip erkannt (danach waere der Text leer).
+--   Rueckgabe: 'thanks' | 'greeting' | 'ping' | NULL
 --   Tests: tests/db/core/test_fn_smalltalk_kind.sql
 -- ============================================================
 CREATE OR REPLACE FUNCTION core.fn_smalltalk_kind(p_text text)

@@ -1,11 +1,12 @@
 -- ============================================================
 -- fn_account_planned_flows (READ, STABLE) -- offene Dauerauftrags-Vorkommen eines Kontos in [p_from, p_until], je Vorkommen
---   die EINE Quelle fuer die Tagesreihe finance.fn_account_projection und die Einzelzeilen der Bruecke auf dem
---   Mini-App-Bildschirm „Konten“ (Transparenz 2026-10-30: dieselben Betraege wie die Reihe, nie nachgerechnet).
+--   die eine Quelle fuer die Tagesreihe finance.fn_account_projection und die Einzelzeilen der Bruecke auf dem
+--   Mini-App-Bildschirm „Konten“ (dieselben Betraege wie die Reihe, nie nachgerechnet).
+--   Eingabe: p_account_id, p_from, p_until.
 --   Quell-Seite = Buchungsbetrag aus finance.fn_upcoming_payments (signiert; Kredit-Schlussrate = Abloese);
---   Ziel-Seite eines Uebertrags = abs(geplanter Betrag) in ZIELwaehrung: gleiche Waehrung roh, sonst ueber den Kurs
+--   Ziel-Seite eines Uebertrags = abs(geplanter Betrag) in Zielwaehrung: gleiche Waehrung roh, sonst ueber den Kurs
 --   (fn_to_eur_unrounded, 2 Stellen); fehlt ein Kurs, zaehlt der Quellbetrag roh (nie still 0) und fx_gap ist true.
---   RUECKGABE: (due_date, recurring_payment_id, amount, fx_gap); unbekanntes Konto -> leer
+--   Rueckgabe: (due_date, recurring_payment_id, amount, fx_gap); unbekanntes Konto -> leer
 --   Tests: tests/db/finance/test_fn_account_projection.sql
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_account_planned_flows(p_account_id int, p_from date, p_until date)

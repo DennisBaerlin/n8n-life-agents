@@ -1,6 +1,6 @@
 -- ============================================================
--- core.fn_household_plan_domain(p_domain) — ist die Domain eine teilbare Haushalts-Plan-Domain? (Plan teilen, 2026-10-28)
---   Die EINE Regel: core.advisors-Zeile mit plan_step=true, Paket aktiv (core.package_registry), Scope des plan_context
+-- core.fn_household_plan_domain(p_domain) — ist die Domain eine teilbare Haushalts-Plan-Domain?
+--   Die eine Regel: core.advisors-Zeile mit plan_step=true, Paket aktiv (core.package_registry), Scope des plan_context
 --   household (core.context_scopes; ohne Zeile = household). Persoenliche Plaene (per_user, career) -> false.
 --   Leser: core.fn_household_plan_active (+ aktive Version) und core.fn_handle_plan_cb (Verben share/explain/wish:
 --   "Domain unbekannt" vs. "kein aktiver Plan" unterscheiden). STABLE, SECURITY DEFINER, search_path gepinnt.

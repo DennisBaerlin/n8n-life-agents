@@ -1,8 +1,8 @@
 -- ============================================================
 -- core.fn_handle_onboarding_cb(p) — Registry-Handler des Callback-Prefix 'onboarding' (member_permeable)
---   Der MITGLIEDER-Pfad der /onboarding-Menue-Knoepfe: der Owner nimmt den hartkodierten 'Callback action'-Arm
+--   Der Mitglieder-Pfad der /onboarding-Menue-Knoepfe: der Owner nimmt den hartkodierten 'Callback action'-Arm
 --   im Orchestrator; ein aufgeloestes Mitglied kommt ueber core.fn_dispatch_callback (DB-Gesetz "Callback-Member-
---   Gate", member_permeable fail-closed) hierher. Der Handler entscheidet die FEINE Autorisierung und gibt bei
+--   Gate", member_permeable fail-closed) hierher. Der Handler entscheidet die feine Autorisierung und gibt bei
 --   Erfolg {ok:true, route:'onboarding'} zurueck -> der Orchestrator routet in den bestehenden 'Onboarding section?'-
 --   Switch (dessen Arme quittieren selbst); sonst {ok:false, toast} -> 'Answer dispatched cb'.
 --   p: { data:'onboarding:<package>:<key>' | 'onboarding:_area:[<package>]', chat_id (from.id), chat_type }.
@@ -66,7 +66,7 @@ BEGIN
     END IF;
 
     -- Ab hier zaehlt die Rolle (der Dispatcher hat den Sender schon als aufgeloest geprueft).
-    -- Owner-Zweige sind Verteidigung in der Tiefe: heute nimmt der Owner den hartkodierten 'Callback action'-Arm.
+    -- Owner-Zweige sind Verteidigung in der Tiefe: der Owner nimmt den hartkodierten 'Callback action'-Arm.
 
     -- Core-Haushalt: nur der Owner.
     IF v_part = 'core' THEN
@@ -80,7 +80,7 @@ BEGIN
         RETURN jsonb_build_object('ok', true, 'route', 'onboarding');
     END IF;
 
-    -- Paket-Abschnitt: Paketname NUR aus der Registry, Tabelle per to_regclass, section_key nur als Parameter.
+    -- Paket-Abschnitt: Paketname nur aus der Registry, Tabelle per to_regclass, section_key nur als Parameter.
     SELECT r.package INTO v_pkg FROM core.package_registry r
     WHERE r.package = v_part AND r.status = 'active' AND r.package <> 'core';
     IF v_pkg IS NULL THEN

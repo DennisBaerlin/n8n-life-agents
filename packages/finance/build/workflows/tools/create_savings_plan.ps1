@@ -3,12 +3,11 @@
 
 # --- tool_create_savings_plan (Sparplan anlegen: Depot, ISIN/Symbol, Betrag, Turnus) ---
 function Build-CreateSavingsPlan {
-    # WS-B0: enge Paket-Schreibrolle (finance_rw, Least-Privilege D10) statt Owner-Cred.
-    # Dynamic-Scope: Build-Pg liest dieses $CRED_POSTGRES. Core-Tools nutzen die Owner-Cred.
+    # Enge Paket-Schreibrolle (finance_rw) statt Owner-Cred; Build-Pg liest $CRED_POSTGRES per Dynamic-Scope.
     $CRED_POSTGRES = $CRED_FINANCE_RW
     $trig = Build-Trigger @('plan_name','depot_name','isin','symbol','security_name','amount','schedule_interval','schedule_unit','schedule_day_of_month','first_payment_date','notes','beneficiary_person','asset_class','depot_execution_days','handoff_task_id')
 
-    # WS-4: beguenstigte Person aufloesen (Name -> Slug via core.fn_resolve_person; leer=Haushalt).
+    # Beguenstigte Person aufloesen (Name -> Slug via core.fn_resolve_person; leer=Haushalt).
     $resPerson = Build-ResolvePerson 'Resolve Person' @(-220, 0) 'beneficiary_person'
 
     $ifPersonBad = Build-If 'Person invalid?' @(0, 0) `
@@ -24,8 +23,6 @@ function Build-CreateSavingsPlan {
         "=SELECT r.hit_count, (SELECT s.name FROM finance.accounts d JOIN finance.accounts s ON s.id = d.settlement_account_id WHERE d.id = r.id) AS settlement_name, r.currency FROM finance.fn_resolve_account((`$1::jsonb)->>'depot_name', ARRAY['stocks_depot','crypto_depot']) r;" `
         ([ordered]@{ depot_name = '$(''Start'').item.json.depot_name' })
 
-    # "DB ist das Gesetz": fn_create_savings_plan laeuft als Probelauf VOR der Karte (korrigierbare Ablehnungen -> {ok:false} ohne Karte);
-    # derselbe Param-Satz geht nach dem Gate in den echten Write.
     $wg = New-FnWriteGate -Fn 'finance.fn_create_savings_plan' -DryPos @(440, 0) -WritePos @(1540, 0) `
         -WriteName 'Create savings plan (atomic)' `
         -WriteSelect "(r->>'ok')::boolean AS ok, r->>'reason' AS reason, (r->>'savings_plan_id')::int AS savings_plan_id, (r->>'recurring_payment_id')::int AS recurring_payment_id, COALESCE(r->'savings_squeeze'->>'note', '') AS savings_squeeze, COALESCE(r->'savings_funding'->>'note', '') AS savings_funding" `
@@ -49,9 +46,9 @@ function Build-CreateSavingsPlan {
         })
 
     # HITL approval gate (Depot loest fn_create_savings_plan intern auf)
-    # Strukturiertes Summary (Textkatalog): Rate in der Waehrung des Verrechnungskontos; Crypto hat keine ISIN.
+    # Rate in der Waehrung des Verrechnungskontos; Crypto hat keine ISIN.
     # Turnus, Begünstigte(r), Betrag je Monat und ein neu gemerkter Bank-Kalender kommen aus dem Probelauf ($Y = r der
-    # fn): die DB leitet sie ab (Depot-Kalender, Depot-Inhaber) -> Karte = Write (Post-State-Vertrag).
+    # fn): die DB leitet sie ab (Depot-Kalender, Depot-Inhaber) -> Karte = Write.
     $S = "`$('Start').item.json"
     $D = "`$('Read Settlement').item.json"
     $Y = "`$('Dry run').item.json.r"
@@ -84,12 +81,11 @@ function Build-CreateSavingsPlan {
 
     $retCancelled = Build-ToolCancelled 'Return cancelled' @(1540, 240) 'the create_savings_plan action'
 
-    # Atomarer Write via fn_create_savings_plan:
+    # Write (fn_create_savings_plan):
     # 1. Depot per Name aufloesen + Typ/Settlement pruefen (Depot-Typ vs. ISIN-Presence)
     # 2. Uniqueness-Guard (lower(name))
     # 3. recurring_payment INSERT auf Verrechnungskonto (negativ = Ausgabe, -amount)
     # 4. finance.savings_plans INSERT mit FK-Link
-    # fn liefert ok/reason: Depot nicht gefunden, Typ-Mismatch, Duplikat, amount<=0 -> {ok:false}
 
     $ifWriteOk = Build-If 'Write ok?' @(1760, 0) "={{ `$json.ok }}" 'true' 'equals' 'boolean'
 

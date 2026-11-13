@@ -1,6 +1,6 @@
 -- tests/db/finance/test_fn_create_loan_status.sql
 -- Testet: fn_create_loan leitet status korrekt ab (active wenn Annuität gesetzt, paused wenn NULL).
--- Testet: CHECK-Constraint verhindert status='active' ohne Raten-Kette (WP2, finance:V026: aktiv <=> recurring_payment_id).
+-- Testet: CHECK-Constraint verhindert status='active' ohne Raten-Kette (finance:V026: aktiv <=> recurring_payment_id).
 BEGIN;
 
 DO $$
@@ -18,7 +18,7 @@ BEGIN
   ) INTO v_result;
   v_debit_id := (v_result->>'account_id')::int;
 
-  -- TEST 1: Kredit MIT Annuität → status muss 'active' sein
+  -- TEST 1: Kredit mit Annuität → status muss 'active' sein
   SELECT finance.fn_create_loan(
     jsonb_build_object(
       'name',             '__test_loan_active__',
@@ -48,7 +48,7 @@ BEGIN
 
   RAISE NOTICE 'PASS fn_create_loan [status active]: loan_id=%, rp_id=%', v_loan_id, v_rp_id;
 
-  -- TEST 2: Kredit OHNE Annuität (Familienkredit/Pausiert) → status muss 'paused' sein
+  -- TEST 2: Kredit ohne Annuität (Familienkredit/Pausiert) → status muss 'paused' sein
   SELECT finance.fn_create_loan(
     jsonb_build_object(
       'name',             '__test_loan_paused__',
@@ -67,7 +67,7 @@ BEGIN
     RAISE EXCEPTION 'FAIL fn_create_loan [status paused]: erwartet paused, got %', v_status;
   END IF;
 
-  -- recurring_payment darf NICHT existieren
+  -- recurring_payment darf nicht existieren
   v_rp_id := (v_result->>'recurring_payment_id')::int;
   IF v_rp_id IS NOT NULL THEN
     RAISE EXCEPTION 'FAIL fn_create_loan [status paused]: recurring_payment_id sollte NULL sein, got %', v_rp_id;

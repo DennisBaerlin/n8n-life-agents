@@ -1,7 +1,7 @@
 -- ============================================================
--- agent.fn_monitor_reset_unsent (ATOMIC WRITE — Fehlerweg von `Send alerts` im Heartbeat-Cron)
---   Macht die Ausloesung eines Laufs rueckgaengig, dessen Sammel-Nachricht nicht zugestellt wurde. Nur status='fired' wird
---   wieder armed; last_value und reference_value bleiben (Ratchet nie aus einem nicht gemeldeten Lauf zurueckdrehen).
+-- fn_monitor_reset_unsent (ATOMIC WRITE)
+--   Fehlerweg von `Send alerts` im Heartbeat-Cron: macht die Ausloesung eines Laufs rueckgaengig, dessen
+--   Sammel-Nachricht nicht zugestellt wurde. Nur status='fired' wird wieder armed; last_value und reference_value bleiben (Ratchet nie aus einem nicht gemeldeten Lauf zurueckdrehen).
 --   Termine pruefen sofort wieder (ein One-Shot ohne erneuten Wert), Werte zum naechsten Prueftermin und nur, wenn die
 --   Bedingung dann noch gilt. Ein Termin laenger als monitor.unsent_retry_days nach due_date bleibt fired, damit ein dauerhafter
 --   Sendefehler (z. B. zu langer Text) nicht ewig stuendlich wiederholt.

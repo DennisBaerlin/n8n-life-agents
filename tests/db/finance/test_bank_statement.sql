@@ -1,5 +1,5 @@
 -- tests/db/finance/test_bank_statement.sql
--- Monats-Check WP-C: Kontoauszug einspielen ohne Einzelumsaetze.
+-- Kontoauszug einspielen ohne Einzelumsaetze.
 --   fn_statement_prepare: Konto per IBAN (mit Leerzeichen), Saldo-Probe, Zuordnung Stufe A (SEPA-Mandat / Gegen-IBAN
 --     des Zielkontos) und B (Betrag + Datum [+ Name]), Sparplan mit geschaetzten Stueck, fehlende Zahlung, unbekanntes
 --     Mandat, Plan-Anpassung beim 2. gleichen Ist-Betrag, Rest = DB-Differenz, Fingerprint.
@@ -117,7 +117,7 @@ BEGIN
   IF (v_res->>'lump_amount')::numeric IS DISTINCT FROM -130.09 OR (v_res->>'balance_after')::numeric IS DISTINCT FROM v_closing
      OR (v_res->>'booked_count')::int IS DISTINCT FROM 5 OR (v_res->>'skipped_occurrences')::int < 1
      OR (v_res->>'learned_keys')::int IS DISTINCT FROM 2 OR jsonb_array_length(v_res->'plan_adjusted') <> 1
-     -- Rest getrennt nach Richtung (Befund 2026-10-30): negativ = Ausgang, kein Eingang
+     -- Rest getrennt nach Richtung: negativ = Ausgang, kein Eingang
      OR (v_res->>'rest_outflow')::numeric IS DISTINCT FROM 130.09 OR (v_res->>'rest_inflow')::numeric IS DISTINCT FROM 0 THEN
     RAISE EXCEPTION 'FAIL apply Rueckgabe: %', v_res; END IF;
   IF NOT EXISTS (SELECT 1 FROM finance.transactions WHERE recurring_payment_id = r_miete AND recurring_due_date = ps
@@ -185,8 +185,8 @@ BEGIN
   RAISE NOTICE 'PASS Abweichung vor dem Zeitraum: -50 am Vortag, Rest -50 im Zeitraum';
 END $$;
 
--- Review-Befunde: (1) schon gebuchte Zahlung mit Buchungsdatum NACH dem Auszugsende wird aufs Ist-Datum verschoben
--- statt zusaetzlich im Rest zu landen; (3) dieselbe geaenderte Zahlung zweimal im Auszug -> EINE Plan-Anpassung, Buchung
+-- Randfaelle: (1) schon gebuchte Zahlung mit Buchungsdatum nach dem Auszugsende wird aufs Ist-Datum verschoben
+-- statt zusaetzlich im Rest zu landen; (3) dieselbe geaenderte Zahlung zweimal im Auszug -> eine Plan-Anpassung, Buchung
 -- gelingt; (5) "fehlt" zeigt auch offene Termine vor dem Zeitraum, die der Abgleich ueberspringt.
 DO $$
 DECLARE
@@ -211,7 +211,7 @@ BEGIN
   v_res := finance.fn_reconcile_account(jsonb_build_object('account_id', v_a, 'confirmed_balance', 1965,
              'reconciliation_date', (ps - 1)::text));
   IF (v_res->>'ok')::boolean IS DISTINCT FROM true THEN RAISE EXCEPTION 'SETUP reconcile: %', v_res; END IF;
-  -- Miete fuer das Zeitraum-Ende schon im Chat bestaetigt, aber mit Buchungsdatum 2 Tage NACH dem Auszugsende
+  -- Miete fuer das Zeitraum-Ende schon im Chat bestaetigt, aber mit Buchungsdatum 2 Tage nach dem Auszugsende
   v_res := finance.fn_book_recurring_occurrence(jsonb_build_object('recurring_payment_id', r_miete, 'due_date', pe,
              'amount', 500, 'transaction_date', pe + 2));
   IF (v_res->>'ok')::boolean IS DISTINCT FROM true THEN RAISE EXCEPTION 'SETUP miete nachher: %', v_res; END IF;
@@ -249,7 +249,7 @@ BEGIN
   RAISE NOTICE 'PASS Review-Befunde: Miete aufs Ist-Datum verschoben (kein Doppel), eine Plan-Anpassung, Vorzeitraum-Termin auf der Karte';
 END $$;
 
--- Befund 2026-10-23: Auszug eines NEUEN Kontos. account_unknown traegt den gepruefte Endsaldo + Stichtag (nur
+-- Auszug eines neuen Kontos. account_unknown traegt den gepruefte Endsaldo + Stichtag (nur
 -- wenn die Saldo-Probe stimmt); Anlegen mit diesem Saldo zum Stichtag -> derselbe Auszug = already_covered,
 -- der Folgeauszug schliesst ohne Abweichung an.
 DO $$
@@ -292,7 +292,7 @@ BEGIN
   RAISE NOTICE 'PASS Neues Konto per Auszug: gepruefter Endsaldo, already_covered, Folgeauszug ohne Abweichung';
 END $$;
 
--- Einmalige Grossausgaben (Owner-Entscheid 2026-10-30): oneoff_out = Summe der UNGEMATCHTEN Abgaenge mit
+-- Einmalige Grossausgaben: oneoff_out = Summe der ungematchten Abgaenge mit
 -- |Betrag| >= Grenze (finance.everyday_oneoff_eur, Default 250, in Kontowaehrung zum period_end); Stempel
 -- oneoff_threshold; grosse Eingaenge bleiben in unmatched_in. Ohne Kurs: keine Grenze, nichts einmalig.
 DO $$

@@ -1,10 +1,10 @@
 ﻿#Requires -Version 5.1
 # Dot-gesourct von build.ps1 (Helper + Script-Scope-Creds im Parent-Scope).
 
-# --- agent.estate.tool_set_person_record (WS-2, set_ = UPSERT je Person) ---------------------
-# Erfasst/aendert die amtlichen Stammdaten EINER Person (1 Zeile je Person, UPSERT + partiell).
-# Person (Pflicht) -> Slug via core.fn_resolve_person VOR dem Gate. Die fn normalisiert Steuer-
-# ID/RV-Nr. + spiegelt die Format-CHECKs freundlich. KEINE Geheimnisse (nur Kennnummern +
+# --- agent.estate.tool_set_person_record (set_ = UPSERT je Person) ---------------------
+# Erfasst/aendert die amtlichen Stammdaten einer Person (1 Zeile je Person, UPSERT + partiell).
+# Person (Pflicht) -> Slug via core.fn_resolve_person vor dem Gate. Die fn normalisiert Steuer-
+# ID/RV-Nr. + spiegelt die Format-CHECKs freundlich. Keine Geheimnisse (nur Kennnummern +
 # Fundort-Verweise). HITL owner_approval. adults_only-DB-Backstop in der fn. estate_rw.
 function Build-EstateSetPersonRecord {
     $CRED_POSTGRES = $CRED_ESTATE_RW
@@ -17,11 +17,10 @@ function Build-EstateSetPersonRecord {
     $errBad = Build-ToolError 'Person unresolved' @(660, 200) `
         "=The person '{{ `$('Start').item.json.person }}' could not be uniquely resolved ({{ `$('Resolve Person').item.json.hit_count }} match(es)). Candidates: {{ JSON.stringify(`$('Resolve Person').item.json.candidates) }}. Name the household member clearly."
 
-    # Strukturiertes Summary (Textkatalog): Keys + typisierte Rohwerte, das Gate rendert je Empfaenger-Sprache.
     # Nur genannte Felder erscheinen (-If); der Hinweis "unveraendert" steht als Note darunter.
     $S  = "`$('Start').item.json"
     $RP = "`$('Resolve Person').item.json"
-    # "DB ist das Gesetz": estate.fn_set_person_record laeuft als Probelauf VOR der Karte; derselbe Param-Satz geht nach dem Gate in den echten Write.
+    # estate.fn_set_person_record laeuft als Probelauf vor der Karte; derselbe Param-Satz geht nach dem Gate in den echten Write.
     $wg = New-FnWriteGate -Fn 'estate.fn_set_person_record' -DryPos @(660, 0) -WritePos @(1980, 0) `
         -WriteName 'Set record (atomic)' `
         -WriteSelect "(r->>'ok')::boolean AS ok, r->>'reason' AS reason, r->>'person_id' AS person_id, (r->>'created')::boolean AS created" `

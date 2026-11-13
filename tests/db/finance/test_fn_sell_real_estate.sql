@@ -72,7 +72,7 @@ BEGIN
     RAISE EXCEPTION 'FAIL sell_real_estate [already-sold]: erwartet ok=false, got %', v_res; END IF;
   RAISE NOTICE 'PASS sell_real_estate [already-sold: ok=false]';
 
-  -- TEST 5: not-found -> {ok:false, reason, candidates} als Daten (Vertragsaenderung DB-ist-das-Gesetz: Probelauf vor der Karte)
+  -- TEST 5: not-found -> {ok:false, reason, candidates} als Daten (Probelauf vor der Karte)
   SELECT finance.fn_sell_real_estate(jsonb_build_object('real_estate_name','__test_sre_missing__','proceeds_account_id',v_acct,'sale_date',CURRENT_DATE::text,'sale_price','100000')) INTO v_res;
   IF (v_res->>'ok')::boolean IS DISTINCT FROM false OR v_res->>'reason' NOT LIKE '%not found%' OR NOT (v_res ? 'candidates') THEN
     RAISE EXCEPTION 'FAIL sell_real_estate [not-found -> ok:false]: %', v_res; END IF;

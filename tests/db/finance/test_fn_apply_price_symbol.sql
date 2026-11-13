@@ -1,5 +1,5 @@
 -- tests/db/finance/test_fn_apply_price_symbol.sql
--- Kurs-Luecken-Karte [Uebernehmen] (2026-10-27): finance.fn_apply_price_symbol = atomarer Write hinter dem Tipp.
+-- Kurs-Luecken-Karte [Uebernehmen]: finance.fn_apply_price_symbol = atomarer Write hinter dem Tipp.
 -- Prueft:
 --   (1) offene Luecke + unveraendertes Feed-Symbol -> provider_symbol + quote_currency gesetzt, Rueckgabe
 --       {ok, holding_id, feed_symbol};

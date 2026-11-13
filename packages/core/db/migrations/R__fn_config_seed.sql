@@ -1,34 +1,36 @@
 -- ============================================================
--- fn_config_seed + fn_config_reset (Install-UX-Phase 4) — dpkg-conffile-Semantik fuer core.config
+-- fn_config_seed + fn_config_reset — dpkg-conffile-Semantik fuer core.config
 --
 --   fn_config_seed(p jsonb {category, key, value, description?, summary?, package?, type?, minimum?, maximum?,
 --                           managed_by?}) -> {ok, action}
---     DER Upsert des Config-Seeders (provisioning/lib/seed_data.sh::_seed_package_config). Regel:
+--     Der Upsert des Config-Seeders (provisioning/lib/seed_data.sh::_seed_package_config). category und key sind
+--     Pflicht (sonst {ok:false, reason:'category_and_key_required'}). Regel:
 --       * neue Zeile                         -> value = default_value = Manifest-Wert   (action 'inserted')
---       * default_value := Manifest-Wert IMMER (merkt den zuletzt ausgelieferten Default)
+--       * default_value := Manifest-Wert immer (merkt den zuletzt ausgelieferten Default)
 --       * description (EN Entwickler-Text), summary (DE Owner-Einzeiler), type/minimum/maximum (-> value_type/
---         minimum/maximum, Default string/NULL) und managed_by (Default owner) IMMER aus dem Manifest
---       * value ueberschreiben NUR, wenn der Owner ihn nie geaendert hat:
+--         minimum/maximum, Default string/NULL) und managed_by (Default owner) immer aus dem Manifest
+--       * value ueberschreiben nur, wenn der Owner ihn nie geaendert hat:
 --           value IS NOT DISTINCT FROM altem default_value                            (action 'updated')
---         sonst bleibt der Owner-Wert                                                 (action 'kept')
+--         sonst bleibt der Owner-Wert                                                 (action 'kept');
+--         unveraenderter Wert -> action 'unchanged'
 --       * Ausnahmen: managed_by='system' (z. B. api.core_version) -> immer ueberschreiben;
 --         Owner-Wert passt nicht (mehr) zu Typ/Grenzen des Manifests -> zurueck auf den Default (NOTICE; der
---         Pruef-Trigger trg_config_check_value_type prueft nur NEUE Werte, darum raeumt der Seed hier auf);
---         cron_enable = Laufzeit-Schalter -> value nie ueberschreiben (frueher DO NOTHING);
+--         Pruef-Trigger trg_config_check_value_type prueft nur neue Werte, darum raeumt der Seed hier auf);
+--         cron_enable = Laufzeit-Schalter -> value nie ueberschreiben;
 --         model, dessen Owner-Wert nicht zur Modell-Art des (neuen) Standards passt (core.fn_model_value_eligible,
 --         dieselbe Regel wie der Modell-Trigger trg_config_check_model_value) -> zurueck auf den Default (NOTICE;
 --         sonst blockierte der Trigger den ganzen Seed). Ein verwaister Modell-Key ist seit core:V024 unmoeglich
 --         (Fremdschluessel auf agent.ai_models).
---     Bestandszeilen von vor default_value (NULL) gelten als vom Owner gesetzt; ist ihr Wert gleich dem
---     neuen Default, folgen sie ab dann kuenftigen Defaults (default_value ist ab diesem Seed gesetzt). Vorher
---     traegt core:V026 fuer nie geaenderte Zeilen den damals (v0.2.0) ausgelieferten Standard nach -> sie folgen
+--     Bestandszeilen mit default_value NULL gelten als vom Owner gesetzt; ist ihr Wert gleich dem
+--     neuen Default, folgen sie ab dann kuenftigen Defaults (default_value ist ab diesem Seed gesetzt).
+--     core:V026 traegt fuer nie geaenderte Zeilen den damals ausgelieferten Standard nach -> sie folgen
 --     dem heutigen Standard schon in diesem Seed.
---     WARUM DB-seitig: "DB ist Gesetz" — die Regel gilt fuer JEDEN Schreibweg (lifeagents config set,
+--     Warum DB-seitig: "DB ist Gesetz", die Regel gilt fuer jeden Schreibweg (lifeagents config set,
 --     Paket-Wizard, Agent-fns wie fn_set_cron_enable, psql), ohne dass ein Schreiber ein Flag setzen muss.
---     Vorher: DO UPDATE SET value=EXCLUDED.value -> jedes Update setzte z. B. general.paperless_url zurueck.
 --
 --   fn_config_reset(p jsonb {category, key}) -> {ok, value} | {ok:false, reason}
 --     `lifeagents config reset`: value := default_value (der aktuell ausgelieferte Default).
+--     reason = category_and_key_required | unknown_key_or_no_default.
 --
 --   Aufrufer: postgres-Superuser (Seeder/CLI via runuser). SECURITY INVOKER, kein Grant an Lese-Rollen.
 -- ============================================================

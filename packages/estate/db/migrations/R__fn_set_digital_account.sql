@@ -1,16 +1,18 @@
 -- ============================================================
--- estate.fn_set_digital_account (ATOMIC WRITE — WS-2, partielles UPDATE)
+-- estate.fn_set_digital_account (ATOMIC WRITE — partielles UPDATE)
 --   Aendert ein bestehendes Konto des digitalen Nachlasses ("nicht gesendet = unveraendert").
---   Die ID loest das TOOL vor dem Gate via estate.fn_resolve_digital_account auf; not-found
---   hier = echte Ausnahme (RAISE). NIE Passwoerter — alle Zugangs-Felder sind Fundort-Verweise.
+--   Die ID loest das Tool vor dem Gate via estate.fn_resolve_digital_account auf; not-found
+--   hier = echte Ausnahme (RAISE 'Digital account <id> not found.'). Nie Passwoerter — alle Zugangs-Felder
+--   sind Fundort-Verweise.
 --   seed_backup_location bleibt crypto-gekoppelt: die freundliche Spiegelung prueft gegen die
---   EFFEKTIVE Kategorie (neu ODER bestehend); der Tabellen-CHECK ist der Backstop.
+--   effektive Kategorie (neu oder bestehend); der Tabellen-CHECK ist der Backstop.
 --   DB-Backstop: core.fn_check_write_permission('adults_only', chat_id) — Kind -> {ok:false}.
---   Eingabe jsonb: chat_id, digital_account_id, new_provider, new_username, new_category,
+--   Eingabe jsonb: chat_id, digital_account_id (Pflicht), new_provider, new_username, new_category,
 --     is_key_account (true|false), desired_action, access_path, legacy_contact_status,
 --     twofa_hint, seed_backup_location, notes.
---   RUECKGABE: {ok:true, digital_account_id} | {ok:false, reason} (korrigierbar).
---   Anwenden via: db_apply.ps1 -File packages\estate\db\migrations\R__fn_set_digital_account.sql
+--   Rueckgabe: {ok:true, digital_account_id} | {ok:false, reason} (korrigierbar); reasons: 'Write rejected (<perm>): …',
+--   'invalid new_category|desired_action|legacy_contact_status|is_key_account …', 'seed_backup_location is only valid
+--   for category crypto …'.
 -- ============================================================
 CREATE OR REPLACE FUNCTION estate.fn_set_digital_account(p jsonb)
 RETURNS jsonb LANGUAGE plpgsql AS $$

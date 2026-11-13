@@ -1,14 +1,14 @@
 -- tests/db/finance/test_fn_create_savings_goal.sql
 -- Testet fn_create_savings_goal: Ziel + recurring_payment + FK-Link.
--- Rate/Zieldatum rechnet die DB (fn_savings_rate_schedule), NICHT das LLM:
--- target_amount + GENAU EINES von {target_date, monthly_savings_rate}.
+-- Rate/Zieldatum rechnet die DB (fn_savings_rate_schedule), nicht das LLM:
+-- target_amount + genau eines von {target_date, monthly_savings_rate}.
 BEGIN;
 
 DO $$
 DECLARE
   v_result   JSONB;
   v_acct_id  INT;
-  v_pot_id   INT;   -- Audit Paket 3: Sparkonto (Reserve-Topf) ist Pflicht
+  v_pot_id   INT;   -- Sparkonto (Reserve-Topf) ist Pflicht
   v_goal_id  INT;
   v_rp_id    INT;
   v_dom      SMALLINT := 15;
@@ -29,7 +29,7 @@ BEGIN
   ) INTO v_result;
   v_pot_id := (v_result->>'account_id')::int;
 
-  -- TEST 1: ZIEL-getrieben — 12000 EUR, first 2027-01-01 .. target 2028-01-01 -> 12 Monate -> Rate 1000 (DB-berechnet)
+  -- TEST 1: ziel-getrieben — 12000 EUR, first 2027-01-01 .. target 2028-01-01 -> 12 Monate -> Rate 1000 (DB-berechnet)
   SELECT finance.fn_create_savings_goal(jsonb_build_object(
     'name',                '__test_saving_goal__',
     'goal_type',           'vacation',
@@ -103,7 +103,7 @@ BEGIN
   END IF;
   RAISE NOTICE 'PASS fn_create_savings_goal [schedule_day_of_month=%]', v_dom;
 
-  -- TEST 2: RATEN-getrieben — 50000 EUR bei 200/Monat (kein target_date) -> DB berechnet target_date (first + 250 Monate)
+  -- TEST 2: raten-getrieben — 50000 EUR bei 200/Monat (kein target_date) -> DB berechnet target_date (first + 250 Monate)
   SELECT finance.fn_create_savings_goal(jsonb_build_object(
     'name', '__test_saving_goal_ratedriven__', 'target_amount', 50000,
     'monthly_savings_rate', 200,
@@ -153,7 +153,7 @@ BEGIN
   END IF;
   RAISE NOTICE 'PASS fn_create_savings_goal [target<=0 -> ok:false]';
 
-  -- TEST 6 (WS-4): beneficiary_person_id (beguenstigte Person, z. B. Kind-Sparziel) gesetzt + NULL=Haushalt.
+  -- TEST 6: beneficiary_person_id (beguenstigte Person, z. B. Kind-Sparziel) gesetzt + NULL=Haushalt.
   INSERT INTO agent.persons (person_id, full_name, role)
   VALUES ('__test_sg_kid', 'Test Kind', 'child') ON CONFLICT (person_id) DO NOTHING;
   SELECT finance.fn_create_savings_goal(jsonb_build_object(
@@ -165,7 +165,7 @@ BEGIN
   IF NOT EXISTS (SELECT 1 FROM finance.savings_goals WHERE id = v_goal_id AND beneficiary_person_id = '__test_sg_kid') THEN
     RAISE EXCEPTION 'FAIL fn_create_savings_goal [6]: beneficiary_person_id nicht gesetzt (id=%)', v_goal_id;
   END IF;
-  -- Das ZIEL aus TEST 1 (ohne beneficiary) -> NULL = Haushalt.
+  -- Das Ziel aus TEST 1 (ohne beneficiary) -> NULL = Haushalt.
   IF NOT EXISTS (SELECT 1 FROM finance.savings_goals WHERE name = '__test_saving_goal__' AND beneficiary_person_id IS NULL) THEN
     RAISE EXCEPTION 'FAIL fn_create_savings_goal [6b]: ohne beneficiary muss NULL=Haushalt sein';
   END IF;
@@ -189,7 +189,7 @@ BEGIN
     RAISE NOTICE 'PASS fn_create_savings_goal [6c ohne Person -> Inhaber des Spartopfs]';
   END;
 
-  -- TEST 7 (WS-C1): priority gesetzt -> persistiert; ohne priority -> NULL (unpriorisiert).
+  -- TEST 7: priority gesetzt -> persistiert; ohne priority -> NULL (unpriorisiert).
   SELECT finance.fn_create_savings_goal(jsonb_build_object(
     'name', '__test_saving_goal_prio__', 'target_amount', 6000, 'target_date', '2030-01-01',
     'account_id', v_acct_id, 'reserve_account_id', v_pot_id,'schedule_day_of_month', 1, 'first_payment_date', '2027-01-01',
@@ -203,7 +203,7 @@ BEGIN
     RAISE EXCEPTION 'FAIL fn_create_savings_goal [7b priority]: ohne Eingabe muss priority NULL sein'; END IF;
   RAISE NOTICE 'PASS fn_create_savings_goal [7 priority=1 gesetzt + ohne Eingabe NULL]';
 
-  -- TEST 9 (Audit Paket 3): ein Sparziel braucht ein Sparkonto -> ohne/ungeeignetes Konto {ok:false}, KEIN Write.
+  -- TEST 9: ein Sparziel braucht ein Sparkonto -> ohne/ungeeignetes Konto {ok:false}, kein Write.
   DECLARE v_cnt0 int; v_depot int; v_closed int; v_loan int; BEGIN
     SELECT count(*) INTO v_cnt0 FROM finance.savings_goals;
     -- (9a) ohne reserve_account_id
@@ -254,10 +254,10 @@ BEGIN
 
 END $$;
 
--- TEST 8 (Phase L WS-4): Ueber-Spar-Sofort-Hinweis (Event-Fold). Die Fold-fn liest monthly_cashflow_summary
--- (GLOBALE Single-Row-View; Audit Paket 3: monthly_free>=0 + monthly_account_change<0) -> SAVEPOINT + bestehende rp
+-- TEST 8: Ueber-Spar-Sofort-Hinweis (Event-Fold). Die Fold-fn liest monthly_cashflow_summary
+-- (globale Single-Row-View; monthly_free>=0 + monthly_account_change<0) -> SAVEPOINT + bestehende rp
 -- der TESTs 1-7 neutralisieren, kontrollierten Cashflow setzen, danach ROLLBACK TO SAVEPOINT. (8a) Reserve-Rate
--- kippt die Kontoveraenderung <0 -> savings_squeeze-Note im {ok:true}-Return. (8b) gesunde Rate -> KEINE Note.
+-- kippt die Kontoveraenderung <0 -> savings_squeeze-Note im {ok:true}-Return. (8b) gesunde Rate -> keine Note.
 SAVEPOINT sg_fold;
 UPDATE finance.recurring_payments SET status='paused';
 DO $$
@@ -290,7 +290,7 @@ BEGIN
   v_rp8a := (v_result->>'recurring_payment_id')::int;
   UPDATE finance.recurring_payments SET status='paused' WHERE id = v_rp8a;
 
-  -- (8b) gesunde Rate 200/Monat -> monthly_net +1000, liquidity_net +800 -> KEINE Note
+  -- (8b) gesunde Rate 200/Monat -> monthly_net +1000, liquidity_net +800 -> keine Note
   SELECT finance.fn_create_savings_goal(jsonb_build_object(
     'name','__pl_fold_goal_ok__','target_amount', 90000, 'monthly_savings_rate', 200,
     'account_id', v_fund, 'reserve_account_id', v_res,
@@ -302,7 +302,7 @@ BEGIN
     RAISE EXCEPTION 'FAIL [8b]: savings_squeeze-Fold trotz gesundem liquidity_net (+800), got %', v_result; END IF;
   RAISE NOTICE 'PASS [8b WS-4: gesunde Rate -> kein Fold]';
 
-  -- (8c, Code-Review) schon bestehendes Pflicht-Defizit: Ausgabe 1200 > Einnahmen 1000 -> neues Ziel warnt trotzdem
+  -- (8c) schon bestehendes Pflicht-Defizit: Ausgabe 1200 > Einnahmen 1000 -> neues Ziel warnt trotzdem
   UPDATE finance.recurring_payments SET status = 'paused' WHERE id = (v_result->>'recurring_payment_id')::int;
   INSERT INTO finance.recurring_payments (name, account_id, amount, schedule_unit, first_payment_date, valid_from)
   VALUES ('__pl_fold_rent__', v_fund, -1200, 'month', current_date, current_date);
@@ -318,8 +318,8 @@ BEGIN
 END $$;
 ROLLBACK TO SAVEPOINT sg_fold;
 
--- Sparziel-Zweckbindung 2026-10-27 (Anlegen ohne Rate / mit Startbestand / mit Sparplan):
---  (C1) Fall: Geld liegt schon auf einem P2P-Konto, already_saved = Ziel, KEIN Abbuchungskonto -> ok, keine rp,
+-- Sparziel-Zweckbindung (Anlegen ohne Rate / mit Startbestand / mit Sparplan):
+--  (C1) Fall: Geld liegt schon auf einem P2P-Konto, already_saved = Ziel, kein Abbuchungskonto -> ok, keine rp,
 --       monthly_rate 0, current_amount = Ziel, 100 %, eine manual-Journal-Zeile, Karten-Hinweis "gedeckt"
 --  (C2) teilweise gedeckt: Rate auf dem Rest, rp in den Topf, Startbestand im Journal
 --  (C3) keine Quelle (kein Startbestand, keine Rate/kein Abbuchungskonto, kein Sparplan) -> ok:false, kein Write
@@ -384,7 +384,7 @@ BEGIN
            'target_date',(core.fn_today() + 900)::text,'reserve_account_id',v_depot,'already_saved',5000));
   IF (v_r->>'ok')::boolean IS DISTINCT FROM true OR v_r->>'recurring_payment_id' IS NOT NULL
      OR (SELECT currency FROM finance.savings_goal_reserve_entries WHERE savings_goal_id = (v_r->>'goal_id')::int) IS DISTINCT FROM 'EUR'
-     -- 2026-11-06: Startbestand 5000 im Depot liegt ueber dem Pfad (Ziel 4000 in ~30 Monaten) -> Warnkarte mit Knopf
+     -- Startbestand 5000 im Depot liegt ueber dem Pfad (Ziel 4000 in ~30 Monaten) -> Warnkarte mit Knopf
      -- "Risiko eingehen" statt des weichen Hinweises; ohne gezeigte Lage kein Stempel
      OR NOT (v_r->'card_lines' @> '[{"value":"finance.note.goal_depot_risk"}]'::jsonb)
      OR v_r->>'card_approve_key' IS DISTINCT FROM 'finance.hitl.accept_depot_risk'
@@ -431,9 +431,9 @@ BEGIN
   RAISE NOTICE 'PASS create [C9: Fremdwaehrungs-Startbestand ohne Kurs -> ok:false]';
 END $$;
 
--- Befund 2026-10-27: (a) ein bestehender Dauerauftrag in den Topf wurde geloescht und als Ziel-Rate ohne Tag neu
--- angelegt -> Guard existing_transfer + Fortfuehren (replace_transfer); (b) ein Depot-Ziel mit Sparplaenen
--- brauchte Datum oder Rate -> mehrere Plaene, Datum aus ihrem Monatsbetrag.
+-- (a) ein bestehender Dauerauftrag in den Topf darf nicht geloescht und als Ziel-Rate ohne Tag neu
+-- angelegt werden -> Guard existing_transfer + Fortfuehren (replace_transfer); (b) ein Depot-Ziel mit Sparplaenen
+-- braucht weder Datum noch Rate -> mehrere Plaene, Datum aus ihrem Monatsbetrag.
 DO $$
 DECLARE
   v_r      JSONB;
@@ -454,7 +454,7 @@ BEGIN
   SELECT (finance.fn_create_account('{"name":"__sgr_pot4__","account_type":"cash","account_holder":"Test","currency":"EUR"}'::jsonb)->>'account_id')::int INTO v_pot4;
   SELECT (finance.fn_create_account('{"name":"__sgr_pot5__","account_type":"p2p","account_holder":"Test","currency":"EUR"}'::jsonb)->>'account_id')::int INTO v_pot5;
 
-  -- (R1) freistehender Dauerauftrag (Start kuenftig) in pot1 -> Ziel mit Rate: existing_transfer VOR dem Konto-Check
+  -- (R1) freistehender Dauerauftrag (Start kuenftig) in pot1 -> Ziel mit Rate: existing_transfer vor dem Konto-Check
   v_r := finance.fn_create_recurring_transfer(jsonb_build_object('name','__sgr_uebertrag1__','from_account_id',v_from,
            'to_account_id',v_pot1,'amount',150,'schedule_unit','month','schedule_day_of_month',1,'first_payment_date',v_next1));
   v_old := (v_r->>'recurring_payment_id')::int;
@@ -482,7 +482,7 @@ BEGIN
   RAISE NOTICE 'PASS create [R2: replace -> gleiches Konto/Tag/erster Termin, Rate = Dauerauftrag, Alt geloescht]';
 
   -- (R3) laufender Dauerauftrag (Start in der Vergangenheit) + Datum genannt: er endet am naechsten Termin (bleibt als
-  --      Historie), die Rate bleibt SEIN Betrag, die Karte zeigt die noetige Rate.
+  --      Historie), die Rate bleibt sein Betrag, die Karte zeigt die noetige Rate.
   INSERT INTO finance.recurring_payments (name, account_id, target_account_id, amount, schedule_interval, schedule_unit,
          schedule_day_of_month, first_payment_date, valid_from, status)
   VALUES ('__sgr_uebertrag2__', v_from, v_pot2, -100, 1, 'month', 1,
@@ -498,7 +498,7 @@ BEGIN
      OR (SELECT status FROM finance.recurring_payments WHERE id = v_old) IS DISTINCT FROM 'active'
      OR NOT (v_r->'card_lines' @> '[{"value":"finance.note.goal_transfer_rate"}]'::jsonb) THEN
     RAISE EXCEPTION 'FAIL create [R3 laufender Dauerauftrag]: % rp=%', v_r, row_to_json(v_rp); END IF;
-  -- noch nicht gebuchte, ueberfaellige Termine des alten Dauerauftrags bleiben offen (Code-Review 2026-10-27)
+  -- noch nicht gebuchte, ueberfaellige Termine des alten Dauerauftrags bleiben offen
   IF NOT EXISTS (SELECT 1 FROM finance.fn_recurring_due_open(current_date) o
                  WHERE o.recurring_payment_id = v_old AND o.due_date < v_due) THEN
     RAISE EXCEPTION 'FAIL create [R3 offene Termine]: ueberfaellige Termine des alten Dauerauftrags verschwunden'; END IF;
@@ -594,7 +594,7 @@ BEGIN
   RAISE NOTICE 'PASS create [P3: Sparplan ohne Wechselkurs -> ok:false statt still aus der Summe]';
 END $$;
 
--- ---------- Befund 2026-11-03: Sparziel-Rate mit spaeter eroeffnetem Topf: valid_from ueber beide Konten ----------
+-- ---------- Sparziel-Rate mit spaeter eroeffnetem Topf: valid_from ueber beide Konten ----------
 DO $$
 DECLARE
   T DATE := core.fn_today();

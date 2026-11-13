@@ -1,15 +1,13 @@
 -- ============================================================
 -- Core Config — Schema "core", Tabelle "config"
 -- Zweck:   Zentraler, agenten-uebergreifender Konfig-Store
---          (category/key/value). Loest die alte ENV-Var-Injection
---          (core.sub_env_var_injection, Set-Node "Google"/"Anthropic")
---          ab und generalisiert sie: KI-Modellwahl ist nur der Anfang,
---          jede kuenftige Config wird hier eine Zeile.
+--          (category/key/value). KI-Modellwahl ist ein Anwendungsfall,
+--          jede Config ist hier eine Zeile.
 --
--- Schema-Wahl: "core" (neu) = genuin cross-cutting Infrastruktur,
+-- Schema-Wahl: "core" = genuin cross-cutting Infrastruktur,
 --   anders als "agent" (Agenten-Domaene, inkl. agent.core_contexts =
---   Kontext FUER die Agenten). config ist der erste echte core-Belang;
---   deckt sich mit der Workflow-Namensgebung (core.* = cross-cutting).
+--   Kontext fuer die Agenten); deckt sich mit der Workflow-Namensgebung
+--   (core.* = cross-cutting).
 --
 -- Verbrauch zur Laufzeit:
 --   core.sub_load_config liest diese Tabelle, pivotet die Zeilen zu
@@ -18,13 +16,13 @@
 --   Beispiel: model.finance -> 'claude-sonnet-latest', transcription.provider -> 'google'.
 --
 -- Integritaet:
---   category='model' => value (und default_value) MUSS ein model_key aus agent.ai_models sein
+--   category='model' => value (und default_value) muss ein model_key aus agent.ai_models sein
 --   (Fremdschluessel ueber die generierten Spalten model_ref/model_default_ref, core:V024) und dieselbe
 --   Modell-Art (mode) wie der Standard haben (Trigger 2, core.fn_model_value_eligible). agent.ai_models muss
 --   also vorhanden/geseedet sein, bevor eine model-Zeile geschrieben wird (seed_data.sh seedet ai_models zuerst).
 --   Jeder neue Wert passt zu value_type/minimum/maximum (Trigger 3, z. B. Zeitplan = gueltiger Cron).
 --
--- Diese Datei enthaelt nur das SCHEMA (leere Tabelle). Zeilen kommen
+-- Diese Datei enthaelt nur das Schema (leere Tabelle). Zeilen kommen
 -- ausschliesslich per seed_data.sh (_seed_package_config) aus den .config-
 -- Bloecken aller packages/*/manifest.json, paket-skopiert (package-Spalte).
 --
@@ -42,7 +40,7 @@ CREATE TABLE IF NOT EXISTS core.config (
     key         varchar(128) NOT NULL,                  -- Konsument/Belang, z. B. 'finance', 'orchestrator', 'provider'
     value       text         NOT NULL,                  -- der konfigurierte Wert
     description text NOT NULL DEFAULT '',               -- optionale Kurzbeschreibung
-    package     text NOT NULL DEFAULT 'core',           -- besitzendes/deklarierendes Paket (Ownership/Uninstall-Scope; Info-Spalte, NICHT Teil der Uniqueness)
+    package     text NOT NULL DEFAULT 'core',           -- besitzendes/deklarierendes Paket (Ownership/Uninstall-Scope; Info-Spalte, nicht Teil der Uniqueness)
     created_at  timestamptz NOT NULL DEFAULT now(),
     updated_at  timestamptz NOT NULL DEFAULT now(),
     UNIQUE (category, key)
@@ -50,44 +48,43 @@ CREATE TABLE IF NOT EXISTS core.config (
 
 -- Bestehende DBs (config evtl. ohne package angelegt): Spalte additiv nachziehen (leer -> kein
 -- Table-Rewrite). Idiom wie core.services/agent.core_contexts (CREATE-Endzustand + ALTER ADD COLUMN
--- IF NOT EXISTS), KEINE V-Migration -- additive Spalte mit Default, kein Backfill/destruktiv. WS4a-WP1.
--- Jedes Paket DEKLARIERT seine Config im manifest.json (.config-Block); der Host seedet sie paket-skopiert
+-- IF NOT EXISTS).
+-- Jedes Paket deklariert seine Config im manifest.json (.config-Block); der Host seedet sie paket-skopiert
 -- (seed_data.sh _seed_package_config) -> package = Herkunfts-/Uninstall-Marker. Schluessel bleibt global
 -- eindeutig (UNIQUE category,key) -> die CLI adressiert eine Zeile ohne Paket-Wissen.
 ALTER TABLE core.config ADD COLUMN IF NOT EXISTS package text NOT NULL DEFAULT 'core';
 
--- default_value (Install-UX-Phase 4): der ZULETZT ausgelieferte Manifest-Default (dpkg-conffile-Muster, wie
--- der managed_by-Guard auf agent.core_contexts). Der Seed (core.fn_config_seed) setzt ihn IMMER neu und
--- ueberschreibt value NUR, wenn value IS NOT DISTINCT FROM dem alten default_value (= der Owner hat nie
+-- default_value: der zuletzt ausgelieferte Manifest-Default (dpkg-conffile-Muster, wie
+-- der managed_by-Guard auf agent.core_contexts). Der Seed (core.fn_config_seed) setzt ihn immer neu und
+-- ueberschreibt value nur, wenn value IS NOT DISTINCT FROM dem alten default_value (= der Owner hat nie
 -- geaendert). So ueberlebt ein per `lifeagents config set`/Wizard/Agent gesetzter Wert jedes Update, ohne dass
 -- ein Schreiber etwas markieren muss. NULL = Bestandszeile von vor dieser Spalte -> gilt als vom Owner gesetzt
 -- (fn_config_seed behaelt den Wert) — ausser core:V026 traegt fuer eine nie geaenderte Zeile den v0.2.0-Standard nach.
--- Die Spalte selbst: additiv, kein Backfill -> Init-Idiom, keine V-Migration.
 ALTER TABLE core.config ADD COLUMN IF NOT EXISTS default_value text;
 
 -- summary: deutscher Owner-Einzeiler je Eintrag (Manifest `.config.<c>.<k>.summary`) fuer `lifeagents config
--- list`/`config set` — `description` bleibt der englische Entwickler-Text. Wie description IMMER aus dem Manifest
+-- list`/`config set` — `description` bleibt der englische Entwickler-Text. Wie description immer aus dem Manifest
 -- (core.fn_config_seed), Muster core.package_registry.display_name. CHECK = DB-Gesetz: keine Steuerzeichen, weil die
 -- CLI die Zeilen mit \x1f-Trenner zeilenweise liest (ein Umbruch/\x1f verschoebe die Spalten); die Laenge (<= 100)
--- prueft contract_lint. Additiv mit Default, kein Backfill -> Init-Idiom, keine V-Migration.
+-- prueft contract_lint.
 ALTER TABLE core.config ADD COLUMN IF NOT EXISTS summary text NOT NULL DEFAULT ''
     CONSTRAINT config_summary_single_line CHECK (summary !~ '[[:cntrl:]]');
 
--- managed_by (Muster agent.core_contexts.managed_by / pg_settings.context): WER den Wert verwaltet.
+-- managed_by (Muster agent.core_contexts.managed_by / pg_settings.context): wer den Wert verwaltet.
 --   'owner'  = Einstellung des Owners (lifeagents config list/set/reset zeigen + aendern sie).
 --   'system' = Systemwert, den jedes Update neu setzt (z. B. api.core_version) -> fn_config_seed ueberschreibt
---              ihn IMMER, die CLI blendet ihn aus (eine Zeile, die `config list` zeigt, muss auch wirken).
--- Wie description IMMER aus dem Manifest (`.config.<c>.<k>.managed_by`, Default owner). Additiv, Init-Idiom.
+--              ihn immer, die CLI blendet ihn aus (eine Zeile, die `config list` zeigt, muss auch wirken).
+-- Wie description immer aus dem Manifest (`.config.<c>.<k>.managed_by`, Default owner).
 ALTER TABLE core.config ADD COLUMN IF NOT EXISTS managed_by text NOT NULL DEFAULT 'owner'
     CONSTRAINT config_managed_by_check CHECK (managed_by IN ('owner', 'system'));
 
 -- value_type + minimum/maximum (Muster pg_settings.vartype/min_val/max_val; Feldnamen im Manifest nach JSON Schema
--- `type`/`minimum`/`maximum`): welche Werte eine Zeile annimmt. Die DB prueft jeden NEUEN Wert (Trigger 3 unten) —
--- vorher konnte `lifeagents config set` z. B. 'abc' in eine Tage-Zahl schreiben, und der Cron, der den Wert mit
--- ::int liest, brach erst zur Laufzeit ab. 'string' = frei (Default), 'cron' = Zeitplan (core.fn_config_cron_valid),
+-- `type`/`minimum`/`maximum`): welche Werte eine Zeile annimmt. Die DB prueft jeden neuen Wert (Trigger 3 unten) —
+-- sonst koennte `lifeagents config set` z. B. 'abc' in eine Tage-Zahl schreiben, und der Cron, der den Wert mit
+-- ::int liest, braeche erst zur Laufzeit ab. 'string' = frei (Default), 'cron' = Zeitplan (core.fn_config_cron_valid),
 -- 'integer'/'number' (optional mit Grenzen), 'boolean' = genau 'true'|'false' (die Gates vergleichen = 'true').
--- category='model' bleibt beim Modell-Trigger (Wert = model_key aus agent.ai_models). Wie description IMMER aus dem
--- Manifest (fn_config_seed). Additiv mit Default, kein Backfill -> Init-Idiom.
+-- category='model' bleibt beim Modell-Trigger (Wert = model_key aus agent.ai_models). Wie description immer aus dem
+-- Manifest (fn_config_seed).
 ALTER TABLE core.config ADD COLUMN IF NOT EXISTS value_type text NOT NULL DEFAULT 'string'
     CONSTRAINT config_value_type_check CHECK (value_type IN ('string', 'integer', 'number', 'boolean', 'cron'));
 ALTER TABLE core.config ADD COLUMN IF NOT EXISTS minimum numeric;
@@ -97,7 +94,7 @@ ALTER TABLE core.config ADD CONSTRAINT config_bounds_check CHECK (
     ((minimum IS NULL AND maximum IS NULL) OR value_type IN ('integer', 'number'))
     AND (minimum IS NULL OR maximum IS NULL OR minimum <= maximum));
 
--- model_ref / model_default_ref (Modell-Phase 2): value bzw. default_value, aber NUR bei category='model' (sonst
+-- model_ref / model_default_ref: value bzw. default_value, aber nur bei category='model' (sonst
 -- NULL). PG kennt keinen Fremdschluessel mit WHERE — die generierten Spalten machen ihn moeglich: core:V024 legt
 -- darauf je einen FK -> agent.ai_models(model_key) ON DELETE RESTRICT (ein genutztes Modell ist nicht loeschbar,
 -- ein Wert kann nie auf ein fehlendes Modell zeigen). Der FK selbst liegt bewusst in V024, nicht hier: die
@@ -109,7 +106,7 @@ ALTER TABLE core.config ADD COLUMN IF NOT EXISTS model_default_ref text
 
 -- ============================================================
 -- Wert-Pruefung (von Trigger 3 und core.fn_config_seed genutzt). IMMUTABLE, ohne Tabellen-Zugriff.
---   core.fn_config_cron_valid(expr): 5 Felder (Minute Stunde Tag Monat Wochentag) oder 6 Felder mit FESTER Sekunde
+--   core.fn_config_cron_valid(expr): 5 Felder (Minute Stunde Tag Monat Wochentag) oder 6 Felder mit fester Sekunde
 --     vorn (n8n-Form; `* * * * * *` = jede Sekunde -> abgelehnt). Je Feld: *, n, a-b, Liste mit ',', Schritt /s
 --     (s >= 1); keine Namen (MON/JAN). Gleiche Regeln wie scripts/config_test.ps1 (Manifest-Defaults vor dem
 --     Commit) — beide pruefen dieselbe Fallliste tests/util/util_cron_cases.sql.
@@ -223,9 +220,9 @@ CREATE TRIGGER trg_config_touch
 
 -- ============================================================
 -- core.fn_model_value_eligible(value, default) -> passt dieses Modell in einen Modell-Eintrag mit diesem Standard?
---   true <=> value ist ein bekannter model_key UND hat dieselbe Modell-Art (agent.ai_models.mode) wie der Standard;
+--   true <=> value ist ein bekannter model_key und hat dieselbe Modell-Art (agent.ai_models.mode) wie der Standard;
 --   Standard NULL (Bestandszeile von vor default_value) -> nur "existiert"; Standard unbekannt -> false.
---   DIE eine Regel fuer drei Nutzer: Trigger 2 (unten), den Seed-Guard in core.fn_config_seed und die Modell-Auswahl
+--   Die eine Regel fuer drei Nutzer: Trigger 2 (unten), den Seed-Guard in core.fn_config_seed und die Modell-Auswahl
 --   von `lifeagents config set` (provisioning/lib/config_cli.sh). STABLE (liest agent.ai_models), plpgsql = spaet
 --   gebunden; search_path gepinnt + alles schema-qualifiziert (fn_config_seed laeuft mit search_path=pg_catalog).
 -- ============================================================
@@ -245,9 +242,9 @@ END;
 $$;
 
 -- ============================================================
--- TRIGGER 2: Modell-Wert pruefen (freundliche Meldung VOR dem Fremdschluessel-Backstop aus core:V024)
+-- TRIGGER 2: Modell-Wert pruefen (freundliche Meldung vor dem Fremdschluessel-Backstop aus core:V024)
 --   category='model' => value (und default_value) muss ein bekannter model_key sein und dieselbe Modell-Art wie der
---   Standard haben (core.fn_model_value_eligible). NUR bei INSERT oder Aenderung von value/default_value: ein
+--   Standard haben (core.fn_model_value_eligible). Nur bei INSERT oder Aenderung von value/default_value: ein
 --   vorhandener Wert, der zu einer spaeter eingefuehrten Regel nicht passt, darf kein anderes UPDATE abbrechen
 --   (der Seed setzt ihn gezielt zurueck, core.fn_config_seed) — gleiche Regel wie Trigger 3.
 -- ============================================================
@@ -289,7 +286,7 @@ CREATE TRIGGER trg_config_check_model_value
 
 -- ============================================================
 -- TRIGGER 3: Wert passt zum Typ (value_type + minimum/maximum, s. oben)
---   NUR bei INSERT oder echter Wertaenderung: ein vorhandener Owner-Wert, der zu einem spaeter eingefuehrten Typ
+--   Nur bei INSERT oder echter Wertaenderung: ein vorhandener Owner-Wert, der zu einem spaeter eingefuehrten Typ
 --   nicht passt, darf kein Update abbrechen (der Seed setzt ihn dann gezielt auf den Standard zurueck,
 --   core.fn_config_seed). check_violation + deutscher Text -> `lifeagents config set` zeigt, was erwartet wird.
 -- ============================================================

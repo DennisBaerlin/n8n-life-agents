@@ -78,7 +78,7 @@ BEGIN
   IF v_cnt <> 1 THEN RAISE EXCEPTION 'FAIL delete_loan [Kredit C faelschlich geloescht]'; END IF;
   RAISE NOTICE 'PASS delete_loan [repay-guard: ok=false, Kredit bleibt]';
 
-  -- TEST 4: not-found -> {ok:false, reason, candidates} als Daten (Vertragsaenderung DB-ist-das-Gesetz: Probelauf vor der Karte)
+  -- TEST 4: not-found -> {ok:false, reason, candidates} als Daten (Probelauf vor der Karte)
   SELECT finance.fn_delete_loan('{"loan_name":"__test_dl_missing__"}'::jsonb) INTO v_res;
   IF (v_res->>'ok')::boolean IS DISTINCT FROM false OR v_res->>'reason' NOT LIKE '%not found%' OR NOT (v_res ? 'candidates') THEN
     RAISE EXCEPTION 'FAIL delete_loan [not-found -> ok:false]: %', v_res; END IF;

@@ -1,10 +1,10 @@
 -- ============================================================
--- fn_clear_e2e_data (GEGUARDETES TEST-CLEANUP, career-Teil — KEIN Produktiv-Tool)
---   Paket-Hook der Konvention <pkg>.fn_clear_e2e_data(text) (Phase B, docs/package-contract.md §6): der Core-
---   Dispatcher agent.fn_clear_e2e_data ruft ihn je installiertem Paket (gleiche Transaktion).
+-- fn_clear_e2e_data (GEGUARDETES TEST-CLEANUP, career-Teil)
+--   Kein Produktiv-Tool. Paket-Hook der Konvention <pkg>.fn_clear_e2e_data(text) (docs/package-contract.md §6):
+--   der Core-Dispatcher agent.fn_clear_e2e_data ruft ihn je installiertem Paket (gleiche Transaktion).
 --   Loescht die Sentinel-Job-Treffer (title traegt '__E2E__') + Post-Assertion (keiner darf bleiben).
---   p_runid: NULL/'' = generischer Sweep, sonst nur '__E2E_<runid>__'.
---   RUECKGABE: {job_matches}
+--   Eingabe: p_runid optional (nur [a-z0-9], sonst RAISE): NULL/'' = generischer Sweep, sonst nur '__E2E_<runid>__'.
+--   Rueckgabe: {job_matches} (Anzahl geloeschter Zeilen).
 --   Tests: tests/db/core/test_fn_clear_e2e_data.sql
 -- ============================================================
 CREATE OR REPLACE FUNCTION career.fn_clear_e2e_data(p_runid text DEFAULT NULL)

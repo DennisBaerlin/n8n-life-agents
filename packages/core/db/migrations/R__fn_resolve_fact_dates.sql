@@ -1,14 +1,15 @@
 -- ============================================================
--- core.fn_resolve_fact_dates (relative Zeitangaben in einem Fakten-/Plan-jsonb aufloesen)
---   Rekursiv ueber Objekte und Arrays: jeder STRING-Wert unter einem Key, der auf "_date" endet oder "since"
+-- fn_resolve_fact_dates (READ-ONLY) — relative Zeitangaben in einem Fakten-/Plan-jsonb aufloesen
+--   Eingabe: p jsonb, p_today date (optional). Rueckgabe: jsonb gleicher Form (NULL bei NULL).
+--   Rekursiv ueber Objekte und Arrays: jeder String-Wert unter einem Key, der auf "_date" endet oder "since"
 --   heisst und nicht schon absolut ist (YYYY, YYYY-MM, YYYY-MM-DD), laeuft durch core.fn_resolve_date.
---   GENAUIGKEIT FOLGT DER ANGABE: ein Offset in Jahren ergibt YYYY, in Monaten YYYY-MM, alles andere (Tage,
+--   Die Genauigkeit folgt der Angabe: ein Offset in Jahren ergibt YYYY, in Monaten YYYY-MM, alles andere (Tage,
 --   Wochen, Wochentag, today) den Tag. So wird aus "mein Sohn ist 5" (birth_date "-5 years") kein erfundener
 --   Geburtstag, sondern "2021" — das der family-Validator als Geburtsdatum ablehnt (der Agent fragt nach).
 --   Nicht aufloesbare Werte bleiben unveraendert (der Validator lehnt sie dann mit Grund ab); andere Keys,
 --   Nicht-Strings und JSON-null bleiben unberuehrt. Keine Paket-Keys im Core: die Regel haengt nur am Suffix.
 --   Aufrufer: agent.fn_set_context_facts (facts), agent.fn_advisor_save_section (section_data) und die
---   Tool-Knoten "Resolve dates" VOR der Karte (Karte = Speicher, ein Aufloesungszeitpunkt). Idempotent.
+--   Tool-Knoten "Resolve dates" vor der Karte (Karte = Speicher, ein Aufloesungszeitpunkt). Idempotent.
 --   STABLE, INVOKER. Tests: tests/db/core/test_fn_resolve_date.sql
 -- ============================================================
 CREATE OR REPLACE FUNCTION core.fn_resolve_fact_dates(p jsonb, p_today date DEFAULT NULL)

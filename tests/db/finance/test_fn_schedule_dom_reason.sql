@@ -1,5 +1,5 @@
 -- tests/db/finance/test_fn_schedule_dom_reason.sql
--- Testet fn_schedule_dom_reason: die EINE Adresse des Fehlertexts fuer einen ungueltigen Buchungstag
+-- Testet fn_schedule_dom_reason: die eine Adresse des Fehlertexts fuer einen ungueltigen Buchungstag
 -- (gueltig: NULL, 1-28, -1 Monatsletzter, -2 vorletzter Tag). Domaene/CHECKs -> test_schedule_dom_domain.sql.
 BEGIN;
 DO $$

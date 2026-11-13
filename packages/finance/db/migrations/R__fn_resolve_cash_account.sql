@@ -1,8 +1,9 @@
 -- ============================================================
--- fn_resolve_cash_account (KONTONAME -> id fuer Geldbewegungen zwischen eigenen Konten)
+-- fn_resolve_cash_account (READ, STABLE — Kontoname -> id fuer Geldbewegungen zwischen eigenen Konten)
 --   Loest einen Kontonamen unter den aktiven saldo-basierten Konten auf (fn_goal_pot_account_types: cash/Tagesgeld,
---   Festgeld, P2P; fn_resolve_account: erst exakt, dann ohne Gross-/Kleinschreibung). Rueckgabe {ok:true, id} |
---   {ok:false, code:'not_found'|'ambiguous', reason, candidates}; ein Depot-Name bekommt den Verweis auf die
+--   Festgeld, P2P; fn_resolve_account: erst exakt, dann ohne Gross-/Kleinschreibung). Eingabe: p_name.
+--   Rueckgabe {ok:true, id} |
+--   {ok:false, code:'not_found'|'ambiguous', reason, candidates} | {ok:false, code:'depot_not_allowed', reason}; ein Depot-Name bekommt den Verweis auf die
 --   Zuordnung (tool_book_savings_reservation), weil Depot-Anteile einer Reserve ueber das Journal laufen, nicht ueber
 --   eine Geldbewegung.
 --   Konsument: fn_book_savings_goal_transfer (das Tool reicht Namen durch statt eigener Resolve-Knoten).

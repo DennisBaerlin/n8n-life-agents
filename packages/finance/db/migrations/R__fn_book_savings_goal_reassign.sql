@@ -1,12 +1,12 @@
 -- ============================================================
--- fn_book_savings_goal_reassign (ATOMIC WRITE, intern) — "Sparziel umziehen" ohne Geldbewegung (2026-11-01)
+-- fn_book_savings_goal_reassign (ATOMIC WRITE, intern) — "Sparziel umziehen" ohne Geldbewegung
 --   Zweig direction='reassign' von fn_book_savings_goal_transfer (nur dort aufgerufen, eine Transaktion): die
---   Zuordnung eines Ziels wechselt das Konto (YNAB/Firefly: Ziel-Geld bestaetigt verschieben). Zwei Journal-Zeilen
---   kind='manual' ueber fn_book_savings_reservation (EINE Regel fuer Kontoarten, Ruecklagen-Arten und den
+--   Zuordnung eines Ziels wechselt das Konto. Zwei Journal-Zeilen
+--   kind='manual' ueber fn_book_savings_reservation (die eine Regel fuer Kontoarten, Ruecklagen-Arten und den
 --   Freier-Saldo-Guard): erst das Ziel-Konto erhoehen (geguardet, darf {ok:false} liefern, noch kein Write), dann die
 --   Quelle senken (Senken ist immer erlaubt). Netto-EUR 0 -> Fortschritt und Spartempo unveraendert.
 --   Ziel-Konto Depot: Zuordnung in EUR, Deckung = Marktwert (kein harter Block, shortfall im Post-State, wie die
---   Reservierung); ohne Kurs -> no_price. Ziel kurz vor dem Termin (2026-11-06): kein Verbot, sondern die Warnkarte aus
+--   Reservierung); ohne Kurs -> no_price. Ziel kurz vor dem Termin: kein Verbot, sondern die Warnkarte aus
 --   fn_goal_depot_risk_fold (card_lines, card_approve_key, effective.depot_risk_shown; nach dem Tipp der Stempel
 --   + depot_risk.reminder_month).
 --   Betrag in der Waehrung der Quelle (Depot-Quelle: EUR); leer = ganzer Anteil der Quelle. Umrechnung
@@ -14,11 +14,11 @@
 --   Rueckgaengig = reassign zurueck (das Journal ist append-only, kein Void).
 --   Eingabe jsonb: savings_goal_id, from_account_id|from_account_name (opt: leer = das eine Konto mit Geld des Ziels;
 --   bei mehreren missing_from + candidates), to_account_id|to_account_name, amount (opt). to_amount gilt hier nicht.
---   RUECKGABE Erfolg: {ok:true, savings_goal_id, direction:'reassign', amount (umgezogen, Quell-Waehrung; abgeleitet
+--   Rueckgabe ok:true: {ok:true, savings_goal_id, direction:'reassign', amount (umgezogen, Quell-Waehrung; abgeleitet
 --     bei leerem amount), from_share, to_share (neue Anteile, Kontowaehrung bzw. EUR beim Depot), current_amount,
 --     from_free_balance | (Depot-Quelle) -, to_free_balance (saldo-basiert) | market_value + shortfall (Depot),
 --     effective {from/to id, Name, Waehrung, rate_pot_name (Topf, in den die Monatsrate weiter fliesst, falls = Quelle)}}.
---   Korrigierbar {ok:false, code?, reason}: amount <= 0, Ziel nicht gefunden, Konto nicht gefunden/mehrdeutig,
+--   ok:false {code?, reason}: amount <= 0, Ziel nicht gefunden, Konto nicht gefunden/mehrdeutig,
 --     missing_from/missing_to, from==to, not_reserve, insufficient_share, no_price, fx_missing,
 --     sowie jede Ablehnung der Reservierung (z. B. insufficient_free_balance, Ruecklagen-Konto-Regeln).
 -- ============================================================
@@ -163,14 +163,14 @@ BEGIN
         RAISE EXCEPTION 'fn_book_savings_goal_reassign: releasing the source share failed: %', v_r;   -- Rollback (echte Ausnahme)
     END IF;
 
-    -- Sparziel kurz vor dem Termin ins Depot (2026-11-06): kein Verbot mehr, sondern Karte mit Warnung + Stempel
-    -- (fn_goal_depot_risk_fold, nach beiden Journal-Zeilen = Post-State). Die zwei inneren Reservierungen tragen nie
-    -- depot_risk_shown und stempeln nie.
+    -- Sparziel kurz vor dem Termin ins Depot: Karte mit Warnung + Stempel statt Verbot (fn_goal_depot_risk_fold,
+    -- nach beiden Journal-Zeilen = Post-State). Die zwei inneren Reservierungen tragen nie depot_risk_shown und
+    -- stempeln nie.
     IF v_tdepot THEN
         v_fold := finance.fn_goal_depot_risk_fold(v_goal, p->'depot_risk_shown');
     END IF;
 
-    -- Post-State in derselben Transaktion: freie Salden saldo-basierter Konten, Ziel-Stand.
+    -- Post-State: freie Salden saldo-basierter Konten, Ziel-Stand.
     SELECT a.name INTO v_pot
       FROM finance.savings_goals g
       JOIN finance.recurring_payments rp ON rp.id = finance.fn_recurring_lineage_head(g.recurring_payment_id)

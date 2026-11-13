@@ -1,20 +1,26 @@
 #!/usr/bin/env bash
-# doctor.sh — read-only health/diagnose of the provisioned stack (Ampel + exit code).
-# Standalone (own `set -euo pipefail`); also invoked at the end of provision.sh (and `lifeagents doctor`).
-# Exit code = number of RED checks (0 = all green → CI/gate-friendly).
+# doctor.sh — read-only Diagnose des provisionierten Stacks (Ampel + Exit-Code).
 #
-# Infra checks: PG / n8n / env / package-secrets / host keys (Telegram/Anthropic, Google optional) / ingress. The HTTPS reverse proxy is
-# bring-your-own (Install-UX-Phase 2) — doctor no longer asserts a Caddy unit; it checks the
-# OUTCOME instead (orchestrator trigger active + public HTTPS reachable), which is proxy-agnostic.
+# Aufruf: `bash doctor.sh` bzw. `lifeagents doctor`; am Ende von provision.sh laeuft es automatisch.
+# Standalone (eigenes `set -euo pipefail`); als Quelle gesourct (BASH_SOURCE != $0) startet main nicht.
+# Voraussetzungen: laeuft auch ohne root; Pruefungen, die root brauchen (Peer-Auth als postgres, 640-Env-Dateien,
+# nft-Tabelle), melden dann SKIP statt Fehl-ROT. Die Doktor-Pruefungen aendern nichts (Ausnahme: der
+# FritzBox-Weg `wan` im Docker-Verbund wird bei ausbleibender Antwort einmal neu gestartet).
+# Ausgabe je Pruefung: [ OK ], [FAIL] (ROT), [WARN] und [SKIP] zaehlen nicht als Fehler.
+# Exit-Code = Anzahl ROT (0 = alles gruen, CI-/Gate-tauglich).
+#
+# Infra-Pruefungen: PG / n8n / Env / Paket-Secrets / Host-Keys (Telegram/Anthropic, Google optional) /
+# Ingress. Der HTTPS-Reverse-Proxy ist bring-your-own: doctor prueft nicht, welcher Terminierer laeuft,
+# sondern das Outcome (Orchestrator-Trigger aktiv + oeffentliches HTTPS erreichbar), proxy-agnostisch.
 set -euo pipefail
-# UTF-8 ist Gesetz (provisioning/CLAUDE.md) — auch direkt aufgerufen (bash doctor.sh) auf einem LANG="C"-System.
+# UTF-8 unabhaengig von der System-Locale, auch bei direktem Aufruf auf einem LANG="C"-System.
 export LANG=C.UTF-8 LC_ALL=C.UTF-8
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=lib/common.sh
 . "$SCRIPT_DIR/lib/common.sh"
 # shellcheck source=lib/firewall.sh
-. "$SCRIPT_DIR/lib/firewall.sh"   # TRUSTED_PROXIES-Normalisierung + Set-Vergleich (Install-UX-Phase 5)
+. "$SCRIPT_DIR/lib/firewall.sh"   # TRUSTED_PROXIES-Normalisierung + Set-Vergleich
 # shellcheck source=lib/n8n_patches.sh
 . "$SCRIPT_DIR/lib/n8n_patches.sh"   # n8n_patch_status (read-only): sind die n8n-Korrekturen aktiv?
 
@@ -23,8 +29,8 @@ N8N_PORT="$(read_env_value "$N8N_ENV_FILE" N8N_PORT || true)"
 [ -n "$N8N_PORT" ] || N8N_PORT=5678
 N8N_DB_NAME="$(read_env_value "$N8N_ENV_FILE" DB_POSTGRESDB_DATABASE 2>/dev/null || true)"
 [ -n "$N8N_DB_NAME" ] || N8N_DB_NAME=n8n
-# DOMAIN aus der Env ODER dem Merge-Store core.env (env-override-first, Muster wie _apikey unten) —
-# ohne das saehe ein standalone `lifeagents doctor` die Domain nie -> der Ingress-Check skippte immer.
+# DOMAIN aus der Env oder dem Merge-Store core.env (Env gewinnt, Muster wie _apikey unten) — sonst saehe ein
+# standalone `lifeagents doctor` die Domain nie und der Ingress-Check skippte immer.
 DOMAIN="${DOMAIN:-$(read_env_value /etc/lifeagents/core.env DOMAIN 2>/dev/null || true)}"
 DOMAIN="$(normalize_domain "$DOMAIN")"   # nur im Speicher (doctor ist read-only): eine von Hand eingefuegte URL zaehlt schon jetzt
 
@@ -32,7 +38,7 @@ _fail=0
 _pass() { printf '  [ OK ] %s\n' "$*"; }
 _red()  { printf '  [FAIL] %s\n' "$*"; _fail=$((_fail+1)); }
 _skip() { printf '  [SKIP] %s\n' "$*"; }
-_warn() { printf '  [WARN] %s\n' "$*"; }   # Hinweis, zaehlt NICHT als Fehler (optionale Funktion fehlt)
+_warn() { printf '  [WARN] %s\n' "$*"; }   # Hinweis, zaehlt nicht als Fehler (optionale Funktion fehlt)
 
 svc_active() {
   local unit="$1" label="$2"
@@ -105,7 +111,7 @@ _doctor_backup() {
     return 0
   fi
   # Frische Installation (VERSION juenger als die Frist): noch nicht veraltet. Im Verbund ohne Ordner (nur ueber eine
-  # unbeaufsichtigte Installation ohne Fragebogen erreichbar, z. B. CI) nur WARN — ROT erst nach der Frist (Bestand, F1).
+  # unbeaufsichtigte Installation ohne Fragebogen erreichbar, z. B. CI) nur WARN — ROT erst nach der Frist.
   if [ "$ok_at" -eq 0 ] && [ -n "$(find "$(lifeagents_version_marker)" -mmin -"$(( BACKUP_STALE_S / 60 ))" 2>/dev/null)" ]; then
     if rt_is_compose && [ -z "$folder" ]; then _warn "Letzte Sicherung: noch keine — kein Sicherungsordner gewählt: Start-App › Sicherungsordner ändern … (oder lifeagents backup host-dir <ordner> --create)"
     else _pass "Letzte Sicherung: noch keine erfasst (Installation oder Update ist frisch)"; fi
@@ -193,8 +199,8 @@ main() {
       _warn "PostgreSQL läuft noch in Version ${_pgrun}, installiert ist ${_pginst} — ein Neustart steht aus (Abhilfe: 'lifeagents update' oder 'systemctl restart postgresql')"
     fi
   fi
-  # UTF-8 ist Gesetz (provisioning/CLAUDE.md): in einer SQL_ASCII-DB sind Umlaute nur Bytes (Proxmox-Vorlage LANG="C"
-  # + Installer <= v0.4.0). Lesen braucht root (Peer-Auth als postgres) -> sonst SKIP statt Fehl-ROT.
+  # UTF-8 ist Gesetz (provisioning/CLAUDE.md): in einer SQL_ASCII-DB sind Umlaute nur Bytes (Proxmox-Vorlage
+  # LANG="C"). Lesen braucht root (Peer-Auth als postgres) -> sonst SKIP statt Fehl-ROT.
   if [ "$(id -u)" -eq 0 ]; then
     local _enc
     _enc="$(pg_db_encoding "$N8N_DB_NAME")"
@@ -205,11 +211,11 @@ main() {
 
   # --- n8n ---
   svc_active n8n "n8n"
-  # readiness = DB verbunden UND migriert (nach einem Versionssprung erst nach den Migrationen gruen).
+  # readiness = DB verbunden und migriert (nach einem Versionssprung erst nach den Migrationen gruen).
   if curl -fsS --max-time 5 -o /dev/null "http://127.0.0.1:${N8N_PORT}/healthz/readiness" 2>/dev/null; then
     _pass "n8n bereit (http://127.0.0.1:${N8N_PORT}/healthz/readiness)"
   else _red "n8n meldet sich nicht bereit (Port ${N8N_PORT}) — $(svc_logs_hint n8n)"; fi
-  # Installierte Version gegen den Pin des installierten Baums (EINE Adresse: provision.sh) + Node.
+  # Installierte Version gegen den Pin des installierten Baums (eine Adresse: provision.sh) + Node.
   local _pin _have
   # shellcheck disable=SC2016  # $ ist hier ein Literal im sed-Muster (die Default-Zeile von provision.sh)
   _pin="$(sed -n 's/^N8N_VERSION="\${N8N_VERSION:-\(.*\)}"$/\1/p' "$SCRIPT_DIR/provision.sh" 2>/dev/null || true)"
@@ -252,7 +258,7 @@ main() {
   if [ "$(id -u)" -eq 0 ] && need_su_tools; then
     local _stuck _lastfail _help _runner_log="journalctl -u lifeagents-update-run -n 50"
     if rt_is_compose; then _runner_log="docker logs ${LA_PROJECT}-master"; fi
-    # Haengender Auftrag: offen seit > 60 min UND die Update-Sperre ist frei (sonst laeuft er gerade wirklich).
+    # Haengender Auftrag: offen seit > 60 min und die Update-Sperre ist frei (sonst laeuft er gerade wirklich).
     _stuck="$(pg_su_psql -X -tA -d "$N8N_DB_NAME" -c \
       "SELECT id FROM core.update_requests WHERE finished_at IS NULL AND requested_at < now() - interval '60 minutes' LIMIT 1" 2>/dev/null || true)"
     if [ -n "$_stuck" ] && update_lock_free; then
@@ -278,7 +284,7 @@ main() {
     fi
   fi
 
-  # --- LLM-Gateway (lib/install_llm_gateway.sh): ALLE Claude-Aufrufe laufen darueber -> Ausfall = ROT ---
+  # --- LLM-Gateway (lib/install_llm_gateway.sh): alle Claude-Aufrufe laufen darueber -> Ausfall = ROT ---
   svc_active lifeagents-llm-gateway "LLM-Gateway"
   if curl -fsS --max-time 3 -o /dev/null "http://127.0.0.1:8090/__health" 2>/dev/null; then   # Port fest (install_llm_gateway.sh)
     _pass "LLM-Gateway Health OK (Prompt-Caching aktiv)"
@@ -292,16 +298,16 @@ main() {
     fi
   fi
 
-  # --- Netzwerk: Bind + Firewall passen zu TRUSTED_PROXIES (Install-UX-Phase 5) ---
-  # Gefaehrlich ist nur EIN Zustand: n8n lauscht im Heimnetz (0.0.0.0) OHNE die Freigabe-Tabelle (z. B. nach
+  # --- Netzwerk: Bind + Firewall passen zu TRUSTED_PROXIES ---
+  # Gefaehrlich ist nur ein Zustand: n8n lauscht im Heimnetz (0.0.0.0) ohne die Freigabe-Tabelle (z. B. nach
   # einem manuellen `nft -f` mit flush ruleset) -> ROT. Proxy auf anderem Rechner eingetragen, aber n8n nur lokal
-  # -> ROT (der Proxy bekommt 502). Ohne root ist die Tabelle nicht lesbar -> ehrliches SKIP.
+  # -> ROT (der Proxy bekommt 502). Ohne root ist die Tabelle nicht lesbar -> SKIP.
   local _tp _tp_list _tp_nonloop _bind _tp_show
   _tp="${TRUSTED_PROXIES:-$(read_env_value /etc/lifeagents/core.env TRUSTED_PROXIES 2>/dev/null || true)}"
   _bind="$(read_env_value "$N8N_ENV_FILE" N8N_LISTEN_ADDRESS 2>/dev/null || true)"
   if rt_is_compose; then
-    # Verbund (Plan *Der Rand*, Einwand 17): ein Netz-Namensraum fuer den ganzen Pod, und die Grenze von AUSSEN gemessen —
-    # ein Kurzlauf-Container im internen Netz sieht, was der Rand sieht: n8n ja, Postgres und Gateway nein.
+    # Verbund: ein Netz-Namensraum fuer den ganzen Pod, und die Grenze von aussen gemessen — ein
+    # Kurzlauf-Container im internen Netz sieht, was der Rand sieht: n8n ja, Postgres und Gateway nein.
     _doctor_compose_pod "${_bind:-0.0.0.0}"
   elif ! _tp_list="$(normalize_trusted_proxies "$_tp" 2>/dev/null)"; then
     _red "TRUSTED_PROXIES ungültig ('${_tp}') — korrigieren: lifeagents proxy set <IP des Proxy-Rechners>"
@@ -324,9 +330,9 @@ main() {
     fi
   fi
 
-  # --- credential duplicate guard (read-only; id-Churn-Symptom / Versions-Pin-Backstop) ---
-  # Je (name,type) genau EINE Credential erwartet. >1 = die frueher-per-Lauf-neu-praegende DELETE+POST-Aera
-  # ODER ein n8n-Bump, der den import:credentials-Upsert-auf-id-Match bricht (dann akkumulieren Dubletten).
+  # --- Credential-Dubletten (read-only; id-Churn-Symptom / Versions-Pin-Backstop) ---
+  # Je (name,type) genau eine Credential erwartet. >1 = ein n8n-Bump, der den import:credentials-Upsert
+  # auf id-Match bricht (dann akkumulieren Dubletten).
   # API-Key aus core.env; fehlt er / n8n nicht erreichbar -> SKIP (nicht ROT).
   local _apikey _dups
   _apikey="$(read_env_value /etc/lifeagents/core.env N8N_API_KEY 2>/dev/null || true)"
@@ -342,14 +348,13 @@ main() {
   fi
 
   # --- deklarierte Paket-Secrets (manifest `credentials`-Block, docs/package-contract.md §3.8) ---
-  # Je INSTALLIERTEM Paket (Indikator: /etc/lifeagents/<pkg>.env existiert) die deklarierten env-Keys
-  # gegen den Store pruefen: required fehlt/leer -> ROT mit WOERTLICHEM Abhilfe-Kommando (Arbiter
-  # E2.2/E2.4); optional fehlt/leer -> Hinweis (kein FAIL — Quelle degradiert graceful). Ohne root
-  # sind die 640-env-Files nicht lesbar -> SKIP statt Fehl-ROT (doctor-Kontrakt "kein Root noetig").
+  # Je installiertem Paket die deklarierten env-Keys gegen den Store pruefen: required fehlt/leer -> ROT mit
+  # woertlichem Abhilfe-Kommando; optional fehlt/leer -> Hinweis (kein FAIL — Quelle degradiert graceful).
+  # Ohne root sind die 640-env-Files nicht lesbar -> SKIP statt Fehl-ROT (doctor braucht kein root).
   local _pkgroot="${LIFEAGENTS_LIB:-/usr/local/lib/lifeagents}/packages"
-  # "Installiert" = Zeile in core.package_registry (EINE Wahrheit, wie `lifeagents update`/package list;
-  # Install-UX-Phase 4 — die fruehere Datei-Heuristik meldete nach `uninstall --keep-data` ROT fuer ein nicht
-  # installiertes Paket). Ohne root (kein DB-Zugriff) faellt der Check auf die Datei-Heuristik zurueck.
+  # "Installiert" = Zeile in core.package_registry (eine Wahrheit, wie `lifeagents update`/package list; die
+  # Datei /etc/lifeagents/<pkg>.env allein meldete nach `uninstall --keep-data` ROT fuer ein nicht installiertes
+  # Paket). Ohne root (kein DB-Zugriff) faellt der Check auf die Datei-Heuristik zurueck.
   local _installed=''
   if [ "$(id -u)" -eq 0 ] && need_su_tools; then
     _installed=" $(pg_su_psql -X -tA -d "$N8N_DB_NAME" -c "SELECT package FROM core.package_registry" 2>/dev/null | tr '\n' ' ' || true)"
@@ -390,18 +395,18 @@ main() {
           _skip "Optionales Credential '$_cname' ($_pkg) ohne $_miss — Quelle inaktiv (nachtragen: lifeagents package reconfigure $_pkg)"
         fi
       done <<<"$(jq -c '(.credentials // {}) | to_entries[] | select(.key != "_comment")' "$_mf" 2>/dev/null)"
-      # if-Form, NICHT &&-Kette: eine falsche &&-Bedingung als letzte Loop-Anweisung wuerde unter
-      # set -e das ganze doctor.sh still beenden (dieselbe Falle wie provision.sh::parse_args).
+      # if-Form statt &&-Kette: eine falsche &&-Bedingung als letzte Loop-Anweisung wuerde unter set -e das
+      # ganze doctor.sh still beenden (dieselbe Falle wie provision.sh::parse_args).
       if [ "$_nok" -gt 0 ]; then _pass "Paket-Secrets ($_pkg): ${_nok}/${_ncred} Credential(s) konfiguriert"; fi
     done
   fi
 
-  # --- Grund-Zugaenge (Install-UX-Phase 7; Paritaet zum Paket-Pflicht-Secret-Check oben) ---
+  # --- Grund-Zugaenge (Paritaet zum Paket-Pflicht-Secret-Check oben) ---
   # Laufzeit-Teilmenge der Pflicht-Host-Keys (release_inputs.sh _REQUIRED_HOST_KEYS; Name/Geburtsdatum braucht nur das
   # Pairing): ohne Telegram-Token kein Chat, ohne Anthropic-Schluessel denkt kein Agent (ROT); ohne Google-Schluessel nur
-  # keine Sprachnachrichten (WARN, optional seit Modell-Phase 2). Nur Release-Instanzen (dev/CI
-  # laufen bewusst ohne); ohne root ist core.env nicht lesbar -> ehrliches SKIP. Gate auf das VERZEICHNIS: /etc/lifeagents
-  # ist 0750 root:n8n, ohne Gruppenrecht scheitert schon `-e` auf die Datei (die SKIP-Zeile fiele sonst still weg).
+  # keine Sprachnachrichten (WARN, optional). Nur Release-Instanzen (dev/CI laufen bewusst ohne); ohne root ist
+  # core.env nicht lesbar -> SKIP. Gate auf das Verzeichnis: /etc/lifeagents ist 0750 root:n8n, ohne Gruppenrecht
+  # scheitert schon `-e` auf die Datei (die SKIP-Zeile fiele sonst still weg).
   local _ce=/etc/lifeagents/core.env _gmiss=''
   if [ -d /etc/lifeagents ] && [ "$(id -u)" -ne 0 ] && [ ! -r "$_ce" ]; then
     _skip "Grund-Zugänge (braucht root: sudo lifeagents doctor)"
@@ -423,12 +428,11 @@ main() {
     case "$perms" in 600|640|660) _pass "Env-Datei-Rechte ${perms}" ;; *) _red "Env-Datei-Rechte zu offen: ${perms} (erwartet 640)" ;; esac
   else _red "Env-Datei fehlt: $N8N_ENV_FILE"; fi
 
-  # --- Ingress-Gesundheit (proxy-agnostisch; ersetzt den frueheren harten Caddy-Check) ---
-  # Der HTTPS-Reverse-Proxy ist bring-your-own (Install-UX-Phase 2) -> doctor prueft NICHT mehr, welcher
-  # Terminierer laeuft, sondern das OUTCOME. Beide Checks NUR bei gesetzter Domain (= Public-Ingress
-  # erwartet, Release): ohne Domain gibt es keinen oeffentlichen Eingang (dev/Substrat — die Tiers
-  # feuern ueber die Harness-Webhooks, nicht ueber Telegram), also waere ein inaktiver Orchestrator
-  # dort kein Fehler, sondern der Normalfall -> SKIP statt eines Fehl-ROT.
+  # --- Ingress-Gesundheit (proxy-agnostisch) ---
+  # Der HTTPS-Reverse-Proxy ist bring-your-own -> doctor prueft nicht, welcher Terminierer laeuft, sondern das
+  # Outcome. Beide Checks nur bei gesetzter Domain (= Public-Ingress erwartet, Release): ohne Domain gibt es
+  # keinen oeffentlichen Eingang (dev/Substrat — die Tiers feuern ueber die Harness-Webhooks, nicht ueber
+  # Telegram), ein inaktiver Orchestrator ist dort der Normalfall -> SKIP statt Fehl-ROT.
   # CLI-Tunnel (lib/reach_cli.sh): steht der Tailscale-Weg selbst? Auch ohne Domain (die kommt erst mit der Anmeldung).
   if ! rt_is_compose && [ "$(reach_cli_mode)" = tunnel ]; then
     local _lvl _txt
@@ -449,9 +453,9 @@ main() {
   fi
 
   if [ -n "$DOMAIN" ]; then
-    # (1) Der EHRLICHE Kern-Check: ist der Orchestrator-Trigger aktiv? Nur dann hat n8n den Telegram-
-    # Webhook registriert -> nur dann erreicht Telegram den Bot. `_apikey` wurde oben gelesen
-    # (function-local). Graceful-SKIP ohne Key/jq/API (Muster wie Dubletten).
+    # (1) Kern-Check: ist der Orchestrator-Trigger aktiv? Nur dann hat n8n den Telegram-Webhook registriert
+    # -> nur dann erreicht Telegram den Bot. `_apikey` wurde oben gelesen (function-local). SKIP ohne
+    # Key/jq/API (Muster wie Dubletten).
     if [ -n "$_apikey" ] && need_cmd jq; then
       local _orch_state _orch_active
       # Geteilter Helfer (common.sh, auch vom gefuehrten Ende owner_connect.sh genutzt): "<id>\t<active>".
@@ -464,7 +468,7 @@ main() {
       _skip "Orchestrator-Aktiv-Check (kein N8N_API_KEY in core.env / kein jq)"
     fi
 
-    # (2) Public-HTTPS-Reachability: JEDE HTTP-Antwort (auch 404 = unser gesunder webhook-only /-Zustand)
+    # (2) Public-HTTPS-Reachability: jede HTTP-Antwort (auch 404 = unser gesunder webhook-only /-Zustand)
     # heisst "TLS-Endpunkt + Reverse Proxy erreichbar". Nur 000 (kein TLS/keine Verbindung) -> SKIP
     # (DNS/Cert/Proxy/Port-Weiterleitung; transient -> nicht ROT, der Orchestrator-Check oben ist ROT-faehig).
     local _code
@@ -473,8 +477,8 @@ main() {
     else _skip "HTTPS ${DOMAIN} nicht erreichbar — DNS/Cert/Reverse-Proxy/Port-Weiterleitung prüfen"; fi
 
     # (3) Telegrams Sicht (getWebhookInfo) — der lokale HTTPS-Test besteht auch bei Hairpin-NAT/Split-DNS,
-    # waehrend Telegram von aussen NICHT durchkommt (arch-challenge O3). ROT nur, wenn Telegram Updates
-    # STAUT (pending > 0) und der letzte Zustellfehler frisch ist (< 15 Min) — dann ist der Bot taub.
+    # waehrend Telegram von aussen nicht durchkommt. ROT nur, wenn Telegram Updates staut (pending > 0) und
+    # der letzte Zustellfehler frisch ist (< 15 Min) — dann ist der Bot taub.
     local _tg_token _wh _wh_url _wh_pending _wh_err_date _wh_err _tg_ok=0
     _tg_token="$(read_env_value /etc/lifeagents/core.env TELEGRAM_BOT_TOKEN 2>/dev/null || true)"
     if [ -n "$_tg_token" ] && need_cmd jq; then
@@ -488,16 +492,16 @@ main() {
       elif [ "${_wh_pending:-0}" -gt 0 ] 2>/dev/null && [ $(( $(date +%s) - ${_wh_err_date:-0} )) -lt 900 ] 2>/dev/null; then
         _red "Telegram kann den Bot nicht erreichen (${_wh_pending} Nachricht(en) warten): ${_wh_err:-unbekannter Fehler}"
       else _pass "Telegram stellt an ${_wh_url%%/webhook/*}/… zu"; fi
-      # Nur wenn Telegram an GENAU diese Domain zustellt, gilt ein IPv4-Fehlschlag in (5) als Hairpin (neutral).
+      # Nur wenn Telegram an genau diese Domain zustellt, gilt ein IPv4-Fehlschlag in (5) als Hairpin (neutral).
       if tg_webhook_delivers "$_wh" "$DOMAIN"; then _tg_ok=1; fi
     else
       _skip "Telegram-Webhook-Check (kein TELEGRAM_BOT_TOKEN in core.env / kein jq)"
     fi
 
     # (4) Bestaetigen im Chat: der Orchestrator-Trigger reicht jeden Knopf-Tipp an <WEBHOOK_URL>/webhook-waiting-
-    # telegram weiter — VOM SERVER SELBST ueber die Domain (common.sh hitl_route_probe; read-only, pinnt nichts).
+    # telegram weiter — vom Server selbst ueber die Domain (common.sh hitl_route_probe; read-only, pinnt nichts).
     # ROT nur, wenn die Chat-Knoepfe deployt sind (dann gingen Tipps still verloren); sonst WARN mit dem Weg dorthin.
-    # Deploy-Modus = core.env HITL_CHAT_APPROVAL (deploy_workflows.sh haelt ihn fuer ALLE Workflows fest, ohne API).
+    # Deploy-Modus = core.env HITL_CHAT_APPROVAL (deploy_workflows.sh haelt ihn fuer alle Workflows fest, ohne API).
     local _whurl _chat
     _whurl="$(read_env_value "$N8N_ENV_FILE" WEBHOOK_URL 2>/dev/null || true)"
     _chat="$(hitl_chat_state)"

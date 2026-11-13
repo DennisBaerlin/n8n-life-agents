@@ -1,7 +1,7 @@
 # PreToolUse-Hook (Bash|PowerShell): harte Sperre ('deny') fuer Aktionen mit Geld- oder Zerstoerungs-
 # Wirkung, die Claude nie ohne den Owner ausloest. 'deny' statt 'ask': ein Hook-'ask' wird in der
-# VS-Code-Erweiterung unter bypassPermissions still durchgewinkt (GH #77212, hier 2026-10-20
-# reproduziert); 'deny' gilt laut Doku in jedem Modus. Deny-/ask-Regeln in den permissions-Arrays
+# VS-Code-Erweiterung unter bypassPermissions still durchgewinkt (GH #77212);
+# 'deny' gilt laut Doku in jedem Modus. Deny-/ask-Regeln in den permissions-Arrays
 # scheiden aus (Resolver-Bug GH #27139: Wildcard-Allow wird ignoriert, sobald enge Regeln im selben
 # Namespace koexistieren) -> der Block lebt HIER, ausserhalb des Permission-Resolvers.
 #
@@ -14,10 +14,10 @@
 #                conversation_test nur mit -Real)
 #                + reset_dev_instance.ps1 ohne -KeepInstance (zerstoert die Dev-Instanz-Daten, kein Backup;
 #                -KeepInstance baut nichts ab und ist ausgenommen)
-#   immer deny : grant_owner_window.ps1 AUSFUEHREN (Claude oeffnet das Fenster nie - Maker-Checker). Ein
+#   immer deny : grant_owner_window.ps1 ausfuehren (Claude oeffnet das Fenster nie - Maker-Checker). Ein
 #                blosses Erwaehnen in git/cat/grep ist erlaubt (Match nur in Aufruf-Position oder mit
 #                einem Ausfuehrungs-Operator im Befehl).
-#                owner_grant.txt SCHREIBEN (Schreib-Operator im Shell-Befehl; Lesen ist frei). Edit/Write/NotebookEdit
+#                owner_grant.txt schreiben (Schreib-Operator im Shell-Befehl; Lesen ist frei). Edit/Write/NotebookEdit
 #                sperrt enforce_app_window.ps1, das auf diesen Tools ohnehin laeuft (kein zweiter Prozess je Dateiaenderung).
 # Die Suite-/Reset-Namen matchen dagegen ueberall im Befehlstext (auch in grep/cat) - bewusst breit, weil
 # jede Aufruf-Form (powershell -Command, Start-Process, Variablen) gefangen sein muss: Suite-Dateien mit

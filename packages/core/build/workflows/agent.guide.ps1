@@ -1,16 +1,14 @@
 ﻿#Requires -Version 5.1
 # Definition agent.guide -> Build-AgentGuide. Dot-gesourct von build.ps1.
-# Clone-and-Trim des Advisor-Templates (KEINE Factory — vierter Agent; eine Template-Extraktion bliebe YAGNI).
+# Clone-and-Trim des Advisor-Templates, bewusst keine Factory.
 # Der Guide ist Help + Core-Onboarding: er erfasst die Haushalts-Fakten und zeigt auf die naechsten
 # Onboarding-Bereiche; die Paket-Bereiche onboardet jeder Paket-Agent selbst mit seinen eigenen Tools
 # (keine Guide->Paket-Delegation, packages/core/CLAUDE.md *Onboarding-Zustand*). Reads: postgres_select
 # (core_ro) + load_context (context_ro). Writes (HITL): tool_set_household_facts; tool_set_onboarding_section
-# ist nur der Fortschritts-Marker (kein Gate). Bewusst NICHT gebunden: tool_save_plan_section (Micro-Goals
-# -> Advisor-Draft + Pin-Praezedenz = vertagt) und alle Paket-Schreib-Tools.
+# ist nur der Fortschritts-Marker (kein Gate). Nicht gebunden: tool_save_plan_section und alle Paket-Schreib-Tools.
 
-# New-AdvisorToolNode (CROSS-AGENT-Tool-Builder) lebt seit Phase 0 WS-0c AT geteilt in
-# scripts/build/lib/build_helpers.ps1 (loest die lokale Duplikat-Def New-GuideToolNode ab). Der Guide bindet
-# keine FixedInputs -> die Calls uebergeben $null an dieser Stelle + -StartNode 'Start agent.guide' (PFLICHT).
+# New-AdvisorToolNode (scripts/build/lib/build_helpers.ps1): der Guide bindet keine FixedInputs ->
+# die Calls uebergeben $null an dieser Stelle + -StartNode 'Start agent.guide' (pflicht).
 
 function Build-AgentGuide {
     $WF_NAME      = 'agent.guide'
@@ -20,14 +18,14 @@ function Build-AgentGuide {
     $START_NODE   = 'Start agent.guide'
 
     # Infra-IDs (build-generierte Subs; per Name aus dem State aufgeloest in build.ps1 — kein ID-Literal)
-    $ID_LOAD_CTX  = $LoadContextId   # agent.tool_load_context (build.ps1: per Name aus dem State)
+    $ID_LOAD_CTX  = $LoadContextId
     # Naechster Schritt (core.fn_get_next_step): dieselbe build-time-Reihenfolge wie Orchestrator und Menue (Get-NextStepOrder).
     $nextOrder = Get-NextStepOrder $RepoRoot
     $nextOrderJs     = $nextOrder.OrderJs
     $nextPlanOrderJs = $nextOrder.PlanOrderJs
-    $ID_LOAD_CFG  = $LoadConfigId    # core.sub_load_config (build.ps1: per Name aus dem State)
-    # CORE-Agent: Frei-SQL-Lesepfad laeuft unter core_ro (agent+core+finance read-only) — NICHT
-    # finance_ro, das nach der Paket-Isolation eng auf `finance` skopiert ist (B3/Owner-Lock).
+    $ID_LOAD_CFG  = $LoadConfigId
+    # Core-Agent: Frei-SQL-Lesepfad laeuft unter core_ro (agent+core+finance read-only), nicht
+    # finance_ro (auf das Schema `finance` skopiert).
     $CRED_PG_RO   = $CRED_CORE_RO
     $CRED_CTX_RO  = $CRED_CONTEXT_RO
 
@@ -46,7 +44,7 @@ function Build-AgentGuide {
         name = $START_NODE
     }
 
-    # Anti-Loop-Backstop (Pflicht fuer jeden AGENT-Workflow)
+    # Anti-Loop-Backstop (Pflicht fuer jeden Agent-Workflow)
     $nDepthGate = Build-If 'Depth gate' @(-1480, 0) `
         "={{ Number(`$json.call_depth) || 0 }}" '2' 'largerEqual' 'number'
     $nDepthDeny = Build-ToolError 'Max call depth' @(-1300, 200) 'max_call_depth'
@@ -55,13 +53,12 @@ function Build-AgentGuide {
     $nLoadCtx = Build-CallWorkflow 'Load Agent Context' @(-1152, 0) $ID_LOAD_CTX 'agent.tool_load_context' `
         ([ordered]@{ agent_name = $AGENT_NAME; include_manifest = 'true' })
 
-    # Install-UX-Phase 6 (Muster finance 'Onboarding status read' -> 'Build Agent Input'): der Guide KENNT den
-    # Haushalt, bevor er fragt — Name/Geburtsdatum des Owners stehen seit der Installation in family.facts.persons
-    # (util_seed_owner_skeleton). Deterministisch per Read-Node statt Prompt-Bitte "lade family zuerst" (Prompt
-    # driftet). Nur Namen/Rolle + "Geburtsdatum vorhanden ja/nein" + Namen weiterer gespeicherter Fakten — NIE die
-    # Werte selbst (kein Geburtsdatum im Prompt). core_ro liest agent.* (dokumentierte Rolle des Core-Lesepfads).
-    # onError=continue -> ein Lese-Hiccup bricht den Guide nicht; dann fehlt household_status und der Block wird
-    # GANZ weggelassen (Muster finance: bei Fehler nichts anhaengen — nie faelschlich "niemand gespeichert").
+    # Der Guide kennt den Haushalt, bevor er fragt: Name/Geburtsdatum des Owners stehen seit der Installation in
+    # family.facts.persons (util_seed_owner_skeleton). Deterministisch per Read-Node statt Prompt-Bitte "lade family
+    # zuerst" (Prompt driftet). Nur Namen/Rolle + "Geburtsdatum vorhanden ja/nein" + Namen weiterer gespeicherter
+    # Fakten, nie die Werte selbst. core_ro liest agent.* (dokumentierte Rolle des Core-Lesepfads).
+    # onError=continue: bei Lese-Fehler fehlt household_status und der Block wird ganz weggelassen (Muster finance;
+    # nie faelschlich "niemand gespeichert").
     $nHouseholdRead = Build-Pg 'Household status read' @(-1040, 0) `
         "=SELECT core.fn_sender_sees_household((`$1::jsonb)->>'chat_id') AS sees, core.fn_get_next_step(`$1::jsonb) AS step, agent.fn_resolve_sender(CASE WHEN (`$1::jsonb)->>'chat_id' ~ '^[0-9]{1,18}`$' THEN ((`$1::jsonb)->>'chat_id')::bigint END) AS sender, COALESCE((SELECT status FROM agent.guide_onboarding_state WHERE section_key = 'household'), 'unknown') AS household_status, COALESCE((SELECT string_agg(CASE WHEN core.fn_sender_sees_household((`$1::jsonb)->>'chat_id') THEN format('- %s %s (person_id %s; role %s; birth date %s%s)', pp->>'first_name', pp->>'last_name', pp->>'person_id', pp->>'role', CASE WHEN NULLIF(pp->>'birth_date', '') IS NULL THEN 'missing' ELSE 'stored' END, COALESCE('; also stored: ' || (SELECT string_agg(k, ', ' ORDER BY k) FROM jsonb_object_keys(pp) AS k WHERE k NOT IN ('person_id','first_name','last_name','role','birth_date','as_of','telegram_user_id','aliases')), '')) ELSE format('- %s (role %s)', pp->>'first_name', pp->>'role') END, E'\n' ORDER BY x.ord) FROM agent.core_contexts c, jsonb_array_elements(COALESCE(c.metadata->'facts'->'persons', '[]'::jsonb)) WITH ORDINALITY AS x(pp, ord) WHERE c.name = 'family'), '') AS persons;" `
         ([ordered]@{ chat_id = "String(`$('$START_NODE').item.json.chat_id || '')"; order = $nextOrderJs; plan_order = $nextPlanOrderJs; with_example = 'true' })
@@ -88,7 +85,7 @@ function Build-AgentGuide {
         name = 'Guide Agent'
     }
 
-    # Kinder-Sicht (Paket C): ein Absender ohne Haushalts-Sicht (core.fn_sender_sees_household, Spalte sees im Household status
+    # Kinder-Sicht: ein Absender ohne Haushalts-Sicht (core.fn_sender_sees_household, Spalte sees im Household status
     # read) bekommt einen eigenen Agent-Knoten OHNE postgres_select (core_ro liest alle Paket-Schemata; ein Schutz im SQL-Text
     # liesse sich per Klammer + Kommentar aufbrechen). Gleicher Prompt, gleiches Modell, gleiches Gedaechtnis; gebunden sind nur
     # load_context (sperrt Paket-Kontexte selbst) und kein Schreib-Werkzeug. Fail-closed: nur sees === true geht zum vollen Knoten.
@@ -129,7 +126,6 @@ function Build-AgentGuide {
 
     # --- Read-Tools ---
     $descSelect = 'Run read-only SELECT queries (role core_ro: schemas `agent` + `core`, plus the schema of every ACTIVE package). Use it to check which package areas still need onboarding (SELECT core.fn_onboarding_pending_packages()) and to look up details before capturing (dedup). The household onboarding status and the stored household members are already in your system prompt (Household so far). Views are narrow: SELECT * if unsure of columns. On a query error you receive it back - correct and retry. No write access.'
-    # Frei-SQL-Lesewerkzeug: geteilter Builder (Guard gegen fehlendes query-Argument, onError continue).
     $nToolSelect = New-PostgresSelectToolNode -Description $descSelect -Cred $CRED_PG_RO
 
     $loadQuery = "=SELECT content FROM core.fn_fetch_context((`$1::jsonb)->>'name', (`$1::jsonb)->>'chat_id');"
@@ -147,9 +143,9 @@ function Build-AgentGuide {
     }
 
     # --- Guide-Write-Tools (Section 0 + Fortschritt) ---
-    # Phase A: der KI-Name bleibt tool_set_household_facts (LLM-Vertrag unveraendert), der Workflow ist der EINE
-    # Fakten-Schreibweg agent.tool_set_context_facts (Muster career: 1 Workflow, mehrere Bindings). scope FEST
-    # 'household' (nie $fromAI) -> die fn lehnt einen per_user-Kontext ab. Die household-Kontexte der Pakete nennt
+    # Der KI-Name bleibt tool_set_household_facts (LLM-Vertrag), der Workflow ist der eine Fakten-Schreibweg
+    # agent.tool_set_context_facts (Muster career: 1 Workflow, mehrere Bindings). scope fest 'household'
+    # (nie $fromAI) -> die fn lehnt einen per_user-Kontext ab. Die household-Kontexte der Pakete nennt
     # der $fromAI-Text build-time aus den Manifest-context_scopes ($HouseholdFactsContexts, build.ps1).
     $ctxHint = 'family (default)'
     if ($HouseholdFactsContexts.Count -gt 0) {
@@ -171,19 +167,19 @@ function Build-AgentGuide {
             ,@('status', 'completed | skipped | unknown', 'string')
         ) $null @(320, 208) -StartNode $START_NODE
 
-    # WS-5a: Owner-only Member-Einladung. chat_id wird wie bei allen guide-Tools deterministisch aus
-    # 'Start agent.guide' durchgereicht (NICHT $fromAI) -> die fn leitet die Owner-Identitaet daraus ab.
+    # Owner-only Member-Einladung. chat_id wird wie bei allen guide-Tools deterministisch aus
+    # 'Start agent.guide' durchgereicht (nie $fromAI) -> die fn leitet die Owner-Identitaet daraus ab.
     $nToolInvite = New-AdvisorToolNode 'tool_invite_household_member' 'agent.guide.tool_invite_household_member' `
         'Issue a member invitation (OWNER ONLY). When the household owner wants an EXISTING family member to use the bot from their own Telegram ("invite my daughter Lisa", "lade meine Tochter ein", "Partner einladen"), call this with the person name. Returns a one-time deep link the owner shares out-of-band; the member redeems it and the owner confirms by button before access becomes active. NOT for capturing NEW people (that is onboarding via tool_set_household_facts), and the tool itself rejects non-owner callers.' `
         @(
             ,@('person_name', 'Name of the existing household member to invite (first name or full name as stored in the family facts)', 'string')
         ) $null @(480, 208) -StartNode $START_NODE
 
-    # WS-B3 (O3): Paket-Onboarding-Sektionen sind paket-besessen -> der provides.onboarding-Agent des Pakets
+    # Paket-Onboarding-Sektionen sind paket-besessen -> der provides.onboarding-Agent des Pakets
     # erfasst sie selbst (Self-Onboarding + eigene Staging-Pipeline + <pkg>.onboarding_state). Der Guide bindet
     # keine Paket-Staging-/Vision-Tools; er macht nur household + verweist fuer Paket-Bereiche auf deren Agenten.
-    # NOTE: der Orchestrator routet einen Anhang nie an den Guide (der Guide nimmt laut router_description keine
-    # Dokumentarten an; Onboarding-Pin gilt nicht fuer Anhaenge, Phase C) -> keine Vision-Bindung hier.
+    # Der Orchestrator routet einen Anhang nie an den Guide (router_description nimmt keine Dokumentarten an;
+    # der Onboarding-Pin gilt nicht fuer Anhaenge) -> keine Vision-Bindung hier.
 
     # --- Doku-Stickies ---
     $stickyOverview = Build-Sticky 'Doc: Überblick' @(-1640, -380) `

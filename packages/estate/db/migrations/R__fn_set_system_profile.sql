@@ -1,16 +1,15 @@
 -- ============================================================
--- estate.fn_set_system_profile (ATOMIC UPSERT — WS-5, Haushalts-Singleton)
---   Erfasst/aendert den System-Steckbrief + den FUNDORT der Offline-Kopie des core.backup_key
---   (Owner-Entscheid 9). GEHEIMNISSE NIE — nur Fundort-VERWEISE (die Tool-Description + Instructions
+-- estate.fn_set_system_profile (ATOMIC UPSERT — Haushalts-Singleton)
+--   Erfasst/aendert den System-Steckbrief + den Fundort der Offline-Kopie des core.backup_key.
+--   Geheimnisse nie — nur Fundort-Verweise (die Tool-Description + Instructions
 --   tragen "nur Verweis, nie das Geheimnis"; strukturell nicht erzwingbar).
---   SINGLETON (scope='household', CHECK-fixiert): genau 0/1 Zeile -> set_-Semantik via UPSERT auf den
+--   Singleton (scope='household', CHECK-fixiert): genau 0/1 Zeile -> set_-Semantik via UPSERT auf den
 --   festen Schluessel; partielles Update "nicht gesendet = unveraendert".
---   EINFACHER als fn_set_person_record: KEIN person_id/-Resolve, KEIN agent.*-Read -> D10-trivial (die
+--   Einfacher als fn_set_person_record: kein person_id/-Resolve, kein agent.*-Read (die
 --   fn beruehrt nur estate.system_profile + das core.fn_check_write_permission-DEFINER-Fenster).
 --   DB-Backstop: core.fn_check_write_permission('adults_only', chat_id) — Kind -> {ok:false} ohne Write.
 --   Eingabe jsonb: chat_id, backup_key_location, system_location, admin_access, restore_hint, notes.
---   RUECKGABE: {ok:true, created} | {ok:false, reason} (korrigierbar).
---   Anwenden via: db_apply.ps1 -File packages\estate\db\migrations\R__fn_set_system_profile.sql
+--   Rueckgabe: {ok:true, created} | {ok:false, reason} (korrigierbar); reason 'Write rejected (<perm>): …'.
 -- ============================================================
 CREATE OR REPLACE FUNCTION estate.fn_set_system_profile(p jsonb)
 RETURNS jsonb LANGUAGE plpgsql AS $$
@@ -23,7 +22,7 @@ BEGIN
         RETURN jsonb_build_object('ok', false,
             'reason', 'Write rejected (' || v_perm || '): only adult household members (owner/partner) may edit the system profile.');
     END IF;
-    -- Household-Singleton: KEIN agent.*-Read (kein person_id, kein FK) -> D10-trivial.
+    -- Household-Singleton: kein agent.*-Read (kein person_id, kein FK).
     v_created := NOT EXISTS (SELECT 1 FROM estate.system_profile);
 
     INSERT INTO estate.system_profile (scope, backup_key_location, system_location, admin_access, restore_hint, notes)

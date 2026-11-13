@@ -1,33 +1,33 @@
 -- ============================================================
--- fn_account_outlook (READ, STABLE, RAISE-frei) -- Deckungs-Vorschau eines Kontos (Monats-Check WP-E)
---   "Reicht das Geld bis zum naechsten Geldeingang?" — die EINE Rechen-Adresse fuer die Antwort nach dem Monats-Check
+-- fn_account_outlook (READ, STABLE, RAISE-frei) -- Deckungs-Vorschau eines Kontos
+--   "Reicht das Geld bis zum naechsten Geldeingang?" — die eine Rechen-Adresse fuer die Antwort nach dem Monats-Check
 --   (fn_apply_bank_statement), die Berater-Warnung account_coverage (fn_advisor_review) und die Bruecke des
---   Mini-App-Bildschirms „Konten“. Muster Quicken Simplifi "projected balance + low-balance alert"; die DB rechnet,
---   das LLM formuliert nur.
+--   Mini-App-Bildschirms „Konten“. Die DB rechnet, das LLM formuliert nur. Eingabe: p_account_id (nur cash-Konten).
 --   Modell (Einzelumsaetze werden nicht gespeichert -> Alltagsausgaben sind eine Schaetzung):
 --     d0 = Tag nach dem bestaetigten Stand (last_reconciled_at, sonst heute).
---     Stand(d) = Tagesreihe des EINEN Rechenkerns finance.fn_account_projection(konto, d0, Horizont, Alltag je Tag)
+--     Stand(d) = Tagesreihe des einen Rechenkerns finance.fn_account_projection(konto, d0, Horizont, Alltag je Tag)
 --     (Basis = Saldo zum Vortag von d0 + Buchungen + offene Dauerauftrags-Vorkommen; Transfer-Ziel in Zielwaehrung);
 --     derselbe Kern rechnet die Spar-Deckung fn_account_funding. Alltagsausgaben je Tag =
 --     finance.fn_account_everyday_per_day (gezaehlte Auszuege, 0 ohne Historie; provisional = nur ein Auszug).
---     Horizont = naechstes Vorkommen der groessten Einnahme AUF DIESES Konto (Einnahme oder Transfer-Ziel) nach heute,
+--     Horizont = naechstes Vorkommen der groessten Einnahme auf dieses Konto (Einnahme oder Transfer-Ziel) nach heute,
 --     sonst heute + 31. Tiefster Stand ueber [heute, Horizont].
 --   statement_age_days = Tage seit dem bestaetigten Stand (NULL ohne Abgleich): der Alltag laeuft ab d0 ohne Obergrenze,
 --   ein alter Auszug drueckt die Vorschau also beliebig tief -> fn_advisor_review warnt ab finance.statement_stale_days
 --   nicht mehr vor Unterdeckung, sondern meldet den veralteten Auszug.
 --   Puffer = accounts.min_balance (Kontowaehrung, buffer_source 'account'), sonst core.config
 --   finance.coverage_buffer_eur (Default 250) in die Kontowaehrung umgerechnet (buffer_source 'default').
---   Bruecke (Transparenz 2026-10-30) = Teilsummen derselben Reihe von d0 bis min_date: base (Saldo zum Vortag von d0;
+--   Bruecke = Teilsummen derselben Reihe von d0 bis min_date: base (Saldo zum Vortag von d0;
 --   weicht er vom bestaetigten Stand ab, steht eine rueckdatierte Buchung dazwischen) + booked + out + in + everyday
 --   = min_projected exakt. confirmed = bestaetigter Stand (NULL ohne Abgleich).
 --   Vorschlag bei Unterschreitung: Umbuchung (auf 50 aufgerundet) bis 2 Tage vor dem Tief von dem cash-Konto gleicher
 --   Waehrung mit dem groessten freien Saldo (account_reserve_status: Saldo - Ruecklage), wenn es den Betrag hat; nie von
 --   einem Kinderkonto (Eigentuemer role child, core.fn_household_persons): der Vorschlag geht ohne LLM in Karte/Alert.
---   RUECKGABE: {ok, account_id, account_name, currency, confirmed_balance, confirmed_as_of, statement_age_days, estimated_today,
+--   Rueckgabe: {ok, account_id, account_name, currency, confirmed_balance, confirmed_as_of, statement_age_days, estimated_today,
 --   next_income_date, next_income_name, next_income_amount, next_income_rp_id, horizon_end, planned_out, planned_in, everyday_per_day,
 --   has_history, provisional, min_projected, min_date, buffer, buffer_source, shortfall,
 --   bridge:{from, base, confirmed, booked, out, in, everyday, days},
---   suggestion:{amount, by_date, from_account} | null} | {ok:false}
+--   suggestion:{amount, by_date, from_account} | null} | {ok:false, reason} (kein cash-Konto)
+--   Tests: tests/db/finance/test_fn_account_outlook.sql
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_account_outlook(p_account_id int)
 RETURNS jsonb LANGUAGE plpgsql STABLE AS $$

@@ -1,6 +1,6 @@
 -- tests/db/finance/test_fn_book_recurring_transfer.sql
--- WS-2 (Multi-Member): wiederkehrender interner Transfer.
---   1. fn_create_recurring_transfer: legt eine Transfer-rp an (amount NEGATIV = Quell-Sicht,
+-- Wiederkehrender interner Transfer.
+--   1. fn_create_recurring_transfer: legt eine Transfer-rp an (amount negativ = Quell-Sicht,
 --      account_id=Quelle, target_account_id=Ziel); from<>to via {ok:false} (CHECK = Backstop).
 --   2. fn_book_recurring_transfer: bucht zwei Beine (Soll -/Haben +, category=transfer, eine group_id,
 --      beide Beine tragen recurring_payment_id) + Idempotenz-Guard je (rp_id, due_date).
@@ -42,7 +42,7 @@ BEGIN
   END IF;
   v_rp := (v_result->>'recurring_payment_id')::int;
 
-  -- gespeichert: amount NEGATIV (Quell-Sicht), target gesetzt, monthly_equivalent = -200
+  -- gespeichert: amount negativ (Quell-Sicht), target gesetzt, monthly_equivalent = -200
   IF NOT EXISTS (SELECT 1 FROM finance.recurring_payments
                  WHERE id = v_rp AND account_id = v_from AND target_account_id = v_to AND amount = -200) THEN
     RAISE EXCEPTION 'FAIL [create]: rp-Spalten nicht korrekt (id=%)', v_rp;
@@ -136,7 +136,7 @@ BEGIN
   END IF;
   RAISE NOTICE 'PASS [amount<=0 -> ok:false]';
 
-  -- not-a-transfer: fn_book_recurring_transfer auf einer rp OHNE target -> {ok:false}
+  -- not-a-transfer: fn_book_recurring_transfer auf einer rp ohne target -> {ok:false}
   v_rp := finance.fn_add_recurring_payment(v_acct, -100, 'plain', 1::smallint, 'month'::finance.schedule_unit,
                                            NULL, '2026-05-01', '2026-05-01', NULL, NULL, NULL);
   SELECT finance.fn_book_recurring_transfer(jsonb_build_object('recurring_payment_id', v_rp, 'due_date', '2026-05-01')) INTO v_result;
@@ -200,7 +200,7 @@ BEGIN
 END $$;
 
 -- ============================================================
--- 6: Cross-Currency NON-EUR -> NON-EUR (GBP -> CLP): zwei FX-Lookups (Quelle->EUR, EUR->Ziel)
+-- 6: Cross-Currency Nicht-EUR -> Nicht-EUR (GBP -> CLP): zwei FX-Lookups (Quelle->EUR, EUR->Ziel)
 -- ============================================================
 DO $$
 DECLARE
@@ -241,7 +241,7 @@ BEGIN
   END IF;
   RAISE NOTICE 'PASS [cross-currency GBP->CLP]: CLP=+181250';
 
-  -- Rundungs-Paket 2026-10-23: nur EINE Rundung am Ende (vorher EUR-Zwischenwert auf Cent, dann x Kurs erneut):
+  -- nur eine Rundung am Ende (kein EUR-Zwischenwert auf Cent, dann x Kurs erneut):
   -- 100 GBP bei 0.83 -> 120.4819277 EUR -> x1450 = 174698.80 CLP (doppelt gerundet waeren es 174696.00).
   DECLARE v_gbp2 INT; v_clp3 INT; v_rp2 INT; BEGIN
     v_gbp2 := (finance.fn_create_account('{"name":"__test_rt_gbp2__","account_type":"cash","currency":"GBP"}'::jsonb)->>'account_id')::int;
@@ -259,10 +259,9 @@ BEGIN
 END $$;
 
 -- ============================================================
--- 7: Degenerierter 0-Betrag — seit WS-3a (CHECK amount<>0, V005) STRUKTURELL unmoeglich.
---    Frueher fing fn_book_recurring_transfer einen 0-Betrag (nur via Direkt-SQL anlegbar) per v_mag=0-Guard
---    ab (kein div/0). Jetzt blockt der Tabellen-CHECK die 0-Betrag-rp schon beim INSERT -> die Invariante
---    sitzt am tiefsten Layer (kein doppelter fn-Guard mehr; v_mag>0 ist garantiert -> keine fx_rate-Division
+-- 7: Degenerierter 0-Betrag — durch den CHECK amount<>0 (V005) strukturell unmoeglich.
+--    Der Tabellen-CHECK blockt die 0-Betrag-rp schon beim INSERT -> die Invariante
+--    sitzt am tiefsten Layer (kein fn-Guard noetig; v_mag>0 ist garantiert -> keine fx_rate-Division
 --    durch 0 moeglich). Vollabdeckung des CHECK: tests/db/finance/test_recurring_payment_amount_check.sql.
 -- ============================================================
 DO $$
@@ -282,7 +281,7 @@ BEGIN
   END;
 END $$;
 
--- ---------- Befund 2026-11-03: Bein im Startbetrag: before_opening ohne Write, already_booked hat Vorrang ----------
+-- ---------- Bein im Startbetrag: before_opening ohne Write, already_booked hat Vorrang ----------
 DO $$
 DECLARE
   T DATE := core.fn_today();

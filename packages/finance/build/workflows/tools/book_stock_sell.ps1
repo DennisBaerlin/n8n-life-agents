@@ -1,15 +1,14 @@
 ﻿#Requires -Version 5.1
 # Dot-gesourct von build_finance_tools.ps1 (Helper + Script-Scope-Creds im Parent-Scope).
 
-# --- 4. tool_book_stock_sell (Playbook 5.4) ---------------
+# --- tool_book_stock_sell ---
 function Build-BookStockSell {
-    # WS-B0: enge Paket-Schreibrolle (finance_rw, Least-Privilege D10) statt Owner-Cred.
-    # Dynamic-Scope: Build-Pg liest dieses $CRED_POSTGRES. Core-Tools nutzen die Owner-Cred.
+    # Enge Paket-Schreibrolle (finance_rw) statt Owner-Cred; Build-Pg liest $CRED_POSTGRES per Dynamic-Scope.
     $CRED_POSTGRES = $CRED_FINANCE_RW
     $trig = Build-Trigger @('depot_name','isin','symbol','shares','price_per_share','quote_currency','total_credited','order_fee','transaction_date','savings_goal_name')
 
-    # S8: Position per Depot-Name + ISIN/Symbol (finance.fn_find_holding) statt holding_id-Lookup durch das Modell.
-    # Liefert settlement_account_id, Depot-Name, Waehrung (WP-5: Depot-/Verrechnungs-Waehrung fuer die Karte) und die
+    # Position per Depot-Name + ISIN/Symbol (finance.fn_find_holding) statt holding_id-Lookup durch das Modell.
+    # Liefert settlement_account_id, Depot-Name, Waehrung (Depot-/Verrechnungs-Waehrung fuer die Karte) und die
     # verfuegbaren Stuecke; unbekannt/mehrdeutig -> {ok:false, code, reason, candidates} ohne Karte.
     $getInfo = Build-Pg 'Find Holding' @(220, 0) `
         "=SELECT finance.fn_find_holding(`$1::jsonb) AS r;" `
@@ -25,8 +24,6 @@ function Build-BookStockSell {
         ,@('candidates', "={{ $H.candidates || [] }}", 'array')
     )
 
-    # "DB ist das Gesetz": fn_book_stock_sell laeuft als Probelauf VOR der Karte (Oversell, nicht-positive Werte ->
-    # {ok:false} ohne Karte); derselbe Param-Satz geht nach dem Gate in den echten Write.
     $wg = New-FnWriteGate -Fn 'finance.fn_book_stock_sell' -DryPos @(660, 0) -WritePos @(1980, 0) `
         -WriteName 'Create sell (atomic)' `
         -WriteSelect "(r->>'ok')::boolean AS ok, r->>'reason' AS reason, (r->>'sell_tx_id')::int AS sell_tx_id, (r->>'settlement_balance')::numeric AS settlement_balance, (r->>'proceeds')::numeric AS proceeds, (r->>'remaining_shares')::numeric AS remaining_shares, (r->>'derisk_amount')::numeric AS derisk_amount, (r->>'current_amount')::numeric AS goal_current_amount" `
@@ -44,8 +41,7 @@ function Build-BookStockSell {
         })
 
     # --- HITL approval gate ---
-    # Strukturiertes Summary (Textkatalog); Betraege in der Depot-/Verrechnungs-Waehrung (Find Holding).
-    # Post-State-Vertrag: Datum/Gebuehr/Erloes aus dem Probelauf (effective = von der fn gesetzte Werte, proceeds = fn).
+    # Betraege in der Depot-/Verrechnungs-Waehrung (Find Holding); Datum/Gebuehr/Erloes aus dem Probelauf (effective = von der fn gesetzte Werte, proceeds = fn).
     $S = "`$('Start').item.json"
     $G = "`$('Find Holding').item.json.r"
     $E = "`$('Dry run').item.json.r"
@@ -72,15 +68,13 @@ function Build-BookStockSell {
 
     $retCancelled = Build-ToolCancelled 'Return cancelled' @(1980, 240) 'the book_stock_sell action'
 
-    # Atomarer Write via fn_book_stock_sell ($wg.Write): EINE sell-Transaktion. Order-Gebuehr gefaltet in amount +
-    # separat in order_fee; shares-Delta negativ. Der Bestand kann sich seit dem Probelauf geaendert haben ->
-    # korrigierbarer Fall (oversell) kommt hier erneut als {ok:false}.
+    # Write: eine sell-Transaktion, Order-Gebuehr gefaltet in amount + separat in order_fee; shares-Delta negativ.
+    # Der Bestand kann sich seit dem Probelauf geaendert haben -> oversell kommt hier erneut als {ok:false}.
     $ifWriteOk = Build-If 'Write ok?' @(2200, 0) "={{ `$json.ok }}" 'true' 'equals' 'boolean'
 
     $errWrite = Build-ToolError 'Sell rejected' @(2420, 240) `
         "={{ `$('Create sell (atomic)').item.json.reason }}"
 
-    # Post-State kommt aus der fn (settlement_balance/proceeds/remaining_shares) — kein separater Read-back.
     $ret = Build-Return @(2640, 0) @(
         ,@('ok','true','boolean')
         ,@('sell_tx_id', "={{ `$('Create sell (atomic)').item.json.sell_tx_id }}", 'number')

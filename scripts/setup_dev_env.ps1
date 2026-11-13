@@ -1,26 +1,26 @@
 ﻿#Requires -Version 5.1
 # setup_dev_env.ps1 -- Frisches-System-Erkennung + Ein-Befehl-Dev-Setup (idempotenter Installer + Pruefer).
 #
-# EINE Adresse fuer die komplette Dev-Toolchain dieses Repos: erkennt DETERMINISTISCH, was auf einem
-# frisch aufgesetzten Windows fehlt, und installiert die fehlenden Voraussetzungen ueber EINEN Befehl --
-# BEVOR das erste Entwickeln beginnt. Erkennung = Tooling (nichts wird geraten). Muster: db_apply.ps1/
-# bootstrap_test_n8n.ps1 (Multi-Modus via Flags), Marker wie bootstrap_test_db.ps1 (.local/*_state.json).
+# Erkennt deterministisch, was auf einem frisch aufgesetzten Windows an Dev-Voraussetzungen fehlt, und installiert es
+# mit einem Befehl, bevor das erste Entwickeln beginnt (nichts wird geraten).
 #
 #   .\scripts\setup_dev_env.ps1            # fehlende Voraussetzungen installieren (idempotent)
-#   .\scripts\setup_dev_env.ps1 -Verify    # NUR pruefen, nichts aendern; Exit-Code = Anzahl fehlend
+#   .\scripts\setup_dev_env.ps1 -Verify    # nur pruefen, nichts aendern; Exit-Code = Anzahl fehlend
 #   .\scripts\setup_dev_env.ps1 -Site      # zusaetzlich Hugo (Showcase-Site) nach <repo>\.local\bin
 #   .\scripts\setup_dev_env.ps1 -Full      # Abschluss-Smoke: prek run --all-files --hook-stage pre-commit
+#   -Verbose zeigt zusaetzliche Detailzeilen.
+# Exit-Code = Anzahl fehlender Pflicht-Voraussetzungen (0 = vollstaendig); Exit 1 = winget fehlt (Schritt 1).
+# Voraussetzung: winget (App Installer); Docker Desktop wird nur erkannt.
 #
-# NICHT-Ziele (bewusst): Docker NICHT silent installieren (nur erkennen + Anleitung); Windows-
-# Entwicklermodus NICHT setzen (nur warnen); keine Secrets ausfuellen (nur OWNER_CHAT_ID=0-Platzhalter);
-# KEIN System-Python -- prek-managed Python ist der offizielle Weg, der AppData-Junction-Block wird ueber
-# die zwei Env-Vars in Schritt 4 geloest, nicht ueber ein System-Python.
+# Nicht-Ziele (bewusst): Docker nicht silent installieren (nur erkennen + Anleitung); Windows-Entwicklermodus
+# nicht setzen (nur warnen); keine Secrets ausfuellen (nur OWNER_CHAT_ID=0-Platzhalter); kein System-Python --
+# der AppData-Junction-Block wird ueber die zwei Env-Vars in Schritt 4 geloest (prek-managed Python).
 #
 # Marker .local/devenv_state.json: Hash ueber die Anforderungs-Liste (Tool-Namen + Pins, geteilt via
-# scripts/lib/devenv.ps1) -- der SessionStart-Hook check_dev_env.ps1 liest ihn. BEWUSSTER Trade-off:
-# der Marker prueft die Anforderungs-Liste, NICHT den Ist-Zustand (kein TTL, KISS; Grenze in CONTRIBUTING).
+# scripts/lib/devenv.ps1) -- der SessionStart-Hook check_dev_env.ps1 liest ihn. Bewusster Trade-off:
+# der Marker prueft die Anforderungs-Liste, nicht den Ist-Zustand (kein TTL; Grenze in CONTRIBUTING).
 #
-# Encoding: UTF-8 mit BOM (.claude/rules/powershell.md). Pin-SoT + geteilte prek-Aufloesung: scripts/lib/devenv.ps1.
+# Pin-Quelle + geteilte prek-Aufloesung: scripts/lib/devenv.ps1.
 
 param(
     [switch]$Verify,
@@ -52,8 +52,8 @@ function Write-Miss([string]$Name, [string]$m) {
     $script:missNames.Add($Name)
 }
 
-# Natives Tool aufrufen: stdout+stderr + Exit-Code einsammeln (Muster bootstrap_test_db.ps1; EAP lokal
-# auf 'Continue', sonst wuerde native stderr unter 'Stop'+2>&1 als terminierender NativeCommandError werfen).
+# Natives Tool aufrufen: stdout+stderr + Exit-Code einsammeln (EAP lokal auf 'Continue', sonst wuerde native
+# stderr unter 'Stop'+2>&1 als terminierender NativeCommandError werfen).
 function Invoke-Native {
     param([string]$Exe, [string[]]$CmdArgs)
     $prev = $ErrorActionPreference
@@ -183,8 +183,8 @@ if ($gitName.Trim() -and $gitEmail.Trim()) {
 }
 
 # ---------------------------------------------------------------------------
-# 3) Windows-Entwicklermodus (offizielle Voraussetzung; WARN, KEIN Silent-Set). Ehrlich: allgemeine
-#    Voraussetzung, NICHT der Fix fuer den Junction-Block (Schritt 4).
+# 3) Windows-Entwicklermodus (offizielle Voraussetzung; Warnung, kein Silent-Set). Allgemeine
+#    Voraussetzung, nicht der Fix fuer den Junction-Block (Schritt 4).
 # ---------------------------------------------------------------------------
 Write-Step "3) Windows-Entwicklermodus"
 $devModeOn = $false
@@ -202,19 +202,17 @@ if ($devModeOn) {
 
 # ---------------------------------------------------------------------------
 # 4) AppData-Junction-Traversal-Probe (deterministisch): das LOCALAPPDATA-Traversal wirft
-#    ERROR_PATH_NOT_FOUND (0x80070003) OBWOHL das Ziel per direktem Pfad existiert -> uv/prek-managed
-#    Python bricht. Fix: PREK_HOME + UV_PYTHON_INSTALL_DIR raus aus AppData nach $HOME (verifiziert:
-#    mit den zwei Vars laeuft der prek-Von-Null-Lauf ueber alle Hook-Sprachen gruen). \Temp ist vom
-#    Block ausgenommen -> Probe-Pfad bewusst NICHT unter $env:TEMP.
+#    ERROR_PATH_NOT_FOUND (0x80070003), obwohl das Ziel per direktem Pfad existiert -> uv/prek-managed
+#    Python bricht. Fix: PREK_HOME + UV_PYTHON_INSTALL_DIR raus aus AppData nach $HOME.
+#    \Temp ist vom Block ausgenommen -> Probe-Pfad bewusst nicht unter $env:TEMP.
 # ---------------------------------------------------------------------------
 Write-Step "4) AppData-Junction-Traversal-Probe"
 $prekHome = Join-Path $HOME '.prek'
 $uvPyDir  = Join-Path $HOME '.uv\python'
 
 function Test-JunctionBlock {
-    # 'blocked' | 'clear' | 'inconclusive'. Fester Probe-Pfad (Konstante), Leichen-Cleanup VOR dem
-    # Anlegen, komplette Probe in try/finally (Cleanup garantiert). "Geblockt" ENG: Traversal wirft
-    # DirectoryNotFound/ERROR_PATH_NOT_FOUND, WAEHREND das Ziel direkt existiert.
+    # 'blocked' | 'clear' | 'inconclusive'. Geblockt eng gefasst: Traversal wirft
+    # DirectoryNotFound/ERROR_PATH_NOT_FOUND, waehrend das Ziel direkt existiert.
     $probeRoot = Join-Path $env:LOCALAPPDATA 'lifeagents-devenv-probe'
     if (Test-Path $probeRoot) { Remove-Item -Recurse -Force $probeRoot -ErrorAction SilentlyContinue }
     try {
@@ -268,8 +266,8 @@ switch ($block) {
 }
 
 # ---------------------------------------------------------------------------
-# 5) Docker Desktop: nur DETECT (kein Silent-Install). Zaehlt als fehlend + blockt den Erfolgs-Marker
-#    (ehrlicher Zustand); der SessionStart-Reminder unterscheidet den Docker-Fall.
+# 5) Docker Desktop: nur erkennen (kein Silent-Install). Zaehlt als fehlend und blockt den Erfolgs-Marker;
+#    der SessionStart-Reminder unterscheidet den Docker-Fall.
 # ---------------------------------------------------------------------------
 Write-Step "5) Docker Desktop (nur erkennen)"
 $dockerOk = $false
@@ -337,7 +335,7 @@ if ($prek) {
 }
 
 # ---------------------------------------------------------------------------
-# 8) PSScriptAnalyzer (ps-lint). Reihenfolge exakt: -ListAvailable -> Fallback-Pfad -> Install-Module
+# 8) PSScriptAnalyzer (ps-lint). Reihenfolge: -ListAvailable -> Fallback-Pfad -> Install-Module
 #    (PSGallery trusted) -> bei KFM-Fehler Save-Module-Fallback.
 # ---------------------------------------------------------------------------
 Write-Step "8) PSScriptAnalyzer (ps-lint)"
@@ -374,7 +372,7 @@ if ($psaFound) {
 }
 
 # ---------------------------------------------------------------------------
-# 9) $HOME\.local\bin anlegen + auf den User-PATH (kein Doppeleintrag; in-process spiegeln VOR Schritt 10).
+# 9) $HOME\.local\bin anlegen + auf den User-PATH (kein Doppeleintrag; in-process spiegeln vor Schritt 10).
 # ---------------------------------------------------------------------------
 Write-Step "9) `$HOME\.local\bin auf dem User-PATH"
 $userPath = [Environment]::GetEnvironmentVariable('Path', 'User')

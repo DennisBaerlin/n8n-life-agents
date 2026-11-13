@@ -1,10 +1,10 @@
 ﻿#Requires -Version 5.1
 # =====================================================================================================
-# approval_matrix.ps1 — DIE eine Lese- + Pruef-Stelle der Maker-Checker-Stufen (WS-5b; Phase D je Paket)
+# approval_matrix.ps1 — die eine Lese- + Pruef-Stelle der Maker-Checker-Stufen
 #
 # Jedes Paket deklariert seine Gate-Aufrufer (Workflows, die agent.tool_human_approval rufen) im eigenen
 # manifest.json-Block `approval_matrix` = { "_comment": …, "<workflow-name>": { "tier": …, "reason": … } }
-# (docs/package-contract.md §3.10). Diese Funktion vereint die Bloecke ALLER Manifeste und prueft den Vertrag:
+# (docs/package-contract.md §3.10). Diese Funktion vereint die Bloecke aller Manifeste und prueft den Vertrag:
 #   (a) tier ∈ self | owner_info | owner_approval | owner_only, reason nicht leer (self: s. $ApprovalTierRank);
 #   (b) kein Workflow in zwei Bloecken;
 #   (c) Verb-Praefix-Strenge: der tier ist mindestens so streng wie das Verb im Tool-Namen verlangt
@@ -15,8 +15,8 @@
 # Abhaengigkeitsfrei (nur Manifest-JSON rein, Objekte raus), damit der Lint sie dot-sourcen kann.
 # =====================================================================================================
 
-# self = die eigene Person bestaetigt, kein Owner beteiligt/informiert. NUR fuer Schreibwege, deren DB-fn die
-# Selbst-Beschraenkung strukturell erzwingt (heute: agent.fn_set_own_context_facts, per_user fest) -> vom Verb-Floor
+# self = die eigene Person bestaetigt, kein Owner beteiligt/informiert. Nur fuer Schreibwege, deren DB-fn die
+# Selbst-Beschraenkung strukturell erzwingt (agent.fn_set_own_context_facts, per_user fest) -> vom Verb-Floor
 # ausgenommen; approval_lint prueft am GEBAUTEN Workflow, dass er ausschliesslich diese fn ruft und keinen scope-Eingang hat.
 $ApprovalTierRank = @{ self = -1; owner_info = 0; owner_approval = 1; owner_only = 2 }
 $ApprovalSelfFn   = 'agent.fn_set_own_context_facts'
@@ -26,7 +26,7 @@ $ApprovalVerbFloor = @{ save = 2; publish = 2; invite = 2; sync = 2
                         set = 1; close = 1; delete = 1; void = 1; settle = 1; sell = 1; reconcile = 1; commit = 1; import = 1; replace = 1
                         create = 0; book = 0; record = 0; cancel = 0; export = 0 }
 # Break-Glass-Ausnahme vom Verb-Floor: ein Manifest-Eintrag mit "break_glass": true darf owner_info tragen, wo das Verb
-# strenger verlangt — nur fuer Writes, die ein Hinterbliebener ohne den Owner koennen MUSS (owner_approval deadlockte,
+# strenger verlangt — nur fuer Writes, die ein Hinterbliebener ohne den Owner koennen muss (owner_approval deadlockte,
 # wenn der Owner der Betroffene ist); die kompensierende Kontrolle ist owner_info, die Begruendung steht im reason.
 
 function Get-ApprovalMatrix {

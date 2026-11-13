@@ -1,7 +1,8 @@
 -- ============================================================
--- fn_verify_holding_shares
+-- fn_verify_holding_shares (READ, STABLE)
 --   Self-Check nach Buy/Sell: stimmt shares mit Erwartung ueberein?
---   TRUE = passt, FALSE = Drift (Helper wirft Error).
+--   Eingabe: p_holding_id, p_expected (erwartete Stueckzahl).
+--   TRUE = passt, FALSE = Drift (Helper wirft Error); NULL bei unbekannter holding_id.
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_verify_holding_shares(
     p_holding_id int,

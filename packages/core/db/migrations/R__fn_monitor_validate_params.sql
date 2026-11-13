@@ -1,17 +1,18 @@
 -- ============================================================
--- fn_monitor_validate_params (READ-ONLY — Methoden-Parameter einer PAKET-Methode pruefen + normalisieren)
---   Dispatch an die validate_fn der registrierten Methode (Phase B; Muster core.fn_dispatch_callback:
+-- fn_monitor_validate_params (READ)
+--   Prueft und normalisiert die Methoden-Parameter einer Paket-Methode (p_method, p_params). Dispatch an die
+--   validate_fn der registrierten Methode (Muster core.fn_dispatch_callback:
 --   fn-Name nur aus der Registry, to_regprocedure-Guard, EXECUTE format). Genutzt von fn_create/
---   set_monitor_trigger + fn_monitor_probe (freundliche Meldung VOR dem Write) und vom BEFORE-Trigger
+--   set_monitor_trigger + fn_monitor_probe (freundliche Meldung vor dem Write) und vom BEFORE-Trigger
 --   trg_monitor_triggers_validate_spec (DB-Gesetz). Core-Builtins validieren ihre Felder selbst (nicht hier).
 --   p_params: das vom Modell gelieferte Objekt (Tool-Input acquisition_params) bzw. die gespeicherte Spec.
 --     Ein Nicht-Objekt (z. B. der Build-Sentinel '__invalid_json__' bei kaputtem JSON) -> {ok:false}.
 --   RUECKGABE: {ok:true, available:true, spec, display (tpl-Objekt oder String)} | {ok:false, available:<bool>, reason}
 --     available=false = Methode gerade nicht nutzbar (der Trigger-Backstop ueberspringt dann, create lehnt ab).
---   IDEMPOTENZ-VERTRAG der Paket-validate_fn: sie muss ihre eigene normalisierte spec als params akzeptieren und
---     unveraendert zurueckgeben (der BEFORE-Trigger validiert die GESPEICHERTE spec, fn_set_monitor_trigger
+--   Idempotenz-Vertrag der Paket-validate_fn: sie muss ihre eigene normalisierte spec als params akzeptieren und
+--     unveraendert zurueckgeben (der BEFORE-Trigger validiert die gespeicherte spec, fn_set_monitor_trigger
 --     validiert spec || neue params) -> params und spec haben dieselbe Form (docs/package-contract.md §3.9).
---   NIE RAISE: auch ein RAISE der Paket-validate_fn wird zu {ok:false} gefangen (Paritaet zu fn_monitor_acquire).
+--   Nie RAISE: auch ein RAISE der Paket-validate_fn wird zu {ok:false} gefangen (Paritaet zu fn_monitor_acquire).
 --   Tests: tests/db/core/test_monitor_acquisition_methods.sql
 -- ============================================================
 CREATE OR REPLACE FUNCTION agent.fn_monitor_validate_params(p_method text, p_params jsonb)
@@ -51,7 +52,7 @@ BEGIN
             'reason', format('validate_fn of %s returned no spec object', p_method));
     END IF;
     RETURN jsonb_build_object('ok', true, 'available', true, 'spec', v_r->'spec',
-        -- display: typisierter Text-Verweis (tpl-Objekt, Textkatalog Phase C) unveraendert, sonst der String (aeltere Pakete)
+        -- display: typisierter Text-Verweis (tpl-Objekt, Textkatalog) unveraendert, sonst der String
         'display', CASE WHEN jsonb_typeof(v_r->'display') = 'object' THEN v_r->'display'
                         ELSE to_jsonb(COALESCE(v_r->>'display', '')) END);
 END;

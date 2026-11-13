@@ -1,9 +1,9 @@
 -- tests/db/core/test_fn_onboarding_status.sql
--- WS-B3 DRY-Onboarding: core.fn_onboarding_status(p_package) ist die kombinierte, paket-uebergreifende
+-- core.fn_onboarding_status(p_package) ist die kombinierte, paket-uebergreifende
 -- Lese-Schnittstelle (core-Bein immer + optionales Paket-Bein); core.fn_set_onboarding_section(p) setzt
--- EINE Sektion (paket-schluessel-parametrisiert, status text+CHECK, kein ENUM-Cast).
+-- eine Sektion (paket-schluessel-parametrisiert, status text+CHECK, kein ENUM-Cast).
 --   complete = core.complete AND (package.complete falls p_package gesetzt). 'skipped' zaehlt als aufgeloest.
--- db_test hat KEIN seed_data -> die finance.onboarding_state-Zeilen self-seeden (guide_init seedet household).
+-- db_test hat kein seed_data -> die finance.onboarding_state-Zeilen self-seeden (guide_init seedet household).
 -- In BEGIN..ROLLBACK -> kein Residual-State.
 BEGIN;
 
@@ -61,7 +61,7 @@ BEGIN
   r := core.fn_set_onboarding_section('{"package":"nonexistent_pkg","section_key":"x","status":"completed"}');
   IF (r->>'ok')::boolean THEN RAISE EXCEPTION 'FAIL [unbekanntes Paket beim Write akzeptiert]'; END IF;
 
-  -- ---------- 7) Read-Guard (B2): unbekanntes/ungueltiges Paket -> package={ok:false}, complete=false, NIE Fremdtabelle ----------
+  -- ---------- 7) Read-Guard: unbekanntes/ungueltiges Paket -> package={ok:false}, complete=false, nie Fremdtabelle ----------
   r := core.fn_onboarding_status('nonexistent_pkg');
   IF (r->'package'->>'ok')::boolean IS DISTINCT FROM false THEN
     RAISE EXCEPTION 'FAIL [unknown package -> kein ok:false]: %', r->'package'; END IF;
@@ -73,9 +73,9 @@ BEGIN
   RAISE NOTICE 'PASS core.fn_onboarding_status / fn_set_onboarding_section [kombiniert/Tri-State/Gate/Guards]';
 END $$;
 
--- ---------- 8) VF3 (B1): finance_ro liest den Onboarding-Status ueber das publizierte DEFINER-Fenster ----------
+-- ---------- 8) VF3: finance_ro liest den Onboarding-Status ueber das publizierte DEFINER-Fenster ----------
 -- Beweist, dass die SECURITY-DEFINER-Read-fn die D10-Isolation kontrolliert ueberschreitet (finance_ro hat
--- KEIN SELECT auf agent + sieht das eigene finance nur ueber die fn). Voraussetzung: EXECUTE-Grant aus
+-- kein SELECT auf agent + sieht das eigene finance nur ueber die fn). Voraussetzung: EXECUTE-Grant aus
 -- fn_provision_package_roles (bootstrap_test_db). Superuser -> SET LOCAL ROLE ohne Membership.
 DO $$
 DECLARE r JSONB;
@@ -99,7 +99,7 @@ BEGIN
   RAISE NOTICE 'PASS VF3 [finance_ro liest Onboarding-Status ueber das publizierte DEFINER-Fenster]';
 END $$;
 
--- Roter Faden: viewer_is_member = der Fragende (p_chat_id) ist ein aufgeloestes Mitglied (nicht der Owner) -> das
+-- viewer_is_member = der Fragende (p_chat_id) ist ein aufgeloestes Mitglied (nicht der Owner) -> das
 -- Core-first-Gate sagt ihm "der Haushalt wird noch eingerichtet" statt "schick /onboarding". Owner / unbekannt /
 -- ohne chat_id -> false. Lesbar unter der engen RO-Rolle (das Gate liest unter <pkg>_ro).
 DO $$

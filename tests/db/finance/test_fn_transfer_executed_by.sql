@@ -1,7 +1,7 @@
 -- tests/db/finance/test_fn_transfer_executed_by.sql
--- „Bank-Hinweis nur, wo er passt": wer fuehrt einen wiederkehrenden Uebertrag aus (Dauerauftrag bei der Bank oder
+-- Wer fuehrt einen wiederkehrenden Uebertrag aus (Dauerauftrag bei der Bank oder
 --   ueberweist der Nutzer selbst)? Die Spalte recurring_payments.executed_by ist eine reine Nutzerangabe (NULL = nicht
---   angegeben), die EINE Regel steckt in finance.fn_transfer_executed_by(rp_id): gespeichert gewinnt, sonst Quelle
+--   angegeben), die eine Regel steckt in finance.fn_transfer_executed_by(rp_id): gespeichert gewinnt, sonst Quelle
 --   Geld-Konto (cash) -> 'unknown', jede andere Kontoart (P2P, Depot, Festgeld, Kredit) -> 'manual' (dort kann keine
 --   Dauerauftrags-Regel liegen), Zeile ohne Ziel-Konto -> 'unknown'. CHECKs: nur 'bank'|'manual', nur an Uebertraegen.
 --   Werte erfunden.

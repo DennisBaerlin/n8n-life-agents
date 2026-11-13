@@ -1,6 +1,6 @@
 -- tests/db/career/test_fn_render_career_preferences.sql
 -- career.fn_render_career_preferences: Header-Render aus metadata.facts (Vorbild test_fn_render_career_profile).
--- Deckt u. a. den jsonb_typeof-'null'-Guard auf remote_preference (Reviewer A7).
+-- Deckt u. a. den jsonb_typeof-'null'-Guard auf remote_preference.
 BEGIN;
 DO $$
 DECLARE v_out TEXT;
@@ -29,7 +29,7 @@ BEGIN
   IF position('Max. Pendelweg: 40 km' IN v_out) = 0 THEN RAISE EXCEPTION 'FAIL [commute]: %', v_out; END IF;
   RAISE NOTICE 'PASS [render facts -> Header-Zeilen]';
 
-  -- A7-Guard: remote_preference als JSON-null -> KEINE leere "Arbeitsort-Praeferenz: "-Zeile
+  -- jsonb_typeof-Guard: remote_preference als JSON-null -> keine leere "Arbeitsort-Praeferenz: "-Zeile
   UPDATE agent.core_contexts
      SET metadata = jsonb_build_object('facts', jsonb_build_object('preferred_aspects', jsonb_build_array('X'), 'remote_preference', NULL))
    WHERE name = 'career_preferences';
@@ -38,7 +38,7 @@ BEGIN
     RAISE EXCEPTION 'FAIL [A7 null-guard]: remote_preference=null rendert leere Zeile: %', v_out; END IF;
   RAISE NOTICE 'PASS [A7: remote_preference=null -> keine Zeile]';
 
-  -- WP3: Bestand ohne Einheit -> offen gezeigt, nie angenommen
+  -- Bestand ohne Einheit -> offen gezeigt, nie angenommen
   UPDATE agent.core_contexts SET metadata = jsonb_build_object('facts', jsonb_build_object('salary_floor', 60000))
    WHERE name = 'career_preferences';
   v_out := career.fn_render_career_preferences('career_preferences');

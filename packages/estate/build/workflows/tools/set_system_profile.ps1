@@ -1,19 +1,18 @@
 ﻿#Requires -Version 5.1
 # Dot-gesourct von build.ps1 (Helper + Script-Scope-Creds im Parent-Scope).
 
-# --- agent.estate.tool_set_system_profile (WS-5, set_ = Haushalts-Singleton-UPSERT) ----------
-# Erfasst/aendert den System-Steckbrief + den FUNDORT der Offline-Kopie des core.backup_key
-# (Owner-Entscheid 9). GEHEIMNISSE NIE — nur Fundort-Verweise. Haushalts-Singleton (1 Zeile,
+# --- agent.estate.tool_set_system_profile (set_ = Haushalts-Singleton-UPSERT) ----------
+# Erfasst/aendert den System-Steckbrief + den Fundort der Offline-Kopie des core.backup_key.
+# Keine Geheimnisse — nur Fundort-Verweise. Haushalts-Singleton (1 Zeile,
 # scope='household' CHECK-fixiert) -> kein person_id/-Resolve. HITL owner_approval (Verb set_ Floor 1).
 # adults_only-DB-Backstop in der fn. Cred = estate_rw. Sticky: Singleton-UPSERT + adults_only + Grenzregel.
 function Build-EstateSetSystemProfile {
     $CRED_POSTGRES = $CRED_ESTATE_RW
     $trig = Build-Trigger @('backup_key_location','system_location','admin_access','restore_hint','notes')
 
-    # Strukturiertes Summary (Textkatalog): Keys + typisierte Rohwerte, das Gate rendert je Empfaenger-Sprache.
     # Nur genannte Felder erscheinen (-If); der Hinweis "unveraendert" steht als Note darunter.
     $S = "`$('Start').item.json"
-    # "DB ist das Gesetz": estate.fn_set_system_profile laeuft als Probelauf VOR der Karte; derselbe Param-Satz geht nach dem Gate in den echten Write.
+    # estate.fn_set_system_profile laeuft als Probelauf vor der Karte; derselbe Param-Satz geht nach dem Gate in den echten Write.
     $wg = New-FnWriteGate -Fn 'estate.fn_set_system_profile' -DryPos @(440, 0) -WritePos @(1760, 0) `
         -WriteName 'Set profile (atomic)' `
         -WriteSelect "(r->>'ok')::boolean AS ok, r->>'reason' AS reason, (r->>'created')::boolean AS created" `

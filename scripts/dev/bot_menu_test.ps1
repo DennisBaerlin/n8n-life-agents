@@ -1,6 +1,6 @@
 ﻿#Requires -Version 5.1
-# bot_menu_test.ps1 — DETERMINISTISCHER, GRATIS Test des Telegram-Befehlsmenues je Sprache (Textkatalog Phase B).
-# Faehrt im laufenden Substrat-Container den ECHTEN Installer-Code (provisioning/lib/deploy_workflows.sh
+# bot_menu_test.ps1 — deterministischer, kostenloser Test des Telegram-Befehlsmenues je Sprache.
+# Faehrt im laufenden Substrat-Container den echten Installer-Code (provisioning/lib/deploy_workflows.sh
 # _set_bot_command_menus aus dem installierten Baum) gegen den Mock-Telegram (Basis-URL-Override
 # LIFEAGENTS_TELEGRAM_API, nur Test) und prueft die aufgezeichneten setMyCommands-Aufrufe:
 #   - je Katalogsprache (Core-Manifest languages.list) ein Default-Menue mit language_code + ein Default ohne
@@ -12,7 +12,7 @@
 #     dem Katalog, URL https + /webhook/app-<uuid>; nie als Standard-Knopf.
 #   - Einrichtung offen: kein Knopf, keine Ankuendigung; fertig: Knopf und genau eine Animation je Person.
 #   - Menue-Auftrag (core.menu_refresh): ein Wechsel von app.audience legt ihn an, der minuetliche Runner
-#     (`lifeagents update --run-requested`) setzt NUR die Knoepfe (keine Befehlsmenues) fuer alle gekoppelten Personen
+#     (`lifeagents update --run-requested`) setzt nur die Knoepfe (keine Befehlsmenues) fuer alle gekoppelten Personen
 #     und schliesst ihn; Zweitlauf ruft Telegram nicht; scheitert Telegram, bleibt er offen mit Wartezeit; ein
 #     normaler Menue-Lauf (Install/Update) schliesst einen offenen Auftrag mit. Der echte Timer pausiert dafuer kurz.
 # Voraussetzung: laufendes Substrat + enable_mock_telegram.ps1. Kein LLM, kein echtes Telegram.
@@ -111,7 +111,7 @@ if ($owner.Count -gt 0) {
     Write-Host "  (Owner nicht verbunden -> keine Owner-Menues erwartet)" -ForegroundColor DarkGray
 }
 
-# (2b) Mini-App-Knopf „Übersicht“ (docs/package-contract.md §3.12): NIE als Standard-Knopf (ohne chat_id waere er fuer
+# (2b) Mini-App-Knopf „Übersicht“ (docs/package-contract.md §3.12): nie als Standard-Knopf (ohne chat_id waere er fuer
 # Fremde sichtbar); web_app nur pro Chat einer berechtigten Person (Substrat-Default app.audience=owner -> nur der
 # Owner), Text = core.app.menu_button in der Owner-Sprache, URL = https-WEBHOOK_URL + /webhook/app-<uuid>.
 $btn = @(Get-MockTelegramRequests -Container $Container | Where-Object { $_.method -eq 'setChatMenuButton' })
@@ -138,7 +138,7 @@ $verified = @($out | Where-Object { "$_" -match 'verifiziert' }).Count
 if ($verified -ne $sets.Count) { Fail "Sofort-Verify: $verified von $($sets.Count) Menues verifiziert" }
 if ((Invoke-Sql "SELECT core.fn_menu_refresh_claim()->>'open';") -ne 'false') { Fail 'Menü-Lauf des Installers hat den offenen Menü-Auftrag nicht geschlossen' }
 
-# (4) Menue-Auftrag ueber den Runner (Familie, Release 2): audience owner -> household. Frisches Substrat ohne
+# (4) Menue-Auftrag ueber den Runner: audience owner -> household. Frisches Substrat ohne
 # gekoppelte Person -> fuer die Testdauer eine Test-Kopplung am Owner (sonst liefen Runner- und Fehlerfall leer).
 $famPersons = @'
 SELECT jsonb_agg(CASE WHEN e->>'role' = 'owner' THEN e || jsonb_build_object('telegram_user_id', 4242) ELSE e END ORDER BY o)

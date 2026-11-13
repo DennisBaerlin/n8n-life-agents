@@ -1,6 +1,6 @@
 -- tests/db/finance/test_fn_funding_accounts.sql
--- finance.fn_funding_accounts() — die EINE Regel, welche Konten eine Spar-Deckungs-Ampel haben (Konten-Tab + Karten-
---   Hinweis savings_funding): Abbuchungskonto eines aktiven Sparplans (Glied fn_recurring_current) oder ABSENDER eines
+-- finance.fn_funding_accounts() — die eine Regel, welche Konten eine Spar-Deckungs-Ampel haben (Konten-Tab + Karten-
+--   Hinweis savings_funding): Abbuchungskonto eines aktiven Sparplans (Glied fn_recurring_current) oder Absender eines
 --   Dauerauftrags (fn_standing_orders kind transfer|debit); nur aktive Nicht-Kredit-Konten. Werte erfunden.
 BEGIN;
 DO $$
@@ -39,8 +39,8 @@ BEGIN
     RAISE EXCEPTION 'FAIL [b] pausierter Plan zaehlt'; END IF;
   RAISE NOTICE 'PASS [b] nur aktive Plaene';
 
-  -- [c] Dauerauftrag (kommend): der ABSENDER ist Deckungs-Konto (kind order_source), das Ziel nicht (UX-Gesamtkonzept
-  --     2026-10-31 P12 / Bug B2: die Warnung gehoert ans Konto, das ausfuehrt)
+  -- [c] Dauerauftrag (kommend): der Absender ist Deckungs-Konto (kind order_source), das Ziel nicht
+  --     (die Warnung gehoert ans Konto, das ausfuehrt)
   INSERT INTO finance.recurring_payments (name, account_id, target_account_id, amount, schedule_unit, first_payment_date, valid_from)
     VALUES ('fa Uebertrag', v_giro, v_pause, -100, 'month', t + 1, t + 1);
   IF NOT EXISTS (SELECT 1 FROM finance.fn_funding_accounts() f WHERE f.account_id = v_giro AND f.kind = 'order_source')

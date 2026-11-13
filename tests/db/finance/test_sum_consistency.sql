@@ -1,9 +1,9 @@
 -- ============================================================
 -- test_sum_consistency — Σ-Tripwire fuer die trigger-gepflegten abgeleiteten Spalten.
---   Prueft die LIVE-Daten-Invarianten (read-only): heute true-by-construction (Trigger), kuenftig ein
+--   Prueft die Live-Daten-Invarianten (read-only): heute true-by-construction (Trigger), kuenftig ein
 --   Regressionsnetz, falls ein Trigger-Edit oder Direktzugriff den abgeleiteten Zustand bricht.
 --   (a) finance_account_balances.balance == SUM(finance_transactions.amount) je Konto
---   (b) jedes Konto hat genau eine balance-Zeile (deckt das "ON CONFLICT DO NOTHING maskiert"-Finding ab)
+--   (b) jedes Konto hat genau eine balance-Zeile (deckt ab, dass ON CONFLICT DO NOTHING eine fehlende Zeile maskiert)
 --   (c) finance_depot_holdings.shares == SUM(finance_transactions.shares) je Holding
 --   BEGIN/ROLLBACK (kein Write; reine Assertions).
 -- ============================================================

@@ -21,9 +21,9 @@
 --   Schreibt die Zeile in agent.reaction_log (ON CONFLICT DO NOTHING: dieselbe Art an derselben Nachricht nie zweimal
 --     -> dann keine Reaktion) und loescht Zeilen der Person, die aelter als 30 Tage sind. Aus-Schalter
 --     persona.reactions_enabled.
---   p: {chat_id, message_id, event:'seen'|'reply', signal, mood, react_only, has_text, tool_called, reply_ok,
+--   Eingabe p: {chat_id, message_id, event:'seen'|'reply', signal, mood, react_only, has_text, tool_called, reply_ok,
 --       run_started_at (timestamptz), sticker}
---   RUECKGABE: {ok:true, emoji:text|null, kind:'seen'|'done'|'answer'|'mood'|null}  (nie RAISE -> ein Fehler kostet nur
+--   Rueckgabe: {ok:true, emoji:text|null, kind:'seen'|'done'|'answer'|'mood'|null}  (nie RAISE -> ein Fehler kostet nur
 --     die Reaktion)
 --   Tests: tests/db/core/test_fn_claim_reaction.sql
 -- ============================================================
@@ -84,7 +84,7 @@ BEGIN
         IF v_emoji IS NULL OR NOT v_ok OR v_signal = 'NOFRAME' OR (v_tool AND v_signal <> 'FRAME') THEN
             RETURN v_none;
         END IF;
-        -- Owner-Entscheid: 👀 bleibt stehen, nur 👌 ersetzt es (Telegram: eine Reaktion je Bot und Nachricht).
+        -- 👀 bleibt stehen, nur 👌 ersetzt es (Telegram: eine Reaktion je Bot und Nachricht).
         IF EXISTS (SELECT 1 FROM agent.reaction_log r
                     WHERE r.chat_id = v_chat AND r.message_id = v_msg AND r.kind = 'seen') THEN
             RETURN v_none;

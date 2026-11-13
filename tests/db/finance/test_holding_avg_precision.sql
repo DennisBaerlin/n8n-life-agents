@@ -1,8 +1,7 @@
 -- tests/db/finance/test_holding_avg_precision.sql
--- Audit Paket 2, Punkt 13: Praezision des Durchschnittskaufpreises. depot_holdings.average_purchase_price war
---   numeric(12,4) -> Mini-Kurse (Krypto-Bruchteile, Penny-Token) unter 0.0001 wurden zu 0 bzw. 0.0001 gerundet.
---   Beispiel: 1.000.000 Stueck fuer 50 EUR -> Durchschnitt 0.00005 (vorher 0.0001). Jetzt numeric(20,8) wie
---   market_prices.price; fn_holding_avg_cost rundet auf 8 Stellen; der Buchwert in depot_holdings_overview stimmt.
+-- Praezision des Durchschnittskaufpreises: depot_holdings.average_purchase_price ist numeric(20,8) wie
+--   market_prices.price (numeric(12,4) rundete Mini-Kurse unter 0.0001 wie Krypto-Bruchteile und Penny-Token auf 0 bzw. 0.0001).
+--   Beispiel: 1.000.000 Stueck fuer 50 EUR -> Durchschnitt 0.00005; fn_holding_avg_cost rundet auf 8 Stellen; der Buchwert in depot_holdings_overview stimmt.
 BEGIN;
 
 DO $$

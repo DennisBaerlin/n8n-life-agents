@@ -2,8 +2,8 @@
 # Dot-gesourct von build.ps1 (Helper + Script-Scope-Creds im Parent-Scope).
 
 # --- agent.tool_delete_monitor_trigger (CROSS-AGENT, HITL-Write) -------------
-# Loescht EINEN Monitor-Trigger HART (Trigger sind Config, kein Ledger; Observations
-# gehen per FK-CASCADE mit). Binder: NUR agent.monitor. Stilllegen statt loeschen ->
+# Loescht einen Monitor-Trigger hart (Trigger sind Config, kein Ledger; Observations
+# gehen per FK-CASCADE mit). Binder: nur agent.monitor. Stilllegen statt loeschen ->
 # tool_set_monitor_trigger status=disabled (die Summary weist darauf hin).
 function Build-DeleteMonitorTrigger {
     $trig = Build-Trigger @('domain', 'label')
@@ -22,7 +22,7 @@ function Build-DeleteMonitorTrigger {
     $errFound = Build-ToolError 'Not found' @(720, -200) `
         "={{ `$('Resolve trigger').item.json.hit_count === 0 ? 'No trigger with this label in this domain. List existing triggers via postgres_select on agent.monitor_triggers and ask the user.' : 'Label is ambiguous across domains - specify the domain. Candidates: ' + `$('Resolve trigger').item.json.candidates }}"
 
-    # Strukturiertes Summary (Textkatalog). Der Hinweis nennt den Knopf "Abbrechen" (seit dem Chat-Knopf-Wortlaut).
+    # Strukturiertes Summary (Textkatalog). Der Hinweis nennt den Knopf "Abbrechen".
     $R = "`$('Resolve trigger').item.json"
     # Probelauf vor der Karte: lehnt z. B. einen Core-Systemtrigger ab, bevor der Nutzer bestaetigt.
     $wg = New-FnWriteGate -Fn 'agent.fn_delete_monitor_trigger' -DryPos @(720, 0) -WritePos @(1700, 0) `

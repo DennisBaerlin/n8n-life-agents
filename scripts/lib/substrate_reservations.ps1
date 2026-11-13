@@ -3,7 +3,7 @@
 # scripts/reserve_substrate_slot.ps1 (Bedienung durch die Leitung) und Wait-SubstrateSlot in scripts/dev/bootstrap_test_n8n.ps1.
 # Test: scripts/dev/substrate_reservation_test.ps1.
 #
-# WARUM: Wait-SubstrateSlot zaehlt nur LAUFENDE Substrate. Hat die Leitung einen Platz schon an eine wartende Session
+# Warum: Wait-SubstrateSlot zaehlt nur laufende Substrate. Hat die Leitung einen Platz schon an eine wartende Session
 # zugesagt, der Container laeuft aber noch nicht, nimmt ihn eine andere Session in der Luecke weg. Die Leitung
 # traegt die Zusage deshalb als Reservierung ein; bis zu ihrem Verfall zaehlt sie wie ein laufendes Substrat -- fuer alle
 # ausser den reservierten Container selbst.
@@ -91,8 +91,8 @@ function Remove-SlotReservation {
     return [bool]$hit
 }
 
-# Platz-Entscheidung (rein, ohne Docker): Running = Namen LAUFENDER fremder Substrate (ohne $Own), Reservations = gueltige
-# Reservierungen. Hat $Own selbst eine Reservierung, darf er starten, solange weniger als $Max fremde LAUFEN (Zusage der
+# Platz-Entscheidung (rein, ohne Docker): Running = Namen laufender fremder Substrate (ohne $Own), Reservations = gueltige
+# Reservierungen. Hat $Own selbst eine Reservierung, darf er starten, solange weniger als $Max fremde laufen (Zusage der
 # Leitung; Reservierungen anderer zaehlen dann nicht). Sonst belegen laufende Fremde + Reservierungen fuer andere (ohne
 # die schon laufenden, sie zaehlen nur einmal) die Plaetze.
 function Get-SlotAvailability {
@@ -133,7 +133,7 @@ function ConvertFrom-SubstrateLine([string]$Line) {
 }
 
 # Laufende n8n-Test-Substrate (nur lesend, `docker ps`): Container-Label lifeagents.substrate, vom Basis-Image geerbtes Label
-# lifeagents.substrate-base ODER -- mit $Image -- das nackte Image (Alt-Container ohne Label; kein ancestor= auf das Basis-Image:
+# lifeagents.substrate-base oder -- mit $Image -- das nackte Image (Alt-Container ohne Label; kein ancestor= auf das Basis-Image:
 # BuildKit setzt dafuer keine verlaesslichen Eltern-Verweise). Eine Quelle fuer Wait-SubstrateSlot und `reserve_substrate_slot -List`.
 function Get-RunningSubstrates([string]$Image) {
     $filters = @('label=lifeagents.substrate=n8n', 'label=lifeagents.substrate-base=1')

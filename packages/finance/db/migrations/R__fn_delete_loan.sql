@@ -1,14 +1,14 @@
 -- ============================================================
 -- fn_delete_loan (ATOMIC WRITE) -- Hard-DELETE einer Kredit-Fehlanlage (Inverse von create_loan)
---   NUR fuer eine versehentlich angelegte Kredit-Konstruktion ohne gebuchte Raten. Ein echter,
---   bedienter Kredit wird NICHT geloescht -> {ok:false} (settle_loan zum Abloesen, set_loan fuer
---   status=refinanced). Loescht (Inverse von create_loan): Disbursement-Beine (Eroeffnung + ggf.
---   Auszahlung, via loan_id), Loan-Stammdaten, verknuepfte Rate-rp, balance-Zeile + das dedizierte
---   Loan-Konto. Debit-/Disbursement-Konto (echte Konten des Nutzers) bleiben unangetastet.
---   KORRIGIERBAR (kein RAISE): >=1 gebuchte Rate (category loan_payment/principal/settlement)
---     -> {ok:false, reason, repayment_count}.
---   Eingabe jsonb: loan_name. Resolve findet auch paused (Fehlanlagen ohne Annuitaet).
---   RUECKGABE: {ok:true, action:'deleted', loan_id, loan_account_id}. RAISE nur bei not-found / mehrdeutig.
+--   Nur fuer eine versehentlich angelegte Kredit-Konstruktion ohne gebuchte Raten; ein bedienter Kredit
+--   bleibt (settle_loan zum Abloesen, set_loan fuer status=refinanced).
+--   Eingabe jsonb: loan_name (Pflicht; Resolve findet auch paused, Fehlanlagen ohne Annuitaet).
+--   Rueckgabe: {ok:true, action:'deleted', loan_id, loan_account_id}.
+--   {ok:false} (kein RAISE): code 'not_found' (candidates []) / 'ambiguous' (candidates);
+--   >=1 gebuchte Rate (category loan_payment/principal/settlement) -> reason + repayment_count.
+--   Seiteneffekte (Inverse von create_loan): loescht Disbursement-Beine (Eroeffnung + ggf. Auszahlung, via loan_id),
+--   Loan-Stammdaten, die Raten-Kette der Rate-rp, balance-Zeile und das dedizierte Loan-Konto.
+--   Debit-/Disbursement-Konto (echte Konten des Nutzers) bleiben unangetastet.
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_delete_loan(p jsonb)
 RETURNS jsonb LANGUAGE plpgsql AS $$
@@ -32,7 +32,7 @@ BEGIN
 
     SELECT * INTO v_loan FROM finance.loans WHERE id = v_resolve.loan_id;
 
-    -- Korrigierbar: bereits bediente Raten -> {ok:false} (Disbursement-Beine sind ok zu loeschen).
+    -- Bediente Raten halten den Kredit; Disbursement-Beine duerfen geloescht werden.
     SELECT COUNT(*) INTO v_cnt FROM finance.transactions
     WHERE loan_id = v_loan.id AND category IN ('loan_payment','principal','settlement');
     IF v_cnt > 0 THEN
@@ -42,13 +42,13 @@ BEGIN
             'repayment_count', v_cnt);
     END IF;
 
-    -- Clean (nur Disbursement-Beine). Reihenfolge FK-sicher:
+    -- Reihenfolge FK-sicher:
     -- 1. alle Tx des Kredits (Eroeffnung + ggf. Auszahlung; Trigger rechnen Giro-/Loan-Saldo neu)
     DELETE FROM finance.transactions WHERE loan_id = v_loan.id;
     -- 2. Loan-Stammdaten (loest FK loan->rp + loan->Konten)
     DELETE FROM finance.loans WHERE id = v_loan.id;
-    -- 3. die ganze Raten-Kette (jetzt referenzfrei; WP2: nach einer Ratenaenderung mehrere Glieder -- EIN Statement,
-    --    der Vorgaenger-FK ist NO ACTION und wird erst am Statement-Ende geprueft)
+    -- 3. die ganze Raten-Kette (nach einer Ratenaenderung mehrere Glieder) in einem Statement: der Vorgaenger-FK
+    --    ist NO ACTION und wird erst am Statement-Ende geprueft
     IF v_loan.recurring_payment_id IS NOT NULL THEN
         DELETE FROM finance.recurring_payments
          WHERE id IN (SELECT finance.fn_recurring_lineage(v_loan.recurring_payment_id));

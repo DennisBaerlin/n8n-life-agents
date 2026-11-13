@@ -59,7 +59,7 @@ BEGIN
   RAISE NOTICE 'PASS set_recurring_payment [entitaets-besessen -> ok:false]';
 END $$;
 
--- TEST 6-11 (Audit F2): Split ohne Doppel-Faelligkeit, Anker/Ziel/Ende/Status geerbt, Guards, inklusives Ende.
+-- TEST 6-11: Split ohne Doppel-Faelligkeit, Anker/Ziel/Ende/Status geerbt, Guards, inklusives Ende.
 DO $$
 DECLARE
   v_res JSONB; v_acct INT; v_kid INT; v_rp INT; v_new INT; c INT; v_txt TEXT;
@@ -70,7 +70,7 @@ BEGIN
   SELECT finance.fn_create_account('{"name":"__test_srp2_kid__","account_type":"cash","account_holder":"T","currency":"EUR"}'::jsonb) INTO v_res;
   v_kid := (v_res->>'account_id')::int;
 
-  -- TEST 6: Miete -900 ab 2026-01-01, Erhoehung auf 1000 ab 2026-06-01 -> am 06-01 NUR die neue Rate faellig
+  -- TEST 6: Miete -900 ab 2026-01-01, Erhoehung auf 1000 ab 2026-06-01 -> am 06-01 nur die neue Rate faellig
   SELECT finance.fn_create_recurring_payment(jsonb_build_object('name','__test_srp2_miete__','account_id',v_acct,
     'direction','expense','amount',900,'schedule_unit','month','first_payment_date','2026-01-01')) INTO v_res;
   v_rp := (v_res->>'recurring_payment_id')::int;
@@ -131,7 +131,7 @@ BEGIN
     RAISE EXCEPTION 'FAIL split [rueckwirkend]: erwartet ok=false last_booked=2026-05-01, got %', v_res; END IF;
   RAISE NOTICE 'PASS split [Stichtag vor gebuchter Rate -> ok:false]';
 
-  -- TEST 11: Ende-Eingabe ist INKLUSIV (letzter gueltiger Tag) -> gespeichert +1 Tag; Ende <= Stichtag -> ok:false
+  -- TEST 11: Ende-Eingabe ist inklusiv (letzter gueltiger Tag) -> gespeichert +1 Tag; Ende <= Stichtag -> ok:false
   SELECT finance.fn_create_recurring_payment(jsonb_build_object('name','__test_srp2_kita__','account_id',v_acct,
     'direction','expense','amount',300,'schedule_unit','month','first_payment_date','2026-01-01')) INTO v_res;
   v_rp := (v_res->>'recurring_payment_id')::int;
@@ -147,7 +147,7 @@ BEGIN
     RAISE EXCEPTION 'FAIL ende [vor Stichtag]: erwartet ok=false, got %', v_res; END IF;
   RAISE NOTICE 'PASS ende [inklusive Eingabe -> +1 gespeichert, letzte Rate faellig; Ende vor Stichtag -> ok:false]';
 
-  -- TEST 12 (Review): "laeuft wieder + neuer Betrag" in EINEM Aufruf -> neue Zeile uebernimmt den genannten Status
+  -- TEST 12: "laeuft wieder + neuer Betrag" in einem Aufruf -> neue Zeile uebernimmt den genannten Status
   SELECT finance.fn_create_recurring_payment(jsonb_build_object('name','__test_srp2_gehalt2__','account_id',v_acct,
     'direction','income','amount',3000,'schedule_unit','month','first_payment_date','2026-01-28')) INTO v_res;
   v_rp := (v_res->>'recurring_payment_id')::int;
@@ -160,10 +160,10 @@ BEGIN
   RAISE NOTICE 'PASS split [genannter Status gilt fuer die neue Zeile]';
 END $$;
 
--- TEST 5 (Phase L WS-3): Cashflow-Sofort-Hinweis bei Betrags-Erhoehung. Die fn liest monthly_cashflow_summary
--- (GLOBALE Single-Row-View) -> SAVEPOINT + bestehende rp neutralisieren, kontrollierten Cashflow setzen, danach
--- ROLLBACK TO SAVEPOINT. M3-KERN: bei ZUKUENFTIG datierter Erhoehung bleibt die alte Zeile aktiv (View zeigt den
--- noch geltenden Ist-Stand) -> KEINE Sofort-Note; nur bei Stichtag HEUTE spiegelt die View die neue Zeile.
+-- TEST 5: Cashflow-Sofort-Hinweis bei Betrags-Erhoehung. Die fn liest monthly_cashflow_summary
+-- (globale Single-Row-View) -> SAVEPOINT + bestehende rp neutralisieren, kontrollierten Cashflow setzen, danach
+-- ROLLBACK TO SAVEPOINT. Kern: bei zukuenftig datierter Erhoehung bleibt die alte Zeile aktiv (View zeigt den
+-- noch geltenden Ist-Stand) -> keine Sofort-Note; nur bei Stichtag heute spiegelt die View die neue Zeile.
 SAVEPOINT srp_fold;
 UPDATE finance.recurring_payments SET status = 'paused';   -- nur im Savepoint; FK-frei
 DO $$
@@ -178,14 +178,14 @@ BEGIN
     'name','__srp_fold_inc__','account_id',v_acct,'direction','income','amount',2000,
     'schedule_unit','month','first_payment_date',current_date::text)) INTO v_res;
 
-  -- ===== (5a, M3) ZUKUENFTIG datierte Erhoehung -> KEINE Note =====
+  -- ===== (5a, M3) zukuenftig datierte Erhoehung -> keine Note =====
   -- Ausgabe -500, valid_from in der Vergangenheit (sauberer Split). net = 2000 - 500 = +1500.
   SELECT finance.fn_create_recurring_payment(jsonb_build_object(
     'name','__srp_fold_exp_a__','account_id',v_acct,'direction','expense','amount',500,
     'schedule_unit','month','first_payment_date',(current_date - 30)::text)) INTO v_res;
   v_exp_a := (v_res->>'recurring_payment_id')::int;
   -- Erhoehung auf 3000 mit Stichtag in 30 Tagen: alte Zeile valid_to=Stichtag (>heute -> bleibt aktiv, -500),
-  -- neue Zeile valid_from=Stichtag (>heute -> raus) -> Live-View weiter +1500 -> KEINE Note.
+  -- neue Zeile valid_from=Stichtag (>heute -> raus) -> Live-View weiter +1500 -> keine Note.
   SELECT finance.fn_set_recurring_payment(jsonb_build_object(
     'recurring_payment_id', v_exp_a, 'amount', 3000, 'valid_from', (current_date + 30)::text)) INTO v_res;
   IF (v_res->>'split')::boolean IS DISTINCT FROM true THEN
@@ -197,13 +197,13 @@ BEGIN
   -- exp_a (alte + neue Split-Zeile, gleicher Name) pausieren -> Szenario 5b sauber
   UPDATE finance.recurring_payments SET status = 'paused' WHERE name = '__srp_fold_exp_a__';
 
-  -- ===== (5b) HEUTE datierte Erhoehung -> Note =====
+  -- ===== (5b) heute datierte Erhoehung -> Note =====
   -- Ausgabe -500, valid_from in der Vergangenheit. net = 2000 - 500 = +1500.
   SELECT finance.fn_create_recurring_payment(jsonb_build_object(
     'name','__srp_fold_exp_b__','account_id',v_acct,'direction','expense','amount',500,
     'schedule_unit','month','first_payment_date',(current_date - 30)::text)) INTO v_res;
   v_exp_b := (v_res->>'recurring_payment_id')::int;
-  -- Erhoehung auf 3000 mit Stichtag HEUTE: alte Zeile valid_to=heute (raus, valid_to>heute=false), neue Zeile
+  -- Erhoehung auf 3000 mit Stichtag heute: alte Zeile valid_to=heute (raus, valid_to>heute=false), neue Zeile
   -- valid_from=heute aktiv (-3000) -> net = 2000 - 3000 = -1000 -> cashflow_coverage-Note.
   SELECT finance.fn_set_recurring_payment(jsonb_build_object(
     'recurring_payment_id', v_exp_b, 'amount', 3000, 'valid_from', current_date::text)) INTO v_res;
@@ -213,8 +213,8 @@ BEGIN
     RAISE EXCEPTION 'FAIL [5b]: kein cashflow_coverage-Fold bei heute-datierter Erhoehung (net<0), got %', v_res; END IF;
   RAISE NOTICE 'PASS [5b WS-3: heute datierte Erhoehung kippt net<0 -> cashflow_coverage-Fold]';
 
-  -- ===== (5c, Audit Paket 3) ETF-Sparplan ist keine Fixkosten: Einnahmen 2000, ETF 1800, Miete 500 -> 1000 =====
-  -- Frueher: monthly_net = 2000 - 1800 - 1000 = -800 -> Fehlalarm. Jetzt: frei = 2000 - 1000 = +1000 -> KEINE Note.
+  -- ===== (5c) ETF-Sparplan ist keine Fixkosten: Einnahmen 2000, ETF 1800, Miete 500 -> 1000 =====
+  -- Als Fixkosten gezaehlt waere monthly_net = 2000 - 1800 - 1000 = -800 (Fehlalarm); richtig ist frei = 2000 - 1000 = +1000 -> keine Note.
   UPDATE finance.recurring_payments SET status = 'paused' WHERE name = '__srp_fold_exp_b__';
   DECLARE v_depot int; v_etf int; v_rent int; BEGIN
     INSERT INTO finance.accounts (name, account_type, currency, status, settlement_account_id)
@@ -279,7 +279,7 @@ BEGIN
     RAISE EXCEPTION 'FAIL [X3b] Nicht-Uebertrag, got %', v_res; END IF;
   RAISE NOTICE 'PASS [X3] ungueltiger Wert und Nicht-Uebertrag -> ok:false ohne Aenderung';
 
-  -- [X4] Betrag + executed_by zusammen (Split): die NEUE Zeile traegt den Wert, die noch laufende alte auch
+  -- [X4] Betrag + executed_by zusammen (Split): die neue Zeile traegt den Wert, die noch laufende alte auch
   v_res := finance.fn_set_recurring_payment(jsonb_build_object('recurring_payment_id', v_rp, 'amount', 120,
              'valid_from', (CURRENT_DATE + 30)::text, 'executed_by', 'manual'));
   v_new := (v_res->>'recurring_payment_id')::int;
@@ -291,7 +291,7 @@ BEGIN
       (SELECT executed_by FROM finance.recurring_payments WHERE id = v_rp); END IF;
   RAISE NOTICE 'PASS [X4] Betrag + executed_by: neue und noch laufende alte Zeile tragen den Wert';
 
-  -- [X5] Kette: ein spaeteres Setzen auf einem Glied erreicht ALLE noch laufenden Glieder (Alarm liest den Kopf,
+  -- [X5] Kette: ein spaeteres Setzen auf einem Glied erreicht alle noch laufenden Glieder (Alarm liest den Kopf,
   --      die Uebersicht das gueltige Glied: beide muessen dasselbe zeigen)
   v_res := finance.fn_set_recurring_payment(jsonb_build_object('recurring_payment_id', v_new, 'executed_by', 'bank'));
   IF (SELECT count(*) FROM finance.recurring_payments WHERE id IN (SELECT finance.fn_recurring_lineage(v_rp)) AND executed_by = 'bank') <> 2 THEN

@@ -1,12 +1,12 @@
 -- ============================================================
--- agent.fn_set_dispatch_followup(p) — Folge-Bindung nach einem Knopf-Tipp setzen (2026-10-28)
+-- fn_set_dispatch_followup (ATOMIC WRITE) — Folge-Bindung nach einem Knopf-Tipp setzen
 --   Ein Knopf startet einen Agenten am Router vorbei (Onboarding-Abschnitt, Haushalt, Plan-Knopf, Plan erklaeren/Wunsch);
---   NACH dem erfolgreichen Relay seiner Antwort merkt der Orchestrator sich hier, welcher Agent gefragt hat. Die naechste
+--   nach dem erfolgreichen Relay seiner Antwort merkt der Orchestrator sich hier, welcher Agent gefragt hat. Die naechste
 --   Text-Nachricht dieses Chats liest den Hinweis einmalig (agent.fn_take_dispatch_followup) und reicht ihn dem Router als
 --   followup_agent. Eine Zeile je Chat, last write wins (ein neuer Knopf ueberschreibt). Muster "aktiver Handler je Chat"
---   (arch-challenge 2026-10-28, Rasa active_loop / PTB ConversationHandler).
+--   (Rasa active_loop / PTB ConversationHandler).
 --   p: { chat_id (nur Privatchat, numerisch positiv), agent ('agent.<name>', build-fix aus dem Arm, nie LLM) }
---   RUECKGABE: {ok:true} | {ok:false, reason} (ungueltig). Nie RAISE (Komfort; ein Fehler darf den Relay nie stoeren).
+--   Rueckgabe: {ok:true} | {ok:false, reason} (ungueltig). Nie RAISE (Komfort; ein Fehler darf den Relay nie stoeren).
 --   Tests: tests/db/core/test_fn_dispatch_followup.sql
 -- ============================================================
 CREATE OR REPLACE FUNCTION agent.fn_set_dispatch_followup(p jsonb)

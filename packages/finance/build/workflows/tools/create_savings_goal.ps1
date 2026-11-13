@@ -1,16 +1,15 @@
 ﻿#Requires -Version 5.1
 # Dot-gesourct von build_finance_tools.ps1 (Helper + Script-Scope-Creds im Parent-Scope).
 
-# --- 6. tool_create_savings_goal (Playbook 5.8) ---------------
+# --- tool_create_savings_goal ---
 function Build-CreateSavingsGoal {
-    # WS-B0: enge Paket-Schreibrolle (finance_rw, Least-Privilege D10) statt Owner-Cred.
-    # Dynamic-Scope: Build-Pg liest dieses $CRED_POSTGRES. Core-Tools nutzen die Owner-Cred.
+    # Enge Paket-Schreibrolle (finance_rw) statt Owner-Cred; Build-Pg liest $CRED_POSTGRES per Dynamic-Scope.
     $CRED_POSTGRES = $CRED_FINANCE_RW
     $trig = Build-Trigger @('goal_name','goal_type','target_amount','target_date','monthly_savings_rate','account_name','schedule_day_of_month','first_payment_date','notes','beneficiary_person','reserve_account_name','priority','already_saved','savings_plan_name','replace_transfer','real_estate_name','kind','target_months','handoff_task_id')
 
     # Duplicate-name guard (Backstop wie bei den anderen create_*-Tools): ein create_* darf kein
     # zweites Sparziel gleichen Namens still anlegen (name hat keine UNIQUE-Constraint). Existiert ein
-    # AKTIVES Sparziel des Namens -> sauberer BLOCK vor dem Gate (structured return). Aendern eines
+    # aktives Sparziel des Namens -> sauberer Block vor dem Gate (structured return). Aendern eines
     # bestehenden Ziels (Betrag/Datum) ist tool_set_savings_goal.
     $checkDup = Build-Pg 'Check duplicate name' @(220, -200) `
         "=SELECT hit_count, candidates FROM finance.fn_resolve_savings_goal(NULLIF((`$1::jsonb)->>'goal_name', ''));" `
@@ -22,7 +21,7 @@ function Build-CreateSavingsGoal {
     $errExists = Build-ToolError 'Goal exists' @(660, -300) `
         "=An active savings goal named '{{ `$('Start').item.json.goal_name }}' already exists ({{ `$('Check duplicate name').item.json.hit_count }} match). I will NOT create a duplicate. To change its target or date, use tool_set_savings_goal; or choose a different name."
 
-    # Abbuchungskonto nur fuer eine Rate (Sparziel-Zweckbindung 2026-10-27): leer erlaubt, wenn already_saved das Ziel
+    # Abbuchungskonto nur fuer eine Rate: leer erlaubt, wenn already_saved das Ziel
     # deckt oder ein Sparplan es finanziert — ob eine Rate noetig ist, entscheidet die fn (Probelauf). Genannt, aber nicht
     # eindeutig -> Rueckfrage.
     $resAcct = Build-Pg 'Resolve Account' @(220, 0) `
@@ -35,13 +34,13 @@ function Build-CreateSavingsGoal {
     $errAcct = Build-ToolError 'Account ambiguous' @(660, 200) `
         "=Account '{{ `$('Start').item.json.account_name }}' resolves to {{ `$('Resolve Account').item.json.hit_count }} matches. Candidates: {{ JSON.stringify(`$('Resolve Account').item.json.candidates) }}. Ask the user which exact account."
 
-    # Rate ODER Zieldatum rechnet allein fn_create_savings_goal (LLM rechnet nicht, Root-CLAUDE.md): der Probelauf
+    # Rate oder Zieldatum rechnet allein fn_create_savings_goal: der Probelauf
     # liefert Rate, Datum, Monate und erste Rate fuer die Karte; die erste Rate geht ueber r.effective fest in den
-    # echten Write (Karte = Write, auch nach Mitternacht). Kein separater Vorab-Rechenschritt mehr (2026-10-27: die fn
-    # leitet das Datum auch aus Sparplaenen ab und fuehrt einen bestehenden Dauerauftrag fort).
+    # echten Write (Karte = Write, auch nach Mitternacht). Die fn leitet das Datum auch aus Sparplaenen ab und
+    # fuehrt einen bestehenden Dauerauftrag fort.
 
-    # WS-4: beguenstigte Person aufloesen (Name -> Slug via core.fn_resolve_person; leer=Haushalt).
-    # Beim Sparziel ist die Person der BEGUENSTIGTE (z. B. Kind), unabhaengig vom Abbuchungskonto.
+    # Beguenstigte Person aufloesen (Name -> Slug via core.fn_resolve_person; leer=Haushalt).
+    # Beim Sparziel ist die Person der Beguenstigte (z. B. Kind), unabhaengig vom Abbuchungskonto.
     $resPerson = Build-ResolvePerson 'Resolve Person' @(880, 360) 'beneficiary_person'
 
     $ifPersonBad = Build-If 'Person invalid?' @(1100, 360) `
@@ -50,7 +49,7 @@ function Build-CreateSavingsGoal {
     $errPerson = Build-ToolError 'Person unresolved' @(1320, 480) `
         "=The beneficiary '{{ `$('Start').item.json.beneficiary_person }}' could not be uniquely resolved ({{ `$('Resolve Person').item.json.hit_count }} match(es)). Candidates: {{ JSON.stringify(`$('Resolve Person').item.json.candidates) }}. Ask which household member, or leave empty so the goal belongs to the owner of the savings account."
 
-    # Audit Paket 3: Sparkonto (Topf = Konto des Ziel-Geldes) ist PFLICHT — Gesetz in fn_create_savings_goal; hier VOR
+    # Sparkonto (Topf = Konto des Ziel-Geldes) ist Pflicht — Gesetz in fn_create_savings_goal; hier vor
     # der Karte geprueft (leer oder nicht eindeutig -> Build-ToolError), damit nie etwas bestaetigt wird, das die fn danach
     # ablehnt (Muster close_account). Zuordenbare Typen (fn_goal_earmark_account_types): saldo-basiert oder ein Depot
     # (nur mit Startbestand/Sparplan, die fn prueft das).
@@ -64,8 +63,6 @@ function Build-CreateSavingsGoal {
     $errReserve = Build-ToolError 'Reserve unresolved' @(1320, 720) `
         "={{ !`$('Start').item.json.reserve_account_name ? 'A savings goal needs a savings account (reserve) where the money is kept - otherwise the progress cannot be measured. Ask the user which account holds or receives the money (cash/Tagesgeld, fixed deposit, P2P, or a depot with a savings plan), or offer to create one with tool_create_account first.' : ('The savings account ' + `$('Start').item.json.reserve_account_name + ' could not be uniquely resolved (' + `$('Resolve Reserve').item.json.hit_count + ' match(es)). Candidates: ' + JSON.stringify(`$('Resolve Reserve').item.json.candidates) + '. Ask which exact cash/Tagesgeld, fixed-deposit, P2P or depot account.') }}"
 
-    # "DB ist das Gesetz": fn_create_savings_goal laeuft als Probelauf VOR der Karte (korrigierbare Ablehnungen -> {ok:false} ohne Karte);
-    # derselbe Param-Satz geht nach dem Gate in den echten Write.
     $wg = New-FnWriteGate -Fn 'finance.fn_create_savings_goal' -DryPos @(1100, 0) -WritePos @(2420, 0) `
         -WriteName 'Create savings goal (atomic)' `
         -WriteSelect "(r->>'ok')::boolean AS ok, r->>'reason' AS reason, r->'depot_risk' AS depot_risk, (r->>'goal_id')::int AS goal_id, (r->>'recurring_payment_id')::int AS recurring_payment_id, (r->>'monthly_rate')::numeric AS monthly_rate, (r->>'target_date')::date AS target_date, (r->>'current_amount')::numeric AS current_amount, (r->>'savings_plan_id')::int AS savings_plan_id, (r->>'required_monthly_rate')::numeric AS required_monthly_rate, (r->>'plan_monthly_amount')::numeric AS plan_monthly_amount, (r->>'replaced_transfer_id')::int AS replaced_transfer_id, COALESCE(r->'savings_squeeze'->>'note', '') AS savings_squeeze, (r->>'recommended_monthly')::numeric AS recommended_monthly" `
@@ -88,12 +85,12 @@ function Build-CreateSavingsGoal {
             savings_plan          = '$(''Start'').item.json.savings_plan_name'
             replace_transfer      = '$(''Start'').item.json.replace_transfer'
             real_estate_name      = '$(''Start'').item.json.real_estate_name'
-            kind                  = '$(''Start'').item.json.kind'              # Notreserve (2026-10-30)
+            kind                  = '$(''Start'').item.json.kind'              # Notreserve
             target_months         = '$(''Start'').item.json.target_months'
         })
 
     # --- HITL approval gate (Rate, Zieldatum, erste Rate aus dem Probelauf, nicht aus dem Prompt) ---
-    # Strukturiertes Summary (Textkatalog): Zielbetrag + berechnete Sparrate sind EUR per Konvention -> Literal 'EUR'.
+    # Zielbetrag + berechnete Sparrate sind EUR per Konvention -> Literal 'EUR'.
     $S  = "`$('Start').item.json"
     # Probelauf: Begünstigte(r) (genannt, sonst Inhaber des Spartopfs), Rate, Datum, Monate, erste Rate -> Karte = Write.
     $Y  = "`$('Dry run').item.json.r"
@@ -109,14 +106,12 @@ function Build-CreateSavingsGoal {
 
     $retCancelled = Build-ToolCancelled 'Return cancelled' @(2420, 240) 'the create_savings_goal action'
 
-    # Atomarer Write via fn_create_savings_goal:
-    # 1. fn_savings_rate_schedule: fehlende Groesse (Rate ODER Zieldatum) deterministisch auf dem Rest ableiten
+    # Write (fn_create_savings_goal):
+    # 1. fn_savings_rate_schedule: fehlende Groesse (Rate oder Zieldatum) deterministisch auf dem Rest ableiten
     # 2. Sparziel INSERT (finance.savings_goals, status=active, target_date=aufgeloest)
     # 3. Startbestand zuordnen (fn_book_savings_reservation, Journal manual) — falls already_saved
-    # 4. recurring_payment INSERT + FK-Link (nur Rest > 0 ohne Sparplan) ODER Sparplan verknuepfen
-    # fn liefert ok/reason: weder Datum noch Rate / nicht-positiver Betrag / keine Quelle -> {ok:false}.
+    # 4. recurring_payment INSERT + FK-Link (nur Rest > 0 ohne Sparplan) oder Sparplan verknuepfen
 
-    # Korrigierbare Ablehnung aus der fn -> weiche Rueckfrage (kein Owner-Alert).
     $ifWriteOk = Build-If 'Write ok?' @(2640, 0) "={{ `$json.ok }}" 'true' 'equals' 'boolean'
 
     $errWrite = Build-ToolError 'Goal rejected' @(2860, 240) `
@@ -125,7 +120,7 @@ function Build-CreateSavingsGoal {
     # Post-State: monthly_rate (eigene Rate, 0 ohne) + target_date, Stand nach dem Startbestand, Sparplan-Vergleich.
     $ret = Build-Return @(2860, 0) @(
         ,@('ok','true','boolean')
-        # Sparziel kurz vor dem Termin im Depot (2026-11-06): nach "Risiko eingehen" festgehalten + Monat des letzten Checks
+        # Sparziel kurz vor dem Termin im Depot: nach "Risiko eingehen" festgehalten + Monat des letzten Checks
         ,@('depot_risk_recorded', "={{ !!`$('Create savings goal (atomic)').item.json.depot_risk }}", 'boolean')
         ,@('depot_risk_reminder_month', "={{ (`$('Create savings goal (atomic)').item.json.depot_risk || {}).reminder_month || '' }}", 'string')
         ,@('goal_id', "={{ `$('Create savings goal (atomic)').item.json.goal_id }}", 'number')

@@ -1,5 +1,5 @@
 -- ============================================================
--- core.fn_proactive_has_room(person, slot) (READ -- hat ein normaler Slot heute noch Platz?)
+-- fn_proactive_has_room (READ, SECURITY DEFINER) — hat ein normaler Slot heute noch Platz?
 --   Die eine Regel fuer normal, auch von core.fn_proactive_claim genutzt. Fuer Wege, die vor teurer Beschaffung wissen
 --   muessen, ob eine Meldung ueberhaupt raus darf (fn_monitor_due, fn_monitor_evaluate).
 --   Eingabe: p_person_id (NULL = Owner), p_slot. Rueckgabe boolean: false bei laufender Pause oder wenn der Slot heute

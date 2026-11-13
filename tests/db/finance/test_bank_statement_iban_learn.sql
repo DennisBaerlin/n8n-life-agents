@@ -101,7 +101,7 @@ EXCEPTION WHEN SQLSTATE 'TR001' THEN NULL;   -- nur das Zuruecksetzen, FAIL-Meld
 END $$;
 
 -- ---------- S2: zwei Kandidaten -> Hinweis, kein Lernen; zwei Namen -> nur Haushaltskonto; eine Person -> nur ihre
---            Konten (das Haushaltskonto ist fuer einen Einzelnamen nie Kandidat, Code-Review 2026-10-30) ----------
+--            Konten (das Haushaltskonto ist fuer einen Einzelnamen nie Kandidat) ----------
 DO $$
 DECLARE
     ps DATE := date_trunc('month', CURRENT_DATE - 90)::date;

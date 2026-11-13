@@ -1,12 +1,16 @@
 -- ============================================================
--- agent.fn_approve_learn_candidate(p jsonb) -> jsonb   (Phase C, WS-3)
---   Der owner-gegatete EINZIGE core_contexts-Schreibpfad des Lern-Loops (Orchestrator-Callback learn:ok:<id>).
+-- agent.fn_approve_learn_candidate(p jsonb) -> jsonb
+--   Der owner-gegatete einzige core_contexts-Schreibpfad des Lern-Loops (Orchestrator-Callback learn:ok:<id>).
 --   Dispatcht nach target_kind: 'fact' -> agent.fn_set_context_facts (metadata.facts-Merge, validierte
---   Bestands-Route); 'note' -> core.fn_append_context_note (Prosa unter "## Gelernt"). Markiert den
---   Kandidaten 'approved' NUR bei erfolgreichem Write; ein {ok:false} des Ziel-Writes (z. B. Person fehlt
+--   Route); 'note' -> core.fn_append_context_note (Prosa unter "## Gelernt"). Markiert den
+--   Kandidaten 'approved' nur bei erfolgreichem Write; ein {ok:false} des Ziel-Writes (z. B. Person fehlt
 --   im Haushalt, nicht-Knowledge-Kontext) wird durchgereicht, der Kandidat bleibt pending. owner_only-
---   Backstop (agent.fn_sender_is_member) zusaetzlich zum Orchestrator-'Callback owner?'-Gate (Defense-in-Depth).
---   Gelesene p-Keys: { candidate_id, chat_id }. INVOKER, search_path-Pin + REVOKE.
+--   Backstop (agent.fn_sender_is_member) zusaetzlich zum Orchestrator-'Callback owner?'-Gate.
+--   Eingabe p: { candidate_id, chat_id }, candidate_id Pflicht.
+--   Rueckgabe: {ok:true, target_kind, context_name, write} | {ok:false, reason}; reason = owner_only,
+--   "candidate_id required", "candidate not found", "candidate already <status>" oder der durchgereichte Ziel-Write.
+--   Seiteneffekt: Ziel-Write (Fakten bzw. Notiz) und guide_learn_candidates.status = 'approved'.
+--   INVOKER, search_path-Pin + REVOKE.
 -- ============================================================
 CREATE OR REPLACE FUNCTION agent.fn_approve_learn_candidate(p jsonb)
 RETURNS jsonb LANGUAGE plpgsql

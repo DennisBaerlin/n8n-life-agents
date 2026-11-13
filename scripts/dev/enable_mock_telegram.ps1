@@ -1,19 +1,19 @@
 ﻿#Requires -Version 5.1
 # enable_mock_telegram.ps1 — den Mock-Telegram-Server in der laufenden Test-n8n-Instanz scharf schalten
-# (Teststrategie Phase 5). Operiert auf einem BEREITS hochgefahrenen Substrat
-# (scripts/dev/bootstrap_test_n8n.ps1) — bewusst getrennt, damit der byte-identische Install-Pfad und der
-# schon reviewte bootstrap-Treiber unberuehrt bleiben (kleinerer Blast-Radius).
+# (Aufruf: .\scripts\dev\enable_mock_telegram.ps1 [-Down] [-Verbose]). Operiert auf einem bereits hochgefahrenen
+# Substrat (scripts/dev/bootstrap_test_n8n.ps1) — bewusst getrennt, damit der byte-identische Install-Pfad und der
+# bootstrap-Treiber unberuehrt bleiben (kleinerer Blast-Radius).
 #
 # Was es tut (idempotent):
 #   1) tests/mock_telegram/server.js in den Container kopieren (-> /opt/mock_telegram/server.js).
 #   2) Den Mock als transiente systemd-unit `n8ntest-mock-telegram` starten (127.0.0.1:<port>,
 #      Node ist durch n8n garantiert) + Health-Probe.
 #   3) Den Telegram-baseUrl der Credential 'Telegram account' per REST-PATCH auf den Mock umbiegen
-#      (`PATCH /api/v1/credentials/{id}`, data={accessToken, baseUrl}). Damit gehen ALLE Telegram-API-
+#      (`PATCH /api/v1/credentials/{id}`, data={accessToken, baseUrl}). Damit gehen alle Telegram-API-
 #      Calls der Workflows an den Mock statt an api.telegram.org — inject_credentials.sh bleibt
 #      byte-identisch (keine Provisioning-Aenderung).
 #   3b) Den Telegram-Relay des LLM-Gateways (Herz-Reaktion + Persona-Sticker, Kopf von provisioning/llm_gateway/server.js)
-#      per eigenem LAUFZEIT-Drop-in (/run/systemd/system/<gateway>.service.d/telegram-mock.conf,
+#      per eigenem Laufzeit-Drop-in (/run/systemd/system/<gateway>.service.d/telegram-mock.conf,
 #      LLM_GATEWAY_TELEGRAM_API=<mock>) + Neustart auf den Mock biegen; geprueft per /__health.telegram.upstream.
 #      Eigener Dateiname: enable_mock_llm.ps1 schreibt mock.conf nur mit seiner eigenen Zeile. /run ist fluechtig ->
 #      nach einem Container-Neustart bzw. bootstrap ohne -Reset dieses Skript erneut laufen lassen.
@@ -24,6 +24,7 @@
 # Vorbedingung: laufendes Substrat (.local/n8ntest_state.<container>.json) + TEST_TELEGRAM_BOT_TOKEN in .env
 # (die Credential muss existieren — inject_credentials legt sie nur bei vorhandenem Token an; der Mock
 # selbst ignoriert den Token, aber der Telegram-Node braucht eine gebundene Credential).
+# Exit-Code: 0 = ok; jeder Fehler wirft ($ErrorActionPreference = 'Stop') und bricht das Skript ab (Exit ungleich 0).
 param(
     [switch]$Down,
     [switch]$Verbose

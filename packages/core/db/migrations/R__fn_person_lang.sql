@@ -1,11 +1,11 @@
 -- ============================================================
--- agent.fn_person_lang (read-only, Empfaenger-Sprache fester Texte)
+-- fn_person_lang (READ-ONLY) — Empfaenger-Sprache fester Texte
 --   Sprache + Intl-Locale, in der eine Person feste Texte bekommt. Fallback-Kette (Telegram-Empfehlung "last
---   recorded tag or English"): eigene Sprache -> Owner-Sprache -> 'en'; ein Code, der (nicht mehr) in
+--   recorded tag or English"): eigene Sprache -> Owner-Sprache -> 'en'; ein Code, der nicht in
 --   core.ui_languages steht, zaehlt als fehlend. p_person_id NULL/unbekannt -> Owner-Sprache.
---   Plain INVOKER (core_ro liest agent+core direkt); ein Paket-Rollen-Fenster in core.* erst, wenn ein Paket-Cron
---   es braucht (Muster agent.fn_person_chat_id -> core.fn_person_chat_id).
---   RUECKGABE: {lang, locale}
+--   Plain INVOKER (core_ro liest agent+core direkt); ein Paket-Rollen-Fenster in core.* waere noetig, sobald ein
+--   Paket-Cron es braucht (Muster agent.fn_person_chat_id -> core.fn_person_chat_id).
+--   Eingabe: p_person_id text. Rueckgabe: {lang, locale} (nie NULL, Fallback {en, en-GB}).
 --   Tests: tests/db/core/test_fn_person_lang.sql
 -- ============================================================
 CREATE OR REPLACE FUNCTION agent.fn_person_lang(p_person_id text)

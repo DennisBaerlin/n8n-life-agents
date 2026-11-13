@@ -1,7 +1,7 @@
 -- ============================================================
--- fn_invite_household_member (WS-5a — Owner stellt eine Member-Einladung aus -> armt die Challenge)
---   Schritt 1 des Einladungs-Flows: der Owner sagt im Chat "lade meine Tochter Lisa ein". Das Tool
---   tool_invite_household_member (agent.guide) ruft dies NACH dem HITL-Approve. Atomar:
+-- fn_invite_household_member (WRITE)
+--   Der Owner stellt eine Member-Einladung aus ("lade meine Tochter Lisa ein") und armt dabei die Pairing-Challenge.
+--   Das Tool tool_invite_household_member (agent.guide) ruft die fn nach dem HITL-Approve. Atomar:
 --     1. (Re-)Validierung ueber den geteilten Kern fn_check_household_invite (Owner-Gate +
 --        Person existiert & ungepairt) -> TOCTOU-sicher zur Write-Zeit, eine Quelle.
 --     2. Einmal-Code generieren (>=8 alphanumerisch = pairing_state-CHECK; md5 = kein pgcrypto noetig).
@@ -10,7 +10,8 @@
 --   Der Owner teilt den zurueckgegebenen Code als Deep-Link t.me/<bot>?start=<code> ausserhalb; das
 --   Mitglied loest ihn ein (fn_claim_pairing_challenge -> Stage), der Owner bestaetigt (fn_confirm_pairing).
 --   p: { chat_id (Owner-chat), person_name }
---   RUECKGABE: {ok:true, person_id, role, full_name, challenge, expires_at} | {ok:false, reason}
+--   RUECKGABE: {ok:true, person_id, role, full_name, challenge, expires_at} | {ok:false, reason}; reason stammt aus
+--   fn_check_household_invite (Owner-Gate, Person unbekannt/gepairt) bzw. fn_arm_pairing_challenge (z. B. konkurrierender Arm).
 --   Invarianten-Tests: tests/db/core/test_fn_invite_household_member.sql
 -- ============================================================
 CREATE OR REPLACE FUNCTION agent.fn_invite_household_member(p jsonb)

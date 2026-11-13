@@ -1,7 +1,7 @@
 -- tests/db/core/test_fn_set_router_button_turn.sql
 -- Testet agent.fn_set_router_button_turn: ein Knopf startet einen Agenten am Router vorbei; danach traegt der Orchestrator
 -- den Lauf in Zeilenform des Router-Gedaechtnisses nach. Ohne ihn stand dort zuletzt die Frage eines anderen Spezialisten,
--- und die Antwort landete trotz Folge-Bindung dort (Befund 2026-11-02). Fehlende Tabelle/ungueltige Eingabe = no-op.
+-- und die Antwort landete trotz Folge-Bindung dort. Fehlende Tabelle/ungueltige Eingabe = no-op.
 BEGIN;
 
 DO $$

@@ -1,13 +1,12 @@
 ﻿#Requires -Version 5.1
 # Dot-gesourct von build.ps1 (Helper + Script-Scope-Creds im Parent-Scope).
 
-# --- tool_book_recurring_occurrence (WS-5c-A: faelliges Dauerauftrag-Vorkommen mit ANGEPASSTEM Betrag buchen) ---
+# --- tool_book_recurring_occurrence (faelliges Dauerauftrag-Vorkommen mit angepasstem Betrag buchen) ---
 # Normalerweise hakt der Monats-Check (tool_reconcile_bank_statement) die Vorkommen ab. Dieses Tool ist der
-# Anpass-Pfad (A2, arch-challenge): zum Abweichen lehnt der Nutzer den Cron-Reminder ab und nennt dem Agenten
-# den Ist-Betrag -> dieses Tool bucht ihn. Resolve (Name) + Faelligkeit (fn_recurring_due_open) in n8n,
-# Buchung via fn_book_recurring_occurrence(amount-Override).
+# Anpass-Pfad: zum Abweichen lehnt der Nutzer den Cron-Reminder ab und nennt dem Agenten den Ist-Betrag,
+# den dieses Tool bucht (fn_book_recurring_occurrence mit amount-Override).
 function Build-BookRecurringOccurrence {
-    # Enge Paket-Schreibrolle (finance_rw, Least-Privilege D10) statt Owner-Cred.
+    # Enge Paket-Schreibrolle (finance_rw) statt Owner-Cred.
     $CRED_POSTGRES = $CRED_FINANCE_RW
     $trig = Build-Trigger @('recurring_payment_name', 'actual_amount')
 
@@ -31,9 +30,7 @@ function Build-BookRecurringOccurrence {
     $errOcc = Build-ToolError 'No open occurrence' @(1100, 220) `
         "=No open due occurrence for '{{ `$('Start').item.json.recurring_payment_name }}'. Either already booked for this period or not yet due (90-day window)."
 
-    # "DB ist das Gesetz": fn_book_recurring_occurrence laeuft als Probelauf VOR der Karte (amount<=0,
-    # Transfer-Anpassung, bereits gebucht -> {ok:false} ohne Karte); derselbe Param-Satz geht nach dem Gate in den
-    # echten Write (amount-Override: sign(rp.amount)*abs(amount)).
+    # amount-Override im Write: sign(rp.amount)*abs(amount).
     $wg = New-FnWriteGate -Fn 'finance.fn_book_recurring_occurrence' -DryPos @(1100, 0) -WritePos @(2420, 0) `
         -WriteName 'Book occurrence (atomic)' `
         -WriteSelect "(r->>'ok')::boolean AS ok, r->>'reason' AS reason, (r->>'transaction_id')::int AS transaction_id, (r->>'amount')::numeric AS amount, (r->>'plan_amount')::numeric AS plan_amount" `
@@ -43,8 +40,7 @@ function Build-BookRecurringOccurrence {
             amount               = '$(''Start'').item.json.actual_amount'
         })
 
-    # HITL-Summary (Textkatalog): Soll vs. Ist + Abweichungs-Warnung (>5 %). plan_amount ist vorzeichenbehaftet -> abs().
-    # Betraege in der Konto-Waehrung (Find occurrence).
+    # Abweichungs-Warnung ab 5 %. plan_amount ist vorzeichenbehaftet -> abs(). Betraege in der Konto-Waehrung (Find occurrence).
     $S = "`$('Start').item.json"
     $O = "`$('Find occurrence').item.json"
     $summary = New-HitlSummary -Pos @(1760, 0) -Title 'finance.hitl.book_recurring_occurrence' -LinesExpr $wg.CardLinesExpr -Lines @(
@@ -64,7 +60,6 @@ function Build-BookRecurringOccurrence {
 
     $retCancelled = Build-ToolCancelled 'Return cancelled' @(2420, 240) 'the book_recurring_occurrence action'
 
-    # Atomarer Write via fn_book_recurring_occurrence mit amount-Override ($wg.Write, Params siehe oben).
     $ifWriteOk = Build-If 'Write ok?' @(2640, 0) "={{ `$json.ok }}" 'true' 'equals' 'boolean'
 
     $errWrite = Build-ToolError 'Booking rejected' @(2860, 240) `

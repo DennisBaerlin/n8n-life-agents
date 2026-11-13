@@ -1,5 +1,5 @@
 -- ============================================================
--- test_fn_bank_export_normalize -- Golden-File je Profil (Bank-Import-Modul; TR aus Broker-CSV Paket B)
+-- test_fn_bank_export_normalize -- Golden-File je Profil (Bank-Import-Modul; TR aus Broker-CSV)
 --   finance.fn_bank_export_normalize (Dispatcher) / fn_bank_export_profiles / fn_bank_export_account_profile.
 --   Fixture = Trade-Republic-Spaltenform (nach den Portfolio-Performance-Fixtures TransactionExport01..06), Werte
 --   frei erfunden. Deckt: Profil-Erkennung per Kopfzeile (auch hinter einem Vorspann), Cash-Wirkung amount+fee+tax,
@@ -33,7 +33,7 @@ DECLARE
         '["","","","","","","","","","","","","","","","","","","","","","",""]'::jsonb,
         -- 12: Zins ohne Wertpapier
         '["2026-09-30T00:00:00Z","2026-09-30","DEFAULT","CASH","INTEREST_PAYMENT","","","","","","1.230000","","","EUR","","","","Interest","aaaa-0010","","","",""]'::jsonb,
-        -- 13: gleich hohe Dividende derselben ISIN + Stueck ein Quartal frueher -> bleibt Dividende (nur EINE Zeile je Storno)
+        -- 13: gleich hohe Dividende derselben ISIN + Stueck ein Quartal frueher -> bleibt Dividende (nur eine Zeile je Storno)
         '["2026-06-07T10:00:00Z","2026-06-07","DEFAULT","CASH","DIVIDEND","STOCK","Korr AG","US000TEST003","20.0000000000","","4.000000","","-1.00","EUR","","","","Cash Dividend","aaaa-0011","","","",""]'::jsonb);
     v_res JSONB;
     v_r   JSONB;

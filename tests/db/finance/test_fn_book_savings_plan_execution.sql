@@ -193,11 +193,11 @@ BEGIN
   END IF;
   RAISE NOTICE 'PASS fn_book_savings_plan_execution [Crypto BTC ohne ISIN -> ok:true]';
 
-  -- TEST 5 (Phase L WS-6): asset_class-Vererbung Sparplan -> Ausfuehrung -> Holding.
+  -- TEST 5: asset_class-Vererbung Sparplan -> Ausfuehrung -> Holding.
   DECLARE
     v_cls TEXT; v_hold5 INT; v_hold_m1 INT;
   BEGIN
-    -- (5a) Plan MIT asset_class auf NEUER Position -> Ausfuehrung legt die Holding getaggt an.
+    -- (5a) Plan mit asset_class auf neuer Position -> Ausfuehrung legt die Holding getaggt an.
     SELECT finance.fn_create_savings_plan(jsonb_build_object(
       'name','__test_bse_plan_tagged__','depot_name','__test_bse_depot__',
       'isin','IE00TAG00001','symbol','TAGG','security_name','Tagged ETF',
@@ -215,12 +215,12 @@ BEGIN
       RAISE EXCEPTION 'FAIL [5a]: Sparplan-Ausfuehrung vererbt asset_class nicht, erwartet sp500, got %', v_cls; END IF;
     RAISE NOTICE 'PASS [5a WS-6: Sparplan mit asset_class -> Ausfuehrung legt Holding getaggt an]';
 
-    -- (5b, m1) Eine zuerst MANUELL untagged angelegte Position bleibt untagged, auch wenn spaeter ein getaggter
-    --   Sparplan einzahlt (fn_book_stock_buy taggt nur beim ANLEGEN -> Re-Buy ist no-op, kein Ueberschreiben).
+    -- (5b, m1) Eine zuerst manuell untagged angelegte Position bleibt untagged, auch wenn spaeter ein getaggter
+    --   Sparplan einzahlt (fn_book_stock_buy taggt nur beim Anlegen -> Re-Buy ist no-op, kein Ueberschreiben).
     SELECT finance.fn_book_stock_buy(jsonb_build_object('price_currency_confirmed',true,
       'depot_id', v_depot_id, 'settlement_id', v_settle_id,
       'isin','IE00M1000001','symbol','M1ID','name','M1 ETF',
-      'shares',1,'price_per_share',100,'order_fee',0,'transaction_date', CURRENT_DATE::text)) INTO v_result;   -- KEIN asset_class -> untagged
+      'shares',1,'price_per_share',100,'order_fee',0,'transaction_date', CURRENT_DATE::text)) INTO v_result;   -- kein asset_class -> untagged
     IF NOT (v_result->>'ok')::boolean THEN
       RAISE EXCEPTION 'SETUP FAIL [5b manual buy]: %', v_result->>'reason'; END IF;
     v_hold_m1 := (v_result->>'holding_id')::int;

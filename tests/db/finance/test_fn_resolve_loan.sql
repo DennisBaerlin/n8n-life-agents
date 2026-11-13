@@ -22,7 +22,7 @@ BEGIN
   SELECT hit_count INTO v_hits FROM finance.fn_resolve_loan('__nope_loan__');
   IF v_hits <> 0 THEN RAISE EXCEPTION 'FAIL resolve_loan [0]: hits=%', v_hits; END IF;
 
-  -- paused-Kredit (keine Annuitaet -> status='paused'): per Default (active_only) NICHT gefunden,
+  -- paused-Kredit (keine Annuitaet -> status='paused'): per Default (active_only) nicht gefunden,
   -- mit p_active_only=FALSE gefunden (delete_loan/settle_loan/sell brauchen das).
   PERFORM finance.fn_create_loan(jsonb_build_object(
     'name','__rl_paused__','lender','TestBank','borrower','T','original_amount','5000',

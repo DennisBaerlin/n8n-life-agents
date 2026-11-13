@@ -1,17 +1,17 @@
 ﻿#Requires -Version 5.1
 # Definition agent.advisor.cron_drift_check -> Build-CronAdvisorDriftCheck. Dot-gesourct von build.ps1.
-# TAEGLICHER Drift-Waechter der generischen Core-Advisor-Engine (schedule.drift_check 10:00, beim
-# Einspielen aus core.config eingesetzt). Iteriert core.advisors, rechnet Soll-Ist-Drift + Staleness, LATCHT (geteilte core.notification_state):
-# nur eine NEU gebreachte Metrik schickt eine Message, ein stiller Lauf bleibt stumm (kein Tages-Spam).
+# Taeglicher Drift-Waechter der generischen Core-Advisor-Engine (schedule.drift_check 10:00, beim
+# Einspielen aus core.config eingesetzt). Iteriert core.advisors, rechnet Soll-Ist-Drift + Staleness, latcht (geteilte core.notification_state):
+# nur eine neu gebreachte Metrik schickt eine Message, ein stiller Lauf bleibt stumm (kein Tages-Spam).
 # Opt-in ueber F9 (cron_enable.drift_check, default 'false' bis ein Plan publiziert ist). Geteilter Schwanz
 # in New-AdvisorCron (cron.advisor_common.ps1).
 function Build-CronAdvisorDriftCheck {
-    # EINE Zeile: alle NEU gebreachten alert-Objekte (paket-gelieferte msg-Struktur) ueber ALLE Advisor x Personen.
-    # P2b-2: per-Person-Faecherung via dem geteilten Get-AdvisorFanoutCte-Kopf (per_user je Person, household NULL).
-    # MATERIALIZED CTE -> die VOLATILE Eval-fn (schreibt Latch) laeuft EXAKT 1x je (Advisor, Person); ohne neue
+    # Eine Zeile: alle neu gebreachten alert-Objekte (paket-gelieferte msg-Struktur) ueber alle Advisor x Personen.
+    # Per-Person-Faecherung via dem geteilten Get-AdvisorFanoutCte-Kopf (per_user je Person, household NULL).
+    # MATERIALIZED CTE -> die VOLATILE Eval-fn (schreibt Latch) laeuft genau 1x je (Advisor, Person); ohne neue
     # Breaches -> '[]'. jsonb als ::text (n8n-Pg-Node-Quirk: jsonb robust ueber JSON.parse, Muster Monitor-Cron).
     # alerts werden ueber (Domain x Person) flachgezogen (jsonb_agg = je Element eine eigene Zeile, kein Collapse).
-    # Textkatalog Phase C: die Texte (Owner-Sprache; Keys = die festen + alle tpl-Keys der Alerts) kommen in DERSELBEN
+    # Textkatalog: die Texte (Owner-Sprache; Keys = die festen + alle tpl-Keys der Alerts) kommen in derselben
     # Anweisung wie der Latch — ein Ladefehler rollt den Latch zurueck (nie "gemeldet", ohne verschickt zu sein).
     $cte = Get-AdvisorFanoutCte
     $keys = Get-UiKeysSql (@('core.advisor.drift_title', 'core.advisor.first_run_intro', 'core.advisor.drift_cta', 'core.advisor.btn_what_now') + $script:AdvisorChromeKeys + $script:UiRenderKeys)

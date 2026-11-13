@@ -1,56 +1,55 @@
 # shellcheck disable=SC1111  # deutsche Anführungszeichen („…“) in den Nutzertexten sind gewollt, keine vertippten Shell-Quotes
-# release_inputs.sh — Release-Eingaben sammeln + idempotent persistieren (Phase 6).
-# Sourced by provision.sh (und von der lifeagents-CLI fuer reconfigure/package/config/…). Definiert
+# release_inputs.sh — Release-Eingaben sammeln + idempotent persistieren.
+# Gesourct von provision.sh (und von der lifeagents-CLI fuer reconfigure/package/config/…). Definiert
 # load_install_env() + collect_release_inputs().
 #
-# ZWEI Quellen, env-override-first (Plan Phase 6: `${VAR:-$(prompt_if_tty)}`):
+# Zwei Quellen, env-override-first (`${VAR:-$(prompt_if_tty)}`):
 #   1. Prozess-Env (Dev/Test injiziert den .env-Test-Block; ein Re-Run mit gepinnten Werten).
 #   2. /etc/lifeagents/core.env (unser Merge-Store = INSTALL_ENV_FILE, dieselbe Datei wie die Host/
 #      Core-Secrets, per-Key gemergt; Secret-Modell §3.0a) — ein zweiter Lauf laedt die Werte des
-#      ersten zurueck => KEIN erneutes Prompten = idempotent (Coolify-.env-Merge-Muster).
+#      ersten zurueck => kein erneutes Prompten = idempotent (Coolify-.env-Merge-Muster).
 #   3. Sonst (nur Release + TTY): interaktiv per /dev/tty fragen. Unter `curl … | bash` ist stdin
-#      die Pipe -> read MUSS aus /dev/tty lesen (sonst verschluckt es das Skript selbst).
+#      die Pipe -> read muss aus /dev/tty lesen (sonst verschluckt es das Skript selbst).
 #
-# SELBST generiert (kein Prompt, openssl rand): N8N_ENCRYPTION_KEY + N8N_DB_PASSWORD
+# Selbst generiert (kein Prompt, openssl rand): N8N_ENCRYPTION_KEY + N8N_DB_PASSWORD
 # (prepare_n8n_env/install_pg) + Owner-Init-Passwort (_resolve_owner_creds) + core.backup_key-Backup-
 # Key (bootstrap_owner._ensure_backup_secret) + der Eingangs-Schluessel INGRESS_ID_KEY (bootstrap_owner._ensure_ingress_id_key;
-# daraus leitet deploy_workflows die Trigger-ids ab, aus denen n8n beim Activate den secret_token <workflowId>_<nodeId> bildet). EXTERN abgefragt (hier): Domain, Telegram-Bot-Token,
-# Google-/Anthropic-API-Key, Owner-Identitaet. Der Repo-Token fuer --version kommt in der
-# Release-Asset-Phase dazu (separate Action).
+# daraus leitet deploy_workflows die Trigger-ids ab, aus denen n8n beim Activate den secret_token <workflowId>_<nodeId> bildet).
+# Extern abgefragt (hier): Domain, Telegram-Bot-Token, Google-/Anthropic-API-Key, Owner-Identitaet.
 #
 # Reads/sets globals (provision.sh): INSTALL_ENV_FILE, N8N_USER, PROFILE, UNATTENDED, DOMAIN,
 #   N8N_OWNER_EMAIL, OWNER_FIRST_NAME, OWNER_LAST_NAME, OWNER_BIRTH_DATE, TELEGRAM_BOT_TOKEN,
 #   GOOGLE_API_KEY, ANTHROPIC_API_KEY.
 #
-# SEEN-MODELL (debconf-treu, Install-UX-Phase Spec C): ein Key gilt als "seen", wenn er eine
-# KEY=-Zeile in core.env hat (auch mit LEEREM Wert = interaktiv angeboten + bewusst uebersprungen).
-# _prompt_validated skippt seen-optionale Keys (fragt NIE erneut nach); ein NEUER Key eines Releases
-# hat keine Zeile -> wird beim naechsten interaktiven Release-Lauf (Install ODER Update via
-# INSTALL_PROFILE) genau einmal nachgefragt. Seen-Zeilen entstehen NUR in interaktiven Laeufen
+# Seen-Modell (debconf): ein Key gilt als "seen", wenn er eine
+# KEY=-Zeile in core.env hat (auch mit leerem Wert = interaktiv angeboten + bewusst uebersprungen).
+# _prompt_validated skippt seen-optionale Keys (fragt nie erneut nach); ein neuer Key eines Releases
+# hat keine Zeile -> wird beim naechsten interaktiven Release-Lauf (Install oder Update via
+# INSTALL_PROFILE) genau einmal nachgefragt. Seen-Zeilen entstehen nur in interaktiven Laeufen
 # (unattended markiert nichts als gestellt — eine spaetere interaktive Sitzung darf fragen).
-# PFLICHT-Keys (_REQUIRED_HOST_KEYS, Install-UX-Phase 7) kennen kein Seen-Gate: leer = erneut fragen.
+# Pflicht-Keys (_REQUIRED_HOST_KEYS) kennen kein Seen-Gate: leer = erneut fragen.
 
-# Die in core.env (INSTALL_ENV_FILE) gemergten HOST-Schluessel (Reihenfolge = Prompt-Reihenfolge).
+# Die in core.env (INSTALL_ENV_FILE) gemergten Host-Schluessel (Reihenfolge = Prompt-Reihenfolge).
 # N8N_OWNER_PASSWORD = n8n-Admin-Login (nicht generierbar -> abfragen; persistiert fuer idempotente
-# Re-Runs / Login-Reuse). Postgres-Passwoerter sind NICHT hier — die generiert der Installer selbst.
-# PAKET-Secrets (z. B. die career-Job-Quellen Adzuna/JSearch) leben NICHT mehr hier: sie sind im
+# Re-Runs / Login-Reuse). Postgres-Passwoerter sind nicht hier — die generiert der Installer selbst.
+# Paket-Secrets (z. B. die career-Job-Quellen Adzuna/JSearch) leben nicht hier: sie sind im
 # jeweiligen packages/<pkg>/manifest.json `credentials`-Block deklariert (docs/package-contract.md
 # §3.8), werden vom Stage-4-Wizard in pkg_install_one bzw. vorab von collect_package_inputs erfragt und in /etc/lifeagents/<pkg>.env
-# persistiert (Naht-Rueckbau der Install-UX-Phase; contract_lint Naht-Guard blockt Rueckfaelle).
+# persistiert (contract_lint Naht-Guard blockt Rueckfaelle).
 # OWNER_LANGUAGE = Sprache der festen Bot-Texte des Owners (Textkatalog; eigener Auswahl-Dialog _ask_owner_language,
 # Vorauswahl Deutsch; leer/unattended -> bootstrap_owner nimmt 'de').
 # OWNER_PERSONA = Bot-Charakter des Owners (Core-Manifest personas.list; eigener Auswahl-Dialog _ask_owner_persona,
 # Vorauswahl Neutral; leer/unattended/ungueltig -> util_seed_owner_skeleton laesst den Key weg = neutral).
 _INSTALL_ENV_KEYS="REACH_MODE DOMAIN TRUSTED_PROXIES N8N_OWNER_EMAIL N8N_OWNER_PASSWORD OWNER_FIRST_NAME OWNER_LAST_NAME OWNER_BIRTH_DATE OWNER_LANGUAGE OWNER_PERSONA TELEGRAM_BOT_TOKEN ANTHROPIC_API_KEY GOOGLE_API_KEY"
 
-# Pflicht-Host-Keys (Install-UX-Phase 7): ohne sie ist die Instanz unbenutzbar — kein Chat (Telegram), kein Agent denkt
-# (seit Modell-Phase 2 laufen ALLE Agenten auf Claude -> Anthropic Pflicht; Google ist optional und traegt nur noch die
-# Sprachnachrichten), kein Owner-Skelett -> kein Telegram-Pairing (Name + Geburtsdatum). EINE Adresse: _host_key_ask,
+# Pflicht-Host-Keys: ohne sie ist die Instanz unbenutzbar — kein Chat (Telegram), kein Agent denkt
+# (alle Agenten laufen auf Claude -> Anthropic Pflicht; Google ist optional und traegt nur die
+# Sprachnachrichten), kein Owner-Skelett -> kein Telegram-Pairing (Name + Geburtsdatum). Eine Adresse: _host_key_ask,
 # _missing_required_host_keys, _all_host_keys_answered und die Uebersicht lesen sie.
 _REQUIRED_HOST_KEYS="OWNER_FIRST_NAME OWNER_LAST_NAME OWNER_BIRTH_DATE TELEGRAM_BOT_TOKEN ANTHROPIC_API_KEY"
 _host_key_required() { case " $_REQUIRED_HOST_KEYS " in *" $1 "*) return 0 ;; esac; return 1; }
 
-# _missing_required_host_keys -> die leeren Pflicht-Host-Keys (Leerzeichen-getrennt) auf stdout. Gibt IMMER 0 zurueck
+# _missing_required_host_keys -> die leeren Pflicht-Host-Keys (Leerzeichen-getrennt) auf stdout. Gibt immer 0 zurueck
 #   (Aufruf in $(…) unter dem geerbten set -e).
 _missing_required_host_keys() {
   local k v out=''
@@ -62,9 +61,8 @@ _missing_required_host_keys() {
   return 0
 }
 
-# load_install_env — Werte aus core.env (INSTALL_ENV_FILE) in die Env laden, NUR wenn nicht schon (per Prozess-Env)
-# gesetzt (override-first). Laeuft fuer JEDES Profil (Dev-Re-Runs profitieren ebenso). Fehlt die
-# Datei, wird nur normalisiert.
+# load_install_env — Werte aus core.env (INSTALL_ENV_FILE) in die Env laden, nur wenn nicht schon (per Prozess-Env)
+# gesetzt (override-first). Laeuft fuer jedes Profil. Fehlt die Datei, wird nur normalisiert.
 load_install_env() {
   local k v
   if [ -f "${INSTALL_ENV_FILE:-}" ]; then
@@ -76,7 +74,7 @@ load_install_env() {
       fi
     done
   fi
-  # Internet-Adresse: EINE Regel fuer jeden Eingabeweg (Prozess-Env/--domain/--unattended UND core.env) — eine
+  # Internet-Adresse: eine Regel fuer jeden Eingabeweg (Prozess-Env/--domain/--unattended und core.env) — eine
   # eingefuegte URL (https://name:443/) wird zum Namen, bevor ein Aufrufer (provision.sh, reconfigure, household
   # pair-owner) damit rechnet; die Fragen nutzen dieselbe Regel (_input_normalize).
   if [ -n "${DOMAIN:-}" ]; then DOMAIN="$(normalize_domain "$DOMAIN")"; export DOMAIN; fi
@@ -84,16 +82,16 @@ load_install_env() {
   if [ -z "${REACH_MODE:-}" ] && [ -n "${DOMAIN:-}" ] && ! rt_is_compose && ! env_has_key "${INSTALL_ENV_FILE:-}" REACH_MODE; then
     REACH_MODE=proxy; export REACH_MODE
   fi
-  # Explizit 0: endet die Schleife mit einem LEEREN letzten Key, waere der Funktions-Status sonst 1
-  # (&&-Liste) -> set -e killt provision.sh STILL (die &&-Exemption unterdrueckt sogar den ERR-Trap).
-  # Latenter Zweitlauf-Crash seit die optionalen Keys am Listen-Ende stehen koennen (Install-UX-Phase).
+  # Explizit 0: endet die Schleife mit einem leeren letzten Key, waere der Funktions-Status sonst 1
+  # (&&-Liste) -> set -e killt provision.sh still (die &&-Exemption unterdrueckt sogar den ERR-Trap).
+  # Sonst Zweitlauf-Crash, sobald optionale Keys am Listen-Ende stehen.
   return 0
 }
 
 # _persist_install_env — die gemanagten Werte in core.env (INSTALL_ENV_FILE) mergen (Coolify-Muster),
 # einmal vorher ein Backup. 640 root:n8n (Owner-Identitaet = PII, API-Keys = Secret -> nie ins Repo,
 # konsistent mit n8n.env). Beim allerersten Schreiben Datei + Header anlegen.
-# SEEN-Persistenz (Spec C/E2.1): in einem INTERAKTIVEN Lauf wurde jeder Key angeboten -> auch LEERE
+# Seen-Persistenz: in einem interaktiven Lauf wurde jeder Key angeboten -> auch leere
 # Werte als `KEY=`-Zeile schreiben (= seen, fragt nie erneut). Nicht-interaktiv (unattended/kein TTY)
 # werden nur non-empty Werte gemergt — nie Gestelltes bleibt fragbar (debconf: seen = wurde gestellt).
 _persist_install_env() {
@@ -124,7 +122,7 @@ _persist_install_env() {
 }
 
 # --- Lokale Validatoren (kein Netz) gegen die echten Downstream-Constraints --------------------
-# Genau die Regeln, an denen es sonst SPAETER scheitert: n8ns zod-Email (FQDN, lehnt owner@localhost
+# Genau die Regeln, an denen es sonst spaeter scheitert: n8ns zod-Email (FQDN, lehnt owner@localhost
 # ab), die household-Facts-Validierung (Vor-/Nachname non-empty, birth_date DATE-castbar + nicht in
 # der Zukunft -> sonst schlaegt der Skelett-Seed fehl = kein Pairing), WEBHOOK_URL (FQDN).
 # Das n8n-Login-Passwort prueft `_owner_password_ok` (bootstrap_owner.sh: 8-64/Ziffer/Grossbuchstabe).
@@ -141,20 +139,20 @@ _validate_birthdate() {
 }
 
 # --- Prompt-Zeit-Validierung der eingegebenen Secrets gegen den echten Dienst ----------------------
-# Schon BEIM EINTIPPEN gegen den echten Dienst pruefen -> der Owner korrigiert sofort im Terminal,
+# Schon beim Eintippen gegen den echten Dienst pruefen -> der Owner korrigiert sofort im Terminal,
 # nicht erst spaet (die zweite Schranke ist _cred_test in inject_credentials, beide Profile). Der
-# Key/Token geht ueber die curl-Config auf STDIN (`curl_cfg` + `curl_secret`, nie ins argv/Prozessliste — Projekt-Hard-Rule).
-# Grenze: das prueft GUELTIGKEIT (authentifiziert), NICHT Free-vs-Paid-Tier (das zeigt sich erst an
+# Key/Token geht ueber die curl-Config auf stdin (`curl_cfg` + `curl_secret`, nie ins argv/Prozessliste).
+# Grenze: das prueft Gueltigkeit (authentifiziert), nicht Free-vs-Paid-Tier (das zeigt sich erst an
 # der Tagesquote unter Last) — fuer den Paid-Key bleibt die AI-Studio-Plan-Pruefung Owner-Sache.
-_http_status_secret() {   # liest die curl_cfg-Zeilen von STDIN
-  # curl schreibt bei Verbindungsfehler SELBST '000' (-w) UND endet != 0 -> `|| echo 000` ergaebe '000000'.
+_http_status_secret() {   # liest die curl_cfg-Zeilen von stdin
+  # curl schreibt bei Verbindungsfehler selbst '000' (-w) und endet != 0 -> `|| echo 000` ergaebe '000000'.
   local code; code="$(curl_secret -sS -o /dev/null -w '%{http_code}' --max-time 12 2>/dev/null)" || true
   code="${code:-000}"
   printf '%s' "$code"
 }
 
 # Live-Pruefer: 0 = gueltig, 1 = vom Dienst abgelehnt, 2 = Dienst nicht erreichbar (kein Netz/Timeout, HTTP 000).
-# 2 ist KEIN Tippfehler -> _prompt_validated uebernimmt den Wert mit Hinweis (die zweite Schranke _cred_test
+# 2 ist kein Tippfehler -> _prompt_validated uebernimmt den Wert mit Hinweis (die zweite Schranke _cred_test
 # prueft beim Credential-Inject erneut), statt den Owner bei einem Netz-Wackler festzuhalten.
 _live_rc() { case "$1" in 200) return 0 ;; 000) return 2 ;; *) return 1 ;; esac; }
 _validate_telegram()  { _live_rc "$(curl_cfg url "https://api.telegram.org/bot$1/getMe" | _http_status_secret)"; }
@@ -162,9 +160,9 @@ _validate_google()    { _live_rc "$({ curl_cfg url "https://generativelanguage.g
 _validate_anthropic() { _live_rc "$({ curl_cfg url "https://api.anthropic.com/v1/models"; curl_cfg header "x-api-key: $1"; curl_cfg header "anthropic-version: 2023-06-01"; } | _http_status_secret)"; }
 
 # _is_live_validator <fn> — Live-Dienst-Checks (echte API-Calls) vs. lokale Regex-Checks (gratis).
-# F2c (Opus-Review): VORHANDENE Werte (Env/Store — z. B. bei jedem Prod-Update via INSTALL_PROFILE)
-# werden NICHT live re-validiert (sonst 3 API-Calls je Update); Live-Checks laufen nur fuer
-# NEU eingegebene Werte. Die zweite Schranke bleibt _cred_test beim Inject (beide Profile).
+# Vorhandene Werte (Env/Store — z. B. bei jedem Prod-Update via INSTALL_PROFILE)
+# werden nicht live re-validiert (sonst 3 API-Calls je Update); Live-Checks laufen nur fuer
+# neu eingegebene Werte. Die zweite Schranke bleibt _cred_test beim Inject (beide Profile).
 _is_live_validator() {
   case "$1" in _validate_telegram|_validate_google|_validate_anthropic) return 0 ;; esac
   return 1
@@ -183,7 +181,7 @@ _prompt_reask_text() {
   printf '%s' "$1" | sed -E 's/[;,] *Enter = [^)]*//; s/ *\(Enter = [^)]*\)//'
 }
 
-# _store_answer <file> <key> <value> — eine Antwort SOFORT speichern (Install-UX-Phase 4, Runde 2): bricht der
+# _store_answer <file> <key> <value> — eine Antwort sofort speichern: bricht der
 # Owner spaeter ab (Strg-C), fragt ein erneuter Lauf nur noch den Rest. umask 077 (die Datei kann vor dem
 # n8n-User entstehen); danach 640 root:n8n, sobald es den User gibt (wie _persist_install_env).
 _store_answer() {
@@ -194,7 +192,7 @@ _store_answer() {
   return 0
 }
 
-# _input_normalize <KEY> <wert> -> der Wert, wie er geprueft und gespeichert wird (EINE Tabelle fuer alle Eingabewege:
+# _input_normalize <KEY> <wert> -> der Wert, wie er geprueft und gespeichert wird (eine Tabelle fuer alle Eingabewege:
 #   Prompt, Uebersicht, reconfigure; provision.sh normalisiert Env/--domain/--unattended/core.env mit derselben Regel).
 #   DOMAIN: eingefuegte URL -> Name (common.sh normalize_domain). Alle anderen Keys unveraendert.
 _input_normalize() {
@@ -214,26 +212,26 @@ _input_problem() {
 }
 
 # _prompt_validated <varname> <prompt> <secret?> <validator-fn> [required] [seen_file] [help] [confirm] [reask]
-#   DER eine Prompt-Wrapper fuer Host-Keys UND den Paket-Secrets-Wizard (parametrisiertes Ziel).
+#   Der eine Prompt-Wrapper fuer Host-Keys und den Paket-Secrets-Wizard (parametrisiertes Ziel).
 #   Reihenfolge der Gates (Erstfrage, reask=0):
 #     1. Wert schon gesetzt (Prozess-Env/Store) -> kein Prompt, keine Ausgabe. Lokale Validatoren pruefen ihn
-#        weiter (gratis; ungueltig -> Hinweis); LIVE-Checks werden uebersprungen (F2c, s. _is_live_validator).
-#     2. SEEN-Gate (F1, debconf): optionaler Key mit KEY=-Zeile im seen_file (auch leer) wurde
-#        schon einmal angeboten -> NIE erneut fragen (Zeilen-Praesenz via env_has_key, nie der Wert).
+#        weiter (gratis; ungueltig -> Hinweis); Live-Checks werden uebersprungen (s. _is_live_validator).
+#     2. Seen-Gate (debconf): optionaler Key mit KEY=-Zeile im seen_file (auch leer) wurde
+#        schon einmal angeboten -> nie erneut fragen (Zeilen-Praesenz via env_has_key, nie der Wert).
 #        Pflicht-Keys (required=1) kennen kein Seen-Gate: leer = erneut fragen (ein gespeicherter Wert kommt ueber
 #        den Env-Preload load_install_env bzw. den Aufrufer schon in Gate 1 an).
-#     3. Interaktivitaets-Gate ui_interactive (TTY ∧ ¬UNATTENDED — Befund 1). Nicht interaktiv: still zurueck —
-#        fehlende Pflicht-Host-Keys meldet collect_release_inputs GESAMMELT vorab (Erstinstallation = die, Bestand =
-#        warn; Install-UX-Phase 7), fehlende Paket-Pflicht-Credentials failen im Inject (§3.8).
-#     4. Erst JETZT (es wird wirklich gefragt) die Erklaer-Box <help> + Buchfuehrung UI_ASKED/UI_ASKED_KEYS. Bis 3x
+#     3. Interaktivitaets-Gate ui_interactive (TTY ∧ ¬UNATTENDED). Nicht interaktiv: still zurueck —
+#        fehlende Pflicht-Host-Keys meldet collect_release_inputs gesammelt vorab (Erstinstallation = die, Bestand =
+#        warn), fehlende Paket-Pflicht-Credentials failen im Inject (§3.8).
+#     4. Erst jetzt (es wird wirklich gefragt) die Erklaer-Box <help> + Buchfuehrung UI_ASKED/UI_ASKED_KEYS. Bis 3x
 #        fragen+pruefen; Live-Checks zeigen „prüfe …". Optional + Enter = sichtbar „übersprungen", Pflicht + Enter =
-#        „nötig". 3x ungueltig -> NIE still uebernehmen: optional = uebersprungen, required = Abbruch.
+#        „nötig". 3x ungueltig -> nie still uebernehmen: optional = uebersprungen, required = Abbruch.
 #        confirm=1 (Passwoerter): zweite Eingabe muss gleich sein.
 #     5. Jede Antwort (auch „übersprungen" = leere Seen-Zeile) sofort in <seen_file> (_store_answer).
 #   reask=1 (Uebersicht „Eine Angabe ändern", `lifeagents reconfigure`, `package reconfigure`): Gate 1+2 entfallen;
 #   aktueller Wert aus der Env, sonst aus <seen_file>; Hinweis „[<wert> — Enter = behalten]" nur bei secret=0, sonst
 #   „[gesetzt — …]" (debconf: Text-Fragen zeigen den Vorgabewert, Passwoerter nie); Enter = behalten (Pflicht + leer ->
-#   nochmal); 3x ungueltig -> der alte Wert bleibt (nie der die-/skip-Schwanz). Speichert SELBST NICHTS — der Aufrufer
+#   nochmal); 3x ungueltig -> der alte Wert bleibt (nie der die-/skip-Schwanz). Speichert selbst nichts — der Aufrufer
 #   schreibt nach der letzten Antwort (Mehr-Key-Credentials aendern sich atomar; Strg-C = nichts geaendert).
 # shellcheck disable=SC2034  # UI_ASKED liest provision.sh (Uebersicht nur, wenn wirklich gefragt wurde)
 _prompt_validated() {
@@ -318,7 +316,7 @@ _prompt_validated() {
     i=$((i+1))
   done
   if [ "$reask" = "1" ]; then
-    # NIE still den letzten Fehlversuch uebernehmen und nie abbrechen: der bisherige Wert bleibt (der Aufrufer prueft
+    # Nie still den letzten Fehlversuch uebernehmen und nie abbrechen: der bisherige Wert bleibt (der Aufrufer prueft
     # danach selbst, ob eine Pflichtangabe leer geblieben ist).
     if [ -n "$cur" ]; then
       eval "$name=\$cur; export $name"
@@ -336,7 +334,7 @@ _prompt_validated() {
   return 0
 }
 
-# _host_key_def <KEY> — die EINE Definition je Host-Frage (Install-UX-Phase 7): setzt _HK_PROMPT/_HK_VFN/_HK_SECRET/
+# _host_key_def <KEY> — die eine Definition je Host-Frage: setzt _HK_PROMPT/_HK_VFN/_HK_SECRET/
 #   _HK_CONFIRM/_HK_HELP. Quelle fuer die Erstfrage, die Uebersicht (Beschriftung = _prompt_label des Prompts, Secret-
 #   Anzeige) und `lifeagents reconfigure`. TRUSTED_PROXIES traegt nur eine Beschriftung (eigener Dialog
 #   _ask_trusted_proxies). Pflicht kommt aus _REQUIRED_HOST_KEYS, nicht von hier.
@@ -422,7 +420,7 @@ Später nachtragen: lifeagents reconfigure" ;;
 _host_key_label() { _host_key_def "$1"; _prompt_label "$_HK_PROMPT"; }
 
 # _host_key_ask <KEY> [reask] — eine Host-Frage stellen (Definition aus _host_key_def, Pflicht aus
-#   _REQUIRED_HOST_KEYS). reask=1 (Uebersicht, reconfigure): Enter = behalten, speichert NICHT (der Aufrufer
+#   _REQUIRED_HOST_KEYS). reask=1 (Uebersicht, reconfigure): Enter = behalten, speichert nicht (der Aufrufer
 #   speichert). Nie in $(…) aufrufen: der exportierte Wert ginge mit der Subshell verloren.
 _host_key_ask() {
   local key="$1" reask="${2:-0}" req=0
@@ -431,7 +429,7 @@ _host_key_ask() {
   _prompt_validated "$key" "$_HK_PROMPT" "$_HK_SECRET" "$_HK_VFN" "$req" "${INSTALL_ENV_FILE:-}" "$_HK_HELP" "$_HK_CONFIRM" "$reask"
 }
 
-# _host_editable_keys -> die NACH der Erstinstallation sinnvoll aenderbaren Host-Keys, eins je Zeile (Uebersicht auf
+# _host_editable_keys -> die nach der Erstinstallation sinnvoll aenderbaren Host-Keys, eins je Zeile (Uebersicht auf
 #   einer Bestandsinstanz + `lifeagents reconfigure`): Weg ins Internet (+ Adresse, wo der Weg eine eigene hat) + die drei Schluessel; Name/Geburtsdatum nur,
 #   solange noch kein Owner-Skelett existiert (danach sind es Haushalts-Daten, die der Bot im Chat pflegt). Die
 #   n8n-Anmeldung bleibt draussen (lebt in n8n; die core.env-Werte nutzt nur die Ersteinrichtung), der Proxy-Ort auch
@@ -449,9 +447,9 @@ _host_editable_keys() {
 # _update_held_marker -> Pfad der Merk-Datei "Owner wurde ueber dieses fehlende Pflicht-Key-Set schon informiert".
 _update_held_marker() { printf '%s/.update_held' "$LIFEAGENTS_DIR"; }
 
-# _hold_update_for_missing_keys <keys> <labels> — unbeaufsichtigtes Update einer BESTANDSINSTANZ, aber ein Pflicht-
-#   Host-Key fehlt (Beispiel: ANTHROPIC_API_KEY, seit Modell-Phase 2 Pflicht). Statt die neue Version einzuspielen (der Bot
-#   waere danach stumm) wird NICHTS geaendert: Log-Meldung, einmal je fehlendem Key-Satz eine Telegram-Nachricht an den
+# _hold_update_for_missing_keys <keys> <labels> — unbeaufsichtigtes Update einer Bestandsinstanz, aber ein Pflicht-
+#   Host-Key fehlt (Beispiel: ANTHROPIC_API_KEY). Statt die neue Version einzuspielen (der Bot
+#   waere danach stumm) wird nichts geaendert: Log-Meldung, einmal je fehlendem Key-Satz eine Telegram-Nachricht an den
 #   Owner, dann exit 0 (kein Fehler fuer cron). Zurueckhalten statt halb einspielen = das unattended-upgrades-Muster.
 #   Dedup per Merk-Datei in /etc/lifeagents (core.notification_state ginge erst nach apply_schema); collect_release_inputs
 #   loescht sie, sobald nichts mehr fehlt. Alles fail-open: ein gescheiterter Versand aendert nichts am Halt.
@@ -465,7 +463,7 @@ _hold_update_for_missing_keys() {
   result_set missing_keys "$labels"
   result_set changed false
   result_set status held
-  # Vom Chat-Runner gestartet (LIFEAGENTS_UPDATE_REQUESTED): der Owner hat getippt und bekommt GENAU EINE Antwort —
+  # Vom Chat-Runner gestartet (LIFEAGENTS_UPDATE_REQUESTED): der Owner hat getippt und bekommt genau eine Antwort —
   # die des Runners (core.fn_update_report, mit Hilfe-Schritten), auch beim Wiederholungs-Halt mit gleichem Key-Satz.
   if [ "${LIFEAGENTS_UPDATE_REQUESTED:-0}" = 1 ]; then exit 0; fi
   if [ "$keyset" != "$prev" ]; then
@@ -479,12 +477,12 @@ _hold_update_for_missing_keys() {
   exit 0
 }
 
-# collect_release_inputs — NUR Release: fehlende externe Eingaben interaktiv erfragen + persistieren.
-# load_install_env() lief schon in main() (override-first reuse). Dev/Test ruft das NICHT (Werte
-# kommen aus dem injizierten .env-Block). Der EINE Prompt-Besitzer der HOST-Keys (Spec C
-# Prompt-Ownership) — laeuft auch auf Prod-Updates (INSTALL_PROFILE, Befund 3) und fragt dann
-# seen-aware genau die NEUEN Keys eines Releases nach (und leere Pflicht-Keys erneut). Erklaer-Boxen erscheinen
-# NUR vor einer Frage, die wirklich gestellt wird (_prompt_validated) — ein Update mit vollstaendigen Antworten
+# collect_release_inputs — nur Release: fehlende externe Eingaben interaktiv erfragen + persistieren.
+# load_install_env() lief schon in main() (override-first reuse). Dev/Test ruft das nicht (Werte
+# kommen aus dem injizierten .env-Block). Der eine Prompt-Besitzer der Host-Keys — laeuft auch auf
+# Prod-Updates (INSTALL_PROFILE) und fragt dann
+# seen-aware genau die neuen Keys eines Releases nach (und leere Pflicht-Keys erneut). Erklaer-Boxen erscheinen
+# nur vor einer Frage, die wirklich gestellt wird (_prompt_validated) — ein Update mit vollstaendigen Antworten
 # bleibt still.
 collect_release_inputs() {
   [ "$PROFILE" = "release" ] || return 0
@@ -492,13 +490,13 @@ collect_release_inputs() {
   if ! tty_usable && [ "$UNATTENDED" -ne 1 ]; then
     warn "Release ohne TTY und ohne --unattended: fehlende Eingaben können nicht erfragt werden — optionale Schritte entfallen, Pflichtangaben müssen aus der Umgebung kommen."
   fi
-  # Nicht interaktiv: Pflichtangaben VORAB gesammelt pruefen (Install-UX-Phase 7; Subiquity-/Proxmox-Autoinstall-
-  # Muster: alles Fehlende in EINER Meldung, vor jedem Installationsschritt). Erstinstallation: Abbruch. Bestandsinstanz:
+  # Nicht interaktiv: Pflichtangaben vorab gesammelt pruefen (Subiquity-/Proxmox-Autoinstall-
+  # Muster: alles Fehlende in einer Meldung, vor jedem Installationsschritt). Erstinstallation: Abbruch. Bestandsinstanz:
   # "Update wartet" (_hold_update_for_missing_keys) — nichts einspielen, die installierte Version laeuft weiter, der Owner
   # bekommt einmal Bescheid; kein Abbruch per `die` (die Abhilfe `lifeagents reconfigure` laeuft ueber die installierte
-  # Version). Gehalten wird NUR fuer Keys, die reconfigure auch abfragt (_host_editable_keys) — sonst haelt eine Instanz
+  # Version). Gehalten wird nur fuer Keys, die reconfigure auch abfragt (_host_editable_keys) — sonst haelt eine Instanz
   # mit Owner-Skelett, deren Name nie in core.env stand, fuer immer an (Name/Geburtsdatum fragt reconfigure dann nicht
-  # mehr); solche Luecken bleiben eine Warnung wie bisher.
+  # mehr); solche Luecken bleiben eine Warnung.
   if ! ui_interactive; then
     local _miss _m _labels='' _hold='' _hlabels='' _editable
     _miss="$(_missing_required_host_keys)"
@@ -542,7 +540,7 @@ INTRO
   fi
   _ensure_install_env_file
 
-  # Die Fragen in der Reihenfolge von _INSTALL_ENV_KEYS (EINE Liste fuer Reihenfolge, Persistenz und Intro);
+  # Die Fragen in der Reihenfolge von _INSTALL_ENV_KEYS (eine Liste fuer Reihenfolge, Persistenz und Intro);
   # TRUSTED_PROXIES, OWNER_LANGUAGE und OWNER_PERSONA haben eigene Auswahl-Dialoge, alle anderen kommen aus der Host-Fragen-Tabelle.
   local _k
   for _k in $_INSTALL_ENV_KEYS; do
@@ -560,27 +558,28 @@ INTRO
   ok "Release-Eingaben gesammelt + in $INSTALL_ENV_FILE gemergt (640 root:${N8N_USER})."
 }
 
-# _is_first_install -> 0, solange auf dieser Maschine Core + Pakete noch NIE durchgelaufen sind: der Marker VERSION fehlt
+# _is_first_install -> 0, solange auf dieser Maschine Core + Pakete noch nie durchgelaufen sind: der Marker VERSION fehlt
 # (install_cli schreibt ihn nach den Core- und Paket-Schritten jedes Laufs, lifeagents_version_marker; postgres-Entrypoint-
-# Muster PG_VERSION). Install-UX-Phase 7: vorher eine DB-Probe, die JEDEN psql-Fehler als „frisch" las (fail-open) —
-# ein DB-Schluckauf haette ein unbeaufsichtigtes Update an einer Pflichtangabe sterben lassen. Reversibles
+# Muster PG_VERSION). Bewusst keine DB-Probe: sie laese jeden psql-Fehler als "frisch" (fail-open)
+# -> ein DB-Schluckauf fuehrte ein unbeaufsichtigtes Update in den Erstinstall-Zweig, der bei fehlender Pflichtangabe per
+# `die` abbricht. Reversibles
 # --uninstall entfernt den Marker (ein Neu-Install danach gilt wieder als Erstinstallation).
 _is_first_install() { [ ! -e "$(lifeagents_version_marker)" ]; }
 
-# _ask_initial_packages — Install-UX-Phase 6: welche Zusatz-Funktionen gleich mitinstallieren? (debconf/tasksel:
-# ALLE Fragen vorab — danach laeuft die Installation ohne Rueckfrage, und wenn Telegram verbunden ist, sind die
+# _ask_initial_packages — welche Zusatz-Funktionen gleich mitinstallieren? (debconf/tasksel:
+# alle Fragen vorab — danach laeuft die Installation ohne Rueckfrage, und wenn Telegram verbunden ist, sind die
 # Funktionen schon da.) Setzt PACKAGES_SPEC (provision.sh-Global) fuer die bestehenden Pfade (Paket-Fragen +
-# Install-Schleife). NUR Release, NUR Erstinstallation, NUR ohne --packages/--core-only:
+# Install-Schleife). Nur Release, nur Erstinstallation, nur ohne --packages/--core-only:
 #   - Bestandsinstanzen werden nie gefragt.
-#   - Merkzeile PACKAGES_SELECTED in core.env = EINMAL-Verbrauch: solange sie existiert, gilt die Wahl (auch wenn
+#   - Merkzeile PACKAGES_SELECTED in core.env = Einmal-Verbrauch: solange sie existiert, gilt die Wahl (auch wenn
 #     ein abgebrochener Erstlauf den Core schon aktiv gemacht hat — sonst ginge das gewaehlte Paket still verloren);
 #     provision.sh loescht sie nach der Paket-Schleife. Danach kann sie nie ein deinstalliertes Paket zurueckholen
-#     ("deinstalliert bleibt weg"). Bewusst NICHT in _INSTALL_ENV_KEYS (die Liste treibt Intro/Seen der Host-Keys —
+#     ("deinstalliert bleibt weg"). Bewusst nicht in _INSTALL_ENV_KEYS (die Liste treibt Intro/Seen der Host-Keys —
 #     ein Paket-Wunsch ist kein Host-Key und darf auf Bestandsinstanzen kein Intro ausloesen).
 #   - Erste Option „Nur Grundsystem" explizit (kein Verlass auf die gum-Semantik eines leeren Enter).
-#   - reask=1 (Uebersicht „Eine Angabe ändern", Install-UX-Phase 7): umgeht die Bestands-Guards, Vorauswahl = die bisherige
-#     Wahl (gum matcht LABELS komma-getrennt -> hier nur die kommafreien Namen, die Summaries enthalten Kommas);
-#     Esc/leer = unveraendert (nur „Nur Grundsystem" leert); speichert NICHT (der Aufrufer schreibt PACKAGES_SELECTED).
+#   - reask=1 (Uebersicht „Eine Angabe ändern"): umgeht die Bestands-Guards, Vorauswahl = die bisherige
+#     Wahl (gum matcht Labels komma-getrennt -> hier nur die kommafreien Namen, die Summaries enthalten Kommas);
+#     Esc/leer = unveraendert (nur „Nur Grundsystem" leert); speichert nicht (der Aufrufer schreibt PACKAGES_SELECTED).
 # shellcheck disable=SC2034  # UI_ASKED liest provision.sh (Uebersicht nur, wenn wirklich gefragt wurde)
 _ask_initial_packages() {
   local reask="${1:-0}"
@@ -637,7 +636,7 @@ BOX
 }
 
 # _all_host_keys_answered -> 0, wenn kein Host-Key mehr gefragt wuerde (gesetzt oder seen) — dann kein Intro.
-#   Ein leerer Pflicht-Key gilt nie als beantwortet (er wird erneut gefragt, Install-UX-Phase 7).
+#   Ein leerer Pflicht-Key gilt nie als beantwortet (er wird erneut gefragt).
 _all_host_keys_answered() {
   local k v
   for k in $_INSTALL_ENV_KEYS; do
@@ -652,7 +651,7 @@ _all_host_keys_answered() {
 }
 
 # _key_not_offered <key> -> 0, wenn der Key in diesem Lauf gar nicht gefragt wird (dann weder Intro noch
-# "gesehen"-Zeile): TRUSTED_PROXIES nur MIT Internet-Adresse (ohne Domain gibt es keinen Proxy; wird spaeter eine
+# "gesehen"-Zeile): TRUSTED_PROXIES nur mit Internet-Adresse (ohne Domain gibt es keinen Proxy; wird spaeter eine
 # Domain eingetragen, muss die Proxy-Frage dann noch kommen).
 _TP_SKIPPED=0   # Proxy-Frage in diesem Lauf abgebrochen/ohne gueltige Antwort -> nicht als gesehen markieren
 _key_not_offered() {
@@ -660,17 +659,17 @@ _key_not_offered() {
   # Tunnel: kein Proxy-Ort (Tailscale reicht an 127.0.0.1), keine eigene Adresse (sie kommt mit der Anmeldung);
   # nur Heimnetz: keine Adresse.
   case "$1:$(reach_cli_mode)" in TRUSTED_PROXIES:tunnel|DOMAIN:tunnel|DOMAIN:none) return 0 ;; esac
-  # OWNER_PERSONA wirkt nur beim ERSTEN Anlegen des Owner-Skeletts: steht der Owner schon (Bestands-Installation, die
+  # OWNER_PERSONA wirkt nur beim ersten Anlegen des Owner-Skeletts: steht der Owner schon (Bestands-Installation, die
   # den Key noch nie hatte), waere die Frage wirkungslos -> nicht anbieten (dort waehlt man im Chat mit /persona).
   [ "$1" = "OWNER_PERSONA" ] && declare -F _oc_owner_person_exists >/dev/null && _oc_owner_person_exists
 }
 
 # _owner_language_options -> Picker-Zeilen "Eigenname<TAB>code" der unterstuetzten Sprachen (Core-Manifest languages.list,
-#   die EINE Sprachliste); _owner_language_name <code> -> Eigenname (Uebersicht/Meldungen).
+#   die eine Sprachliste); _owner_language_name <code> -> Eigenname (Uebersicht/Meldungen).
 _owner_language_options() { _pkg_manifest_field core '(.languages.list // []) | sort_by(.ord) | map("\(.name)\t\(.code)") | join("\n")'; }
 _owner_language_name() { _pkg_manifest_field core "(.languages.list // [])[] | select(.code == \"$1\") | .name"; }
 
-# _ask_owner_language [reask] — Sprache, in der der Bot dem Owner FESTE Texte schickt (Bestaetigungskarten, Knoepfe,
+# _ask_owner_language [reask] — Sprache, in der der Bot dem Owner feste Texte schickt (Bestaetigungskarten, Knoepfe,
 #   Erinnerungen; Gespraechsantworten folgen immer der Sprache der Nachricht). Auswahl nur aus den unterstuetzten
 #   Sprachen, Vorauswahl Deutsch. Esc bei der Erstfrage = Deutsch; reask (Uebersicht) speichert nicht selbst. Nicht
 #   interaktiv: nichts fragen -> bootstrap_owner setzt 'de'. Wirkt nur beim Anlegen des Owner-Skeletts; danach aendert
@@ -697,7 +696,7 @@ _ask_owner_language() {
 
 # _owner_persona_name <code> -> deutscher Anzeigename aus dem Core-Textkatalog (core.persona.name.<code>, ohne das
 #   fuehrende Emoji: Emoji-Breiten verschieben die Installer-Auswahl je nach Terminal); unbekannt -> der Code selbst.
-#   _owner_persona_options -> Picker-Zeilen "Name<TAB>code" in Manifest-Reihenfolge (personas.list, die EINE Liste).
+#   _owner_persona_options -> Picker-Zeilen "Name<TAB>code" in Manifest-Reihenfolge (personas.list, die eine Liste).
 _owner_persona_name() {
   local n; n="$(pkg_text core "persona.name.$1")"
   n="${n#* }"
@@ -736,11 +735,11 @@ _ask_owner_persona() {
   return 0
 }
 
-# _ask_trusted_proxies — Install-UX-Phase 5: wo laeuft der Reverse Proxy? (nur MIT Domain, interaktiv, nicht
-# schon beantwortet). Speichert EINEN Fakt TRUSTED_PROXIES: "dieser Rechner" = 127.0.0.1 (explizit), "anderer
+# _ask_trusted_proxies — wo laeuft der Reverse Proxy? (nur mit Domain, interaktiv, nicht
+# schon beantwortet). Speichert einen Fakt TRUSTED_PROXIES: "dieser Rechner" = 127.0.0.1 (explizit), "anderer
 # Rechner" = dessen IPv4 (Hostname wird einmal aufgeloest und als IP gespeichert — die Firewall arbeitet mit IPs).
-# ESC = nichts speichern (Default lokal; der naechste Lauf fragt erneut). Antwort sofort gespeichert.
-# reask=1 (Uebersicht/reconfigure, Install-UX-Phase 7): fragt auch bei schon beantworteter Frage, setzt NUR die Variable
+# Esc = nichts speichern (Default lokal; der naechste Lauf fragt erneut). Antwort sofort gespeichert.
+# reask=1 (Uebersicht/reconfigure): fragt auch bei schon beantworteter Frage, setzt nur die Variable
 # (der Aufrufer speichert), Esc/leer = unveraendert.
 # shellcheck disable=SC2034  # UI_ASKED liest provision.sh (Uebersicht nur, wenn wirklich gefragt wurde)
 _ask_trusted_proxies() {
@@ -1012,7 +1011,7 @@ _ask_fritz_domain() {
   return 0
 }
 
-# _host_key_reask <KEY> — EINE Angabe erneut fragen (Uebersicht, reconfigure), speichert nie. Der Weg zieht seine
+# _host_key_reask <KEY> — eine Angabe erneut fragen (Uebersicht, reconfigure), speichert nie. Der Weg zieht seine
 #   Folgefragen nach: auf FritzBox/eigenen Proxy gewechselt -> Adresse (+ Proxy-Ort, falls noch auf diesem Rechner
 #   ungefragt); auf Tunnel/Heimnetz -> keine eigene Adresse mehr.
 _host_key_reask() {
@@ -1124,12 +1123,12 @@ _ensure_install_env_file() {
     } > "$f" )
 }
 
-# --- Uebersicht vor dem Installieren (Install-UX-Phase 7) ------------------------------------------------------
-# review_install_answers install|package [paket…] — nach der LETZTEN Frage alle Antworten in einem Kasten zeigen
+# --- Uebersicht vor dem Installieren ------------------------------------------------------------------------------
+# review_install_answers install|package [paket…] — nach der letzten Frage alle Antworten in einem Kasten zeigen
 #   (Geheimes nur „gesetzt"/„übersprungen") + „Stimmt so — Installation starten / Eine Angabe ändern … / Abbrechen".
 #   Muster: Fedora-Anaconda-TUI-Hub (jeder Punkt einzeln aenderbar) + Proxmox-Summary. Leer/Esc = Abbrechen wie bei
 #   rustup, npm init, Homebrew und gum confirm (es wird nichts installiert; Zugangsdaten + Angaben sind gespeichert,
-#   gepufferte Paket-Einstellungen fragt der naechste Aufruf erneut). Setzt REVIEW_RESULT=go|abort und gibt IMMER 0
+#   gepufferte Paket-Einstellungen fragt der naechste Aufruf erneut). Setzt REVIEW_RESULT=go|abort und gibt immer 0
 #   zurueck — der Aufrufer handelt (provision.sh: exit 1, package install: return 1); nie unter if!/|| aufrufen (das
 #   schaltete set -e im Rumpf ab). Nur interaktiv (Aufrufer gatet zusaetzlich). Alle Prompts bleiben in dieser Datei
 #   bzw. den Paket-Wizards (contract_lint 12d).
@@ -1245,8 +1244,8 @@ _review_status() {
   return 0
 }
 
-# _drop_old_bot_webhook <alter-token> <neuer-token> <adresse> — Bot-Wechsel auf einer BESTANDSINSTANZ (Install-UX-Phase 7):
-#   dem ALTEN Bot den Webhook nehmen — der Webhook-Geheimwert <wfId>_<nodeId> haengt nicht am Bot, der alte Bot lieferte
+# _drop_old_bot_webhook <alter-token> <neuer-token> <adresse> — Bot-Wechsel auf einer Bestandsinstanz:
+#   dem alten Bot den Webhook nehmen — der Webhook-Geheimwert <wfId>_<nodeId> haengt nicht am Bot, der alte Bot lieferte
 #   sonst weiter an diesen Server. Nur wenn sein Webhook nachweislich auf https://<adresse>/ zeigt (ein anderswo genutzter
 #   Bot bleibt unangetastet); bei der Erstinstallation war der alte Token nie hier angebunden -> nichts tun. Token nur ueber
 #   tg_api_curl (Config-Kanal, nie argv). Danach der /start-Hinweis fuer den neuen Bot. Best-effort, gibt immer 0 zurueck.
@@ -1274,8 +1273,8 @@ EOF
   return 0
 }
 
-# _review_edit <items> — EINEN Punkt erneut fragen (Enter = behalten) und speichern; Esc = zurueck zur Uebersicht.
-#   Picker-Zeilen "label<TAB>kind:pkg:id" (ui_choose/gum trennen am ERSTEN TAB).
+# _review_edit <items> — einen Punkt erneut fragen (Enter = behalten) und speichern; Esc = zurueck zur Uebersicht.
+#   Picker-Zeilen "label<TAB>kind:pkg:id" (ui_choose/gum trennen am ersten TAB).
 _review_edit() {
   local items="$1" pick kind rest pkg id v old_domain old_token
   pick="$(printf '%s\n' "$items" | awk -F '\t' 'NF >= 4 { printf "%s\t%s:%s:%s\n", $4, $1, $2, $3 }' \
@@ -1328,16 +1327,17 @@ _review_edit() {
   return 0
 }
 
-# --- Antwort-Datei (--unattended) lesen, OHNE sie auszufuehren ----------------------------------------------------------
-# Frueher wurde die Datei gesourct (`set -a; . datei`) — jede Zeile war damit ein Befehl als root. Der Wizard (Docker-Weg)
-# schreibt Antworten eines Nutzers hinein; ein Wert mit `'`, `$( )` oder Zeilenumbruch darf nie Code werden (Plan-Pruefung
-# Fund 3). install_answers_load liest dieselbe Form wie bisher (`KEY='wert'`, auch `KEY=wert`, `KEY="wert"` ohne `$`,
+# --- Antwort-Datei (--unattended) lesen, ohne sie auszufuehren ----------------------------------------------------------
+# Die Datei wird nicht gesourct (`set -a; . datei`): jede Zeile waere ein Befehl als root. Der Wizard (Docker-Weg)
+# schreibt Antworten eines Nutzers hinein; ein Wert mit `'`, `$( )` oder Zeilenumbruch darf nie Code werden.
+# install_answers_load liest die Form `KEY='wert'` (auch `KEY=wert`, `KEY="wert"` ohne `$`,
 # `export KEY=…`, Kommentare, `'\''`), setzt die Werte als exportierte Variablen und bricht bei allem anderen ab. Fehler
 # nennen Zeile und Schluessel, nie den Wert (Passwoerter, Schluessel). Kein Ausfuehren, keine Erweiterung, kein eval.
 #
-# Schluessel: Grossbuchstaben/Ziffern/_ (Positivliste der FORM). Gesperrt sind Variablen, die Shell, Lader oder diesen
+# Schluessel: Grossbuchstaben/Ziffern/_ (Positivliste der Form). Gesperrt sind Variablen, die Shell, Lader oder diesen
 # Installer selbst steuern (Pfade, Laufzeit, Download-Quelle, Telegram-/Docker-Ziel); sie werden mit Warnung uebersprungen,
-# nie gesetzt (eine fruehere, gesourcte Datei durfte etwa TZ tragen, ohne dass die Installation abbrach). Eine feste Liste ERLAUBTER
+# nie gesetzt (Antwort-Dateien fuer den frueheren Sourcing-Lader durften etwa TZ enthalten; sie sollen weiter
+# laufen). Die Wizard-Form bricht dagegen ab. Eine feste Liste erlaubter
 # Schluessel gibt es bewusst nicht: die Fragen leben in _INSTALL_ENV_KEYS + den Manifest-`credentials` + den Dev-Schaltern
 # (ein Fakt, eine Adresse); der Wizard schreibt ohnehin nur Schluessel aus dem maschinenlesbaren Auszug.
 _ANSWER_DENY_EXACT=" PATH IFS HOME SHELL ENV CDPATH GLOBIGNORE SHELLOPTS BASHOPTS PS1 PS2 PS3 PS4 PROMPT_COMMAND TMPDIR TERM
@@ -1354,7 +1354,7 @@ _answer_key_denied() {
   return 1
 }
 
-# WIZARD-FORM (erste Zeile genau `# lifeagents-answers v1`, Schreiber = Wizard im master, Paket 4): danach nur
+# Wizard-Form (erste Zeile genau `# lifeagents-answers v1`, Schreiber = Wizard im master): danach nur
 # `KEY=wert`-Zeilen wie in core.env (env_upsert) — Wert = alles nach dem ersten `=`, roh, ohne Quotes/Escapes. Strenger als
 # die .env-Form: jeder Schluessel hoechstens einmal, keine Leer-/Kommentarzeilen, kein Steuerzeichen (auch kein CR), Wert
 # hoechstens 4096 Byte, ein gesperrter Schluessel ist ein Fehler des Schreibers (Abbruch statt Warnung).
@@ -1412,7 +1412,7 @@ install_answers_load() {
     [[ $rest =~ $re_tail ]] \
       || die "Antwort-Datei Zeile ${line}: Wert von ${key} hat eine nicht erlaubte Form (erlaubt: 'Text', \"Text\" ohne \$ und \`, Wörter ohne Sonderzeichen; ausgeführt wird nichts)."
     rest="${rest:${#BASH_REMATCH[0]}}"; line=$((line + 1))
-    # Gesperrt: ueberspringen statt abbrechen (eine aeltere, gesourcte Datei durfte z. B. TZ setzen); gesetzt wird er nie.
+    # Gesperrt: ueberspringen statt abbrechen (eine Antwort-Datei darf z. B. TZ enthalten); gesetzt wird er nie.
     if _answer_key_denied "$key"; then
       warn "Antwort-Datei Zeile ${kline}: ${key} steuert die Installation selbst — ignoriert."; continue
     fi
@@ -1423,7 +1423,7 @@ install_answers_load() {
 
 # --- Telegram: hoert der Bot schon woanders zu? (Pruefliste Nr. 10, beide Wege) ------------------------------------------
 # Den produktiven Webhook setzt n8n beim Aktivieren des Telegram-Triggers selbst (bootstrap_owner.sh) und ueberschreibt
-# damit still einen fremden Abnehmer (anderes System, Bastel-Skript). Darum VOR jeder Aenderung: getWebhookInfo; ohne
+# damit still einen fremden Abnehmer (anderes System, Bastel-Skript). Darum vor jeder Aenderung: getWebhookInfo; ohne
 # Webhook zusaetzlich getUpdates (409 = ein anderes Programm holt Nachrichten per Long-Polling ab). Nie ein Offset, nie
 # drop_pending_updates: wartende Nachrichten bleiben unangetastet. Ergebnis in TG_WEBHOOK_STATE (free | ours | foreign |
 # unknown) + TG_WEBHOOK_HOST (nur der Rechnername, der Pfad kann ein Geheimnis tragen).
@@ -1452,7 +1452,7 @@ _tg_webhook_probe() {
     else TG_WEBHOOK_STATE=foreign; fi
     return 0
   fi
-  # Kein Webhook: holt jemand per Long-Polling ab? limit=1, timeout=0, OHNE offset (bestaetigt nichts, loescht nichts).
+  # Kein Webhook: holt jemand per Long-Polling ab? limit=1, timeout=0, ohne offset (bestaetigt nichts, loescht nichts).
   code="$(tg_api_curl "$token" 'getUpdates?limit=1&timeout=0' -sS --max-time 10 -o /dev/null -w '%{http_code}' 2>/dev/null)" || code=000
   case "$code" in
     200) TG_WEBHOOK_STATE=free ;;
@@ -1462,7 +1462,7 @@ _tg_webhook_probe() {
 }
 
 # telegram_webhook_preflight — die Pruefung samt Entscheidung (siehe Kopf). Laeuft in provision.sh nach den Fragen und
-# VOR der ersten Systemaenderung. Bei Uebernahme: alte Adresse nach $LIFEAGENTS_DIR/telegram-webhook-before (0600).
+# vor der ersten Systemaenderung. Bei Uebernahme: alte Adresse nach $LIFEAGENTS_DIR/telegram-webhook-before (0600).
 telegram_webhook_preflight() {
   [ -n "${TELEGRAM_BOT_TOKEN:-}" ] || return 0
   need_cmd curl || return 0
@@ -1494,8 +1494,8 @@ telegram_webhook_preflight() {
   fi
 }
 
-# telegram_webhook_json — dieselbe Pruefung maschinenlesbar fuer den Wizard (Paket 4): Token aus der Umgebung
-# (TELEGRAM_BOT_TOKEN, nie argv), unsere bisherige Adresse aus n8n.env, EINE JSON-Zeile auf stdout:
+# telegram_webhook_json — dieselbe Pruefung maschinenlesbar fuer den Wizard: Token aus der Umgebung
+# (TELEGRAM_BOT_TOKEN, nie argv), unsere bisherige Adresse aus n8n.env, eine JSON-Zeile auf stdout:
 #   {"ok":true,"state":"free|ours|foreign","webhook_host":"<rechner>|","pending":N,"polling_conflict":true|false}
 #   {"ok":false,"reason":"no_token|unauthorized|unreachable"}
 # Entscheidet nichts und aendert nichts (kein Offset, kein drop_pending_updates); der Wizard fragt selbst und setzt bei

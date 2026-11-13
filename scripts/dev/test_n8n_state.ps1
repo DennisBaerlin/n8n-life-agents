@@ -12,10 +12,9 @@
 #
 # Throw (kein Silent-Fallback): laeuft kein Test-Substrat, soll der Tier-Lauf mit klarer Anweisung
 # abbrechen statt versehentlich gegen eine fremde Instanz zu feuern.
-# Get-TestN8nStateFile — DIE eine Adresse der Zustandsdatei: je Container eine eigene
-# (.local/n8ntest_state.<container>.json; Container = $env:N8NTEST_CONTAINER, sonst der Bootstrap-Default). Vorher teilten
-# sich alle Substrate einer Arbeitskopie EINE Datei -> ein zweites Substrat ueberschrieb URL/API-Key des ersten (2026-10-26:
-# 403 in cron_text waehrend einer parallelen Update-Probe). Jeder Leser/Schreiber (Bootstrap, enable_mock_*, Tier-Skripte)
+# Get-TestN8nStateFile — die eine Adresse der Zustandsdatei: je Container eine eigene
+# (.local/n8ntest_state.<container>.json; Container = $env:N8NTEST_CONTAINER, sonst der Bootstrap-Default). Eine gemeinsame
+# Datei liesse ein zweites Substrat URL/API-Key des ersten ueberschreiben (Symptom: 403 in parallelen Laeufen). Jeder Leser/Schreiber (Bootstrap, enable_mock_*, Tier-Skripte)
 # holt den Pfad hier.
 function Get-TestN8nStateFile {
     param([string]$Container = $(if ($env:N8NTEST_CONTAINER) { $env:N8NTEST_CONTAINER } else { 'lifeagents-n8ntest' }))
@@ -60,7 +59,7 @@ function Get-TestN8nConnection {
     }
 }
 
-# --- n8n-REST-Zugang der Tests (EINE Quelle fuer alle Treiber) ---------------------------------
+# --- n8n-REST-Zugang der Tests (eine Quelle fuer alle Treiber) ---------------------------------
 # Einmal je Skriptlauf aus dem Substrat-State gelesen; die Treiber halten daneben eigene $N8N_URL/$Headers fuer ihre Webhook-Aufrufe.
 function Get-N8nApi {
     if (-not $script:N8nApi) {
@@ -81,16 +80,16 @@ function Stop-Exec([string]$ExecId) {
 }
 
 # --- Container-DB-Zugriff (Tier 2 Fixture-Seed/-Pre-Flight + Tier 5 verify/cleanup) ---------
-# Die n8n-Test-Instanz haelt ihr Postgres NUR container-intern (127.0.0.1:5432, von install.sh als
+# Die n8n-Test-Instanz haelt ihr Postgres nur container-intern (127.0.0.1:5432, von install.sh als
 # DB 'n8n' angelegt) — Docker-Port-Publishing erreicht den loopback-gebundenen Dienst nicht, und es
 # gibt keinen TCP-Passwort-Pfad. Die DB-beruehrenden Tiers erreichen die DB daher ueber
 #   docker exec <container> runuser -u postgres -- psql -d n8n
-# = Peer-Auth am Socket, KEIN Passwort, KEIN zusaetzlicher Port, EXAKT der Pfad, mit dem
+# = Peer-Auth am Socket, kein Passwort, kein zusaetzlicher Port, exakt der Pfad, mit dem
 # apply_schema.sh das Schema baute (kein Drift). Superuser-Zugriff; fn-Calls (fn_clear_e2e_data)
 # laufen damit nicht ueber die Laufzeit-Schreibrolle, was fuer Cleanup/Verify unerheblich ist.
 $script:TestN8nDbName = 'n8n'
 
-# Invoke-TestN8nPsql — psql IM Container gegen die n8n-DB. $PsqlArgs sind die Argumente NACH dem
+# Invoke-TestN8nPsql — psql im Container gegen die n8n-DB. $PsqlArgs sind die Argumente nach dem
 # festen Praefix (z. B. @('-t','-A','-c',$sql)). EAP lokal auf 'Continue' (PS-5.1: native stderr
 # unter 'Stop' + 2>&1 wuerde als terminierender NativeCommandError werfen). Rueckgabe @{ Code; Output }.
 function Invoke-TestN8nPsql {
@@ -131,15 +130,15 @@ function Clear-ThinkingLease {
     if ($res.Code -ne 0) { throw "Clear-ThinkingLease fehlgeschlagen: $($res.Output -join "`n")" }
 }
 
-# --- Test-Identitaets-Riegel (WS-5b) ----------------------------------------------------------
-# Die LLM-SCHREIB-Suiten (finance/advisor n8n_test + e2e) referenzieren den FIKTIVEN Golden-Owner
+# --- Test-Identitaets-Riegel ----------------------------------------------------------
+# Die LLM-Schreib-Suiten (finance/advisor n8n_test + e2e) referenzieren den fiktiven Golden-Owner
 # 'Erika' (nie echte PII). Der Substrat-Owner wird aber aus .env TEST_OWNER_* gebootstrappt -> traegt
-# dort jemand einen anderen/ECHTEN Namen, driften Substrat-Haushalt und Goldens auseinander: der Agent
-# verweigert dann JEDEN 'Erika'-Auftrag ('nicht im Haushalt') und eine GANZE LLM-Suite verbrennt nur
-# Klaerungs-Fehlschlaege (real getroffen: ein Substrat mit echtem Owner-Namen liess 21/32 e2e-Faelle scheitern).
-# Dieser Riegel prueft VOR dem ersten LLM-Call (1 gratis DB-Query) den Haushalts-Owner -> sonst HARTER
-# Abbruch mit Fix-Hinweis (kein Credit-Spend). Faengt zugleich versehentliche ECHTE-DATEN-Lecks
-# (Owner-Vorgabe: NIE reale PII in Test-Faellen). Aufrufer: n8n_test (finance/advisor) + e2e_test.
+# dort jemand einen anderen/echten Namen, driften Substrat-Haushalt und Goldens auseinander: der Agent
+# verweigert dann jeden 'Erika'-Auftrag ('nicht im Haushalt') und eine ganze LLM-Suite verbrennt nur
+# Klaerungs-Fehlschlaege (Symptom: ein Substrat mit echtem Owner-Namen liess 21/32 e2e-Faelle scheitern).
+# Dieser Riegel prueft vor dem ersten LLM-Call (1 gratis DB-Query) den Haushalts-Owner -> sonst harter
+# Abbruch mit Fix-Hinweis (kein Credit-Spend). Faengt zugleich versehentliche Echtdaten-Lecks
+# (keine reale PII in Test-Faellen). Aufrufer: n8n_test (finance/advisor) + e2e_test.
 function Assert-GoldenHousehold {
     param([Parameter(Mandatory)][string]$Container)
     $sql = "SELECT count(*) FROM agent.core_contexts c, " +
@@ -159,8 +158,8 @@ function Assert-GoldenHousehold {
     Write-Host "Test-Identitaets-Riegel: Haushalts-Owner = fiktive 'Erika' (kein PII-Leak, Goldens ausgerichtet)." -ForegroundColor DarkGreen
 }
 
-# --- Mock-Telegram-Server (Teststrategie Phase 5) -------------------------------------------
-# Der Mock (tests/mock_telegram/server.js) laeuft IM Container und zeichnet jeden ausgehenden
+# --- Mock-Telegram-Server -------------------------------------------
+# Der Mock (tests/mock_telegram/server.js) laeuft im Container und zeichnet jeden ausgehenden
 # Bot-API-Call als JSON-Zeile in eine Logdatei. Diese Helfer lesen/leeren die Aufzeichnung ueber
 # `docker exec` (analog Invoke-TestN8nPsql) und loesen das HITL-Gate ueber die abgefangene,
 # signierte Resume-URL aus. Aktiviert wird der Mock mit scripts/dev/enable_mock_telegram.ps1.
@@ -184,7 +183,7 @@ function Get-MockTelegramRequests {
     return $reqs
 }
 
-# Clear-ContainerLogFiles — Logdateien im Container truncaten, alle in EINEM docker exec (jedes kostet auf
+# Clear-ContainerLogFiles — Logdateien im Container truncaten, alle in einem docker exec (jedes kostet auf
 # Docker Desktop/Windows ~0,2 s Anlauf). Gemeinsamer Kern der Clear-Mock*-Helfer.
 function Clear-ContainerLogFiles {
     param([Parameter(Mandatory)][string]$Container, [Parameter(Mandatory)][string[]]$Paths)
@@ -204,7 +203,7 @@ function Clear-MockTelegramRequests {
 
 # Get-HitlResumeUrl — aus einer abgefangenen sendMessage-Aufzeichnung die signierte Resume-URL des
 # gewuenschten Zweigs (Approve/Decline) ziehen und Schema+Host auf die erreichbare Bruecke umschreiben.
-# Die Signatur deckt NUR pathname+search (n8n prepareUrlForSigning) -> Host-Rewrite ist signatur-sicher.
+# Die Signatur deckt nur pathname+search (n8n prepareUrlForSigning) -> Host-Rewrite ist signatur-sicher.
 # Identifikation ueber den `approved`-Query-Param der Button-URL (nicht ueber das Label).
 function Get-HitlResumeUrl {
     param(
@@ -332,10 +331,10 @@ function Invoke-HitlResume {
         -ContentType 'application/json; charset=utf-8' -Headers @{ 'x-telegram-bot-api-secret-token' = $Secret }
 }
 
-# --- Mock-LLM-Server (Teststrategie Phase 6) -----------------------------------------------
-# Der Mock (tests/mock_llm/server.js) laeuft IM Container und beantwortet Anthropic-/v1/messages-Calls
-# gescriptet (tool_use/Text) -> deterministisches, GRATIS Routing/Tool-Path-Testen; jeder andere Pfad -> 404.
-# Aktiviert mit scripts/dev/enable_mock_llm.ps1 (biegt den UPSTREAM des LLM-Gateways — die Anthropic-Credential
+# --- Mock-LLM-Server -----------------------------------------------
+# Der Mock (tests/mock_llm/server.js) laeuft im Container und beantwortet Anthropic-/v1/messages-Calls
+# gescriptet (tool_use/Text) -> deterministisches, gratis Routing/Tool-Path-Testen; jeder andere Pfad -> 404.
+# Aktiviert mit scripts/dev/enable_mock_llm.ps1 (biegt den Upstream des LLM-Gateways — die Anthropic-Credential
 # zeigt fest auf den Gateway — und optional den googlePalmApi-`host` der Transkription auf den Stub um). Jede
 # Entscheidung wird als JSON-Zeile geloggt (offered/task/decision/markers) —
 # das ist zugleich der Discovery-Kanal fuer die exakten (sanitisierten) Tool-Function-Namen.
@@ -375,7 +374,7 @@ function Clear-MockRequestLogs {
 }
 
 # --- LLM-Gateway (provisioning/llm_gateway): Upstream-Waechter + Kosten-Report ---------------------
-# ALLE Claude-Aufrufe des Substrats laufen ueber den Gateway im Container (127.0.0.1:8090). Er schreibt je
+# Alle Claude-Aufrufe des Substrats laufen ueber den Gateway im Container (127.0.0.1:8090). Er schreibt je
 # Anfrage eine JSON-Zeile {"ev":"usage",...} (nur Token-Zahlen) ins systemd-Journal seiner Unit. Die Suiten
 # merken sich am Start den Journal-CURSOR (nicht die Uhrzeit — die Docker-VM-Uhr kann von Windows abweichen)
 # und lesen am Ende nur die neuen Zeilen -> Kostenuebersicht je Lauf.
@@ -442,7 +441,7 @@ function Get-LlmPriceTable {
 }
 
 # Get-LlmRequestCost — @{ Cost; NoCache } einer usage-Zeile in USD oder $null (Modell ohne Preis -> "nicht bepreist").
-# input_tokens = UNGECACHTER Rest (Anthropic-Semantik); Gesamt-Eingabe = input + cache_creation + cache_read.
+# input_tokens = ungecachter Rest (Anthropic-Semantik); Gesamt-Eingabe = input + cache_creation + cache_read.
 # "Ohne Caching" = die ganze Eingabe zum Grundpreis. Langkontext-Stufe (Haiku > 100k) je Anfrage nach Gesamt-Eingabe.
 function Get-LlmRequestCost {
     param([Parameter(Mandatory)]$Row, [Parameter(Mandatory)][hashtable]$Prices)
@@ -526,23 +525,23 @@ function Invoke-TestN8nPsqlFile {
         $out  = & docker @execArgs 2>&1
         $code = $LASTEXITCODE
     } finally {
-        # Temp IMMER raeumen (auch nach throw/Abbruch); rm -f = no-op, falls nie kopiert. EAP danach zurueck.
+        # Temp immer raeumen (auch nach throw/Abbruch); rm -f = no-op, falls nie kopiert. EAP danach zurueck.
         & docker exec $Container rm -f $inC 2>&1 | Out-Null
         $ErrorActionPreference = $prev
     }
     return [pscustomobject]@{ Code = $code; Output = @($out) }
 }
 
-# --- Geteilte Real-Path-Test-Mechanik (Teststrategie Phase 8 — Weg C) -----------------------
-# Nach dem Teardown der Test-Sonderlocken (kein test_/test_e2e-Gate-Bypass, kein Orchestrator-
-# "Test entry") laufen ALLE LLM-Tiers ueber den Prod-Pfad: numerische chat_id + echtes Send-and-Wait-
+# --- Geteilte Real-Path-Test-Mechanik -----------------------
+# Alle LLM-Tiers laufen ueber den Prod-Pfad (kein test_/test_e2e-Gate-Bypass, kein Orchestrator-
+# "Test entry"): numerische chat_id + echtes Send-and-Wait-
 # Gate, das ueber das abgefangene Mock-Telegram aufgeloest wird. Diese Helfer kapseln die gemeinsame
 # Mechanik (Ingress aufloesen, Telegram-Update feuern, Owner pairen, Memory leeren, Execution zum
-# Terminalstatus treiben + JEDES Gate ueber die signierte Resume-URL aufloesen). Genutzt von
-# real_ingress/orch_test/mock_route_test/n8n_test/e2e_test/multiturn_test — EINE Quelle, kein Drift.
+# Terminalstatus treiben + jedes Gate ueber die signierte Resume-URL aufloesen). Genutzt von
+# real_ingress/orch_test/mock_route_test/n8n_test/e2e_test/multiturn_test — eine Quelle, kein Drift.
 
-# Hoechste bestehende Execution-id eines Workflows (n8n vergibt GLOBAL monotone Integer-ids). Vor dem
-# Feuern aufnehmen -> die eigene Execution ist danach die EINZIGE mit id > diesem Wert (race-frei, kein
+# Hoechste bestehende Execution-id eines Workflows (n8n vergibt global monotone Integer-ids). Vor dem
+# Feuern aufnehmen -> die eigene Execution ist danach die einzige mit id > diesem Wert (race-frei, kein
 # Zeitfenster). Auch der Gate-Floor: jede Gate-Execution dieses Laufs hat id > diesem Wert.
 function Get-MaxExecId {
     param([Parameter(Mandatory)][string]$WfId, [string]$BridgeUrl, [string]$ApiKey)
@@ -555,7 +554,7 @@ function Get-MaxExecId {
     return 0
 }
 
-# Einen Cron SOFORT starten (schnellere freie Gates 2026-10-26): core.cron_run.test_harness ruft den Workflow ueber seinen
+# Einen Cron sofort starten: core.cron_run.test_harness ruft den Workflow ueber seinen
 # 'Test run'-Einstieg (Build-Workflow) auf, statt den Zeitplan auf jede Minute zu stellen. Der POST kehrt direkt nach dem
 # Start zurueck (waitForSubWorkflow=false) -> der Aufrufer wartet selbst auf die neue Execution (Get-MaxExecId vorher).
 # Ein Startfehler (kein Einstieg, unbekannte id) kommt als 'error' der Antwort und wirft hier, statt als stiller Timeout.
@@ -585,7 +584,7 @@ function Get-TestChatId {
     return [long](900000000 + ($h % 90000000))
 }
 
-# Den ECHTEN Telegram-Trigger-Webhook des Orchestrators aufloesen (Produktiv-Eingang, kein Harness).
+# Den echten Telegram-Trigger-Webhook des Orchestrators aufloesen (Produktiv-Eingang, kein Harness).
 # Liefert @{ Url; Secret; OrchWfId }. n8n registriert die Produktiv-URL als {webhookId}/webhook; der
 # Telegram-Trigger validiert Header X-Telegram-Bot-Api-Secret-Token == {workflowId}_{nodeId}
 # (non-[A-Za-z0-9_-] gestrippt, GenericFunctions.getSecretToken) — ohne 403.
@@ -612,8 +611,8 @@ function New-TestUpdateId {
     return [long]([System.DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds() * 100 + (Get-Random -Minimum 0 -Maximum 100))
 }
 
-# Eine TELEGRAM-foermige Update an den echten Webhook POSTen (numerische chat_id + from_uid). Client-
-# Timeout ist KEIN Fehler (Execution laeuft serverseitig weiter). Liefert die Fire-Zeit (UTC).
+# Ein Telegram-foermiges Update an den echten Webhook POSTen (numerische chat_id + from_uid). Client-
+# Timeout ist kein Fehler (Execution laeuft serverseitig weiter). Liefert die Fire-Zeit (UTC).
 function Send-TelegramIngress {
     param(
         [Parameter(Mandatory)][string]$IngressUrl, [Parameter(Mandatory)][string]$Secret,
@@ -672,7 +671,7 @@ function Send-TelegramCallbackIngress {
     }
 }
 
-# Die gepairte Telegram-uid des Fixture-Owners — EINE Adresse fuer alle Treiber-Skripte (entsteht erst zur Laufzeit
+# Die gepairte Telegram-uid des Fixture-Owners — eine Adresse fuer alle Treiber-Skripte (entsteht erst zur Laufzeit
 # durchs Pairing unten, ist also keine geseedete Fixture-Entitaet in tests/fixtures/fixtures.json). Die Case-Daten
 # in tests/agent/core/real_ingress_cases.json tragen denselben Wert als chat_id/from_uid — bei Aenderung mitziehen.
 $script:TestOwnerTelegramUid = 880055071
@@ -712,7 +711,7 @@ function Get-TestPersonaFact {
     return (@($q.Output | ForEach-Object { "$_".Trim() }) | Select-Object -First 1)
 }
 
-# Judge-Bundle schreiben (tests/agent/judge_bundle.json, transient = der LETZTE Lauf von n8n_test ODER orch_test) —
+# Judge-Bundle schreiben (tests/agent/judge_bundle.json, transient = der letzte Lauf von n8n_test oder orch_test) —
 # die eine Adresse fuer Pfad + Format, die judge_eval.ps1 liest.
 function Write-JudgeBundle {
     param([Parameter(Mandatory)][AllowEmptyCollection()][array]$Entries, [Parameter(Mandatory)][string]$RepoRoot)
@@ -724,10 +723,10 @@ function Write-JudgeBundle {
     Write-Host "  Auswerten: .\scripts\judge_eval.ps1  (Claude Haiku; kombinierter Verdikt det AND Rubric)" -ForegroundColor Cyan
 }
 
-# Chat-Memory EINER Session in ALLEN Agent-Gedaechtnissen leeren (sonst zaehlt der Mock Alt-Turns bzw.
-# fasst ein LLM alte Antworten zusammen). Die <agent>_chat_memory-Tabellen legt der n8n-Memory-Node LAZY
-# beim ersten Agent-Turn an -> per pg_tables FINDEN statt aufzaehlen: ein neuer Agent ist ohne Treiber-Edit
-# dabei, und nur existierende Tabellen werden angefasst. SessionId = numerische chat_id ODER test_e2e…-String.
+# Chat-Memory einer Session in allen Agent-Gedaechtnissen leeren (sonst zaehlt der Mock Alt-Turns bzw.
+# fasst ein LLM alte Antworten zusammen). Die <agent>_chat_memory-Tabellen legt der n8n-Memory-Node lazy
+# beim ersten Agent-Turn an -> per pg_tables finden statt aufzaehlen: ein neuer Agent ist ohne Treiber-Edit
+# dabei, und nur existierende Tabellen werden angefasst. SessionId = numerische chat_id oder test_e2e…-String.
 function Get-ClearChatSessionMemorySql([string]$SessionId) {
     if ($SessionId -match "'") { throw "Clear-ChatSessionMemory: SessionId darf kein Hochkomma enthalten." }
     @"
@@ -780,8 +779,8 @@ function Set-TestChatHistory {
 }
 
 # Optionaler Haushalts-Onboarding-Vorzustand eines Cases (Case-Feld "onboarding": completed|unknown|skipped).
-# Self-contained je Case: der Fixture-Seed setzt alle Sektionen auf completed; Faelle, die einen NEUEN Nutzer
-# brauchen (Guide: "wo fangen wir an", "Haushalt ueberspringen"), setzen unknown. EINE Stelle fuer real_ingress_test,
+# Self-contained je Case: der Fixture-Seed setzt alle Sektionen auf completed; Faelle, die einen neuen Nutzer
+# brauchen (Guide: "wo fangen wir an", "Haushalt ueberspringen"), setzen unknown. Eine Stelle fuer real_ingress_test,
 # n8n_test und mock_route_test. Ungueltiger Wert -> throw (der Treiber wertet den Case als FAIL).
 function Get-HouseholdOnboardingSql([string]$Status) {
     if ($Status -notin @('completed', 'unknown', 'skipped')) { throw "Unbekannter onboarding-Wert '$Status' (erwartet completed|unknown|skipped)." }
@@ -793,7 +792,7 @@ function Set-TestHouseholdOnboarding {
     if ($r.Code -ne 0) { throw "Onboarding-Vorbereitung fehlgeschlagen: $($r.Output -join "`n")" }
 }
 
-# Reset-TestCaseState — Vorbereitung je Fall in EINEM psql-Aufruf statt drei: jedes docker exec kostet auf
+# Reset-TestCaseState — Vorbereitung je Fall in einem psql-Aufruf statt drei: jedes docker exec kostet auf
 # Docker Desktop (Windows) ~0,2 s Anlauf, bei ~250 Faellen je Komplettlauf Minuten. Inhalt = Clear-ChatSessionMemory
 # (ohne -SessionId uebersprungen) + Clear-HitlPending + Set-TestHouseholdOnboarding; dieselben SQL-Bausteine.
 function Reset-TestCaseState {
@@ -807,10 +806,10 @@ function Reset-TestCaseState {
 }
 
 # Optionaler Paket-Onboarding-Vorzustand eines Cases (Case-Feld "package_onboarding": {"<pkg>.<section_key>":
-# "unknown"|"skipped"|"completed"}), z. B. ein offener Finanz-Bereich fuer "Bereich Konten ist fertig" (Befund
-# 2026-10-24). Paket-frei: setzt ZUERST alle Sektionen jedes <pkg>.onboarding_state auf completed (Case-Isolation,
+# "unknown"|"skipped"|"completed"}), z. B. ein offener Finanz-Bereich fuer "Bereich Konten ist fertig".
+# Paket-frei: setzt zuerst alle Sektionen jedes <pkg>.onboarding_state auf completed (Case-Isolation,
 # der Fixture-Seed laeuft nur einmal je Lauf), dann die genannten. $Sections = $null -> nur der Reset; Treiber rufen
-# ihn nur, wenn der Case das Feld traegt ODER ein frueherer Case es trug (sonst kein Extra-psql je Case).
+# ihn nur, wenn der Case das Feld traegt oder ein frueherer Case es trug (sonst kein Extra-psql je Case).
 # Ungueltiger Key/Wert -> throw (der Treiber wertet den Case als FAIL).
 function Set-TestPackageOnboarding {
     param([Parameter(Mandatory)][string]$Container, $Sections)
@@ -834,7 +833,7 @@ END `$`$;
     if ($r.Code -ne 0) { throw "Paket-Onboarding-Vorbereitung fehlgeschlagen: $($r.Output -join "`n")" }
 }
 
-# --- Paketfreie Treiber-Helfer (Phase E): kein Test-Treiber nennt ein Paket -------------------------
+# --- Paketfreie Treiber-Helfer: kein Test-Treiber nennt ein Paket -------------------------
 # Route-Agenten = die provides.agents aller Manifeste (dieselbe Lese-+Pruefstelle wie build.ps1:
 # scripts/build/lib/agent_routing.ps1, 'orchestrator' ausgeschlossen, nach order sortiert).
 # Throw bei Vertrags-Verstoss (wie der Build) oder leerer Liste (eine leere Menge darf nie still "passen").
@@ -847,9 +846,9 @@ function Get-TestRouteAgent {
     return ,@($routing.List)
 }
 
-# Setup (optional je Case, Feld setup_sql; e2e_test + n8n_test, EINE Stelle): legt die VORAUSSETZUNGEN direkt per <pkg>.fn_*
-# an (gleiche Write-Pfade wie die Tools, DB-Gesetze greifen), damit der Agent nur den EINEN geprueften Schritt macht. Grund
-# (bezahlter Lauf 2026-10-23): 4-5 Writes in EINER Nachricht sprengten die 8 Agent-Schritte, obwohl jeder Fall nur ein Werkzeug
+# Setup (optional je Case, Feld setup_sql; e2e_test + n8n_test, eine Stelle): legt die Voraussetzungen direkt per <pkg>.fn_*
+# an (gleiche Write-Pfade wie die Tools, DB-Gesetze greifen), damit der Agent nur den einen geprueften Schritt macht. Grund:
+# 4-5 Writes in einer Nachricht sprengten die 8 Agent-Schritte, obwohl jeder Fall nur ein Werkzeug
 # prueft. Helfer (session-lokal, pg_temp, paketneutral): ok(label, res) macht {ok:false} zum harten Fehler; ids per Subselect
 # im Case. Nur einfache Hochkommas im SQL (doppelte verliert die docker-exec-Argumentuebergabe unter PS 5.1). Entitaeten tragen
 # __E2E__ im Namen; aufgeraeumt wird nur ueber agent.fn_clear_e2e_data().
@@ -862,11 +861,11 @@ CREATE FUNCTION pg_temp.ok(p_label text, p_res jsonb) RETURNS jsonb LANGUAGE plp
     if ($res.Code -ne 0) { throw "setup_sql fehlgeschlagen: $(($res.Output | Where-Object { $_ }) -join ' ')" }
 }
 
-# Agent-Test-Vorbereitung (n8n_test + mock_route_test + e2e_test, EINE Stelle): der Test-Absender ist IMMER der gepairte
+# Agent-Test-Vorbereitung (n8n_test + mock_route_test + e2e_test, eine Stelle): der Test-Absender ist immer der gepairte
 # Fixture-Owner (wie produktiv: der Owner schreibt dem Bot). Eine Zufalls-chat_id gehoerte keiner Person — dann
 # blieben per-Person-Gates zu, Haushalts-Schreibwege (adults_only, owner_only) lehnten ab und Agenten fragten
-# "wer schreibt?" statt zu handeln (real 2026-10-20: estate/guide-Goldens). Die Case-Isolation haelt das Leeren der
-# Chat-Memory je Case. Dazu fuer JEDES Ziel die Fixtures + abgeschlossenes Onboarding (idempotent; die Agenten-
+# "wer schreibt?" statt zu handeln (z. B. estate/guide-Goldens). Die Case-Isolation haelt das Leeren der
+# Chat-Memory je Case. Dazu fuer jedes Ziel die Fixtures + abgeschlossenes Onboarding (idempotent; die Agenten-
 # Eingangs-Gates leiten sonst auf /onboarding um, der Monitor braucht die FX-Kurse); ein Case kann den
 # Haushalts-Onboarding-Zustand per "onboarding" ueberschreiben (Set-TestHouseholdOnboarding).
 # Das Substrat traegt immer alle Pakete (bootstrap_test_n8n.ps1 --packages all) — der Seed setzt sie voraus.
@@ -912,8 +911,8 @@ function Test-ExpectedRoute {
     return ($Routed.Count -eq 0)
 }
 
-# DIE zentrale Weg-C-Mechanik: auf die neue Ziel-Execution (id > $AfterId) warten und sie zum
-# Terminalstatus treiben, indem JEDES auftauchende HITL-Gate (sendMessage mit inline_keyboard) ueber
+# Die zentrale Real-Path-Mechanik: auf die neue Ziel-Execution (id > $AfterId) warten und sie zum
+# Terminalstatus treiben, indem jedes auftauchende HITL-Gate (sendMessage mit inline_keyboard) ueber
 # die abgefangene, signierte Resume-URL mit der gewuenschten Entscheidung aufgeloest wird:
 #   $Approve=$false  -> decline (Routing-Tiers: Tool nimmt 'cancelled', kein Write)
 #   $Approve=$true   -> approve (E2E-Tier: der Write laeuft echt durch; mehrere Gates pro Lauf moeglich)
@@ -941,7 +940,7 @@ function Wait-ExecResolvingGates {
             $cand = $list | Where-Object { [int]$_.id -gt $AfterId } | Sort-Object { [int]$_.id } | Select-Object -First 1
         } catch { $cand = $null }
 
-        # Jedes neu aufgetauchte Gate aufloesen (Schutz vor False-PASS: Gate-id MUSS > $AfterId sein,
+        # Jedes neu aufgetauchte Gate aufloesen (Schutz vor False-PASS: Gate-id muss > $AfterId sein,
         # sonst gehoert die Nachricht zu einem aelteren Lauf). Das Mock-Log kostet ein docker exec (~0,2 s) ->
         # hoechstens einmal je Sekunde; der Status-Abruf (HTTP, ms) laeuft im kurzen Takt unten.
         $gateDue = ((Get-Date) - $gateCheckedAt).TotalMilliseconds -ge 1000
@@ -966,8 +965,8 @@ function Wait-ExecResolvingGates {
     }
 }
 
-# --- Textkatalog-Asserts (Phase C): Telegram-Texte gegen den getrackten Katalog pruefen ---------------------------
-# Tests vergleichen nie fest verdrahtete deutsche Teilstrings, sondern die FESTEN Teilstuecke eines Katalog-Texts
+# --- Textkatalog-Asserts: Telegram-Texte gegen den getrackten Katalog pruefen ---------------------------
+# Tests vergleichen nie fest verdrahtete deutsche Teilstrings, sondern die festen Teilstuecke eines Katalog-Texts
 # (Platzhalter {name} und Zeilenumbrueche trennen; Stuecke >= 2 Zeichen). So bleibt ein Test gruen, wenn jemand den
 # koreanischen Wortlaut verbessert, und faellt, wenn eine Sprache falsch ankommt. Quelle: packages/<pkg>/locales/<lang>.json.
 $script:CatalogCache = @{}
@@ -990,7 +989,7 @@ function Get-CatalogFragments {
 }
 # Telegram escapt Legacy-Markdown (_ * ` [) mit Backslash -> fuer den Vergleich zuruecknehmen.
 function ConvertFrom-TgEscaped([string]$Text) { [regex]::Replace([string]$Text, '\\([_*`\[])', '$1') }
-# $true, wenn ALLE festen Stuecke des Keys (in $Lang, ohne -Lang in irgendeiner Katalogsprache) im Text stehen.
+# $true, wenn alle festen Stuecke des Keys (in $Lang, ohne -Lang in irgendeiner Katalogsprache) im Text stehen.
 function Test-TextHasKey {
     param([Parameter(Mandatory)][string]$Text, [Parameter(Mandatory)][string]$Key, [string]$Lang)
     $plain = ConvertFrom-TgEscaped $Text
@@ -1002,7 +1001,7 @@ function Test-TextHasKey {
     return $false
 }
 
-# ===== Fall-Abbruch: eine Ausnahme im Fall ist ein ROTER Fall, kein Ende des Laufs =====
+# ===== Fall-Abbruch: eine Ausnahme im Fall ist ein roter Fall, kein Ende des Laufs =====
 # Gemeinsam fuer alle Treiber mit Fall-Liste (real_ingress, mock_route, infra, hitl_gate). Haeufigster Anlass: HTTP 500 vom
 # Eingang unter Last ("Regular expression execution timed out", n8n-Zeitschutz). Einbau je Fall:
 #   foreach ($tc in $cases) {
@@ -1010,7 +1009,7 @@ function Test-TextHasKey {
 #       catch { $failed++; Write-CaseAbort -ErrorRecord $_ -CaseId $tc.id -Cleanup { ... } }
 #   }
 #   Write-AbortedCases; $failed += Assert-ForceAbortFired $ForceAbortId     (vor der Schlusszeile)
-# Das try/catch steht im SELBEN Bereich wie der Zaehler: ein Scriptblock-Laeufer wuerde ein $failed++ in einer Kopie verlieren
+# Das try/catch steht im selben Bereich wie der Zaehler: ein Scriptblock-Laeufer wuerde ein $failed++ in einer Kopie verlieren
 # (stiller Falsch-Gruen). Darum zaehlt der Aufrufer, die Helfer melden nur. Kein Retry: ein roter Fall wird einzeln wiederholt.
 # Selbsttest: scripts/dev/case_abort_test.ps1.
 $script:AbortedCases = @()
@@ -1026,7 +1025,7 @@ function Get-CaseAbortReason($ErrorRecord) {
 }
 
 # Meldet den Abbruch (Grund, Skriptzeile, Hinweis beim Zeitschutz) und raeumt auf; das Aufraeumen darf nie den Lauf beenden.
-# Zaehlt NICHT selbst (siehe oben). -NoIdParam: Treiber ohne -Id (hitl_gate) -> Hinweis "Lauf wiederholen".
+# Zaehlt nicht selbst (siehe oben). -NoIdParam: Treiber ohne -Id (hitl_gate) -> Hinweis "Lauf wiederholen".
 function Write-CaseAbort {
     param([Parameter(Mandatory)]$ErrorRecord, [Parameter(Mandatory)][string]$CaseId, [scriptblock]$Cleanup, [switch]$NoIdParam)
     $script:AbortedCases += $CaseId

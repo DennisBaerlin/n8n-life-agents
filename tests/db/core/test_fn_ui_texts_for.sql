@@ -1,6 +1,6 @@
 -- tests/db/core/test_fn_ui_texts_for.sql
--- agent.fn_ui_texts_for(p) + Wrapper core.fn_ui_texts_for(p): Sprache, Locale und t-Map EINES Empfaengers fester
---   Texte (Textkatalog Phase C, Crons/Gates/Angebots-Karten). Empfaenger = Absender der chat_id, sonst Owner;
+-- agent.fn_ui_texts_for(p) + Wrapper core.fn_ui_texts_for(p): Sprache, Locale und t-Map eines Empfaengers fester
+--   Texte (Crons/Gates/Angebots-Karten). Empfaenger = Absender der chat_id, sonst Owner;
 --   eine kaputte/nicht-numerische/unbekannte chat_id faellt auf den Owner (nie ein RAISE: fail-open-Gates
 --   haengen daran). Keys = p.keys + jeder key-foermige String in p.doc (+ enum-Wert-Keys). Nie eine chat_id im Ergebnis.
 BEGIN;
@@ -65,10 +65,10 @@ BEGIN
   r := agent.fn_ui_texts_for(jsonb_build_object('chat_id', '111', 'keys', jsonb_build_array('core.zz.only_en', 'core.zz.missing')));
   IF r->'t'->>'core.zz.only_en' IS DISTINCT FROM 'EN only' OR r->'t'->>'core.zz.missing' IS DISTINCT FROM 'core.zz.missing' THEN
     RAISE EXCEPTION 'FAIL ui_texts_for [Fallback: %]', r; END IF;
-  -- SICHERHEIT: genau {lang, language, language_label, locale, t}, nie eine chat_id/Person
+  -- Sicherheit: genau {lang, language, language_label, locale, t}, nie eine chat_id/Person
   IF (SELECT array_agg(k ORDER BY k) FROM jsonb_object_keys(r) k) IS DISTINCT FROM ARRAY['lang', 'language', 'language_label', 'locale', 't'] THEN
     RAISE EXCEPTION 'FAIL ui_texts_for [Rueckgabe-Form: %]', r; END IF;
-  -- Prompt-Label (EINE Adresse fuer "schreibe in ko (한국어)"): Code + Eigenname in Klammern, ohne Namen nur der Code
+  -- Prompt-Label (eine Adresse fuer "schreibe in ko (한국어)"): Code + Eigenname in Klammern, ohne Namen nur der Code
   IF r->>'language_label' IS DISTINCT FROM (r->>'lang') || COALESCE(' (' || (r->>'language') || ')', '') OR r->>'lang' IS DISTINCT FROM 'de' THEN
     RAISE EXCEPTION 'FAIL ui_texts_for [language_label: %]', r; END IF;
 

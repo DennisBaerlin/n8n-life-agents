@@ -1,8 +1,8 @@
 # shellcheck disable=SC2034,SC1111  # SC1111: deutsche Anfuehrungszeichen in Nutzertexten gewollt; SC2034: OWNER_CONNECT_*/_INGRESS_HELP_SHOWN liest der Aufrufer (provision.sh, household_cli.sh)
 # owner_connect.sh — Gefuehrtes Ende der Installation: Erreichbarkeit (bring-your-own Reverse Proxy) +
-# Telegram-Owner-Pairing (Install-UX-Phase 3). SOURCED (kein Shebang, kein set -e).
+# Telegram-Owner-Pairing. Gesourct (kein Shebang, kein set -e).
 #
-# EIN Code-Pfad, zwei Aufrufer: owner_connect_guided am Ende von provision.sh main() UND
+# Ein Code-Pfad, zwei Aufrufer: owner_connect_guided am Ende von provision.sh main() und
 # `lifeagents household pair-owner` (Muster pkg_cmd_install: provision.sh + CLI teilen den Pfad).
 # Ablauf (interaktiv):
 #   1. schon gepairt? -> fertig.  Voraussetzungen fehlen / kein TTY -> "spaeter" (Recap nennt den Befehl).
@@ -10,16 +10,16 @@
 #      (getWebhookInfo ist das Pruefstor — ein lokaler HTTPS-Test besteht auch bei Hairpin-NAT/Split-DNS,
 #      wo Telegram trotzdem nicht durchkommt). Nicht erreichbar -> Caddyfile + Anforderungen + Auswahl
 #      "Erneut pruefen / Spaeter". Webhook fehlt -> Orchestrator neu aktivieren (Telegram lehnt setWebhook
-#      ab, solange die Domain nicht aufloest — deshalb hiess es frueher "danach lifeagents update").
+#      ab, solange die Domain nicht aufloest).
 #   3. Pairing im Geraete-Code-Muster (RFC 8628 / `gh auth login`): Code armieren, Deep-Link
-#      t.me/<bot>?start=<code> zeigen (Telegram-Standard fuer Bot-Pairing), auf /start WARTEN (DB-Poll).
+#      t.me/<bot>?start=<code> zeigen (Telegram-Standard fuer Bot-Pairing), auf /start warten (DB-Poll).
 #      Ablauf (10 Min) -> nachfragen "Neuer Code / Spaeter" (RFC 8628 §3.5: kein Endlos-Re-Arm).
 #   4. Fertig einrichten: Workflows mit der echten chat_id neu deployen (core + registry-aktive Pakete; der
 #      Deploy meldet laufende Ausloeser vorher ab, kein n8n-Neustart noetig), Owner-Befehlsmenue setzen. Nicht-fatal.
 #
 # Reads globals: N8N_DB_NAME, N8N_URL, N8N_API_KEY, N8N_PORT, DOMAIN, TELEGRAM_BOT_TOKEN, REPO_ROOT.
 # Ergebnis in OWNER_CONNECT_RESULT: connected | later | unavailable (+ OWNER_CONNECT_REASON; OWNER_CONNECT_FIX = der
-# passende Nachtrag-Satz fuer den Recap, Install-UX-Phase 7: fehlende Angabe -> `lifeagents reconfigure`).
+# passende Nachtrag-Satz fuer den Recap: fehlende Angabe -> `lifeagents reconfigure`).
 # Reuses (sourced siblings): _arm_owner_challenge/_set_bot_command_menus/_owner_psql (bootstrap_owner.sh),
 #   _owner_chat_id_db/deploy_workflows (deploy_workflows.sh), common.sh-Helfer.
 
@@ -31,10 +31,10 @@ _OC_PROBLEM=''
 _OC_ACT_ERR=''
 
 # emit_ingress_help <template-dir> <domain> <n8n-port> <webhook-url> — fertiges Caddyfile + Anforderungen
-#   fuer einen bestehenden Proxy (bring your own, Install-UX-Phase 2). Explizite Parameter (statt
+#   fuer einen bestehenden Proxy (bring your own). Explizite Parameter (statt
 #   provision.sh-Globals) -> auch aus der CLI (`household pair-owner`) nutzbar. Schreibt das Caddyfile
 #   zusaetzlich nach /etc/lifeagents/reverse-proxy.caddyfile (write_if_changed: Zweitlauf no-op).
-#   Zwei Faelle aus TRUSTED_PROXIES (lib/firewall.sh, Install-UX-Phase 5) — EIN Baustein (Caddyfile.tpl,
+#   Zwei Faelle aus TRUSTED_PROXIES (lib/firewall.sh) — ein Baustein (Caddyfile.tpl,
 #   Block zwischen den lifeagents-webhooks-Markern):
 #   * Proxy auf diesem Rechner: komplettes Caddyfile, Upstream 127.0.0.1:<port>.
 #   * Proxy auf einem anderen Rechner: nur der Einfuege-Baustein fuer dessen bestehenden Domain-Block, Upstream
@@ -119,7 +119,7 @@ _oc_webhook_info() {
 }
 
 # _oc_webhook_known <getWebhookInfo-JSON> -> 0 nur bei einer gueltigen Telegram-Antwort (.ok == true). Ein curl-Fehler/
-#   Netz-Wackler liefert "" = „unbekannt", NICHT „keine/falsche Adresse" (Install-UX-Phase 7; controller-runtime-Muster:
+#   Netz-Wackler liefert "" = „unbekannt", nicht „keine/falsche Adresse" (controller-runtime-Muster:
 #   bei Fehler nicht handeln) — sonst de-/reaktivierte jeder Wackler den Bot bzw. meldete eine falsche Diagnose.
 _OC_TG_UNKNOWN='Telegram ist gerade nicht erreichbar (Webhook-Stand unbekannt) — bitte gleich erneut prüfen'
 _oc_webhook_known() {
@@ -165,7 +165,7 @@ _oc_reachable() {
     _OC_WAIT=1
     return 1
   fi
-  # Aktive Probe der ganzen Kette (Install-UX-Phase 5): ein unbekannter Webhook-Pfad muss bis zu n8n durchgehen
+  # Aktive Probe der ganzen Kette: ein unbekannter Webhook-Pfad muss bis zu n8n durchgehen
   # (n8n antwortet 404). 502/503/504 = der Proxy ist erreichbar, kommt aber nicht bis zu n8n durch — sofort
   # erkannt, ohne erst auf ein /start und Telegrams Fehlermeldung zu warten.
   code="$(https_code "${DOMAIN}/webhook/lifeagents-probe-$(rand_hex 4)")"
@@ -180,7 +180,7 @@ _oc_reachable() {
   id="${st%%$'\t'*}"; active="${st#*$'\t'}"
   info="$(_oc_webhook_info)"
   url="$(printf '%s' "$info" | jq -r '.result.url // ""' 2>/dev/null || true)"
-  # Webhook-Zustand (Install-UX-Phase 7, _oc_webhook_known): Reaktivieren, wenn der Orchestrator inaktiv ist ODER (bekannt
+  # Webhook-Zustand (_oc_webhook_known): Reaktivieren, wenn der Orchestrator inaktiv ist oder (bekannt
   # ∧ URL zeigt nicht auf die Domain). Aktiv ∧ unbekannt -> nichts anfassen, „erneut prüfen" anbieten.
   if [ "$active" = "true" ] && ! _oc_webhook_known "$info"; then
     _OC_PROBLEM="$_OC_TG_UNKNOWN"
@@ -226,7 +226,7 @@ _oc_wait_reachable() {
 
 # _oc_device_check ask|report — kommen auch Handy und Laptop bei deinem Server an? (common.sh reach_family/reach_assess,
 #   dieselbe Pruefung wie doctor). Telegram stellt nur ueber IPv4 zu; Geraete nehmen oft IPv6 — ein falscher AAAA-Eintrag
-#   (MyFRITZ!-Adresse der Box) faellt deshalb nur hier auf. Probe = ein zufaelliger, NICHT geheimer /webhook/-Pfad (n8n
+#   (MyFRITZ!-Adresse der Box) faellt deshalb nur hier auf. Probe = ein zufaelliger, nicht geheimer /webhook/-Pfad (n8n
 #   antwortet 404; dieselbe Antwort direkt und ueber die Domain = die Anfrage landete bei diesem n8n) -> gilt fuer alles
 #   hinter /webhook* (Uebersicht, Link-Knoepfe), ohne die geheime App-Adresse. Ein IPv4-Fehlschlag vom Server aus gilt
 #   nur dann als Hairpin-NAT (neutral), wenn Telegram nachweislich an genau diese Adresse zustellt (tg_webhook_delivers;
@@ -303,7 +303,7 @@ EOF
     fi
     shown_at="$(date +%s)"; err_seen=0; i=0
     while :; do
-      # Alle ~3 s: verbunden? (DB-only — kein Env-Fallback, B12)
+      # Alle ~3 s: verbunden? (DB-only — kein Env-Fallback)
       if [ $((i % 15)) -eq 0 ]; then
         chat="$(_owner_chat_id_db)"
         if _oc_is_chat_id "$chat"; then
@@ -349,10 +349,10 @@ EOF
 
 # _oc_finalize — nach erfolgreichem Pairing: Workflows mit echter chat_id neu einspielen + Owner-Menue.
 #   Laeuft in einer Subshell des Aufrufers (deploy_workflows kann `die`n) -> nie fatal fuer den Lauf.
-#   KEIN n8n-Neustart mehr (frueher Pflicht, sonst liefen die alten Zeitplaene mit chat_id 0 weiter):
-#   deploy_workflows deaktiviert jeden laufenden Ausloeser VOR dem Import (_deactivate_live_triggers) und
-#   aktiviert danach den neuen Stand. Damit entfaellt auch das Warten auf laufende Ausfuehrungen — das
-#   Deaktivieren bricht keine laufende Ausfuehrung ab (die "verbunden"-Antwort des Orchestrators kommt an).
+#   Kein n8n-Neustart noetig (sonst liefen die alten Zeitplaene mit chat_id 0 weiter): deploy_workflows
+#   deaktiviert jeden laufenden Ausloeser vor dem Import (_deactivate_live_triggers) und aktiviert danach
+#   den neuen Stand. Das Deaktivieren bricht keine laufende Ausfuehrung ab (die "verbunden"-Antwort des
+#   Orchestrators kommt an).
 _oc_finalize() {
   local pkgs p chat
   # chat_id einmal lesen und fuer alle Deploys festhalten: _owner_chat_id_db verschluckt DB-Fehler, ein spaeterer Lesefehler
@@ -397,11 +397,11 @@ _oc_log_scrub() {
     -e 's/[0-9]{6,}/<nr>/g'
 }
 
-# _oc_send_welcome — Install-UX-Phase 6: die Owner-Begruessung NACH _oc_finalize schicken (erst dann sind die
-#   Workflows mit der echten chat_id neu deployt — ein Knopf-Tipp VOR finalize liefe gegen
-#   die alten Workflows mit Owner-chat_id 0, z. B. das Bestaetigungs-Gate). Text + Knoepfe kommen aus der EINEN
+# _oc_send_welcome — die Owner-Begruessung nach _oc_finalize schicken (erst dann sind die
+#   Workflows mit der echten chat_id neu deployt — ein Knopf-Tipp vor finalize liefe gegen
+#   die alten Workflows mit Owner-chat_id 0, z. B. das Bestaetigungs-Gate). Text + Knoepfe kommen aus der einen
 #   Quelle core.fn_render_welcome() (dieselbe, die der Orchestrator bei /start sendet; ohne Argument = in der Sprache des
-#   Owners, Textkatalog Phase B). Plain text OHNE parse_mode
+#   Owners). Plain text ohne parse_mode
 #   (die fn liefert kein Markdown), Knoepfe in einer Zeile wie New-TelegramInlineKeyboardSendNode. Body per
 #   String-Konkatenation um die numerisch validierte chat_id (kein jq-Re-Parse -> keine Double-Precision, Muster
 #   _push_bot_commands); Token ueber tg_api_curl (nie argv). Best-effort: 0 = gesendet, 1 = nicht.

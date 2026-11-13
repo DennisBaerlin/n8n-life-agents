@@ -1,56 +1,61 @@
 -- ============================================================
 -- fn_set_savings_goal (ATOMIC WRITE)
 --   Aendert ein Sparziel (Zielbetrag/Datum/Status/Stammdaten). Partielles Update.
---   RATEN-NEUBERECHNUNG (Best Practice aus der Recherche): bei geaendertem target_amount ODER
---   target_date wird die monatliche Sparrate ueber REST-Betrag / REST-Zeit neu gerechnet
---   (NICHT Gesamt/Gesamt -- haeufiger App-Bug). Rest = effektiver Zielbetrag - bereits gespart
+--   Raten-Neuberechnung: bei geaendertem target_amount oder
+--   target_date wird die monatliche Sparrate ueber Rest-Betrag / Rest-Zeit neu gerechnet
+--   (nicht Gesamt/Gesamt). Rest = effektiver Zielbetrag - bereits gespart
 --   (finance_savings_goal_progress.current_amount); Rest-Monate ab heute bis Zieldatum.
---   Die neu berechnete Rate wird in die verknuepfte recurring_payment IN-PLACE geschrieben (Befund B); sie wird auf
---   den Cent AUFGERUNDET (Audit Paket 2, Punkt 15: sonst erreichen die Raten das Ziel um Cents nicht).
---   STATUS: completed/cancelled -> {ok:false} mit Verweis auf close_savings_goal (Audit Paket 2, Punkt 4: set umging
---   das Close-Gate "Reserve ~0 oder force" und gab Reserven still frei). active -> rp 'active'; ist die Rate beendet
+--   Die neu berechnete Rate wird in die verknuepfte recurring_payment in place geschrieben; sie wird auf
+--   den Cent aufgerundet (sonst erreichen die Raten das Ziel um Cents nicht).
+--   STATUS: completed/cancelled -> {ok:false} mit Verweis auf close_savings_goal (nur dort greift das Close-Gate
+--   "Reserve ~0 oder force"). active -> rp 'active'; ist die Rate beendet
 --   (valid_to <= heute, nach close_savings_goal) -> Folge-rp ab heute (fn_reopen_recurring_payment), Ziel zeigt auf sie.
---   Eingabe jsonb: goal_id (im n8n aufgeloest), name, target_amount, target_date, status, replace_transfer (opt),
---   beneficiary_person_id (Slug; leer=unveraendert), reserve_account_id (opt, WS-A: Reserve-Topf
+--   Eingabe jsonb: goal_id (im n8n aufgeloest), name, target_amount, target_date (auch relativ), status, replace_transfer (opt),
+--   beneficiary_person_id (Slug; leer=unveraendert), reserve_account_id (opt, Reserve-Topf
 --   aendern -> rate.target_account_id; alte getaggte Buchungen bleiben dem Ziel zugeordnet),
---   priority (opt, WS-C1: kleiner = wichtiger; leer=unveraendert), notes,
---   link_savings_plan_name (opt, WS-B Stufe 2: einen Sparplan diesem Ziel ZUORDNEN -> savings_plans.
---   savings_goal_id), unlink_savings_plan_name (opt, WS-B Stufe 2: einen Sparplan vom Ziel LOESEN -> NULL;
---   nur wenn er an DIESES Ziel gebunden ist). Ein Ziel hat 0..N Sparplaene (+ <=1 Cash-Rate); je Aufruf wird
---   EIN Plan ver-/entknuepft. Die Quellen-Validierung laeuft VOR jedem Write -> {ok:false} bleibt write-frei.
---   stop_funders (opt bool, WS-B Stufe 3: Lebenszyklus "ERREICHT" -> ALLE Beitraege stoppen via
---   fn_stop_savings_goal_funders; Cash-Rate + verknuepfte Sparplaene paused, Ziel + Reserve UNBERUEHRT).
---   ZIELE OHNE RATE (Sparziel-Zweckbindung 2026-10-27): ein gedecktes Ziel (Rest <= 0) darf Datum/Betrag aendern ->
---   ok, covered=true, die Rate bleibt unveraendert (kein Rest, nichts neu zu rechnen). Laeuft KEINE Rate und bleibt
+--   priority (opt, kleiner = wichtiger; leer=unveraendert), notes,
+--   link_savings_plan_name (opt, einen Sparplan diesem Ziel zuordnen -> savings_plans.
+--   savings_goal_id), unlink_savings_plan_name (opt, einen Sparplan vom Ziel loesen -> NULL;
+--   nur wenn er an dieses Ziel gebunden ist). Ein Ziel hat 0..N Sparplaene (+ <=1 Cash-Rate); je Aufruf wird
+--   ein Plan ver-/entknuepft. Die Quellen-Validierung laeuft vor jedem Write -> {ok:false} bleibt write-frei.
+--   stop_funders (opt bool, Lebenszyklus "erreicht" -> alle Beitraege stoppen via
+--   fn_stop_savings_goal_funders; Cash-Rate + verknuepfte Sparplaene paused, Ziel + Reserve unberuehrt).
+--   Weitere optionale Keys: account_id (Abbuchungskonto einer neuen Rate), schedule_day_of_month (dazu), kind (nur
+--   goal -> emergency_reserve), target_months, monthly_savings_rate, depot_risk_accepted, depot_risk_shown (an
+--   fn_goal_depot_risk_fold durchgereicht), chat_id (fuer den Squeeze-Hinweis).
+--   Ziele ohne Rate: ein gedecktes Ziel (Rest <= 0) darf Datum/Betrag aendern ->
+--   ok, covered=true, die Rate bleibt unveraendert (kein Rest, nichts neu zu rechnen). Laeuft keine Rate und bleibt
 --   ein Rest: mit account_id (Abbuchungskonto) legt die fn die Rate an (Umbuchung in reserve_account_id bzw. den
 --   abgeleiteten Topf = saldo-basiertes Konto mit dem groessten Anteil des Ziels); ohne -> ok mit code no_rate_running
---   + required_monthly_rate (frueher: new_monthly_rate gerechnet, aber still nicht gespeichert). Finanziert ein aktiver
+--   + required_monthly_rate. Finanziert ein aktiver
 --   Sparplan das Ziel, gibt es nur required_monthly_rate (keine eigene Rate).
---   BESTEHENDER DAUERAUFTRAG (2026-10-27, wie fn_create_savings_goal): fliesst vom Abbuchungskonto schon ein
+--   Bestehender Dauerauftrag (wie fn_create_savings_goal): fliesst vom Abbuchungskonto schon ein
 --   freistehender Dauerauftrag in den Topf (fn_goal_transfer_candidates) -> ohne replace_transfer {ok:false,
 --   code:'existing_transfer', transfers}; replace_transfer=true -> die neue Rate fuehrt ihn fort (sein Monatsbetrag, Tag,
 --   naechster Termin; er endet dann, fn_goal_end_transfer; Entscheidung fn_goal_transfer_choice), Rueckgabe replaced_transfer_id + required_monthly_rate
 --   (falls abweichend) + card_lines (Hinweis); false -> zusaetzliche Rate; nicht monatlich -> code transfer_not_monthly.
---   INSTANDHALTUNGSRUECKLAGE (real_estate_id gesetzt, 2026-10-27): kein Ziel/Datum -> target_amount, target_date und
+--   Instandhaltungsruecklage (real_estate_id gesetzt): kein Ziel/Datum -> target_amount, target_date und
 --   link_savings_plan_name -> {ok:false}; der einzige Hebel ist monthly_savings_rate (opt, nur hier erlaubt; an einem
 --   Ziel mit Datum -> {ok:false}, dort folgt die Rate aus Betrag und Datum). Laeuft eine Rate -> Aenderung ueber
 --   fn_change_owned_recurring (Korrektur in place oder Split ab dem naechsten Termin, Historie bleibt). Keine Rate: mit
 --   account_id wird eine angelegt (genannte Rate, sonst die Empfehlung nach II. BV; Dauerauftrags-Entscheidung wie
 --   oben), ohne -> code no_rate_running + required_monthly_rate. Reaktivieren, waehrend die Immobilie schon eine aktive
 --   Ruecklage hat -> {ok:false, code:'reserve_exists'} (Partial-UNIQUE als Backstop).
---   NOTRESERVE (kind emergency_reserve, 2026-10-30): wie die Instandhaltungsruecklage kein Datum, kein Sparplan, Hebel
---   monthly_savings_rate; Ziel = target_amount ODER target_months (eines setzt das andere zurueck, Form-CHECK). Topf und
---   neue Rate nur auf Geld-Konten (fn_emergency_reserve_account_ok: aktives Geld-Konto, kein Kinderkonto). UMWIDMEN: kind=emergency_reserve an einem Sparziel
+--   Notreserve (kind emergency_reserve): wie die Instandhaltungsruecklage kein Datum, kein Sparplan, Hebel
+--   monthly_savings_rate; Ziel = target_amount oder target_months (eines setzt das andere zurueck, Form-CHECK). Topf und
+--   neue Rate nur auf Geld-Konten (fn_emergency_reserve_account_ok: aktives Geld-Konto, kein Kinderkonto). Umwidmen: kind=emergency_reserve an einem Sparziel
 --   (goal) macht es zur Notreserve (Datum entfaellt, Betrag bleibt, sofern nicht target_months genannt; Rate laeuft weiter);
 --   nur ohne andere aktive Notreserve (code reserve_exists), ohne verknuepften Sparplan und ohne Geld ausserhalb von
 --   Geld-Konten. Andere Art-Wechsel -> {ok:false} (Trigger trg_savings_goal_kind_fixed = Backstop).
---   SPARZIEL IM DEPOT KURZ VOR DEM TERMIN (2026-11-06): depot_risk_accepted (opt) true = "das bleibt so" (Warnkarte +
+--   Sparziel im Depot kurz vor dem Termin: depot_risk_accepted (opt) true = "das bleibt so" (Warnkarte +
 --   Stempel nach dem Tipp; nichts zu bestaetigen -> code no_depot_risk, schon bestaetigt -> code already_accepted),
 --   false = "erinnere mich wieder" (Eintrag revoke, Hinweis goal_depot_risk_revoked; ohne gueltige Entscheidung -> code
 --   no_depot_risk_decision); zusammen mit Datum, Sparplan-Link oder Status -> code depot_risk_alone. Datum vorgezogen, Sparplan verknuepft oder wieder geoeffnet -> ebenfalls
 --   fn_goal_depot_risk_fold (card_lines, card_approve_key, effective.depot_risk_shown, depot_risk.reminder_month).
 --   RUECKGABE: {ok:true, goal_id, recurring_payment_id, new_monthly_rate (nur wenn eine Rate gesetzt/angelegt wurde),
---   covered?, required_monthly_rate?, code?, linked_savings_plan_id, paused_cash_rate, paused_plan_count, card_lines?}
+--   covered?, required_monthly_rate?, code?, note? (bei no_rate_running bzw. covered_rate_running), effective,
+--   linked_savings_plan_id, paused_cash_rate, paused_plan_count, converted_to? (bei Umwidmung), emergency_reserve?
+--   (Status der Notreserve), replaced_transfer_id?, card_lines?}
 --   (card_lines u. a. Bank-Hinweis fn_bank_setup_note: neue Rate bank_setup, stop_funders bank_stop auch fuer
 --   verknuepfte Sparplaene, Rate/Topf/Fortsetzen bank_change) + optional
 --   savings_squeeze (fn_savings_squeeze_fold, nur bei Raten-Aenderung: neu gerechnet, angelegt, reaktiviert, Topf
@@ -67,9 +72,9 @@ DECLARE
     v_id        INT     := (p->>'goal_id')::int;
     v_target    NUMERIC := NULLIF(p->>'target_amount', '')::numeric;
     v_tdate     DATE;
-    v_status    finance.goal_status;   -- Cast erst nach dem Enum-Guard (Import-Haertung)
+    v_status    finance.goal_status;   -- Cast erst nach dem Enum-Guard
     v_reason    TEXT    := finance.fn_enum_reason('finance.goal_status'::regtype, p->>'status', 'status');
-    v_reserve   INT     := NULLIF(p->>'reserve_account_id', '')::int;  -- WS-A: Reserve-Topf aendern (rate.target_account_id)
+    v_reserve   INT     := NULLIF(p->>'reserve_account_id', '')::int;  -- Reserve-Topf aendern (rate.target_account_id)
     v_funding_reason TEXT;   -- fn_goal_reserve_reason (eine Adresse fuer die Topf-Regeln)
     v_row       finance.savings_goals%ROWTYPE;
     v_saved     NUMERIC;
@@ -78,17 +83,17 @@ DECLARE
     v_months    INT;
     v_rate      NUMERIC;
     v_recompute BOOLEAN;
-    v_link_name   TEXT := NULLIF(p->>'link_savings_plan_name', '');     -- WS-B2: Sparplan zuordnen
-    v_unlink_name TEXT := NULLIF(p->>'unlink_savings_plan_name', '');   -- WS-B2: Sparplan loesen
+    v_link_name   TEXT := NULLIF(p->>'link_savings_plan_name', '');     -- Sparplan zuordnen
+    v_unlink_name TEXT := NULLIF(p->>'unlink_savings_plan_name', '');   -- Sparplan loesen
     v_plan_res    RECORD;
     v_link_plan   INT;   -- validierte Plan-ID zum Verknuepfen (Apply nach den Goal-Writes)
     v_unlink_plan INT;   -- validierte Plan-ID zum Loesen
     v_touched_plan INT;  -- zuletzt ver-/entknuepfter Plan (Return-Handle)
-    v_stop_funders BOOLEAN := COALESCE(NULLIF(p->>'stop_funders', '')::boolean, false);  -- WS-B3: alle Beitraege stoppen
+    v_stop_funders BOOLEAN := COALESCE(NULLIF(p->>'stop_funders', '')::boolean, false);  -- alle Beitraege stoppen
     v_stop_res    jsonb;
-    v_reopen      jsonb;   -- Audit Paket 2: Folge-rp bei Reaktivierung einer beendeten Rate
+    v_reopen      jsonb;   -- Folge-rp bei Reaktivierung einer beendeten Rate
     v_dates       JSONB;
-    v_new_acct    INT     := NULLIF(p->>'account_id', '')::int;   -- 2026-10-27: Abbuchungskonto fuer eine NEUE Rate
+    v_new_acct    INT     := NULLIF(p->>'account_id', '')::int;   -- Abbuchungskonto fuer eine neue Rate
     v_covered     BOOLEAN := false;
     v_need        NUMERIC;   -- noetige Rate auf dem Rest (auch ohne laufende Rate)
     v_new_pot     INT;       -- Topf einer neu angelegten Rate
@@ -99,19 +104,19 @@ DECLARE
     v_code        TEXT;
     v_has_plan    BOOLEAN;
     v_replace     BOOLEAN := CASE lower(btrim(COALESCE(p->>'replace_transfer', '')))
-                                  WHEN 'true' THEN true WHEN 'false' THEN false END;   -- 2026-10-27
+                                  WHEN 'true' THEN true WHEN 'false' THEN false END;
     v_cands       JSONB;
     v_old         JSONB;     -- fortgefuehrter Dauerauftrag (fn_goal_transfer_candidates)
     v_old_id      INT;
     v_dom         SMALLINT;
-    v_mrate       NUMERIC := NULLIF(p->>'monthly_savings_rate', '')::numeric;   -- nur Instandhaltungsruecklage
-    v_rec         JSONB;
+    v_mrate       NUMERIC := NULLIF(p->>'monthly_savings_rate', '')::numeric;   -- nur Ruecklagen (Instandhaltung, Notreserve)
+    v_rec        JSONB;
     v_chg         JSONB;     -- fn_change_owned_recurring
     v_rate_change NUMERIC;   -- neue Rate einer laufenden Ruecklagen-Rate
     v_kind        finance.savings_goal_kind;   -- wirksame Art (nach einer Umwidmung goal -> emergency_reserve)
     v_tmonths     NUMERIC := NULLIF(p->>'target_months', '')::numeric;   -- nur Notreserve
     v_convert     BOOLEAN := false;
-    v_risk_flag   TEXT    := lower(btrim(COALESCE(p->>'depot_risk_accepted', '')));   -- 2026-11-06: das bleibt so | erinnere mich wieder
+    v_risk_flag   TEXT    := lower(btrim(COALESCE(p->>'depot_risk_accepted', '')));   -- true = das bleibt so, false = erinnere mich wieder
     v_risk        RECORD;
     v_fold        JSONB;
     v_revoke      BOOLEAN := false;
@@ -135,14 +140,14 @@ BEGIN
     END IF;
     v_status := NULLIF(p->>'status', '')::finance.goal_status;
 
-    -- Audit Paket 2, Punkt 4: Abschluss nur ueber close_savings_goal (dort das Gate Reserve ~0 oder force).
+    -- Abschluss nur ueber close_savings_goal (dort das Gate Reserve ~0 oder force)
     IF v_status IN ('completed', 'cancelled') THEN
         RETURN jsonb_build_object('ok', false,
             'reason', 'A savings goal is completed or cancelled with close_savings_goal (it checks the remaining '
                    || 'reserve first), not by changing its status.');
     END IF;
 
-    -- Bewusste Risiko-Entscheidung (2026-11-06, write-frei geprueft): true = "das bleibt so" (Karte mit Warnung, Stempel nach
+    -- Bewusste Risiko-Entscheidung (write-frei geprueft): true = "das bleibt so" (Karte mit Warnung, Stempel nach
     -- dem Tipp ueber fn_goal_depot_risk_fold p_force), false = "erinnere mich wieder" (Eintrag revoke, nie loeschen).
     IF v_risk_flag NOT IN ('', 'true', 'false') THEN
         RETURN jsonb_build_object('ok', false, 'reason', 'depot_risk_accepted must be true or false.');
@@ -160,7 +165,7 @@ BEGIN
             END IF;
         ELSE
             -- Aufheben allein: zusammen mit einer Aenderung, die selbst eine Warnkarte ausloest, zeigte die Karte sonst
-            -- entweder die Warnung samt Risiko-Knopf oder nur den Aufheben-Hinweis (Code-Review 2026-11-06).
+            -- entweder die Warnung samt Risiko-Knopf oder nur den Aufheben-Hinweis.
             IF v_tdate IS NOT NULL OR NULLIF(p->>'link_savings_plan_name', '') IS NOT NULL OR NULLIF(p->>'status', '') IS NOT NULL THEN
                 RETURN jsonb_build_object('ok', false, 'code', 'depot_risk_alone',
                     'reason', 'Turning the reminders back on must be its own change - call once with only depot_risk_accepted=false, then make the other change.');
@@ -173,7 +178,7 @@ BEGIN
         END IF;
     END IF;
 
-    -- Art + Umwidmung (2026-10-30): nur goal -> emergency_reserve, nur unter den Notreserve-Regeln (write-frei geprueft)
+    -- Art + Umwidmung: nur goal -> emergency_reserve, nur unter den Notreserve-Regeln (write-frei geprueft)
     v_kind := v_row.kind;
     IF NULLIF(p->>'kind', '') IS NOT NULL AND p->>'kind' <> v_row.kind::text THEN
         IF NOT (v_row.kind = 'goal' AND p->>'kind' = 'emergency_reserve') THEN
@@ -274,7 +279,7 @@ BEGIN
         RETURN jsonb_build_object('ok', false, 'reason', 'Target amount must be a positive number, got ' || v_target || '.');
     END IF;
 
-    -- WS-A: Reserve-Topf setzen/aendern -> die Sparrate wird (kuenftig) eine Umbuchung in diesen Topf.
+    -- Reserve-Topf setzen/aendern -> die Sparrate wird (kuenftig) eine Umbuchung in diesen Topf.
     -- Guard reserve<>funding (funding = recurring_payments.account_id, die Soll-Quelle), Wortlaut wie create.
     -- Alte getaggte Buchungen bleiben unberuehrt (nur kuenftiges Routing der Rate aendert sich).
     IF v_reserve IS NOT NULL THEN
@@ -374,9 +379,9 @@ BEGIN
         END IF;
     END IF;
 
-    -- WS-B Stufe 2: Quellen-Verknuepfung VALIDIEREN (vor jedem Write -> {ok:false} bleibt write-frei/atomar).
+    -- Quellen-Verknuepfung validieren (vor jedem Write -> {ok:false} bleibt write-frei/atomar).
     -- Sparplan-Name -> ID (inkl. paused: p_active_only=FALSE); 0/>1 = korrigierbar. unlink nur, wenn der Plan
-    -- an DIESES Ziel gebunden ist (ein fremd-gebundener Plan bleibt unangetastet).
+    -- an dieses Ziel gebunden ist (ein fremd-gebundener Plan bleibt unangetastet).
     IF v_link_name IS NOT NULL THEN
         SELECT r.id, r.hit_count INTO v_plan_res FROM finance.fn_resolve_savings_plan(v_link_name, FALSE) r;
         IF v_plan_res.hit_count = 0 THEN
@@ -388,7 +393,7 @@ BEGIN
                 'reason', 'Multiple savings plans match "' || v_link_name || '". Please be more specific.',
                 'hit_count', v_plan_res.hit_count);
         END IF;
-        -- Ein Sparplan gehoert zu EINEM Ziel: ein bereits an ein ANDERES Ziel gebundener Plan wird NICHT
+        -- Ein Sparplan gehoert zu einem Ziel: ein bereits an ein anderes Ziel gebundener Plan wird nicht
         -- stillschweigend umgehaengt (das waere ein ueberraschender Seiteneffekt). Erst loesen, dann neu binden.
         IF EXISTS (SELECT 1 FROM finance.savings_plans
                    WHERE id = v_plan_res.id AND savings_goal_id IS NOT NULL AND savings_goal_id <> v_id) THEN
@@ -436,7 +441,7 @@ BEGIN
 
     UPDATE finance.savings_goals SET
         name          = COALESCE(NULLIF(p->>'name', ''), name),
-        -- Notreserve: Betrag ODER Monate (eines setzt das andere zurueck); Umwidmung: Datum entfaellt, Art wechselt
+        -- Notreserve: Betrag oder Monate (eines setzt das andere zurueck); Umwidmung: Datum entfaellt, Art wechselt
         target_amount = CASE WHEN v_kind = 'emergency_reserve' AND v_tmonths IS NOT NULL THEN NULL
                              ELSE COALESCE(v_target, target_amount) END,
         target_months = CASE WHEN v_kind = 'emergency_reserve' AND v_target IS NOT NULL THEN NULL
@@ -444,19 +449,19 @@ BEGIN
         target_date   = CASE WHEN v_kind = 'emergency_reserve' THEN NULL ELSE COALESCE(v_tdate, target_date) END,
         kind          = v_kind,
         status        = COALESCE(v_status, status),
-        priority      = COALESCE(NULLIF(p->>'priority', '')::smallint, priority),  -- WS-C1: Engpass-Reihung; leer=unveraendert
-        beneficiary_person_id = COALESCE(NULLIF(p->>'beneficiary_person_id', ''), beneficiary_person_id),  -- WS-4: beguenstigte Person (Slug); leer=unveraendert
+        priority      = COALESCE(NULLIF(p->>'priority', '')::smallint, priority),  -- Engpass-Reihung; leer=unveraendert
+        beneficiary_person_id = COALESCE(NULLIF(p->>'beneficiary_person_id', ''), beneficiary_person_id),  -- Slug; leer=unveraendert
         notes         = COALESCE(NULLIF(p->>'notes', ''), notes)
     WHERE id = v_id;
 
-    -- Namenskopie 'Sparrate <Name>' an der Raten-Kette mitfuehren (WP2, fn_rename_owned_recurring).
+    -- Namenskopie 'Sparrate <Name>' an der Raten-Kette mitfuehren (fn_rename_owned_recurring).
     PERFORM finance.fn_rename_owned_recurring(v_row.recurring_payment_id, 'Sparrate', v_row.name, NULLIF(p->>'name', ''));
 
     SELECT r.target_account_id INTO v_pot_before FROM finance.recurring_payments r WHERE r.id = v_row.recurring_payment_id;
     IF v_row.recurring_payment_id IS NOT NULL THEN
         IF v_reserve IS NOT NULL THEN
             -- Rate wird Umbuchung in den Reserve-Topf (fn_book_recurring_occurrence delegiert dann an den Transfer-Pfad);
-            -- auf ALLE laufenden Zeilen der Raten-Kette (nach einer Raten-Aenderung laeuft die Vorgaengerzeile weiter).
+            -- auf alle laufenden Zeilen der Raten-Kette (nach einer Raten-Aenderung laeuft die Vorgaengerzeile weiter).
             PERFORM finance.fn_apply_goal_reserve(v_id, v_reserve);
         END IF;
         IF v_rate IS NOT NULL THEN
@@ -501,7 +506,7 @@ BEGIN
         END IF;
     END IF;
 
-    -- WS-B Stufe 2: Quellen-Verknuepfung ANWENDEN (oben validiert). link -> savings_goal_id=Ziel; unlink -> NULL.
+    -- Quellen-Verknuepfung anwenden (oben validiert). link -> savings_goal_id=Ziel; unlink -> NULL.
     IF v_link_plan IS NOT NULL THEN
         UPDATE finance.savings_plans SET savings_goal_id = v_id WHERE id = v_link_plan;
         v_touched_plan := v_link_plan;
@@ -511,14 +516,14 @@ BEGIN
         v_touched_plan := v_unlink_plan;
     END IF;
 
-    -- WS-B Stufe 3: Lebenszyklus "ERREICHT" — auf Wunsch ALLE Beitraege stoppen (Cash-Rate + verknuepfte
-    -- Sparplaene + deren rps), Ziel + Reserve UNBERUEHRT ("erreicht != ausgegeben"). Delegiert an die
-    -- eigenstaendige fn (eigener db_test); hier nur das Flag durchreichen + Zaehler folden.
+    -- Lebenszyklus "erreicht": auf Wunsch alle Beitraege stoppen (Cash-Rate + verknuepfte
+    -- Sparplaene + deren rps), Ziel + Reserve unberuehrt ("erreicht != ausgegeben"). Delegiert an die
+    -- eigenstaendige fn; hier nur das Flag durchreichen + Zaehler folden.
     IF v_stop_funders THEN
         v_stop_res := finance.fn_stop_savings_goal_funders(jsonb_build_object('goal_id', v_id));
     END IF;
 
-    -- Sparziel kurz vor dem Termin im Depot (2026-11-06): Datum vorgezogen, Sparplan verknuepft, wieder geoeffnet oder
+    -- Sparziel kurz vor dem Termin im Depot: Datum vorgezogen, Sparplan verknuepft, wieder geoeffnet oder
     -- "das bleibt so" -> die eine Regel fn_goal_depot_risk_fold (Warnkarte, Stempel nur mit der gezeigten Lage).
     IF v_risk_flag = 'true'
        OR (v_tdate IS NOT NULL AND (v_row.target_date IS NULL OR v_tdate < v_row.target_date))
@@ -538,7 +543,7 @@ BEGIN
                          THEN jsonb_build_object('monthly_savings_rate', v_rate::text) ELSE '{}'::jsonb END,
         'recurring_payment_id', v_row.recurring_payment_id, 'new_monthly_rate', COALESCE(v_rate, v_rate_change),
         'linked_savings_plan_id', v_touched_plan,
-        -- Post-State der Funder-Pausierung (kein Input-Echo): was WIRKLICH pausiert wurde. Ohne stop_funders
+        -- Post-State der Funder-Pausierung (kein Input-Echo): was wirklich pausiert wurde. Ohne stop_funders
         -- ist v_stop_res NULL -> COALESCE auf false/0 (nichts gestoppt), nie SQL-NULL im Return-Vertrag.
         'paused_cash_rate',  COALESCE((v_stop_res->>'paused_cash_rate')::boolean, false),
         'paused_plan_count', COALESCE((v_stop_res->>'paused_plan_count')::int, 0))
@@ -563,7 +568,7 @@ BEGIN
         || CASE WHEN v_code IS NOT NULL THEN jsonb_build_object('code', v_code,
                     'note', 'No monthly rate is running for this goal; it still needs ' || to_char(v_need, 'FM999999990D00')
                             || ' EUR per month. To start one, call again with the account the rate is debited from (account_name).')
-                -- gedeckt, aber eine Rate laeuft weiter (Code-Review 2026-10-27): nicht still weiter einzahlen lassen
+                -- gedeckt, aber eine Rate laeuft weiter: nicht still weiter einzahlen lassen
                 WHEN v_covered AND v_row.recurring_payment_id IS NOT NULL AND NOT v_stop_funders
                      AND EXISTS (SELECT 1 FROM finance.active_recurring_payments a
                                  WHERE a.id = ANY (ARRAY(SELECT finance.fn_recurring_lineage(v_row.recurring_payment_id))))

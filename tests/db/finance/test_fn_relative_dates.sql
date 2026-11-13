@@ -60,7 +60,7 @@ BEGIN
                                (SELECT string_agg(c, ', ') FROM unnest(v_cast) c WHERE NOT c = ANY (v_keys)));
       CONTINUE;
     END IF;
-    -- erste Cast-Stelle eines NICHT ausgenommenen Keys (regexp_instr/regexp_substr je n-tem Treffer)
+    -- erste Cast-Stelle eines nicht ausgenommenen Keys (regexp_instr/regexp_substr je n-tem Treffer)
     v_call  := regexp_instr(r.prosrc, 'fn_resolve_input_dates', 1, 1, 0, 'i');
     v_first := NULL;
     FOREACH v_re IN ARRAY ARRAY[v_cast_re, v_decl_re] LOOP
@@ -105,7 +105,7 @@ BEGIN
      OR (v_r->'effective'->>'transaction_date')::date IS DISTINCT FROM t - 1 THEN
     RAISE EXCEPTION 'FAIL relative_dates [book_transaction yesterday]: % / %', v_r, v_d; END IF;
 
-  -- Unsinn -> ok:false als Daten (vorher Cast-RAISE + Owner-Alarm), nichts gebucht
+  -- Unsinn -> ok:false als Daten (kein Cast-RAISE + Owner-Alarm), nichts gebucht
   v_r := finance.fn_book_transaction(jsonb_build_object('account_id', v_a, 'amount', '1', 'direction', 'outflow',
            'transaction_date', 'Ende des Monats'));
   IF (v_r->>'ok')::boolean IS DISTINCT FROM false OR v_r->>'code' IS DISTINCT FROM 'invalid_date' THEN
@@ -216,7 +216,7 @@ BEGIN
      OR (SELECT term_end_date FROM finance.loans WHERE id = v_loan) IS DISTINCT FROM (t + interval '10 years')::date THEN
     RAISE EXCEPTION 'FAIL relative_dates [create_loan]: %', v_r; END IF;
 
-  -- Kreditrate ohne Datum: heute FEST in effective (der Write nach Mitternacht bucht denselben Tag)
+  -- Kreditrate ohne Datum: heute fest in effective (der Write nach Mitternacht bucht denselben Tag)
   v_r := core.fn_dry_run('finance.fn_book_loan_payment(jsonb)'::regprocedure, jsonb_build_object(
            'loan_id', v_loan, 'loan_account_id', v_lacc, 'debit_account_id', v_giro, 'payment_amount', 700));
   IF (v_r->>'ok')::boolean IS DISTINCT FROM true OR (v_r->'effective'->>'payment_date')::date IS DISTINCT FROM t THEN

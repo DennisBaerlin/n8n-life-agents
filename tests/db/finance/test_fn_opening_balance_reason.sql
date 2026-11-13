@@ -1,5 +1,5 @@
 -- ============================================================
--- test_fn_opening_balance_reason -- Regel "liegt im Startbetrag" (Befund 2026-11-03, eine Adresse je Konto + Datum)
+-- test_fn_opening_balance_reason -- Regel "liegt im Startbetrag" (eine Adresse je Konto + Datum)
 --   Vor dem Stichtag: gesetzt. Am Stichtag bei spaeterer Anlage (Endsaldo = Tagesende): gesetzt. Am Stichtag bei Anlage am
 --   selben Tag ("morgens"): NULL. Nach dem Stichtag und ohne Stichtag: NULL. Werte erfunden.
 -- ============================================================

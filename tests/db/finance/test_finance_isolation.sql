@@ -1,13 +1,13 @@
 -- tests/db/finance/test_finance_isolation.sql
--- Phase 3a (D10) — strukturelle Isolation des Finance-PAKETS + Core-Host-Lesefenster + RW-Roundtrip.
+-- Strukturelle Isolation des Finance-Pakets (D10) + Core-Host-Lesefenster + RW-Roundtrip.
 --
--- VF3 (die Kernaussage der Paket-Architektur): die ENGEN Finance-Paket-Rollen erreichen NUR das
--- Schema `finance`; agent.*/core.*-Tabellen scheitern PHYSISCH ("permission denied"). Core-Daten
--- nur ueber publizierte SECURITY-DEFINER-Read-fns. Die CORE-HOST-Leserolle core_ro liest dagegen
+-- VF3 (die Kernaussage der Paket-Architektur): die engen Finance-Paket-Rollen erreichen nur das
+-- Schema `finance`; agent.*/core.*-Tabellen scheitern physisch ("permission denied"). Core-Daten
+-- nur ueber publizierte SECURITY-DEFINER-Read-fns. Die Core-Host-Leserolle core_ro liest dagegen
 -- breit (agent+core+finance, read-only) — das vom Finance-Paket geoeffnete Lesefenster. Der RW-
--- Roundtrip beweist, dass die Isolation echte Writes NICHT bricht (Trigger/Sequenzen/ON CONFLICT).
+-- Roundtrip beweist, dass die Isolation echte Writes nicht bricht (Trigger/Sequenzen/ON CONFLICT).
 --
--- Voraussetzung: finance_rw/finance_ro/core_ro sind PERSISTENT provisioniert (bootstrap_test_db
+-- Voraussetzung: finance_rw/finance_ro/core_ro sind persistent provisioniert (bootstrap_test_db
 -- ruft core.fn_provision_package_roles('finance') + util_create_core_ro; Prod: apply_schema Phase 4).
 -- Laeuft als Superuser → SET LOCAL ROLE braucht keine Membership; BEGIN…ROLLBACK raeumt alles weg.
 -- Pattern: RAISE EXCEPTION 'FAIL …' = Test fehlgeschlagen (ON_ERROR_STOP -> Exit 1).
@@ -22,7 +22,7 @@ DECLARE
   v_have    BOOLEAN;
 BEGIN
   -- Die Paket-Rollen muessen existieren (sonst ist die Isolation nicht provisioniert -> harter FAIL,
-  -- nicht SKIP: dieser Test IST der 3a-Isolations-Nachweis).
+  -- nicht SKIP: dieser Test ist der Isolations-Nachweis).
   IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'finance_ro')
      OR NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'finance_rw')
      OR NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'core_ro') THEN
@@ -30,9 +30,9 @@ BEGIN
   END IF;
 
   -- ==========================================================
-  -- A) finance_ro: liest das EIGENE Schema, NICHTS anderes (VF3)
+  -- A) finance_ro: liest das eigene Schema, nichts anderes (VF3)
   -- ==========================================================
-  -- (A1) eigenes Schema lesen DARF
+  -- (A1) eigenes Schema lesen darf
   SET LOCAL ROLE finance_ro;
   PERFORM 1 FROM finance.accounts LIMIT 1;          -- kein Fehler erwartet (leer ok)
   RESET ROLE;
@@ -69,12 +69,12 @@ BEGIN
   RAISE NOTICE 'PASS isolation [finance_ro: eigenes Schema ja, agent/core nein, Read-fn ja, read-only]';
 
   -- ==========================================================
-  -- B) core_ro: Core-Host-Leserolle liest BREIT read-only (das geoeffnete Fenster)
+  -- B) core_ro: Core-Host-Leserolle liest breit read-only (das geoeffnete Fenster)
   -- ==========================================================
-  -- (B1) finance lesen DARF (Paket-Lesefenster, von fn_provision_package_roles geoeffnet)
+  -- (B1) finance lesen darf (Paket-Lesefenster, von fn_provision_package_roles geoeffnet)
   SET LOCAL ROLE core_ro;
   PERFORM 1 FROM finance.accounts LIMIT 1;
-  -- (B2) agent + core lesen DARF (eigene Host-Daten)
+  -- (B2) agent + core lesen darf (eigene Host-Daten)
   PERFORM 1 FROM agent.core_contexts LIMIT 1;
   PERFORM 1 FROM core.config LIMIT 1;
   RESET ROLE;
@@ -98,7 +98,7 @@ BEGIN
   RAISE NOTICE 'PASS isolation [core_ro: agent+core+finance read-only, core.backup_key nein]';
 
   -- ==========================================================
-  -- C) finance_rw: Write-Roundtrip beweist, dass die Isolation echte Writes NICHT bricht
+  -- C) finance_rw: Write-Roundtrip beweist, dass die Isolation echte Writes nicht bricht
   -- ==========================================================
   -- search_path wie die Prod-Rolle (fn_provision_package_roles pinnt sie; SET ROLE traegt GUCs nicht).
   SET LOCAL search_path = pg_catalog, finance, agent, core;

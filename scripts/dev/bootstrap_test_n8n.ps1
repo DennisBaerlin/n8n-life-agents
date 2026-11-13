@@ -2,30 +2,30 @@
 # bootstrap_test_n8n.ps1 — ephemere, hermetische Test-n8n-Instanz fuer die Integrations-Tiers
 # (infra_test/n8n_test/orch_test/e2e_test/multiturn_test) — raus aus Prod, rein in Docker.
 #
-# Faehrt einen WEGWERF-Debian-12-Container mit ECHTEM systemd (jrei/systemd-debian:12) und fahrt
+# Faehrt einen Wegwerf-Debian-12-Container mit echtem systemd (jrei/systemd-debian:12) und fahrt
 # darin den byte-identischen Applier `provisioning/provision.sh --profile dev --unattended <env-file>`
-# (PostgreSQL + n8n in den Versionen aus provision.sh + Schema + Seeds + Owner-Bootstrap + Workflows/Credentials; KEIN Reverse Proxy —
-# der ist seit Install-UX-Phase 2 bring-your-own). Damit ist
+# (PostgreSQL + n8n in den Versionen aus provision.sh + Schema + Seeds + Owner-Bootstrap + Workflows/Credentials; kein Reverse Proxy —
+# der ist bring-your-own). Damit ist
 # das Test-Substrat dasselbe wie Prod (Debian 12 + derselbe provision.sh), nur der ephemere Host ist
 # ein Docker-Container statt eines Proxmox-LXC -> kein Drift, der bash-Kern bleibt unangetastet.
 #
-# WARUM systemd-in-Docker: provision.sh steuert alle Dienste ueber systemctl (PG/n8n als units),
-# daher MUSS der Container systemd als PID 1 fahren. Auf cgroup v2 (Docker Desktop/WSL2) genuegt
+# Warum systemd-in-Docker: provision.sh steuert alle Dienste ueber systemctl (PG/n8n als units),
+# daher muss der Container systemd als PID 1 fahren. Auf cgroup v2 (Docker Desktop/WSL2) genuegt
 #   --privileged --cgroupns=host -v /sys/fs/cgroup:/sys/fs/cgroup:rw
 # (verifiziert: systemctl is-system-running -> running). Kein .wslconfig-Eingriff noetig.
 #
-# WARUM die socat-Bruecke: n8n bindet im Container an 127.0.0.1:5678 (N8N_LISTEN_ADDRESS, fuer Prod
+# Warum die socat-Bruecke: n8n bindet im Container an 127.0.0.1:5678 (N8N_LISTEN_ADDRESS, fuer Prod
 # korrekt — der (bring-your-own) Reverse Proxy ist die oeffentliche Flaeche). Docker-Port-Publishing
-# erreicht einen an die Container-Loopback gebundenen Dienst NICHT (die Tiers brauchen aber die
-# REST-API). Loesung: eine TEST-ONLY socat-Bruecke (0.0.0.0:<bridge> -> 127.0.0.1:5678) im Container,
+# erreicht einen an die Container-Loopback gebundenen Dienst nicht (die Tiers brauchen aber die
+# REST-API). Loesung: eine test-only socat-Bruecke (0.0.0.0:<bridge> -> 127.0.0.1:5678) im Container,
 # auf den Host publiziert. Der provision.sh-Kern bleibt dadurch byte-identisch (keine Listener-Aenderung).
 #
-# WARUM TEST_HARNESS_HEADER=X-Test-Auth: die Harness-Webhooks nutzen httpHeaderAuth; alle Test-Skripte
+# Warum TEST_HARNESS_HEADER=X-Test-Auth: die Harness-Webhooks nutzen httpHeaderAuth; alle Test-Skripte
 # senden den Header `X-Test-Auth`. inject_credentials.sh defaultet auf `x-harness-secret` -> ohne den
 # Override wuerde die Credential mit falschem Header-Namen angelegt -> infra_test bekaeme 403.
 #
 # Verbindungswerte (URL + frisch geminteter N8N_API_KEY) landen in .local/n8ntest_state.<container>.json; die
-# Tier-Skripte lesen sie ueber scripts/dev/test_n8n_state.ps1 (Prod-.env-Keys werden nicht mehr gelesen).
+# Tier-Skripte lesen sie ueber scripts/dev/test_n8n_state.ps1 (Prod-.env-Keys werden nie gelesen).
 #
 # Usage:
 #   .\scripts\dev\bootstrap_test_n8n.ps1            # Container hoch + provision.sh (idempotent)
@@ -38,34 +38,35 @@
 #   .\scripts\dev\bootstrap_test_n8n.ps1 -Reset -Cold            # Installer von null (nacktes Debian, ohne Basis-Image)
 #   .\scripts\dev\bootstrap_test_n8n.ps1 -RebuildBase             # Basis-Image frisch bauen (neue Debian-/PG-/Node-Minors; impliziert -Reset)
 #
-# BASIS-IMAGE (Schnellpfad, Default): ein neuer Container startet aus dem lokalen Image lifeagents-substrate-base, in dem
+# Basis-Image (Schnellpfad, Default): ein neuer Container startet aus dem lokalen Image lifeagents-substrate-base, in dem
 # Basis-Pakete, PostgreSQL (Cluster UTF-8), Node und n8n in den Pins aus provision.sh schon liegen (scripts/dev/
-# substrate-image/: Dockerfile + build_base.sh, die DIESELBEN provisioning/lib-Funktionen sourcen). provision.sh erkennt
-# sie als vorhanden und faehrt nur Schema/Owner/Credentials/Workflows (gemessen 2026-10-22: -Reset 7:21 -> 3:35 Min;
+# substrate-image/: Dockerfile + build_base.sh, die dieselben provisioning/lib-Funktionen sourcen). provision.sh erkennt
+# sie als vorhanden und faehrt nur Schema/Owner/Credentials/Workflows (gemessen: -Reset 7:21 -> 3:35 Min;
 # beschreibbare Schicht je Container 3,9 GB -> 0,2 GB, n8n liegt einmal im Image). Tag = Pins + Hash ueber die
 # Build-Eingaben (Get-SubstrateBaseSpec) -> jede inhaltliche Aenderung baut automatisch neu (einmalig ~10 Min, Named
 # Mutex gegen Doppel-Bauten paralleler Sessions); nach einem Bau bleibt neben dem aktuellen das juengste weitere
 # Basis-Image (paralleler Worktree), aeltere ungenutzte werden geloescht. Der jrei-Stand wird nur per
 # -RebuildBase aufgefrischt (Hinweis ab 30 Tagen).
-# KALTER PFAD: -Cold und -Version laufen auf dem nackten $Image (Installer von null, Owner-Regel „Installer immer
+# Kalter Pfad: -Cold und -Version laufen auf dem nackten $Image (Installer von null, Owner-Regel „Installer immer
 # getestet"); CI genericity.yml faehrt ihn bei jeder provisioning/-Aenderung. Aendert der Branch den Install-Kern
 # (Dateiliste: Show-InstallCoreHint), weist der Schnellpfad auf `-Reset -Cold` vor dem Push hin.
 #
-# PARALLEL-LIMIT + AUFRAEUMEN (RAM, 16-GB-Host): ein neues Substrat startet erst, wenn weniger als
-# $env:N8NTEST_MAX_PARALLEL (Default 2) andere laufen (wartet bis $env:N8NTEST_WAIT_MIN = 15 Min). RESERVIERUNG: Die Leitung
+# Parallel-Limit + Aufraeumen (RAM, 16-GB-Host): ein neues Substrat startet erst, wenn weniger als
+# $env:N8NTEST_MAX_PARALLEL (Default 2) andere laufen (wartet bis $env:N8NTEST_WAIT_MIN = 15 Min). Reservierung: Die Leitung
 # sagt einen Platz einer wartenden Session mit scripts/reserve_substrate_slot.ps1 zu; bis zum Start (max. 60 Min) zaehlt er wie ein
-# laufendes Substrat fuer alle ANDEREN Container, der reservierte darf starten und loest sie damit ein. Jedes Substrat
+# laufendes Substrat fuer alle anderen Container, der reservierte darf starten und loest sie damit ein. Jedes Substrat
 # traegt die Labels lifeagents.substrate/lifeagents.worktree; der SessionEnd-Hook .claude/hooks/stop_own_substrate.ps1
-# raeumt beim Session-Ende das des eigenen WORKTREES ab, nie im geteilten Haupt-Checkout (dort -Down selbst; Opt-out: $env:LIFEAGENTS_KEEP_SUBSTRATE=1).
+# raeumt beim Session-Ende das des eigenen Worktrees ab, nie im geteilten Haupt-Checkout (dort -Down selbst; Opt-out: $env:LIFEAGENTS_KEEP_SUBSTRATE=1).
 #
-# RELEASE-PIN (-Version <tag>|latest): statt provision.sh direkt faehrt der Bootstrap-Launcher
+# Release-Pin (-Version <tag>|latest): statt provision.sh direkt faehrt der Bootstrap-Launcher
 # install.sh den SHA256-verifizierten, anonymen Bezug des getaggten Releases aus dem oeffentlichen Repo und
-# exec't den GEPINNTEN provision.sh -> testet den Launcher end-to-end (kein Token). Sinnvoll mit -Reset (frische
+# exec't den gepinnten provision.sh -> testet den Launcher end-to-end (kein Token). Sinnvoll mit -Reset (frische
 # Instanz aus dem Tag-Asset).
 #
-# Secrets aus dem .env-Test-Block (gitignored): TEST_HARNESS_SECRET ist PFLICHT (Harness-Auth);
+# Secrets aus dem .env-Test-Block (gitignored): TEST_HARNESS_SECRET ist Pflicht (Harness-Auth);
 # Owner/PG werden generiert, LLM-/Telegram-Keys sind optional (fehlend -> Credential uebersprungen).
 # Vorbedingung: Docker (Desktop) installiert + Daemon laeuft.
+# Exit-Code: 0 = Substrat bereit; jeder Fehler wirft ($ErrorActionPreference = 'Stop') und bricht das Skript ab (Exit ungleich 0).
 param(
     [switch]$Reset,
     [switch]$Down,
@@ -87,15 +88,15 @@ $RepoRoot = git -C $PSScriptRoot rev-parse --show-toplevel
 # Override $env:N8NTEST_CONTAINER (+ $env:N8NTEST_PORT): ein zweiter Git-Worktree faehrt sein eigenes Substrat parallel,
 # statt das geteilte per -Reset abzureissen (die Tier-Skripte lesen den Namen aus dem State-File des Worktrees).
 $Container  = if ($env:N8NTEST_CONTAINER) { $env:N8NTEST_CONTAINER } else { 'lifeagents-n8ntest' }
-# $Image = das nackte Image: kalter Pfad (-Cold/-Version) UND Grundlage des Basis-Images. Dieselbe Referenz wie CI
+# $Image = das nackte Image: kalter Pfad (-Cold/-Version) und Grundlage des Basis-Images. Dieselbe Referenz wie CI
 # genericity.yml (Tag, nicht Digest -> kein CI<->Dev-Drift); den Digest loest erst der Basis-Bau auf (Cache-Key).
 $Image      = 'jrei/systemd-debian:12'
 $BaseRepo   = 'lifeagents-substrate-base'
 $UseBase    = -not ($Cold -or $Version)
-$BridgePort = 5680                       # socat-Listener IM Container (0.0.0.0) -> 127.0.0.1:5678
+$BridgePort = 5680                       # socat-Listener im Container (0.0.0.0) -> 127.0.0.1:5678
 $HostPort   = if ($env:N8NTEST_PORT) { $env:N8NTEST_PORT } else { '5680' }
 $N8nUrl     = "http://127.0.0.1:$HostPort"
-. "$PSScriptRoot\test_n8n_state.ps1"     # Get-TestN8nStateFile: Zustandsdatei JE Container (zweites Substrat ueberschreibt nichts)
+. "$PSScriptRoot\test_n8n_state.ps1"     # Get-TestN8nStateFile: Zustandsdatei je Container (zweites Substrat ueberschreibt nichts)
 $StateFile  = Get-TestN8nStateFile -Container $Container
 . "$PSScriptRoot\..\lib\substrate_reservations.ps1"   # Reservierung von Substrat-Plaetzen (Wait-SubstrateSlot)
 $ContainerRoot = '/opt/n8n-life-agents'   # provisioning/ + packages/ als Geschwister (REPO_ROOT)
@@ -144,8 +145,8 @@ function Get-ContainerId {
 }
 
 # Wait-SubstrateSlot — Parallel-Limit fuer n8n-Substrate (je 1-1,5 GB RAM; bei 16 GB Host + mehreren Sessions
-# lagert Windows sonst aus und ALLE Tests werden langsam). Zaehlt laufende Substrate (Container-Label
-# lifeagents.substrate, vom Basis-Image geerbtes Label lifeagents.substrate-base ODER nacktes $Image -> auch
+# lagert Windows sonst aus und alle Tests werden langsam). Zaehlt laufende Substrate (Container-Label
+# lifeagents.substrate, vom Basis-Image geerbtes Label lifeagents.substrate-base oder nacktes $Image -> auch
 # Alt-Container ohne Label; kein ancestor= auf das Basis-Image: BuildKit setzt dafuer keine verlaesslichen
 # Eltern-Verweise) ausser dem eigenen, dazu gueltige Reservierungen fuer andere Container (scripts/lib/substrate_reservations.ps1);
 # ab $env:N8NTEST_MAX_PARALLEL (Default 2)
@@ -186,10 +187,10 @@ function Get-SubstratePins {
 }
 
 # Get-SubstrateBaseSpec — Build-Kontext in ein Temp-Verzeichnis stagen (Dockerfile + build_base.sh + die gesourcten
-# provisioning/lib-Dateien) und den Tag ableiten: Pins + SHA256 ueber alles, was den Image-INHALT bestimmt.
+# provisioning/lib-Dateien) und den Tag ableiten: Pins + SHA256 ueber alles, was den Image-Inhalt bestimmt.
 # common.sh zaehlt nur mit den Helfern, die der Bau aufruft ($BaseCommonHelpers) — der Rest (ui_*/gum/env) wuerde
 # sonst bei jeder Install-UX-Aenderung einen ~10-Min-Neubau ausloesen. Ruft build_base.sh (bzw. eine der drei
-# Install-Libs) einen weiteren common.sh-Helfer, gehoert er in diese Liste. Der jrei-Digest steht NICHT im Tag (er
+# Install-Libs) einen weiteren common.sh-Helfer, gehoert er in diese Liste. Der jrei-Digest steht nicht im Tag (er
 # kommt als Label ans Image): ein lokal weggeraeumtes/neu gezogenes $Image erzwingt keinen Neubau, aufgefrischt
 # wird bewusst per -RebuildBase.
 $BaseCommonHelpers = @('need_cmd', 'write_if_changed', 'add_apt_key', 'add_apt_source', 'apt_update_once', 'force_apt_update', 'apt_install')
@@ -206,7 +207,7 @@ function Get-SubstrateBaseSpec {
         $files["lib/$f"] = Join-Path $RepoRoot "provisioning\lib\$f"
     }
     # reach.sh/reach_cli.sh (Weg nach aussen) sourct common.sh ebenfalls; der Bau ruft keine ihrer Funktionen ->
-    # nur mitkopieren, NICHT in den Tag (sonst loeste jede Aenderung am Rand einen ~10-Min-Neubau aus).
+    # nur mitkopieren, nicht in den Tag (sonst loeste jede Aenderung am Rand einen ~10-Min-Neubau aus).
     foreach ($f in 'reach.sh', 'reach_cli.sh') { Copy-Item (Join-Path $RepoRoot "provisioning\lib\$f") (Join-Path $dir "lib\$f") }
     $buf = New-Object System.IO.MemoryStream
     foreach ($rel in ($files.Keys | Sort-Object)) {
@@ -336,7 +337,7 @@ function Initialize-SubstrateBaseImage {
     }
 }
 
-# Remove-StaleSubstrateBaseImages — nach einem Bau UND erst nach dem Start des neuen Containers (vorher haelt der
+# Remove-StaleSubstrateBaseImages — nach einem Bau und erst nach dem Start des neuen Containers (vorher haelt der
 # verworfene Container sein altes Image noch fest): neben $Keep bleibt das juengste weitere Basis-Image, aeltere weg.
 # `docker rmi` ohne -f verweigert noch benutzte (fremde Substrate) -> still uebersprungen. Danach namenlose Vorgaenger
 # (-RebuildBase mit gleichem Tag nimmt dem alten Image den Namen); prune entfernt ebenfalls nur ungenutzte.
@@ -420,7 +421,7 @@ if (-not (Get-ContainerId)) {
     if ($UseBase -and (Invoke-Native docker @('image', 'inspect', $RunImage)).Code -ne 0) { $RunImage = Initialize-SubstrateBaseImage }
     Write-Host "Starte $RunImage als $Container (systemd, 127.0.0.1:$HostPort -> Container:$BridgePort) ..."
     # Labels: lifeagents.substrate markiert ein n8n-Test-Substrat (Parallel-Limit), lifeagents.worktree den
-    # besitzenden Checkout -> der SessionEnd-Hook (.claude/hooks/stop_own_substrate.ps1) raeumt nur DIESES ab.
+    # besitzenden Checkout -> der SessionEnd-Hook (.claude/hooks/stop_own_substrate.ps1) raeumt nur dieses ab.
     # --pull never beim Basis-Image: es existiert nur lokal (sonst ein irrefuehrender Docker-Hub-Fehler).
     $pullArg = if ($UseBase) { @('--pull','never') } else { @() }
     $r = Invoke-Native docker (@('run','-d','--name',$Container) + $pullArg + @(
@@ -449,9 +450,9 @@ for ($i = 0; $i -lt 60; $i++) {
 }
 if (-not $sysd) { throw "systemd im Container $Container wurde nicht bereit (Timeout). Letzter Status: $state" }
 
-# Systemsprache wie die Proxmox-Debian-Vorlage (LANG="C"). postgresql-common legt den Cluster mit der SYSTEM-Locale
+# Systemsprache wie die Proxmox-Debian-Vorlage (LANG="C"). postgresql-common legt den Cluster mit der System-Locale
 # aus /etc/default/locale an (maintscripts-functions::set_system_locale), nicht mit der Sitzung; das jrei-Image hat
-# die Datei leer -> Fallback C.UTF-8 verdeckte, dass der Installer ohne UTF-8-Zwang eine SQL_ASCII-DB anlegte (v0.4.0).
+# die Datei leer -> Fallback C.UTF-8 verdeckte, dass der Installer ohne UTF-8-Zwang eine SQL_ASCII-DB anlegte.
 # Das Substrat faehrt deshalb bewusst den schaerferen Fall.
 # \042 statt " im Argument: PS 5.1 reicht eingebettete doppelte Anfuehrungszeichen nicht escaped an native Programme weiter.
 $r = Invoke-Native docker @('exec',$Container,'sh','-c','printf ''LANG=\042C\042\n'' > /etc/default/locale')
@@ -478,8 +479,7 @@ $envMap = [ordered]@{
     'TEST_OWNER_BIRTH_DATE'       = 'OWNER_BIRTH_DATE'
     'TEST_OWNER_LANGUAGE'         = 'OWNER_LANGUAGE'
 }
-# Paket-Secret-Keys MANIFEST-GETRIEBEN (paperless-WS-0 Naht 3, loest die statischen career-Zeilen ab —
-# das zweite Paket mit credentials-Block kam dazu): jedes packages/<pkg>/manifest.json
+# Paket-Secret-Keys manifest-getrieben: jedes packages/<pkg>/manifest.json
 # deklariert seine Fremd-API-Creds im `credentials`-Block (§3.8, env[].field = der Kern-Env-Name);
 # das Substrat reicht je Feld TEST_<field> -> <field> als Prozess-Env (der Stage-4-Wizard skippt ohne
 # TTY, _inject_manifest_credentials liest env-override-first). doc_lint 7b prueft die abgeleiteten
@@ -506,21 +506,21 @@ foreach ($k in $envMap.Keys) {
     $val = Get-EnvValue $k
     if ($val) { $envLines.Add("$($envMap[$k])=$(ConvertTo-ShellQuote $val)") }
 }
-# Harness-Header-Name fix auf das, was ALLE Test-Skripte senden (sonst 403 — s. Kopf).
+# Harness-Header-Name fix auf das, was alle Test-Skripte senden (sonst 403 — s. Kopf).
 $envLines.Add("TEST_HARNESS_HEADER=$(ConvertTo-ShellQuote 'X-Test-Auth')")
-# -HitlChatApproval: Bestaetigungs-Knoepfe im Chat (callback_data) ERZWINGEN — das Substrat hat keine echte Domain, die
+# -HitlChatApproval: Bestaetigungs-Knoepfe im Chat (callback_data) erzwingen — das Substrat hat keine echte Domain, die
 # Selbst-Probe in deploy_workflows.sh (_hitl_chat_approval) bliebe sonst immer bei Link-Knoepfen. Nur fuer
-# hitl_gate_test erkennt den Modus selbst; Standard bleibt der Prod-gleiche Weg ohne Domain (Link-Knoepfe).
+# Chat-Knopf-Tests; hitl_gate_test erkennt den Modus selbst; Standard bleibt der Prod-gleiche Weg ohne Domain (Link-Knoepfe).
 $envLines.Add("LIFEAGENTS_HITL_CHAT_APPROVAL=$(if ($HitlChatApproval) { 'true' } else { 'false' })")
 # -FullDeploy: Not-Schalter von deploy_workflows.sh (sonst spielt es nur neue/geaenderte Workflows ein).
 $envLines.Add("LIFEAGENTS_DEPLOY_FULL=$(if ($FullDeploy) { '1' } else { '0' })")
-# Cache-Keep-Alive des LLM-Gateways AUS: ein stundenlang laufendes Substrat wuerde den Cache sonst bis zu 24 h auf dem
+# Cache-Keep-Alive des LLM-Gateways aus: ein stundenlang laufendes Substrat wuerde den Cache sonst bis zu 24 h auf dem
 # Entwickler-Schluessel anstupsen (kostet ohne Nutzen). Die Mechanik prueft llm_gateway_test (k) mit eigener Unit.
 $envLines.Add('LLM_GATEWAY_KEEPALIVE_HOURS=0')
 # Probelauf "parallele Werkzeug-Aufrufe": $env:LLM_GATEWAY_SERIAL_TOOLS=0 vor -Reset schaltet das Erzwingen "ein Werkzeug je
 # Antwort" im Gateway des Substrats ab (nur 0 oder 1; ungesetzt = Standard an).
 if ($env:LLM_GATEWAY_SERIAL_TOOLS -in @('0', '1')) { $envLines.Add("LLM_GATEWAY_SERIAL_TOOLS=$($env:LLM_GATEWAY_SERIAL_TOOLS)") }
-# Bot-Profilbild AUS: das Substrat installiert mit dem echten TEST_TELEGRAM_BOT_TOKEN, ein -Reset wuerde dem Test-Bot sonst
+# Bot-Profilbild aus: das Substrat installiert mit dem echten TEST_TELEGRAM_BOT_TOKEN, ein -Reset wuerde dem Test-Bot sonst
 # ein Bild setzen. Die Mechanik prueft bot_profile_photo_test gegen den Mock.
 $envLines.Add('BOT_PROFILE_PHOTO=0')
 # Webhook-Uebernahme ausdruecklich: der Test-Bot ist vom vorigen Substrat (oder einem parallelen) noch verbunden; ohne den
@@ -551,10 +551,10 @@ try {   # finally: die lokale Secret-Kopie verschwindet auch, wenn ein Schritt d
     if ($r.Code -ne 0) { throw "mkdir im Container fehlgeschlagen: $($r.Output -join "`n")" }
     foreach ($d in 'provisioning','packages') {
         if (-not (Test-Path (Join-Path $RepoRoot $d))) { continue }   # tolerant, Muster install_cli
-        # Vorher LEEREN: `docker cp` MERGT in ein bestehendes Verzeichnis -> ohne -Reset blieben aus dem Baum
+        # Vorher leeren: `docker cp` mergt in ein bestehendes Verzeichnis -> ohne -Reset blieben aus dem Baum
         # geloeschte/umbenannte Dateien (z. B. eine stillgelegte Workflow-JSON) im Staging liegen, wuerden mit-
         # importiert und verfaelschten jeden Update-Test (Prod: lifeagents update entpackt jede Version in einen
-        # FRISCHEN Ordner). Real getroffen Phase A: eine alte + eine umbenannte JSON mit derselben id.
+        # frischen Ordner); Symptom: zwei JSONs mit derselben id.
         $r = Invoke-Native docker @('exec',$Container,'rm','-rf',"$ContainerRoot/$d")
         if ($r.Code -ne 0) { throw "Leeren von $ContainerRoot/$d im Container fehlgeschlagen: $($r.Output -join "`n")" }
         $r = Invoke-Native docker @('cp',(Join-Path $RepoRoot $d),"${Container}:$ContainerRoot/")
@@ -568,16 +568,16 @@ finally {
 }
 
 # --- Applier/Launcher im Container fahren (byte-identisch zu Prod) -----------
-# Ohne -Version: der Applier provision.sh DIREKT auf dem cp'ten lokalen Baum (kein Fetch/Token) — der
+# Ohne -Version: der Applier provision.sh direkt auf dem cp'ten lokalen Baum (kein Fetch/Token) — der
 # Dev-Default. Mit -Version: der Bootstrap-Launcher install.sh laedt das getaggte Release anonym und
-# SHA256-verifiziert, entpackt es und exec't den gepinnten provision.sh (--version VOR den Profil-Flags,
+# SHA256-verifiziert, entpackt es und exec't den gepinnten provision.sh (--version vor den Profil-Flags,
 # die als Passthrough durchlaufen) -> testet den Launcher end-to-end.
-# --unattended <env-file>: provision.sh sourct die Env-Datei SELBST (einzige Eingabe-Quelle) — kein
+# --unattended <env-file>: provision.sh sourct die Env-Datei selbst (einzige Eingabe-Quelle) — kein
 # manuelles Sourcen im Wrapper (auch nicht auf dem -Version-Pfad: install.sh liest nichts aus ihr).
 if ($Version) {
-    # --packages all ab v0.3.0 (erstes Release mit Install-UX-Phase 4 = Standard nur Core; ohne das Flag fehlten
+    # --packages all erst ab v0.3.0 (dort installiert der Standard nur den Core; ohne das Flag fehlten
     # alle Pakete und die Tiers liefen gegen ein nacktes Grundsystem). v0.1.0/v0.2.0 kennen das Flag nicht und
-    # installieren ohnehin alles. 'latest' ist inzwischen >= v0.3.0.
+    # installieren ohnehin alles. 'latest' gilt als neu genug.
     $pkgFlag = ''
     if ($Version -eq 'latest' -or ($Version -match '^v(\d+)\.(\d+)\.(\d+)$' -and ([version]"$($Matches[1]).$($Matches[2]).$($Matches[3])" -ge [version]'0.3.0'))) {
         $pkgFlag = ' --packages all'
@@ -585,7 +585,7 @@ if ($Version) {
     $entryScript  = "$ContainerRoot/provisioning/install.sh"
     $installFlags = "--version $Version --profile dev$pkgFlag --unattended $EnvFileInC"
 } else {
-    # --packages all: seit Install-UX-Phase 4 installiert provision.sh standardmaessig NUR den Core; die
+    # --packages all: provision.sh installiert standardmaessig nur den Core; die
     # Integrations-Tiers brauchen alle Pakete.
     $entryScript  = "$ContainerRoot/provisioning/provision.sh"
     $installFlags = "--profile dev --packages all --unattended $EnvFileInC"
@@ -611,7 +611,7 @@ $r = Invoke-Native docker @('exec',$Container,'runuser','-u','postgres','--','ps
 $nonUtf8 = (($r.Output -join '').Trim())
 if ($r.Code -ne 0) { throw "Kodierungs-Pruefung der Container-DB fehlgeschlagen: $($r.Output -join "`n")" }
 if ($nonUtf8) { throw "Nicht-UTF8-Datenbank(en) im Substrat: $nonUtf8 — der Installer muss UTF-8 erzwingen." }
-# (Kein Pairing-Code mehr aus der Ausgabe: seit Install-UX-Phase 3 armiert provision.sh ihn erst im
+# (Kein Pairing-Code aus der Ausgabe: provision.sh armiert ihn erst im
 #  gefuehrten, interaktiven Ende — unattended nie. Die Tiers pairen den Owner deterministisch in der
 #  Container-DB; ein manueller Test pairt per `lifeagents household pair-owner` im Container.)
 
@@ -623,7 +623,7 @@ if ((($r.Output -join '').Trim()) -ne 'yes') {
     if ($r.Code -ne 0) { throw "socat-Installation fehlgeschlagen: $($r.Output -join "`n")" }
 }
 # socat-Bruecke als transiente systemd-unit (zuverlaessig pruef-/idempotent; das jrei-Base-Image hat
-# WEDER pgrep/ps NOCH ss -> eine systemd-unit ist die robuste Variante: is-active prueft sauber, der
+# weder pgrep/ps noch ss -> eine systemd-unit ist die robuste Variante: is-active prueft sauber, der
 # Prozess wird verwaltet, --collect raeumt eine beendete unit selbst weg). systemd ist hier PID 1.
 $r = Invoke-Native docker @('exec',$Container,'systemctl','is-active','--quiet','n8ntest-bridge')
 if ($r.Code -ne 0) {
@@ -634,7 +634,7 @@ if ($r.Code -ne 0) {
     Start-Sleep -Seconds 1
 }
 
-# --- N8N_API_KEY aus dem Container extrahieren (Owner-Bootstrap mintet ihn -> /etc/lifeagents/core.env, Phase 5) ---
+# --- N8N_API_KEY aus dem Container extrahieren (Owner-Bootstrap mintet ihn -> /etc/lifeagents/core.env) ---
 $r = Invoke-Native docker @('exec',$Container,'sh','-c',"grep -E '^N8N_API_KEY=' /etc/lifeagents/core.env 2>/dev/null | head -n1 | cut -d= -f2-")
 $apiKey = (($r.Output -join '').Trim())
 if (-not $apiKey) {

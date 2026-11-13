@@ -1,7 +1,7 @@
 ﻿#Requires -Version 5.1
 # Reserviert einen n8n-Test-Substrat-Platz fuer einen Container, den eine wartende Session noch starten wird (Leitung).
 # Bis zum Start (oder 60 Min Frist, Begruendung in scripts/lib/substrate_reservations.ps1) zaehlt die Reservierung in
-# Wait-SubstrateSlot (scripts/dev/bootstrap_test_n8n.ps1) wie ein laufendes Substrat -- fuer jeden ANDEREN Container. Startet der
+# Wait-SubstrateSlot (scripts/dev/bootstrap_test_n8n.ps1) wie ein laufendes Substrat -- fuer jeden anderen Container. Startet der
 # reservierte Container, loest der Bootstrap die Reservierung selbst ein. Liste: gitignored im Haupt-Checkout
 # (.claude/substrate_reservations.txt).
 #

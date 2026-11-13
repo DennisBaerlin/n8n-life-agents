@@ -2,17 +2,17 @@
 # Dot-gesourct von build.ps1 (Helper + Script-Scope-Creds im Parent-Scope).
 
 # --- agent.tool_expert_panel (CROSS-AGENT, read-only, kein HITL) ------------
-# Der aufrufende Advisor stellt das Dossier EINMAL zusammen (alle Personas sehen
+# Der aufrufende Advisor stellt das Dossier einmal zusammen (alle Personas sehen
 # identische Fakten) und waehlt die Personas selbst. Die Personas werden per Index
-# auf ZWEI Modell-Lanes verteilt (gerade -> Lane A, ungerade -> Lane B). Die Lane-Modelle
-# kommen zur LAUFZEIT aus core.config (model.panel_a / model.panel_b, Load model config), Default Claude Sonnet + Claude
-# Opus = zwei Modell-Stufen -> zwei unabhaengige Meinungen. Rueckgabe: Array {role, model, opinion} — KEIN Synthesizer im Tool,
+# auf zwei Modell-Lanes verteilt (gerade -> Lane A, ungerade -> Lane B). Die Lane-Modelle
+# kommen zur Laufzeit aus core.config (model.panel_a / model.panel_b, Load model config), Default Claude Sonnet + Claude
+# Opus = zwei Modell-Stufen -> zwei unabhaengige Meinungen. Rueckgabe: Array {role, model, opinion}; kein Synthesizer im Tool,
 # der (staerkere) Advisor synthetisiert selbst und benennt Dissens explizit.
-# Lanes laufen SEQUENTIELL (kein Merge-Node-Risiko); jede Lane onError continue ->
+# Lanes laufen sequentiell (kein Merge-Node-Risiko); jede Lane onError continue ->
 # faellt eine aus, liefert die andere trotzdem.
 function Build-ExpertPanel {
     # Lane-Modelle zur Laufzeit (model.panel_a / model.panel_b), Default Claude Sonnet + Claude Opus (zwei Modell-Stufen =
-    # zwei unabhaengige Meinungen; Owner-Entscheid 2026-10: ohne Google). Wechsel: lifeagents config set model panel_a <key>.
+    # zwei unabhaengige Meinungen). Wechsel: lifeagents config set model panel_a <key>.
     $trig = Build-Trigger @('question', 'dossier', 'personas')
 
     # Personas parsen + auf Lanes verteilen + Lane-Prompts bauen (deterministisch, kein LLM)
@@ -57,7 +57,7 @@ return [{ json: { ok: true, prompt_a: mkPrompt(laneA), prompt_b: mkPrompt(laneB)
 
     $errInput = Build-ToolError 'Invalid input' @(660, -200) "={{ `$('Prepare lanes').item.json.error }}"
 
-    # Beide Lane-Modelle bei JEDEM Lauf aus core.config (Lane-Prompts lesen per Namen aus Prepare lanes -> der
+    # Beide Lane-Modelle bei jedem Lauf aus core.config (Lane-Prompts lesen per Namen aus Prepare lanes -> der
     # eingeschobene Knoten aendert nichts an ihren Daten).
     $loadModel = New-ModelConfigNode -Position @(550, 160) -Keys @( @('core', 'panel_a'), @('core', 'panel_b') )
 
@@ -77,7 +77,7 @@ return [{ json: { ok: true, prompt_a: mkPrompt(laneA), prompt_b: mkPrompt(laneB)
         maxTries = 2
         waitBetweenTries = 2000
     }
-    # Lane-A-Umschalter (je Claude-Modell ein Knoten). -NamePrefix: zwei Umschalter in EINEM Workflow brauchen
+    # Lane-A-Umschalter (je Claude-Modell ein Knoten). -NamePrefix: zwei Umschalter in einem Workflow brauchen
     # eindeutige Knoten-Namen (n8n verdrahtet ueber den Namen). .first(): Config-Knoten hat genau eine Zeile.
     $selA = New-ModelSelectorBundle -ConfigField 'model.panel_a' -ConfigNodeName 'Load model config' -AgentNodeName 'Panel lane A' `
         -NamePrefix 'Lane A ' -FirstConfigItem -SelectorPos @(660, 220) -ModelRowPos @(500, 400) -Effort high

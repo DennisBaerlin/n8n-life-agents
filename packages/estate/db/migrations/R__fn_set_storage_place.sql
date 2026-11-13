@@ -1,14 +1,14 @@
 -- ============================================================
--- estate.fn_set_storage_place (ATOMIC WRITE — WS-2, partielles UPDATE)
+-- estate.fn_set_storage_place (ATOMIC WRITE — partielles UPDATE)
 --   Aendert eine bestehende Fundstelle ("nicht gesendet = unveraendert"). Fundstellen sind
---   FK-Ziel von estate.directives (RESTRICT) — es gibt bewusst KEIN delete_storage_place in
---   WS-2; eine obsolete Fundstelle wird hier umbenannt/umgewidmet. access_hint bleibt ein
---   Fundort-Verweis OHNE Codes/PINs (Owner-Entscheid 2). Die ID loest das TOOL vor dem Gate
---   via estate.fn_resolve_storage_place auf; not-found hier = echte Ausnahme (RAISE).
+--   FK-Ziel von estate.directives (RESTRICT) — es gibt bewusst kein delete_storage_place;
+--   eine obsolete Fundstelle wird hier umbenannt/umgewidmet. access_hint bleibt ein
+--   Fundort-Verweis ohne Codes/PINs. Die ID loest das Tool vor dem Gate
+--   via estate.fn_resolve_storage_place auf; not-found hier = echte Ausnahme (RAISE 'Storage place <id> not found.').
 --   DB-Backstop: core.fn_check_write_permission('adults_only', chat_id) — Kind -> {ok:false}.
---   Eingabe jsonb: chat_id, storage_place_id, new_name, new_kind, location, access_hint, notes.
---   RUECKGABE: {ok:true, storage_place_id} | {ok:false, reason} (korrigierbar).
---   Anwenden via: db_apply.ps1 -File packages\estate\db\migrations\R__fn_set_storage_place.sql
+--   Eingabe jsonb: chat_id, storage_place_id (Pflicht), new_name, new_kind, location, access_hint, notes.
+--   Rueckgabe: {ok:true, storage_place_id} | {ok:false, reason} (korrigierbar); reasons: 'Write rejected (<perm>): …',
+--   'invalid new_kind …'.
 -- ============================================================
 CREATE OR REPLACE FUNCTION estate.fn_set_storage_place(p jsonb)
 RETURNS jsonb LANGUAGE plpgsql AS $$

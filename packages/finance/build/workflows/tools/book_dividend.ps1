@@ -1,10 +1,9 @@
 ﻿#Requires -Version 5.1
 # Dot-gesourct von build_finance_tools.ps1 (Helper + Script-Scope-Creds im Parent-Scope).
 
-# --- 1. tool_book_dividend (Playbook 5.5) ----------------
+# --- tool_book_dividend ---
 function Build-BookDividend {
-    # WS-B0: enge Paket-Schreibrolle (finance_rw, Least-Privilege D10) statt Owner-Cred.
-    # Dynamic-Scope: Build-Pg liest dieses $CRED_POSTGRES. Core-Tools nutzen die Owner-Cred.
+    # Enge Paket-Schreibrolle (finance_rw) statt Owner-Cred; Build-Pg liest $CRED_POSTGRES per Dynamic-Scope.
     $CRED_POSTGRES = $CRED_FINANCE_RW
     $trig = Build-Trigger @('isin','symbol','depot_name','amount','transaction_date')
 
@@ -17,14 +16,12 @@ function Build-BookDividend {
     $errDepot = Build-ToolError 'Depot ambiguous' @(660, 200) `
         "=Depot '{{ `$('Start').item.json.depot_name }}' resolves to {{ `$('Resolve Depot').item.json.hit_count }} matches. Candidates: {{ JSON.stringify(`$('Resolve Depot').item.json.candidates) }}. Ask the user which exact depot to use."
 
-    # WP-5: settlement_currency = Waehrung des Verrechnungskontos (dorthin fliesst die Dividende) fuer die
-    # waehrungs-korrekte Formatierung im HITL-Summary (Self-Join accounts: depot.settlement_account_id -> sa).
+    # settlement_currency = Waehrung des Verrechnungskontos (dorthin fliesst die Dividende) fuer die Formatierung im HITL-Summary.
     $getSettle = Build-Pg 'Get Settlement Account' @(660, 0) `
         "=SELECT d.settlement_account_id, sa.currency AS settlement_currency FROM finance.accounts d LEFT JOIN finance.accounts sa ON sa.id = d.settlement_account_id WHERE d.id = ((`$1::jsonb)->>'depot_id')::int;" `
         ([ordered]@{ depot_id = '$(''Resolve Depot'').item.json.id' })
 
-    # Die EINE Positionssuche der Tools (finance.fn_find_holding: ISIN ohne Gross-/Kleinschreibung, sonst Symbol), wie
-    # book_stock_sell/set_holding; Ausgabe auf id/found gemappt (Holding exists? bleibt unveraendert).
+    # Die eine Positionssuche der Tools (finance.fn_find_holding: ISIN ohne Gross-/Kleinschreibung, sonst Symbol); Ausgabe auf id/found gemappt.
     $resHolding = Build-Pg 'Resolve Holding' @(880, 0) `
         "=SELECT (r->>'holding_id')::int AS id, (r->>'ok')::boolean AS found FROM finance.fn_find_holding(`$1::jsonb) AS r;" `
         ([ordered]@{ depot_name = '$(''Start'').item.json.depot_name'; isin = '$(''Start'').item.json.isin'; symbol = '$(''Start'').item.json.symbol' })
@@ -34,8 +31,6 @@ function Build-BookDividend {
     $errHolding = Build-ToolError 'Holding missing' @(1320, 200) `
         "=No holding for '{{ `$('Start').item.json.isin || `$('Start').item.json.symbol }}' in depot '{{ `$('Start').item.json.depot_name }}'. Create a position first via tool_book_stock_buy."
 
-    # "DB ist das Gesetz": fn_book_dividend laeuft als Probelauf VOR der Karte (nicht-positiver Betrag -> {ok:false}
-    # ohne Karte); derselbe Param-Satz geht nach dem Gate in den echten Write.
     $wg = New-FnWriteGate -Fn 'finance.fn_book_dividend' -DryPos @(1320, 0) -WritePos @(2640, 0) `
         -WriteName 'Book dividend (atomic)' `
         -WriteSelect "(r->>'ok')::boolean AS ok, r->>'reason' AS reason, (r->>'transaction_id')::int AS transaction_id, (r->>'account_balance')::numeric AS account_balance" `
@@ -48,7 +43,6 @@ function Build-BookDividend {
         })
 
     # --- HITL approval gate (before the write) ---
-    # Strukturiertes Summary (Textkatalog): Keys + typisierte Rohwerte, das Gate rendert je Empfaenger-Sprache.
     # Betrag in der Verrechnungskonto-Waehrung (Get Settlement Account).
     $S = "`$('Start').item.json"
     $summary = New-HitlSummary -Pos @(1980, 0) -Title 'finance.hitl.book_dividend' -LinesExpr $wg.CardLinesExpr -Lines @(
@@ -66,8 +60,6 @@ function Build-BookDividend {
 
     $retCancelled = Build-ToolCancelled 'Return cancelled' @(2640, 200) 'the book_dividend action'
 
-    # Write via fn_book_dividend ($wg.Write): nicht-positiver Dividendenbetrag -> {ok:false} (ok/reason).
-    # Korrigierbare Ablehnung aus der fn -> weiche Rueckfrage (kein Owner-Alert).
     $ifWriteOk = Build-If 'Write ok?' @(2860, 0) "={{ `$json.ok }}" 'true' 'equals' 'boolean'
 
     $errWrite = Build-ToolError 'Dividend rejected' @(3080, 240) `

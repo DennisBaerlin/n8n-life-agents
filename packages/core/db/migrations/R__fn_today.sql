@@ -1,5 +1,6 @@
 -- ============================================================
--- fn_today (DIE EINE ADRESSE FUER "HEUTE")
+-- fn_today (READ-ONLY) — die eine Adresse fuer "heute"
+--   Eingabe: p_at timestamptz (optional). Rueckgabe: date.
 --   Kalendertag des Haushalts zu einem Zeitpunkt, Standard p_at = now(). Haushalts-Zeitzone = Sitzungs-Zeitzone:
 --   der Installer setzt sie je Datenbank (provisioning/lib/install_pg.sh apply_db_timezone, Standard Europe/Berlin),
 --   damit CURRENT_DATE / ::date in allen uebrigen SQL-Stellen denselben Tag liefern wie diese fn.

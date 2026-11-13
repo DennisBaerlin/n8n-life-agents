@@ -1,15 +1,15 @@
 # preflight.sh — fail-fast environment checks before any package is touched.
 # Sourced by provision.sh. Defines preflight(); does not run anything on source.
 
-# Freier Platz auf / — Bedarf haengt davon ab, was NOCH zu installieren ist (Install-UX-Phase 3: pauschal
+# Freier Platz auf / — Bedarf haengt davon ab, was noch zu installieren ist (eine Pauschale von
 # 3000 MB blockierte jedes `lifeagents update` auf einem 8-GB-Container, obwohl n8n laengst installiert
 # war). Reserve fuer Schema/Workflows/Logs + n8n (node_modules + npm-Peak), falls die Zielversion fehlt,
 # + PostgreSQL, falls das Paket fehlt. Ein n8n-Versionssprung verlangt bewusst wieder den vollen Bedarf
 # (genau dann laedt npm neu). Ein explizites PREFLIGHT_MIN_DISK_MB (Env) gewinnt als harte Vorgabe.
-# n8n-Bedarf (Befund: ein Update lief bei knappem Platz voll): das neue Paket belegt so viel
-# wie das installierte (2.45: 2,7 GB) PLUS den npm-Download-Cache (~1,1 GB) — das alte Paket liegt waehrend des Tauschs
+# n8n-Bedarf (ein Update lief sonst bei knappem Platz voll): das neue Paket belegt so viel
+# wie das installierte (2.45: 2,7 GB) plus den npm-Download-Cache (~1,1 GB) — das alte Paket liegt waehrend des Tauschs
 # als .n8n-XXXX daneben, steckt aber schon im belegten Platz. Daher: max(Pauschale, Groesse des installierten Pakets
-# + 10 %) + Cache. Der Preflight laeuft VOR upgrade_prepare -> zu wenig Platz bricht ab, solange n8n noch laeuft.
+# + 10 %) + Cache. Der Preflight laeuft vor upgrade_prepare -> zu wenig Platz bricht ab, solange n8n noch laeuft.
 PREFLIGHT_MIN_DISK_MB="${PREFLIGHT_MIN_DISK_MB:-}"
 PREFLIGHT_RESERVE_MB=500
 PREFLIGHT_N8N_MB=2900
@@ -40,7 +40,7 @@ _preflight_disk_need() {
   if ! { need_cmd n8n && [ "$(_upg_n8n_version)" = "${N8N_VERSION:-}" ]; }; then
     need=$((need + $(_preflight_n8n_mb) + PREFLIGHT_NPM_CACHE_MB))
   fi
-  # Jeder Versionswechsel (n8n, Node ODER PG-Minor) auf einer Bestands-Instanz: upgrade_guard.sh legt vorher eine
+  # Jeder Versionswechsel (n8n, Node oder PG-Minor) auf einer Bestands-Instanz: upgrade_guard.sh legt vorher eine
   # Sicherung der ganzen DB an. Obergrenze = DB-Groesse (der komprimierte Dump ist kleiner); die schon liegenden
   # Sicherungen stecken bereits im belegten Platz. Frische Hosts haben noch kein PG -> 0.
   if [ -n "$(_upg_changes)" ]; then
@@ -71,7 +71,7 @@ _preflight_backup_need_mb() {
 preflight() {
   log "Preflight ..."
   require_root
-  _upg_n8n_version >/dev/null   # n8n-Version EINMAL im Eltern-Prozess lesen (der CLI-Start dauert Sekunden) -> alle
+  _upg_n8n_version >/dev/null   # n8n-Version einmal im Eltern-Prozess lesen (der CLI-Start dauert Sekunden) -> alle
                                 # spaeteren $(…)-Aufrufe vor dem Tausch erben den Cache (upgrade_guard.sh)
 
   # OS: Debian (the only supported target — LXC base image).
@@ -127,7 +127,7 @@ preflight() {
     warn "Kein HTTPS zu deb.debian.org erreichbar — apt/npm-Downloads könnten scheitern."
   fi
 
-  # UTF-8-Gesetz VOR jedem Eingriff: eine bestehende Nicht-UTF8-App-DB bricht hier ab, bevor upgrade_prepare n8n
+  # UTF-8-Gesetz vor jedem Eingriff: eine bestehende Nicht-UTF8-App-DB bricht hier ab, bevor upgrade_prepare n8n
   # anhaelt (sonst bliebe der Bot nach einem abgebrochenen Update aus). Funktion: install_pg.sh.
   require_utf8_db
 

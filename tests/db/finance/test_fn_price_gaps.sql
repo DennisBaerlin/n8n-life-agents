@@ -1,5 +1,5 @@
 -- tests/db/finance/test_fn_price_gaps.sql
--- Kurs-Luecken-Erinnerung (2026-10-27): fn_price_gaps (Lueckenliste + Feed-Ausfall + Re-Arm behobener Luecken)
+-- Kurs-Luecken-Erinnerung: fn_price_gaps (Lueckenliste + Feed-Ausfall + Re-Arm behobener Luecken)
 -- und fn_price_gap_claim (Latch je Position, TTL 7 Tage, source 'finance:prices'). Prueft:
 --   (1) Lueckenliste enthaelt missing + stale, nicht ok; Referenzkurs = letzter Kurs, sonst Einstand;
 --   (2) claim: erste Meldung true, im TTL false, nach TTL-Ablauf wieder true;

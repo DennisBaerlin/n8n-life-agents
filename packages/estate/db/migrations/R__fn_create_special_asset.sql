@@ -1,14 +1,14 @@
 -- ============================================================
--- estate.fn_create_special_asset (ATOMIC WRITE — WS-2)
---   Legt einen NEUEN Sonderfall-Stub an (Owner-Entscheid 7: erkennen + ehrlich verweisen).
---   Geschlossene asset_type-Liste OHNE 'other' (jeder Typ mappt auf eine WS-3-Checklisten-
+-- estate.fn_create_special_asset (ATOMIC WRITE)
+--   Legt einen neuen Sonderfall-Stub an (erkennen + ehrlich verweisen).
+--   Geschlossene asset_type-Liste ohne 'other' (jeder Typ mappt auf eine Ereignisfall-Checklisten-
 --   Condition — ein offener Typ loeste still nichts aus; Tabellen-CHECK ist das Gesetz).
---   Dubletten-Backstop (Beschreibung) faehrt das TOOL vor dem Gate (fn_resolve_special_asset).
+--   Dubletten-Backstop (Beschreibung) faehrt das Tool vor dem Gate (fn_resolve_special_asset).
 --   DB-Backstop: core.fn_check_write_permission('adults_only', chat_id) — Kind -> {ok:false}.
 --   Eingabe jsonb: chat_id, owner_person_id (Slug, ''=Haushalt),
---     asset_type (vehicle|business_interest|firearm|pet), description, notes.
---   RUECKGABE: {ok:true, special_asset_id} | {ok:false, reason} (korrigierbar, kein RAISE).
---   Anwenden via: db_apply.ps1 -File packages\estate\db\migrations\R__fn_create_special_asset.sql
+--     asset_type (Pflicht: vehicle|business_interest|firearm|pet), description (Pflicht), notes.
+--   Rueckgabe: {ok:true, special_asset_id} | {ok:false, reason} (korrigierbar, kein RAISE); reasons: 'Write rejected
+--   (<perm>): …', 'description is required (non-empty).', 'invalid asset_type "<t>" — valid: …'.
 -- ============================================================
 CREATE OR REPLACE FUNCTION estate.fn_create_special_asset(p jsonb)
 RETURNS jsonb LANGUAGE plpgsql AS $$

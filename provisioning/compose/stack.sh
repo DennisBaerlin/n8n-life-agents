@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # stack.sh — Docker-Verbund von aussen anwerfen (Rechner-Seite): CI-Lauf (genericity.yml) und Vorlage fuer die Start-App.
-# Fuehrt nur die Schritte aus, die VOR dem master liegen; alles Weitere erledigt provision.sh IM master. Jeder
+# Fuehrt nur die Schritte aus, die vor dem master liegen; alles Weitere erledigt provision.sh im master. Jeder
 # Docker-Aufruf laeuft ueber lib/runtime.sh (eine Datei, Positivliste) mit festem Projekt.
 #
 # Usage (Variablen wie in compose.yml: LA_PROJECT, LA_EDGE_PORT, LA_WIZARD_PORT, LA_PG_SUPERPW, LA_MASTER_IMAGE):
@@ -10,9 +10,12 @@
 #   bash provisioning/compose/stack.sh ps                       Zustand der eigenen Container
 #   bash provisioning/compose/stack.sh uninstall [--delete-data]
 #                                                               Entfernen (Pruefliste Nr. 17): Container + Netze dieses Projekts;
-#                                                               mit --delete-data (die App fragt VORHER ausdruecklich) auch die
+#                                                               mit --delete-data (die App fragt vorher ausdruecklich) auch die
 #                                                               Daten-Volumes — jedes nur mit unserem Label. Images bleiben (die
 #                                                               App entfernt nur, was ihr Journal als selbst geladen fuehrt).
+# Voraussetzung: der Docker-Daemon antwortet (up/uninstall brechen sonst ab); up braucht die Compose-Variablen oben.
+# Exit: install = Exit des provision.sh-Laufs im master; Abbruch per die 1 (auch unbekannte uninstall-Option);
+# unbekanntes Verb 2.
 set -euo pipefail
 export LANG=C.UTF-8 LC_ALL=C.UTF-8
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

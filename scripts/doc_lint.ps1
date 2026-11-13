@@ -1,45 +1,42 @@
 ﻿#Requires -Version 5.1
-# Doku-Drift-Lint (AP4 des Repo-Audits 2026-06-10) -- hartes Gate als prek-Hook doc-lint (commit-stage).
+# Doku-Drift-Lint -- hartes Gate als prek-Hook doc-lint (commit-stage).
 #
-# Prinzip "Constraint > Appell": Appell-Regeln ("Counts nicht hart fuehren") sind nachweislich
-# 4x gedriftet; dieses Lint macht Drift deterministisch sichtbar. DESIGN-AUFLAGE: extraktions-
-# basiert, KEINE hand-gepflegten Namenslisten (sonst driftet das Lint selbst -- Beweis war der
-# tote Pfad-Regex '^scripts/build/tools/' in pre_push_check.ps1).
+# Constraint statt Appell: das Lint macht Drift deterministisch sichtbar. Extraktionsbasiert, keine
+# hand-gepflegten Namenslisten (sonst driftet das Lint selbst).
 #
-# Checks (Nummern eindeutig -- S5a-Hygiene, vorher war "6" doppelt vergeben; die Nummern sind
-# stabile IDs, KEINE Lesereihenfolge -- im Code liegt Block 6 historisch vor Block 5):
+# Checks (die Nummern sind stabile IDs, keine Lesereihenfolge; im Code liegt Block 6 vor Block 5):
 #   1) Backtick-Tokens mit Pfad-Gestalt in **/CLAUDE.md -> muessen auf Platte existieren.
 #   2) Bare Dateinamen-Tokens (*.ps1/*.sql) in der Doku -> muessen irgendwo unter scripts/db/tests/packages/docs liegen.
-#   3) Harte Case-Counts / ID-Ranges im GESAMTEN Doku-Korpus (alle CLAUDE.md) -> Verstoss
-#      (Counts via .Count verifizieren; S2-Haertung: vorher nur tests/CLAUDE.md).
+#   3) Harte Case-Counts / ID-Ranges im gesamten Doku-Korpus -> Verstoss (Counts via .Count verifizieren).
 #   3b) Gezaehlte Agenten ("sieben Spezialisten") in Doku-Korpus, README/AGENTS/CONTRIBUTING und Site-Quellen.
-#   4) Set-Gleichheit: Write-Tools-Tabelle (korpus-weit aus ALLEN CLAUDE.mds extrahiert, mit
-#      Fehlt-Guard statt Crash -- S3-Doku-Split-fest) <-> packages/*/build/workflows/tools/*.ps1
+#   4) Set-Gleichheit: Write-Tools-Tabelle (korpusweit aus allen CLAUDE.mds extrahiert, mit
+#      Fehlt-Guard statt Crash) <-> packages/*/build/workflows/tools/*.ps1
 #      (Ausnahmen = Core-Host-Tools + als intern markierte Tools, siehe $InternalToolMarker).
 #   5) Pfad-Literale in scripts/**/*.ps1 + packages/*/build/**/*.ps1 (gequotete Strings/Anker-Regexes auf
-#      scripts|db|tests|packages|docs) -> muessen existieren (haette den pre_push_check-Bug gefangen).
+#      scripts|db|tests|packages|docs) -> muessen existieren.
 #   6) Fixture-Single-Source: fixtures.json subset util_seed_test_fixtures.sql.
 #   7) Env-Template-Konvention (genau .env.example; envMap-Keys TEST_-praefixt + dokumentiert).
 #   8) Sektions-Anker: Prosa-Pointer `datei.md` *Sektion* (Datei-Token auch als Markdown-Link
-#      [x](datei.md), Separator auch '->') -> Ziel-Datei existiert UND traegt eine Ueberschrift/
+#      [x](datei.md), Separator auch '->') -> Ziel-Datei existiert und traegt eine Ueberschrift/
 #      einen Fett-Lead, der die Sektion (normalisiert, an Wort-/Kompositum-Grenze) enthaelt;
 #      Nested-Form *A -> B* segment-weise. 8b) interne Anker (s./siehe/-> *X*, *X* oben|unten)
-#      -> Sektion in DERSELBEN Datei (WP-10: beide realen Anker-Fossile des S3-Doku-Splits waren
-#      8b-Faelle). Korpus fuer 8/8b zusaetzlich README/AGENTS/CONTRIBUTING/SECURITY/docs (ohne
-#      generierte Kataloge) + .claude/skills/*/SKILL.md. Selbst-Asserts VOR dem Scan (synthetische
-#      Positiv-/Negativ-Beispiele) gegen stilles Waechter-Sterben: schlagen sie fehl, bricht das Lint hart ab.
-#   9) Laengen-Gate fuer JEDE CLAUDE.md (hart > 200 Zeilen ODER > 16 KB; Root > 12 KB; Hinweis Root > 150 Zeilen).
-#  10) Site-Befehls-Paritaet (Site-Phase): Befehls-Tabelle der Showcase-Site
+#      -> Sektion in derselben Datei. Korpus fuer 8/8b zusaetzlich README/AGENTS/CONTRIBUTING/SECURITY/docs (ohne
+#      generierte Kataloge) + .claude/skills/*/SKILL.md. Selbst-Asserts vor dem Scan (synthetische
+#      Positiv-/Negativ-Beispiele) gegen stilles Sterben der Extraktion: schlagen sie fehl, bricht das Lint hart ab.
+#   9) Laengen-Gate fuer jede CLAUDE.md (hart > 200 Zeilen oder > 14 KB; Root > 10 KB; Hinweis Root > 150 Zeilen).
+#   9b) SKILL.md hart > 10 KB; description hart > 300 Zeichen.
+#  10) Site-Befehls-Paritaet: Befehls-Tabelle der Showcase-Site
 #      (docs/site/content/docs/befehle.md) <-> Manifest-commands (packages/*/manifest.json
-#      .commands.list[].cmd) + Hidden-Allowlist (extrahiert aus scripts/command_lint.ps1 $hidden --
-#      KEINE zweite Handliste). Der einzige mechanisch ableitbare Site-Fakt; Prosa-Aktualitaet der
-#      Site bleibt Prozess (Entwicklungszyklus Schritt 7 + llm_suite_advice-Touchpoint).
-#  11) Pin-Anti-Drift (Muster Check 5, extraktions-basiert): die gepinnten Tool-Versionen in
-#      scripts/lib/devenv.ps1 ($DevEnvPins, SoT der Dev-Setup-Downloads) == ihre externen Zweitquellen
+#      .commands.list[].cmd) + Hidden-Allowlist (extrahiert aus scripts/command_lint.ps1 $hidden,
+#      keine zweite Handliste). Prosa-Aktualitaet der Site ist nicht mechanisch pruefbar.
+#  11) Pin-Anti-Drift (extraktionsbasiert): die gepinnten Tool-Versionen in
+#      scripts/lib/devenv.ps1 ($DevEnvPins, Quelle der Dev-Setup-Downloads) == ihre externen Zweitquellen
 #      -- gitleaks/squawk gegen .github/workflows/ci.yml, Hugo gegen scripts/build_site.ps1
 #      ($PinnedHugoVersion), plus die Copy-paste-Versions-Literale in CONTRIBUTING.md *Setup*.
-#      dotenv-linter ist local-only (CI: SKIP) -> keine Zweitquelle, nicht geprueft.
+#      dotenv-linter ist local-only (CI: SKIP), keine Zweitquelle, nicht geprueft.
+#  11b) Laufzeit-Pins (n8n / PostgreSQL / Node.js) in Owner-/Contributor-Docs == Defaults in provisioning/provision.sh.
 #
+# Aufruf: .\scripts\doc_lint.ps1
 # Suppression: Zeile mit 'lint-ignore' wird uebersprungen. Exit-Code = Anzahl Fails (CI-/Gate-faehig).
 
 $ErrorActionPreference = 'Stop'
@@ -52,22 +49,18 @@ function Fail([string]$File, [string]$Msg) {
     $script:fails++
 }
 
-# Doku-Korpus: alle CLAUDE.md (ableitbar, keine Liste pflegen).
-# .claude ausgeschlossen: dort liegen u. a. transiente Agent-Worktrees (.claude/worktrees/**) --
-# ohne den Ausschluss scannt das Lint fremde Repo-Kopien und blockt Commits waehrend
-# Multi-Agent-Laeufen (real getroffen S5a). Der Ausschluss matcht RELATIV zu $RepoRoot (nicht den
-# absoluten Pfad): laeuft das Lint IN einem Worktree unter .claude/worktrees/<x>, wuerde der
-# absolute Match sonst das ganze eigene Repo ausschliessen (0-Dateien-Korpus, real getroffen
-# CLI-Menue-Phase 2026-07).
+# Doku-Korpus: alle CLAUDE.md.
+# .claude ausgeschlossen: dort liegen u. a. transiente Agent-Worktrees (.claude/worktrees/**); ohne den
+# Ausschluss scannt das Lint fremde Repo-Kopien und blockt Commits waehrend Multi-Agent-Laeufen.
+# Der Ausschluss matcht relativ zu $RepoRoot (nicht den absoluten Pfad): laeuft das Lint in einem
+# Worktree unter .claude/worktrees/<x>, schloesse der absolute Match das ganze eigene Repo aus (0-Dateien-Korpus).
 $docFiles = @(Get-ChildItem -Path $RepoRoot -Recurse -Filter 'CLAUDE.md' |
               Where-Object { $_.FullName.Substring($RepoRoot.Length) -notmatch '\\(\.local|\.claude|node_modules|\.git)\\' })
-# Skills (.claude/skills/*/SKILL.md) sind Claude-Code-Prozeduren mit Pfad-/Sektions-Zeigern -> derselbe Korpus
-# (Harness-Rightsizing 2026-10-20: vorher veralteten Skill-Zeiger still). Nur der Skills-Ordner, relativ zu
-# $RepoRoot -- die transienten Worktrees unter .claude/worktrees/** bleiben draussen.
+# Skills (.claude/skills/*/SKILL.md) tragen Pfad-/Sektions-Zeiger -> derselbe Korpus. Nur der Skills-Ordner,
+# relativ zu $RepoRoot; die transienten Worktrees unter .claude/worktrees/** bleiben draussen.
 $docFiles += @(Get-ChildItem -Path (Join-Path $RepoRoot '.claude\skills') -Recurse -Filter 'SKILL.md' -ErrorAction SilentlyContinue)
-# Referenz-Doku (docs/reference/*.md, on-demand gelesen) + pfad-gebundene Regeln (.claude/rules/*.md) tragen seit dem
-# Rightsizing (Phase 3, 2026-10-20) den aus den Sub-CLAUDE.mds ausgelagerten Text -> derselbe Korpus: Pfad-Tokens,
-# Counts, Write-Tools-Tabelle (Check 4) und Sektions-Zeiger (Check 8) gelten dort genauso.
+# Referenz-Doku (docs/reference/*.md) + pfad-gebundene Regeln (.claude/rules/*.md) tragen den aus den Sub-CLAUDE.mds
+# ausgelagerten Text -> derselbe Korpus: Pfad-Tokens, Counts, Write-Tools-Tabelle (Check 4) und Sektions-Zeiger (Check 8).
 $docFiles += @(Get-ChildItem -Path (Join-Path $RepoRoot 'docs\reference') -Filter '*.md' -ErrorAction SilentlyContinue)
 $docFiles += @(Get-ChildItem -Path (Join-Path $RepoRoot '.claude\rules') -Recurse -Filter '*.md' -ErrorAction SilentlyContinue)
 
@@ -89,13 +82,13 @@ foreach ($doc in $docFiles) {
             $tok = $m.Groups[1].Value.Trim()
             if ($tok -match $placeholderRx) { continue }
 
-            # 1) Pfad-Gestalt: enthaelt '/', beginnt mit bekanntem Root-Segment (.claude seit Phase 3: Zeiger
-            #    auf .claude/rules/*.md und .claude/hooks/*.ps1 sollen beim Umbenennen genauso rot werden).
+            # 1) Pfad-Gestalt: enthaelt '/', beginnt mit bekanntem Root-Segment (auch .claude: Zeiger
+            #    auf .claude/rules/*.md und .claude/hooks/*.ps1 sollen beim Umbenennen rot werden).
             if ($tok -match '^(scripts|tests|packages|docs|\.claude)/[\w./\\-]+$') {
                 $p = Join-Path $RepoRoot ($tok.TrimEnd('/') -replace '/', '\')
                 if (-not (Test-Path $p)) {
                     # Gitignorte Pfade (z. B. tests/agent/judge_bundle.json, .local/**) fehlen in einem
-                    # frischen Checkout (CI) BEWUSST -> kein Drift. check-ignore nur im Nicht-Existenz-
+                    # frischen Checkout (CI) bewusst, kein Drift. check-ignore nur im Nicht-Existenz-
                     # Fall aufrufen (selten); exit 0 = ignoriert = ok.
                     & git -C $RepoRoot check-ignore -q -- $tok
                     if ($LASTEXITCODE -ne 0) { Fail "$rel`:$lineNo" "Pfad existiert nicht: ``$tok``" }
@@ -116,8 +109,7 @@ foreach ($doc in $docFiles) {
 }
 
 # ---------------------------------------------------------------
-# 3) Harte Counts / ID-Ranges im gesamten Doku-Korpus verboten (S2-Haertung: korpus-weit
-#    statt nur tests/CLAUDE.md -- die Regel gilt fuer JEDE Doku, der Scan galt nur einer Datei)
+# 3) Harte Counts / ID-Ranges im gesamten Doku-Korpus verboten
 # ---------------------------------------------------------------
 foreach ($doc in $docFiles) {
     $rel = $doc.FullName.Substring($RepoRoot.Length + 1) -replace '\\', '/'
@@ -125,9 +117,9 @@ foreach ($doc in $docFiles) {
     foreach ($line in [System.IO.File]::ReadAllLines($doc.FullName)) {
         $lineNo++
         if ($line -match 'lint-ignore') { continue }
-        # Suite-Counts wie "38 Finance-Agent-Cases" (Bindestrich-Kompositum) -- NICHT Prosa wie "2 Cases".
+        # Suite-Counts wie "38 Finance-Agent-Cases" (Bindestrich-Kompositum), nicht Prosa wie "2 Cases".
         # Token vor '-Cases' muss mit Wortzeichen beginnen: schliesst Klammer-Prosa wie
-        # "Recherche-Pass 2 (Edge-Cases: ...)" aus (falsch-positiv der \S+-Form).
+        # "Recherche-Pass 2 (Edge-Cases: ...)" aus (sonst falsch-positiv).
         if ($line -match '\b\d+\s+\w[\w-]*-[Cc]ases\b') {
             Fail "$rel`:$lineNo" "Harter Case-Count in Prosa (driftet -- via .Count verifizieren statt dokumentieren)."
         }
@@ -139,9 +131,8 @@ foreach ($doc in $docFiles) {
 
 # ---------------------------------------------------------------
 # 3b) Gezaehlte Agenten ("sieben Spezialisten", "seven specialist agents") verboten -- die Agenten-Tabellen
-#     (README, docs/site ueberblick) sind die eine Adresse. Anlass Public-Schalten 2026-10-24: Seitentitel
-#     sagte "Fuenf", Footer/README "sieben". Korpus = Doku-Korpus + OSS-Doku + Site-Quellen (nicht public/).
-#     Erlaubt: optional "specialist "/"Fach-" dazwischen; "Multi-Agent-…" oder "zwei … agent.*-Views" treffen nicht.
+#     (README, docs/site ueberblick) sind die eine Adresse. Korpus = Doku-Korpus + OSS-Doku + Site-Quellen (nicht public/).
+#     Optional "specialist "/"Fach-" dazwischen; "Multi-Agent-…" oder "zwei … agent.*-Views" treffen nicht.
 # ---------------------------------------------------------------
 $agentCountRx = [regex]'(?i)\b(zwei|drei|vier|f(?:ü|ue)nf|sechs|sieben|acht|neun|zehn|two|three|four|five|six|seven|eight|nine|ten|\d+)\s+(?:specialist\s+|fach-?)?(spezialist|agent|specialist)'
 $st3b = 0
@@ -173,16 +164,14 @@ foreach ($doc in $countDocs) {
 # ---------------------------------------------------------------
 # 4) Set-Gleichheit: Write-Tools-Tabelle <-> packages/*/build/workflows/tools/*.ps1
 # ---------------------------------------------------------------
-# Bewusst NICHT in der Write-Tools-Tabelle (Phase D generisch, keine Namensliste): (a) Core-Host-Tools
+# Nicht in der Write-Tools-Tabelle (generisch, keine Namensliste): (a) Core-Host-Tools
 # (packages/core/: Gate, Advisor-/Monitor-/Guide-Cross-Agent-Tools, Infra-Bausteine) und (b) jedes als intern
 # markierte Tool (`Build-Workflow ... @{ Internal = $true }`, derselbe co-located Marker wie im Capabilities-Katalog).
 $InternalToolMarker = '@\{\s*Internal\s*=\s*\$true\s*\}'
 
-# Tabellen-Extraktion KORPUS-WEIT ueber alle CLAUDE.mds (S2-Haertung: vorher las der Check
-# scripts/build/CLAUDE.md hart + ungeguardet -> ein Doku-Move haette das ganze Lint gecrasht statt
-# gefailt; korpus-weit ist er S3-Doku-Split-fest). Streu-Zeilen-Risiko verifiziert: '| `tool_'-Zeilen
-# existieren nur in der EINEN Katalog-Tabelle. Tool-Build-Defs liegen paket-uniform unter
-# packages/*/build/workflows/tools/ (WS-B5); Core- + interne Tools filtert die Regel oben heraus.
+# Tabellen-Extraktion korpusweit ueber alle CLAUDE.mds (ein Doku-Move darf das Lint nicht crashen, sondern failt es).
+# '| `tool_'-Zeilen existieren nur in der einen Katalog-Tabelle. Tool-Build-Defs liegen paketweise unter
+# packages/*/build/workflows/tools/; Core- + interne Tools filtert die Regel oben heraus.
 $tableTools = @(); $tableDocRel = $null
 foreach ($doc in $docFiles) {
     $docText = [System.IO.File]::ReadAllText($doc.FullName)
@@ -207,13 +196,13 @@ foreach ($t in $tableTools) { if ($fileTools  -notcontains $t) { Fail $tableDocR
 # ---------------------------------------------------------------
 # 10) Site-Befehls-Paritaet: befehle.md-Tabelle <-> Manifest-commands + Hidden-Allowlist
 # ---------------------------------------------------------------
-# Fail statt Silent-Skip (Muster Check 6): bewegt sich eine der Quellen, muss das Lint schreien.
+# Fail statt Silent-Skip: bewegt sich eine der Quellen, muss das Lint schreien.
 $siteCmdPage = Join-Path $RepoRoot 'docs\site\content\docs\befehle.md'
 $cmdLintFile = Join-Path $RepoRoot 'scripts\command_lint.ps1'
 if (-not (Test-Path $siteCmdPage)) { Fail 'docs/site/content/docs/befehle.md' 'Site-Befehlsseite fehlt (bewegt/geloescht ohne Lint-Nachzug?) -- Check 10 kann nicht greifen.' }
 if (-not (Test-Path $cmdLintFile)) { Fail 'scripts/command_lint.ps1' 'command_lint.ps1 fehlt -- Hidden-Allowlist fuer Check 10 nicht extrahierbar.' }
 if ((Test-Path $siteCmdPage) -and (Test-Path $cmdLintFile)) {
-    # SOLL = Manifest-commands aller Pakete + Hidden-Allowlist ($hidden in command_lint.ps1).
+    # Soll = Manifest-commands aller Pakete + Hidden-Allowlist ($hidden in command_lint.ps1)
     $sollCmds = @()
     foreach ($mfFile in (Get-ChildItem (Join-Path $RepoRoot 'packages\*\manifest.json'))) {
         $mf10 = [System.IO.File]::ReadAllText($mfFile.FullName, (New-Object System.Text.UTF8Encoding($false))) | ConvertFrom-Json
@@ -224,9 +213,9 @@ if ((Test-Path $siteCmdPage) -and (Test-Path $cmdLintFile)) {
     $hiddenM = [regex]::Match([System.IO.File]::ReadAllText($cmdLintFile), '\$hidden\s*=\s*@\(([^\)]+)\)')
     if ($hiddenM.Success) { $sollCmds += @([regex]::Matches($hiddenM.Groups[1].Value, "'(/[a-z]+)'") | ForEach-Object { $_.Groups[1].Value }) }
     $sollCmds = $sollCmds | Sort-Object -Unique
-    # Waechter-stirbt-still-Guard: leeres SOLL = Extraktion kaputt, nie "alles gruen".
+    # Leeres Soll = Extraktion kaputt, nie "alles gruen".
     if (-not $sollCmds) { Fail 'packages/*/manifest.json' 'Check 10: KEIN Befehl aus Manifesten/Hidden-Allowlist extrahiert -- Extraktion gebrochen.' }
-    # IST = Befehls-Tokens in Tabellen-Zeilen der Site-Seite (nur '|'-Zeilen, nicht Prosa).
+    # Ist = Befehls-Tokens in Tabellen-Zeilen der Site-Seite (nur '|'-Zeilen, nicht Prosa)
     $siteText = [System.IO.File]::ReadAllText($siteCmdPage, (New-Object System.Text.UTF8Encoding($false)))
     $istCmds = @([regex]::Matches($siteText, '(?m)^\|\s*`(/[a-z]+)`') | ForEach-Object { $_.Groups[1].Value }) | Sort-Object -Unique
     foreach ($c in $sollCmds) { if ($istCmds -notcontains $c) { Fail 'docs/site/content/docs/befehle.md' "Befehl ``$c`` (Manifest/Hidden-Allowlist) fehlt in der Site-Befehlstabelle -- Seite nachziehen." } }
@@ -236,19 +225,18 @@ if ((Test-Path $siteCmdPage) -and (Test-Path $cmdLintFile)) {
 # ---------------------------------------------------------------
 # 6) Fixture-Single-Source: jede Entitaet aus tests/fixtures/fixtures.json kommt im Seed
 #    tests/fixtures/util_seed_test_fixtures.sql vor (Manifest subset Seed -> der Pre-Flight prueft nie
-#    eine Entitaet, die der Seed nicht anlegt). EINE Namensliste der Routing-Suite statt zweier.
+#    eine Entitaet, die der Seed nicht anlegt). Eine Namensliste der Routing-Suite statt zweier.
 # ---------------------------------------------------------------
 $fixManifest = Join-Path $RepoRoot 'tests\fixtures\fixtures.json'
 $fixSeed     = Join-Path $RepoRoot 'tests\fixtures\util_seed_test_fixtures.sql'
-# S2-Haertung: Fail statt Silent-Skip -- bewegt sich eine der beiden Dateien, wurde der ganze
-# Check vorher still uebersprungen (genau die Drift-Klasse, die dieses Lint fangen soll).
+# Fail statt Silent-Skip: bewegt sich eine der beiden Dateien, wuerde der Check sonst still uebersprungen.
 if (-not (Test-Path $fixManifest)) { Fail 'tests/fixtures/fixtures.json' 'Fixture-Manifest fehlt (bewegt/geloescht ohne Lint-Nachzug?) -- Check 6 kann nicht greifen.' }
 if (-not (Test-Path $fixSeed))     { Fail 'tests/fixtures/util_seed_test_fixtures.sql' 'Fixture-Seed fehlt (bewegt/geloescht ohne Lint-Nachzug?) -- Check 6 kann nicht greifen.' }
 if ((Test-Path $fixManifest) -and (Test-Path $fixSeed)) {
     $mf = [System.IO.File]::ReadAllText($fixManifest, (New-Object System.Text.UTF8Encoding($false))) | ConvertFrom-Json
     $seedText = [System.IO.File]::ReadAllText($fixSeed)
     foreach ($f in $mf.fixtures) {
-        # Bezug = der diskriminierende Wert (Name/ISIN/Vorname), den der Seed als Literal traegt.
+        # Bezug = der unterscheidende Wert (Name/ISIN/Vorname), den der Seed als Literal traegt
         $needle = if ($f.check.type -eq 'family_person') { $f.check.first_name } else { $f.check.value }
         if ($seedText.IndexOf("$needle", [System.StringComparison]::OrdinalIgnoreCase) -lt 0) {
             Fail 'tests/fixtures/util_seed_test_fixtures.sql' "Fixture '$($f.name)' (Bezug '$needle') aus tests/fixtures/fixtures.json fehlt im Seed."
@@ -259,13 +247,12 @@ if ((Test-Path $fixManifest) -and (Test-Path $fixSeed)) {
 # ---------------------------------------------------------------
 # 5) Pfad-Literale in scripts/**/*.ps1 muessen existieren
 # ---------------------------------------------------------------
-# Scannt scripts/**/*.ps1 (Engine + Skripte) UND die paket-uniformen Build-Defs packages/*/build/**/*.ps1
-# (WS-B5: sonst verlieren die verschobenen Defs die Pfad-Literal-Pruefung -> Coverage-Regress).
+# Scannt scripts/**/*.ps1 (Engine + Skripte) und die Build-Defs packages/*/build/**/*.ps1.
 $psScanDirs = @((Join-Path $RepoRoot 'scripts')) +
               @(Get-ChildItem (Join-Path $RepoRoot 'packages') -Directory -ErrorAction SilentlyContinue |
                 ForEach-Object { Join-Path $_.FullName 'build' } | Where-Object { Test-Path $_ })
 foreach ($ps in (Get-ChildItem -Path $psScanDirs -Recurse -Filter '*.ps1' -ErrorAction SilentlyContinue)) {
-    if ($ps.Name -eq 'doc_lint.ps1' -or $ps.Name -eq 'layout_lint.ps1') { continue }   # Lint-eigene Beispiel-/Fixture-Strings + Pfad-Regex-Tokens nicht gegen sich selbst linten (synthetische Pfade; layout_lint validiert seine echten Pfade zur Laufzeit via L4/L6)
+    if ($ps.Name -eq 'doc_lint.ps1' -or $ps.Name -eq 'layout_lint.ps1') { continue }   # eigene Beispiel-/Fixture-Strings + Pfad-Regex-Tokens (synthetische Pfade); layout_lint validiert seine echten Pfade zur Laufzeit via L4/L6
     $rel = $ps.FullName.Substring($RepoRoot.Length + 1) -replace '\\', '/'
     $lineNo = 0
     foreach ($line in [System.IO.File]::ReadAllLines($ps.FullName)) {
@@ -297,10 +284,10 @@ foreach ($ps in (Get-ChildItem -Path $psScanDirs -Recurse -Filter '*.ps1' -Error
 }
 
 # ---------------------------------------------------------------
-# 7) Env-Template-Konvention: genau EINE Vorlagen-Datei (.env.example); jeder
+# 7) Env-Template-Konvention: genau eine Vorlagen-Datei (.env.example); jeder
 #    $envMap-Quell-Key im Docker-Test-Substrat-Treiber (bootstrap_test_n8n.ps1) ist TEST_-praefixt
-#    UND in .env.example dokumentiert. Grund: ein zweites Template (.env.template) driftet still;
-#    un-praefixte Test-Keys sind von den Kern-Prozess-Env-Namen (OWNER_*) nicht unterscheidbar.
+#    und in .env.example dokumentiert. Grund: ein zweites Template (.env.template) driftet still;
+#    unpraefixte Test-Keys sind von den Kern-Prozess-Env-Namen (OWNER_*) nicht unterscheidbar.
 # ---------------------------------------------------------------
 # 7a) Genau eine Env-Vorlage, und das ist .env.example (kein .env.template/.sample/.dist-Duplikat).
 $tmplFiles = @(Get-ChildItem -Path $RepoRoot -File -Force |
@@ -320,17 +307,16 @@ $exampleEnv = Join-Path $RepoRoot '.env.example'
 if ((Test-Path $driver) -and (Test-Path $exampleEnv)) {
     $driverText  = [System.IO.File]::ReadAllText($driver)
     $exampleText = [System.IO.File]::ReadAllText($exampleEnv)
-    # Nur das ordered-Hashtable-Literal betrachten -- TEST_HARNESS_HEADER wird ausserhalb mit festem
-    # Wert ($envLines.Add(...)) gesetzt und ist als Nicht-TEST_-Input bewusst ausgenommen.
+    # Nur das ordered-Hashtable-Literal betrachten; TEST_HARNESS_HEADER wird ausserhalb mit festem
+    # Wert ($envLines.Add(...)) gesetzt und ist als Nicht-TEST_-Input ausgenommen.
     $m = [regex]::Match($driverText, '\$envMap\s*=\s*\[ordered\]@\{(.+?)\}', [System.Text.RegularExpressions.RegexOptions]::Singleline)
     if (-not $m.Success) {
         Fail 'scripts/dev/bootstrap_test_n8n.ps1' "envMap-Literal ([ordered]@{ ... }) nicht gefunden -- Env-Konventions-Check kann nicht greifen."
     } else {
         $srcKeys = [regex]::Matches($m.Groups[1].Value, "(?m)^\s*'([A-Za-z0-9_]+)'\s*=") | ForEach-Object { $_.Groups[1].Value }
-        # + MANIFEST-ABGELEITETE Paket-Secret-Keys (paperless-WS-0 Naht 3): der Treiber ergaenzt die Map
-        # zur Laufzeit generisch um TEST_<envKey> je packages/*/manifest.json credentials.*.env-Property
-        # (Property-NAME = Kern-Env-Key). Dieselbe Ableitung hier — jeder Paket-Secret-Key muss in
-        # .env.example dokumentiert sein (frueher: statische career-Zeilen im Literal).
+        # Manifest-abgeleitete Paket-Secret-Keys: der Treiber ergaenzt die Map zur Laufzeit generisch um
+        # TEST_<envKey> je packages/*/manifest.json credentials.*.env-Property (Property-Name = Kern-Env-Key).
+        # Dieselbe Ableitung hier: jeder Paket-Secret-Key muss in .env.example dokumentiert sein.
         $pkgKeys = New-Object System.Collections.Generic.List[string]
         foreach ($mfPath in (Get-ChildItem (Join-Path $RepoRoot 'packages') -Directory | ForEach-Object { Join-Path $_.FullName 'manifest.json' })) {
             if (-not (Test-Path $mfPath)) { continue }
@@ -342,7 +328,7 @@ if ((Test-Path $driver) -and (Test-Path $exampleEnv)) {
             }
         }
         # Selbst-Assert: die Ableitung darf nicht still leerlaufen, solange ein credentials-Block existiert
-        # (career traegt heute 3 Keys — 0 Treffer hiesse Extraktions-Bruch, nicht "keine Pakete").
+        # (0 Treffer hiesse Extraktions-Bruch, nicht "keine Pakete").
         $hasCredBlock = @(Get-ChildItem (Join-Path $RepoRoot 'packages') -Directory | Where-Object {
             $p = Join-Path $_.FullName 'manifest.json'
             (Test-Path $p) -and (([System.IO.File]::ReadAllText($p) | ConvertFrom-Json).PSObject.Properties.Name -contains 'credentials')
@@ -362,14 +348,13 @@ if ((Test-Path $driver) -and (Test-Path $exampleEnv)) {
 }
 
 # ---------------------------------------------------------------
-# 8) Sektions-Anker-Validierung (WP-10): Prosa-Pointer `datei.md` *Sektion* muessen aufloesen --
-#    Ziel-Datei existiert UND traegt eine Ueberschrift (#..####) oder einen Fett-Lead (**X** am
+# 8) Sektions-Anker-Validierung: Prosa-Pointer `datei.md` *Sektion* muessen aufloesen --
+#    Ziel-Datei existiert und traegt eine Ueberschrift (#..####) oder einen Fett-Lead (**X** am
 #    Zeilen-/Bullet-Anfang), der die Sektion normalisiert (Backticks/Marker strippen, Umlaut-
 #    Faltung, Substring) enthaelt. Nested-Form *A -> B* wird segment-weise geprueft.
-# 8b) Interne Anker (s./siehe *X* bzw. *X* oben|unten) muessen in DERSELBEN Datei aufloesen --
-#    genau die Fossil-Klasse, die der S3-Doku-Split real erzeugte (beide 791e727-Anker-Fossile).
-#    Cross-File-Verweise gehoeren als Datei-Pointer geschrieben (`datei.md` *Sektion*), nie als
-#    nackter interner Anker.
+# 8b) Interne Anker (s./siehe *X* bzw. *X* oben|unten) muessen in derselben Datei aufloesen
+#    (typisches Fossil nach einem Doku-Split). Cross-File-Verweise gehoeren als Datei-Pointer
+#    geschrieben (`datei.md` *Sektion*), nie als nackter interner Anker.
 # ---------------------------------------------------------------
 
 # Anker-Normalisierung: Markdown-Marker raus, lowercase, Umlaut-Faltung, Whitespace kollabieren.
@@ -402,11 +387,10 @@ function Get-DocSections([string]$Path) {
 }
 
 # Anker gegen die Sektions-Liste testen; Nested-Form 'A -> B' (Pfeil) segment-weise.
-# Match nur an Wort-Anfaengen (Lookbehind auf \w UND '-'): der Anker 'Verb-Taxonomie' darf NICHT
-# still im anderen Kompositum 'fn-Verb-Taxonomie' aufloesen (Coverage-Audit C2: sonst maskiert
-# ein Substring-Doppeltreffer kuenftige Renames der gemeinten Sektion). Bewusste Rest-Grenze:
-# gleich-thematische Doppel-Treffer an Wortgrenzen (z. B. Ankuendigungs-Zeile + Ziel-Lead)
-# unterscheidet Substring-Matching nicht -- Ambiguitaets-Fail erst bei realem Fossil-Beleg.
+# Match nur an Wort-Anfaengen (Lookbehind auf \w und '-'): der Anker 'Verb-Taxonomie' darf nicht
+# still im anderen Kompositum 'fn-Verb-Taxonomie' aufloesen (ein Substring-Doppeltreffer maskierte
+# Renames der gemeinten Sektion). Bewusste Rest-Grenze: gleich-thematische Doppel-Treffer an
+# Wortgrenzen (z. B. Ankuendigungs-Zeile + Ziel-Lead) unterscheidet Substring-Matching nicht.
 function Test-AnchorResolves($Sections, [string]$Anchor) {
     foreach ($seg in ($Anchor -split '→|->')) {
         $n = ConvertTo-AnchorNorm $seg
@@ -419,16 +403,15 @@ function Test-AnchorResolves($Sections, [string]$Anchor) {
     return $true
 }
 
-# Pointer-Extraktion: Datei-Token als `datei.md` ODER Markdown-Link [x](datei.md), danach
-# optional '->'/Klammer, dann *Sektion* [/ *Sektion2* ...] (Coverage-Audit C1: AGENTS.md
-# verweist per [CLAUDE.md](CLAUDE.md) -> *Sektion*).
+# Pointer-Extraktion: Datei-Token als `datei.md` oder Markdown-Link [x](datei.md) (so verweist AGENTS.md
+# per [CLAUDE.md](CLAUDE.md) -> *Sektion*), danach optional '->'/Klammer, dann *Sektion* [/ *Sektion2* ...].
 $anchorPointerRx = [regex]'(?:`(?<file>[^`]+\.md)`|\[[^\]]*\]\((?<file>[^)\s]+\.md)\))\s*(?:(?:→|->)\s*)?\(?\s*(?<secs>\*[^*]+\*(?:\s*/\s*\*[^*]+\*)*)'
 # Interne Anker: s./siehe/-> *X* (kursiv, nicht **fett**) bzw. *X* oben|unten. Der Pfeil gilt in
-# BEIDEN Schreibweisen (typografisch + ASCII) -- sonst wuerde die ASCII-Form still uebersprungen.
+# beiden Schreibweisen (typografisch + ASCII), sonst wuerde die ASCII-Form still uebersprungen.
 $innerAnchorRxA = [regex]'(?:\bs\.|\bsiehe\b|\bSiehe\b|→|->)\s*(?<!\*)\*([^*]+)\*(?!\*)'
 $innerAnchorRxB = [regex]'(?<!\*)\*([^*]+)\*(?!\*)\s+(?:oben|unten)\b'
 
-# --- Selbst-Asserts (Positiv-/Negativ-Beispiele) VOR dem Scan: stirbt die Extraktion oder das
+# --- Selbst-Asserts (Positiv-/Negativ-Beispiele) vor dem Scan: stirbt die Extraktion oder das
 # --- Matching still (Regex-Edit, PS-Verhalten), wird das Lint hart rot statt leise gruen.
 $selfTestFails = 0
 $stSecs = Get-SectionsFromLines @('## Zins-Gutschrift (Beispiel)', '- **Fett-Lead (`code`) mit Zusatz:** Prosa',
@@ -439,15 +422,15 @@ if (-not (Test-AnchorResolves $stSecs 'fett-lead'))             { $selfTestFails
 if (-not (Test-AnchorResolves $stSecs 'Mehrzeilen-Lead'))       { $selfTestFails++ }   # Wrap-Lead
 if (Test-AnchorResolves $stSecs 'Nicht-Existent')               { $selfTestFails++ }   # Negativ
 $stSecs2 = Get-SectionsFromLines @('- **fn-Verb-Taxonomie:** Lese-Verben')
-if (Test-AnchorResolves $stSecs2 'Verb-Taxonomie')              { $selfTestFails++ }   # Kompositum-Grenze (C2)
+if (Test-AnchorResolves $stSecs2 'Verb-Taxonomie')              { $selfTestFails++ }   # Kompositum-Grenze
 if (-not (Test-AnchorResolves $stSecs2 'fn-Verb-Taxonomie'))    { $selfTestFails++ }   # Positiv am Wort-Anfang
 $stM = $anchorPointerRx.Matches('vgl. `packages/CLAUDE.md` *Alpha* / *Beta* dazu')
 if ($stM.Count -ne 1 -or ([regex]::Matches($stM[0].Groups['secs'].Value, '\*([^*]+)\*').Count -ne 2)) { $selfTestFails++ }
 $stM2 = $anchorPointerRx.Matches('root [CLAUDE.md](CLAUDE.md) → *Alpha*')
-if ($stM2.Count -ne 1 -or $stM2[0].Groups['file'].Value -ne 'CLAUDE.md') { $selfTestFails++ }   # MD-Link-Form (C1)
+if ($stM2.Count -ne 1 -or $stM2[0].Groups['file'].Value -ne 'CLAUDE.md') { $selfTestFails++ }   # MD-Link-Form
 if ($innerAnchorRxA.Matches('… s. *Gamma* …').Count -ne 1)      { $selfTestFails++ }
-if ($innerAnchorRxA.Matches('State ignoriert → *Gamma* …').Count -ne 1) { $selfTestFails++ }   # Pfeil-Form (C1)
-if ($innerAnchorRxA.Matches('State ignoriert -> *Gamma* …').Count -ne 1) { $selfTestFails++ }  # ASCII-Pfeil (Cold-Eyes A)
+if ($innerAnchorRxA.Matches('State ignoriert → *Gamma* …').Count -ne 1) { $selfTestFails++ }   # Pfeil-Form
+if ($innerAnchorRxA.Matches('State ignoriert -> *Gamma* …').Count -ne 1) { $selfTestFails++ }  # ASCII-Pfeil
 if ((Test-AnchorResolves $stSecs 'Zins-Gutschrift -> fett-lead') -ne $true) { $selfTestFails++ }   # Nested-Split ASCII
 $stM3 = $anchorPointerRx.Matches('vgl. `packages/CLAUDE.md` -> *Alpha*')
 if ($stM3.Count -ne 1)                                          { $selfTestFails++ }   # Pointer-Separator ASCII
@@ -459,7 +442,7 @@ if ($selfTestFails -gt 0) {
     exit $fails
 }
 
-# Korpus fuer 8/8b: CLAUDE.mds + Onboarding-Doku + docs/ (ohne generierte Kataloge).
+# Korpus fuer 8/8b: Doku-Korpus + OSS-Doku + docs/ (ohne generierte Kataloge)
 $anchorDocs = @($docFiles)
 foreach ($extra in @('README.md', 'AGENTS.md', 'CONTRIBUTING.md', 'SECURITY.md')) {
     $p = Join-Path $RepoRoot $extra
@@ -515,13 +498,12 @@ foreach ($doc in $anchorDocs) {
 }
 
 # ---------------------------------------------------------------
-# 9) Laengen-Gate fuer JEDE CLAUDE.md (Anthropic-Guidance: "target under 200 lines per CLAUDE.md;
-#    longer files reduce adherence"). Hart > 200 Zeilen ODER > 14 KB (Root > 10 KB), Hinweis Root > 150 Zeilen.
-#    Ratchet: die Grenzen liegen knapp ueber dem Stand nach dem Straffen 2026-11; eine neue Regel ersetzt eine alte.
-#    Bytes sind der ehrliche Massstab fuer geladenen Kontext (Harness-Rightsizing 2026-10-20: 199 absatz-lange
-#    Zeilen waren 45 KB); eine Sub-CLAUDE.md laedt komplett, sobald irgendeine Datei ihres Ordners geoeffnet wird
-#    (Phase 3: 470 KB in zehn Sub-Dateien). Zweck + Regeln + Zeiger bleiben; Mechanik/Historie -> docs/reference/,
-#    ordner-uebergreifende Regeln -> .claude/rules/.
+# 9) Laengen-Gate fuer jede CLAUDE.md (Anthropic-Guidance: "target under 200 lines per CLAUDE.md;
+#    longer files reduce adherence"). Hart > 200 Zeilen oder > 14 KB (Root > 10 KB), Hinweis Root > 150 Zeilen.
+#    Ratchet: die Grenzen liegen knapp ueber dem Ist-Stand; eine neue Regel ersetzt eine alte.
+#    Bytes sind der ehrliche Massstab fuer geladenen Kontext (wenige absatz-lange Zeilen koennen zig KB sein);
+#    eine Sub-CLAUDE.md laedt komplett, sobald irgendeine Datei ihres Ordners geoeffnet wird.
+#    Zweck + Regeln + Zeiger bleiben; Mechanik -> docs/reference/, ordner-uebergreifende Regeln -> .claude/rules/.
 # ---------------------------------------------------------------
 foreach ($cf in ($docFiles | Where-Object { $_.Name -eq 'CLAUDE.md' })) {
     $cfRel  = $cf.FullName.Substring($RepoRoot.Length + 1) -replace '\\', '/'
@@ -534,7 +516,7 @@ foreach ($cf in ($docFiles | Where-Object { $_.Name -eq 'CLAUDE.md' })) {
         Write-Host "  [Hinweis] Root-CLAUDE.md = $cfLines Zeilen (> 150; Anthropic-Optimum ~150) -- bei Wachstum verschlanken." -ForegroundColor Yellow
     }
     # Groesse wie committet (LF): ein Windows-Checkout mit core.autocrlf=true haengt je Zeile ein CR an und liesse die
-    # Datei je nach Worktree ueber die Grenze springen (2026-10-25: 16 375 B im Repo, 16 446 B im CRLF-Worktree).
+    # Datei je nach Worktree ueber die Grenze springen.
     $cfSize = [System.Text.Encoding]::UTF8.GetByteCount(([System.IO.File]::ReadAllText($cf.FullName, (New-Object System.Text.UTF8Encoding($false))) -replace "`r", ''))
     if ($cfSize -gt ($cfMaxKb * 1KB)) {
         Fail $cfRel ("{0:N1} KB (> {1} KB): Zweck + Regeln + Zeiger bleiben, Mechanik/Fallgeschichten nach docs/reference/<bereich>.md -- kurze Zeilen." -f ($cfSize / 1KB), $cfMaxKb)
@@ -556,7 +538,7 @@ foreach ($sf in $skillFiles) {
     elseif ($dm.Groups[1].Value.Length -gt 300) { Fail $sfRel ("Check 9b: description {0} Zeichen (> 300) -- sie steht in jeder Session im Kontext." -f $dm.Groups[1].Value.Length) }
 }
 
-# Get-Pin <text> <regex> <was> -> erste Gruppe des Treffers; kein Treffer = Fail (Extraktion tot). Geteilt von Check 11 + 11b.
+# Get-Pin <text> <regex> <was> -> erste Gruppe des Treffers; kein Treffer = Fail (Extraktion tot). Geteilt von Check 11 und 11b.
 function Get-Pin([string]$Text, [string]$Rx, [string]$What) {
     $m = [regex]::Match($Text, $Rx)
     if (-not $m.Success) { Fail 'doc_lint.ps1' "Pin-Check: $What nicht extrahierbar (Regex traf nichts) -- Quelle umgeschrieben?"; return $null }
@@ -565,7 +547,7 @@ function Get-Pin([string]$Text, [string]$Rx, [string]$What) {
 
 # ---------------------------------------------------------------
 # 11) Pin-Anti-Drift: $DevEnvPins (scripts/lib/devenv.ps1) == externe Zweitquellen. Fail statt
-#     Silent-Skip (Muster Check 6/10): bewegt sich eine Quelle, muss das Lint schreien.
+#     Silent-Skip: bewegt sich eine Quelle, muss das Lint schreien.
 # ---------------------------------------------------------------
 $devenvLib = Join-Path $RepoRoot 'scripts\lib\devenv.ps1'
 $ciYml     = Join-Path $RepoRoot '.github\workflows\ci.yml'
@@ -577,12 +559,11 @@ if ((Test-Path $devenvLib) -and (Test-Path $ciYml) -and (Test-Path $siteDrv)) {
     $libText  = [System.IO.File]::ReadAllText($devenvLib)
     $ciText   = [System.IO.File]::ReadAllText($ciYml)
     $siteText11 = [System.IO.File]::ReadAllText($siteDrv)
-    # SoT-Pins aus $DevEnvPins.
     $pinGitleaks = Get-Pin $libText "gitleaks\s*=\s*'([0-9][0-9.]+)'"      'devenv.ps1 gitleaks-Pin'
     $pinSquawk   = Get-Pin $libText "squawk\s*=\s*'([0-9][0-9.]+)'"        'devenv.ps1 squawk-Pin'
     $pinHugo     = Get-Pin $libText "hugo\s*=\s*'([0-9][0-9.]+)'"          'devenv.ps1 hugo-Pin'
     # Externe Zweitquellen. gitleaks = die bare bash-Zuweisung am Zeilenanfang (kein '$'); squawk hat
-    # DIESELBE '$ver'-Form wie der prek-Pin daneben -> auf den "Install squawk"-Block skopen (lazy, (?s)).
+    # dieselbe '$ver'-Form wie der prek-Pin daneben, daher auf den "Install squawk"-Block eingegrenzt (lazy, (?s)).
     $ciGitleaks  = Get-Pin $ciText  "(?m)^\s*ver=([0-9][0-9.]+)"                            'ci.yml gitleaks-Pin'
     $ciSquawk    = Get-Pin $ciText  "(?s)Install squawk.*?\`$ver\s*=\s*'v([0-9][0-9.]+)'"    'ci.yml squawk-Pin'
     $siteHugo    = Get-Pin $siteText11 "\`$PinnedHugoVersion\s*=\s*'([0-9][0-9.]+)'"         'build_site.ps1 Hugo-Pin'
@@ -590,8 +571,8 @@ if ((Test-Path $devenvLib) -and (Test-Path $ciYml) -and (Test-Path $siteDrv)) {
     if ($pinSquawk   -and $ciSquawk   -and ($pinSquawk   -ne $ciSquawk))   { Fail 'scripts/lib/devenv.ps1' "squawk-Pin '$pinSquawk' != ci.yml 'v$ciSquawk' -- Pins synchron halten." }
     if ($pinHugo     -and $siteHugo   -and ($pinHugo     -ne $siteHugo))   { Fail 'scripts/lib/devenv.ps1' "hugo-Pin '$pinHugo' != build_site.ps1 '$siteHugo' -- Pins synchron halten." }
 
-    # CONTRIBUTING.md-Copy-paste-Download-Befehle (Muster Check 5): jedes gepinnte Download-Artefakt
-    # == der SoT-Pin (ALLE Vorkommen -> ein vergessener Teil-Bump faellt auf; Fail bei 0 = Extraktion tot).
+    # CONTRIBUTING.md-Copy-paste-Download-Befehle: jedes gepinnte Download-Artefakt
+    # == der Pin aus devenv.ps1 (alle Vorkommen, ein vergessener Teil-Bump faellt auf; Fail bei 0 = Extraktion tot).
     $contribPath = Join-Path $RepoRoot 'CONTRIBUTING.md'
     if (-not (Test-Path $contribPath)) { Fail 'CONTRIBUTING.md' 'CONTRIBUTING.md fehlt -- Check-11-Copy-paste-Pin-Abgleich nicht moeglich.' }
     else {
@@ -609,8 +590,8 @@ if ((Test-Path $devenvLib) -and (Test-Path $ciYml) -and (Test-Path $siteDrv)) {
 }
 
 # ---------------------------------------------------------------
-# 11b) Laufzeit-Pins (n8n / PostgreSQL / Node.js): SoT = die Defaults in provisioning/provision.sh. Jede
-#      Versions-Nennung in den Owner-/Contributor-Docs muss gleich sein (vorher 9 Stellen per Hand -> Drift).
+# 11b) Laufzeit-Pins (n8n / PostgreSQL / Node.js): Quelle = die Defaults in provisioning/provision.sh. Jede
+#      Versions-Nennung in den Owner-/Contributor-Docs muss gleich sein.
 #      n8n: jedes 2.x.y-Token der Datei (die Dateien nennen keine anderen 2.x.y-Versionen); mind. 1 Treffer je
 #      Datei, sonst ist die Extraktion tot. PostgreSQL/Node.js: jede "PostgreSQL <n>"/"Node.js <n>"-Nennung.
 # ---------------------------------------------------------------

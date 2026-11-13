@@ -1,17 +1,17 @@
 -- ============================================================
 -- fn_reconcile_accounts_preview (READ-ONLY)
 --   Batch-Vorschau fuer tool_reconcile_accounts_batch: loest jeden Konto-Namen
---   auf, liest den DB-Saldo ZUM STICHTAG (fn_get_balance_as_of; reconciliation_date, Default heute) + Waehrung und
---   berechnet die Differenz zum auf die Waehrungseinheit gerundeten bestaetigten Saldo. Audit Paket 2: dieselben
+--   auf, liest den DB-Saldo zum Stichtag (fn_get_balance_as_of; reconciliation_date, Default heute) + Waehrung und
+--   berechnet die Differenz zum auf die Waehrungseinheit gerundeten bestaetigten Saldo. Dieselben
 --   Ablehnungen wie die Buchung (doppeltes Konto, finance.fn_reconcile_blocker) -> Vorschau = Buchung.
 --   Eingabe jsonb: { accounts: [{account_name, confirmed_balance, reconciliation_date?, notes?}, ...] }
 --   Rueckgabe:
---     - bei 0/>1 Treffer ODER leerer Liste: { ok:false, reason, candidates? }  (Tool -> Build-ToolError)
+--     - bei 0/>1 Treffer oder leerer Liste: { ok:false, reason, candidates? }  (Tool -> Build-ToolError)
 --     - sonst: { ok:true, n, rows:[{account_id, name, currency, db_balance, confirmed, diff, reconciliation_date
 --       (aufgeloester Stichtag; relativ wie "yesterday" erlaubt, core.fn_resolve_input_dates), skip_count, skip_until}] }
 --       skip_until = spaeteste Faelligkeit der Termine, die der Abgleich als erledigt markiert (null ohne)
---   Read-only -> baut die EINE Approval-Summary, BEVOR geschrieben wird (CQRS-Read-Seite).
---   Phase B: Form-Guards (accounts Array NULL-sicher, confirmed_balance schlichte Zahl) als {ok:false} statt
+--   Read-only -> baut die eine Approval-Summary, bevor geschrieben wird (CQRS-Read-Seite).
+--   Form-Guards (accounts nicht leeres Array, confirmed_balance schlichte Zahl) als {ok:false} statt
 --     Cast-RAISE — die Eingabe kommt vom Modell (Spiegel der Guards in fn_reconcile_accounts).
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_reconcile_accounts_preview(p jsonb)
@@ -62,7 +62,7 @@ BEGIN
                 'candidates', v_cand);
         END IF;
 
-        -- Audit Paket 2: dieselben Ablehnungen wie die Buchung (Pass 1 von fn_reconcile_accounts) + Saldo ZUM STICHTAG.
+        -- Dieselben Ablehnungen wie die Buchung (Pass 1 von fn_reconcile_accounts) + Saldo zum Stichtag.
         IF v_rows @> jsonb_build_array(jsonb_build_object('account_id', v_id)) THEN
             RETURN jsonb_build_object('ok', false, 'reason', format(
                 'Account %L is listed more than once; reconcile each account once per batch.', v_acct->>'account_name'));
@@ -89,7 +89,6 @@ BEGIN
             'confirmed',  v_conf,
             'diff',       v_conf - v_bal,
             'reconciliation_date', to_char(v_date, 'YYYY-MM-DD'),
-            -- 2026-10-23: offene Vorkommen, die der Abgleich als erledigt markiert (dieselbe Menge wie fn_reconcile_account)
             'skip_count', v_skip_n,
             -- spaetester Termin dieser Menge -> die Karte nennt ein Datum statt "10 Tage vor"
             'skip_until', v_skip_until));

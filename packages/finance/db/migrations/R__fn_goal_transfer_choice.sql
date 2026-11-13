@@ -1,6 +1,6 @@
 -- ============================================================
--- fn_goal_transfer_choice (READ HELPER — Befund 2026-10-27)
---   Die EINE Entscheidung "bestehender Dauerauftrag in den Topf einer neuen Ziel-Rate" fuer fn_savings_goal_funding
+-- fn_goal_transfer_choice (READ HELPER)
+--   Die eine Entscheidung "bestehender Dauerauftrag in den Topf einer neuen Ziel-Rate" fuer fn_savings_goal_funding
 --   (Anlegen + Import-Karte) und fn_set_savings_goal (Rate nachtraeglich starten): Kandidaten aus
 --   fn_goal_transfer_candidates(p_pot, p_debit), dann je Antwort p_replace:
 --     NULL  + Kandidaten -> {ok:false, code:'existing_transfer', transfers, reason} (nie loeschen, Nutzer fragen)
@@ -8,7 +8,7 @@
 --     true  + genau einer, monatlich -> {ok:true, transfer:<Kandidat>} (die Ziel-Rate fuehrt ihn fort)
 --     true  + keiner -> {ok:false}; true + mehrere -> {ok:false, code:'existing_transfer'} (Abbuchungskonto nennen);
 --     true  + nicht monatlich -> {ok:false, code:'transfer_not_monthly'}
---   Keine Kandidaten und keine Antwort -> {ok:true, transfer:null}.
+--   Keine Kandidaten und keine Antwort -> {ok:true, transfer:null}. Eingabe: p_pot, p_debit (NULL = jedes), p_replace.
 --   plpgsql (late-bound, Kandidaten-fn sortiert spaeter). Schreibt nie.
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_goal_transfer_choice(p_pot int, p_debit int, p_replace boolean)

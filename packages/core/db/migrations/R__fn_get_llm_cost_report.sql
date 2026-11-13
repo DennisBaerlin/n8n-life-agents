@@ -2,7 +2,7 @@
 -- core.fn_get_llm_cost_report(p) — das Datenmodell von /costs (/kosten): KI-Kosten der letzten 7 und 30 Tage
 --   p: { chat_id, top_n? (1..10, Default 5) }
 --   Quelle core.llm_usage (Gateway-Mitschrift) x agent.ai_models.pricing_usd_per_mtok (USD je Mio Tokens), bepreist
---   ueber model = n8n_model_id mit der AKTUELLEN Preisliste. Je Zeile:
+--   ueber model = n8n_model_id mit der aktuellen Preisliste. Je Zeile:
 --     input        = input_tokens x input
 --     cache_write  = (cache_creation - ephemeral_1h) x cache_write_5m + ephemeral_1h x cache_write_1h
 --     cache_read   = cache_read x cache_read;  output = output x output
@@ -19,7 +19,7 @@
 --   ein grosser Agenten-Anfang wurde neu geschrieben (Update, > 24 h Pause).
 --   Cache-Trefferquote = Cache-Lesen / Gesamt-Eingabe der echten Anfragen (7 Tage), ganze Prozent.
 --   Owner-Gate (DB-Gesetz): Absender aus chat_id via agent.fn_resolve_sender; nicht Owner -> {ok:false, reason:'owner_only'}.
---   RUECKGABE: {ok:true, today, data_since, top_n,
+--   Rueckgabe: {ok:true, today, data_since, top_n,
 --     periods: { d7: {total_usd, avg_per_day_usd, days_covered, requests, unpriced_requests, prev_total_usd, change_pct},
 --                d30: {total_usd, avg_per_day_usd, days_covered, requests, unpriced_requests, projected_month_usd} },
 --     kinds_d7: [{kind, usd, pct}] absteigend (input|cache_write|cache_read|output|web_search|keepalive),
@@ -27,7 +27,7 @@
 --     by_model: [{model, usd_d7, usd_d30}] absteigend (nur bepreiste),
 --     insights: {cold_starts_d7, cold_start_usd_d7, top_day, top_day_usd, cache_hit_pct_d7} }
 --   Betraege auf 4 Nachkommastellen gerundet; die Anzeige formatiert nur.
---   D10 / Auth: SECURITY DEFINER (der /kosten-Sub liest unter core_ro), search_path gepinnt, alles voll-qualifiziert,
+--   Auth: SECURITY DEFINER (der /kosten-Sub liest unter core_ro), search_path gepinnt, alles voll-qualifiziert,
 --   kein dynamisches SQL. EXECUTE nur an core_ro (util_create_core_ro.sql).
 --   Tests: tests/db/core/test_fn_get_llm_cost_report.sql
 -- ============================================================

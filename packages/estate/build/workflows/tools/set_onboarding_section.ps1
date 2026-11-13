@@ -1,20 +1,20 @@
 ﻿#Requires -Version 5.1
 # Dot-gesourct von build.ps1 (Helper + Script-Scope-Creds im Parent-Scope).
 
-# --- agent.estate.tool_set_onboarding_section (WS-1 estate, Plan groovy-watching-wave) ------
-# Estate-Onboarding-Fortschritts-Marker: setzt EINE estate-Sektion auf completed/skipped/unknown.
+# --- agent.estate.tool_set_onboarding_section ------
+# Estate-Onboarding-Fortschritts-Marker: setzt eine estate-Sektion auf completed/skipped/unknown.
 # Spiegel des Finance-Tools (agent.finance.tool_set_onboarding_section, household-Form), aber
 # package='estate' -> schreibt estate.onboarding_state ueber die Core-generische Schnittstelle
-# core.fn_set_onboarding_section. KEIN HITL (kein Domaenen-/PII-Write, nur ein Status-Flag) ->
-# ruft KEIN Gate -> KEIN approval_matrix-Eintrag (approval_lint greift nur fuer Gate-Aufrufer).
-# Cred = estate_rw (finance_rw-Paritaet, Plan-Kontext-Update: bewusst NICHT die career-Haupt-RW-
-# Abweichung — estate ist household, die fn braucht KEINEN fn_resolve_sender-Read auf agent.*;
+# core.fn_set_onboarding_section. Kein HITL (kein Domaenen-/PII-Write, nur ein Status-Flag) ->
+# ruft kein Gate -> kein approval_matrix-Eintrag (approval_lint greift nur fuer Gate-Aufrufer).
+# Cred = estate_rw (wie finance_rw), nicht die Haupt-RW wie career — estate ist household, die fn braucht
+# keinen fn_resolve_sender-Read auf agent.*;
 # estate.onboarding_state liegt im eigenen Schema, die INVOKER-fn traegt die Isolation ueber die
-# Caller-Grants; EXECUTE auf core.fn_set_onboarding_section grantet fn_provision_package_roles).
+# Caller-Grants; EXECUTE auf core.fn_set_onboarding_section grantet fn_provision_package_roles.
 # estate hat keine core.context_scopes-Zeile -> household-Form (PK section_key, anders als career per_user);
 # die chat_id im Payload dient nur dem owner_only-Riegel der fn (Haushalts-Fortschritt setzt nur der Owner).
 function Build-EstateSetOnboardingSection {
-    $CRED_POSTGRES = $CRED_ESTATE_RW   # funktions-lokal (Dynamic-Scope -> Build-Pg sieht es), WS-B0-Muster
+    $CRED_POSTGRES = $CRED_ESTATE_RW   # funktions-lokal (Dynamic-Scope -> Build-Pg sieht es)
 
     $trig = Build-Trigger @('section_key', 'status', 'chat_id')
 
@@ -30,7 +30,7 @@ function Build-EstateSetOnboardingSection {
 
     $ifOk = Build-If 'Set ok?' @(440, 0) "={{ `$json.ok }}" 'true' 'equals' 'boolean'
     $err = Build-ToolError 'Set failed' @(660, 200) "={{ `$('Set section').item.json.reason }}"
-    # Roter Faden: hat der Schritt den Bereich geschlossen, schickt core.sub_onboarding_progress die Weiter-Karte
+    # Hat der Schritt den Bereich geschlossen, schickt core.sub_onboarding_progress die Weiter-Karte
     # (fire-and-forget; die Entscheidung trifft die DB ueber area_completed_now + die Einmal-Latches).
     $progress = New-OnboardingProgressCallNode -Package 'estate' -Pos @(660, 0)
     $ret = Build-Return @(880, 0) @(

@@ -1,21 +1,21 @@
-# pkg_teardown.sh — n8n-Laufzeit-Artefakte eines Pakets entfernen (per-Paket-Uninstall, WS-2).
-# SOURCED (kein Shebang, kein `set -e` — der Top-Aufrufer `lifeagents` traegt den Error-Mode).
+# pkg_teardown.sh — n8n-Laufzeit-Artefakte eines Pakets entfernen (per-Paket-Uninstall).
+# Gesourct (kein Shebang, kein `set -e` — der Top-Aufrufer `lifeagents` traegt den Error-Mode).
 #
-# Warum eine eigene Datei: die Runtime-CLI (`lifeagents package uninstall`) laeuft AUSSERHALB von
+# Warum eine eigene Datei: die Runtime-CLI (`lifeagents package uninstall`) laeuft ausserhalb von
 # provision.sh und sourct daher weder deploy_workflows.sh noch inject_credentials.sh — die n8n-REST-
 # Helfer (Workflow-Liste) leben hier; Credential-Liste/-DELETE + Workflow-DELETE teilt common.sh
 # (n8n_list_credentials/n8n_delete_credential/n8n_delete_workflow — auch retire_* in deploy_workflows.sh).
 #
 # Gegenstueck zu deploy_workflows.sh: dort werden die Paket-Workflows importiert+aktiviert, hier
-# geloescht. WORKFLOW-IDENTIFIKATION ueber den live `GET /workflows`-Namen + Wort-Grenze-Praefix aus
-# `provides.agents` (arch-challenge Verdikt A: Label-Selektor-Muster wie `kubectl delete -l app=<name>`;
-# wir haben KEIN gespeichertes Install-Manifest, live n8n ist die Wahrheit, der getrackte Baum driftet).
-# CREDENTIAL-IDENTIFIKATION aus der Rollen-Konvention `<pkg>_rw`/`<pkg>_ro` (Verdikt B: keine zweite SSOT,
+# geloescht. Workflow-Identifikation ueber den live `GET /workflows`-Namen + Wort-Grenze-Praefix aus
+# `provides.agents` (Label-Selektor-Muster wie `kubectl delete -l app=<name>`;
+# wir haben kein gespeichertes Install-Manifest, live n8n ist die Wahrheit, der getrackte Baum driftet).
+# Credential-Identifikation aus der Rollen-Konvention `<pkg>_rw`/`<pkg>_ro` (keine zweite SSOT,
 # kein Manifest-Feld) -> `Postgres <pkg>_rw (read-write)` + `Postgres <pkg>_ro (read-only)`. Die geteilten
-# Host-Creds (`Postgres account`/core_ro/context_ro/Telegram/LLM/Header-Auth) matchen `<pkg>_*` NICHT.
+# Host-Creds (`Postgres account`/core_ro/context_ro/Telegram/LLM/Header-Auth) matchen `<pkg>_*` nicht.
 #
-# GEGATETER n8n-NEUSTART (WS-B4b-Muster): wie beim Deploy raeumt n8n single-main einen bereits im Speicher
-# laufenden Trigger bei DELETE NICHT ab -> ein zuvor aktiver Paket-Cron feuerte sonst weiter gegen die
+# Gegateter n8n-Neustart: wie beim Deploy raeumt n8n single-main einen bereits im Speicher
+# laufenden Trigger bei DELETE nicht ab -> ein zuvor aktiver Paket-Cron feuerte sonst weiter gegen die
 # geloeschte Workflow-id. War >=1 Paket-Workflow aktiv -> einmal neu starten (frische Registrierung aus der DB).
 #
 # Reads/derives globals: N8N_OWNER_ENV_FILE (Default /etc/lifeagents/core.env), N8N_ENV_FILE (Default
@@ -39,7 +39,7 @@ _pkgt_resolve_n8n() {
   return 0
 }
 
-# _pkgt_list_workflows → ALLE Workflows als 'id<TAB>name<TAB>active'-Zeilen (cursor-paginiert).
+# _pkgt_list_workflows → alle Workflows als 'id<TAB>name<TAB>active'-Zeilen (cursor-paginiert).
 #   GET-Fehler -> LEER (non-fatal: dann findet der Filter nichts -> kein DELETE, kein Bounce).
 _pkgt_list_workflows() {
   local url="$N8N_URL/api/v1/workflows?limit=250" resp cursor
@@ -53,8 +53,8 @@ _pkgt_list_workflows() {
   done
 }
 
-# _pkgt_pkg_cred_names <pkg> → ALLE Paket-Credential-Namen (eine pro Zeile): die zwei Postgres-Creds
-#   aus der Rollen-Konvention (= dieselbe Konvention, unter der inject_credentials sie anlegt) PLUS
+# _pkgt_pkg_cred_names <pkg> → alle Paket-Credential-Namen (eine pro Zeile): die zwei Postgres-Creds
+#   aus der Rollen-Konvention (= dieselbe Konvention, unter der inject_credentials sie anlegt) plus
 #   die im Manifest-`credentials`-Block deklarierten Fremd-API-Creds (Uninstall-Symmetrie, §6 —
 #   was pkg_install_one Stage 4 anlegt, raeumt der Teardown auch ab). Manifest-Pfad wie _pkg_dir
 #   (LIFEAGENTS_LIB im CLI-Kontext, REPO_ROOT unter provision.sh); fehlt es -> nur die 2 Rollen-Creds.
@@ -76,7 +76,7 @@ _pkgt_wait_health() {
   warn "n8n /healthz antwortet noch nicht — doctor.sh prueft erneut."
 }
 
-# _pkgt_teardown <pkg> <agents_csv>  — alle Workflows des Pakets (Name-Praefix aus provides.agents) UND
+# _pkgt_teardown <pkg> <agents_csv>  — alle Workflows des Pakets (Name-Praefix aus provides.agents) und
 #   die zwei Paket-Credentials aus n8n entfernen, danach gegateter Neustart. Non-fatal bei fehlendem
 #   API-Key / nicht erreichbarem n8n (warn+skip -> der DB-Teardown des Aufrufers laeuft trotzdem).
 _pkgt_teardown() {
@@ -88,9 +88,9 @@ _pkgt_teardown() {
   require_cmd curl
   require_cmd jq
 
-  # --- Workflows des Pakets bestimmen (Wort-Grenze-Praefix: name == 'agent.<a>' ODER startswith
-  #     'agent.<a>.' ODER 'agent.<a>_' — volle Paritaet zu deploy_workflows._wf_name_matches /
-  #     der build-seitigen Get-WorkflowHomeDir-Regel, paperless-WS-0 Naht 5) ---
+  # --- Workflows des Pakets bestimmen (Wort-Grenze-Praefix: name == 'agent.<a>' oder startswith
+  #     'agent.<a>.' oder 'agent.<a>_' — volle Paritaet zu deploy_workflows._wf_name_matches /
+  #     der build-seitigen Get-WorkflowHomeDir-Regel) ---
   local wf_lines; wf_lines="$(_pkgt_list_workflows)"
   local del_ids=() id name active a matched n_active=0
   while IFS=$'\t' read -r id name active; do

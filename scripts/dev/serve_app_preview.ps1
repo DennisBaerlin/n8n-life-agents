@@ -1,9 +1,9 @@
 ﻿#Requires -Version 5.1
 # serve_app_preview.ps1 -- Live-Vorschau der Mini-App fuer den Browser der Claude-Desktop-App (Vorschau-Eintrag "mini-app"
-# in .claude/launch.json). Liefert die ECHTE Seite packages/core/build/app/index.html mit dem echten Renderer und einem
+# in .claude/launch.json). Liefert die echte Seite packages/core/build/app/index.html mit dem echten Renderer und einem
 # festen, erfundenen View-Modell (Bildschirm Vermoegen) ueber den fetch-Stub aus scripts/dev/lib/app_preview.ps1 --
-# kein Substrat, keine DB, kein Telegram. Anlass (2026-11-02): die Darstellung wurde bisher erst am Telefon des Owners
-# geprueft; jetzt laesst sie sich in Handybreite (hell/dunkel) direkt im Desktop-Browser ansehen und Stellen darin markieren.
+# kein Substrat, keine DB, kein Telegram. Zeigt die Seite in Handybreite (hell/dunkel) im Desktop-Browser; Stellen darin
+# lassen sich markieren.
 # Jede Anfrage baut die Seite neu (Aenderung an index.html, Texten oder dem Datenmodell app_preview_data.json -> Neuladen
 # genuegt); nur eine Aenderung an lib/app_preview.ps1 oder am Renderer (build_helpers.ps1) braucht einen Neustart des Servers.
 #   .\scripts\dev\serve_app_preview.ps1 [-Port 8765]
@@ -26,7 +26,7 @@ try {
         $ctx = $listener.GetContext()
         $res = $ctx.Response
         # HEAD (Port-Check der Desktop-App vor dem Oeffnen des Tabs): Header ohne Body; ein Body-Write wirft bei HEAD
-        # "ueberschreitet Content-Length" und riss den Server beim ersten Start (2026-11-02)
+        # "ueberschreitet Content-Length" und beendet den Server
         $isHead = $ctx.Request.HttpMethod -eq 'HEAD'
         try {
             if ($ctx.Request.Url.AbsolutePath -ne '/') {

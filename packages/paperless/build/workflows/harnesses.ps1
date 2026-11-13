@@ -1,7 +1,7 @@
 ﻿#Requires -Version 5.1
 # Paperless-Test-Harness-Eintraege (Paket-Beitrag zur Engine-Registry $script:Harnesses; init in lib/harness.ps1).
 # Dot-gesourct von build.ps1 ueber den packages/*/build/workflows/*.ps1-Glob.
-# Die drei Werkzeug-Harnesses rufen die Paket-Werkzeuge DIREKT (infra_cases: Eingabe-Pruefung, Fehler-Mapping gegen den
+# Die drei Werkzeug-Harnesses rufen die Paket-Werkzeuge direkt (infra_cases: Eingabe-Pruefung, Fehler-Mapping gegen den
 # Mock-Paperless) — die Berechtigungs-Pruefstelle testet der Vermittler-Harness agent.sub_dispatch_tool.test_harness.
 $script:Harnesses += @(
     [ordered]@{ name='agent.paperless_assistant.test_harness';             targetName='agent.paperless_assistant';             path='paperless-test';         inputMap=$null }

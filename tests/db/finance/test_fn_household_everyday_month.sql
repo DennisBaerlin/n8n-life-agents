@@ -1,5 +1,5 @@
 -- tests/db/finance/test_fn_household_everyday_month.sql
--- finance.fn_household_everyday_month() — Alltagsausgaben des Haushalts je Monat in EUR (Transparenz 2026-10-30):
+-- finance.fn_household_everyday_month() — Alltagsausgaben des Haushalts je Monat in EUR:
 --   Summe der Geld-Konten mit Kontoauszug, ohne Kinderkonten, provisional bei nur einem Auszug; und ihre Konsumenten:
 --   fn_liquidity_snapshot.monthly_expenses_eur = Pflicht + Alltag, cashflow_coverage rechnet „frei“ nach Alltag.
 --   Self-contained (BEGIN..ROLLBACK), Werte erfunden.

@@ -4,23 +4,28 @@
 --   Partielles UPDATE via COALESCE(NULLIF) — "nicht gesendet = unveraendert". Aufloesung
 --   per (domain, label) ueber fn_resolve_monitor_trigger (0/>1 -> {ok:false} + Kandidaten).
 --   Lifecycle:
---     * status='armed' auf einem fired Trigger = RE-ARM (bewusster Akt): fired_at und
+--     * status='armed' auf einem fired Trigger = Re-Arm (bewusster Akt): fired_at und
 --       fail_streak werden geloescht, next_check_at = now (neue Epoche); date-Trigger mit vergangenem
 --       due_date nur zusammen mit neuem due_date (sonst {ok:false})
 --     * status='disabled' = parken (Due-Selection ueberspringt)
 --     * reset_peak=true = Drawdown-Ratchet nullen (neue Referenz-Epoche; naechste
 --       saubere Beobachtung seedet neu)
---   Typ-Wechsel ist ABGELEHNT (delete + create — die Feld-Konsistenz haengt am Typ).
+--   Typ-Wechsel wird abgelehnt (delete + create — die Feld-Konsistenz haengt am Typ).
 --   Spec-Edits (Prompt/SQL/Methoden-Parameter) werden re-validiert (Repair-Flow: Quellen driften);
---   Paket-Methode (Phase B): acquisition_params (Objekt) wird ueber die bestehende Spec gemergt (nur gesendete
+--   Paket-Methode: acquisition_params (Objekt) wird ueber die bestehende Spec gemergt (nur gesendete
 --   Keys aendern sich) und von der validate_fn des Pakets geprueft/normalisiert (fn_monitor_validate_params);
---   ohne acquisition_params bleibt die Spec unberuehrt -> Disable/Re-Arm/Label gehen IMMER, auch wenn das Paket
+--   ohne acquisition_params bleibt die Spec unberuehrt -> Disable/Re-Arm/Label gehen immer, auch wenn das Paket
 --   der Methode gerade fehlt ("always silenceable").
 --   Cadence-Aenderung re-anker next_check_at = now; Web-Rate-Limit (>= 12h) gespiegelt.
 --   due_date: YYYY-MM-DD oder relativ ("+6 months") -> core.fn_resolve_date; ein neu gesendetes Datum in der
 --     Vergangenheit -> {ok:false}.
 --   comparator nur gte|lte, Zahl-Felder als Text mit Punkt oder Komma (agent.fn_parse_decimal_or_null); sonst {ok:false}.
---   RUECKGABE (Post-State): {ok:true, trigger_id, status, next_check_at,
+--   Kinder-Sicht: eine bekannte Person ohne Haushalts-Sicht (core.fn_sender_is_household_restricted) -> {ok:false, reason:'household_only: ...'}.
+--   Eingabe jsonb: label (Pflicht), domain (Default 'general'), new_label, status ('armed'|'disabled'), check_interval,
+--     due_date, comparator, threshold_value, drawdown_pct, warn_days_before, expected_unit, min_plausible, max_plausible,
+--     max_jump_pct, action_note, reset_peak, acquisition_prompt (web_search), acquisition_sql (sql),
+--     acquisition_params (Paket-Methode), chat_id.
+--   Rueckgabe (Post-State): {ok:true, trigger_id, status, next_check_at,
 --     check_interval, due_date, reference_value}.
 -- ============================================================
 CREATE OR REPLACE FUNCTION agent.fn_set_monitor_trigger(p jsonb)
@@ -43,7 +48,7 @@ DECLARE
     v_avail   JSONB;
     v_key     TEXT;
 BEGIN
-    -- Kinder-Sicht (Paket C): eine bekannte Person ohne Haushalts-Sicht (Kind) legt keine Erinnerung auf Haushaltswerte an,
+    -- Kinder-Sicht: eine bekannte Person ohne Haushalts-Sicht (Kind) legt keine Erinnerung auf Haushaltswerte an,
     -- aendert oder loescht keine; ohne chat_id (Cron, Systempfad) unveraendert. Vor jedem Probelauf und Write.
     IF core.fn_sender_is_household_restricted(p->>'chat_id') THEN
         RETURN jsonb_build_object('ok', false, 'reason', 'household_only: only the adults of the household can set up or change reminders here');
@@ -139,7 +144,7 @@ BEGIN
     END IF;
 
     -- due_date (nur date-Typ sinnvoll; sonst ignoriert die Typ-CHECK den Wert ohnehin)
-    -- WP3: relative Angabe ("+6 months") rechnet die DB; Vergangenheits-Check nur fuer ein neu gesendetes Datum.
+    -- Relative Angabe ("+6 months") rechnet die DB; Vergangenheits-Check nur fuer ein neu gesendetes Datum.
     IF NULLIF(trim(COALESCE(p->>'due_date', '')), '') IS NOT NULL THEN
         v_dchk := agent.fn_resolve_monitor_due(p->>'due_date');   -- die eine Regel (auch fuer die Karte im Tool)
         IF NOT (v_dchk->>'ok')::boolean THEN

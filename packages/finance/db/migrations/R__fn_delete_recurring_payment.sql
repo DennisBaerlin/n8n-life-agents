@@ -1,17 +1,18 @@
 -- ============================================================
--- fn_delete_recurring_payment (ATOMIC WRITE) -- Hard-DELETE einer STANDALONE Fehlanlage
+-- fn_delete_recurring_payment (ATOMIC WRITE) -- Hard-DELETE einer standalone Fehlanlage
 --   Nur fuer standalone wiederkehrende Zahlungen (Gehalt/Miete/Abo/Rente). Eine entitaets-besessene
---   recurring_payment (Versicherung/Kredit/Pension/Sparziel/Sparplan) wird NICHT hier geloescht,
---   sondern ueber das set_/close_-Tool der besitzenden Entitaet (sonst broken FK / Cashflow-Leiche).
---   KORRIGIERBAR (kein RAISE -> kein Owner-Alert):
---     - von einer Entitaet besessen -> {ok:false, reason, owner} (Verweis aufs set_/close_-Tool),
---     - >=1 gebuchte Transaktion (recurring_payment_id) -> {ok:false, reason, transaction_count}
---       (RESTRICT; erst die Buchung(en) voiden),
---     - Zubringer (2026-10-27): ein Transfer in das Verrechnungskonto eines aktiven Sparplans oder den Topf eines aktiven
---       Sparziels -> {ok:false, code:'feeds_savings'} ausser confirm_feeds_savings=true (Nutzer bestaetigt ausdruecklich).
---   Eingabe jsonb: recurring_payment_name, confirm_feeds_savings (opt). Resolve findet auch paused (p_active_only=FALSE).
---   RUECKGABE: {ok:true, action:'deleted', recurring_payment_id}. RAISE nur bei not-found / mehrdeutig.
---   finance_recurring_payment_skips gehen per ON DELETE CASCADE automatisch mit.
+--   recurring_payment (Versicherung/Kredit/Pension/Sparziel/Sparplan) geht ueber das set_/close_-Tool der
+--   besitzenden Entitaet (sonst broken FK / Cashflow-Leiche).
+--   Eingabe jsonb: recurring_payment_name (Pflicht; Resolve findet auch paused, p_active_only=FALSE),
+--   confirm_feeds_savings (optional, 'true' = Nutzer bestaetigt ausdruecklich, siehe feeds_savings).
+--   Rueckgabe: {ok:true, action:'deleted', recurring_payment_id}.
+--   {ok:false} (kein RAISE -> kein Owner-Alert):
+--     - code 'not_found' (candidates []) / 'ambiguous' (candidates)
+--     - von einer Entitaet besessen -> reason + owner (Verweis aufs set_/close_-Tool)
+--     - Zubringer: Transfer in das Verrechnungskonto eines aktiven Sparplans oder den Topf eines aktiven Sparziels
+--       -> code 'feeds_savings', ausser confirm_feeds_savings=true
+--     - >=1 gebuchte Transaktion (recurring_payment_id, RESTRICT) -> reason + transaction_count (erst voiden)
+--   Seiteneffekt: finance_recurring_payment_skips gehen per ON DELETE CASCADE mit.
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_delete_recurring_payment(p jsonb)
 RETURNS jsonb LANGUAGE plpgsql AS $$
@@ -37,7 +38,7 @@ BEGIN
     END IF;
     v_id := v_resolve.id;
 
-    -- Korrigierbar: entitaets-besessen -> {ok:false} (Verweis aufs set_/close_-Tool der Entitaet).
+    -- Entitaets-besessen: Verweis aufs set_/close_-Tool der Entitaet.
     v_owner := finance.fn_recurring_owner(v_id);
     IF v_owner IS NOT NULL THEN
         RETURN jsonb_build_object('ok', false,
@@ -47,9 +48,9 @@ BEGIN
             'owner', v_owner);
     END IF;
 
-    -- Korrigierbar (Befund 2026-10-27): ein Dauerauftrag, der das Verrechnungskonto eines aktiven Sparplans oder den
-    -- Topf eines aktiven Sparziels fuellt, ist KEIN Duplikat einer Ziel-Rate (der Agent loeschte ihn so). Nur mit
-    -- ausdruecklicher Bestaetigung des Nutzers (confirm_feeds_savings=true), dass es ihn nicht mehr gibt.
+    -- Ein Dauerauftrag, der das Verrechnungskonto eines aktiven Sparplans oder den Topf eines aktiven Sparziels
+    -- fuellt, ist kein Duplikat einer Ziel-Rate; geloescht wird er nur mit ausdruecklicher Nutzer-Bestaetigung
+    -- (confirm_feeds_savings=true), dass es ihn nicht mehr gibt.
     SELECT rp.target_account_id INTO v_target FROM finance.recurring_payments rp WHERE rp.id = v_id;
     IF v_target IS NOT NULL AND lower(COALESCE(p->>'confirm_feeds_savings', '')) IS DISTINCT FROM 'true' THEN
         SELECT string_agg(x.what, '; ') INTO v_feeds FROM (
@@ -73,7 +74,7 @@ BEGIN
         END IF;
     END IF;
 
-    -- Korrigierbar: gebuchte Transaktionen -> {ok:false} (RESTRICT).
+    -- Gebuchte Transaktionen (FK RESTRICT) als Daten.
     SELECT COUNT(*) INTO v_cnt FROM finance.transactions WHERE recurring_payment_id = v_id;
     IF v_cnt > 0 THEN
         RETURN jsonb_build_object('ok', false,

@@ -1,8 +1,8 @@
 -- ============================================================
 -- career.fn_salary_annual (Gehalt aufs Jahr — render-at-fetch, nie gespeichert)
---   Ein Gehalt wird ROH mit seiner Einheit gespeichert (Betrag + period month|year + basis gross|net, WP3); das
+--   Ein Gehalt wird roh mit seiner Einheit gespeichert (Betrag + period month|year + basis gross|net); das
 --   LLM rechnet nie um. Jahreswert: month -> x 12 (Annahme 12 Gehaelter, so im Anzeigetext benannt), year -> Betrag;
---   ohne Einheit -> NULL (Bestand vor WP3: die Einheit ist unbekannt und wird nicht angenommen).
+--   ohne Einheit -> NULL (Bestandswert ohne Einheit: die Einheit ist unbekannt und wird nicht angenommen).
 --   IMMUTABLE. Tests: tests/db/career/test_fn_salary_text.sql
 -- ============================================================
 CREATE OR REPLACE FUNCTION career.fn_salary_annual(p_amount numeric, p_period text)

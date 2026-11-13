@@ -1,6 +1,6 @@
 -- tests/db/core/test_fn_validate_observation.sql
 -- Testet fn_validate_observation: die geteilte Validierungs-Kaskade (Stufen 2-4) fuer
--- beschaffte Werte — genutzt von fn_monitor_evaluate UND dem Probe-Pfad der Tools.
+-- beschaffte Werte — genutzt von fn_monitor_evaluate und dem Probe-Pfad der Tools.
 -- Signatur (positional, fn-intern wie fn_add_recurring_payment):
 --   fn_validate_observation(p_obs jsonb, p_method text, p_expected_unit text,
 --                           p_min numeric, p_max numeric, p_jump_pct numeric, p_last numeric)
@@ -53,7 +53,7 @@ BEGIN
   END IF;
   RAISE NOTICE 'PASS fn_validate_observation [Unit-Echo: Mismatch dirty, tolerant clean]';
 
-  -- TEST 4: Unit-Check gilt NICHT fuer sql/fx (kein Echo vorhanden; expected_unit = Render-Label)
+  -- TEST 4: Unit-Check gilt nicht fuer sql/fx (kein Echo vorhanden; expected_unit = Render-Label)
   v := agent.fn_validate_observation(
     '{"ok": true, "value": 5234.12}'::jsonb,
     'sql', 'EUR', NULL, NULL, NULL, NULL);
@@ -77,7 +77,7 @@ BEGIN
   END IF;
   RAISE NOTICE 'PASS fn_validate_observation [Bounds]';
 
-  -- TEST 6: Jump-Guard — nur wenn max_jump_pct gesetzt UND letzter sauberer Wert existiert
+  -- TEST 6: Jump-Guard — nur wenn max_jump_pct gesetzt und letzter sauberer Wert existiert
   v := agent.fn_validate_observation(
     '{"ok": true, "value": 200}'::jsonb,
     'fx_rate', NULL, NULL, NULL, 50, 100);   -- +100% > 50% -> dirty

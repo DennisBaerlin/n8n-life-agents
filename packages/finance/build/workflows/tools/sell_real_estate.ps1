@@ -3,8 +3,7 @@
 
 # --- tool_sell_real_estate (Immobilienverkauf buchen: +Erloes, status=sold, Allow+Hinweis bei Kredit) ---
 function Build-SellRealEstate {
-    # WS-B0: enge Paket-Schreibrolle (finance_rw, Least-Privilege D10) statt Owner-Cred.
-    # Dynamic-Scope: Build-Pg liest dieses $CRED_POSTGRES. Core-Tools nutzen die Owner-Cred.
+    # Enge Paket-Schreibrolle (finance_rw) statt Owner-Cred; Build-Pg liest $CRED_POSTGRES per Dynamic-Scope.
     $CRED_POSTGRES = $CRED_FINANCE_RW
     $trig = Build-Trigger @('real_estate_name','proceeds_account_name','sale_date','sale_price')
 
@@ -20,13 +19,11 @@ function Build-SellRealEstate {
     $readRe = Build-Pg 'Read Property' @(660, 0) `
         "=SELECT re.current_value, rep.full_name AS owner, re.status::text AS re_status, (SELECT COUNT(*)::int FROM finance.loans l WHERE l.real_estate_id = re.id AND l.status = 'active') AS loan_count FROM finance.real_estate re LEFT JOIN core.fn_household_persons() rep ON rep.person_id = re.owner_person_id WHERE re.name = ((`$1::jsonb)->>'real_estate_name') ORDER BY re.id LIMIT 1;" `
         ([ordered]@{ real_estate_name = '$(''Start'').item.json.real_estate_name' })
-    # Unbekannter Name -> Tool-Fehler statt stillem Ende (New-RequiredRowGate, 2026-10-24).
+    # Unbekannter Name -> Tool-Fehler statt stillem Ende (New-RequiredRowGate).
     $found = New-RequiredRowGate -Read $readRe -KeyField 're_status' -IfName 'Property found?' -ErrName 'Property not found' `
         -IfPos @(770, -160) -ErrPos @(880, 240) `
         -NotFoundExpr "=No property named '{{ `$('Start').item.json.real_estate_name }}' exists. List them via postgres_select on finance.real_estate_overview and ask the user which one is meant."
 
-    # "DB ist das Gesetz": fn_sell_real_estate laeuft als Probelauf VOR der Karte (korrigierbare Ablehnungen -> {ok:false} ohne Karte);
-    # derselbe Param-Satz geht nach dem Gate in den echten Write.
     $wg = New-FnWriteGate -Fn 'finance.fn_sell_real_estate' -DryPos @(880, 0) -WritePos @(2200, 0) `
         -WriteName 'Sell property (atomic)' `
         -WriteSelect "(r->>'ok')::boolean AS ok, r->>'reason' AS reason, (r->>'real_estate_id')::int AS real_estate_id, (r->>'proceeds_tx_id')::int AS proceeds_tx_id, (r->>'sale_price')::numeric AS sale_price, (r->>'linked_loan_count')::int AS linked_loan_count, r->'linked_loans' AS linked_loans, r->>'note' AS note" `
@@ -37,7 +34,7 @@ function Build-SellRealEstate {
             sale_price          = '$(''Start'').item.json.sale_price'
         })
 
-    # Strukturiertes Summary (Textkatalog): Betraege in EUR-Konvention (entity-Werte in EUR erfasst); Haushalts-
+    # Betraege in EUR-Konvention (entity-Werte in EUR erfasst); Haushalts-
     # Eigentuemer-Fallback kommt aus dem Katalog (SQL liefert NULL).
     $S = "`$('Start').item.json"
     $R = "`$('Read Property').item.json"

@@ -1,5 +1,5 @@
 -- tests/db/finance/test_fn_rate_precision_reason.sql
--- Rundungs-Paket 2026-10-23: Zinssatz/Tilgung passt in numeric(6,4) — > 4 Nachkommastellen kuerzte still, >= 100 warf
+-- Zinssatz/Tilgung muss in numeric(6,4) passen — > 4 Nachkommastellen kuerzten still, >= 100 wirft
 -- Overflow. 3.5 und 3.50000 (Skala 5, Wert 4-stellig darstellbar) sind gueltig; NULL = ok.
 BEGIN;
 

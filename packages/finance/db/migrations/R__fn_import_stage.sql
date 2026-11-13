@@ -1,19 +1,20 @@
 -- ============================================================
--- fn_import_stage (Staging-Write — KEIN HITL: Staging ist keine Domaenen-Daten)
+-- fn_import_stage (Staging-Write — kein HITL: Staging ist keine Domaenen-Daten)
 --   Legt einen Batch an (oder erweitert einen bestehenden) und validiert sofort. Zahl-Felder
 --   werden beim Insert via fn_import_normalize_payload kanonisiert (deutsche Schreibweise ->
 --   plain), damit der spaetere ::numeric-Cast nie an "4.200,50" scheitert.
 --   Payload p: { batch_id (opt — weglassen = neuer Batch), source (chat|vision|csv, def chat),
---                rows: [ {entity_type, ...raw payload, NAMEN statt IDs} ] }
---   Hygiene: der 7-Tage-Verfall laeuft NUR beim Anlegen eines NEUEN Batches (fn_import_sweep) —
---   nicht als Seiteneffekt jedes Stage-Calls (Review A1).
+--                rows: [ {entity_type, ...raw payload, Namen statt IDs} ] }
+--   Hygiene: der 7-Tage-Verfall laeuft nur beim Anlegen eines neuen Batches (fn_import_sweep) —
+--   nicht als Seiteneffekt jedes Stage-Calls.
 --   Depot-Positionen: das Depot bestimmt fn_import_resolve_depot aus gedruckter Depotnummer/Inhaber, wo moeglich.
---   chat_id (opt, Absender): ein Personenfeld, das GENAU ein Selbstbezug ist ("ich", "me"), wird zum vollen Namen
+--   chat_id (opt, Absender): ein Personenfeld, das genau ein Selbstbezug ist ("ich", "me"), wird zum vollen Namen
 --   der Person, die gerade chattet. Gesetzliche Rente: hat die Person schon eine aktive, entfaellt die neue
 --   'statutory'-Zeile und die Renteninformation des Batches haengt sich an die vorhandene.
---   RUECKGABE: {ok:true, batch_id, staged, total, valid, invalid, errors:[{row_no, entity_type, error, row}]}
+--   Rueckgabe: {ok:true, batch_id, staged, total, valid, invalid, errors:[{row_no, entity_type, error, row}]}
 --   (row = Kennfelder der Zeile, fn_import_validate)
---   Korrigierbar (rows fehlt/leer, unbekannter entity_type, committeter Batch) -> {ok:false}.
+--   Korrigierbar (rows fehlt/leer, unbekannte source, unbekannter entity_type, batch_id keine UUID, committeter
+--   Batch) -> {ok:false, reason}.
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_import_stage(p jsonb)
 RETURNS jsonb LANGUAGE plpgsql AS $$
@@ -43,7 +44,7 @@ BEGIN
         RETURN jsonb_build_object('ok', false, 'reason', 'source must be chat|vision|csv');
     END IF;
 
-    -- alle Typen VOR dem Insert pruefen (alles-oder-nichts auch beim Stagen)
+    -- alle Typen vor dem Insert pruefen (alles-oder-nichts auch beim Stagen)
     FOR v_row IN SELECT * FROM jsonb_array_elements(p->'rows') LOOP
         v_type := v_row->>'entity_type';
         IF v_type IS NULL OR v_type NOT IN
@@ -55,7 +56,7 @@ BEGIN
     END LOOP;
 
     IF NULLIF(p->>'batch_id','') IS NOT NULL THEN
-        -- Phase B: Modell-Eingabe -> Form-Guard als {ok:false} statt Cast-RAISE
+        -- Modell-Eingabe -> Form-Guard als {ok:false} statt Cast-RAISE
         IF p->>'batch_id' !~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' THEN
             RETURN jsonb_build_object('ok', false,
                 'reason', format('batch_id must be the UUID of an earlier staging call (or omitted for a new batch), got %L', p->>'batch_id'));
@@ -68,7 +69,7 @@ BEGIN
         END IF;
     ELSE
         v_batch := gen_random_uuid();
-        PERFORM finance.fn_import_sweep(7);   -- GC nur am natuerlichen Punkt: neuer Batch (Review A1)
+        PERFORM finance.fn_import_sweep(7);   -- GC nur am natuerlichen Punkt: neuer Batch
     END IF;
 
     SELECT COALESCE(MAX(row_no), 0) INTO v_next
@@ -83,7 +84,7 @@ BEGIN
                 finance.fn_import_normalize_payload(v_row->>'entity_type', (v_row - 'entity_type')), v_source);
     END LOOP;
 
-    -- Depot der NEUEN Positionen aus gedruckter Depotnummer/Inhaber (fn_import_resolve_depot) statt geratenem Namen;
+    -- Depot der neuen Positionen aus gedruckter Depotnummer/Inhaber (fn_import_resolve_depot) statt geratenem Namen;
     -- nach dem Insert-Loop, damit auch eine spaeter im Batch stehende Depot-Konto-Zeile zaehlt. Nur hier, nie in
     -- fn_import_update_row (eine Korrektur des Nutzers bleibt stehen).
     FOR v_stock IN
@@ -96,8 +97,8 @@ BEGIN
         END IF;
     END LOOP;
 
-    -- Selbstbezug (Renteninformation-Plan 2026-10-26): ein Personenfeld "ich"/"mein"/"me"/"나" meint die Person, die
-    -- gerade chattet. Erkannt ohne eigene Wortliste: der Resolver loest den Wert NUR mit chat_id auf (core.fn_resolve_person,
+    -- Selbstbezug: ein Personenfeld "ich"/"mein"/"me"/"나" meint die Person, die
+    -- gerade chattet. Erkannt ohne eigene Wortliste: der Resolver loest den Wert nur mit chat_id auf (core.fn_resolve_person,
     -- core:V033). Ersetzt durch den vollen Namen -> Validate/Commit brauchen den Absender nie (Batch kennt ihn nicht).
     IF v_chat IS NOT NULL THEN
         FOR v_srow IN SELECT s.id, s.entity_type, s.payload FROM finance.import_staging s
@@ -123,7 +124,7 @@ BEGIN
             SELECT r.person_id, r.hit_count INTO v_owner, v_hits FROM core.fn_resolve_person(v_srow.payload->>'owner_person') r;
         END IF;
         CONTINUE WHEN v_hits IS DISTINCT FROM 1;   -- unklare Person: validate_row meldet es
-        -- vorhandene Rente: die der Person, sonst (Bescheid mit Namen, Rente ohne Person erfasst) die EINE des Haushalts
+        -- vorhandene Rente: die der Person, sonst (Bescheid mit Namen, Rente ohne Person erfasst) die eine des Haushalts
         v_exist := NULL; v_exist_id := NULL;
         SELECT id, name INTO v_exist_id, v_exist FROM finance.pension
         WHERE pension_type = 'statutory' AND status = 'active' AND owner_person_id IS NOT DISTINCT FROM v_owner;

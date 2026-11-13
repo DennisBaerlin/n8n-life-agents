@@ -1,6 +1,6 @@
 ﻿#Requires -Version 5.1
 # locale_lint.ps1 — Textkatalog fester Nutzertexte (packages/<pkg>/locales/<lang>.json, docs/package-contract.md §3.11).
-# Vorbild i18n-tasks `health` (Rails): ein Katalog je Sprache, der CI-Lauf haelt sie vollstaendig und konsistent.
+# Ein Katalog je Sprache; das Lint haelt sie vollstaendig und konsistent.
 # Gepruefte Gesetze (hart, Exit-Code = Anzahl fehlgeschlagener Checks):
 #   (1) Sprachliste: Core-Manifest languages.list — Code ^[a-z]{2}$, eindeutig, Eigenname + Intl-Locale + date_pattern gesetzt;
 #       die in core:V027 vorab angelegten Codes sind Teil der Liste (V-Liste ⊆ Manifest).
@@ -57,7 +57,7 @@ Check 'Sprachliste: Core-Manifest languages.list (Code/Name/Locale, eindeutig, V
         if ("$($l.code)" -notmatch '^[a-z]{2}$') { "Code '$($l.code)' ist kein ISO-639-1-Code" }
         if ([string]::IsNullOrWhiteSpace("$($l.name)")) { "Sprache '$($l.code)': name (Eigenname) fehlt" }
         if ("$($l.locale)" -notmatch '^[a-z]{2}-[A-Z]{2}$') { "Sprache '$($l.code)': locale '$($l.locale)' ist kein Intl-Tag (z. B. de-DE)" }
-        # Textkatalog Phase C: to_char-Muster fuer SQL-Dokumente (core.fn_fmt_date; Seed + CHECK in core.ui_languages)
+        # to_char-Muster fuer SQL-Dokumente (core.fn_fmt_date; Seed + CHECK in core.ui_languages)
         if ("$($l.date_pattern)" -notmatch '^(YYYY|MM|DD|[./ -])+$') { "Sprache '$($l.code)': date_pattern '$($l.date_pattern)' fehlt oder ist kein Datumsmuster (nur YYYY/MM/DD + Trenner)" }
         if ($null -eq $l.ord) { "Sprache '$($l.code)': ord fehlt" }
     }
@@ -180,7 +180,7 @@ Check 'Konto-Zeichen: jedes Zeichen aus fn_account_emoji_choices hat finance.emo
     }
 }
 
-# (7b) Bot-Persona: die EINE Liste (Core-Manifest personas.list) ist wohlgeformt, core:V031 legt nur Codes aus ihr an,
+# (7b) Bot-Persona: die eine Liste (Core-Manifest personas.list) ist wohlgeformt, core:V031 legt nur Codes aus ihr an,
 #      und jede Persona hat ihren Knopf-Namen core.persona.name.<code> (die Paritaet je Sprache sichert Check 4).
 Check 'Persona-Liste: Core-Manifest personas.list (Code/ord, eindeutig, V031 ⊆ Liste, Knopf-Name + Sticker-Set je Persona)' {
     $pers = @($core.personas.list)
@@ -221,9 +221,9 @@ Check 'Persona-Liste: Core-Manifest personas.list (Code/ord, eindeutig, V031 ⊆
     }
 }
 
-# (8) Textkatalog Phase C: DB-Funktionen liefern Text-Verweise (core.fn_ui_tpl / core.fn_ui_text / Key-Listen) —
+# (8) DB-Funktionen liefern Text-Verweise (core.fn_ui_tpl / core.fn_ui_text / Key-Listen);
 #     db_test laedt den Katalog nicht, ein Tippfehler zeigte in Prod den rohen Key. Jedes key-foermige SQL-Literal
-#     '<pkg>.<bereich>.<name>' eines Pakets mit Katalog, dessen <bereich> im Katalog dieses Pakets vorkommt, MUSS als
+#     '<pkg>.<bereich>.<name>' eines Pakets mit Katalog, dessen <bereich> im Katalog dieses Pakets vorkommt, muss als
 #     Key existieren (de). Andere Punkt-Literale (Tabellen, fns, Konfig) haben keinen Katalog-Bereich -> unberuehrt.
 #     Dynamisch zusammengesetzte Keys ('x.' || code) sind keine vollstaendigen Literale -> SQL darf Keys nur ganz nennen.
 Check 'SQL-Text-Verweise: jedes Katalog-Key-Literal in R__-Funktionen existiert im Katalog' {
@@ -256,13 +256,13 @@ Check 'SQL-Text-Verweise: jedes Katalog-Key-Literal in R__-Funktionen existiert 
     }
 }
 
-# (9) Laien-Test der Mini-App (UX-Gesamtkonzept 2026-10-31, P6; docs/package-contract.md §3.12 Design rules „words“):
+# (9) Laien-Test der Mini-App (docs/package-contract.md §3.12 Design rules „words“):
 #     kein Wort der Liste $AppDeniedWords im de-Text eines *.app.*-Keys oder eines Keys, dessen Praefix eine
 #     R__fn_app_*.sql als Literal nennt (z. B. das Enum finance.enum.asset_bucket der Vermoegens-Seite). Gross/Klein egal,
 #     Leerraum (auch geschuetztes Leerzeichen) normalisiert.
-#     RATCHET: Ausnahmen stehen je EXAKTEM Key in $appWordExcept (seit dem UX-Umbau leer); wer eine Seite umbaut,
-#     streicht seine Zeilen. Eine Ausnahme ohne Verstoss oder fuer einen Key, den es nicht mehr gibt, ist ein FEHLER
-#     („Zeile streichen“) — so bleibt keine Ausnahme still stehen. Neue Ausnahmen nur mit Owner-Freigabe.
+#     Ratchet: Ausnahmen stehen je exaktem Key in $appWordExcept; wer eine Seite umbaut, streicht seine Zeilen.
+#     Eine Ausnahme ohne Verstoss oder fuer einen Key, den es nicht mehr gibt, ist ein Fehler
+#     („Zeile streichen“), so bleibt keine Ausnahme still stehen. Neue Ausnahmen nur mit Owner-Freigabe.
 $AppDeniedWords = @('Kursminus', 'ermittelbar', 'Deckung', 'Verrechnungskonto', 'Projektion', 'Liquide', 'nicht in der Summe', 'II. BV')
 $appWordExcept = @(           # neue Zeile = Owner-Freigabe
     'finance.app.goals.d_guide_more'   # Rechtsquelle nur hinter dem Info-Zeichen (docs/reference/ui.md Regel 3)
@@ -293,9 +293,9 @@ Check 'Mini-App-Laien-Test: keine Fachwoerter in App-Texten (Ratchet je Key)' {
     }
 }
 
-# (11) Laien-Test der Bestaetigungskarten (Regel E der Sprint-Probe; Gerüst packages/CLAUDE.md
+# (11) Laien-Test der Bestaetigungskarten (Regel E; Geruest packages/CLAUDE.md
 #      *HITL-Bestätigungs-Format*). Dieselbe Mechanik wie (9), eigene Wortliste: Karten-Woerter treffen keine App-Texte.
-#      UMFANG aus dem Code abgeleitet: jedes Key-Literal in Build-Defs, die eine Karte bauen (New-HitlSummary/-Line/-Note),
+#      Umfang aus dem Code abgeleitet: jedes Key-Literal in Build-Defs, die eine Karte bauen (New-HitlSummary/-Line/-Note),
 #      und in R__-Funktionen mit Kartenzeilen (card_lines / 'kind', 'note'), dazu die Gate-Texte core.hitl.*; ein Literal,
 #      das Praefix von Keys ist (Enum), nimmt seine Wert-Keys mit. Nie *.app.* (App-Fenster), *.help.*, *.wf.*.
 #      Regeln je Key: de hoechstens 3 Saetze, 20 Woerter je Satz ("• "-Zeilen = Zahlen-Zeilen, zaehlen nicht; keine
@@ -303,19 +303,19 @@ Check 'Mini-App-Laien-Test: keine Fachwoerter in App-Texten (Ratchet je Key)' {
 #      wachsen, W3C). Keine Vorsilbe ACHTUNG:/Hinweis:/Aktion:; das Warnzeichen nur als Satzanfang "⚠️ " (E1, die Folge
 #      steht in Worten dahinter). Keine Woerter aus $CardDeniedWords (die Meldung nennt den Ersatz), keine Zeitspanne
 #      "<Zahl> Tage vor/nach" (ein Datum nennen). Satzzaehlung ignoriert Abkuerzungen (z. B.), Zahl- und Datumspunkte.
-#      RATCHET wie (9): Ausnahmen je EXAKTEM Key mit Grund in $cardExcept; ueberfluessige Ausnahme = Fehler.
+#      Ratchet wie (9): Ausnahmen je exaktem Key mit Grund in $cardExcept; ueberfluessige Ausnahme = Fehler.
 $CardDeniedWords = [ordered]@{
     'Entität' = 'Versicherung, Kredit, Sparziel …'; 'referenziert' = 'hängt dran'; 'Export' = 'Datei'
     'Sammelbetrag' = 'Summe der übrigen Posten'; 'Trigger' = 'Überwachung'; 'II. BV' = 'weglassen'; 'Turnus' = 'Rhythmus'
     'Prompt' = 'Anweisung'; 'SQL' = 'Abfrage'; 'das System' = 'ich'
     'verrechnet' = 'zählt nur einmal'
 }
-$cardExcept = [ordered]@{     # Key = Grund; neue Zeile = Owner-Freigabe (Termin 3 der Sprint-Probe)
+$cardExcept = [ordered]@{     # Key = Grund; neue Zeile = Owner-Freigabe
 }
 function Get-CardTextFindings([string]$Text, [string]$Lang) {
     $out = @()
     $t = [regex]::Replace($Text, '\s+', ' ').Trim()
-    # Zeilen mit "• " am Anfang sind Zahlen-Zeilen (Regel E: "drei kurze Saetze PLUS Zahlen"): kein Satz, nicht in der
+    # Zeilen mit "• " am Anfang sind Zahlen-Zeilen (Regel E: "drei kurze Saetze plus Zahlen"): kein Satz, nicht in der
     # Zeichengrenze; Wortliste und Warnzeichen gelten trotzdem fuer den ganzen Text ($t).
     $prose = [regex]::Replace((@($Text -split "`n" | Where-Object { -not $_.TrimStart().StartsWith('• ') }) -join ' '), '\s+', ' ').Trim()
     # Satzenden zaehlen: Abkuerzungen, Zahl-/Datumspunkte und Auslassung maskieren
@@ -409,7 +409,7 @@ foreach ($pkg in $cat.Keys) {
     }
 }
 # (10) Mini-App-Texte (*.app.*) sind ausschliesslich SQL-Literale der Bildschirm-fns -> ein ungenutzter ist verwaist und
-#      ein FEHLER (UX-Gesamtkonzept: wer eine Seite umbaut, raeumt ihre alten Keys ab). Ausgenommen die Tab-Titel
+#      ein Fehler (wer eine Seite umbaut, raeumt ihre alten Keys ab). Ausgenommen die Tab-Titel
 #      <pkg>.app.screen.<screen> (setzt core.fn_app_nav dynamisch aus dem Manifest zusammen) und Keys, die der Installer
 #      (provisioning/**/*.sh, z. B. der Menue-Knopf core.app.menu_button) nennt.
 Check 'Mini-App-Texte: kein verwaister *.app.*-Key' {

@@ -1,6 +1,6 @@
 -- tests/db/estate/test_fn_create_storage_place.sql
--- WS-2: Fundstellen-Anlage — Happy Path, kind-Guard, Kind-Reject; access_hint ist ein
--- Fundort-VERWEIS (Inhalt haerten Description/Prompt, nicht die DB). Self-contained.
+-- Fundstellen-Anlage — Happy Path, kind-Guard, Kind-Reject; access_hint ist ein
+-- Fundort-Verweis (Inhalt haerten Description/Prompt, nicht die DB). Self-contained.
 BEGIN;
 
 DO $$

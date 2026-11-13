@@ -1,9 +1,9 @@
 -- tests/db/career/test_career_person_scoping.sql
--- P2a: career.job_matches ist wholly-per-person. Beweist die DB-Invarianten:
+-- career.job_matches ist durchgehend pro Person. Prueft die DB-Invarianten:
 --   (1) person_id NOT NULL (kein Haushalts-Job-Match)
 --   (2) FK -> agent.persons ON DELETE RESTRICT (eine Person mit Treffern ist nicht loeschbar)
---   (3) Partial-UNIQUE (source, external_id, person_id): zwei Personen fuehren DASSELBE Posting (gleiche source+external_id) je EINMAL
---       (Person-Isolation), Re-Scan derselben Person UPSERTet (kein Dup).
+--   (3) Partial-UNIQUE (source, external_id, person_id): zwei Personen fuehren dasselbe Posting (gleiche source+external_id) je einmal
+--       (Person-Isolation), Re-Scan derselben Person upsertet (kein Dup).
 -- Fixture: family owner(erika) + partner(lena) -> projiziert nach agent.persons (FK-Ziel). BEGIN..ROLLBACK.
 BEGIN;
 DO $$
@@ -28,7 +28,7 @@ BEGIN
   IF NOT v_denied THEN RAISE EXCEPTION 'FAIL [1] job_matches.person_id NOT NULL nicht erzwungen'; END IF;
   RAISE NOTICE 'PASS [1] person_id NOT NULL erzwungen';
 
-  -- TEST 2: per-Person-Koexistenz desselben Postings (gleiche external_id, zwei Personen -> ZWEI Zeilen)
+  -- TEST 2: per-Person-Koexistenz desselben Postings (gleiche external_id, zwei Personen -> zwei Zeilen)
   r := career.fn_record_job_match(jsonb_build_object('person_id','erika','source','bundesagentur','external_id','SHARED','title','SM','score',3));
   IF (r->>'ok')::boolean IS DISTINCT FROM true OR (r->>'created')::boolean IS DISTINCT FROM true THEN
     RAISE EXCEPTION 'FAIL [2a] erika SHARED: %', r; END IF;

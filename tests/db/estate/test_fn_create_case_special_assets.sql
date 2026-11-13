@@ -1,6 +1,6 @@
 -- tests/db/estate/test_fn_create_case_special_assets.sql
 -- Ereignisfall mit im Gespraech genannten Sonderfaellen (Waffe/Tier/Fahrzeug/Firma): fn_create_case legt die Register-
---   Stubs in DERSELBEN Transaktion an, die Pflicht-Aufgaben entstehen daraus (Invariante in der DB, nicht im Prompt).
+--   Stubs in derselben Transaktion an, die Pflicht-Aufgaben entstehen daraus (Invariante in der DB, nicht im Prompt).
 --   fn_preview_case zaehlt die kuenftigen Aufgaben schon mit (Karte = Speicher) und schreibt nichts.
 --   Dublette = gleicher Typ + gleiche Beschreibung (lower/trim) bei Person oder Haushalt: kein zweiter Stub.
 --   Vorsorgefall: Typen ohne Vorlage fuer den Falltyp werden abgelehnt (genannt => Aufgabe bleibt ehrlich).
@@ -145,7 +145,7 @@ BEGIN
     RAISE EXCEPTION 'FAIL [8 Eintrag bleibt nach cancel_case]'; END IF;
   RAISE NOTICE 'PASS [8 cancel_case laesst den Eintrag stehen]';
 
-  -- ---- (9) ohne special_assets verhaelt sich alles wie bisher ----
+  -- ---- (9) ohne special_assets entsteht kein Stub ----
   v_r := estate.fn_create_case(jsonb_build_object('chat_id','111','case_type','death','subject_person_id','tante',
            'event_date',(CURRENT_DATE - 2)::text,'bundesland','bayern'));
   IF NOT (v_r->>'ok')::boolean OR v_r->'special_asset_ids' IS DISTINCT FROM '[]'::jsonb THEN RAISE EXCEPTION 'FAIL [9 ohne Angabe]: %', v_r; END IF;

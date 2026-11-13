@@ -1,8 +1,8 @@
 ﻿#Requires -Version 5.1
 # Dot-gesourct von build.ps1 (Def-Discovery nimmt jede Datei unter build/workflows/; reine Daten + zwei Helfer, kein Build-*).
-# --- Spalten-Spickzettel fuer postgres_select (Befunde KW 45, Fund 10) ---
-# 8 Fehlabfragen in einer Woche: das Modell nahm natuerliche Namen (depot_name, goal_name, account_id, account_name) aus der
-# falschen Ansicht. Diese EINE Liste (Ansicht -> exakte Spaltennamen, bei Verwechslungsgefahr mit Bedeutung) geht in die
+# --- Spalten-Spickzettel fuer postgres_select ---
+# Das Modell nimmt sonst natuerliche Namen (depot_name, goal_name, account_id, account_name) aus der falschen Ansicht.
+# Diese eine Liste (Ansicht -> exakte Spaltennamen, bei Verwechslungsgefahr mit Bedeutung) geht in die
 # Tool-Beschreibung von postgres_select beider Agenten (agent.finance + agent.finance_advisor).
 # Drift-Schutz (beide hart): tests/db/finance/test_view_column_hints.sql prueft jede Spalte gegen information_schema
 # (der Block "-- hint:" dort ist eine Kopie dieser Liste), scripts/contract_lint.ps1 (Check 31) prueft Mengengleichheit

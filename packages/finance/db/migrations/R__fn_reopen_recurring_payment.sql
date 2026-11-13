@@ -1,17 +1,18 @@
 -- ============================================================
 -- fn_reopen_recurring_payment (INTERNAL HELPER — not tool-facing)
---   Reaktiviert eine BEENDETE recurring_payment (valid_to gesetzt, z. B. nach Soft-Close eines Sparplans/
---   Sparziels) als Folge-Zeile der Vorgaenger-Kette (Audit Paket 2, Punkt 1). Vorher setzte die Reaktivierung nur
---   status='active' auf die beendete Zeile -> "aktiv", aber nie wieder faellig. valid_to einfach zu leeren waere
+--   Reaktiviert eine beendete recurring_payment (valid_to gesetzt, z. B. nach Soft-Close eines Sparplans/
+--   Sparziels) als Folge-Zeile der Vorgaenger-Kette. Nur status='active' auf der beendeten Zeile zu setzen
+--   ergaebe "aktiv", aber nie wieder faellig. valid_to einfach zu leeren waere
 --   falsch: die Vorkommen der Luecke (Schliessen .. Reaktivieren) wuerden im 90-Tage-Fenster nachtraeglich faellig.
 --   Neue Zeile: alle Felder geerbt (Konto, Ziel-Konto, Betrag, Kadenz, Abbuchungstag, Anker first_payment_date ->
---   gleiches Raster), status='active', valid_from = p_from (fruehestens der Tag NACH dem letzten gebuchten/
+--   gleiches Raster), status='active', valid_from = p_from (fruehestens der Tag nach dem letzten gebuchten/
 --   uebersprungenen Vorkommen der Kette -> nie doppelt faellig), valid_to = NULL, predecessor_id = alte Zeile;
 --   Besitzer zeigen danach auf die neue Zeile (fn_repoint_recurring_owners). Gerufen von fn_set_savings_plan und
 --   fn_set_savings_goal (Status -> active).
---   KORRIGIERBAR (kein Write) -> {ok:false, reason}: Zeile noch nicht beendet (valid_to NULL oder nach p_from);
+--   Eingabe: p_rp_id (beendete Zeile), p_from (Start der neuen Zeile). Unbekannte p_rp_id -> RAISE.
+--   Korrigierbar (kein Write) -> {ok:false, reason}: Zeile noch nicht beendet (valid_to NULL oder nach p_from);
 --   Zeile hat schon einen Nachfolger (nur der Kopf der Kette ist reaktivierbar).
---   RUECKGABE: {ok:true, recurring_payment_id} (neue Zeile).
+--   Rueckgabe: {ok:true, recurring_payment_id} (neue Zeile).
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_reopen_recurring_payment(p_rp_id int, p_from date)
 RETURNS jsonb LANGUAGE plpgsql AS $$
@@ -34,8 +35,8 @@ BEGIN
             'reason', 'This payment was already continued by a newer entry; change that entry instead.');
     END IF;
 
-    -- Nie vor oder an einem schon gebuchten/uebersprungenen Vorkommen der Kette beginnen (Review: Schliessen und
-    -- Reaktivieren am Ausfuehrungstag haette dasselbe Vorkommen unter der neuen rp-id erneut faellig gemacht).
+    -- Nie vor oder an einem schon gebuchten/uebersprungenen Vorkommen der Kette beginnen (Schliessen und
+    -- Reaktivieren am Ausfuehrungstag machte dasselbe Vorkommen unter der neuen rp-id erneut faellig).
     SELECT GREATEST(p_from, max(d) + 1) INTO v_from FROM (
         SELECT max(t.recurring_due_date) AS d FROM finance.transactions t
         WHERE t.recurring_payment_id IN (SELECT finance.fn_recurring_lineage(p_rp_id))

@@ -1,12 +1,12 @@
 -- ============================================================
 -- fn_close_insurance (ATOMIC WRITE)
 --   Smart-Close einer Versicherung: ohne gebuchten Beitrag -> Hard-DELETE (Fehlanlage), sonst Soft-Close (Kuendigung).
---   KETTEN-FEST (WP2 "Finanzen schlank"): nach einer Beitragsaenderung traegt die Police mehrere Glieder -- Buchungen
---   zaehlen ueber die ganze Kette (fn_recurring_lineage), Hard-DELETE loescht die ganze Kette in EINEM Statement
+--   Kettenfest: nach einer Beitragsaenderung traegt die Police mehrere Glieder -- Buchungen
+--   zaehlen ueber die ganze Kette (fn_recurring_lineage), Hard-DELETE loescht die ganze Kette in einem Statement
 --   (Vorgaenger-FK NO ACTION), Soft-Close beendet alle noch laufenden Glieder (fn_end_recurring_chain). Das Vertragsende
---   steht nur an der Kette (die Police traegt seit finance:V027 kein valid_to).
+--   steht nur an der Kette (die Police traegt kein valid_to, finance:V027).
 --   Eingabe jsonb: insurance_name (Aufloesung ueber fn_resolve_insurance, auch nicht aktive).
---   RUECKGABE: {ok:true, action:'deleted'|'closed', tx_count} | {ok:false, code:'not_found'|'ambiguous', reason, candidates}.
+--   Rueckgabe: {ok:true, action:'deleted'|'closed', tx_count} | {ok:false, code:'not_found'|'ambiguous', reason, candidates}.
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_close_insurance(p jsonb)
 RETURNS jsonb LANGUAGE plpgsql AS $$

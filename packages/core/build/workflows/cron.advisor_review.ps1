@@ -1,16 +1,16 @@
 ﻿#Requires -Version 5.1
 # Definition agent.advisor.cron_review -> Build-CronAdvisorReview. Dot-gesourct von build.ps1.
-# QUARTALSWEISER Voll-Review der generischen Core-Advisor-Engine (schedule.plan_review, beim Einspielen aus core.config eingesetzt).
-# Iteriert core.advisors und schickt je Advisor den UNBEDINGTEN Voll-Digest (kein Latch — periodischer
-# Voll-Report). Loest funktional den retired finance-Cron agent.finance_advisor.cron_plan_review ab.
+# Quartalsweiser Voll-Review der generischen Core-Advisor-Engine (schedule.plan_review, beim Einspielen aus core.config eingesetzt).
+# Iteriert core.advisors und schickt je Advisor den unbedingten Voll-Digest (kein Latch, periodischer
+# Voll-Report).
 # Opt-in ueber F9 (cron_enable.plan_review, default 'false'). Geteilter Schwanz in New-AdvisorCron.
 # Liest ueber core.fn_advisor_review_read: ein Rueckblick setzt nie Merker des Waechters (sonst kaemen die Punkte nie).
 function Build-CronAdvisorReview {
-    # EINE Zeile: je (Advisor, Person) die paket-gelieferte digest.lines-Struktur (finance.fn_advisor_review baut sie).
-    # Der Cron kennt KEINE Paket-Felder. P2b-2: per-Person-Faecherung via dem geteilten Get-AdvisorFanoutCte-Kopf ->
-    # jede Person bekommt ihren eigenen Digest (person_id im build_object, damit Digests gleicher Domain NICHT
+    # Eine Zeile: je (Advisor, Person) die paket-gelieferte digest.lines-Struktur (finance.fn_advisor_review baut sie).
+    # Der Cron kennt keine Paket-Felder. Per-Person-Faecherung via dem geteilten Get-AdvisorFanoutCte-Kopf ->
+    # jede Person bekommt ihren eigenen Digest (person_id im build_object, damit Digests gleicher Domain nicht
     # kollabieren). household-Domains -> person_id NULL (NULLS FIRST = stabile Reihenfolge). jsonb als ::text
-    # (n8n-Pg-Node-Quirk, Muster Monitor-Cron). Textkatalog Phase C: Texte (Owner-Sprache, alle tpl-Keys der Digests).
+    # (n8n-Pg-Node-Quirk, Muster Monitor-Cron). Textkatalog: Texte (Owner-Sprache, alle tpl-Keys der Digests).
     $cte = Get-AdvisorFanoutCte
     $keys = Get-UiKeysSql ($script:AdvisorChromeKeys + $script:UiRenderKeys)
     $evalSql = @"

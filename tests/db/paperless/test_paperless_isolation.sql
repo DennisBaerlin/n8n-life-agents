@@ -1,13 +1,13 @@
 -- tests/db/paperless/test_paperless_isolation.sql
--- Paperless-Paket (D10) — strukturelle Isolation des Domaenen-Pakets + Core-Host-Lesefenster.
+-- Strukturelle Isolation des Pakets paperless + Core-Host-Lesefenster.
 --
--- Muster 1:1 tests/db/estate/test_estate_isolation.sql: die engen paperless-Paket-Rollen erreichen NUR
--- das Schema `paperless`; agent.*/core.*/finance.*-Tabellen scheitern PHYSISCH. Seit v0.3.0 (reiner Lese-Zugang
--- auf Paperless-NGX, keine eigenen Tabellen) ist die EINE reale Kopplung der Config-Read: die Paket-Tools lesen
--- die Instanz-Adresse unter paperless_ro ueber das publizierte Core-Fenster core.fn_config_get (B) — der
--- direkte core.config-Zugriff bleibt gesperrt (A).
+-- Muster wie tests/db/estate/test_estate_isolation.sql: die engen paperless-Paket-Rollen erreichen nur
+-- das Schema `paperless`; agent.*/core.*/finance.*-Tabellen scheitern physisch. Das Paket liest nur
+-- Paperless-NGX und hat keine eigenen Tabellen; die einzige reale Kopplung ist der Config-Read: die Paket-Tools
+-- lesen die Instanz-Adresse unter paperless_ro ueber das publizierte Core-Fenster core.fn_config_get (B),
+-- der direkte core.config-Zugriff bleibt gesperrt (A).
 --
--- Voraussetzung: paperless_rw/paperless_ro/core_ro sind PERSISTENT provisioniert (bootstrap_test_db ruft
+-- Voraussetzung: paperless_rw/paperless_ro/core_ro sind persistent provisioniert (bootstrap_test_db ruft
 -- core.fn_provision_package_roles('paperless') NACH dem paperless-Schema-Apply; Prod: pkg_cmd_install Stage 3).
 BEGIN;
 
@@ -31,7 +31,7 @@ BEGIN
   PERFORM core.fn_provision_package_roles(jsonb_build_object('package', 'paperless'));   -- Grants auf die neue Tabelle
 
   -- ==========================================================
-  -- A) paperless_ro: kommt an NICHTS ausserhalb des eigenen Schemas (VF3)
+  -- A) paperless_ro: kommt an nichts ausserhalb des eigenen Schemas
   -- ==========================================================
   SET LOCAL ROLE paperless_ro;
   v_denied := FALSE;
@@ -68,7 +68,7 @@ BEGIN
   IF NOT v_denied THEN RAISE EXCEPTION 'FAIL [paperless_ro konnte direkt schreiben]'; END IF;
 
   -- ==========================================================
-  -- B) PERSPEKTIV-TEST: paperless_ro liest die Instanz-Adresse ueber das Core-Config-Fenster
+  -- B) Perspektiv-Test: paperless_ro liest die Instanz-Adresse ueber das Core-Config-Fenster
   --    (genau der Load-config-Pfad der Paket-Tools; der Superuser-Lauf allein saehe einen Grant-Bruch nie)
   -- ==========================================================
   SET LOCAL ROLE paperless_ro;
@@ -94,7 +94,7 @@ BEGIN
 
   -- ==========================================================
   -- D) core_ro (Host-Aufsichtsfenster): liest paperless (read_surface-Invariante),
-  --    bleibt aber vom Backup-Schluessel ausgesperrt UND read-only (estate-Paritaet B3/B4)
+  --    bleibt aber vom Backup-Schluessel ausgesperrt und read-only (estate-Paritaet B3/B4)
   -- ==========================================================
   SET LOCAL ROLE core_ro;
   PERFORM 1 FROM paperless.zz_iso_probe LIMIT 1;

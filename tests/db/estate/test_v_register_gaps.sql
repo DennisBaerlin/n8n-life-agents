@@ -1,6 +1,6 @@
 -- tests/db/estate/test_v_register_gaps.sql
--- WP3: die Personen-Luecken in estate.v_register_gaps pruefen den INHALT, nicht die Zeilen-Existenz — der Review-
---   Stempel (fn_confirm_review) legt eine leere person_records-Zeile an, die die Luecke frueher still schloss.
+-- Die Personen-Luecken in estate.v_register_gaps pruefen den Inhalt, nicht die Zeilen-Existenz — der Review-
+--   Stempel (fn_confirm_review) legt eine leere person_records-Zeile an, die die Luecke sonst still schlosse.
 --   Self-contained (BEGIN..ROLLBACK), erfundene Persona.
 BEGIN;
 
@@ -18,7 +18,7 @@ BEGIN
      OR NOT EXISTS (SELECT 1 FROM estate.v_register_gaps WHERE person_id='erika' AND gap_code='funeral_missing') THEN
     RAISE EXCEPTION 'FAIL [ohne Zeilen: beide Luecken erwartet]'; END IF;
 
-  -- Review-Stempel legt eine LEERE Stammdaten-Zeile an -> Luecke bleibt
+  -- Review-Stempel legt eine leere Stammdaten-Zeile an -> Luecke bleibt
   v_r := estate.fn_confirm_review(jsonb_build_object('chat_id','111','person_id','erika'));
   IF NOT EXISTS (SELECT 1 FROM estate.person_records WHERE person_id='erika') THEN
     RAISE EXCEPTION 'FAIL [Fixture: confirm_review hat keine Zeile angelegt: %]', v_r; END IF;

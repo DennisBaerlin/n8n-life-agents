@@ -1,17 +1,16 @@
 ﻿#Requires -Version 5.1
 # Definition agent.estate_advisor -> Build-AgentEstateAdvisor. Dot-gesourct von build.ps1.
-# Schlanker Klon des agent.career_advisor-Templates (Clone-and-Trim, bewusst KEINE Factory —
-# build-CLAUDE.md "Agent-Generatoren sind Clone-and-Trim") fuer die 3. Advisor-Domaene
-# (Nachlass & Vorsorge, Plan groovy-watching-wave). WS-2: das VOLLE Register ist schreibbar —
-# Reads (postgres_select estate_ro + load_context + web_search) PLUS die Register-Write-Tools
+# Schlanker Klon des agent.career_advisor-Templates (Clone-and-Trim, bewusst keine Factory;
+# scripts/build/CLAUDE.md) fuer die Advisor-Domaene Nachlass & Vorsorge. Das volle Register ist schreibbar —
+# Reads (postgres_select estate_ro + load_context + web_search) plus die Register-Write-Tools
 # (record_/create_/set_/delete_ + confirm_review + der ungegatete Onboarding-Marker
 # tool_set_onboarding_section). HITL owner_info (record_/create_) bzw. owner_approval (set_/delete_);
 # confirm_review + set_onboarding_section = Fortschritts-Flag ohne Gate; adults_only-DB-Backstop je fn.
 # Dazu der Ereignisfall (create_case/Fristen-Checkliste) und die Notfallmappe.
 # Die deterministische Eingangs-Naht (Anti-Loop + Package-Active + Core-first) kommt aus dem
-# GETEILTEN New-AdvisorGateChain (lib/build_helpers.ps1). BEWUSST KEIN estate-lokales Pflicht-
-# Onboarding-Gate (arch-challenge P3: der Ereignisfall-Pfad ist fail-open — eine trauernde
-# Partnerin darf NIE an einem Onboarding-Redirect scheitern); das Core-first-Gate BLEIBT
+# geteilten New-AdvisorGateChain (lib/build_helpers.ps1). Kein estate-lokales Pflicht-
+# Onboarding-Gate (der Ereignisfall-Pfad ist fail-open — eine trauernde
+# Partnerin darf nie an einem Onboarding-Redirect scheitern); das Core-first-Gate bleibt
 # (ohne Core-Onboarding existieren keine agent.persons -> kein Register-/Fall-Subjekt moeglich).
 
 function Build-AgentEstateAdvisor {
@@ -44,9 +43,9 @@ function Build-AgentEstateAdvisor {
     }
 
     # Eingangs-Naht (Anti-Loop-Depth-Gate -> Package-Active-Gate -> Core-first-Gate) = geteilter Helfer
-    # New-AdvisorGateChain (lib). NextNode='Load Config' = False-Zweig des Core-Gates. DANACH folgt hier
-    # bewusst KEIN paket-lokales Pflicht-Onboarding-Gate (anders als finance/career): fail-open fuer den
-    # Notfall-Pfad (arch-challenge P3) — das estate-Onboarding ist opt-in ueber das /onboarding-Menue.
+    # New-AdvisorGateChain (lib). NextNode='Load Config' = False-Zweig des Core-Gates. Danach folgt hier
+    # bewusst kein paket-lokales Pflicht-Onboarding-Gate (anders als finance/career): fail-open fuer den
+    # Notfall-Pfad — das estate-Onboarding ist opt-in ueber das /onboarding-Menue.
     $gate = New-AdvisorGateChain -StartNode $START_NODE -Package 'estate' -CredPgRo $CRED_PG_RO -NextNode 'Load Config'
 
     $nLoadConfig = Build-CallWorkflow 'Load Config' @(-1376, 0) $ID_LOAD_CFG 'core.sub_load_config' (@{})
@@ -65,7 +64,7 @@ function Build-AgentEstateAdvisor {
             promptType = 'define'
             text = '={{ $json.task }}'
             # maxIterations 12 (wie career_advisor): Register-Fragen = load_context +
-            # gezielte SELECTs + ggf. Recherche -> tool-lastiger als der Buchhalter. Cap = Retry-Sturm-Bremse.
+            # gezielte SELECTs + ggf. Recherche -> tool-lastiger als der Buchhalter; Cap bremst Retry-Stuerme.
             options = [ordered]@{ systemMessage = '={{ $json.system_prompt }}'; maxIterations = 12 }
         }
         type = '@n8n/n8n-nodes-langchain.agent'
@@ -79,7 +78,7 @@ function Build-AgentEstateAdvisor {
     $mb = New-ModelSelectorBundle -ConfigField $CONFIG_FIELD -ConfigNodeName 'Load Config' `
         -AgentNodeName 'Advisor Agent' -SelectorPos @(-688, 208) -ModelRowPos @(-848, 416) -Effort high
 
-    # --- Chat-Memory: eigene Tabelle, GROSSES Fenster (15) — Vorsorge-/Ereignisfall-Dialoge sind lang ---
+    # --- Chat-Memory: eigene Tabelle, grosses Fenster (15) — Vorsorge-/Ereignisfall-Dialoge sind lang ---
     $nMemory = [ordered]@{
         parameters = [ordered]@{
             sessionIdType = 'customKey'
@@ -103,8 +102,8 @@ function Build-AgentEstateAdvisor {
     # fn_fetch_context = gemeinsame Lazy-Fetch-Stelle (render-at-fetch: estate_overview wird zur
     # Ladezeit frisch aus den Register-Tabellen gerendert, inkl. der doppel-guardet konsumierten
     # finance-Register). jsonb-Param (Standard) + onError (halluzinierter Name = korrigierbarer
-    # Tool-Fehler, killt nicht die Execution). chat_id build-fix aus dem Start-Node (NIE $fromAI,
-    # Paritaet career) — estate_overview ist household (keine context_scopes-Zeile) -> nie suffigiert,
+    # Tool-Fehler, killt nicht die Execution). chat_id build-fix aus dem Start-Node (nie $fromAI,
+    # wie career) — estate_overview ist household (keine context_scopes-Zeile) -> nie suffigiert,
     # das Arg ist hier wirkungslos, haelt aber die load_context-Bindings uniform.
     $loadQuery = "=SELECT content FROM core.fn_fetch_context((`$1::jsonb)->>'name', (`$1::jsonb)->>'chat_id');"
     $loadParams = "={{ JSON.stringify({ name: `$fromAI('context_name', 'Name of the lazy context document to load (must match an entry in the manifest)', 'string'), chat_id: `$('$START_NODE').item.json.chat_id }) }}"
@@ -133,13 +132,13 @@ function Build-AgentEstateAdvisor {
         ) $null @(160, 208) -StartNode $START_NODE
 
     # tool_set_onboarding_section (Self-Onboarding-Modus): Estate-Onboarding-Fortschritts-Marker
-    # (package=estate FIX in der fn, kein HITL, kein Register-/PII-Write — nur ein Tri-State-Flag).
-    # Der Advisor markiert eine seiner ONBOARDING-Sektionen als completed/skipped, nachdem er sie
+    # (package=estate fest in der fn, kein HITL, kein Register-/PII-Write — nur ein Tri-State-Flag).
+    # Der Advisor markiert eine seiner Onboarding-Sektionen als completed/skipped, nachdem er sie
     # im Onboarding-Modus durchgegangen ist. chat_id reicht New-AdvisorToolNode automatisch durch
     # (household: von der fn ignoriert); package ist fix im Tool. Die Key-Liste kommt aus
-    # onboarding/sections.json (Get-OnboardingSectionKeys) — abgetippt fehlte system_profile.
+    # onboarding/sections.json (Get-OnboardingSectionKeys), nicht abtippen (driftet).
     $estateSectionKeys = (Get-OnboardingSectionKeys $RepoRoot 'estate') -join ', '
-    # Die 16 Slugs stehen im Manifest; abgetippt nannte die Beschreibung nur fuenf.
+    # Die 16 Slugs stehen im Manifest und werden von dort gelesen (nicht abtippen, driftet).
     $estateManifest = [IO.File]::ReadAllText("$RepoRoot\packages\estate\manifest.json", [Text.Encoding]::UTF8) | ConvertFrom-Json
     $bundeslandMatch = [regex]::Match([string]$estateManifest.config.general.bundesland.description, 'Valid slugs: ([a-z_, ]+)\.')
     $bundeslandSlugs = if ($bundeslandMatch.Success) { $bundeslandMatch.Groups[1].Value } else { '' }
@@ -152,12 +151,12 @@ function Build-AgentEstateAdvisor {
         ) $null @(320, 208) -StartNode $START_NODE
 
     # =====================================================================================
-    # WS-2 Register-Write-Tools (record_/create_/set_/delete_/confirm_). Jeder Input hier MUSS
-    # exakt der Build-Trigger-Liste des jeweiligen Tools entsprechen (Gotcha "Input an ZWEI
-    # Stellen"; contract_lint erzwingt es). Pflichtfelder = 3-arg $fromAI (required), optionale
+    # Register-Write-Tools (record_/create_/set_/delete_/confirm_). Jeder Input hier muss
+    # exakt der Build-Trigger-Liste des jeweiligen Tools entsprechen (contract_lint erzwingt es).
+    # Pflichtfelder = 3-arg $fromAI (required), optionale
     # Felder = 4-arg mit '' (nicht Pflicht). chat_id reicht New-AdvisorToolNode automatisch durch
     # (der adults_only-DB-Backstop + HITL-Gate haengen daran). owner_info/owner_approval-Tier
-    # injiziert build.ps1 aus approval_matrix; confirm_review hat KEIN Gate (Fortschritts-Flag).
+    # injiziert build.ps1 aus approval_matrix; confirm_review hat kein Gate (Fortschritts-Flag).
     # =====================================================================================
     $nToolRecordDirective = New-AdvisorToolNode 'tool_record_directive' 'agent.estate.tool_record_directive' `
         'Record or update ONE Vorsorge document in the register (idempotent UPSERT per person+type - re-recording the same type updates it). METADATA ONLY, never the document content or any secret. A joint household document (Berliner Testament) uses an empty owner_person. To mark a document as deliberately absent use doc_status=does_not_exist (there is no delete for directives).' `
@@ -350,8 +349,8 @@ function Build-AgentEstateAdvisor {
         ) $null @(624, 720) -StartNode $START_NODE
 
     # =====================================================================================
-    # WS-3 EREIGNISFALL-TOOLS (Todesfall/Vorsorgefall). Nur im EVENT-Modus. Die Fristen rechnet die DB.
-    # WP3: die Intake-Merkmale leitet die DB aus dem Register ab; erfragt wird nur, was sie nicht weiss (unknown_flags).
+    # Ereignisfall-Tools (Todesfall/Vorsorgefall). Nur im Event-Modus. Die Fristen rechnet die DB.
+    # Die Intake-Merkmale leitet die DB aus dem Register ab; erfragt wird nur, was sie nicht weiss (unknown_flags).
     # =====================================================================================
     $nToolCreateCase = New-AdvisorToolNode 'tool_create_case' 'agent.estate.tool_create_case' `
         'Open a guided EVENT case (a household member has DIED or become INCAPACITATED) and instantiate the deadline checklist. Use ONLY in event mode, after acknowledging the loss and gathering the facts. The DATABASE computes all legal deadlines - never invent dates. subject_person is the AFFECTED member (must be a household member and NOT you the sender). bundesland (German state) is required unless configured; if you do not have it, ask. The database DERIVES the intake facts from the register (will, Vorsorgevollmacht, employer, pension number, landlord) - pass an intake value ONLY if the user stated it (true or false); leave it empty otherwise, never ask for what the register already shows. The result lists unknown_flags: ask about those ONCE, together, then correct with tool_set_case. Special cases the user NAMES (firearm, pet, vehicle, business) go into the matching fields of THIS call - the database then registers them and adds their mandatory checklist steps itself; do not register them separately first, and do not pass ones the register already shows. For an incapacity case only business is accepted. Shows a short confirmation (task counts per phase, what applies, special cases), then instantiates.' `
@@ -411,9 +410,9 @@ function Build-AgentEstateAdvisor {
         ) $null @(304, 880) -StartNode $START_NODE
 
     # =====================================================================================
-    # WS-5 NOTFALLMAPPE + SYSTEM-STECKBRIEF. set_system_profile = Register-Write (owner_approval).
-    # export_emergency_binder = ERSTER gegateter READ-Egress (owner_info Break-Glass + adults_only,
-    # Maskierungs-Option) — das Tool SENDET das Dokument selbst und returnt {ok:true} (2 Nachrichten).
+    # Notfallmappe + System-Steckbrief. set_system_profile = Register-Write (owner_approval).
+    # export_emergency_binder = gegateter Read-Egress (owner_info Break-Glass + adults_only,
+    # Maskierungs-Option) — das Tool sendet das Dokument selbst und returnt {ok:true} (2 Nachrichten).
     # =====================================================================================
     $nToolSetSystemProfile = New-AdvisorToolNode 'tool_set_system_profile' 'agent.estate.tool_set_system_profile' `
         'Record or update the household SYSTEM PROFILE: where the OFFLINE copy of the backup key is kept, where the system runs, and how to reach admin/restore help. LOCATION references ONLY - NEVER the backup key, a password or any secret. One household record (partial update). This is the emergency info a survivor needs to reach or restore the system if it is down.' `
@@ -452,7 +451,7 @@ function Build-AgentEstateAdvisor {
         $nLoadConfig, $nLoadCtx, $nBuildInput, $nAgent,
         $nMemory,
         $nToolSelect, $nToolLoad, $nToolWebSearch, $nToolSetOnb,
-        # WS-2 Register-Write-Tool-Nodes (explizit gelistet wie agent.finance/career — greppbar, Pattern-Paritaet):
+        # Register-Write-Tool-Nodes (explizit gelistet wie agent.finance/career — greppbar):
         $nToolRecordDirective,
         $nToolCreateProviderContract, $nToolCreateDigitalAccount, $nToolCreateContact,
         $nToolCreateStoragePlace, $nToolCreateSpecialAsset,
@@ -461,9 +460,9 @@ function Build-AgentEstateAdvisor {
         $nToolConfirmReview,
         $nToolDeleteProviderContract, $nToolDeleteDigitalAccount, $nToolDeleteContact,
         $nToolDeleteSpecialAsset,
-        # WS-3 Ereignisfall-Tools:
+        # Ereignisfall-Tools:
         $nToolCreateCase, $nToolSetCase, $nToolCancelCase, $nToolSetCaseTask, $nToolCreateCaseTask,
-        # WS-5 Notfallmappe + System-Steckbrief:
+        # Notfallmappe + System-Steckbrief:
         $nToolSetSystemProfile, $nToolExportBinder,
         $stickyOverview, $stickyModel, $stickyMemory, $stickyGates
     ) + $mb.Nodes
@@ -471,7 +470,7 @@ function Build-AgentEstateAdvisor {
     $svc = Add-ServiceTools -Package 'estate' -AgentNode 'Advisor Agent' -StartNode $START_NODE -Position @(-336, 1240) -ExistingNodes $nodes
     $nodes += $svc.Nodes
 
-    # Eingangs-Naht-Connections aus New-AdvisorGateChain ZUERST mergen (Schluessel-Reihenfolge
+    # Eingangs-Naht-Connections aus New-AdvisorGateChain zuerst mergen (Schluessel-Reihenfolge
     # $START_NODE -> Depth -> Package -> Core), dann die estate-Pipeline + Tool/Memory-ai_*-Kanten.
     $conns = [ordered]@{}
     foreach ($k in $gate.Connections.Keys) { $conns[$k] = $gate.Connections[$k] }
@@ -487,8 +486,8 @@ function Build-AgentEstateAdvisor {
     $conns['web_search']                  = @{ ai_tool = @( ,@( E 'Advisor Agent' 'ai_tool' ) ) }
     $conns['tool_set_onboarding_section'] = @{ ai_tool = @( ,@( E 'Advisor Agent' 'ai_tool' ) ) }
 
-    # WS-2 Register-Write-Tools als ai_tool an den Agenten binden — je Tool EINE explizite Zeile
-    # (greppbar + Pattern-Paritaet zu agent.finance/career, konsistent mit den 4 Read-Tool-Zeilen oben).
+    # Register-Write-Tools als ai_tool an den Agenten binden — je Tool eine explizite Zeile
+    # (greppbar, wie agent.finance/career).
     $conns['tool_record_directive']          = @{ ai_tool = @( ,@( E 'Advisor Agent' 'ai_tool' ) ) }
     $conns['tool_create_provider_contract']  = @{ ai_tool = @( ,@( E 'Advisor Agent' 'ai_tool' ) ) }
     $conns['tool_create_digital_account']    = @{ ai_tool = @( ,@( E 'Advisor Agent' 'ai_tool' ) ) }
@@ -507,14 +506,14 @@ function Build-AgentEstateAdvisor {
     $conns['tool_delete_contact']            = @{ ai_tool = @( ,@( E 'Advisor Agent' 'ai_tool' ) ) }
     $conns['tool_delete_special_asset']      = @{ ai_tool = @( ,@( E 'Advisor Agent' 'ai_tool' ) ) }
 
-    # WS-3 Ereignisfall-Tools (create_/set_/cancel_case + set_/create_case_task):
+    # Ereignisfall-Tools (create_/set_/cancel_case + set_/create_case_task):
     $conns['tool_create_case']       = @{ ai_tool = @( ,@( E 'Advisor Agent' 'ai_tool' ) ) }
     $conns['tool_set_case']          = @{ ai_tool = @( ,@( E 'Advisor Agent' 'ai_tool' ) ) }
     $conns['tool_cancel_case']       = @{ ai_tool = @( ,@( E 'Advisor Agent' 'ai_tool' ) ) }
     $conns['tool_set_case_task']     = @{ ai_tool = @( ,@( E 'Advisor Agent' 'ai_tool' ) ) }
     $conns['tool_create_case_task']  = @{ ai_tool = @( ,@( E 'Advisor Agent' 'ai_tool' ) ) }
 
-    # WS-5 Notfallmappe + System-Steckbrief:
+    # Notfallmappe + System-Steckbrief:
     $conns['tool_set_system_profile']      = @{ ai_tool = @( ,@( E 'Advisor Agent' 'ai_tool' ) ) }
     $conns['tool_export_emergency_binder'] = @{ ai_tool = @( ,@( E 'Advisor Agent' 'ai_tool' ) ) }
     foreach ($k in $svc.Connections.Keys) { $conns[$k] = $svc.Connections[$k] }

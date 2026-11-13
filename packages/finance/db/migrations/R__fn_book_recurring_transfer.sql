@@ -1,25 +1,27 @@
 -- ============================================================
 -- fn_book_recurring_transfer (ATOMIC WRITE)
---   Bucht ein faelliges Vorkommen einer INTERNEN Transfer-rp (target_account_id gesetzt) als ZWEI
---   Transaktionen (Soll -/Haben +) in EINER Transaktion — analog fn_book_transfer, aber datengetrieben
---   aus der recurring_payments-Zeile (kein Nutzer-Betrag je Vorkommen). account_id=Quelle/Soll,
---   target_account_id=Ziel/Haben; gebucht wird die Magnitude abs(amount) (amount ist Quell-seitig negativ).
+--   Bucht ein faelliges Vorkommen einer internen Transfer-rp (target_account_id gesetzt) als zwei
+--   Transaktionen (Soll -/Haben +) in einer Transaktion -- analog fn_book_transfer, aber datengetrieben
+--   aus der recurring_payments-Zeile. account_id=Quelle/Soll, target_account_id=Ziel/Haben; gebucht wird die
+--   Magnitude abs(amount) (amount ist Quell-seitig negativ).
 --   Beide Beine: category='transfer', gemeinsame group_id, recurring_payment_id gesetzt -> "gebucht" bleibt
---   aus finance.transactions ableitbar (fn_recurring_due_open sieht das Vorkommen als erledigt).
---   MULTI-WAEHRUNG: differieren die Konto-Waehrungen, konvertiert die DB das Ziel-Bein ueber den EUR-Cross
---   (fx_rates zum due_date) — die DB rechnet, kein LLM/Nutzer-Input je Vorkommen. Fehlt der Kurs -> {ok:false}.
---   Eingabe jsonb: recurring_payment_id, due_date, amount (opt, Ist-Magnitude in Quell-Waehrung),
---   transaction_date (opt, Ist-Datum; Default due_date). Identitaet beider Beine = recurring_due_date = due_date
---   (Monats-Check WP-A); FX-Kurs zum Buchungsdatum.
---   ABGLEICH-SPERRE je Bein-Konto (Quelle UND Ziel): Buchungsdatum <= letzter Abgleich -> {ok:false, code:'reconciled'}
---   (fn_reconciled_reason; ein abgeglichenes Ziel enthaelt den Zufluss schon -> sonst Doppelzaehlung).
---   STARTBETRAG je Bein-Konto (fn_opening_balance_reason, Befund 2026-11-03): {ok:false, code:'before_opening', reason}; reason
---   lenkt aufs Ueberspringen (umgezogener Sparziel-Topf: ein altes Vorkommen liegt vor dessen Stichtag). already_booked hat Vorrang.
---   RUECKGABE: Erfolg -> {ok:true, debit_tx_id, credit_tx_id, fx_rate, amount (gebucht, Quell-Waehrung),
---   plan_amount (laut Plan)} -- beide Quell-seitig negativ wie rp.amount -- gleiche Felder wie der Zahlungs-Pfad von fn_book_recurring_occurrence. Idempotenz (schon gebucht) /
---   kein-Transfer (target NULL) / fehlender FX-Kurs / amount<=0 / abgeglichen / Startbetrag -> {ok:false, reason} OHNE Write.
---   Aufgerufen aus fn_book_recurring_occurrence (Delegation fuer Transfer-rps) — der Scheduler-Pfad
---   bleibt unveraendert, die Zwei-Bein-Invariante sitzt am fn-Layer (caller-agnostisch).
+--   aus finance.transactions ableitbar (fn_recurring_due_open sieht das Vorkommen als erledigt). Identitaet beider
+--   Beine = recurring_due_date = due_date.
+--   Multi-Waehrung: differieren die Konto-Waehrungen, konvertiert die DB das Ziel-Bein ueber den EUR-Cross
+--   (fx_rates zum Buchungsdatum); die DB rechnet, kein LLM-/Nutzer-Input je Vorkommen.
+--   Eingabe jsonb: recurring_payment_id, due_date (Pflicht); amount (optional, Ist-Magnitude in Quell-Waehrung),
+--   transaction_date (optional, Ist-Datum; Default due_date).
+--   Rueckgabe: ok:true -> {ok:true, debit_tx_id, credit_tx_id, fx_rate, amount (gebucht, Quell-Waehrung, Quell-seitig
+--   negativ wie rp.amount), plan_amount (laut Plan), effective}; gleiche Felder wie der Zahlungs-Pfad von
+--   fn_book_recurring_occurrence.
+--   ok:false ohne Write und ohne RAISE: {reason} bei kein-Transfer (target NULL), Konto ohne freie Buchung
+--   (fn_bookable_account_reason), amount <= 0 oder fehlendem FX-Kurs; {code:'already_booked'} (hat Vorrang vor den
+--   Pruefungen danach); {code:'before_opening', reason} je Bein-Konto (fn_opening_balance_reason; reason lenkt aufs
+--   Ueberspringen, z. B. umgezogener Sparziel-Topf mit einem Vorkommen vor dessen Stichtag); {code:'reconciled'} je
+--   Bein-Konto (Quelle und Ziel): Buchungsdatum <= letzter Abgleich (fn_reconciled_reason; ein abgeglichenes Ziel
+--   enthaelt den Zufluss schon -> sonst Doppelzaehlung); {code:'invalid_date'}. RAISE bei unbekannter rp.
+--   Aufgerufen aus fn_book_recurring_occurrence (Delegation fuer Transfer-rps); die Zwei-Bein-Invariante sitzt
+--   am fn-Layer (caller-agnostisch).
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_book_recurring_transfer(p jsonb)
 RETURNS jsonb LANGUAGE plpgsql AS $$
@@ -45,7 +47,6 @@ DECLARE
     v_group    UUID := gen_random_uuid();
     v_dates    JSONB;
 BEGIN
-    -- relative Ist-Datumsangabe ("yesterday") -> ISO; nicht aufloesbar -> {ok:false, code:'invalid_date'}.
     -- due_date kommt aus dem DB-Lookup (Vorkommen-Identitaet), nie vom LLM -> nicht aufgeloest.
     v_dates := core.fn_resolve_input_dates(p, ARRAY['transaction_date']);
     IF NOT (v_dates->>'ok')::boolean THEN RETURN v_dates; END IF;
@@ -57,18 +58,18 @@ BEGIN
     IF v_from IS NULL THEN
         RAISE EXCEPTION 'Recurring payment % not found.', v_rp_id;
     END IF;
-    -- WS-A: gehoert die rp zu einem Sparziel, ist dieser Transfer ein Reserve-Zufluss -> das Haben-(Ziel-)
-    -- Bein traegt savings_goal_id (NUR dieses Bein) -> savings_goal_progress zaehlt es als +Beitrag. Das Ziel zeigt
-    -- auf den Kopf der Vorgaenger-Kette (Audit Paket 2 A0) -> auch ein altes Vorkommen einer reaktivierten/
-    -- gesplitteten Rate zaehlt fuers Ziel.
+    -- Gehoert die rp zu einem Sparziel, ist dieser Transfer ein Reserve-Zufluss -> das Haben-(Ziel-)
+    -- Bein traegt savings_goal_id (nur dieses Bein) -> savings_goal_progress zaehlt es als +Beitrag. Das Ziel zeigt
+    -- auf den Kopf der Vorgaenger-Kette -> auch ein altes Vorkommen einer reaktivierten/gesplitteten Rate zaehlt
+    -- fuers Ziel.
     SELECT id INTO v_goal FROM finance.savings_goals
     WHERE recurring_payment_id = finance.fn_recurring_lineage_head(v_rp_id);
     IF v_to IS NULL THEN
         RETURN jsonb_build_object('ok', false,
             'reason', 'Recurring payment ' || v_rp_id || ' is not a transfer (no target_account_id).');
     END IF;
-    -- Kontotyp (Audit Paket 2, Punkt 7): Quelle/Ziel duerfen kein Depot-/Kreditkonto sein (vorher ungeprueft ->
-    -- Backstop-RAISE mit Owner-Alarm statt korrigierbarer Ablehnung).
+    -- Kontotyp: Quelle/Ziel duerfen kein Depot-/Kreditkonto sein (sonst Backstop-RAISE mit Owner-Alarm statt
+    -- korrigierbarer Ablehnung).
     v_reason := COALESCE(finance.fn_bookable_account_reason(v_from), finance.fn_bookable_account_reason(v_to));
     IF v_reason IS NOT NULL THEN
         RETURN jsonb_build_object('ok', false, 'reason', v_reason);
@@ -90,23 +91,23 @@ BEGIN
         RETURN jsonb_build_object('ok', false, 'code', 'before_opening',
             'reason', v_reason || ' Nothing was booked: skip this due date instead of booking it, the amount is already counted there.');
     END IF;
-    -- Abgleich-Sperre je Bein-Konto (Monats-Check WP-A).
+    -- Abgleich-Sperre je Bein-Konto.
     v_reason := COALESCE(finance.fn_reconciled_reason(v_from, v_date), finance.fn_reconciled_reason(v_to, v_date));
     IF v_reason IS NOT NULL THEN
         RETURN jsonb_build_object('ok', false, 'code', 'reconciled', 'reason', v_reason);
     END IF;
 
     v_mag := COALESCE(abs(v_override), abs(v_amount));   -- Magnitude in Quell-Waehrung (amount ist Quell-seitig negativ)
-    -- amount=0 ist seit WS-3a strukturell unmoeglich (CHECK recurring_payments_amount_nonzero, finance:V005)
-    -- -> v_mag > 0 GARANTIERT, die fx_rate-Division (v_credit/v_mag) kann nie SQLSTATE 22012 (div/0) werfen.
-    -- Der fruehere fn-Guard ist bewusst entfallen: die Invariante lebt am tiefsten Layer (CHECK = Gesetz),
-    -- nicht doppelt im fn (ein Fakt, eine Adresse). Test: tests/db/finance/test_recurring_payment_amount_check.sql.
+    -- amount=0 ist strukturell unmoeglich (CHECK recurring_payments_amount_nonzero, finance:V005)
+    -- -> v_mag > 0 garantiert, die fx_rate-Division (v_credit/v_mag) kann nie SQLSTATE 22012 (div/0) werfen.
+    -- Bewusst kein fn-Guard: die Invariante lebt am tiefsten Layer (CHECK = Gesetz).
+    -- Test: tests/db/finance/test_recurring_payment_amount_check.sql.
     SELECT currency INTO v_from_ccy FROM finance.accounts WHERE id = v_from;
     SELECT currency INTO v_to_ccy   FROM finance.accounts WHERE id = v_to;
 
     IF v_from_ccy IS DISTINCT FROM v_to_ccy THEN
-        -- Cross-Currency: ueber EUR-Cross zum Buchungsdatum (DB rechnet). EUR-Zwischenwert UNGERUNDET, gerundet wird
-        -- genau EINMAL am Ende (Rundungs-Paket 2026-10-23: vorher Cent-Zwischenwert x Kurs -> bis 7 CLP je Buchung daneben).
+        -- Cross-Currency: ueber EUR-Cross zum Buchungsdatum. EUR-Zwischenwert ungerundet, gerundet wird
+        -- genau einmal am Ende (ein Cent-Zwischenwert x Kurs lag bis 7 CLP je Buchung daneben).
         v_eur := finance.fn_to_eur_unrounded(v_mag, v_from_ccy, v_date);
         IF v_to_ccy = 'EUR' THEN
             v_credit := ROUND(v_eur, 2);
@@ -126,10 +127,10 @@ BEGIN
         v_fx     := NULL;
     END IF;
 
-    -- Soll-Bein (Quelle): -Magnitude in Quell-Waehrung. WP-1: ON CONFLICT als Race-Backstop (der EXISTS-Guard
-    -- oben ist die Schnellbahn). Beide Beine teilen (rp_id, due) und unterscheiden sich NUR durch account_id ->
+    -- Soll-Bein (Quelle): -Magnitude in Quell-Waehrung. ON CONFLICT als Race-Backstop (der EXISTS-Guard
+    -- oben ist die Schnellbahn). Beide Beine teilen (rp_id, due) und unterscheiden sich nur durch account_id ->
     -- der 3-spaltige Index laesst beide zu, faengt aber Dubletten. Verliert das Soll-Bein das Race (leeres
-    -- RETURNING), MUSS vor dem Haben-Bein abgebrochen werden -> kein Orphan-Einzelbein.
+    -- RETURNING), muss vor dem Haben-Bein abgebrochen werden -> kein Orphan-Einzelbein.
     INSERT INTO finance.transactions
         (account_id, amount, transaction_date, category, description, group_id, fx_rate, recurring_payment_id,
          recurring_due_date)
@@ -144,7 +145,7 @@ BEGIN
             'reason', 'Recurring transfer for payment ' || v_rp_id || ' due ' || v_due || ' is already booked.');
     END IF;
 
-    -- Haben-Bein (Ziel): +credit in Ziel-Waehrung; WS-A: bei Sparziel-rp das savings_goal_id-Tag (Reserve-Bein)
+    -- Haben-Bein (Ziel): +credit in Ziel-Waehrung; bei Sparziel-rp das savings_goal_id-Tag (Reserve-Bein)
     INSERT INTO finance.transactions
         (account_id, amount, transaction_date, category, description, group_id, fx_rate, recurring_payment_id,
          recurring_due_date, savings_goal_id)

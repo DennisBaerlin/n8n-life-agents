@@ -1,13 +1,13 @@
-# master_swap.sh — Update im Docker-Verbund = Wechsel des master-Images ueber einen kurzlebigen Helfer (Plan-Pruefung Fund 6).
-# GESOURCT (kein Shebang, kein set -e) von fetch_release.sh, update_runner.sh, upgrade_guard.sh und compose/swap_helper.sh.
+# master_swap.sh — Update im Docker-Verbund = Wechsel des master-Images ueber einen kurzlebigen Helfer.
+# Gesourct (kein Shebang, kein set -e) von fetch_release.sh, update_runner.sh, upgrade_guard.sh und compose/swap_helper.sh.
 #
-# WARUM: Im Verbund bringt ein Release ein neues master-Image (Werkzeuge + Installer-Baum + compose.yml mit den Pins von n8n,
+# Warum: Im Verbund bringt ein Release ein neues master-Image (Werkzeuge + Installer-Baum + compose.yml mit den Pins von n8n,
 # Postgres & Co.). Der master kann sich nicht selbst ersetzen: `compose up master` aus ihm heraus beendet genau den Prozess,
-# der es ausfuehrt. Darum drei Rollen mit EINER Zustandsdatei (Volume var_la, ueberlebt jeden Container):
-#   1. alter master (`lifeagents update`): Release laden + Unterschrift pruefen (fetch_release.sh, unveraendert), aus der
-#      GEPRUEFTEN compose.yml des Release das Ziel-Image lesen, Image bereitlegen, Zustand + beide compose-Dateien + Env-Datei
+# der es ausfuehrt. Darum drei Rollen mit einer Zustandsdatei (Volume var_la, ueberlebt jeden Container):
+#   1. alter master (`lifeagents update`): Release laden + Unterschrift pruefen (fetch_release.sh), aus der
+#      geprueften compose.yml des Release das Ziel-Image lesen, Image bereitlegen, Zustand + beide compose-Dateien + Env-Datei
 #      ablegen, Helfer starten. Bis hierher ist am laufenden System nichts geaendert (jeder Fehler = Abbruch davor).
-#   2. Helfer (compose/swap_helper.sh, aus dem ALTEN Image): neuen master anlegen, Selbsttest; scheitert er, den alten
+#   2. Helfer (compose/swap_helper.sh, aus dem alten Image): neuen master anlegen, Selbsttest; scheitert er, den alten
 #      wieder anlegen. Schreibt PHASE=swapped bzw. rolled_back.
 #   3. neuer (bzw. alter) master, naechster Tick (`lifeagents update --tick`, update_runner.sh): setzt fort — provision.sh aus
 #      dem Image-Baum (upgrade_guard sichert davor) bzw. meldet den Rueckweg — und schliesst den Chat-Auftrag ab.
@@ -16,8 +16,8 @@
 
 SWAP_DIR="${SWAP_DIR:-/var/lib/lifeagents/master-swap}"
 SWAP_STATE="${SWAP_DIR}/state"
-MASTER_IMAGE_TREE="${MASTER_IMAGE_TREE:-/opt/lifeagents}"   # Installer-Baum IM master-Image (master.Dockerfile)
-# Variablen, die compose.yml interpoliert (EINE Liste fuer die Env-Datei des Helfers; contract_lint 33 haelt sie gleich).
+MASTER_IMAGE_TREE="${MASTER_IMAGE_TREE:-/opt/lifeagents}"   # Installer-Baum im master-Image (master.Dockerfile)
+# Variablen, die compose.yml interpoliert (eine Liste fuer die Env-Datei des Helfers; contract_lint 33 haelt sie gleich).
 SWAP_STACK_VARS="LA_PROJECT LA_EDGE_PORT LA_WIZARD_PORT LA_PG_SUPERPW LA_MASTER_IMAGE LA_TS_HOSTNAME"
 
 _swap_get() { read_env_value "$SWAP_STATE" "$1" 2>/dev/null || true; }
@@ -37,8 +37,8 @@ _swap_write_stack_env() {
 }
 
 # master_swap_begin <tag> <compose-datei> <ziel-image> [update|rollback] — <compose-datei> = die (gepruefte) compose.yml des
-#   Ziel-Stands (Update: aus dem Release; Rueckweg: die vorherige aus dem Merkzettel). — Rolle 1 (siehe Kopf). Kehrt mit rc 0 zurueck, sobald der
-#   Helfer laeuft; der Aufrufer endet dann (der master wird gleich ersetzt). Jeder Fehler davor = die, nichts geaendert.
+#   Ziel-Stands (Update: aus dem Release; Rueckweg: die vorherige aus dem Merkzettel). Rolle 1 (siehe Kopf). Kehrt mit
+#   rc 0 zurueck, sobald der Helfer laeuft; der Aufrufer endet dann (der master wird gleich ersetzt). Jeder Fehler davor = die, nichts geaendert.
 master_swap_begin() {
   local tag="$1" cf="$2" target="$3" mode="${4:-update}" from="${LA_MASTER_IMAGE:-}" phase
   [ -n "$from" ] || die "LA_MASTER_IMAGE fehlt im master — Wechsel abgebrochen, nichts geändert."
@@ -62,7 +62,7 @@ master_swap_begin() {
     install -m 0600 "$cf" "$SWAP_DIR/compose.new.yml" || exit 1
     install -m 0600 "$LA_COMPOSE_FILE" "$SWAP_DIR/compose.old.yml" || exit 1
     _swap_write_stack_env "$SWAP_DIR/stack.env" "$target" || exit 1
-    # SWAP_DROP_DB_AFTER/SWAP_NOTIFY (nur der Rueckweg) stehen VOR dem Helfer-Start in der Datei: danach schreibt der Helfer
+    # SWAP_DROP_DB_AFTER/SWAP_NOTIFY (nur der Rueckweg) stehen vor dem Helfer-Start in der Datei: danach schreibt der Helfer
     # sie, ein zweiter Schreiber koennte eine Zeile verlieren.
     printf 'PHASE=handoff\nMODE=%s\nTAG=%s\nFROM=%s\nTO=%s\nREQUEST_ID=%s\nALLOW_DOWNGRADE=%s\nDROP_DB_AFTER=%s\nNOTIFY=%s\nSTARTED=%s\n' \
       "$mode" "$tag" "$from" "$target" "${LIFEAGENTS_UPDATE_REQUEST_ID:-}" "${LIFEAGENTS_ALLOW_DOWNGRADE:-0}" \

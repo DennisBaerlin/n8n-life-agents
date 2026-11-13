@@ -1,5 +1,5 @@
 -- ============================================================
--- finance.fn_xirr(p_dates date[], p_amounts numeric[], p_annualize boolean DEFAULT TRUE) — geldgewichtete Rendite (READ)
+-- fn_xirr (READ, IMMUTABLE) — geldgewichtete Rendite; Eingabe p_dates date[], p_amounts numeric[], p_annualize boolean
 --   Interner Zinsfuss datierter Geldfluesse (XIRR / IZF): der Satz r mit Summe a_i / (1 + r)^((d_i - d_0) / 365) = 0.
 --   Konvention Act/365 wie Excel XIRR und Portfolio Performance „IZF" (NPVFunction: Tage / 365.0). Vorzeichen aus Sicht
 --   des Anlegers: Einzahlung (Kauf) negativ, Auszahlung (Verkauf, Dividende, Endwert) positiv.
@@ -13,7 +13,7 @@
 --   Newton mit Rueckfall auf Bisektion, wenn ein Schritt die Klammer verlaesst (wie PP IRR.java: Bisektions-Start +
 --   Newton). Abbruch bei relativer Schrittweite < 1e-12 in y (Satz damit genauer als 1e-8) oder nach 200 Schritten.
 --   Gleiche Tage werden summiert. NULL bei: ungleich langen/leeren Arrays, NULL-Element, Zeitspanne 0, nicht mindestens
---   einem positiven UND einem negativen (Tages-)Fluss, keinem Vorzeichenwechsel im Raster.
+--   einem positiven und einem negativen (Tages-)Fluss, keinem Vorzeichenwechsel im Raster.
 --   Quellen: Microsoft XIRR https://support.microsoft.com/en-us/office/xirr-function-de1242ec-6477-445b-b11b-a303ad9adc9d ·
 --   Portfolio Performance NPVFunction/IRR https://github.com/portfolio-performance/portfolio/blob/master/name.abuchen.portfolio/src/name/abuchen/portfolio/math/NPVFunction.java
 --   und https://github.com/portfolio-performance/portfolio/blob/master/name.abuchen.portfolio/src/name/abuchen/portfolio/math/IRR.java ·

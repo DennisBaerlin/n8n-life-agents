@@ -1,20 +1,20 @@
 -- ============================================================
 -- fn_account_everyday_basis (READ, STABLE) -- Grundlage der geschaetzten Alltagsausgaben eines Kontos, je Kontoauszug
---   Die EINE Adresse der Auswahl-Regel (Transparenz 2026-10-30, Befund): der FRUEHESTE Auszug eines Kontos (Rang
---   nach period_end, nicht prev_last_reconciled_at IS NULL — ein Chat-Abgleich davor setzt das Feld) entsteht meist,
---   bevor die Dauerauftraege angelegt sind („Import zuerst“): Gehalt und Uebertraege bleiben ungematcht und landen im
---   Alltag. Er zaehlt deshalb nicht, sobald ein spaeterer Auszug existiert (reason 'earliest'); gibt es nur ihn, zaehlt
---   er (Konsument markiert provisional). Gezaehlt werden die juengsten 3 uebrigen Auszuege; aeltere entfallen.
---   days = Tage NACH dem damaligen Schnitt (period_end - GREATEST(period_start - 1, prev_last_reconciled_at,
+--   Die eine Adresse der Auswahl-Regel: der fruehste Auszug eines Kontos (Rang nach period_end, nicht
+--   prev_last_reconciled_at IS NULL — ein Chat-Abgleich davor setzt das Feld) entsteht meist, bevor die Dauerauftraege
+--   angelegt sind („Import zuerst“): Gehalt und Uebertraege bleiben ungematcht und landen im Alltag. Er zaehlt deshalb
+--   nicht, sobald ein spaeterer Auszug existiert (reason 'earliest'); gibt es nur ihn, zaehlt er (Konsument markiert
+--   provisional). Gezaehlt werden die juengsten 3 uebrigen Auszuege; aeltere entfallen.
+--   days = Tage nach dem damaligen Schnitt (period_end - GREATEST(period_start - 1, prev_last_reconciled_at,
 --   opening_balance_date)); unmatched_* zaehlt nur Zeilen danach (Schnitt wie fn_statement_prepare).
---   Einmalige Grossausgaben (Owner-Entscheid 2026-10-30): oneoff_out (<= 0, Teil von unmatched_out, Grenze
---   oneoff_threshold in Kontowaehrung, NULL = Auszug von vor der Regel bzw. ohne Kurs) zaehlen nicht zum Tageswert.
+--   Einmalige Grossausgaben: oneoff_out (<= 0, Teil von unmatched_out, Grenze oneoff_threshold in Kontowaehrung,
+--   NULL = Auszug ohne diese Regel bzw. ohne Kurs) zaehlen nicht zum Tageswert.
 --   per_day = round((unmatched_out - oneoff_out) / days, 2) (nur Abgaenge) — Anzeige je Auszug (Mini-App-Details).
 --   Konsumenten: fn_account_everyday_per_day (Summe der gezaehlten), fn_account_outlook (Kontovorschau).
---   RUECKGABE: (period_start, period_end, days, unmatched_out, unmatched_in, per_day, counted, reason, oneoff_out,
+--   Rueckgabe: (period_start, period_end, days, unmatched_out, unmatched_in, per_day, counted, reason, oneoff_out,
 --   oneoff_threshold), juengster zuerst, hoechstens die 3 gezaehlten + der fruehste (nur solange er ohne die Regel im
 --   Fenster laege); ohne Auszug leer.
---   Rueckgabetyp geaendert 2026-10-30: das einmalige DROP der alten Signatur macht finance:V035 (nie hier).
+--   Eine Aenderung des Rueckgabetyps braucht ein DROP der alten Signatur in einer V-Migration (zuletzt finance:V035), nie hier.
 --   Tests: tests/db/finance/test_fn_account_everyday_per_day.sql
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_account_everyday_basis(p_account_id int)

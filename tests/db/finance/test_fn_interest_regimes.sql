@@ -1,13 +1,13 @@
 -- tests/db/finance/test_fn_interest_regimes.sql
--- Audit Paket 2, Punkt 5: Zinssatzwechsel erbt den Rhythmus; Kadenzwechsel verankert das Raster neu.
---   Fehler vorher: fn_set_account_interest setzte ohne Kadenz-Angabe Default 'year'; fn_interest_due_open nahm die
---   Kadenz der OFFENEN Zeile, verankert am ersten valid_from -> ein Monatskonto (Gutschriften Feb..Jul gebucht) bekam
+-- Zinssatzwechsel erbt den Rhythmus; Kadenzwechsel verankert das Raster neu.
+--   Falle: fn_set_account_interest darf ohne Kadenz-Angabe nicht auf 'year' defaulten; fn_interest_due_open darf nicht
+--   die Kadenz der offenen Zeile am ersten valid_from verankern -> ein Monatskonto (Gutschriften Feb..Jul gebucht) bekaeme
 --   nach dem Satzwechsel am 1.7. eine Jahresperiode 1.1.-1.1. -> Februar bis Juni doppelt verzinst.
---   Jetzt: (1) Erben der Kadenz; (2) Regime = zusammenhaengender Lauf gleicher Kadenz (fn_interest_regimes), Anker =
---   Regime-Start; das alte Regime endet am Wechseltag OHNE eigene Gutschrift, der Rest seit seinem letzten Rasterpunkt
---   laeuft in die erste Periode des neuen (Befund 2026-10-24); (3) Periodenstart = groesste
+--   Vertrag: (1) Erben der Kadenz; (2) Regime = zusammenhaengender Lauf gleicher Kadenz (fn_interest_regimes), Anker =
+--   Regime-Start; das alte Regime endet am Wechseltag ohne eigene Gutschrift, der Rest seit seinem letzten Rasterpunkt
+--   laeuft in die erste Periode des neuen; (3) Periodenstart = groesste
 --   Rastergrenze < period_end (auch fuer Teilperioden); (4) offen nur nach der juengsten gebuchten/uebersprungenen
---   Periode -> Alt-Raster aus Fehler-Daten wird nie nachtraeglich angeboten.
+--   Periode -> ein Alt-Raster aus Bestandsdaten wird nie nachtraeglich angeboten.
 BEGIN;
 
 DO $$
@@ -39,7 +39,7 @@ BEGIN
     RAISE EXCEPTION 'FAIL period_start [day/week/year Teilperiode]'; END IF;
   RAISE NOTICE 'PASS period_start [Teilperioden: Monat/dom 15/dom -1/Anker 31/day/week/year]';
 
-  -- ===== (1) Beispiel aus dem Audit: Satzwechsel ohne Kadenz erbt "monatlich" =====
+  -- ===== (1) Satzwechsel ohne Kadenz erbt "monatlich" =====
   SELECT (finance.fn_create_account('{"name":"__test_irg_a__","account_type":"cash","currency":"EUR"}'::jsonb)->>'account_id')::int INTO v_a;
   INSERT INTO finance.transactions (account_id, amount, transaction_date, category) VALUES (v_a, 12000, '2025-12-31', 'other');
   PERFORM finance.fn_set_account_interest(jsonb_build_object('account_id',v_a,'annual_rate',2.0,'schedule_unit','month','schedule_day_of_month',1,
@@ -73,8 +73,8 @@ BEGIN
      OR NOT EXISTS (SELECT 1 FROM finance.fn_interest_regimes(v_b) r WHERE r.regime_start = '2026-07-15' AND r.regime_end IS NULL
                     AND r.anchor = '2026-07-15' AND r.unit = 'year') THEN
     RAISE EXCEPTION 'FAIL regimes: %', (SELECT jsonb_agg(to_jsonb(r)) FROM finance.fn_interest_regimes(v_b) r); END IF;
-  -- Fenster bis 1.8.: Juni (1.5.-1.6.), Juli (1.6.-1.7.) im alten Raster — lueckenlos; KEINE eigene Gutschrift am
-  -- Wechseltag 15.7. (Befund 2026-10-24: eine Bank zahlt dort nichts, die Teilperiode 1.7.-15.7. gehoert in die
+  -- Fenster bis 1.8.: Juni (1.5.-1.6.), Juli (1.6.-1.7.) im alten Raster — lueckenlos; keine eigene Gutschrift am
+  -- Wechseltag 15.7. (eine Bank zahlt dort nichts, die Teilperiode 1.7.-15.7. gehoert in die
   -- naechste regulaere Gutschrift des neuen Rhythmus)
   v_prev := DATE '2026-05-01'; v_cnt := 0;
   FOR v_row IN SELECT * FROM finance.fn_interest_due_open(DATE '2026-08-01') o WHERE o.account_id = v_b ORDER BY o.period_end LOOP
@@ -93,8 +93,8 @@ BEGIN
       finance.fn_interest_amount_due(v_b, DATE '2027-07-15'); END IF;
   RAISE NOTICE 'PASS Kadenzwechsel [keine Gutschrift am Wechseltag, erste neue Periode 1.7.-15.7.2027 = 369.21 (Satz-Mischung)]';
 
-  -- Befund 2026-10-24: Rhythmus 'year' am 23.10. angelegt, am 24.10. auf monatlich/Monatsende/
-  -- Gutschrift am 1. korrigiert -> KEINE Gutschrift 23.10.-24.10.; die erste Periode 23.10.-31.10. wird am 01.11. gutgeschrieben.
+  -- Rhythmus 'year' am 23.10. angelegt, am 24.10. auf monatlich/Monatsende/
+  -- Gutschrift am 1. korrigiert -> keine Gutschrift 23.10.-24.10.; die erste Periode 23.10.-31.10. wird am 01.11. gutgeschrieben.
   DECLARE v_e INT; BEGIN
     SELECT (finance.fn_create_account('{"name":"__test_irg_e__","account_type":"cash","currency":"EUR"}'::jsonb)->>'account_id')::int INTO v_e;
     INSERT INTO finance.transactions (account_id, amount, transaction_date, category) VALUES (v_e, 5000, '2026-10-01', 'other');
@@ -128,7 +128,7 @@ BEGIN
   END;
   RAISE NOTICE 'PASS Wechsel auf taeglich [Rest des alten Rhythmus mit Karte, danach automatisch]';
 
-  -- ===== (4) Bestandsdaten mit dem alten Fehler (Default year am 1.7.) — keine Doppel-Gutschrift =====
+  -- ===== (4) Bestandsdaten mit falschem Raster (Default year am 1.7.) — keine Doppel-Gutschrift =====
   SELECT (finance.fn_create_account('{"name":"__test_irg_c__","account_type":"cash","currency":"EUR"}'::jsonb)->>'account_id')::int INTO v_c;
   INSERT INTO finance.transactions (account_id, amount, transaction_date, category) VALUES (v_c, 12000, '2025-12-31', 'other');
   INSERT INTO finance.account_interest_rates (account_id, annual_rate, schedule_interval, schedule_unit, valid_from, valid_to)
@@ -153,14 +153,14 @@ BEGIN
     RAISE EXCEPTION 'FAIL offen-nach-juengster: Periode vor der gebuchten 2026-03-01 angeboten'; END IF;
   RAISE NOTICE 'PASS offen [nur Perioden nach der juengsten gebuchten/uebersprungenen]';
 
-  -- ===== (5) Review: rueckdatierter Satz-/Kadenzwechsel VOR die juengste verzinste Periode -> ok:false =====
+  -- ===== (5) rueckdatierter Satz-/Kadenzwechsel VOR die juengste verzinste Periode -> ok:false =====
   SELECT finance.fn_set_account_interest(jsonb_build_object('account_id',v_d,'annual_rate',2.5,'schedule_unit','month',
     'schedule_interval',3,'valid_from','2026-02-15')) INTO v_res;
   IF (v_res->>'ok')::boolean IS DISTINCT FROM false OR (v_res->>'credited_until')::date IS DISTINCT FROM DATE '2026-03-01' THEN
     RAISE EXCEPTION 'FAIL rueckdatiert: erwartet ok:false bis 2026-03-01, got %', v_res; END IF;
   RAISE NOTICE 'PASS rueckdatiert [Wechsel vor bereits verzinster Periode -> ok:false]';
 
-  -- ===== (6) Review: nur das Intervall genannt ("alle 3 Monate") -> Einheit Monat bleibt (nicht 'year') =====
+  -- ===== (6) nur das Intervall genannt ("alle 3 Monate") -> Einheit Monat bleibt (nicht 'year') =====
   SELECT finance.fn_set_account_interest(jsonb_build_object('account_id',v_d,'annual_rate',2.5,'schedule_interval',3,
     'valid_from','2026-04-01')) INTO v_res;
   IF (v_res->>'ok')::boolean IS DISTINCT FROM true THEN RAISE EXCEPTION 'SETUP FAIL Intervall: %', v_res; END IF;

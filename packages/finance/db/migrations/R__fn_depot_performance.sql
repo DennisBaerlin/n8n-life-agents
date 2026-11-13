@@ -2,21 +2,22 @@
 -- finance.fn_depot_performance(p jsonb) — Depot-Rendite je Depot und gesamt (READ, STABLE)
 --   Geldgewichtete Rendite (XIRR, Act/365, finance.fn_xirr) aus Sicht des Anlegers: sie beruecksichtigt, wann wie viel
 --   eingezahlt wurde (wie Portfolio Performance „IZF"). Eingabe (alles optional): as_of (Stichtag, Standard und
---   Obergrenze core.fn_today()), person_id (Sicht wie die Mini-App: core.fn_app_sees_household; ohne = Haushalt; nur
---   aus dem DEFINER-Handler finance.fn_app_screen_depot nutzbar, unter *_ro fehlt das EXECUTE auf den Rollen-Helfer).
+--   Obergrenze core.fn_today()), person_id (Sicht wie die Mini-App: core.fn_app_sees_household; ohne = Haushalt; mit
+--   person_id nur aus dem DEFINER-Handler finance.fn_app_screen_depot nutzbar, unter *_ro fehlt das EXECUTE auf den
+--   Rollen-Helfer).
 --   Depot-Auswahl = finance.fn_visible_depots (dieselbe wie der Depot-Hero).
---   Rueckgabe {ok, as_of, rows:[…]}: eine Zeile je aktivem Depot (stocks_depot/crypto_depot) + EINE Gesamt-Zeile
+--   Rueckgabe {ok, as_of, rows:[…]}: eine Zeile je aktivem Depot (stocks_depot/crypto_depot) + eine Gesamt-Zeile
 --   (is_total, account_id/depot_name NULL), sortiert: Haushalt nach Wert, Kinder-Depots, gesamt zuletzt. Felder:
 --   account_id, depot_name, owner_person_id, is_child, is_total, value_eur (Wert am Stichtag), start_date (erster
 --   Fluss), period_days (erster..letzter Fluss), return_pa_pct (ab 365 Tagen, sonst NULL), return_since_start_pct
 --   (unter 365 Tagen, nicht annualisiert — GIPS; alles an einem Tag: Auszahlung / Einzahlung - 1), takeover_start_date,
 --   price_stale (eine Position steht auf einem veralteten Kurs, Regel fn_price_status relativ zum Stichtag: die Zahl
 --   gilt, ist aber mit Vorsicht zu lesen), missing_reason.
---   GELDFLUESSE in EUR zum Buchungstag (fn_to_eur(amount, Kontowaehrung, Datum)): jede Buchung mit holding_id einer
+--   Geldfluesse in EUR zum Buchungstag (fn_to_eur(amount, Kontowaehrung, Datum)): jede Buchung mit holding_id einer
 --     Position des Depots mit ihrem Vorzeichen (Kauf -, Verkauf/Dividende +, Positions-Gebuehr -); ausverkaufte
 --     Positionen zaehlen mit. Endwert = Bestand am Stichtag (Summe shares bis as_of) x juengster Kurs <= as_of,
 --     fn_to_eur zum Stichtag (wie depot_holdings_overview).
---   UEBERNAHME (Kauf mit position_takeover-Gegenbuchung derselben group_id; Paket A: mehrere Tranchen moeglich): der
+--   Uebernahme (Kauf mit position_takeover-Gegenbuchung derselben group_id; mehrere Tranchen moeglich): der
 --     Einstand ist kein echter Geldfluss (sonst verteilten sich Jahre an Gewinn auf Wochen). Start S = erster Kurs-Tag
 --     >= juengster Uebernahme-Tag der Position; Startwert = Bestand nach allen Buchungen bis S x Kurs an S als
 --     Einzahlung am Tag S; alle Buchungen der Position bis S fallen in den Startwert. Liegt S nach dem
@@ -27,15 +28,16 @@
 --   missing_reason (dann value_eur und/oder Rendite NULL, nie 0, nie Kaufwert-Fallback): no_price (Position mit Bestand
 --     ohne Kurs, Uebernahme ohne Startkurs), no_fx (Wechselkurs fehlt fuer Endwert, Startwert oder einen Fluss),
 --     no_flows (nichts eingezahlt, z. B. leeres Depot), no_result (XIRR ohne Loesung).
---   GESAMT = gepoolte Fluesse aller Nicht-Kinder-Depots der Sicht (wie der Depot-Hero): Kinder-Depots (role = 'child',
+--   Gesamt = gepoolte Fluesse aller Nicht-Kinder-Depots der Sicht (wie der Depot-Hero): Kinder-Depots (role = 'child',
 --     nur in der Haushalts-Sicht) stehen als eigene Zeilen, nicht in gesamt. Eine Luecke in einem Depot macht gesamt NULL.
---   Bekannte Grenzen: Depot-Gebuehren ohne holding_id (category fee am Verrechnungskonto) zaehlen nicht (kein Depot
+--   Grenzen: Depot-Gebuehren ohne holding_id (category fee am Verrechnungskonto) zaehlen nicht (kein Depot
 --     zuordenbar); Fluesse einer Uebernahme-Position vor S (auch fruehere, ausverkaufte Zyklen) gehen im Startwert auf;
 --     geschlossene Depots fehlen (wie in der App).
---   INVOKER: liest nur finance + core.fn_household_persons (publiziertes Fenster, via fn_visible_depots); die View finance.depot_performance
---   (R__v_depot_performance.sql) ruft sie fuer den Agent-Read (finance_ro), finance.fn_app_screen_depot fuer die App.
---   Fehler als Daten: p kein Objekt / person_id kein Text -> {ok:false, code:'bad_request'}; as_of laeuft ueber
---   core.fn_resolve_input_dates (auch relativ, z. B. "yesterday"; Unsinn -> {ok:false, code:'invalid_date'}).
+--   SECURITY INVOKER: liest nur finance + core.fn_household_persons (publiziertes Fenster, via fn_visible_depots); die View
+--   finance.depot_performance (R__v_depot_performance.sql) ruft sie fuer den Agent-Read (finance_ro), finance.fn_app_screen_depot
+--   fuer die App.
+--   {ok:false} (Fehler als Daten): p kein Objekt / person_id kein Text -> code 'bad_request'; as_of laeuft ueber
+--   core.fn_resolve_input_dates (auch relativ, z. B. "yesterday"; Unsinn -> code 'invalid_date').
 --   Quellen (Verfahren): siehe finance.fn_xirr; GIPS-Annualisierung https://www.gipsstandards.org/standards/
 --   Tests: tests/db/finance/test_fn_depot_performance.sql
 -- ============================================================

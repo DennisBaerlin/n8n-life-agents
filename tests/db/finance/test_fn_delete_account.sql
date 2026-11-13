@@ -50,7 +50,7 @@ BEGIN
   IF v_cnt <> 1 THEN RAISE EXCEPTION 'FAIL delete_account [Verrechnungskonto faelschlich geloescht]'; END IF;
   RAISE NOTICE 'PASS delete_account [settlement-guard: ok=false]';
 
-  -- TEST 3b (Audit Paket 2, Punkt 14): Konto ist ZIEL eines Dauer-Uebertrags -> {ok:false} mit Zaehler statt FK-RAISE.
+  -- TEST 3b: Konto ist Ziel eines Dauer-Uebertrags -> {ok:false} mit Zaehler statt FK-RAISE.
   DECLARE v_tgt INT; v_src INT; v_rp INT; BEGIN
     SELECT (finance.fn_create_account('{"name":"__test_da_tgt__","account_type":"cash","currency":"EUR"}'::jsonb)->>'account_id')::int INTO v_tgt;
     SELECT (finance.fn_create_account('{"name":"__test_da_src__","account_type":"cash","currency":"EUR"}'::jsonb)->>'account_id')::int INTO v_src;
@@ -63,7 +63,7 @@ BEGIN
     RAISE NOTICE 'PASS delete_account [Ziel eines Dauer-Uebertrags -> ok:false, recurring_target_count=1]';
   END;
 
-  -- TEST 4: not-found -> {ok:false, reason, candidates} als Daten (Vertragsaenderung DB-ist-das-Gesetz: Probelauf vor der Karte)
+  -- TEST 4: not-found -> {ok:false, reason, candidates} als Daten (Probelauf vor der Karte)
   SELECT finance.fn_delete_account('{"account_name":"__test_da_missing__"}'::jsonb) INTO v_res;
   IF (v_res->>'ok')::boolean IS DISTINCT FROM false OR v_res->>'reason' NOT LIKE '%not found%' OR NOT (v_res ? 'candidates') THEN
     RAISE EXCEPTION 'FAIL delete_account [not-found -> ok:false]: %', v_res; END IF;

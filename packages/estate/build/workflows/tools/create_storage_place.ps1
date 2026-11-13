@@ -1,9 +1,9 @@
 ﻿#Requires -Version 5.1
 # Dot-gesourct von build.ps1 (Helper + Script-Scope-Creds im Parent-Scope).
 
-# --- agent.estate.tool_create_storage_place (WS-2, create_ + Pflicht-Dubletten-Node) --------
-# Legt eine NEUE Fundstelle an (Tresor/Bankschliessfach/Ordner/digital). access_hint = Fundort-
-# Verweis OHNE Codes/PINs. HITL owner_info. adults_only-DB-Backstop in der fn. Cred = estate_rw.
+# --- agent.estate.tool_create_storage_place (create_ + Pflicht-Dubletten-Node) --------
+# Legt eine neue Fundstelle an (Tresor/Bankschliessfach/Ordner/digital). access_hint = Fundort-
+# Verweis ohne Codes/PINs. HITL owner_info. adults_only-DB-Backstop in der fn. Cred = estate_rw.
 function Build-EstateCreateStoragePlace {
     $CRED_POSTGRES = $CRED_ESTATE_RW
     $trig = Build-Trigger @('owner_person','name','kind','location','access_hint','notes')
@@ -22,10 +22,9 @@ function Build-EstateCreateStoragePlace {
     $errPerson = Build-ToolError 'Person unresolved' @(660, 320) `
         "=The person '{{ `$('Start').item.json.owner_person }}' could not be uniquely resolved. Ask which household member, or leave empty for a household place."
 
-    # Strukturiertes Summary (Textkatalog): Keys + typisierte Rohwerte, das Gate rendert je Empfaenger-Sprache.
     $S  = "`$('Start').item.json"
     $RP = "`$('Resolve Person').item.json"
-    # "DB ist das Gesetz": estate.fn_create_storage_place laeuft als Probelauf VOR der Karte; derselbe Param-Satz geht nach dem Gate in den echten Write.
+    # estate.fn_create_storage_place laeuft als Probelauf vor der Karte; derselbe Param-Satz geht nach dem Gate in den echten Write.
     $wg = New-FnWriteGate -Fn 'estate.fn_create_storage_place' -DryPos @(660, 0) -WritePos @(1980, 0) `
         -WriteName 'Create place (atomic)' `
         -WriteSelect "(r->>'ok')::boolean AS ok, r->>'reason' AS reason, (r->>'storage_place_id')::bigint AS storage_place_id" `

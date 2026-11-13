@@ -1,6 +1,6 @@
 -- tests/db/core/test_fn_dry_run.sql
--- core.fn_dry_run(regprocedure, jsonb): Probelauf einer Write-fn VOR der HITL-Karte. Die fn laeuft echt, das Ergebnis
---   kommt zurueck (+ dry_run:true), ihre Effekte werden IMMER zurueckgerollt (auch bei ok:false nach einem Teil-Write).
+-- core.fn_dry_run(regprocedure, jsonb): Probelauf einer Write-fn vor der HITL-Karte. Die fn laeuft echt, das Ergebnis
+--   kommt zurueck (+ dry_run:true), ihre Effekte werden immer zurueckgerollt (auch bei ok:false nach einem Teil-Write).
 --   Eine echte Exception der fn wird durchgereicht (nicht verschluckt). Nur fn(jsonb) RETURNS jsonb ist erlaubt.
 --   core.fn_today(): heute in der Sitzungs-Zeitzone (= Haushalts-Zeitzone, eine Adresse fuer "heute").
 -- Self-contained (pg_temp-fns + Temp-Tabelle), laeuft ohne jedes Paket.
@@ -49,7 +49,7 @@ BEGIN
     SELECT count(*) INTO v_n FROM dry_probe;
     IF v_n <> 0 THEN RAISE EXCEPTION 'FAIL dry_run [Teil-Write vor ok:false nicht zurueckgerollt]'; END IF;
 
-    -- (3) echte Exception der fn wird NICHT verschluckt (Owner-Alert ueber errorWorkflow), nichts geschrieben
+    -- (3) echte Exception der fn wird nicht verschluckt (Owner-Alert ueber errorWorkflow), nichts geschrieben
     BEGIN
         v_r := core.fn_dry_run('pg_temp.fn_probe_raise(jsonb)'::regprocedure, '{"v":"7"}'::jsonb);
         RAISE EXCEPTION 'FAIL dry_run [Exception verschluckt: %]', v_r;

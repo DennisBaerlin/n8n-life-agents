@@ -6,7 +6,7 @@
 --   expected_unit, min/max_plausible, max_jump_pct, check_interval (String), action_note,
 --   probe_observation (optional: validierte Probe -> erste Observation + Ratchet-Seed)).
 --   Erfolg -> {ok:true, trigger_id, status:'armed', next_check_at, check_interval, armed_count}.
---   Korrigierbar -> {ok:false, reason} OHNE Write (alle CHECKs als freundliche Guards gespiegelt).
+--   Korrigierbar -> {ok:false, reason} ohne Write (alle CHECKs als freundliche Guards gespiegelt).
 BEGIN;
 
 DO $$
@@ -63,7 +63,7 @@ BEGIN
   END IF;
   RAISE NOTICE 'PASS create [date happy]';
 
-  -- TEST 3b (WP3): relative Faelligkeit rechnet die DB; Vergangenheit/Freitext -> {ok:false}
+  -- TEST 3b: relative Faelligkeit rechnet die DB; Vergangenheit/Freitext -> {ok:false}
   v := agent.fn_create_monitor_trigger(jsonb_build_object(
     'domain', '__test__', 'label', 'Rente pruefen relativ', 'trigger_type', 'date', 'due_date', '+6 months', 'check_interval', '7 days'));
   IF (v->>'ok')::boolean IS DISTINCT FROM true
@@ -121,7 +121,7 @@ BEGIN
   END IF;
   RAISE NOTICE 'PASS create [drawdown: Probe-Seed (Ratchet/last_value/Observation)]';
 
-  -- TEST 6: Guards — jede Verletzung freundlich {ok:false}, KEIN Write
+  -- TEST 6: Guards — jede Verletzung freundlich {ok:false}, kein Write
   -- leeres Label
   v := agent.fn_create_monitor_trigger(jsonb_build_object(
     'domain', '__test__', 'label', '  ', 'trigger_type', 'date',
@@ -142,7 +142,7 @@ BEGIN
     'drawdown_pct', 150, 'expected_unit', 'X', 'check_interval', '1 day'));
   IF (v->>'ok')::boolean IS DISTINCT FROM false THEN
     RAISE EXCEPTION 'FAIL create [dd>=100]: got %', v; END IF;
-  -- Web-Cadence unter 12h (Rate-Limit, Owner-Vorgabe)
+  -- Web-Cadence unter 12h (Rate-Limit)
   v := agent.fn_create_monitor_trigger(jsonb_build_object(
     'domain', '__test__', 'label', 'g3', 'trigger_type', 'threshold',
     'acquisition_method', 'web_search', 'acquisition_prompt', 'x',
@@ -170,7 +170,7 @@ BEGIN
     'check_interval', '1 day'));
   IF (v->>'ok')::boolean IS DISTINCT FROM false THEN
     RAISE EXCEPTION 'FAIL create [sql multi]: got %', v; END IF;
-  -- unbekannte (nicht registrierte) Beschaffungs-Methode (Phase B: Registry statt IN-Liste)
+  -- unbekannte (nicht registrierte) Beschaffungs-Methode (Registry-Lookup statt IN-Liste)
   v := agent.fn_create_monitor_trigger(jsonb_build_object(
     'domain', '__test__', 'label', 'g7', 'trigger_type', 'threshold',
     'acquisition_method', 'zz_unknown', 'acquisition_params', jsonb_build_object('a', 1),

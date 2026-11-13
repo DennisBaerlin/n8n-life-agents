@@ -1,23 +1,24 @@
 -- ============================================================
--- fn_clear_e2e_data (GEGUARDETES TEST-CLEANUP — KEIN Produktiv-Tool)
---   Loescht ALLE E2E-Test-Zeilen mit dem Sentinel-Marker '__E2E__', FK-sicher und atomar (eine Transaktion;
+-- fn_clear_e2e_data (geguardetes Test-Cleanup, kein Produktiv-Tool)
+--   Loescht alle E2E-Test-Zeilen mit dem Sentinel-Marker '__E2E__', FK-sicher und atomar (eine Transaktion;
 --   RAISE -> Auto-Rollback). Aufgerufen vom E2E-Write-Tier (scripts/e2e_test.ps1 Pre-/Post-Flight).
 --
---   Phase B — Core kennt kein Paket: die Paket-Daten raeumt je Paket der Konventions-Hook
---   <pkg>.fn_clear_e2e_data(text) (Praezedenz <pkg>.onboarding_state, docs/package-contract.md §6). Dieser
+--   Core kennt kein Paket: die Paket-Daten raeumt je Paket der Konventions-Hook
+--   <pkg>.fn_clear_e2e_data(text) (analog <pkg>.onboarding_state, docs/package-contract.md §6). Dieser
 --   Dispatcher iteriert core.package_registry ∪ core.schema_version (faengt auch --keep-data-Deinstallierte),
---   ruft je Paket mit eigenem Schema den Hook und merged die Zaehler FLACH. Paket mit Schema OHNE Hook -> RAISE
+--   ruft je Paket mit eigenem Schema den Hook und merged die Zaehler flach. Paket mit Schema ohne Hook -> RAISE
 --   (Vertragsbruch laut statt still uebersprungen; contract_lint Check 17 faengt es schon beim Commit).
 --   Selbst raeumt er nur die host-eigenen agent.*-Zeilen (Advisor-Plaene/-Docs, Plan-Aufgaben, Monitor-Trigger, Lern-Loop-State,
---   Test-Chat-Memory ALLER Agenten).
+--   Test-Chat-Memory aller Agenten).
 --
 --   GUARD 2 (Post-Assertion, agent-Teil): keine Sentinel-Zeile darf zurueckbleiben (die Paket-Hooks pruefen ihren
 --   eigenen Teil selbst). Sentinel-Pattern escaped die Underscores ('\_' = literaler Underscore in LIKE).
 --
---   RUN-SCOPING (A5): optionaler p_runid (alphanumerisch). NULL/'' -> GENERISCHER Sweep (fix '__E2E__ ...' UND
+--   Run-Scoping: optionaler p_runid ([a-z0-9], sonst RAISE). NULL/'' -> generischer Sweep (fix '__E2E__ ...' und
 --   run-scoped '__E2E_<runid>__ ...'); p_runid gesetzt -> nur der eigene Lauf.
---   RUECKGABE: flache Zaehler {chat_memory, advisor_plans, handoff_tasks, contexts, monitor_triggers, guide_learn_candidates,
---     guide_learn_watermark, gelernt_notes_stripped} || die Zaehler aller Paket-Hooks
+--   Rueckgabe: flache Zaehler {chat_memory, advisor_plans, handoff_tasks, contexts, monitor_triggers, guide_learn_candidates,
+--     guide_learn_watermark, gelernt_notes_stripped} || die Zaehler aller Paket-Hooks. Fehler sind RAISE
+--     (ungueltige run-id, Paket ohne Hook, Zaehler-Key-Konflikt, uebrig gebliebene Sentinel-Zeilen).
 --   Tests: tests/db/core/test_fn_clear_e2e_data.sql
 -- ============================================================
 -- Alte parameterlose Signatur droppen (sonst Overload-Ambiguitaet mit der (text DEFAULT NULL)-Variante).
@@ -80,7 +81,7 @@ BEGIN
      WHERE plan_name LIKE v_pat OR domain ILIKE v_pat;
     GET DIAGNOSTICS v_ap = ROW_COUNT;
 
-    -- 4. Agent-publizierte Sentinel-Plan-Docs. DOPPELT gescoped: Sentinel-Name UND managed_by='agent'.
+    -- 4. Agent-publizierte Sentinel-Plan-Docs, doppelt gescoped: Sentinel-Name und managed_by='agent'.
     DELETE FROM agent.core_contexts
      WHERE name ILIKE v_pat AND managed_by = 'agent';
     GET DIAGNOSTICS v_ctx = ROW_COUNT;

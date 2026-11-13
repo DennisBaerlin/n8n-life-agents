@@ -1,5 +1,5 @@
 -- tests/db/finance/test_fn_monitor_acquire_fx_rate.sql
--- Phase B: die finance-Monitor-Methode fx_rate (vorher ungeguardet im Core).
+-- Die finance-Monitor-Methode fx_rate.
 --   (validate_fn allein: test_fn_monitor_validate_fx_rate.sql)
 --   finance.fn_monitor_acquire_fx_rate: frischer Kurs ok, stale (Override + Config monitor.fx_stale_days) dirty,
 --     unbekanntes Paar dirty

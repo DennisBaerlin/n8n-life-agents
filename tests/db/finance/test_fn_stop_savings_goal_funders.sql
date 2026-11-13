@@ -1,14 +1,14 @@
 -- tests/db/finance/test_fn_stop_savings_goal_funders.sql
--- WS-B Stufe 3 (Phase S): fn_stop_savings_goal_funders — Lebenszyklus "ERREICHT" (Ziel voll, aber NICHT
---   ausgegeben). Stoppt ALLE Beitraege eines Ziels (Cash-Rate + 0..N verknuepfte Sparplaene mit ihren rps),
---   laesst Ziel + Reserve UNBERUEHRT (nie automatisch; nur auf Owner-Wunsch ueber den set-Pfad).
+-- fn_stop_savings_goal_funders — Lebenszyklus "erreicht" (Ziel voll, aber nicht
+--   ausgegeben). Stoppt alle Beitraege eines Ziels (Cash-Rate + 0..N verknuepfte Sparplaene mit ihren rps),
+--   laesst Ziel + Reserve unberuehrt (nie automatisch; nur auf Owner-Wunsch ueber den set-Pfad).
 --   (1) Cash-rp paused + valid_to=heute.
---   (2) ALLE verknuepften Sparplaene paused + ihre rps paused + valid_to=heute (Menge der Quellen, nicht "die" rp).
+--   (2) alle verknuepften Sparplaene paused + ihre rps paused + valid_to=heute (Menge der Quellen, nicht "die" rp).
 --   (3) Ziel-Status bleibt 'active'; das Reserve-Journal bleibt unveraendert (erreicht != ausgegeben).
 --   (4) Nicht-verknuepfter Sparplan (anderes/kein Ziel) bleibt aktiv.
 --   (5) Rueckgabe-Zaehler (paused_cash_rate, paused_plan_count).
 BEGIN;
--- Audit Paket 3: ein Sparziel braucht ein Sparkonto -> Fixture-Topf fuer fn_create_savings_goal.
+-- Fixture: ein Sparziel braucht ein Sparkonto (Topf) fuer fn_create_savings_goal.
 INSERT INTO finance.accounts (name, account_type, currency, status) VALUES ('__sg_fixture_pot__','cash','EUR','active');
 
 DO $$
@@ -50,11 +50,11 @@ BEGIN
   INSERT INTO finance.savings_plans (name, depot_id, isin, symbol, security_name, recurring_payment_id, savings_goal_id, status)
   VALUES ('__test_ssf_plan_other__', v_depot, 'XX0000000099','OTH','Other', v_rp_other, NULL, 'active') RETURNING id INTO v_plan_other;
 
-  -- Depot-Reserve-Journal (muss UNVERAENDERT bleiben)
+  -- Depot-Reserve-Journal (muss unveraendert bleiben)
   INSERT INTO finance.savings_goal_reserve_entries (savings_goal_id, account_id, delta_native, kind)
   VALUES (v_goal, v_depot, 1500, 'manual');
 
-  -- ===== AKTION =====
+  -- ===== Aktion =====
   SELECT finance.fn_stop_savings_goal_funders(jsonb_build_object('goal_id', v_goal)) INTO v_res;
   IF (v_res->>'ok')::boolean IS DISTINCT FROM true THEN
     RAISE EXCEPTION 'FAIL stop_funders: kein ok:true (%)', v_res; END IF;

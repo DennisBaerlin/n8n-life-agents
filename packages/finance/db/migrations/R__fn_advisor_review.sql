@@ -1,40 +1,42 @@
 -- ============================================================
--- finance.fn_advisor_review (WS2 — paket-besessener Review/Drift-Rechner der Core-Advisor-Engine)
+-- fn_advisor_review (READ, STABLE) -- paket-besessener Review/Drift-Rechner der Core-Advisor-Engine
 --   Vom generischen Core-Wrapper core.fn_advisor_review_evaluate(domain) ueber die Registry
---   core.advisors GENERISCH dispatcht (domain='finance' -> diese fn). Rechnet die finance-spezifische
---   Soll-Ist-Drift + Staleness (alerts[], gelatcht vom Core-Wrapper) UND den unbedingten Quartals-
+--   core.advisors generisch dispatcht (domain='finance' -> diese fn). Rechnet die finance-spezifische
+--   Soll-Ist-Drift + Staleness (alerts[], gelatcht vom Core-Wrapper) und den unbedingten Quartals-
 --   Voll-Digest (digest) aus den finance-Views + den publizierten Core-DEFINER-Fenstern.
+--   Eingabe: uniforme 3-arg-Signatur aller review-fns (domain, person_id, observations); finance ist Haushalt und
+--   ignoriert alle drei (keine scope-konditionale Aritaet).
 --
---   WS2a = buchwert-immune Metriken (Sparziel-Pace, Notreserve, Plan-Staleness).
---   Phase A = zwei zusaetzliche Staleness-Nudges: tax_year_staleness (Plan im Vorjahr bestaetigt -> neues
---     Steuerjahr; Bool-Toggle advisor.tax_year_nudge default-ON) + risk_profile_staleness (risk_profile.as_of
---     aelter als advisor.risk_profile_stale_days, default 365). Beide gelatcht ueber den Core-Wrapper.
---   WS2b = MARKTWERT-Metriken via finance.networth_by_asset_class + finance.market_prices:
---     - per-Block-Allokations-Drift (NUR handelbar: Depot-Positionen + Cash netto; Immobilie/Vorsorge/p2p
---       NIE im Drift -> non_rebalanceable_targets), Soll = target_allocation.blocks[] gejoint auf den
---       STABILEN Block-`key` (== depot_holdings.asset_class; arch-challenge Candidate 1);
---     - Zielportfolio-Drift (goal.target_portfolio_eur vs. Marktwert Depot+Cash-netto-Schulden);
+--   Buchwert-immune Metriken: Sparziel-Pace, Notreserve, Plan-Staleness.
+--   Zwei Staleness-Nudges: tax_year_staleness (Plan im Vorjahr bestaetigt -> neues Steuerjahr; Bool-Toggle
+--     advisor.tax_year_nudge default-on) + risk_profile_staleness (risk_profile.as_of aelter als
+--     advisor.risk_profile_stale_days, default 365). Beide gelatcht ueber den Core-Wrapper.
+--   Marktwert-Metriken via finance.networth_by_asset_class + finance.market_prices:
+--     - per-Block-Allokations-Drift (nur handelbar: Depot-Positionen + Cash netto; Immobilie/Vorsorge/p2p
+--       nie im Drift -> non_rebalanceable_targets), Soll = target_allocation.blocks[] gejoint auf den
+--       stabilen Block-`key` (== depot_holdings.asset_class);
+--     - Zielportfolio-Drift (FIRE-Topf nach goal.target_portfolio_basis, s. u., ohne Kind-Werte, vs. unterer Wert von goal.target_portfolio_eur);
 --     - Pflicht-Advisory-Sektionen unmapped/null_tag/null_price + price_as_of/Stale (advisor.price_stale_days).
---   WS3 = FIRE-Topf-Semantik (2026-06-22): goal.target_portfolio_basis steuert den Zielportfolio-Topf —
---     'investment' (Default) = Depot+Cash+Festgeld+P2P - Depot-Earmarks, OHNE Hypothek/Haus/Rente; 'net_worth'
---     = zusaetzlich Immobilien + alle Kredite (Audit Paket 3, symmetrisch); ELSE-Fail-Safe = investment. Festgeld ist seit der View-Trennung
---     eine eigene NICHT-handelbare Klasse (im Topf, raus aus dem Rebalancing-Drift; Plan-Block dafuer ->
+--   FIRE-Topf-Semantik: goal.target_portfolio_basis steuert den Zielportfolio-Topf —
+--     'investment' (Default) = Depot+Cash+Festgeld+P2P, ohne Hypothek/Haus/Rente; 'net_worth'
+--     = zusaetzlich Immobilien + alle Kredite (symmetrisch); ELSE-Fail-Safe = investment. Festgeld ist
+--     eine eigene nicht-handelbare Klasse (im Topf, raus aus dem Rebalancing-Drift; Plan-Block dafuer ->
 --     non_rebalanceable_targets). P2P zaehlt zum Nennwert (imprecise-Hinweis im Digest).
---   Phase L = Cashflow-/Liquiditaets-FLUSS-Checks (kein Plan-Fakt noetig), beide aus finance.monthly_cashflow_summary
---     (Audit Paket 3: Konsum/Tilgung/Sparen getrennt): cashflow_coverage = hart monthly_free<0 (Pflichtausgaben =
+--   Cashflow-/Liquiditaets-Fluss-Checks (kein Plan-Fakt noetig), beide aus finance.monthly_cashflow_summary
+--     (Konsum/Tilgung/Sparen getrennt): cashflow_coverage = hart monthly_free<0 (Pflichtausgaben =
 --     Konsum + Kreditrate uebersteigen die Einnahmen) + sanfter Puffer advisor.cashflow_buffer_pct/_nudge;
---     savings_squeeze = monthly_free>=0 ABER Sparen>0 und monthly_account_change<0 (Sparraten leeren das Girokonto;
---     advisor.savings_squeeze_nudge). Guard monthly_income>0. has_fx_gap -> Zusatzsatz "unvollstaendig". Seit 2026-10-30
---     rechnen „frei“ und Kontoveraenderung den geschaetzten Alltag ein (fn_household_everyday_month), Basis-Satz je Meldung.
---   Audit Paket 3: Notreserve-Cash + Monatsbasis aus finance.fn_liquidity_snapshot (freies Cash ohne Kinderkonten
+--     savings_squeeze = monthly_free>=0 aber Sparen>0 und monthly_account_change<0 (Sparraten leeren das Girokonto;
+--     advisor.savings_squeeze_nudge). Guard monthly_income>0. has_fx_gap -> Zusatzsatz "unvollstaendig".
+--     „frei“ und Kontoveraenderung rechnen den geschaetzten Alltag ein (fn_household_everyday_month), Basis-Satz je Meldung.
+--   Notreserve-Cash + Monatsbasis aus finance.fn_liquidity_snapshot (freies Cash ohne Kinderkonten
 --     und Sparziel-Ruecklagen; Pflichtausgaben ohne Sparraten). Zielmix-Drift normiert die Soll-Anteile der
---     handelbaren Bloecke auf deren Summe; der Ist-Nenner sind nur handelbare Klassen MIT Plan-Block (Cash als
+--     handelbaren Bloecke auf deren Summe; der Ist-Nenner sind nur handelbare Klassen mit Plan-Block (Cash als
 --     freies Cash). net_worth-Basis zaehlt die Immobilie (symmetrisch mit ihrem Kredit). Sparziel ohne Topf ->
 --     savings_goal_unmeasurable statt savings_pace.
---   Kurs-Luecke (2026-11-06): Ziel mit has_fx_gap und Rueckstand -> kein savings_pace (fn_savings_goal_pace 'unknown');
+--   Kurs-Luecke: Ziel mit has_fx_gap und Rueckstand -> kein savings_pace (fn_savings_goal_pace 'unknown');
 --     data_quality nennt die aktiven Konten mit einer Waehrung ohne Kurs (dq_null_rate {account} | dq_null_rate_many
 --     {accounts}, Wahl nach Anzahl in der DB); Digest digest_goal_line_fx_gap und goal_reached_fx_gap sagen „mindestens“.
---   Monats-Check (WP-E): account_coverage:<konto> = Deckungs-Vorschau (finance.fn_account_outlook) unterschreitet
+--   Monats-Check: account_coverage:<konto> = Deckungs-Vorschau (finance.fn_account_outlook) unterschreitet
 --     den Puffer finance.coverage_buffer_eur, nur Konten mit Kontoauszug; recurring_missing:<ketten-kopf> = die
 --     juengsten zwei Termine einer laufenden Dauerauftrags-Kette hat ein Kontoauszug als fehlend festgestellt; lief ein
 --     selbst einzurichtender Auftrag (fn_bank_setup_kind) nie, lautet der Satz recurring_never_started_<art>[_generic].
@@ -42,43 +44,40 @@
 --     (Staleness, die Vorschau waere nur noch der aufgelaufene Alltag).
 --   Wechselkurs-Alter: fx_rate_stale:<waehrung> = juengster EUR-Kurs einer aktiven Fremdwaehrung aelter als
 --     finance.fx_stale_days (Default 7; ohne jeden Kurs meldet data_quality).
---   Umschichtung mit Enddatum (2026-11-01): standing_order_ending:<ketten-kopf> = ein freistehender Uebertrag, der ein
+--   Umschichtung mit Enddatum: standing_order_ending:<ketten-kopf> = ein freistehender Uebertrag, der ein
 --     Sparplan-Verrechnungskonto oder Ziel-Geld-Konto speist, ueberweist in <= 42 Tagen zum letzten Mal (latch = Termin).
---   Instandhaltungsruecklage (2026-10-27, aus finance.maintenance_reserve_status): maintenance_reserve_low:<immobilie>
+--   Instandhaltungsruecklage (aus finance.maintenance_reserve_status): maintenance_reserve_low:<immobilie>
 --     = eingestellte Rate (Kopf der Kette) einer aktiven Immobilie unter der Empfehlung nach II. BV (latch_keys
 --     Stufe:Satz -> Stufen-/Satzwechsel meldet erneut; ohne Kurs NULL -> keine Meldung);
 --     maintenance_reserve_missing:<immobilie> = aktive Immobilie ohne aktive Ruecklage (einmal). Digest: Ruecklage als
 --     digest_maintenance_line (Stand + Rate) statt Prozent-Zeile; savings_pace/goal_reached entfallen (kein Ziel).
 --
---   PARTIAL-TOLERANT: jeder Soll-Block optional; fehlt der Plan/das Fakt, entfaellt die Metrik still
+--   Partial-tolerant: jeder Soll-Block optional; fehlt der Plan/das Fakt, entfaellt die Metrik still
 --   (kein Crash, leeres alerts moeglich). Robust bei leeren Live-Daten.
 --
---   ROLLEN-PFAD: aufgerufen vom Core-Wrapper unter dem Haupt-RW-Credential -> erreicht finance.*-Views
---   direkt; agent.* NUR ueber die publizierten Fenster core.fn_advisor_read_plan / fn_monitor_trigger_
+--   Rollen-Pfad: aufgerufen vom Core-Wrapper unter dem Haupt-RW-Credential -> erreicht finance.*-Views
+--   direkt; agent.* nur ueber die publizierten Fenster core.fn_advisor_read_plan / fn_monitor_trigger_
 --   summary (eine finance-schema-fn liest agent.* nicht direkt). STABLE/INVOKER.
 --
---   GENERIK-VERTRAG (Textkatalog Phase C): jeder alert traegt 'msg' = [tpl…] (Saetze, mit Leerzeichen verbunden;
+--   Generik-Vertrag (Textkatalog): jeder alert traegt 'msg' = [tpl…] (Saetze, mit Leerzeichen verbunden;
 --   null-Elemente = entfallene Teilsaetze), der digest 'lines' = [tpl | [tpl…] | null(Leerzeile)…]; tpl =
 --   {kind:'tpl', value:<finance.advisor.*-Key>, params:{typisierte Rohwerte}} (core.fn_ui_tpl/fn_ui_money/fn_ui_num/
---   fn_ui_date). Die generischen Core-Crons kennen KEINE finance-Felder: sie rendern die Struktur in der Sprache
+--   fn_ui_date). Die generischen Core-Crons kennen keine finance-Felder: sie rendern die Struktur in der Sprache
 --   des Empfaengers (Zahlen per Intl), das LLM formuliert um. 'label' ist englisch-technisch (keine Anzeige).
 --
 --   told_keys (Quelle finance:told_owner): cashflow_coverage, savings_squeeze, reserve_coverage (je Konto mit latch_keys),
 --   savings_goal_reached (je Ziel-ID) schweigen, wenn der Owner die Lage schon beim Eintragen gehoert hat.
 --
---   RUECKGABE jsonb: { alerts:[{metric_key,kind,value,target,drift,label,msg,priority,told_keys?}], digest:{…Rohwerte, lines},
+--   Rueckgabe jsonb: { alerts:[{metric_key,kind,value,target,drift,label,msg,priority,told_keys?}], digest:{…Rohwerte, lines},
 --     net_worth_by_class:[…], rebalanceable_drift:[…], non_rebalanceable_targets:[…],
---     advisories:{unmapped:[…], null_tag:[…], null_price:[…], price_as_of, price_stale} }
---   Anwenden via: db_apply.ps1 -File packages\finance\db\migrations\R__fn_advisor_review.sql
+--     advisories:{unmapped:[…], null_tag:[…], null_price:[…], null_rate:[…], price_as_of, price_stale} }
+--   Tests: tests/db/finance/test_fn_advisor_review.sql
 -- ============================================================
--- P2a: uniform 3-arg-Dispatch des Core-Wrappers (core.fn_advisor_review_evaluate dispatcht ALLE review-fns mit
---   (domain, person_id, observations)). finance ist HAUSHALT und IGNORIERT p_person_id (0 Verhaltensaenderung) —
---   die Signatur ist nur die uniforme Plugin-Schnittstelle (Rule of Three; keine scope-konditionale Aritaet).
 CREATE OR REPLACE FUNCTION finance.fn_advisor_review(p_domain text, p_person_id text DEFAULT NULL, p_observations jsonb DEFAULT '{}'::jsonb)
 RETURNS jsonb LANGUAGE plpgsql STABLE AS $$
 DECLARE
     v_facts        jsonb;
-    v_es           jsonb;     -- finance.fn_emergency_reserve_status() (Notreserve, 2026-10-30)
+    v_es           jsonb;     -- finance.fn_emergency_reserve_status() (Notreserve)
     v_goal         jsonb;
     v_alloc        jsonb;
     v_alerts       jsonb := '[]'::jsonb;
@@ -90,7 +89,6 @@ DECLARE
     v_last_conf    text;
     v_stale_age    numeric;
     r              record;
-    -- WS2b
     v_trade_total  numeric;
     v_nwbc         jsonb := '[]'::jsonb;
     v_reb          jsonb := '[]'::jsonb;
@@ -98,11 +96,11 @@ DECLARE
     v_unmapped     jsonb := '[]'::jsonb;
     v_null_tag     jsonb := '[]'::jsonb;
     v_null_price   jsonb := '[]'::jsonb;
-    v_null_rate    jsonb := '[]'::jsonb;   -- WP-3c: in Nutzung befindliche Fremdwaehrungen OHNE FX-Kurs
+    v_null_rate    jsonb := '[]'::jsonb;   -- in Nutzung befindliche Fremdwaehrungen ohne FX-Kurs
     v_null_tag_cnt int := 0;
     v_null_price_cnt int := 0;
     v_null_rate_codes text[] := '{}';   -- dieselben Codes als Array (Abgleich je Konto)
-    v_null_rate_accts text[] := '{}';   -- 2026-11-06: Konten/Depots, die einen Betrag in einer Waehrung ohne Kurs tragen
+    v_null_rate_accts text[] := '{}';   -- Konten/Depots, die einen Betrag in einer Waehrung ohne Kurs tragen
     v_null_rate_latch jsonb := '[]'::jsonb;   -- je solches Konto ein Latch (neues Konto ohne Kurs meldet erneut)
     v_price_asof   date;
     v_price_stale  boolean := false;
@@ -119,7 +117,7 @@ DECLARE
     v_portfolio    numeric;
     v_dq_msg       jsonb;     -- Daten-Hinweis (Alert + Digest-Zeile), NULL = keine Luecke
     v_lines        jsonb;     -- Digest-Zeilen-Struktur
-    -- WS-C3: Reserve-Coverage (Engpass)
+    -- Reserve-Coverage (Engpass)
     v_rc_cnt       int := 0;
     v_rc_eur       numeric;
     v_rc_txt       text;
@@ -127,19 +125,18 @@ DECLARE
     v_rc_told      jsonb;
     v_dq_price     jsonb;     -- Kurs-Luecken-Saetze, nur im Digest
     v_told_cf      jsonb := '[{"source":"finance:told_owner","key":"cashflow_coverage"}]'::jsonb;
-    -- WS-B Stufe 3: Reserve-Aufschluesselung Cash/Depot je Konto (Digest)
+    -- Reserve-Aufschluesselung Cash/Depot je Konto (Digest)
     v_reserve_bd   jsonb;
-    -- Audit Paket 3
     v_snap         jsonb;     -- finance.fn_liquidity_snapshot(): freies Cash + Pflicht-Basis (eine Adresse)
     v_cf           record;    -- finance.monthly_cashflow_summary (Konsum/Tilgung/Sparen getrennt)
-    v_ev           record;    -- finance.fn_household_everyday_month(): geschaetzter Alltag je Monat (Transparenz 2026-10-30)
-    v_free         numeric;   -- frei NACH Alltag = monthly_free + Alltag
-    v_chg          numeric;   -- Kontoveraenderung NACH Alltag = monthly_account_change + Alltag
+    v_ev           record;    -- finance.fn_household_everyday_month(): geschaetzter Alltag je Monat
+    v_free         numeric;   -- frei nach Alltag = monthly_free + Alltag
+    v_chg          numeric;   -- Kontoveraenderung nach Alltag = monthly_account_change + Alltag
     v_basis_tpl    jsonb;     -- Satz, womit gerechnet wurde (fest + Alltag aus n Konten / ohne Alltag)
     v_cls          jsonb := '{}'::jsonb;   -- handelbare Klasse -> Wert (ohne Kind; cash = freies Cash)
     v_tgt_trade_sum numeric;  -- Summe der Soll-Anteile handelbarer Bloecke (Normierungs-Basis)
     v_btgt_raw     numeric;
-    v_outside      numeric;   -- handelbarer Wert OHNE Plan-Block (nicht im Drift-Nenner)
+    v_outside      numeric;   -- handelbarer Wert ohne Plan-Block (nicht im Drift-Nenner)
     v_re_missing   boolean := false;   -- Immobilie mit Kredit, aber ohne Wert (net_worth unvollstaendig)
     v_nw_fx_gap    boolean := false;   -- ein Wert der Zielportfolio-Basis ohne Wechselkurs (Summe unvollstaendig)
     v_never        jsonb;     -- (2d) Bank-Notiz fuer einen nie gelaufenen eigenen Auftrag, sonst NULL
@@ -149,18 +146,18 @@ BEGIN
     SELECT c.metadata->'facts' INTO v_facts
     FROM agent.core_contexts c
     WHERE c.name = 'financial_planning';
-    v_goal  := finance.fn_plan_goal_resolved(v_facts->'goal');   -- WP2: abgeleiteter dritter Zielwert (z. B. Zielportfolio)
+    v_goal  := finance.fn_plan_goal_resolved(v_facts->'goal');   -- abgeleiteter dritter Zielwert (z. B. Zielportfolio)
     v_alloc := v_facts->'target_allocation';
 
     -- Tunbare Schwellen aus core.config ueber das generische DEFINER-Lesefenster core.fn_config_get
-    -- (paket-rollen-sicher, konsistent mit F9; COALESCE-Defaults bleiben). Advisor-Config wohnt im Paket 'core'.
+    -- (paket-rollen-sicher; COALESCE-Defaults bleiben). Advisor-Config wohnt im Paket 'core'.
     v_stale_days       := COALESCE(core.fn_config_get('core', 'advisor', 'plan_stale_days')::numeric, 365);
     -- Allokations-Toleranz: aus dem Plan (target_allocation.rebalance_drift_pp), Default 5pp.
     v_drift_tol := COALESCE(NULLIF(v_alloc->>'rebalance_drift_pp','')::numeric, 5);
-    -- Audit Paket 3: eine Lese-Adresse fuer freies Cash/Pflicht-Basis und fuer den Monats-Cashflow.
+    -- eine Lese-Adresse fuer freies Cash/Pflicht-Basis und fuer den Monats-Cashflow
     v_snap := finance.fn_liquidity_snapshot();
     SELECT * INTO v_cf FROM finance.monthly_cashflow_summary;
-    -- Transparenz 2026-10-30 (Owner-Entscheid): „frei“ und Kontoveraenderung rechnen den geschaetzten Alltag ein (die
+    -- „frei“ und Kontoveraenderung rechnen den geschaetzten Alltag ein (die
     -- regelmaessigen Zahlungen kennen Einkauf/Karte nicht); der Basis-Satz nennt, womit gerechnet wurde.
     SELECT * INTO v_ev FROM finance.fn_household_everyday_month();
     v_free := v_cf.monthly_free + v_ev.monthly_everyday;
@@ -173,11 +170,11 @@ BEGIN
         ELSE core.fn_ui_tpl('finance.advisor.cashflow_basis_no_everyday') END;
 
     -- ---------- (1) Sparziel-Pace-Drift (buchwert-immun; Fakten aus der View) ----------
-    -- WS-1: expected/pace/projected/catchup rechnet finance.savings_goal_progress (ein Fakt, eine Adresse);
-    -- hier nur die Meldung. pace_drift_pp IS NOT NULL == (Zieldatum nach created_at) == der frueheren v_total>0-Guard.
+    -- expected/pace/projected/catchup rechnet finance.savings_goal_progress (ein Fakt, eine Adresse);
+    -- hier nur die Meldung. pace_drift_pp IS NOT NULL == Zieldatum nach created_at.
     -- "hinter Plan" (Toleranz core/advisor/drift_pace_pp) entscheidet finance.fn_savings_goal_pace — dieselbe Regel wie die
-    -- Ampel der Mini-App (2026-10-28). Abfrage bewusst unveraendert (Reihenfolge der Alerts), nur die Bedingung wechselt.
-    -- 'unknown' (Kurs-Luecke, 2026-11-06) meldet hier nie: der Rueckstand ist nicht beurteilbar, die Luecke selbst
+    -- Ampel der Mini-App.
+    -- 'unknown' (Kurs-Luecke) meldet hier nie: der Rueckstand ist nicht beurteilbar, die Luecke selbst
     -- meldet der Daten-Hinweis (data_quality, dq_null_rate nennt das Konto) — einmal, gelatcht.
     FOR r IN
         SELECT p.name,
@@ -208,15 +205,15 @@ BEGIN
                                   CASE WHEN r.projected IS NOT NULL
                                        THEN core.fn_ui_tpl('finance.advisor.savings_pace_projected',
                                                 jsonb_build_object('date', core.fn_ui_date(r.projected))) END,
-                                  -- Transparenz 2026-10-30: woran „hinter Plan“ gemessen wird (gleichmaessig seit Anlage + Toleranz)
+                                  -- woran „hinter Plan“ gemessen wird (gleichmaessig seit Anlage + Toleranz)
                                   core.fn_ui_tpl('finance.advisor.savings_pace_basis', jsonb_build_object('tolerance',
                                       core.fn_ui_num(COALESCE(NULLIF(core.fn_config_get('core', 'advisor', 'drift_pace_pp'), '')::numeric, 10))))));
         END IF;
     END LOOP;
 
-    -- ---------- Audit Paket 3: Sparziel nicht messbar (laufende Rate ohne Topf) ----------
+    -- ---------- Sparziel nicht messbar (laufende Rate ohne Topf) ----------
     -- Die Rate geht als nackte Abbuchung unverfolgt vom Konto ab -> savings_goal_progress liefert dann keine Pace
-    -- (pace_drift_pp NULL, der Pace-Alert oben entfaellt). Statt Dauer-"hinter Plan" EIN gelatchter Hinweis mit dem
+    -- (pace_drift_pp NULL, der Pace-Alert oben entfaellt). Statt Dauer-"hinter Plan" ein gelatchter Hinweis mit dem
     -- Hebel: Sparkonto zuordnen (tool_set_savings_goal mit Reserve-Konto).
     FOR r IN
         SELECT p.name FROM finance.savings_goal_progress p
@@ -230,13 +227,13 @@ BEGIN
                               jsonb_build_object('name', r.name))));
     END LOOP;
 
-    -- ---------- WS-B Stufe 3: Uebererfuellt-Zweig (erreicht/uebertroffen, ORTHOGONAL zum Pace-Alert) ----------
-    -- Owner-Korrektur "erreicht != ausgegeben": ein voll gefuelltes Ziel meldet sich AKTIV, OHNE Auto-Abschluss
-    -- und OHNE Auto-Freigabe — der Betrag bleibt reserviert, bis der Owner ihn verwendet. Feuert NUR bei
+    -- ---------- Uebererfuellt-Zweig (erreicht/uebertroffen, orthogonal zum Pace-Alert) ----------
+    -- erreicht != ausgegeben: ein voll gefuelltes Ziel meldet sich aktiv, ohne Auto-Abschluss
+    -- und ohne Auto-Freigabe — der Betrag bleibt reserviert, bis der Owner ihn verwendet. Feuert nur bei
     -- current_amount >= target (nicht bei "hinter Plan"; das ist der Pace-Alert oben). Nicht bei einem Ziel, das allein
     -- durch Hand-Zuordnung gedeckt ist (earmarked_amount >= current_amount): die Karte der Zuordnung/Anlage hat die
-    -- Deckung schon gemeldet, ein Morgen-Alert waere Rauschen (Sparziel-Zweckbindung 2026-10-27).
-    -- Kurs-Luecke (2026-11-06): der Stand ist eine Untergrenze -> „mindestens“ und die Konten ohne Kurs nennen
+    -- Deckung schon gemeldet, ein Morgen-Alert waere Rauschen.
+    -- Kurs-Luecke: der Stand ist eine Untergrenze -> „mindestens“ und die Konten ohne Kurs nennen
     -- (goal_reached_fx_gap); „uebertroffen“ vs. „genau erreicht“ ist dann nicht entscheidbar.
     FOR r IN
         SELECT p.id, p.name,
@@ -271,11 +268,10 @@ BEGIN
                                                           'target', core.fn_ui_money(r.target))) END));
     END LOOP;
 
-    -- ---------- (2) Notreserve (Ruecklage kind emergency_reserve, 2026-10-30) ----------
+    -- ---------- (2) Notreserve (Ruecklage kind emergency_reserve) ----------
     -- Ziel, Basis und Deckung rechnet allein finance.fn_emergency_reserve_status (Ziel = fester Betrag oder Monate x
     -- Monatsausgaben inkl. geschaetztem Alltag; Deckung = zugeordnetes Geld auf Geld-Konten, nach den anderen Zielen).
-    -- Vorher: Plan-Fakt emergency_reserve gegen alles freie Cash (ein Notgroschen als Sparziel zaehlte dort als
-    -- verplant). Keine Notreserve angelegt -> kein Alert (die Plan-Luecke meldet fn_plan_gaps).
+    -- Keine Notreserve angelegt -> kein Alert (die Plan-Luecke meldet fn_plan_gaps).
     v_es := finance.fn_emergency_reserve_status();
     IF (v_es->>'exists')::boolean AND v_es->>'state' = 'warn' THEN
         v_alerts := v_alerts || jsonb_build_object(
@@ -294,14 +290,14 @@ BEGIN
                                                  'monthly', core.fn_ui_money((v_es->'basis'->>'monthly_eur')::numeric))) END));
     END IF;
 
-    -- ---------- WS-C3: Reserve-Coverage (Engpass-Beratung) ----------
-    -- Konten, deren live-Saldo die fuer aktive Sparziele getaggte Reserve NICHT mehr deckt (account_reserve_status.
-    -- breach). ORTHOGONAL zum emergency_reserve-Alert oben (aggregiertes Cash vs. Plan-Ziel) — hier per-Konto
+    -- ---------- Reserve-Coverage (Engpass-Beratung) ----------
+    -- Konten, deren live-Saldo die fuer aktive Sparziele getaggte Reserve nicht mehr deckt (account_reserve_status.
+    -- breach). Orthogonal zum emergency_reserve-Alert oben (aggregiertes Cash vs. Plan-Ziel) — hier per-Konto
     -- Saldo vs. getaggte Ziel-Reserve; bei einem als Sparziel modellierten Notgroschen koennen beide dieselben
-    -- Euro betreffen (Single-User: akzeptierte niedrige Frequenz, zwei Linsen). GESCHICHTET: der Wächter meldet
-    -- ECHTZEIT beim Buchen (Finance-Agent, reserve_breach-Fold); dies ist die PERIODISCHE Bestandsaufnahme im
+    -- Euro betreffen (Single-User: akzeptierte niedrige Frequenz, zwei Linsen). Geschichtet: der Waechter meldet
+    -- in Echtzeit beim Buchen (Finance-Agent, reserve_breach-Fold); dies ist die periodische Bestandsaufnahme im
     -- Advisor-Review. Gelatcht ueber den Core-Wrapper (stabiler metric_key 'reserve_coverage').
-    -- Feuert auf den BREACH-COUNT (nicht die EUR-Summe): ein fehlender FX-Kurs (fn_to_eur NULL) darf den Alert
+    -- Feuert auf den Breach-Count (nicht die EUR-Summe): ein fehlender FX-Kurs (fn_to_eur NULL) darf den Alert
     -- nicht unterdruecken -> die EUR-Zahl ist best-effort (COALESCE), der Count ist das Gate.
     SELECT count(*)::int,
            COALESCE(sum(finance.fn_to_eur(s.shortfall, s.currency)), 0),
@@ -327,21 +323,21 @@ BEGIN
                               core.fn_ui_tpl('finance.advisor.reserve_coverage_levers')));
     END IF;
 
-    -- ---------- WS-B Stufe 3: Depot-Deckungs-Dialog mit PACE-bewusster Smart-Unterdrueckung ----------
+    -- ---------- Depot-Deckungs-Dialog mit pace-bewusster Smart-Unterdrueckung ----------
     -- Je breached Depot (depot_reserve_status: Marktwert < Σ Reserve-Journal aktiver Ziele) pruefen wir die
-    -- ZIELE, die dagegen reserviert haben. Der deterministische Waechter (fn_reserve_breach) bleibt dumm; die
-    -- pace-bewusste Unterdrueckung lebt HIER (cron-vs-trigger-Gesetz). Alarmiere nur, wenn mindestens ein Ziel
-    -- auf dem Depot NICHT on-pace ist — d. h. die LAUFENDE (konfigurierte) Sparrate schliesst die Luecke nicht
-    -- rechtzeitig: on_pace := required_catchup_rate <= laufende Rate ODER projected_completion_date <= target_date
-    -- (ODER bereits gedeckt, catchup NULL). "laufende Rate" = Σ abs(monthly_equivalent) der AKTIVEN Funder
-    -- (Cash-rp + verknuepfte Sparplaene) — bewusst die konfigurierte VORWAERTS-Rate, NICHT observed_monthly_rate
+    -- Ziele, die dagegen reserviert haben. Der deterministische Waechter (fn_reserve_breach) bleibt dumm; die
+    -- pace-bewusste Unterdrueckung lebt hier (cron-vs-trigger-Gesetz). Alarmiere nur, wenn mindestens ein Ziel
+    -- auf dem Depot nicht on-pace ist — d. h. die laufende (konfigurierte) Sparrate schliesst die Luecke nicht
+    -- rechtzeitig: on_pace := required_catchup_rate <= laufende Rate oder projected_completion_date <= target_date
+    -- (oder bereits gedeckt, catchup NULL). "laufende Rate" = Σ abs(monthly_equivalent) der aktiven Funder
+    -- (Cash-rp + verknuepfte Sparplaene) — bewusst die konfigurierte Vorwaerts-Rate, nicht observed_monthly_rate
     -- (sonst waeren beide Disjunkte identisch). Ist ein Ziel on-pace, ist die Markt-Delle ein Transient -> still.
     FOR r IN
         WITH per_goal AS (
             SELECT d.account_id, d.account_name, d.market_value, d.reserved, d.shortfall, d.fx_missing,
                    g.name AS goal_name, g.required_catchup_rate AS catchup, g.progress_measurable AS measurable,
                    g.projected_completion_date AS projected, g.target_date AS target_date,
-                   -- Audit Paket 3: die HEUTE laufenden Glieder der Ketten (Ziel-Rate + Sparplaene) — eine in die
+                   -- die heute laufenden Glieder der Ketten (Ziel-Rate + Sparplaene) — eine in die
                    -- Zukunft datierte neue Rate (Kopf) zaehlt erst ab ihrem valid_from.
                    (SELECT COALESCE(sum(abs(rp.monthly_equivalent)), 0)
                     FROM finance.recurring_payments rp
@@ -352,25 +348,25 @@ BEGIN
                            OR rp.id IN (SELECT finance.fn_recurring_lineage(sp.recurring_payment_id)
                                         FROM finance.savings_plans sp
                                         WHERE sp.savings_goal_id = g.id AND sp.status = 'active'))) AS run_rate,
-                   -- WP-3c: FX-Caveat auch bei Fremd-QUOTE-Waehrung (EUR-gefuehrte Position, US-Listing in USD) —
-                   -- nicht nur bei fremder Holding-Waehrung. Der globale null_rate-Advisory meldet zusaetzlich, WELCHE
+                   -- FX-Caveat auch bei Fremd-Quote-Waehrung (EUR-gefuehrte Position, US-Listing in USD) —
+                   -- nicht nur bei fremder Holding-Waehrung. Der globale null_rate-Advisory meldet zusaetzlich, welche
                    -- Waehrung gar keinen Kurs hat (Deckung dann unvollstaendig statt still 0).
                    EXISTS (SELECT 1 FROM finance.depot_holdings h
                            WHERE h.account_id = d.account_id AND h.shares > 0
                              AND (h.currency <> 'EUR' OR (h.quote_currency IS NOT NULL AND h.quote_currency <> 'EUR'))) AS fx_flag
             FROM finance.depot_reserve_status d
-            -- DISTINCT (Ziel, Depot): das Journal ist APPEND-ONLY (k Zeilen je Paar) -> einmal je Ziel/Depot
+            -- DISTINCT (Ziel, Depot): das Journal ist append-only (k Zeilen je Paar) -> einmal je Ziel/Depot
             -- joinen, sonst liefe die run_rate-Subquery k-fach (Aggregat-Ergebnis bliebe gleich, nur teurer).
             JOIN (SELECT DISTINCT savings_goal_id, account_id FROM finance.savings_goal_reserve_entries) e
                  ON e.account_id = d.account_id
             JOIN finance.savings_goal_progress g ON g.id = e.savings_goal_id
             WHERE d.breach AND g.status = 'active'
-              -- Mini-App UX 2026-10-30: eine Kursdelle unter finance.depot_cover_warn_pct ist keine Luecke -- dieselbe
+              -- eine Kursdelle unter finance.depot_cover_warn_pct ist keine Luecke -- dieselbe
               -- Regel wie die App (finance.fn_depot_cover_state); nicht ermittelbar meldet sich weiter (fail-loud)
               AND finance.fn_depot_cover_state(d.account_id)->>'state' <> 'dip'
         ),
         marked AS (
-            -- Audit Paket 3: ein nicht messbares Ziel (laufende Rate ohne Topf -> catchup/projected NULL) gilt NIE als
+            -- ein nicht messbares Ziel (laufende Rate ohne Topf -> catchup/projected NULL) gilt nie als
             -- on-pace -> die Depot-Unterdeckung meldet sich (fail-loud statt still unterdrueckt).
             SELECT *,
                    (measurable AND (catchup IS NULL OR catchup <= run_rate
@@ -402,15 +398,15 @@ BEGIN
                                    WHEN r.has_fx        THEN core.fn_ui_tpl('finance.advisor.depot_reserve_fx_note') END));
     END LOOP;
 
-    -- ---------- (2b') Umschicht-Hilfe vor dem Zieldatum (Glide Path, Sparziel-Zweckbindung 2026-10-27) ----------
-    -- Je aktivem Ziel, das im Fenster (Owner: 60 Monate) mehr Depot-Geld traegt als der Pfad erlaubt (+ Toleranz):
+    -- ---------- (2b') Umschicht-Hilfe vor dem Zieldatum (Glide Path) ----------
+    -- Je aktivem Ziel, das im Fenster (60 Monate) mehr Depot-Geld traegt als der Pfad erlaubt (+ Toleranz):
     -- Vorschlagsbetrag (drift = Ueberschuss) zum Umschichten aufs Konto, bei aktivem Sparplan zusaetzlich "pausieren oder
     -- umleiten" (sonst kauft er weiter ins Depot), dazu der Steuer-Hinweis. Die Rechnung lebt allein in
     -- finance.fn_savings_goal_derisk_status (das LLM rechnet nicht). latch_keys = Restjahr: der Edge-Latch meldet
     -- einmal je verbleibendem Jahr erneut, solange ein Ueberschuss besteht (der Vorschlag bleibt aktuell); im Zielmonat
-    -- bleibt es y1 (GREATEST: sonst meldete y0 im letzten Jahr ein zweites Mal, Plan-Reviewer 2026-11-05).
-    -- Bewusste Ausnahme (2026-11-06): eine gueltige Entscheidung (accepted) schweigt; nach ihrem Ablauf (12 Monate vor
-    -- dem Termin) meldet sich die Erinnerung genau einmal mit dem Text "du wolltest es bewusst so". Texte nach Regel E:
+    -- bleibt es y1 (GREATEST: sonst meldete y0 im letzten Jahr ein zweites Mal).
+    -- Bewusste Ausnahme: eine gueltige Entscheidung (accepted) schweigt; nach ihrem Ablauf (12 Monate vor
+    -- dem Termin) meldet sich die Erinnerung genau einmal mit dem Text "du wolltest es bewusst so". Texte:
     -- Kopf + zwei Zahlen-Zeilen, Schluss-Satz; "Mein Rat" abgerundet, ganze Euro erst im Renderer (p_whole).
     FOR r IN
         SELECT * FROM finance.fn_savings_goal_derisk_status() s WHERE s.breach AND NOT s.accepted
@@ -473,7 +469,7 @@ BEGIN
                                   'date',    core.fn_ui_date((r.o->>'min_date')::date),
                                   'buffer',  core.fn_ui_money((r.o->>'buffer')::numeric, r.o->>'currency'),
                                   'per_day', core.fn_ui_money(abs((r.o->>'everyday_per_day')::numeric), r.o->>'currency'))),
-                              -- Transparenz 2026-10-30: Schaetzung aus nur einem Auszug + Standard-Puffer benennen
+                              -- Schaetzung aus nur einem Auszug + Standard-Puffer benennen
                               CASE WHEN (r.o->>'provisional')::boolean
                                    THEN core.fn_ui_tpl('finance.advisor.account_coverage_provisional') END,
                               CASE WHEN r.o->>'buffer_source' = 'default'
@@ -485,7 +481,7 @@ BEGIN
                                       'date',   core.fn_ui_date((r.o->'suggestion'->>'by_date')::date))) END));
     END LOOP;
 
-    -- ---------- (2e) Instandhaltungsruecklage (2026-10-27) ----------
+    -- ---------- (2f) Instandhaltungsruecklage ----------
     -- Rechnung allein in finance.maintenance_reserve_status (Empfehlung nach II. BV, laufende Rate in EUR ueber die
     -- Kette). low: laufende Rate < Empfehlung; latch_keys = Stufe:Satz -> ein Stufenwechsel (22/32 Jahre) oder neue
     -- II.-BV-Saetze melden erneut. missing: aktive Immobilie ohne aktive Ruecklage, einmal je Immobilie (mit
@@ -529,10 +525,10 @@ BEGIN
 
     -- ---------- (2d) Monats-Check: Dauerauftrag zweimal in Folge nicht gekommen ----------
     -- Die juengsten zwei Termine (<= heute) einer laufenden Kette sind beide von einem Kontoauszug als fehlend
-    -- festgestellt -> vermutlich gekuendigt oder Anbieter gewechselt. Zaehlt NUR Skips, die ein Auszug in seinem Zeitraum
+    -- festgestellt -> vermutlich gekuendigt oder Anbieter gewechselt. Zaehlt nur Skips, die ein Auszug in seinem Zeitraum
     -- erzeugt hat (bank_statements.skipped): ein Saldo-Abgleich per Chat ueberspringt offene Termine im Sinne von "im
-    -- bestaetigten Stand enthalten", ein manueller Skip ist eine Nutzer-Entscheidung — beides ist kein Fehlen (Review-
-    -- Befund). Key = Ketten-Kopf (split-/reopen-fest). Transfer-Beine teilen die Faelligkeit -> UNION dedupliziert.
+    -- bestaetigten Stand enthalten", ein manueller Skip ist eine Nutzer-Entscheidung — beides ist kein Fehlen.
+    -- Key = Ketten-Kopf (split-/reopen-fest). Transfer-Beine teilen die Faelligkeit -> UNION dedupliziert.
     FOR r IN
         WITH heads AS (
             SELECT DISTINCT finance.fn_recurring_lineage_head(id) AS head FROM finance.active_recurring_payments
@@ -647,11 +643,11 @@ BEGIN
                 'plan_staleness', 'plan_staleness', v_stale_age, v_stale_days,
                 jsonb_build_array(core.fn_ui_tpl('finance.advisor.plan_stale', jsonb_build_object(
                     'days', core.fn_ui_num(v_stale_age), 'threshold', core.fn_ui_num(v_stale_days)))));
-            -- Phase A: tax_year_staleness — neues Steuerjahr (Basiszins/Vorabpauschale + Freistellungsauftrag
+            -- tax_year_staleness — neues Steuerjahr (Basiszins/Vorabpauschale + Freistellungsauftrag
             -- resetten jeden Januar). Billiger Kalenderjahr-Proxy auf last_confirmed_at; Bool-Toggle
-            -- advisor.tax_year_nudge (default-ON via COALESCE, kein ::numeric). INNERHALB desselben EXCEPTION-
-            -- Guards wie plan_staleness (M3: ein kaputtes Datum darf nicht die ganze fn killen). Gelatcht/
-            -- re-armt jahr-ueber-jahr ueber die Engine -> hoechstens EINE Nachricht/Jahr.
+            -- advisor.tax_year_nudge (default-on via COALESCE, kein ::numeric). Innerhalb desselben EXCEPTION-
+            -- Guards wie plan_staleness (ein kaputtes Datum darf nicht die ganze fn killen). Gelatcht/
+            -- re-armt jahr-ueber-jahr ueber die Engine -> hoechstens eine Nachricht/Jahr.
             IF extract(year from v_last_conf::date) < extract(year from current_date)
                AND COALESCE(core.fn_config_get('core', 'advisor', 'tax_year_nudge'), 'true') = 'true' THEN
                 v_alerts := v_alerts || jsonb_build_object(
@@ -668,7 +664,7 @@ BEGIN
         END;
     END IF;
 
-    -- ---------- Phase A: risk_profile-Staleness (MiFID jaehrliches Re-Assessment) ----------
+    -- ---------- risk_profile-Staleness (MiFID jaehrliches Re-Assessment) ----------
     -- Feuert, wenn risk_profile.as_of aelter als advisor.risk_profile_stale_days (default 365). Partial-tolerant:
     -- nur wenn risk_profile.as_of vorhanden + valide DATE (eigener EXCEPTION-Guard, NULL-bewusst); ohne as_of ->
     -- still kein Alert, kein Crash.
@@ -708,11 +704,11 @@ BEGIN
                 'days',     core.fn_ui_num(current_date - r.as_of)))));
     END LOOP;
 
-    -- ---------- Phase L (WS-1): Cashflow-Deckung (FLUSS-Check, nicht Bestand) ----------
-    -- Audit Paket 3: hartes Defizit monthly_free<0 = die PFLICHTausgaben (Konsum inkl. Kreditzins + Tilgung) uebersteigen
-    -- die Einnahmen; Sparplaene/Sparziel-Raten zaehlen NICHT (die besitzt savings_squeeze). Sanfter Puffer: frei <
-    -- buffer_pct x Einnahmen (abschaltbar). GUARD monthly_income>0 (sonst Fehlalarm auf halb-onboardeter DB). Beide
-    -- Baender teilen den metric_key -> hoechstens EINES feuert (IF/ELSIF). Latch via Core-Wrapper.
+    -- ---------- Cashflow-Deckung (Fluss-Check, nicht Bestand) ----------
+    -- Hartes Defizit monthly_free<0 = die Pflichtausgaben (Konsum inkl. Kreditzins + Tilgung) uebersteigen
+    -- die Einnahmen; Sparplaene/Sparziel-Raten zaehlen nicht (die besitzt savings_squeeze). Sanfter Puffer: frei <
+    -- buffer_pct x Einnahmen (abschaltbar). Guard monthly_income>0 (sonst Fehlalarm auf halb-onboardeter DB). Beide
+    -- Baender teilen den metric_key -> hoechstens eines feuert (IF/ELSIF). Latch via Core-Wrapper.
     -- has_fx_gap: eine laufende Zahlung ohne Wechselkurs -> Zusatzsatz (Zahl unvollstaendig, nie still falsch).
     DECLARE
         v_cf_buf   numeric := COALESCE(core.fn_config_get('core','advisor','cashflow_buffer_pct')::numeric, 0.10);
@@ -744,9 +740,9 @@ BEGIN
         END IF;
     END;
 
-    -- ---------- Phase L (WS-2): Ueber-Sparen (Liquiditaets-Squeeze) ----------
-    -- Audit Paket 3: Pflichtausgaben gedeckt (monthly_free>=0, sonst BESITZT cashflow_coverage die Meldung -> kein
-    -- Doppel-Alarm), es wird gespart (monthly_saving<0) UND das Konto schrumpft trotzdem (monthly_account_change<0)
+    -- ---------- Ueber-Sparen (Liquiditaets-Squeeze) ----------
+    -- Pflichtausgaben gedeckt (monthly_free>=0, sonst besitzt cashflow_coverage die Meldung -> kein
+    -- Doppel-Alarm), es wird gespart (monthly_saving<0) und das Konto schrumpft trotzdem (monthly_account_change<0)
     -- = die Sparraten uebersteigen das frei Verfuegbare. gap = |Kontoveraenderung|. Eigener metric_key. Toggle
     -- advisor.savings_squeeze_nudge.
     DECLARE
@@ -769,12 +765,12 @@ BEGIN
     END;
 
     -- ============================================================
-    -- WS2b — Marktwert-Metriken (Allokations-Drift / Zielportfolio / Datenqualitaet)
+    -- Marktwert-Metriken (Allokations-Drift / Zielportfolio / Datenqualitaet)
     -- ============================================================
 
-    -- Gesamtvermoegen nach Klasse (informativ, T1 = Gesamt-Familie INKL. Kind) + handelbarer Nenner.
-    -- WS-3a: networth_by_asset_class traegt jetzt owner_person_id -> fuer den Digest die Owner kollabieren
-    -- (Haushalts-Summe je Klasse), sonst je Person eine Duplikat-Zeile. Hier KEIN Kind-Ausschluss (T1).
+    -- Gesamtvermoegen nach Klasse (informativ, T1 = Gesamt-Familie inkl. Kind) + handelbarer Nenner.
+    -- networth_by_asset_class traegt owner_person_id -> fuer den Digest die Owner kollabieren
+    -- (Haushalts-Summe je Klasse), sonst je Person eine Duplikat-Zeile. Hier kein Kind-Ausschluss (T1).
     SELECT COALESCE(jsonb_agg(jsonb_build_object(
                'class', COALESCE(asset_class, '(untagged)'),
                'value_eur', value_eur, 'tradeable', tradeable) ORDER BY value_eur DESC), '[]'::jsonb)
@@ -783,10 +779,10 @@ BEGIN
         FROM finance.networth_by_asset_class
         GROUP BY bucket, asset_class, tradeable) z;
 
-    -- WS-3a: FIRE-Pool-Nenner (T2 = Eltern-Topf) schliesst kind-besessene Assets aus. Rolle ueber das
-    -- publizierte DEFINER-Fenster core.fn_household_persons() (finance liest agent.persons NIE direkt, D10).
+    -- FIRE-Pool-Nenner (T2 = Eltern-Topf) schliesst kind-besessene Assets aus. Rolle ueber das
+    -- publizierte DEFINER-Fenster core.fn_household_persons() (finance liest agent.persons nie direkt).
     -- owner NULL (Haushalt) + partner -> kein 'child' -> bleiben drin (IS DISTINCT FROM behandelt NULL korrekt).
-    -- Audit Paket 3: Klassen-Werte EINMAL lesen (ueber Owner summiert); die Klasse 'cash' zaehlt als FREIES Cash
+    -- Klassen-Werte einmal lesen (ueber Owner summiert); die Klasse 'cash' zaehlt als freies Cash
     -- (abzueglich der Sparziel-Ruecklagen aus fn_liquidity_snapshot) -> zurueckgelegtes Ziel-Geld blaeht
     -- "Cash uebergewichtet" nicht auf (dieselbe Sicht wie die Notreserve).
     SELECT COALESCE(jsonb_object_agg(z.asset_class, z.value_eur), '{}'::jsonb) INTO v_cls
@@ -799,11 +795,11 @@ BEGIN
           WHERE n.tradeable AND n.asset_class IS NOT NULL AND hp.role IS DISTINCT FROM 'child'
           GROUP BY n.asset_class) z;
 
-    -- per-Block-Drift: Soll = target_allocation.blocks[] auf den STABILEN key gejoint
+    -- per-Block-Drift: Soll = target_allocation.blocks[] auf den stabilen key gejoint
     IF jsonb_typeof(v_alloc) = 'object' AND jsonb_typeof(v_alloc->'blocks') = 'array' THEN
-        -- Audit Paket 3 (gleiche Basis fuer Soll und Ist): target_pct sind GESAMTplan-Anteile (inkl. Festgeld/
+        -- Gleiche Basis fuer Soll und Ist: target_pct sind Gesamtplan-Anteile (inkl. Festgeld/
         -- Immobilie/Vorsorge). Soll je handelbarem Block = target_pct x 100 / Summe der handelbaren Soll-Anteile
-        -- (Korridor mit demselben Faktor); Ist-Nenner = handelbare Klassen MIT Plan-Block. Handelbarer Wert ohne
+        -- (Korridor mit demselben Faktor); Ist-Nenner = handelbare Klassen mit Plan-Block. Handelbarer Wert ohne
         -- Block (Cash ohne cash-Block, unmapped/ungetaggt) bleibt aus dem Nenner -> Digest-Zeile + Advisories.
         -- Beispiel Welt 50/Anleihen 20/Cash 10/Festgeld 20 genau gehalten: Welt 50 x 100/80 = 62,5 = Ist 62,5.
         SELECT COALESCE(sum(NULLIF(b->>'target_pct','')::numeric), 0) INTO v_tgt_trade_sum
@@ -813,7 +809,7 @@ BEGIN
         SELECT COALESCE(sum(c.value::numeric), 0) INTO v_trade_total
         FROM jsonb_each_text(v_cls) c
         WHERE EXISTS (SELECT 1 FROM jsonb_array_elements(v_alloc->'blocks') b WHERE b->>'key' = c.key);
-        -- outside_plan (2026-10-23) = bewusst ausserhalb des Haushaltsplans (z. B. Kinder-Depot) -> kein "nicht zugeordnet"
+        -- outside_plan = bewusst ausserhalb des Haushaltsplans (z. B. Kinder-Depot) -> kein "nicht zugeordnet"
         SELECT COALESCE(sum(c.value::numeric), 0) - v_trade_total INTO v_outside FROM jsonb_each_text(v_cls) c
         WHERE c.key <> 'outside_plan';
 
@@ -821,9 +817,9 @@ BEGIN
             v_bkey := v_blk->>'key';
             v_btgt_raw := NULLIF(v_blk->>'target_pct','')::numeric;
             CONTINUE WHEN v_bkey IS NULL OR v_btgt_raw IS NULL;
-            -- nicht-handelbare Ziel-Klasse (per Entitaets-Typ) -> non_rebalanceable_targets, NIE Drift-Alarm
-            -- WS3: fixed_deposit (Festgeld) ist seit der View-Trennung NICHT mehr tradeable -> Plan-Block dafuer
-            -- muss hier landen, sonst Dauer-Fehlalarm (actual 0% gegen target).
+            -- nicht-handelbare Ziel-Klasse (per Entitaets-Typ) -> non_rebalanceable_targets, nie Drift-Alarm
+            -- fixed_deposit (Festgeld) ist nicht tradeable -> Plan-Block dafuer muss hier landen, sonst
+            -- Dauer-Fehlalarm (actual 0% gegen target).
             IF v_bkey IN ('real_estate', 'pension', 'p2p', 'loan', 'fixed_deposit') THEN
                 v_non_reb := v_non_reb || jsonb_build_object('key', v_bkey, 'name', v_blk->>'name', 'target_pct', v_btgt_raw);
                 CONTINUE;
@@ -858,8 +854,8 @@ BEGIN
         END LOOP;
     END IF;
 
-    -- Pflicht-Advisory: unmapped (Tag ohne Block-key-Treffer; EXAKT-Join, keine Normalisierung).
-    -- WS-3a: ueber Owner aggregieren (sonst je Person ein Duplikat-Eintrag); haushaltsweiter Datenhinweis (kein Kind-Filter).
+    -- Pflicht-Advisory: unmapped (Tag ohne Block-key-Treffer; exakter Join, keine Normalisierung).
+    -- Ueber Owner aggregieren (sonst je Person ein Duplikat-Eintrag); haushaltsweiter Datenhinweis (kein Kind-Filter).
     SELECT COALESCE(jsonb_agg(jsonb_build_object('asset_class', z.asset_class, 'value_eur', z.value_eur)), '[]'::jsonb)
     INTO v_unmapped
     FROM (
@@ -872,7 +868,7 @@ BEGIN
         GROUP BY n.asset_class) z;
 
     -- Pflicht-Advisory: null_tag (handelbares Holding ohne asset_class)
-    -- 2026-10-23: holding_id + Depot dazu (der Berater ordnet per tool_set_asset_classes zu, der Alarm nennt Namen,
+    -- holding_id + Depot dabei (der Berater ordnet per tool_set_asset_classes zu, der Alarm nennt Namen,
     -- latch_keys = die ids -> eine neu hinzukommende ungetaggte Position meldet erneut)
     SELECT count(*)::int,
            COALESCE(jsonb_agg(jsonb_build_object('holding_id', h.id, 'symbol', h.symbol, 'name', h.name,
@@ -881,9 +877,9 @@ BEGIN
     FROM finance.depot_holdings h JOIN finance.accounts a ON a.id = h.account_id
     WHERE h.shares > 0 AND h.asset_class IS NULL;
 
-    -- Pflicht-Advisory: null_price = gehaltene Position ohne gueltigen Kurs (missing ODER stale je Position) aus
-    -- finance.fn_holding_price_status (EINE Regel mit Depot-Uebersicht + Kurs-Luecken-Erinnerung, 2026-10-27).
-    -- Bewusst KEIN latch_keys-Eintrag: gemeldet wird die Luecke von agent.finance.cron_remind_missing_prices (auch ohne
+    -- Pflicht-Advisory: null_price = gehaltene Position ohne gueltigen Kurs (missing oder stale je Position) aus
+    -- finance.fn_holding_price_status (eine Regel mit Depot-Uebersicht + Kurs-Luecken-Erinnerung).
+    -- Bewusst kein latch_keys-Eintrag: gemeldet wird die Luecke von agent.finance.cron_remind_missing_prices (auch ohne
     -- Finanzplan); hier steht sie nur im Digest (sonst Doppel-Meldung).
     SELECT count(*)::int,
            COALESCE(jsonb_agg(jsonb_build_object('holding_id', s.holding_id, 'symbol', s.symbol, 'name', s.name,
@@ -892,17 +888,17 @@ BEGIN
     FROM finance.fn_holding_price_status() s
     WHERE s.status <> 'ok';
 
-    -- WP-3c Pflicht-Advisory: null_rate — eine in Nutzung befindliche Fremdwaehrung (Konto-, Holding- ODER
-    -- Quote-Waehrung, via fn_active_currencies) OHNE fx_rates-Zeile. fn_to_eur liefert dafuer NULL -> die
-    -- Roll-up-Summen (Net-Worth/Reserve/Runway) ueberspringen den Betrag STILL -> Zwilling zu null_price:
+    -- Pflicht-Advisory: null_rate — eine in Nutzung befindliche Fremdwaehrung (Konto-, Holding- oder
+    -- Quote-Waehrung, via fn_active_currencies) ohne fx_rates-Zeile. fn_to_eur liefert dafuer NULL -> die
+    -- Roll-up-Summen (Net-Worth/Reserve/Runway) ueberspringen den Betrag still -> Zwilling zu null_price:
     -- die Luecke wird sichtbar gemeldet statt still als 0 verbucht. real_estate/pension tragen keine currency
     -- (EUR by construction) -> nie hier. Loan/Festgeld/p2p sind ueber accounts.currency abgedeckt.
     SELECT COALESCE(array_agg(code ORDER BY code), '{}'),
            COALESCE(jsonb_agg(jsonb_build_object('currency', code) ORDER BY code), '[]'::jsonb)
     INTO v_null_rate_codes, v_null_rate
     FROM (SELECT fs.code FROM finance.fn_fx_rate_status() fs WHERE fs.status = 'missing') s;
-    -- 2026-11-06 (Laien-Pruefung): der Daten-Hinweis nennt das betroffene Konto statt des Waehrungscodes. Abgebildet
-    -- auf das tragende Konto: ein AKTIVES Konto mit dieser Kontowaehrung oder ein Depot mit Bestand (shares > 0),
+    -- Der Daten-Hinweis nennt das betroffene Konto statt des Waehrungscodes. Abgebildet
+    -- auf das tragende Konto: ein aktives Konto mit dieser Kontowaehrung oder ein Depot mit Bestand (shares > 0),
     -- dessen Positions-, Quote- oder juengste Kurswaehrung (dieselben Quellen wie fn_active_currencies) keinen Kurs
     -- hat; dazu jedes Konto (auch geschlossen), auf dem ein aktives Sparziel einen Anteil ohne Kurs traegt
     -- (savings_goal_account_share.has_fx_gap), damit jedes „mindestens“/unknown seinen Grund im Hinweis hat. Ein
@@ -933,29 +929,28 @@ BEGIN
                      AND finance.fn_price_status(v_price_asof) <> 'ok';
 
     -- Zielportfolio-Drift (FIRE-Topf vs. goal.target_portfolio_eur unterer Wert).
-    -- WS3 FIRE-Topf-Basis (2026-06-22; Bengen/Trinity/Big-ERN):
-    --   'investment' (Default) = liquide Anlage-Assets Depot + Cash + Festgeld + P2P (BRUTTO);
-    --     OHNE Hypothek/Haus/Rente (Haus+Hypothek heben sich auf, bleiben aussen).
-    --   'net_worth' = investment + Immobilien + alle Kredite (Audit Paket 3: Haus und Hypothek heben sich auf).
+    -- FIRE-Topf-Basis:
+    --   'investment' (Default) = liquide Anlage-Assets Depot + Cash + Festgeld + P2P (brutto);
+    --     ohne Hypothek/Haus/Rente (Haus+Hypothek heben sich auf, bleiben aussen).
+    --   'net_worth' = investment + Immobilien + alle Kredite (Haus und Hypothek heben sich auf).
     --   ELSE-Fail-Safe: jede andere/unbekannte Basis rechnet wie investment (nie leerer Pot).
-    --   WS-B: das Depot-Account-Earmark-Netting (savings_goal_allocations) ist mit dem Tabellen-DROP entfallen;
-    --     das FIRE-Topf-Netting ist bewusst vertagt (Reserve-Fundament zuerst) -> hier Brutto.
+    --   Kein Netting der Sparziel-Reserven im Topf: hier brutto.
     IF jsonb_typeof(v_goal) = 'object' AND (v_goal ? 'target_portfolio_eur') THEN
         v_tp_target := CASE WHEN jsonb_typeof(v_goal->'target_portfolio_eur') = 'array'
                             THEN (v_goal->'target_portfolio_eur'->>0)::numeric
                             ELSE (v_goal->>'target_portfolio_eur')::numeric END;
         -- (a) Basis: liquide Anlage-Assets (Festgeld als eigener bucket explizit; loan/real_estate/pension raus).
-        --     WS-3a: FIRE-Topf OHNE kind-besessene Assets (T2) — Rolle ueber core.fn_household_persons().
-        -- has_fx_gap (Paket 2): ein Wert DIESER Basis ohne Wechselkurs fiele still aus der Summe -> Hinweis am Alert
+        --     FIRE-Topf ohne kind-besessene Assets (T2) — Rolle ueber core.fn_household_persons().
+        -- has_fx_gap: ein Wert dieser Basis ohne Wechselkurs fiele still aus der Summe -> Hinweis am Alert
         -- (nur ueber die Zeilen, die der Topf auch summiert; die Waehrung selbst meldet dq_null_rate).
         SELECT COALESCE(sum(n.value_eur), 0), COALESCE(bool_or(n.has_fx_gap), false) INTO v_portfolio, v_nw_fx_gap
         FROM finance.networth_by_asset_class n
         LEFT JOIN core.fn_household_persons() hp ON hp.person_id = n.owner_person_id
         WHERE n.bucket IN ('depot', 'cash', 'fixed_deposit', 'p2p') AND hp.role IS DISTINCT FROM 'child';
-        -- (b) net_worth (Audit Paket 3): investment + Immobilien + alle Kredite -> Haus und Hypothek heben sich auf
-        --     (vorher zog net_worth die Hypothek ab, OHNE das Haus zu zaehlen). Symmetrisch: eine Immobilie, die
-        --     herausfaellt (Kind-Eigentum oder Wert unbekannt), nimmt ihren Kredit (loans.real_estate_id) mit.
-        --     Vorsorge bleibt draussen (bis zur Rente nicht entnehmbar). WS-3a: nur Nicht-Kind-Werte.
+        -- (b) net_worth: investment + Immobilien + alle Kredite -> Haus und Hypothek heben sich auf.
+        --     Symmetrisch: eine Immobilie, die herausfaellt (Kind-Eigentum oder Wert unbekannt), nimmt ihren
+        --     Kredit (loans.real_estate_id) mit.
+        --     Vorsorge bleibt draussen (bis zur Rente nicht entnehmbar). Nur Nicht-Kind-Werte.
         --     ELSE/Default = investment (kein Zu-/Abschlag).
         IF COALESCE(v_goal->>'target_portfolio_basis', 'investment') = 'net_worth' THEN
             SELECT v_portfolio + COALESCE(sum(re.current_value), 0) INTO v_portfolio
@@ -974,7 +969,7 @@ BEGIN
                   JOIN finance.real_estate re ON re.id = l.real_estate_id
                   LEFT JOIN core.fn_household_persons() rp ON rp.person_id = re.owner_person_id
                   WHERE l.loan_account_id = a.id
-                    -- nur eine AKTIVE Immobilie, die herausfaellt, nimmt ihren Kredit mit; der Kredit einer verkauften
+                    -- nur eine aktive Immobilie, die herausfaellt, nimmt ihren Kredit mit; der Kredit einer verkauften
                     -- Immobilie bleibt eine echte Schuld (der Erloes liegt dann im Cash).
                     AND re.status = 'active' AND (re.current_value IS NULL OR rp.role = 'child'));
             -- Immobilie mit Kredit, aber ohne Wert -> Digest-Hinweis (Gesamtvermoegen ohne dieses Objekt)
@@ -997,7 +992,7 @@ BEGIN
         END IF;
     END IF;
 
-    -- Datenqualitaet: EIN gelatchter Sammel-Alert (stabiler key) wenn Tag-/Waehrungs-Luecken bestehen; der
+    -- Datenqualitaet: ein gelatchter Sammel-Alert (stabiler key) wenn Tag-/Waehrungs-Luecken bestehen; der
     -- Digest listet sie zusaetzlich unbedingt (nicht-unterdrueckbar im Quartals-Review). Kurs-Luecken stehen nur im Digest:
     -- sie meldet agent.finance.cron_remind_missing_prices (sonst Doppel-Meldung).
     IF v_null_price_cnt > 0 THEN
@@ -1012,7 +1007,7 @@ BEGIN
     IF v_null_tag_cnt > 0 OR cardinality(v_null_rate_accts) > 0 OR jsonb_array_length(v_unmapped) > 0 THEN
         v_dq_msg := jsonb_build_array(
             core.fn_ui_tpl('finance.advisor.dq_intro'),
-            -- Namen (bis 5) statt nur Anzahl (2026-10-23); mehr -> eigener Text "und n weitere"
+            -- Namen (bis 5) statt nur Anzahl; mehr -> eigener Text "und n weitere"
             CASE WHEN v_null_tag_cnt > 0 THEN core.fn_ui_tpl('finance.advisor.dq_null_tag',
                  jsonb_build_object('n', core.fn_ui_num(v_null_tag_cnt),
                      'names', (SELECT string_agg(e->>'name', ', ' ORDER BY ord)
@@ -1032,8 +1027,8 @@ BEGIN
             'label',      'data_quality',
             'value',      v_null_tag_cnt + cardinality(v_null_rate_accts) + jsonb_array_length(v_unmapped),
             'msg',        v_dq_msg,
-            -- latch_keys (2026-10-23, Engine core.fn_advisor_review_evaluate von Session 6b): je ungetaggter Position
-            -- ein Latch -> eine NEUE ungetaggte Position meldet erneut; ohne Engine-Unterstuetzung ignoriert
+            -- latch_keys (Engine core.fn_advisor_review_evaluate): je ungetaggter Position
+            -- ein Latch -> eine neue ungetaggte Position meldet erneut; ohne Engine-Unterstuetzung ignoriert
             'latch_keys', (SELECT COALESCE(jsonb_agg('null_tag:' || (e->>'holding_id')), '[]'::jsonb)
                            FROM jsonb_array_elements(v_null_tag) e) || v_null_rate_latch);
     END IF;
@@ -1044,7 +1039,7 @@ BEGIN
         'plan_count',      (SELECT count(*)::int FROM core.fn_advisor_read_plan('finance') WHERE status = 'active'),
         'plan_version',    (SELECT version       FROM core.fn_advisor_read_plan('finance') WHERE status = 'active'),
         'plan_published',  (SELECT updated_at::date FROM core.fn_advisor_read_plan('finance') WHERE status = 'active'),
-        -- Audit Paket 3: Konsum / Tilgung / Pflicht / frei / Sparen / Kontoveraenderung getrennt (Ausgaben als ABS)
+        -- Konsum / Tilgung / Pflicht / frei / Sparen / Kontoveraenderung getrennt (Ausgaben als ABS)
         'income',          round(v_cf.monthly_income, 2),
         'consumption',     round(abs(v_cf.monthly_consumption), 2),
         'principal',       round(abs(v_cf.monthly_principal), 2),
@@ -1059,7 +1054,7 @@ BEGIN
         'triggers_armed',  (SELECT armed FROM core.fn_monitor_trigger_summary('finance')),
         'triggers_fired',  (SELECT fired FROM core.fn_monitor_trigger_summary('finance')));
 
-    -- Digest als Zeilen-STRUKTUR (Textkatalog Phase C): je Zeile ein tpl, ein Array von tpl (= eine Zeile, Teile mit
+    -- Digest als Zeilen-Struktur (Textkatalog): je Zeile ein tpl, ein Array von tpl (= eine Zeile, Teile mit
     -- Leerzeichen verbunden) oder null (= Leerzeile); der Workflow rendert sie in der Sprache des Empfaengers.
     v_lines := CASE WHEN (v_digest->>'plan_count')::int = 0
                     THEN jsonb_build_array(core.fn_ui_tpl('finance.advisor.digest_title_none'), NULL,
@@ -1082,13 +1077,13 @@ BEGIN
                core.fn_ui_tpl('finance.advisor.digest_debt', jsonb_build_object('value', core.fn_ui_money((v_digest->>'debt_total')::numeric))),
                NULL,
                core.fn_ui_tpl('finance.advisor.digest_goals'))
-        -- WS-C1: Engpass-Reihung im Digest sichtbar — target_date ASC, priority ASC NULLS LAST, name als
+        -- Engpass-Reihung im Digest sichtbar — target_date ASC, priority ASC NULLS LAST, name als
         -- Tie-Breaker (deterministisch -> kein Flake bei gleichem Datum+priority).
-        -- Audit Paket 3: Ziel ohne Topf -> "nicht messbar" statt einer irrefuehrenden 0-%-Zeile.
+        -- Ziel ohne Topf -> "nicht messbar" statt einer irrefuehrenden 0-%-Zeile.
         || COALESCE((SELECT jsonb_agg(CASE
                          -- Instandhaltungsruecklage: kein Ziel -> Stand + eingestellte Rate statt "x % von —"
-                         -- (Rate aus maintenance_reserve_status, EIN Join; ohne Kurs NULL -> "—", nie still 0)
-                         -- Notreserve (2026-10-30): gedeckt von Ziel aus fn_emergency_reserve_status (Ziel ggf. Monate x Ausgaben)
+                         -- (Rate aus maintenance_reserve_status, ein Join; ohne Kurs NULL -> "—", nie still 0)
+                         -- Notreserve: gedeckt von Ziel aus fn_emergency_reserve_status (Ziel ggf. Monate x Ausgaben)
                          WHEN sgp.id = (v_es->>'goal_id')::int
                          THEN core.fn_ui_tpl('finance.advisor.digest_emergency_line', jsonb_build_object(
                                   'name', sgp.name, 'covered', core.fn_ui_money((v_es->>'covered_eur')::numeric),
@@ -1097,7 +1092,7 @@ BEGIN
                          THEN core.fn_ui_tpl('finance.advisor.digest_maintenance_line', jsonb_build_object(
                                   'name', sgp.name, 'current', core.fn_ui_money(COALESCE(sgp.current_amount, 0)),
                                   'rate', core.fn_ui_money(m.running_monthly_eur)))
-                         -- Kurs-Luecke (2026-11-06): Stand ist Untergrenze -> „mindestens“, ohne Prozent und ohne Zusatz
+                         -- Kurs-Luecke: Stand ist Untergrenze -> „mindestens“, ohne Prozent und ohne Zusatz
                          -- (den Grund nennt der Daten-Hinweis im selben Digest, v_dq_msg unten)
                          WHEN sgp.progress_measurable AND sgp.has_fx_gap
                          THEN core.fn_ui_tpl('finance.advisor.digest_goal_line_fx_gap', jsonb_build_object(
@@ -1116,8 +1111,8 @@ BEGIN
                      WHERE sgp.status = 'active'),
                     jsonb_build_array(core.fn_ui_tpl('finance.advisor.digest_no_goals')));
 
-    -- WS-B Stufe 3: Reserve-Aufschluesselung Cash/Depot je Konto ("wo liegt mein Ziel-Geld?") aus der
-    -- savings_goal_reserve_breakdown-View, nur aktive Ziele (reserved_amount in EUR, WP-3b).
+    -- Reserve-Aufschluesselung Cash/Depot je Konto ("wo liegt mein Ziel-Geld?") aus der
+    -- savings_goal_reserve_breakdown-View, nur aktive Ziele (reserved_amount in EUR).
     SELECT jsonb_agg(core.fn_ui_tpl('finance.advisor.digest_reserve_line', jsonb_build_object(
                'goal', g.name, 'account', b.account_name, 'amount', core.fn_ui_money(b.reserved_amount),
                'source', jsonb_build_object('kind', 'enum', 'enum', 'finance.advisor.reserve_source', 'value', b.source)))
@@ -1140,7 +1135,7 @@ BEGIN
                                           'target', core.fn_ui_num((b->>'target_pct')::numeric, 1))))
                   FROM jsonb_array_elements(v_reb) b);
     END IF;
-    -- Audit Paket 3: handelbarer Wert ohne Plan-Block steht nicht im Drift-Nenner -> sichtbar machen
+    -- handelbarer Wert ohne Plan-Block steht nicht im Drift-Nenner -> sichtbar machen
     IF jsonb_array_length(v_reb) > 0 AND COALESCE(v_outside, 0) > 0 THEN
         v_lines := v_lines || jsonb_build_array(core.fn_ui_tpl('finance.advisor.digest_alloc_outside',
                        jsonb_build_object('value', core.fn_ui_money(v_outside))));
@@ -1151,7 +1146,7 @@ BEGIN
     IF v_price_stale THEN
         v_lines := v_lines || jsonb_build_array(NULL, core.fn_ui_tpl('finance.advisor.digest_price_stale'));
     END IF;
-    -- WS3: P2P zaehlt zum Nennwert im FIRE-Topf (bewusste Wahl) -> Marktwert/Ausfallrisiko nicht beruecksichtigt
+    -- P2P zaehlt zum Nennwert im FIRE-Topf (bewusste Wahl) -> Marktwert/Ausfallrisiko nicht beruecksichtigt
     IF EXISTS (SELECT 1 FROM jsonb_array_elements(v_nwbc) c
                WHERE c->>'class' = 'p2p' AND COALESCE((c->>'value_eur')::numeric, 0) <> 0) THEN
         v_lines := v_lines || jsonb_build_array(NULL, core.fn_ui_tpl('finance.advisor.digest_p2p'));

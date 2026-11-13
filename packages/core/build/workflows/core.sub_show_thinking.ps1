@@ -4,11 +4,11 @@
 # --- core.sub_show_thinking ("Bot denkt nach ..."-Anzeige) -----------------------------------------
 # Zeigt im Chat waehrend einer laengeren Agenten-Antwort einen Platzhalter statt Stille: Telegram
 # sendMessageDraft mit leerem Text = "Thinking..."-Blase (Bot API 9.5+, nur private Chats). Der Platzhalter
-# verschwindet, sobald der Bot eine Nachricht schickt, sonst nach kurzer Zeit (Doku: 30 s; live am Client
-# 2026-10-23 nur ~8 s) -> Schleife: alle 5 s agent.fn_claim_thinking_draft fragen (DIE eine Stelle der Logik) und
+# verschwindet, sobald der Bot eine Nachricht schickt, sonst nach kurzer Zeit (Doku: 30 s; am Client
+# real nur ~8 s) -> Schleife: alle 5 s agent.fn_claim_thinking_draft fragen (die eine Stelle der Logik) und
 # erneuern, bis der Aufrufer den Schalter (agent.thinking_lease) vor seiner Antwort loescht ('stop'); offene
-# Bestaetigungskarte = 'pause'. Den Schalter legt der Aufrufer VORHER an (Orchestrator, agent.sub_dispatch_agent).
-# Aufrufer rufen diesen Sub NUR fire-and-forget (Execute Workflow, waitForSubWorkflow=false, onError=continue):
+# Bestaetigungskarte = 'pause'. Den Schalter legt der Aufrufer vorher an (Orchestrator, agent.sub_dispatch_agent).
+# Aufrufer rufen diesen Sub nur fire-and-forget (Execute Workflow, waitForSubWorkflow=false, onError=continue):
 # die Anzeige darf die Antwort nie verzoegern (Telegram-Socket-Hang, GH #24007) und nie einen Fehler-Alarm
 # ausloesen -> Claim und Draft fangen jeden Fehler selbst ab (onError=continueRegularOutput, kein Retry).
 function Build-CoreSubShowThinking {

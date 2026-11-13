@@ -1,7 +1,7 @@
 -- tests/db/core/test_fn_staleness_alert.sql
 -- core.fn_staleness_alert — der geteilte Staleness-Alarm-Form-Helfer der Paket-Reviewer (fn_advisor_review).
 -- Kapselt die 4x duplizierte Schwellen-Entscheidung + die {kind:'staleness'}-Alarm-jsonb-Form. Reine
--- IMMUTABLE-Arithmetik (kein Read). Rueckgabe = jsonb-ARRAY: [] (nicht stale) | [alarm] (stale), damit
+-- IMMUTABLE-Arithmetik (kein Read). Rueckgabe = jsonb-Array: [] (nicht stale) | [alarm] (stale), damit
 -- `v_alerts || fn(...)` bedingungslos sicher ist.
 --   (1) stale (age > threshold) -> [alarm] mit korrekten Feldern + drift, msg woertlich durchgereicht
 --   (2) nicht-stale (age < threshold) -> []
@@ -9,7 +9,7 @@
 --   (4) NULL age -> []
 --   (5) numeric-Aufruf bindet (Regression gegen den integer-Signatur-Blocker) + integer bindet implizit
 --   (6) Geschwister-Schutz: bestehendes Array || fn(nicht-stale) verliert kein Element (array || [])
---   (7) kein 'text'-Key mehr (Struktur statt deutschem Text, Textkatalog Phase C)
+--   (7) kein 'text'-Key (Struktur statt deutschem Text)
 --   (8) die alte Text-Signatur (text,text,numeric,numeric,text) ist gedroppt (core:V030)
 BEGIN;
 
@@ -63,8 +63,8 @@ BEGIN
   IF jsonb_array_length(v_res) <> 1 THEN RAISE EXCEPTION 'FAIL [5b]: integer-Aufruf bindet nicht (=%)', v_res; END IF;
   RAISE NOTICE 'PASS [5] numeric- UND integer-Argumente binden (Signatur-Regression)';
 
-  -- (6) Geschwister-Schutz: ein bestehendes Alert-Array || fn(nicht-stale) darf das Geschwister NICHT loeschen
-  -- (die array || []-Garantie, die die frueher geplante array || NULL-Falle ersetzt)
+  -- (6) Geschwister-Schutz: ein bestehendes Alert-Array || fn(nicht-stale) darf das Geschwister nicht loeschen
+  -- (array || [] haengt nichts an; array || NULL waere NULL)
   v_merged := '[{"metric_key":"sibling"}]'::jsonb || core.fn_staleness_alert('k', 'l', 10, 365, v_msg);
   IF jsonb_array_length(v_merged) <> 1 OR v_merged->0->>'metric_key' <> 'sibling' THEN
     RAISE EXCEPTION 'FAIL [6]: nicht-stale-Aufruf hat das Geschwister-Element zerstoert (=%)', v_merged; END IF;

@@ -1,44 +1,46 @@
 -- ============================================================
--- fn_import_bundle (ATOMIC WRITE — der EINE Commit der Bulk-Import-Pipeline, Phase 2)
---   Loop ueber die BESTEHENDEN fn_create_*/fn_book_* (= die getestete Validierungs-
+-- fn_import_bundle (ATOMIC WRITE — der eine Commit der Bulk-Import-Pipeline)
+--   Eingabe jsonb: batch_id (Pflicht, Staging-Batch), dry_run (optional boolean, Probelauf).
+--   Loop ueber die bestehenden fn_create_*/fn_book_* (= die getestete Validierungs-
 --   Oberflaeche, keine Duplikation) in Abhaengigkeits-Reihenfolge:
---   account -> real_estate -> loan -> Rest (insurance/pension/recurring/savings_goal/stock_buy).
---   Namen->ID-Aufloesung passiert HIER (Staging traegt rohe Namen): zuerst gegen die in
---   DIESEM Lauf erzeugten Konten (In-Batch-Referenzen), sonst fn_resolve_* (0/>1 = Fehler).
+--   account -> real_estate -> loan -> Rest (insurance/pension/recurring/savings_goal/stock_buy) -> pension_statement.
+--   Namen->ID-Aufloesung passiert hier (Staging traegt rohe Namen): zuerst gegen die in
+--   diesem Lauf erzeugten Konten (In-Batch-Referenzen), sonst fn_resolve_* (0/>1 = Fehler).
 --
---   ATOMARITAET (R7-Vertrag, review-konform umgesetzt): der gesamte Write-Loop laeuft in
---   einem inneren BEGIN/EXCEPTION-Block (= Savepoint). Jedes innere {ok:false} wird
---   GESAMMELT und am Ende in ein RAISE uebersetzt -> der Block rollt ALLE Writes zurueck;
---   der Handler gibt {ok:false, errors:[{row_no, error}]} als DATEN zurueck (kein RAISE
+--   Atomaritaet: der gesamte Write-Loop laeuft in einem inneren BEGIN/EXCEPTION-Block (= Savepoint).
+--   Jedes innere {ok:false} wird gesammelt und am Ende in ein RAISE uebersetzt -> der Block rollt alle
+--   Writes zurueck; der Handler gibt {ok:false, errors:[{row_no, error}]} als Daten zurueck (kein RAISE
 --   nach aussen -> kein Owner-Alert; Staging bleibt intakt -> Re-Approval = 1 Button).
 --   Auch unerwartete Exceptions (RAISE einer Ziel-fn, CHECK/Trigger) werden so zum
 --   freundlichen per-Row-Fehler.
 --
 --   Gleicher Feldumfang wie die Einzel-Tools: opening_balance reicht das Bundle an fn_create_account
---   durch (dort die EINE Eroeffnungsbuchung); Personen-Felder (owner_person/policyholder_person/
+--   durch (dort die eine Eroeffnungsbuchung); Personen-Felder (owner_person/policyholder_person/
 --   borrower_person/beneficiary_person) loest fn_import_resolve_persons je Zeile erneut auf (kein TOCTOU);
---   stock_buy-Zeilen sind BESTANDSUEBERNAHMEN (existing_position=true): der Verrechnungskonto-Saldo
---   bleibt der genannte Stand. MEHRERE stock_buy-Zeilen DERSELBEN Position (Depot + ISIN bzw. Symbol) in einem Batch
---   sind datierte TRANCHEN einer Uebernahme (Befund 2026-10-28: viele Sparplan-Kaeufe): die erste laeuft durch
---   fn_book_stock_buy (dessen Guard "Position haelt schon Stueck" prueft den Stand VOR dem Batch), jede weitere ueber
---   fn_book_takeover_pair in DIESELBE group_id (ein Write = ein Void) -> Einstand = Summe/Summe, Verrechnungskonto netto 0;
---   das Modell rechnet nichts zusammen. Tranchen nur, wenn JEDE Zeile der Position ihr Kaufdatum (transaction_date) traegt
+--   stock_buy-Zeilen sind Bestandsuebernahmen (existing_position=true): der Verrechnungskonto-Saldo
+--   bleibt der genannte Stand. Mehrere stock_buy-Zeilen derselben Position (Depot + ISIN bzw. Symbol) in einem Batch
+--   sind datierte Tranchen einer Uebernahme (z. B. viele Sparplan-Kaeufe): die erste laeuft durch
+--   fn_book_stock_buy (dessen Guard "Position haelt schon Stueck" prueft den Stand vor dem Batch), jede weitere ueber
+--   fn_book_takeover_pair in dieselbe group_id (ein Write = ein Void) -> Einstand = Summe/Summe, Verrechnungskonto netto 0;
+--   das Modell rechnet nichts zusammen. Tranchen nur, wenn jede Zeile der Position ihr Kaufdatum (transaction_date) traegt
 --   und keine zwei Zeilen gleich sind (Datum, Stueck, Kurs): eine zweimal gelesene Auszugs-Zeile ohne Datum bleibt eine
 --   Dublette (Fehler an der zweiten Zeile, sonst verdoppelte sich der Bestand still). Gedruckte Depotnummer/Inhaber prueft
 --   fn_import_depot_conflict erneut; einem Depot
 --   ohne Nummer traegt fn_set_account die gedruckte Nummer nach (fn_import_depot_number_to_store, die Karte zeigt es).
 --
---   RUECKGABE (Post-State-Vertrag): {ok:true, committed, created:[{row_no, entity_type,
---   id, balance?, currency?}]} — ids = Handles, committed-Count = Informationsgehalt der Batch-Op,
+--   Rueckgabe (Post-State-Vertrag): {ok:true, committed, created:[{row_no, entity_type,
+--   id, balance?, currency?}], positions} — ids = Handles, committed-Count = Informationsgehalt der Batch-Op,
 --   balance = Konto-Saldo nach Anlage bzw. Verrechnungssaldo nach Uebernahme; currency (Konten);
 --   positions:[{holding_id, name, symbol, isin, provider_symbol, quote_currency, asset_class}] =
---   Post-State der uebernommenen Depot-Positionen (Monats-Check WP-G: das Tool prueft danach, ob jede Position einen
+--   Post-State der uebernommenen Depot-Positionen (das Tool prueft danach, ob jede Position einen
 --   Kurs hat und eine Anlageklasse traegt, und der Agent klaert Luecken mit dem Nutzer).
---   | {ok:false, errors:[...], reason}.
+--   {ok:false, reason} ohne Schreiben: Batch leer/unbekannt, schon committed, nicht-valide Zeilen, oder ein Batch aus
+--   Dauerauftrags-Vorschlaegen (origin gesetzt; die bestaetigt nur der Knopf je Vorschlag).
+--   {ok:false, errors:[...], error_summary, reason, dry_run}: Zeilenfehler, alles zurueckgerollt.
 --
---   PROBELAUF (dry_run:true, Import-Haertung 2026-10-22): tool_commit_import ruft das Bundle VOR der Karte einmal
+--   Probelauf (dry_run:true): tool_commit_import ruft das Bundle vor der Karte einmal
 --   als Probelauf -> derselbe Write-Loop ueber dieselben fn_create_*/fn_book_* (keine zweite Regel-Liste, die zur
---   Validierung driften kann), am Ende IMMER zurueckgerollt (Staging-Status unveraendert). Fehlerfrei ->
+--   Validierung driften kann), am Ende immer zurueckgerollt (Staging-Status unveraendert). Fehlerfrei ->
 --   {ok:true, dry_run:true}; sonst {ok:false, dry_run:true, errors, error_summary, reason} -> keine Karte.
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_import_bundle(p jsonb)
@@ -53,7 +55,7 @@ DECLARE
     v_positions JSONB := '[]'::jsonb;
     v_row       RECORD;
     v_cur_row   INT;
-    v_acct_map  JSONB := '{}'::jsonb;   -- lower(name) -> {id, settlement_id} der in DIESEM Lauf erzeugten Konten
+    v_acct_map  JSONB := '{}'::jsonb;   -- lower(name) -> {id, settlement_id} der in diesem Lauf erzeugten Konten
     v_re_map    JSONB := '{}'::jsonb;   -- lower(name) -> real_estate_id (dieser Lauf)
     v_pen_map   JSONB := '{}'::jsonb;   -- lower(name) -> pension_id (dieser Lauf)
     v_r         JSONB;
@@ -69,7 +71,7 @@ DECLARE
     v_lot       JSONB;
     v_dates     JSONB;
     v_sig       TEXT;                  -- Dubletten-Signatur einer stock_buy-Zeile (Datum|Stueck|Kurs, aufgeloest + numerisch)
-    v_rollback_intended BOOLEAN := FALSE;   -- A2: Klassifikation per Flag, NICHT per SQLERRM-Stringmatch
+    v_rollback_intended BOOLEAN := FALSE;   -- Klassifikation per Flag, nicht per SQLERRM-Stringmatch
     v_dry       BOOLEAN := COALESCE(NULLIF(p->>'dry_run', '')::boolean, false);   -- Probelauf vor der Karte
     v_dry_ok    BOOLEAN := FALSE;
     v_summary   TEXT;
@@ -97,7 +99,7 @@ BEGIN
             'reason', format('%s row(s) are not valid — fix them first (see validation_error per row)', v_not_valid));
     END IF;
 
-    -- ---------- atomarer Write-Block (BEGIN/EXCEPTION = Savepoint: Fehler rollt ALLES zurueck) ----------
+    -- ---------- atomarer Write-Block (BEGIN/EXCEPTION = Savepoint: ein Fehler rollt alles zurueck) ----------
     BEGIN
         FOR v_row IN
             SELECT * FROM finance.import_staging
@@ -106,7 +108,7 @@ BEGIN
                          WHEN 'account'           THEN 0
                          WHEN 'real_estate'       THEN 1
                          WHEN 'loan'              THEN 2
-                         WHEN 'pension_statement' THEN 4   -- NACH den Pensions (In-Batch-Referenz)
+                         WHEN 'pension_statement' THEN 4   -- nach den Pensions (In-Batch-Referenz)
                          ELSE 3 END,
                      row_no
             FOR UPDATE
@@ -134,7 +136,7 @@ BEGIN
                     v_errors := v_errors || jsonb_build_object('row_no', v_cur_row, 'error', v_err);
                     CONTINUE;
                 END IF;
-                -- Eroeffnungssaldo macht fn_create_account selbst (EINE Adresse mit dem Einzel-Tool:
+                -- Eroeffnungssaldo macht fn_create_account selbst (eine Adresse mit dem Einzel-Tool:
                 -- category='other', kein Reconcile-Stempel, opening_balance_date = heute).
                 v_r := finance.fn_create_account(
                     (v_payload - 'settlement_account')
@@ -154,7 +156,7 @@ BEGIN
 
             ELSIF v_row.entity_type = 'real_estate' THEN
                 v_r := finance.fn_create_real_estate(v_payload);
-                IF (v_r->>'ok')::boolean IS DISTINCT FROM true THEN   -- Import-Haertung: abgelehnt != angelegt
+                IF (v_r->>'ok')::boolean IS DISTINCT FROM true THEN   -- abgelehnt != angelegt
                     v_errors := v_errors || jsonb_build_object('row_no', v_cur_row, 'error', v_r->>'reason');
                     CONTINUE;
                 END IF;
@@ -260,7 +262,7 @@ BEGIN
                     'entity_type', 'recurring_payment', 'id', (v_r->>'recurring_payment_id')::int);
 
             ELSIF v_row.entity_type = 'savings_goal' THEN
-                -- Abbuchungskonto nur fuer eine Rate (2026-10-27: Startbestand/Sparplan koennen das Ziel ohne Rate decken).
+                -- Abbuchungskonto nur fuer eine Rate (Startbestand/Sparplan koennen das Ziel ohne Rate decken).
                 v_ref_id := NULL;
                 IF NULLIF(trim(COALESCE(v_payload->>'account', '')), '') IS NOT NULL THEN
                     v_res    := finance.fn_import_resolve_account(v_payload->>'account', v_acct_map);
@@ -271,7 +273,7 @@ BEGIN
                         CONTINUE;
                     END IF;
                 END IF;
-                -- Audit Paket 3: Sparkonto (Topf) ist Pflicht -> wie das Abbuchungskonto aufloesen (auch batch-intern).
+                -- Sparkonto (Topf) ist Pflicht -> wie das Abbuchungskonto aufloesen (auch batch-intern).
                 v_res := finance.fn_import_resolve_account(v_payload->>'reserve_account', v_acct_map);
                 v_err := v_res->>'error';
                 IF v_err IS NOT NULL THEN
@@ -329,11 +331,11 @@ BEGIN
                       (SELECT a.currency::text FROM finance.accounts a WHERE a.id IN (v_ref_id, v_settle)) THEN
                     v_payload := v_payload - 'quote_currency';
                 END IF;
-                -- Weitere Tranche einer in DIESEM Lauf schon uebernommenen Position -> dieselbe group_id, kein zweiter Guard.
+                -- Weitere Tranche einer in diesem Lauf schon uebernommenen Position -> dieselbe group_id, kein zweiter Guard.
                 v_lot_key := v_ref_id || ':' || COALESCE(NULLIF(upper(btrim(v_payload->>'isin')), ''),
                                                          'sym:' || upper(btrim(COALESCE(v_payload->>'symbol', ''))));
                 v_lot := v_lots->v_lot_key;
-                -- Kaufdatum EINMAL aufloesen (relativ -> ISO); Dubletten-Signatur aus aufgeloestem Datum + numerischen Werten
+                -- Kaufdatum einmal aufloesen (relativ -> ISO); Dubletten-Signatur aus aufgeloestem Datum + numerischen Werten
                 -- (540.2 = 540.20; "gestern" = ISO-Datum), damit eine doppelt gelesene Zeile nie als zweite Tranche durchgeht.
                 v_dates := core.fn_resolve_input_dates(v_payload, ARRAY['transaction_date']);
                 IF NOT (v_dates->>'ok')::boolean THEN
@@ -430,15 +432,15 @@ BEGIN
 
         -- alles-oder-nichts: jeder gesammelte Fehler erzwingt den Voll-Rollback dieses Blocks
         IF jsonb_array_length(v_errors) > 0 THEN
-            -- A2: Flag VOR dem RAISE setzen -> der Handler unterscheidet "gewollter Sammel-
-            -- Rollback" von einer unerwarteten Exception OHNE SQLERRM-Stringmatch (der bei
-            -- Rename/Lokalisierung still bricht — largerEqual-Bug-Klasse). Variablen-
-            -- Zuweisungen werden beim Block-Rollback NICHT zurueckgenommen (Speicher, nicht TX).
+            -- Flag vor dem RAISE setzen -> der Handler unterscheidet "gewollter Sammel-
+            -- Rollback" von einer unerwarteten Exception ohne SQLERRM-Stringmatch (der bei
+            -- Rename/Lokalisierung still bricht). Variablen-Zuweisungen werden beim
+            -- Block-Rollback nicht zurueckgenommen (Speicher, nicht TX).
             v_rollback_intended := TRUE;
             RAISE EXCEPTION 'import rollback (% row error(s))', jsonb_array_length(v_errors);
         END IF;
 
-        -- Probelauf: derselbe Write-Loop, dann IMMER zurueckrollen (Flag + RAISE wie oben); v_dry_ok ueberlebt
+        -- Probelauf: derselbe Write-Loop, dann immer zurueckrollen (Flag + RAISE wie oben); v_dry_ok ueberlebt
         -- den Rollback (Variable, nicht TX) und unterscheidet "fehlerfrei" vom Fehlerfall im Handler.
         IF v_dry THEN
             v_dry_ok := TRUE;
@@ -458,7 +460,7 @@ BEGIN
             -- unerwartete Exception einer Ziel-fn/eines CHECKs: als Row-Fehler benennen
             v_errors := jsonb_build_array(jsonb_build_object('row_no', v_cur_row, 'error', SQLERRM));
         END IF;
-        -- A11: formatierte, modell-lesbare Fehlerzeilen (kein roher JSON-Blob im Tool)
+        -- formatierte, modell-lesbare Fehlerzeilen (kein roher JSON-Blob im Tool)
         SELECT string_agg('Zeile ' || (e->>'row_no') || ': ' || (e->>'error'), '; ' ORDER BY (e->>'row_no')::int)
         INTO v_summary FROM jsonb_array_elements(v_errors) e;
         RETURN jsonb_build_object('ok', false,
@@ -479,9 +481,9 @@ $$;
 
 -- ============================================================
 -- fn_import_resolve_account — Konto-Name -> ID fuer den Bundle-Lauf:
--- zuerst die in DIESEM Lauf erzeugten Konten (p_map: lower(name)->{id,...}),
+-- zuerst die in diesem Lauf erzeugten Konten (p_map: lower(name)->{id,...}),
 -- sonst fn_resolve_account (nur eindeutige Treffer).
--- RUECKGABE: {id: <int|null>, error: <text|null>}
+-- Rueckgabe: {id: <int|null>, error: <text|null>}
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_import_resolve_account(p_name text, p_map jsonb)
 RETURNS jsonb LANGUAGE plpgsql AS $$

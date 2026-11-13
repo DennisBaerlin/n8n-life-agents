@@ -1,8 +1,9 @@
 ﻿#Requires -Version 5.1
-# Dirty-Surface-Analyse (aus pre_push_check.ps1 extrahiert) -- WEICHE Empfehlung, blockt NIE.
+# Dirty-Surface-Analyse -- weiche Empfehlung, blockt nie.
 # Laeuft als pre-push-Hook (.pre-commit-config.yaml, id llm-suite-advice). Nennt die LLM-kostenden
 # Suiten (n8n_test/orch_test/e2e_test), die laut Blast-Radius-Matrix fuer den zu pushenden Diff
 # laufen sollten, plus semantische Doku-Touchpoints. Exit immer 0 (rein informativ).
+# Aufruf: .\scripts\llm_suite_advice.ps1 (ohne Parameter); braucht ein git-Repo, kein Docker, keine .env.
 
 $ErrorActionPreference = 'Stop'
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
@@ -10,7 +11,7 @@ $RepoRoot = git -C $PSScriptRoot rev-parse --show-toplevel
 
 Write-Host "Dirty-Surface-Analyse (LLM-Suiten-Empfehlung; NICHT erzwungen) ..." -ForegroundColor Cyan
 
-# Bereich bestimmen: gegen Upstream, sonst origin/main, sonst HEAD~1.
+# Bereich: gegen Upstream, sonst origin/main, sonst HEAD~1.
 $range = $null
 try { $up = (git -C $RepoRoot rev-parse --abbrev-ref --symbolic-full-name '@{u}' 2>$null); if ($LASTEXITCODE -eq 0 -and $up) { $range = "$up..HEAD" } } catch { }
 if (-not $range) { try { git -C $RepoRoot rev-parse --verify origin/main 2>$null | Out-Null; if ($LASTEXITCODE -eq 0) { $range = 'origin/main..HEAD' } } catch { } }
@@ -22,8 +23,8 @@ if (-not $changed) { $changed = @() }
 
 $recs = @()
 $docTouchpoints = @()
-# Agenten je Paket aus den Manifesten (geteilte lib wie build.ps1 — dieses Skript kennt kein Paket).
-# Der Orchestrator hat seine eigene Suite (orch_test, unten) und zaehlt hier nicht.
+# Agenten je Paket aus den Manifesten (geteilte lib wie build.ps1). Der Orchestrator hat seine eigene
+# Suite (orch_test, unten) und zaehlt hier nicht.
 . (Join-Path $PSScriptRoot 'build\lib\agent_routing.ps1')
 $agentsByPkg = @{}
 foreach ($m in (Get-PackageManifest $RepoRoot)) {
@@ -61,8 +62,8 @@ if ($changed | Where-Object { $_ -match '^packages/[^/]+/db/.*\.sql$' }) {
 if ($changed | Where-Object { $_ -match '^scripts/build/' -or $_ -match '^packages/[^/]+/build/' }) {
     $docTouchpoints += "Build-Generator/Engine beruehrt -> Sticky-Notes des Workflows gegen den neuen Graphen gegenlesen (vor dem Substrat-Deploy via bootstrap_test_n8n.ps1 -Reset)."
 }
-# Site-Touchpoint (Site-Phase): nutzer-sichtbare Oberflaechen -> Showcase-Site mitziehen.
-# Befehls-Tabelle ist HART geprueft (doc_lint Check 10); Prosa/Beispiele bleiben semantisch -> Erinnerung.
+# Site-Touchpoint: nutzer-sichtbare Oberflaechen -> Showcase-Site mitziehen.
+# Die Befehls-Tabelle prueft doc_lint Check 10; Prosa/Beispiele bleiben semantisch -> Erinnerung.
 if ($changed | Where-Object { $_ -match '^packages/[^/]+/(manifest\.json$|contexts/|onboarding/|build/workflows/(tools/|agent\.))' }) {
     $docTouchpoints += "Nutzer-sichtbare Oberflaeche beruehrt -> Showcase-Site pruefen: passende Docs-Seite (docs/site/content/docs/), beispiele.md, ggf. Landing-Sektion (docs/site/layouts/index.html); danach scripts/build_site.ps1 + Output committen."
 }
@@ -78,21 +79,20 @@ if ($docTouchpoints.Count -gt 0) {
     foreach ($d in ($docTouchpoints | Select-Object -Unique)) { Write-Host "    - $d" -ForegroundColor DarkYellow }
 }
 
-# ---------------------------------------------------------------------------
-# Zwei zusaetzliche, rein informative Signale (blocken NIE, Exit bleibt 0):
+# Zwei zusaetzliche, rein informative Signale (Exit bleibt 0):
 #   (B) Neue Pattern-Paritaets-Oberflaeche (package-contract Abschnitt 8) -> Paritaets-Checkliste im Review-Pass faellig.
 #   (A) Neues Paket / neuer Route-Agent gelandet -> Owner-Doku (README + Showcase-Site) geschuldet.
-# Beide werten NUR git-ADDED Pfade (--diff-filter=A) bzw. NEU hinzugefuegte provides.agents-Zeilen aus
-# = selten + hoch-signalhaft; ein blosser Config-/Bestands-Edit triggert sie NICHT.
+# Beide werten nur git-ADDED Pfade (--diff-filter=A) bzw. neu hinzugefuegte provides.agents-Zeilen aus
+# (selten, hoch-signalhaft); ein blosser Config-/Bestands-Edit triggert sie nicht.
 $added = @()
 try { $added = git -C $RepoRoot diff --diff-filter=A --name-only $range 2>$null } catch { }
 if (-not $added) { $added = @() }
 
-# (B) PARITAETS-TRIGGER: neu gelandete Pattern-Paritaets-Oberflaechen (package-contract Abschnitt 8) -> die
+# (B) Paritaets-Trigger: neu gelandete Pattern-Paritaets-Oberflaechen (package-contract Abschnitt 8) -> die
 #     Paritaets-Checkliste gegen das Referenz-Analog fahren (Skill /feature, Schritt 4; Core-Single-Paket-Naht
 #     suchen). Rein hinweisend.
-#     Oberflaechen = neues Write-Tool, neuer agent.*/cron.*-Build-Def, neues Paket (manifest.json) ODER
-#     eine neue Abschnitt-8-foermige Registry-/Window-/Enumerator-fn (R__fn_*). Nur git-ADDED = high-signal.
+#     Oberflaechen = neues Write-Tool, neuer agent.*/cron.*-Build-Def, neues Paket (manifest.json) oder
+#     eine neue Abschnitt-8-foermige Registry-/Window-/Enumerator-fn (R__fn_*).
 $genSurfaces = @()
 $genSurfaces += @($added | Where-Object { $_ -match '^packages/[^/]+/build/workflows/tools/[^/]+\.ps1$' })
 $genSurfaces += @($added | Where-Object { $_ -match '^packages/[^/]+/build/workflows/agent\.[^/]+\.ps1$' })
@@ -105,11 +105,11 @@ if ($genSurfaces.Count -gt 0) {
     Write-Host "    -> neue Pattern-Paritaets-Oberflaeche gelandet; Paritaets-Checkliste (package-contract Abschnitt 8) gegen das Referenz-Analog pruefen (Core-Single-Paket-Naht?)." -ForegroundColor DarkCyan
 }
 
-# (A) NEW-PACKAGE-/AGENT-LANDING -> Owner-Doku-Schuld. LAUT (rot), weil ein neues Paket / ein neuer
-#     Route-Agent nach aussen sichtbar ist und KEIN Lint die Prosa-Seiten (README/Site) prueft.
-#     Landing = neue packages/<pkg>/manifest.json ODER eine neu hinzugefuegte provides.agents-Objektzeile
-#     (eine +Zeile mit "name" UND "router_description" -> reine Config-Edits matchen nicht). Feuert nur,
-#     wenn der Diff WEDER ^README\.md$ NOCH ^docs/site/ beruehrt (sonst ist die Schuld schon adressiert).
+# (A) Neues Paket/neuer Agent gelandet -> Owner-Doku-Schuld. Laut (rot), weil ein neues Paket / ein neuer
+#     Route-Agent nach aussen sichtbar ist und kein Lint die Prosa-Seiten (README/Site) prueft.
+#     Landing = neue packages/<pkg>/manifest.json oder eine neu hinzugefuegte provides.agents-Objektzeile
+#     (eine +Zeile mit "name" und "router_description" -> reine Config-Edits matchen nicht). Feuert nur,
+#     wenn der Diff weder ^README\.md$ noch ^docs/site/ beruehrt (sonst ist die Schuld schon adressiert).
 $addedManifests = @($added | Where-Object { $_ -match '^packages/[^/]+/manifest\.json$' })
 $addedAgentLines = @()
 try {

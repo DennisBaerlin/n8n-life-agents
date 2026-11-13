@@ -17,7 +17,7 @@ BEGIN
   IF career.fn_validate_career_profile(NULL) IS NOT NULL THEN RAISE EXCEPTION 'FAIL [null facts]'; END IF;
   IF career.fn_validate_career_profile('{}'::jsonb) IS NOT NULL THEN RAISE EXCEPTION 'FAIL [empty facts]'; END IF;
 
-  -- WP3: abgeleitete Jahresangaben abgeloest -> Ablehnung mit Hinweis auf das Roh-Feld
+  -- abgeleitete Jahresangaben abgeloest -> Ablehnung mit Hinweis auf das Roh-Feld
   IF career.fn_validate_career_profile(jsonb_build_object('experience_years',10)) NOT LIKE '%career_start_date%' THEN
     RAISE EXCEPTION 'FAIL [experience_years abgeloest]'; END IF;
   IF career.fn_validate_career_profile(jsonb_build_object('skills',

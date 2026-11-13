@@ -3,7 +3,7 @@
 --   Die Datei kommt ueber fn_bank_export_load (Leser + Konto-Waechter + Sub-Konto-Waechter; kein Startpunkt noetig, es
 --   wird nichts gebucht). Rechnet alles in der DB (das LLM uebernimmt die Werte nur in die Write-Tools,
 --   tool_create_recurring_payment / tool_create_recurring_transfer mit Karte). Muster: Actual "Find schedules",
---   Plaid /transactions/recurring/get, Sure RecurringTransaction::Identifier (Belege im Plan der Session 3d).
+--   Plaid /transactions/recurring/get, Sure RecurringTransaction::Identifier.
 --   Erkennung (Schluessel, Betrags-Cluster, Rhythmus, Reife, Startdatum, Bekannt-Filter, Art) allein in
 --   fn_get_recurring_candidates mode export (eine Adresse mit dem Kontoauszug).
 --   Spanne erste-letzte Buchung < 75 Tage (~3 Monate) -> keine Vorschlaege, hint export_too_short (Plaid empfiehlt 180
@@ -11,7 +11,7 @@
 --   plpgsql (late-bound): fn_get_recurring_candidates liegt alphabetisch davor, fn_bank_export_load bleibt late-bound.
 --   Eingabe jsonb: {account_name (optional), table:{rows}, with_dates (optional, fn_import_stage_recurring: Vorschlaege behalten
 --   dates + from/to_account_id, Ergebnis traegt account_id)}. Fehlertexte nennen nie Zellinhalte.
---   RUECKGABE: {ok:true, account_name, period_first, period_last, span_days, hint?, suggestions:[{name (Schreibweise
+--   Rueckgabe: {ok:true, account_name, period_first, period_last, span_days, hint?, suggestions:[{name (Schreibweise
 --   der juengsten Zeile), kind, direction, counterparty_iban?, from_account?, to_account?, amount (juengster Betrag,
 --   positiv), average_amount, amount_varies, schedule_unit, schedule_interval, schedule_day_of_month (NULL ausser
 --   month), first_payment_date, occurrences, first_date, last_date}] (nach Monatsbetrag absteigend),

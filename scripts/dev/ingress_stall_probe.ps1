@@ -6,11 +6,12 @@
 # getNodeParameters -> checkConditions -> safeRegex, n8n-workflow/safe-regex). safeRegex laeuft in node:vm mit fest
 # 250 ms Wanduhr-Zeit. Steht der Prozess laenger still, bricht auch ein harmloser Ausdruck ab.
 #
-# Vorgehen: POSTs mit FALSCHEM Geheimnis (Antwort sonst 403, startet keinen Lauf, schreibt nichts) an den echten
-# Eingang: erst ohne Drossel (Kontrolle), dann mit CPU-Drossel NUR des eigenen Substrats (stoert keine Nachbarn).
+# Vorgehen: POSTs mit falschem Geheimnis (Antwort 403, startet keinen Lauf, schreibt nichts) an den echten
+# Eingang: erst ohne Drossel (Kontrolle), dann mit CPU-Drossel nur des eigenen Substrats (stoert keine Nachbarn).
 # Die Drossel wird am Ende immer zurueckgenommen. Ziel kommt aus dem Substrat-State, nie aus .env -> kein Prod-Zugriff.
 #
-# Usage: .\scripts\dev\ingress_stall_probe.ps1 [-Count 200] [-QuotaUs 20000]
+# Voraussetzung: laufendes Substrat (.local/n8ntest_state.<container>.json, Get-TestN8nConnection).
+# Usage: .\scripts\dev\ingress_stall_probe.ps1 [-Count 200] [-QuotaUs 20000] [-ControlCount 100]
 #        -QuotaUs = erlaubte CPU je 1-s-Periode (20000 = 20 ms; der Prozess steht den Rest der Sekunde).
 # Exit-Code 0 = Lauf durchgefuehrt, das Ergebnis steht in der Ausgabe. Kein Gate (keine Pass/Fail-Aussage).
 param(

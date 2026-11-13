@@ -1,5 +1,5 @@
 -- ============================================================
--- test_fn_replace_takeover_with_lots -- Bestandsuebernahme -> echte Einzelkaeufe aus dem Broker-Export (Paket B)
+-- test_fn_replace_takeover_with_lots -- Bestandsuebernahme -> echte Einzelkaeufe aus dem Broker-Export
 --   Werte erfunden, Daten relativ zu core.fn_today(). Testbroker Cashkonto 1000 (Stichtag heute-20), Depot daran.
 --   ALT: Uebernahme 10 Stueck @ 25 am heute-5. Export: Kauf 1 (heute-60) + Verkauf 1 (heute-50) = Bestand 0 (Reset),
 --   Kauf 4 (heute-40, Kurswert 80, Gebuehr 1), Kauf 3 (heute-30, 66), Verkauf 2 (heute-28, FIFO aus dem ersten Lot),
@@ -68,7 +68,7 @@ BEGIN
         pg_temp.tr_row(T - 8,  'BUY',  'IE00LOTSALT1', '3.0000000000',  '-90.00', '', 'l-07'),
         pg_temp.tr_row(T - 2,  'BUY',  'IE00LOTSALT1', '1.0000000000',  '-31.00', '-1.00', 'l-08'),
         pg_temp.tr_row(T - 30, 'BUY',  'IE00LOTSMIS1', '4.0000000000',  '-40.00', '', 'l-09'),
-        -- ONE: genau EIN Kauf vor dem Stichtag -> die Ersetzung ist wieder ein Paar, darf aber nie erneut ersetzt werden
+        -- ONE: genau ein Kauf vor dem Stichtag -> die Ersetzung ist wieder ein Paar, darf aber nie erneut ersetzt werden
         pg_temp.tr_row(T - 30, 'BUY',  'IE00LOTSONE1', '2.0000000000',  '-24.00', '', 'l-10'),
         -- DST: FIFO-Rest 0.00001 @ 20 = 0.0002 EUR (unter 1 Cent) -> lots_not_bookable als Daten, kein Absturz
         pg_temp.tr_row(T - 40, 'BUY',  'IE00LOTSDST1', '1.0000000000',  '-20.00', '', 'l-11'),
@@ -76,7 +76,7 @@ BEGIN
         pg_temp.tr_row(T - 30, 'SELL', 'IE00LOTSDST1', '-0.9999900000', '20.00', '', 'l-13')));
     v_p := jsonb_build_object('account_name', '__t_lots_tr__', 'table', v_csv);
 
-    -- Monats-Check VOR dem Ersetzen: Kauf heute-8 steckt in der Uebernahme -> nie gebucht
+    -- Monats-Check vor dem Ersetzen: Kauf heute-8 steckt in der Uebernahme -> nie gebucht
     v_prep := finance.fn_statement_prepare(v_p || jsonb_build_object('source', 'file', 'closing_balance', 878));
     IF (v_prep->>'ok')::boolean IS DISTINCT FROM true
        OR NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v_prep->'trades_blocked') b
@@ -139,7 +139,7 @@ BEGIN
     END IF;
     RAISE NOTICE 'PASS [L8 erneut]';
 
-    -- Monats-Check DANACH: Kauf heute-8 schon gebucht (Stufe 0), nur der Kauf heute-2 wird gebucht, drift 0
+    -- Monats-Check danach: Kauf heute-8 schon gebucht (Stufe 0), nur der Kauf heute-2 wird gebucht, drift 0
     v_prep := finance.fn_statement_prepare(v_p || jsonb_build_object('source', 'file', 'closing_balance', 878));
     IF (v_prep->>'ok')::boolean IS DISTINCT FROM true OR (v_prep->>'drift')::numeric <> 0 OR (v_prep->>'lump')::numeric <> 0
        OR jsonb_array_length(v_prep->'trades') <> 1 OR (v_prep->'trades'->0->>'amount')::numeric <> -32
@@ -161,7 +161,7 @@ END $$;
 
 -- L11 FIFO ueber mehrere Lots: Kauf 1 @ 10, 1 @ 20, 3 @ 30, Verkauf 3 -> uebrig 2 aus dem dritten Lot, Einstand 30
 -- L12 Export, der die Position komplett wieder verkauft (Summe 0) -> lots_mismatch, nie stilles Ersetzen
--- L13 Stichtag = der SPAETERE von Eroeffnung und letztem Abgleich: ein Kauf dazwischen bewegt kein Geld
+-- L13 Stichtag = der spaetere von Eroeffnung und letztem Abgleich: ein Kauf dazwischen bewegt kein Geld
 DO $$
 DECLARE
     T DATE := core.fn_today();

@@ -4,7 +4,8 @@
 --   monatlich/jaehrlich bleibt HITL (wir spiegeln eine externe Bank, der Owner verifiziert gegen den Auszug).
 --     day / week   -> true   (Auto-Buchung im Cron, kein Gate)
 --     month / year -> false  (HITL je Vorkommen)
---   Pro Konto ueberschreibbar. EINE Adresse fuer den Default -> fn_create_account UND fn_set_account_interest.
+--   Pro Konto ueberschreibbar. Die eine Adresse fuer den Default -> fn_create_account und fn_set_account_interest.
+--   Eingabe: p_unit (schedule_unit). Rueckgabe: boolean.
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_interest_auto_post_default(p_unit finance.schedule_unit)
 RETURNS boolean LANGUAGE sql IMMUTABLE AS $$

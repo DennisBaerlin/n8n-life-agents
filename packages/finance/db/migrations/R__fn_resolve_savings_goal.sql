@@ -1,6 +1,7 @@
 -- ============================================================
--- fn_resolve_savings_goal
+-- fn_resolve_savings_goal (READ, STABLE)
 --   Loest Sparziel-Name in ID auf (Vorbild fn_resolve_account).
+--   Rueckgabe: TABLE(id, hit_count, candidates); id nur bei genau einem Treffer.
 --   p_active_only: default TRUE -> nur status='active'.
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_resolve_savings_goal(

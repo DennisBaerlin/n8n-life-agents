@@ -2,13 +2,13 @@
 -- fn_delete_thinking_lease ("Bot denkt nach"-Schalter)
 --   Beendet Draft-Schleifen: execution_id gesetzt -> genau dieser Schalter; sonst chat_id -> alle Schalter des Chats
 --   (zweites Netz nach einer Antwort: 'Finish card lock' im Orchestrator).
---   wait_for_draft=true (direkt VOR einer Antwort): liegt drafting_until eines geloeschten Schalters noch in der
---   Zukunft, ist evtl. ein Draft unterwegs -> pg_sleep bis dahin (hoechstens 1 s), damit er VOR der Antwort ankommt.
+--   wait_for_draft=true (direkt vor einer Antwort): liegt drafting_until eines geloeschten Schalters noch in der
+--   Zukunft, ist evtl. ein Draft unterwegs -> pg_sleep bis dahin (hoechstens 1 s), damit er vor der Antwort ankommt.
 --   Das pg_sleep laeuft nach dem DELETE in derselben Transaktion; die Zeilensperre bleibt dabei absichtlich bestehen,
 --   so liefert ein gleichzeitiger fn_claim_thinking_draft danach 'stop'. Ohne das Flag (zweites Netz, Fehlerpfad
 --   core.sub_error_notify) nie warten. Leere/unbekannte Angaben bzw. Test-Sentinel = no-op. Idempotent.
---   p: { execution_id? | chat_id?, wait_for_draft? }
---   RUECKGABE: {ok:true, removed}
+--   Eingabe p: { execution_id? | chat_id?, wait_for_draft? }
+--   Rueckgabe: {ok:true, removed}
 --   Tests: tests/db/core/test_fn_thinking_lease.sql
 -- ============================================================
 CREATE OR REPLACE FUNCTION agent.fn_delete_thinking_lease(p jsonb)

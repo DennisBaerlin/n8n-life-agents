@@ -9,6 +9,7 @@
 #   post-merge/post-commit = generierte Dateien nach Merge neu bauen (post-commit nur fuer einen von Hand aufgeloesten Konflikt-Merge)
 #   commit-msg  = Conventional Commits
 # Notfall-Bypass: git commit/push --no-verify (bewusst, nicht zur Gewohnheit).
+# Exit 0 = Hooks verdrahtet; prek fehlt oder `prek install` scheitert -> throw.
 
 $ErrorActionPreference = 'Stop'
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
@@ -23,7 +24,7 @@ if (-not $prek) {
 
 Push-Location $RepoRoot
 try {
-    # --overwrite entfernt Alt-/Legacy-Hooks (sonst laeuft prek den alten pre-push ZUSAETZLICH mit).
+    # --overwrite entfernt Alt-/Legacy-Hooks (sonst laeuft prek den alten pre-push zusaetzlich mit).
     & $prek install --overwrite --hook-type pre-commit --hook-type pre-push --hook-type commit-msg --hook-type post-merge --hook-type post-commit
     if ($LASTEXITCODE -ne 0) { throw "prek install fehlgeschlagen (Exit $LASTEXITCODE)." }
 } finally {

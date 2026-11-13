@@ -1,40 +1,38 @@
 ﻿#Requires -Version 5.1
-# hitl_gate_test.ps1 — deterministischer HITL-Gate-Test ueber den ECHTEN Telegram-Pfad (Teststrategie
-# Phase 5). KEIN LLM, kostet keine Credits: feuert das Gate mit einer NUMERISCHEN chat_id (kein test_-
+# hitl_gate_test.ps1 — deterministischer HITL-Gate-Test ueber den echten Telegram-Pfad.
+# Kein LLM, kostet keine Credits: feuert das Gate mit einer numerischen chat_id (kein test_-
 # Prefix -> echtes Send-and-Wait), faengt die ausgehende Nachricht im Mock-Telegram ab, loest das
-# Gate ueber die abgefangene SIGNIERTE Resume-URL (Schema+Host auf die socat-Bruecke umgeschrieben) und
-# prueft, dass approved == erwartet — fuer Approve UND Decline.
+# Gate ueber die abgefangene signierte Resume-URL (Schema+Host auf die socat-Bruecke umgeschrieben) und
+# prueft, dass approved == erwartet — fuer Approve und Decline.
 #
-# WS-5b MEMBER-PFAD-ABSICHERUNG: das Dual-Control-Gate hat drei MEMBER-Zweige (owner_info Selbst-
-# bestaetigung, owner_approval Vier-Augen, owner_only harter Block), die ein ungepairter Owner-Sender NIE
-# betritt. Dieser Test seedet deshalb eine GEPAIRTE Partnerin (880055200, role=partner; Muster
+# Member-Pfad: das Dual-Control-Gate hat drei Member-Zweige (owner_info Selbst-
+# bestaetigung, owner_approval Vier-Augen, owner_only harter Block), die ein ungepairter Owner-Sender nie
+# betritt. Dieser Test seedet deshalb eine gepairte Partnerin (880055200, role=partner; Muster
 # real_ingress_test) und feuert die Member-Tiers mit deren chat_id + explizitem approval_tier durch den
 # Gate-Test-Harness (inputMap traegt approval_tier). Geprueft: (a) owner_info -> Member bestaetigt selbst,
-# approved=true + Einweg-Info an den Owner; (b) owner_only -> Block, approved=false, KEIN Send; (c)
-# owner_approval -> Member+Owner-Vier-Augen -> true, Member-Decline (Stufe 1) ODER Owner-Veto (Stufe 2)
-# -> false. SICHERHEITS-INVARIANTE
+# approved=true + Einweg-Info an den Owner; (b) owner_only -> Block, approved=false, kein Send; (c)
+# owner_approval -> Member+Owner-Vier-Augen -> true, Member-Decline (Stufe 1) oder Owner-Veto (Stufe 2)
+# -> false. Sicherheits-Invariante
 # mitgeprueft: der Member-Send adressiert die aufgeloeste, verifizierte Partner-chat_id (nicht den Owner);
-# owner_only erzeugt NULL button-tragende Sends (der Block darf nicht senden).
+# owner_only erzeugt null button-tragende Sends (der Block darf nicht senden).
 #
-# BESTAETIGEN IM CHAT: alle Faelle laufen in beiden Knopf-Modi (Link = signierte Resume-URL per GET; Chat =
+# Bestaetigen im Chat: alle Faelle laufen in beiden Knopf-Modi (Link = signierte Resume-URL per GET; Chat =
 # callback_data -> das callback_query-Update per POST an /webhook-waiting-telegram, wie der Orchestrator-Trigger es
 # weiterreicht). Sendet das Substrat Chat-Knoepfe (bootstrap_test_n8n.ps1 -HitlChatApproval), laufen zusaetzlich
 # hitlC1-3: fremder Tipper + gefaelschte Signatur blockiert, Replay des Stufe-1-Tipps beantwortet Stufe 2 nicht,
 # Text mit Markdown-Entity geht durch.
 #
-# KARTE-OFFEN-SPERRE (Fix C): je Send prueft der Test VOR dem Tipp die Zeile in agent.hitl_pending (Ursprungs-Chat
-# des Falls, diese Execution, offen, Ablauf <= 16 Min) und NACH dem Lauf, dass sie freigegeben ist (Gnadenfrist; loeschen
+# Karte-offen-Sperre: je Send prueft der Test vor dem Tipp die Zeile in agent.hitl_pending (Ursprungs-Chat
+# des Falls, diese Execution, offen, Ablauf <= 16 Min) und nach dem Lauf, dass sie freigegeben ist (Gnadenfrist; loeschen
 # tut erst der Orchestrator nach seiner Antwort); hitl11 = Sentinel ohne Zeile.
 #
-# AUSGANG DER KARTE: hitlO* pruefen outcome am Gate je Pfad (Tipp und Ablauf), hitlT* den Text ans Modell je Fall ueber echte Tools.
+# Ausgang der Karte: hitlO* pruefen outcome am Gate je Pfad (Tipp und Ablauf), hitlT* den Text ans Modell je Fall ueber echte Tools.
 #
-# Beweist die Phase-5-Mechanik (Mock-Interception + HITL-Resume) und ist das Fundament fuer den
-# Real-Ingress-Treiber (Phase 7). Vorbedingung: scripts/dev/enable_mock_telegram.ps1 lief
-# (Mock aktiv + baseUrl umgebogen).
+# Vorbedingung: scripts/dev/enable_mock_telegram.ps1 lief (Mock aktiv + baseUrl umgebogen).
 #
-# FALL-ABBRUCH: eine Ausnahme in einem Block macht NUR diesen Fall rot (Grund + Skriptzeile, Aufraeumen), der Lauf geht weiter.
+# Fall-Abbruch: eine Ausnahme in einem Block macht nur diesen Fall rot (Grund + Skriptzeile, Aufraeumen), der Lauf geht weiter.
 # -ForceAbortId hitlR3 = Testschalter: wirft am Anfang dieses Blocks eine Ausnahme (zeigt den Abbruch-Pfad ohne echte Last); wird die id
-# nie erreicht, ist der Lauf rot. Es gibt kein -Id: die Bloecke bauen auf gemeinsamem Zustand auf. hitlO7a-f laufen als EIN Block (hitlO7).
+# nie erreicht, ist der Lauf rot. Es gibt kein -Id: die Bloecke bauen auf gemeinsamem Zustand auf. hitlO7a-f laufen als ein Block (hitlO7).
 #
 # Usage:  .\scripts\dev\hitl_gate_test.ps1 [-Timeout 30] [-Verbose] [-ForceAbortId <id>]
 # Exit-Code = Anzahl Fehler.
@@ -81,7 +79,7 @@ $wfList = Invoke-N8nGet 'workflows?limit=200'
 $gateWfId = ($wfList.data | Where-Object { $_.name -eq $GateName } | Select-Object -First 1).id
 if (-not $gateWfId) { throw "Workflow '$GateName' nicht gefunden (Substrat deployt?)." }
 
-# --- Member-Pfad-Absicherung (WS-5): eine GEPAIRTE Partnerin ins Substrat seeden, damit
+# --- Member-Pfad: eine gepairte Partnerin ins Substrat seeden, damit
 # fn_resolve_sender(880055200) role=partner liefert -> die Member-Zweige des Gates (owner_info/owner_only/
 # owner_approval) real durchlaufen (statt des Owner-Default-Pfads beim ungepairten Sender). Muster 1:1 aus
 # real_ingress_test.ps1 (util_seed_test_fixtures haengt Lena an; das Pairing setzt die tg-ids). Idempotent.
@@ -102,10 +100,10 @@ WHERE name = 'family';
 $pair = Invoke-TestN8nPsql -Container $Container -PsqlArgs @('-q', '-c', $pairSql)
 if ($pair.Code -ne 0) { throw "Owner/Lena-Pairing (Container-DB) fehlgeschlagen: $($pair.Output -join "`n")" }
 
-# --- Karte-offen-Sperre (Fix C, agent.hitl_pending): vor JEDEM Resume muss eine Zeile fuer den URSPRUNGS-Chat
-# des Falls (= chat_id des Gate-Aufrufs, auch im Vier-Augen-Pfad fuer BEIDE Stufen) mit dieser Execution und
+# --- Karte-offen-Sperre (agent.hitl_pending): vor jedem Resume muss eine Zeile fuer den Ursprungs-Chat
+# des Falls (= chat_id des Gate-Aufrufs, auch im Vier-Augen-Pfad fuer beide Stufen) mit dieser Execution und
 # expires_at ~ jetzt + WAIT_MIN + 6 existieren; nach dem Lauf darf fuer die Execution keine Zeile bleiben.
-# Nicht-numerische chat_id (Sentinel) -> nie eine Zeile. Reste frueherer (gestoppter) Laeufe vorab leeren.
+# Nicht-numerische chat_id (Sentinel) -> nie eine Zeile. Reste gestoppter Laeufe vorab leeren.
 Clear-HitlPending -Container $Container
 Clear-ThinkingLease -Container $Container
 function Get-PendingRows([string]$ExecId) {
@@ -123,14 +121,14 @@ function Test-PendingOpen($Case, [string]$ExecId) {
     if ($rows.Count -ne 1) { return "erwartet genau 1 Sperr-Zeile fuer Execution $ExecId, got [$($rows -join ', ')]" }
     $parts = $rows[0].Split('|')
     if ($parts[0] -ne $Case.chat_id) { return "Sperr-Zeile fuer chat_id=$($parts[0]) statt Ursprungs-Chat $($Case.chat_id)" }
-    # Zeile entsteht VOR dem Send, gelesen wird erst nach dem Abfangen (Telegram-Haenger) -> grosszuegige Untergrenze.
+    # Zeile entsteht vor dem Send, gelesen wird erst nach dem Abfangen (Telegram-Haenger) -> grosszuegige Untergrenze.
     if ([int]$parts[1] -lt 5 -or [int]$parts[1] -gt 16) { return "Sperr-Zeile laeuft in $($parts[1]) Min ab (erwartet <= 16)" }
     if ($parts[2] -ne 'false') { return 'Sperr-Zeile ist schon freigegeben, obwohl die Karte offen ist' }
     return $null
 }
 
 # sends = geordnete Liste der abzufangenden+aufzuloesenden Send-and-Waits je Tier (t=member|owner, ok=Entscheid);
-# leere Liste = KEIN Send (owner_only-Block -> Korrelation ueber den Summary-Marker in den runData).
+# leere Liste = kein Send (owner_only-Block -> Korrelation ueber den Summary-Marker in den runData).
 $cases = @(
     [pscustomobject]@{ id='hitl01'; name='Owner Approve -> true';                       chat_id='999000111';    tier='';               sends=@(@{t='owner'; ok=$true});                    expected=$true  }
     [pscustomobject]@{ id='hitl02'; name='Owner Decline -> false';                      chat_id='999000111';    tier='';               sends=@(@{t='owner'; ok=$false});                   expected=$false }
@@ -139,26 +137,26 @@ $cases = @(
     [pscustomobject]@{ id='hitl05'; name='owner_approval: Vier-Augen Member+Owner -> true'; chat_id=$MemberChatId; tier='owner_approval'; sends=@(@{t='member'; ok=$true}, @{t='owner'; ok=$true}); expected=$true }
     [pscustomobject]@{ id='hitl06'; name='owner_approval: Member-Decline (Stufe 1) -> false'; chat_id=$MemberChatId; tier='owner_approval'; sends=@(@{t='member'; ok=$false});               expected=$false }
     [pscustomobject]@{ id='hitl07'; name='owner_approval: Owner-Veto (Stufe 2) -> false';  chat_id=$MemberChatId; tier='owner_approval'; sends=@(@{t='member'; ok=$true}, @{t='owner'; ok=$false}); expected=$false }
-    # self: eigene per_user-Daten (agent.tool_set_own_context_facts) -> nur das Mitglied bestaetigt, KEIN Owner-Send
+    # self: eigene per_user-Daten (agent.tool_set_own_context_facts) -> nur das Mitglied bestaetigt, kein Owner-Send
     # (auch keine Info: sie truege private Profildaten zum Owner) — assertNoOwnerSend prueft das hart.
     [pscustomobject]@{ id='hitl08'; name='self: Member bestaetigt eigene Daten -> true, kein Owner-Send'; chat_id=$MemberChatId; tier='self'; sends=@(@{t='member'; ok=$true});  expected=$true;  assertNoOwnerSend=$true }
     [pscustomobject]@{ id='hitl09'; name='self: Member lehnt ab -> false, kein Owner-Send';                 chat_id=$MemberChatId; tier='self'; sends=@(@{t='member'; ok=$false}); expected=$false; assertNoOwnerSend=$true }
-    # Textkatalog: STRUKTURIERTES Summary (New-HitlSummary-Form) — Mitglied (en) und Owner (de) bekommen Titel, Betrag
-    # und Datum in IHRER Sprache/Formatierung; ein kaputter Betrag (LLM-Tippfehler) legt das Gate nicht lahm (Rohwert).
+    # Strukturiertes Summary (New-HitlSummary-Form) — Mitglied (en) und Owner (de) bekommen Titel, Betrag
+    # und Datum in ihrer Sprache/Formatierung; ein kaputter Betrag (LLM-Tippfehler) legt das Gate nicht lahm (Rohwert).
     [pscustomobject]@{ id='hitl10'; name='Textkatalog: strukturiertes Summary je Empfaenger-Sprache'; chat_id=$MemberChatId; tier='owner_approval'
         sends=@(@{t='member'; ok=$true}, @{t='owner'; ok=$true}); expected=$true; structured=$true
         expectMember=@('Publish plan', '€1,234.50', '31/12/2026', 'xyz'); expectOwner=@('Mitglied Lena', 'Plan veröffentlichen', '1.234,50', '31.12.2026', 'xyz') }
-    # Fix C: nicht-numerische Sentinel-chat_id -> Owner-Pfad, aber KEINE Karte-offen-Sperr-Zeile (Test-Pfade sperren nie).
+    # Nicht-numerische Sentinel-chat_id -> Owner-Pfad, aber keine Karte-offen-Sperr-Zeile (Test-Pfade sperren nie).
     [pscustomobject]@{ id='hitl11'; name='Sentinel-chat_id: Owner-Pfad ohne Sperr-Zeile';   chat_id='test_hitl11'; tier='';               sends=@(@{t='owner'; ok=$false});                   expected=$false }
-    # Lange Karten (Telegram-Limit 4096): das Gate sendet die vorderen Teile ("Teil n/N") VOR der Karte an denselben
+    # Lange Karten (Telegram-Limit 4096): das Gate sendet die vorderen Teile ("Teil n/N") vor der Karte an denselben
     # Empfaenger, jede Nachricht <= 4096, die Knoepfe an der letzten. Das Summary traegt eine Zeile ueber dem Limit
-    # (wird gekuerzt) und den Fall-Marker am ENDE (steht so im letzten Teil = der Karte). parts = Empfaenger mit Teilen.
+    # (wird gekuerzt) und den Fall-Marker am Ende (steht so im letzten Teil = der Karte). parts = Empfaenger mit Teilen.
     [pscustomobject]@{ id='hitl12'; name='Lange Karte Owner: Teile vor der Karte, je <= 4096'; chat_id='999000111'; tier=''; sends=@(@{t='owner'; ok=$true}); expected=$true; long=$true; parts=@('owner') }
     [pscustomobject]@{ id='hitl13'; name='Lange Karte Vier-Augen: Teile an Mitglied und Owner (Stufe 2)'; chat_id=$MemberChatId; tier='owner_approval'
         sends=@(@{t='member'; ok=$true}, @{t='owner'; ok=$true}); expected=$true; long=$true; parts=@('member', 'owner'); ownerPart1='Lena' }
     [pscustomobject]@{ id='hitl14'; name='Lange Karte owner_info: Teile an Mitglied, Owner-Info geteilt'; chat_id=$MemberChatId; tier='owner_info'
         sends=@(@{t='member'; ok=$true}); expected=$true; long=$true; parts=@('member', 'owner'); assertOwnerInfo=$true }
-    # Eigener Knopf-Text (2026-11-06): summary.approve_key (New-HitlSummary -ApproveKeyExpr) ersetzt den Bestaetigen-Text,
+    # Eigener Knopf-Text: summary.approve_key (New-HitlSummary -ApproveKeyExpr) ersetzt den Bestaetigen-Text,
     # je Empfaenger-Sprache aus dem Katalog; Abbrechen bleibt.
     [pscustomobject]@{ id='hitl16'; name='Eigener Knopf-Text: approve_key ersetzt Bestaetigen'; chat_id='999000111'; tier=''; sends=@(@{t='owner'; ok=$true}); expected=$true
         approveKey='finance.hitl.accept_depot_risk'; approveText=@{ owner = '⚠️ Risiko eingehen'; member = '⚠️ Take the risk' } }
@@ -174,7 +172,7 @@ function New-LongSummary([string]$Id) {
     $l -join "`n"
 }
 
-# Sprache je Empfaenger (Textkatalog): Lena (Mitglied) = en, Owner = de. Erwartete Knopf-Texte + ein Hinweis-Fragment
+# Sprache je Empfaenger: Lena (Mitglied) = en, Owner = de. Erwartete Knopf-Texte + ein Hinweis-Fragment
 # je Sprache; jeder abgefangene Button-Send wird darauf geprueft (nicht nur hitl08).
 $LangExpect = @{
     member = @{ approve = '✅ Confirm'; cancel = '❌ Cancel'; hint = 'To change something, cancel and write again.' }
@@ -193,8 +191,8 @@ Write-Host "HITL-Gate-Test (echter Telegram-Pfad ueber Mock) -- $($cases.Count) 
 Write-Host ("-" * 64)
 $passed = 0; $failed = 0
 
-# Fall-Abbruch (Helfer in test_n8n_state.ps1): eine Ausnahme in einem Block (z. B. HTTP 500 vom Eingang unter Last) ist ein ROTER Fall, der
-# Lauf geht weiter. Jeder Block unten steht in `try { Test-ForceAbort <id> $ForceAbortId; ... } catch { Register-Abort $_ <id> }` im SELBEN
+# Fall-Abbruch (Helfer in test_n8n_state.ps1): eine Ausnahme in einem Block (z. B. HTTP 500 vom Eingang unter Last) ist ein roter Fall, der
+# Lauf geht weiter. Jeder Block unten steht in `try { Test-ForceAbort <id> $ForceAbortId; ... } catch { Register-Abort $_ <id> }` im selben
 # Bereich wie die Zaehler (kein Scriptblock-Laeufer: ein dort vergessenes $failed++ ginge als Kopie verloren, der Lauf bliebe gruen).
 # Der Aufbau oben (Pairing, Seed) bleibt ungeschuetzt: scheitert er, gibt es nichts zu retten.
 # Offene Karten und Sperr-Zeilen raeumt jeder Abbruch auf, sonst machten sie den Folgefall rot; -Extra raeumt zusaetzlich Spuren in der DB ab.
@@ -234,14 +232,14 @@ foreach ($tc in $cases) {
         }
         $payload = (@{ chat_id = $tc.chat_id; summary = $sum; approval_tier = $tc.tier } | ConvertTo-Json -Compress -Depth 6)
 
-        # Gate-Floor VOR dem POST (n8n vergibt global monotone ids): die Execution DIESES Falls hat danach
+        # Gate-Floor vor dem POST (n8n vergibt global monotone ids): die Execution dieses Falls hat danach
         # id > $gateBase. Der owner_only-Zweig (kein Send -> Marker-Scan) braucht das zwingend — sonst matcht der
-        # per-Lauf-KONSTANTE Marker eine gleich-markierte Execution eines FRUEHEREN Laufs (Substrat-Reuse ohne
-        # -Reset ist der endorste Normalfall), und eine Regression (Block wird faelschlich zum Send -> die aktuelle
+        # per-Lauf-konstante Marker eine gleich-markierte Execution eines frueheren Laufs (Substrat-Reuse ohne
+        # -Reset ist der Normalfall), und eine Regression (Block wird faelschlich zum Send -> die aktuelle
         # Execution suspendiert) bliebe still ein False-PASS auf der alten success-Zeile.
         $gateBase = Get-MaxExecId -WfId $gateWfId -BridgeUrl $N8nUrl -ApiKey $ApiKey
 
-        # POST blockiert bis zum Gate-Resume (responseMode=lastNode); Client-Timeout ist KEIN Fehler — die
+        # POST blockiert bis zum Gate-Resume (responseMode=lastNode); Client-Timeout ist kein Fehler — die
         # Execution laeuft serverseitig weiter (wie infra_test).
         try {
             Invoke-RestMethod -Uri "$N8nUrl/webhook/$HarnessPath" -Method Post -Headers @{ $AuthHeader = $TEST_HARNESS_SECRET } `
@@ -257,7 +255,7 @@ foreach ($tc in $cases) {
         # --- je Send-and-Wait des Tiers (in Reihenfolge): abfangen (Ziel-chat_id verifizieren) + Resume feuern.
         # Korreliert ueber den eindeutigen Summary-Marker ($tc.id) im Text PLUS die Ziel-chat_id (member vs owner),
         # sodass im Vier-Augen-Pfad der Member- und der Owner-Send auseinandergehalten werden. Die exakte
-        # Gate-Execution-id steckt im Resume-URL-Pfad (/webhook-waiting/{execId}/{nodeId}) = GENAU diese Execution.
+        # Gate-Execution-id steckt im Resume-URL-Pfad (/webhook-waiting/{execId}/{nodeId}) = genau diese Execution.
         $execId = $null; $sendFail = $false
         foreach ($snd in $tc.sends) {
             $isMemberSend = ($snd.t -eq 'member')
@@ -277,8 +275,8 @@ foreach ($tc in $cases) {
                 Write-Host "    [FAIL] Erwarteter $($snd.t)-Send (Buttons, Marker $($tc.id)) nicht abgefangen." -ForegroundColor Red
                 $sendFail = $true; break
             }
-            # SICHERHEITS-INVARIANTE: der Member-Send adressiert die AUFGELOESTE, verifizierte Partner-chat_id
-            # (sender.chat_id aus fn_resolve_sender = 880055200) und NICHT den Owner -- ein Send an den Owner statt
+            # Sicherheits-Invariante: der Member-Send adressiert die aufgeloeste, verifizierte Partner-chat_id
+            # (sender.chat_id aus fn_resolve_sender = 880055200) und nicht den Owner -- ein Send an den Owner statt
             # das Mitglied waere der Multi-Member-Auth-Bruch. (Bei einem legitimen Mitglied ist die aufgeloeste
             # chat_id == die Eingangs-id; die Pruefung sichert daher 'an die verifizierte Partnerin, nicht den Owner'.)
             if ($isMemberSend -and ([string]$msg.body.chat_id -ne $MemberChatId)) {
@@ -286,7 +284,7 @@ foreach ($tc in $cases) {
                 $sendFail = $true; break
             }
             if ($Verbose) { Write-Host "    $($snd.t)-Send abgefangen an chat_id=$($msg.body.chat_id) (approve=$($snd.ok))" -ForegroundColor DarkGray }
-            # Textkatalog: Knoepfe + Hinweis in der Sprache DIESES Empfaengers; bei hitl08 zusaetzlich Titel/Betrag/Datum.
+            # Knoepfe + Hinweis in der Sprache dieses Empfaengers; bei hitl08 zusaetzlich Titel/Betrag/Datum.
             $le = $LangExpect[$snd.t]; $btn = Get-ButtonTexts $msg; $txt = [string]$msg.body.text
             $langBad = @()
             # hitl16: eigener Knopf-Text aus summary.approve_key statt des Standard-Bestaetigen
@@ -319,11 +317,11 @@ foreach ($tc in $cases) {
         }
         if ($sendFail) { $failed++; continue }
 
-        # owner_only: KEIN Send -> die Gate-Execution ueber den Summary-Marker in den runData des Start-Nodes finden.
-        # FLOOR id > $gateBase (nur DIESER Lauf -> kein Stale-Match auf eine gleich-markierte alte Execution) und
-        # KEIN status-Filter: eine faelschlich SENDENDE Regression suspendiert die Execution (status=waiting) ->
+        # owner_only: kein Send -> die Gate-Execution ueber den Summary-Marker in den runData des Start-Nodes finden.
+        # Floor id > $gateBase (nur dieser Lauf -> kein Stale-Match auf eine gleich-markierte alte Execution) und
+        # kein status-Filter: eine faelschlich sendende Regression suspendiert die Execution (status=waiting) ->
         # sie wird trotzdem gefunden, und der Success-Check unten schlaegt fehl (statt still auf eine alte
-        # success-Zeile auszuweichen = der False-Green, den Cold-Eyes fand).
+        # success-Zeile auszuweichen = False-Green).
         if ($tc.sends.Count -eq 0) {
             $start = Get-Date
             while (-not $execId) {
@@ -336,7 +334,7 @@ foreach ($tc in $cases) {
                 if ($execId -or (((Get-Date) - $start).TotalSeconds -ge $Timeout)) { break }
                 Start-Sleep -Milliseconds 700
             }
-            # 'KEIN Send'-Invariante HART pruefen (Cold-Eyes MINOR): owner_only darf NULL button-tragende Sends mit
+            # 'Kein Send'-Invariante hart pruefen: owner_only darf null button-tragende Sends mit
             # dem Marker erzeugt haben — ein Leak (auch an die Partnerin) waere genau der Multi-Member-Auth-Bruch,
             # den dieser Fall garantiert. Der Mock-Log ist seit Case-Start (Clear oben) leer.
             $leak = Get-MockTelegramRequests -Container $Container | Where-Object {
@@ -349,7 +347,7 @@ foreach ($tc in $cases) {
         }
         if (-not $execId) { Write-Host "    [FAIL] Keine Gate-Execution-id ermittelt (kein Send/Marker > gateBase gefunden?)." -ForegroundColor Red; $failed++; continue }
 
-        # GENAU diese Gate-Execution einsammeln (warten -> success) und Return.approved pruefen.
+        # Genau diese Gate-Execution einsammeln (warten -> success) und Return.approved pruefen.
         $ex = $null; $start = Get-Date
         while ($true) {
             try { $cand = Get-ExecDetail $execId } catch { $cand = $null }
@@ -359,7 +357,7 @@ foreach ($tc in $cases) {
         }
         if (-not $ex) { Write-Host "    [FAIL] Gate-Execution $execId nicht abrufbar." -ForegroundColor Red; $failed++; continue }
 
-        # WS-5b: das Dual-Control-Gate hat MEHRERE Terminal-Returns (Return owner / Return co-approval /
+        # Das Dual-Control-Gate hat mehrere Terminal-Returns (Return owner / Return co-approval /
         # Return info / Return blocked / Return declined) statt eines einzigen 'Return' -> den approved-Wert (+
         # reason bei owner_only) aus dem tatsaechlich gelaufenen Return*-Node ziehen (name-agnostisch).
         $approved = $null; $reason = $null
@@ -371,7 +369,7 @@ foreach ($tc in $cases) {
             }
         } catch { }
 
-        # owner_info: der Einweg-Owner-Info-Send (KEIN reply_markup) MUSS an den Owner (nicht die Partnerin) gehen —
+        # owner_info: der Einweg-Owner-Info-Send (kein reply_markup) muss an den Owner (nicht die Partnerin) gehen —
         # beweist, dass der Owner bei der Member-Selbstbestaetigung informiert wird (Maker-Checker-Transparenz).
         $ownerInfoOk = $true
         if ($tc.assertOwnerInfo) {
@@ -387,7 +385,7 @@ foreach ($tc in $cases) {
             if (-not $info) { $ownerInfoOk = $false; Write-Host "    [FAIL] owner_info: kein Einweg-Owner-Info-Send an den Owner abgefangen." -ForegroundColor Red }
             elseif ($Verbose) { Write-Host "    Owner-Info-Send abgefangen an chat_id=$($info.body.chat_id)" -ForegroundColor DarkGray }
         }
-        # self: KEIN einziger Send mit dem Marker an jemand anderen als das Mitglied (weder Buttons noch Info).
+        # self: kein einziger Send mit dem Marker an jemand anderen als das Mitglied (weder Buttons noch Info).
         if ($tc.assertNoOwnerSend) {
             $ownerLeak = Get-MockTelegramRequests -Container $Container | Where-Object {
                 $_.method -eq 'sendMessage' -and ([string]$_.body.text).Contains($tc.id) -and ([string]$_.body.chat_id -ne $MemberChatId)
@@ -395,7 +393,7 @@ foreach ($tc in $cases) {
             if ($ownerLeak) { $ownerInfoOk = $false; Write-Host "    [FAIL] self: unerwarteter Send an chat_id=$($ownerLeak.body.chat_id) (Owner darf nichts bekommen)." -ForegroundColor Red }
         }
         # Lange Karten: je erwartetem Empfaenger >= 1 Vor-Teil (ohne Knoepfe, "Teil i/N" in seiner Sprache), lueckenlos
-        # nummeriert bis zur letzten Nachricht; JEDE Nachricht <= 4096 Zeichen. Kurze Karten: nie ein Teil-Praefix.
+        # nummeriert bis zur letzten Nachricht; jede Nachricht <= 4096 Zeichen. Kurze Karten: nie ein Teil-Praefix.
         $reqsAll = @(Get-MockTelegramRequests -Container $Container | Where-Object { $_.method -eq 'sendMessage' })
         if ($tc.long) {
             foreach ($who in $tc.parts) {
@@ -419,7 +417,7 @@ foreach ($tc in $cases) {
         if ($outcome) { Write-Host "    [FAIL] englische Outcome-Zeile gesendet ($($outcome.method))." -ForegroundColor Red; $ownerInfoOk = $false }
         $reasonOk = (-not $tc.expectReason) -or ($reason -eq $tc.expectReason)
         if (-not $reasonOk) { Write-Host "    [FAIL] Erwartete reason=$($tc.expectReason), got '$reason'." -ForegroundColor Red }
-        # Nach dem Lauf (Tipp/Block) ist jede Sperr-Zeile dieser Execution FREIGEGEBEN (Close pending lief) und laeuft binnen
+        # Nach dem Lauf (Tipp/Block) ist jede Sperr-Zeile dieser Execution freigegeben (Close pending lief) und laeuft binnen
         # der Gnadenfrist (2 Min) ab; geloescht wird sie erst vom Orchestrator nach seiner Antwort (hier gibt es keinen).
         $leftover = @(Get-PendingRows ([string]$ex.id) | Where-Object { $rp = $_.Split('|'); ($rp[2] -ne 'true') -or ([int]$rp[1] -gt 2) })
         if ($leftover.Count) { $ownerInfoOk = $false; Write-Host "    [FAIL] Karte-offen-Sperre nach dem Lauf nicht freigegeben: $($leftover -join ', ')" -ForegroundColor Red }
@@ -434,7 +432,7 @@ foreach ($tc in $cases) {
 }
 
 # --- hitl15: lange Karte, ein Vor-Teil scheitert (Mock-Schalter /__fail: sendMessage -> HTTP 400 wie die Bot-API) ->
-# fail-closed: KEINE Karte mit Knoepfen, der Gate-Lauf endet nicht erfolgreich (kein approved:true -> kein Write), die
+# fail-closed: keine Karte mit Knoepfen, der Gate-Lauf endet nicht erfolgreich (kein approved:true -> kein Write), die
 # Karte-offen-Sperre bleibt nicht offen (core.sub_error_notify 'Clear card lock' bzw. keine Zeile). Mock danach wieder an.
 try {
     Test-ForceAbort 'hitl15' $ForceAbortId
@@ -476,8 +474,8 @@ try {
     $cases += [pscustomobject]@{ id = 'hitl15'; name = 'Lange Karte: Vor-Teil scheitert -> keine Karte' }
 } catch { Register-Abort $_ 'hitl15' }
 
-# --- Phase A: Approve-Zweig des EINEN Fakten-Schreibwegs bis in die DB (Schema-Fidelity Payload -> fn -> Zeile).
-# Ueber den facts-test-Harness (agent.tool_set_context_facts) mit der UNGEPAIRTEN Owner-chat_id (owner_only-Gate
+# --- Approve-Zweig des einen Fakten-Schreibwegs bis in die DB (Schema-Fidelity Payload -> fn -> Zeile).
+# Ueber den facts-test-Harness (agent.tool_set_context_facts) mit der ungepairten Owner-chat_id (owner_only-Gate
 # -> ein Tap). Je Fall: Summary abfangen (Marker + erwartetes Label), approve, danach den geschriebenen Probe-Key
 # in der Container-DB pruefen und wieder entfernen. hitlF2 belegt zusaetzlich den Fakten-Titel aus dem Textkatalog
 # des besitzenden Pakets ('Finanzprofil' = finance.facts.finance_profile.title).
@@ -533,7 +531,7 @@ foreach ($fc in $factCases) {
 }
 $cases += $factCases
 
-# --- Textkatalog (E3): eine NEUE Person ohne Sprache -> nach dem bestaetigten Write schickt agent.tool_set_context_facts
+# --- Sprach-Picker: eine neue Person ohne Sprache -> nach dem bestaetigten Write schickt agent.tool_set_context_facts
 # dem Owner die Sprach-Picker-Karte (core.sub_send_language_picker): Frage auf Deutsch (Owner-Sprache), ein Knopf je
 # unterstuetzter Sprache, callback_data lang:<person_id>:<code>. Danach Person wieder entfernen.
 try {
@@ -541,7 +539,7 @@ try {
     Write-Host ""
     Write-Host "  [hitlF3] Neue Person ohne Sprache -> Sprach-Picker-Karte an den Owner"
     Clear-MockTelegramRequests -Container $Container
-    # WP3: eine NEUE Person traegt keine person_id (die vergibt die DB auf dem Chat-Pfad, agent.fn_person_slug) -> die
+    # Eine neue Person traegt keine person_id (die vergibt die DB auf dem Chat-Pfad, agent.fn_person_slug) -> die
     # vergebene id wird nach dem Write aus family gelesen. Ein Rest aus einem abgebrochenen Lauf wird vorher entfernt
     # (sonst faende der Name-Treffer ihn und es entstuende keine neue Person, also kein Picker).
     $probeSql = "SELECT pp->>'person_id' FROM agent.core_contexts c, jsonb_array_elements(c.metadata->'facts'->'persons') pp WHERE c.name = 'family' AND pp->>'first_name' = 'Nora' AND pp->>'last_name' = 'Probe' LIMIT 1;"
@@ -573,7 +571,7 @@ try {
             $btns = @($kb.inline_keyboard | ForEach-Object { $_ })
             $data = @($btns | ForEach-Object { [string]$_.callback_data })
             $texts = @($btns | ForEach-Object { [string]$_.text })
-            # Textkatalog Phase B: im Modus 'other' (Owner waehlt fuer eine Person) gibt es keinen Vorschlag -> kein 👉-Knopf
+            # Im Modus 'other' (Owner waehlt fuer eine Person) gibt es keinen Vorschlag -> kein 👉-Knopf
             # (der Modus 'self' mit Vorschlag ist im Real-Ingress-Test ri31/ri37 abgedeckt).
             if (($data -contains "lang:${probePid}:ko") -and ($data -contains "lang:${probePid}:de") -and ($texts -contains '한국어') -and -not (($texts -join ' ').Contains('👉'))) { $f3ok = $true }
             else { Write-Host "    [FAIL] Picker-Knoepfe falsch: $($texts -join ' | ') / $($data -join ' | ')" -ForegroundColor Red }
@@ -595,9 +593,9 @@ try {
 }
 
 # --- hitlW1: Wartegrenze wirkt. Eine offene Karte muss nach WAIT_MIN (human_approval.ps1) ablaufen, nicht nie:
-# n8n liest die Grenze NUR unter options.limitWaitTime (configureWaitTillDate, Default 'options') — top-level wird still
-# ignoriert -> waitTill = WAIT_INDEFINITELY (3000-01-01), die ganze Aufrufer-Kette parkt fuer immer (Befund
-# 2026-10-22). Geprueft: waitTill der wartenden Gate-Execution liegt 5..15 Min in der Zukunft; danach Decline (Aufraeumen).
+# n8n liest die Grenze nur unter options.limitWaitTime (configureWaitTillDate, Default 'options') — top-level wird still
+# ignoriert -> waitTill = WAIT_INDEFINITELY (3000-01-01), die ganze Aufrufer-Kette parkt fuer immer.
+# Geprueft: waitTill der wartenden Gate-Execution liegt 5..15 Min in der Zukunft; danach Decline (Aufraeumen).
 try {
     Test-ForceAbort 'hitlW1' $ForceAbortId
     Write-Host ""
@@ -632,7 +630,7 @@ try {
 } catch { Register-Abort $_ 'hitlW1' }
 
 # --- Bestaetigen im Chat (nur wenn das Substrat Chat-Knoepfe sendet: bootstrap_test_n8n.ps1 -HitlChatApproval).
-# Die Faelle oben laufen in BEIDEN Modi (Get-HitlResumeUrl/Invoke-HitlResume sind modus-neutral); hier die
+# Die Faelle oben laufen in beiden Modi (Get-HitlResumeUrl/Invoke-HitlResume sind modus-neutral); hier die
 # Sicherheits-Eigenschaften, die es nur bei callback_data gibt: fremder Tipper, gefaelschte Signatur, Replay des
 # Stufe-1-Tipps im Vier-Augen-Pfad, Markdown-Entities im Text.
 function Start-GateCase([string]$Marker, [string]$ChatId, [string]$Tier, [string]$Summary) {
@@ -1016,7 +1014,7 @@ try {
 } finally { Set-OwnerLanguage -Container $Container -Code $ownerLangBefore }
 
 # hitlP2: Abschnitt ohne Katalogeintrag -> lesbarer Rueckfall. Domain ohne Katalog-Abschnitte (general): in finance und career
-# lehnt die DB unbekannte Abschnitts-Keys ab (hitlP11); der Rueckfall der Karte gilt nur noch fuer Domains ohne <pkg>.plan_section.*.
+# lehnt die DB unbekannte Abschnitts-Keys ab (hitlP11); der Rueckfall der Karte gilt nur fuer Domains ohne <pkg>.plan_section.*.
 try {
     Test-ForceAbort 'hitlP2' $ForceAbortId
     Clear-MockTelegramRequests -Container $Container
@@ -1343,7 +1341,7 @@ if (-not $chatMode) {
     Write-Host "  Bestaetigen im Chat: Substrat sendet callback_data-Knoepfe -> Sicherheits-Faelle"
     $chatCases = @()
 
-    # hitlC1: fremder Tipper + gefaelschte Signatur setzen NICHT fort; danach der Owner -> true.
+    # hitlC1: fremder Tipper + gefaelschte Signatur setzen nicht fort; danach der Owner -> true.
     $chatCases += 'hitlC1'; Write-Host ""; Write-Host "  [hitlC1] Chat: fremder Tipper / falsche Signatur blockiert, Owner gibt frei"
     try {
         Test-ForceAbort 'hitlC1' $ForceAbortId
@@ -1383,7 +1381,7 @@ if (-not $chatMode) {
         $m1 = Wait-ButtonSend 'hitlC2' $MemberChatId
         if ($m1) {
             $u1 = Get-HitlResumeUrl -Request $m1 -Approved $true -BridgeUrl $N8nUrl; $eid = Get-HitlExecId -Url $u1
-            # Der OWNER tippt auf den Member-Send -> darf Stufe 1 nicht beantworten (approverIds = nur das Mitglied).
+            # Der Owner tippt auf den Member-Send -> darf Stufe 1 nicht beantworten (approverIds = nur das Mitglied).
             try { Invoke-HitlResume -Url $u1 -FromId ([string]$OWNER_CHAT_ID) | Out-Null } catch { }
             $ownerOnMemberBlocked = Test-StillWaiting $eid
             try { Invoke-HitlResume -Url $u1 | Out-Null } catch { }
@@ -1426,9 +1424,9 @@ if (-not $chatMode) {
     } catch { Register-Abort $_ 'hitlC3' -NoCase }
 
     # hitlC4: Doppel-Tipp im Cron-Dialog (New-StaleTapGuard). agent.finance.cron_remind_interest fragt je offener
-    # Zinsgutschrift "so gutgeschrieben?" und nach Ablehnen "morgen erneut?" — in EINER Execution. Ein zweiter Tipp auf
-    # "Ablehnen" der ersten Frage darf die zweite NICHT beantworten (sonst: ungesehen uebersprungen). Fixture:
-    # offene Zins-Vorkommen aus util_seed_test_fixtures (Tagesgeld Plus; die erste Frage zaehlt; seit dem Monats-Check gibt es keine taegliche Dauerauftrags-Frage mehr). Der Cron
+    # Zinsgutschrift "so gutgeschrieben?" und nach Ablehnen "morgen erneut?" — in einer Execution. Ein zweiter Tipp auf
+    # "Ablehnen" der ersten Frage darf die zweite nicht beantworten (sonst: ungesehen uebersprungen). Fixture:
+    # offene Zins-Vorkommen aus util_seed_test_fixtures (Tagesgeld Plus; die erste Frage zaehlt). Der Cron
     # startet sofort ueber den Test-Eingang (Start-TestCron, wie cron_text_test). Rueckfall auf einem Substrat ohne ihn: der
     # Zeitplan wird kurz auf jede Minute gestellt und danach zurueckgesetzt (die CLI spielt die finance-Workflows dabei neu
     # ein -> Chat-Knoepfe per Env erzwingen, wie bootstrap_test_n8n -HitlChatApproval).

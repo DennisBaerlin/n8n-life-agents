@@ -1,17 +1,17 @@
 -- ============================================================
--- fn_core_api_version (READ-ONLY, SECURITY DEFINER — Core↔Paket-Contract-Muster, D10)
+-- fn_core_api_version (READ, SECURITY DEFINER — Core↔Paket-Contract-Muster)
 --   Liefert CORE_API_VERSION (core.config category='api' key='core_version') als text.
---   '' wenn nicht geseedet.
+--   '' wenn nicht geseedet. Keine Eingabe.
 --
---   DIES IST DAS PUBLIZIERTE-READ-fn-MUSTER (Plan §5.2/§5.5): eine Paket-Rolle
---   (<pkg>_ro/<pkg>_rw) hat per D10 KEIN SELECT auf core-Tabellen — core.config ist
---   ihr direkt verschlossen. Den EINEN Wert, den sie legitim braucht (die Core-API-
---   Version, um Kompatibilitaet zu pruefen), bekommt sie NUR ueber diese
+--   Das Muster der publizierten Read-fn: eine Paket-Rolle
+--   (<pkg>_ro/<pkg>_rw) hat kein SELECT auf core-Tabellen, core.config ist
+--   ihr direkt verschlossen. Den einen Wert, den sie legitim braucht (die Core-API-
+--   Version, um Kompatibilitaet zu pruefen), bekommt sie nur ueber diese
 --   SECURITY-DEFINER-Funktion: sie laeuft mit den Rechten des Owners (postgres),
---   liest core.config, gibt aber AUSSCHLIESSLICH die Version zurueck. Spaetere Phasen
---   kopieren das Muster 1:1 fuer sensible Reads (Phase 3: core.fn_household_member()).
+--   liest core.config, gibt aber ausschliesslich die Version zurueck. Sensible Reads
+--   (z. B. core.fn_household_persons) folgen demselben Muster.
 --
---   HAERTUNG (Pflicht bei SECURITY DEFINER):
+--   Haertung (Pflicht bei SECURITY DEFINER):
 --     * search_path hart auf pg_catalog gepinnt + alle Objekte schema-qualifiziert
 --       (CVE-2018-1058: kein shadowing ueber einen Angreifer-search_path).
 --     * REVOKE ALL FROM PUBLIC + explizites GRANT EXECUTE nur an die Paket-Rollen

@@ -92,8 +92,8 @@ BEGIN
   IF c <> 2 THEN RAISE EXCEPTION 'FAIL [Skipped]: erwartet 2 nach Skip 06-01, got %', c; END IF;
   RAISE NOTICE 'PASS [Skipped] = 2 (06-01 raus)';
 
-  -- Audit F2a: valid_to ist EXKLUSIV ([valid_from, valid_to) wie Views/close_*/Split) -> ein Vorkommen genau
-  -- AM valid_to ist nicht mehr faellig (vorher inklusiv -> Doppel-Faelligkeit am Split-Stichtag).
+  -- valid_to ist exklusiv ([valid_from, valid_to) wie Views/close_*/Split) -> ein Vorkommen genau
+  -- am valid_to ist nicht mehr faellig (inklusiv waere es am Split-Stichtag doppelt faellig).
   DECLARE r12 INT; r13 INT;
   BEGIN
     r12 := finance.fn_add_recurring_payment(v_acct, -100, 'ValidToExcl', 1::smallint,'month'::finance.schedule_unit, 1::smallint, '2026-04-01','2026-04-01','2026-06-01', NULL, NULL);
@@ -101,7 +101,7 @@ BEGIN
     IF c <> 2 THEN RAISE EXCEPTION 'FAIL [ValidTo exklusiv]: erwartet 2 (04-01,05-01; 06-01 = valid_to raus), got %', c; END IF;
     RAISE NOTICE 'PASS [ValidTo exklusiv] = 2';
 
-    -- Audit F2a: Vorkommen VOR valid_from sind nicht faellig (Anker first_payment_date bleibt der Rhythmus-Takt).
+    -- Vorkommen vor valid_from sind nicht faellig (Anker first_payment_date bleibt der Rhythmus-Takt).
     r13 := finance.fn_add_recurring_payment(v_acct, -100, 'ValidFromLate', 1::smallint,'month'::finance.schedule_unit, 1::smallint, '2026-04-01','2026-05-15', NULL, NULL, NULL);
     SELECT count(*) INTO c FROM finance.fn_recurring_due_open(v_until) WHERE recurring_payment_id = r13;
     IF c <> 1 OR NOT EXISTS (SELECT 1 FROM finance.fn_recurring_due_open(v_until) WHERE recurring_payment_id=r13 AND due_date='2026-06-01') THEN
@@ -109,7 +109,7 @@ BEGIN
     RAISE NOTICE 'PASS [ValidFrom: Vorkommen vor valid_from nicht faellig] = 1';
   END;
 
-  -- Feste Monatstage (schedule_days_of_month, Broker-Kalender): je Monat GENAU die Tage der Liste, kein
+  -- Feste Monatstage (schedule_days_of_month, Broker-Kalender): je Monat genau die Tage der Liste, kein
   -- zusaetzlicher Anker-Tag aus dem Monats-Zweig (Zaehlung, nicht nur Existenz).
   DECLARE r14 INT; r15 INT; r16 INT;
   BEGIN
@@ -143,7 +143,7 @@ BEGIN
     RAISE NOTICE 'PASS [Days2Bi: alle 2 Monate je 2 Tage]';
   END;
 
-  -- dom=-2 (vorletzter Tag des Monats, Befund 2026-10-24): Februar Schalt-/Nichtschaltjahr,
+  -- dom=-2 (vorletzter Tag des Monats): Februar Schalt-/Nichtschaltjahr,
   -- 30/31-Tage-Monate, Quartal (n=3). Expliziter Zeitraum (2-arg), damit das 90-Tage-Fenster nicht schneidet.
   DECLARE r17 INT; r18 INT; v_got TEXT;
   BEGIN

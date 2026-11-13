@@ -1,13 +1,13 @@
 ﻿#Requires -Version 5.1
 # Definition agent.paperless_assistant -> Build-AgentPaperlessAssistant. Dot-gesourct von build.ps1.
-# Schlanker Klon des agent.estate_advisor-Templates (Clone-and-Trim, bewusst KEINE Factory — build-CLAUDE.md
-# "Agent-Generatoren sind Clone-and-Trim") fuer den Dokumenten-Assistenten (paperless Phase 2, Plan
-# bubbly-plotting-nautilus): Route fuer REINE Dokumenten-Fragen ("Wann laeuft mein Personalausweis ab?").
-# Kein Berater (kein _advisor, keine Plan-/Advisor-Maschinerie; Praezedenz guide/monitor), read-only by construction:
+# Schlanker Klon des agent.estate_advisor-Templates (Clone-and-Trim, bewusst keine Factory;
+# scripts/build/CLAUDE.md) fuer den Dokumenten-Assistenten:
+# Route fuer reine Dokumenten-Fragen ("Wann laeuft mein Personalausweis ab?").
+# Kein Berater (kein _advisor, keine Plan-/Advisor-Maschinerie; Muster guide/monitor), read-only:
 # Tools = load_context + die drei Paket-Werkzeuge search_documents/get_document/ask_documents — gebunden ueber
 # Add-ServiceTools -Own, also wie bei jedem fremden Agenten ueber den Core-Vermittler agent.sub_dispatch_tool
-# (die EINE Berechtigungs-Pruefstelle core.fn_resolve_service: Paket aktiv + nur Erwachsene). Kein postgres_select
-# (das Paket haelt keine Daten), kein web_search (Dokumenttext nie als Suchanfrage, E7).
+# (die eine Berechtigungs-Pruefstelle core.fn_resolve_service: Paket aktiv + nur Erwachsene). Kein postgres_select
+# (das Paket haelt keine Daten), kein web_search (Dokumenttext nie als Suchanfrage).
 
 function Build-AgentPaperlessAssistant {
     # --- Domaenen-Konstanten ---
@@ -55,7 +55,7 @@ function Build-AgentPaperlessAssistant {
             promptType = 'define'
             text = '={{ $json.task }}'
             # maxIterations 6 (bewusst unter den Beratern): der laengste sinnvolle Pfad ist suchen -> lesen -> ggf. fragen
-            # -> antworten (+ ein Nachfass-Suchlauf). Cap = Retry-Sturm-Bremse.
+            # -> antworten (+ ein Nachfass-Suchlauf); Cap bremst Retry-Stuerme.
             options = [ordered]@{ systemMessage = '={{ $json.system_prompt }}'; maxIterations = 6 }
         }
         type = '@n8n/n8n-nodes-langchain.agent'
@@ -68,7 +68,7 @@ function Build-AgentPaperlessAssistant {
     $mb = New-ModelSelectorBundle -ConfigField $CONFIG_FIELD -ConfigNodeName 'Load Config' `
         -AgentNodeName 'Document Agent' -SelectorPos @(-688, 208) -ModelRowPos @(-848, 416) -Effort low   # Haiku-Klasse wie der Router: kurze Werkzeug-Schleifen
 
-    # --- Chat-Memory: eigene Tabelle, Fenster 10 (kurze Nachschlage-Dialoge; Paritaet finance) ---
+    # --- Chat-Memory: eigene Tabelle, Fenster 10 (kurze Nachschlage-Dialoge; wie finance) ---
     $nMemory = [ordered]@{
         parameters = [ordered]@{
             sessionIdType = 'customKey'
@@ -84,7 +84,7 @@ function Build-AgentPaperlessAssistant {
         credentials = @{ postgres = $CRED_POSTGRES }
     }
 
-    # load_context (Paritaet estate: fn_fetch_context, chat_id build-fix aus dem Start-Node, nie $fromAI).
+    # load_context (wie estate: fn_fetch_context, chat_id build-fix aus dem Start-Node, nie $fromAI).
     $loadQuery = "=SELECT content FROM core.fn_fetch_context((`$1::jsonb)->>'name', (`$1::jsonb)->>'chat_id');"
     $loadParams = "={{ JSON.stringify({ name: `$fromAI('context_name', 'Name of the lazy context document to load (must match an entry in the manifest)', 'string'), chat_id: `$('$START_NODE').item.json.chat_id }) }}"
     $nToolLoad = [ordered]@{
@@ -105,7 +105,7 @@ function Build-AgentPaperlessAssistant {
     }
 
     $baseNodes = @($nTrigger) + $gate.Nodes + @($nLoadConfig, $nLoadCtx, $nBuildInput, $nAgent, $nMemory, $nToolLoad)
-    # Die eigenen Paket-Werkzeuge — ueber den Vermittler (EINE Pruefstelle), Beschreibungen aus dem Manifest.
+    # Die eigenen Paket-Werkzeuge — ueber den Vermittler (eine Pruefstelle), Beschreibungen aus dem Manifest.
     $svc = Add-ServiceTools -Package 'paperless' -AgentNode 'Document Agent' -StartNode $START_NODE `
         -Position @(-176, 208) -ExistingNodes $baseNodes -Own
 

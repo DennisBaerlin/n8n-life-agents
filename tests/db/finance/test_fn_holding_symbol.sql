@@ -1,6 +1,6 @@
 -- tests/db/finance/test_fn_holding_symbol.sql
--- fn_holding_symbol: Kennung einer Depot-Position = Ticker, sonst ISIN (Befund 2026-10-23: Vermoegensuebersicht
--- druckt nur die ISIN). Plus der Konsument fn_book_stock_buy: ISIN ohne Ticker bucht, weder noch -> {ok:false}.
+-- fn_holding_symbol: Kennung einer Depot-Position = Ticker, sonst ISIN (die Vermoegensuebersicht
+-- druckt sonst nur die ISIN). Plus der Konsument fn_book_stock_buy: ISIN ohne Ticker bucht, weder noch -> {ok:false}.
 BEGIN;
 
 DO $$
@@ -39,7 +39,7 @@ BEGIN
     RAISE EXCEPTION 'FAIL book ohne Kennung: %', v_r; END IF;
   RAISE NOTICE 'PASS fn_book_stock_buy [ohne Ticker und ISIN -> ok:false]';
 
-  -- zweiter Konsument (Review 2026-10-23): Sparplan auf eine ISIN-only-Position -> Kennung ISIN, kein Ticker noetig
+  -- zweiter Konsument: Sparplan auf eine ISIN-only-Position -> Kennung ISIN, kein Ticker noetig
   v_r := finance.fn_create_savings_plan(jsonb_build_object('name', '__t_hs_plan__', 'depot_name', '__t_hs_depot__',
            'isin', 'IE00B5BMR087', 'security_name', 'S&P 500 (Acc)', 'amount', 25, 'first_payment_date', '2027-01-01'));
   IF (v_r->>'ok')::boolean IS DISTINCT FROM true

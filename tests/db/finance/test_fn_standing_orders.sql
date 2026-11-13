@@ -1,7 +1,7 @@
 -- tests/db/finance/test_fn_standing_orders.sql
 -- finance.fn_standing_orders() — die Dauerauftraege der Bank-To-do: Uebertraege eigenes -> eigenes Konto ('transfer',
 -- auch Haushalts-Umbuchungen, auch erst kuenftige) und Spar-Lastschriften ohne Ziel ('debit': Vorsorge, Sparziel-Rate
--- ohne Topf); nie Kredit-Raten, Sparplan-Ausfuehrungen, Eingaenge, sonstige Lastschriften, beendete; je Kette EIN Glied.
+-- ohne Topf); nie Kredit-Raten, Sparplan-Ausfuehrungen, Eingaenge, sonstige Lastschriften, beendete; je Kette ein Glied.
 BEGIN;
 DO $$
 DECLARE

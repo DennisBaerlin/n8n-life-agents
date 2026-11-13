@@ -1,42 +1,42 @@
 ﻿#Requires -Version 5.1
 # Definition agent.estate.cron_review_register -> Build-EstateCronReviewRegister. Dot-gesourct von build.ps1.
-# WS-4: monatlicher Jahres-Review des Vorsorge-Registers. Ruft core.fn_advisor_review_evaluate('estate',
+# Monatlicher Jahres-Review des Vorsorge-Registers. Ruft core.fn_advisor_review_evaluate('estate',
 # NULL, '{}') -> die generische Core-Advisor-Engine dispatcht auf estate.fn_advisor_review (Registry
-# core.advisors) und LATCHT deren Alerts (Register-Staleness > advisor.estate_review_days, fehlende Vorsorge-
+# core.advisors) und latcht deren Alerts (Register-Staleness > advisor.estate_review_days, fehlende Vorsorge-
 # Dokumente je Erwachsenem, finance-Nachlass-Feld-Gaps [guarded]) gegen die geteilte core.notification_state.
-# send=true NUR bei NEUEM Breach -> der Cron ist SELBST-STILL (Default always-on, aber die Meldung kommt nur,
+# send=true nur bei neuem Breach -> der Cron ist selbst-still (Default always-on, aber die Meldung kommt nur,
 # wenn etwas Neues auftaucht) -> keine Spam-Gefahr trotz monatlicher Kadenz.
 #
-# BEGRUENDETE ABWEICHUNG vom career-Erbmodell (Opus-M4, Plan groovy-watching-wave): die geteilten Advisor-Crons
-# (agent.advisor.cron_drift_check/cron_review via New-AdvisorCron) sind default-OFF und NUR ueber den
-# finance-/career-Publish-Knopf einschaltbar. estate hat KEIN Publish -> ohne eigenen Cron liefe der Review
-# still nie. Also ein schlanker EIGEN-Cron (Skelett wie cron.remind_case_tasks: F9-Gate -> Eval -> Build ->
-# Anything? -> Phrase/Choose/Send), der NUR die estate-Domaene evaluiert (household -> person_id NULL, KEINE
-# Get-AdvisorFanoutCte noetig). KEINE Wiederverwendung von New-AdvisorCron: dessen Gate/Schedule-Lookup ist
+# Abweichung vom career-Erbmodell: die geteilten Advisor-Crons
+# (agent.advisor.cron_drift_check/cron_review via New-AdvisorCron) sind default-OFF und nur ueber den
+# finance-/career-Publish-Knopf einschaltbar. estate hat kein Publish -> ohne eigenen Cron liefe der Review
+# still nie. Daher ein schlanker Eigen-Cron (Skelett wie cron.remind_case_tasks: F9-Gate -> Eval -> Build ->
+# Anything? -> Phrase/Choose/Send), der nur die estate-Domaene evaluiert (household -> person_id NULL, keine
+# Get-AdvisorFanoutCte noetig). New-AdvisorCron ist nicht wiederverwendbar: dessen Gate/Schedule-Lookup ist
 # hart auf das Paket 'core' verdrahtet und es traegt einen Abschalten-Button (cron_off, den estate nicht will).
 # Der Phrase/Choose/Model-Schwanz ist der geteilte New-AdvisorPhrasingTail (lib/build_helpers.ps1, wie New-AdvisorCron;
-# model.advisor_review bei JEDEM Lauf aus core.config).
+# model.advisor_review bei jedem Lauf aus core.config).
 #
-# ALWAYS-ON + HAUSHALTS-ERINNERUNG (Roter Faden Paket B): cron_enable.review_register=true, Eintrag in cron_labels.list
+# Always-on + Haushalts-Erinnerung: cron_enable.review_register=true, Eintrag in cron_labels.list
 # -> der Owner schaltet sie per [Erinnerung abschalten] an der Karte (cron_off:review_register) oder in /reminders;
 # Konsole: lifeagents config set cron_enable review_register false. (cron_remind_case_tasks bleibt Pflicht = nie schaltbar.)
-# ROLLE: laeuft unter dem Haupt-RW-Credential (Build-Pg-Default = WRITE) — die Eval-fn SCHREIBT Latch-State
-# (Praezedenz cron.advisor_common.ps1; die SQL ist entwickler-geschrieben + deterministisch, kein LLM-SELECT).
+# Rolle: laeuft unter dem Haupt-RW-Credential (Build-Pg-Default = WRITE) — die Eval-fn schreibt Latch-State
+# (Muster cron.advisor_common.ps1; die SQL ist deterministisch, kein LLM-SELECT).
 function Build-EstateCronReviewRegister {
     $trig = Build-ScheduleTrigger @(-1100, 0) -ScheduleKey 'review_register'
 
-    # F9-Gate (WS-1/Phase 4a): nur wenn Paket aktiv UND cron_enable -> sonst No-op (fail-closed). DB entscheidet.
+    # F9-Gate: nur wenn Paket aktiv und cron_enable -> sonst No-op (fail-closed). DB entscheidet.
     $gate = Build-Pg 'Cron enabled?' @(-880, 0) `
         "=SELECT core.fn_package_active('estate') AND COALESCE(core.fn_config_get('estate','cron_enable','review_register') = 'true', false) AS enabled" `
         $null
     $ifEnabled = Build-If 'Cron on?' @(-660, 0) '={{ $json.enabled }}' 'true' 'equals' 'boolean'
     $off = Build-NoOp 'Disabled' @(-440, 200)
 
-    # Generischer Eval-Pass NUR fuer die estate-Domaene (household -> person_id NULL, keine Fan-out-CTE). Der
-    # Wrapper: Registry-Lookup estate -> estate.fn_advisor_review, dyn. EXECUTE, dann LATCH je Alert gegen
-    # core.notification_state (source='advisor:estate') -> send=true gdw mind. EIN Breach NEU ist. jsonb ::text
+    # Generischer Eval-Pass nur fuer die estate-Domaene (household -> person_id NULL, keine Fan-out-CTE). Der
+    # Wrapper: Registry-Lookup estate -> estate.fn_advisor_review, dyn. EXECUTE, dann Latch je Alert gegen
+    # core.notification_state (source='advisor:estate') -> send=true gdw mind. ein Breach neu ist. jsonb ::text
     # (n8n-Pg-Node-Quirk, Muster cron.advisor_review.ps1).
-    # Textkatalog Phase C: die Texte (Owner-Sprache; feste Keys + alle tpl-Keys der Alerts) in DERSELBEN Anweisung
+    # Die Texte (Owner-Sprache; feste Keys + alle tpl-Keys der Alerts) kommen in derselben Anweisung
     # wie der Latch (MATERIALIZED) — ein Ladefehler rollt den Latch mit zurueck.
     $keys = Get-UiKeysSql (@('estate.advisor.review_intro', 'core.reminders.btn_off') + $script:UiRenderKeys)
     $evaluate = Build-Pg 'Evaluate review' @(-440, 0) `
@@ -45,7 +45,7 @@ function Build-EstateCronReviewRegister {
          "SELECT ev.r::text AS r, cap.c::text AS cap, core.fn_ui_texts_for(jsonb_build_object('keys', to_jsonb($keys), 'doc', cap.c))::text AS ui FROM ev, cap") `
         $null
 
-    # Deterministischer Message-Text (Fallback + LLM-Input) — Code, kein LLM. NUR bei send=true (neuer Breach)
+    # Deterministischer Message-Text (Fallback + LLM-Input) — Code, kein LLM. Nur bei send=true (neuer Breach)
     # aus der paket-gelieferten alert.msg-Struktur (geteilter Renderer, Owner-Sprache); sonst report=false -> Quiet run.
     $buildJs = (Get-UiRenderLibJs) + @'
 const r = JSON.parse($json.r || '{}');
@@ -70,12 +70,12 @@ return [{ json: { det_text: U.t('estate.advisor.review_intro') + '\n\n' + parts.
     $quiet = Build-NoOp 'Quiet run' @(180, 200)
 
     # LLM formuliert warm/behutsam um (Vorsorge-Sensibilitaet); Zahlen/Items unveraendert; Fehler -> der
-    # deterministische Text (Choose text). Geteilter Schwanz New-AdvisorPhrasingTail (model.advisor_review bei JEDEM
-    # Lauf; Load model config sitzt VOR Evaluate review -> Latch-Write erst nach erfolgreichem Laden).
+    # deterministische Text (Choose text). Geteilter Schwanz New-AdvisorPhrasingTail (model.advisor_review bei jedem
+    # Lauf; Load model config sitzt vor Evaluate review -> Latch-Write erst nach erfolgreichem Laden).
     $tail = New-AdvisorPhrasingTail -ConfigPackage 'core' -ConfigKey 'advisor_review' -Effort low `
         -PromptLead 'Rewrite the following yearly estate-preparedness reminder as a short, warm, reassuring Telegram message, written in the language {language}. Keep German legal terms (e.g. Vorsorgevollmacht, Patientenverfuegung) in German. PLAIN TEXT only (no markdown, no asterisks). Keep EVERY number and every concrete item EXACTLY as given. Maximum 16 lines. Text:\n\n'
 
-    # Nudge an den Owner mit [Erinnerung abschalten] (Roter Faden Paket B: Haushalts-Erinnerung in cron_labels.list,
+    # Nudge an den Owner mit [Erinnerung abschalten] (Haushalts-Erinnerung in cron_labels.list,
     # Abmelden an der Nachricht selbst; cron_off:review_register -> core.fn_set_cron_enable, wieder an in /reminders).
     # Text escapt der Helper.
     $send = New-TelegramInlineKeyboardSendNode 'Send review' @(620, 0) "={{ `$json.message }}" `

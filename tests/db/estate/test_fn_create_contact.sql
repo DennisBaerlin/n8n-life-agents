@@ -1,5 +1,5 @@
 -- tests/db/estate/test_fn_create_contact.sql
--- WS-2: Schluessel-Kontakt-Anlage — Happy Path, Rollen-Guard, Kind-Reject; mehrere Kontakte
+-- Schluessel-Kontakt-Anlage — Happy Path, Rollen-Guard, Kind-Reject; mehrere Kontakte
 -- derselben Rolle sind legitim (kein UNIQUE auf role). Self-contained; BEGIN..ROLLBACK.
 BEGIN;
 

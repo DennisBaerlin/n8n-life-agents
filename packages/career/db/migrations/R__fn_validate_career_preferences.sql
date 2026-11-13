@@ -1,14 +1,15 @@
 -- ============================================================
--- career.fn_validate_career_preferences (WS-2 — Validator des career_preferences-facts-Sidecars, D12)
---   Strukturvalidierung des 2. paket-besessenen Fakten-Kontexts (gelernte Job-Praeferenzen aus dem
---   👍/👎-Feedback-Loop: was der Owner mag/meidet). Vorbild career.fn_validate_career_profile; der Sidecar
---   wird vom Advisor via tool_set_career_preferences (= 2. Bindung von agent.fn_set_context_facts,
---   context_name='career_preferences', owner_only) geschrieben. Der Core-Trigger trg_core_contexts_validate_
---   facts_fn dispatcht GENERISCH ueber core.context_validators hierher. Fehlt die Registry-Zeile (Paket nicht
---   installiert), entfaellt der career-Anteil still.
---   PARTIAL-TOLERANT: jedes Feld optional (Praeferenzen wachsen aus dem Feedback). Der Scorer re-injiziert
---   diesen Kontext beim naechsten Lauf -> Lernschleife. RUECKGABE: NULL = gueltig, sonst Fehlertext.
---   Anwenden via: db_apply.ps1 -File packages\career\db\migrations\R__fn_validate_career_preferences.sql
+-- career.fn_validate_career_preferences (VALIDATOR)
+--   Strukturvalidierung des paket-besessenen Fakten-Kontexts career_preferences (gelernte Job-Praeferenzen
+--   aus dem 👍/👎-Feedback-Loop: was die Person mag/meidet). Vorbild career.fn_validate_career_profile; der
+--   Sidecar wird vom Advisor via tool_set_career_preferences (bindet agent.tool_set_own_context_facts,
+--   Stufe self) geschrieben. Der Core-Trigger trg_core_contexts_validate_facts_fn dispatcht generisch ueber
+--   core.context_validators hierher. Fehlt die Registry-Zeile (Paket nicht installiert), entfaellt der
+--   career-Anteil still.
+--   Eingabe: p_facts (jsonb-Objekt; NULL/Nicht-Objekt -> gueltig). Partial-tolerant: jedes Feld optional
+--   (Praeferenzen wachsen aus dem Feedback). Der Scorer re-injiziert diesen Kontext beim naechsten Lauf
+--   (Lernschleife).
+--   Rueckgabe: NULL = gueltig, sonst Fehlertext.
 -- ============================================================
 CREATE OR REPLACE FUNCTION career.fn_validate_career_preferences(p_facts jsonb)
 RETURNS text LANGUAGE plpgsql STABLE AS $$
@@ -29,7 +30,7 @@ BEGIN
         END IF;
     END LOOP;
 
-    -- salary_floor: Roh-Zahl 0..10000000 (Untergrenze, die der Owner akzeptiert)
+    -- salary_floor: Roh-Zahl 0..10000000 (Untergrenze, die die Person akzeptiert)
     IF p_facts ? 'salary_floor' AND jsonb_typeof(p_facts->'salary_floor') <> 'null' THEN
         IF jsonb_typeof(p_facts->'salary_floor') <> 'number' THEN
             RETURN 'career_preferences.salary_floor must be a number';
@@ -38,7 +39,7 @@ BEGIN
             RETURN format('career_preferences.salary_floor %s out of sane range (0..10000000)', p_facts->>'salary_floor');
         END IF;
     END IF;
-    -- WP3: Einheit des Gehalts roh (wie gesagt); den Jahreswert rechnet career.fn_salary_annual beim Anzeigen
+    -- Einheit des Gehalts roh (wie gesagt); den Jahreswert rechnet career.fn_salary_annual beim Anzeigen
     IF p_facts ? 'salary_floor_period' AND jsonb_typeof(p_facts->'salary_floor_period') <> 'null'
        AND p_facts->>'salary_floor_period' NOT IN ('month', 'year') THEN
         RETURN format('career_preferences.salary_floor_period "%s" invalid (month|year)', p_facts->>'salary_floor_period');

@@ -56,10 +56,10 @@ BEGIN
 END $$;
 
 -- ============================================================
--- WS-5c-A: optionaler amount (Betrags-Anpassung am Stichtag)
+-- Optionaler amount (Betrags-Anpassung am Stichtag)
 --   sign(rp.amount)*abs(amount) -> Richtung Einnahme/Ausgabe bleibt;
---   amount<=0 -> {ok:false} ohne Write; Transfer + amount -> zwei Beine mit dem Ist-Betrag (Monats-Check WP-A:
---   der Kontoauszug kennt den echten Betrag einer Sparrate; vorher {ok:false}).
+--   amount<=0 -> {ok:false} ohne Write; Transfer + amount -> zwei Beine mit dem Ist-Betrag
+--   (der Kontoauszug kennt den echten Betrag einer Sparrate).
 -- ============================================================
 DO $$
 DECLARE
@@ -117,7 +117,7 @@ BEGIN
   END IF;
   RAISE NOTICE 'PASS [amount=0 -> ok:false, kein Write]';
 
-  -- (4) Transfer + amount -> zwei Beine mit dem Ist-Betrag (Monats-Check WP-A)
+  -- (4) Transfer + amount -> zwei Beine mit dem Ist-Betrag
   SELECT finance.fn_create_account(
     '{"name":"__test_bookrec_adj2__","account_type":"cash","account_holder":"Test","currency":"EUR"}'::jsonb
   ) INTO v_result;
@@ -138,8 +138,8 @@ BEGIN
 
 END $$;
 
--- (5) Audit F1a: Kreditrate ueber die Erinnerung -> Delegation an fn_book_loan_payment (Giro-Abbuchung + Tilgung).
---     Vorher: eine nackte 'other'-Abbuchung, die Restschuld blieb stehen (200.000 statt 199.600: Rate 1.000 = Zins 600 + Tilgung 400).
+-- (5) Kreditrate ueber die Erinnerung -> Delegation an fn_book_loan_payment (Giro-Abbuchung + Tilgung).
+--     Eine nackte 'other'-Abbuchung liesse die Restschuld stehen (200.000 statt 199.600: Rate 1.000 = Zins 600 + Tilgung 400).
 DO $$
 DECLARE
   v_res  JSONB; v_giro INT; v_loan INT; v_lacc INT; v_rp INT;

@@ -2,27 +2,26 @@
 # Dot-gesourct von build.ps1 (Helper + Script-Scope-Creds im Parent-Scope).
 
 # --- tool_extract_finance_document -------------------------
-# BULK-IMPORT Vision-Pfad (Phase 2): Telegram-file_id(s) -> agent.tool_fetch_telegram_file (INLINE, je Datei,
-# generischer Download-/base64-Baustein, WS-4) -> Claude-Vision aufs BILD/PDF (bezahlte API, trainiert
-# nicht — Kontoauszuege NIE ueber einen Free-Tier-Zugang) -> rohe Rows ->
+# Bulk-Import Vision-Pfad: Telegram-file_id(s) -> agent.tool_fetch_telegram_file (inline, je Datei,
+# generischer Download-/base64-Baustein) -> Claude-Vision aufs Bild/PDF (bezahlte API, trainiert
+# nicht — Kontoauszuege nie ueber einen Free-Tier-Zugang) -> rohe Rows ->
 # fn_import_stage (source=vision). Kein eigenes HITL (Staging ist Arbeitskopie); jede Zahl laeuft durch
-# Validate + das EINE Commit-Gate — sind alle Zeilen gueltig, ruft dieses Tool tool_commit_import selbst (Karte sicher). Modell via config model.vision_extract, bei JEDEM Lauf gelesen (Load model config).
-# Das Plumbing (Download/Validierung/base64) lebt seit WS-4 im Core-Baustein; die FINANZ-Vision bleibt
-# HIER (volle Bild-Genauigkeit + Privacy-Hard-Rule), der Claude-Aufruf ueber den geteilten Baustein
+# Validate + das eine Commit-Gate — sind alle Zeilen gueltig, ruft dieses Tool tool_commit_import selbst (Karte sicher). Modell via config model.vision_extract, bei jedem Lauf gelesen (Load model config).
+# Das Plumbing (Download/Validierung/base64) lebt im Core-Baustein; die Finanz-Vision bleibt
+# hier (volle Bild-Genauigkeit + Privacy), der Claude-Aufruf ueber den geteilten Baustein
 # New-AnthropicMessagesNode (lib/build_helpers.ps1).
 function Build-ExtractFinanceDocument {
-    # WS-B0: enge Paket-Schreibrolle (finance_rw, Least-Privilege D10) statt Owner-Cred.
-    # Dynamic-Scope: Build-Pg liest dieses $CRED_POSTGRES. Core-Tools nutzen die Owner-Cred.
+    # Enge Paket-Schreibrolle (finance_rw) statt Owner-Cred; Build-Pg liest $CRED_POSTGRES per Dynamic-Scope.
     $CRED_POSTGRES = $CRED_FINANCE_RW
 
-    # WS-4: generischen Download-/base64-Baustein inline rufen (D9-Core-Service-Alias). Liefert { ok, b64, mime, error }.
+    # Generischen Download-/base64-Baustein inline rufen (Core-Service-Alias). Liefert { ok, b64, mime, error }.
     $idFetch = Get-RequiredWorkflowId (Resolve-CoreServiceAlias 'core:fetch_telegram_file' $CoreServiceMap) 'Build-ExtractFinanceDocument'
 
-    # Extraktions-Vertrag (EN, Layer 1): NUR Rohwerte, JSON-Array, Felder des Staging-Vertrags.
-    # KEINE Apostrophe verwenden (JS-Single-Quote-String im jsonBody).
+    # Extraktions-Vertrag (EN, Layer 1): nur Rohwerte, JSON-Array, Felder des Staging-Vertrags.
+    # Keine Apostrophe verwenden (JS-Single-Quote-String im jsonBody).
     $sysText = 'You extract structured finance data from a photographed or scanned German finance document (Depotauszug, insurance policy, Renteninformation, Rentenauskunft, Standmitteilung, a document listing accounts). Output ONLY a JSON array, no prose. Several files may come together, labelled File 1 of N and so on: pages or overlapping screenshots of one document, or different documents. Read every file completely. Give each element source_file = the number of its file (1 for a single file), keep the printed order within each file, and output a row again if it is printed in two files - never merge or drop rows across files, the system removes overlaps. Details printed in one file (depot, holder, account) apply to another file only if it clearly continues the same document. If the document or one of the files is a bank account statement with individual booking lines and an opening and closing balance (Kontoauszug, credit card statement), return exactly [{"entity_type":"bank_statement"}] and nothing else - it belongs to the monthly check, not to this import. Each element has entity_type plus RAW printed values - never compute, never estimate; omit fields that are not printed or unreadable. German number format 1.234,56 means 1234.56; output plain numbers. Dates as YYYY-MM-DD. Supported entity_type and fields: account {name, account_type one of cash|p2p|stocks_depot|crypto_depot|fixed_deposit, bank, opening_balance = the printed CURRENT or closing balance, account_number, currency}; stock_buy {depot = depot account name if known, depot_number = the printed depot or account number of the depot (Depot, Depotnummer), depot_holder = the printed depot holder (first and last name), symbol = the ticker ONLY if a ticker is printed (an ISIN is not a ticker; never derive a ticker from the name), isin, name, shares, price_per_share = printed purchase price PER UNIT (labels: Einstandskurs, durchschnittlicher Einstandskurs, Ø Einstand, Kaufkurs, Einstandspreis), cost_basis_total = printed TOTAL purchase value of the position (labels: Einstandswert, Einstand gesamt, Kaufwert) - give whichever is printed (both if both), NEVER the current market price or market value (Kurswert, Marktwert, aktueller Kurs); omit both only if neither is printed} one element PER POSITION of a Depotauszug; insurance {name, annual_premium, insurance_company, policy_number}; pension {name, pension_type one of statutory|occupational|riester|ruerup|private, provider, current_value (never for statutory), contract_number, owner_person = the printed first and last name of the insured person}; recurring_payment {name, direction one of income|expense, amount, schedule_unit one of day|week|month|year}; real_estate {name, current_value}; pension_statement {pension = name of the pension this statement belongs to, statement_date = the date of the letter, reached_claim = monthly pension from the claim reached so far (bislang erreichte Rentenanwartschaft), projection = monthly pension if contributions continue, without pension adjustments (Hochrechnung), scenario_1pct and scenario_2pct = the printed monthly pension at a yearly adjustment rate of 1 percent and 2 percent, em_monthly = Rente wegen voller Erwerbsminderung, earning_points = Entgeltpunkte, regular_retirement_date = the printed start date of the Regelaltersrente} for a Renteninformation, Rentenauskunft or Standmitteilung - for a statutory pension also emit the pension row (pension_type statutory, provider, owner_person); settlement_balance {depot = depot account name if known, depot_number, depot_holder, balance = the printed cash balance, balance_date = the printed as-of date of that balance (labels: zum, Stand, Datum)} for the cash or settlement line of a depot overview (labels: Cash, Cashkonto, Verrechnungskonto, Guthaben) - NEVER output that cash line as an account. If the document is not a finance document, return [].'
 
-    $trig = Build-Trigger @((Get-ImportToolSpec 'tool_extract_finance_document') | ForEach-Object { $_[0] })   # Feldliste aus ../import_tool_specs.ps1 (EINE Quelle, Review A5)
+    $trig = Build-Trigger @((Get-ImportToolSpec 'tool_extract_finance_document') | ForEach-Object { $_[0] })   # Feldliste aus ../import_tool_specs.ps1 (eine Quelle)
 
     # Geteilter Datei-Leser (ein oder mehrere Fotos/PDFs): je Datei der Core-Baustein, Fehler als Daten.
     $reader = New-TelegramFilesReader -FetchId $idFetch -OnFiles 'Load model config' -OnError 'File unusable' -X 200 -Y 60
@@ -83,7 +82,7 @@ return [{ json: { ok: true, rows: JSON.stringify(rows), row_count: rows.length, 
         name = 'Shape rows'
     }
     $ifShaped = Build-If 'Rows ok?' @(1520, 60) "={{ `$json.ok }}" 'true' 'equals' 'boolean'
-    # W9-Backstop (DB-ist-das-Gesetz S9): ein Kontoauszug mit Buchungszeilen kommt als code=use_reconcile_bank_statement
+    # DB-Backstop: ein Kontoauszug mit Buchungszeilen kommt als code=use_reconcile_bank_statement
     # zurueck (nichts gestaged) -> der Agent ruft tool_reconcile_bank_statement mit derselben file_id.
     $errShape = Build-Set 'Extraction failed' @(1740, 240) @(
         ,@('ok', 'false', 'boolean')
@@ -103,7 +102,7 @@ return [{ json: { ok: true, rows: JSON.stringify(rows), row_count: rows.length, 
     $ifStaged = Build-If 'Stage ok?' @(1960, 60) "={{ `$json.ok }}" 'true' 'equals' 'boolean'
     $errStage = Build-ToolError 'Stage failed' @(2180, 240) "={{ `$('Stage extracted rows').item.json.reason }}"
 
-    # Cash-/Verrechnungs-Salden (settlement_balance, 2026-10-23): read-only Zuordnung zum Verrechnungskonto des Depots
+    # Cash-/Verrechnungs-Salden (settlement_balance): read-only Zuordnung zum Verrechnungskonto des Depots
     # (fn_import_balance_targets: Depotnummer/Inhaber, nur Bestandskonten, Druckdatum Pflicht, Blocker wie der Abgleich)
     # -> balances[] im Return; der Agent ruft danach je Abweichung tool_reconcile_account (eigene Karte).
     $ifAnyRows = Build-If 'Any rows to stage?' @(1630, -60) "={{ `$('Shape rows').item.json.row_count > 0 }}" 'true' 'equals' 'boolean'
@@ -127,7 +126,7 @@ return [{ json: { ok: true, rows: JSON.stringify(rows), row_count: rows.length, 
         ,@('overlap_removed', "={{ `$('Shape rows').item.json.overlap_removed }}", 'number')
     )
 
-    # Owner 2026-10-22 (arch-challenge: fester Ablauf statt LLM-Entscheid): sind ALLE Zeilen des Batches gueltig, schickt
+    # Fester Ablauf statt LLM-Entscheid: sind alle Zeilen des Batches gueltig, schickt
     # dieses Tool die Sammelkarte SELBST (tool_commit_import inline: Karte mit Knoepfen + atomarer Write nach dem Tipp)
     # und liefert deren Ergebnis — die Karte kommt garantiert, statt dass das Modell im Text "Soll ich uebernehmen?"
     # fragt. Ungueltige Zeilen -> keine Karte, der Agent klaert sie (tool_update_staging_row -> tool_commit_import).

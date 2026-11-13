@@ -1,10 +1,10 @@
 ﻿#Requires -Version 5.1
 # Dot-gesourct von build.ps1 (Helper + Script-Scope-Creds im Parent-Scope).
 
-# --- agent.estate.tool_set_case (WS-3, HITL owner_approval, partielles UPDATE eines OFFENEN Falls) ---
-# Aendert knowledge_date / bundesland / flags eines offenen Falls und ZIEHT DIE FRISTEN NACH
+# --- agent.estate.tool_set_case (HITL owner_approval, partielles UPDATE eines offenen Falls) ---
+# Aendert knowledge_date / bundesland / flags eines offenen Falls und zieht die Fristen nach
 # (Recompute offener Tasks + Reconcile in beide Richtungen, nur fuer System-Status; Nutzer-Status bleiben).
-# WP3: Merkmal 'true'/'false' = Aussage des Nutzers (schlaegt das Register), 'register' = Aussage vergessen -> wieder
+# Merkmal 'true'/'false' = Aussage des Nutzers (schlaegt das Register), 'register' = Aussage vergessen -> wieder
 # Ableitung aus dem Register (null-Merge in fn_set_case). Relatives knowledge_date loest der Probelauf auf (effective).
 # adults_only-DB-Backstop in der fn. Cred = estate_rw.
 function Build-EstateSetCase {
@@ -22,14 +22,13 @@ function Build-EstateSetCase {
         flags          = $setFlagsExpr
     }
 
-    # Strukturiertes Summary (Textkatalog): Keys + typisierte Rohwerte, das Gate rendert je Empfaenger-Sprache.
     # Nicht genannte Felder zeigen "unveraendert"; die Merkmale erscheinen als Liste lesbarer Enum-Werte.
     $S = "`$('Start').item.json"
     $flagKeys = "['tenant','employed','pension_relevant','has_will','no_poa','abroad_or_work_accident']"
     # Merkmal-Liste je Aussage (true/false/register) als lesbare Enums; leer -> Zeile entfaellt (-OmitEmpty).
     $flagList = "$flagKeys.filter(k => String($S[k] || '').toLowerCase() === '{0}').map(k => ({{ kind: 'enum', value: k, enum: 'estate.enum.case_flag' }}))"
     $D = "`$('Dry run').item.json.r"   # Probelauf-Ergebnis: effective.knowledge_date = das von der DB aufgeloeste Datum
-    # "DB ist das Gesetz": estate.fn_set_case laeuft als Probelauf VOR der Karte; derselbe Param-Satz geht nach dem Gate in den echten Write.
+    # estate.fn_set_case laeuft als Probelauf vor der Karte; derselbe Param-Satz geht nach dem Gate in den echten Write.
     $wg = New-FnWriteGate -Fn 'estate.fn_set_case' -DryPos @(220, 0) -WritePos @(1540, 0) `
         -WriteName 'Set case (atomic)' `
         -WriteSelect "(r->>'ok')::boolean AS ok, r->>'reason' AS reason, (r->>'case_id')::bigint AS case_id, (r->>'total_open')::int AS total_open, r->>'case_status' AS case_status" `

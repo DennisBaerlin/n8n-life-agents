@@ -1,10 +1,10 @@
 -- tests/db/finance/test_app_household_fixture.sql
--- Der gemeinsame Fixture-Haushalt tests/util/util_app_household.sql (UX-Gesamtkonzept 2026-10-31, Abschnitt 10):
+-- Der gemeinsame Fixture-Haushalt tests/util/util_app_household.sql:
 --   [1] laedt, jeder Schluessel in pg_temp.app_fx zeigt auf eine echte Zeile; die Regressions-Konstellationen stehen
---       (Sparkonto: Ziel-Geld 16.850 von 28.000 = B1, Dauerauftrag Sparkonto -> Broker-Cash = B2, Kredit mit
---       Laufzeitende + gleich hohes erreichtes Ziel = B4, Depot mit genau einer Position = B5, Verrechnungskonto 0 EUR
---       ohne Bewegung = B10)
---   [2] jeder Mini-App-Bildschirm-Handler (finance.fn_app_screen_*, dynamisch: Pakete B/C/D benennen um) liefert fuer
+--       (Sparkonto: Ziel-Geld 16.850 von 28.000, Dauerauftrag Sparkonto -> Broker-Cash, Kredit mit
+--       Laufzeitende + gleich hohes erreichtes Ziel, Depot mit genau einer Position, Verrechnungskonto 0 EUR
+--       ohne Bewegung)
+--   [2] jeder Mini-App-Bildschirm-Handler (finance.fn_app_screen_*, dynamisch gefunden) liefert fuer
 --       Owner, Partnerin, beide Kinder und den Gast ok:true, auch als probe, und core.fn_app_view_lint findet keine
 --       kaputte Form. Die Regel-Assertion (Lint = 0) gehoert in den jeweiligen test_fn_app_screen_*.
 --   [3] die Fixture schreibt nichts dauerhaft: Temp-Tabelle ist fuer PUBLIC lesbar (SET LOCAL ROLE-Tests).

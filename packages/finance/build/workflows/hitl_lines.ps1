@@ -1,19 +1,19 @@
 ﻿#Requires -Version 5.1
-# Die Feldzeilen der finance-Bestaetigungskarten je Art (Owner 2026-10-22: alle fuer die Art relevanten Felder, ein
-# Feld pro Zeile, einheitlich). EINE Definition fuer die Einzel-Karte (tool_create_* / tool_book_stock_buy) UND die
+# Die Feldzeilen der finance-Bestaetigungskarten je Art (alle fuer die Art relevanten Felder, ein
+# Feld pro Zeile, einheitlich). Eine Definition fuer die Einzel-Karte (tool_create_* / tool_book_stock_buy) und die
 # Import-Karte (tool_commit_import, je Staging-Zeile ein Block). Helper-Datei ohne Build-* (die Builder-Discovery
 # liefert hier 0 Builder); gelesen nur in Funktionskoerpern -> Ladereihenfolge egal.
 #
 # Regeln (packages/CLAUDE.md *HITL-Bestaetigungs-Format*):
-#   - Jede Art hat eine feste Zeilenliste; ein leeres Feld zeigt '—' (Renderer). -If NUR fuer (a) die Relevanz je
+#   - Jede Art hat eine feste Zeilenliste; ein leeres Feld zeigt '—' (Renderer). -If nur fuer (a) die Relevanz je
 #     Unterart (Depot vs. Konto, Festgeld, Einnahme vs. Ausgabe) und (b) Folgegruppen eines gesetzten Hauptfelds
 #     (Zins, Kreditrate, Rentenbeitrag) — dann vollstaendig. Zahl-Bedingungen ueber Get-FinanceNumSetJs (numerisch:
 #     '0' aus dem Einzel-Tool und 0 aus dem Import gelten gleich als "nicht gesetzt").
-#   - -S = JS-Ausdruck des Feld-Objekts mit den Feldnamen der EINZEL-Tools (Build-Trigger); der Import mappt seine
+#   - -S = JS-Ausdruck des Feld-Objekts mit den Feldnamen der Einzel-Tools (Build-Trigger); der Import mappt seine
 #     Staging-Namen ueber $script:FIN_IMPORT_CARD.Alias darauf. -D = abgeleitete Werte als JS-Ausdruecke (Einzel-Tool:
-#     Pre-Gate-Knoten; Import: X.* aus finance.fn_import_card_rows) — beide aus DENSELBEN fn_* wie der Write.
+#     Pre-Gate-Knoten; Import: X.* aus finance.fn_import_card_rows) — beide aus denselben fn_* wie der Write.
 #   - Was die Import-Zeile tragen darf (finance.fn_import_allowed_keys) muss eine Kartenzeile haben:
-#     Test-FinanceImportKeysCovered bricht den Build sonst (Owner: was nicht auf der Karte steht, wird nicht gespeichert).
+#     Test-FinanceImportKeysCovered bricht den Build sonst (was nicht auf der Karte steht, wird nicht gespeichert).
 
 # JS: ist ein Zahl-Feld gesetzt (nicht leer, nicht 0)? Deutsches Komma toleriert; unlesbar zaehlt als gesetzt
 # (lieber eine Zeile zu viel zeigen als einen geschriebenen Wert verstecken).
@@ -21,8 +21,8 @@ function Get-FinanceNumSetJs([string]$Expr) {
     "((v) => v !== undefined && v !== null && v !== '' && Number(String(v).replace(',', '.')) !== 0)($Expr)"
 }
 
-# Abbuchungstag (schedule_day_of_month) in Klartext — EINE Definition fuer alle Karten (vorher Kopien je Tool; Sparziel
-# und Sparplan zeigten -1 als "-1."): -1 -> letzter, -2 -> vorletzter Tag des Monats, fester Tag -> Template -DayTpl
+# Abbuchungstag (schedule_day_of_month) in Klartext — eine Definition fuer alle Karten (sonst zeigten
+# Sparziel und Sparplan -1 als "-1."): -1 -> letzter, -2 -> vorletzter Tag des Monats, fester Tag -> Template -DayTpl
 # (Param {day}), leer -> -Empty (JS-Ausdruck; 'null' = '—'). Liefert den Template-Key-Ausdruck fuer New-HitlLine -Kind tpl.
 function Get-FinanceDomTpl {
     param([Parameter(Mandatory)][string]$Dom, [string]$DayTpl = 'finance.tpl.day_of_month', [string]$Empty = 'null')
@@ -33,7 +33,7 @@ function Get-FinanceMonthEndKey([string]$Dom) {
     "(String($Dom ?? '') === '-2' ? 'finance.value.second_to_last_day_of_month' : 'finance.value.last_day_of_month')"
 }
 
-# Zins-Kadenz in Klartext (Befund 2026-10-24: keine Codes wie "ACT/365" oder "-1" auf der Karte) — EINE Definition
+# Zins-Kadenz in Klartext (keine Codes wie "ACT/365" oder "-1" auf der Karte) — eine Definition
 # fuer die Konto-Karte (Einzel-Tool + Import) und die Karte von tool_set_account_interest. Werte als JS-Ausdruecke:
 # Unit/Interval/Dom/Pdom = die Kadenz, die der Write schreibt (Konto: Eingabe, von fn_create_account unveraendert
 # uebernommen; Satzwechsel: wirksame Werte aus fn_interest_rate_preview); FirstCredit = erste Gutschrift aus derselben
@@ -42,7 +42,7 @@ function Get-FinanceMonthEndKey([string]$Dom) {
 #   Gutschrift  dom -1 -> zum Monats-/Quartals-/Halbjahres-/Jahresende | fester Tag -> am n. | leer: year -> am
 #               Jahrestag, month (Altzeile) -> am Tag des Starts, day/week -> laufend
 #   Methode   Katalog-Enum finance.enum.day_count.<code> (der Renderer macht aus ACT/365 den Key act_365)
-# Rhythmus in Klartext (nie "alle 1 Jahr(e)") — EINE Definition fuer Zins-Kadenz und
+# Rhythmus in Klartext (nie "alle 1 Jahr(e)") — eine Definition fuer Zins-Kadenz und
 # Zahlungs-Rhythmus: Intervall 1 bzw. 3/6/12 Monate -> ein Wort (jaehrlich, vierteljaehrlich ...), sonst "alle n <Einheit>".
 # Interval/Unit = JS-Ausdruecke der gespeicherten Werte (Default der Einheit traegt der Aufrufer im Ausdruck).
 function Get-FinanceRhythmLine {
@@ -93,7 +93,7 @@ function Get-FinanceHitlLines {
     $own  = { param($label, $expr) New-HitlLine $label "($expr ? 'finance.tpl.plain' : 'finance.value.household')" -Kind tpl -Params @{ value = $expr } }
     $dom  = Get-FinanceDomTpl "$S.schedule_day_of_month" -Empty "'finance.value.relative_to_start'"
     # Verrechnungskonto: im Import mit Herkunft (-D.SettlementRef = X.settlement_ref aus fn_import_ref_account:
-    # 'db' besteht schon, 'batch' wird mit angelegt) -- der Owner las den nackten Namen als Neuanlage (2026-10-23).
+    # 'db' besteht schon, 'batch' wird mit angelegt) -- ein nackter Name wuerde als Neuanlage gelesen.
     # Einzel-Tools loesen es immer gegen den Bestand auf -> dort nur der Name.
     $settle = { param($nameExpr, $if)
         if ($D.ContainsKey('SettlementRef')) {
@@ -155,13 +155,13 @@ function Get-FinanceHitlLines {
                 $lines += (New-HitlLine 'finance.label.total_cost' "($S.total_debited != null ? Number($S.total_debited) : Number($S.shares) * Number($S.price_per_share) + Number($S.order_fee || 0))" -Kind money -Currency $ccy)
             }
             if ($Import) {
-                # Import (Monats-Check WP-G): Anlageklasse nur zeigen, wenn der Auszug sie liefert (Owner las "Anlageklasse: —"
-                # als Fehler); das Kurs-Symbol setzt tool_commit_import aus der Yahoo-Aufloesung der ISIN.
+                # Import: Anlageklasse nur zeigen, wenn der Auszug sie liefert ("Anlageklasse: —" wird als Fehler
+                # gelesen); das Kurs-Symbol setzt tool_commit_import aus der Yahoo-Aufloesung der ISIN.
                 $lines += (New-HitlLine 'finance.label.asset_class'  "$S.asset_class" -If "$S.asset_class")
                 $lines += (New-HitlLine 'finance.label.quote_symbol' "$S.provider_symbol" -If "$S.provider_symbol")
-                # Notierung nur in Fremdwaehrung (tool_commit_import, 2026-10-23): Kurs kommt z. B. in USD, Einstand bleibt EUR
+                # Notierung nur in Fremdwaehrung (tool_commit_import): Kurs kommt z. B. in USD, Einstand bleibt EUR
                 $lines += (New-HitlNote -Key 'finance.note.quote_symbol_foreign' -If "$S.provider_currency" -Params @{ currency = "$S.provider_currency" })
-                # gedruckte Depotnummer (2026-10-23): ordnet das Depot zu; kennt das Depot seine Nummer noch nicht, speichert
+                # gedruckte Depotnummer: ordnet das Depot zu; kennt das Depot seine Nummer noch nicht, speichert
                 # der Commit sie mit (fn_import_depot_number_to_store) -> eigene Hinweiszeile mit Depot UND Nummer
                 $lines += (New-HitlLine 'finance.label.depot_number' "$S.depot_number" -If "$S.depot_number")
                 $lines += (New-HitlNote -Key 'finance.note.depot_number_stored' -If "!!$(& $need 'DepotNumberToStore')" -Params @{
@@ -175,7 +175,7 @@ function Get-FinanceHitlLines {
                 $lines += (New-HitlLine 'finance.label.asset_class'  "$S.asset_class")
                 $Y = & $need 'Quote'
                 # Die Karte zeigt, was geschrieben wird: $S.provider_symbol IST der Write-Payload (nur ein adoptable Yahoo-
-                # Vorschlag oder ein genanntes Symbol, Plausi-Pflicht 2026-10-27); Kurs/Boerse nur, wenn er zu genau
+                # Vorschlag oder ein genanntes Symbol, Plausi-Pflicht); Kurs/Boerse nur, wenn er zu genau
                 # diesem Symbol gehoert.
                 $quoteOk = "(!!$S.provider_symbol && $S.provider_symbol === $Y.provider_symbol && !!$Y.market_price)"
                 $symKey = "($quoteOk ? ($Y.exchange ? 'finance.tpl.quote_symbol_price_exchange' : 'finance.tpl.quote_symbol_price') : 'finance.tpl.quote_symbol_plain')"
@@ -186,7 +186,7 @@ function Get-FinanceHitlLines {
             }
             $lines += (New-HitlLine 'core.label.date'            (& $need 'Date') -Kind date)
             if (-not $Import) {
-                # Fremdwaehrungs-Notierung (keine in Depot-Waehrung, plausibel; 2026-10-23) ist kein "nicht verifiziert"-Fall,
+                # Fremdwaehrungs-Notierung (keine in Depot-Waehrung, plausibel) ist kein "nicht verifiziert"-Fall,
                 # sondern ein Umrechnungs-Hinweis
                 $lines += (New-HitlNote -Key 'finance.note.quote_symbol_unverified' -If "!$Y.adoptable")
                 $lines += (New-HitlNote -Key 'finance.note.quote_symbol_foreign' -If "$Y.foreign_listing && $Y.plausible" -Params @{ currency = "$Y.currency" })
@@ -203,7 +203,7 @@ function Get-FinanceHitlLines {
                 (New-HitlLine 'finance.label.company'              "$S.insurance_company" -OmitEmpty)
                 (New-HitlLine 'finance.label.policy_number'        "$S.policy_number" -OmitEmpty)
                 (& $own 'finance.label.policyholder_person' (& $need 'Person'))
-                # WP2: Beitrag je Abbuchung (genannt oder aus dem Jahresbeitrag) und Jahreswert kommen aus fn_insurance_fields
+                # Beitrag je Abbuchung (genannt oder aus dem Jahresbeitrag) und Jahreswert kommen aus fn_insurance_fields
                 # (Einzel-Tool: Vorschau-Knoten, Import: fn_import_card_rows) -- die Karte rechnet nichts.
                 (New-HitlLine 'finance.label.rate_per_debit'       "($hasP ? 'finance.tpl.plain' : 'finance.value.premium_missing')" -Kind tpl -Params @{
                     value = (New-HitlValue -Kind money -Value (& $need 'PeriodAmount') -EurByModel) })
@@ -237,7 +237,7 @@ function Get-FinanceHitlLines {
                 (New-HitlLine 'finance.label.valuation_date'             "$S.value_updated_at" -Kind date -OmitEmpty)
                 (New-HitlLine 'finance.label.guaranteed_monthly_pension' "$S.guaranteed_monthly_pension" -Kind money -EurByModel -OmitEmpty)
                 (New-HitlLine 'finance.label.retirement_start'           "$S.retirement_start_date" -Kind date -OmitEmpty)
-                # WP2: Beitrag je Abbuchung + Rhythmus roh (Default monatlich); den Monatswert leitet pension_overview ab
+                # Beitrag je Abbuchung + Rhythmus roh (Default monatlich); den Monatswert leitet pension_overview ab
                 (New-HitlLine 'finance.label.rate_per_debit'            "($hasC ? 'finance.tpl.plain' : 'finance.value.none_parens')" -Kind tpl -Params @{
                     value = (New-HitlValue -Kind money -Value "$S.contribution_amount" -EurByModel) })
                 (Get-FinanceRhythmLine -Label 'finance.label.payment_mode' -Interval "$S.schedule_interval" -Unit "($S.schedule_unit || 'month')" -If $hasC)
@@ -283,7 +283,7 @@ function Get-FinanceHitlLines {
                 (New-HitlLine 'core.label.name'             "$S.name")
                 (New-HitlLine 'finance.label.current_value' "($S.current_value || null)" -Kind money -EurByModel -OmitEmpty)
                 (New-HitlLine 'finance.label.valuation_date' "$S.value_updated_at" -Kind date -OmitEmpty)
-                # Instandhaltungsruecklage (2026-10-27): Gebaeude-Fakten fuer die Empfehlung nach II. BV (Hinweis-Zeile der fn)
+                # Instandhaltungsruecklage: Gebaeude-Fakten fuer die Empfehlung nach II. BV (Hinweis-Zeile der fn)
                 (New-HitlLine 'finance.label.living_area' "($S.living_area_m2 ? 'finance.tpl.area_m2' : null)" -Kind tpl -Params @{ value = "$S.living_area_m2" } -OmitEmpty)
                 # Jahr als Text (eine Zahl-Formatierung setzte einen Tausenderpunkt: 1.994)
                 (New-HitlLine 'finance.label.year_built'  "($S.year_built ? String($S.year_built) : null)" -OmitEmpty)
@@ -293,14 +293,14 @@ function Get-FinanceHitlLines {
             )
         }
         'savings_goal' {
-            # Sparziel-Zweckbindung 2026-10-27: eine eigene Rate gibt es nur fuer einen Rest > 0 ohne Sparplan; sonst
+            # Eine eigene Rate gibt es nur fuer einen Rest > 0 ohne Sparplan; sonst
             # entfallen Rate-Details (Abbuchungskonto/-tag, erste Buchung) und die Zeile zeigt 0 (Hinweis kommt aus der fn).
             $rate = & $need 'MonthlyRate'
             $hasRate = "(Number($rate) > 0 && !$S.savings_plan_name)"
-            # Instandhaltungsruecklage (2026-10-27, nur Einzel-Tool): Unterart ohne Zielbetrag/-datum, mit Immobilie; die
+            # Instandhaltungsruecklage (nur Einzel-Tool): Unterart ohne Zielbetrag/-datum, mit Immobilie; die
             # Rate ist genannt / Dauerauftrag / Empfehlung (Empfehlung + Unterschreitung als Hinweis-Zeilen der fn)
             $isRes = "(!!$S.real_estate_name)"
-            # Notreserve (2026-10-30, nur Einzel-Tool): kein Datum, Ziel als Betrag ODER Monate; Ziel-Herleitung und Deckung
+            # Notreserve (nur Einzel-Tool): kein Datum, Ziel als Betrag oder Monate; Ziel-Herleitung und Deckung
             # kommen als Hinweis-Zeilen der fn (fn_emergency_reserve_card_lines)
             $isEm = "($S.kind === 'emergency_reserve')"
             @(
@@ -318,13 +318,13 @@ function Get-FinanceHitlLines {
                 (New-HitlLine 'finance.label.monthly_savings_rate' $rate -Kind money -EurByModel -If "$hasRate && ($isRes || $isEm)")
                 (New-HitlLine 'finance.label.monthly_savings_rate' "0" -Kind money -EurByModel -If "!($hasRate) && !$S.savings_plan_name")
                 (New-HitlLine 'finance.label.link_savings_plan'    "$S.savings_plan_name" -OmitEmpty)
-                # 2026-10-27: Antwort auf existing_transfer (fortfuehren oder zusaetzlich); Konto/Tag kommen dann aus r.effective
+                # Antwort auf existing_transfer (fortfuehren oder zusaetzlich); Konto/Tag kommen dann aus r.effective
                 (New-HitlLine 'finance.label.standing_transfer'    "(String($S.replace_transfer) === 'true' ? 'finance.value.transfer_continued' : (String($S.replace_transfer) === 'false' ? 'finance.value.transfer_additional' : null))" -Kind key -OmitEmpty)
                 (New-HitlLine 'finance.label.debit_account'        "$S.account_name" -If $hasRate)
                 (New-HitlLine 'finance.label.reserve_pot'          "'finance.tpl.reserve_pot'" -Kind tpl -If $hasRate -Params @{ name = "$S.reserve_account_name" })
                 (New-HitlLine 'finance.label.reserve_pot'          "$S.reserve_account_name" -If "!($hasRate)")
                 (New-HitlLine 'finance.label.debit_day'            (Get-FinanceDomTpl "$S.schedule_day_of_month" -DayTpl 'finance.tpl.day_ordinal' -Empty "'finance.value.relative_to_start'") -Kind tpl -If $hasRate -Params @{ day = "$S.schedule_day_of_month" })
-                # WP2: ohne genanntes Datum die erste Rate aus fn_savings_rate_schedule (naechster Termin ab heute); das
+                # Ohne genanntes Datum die erste Rate aus fn_savings_rate_schedule (naechster Termin ab heute); das
                 # Einzel-Tool pinnt sie ueber r.effective und meldet first_payment_defaulted (Vorgabe-Markierung bleibt)
                 (New-HitlLine 'finance.label.first_booking'        "($S.first_payment_date || $(& $need 'FirstPayment'))" -Kind date -If $hasRate -IsDefault "($S.first_payment_defaulted === true || !$S.first_payment_date)")
                 (& $own 'finance.label.beneficiary_person' (& $need 'Person'))
@@ -336,7 +336,7 @@ function Get-FinanceHitlLines {
             $hasRate = Get-FinanceNumSetJs "$S.monthly_annuity"
             $ldom = Get-FinanceDomTpl "$S.schedule_day_of_month"
             # Aufteilung der 1. Rate aus der Restschuld: Einzel-Tool = Probelauf von fn_create_loan, Import =
-            # fn_import_card_rows (beide fn_loan_monthly_interest) -- die Karte rechnet nichts (Befund 2026-10-24).
+            # fn_import_card_rows (beide fn_loan_monthly_interest) -- die Karte rechnet nichts.
             $rateInt = & $need 'RateInterest'
             $ratePri = & $need 'RatePrincipal'
             # laufend (Restschuld zum Stichtag heute) entscheidet die DB: Einzel-Tool = Probelauf opening_balance_date,
@@ -353,7 +353,7 @@ function Get-FinanceHitlLines {
                 (New-HitlLine 'finance.label.interest_rate'          "'finance.tpl.percent_pa'" -Kind tpl -Params @{ value = "$S.interest_rate" })
                 (New-HitlLine 'finance.label.fixed_until'            "$S.interest_rate_fixed_until" -Kind date -OmitEmpty)
                 (New-HitlLine 'finance.label.term_end'               "$S.term_end_date" -Kind date -OmitEmpty)
-                # WP2: voraussichtliche Restschuld (bei gleichem Zins, ohne Sondertilgung) aus dem Probelauf von fn_create_loan
+                # Voraussichtliche Restschuld (bei gleichem Zins, ohne Sondertilgung) aus dem Probelauf von fn_create_loan
                 # (loan_overview/fn_loan_projected_balance) -- nur die Einzel-Karte; leer (kein Datum, keine Rate) entfaellt
                 if ($D.ContainsKey('BalFixed')) {
                     (New-HitlLine 'finance.label.balance_projected_fixed_until' $D['BalFixed'] -Kind money -EurByModel -OmitEmpty)
@@ -409,7 +409,7 @@ $script:FIN_IMPORT_CARD = [ordered]@{
                            D = @{ Person = 'X.person'; RealEstate = 'S.real_estate'; RateInterest = '(X.rate_split || {}).interest'; RatePrincipal = '(X.rate_split || {}).principal'; Running = 'X.running' }; Covered = @() }
 }
 
-# Die erlaubten Import-Felder je Art aus der EINEN SQL-Adresse (R__fn_import_allowed_keys.sql, Zeilenformat
+# Die erlaubten Import-Felder je Art aus der einen SQL-Adresse (R__fn_import_allowed_keys.sql, Zeilenformat
 # WHEN '<typ>' THEN ARRAY[...]) lesen.
 function Get-FinanceImportAllowedKeys {
     $path = Join-Path $PSScriptRoot '..\..\db\migrations\R__fn_import_allowed_keys.sql'
@@ -426,7 +426,7 @@ function Get-FinanceImportAllowedKeys {
 # Personen-Feld ueber X.person oder ein Covered-Eintrag).
 function Test-FinanceImportKeysCovered([System.Collections.IDictionary]$LinesJs) {
     $allowed = Get-FinanceImportAllowedKeys
-    # Personen-Feld je Art aus der EINEN SQL-Adresse (R__fn_import_person_field.sql, WHEN-Zeilen)
+    # Personen-Feld je Art aus der einen SQL-Adresse (R__fn_import_person_field.sql, WHEN-Zeilen)
     $pfSql = [System.IO.File]::ReadAllText((Resolve-Path (Join-Path $PSScriptRoot '..\..\db\migrations\R__fn_import_person_field.sql')), [System.Text.UTF8Encoding]::new($false))
     $person = @{}
     foreach ($m in [regex]::Matches($pfSql, "WHEN p_type (?:IN \(([^)]*)\)|= ('\w+'))\s+THEN '(\w+)'")) {
@@ -447,8 +447,8 @@ function Test-FinanceImportKeysCovered([System.Collections.IDictionary]$LinesJs)
 
 # JS-Ausdruck (LinesExpr) der Import-Karte: je Staging-Zeile eine Ueberschrift '<Art>: <Name>' + die Zeilen
 # aus Get-FinanceHitlLines (S = Payload mit Einzel-Tool-Feldnamen, X = abgeleitete Werte der Zeile).
-# Bewusst OHNE row_no: die Staging-Nummer ist ein interner Griff des Agenten (bleibt nach geloeschten Zeilen
-# stabil, Luecken moeglich) — auf der Karte las der Owner '#4' als "4 Dinge angelegt" (2026-10-22).
+# Bewusst ohne row_no: die Staging-Nummer ist ein interner Griff des Agenten (bleibt nach geloeschten Zeilen
+# stabil, Luecken moeglich) — auf der Karte wuerde '#4' als "4 Dinge angelegt" gelesen.
 function Get-FinanceImportCardLinesExpr([Parameter(Mandatory)][string]$RowsExpr) {
     $fns = [ordered]@{}
     foreach ($t in $script:FIN_IMPORT_CARD.Keys) {

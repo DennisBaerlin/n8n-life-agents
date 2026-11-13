@@ -1,7 +1,7 @@
 -- tests/db/finance/test_fn_reopen_recurring_payment.sql
--- Audit Paket 2, Punkt 1 (+2): Sparplan nach Soft-Close wieder aktivieren.
---   Vorher: fn_set_savings_plan(status=active) setzte nur status='active' auf die beendete rp (valid_to blieb)
---   -> Plan "aktiv", aber nie wieder faellig. Jetzt: Folge-rp ab dem Reaktivierungstag (fn_reopen_recurring_payment),
+-- Sparplan nach Soft-Close wieder aktivieren.
+--   fn_set_savings_plan(status=active) darf nicht nur status='active' auf die beendete rp setzen (valid_to bliebe)
+--   -> Plan "aktiv", aber nie wieder faellig. Stattdessen: Folge-rp ab dem Reaktivierungstag (fn_reopen_recurring_payment),
 --   Raster (Anker) geerbt, Luecke nie faellig, Besitzer zeigt auf den Kopf.
 --   Randfaelle: Reaktivierung genau an einem Faelligkeitstag; danach Split der Kette; Schliessen zaehlt die Kette.
 BEGIN;
@@ -82,7 +82,7 @@ BEGIN
     RAISE EXCEPTION 'FAIL reopen [Kette 3 Glieder]: count=% head=%', v_cnt, finance.fn_recurring_lineage_head(v_rp_old); END IF;
   RAISE NOTICE 'PASS reopen [Reopen + Split = eine Kette aus 3 Gliedern]';
 
-  -- 4. Punkt 2: Schliessen zaehlt die ganze Kette (2 Ausfuehrungen auf alt/neu, 0 auf dem Kopf) -> closed, nie geloescht
+  -- 4. Schliessen zaehlt die ganze Kette (2 Ausfuehrungen auf alt/neu, 0 auf dem Kopf) -> closed, nie geloescht
   SELECT finance.fn_close_savings_plan(jsonb_build_object('savings_plan_name','__test_reo_plan__')) INTO v_res;
   IF v_res->>'action' IS DISTINCT FROM 'closed' OR (v_res->>'tx_count')::int IS DISTINCT FROM 2 THEN
     RAISE EXCEPTION 'FAIL close [Kette]: erwartet closed/tx_count=2, got %', v_res; END IF;
@@ -90,7 +90,7 @@ BEGIN
     RAISE EXCEPTION 'FAIL close [Kette]: Plan mit Historie hart geloescht'; END IF;
   RAISE NOTICE 'PASS close [Buchungen ueber die ganze Kette gezaehlt -> Soft-Close]';
 
-  -- 5. Review: Pausieren/Schliessen erfasst die ALTE rp mit noch anstehender Ausfuehrung (sonst Erinnerung fuer einen
+  -- 5. Pausieren/Schliessen erfasst die alte rp mit noch anstehender Ausfuehrung (sonst Erinnerung fuer einen
   --    geschlossenen Plan). Plan H woechentlich ab -7: -7 und heute gebucht, Split ab +10 -> +7 liegt auf der alten rp.
   DECLARE v_h INT; v_h_old INT; BEGIN
     SELECT finance.fn_create_savings_plan(jsonb_build_object('name','__test_reo_h__','depot_name','__test_reo_depot__',
@@ -109,7 +109,7 @@ BEGIN
     PERFORM finance.fn_set_savings_plan(jsonb_build_object('savings_plan_name','__test_reo_h__','status','active'));
     IF (SELECT status::text FROM finance.recurring_payments WHERE id = v_h_old) IS DISTINCT FROM 'active' THEN
       RAISE EXCEPTION 'FAIL resume [alte rp]'; END IF;
-    -- Schliessen beendet alte UND neue rp -> +7 nicht mehr faellig
+    -- Schliessen beendet alte und neue rp -> +7 nicht mehr faellig
     SELECT finance.fn_close_savings_plan(jsonb_build_object('savings_plan_name','__test_reo_h__')) INTO v_res;
     IF v_res->>'action' IS DISTINCT FROM 'closed' THEN RAISE EXCEPTION 'SETUP FAIL close H: %', v_res; END IF;
     IF EXISTS (SELECT 1 FROM finance.fn_recurring_due_open(CURRENT_DATE + 14) o
@@ -118,7 +118,7 @@ BEGIN
     RAISE NOTICE 'PASS pause/close [alte rp mit anstehender Ausfuehrung wird mit pausiert/beendet]';
   END;
 
-  -- 6. Review: Schliessen und Reaktivieren am Ausfuehrungstag -> heute nicht erneut faellig (Folge-rp ab morgen)
+  -- 6. Schliessen und Reaktivieren am Ausfuehrungstag -> heute nicht erneut faellig (Folge-rp ab morgen)
   DECLARE v_g_old INT; v_g_new INT; BEGIN
     SELECT finance.fn_create_savings_plan(jsonb_build_object('name','__test_reo_g__','depot_name','__test_reo_depot__',
       'isin','IE00B4L5Y983','symbol','IUSQG','security_name','G','amount',20,

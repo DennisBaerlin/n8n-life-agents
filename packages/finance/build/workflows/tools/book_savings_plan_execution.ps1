@@ -3,13 +3,12 @@
 
 # --- tool_book_savings_plan_execution (Broker-Ausfuehrung eines Sparplans eintragen) ---
 function Build-BookSavingsPlanExecution {
-    # WS-B0: enge Paket-Schreibrolle (finance_rw, Least-Privilege D10) statt Owner-Cred.
-    # Dynamic-Scope: Build-Pg liest dieses $CRED_POSTGRES. Core-Tools nutzen die Owner-Cred.
+    # Enge Paket-Schreibrolle (finance_rw) statt Owner-Cred; Build-Pg liest $CRED_POSTGRES per Dynamic-Scope.
     $CRED_POSTGRES = $CRED_FINANCE_RW
     $MarketPricesCronId = Get-RequiredWorkflowId 'agent.finance.cron_refresh_market_prices' 'Build-BookSavingsPlanExecution' -Soft
     $trig = Build-Trigger @('savings_plan_name','shares','price_per_share','order_fee')
 
-    # Plan-Details fuer HITL-Summary aus DERSELBEN fn wie die Buchung (Audit Paket 2, Punkt 3): naechste offene
+    # Plan-Details fuer HITL-Summary aus derselben fn wie die Buchung: naechste offene
     # Ausfuehrung ueber die Vorgaenger-Kette -> Soll-Betrag der rp, deren Vorkommen gebucht wird (nach einer
     # Betragsaenderung mit Stichtag in der Zukunft noch der alte Betrag), Waehrung des Verrechnungskontos.
     $readPlan = Build-Pg 'Read Plan' @(220, 0) `
@@ -21,15 +20,12 @@ function Build-BookSavingsPlanExecution {
     $ifOpen = Build-If 'Execution open?' @(330, -160) "={{ `$json.ok }}" 'true' 'equals' 'boolean'
     $errOpen = Build-ToolError 'No open execution' @(440, 240) "={{ `$('Read Plan').item.json.reason }}"
 
-    # HITL approval gate (Textkatalog): zeigt Soll vs. Ist-Kosten sowie Abweichung, alles in der Waehrung des
-    # Verrechnungskontos (= Depot-Waehrung, fn_create_account erzwingt die Gleichheit); Read Plan liest sie mit.
+    # Alles in der Waehrung des Verrechnungskontos (= Depot-Waehrung, fn_create_account erzwingt die Gleichheit); Read Plan liest sie mit.
     $S = "`$('Start').item.json"
     $P = "`$('Read Plan').item.json"
     $cost = "($S.shares * $S.price_per_share + ($S.order_fee || 0))"
 
-    # "DB ist das Gesetz": nach Read Plan (bleibt: liefert die Kartenwerte) laeuft fn_book_savings_plan_execution
-    # selbst als Probelauf VOR der Karte (shares/price<=0, Depot-Ablehnung -> {ok:false} ohne Karte); derselbe
-    # Param-Satz geht nach dem Gate in den echten Write.
+    # Read Plan bleibt neben dem Probelauf: er liefert die Kartenwerte.
     $wg = New-FnWriteGate -Fn 'finance.fn_book_savings_plan_execution' -DryPos @(440, 0) -WritePos @(1760, 0) `
         -WriteName 'Book execution (atomic)' `
         -WriteSelect "(r->>'ok')::boolean AS ok, r->>'reason' AS reason, (r->>'holding_id')::int AS holding_id, (r->>'buy_tx_id')::int AS buy_tx_id, r->>'due_date' AS due_date, (r->>'total_cost')::numeric AS total_cost, (r->>'plan_amount')::numeric AS plan_amount, (r->>'variance')::numeric AS variance" `
@@ -59,18 +55,16 @@ function Build-BookSavingsPlanExecution {
 
     $retCancelled = Build-ToolCancelled 'Return cancelled' @(1760, 240) 'the book_savings_plan_execution action'
 
-    # Atomarer Write via fn_book_savings_plan_execution ($wg.Write, Params siehe oben):
-    # 1.+2. fn_savings_plan_next_execution (wie Read Plan): Plan aufloesen + Status-Guard, fruehestes offenes
-    #       Vorkommen ueber die Vorgaenger-Kette (auto-detektiert due_date + rp)
-    # 3. fn_book_stock_buy mit recurring_payment_id (dieses Ketten-Glied) + transaction_date=due_date
-    # DB: Holding-shares + avg_purchase_price via Trigger; rp_id auf Tx -> Vorkommen
-    #     taucht automatisch nicht mehr in fn_recurring_due_open auf.
+    # Write ($wg.Write): 1. fn_savings_plan_next_execution (wie Read Plan): Plan aufloesen + Status-Guard, fruehestes
+    # offenes Vorkommen ueber die Vorgaenger-Kette (auto-detektiert due_date + rp); 2. fn_book_stock_buy mit
+    # recurring_payment_id (dieses Ketten-Glied) + transaction_date=due_date. Die rp_id auf der Tx nimmt das
+    # Vorkommen aus fn_recurring_due_open.
     $ifWriteOk = Build-If 'Write ok?' @(1980, 0) "={{ `$json.ok }}" 'true' 'equals' 'boolean'
 
     $errWrite = Build-ToolError 'Execution rejected' @(2200, 240) `
         "={{ `$('Book execution (atomic)').item.json.reason }}"
 
-    # Kurs-Einrichtung (Owner 2026-10-27): die erste Ausfuehrung legt die Position oft erst an -> Kurs sofort holen
+    # Kurs-Einrichtung: die erste Ausfuehrung legt die Position oft erst an -> Kurs sofort holen
     # (Dual-Trigger des Markt-Preis-Crons, Muster book_stock_buy) und den Status in die Antwort. Der Sparplan kennt
     # nur das rohe Symbol: fehlt der Kurs, bietet der Agent tool_verify_price_symbol an, sonst meldet ihn
     # cron_remind_missing_prices mit geprueftem Vorschlag. FX-Kurse braucht es hier nicht neu (Plan-Waehrung = Depot).

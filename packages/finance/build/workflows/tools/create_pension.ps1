@@ -1,10 +1,9 @@
 ﻿#Requires -Version 5.1
 # Dot-gesourct von build_finance_tools.ps1 (Helper + Script-Scope-Creds im Parent-Scope).
 
-# --- 10. tool_create_pension (Altersvorsorge als Net-Worth-Asset) ---------------
+# --- tool_create_pension (Altersvorsorge als Net-Worth-Asset) ---
 function Build-CreatePension {
-    # WS-B0: enge Paket-Schreibrolle (finance_rw, Least-Privilege D10) statt Owner-Cred.
-    # Dynamic-Scope: Build-Pg liest dieses $CRED_POSTGRES. Core-Tools nutzen die Owner-Cred.
+    # Enge Paket-Schreibrolle (finance_rw) statt Owner-Cred; Build-Pg liest $CRED_POSTGRES per Dynamic-Scope.
     $CRED_POSTGRES = $CRED_FINANCE_RW
     $trig = Build-Trigger @('name','pension_type','provider','contract_number','owner_person','current_value',
                            'value_updated_at','guaranteed_monthly_pension','retirement_start_date',
@@ -36,7 +35,7 @@ FROM finance.fn_resolve_account(NULLIF((`$1::jsonb)->>'debit_account_name',''), 
     $errDebit = Build-ToolError 'Debit ambiguous' @(660, 200) `
         "=Debit account '{{ `$('Start').item.json.debit_account_name }}' resolves to {{ `$('Resolve Debit Account').item.json.debit_hits }} matches. Candidates: {{ JSON.stringify(`$('Resolve Debit Account').item.json.debit_candidates) }}. Ask the user the exact cash account for the contribution (or omit the contribution)."
 
-    # WS-4: typisierte Eigentuemer-Person aufloesen (Name -> Slug via core.fn_resolve_person; leer=Haushalt).
+    # Typisierte Eigentuemer-Person aufloesen (Name -> Slug via core.fn_resolve_person; leer=Haushalt).
     $resPerson = Build-ResolvePerson 'Resolve Person' @(440, 360) 'owner_person'
 
     $ifPersonBad = Build-If 'Person invalid?' @(660, 360) `
@@ -45,8 +44,6 @@ FROM finance.fn_resolve_account(NULLIF((`$1::jsonb)->>'debit_account_name',''), 
     $errPerson = Build-ToolError 'Person unresolved' @(880, 480) `
         "=The owner person '{{ `$('Start').item.json.owner_person }}' could not be uniquely resolved ({{ `$('Resolve Person').item.json.hit_count }} match(es)). Candidates: {{ JSON.stringify(`$('Resolve Person').item.json.candidates) }}. Ask which household member, or leave empty for a joint/household provision."
 
-    # "DB ist das Gesetz": fn_create_pension laeuft als Probelauf VOR der Karte (korrigierbare Ablehnungen -> {ok:false} ohne Karte);
-    # derselbe Param-Satz geht nach dem Gate in den echten Write.
     $wg = New-FnWriteGate -Fn 'finance.fn_create_pension' -DryPos @(880, 0) -WritePos @(2200, 0) `
         -WriteName 'Create pension (atomic)' `
         -WriteSelect "(r->>'ok')::boolean AS ok, r->>'reason' AS reason, (r->>'pension_id')::int AS pension_id, (r->>'recurring_payment_id')::int AS recurring_payment_id" `
@@ -70,7 +67,7 @@ FROM finance.fn_resolve_account(NULLIF((`$1::jsonb)->>'debit_account_name',''), 
         })
 
     # --- HITL approval gate ---
-    # Strukturiertes Summary (Textkatalog): Betraege in EUR-Konvention (entity-Werte in EUR erfasst).
+    # Betraege in EUR-Konvention (entity-Werte in EUR erfasst).
     $S = "`$('Start').item.json"
     $P = "`$('Resolve Person').item.json"
     # Zeilen aus der geteilten Felddefinition (../hitl_lines.ps1): Beitrag -> Abbuchungskonto/erste Abbuchung/Tag
@@ -86,8 +83,7 @@ FROM finance.fn_resolve_account(NULLIF((`$1::jsonb)->>'debit_account_name',''), 
 
     $retCancelled = Build-ToolCancelled 'Return cancelled' @(2200, 240) 'the create_pension action'
 
-    # Atomarer Write via fn_create_pension: optional Beitrag-recurring (via Helper) + FK, dann pension.
-    # fn liefert ok/reason: current_value<0 / contribution<0 / Beitrag ohne Konto -> {ok:false}.
+    # Write: optional Beitrag-recurring (via Helper) + FK, dann pension.
 
     $ifWriteOk = Build-If 'Write ok?' @(2420, 0) "={{ `$json.ok }}" 'true' 'equals' 'boolean'
 

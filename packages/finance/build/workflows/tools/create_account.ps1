@@ -1,10 +1,9 @@
 ﻿#Requires -Version 5.1
 # Dot-gesourct von build_finance_tools.ps1 (Helper + Script-Scope-Creds im Parent-Scope).
 
-# --- 4. tool_create_account (NEW) -----------------------------
+# --- tool_create_account ---
 function Build-CreateAccount {
-    # WS-B0: enge Paket-Schreibrolle (finance_rw, Least-Privilege D10) statt Owner-Cred.
-    # Dynamic-Scope: Build-Pg liest dieses $CRED_POSTGRES. Core-Tools nutzen die Owner-Cred.
+    # Enge Paket-Schreibrolle (finance_rw) statt Owner-Cred; Build-Pg liest $CRED_POSTGRES per Dynamic-Scope.
     $CRED_POSTGRES = $CRED_FINANCE_RW
     $FxCronId = Get-RequiredWorkflowId 'agent.finance.cron_refresh_fx_rates' 'Build-CreateAccount'   # Sofort-FX-Fetch (Dual-Trigger), paket-intern
     $trig = Build-Trigger @('name','account_type','bank','account_number','settlement_account_name','owner_person','currency','opening_balance','opening_balance_date','interest_rate','interest_credit_unit','interest_credit_interval','interest_credit_day_of_month','interest_day_count_convention','interest_posting_day_of_month','interest_auto_post','interest_valid_from','fixed_deposit_maturity_date','fixed_deposit_auto_renew','emoji')
@@ -19,10 +18,10 @@ function Build-CreateAccount {
         "={{ `$('Start').item.json.account_type === 'loan' ? 'Loans are not created as plain accounts - use tool_create_loan (it creates the loan account together with the remaining debt and the monthly rate).' : 'A depot has no cash balance of its own - leave opening_balance empty and put the cash balance on its settlement account.' }}"
 
     # Namens-Dublette prueft fn_create_account selbst (ohne Gross-/Kleinschreibung, typuebergreifend, wie der Import)
-    # -> kommt im Probelauf als {ok:false, code:'duplicate_name', candidates} zurueck; kein eigener Tool-Knoten mehr.
+    # -> kommt im Probelauf als {ok:false, code:'duplicate_name', candidates} zurueck; darum kein eigener Tool-Knoten.
 
-    # Always run resolve. settlement_account_name may be empty (non-depot accounts) — kein Problem mehr:
-    # der EINE jsonb-Param ist nie leer (kein $1-Drop). Leeres Feld -> ->>'...' ist NULL -> fn liefert
+    # Resolve laeuft immer; settlement_account_name darf leer sein (Nicht-Depots): der eine jsonb-Param
+    # ist nie leer (kein $1-Drop). Leeres Feld -> ->>'...' ist NULL -> fn liefert
     # hit_count=0 (= 'kein Verrechnungskonto'). provided?/INSERT lesen weiter den Start-Wert.
     $resSettle = Build-Pg 'Resolve Settlement' @(220, 0) `
         "=SELECT id, hit_count, candidates FROM finance.fn_resolve_account(NULLIF((`$1::jsonb)->>'settlement_account_name', ''));" `
@@ -38,17 +37,17 @@ function Build-CreateAccount {
     $errSettle = Build-ToolError 'Settlement ambiguous' @(880, -300) `
         "=Settlement account '{{ `$('Start').item.json.settlement_account_name }}' resolves to {{ `$('Resolve Settlement').item.json.hit_count }} matches. Candidates: {{ JSON.stringify(`$('Resolve Settlement').item.json.candidates) }}. Ask the user which exact account to use."
 
-    # Depot types (stocks_depot/crypto_depot) MUST have a settlement account. If none was provided,
-    # stop with a friendly error BEFORE the approval gate (the DB CHECK is the hard backstop).
+    # Depot types (stocks_depot/crypto_depot) must have a settlement account. If none was provided,
+    # stop with a friendly error before the approval gate (the DB CHECK is the hard backstop).
     $ifDepotType = Build-If 'Settlement required for type?' @(660, 160) `
         "={{ ['stocks_depot','crypto_depot'].includes(`$('Start').item.json.account_type) }}" 'true' 'equals' 'boolean'
 
     $errDepotNoSettle = Build-ToolError 'Depot needs settlement' @(880, 160) `
         "=Account type '{{ `$('Start').item.json.account_type }}' (depot) requires a settlement account (Verrechnungskonto). Create the cash account first, then create the depot with settlement_account_name set to that cash account."
 
-    # WS-4: typisierte Eigentuemer-Person aufloesen (Name -> Slug via core.fn_resolve_person, dem
-    # publizierten DEFINER-Fenster; finance_rw erreicht agent.* sonst nicht, D10). Leer = Haushalt
-    # (kein Resolve, person_id NULL). Provided-but-ambiguous/unknown -> sauberer Block VOR dem Gate.
+    # Typisierte Eigentuemer-Person aufloesen (Name -> Slug via core.fn_resolve_person, dem
+    # publizierten DEFINER-Fenster; finance_rw erreicht agent.* sonst nicht). Leer = Haushalt
+    # (kein Resolve, person_id NULL). Provided-but-ambiguous/unknown -> sauberer Block vor dem Gate.
     $resPerson = Build-ResolvePerson 'Resolve Person' @(220, 360) 'owner_person'
 
     $ifPersonBad = Build-If 'Person invalid?' @(440, 360) `
@@ -57,8 +56,8 @@ function Build-CreateAccount {
     $errPerson = Build-ToolError 'Person unresolved' @(660, 520) `
         "=The owner person '{{ `$('Start').item.json.owner_person }}' could not be uniquely resolved ({{ `$('Resolve Person').item.json.hit_count }} match(es)). Candidates: {{ JSON.stringify(`$('Resolve Person').item.json.candidates) }}. Ask the user which household member it is, or leave the owner empty for a joint/household account."
 
-    # Read-only Vorschlag der Zinsmethode + auto_post + gueltig-ab (Owner-Direktive: im HITL-Gate MIT Grund zeigen,
-    # ueberschreibbar) aus DERSELBEN fn, die fn_create_account im Write ruft (fn_account_interest_defaults: Karte =
+    # Read-only Vorschlag der Zinsmethode + auto_post + gueltig-ab (im HITL-Gate mit Grund gezeigt,
+    # ueberschreibbar) aus derselben fn, die fn_create_account im Write ruft (fn_account_interest_defaults: Karte =
     # Write). Laeuft immer; die Summary zeigt es nur bei Zinsen.
     $resInt = Build-Pg 'Resolve interest defaults' @(680, 360) `
         "=SELECT r->>'conv' AS conv, (r->>'auto_post')::boolean AS auto_post, r->>'conv_reason' AS conv_reason, r->>'valid_from' AS valid_from, r->>'first_credit_date' AS first_credit_date FROM finance.fn_account_interest_defaults(`$1::jsonb) AS r;" `
@@ -73,8 +72,6 @@ function Build-CreateAccount {
             interest_valid_from           = '$(''Start'').item.json.interest_valid_from'
         })
 
-    # "DB ist das Gesetz": fn_create_account laeuft als Probelauf VOR der Karte (korrigierbare Ablehnungen -> {ok:false} ohne Karte);
-    # derselbe Param-Satz geht nach dem Gate in den echten Write.
     $wg = New-FnWriteGate -Fn 'finance.fn_create_account' -DryPos @(900, 0) -WritePos @(2220, 0) `
         -WriteName 'Create account (atomic)' `
         -WriteSelect "(r->>'ok')::boolean AS ok, r->>'reason' AS reason, r->>'account_id' AS account_id, (r->>'interest_added')::boolean AS interest_added, (r->>'balance')::numeric AS balance, r->>'label' AS label" `
@@ -102,7 +99,7 @@ function Build-CreateAccount {
         })
 
     # --- HITL approval gate (before the write) ---
-    # Strukturiertes Summary (Textkatalog), Zeilen aus der geteilten Felddefinition (../hitl_lines.ps1, dieselbe wie die
+    # Zeilen aus der geteilten Felddefinition (../hitl_lines.ps1, dieselbe wie die
     # Import-Karte): Saldo + Zins nur bei Nicht-Depots, Verrechnungskonto nur bei Depots, Zins-Details vollstaendig,
     # sobald ein Zins genannt ist, Festgeld-Felder nur bei Festgeld. Saldo in der Kontowaehrung aus dem Probelauf (genannt, sonst die des Verrechnungskontos, sonst EUR).
     $S = "`$('Start').item.json"
@@ -121,18 +118,18 @@ function Build-CreateAccount {
 
     $retCancelled = Build-ToolCancelled 'Return cancelled' @(2220, 200) 'the create_account action'
 
-    # Atomarer Write via PL/pgSQL-Function: Konto + (optional) Zinszeile + (optional) Eroeffnungsbuchung in EINER
-    # Transaktion. EIN jsonb-Param (vermeidet n8n-Empty-Param-Drop bei leeren optionalen Feldern). settlement_id ist
+    # Write: Konto + (optional) Zinszeile + (optional) Eroeffnungsbuchung in einer
+    # Transaktion. Ein jsonb-Param (vermeidet n8n-Empty-Param-Drop bei leeren optionalen Feldern). settlement_id ist
     # oben bereits aufgeloest; interest_* nur gesetzt, wenn der Nutzer Zinsen genannt/bestaetigt hat.
 
     # Korrigierbare Ablehnung der fn (ungueltige Waehrung, Depot-Waehrung <> Verrechnungskonto) -> reason an den
-    # Agenten statt eines falschen ok:true mit leerer account_id (vorher wurde ok der fn nie gelesen).
+    # Agenten statt eines falschen ok:true mit leerer account_id.
     $ifWriteOk = Build-If 'Write ok?' @(2440, 200) "={{ `$('Create account (atomic)').item.json.ok }}" 'true' 'equals' 'boolean'
     $errWrite = Build-ToolError 'Create rejected' @(2660, 400) "={{ `$('Create account (atomic)').item.json.reason }}"
 
     # Sofort-Fetch: nur bei echter Fremdwaehrung (nicht leer, nicht EUR). Ruft den FX-Cron-Workflow
-    # als Sub auf (Dual-Trigger: executeWorkflowTrigger neben dem Schedule) — EINE Logik-Adresse fuer
-    # Check/Fetch/Upsert. Eliminiert das NULL-Fenster in Roll-up-Views bis zum naechsten Schedule-Lauf.
+    # als Sub auf (Dual-Trigger: executeWorkflowTrigger neben dem Schedule) — eine Logik-Adresse fuer
+    # Check/Fetch/Upsert. Vermeidet das NULL-Fenster in Roll-up-Views bis zum naechsten Schedule-Lauf.
     $ifForeignCurr = Build-If 'Non-EUR currency?' @(2440, 0) `
         "={{ !!(`$('Start').item.json.currency) && `$('Start').item.json.currency !== 'EUR' }}" `
         'true' 'equals' 'boolean'

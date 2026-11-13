@@ -1,10 +1,11 @@
 -- ============================================================
--- fn_similar_note (KARTEN-HINWEIS "AEHNLICHER EINTRAG", Paket DB-ist-das-Gesetz S6)
---   Die EINE Form des weichen Dubletten-Hinweises der create-fns fuer Versicherung, Kredit, Immobilie, Sparziel und
+-- fn_similar_note (READ, IMMUTABLE) -- Karten-Hinweis "aehnlicher Eintrag"
+--   Die eine Form des weichen Dubletten-Hinweises der create-fns fuer Versicherung, Kredit, Immobilie, Sparziel und
 --   Sparplan (Konto: eigene Note similar_account). Jede create-fn stellt ihre Regel mit hoher Schwelle (z. B.
 --   Versicherung: gleiche Gesellschaft + gleicher Jahresbeitrag) und reicht den Namen des Treffers hierher.
+--   Eingabe: p_existing_name text (Name des aehnlichen Eintrags oder NULL).
 --   NULL -> [] (kein Hinweis), sonst [{kind:'note', value:'finance.note.similar_entry', params:{name}}].
---   Ersetzt die Prompt-Regel "aehnliche Eintraege selbst suchen und nachfragen" (Karte statt Chat-Rueckfrage).
+--   Der Hinweis steht auf der Karte, das Modell fragt nicht selbst im Chat nach.
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_similar_note(p_existing_name text)
 RETURNS jsonb

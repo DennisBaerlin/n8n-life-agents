@@ -1,17 +1,18 @@
 -- ============================================================
--- fn_resolve_loan
+-- fn_resolve_loan (READ, STABLE)
 --   Loan-Name → IDs + Stammdaten fuer Kreditraten-Buchung.
 --   Mehrdeutigkeit wird wie bei Accounts via hit_count gemeldet. monthly_annuity = Rate des heute gueltigen Glieds der
---   Raten-Kette (WP2: die Kopie am Kredit entfiel mit finance:V026; Spaltenname consumer-stabil).
+--   Raten-Kette (Spaltenname consumer-stabil).
 --   p_active_only: default TRUE -> nur status='active' (book_loan_payment/settle_loan);
 --   FALSE -> auch paused/paid_off (delete_loan findet Fehlanlagen, settle/sell geben
 --   freundliche {ok:false} bei bereits beendeten Entitaeten statt RAISE).
+--   Rueckgabe: TABLE(loan_id, loan_account_id, debit_account_id, monthly_annuity, hit_count, candidates);
+--   die Ids nur bei genau einem Treffer.
 -- ============================================================
 -- Alte 1-Arg-Signatur droppen: die neue (TEXT, BOOLEAN DEFAULT TRUE) ist sonst ein zweiter
 -- Overload und ein 1-Arg-Aufruf wird mehrdeutig ("function is not unique").
 DROP FUNCTION IF EXISTS finance.fn_resolve_loan(text);
--- Rueckgabe-Spalte monthly_principal (Ursprungs-Tilgung, ungelesen) entfiel mit finance:V025 -> geaenderter
--- RETURNS TABLE verlangt DROP + CREATE (CREATE OR REPLACE kann den Rueckgabetyp nicht aendern).
+-- Ein geaenderter RETURNS TABLE verlangt DROP + CREATE (CREATE OR REPLACE kann den Rueckgabetyp nicht aendern).
 DROP FUNCTION IF EXISTS finance.fn_resolve_loan(text, boolean);
 
 CREATE OR REPLACE FUNCTION finance.fn_resolve_loan(

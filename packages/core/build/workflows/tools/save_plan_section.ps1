@@ -2,18 +2,18 @@
 # Dot-gesourct von build.ps1 (Helper + Script-Scope-Creds im Parent-Scope).
 
 # --- agent.tool_save_plan_section (CROSS-AGENT, HITL-Write) -----------------
-# Speichert EINE Interview-Sektion in den Draft-Plan der Domain (Upsert in
-# interview_state; fn legt den Draft bei Bedarf an — Versionszaehler rechnet die DB).
-# domain ist beim aufrufenden Agenten ein FIXER Binding-Input (nie $fromAI) — ein
-# kuenftiger Career-Advisor bindet dasselbe Tool mit domain='career'.
-# WICHTIG (Playback != Gate): der Agent spielt die Sektion VOR diesem Tool-Call als
-# normale Chat-Nachricht zurueck und ruft erst nach verbalem OK. Die Karte zeigt den GANZEN
-# Text, der gespeichert wird (Befund 2026-11-04: bestaetigt war eine andere Fassung als die gespeicherte).
+# Speichert eine Interview-Sektion in den Draft-Plan der Domain (Upsert in
+# interview_state; fn legt den Draft bei Bedarf an, den Versionszaehler rechnet die DB).
+# domain ist beim aufrufenden Agenten ein fixer Binding-Input (nie $fromAI); jeder Berater
+# bindet dasselbe Tool mit seiner domain.
+# Playback != Gate: der Agent spielt die Sektion vor diesem Tool-Call als
+# normale Chat-Nachricht zurueck und ruft erst nach verbalem OK. Die Karte zeigt den ganzen
+# Text, der gespeichert wird (sonst bestaetigt der Nutzer eine andere Fassung als die gespeicherte).
 function Build-SavePlanSection {
     $trig = Build-Trigger @('domain', 'section_key', 'topic', 'section_content', 'section_data', 'plan_name', 'handoff_tasks')
 
-    # "DB ist das Gesetz": agent.fn_advisor_save_section laeuft als Probelauf VOR der Karte; derselbe Param-Satz geht nach dem
-    # Gate in den echten Write. Sonst lehnt die fn erst nach dem Tipp ab, und das LLM schickt eine zweite Karte (Befund 2026-11-02).
+    # "DB ist das Gesetz": agent.fn_advisor_save_section laeuft als Probelauf vor der Karte; derselbe Param-Satz geht nach dem
+    # Gate in den echten Write. Sonst lehnt die fn erst nach dem Tipp ab, und das LLM schickt eine zweite Karte.
     $wg = New-FnWriteGate -Fn 'agent.fn_advisor_save_section' -DryPos @(220, 0) -WritePos @(1320, 0) `
         -WriteName 'Save section (atomic)' `
         -WriteSelect "(r->>'ok')::boolean AS ok, r->>'reason' AS reason, (r->>'plan_id')::int AS plan_id, (r->>'version')::int AS version, (r->>'draft_created')::boolean AS draft_created, (r->>'section_count')::int AS section_count, (r->'sections')::text AS sections, (r->'topics')::text AS topics, (r->>'topic_replaced')::boolean AS topic_replaced" `
@@ -25,7 +25,7 @@ function Build-SavePlanSection {
             section_data    = '$(''Start'').item.json.section_data'
             plan_name       = '$(''Start'').item.json.plan_name'
             handoff_tasks   = '$(''Start'').item.json.handoff_tasks'   # vereinbarte Eintraege fuer den Buchhalter (JSON-String, leer = keine); Kartenzeilen liefert der Probelauf
-            chat_id         = '$(''Start'').item.json.chat_id'   # WS-5b/P0c: Person + Permission (fn_check_write_permission; per_user->own_user_only, household->owner_only)
+            chat_id         = '$(''Start'').item.json.chat_id'   # Person + Permission (fn_check_write_permission; per_user->own_user_only, household->owner_only)
         })
 
     # Strukturiertes Summary (Textkatalog): Plan- und Abschnittsname aus dem Katalog des Plan-Pakets, der ganze Text ohne Markdown-Zeichen

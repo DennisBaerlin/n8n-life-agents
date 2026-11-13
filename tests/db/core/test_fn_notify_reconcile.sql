@@ -1,5 +1,5 @@
 -- tests/db/core/test_fn_notify_reconcile.sql
--- Phase Notify (WS-1): Bulk-Re-Arm fuer level-triggered Producer (Advisor).
+-- Bulk-Re-Arm fuer level-triggered Producer (Advisor).
 -- core.fn_notify_reconcile(source, keys[]) loescht alle Zeilen der source, deren key NICHT in keys liegt
 -- (= wieder im Band / stale -> re-armed); leeres keys -> alle source-Zeilen weg; fremde sources unberuehrt.
 BEGIN;

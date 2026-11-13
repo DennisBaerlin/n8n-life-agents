@@ -1,12 +1,12 @@
 -- tests/db/finance/test_depot_holdings_overview.sql
--- Phase M: Live-Marktwert in finance.depot_holdings_overview + die quote_currency-Konvertierung in den BEIDEN
+-- Live-Marktwert in finance.depot_holdings_overview + die quote_currency-Konvertierung in den beiden
 -- markt-wertenden Views. Prueft:
 --   (1) market_value/_eur/price_as_of/unrealized_gain_eur bei vorhandenem Kurs (EUR-Holding);
---   (2) NULL-Semantik OHNE Kurs (KEIN Buchwert-Fallback in der Anzeige-View), book_value bleibt gefuellt;
---   (3) quote_currency=USD: der Kurs wird in SEINER Waehrung (lp.price_currency) nach EUR konvertiert, nicht
---       in der Holding-Aufnahme-Waehrung -- in depot_holdings_overview.market_value_eur UND in
+--   (2) NULL-Semantik ohne Kurs (kein Buchwert-Fallback in der Anzeige-View), book_value bleibt gefuellt;
+--   (3) quote_currency=USD: der Kurs wird in seiner Waehrung (lp.price_currency) nach EUR konvertiert, nicht
+--       in der Holding-Aufnahme-Waehrung -- in depot_holdings_overview.market_value_eur und in
 --       networth_by_asset_class.value_eur (sonst stille Fehl-Umrechnung);
---   (4) finance_ro liest depot_holdings_overview MIT market_prices-Zeile (Rollen-Lesepfad, m8a).
+--   (4) finance_ro liest depot_holdings_overview mit market_prices-Zeile (Rollen-Lesepfad, m8a).
 BEGIN;
 DO $$
 DECLARE
@@ -24,7 +24,7 @@ BEGIN
   INSERT INTO finance.accounts (name, account_type, currency, status, settlement_account_id)
   VALUES ('__dho_depot__','stocks_depot','EUR','active', v_cash) RETURNING id INTO v_depot;
 
-  -- (1) EUR-Holding MIT Kurs: shares 5, avg 100 (book 500), market_price 110 EUR -> market_value 550, gain 50
+  -- (1) EUR-Holding mit Kurs: shares 5, avg 100 (book 500), market_price 110 EUR -> market_value 550, gain 50
   INSERT INTO finance.depot_holdings (account_id, isin, symbol, name, shares, average_purchase_price, currency, asset_class)
   VALUES (v_depot, 'IE00BK5BQT80','VWCE','Vanguard FTSE All-World', 5, 100, 'EUR', 'sp500') RETURNING id INTO v_h_eur;
   INSERT INTO finance.market_prices (symbol, isin, price, currency, as_of)
@@ -40,7 +40,7 @@ BEGIN
     RAISE EXCEPTION 'FAIL [1 eur gain]: erwartet book 500 / gain 50, got %/%', v_bv, v_gain; END IF;
   RAISE NOTICE 'PASS depot_holdings_overview [EUR Holding: market_value 550, gain 50, price_as_of gesetzt]';
 
-  -- (2) Holding OHNE Kurs: market_value/_eur/gain/price_as_of NULL (KEIN Buchwert-Fallback), book_value 320
+  -- (2) Holding ohne Kurs: market_value/_eur/gain/price_as_of NULL (kein Buchwert-Fallback), book_value 320
   INSERT INTO finance.depot_holdings (account_id, isin, symbol, name, shares, average_purchase_price, currency)
   VALUES (v_depot, 'IE00B4L5Y983','IWDA','iShares Core', 4, 80, 'EUR') RETURNING id INTO v_h_nop;
   SELECT market_value, market_value_eur, price_as_of, unrealized_gain_eur, book_value
@@ -52,7 +52,7 @@ BEGIN
   RAISE NOTICE 'PASS depot_holdings_overview [ohne Kurs: Marktwert-Spalten NULL, book_value 320]';
 
   -- (3) quote_currency=USD: Kurs 100 USD, shares 10 -> market_value 1000 (nativ USD); market_value_eur =
-  -- 1000 USD / 1.10 = 909.09 (in USD konvertiert, NICHT als EUR). Beweist lp.price_currency statt h.currency.
+  -- 1000 USD / 1.10 = 909.09 (in USD konvertiert, nicht als EUR). Beweist lp.price_currency statt h.currency.
   INSERT INTO finance.depot_holdings (account_id, isin, symbol, name, shares, average_purchase_price, currency, quote_currency, asset_class)
   VALUES (v_depot, 'US9229087690','VUSA','Vanguard S&P 500', 10, 90, 'EUR', 'USD', 'usintl') RETURNING id INTO v_h_usd;
   INSERT INTO finance.market_prices (symbol, isin, price, currency, as_of)
@@ -71,7 +71,7 @@ BEGIN
     RAISE EXCEPTION 'FAIL [3 networth usd]: erwartet 909.09 (Live-Kurs in lp.currency konvertiert) -- Fehl-Umrechnung mit h.currency? got %', round(v_nw, 2); END IF;
   RAISE NOTICE 'PASS networth_by_asset_class [quote_currency USD: 909.09, Live-Kurs in lp.currency konvertiert]';
 
-  -- (4) m8a: finance_ro liest depot_holdings_overview MIT market_prices-Zeile (Rollen-Lesepfad) ohne Fehler.
+  -- (4) m8a: finance_ro liest depot_holdings_overview mit market_prices-Zeile (Rollen-Lesepfad) ohne Fehler.
   SET LOCAL ROLE finance_ro;
   SELECT market_value INTO v_mv FROM finance.depot_holdings_overview WHERE id = v_h_eur;
   RESET ROLE;

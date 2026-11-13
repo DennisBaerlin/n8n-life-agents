@@ -2,14 +2,14 @@
 -- core.fn_collect_chat_since(): per-Quelltabelle die NEUEN Owner-Nachrichten seit dem Watermark.
 --   * id > guide_learn_watermark.last_seen_id (per agent_name; allererster Lauf -> 0)
 --   * nur message->>'type'='human' (KI-Antworten ignoriert), nicht-leerer data.content
---   * Phase B: NUR die Session des Owners (Mitglieder + Harness-Sessions raus); Owner nicht gepairt -> nichts
---   * Phase B: Quellen = alle agent.*_chat_memory ausser orchestrator (dynamisch, neue Agenten docken an)
---   * Phase B: fehlende Watermark = 0 auch in einem laufenden Loop (neue Agent-Tabelle: erstes Gespraech zaehlt;
+--   * nur die Session des Owners (Mitglieder + Harness-Sessions raus); Owner nicht gepairt -> nichts
+--   * Quellen = alle agent.*_chat_memory ausser orchestrator (dynamisch, neue Agenten docken an)
+--   * fehlende Watermark = 0 auch in einem laufenden Loop (neue Agent-Tabelle: erstes Gespraech zaehlt;
 --     die einmalige Startmarke der Umstellung macht core:V023, nicht die fn); die fn schreibt nichts
 -- Self-seedend (minimale n8n-Memory-Tabellen + family mit gepairtem Owner), BEGIN..ROLLBACK.
 BEGIN;
 
--- n8n legt agent.<agent>_chat_memory ZUR LAUFZEIT an -> im hermetischen db_test fehlen sie.
+-- n8n legt agent.<agent>_chat_memory zur Laufzeit an -> im hermetischen db_test fehlen sie.
 CREATE TABLE IF NOT EXISTS agent.finance_chat_memory (id serial PRIMARY KEY, session_id text NOT NULL, message jsonb NOT NULL);
 CREATE TABLE IF NOT EXISTS agent.orchestrator_chat_memory (id serial PRIMARY KEY, session_id text NOT NULL, message jsonb NOT NULL);
 CREATE TABLE IF NOT EXISTS agent.zz_advisor_chat_memory (id serial PRIMARY KEY, session_id text NOT NULL, message jsonb NOT NULL);

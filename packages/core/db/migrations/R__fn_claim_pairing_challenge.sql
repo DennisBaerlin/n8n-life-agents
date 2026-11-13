@@ -1,21 +1,23 @@
 -- ============================================================
--- fn_claim_pairing_challenge (WS-5a — Member loest die Einladung ein, STAGT [bindet NICHT])
+-- fn_claim_pairing_challenge (Member loest die Einladung ein, staged, bindet nicht)
 --   Schritt 2 des Einladungs-Flows: das Mitglied tippt den Deep-Link/`/start <code>`. Anders als der
---   Owner-Bootstrap (fn_consume bindet sofort) wird hier NICHT gebunden — der Code wird gegen eine offene
---   MEMBER-Einladung (person_id IS NOT NULL, role <> 'owner') gematcht und der live-Member (uid + chat)
---   in die Zeile GESTAGED (claimed_*). Erst die Owner-Bestaetigung (fn_confirm_pairing via callback_query)
---   committet die Bindung. Race-fest wie fn_consume (FOR UPDATE SKIP LOCKED + Match-Bedingungen ZUSAETZLICH
+--   Owner-Bootstrap (fn_consume bindet sofort) wird hier nicht gebunden: der Code wird gegen eine offene
+--   Member-Einladung (person_id IS NOT NULL, role <> 'owner') gematcht und der live-Member (uid + chat)
+--   in die Zeile gestaged (claimed_*). Erst die Owner-Bestaetigung (fn_confirm_pairing via callback_query)
+--   committet die Bindung. Race-fest wie fn_consume (FOR UPDATE SKIP LOCKED + Match-Bedingungen zusaetzlich
 --   im aeusseren WHERE -> READ-COMMITTED-Recheck).
---   p: { challenge, telegram_user_id (live Member-from.id), chat_id (Member-Chat) }
---   RUECKGABE:
+--   Eingabe p: { challenge, telegram_user_id (live Member-from.id), chat_id (Member-Chat), language_code? }
+--   Rueckgabe:
 --     {ok:true,  staged:true, id, person_id, role, full_name, member_chat_id}  -> Owner-Notify mit Buttons
 --     {ok:false, staged:false, pending:true}   -> Code bereits eingeloest (Owner-Bestaetigung offen)
 --     {ok:false, staged:false}                 -> kein offener Member-Code (Owner-Code/ungueltig/abgelaufen)
 --                                                 -> der Orchestrator faellt auf den Owner-/Invalid-Pfad
---   Owner-Codes (person_id NULL) matchen hier NIE -> bleiben dem fn_consume-Pfad vorbehalten.
---   WS-5d: eine in agent.access_blocks gesperrte uid wird VOR dem Stagen abgewiesen ({staged:false,blocked}).
---   Textkatalog Phase B: p.language_code (Telegram from.language_code, roh) -> language_hint (normalisiert per
---   agent.fn_normalize_language, sonst NULL) = nur ein VORSCHLAG fuer den Sprach-Picker nach dem Confirm, nie in family.
+--     {ok:false, staged:false, blocked:true}   -> uid steht in agent.access_blocks (vor dem Stagen abgewiesen)
+--     {ok:false, staged:false, reason}         -> telegram_user_id bzw. chat_id fehlt
+--   Owner-Codes (person_id NULL) matchen hier nie -> bleiben dem fn_consume-Pfad vorbehalten.
+--   p.language_code (Telegram from.language_code, roh) -> language_hint (normalisiert per
+--   agent.fn_normalize_language, sonst NULL) = nur ein Vorschlag fuer den Sprach-Picker nach dem Confirm, nie in family.
+--   Seiteneffekt: UPDATE agent.pairing_state (claimed_uid, claimed_chat_id, claimed_at, language_hint).
 --   Invarianten-Tests: tests/db/core/test_fn_pairing_challenge.sql
 -- ============================================================
 CREATE OR REPLACE FUNCTION agent.fn_claim_pairing_challenge(p jsonb)
@@ -38,12 +40,12 @@ BEGIN
         RETURN jsonb_build_object('ok', false, 'staged', false, 'reason', 'member chat_id is required');
     END IF;
 
-    -- WS-5d: gesperrte uid kann sich auch mit gueltigem Member-Code NICHT verbinden (staerkere Sperre).
+    -- Eine gesperrte uid kann sich auch mit gueltigem Member-Code nicht verbinden (staerkere Sperre).
     IF agent.fn_is_blocked(v_uid) THEN
         RETURN jsonb_build_object('ok', false, 'staged', false, 'blocked', true);
     END IF;
 
-    -- Stagen (race-fest): EINE offene Member-Einladung zum Code, noch nicht eingeloest (claimed_at IS NULL),
+    -- Stagen (race-fest): eine offene Member-Einladung zum Code, noch nicht eingeloest (claimed_at IS NULL),
     -- nicht abgelaufen. person_id IS NOT NULL + role<>'owner' grenzt Owner-Bootstrap-Challenges aus.
     UPDATE agent.pairing_state
     SET claimed_uid = v_uid, claimed_chat_id = v_chat, claimed_at = NOW(),

@@ -1,10 +1,10 @@
 -- ============================================================
--- core.fn_url_decode (rein) — Prozent-Dekodierung eines application/x-www-form-urlencoded-Teils
+-- fn_url_decode (READ-ONLY, IMMUTABLE) — Prozent-Dekodierung eines application/x-www-form-urlencoded-Teils
 --   '+' -> Leerzeichen, %XX -> Byte; die Bytes werden als UTF-8 gelesen (mehrbytige Zeichen wie Hangul oder
 --   Umlaute kommen als %EC%A7%80 bzw. %C3%BC). Ein einzelnes '%' ohne zwei Hex-Ziffern bleibt woertlich.
 --   Ungueltiges UTF-8 -> RAISE (der Aufrufer faengt es ab, core.fn_app_verify_init_data -> malformed).
---   IMMUTABLE, liest nichts -> kein DEFINER/Grant.
---   RUECKGABE: text (NULL -> NULL, '' -> '')
+--   Liest nichts -> kein DEFINER/Grant.
+--   Eingabe: p text. Rueckgabe: text (NULL -> NULL, '' -> '')
 --   Tests: tests/db/core/test_fn_app_verify_init_data.sql
 -- ============================================================
 CREATE OR REPLACE FUNCTION core.fn_url_decode(p text)

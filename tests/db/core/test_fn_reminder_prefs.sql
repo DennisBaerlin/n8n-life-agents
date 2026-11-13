@@ -1,11 +1,11 @@
 -- tests/db/core/test_fn_reminder_prefs.sql
--- Roter Faden: Erinnerungs-Einstellung je Person (agent.reminder_prefs) ueber der Registry core.cron_labels.
---   core.fn_reminder_allowed(key, person) = Notschalter cron_enable UND (Personen-Zeile oder Registry-Default);
+-- Erinnerungs-Einstellung je Person (agent.reminder_prefs) ueber der Registry core.cron_labels.
+--   core.fn_reminder_allowed(key, person) = Notschalter cron_enable und (Personen-Zeile oder Registry-Default);
 --     Haushalts-Keys (scope household) = nur der Notschalter; unbekannter Key = false.
 --   core.fn_set_reminder_pref(p)  = Person aus chat_id (nie LLM), nur scope='person'-Keys, Upsert.
 --   core.fn_handle_reminder_cb(p) = Registry-Handler 'rem' (member_permeable): rem:on|off:<key> -> eigene Einstellung.
 --   core.fn_set_cron_enable lehnt scope='person' ab (ein alter Knopf schaltet nie den Notschalter fuer alle).
--- db_test hat KEIN seed_data -> family + Registry-Zeilen self-seeden. BEGIN..ROLLBACK.
+-- db_test hat kein seed_data -> family + Registry-Zeilen self-seeden. BEGIN..ROLLBACK.
 BEGIN;
 
 DO $$
@@ -92,7 +92,7 @@ BEGIN
   RAISE NOTICE 'PASS test_fn_reminder_prefs (Default/Override/Notschalter, rem:-Handler, fn_set_cron_enable-Sperre, CASCADE)';
 END $$;
 
--- ---------- Paket B (/reminders): Owner schaltet Haushalts-Reminder per rem:, Pflicht-Reminder sind gesperrt,
+-- ---------- /reminders: Owner schaltet Haushalts-Reminder per rem:, Pflicht-Reminder sind gesperrt,
 -- Menue-Knoepfe (Suffix :m) melden route 'reminders' (der Orchestrator sendet das Menue neu). ----------
 DO $$
 DECLARE r JSONB;
@@ -124,7 +124,7 @@ BEGIN
   IF (r->>'ok')::boolean IS NOT TRUE OR r->>'route' <> 'reminders' OR core.fn_config_get('core', 'cron_enable', 'zz_rb_house') <> 'true' THEN
     RAISE EXCEPTION 'FAIL [8a Owner rem:on:..:m -> true + route reminders]: %', r; END IF;
 
-  -- 8b) Mitglied darf Haushalts-Reminder NICHT schalten
+  -- 8b) Mitglied darf Haushalts-Reminder nicht schalten
   r := core.fn_handle_reminder_cb('{"data":"rem:off:zz_rb_house:m","chat_id":"7212","chat_type":"private"}');
   IF (r->>'ok')::boolean IS NOT FALSE OR core.fn_config_get('core', 'cron_enable', 'zz_rb_house') <> 'true' THEN
     RAISE EXCEPTION 'FAIL [8b Mitglied Haushalt -> abgelehnt, unveraendert]: %', r; END IF;

@@ -3,7 +3,7 @@
 --   finance.fn_get_recurring_suggestions (READ): Export -> Reihen (Schluessel IBAN bzw. Name, Betrags-Cluster, Rhythmus,
 --   Reife/Aktualitaet) -> Bekannt-Filter -> Vorschlaege im Format der Write-Tools. Alle Namen/IBANs frei erfunden
 --   (gueltige Pruefziffern). Termine relativ zu heute (pg_temp.due), so gewaehlt, dass sie immer in der Vergangenheit liegen.
---   S1 Miete am 1. (einmal am 3., einmal am 30. des Vormonats gebucht); S2 Abo mit Preisstufe 9,99 -> 13,99 = EINE Reihe;
+--   S1 Miete am 1. (einmal am 3., einmal am 30. des Vormonats gebucht); S2 Abo mit Preisstufe 9,99 -> 13,99 = eine Reihe;
 --   S3 zwei Abos ueber dieselbe Zahlungsdienst-IBAN, eines bekannt (IBAN-Schluessel + Betrag) -> nur das andere;
 --   S4 Gehalt am Monatsletzten, schwankend, plus Sonderzahlung (Ausreisser); S5 Kindergeld ohne IBAN (Name);
 --   S6 vierteljaehrlicher Beitrag (2 Vorkommen); S7 Uebertrag auf ein eigenes Konto; S8 Haushaltsmitglied ohne eigenes
@@ -76,7 +76,7 @@ BEGIN
     PERFORM finance.fn_create_recurring_payment(jsonb_build_object('name', 'Kinoabo', 'account_id', v_n26, 'direction', 'expense',
                  'amount', 9.99, 'schedule_unit', 'month', 'schedule_day_of_month', 7, 'first_payment_date', (T - 400)::text,
                  'valid_to', (T - 300)::text));
-    -- S18: Videodienst 11,99 am 5. erfasst - ein anderes Abo mit gleichem Betrag am 20. ist NICHT bekannt (Review)
+    -- S18: Videodienst 11,99 am 5. erfasst - ein anderes Abo mit gleichem Betrag am 20. ist nicht bekannt
     PERFORM finance.fn_create_recurring_payment(jsonb_build_object('name', 'Videodienst', 'account_id', v_n26, 'direction', 'expense',
                  'amount', 11.99, 'schedule_unit', 'month', 'schedule_day_of_month', 5, 'first_payment_date', (T - 400)::text));
 

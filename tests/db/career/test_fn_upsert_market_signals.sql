@@ -32,7 +32,7 @@ BEGIN
     RAISE EXCEPTION 'FAIL [3 count aktualisiert]'; END IF;
   RAISE NOTICE 'PASS [3] idempotenter Tages-Upsert (ON CONFLICT UPDATE)';
 
-  -- ---------- TEST 4: nicht-ganzzahliger count -> still NULL, kein RAISE (EARS-7) ----------
+  -- ---------- TEST 4: nicht-ganzzahliger count -> still NULL, kein RAISE ----------
   v_res := career.fn_upsert_market_signals(jsonb_build_object(
     'signals', jsonb_build_array(jsonb_build_object('kind','postings','primary','Data Scientist','secondary','Berlin','postings_count','n/a'))));
   IF (v_res->>'ok')::boolean IS DISTINCT FROM true THEN RAISE EXCEPTION 'FAIL [4 ok trotz junk]: %', v_res; END IF;
@@ -47,6 +47,20 @@ BEGIN
       jsonb_build_object('kind','postings','primary','','postings_count',5))));
   IF (v_res->>'upserted')::int <> 0 THEN RAISE EXCEPTION 'FAIL [5 skip ohne kind/primary]: %', v_res; END IF;
   RAISE NOTICE 'PASS [5] Eintrag ohne kind/primary -> skip';
+
+  -- ---------- TEST 6: ungueltiges as_of -> ok:false als Daten, kein Cast-RAISE, kein Write ----------
+  BEGIN
+    v_res := career.fn_upsert_market_signals(jsonb_build_object(
+      'as_of', 'nicht-ein-datum',
+      'signals', jsonb_build_array(jsonb_build_object('kind','postings','primary','Data Engineer','secondary','Kiel','postings_count',7))));
+  EXCEPTION WHEN OTHERS THEN
+    RAISE EXCEPTION 'FAIL [6 ungueltiges as_of wirft statt ok:false]: %', SQLERRM;
+  END;
+  IF (v_res->>'ok')::boolean IS DISTINCT FROM false OR v_res->>'reason' IS NULL OR (v_res->>'upserted')::int <> 0 THEN
+    RAISE EXCEPTION 'FAIL [6 ok:false mit reason, upserted 0]: %', v_res; END IF;
+  IF EXISTS (SELECT 1 FROM career.market_signals WHERE scope_key = career.fn_market_scope_key('postings','Data Engineer','Kiel')) THEN
+    RAISE EXCEPTION 'FAIL [6 kein Write bei ungueltigem as_of]'; END IF;
+  RAISE NOTICE 'PASS [6] ungueltiges as_of -> ok:false, kein Write';
 
   RAISE NOTICE 'PASS test_fn_upsert_market_signals';
 END $$;

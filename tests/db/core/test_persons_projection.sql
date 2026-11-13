@@ -1,10 +1,9 @@
 -- tests/db/core/test_persons_projection.sql
--- WS-1 Multi-Member: agent.persons-CQRS-Projektion + FK-Verwaisungs-Schutz.
+-- agent.persons-CQRS-Projektion + FK-Verwaisungs-Schutz.
 -- Prueft den Sync-Trigger trg_project_persons (agent.persons_init.sql): family-Write ->
 -- agent.persons projiziert; Reconcile-GC entfernt Slugs; FK ON DELETE RESTRICT der finance-
 -- Entitaeten blockt das Entfernen einer noch referenzierten Person; name-Gate (nur 'family'
--- projiziert). Persona = fiktiv (Mustermann), kein PII.
--- Pattern: BEGIN ... ROLLBACK; RAISE EXCEPTION = FAIL.
+-- projiziert).
 BEGIN;
 
 DO $$
@@ -25,7 +24,7 @@ DECLARE
     v_name TEXT;
     v_role TEXT;
 BEGIN
-    -- ===== (0) Defense-in-Depth (Cold-Eyes A1): NULL-person_id im Array bricht den Reconcile nicht =====
+    -- ===== (0) Defense-in-Depth: NULL-person_id im Array bricht den Reconcile nicht =====
     -- fn_project_persons ist eigenstaendig aufrufbar; ein NULL-Eintrag darf weder crashen (PK-NOT-NULL)
     -- noch den GC-DELETE neutralisieren (NULL in v_keys -> `<> ALL` -> NULL -> stiller No-Op).
     INSERT INTO agent.persons (person_id, full_name, role) VALUES ('stale_x','Stale','child'),('keep_x','Keep','child');
@@ -92,7 +91,7 @@ BEGIN
         RAISE EXCEPTION 'FAIL [FK-RESTRICT]: child_x nach geblocktem Entfernen verschwunden'; END IF;
     RAISE NOTICE 'PASS [FK-RESTRICT: referenzierte Person nicht aus family entfernbar]';
 
-    -- ===== (5) name-Gate: ein NICHT-family-Write projiziert nicht =====
+    -- ===== (5) name-Gate: ein nicht-family-Write projiziert nicht =====
     -- finance_profile referenziert eine existierende family-Person -> valide; agent.persons unveraendert.
     INSERT INTO agent.core_contexts (name, description, load_strategy, content, metadata, managed_by, package)
     VALUES ('finance_profile', 'test', 'lazy', 'prose',
@@ -102,14 +101,14 @@ BEGIN
     IF v_cnt <> 2 THEN RAISE EXCEPTION 'FAIL [name-gate]: finance_profile-Write veraenderte agent.persons (% statt 2)', v_cnt; END IF;
     RAISE NOTICE 'PASS [name-gate: nur family projiziert]';
 
-    -- ===== (6) WP-5b: FEHLENDER persons-Schlüssel (Prosa-only-Update) -> No-Op (Partial-Write-Schutz) =====
+    -- ===== (6) WP-5b: fehlender persons-Schlüssel (Prosa-only-Update) -> No-Op (Partial-Write-Schutz) =====
     SELECT count(*) INTO v_cnt FROM agent.persons;
     PERFORM agent.fn_project_persons('{"note":"prosa ohne persons"}'::jsonb);   -- kein persons-Schlüssel
     IF (SELECT count(*) FROM agent.persons) IS DISTINCT FROM v_cnt THEN
         RAISE EXCEPTION 'FAIL [WP-5b absent]: fehlender persons-Schlüssel veränderte agent.persons (Wipe statt No-Op)'; END IF;
     RAISE NOTICE 'PASS [WP-5b: fehlender persons-Schlüssel -> No-Op (kein versehentliches Wipe)]';
 
-    -- ===== (7) WP-5b: PRÄSENTES leeres Array -> Full-Wipe (bewusste Voll-Entfernung, keine Stale-Zeilen) =====
+    -- ===== (7) WP-5b: präsentes leeres Array -> Full-Wipe (bewusste Voll-Entfernung, keine Stale-Zeilen) =====
     -- Die FK-referenzierte child_x würde den Wipe sonst per RESTRICT blocken -> die Personen-Referenz des Kontos
     -- lösen (owner_person_id = NULL = Haushalt; das Konto selbst hat eine account_balances-Zeile und bleibt),
     -- dann alle Personen bewusst per leerem Array entfernen.

@@ -1,46 +1,46 @@
 ﻿#Requires -Version 5.1
 # Definition agent.monitor.cron_check_triggers -> Build-CronMonitorCheckTriggers. Dot-gesourct von build.ps1.
-# HEARTBEAT des generischen Trigger-Monitorings: laeuft stuendlich (schedule.monitor_triggers,
-# beim Einspielen aus core.config eingesetzt — nur der AUFLOESUNGSBODEN; die per-Trigger-Frequenz lebt als
+# Heartbeat des generischen Trigger-Monitorings: laeuft stuendlich (schedule.monitor_triggers,
+# beim Einspielen aus core.config eingesetzt; nur der Aufloesungsboden, die per-Trigger-Frequenz lebt als
 # check_interval/next_check_at an der Trigger-Zeile, Due-Selection in agent.fn_monitor_due).
-# Kill-Switch feature.monitor_triggers zur LAUFZEIT (default true — ohne Trigger-Zeilen
-# natuerlicherweise stumm). NUR die web_search-Beschaffung laeuft im Canvas (Claude-web_search-HTTP
+# Kill-Switch feature.monitor_triggers zur Laufzeit (default true; ohne Trigger-Zeilen
+# natuerlicherweise stumm). Nur die web_search-Beschaffung laeuft im Canvas (Claude-web_search-HTTP
 # je faelligem Web-Trigger, strikter JSON-Vertrag, deterministischer Parse); sql/none/Paket-
 # Methoden beschafft fn_monitor_evaluate selbst (sql unter SET LOCAL ROLE core_ro). Vergleich/
-# Latch/Ratchet/Advance = rein deterministisch in der fn. EINE kombinierte Telegram-Message
-# (deterministisch formatiert, KEIN LLM-Phrasing — Alert-Wortlaut muss exakt sein);
+# Latch/Ratchet/Advance = rein deterministisch in der fn. Eine kombinierte Telegram-Message
+# (deterministisch formatiert, kein LLM-Phrasing, Alert-Wortlaut muss exakt sein);
 # stiller Lauf = keine Message.
 function Build-CronMonitorCheckTriggers {
 
     $trig = Build-ScheduleTrigger @(-1100, 0) -ScheduleKey 'monitor_triggers'
 
-    # Kill-Switch zur LAUFZEIT (default true; abschalten = Config-Zeile + re-seed, kein Rebuild)
+    # Kill-Switch zur Laufzeit (default true; abschalten = Config-Zeile + re-seed, kein Rebuild)
     $flag = Build-Pg 'Read feature flag' @(-880, 0) `
         "=SELECT COALESCE((SELECT value FROM core.config WHERE category = 'feature' AND key = 'monitor_triggers'), 'true') AS flag;" `
         $null
     $ifEnabled = Build-If 'Enabled?' @(-660, 0) '={{ $json.flag }}' 'true' 'equals' 'string'
     $off = Build-NoOp 'Disabled' @(-440, 200)
 
-    # NUR die faelligen WEB-Trigger (sql/none/Paket-Methoden beschafft die fn selbst).
-    # alwaysOutputData: 0 Treffer -> EIN leeres Item -> der 'Web items?'-IF routet es auf
+    # Nur die faelligen Web-Trigger (sql/none/Paket-Methoden beschafft die fn selbst).
+    # alwaysOutputData: 0 Treffer -> ein leeres Item -> der 'Web items?'-IF routet es auf
     # den Direkt-Pfad, damit Evaluate auch ohne Web-Trigger laeuft (date/sql/Paket-Methode faellig!).
     $due = Build-Pg 'Load due web triggers' @(-440, 0) `
         "=SELECT run_ts::text AS run_ts, id, label, acquisition_spec->>'prompt' AS prompt FROM agent.fn_monitor_due(NOW()) WHERE acquisition_method = 'web_search';" `
         $null
     $due['alwaysOutputData'] = $true
 
-    # Exklusive Branches (kein Merge-Node noetig): ENTWEDER alle echten Web-Items (true)
-    # ODER genau das eine leere Item (false) — Evaluate laeuft dadurch exakt 1x.
+    # Exklusive Branches (kein Merge-Node noetig): entweder alle echten Web-Items (true)
+    # oder genau das eine leere Item (false); Evaluate laeuft dadurch genau 1x.
     $ifItems = Build-If 'Web items?' @(-220, 0) '={{ $json.id || 0 }}' '0' 'larger' 'number'
 
-    # Modell der Wert-Beschaffung (model.monitor_acquisition) bei JEDEM Lauf aus core.config — VOR der Due-Abfrage
+    # Modell der Wert-Beschaffung (model.monitor_acquisition) bei jedem Lauf aus core.config, vor der Due-Abfrage
     # (deren SQL hat keine Eingangs-Bezuege), damit der HTTP-Knoten es je Item per .first() liest.
     $loadModel = New-MonitorModelConfigNode -Pos @(-550, -180)
 
     $acquire = New-MonitorAcquireHttpNode 'Acquire web value' @(0, -140) "`$json.prompt"
 
     # Parse je Item (Stufe 1 der Validierungs-Kaskade); trigger_id via pairedItem-Kette,
-    # NIE durchs Modell (Modell-Output ist untrusted).
+    # nie durchs Modell (Modell-Output ist untrusted).
     $shapeJs = Get-MonitorShapeJs -PerItem -ResultExprJs 'return { json: { observation: Object.assign({ trigger_id: $(''Load due web triggers'').item.json.id }, obs) } };'
     $shape = [ordered]@{
         parameters = [ordered]@{ mode = 'runOnceForEachItem'; jsCode = $shapeJs }
@@ -60,8 +60,8 @@ return [{ json: {
         id = (New-Id); name = 'Collect observations'
     }
 
-    # EINE atomare Auswertung (sql/Paket-Methoden-Beschaffung + Validierung + Latch/Ratchet/Advance off-canvas).
-    # Textkatalog Phase C: die Texte (Owner-Sprache, core.fn_ui_texts_for) in DERSELBEN Anweisung wie Latch/Advance —
+    # Eine atomare Auswertung (sql/Paket-Methoden-Beschaffung + Validierung + Latch/Ratchet/Advance off-canvas).
+    # Textkatalog: die Texte (Owner-Sprache, core.fn_ui_texts_for) in derselben Anweisung wie Latch/Advance —
     # ein Ladefehler rollt die Auswertung zurueck (nie "ausgeloest", ohne gemeldet zu sein). Paketnamen der Advisor-
     # Hinweise als <pkg>.package.name (Liste build-time aus den Manifest-advisors-Bloecken, $AdvisorDomainList).
     $monKeys = @('core.monitor.title', 'core.monitor.fired', 'core.monitor.date_reached', 'core.monitor.drawdown',
@@ -83,7 +83,7 @@ return [{ json: {
     $quiet = Build-NoOp 'Quiet run' @(900, 200)
 
     # Deterministische Message in Owner-Sprache (geteilter Renderer; Zahlen/Daten per Intl); Domain->Paket-Map
-    # BUILD-TIME aus den Manifest-advisors-Bloecken ($AdvisorDomainList — Wert-Fragen -> Fach-Advisor des Pakets,
+    # build-time aus den Manifest-advisors-Bloecken ($AdvisorDomainList — Wert-Fragen -> Fach-Advisor des Pakets,
     # Mechanik/Reparatur -> Monitor-Agent), der Paketname zur Laufzeit aus dem Katalog. Kein LLM: Alert-Wortlaut exakt.
     $domainJson = '{' + (($AdvisorDomainList | ForEach-Object {
         (ConvertTo-Json $_.Domain) + ':' + (ConvertTo-Json $_.Package) }) -join ',') + '}'

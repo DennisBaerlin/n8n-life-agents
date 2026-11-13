@@ -1,7 +1,8 @@
 -- ============================================================
--- core.fn_release_intro(body, lang) (read-only, IMMUTABLE) — Kurzfassung eines Releases fuer die Owner-Karte
+-- fn_release_intro (READ-ONLY, IMMUTABLE) — Kurzfassung eines Releases fuer die Owner-Karte
+--   Eingabe: p_body text (Release-Text), p_lang text (optional).
 --   Mit lang: steht im Text ein Marker '<!-- summary:<lang> … -->' mit nicht-leerem Inhalt, ist dessen Inhalt die
---   Kurzfassung. Sonst (lang NULL/ungueltig, kein oder leerer Marker, alter Release) der Einleitungsabsatz der
+--   Kurzfassung. Sonst (lang NULL/ungueltig, kein oder leerer Marker, Release ohne Marker) der Einleitungsabsatz der
 --   Tag-Nachricht = alles vor der ersten Leerzeile, '#'-Ueberschrift oder '---'-Linie (release.yml haengt den
 --   Installations-Hinweis hinter '---' an); der Absatz ist englisch und gilt damit fuer 'en' und als Rueckfall.
 --   Zeilen werden mit Leerzeichen verbunden, Markdown-Hervorhebung ('**', '__', Backticks) und Link-Syntax
@@ -10,7 +11,7 @@
 --   lang nur ^[a-z]{2,3}$ (Codes aus core.ui_languages), sonst Rueckfall — der Code geht in ein Regex-Muster.
 --   Der Marker-Regex ist lazy ('\s*?'), sonst wird das ganze ARE gierig und verschluckt den Nachbar-Marker.
 --   Der Maintainer schreibt die Kurzfassungen selbst (scripts/release_notes_check.ps1 erzwingt sie) — kein LLM.
---   RUECKGABE: text (nie NULL)
+--   Rueckgabe: text (nie NULL)
 --   Tests: tests/db/core/test_fn_release_card.sql, scripts/dev/release_notes_check_test.ps1 (gleiche Faelle)
 -- ============================================================
 DROP FUNCTION IF EXISTS core.fn_release_intro(text);

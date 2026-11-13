@@ -1,5 +1,5 @@
 -- tests/db/estate/test_fn_set_funeral_preferences.sql
--- WS-2: Bestattungswuensche-UPSERT (1 Zeile je Person) — Tri-State has_prepaid_contract
+-- Bestattungswuensche-UPSERT (1 Zeile je Person) — Tri-State has_prepaid_contract
 -- (nur explizit gesendeter Wert aendert), burial_type-Guard, Kind-Reject. Self-contained.
 BEGIN;
 
@@ -38,7 +38,7 @@ BEGIN
   IF NOT FOUND THEN RAISE EXCEPTION 'FAIL [happy path]: Zeile nicht wie erwartet'; END IF;
   RAISE NOTICE 'PASS [UPSERT-Create + Vorsorgevertrag true]';
 
-  -- Tri-State: Update OHNE has_prepaid_contract -> bleibt true (nicht gesendet = unveraendert):
+  -- Tri-State: Update ohne has_prepaid_contract -> bleibt true (nicht gesendet = unveraendert):
   v_r := estate.fn_set_funeral_preferences(jsonb_build_object(
       'chat_id','111', 'person_id','erika', 'wishes','Seebestattung lieber nicht; Musik: Ave Maria'));
   IF NOT (v_r->>'ok')::boolean OR (v_r->>'created')::boolean THEN
@@ -58,7 +58,7 @@ BEGIN
   IF (v_r->>'ok')::boolean THEN RAISE EXCEPTION 'FAIL [invalid bool]: %', v_r; END IF;
   RAISE NOTICE 'PASS [Guards: burial_type/bool -> ok:false]';
 
-  -- WP3: Anbieter genannt -> Vorsorgevertrag abgeleitet (true); false leert den Anbieter; beides zugleich -> ok:false
+  -- Anbieter genannt -> Vorsorgevertrag abgeleitet (true); false leert den Anbieter; beides zugleich -> ok:false
   v_r := estate.fn_set_funeral_preferences(jsonb_build_object(
       'chat_id','111', 'person_id','erika', 'has_prepaid_contract','false'));
   v_r := estate.fn_set_funeral_preferences(jsonb_build_object(

@@ -1,10 +1,11 @@
 -- ============================================================
--- core.fn_menu_refresh_claim() — Menue-Auftrag der Mini-App uebernehmen (READ; Tabelle + Trigger:
---   packages/core/db/core.menu_refresh_init.sql). Aufrufer nur bash als Superuser (provisioning/lib/deploy_workflows.sh
---   _set_bot_menu_buttons, der root-Runner update --run-requested fragt damit „offen?“). Muster
+-- fn_menu_refresh_claim (READ)
+--   Menue-Auftrag der Mini-App uebernehmen (Tabelle + Trigger: packages/core/db/core.menu_refresh_init.sql).
+--   Keine Eingabe. Aufrufer nur bash als Superuser (provisioning/lib/deploy_workflows.sh
+--   _set_bot_menu_buttons, der root-Runner update --run-requested fragt damit „offen?“). Wie
 --   core.fn_update_request_claim, aber ohne Sperr-Zustand: ein Menue-Lauf ist idempotent, die Generation sorgt dafuer,
 --   dass ein waehrend des Laufs entstandener Auftrag offen bleibt (core.fn_menu_refresh_finish schliesst nur bis gen).
---   RUECKGABE: {open, gen} — gen = aktuelle requested_gen; open = Unerledigtes UND keine Wartezeit nach einem
+--   RUECKGABE: {open, gen} -- gen = aktuelle requested_gen; open = Unerledigtes und keine Wartezeit nach einem
 --              Fehlschlag (retry_after).
 --   Tests: tests/db/core/test_fn_menu_refresh.sql
 -- ============================================================

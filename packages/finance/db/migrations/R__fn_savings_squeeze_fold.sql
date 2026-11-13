@@ -1,20 +1,18 @@
 -- ============================================================
 -- fn_savings_squeeze_fold (INTERNAL HELPER — Event-Fold, nicht tool-facing)
---   Der EINE savings_squeeze-Sofort-Hinweis der Sparraten-Write-fns fn_create_savings_goal, fn_set_savings_goal und
---   fn_set_savings_plan (vorher nur inline in create -> eine Raten-Erhoehung per set blieb bis zum Advisor-Cron still;
---   vereinheitlicht nach dem Muster fn_cashflow_coverage_fold). Liest den Post-State NACH dem Write aus
+--   Der eine savings_squeeze-Sofort-Hinweis der Sparraten-Write-fns fn_create_savings_goal, fn_set_savings_goal und
+--   fn_set_savings_plan (Muster fn_cashflow_coverage_fold). Liest den Post-State nach dem Write aus
 --   finance.monthly_cashflow_summary: bei monthly_income > 0 und monthly_account_change < 0 uebersteigen die
 --   Sparraten (Sparplan + Sparziel-Raten + Vorsorge) das frei Verfuegbare -> das Girokonto schrumpft. Bei schon
 --   negativem monthly_free eigener Text (die Raten vertiefen ein bestehendes Pflicht-Defizit).
---   Phase Notify: ueber core.fn_should_notify gelatcht (Singleton-Key, TTL 24h); Erholung (monthly_income > 0 und
---   monthly_account_change >= 0) -> core.fn_notify_resolve (expliziter Re-Arm, Paritaet cashflow_coverage; ersetzt den
---   frueheren Entscheid "rein TTL, kein Erholungs-Edge", denn mit den set-Pfaden gibt es den Schreib-Edge jetzt).
+--   Ueber core.fn_should_notify gelatcht (Singleton-Key, TTL 24h); Erholung (monthly_income > 0 und
+--   monthly_account_change >= 0) -> core.fn_notify_resolve (expliziter Re-Arm, Paritaet cashflow_coverage).
 --   Ohne Einnahmen weder Hinweis noch Re-Arm (diesen Fall meldet cashflow_coverage).
 --   Grenze: ein Sparplan-Split mit kuenftigem valid_from ist im Post-State noch nicht sichtbar (wie cashflow_coverage);
 --   der periodische Advisor-Cron bleibt der Backstop.
 --   Nicht-blockierend: der Aufrufer faltet das Ergebnis in seinen {ok:true}-Return, der Bookkeeper relayed die note.
---   Seit 2026-10-30 (Transparenz) rechnen frei und Kontoveraenderung den geschaetzten Alltag ein (fn_household_everyday_month).
---   p_chat_id (optional) = Absender; hoerte der Owner die Notiz, merkt core.fn_mark_told das fuer den Waechter.
+--   frei und Kontoveraenderung rechnen den geschaetzten Alltag ein (fn_household_everyday_month).
+--   Eingabe: p_chat_id (optional) = Absender; hoerte der Owner die Notiz, merkt core.fn_mark_told das fuer den Waechter.
 --   RUECKGABE jsonb: '{}' oder {savings_squeeze: {account_change, note}}.
 -- ============================================================
 DROP FUNCTION IF EXISTS finance.fn_savings_squeeze_fold();

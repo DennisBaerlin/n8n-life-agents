@@ -1,5 +1,5 @@
 -- ============================================================
--- core.fn_proactive_claim(person, slot, class) (WRITE -- darf diese ungefragte Nachricht heute raus?)
+-- fn_proactive_claim (ATOMIC WRITE, SECURITY DEFINER) — darf diese ungefragte Nachricht heute raus?
 --   Der eine Budget-Weg: direkt vor dem Versand oder Merker-Schreiben aufrufen, wenn die Meldung feststeht. Budget und
 --   Pause gehoeren dem Empfaenger. Ein belegter Slot gibt true ohne neuen Zaehler (ein Cron, mehrere Items = eine Nachricht).
 --   Eingabe: p_person_id (NULL = Owner), p_slot, p_class:

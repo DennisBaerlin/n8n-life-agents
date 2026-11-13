@@ -1,11 +1,11 @@
 ﻿#Requires -Version 5.1
-# Oeffnet das APP-FENSTER (Default 60 Min): solange darf Claude die Mini-App aendern, die der PreToolUse-Hook
-# .claude/hooks/enforce_app_window.ps1 sonst hart sperrt (Owner-Regel 2026-11-01: die Darstellung ist immer ein eigener Plan).
+# Oeffnet das App-Fenster (Default 60 Min): solange darf Claude die Mini-App aendern, die der PreToolUse-Hook
+# .claude/hooks/enforce_app_window.ps1 sonst hart sperrt.
 # Getrennt vom Owner-Fenster der LLM-Suiten (grant_owner_window.ps1): Testkosten freizugeben ist keine Zustimmung zu einer
 # App-Aenderung.
 #
-# MAKER-CHECKER: NUR der Owner fuehrt dieses Skript aus, im Terminal. Der Hook verweigert es Claude immer.
-# Die Datei liegt immer im Haupt-Checkout, damit das Fenster auch fuer Sessions in einem Worktree gilt.
+# Maker-Checker: nur der Owner fuehrt dieses Skript aus, im Terminal. Der Hook verweigert es Claude immer.
+# Die Datei (.claude/app_grant.txt) liegt immer im Haupt-Checkout, damit das Fenster auch fuer Sessions in einem Worktree gilt.
 #
 # Usage:  .\scripts\grant_app_window.ps1 [-Minutes 60]
 param([int]$Minutes = 60)

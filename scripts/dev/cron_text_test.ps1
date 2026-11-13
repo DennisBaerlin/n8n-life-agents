@@ -1,15 +1,15 @@
 ﻿#Requires -Version 5.1
-# cron_text_test.ps1 — DETERMINISTISCHER, GRATIS Test der Cron-Sends (Textkatalog Phase C, docs/package-contract.md §3.11).
-# Jede Erinnerung/jeder Bericht, den der Bot VON SICH AUS schickt, kommt in der Sprache des Empfaengers. Dieser Treiber
+# cron_text_test.ps1 — deterministischer, kostenloser Test der Cron-Sends (docs/package-contract.md §3.11).
+# Jede Erinnerung/jeder Bericht, den der Bot von sich aus schickt, kommt in der Sprache des Empfaengers. Dieser Treiber
 # loest jeden Cron im Substrat echt aus und prueft das abgefangene Telegram (Mock) gegen den getrackten Katalog:
 #   * expect_keys    — die festen Teilstuecke des Katalog-Texts in der Empfaenger-Sprache stehen im Send, die deutschen
-#                      (>= 4 Zeichen) NICHT (Owner ko); Kontrollfall owner_lang de prueft die Gegenrichtung.
+#                      (>= 4 Zeichen) nicht (Owner ko); Kontrollfall owner_lang de prueft die Gegenrichtung.
 #   * expect_buttons — ein Knopf traegt genau den Katalog-Text.
 #   * expect_silent  — der Send traegt disable_notification (true) bzw. nicht (false).
 #   * llm_expect     — Crons mit Umformulier-/Extraktions-Modell: der Mock-LLM-Request enthaelt die festen Stuecke der
 #                      Keys (Grundtext in Empfaenger-Sprache) und die Sprachangabe '<code> (' (Mock antwortet 'done').
 #   * taps           — Bestaetigungs-Fragen: Tipp simulieren (Invoke-HitlResume), Folge-Frage/Ergebnis-Zeile pruefen.
-# Paket-neutral: Faelle aus tests/agent/<pkg>/cron_text_cases.json (kind cron_text). Je Fall NACHEINANDER: reset_sql ->
+# Paket-neutral: Faelle aus tests/agent/<pkg>/cron_text_cases.json (kind cron_text). Je Fall nacheinander: reset_sql ->
 # seed_sql -> ggf. cron_enable an -> Cron sofort starten (Start-TestCron: Test-Eingang core.cron_run.test_harness ->
 # 'Test run'-Einstieg) -> auf die neue Execution warten -> pruefen -> finally: wartende Executions stoppen, cron_enable zurueck, reset_sql.
 # So laufen nie zwei Crons gleichzeitig (die Berater-Crons teilen Latches) und kein Netz-Cron wird angefasst.
@@ -83,7 +83,7 @@ function Get-Sends([string]$ChatId) {
 }
 # Statt fester Pause: warten, bis mindestens $Min Sends (ab Index $Skip) da sind und 3 s lang keiner dazukommt.
 # Die Ruhezeit faengt Nachzuegler ab (Sub-Workflows laufen ohne Warten weiter, ein doppelter Send soll auffallen;
-# 3 s = die fruehere feste Nachlaufzeit, kuerzer liesse einen spaeten Doppel-Send durchrutschen);
+# kuerzer als 3 s liesse einen spaeten Doppel-Send durchrutschen);
 # nach $TimeoutSec ohne Ruhe kommt der letzte Stand zurueck, die Asserts melden dann den Fehler.
 function Wait-Sends([string]$ChatId, [int]$Skip = 0, [int]$Min = 1, [int]$TimeoutSec = 30) {
     $start = Get-Date; $last = -1; $stableSince = Get-Date
@@ -158,10 +158,9 @@ if ($Id) { $cases = @($cases | Where-Object { $_.id -eq $Id }) }
 if ($cases.Count -eq 0) { throw "Keine cron_text-Faelle gefunden (Filter '$Id')." }
 $wfList = Invoke-N8nGet 'workflows?limit=250'
 
-# Schnellweg-Vorbereitung (2026-10-26): Crons senden an die Owner-chat_id, die der Deploy beim Einspielen einsetzt
-# (__OWNER_CHAT_ID__ -> DB-Owner nach dem Pairing, sonst die .env). Der alte Weg spielte je Fall neu ein und trug so den
-# gepairten Test-Owner nach; der Schnellweg spielt nichts ein -> EINMAL vorab: Test-Owner pairen + je betroffenem Paket
-# ein Redeploy (config reset schedule <ein Key des Pakets>), statt zwei Redeploys je Fall.
+# Schnellweg-Vorbereitung: Crons senden an die Owner-chat_id, die der Deploy beim Einspielen einsetzt
+# (__OWNER_CHAT_ID__ -> DB-Owner nach dem Pairing, sonst die .env). Der Schnellweg spielt je Fall nichts ein
+# -> einmal vorab: Test-Owner pairen + je betroffenem Paket ein Redeploy (config reset schedule <ein Key des Pakets>).
 $viaHarnessAll = Test-TestCronHarness -BridgeUrl $N8nUrl -ApiKey $ApiKey
 if ($viaHarnessAll) {
     Set-OwnerTelegramPairing -Container $Container
@@ -228,8 +227,8 @@ try {
                 $wfId = ($wfList.data | Where-Object { $_.name -eq $c.workflow } | Select-Object -First 1).id
                 if (-not $wfId) { throw "Workflow '$($c.workflow)' nicht gefunden." }
                 $maxId = Get-MaxExecId -WfId $wfId -BridgeUrl $N8nUrl -ApiKey $ApiKey
-                # Schnellweg (2026-10-26): der Test-Eingang core.cron_run.test_harness startet den Cron sofort ueber
-                # seinen 'Test run'-Einstieg (Build-Workflow). Rueckfall auf den alten Weg (Zeitplan auf jede Minute,
+                # Schnellweg: der Test-Eingang core.cron_run.test_harness startet den Cron sofort ueber
+                # seinen 'Test run'-Einstieg (Build-Workflow). Rueckfall (Zeitplan auf jede Minute,
                 # 2 Redeploys + Warten) nur auf einem Substrat ohne diesen Eingang.
                 $viaHarness = $viaHarnessAll
                 if ($viaHarness) {

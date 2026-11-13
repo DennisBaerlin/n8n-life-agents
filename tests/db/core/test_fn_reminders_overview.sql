@@ -1,5 +1,5 @@
 -- tests/db/core/test_fn_reminders_overview.sql
--- core.fn_reminders_overview(chat_id) — Datenmodell des /reminders-Menues (Roter Faden, Paket B):
+-- core.fn_reminders_overview(chat_id) — Datenmodell des /reminders-Menues:
 --   je Registry-Reminder {key, package, scope, mandatory, active, enabled, schedule} aus Sicht des Betrachters:
 --   Owner sieht Haushalts- + Person-Reminder (enabled = Notschalter bzw. seine eigene Einstellung), ein Mitglied
 --   nur die Person-Reminder (Haushalt schaltet der Owner). active = Paket aktiv. schedule = core.config schedule.<key>.

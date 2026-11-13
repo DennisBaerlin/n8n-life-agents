@@ -1,16 +1,16 @@
 -- ============================================================
--- core.fn_reminders_overview(p_chat_id) — das Datenmodell des /reminders-Menues (Roter Faden, Paket B)
---   Je Erinnerung der Registry core.cron_labels aus Sicht des BETRACHTERS (Person aus chat_id, nie LLM):
+-- fn_reminders_overview (READ-ONLY, SECURITY DEFINER) — das Datenmodell des /reminders-Menues
+--   Eingabe: p_chat_id text. Je Erinnerung der Registry core.cron_labels aus Sicht des Betrachters (Person aus chat_id, nie LLM):
 --     { key, package, scope, mandatory, active, enabled, schedule }
 --     active   = core.fn_package_active(package) (core immer) — sonst zeigt das Menue "nicht installiert";
 --     enabled  = core.fn_reminder_allowed(key, person) — dieselbe Pruef-Adresse wie die Crons (household: Notschalter;
---                person: Notschalter UND eigene Einstellung bzw. Default) — genau das, was die Person bekommt;
+--                person: Notschalter und eigene Einstellung bzw. Default) — genau das, was die Person bekommt;
 --     schedule = core.config schedule.<key> (Cron-Ausdruck; das Menue rendert ihn in Klartext) oder NULL.
 --   Sichtbarkeit: der Owner sieht alle Erinnerungen, ein Mitglied nur die Person-Reminder (Haushalts-Erinnerungen
 --   schaltet und bekommt der Owner). Unaufgeloester Betrachter -> leere Liste.
---   RUECKGABE: {ok:true, viewer_role, pause_until (Datum, solange die eigene Pause laeuft, sonst null), reminders:[...]} (sortiert nach package, key; die Anzeige-Reihenfolge legt der
+--   Rueckgabe: {ok:true, viewer_role, pause_until (Datum, solange die eigene Pause laeuft, sonst null), reminders:[...]} (sortiert nach package, key; die Anzeige-Reihenfolge legt der
 --   Menue-Build fest).
---   D10 / Auth: SECURITY DEFINER (das Menue liest unter core_ro), search_path gepinnt, alles voll-qualifiziert, kein
+--   SECURITY DEFINER (das Menue liest unter core_ro), search_path gepinnt, alles voll-qualifiziert, kein
 --   dynamisches SQL. EXECUTE nur an core_ro (util_create_core_ro.sql).
 --   Tests: tests/db/core/test_fn_reminders_overview.sql
 -- ============================================================

@@ -1,12 +1,12 @@
 -- ============================================================
 -- fn_create_recurring_payment (ATOMIC WRITE)
 --   Legt eine standalone wiederkehrende Einnahme/Ausgabe an (Gehalt, Miete, Abo, Rentenzahlung,
---   Mitgliedschaft) — NICHT fuer Versicherung/Kredit/Sparrate (eigene Tools). Vorzeichen aus
+--   Mitgliedschaft) — nicht fuer Versicherung/Kredit/Sparrate (eigene Tools). Vorzeichen aus
 --   direction: income -> +amount, expense -> -amount. INSERT via gemeinsamen Helper
 --   fn_add_recurring_payment. Eingabe jsonb: name, account_id (n8n-resolved), direction
 --   ('income'|'expense'), amount (positiv), schedule_interval (opt, default 1), schedule_unit,
 --   schedule_day_of_month (opt), first_payment_date, valid_from (opt, default first_payment_date),
---   valid_to (opt; LETZTER gueltiger Tag, inklusiv wie vom Nutzer genannt -> gespeichert wird der Folgetag,
+--   valid_to (opt; letzter gueltiger Tag, inklusiv wie vom Nutzer genannt -> gespeichert wird der Folgetag,
 --   Speicher-Konvention [valid_from, valid_to) exklusiv), notes (opt), counterparty_iban (opt; "Import zuerst": die
 --   Gegen-IBAN aus fn_get_recurring_suggestions -> recurring_payment_keys counterparty_iban, source user, damit der
 --   Monats-Check die Zahlung per Schluessel trifft (Stufe A, auch bei schwankendem Betrag); Kartenzeile
@@ -15,11 +15,11 @@
 --   first_payment_date wird auf den ersten Termin >= Eingabe im Raster verankert (fn_schedule_first_occurrence: passt das
 --   Datum nicht zum festen Monatstag, gilt der naechste solche Tag); valid_from ohne Angabe = dieser Termin, dann
 --   fn_recurring_valid_from (fruehestens der Eroeffnungssaldo-Stichtag des Kontos). effective meldet beide wie gespeichert.
---   RUECKGABE: Erfolg -> {ok:true, recurring_payment_id, monthly_equivalent, card_lines} + optional cashflow_coverage
+--   Rueckgabe: Erfolg -> {ok:true, recurring_payment_id, monthly_equivalent, card_lines} + optional cashflow_coverage
 --   + optional savings_funding (fn_savings_funding_fold, Bericht ohne Frage: Spar-Deckung des Kontos nach dem Write,
 --   Einnahme wie Ausgabe, z. B. eine Zuwendung von aussen auf das Konto eines Sparplans). Korrigierbar
 --   (direction/amount, schedule_unit unbekannt, Konto nicht buchbar [Depot/Kredit: die Faelligkeit bliebe
---   sonst ewig offen]) -> {ok:false, reason} OHNE Write.
+--   sonst ewig offen]) -> {ok:false, reason} ohne Write.
 --   handoff_task_id (optional): Eintrag einer vereinbarten Plan-Aufgabe -> finance.fn_with_handoff (Pruefung, Abschluss
 --   im selben Write, Kartenzeile core.hitl.handoff_note).
 -- ============================================================
@@ -30,7 +30,7 @@ DECLARE
     v_dir      TEXT     := p->>'direction';
     v_amount   NUMERIC  := (p->>'amount')::numeric;
     v_interval SMALLINT := COALESCE(NULLIF(p->>'schedule_interval','')::smallint, 1);
-    v_unit     finance.schedule_unit;   -- Cast erst nach dem Enum-Guard (Import-Haertung)
+    v_unit     finance.schedule_unit;   -- Cast erst nach dem Enum-Guard
     v_reason   TEXT     := COALESCE(finance.fn_enum_reason('finance.schedule_unit'::regtype, p->>'schedule_unit', 'schedule_unit'),
                                     finance.fn_bookable_account_reason((p->>'account_id')::int));
     v_dom      SMALLINT := NULLIF(p->>'schedule_day_of_month','')::smallint;
@@ -40,7 +40,7 @@ DECLARE
     v_signed   NUMERIC;
     v_rp_id    INT;
     v_me       NUMERIC;
-    v_cf       JSONB := '{}'::jsonb;   -- Phase Notify: gefaltete cashflow_coverage-Note (nur bei Latch-Flanke)
+    v_cf       JSONB := '{}'::jsonb;   -- gefaltete cashflow_coverage-Note (nur bei Latch-Flanke)
     v_nc       JSONB;
     v_dates    JSONB;
     v_fold     JSONB;
@@ -69,13 +69,13 @@ BEGIN
         RETURN jsonb_build_object('ok', false,
             'reason', 'counterparty_iban is not a valid IBAN - pass it exactly as the suggestion gives it, or leave it empty.');
     END IF;
-    -- DB-ist-das-Gesetz S6: laufende freistehende Zahlung gleichen Namens -> ok:false; Entitaets-Zahlung -> Karten-Hinweis
+    -- Laufende freistehende Zahlung gleichen Namens -> ok:false; Entitaets-Zahlung -> Karten-Hinweis
     v_nc := finance.fn_recurring_name_check(p->>'name');
     IF (v_nc->>'ok')::boolean IS DISTINCT FROM true THEN
         RETURN v_nc;
     END IF;
     v_unit := (p->>'schedule_unit')::finance.schedule_unit;
-    -- WP-2b: fester Buchungstag 1-28, -1 (Monatsletzter) oder -2 (vorletzter Tag); 29/30/31 overflowen kurze Monate.
+    -- Fester Buchungstag 1-28, -1 (Monatsletzter) oder -2 (vorletzter Tag); 29/30/31 overflowen kurze Monate.
     IF finance.fn_schedule_dom_reason(v_dom) IS NOT NULL THEN
         RETURN jsonb_build_object('ok', false, 'reason', finance.fn_schedule_dom_reason(v_dom));
     END IF;
@@ -119,9 +119,9 @@ BEGIN
         VALUES (v_rp_id, 'sepa_mandate', v_mand, 'user') ON CONFLICT DO NOTHING;
     END IF;
 
-    -- Phase L WS-3: Cashflow-Sofort-Hinweis (Event-Fold). Post-State NACH dem INSERT: die soeben angelegte Zahlung
-    -- ist (sofern aktiv + gestartet oder innerhalb fn_recurring_starts_within_cycle) in der Live-View. Audit Paket 3: der eine Fold-Helfer (Pflichtausgaben >
-    -- Einnahmen, gelatcht, Re-Arm bei Erholung) — geteilt mit fn_set_recurring_payment.
+    -- Cashflow-Sofort-Hinweis (Event-Fold). Post-State nach dem INSERT: die soeben angelegte Zahlung
+    -- ist (sofern aktiv + gestartet oder innerhalb fn_recurring_starts_within_cycle) in der Live-View. Der eine
+    -- Fold-Helfer (Pflichtausgaben > Einnahmen, gelatcht, Re-Arm bei Erholung) ist mit fn_set_recurring_payment geteilt.
     v_cf := finance.fn_cashflow_coverage_fold(p->>'chat_id');
     -- Spar-Deckung des Kontos nach dem Write (nur ein Deckungs-Konto rechnet; sonst nur der Index-Check);
     -- „gedeckt" berichtet nur eine Einnahme (Geldeingang), eine Ausgabe nur bei einer Luecke

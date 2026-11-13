@@ -788,11 +788,13 @@ backup_cmd_list() {
   [ "${1:-}" = --json ] || die "Usage: lifeagents backup list --json"
   _BKP_JSON=1
   _bkp_resolve_db
-  local hd prob; hd="$(_bkp_host_dir)"
+  local hd names; hd="$(_bkp_host_dir)"
   [ -n "$hd" ] || _bkp_rdie nofolder "Noch kein Sicherungs-Ordner gewählt."
-  prob="$(_bkp_folder_problem "$hd")"
-  [ -z "$prob" ] || _bkp_rdie folder "Der Sicherungs-Ordner ist nicht erreichbar (${prob})." --arg problem "$prob"
-  rt_host_ls "$(_bkp_hd "$hd")" | _bkp_classify | _bkp_sorted | jq -Rsc --arg folder "$hd" '
+  # Nur lesen, ein Kurzlauf-Container (die App fragt bei jedem Öffnen der Startseite): keine Schreibprobe wie beim Sichern.
+  if ! _bkp_host_dir_valid "$hd" || ! names="$(rt_host_ls "$(_bkp_hd "$hd")")"; then
+    _bkp_rdie folder "Der Sicherungs-Ordner ist nicht erreichbar."
+  fi
+  printf '%s\n' "$names" | _bkp_classify | _bkp_sorted | jq -Rsc --arg folder "$hd" '
     [split("\n")[] | select(length > 0) | split("\t")
      | { name: .[0], key_id: (if .[1] == "" then null else .[1] end), own: (.[2] == "own"),
          date: (.[3] as $t | if ($t | length) == 14 then "\($t[0:4])-\($t[4:6])-\($t[6:8])T\($t[8:10]):\($t[10:12]):\($t[12:14])Z" else null end),
@@ -811,10 +813,12 @@ backup_cmd_restore_status() {
     printf -v "${v%%:*}" '%s' "$(read_env_value "$BACKUP_STATE_FILE" "${v#*:}" 2>/dev/null || true)"
   done
   case "$st" in ''|*[!0-9]*) st=0 ;; esac; case "$okt" in ''|*[!0-9]*) okt=0 ;; esac; case "$flt" in ''|*[!0-9]*) flt=0 ;; esac
+  # Laeuft gerade einer, zaehlt das zuerst (ein Ergebnis aus derselben Sekunde gehoerte zum vorigen Lauf); der Start leert
+  # ausserdem die Ergebnis-Felder.
   if [ "$st" -gt 0 ]; then
-    if [ "$okt" -ge "$st" ]; then state=ok
+    if _bkp_restore_running; then state=running
+    elif [ "$okt" -ge "$st" ]; then state=ok
     elif [ "$flt" -ge "$st" ]; then state=fail
-    elif _bkp_restore_running; then state=running
     else
       state=unfinished
       # Hart abgebrochen (kill, Absturz): der EXIT-Trap des Laufs lief nicht, das entschluesselte Bundle laege noch im
@@ -992,6 +996,11 @@ backup_cmd_restore() {
   [ -n "$bulk" ] && _bkp_has_data "$bulk" && has_data=1
   local created; created="$(jq -r '.created_at // empty' "$tmp/manifest.json" 2>/dev/null)"
   local adopt_id=''; [ -n "$brought" ] && adopt_id="$(printf '%s' "$brought" | backup_key_id)"
+  # Ohne Ordner keine Vorab-Sicherung -> mit eigenen Daten keine Wiederherstellung (die Daten waeren ohne Rueckweg weg).
+  # Schon im Probelauf, damit die Vorschau gar nicht erst zum Bestaetigen einlaedt.
+  if [ "$has_data" = 1 ] && rt_is_compose && [ -z "$(_bkp_host_dir)" ]; then
+    _bkp_rdie nofolder "Es sind schon eigene Daten da, aber kein Sicherungs-Ordner gewählt — erst einen wählen, dann wird vor dem Ersetzen gesichert."
+  fi
 
   if [ "$plan" = 1 ]; then
     jq -cn --arg created "$created" --arg release "$rel_hint" --argjson packages "$pkgs_json" --arg adopt "$adopt_id" \
@@ -1001,11 +1010,6 @@ backup_cmd_restore() {
         has_data: ($has_data == 1), safety_backup: ($has_data == 1),
         adopt_key_id: (if $adopt == "" then null else $adopt end)}'
     return 0
-  fi
-
-  # Ohne Ordner keine Vorab-Sicherung -> mit eigenen Daten keine Wiederherstellung (die Daten waeren ohne Rueckweg weg).
-  if [ "$has_data" = 1 ] && rt_is_compose && [ -z "$(_bkp_host_dir)" ]; then
-    _bkp_rdie nofolder "Es sind schon eigene Daten da, aber kein Sicherungs-Ordner gewählt — erst einen wählen, dann wird vor dem Ersetzen gesichert."
   fi
 
   local pkg_summary filt_disp filt_n qd cd
@@ -1049,6 +1053,7 @@ backup_cmd_restore() {
     _bkp_state_set LAST_RESTORE_START "$(date +%s)"; _bkp_state_set LAST_RESTORE_NAME "$src_name"
     _bkp_state_set LAST_RESTORE_CREATED "$created"; _bkp_state_set LAST_RESTORE_FOREIGN "$([ -n "$brought" ] && printf 1 || printf 0)"
     _bkp_state_set LAST_RESTORE_TMP "$tmp"
+    _bkp_state_set LAST_RESTORE_OK ''; _bkp_state_set LAST_RESTORE_FAIL ''; _bkp_state_set LAST_RESTORE_REASON ''
     (
       exec </dev/null >"$log_f" 2>&1
       # shellcheck disable=SC2064  # bewusst JETZT expandieren (local $tmp)
@@ -1243,9 +1248,10 @@ lifeagents backup <verb> — Backup/Restore der Nutzerdaten (verschluesselt, pak
                            Owner-Telegram-Chat (best-effort: schlaegt der Versand fehl, bleibt das lokale Backup gueltig).
   restore <datei> [--key-stdin] [--yes]
                            Backup wiederherstellen (ATOMAR: alles-oder-nichts). UEBERSCHREIBT alle Nutzerdaten;
-                           zeigt VOR der Rückfrage die betroffenen Pakete + Tabellen. Fehlt ein Bundle-Paket ->
-                           Angebot, es zu installieren (--no-seed); dann versionsgleich restoren (sonst sauberer
-                           Abbruch). --yes überspringt Rückfrage + nimmt Auto-Install an.
+                           zeigt VOR der Rückfrage die betroffenen Pakete + Tabellen. Ein fehlendes Bundle-Paket wird
+                           nach der Rückfrage eingerichtet (--no-seed), ein ausgeschaltetes eingeschaltet; dann
+                           versionsgleich restoren (sonst sauberer Abbruch). Sind eigene Daten da, wird vorher
+                           gesichert. --yes überspringt die Rückfrage.
                            Öffnet kein gespeicherter Schlüssel die Datei (neuer Rechner), fragt restore verdeckt nach
                            dem Schlüssel vom Notfallblatt; --key-stdin liest ihn (oder die Notfallblatt-Datei) aus stdin.
                            Danach gilt dieser Schlüssel, der bisherige bleibt für ältere Sicherungen gespeichert.

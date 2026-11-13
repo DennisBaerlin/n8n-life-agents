@@ -42,8 +42,10 @@ fn show(app: &AppHandle, screen: &str) {
 struct Tray {
     status: MenuItem<Wry>,
     items: Vec<(MenuItem<Wry>, &'static str)>,
-    /// Notfallblatt und Sicherungsordner gibt es erst nach der Einrichtung (vorher kein Schlüssel, kein Ordner).
+    /// Notfallblatt, Sicherungsordner und Wiederherstellen gibt es erst nach der Einrichtung (vorher kein Schlüssel, kein Ordner).
     after_setup: Vec<MenuItem<Wry>>,
+    /// „Sicherung wiederherstellen …“: während eines Laufs gesperrt, die Status-Zeile sagt es.
+    restore: MenuItem<Wry>,
 }
 
 impl Tray {
@@ -56,7 +58,15 @@ impl Tray {
         for item in &self.after_setup {
             let _ = item.set_enabled(ready);
         }
-        let key = if running { "core.desktop.tray.running" } else { "core.desktop.tray.stopped" };
+        let restoring = ready && running && commands::restore_running();
+        let _ = self.restore.set_enabled(ready && !restoring);
+        let key = if restoring {
+            "core.desktop.tray.restoring"
+        } else if running {
+            "core.desktop.tray.running"
+        } else {
+            "core.desktop.tray.stopped"
+        };
         let _ = self.status.set_text(texts::text(lang, key));
     }
 }
@@ -72,11 +82,12 @@ fn build_tray(app: &AppHandle) -> tauri::Result<Tray> {
     let ready = commands::setup_done();
     let kit = item("backup-kit", "core.desktop.tray.backup_kit", ready)?;
     let folder = item("backup-dir", "core.desktop.tray.backup_dir", ready)?;
+    let restore = item("backup-restore", "core.desktop.tray.backup_restore", ready)?;
     let uninstall = item("uninstall", "core.desktop.tray.uninstall", true)?;
     let quit = item("quit", "core.desktop.tray.quit", true)?;
     let sep1 = PredefinedMenuItem::separator(app)?;
     let sep2 = PredefinedMenuItem::separator(app)?;
-    let menu = Menu::with_items(app, &[&status, &sep1, &open, &telegram, &power, &report, &kit, &folder, &sep2, &uninstall, &quit])?;
+    let menu = Menu::with_items(app, &[&status, &sep1, &open, &telegram, &power, &report, &kit, &folder, &restore, &sep2, &uninstall, &quit])?;
     let mut tray =
         TrayIconBuilder::with_id("main").menu(&menu).tooltip("lifeagents").show_menu_on_left_click(true).on_menu_event(|app, event| {
             match event.id.as_ref() {
@@ -88,6 +99,7 @@ fn build_tray(app: &AppHandle) -> tauri::Result<Tray> {
                 "report" => show(app, "report"),
                 "backup-kit" => show(app, "backup-kit"),
                 "backup-dir" => show(app, "backup-dir"),
+                "backup-restore" => show(app, "backup-restore"),
                 "uninstall" => show(app, "uninstall"),
                 "quit" => app.exit(0),
                 _ => {}
@@ -106,10 +118,12 @@ fn build_tray(app: &AppHandle) -> tauri::Result<Tray> {
             (report, "core.desktop.tray.report"),
             (kit.clone(), "core.desktop.tray.backup_kit"),
             (folder.clone(), "core.desktop.tray.backup_dir"),
+            (restore.clone(), "core.desktop.tray.backup_restore"),
             (uninstall, "core.desktop.tray.uninstall"),
             (quit, "core.desktop.tray.quit"),
         ],
         after_setup: vec![kit, folder],
+        restore,
     })
 }
 
@@ -141,7 +155,10 @@ fn main() {
     let autostart = argv.iter().any(|a| a == AUTOSTART_ARG);
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        // Nur aus Rust benutzt (Datei wählen beim Wiederherstellen); das Fenster bekommt kein `dialog:`-Recht.
+        .plugin(tauri_plugin_dialog::init())
         .manage(commands::AppState::default())
+        .manage(std::sync::Mutex::new(commands::RestoreState::default()))
         .invoke_handler(tauri::generate_handler![
             commands::startup,
             commands::trash_download,
@@ -157,6 +174,17 @@ fn main() {
             commands::kit_status,
             commands::confirm_kit,
             commands::change_backup_folder,
+            commands::restore_list,
+            commands::restore_dismiss_card,
+            commands::restore_select,
+            commands::restore_pick_file,
+            commands::restore_pick_sheet,
+            commands::restore_type_sheet,
+            commands::restore_forget,
+            commands::restore_plan,
+            commands::restore_run,
+            commands::restore_status,
+            commands::restore_seen,
             commands::power_info,
             commands::power_apply,
             commands::power_answer,
@@ -251,6 +279,8 @@ mod acl_tests {
         for f in std::fs::read_dir(concat!(env!("CARGO_MANIFEST_DIR"), "/capabilities")).unwrap() {
             let text = std::fs::read_to_string(f.unwrap().path()).unwrap();
             assert!(!text.contains("\"remote\""), "Capability mit remote-Eintrag gefunden");
+            // Datei-Dialog und Dateizugriff nur aus Rust (Wiederherstellen): das Fenster selbst bekommt keins von beiden.
+            assert!(!text.contains("dialog:") && !text.contains("fs:"), "Dialog- oder Datei-Recht fürs Fenster gefunden");
         }
         let conf = std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/tauri.conf.json")).unwrap();
         assert!(!conf.contains("dangerous"), "gefährliche Tauri-Option in tauri.conf.json");

@@ -17,13 +17,15 @@ use lifeagents_desktop_core::journal::{self, Journal, Status, Step};
 use lifeagents_desktop_core::power::{self, FileVault, PowerError, PowerResult};
 use lifeagents_desktop_core::system::{self, Location, SystemReport};
 use lifeagents_desktop_core::uninstall::{self, Choices, Outcome, Plan};
-use lifeagents_desktop_core::{autostart, backup, cleanup, lang, report, texts};
+use lifeagents_desktop_core::{autostart, backup, cleanup, lang, report, restore, texts};
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager};
 use tauri_plugin_opener::OpenerExt;
 
 /// Hilfe-Seite der Projekt-Doku (Paket 8 ergänzt dort die App-Seiten).
 pub const HELP_URL: &str = "https://dennisbaerlin.github.io/n8n-life-agents/docs/installation.html";
+/// Anleitung „Sicherung & neuer Rechner“ (wie `BACKUP_GUIDE_URL` in provisioning/lib/common.sh).
+pub const BACKUP_GUIDE_URL: &str = "https://dennisbaerlin.github.io/n8n-life-agents/docs/sicherung.html";
 /// Wie lange die App auf ein startendes Docker wartet.
 const DOCKER_WAIT: Duration = Duration::from_secs(240);
 
@@ -594,6 +596,166 @@ fn watch_backup_dir(app: AppHandle, d: Docker, mut back: tauri::Url) {
     }
 }
 
+// ----------------------------------------------------------------- Wiederherstellen (core/src/restore.rs)
+
+/// Wie lange ein eingelesenes Notfallblatt in der App bleibt, bevor es neu verlangt wird.
+const SHEET_TTL: Duration = Duration::from_secs(15 * 60);
+
+/// Gewählte Sicherung und Notfallblatt zwischen Auswahl, Probelauf und Start. Das Blatt verlässt diese Struktur nur über
+/// stdin an den `master`; nach dem Start, einem Abbruch oder nach `SHEET_TTL` wird es fallen gelassen (überschrieben).
+#[derive(Default)]
+pub struct RestoreState {
+    source: Option<restore::Source>,
+    sheet: Option<(restore::Sheet, Instant)>,
+}
+
+fn rstate(app: &AppHandle) -> std::sync::MutexGuard<'_, RestoreState> {
+    app.state::<Mutex<RestoreState>>().inner().lock().unwrap()
+}
+
+/// Ordner-Sicherungen und ob die Karte „Sicherung vom alten Rechner zurückholen“ erscheinen soll.
+#[tauri::command(async)]
+pub fn restore_list() -> serde_json::Value {
+    if !setup_done() {
+        return serde_json::json!({ "listing": { "ok": false, "code": "setup" }, "card": false });
+    }
+    let Some(d) = docker_if_ready() else {
+        return serde_json::json!({ "listing": { "ok": false, "code": restore::DOCKER }, "card": false });
+    };
+    let l = restore::list(&RealHost, &d);
+    let card = l.ok && restore::card_wanted(&RealHost, &l);
+    serde_json::json!({ "listing": l, "card": card })
+}
+
+#[tauri::command(async)]
+pub fn restore_dismiss_card() -> Result<(), String> {
+    let d = docker_if_ready().ok_or_else(|| restore::DOCKER.to_string())?;
+    restore::dismiss_card(&RealHost, &restore::list(&RealHost, &d))
+}
+
+/// Sicherung aus dem Ordner gewählt (Name wie in der Liste).
+#[tauri::command]
+pub fn restore_select(app: AppHandle, name: String) -> Result<(), String> {
+    if !restore::name_ok(&name) {
+        return Err(restore::UNREADABLE.into());
+    }
+    let mut s = rstate(&app);
+    s.source = Some(restore::Source::Folder(name));
+    s.sheet = None;
+    Ok(())
+}
+
+/// „Andere Datei wählen …“: Datei-Dialog des Systems aus Rust (das Fenster hat kein Dialog- oder Datei-Recht), die
+/// App liest die Datei. `None` = abgebrochen.
+#[tauri::command(async)]
+pub fn restore_pick_file(app: AppHandle) -> Result<Option<String>, String> {
+    use tauri_plugin_dialog::DialogExt;
+    let Some(p) = app.dialog().file().add_filter("Life Agents", &["enc"]).blocking_pick_file() else { return Ok(None) };
+    let path = p.into_path().map_err(|_| restore::UNREADABLE.to_string())?;
+    let src = restore::read_backup_file(&RealHost, &path.to_string_lossy())?;
+    let name = match &src {
+        restore::Source::File { name, .. } | restore::Source::Folder(name) => name.clone(),
+    };
+    let mut s = rstate(&app);
+    s.source = Some(src);
+    s.sheet = None;
+    Ok(Some(name))
+}
+
+/// Notfallblatt als Datei wählen. Ans Fenster geht nur „gewählt“ bzw. ein fester Code, nie der Inhalt.
+#[tauri::command(async)]
+pub fn restore_pick_sheet(app: AppHandle) -> Result<bool, String> {
+    use tauri_plugin_dialog::DialogExt;
+    let Some(p) = app.dialog().file().add_filter("Text", &["txt"]).blocking_pick_file() else { return Ok(false) };
+    let path = p.into_path().map_err(|_| restore::UNREADABLE.to_string())?;
+    let sheet = restore::read_sheet_file(&RealHost, &path.to_string_lossy())?;
+    rstate(&app).sheet = Some((sheet, Instant::now()));
+    Ok(true)
+}
+
+/// Vier abgetippte Zeilen (das Fenster leert seine Felder danach).
+#[tauri::command]
+pub fn restore_type_sheet(app: AppHandle, mut lines: Vec<String>) -> Result<(), String> {
+    let r = restore::Sheet::typed(&lines);
+    restore::wipe(&mut lines);
+    rstate(&app).sheet = Some((r?, Instant::now()));
+    Ok(())
+}
+
+/// Auswahl und Blatt verwerfen (Abbrechen, Zurück zur Liste).
+#[tauri::command]
+pub fn restore_forget(app: AppHandle) {
+    let mut s = rstate(&app);
+    s.source = None;
+    s.sheet = None;
+}
+
+fn plan_fail(code: &str) -> restore::Plan {
+    restore::Plan { ok: false, code: Some(code.to_string()), ..Default::default() }
+}
+
+/// Gewählte Sicherung + Blatt (abgelaufenes Blatt = `key_expired`); ruft `f` ohne die Sperre zu halten, damit ein
+/// langer Docker-Aufruf das Fenster nicht blockiert.
+fn with_selection(app: &AppHandle, f: impl FnOnce(&restore::Source, Option<&restore::Sheet>) -> restore::Plan) -> restore::Plan {
+    let (src, sheet) = {
+        let mut s = rstate(app);
+        if s.sheet.as_ref().is_some_and(|(_, t)| t.elapsed() > SHEET_TTL) {
+            s.sheet = None;
+            return plan_fail("key_expired");
+        }
+        (s.source.take(), s.sheet.take())
+    };
+    let Some(src) = src else { return plan_fail(restore::UNREADABLE) };
+    let out = f(&src, sheet.as_ref().map(|(k, _)| k));
+    // Zurücklegen für den nächsten Schritt: die Sicherung immer, das Blatt nur nach einem gelungenen Probelauf (ein falsches
+    // oder vertipptes Blatt bleibt nicht im Speicher, die Seite verlangt ein neues).
+    let mut s = rstate(app);
+    s.source = Some(src);
+    if out.ok && s.sheet.is_none() {
+        s.sheet = sheet;
+    }
+    out
+}
+
+/// Probelauf: was würde ersetzt, passt das Blatt, passt die Version. Ändert nichts.
+#[tauri::command(async)]
+pub fn restore_plan(app: AppHandle) -> restore::Plan {
+    let Some(d) = docker_if_ready() else { return plan_fail(restore::DOCKER) };
+    with_selection(&app, |src, sheet| restore::plan(&RealHost, &d, src, sheet))
+}
+
+/// Nach der Bestätigung im Hintergrund wiederherstellen. Hat der `master` übernommen, braucht die App das Blatt nicht
+/// mehr und lässt es fallen.
+#[tauri::command(async)]
+pub fn restore_run(app: AppHandle) -> restore::Plan {
+    let Some(d) = docker_if_ready() else { return plan_fail(restore::DOCKER) };
+    let out = with_selection(&app, |src, sheet| restore::run(&RealHost, &d, src, sheet));
+    if out.ok {
+        restore_forget(app);
+    } else if out.code.as_deref() == Some(restore::DOCKER) {
+        let _ = fail(&app, "restore-unavailable");
+    }
+    out
+}
+
+/// Stand des Hintergrund-Laufs und ob das Ergebnis schon gezeigt wurde. Nach einem Erfolg mit dem Blatt eines anderen
+/// Rechners gilt dessen Schlüssel: der Notfallblatt-Schritt der Neuinstallation erscheint wieder.
+#[tauri::command(async)]
+pub fn restore_status() -> serde_json::Value {
+    let Some(d) = docker_if_ready() else { return serde_json::json!({ "status": null, "seen": true }) };
+    let Some(st) = restore::status(&RealHost, &d) else { return serde_json::json!({ "status": null, "seen": true }) };
+    let seen = st.started == 0 || restore::seen(&RealHost, st.started);
+    if st.state == "ok" && st.foreign && !seen {
+        let _ = backup::reset_kit(&RealHost);
+    }
+    serde_json::json!({ "status": st, "seen": seen })
+}
+
+#[tauri::command]
+pub fn restore_seen(started: u64) -> Result<(), String> {
+    restore::mark_seen(&RealHost, started)
+}
+
 // ---------------------------------------------------------------------------------- Rückweg und Entfernen
 
 /// Prüfliste Nr. 2/18: abgebrochene Einrichtung Schritt für Schritt zurücknehmen.
@@ -641,6 +803,7 @@ pub fn open_link(app: AppHandle, target: String) -> Result<(), String> {
     let url = match target.as_str() {
         "docker-terms" => docker_desktop::TERMS_URL.to_string(),
         "help" => HELP_URL.to_string(),
+        "backup-guide" => BACKUP_GUIDE_URL.to_string(),
         "telegram" => {
             let bot = app.state::<AppState>().bot.lock().unwrap().clone();
             if bot.is_empty() {
@@ -685,6 +848,11 @@ pub fn self_test() -> serde_json::Value {
 
 pub fn docker_running() -> bool {
     matches!(detect::detect(&RealHost).verdict, Verdict::Ready { .. })
+}
+
+/// Läuft gerade eine Wiederherstellung im Hintergrund? (Menü: Punkt gesperrt, Status-Zeile.)
+pub fn restore_running() -> bool {
+    docker_if_ready().and_then(|d| restore::status(&RealHost, &d)).is_some_and(|s| s.state == "running")
 }
 
 /// Anmeldestart (`--autostart`): Docker hochbringen, dann den Verbund starten. Ohne Fenster.

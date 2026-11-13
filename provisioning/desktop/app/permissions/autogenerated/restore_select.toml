@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-restore-select"
+description = "Enables the restore_select command without any pre-configured scope."
+commands.allow = ["restore_select"]
+
+[[permission]]
+identifier = "deny-restore-select"
+description = "Denies the restore_select command without any pre-configured scope."
+commands.deny = ["restore_select"]

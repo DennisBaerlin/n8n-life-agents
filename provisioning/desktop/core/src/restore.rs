@@ -41,7 +41,11 @@ impl Sheet {
             if l.contains(['\n', '\r']) {
                 return Err(SHEET_INVALID);
             }
-            s.push_str(&format!("{}: {}\n", i + 1, l.trim()));
+            // Stückweise in den Zeroizing-Puffer (ein format!-Zwischenwert bliebe unüberschrieben im Speicher).
+            s.push(char::from(b'1' + i as u8));
+            s.push_str(": ");
+            s.push_str(l.trim());
+            s.push('\n');
         }
         Ok(Sheet(s))
     }
@@ -50,13 +54,14 @@ impl Sheet {
     /// ein Blatt ist, prüft der `master` (eine Stelle, `backup_key_parse`).
     pub fn from_bytes(bytes: &[u8]) -> Result<Sheet, &'static str> {
         let b = Zeroizing::new(bytes.to_vec());
-        let text = if b.starts_with(&[0xFE, 0xFF]) {
-            let units: Vec<u16> = b[2..].chunks(2).filter(|c| c.len() == 2).map(|c| u16::from_be_bytes([c[0], c[1]])).collect();
+        // Jeder Zwischenwert gleich in Zeroizing: die Klartext-Kopien werden beim Fallenlassen überschrieben.
+        let decoded = Zeroizing::new(if b.starts_with(&[0xFE, 0xFF]) {
+            let units = Zeroizing::new(b[2..].chunks(2).filter(|c| c.len() == 2).map(|c| u16::from_be_bytes([c[0], c[1]])).collect::<Vec<u16>>());
             String::from_utf16_lossy(&units)
         } else {
             crate::host::decode(&b)
-        };
-        let text = Zeroizing::new(text.trim_start_matches('\u{feff}').to_string());
+        });
+        let text = Zeroizing::new(decoded.trim_start_matches('\u{feff}').to_string());
         if text.trim().is_empty() {
             return Err(SHEET_INVALID);
         }
@@ -65,6 +70,15 @@ impl Sheet {
 
     fn text(&self) -> &str {
         &self.0
+    }
+}
+
+/// Getippte Zeilen, wie sie aus dem Fenster kamen, nach dem Übernehmen überschreiben (die App-Hülle hat keine eigene
+/// zeroize-Abhängigkeit).
+pub fn wipe(lines: &mut [String]) {
+    use zeroize::Zeroize;
+    for l in lines.iter_mut() {
+        l.zeroize();
     }
 }
 
@@ -242,10 +256,10 @@ fn input(src: &Source, sheet: Option<&Sheet>) -> Option<Zeroizing<String>> {
             let mut s = Zeroizing::new(String::with_capacity(bytes.len() * 4 / 3 + 64));
             s.push_str("sheet ");
             if let Some(sh) = sheet {
-                s.push_str(&base64(sh.text().as_bytes()));
+                base64_into(&mut s, sh.text().as_bytes());
             }
             s.push('\n');
-            s.push_str(&base64(bytes));
+            base64_into(&mut s, bytes);
             s.push('\n');
             Some(s)
         }
@@ -332,8 +346,14 @@ pub fn dismiss_card(host: &dyn Host, l: &Listing) -> Result<(), String> {
 
 /// base64 (Standard-Alphabet, mit `=`), für den stdin-Rahmen; keine eigene Abhängigkeit für ein paar Zeilen.
 pub fn base64(data: &[u8]) -> String {
-    const A: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
     let mut out = String::with_capacity(data.len().div_ceil(3) * 4);
+    base64_into(&mut out, data);
+    out
+}
+
+/// Wie `base64`, hängt an einen vorhandenen Puffer an (für das Blatt: kein eigener, unüberschriebener Zwischen-String).
+fn base64_into(out: &mut String, data: &[u8]) {
+    const A: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
     for c in data.chunks(3) {
         let n = (c[0] as u32) << 16 | (*c.get(1).unwrap_or(&0) as u32) << 8 | *c.get(2).unwrap_or(&0) as u32;
         out.push(A[(n >> 18) as usize & 63] as char);
@@ -341,7 +361,6 @@ pub fn base64(data: &[u8]) -> String {
         out.push(if c.len() > 1 { A[(n >> 6) as usize & 63] as char } else { '=' });
         out.push(if c.len() > 2 { A[n as usize & 63] as char } else { '=' });
     }
-    out
 }
 
 #[cfg(test)]

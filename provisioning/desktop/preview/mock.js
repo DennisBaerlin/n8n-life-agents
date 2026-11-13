@@ -85,6 +85,54 @@
     },
     confirm_kit: async () => wait(100),
     change_backup_folder: async () => (await wait(600), q.get('kitfail') !== 'kit-unavailable'),
+    // Wiederherstellen (?restore=<fall>): own | foreign (Standard) | empty | nofolder | folder | keyline | keyformat |
+    //   keyforeign | expired | older | newer | needs_setup | corrupt | busy | install | data | fail | unfinished | running |
+    //   card (Karte auf Fertig/Start). Namen, Datum und IDs erfunden.
+    ...(() => {
+      const rf = q.get('restore') || 'foreign';
+      const B = (d, kid, own, rel) => ({ name: `lifeagents-backup-${d}033000-${kid}-${rel}.nla.enc`, date: `${d.slice(0, 4)}-${d.slice(4, 6)}-${d.slice(6, 8)}T03:30:00Z`, release: rel, key_id: kid, own });
+      const listing = () => {
+        if (rf === 'nofolder') return { ok: false, code: 'nofolder' };
+        if (rf === 'folder') return { ok: false, code: 'folder' };
+        if (rf === 'empty') return { ok: true, folder: '/Users/erika/Library/Mobile Documents/com~apple~CloudDocs/Life Agents Sicherungen', backups: [] };
+        const own = [B('20261113', 'k1a2b3c4d', true, 'v0.44.0')];
+        const other = rf === 'own' || rf === 'data' ? [] : [B('20261110', 'k9f8e7d6c', false, 'v0.44.0'), B('20261109', 'k9f8e7d6c', false, 'v0.43.1')];
+        return { ok: true, folder: '/Users/erika/…/Life Agents Sicherungen', backups: other.concat(own) };
+      };
+      let sheetGiven = rf === 'own' || rf === 'data';
+      const plan = () => {
+        const fails = { older: { code: 'version_older', release: 'v0.41.0' }, newer: { code: 'version_newer', release: 'v0.45.0' }, needs_setup: { code: 'needs_setup', pkg: 'paperless' }, corrupt: { code: 'corrupt' }, busy: { code: 'busy' } };
+        if (fails[rf]) return Object.assign({ ok: false }, fails[rf]);
+        if (!sheetGiven) return { ok: false, code: 'key_needed', id: 'k9f8e7d6c' };
+        if (rf === 'keyline' && sheetGiven === 'typed') { sheetGiven = false; return { ok: false, code: 'key_line', line: 3 }; }
+        if (rf === 'keyformat') { sheetGiven = false; return { ok: false, code: 'key_format' }; }
+        if (rf === 'keyforeign') { sheetGiven = false; return { ok: false, code: 'key_foreign', id: 'k9f8e7d6c' }; }
+        if (rf === 'expired') { sheetGiven = false; return { ok: false, code: 'key_expired' }; }
+        const pk = [{ name: 'core', version: '0.44.0', state: 'ok' }, { name: 'finance', version: '1.20.0', state: 'ok' }];
+        if (rf === 'install') pk.push({ name: 'estate', version: '0.9.0', state: 'install' });
+        return { ok: true, created: '2026-11-10T03:30:00Z', release: 'v0.44.0', packages: pk, has_data: rf === 'data', adopt_key_id: rf === 'own' || rf === 'data' ? null : 'k9f8e7d6c' };
+      };
+      let started = 0;
+      return {
+        restore_list: async () => (await wait(300), { listing: listing(), card: rf === 'card' || rf === 'foreign' }),
+        restore_dismiss_card: async () => wait(100),
+        restore_select: async () => wait(50),
+        restore_forget: async () => {},
+        restore_pick_file: async () => (await wait(300), 'lifeagents-backup-20261101033000-k9f8e7d6c-v0.44.0.nla.enc'),
+        restore_pick_sheet: async () => { await wait(300); sheetGiven = 'file'; return true; },
+        restore_type_sheet: async () => { await wait(100); sheetGiven = 'typed'; },
+        restore_plan: async () => (await wait(500), plan()),
+        restore_run: async () => { await wait(400); started = 1794571200; return { ok: true }; },
+        restore_status: async () => {
+          if (rf === 'running') return { status: { state: 'running', started: 1 }, seen: false };
+          if (rf === 'unfinished' || rf === 'fail') return { status: { state: rf === 'fail' ? 'fail' : 'unfinished', code: rf === 'fail' ? 'safety' : null, started: 1 }, seen: false };
+          if (!started) return { status: { state: 'idle', started: 0 }, seen: true };
+          await wait(200);
+          return { status: { state: 'ok', created: '2026-11-10T03:30:00Z', foreign: rf !== 'own' && rf !== 'data', started }, seen: false };
+        },
+        restore_seen: async () => { started = 0; },
+      };
+    })(),
     check_system: async () => (await wait(500), sys),
     check_docker: async () => {
       await wait(500);

@@ -70,6 +70,15 @@ pub fn kit_confirmed(host: &dyn Host) -> bool {
 pub fn confirm_kit(host: &dyn Host) -> Result<(), String> {
     host.write_file(&kit_flag(host), "1\n")
 }
+/// Nach einer Wiederherstellung mit dem Blatt eines anderen Rechners gilt dessen Schlüssel: das gerade gespeicherte Blatt
+/// der Neuinstallation taugt nicht mehr für neue Sicherungen, also den Schritt wieder anbieten.
+pub fn reset_kit(host: &dyn Host) -> Result<(), String> {
+    let f = kit_flag(host);
+    if host.exists(&f) {
+        host.remove_file(&f)?;
+    }
+    Ok(())
+}
 
 /// Fragebogen im Änderungs-Modus starten und seine Einmal-Adresse holen: Hinweise (Ordner-Vorschläge) frisch an den
 /// `master`, Server im Hintergrund starten, dann bis zu `tries` Mal nach der Adresse fragen (er braucht ein, zwei Sekunden).

@@ -37,6 +37,81 @@ const UI_TEXT = {
     "core.desktop.apply.busy_title": "Bestätige die Änderung",
     "core.desktop.backup_dir.busy_title": "Sicherungsordner wird geöffnet …",
     "core.desktop.backup_dir.title": "Sicherungsordner ändern",
+    "core.desktop.backup_restore.area.career": "Karriere",
+    "core.desktop.backup_restore.area.core": "Haushalt, Profil und Pläne",
+    "core.desktop.backup_restore.area.estate": "Vorsorge & Nachlass",
+    "core.desktop.backup_restore.area.finance": "Finanzen",
+    "core.desktop.backup_restore.area.paperless": "Dokumente",
+    "core.desktop.backup_restore.busy_check": "Sicherung wird geprüft …",
+    "core.desktop.backup_restore.busy_list": "Sicherungen werden gesucht …",
+    "core.desktop.backup_restore.card_dismiss": "Nicht nötig",
+    "core.desktop.backup_restore.card_go": "Sicherung wählen",
+    "core.desktop.backup_restore.card_text": "Im Sicherungsordner liegen Sicherungen eines anderen Rechners. Hol deine Daten von dort zurück, bevor du neu anfängst.",
+    "core.desktop.backup_restore.card_title": "Sicherung vom alten Rechner zurückholen",
+    "core.desktop.backup_restore.choose_other": "Andere Sicherung wählen",
+    "core.desktop.backup_restore.err.bundle_incomplete": "Diese Sicherung ist unvollständig. Wähle eine andere.",
+    "core.desktop.backup_restore.err.busy": "Gerade läuft eine Sicherung, ein Update oder eine Wiederherstellung. Versuch es in ein paar Minuten noch einmal.",
+    "core.desktop.backup_restore.err.corrupt": "Diese Sicherung ist beschädigt. Wähle eine andere.",
+    "core.desktop.backup_restore.err.corrupt_stored": "Diese Sicherung ist beschädigt. Wähle eine andere.",
+    "core.desktop.backup_restore.err.file_too_big": "Diese Datei ist zu groß für eine Sicherung. Wähle eine Datei, die auf „.nla.enc“ endet.",
+    "core.desktop.backup_restore.err.folder": "Der Sicherungsordner ist gerade nicht erreichbar.",
+    "core.desktop.backup_restore.err.format": "Diese Sicherung stammt aus einer zu alten Fassung und lässt sich nicht mehr lesen. Wähle eine andere.",
+    "core.desktop.backup_restore.err.internal": "Etwas ist schiefgegangen.",
+    "core.desktop.backup_restore.err.key_expired": "Die App vergisst das Notfallblatt nach 15 Minuten. Wähle oder tippe es bitte noch einmal.",
+    "core.desktop.backup_restore.err.key_foreign": "Dieses Notfallblatt gehört nicht zu dieser Sicherung. Gesucht ist das Blatt mit dem Schlüssel {id}.",
+    "core.desktop.backup_restore.err.key_format": "Das ist kein Notfallblatt. Wähle die Datei „Life-Agents-Notfallblatt-…“ oder tippe die vier Zeilen ab.",
+    "core.desktop.backup_restore.err.key_line": "Zeile {n} stimmt nicht. Prüfe sie Zeichen für Zeichen.",
+    "core.desktop.backup_restore.err.key_needed": "Diese Sicherung braucht das Notfallblatt eines anderen Rechners.",
+    "core.desktop.backup_restore.err.key_no_open": "Kein Schlüssel auf diesem Blatt öffnet die Sicherung. Ist es das Blatt vom alten Rechner?",
+    "core.desktop.backup_restore.err.needs_setup": "Die Sicherung enthält den Bereich „{pkg}“. Richte ihn zuerst ein, dann versuch es noch einmal.",
+    "core.desktop.backup_restore.err.no_tables": "In dieser Installation ist nichts zum Zurückholen eingerichtet.",
+    "core.desktop.backup_restore.err.nofolder": "Es sind schon eigene Daten da. Wähle zuerst einen Sicherungsordner (Menü › „Sicherungsordner ändern …“), damit vorher gesichert werden kann.",
+    "core.desktop.backup_restore.err.package_unknown": "Diese Sicherung enthält einen Bereich, den diese Version nicht kennt. Aktualisiere zuerst.",
+    "core.desktop.backup_restore.err.safety": "Die Sicherung deiner jetzigen Daten hat nicht geklappt, darum wurde nichts ersetzt. Prüfe den Sicherungsordner.",
+    "core.desktop.backup_restore.err.setup": "Die Einrichtung ist noch nicht fertig.",
+    "core.desktop.backup_restore.err.sheet_invalid": "Das ist kein Notfallblatt. Wähle die Datei „Life-Agents-Notfallblatt-…“ oder tippe die vier Zeilen ab.",
+    "core.desktop.backup_restore.err.sheet_too_big": "Das ist kein Notfallblatt. Wähle die Datei „Life-Agents-Notfallblatt-…“ oder tippe die vier Zeilen ab.",
+    "core.desktop.backup_restore.err.unfinished": "Die Wiederherstellung wurde unterbrochen (Rechner oder Docker aus).",
+    "core.desktop.backup_restore.err.unreadable": "Diese Datei lässt sich nicht lesen. Wähle eine Datei, die auf „.nla.enc“ endet.",
+    "core.desktop.backup_restore.err.version_newer": "Diese Sicherung stammt aus einer neueren Version ({release}). Aktualisiere zuerst, dann versuch es noch einmal.",
+    "core.desktop.backup_restore.err.version_older": "Diese Sicherung stammt aus Version {release}. Sie lässt sich nur in genau diese Version zurückspielen. Die Anleitung zeigt, wie das geht.",
+    "core.desktop.backup_restore.fail_title": "Das hat nicht geklappt",
+    "core.desktop.backup_restore.go": "Wiederherstellen",
+    "core.desktop.backup_restore.go_replace": "Ja, ersetzen",
+    "core.desktop.backup_restore.guide": "Anleitung „Sicherung & neuer Rechner“",
+    "core.desktop.backup_restore.key_check": "Prüfen",
+    "core.desktop.backup_restore.key_file": "Notfallblatt-Datei wählen …",
+    "core.desktop.backup_restore.key_lead": "Diese Sicherung stammt von einem anderen Rechner. Sie öffnet sich nur mit dem Schlüssel auf dessen Notfallblatt.",
+    "core.desktop.backup_restore.key_line": "Zeile {n}",
+    "core.desktop.backup_restore.key_or": "Oder tippe die vier Zeilen vom Papier ab:",
+    "core.desktop.backup_restore.key_title": "Notfallblatt",
+    "core.desktop.backup_restore.list_empty": "Im Sicherungsordner liegt noch keine Sicherung. Liegt sie woanders, wähle die Datei.",
+    "core.desktop.backup_restore.list_folder": "Der Sicherungsordner ist gerade nicht erreichbar. Prüfe, ob er noch da ist, oder wähle die Datei direkt.",
+    "core.desktop.backup_restore.list_lead": "Wähle die Sicherung, die du zurückholen willst.",
+    "core.desktop.backup_restore.list_nofolder": "Es ist noch kein Sicherungsordner gewählt. Wähle die Sicherungs-Datei direkt.",
+    "core.desktop.backup_restore.ok_foreign": "Ab jetzt gilt das Notfallblatt vom alten Rechner. Speichere gleich das neue Blatt, es enthält beide Schlüssel.",
+    "core.desktop.backup_restore.ok_lead": "Die Daten vom {date} sind wiederhergestellt.",
+    "core.desktop.backup_restore.ok_old_machine": "Lass den alten Rechner nicht mehr in diesen Ordner sichern, sonst räumen sich beide gegenseitig alte Sicherungen weg.",
+    "core.desktop.backup_restore.ok_safety": "Die Daten von vorher liegen als Sicherung im Sicherungsordner.",
+    "core.desktop.backup_restore.ok_title": "Deine Daten sind zurück",
+    "core.desktop.backup_restore.other_file": "Andere Datei wählen …",
+    "core.desktop.backup_restore.pkg_activate": "wird wieder eingeschaltet",
+    "core.desktop.backup_restore.pkg_install": "wird dazu eingerichtet",
+    "core.desktop.backup_restore.preview_areas": "Diese Bereiche kommen zurück:",
+    "core.desktop.backup_restore.preview_confirm": "Mir ist klar, dass meine jetzigen Daten ersetzt werden (vorher wird gesichert).",
+    "core.desktop.backup_restore.preview_empty": "Hier sind noch keine eigenen Daten, es wird nichts überschrieben.",
+    "core.desktop.backup_restore.preview_lead": "Sicherung vom {date}",
+    "core.desktop.backup_restore.preview_replace": "Deine jetzigen Daten werden dabei ersetzt. Vorher legt die App automatisch eine Sicherung davon im Sicherungsordner an.",
+    "core.desktop.backup_restore.preview_sheet": "Danach gilt das Notfallblatt vom alten Rechner.",
+    "core.desktop.backup_restore.preview_title": "Das wird zurückgeholt",
+    "core.desktop.backup_restore.running_text": "Das dauert meist unter einer Minute. Du kannst das Fenster schließen, es läuft weiter.",
+    "core.desktop.backup_restore.running_title": "Wird wiederhergestellt …",
+    "core.desktop.backup_restore.tag_other": "vom alten Rechner",
+    "core.desktop.backup_restore.tag_version": "andere Version",
+    "core.desktop.backup_restore.title": "Sicherung wiederherstellen",
+    "core.desktop.backup_restore.unchanged": "Deine Daten sind unverändert.",
+    "core.desktop.backup_restore.version": "Version {release}",
+    "core.desktop.backup_restore.version_unknown": "Version unbekannt",
     "core.desktop.changes.install_docker": "Docker kommt dazu (rund {size} MB, direkt vom Hersteller)",
     "core.desktop.changes.journal": "Eine kleine Datei, in der sich die App ihre Schritte merkt, damit sie alles zurücknehmen kann",
     "core.desktop.changes.keep_docker": "Docker selbst: keine neue Version, kein Neustart",
@@ -247,11 +322,13 @@ const UI_TEXT = {
     "core.desktop.tidy.title": "Zum Schluss: aufräumen",
     "core.desktop.tray.backup_dir": "Sicherungsordner ändern …",
     "core.desktop.tray.backup_kit": "Notfallblatt speichern …",
+    "core.desktop.tray.backup_restore": "Sicherung wiederherstellen …",
     "core.desktop.tray.checking": "Wird geprüft …",
     "core.desktop.tray.open": "Fenster öffnen",
     "core.desktop.tray.power_restore": "Dauerbetrieb zurückstellen",
     "core.desktop.tray.quit": "App beenden",
     "core.desktop.tray.report": "Fehlerbericht",
+    "core.desktop.tray.restoring": "Wiederherstellung läuft …",
     "core.desktop.tray.running": "Assistent läuft",
     "core.desktop.tray.stopped": "Assistent ist aus: Docker läuft nicht",
     "core.desktop.tray.telegram": "Telegram öffnen",
@@ -316,6 +393,81 @@ const UI_TEXT = {
     "core.desktop.apply.busy_title": "Confirm the change",
     "core.desktop.backup_dir.busy_title": "Opening the backup folder setting …",
     "core.desktop.backup_dir.title": "Change backup folder",
+    "core.desktop.backup_restore.area.career": "Career",
+    "core.desktop.backup_restore.area.core": "Household, profile and plans",
+    "core.desktop.backup_restore.area.estate": "Provisions & estate",
+    "core.desktop.backup_restore.area.finance": "Finances",
+    "core.desktop.backup_restore.area.paperless": "Documents",
+    "core.desktop.backup_restore.busy_check": "Checking the backup …",
+    "core.desktop.backup_restore.busy_list": "Looking for backups …",
+    "core.desktop.backup_restore.card_dismiss": "Not needed",
+    "core.desktop.backup_restore.card_go": "Choose backup",
+    "core.desktop.backup_restore.card_text": "The backup folder contains backups from another computer. Bring your data back from there before you start afresh.",
+    "core.desktop.backup_restore.card_title": "Bring back the backup from your old computer",
+    "core.desktop.backup_restore.choose_other": "Choose another backup",
+    "core.desktop.backup_restore.err.bundle_incomplete": "This backup is incomplete. Choose another one.",
+    "core.desktop.backup_restore.err.busy": "A backup, an update or a restore is running right now. Try again in a few minutes.",
+    "core.desktop.backup_restore.err.corrupt": "This backup is damaged. Choose another one.",
+    "core.desktop.backup_restore.err.corrupt_stored": "This backup is damaged. Choose another one.",
+    "core.desktop.backup_restore.err.file_too_big": "This file is too big for a backup. Choose a file that ends in “.nla.enc”.",
+    "core.desktop.backup_restore.err.folder": "The backup folder cannot be reached right now.",
+    "core.desktop.backup_restore.err.format": "This backup comes from a version that is too old and can no longer be read. Choose another one.",
+    "core.desktop.backup_restore.err.internal": "Something went wrong.",
+    "core.desktop.backup_restore.err.key_expired": "The app forgets the emergency sheet after 15 minutes. Please choose or type it again.",
+    "core.desktop.backup_restore.err.key_foreign": "This emergency sheet does not belong to this backup. The sheet with the key {id} is needed.",
+    "core.desktop.backup_restore.err.key_format": "That is not an emergency sheet. Choose the file “Life-Agents-Emergency-Sheet-…” or type the four lines.",
+    "core.desktop.backup_restore.err.key_line": "Line {n} is not right. Check it character by character.",
+    "core.desktop.backup_restore.err.key_needed": "This backup needs the emergency sheet of another computer.",
+    "core.desktop.backup_restore.err.key_no_open": "No key on this sheet opens the backup. Is it the sheet of the old computer?",
+    "core.desktop.backup_restore.err.needs_setup": "The backup contains the area “{pkg}”. Set it up first, then try again.",
+    "core.desktop.backup_restore.err.no_tables": "Nothing is set up in this installation that could be brought back.",
+    "core.desktop.backup_restore.err.nofolder": "There is already data of your own. Choose a backup folder first (menu › “Change backup folder …”) so that a backup can be made first.",
+    "core.desktop.backup_restore.err.package_unknown": "This backup contains an area this version does not know. Update first.",
+    "core.desktop.backup_restore.err.safety": "Backing up your current data did not work, so nothing was replaced. Check the backup folder.",
+    "core.desktop.backup_restore.err.setup": "The setup is not finished yet.",
+    "core.desktop.backup_restore.err.sheet_invalid": "That is not an emergency sheet. Choose the file “Life-Agents-Emergency-Sheet-…” or type the four lines.",
+    "core.desktop.backup_restore.err.sheet_too_big": "That is not an emergency sheet. Choose the file “Life-Agents-Emergency-Sheet-…” or type the four lines.",
+    "core.desktop.backup_restore.err.unfinished": "The restore was interrupted (computer or Docker switched off).",
+    "core.desktop.backup_restore.err.unreadable": "This file cannot be read. Choose a file that ends in “.nla.enc”.",
+    "core.desktop.backup_restore.err.version_newer": "This backup comes from a newer version ({release}). Update first, then try again.",
+    "core.desktop.backup_restore.err.version_older": "This backup comes from version {release}. It can only be restored into exactly that version. The guide shows how.",
+    "core.desktop.backup_restore.fail_title": "That did not work",
+    "core.desktop.backup_restore.go": "Restore",
+    "core.desktop.backup_restore.go_replace": "Yes, replace",
+    "core.desktop.backup_restore.guide": "Guide “Backup & new computer”",
+    "core.desktop.backup_restore.key_check": "Check",
+    "core.desktop.backup_restore.key_file": "Choose emergency sheet file …",
+    "core.desktop.backup_restore.key_lead": "This backup comes from another computer. It only opens with the key on that computer's emergency sheet.",
+    "core.desktop.backup_restore.key_line": "Line {n}",
+    "core.desktop.backup_restore.key_or": "Or type the four lines from the paper:",
+    "core.desktop.backup_restore.key_title": "Emergency sheet",
+    "core.desktop.backup_restore.list_empty": "There is no backup in the backup folder yet. If it is somewhere else, choose the file.",
+    "core.desktop.backup_restore.list_folder": "The backup folder cannot be reached right now. Check that it is still there, or choose the file directly.",
+    "core.desktop.backup_restore.list_lead": "Choose the backup you want to bring back.",
+    "core.desktop.backup_restore.list_nofolder": "No backup folder is chosen yet. Choose the backup file directly.",
+    "core.desktop.backup_restore.ok_foreign": "From now on the emergency sheet of the old computer applies. Save the new sheet right away, it contains both keys.",
+    "core.desktop.backup_restore.ok_lead": "The data from {date} has been restored.",
+    "core.desktop.backup_restore.ok_old_machine": "Don't let the old computer back up into this folder any more, otherwise both remove each other's old backups.",
+    "core.desktop.backup_restore.ok_safety": "The data from before is in the backup folder as a backup.",
+    "core.desktop.backup_restore.ok_title": "Your data is back",
+    "core.desktop.backup_restore.other_file": "Choose another file …",
+    "core.desktop.backup_restore.pkg_activate": "will be switched on again",
+    "core.desktop.backup_restore.pkg_install": "will be set up as well",
+    "core.desktop.backup_restore.preview_areas": "These areas come back:",
+    "core.desktop.backup_restore.preview_confirm": "I understand that my current data will be replaced (a backup is made first).",
+    "core.desktop.backup_restore.preview_empty": "There is no data of your own here yet, nothing will be overwritten.",
+    "core.desktop.backup_restore.preview_lead": "Backup from {date}",
+    "core.desktop.backup_restore.preview_replace": "Your current data will be replaced. Before that, the app saves a backup of it in the backup folder.",
+    "core.desktop.backup_restore.preview_sheet": "Afterwards the emergency sheet of the old computer applies.",
+    "core.desktop.backup_restore.preview_title": "This will come back",
+    "core.desktop.backup_restore.running_text": "This usually takes less than a minute. You can close the window, it keeps running.",
+    "core.desktop.backup_restore.running_title": "Restoring …",
+    "core.desktop.backup_restore.tag_other": "from the old computer",
+    "core.desktop.backup_restore.tag_version": "different version",
+    "core.desktop.backup_restore.title": "Restore a backup",
+    "core.desktop.backup_restore.unchanged": "Your data is unchanged.",
+    "core.desktop.backup_restore.version": "Version {release}",
+    "core.desktop.backup_restore.version_unknown": "Version unknown",
     "core.desktop.changes.install_docker": "Docker is added (about {size} MB, directly from the maker)",
     "core.desktop.changes.journal": "A small file in which the app notes its steps so it can undo everything",
     "core.desktop.changes.keep_docker": "Docker itself: no new version, no restart",
@@ -526,11 +678,13 @@ const UI_TEXT = {
     "core.desktop.tidy.title": "Last step: tidy up",
     "core.desktop.tray.backup_dir": "Change backup folder …",
     "core.desktop.tray.backup_kit": "Save emergency sheet …",
+    "core.desktop.tray.backup_restore": "Restore a backup …",
     "core.desktop.tray.checking": "Checking …",
     "core.desktop.tray.open": "Open window",
     "core.desktop.tray.power_restore": "Turn off always-on mode",
     "core.desktop.tray.quit": "Quit app",
     "core.desktop.tray.report": "Error report",
+    "core.desktop.tray.restoring": "Restore running …",
     "core.desktop.tray.running": "Assistant is running",
     "core.desktop.tray.stopped": "Assistant is off: Docker is not running",
     "core.desktop.tray.telegram": "Open Telegram",
@@ -595,6 +749,81 @@ const UI_TEXT = {
     "core.desktop.apply.busy_title": "변경을 확인해 주세요",
     "core.desktop.backup_dir.busy_title": "백업 폴더 설정을 여는 중 …",
     "core.desktop.backup_dir.title": "백업 폴더 변경",
+    "core.desktop.backup_restore.area.career": "커리어",
+    "core.desktop.backup_restore.area.core": "가구, 프로필, 계획",
+    "core.desktop.backup_restore.area.estate": "대비 & 유산",
+    "core.desktop.backup_restore.area.finance": "재정",
+    "core.desktop.backup_restore.area.paperless": "문서",
+    "core.desktop.backup_restore.busy_check": "백업을 확인하는 중 …",
+    "core.desktop.backup_restore.busy_list": "백업을 찾는 중 …",
+    "core.desktop.backup_restore.card_dismiss": "필요 없어요",
+    "core.desktop.backup_restore.card_go": "백업 선택",
+    "core.desktop.backup_restore.card_text": "백업 폴더에 다른 컴퓨터의 백업이 있어요. 새로 시작하기 전에 거기서 데이터를 되살리세요.",
+    "core.desktop.backup_restore.card_title": "이전 컴퓨터의 백업 되살리기",
+    "core.desktop.backup_restore.choose_other": "다른 백업 선택",
+    "core.desktop.backup_restore.err.bundle_incomplete": "이 백업은 완전하지 않아요. 다른 백업을 고르세요.",
+    "core.desktop.backup_restore.err.busy": "지금 백업, 업데이트 또는 복원이 진행 중이에요. 몇 분 뒤에 다시 시도하세요.",
+    "core.desktop.backup_restore.err.corrupt": "이 백업은 손상되었어요. 다른 백업을 고르세요.",
+    "core.desktop.backup_restore.err.corrupt_stored": "이 백업은 손상되었어요. 다른 백업을 고르세요.",
+    "core.desktop.backup_restore.err.file_too_big": "백업이라기엔 파일이 너무 커요. “.nla.enc”로 끝나는 파일을 고르세요.",
+    "core.desktop.backup_restore.err.folder": "지금은 백업 폴더에 접근할 수 없어요.",
+    "core.desktop.backup_restore.err.format": "이 백업은 너무 오래된 버전이라 더 이상 읽을 수 없어요. 다른 백업을 고르세요.",
+    "core.desktop.backup_restore.err.internal": "문제가 생겼어요.",
+    "core.desktop.backup_restore.err.key_expired": "앱은 15분이 지나면 비상 시트를 잊어요. 다시 고르거나 입력하세요.",
+    "core.desktop.backup_restore.err.key_foreign": "이 비상 시트는 이 백업의 것이 아니에요. 키 {id}가 있는 시트가 필요해요.",
+    "core.desktop.backup_restore.err.key_format": "비상 시트가 아니에요. “Life-Agents-Emergency-Sheet-…” 파일을 고르거나 네 줄을 입력하세요.",
+    "core.desktop.backup_restore.err.key_line": "{n}번째 줄이 맞지 않아요. 한 글자씩 확인하세요.",
+    "core.desktop.backup_restore.err.key_needed": "이 백업에는 다른 컴퓨터의 비상 시트가 필요해요.",
+    "core.desktop.backup_restore.err.key_no_open": "이 시트의 어떤 키로도 백업이 열리지 않아요. 이전 컴퓨터의 시트가 맞나요?",
+    "core.desktop.backup_restore.err.needs_setup": "백업에 “{pkg}” 영역이 들어 있어요. 먼저 설정한 뒤 다시 시도하세요.",
+    "core.desktop.backup_restore.err.no_tables": "이 설치에는 되살릴 수 있는 것이 설정되어 있지 않아요.",
+    "core.desktop.backup_restore.err.nofolder": "이미 내 데이터가 있어요. 먼저 백업할 수 있도록 백업 폴더를 고르세요 (메뉴 › “백업 폴더 변경 …”).",
+    "core.desktop.backup_restore.err.package_unknown": "이 백업에는 이 버전이 모르는 영역이 있어요. 먼저 업데이트하세요.",
+    "core.desktop.backup_restore.err.safety": "지금 데이터를 백업하지 못해서 아무것도 바꾸지 않았어요. 백업 폴더를 확인하세요.",
+    "core.desktop.backup_restore.err.setup": "아직 설정이 끝나지 않았어요.",
+    "core.desktop.backup_restore.err.sheet_invalid": "비상 시트가 아니에요. “Life-Agents-Emergency-Sheet-…” 파일을 고르거나 네 줄을 입력하세요.",
+    "core.desktop.backup_restore.err.sheet_too_big": "비상 시트가 아니에요. “Life-Agents-Emergency-Sheet-…” 파일을 고르거나 네 줄을 입력하세요.",
+    "core.desktop.backup_restore.err.unfinished": "복원이 중단되었어요 (컴퓨터나 Docker가 꺼졌어요).",
+    "core.desktop.backup_restore.err.unreadable": "이 파일을 읽을 수 없어요. “.nla.enc”로 끝나는 파일을 고르세요.",
+    "core.desktop.backup_restore.err.version_newer": "이 백업은 더 새로운 버전({release})에서 만들었어요. 먼저 업데이트한 뒤 다시 시도하세요.",
+    "core.desktop.backup_restore.err.version_older": "이 백업은 버전 {release}에서 만들었어요. 정확히 그 버전으로만 복원할 수 있어요. 방법은 안내를 보세요.",
+    "core.desktop.backup_restore.fail_title": "잘 되지 않았어요",
+    "core.desktop.backup_restore.go": "복원",
+    "core.desktop.backup_restore.go_replace": "네, 바꾸기",
+    "core.desktop.backup_restore.guide": "안내 “백업 & 새 컴퓨터”",
+    "core.desktop.backup_restore.key_check": "확인",
+    "core.desktop.backup_restore.key_file": "비상 시트 파일 선택 …",
+    "core.desktop.backup_restore.key_lead": "이 백업은 다른 컴퓨터에서 만들었어요. 그 컴퓨터의 비상 시트에 있는 키로만 열려요.",
+    "core.desktop.backup_restore.key_line": "{n}번째 줄",
+    "core.desktop.backup_restore.key_or": "또는 종이에 적힌 네 줄을 입력하세요:",
+    "core.desktop.backup_restore.key_title": "비상 시트",
+    "core.desktop.backup_restore.list_empty": "백업 폴더에 아직 백업이 없어요. 다른 곳에 있다면 파일을 고르세요.",
+    "core.desktop.backup_restore.list_folder": "지금은 백업 폴더에 접근할 수 없어요. 폴더가 그대로 있는지 확인하거나 파일을 직접 고르세요.",
+    "core.desktop.backup_restore.list_lead": "되살릴 백업을 고르세요.",
+    "core.desktop.backup_restore.list_nofolder": "아직 백업 폴더를 고르지 않았어요. 백업 파일을 직접 고르세요.",
+    "core.desktop.backup_restore.ok_foreign": "이제부터는 이전 컴퓨터의 비상 시트가 적용돼요. 두 키가 모두 들어 있는 새 시트를 바로 저장하세요.",
+    "core.desktop.backup_restore.ok_lead": "{date}의 데이터가 복원되었어요.",
+    "core.desktop.backup_restore.ok_old_machine": "이전 컴퓨터가 더 이상 이 폴더에 백업하지 않게 하세요. 그렇지 않으면 서로의 오래된 백업을 지워요.",
+    "core.desktop.backup_restore.ok_safety": "이전 데이터는 백업 폴더에 백업으로 남아 있어요.",
+    "core.desktop.backup_restore.ok_title": "데이터가 돌아왔어요",
+    "core.desktop.backup_restore.other_file": "다른 파일 선택 …",
+    "core.desktop.backup_restore.pkg_activate": "다시 켜져요",
+    "core.desktop.backup_restore.pkg_install": "함께 설정돼요",
+    "core.desktop.backup_restore.preview_areas": "다음 영역이 되살아나요:",
+    "core.desktop.backup_restore.preview_confirm": "지금 데이터가 바뀐다는 것을 알고 있어요 (먼저 백업돼요).",
+    "core.desktop.backup_restore.preview_empty": "아직 내 데이터가 없어서 덮어쓰는 것은 없어요.",
+    "core.desktop.backup_restore.preview_lead": "{date} 백업",
+    "core.desktop.backup_restore.preview_replace": "지금 데이터는 바뀌어요. 그 전에 앱이 지금 데이터를 백업 폴더에 자동으로 백업해요.",
+    "core.desktop.backup_restore.preview_sheet": "그다음에는 이전 컴퓨터의 비상 시트가 적용돼요.",
+    "core.desktop.backup_restore.preview_title": "이렇게 되살아나요",
+    "core.desktop.backup_restore.running_text": "보통 1분도 걸리지 않아요. 창을 닫아도 계속 진행돼요.",
+    "core.desktop.backup_restore.running_title": "복원하는 중 …",
+    "core.desktop.backup_restore.tag_other": "이전 컴퓨터",
+    "core.desktop.backup_restore.tag_version": "다른 버전",
+    "core.desktop.backup_restore.title": "백업 복원",
+    "core.desktop.backup_restore.unchanged": "데이터는 그대로예요.",
+    "core.desktop.backup_restore.version": "버전 {release}",
+    "core.desktop.backup_restore.version_unknown": "버전 알 수 없음",
     "core.desktop.changes.install_docker": "Docker 추가 (약 {size} MB, 제조사에서 직접)",
     "core.desktop.changes.journal": "앱이 모든 것을 되돌릴 수 있도록 진행 단계를 적어 두는 작은 파일",
     "core.desktop.changes.keep_docker": "Docker 자체: 새 버전도, 다시 시작도 없어요",
@@ -805,11 +1034,13 @@ const UI_TEXT = {
     "core.desktop.tidy.title": "마지막으로 정리하기",
     "core.desktop.tray.backup_dir": "백업 폴더 변경 …",
     "core.desktop.tray.backup_kit": "비상 시트 저장 …",
+    "core.desktop.tray.backup_restore": "백업 복원 …",
     "core.desktop.tray.checking": "확인 중 …",
     "core.desktop.tray.open": "창 열기",
     "core.desktop.tray.power_restore": "상시 실행 끄기",
     "core.desktop.tray.quit": "앱 종료",
     "core.desktop.tray.report": "오류 보고서",
+    "core.desktop.tray.restoring": "복원 진행 중 …",
     "core.desktop.tray.running": "어시스턴트 실행 중",
     "core.desktop.tray.stopped": "어시스턴트 꺼짐: Docker가 실행되지 않아요",
     "core.desktop.tray.telegram": "텔레그램 열기",
@@ -1042,6 +1273,7 @@ function drawRail(id, step) {
 function show(id, s) {
   clearInterval(state.poll);
   state.current = id;
+  state.drawn = (state.drawn || 0) + 1;
   drawRail(id, s.step);
   main.replaceChildren(h('h1', {}, s.title), ...(s.body || []).filter((x) => x != null && x !== false));
   main.scrollTop = 0;
@@ -1067,12 +1299,15 @@ function show(id, s) {
   UiNudge.start(() => next, () => !next.hidden && !next.disabled);
 }
 
+// run(btn, fn) -> Knopf gesperrt, solange fn läuft. Zeichnet fn einen neuen Bildschirm, gehört der Knopf ihm (z. B. „Ja, ersetzen“
+//   bleibt bis zum Haken gesperrt) und wird hier nicht wieder freigegeben.
 async function run(btn, fn) {
   btn.disabled = true;
+  const drawn = state.drawn;
   try {
     await fn();
   } finally {
-    btn.disabled = false;
+    if (state.drawn === drawn) btn.disabled = false;
   }
 }
 
@@ -1473,6 +1708,7 @@ const SCREENS = {
     const k = await invoke('kit_status').catch(() => ({ confirmed: false }));
     if (!k.confirmed) $('next').disabled = true;
     else document.querySelectorAll('.kit-hint').forEach((n) => n.remove());
+    addRestoreCard();
   },
 
   async home() {
@@ -1483,6 +1719,15 @@ const SCREENS = {
         k.confirmed ? null : kitCard(() => SCREENS.home())],
       next: { label: t('core.desktop.common.open_telegram'), run: () => invoke('open_link', { target: 'telegram' }) },
     });
+    // Danach, ohne die Seite aufzuhalten: ein Lauf im Hintergrund oder ein Ergebnis, das noch niemand gesehen hat (Fenster
+    // war zu), hat Vorrang; sonst ggf. die Karte zum alten Rechner.
+    const drawn = state.drawn;
+    const r = await invoke('restore_status').catch(() => null);
+    const st = r && r.status;
+    if (state.drawn !== drawn) return;
+    if (st && st.state === 'running') return SCREENS.restoreRunning();
+    if (st && !r.seen && ['ok', 'fail', 'unfinished'].includes(st.state)) return SCREENS.restoreResult(st);
+    addRestoreCard();
   },
 
   // Symbol-Menü „Notfallblatt speichern …“: speichert sofort und zeigt das Ergebnis mit demselben Hinweis.
@@ -1511,6 +1756,145 @@ const SCREENS = {
       show('kit', { title: t('core.desktop.backup_dir.title'), body: [note('bad', t('core.desktop.kit.unavailable'))],
         next: { label: t('core.desktop.kit.close'), run: () => SCREENS.home() } });
     }
+  },
+
+  // --- Wiederherstellen (Plan restore-ohne-terminal; Kern core/src/restore.rs, Befehle commands.rs) ---------------------
+  // Auswahl → (Notfallblatt) → Vorschau → läuft → Ergebnis. Der Schlüssel erreicht dieses Fenster nur beim Abtippen; die
+  // Datei liest der Rust-Teil. Antworten kommen als feste Felder (Codes), nie als Text des master.
+  async restoreList() {
+    busy('done', t('core.desktop.backup_restore.busy_list'), '');
+    await invoke('restore_forget').catch(() => {});
+    const r = await invoke('restore_list').catch(() => ({ listing: { ok: false, code: 'docker' } }));
+    const l = r.listing || {};
+    const pickFile = { label: t('core.desktop.backup_restore.other_file'), run: async () => {
+      let name = null;
+      try { name = await invoke('restore_pick_file'); } catch (e) { return SCREENS.restoreProblem(e); }
+      if (name) return SCREENS.restorePlan();
+    } };
+    if (!l.ok) {
+      const key = { nofolder: 'core.desktop.backup_restore.list_nofolder', folder: 'core.desktop.backup_restore.list_folder', docker: 'core.desktop.kit.unavailable' }[l.code] || 'core.desktop.backup_restore.list_folder';
+      return show('restore', { title: t('core.desktop.backup_restore.title'), body: [note(l.code === 'nofolder' ? '' : 'bad', t(key))], next: pickFile, back: () => SCREENS.home() });
+    }
+    const own = (l.backups || []).find((b) => b.own);
+    const current = own && own.release;
+    let chosen = null;
+    const items = (l.backups || []).map((b) => {
+      const tags = [];
+      if (!b.own) tags.push(t('core.desktop.backup_restore.tag_other'));
+      if (current && b.release && b.release !== current) tags.push(t('core.desktop.backup_restore.tag_version'));
+      const btn = h('button', { type: 'button', class: 'choice', 'aria-pressed': 'false', onclick: () => {
+        chosen = b.name;
+        document.querySelectorAll('.restore-list .choice').forEach((n) => { n.classList.toggle('sel', n === btn); n.setAttribute('aria-pressed', String(n === btn)); });
+        $('next').disabled = false;
+      } }, h('b', {}, b.date ? dateText(b.date) : b.name, ...tags.map((x) => h('span', { class: 'tag' }, x))),
+      h('small', {}, b.release ? t('core.desktop.backup_restore.version', { release: b.release }) : t('core.desktop.backup_restore.version_unknown')));
+      return btn;
+    });
+    show('restore', {
+      title: t('core.desktop.backup_restore.title'),
+      body: [h('p', { class: 'lead' }, t(items.length ? 'core.desktop.backup_restore.list_lead' : 'core.desktop.backup_restore.list_empty')),
+        items.length ? h('div', { class: 'restore-list' }, items) : null],
+      next: items.length ? { label: t('core.desktop.common.next'), run: async () => {
+        try { await invoke('restore_select', { name: chosen }); } catch (e) { return SCREENS.restoreProblem(e); }
+        return SCREENS.restorePlan();
+      } } : pickFile,
+      alt: items.length ? pickFile : null,
+      back: () => SCREENS.home(),
+    });
+    if (items.length) $('next').disabled = true;
+  },
+
+  // Probelauf: entscheidet, ob das Notfallblatt fehlt, ein Fehler zu zeigen ist oder die Vorschau kommt.
+  async restorePlan() {
+    busy('done', t('core.desktop.backup_restore.busy_check'), '');
+    const p = await invoke('restore_plan').catch(() => ({ ok: false, code: 'docker' }));
+    state.restorePlan = p;
+    if (p.ok) return SCREENS.restorePreview(p);
+    if (/^key_|^sheet_/.test(p.code || '')) return SCREENS.restoreKey(p);
+    return SCREENS.restoreProblem(p.code, p);
+  },
+
+  restoreKey(p) {
+    const lines = [1, 2, 3, 4].map((n) => h('input', { type: 'text', class: 'key-line', autocomplete: 'off', spellcheck: 'false', autocapitalize: 'off', autocorrect: 'off', 'aria-label': t('core.desktop.backup_restore.key_line', { n }), placeholder: t('core.desktop.backup_restore.key_line', { n }) }));
+    const problem = p && p.code && p.code !== 'key_needed' ? note('bad', restoreText(p.code, p)) : null;
+    const check = async () => {
+      const v = lines.map((i) => i.value);
+      lines.forEach((i) => { i.value = ''; });
+      try { await invoke('restore_type_sheet', { lines: v }); } catch (e) { return SCREENS.restoreKey({ code: String(e) }); }
+      return SCREENS.restorePlan();
+    };
+    show('restore', {
+      title: t('core.desktop.backup_restore.key_title'),
+      body: [h('p', { class: 'lead' }, t('core.desktop.backup_restore.key_lead')), problem,
+        h('button', { type: 'button', id: 'sheet-file', onclick: (e) => run(e.currentTarget, async () => {
+          let ok = false;
+          try { ok = await invoke('restore_pick_sheet'); } catch (err) { return SCREENS.restoreKey({ code: String(err) }); }
+          if (ok) return SCREENS.restorePlan();
+        }) }, t('core.desktop.backup_restore.key_file')),
+        h('p', { class: 'key-or' }, t('core.desktop.backup_restore.key_or')),
+        h('div', { class: 'key-lines' }, lines)],
+      next: { label: t('core.desktop.backup_restore.key_check'), run: check },
+      back: () => SCREENS.restoreList(),
+    });
+  },
+
+  restorePreview(p) {
+    const areas = (p.packages || []).map((x) => h('li', {}, has('core.desktop.backup_restore.area.' + x.name) ? t('core.desktop.backup_restore.area.' + x.name) : x.name,
+      x.state === 'install' ? h('small', {}, t('core.desktop.backup_restore.pkg_install')) : x.state === 'activate' ? h('small', {}, t('core.desktop.backup_restore.pkg_activate')) : null));
+    const box = h('input', { type: 'checkbox', id: 'restore-ok' });
+    const body = [h('p', { class: 'lead' }, t('core.desktop.backup_restore.preview_lead', { date: p.created ? dateText(p.created) : '?' })),
+      h('p', {}, t('core.desktop.backup_restore.preview_areas')), h('ul', {}, areas),
+      p.adopt_key_id ? h('p', {}, t('core.desktop.backup_restore.preview_sheet')) : null];
+    if (p.has_data) {
+      body.push(note('warn', h('p', {}, t('core.desktop.backup_restore.preview_replace')),
+        h('label', { class: 'kit-check' }, box, ' ', t('core.desktop.backup_restore.preview_confirm'))));
+      box.addEventListener('change', () => { $('next').disabled = !box.checked; });
+    } else {
+      body.push(h('p', {}, t('core.desktop.backup_restore.preview_empty')));
+    }
+    show('restore', {
+      title: t('core.desktop.backup_restore.preview_title'),
+      body,
+      next: { label: t(p.has_data ? 'core.desktop.backup_restore.go_replace' : 'core.desktop.backup_restore.go'), run: async () => {
+        const r = await invoke('restore_run').catch(() => ({ ok: false, code: 'docker' }));
+        if (!r.ok) return SCREENS.restoreProblem(r.code, r);
+        return SCREENS.restoreRunning();
+      } },
+      back: () => SCREENS.restoreList(),
+    });
+    if (p.has_data) $('next').disabled = true;
+  },
+
+  restoreRunning() {
+    show('restore', { title: t('core.desktop.backup_restore.running_title'), body: [steps([['run', t('core.desktop.backup_restore.running_text')]])] });
+    state.poll = setInterval(async () => {
+      const s = await invoke('restore_status').catch(() => null);
+      const st = s && s.status;
+      if (st && st.state !== 'running') { clearInterval(state.poll); SCREENS.restoreResult(st); }
+    }, 2000);
+  },
+
+  async restoreResult(st) {
+    await invoke('restore_seen', { started: st.started || 0 }).catch(() => {});
+    if (st.state !== 'ok') return SCREENS.restoreProblem(st.state === 'unfinished' ? 'unfinished' : st.code, st);
+    const p = state.restorePlan || {};
+    const body = [h('p', { class: 'lead' }, t('core.desktop.backup_restore.ok_lead', { date: st.created ? dateText(st.created) : '?' }))];
+    if (p.has_data) body.push(h('p', {}, t('core.desktop.backup_restore.ok_safety')));
+    if (st.foreign) body.push(note('warn', h('p', {}, t('core.desktop.backup_restore.ok_foreign')), h('p', {}, t('core.desktop.backup_restore.ok_old_machine'))), kitCard(() => {}));
+    state.restorePlan = null;
+    show('restore', { title: t('core.desktop.backup_restore.ok_title'), body, next: { label: t('core.desktop.kit.close'), run: () => SCREENS.home() } });
+  },
+
+  restoreProblem(code, p) {
+    const c = String(code || 'internal');
+    const again = ['busy', 'unfinished', 'docker', 'folder', 'safety', 'nofolder'].includes(c);
+    show('restore', {
+      title: t('core.desktop.backup_restore.fail_title'),
+      body: [note('bad', restoreText(c, p || {})), h('p', {}, t('core.desktop.backup_restore.unchanged')),
+        c === 'version_older' ? h('p', {}, link(t('core.desktop.backup_restore.guide'), 'backup-guide')) : null],
+      next: again ? { label: t('core.desktop.common.retry'), run: () => SCREENS.restoreList() } : { label: t('core.desktop.backup_restore.choose_other'), run: () => SCREENS.restoreList() },
+      alt: { label: t('core.desktop.kit.close'), run: () => SCREENS.home() },
+    });
   },
 
   async report() {
@@ -1626,6 +2010,42 @@ function kitCard(onDone, nextHint) {
   return card;
 }
 
+/** Datum + Uhrzeit einer Sicherung in der Sprache der App (Zeit im Dateinamen ist UTC). */
+function dateText(iso) {
+  const d = new Date(iso);
+  if (isNaN(d)) return iso;
+  return new Intl.DateTimeFormat(LOCALE[LANG], { dateStyle: 'medium', timeStyle: 'short' }).format(d);
+}
+
+/** Satz zu einem Code des Wiederherstellens (Katalog core.desktop.backup_restore.err.*), unbekannt = allgemeiner Satz. */
+function restoreText(code, p) {
+  const c = String(code || 'internal');
+  const vars = { n: (p && p.line) || '?', id: (p && p.id) || '', release: (p && p.release) || '?', pkg: (p && p.pkg) || '?' };
+  if (c === 'docker') return t('core.desktop.kit.unavailable');
+  const key = 'core.desktop.backup_restore.err.' + K(c);
+  return has(key) ? t(key, vars) : t('core.desktop.backup_restore.err.internal');
+}
+
+// restoreCard(listing) -> Karte „Sicherung vom alten Rechner zurückholen“ (Fertig-Seite vor dem Notfallblatt, Startseite),
+//   solange fremde Sicherungen im Ordner liegen und die Karte nicht weggeklickt ist (restore::card_wanted).
+function restoreCard() {
+  return h('div', { class: 'note restore-card' },
+    h('h2', {}, t('core.desktop.backup_restore.card_title')),
+    h('p', {}, t('core.desktop.backup_restore.card_text')),
+    h('button', { type: 'button', onclick: () => SCREENS.restoreList() }, t('core.desktop.backup_restore.card_go')),
+    ' ',
+    h('a', { href: '#', onclick: async (e) => { e.preventDefault(); await invoke('restore_dismiss_card').catch(() => {}); e.target.closest('.restore-card').remove(); } }, t('core.desktop.backup_restore.card_dismiss')));
+}
+
+/** Karte nachträglich einsetzen (die Liste braucht einen Docker-Aufruf): vor das Notfallblatt bzw. unter den Text. */
+async function addRestoreCard() {
+  const screen = state.current;
+  const r = await invoke('restore_list').catch(() => null);
+  if (!r || !r.card || state.current !== screen || document.querySelector('.restore-card')) return;
+  const kit = document.querySelector('.note.kit');
+  if (kit) kit.before(restoreCard()); else main.append(restoreCard());
+}
+
 function tidyCard() {
   const file = state.startup && state.startup.download;
   if (!file) return null;
@@ -1720,7 +2140,7 @@ function checkLine(c) {
 
 async function boot() {
   listen('show-screen', (id) => {
-    const go = { report: SCREENS.report, uninstall: SCREENS.uninstall, 'power-restore': SCREENS.powerRestore, 'backup-kit': SCREENS.backupKit, 'backup-dir': SCREENS.backupDir }[id];
+    const go = { report: SCREENS.report, uninstall: SCREENS.uninstall, 'power-restore': SCREENS.powerRestore, 'backup-kit': SCREENS.backupKit, 'backup-dir': SCREENS.backupDir, 'backup-restore': SCREENS.restoreList }[id];
     if (go) go();
   });
   const s = await invoke('startup');
@@ -1733,7 +2153,7 @@ async function boot() {
   // Zurück aus dem Fragebogen (main.rs lädt die App mit `#power`): weiter mit dem Dauerbetrieb.
   if (location.hash === '#power') return SCREENS.power();
   // Aus dem Menü des Symbols, während der Fragebogen im Fenster stand (main.rs lädt dann mit `#…` neu).
-  const fromTray = { '#report': SCREENS.report, '#uninstall': SCREENS.uninstall, '#power-restore': SCREENS.powerRestore, '#backup-kit': SCREENS.backupKit, '#backup-dir': SCREENS.backupDir }[location.hash];
+  const fromTray = { '#report': SCREENS.report, '#uninstall': SCREENS.uninstall, '#power-restore': SCREENS.powerRestore, '#backup-kit': SCREENS.backupKit, '#backup-dir': SCREENS.backupDir, '#backup-restore': SCREENS.restoreList }[location.hash];
   if (fromTray) return fromTray();
   if (!s.journal) return failed('journal-unreadable');
   const k = s.journal.kind;

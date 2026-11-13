@@ -434,7 +434,7 @@ function Build-CallWorkflow {
     return $node
 }
 
-# New-WebhookNode — produktiver HTTP-Eingang (Webhook v2, n8n 2.45.4). -Path ist PFLICHT ein Deploy-Platzhalter
+# New-WebhookNode — produktiver HTTP-Eingang (Webhook v2, n8n 2.45.7). -Path ist PFLICHT ein Deploy-Platzhalter
 #   (__<NAME>_PATH__, deploy_workflows.sh setzt die Adresse je Instanz aus INGRESS_ID_KEY ein; workflow_lint prueft es),
 #   nie ein Literal: das Repo ist oeffentlich. -Methods > 1 -> multipleMethods, ein Ausgang je Methode in dieser
 #   Reihenfolge. Antwort immer ueber einen New-RespondNode (responseMode responseNode). Ein text/plain-Body kommt als

@@ -66,7 +66,7 @@ function Build-HumanApproval {
     function Get-ApprovedJs([string]$SendName) { "((`$('$SendName').first().json.data || {}).approved === true)" }
     function Get-ApprovedExpr([string]$SendName) { "={{ $(Get-ApprovedJs $SendName) }}" }
     # Ausgang der Karte fuer den Text ans Modell (Build-ToolCancelled). n8n liefert nach einem Tipp data.approved als true/false, nach
-    # dem Ablauf der Wartegrenze nur die Eingabe des Sends (ohne data). Quelle: Telegram.node.ts + hitl/webhook.ts (2.45.4), belegt in
+    # dem Ablauf der Wartegrenze nur die Eingabe des Sends (ohne data). Quelle: Telegram.node.ts + hitl/webhook.ts (2.45.7), belegt in
     # hitl_gate_test hitlO*. $Prefix 'owner_' = die Owner-Stufe im Vier-Augen-Weg: dort hat nicht der Fragende entschieden.
     function Get-OutcomeExprFor([string]$SendRef, [string]$Prefix = '') {
         $v = "($SendRef.first().json.data || {}).approved"

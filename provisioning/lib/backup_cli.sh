@@ -45,6 +45,20 @@ _bkp_psql_scalar() {
   pg_su_psql -v ON_ERROR_STOP=1 -X -tA -d "$N8N_DB_NAME" -c "$1"
 }
 
+# _bkp_pgdump_stderr (stdin: stderr von `pg_dump -a`) -> dieselben Zeilen ohne den Block „circular foreign-key constraints“
+#   (Warnung, detail-Zeilen mit Tabellennamen, die zwei festen hint-Zeilen). pg_dump meldet Fremdschluessel-Ringe nur bei
+#   --data-only (pg_dump.c: getTableDataFKConstraints nur bei dataOnly; Text in pg_dump_sort.c repairDependencyLoop) und raet
+#   genau zu --disable-triggers, mit dem wir sichern und zurueckspielen -> fuer uns harmlos, fuer Laien erschreckend. Jede
+#   andere Zeile (auch andere Warnungen samt ihren Hinweisen, Fehler) bleibt.
+_bkp_pgdump_stderr() {
+  awk '
+    /^pg_dump: warning: there are circular foreign-key constraints (on this table|among these tables):$/ { ring = 1; next }
+    ring && /^pg_dump: detail: / { next }
+    ring && /^pg_dump: hint: (You might not be able to restore the dump without using --disable-triggers|Consider using a full dump instead of a --data-only dump)/ { next }
+    { ring = 0; print }
+  '
+}
+
 # _bkp_jsonb_obj <"'key', wert">… -> SQL-Ausdruck fuer ein jsonb-Objekt aus beliebig vielen Paaren: PostgreSQL nimmt hoechstens
 #   100 Argumente je Funktion ("cannot pass more than 100 arguments"), jsonb_build_object also hoechstens 50 Paare -> Bloecke
 #   zu 50, mit || verbunden. Ohne Paare '{}'.
@@ -457,7 +471,11 @@ backup_cmd_export() {
   done <<< "$bulk"
   # pg_dump laeuft als postgres (runuser/Peer-Auth) und darf das root-eigene 0700-tmpfs NICHT beschreiben
   # -> Ausgabe auf stdout, die root-Shell leitet in die Datei um (postgres fasst das Verzeichnis nie an).
-  if ! pg_su_exec pg_dump -d "$N8N_DB_NAME" -a --disable-triggers -Fc "${dump_args[@]}" > "$tmp/data.dump"; then
+  # stderr erst nach dem Lauf gefiltert ausgeben (_bkp_pgdump_stderr), der Exit-Code bleibt der von pg_dump.
+  local dump_rc=0
+  pg_su_exec pg_dump -d "$N8N_DB_NAME" -a --disable-triggers -Fc "${dump_args[@]}" > "$tmp/data.dump" 2> "$tmp/dump.err" || dump_rc=$?
+  _bkp_pgdump_stderr < "$tmp/dump.err" >&2 || true
+  if [ "$dump_rc" -ne 0 ]; then
     _bkp_fail dump "pg_dump fehlgeschlagen."
   fi
 

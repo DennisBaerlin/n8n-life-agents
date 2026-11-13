@@ -55,7 +55,7 @@ Jede Änderung läuft als **eine einzige, unteilbare Datenbank-Operation** (atom
 
 ## Backups sind doppelt verschlüsselt
 
-Ein Datenbank-Backup lässt sich nur mit einem Schlüssel öffnen, der ausschließlich in der eigenen Datenbank liegt (nie im Chat, nie im Code) und verschlüsselt das Backup mit einem etablierten Standardverfahren (GPG, AES256). Ein Wiederherstellen prüft vorher, welche Pakete/Tabellen überschrieben würden, und verlangt eine explizite Bestätigung, bevor irgendetwas gelöscht wird.
+Ein Backup ist mit einem etablierten Standardverfahren verschlüsselt (GPG, AES256) und lässt sich nur mit seinem Schlüssel öffnen. Den Schlüssel gibt es an zwei Stellen: in deiner eigenen Datenbank, damit die tägliche Sicherung von selbst läuft, und auf dem **Notfallblatt**, das du ausdruckst oder in deinem Passwort-Manager aufbewahrst, also außerhalb des Rechners. Nur damit öffnet sich eine Sicherung auf einem neuen Rechner. Im Chat und im Code steht er nie. Ein Wiederherstellen prüft vorher, welche Pakete/Tabellen überschrieben würden, und verlangt eine ausdrückliche Bestätigung, bevor irgendetwas gelöscht wird. Mehr unter [Sicherung & neuer Rechner](sicherung.html).
 
 ## Nur bekannte Personen kommen durch
 

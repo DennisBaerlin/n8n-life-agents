@@ -225,6 +225,7 @@
   "backup": {
     "_comment": "Paket-Backup-Oberfläche (Phase 4b, docs/package-contract.md). Core hält seine Nutzerdaten im GETEILTEN Schema agent (Code+Nutzerdaten gemischt) -> KEIN schema_dump. full_tables = ganz sichern (wipe+restore, reine Nutzerdaten). filtered_tables = zeilen-gefiltert: pg_dump kann nicht zeilen-filtern, daher exportiert die CLI sie als jsonb (SELECT ... WHERE <cond>) und core.fn_backup_restore_filtered spielt sie regel-bewusst zurück (protected Contexts nur per UPDATE, family vor den Kontexten, die family-Personen referenzieren, monitor-Trigger entdoppelt). NICHT gesichert (Code/ephemer): *_instructions/capabilities_catalog (managed_by!=agent = Code aus dem Repo), ai_models/config, chat_memory, *_import_state/pairing_state, notification_state (geteilte Notify-Dedup, ephemer), hitl_pending (Karte-offen-Sperre, TTL), ingress_buffer (Eingangs-Bündelung, 2 min), thinking_lease (Denkt-nach-Schalter, TTL), reaction_log (Reaktions-Protokoll, 30 Tage), dispatch_followup (Knopf-Folge-Bindung, 30 min), monitor_observations.",
     "full_tables": ["agent.advisor_plans", "agent.advisor_plan_wishes", "agent.handoff_tasks", "agent.plan_reminder_declines","agent.guide_onboarding_state", "agent.reminder_prefs", "agent.reminder_pause"],
+    "system_tables": ["agent.guide_onboarding_state", "agent.reminder_prefs"],
     "filtered_tables": {
       "agent.core_contexts": "managed_by = 'agent'",
       "agent.monitor_triggers": "origin = 'user'"

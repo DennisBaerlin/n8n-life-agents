@@ -314,14 +314,13 @@ _bkp_folder_target() {
   n="$(backup_text folder_name)"
   _bkp_join "$dir" "${n:-Life Agents Sicherungen}"
 }
-# _bkp_foreign_ids <ordner> -> Schluessel-IDs der Sicherungen im Ordner, die zu keinem gespeicherten Schluessel gehoeren.
+# _bkp_foreign_ids <ordner> -> Schluessel-IDs der Sicherungen im Ordner, die zu keinem gespeicherten Schluessel gehoeren
+#   (Einteilung _bkp_classify; Namen ohne ID haben keine ID zum Nennen und fehlen hier).
 _bkp_foreign_ids() {
-  local ids b k out=''
-  ids=$'\n'"$(_bkp_key_ids)"$'\n'
-  while IFS= read -r b; do
-    k="$(_bkp_file_key_id "$b")"
-    [ -n "$k" ] && [[ "$ids" != *$'\n'"$k"$'\n'* ]] && [[ " $out " != *" $k "* ]] && out="${out:+$out }$k"
-  done < <(rt_host_ls "$(_bkp_hd "$1")" 2>/dev/null || true)
+  local b k cls _ts _v out=''
+  while IFS=$'\t' read -r b k cls _ts _v; do
+    [ "$cls" = other ] && [[ " $out " != *" $k "* ]] && out="${out:+$out }$k"
+  done < <(rt_host_ls "$(_bkp_hd "$1")" 2>/dev/null | _bkp_classify || true)
   printf '%s' "$out"
 }
 
@@ -443,6 +442,9 @@ backup_cmd_export() {
     [ -z "$hprob" ] || _bkp_fail "$(_bkp_reason_of "$hprob")" "Ordner '${host}' ist auf dem Rechner nicht erreichbar oder nicht beschreibbar (${hprob})."
   fi
 
+  # Eine Sperre fuer Sicherung, Wiederherstellung und Update (bis 30 s: der Minuten-Takt haelt sie kurz). Belegt = Grund busy:
+  # kein Alarm (doctor/Chat werten nur das Alter), der Takt versucht es stuendlich erneut.
+  update_lock_acquire 30 || _bkp_fail busy "Gerade läuft ein Update oder eine Wiederherstellung — die Sicherung folgt später."
   local key; key="$(_bkp_key)"
   [ -n "$key" ] && [ "${#key}" -ge 16 ] || _bkp_fail key "Backup-Schluessel fehlt/zu kurz (core.backup_key '${BACKUP_KEY_NAME}', >=16 Zeichen). Der Installer setzt ihn out-of-band (bootstrap_owner _ensure_backup_secret)."
   local kid; kid="$(printf '%s' "$key" | backup_key_id)"
@@ -570,12 +572,13 @@ SQL
 
 # _bkp_try_parsed <parse-ausgabe> <chiffrat> <klartext-ziel> <datei-id> — waehlt aus den eingegebenen Schluesseln den zur
 #   Sicherung passenden (per ID im Dateinamen, ohne ID der Reihe nach) und entschluesselt. Erfolg: rc 0, _BKP_BROUGHT und
-#   _BKP_OTHERS (die uebrigen Blatt-Schluessel, je Zeile). Sonst _BKP_TRY_MSG (Alltagssatz), _BKP_TRY_ERR (Form-Code aus der
-#   Eingabe) und _BKP_TRY_FINAL=1, wenn ein neuer Versuch nichts bringt (passende ID, Datei beschaedigt). Direkt rufen.
-_BKP_BROUGHT=''; _BKP_OTHERS=''; _BKP_TRY_MSG=''; _BKP_TRY_ERR=''; _BKP_TRY_FINAL=0
+#   _BKP_OTHERS (die uebrigen Blatt-Schluessel, je Zeile). Sonst _BKP_TRY_MSG (Alltagssatz), _BKP_TRY_CODE (fester Code fuer
+#   die Start-App, _bkp_rdie), _BKP_TRY_LINE, _BKP_TRY_ERR (Form-Code aus der Eingabe) und _BKP_TRY_FINAL=1, wenn ein neuer
+#   Versuch nichts bringt (passende ID, Datei beschaedigt). Direkt rufen, nie in $(…) (die Variablen gingen verloren).
+_BKP_BROUGHT=''; _BKP_OTHERS=''; _BKP_TRY_MSG=''; _BKP_TRY_ERR=''; _BKP_TRY_FINAL=0; _BKP_TRY_CODE=''; _BKP_TRY_LINE=0
 _bkp_try_parsed() {
   local parsed="$1" enc="$2" out="$3" fkid="$4" l k kid ids='' tried=0 all=''
-  _BKP_TRY_MSG=''; _BKP_TRY_ERR=''; _BKP_TRY_FINAL=0; _BKP_BROUGHT=''; _BKP_OTHERS=''
+  _BKP_TRY_MSG=''; _BKP_TRY_ERR=''; _BKP_TRY_FINAL=0; _BKP_BROUGHT=''; _BKP_OTHERS=''; _BKP_TRY_CODE=''; _BKP_TRY_LINE=0
   while IFS= read -r l; do
     case "$l" in
       err:*) [ -n "$_BKP_TRY_ERR" ] || _BKP_TRY_ERR="${l#err:}" ;;
@@ -593,16 +596,16 @@ _bkp_try_parsed() {
       return 0
     fi
     : > "$out"
-    if [ -n "$fkid" ]; then _BKP_TRY_FINAL=1; _BKP_TRY_MSG="$(backup_text msg.corrupt id "$fkid")"; return 1; fi
+    if [ -n "$fkid" ]; then _BKP_TRY_FINAL=1; _BKP_TRY_CODE=corrupt; _BKP_TRY_MSG="$(backup_text msg.corrupt id "$fkid")"; return 1; fi
   done <<<"$all"
   case "$_BKP_TRY_ERR" in
-    line[1-4]) _BKP_TRY_MSG="$(backup_text msg.line n "${_BKP_TRY_ERR#line}")" ;;
-    length)    _BKP_TRY_MSG="$(backup_text msg.length)" ;;
-    chars)     _BKP_TRY_MSG="$(backup_text msg.chars)" ;;
+    line[1-4]) _BKP_TRY_CODE=key_line; _BKP_TRY_LINE="${_BKP_TRY_ERR#line}"; _BKP_TRY_MSG="$(backup_text msg.line n "$_BKP_TRY_LINE")" ;;
+    length)    _BKP_TRY_CODE=key_format; _BKP_TRY_MSG="$(backup_text msg.length)" ;;
+    chars)     _BKP_TRY_CODE=key_format; _BKP_TRY_MSG="$(backup_text msg.chars)" ;;
   esac
-  if [ -n "$ids" ] && [ -z "$_BKP_TRY_MSG" ]; then _BKP_TRY_MSG="$(backup_text msg.other_key ids "$ids" id "$fkid")"
-  elif [ "$tried" = 1 ] && [ -z "$_BKP_TRY_MSG" ]; then _BKP_TRY_MSG="$(backup_text msg.no_open)"; fi
-  [ -n "$_BKP_TRY_MSG" ] || _BKP_TRY_MSG="$(backup_text msg.none)"
+  if [ -n "$ids" ] && [ -z "$_BKP_TRY_MSG" ]; then _BKP_TRY_CODE=key_foreign; _BKP_TRY_MSG="$(backup_text msg.other_key ids "$ids" id "$fkid")"
+  elif [ "$tried" = 1 ] && [ -z "$_BKP_TRY_MSG" ]; then _BKP_TRY_CODE=key_no_open; _BKP_TRY_MSG="$(backup_text msg.no_open)"; fi
+  if [ -z "$_BKP_TRY_MSG" ]; then _BKP_TRY_CODE=key_needed; _BKP_TRY_MSG="$(backup_text msg.none)"; fi
   return 1
 }
 
@@ -632,21 +635,26 @@ _bkp_ask_key_tty() {
 }
 
 # _bkp_brought_key <chiffrat> <klartext-ziel> <datei-id> <von-stdin:0|1> — kein gespeicherter Schluessel oeffnet die
-#   Sicherung: Schluessel vom Notfallblatt holen (stdin bzw. Terminal) -> _BKP_BROUGHT/_BKP_OTHERS. Am Terminal bis zu drei
-#   ganze Schluessel (falsches Blatt); ein Zeilenfehler nach drei Versuchen oder eine beschaedigte Datei bricht sofort ab.
-#   Jeder Abbruch: nichts geaendert.
+#   Sicherung: Schluessel vom Notfallblatt holen (stdin, Blatt-Block aus --in-stdin bzw. Terminal) -> _BKP_BROUGHT/_BKP_OTHERS.
+#   Am Terminal bis zu drei ganze Schluessel (falsches Blatt); ein Zeilenfehler nach drei Versuchen oder eine beschaedigte
+#   Datei bricht sofort ab. Jeder Abbruch: nichts geaendert, Code ueber _bkp_rdie.
 _bkp_brought_key() {
   local enc="$1" out="$2" fkid="$3" from_stdin="$4" parsed n un cmd
   un="$(backup_text msg.unchanged)"
   if [ "$from_stdin" = 1 ]; then
-    parsed="$(backup_key_parse)"
-    _bkp_try_parsed "$parsed" "$enc" "$out" "$fkid" || die "${_BKP_TRY_MSG} ${un}"
-    return 0
+    if [ "$_BKP_SHEET_SET" = 1 ]; then
+      [ -n "${_BKP_SHEET//[[:space:]]/}" ] || _bkp_rdie key_needed "$(backup_text msg.none) ${un}" --arg id "$fkid"
+      parsed="$(printf '%s' "$_BKP_SHEET" | backup_key_parse)"
+    else
+      parsed="$(backup_key_parse)"
+    fi
+    _bkp_try_parsed "$parsed" "$enc" "$out" "$fkid" && return 0
+    _bkp_rdie "$_BKP_TRY_CODE" "${_BKP_TRY_MSG} ${un}" --arg id "$fkid" --argjson line "${_BKP_TRY_LINE:-0}"
   fi
-  if ! ui_interactive; then
+  if [ "$_BKP_JSON" = 1 ] || ! ui_interactive; then
     if rt_is_compose; then cmd="$(rt_master_cli_hint) backup restore <datei> --key-stdin < Notfallblatt.txt"
     else cmd="lifeagents backup restore <datei> --key-stdin < notfallblatt.txt"; fi
-    die "$(backup_text msg.no_tty cmd "$cmd") ${un}"
+    _bkp_rdie key_needed "$(backup_text msg.no_tty cmd "$cmd") ${un}" --arg id "$fkid"
   fi
   if [ -n "$fkid" ]; then parsed="$(backup_text ask.intro_id id "$fkid")"; else parsed="$(backup_text ask.intro)"; fi
   { printf '\n  %s\n\n' "$parsed" > /dev/tty; } 2>/dev/null || true
@@ -659,35 +667,176 @@ _bkp_brought_key() {
   die "$(backup_text msg.wrong_3) ${un}"
 }
 
-# _bkp_pick_lines (stdin: Dateinamen im Rechner-Ordner) -> Auswahl-Zeilen "Datum · Version · was sie braucht<TAB>name":
-#   je neueste zuerst, die eines anderen Schluessels vorn (Grund unten). Zeit in UTC wie im Dateinamen.
-_bkp_pick_lines() {
-  local ids b kid ts ver own='' other='' lbl
+# _bkp_classify (stdin: Dateinamen im Rechner-Ordner) -> je Sicherung "name<TAB>id<TAB>own|other|legacy<TAB>zeit<TAB>version"
+#   (zeit = 14 Ziffern UTC aus dem Namen). Die eine Stelle fuer eigen/fremd: Terminal-Auswahl, Fragebogen-Hinweis, App-Liste.
+#   Namen ohne ID (legacy) gehoeren zu keinem bekannten Schluessel und zaehlen ueberall wie fremde.
+_bkp_classify() {
+  local ids b kid ts ver cls
   ids=$'\n'"$(_bkp_key_ids)"$'\n'
   while IFS= read -r b; do
-    [ -n "$b" ] || continue
+    case "$b" in *.nla.enc) ;; *) continue ;; esac
     kid="$(_bkp_file_key_id "$b")"; ts=''; ver=''
-    [[ "$b" =~ lifeagents-backup-([0-9]{4})([0-9]{2})([0-9]{2})([0-9]{2})([0-9]{2}) ]] \
-      && ts="${BASH_REMATCH[1]}-${BASH_REMATCH[2]}-${BASH_REMATCH[3]} ${BASH_REMATCH[4]}:${BASH_REMATCH[5]} UTC"
+    [[ "$b" =~ lifeagents-backup-([0-9]{14}) ]] && ts="${BASH_REMATCH[1]}"
     [[ "$b" =~ -(v[0-9][0-9A-Za-z.-]*|vdev)[^/]*\.nla\.enc$ ]] && ver="${BASH_REMATCH[1]}"
-    if [ -n "$kid" ] && [[ "$ids" == *$'\n'"$kid"$'\n'* ]]; then
-      lbl="${ts:-$b} · ${ver:-?} · $(backup_text pick.own)"; own="${own}${b}"$'\t'"${lbl}"$'\n'
-    elif [ -n "$kid" ]; then
-      lbl="${ts:-$b} · ${ver:-?} · $(backup_text pick.other id "$kid")"; other="${other}${b}"$'\t'"${lbl}"$'\n'
+    if [ -z "$kid" ]; then cls=legacy; elif [[ "$ids" == *$'\n'"$kid"$'\n'* ]]; then cls=own; else cls=other; fi
+    printf '%s\t%s\t%s\t%s\t%s\n' "$b" "$kid" "$cls" "$ts" "$ver"
+  done
+}
+# _bkp_sorted (stdin: _bkp_classify) -> dieselben Zeilen, fremde und alte zuerst, darin neueste zuerst: auf einem neuen Rechner
+#   im geteilten Ordner ist die eigene, neueste Sicherung die fast leere der Neuinstallation, gesucht ist die des alten Rechners.
+_bkp_sorted() {
+  awk -F '\t' 'BEGIN { OFS = "\t" } { print ($3 == "own" ? 1 : 0), $0 }' | sort -t "$(printf '\t')" -k1,1n -k5,5r -k2,2r | cut -f2-
+}
+# _bkp_pick_lines (stdin: Dateinamen im Rechner-Ordner) -> Auswahl-Zeilen "Datum · Version · was sie braucht<TAB>name".
+_bkp_pick_lines() {
+  local b kid cls ts ver when lbl
+  _bkp_classify | _bkp_sorted | while IFS=$'\t' read -r b kid cls ts ver; do
+    when="$b"
+    [ "${#ts}" = 14 ] && when="${ts:0:4}-${ts:4:2}-${ts:6:2} ${ts:8:2}:${ts:10:2} UTC"
+    case "$cls" in
+      own)    lbl="${when} · ${ver:-?} · $(backup_text pick.own)" ;;
+      other)  lbl="${when} · ${ver:-?} · $(backup_text pick.other id "$kid")" ;;
+      *)      lbl="${when} · $(backup_text pick.legacy)" ;;
+    esac
+    printf '%s\t%s\n' "$lbl" "$b"
+  done
+}
+
+# --- Restore fuer die Start-App: feste Codes, Probelauf, Hintergrund-Lauf -------------------------------------------------
+# Im JSON-Modus (--json) endet jeder Restore-Weg mit genau einem JSON-Objekt auf stdout ({ok:true,…} bzw. {ok:false, code,…});
+# der Satz geht auf stderr. Codes (die App uebersetzt sie, report::ERROR_CODES): key_needed key_line key_format key_foreign
+# key_no_open corrupt corrupt_stored bundle_incomplete format package_unknown version_older version_newer needs_setup no_tables
+# unreadable safety
+# folder nofolder busy internal. Eigene Funktion statt die_because: die schreibt die Ergebnis-Datei eines Updates, hier
+# liest die App stdout bzw. backup.state.
+_BKP_JSON=0; _BKP_CHILD=0; _BKP_SHEET=''; _BKP_SHEET_SET=0
+BACKUP_RESTORE_LOCK="${BACKUP_RESTORE_LOCK:-/run/lifeagents-restore.lock}"
+# _bkp_rdie <code> <satz> [jq-argumente…] — Restore abbrechen: im Hintergrund-Lauf LAST_RESTORE_FAIL + Grund in backup.state,
+#   im JSON-Modus das Fehler-Objekt (weitere Felder per --arg/--argjson), sonst die wie bisher. Immer exit 1.
+_bkp_rdie() {
+  local code="$1" msg="$2"; shift 2
+  if [ "$_BKP_CHILD" = 1 ]; then _bkp_state_set LAST_RESTORE_FAIL "$(date +%s)"; _bkp_state_set LAST_RESTORE_REASON "$code"; fi
+  if [ "$_BKP_JSON" = 1 ]; then
+    err "$msg"
+    jq -cn --arg code "$code" "$@" '{ok: false} + $ARGS.named' 2>/dev/null || printf '{"ok":false,"code":"%s"}\n' "$code"
+    exit 1
+  fi
+  die "$msg"
+}
+# _bkp_restore_running -> 0, wenn ein Hintergrund-Lauf die Restore-Sperre haelt.
+_bkp_restore_running() {
+  need_cmd flock || return 1
+  [ -e "$BACKUP_RESTORE_LOCK" ] || return 1
+  ! flock -n "$BACKUP_RESTORE_LOCK" true 2>/dev/null
+}
+# _bkp_system_tables -> qualifizierte Tabellen aus backup.system_tables aller aktiven Pakete (fuellt das System selbst: Code-Seed,
+#   abgerufene Kurse, abgeleitete Salden, Onboarding-Zeilen der Einrichtung) — zaehlen nicht als „eigene Daten“.
+_bkp_system_tables() {
+  local active mf pkg schema t
+  active="$(_bkp_active_names)"
+  for mf in "$(_pkg_dir)"/*/manifest.json; do
+    [ -r "$mf" ] || continue
+    pkg="$(jq -r '.name // empty' "$mf" 2>/dev/null)" || continue
+    _bkp_is_active "$pkg" "$active" || continue
+    schema="$(jq -r '.schema // empty' "$mf" 2>/dev/null)"
+    while IFS= read -r t; do
+      [ -n "$t" ] || continue
+      case "$t" in *.*) printf '%s\n' "$t" ;; *) [ -n "$schema" ] && printf '%s.%s\n' "$schema" "$t" ;; esac
+    done < <(jq -r '.backup.system_tables[]?' "$mf" 2>/dev/null)
+  done
+}
+# _bkp_has_data <bulk> -> 0, wenn eine bulk-Tabelle ausser den System-Tabellen Zeilen hat (frisch eingerichtet = 1). Die
+#   gefilterten Tabellen zaehlen nicht: die Einrichtung legt dort schon das Haushalts-Skelett an.
+_bkp_has_data() {
+  local sys t q=''
+  sys=$'\n'"$(_bkp_system_tables)"$'\n'
+  while IFS= read -r t; do
+    [ -n "$t" ] || continue
+    [[ "$sys" == *$'\n'"$t"$'\n'* ]] && continue
+    _bkp_qual_ok "$t" || continue
+    q="${q:+$q OR }EXISTS (SELECT 1 FROM ${t})"
+  done <<<"$1"
+  [ -n "$q" ] || return 1
+  [ "$(_bkp_psql_scalar "SELECT (${q})::int")" = 1 ]
+}
+# _bkp_pkg_needs_setup <pkg> -> 0, wenn das Paket Zugangsdaten verlangt (credentials im Manifest): ohne Terminal entstuende es
+#   halb eingerichtet -> die App installiert es nicht selbst (Code needs_setup).
+_bkp_pkg_needs_setup() {
+  local mf; mf="$(_pkg_dir)/$1/manifest.json"
+  [ -r "$mf" ] || return 1
+  jq -e '(.credentials // {}) | [to_entries[] | select(.key != "_comment")] | length > 0' "$mf" >/dev/null 2>&1
+}
+# _bkp_read_in_stdin <ziel> — --in-stdin (Start-App, 'Andere Datei waehlen'): erste Zeile "sheet <base64>" (Blatt-Text, leer =
+#   kein Blatt), danach die Sicherung base64-codiert bis zum Ende. base64, weil `read` Zeichen der Locale zaehlt (Blatt UTF-8,
+#   ko) und die App nur Text ueber stdin reicht; eine Zeile liest bash exakt, ohne vom Folgenden etwas zu verschlucken. Das
+#   Blatt bleibt nur in der Shell-Variable _BKP_SHEET, nie in einer Datei.
+_bkp_read_in_stdin() {
+  local hdr
+  IFS= read -r hdr || _bkp_rdie unreadable "Keine Eingabe auf stdin."
+  [[ "$hdr" =~ ^sheet\ ?([A-Za-z0-9+/=]*)$ ]] || _bkp_rdie unreadable "Eingabe auf stdin hat nicht die erwartete Form."
+  _BKP_SHEET=''
+  if [ -n "${BASH_REMATCH[1]}" ]; then
+    _BKP_SHEET="$(printf '%s' "${BASH_REMATCH[1]}" | base64 -d 2>/dev/null)" || _bkp_rdie key_format "$(backup_text msg.length)"
+  fi
+  _BKP_SHEET_SET=1
+  base64 -d > "$1" 2>/dev/null && [ -s "$1" ] || _bkp_rdie unreadable "Die gewählte Sicherung ließ sich nicht lesen."
+}
+
+# backup_cmd_list --json — Sicherungen im gemerkten Rechner-Ordner fuer die Start-App, Reihenfolge wie die Terminal-Auswahl:
+#   {ok:true, folder, backups:[{name, date (ISO UTC), release, key_id, own}]}; ohne Ordner {ok:false, code:"nofolder"}.
+backup_cmd_list() {
+  [ "${1:-}" = --json ] || die "Usage: lifeagents backup list --json"
+  _BKP_JSON=1
+  _bkp_resolve_db
+  local hd prob; hd="$(_bkp_host_dir)"
+  [ -n "$hd" ] || _bkp_rdie nofolder "Noch kein Sicherungs-Ordner gewählt."
+  prob="$(_bkp_folder_problem "$hd")"
+  [ -z "$prob" ] || _bkp_rdie folder "Der Sicherungs-Ordner ist nicht erreichbar (${prob})." --arg problem "$prob"
+  rt_host_ls "$(_bkp_hd "$hd")" | _bkp_classify | _bkp_sorted | jq -Rsc --arg folder "$hd" '
+    [split("\n")[] | select(length > 0) | split("\t")
+     | { name: .[0], key_id: (if .[1] == "" then null else .[1] end), own: (.[2] == "own"),
+         date: (.[3] as $t | if ($t | length) == 14 then "\($t[0:4])-\($t[4:6])-\($t[6:8])T\($t[8:10]):\($t[10:12]):\($t[12:14])Z" else null end),
+         release: (if .[4] == "" then null else .[4] end) }]
+    | { ok: true, folder: $folder, backups: . }'
+}
+
+# backup_cmd_restore_status --json — Stand des letzten Hintergrund-Laufs: {ok:true, state: idle|running|ok|fail|unfinished,
+#   code, name, created, foreign, started}; unfinished = gestartet, ohne Ergebnis und die Restore-Sperre ist frei (Rechner aus,
+#   Container neu, Lauf abgebrochen) — die TX hat dann nichts geaendert.
+backup_cmd_restore_status() {
+  [ "${1:-}" = --json ] || die "Usage: lifeagents backup restore-status --json"
+  local st okt flt rs nm cr fg state=idle v
+  for v in st:LAST_RESTORE_START okt:LAST_RESTORE_OK flt:LAST_RESTORE_FAIL rs:LAST_RESTORE_REASON nm:LAST_RESTORE_NAME \
+           cr:LAST_RESTORE_CREATED fg:LAST_RESTORE_FOREIGN; do
+    printf -v "${v%%:*}" '%s' "$(read_env_value "$BACKUP_STATE_FILE" "${v#*:}" 2>/dev/null || true)"
+  done
+  case "$st" in ''|*[!0-9]*) st=0 ;; esac; case "$okt" in ''|*[!0-9]*) okt=0 ;; esac; case "$flt" in ''|*[!0-9]*) flt=0 ;; esac
+  if [ "$st" -gt 0 ]; then
+    if [ "$okt" -ge "$st" ]; then state=ok
+    elif [ "$flt" -ge "$st" ]; then state=fail
+    elif _bkp_restore_running; then state=running
     else
-      lbl="${ts:-$b} · $(backup_text pick.legacy)"; other="${other}${b}"$'\t'"${lbl}"$'\n'
+      state=unfinished
+      # Hart abgebrochen (kill, Absturz): der EXIT-Trap des Laufs lief nicht, das entschluesselte Bundle laege noch im
+      # tmpfs. Nur genau den gemerkten eigenen Ordner entfernen.
+      local stale; stale="$(read_env_value "$BACKUP_STATE_FILE" LAST_RESTORE_TMP 2>/dev/null || true)"
+      if [[ "$stale" =~ ^(/dev/shm|/tmp)/lifeagents-bkp\.[A-Za-z0-9]{6}$ ]] && [ -d "$stale" ]; then rm -rf -- "$stale"; fi
     fi
-  done
-  # Fremde zuerst: auf einem neuen Rechner im geteilten Ordner ist die eigene, neueste Sicherung die fast leere der
-  # Neuinstallation — gesucht ist die des alten Rechners. Auf einem gewohnten Rechner gibt es keine fremden.
-  { printf '%s' "$other" | sort -r; printf '%s' "$own" | sort -r; } | while IFS=$'\t' read -r b lbl; do
-    [ -n "$b" ] && printf '%s\t%s\n' "$lbl" "$b"
-  done
+  fi
+  jq -cn --arg state "$state" --arg code "$rs" --arg name "$nm" --arg created "$cr" --arg foreign "$fg" --argjson started "$st" \
+    '{ok: true, state: $state, code: (if $state == "fail" then $code else null end), name: (if $name == "" then null else $name end),
+      created: (if $created == "" then null else $created end), foreign: ($foreign == "1"), started: $started}'
 }
 
 # ============================================================
 # restore
 # ============================================================
+# backup_cmd_restore [<datei>|<name>] [--from-host] [--key-stdin] [--in-stdin] [--yes] [--plan] [--detach] [--json]
+#   Terminal: Auswahl, Wipe-Uebersicht, „ja“, dann EINE TX. Start-App (Plan restore-ohne-terminal):
+#   --plan --json  Probelauf: oeffnen, pruefen, nichts schreiben (auch kein Paket, kein backup.state) -> ein JSON-Objekt.
+#   --detach --json  (mit --yes) pruefen wie der Probelauf, dann im Hintergrund: Pakete einrichten, Vorab-Sicherung, TX;
+#                  Ergebnis in backup.state (backup restore-status). Der Aufrufer bekommt sofort {ok:true, started}.
+#   --in-stdin     die Sicherung kommt ueber stdin (Rahmen _bkp_read_in_stdin, mit Blatt-Block) statt aus einem Ordner.
 backup_cmd_restore() {
   require_cmd jq; _bkp_require_pg pg_restore; require_cmd gpg
   _bkp_resolve_db
@@ -695,30 +844,37 @@ backup_cmd_restore() {
   # Ordner (BACKUP_HOST_DIR). Im Verbund ist das ohne Pfad der Normalfall (die Auswahl listet den gemerkten Ordner).
   # --key-stdin: Schluessel vom Notfallblatt aus stdin (Text oder die ganze Notfallblatt-Datei), nur gelesen, wenn kein
   # gespeicherter Schluessel die Datei oeffnet. Nie als Argument (Prozessliste).
-  local enc="" force=0 a from_host=0 key_stdin=0
+  local enc="" force=0 a from_host=0 key_stdin=0 in_stdin=0 plan=0 detach=0
   for a in "$@"; do
     case "$a" in
       --yes|-y) force=1 ;;
       --from-host) from_host=1 ;;
       --key-stdin) key_stdin=1 ;;
+      --in-stdin) in_stdin=1; key_stdin=1 ;;
+      --plan) plan=1 ;;
+      --detach) detach=1 ;;
+      --json) _BKP_JSON=1 ;;
       --*)      die "Unbekannte Option: $a" ;;
       *)        enc="$a" ;;
     esac
   done
+  if [ "$detach" = 1 ] && { [ "$force" != 1 ] || [ "$_BKP_JSON" != 1 ] || [ "$plan" = 1 ]; }; then
+    die "--detach braucht --yes und --json (Start-App) und schliesst --plan aus."
+  fi
   # Missing-Arg-Picker (E3): *.nla.enc aus cwd + /root — realpath-dedupe (als root ist cwd oft
   # /root selbst, sonst Dubletten), dann absteigend nach BASENAME sortiert (der traegt den
   # Timestamp -> neueste zuerst; eine Voll-Pfad-Sortierung liesse das Verzeichnis-Praefix
   # dominieren, Cold-Eyes A1). Danach laufen Wipe-Uebersicht + 'ja'-Confirm unveraendert (E8).
   # Kein Treffer/Abbruch -> unveraenderte Usage.
-  if rt_is_compose && { [ -z "$enc" ] || [ ! -r "$enc" ]; }; then from_host=1; fi
-  if [ -z "$enc" ] && [ "$from_host" -eq 1 ] && ui_interactive; then
+  if [ "$in_stdin" = 0 ] && rt_is_compose && { [ -z "$enc" ] || [ ! -r "$enc" ]; }; then from_host=1; fi
+  if [ -z "$enc" ] && [ "$in_stdin" = 0 ] && [ "$_BKP_JSON" = 0 ] && [ "$from_host" -eq 1 ] && ui_interactive; then
     ensure_gum
     local _hd _hpick
     _hd="$(_bkp_host_dir)"
     [ -n "$_hd" ] || die "Kein Sicherungs-Ordner auf dem Rechner gewählt — Datei mit vollem Pfad angeben: lifeagents backup restore --from-host <ordner>/<datei>"
     _hpick="$(rt_host_ls "$(_bkp_hd "$_hd")" | _bkp_pick_lines | ui_choose 'Backup wiederherstellen (Wipe-Uebersicht + Bestaetigung folgen):' 0 || true)"
     [ -n "$_hpick" ] && enc="$_hpick"
-  elif [ -z "$enc" ] && ui_interactive; then
+  elif [ -z "$enc" ] && [ "$in_stdin" = 0 ] && [ "$_BKP_JSON" = 0 ] && ui_interactive; then
     ensure_gum
     local _pick
     _pick="$( { ls -1 -- *.nla.enc /root/*.nla.enc 2>/dev/null || true; } \
@@ -729,32 +885,46 @@ backup_cmd_restore() {
       | ui_choose 'Backup wiederherstellen (Wipe-Uebersicht + Bestaetigung folgen):' 0 || true)"
     [ -n "$_pick" ] && enc="$_pick"
   fi
-  [ -n "$enc" ] || die "Usage: lifeagents backup restore <datei.nla.enc> [--from-host] [--key-stdin] [--yes]"
+  [ -n "$enc" ] || _bkp_rdie unreadable "Usage: lifeagents backup restore <datei.nla.enc> [--from-host] [--key-stdin] [--yes]"
   local host_src=""
-  if [ "$from_host" -eq 1 ]; then
+  if [ "$in_stdin" = 1 ]; then
+    :
+  elif [ "$from_host" -eq 1 ]; then
     case "$enc" in
-      /*|[A-Za-z]:\\*|[A-Za-z]:/*) host_src="$enc" ;;
-      */*|*\\*) die "Datei als Name im gemerkten Ordner oder mit vollem Pfad angeben: $enc" ;;
-      *) host_src="$(_bkp_host_dir)"; [ -n "$host_src" ] || die "Kein Sicherungs-Ordner auf dem Rechner gewählt — Datei mit vollem Pfad angeben."; host_src="$(_bkp_join "$host_src" "$enc")" ;;
+      /*|[A-Za-z]:\\*|[A-Za-z]:/*)
+        _bkp_host_dir_valid "$enc" || _bkp_rdie unreadable "Pfad '${enc}' lässt sich nicht an Docker geben (Komma, Anführungszeichen oder Zeilenumbruch)."
+        host_src="$enc" ;;
+      */*|*\\*) _bkp_rdie unreadable "Datei als Name im gemerkten Ordner oder mit vollem Pfad angeben: $enc" ;;
+      *) host_src="$(_bkp_host_dir)"; [ -n "$host_src" ] || _bkp_rdie nofolder "Kein Sicherungs-Ordner auf dem Rechner gewählt — Datei mit vollem Pfad angeben."; host_src="$(_bkp_join "$host_src" "$enc")" ;;
     esac
   else
-    [ -r "$enc" ] || die "Backup-Datei nicht lesbar: $enc"
+    [ -r "$enc" ] || _bkp_rdie unreadable "Backup-Datei nicht lesbar: $enc"
   fi
 
-  local src_name; src_name="${host_src:-$enc}"; src_name="${src_name##*/}"
+  local src_name; src_name="${host_src:-$enc}"; src_name="${src_name##*/}"; src_name="${src_name##*\\}"
 
-  local tmp; tmp="$(_bkp_tmpdir)" || die "Konnte Arbeitsverzeichnis nicht anlegen."
+  local tmp; tmp="$(_bkp_tmpdir)" || _bkp_rdie internal "Konnte Arbeitsverzeichnis nicht anlegen."
   # Pfad JETZT in den Trap-String expandieren (s. export): $tmp ist local -> bei der global feuernden
   # EXIT-Trap waere es unter `set -u` "unbound variable".
   # shellcheck disable=SC2064  # bewusst JETZT expandieren: $tmp ist local -> bei der global feuernden EXIT-Trap unter `set -u` unbound
   trap "rm -rf -- '$tmp'" EXIT
 
-  # --- (1) Entschluesseln + Header lesen (VOR jedem Wipe) ---
-  # Rechner-Ordner: das Chiffrat zuerst in den tmpfs holen (nur lesend gemountet, genau dieser eine Ordner).
-  if [ -n "$host_src" ]; then
+  # Sperren VOR dem Lesen: der Probelauf schreibt nichts und nimmt keine; alles andere wartet bis 30 s auf die Update-Sperre
+  # (der Minuten-Takt haelt sie kurz) und verlangt, dass kein Hintergrund-Lauf mehr laeuft.
+  if [ "$plan" = 0 ]; then
+    _bkp_restore_running && _bkp_rdie busy "Es läuft schon eine Wiederherstellung."
+    update_lock_acquire 30 || _bkp_rdie busy "Gerade läuft ein Update oder eine Sicherung — gleich noch einmal versuchen."
+  fi
+
+  # --- (1) Holen + Entschluesseln + Header lesen (VOR jedem Wipe) ---
+  if [ "$in_stdin" = 1 ]; then
+    _bkp_read_in_stdin "$tmp/in.nla.enc"
+    enc="$tmp/in.nla.enc"
+  elif [ -n "$host_src" ]; then
+    # Rechner-Ordner: das Chiffrat zuerst in den tmpfs holen (nur lesend gemountet, genau dieser eine Ordner).
     local hs; hs="$(_bkp_hd "$host_src")"
     rt_host_get "$(dirname "$hs")" "$(basename "$hs")" > "$tmp/in.nla.enc" && [ -s "$tmp/in.nla.enc" ] \
-      || die "Sicherung '${host_src}' auf dem Rechner nicht lesbar. Es wurde NICHTS geaendert."
+      || _bkp_rdie unreadable "Sicherung '${host_src}' auf dem Rechner nicht lesbar. Es wurde NICHTS geaendert."
     enc="$tmp/in.nla.enc"
   fi
   # Erst alle gespeicherten Schluessel (aktiver zuerst); oeffnet keiner die Datei, kommt der Schluessel vom Notfallblatt.
@@ -763,71 +933,83 @@ backup_cmd_restore() {
   if ! gpg_sym_decrypt_any "$enc" "$tmp/bundle.tar.gz"; then
     local known; known=$'\n'"$(_bkp_key_ids)"$'\n'
     if [ -n "$file_kid" ] && [[ "$known" == *$'\n'"$file_kid"$'\n'* ]]; then
-      die "$(backup_text msg.corrupt_stored id "$file_kid") (${src_name}) $(backup_text msg.unchanged)"
+      _bkp_rdie corrupt_stored "$(backup_text msg.corrupt_stored id "$file_kid") (${src_name}) $(backup_text msg.unchanged)" --arg id "$file_kid"
     fi
     _bkp_brought_key "$enc" "$tmp/bundle.tar.gz" "$file_kid" "$key_stdin"
     brought="$_BKP_BROUGHT"; others="$_BKP_OTHERS"; _BKP_BROUGHT=''; _BKP_OTHERS=''
   fi
-  tar -xzf "$tmp/bundle.tar.gz" -C "$tmp" || die "Tarball beschaedigt (kein gueltiges Bundle). Nichts geaendert."
-  [ -r "$tmp/manifest.json" ] && [ -r "$tmp/data.dump" ] || die "Bundle unvollstaendig (manifest.json/data.dump fehlt). Nichts geaendert."
+  _BKP_SHEET=''
+  tar -xzf "$tmp/bundle.tar.gz" -C "$tmp" 2>/dev/null || _bkp_rdie corrupt "Tarball beschaedigt (kein gueltiges Bundle). Nichts geaendert."
+  [ -r "$tmp/manifest.json" ] && [ -r "$tmp/data.dump" ] || _bkp_rdie bundle_incomplete "Bundle unvollstaendig (manifest.json/data.dump fehlt). Nichts geaendert."
 
   local fmt; fmt="$(jq -r '.bundle_format // empty' "$tmp/manifest.json" 2>/dev/null)"
-  [ "$fmt" = "2" ] || die "Nicht unterstuetztes Backup-Format (bundle_format='${fmt:-?}', erwartet 2). Alt-/.enc-Bundles der frueheren In-DB-Engine sind inkompatibel. Nichts geaendert."
+  [ "$fmt" = "2" ] || _bkp_rdie format "Nicht unterstuetztes Backup-Format (bundle_format='${fmt:-?}', erwartet 2). Alt-/.enc-Bundles der frueheren In-DB-Engine sind inkompatibel. Nichts geaendert."
 
-  # --- (2) Pre-Flight je Bundle-Paket gegen die Registry (Opus B2: Paket muss vorinstalliert sein) ---
-  local pkg ver inst_status inst_ver ans
+  # --- (2) Pre-Flight je Bundle-Paket gegen Registry bzw. Paket-Manifest — prueft nur, aendert nichts. Ein fehlendes Paket
+  #     wird spaeter eingerichtet (--no-seed, der Restore bringt die Daten), ein ausgeschaltetes eingeschaltet; beides erst
+  #     nach der Bestaetigung, vor der TX. ---
+  local rel_hint=''
+  [[ "$src_name" =~ -(v[0-9]+\.[0-9]+\.[0-9]+[0-9A-Za-z.-]*)\.nla\.enc$ ]] && rel_hint="${BASH_REMATCH[1]}"
+  local pkg ver inst_status inst_ver to_install='' to_activate='' pkgs_json='[]' pstate
   while IFS=$'\t' read -r pkg ver; do
     [ -n "$pkg" ] || continue
-    inst_status="$(_bkp_psql_scalar "SELECT status FROM core.package_registry WHERE package = '${pkg//\'/\'\'}'")"
+    printf '%s' "$pkg" | grep -qE '^[a-z][a-z0-9_]*$' || _bkp_rdie format "Ungueltiger Paketname im Bundle: $pkg"
+    inst_status="$(_bkp_psql_scalar "SELECT status FROM core.package_registry WHERE package = '${pkg}'")"
     if [ -z "$inst_status" ]; then
-      # Restore-vor-Install (live seit Phase 5, VF1-Beweis): fehlt das Paket -> Auto-Install --no-seed anbieten
-      # (der Restore bringt die Daten ohnehin). Passiert VOR jedem Wipe -> ein Fehlschlag laesst die alte Welt intakt.
-      if [ "$force" -ne 1 ]; then
-        tty_usable || die "Paket '$pkg' nicht installiert + kein TTY/--yes -> Abbruch (kein Teil-Restore)."
-        printf "Bundle enthaelt Daten des Pakets '%s', das NICHT installiert ist. Jetzt installieren (--no-seed)? [ja/NEIN]: " "$pkg" > /dev/tty
-        read -r ans < /dev/tty
-        [ "$ans" = "ja" ] || die "Abgebrochen (kein Teil-Restore)."
+      [ -r "$(_pkg_dir)/$pkg/manifest.json" ] || _bkp_rdie package_unknown "Die Sicherung enthält das Paket '$pkg', das diese Version nicht kennt. Es wurde NICHTS geaendert." --arg pkg "$pkg"
+      inst_ver="$(jq -r '.version // empty' "$(_pkg_dir)/$pkg/manifest.json" 2>/dev/null)"
+      # Terminal: Pakete mit Zugangsdaten fragt pkg_install_one am Terminal; ohne Terminal (App) entstuende es halb eingerichtet.
+      if { [ "$_BKP_JSON" = 1 ] || ! tty_usable; } && _bkp_pkg_needs_setup "$pkg"; then
+        _bkp_rdie needs_setup "Paket '$pkg' braucht Zugangsdaten — erst einrichten, dann erneut wiederherstellen. Es wurde NICHTS geaendert." --arg pkg "$pkg"
       fi
-      log "Auto-Install '$pkg' --no-seed (Restore bringt die Daten) ..."
-      # Subshell: ein internes `die` beendet nur den Install, dann sauberer Abbruch HIER (vor dem Wipe).
-      if ! ( pkg_install_one "$pkg" --no-seed ); then
-        die "Auto-Install '$pkg' fehlgeschlagen -> Abbruch VOR jedem Wipe (alte Welt intakt)."
-      fi
-      # M2: Pre-Flight-Recheck nach dem Install — Status/Version erneut pruefen (kein continue-skip).
-      inst_status="$(_bkp_psql_scalar "SELECT status FROM core.package_registry WHERE package = '${pkg//\'/\'\'}'")"
-      [ -n "$inst_status" ] || die "Paket '$pkg' nach Auto-Install nicht registriert -> Abbruch vor Wipe."
+      pstate=install; to_install="${to_install}${pkg} "
+    elif [ "$inst_status" = active ]; then
+      inst_ver="$(_bkp_psql_scalar "SELECT version FROM core.package_registry WHERE package = '${pkg}'")"; pstate=ok
+    else
+      inst_ver="$(_bkp_psql_scalar "SELECT version FROM core.package_registry WHERE package = '${pkg}'")"; pstate=activate
+      to_activate="${to_activate}${pkg} "
     fi
-    # status MUSS 'active' sein: _bkp_bulk_tables (Wipe/Restore-Menge) zaehlt nur aktive Pakete -> ein
-    # inaktives Bundle-Paket wuerde seine Tabellen NICHT truncaten, pg_restore liefe in UNIQUE/PK-Konflikte
-    # (Rollback, aber irrefuehrend). Explizit abfangen (Cold-Eyes A).
-    if [ "$inst_status" != "active" ]; then
-      die "Paket '$pkg' ist installiert, aber nicht aktiv (status=$inst_status). Erst aktivieren: 'lifeagents package activate $pkg', dann erneut restoren."
-    fi
-    inst_ver="$(_bkp_psql_scalar "SELECT version FROM core.package_registry WHERE package = '${pkg//\'/\'\'}'")"
     if [ -n "$ver" ] && [ "$ver" != "$inst_ver" ]; then
       # Versions-Gate (fail-closed VOR jedem Wipe): pg_restore -a passt Daten NICHT an ein per Migration
       # veraendertes Ziel-Schema an -> bewusst KEIN Cross-Version-Restore (Branchen-Standard: pg_restore/
       # Borg/restic verweigern Cross-Version ebenso). Echtes Forward-Migrate braeuchte eine Migrationskette
       # zwischen >=2 Versionen (vertagt, Trigger: ein Restore scheitert real an der Versionssperre).
       # Aelteres Bundle: ein Update hilft nicht (es geht nur vorwaerts) -> die Version aus dem Dateinamen nennen.
-      local rel_hint=''
-      [[ "$src_name" =~ -(v[0-9]+\.[0-9]+\.[0-9]+[0-9A-Za-z.-]*)\.nla\.enc$ ]] && rel_hint="${BASH_REMATCH[1]}"
       if [ "$(printf '%s\n%s\n' "$ver" "$inst_ver" | sort -V | head -n1)" = "$ver" ]; then
-        die "Versions-Konflikt fuer '$pkg': die Sicherung ist älter (Bundle=$ver, installiert=$inst_ver). Ein Update hilft hier nicht — die Sicherung lässt sich nur in genau ihre Version zurückspielen: Life Agents ${rel_hint:-in der Version der Sicherung} neu installieren, dann erneut restoren (Anleitung: ${BACKUP_GUIDE_URL}). Es wurde NICHTS geaendert."
+        _bkp_rdie version_older "Versions-Konflikt fuer '$pkg': die Sicherung ist älter (Bundle=$ver, installiert=$inst_ver). Ein Update hilft hier nicht — die Sicherung lässt sich nur in genau ihre Version zurückspielen: Life Agents ${rel_hint:-in der Version der Sicherung} neu installieren, dann erneut restoren (Anleitung: ${BACKUP_GUIDE_URL}). Es wurde NICHTS geaendert." \
+          --arg pkg "$pkg" --arg release "$rel_hint"
       fi
-      die "Versions-Konflikt fuer '$pkg': die Sicherung ist neuer (Bundle=$ver, installiert=$inst_ver) — erst 'lifeagents update'${rel_hint:+ (mindestens ${rel_hint})}, dann erneut restoren. Versions-uebergreifender Restore wird (wie pg_restore/Borg/restic) bewusst NICHT unterstuetzt. Es wurde NICHTS geaendert."
+      _bkp_rdie version_newer "Versions-Konflikt fuer '$pkg': die Sicherung ist neuer (Bundle=$ver, installiert=$inst_ver) — erst 'lifeagents update'${rel_hint:+ (mindestens ${rel_hint})}, dann erneut restoren. Versions-uebergreifender Restore wird (wie pg_restore/Borg/restic) bewusst NICHT unterstuetzt. Es wurde NICHTS geaendert." \
+        --arg pkg "$pkg" --arg release "$rel_hint"
     fi
+    pkgs_json="$(jq -c --arg n "$pkg" --arg v "$ver" --arg s "$pstate" '. + [{name: $n, version: $v, state: $s}]' <<<"$pkgs_json")"
   done < <(jq -r '.packages[]? | [.name, .version] | @tsv' "$tmp/manifest.json")
 
-  # --- (3) Wipe-Menge bestimmen + ausweisen (Transparenz, Cold-Eyes Phase 5) ---
-  # _bkp_bulk_tables/_bkp_filtered sind read-only (information_schema + Manifeste) -> gefahrlos VOR dem
-  # Confirm. NACH dem Pre-Flight (der Pakete auto-aktivieren kann) -> die Menge steht endgueltig fest.
-  # Das hier berechnete $bulk wird in Schritt (4) wiederverwendet (kein zweites _bkp_bulk_tables -> kein Drift).
-  local bulk; bulk="$(_bkp_bulk_tables)"
-  [ -n "$bulk" ] || die "Keine Ziel-Tabellen (aktive Pakete + backup-Block) — Abbruch vor Wipe."
-  local pkg_summary bulk_disp filt_disp filt_n qd cd
+  # --- (3) Wipe-Menge (heute aktive Pakete) + eigene Daten. Nach dem Einrichten fehlender Pakete wird die Menge in
+  #     _bkp_rs_apply neu bestimmt (deren Tabellen kommen dazu). ---
+  local bulk has_data=0; bulk="$(_bkp_bulk_tables)"
+  [ -n "$bulk" ] || [ -n "$to_install$to_activate" ] || _bkp_rdie no_tables "Keine Ziel-Tabellen (aktive Pakete + backup-Block) — Abbruch vor Wipe."
+  [ -n "$bulk" ] && _bkp_has_data "$bulk" && has_data=1
+  local created; created="$(jq -r '.created_at // empty' "$tmp/manifest.json" 2>/dev/null)"
+  local adopt_id=''; [ -n "$brought" ] && adopt_id="$(printf '%s' "$brought" | backup_key_id)"
+
+  if [ "$plan" = 1 ]; then
+    jq -cn --arg created "$created" --arg release "$rel_hint" --argjson packages "$pkgs_json" --arg adopt "$adopt_id" \
+      --argjson has_data "$has_data" --arg name "$src_name" \
+      '{ok: true, name: $name, created: (if $created == "" then null else $created end),
+        release: (if $release == "" then null else $release end), packages: $packages,
+        has_data: ($has_data == 1), safety_backup: ($has_data == 1),
+        adopt_key_id: (if $adopt == "" then null else $adopt end)}'
+    return 0
+  fi
+
+  # Ohne Ordner keine Vorab-Sicherung -> mit eigenen Daten keine Wiederherstellung (die Daten waeren ohne Rueckweg weg).
+  if [ "$has_data" = 1 ] && rt_is_compose && [ -z "$(_bkp_host_dir)" ]; then
+    _bkp_rdie nofolder "Es sind schon eigene Daten da, aber kein Sicherungs-Ordner gewählt — erst einen wählen, dann wird vor dem Ersetzen gesichert."
+  fi
+
+  local pkg_summary filt_disp filt_n qd cd
   pkg_summary="$(jq -r '[.packages[]? | "\(.name)@\(.version)"] | join(", ")' "$tmp/manifest.json" 2>/dev/null || true)"
-  bulk_disp="$(printf '%s' "$bulk" | tr '\n' ' ')"
   filt_disp=""; filt_n=0
   while IFS=$'\t' read -r qd cd; do
     [ -n "$qd" ] || continue
@@ -838,10 +1020,13 @@ backup_cmd_restore() {
   # Wipe-Uebersicht IMMER ausweisen (via warn/log -> STDERR; auch unter --yes sichtbar, Z.B. im Cron-Log).
   warn "RESTORE ueberschreibt ALLE aktuellen Nutzerdaten (Finanzen, Profil, Trigger, Plaene) mit dem Bundle-Inhalt. Betroffen:"
   log "  Pakete (Bundle): ${pkg_summary:-?}"
-  log "  Voll-Wipe (TRUNCATE), $(printf '%s' "$bulk" | grep -c .) Tabelle(n): ${bulk_disp}"
+  [ -z "$to_install" ] || log "  Wird vorher eingerichtet (--no-seed): ${to_install% }"
+  [ -z "$to_activate" ] || log "  Wird vorher eingeschaltet: ${to_activate% }"
+  log "  Voll-Wipe (TRUNCATE), $(printf '%s' "$bulk" | grep -c .) Tabelle(n): $(printf '%s' "$bulk" | tr '\n' ' ')"
   log "  Zeilen-gefiltert, ${filt_n} Tabelle(n): ${filt_disp:-(keine)}"
+  [ "$has_data" = 1 ] && log "  Vorher wird eine Sicherung der jetzigen Daten geschrieben."
   if [ -n "$brought" ]; then
-    log "  $(backup_text msg.adopt id "$(printf '%s' "$brought" | backup_key_id)")"
+    log "  $(backup_text msg.adopt id "$adopt_id")"
   fi
 
   # --- (3b) TTY-Bestaetigung (destruktiv) ---
@@ -852,14 +1037,79 @@ backup_cmd_restore() {
     [ "$ans" = "ja" ] || die "Abgebrochen."
   fi
 
+  if [ "$detach" = 1 ]; then
+    # Hintergrund-Lauf als bash-Unterschale OHNE exec: der Schluessel bleibt in ihrem Speicher (kein neues Programm, also
+    # nichts in argv/Umgebung). Sie erbt fd 9 (Update-Sperre) und nimmt fd 8 (Restore-Sperre); ihr eigener EXIT-Trap raeumt
+    # den tmpfs. Der Aufrufer gibt den Trap ab (sonst loeschte er das Bundle unter dem Kind) und endet sofort; docker exec
+    # kehrt zurueck, weil das Kind stdout/stderr gleich auf das Protokoll umlegt.
+    # Protokoll ohne Schluessel (nur log/warn-Saetze, Tabellen- und Paketnamen), bleibt fuer die Diagnose liegen.
+    local log_f; log_f="${LIFEAGENTS_LOG_DIR:-/var/log/lifeagents}/restore.log"
+    { mkdir -p "${log_f%/*}" && ( umask 077; : > "$log_f" ); } 2>/dev/null || _bkp_rdie internal "Konnte das Protokoll nicht anlegen."
+    { exec 8>>"$BACKUP_RESTORE_LOCK" && flock -n 8; } || _bkp_rdie busy "Es läuft schon eine Wiederherstellung."
+    _bkp_state_set LAST_RESTORE_START "$(date +%s)"; _bkp_state_set LAST_RESTORE_NAME "$src_name"
+    _bkp_state_set LAST_RESTORE_CREATED "$created"; _bkp_state_set LAST_RESTORE_FOREIGN "$([ -n "$brought" ] && printf 1 || printf 0)"
+    _bkp_state_set LAST_RESTORE_TMP "$tmp"
+    (
+      exec </dev/null >"$log_f" 2>&1
+      # shellcheck disable=SC2064  # bewusst JETZT expandieren (local $tmp)
+      trap "rm -rf -- '$tmp'" EXIT
+      _BKP_CHILD=1; _BKP_JSON=0
+      _bkp_state_set LAST_RESTORE_PID "$BASHPID"
+      _bkp_rs_apply "$tmp" "$brought" "$others" "$has_data" "$to_install" "$to_activate"
+      _bkp_state_set LAST_RESTORE_OK "$(date +%s)"
+    ) &
+    trap - EXIT
+    jq -cn --argjson started "$(date +%s)" '{ok: true, started: $started}'
+    return 0
+  fi
+  _BKP_JSON=0
+  _bkp_rs_apply "$tmp" "$brought" "$others" "$has_data" "$to_install" "$to_activate"
+}
+
+# _bkp_rs_apply <tmp> <blatt-schluessel> <weitere> <eigene-daten:0|1> <pakete-einrichten> <pakete-einschalten> — der
+#   aendernde Teil nach der Bestaetigung (Terminal und Hintergrund-Lauf): Pakete einrichten/einschalten, Vorab-Sicherung der
+#   jetzigen Daten, dann EINE TX. Jeder Abbruch ueber _bkp_rdie; ein vorher eingerichtetes Paket bleibt.
+_bkp_rs_apply() {
+  local tmp="$1" brought="$2" others="$3" has_data="$4" to_install="$5" to_activate="$6" pkg
+  for pkg in $to_install; do
+    log "Auto-Install '$pkg' --no-seed (Restore bringt die Daten) ..."
+    # Subshell: ein internes `die` beendet nur den Install, dann sauberer Abbruch HIER (vor dem Wipe).
+    ( pkg_install_one "$pkg" --no-seed ) || _bkp_rdie internal "Auto-Install '$pkg' fehlgeschlagen -> Abbruch VOR jedem Wipe (alte Welt intakt)."
+  done
+  for pkg in $to_activate; do
+    ( _pkg_set_status "$pkg" active ) || _bkp_rdie internal "Paket '$pkg' ließ sich nicht einschalten -> Abbruch vor dem Wipe."
+  done
+  # M2: Pre-Flight-Recheck nach Install/Einschalten — jedes Bundle-Paket muss jetzt aktiv sein: _bkp_bulk_tables (Wipe/
+  # Restore-Menge) zaehlt nur aktive Pakete, ein inaktives wuerde nicht truncatet (UNIQUE/PK-Konflikte, Rollback).
+  while IFS= read -r pkg; do
+    [ -n "$pkg" ] || continue
+    [ "$(_bkp_psql_scalar "SELECT status FROM core.package_registry WHERE package = '${pkg}'")" = active ] \
+      || _bkp_rdie internal "Paket '$pkg' ist nach dem Einrichten nicht aktiv -> Abbruch vor dem Wipe."
+  done < <(jq -r '.packages[]?.name' "$tmp/manifest.json")
+  local bulk; bulk="$(_bkp_bulk_tables)"
+  [ -n "$bulk" ] || _bkp_rdie no_tables "Keine Ziel-Tabellen (aktive Pakete + backup-Block) — Abbruch vor Wipe."
+
+  # Vorab-Sicherung: der einzige Rueckweg, wenn eigene Daten ersetzt werden. Eigene Teilschale (export setzt seinen Trap);
+  # die Update-Sperre ist geerbt (LIFEAGENTS_UPDATE_LOCK_HELD).
+  if [ "$has_data" = 1 ]; then
+    log "Sichere die jetzigen Daten vor dem Ersetzen ..."
+    if rt_is_compose; then
+      ( backup_cmd_export --to-host ) || _bkp_rdie safety "Die Sicherung der jetzigen Daten ist fehlgeschlagen — nichts ersetzt."
+    else
+      mkdir -p /var/backups/lifeagents && chmod 0700 /var/backups/lifeagents 2>/dev/null || true
+      ( cd /var/backups/lifeagents && backup_cmd_export ) || _bkp_rdie safety "Die Sicherung der jetzigen Daten ist fehlgeschlagen — nichts ersetzt."
+    fi
+  fi
+
   # --- (4) ATOMARER Restore: TRUNCATE + pg_restore-SQL + fn + Count-Verify in EINER psql -1-TX (Opus B1) ---
   local restore_sql="$tmp/restore.sql"
-  : > "$restore_sql"
+  # lock_timeout: haelt n8n gerade eine Zeilen-/Tabellensperre (ein Mitglied schreibt), wartet TRUNCATE nicht endlos.
+  printf "SET LOCAL lock_timeout = '30s';\n" > "$restore_sql"
   # (a) TRUNCATE der bulk-Tabellen (FK-/Trigger-frei dank --disable-triggers im pg_restore; CASCADE als Sicherung).
   #     filtered_tables (core_contexts/monitor_triggers) NICHT truncaten -> die fn macht den zeilen-gefilterten Wipe.
-  local trunc="" t
+  local trunc="" t n
   while IFS= read -r t; do
-    [ -n "$t" ] || continue; _bkp_qual_ok "$t" || die "Ungueltiger Tabellenname im bulk-Set: $t"
+    [ -n "$t" ] || continue; _bkp_qual_ok "$t" || _bkp_rdie internal "Ungueltiger Tabellenname im bulk-Set: $t"
     [ -n "$trunc" ] && trunc+=", "
     trunc+="$t"
   done <<< "$bulk"
@@ -868,7 +1118,7 @@ backup_cmd_restore() {
   # pg_restore (postgres via runuser) liest die Archiv-Datei NICHT direkt (root-eigenes 0700-tmpfs) -> die
   # root-Shell oeffnet sie per stdin-Redirect; pg_restore -f - schreibt das SQL auf stdout (in unsere EINE TX).
   if ! pg_su_stdin pg_restore -a --disable-triggers -f - < "$tmp/data.dump" >> "$restore_sql"; then
-    die "pg_restore (SQL-Generierung) fehlgeschlagen. Nichts geaendert."
+    _bkp_rdie corrupt "pg_restore (SQL-Generierung) fehlgeschlagen. Nichts geaendert."
   fi
   # (c) gefilterte Tabellen regel-bewusst (shared.json als base64 -> kein Quoting-Risiko).
   local shared_b64; shared_b64="$(base64 -w0 "$tmp/shared.json" 2>/dev/null || base64 "$tmp/shared.json" | tr -d '\n')"
@@ -898,7 +1148,8 @@ backup_cmd_restore() {
 
   # psql (postgres via runuser) liest das Skript ueber stdin (`-f -`; root oeffnet die Datei) — kein Dateipfad (das root-eigene
   # 0700-tmpfs ist fuer postgres nicht traversierbar). -1 = eine TX ueber den ganzen Strom; `-f -` statt nacktem stdin, weil
-  # psql -1 nur fuer -c/-f zusagt. Ein mitgebrachter Schluessel steht vorn im Strom (\set), nie in restore.sql.
+  # psql -1 nur fuer -c/-f zusagt. Ein mitgebrachter Schluessel steht vorn im Strom (\set), nie in restore.sql. stderr geht
+  # in den tmpfs, damit ein Sperr-Timeout als busy erkennbar ist (Fehlertext enthaelt nie den Schluessel: \set echot nicht).
   if { if [ -n "$brought" ]; then
          local o j=0
          psql_setvar bk_new "$brought"
@@ -906,10 +1157,13 @@ backup_cmd_restore() {
          _bkp_adopt_sql "$j"
        fi
        cat "$restore_sql"; } \
-       | pg_su_psql -v ON_ERROR_STOP=1 -1 -X -q -d "$N8N_DB_NAME" -f -; then
+       | pg_su_psql -v ON_ERROR_STOP=1 -1 -X -q -d "$N8N_DB_NAME" -f - 2> "$tmp/psql.err"; then
     ok "Restore abgeschlossen (atomar, Count-Verify gruen): $(printf '%s' "$bulk" | grep -c .) bulk-Tabelle(n) + gefilterte Zeilen wiederhergestellt."
   else
-    die "Restore fehlgeschlagen — Transaktion zurueckgerollt, die alte Welt ist intakt."
+    cat "$tmp/psql.err" >&2 2>/dev/null || true
+    grep -q 'lock timeout' "$tmp/psql.err" 2>/dev/null \
+      && _bkp_rdie busy "Restore wartete zu lange auf eine Sperre — Transaktion zurueckgerollt, nichts geaendert."
+    _bkp_rdie internal "Restore fehlgeschlagen — Transaktion zurueckgerollt, die alte Welt ist intakt."
   fi
 }
 
@@ -973,6 +1227,8 @@ MENU
     host-dir) backup_cmd_host_dir "$@" ;;
     auto)    backup_cmd_auto ;;
     restore) backup_cmd_restore "$@" ;;
+    restore-status) backup_cmd_restore_status "$@" ;;
+    list)    backup_cmd_list "$@" ;;
     key)     backup_cmd_key "$@" ;;
     help|--help|-h)
       cat >&2 <<'EOF'
@@ -1004,6 +1260,10 @@ Nur im Docker-Verbund (Mac/Windows-App) — Sicherungen liegen in einem Ordner A
                            mit dem eigenen Schlüssel; Sicherungen eines anderen Rechners im Ordner bleiben liegen).
   restore [<name>|<pfad>] [--from-host] [--key-stdin] [--yes]
                            Ohne Datei: Auswahl aus dem Rechner-Ordner; <name> = Datei im gewählten Ordner.
+                           Für die Start-App: --plan --json (Probelauf, ändert nichts), --yes --detach --json (im
+                           Hintergrund; Stand: restore-status --json), --in-stdin (Sicherung + Blatt über stdin).
+  list --json              Sicherungen im Rechner-Ordner (für die Start-App).
+  restore-status --json    Stand der letzten Wiederherstellung im Hintergrund (für die Start-App).
   auto                     Tägliche Sicherung in den Rechner-Ordner (läuft von selbst um 03:30 im master; ohne Ordner still).
 
 Automatisch (Off-Site, taeglich 03:30) — eine Zeile in die root-crontab ('crontab -e'):

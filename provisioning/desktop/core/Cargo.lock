@@ -261,6 +261,7 @@ dependencies = [
  "serde_json",
  "trash",
  "x509-parser",
+ "zeroize",
 ]
 
 [[package]]

@@ -74,16 +74,40 @@ pub enum MasterCmd {
     /// Notfallblatt (Sicherungs-Schlüssel) auf stdout. Geheim: die Ausgabe geht nur in die Datei in Downloads, nie in
     /// Fehlerbericht, Journal oder Log (`backup.rs`).
     BackupKit,
+    /// Wiederherstellen (`restore.rs`, Codes im Kopf von `_bkp_rdie` in backup_cli.sh), je eine JSON-Zeile:
+    /// Sicherungen im Sicherungsordner.
+    BackupList,
+    /// Probelauf: öffnen und prüfen, nichts schreiben. `name` = Dateiname (`restore::name_ok`); `file` = die Sicherung
+    /// kommt über stdin (`--in-stdin`), sonst aus dem Ordner; `key` = das Notfallblatt kommt über stdin.
+    RestorePlan { name: String, file: bool, key: bool },
+    /// Nach der Bestätigung im Hintergrund wiederherstellen (`--yes --detach`); Argumente wie `RestorePlan`.
+    Restore { name: String, file: bool, key: bool },
+    /// Stand des Hintergrund-Laufs.
+    RestoreStatus,
 }
 
 impl MasterCmd {
     pub fn args(&self) -> Vec<String> {
+        let restore = |name: &str, mode: &[&str], file: bool, key: bool| {
+            let mut v: Vec<String> = ["lifeagents", "backup", "restore", name].iter().map(|s| s.to_string()).collect();
+            v.extend(mode.iter().map(|s| s.to_string()));
+            if file {
+                v.push("--in-stdin".into());
+            } else if key {
+                v.push("--key-stdin".into());
+            }
+            v
+        };
         let v: Vec<&str> = match self {
             MasterCmd::WizardUrl => vec!["node", WIZARD_CTL, "url"],
             MasterCmd::WizardStatus => vec!["node", WIZARD_CTL, "status"],
             MasterCmd::PowerDone => vec!["node", WIZARD_CTL, "power-done"],
             MasterCmd::ReleaseWebhook => vec!["lifeagents", "telegram", "release-webhook"],
             MasterCmd::BackupKit => vec!["lifeagents", "backup", "key", "--file", "-"],
+            MasterCmd::BackupList => vec!["lifeagents", "backup", "list", "--json"],
+            MasterCmd::RestoreStatus => vec!["lifeagents", "backup", "restore-status", "--json"],
+            MasterCmd::RestorePlan { name, file, key } => return restore(name, &["--plan", "--json"], *file, *key),
+            MasterCmd::Restore { name, file, key } => return restore(name, &["--yes", "--detach", "--json"], *file, *key),
         };
         v.into_iter().map(String::from).collect()
     }

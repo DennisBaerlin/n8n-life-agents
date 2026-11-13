@@ -20,9 +20,10 @@
 #   ist fail-closed fuer unbekannte Absender).
 #
 # Usage:  .\scripts\infra_test.ps1 [-Id ic01] [-Timeout 30] [-Verbose]
-# Exit-Code = Anzahl Fehler.
+# Exit-Code = Anzahl Fehler; 1 ohne Lauf, wenn ein Mock fehlt, den ein gewaehlter Fall verlangt (`requires`).
 # Voraussetzungen: Harnesses aktiv (build.ps1 -Only '*test_harness*' -> bootstrap_test_n8n.ps1 -Reset);
-#   .env mit TEST_HARNESS_SECRET.
+#   .env mit TEST_HARNESS_SECRET; die Mocks der Faelle (heute enable_mock_llm, enable_mock_telegram, enable_mock_paperless
+#   unter scripts\dev\), die Vorabpruefung nennt fehlende samt Befehl.
 #         -Id ic01,ic02 = mehrere Faelle (unbekannte id = Abbruch vor dem Lauf).
 #         -ForceAbortId ic01 = Testschalter: wirft am Anfang dieses Falls eine Ausnahme (zeigt den Abbruch-Pfad ohne echte Last).
 # Eine Ausnahme im Fall (z. B. HTTP 500 vom Eingang unter Last) macht nur diesen Fall rot, der Lauf geht weiter.
@@ -104,6 +105,30 @@ function Clear-InfraHarnessLeftovers {
     }
 }
 
+# requires: ein Name oder eine Liste (z. B. ["mock_telegram","mock_llm"]); Punkt-Pfad = Feld im Block, nicht leer.
+function Get-MissingRequirements($Case) {
+    if (-not ($Case.PSObject.Properties['requires'] -and $Case.requires)) { return @() }
+    foreach ($rq in @($Case.requires)) {
+        $node = $substrateState
+        foreach ($seg in ($rq -split '\.')) { $node = if ($node -and $node.PSObject.Properties[$seg]) { $node.$seg } else { $null } }
+        if ([string]::IsNullOrEmpty([string]$node)) { $rq }
+    }
+}
+function Format-RequirementHint([string[]]$Missing) {
+    ($Missing | ForEach-Object {
+        $blk = ($_ -split '\.')[0]
+        ".\scripts\dev\enable_$blk.ps1" + $(if ($_ -ne $blk) { " (Feld '$_' leer - fuer mock_llm.cred_id: TEST_GOOGLE_API_KEY in .env)" } else { '' })
+    }) -join ' + '
+}
+
+# Vorabpruefung ueber alle gewaehlten Faelle: fehlt ein Mock, nennt eine Meldung alle fehlenden auf einmal und der Lauf endet
+# vor dem ersten Fall. Ohne sie scheiterte jeder betroffene Fall einzeln, und die Hinweise verteilten sich ueber die Ausgabe.
+$missingAll = @($cases | ForEach-Object { Get-MissingRequirements $_ } | Sort-Object -Unique)
+if ($missingAll.Count) {
+    Write-Host "[FAIL] Vorbedingung '$($missingAll -join "', '")' fehlt im Substrat-State -- zuerst: $(Format-RequirementHint $missingAll)" -ForegroundColor Red
+    exit 1
+}
+
 Write-Host ""
 Write-Host "Infra Sub-Workflow Tests -- $($cases.Count) Testfall(e)"
 Write-Host ("-" * 64)
@@ -122,20 +147,9 @@ foreach ($tc in $cases) {
             $failed++; continue
         }
 
-        $missingReq = @()
-        if ($tc.PSObject.Properties['requires'] -and $tc.requires) {
-            foreach ($rq in @($tc.requires)) {   # ein Name oder eine Liste (z. B. ["mock_telegram","mock_llm"]); Punkt-Pfad = Feld im Block, nicht leer
-                $node = $substrateState
-                foreach ($seg in ($rq -split '\.')) { $node = if ($node -and $node.PSObject.Properties[$seg]) { $node.$seg } else { $null } }
-                if ([string]::IsNullOrEmpty([string]$node)) { $missingReq += $rq }
-            }
-        }
+        $missingReq = @(Get-MissingRequirements $tc)
         if ($missingReq.Count) {
-            $hint = ($missingReq | ForEach-Object {
-                $blk = ($_ -split '\.')[0]
-                ".\scripts\dev\enable_$blk.ps1" + $(if ($_ -ne $blk) { " (Feld '$_' leer - fuer mock_llm.cred_id: TEST_GOOGLE_API_KEY in .env)" } else { '' })
-            }) -join ' + '
-            Write-Host "    [FAIL] Vorbedingung '$($missingReq -join "', '")' fehlt im Substrat-State -- zuerst: $hint" -ForegroundColor Red
+            Write-Host "    [FAIL] Vorbedingung '$($missingReq -join "', '")' fehlt im Substrat-State -- zuerst: $(Format-RequirementHint $missingReq)" -ForegroundColor Red
             $failed++; continue
         }
         # mock_llm: der State-Block allein beweist nichts (das Laufzeit-Drop-in ueberlebt keinen Container-Neustart) ->

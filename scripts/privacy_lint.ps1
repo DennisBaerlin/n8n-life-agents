@@ -1,25 +1,22 @@
 ﻿#Requires -Version 5.1
-# privacy_lint.ps1 -- keine echten Owner-/Familiendaten in allem, was das (oeffentliche) Repo verlaesst (hartes Gate,
-# Vorbild approval_lint.ps1).
-# Anlass (Privacy-Audit 2026-10-24 vor dem Public-Schalten): eine fruehere "Test-PII-Generalisierung" ersetzte nur
-# die Namen, echte Geburtsdaten, ein echter Vorname, Live-Bestaende und Heimnetz-IPs blieben monatelang im Baum.
+# privacy_lint.ps1 -- keine echten Owner-/Familiendaten in allem, was das (oeffentliche) Repo verlaesst (hartes Gate).
 # Zwei Regel-Klassen:
 #   (A) Generisch, laeuft ueberall (auch CI): private IPv4 (10/8, 172.16/12, 192.168/16) ausserhalb der Beispiel-
 #       Allowlist unten, Heimnetz-Hostnamen (*.fritz.box, *.myfritz.net ausser dem Doku-Platzhalter) und
 #       Windows-Benutzerpfade (X:\Users\<name>). Beispiele in Doku/Installer nur aus der Allowlist nehmen.
 #   (B) Denylist, nur lokal: .local/privacy_denylist.txt (gitignored, je Zeile ein Literal, '#' = Kommentar) traegt die
-#       ECHTEN Werte (Namen, Geburtsdaten, Mail, ...) -- sie duerfen selbst nie ins Repo. Dazu kommen automatisch alle
+#       echten Werte (Namen, Geburtsdaten, Mail, ...) -- sie duerfen selbst nie ins Repo. Dazu kommen automatisch alle
 #       *CHAT_ID-Werte aus .env (OWNER_CHAT_ID, TEST_TELEGRAM_CHAT_ID). Treffer: Gross-/Kleinschreibung egal; Begriffe,
-#       die mit Buchstabe/Ziffer beginnen UND enden, nur als ganzes Wort (sonst trifft ein kurzer Name jedes laengere Wort, das ihn enthaelt).
+#       die mit Buchstabe/Ziffer beginnen und enden, nur als ganzes Wort (sonst trifft ein kurzer Name jedes laengere Wort, das ihn enthaelt).
 #       Liste und .env kommen immer aus dem Haupt-Checkout (git-common-dir), auch im Worktree: eine Kopie wuerde veralten.
 #       Fehlt die Liste, prueft das Lint allein (A): Beitraege von aussen und CI duerfen sie nicht voraussetzen. Gesperrt wird
 #       nur mit echter Chat-ID in .env (Owner-Maschine). Ein Owner-Klon ganz ohne .env ist von einem Fremd-Klon nicht zu unterscheiden.
 # Modi (ein Fakt, eine Adresse: die Hook-Verdrahtung steht in .pre-commit-config.yaml / .claude/hooks/dev_cycle_guard.ps1):
 #   (ohne)              getrackter Baum per git grep, auch generierte Dateien (docs/site/public, workflows) -- die werden
-#                       publiziert. AUSNAHMEN ($exempt): nur einzeln benannte Dateien mit Grund, nie Verzeichnisse/Muster.
+#                       publiziert. Ausnahmen ($exempt): nur einzeln benannte Dateien mit Grund, nie Verzeichnisse/Muster.
 #                       Binaerdateien: PDF und Excel werden als Text gelesen; Bilder kann das Lint nicht lesen, darum
 #                       duerfen Binaerdateien nur in den Ablagen von $binaryAllow liegen (deren Inhalt entsteht aus Skripten).
-#   -MessageFile <f>    commit-msg: Message (ALLE Zeilen bis zur Scissors-Linie von `commit -v` -- `commit -F` speichert
+#   -MessageFile <f>    commit-msg: Message (alle Zeilen bis zur Scissors-Linie von `commit -v` -- `commit -F` speichert
 #                       auch '#'-Zeilen) + Autor-/Committer-Identitaet (git var GIT_AUTHOR_IDENT/GIT_COMMITTER_IDENT).
 #   -TextFile <f>       beliebiger oeffentlicher Text (PR-/Issue-/Release-Body des Claude-Hooks).
 #   -Outgoing           pre-push: Branch-Name, Message + Identitaeten jedes ausgehenden Commits (PRE_COMMIT_FROM_REF..PRE_COMMIT_TO_REF
@@ -27,14 +24,14 @@
 #                       annotierte Tag (= Release-Notes), der vom gepushten Stand erreichbar ist (mit -AllTags: jeder) und
 #                       dem Remote fehlt.
 #                       Grenze: prek prueft je Push nur den ersten Ref mit neuen Commits und laesst einen reinen Tag-Push
-#                       aus -> der Claude-Hook dev_cycle_guard.ps1 ruft -Outgoing zusaetzlich vor JEDEM `git push`.
+#                       aus -> der Claude-Hook dev_cycle_guard.ps1 ruft -Outgoing zusaetzlich vor jedem `git push`.
 # Ausgaben nennen nie den Treffer-Wert selbst, nur Quelle:Zeile (das Log soll den echten Wert nicht wiederholen).
 # Exit-Code = Anzahl Fehler. Kein LLM, kein Substrat; nur -Outgoing fragt das Remote (git ls-remote).
 param(
     [string]$MessageFile,
     [string]$TextFile,
     [switch]$Outgoing,
-    [switch]$AllTags,  # mit -Outgoing: JEDEN lokalen annotierten Tag pruefen, der dem Remote fehlt (git push --tags/--all)
+    [switch]$AllTags,  # mit -Outgoing: jeden lokalen annotierten Tag pruefen, der dem Remote fehlt (git push --tags/--all)
     [string]$ExtraTermsFile   # weitere Begriffe (je Zeile einer) fuer diesen Lauf, Vorschau von refresh_privacy_denylist.ps1
 )
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
@@ -44,7 +41,7 @@ $u8 = New-Object System.Text.UTF8Encoding($false)
 $fails = 0
 function Fail($m) { Write-Host "  [FAIL] $m" -ForegroundColor Red; $script:fails++ }
 # git grep mit Fehler-Check: Exit 1 = kein Treffer, > 1 = Aufruf kaputt -> darf nie still als "sauber" durchgehen.
-# Argumente als Array OHNE Splatting (@): PS 5.1 macht aus einem gesplatteten '-w' sonst einen Parameternamen.
+# Argumente als Array ohne Splatting (@): PS 5.1 macht aus einem gesplatteten '-w' sonst einen Parameternamen.
 function Invoke-GitGrep([string[]]$GrepArgs) {
     $out = & git (@('grep') + $GrepArgs)
     if ($LASTEXITCODE -gt 1) { Fail "git grep fehlgeschlagen (Exit $LASTEXITCODE): git grep $($GrepArgs -join ' ')" }
@@ -234,7 +231,7 @@ try {
         # --- (A3) Windows-Benutzerpfade -----------------------------------------------------------------------------
         foreach ($h in (Invoke-GitGrep (@('-n', '-I', '-i', '-E', $pathRegex, '--') + $pathspec))) { Fail "Windows-Benutzerpfad: $h" }
         # --- (B) Denylist + Chat-IDs --------------------------------------------------------------------------------
-        # git grep -i faltet nur ASCII -> Begriffe mit Umlaut zusaetzlich in GROSS/klein/Titel (die Text-Modi falten per .NET).
+        # git grep -i faltet nur ASCII -> Begriffe mit Umlaut zusaetzlich in gross/klein/Titel (die Text-Modi falten per .NET).
         $gTerms = @($terms | ForEach-Object {
             $_
             if ($_ -match '[^\x00-\x7F]') { $_.ToUpperInvariant(); $_.ToLowerInvariant(); $_.Substring(0, 1).ToUpperInvariant() + $_.Substring(1).ToLowerInvariant() }

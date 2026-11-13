@@ -1,21 +1,21 @@
 ﻿#Requires -Version 5.1
-# Gemeinsame Builder-Helper fuer die agent.finance.tool_*-Generatoren.
-# Wird von build.ps1 dot-gesourct (NICHT &/Import-Module),
+# Gemeinsame Node-Builder (Build-*, New-*) fuer alle Workflow-Build-Defs.
+# Wird von build.ps1 dot-gesourct (nicht &/Import-Module),
 # damit Build-Pg/Build-* die Script-Scope-Creds ($CRED_POSTGRES/$CRED_TELEGRAM) sehen.
 
 # ============================================================
 # COMMON BUILDERS
 # ============================================================
 
-# Platzhalter-ID fuer Knoten/webhookId/innere ids: Save-WorkflowFile (Set-StableNodeIds) ersetzt GENAU die hier
+# Platzhalter-ID fuer Knoten/webhookId/innere ids: Save-WorkflowFile (Set-StableNodeIds) ersetzt genau die hier
 # ausgegebenen Werte deterministisch (UUID-v5 aus Workflow- + Knoten-Name). Eine feste GUID im Builder bricht den Build.
 $script:NewIdIssued = New-Object 'System.Collections.Generic.HashSet[string]'
 function New-Id { $g = [guid]::NewGuid().ToString(); [void]$script:NewIdIssued.Add($g); $g }
 
-# Start trigger with typed inputs (n8n 2.x format, executeWorkflowTrigger 1.1; geprueft bis 2.44.4)
+# Start trigger with typed inputs (n8n 2.x format, executeWorkflowTrigger 1.1)
 function Build-Trigger {
     param([string[]]$InputNames, [int[]]$Pos = @(0, 0))
-    # chat_id wird IMMER mitgefuehrt (Agent -> Tool -> Gate): das Gate braucht es als Telegram-
+    # chat_id wird immer mitgefuehrt (Agent -> Tool -> Gate): das Gate braucht es als Telegram-
     # Empfaenger fuer den sendAndWait-Send. Jeder Aufrufer reicht chat_id durch.
     if ($InputNames -notcontains 'chat_id') { $InputNames = @($InputNames) + 'chat_id' }
     [ordered]@{
@@ -32,28 +32,24 @@ function Build-Trigger {
     }
 }
 
-# Phase B: DER EINE Schutz fuer JSON aus Modell-Eingaben (Tool-Felder kommen vom Agenten als JSON-STRING).
+# Der eine Schutz fuer JSON aus Modell-Eingaben (Tool-Felder kommen vom Agenten als JSON-String).
 # Get-GuardedJsonExpr '<JS-Ausdruck, der werfen kann (JSON.parse ...)>' -> IIFE, die den Ausdruck auswertet und bei
 # ungueltigem JSON den Nicht-Objekt-/Nicht-Array-Sentinel '__invalid_json__' liefert. Die Ziel-fn prueft den Typ
-# (jsonb_typeof IS DISTINCT FROM 'object'/'array') und lehnt mit {ok:false} ab -> Tool-Fehler als DATEN statt
-# Execution-Abbruch + Owner-Alert (Regel *Tool-Fehler & Retry-Stuerme*). Vorher: rohes JSON.parse in den finance-
-# Import-/Reconcile-Tools (Absturz bei kaputtem JSON); Muster aus agent.tool_set_context_facts (Phase A) — jetzt geteilt.
+# (jsonb_typeof IS DISTINCT FROM 'object'/'array') und lehnt mit {ok:false} ab -> Tool-Fehler als Daten statt
+# Execution-Abbruch + Owner-Alert (Regel *Tool-Fehler & Retry-Stuerme*).
 # Fuer Build-Pg-Param-Ausdruecke (roher JS-Ausdruck, ohne '={{'); die IIFE ist n8n-Expression-tauglich (s. Fmt-MoneyJs).
 $script:InvalidJsonSentinel = '__invalid_json__'
 function Get-GuardedJsonExpr([string]$Body) {
     return "(() => { try { return $Body; } catch (e) { return '$($script:InvalidJsonSentinel)'; } })()"
 }
 
-# Postgres node with parameterized query.
-# $Params is an array of n8n expression strings (e.g. "={{ $('Start').item.json.foo }}");
-# they bind to $1, $2, ... in $Query in order.
 function Build-Pg {
-    # STANDARD fuer ALLE Postgres-Nodes: EIN jsonb-Parameter ($1). $Params ist eine benannte
+    # Standard fuer alle Postgres-Nodes: ein jsonb-Parameter ($1). $Params ist eine benannte
     # [ordered]@{ feld = '<roher n8n/JS-Ausdruck>' }; Build-Pg baut daraus queryReplacement =
     # '={{ JSON.stringify({ feld: <expr>, ... }) }}'. Die Query referenziert ($1::jsonb)->>'feld'
     # (mit Cast: (($1::jsonb)->>'feld')::numeric) bzw. fn(... $1::jsonb).
     # Begruendung: ein JSON-Objekt ist nie leer und splittet nie -> kein $1-Drop / Parameter-Shift
-    # (siehe CLAUDE.md Build-Gotchas). Loest Sentinel + positionale Komma-Parameter komplett ab.
+    # (siehe CLAUDE.md Build-Gotchas).
     # -Cred: eigenes Credential statt $CRED_POSTGRES (RO-Reads); -ContinueOnError: DB-Fehler bricht den Lauf nicht (onError continueRegularOutput).
     param([string]$Name, [int[]]$Pos, [string]$Query, $Params = $null, $Cred = $null, [switch]$ContinueOnError)
     $opts = @{}
@@ -78,9 +74,9 @@ function Build-Pg {
     return $node
 }
 
-# Personen-Feld eines Write-Tools aufloesen (Name/Vorname/Alias -> person_id-Slug) — der EINE Baustein aller
+# Personen-Feld eines Write-Tools aufloesen (Name/Vorname/Alias -> person_id-Slug) — der eine Baustein aller
 # 'Resolve Person'-Knoten (Finanz + Nachlass). chat_id des Absenders geht immer mit: ein Selbstbezug ("ich", "mein",
-# "me", "나") meint die Person, die gerade chattet (core.fn_resolve_person, core:V033). Ausgang wie bisher
+# "me", "나") meint die Person, die gerade chattet (core.fn_resolve_person). Ausgang
 # {person_id, full_name, hit_count, candidates}; leeres Feld = kein Name (Haushalt/unveraendert).
 function Build-ResolvePerson {
     param([string]$Name, [int[]]$Pos, [string]$Field, [string]$StartNode = 'Start')
@@ -90,18 +86,18 @@ function Build-ResolvePerson {
 }
 
 # IF node — comparison with strict typing.
-# rightValue MUST be emitted with the operator's real type: under strict typeValidation n8n rejects a
+# rightValue must be emitted with the operator's real type: under strict typeValidation n8n rejects a
 # string '1'/'true' against a number/boolean leftValue ("Wrong type: 'true' is a string ...").
 function Build-If {
     param([string]$Name, [int[]]$Pos, [string]$Left, [string]$Right,
           [string]$Op = 'equals', [string]$Type = 'number')
-    # n8n IF v2.2 (Filter-Komponente) erwartet KANONISCHE Operation-Werte: gt/gte/lt/lte.
+    # n8n IF v2.2 (Filter-Komponente) erwartet kanonische Operation-Werte: gt/gte/lt/lte.
     # Lesbare Aliase werden hier uebersetzt — sonst akzeptiert n8n den Wert beim Publish, routet aber
-    # zur LAUFZEIT still auf FALSE (z. B. 'largerEqual' tat genau das -> stille no-op-Gates).
+    # zur Laufzeit still auf FALSE (z. B. 'largerEqual' tat genau das -> stille no-op-Gates).
     $opAliases = @{ largerEqual = 'gte'; smallerEqual = 'lte'; larger = 'gt'; smaller = 'lt' }
     if ($opAliases.ContainsKey($Op)) { $Op = $opAliases[$Op] }
-    # WHITELIST statt Vertrauen: n8n validiert Operation-Strings beim Publish NICHT (unbekannter
-    # Wert = stilles FALSE zur Laufzeit). Ein Tippfehler bricht deshalb den BUILD, nicht den Prod-Pfad.
+    # Whitelist statt Vertrauen: n8n validiert Operation-Strings beim Publish nicht (unbekannter
+    # Wert = stilles FALSE zur Laufzeit). Ein Tippfehler bricht deshalb den Build, nicht den Prod-Pfad.
     $validOps = @{
         string  = @('equals','notEquals','contains','notContains','startsWith','notStartsWith',
                     'endsWith','notEndsWith','regex','notRegex','exists','notExists','empty','notEmpty')
@@ -115,9 +111,9 @@ function Build-If {
         throw "Build-If '$Name': Operation '$Op' ist kein kanonischer n8n-Wert fuer Typ '$Type' (erlaubt: $($validOps[$Type] -join ', ')). n8n wuerde das beim Publish schlucken und zur Laufzeit still auf FALSE routen."
     }
     # typeValidation:strict + string-Operator: ein nicht-String-leftValue (z. B. numerische Telegram-
-    # chat_id) wirft zur LAUFZEIT NodeOperationError ("Wrong type: ... is a number"). Builder-Gesetz:
+    # chat_id) wirft zur Laufzeit NodeOperationError ("Wrong type: ... is a number"). Builder-Gesetz:
     # string-typisierte Expressions werden automatisch String(<expr> || '')-gewrappt — null/undefined
-    # wird '' (NICHT 'null'/'undefined'), damit "leer = nicht gefunden"-Vergleiche intakt bleiben.
+    # wird '' (nicht 'null'/'undefined'), damit "leer = nicht gefunden"-Vergleiche intakt bleiben.
     # (|| statt ??: repo-weit erprobte n8n-Expression-Syntax; 0/'' sind hier nie gueltige Werte.)
     if ($Type -eq 'string' -and $Left -match '^=\{\{\s*(.+?)\s*\}\}$' -and $Left -notmatch 'String\(') {
         $Left = '={{ String((' + $Matches[1] + ") || '') }}"
@@ -155,9 +151,9 @@ function Build-If {
 # @{ Left=<n8n-Expr>; Type='string'|'boolean'|'number'; Right=<Wert>; OutputKey=<Name>; Op='equals' }.
 # Op default 'equals'; 'exists'/'notExists' = Feld-Vorhandensein (singleValue, rightValue ''). rightValue
 # wird wie in Build-If typgerecht emittiert (boolean -> echtes $true, number -> Zahl) — ein als String
-# emittiertes $true crasht den strict-Switch ZUR LAUFZEIT still auf FALSE (Build-Gotcha, real getroffen).
-# leftValue bleibt VERBATIM (kein String()-Wrap: 'exists' braucht das rohe Feld; die deployten Switches
-# wrappen nicht). rules.values MUSS Array-Form behalten (Publish-Gate-Gotcha) -> hier via @(...) erzwungen;
+# emittiertes $true crasht den strict-Switch zur Laufzeit still auf FALSE (Build-Gotcha).
+# leftValue bleibt verbatim (kein String()-Wrap: 'exists' braucht das rohe Feld).
+# rules.values muss Array-Form behalten (Publish-Gate-Gotcha) -> hier via @(...) erzwungen;
 # die N+1 Output-Connections (Regeln in Reihenfolge + 'extra'-Fallback als Index N) baut der Aufrufer mit
 # dem Komma-Operator (siehe packages/CLAUDE.md *Filter-/Selector-conditions ... Array-Form*).
 function Build-Switch {
@@ -201,9 +197,7 @@ function Build-Switch {
 }
 
 # Structured tool error (Set node) — returns { ok:false, error } as DATA, not a thrown error.
-# Best practice: the agent reads the message and asks the user / reports, WITHOUT a retry storm.
-# Use this for user-correctable / validation conditions. Reserve Build-Err (Stop and Error) for
-# genuine exceptions (e.g. a DB write failing after approval).
+# The agent reads the message and asks the user / reports, without a retry storm.
 function Build-ToolError {
     param([string]$Name, [int[]]$Pos, [string]$MessageExpr)
     Build-Set $Name $Pos @(
@@ -213,8 +207,8 @@ function Build-ToolError {
 }
 
 # Pflicht-Zeile eines Lese-Knotens (Build-Gotcha "SELECT ohne Treffer = kein Item"): ein Tool, dessen erster Read den
-# Ziel-Datensatz per id/Name holt, endete bei 0 Treffern still ("The workflow did not return a response", Mock-Tier
-# 2026-10-24: tool_void_transaction mit unbekannter id). Setzt alwaysOutputData am Read (n8n liefert dann ein leeres
+# Ziel-Datensatz per id/Name holt, endet bei 0 Treffern still ("The workflow did not return a response").
+# Setzt alwaysOutputData am Read (n8n liefert dann ein leeres
 # Item) und baut 'Found?' (Spalte $KeyField vorhanden) + ToolError mit $NotFoundExpr. Verdrahtung beim Aufrufer:
 # Read -> $g.If; $g.If [0] -> weiter, [1] -> $g.Err. Liefert @{ If; Err }.
 function New-RequiredRowGate {
@@ -229,12 +223,12 @@ function New-RequiredRowGate {
 
 # Ergebnis eines Write-Tools ohne Bestaetigung am HITL-Gate: {ok:false, cancelled:true, message}. Der Text nennt den Fall aus der
 # Gate-Ausgabe ($json, Approved? reicht sie durch): outcome (Tipp oder Ablauf, Stufe 2 mit owner_), repeat_blocked, reason. Ein gleicher
-# Text fuer Abbrechen und Ablauf liess das Modell raten (Befund Live-Test v0.34.0: Technikfehler vermutet). Unbekannter Ausgang ->
-# neutraler Satz, nie eine erfundene Ursache. Die Meldung liest NUR das aufrufende LLM (Tool-Ergebnis = Modell-Schicht -> englisch laut
+# Text fuer Abbrechen und Ablauf liesse das Modell raten (es vermutete einen Technikfehler). Unbekannter Ausgang ->
+# neutraler Satz, nie eine erfundene Ursache. Die Meldung liest nur das aufrufende LLM (Tool-Ergebnis = Modell-Schicht -> englisch laut
 # Sprachpolitik; die Antwort an den Nutzer formuliert der Agent in dessen Sprache). $Action = englische Nominalphrase ("the account creation").
-# Das Retry-Verbot steht bewusst IM Ergebnis, nicht nur im Prompt: live (2026-10-22) rief der Finanz-Agent nach
-# "Abbrechen" create_account im selben Lauf mit identischen Werten erneut auf -> neue Karte je Abbruch. Der Satz allein
-# reicht nicht (Befund 2026-11-04): das Gate sperrt die gleiche Karte selbst ({approved:false, repeat_blocked:true}), und der
+# Das Retry-Verbot steht bewusst im Ergebnis, nicht nur im Prompt: nach "Abbrechen" rief der Agent sonst im selben Lauf
+# mit identischen Werten erneut auf -> neue Karte je Abbruch. Der Satz allein
+# reicht nicht: das Gate sperrt die gleiche Karte selbst ({approved:false, repeat_blocked:true}), und der
 # Text sagt dem Modell dann, dass es jetzt antworten soll.
 function Build-ToolCancelled {
     param([string]$Name, [int[]]$Pos, [Parameter(Mandatory)][string]$Action)
@@ -255,11 +249,11 @@ function Build-ToolCancelled {
     )
 }
 
-# Datums-Hinweis fuer $fromAI-Parameter (Modell-Schicht -> englisch): das LLM gibt eine relative Angabe ROH weiter,
+# Datums-Hinweis fuer $fromAI-Parameter (Modell-Schicht -> englisch): das LLM gibt eine relative Angabe roh weiter,
 #   die Write-fn rechnet sie (core.fn_resolve_input_dates -> core.fn_resolve_date). Nennt genau deren Grammatik
 #   (Ziffern, kein "a week"/"next month"); was nicht passt, fragt der Agent nach (Prompt-Regel des Agenten). Die
 #   Ablehnung der fn ({ok:false, code:'invalid_date'}) verweist nur hierher, wiederholt die Grammatik nicht.
-#   Die EINE Adresse fuer den Text: Aufrufer setzen ihn per ('<Feld> (' + (Get-DateParamHint) + '), …') zusammen.
+#   Die eine Adresse fuer den Text: Aufrufer setzen ihn per ('<Feld> (' + (Get-DateParamHint) + '), …') zusammen.
 function Get-DateParamHint {
     'YYYY-MM-DD or relative to today exactly as: today, yesterday, tomorrow, in 2 weeks, -3 days, 2 months ago, next friday, last monday (counts as digits: in 1 week, not in a week) - never compute a date yourself'
 }
@@ -281,18 +275,18 @@ function Get-WritePayloadExpr {
     "(Object.assign({}, `$('$StartName').item.json, `$('$DryName').item.json.r.effective || {}))"
 }
 
-# New-FnWriteGate — "DB ist das Gesetz": Probelauf der Write-fn VOR der HITL-Karte + der echte Write, aus EINER
+# New-FnWriteGate — "DB ist das Gesetz": Probelauf der Write-fn vor der HITL-Karte + der echte Write, aus einer
 #   Param-Map (Build-Pg-Form). Liefert vier Knoten + Namen fuer die Verdrahtung:
 #     Dry    'Dry run'          SELECT core.fn_dry_run('<Fn>(jsonb)'::regprocedure, $1) AS r   (immer zurueckgerollt)
 #     DryOk  'Dry run ok?'      IF r.ok -> true: weiter zur Karte | false: Reject
-#     Reject 'Dry run rejected' {ok:false, card_sent:false, error, code, candidates} an den Agenten — KEINE Karte
+#     Reject 'Dry run rejected' {ok:false, card_sent:false, error, code, candidates} an den Agenten — keine Karte
 #     Write  <WriteName>        SELECT <WriteSelect> FROM <Fn>(params || r.effective) AS r      (nach dem Gate)
-#   r.effective = Werte, die die fn selbst gesetzt hat (Default-Datum, Gebuehr 0, abgeleitete Konten): sie gehen FEST
+#   r.effective = Werte, die die fn selbst gesetzt hat (Default-Datum, Gebuehr 0, abgeleitete Konten): sie gehen fest
 #   in den echten Write, damit Karte und Buchung dasselbe zeigen (auch bei einem Tipp nach Mitternacht).
 #   CardLinesExpr = r.card_lines (Hinweis-Zeilen {kind:'note'} der fn) fuer New-HitlSummary -LinesExpr.
 #   ApproveKeyExpr = r.card_approve_key (eigener Knopf-Text-Key der fn, z. B. finance.hitl.accept_depot_risk; leer =
 #   Standard) fuer New-HitlSummary -ApproveKeyExpr.
-#   Eine echte Exception der fn bricht schon den Probelauf ab (errorWorkflow alarmiert), wie vorher den Write.
+#   Eine echte Exception der fn bricht schon den Probelauf ab (errorWorkflow alarmiert).
 #   Der echte Write prueft erneut (Bestand kann sich zwischen Karte und Tipp aendern) -> 'Write ok?' bleibt im Tool.
 function New-FnWriteGate {
     param(
@@ -332,7 +326,7 @@ function New-FnWriteGate {
     }
 }
 
-# Stop and Error node — bubbles error up to the calling Finance Agent (ONLY for true exceptions)
+# Stop and Error node — bubbles error up to the calling agent (only for true exceptions)
 function Build-Err {
     param([string]$Name, [int[]]$Pos, [string]$Message)
     [ordered]@{
@@ -374,12 +368,12 @@ function E {
 }
 
 # Sticky note — makes DB-side automatic effects (trigger / GENERATED / CHECK) visible on the canvas.
-# This is the rendered "effect spec": every place the DB does work this workflow does NOT do gets a note,
+# This is the rendered "effect spec": every place the DB does work this workflow does not do gets a note,
 # so the n8n workflow stays the complete, single source of truth for a tool incl. its DB-side steps.
-# Content is German (Sprachpolitik Layer 3 = dev docs); ASCII-safe (no umlauts/EUR sign) like the rest
-# of this script. Color 4 default; $Header defaults to "DB-Automatik" (Tool-Stickys, die DB-Effekte
+# Content is German (Sprachpolitik: Entwickler-Doku); ASCII-safe (no umlauts/EUR sign) like the rest
+# of this script. $Header defaults to "DB-Automatik" (Tool-Stickys, die DB-Effekte
 # erklaeren). Flow-/Ablauf-Stickys (z. B. die deterministischen Subs) uebergeben einen eigenen Header
-# (z. B. 'Ablauf'), damit das Canvas-Label nicht faelschlich "DB-Automatik" behauptet (Review L10).
+# (z. B. 'Ablauf'), damit das Canvas-Label nicht faelschlich "DB-Automatik" behauptet.
 function Build-Sticky {
     param([string]$Name, [int[]]$Pos, [string]$Title, [string]$Body, [int]$Height = 160, [int]$Width = 320, [string]$Header = 'DB-Automatik')
     [ordered]@{
@@ -425,7 +419,7 @@ function Build-CallWorkflow {
         id = (New-Id)
         name = $Name
     }
-    # each = Sub-Workflow je Eingangs-Item, nacheinander (Default once: alle Items in EINEN Lauf).
+    # each = Sub-Workflow je Eingangs-Item, nacheinander (Default once: alle Items in einen Lauf).
     if ($Mode) { $node.parameters['mode'] = $Mode }
     # Scheitert das HITL-Gate selbst (Karte nicht zustellbar), kommt {error} statt approved zurueck -> Approved? false -> Build-ToolCancelled,
     # kein Write. Ohne das bekaeme das Modell nur "Error executing workflow ..." (ExecuteWorkflow.node.js). Der Gate-Lauf bleibt rot
@@ -434,7 +428,7 @@ function Build-CallWorkflow {
     return $node
 }
 
-# New-WebhookNode — produktiver HTTP-Eingang (Webhook v2, n8n 2.45.7). -Path ist PFLICHT ein Deploy-Platzhalter
+# New-WebhookNode — produktiver HTTP-Eingang (Webhook v2). -Path ist Pflicht und ein Deploy-Platzhalter
 #   (__<NAME>_PATH__, deploy_workflows.sh setzt die Adresse je Instanz aus INGRESS_ID_KEY ein; workflow_lint prueft es),
 #   nie ein Literal: das Repo ist oeffentlich. -Methods > 1 -> multipleMethods, ein Ausgang je Methode in dieser
 #   Reihenfolge. Antwort immer ueber einen New-RespondNode (responseMode responseNode). Ein text/plain-Body kommt als
@@ -457,7 +451,7 @@ function New-WebhookNode {
     }
 }
 
-# New-RespondNode — Antwort eines New-WebhookNode (Respond to Webhook 1.5). -Kind text: -Body ist ein STATISCHER
+# New-RespondNode — Antwort eines New-WebhookNode (Respond to Webhook 1.5). -Kind text: -Body ist ein statischer
 #   String (kein '='-Ausdruck -> n8n wertet ihn nie aus, '{{' darin ist harmlos); -Kind json: -Body ist ein n8n-Ausdruck,
 #   der ein Objekt liefert. -Headers = geordnete Name->Wert-Map (Content-Type immer explizit, die Node-Doku verlangt es).
 function New-RespondNode {
@@ -496,7 +490,7 @@ function Build-Set {
     }
 }
 
-# Wait node (v1.1) "After Time Interval" in Sekunden — NUR kurze Pausen im laufenden Prozess. n8n 2.44.4 schlaeft
+# Wait node (v1.1) "After Time Interval" in Sekunden — nur kurze Pausen im laufenden Prozess. n8n schlaeft
 # unter MAX_IN_PROCESS_WAIT_MS (65 000 ms, packages/workflow/src/constants.ts) direkt im Prozess
 # (base-execute-context.ts putExecutionToWait); darueber lagert es die Execution in die DB aus und der WaitTracker
 # weckt sie erst bei seinem 60-s-Poll -> eine "kurze" Pause koennte still bis zu einer Minute dauern. Daher bricht
@@ -518,10 +512,10 @@ function Build-WaitSeconds {
 }
 
 # ============================================================
-# ADVISOR/PAKET-AGENT-EINGANGSNAHT (extrahiert aus agent.finance_advisor, WS-1 career)
+# ADVISOR/PAKET-AGENT-EINGANGSNAHT
 # ============================================================
-# WS-3 Core-first Hard-Gate (immer-an Onboarding-Invariante, VOR Load Config): kein Paket vor dem Core-Onboarding
-# (Haushalt). EINE Quelle fuer New-AdvisorGateChain UND agent.finance (vorher eine Hand-Kopie). Liest unter der
+# Core-first Hard-Gate (immer-an Onboarding-Invariante, vor Load Config): kein Paket vor dem Core-Onboarding
+# (Haushalt). Eine Quelle fuer New-AdvisorGateChain und agent.finance. Liest unter der
 # Paket-RO-Cred (publizierte DEFINER-Fenster core.fn_onboarding_status + core.fn_ui_texts_for) im SELBEN Read den
 # Status und den Umleitungs-Text in der Sprache des Absenders (chat_id; unbekannt/kaputt -> Owner-Sprache, nie ein
 # RAISE). onError=continue + IF '=== false' -> fail-open bei Lesefehler (dann fehlt auch kein Text). Redirect =
@@ -533,7 +527,7 @@ function New-CoreOnboardingGate {
         [Parameter(Mandatory)]$CredPgRo,
         [int[]]$ReadPos = @(-1240, 360), [int[]]$GatePos = @(-1120, 360), [int[]]$RedirectPos = @(-1120, 540)
     )
-    # Roter Faden: ein MITGLIED kann den Haushalt nicht einrichten -> statt "schick /onboarding" der ehrliche Hinweis
+    # Ein Mitglied kann den Haushalt nicht einrichten -> statt "schick /onboarding" der ehrliche Hinweis
     # "wird noch eingerichtet, ich sage Bescheid" (core.sub_onboarding_progress schickt "Es kann losgehen", sobald der
     # Owner fertig ist). viewer_is_member kommt aus demselben DEFINER-Fenster (Rolle aus chat_id, nie LLM).
     $keys = Get-UiKeysSql @('core.gate.core_onboarding_required', 'core.gate.core_onboarding_wait_owner')
@@ -555,7 +549,7 @@ function New-CoreOnboardingGate {
     @{ Read = $read; Gate = $gate; Redirect = $redirect }
 }
 
-# Roter Faden: der EINE Aufruf-Knoten, den jedes tool_set_onboarding_section (core/finance/career/estate) nach einem
+# Der eine Aufruf-Knoten, den jedes tool_set_onboarding_section (core/finance/career/estate) nach einem
 # erfolgreichen Set traegt -> Core-Dienst core:onboarding_progress (core.sub_onboarding_progress: Weiter-Karte, Lern-
 # Angebot, "Es kann losgehen"). Fire-and-forget + onError=continue (eine Karte darf den Onboarding-Schritt nie stoeren,
 # Muster New-ShowThinkingCallNode). $Package = build-time-Konstante (nie LLM); chat_id + die Kipp-Flags aus den festen
@@ -575,17 +569,16 @@ function New-OnboardingProgressCallNode {
     $n
 }
 
-# Die deterministische Eingangs-Naht, die JEDER Paket-Agent VOR dem LLM teilt (build-CLAUDE.md
+# Die deterministische Eingangs-Naht, die jeder Paket-Agent vor dem LLM teilt (build-CLAUDE.md
 # *Neuer AGENT-Workflow* + *Paket-Agent ... Routing-Status-/Core-first-Gate*): Anti-Loop-Depth-Gate
-# -> Routing-Status-Gate (WS-B8, package active) -> Core-first-Onboarding-Gate (WS-3). Strukturell
-# ueber finance/career/jede kuenftige Domaene IDENTISCH; das echte Delta (Tool-Liste, Modell, Memory-
-# Tabelle, domain-Expression, der finance-SPEZIFISCHE feature.onboarding_gate-Zweig NACH Load Config)
-# bleibt im jeweiligen Build-Def (Clone-and-Trim; arch-challenge D1: duenne geteilte Naht, KEINE
-# volle Factory; Rule of Three = finance + finance_advisor + career = 3 Aufrufer dieser Gate-Kette).
+# -> Routing-Status-Gate (package active) -> Core-first-Onboarding-Gate. Strukturell
+# ueber alle Domaenen identisch; das echte Delta (Tool-Liste, Modell, Memory-
+# Tabelle, domain-Expression, der finance-spezifische feature.onboarding_gate-Zweig nach Load Config)
+# bleibt im jeweiligen Build-Def (Clone-and-Trim: duenne geteilte Naht, keine volle Factory).
 # Parametrisiert ueber StartNode (chat_id/task-Quelle + erste Kante), Package (fn_package_active),
 # die Paket-RO-Credential (beide Read-Nodes) und NextNode (False-Zweig des Core-Gates, i. d. R.
-# 'Load Config'). Liefert @{ Nodes; Connections } mit Connections IN ORIGINAL-REIHENFOLGE (StartNode
-# -> Depth -> Package -> Core), damit der Aufrufer sie ZUERST in sein $conns mergt (Schluessel-
+# 'Load Config'). Liefert @{ Nodes; Connections } mit Connections in Original-Reihenfolge (StartNode
+# -> Depth -> Package -> Core), damit der Aufrufer sie zuerst in sein $conns mergt (Schluessel-
 # Reihenfolge = JSON-Reihenfolge des connections-Objekts).
 function New-AdvisorGateChain {
     param(
@@ -602,14 +595,14 @@ function New-AdvisorGateChain {
         [int[]]$CoreGatePos     = @(-1120, 360),
         [int[]]$CoreRedirectPos = @(-1120, 540)
     )
-    # Anti-Loop-Backstop (Pflicht fuer jeden AGENT-Workflow)
+    # Anti-Loop-Backstop (Pflicht fuer jeden Agent-Workflow)
     $nDepthGate = Build-If 'Depth gate' $DepthGatePos `
         "={{ Number(`$json.call_depth) || 0 }}" '2' 'largerEqual' 'number'
     $nDepthDeny = Build-ToolError 'Max call depth' $DepthDenyPos 'max_call_depth'
 
-    # WS-B8 Routing-Status-Gate (vor Load Config): bricht VOR dem LLM ab, wenn das Paket nicht 'active'
-    # ist. core.fn_package_active('<pkg>') unter der Paket-RO-Cred (publiziertes SECURITY-DEFINER-Window,
-    # D10). Build-Pg-Default = WRITE-Cred -> post-construction auf die RO-Cred. onError=continue + IF
+    # Routing-Status-Gate (vor Load Config): bricht vor dem LLM ab, wenn das Paket nicht 'active'
+    # ist. core.fn_package_active('<pkg>') unter der Paket-RO-Cred (publiziertes SECURITY-DEFINER-Window).
+    # Build-Pg-Default = Write-Cred -> post-construction auf die RO-Cred. onError=continue + IF
     # '=== false' => DB-Lesefehler faellt fail-open durch (Normalfall active), nur expliziter Nicht-
     # active-Status (installing/installed/inactive) sperrt.
     $nPkgRead = Build-Pg 'Package active read' $PkgReadPos `
@@ -620,23 +613,23 @@ function New-AdvisorGateChain {
         "={{ `$('Package active read').item.json.active === false }}" 'true' 'equals' 'boolean'
     $nPkgDeny = Build-ToolError 'Package inactive' $PkgDenyPos 'package_inactive'
 
-    # WS-3 Core-first Hard-Gate (geteilt mit agent.finance: New-CoreOnboardingGate).
+    # Core-first Hard-Gate (geteilt mit agent.finance: New-CoreOnboardingGate).
     $core = New-CoreOnboardingGate -StartNode $StartNode -CredPgRo $CredPgRo `
         -ReadPos $CoreReadPos -GatePos $CoreGatePos -RedirectPos $CoreRedirectPos
     $nCoreRead = $core.Read; $nCoreGate = $core.Gate; $nCoreRedirect = $core.Redirect
 
     # Connections in Original-Reihenfolge ($StartNode -> Depth -> Package -> Core); der Aufrufer mergt
-    # sie ZUERST, dann seine eigenen Keys (Load Config ff.) -> JSON-Schluessel-Reihenfolge bleibt stabil.
+    # sie zuerst, dann seine eigenen Keys (Load Config ff.) -> JSON-Schluessel-Reihenfolge bleibt stabil.
     $conns = [ordered]@{}
     $conns[$StartNode]              = @{ main = @( ,@( E 'Depth gate' ) ) }
     $conns['Depth gate']           = @{ main = @(
         @( E 'Max call depth' ),
-        @( E 'Package active read' )   # false: -> WS-B8 Routing-Status-Gate (vor Load Config)
+        @( E 'Package active read' )   # false: -> Routing-Status-Gate (vor Load Config)
     ) }
     $conns['Package active read']  = @{ main = @( ,@( E 'Package active gate' ) ) }
     $conns['Package active gate']  = @{ main = @(
         @( E 'Package inactive' ),       # true: status != active -> structured decline (no LLM)
-        @( E 'Core onboarding read' )    # false: active OR read error (fail-open) -> WS-3 Core-first-Gate
+        @( E 'Core onboarding read' )    # false: active OR read error (fail-open) -> Core-first-Gate
     ) }
     $conns['Core onboarding read'] = @{ main = @( ,@( E 'Core onboarding gate' ) ) }
     $conns['Core onboarding gate'] = @{ main = @(
@@ -650,7 +643,7 @@ function New-AdvisorGateChain {
     }
 }
 
-# HTTP GET node — retries 3x, 2s apart. Used for external API calls (e.g. FX rates).
+# HTTP GET node for external API calls (e.g. FX rates).
 function Build-Http {
     param([string]$Name, [int[]]$Pos, [string]$Url)
     [ordered]@{
@@ -662,16 +655,16 @@ function Build-Http {
 
 # ============================================================
 # TELEGRAM-SENDER (zentral) — die "can't parse entities"-Klasse strukturell geschlossen.
-# Telegram parst legacy Markdown (sendAndWait: parse_mode HARTKODIERT 'Markdown'; sendMessage:
+# Telegram parst legacy Markdown (sendAndWait: parse_mode hartkodiert 'Markdown'; sendMessage:
 # wirksamer Default). Regeln, die diese Helper erzwingen (Build-Gotchas #12-14):
-#   - appendAttribution=false IMMER (sendMessage: additionalFields, sendAndWait: options)
-#   - retryOnFail IMMER (transiente Telegram-Timeouts)
-#   - DYNAMISCHER Text (={{ ... }}) wird KOMPLETT escapt (die 4 Legacy-Entities _ * ` [ per
-#     Bot-API-Backslash) — DB-Werte/Nutzerdaten koennen den Send nie mehr crashen.
-#   - STATISCHER Text mit Entities bricht den BUILD (frueh statt live; Plain-Text-Konvention).
-#   - -NoEscape NUR fuer bewusst un-escapte LLM-Texte (Allowlist in workflow_lint.ps1; Risiko
+#   - appendAttribution=false immer (sendMessage: additionalFields, sendAndWait: options)
+#   - retryOnFail immer (transiente Telegram-Timeouts)
+#   - dynamischer Text (={{ ... }}) wird komplett escapt (die 4 Legacy-Entities _ * ` [ per
+#     Bot-API-Backslash) — DB-Werte/Nutzerdaten koennen den Send nie crashen.
+#   - statischer Text mit Entities bricht den Build (frueh statt live; Plain-Text-Konvention).
+#   - -NoEscape nur fuer bewusst un-escapte LLM-Texte (Allowlist in workflow_lint.ps1; Risiko
 #     bewusst hingenommen: Markdown-Entities in LLM-Antworten).
-# Direkt-konstruierte Telegram-Sends in Build-Defs sind Altlast — neue Sends NUR ueber diese Helper.
+# Neue Sends nur ueber diese Helper, nie direkt konstruiert.
 
 function Protect-TgMarkdown([string]$JsExpr) {
     '(' + $JsExpr + ').replace(/[_*`[]/g, ''\\$&'')'
@@ -688,24 +681,24 @@ function Resolve-TgTextExpr([string]$TextExpr, [bool]$NoEscape) {
     return $TextExpr
 }
 
-# WP-5: waehrungs-korrekte Formatierung von Betraegen/Daten im Locale des Empfaengers in nutzer-sichtbaren
-# Nachrichten (HITL-Summaries + Cron-Reminder, Renderer Get-UiRenderLibJs). DIE EINE Adresse (sonst re-implementiert jeder der ~40 Summary-Builder das Symbol/
-# Zahlformat neu -> Drift, hart '€' auf USD-Konten). Beide emittieren ein PLAIN JS-METHODEN-/Ternaer-Fragment
-# (KEIN Function-Closure -> kein n8n-#15900-Risiko, Beleg: set_household_facts faehrt laengst eine IIFE in einer
+# Waehrungs-korrekte Formatierung von Betraegen/Daten im Locale des Empfaengers in nutzer-sichtbaren
+# Nachrichten (HITL-Summaries + Cron-Reminder, Renderer Get-UiRenderLibJs). Die eine Adresse (sonst re-implementiert jeder der ~40 Summary-Builder das Symbol/
+# Zahlformat neu -> Drift, hart '€' auf USD-Konten). Beide emittieren ein plain JS-Methoden-/Ternaer-Fragment
+# (kein Function-Closure -> kein n8n-#15900-Risiko, Beleg: set_household_facts faehrt eine IIFE in einer
 # Expression), das eine bestehende n8n-Expression einsetzt. Der workflow_lint erzwingt die Nutzung (Feld-Vokabular).
 #   Fmt-MoneyJs(betragExpr, ccyExpr, localeExpr) -> Intl currency-style: EUR->'€', USD->'$' (currencyDisplay
-#     narrowSymbol, sonst z. B. de-DE 'US$'), Gruppierung + Dezimalzeichen des Locales in EINEM Call. Shape-Guard /^[A-Za-z]{3}$/ statt ||'EUR'
-#     (Intl.NumberFormat wirft RangeError bei form-ungueltigem NICHT-leerem Code, nicht nur bei falsy).
+#     narrowSymbol, sonst z. B. de-DE 'US$'), Gruppierung + Dezimalzeichen des Locales in einem Call. Shape-Guard /^[A-Za-z]{3}$/ statt ||'EUR'
+#     (Intl.NumberFormat wirft RangeError bei form-ungueltigem nicht-leerem Code, nicht nur bei falsy).
 #     ccyExpr = die Zeilen-Waehrung (accounts.currency) wo verfuegbar, sonst das Literal "'EUR'" (EUR-Konvention).
 #   Fmt-DateJs(datumExpr, localeExpr) -> ISO 'JJJJ-MM-TT' -> Datum im Locale.
-#   -LocaleExpr (Textkatalog, PFLICHT seit Phase C): JS-Ausdruck des Intl-Locales des Empfaengers (z. B. 'loc' im
-#     Renderer, Quelle core.ui_languages.locale ueber core.fn_ui_texts_for/fn_hitl_texts). Kein Default mehr: ein
+#   -LocaleExpr (Textkatalog, Pflicht): JS-Ausdruck des Intl-Locales des Empfaengers (z. B. 'loc' im
+#     Renderer, Quelle core.ui_languages.locale ueber core.fn_ui_texts_for/fn_hitl_texts). Kein Default: ein
 #     Aufruf ohne Locale bricht den Build ab (sonst formatierte ein Send still deutsch fuer jeden Empfaenger).
 #     Fmt-DateJs rendert per Intl (de 31.12.2026, en-GB 31/12/2026, ko 2026. 12. 31.), ein Nicht-ISO-Wert kommt roh
 #     zurueck (nie werfen: ein LLM-Tippfehler darf das Gate nicht lahmlegen).
 function Fmt-MoneyJs([string]$AmountExpr, [string]$CurrencyExpr, [string]$LocaleExpr, [switch]$WholeUnits) {
     if ([string]::IsNullOrWhiteSpace($LocaleExpr)) { throw "Fmt-MoneyJs: -LocaleExpr fehlt (Locale des Empfaengers, z. B. aus core.fn_ui_texts_for)" }
-    # -WholeUnits (2026-11-06, core.fn_ui_money p_whole -> digits:0): ganze Einheiten; ohne den Schalter byte-gleich
+    # -WholeUnits (core.fn_ui_money p_whole -> digits:0): ganze Einheiten
     $whole = if ($WholeUnits) { ",minimumFractionDigits:0,maximumFractionDigits:0" } else { '' }
     'Number(' + $AmountExpr + ").toLocaleString(" + $LocaleExpr + ",{style:'currency',currency:(/^[A-Za-z]{3}$/.test(" +
         $CurrencyExpr + ')?' + $CurrencyExpr + ":'EUR'),currencyDisplay:'narrowSymbol'" + $whole + "})"
@@ -719,8 +712,8 @@ function Fmt-DateJs([string]$DateExpr, [string]$LocaleExpr) {
 
 # ============================================================
 # HITL-Zusammenfassung im Textkatalog (Feste Texte in der Sprache der Person)
-#   Ein Write-Tool baut seine Bestaetigungs-Zusammenfassung NICHT mehr als deutschen String, sondern als
-#   STRUKTUR (Keys + typisierte Rohwerte); das Gate (agent.tool_human_approval) rendert sie je Empfaenger in dessen
+#   Ein Write-Tool baut seine Bestaetigungs-Zusammenfassung nicht als deutschen String, sondern als
+#   Struktur (Keys + typisierte Rohwerte); das Gate (agent.tool_human_approval) rendert sie je Empfaenger in dessen
 #   Sprache ('Render texts' = core.fn_hitl_texts, 'Compose messages' = Get-HitlComposeJs). Das LLM formuliert
 #   nichts davon, Betraege/Daten formatiert Intl im Locale des Empfaengers.
 #   Form: { title, title_params?, lines: [ { label, kind, value, currency?, enum?, params?, is_default? } ] }
@@ -733,7 +726,7 @@ function Fmt-DateJs([string]$DateExpr, [string]$LocaleExpr) {
 #     Optional je Zeile: label_fallback (lesbarer Ersatz fuer ein Label ohne Key), bei key: fallback.
 #   Optional im Summary: repeat_key (Schluessel der Wiederhol-Sperre, sonst der Hash des ganzen Summary, agent.fn_hitl_repeat_key).
 #   Keys: <pkg>.<bereich>.<name>, Quelle packages/<pkg>/locales/<lang>.json. Jeder statische Key (und jeder
-#   key-foermige String-Literal in den Ausdruecken) wird ZUR BUILD-ZEIT gegen die de.json des Key-Pakets geprueft
+#   key-foermige String-Literal in den Ausdruecken) wird zur Build-Zeit gegen die de.json des Key-Pakets geprueft
 #   (unbekannt -> throw). Wert-Ausdruecke sind rohe JS-Ausdruecke (ohne ={{ }}).
 # ============================================================
 $script:HitlLocaleCache = @{}
@@ -760,7 +753,7 @@ function Assert-HitlEnumPrefix([string]$Prefix, [string]$Ctx) {
     if ($hit.Count -eq 0) { throw "${Ctx}: Enum-Prefix '$Prefix' hat keinen einzigen Wert-Key in packages/$pkg/locales/de.json" }
 }
 # Assert-HitlTplParams — jeder {platzhalter} JEDES Text-Keys im Ausdruck braucht einen gleichnamigen Parameter. Der
-# Renderer setzt fehlende Parameter leer (n8n verwirft undefined-Felder; Owner 2026-10-22: nie "{isin}" als Rohtext),
+# Renderer setzt fehlende Parameter leer (n8n verwirft undefined-Felder; nie "{isin}" als Rohtext),
 # ein vertippter Parameter-Name faellt deshalb HIER beim Build auf statt still leer auf der Karte.
 function Assert-HitlTplParams([string]$Expr, [hashtable]$Params, [string]$Ctx) {
     $have = if ($Params) { @($Params.Keys) } else { @() }
@@ -788,7 +781,7 @@ function Assert-HitlExprKeys([string]$Expr, [string]$Ctx) {
     }
 }
 # ============================================================
-# Feste Nutzertexte in Workflows (Textkatalog Phase B, docs/package-contract.md §3.11): ein Postgres-Node laedt die
+# Feste Nutzertexte in Workflows (Textkatalog, docs/package-contract.md §3.11): ein Postgres-Node laedt die
 # benoetigten Keys EINMAL in der Sprache des Empfaengers (core.fn_ui_texts -> Objekt {key: text}, die "t-Map"); Telegram-
 # Nodes lesen daraus per Ausdruck. Muster core.fn_hitl_texts -> Get-HitlComposeJs. Jeder Key wird zur Build-Zeit gegen
 # die de.json seines Pakets geprueft (Assert-HitlKey).
@@ -821,10 +814,9 @@ function ConvertTo-HitlParams([hashtable]$Params) {
     $pairs = foreach ($k in ($Params.Keys | Sort-Object)) { "${k}: (" + $Params[$k] + ')' }
     ', params: { ' + ($pairs -join ', ') + ' }'
 }
-# New-HitlValue — typisierter Wert ohne Label (fuer tpl-Parameter / list-Elemente), JS-Objekt-Literal.
-# Assert-HitlCurrency — Geld zeigt die Waehrung SEINER Zeile (Konto/Holding). Ein festes 'EUR' ist nur dort erlaubt, wo das
+# Assert-HitlCurrency — Geld zeigt die Waehrung seiner Zeile (Konto/Holding). Ein festes 'EUR' ist nur dort erlaubt, wo das
 # Datenmodell den Wert in EUR fuehrt (Versicherung, Kredit, Rente, Immobilie, Sparziel) — und muss dann per -EurByModel
-# bewusst markiert sein (vorher zeigten ~20 Karten Fremdwaehrungs-Betraege still als Euro).
+# bewusst markiert sein (sonst zeigte die Karte Fremdwaehrungs-Betraege still als Euro).
 function Assert-HitlCurrency([string]$Currency, [bool]$EurByModel, [string]$Ctx) {
     if ([string]::IsNullOrWhiteSpace($Currency)) { throw "${Ctx}: kind money braucht -Currency <Zeilen-Waehrung>" }
     # Auch zusammengesetzte Ausdruecke ("(x || 'EUR')", "(c ? 'EUR' : y)"): jedes quotierte EUR-Literal umgeht sonst das Assert.
@@ -832,6 +824,7 @@ function Assert-HitlCurrency([string]$Currency, [bool]$EurByModel, [string]$Ctx)
         throw "${Ctx}: festes 'EUR' in '$Currency' — Waehrung aus der Zeile (-Currency <expr>) oder, wenn das Datenmodell EUR fuehrt, -EurByModel"
     }
 }
+# New-HitlValue — typisierter Wert ohne Label (fuer tpl-Parameter / list-Elemente), JS-Objekt-Literal.
 function New-HitlValue {
     param([Parameter(Mandatory)][ValidateSet('text','money','date','number','enum','bool','language','key')][string]$Kind,
           [Parameter(Mandatory)][string]$Value, [string]$Currency, [switch]$EurByModel, [string]$Enum, [int]$Digits = 0,
@@ -872,9 +865,9 @@ function New-HitlBody {
 }
 # New-HitlLine — eine Zeile (• Label: Wert). -If = JS-Bedingung (falsy -> Zeile entfaellt), -IsDefault = JS-
 # Bedingung fuer den Zusatz '(Standard)'. Liefert ein JS-Objekt-Literal fuer New-HitlSummary -Lines.
-# -OmitEmpty = optionale Info-Zeile entfaellt, wenn ihr Wert leer ist (null/''/[]; bei tpl: Key null ODER alle
-#   Parameter leer) statt als '—' zu erscheinen (Owner 2026-10-25: leere Zusatzzeilen ueberfordern). Nie fuer
-#   removed/heading (dort IST leer die Aussage) und nie fuer Felder, deren Leer-Bedeutung zaehlt (dafuer eigener
+# -OmitEmpty = optionale Info-Zeile entfaellt, wenn ihr Wert leer ist (null/''/[]; bei tpl: Key null oder alle
+#   Parameter leer) statt als '—' zu erscheinen. Nie fuer
+#   removed/heading (dort ist leer die Aussage) und nie fuer Felder, deren Leer-Bedeutung zaehlt (dafuer eigener
 #   Text wie finance.value.no_instalment).
 function New-HitlLine {
     param([Parameter(Mandatory)][string]$Label, [string]$Value = 'null',
@@ -910,7 +903,7 @@ function New-HitlLine {
     if ($If) { $o = "(($If) ? $o : null)" }
     $o
 }
-# New-HitlNote — Absatz unter den Zeilen (Hinweis/ACHTUNG). -Key = fester Key ODER -KeyExpr = JS-Ausdruck, der
+# New-HitlNote — Absatz unter den Zeilen (Hinweis/Achtung). -Key = fester Key oder -KeyExpr = JS-Ausdruck, der
 # einen Key liefert (bedingte Varianten; jedes Key-Literal darin wird geprueft). -If wie New-HitlLine.
 function New-HitlNote {
     param([string]$Key, [string]$KeyExpr, [hashtable]$Params, [string]$If)
@@ -922,7 +915,7 @@ function New-HitlNote {
     if ($If) { $o = "(($If) ? $o : null)" }
     $o
 }
-# New-HitlSummary — der Set-Knoten 'Build Approval Summary' mit summary als OBJEKT (statt deutschem String).
+# New-HitlSummary — der Set-Knoten 'Build Approval Summary' mit summary als Objekt (statt deutschem String).
 #   -Lines = Ergebnisse von New-HitlLine/New-HitlNote; -LinesExpr = JS-Ausdruck, der ein Array solcher Objekte
 #   liefert (dynamische Listen, z. B. je Person); -TitleParams = Platzhalter des Titels.
 #   -RepeatKey = JS-Ausdruck, Schluessel der Wiederhol-Sperre des Gates: nur fuer Tools, deren Text das Modell je Aufruf neu
@@ -936,21 +929,14 @@ function New-HitlSummary {
     $arr = '[ ' + ($Lines -join ', ') + ' ]'
     if ($LinesExpr) { Assert-HitlExprKeys $LinesExpr "New-HitlSummary '$Title'"; $arr = "$arr.concat($LinesExpr)" }
     $rk = if ($RepeatKey) { ", repeat_key: ($RepeatKey)" } else { '' }
-    # eigener Knopf-Text (2026-11-06): Key-Ausdruck aus dem Probelauf (New-FnWriteGate ApproveKeyExpr); leer = Standard
+    # eigener Knopf-Text: Key-Ausdruck aus dem Probelauf (New-FnWriteGate ApproveKeyExpr); leer = Standard
     $ak = if ($ApproveKeyExpr) { Assert-HitlExprKeys $ApproveKeyExpr "New-HitlSummary '$Title'"; ", approve_key: ($ApproveKeyExpr)" } else { '' }
     $inner = "{ title: '$Title'$tp$rk$ak, lines: $arr.filter(Boolean) }"
     if ($inner -match '\}\}') { throw "New-HitlSummary '$Title': '}}' im Ausdruck (n8n beendet die Expression) — Leerzeichen setzen" }
     Build-Set $Name $Pos @( ,@('summary', "={{ ($inner) }}", 'object') )
 }
 
-# Get-HitlComposeJs — der EINE Renderer des HITL-Gates (Code-Knoten 'Compose messages', runOnceForEachItem).
-#   Liest 'Render texts' (core.fn_hitl_texts: Sprache/Locale/Texte je Empfaenger) + das Summary aus 'Start' und
-#   liefert je Empfaenger die fertigen Texte: owner {text, pre, stage2, stage2_pre, info, info_pre, approve, cancel,
-#   unauthorized}, member {text, pre, approve, cancel, unauthorized} (fehlt das Member-Buendel -> Owner-Texte, nie ein
-#   Absturz). *_pre = die vorderen Teile einer Karte ueber dem Telegram-Limit ("Teil n/N"), sonst []; text = der letzte.
-#   Ein String-Summary (Test-Harness) geht unveraendert durch. Wirft nie bei kaputten Werten (Rohwert).
-#   ENTSCHEIDET NIE UEBER EMPFAENGER: chatId/approverIds bleiben im Gate an Resolve sender/$OWNER_CHAT_ID gebunden.
-# Get-UiRenderLibJs — der EINE Renderer typisierter Text-Strukturen (Textkatalog, docs/package-contract.md §3.11):
+# Get-UiRenderLibJs — der eine Renderer typisierter Text-Strukturen (Textkatalog, docs/package-contract.md §3.11):
 #   liefert JS-Quelltext einer Funktion uiRender(B, LANGS) fuer Code-Knoten. B = Text-Buendel EINES Empfaengers
 #   ({lang, locale, t} aus core.fn_ui_texts_for bzw. owner/member aus core.fn_hitl_texts), LANGS = Code -> Eigenname.
 #   Rueckgabe { t, has, fill, val, msg, lines, money, date, num, empty, isEmpty, loc }:
@@ -1093,6 +1079,13 @@ function uiRender(B, LANGS) {
     $js.Replace('__MONEY0__', $money0).Replace('__MONEY__', $money).Replace('__DATE__', $date)
 }
 
+# Get-HitlComposeJs — der eine Renderer des HITL-Gates (Code-Knoten 'Compose messages', runOnceForEachItem).
+#   Liest 'Render texts' (core.fn_hitl_texts: Sprache/Locale/Texte je Empfaenger) + das Summary aus 'Start' und
+#   liefert je Empfaenger die fertigen Texte: owner {text, pre, stage2, stage2_pre, info, info_pre, approve, cancel,
+#   unauthorized}, member {text, pre, approve, cancel, unauthorized} (fehlt das Member-Buendel -> Owner-Texte, nie ein
+#   Absturz). *_pre = die vorderen Teile einer Karte ueber dem Telegram-Limit ("Teil n/N"), sonst []; text = der letzte.
+#   Ein String-Summary (Test-Harness) geht unveraendert durch. Wirft nie bei kaputten Werten (Rohwert).
+#   Entscheidet nie ueber Empfaenger: chatId/approverIds bleiben im Gate an Resolve sender/$OWNER_CHAT_ID gebunden.
 function Get-HitlComposeJs {
     $js = (Get-UiRenderLibJs) + @'
 // Compose messages (Get-HitlComposeJs): Summary + Gate-Texte je Empfaenger in dessen Sprache.
@@ -1222,9 +1215,9 @@ return { json: {
     $js
 }
 
-# New-AdvisorPhrasingTail — der geteilte Umformulier-Schwanz der Advisor-Review-Crons (Rule of Three: die zwei
-# Core-Crons via New-AdvisorCron + der estate-Jahres-Review; vorher eine Hand-Kopie). Liefert:
-#   'Load model config' (New-ModelConfigNode, -ConfigPackage/-ConfigKey) — der AUFRUFER haengt ihn VOR den
+# New-AdvisorPhrasingTail — der geteilte Umformulier-Schwanz der Advisor-Review-Crons (die zwei
+# Core-Crons via New-AdvisorCron + der estate-Jahres-Review). Liefert:
+#   'Load model config' (New-ModelConfigNode, -ConfigPackage/-ConfigKey) — der Aufrufer haengt ihn vor den
 #     Latch-schreibenden Evaluate-Knoten (ein Ladefehler darf nie einen Hinweis als gemeldet markieren, der nie
 #     verschickt wurde); die Evaluate-SQL hat keine Eingangs-Bezuege;
 #   'Phrase message' (Basic LLM Chain, onError continue -> deterministischer Fallback) mit -PromptLead + $json.det_text;
@@ -1235,13 +1228,13 @@ return { json: {
 function New-AdvisorPhrasingTail {
     param(
         [Parameter(Mandatory)][string]$PromptLead,      # EN-Anweisung, an die der deterministische Text angehaengt wird
-        [Parameter(Mandatory)][string]$ConfigPackage,   # Besitzer des Modell-Keys (heute 'core')
-        [Parameter(Mandatory)][string]$ConfigKey,       # Modell-Key (heute 'advisor_review')
+        [Parameter(Mandatory)][string]$ConfigPackage,   # Besitzer des Modell-Keys
+        [Parameter(Mandatory)][string]$ConfigKey,       # Modell-Key
         [Parameter(Mandatory)][ValidateSet('low', 'medium', 'high')][string]$Effort,
         [int[]]$LoadPos = @(-550, -180)
     )
     if ($PromptLead.Contains("'")) { throw "New-AdvisorPhrasingTail: -PromptLead darf kein ' enthalten (JS-String im Ausdruck)" }
-    # Textkatalog Phase C: die Ausgabesprache = die des Empfaengers. -PromptLead traegt GENAU EINEN Platzhalter
+    # Textkatalog: die Ausgabesprache = die des Empfaengers. -PromptLead traegt genau einen Platzhalter
     # {language}; 'Build message' liefert $json.language_label (z. B. "ko (한국어)") und det_text schon in dieser Sprache.
     $parts = $PromptLead -split '\{language\}'
     if ($parts.Count -ne 2) { throw "New-AdvisorPhrasingTail: -PromptLead braucht genau einen Platzhalter {language} (Empfaenger-Sprache)" }
@@ -1272,9 +1265,9 @@ return [{ json: { message: llm.trim() ? llm.trim() : det } }];
     return @{ LoadNode = $load; Nodes = @($phrase) + @($selector.Nodes) + @($choose); Connections = $conns }
 }
 
-# Assert-FromAiSpec — Pflicht/optional eines $fromAI-Felds muss zu seiner Beschreibung passen (BUILDER-Gotcha):
-#   (a) Beschreibung sagt optional / leave empty, die Spec hat aber keinen Default -> das LLM MUSS einen Wert liefern und
-#       erfindet ihn oder fragt nach (create_loan/create_real_estate trugen 7 solche Felder).
+# Assert-FromAiSpec — Pflicht/optional eines $fromAI-Felds muss zu seiner Beschreibung passen (Builder-Gotcha):
+#   (a) Beschreibung sagt optional / leave empty, die Spec hat aber keinen Default -> das LLM muss einen Wert liefern und
+#       erfindet ihn oder fragt nach.
 #   (b) Zahlenfeld mit Default '' -> ergaebe $fromAI(..., 'number', ) = kaputte Expression.
 # Genutzt von New-AdvisorToolNode UND dem finance-lokalen New-ToolWorkflowNode (beide bauen $fromAI aus derselben Spec-Form).
 function Assert-FromAiSpec([array]$InputSpec, [string]$Ctx) {
@@ -1289,12 +1282,11 @@ function Assert-FromAiSpec([array]$InputSpec, [string]$Ctx) {
     }
 }
 
-# Frei-SQL-Lesewerkzeug `postgres_select` (postgresTool executeQuery) der Agenten -- die EINE Quelle (vorher
-# Hand-Kopien je Agent-Def). Read-Fehler sind NICHT
-# fatal (onError continue: der DB-Fehler geht als Tool-Ergebnis an den Agenten, er korrigiert die Query selbst).
-# Befund 2026-10-24 (Execution 732): ein Aufruf OHNE query-Argument liess n8n intern werfen ("Cannot read
+# Frei-SQL-Lesewerkzeug `postgres_select` (postgresTool executeQuery) der Agenten -- die eine Quelle.
+# Read-Fehler sind nicht fatal (onError continue: der DB-Fehler geht als Tool-Ergebnis an den Agenten, er korrigiert die Query selbst).
+# Ein Aufruf ohne query-Argument laesst n8n intern werfen ("Cannot read
 # properties of undefined (reading 'match')", executeQuery.operation) -> leere/fehlende query wird zu einem SELECT, das
-# {ok:false, error} als Zeile liefert. Bewusst KEIN Default (4. $fromAI-Argument): der machte query im Schema optional.
+# {ok:false, error} als Zeile liefert. Bewusst kein Default (4. $fromAI-Argument): der machte query im Schema optional.
 # workflow_lint prueft den Guard an jedem postgresTool mit $fromAI-query. $Cred = die Paket-RO-Credential.
 function New-PostgresSelectToolNode {
     param([Parameter(Mandatory)][string]$Description, [Parameter(Mandatory)]$Cred, [int[]]$Pos = @(-336, 208))
@@ -1316,11 +1308,9 @@ function New-PostgresSelectToolNode {
     }
 }
 
-# toolWorkflow-Node fuer CROSS-AGENT-Tools (agent.tool_*): voller Workflow-Name + $fromAI-InputSpec +
-# optionale FIXE (nicht-$fromAI) Inputs + chat_id-Durchreichung. Phase 0 WS-0c AT: die EINE geteilte
-# Quelle (loest die byte-identischen Duplikate New-AdvisorToolNode/New-CareerAdvisorToolNode/New-GuideToolNode
-# in den 4 Agent-Build-Defs ab; monitor nutzte schon den finance-lokalen). Genutzt von agent.finance_advisor,
-# agent.career_advisor, agent.monitor, agent.guide. -StartNode ist PFLICHT (kein finance-biased Default ->
+# toolWorkflow-Node fuer Cross-Agent-Tools (agent.tool_*): voller Workflow-Name + $fromAI-InputSpec +
+# optionale fixe (nicht-$fromAI) Inputs + chat_id-Durchreichung. Genutzt von agent.finance_advisor,
+# agent.career_advisor, agent.monitor, agent.guide. -StartNode ist Pflicht (kein finance-biased Default ->
 # ein anderer Konsument kann nicht still die falsche chat_id-Quelle erben). Guide bindet keine FixedInputs
 # (uebergibt $null). Liegt in lib = Engine (kein Cross-Paket-Import, ein Name -> Scope-Kollision geloest).
 function New-AdvisorToolNode {
@@ -1331,7 +1321,7 @@ function New-AdvisorToolNode {
         [array] $InputSpec,                            # @( @(name, desc, type[, default]) ... )
         $FixedInputs,                                  # [ordered]@{ name = '<n8n expression>' } — nicht-$fromAI; $null = keine
         [Parameter(Mandatory)][int[]]$Position,
-        [Parameter(Mandatory)][string]$StartNode       # chat_id-Quelle (je Agent dessen Start-Node) — PFLICHT
+        [Parameter(Mandatory)][string]$StartNode       # chat_id-Quelle (je Agent dessen Start-Node)
     )
     $id = Get-RequiredWorkflowId $WorkflowName 'New-AdvisorToolNode'
     Assert-FromAiSpec $InputSpec "New-AdvisorToolNode '$ToolKey'"
@@ -1387,15 +1377,15 @@ function New-AdvisorToolNode {
     }
 }
 
-# Paket-Tool-Services an einen Agenten binden (docs/package-contract.md §5 Cross-package tool services; paperless
-# Phase 2). Je Service EIN toolWorkflow-Node 'tool_<alias>' — Ziel ist IMMER der Core-Vermittler
-# agent.sub_dispatch_tool (Core-ID literal; die Paket-Workflow-ID steht NIE im Konsumenten -> workflow_lint-Naht),
-# mit FESTEM service='<pkg>:<alias>' + args = JSON.stringify der $fromAI-Felder aus dem PROVIDER-Manifest
+# Paket-Tool-Services an einen Agenten binden (docs/package-contract.md §5 Cross-package tool services).
+# Je Service ein toolWorkflow-Node 'tool_<alias>' — Ziel ist immer der Core-Vermittler
+# agent.sub_dispatch_tool (Core-ID literal; die Paket-Workflow-ID steht nie im Konsumenten -> workflow_lint-Naht),
+# mit festem service='<pkg>:<alias>' + args = JSON.stringify der $fromAI-Felder aus dem Provider-Manifest
 # (provides.services.<alias>.inputs: Pflicht = 3-arg, optional = 4-arg mit Default bzw. '') + chat_id vom StartNode.
-# Tool-Description verbatim aus dem Provider-Manifest (EINE Quelle fuer Modell-Schema, Eingabe-Pruefung im Werkzeug
+# Tool-Description verbatim aus dem Provider-Manifest (eine Quelle fuer Modell-Schema, Eingabe-Pruefung im Werkzeug
 # und /help). Default: die Nicht-Core-Eintraege aus consumes.services des Konsumenten (core:-Dienste bindet jede Def
-# selbst); -Own: die EIGENEN provides.services (Dokumenten-Assistent) — ebenfalls ueber den Vermittler, weil der die
-# EINE Berechtigungs-Pruefstelle ist (literal waere ein Bypass von core.fn_resolve_service).
+# selbst); -Own: die eigenen provides.services (Dokumenten-Assistent) — ebenfalls ueber den Vermittler, weil der die
+# eine Berechtigungs-Pruefstelle ist (literal waere ein Bypass von core.fn_resolve_service).
 # Fail-closed: unbekannter Provider/Alias, String-Form beim Provider, ' oder Backtick in einer Beschreibung
 # ($fromAI-Literal), Namens-Kollision mit -ExistingNodes, Selbst-Konsum ohne -Own -> throw.
 # Rueckgabe @{ Nodes; Connections } (ai_tool-Kanten zu -AgentNode) — der Aufrufer haengt beides an.
@@ -1406,7 +1396,7 @@ function Add-ServiceTools {
         [Parameter(Mandatory)][string]$StartNode,
         [Parameter(Mandatory)][int[]]$Position,       # Position des ersten Nodes; jeder weitere +160 in x
         [array]$ExistingNodes = @(),
-        [string[]]$Exclude = @(),                      # Aliase, die DIESER Agent nicht bekommt (z. B. Finance-DEFER)
+        [string[]]$Exclude = @(),                      # Aliase, die dieser Agent nicht bekommt (z. B. Finance-DEFER)
         [switch]$Own
     )
     $u8 = New-Object System.Text.UTF8Encoding($false)
@@ -1463,9 +1453,9 @@ function Add-ServiceTools {
 
 # Regulaerer Telegram-Send (sendMessage, keine Buttons) — Form 1:1 aus core.sub_error_notify.
 #   -ParseMode: 'Markdown' | 'HTML' setzt additionalFields.parse_mode explizit. Nicht gesetzt = n8n-Default (Markdown).
-#     Es gibt KEIN Plain: n8n (GenericFunctions.addAdditionalFields) macht aus einem leeren parse_mode still
-#     'Markdown' (Befund 2026-10-22, Exec 297) -> echtes Plain = 'HTML' + HTML-escapter Text (Fallback unten).
-#   -OnError 'continueErrorOutput' schaltet den Fehler-Ausgang frei (fuer den Markdown->Plain-Fallback, WP-2).
+#     Es gibt kein Plain: n8n (GenericFunctions.addAdditionalFields) macht aus einem leeren parse_mode still
+#     'Markdown' -> echtes Plain = 'HTML' + HTML-escapter Text (Fallback unten).
+#   -OnError 'continueErrorOutput' schaltet den Fehler-Ausgang frei (fuer den Markdown->Plain-Fallback).
 function New-TelegramSendNode {
     param([string]$Name, [int[]]$Pos, [string]$TextExpr,
           [string]$ChatIdExpr = '__OWNER_CHAT_ID__',
@@ -1489,13 +1479,13 @@ function New-TelegramSendNode {
     $node
 }
 
-# WP-2 Markdown-Robustheit: EIN LLM-Relay-Send, der bei einem Markdown-PARSE-Fehler (ungepaartes _*[` in freier
-# LLM-Antwort -> Telegram HTTP 400 "can't parse entities") NICHT crasht, sondern denselben Text PLAIN nachsendet.
+# Markdown-Robustheit: ein LLM-Relay-Send, der bei einem Markdown-Parse-Fehler (ungepaartes _*[` in freier
+# LLM-Antwort -> Telegram HTTP 400 "can't parse entities") nicht crasht, sondern denselben Text plain nachsendet.
 # Gibt zwei Nodes zurueck: Primary (parse_mode='Markdown', onError=continueErrorOutput, maxTries=1 — Retry ist bei
 # einem deterministischen Parse-Fehler nutzlos + interagiert defekt mit onError=Continue, GH #10763) und
 # PlainFallback (parse_mode='HTML' + Text mit & < > als Entities, voller retryOnFail — transiente Fehler des
-# Fallbacks bleiben UNGEFANGEN -> regulaerer errorWorkflow -> ein echter Zustellausfall wird NICHT maskiert).
-# Warum HTML statt parse_mode='': n8n setzt leeres parse_mode still auf 'Markdown' (der Fallback crashte 2026-10-22
+# Fallbacks bleiben ungefangen -> regulaerer errorWorkflow -> ein echter Zustellausfall wird nicht maskiert).
+# Warum HTML statt parse_mode='': n8n setzt leeres parse_mode still auf 'Markdown' (der Fallback crashte sonst
 # an derselben Entity wie der Primary); im HTML-Modus sind laut Bot-API nur < > & Steuerzeichen -> escapt kommt
 # der Text 1:1 an. Der Aufrufer verdrahtet: <input> -> Primary; Primary[main,0] (Erfolg) terminiert;
 # Primary[error] -> PlainFallback. -TextExpr = genau EIN ={{ ... }}-Ausdruck (wird fuer den Fallback umhuellt).
@@ -1510,8 +1500,8 @@ function New-TelegramSendWithPlainFallback {
     @{ Primary = $primary; Fallback = $fallback }
 }
 
-# New-TelegramRelayChain — EIN Weg fuer jede Agent-Antwort an den Chat (Orchestrator-Relay, Paket-Befehle, Onboarding-
-# Knoepfe; Owner 2026-10-25 "Zahlen richtig + lesbar"): '<Name> split' (Code) teilt den Text an Absatzgrenzen in Teile
+# New-TelegramRelayChain — ein Weg fuer jede Agent-Antwort an den Chat (Orchestrator-Relay, Paket-Befehle, Onboarding-
+# Knoepfe): '<Name> split' (Code) teilt den Text an Absatzgrenzen in Teile
 # <= 3500 Zeichen (vor dem Escapen; Telegram-Limit 4096) und escapt & < > -> '<Name> loop' (splitInBatches, 1 Teil je
 # Runde) -> '<Name>' (Telegram, parse_mode=HTML = echtes Plain; alle Agenten schreiben Plain-Text; leeres parse_mode
 # macht n8n still zu Markdown) -> zurueck zur Loop. Ein Retry wiederholt so nur den aktuellen Teil (keine Duplikate).
@@ -1562,34 +1552,34 @@ return chunks.map((c, i) => ({ json: { text: esc(c), part: i + 1, parts: chunks.
 }
 
 # Telegram Send-and-Wait (Buttons; approvalType 'double' = Approve+Disapprove); eigener webhookId je Node.
-# CHAT-BESTAETIGUNG (n8n >= 2.35, Telegram-Node-Parameter chatApproval): die Knoepfe tragen callback_data statt
+# Chat-Bestaetigung (n8n >= 2.35, Telegram-Node-Parameter chatApproval): die Knoepfe tragen callback_data statt
 # eines Links -> der Tipp laeuft ueber Telegram -> Orchestrator-Trigger -> POST <WEBHOOK_URL-Origin>/webhook-
-# waiting-telegram (HMAC-gebunden an die Execution), kein Browser. Ob das AN ist, entscheidet erst der Deploy:
+# waiting-telegram (HMAC-gebunden an die Execution), kein Browser. Ob das an ist, entscheidet erst der Deploy:
 # chatApproval traegt den Platzhalter __HITL_CHAT_APPROVAL__, den deploy_workflows.sh durch true/false ersetzt
 # (true nur, wenn der Server seinen eigenen /webhook-waiting-telegram ueber die Domain erreicht; sonst Link-
-# Knoepfe ueber /webhook-waiting/* wie bisher). approverIds = WER tippen darf (leer hiesse: jeder!) -> Default
+# Knoepfe ueber /webhook-waiting/*). approverIds = wer tippen darf (leer hiesse: jeder) -> Default
 # die Ziel-chat_id (privater Chat: chat_id == user_id); ein Ausdruck muss im Webhook-Kontext ohne Item-Index
 # tragen (.first(), nie .item) und darf nie leer werden. n8n bindet den Tipp an die Execution, nicht an die
-# Nachricht -> mehrere Warte-Nodes nacheinander in EINER Execution brauchen den Stale-Tap-Schutz (Aufrufer).
+# Nachricht -> mehrere Warte-Nodes nacheinander in einer Execution brauchen den Stale-Tap-Schutz (Aufrufer).
 function New-TelegramSendAndWaitNode {
     param([string]$Name, [int[]]$Pos, [string]$MessageExpr,
           [string]$ChatIdExpr = '__OWNER_CHAT_ID__', [string]$ApprovalType = 'double',
           [string]$ApproverIdsExpr,
-          # Textkatalog Phase C: KEINE Default-Texte mehr — jeder Aufrufer gibt Knopf-Texte und Popup in der Sprache
+          # Textkatalog: keine Default-Texte — jeder Aufrufer gibt Knopf-Texte und Popup in der Sprache
           # des Empfaengers mit (={{ }}-Ausdruck aus seiner t-Map, nur .first()). -DisapproveLabel nur bei 'double'.
           [string]$ApproveLabel, [string]$DisapproveLabel,
           [switch]$NoEscape, [int]$MaxTries = 3, [int]$WaitBetweenTries = 2000,
           # -LimitWaitMinutes > 0 setzt das n8n-sendAndWait-`limitWaitTime` UNTER options (Telegram ruft
           # configureWaitTillDate(this) mit Default 'options' -> liest nur options.limitWaitTime.values; top-level wird
-          # still ignoriert = unbegrenzt, Befund 2026-10-22, n8n 2.44.4): nach N Minuten ohne Button-Antwort resumed n8n den
-          # Workflow OHNE Approval -> data.approved bleibt leer -> der downstream `approved?`-Check faellt
+          # still ignoriert = unbegrenzt): nach N Minuten ohne Button-Antwort resumed n8n den
+          # Workflow ohne Approval -> data.approved bleibt leer -> der downstream `approved?`-Check faellt
           # auf FALSE (fail-closed, kein Write). Begrenzt das verdoppelte Telegram-Socket-Hang-Fenster auf
-          # dem zweistufigen Member->Owner-Pfad (WS-5b arch-challenge #6). 0 = unbegrenzt (Default-Verhalten).
+          # dem zweistufigen Member->Owner-Pfad. 0 = unbegrenzt (Default-Verhalten).
           [int]$LimitWaitMinutes = 0,
           # Textkatalog: Popup fuer einen fremden Tipper (={{ }}-Ausdruck mit .first() aus der t-Map des Empfaengers).
           [string]$UnauthorizedReply)
-    # Nach dem Tipp (n8n Telegram hitl/webhook.ts): postDecisionBehavior FEST removeButtons — showOutcome haengte die
-    # fest ENGLISCHE Zeile "✅ Approved by <Name>" an (nicht konfigurierbar, nicht uebersetzbar). Was passiert ist,
+    # Nach dem Tipp (n8n Telegram hitl/webhook.ts): postDecisionBehavior fest removeButtons — showOutcome haengte die
+    # fest englische Zeile "✅ Approved by <Name>" an (nicht konfigurierbar, nicht uebersetzbar). Was passiert ist,
     # bestaetigt der Aufrufer selbst in der Sprache des Empfaengers (Agent-Antwort bzw. Ergebnis-Zeile der Cron-Dialoge).
     foreach ($req in @(@('ApproveLabel', $ApproveLabel), @('UnauthorizedReply', $UnauthorizedReply))) {
         if ([string]::IsNullOrWhiteSpace($req[1])) { throw "New-TelegramSendAndWaitNode '$Name': -$($req[0]) fehlt (Text in der Sprache des Empfaengers aus der t-Map)" }
@@ -1597,7 +1587,7 @@ function New-TelegramSendAndWaitNode {
     if ($ApprovalType -eq 'double' -and [string]::IsNullOrWhiteSpace($DisapproveLabel)) {
         throw "New-TelegramSendAndWaitNode '$Name': -DisapproveLabel fehlt (approvalType double)"
     }
-    # Default nur fuer ein LITERALES Ziel (__OWNER_CHAT_ID__); ein Ziel-AUSDRUCK braucht ein ausdrueckliches ApproverIds mit
+    # Default nur fuer ein literales Ziel (__OWNER_CHAT_ID__); ein Ziel-Ausdruck braucht ein ausdrueckliches ApproverIds mit
     # .first() + Fallback ('-1'), weil $json/.item beim Tipp (Webhook-Kontext) nicht mehr das Original-Item ist.
     if (-not $ApproverIdsExpr) {
         if ($ChatIdExpr -like '=*') { throw "New-TelegramSendAndWaitNode '$Name': Ziel ist ein Ausdruck -> -ApproverIdsExpr ausdruecklich setzen (.first(), Fallback '-1')" }
@@ -1606,7 +1596,7 @@ function New-TelegramSendAndWaitNode {
     if ([string]::IsNullOrWhiteSpace($ApproverIdsExpr)) { throw "New-TelegramSendAndWaitNode '$Name': ApproverIds leer (hiesse: jeder darf bestaetigen)" }
     if ($ApproverIdsExpr -match '\.item\b') { throw "New-TelegramSendAndWaitNode '$Name': ApproverIds-Ausdruck mit .item traegt im Webhook-Kontext nicht -> .first()" }
     # Texte (Labels, Popup) werden teils im Webhook-Kontext neu ausgewertet (n8n liest unauthorizedReplyText beim
-    # Tipp) -> nur .first(). Und Text-Knoten entscheiden NIE ueber Empfaenger/Tipp-Berechtigung (Sicherheits-
+    # Tipp) -> nur .first(). Und Text-Knoten entscheiden nie ueber Empfaenger/Tipp-Berechtigung (Sicherheits-
     # Invariante des Gates): chatId/approverIds duerfen 'Render texts'/'Compose messages' nicht referenzieren.
     foreach ($tx in @($ApproveLabel, $DisapproveLabel, $UnauthorizedReply)) {
         if ($tx -match '\.item\b') { throw "New-TelegramSendAndWaitNode '$Name': Text-Ausdruck mit .item traegt im Webhook-Kontext nicht -> .first()" }
@@ -1640,7 +1630,7 @@ function New-TelegramSendAndWaitNode {
     }
 }
 
-# Stale-Tap-Schutz fuer MEHRERE Bestaetigungs-Fragen nacheinander in EINER Execution (Cron-Dialoge, Schleifen).
+# Stale-Tap-Schutz fuer mehrere Bestaetigungs-Fragen nacheinander in einer Execution (Cron-Dialoge, Schleifen).
 # Grund: n8n bindet einen Chat-Bestaetigungs-Tipp an die Execution, nicht an die Nachricht (Telegram hitl/webhook.js
 # vergleicht message_id nicht). Ein Doppel-Tipp auf Frage 1 koennte so die schon wartende Frage 2 beantworten
 # (z. B. "ueberspringen" ungesehen). Der Guard merkt sich je Execution die beantworteten message_ids
@@ -1648,7 +1638,7 @@ function New-TelegramSendAndWaitNode {
 # beantwortete Nachricht zurueck an die Frage (sie wird neu gestellt). Link-Knoepfe (chatApproval aus) liefern keine
 # messageId -> nie "stale" (deren Resume-URL ist ohnehin an den Node gebunden).
 # Rueckgabe: @{ Nodes; Connections } — komplette Verdrahtung Frage -> Guard -> (frisch) $Next | (stale) Frage; der
-# Aufrufer merged beides und verdrahtet die Frage NICHT mehr selbst.
+# Aufrufer merged beides und verdrahtet die Frage nicht selbst.
 function New-StaleTapGuard {
     param([Parameter(Mandatory)][string]$AskName, [Parameter(Mandatory)][string]$Next, [int[]]$Pos)
     $code = [ordered]@{
@@ -1679,13 +1669,13 @@ return { json: Object.assign({}, $input.item.json, { stale_tap: stale }) };
     @{ Nodes = @($code, $if); Connections = $conns }
 }
 
-# Telegram-Send (sendMessage) MIT Inline-Keyboard (Antipp-Buttons -> callback_query). Wie
+# Telegram-Send (sendMessage) mit Inline-Keyboard (Antipp-Buttons -> callback_query). Wie
 # New-TelegramSendNode (Attribution/Retry/Markdown-Escape des dynamischen Texts), zusaetzlich
-# replyMarkup='inlineKeyboard' + EINE Button-Reihe. $Buttons = Array @{ Text=<sichtbar>; Data=<callback_data> };
+# replyMarkup='inlineKeyboard' + eine Button-Reihe. $Buttons = Array @{ Text=<sichtbar>; Data=<callback_data> };
 # -Rows statt -Buttons = mehrere Reihen (Array von Button-Arrays, z. B. ein Knopf je Reihe).
-# Data ist KEIN Nutzer-Text (kein parse_mode) -> nicht escapt, darf eine n8n-Expression sein
+# Data ist kein Nutzer-Text (kein parse_mode) -> nicht escapt, darf eine n8n-Expression sein
 # (z. B. "={{ 'confirm:' + ... }}"). n8n baut daraus reply_markup.inline_keyboard (GenericFunctions
-# addAdditionalFields: rows[].row.buttons[].{text, additionalFields.callback_data}); verifiziert n8n 2.21.7, auf 2.44.4 bestaetigt (hitl_gate_test).
+# addAdditionalFields: rows[].row.buttons[].{text, additionalFields.callback_data}); hitl_gate_test prueft es.
 function New-TelegramInlineKeyboardSendNode {
     param([string]$Name, [int[]]$Pos, [string]$TextExpr, [array]$Buttons, [array]$Rows,
           [string]$ChatIdExpr = '__OWNER_CHAT_ID__',
@@ -1714,7 +1704,7 @@ function New-TelegramInlineKeyboardSendNode {
     $node
 }
 
-# Vorschlag mit EINEM Knopf (naechster Schritt, core.fn_get_next_step) — Gegenstueck zu New-TelegramSendWithPlainFallback:
+# Vorschlag mit einem Knopf (naechster Schritt, core.fn_get_next_step) — Gegenstueck zu New-TelegramSendWithPlainFallback:
 # Text als HTML-Plain (& < > escapt wie die Relay-Kette; parse_mode HTML, weil n8n ein leeres parse_mode still zu Markdown
 # macht), Primary retryOnFail:true + maxTries:1 + onError continueErrorOutput (Retry x onError=Continue ist defekt, GH #10763).
 # Der Fehler-Ausgang [1] gehoert dem Aufrufer: dort die normale Relay-Kette ohne Knopf, damit der Text immer ankommt.
@@ -1750,7 +1740,7 @@ function New-ProactiveBudgetGate {
 }
 
 # Telegram sendMessageDraft ("Bot denkt nach ..."): leerer Text = Platzhalter "Thinking..." (Bot API 9.5+, nur private
-# Chats, max. 30 s, verschwindet mit der naechsten Bot-Nachricht). Rein kosmetisch -> KEIN Retry und onError=continue
+# Chats, max. 30 s, verschwindet mit der naechsten Bot-Nachricht). Rein kosmetisch -> kein Retry und onError=continue
 # (ein Fehlschlag darf nie eine Antwort verzoegern oder einen Alarm ausloesen); keine Nachricht -> kein
 # appendAttribution/Markdown (workflow_lint nimmt operation='sendMessageDraft' aus). draftId fest 1 = je Chat
 # eine Blase, ein erneuter Aufruf aktualisiert sie (statt eine zweite zu zeigen).
@@ -1768,10 +1758,10 @@ function New-TelegramDraftNode {
     }
 }
 
-# Telegram-Relay des lokalen LLM-Gateways (Bot mit Gesicht 2026-10-30, Kopf von provisioning/llm_gateway/server.js):
+# Telegram-Relay des lokalen LLM-Gateways (Kopf von provisioning/llm_gateway/server.js):
 # POST http://127.0.0.1:8090/__telegram/<Method> mit dem Bot-Token als Header (Credential 'Telegram relay (gateway)',
 # httpHeaderAuth). Fuer genau die Bot-API-Aufrufe, die der Telegram-Node nicht (setMessageReaction) bzw. nicht mit
-# Zeitlimit (sendSticker VOR der Antwort) kann. Rein kosmetisch -> kein Retry, onError=continue, Timeout 4 s (Gateway
+# Zeitlimit (sendSticker vor der Antwort) kann. Rein kosmetisch -> kein Retry, onError=continue, Timeout 4 s (Gateway
 # selbst 3 s): ein Fehlschlag kostet nur Herz/Sticker, nie die Antwort. $BodyExpr = n8n-Ausdruck, der das JSON-Objekt
 # liefert ({chat_id, message_id[, emoji]} bzw. {chat_id, sticker:'<set>_<ausdruck>'}).
 function New-TelegramRelayNode {
@@ -1791,11 +1781,11 @@ function New-TelegramRelayNode {
     }
 }
 
-# Fire-and-forget-Aufruf von core.sub_show_thinking (Build-CallWorkflow + wartet NICHT + Fehler werden geschluckt) —
+# Fire-and-forget-Aufruf von core.sub_show_thinking (Build-CallWorkflow + wartet nicht + Fehler werden geschluckt) —
 # die "Bot denkt nach ..."-Anzeige darf die eigentliche Antwort nie aufhalten. $ChatIdExpr = Ziel-Chat (Ausdruck).
 # Davor gehoert ein 'nur private Chats'-IF des Aufrufers (sendMessageDraft gibt es nur dort).
 # $ExecutionIdExpr = Lauf mit Schalter agent.thinking_lease -> Erneuerungs-Schleife bis zum Loeschen; den Schalter
-# MUSS der Aufrufer vorher synchron anlegen (fn_create_thinking_lease) und VOR seiner Antwort loeschen.
+# muss der Aufrufer vorher synchron anlegen (fn_create_thinking_lease) und vor seiner Antwort loeschen.
 function New-ShowThinkingCallNode {
     param([string]$Name, [int[]]$Pos, [Parameter(Mandatory)][string]$ChatIdExpr, [Parameter(Mandatory)][string]$ExecutionIdExpr)
     $id = Get-RequiredWorkflowId 'core.sub_show_thinking' -Caller "New-ShowThinkingCallNode '$Name'"
@@ -1829,9 +1819,9 @@ function New-TelegramEditMessageNode {
 }
 
 # Telegram answerCallbackQuery (resource 'callback'/operation 'answerQuery'): quittiert den Antipp-Button
-# (entfernt den Lade-Spinner am Owner-Client; optionaler kurzer Toast $Text <=200 Zeichen, plain, KEIN
+# (entfernt den Lade-Spinner am Owner-Client; optionaler kurzer Toast $Text <=200 Zeichen, plain, kein
 # parse_mode -> kein Escape noetig). $QueryIdExpr = ={{ ...callback_query.id }}. Eigene Telegram-Methode,
-# KEIN sendMessage -> kein appendAttribution/Markdown (workflow_lint nimmt resource='callback' bewusst aus).
+# kein sendMessage -> kein appendAttribution/Markdown (workflow_lint nimmt resource='callback' bewusst aus).
 function New-TelegramAnswerCallbackNode {
     param([string]$Name, [int[]]$Pos, [string]$QueryIdExpr, [string]$Text = '',
           [int]$MaxTries = 3, [int]$WaitBetweenTries = 2000)
@@ -1850,13 +1840,13 @@ function New-TelegramAnswerCallbackNode {
     }
 }
 
-# Telegram sendDocument (resource 'message'/operation 'sendDocument'): schickt eine Datei aus dem BINARY
+# Telegram sendDocument (resource 'message'/operation 'sendDocument'): schickt eine Datei aus dem Binary
 # eines Vorgaenger-Nodes (binaryData=true, binaryPropertyName = das Binary-Feld, Default 'data' — muss zum
 # Convert-to-File-Output passen). Caption = Legacy-Markdown wie jeder andere Send: n8n setzt parse_mode nur
 # bei sendMessage selbst (GenericFunctions addAdditionalFields), hier also explizit — sonst zeigte Telegram die
 # Escape-Backslashes der zentral escapten Caption (Katalog-Text, ein Uebersetzer darf _ oder [ schreiben).
-# workflow_lint PRUEFT die caption (eigener sendDocument-Zweig liest additionalFields.caption statt .text). WS-5:
-# der Notfallmappe-Egress (fn_render_emergency_binder -> Convert to File -> hier). typeVersion 1.2 +
+# workflow_lint prueft die caption (eigener sendDocument-Zweig liest additionalFields.caption statt .text).
+# Genutzt vom Notfallmappe-Egress (fn_render_emergency_binder -> Convert to File -> hier). typeVersion 1.2 +
 # appendAttribution:false + retryOnFail wie die uebrige New-Telegram*-Familie. Bot-API-Caption-Limit 1024.
 function New-TelegramSendDocumentNode {
     param([string]$Name, [int[]]$Pos, [string]$ChatIdExpr = '__OWNER_CHAT_ID__',
@@ -1884,9 +1874,9 @@ function New-TelegramSendDocumentNode {
 }
 
 # ============================================================
-# WEITERE GEMEINSAME NODE-BUILDER (vorher in mehreren cron.*-Defs dupliziert)
+# WEITERE GEMEINSAME NODE-BUILDER
 
-# Schedule-Trigger; die Cron-Expression ist ein PLATZHALTER `__CFG_SCHEDULE_<KEY>__`, den der Installer beim
+# Schedule-Trigger; die Cron-Expression ist ein Platzhalter `__CFG_SCHEDULE_<KEY>__`, den der Installer beim
 # Einspielen aus core.config (category 'schedule', key = $ScheduleKey) einsetzt (deploy_workflows.sh) — so wirkt
 # `lifeagents config set schedule <key> …` ohne Neubau. Der scheduleTrigger liest seinen Plan nur beim Aktivieren
 # (packages/CLAUDE.md *Scheduled Workflows*). Die Zeile .config.schedule.<key> deklariert das Manifest des Pakets,
@@ -1964,20 +1954,20 @@ function Build-Loop {
 }
 
 # Wrap a workflow definition into the n8n API payload.
-# $Manifest (optional, Phase 4 Discoverability): per-Tool-Capability-Hashtable
+# $Manifest (optional): per-Tool-Capability-Hashtable
 #   @{ Category='<id>' } (id einer catalog.categories[] des eigenen Pakets) bzw. @{ Internal = $true } —
-#   co-located in der Build-Funktion, damit ein neues Tool seine Capability NICHT vergessen kann. Wird als
-#   '_manifest' angehaengt; Build-/'_*'-Keys werden von Save-WorkflowFile NIE serialisiert (reine Build-Zeit-
+#   co-located in der Build-Funktion, damit ein neues Tool seine Capability nicht vergessen kann. Wird als
+#   '_manifest' angehaengt; Build-/'_*'-Keys werden von Save-WorkflowFile nie serialisiert (reine Build-Zeit-
 #   Metadaten). Der Katalog-Renderer (lib/catalog.ps1) zeigt nur Kategorien, die ein Tool nutzt; Titel, Beschreibung
-#   und Beispiele stehen im Textkatalog (<pkg>.help.<id>.*, Textkatalog Phase B).
+#   und Beispiele stehen im Textkatalog (<pkg>.help.<id>.*).
 function Build-Workflow {
     param([string]$Name, [array]$Nodes, $Connections, $Manifest = $null)
     # NOTE: 'active' is intentionally omitted — n8n API treats it as read-only on POST/PUT.
     # errorWorkflow = die id von core.sub_error_notify, in build.ps1 per Name aus dem State aufgeloest
-    # ($ErrorNotifyId) — KEIN ID-Literal mehr. core.sub_error_notify selbst ueberschreibt settings (kein
+    # ($ErrorNotifyId), kein ID-Literal. core.sub_error_notify selbst ueberschreibt settings (kein
     # Self-Verweis -> keine Endlos-Alert-Schleife).
-    # TEST-STARTPUNKT JE CRON (2026-10-26, schnellere freie Gates): ein Workflow mit dem Zeitplan-Trigger bekommt
-    # GENERISCH einen zweiten Einstieg 'Test run' (Build-Trigger, Eingaben leer bis auf chat_id) mit denselben Kanten. Der
+    # Test-Startpunkt je Cron: ein Workflow mit dem Zeitplan-Trigger bekommt
+    # generisch einen zweiten Einstieg 'Test run' (Build-Trigger, Eingaben leer bis auf chat_id) mit denselben Kanten. Der
     # Test-Eingang core.cron_run.test_harness (nur Test-Instanzen) startet den Cron darueber sofort, statt den Zeitplan
     # auf jede Minute zu stellen und zu warten (cron_text_test). Nur aus n8n selbst erreichbar; kein Cron liest seinen
     # Trigger-Knoten, der Lauf ist mit jedem Start-Item identisch.
@@ -2002,14 +1992,14 @@ function Build-Workflow {
 }
 
 # ============================================================
-# MODELL ZUR LAUFZEIT (Festwert-Phase 2) — kein Config-Wert wird mehr beim Bauen eingebacken.
-# Jeder Workflow, der ein konfigurierbares Modell nutzt, liest den model_key bei JEDEM Lauf aus core.config
+# MODELL ZUR LAUFZEIT — kein Config-Wert wird beim Bauen eingebacken.
+# Jeder Workflow, der ein konfigurierbares Modell nutzt, liest den model_key bei jedem Lauf aus core.config
 # (Pg-Knoten 'Load model config'); `lifeagents config set model <key> <wert>` wirkt damit ab dem naechsten Lauf.
 # Die Zuordnung model_key -> n8n_model_id backt der Bau aus packages/core/seed/ai_models.json ein (dieselbe Quelle
-# und Semantik wie der Umschalter, der sie seit jeher in seine Modell-Knoten schreibt; das Register aendert sich nur
+# und Semantik wie der Umschalter; das Register aendert sich nur
 # per Release, Seed und Bau lesen dieselbe Datei). config_test (4) prueft die Bezuege statisch.
 
-# New-ModelConfigNode — DER Pg-Knoten 'Load model config': liest je (Paket, Key) den model_key per
+# New-ModelConfigNode — der Pg-Knoten 'Load model config': liest je (Paket, Key) den model_key per
 # core.fn_config_get (publiziertes Fenster, an alle Paket-Rollen gegrantet) -> Item { model: { <key>: <model_key> } }.
 # Credential = das dynamische $CRED_POSTGRES des Aufrufers (Build-Pg; z. B. finance_rw im Belege-Tool).
 # Jeder (Paket, Key) muss als .config.model.<key> im Manifest des Pakets stehen (Build-Fehler statt stillem NULL).
@@ -2037,7 +2027,7 @@ function New-ModelConfigNode {
 }
 
 # Get-ModelIdMapJs — JS-Objekt-Literal { model_key: n8n_model_id } aller Claude-Chat-Modelle des Registers
-# (provider Anthropic, mode chat). EINE Quelle fuer den HTTP-Body (New-AnthropicMessagesNode) und das
+# (provider Anthropic, mode chat). Eine Quelle fuer den HTTP-Body (New-AnthropicMessagesNode) und das
 # Modell-Etikett im expert_panel. Ein model_key ausserhalb der Zuordnung ergibt zur Laufzeit undefined.
 function Get-ModelIdMapJs {
     $u8 = New-Object System.Text.UTF8Encoding($false)
@@ -2050,26 +2040,26 @@ function Get-ModelIdMapJs {
 }
 
 # ============================================================
-# New-LmChatNode — die EINE Quelle fuer EINEN Modell-Node aus einem model_key.
+# New-LmChatNode — die eine Quelle fuer einen Modell-Node aus einem model_key.
 # Liest packages/core/seed/ai_models.json, loest n8n_model_id auf und emittiert
 #   @n8n/n8n-nodes-langchain.lmChatAnthropic (typeVersion 1.5), options.thinkingMode='adaptive',
-#   KEINE Sampling-Parameter (die 5.5-Generation lehnt temperature mit 400 ab).
-# Chat-Modelle sind seit Modell-Phase 2 nur noch Claude (Owner-Entscheid 2026-10-19); ein Register-Eintrag eines
-# anderen Anbieters oder ein Embedding-Modell am Chat-Node bricht den BAU ab (statt still einen fremden Node zu bauen).
-# Seit Festwert-Phase 2 nur noch der interne Knoten-Bauer des Model-Selector-Bundles (ein Node je Chat-Modell des
-# Registers) -> Node-Konventionen leben an EINER Stelle; Einzel-Modell-Verbraucher gibt es nicht mehr (jedes Modell
+#   keine Sampling-Parameter (die 5.5-Generation lehnt temperature mit 400 ab).
+# Chat-Modelle sind nur Claude; ein Register-Eintrag eines
+# anderen Anbieters oder ein Embedding-Modell am Chat-Node bricht den Bau ab (statt still einen fremden Node zu bauen).
+# Interner Knoten-Bauer des Model-Selector-Bundles (ein Node je Chat-Modell des
+# Registers) -> Node-Konventionen leben an einer Stelle; kein Einzel-Modell-Verbraucher (jedes Modell
 # ist zur Laufzeit umschaltbar).
 #
-# DENK-TIEFE + ANTWORTLAENGE (Anthropic, Node v1.5 — Node-Source 2.21.7 + 2.44.4 verifiziert): adaptive -> invocationKwargs
+# DENK-TIEFE + ANTWORTLAENGE (Anthropic, Node v1.5): adaptive -> invocationKwargs
 # thinking:{type:'adaptive'} + output_config:{effort}. Ohne Wert gilt effort 'medium' und max_tokens 4096 —
 # Denken zaehlt zu max_tokens (5.5-Generation denkt immer mit) -> 4096 schneidet Antworten STILL ab.
 # Daher setzt jeder Verbraucher -Effort bewusst (low|medium|high; xhigh/max zeigt der Node nur fuer Opus)
 # und max_tokens ist grosszuegig 16000 (maxTokensToSample).
 #
-# PROMPT-CACHING: setzt NICHT dieser Node, sondern der lokale LLM-Gateway (provisioning/llm_gateway), auf den
+# PROMPT-CACHING: setzt nicht dieser Node, sondern der lokale LLM-Gateway (provisioning/llm_gateway), auf den
 # die Anthropic-Credential (url) zeigt — Haltepunkte am letzten Werkzeug + System-Ende (1h) + oben (5 Min).
-# Node v1.5 (unser Pin) hat keine Caching-Option (Node-Source 2.44.4 geprueft); die eingebaute Option ab n8n 2.37 (Node v1.6) setzt nur den oberen
-# Haltepunkt (kein Treffer ueber Gespraeche/Testfaelle) -> auch nach einem n8n-Update NICHT einschalten (der
+# Node v1.5 (unser Pin) hat keine Caching-Option; die eingebaute Option ab n8n 2.37 (Node v1.6) setzt nur den oberen
+# Haltepunkt (kein Treffer ueber Gespraeche/Testfaelle) -> auch nach einem n8n-Update nicht einschalten (der
 # Gateway erkennt einen vorhandenen oberen Marker und laesst ihn stehen; brachte nichts zusaetzlich).
 function New-LmChatNode {
     param(
@@ -2101,7 +2091,7 @@ function New-LmChatNode {
     $model = [ordered]@{ '__rl' = $true; mode = 'list'; value = $m.n8n_model_id }
     if ($cachedName.ContainsKey($m.n8n_model_id)) { $model['cachedResultName'] = $cachedName[$m.n8n_model_id] }
     return [ordered]@{
-        # Bewusst KEIN Caching-Key in 'options' — Prompt-Caching macht der LLM-Gateway (Kommentar oben).
+        # Bewusst kein Caching-Key in 'options' — Prompt-Caching macht der LLM-Gateway (Kommentar oben).
         parameters  = [ordered]@{ model = $model; options = [ordered]@{ maxTokensToSample = $MaxTokens; thinkingMode = 'adaptive'; effort = $Effort } }
         type        = '@n8n/n8n-nodes-langchain.lmChatAnthropic'
         typeVersion = 1.5
@@ -2113,21 +2103,21 @@ function New-LmChatNode {
 }
 
 # ============================================================
-# MODEL SELECTOR BUNDLE — die EINE Quelle fuer den Modell-Selektor (ueberall identisch).
+# MODEL SELECTOR BUNDLE — die eine Quelle fuer den Modell-Selektor (ueberall identisch).
 # Je Selector-Zeile der Registry (selector_index NOT NULL) ein Modell-Node (Name = model_key aus
 # packages/core/seed/ai_models.json) + Model Selector mit einer Regel je Zeile. -Effort = Denk-Tiefe des
-# Verbrauchers (gilt fuer alle seine Anthropic-Nodes). Pro Use-Case waehlt NUR der Config-Wert (model.<consumer>) das
-# aktive Modell — kein Tier-Schema mehr ([LIGHT]/[STANDARD]/[ADVANCED] sind obsolet).
-# Anzahl Nodes/Regeln = Anzahl Chat-Zeilen der Registry (heute 3: Haiku/Sonnet/Opus), nie hart verdrahtet.
-# Anthropic-Nodes: adaptives Thinking an, KEINE Sampling-Parameter (New-LmChatNode). Modell-IDs + selector_index
-# kommen aus der Registry -> ein selector_index-Drift wie der alte "alle auf Sonnet"-Bug ist ausgeschlossen.
+# Verbrauchers (gilt fuer alle seine Anthropic-Nodes). Pro Use-Case waehlt nur der Config-Wert (model.<consumer>) das
+# aktive Modell.
+# Anzahl Nodes/Regeln = Anzahl Chat-Zeilen der Registry, nie hart verdrahtet.
+# Anthropic-Nodes: adaptives Thinking an, keine Sampling-Parameter (New-LmChatNode). Modell-IDs + selector_index
+# kommen aus der Registry -> ein selector_index-Drift ist ausgeschlossen.
 # Rueckgabe: @{ Nodes = <je Chat-Modell ein Node + Selector>; Connections = <ordered: je Modell -> Selector, Selector -> Agent> }.
-# -NamePrefix: zwei Umschalter in EINEM Workflow (expert_panel: Lane A + Lane B) — n8n verlangt eindeutige Knoten-Namen,
+# -NamePrefix: zwei Umschalter in einem Workflow (expert_panel: Lane A + Lane B) — n8n verlangt eindeutige Knoten-Namen,
 #   und die Verbindungen sind ueber den Namen verdrahtet -> der Praefix gilt fuer Modell-Knoten, Selector-Name,
-#   Verbindungs-Schluessel UND -Ziel. Default '' = Bestands-Ausgabe unveraendert.
+#   Verbindungs-Schluessel und -Ziel. Default ''.
 # -FirstConfigItem: die Regeln lesen $('<ConfigNode>').first() statt .item — fuer Verbraucher, bei denen zwischen dem
 #   Config-Knoten (genau 1 Zeile) und der Kette Code-Knoten liegen, deren Item-Zuordnung n8n nicht garantiert
-#   (Advisor-Crons, Panel). Bestand (Agenten, learn-Cron) bleibt bei .item.
+#   (Advisor-Crons, Panel). Agenten und learn-Cron bleiben bei .item.
 function New-ModelSelectorBundle {
     param(
         [Parameter(Mandatory)][string]$ConfigField,     # z. B. 'model.finance' / 'model.finance_advisor' / 'model.orchestrator'
@@ -2146,11 +2136,11 @@ function New-ModelSelectorBundle {
     $accessor = if ($FirstConfigItem) { 'first()' } else { 'item' }
     $u8 = New-Object System.Text.UTF8Encoding($false)
     # Nur Chat-Zeilen (mode='chat' <=> selector_index gesetzt, DB-CHECK + config_test 5): Embeddings (z. B.
-    # gemini-embedding-001) VOR Sort/Node-Bau UND Regel-Bau filtern — [int]$null waere 0 -> index -1 = ungueltige
-    # Connection fuer JEDEN Selector-Konsumenten. Die Chat-Nummern sind lueckenlos 1..n (config_test 5), weil der
+    # gemini-embedding-001) vor Sort/Node-Bau und Regel-Bau filtern — [int]$null waere 0 -> index -1 = ungueltige
+    # Connection fuer jeden Selector-Konsumenten. Die Chat-Nummern sind lueckenlos 1..n (config_test 5), weil der
     # Selector Eingang selector_index-1 bei numberInputs = n verdrahtet.
-    # Klammerung PFLICHT (PS-5.1-Quirk): ConvertFrom-Json reicht das Array als EIN Pipeline-Objekt
-    # weiter — ein direkt angehaengtes Where-Object filtert sonst NIE.
+    # Klammerung Pflicht (PS-5.1-Quirk): ConvertFrom-Json reicht das Array als EIN Pipeline-Objekt
+    # weiter — ein direkt angehaengtes Where-Object filtert sonst nie.
     $models = ([System.IO.File]::ReadAllText("$RepoRoot\packages\core\seed\ai_models.json", $u8) | ConvertFrom-Json) |
         Where-Object { $_.mode -eq 'chat' } | Sort-Object selector_index
 
@@ -2159,7 +2149,7 @@ function New-ModelSelectorBundle {
     $i = 0
     foreach ($m in $models) {
         $px = [int]$ModelRowPos[0] + ([int]$i * [int]$ModelDx)
-        # Jeder Modell-Node aus der EINEN Quelle New-LmChatNode (Thinking, Denk-Tiefe, Caching-Wiring).
+        # Jeder Modell-Node aus der einen Quelle New-LmChatNode (Thinking, Denk-Tiefe, Caching-Wiring).
         $nodes += (New-LmChatNode -ModelKey $m.model_key -Name "$NamePrefix$($m.model_key)" -Position @($px, [int]$ModelRowPos[1]) `
                        -Models $models -Effort $Effort -AnthropicCred $AnthropicCred)
         # Modell-Node -> Model Selector am Eingang selector_index-1 (Array-Form via Komma-Operator).
@@ -2203,16 +2193,16 @@ function New-ModelSelectorBundle {
 }
 
 # ============================================================
-# ANTHROPIC MESSAGES (HTTP) — die EINE Quelle fuer direkte Claude-Aufrufe ohne Agent/Chain.
+# ANTHROPIC MESSAGES (HTTP) — die eine Quelle fuer direkte Claude-Aufrufe ohne Agent/Chain.
 # Fuer Pfade, die der lmChatAnthropic-Node nicht kann: Bild/PDF-Bloecke, Structured Output
 # (output_config.format), Server-Tool web_search. Konsumenten: tool_web_search, Monitor-Wert-
 # beschaffung (monitor_helpers.ps1), Belege-/Lebenslauf-Extraktion, Job-Scorer.
-# Warum HTTP statt nativem n8n-Anthropic-Node: scripts/build/CLAUDE.md *Modell-Node-Builder* (arch-challenge 2026-10-19).
+# Warum HTTP statt nativem n8n-Anthropic-Node: scripts/build/CLAUDE.md *Modell-Node-Builder*.
 # Bewusst kein -AnthropicCred-Override (kein Konsument braucht ihn; anders als New-LmChatNode).
 # Denken: kein thinking-Parameter -> die 5.5-Generation denkt adaptiv; effort steuert die Tiefe.
-# max_tokens grosszuegig (Denken zaehlt mit). Auswertung IMMER ueber Get-AnthropicResultJs (stop_reason!).
+# max_tokens grosszuegig (Denken zaehlt mit). Auswertung immer ueber Get-AnthropicResultJs (stop_reason).
 # URL = der lokale LLM-Gateway (provisioning/llm_gateway, 127.0.0.1:8090) statt api.anthropic.com: er misst die
-# Nutzung (Kosten-Report, Header x-lifeagents-workflow = Workflow) und reicht unveraendert weiter — gecacht wird hier NICHT (Einmal-Aufruf ohne eigene
+# Nutzung (Kosten-Report, Header x-lifeagents-workflow = Workflow) und reicht unveraendert weiter — gecacht wird hier nicht (Einmal-Aufruf ohne eigene
 # Werkzeuge; ein Cache-Eintrag wuerde 1,25x/2x kosten und nie gelesen). Im Mock-Tier landet der Aufruf so beim
 # Mock statt kostenpflichtig bei Anthropic.
 
@@ -2233,9 +2223,9 @@ function ConvertTo-JsLiteral {
 
 # New-AnthropicMessagesNode — HTTP-Request-Node auf /v1/messages (laeuft per Item).
 #   -ConfigModelKey  Modell-Key in core.config (z. B. 'web_search'); das Modell kommt zur LAUFZEIT aus dem
-#               Pg-Knoten -ConfigNodeName (New-ModelConfigNode, MUSS vorher im Pfad liegen) und wird ueber die
+#               Pg-Knoten -ConfigNodeName (New-ModelConfigNode, muss vorher im Pfad liegen) und wird ueber die
 #               eingebackene Zuordnung (Get-ModelIdMapJs) zur n8n_model_id. .first(): der Config-Knoten hat genau
-#               EINE Zeile, auch wenn der HTTP-Knoten viele Items abarbeitet (Monitor-Cron). Unbekannter/leerer
+#               eine Zeile, auch wenn der HTTP-Knoten viele Items abarbeitet (Monitor-Cron). Unbekannter/leerer
 #               Key -> model null -> Anthropic 400 -> anthropicText {ok:false} (nie still ein anderes Modell).
 #   -System     statischer System-Text (EN, Layer 1)
 #   -ContentJs  roher JS-Ausdruck fuer den user-content (String ODER Block-Array, z. B. Bild/PDF + Text)
@@ -2366,7 +2356,7 @@ return out({ ok: true, error: '', mime: '', failed_file_id: '', file_count: list
 
 # Get-AnthropicResultJs — JS-Prelude fuer den auswertenden Code-Node: definiert
 #   anthropicText(r) -> { ok:true, text } | { ok:false, error }   (alle text-Bloecke OHNE Trenner zusammengefuegt —
-#     Zitate splitten EINEN Text an Quellen-Grenzen in mehrere Bloecke, ein '\n' braeche JSON-Strings;
+#     Zitate splitten einen Text an Quellen-Grenzen in mehrere Bloecke, ein '\n' braeche JSON-Strings;
 #     HTTP-Fehler/onError-Objekt, stop_reason max_tokens|refusal|pause_turn und leere Antwort -> ok:false,
 #     nie eine still abgeschnittene Antwort)
 #   stripFences(t) -> t ohne ```json-Zaun

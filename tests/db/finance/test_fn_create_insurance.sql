@@ -264,6 +264,14 @@ BEGIN
   IF (v_result->>'ok')::boolean IS DISTINCT FROM false OR v_result->>'reason' NOT LIKE '%debit account%'
      OR EXISTS (SELECT 1 FROM finance.insurances WHERE name = '__test_ins_noacct__') THEN
     RAISE EXCEPTION 'FAIL fn_create_insurance [Beitrag ohne Konto]: ok:false ohne Write erwartet, got %', v_result; END IF;
+  -- Ohne Beitrag bleibt ein mitgegebenes Konto ungenutzt und ungeprueft (Depot waere als Abbuchungskonto abgelehnt)
+  DECLARE v_dep INT; BEGIN
+    INSERT INTO finance.accounts (name, account_type, currency, settlement_account_id)
+    VALUES ('__test_ins_depot2__', 'stocks_depot', 'EUR', v_acct_id) RETURNING id INTO v_dep;
+    SELECT finance.fn_create_insurance(jsonb_build_object('name','__test_ins_free_dep__','debit_account_id',v_dep)) INTO v_result;
+    IF (v_result->>'ok')::boolean IS DISTINCT FROM true OR v_result->>'recurring_payment_id' IS NOT NULL THEN
+      RAISE EXCEPTION 'FAIL fn_create_insurance [ohne Beitrag, Depot-Konto]: ok:true ohne Kette erwartet, got %', v_result; END IF;
+  END;
   -- Notiz auch auf dem Normalweg
   SELECT finance.fn_create_insurance(jsonb_build_object('name','__test_ins_note__','annual_premium',50,
     'first_payment_date','2026-01-01','debit_account_id',v_acct_id,'notes','Tarif Basis')) INTO v_result;

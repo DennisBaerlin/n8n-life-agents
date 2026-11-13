@@ -23,7 +23,7 @@
 --   claim_deadline_hours (WS-0b estate: partielles Update der Nachlass-Felder; leer=unveraendert).
 --   RUECKGABE: {ok:true, insurance_id, recurring_payment_id (Kopf), split/previous_id (nur bei Beitragsaenderung), effective_from (erste
 --   Abbuchung des neuen bzw. nachgetragenen Beitrags), premium_amount + annual_premium (wirksam ab dem Stichtag, nur bei Beitragsaenderung)}.
---   Korrigierbar (Beitrag <= 0/unstimmig/unlesbar, Rhythmus ohne Betrag, Tag/Ende an einer Police ohne Beitrag, Beitrag
+--   Korrigierbar (Konto ausser beim Nachtragen, Beitrag <= 0/unstimmig/unlesbar, Rhythmus ohne Betrag, Tag/Ende an einer Police ohne Beitrag, Beitrag
 --   nachtragen an einer nicht aktiven Police, ohne effective_from oder Konto bzw. auf ein Nicht-EUR- oder nicht buchbares Konto,
 --   status/schedule_unit/insurance_type unbekannt, coverage_amount<0, Meldefrist ungueltig, Ende vor Vertragsbeginn,
 --   Split-Guards) -> {ok:false}.
@@ -94,6 +94,11 @@ BEGIN
         RETURN jsonb_build_object('ok', false,
             'reason', 'This policy has no premium recorded yet - a debit day or contract end needs the premium first '
                    || '(premium with effective_from = first debit and the debit account); to end it without a premium set status cancelled/expired.');
+    END IF;
+    -- Das Konto zaehlt nur beim Nachtragen; an einer bestehenden Kette wuerde es still verworfen, die Karte zeigte es aber
+    IF v_acct IS NOT NULL AND (v_head IS NOT NULL OR v_per IS NULL) THEN
+        RETURN jsonb_build_object('ok', false,
+            'reason', 'A debit account is only taken together with the premium of a policy that has none yet - the debit account of a recorded premium cannot be changed here.');
     END IF;
     -- Beitrag nachtragen (Police ohne Kette, wie fn_set_loan beim Kredit ohne Rate): effective_from = erste Abbuchung
     IF v_head IS NULL AND v_per IS NOT NULL THEN

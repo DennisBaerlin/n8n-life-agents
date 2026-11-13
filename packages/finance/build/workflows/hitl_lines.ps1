@@ -211,7 +211,9 @@ function Get-FinanceHitlLines {
                 (New-HitlLine 'finance.label.annual_contribution'  (& $need 'Annual') -Kind money -EurByModel -If $hasP)
                 (New-HitlLine 'finance.label.debit_day'            $dom -Kind tpl -Params @{ day = "$S.schedule_day_of_month" } -If $hasP)
                 (New-HitlLine 'finance.label.debit_account'        "$S.debit_account_name" -If $hasP)
-                (New-HitlLine 'finance.label.valid_from_contract'  "($S.valid_from || $S.first_payment_date)" -Kind date)
+                # Vertragsbeginn wie gespeichert (ohne Beitrag und ohne Angabe: heute) -- Einzel-Tool aus dem Probelauf, Import aus
+                # fn_import_card_rows
+                (New-HitlLine 'finance.label.valid_from_contract'  (& $need 'ValidFrom') -Kind date)
                 (New-HitlLine 'finance.label.first_debit'          "$S.first_payment_date" -Kind date -If $hasP)
                 (New-HitlLine 'finance.label.insurance_type'       "$S.insurance_type" -Kind enum -Enum 'finance.enum.insurance_type' -OmitEmpty)
                 (New-HitlLine 'finance.label.coverage_amount'      "$S.coverage_amount" -Kind money -EurByModel -OmitEmpty)
@@ -387,9 +389,9 @@ $script:FIN_IMPORT_CARD = [ordered]@{
                            # gespeichert -- die Karte zeigt das gewaehlte Depot
                            Covered = @('quote_currency', 'transaction_date', 'symbol', 'depot_holder') }
     insurance         = @{ Heading = 'finance.label.insurance'; Alias = @{ debit_account = 'debit_account_name' }
-                           D = @{ Person = 'X.person'; PeriodAmount = 'X.period_amount'; Annual = 'X.annual_premium' }
-                           # Beitrag: die Karte zeigt den Betrag je Abbuchung bzw. Jahreswert als abgeleiteten Wert (X.*)
-                           Covered = @('premium_amount', 'annual_premium') }
+                           D = @{ Person = 'X.person'; PeriodAmount = 'X.period_amount'; Annual = 'X.annual_premium'; ValidFrom = 'X.valid_from' }
+                           # Beitrag und Vertragsbeginn: die Karte zeigt sie als abgeleitete Werte (X.*), wie gespeichert
+                           Covered = @('premium_amount', 'annual_premium', 'valid_from') }
     pension           = @{ Heading = 'finance.label.pension'; Alias = @{ debit_account = 'debit_account_name' }
                            D = @{ Person = 'X.person' }; Covered = @() }
     # pension_id = interner Griff von fn_import_stage (Folgebescheid an die vorhandene gesetzliche Rente); die Karte

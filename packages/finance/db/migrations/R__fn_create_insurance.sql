@@ -75,6 +75,11 @@ BEGIN
         RETURN jsonb_build_object('ok', false,
             'reason', 'The date of the first debit (first_payment_date) is required - ask the user when the premium is first debited (the policy start alone is not enough).');
     END IF;
+    -- Ohne Beitrag wird kein Konto geschrieben -> ein mitgegebenes bleibt ungeprueft (sonst lehnte ein Fremdwaehrungs-
+    -- oder Depotkonto eine gueltige Police ohne Beitrag ab).
+    IF v_per IS NULL THEN
+        v_acct := NULL;
+    END IF;
     SELECT currency INTO v_acct_ccy FROM finance.accounts WHERE id = v_acct;
     IF v_acct_ccy IS NOT NULL AND v_acct_ccy <> 'EUR' THEN
         RETURN jsonb_build_object('ok', false,

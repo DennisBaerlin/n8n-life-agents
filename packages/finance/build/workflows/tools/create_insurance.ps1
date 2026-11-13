@@ -83,7 +83,7 @@ function Build-CreateInsurance {
     $S = "(Object.assign({}, `$('Start').item.json, { coverage_amount: `$('Preview Rate').item.json.coverage_amount }))"
     $P = "`$('Resolve Person').item.json"
     $summary = New-HitlSummary -Pos @(1760, 0) -Title 'finance.hitl.create_insurance' -LinesExpr $wg.CardLinesExpr -Lines (Get-FinanceHitlLines -Entity insurance -S (Get-WritePayloadExpr) -D @{
-        Person = "$P.full_name"; PeriodAmount = "`$('Preview Rate').item.json.period_amount"; Annual = "`$('Preview Rate').item.json.annual_premium" })
+        Person = "$P.full_name"; PeriodAmount = "`$('Preview Rate').item.json.period_amount"; Annual = "`$('Preview Rate').item.json.annual_premium"; ValidFrom = "($(Get-WritePayloadExpr).valid_from || $(Get-WritePayloadExpr).first_payment_date)" })
 
     $gateId = $GateId
     $reqApproval = Build-CallWorkflow 'Request Approval' @(1980, 0) $gateId 'agent.tool_human_approval' `

@@ -200,6 +200,11 @@ BEGIN
      IS DISTINCT FROM '-12.00|month|2026-02-01|' || v_acct || '|Versicherung __test_set_ins_nach__'
      OR (v_res->>'recurring_payment_id')::int IS DISTINCT FROM (SELECT recurring_payment_id FROM finance.insurances WHERE id = v_id) THEN
     RAISE EXCEPTION 'FAIL set_insurance [nachtragen]: Kette -12 monatlich ab 2026-02-01 am Konto erwartet'; END IF;
+  -- Konto an einer bestehenden Kette -> ok:false (wuerde sonst still verworfen, die Karte zeigte es)
+  v_res := finance.fn_set_insurance(jsonb_build_object('insurance_id', v_id, 'debit_account_id', v_acct, 'notes', 'x'));
+  IF (v_res->>'ok')::boolean IS DISTINCT FROM false OR v_res->>'reason' NOT LIKE '%debit account%'
+     OR (SELECT notes FROM finance.insurances WHERE id = v_id) IS NOT NULL THEN
+    RAISE EXCEPTION 'FAIL set_insurance [Konto an Kette]: ok:false ohne Write erwartet, got %', v_res; END IF;
   -- Danach ist es eine normale Police: Vertragsende landet an der Kette
   v_res := finance.fn_set_insurance(jsonb_build_object('insurance_id', v_id, 'valid_to', '2027-12-31'));
   IF (SELECT valid_to FROM finance.recurring_payments WHERE id = (SELECT recurring_payment_id FROM finance.insurances WHERE id = v_id))

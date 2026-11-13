@@ -14,6 +14,7 @@
 --     depot_number_to_store Depot-Position: gedruckte Depotnummer, die der Commit am Depot nachtraegt
 --                     (fn_import_depot_number_to_store, dieselbe Bedingung wie fn_import_bundle), sonst NULL
 --     period_amount   Versicherung: Rate je Abbuchung (fn_insurance_period_amount, wie fn_create_insurance)
+--     valid_from      Versicherung: Vertragsbeginn wie gespeichert (genannt, sonst erste Abbuchung, sonst heute)
 --     schedule        Sparziel: fn_savings_rate_schedule (wie fn_create_savings_goal)
 --     running         Kredit: laufend (Restschuld zum Stichtag heute) wie fn_create_loan, sonst frisch
 --     rate_split      Kredit mit Rate: {interest, principal} der 1. Rate aus der Restschuld (fn_loan_monthly_interest,
@@ -76,7 +77,10 @@ BEGIN
         ELSIF v_row.entity_type = 'insurance' THEN
             -- dieselbe Pruef-/Ableitungs-fn wie fn_create_insurance (WP2): Betrag je Abbuchung roh oder aus dem
             -- Jahresbeitrag, Jahreswert abgeleitet
-            v_x := v_x || (SELECT jsonb_build_object('period_amount', f->'premium_amount', 'annual_premium', f->'annual_premium')
+            v_x := v_x || (SELECT jsonb_build_object('period_amount', f->'premium_amount', 'annual_premium', f->'annual_premium',
+                                  -- Vertragsbeginn wie fn_create_insurance ihn speichert (Rueckfall erste Abbuchung, sonst heute)
+                                  'valid_from', COALESCE(NULLIF(v_p->>'valid_from', ''), NULLIF(v_p->>'first_payment_date', ''),
+                                                         to_char(core.fn_today(), 'YYYY-MM-DD')))
                            FROM finance.fn_insurance_fields(v_p) f);
         ELSIF v_row.entity_type = 'savings_goal' THEN
             -- Rate/Datum/erste Rate aus DERSELBEN Ableitung wie der Commit (fn_create_savings_goal ->

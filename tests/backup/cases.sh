@@ -73,6 +73,10 @@ cli backup export "$W/x.nla.enc"; rc=$?
 ( cd "$W" && "$CLI" backup export > "$W/out.e2" 2>&1 < /dev/null ); rc2=$?
 fa="$(cd "$W" && ls -1 lifeagents-backup-*.nla.enc 2>/dev/null | head -n1)"
 ok_if E.export-ok '[ "$rc" -eq 0 ] && [ "$rc2" -eq 0 ] && [ -s "$W/x.nla.enc" ]' "rc=$rc/$rc2"
+# Alle Pakete = Fremdschluessel-Ringe (accounts, recurring_payments, ...): pg_dump -a warnt darueber; mit --disable-triggers
+# harmlos, darum nicht in der Ausgabe (Live-Fund v0.43.1). Sonstige Ausgabe bleibt.
+ok_if E.export-ohne-ring-warnung '! grep -q "circular foreign-key" "$W/out.e2" && grep -q "Backup geschrieben" "$W/out.e2"' \
+  "$(grep -m1 'circular\|pg_dump' "$W/out.e2" || true)"
 ok_if E.name-mit-id-und-version '[[ "$fa" =~ ^lifeagents-backup-[0-9]{14}-${kidA}-v[0-9A-Za-z.-]+\.nla\.enc$ ]]' "Name: $fa"
 ok_if E.state-last-ok 'grep -qE "^LAST_OK=[0-9]+$" "$BACKUP_STATE_FILE"' "backup.state ohne LAST_OK"
 ok_if E.schluessel-unveraendert 'active_is "$KA" && [ "$(prev_n)" = 0 ]'

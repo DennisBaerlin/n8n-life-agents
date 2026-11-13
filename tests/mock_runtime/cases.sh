@@ -340,6 +340,25 @@ _pairs=(); for i in $(seq 1 120); do _pairs+=("'t$i', $i"); done
 _obj="$( { _bkp_jsonb_obj "${_pairs[@]}"; } 2>/dev/null || true)"
 eq R.json-bloecke-zu-50 '3 0 120' "$(printf '%s' "$_obj" | grep -o 'jsonb_build_object(' | wc -l) $(printf '%s' "$_obj" | grep -o "'t[0-9]*'" | sort | uniq -d | wc -l) $(printf '%s' "$_obj" | grep -o "'t[0-9]*'" | wc -l)"
 eq R.json-leer "'{}'::jsonb" "$( { _bkp_jsonb_obj; } 2>/dev/null || true)"
+# pg_dump -a meldet Fremdschluessel-Ringe als Warnung (harmlos mit --disable-triggers) -> nur genau dieser Block faellt weg,
+# jede andere Warnung samt ihrem Hinweis und jeder Fehler bleiben sichtbar (Texte wie pg_dump 17, Tabellennamen erfunden).
+_pgerr='pg_dump: warning: there are circular foreign-key constraints on this table:
+pg_dump: detail: konten
+pg_dump: hint: You might not be able to restore the dump without using --disable-triggers or temporarily dropping the constraints.
+pg_dump: hint: Consider using a full dump instead of a --data-only dump to avoid this problem.
+pg_dump: warning: there are circular foreign-key constraints among these tables:
+pg_dump: detail: objekte
+pg_dump: detail: buchungen
+pg_dump: detail: kredite
+pg_dump: hint: You might not be able to restore the dump without using --disable-triggers or temporarily dropping the constraints.
+pg_dump: hint: Consider using a full dump instead of a --data-only dump to avoid this problem.
+pg_dump: warning: could not find something else
+pg_dump: hint: some other hint
+pg_dump: error: query failed'
+eq R.pgdump-ring-warnung-weg 'pg_dump: warning: could not find something else|pg_dump: hint: some other hint|pg_dump: error: query failed' \
+  "$(printf '%s\n' "$_pgerr" | { _bkp_pgdump_stderr 2>/dev/null || true; } | paste -sd'|' -)"
+eq R.pgdump-ohne-ring-unveraendert 'pg_dump: detail: x|pg_dump: warning: y' \
+  "$(printf 'pg_dump: detail: x\npg_dump: warning: y\n' | { _bkp_pgdump_stderr 2>/dev/null || true; } | paste -sd'|' -)"
 
 # ---------------------------------------------------------------------------- B: Sicherungs-Schluessel (Notfallblatt)
 # Erfundene Schluessel, nie ein echter Wert (Repo oeffentlich).

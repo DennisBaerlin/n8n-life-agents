@@ -7,6 +7,8 @@
 # Ob die Pruefung wirklich gelaufen ist, kann es nicht sehen; der Skill schreibt vor, wann es laufen darf.
 # Mit -AllTags gilt der Stempel auch fuer denselben Push ohne Tags (prek sieht --tags nicht; der Text ist eine Teilmenge des Gepruefften).
 # Usage:  .\scripts\privacy_review_stamp.ps1 [-Ref <ref>] [-Remote <name>] [-DestRef <zielname>] [-AllTags]
+# Exit 0 = Stempel gesetzt oder nichts Neues ausgehend; 1 = kein Stempel (Stand nicht aufloesbar, Arbeitsbaum nicht sauber, Lint rot,
+# Ausgehendes nicht bestimmbar).
 param([string]$Ref = 'HEAD', [string]$Remote = 'origin', [string]$DestRef, [switch]$AllTags)
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $ErrorActionPreference = 'Stop'

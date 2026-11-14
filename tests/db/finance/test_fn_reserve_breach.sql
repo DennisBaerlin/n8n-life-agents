@@ -138,10 +138,10 @@ BEGIN
     INSERT INTO finance.savings_goal_reserve_entries (savings_goal_id, account_id, delta_native, kind)
       VALUES (v_gD, v_dep, 1000, 'manual');   -- reserved 1000, kein Marktwert -> depot_reserve_status.breach
     IF (SELECT breach FROM finance.depot_reserve_status WHERE account_id = v_dep) IS DISTINCT FROM true THEN
-      RAISE EXCEPTION 'SETUP FAIL [WP-5a]: depot_reserve_status.breach erwartet true'; END IF;
+      RAISE EXCEPTION 'SETUP FAIL: depot_reserve_status.breach erwartet true'; END IF;
     IF finance.fn_reserve_breach(v_dep) IS NOT NULL THEN
-      RAISE EXCEPTION 'FAIL [WP-5a]: fn_reserve_breach(Depot) muss NULL sein (toter Depot-Zweig entfernt), got %', finance.fn_reserve_breach(v_dep); END IF;
-    RAISE NOTICE 'PASS [WP-5a: fn_reserve_breach(Depot) -> NULL (entfernter toter Zweig), Cash-Branch unberuehrt]';
+      RAISE EXCEPTION 'FAIL: fn_reserve_breach(Depot) muss NULL sein (toter Depot-Zweig entfernt), got %', finance.fn_reserve_breach(v_dep); END IF;
+    RAISE NOTICE 'PASS [fn_reserve_breach(Depot) -> NULL (entfernter toter Zweig), Cash-Branch unberuehrt]';
   END;
 
   RAISE NOTICE 'ALL PASS test_fn_reserve_breach';

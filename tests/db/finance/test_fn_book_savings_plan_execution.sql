@@ -213,7 +213,7 @@ BEGIN
     SELECT asset_class INTO v_cls FROM finance.depot_holdings WHERE id = v_hold5;
     IF v_cls IS DISTINCT FROM 'sp500' THEN
       RAISE EXCEPTION 'FAIL [5a]: Sparplan-Ausfuehrung vererbt asset_class nicht, erwartet sp500, got %', v_cls; END IF;
-    RAISE NOTICE 'PASS [5a WS-6: Sparplan mit asset_class -> Ausfuehrung legt Holding getaggt an]';
+    RAISE NOTICE 'PASS [5a: Sparplan mit asset_class -> Ausfuehrung legt Holding getaggt an]';
 
     -- (5b, m1) Eine zuerst manuell untagged angelegte Position bleibt untagged, auch wenn spaeter ein getaggter
     --   Sparplan einzahlt (fn_book_stock_buy taggt nur beim Anlegen -> Re-Buy ist no-op, kein Ueberschreiben).
@@ -238,7 +238,7 @@ BEGIN
     SELECT asset_class INTO v_cls FROM finance.depot_holdings WHERE id = v_hold_m1;
     IF v_cls IS NOT NULL THEN
       RAISE EXCEPTION 'FAIL [5b m1]: getaggter Sparplan ueberschrieb die untagged Position, erwartet NULL, got %', v_cls; END IF;
-    RAISE NOTICE 'PASS [5b WS-6/m1: getaggter Sparplan-Kauf in untagged Bestand -> kein Ueberschreiben]';
+    RAISE NOTICE 'PASS [5b m1: getaggter Sparplan-Kauf in untagged Bestand -> kein Ueberschreiben]';
   END;
 
 END $$;

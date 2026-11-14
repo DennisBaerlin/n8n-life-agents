@@ -154,7 +154,7 @@ BEGIN
   IF v_out IS NULL OR v_out NOT LIKE '%Authoritative facts%' OR v_out NOT LIKE '%Erika Mustermann%' THEN
     RAISE EXCEPTION 'FAIL [family via registry]: family-Renderer gebrochen. got: %', left(v_out, 120);
   END IF;
-  RAISE NOTICE 'PASS [WS1b: family ueber die generische Registry-Engine gerendert]';
+  RAISE NOTICE 'PASS [family ueber die generische Registry-Engine gerendert]';
 END $$;
 
 -- ---------- TEST 7: load_context-Pfad unter context_ro ----------
@@ -182,7 +182,7 @@ BEGIN
   IF v_out IS NULL OR v_out NOT LIKE '%Authoritative facts%' THEN
     RAISE EXCEPTION 'FAIL [context_ro fetch]: kein gerenderter Header unter context_ro (got: %)', left(COALESCE(v_out, '<null>'), 80);
   END IF;
-  RAISE NOTICE 'PASS [WS3: fn_fetch_context unter context_ro = load_context-Rolle (SECURITY DEFINER)]';
+  RAISE NOTICE 'PASS [fn_fetch_context unter context_ro = load_context-Rolle (SECURITY DEFINER)]';
 END $$;
 
 -- ---------- TEST 8 (per_user): Suffix-Aufloesung + Isolation A != B + fail-closed ----------
@@ -231,7 +231,7 @@ BEGIN
   IF v_out IS NULL OR v_out NOT LIKE '%Lena PM%' OR v_out LIKE '%Erika Dev%' THEN
     RAISE EXCEPTION 'FAIL [per_user 222]: erwartet Lena PM (nicht Erika). got: %', left(v_out,120);
   END IF;
-  RAISE NOTICE 'PASS [P0b per_user: Suffix-Aufloesung + Isolation A != B (Renderer bekommt den suffigierten Namen)]';
+  RAISE NOTICE 'PASS [per_user: Suffix-Aufloesung + Isolation A != B (Renderer bekommt den suffigierten Namen)]';
 
   -- fail-closed: numerisch-nicht-in-family (999) -> person NULL -> Basis-Name 'career_profile' (leer) -> keine Zeile
   SELECT content INTO v_out FROM core.fn_fetch_context('career_profile', '999');
@@ -243,7 +243,7 @@ BEGIN
   IF v_out IS NOT NULL THEN
     RAISE EXCEPTION 'FAIL [per_user fail-closed sentinel]: nicht-numerische chat_id muss leere Menge liefern. got: %', left(v_out,120);
   END IF;
-  RAISE NOTICE 'PASS [P0b per_user fail-closed: unaufgeloester/Sentinel-Sender -> leere Menge (Basis-Name leer)]';
+  RAISE NOTICE 'PASS [per_user fail-closed: unaufgeloester/Sentinel-Sender -> leere Menge (Basis-Name leer)]';
 
   -- household-Kontext mit chat_id -> kein Suffix (scope=household -> chat_id ignoriert). Synthetischer
   -- household-Name (career_planning ist per_user, taugt hier nicht als household-Beispiel).
@@ -257,7 +257,7 @@ BEGIN
   IF v_out IS DISTINCT FROM 'HOUSEHOLD-PLAN' THEN
     RAISE EXCEPTION 'FAIL [household no-suffix]: household-Kontext darf mit chat_id NICHT suffigiert werden. got: %', left(v_out,120);
   END IF;
-  RAISE NOTICE 'PASS [P0b household: scope=household ignoriert chat_id -> kein Suffix]';
+  RAISE NOTICE 'PASS [household: scope=household ignoriert chat_id -> kein Suffix]';
 END $$;
 
 -- ---------- TEST 9: 2-Arg-Form unter context_ro mit Aufloesung ----------
@@ -282,7 +282,7 @@ BEGIN
   IF v_out IS NULL OR v_out NOT LIKE '%Erika Dev%' THEN
     RAISE EXCEPTION 'FAIL [context_ro 2-arg]: kein per_user-Header unter context_ro (got: %)', left(COALESCE(v_out,'<null>'),80);
   END IF;
-  RAISE NOTICE 'PASS [P0b: 2-Arg fn_fetch_context loest person_id unter context_ro auf (interner fn_resolve_sender im DEFINER)]';
+  RAISE NOTICE 'PASS [2-Arg fn_fetch_context loest person_id unter context_ro auf (interner fn_resolve_sender im DEFINER)]';
 END $$;
 
 -- ---------- TEST 10: physischer per_user-Name per LLM -> leere Menge ----------

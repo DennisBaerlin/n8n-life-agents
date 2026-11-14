@@ -81,7 +81,7 @@ BEGIN
   PERFORM estate.fn_set_case(jsonb_build_object('chat_id','111','case_id', v_case));
   IF (SELECT status FROM estate.case_tasks WHERE case_id=v_case AND template_key='vehicle_death') <> 'not_applicable' THEN
     RAISE EXCEPTION 'FAIL [fan_out Stub geloescht -> Task n.a.]'; END IF;
-  RAISE NOTICE 'PASS [set_case WP3: Zuruecknehmen, Nutzer-n.a. bleibt, register-Reset, case_status, relatives Datum]';
+  RAISE NOTICE 'PASS [set_case: Zuruecknehmen, Nutzer-n.a. bleibt, register-Reset, case_status, relatives Datum]';
 
   -- nicht offen -> reject.
   PERFORM estate.fn_cancel_case(jsonb_build_object('chat_id','111','case_id', v_case));

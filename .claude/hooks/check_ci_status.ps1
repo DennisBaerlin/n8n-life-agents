@@ -1,4 +1,4 @@
-﻿# SessionStart-Hook: CI-Ampel. Ist der letzte GitHub-Lauf eines Workflows auf main (Release: letzter Tag) rot,
+# SessionStart-Hook: CI-Ampel. Ist der letzte GitHub-Lauf eines Workflows auf main (Release: letzter Tag) rot,
 # bekommt die Session den Auftrag, das zuerst zu klaeren (scripts/check_ci_status.ps1 -Hook). Gruen, offline oder
 # ohne Token -> still. Nie ein Fehler-Exit (eine Session darf am Hook nie scheitern). ASCII-only.
 try {

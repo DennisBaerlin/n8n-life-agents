@@ -173,7 +173,7 @@ BEGIN
     RAISE EXCEPTION 'FAIL [R1]: kein savings_goal_reached-Fold bei deposit current>=target, got %', v_res; END IF;
   IF v_res->'savings_goal_reached'->>'note' NOT LIKE '%exceeded%' THEN
     RAISE EXCEPTION 'FAIL [R1]: Note ohne "exceeded" (Modell-Schicht englisch) bei current 1500 > target 1000: %', v_res->'savings_goal_reached'->>'note'; END IF;
-  RAISE NOTICE 'PASS [R1 WS-5: deposit über die Linie -> savings_goal_reached (übertroffen)]';
+  RAISE NOTICE 'PASS [R1: deposit über die Linie -> savings_goal_reached (übertroffen)]';
 
   -- (R2) withdrawal 100 topf1->giro -> current 1400 (immer noch >= target) aber withdrawal -> keine Note (B1)
   SELECT finance.fn_book_savings_goal_transfer(jsonb_build_object(
@@ -182,7 +182,7 @@ BEGIN
   IF (v_res->>'ok')::boolean IS DISTINCT FROM true THEN RAISE EXCEPTION 'FAIL [R2 ok]: %', v_res; END IF;
   IF v_res ? 'savings_goal_reached' THEN
     RAISE EXCEPTION 'FAIL [R2 B1]: withdrawal aus über-Ziel-Topf darf NICHT gratulieren, got %', v_res; END IF;
-  RAISE NOTICE 'PASS [R2 WS-5/B1: withdrawal trotz current>=target -> keine Note]';
+  RAISE NOTICE 'PASS [R2 B1: withdrawal trotz current>=target -> keine Note]';
 
   -- (R3) relocate 100 topf1->topf2 -> current unveraendert 1400 (>= target) aber relocate -> keine Note (B1)
   SELECT finance.fn_book_savings_goal_transfer(jsonb_build_object(
@@ -191,7 +191,7 @@ BEGIN
   IF (v_res->>'ok')::boolean IS DISTINCT FROM true THEN RAISE EXCEPTION 'FAIL [R3 ok]: %', v_res; END IF;
   IF v_res ? 'savings_goal_reached' THEN
     RAISE EXCEPTION 'FAIL [R3 B1]: relocate bei current>=target darf NICHT gratulieren, got %', v_res; END IF;
-  RAISE NOTICE 'PASS [R3 WS-5/B1: relocate trotz current>=target -> keine Note]';
+  RAISE NOTICE 'PASS [R3 B1: relocate trotz current>=target -> keine Note]';
 
   -- (R4) deposit unter Ziel: neues Ziel target 5000, deposit 500 -> current 500 < 5000 -> keine Note
   INSERT INTO finance.savings_goals (name, target_amount, target_date, status) VALUES ('__sgr_low__', 5000, current_date + 365, 'active') RETURNING id INTO v_low;
@@ -200,7 +200,7 @@ BEGIN
     'amount',500,'direction','deposit','transaction_date',current_date::text)) INTO v_res;
   IF v_res ? 'savings_goal_reached' THEN
     RAISE EXCEPTION 'FAIL [R4]: savings_goal_reached bei deposit unter Ziel (500<5000), got %', v_res; END IF;
-  RAISE NOTICE 'PASS [R4 WS-5: deposit unter Ziel -> keine Note]';
+  RAISE NOTICE 'PASS [R4: deposit unter Ziel -> keine Note]';
 END $$;
 
 -- ---------- Sparziel-Bewegung mit Bein im Startbetrag: before_opening, kein Write, kein Tag ----------

@@ -411,7 +411,7 @@ BEGIN
     SELECT current_amount INTO v_curr FROM finance.savings_goal_progress WHERE id = v_goal_id;
     IF v_curr IS DISTINCT FROM 200 THEN
       RAISE EXCEPTION 'FAIL fn_book_stock_buy [manueller Kauf Konservierung]: current_amount erwartet 200, got %', v_curr; END IF;
-    RAISE NOTICE 'PASS fn_book_stock_buy [WS-B2 manueller Kauf -> keine Reserve-Wirkung]';
+    RAISE NOTICE 'PASS fn_book_stock_buy [manueller Kauf -> keine Reserve-Wirkung]';
 
     -- TEST 12: Gebuehr im Cost-Basis -> delta_native = shares*price + fee (volle Cash-Abfluss-Magnitude).
     SELECT finance.fn_book_stock_buy(jsonb_build_object('price_currency_confirmed',true,
@@ -429,7 +429,7 @@ BEGIN
     SELECT current_amount INTO v_curr FROM finance.savings_goal_progress WHERE id = v_goal_id;
     IF v_curr IS DISTINCT FROM 200 THEN
       RAISE EXCEPTION 'FAIL fn_book_stock_buy [Konservierung inkl. Gebuehr]: current_amount erwartet 200, got %', v_curr; END IF;
-    RAISE NOTICE 'PASS fn_book_stock_buy [WS-B2 Gebuehr im Journal-delta (105) + Konservierung]';
+    RAISE NOTICE 'PASS fn_book_stock_buy [Gebuehr im Journal-delta (105) + Konservierung]';
 
     -- TEST 13: FX-Krypto-Fall — goal-verknuepfter Krypto-Sparplan (kein ISIN) -> Journal aufs Krypto-Depot.
     SELECT finance.fn_create_account(jsonb_build_object(
@@ -492,7 +492,7 @@ BEGIN
       'shares',1,'price_per_share',100,'order_fee',0,'transaction_date', CURRENT_DATE::text)) INTO v_result;
     IF NOT (v_result ? 'null_tag') OR COALESCE(v_result->'null_tag'->>'note','') = '' THEN
       RAISE EXCEPTION 'FAIL [14a]: kein null_tag-Fold mit note bei ungetaggter neuer Position, got %', v_result; END IF;
-    RAISE NOTICE 'PASS [14a WS-6: neue untagged Position -> null_tag-Fallback-Note]';
+    RAISE NOTICE 'PASS [14a: neue untagged Position -> null_tag-Fallback-Note]';
 
     -- (14b) Neuer manueller Kauf mit asset_class -> Holding getaggt -> keine Note
     SELECT finance.fn_book_stock_buy(jsonb_build_object('price_currency_confirmed',true,
@@ -503,7 +503,7 @@ BEGIN
     v_h14 := (v_result->>'holding_id')::int;
     IF v_result ? 'null_tag' THEN
       RAISE EXCEPTION 'FAIL [14b]: null_tag-Fold trotz gesetzter asset_class, got %', v_result; END IF;
-    RAISE NOTICE 'PASS [14b WS-6: getaggte neue Position -> keine Note]';
+    RAISE NOTICE 'PASS [14b: getaggte neue Position -> keine Note]';
 
     -- (14c) Re-Buy derselben getaggten Position ohne asset_class -> Holding bleibt getaggt -> keine Note
     --   (Note haengt am End-Zustand, nicht am Input -> kein falsches Nagen beim Nachkauf).
@@ -513,7 +513,7 @@ BEGIN
       'shares',1,'price_per_share',110,'order_fee',0,'transaction_date', CURRENT_DATE::text)) INTO v_result;
     IF v_result ? 'null_tag' THEN
       RAISE EXCEPTION 'FAIL [14c]: null_tag-Fold beim Re-Buy einer bereits getaggten Position (input NULL), got %', v_result; END IF;
-    RAISE NOTICE 'PASS [14c WS-6: Re-Buy getaggter Position (input NULL) -> keine Note]';
+    RAISE NOTICE 'PASS [14c: Re-Buy getaggter Position (input NULL) -> keine Note]';
   END;
 
   -- ============================================================
@@ -570,7 +570,7 @@ BEGIN
     --     der Kauf zaehlt voll: current_amount = 1000 EUR.
     SELECT current_amount INTO v_kcur FROM finance.savings_goal_progress WHERE id = v_clp_goal;
     IF v_kcur IS DISTINCT FROM 1000 THEN RAISE EXCEPTION 'FAIL [15 frisch]: erwartet 1000 EUR (frisches Geld), got %', v_kcur; END IF;
-    RAISE NOTICE 'PASS [15 WP-3b: CLP-Kauf -> delta_native roh CLP + currency + EUR-Umrechnung in der View (reserved 1000), frisch +1000]';
+    RAISE NOTICE 'PASS [15: CLP-Kauf -> delta_native roh CLP + currency + EUR-Umrechnung in der View (reserved 1000), frisch +1000]';
 
     -- (d) value_date folgt dem transaction_date (nicht hardcoded CURRENT_DATE) — rueckdatierter Kauf.
     DECLARE v_bkbuy INT; v_bkvd DATE; BEGIN
@@ -585,7 +585,7 @@ BEGIN
       SELECT value_date INTO v_bkvd FROM finance.savings_goal_reserve_entries WHERE source_tx_id = v_bkbuy;
       IF v_bkvd IS DISTINCT FROM (CURRENT_DATE - 7) THEN
         RAISE EXCEPTION 'FAIL [15d value_date]: erwartet Kaufdatum (heute-7), got % (value_date hardcoded CURRENT_DATE?)', v_bkvd; END IF;
-      RAISE NOTICE 'PASS [15d WP-3b: value_date folgt dem transaction_date (rueckdatierter Kauf -> Kurs deterministisch gepinnt)]';
+      RAISE NOTICE 'PASS [15d: value_date folgt dem transaction_date (rueckdatierter Kauf -> Kurs deterministisch gepinnt)]';
     END;
   END;
 
@@ -621,7 +621,7 @@ BEGIN
       RAISE EXCEPTION 'FAIL [16 guard]: Journal-Zeile trotz {ok:false} angelegt'; END IF;
     IF EXISTS (SELECT 1 FROM finance.depot_holdings WHERE account_id = v_x_depot) THEN
       RAISE EXCEPTION 'FAIL [16 guard]: Holding trotz {ok:false} angelegt (partieller Write)'; END IF;
-    RAISE NOTICE 'PASS [16 WP-3b Guard: Settlement != Depot-Waehrung -> {ok:false}, kein partieller Write]';
+    RAISE NOTICE 'PASS [16 Guard: Settlement != Depot-Waehrung -> {ok:false}, kein partieller Write]';
   END;
 
 END $$;

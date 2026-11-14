@@ -881,7 +881,7 @@ BEGIN
   END;
   IF v_out IS DISTINCT FROM 'true' THEN
     RAISE EXCEPTION 'FAIL [career_ro -> core.fn_onboarding_status(text,text)]: erwartet ok=true, got %', COALESCE(v_out,'<null>'); END IF;
-  RAISE NOTICE 'PASS [career_ro -> core.fn_onboarding_status(text,text) (P2b-1 per_user-Arity, Grant migriert)]';
+  RAISE NOTICE 'PASS [career_ro -> core.fn_onboarding_status(text,text) (per_user-Arity, Grant migriert)]';
 
   -- ===== (3g) career_ro erreicht die Core-DEFINER-Fenster des career_advisor (Spiegel von finance_ro, (2)) =====
   -- Der career_advisor laeuft unter career_ro und bindet dieselben Core-Fenster
@@ -1701,7 +1701,7 @@ BEGIN
   END;
   IF v_out IS DISTINCT FROM 'true' THEN
     RAISE EXCEPTION 'FAIL [estate_rw -> fn_set_system_profile]: erwartet ok=true, got %', COALESCE(v_out,'<null>'); END IF;
-  RAISE NOTICE 'PASS [estate_rw -> fn_render_emergency_binder (Owner ok / Partner ok / Kind RAISE) + fn_set_system_profile (WS-5 Egress + Singleton)]';
+  RAISE NOTICE 'PASS [estate_rw -> fn_render_emergency_binder (Owner ok / Partner ok / Kind RAISE) + fn_set_system_profile (Egress + Singleton)]';
 
   -- (7c) NEGATIV: das agent-Primitiv ist unter estate_rw nicht direkt aufrufbar (Schema agent gesperrt)
   -- -> beweist, dass das core-Fenster notwendig ist (kein stilles Breit-Grant).

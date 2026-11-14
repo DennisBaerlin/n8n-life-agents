@@ -59,7 +59,7 @@ BEGIN
   IF NOT EXISTS (SELECT 1 FROM finance.fn_active_currencies() WHERE code = 'GBP') THEN
     RAISE EXCEPTION 'FAIL fn_active_currencies [quote_currency]: GBP (quote einer EUR-Position) fehlt -> FX-Cron holt den Kurs nie';
   END IF;
-  RAISE NOTICE 'PASS fn_active_currencies [WP-3a quote_currency GBP erkannt]';
+  RAISE NOTICE 'PASS fn_active_currencies [quote_currency GBP erkannt]';
 
   -- TEST 6: Kurs-Waehrung aus market_prices einer gehaltenen Position ohne quote_currency (Feed liefert
   -- CHF) -> CHF in der Menge; eine nicht mehr gehaltene Position (shares=0) und ein aelterer Kurs in anderer Waehrung zaehlen nicht.

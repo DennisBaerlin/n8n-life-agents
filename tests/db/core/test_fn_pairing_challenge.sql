@@ -296,7 +296,7 @@ BEGIN
   r := agent.fn_consume_pairing_challenge('{"chat_id":"7777","telegram_user_id":7777,"challenge":"BLOCKOWN1","person_id":"powner"}'::jsonb);
   IF (r->>'ok')::boolean OR (r->>'blocked')::boolean IS DISTINCT FROM true THEN
     RAISE EXCEPTION 'FAIL consume [gesperrte uid loeste den Owner-Code ein: %]', r; END IF;
-  RAISE NOTICE 'PASS WS-5d [gesperrte uid: claim staged:false + consume ok:false; Einladung nicht verbrannt]';
+  RAISE NOTICE 'PASS [gesperrte uid: claim staged:false + consume ok:false; Einladung nicht verbrannt]';
 
   RAISE NOTICE 'PASS fn_arm/fn_consume_pairing_challenge [alle Sicherheits-Invarianten]';
 END $$;

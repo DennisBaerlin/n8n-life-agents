@@ -123,7 +123,7 @@ BEGIN
   IF EXISTS (SELECT 1 FROM agent.core_contexts WHERE name='test_pc_peruser__liveperson') THEN
     RAISE EXCEPTION 'FAIL pc-peruser [D]: nach Person-Entfernung muss die PII purgebar sein';
   END IF;
-  RAISE NOTICE 'PASS protected_contexts [P0b suffix-aware: lebende Person/Owner geschuetzt, entfernte/fremde purgebar]';
+  RAISE NOTICE 'PASS protected_contexts [suffix-aware: lebende Person/Owner geschuetzt, entfernte/fremde purgebar]';
 END $$;
 
 ROLLBACK;

@@ -105,8 +105,8 @@ BEGIN
     SELECT count(*) INTO v_cnt FROM agent.persons;
     PERFORM agent.fn_project_persons('{"note":"prosa ohne persons"}'::jsonb);   -- kein persons-Schlüssel
     IF (SELECT count(*) FROM agent.persons) IS DISTINCT FROM v_cnt THEN
-        RAISE EXCEPTION 'FAIL [WP-5b absent]: fehlender persons-Schlüssel veränderte agent.persons (Wipe statt No-Op)'; END IF;
-    RAISE NOTICE 'PASS [WP-5b: fehlender persons-Schlüssel -> No-Op (kein versehentliches Wipe)]';
+        RAISE EXCEPTION 'FAIL [absent]: fehlender persons-Schlüssel veränderte agent.persons (Wipe statt No-Op)'; END IF;
+    RAISE NOTICE 'PASS [fehlender persons-Schlüssel -> No-Op (kein versehentliches Wipe)]';
 
     -- ===== (7) WP-5b: präsentes leeres Array -> Full-Wipe (bewusste Voll-Entfernung, keine Stale-Zeilen) =====
     -- Die FK-referenzierte child_x würde den Wipe sonst per RESTRICT blocken -> die Personen-Referenz des Kontos
@@ -115,8 +115,8 @@ BEGIN
     UPDATE finance.accounts SET owner_person_id = NULL WHERE name = '__test_kind_depot__';
     PERFORM agent.fn_project_persons('{"persons":[]}'::jsonb);
     IF EXISTS (SELECT 1 FROM agent.persons WHERE person_id IN ('owner_x','child_x')) THEN
-        RAISE EXCEPTION 'FAIL [WP-5b empty]: leeres Array hat die projizierten Personen NICHT entfernt (Stale-Drift)'; END IF;
-    RAISE NOTICE 'PASS [WP-5b: präsentes leeres Array -> Full-Wipe (Voll-Entfernung, kein Stale)]';
+        RAISE EXCEPTION 'FAIL [empty]: leeres Array hat die projizierten Personen NICHT entfernt (Stale-Drift)'; END IF;
+    RAISE NOTICE 'PASS [präsentes leeres Array -> Full-Wipe (Voll-Entfernung, kein Stale)]';
 END $$;
 
 ROLLBACK;

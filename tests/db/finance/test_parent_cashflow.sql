@@ -74,7 +74,7 @@ BEGIN
    WHERE name = ANY(ARRAY['__pcf_kid_savings__','__pcf_parent_expense__','__pcf_parent_income__']);
   IF v_in_family <> 3 THEN RAISE EXCEPTION 'FAIL [family incl]: erwartet 3 Familie-Zeilen (Kind-Sparplan + Eltern-Ausgabe + Einnahme), got %', v_in_family; END IF;
   IF EXISTS (SELECT 1 FROM finance.monthly_cashflow_overview WHERE name IN ('__pcf_top_up_kid__','__pcf_own_transfer__')) THEN
-    RAISE EXCEPTION 'FAIL [family transfers]: Transfers (target gesetzt) duerfen NICHT in der Familie-Sicht zaehlen (WS-2)'; END IF;
+    RAISE EXCEPTION 'FAIL [family transfers]: Transfers (target gesetzt) duerfen NICHT in der Familie-Sicht zaehlen'; END IF;
   RAISE NOTICE 'PASS [Familie-Sicht unveraendert: Transfers raus, Kind-Sparplan drin -> kein -200-Doppelzaehlen]';
 END $$;
 

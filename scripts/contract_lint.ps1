@@ -1,19 +1,19 @@
 ﻿#Requires -Version 5.1
-# Cross-Layer-Kontrakt-Lint (Hardening-Phase Session 1) -- hartes Pre-Push-Gate.
+# Cross-Layer-Kontrakt-Lint: hartes Pre-Push-Gate.
 #
-# Der Feld-Kontrakt EINES Write-Tools lebt in mehreren Schichten (fn-SQL, Tool-Trigger,
-# Agent-InputSpec); bisher prueften das nur Tests zur LAUFZEIT (oder gar nichts). Dieser Lint
-# prueft die Schichten STATISCH gegeneinander -- auf den generierten/getrackten Workflow-JSONs
-# (robuster als PS1-Parsing) + den fn-SQL-Dateien:
+# Der Feld-Kontrakt eines Write-Tools lebt in mehreren Schichten (fn-SQL, Tool-Trigger,
+# Agent-InputSpec); Laufzeit-Tests sehen Drift erst spaet. Dieser Lint prueft die Schichten
+# statisch gegeneinander, auf den getrackten Workflow-JSONs (robuster als PS1-Parsing), den
+# fn-SQL-Dateien und den Paket-Manifesten:
 #
 #   (1) TOTE fn-REFERENZEN: jeder agent./core.fn_*-Aufruf in einem Workflow-JSON muss eine
 #       definierte Function treffen (packages/*/db/migrations/R__fn_*.sql ODER CREATE FUNCTION in packages/*/db/**/*.sql).
 #   (2) TOOL->fn PAYLOAD-KEYS: jeder Key im JSON.stringify({...})-queryReplacement eines
-#       Postgres-Nodes muss ENTWEDER in der Query selbst (->>'key') ODER in einer der
-#       aufgerufenen fn-Dateien gelesen werden. Ein nie gelesener Key wird von Postgres STILL
-#       ignoriert -- genau die "Verweis auf nicht existentes Datenfeld"-Klasse.
+#       Postgres-Nodes wird entweder in der Query selbst (->>'key') oder in einer der
+#       aufgerufenen fn-Dateien gelesen. Ein nie gelesener Key wird von Postgres still
+#       ignoriert ("Verweis auf nicht existentes Datenfeld").
 #   (3) AGENT->TOOL INPUTS: jeder Input, den ein toolWorkflow-/executeWorkflow-Node bindet,
-#       muss im executeWorkflowTrigger des Ziel-Workflows DEKLARIERT sein -- nicht deklarierte
+#       ist im executeWorkflowTrigger des Ziel-Workflows deklariert; nicht deklarierte
 #       Felder verwirft n8n still (Build-Gotcha "Neuer Tool-Input muss an ZWEI Stellen rein").
 #   (4) $fromAI-HYGIENE: (a) ein $fromAI-Ausdruck, der nicht dem kanonischen Muster entspricht
 #       (z. B. Apostroph in der Description -> "Unbalanced parentheses"), (b) *_id-Felder mit
@@ -25,56 +25,55 @@
 #       nutzt nur Aliase aus seiner consumes.services). Paket eines Defs = physischer Ort (packages/<pkg>/build/).
 #       Scannt .ps1 (Tokens werden build-time aufgeloest).
 #   (6b) CROSS-PACKAGE READS: consumes.reads (nicht core.*) braucht ein passendes provides.reads im Provider-Paket.
-#   (7) CRON-ENABLE (F9/R1-MINOR): jeder gegatete Cron liest sein Enable-Flag ueber
-#       core.fn_config_get('<pkg>','cron_enable','<key>'); dieses Literal MUSS im Manifest
+#   (7) CRON-ENABLE: jeder gegatete Cron liest sein Enable-Flag ueber
+#       core.fn_config_get('<pkg>','cron_enable','<key>'); dieses Literal muss im Manifest
 #       (.config.cron_enable.<key>) deklariert sein (sonst seedet der Host die Zeile nicht ->
-#       fail-closed schaltet den Cron STILL ab). Umgekehrt = Orphan (deklariertes Flag, das kein Gate liest).
-#   (8) BACKUP-BLOCK-HYGIENE (Phase 5, arch-3 Obj 3 + M4): der manifest-`backup`-Block darf den
-#       Backup-Key und Code-Seeds nie in ein Bundle ziehen. (8a) Schema `core` NIE in einem backup-Block
+#       fail-closed schaltet den Cron still ab). Umgekehrt = Orphan (deklariertes Flag, das kein Gate liest).
+#   (8) BACKUP-BLOCK-HYGIENE (arch-3 Obj 3 + M4): der manifest-`backup`-Block darf den
+#       Backup-Key und Code-Seeds nie in ein Bundle ziehen. (8a) Schema `core` nie in einem backup-Block
 #       (kein `core.<tabelle>` in full_tables/filtered_tables; kein schema_dump auf einem Paket, das Schema
 #       core besitzt) -> sonst rutschte core.backup_key ins Bundle (der Restore-Schluessel selbst). (8b)
-#       eine code-geseedete Tabelle (agent.ai_models/core.config) gehoert in KEIN Bundle -> der Installer
+#       eine code-geseedete Tabelle (agent.ai_models/core.config) gehoert in kein Bundle -> der Installer
 #       seedet sie neu; im Dump wuerde ein Restore Code mit altem Stand ueberschreiben (M4, --no-seed-Vertrag).
-#   (9) CRON-CONTEXT-WRITE (M1, Phase C): ein Cron (scheduleTrigger-Workflow) schreibt NIE agent.core_contexts
+#   (9) CRON-CONTEXT-WRITE (M1): ein Cron (scheduleTrigger-Workflow) schreibt nie agent.core_contexts
 #       -- weder direkt (INSERT/UPDATE/DELETE) noch ueber eine fn, die es transitiv tut. Der einzige
-#       core_contexts-Schreibpfad ist die owner-gegatete Approve-fn (Orchestrator-Callback learn:ok), NIE ein Cron.
+#       core_contexts-Schreibpfad ist die owner-gegatete Approve-fn (Orchestrator-Callback learn:ok), nie ein Cron.
 #   (9b) CALLBACK-PREFIX-KOLLISION: ein Manifest-callback_handlers-Prefix doppelt keinen hartkodierten Switch-Arm (Ausnahme member_permeable).
 #   (10) CONTEXT-SCOPE-PARITAET: facts-Context mit context_validators braucht context_scopes (bidirektional).
 #   (11) ONBOARDING-PARITAET: provides.onboarding.agent <-> onboarding/sections.json (bidirektional, Core ausgenommen).
-#   (12) CREDENTIALS-BLOCK (Install-UX, §3.8): (a) Schema + type-/validator-Enum + env-Key-Bezeichner-
+#   (12) CREDENTIALS-BLOCK (docs/package-contract.md §3.8): (a) Schema + type-/validator-Enum + env-Key-Bezeichner-
 #       Pin (^[A-Z_][A-Z0-9_]*$ — der Name fliesst in eval/grep) + httpHeaderAuth=genau-1-env-Key,
 #       (b) bidirektionale Paritaet manifest-credentials <-> __CRED_*__-Referenzen der Paket-Workflows
 #       (Host-Map + Rollen-Konvention allowlisted), (c) NAHT-GUARD (kein Paket-Credential-Literal/-env-Key
-#       im provisioning-Host-Code -- der career-Sonderlocken-Rueckfall failt beim Commit), (d) PROMPT-GATE-
-#       GUARD (Eingabe-Primitive nur sanktioniert, JEDE read-Form mit /dev/tty-Redirect +
-#       ui_interactive/UNATTENDED-Gate-Asserts).
-#   (13) CLI-HELP-PARITAET (Install-UX, Owner-Direktive "Help = die EINE Befehls-Referenz"): je
+#       im provisioning-Host-Code), (d) PROMPT-GATE-GUARD (Eingabe-Primitive nur sanktioniert,
+#       jede read-Form mit /dev/tty-Redirect + ui_interactive/UNATTENDED-Gate-Asserts),
+#       (e) CONFIG-FRAGE, (f) OWNER-ANZEIGE, (g) LAUFZEIT-FRAGE (s. die Bloecke unten).
+#   (13) CLI-HELP-PARITAET (die CLI-Hilfe ist die eine Befehls-Referenz): je
 #       Dispatcher (lifeagents.tpl/pkg_lifecycle/config_cli/household_cli/backup_cli) bidirektional
 #       Verb-Arm <-> Help-Heredoc; Flags parse_args <-> usage() (provision.sh bidirektional,
 #       install.sh geparst ⊆ dokumentiert — Passthrough pauschal). Selbst-Asserts bei Extraktions-Drift.
 #   (14) ADVISOR metric_key-NAMING (Pattern-Paritaet -> finance-Standard "schlicht"): ein alert-metric_key
-#       in packages/<pkg>/db/migrations/R__fn_advisor_review.sql darf NIE mit dem eigenen Domaenen-Praefix
+#       in packages/<pkg>/db/migrations/R__fn_advisor_review.sql darf nie mit dem eigenen Domaenen-Praefix
 #       '<pkg>_' beginnen -- die Domaene traegt bereits die core.notification_state.source-Spalte
-#       ('advisor:<domain>[:pid]'), ein Praefix im Key ist redundant (finance = schlicht; career/estate
-#       harmonisiert). Deckt BEIDE Emit-Formen (jsonb 'metric_key','...' + fn_staleness_alert('...')).
-#       Rezidiv-Guard des Naming-Drifts (Befund).
+#       ('advisor:<domain>[:pid]'), ein Praefix im Key ist redundant. Deckt beide Emit-Formen
+#       (jsonb 'metric_key','...' + fn_staleness_alert('...')).
 #   (15)/(16) FAKTEN-SCHICHT — s. die Bloecke unten.
-#   (17) E2E-HOOK (Phase B, docs/package-contract.md §6): jedes Nicht-Core-Paket mit eigenem Schema definiert den
+#   (17) E2E-HOOK (docs/package-contract.md §6): jedes Nicht-Core-Paket mit eigenem Schema definiert den
 #       Konventions-Hook <pkg>.fn_clear_e2e_data(text) (der Core-Dispatcher RAISEt sonst zur Laufzeit).
-#   (18) MONITOR-METHODEN-BLOCK (Phase B, §3.9): monitor_acquisition_methods — Methoden-Name (Form, kein Builtin,
-#       global eindeutig), acquire_fn/validate_fn im eigenen Schema UND in den Paket-R__ definiert, label +
+#   (18) MONITOR-METHODEN-BLOCK (docs/package-contract.md §3.9): monitor_acquisition_methods — Methoden-Name (Form, kein Builtin,
+#       global eindeutig), acquire_fn/validate_fn im eigenen Schema und in den Paket-R__ definiert, label +
 #       params_description nicht leer, keine Backticks/'${' (beides wird in Workflow-Texte gebacken).
-#   (19) AGENTEN-ROUTING (Phase C): provides.agents aller Manifeste inkl. core ueber die mit build.ps1 GETEILTE
+#   (19) AGENTEN-ROUTING: provides.agents aller Manifeste inkl. core ueber die mit build.ps1 geteilte
 #       Funktion scripts/build/lib/agent_routing.ps1 — Pflicht-router_description (kein Agent ausser orchestrator
 #       ohne Routing-Wissen), agent.<x>-Verweise in Beschreibungen sind deklarierte Agenten, fallback_for
 #       (Liste, erlaubte Art, nicht am orchestrator, je Art hoechstens ein Agent). Selbst-Asserts.
 #   (19b) ONBOARDING-REIHENFOLGE: die aus consumes abgeleitete Paket-Reihenfolge (Get-OnboardingPackageOrder, geteilt mit
 #       build.ps1) laesst sich bilden (kein Zyklus). Selbst-Asserts (Konsument nach Lieferant, Tie-Break, Zyklus).
-#   (20) UTF-8-PFLICHT BEI DB-ANLAGE (v0.4.1): jede createdb / CREATE DATABASE / pg_createcluster / initdb-Anweisung
+#   (20) UTF-8-PFLICHT BEI DB-ANLAGE: jede createdb / CREATE DATABASE / pg_createcluster / initdb-Anweisung
 #       in provisioning/ + packages/ + scripts/ (Test-DBs = Prod-Paritaet) nennt UTF8 ausdruecklich — sonst erbt sie
 #       die Systemsprache (Proxmox: LANG="C" -> SQL_ASCII). SQL-Anweisungen bis `;`, Shell mit `\`-Fortsetzung.
 #       Selbst-Asserts.
-#   (21) ECHTE UMLAUTE IN SICHTBAREN TEXTEN (Textkatalog-Feature): nutzer-sichtbare Manifest-Felder (display_name,
+#   (21) ECHTE UMLAUTE IN SICHTBAREN TEXTEN: nutzer-sichtbare Manifest-Felder (display_name,
 #       summary, cron_labels.*, commands.list[].description, catalog.categories[].description, catalog.tail[].title/body,
 #       config.*.*.summary), onboarding/sections.json-Labels und die SQL-String-Literale der R__-fns (ausserhalb von
 #       Kommentaren; nur Literale mit Leerzeichen oder Grossbuchstabe = Text, nicht Identifier/Enum-Wert) tragen keine
@@ -104,12 +103,17 @@
 #       Label + Namens-Vorsatz je Dienst, externe Volumes = LA_STATE_VOLUMES, Patch-Mount je n8n-Korrektur. Selbst-Asserts.
 #   (34) RAND-PFADE: eine Liste oeffentlicher Pfade (common.sh LA_PUBLIC_PATHS) fuer CLI und Rand, keine zweite; Editor/Wizard aus
 #       dem eigenen Namensraum gesperrt, `admin off` in jeder Caddy-Konfiguration. Selbst-Asserts.
+#   (35) KNOPF-STUFE: ein Registry-Prefix, der per Knopf ohne HITL-Gate anlegt (rsug), bleibt an die Freigabe-Stufe
+#       (approval_matrix) der gekoppelten Einzel-Werkzeuge gebunden. Selbst-Asserts.
 #
-# Gerichtete Checks (Payload SUBSET-OF fn-Reads), bewusst KEINE Gleichheit: fns lesen auch
+# Gerichtete Checks (Payload SUBSET-OF fn-Reads), bewusst keine Gleichheit: fns lesen auch
 # berechnete/aufgeloeste Keys, die kein Tool sendet. Umgekehrte Luecken (deklarierter
-# Trigger-Input, den KEIN Aufrufer liefert) sind nur WARNUNG (mehrere Aufrufer, optionale Felder).
+# Trigger-Input, den kein Aufrufer liefert) sind nur Warnung (mehrere Aufrufer, optionale Felder).
 #
+# Voraussetzungen: git im PATH (Repo-Wurzel per rev-parse, Dateilisten per ls-files); sonst nur der
+# Quellbaum, kein Container, keine .env.
 # Usage:  .\scripts\contract_lint.ps1 [-Verbose]
+# -Verbose zeigt Warnungen auch dann, wenn Errors vorliegen.
 # Exit-Code = Anzahl Errors (Warnungen zaehlen nicht).
 param([switch]$Verbose)
 
@@ -156,10 +160,8 @@ foreach ($f in (Get-ChildItem $sqlScanDirs -Recurse -Filter '*.sql' -ErrorAction
     }
 }
 
-# schema-Praefixe fuer die fn-Referenz- (Check 1) + Cron-Context-Write- (Check 9) Regexes: die Host-Schemas
-# agent/core PLUS die Domaenen-Paket-Schemas (manifest.schema) -> generisch, damit finance./career.-fn-Aufrufe
-# sichtbar sind (frueher hartkodiert nur agent|core -> ~113 Domaenen-Aufrufe unsichtbar). Muster wie $pkgBySchema
-# (weiter unten fuer Check 6b), hier nur die Schema-NAMEN vorab, da Check 1 im ersten Workflow-Loop laeuft.
+# Schema-Praefixe fuer die fn-Referenz- (1) und Cron-Context-Write-Regexes (9): Host-Schemas agent/core plus die
+# manifest.schema der Domaenen-Pakete, sonst waeren deren fn-Aufrufe unsichtbar. Vorab, weil (1) im ersten Workflow-Loop laeuft.
 $schemaSet = New-Object System.Collections.Generic.HashSet[string]
 [void]$schemaSet.Add('agent'); [void]$schemaSet.Add('core')
 foreach ($pdir in (Get-ChildItem (Join-Path $RepoRoot 'packages') -Directory -ErrorAction SilentlyContinue)) {
@@ -229,11 +231,10 @@ function Get-TransitiveReadKey([string]$Text) {
         if (-not $fnBodies.ContainsKey($fn)) { return $null }   # Body unbekannt (init.sql/UI) -> Check ueberspringen
         $body = $fnBodies[$fn]
         # Dynamischer Payload-Forwarder (z. B. core.fn_dispatch_callback: EXECUTE format('... %s($1)', v_fn) USING p):
-        # reicht das GANZE jsonb-Payload an einen registry-aufgeloesten Handler weiter -> welche Keys der Handler
-        # liest, ist statisch NICHT entscheidbar (der Handler-Name ist Daten, kein Literal) -> Check ueberspringen
-        # (wie ein unbekannter Body, $null = undecidable). Verhindert einen False-Positive auf durchgereichte Keys.
-        # Signal = dyn. `EXECUTE format(...)` (fn-Name ist Daten) + `USING p` (das Payload-jsonb heisst per
-        # Projekt-Konvention exakt `p`; \bp\b matcht NICHT `p_domain` o. Ae. -> nur echte Voll-Payload-Forwarder).
+        # reicht das ganze jsonb an einen registry-aufgeloesten Handler weiter; welche Keys der liest, ist statisch nicht
+        # entscheidbar (Handler-Name ist Daten) -> Check ueberspringen wie bei unbekanntem Body ($null).
+        # Signal: dyn. `EXECUTE format(...)` + `USING p` (das Payload-jsonb heisst per Konvention exakt `p`;
+        # \bp\b trifft `p_domain` o. Ae. nicht).
         if ($body -match 'EXECUTE\s+format\s*\(' -and $body -match '\bUSING\s+p\b') { return $null }
         $reads.UnionWith((Get-JsonbReadKey $body))
         foreach ($m in [regex]::Matches($body, '\b(fn_[a-z0-9_]+)\s*\(')) {
@@ -317,11 +318,11 @@ foreach ($id in $workflows.Keys) {
             $bindKeys = @()
             if ($bind) { $bindKeys = @($bind.PSObject.Properties | ForEach-Object { $_.Name }) }
 
-            # Vermittler-Kante (Install-UX-Phase 4): ruft ein Core-Workflow agent.sub_dispatch_agent mit einer festen
-            # workflow_id-DATEN-Eingabe, ist das ECHTE Ziel dieser Agent — sein Trigger muss die Eingaben kennen, die
-            # der Vermittler durchreicht (task/chat_id/call_depth). Ersetzt die statische Kante, die durch den
-            # Ausdrucks-Aufruf im Vermittler sonst verloren ginge (dort nur "ZIEL NICHT IM STATE"). Eine Ausdrucks-
-            # workflow_id (Test-Harness: Ziel kommt aus dem Request-Body) ist statisch nicht aufloesbar -> uebersprungen.
+            # Vermittler-Kante: ruft ein Core-Workflow agent.sub_dispatch_agent mit einer festen workflow_id-Daten-Eingabe,
+            # ist das echte Ziel dieser Agent; sein Trigger muss die Eingaben kennen, die der Vermittler durchreicht
+            # (task/chat_id/call_depth). Ersetzt die statische Kante, die durch den Ausdrucks-Aufruf im Vermittler sonst
+            # verloren ginge (dort nur "ZIEL NICHT IM STATE"). Eine Ausdrucks-workflow_id (Test-Harness: Ziel kommt aus dem
+            # Request-Body) ist statisch nicht aufloesbar -> uebersprungen.
             if ($targetId -and $workflows.ContainsKey($targetId) -and $workflows[$targetId].Name -eq 'agent.sub_dispatch_agent' -and $bind -and $bind.workflow_id -and -not "$($bind.workflow_id)".StartsWith("=")) {
                 $realId = "$($bind.workflow_id)"
                 if (-not $workflows.ContainsKey($realId)) {
@@ -337,9 +338,9 @@ foreach ($id in $workflows.Keys) {
             }
             if ($wfName -eq 'agent.sub_dispatch_agent' -and $n.name -eq 'Run agent') { $targetId = '' }   # Ausdrucks-Ziel: geprueft ueber die Vermittler-Kante oben
 
-            # Werkzeug-Vermittler-Kante (paperless Phase 2): ruft ein Agent agent.sub_dispatch_tool mit FESTEM
-            # service='<pkg>:<alias>', ist das echte Ziel das Paket-Werkzeug aus dem Provider-Manifest — es muss
-            # existieren, dem Provider-Paket gehoeren und genau args + chat_id im Start-Trigger deklarieren.
+            # Werkzeug-Vermittler-Kante: ruft ein Agent agent.sub_dispatch_tool mit festem service='<pkg>:<alias>',
+            # ist das echte Ziel das Paket-Werkzeug aus dem Provider-Manifest; es muss existieren, dem Provider-Paket
+            # gehoeren und genau args + chat_id im Start-Trigger deklarieren.
             $isDispatchTool = ($targetId -and $workflows.ContainsKey($targetId) -and $workflows[$targetId].Name -eq 'agent.sub_dispatch_tool' -and $bind -and $bind.service -and -not "$($bind.service)".StartsWith('='))
             $svcSpec = $null
             if ($isDispatchTool) {
@@ -380,7 +381,7 @@ foreach ($id in $workflows.Keys) {
                 foreach ($p in $bind.PSObject.Properties) {
                     $v = "$($p.Value)"
                     if ($v -notmatch '\$fromAI\(') { continue }
-                    # Werkzeug-Vermittler: args = JSON.stringify({ k: $fromAI('k', …), … }) — JEDER Treffer wird geprueft
+                    # Werkzeug-Vermittler: args = JSON.stringify({ k: $fromAI('k', …), … }); jeder Treffer wird geprueft
                     # (Key == Objekt-Schluessel, Key in den Provider-inputs, Identitaetsfelder verboten, *_id nie number).
                     if ($isDispatchTool -and $p.Name -eq 'args') {
                         # Kanonisch: <obj>: $fromAI('<key>', '<desc>', '<type>'[, '<default>' | <zahl>]) — Description in '…'
@@ -400,10 +401,9 @@ foreach ($id in $workflows.Keys) {
                         }
                         continue
                     }
-                    # P2b-2 Spoof-Enforcement: Identitaets-/Trusted-only-Felder duerfen NIE als $fromAI-Tool-Input
-                    # exponiert werden — sonst koennte das LLM eine FREMDE person_id spoofen. person_id wird IMMER
-                    # server-seitig aufgeloest (fn_resolve_sender aus chat_id ODER trusted Cron, R__fn_record_job_match
-                    # "-- TRUSTED CRON ONLY") — nie vom Modell geliefert. Strukturelle Absicherung des Kommentar-Vertrags.
+                    # Identitaets-/Trusted-only-Felder nie als $fromAI-Tool-Input: sonst koennte das LLM eine fremde
+                    # person_id spoofen. person_id loest die fn immer server-seitig auf (fn_resolve_sender aus chat_id oder
+                    # trusted Cron, R__fn_record_job_match "-- TRUSTED CRON ONLY"), nie das Modell.
                     if ($p.Name -in @('person_id')) {
                         $errors.Add("SPOOFBARES IDENTITAETS-FELD: $wfName :: $($n.name) exponiert '$($p.Name)' als \$fromAI-Tool-Input -- Identitaet wird server-seitig aufgeloest (chat_id/trusted cron), NIE vom LLM. Feld aus dem Tool-Schema entfernen.")
                         continue
@@ -447,14 +447,14 @@ foreach ($targetId in $supplied.Keys) {
 # ---------------------------------------------------------------
 # (6) SERVICE-ALIAS (D9 / SC1): Pakete referenzieren Core-Dienste ueber den logischen Alias
 #     'core:<name>'. Der Build-Resolver (Resolve-CoreServiceAlias) loest ihn aus dem core-Manifest
-#     (provides.services) auf. Dieser Lint haelt den Vertrag statisch ehrlich:
+#     (provides.services) auf. Statisch geprueft:
 #       - Provider-Integritaet: jeder provides.services-Wert trifft einen existierenden Core-Workflow.
 #       - Consumer-Integritaet: jeder consumes.services-Eintrag (Form 'core:<alias>') ist ein realer Dienst.
 #       - Referenz-Scan: jedes 'core:<alias>'-Token in den Build-Defs ist deklariert; ein Nicht-Core-Paket darf
 #         nur Aliase nutzen, die sein manifest.json consumes.services fuehrt (Allow-Liste; Paket = physischer Ort).
-#     Anders als (1)-(5) scannt dies die .ps1-Build-Defs (die core:-Tokens werden build-time wegaufgeloest,
-#     erscheinen also NICHT im generierten JSON).
-#     Paket-Tool-Services (paperless Phase 2): ein Nicht-Core-Paket deklariert Werkzeuge in Objekt-Form, Konsumenten
+#     Anders als (1)-(5) scannt dies die .ps1-Build-Defs (die core:-Tokens werden build-time aufgeloest,
+#     stehen also nicht im generierten JSON).
+#     Paket-Tool-Services: ein Nicht-Core-Paket deklariert Werkzeuge in Objekt-Form, Konsumenten
 #     abonnieren '<paket>:<alias>' (gegen das Provider-Manifest geprueft, nie das eigene Paket); gebunden werden sie
 #     nur ueber agent.sub_dispatch_tool (Add-ServiceTools) — die literale Bindung ist als Pruefstellen-Bypass verboten.
 # ---------------------------------------------------------------
@@ -473,15 +473,14 @@ if ($null -eq $coreMf) {
     if ($coreMf.provides.PSObject.Properties.Name -contains 'services') {
         foreach ($p in $coreMf.provides.services.PSObject.Properties) { $providerAliases[$p.Name] = $p.Value }
     }
-    # Zaehlung der Workflow-Namen (ROH, aus den geparsten JSONs per .name) fuer die Provider-Integritaet.
-    # Nicht dedupliziert (HashSet) -> ein doppelter .name ist erkennbar (WS-B6: _seed_services loest
-    # provides.services-Wert -> .name -> .id auf; Mehrdeutigkeit = id-Kollision).
+    # Zaehlung der Workflow-Namen (roh, per .name) fuer die Provider-Integritaet. Nicht dedupliziert, damit ein
+    # doppelter .name auffaellt (_seed_services loest provides.services-Wert -> .name -> .id auf; Mehrdeutigkeit = id-Kollision).
     $wfNameCounts = @{}
     foreach ($w in $workflows.Values) {
         if ($w.Name) { if ($wfNameCounts.ContainsKey($w.Name)) { $wfNameCounts[$w.Name]++ } else { $wfNameCounts[$w.Name] = 1 } }
     }
 
-    # Provider-Integritaet (WS-B6: GENAU EINS): jeder deklarierte Dienst zeigt auf genau einen Core-Workflow.
+    # Provider-Integritaet: jeder deklarierte Dienst zeigt auf genau einen Core-Workflow.
     #   0 Treffer = tote Referenz; >1 = mehrdeutige name->id-Aufloesung (core.services-Seed waere nicht eindeutig).
     foreach ($alias in $providerAliases.Keys) {
         $wn = $providerAliases[$alias]
@@ -523,7 +522,7 @@ if ($null -eq $coreMf) {
     }
 
     # Paket-Tool-Services (Nicht-Core, Objekt-Form; docs/package-contract.md §5): Provider-Integritaet je Eintrag —
-    # Ziel ist GENAU EIN Workflow DES EIGENEN Pakets (agent.<pkg>.*), permission ist eine der drei Stufen (DB-CHECK
+    # Ziel ist genau ein Workflow des eigenen Pakets (agent.<pkg>.*), permission ist eine der drei Stufen (DB-CHECK
     # core.services), jede inputs-Beschreibung ist $fromAI-tauglich (kein ' / Backtick), Typ string|number, *_id nie
     # number, keine Identitaetsfelder. Core bleibt String-Form.
     $serviceWorkflows = @{}   # Workflow-Name -> '<pkg>:<alias>' (fuer den Umgehungs-Check unten)
@@ -559,8 +558,8 @@ if ($null -eq $coreMf) {
         }
     }
 
-    # Kein Umgehen der Pruefstelle: ein Paket-Service-Workflow wird NUR ueber agent.sub_dispatch_tool (Laufzeit-
-    # Lookup in core.services, Pruefung in core.fn_resolve_service) erreicht — eine literale Bindung ausserhalb der
+    # Kein Umgehen der Pruefstelle: ein Paket-Service-Workflow wird nur ueber agent.sub_dispatch_tool (Laufzeit-
+    # Lookup in core.services, Pruefung in core.fn_resolve_service) erreicht; eine literale Bindung ausserhalb der
     # Test-Harnesses waere ein Bypass von Paket-Status + Berechtigung.
     $serviceIds = @{}
     foreach ($wid in $workflows.Keys) { if ($serviceWorkflows.ContainsKey($workflows[$wid].Name)) { $serviceIds[$wid] = $workflows[$wid].Name } }
@@ -591,10 +590,9 @@ if ($null -eq $coreMf) {
         }
     }
 
-    # Referenz-Scan der Build-Defs: 'core:<alias>'-Tokens als gequotetes String-Argument. Paket-uniform:
-    # gescannt werden die Engine (scripts/build/: build.ps1 nutzt core:-Aliase als Orchestrator) UND die
-    # paket-eigenen Build-Defs (packages/*/build/...). Die Resolver-Definitionsdatei ausschliessen (ihre
-    # Regex-/Fehlertext-Literale sind keine Referenzen).
+    # Referenz-Scan der Build-Defs: 'core:<alias>'-Tokens als gequotetes String-Argument. Gescannt werden die Engine
+    # (scripts/build/: build.ps1 nutzt core:-Aliase als Orchestrator) und die paket-eigenen Build-Defs
+    # (packages/*/build/...). Die Resolver-Definitionsdatei faellt aus (ihre Regex-/Fehlertext-Literale sind keine Referenzen).
     $buildScanDirs = @((Join-Path $RepoRoot 'scripts\build')) +
                      @(Get-ChildItem (Join-Path $RepoRoot 'packages') -Directory -ErrorAction SilentlyContinue |
                        ForEach-Object { Join-Path $_.FullName 'build' } | Where-Object { Test-Path $_ })
@@ -602,7 +600,7 @@ if ($null -eq $coreMf) {
         if ($f.Name -eq 'workflow_lifecycle.ps1') { continue }
         $txt = [System.IO.File]::ReadAllText($f.FullName, $Utf8NoBom)
         # Paket eines Build-Defs = sein physischer Ort (packages/<pkg>/build/... -> <pkg>; Engine in
-        # scripts/build/ -> core, unconstrained). Ersetzt die alte agent.finance*-Heuristik UND den Core-Sonderfall.
+        # scripts/build/ -> core, unconstrained).
         $pkg = if (($f.FullName -replace '\\','/') -match 'packages/([^/]+)/build/') { $Matches[1] } else { 'core' }
         foreach ($m in [regex]::Matches($txt, "['""]core:([a-z][a-z0-9_]*)['""]")) {
             $alias = $m.Groups[1].Value
@@ -622,12 +620,12 @@ if ($null -eq $coreMf) {
 }
 
 # ---------------------------------------------------------------
-# (6b) CROSS-PACKAGE READS (WS-5): ein Paket darf eine FREMDE Paket-Lese-fn nur konsumieren, wenn der
-#     PROVIDER sie in provides.reads veroeffentlicht (Spiegel zu consumes.reads). Optional-Dependency-
-#     Konvention (docs/package-contract.md "Cross-package reads"): jeder consumes.reads-Eintrag, der NICHT
-#     'core.*' ist, MUSS einen passenden provides.reads-Eintrag im Manifest des benannten Provider-Pakets
-#     haben (fail-closed). 'core.*' ist exempt (Host-Lesefenster; Liveness deckt Check (1) toter-fn-Refs ab).
-#     null-safe fuer Pakete OHNE provides.reads-Key. Die LAUFZEIT-Optionalitaet (Provider evtl. nicht
+# (6b) CROSS-PACKAGE READS: ein Paket darf eine fremde Paket-Lese-fn nur konsumieren, wenn der
+#     Provider sie in provides.reads veroeffentlicht (Spiegel zu consumes.reads). Optional-Dependency-
+#     Konvention (docs/package-contract.md "Cross-package reads"): jeder consumes.reads-Eintrag, der nicht
+#     'core.*' ist, braucht einen passenden provides.reads-Eintrag im Manifest des benannten Provider-Pakets
+#     (fail-closed). 'core.*' ist exempt (Host-Lesefenster; Liveness deckt Check (1) toter-fn-Refs ab).
+#     null-safe fuer Pakete ohne provides.reads-Key. Die Laufzeit-Optionalitaet (Provider evtl. nicht
 #     installiert) traegt der Doppel-Guard in der Consumer-fn (fn_package_active + to_regprocedure); hier
 #     wird nur die statische Deklarations-Paritaet erzwungen (der Quellbaum hat alle Pakete).
 # ---------------------------------------------------------------
@@ -666,12 +664,12 @@ foreach ($pdir in (Get-ChildItem $pkgDir -Directory -ErrorAction SilentlyContinu
 }
 
 # ---------------------------------------------------------------
-# (7) CRON-ENABLE INTEGRITY (F9 / R1-MINOR): das Cron-Gate liest sein Enable-Flag build-time als
+# (7) CRON-ENABLE INTEGRITY: das Cron-Gate liest sein Enable-Flag build-time als
 #     Literal core.fn_config_get('<pkg>','cron_enable','<key>'); der Seeder legt die Zeile nur an,
 #     wenn das Paket-Manifest den Key deklariert (.config.cron_enable.<key>). Drift in eine Richtung
 #     (Gate liest nicht-deklariertes Flag) -> stiller fail-closed; Drift andersrum (deklariertes Flag,
 #     das kein Gate liest) -> tote Config. Scannt die Postgres-Node-Queries der getrackten Workflows
-#     (das Literal ist eingebacken -> die provides.crons<->config-Namensentkopplung ist hier egal).
+#     (das Literal ist eingebacken, die provides.crons<->config-Namensentkopplung ist hier egal).
 # ---------------------------------------------------------------
 $cronEnableRefs = New-Object System.Collections.Generic.HashSet[string]   # "<pkg>|<key>" aus den Gate-Queries
 foreach ($w in $workflows.Values) {
@@ -706,17 +704,17 @@ foreach ($decl in $cronEnableDeclared) {
 }
 
 # ---------------------------------------------------------------
-# (9b) CALLBACK-PREFIX-KOLLISION (Phase 0 WS-0c CB): ein Manifest-callback_handlers-Prefix darf KEINEN der
+# (9b) CALLBACK-PREFIX-KOLLISION: ein Manifest-callback_handlers-Prefix darf keinen der
 #     hartkodierten 'Callback action'-Switch-Arme doppeln -- sonst faengt der Switch-Arm zuerst und die
-#     core.callback_handlers-Zeile feuert NIE (tote Handler-Bindung, da der generische Dispatch nur die
-#     extra-Fallback-Ausgabe sieht). SoT der hartkodierten Arme = der gebaute Orchestrator-Switch (rightValue
-#     je Bedingung, wie command_lint den Command-Router liest), SoT der Registry-Prefixes = die Manifest-
-#     callback_handlers-Bloecke. Zusaetzlich: das NESTED-Schema { "<prefix>": { handler_fn, member_permeable } }
-#     validieren (der flat-Handler-fn-String ist retired; member_permeable steuert die Member-Callback-Route).
+#     core.callback_handlers-Zeile feuert nie (tote Handler-Bindung, da der generische Dispatch nur die
+#     extra-Fallback-Ausgabe sieht). Quelle der hartkodierten Arme = der gebaute Orchestrator-Switch (rightValue
+#     je Bedingung, wie command_lint den Command-Router liest), Quelle der Registry-Prefixes = die Manifest-
+#     callback_handlers-Bloecke. Zusaetzlich: das Schema { "<prefix>": { handler_fn, member_permeable } }
+#     validieren (member_permeable steuert die Member-Callback-Route).
 # ---------------------------------------------------------------
-#     AUSNAHME (Mitglieder-Pfad): eine Kollision ist erlaubt, wenn die Registry-Zeile member_permeable=true traegt --
-#     dann ist sie NICHT tot: der Owner nimmt den Switch-Arm, aufgeloeste Mitglieder gehen am Switch vorbei direkt in
-#     den Registry-Dispatch (Orchestrator 'Callback member?'). Erster Fall: 'onboarding' (core.fn_handle_onboarding_cb).
+#     Ausnahme (Mitglieder-Pfad): eine Kollision ist erlaubt, wenn die Registry-Zeile member_permeable=true traegt --
+#     dann ist sie nicht tot: der Owner nimmt den Switch-Arm, aufgeloeste Mitglieder gehen am Switch vorbei direkt in
+#     den Registry-Dispatch (Orchestrator 'Callback member?'). Beispiel: 'onboarding' (core.fn_handle_onboarding_cb).
 function Test-CbCollisionAllowed($Value) {
     return ($Value -is [System.Management.Automation.PSCustomObject]) -and ($Value.member_permeable -is [bool]) -and $Value.member_permeable
 }
@@ -753,8 +751,8 @@ foreach ($pdir in (Get-ChildItem $pkgDir -Directory -ErrorAction SilentlyContinu
         if ($hardcodedCbPrefixes.Contains($p.Name) -and -not (Test-CbCollisionAllowed $p.Value)) {
             $errors.Add("CALLBACK-PREFIX-KOLLISION: packages/$pkg/manifest.json deklariert callback_handlers-Prefix '$($p.Name)', der bereits ein hartkodierter 'Callback action'-Switch-Arm ist -- der Switch faengt ihn zuerst, die Registry-Zeile feuert NIE (tote Bindung). Anderes Prefix waehlen (oder bewusst member_permeable=true: Owner nimmt den Switch, Mitglieder die Registry).")
         }
-        # Nested-Schema { handler_fn, member_permeable } erzwingen (flat-String retired -> seed_data
-        # laese .value.handler_fn=null; member_permeable steuert die fail-closed Member-Route).
+        # Schema { handler_fn, member_permeable } erzwingen (ein flacher String liesse seed_data
+        # .value.handler_fn=null lesen; member_permeable steuert die fail-closed Member-Route).
         $cbVal = $p.Value
         if ($cbVal -isnot [System.Management.Automation.PSCustomObject]) {
             $errors.Add("CALLBACK-SCHEMA: packages/$pkg/manifest.json callback_handlers '$($p.Name)' muss ein Objekt { handler_fn, member_permeable } sein (nested-Schema; flat handler_fn-String ist retired).")
@@ -770,9 +768,9 @@ foreach ($pdir in (Get-ChildItem $pkgDir -Directory -ErrorAction SilentlyContinu
 }
 
 # ---------------------------------------------------------------
-# (8) BACKUP-BLOCK-HYGIENE (Phase 5, arch-3 Obj 3 + M4): kein Paket darf den Backup-Key oder einen
+# (8) BACKUP-BLOCK-HYGIENE (arch-3 Obj 3 + M4): kein Paket darf den Backup-Key oder einen
 #     Code-Seed in ein Export-Bundle ziehen. Geprueft wird der manifest-`backup`-Block (von backup_cli.sh
-#     gelesen): die GEDUMPTEN Tabellen (full_tables + filtered_tables-Keys; exclude_tables ist die
+#     gelesen): die gedumpten Tabellen (full_tables + filtered_tables-Keys; exclude_tables ist die
 #     entgegengesetzte Absicht = aus dem Dump nehmen, daher nicht geprueft) duerfen weder Schema `core`
 #     noch eine code-geseedete Tabelle nennen, und schema_dump darf kein core-besitzendes Paket treffen.
 # ---------------------------------------------------------------
@@ -809,15 +807,15 @@ foreach ($pdir in (Get-ChildItem $pkgDir -Directory -ErrorAction SilentlyContinu
 }
 
 # ---------------------------------------------------------------
-# (9) CRON-CONTEXT-WRITE (M1, Phase C): ein CRON (scheduleTrigger-Workflow) darf NIE agent.core_contexts
-#     schreiben -- weder DIREKT (INSERT/UPDATE/DELETE) noch ueber eine fn, die es (transitiv) tut. Strukturelle
-#     Leitplanke gegen das hoechste Roadmap-Risiko (Auto-Memory-Writes): der EINZIGE core_contexts-Schreibpfad
-#     ist die owner-gegatete Approve-fn, ausgeloest vom Orchestrator-Callback (learn:ok) -- NIE von einem Cron.
-#     (Phase C Stufe 2 / S2-1 vertieft das per BEFORE-UPDATE-Trigger auf agent.core_contexts.)
+# (9) CRON-CONTEXT-WRITE (M1): ein Cron (scheduleTrigger-Workflow) darf nie agent.core_contexts
+#     schreiben -- weder direkt (INSERT/UPDATE/DELETE) noch ueber eine fn, die es (transitiv) tut. Strukturelle
+#     Leitplanke gegen Auto-Memory-Writes: der einzige core_contexts-Schreibpfad
+#     ist die owner-gegatete Approve-fn, ausgeloest vom Orchestrator-Callback (learn:ok), nie von einem Cron.
+#     Zweite Schicht: BEFORE-UPDATE-Trigger auf agent.core_contexts.
 # ---------------------------------------------------------------
 $ctxWriteRe = '(?im)(INSERT\s+INTO|UPDATE|DELETE\s+FROM)\s+agent\.core_contexts\b'
 # Closure ueber fnBodies: eine fn mit direktem DML ist Writer; eine fn, die eine Writer-fn (statisch
-# sichtbar, kein dynamisches EXECUTE) aufruft, ist selbst Writer. Konservativ (folgt KEINEM dyn. Dispatch)
+# sichtbar, kein dynamisches EXECUTE) aufruft, ist selbst Writer. Konservativ (folgt keinem dyn. Dispatch)
 # -> nie False-Positive, faengt aber die realistische Regression (direktes DML / fn_set_context_facts & Co).
 $ctxWriters = New-Object System.Collections.Generic.HashSet[string]
 foreach ($fn in $fnBodies.Keys) { if ($fnBodies[$fn] -match $ctxWriteRe) { [void]$ctxWriters.Add($fn) } }
@@ -832,8 +830,8 @@ while ($ctxChanged) {
     }
 }
 foreach ($w in $workflows.Values) {
-    # CRON = ENABLED scheduleTrigger als Eingang UND kein telegram-/executeWorkflow-Trigger. Schliesst
-    # den Orchestrator (telegramTrigger + DEAKTIVIERTER Compression-Schedule -> seine Pairing/Knock-Callbacks
+    # Cron = aktivierter scheduleTrigger als Eingang und kein telegram-/executeWorkflow-Trigger. Schliesst
+    # den Orchestrator (telegramTrigger + deaktivierter Compression-Schedule -> seine Pairing/Knock-Callbacks
     # schreiben legitim core_contexts) sowie Agenten/Tools (executeWorkflowTrigger) aus.
     $hasEnabledSchedule = @($w.Json.nodes | Where-Object { $_.type -eq 'n8n-nodes-base.scheduleTrigger' -and -not ($_.disabled -eq $true) }).Count -gt 0
     $hasOtherTrigger    = @($w.Json.nodes | Where-Object { $_.type -in @('n8n-nodes-base.telegramTrigger', 'n8n-nodes-base.executeWorkflowTrigger') }).Count -gt 0
@@ -853,11 +851,11 @@ foreach ($w in $workflows.Values) {
 }
 
 # ---------------------------------------------------------------
-# (10) CONTEXT-SCOPE PARITAET (P0a): jeder facts-Context mit einem context_validators-Eintrag MUSS eine
-#     context_scopes-Deklaration haben (fail-closed, "kein Default" — sonst faellt agent.fn_set_context_facts auf
+# (10) CONTEXT-SCOPE PARITAET: jeder facts-Context mit einem context_validators-Eintrag braucht eine
+#     context_scopes-Deklaration (fail-closed, kein Default — sonst faellt agent.fn_set_context_facts auf
 #     den owner_only-Backstop und die deklarierte scope/write_permission-Absicht waere still verloren).
-#     Bidirektional (Paritaet zu Check 7 cron_enable FEHLT/ORPHAN): ein context_scopes-Eintrag OHNE Validator ist
-#     eine tote Deklaration (ORPHAN), die der Seeder still upsertet. SoT je Achse = die Manifest-Bloecke; per-Paket
+#     Bidirektional (wie Check 7 cron_enable FEHLT/ORPHAN): ein context_scopes-Eintrag ohne Validator ist
+#     eine tote Deklaration (ORPHAN), die der Seeder still upsertet. Quelle je Achse = die Manifest-Bloecke; per Paket
 #     gekeyt (ein Paket besitzt seine Contexts, PK context_name) — die Durchsetzung lebt in core.context_scopes.
 # ---------------------------------------------------------------
 $validatorCtx = New-Object System.Collections.Generic.HashSet[string]   # "<pkg>|<context>"
@@ -887,12 +885,12 @@ foreach ($s in $scopeCtx) {
 }
 
 # ---------------------------------------------------------------
-# (11) ONBOARDING PARITAET (P1 Generisches Paket-Onboarding): ein Nicht-Core-Paket mit provides.onboarding.agent
-#     MUSS eine nicht-leere packages/<pkg>/onboarding/sections.json haben — UND umgekehrt (bidirektional,
-#     fail-closed). Das ist der D3-Backstop der "Konvention statt sections_file"-Entscheidung (arch-challenge D3):
-#     der Sektions-Pfad ist abgeleitet (kein Manifest-Feld) -> dieser Lint sichert, dass die Konvention nicht still
-#     bricht. Plus: der deklarierte onboarding.agent MUSS ein provides.agents-Name desselben Pakets sein (der
-#     Orchestrator-Dispatch ruft agent.<agent>; Tippfehler-Schutz). Core ausgenommen: der Core-Haushalt onboardet
+# (11) ONBOARDING PARITAET: ein Nicht-Core-Paket mit provides.onboarding.agent
+#     braucht eine nicht-leere packages/<pkg>/onboarding/sections.json — und umgekehrt (bidirektional,
+#     fail-closed). Der Sektions-Pfad ist abgeleitet (Konvention statt sections_file, arch-challenge D3, kein
+#     Manifest-Feld) -> dieser Lint sichert, dass die Konvention nicht still bricht. Plus: der deklarierte
+#     onboarding.agent ist ein provides.agents-Name desselben Pakets (der Orchestrator-Dispatch ruft
+#     agent.<agent>; Tippfehler-Schutz). Core ausgenommen: der Core-Haushalt onboardet
 #     ueber agent.guide_onboarding_state (kein packages/core/onboarding, kein provides.onboarding) = Sonderfall.
 # ---------------------------------------------------------------
 foreach ($mf in (Get-ChildItem (Join-Path $pkgDir '*\manifest.json'))) {
@@ -921,9 +919,8 @@ foreach ($mf in (Get-ChildItem (Join-Path $pkgDir '*\manifest.json'))) {
 }
 
 # ---------------------------------------------------------------
-# (12) CREDENTIALS-BLOCK (Install-UX-Phase, docs/package-contract.md §3.8) — die Absicherungs-Schicht
-#     gegen den career-Credentials-Fall (Owner-Direktive: "nie wieder Paket-Secret als Host-Sonderlocke,
-#     Installationsprozess nie umgangen/gebrochen"). Teil-Checks (12e/12f = Manifest-`.config`-Eintraege, s. dort):
+# (12) CREDENTIALS-BLOCK (docs/package-contract.md §3.8) — Absicherung gegen ein Paket-Secret als
+#     Host-Sonderlocke (der Installationsprozess bleibt generisch). Teil-Checks (12e/12f = Manifest-`.config`-Eintraege, s. dort):
 #     (12a) SCHEMA: jeder manifest-`credentials`-Eintrag traegt placeholder (__CRED_*__-Form), name, type
 #           (∈ Assembler-Enum aus inject_credentials.sh::_cred_assemble_data — Fail beim Commit statt
 #           Install-die) + >=1 env-Key; validator ∈ geschlossenem Enum (none|url|email|live_check:<name>).
@@ -931,11 +928,11 @@ foreach ($mf in (Get-ChildItem (Join-Path $pkgDir '*\manifest.json'))) {
 #           eines Pakets ist Host-Map ∪ Rollen-Konvention (__CRED_POSTGRES_<PKG>_RW/RO__) ∪ deklariert
 #           (FEHLT = inject legt die Cred nie an -> dangling Platzhalter beim Deploy); jeder deklarierte
 #           placeholder wird von >=1 Paket-Workflow referenziert (ORPHAN = tote Deklaration).
-#     (12c) NAHT-GUARD: provisioning/ traegt KEINE Paket-Credential-Literale — kein __CRED_*__ ausserhalb
-#           der Host-Map-SoT und keinen deklarierten Paket-env-Key als Wort (der praezise career-Rueckfall:
-#           inject_credentials Stufen 8/9 + _INSTALL_ENV_KEYS).
+#     (12c) NAHT-GUARD: provisioning/ traegt keine Paket-Credential-Literale — kein __CRED_*__ ausserhalb
+#           der Host-Map-Quelle und keinen deklarierten Paket-env-Key als Wort (inject_credentials
+#           Stufen 8/9 + _INSTALL_ENV_KEYS duerfen keinen Paket-Schluessel nennen).
 #     (12d) PROMPT-GATE-GUARD: die interaktiven Eingabe-Primitive (ui_input/_read_tty + rohe
-#           read</dev/tty) leben NUR an den sanktionierten Stellen (Datei-Allowlist), und
+#           read</dev/tty) leben nur an den sanktionierten Stellen (Datei-Allowlist), und
 #           _prompt_validated/ui_input tragen das ui_interactive-Gate (TTY ∧ ¬UNATTENDED) — kein neuer
 #           Prompt kann den unattended-Pfad erreichen. Selbst-Asserts: Map/Enum/Gate nicht extrahierbar
 #           -> harter Fail (nie still gruen).
@@ -970,7 +967,7 @@ if (-not (Test-Path $injectFile)) {
 $credDeclared   = @{}   # pkg -> HashSet placeholder
 $credEnvKeys    = New-Object System.Collections.Generic.HashSet[string]   # alle deklarierten env-Keys (12c)
 $validatorEnumRe = '^(none|url|email|live_check:(telegram|google|anthropic))$'
-# (12e) Install-UX-Phase 4: `.config`-Eintraege mit `prompt` fragt der Paket-Wizard (pkg_lifecycle.sh
+# (12e) `.config`-Eintraege mit `prompt` fragt der Paket-Wizard (pkg_lifecycle.sh
 #       _pkg_settings_wizard) — gleiches Vokabular wie credentials.env: prompt (Text), validator (dasselbe
 #       geschlossene Enum), help (Text), optional choices [{value,label}] (Auswahlliste; Wert nicht-leer und nicht
 #       `__later__` — reserviert fuer die Wizard-Option „Spaeter festlegen"). Typfehler -> Commit-Fail.
@@ -1035,8 +1032,8 @@ foreach ($pdir in (Get-ChildItem $pkgDir -Directory -ErrorAction SilentlyContinu
         }
     }
 }
-# (12g) paperless Phase 2 (E10): ein `.config`-Eintrag, den ein gebauter Workflow ZUR LAUFZEIT liest
-#       (core.fn_config_get('<pkg>','<cat>','<key>')) und der LEER ausgeliefert wird, muss fragbar sein (`prompt`) —
+# (12g) ein `.config`-Eintrag, den ein gebauter Workflow zur Laufzeit liest
+#       (core.fn_config_get('<pkg>','<cat>','<key>')) und der leer ausgeliefert wird, muss fragbar sein (`prompt`) —
 #       sonst liefe das Feature nach jeder Installation ins Leere, bis jemand die Konsole bemueht.
 $runtimeCfg = @{}
 foreach ($w in $workflows.Values) {
@@ -1080,11 +1077,11 @@ foreach ($pdir in (Get-ChildItem $pkgDir -Directory -ErrorAction SilentlyContinu
                 $errors.Add("CREDENTIALS SCHEMA: packages/$pkg credentials.$($c.Name).env ist leer (mindestens ein env-Key noetig).")
             }
             if (([string]$v.type) -eq 'httpHeaderAuth' -and $envProps.Count -gt 1) {
-                # Cold-Eyes A3: der Assembler nimmt to_entries[0] — ein 2. env-Key ginge STILL verloren.
+                # Der Assembler nimmt to_entries[0]; ein 2. env-Key ginge still verloren.
                 $errors.Add("CREDENTIALS SCHEMA: packages/$pkg credentials.$($c.Name) (httpHeaderAuth) deklariert $($envProps.Count) env-Keys — der Typ traegt genau EIN Name/Value-Paar, weitere Keys wuerden still verworfen.")
             }
             foreach ($e in $envProps) {
-                # Cold-Eyes A1: der Key-Name fliesst in bash-`eval` + grep-Regex (inject/wizard/env_has_key)
+                # Der Key-Name fliesst in bash-`eval` + grep-Regex (inject/wizard/env_has_key)
                 # -> beim Commit auf Bash-Identifier-Form pinnen (Env-Konvention UPPER_SNAKE), sonst wird ein
                 # Sonderzeichen erst als kryptischer Laufzeit-/eval-Fehler sichtbar.
                 if ($e.Name -notmatch '^[A-Z_][A-Z0-9_]*$') {
@@ -1100,7 +1097,7 @@ foreach ($pdir in (Get-ChildItem $pkgDir -Directory -ErrorAction SilentlyContinu
                     $errors.Add("CREDENTIALS VALIDATOR-ENUM: packages/$pkg credentials.$($c.Name).env.$($e.Name).validator='$val' ist nicht im geschlossenen Enum none|url|email|live_check:(telegram|google|anthropic).")
                 }
                 # Der Installer-Wizard fragt jeden env-Key ab (Install + lifeagents reconfigure) — ohne prompt waere der
-                # Zugang nur per Hand-Edit der <pkg>.env setzbar (paperless E10: Adresse + Token werden gefragt).
+                # Zugang nur per Hand-Edit der <pkg>.env setzbar.
                 if ([string]::IsNullOrWhiteSpace([string]$e.Value.prompt)) {
                     $errors.Add("CREDENTIALS SCHEMA: packages/$pkg credentials.$($c.Name).env.$($e.Name).prompt fehlt -- der Wizard koennte den Zugang nicht abfragen.")
                 }
@@ -1138,9 +1135,9 @@ foreach ($pdir in (Get-ChildItem $pkgDir -Directory -ErrorAction SilentlyContinu
 }
 
 # (12c) NAHT-GUARD: provisioning/ ohne Paket-Credential-Literale. __CRED_*__ ausserhalb der Host-Map nur
-#       aus der Host-Map selbst (inject_credentials.sh ist die SoT-Datei und darf sie tragen); deklarierte
-#       Paket-env-Keys duerfen NIRGENDS in provisioning/ als Wort auftauchen (der Wizard/Inject liest sie
-#       GENERISCH aus dem Manifest -- ein Literal waere die Rueckkehr der Sonderlocke).
+#       aus der Host-Map selbst (inject_credentials.sh ist die Quelldatei und darf sie tragen); deklarierte
+#       Paket-env-Keys duerfen nirgends in provisioning/ als Wort auftauchen (Wizard/Inject lesen sie
+#       generisch aus dem Manifest -- ein Literal waere eine Paket-Sonderlocke im Host-Code).
 foreach ($f in (Get-ChildItem $provDir -Recurse -Include '*.sh','*.tpl' -File -ErrorAction SilentlyContinue)) {
     $txt = [System.IO.File]::ReadAllText($f.FullName, $Utf8NoBom)
     $rel = $f.FullName.Substring($RepoRoot.Length + 1) -replace '\\','/'
@@ -1161,7 +1158,7 @@ foreach ($f in (Get-ChildItem $provDir -Recurse -Include '*.sh','*.tpl' -File -E
 # (12d) PROMPT-GATE-GUARD: Eingabe-Primitive nur an sanktionierten Stellen + Gate-Assert.
 $promptAllow = @{  # Datei -> erlaubte Primitive (Definition/Delegat/sanktionierte Wrapper)
     'provisioning/lib/common.sh'         = @('ui_input-def', 'ui_choose-def', 'ui_wait_key-def')
-    'provisioning/lib/release_inputs.sh' = @('ui_input', 'ui_choose')  # + Proxy-Ort-Frage (Install-UX-Phase 5)
+    'provisioning/lib/release_inputs.sh' = @('ui_input', 'ui_choose')  # + Proxy-Ort-Frage
     'provisioning/lib/proxy_cli.sh'      = @('ui_input', 'ui_choose')  # `lifeagents proxy set`: Adresse + Netz-Bestaetigung
     'provisioning/lib/pkg_lifecycle.sh'  = @('ui_input', 'ui_choose', 'rawtty')  # Wizard-reask + _pkg_confirm (--yes-Achse) + Verb-/Missing-Arg-Picker
     'provisioning/lib/fetch_release.sh'  = @()                       # Download immer anonym: keine Frage (Public-Repo)
@@ -1170,11 +1167,11 @@ $promptAllow = @{  # Datei -> erlaubte Primitive (Definition/Delegat/sanktionier
     'provisioning/lib/config_cli.sh'     = @('ui_input', 'ui_choose') # config-set-Picker (Key/Modell) + Wert-Prompt
     'provisioning/lib/household_cli.sh'  = @('ui_choose')            # Personen-/Unblock-/Rollen-/Verb-Picker
     'provisioning/lib/reconfigure_cli.sh' = @('ui_choose')           # `lifeagents reconfigure`: Ziel-/Aktions-Picker (Werte fragt _prompt_validated)
-    'provisioning/templates/lifeagents.tpl' = @('ui_choose')         # Hauptmenue bei nacktem Aufruf (E4)
+    'provisioning/templates/lifeagents.tpl' = @('ui_choose')         # Hauptmenue bei nacktem Aufruf
     'provisioning/lib/upgrade_guard.sh'  = @('ui_choose')            # `lifeagents rollback`: Bestaetigung (Daten seit der Sicherung gehen verloren)
     'provisioning/install.sh'            = @()                       # self-contained Bootstrap: fragt nichts (anonymer Download)
     'provisioning/lib/bootstrap_owner.sh' = @()
-    'provisioning/lib/owner_connect.sh' = @('ui_choose', 'ui_wait_key')  # Gefuehrtes Ende: 'Erneut pruefen/Spaeter' + Pairing-Warten (Install-UX-Phase 3)
+    'provisioning/lib/owner_connect.sh' = @('ui_choose', 'ui_wait_key')  # Gefuehrtes Ende: 'Erneut pruefen/Spaeter' + Pairing-Warten
 }
 foreach ($f in (Get-ChildItem $provDir -Recurse -Include '*.sh','*.tpl' -File -ErrorAction SilentlyContinue)) {
     $rel = $f.FullName.Substring($RepoRoot.Length + 1) -replace '\\','/'
@@ -1188,7 +1185,7 @@ foreach ($f in (Get-ChildItem $provDir -Recurse -Include '*.sh','*.tpl' -File -E
         if ($ln -match '(^|[^A-Za-z0-9_])(ui_input|ui_choose|ui_wait_key|_read_tty)\b' -and $allow -notcontains $Matches[2]) {
             $errors.Add("PROMPT-GATE-GUARD: $rel Zeile $($i+1) ruft '$($Matches[2])' ausserhalb der sanktionierten Wrapper -- neue Prompts laufen NUR ueber _prompt_validated/den Stage-4-Wizard (ui_interactive-Gate, unattended-sicher).")
         }
-        # Cold-Eyes A2: JEDE read-Form mit /dev/tty-Redirect fangen (nicht nur `read -r`) — die Gefahr
+        # Jede read-Form mit /dev/tty-Redirect fangen (nicht nur `read -r`): die Gefahr
         # ist der Redirect selbst, nicht die gewaehlten read-Flags.
         if ($ln -match '\bread\b[^<]*<\s*/dev/tty' -and $allow -notcontains 'rawtty' -and $rel -ne 'provisioning/lib/common.sh') {
             $errors.Add("PROMPT-GATE-GUARD: $rel Zeile $($i+1) liest roh von /dev/tty -- Eingaben laufen ueber ui_input (gum+plain, ui_interactive-Gate); rohe Reads sind nur den --yes-Confirms/dem Bootstrap erlaubt.")
@@ -1215,12 +1212,11 @@ if ($relTxt -notmatch '(?s)_prompt_validated\(\)\s*\{.*?ui_interactive') {
 }
 
 # ---------------------------------------------------------------
-# (13) CLI-HELP-PARITAET (Install-UX, Owner-Direktive "die Help-Ausgabe MUSS abgesichert sein"):
-#     die CLI-Hilfe ist die EINE Befehls-Referenz (Site/README verweisen nur darauf, keine zweite
-#     Adresse) — also darf sie nie driften. Bidirektional je Dispatcher: jeder case-Verb-Arm ist im
-#     help-Heredoc dokumentiert UND jeder dokumentierte Verb hat einen Arm (Aliasse mit '-'-Praefix +
-#     help/* exempt). Flags: provision.sh parse_args <-> usage() bidirektional; install.sh armed ⊆
-#     usage (Passthrough-Launcher: dokumentiert mehr als er selbst parst — erlaubt). Selbst-Asserts
+# (13) CLI-HELP-PARITAET: die CLI-Hilfe ist die eine Befehls-Referenz (Site/README verweisen nur
+#     darauf, keine zweite Adresse) — also darf sie nie driften. Bidirektional je Dispatcher: jeder
+#     case-Verb-Arm ist im help-Heredoc dokumentiert und jedes dokumentierte Verb hat einen Arm (Aliasse
+#     mit '-'-Praefix + help/* exempt). Flags: provision.sh parse_args <-> usage() bidirektional; install.sh
+#     armed ⊆ usage (Passthrough-Launcher: dokumentiert mehr als er selbst parst — erlaubt). Selbst-Asserts
 #     bei leerer Extraktion (nie still gruen).
 # ---------------------------------------------------------------
 function Get-CliCaseBlock([string]$Txt, [string]$Header) {
@@ -1312,11 +1308,11 @@ if ($null -eq $instDoc -or $instDoc.Count -lt 2 -or $instArm.Count -lt 1) {
 
 # ---------------------------------------------------------------
 # (14) ADVISOR metric_key-NAMING (Pattern-Paritaet -> finance-Standard "schlicht"): ein alert-metric_key in
-#     packages/<pkg>/db/migrations/R__fn_advisor_review.sql darf NIE mit dem eigenen Domaenen-Praefix '<pkg>_'
+#     packages/<pkg>/db/migrations/R__fn_advisor_review.sql darf nie mit dem eigenen Domaenen-Praefix '<pkg>_'
 #     beginnen. Die Domaene lebt bereits in core.notification_state.source ('advisor:<domain>[:pid]', vom
-#     Wrapper fn_advisor_review_evaluate gesetzt) -- ein Domaenen-Praefix im metric_key ist redundant. finance
-#     macht es schlicht (plan_staleness/emergency_reserve/...); career/estate wurden darauf harmonisiert. Deckt
-#     BEIDE Emit-Formen: die jsonb_build_object-Form ('metric_key','<val>') UND die Helfer-Form
+#     Wrapper fn_advisor_review_evaluate gesetzt) -- ein Domaenen-Praefix im metric_key ist redundant
+#     (finance-Beispiele: plan_staleness/emergency_reserve). Deckt beide Emit-Formen: die
+#     jsonb_build_object-Form ('metric_key','<val>') und die Helfer-Form
 #     core.fn_staleness_alert('<val>',...) (erstes Argument). pkg = physischer Ort (== advisor-domain).
 # ---------------------------------------------------------------
 foreach ($f in (Get-ChildItem (Join-Path $pkgDir '*\db\migrations\R__fn_advisor_review.sql') -File -ErrorAction SilentlyContinue)) {
@@ -1332,14 +1328,14 @@ foreach ($f in (Get-ChildItem (Join-Path $pkgDir '*\db\migrations\R__fn_advisor_
 }
 
 # ---------------------------------------------------------------
-# (15) OWNER-ANZEIGE + FAKTEN-SKELETTE (Install-UX-Phase 6, docs/package-contract.md §2):
+# (15) OWNER-ANZEIGE + FAKTEN-SKELETTE (docs/package-contract.md §2):
 #     (a) jedes Paket traegt Anzeigename + Einzeiler im Textkatalog (<pkg>.package.name|summary in locales/de.json;
-#         Recap, Picker, /help, Begruessung, Onboarding-Menue — Textkatalog Phase B, §3.11). Die frueheren Manifest-
-#         Felder (display_name/summary, cron_labels-Texte, commands.description, catalog-Texte, sections.json label)
-#         sind retired (Muster facts_display, 16b) -> ein Rueckfall ist ein Fehler (sonst zwei Adressen fuer einen Fakt).
+#         Recap, Picker, /help, Begruessung, Onboarding-Menue, §3.11). Die Manifest-Felder display_name/summary,
+#         cron_labels-Texte, commands.description, catalog-Texte und sections.json label sind retired (Muster
+#         facts_display, 16b) -> ein Rueckfall ist ein Fehler (sonst zwei Adressen fuer einen Fakt).
 #     (b) jeder `context_skeletons`-Key ist auch ein `context_validators`-Key desselben Pakets (ein Skelett ohne
 #         Validator waere vom Haushalts-Schreibpfad core.fn_facts_context_allowed nie beschreibbar = tote Zeile)
-#         und traegt ein `facts`-Objekt (der Seeder schreibt es als Start-Sidecar); er ist NICHT per_user (das
+#         und traegt ein `facts`-Objekt (der Seeder schreibt es als Start-Sidecar); er ist nicht per_user (das
 #         unsuffigierte Basis-Skelett wuerde nie beschrieben, docs/package-contract.md §3.3).
 # ---------------------------------------------------------------
 foreach ($pdir in (Get-ChildItem $pkgDir -Directory -ErrorAction SilentlyContinue)) {
@@ -1401,9 +1397,9 @@ foreach ($pdir in (Get-ChildItem $pkgDir -Directory -ErrorAction SilentlyContinu
 }
 
 # ---------------------------------------------------------------
-# (16) FAKTEN-SCHICHT (Phase A, docs/package-contract.md §2/§3.3):
+# (16) FAKTEN-SCHICHT (docs/package-contract.md §2/§3.3):
 #     (a) Gegenrichtung zu 15b: jeder household-skopierte context_validators-Key braucht ein context_skeletons-
-#         Eintrag — agent.fn_set_context_facts legt household-Zeilen NIE selbst an (Sichtbarkeit agent_name ist
+#         Eintrag — agent.fn_set_context_facts legt household-Zeilen nie selbst an (Sichtbarkeit agent_name ist
 #         paket-deklariert); ohne Skelett waere der Kontext im Betrieb nie beschreibbar.
 #     (b) kein facts_display-Block mehr: die HITL-Beschriftungen der Fakten-Kontexte stehen im Textkatalog des
 #         Pakets (<pkg>.facts.<ctx>.title/.<feld>; locale_lint prueft den Titel je context_validators-Kontext).
@@ -1417,8 +1413,8 @@ foreach ($pdir in (Get-ChildItem $pkgDir -Directory -ErrorAction SilentlyContinu
 #     (f) retired_credentials: jeder Eintrag traegt name + type (Typ-Abgleich beim Loeschen) + env_keys-Liste; ein
 #         stillgelegter Name steht NICHT im aktuellen credentials-Block und ein stillgelegter env-Key gehoert keinem
 #         aktuellen Credential (sonst loeschte retire_credentials eine lebende Credential / einen lebenden Schluessel).
-#     (Der Ratchet "Core nennt keinen Paket-Kontext-Namen" lebt in scripts/core_literal_lint.ps1 — Phase A hat
-#      dessen Literal-Set um die manifest-deklarierten Kontext-Namen erweitert, kein zweiter Mechanismus.)
+#     (Der Ratchet "Core nennt keinen Paket-Kontext-Namen" lebt in scripts/core_literal_lint.ps1; dessen Literal-Set
+#      enthaelt die manifest-deklarierten Kontext-Namen, kein zweiter Mechanismus.)
 # ---------------------------------------------------------------
 foreach ($pdir in (Get-ChildItem $pkgDir -Directory -ErrorAction SilentlyContinue)) {
     $pkg = $pdir.Name
@@ -1444,17 +1440,17 @@ foreach ($pdir in (Get-ChildItem $pkgDir -Directory -ErrorAction SilentlyContinu
     if ($adv) {
         foreach ($p in $adv.PSObject.Properties) {
             if ($p.Name -eq '_comment') { continue }
-            # Typ-Check (Muster CALLBACK-SCHEMA member_permeable): der Seeder liest learn_notes STRIKT boolean -> ein
+            # Typ-Check (Muster CALLBACK-SCHEMA member_permeable): der Seeder liest learn_notes strikt boolean -> ein
             # "true"-String/1 wuerde still als false geseedet; hier laut melden.
             if ($p.Value.PSObject.Properties.Name -contains 'learn_notes' -and $p.Value.learn_notes -isnot [bool]) {
                 $errors.Add("LEARN-NOTES: packages/$pkg/manifest.json advisors '$($p.Name)'.learn_notes muss boolean sein (true/false), nicht '$($p.Value.learn_notes)' -- der Seeder wertet sonst still false.")
             }
-            # Roter Faden: own_review_cron (eigener Review-Cron -> die geteilten Advisor-Crons lassen die Domaene aus)
-            # liest der Seeder ebenso STRIKT boolean.
+            # own_review_cron (eigener Review-Cron -> die geteilten Advisor-Crons lassen die Domaene aus)
+            # liest der Seeder ebenso strikt boolean.
             if ($p.Value.PSObject.Properties.Name -contains 'own_review_cron' -and $p.Value.own_review_cron -isnot [bool]) {
                 $errors.Add("OWN-REVIEW-CRON: packages/$pkg/manifest.json advisors '$($p.Name)'.own_review_cron muss boolean sein (true/false), nicht '$($p.Value.own_review_cron)' -- der Seeder wertet sonst still false.")
             }
-            # Onboarding-Plan-Schritt (2026-10-28): plan_step STRIKT boolean (Seeder); gaps_fn/readiness_fn optional,
+            # Onboarding-Plan-Schritt: plan_step strikt boolean (Seeder); gaps_fn/readiness_fn optional,
             # schema-qualifiziert im EIGENEN Paket-Schema (Seeder-Boundary + CHECK) und nur zusammen mit plan_step=true
             # (sonst liest sie niemand: core.fn_advisor_plan_status kennt nur plan_step-Zeilen).
             if ($p.Value.PSObject.Properties.Name -contains 'plan_step' -and $p.Value.plan_step -isnot [bool]) {
@@ -1541,7 +1537,7 @@ foreach ($pdir in (Get-ChildItem $pkgDir -Directory -ErrorAction SilentlyContinu
 foreach ($d in $wfIdDupes) { $errors.Add("WORKFLOW-ID DOPPELT: $d -- eine id gehoert genau einer Datei (Rename per git mv, nicht kopieren).") }
 
 # ---------------------------------------------------------------
-# (17) E2E-HOOK + (18) MONITOR-METHODEN-BLOCK (Phase B — Core kennt kein Paket)
+# (17) E2E-HOOK + (18) MONITOR-METHODEN-BLOCK (Core kennt kein Paket)
 # ---------------------------------------------------------------
 $seenMethods = @{}
 foreach ($pdir in (Get-ChildItem $pkgDir -Directory -ErrorAction SilentlyContinue | Where-Object { $_.Name -ne 'core' })) {
@@ -1592,7 +1588,7 @@ foreach ($pdir in (Get-ChildItem $pkgDir -Directory -ErrorAction SilentlyContinu
         }
     }
 }
-# (18b) core deklariert KEINEN Block: Core-Methoden sind Builtin-Zeilen in core.monitor_acquisition_methods_init.sql
+# (18b) core deklariert keinen Block: Core-Methoden sind Builtin-Zeilen in core.monitor_acquisition_methods_init.sql
 # (der Seed wuerde einen core-Block sonst ungeprueft annehmen).
 $coreMf = Read-Manifest 'core'
 if ($null -ne $coreMf -and $coreMf.PSObject.Properties.Name -contains 'monitor_acquisition_methods') {
@@ -1600,11 +1596,11 @@ if ($null -ne $coreMf -and $coreMf.PSObject.Properties.Name -contains 'monitor_a
 }
 
 # ---------------------------------------------------------------
-# (19) AGENTEN-ROUTING (Phase C — Core-Prompt kennt kein Paket): provides.agents ALLER Manifeste inkl. core
-#      durch DIESELBE Pruef-Funktion wie build.ps1 (scripts/build/lib/agent_routing.ps1 -> erlaubte
-#      fallback_for-Arten an EINER Adresse): (a) Pflicht-router_description, (b) agent.<x> in einer Beschreibung
-#      ist deklariert (Verweis auf ein im Repo ABWESENDES Paket = Warnung; Beinahe-Treffer = Fehler), (c) fallback_for Liste/erlaubte Art/nicht am orchestrator/hoechstens ein Agent je Art.
-#      Der Build bricht bei denselben Verstoessen ab; hier die fruehere Commit-Meldung + Selbst-Asserts.
+# (19) AGENTEN-ROUTING (Core-Prompt kennt kein Paket): provides.agents aller Manifeste inkl. core
+#      durch dieselbe Pruef-Funktion wie build.ps1 (scripts/build/lib/agent_routing.ps1 -> erlaubte
+#      fallback_for-Arten an einer Adresse): (a) Pflicht-router_description, (b) agent.<x> in einer Beschreibung
+#      ist deklariert (Verweis auf ein im Repo abwesendes Paket = Warnung; Beinahe-Treffer = Fehler), (c) fallback_for Liste/erlaubte Art/nicht am orchestrator/hoechstens ein Agent je Art.
+#      Der Build bricht bei denselben Verstoessen ab; hier die Meldung beim Commit + Selbst-Asserts.
 # ---------------------------------------------------------------
 . (Join-Path $RepoRoot 'scripts\build\lib\agent_routing.ps1')
 $routingMfs = @(Get-ChildItem $pkgDir -Directory -ErrorAction SilentlyContinue | ForEach-Object {
@@ -1614,8 +1610,8 @@ $routingMfs = @(Get-ChildItem $pkgDir -Directory -ErrorAction SilentlyContinue |
 $routingRes = Get-AgentRouting $routingMfs
 foreach ($re in $routingRes.Errors)   { $errors.Add("AGENTEN-ROUTING: $re") }
 foreach ($rw in $routingRes.Warnings) { $warns.Add("AGENTEN-ROUTING: $rw") }
-# Selbst-Asserts: jeder synthetische Verstoss MUSS genau als Fehler erkannt werden (stirbt die Pruefung still,
-# waere Check 19 wertlos); der saubere Fall MUSS fehlerfrei bleiben.
+# Selbst-Asserts: jeder synthetische Verstoss wird genau als Fehler erkannt (stirbt die Pruefung still,
+# waere Check 19 wertlos); der saubere Fall bleibt fehlerfrei.
 function New-SynthMf([string]$Agents) { @{ Path = 'synthetic'; Json = ('{"name":"zzp","provides":{"agents":[' + $Agents + ']}}' | ConvertFrom-Json) } }
 $synthOk = 'ok sentence. NOT for x -> agent.zzb.'
 $synth = @(
@@ -1639,7 +1635,7 @@ foreach ($sc in $synth) {
 
 # ---------------------------------------------------------------
 # (19b) ONBOARDING-REIHENFOLGE (Menue/Weiter-Knopf): abgeleitet aus consumes (lib/agent_routing.ps1
-#      Get-OnboardingPackageOrder, dieselbe Funktion wie build.ps1). Live: die Repo-Manifeste muessen sich ordnen
+#      Get-OnboardingPackageOrder, dieselbe Funktion wie build.ps1). Die Repo-Manifeste muessen sich ordnen
 #      lassen (kein Zyklus). Selbst-Asserts: Konsument nach Lieferant, Gleichstand haushaltsweit vor per_user, dann
 #      Name; Zyklus wirft.
 # ---------------------------------------------------------------
@@ -1665,7 +1661,7 @@ if (-not $cycThrown) { $errors.Add("ONBOARDING-REIHENFOLGE SELBST-ASSERT 'Zyklus
 
 # ---------------------------------------------------------------
 # (20) UTF-8-PFLICHT BEI DB-ANLAGE: postgresql-common/initdb/createdb erben sonst die Systemsprache — auf einer
-# Proxmox-Debian-Vorlage (LANG="C") wird daraus SQL_ASCII, Umlaute sind nur noch Bytes (v0.4.0-Abbruch am
+# Proxmox-Debian-Vorlage (LANG="C") wird daraus SQL_ASCII, Umlaute sind nur noch Bytes (Symptom: Abbruch am
 # config_summary_single_line-CHECK). Fortsetzungszeilen (`\` am Ende) werden zu einer Anweisung verbunden.
 # ---------------------------------------------------------------
 #   Anweisungs-Grenzen: Shell/PS = Zeile (+ `\`-Fortsetzung), SQL = bis `;` (mehrzeiliges CREATE DATABASE … ENCODING).
@@ -1712,7 +1708,7 @@ foreach ($sc in $utf8Synth) {
 }
 
 # (21) ECHTE UMLAUTE IN SICHTBAREN TEXTEN (Manifest-config-summary, SQL-Text-Literale der R__-fns). Die festen
-#      Nutzertexte (Paketnamen, Menues, Toasts, /help, Onboarding-Labels) stehen seit Phase B im Textkatalog -> dort
+#      Nutzertexte (Paketnamen, Menues, Toasts, /help, Onboarding-Labels) stehen im Textkatalog -> dort
 #      prueft locale_lint die Umlaute.
 . (Join-Path $RepoRoot 'scripts\build\lib\umlaut.ps1')
 foreach ($mfFile in (Get-ChildItem (Join-Path $RepoRoot 'packages\*\manifest.json'))) {
@@ -1739,8 +1735,8 @@ foreach ($f in (Get-ChildItem (Join-Path $RepoRoot 'packages\*\db\migrations\R__
     }
 }
 
-# (22) JQ-BOOL-DEFAULT: `.x // true` ersetzt auch ein GESETZTES false (jq-`//` greift bei null UND false). So wurde
-#      cron_labels.person.score_jobs.default_enabled=false still zu true (Substrat-Befund 2026-10-23). Boolesche
+# (22) JQ-BOOL-DEFAULT: `.x // true` ersetzt auch ein gesetztes false (jq-`//` greift bei null und false), z. B.
+#      wurde cron_labels.person.score_jobs.default_enabled=false so still zu true. Boolesche
 #      Defaults mit true per `if has("x") then .x else true end`; `// false` ist harmlos (false bleibt false).
 function Get-JqTrueDefault([string[]]$Lines) {
     @($Lines | Where-Object { -not $_.Trim().StartsWith('#') -and $_ -match '//\s*true\b' })
@@ -1761,7 +1757,7 @@ foreach ($sc in @(
 
 # (23) GH-DOWNLOAD-SPIEGEL: der Release-Download (Status-Erfassung, Abbruch-/Limit-/404-Meldungen, Redirect nur https,
 #      Tag-Sanity) steht zweimal — im self-contained Bootstrap provisioning/install.sh und in der Runtime
-#      provisioning/lib/fetch_release.sh (`lifeagents update`), bewusste rustup-Doppelung. Der Block zwischen
+#      provisioning/lib/fetch_release.sh (`lifeagents update`), bewusste rustup-artige Doppelung. Der Block zwischen
 #      `# >>> gh-download` und `# <<< gh-download` muss in beiden Dateien byte-gleich sein, sonst verhalten sich
 #      Erstinstallation und Update verschieden (ein Fix nur in einer Kopie).
 function Get-GhDownloadBlock([string]$Text) {
@@ -1806,7 +1802,7 @@ if (-not $mKey.Success) {
 # ---------------------------------------------------------------
 # Jede Persona aus dem Core-Manifest personas.list (ausser neutral = keine Persona) hat genau einen Abschnitt
 # '### <code>' in packages/core/contexts/persona_styles.md, und jeder Abschnitt dort ist eine Persona der Liste —
-# sonst waehlte der Picker eine Persona ohne Stil-Regeln (Haiku erfaende sie) bzw. laege toter Stil-Text im Prompt.
+# sonst waehlte der Picker eine Persona ohne Stil-Regeln (das Modell erfaende sie) bzw. laege toter Stil-Text im Prompt.
 $personaMf = ([System.IO.File]::ReadAllText((Join-Path $RepoRoot 'packages\core\manifest.json'), $Utf8NoBom) | ConvertFrom-Json).personas
 $personaCodes = @(@($personaMf.list) | ForEach-Object { [string]$_.code } | Where-Object { $_ -ne 'neutral' })
 $styleFile = Join-Path $RepoRoot 'packages\core\contexts\persona_styles.md'
@@ -1843,7 +1839,7 @@ Get-ChildItem -Path (Join-Path $RepoRoot 'packages') -Recurse -Filter '*.ps1' |
     }
 
 # ---------------------------------------------------------------
-# (28) BERATER-INTERVIEW-KATALOG (Plan-Luecken 2026-10-27): finance.fn_plan_gaps traegt den Katalog der Interview-
+# (28) BERATER-INTERVIEW-KATALOG: finance.fn_plan_gaps traegt den Katalog der Interview-
 #     Sektionen + ihrer Pflicht-Bloecke als Konstante (die DB meldet daraus die Luecken), der Berater-Prompt nennt
 #     dieselben Keys unter "### Interview catalog" ("N. `key` ... **-> emits the `block` ...**"). Beide muessen in
 #     Keys, Reihenfolge und Bloecken gleich sein — sonst gilt eine im Prompt umbenannte Sektion fuer immer als offen.
@@ -1866,7 +1862,7 @@ if ((Test-Path $gapFn) -and (Test-Path $advCtx)) {
         $errors.Add("BERATER-KATALOG: finance.fn_plan_gaps [$($fnCat -join ', ')] != finance_advisor_instructions.md 'Interview catalog' [$($mdCat -join ', ')] -- Keys, Reihenfolge und emittierte Bloecke muessen gleich sein.")
     }
 }
-# (28b) PLAN-TEXTE (Plan-Karte, 2026-11-04): jedes Paket mit Plan-Interview (bindet core:save_plan_section) traegt den Plan-
+# (28b) PLAN-TEXTE (Plan-Karte): jedes Paket mit Plan-Interview (bindet core:save_plan_section) traegt den Plan-
 #     und jeden Abschnittsnamen in jeder Sprache; die Karte zeigt sie (Get-PlanNameValue/Get-PlanSectionValue), der Rueckfall
 #     waere der rohe Schluessel. Quelle der Abschnitte = die Liste unter "Use exactly these ... `section_key`s" im Berater-Prompt.
 foreach ($mf in (Get-ChildItem (Join-Path $pkgDir '*\manifest.json'))) {
@@ -1949,17 +1945,17 @@ foreach ($ef in (Get-ChildItem (Join-Path $pkgDir '*\db\migrations\R__fn_next_st
 #     insertAdjacentHTML/document.write/eval sind in packages/*/build/app/*.html verboten (XSS: die Seite haelt
 #     die initData, ein eingeschleustes Skript koennte Daten abziehen).
 # ---------------------------------------------------------------
-# (30) EINE FRAGE JE ABSCHNITT (UX-Gesamtkonzept 2026-10-31, P1; docs/package-contract.md §3.12 Structure rules): der
+# (30) EINE FRAGE JE ABSCHNITT (docs/package-contract.md §3.12 Structure rules): der
 #     Kopf jeder Bildschirm-fn (Handler aus app_screens, s. 29) traegt je Abschnitt eine Zeile
 #       --   Abschnitt <Titel-Key>: Frage: <Satz>?
 #     beidseitig geprueft: jeder Key einer Kopfzeile steht als Literal im SQL, und jedes Literal
 #     'title', core.fn_ui_tpl('<key>' (ausser dem Seitentitel <…>.title) hat seine Kopfzeile; mindestens eine Kopfzeile.
-#     RATCHET: Ausnahmen stehen je Handler in $appHeadExcept (seit dem UX-Umbau leer); wer einen Handler umbaut, streicht sie.
-#     Eine Ausnahme fuer einen Handler ohne Verstoss oder ohne app_screens-Eintrag ist ein FEHLER („Zeile streichen“).
-$appHeadExcept = @(           # leer seit dem Umbau aller Bildschirme (UX-Gesamtkonzept B/C/D); neue Zeile = Owner-Freigabe
+#     Ratchet: Ausnahmen stehen je Handler in $appHeadExcept (leer); wer einen Handler umbaut, streicht sie.
+#     Eine Ausnahme fuer einen Handler ohne Verstoss oder ohne app_screens-Eintrag ist ein Fehler („Zeile streichen“).
+$appHeadExcept = @(           # neue Zeile nur mit Owner-Freigabe
 )
 $appHeadLineRe = '(?m)^--\s+Abschnitt\s+([a-z0-9_.]+):\s+Frage:\s+.+\?\s*$'
-# Abschnittstitel = Literal hinter 'title', core.fn_ui_tpl(  ODER  jedes App-Key-Literal mit Namensteil section*
+# Abschnittstitel = Literal hinter 'title', core.fn_ui_tpl(  oder  jedes App-Key-Literal mit Namensteil section*
 # (faengt auch per CASE gewaehlte Titel); der Seitentitel <…>.title zaehlt nicht.
 $appTitleLitRe = "'title',\s*core\.fn_ui_tpl\('([a-z0-9_.]+)'"
 $appSectionKeyRe = "'([a-z0-9_]+\.app\.[a-z0-9_.]*\.section[a-z0-9_]*)'"
@@ -2031,7 +2027,7 @@ foreach ($sa in @(@{ t = 'el.innerHTML = x'; want = 1 }, @{ t = 'el.textContent 
 }
 
 # ---------------------------------------------------------------
-# (31) SPALTEN-SPICKZETTEL (Befunde KW 45, Fund 10): die Liste Ansicht -> Spalten, die in die postgres_select-Description
+# (31) SPALTEN-SPICKZETTEL: die Liste Ansicht -> Spalten, die in die postgres_select-Description
 #     beider finance-Agenten geht (view_hints.ps1), steht als Kopie im DB-Test (der prueft sie gegen information_schema).
 #     Beide muessen als Menge "Ansicht.Spalte" gleich sein, sonst prueft der Test eine andere Liste als die, die das Modell liest.
 # ---------------------------------------------------------------
@@ -2052,10 +2048,10 @@ if ((Test-Path $hintsPs1) -and (Test-Path $hintsSql)) {
 }
 
 # ---------------------------------------------------------------
-# (32) BETRIEBSART-WRAPPER (Docker-Installer, Plan-Einwand 16 + Pruefung Fund 11): rohe `runuser`, `systemctl` und JEDES
+# (32) BETRIEBSART-WRAPPER: rohe `runuser`, `systemctl` und jedes
 #     `docker` stehen in provisioning/ nur in lib/runtime.sh (eine Datei, Positivliste). Sonst driften CLI (systemd) und
 #     Docker-Verbund still auseinander, und ein breiter Docker-Befehl traefe fremde Container (Paperless & Co.).
-#     Erkannt wird die BEFEHLS-Stellung (Zeilenanfang, nach ; & | ( $( `, nach if/then/do/! ...), nicht Text in Strings,
+#     Erkannt wird die Befehls-Stellung (Zeilenanfang, nach ; & | ( $( `, nach if/then/do/! ...), nicht Text in Strings,
 #     Heredocs oder Kommentaren (gedruckte Anleitungen wie der Rueckweg in upgrade_guard.sh bleiben erlaubt).
 #     In runtime.sh: jeder docker-Aufruf startet mit einem Unterbefehl der Positivliste; `docker compose` nur mit festem
 #     Projekt (-p "$LA_PROJECT" -f "$LA_COMPOSE_FILE"); _rt_compose nur mit up|start|stop|restart|ps|config|pull|version;
@@ -2152,7 +2148,7 @@ function Get-ShellCommandWords([string]$Text, [string[]]$Targets) {
 }
 $rtRel = 'provisioning/lib/runtime.sh'
 $rtTargets = @('runuser', 'systemctl', 'docker', '_rt_compose')
-# Deinstaller (Pruefliste Nr. 17, Paket 2): `volume rm` nur mit EINEM Namen aus "$1" (rt_volume_rm_own prueft davor unser
+# Deinstaller: `volume rm` nur mit einem Namen aus "$1" (rt_volume_rm_own prueft davor unser
 # Label an genau diesem Namen) und `compose down` nur in der festen Form ohne -v/--rmi (rt_stack_down) — beide eng gefasst,
 # damit kein zweiter, breiterer Aufruf durchrutscht. `ps` nur mit festem JSON-Objekt als Format (rt_published_ports_json,
 # Paperless-Vorschlag im Wizard): liefert keine Kennungen, die ein zweiter Befehl (rm, stop) weiterverarbeiten koennte.
@@ -2212,7 +2208,7 @@ foreach ($sa in @(
 }
 
 # ---------------------------------------------------------------
-# (33) COMPOSE-PINS: provisioning/compose/compose.yml + master.Dockerfile gegen die EINE Adresse der Versions-Pins
+# (33) COMPOSE-PINS: provisioning/compose/compose.yml + master.Dockerfile gegen die eine Adresse der Versions-Pins
 #     (provision.sh N8N_VERSION/PG_VERSION/NODE_MAJOR) und gegen die Schutzregeln des Verbunds: jedes Image per Digest
 #     (ein Pull verschiebt nie ein Tag des Nachbarn), jeder Dienst mit mem_limit, Label und Namens-Vorsatz, keine
 #     Bind-Mounts ausser dem Docker-Socket, die externen Volumes = LA_STATE_VOLUMES (lib/runtime.sh), je n8n-Korrektur
@@ -2285,7 +2281,7 @@ if (Test-Path $composePath) {
         foreach ($v in $cyVars) { if ($swapVars -notcontains $v) { $errors.Add("COMPOSE-PINS: compose.yml interpoliert $v, SWAP_STACK_VARS (lib/master_swap.sh) kennt es nicht -- der Helfer legte den master anders an.") } }
     }
 }
-# Spiegel der Start-App (Paket 6): provisioning/desktop/core/src/contract.rs STATE_VOLUMES muss dieselbe Menge sein (die App
+# Spiegel der Start-App: provisioning/desktop/core/src/contract.rs STATE_VOLUMES muss dieselbe Menge sein (die App
 # legt die Volumes vor dem ersten Start an). Datei fehlt (Branch ohne App) = nichts zu pruefen.
 function Get-AppStateVolumes([string]$Rs) {
     $m = [regex]::Match($Rs, '(?s)STATE_VOLUMES\s*:\s*\[\s*&(?:''static\s+)?str\s*;\s*\d+\s*\]\s*=\s*\[(.*?)\]')
@@ -2358,7 +2354,7 @@ foreach ($sa in @(
 }
 
 # ---------------------------------------------------------------
-# (34) RAND-PFADE: EINE Liste oeffentlicher Pfade fuer beide Installationswege (Einwand 10). Quelle ist allein
+# (34) RAND-PFADE: eine Liste oeffentlicher Pfade fuer beide Installationswege. Quelle ist allein
 #     LA_PUBLIC_PATHS in provisioning/lib/common.sh: das Caddyfile der CLI (templates/Caddyfile.tpl, Platzhalter
 #     @@PUBLIC_PATHS@@), die Hilfetexte (owner_connect.sh) und der Rand des Docker-Verbunds (lib/reach.sh schreibt den
 #     Baustein, edge importiert ihn) lesen sie. Verboten ist eine zweite, von Hand gepflegte Liste: die Pfad-Kennung

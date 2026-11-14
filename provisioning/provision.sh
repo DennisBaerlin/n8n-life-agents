@@ -537,6 +537,7 @@ main() {
   # Der Pairing-Code kommt erst im gefuehrten Ende (owner_connect_guided).
   ui_step 'Zugänge einrichten' access
   N8N_URL="http://127.0.0.1:${N8N_PORT}"
+  menus_defer_begin   # Befehlsmenue, Bot-Name und Knoepfe einmal am Ende (menus_flush), nicht nach jedem Paket
   bootstrap_owner
   ui_step_done
 
@@ -585,6 +586,7 @@ main() {
     _DEPLOY_SKIPPED=1
     warn "Workflows/Credentials/Pakete uebersprungen: Owner-Bootstrap lieferte keinen N8N_API_KEY (Mint skip/Fehler) — Deploy danach erneut laufbar."
   fi
+  menus_flush
 
   ui_step 'Verwaltungsbefehl lifeagents einrichten' cli
   install_cli            # lifeagents-Admin-CLI nach /usr/local/bin + Provisioning-Baum spiegeln

@@ -10,7 +10,7 @@
 # echten Modell. Anders als multiturn_test trifft er den Orchestrator, nicht den Harness eines Agenten.
 #
 # Fall: { id, name, sender: owner|member, start: onboarding_done|member_confirmed|no_cash_account|fresh_household,
-#         hitl: decline|approve (Default decline),
+#         hitl: decline|approve (Default decline), mock_fresh_memory: true (nur Mock: Chat-Gedaechtnis vor jeder Runde leeren),
 #         turns: [ { text: "hallo" } | { tap: "<callback_data>" } | { doc: "<file_id>", caption: "...", [file_name, mime_type] },
 #                  optional expect_texts, forbid_texts, expect_agent, expect_node, hitl (ueberschreibt die Fall-Vorgabe fuer diese Runde),
 #                  timeout_s, expect_sql: [ { sql: "SELECT ...", equals: "<Wert>" } ] (nach der Runde, erste Zeile gleich equals),
@@ -32,6 +32,8 @@
 #         .\scripts\conversation_test.ps1 -Real [-Id s2]                                                   # kostet LLM-Credits
 # Beispiel-Runden der Faelle: "hallo", "und jetzt?", "kannst du mich beraten?", "wie viel Geld haben wir?", "/help",
 # "da sind gerade 1.200 Euro drauf", "Das Gehalt sind 3000 netto, das kommt am 1." (Mock-Szenarien matchen woertlich, mock_lint C2).
+# s6 (Mock-Treffer): "Wir sind nur zu zweit im Haushalt", "Der Haushalt ist damit fertig", "Mein Girokonto ist das __E2E__ Erlenbank Giro",
+# "Das waren alle Konten", "Buche bitte am 17.03.2000 eine Ausgabe von 37,40 Euro", "Kontoauszug März von der Erlenbank", "Sparziele überspringe ich erst einmal", "Gehalt sind 2.400 netto".
 # Voraussetzung: Substrat (bootstrap_test_n8n.ps1) + enable_mock_telegram.ps1; ohne -Real zusaetzlich enable_mock_llm.ps1,
 # mit -Real das Gegenteil (Assert-LlmGatewayUpstream prueft den tatsaechlichen Upstream); -Real sperrt der Owner-Fenster-Hook.
 # Ausgabe: .local/conversation_runs/<Zeit>-<mock|real>.md (lesbar) + .json (maschinenlesbar), Pfad am Ende.
@@ -255,6 +257,10 @@ function Send-TelegramDocIngress([long]$ChatId, [long]$FromUid, [string]$FileId,
 function Test-HasField($Obj, [string]$Name) { return ($Obj.PSObject.Properties.Name -contains $Name) -and $null -ne $Obj.$Name -and "$($Obj.$Name)" -ne '' }
 
 function Invoke-Round($Tc, $Turn, [int]$N, [long]$Uid) {
+    # mock_fresh_memory: der Mock zaehlt Werkzeug-Runden im Gedaechtnis mit und waehlt sein Szenario ueber alle frueheren Nutzertexte;
+    # elf aufeinander aufbauende Runden waeren so an die Zaehlstaende der Runden davor gekettet. Mit dem echten Modell nie (die
+    # Runden sollen aufeinander aufbauen).
+    if (-not $Real -and (Test-HasField $Tc 'mock_fresh_memory') -and [bool]$Tc.mock_fresh_memory) { Clear-ChatSessionMemory -Container $Container -SessionId "$Uid" }
     Clear-MockTelegramRequests -Container $Container
     Clear-HitlPending -Container $Container
     Clear-ThinkingLease -Container $Container

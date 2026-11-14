@@ -68,7 +68,8 @@
     "sender": "owner",
     "start": "fresh_household",
     "hitl": "approve",
-    "notes": "Gesamtablauf nach der Installation, bezahlt gedacht (conversation_test -Real). Alle Karten werden bestaetigt (Fall-Vorgabe approve): das Ergebnis nach der Bestaetigung ist pruefbar, darum stehen DB-Pruefungen und Rubrics mit Ergebnis-Aussagen. Runde 5 und 8 sind Ketten: ohne Haushalt-Abschluss (Runde 4) sperrt das Core-first-Gate die Finanz-Agenten, ohne Konto (Runde 6) fehlt der Boden fuer 8 bis 10 -> stop_on_fail. Kontoauszug-Fixture ist statisch auf Maerz 2000 datiert (tests/mock_telegram/make_doc_fixtures.ps1: IBAN, Anfangssaldo 500, Endsaldo 2012,60), darum liegen Eroeffnungsdatum und Buchung in dieser Zeit. Der Monats-Check gleicht eine von Hand gebuchte Zahlung nicht mit der Auszugszeile ab (nur Dauerauftraege, Transfers, gelernte Schluessel): Er bucht die Differenz (1.550 EUR) als eine Abgleichsbuchung und nennt die Handbuchung als moegliche Dublette; der Endsaldo 2.012,60 stimmt trotzdem (gegen die echten fn_* geprueft). Konto traegt __E2E__ im Namen (Cleanup), Stand am Ende: Reset + Fixture-Seed.",
+    "mock_fresh_memory": true,
+    "notes": "Gesamtablauf nach der Installation, bezahlt gedacht (conversation_test -Real). Alle Karten werden bestaetigt (Fall-Vorgabe approve): das Ergebnis nach der Bestaetigung ist pruefbar, darum stehen DB-Pruefungen und Rubrics mit Ergebnis-Aussagen. Die Runden sind Ketten (stop_on_fail): ohne Haushalt-Abschluss (Runde 4) sperrt das Core-first-Gate die Finanz-Agenten, ohne Konto (Runde 6) fehlt der Boden fuer die Folgerunden, und ohne uebersprungene oder erledigte Bereiche Depot/Kredite/Versicherungen/Sparziele (Runde 10) lehnt der Berater ab (Eingangs-Gate, Befund: wer nach den Konten gleich Rat will, wird auf /onboarding verwiesen). Kontoauszug-Fixture ist statisch auf Maerz 2000 datiert (tests/mock_telegram/make_doc_fixtures.ps1: IBAN, Anfangssaldo 500, Endsaldo 2012,60), darum liegen Eroeffnungsdatum und Buchung in dieser Zeit. Der Monats-Check gleicht eine von Hand gebuchte Zahlung nicht mit der Auszugszeile ab (nur Dauerauftraege, Transfers, gelernte Schluessel): Er bucht die Differenz (1.550 EUR) als eine Abgleichsbuchung und nennt die Handbuchung als moegliche Dublette; der Endsaldo 2.012,60 stimmt trotzdem (gegen die echten fn_* geprueft). Konto traegt __E2E__ im Namen (Cleanup), Stand am Ende: Reset + Fixture-Seed.",
     "turns": [
       {
         "text": "/start", "expect_node": "Send welcome new", "forbid_texts": ["NEXT_STEP"], "stop_on_fail": true,
@@ -126,6 +127,12 @@
           { "sql": "SELECT b.balance FROM finance.account_balances b JOIN finance.accounts a ON a.id = b.account_id WHERE a.name = '__E2E__ Erlenbank Giro';", "equals": "2012.60" }
         ],
         "expected_behavior": "After the confirmed card the reply reports the monthly check of the statement in plain words: the statement was read, the difference to the app was booked as one adjustment, and the balance now matches the statement (2.012,60 EUR). It names the account __E2E__ Erlenbank Giro, may point out that the manually booked Buchladen purchase (37,40 EUR) could be the same as a statement line, does not claim a different balance, and does not ask the user to export the file again."
+      },
+      {
+        "text": "Depots, Kredite, Versicherungen, Vorsorge und Sparziele überspringe ich erst einmal.",
+        "expect_agent": "finance", "forbid_texts": ["NEXT_STEP"], "stop_on_fail": true,
+        "expect_sql": [ { "sql": "SELECT count(*) FROM finance.onboarding_state WHERE section_key IN ('investments', 'liabilities', 'protection', 'goals') AND status IN ('skipped', 'completed');", "equals": "4" } ],
+        "expected_behavior": "The bookkeeper accepts the skip without pushing back and marks the open finance areas as skipped (depot and savings plans, loans and regular payments, insurances and pensions, savings goals). It says briefly that the user can come back to them at any time and may say that advice is possible now. It does not ask questions about the skipped topics and does not book anything."
       },
       {
         "text": "kannst du mich beraten?", "expect_agent": "finance_advisor", "forbid_texts": ["NEXT_STEP", "Buchhalter", "bookkeeper"],

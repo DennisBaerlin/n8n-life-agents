@@ -1836,5 +1836,95 @@
     ],
     "final": "Du kannst mich zum Beispiel fragen, was ich alles kann.",
     "final_router": "FRAME"
+  },
+  {
+    "_comment": "Durchspiel (conversation_test, s6 Runde 3): Antwort auf die Haushalts-Frage -> Router ruft agent.guide, der Guide fragt nach, ohne Werkzeug. s6 setzt mock_fresh_memory: jede Runde startet mit leerem Gedaechtnis, darum zaehlt k nur die Werkzeug-Runden dieser einen Runde (kein Vorlauf wie bei s5).",
+    "match": "Wir sind nur zu zweit im Haushalt",
+    "driver": "scripts/conversation_test.ps1",
+    "calls": [
+      { "tool": "Call_agent_guide_", "args": { "task": "Wir sind nur zu zweit im Haushalt und ich bin angestellt." } }
+    ],
+    "final": "Verstanden. Dann ist der Haushalt schon vollstaendig. Soll ich ihn als fertig markieren?",
+    "final_router": "NOFRAME"
+  },
+  {
+    "_comment": "Durchspiel (s6 Runde 4): Haushalt fertig -> Guide markiert den Bereich household als erledigt (Gate: Finanz-Agenten sind danach frei).",
+    "match": "Der Haushalt ist damit fertig",
+    "driver": "scripts/conversation_test.ps1",
+    "calls": [
+      { "tool": "Call_agent_guide_", "args": { "task": "Ja, das passt so. Der Haushalt ist damit fertig." } },
+      { "tool": "tool_set_onboarding_section", "args": { "section_key": "household", "status": "completed" } }
+    ],
+    "final": "Der Haushalt ist als fertig markiert.",
+    "final_router": "NOFRAME"
+  },
+  {
+    "_comment": "Durchspiel (s6 Runde 6): Konto mit IBAN und Startsaldo -> Buchhalter legt es an (Karte, der Fall nimmt an). Saldo 500 am 29.02.2000 passt zum Auszug mock_photo_132 (Anfangssaldo 500).",
+    "match": "Mein Girokonto ist das __E2E__ Erlenbank Giro",
+    "driver": "scripts/conversation_test.ps1",
+    "calls": [
+      { "tool": "Call_agent_finance_", "args": { "task": "Mein Girokonto ist das __E2E__ Erlenbank Giro, IBAN DE89 3704 0044 0532 0130 00, 500 Euro am 29.02.2000" } },
+      { "tool": "tool_create_account", "args": { "name": "__E2E__ Erlenbank Giro", "account_type": "cash", "bank": "Erlenbank", "account_number": "DE89 3704 0044 0532 0130 00", "opening_balance": "500", "opening_balance_date": "2000-02-29" } }
+    ],
+    "final": "Das Konto __E2E__ Erlenbank Giro ist angelegt, Saldo 500,00 EUR.",
+    "final_router": "NOFRAME"
+  },
+  {
+    "_comment": "Durchspiel (s6 Runde 7): Bereich Konten abschliessen.",
+    "match": "Das waren alle Konten",
+    "driver": "scripts/conversation_test.ps1",
+    "calls": [
+      { "tool": "Call_agent_finance_", "args": { "task": "Das waren alle Konten." } },
+      { "tool": "tool_set_onboarding_section", "args": { "section_key": "accounts", "status": "completed" } }
+    ],
+    "final": "Der Bereich Konten ist erledigt.",
+    "final_router": "NOFRAME"
+  },
+  {
+    "_comment": "Durchspiel (s6 Runde 8): erste Buchung auf dem neuen Konto, Datum in der Zeit des Fixture-Auszugs.",
+    "match": "Buche bitte am 17.03.2000 eine Ausgabe von 37,40 Euro",
+    "driver": "scripts/conversation_test.ps1",
+    "calls": [
+      { "tool": "Call_agent_finance_", "args": { "task": "Buche bitte am 17.03.2000 eine Ausgabe von 37,40 Euro fuer Buchladen Test auf das __E2E__ Erlenbank Giro." } },
+      { "tool": "tool_book_transaction", "args": { "account_name": "__E2E__ Erlenbank Giro", "direction": "outflow", "amount": 37.4, "transaction_date": "2000-03-17", "description": "Buchladen Test" } }
+    ],
+    "final": "Gebucht: 37,40 EUR Buchladen Test, neuer Saldo 462,60 EUR.",
+    "final_router": "NOFRAME"
+  },
+  {
+    "_comment": "Durchspiel (s6 Runde 9): Kontoauszug Maerz -> Monats-Check (Karte, der Fall nimmt an). Die Lesung des Auszugs liefert das Szenario 'Kontoauszug Maerz Mock-Erlenbank' ueber den doc_hint.",
+    "match": "Kontoauszug März von der Erlenbank",
+    "driver": "scripts/conversation_test.ps1",
+    "calls": [
+      { "tool": "Call_agent_finance_", "args": { "task": "Kontoauszug Maerz von der Erlenbank abgleichen [attachment file_id=mock_photo_132 type=document ext=pdf]" } },
+      { "tool": "tool_reconcile_bank_statement", "args": { "file_id": "mock_photo_132", "doc_hint": "Kontoauszug Maerz Mock-Erlenbank" } }
+    ],
+    "final": "Der Maerz ist abgeglichen, der Saldo stimmt mit dem Auszug ueberein (2.012,60 EUR).",
+    "final_router": "NOFRAME"
+  },
+  {
+    "_comment": "Durchspiel (s6 Runde 10): die vier Bereiche, die den Berater sperren (gates_advisor), ueberspringen. Ohne sie lehnt der Berater mit Verweis auf /onboarding ab (Eingangs-Gate, kein Modell).",
+    "match": "Sparziele überspringe ich erst einmal",
+    "driver": "scripts/conversation_test.ps1",
+    "calls": [
+      { "tool": "Call_agent_finance_", "args": { "task": "Depots, Kredite, Versicherungen, Vorsorge und Sparziele ueberspringe ich erst einmal." } },
+      { "tool": "tool_set_onboarding_section", "args": { "section_key": "investments", "status": "skipped" } },
+      { "tool": "tool_set_onboarding_section", "args": { "section_key": "liabilities", "status": "skipped" } },
+      { "tool": "tool_set_onboarding_section", "args": { "section_key": "protection", "status": "skipped" } },
+      { "tool": "tool_set_onboarding_section", "args": { "section_key": "goals", "status": "skipped" } }
+    ],
+    "final": "Alles klar, die Bereiche habe ich uebersprungen. Du kannst jederzeit zurueckkommen.",
+    "final_router": "NOFRAME"
+  },
+  {
+    "_comment": "Durchspiel (s6 Runde 12): Gehalt nennen -> Berater legt die laufende Einnahme an (Karte, der Fall nimmt an).",
+    "match": "Gehalt sind 2.400 netto",
+    "driver": "scripts/conversation_test.ps1",
+    "calls": [
+      { "tool": "Call_agent_finance_advisor_", "args": { "task": "Gehalt 2.400 netto am Monatsletzten aufs Erlenbank Giro" } },
+      { "tool": "tool_create_recurring_payment", "args": { "name": "Gehalt", "account_name": "__E2E__ Erlenbank Giro", "direction": "income", "amount": 2400, "schedule_unit": "month", "first_payment_date": "2026-12-31" } }
+    ],
+    "final": "Die Einnahme ist eingetragen.",
+    "final_router": "NOFRAME"
   }
 ]

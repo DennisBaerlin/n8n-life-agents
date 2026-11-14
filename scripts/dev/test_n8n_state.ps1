@@ -574,16 +574,6 @@ function Start-TestCron {
     return $r
 }
 
-# Deterministische, numerische Test-chat_id je Case (Memory-Isolation ohne test_-Prefix). Stabiler
-# FNV-1a-Hash des Case-id-Seeds -> 9-stellige positive Zahl (Bereich ~900000000..999999999); kollidiert
-# praktisch nicht mit dem gepairten Owner-uid und wird vor jedem Case ohnehin frisch geleert.
-function Get-TestChatId {
-    param([Parameter(Mandatory)][string]$Seed)
-    [long]$h = 0
-    foreach ($c in $Seed.ToCharArray()) { $h = ($h * 131 + [long][char]$c) % 1000000000 }
-    return [long](900000000 + ($h % 90000000))
-}
-
 # Den echten Telegram-Trigger-Webhook des Orchestrators aufloesen (Produktiv-Eingang, kein Harness).
 # Liefert @{ Url; Secret; OrchWfId }. n8n registriert die Produktiv-URL als {webhookId}/webhook; der
 # Telegram-Trigger validiert Header X-Telegram-Bot-Api-Secret-Token == {workflowId}_{nodeId}

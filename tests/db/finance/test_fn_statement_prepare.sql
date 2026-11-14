@@ -99,6 +99,17 @@ BEGIN
        OR v_prep->'difference_candidates' IS DISTINCT FROM '[]'::jsonb THEN
         RAISE EXCEPTION 'FAIL [MH1 Handbuchung erklaert]: %', v_prep;
     END IF;
+    -- Karte: nach dem Block "Schon erfasst" beginnt der Schlussteil mit einer eigenen Ueberschrift; hier ohne Zinskorrektur
+    -- und Hinweise, also direkt vor der Rest-Zeile (Geldzeile; ihr Label haengt vom Rest ab, hier Ungeklaerter Eingang)
+    IF (SELECT count(*) FROM jsonb_array_elements(v_prep->'card_lines') e
+        WHERE e->>'kind' = 'heading' AND e->>'label' = 'finance.label.statement_other_heading') <> 1
+       OR NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v_prep->'card_lines') e WHERE e->>'label' = 'finance.label.statement_booked')
+       OR NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v_prep->'card_lines') WITH ORDINALITY h(e, o)
+                      JOIN jsonb_array_elements(v_prep->'card_lines') WITH ORDINALITY n(e, o) ON n.o = h.o + 1
+                      WHERE h.e->>'label' = 'finance.label.statement_other_heading'
+                        AND n.e->>'kind' = 'money' AND (n.e->>'value')::numeric = (v_prep->>'lump')::numeric) THEN
+        RAISE EXCEPTION 'FAIL [MH1b Ueberschrift Alles andere nach Schon erfasst]: %', v_prep->'card_lines';
+    END IF;
     v_app := finance.fn_apply_bank_statement(v_stmt || jsonb_build_object('fingerprint', v_prep->>'fingerprint'));
     IF (v_app->>'ok')::boolean IS DISTINCT FROM true OR (v_app->>'rest_unexplained')::numeric <> 0
        OR (SELECT count(*) FROM finance.transactions WHERE account_id = a AND amount = -37.40) <> 1
@@ -119,6 +130,10 @@ BEGIN
        OR NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v_prep->'difference_candidates') c
                       WHERE (c->>'transaction_id')::int = v_tx AND c->>'for' = 'unexplained') THEN
         RAISE EXCEPTION 'FAIL [MH3 Handbuchung ohne Zeile bleibt sichtbar]: %', v_prep;
+    END IF;
+    -- ohne Block davor bleibt die Karte wie bisher: keine Rest-Ueberschrift
+    IF EXISTS (SELECT 1 FROM jsonb_array_elements(v_prep->'card_lines') e WHERE e->>'kind' = 'heading') THEN
+        RAISE EXCEPTION 'FAIL [MH3b ohne Block keine Ueberschrift]: %', v_prep->'card_lines';
     END IF;
     RAISE NOTICE 'PASS [MH3 Handbuchung ohne Zeile]';
 END $$;

@@ -1045,6 +1045,7 @@
   "finance.note.statement_insurance_premium_missing": "아직 보험료가 없는 보험: {names}. 명세서에서 보이면 이후에 알려 주세요.",
   "finance.note.insurance_premium_missing": "보험료 없이 저장돼요. 알게 되면 알려 주세요.",
   "finance.value.premium_missing": "— (보험료 아직 없음)",
+  "finance.label.statement_other_heading": "그 밖의 항목",
   "finance.label.statement_rest_net": "나머지 (합계 하나로)",
   "finance.label.statement_rest_other": "그중 기타 (기록되지 않거나 설명되지 않음)",
   "finance.label.statement_rest_pending": "그중 승인 대기 (다음 파일에서 맞춰짐)",

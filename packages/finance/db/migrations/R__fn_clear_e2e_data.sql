@@ -5,11 +5,12 @@
 --   dem Sentinel-Marker '__E2E__', FK-sicher und atomar (laeuft in der Transaktion des Dispatchers).
 --   Guard 1 (Pre-Assertion): jede eingesammelte Konto-ID muss den Marker tragen + Runaway-Obergrenze -> bricht vor
 --     jedem DELETE ab. Guard 2 (Post-Assertion): keine finance-Sentinel-Zeile darf zurueckbleiben.
+--   Tagesstaende (networth_snapshots) der Sentinel-Objekte gehen mit.
 --   Jeder DELETE ist sentinel-/account-scoped (eine Instandhaltungsruecklage einer Sentinel-Immobilie zaehlt als
 --   Sentinel, auch ohne Marker im Namen: sonst blockiert ihr FK RESTRICT den Immobilien-DELETE).
 --   Eingabe: p_runid (optional); NULL/'' = generischer Sweep, sonst nur '__E2E_<runid>__'.
 --   Rueckgabe: flache Zaehler {accounts, transactions, holdings, savings_plans, insurances, loans, savings_goals,
---     real_estate, pension, recurring_payments, interest_rates, balances, import_staging}
+--     real_estate, pension, networth_snapshots, recurring_payments, interest_rates, balances, import_staging}
 --   Tests: tests/db/core/test_fn_clear_e2e_data.sql
 -- ============================================================
 CREATE OR REPLACE FUNCTION finance.fn_clear_e2e_data(p_runid text DEFAULT NULL)
@@ -23,7 +24,7 @@ DECLARE
     v_acct int[];
     v_rp   int[];
     v_n    int;
-    v_tx int; v_hold int; v_sp int; v_ins int; v_loan int; v_sg int; v_re int; v_pen int; v_rpc int; v_ir int;
+    v_tx int; v_hold int; v_sp int; v_ins int; v_loan int; v_sg int; v_re int; v_pen int; v_nws int; v_rpc int; v_ir int;
     v_bal int; v_ac int; v_stg int := 0;
 BEGIN
     -- Run-ID-Format-Guard: nur [a-z0-9] (verhindert LIKE-Injection ueber p_runid).
@@ -80,6 +81,12 @@ BEGIN
     DELETE FROM finance.insurances    WHERE name LIKE v_pat;  GET DIAGNOSTICS v_ins  = ROW_COUNT;
     DELETE FROM finance.loans         WHERE name LIKE v_pat;  GET DIAGNOSTICS v_loan = ROW_COUNT;
     DELETE FROM finance.savings_goals WHERE (name LIKE v_pat OR real_estate_id IN (SELECT id FROM finance.real_estate WHERE name LIKE v_pat));  GET DIAGNOSTICS v_sg   = ROW_COUNT;
+    -- Tagesstand der Sentinel-Objekte (kein FK auf das Objekt, der Cron schreibt Testkonten stuendlich mit).
+    DELETE FROM finance.networth_snapshots
+     WHERE (item_kind = 'account'     AND item_id = ANY(v_acct))
+        OR (item_kind = 'real_estate' AND item_id IN (SELECT id FROM finance.real_estate WHERE name LIKE v_pat))
+        OR (item_kind = 'pension'     AND item_id IN (SELECT id FROM finance.pension     WHERE name LIKE v_pat));
+    GET DIAGNOSTICS v_nws = ROW_COUNT;
     DELETE FROM finance.real_estate   WHERE name LIKE v_pat;  GET DIAGNOSTICS v_re   = ROW_COUNT;
     DELETE FROM finance.pension       WHERE name LIKE v_pat;  GET DIAGNOSTICS v_pen  = ROW_COUNT;
 
@@ -115,7 +122,7 @@ BEGIN
     RETURN jsonb_build_object(
         'accounts', v_ac, 'transactions', v_tx, 'holdings', v_hold,
         'savings_plans', v_sp, 'insurances', v_ins, 'loans', v_loan,
-        'savings_goals', v_sg, 'real_estate', v_re, 'pension', v_pen, 'recurring_payments', v_rpc,
+        'savings_goals', v_sg, 'real_estate', v_re, 'pension', v_pen, 'networth_snapshots', v_nws, 'recurring_payments', v_rpc,
         'interest_rates', v_ir, 'balances', v_bal, 'import_staging', v_stg
     );
 END;

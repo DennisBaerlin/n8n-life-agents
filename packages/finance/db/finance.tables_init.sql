@@ -2962,3 +2962,31 @@ CREATE TABLE IF NOT EXISTS finance.setup_session (
     updated_at      timestamptz NOT NULL DEFAULT now(),
     CONSTRAINT finance_setup_session_profile_chat_uq UNIQUE (profile, chat_id)
 );
+
+-- Vermoegens-Tagesstand (Snapshot-Ausnahme c der Regel "keine ableitbaren Spalten"): der Live-Wert aus
+-- finance.networth_items ist morgen nicht mehr rekonstruierbar (Kurs, Kontostand, Immobilien- und Vorsorgewert sind
+-- Momentwerte). Eine Zeile je (Tag, Objekt, bucket, Klasse); die Summe je (Person, bucket, Klasse) ergibt
+-- networth_by_asset_class des Tages. Einziger Schreiber fn_record_networth_snapshot (nur der heutige Tag).
+-- Luecken bleiben Luecken: ein Tag ohne Lauf hat keine Zeilen; eine Anzeige fuellt beim Lesen auf und markiert das.
+-- Kein FK auf Objekt und Person (Stempel wie transaction_audit): der Verlauf ueberlebt ein geloeschtes Konto und eine
+-- entfernte Person. RESTRICT blockierte das Entfernen fuer immer, CASCADE senkte fruehere Familien-Summen, SET NULL
+-- schoebe den Anteil eines Kindes rueckwirkend in den Eltern-Pool. bucket/item_kind ohne CHECK: die Wertemenge besitzt
+-- networth_items; eine neue Art dort darf den Stunden-Lauf nicht abbrechen.
+CREATE TABLE IF NOT EXISTS finance.networth_snapshots (
+    snapshot_date   date        NOT NULL,
+    item_kind       text        NOT NULL,
+    item_id         int         NOT NULL,
+    bucket          text        NOT NULL,
+    asset_class     text,
+    owner_person_id text,
+    value_eur       numeric,
+    has_fx_gap      boolean     NOT NULL,
+    captured_at     timestamptz NOT NULL DEFAULT now(),
+    CONSTRAINT networth_snapshots_value_check CHECK (value_eur IS NOT NULL OR has_fx_gap),
+    CONSTRAINT networth_snapshots_day_item_uq
+        UNIQUE NULLS NOT DISTINCT (snapshot_date, item_kind, item_id, bucket, asset_class)
+);
+COMMENT ON TABLE finance.networth_snapshots IS 'Snapshot (Ausnahme c): Vermoegens-Tagesstand je Objekt, Quelle networth_items, Schreiber fn_record_networth_snapshot';
+COMMENT ON COLUMN finance.networth_snapshots.value_eur IS 'Snapshot (Ausnahme c): EUR-Wert zum captured_at, unrund (Summe der networth_items-Teile; gerundet wird beim Aggregieren wie in networth_by_asset_class). NULL = Waehrung ohne jeden Kurs.';
+COMMENT ON COLUMN finance.networth_snapshots.owner_person_id IS 'Snapshot (Ausnahme c): Eigentuemer-Slug zum captured_at, ohne FK (bleibt nach Entfernen der Person). NULL = Haushalt.';
+COMMENT ON COLUMN finance.networth_snapshots.captured_at IS 'Provenienz (Ausnahme c): letzter Lauf des Tages, der den Stand geschrieben hat.';

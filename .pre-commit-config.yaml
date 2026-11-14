@@ -536,3 +536,20 @@ repos:
         language: system
         entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/privacy_lint.ps1 -MessageFile
         stages: [commit-msg]
+
+      # Kommentar-Waechter (.claude/rules/comments.md): prueft nur die gestagten neuen Kommentarzeilen, der Bestand bleibt
+      # stumm. Im CI laeuft dieselbe Pruefung als eigener Job mit voller Historie (ci.yml `comment-lint`, -Base), weil
+      # `prek run --all-files` keinen gestagten Diff hat.
+      - id: comment-lint
+        name: comment_lint (new comment lines - no provenance/history, commented-out code, TODO without trigger, caps emphasis, required heads)
+        language: system
+        entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/comment_lint.ps1 -Staged
+        pass_filenames: false
+        files: '(?i)\.(ps1|sql|sh|js)$|^provisioning/templates/lifeagents\.tpl$'
+
+      - id: comment-lint-test
+        name: comment_lint_test (rules per language incl. here-strings/literals, required heads, diff mode in a throwaway repo; no Docker)
+        language: system
+        entry: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dev/comment_lint_test.ps1
+        pass_filenames: false
+        files: ^scripts/(comment_lint|dev/comment_lint_test|lib/git_sandbox)\.ps1$

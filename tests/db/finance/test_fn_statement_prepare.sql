@@ -71,3 +71,55 @@ BEGIN
     RAISE NOTICE 'PASS [fn_statement_prepare nennt Versicherungen ohne Beitrag]';
 END $$;
 ROLLBACK;
+
+-- Durchstich Handbuchung: eine von Hand gebuchte Ausgabe, die der Auszug als Zeile fuehrt, ist erklaert (bereits
+-- gebucht), kein unerklaerter Rest, kein Dubletten-Kandidat; apply bucht sie nicht doppelt. Eine Handbuchung ohne
+-- Zeile bleibt als Abweichung sichtbar. Werte erfunden.
+BEGIN;
+DO $$
+DECLARE
+    ps DATE := date_trunc('month', CURRENT_DATE - 120)::date;
+    pe DATE := (date_trunc('month', CURRENT_DATE - 120) + interval '1 month - 1 day')::date;
+    a INT; v_tx INT; v_stmt JSONB; v_prep JSONB; v_app JSONB;
+BEGIN
+    a := (finance.fn_create_account(jsonb_build_object('name', '__t_sph_giro__', 'account_type', 'cash', 'currency', 'EUR',
+             'opening_balance', 500, 'opening_balance_date', (ps - 1)::text))->>'account_id')::int;
+    v_tx := (finance.fn_book_transaction(jsonb_build_object('account_id', a, 'amount', 37.40, 'direction', 'outflow',
+               'description', 'Buchladen Beispiel', 'transaction_date', (ps + 16)::text))->>'tx_id')::int;
+    v_stmt := jsonb_build_object('account_name', '__t_sph_giro__', 'currency', 'EUR', 'period_start', ps, 'period_end', pe,
+        'opening_balance', 500, 'closing_balance', 2012.60, 'lines', jsonb_build_array(
+            jsonb_build_object('date', (ps + 16)::text, 'amount', -37.40, 'counterparty', 'Buchhandlung Muster'),
+            jsonb_build_object('date', (pe - 1)::text, 'amount', 1550, 'counterparty', 'Arbeitgeber Beispiel', 'purpose', 'Lohn')));
+    v_prep := finance.fn_statement_prepare(v_stmt);
+    IF (v_prep->>'ok')::boolean IS DISTINCT FROM true
+       OR jsonb_array_length(v_prep->'already_booked') <> 1
+       OR (v_prep->'already_booked'->0->>'transaction_id')::int IS DISTINCT FROM v_tx
+       OR (v_prep->>'unmatched_out')::numeric <> 0 OR (v_prep->>'unmatched_in')::numeric <> 1550
+       OR (v_prep->>'rest_unexplained')::numeric <> 0 OR (v_prep->>'lump')::numeric <> 1550
+       OR v_prep->'difference_candidates' IS DISTINCT FROM '[]'::jsonb THEN
+        RAISE EXCEPTION 'FAIL [MH1 Handbuchung erklaert]: %', v_prep;
+    END IF;
+    v_app := finance.fn_apply_bank_statement(v_stmt || jsonb_build_object('fingerprint', v_prep->>'fingerprint'));
+    IF (v_app->>'ok')::boolean IS DISTINCT FROM true OR (v_app->>'rest_unexplained')::numeric <> 0
+       OR (SELECT count(*) FROM finance.transactions WHERE account_id = a AND amount = -37.40) <> 1
+       OR (SELECT balance FROM finance.account_balances WHERE account_id = a) <> 2012.60 THEN
+        RAISE EXCEPTION 'FAIL [MH2 apply]: %', v_app;
+    END IF;
+    RAISE NOTICE 'PASS [MH1-MH2 Handbuchung mit Auszugszeile]';
+
+    -- Handbuchung ohne Zeile: bleibt unerklaert und als Kandidat sichtbar
+    a := (finance.fn_create_account(jsonb_build_object('name', '__t_sph_giro2__', 'account_type', 'cash', 'currency', 'EUR',
+             'opening_balance', 500, 'opening_balance_date', (ps - 1)::text))->>'account_id')::int;
+    v_tx := (finance.fn_book_transaction(jsonb_build_object('account_id', a, 'amount', 37.40, 'direction', 'outflow',
+               'description', 'Buchladen Beispiel', 'transaction_date', (ps + 16)::text))->>'tx_id')::int;
+    v_prep := finance.fn_statement_prepare(v_stmt || jsonb_build_object('account_name', '__t_sph_giro2__', 'closing_balance', 2050,
+                  'lines', jsonb_build_array(v_stmt->'lines'->1)));
+    IF (v_prep->>'ok')::boolean IS DISTINCT FROM true OR jsonb_array_length(v_prep->'already_booked') <> 0
+       OR (v_prep->>'rest_unexplained')::numeric <> 37.40
+       OR NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v_prep->'difference_candidates') c
+                      WHERE (c->>'transaction_id')::int = v_tx AND c->>'for' = 'unexplained') THEN
+        RAISE EXCEPTION 'FAIL [MH3 Handbuchung ohne Zeile bleibt sichtbar]: %', v_prep;
+    END IF;
+    RAISE NOTICE 'PASS [MH3 Handbuchung ohne Zeile]';
+END $$;
+ROLLBACK;

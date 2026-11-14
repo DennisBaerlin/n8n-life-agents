@@ -83,3 +83,82 @@ BEGIN
   RAISE NOTICE 'PASS [verspaetete Abbuchung: 14 Tage nur exakt + Name + Monats-Rhythmus]';
 END $$;
 ROLLBACK;
+
+-- Stufe 0 (Handbuchung): eine von Hand gebuchte Einzelbuchung (fn_book_transaction: kein Dauerauftrag, keine Gruppe,
+-- nicht aus einem Auszug) erklaert die Zeile mit gleichem Betrag +-5 Tage, aber nur eindeutig: die Buchung passt zu
+-- genau einer offenen Zeile und die Zeile zu genau einer solchen Buchung. Sonst keine stille Zuordnung.
+BEGIN;
+DO $$
+DECLARE
+  t date := CURRENT_DATE; v_acc int; v_tx int; v_tx2 int; v_m jsonb;
+BEGIN
+  v_acc := (finance.fn_create_account('{"name":"__smh_giro__","account_type":"cash","currency":"EUR"}'::jsonb)->>'account_id')::int;
+  v_tx := (finance.fn_book_transaction(jsonb_build_object('account_id', v_acc, 'amount', 37.40, 'direction', 'outflow',
+             'description', 'Buchladen Beispiel', 'transaction_date', (t - 14)::text))->>'tx_id')::int;
+
+  -- (H1) passende Zeile 2 Tage spaeter -> Stufe 0 booked mit der transaction_id, nichts offen
+  v_m := finance.fn_statement_match(v_acc, t - 30, t, jsonb_build_array(
+           jsonb_build_object('date', (t - 12)::text, 'amount', -37.40, 'counterparty', 'Buchhandlung Muster')));
+  IF jsonb_array_length(v_m->'matched') <> 1 OR v_m->'matched'->0->>'stage' IS DISTINCT FROM '0'
+     OR v_m->'matched'->0->>'kind' IS DISTINCT FROM 'booked'
+     OR (v_m->'matched'->0->>'transaction_id')::int IS DISTINCT FROM v_tx
+     OR (v_m->>'unmatched_out')::numeric IS DISTINCT FROM 0 THEN
+    RAISE EXCEPTION 'FAIL [H1 Handbuchung erklaert die Zeile]: %', v_m; END IF;
+
+  -- (H2) Zeile 6 Tage daneben bzw. anderer Betrag -> kein Treffer
+  v_m := finance.fn_statement_match(v_acc, t - 30, t, jsonb_build_array(
+           jsonb_build_object('date', (t - 8)::text, 'amount', -37.40, 'counterparty', 'Buchhandlung Muster'),
+           jsonb_build_object('date', (t - 14)::text, 'amount', -37.41, 'counterparty', 'Buchhandlung Muster')));
+  IF jsonb_array_length(v_m->'matched') <> 0 THEN RAISE EXCEPTION 'FAIL [H2 Fenster/Betrag]: %', v_m; END IF;
+
+  -- (H3) zwei gleiche Zeilen, eine Handbuchung -> mehrdeutig, keine Zuordnung (beide bleiben offen)
+  v_m := finance.fn_statement_match(v_acc, t - 30, t, jsonb_build_array(
+           jsonb_build_object('date', (t - 14)::text, 'amount', -37.40, 'counterparty', 'Buchhandlung Muster'),
+           jsonb_build_object('date', (t - 13)::text, 'amount', -37.40, 'counterparty', 'Buchhandlung Muster')));
+  IF jsonb_array_length(v_m->'matched') <> 0 OR (v_m->>'unmatched_out')::numeric IS DISTINCT FROM -74.80 THEN
+    RAISE EXCEPTION 'FAIL [H3 zwei Zeilen, eine Buchung]: %', v_m; END IF;
+
+  -- (H4) zwei gleiche Handbuchungen, eine Zeile -> mehrdeutig, keine Zuordnung
+  v_tx2 := (finance.fn_book_transaction(jsonb_build_object('account_id', v_acc, 'amount', 37.40, 'direction', 'outflow',
+             'description', 'Buchladen Beispiel 2', 'transaction_date', (t - 13)::text))->>'tx_id')::int;
+  v_m := finance.fn_statement_match(v_acc, t - 30, t, jsonb_build_array(
+           jsonb_build_object('date', (t - 13)::text, 'amount', -37.40, 'counterparty', 'Buchhandlung Muster')));
+  IF jsonb_array_length(v_m->'matched') <> 0 THEN RAISE EXCEPTION 'FAIL [H4 zwei Buchungen, eine Zeile]: %', v_m; END IF;
+  DELETE FROM finance.transactions WHERE id = v_tx2;
+
+  -- (H5) Handbuchung ohne Zeile -> kein Treffer, die andere Zeile bleibt offen
+  v_m := finance.fn_statement_match(v_acc, t - 30, t, jsonb_build_array(
+           jsonb_build_object('date', (t - 10)::text, 'amount', -12, 'counterparty', 'Kiosk Beispiel')));
+  IF jsonb_array_length(v_m->'matched') <> 0 OR (v_m->>'unmatched_out')::numeric IS DISTINCT FROM -12 THEN
+    RAISE EXCEPTION 'FAIL [H5 ohne Zeile]: %', v_m; END IF;
+
+  -- (H6) eine Abgleichsbuchung (Rest/Drift eines Abgleichs) ist keine Handbuchung
+  UPDATE finance.transactions SET category = 'reconciliation' WHERE id = v_tx;
+  v_m := finance.fn_statement_match(v_acc, t - 30, t, jsonb_build_array(
+           jsonb_build_object('date', (t - 14)::text, 'amount', -37.40, 'counterparty', 'Buchhandlung Muster')));
+  IF jsonb_array_length(v_m->'matched') <> 0 THEN RAISE EXCEPTION 'FAIL [H6 Abgleichsbuchung zaehlt nicht]: %', v_m; END IF;
+  UPDATE finance.transactions SET category = 'other' WHERE id = v_tx;
+
+  -- (H7) zweite Zeile gleichen Betrags gehoert per Schluessel (Stufe A) einem Dauerauftrag: sie zaehlt fuer die
+  --      Eindeutigkeit nicht, die Handbuchung erklaert die erste Zeile, der Dauerauftrag die zweite
+  v_tx2 := finance.fn_add_recurring_payment(v_acc, -37.40, '__smh Abo Muster__', 1::smallint, 'month'::finance.schedule_unit,
+             NULL::smallint, t - 12, t - 12, NULL, NULL, NULL);
+  INSERT INTO finance.recurring_payment_keys (recurring_payment_id, key_type, key_value, source)
+  VALUES (v_tx2, 'counterparty_iban', 'DE02120300000000202051', 'user');
+  v_m := finance.fn_statement_match(v_acc, t - 30, t, jsonb_build_array(
+           jsonb_build_object('date', (t - 14)::text, 'amount', -37.40, 'counterparty', 'Buchhandlung Muster'),
+           jsonb_build_object('date', (t - 12)::text, 'amount', -37.40, 'counterparty', 'Verlag', 'counterparty_iban', 'DE02 1203 0000 0000 2020 51')));
+  IF jsonb_array_length(v_m->'matched') <> 2
+     OR NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v_m->'matched') x WHERE (x->>'line_idx')::int = 1 AND (x->>'transaction_id')::int = v_tx)
+     OR NOT EXISTS (SELECT 1 FROM jsonb_array_elements(v_m->'matched') x WHERE (x->>'line_idx')::int = 2 AND x->>'stage' = 'A') THEN
+    RAISE EXCEPTION 'FAIL [H7 Schluessel-Zeile zaehlt nicht mit]: %', v_m; END IF;
+  DELETE FROM finance.recurring_payments WHERE id = v_tx2;
+
+  -- (H8) Handbuchung nach dem Auszugsende (noch nicht abgebucht) erklaert keine Zeile im Zeitraum
+  UPDATE finance.transactions SET transaction_date = t - 8 WHERE id = v_tx;
+  v_m := finance.fn_statement_match(v_acc, t - 30, t - 10, jsonb_build_array(
+           jsonb_build_object('date', (t - 11)::text, 'amount', -37.40, 'counterparty', 'Buchhandlung Muster')));
+  IF jsonb_array_length(v_m->'matched') <> 0 THEN RAISE EXCEPTION 'FAIL [H8 nach period_end]: %', v_m; END IF;
+  RAISE NOTICE 'PASS [Stufe 0 Handbuchung: eindeutig, Fenster, Mehrdeutigkeit, ohne Zeile, Schluessel-Zeile, nach Auszugsende]';
+END $$;
+ROLLBACK;

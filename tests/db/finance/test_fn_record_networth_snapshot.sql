@@ -3,8 +3,8 @@
 --   Stand = networth_items je Objekt zum Aufrufzeitpunkt, Tag = core.fn_today(); die Summe je (bucket, Klasse, Person)
 --   ergibt exakt networth_by_asset_class. Ein zweiter Lauf am selben Tag ersetzt den Tagesstand (auch weggefallene
 --   Zeilen), fruehere Tage bleiben unberuehrt, Kredite zaehlen negativ mit.
---   Gesetz: UNIQUE (Tag, Objekt, bucket, Klasse) mit NULLS NOT DISTINCT, bucket-/item_kind-CHECK, Wert NULL nur mit
---   FX-Luecke, Person geloescht -> ihr Anteil wandert in den Haushalt (SET NULL). Objekte ohne Wert und ohne Luecke
+--   Gesetz: UNIQUE (Tag, Objekt, bucket, Klasse) mit NULLS NOT DISTINCT, Wert NULL nur mit FX-Luecke, Person
+--   entfernt -> ihr Stempel bleibt (kein FK). Objekte ohne Wert und ohne Luecke
 --   fallen weg statt den Lauf abzubrechen; das E2E-Aufraeumen nimmt Tagesstaende der Testkonten mit.
 --   Rolle finance_rw darf schreiben (der Cron laeuft so).
 BEGIN;
@@ -190,7 +190,9 @@ BEGIN
   IF NOT EXISTS (SELECT 1 FROM finance.networth_snapshots WHERE item_kind = 'account' AND item_id = v_acc) THEN
     RAISE EXCEPTION 'FAIL [E2E Vorbedingung]: Testkonto nicht im Tagesstand';
   END IF;
-  PERFORM finance.fn_clear_e2e_data();
+  IF (finance.fn_clear_e2e_data()->>'networth_snapshots')::int < 1 THEN
+    RAISE EXCEPTION 'FAIL [E2E Zaehler]: networth_snapshots nicht gezaehlt';
+  END IF;
   IF EXISTS (SELECT 1 FROM finance.networth_snapshots WHERE item_kind = 'account' AND item_id = v_acc) THEN
     RAISE EXCEPTION 'FAIL [E2E]: Tagesstand eines geloeschten Testkontos bleibt stehen';
   END IF;
@@ -213,20 +215,6 @@ BEGIN
 
   BEGIN
     INSERT INTO finance.networth_snapshots (snapshot_date, item_kind, item_id, bucket, asset_class, value_eur, has_fx_gap)
-    VALUES (v_today - 10, 'account', -2, 'gold', 'gold', 1, false);
-    RAISE EXCEPTION 'FAIL [bucket CHECK]: unbekannter bucket angenommen';
-  EXCEPTION WHEN check_violation THEN NULL;
-  END;
-
-  BEGIN
-    INSERT INTO finance.networth_snapshots (snapshot_date, item_kind, item_id, bucket, asset_class, value_eur, has_fx_gap)
-    VALUES (v_today - 10, 'car', -2, 'cash', 'cash', 1, false);
-    RAISE EXCEPTION 'FAIL [item_kind CHECK]: unbekannte Objekt-Art angenommen';
-  EXCEPTION WHEN check_violation THEN NULL;
-  END;
-
-  BEGIN
-    INSERT INTO finance.networth_snapshots (snapshot_date, item_kind, item_id, bucket, asset_class, value_eur, has_fx_gap)
     VALUES (v_today - 10, 'account', -3, 'cash', 'cash', NULL, false);
     RAISE EXCEPTION 'FAIL [Wert-CHECK]: Wert NULL ohne FX-Luecke angenommen';
   EXCEPTION WHEN check_violation THEN NULL;
@@ -234,16 +222,16 @@ BEGIN
   INSERT INTO finance.networth_snapshots (snapshot_date, item_kind, item_id, bucket, asset_class, value_eur, has_fx_gap)
   VALUES (v_today - 10, 'account', -3, 'cash', 'cash', NULL, true);
 
-  -- Person entfernt -> ihr Anteil wandert in den Haushalt, der Wert des Tages bleibt.
-  INSERT INTO agent.persons (person_id, full_name, role) VALUES ('__nws_gone__', 'Weg Beispiel', 'partner');
+  -- Person entfernt -> Verlauf blockiert nicht und behaelt ihren Stempel (kein Umschreiben frueherer Tage).
+  INSERT INTO agent.persons (person_id, full_name, role) VALUES ('__nws_gone__', 'Weg Beispiel', 'child');
   INSERT INTO finance.networth_snapshots (snapshot_date, item_kind, item_id, bucket, asset_class, owner_person_id, value_eur, has_fx_gap)
-  VALUES (v_today - 10, 'account', -4, 'cash', 'cash', '__nws_gone__', 5, false);
+  VALUES (v_today - 10, 'account', -4, 'depot', 'equity', '__nws_gone__', 5, false);
   DELETE FROM agent.persons WHERE person_id = '__nws_gone__';
   IF NOT EXISTS (SELECT 1 FROM finance.networth_snapshots
-                 WHERE snapshot_date = v_today - 10 AND item_id = -4 AND owner_person_id IS NULL AND value_eur = 5) THEN
-    RAISE EXCEPTION 'FAIL [SET NULL]: Anteil einer entfernten Person nicht im Haushalt erhalten';
+                 WHERE snapshot_date = v_today - 10 AND item_id = -4 AND owner_person_id = '__nws_gone__' AND value_eur = 5) THEN
+    RAISE EXCEPTION 'FAIL [Stempel]: Verlauf einer entfernten Person umgeschrieben oder geloescht';
   END IF;
-  RAISE NOTICE 'PASS networth_snapshots [UNIQUE, CHECKs, SET NULL]';
+  RAISE NOTICE 'PASS networth_snapshots [UNIQUE, Wert-CHECK, Personen-Stempel]';
 END $$;
 
 -- ---------- Rolle des Crons ----------

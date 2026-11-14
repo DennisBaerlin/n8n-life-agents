@@ -1,7 +1,7 @@
 ﻿#Requires -Version 5.1
 # Definition agent.finance.cron_networth_snapshot -> Build-CronNetworthSnapshot. Dot-gesourct von build.ps1.
 # Vermoegens-Tagesstand festhalten: deterministisch, kein LLM, kein externer Abruf, keine Nachricht.
-# Stuendlich (schedule.networth_snapshot) -> Gate (Paket aktiv AND cron_enable) -> finance.fn_record_networth_snapshot().
+# Zeitplan schedule.networth_snapshot (Standard stuendlich) -> Gate (Paket aktiv AND cron_enable) -> finance.fn_record_networth_snapshot().
 # Warum stuendlich mit Ueberschreiben statt Tagesplan + Nachhol-Gate wie die Kurs-Crons: gemeint ist der Stand am Ende
 # des Tages; ein Nachholen am Folgetag haette den heutigen Stand unter einem falschen Tag gespeichert. Der letzte Lauf des
 # Tages bleibt, ein Tag ohne Lauf bleibt leer.
@@ -21,7 +21,7 @@ function Build-CronNetworthSnapshot {
 
     $stickyOverview = Build-Sticky 'Überblick' @(-760, -320) `
         'Vermögens-Tagesstand (kein LLM, keine Nachricht)' `
-        'Jede Stunde (Minute 55, core.config schedule.networth_snapshot) ersetzt finance.fn_record_networth_snapshot den Stand des heutigen Tages in finance.networth_snapshots: je Konto, Depot, Immobilie und Vorsorge mit Anlageklasse und Person, Kredite negativ, aus der View networth_items. So bleibt der letzte Lauf des Tages stehen. Frühere Tage schreibt der Lauf nie: ist das Gerät einen ganzen Tag aus, bleibt der Tag leer, nichts wird nachgetragen. Die Anzeige füllt Lücken erst beim Lesen und markiert sie. Gate: Paket aktiv und cron_enable networth_snapshot = true (fail-closed); aus: lifeagents config set cron_enable networth_snapshot false.' 380 360
+        'Jeder Lauf (Zeitplan aus core.config schedule.networth_snapshot, Standard stündlich) ersetzt finance.fn_record_networth_snapshot den Stand des heutigen Tages in finance.networth_snapshots: je Konto, Depot, Immobilie und Vorsorge mit Anlageklasse und Person, Kredite negativ, aus der View networth_items. So bleibt der letzte Lauf des Tages stehen. Frühere Tage schreibt der Lauf nie: ist das Gerät einen ganzen Tag aus, bleibt der Tag leer, nichts wird nachgetragen. Die Anzeige füllt Lücken erst beim Lesen und markiert sie. Gate: Paket aktiv und cron_enable networth_snapshot = true (fail-closed); aus: lifeagents config set cron_enable networth_snapshot false.' 380 360
 
     $nodes = @($trig, $gate, $gateIf, $gateOff, $record, $stickyOverview)
     $conns = [ordered]@{

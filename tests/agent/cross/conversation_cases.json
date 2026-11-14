@@ -77,19 +77,19 @@
       },
       {
         "tap": "onboarding:core:household", "expect_node": "Run onboarding cb", "forbid_texts": ["NEXT_STEP"],
-        "expected_behavior": "The guide opens the household setup in German. The owner already exists in the household (Household so far): it must NOT ask again for the owner's name or birth date, but may confirm them briefly and asks only for what is missing (further household members, employment). One step at a time, no list of all sections, no booking or finance question, no invented data."
+        "expected_behavior": "The guide opens the household setup in German. The owner already exists in the household (Household so far): it must NOT ask again for the owner's name or birth date, but may confirm them briefly and asks only for what is missing (further household members, employment). One step at a time, no list of all sections, no booking or finance question, no invented data. Judge ONLY the agent's own text: a menu or button such as 'Weiter: <area>' that the system adds after the reply is not the agent's text and is allowed."
       },
       {
         "text": "Wir sind nur zu zweit im Haushalt und ich bin angestellt. Weitere Personen trage ich später ein.",
         "forbid_texts": ["NEXT_STEP"],
-        "expected_behavior": "The guide takes the answer without asking for anything it already knows. It either stores the fact (the user may be shown a confirmation card, which is confirmed in this test) or asks at most ONE short follow-up. It does not push for details the user said to add later and does not ask about finance topics yet."
+        "expected_behavior": "The guide takes the answer without asking for anything it already knows. It either stores the fact (the user may be shown a confirmation card, which is confirmed in this test) or asks at most ONE short follow-up. It does not push for details the user said to add later and does not ask about finance topics yet. An optional offer to add details later (for example 'if you like, send me the partner's name and I add them') is NOT a question and is fine. Judge ONLY the agent's own text: the onboarding menu and its 'Weiter: <area>' button come from the system, not from the agent, and are allowed."
       },
       {
         "text": "Ja, das passt so. Der Haushalt ist damit fertig.",
         "forbid_texts": ["NEXT_STEP"],
         "stop_on_fail": true,
         "expect_sql": [ { "sql": "SELECT status FROM agent.guide_onboarding_state WHERE section_key = 'household';", "equals": "completed" } ],
-        "expected_behavior": "The household area is marked as done and the reply says so in a friendly short sentence. It points to the next step (the finance areas) at most once, without a list of commands and without a topic list."
+        "expected_behavior": "The household area is marked as done and the reply says so in a friendly short sentence. It points to the next step (the finance areas) at most once in the agent's own text, without a list of commands and without a topic list. Judge ONLY the agent's own text: the onboarding menu and its 'Weiter: <area>' button are added by the system after the reply (a deterministic next-step message) and do not count as a second pointer or as a topic list."
       },
       {
         "tap": "onboarding:finance:accounts", "expect_node": "Run onboarding finance", "forbid_texts": ["NEXT_STEP"],
